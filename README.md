@@ -11,8 +11,10 @@ Found and run a space launch company from the Pioneer era (1940s) through specul
 - **M1** — Core loop: design bench (rocket equation), missions, R&D, economy. Pioneer era.
 - **M2** — Crew & life support: ECLSS (open/partial/closed-loop tradeoffs), test campaigns, launch escape systems.
 - **M3a** — Multi-leg missions: separate Transfer Stage and two-stage (Apollo-style) Lunar Lander, mission flight animations.
-- **M3b-i** — Mars Flyby/Orbit, launch window planner (Earth–Mars synodic cycle), Solar System map with clickable Δv profiles per body.
-- **M3b-ii** — *in progress*: refueling depots & ISRU.
+- **M3b-i** — Mars Flyby/Orbit, launch window planner (Earth–Mars synodic cycle), Solar System map with clickable Δv profiles per body and zoom.
+- **M3b-ii** — Refueling depots (Tanker Run + LEO depot top-off) and Lunar/Mars ISRU — breaks the rocket equation's compounding for the first time.
+
+See `ROADMAP.md` for full milestone detail, open scoping notes, and candidate next steps.
 
 ## Design philosophy
 
@@ -22,6 +24,7 @@ Found and run a space launch company from the Pioneer era (1940s) through specul
 
 ## Docs
 
+- `ROADMAP.md` — milestone status, workflow, and what's next.
 - `orbital-ventures-design.md` — original full design document (tech tree, economy, personnel, Solar System map).
 - `orbital-ventures-systems-spec.md` — deep dive on the rocket-equation vehicle design and ECLSS systems.
 
