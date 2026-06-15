@@ -147,6 +147,7 @@
       <div class="stat"><span class="k">Capital</span><span class="v" id="stMoney">—</span></div>
       <div class="stat"><span class="k">Reputation</span><span class="v" id="stRep">—</span></div>
       <div class="stat"><span class="k">Flights</span><span class="v" id="stFlights">—</span></div>
+      <div class="stat hidden" id="stDepotWrap"><span class="k">LEO Depot</span><span class="v" id="stDepot">—</span></div>
     </div>
   </header>
 
@@ -272,6 +273,9 @@ const MISSIONS = [
     modules:['lv','transfer','crew'],
     profile:[{name:'Ascent to LEO', dv:9400, by:'lv'},{name:'Trans-Mars Injection', dv:3600, by:'transfer'},{name:'Mars Orbit Insertion', dv:1400, by:'transfer'},{name:'Trans-Earth Injection', dv:1400, by:'transfer'}],
     blurb:'Capture into Mars orbit, wait out the return window, then burn home — a year and a half away from Earth on one tank.<span class="hist">↳ Mars mission architectures from the 1980s onward converge on long-stay, opposition-class profiles like this one.</span>'},
+  {id:'tanker_leo',   name:'Tanker Run (LEO Depot)', crew:0, days:0, payout:0, rep:6, minRep:38, reqResearch:'orbital_depot', reqDv:9400,
+    payload:0, tanker:true,
+    blurb:'No crew, no science — just propellant. Deliver a tank of fuel to the LEO depot for future missions to draw from.<span class="hist">↳ Propellant depots were proposed for Apollo-era architectures and became central to post-2010 reusable-launch economics.</span>'},
 ];
 
 const RESEARCH = [
@@ -292,6 +296,9 @@ const RESEARCH = [
   {id:'lunar_lander', name:'Lunar Lander (Descent &amp; Ascent)', cost:6.0, months:7, req:['deep_space','hypergolic'], effect:{unlock:'lander'}, desc:'A two-stage lander: a descent stage for the powered landing, left on the surface, and a separate ascent stage to return to orbit. Unlocks Lunar Landing.<span class="hist">↳ The Apollo Lunar Module flew as two stages — Eagle\'s descent stage is still on the Sea of Tranquility.</span>'},
   {id:'super_heavy',  name:'Rocketdyne F-1 Engine Development',  cost:7.0, months:8, req:['lunar_lander'], effect:{engine:'f1_class'}, desc:'A first-stage engine an order of magnitude beyond anything before it (6.7 MN thrust). The lander\'s mass — lifted, carried to the Moon, and lowered to the surface — demands a booster this size.<span class="hist">↳ Five F-1 engines powered the Saturn V\'s first stage, still the most powerful rocket ever flown.</span>'},
   {id:'mars_traj',    name:'Mars Transfer Trajectory Planning', cost:6.5, months:7, req:['deep_space'], effect:{unlock:'mars'}, desc:'Interplanetary navigation for Hohmann-class transfers to Mars. Launch windows open roughly every 26 months — miss one and you wait for the next.<span class="hist">↳ Mariner and Viking proved the trajectories; the synodic period of Earth and Mars sets the rhythm ever since.</span>'},
+  {id:'orbital_depot',name:'Orbital Propellant Depot',       cost:5.5, months:6, req:['deep_space'], effect:{unlock:'depot'}, desc:'A propellant tank farm in LEO. Tanker Run contracts deposit fuel into it; any mission\'s transfer stage can then top off from the depot instead of carrying that propellant up from Earth.<span class="hist">↳ Depot-based architectures let a transfer stage launch nearly empty and fill up in orbit — the key to breaking the rocket equation\'s compounding.</span>'},
+  {id:'lunar_isru',   name:'Lunar ISRU (Water → LOX/LH₂)',   cost:6.0, months:7, req:[], reqMissionDone:'luna_landing', effect:{unlock:'isru_moon'}, desc:'Polar water ice, electrolyzed into liquid oxygen and hydrogen at a surface plant. Once established, your lander\'s ascent stage refuels on the Moon — that propellant no longer has to be launched from Earth.<span class="hist">↳ Permanently shadowed craters at the lunar poles hold water ice — the resource every lunar architecture since Apollo has wanted to reach.</span>'},
+  {id:'mars_isru',    name:'Mars ISRU (Sabatier Methalox)',  cost:7.5, months:8, req:[], reqMissionDone:'mars_orbit', effect:{unlock:'isru_mars'}, desc:'Atmospheric CO₂ plus water ice, run through the Sabatier reaction, yields methane and oxygen on the Martian surface. The return propellant for Trans-Earth Injection is made on Mars, not carried there.<span class="hist">↳ Sabatier-process ISRU is the linchpin of every serious Mars architecture — making the return fuel on-site instead of hauling it from Earth.</span>'},
 ];
 
 /* ---------- Solar System map data ---------- */
@@ -381,7 +388,8 @@ function newGame(){
     ascent:{eng:'hyper_storable', prop:2.5},
     eclss:'open', testLevel:0,
     windows:{}, committedWindow:null, selectedBody:'moon', mapZoom:null,
-    tab:'bench', won:false, wonM2:false, wonM3a:false, wonM3aii:false, wonM3b:false, over:false,
+    depot:0, depotUse:0,
+    tab:'bench', won:false, wonM2:false, wonM3a:false, wonM3aii:false, wonM3b:false, wonM3bii:false, over:false,
     log:[],
   };
   log('info','Company founded. The pad is yours — go make some noise.');
@@ -454,6 +462,7 @@ function inSpaceDry(mod){const e=ENGINES[mod.eng]||ENGINES.a4;const s=curSigma()
 function inSpaceWet(mod){return inSpaceDry(mod)+mod.prop;}
 function lvPayload(m){
   // what the launch vehicle must loft to LEO
+  if(m && m.tanker) return inSpaceWet(state.transfer); // the tank itself is the cargo
   if(m && m.profile){
     let p=lifeSupport(m,state.eclss).total; // crew module
     if(m.modules.includes('transfer')) p+=inSpaceWet(state.transfer);
@@ -478,6 +487,11 @@ function stackPerformance(stages, payload){
   const twr=(sm[0].eng.thrustSL*stages[0].count)/(liftoff*G0);
   return {sm,stageDv,totalDv,liftoff,twr};
 }
+// Legs that ISRU makes "free" once the relevant tech is researched, keyed by mission id.
+const ISRU_FREE_LEG = {
+  luna_landing: {leg:'Ascent to Lunar Orbit', research:'lunar_isru', label:'Lunar ISRU'},
+  mars_orbit:   {leg:'Trans-Earth Injection', research:'mars_isru',  label:'Mars ISRU'},
+};
 // walk a mission profile leg by leg; in-space stages spend propellant while carrying the surviving stack
 function simulateMission(m){
   const crewMass=lifeSupport(m,state.eclss).total;
@@ -487,6 +501,8 @@ function simulateMission(m){
     present.descent={eng:state.descent.eng, dry:inSpaceDry(state.descent), propLeft:state.descent.prop};
     present.ascent ={eng:state.ascent.eng,  dry:inSpaceDry(state.ascent),  propLeft:state.ascent.prop};
   }
+  const isru=ISRU_FREE_LEG[m.id];
+  const isruActive = isru && state.research[isru.research];
   const stackMass=()=>{let s=crewMass; for(const k in present) s+=present[k].dry+present[k].propLeft; return s;};
   const legs=[]; let ok=true, inSpaceLegs=0;
   for(const leg of m.profile){
@@ -496,6 +512,12 @@ function simulateMission(m){
       const pass=perf.totalDv>=leg.dv && perf.twr>1.0;
       legs.push({name:leg.name, dv:leg.dv, cap:Math.round(perf.totalDv), by:'lv', mass:upper, twr:perf.twr, pass});
       if(!pass) ok=false;
+      // depot top-off happens once in LEO — added after this leg, not counted in the LV's lift mass
+      if(present.transfer && state.depotUse>0 && leg.name==='Ascent to LEO'){ present.transfer.propLeft += state.depotUse; }
+    }else if(isruActive && leg.name===isru.leg){
+      // ISRU-produced propellant covers this burn entirely — no mass drawn from carried tanks
+      inSpaceLegs++;
+      legs.push({name:leg.name, dv:leg.dv, cap:leg.dv, by:leg.by, mass:stackMass(), pass:true, isru:isru.label});
     }else{
       inSpaceLegs++;
       const mod=present[leg.by];
@@ -523,7 +545,10 @@ function computeVehicle(){
   const totalEng=state.stages.reduce((a,s)=>a+s.count,0);
   let totalProp=state.stages.reduce((a,s)=>a+s.prop,0);
   let buildCost=state.stages.reduce((a,s)=>a+ENGINES[s.eng].cost*s.count+0.02*s.prop,0.1);
-  if(m && m.profile){
+  if(m && m.tanker){
+    buildCost+=0.02*state.transfer.prop; // cost of the cargo propellant itself, no engine needed
+    totalProp+=state.transfer.prop;
+  } else if(m && m.profile){
     if(m.modules.includes('transfer')){ buildCost+=(ENGINES[state.transfer.eng]||ENGINES.a4).cost+0.02*state.transfer.prop; totalProp+=state.transfer.prop; }
     if(m.modules.includes('lander')){
       buildCost+=(ENGINES[state.descent.eng]||ENGINES.a4).cost+0.02*state.descent.prop; totalProp+=state.descent.prop;
@@ -541,8 +566,12 @@ function computeVehicle(){
 
 /* ---------- launch ---------- */
 function canLaunch(v,m,sim){
-  if(m.profile){
+  if(m.tanker){
+    if(v.totalDv < m.reqDv) return {ok:false,why:'Δv shortfall — this design can\'t reach LEO to deliver propellant.'};
+    if(v.twr<=1.0) return {ok:false,why:'Thrust-to-weight ≤ 1 — it will not leave the pad.'};
+  }else if(m.profile){
     if(!sim||!sim.ok) return {ok:false,why:'A mission leg falls short — size the launch vehicle and transfer stage for every burn.'};
+    if((state.depotUse||0) > state.depot) return {ok:false,why:`Depot only holds ${state.depot.toFixed(1)} t — reduce the depot draw.`};
   }else{
     if(v.totalDv < m.reqDv) return {ok:false,why:'Δv shortfall — build more capability before flying.'};
     if(v.twr<=1.0) return {ok:false,why:'Thrust-to-weight ≤ 1 — it will not leave the pad.'};
@@ -558,6 +587,10 @@ function canLaunch(v,m,sim){
   const total=v.buildCost+v.launchCost+tl.cost+0.12*(3+tl.months);
   if(state.money<total) return {ok:false,why:'Not enough capital to build, test, and fly this mission.'};
   return {ok:true};
+}
+function tankerDelivery(){
+  // the transfer-stage tank IS the cargo on a tanker run: its propellant is delivered to the depot.
+  return state.transfer.prop;
 }
 function launch(){
   const m=MISSIONS.find(x=>x.id===state.activeMission);
@@ -584,11 +617,25 @@ function launch(){
   let pendingCelebration=null, failPhase=null;
   if(success){
     state.successes++;
-    const payout=(routine?m.payout*0.4:m.payout)*windowQuality;
+    let payout=(routine?m.payout*0.4:m.payout)*windowQuality;
     const rep=routine?2:m.rep;
-    state.money+=payout; state.rep+=rep;
-    const qTxt = m.window?(windowQuality>1.05?' Favorable window geometry boosted the payload value.':windowQuality<0.92?' A marginal window cut into the payload value.':''):'';
-    log('ok',`${m.name}: SUCCESS.${crewed?` Crew of ${m.crew} home safe.`:''} +${fM(payout)}, +${rep} rep. (reliability ${(rel*100|0)}%)${qTxt}`);
+    if(m.tanker){
+      const delivered=tankerDelivery();
+      state.depot+=delivered;
+      payout = 0.4*delivered; // tankers earn by the tonne delivered, not a flat contract fee
+      state.money+=payout; state.rep+=rep;
+      log('ok',`${m.name}: SUCCESS. Delivered ${delivered.toFixed(1)} t to the LEO depot (now ${state.depot.toFixed(1)} t). +${fM(payout)}, +${rep} rep.`);
+    }else{
+      state.money+=payout; state.rep+=rep;
+      const qTxt = m.window?(windowQuality>1.05?' Favorable window geometry boosted the payload value.':windowQuality<0.92?' A marginal window cut into the payload value.':''):'';
+      log('ok',`${m.name}: SUCCESS.${crewed?` Crew of ${m.crew} home safe.`:''} +${fM(payout)}, +${rep} rep. (reliability ${(rel*100|0)}%)${qTxt}`);
+    }
+    if(m.profile && state.depotUse>0){ state.depot=Math.max(0,state.depot-state.depotUse);
+      if(!state.wonM3bii && !pendingCelebration){ state.wonM3bii=true; pendingCelebration=()=>victoryM3bii('depot'); } }
+    if(m.profile && !routine){
+      const isru=ISRU_FREE_LEG[m.id];
+      if(isru && state.research[isru.research] && !state.wonM3bii && !pendingCelebration){ state.wonM3bii=true; pendingCelebration=()=>victoryM3bii('isru'); }
+    }
     if(!routine){
       state.completed[m.id]=true;
       if(m.id==='first_sat' && !state.won){ state.won=true; pendingCelebration=victory; }
@@ -620,6 +667,7 @@ function launch(){
     }
   }
   state.testLevel=0; // campaign applies to one flight
+  state.depotUse=0;
   const rnd=()=>Math.random();
   const spec={ title:m.name, crewed, success, failPhase,
     stages: state.stages.map(s=>({prop:s.prop,count:s.count})),
@@ -648,6 +696,7 @@ function setCount(i,d){state.stages[i].count=Math.max(1,Math.min(8,state.stages[
 function setProp(i,v){state.stages[i].prop=Math.max(0.1,Math.min(1000,parseFloat(v)||0.1));render();}
 function setTransferEng(v){state.transfer.eng=v;render();}
 function setTransferProp(v){state.transfer.prop=Math.max(0.1,Math.min(120,parseFloat(v)||0.1));render();}
+function setDepotUse(v){state.depotUse=Math.max(0,Math.min(state.depot,parseFloat(v)||0));render();}
 function setDescentEng(v){state.descent.eng=v;render();}
 function setDescentProp(v){state.descent.prop=Math.max(0.1,Math.min(60,parseFloat(v)||0.1));render();}
 function setAscentEng(v){state.ascent.eng=v;render();}
@@ -655,10 +704,13 @@ function setAscentProp(v){state.ascent.prop=Math.max(0.1,Math.min(40,parseFloat(
 function setEclss(id){ const t=ECLSS[id]; if(t.research && !state.research[t.research]) return; state.eclss=id; render(); }
 function setTestLevel(n){ state.testLevel=n; render(); }
 function selectMission(id){const m=MISSIONS.find(x=>x.id===id); if(state.rep<m.minRep)return; if(m.reqResearch&&!state.research[m.reqResearch])return; state.activeMission=id; state.tab='bench'; render();}
+function reqsMet(r){
+  return r.req.every(q=>state.research[q]) && (!r.reqMissionDone || state.completed[r.reqMissionDone]);
+}
 function buyResearch(id){
   const r=RESEARCH.find(x=>x.id===id);
   if(state.research[id]||state.activeResearch) return; // one project at a time
-  if(!r.req.every(q=>state.research[q])) return;
+  if(!reqsMet(r)) return;
   if(state.money < r.cost) return;
   state.money-=r.cost;
   state.activeResearch={id:r.id, monthsLeft:r.months};
@@ -695,6 +747,15 @@ function victoryM3b(){
   showModal(`<h2>Mars, and back.</h2>
     <p>Three crew spent five hundred and twenty days away from Earth — captured into Mars orbit, held through the long wait for the return window, then burned for home. Closed-loop life support, which never paid for itself on shorter flights, finally did its job: every kilogram it saved was a kilogram of propellant you didn't have to carry across two planets.</p>
     <p class="muted">Next (M3b-ii): <b>refueling depots and ISRU</b> — pre-position propellant in orbit so the next mission doesn't have to launch with a full tank from Earth.</p>
+    <button class="btn" onclick="hideModal()">Keep flying</button>`);
+}
+function victoryM3bii(reason){
+  const body = reason==='depot'
+    ? `<p>A tanker flew up with nothing but a tank of propellant, topped off the depot, and your next mission's transfer stage launched lighter for it — every tonne drawn from orbit is a tonne the launch vehicle never had to fight gravity to deliver.</p>`
+    : `<p>A burn that once meant hauling propellant across millions of kilometers is now made on-site — water or CO₂ from the ground itself, cracked into propellant by a plant you built. The mass that burn used to cost is simply gone from the manifest.</p>`;
+  showModal(`<h2>The tyranny, broken.</h2>
+    ${body}
+    <p class="muted">This is the lever the whole rocket equation has been pointing at: every kilogram you don't have to launch from Earth's surface is a kilogram you never have to multiply through every leg that follows.</p>
     <button class="btn" onclick="hideModal()">Keep flying</button>`);
 }
 function gameOver(){
@@ -939,6 +1000,8 @@ function render(){
   $('stMoney').style.color = state.money<1.5?'var(--bad)':'var(--ink)';
   $('stRep').textContent=fI(state.rep);
   $('stFlights').textContent=state.flights;
+  $('stDepotWrap').classList.toggle('hidden', !state.research.orbital_depot);
+  if(state.research.orbital_depot) $('stDepot').textContent=state.depot.toFixed(1)+' t';
 
   $('tabBench').classList.toggle('active',state.tab==='bench');
   $('tabMissions').classList.toggle('active',state.tab==='missions');
@@ -1022,10 +1085,24 @@ function renderCrew(){
 function renderTransfer(){
   const m=MISSIONS.find(x=>x.id===state.activeMission);
   const card=$('transferCard');
-  if(!(m.profile && m.modules.includes('transfer'))){ card.classList.add('hidden'); return; }
+  if(!(m.tanker || (m.profile && m.modules.includes('transfer')))){ card.classList.add('hidden'); return; }
   card.classList.remove('hidden');
   const opts=moduleOptions(state.transfer.eng);
   const dry=inSpaceDry(state.transfer), wet=inSpaceWet(state.transfer);
+  if(m.tanker){
+    card.innerHTML=`<h2>Cargo Tank — propellant for the depot</h2>
+      <div class="sub" style="margin-bottom:8px">No engine fires on this run; the tank itself is the payload. Every tonne of propellant loaded here is a tonne delivered to the LEO depot.</div>
+      <div class="row"><label>Propellant</label>
+        <input type="range" min="0.1" max="90" step="0.5" value="${state.transfer.prop}" oninput="setTransferProp(this.value)">
+        <input type="number" min="0.1" max="120" step="0.1" value="${state.transfer.prop.toFixed(1)}" style="width:74px" onchange="setTransferProp(this.value)"><span class="muted" style="font-size:11px">t</span></div>
+      <div class="stage-stats">
+        <span class="ss">tank dry <b>${dry.toFixed(2)} t</b></span>
+        <span class="ss">propellant cargo <b>${state.transfer.prop.toFixed(1)} t</b></span>
+        <span class="ss">total to LEO <b>${wet.toFixed(2)} t</b></span>
+      </div>
+      <div class="eq">Depot currently holds <b style="color:var(--ignite)">${state.depot.toFixed(1)} t</b>. This run would deliver <b style="color:var(--ignite)">${state.transfer.prop.toFixed(1)} t</b> more.</div>`;
+    return;
+  }
   card.innerHTML=`<h2>Transfer Stage — in-space propulsion</h2>
     <div class="sub" style="margin-bottom:8px">A separate vehicle, lit in vacuum. One tank must cover every deep-space burn while carrying the crew module.</div>
     <div class="row"><label>Engine</label><select onchange="setTransferEng(this.value)" style="flex:1">${opts}</select></div>
@@ -1036,7 +1113,17 @@ function renderTransfer(){
       <span class="ss">dry <b>${dry.toFixed(2)} t</b></span>
       <span class="ss">prop <b>${state.transfer.prop.toFixed(1)} t</b></span>
       <span class="ss">wet <b>${wet.toFixed(2)} t</b></span>
-    </div>`;
+    </div>
+    ${renderDepotDraw()}`;
+}
+function renderDepotDraw(){
+  if(!state.research.orbital_depot) return '';
+  const max=Math.max(0.1, Math.min(state.depot, 60));
+  return `<div class="stage-head" style="margin-top:12px"><span class="label">DEPOT TOP-OFF (in LEO)</span></div>
+    <div class="sub" style="margin-bottom:6px">Depot holds <b style="color:var(--ignite)">${state.depot.toFixed(1)} t</b>. Propellant drawn here doesn't count toward the launch vehicle's lift — only the carried tank does.</div>
+    <div class="row"><label>Draw</label>
+      <input type="range" min="0" max="${max}" step="0.5" value="${Math.min(state.depotUse,max)}" oninput="setDepotUse(this.value)">
+      <input type="number" min="0" max="${state.depot.toFixed(1)}" step="0.1" value="${state.depotUse.toFixed(1)}" style="width:74px" onchange="setDepotUse(this.value)"><span class="muted" style="font-size:11px">t</span></div>`;
 }
 
 function moduleOptions(sel){
@@ -1116,7 +1203,6 @@ function renderReadout(){
   else if(v.twr<1.2) flags+=`<div class="flag warn">△ TWR ${v.twr.toFixed(2)} is low; heavy gravity losses (add engines or cut mass).</div>`;
   if(meets && v.twr>1.2) flags+=`<div class="flag ok">✓ Cleared to fly. Reliability ${(v.reliability*100|0)}%.</div>`;
   if(v.crewed && v.twr>1.2 && meets && !state.research.launch_escape) flags+=`<div class="flag warn">△ No escape system — a failure at ${(100-(v.reliability*100|0))}% odds loses the crew.</div>`;
-
   const testBtns=TEST_LEVELS.map((t,i)=>`<button class="btn" style="flex:1;font-size:11px;${state.testLevel===i?'border-color:var(--readout);color:var(--readout)':''}" onclick="setTestLevel(${i})">${t.name}${t.rel>0?` +${(t.rel*100)|0}%`:''}${t.cost>0?`<br><span class="dim" style="font-size:10px">${fM(t.cost)} · ${t.months} mo</span>`:''}</button>`).join('');
 
   $('readoutCard').innerHTML=`
@@ -1146,7 +1232,7 @@ function renderReadout(){
     <div class="row" style="gap:6px;align-items:stretch;margin:6px 0 4px">${testBtns}</div>
 
     ${flags}
-    <button class="launch" onclick="launch()" ${chk.ok?'':'disabled'}>${chk.ok?(v.crewed?'■ Build & Launch (crewed)':'■ Build & Launch'):'Launch unavailable'}</button>
+    <button class="launch" onclick="launch()" ${chk.ok?'':'disabled'}>${chk.ok?(m.tanker?'■ Launch Tanker':(v.crewed?'■ Build & Launch (crewed)':'■ Build & Launch')):'Launch unavailable'}</button>
     ${chk.ok?'':`<div class="flag dim" style="color:var(--dim)">${chk.why}</div>`}`;
 }
 
@@ -1158,13 +1244,15 @@ function renderProfileReadout(m){
   const fails=sim.legs.filter(l=>!l.pass).length;
   const legRows=sim.legs.map(l=>{
     const VEHICLE_LABEL={transfer:'transfer stage',descent:'descent stage',ascent:'ascent stage'};
-    const detail = l.by==='lv'
-      ? `LV lofts ${l.mass.toFixed(1)} t · capacity ${fI(l.cap)} m/s${l.twr?` · TWR ${l.twr.toFixed(2)}`:''}`
-      : `${VEHICLE_LABEL[l.by]||l.by} pushes ${l.mass.toFixed(1)} t · tank gives ${fI(l.cap)} m/s`;
+    let detail;
+    if(l.isru) detail=`<span style="color:var(--ok)">${l.isru}</span> covers this burn — no carried propellant spent`;
+    else if(l.by==='lv') detail=`LV lofts ${l.mass.toFixed(1)} t · capacity ${fI(l.cap)} m/s${l.twr?` · TWR ${l.twr.toFixed(2)}`:''}`;
+    else detail=`${VEHICLE_LABEL[l.by]||l.by} pushes ${l.mass.toFixed(1)} t · tank gives ${fI(l.cap)} m/s`;
+    const depotNote = (l.name==='Ascent to LEO' && state.depotUse>0) ? ` · <span style="color:var(--readout)">+${state.depotUse.toFixed(1)} t from depot after this leg</span>` : '';
     return `<div class="leg ${l.pass?'':'bad'}">
       <span class="legname" style="color:${l.pass?'var(--ok)':'var(--bad)'}">${l.pass?'✓':'✕'} ${l.name}</span>
       <span class="legdv">${fI(l.dv)} m/s</span>
-      <span class="legdetail">${detail}</span></div>`;
+      <span class="legdetail">${detail}${depotNote}</span></div>`;
   }).join('');
   const testBtns=TEST_LEVELS.map((t,i)=>`<button class="btn" style="flex:1;font-size:11px;${state.testLevel===i?'border-color:var(--readout);color:var(--readout)':''}" onclick="setTestLevel(${i})">${t.name}${t.rel>0?` +${(t.rel*100)|0}%`:''}${t.cost>0?`<br><span class="dim" style="font-size:10px">${fM(t.cost)} · ${t.months} mo</span>`:''}</button>`).join('');
 
@@ -1188,7 +1276,7 @@ function renderProfileReadout(m){
       <div class="metric"><div class="k">Launch cost</div><div class="v">${fM(v.launchCost)}</div></div>
     </div>
 
-    <div class="eq">The launch vehicle lofts the whole stack (${v.payload.toFixed(1)} t) to LEO; the transfer stage then spends one tank across ${sim.inSpaceLegs} deep-space burn${sim.inSpaceLegs>1?'s':''}, lighter after each — yet every burn still hauls everything still attached.${m.modules.includes('lander')?' The descent stage is dropped on the surface after landing; the ascent stage returns alone to meet the transfer stage.':''}</div>
+    <div class="eq">The launch vehicle lofts the whole stack (${v.payload.toFixed(1)} t) to LEO; the transfer stage then spends one tank across ${sim.inSpaceLegs} deep-space burn${sim.inSpaceLegs>1?'s':''}, lighter after each — yet every burn still hauls everything still attached.${m.modules.includes('lander')?' The descent stage is dropped on the surface after landing; the ascent stage returns alone to meet the transfer stage.':''}${state.depotUse>0?` This run draws <b style="color:var(--readout)">${state.depotUse.toFixed(1)} t</b> from the LEO depot — propellant that never had to be launched from Earth.`:''}${ISRU_FREE_LEG[m.id]&&state.research[ISRU_FREE_LEG[m.id].research]?` <b style="color:var(--ok)">${ISRU_FREE_LEG[m.id].label}</b> is online — the ${ISRU_FREE_LEG[m.id].leg} burn is produced on-site.`:''}</div>
 
     <div class="mission-tag" style="margin-top:6px">Test campaign — buy down risk before you fly</div>
     <div class="row" style="gap:6px;align-items:stretch;margin:6px 0 4px">${testBtns}</div>
@@ -1448,10 +1536,12 @@ function renderMissions(){
     const active=state.activeMission===m.id;
     let pill = active?'<span class="pill active">selected</span>'
             : done?'<span class="pill ok">done</span>'
-            : !resOk?`<span class="pill lock">needs Crew Capsule</span>`
+            : !resOk?`<span class="pill lock">needs ${m.reqResearch?RESEARCH.find(r=>r.id===m.reqResearch).name:'research'}</span>`
             : !repOk?`<span class="pill lock">needs ${m.minRep} rep</span>`
             : '<span class="pill">open</span>';
-    const detail = m.crew
+    const detail = m.tanker
+      ? `required Δv ${fI(m.reqDv)} m/s · delivers propellant to the LEO depot`
+      : m.crew
       ? `required Δv ${fI(m.reqDv)} m/s · ${m.crew} crew · ${m.days<1?(m.days*24).toFixed(0)+' h':m.days+' days'}`
       : `required Δv ${fI(m.reqDv)} m/s · payload ${(m.payload*1000).toFixed(0)} kg`;
     const div=document.createElement('div'); div.className='item';
@@ -1473,9 +1563,11 @@ function renderRnd(){
   RESEARCH.forEach(r=>{
     const owned=state.research[r.id];
     const active=busy && state.activeResearch.id===r.id;
-    const reqOk=r.req.every(q=>state.research[q]);
+    const reqOk=reqsMet(r);
     const afford=state.money>=r.cost;
     const reqNames=r.req.map(q=>RESEARCH.find(x=>x.id===q).name).join(', ');
+    const missionReqName = r.reqMissionDone ? MISSIONS.find(x=>x.id===r.reqMissionDone).name : null;
+    const allReqNames=[reqNames, missionReqName?`fly ${missionReqName}`:null].filter(Boolean).join(', ');
     let btn;
     if(owned) btn=`<button class="btn" disabled>Done</button>`;
     else if(active) btn=`<button class="btn" disabled>${state.activeResearch.monthsLeft} mo left</button>`;
@@ -1486,7 +1578,7 @@ function renderRnd(){
       <div class="body">
         <div class="title">${r.name} ${tag}</div>
         <div class="sub">${r.desc}</div>
-        ${!reqOk&&!owned?`<div class="sub" style="color:var(--bad)">requires: ${reqNames}</div>`:''}
+        ${!reqOk&&!owned?`<div class="sub" style="color:var(--bad)">requires: ${allReqNames}</div>`:''}
       </div>
       <div class="reward"><div>${fM(r.cost)}</div><div class="muted">${r.months} mo</div></div>
       ${btn}`;
