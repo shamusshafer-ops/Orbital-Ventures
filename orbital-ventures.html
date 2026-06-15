@@ -1,0 +1,1511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Orbital Ventures — M3a (Cislunar)</title>
+<style>
+  :root{
+    --bg:#0e1418; --panel:#151d23; --panel2:#1b252c; --line:#2a3a44;
+    --ink:#d8e2e7; --muted:#7d909b; --dim:#56666f;
+    --ignite:#f5a623; --readout:#4fd1d9; --ok:#58c47a; --bad:#e0564f; --warn:#e8b341;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
+    font-size:14px;line-height:1.45;
+    background-image:linear-gradient(rgba(42,58,68,.18) 1px,transparent 1px),linear-gradient(90deg,rgba(42,58,68,.18) 1px,transparent 1px);
+    background-size:28px 28px;}
+  .wrap{max-width:1080px;margin:0 auto;padding:16px 16px 64px}
+  h1,h2,h3{margin:0;font-weight:600;letter-spacing:.02em}
+  .num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .muted{color:var(--muted)} .dim{color:var(--dim)}
+
+  /* Top status bar */
+  header{display:flex;align-items:center;gap:18px;flex-wrap:wrap;
+    border:1px solid var(--line);background:linear-gradient(180deg,#18222a,#131b21);
+    padding:12px 16px;border-radius:8px;margin-bottom:14px}
+  .brand{display:flex;flex-direction:column}
+  .brand .co{font-size:16px;font-weight:700;letter-spacing:.04em}
+  .brand .tag{font-size:11px;text-transform:uppercase;letter-spacing:.18em;color:var(--ignite)}
+  .stats{margin-left:auto;display:flex;gap:22px}
+  .stat{display:flex;flex-direction:column;align-items:flex-end}
+  .stat .k{font-size:10px;text-transform:uppercase;letter-spacing:.14em;color:var(--muted)}
+  .stat .v{font-family:var(--mono);font-size:18px;font-weight:600}
+
+  /* Tabs */
+  nav{display:flex;gap:6px;margin-bottom:14px}
+  nav button{background:var(--panel);color:var(--muted);border:1px solid var(--line);
+    padding:9px 16px;border-radius:6px 6px 0 0;cursor:pointer;font-family:var(--sans);
+    font-size:12px;text-transform:uppercase;letter-spacing:.1em}
+  nav button.active{background:var(--panel2);color:var(--ink);border-bottom-color:var(--panel2);box-shadow:inset 0 2px 0 var(--ignite)}
+
+  .opsbar{display:flex;align-items:center;gap:10px;margin-bottom:14px;padding:8px 12px;
+    border:1px solid var(--line);border-radius:6px;background:var(--panel);font-size:12px}
+  #rndStatus .num{color:var(--ink)}
+
+  .grid{display:grid;grid-template-columns:1fr 380px;gap:14px;align-items:start}
+  @media(max-width:880px){.grid{grid-template-columns:1fr}}
+  .card{border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:14px}
+  .card+.card{margin-top:14px}
+  .card h2{font-size:12px;text-transform:uppercase;letter-spacing:.14em;color:var(--muted);margin-bottom:12px}
+
+  /* Stage editor */
+  .stage{border:1px solid var(--line);border-radius:6px;padding:10px 12px;margin-bottom:10px;background:var(--panel2)}
+  .stage-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+  .stage-head .label{font-family:var(--mono);font-size:12px;color:var(--ignite);letter-spacing:.06em}
+  .row{display:flex;align-items:center;gap:8px;margin:6px 0;flex-wrap:wrap}
+  .row label{font-size:11px;color:var(--muted);min-width:78px;text-transform:uppercase;letter-spacing:.08em}
+  select,input[type=number],input[type=text]{background:#0d1418;color:var(--ink);border:1px solid var(--line);
+    border-radius:5px;padding:6px 8px;font-family:var(--mono);font-size:13px}
+  input[type=range]{flex:1;accent-color:var(--ignite)}
+  .stepper{display:flex;align-items:center;gap:0}
+  .stepper button{width:28px;height:28px;background:#0d1418;border:1px solid var(--line);color:var(--ink);cursor:pointer;font-size:15px}
+  .stepper .val{min-width:34px;text-align:center;font-family:var(--mono);border-top:1px solid var(--line);border-bottom:1px solid var(--line);height:28px;line-height:28px}
+  .stage-stats{display:flex;gap:16px;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px dashed var(--line)}
+  .ss{font-family:var(--mono);font-size:11px;color:var(--muted)}
+  .ss b{color:var(--ink);font-weight:600}
+  .btn{background:var(--panel2);border:1px solid var(--line);color:var(--ink);padding:7px 12px;border-radius:6px;cursor:pointer;font-size:12px}
+  .btn:hover{border-color:var(--ignite)}
+  .btn.ghost{background:transparent}
+  .btn.danger{color:var(--bad)} .btn:disabled{opacity:.4;cursor:not-allowed}
+  .btn.x{width:26px;height:26px;padding:0;line-height:1}
+
+  /* Readout / Δv gauge (signature) */
+  .readout{position:sticky;top:14px}
+  .mission-tag{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.12em}
+  .mission-name{font-size:15px;font-weight:600;margin:2px 0 10px}
+  .gauge{margin:14px 0}
+  .gauge .nums{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+  .gauge .achieved{font-family:var(--mono);font-size:26px;font-weight:700}
+  .gauge .req{font-family:var(--mono);font-size:12px;color:var(--muted)}
+  .bar{position:relative;height:18px;background:#0c1216;border:1px solid var(--line);border-radius:4px;overflow:hidden}
+  .bar .fill{height:100%;transition:width .25s ease,background .25s}
+  .bar .marker{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--ink)}
+  .bar .marker::after{content:"REQ";position:absolute;top:-13px;left:50%;transform:translateX(-50%);font-size:8px;color:var(--ink);font-family:var(--mono)}
+  .metrics{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:6px;overflow:hidden;margin:12px 0}
+  .metric{background:var(--panel);padding:9px 10px}
+  .metric .k{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
+  .metric .v{font-family:var(--mono);font-size:16px;font-weight:600}
+  .eq{font-family:var(--mono);font-size:11px;color:var(--dim);background:#0c1216;border:1px solid var(--line);border-radius:5px;padding:8px;margin:10px 0;line-height:1.6}
+  .launch{width:100%;padding:13px;border:1px solid var(--ignite);background:linear-gradient(180deg,#2a2113,#1c1810);
+    color:var(--ignite);font-size:14px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;border-radius:6px;cursor:pointer}
+  .launch:hover{background:linear-gradient(180deg,#3a2c12,#241d10)}
+  .launch:disabled{border-color:var(--line);color:var(--dim);background:#121a20;cursor:not-allowed}
+  .flag{font-size:12px;margin-top:8px;display:flex;gap:6px;align-items:flex-start}
+  .flag.bad{color:var(--bad)} .flag.warn{color:var(--warn)} .flag.ok{color:var(--ok)}
+
+  /* Mission & research lists */
+  .item{display:flex;gap:12px;align-items:center;border:1px solid var(--line);border-radius:6px;padding:11px 13px;margin-bottom:9px;background:var(--panel2)}
+  .item .body{flex:1}
+  .item .title{font-weight:600;margin-bottom:2px}
+  .item .sub{font-size:12px;color:var(--muted)}
+  .hist{display:block;margin-top:4px;font-style:italic;color:var(--dim);font-size:11px;line-height:1.4}
+  .legs{border:1px solid var(--line);border-radius:6px;overflow:hidden;margin:6px 0 12px}
+  .leg{display:grid;grid-template-columns:1fr auto;gap:1px 10px;padding:8px 10px;border-bottom:1px solid #1a242b}
+  .leg:last-child{border-bottom:none}
+  .leg.bad{background:rgba(224,86,79,.08)}
+  .legname{font-weight:600;font-size:12px}
+  .legdv{font-family:var(--mono);font-size:12px;color:var(--readout)}
+  .legdetail{grid-column:1/-1;font-family:var(--mono);font-size:11px;color:var(--muted)}
+  .pill{font-family:var(--mono);font-size:10px;padding:2px 7px;border-radius:20px;border:1px solid var(--line);text-transform:uppercase;letter-spacing:.08em}
+  .pill.ok{color:var(--ok);border-color:#2c4a39}
+  .pill.lock{color:var(--dim)}
+  .pill.active{color:var(--ignite);border-color:#5a4419}
+  .reward{font-family:var(--mono);font-size:12px;text-align:right;min-width:96px}
+  .reward .p{color:var(--ok)} .reward .r{color:var(--readout)}
+
+  /* Log */
+  .log{margin-top:14px}
+  .log .line{font-family:var(--mono);font-size:12px;padding:4px 0;border-bottom:1px solid #1a242b;display:flex;gap:10px}
+  .log .when{color:var(--dim);min-width:64px}
+  .log .ok{color:var(--ok)} .log .bad{color:var(--bad)} .log .info{color:var(--ink)} .log .note{color:var(--readout)}
+
+  /* Modal */
+  .scrim{position:fixed;inset:0;background:rgba(6,10,12,.78);display:flex;align-items:center;justify-content:center;z-index:20}
+  .modal{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:26px;max-width:440px;text-align:center}
+  .modal h2{font-size:18px;color:var(--ignite);margin-bottom:10px;text-transform:none;letter-spacing:0}
+  .modal p{color:var(--muted);margin:10px 0}
+  .modal .btn{margin-top:14px}
+  .hidden{display:none!important}
+  .animwrap{position:fixed;inset:0;background:rgba(4,7,10,.94);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;z-index:30}
+  .animwrap canvas{border:1px solid var(--line);border-radius:8px;max-width:94vw;height:auto;background:#04060a}
+  .animbar{display:flex;align-items:center;gap:14px}
+  #animTitle{font-family:var(--mono);letter-spacing:.06em;color:var(--ink);font-size:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <div class="co" id="coName">ORBITAL VENTURES</div>
+      <div class="tag">Cislunar · Δv Map &amp; Multi-Leg Missions</div>
+    </div>
+    <div class="stats">
+      <div class="stat"><span class="k">Date</span><span class="v" id="stDate">—</span></div>
+      <div class="stat"><span class="k">Capital</span><span class="v" id="stMoney">—</span></div>
+      <div class="stat"><span class="k">Reputation</span><span class="v" id="stRep">—</span></div>
+      <div class="stat"><span class="k">Flights</span><span class="v" id="stFlights">—</span></div>
+    </div>
+  </header>
+
+  <nav>
+    <button id="tabBench" class="active" onclick="setTab('bench')">Design Bench</button>
+    <button id="tabMissions" onclick="setTab('missions')">Missions</button>
+    <button id="tabRnd" onclick="setTab('rnd')">R&amp;D</button>
+    <button id="tabMap" onclick="setTab('map')">Solar System</button>
+  </nav>
+
+  <div class="opsbar">
+    <span id="rndStatus"></span>
+    <span style="flex:1"></span>
+    <button class="btn ghost" id="animToggle" onclick="toggleAnim()">Animation: On</button>
+    <button class="btn" onclick="advanceMonth()">▸ Advance 1 month <span class="dim">(−$0.12M)</span></button>
+    <button class="btn ghost" id="skipBtn" onclick="skipResearch()">Skip to R&amp;D done</button>
+  </div>
+
+  <div id="benchView" class="grid">
+    <div>
+      <div class="card">
+        <h2>Vehicle — Stages (bottom → top)</h2>
+        <div id="stages"></div>
+        <button class="btn ghost" id="addStage" onclick="addStage()">+ Add stage</button>
+        <span class="dim" style="font-size:11px;margin-left:8px">Lower stages carry everything above them — that's the tax staging pays.</span>
+      </div>
+      <div class="card hidden" id="transferCard"></div>
+      <div class="card hidden" id="landerCard"></div>
+      <div class="card hidden" id="crewCard"></div>
+      <div class="card hidden" id="windowCard"></div>
+    </div>
+    <div class="readout">
+      <div class="card" id="readoutCard"></div>
+    </div>
+  </div>
+
+  <div id="missionsView" class="hidden">
+    <div class="card"><h2>Contracts</h2><div id="missionList"></div></div>
+  </div>
+
+  <div id="rndView" class="hidden">
+    <div class="card"><h2>Research — converts capital + time into capability</h2>
+      <p class="muted" style="font-size:12px;margin:-4px 0 12px">σ is your tank structural coefficient — lower means lighter dry mass and more Δv from the same propellant.</p>
+      <div id="rndList"></div>
+    </div>
+  </div>
+
+  <div id="mapView" class="hidden">
+    <div class="grid">
+      <div class="card">
+        <h2>Solar System — click a body for its Δv profile</h2>
+        <p class="muted" style="font-size:12px;margin:-4px 0 10px">Orbits are spaced for legibility, not to scale. Every figure assumes the same Earth-surface start.</p>
+        <div id="mapCanvas"></div>
+      </div>
+      <div class="readout"><div class="card" id="bodyCard"></div></div>
+    </div>
+  </div>
+
+  <div class="card log">
+    <h2>Flight &amp; Operations Log</h2>
+    <div id="logBox"></div>
+  </div>
+</div>
+
+<div id="modal" class="scrim hidden"><div class="modal" id="modalBody"></div></div>
+
+<div id="animOverlay" class="animwrap hidden">
+  <div id="animTitle">—</div>
+  <canvas id="flightCanvas" width="720" height="440"></canvas>
+  <div class="animbar"><span class="dim" style="font-size:11px">Mission playback</span><button class="btn" onclick="skipAnim()">Skip ▸</button></div>
+</div>
+
+<script>
+/* ============================================================
+   ORBITAL VENTURES — M1 vertical slice
+   Core loop: design (rocket equation) → launch → economy → research
+   ============================================================ */
+const G0 = 9.81;
+
+const ENGINES = {
+  a4:          {id:'a4',          name:'V-2 (A-4) Powerplant',            prop:'Alcohol/LOX', ispSL:203, ispVac:215, thrustSL:245, thrustVac:265, mass:0.95, cost:0.30, rel:0.96, base:true},
+  kerolox_mk1: {id:'kerolox_mk1', name:'Rocketdyne S-3D',  prop:'RP-1/LOX',    ispSL:255, ispVac:290, thrustSL:360, thrustVac:400, mass:1.10, cost:0.60, rel:0.96},
+  vernier_v:   {id:'vernier_v',   name:'Bell Agena XLR81',      prop:'RP-1/LOX',    ispSL:200, ispVac:315, thrustSL:55,  thrustVac:70,  mass:0.30, cost:0.45, rel:0.97},
+  kerolox_mk2: {id:'kerolox_mk2', name:'Rocketdyne MA-3 Sustainer',prop:'RP-1/LOX',    ispSL:265, ispVac:312, thrustSL:520, thrustVac:580, mass:1.35, cost:0.95, rel:0.95},
+  kerolox_mk3: {id:'kerolox_mk3', name:'Rocketdyne H-1',    prop:'RP-1/LOX',    ispSL:285, ispVac:335, thrustSL:1300,thrustVac:1450, mass:3.00, cost:2.20, rel:0.94},
+  hyper_storable:{id:'hyper_storable',name:'AJ10 Aerozine/N₂O₄',prop:'Aerozine/N₂O₄',ispSL:270,ispVac:321, thrustSL:90,  thrustVac:100,  mass:0.45, cost:0.70, rel:0.97},
+  hydrolox_up: {id:'hydrolox_up', name:'Rocketdyne J-2', prop:'LH₂/LOX',     ispSL:360, ispVac:425, thrustSL:800, thrustVac:900,  mass:1.80, cost:1.80, rel:0.95},
+  f1_class:    {id:'f1_class',    name:'Rocketdyne F-1',  prop:'RP-1/LOX',    ispSL:263, ispVac:304, thrustSL:6700,thrustVac:7700, mass:8.40, cost:5.50, rel:0.93},
+};
+
+const MISSIONS = [
+  {id:'first_flight', name:'First Flight',          reqDv:1000, payload:0.05, crew:0, days:0, payout:1.6,  rep:5,  minRep:0,  blurb:'Get a vehicle off the pad and back intact. Prove the company can fly.<span class="hist">↳ Goddard\'s first liquid-fuel rocket rose just 12 m over a Massachusetts field in 1926.</span>'},
+  {id:'sounding',     name:'Sounding Rocket',       reqDv:1900, payload:0.10, crew:0, days:0, payout:2.3,  rep:9,  minRep:4,  blurb:'Loft instruments into the upper atmosphere, roughly 80 km.<span class="hist">↳ The WAC Corporal and Aerobee first carried science into the upper atmosphere in the late 1940s.</span>'},
+  {id:'reach_space',  name:'Reach Space',           reqDv:2900, payload:0.10, crew:0, days:0, payout:3.3,  rep:15, minRep:10, blurb:'Cross the Kármán line at 100 km — at the edge of what alcohol/LOX can do.<span class="hist">↳ A V-2 fired straight up in 1944 became the first craft to cross 100 km into space.</span>'},
+  {id:'high_alt',     name:'High-Altitude Science', reqDv:4200, payload:0.25, crew:0, days:0, payout:5.0,  rep:22, minRep:16, blurb:'Carry a heavier package higher than the A-4 can reach — kerosene or staging required.<span class="hist">↳ The two-stage Bumper-WAC hit 393 km in 1949 — altitudes a single stage couldn\'t touch.</span>'},
+  {id:'first_sat',    name:'First Satellite',       reqDv:9400, payload:0.05, crew:0, days:0, payout:18.0, rep:60, minRep:38, blurb:'Reach orbital velocity (~9,400 m/s incl. losses). The Pioneer-era summit.<span class="hist">↳ Sputnik 1, October 1957: an 84 kg sphere whose radio beep opened the Space Age.</span>'},
+  {id:'first_astro',  name:'First Astronaut',       reqDv:2900, payload:0.0, crew:1, days:0.2, payout:16.0, rep:50,  minRep:80,  reqResearch:'crew_capsule', blurb:'Put a person on a suborbital arc and bring them home alive. Man-rating begins here.<span class="hist">↳ Alan Shepard\'s 15-minute suborbital hop aboard Freedom 7, May 1961.</span>'},
+  {id:'crew_orbit',   name:'Crewed Orbit',          reqDv:9400, payload:0.0, crew:1, days:1,   payout:30.0, rep:70,  minRep:105, reqResearch:'crew_capsule', blurb:'One astronaut, a day in orbit, a safe reentry. The defining flight of the era.<span class="hist">↳ Yuri Gagarin circled the Earth once aboard Vostok 1 on 12 April 1961.</span>'},
+  {id:'multi_day',    name:'Multi-Day Mission',     reqDv:9400, payload:0.0, crew:2, days:7,   payout:38.0, rep:65,  minRep:145, reqResearch:'crew_capsule', blurb:'Two crew, a week in orbit. Consumable mass starts to matter.<span class="hist">↳ Project Gemini stretched two-crew flights from days to two weeks through 1965.</span>'},
+  {id:'endurance',    name:'Endurance Flight',      reqDv:9400, payload:0.0, crew:3, days:120, payout:75.0, rep:140, minRep:195, reqResearch:'crew_capsule', blurb:'Three crew, four months. Open-loop life support gets heavy — recovery tech pays for itself.<span class="hist">↳ Skylab\'s last crew logged 84 days in 1973–74; Salyut soon pushed past 120 by recycling air and water.</span>'},
+  {id:'luna_flyby',   name:'Lunar Flyby',           crew:1, days:6, payout:55.0, rep:110, minRep:210, reqResearch:'deep_space',
+    modules:['lv','transfer','crew'],
+    profile:[{name:'Ascent to LEO', dv:9400, by:'lv'},{name:'Trans-Lunar Injection', dv:3120, by:'transfer'}],
+    blurb:'Loop a crew around the far side on a free-return trajectory and home again.<span class="hist">↳ Apollo 8 carried the first humans around the Moon at Christmas 1968.</span>'},
+  {id:'luna_orbit',   name:'Lunar Orbit',           crew:1, days:8, payout:80.0, rep:150, minRep:300, reqResearch:'deep_space',
+    modules:['lv','transfer','crew'],
+    profile:[{name:'Ascent to LEO', dv:9400, by:'lv'},{name:'Trans-Lunar Injection', dv:3120, by:'transfer'},{name:'Lunar Orbit Insertion', dv:900, by:'transfer'},{name:'Trans-Earth Injection', dv:900, by:'transfer'}],
+    blurb:'Capture into lunar orbit, hold, then burn home. Your transfer stage must do all three deep-space burns on one tank.<span class="hist">↳ Apollo 10 rehearsed the full profile bar the landing in May 1969.</span>'},
+  {id:'luna_landing', name:'Lunar Landing',         crew:2, days:10, payout:160.0, rep:260, minRep:420, reqResearch:'lunar_lander',
+    modules:['lv','transfer','lander','crew'],
+    profile:[{name:'Ascent to LEO', dv:9400, by:'lv'},
+             {name:'Trans-Lunar Injection', dv:3120, by:'transfer'},
+             {name:'Lunar Orbit Insertion', dv:900, by:'transfer'},
+             {name:'Powered Descent', dv:1730, by:'descent', dropAfter:['descent']},
+             {name:'Ascent to Lunar Orbit', dv:1730, by:'ascent', dropAfter:['ascent']},
+             {name:'Trans-Earth Injection', dv:900, by:'transfer'}],
+    blurb:'Two crew descend to the surface and lift off again to rejoin the transfer stage for the trip home. The descent stage stays on the Moon; the ascent stage is left in lunar orbit.<span class="hist">↳ Apollo 11, July 1969: the LM\'s descent stage became the launch pad for its own ascent stage.</span>'},
+  {id:'mars_flyby',   name:'Mars Flyby',            crew:2, days:420, payout:220.0, rep:200, minRep:480, reqResearch:'mars_traj', window:true,
+    modules:['lv','transfer','crew'],
+    profile:[{name:'Ascent to LEO', dv:9400, by:'lv'},{name:'Trans-Mars Injection', dv:3600, by:'transfer'}],
+    blurb:'A free-return swing past Mars and back — over a year aloft. Closed-loop life support stops being optional.<span class="hist">↳ The 1960s-era Mars flyby studies that became the basis for crewed deep-space mission planning.</span>'},
+  {id:'mars_orbit',   name:'Mars Orbit',            crew:3, days:520, payout:340.0, rep:280, minRep:560, reqResearch:'mars_traj', window:true,
+    modules:['lv','transfer','crew'],
+    profile:[{name:'Ascent to LEO', dv:9400, by:'lv'},{name:'Trans-Mars Injection', dv:3600, by:'transfer'},{name:'Mars Orbit Insertion', dv:1400, by:'transfer'},{name:'Trans-Earth Injection', dv:1400, by:'transfer'}],
+    blurb:'Capture into Mars orbit, wait out the return window, then burn home — a year and a half away from Earth on one tank.<span class="hist">↳ Mars mission architectures from the 1980s onward converge on long-stay, opposition-class profiles like this one.</span>'},
+];
+
+const RESEARCH = [
+  {id:'kerosene',     name:'Kerosene Propulsion',           cost:2.0, months:3, req:[],          effect:{engine:'kerolox_mk1'}, desc:'Unlocks the Rocketdyne S-3D — higher Isp than alcohol/LOX.<span class="hist">↳ Refined kerosene (RP-1) replaced the V-2\'s alcohol in Rocketdyne\'s Atlas and Thor engines.</span>'},
+  {id:'vac_upper',    name:'Vacuum-Optimized Upper Stage',  cost:2.5, months:3, req:[],          effect:{engine:'vernier_v'},   desc:'Unlocks the Bell Agena XLR81 upper stage engine (Isp 315 s in vacuum).<span class="hist">↳ Restartable vacuum stages like the Agena turned launchers into orbit-and-beyond vehicles.</span>'},
+  {id:'sustainer',    name:'High-Thrust Sustainer',         cost:3.0, months:4, req:['kerosene'],effect:{engine:'kerolox_mk2'}, desc:'Unlocks the Rocketdyne MA-3 Sustainer — more thrust and Isp for first stages.<span class="hist">↳ Atlas\'s sustainer kept firing to orbit after the boosters dropped away — &ldquo;stage-and-a-half.&rdquo;</span>'},
+  {id:'alloy_tanks',  name:'Welded Alloy Tanks',            cost:2.0, months:3, req:[],          effect:{sigma:0.09},           desc:'Lowers σ from 0.12 to 0.09. Lighter tanks, better mass ratio.<span class="hist">↳ Welded aluminium alloy replaced the heavy riveted steel of the earliest airframes.</span>'},
+  {id:'balloon_tanks',name:'Stainless Balloon Tanks',       cost:3.0, months:3, req:['alloy_tanks'],effect:{sigma:0.07},        desc:'Lowers σ to 0.07. The mass-ratio edge that makes orbit reachable.<span class="hist">↳ Atlas used pressure-stabilized stainless &ldquo;balloon&rdquo; tanks so thin they\'d crumple unless kept inflated.</span>'},
+  {id:'test_program', name:'Static Fire Test Program',      cost:1.5, months:2, req:[],          effect:{reliability:0.08},     desc:'Ground-fire engines before flight: +8% launch reliability. Vital while heritage is low.<span class="hist">↳ Test stands from Peenemünde to Santa Susana turned ground explosions into flight reliability.</span>'},
+  {id:'heavy_booster',name:'Heavy Booster',                 cost:4.0, months:5, req:['sustainer'],   effect:{engine:'kerolox_mk3'}, desc:'Unlocks the Rocketdyne H-1 — the lift needed to put crew and life support into orbit.<span class="hist">↳ The high-thrust machines that first lifted people: Atlas for Mercury, the clustered R-7 for Vostok.</span>'},
+  {id:'crew_capsule', name:'Pressurized Crew Capsule',      cost:3.0, months:4, req:[],              effect:{unlock:'crew'},        desc:'Pressure vessel, heat shield, parachutes. Enables crewed missions.<span class="hist">↳ Mercury and Vostok — blunt-body capsules with ablative heat shields and parachute recovery.</span>'},
+  {id:'launch_escape',name:'Launch Escape System',          cost:2.5, months:3, req:['crew_capsule'],effect:{unlock:'les'},         desc:'Abort tower (+0.3 t). Crew survive a launch failure instead of being lost with the vehicle.<span class="hist">↳ In 1983 a Soyuz escape tower pulled its two crew clear of a rocket exploding on the pad.</span>'},
+  {id:'eclss_partial',name:'CO₂ &amp; Water Recovery',          cost:3.0, months:4, req:['crew_capsule'],effect:{unlock:'eclss'},       desc:'Scrub CO₂, recycle water: 60% consumable recovery. Pays off on multi-day missions.<span class="hist">↳ Gemini and Apollo scrubbed CO₂ with lithium-hydroxide canisters and carried their water.</span>'},
+  {id:'eclss_closed', name:'Closed-Loop ECLSS',             cost:4.5, months:5, req:['eclss_partial'],effect:{unlock:'eclss'},       desc:'90% recovery plus its own power — heavy. Only worth it on very long missions (foreshadows deep space).<span class="hist">↳ Mir and the ISS recover most of their water and oxygen to sustain months-long stays.</span>'},
+  {id:'hypergolic',   name:'Storable Hypergolic Propulsion',cost:3.5, months:4, req:['vac_upper'],     effect:{engine:'hyper_storable'},desc:'Unlocks the AJ10 (Aerozine/N₂O₄) — a restartable, storable in-space engine (Isp 321 s) ideal for transfer stages and landers that must coast for days then reignite.<span class="hist">↳ Aerozine-50/N₂O₄ powered the Apollo service and lunar modules: storable, hypergolic, restart-on-demand.</span>'},
+  {id:'cryo_upper',   name:'Cryogenic Hydrogen Upper Stage',cost:4.0, months:5, req:['vac_upper'],     effect:{engine:'hydrolox_up'},  desc:'Unlocks the Rocketdyne J-2 — a high-Isp LH₂/LOX upper stage engine (Isp 425 s), the energy to throw heavy payloads to orbit and beyond. (Cryogenic: boils off over long coasts.)<span class="hist">↳ The hydrogen-fuelled Centaur and Saturn\'s S-IVB gave deep-space launch its decisive edge.</span>'},
+  {id:'deep_space',   name:'Lunar Trajectory &amp; Deep-Space Tracking',cost:5.0, months:6, req:['heavy_booster'],effect:{unlock:'lunar'},desc:'Trajectory design and a tracking network — enough to navigate to the Moon and back. Unlocks cislunar missions.<span class="hist">↳ NASA\'s Deep Space Network and Apollo\'s guidance computers turned a quarter-million-mile shot into routine.</span>'},
+  {id:'lunar_lander', name:'Lunar Lander (Descent &amp; Ascent)', cost:6.0, months:7, req:['deep_space','hypergolic'], effect:{unlock:'lander'}, desc:'A two-stage lander: a descent stage for the powered landing, left on the surface, and a separate ascent stage to return to orbit. Unlocks Lunar Landing.<span class="hist">↳ The Apollo Lunar Module flew as two stages — Eagle\'s descent stage is still on the Sea of Tranquility.</span>'},
+  {id:'super_heavy',  name:'Rocketdyne F-1 Engine Development',  cost:7.0, months:8, req:['lunar_lander'], effect:{engine:'f1_class'}, desc:'A first-stage engine an order of magnitude beyond anything before it (6.7 MN thrust). The lander\'s mass — lifted, carried to the Moon, and lowered to the surface — demands a booster this size.<span class="hist">↳ Five F-1 engines powered the Saturn V\'s first stage, still the most powerful rocket ever flown.</span>'},
+  {id:'mars_traj',    name:'Mars Transfer Trajectory Planning', cost:6.5, months:7, req:['deep_space'], effect:{unlock:'mars'}, desc:'Interplanetary navigation for Hohmann-class transfers to Mars. Launch windows open roughly every 26 months — miss one and you wait for the next.<span class="hist">↳ Mariner and Viking proved the trajectories; the synodic period of Earth and Mars sets the rhythm ever since.</span>'},
+];
+
+/* ---------- Solar System map data ---------- */
+// Orbital radius is schematic (log-ish spacing for legibility), not to scale.
+// legs: each Δv segment a mission must budget, in sequence from Earth's surface.
+const BODIES = [
+  {id:'earth', name:'Earth', kind:'planet', r:62, color:'#3a7bd5', note:'Home. Every mission starts (and most end) here.',
+    missions:['first_flight','sounding','reach_space','high_alt','first_sat','first_astro','crew_orbit','multi_day','endurance'],
+    legs:[{label:'Surface → LEO', dv:9400, note:'The great filter — gravity, drag, and steering losses included.'}]},
+  {id:'moon', name:'The Moon', kind:'moon', r:30, around:'earth', color:'#b9c0c7', note:'Closest body beyond Earth. Water ice at the poles makes it the first refueling target.',
+    missions:['luna_flyby','luna_orbit','luna_landing'],
+    legs:[
+      {label:'Surface → LEO', dv:9400},
+      {label:'LEO → Trans-Lunar Injection', dv:3120},
+      {label:'TLI → Lunar Orbit (LOI)', dv:900},
+      {label:'Lunar Orbit → Surface (descent)', dv:1730, note:'Ascent back to orbit costs roughly the same.'},
+    ]},
+  {id:'venus', name:'Venus', kind:'planet', r:84, color:'#e0c068', note:'Earth\'s near-twin in size, hostile in every other way — crushing pressure, acid clouds. Flyby and gravity-assist target.',
+    legs:[
+      {label:'Surface → LEO', dv:9400},
+      {label:'LEO → Trans-Venus Injection', dv:3300, note:'Inbound transfer; capture into orbit costs considerably more due to Venus\'s deep gravity well and thick atmosphere.'},
+    ]},
+  {id:'mars', name:'Mars', kind:'planet', r:118, color:'#c1532b', note:'The long-term goal. CO₂ + water ice enables Sabatier-process methalox — propellant made on-site.',
+    missions:['mars_flyby','mars_orbit'],
+    legs:[
+      {label:'Surface → LEO', dv:9400},
+      {label:'LEO → Trans-Mars Injection', dv:3600, note:'Window-dependent — opens roughly every 26 months.'},
+      {label:'TMI → Mars Orbit (MOI)', dv:1400, note:'Less with aerobraking.'},
+      {label:'Mars Orbit → Surface', dv:1000, note:'Mostly aerodynamic; powered terminal descent.'},
+    ]},
+  {id:'phobos', name:'Phobos', kind:'moon', r:24, around:'mars', color:'#8a8378', note:'Tiny, low-gravity Mars moon — a candidate staging point that barely costs anything to land on.',
+    legs:[
+      {label:'Surface → LEO', dv:9400},
+      {label:'LEO → Trans-Mars Injection', dv:3600},
+      {label:'TMI → Phobos rendezvous', dv:1500, note:'Phobos\'s gravity is negligible — this is essentially matching orbits.'},
+    ]},
+  {id:'belt', name:'Asteroid Belt (Ceres)', kind:'belt', r:165, color:'#9aa0a6', note:'Volatiles for propellant, metals, and platinum-group bounty — at the cost of years of transit.',
+    legs:[
+      {label:'Surface → LEO', dv:9400},
+      {label:'LEO → Belt transfer', dv:8000, note:'Highly target-dependent — figure is illustrative.'},
+      {label:'Transfer → Ceres orbit', dv:500, note:'Ceres\'s gravity is weak; capture is cheap once you arrive.'},
+    ]},
+  {id:'jupiter', name:'Jupiter System', kind:'planet', r:230, color:'#d9a066', note:'Europa and Ganymede beckon — but radiation, distance, and light-lag make this an autonomous-era destination.',
+    legs:[
+      {label:'Surface → LEO', dv:9400},
+      {label:'LEO → Jupiter transfer', dv:6300, note:'Gravity assists can reduce this substantially.'},
+      {label:'Transfer → Jovian system capture', dv:1000, note:'Highly mission-dependent — orbit insertion around a moon, not Jupiter itself.'},
+    ]},
+];
+// fixed display angles (radians) so bodies aren't collinear — purely cosmetic
+const ANGLES = {earth:-0.7, moon:0.9, venus:2.1, mars:-1.6, phobos:0.3, belt:-0.2, jupiter:1.3};
+
+/* ---------- M2: crew & life support ---------- */
+const DAILY_CONSUMABLE = 0.005; // t per crew per day (~5 kg: O2 + water + food + packaging)
+const CAPSULE = { base:0.5, perCrew:0.4, les:0.3 }; // tonnes
+const ECLSS = {
+  open:    {id:'open',    name:'Open-Loop',           recovery:0.00, sysBase:0.05, perCrew:0.05, research:null},
+  partial: {id:'partial', name:'CO₂/Water Recovery',  recovery:0.60, sysBase:0.40, perCrew:0.12, research:'eclss_partial'},
+  closed:  {id:'closed',  name:'Closed-Loop',         recovery:0.90, sysBase:1.20, perCrew:0.18, research:'eclss_closed'},
+};
+const TEST_LEVELS = [
+  {name:'No campaign',         rel:0.00, cost:0.0, months:0},
+  {name:'Static fire',         rel:0.05, cost:0.6, months:1},
+  {name:'Uncrewed test flight',rel:0.12, cost:2.5, months:3},
+];
+function lifeSupport(m, eclssId){
+  const t=ECLSS[eclssId]||ECLSS.open;
+  const consumables = m.crew*m.days*DAILY_CONSUMABLE*(1-t.recovery);
+  const system = t.sysBase + t.perCrew*m.crew;
+  const capsule = CAPSULE.base + CAPSULE.perCrew*m.crew + (state.research.launch_escape?CAPSULE.les:0);
+  const total = capsule + system + consumables + (m.payload||0);
+  return {consumables, system, capsule, total, recovery:t.recovery};
+}
+
+let state;
+function newGame(){
+  state = {
+    company:'ORBITAL VENTURES',
+    year:1942, month:0, // month 0 = Jan
+    money:5.0, rep:0, sigma:0.12,
+    successes:0, flights:0,
+    research:{}, unlocked:{a4:true}, activeResearch:null,
+    completed:{}, activeMission:'first_flight',
+    stages:[{eng:'a4', count:1, prop:2.0}],
+    transfer:{eng:'hyper_storable', prop:10.0},
+    descent:{eng:'hyper_storable', prop:6.0},
+    ascent:{eng:'hyper_storable', prop:2.5},
+    eclss:'open', testLevel:0,
+    windows:{}, committedWindow:null, selectedBody:'moon', mapZoom:null,
+    tab:'bench', won:false, wonM2:false, wonM3a:false, wonM3aii:false, wonM3b:false, over:false,
+    log:[],
+  };
+  log('info','Company founded. The pad is yours — go make some noise.');
+}
+
+/* ---------- helpers ---------- */
+const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const $=id=>document.getElementById(id);
+const fM=v=>'$'+v.toFixed(2)+'M';
+const fI=v=>Math.round(v).toLocaleString();
+function dateStr(){return MONTHS[state.month]+' '+state.year;}
+function log(kind,msg){state.log.unshift({when:dateStr(),kind,msg}); if(state.log.length>40)state.log.pop();}
+function curSigma(){return state.sigma;}
+function curRel(){
+  let base=0.65+0.025*Math.min(state.successes,12); // heritage: green company is genuinely unreliable
+  if(state.research.test_program) base+=0.08;
+  return base;
+}
+function advance(months){
+  for(let i=0;i<months;i++){
+    state.month++; if(state.month>11){state.month=0;state.year++;}
+    state.money-=0.12; // monthly overhead
+    if(state.activeResearch){ state.activeResearch.monthsLeft--; if(state.activeResearch.monthsLeft<=0) completeResearch(); }
+  }
+  if(state.money<0 && !state.over){ gameOver(); }
+}
+function completeResearch(){
+  const r=RESEARCH.find(x=>x.id===state.activeResearch.id);
+  state.research[r.id]=true; state.activeResearch=null;
+  if(r.effect.engine){state.unlocked[r.effect.engine]=true; log('note',`R&D complete: ${r.name}. New engine available — ${ENGINES[r.effect.engine].name}.`);}
+  else if(r.effect.sigma){state.sigma=r.effect.sigma; log('note',`R&D complete: ${r.name}. σ is now ${r.effect.sigma}.`);}
+  else if(r.effect.reliability){log('note',`R&D complete: ${r.name}. Launch reliability improved.`);}
+  else { log('note',`R&D complete: ${r.name}.`); }
+}
+function advanceMonth(){ advance(1); if(!state.over) render(); }
+function skipResearch(){ if(!state.activeResearch) return; const n=state.activeResearch.monthsLeft; advance(n); if(!state.over) render(); }
+
+/* ---------- M3b: launch windows ---------- */
+const SYNODIC_MONTHS=26; // Earth-Mars synodic period, abstracted to whole months
+function absMonth(){ return (state.year-1942)*12+state.month; }
+function windowsFor(missionId){
+  if(!state.windows[missionId]){
+    const list=[]; let m=absMonth()+4; // first opportunity needs prep time
+    // jitter so windows aren't perfectly periodic, and vary "quality" (geometry favorability)
+    let seed=missionId.length*7+13;
+    const rnd=()=>{seed=(seed*9301+49297)%233280; return seed/233280;};
+    for(let i=0;i<4;i++){ m+=Math.round(SYNODIC_MONTHS+(rnd()-0.5)*4); list.push({abs:m, quality:0.85+rnd()*0.3}); }
+    state.windows[missionId]=list;
+  }
+  return state.windows[missionId];
+}
+function monthToDate(abs){ const y=1942+Math.floor(abs/12), mo=((abs%12)+12)%12; return MONTHS[mo]+' '+y; }
+function commitWindow(missionId, idx){
+  const w=windowsFor(missionId)[idx];
+  state.committedWindow={missionId, abs:w.abs, quality:w.quality};
+  log('note',`Committed to the ${monthToDate(w.abs)} window for ${MISSIONS.find(x=>x.id===missionId).name}. Build and test before it closes.`);
+  render();
+}
+function cancelWindow(){ state.committedWindow=null; render(); }
+
+/* ---------- physics ---------- */
+function tankStruct(prop){const s=curSigma();return s/(1-s)*prop;}
+function stageMasses(st){
+  const e=ENGINES[st.eng];
+  const dry=e.mass*st.count + tankStruct(st.prop);
+  return {dry, wet:dry+st.prop, eng:e};
+}
+/* ---------- M3: in-space modules & multi-leg missions ---------- */
+function inSpaceDry(mod){const e=ENGINES[mod.eng]||ENGINES.a4;const s=curSigma();return e.mass + s/(1-s)*mod.prop;}
+function inSpaceWet(mod){return inSpaceDry(mod)+mod.prop;}
+function lvPayload(m){
+  // what the launch vehicle must loft to LEO
+  if(m && m.profile){
+    let p=lifeSupport(m,state.eclss).total; // crew module
+    if(m.modules.includes('transfer')) p+=inSpaceWet(state.transfer);
+    if(m.modules.includes('lander')){ p+=inSpaceWet(state.descent)+inSpaceWet(state.ascent); }
+    return p;
+  }
+  if(m && m.crew>0) return lifeSupport(m,state.eclss).total;
+  return m?m.payload:0.05;
+}
+function stackPerformance(stages, payload){
+  const sm=stages.map(stageMasses);
+  let totalDv=0; const stageDv=[];
+  for(let i=0;i<stages.length;i++){
+    let above=payload;
+    for(let j=i+1;j<stages.length;j++) above+=sm[j].wet;
+    const m0=above+sm[i].wet, mf=above+sm[i].dry, e=sm[i].eng;
+    const isp=(i===0)?(e.ispSL+e.ispVac)/2:e.ispVac; // first stage flies through atmosphere
+    const dv=(mf>0 && m0>mf)? isp*G0*Math.log(m0/mf):0;
+    stageDv.push(dv); totalDv+=dv;
+  }
+  const liftoff=payload+sm.reduce((a,b)=>a+b.wet,0);
+  const twr=(sm[0].eng.thrustSL*stages[0].count)/(liftoff*G0);
+  return {sm,stageDv,totalDv,liftoff,twr};
+}
+// walk a mission profile leg by leg; in-space stages spend propellant while carrying the surviving stack
+function simulateMission(m){
+  const crewMass=lifeSupport(m,state.eclss).total;
+  const present={};
+  if(m.modules.includes('transfer')) present.transfer={eng:state.transfer.eng, dry:inSpaceDry(state.transfer), propLeft:state.transfer.prop};
+  if(m.modules.includes('lander')){
+    present.descent={eng:state.descent.eng, dry:inSpaceDry(state.descent), propLeft:state.descent.prop};
+    present.ascent ={eng:state.ascent.eng,  dry:inSpaceDry(state.ascent),  propLeft:state.ascent.prop};
+  }
+  const stackMass=()=>{let s=crewMass; for(const k in present) s+=present[k].dry+present[k].propLeft; return s;};
+  const legs=[]; let ok=true, inSpaceLegs=0;
+  for(const leg of m.profile){
+    if(leg.by==='lv'){
+      const upper=stackMass();
+      const perf=stackPerformance(state.stages, upper);
+      const pass=perf.totalDv>=leg.dv && perf.twr>1.0;
+      legs.push({name:leg.name, dv:leg.dv, cap:Math.round(perf.totalDv), by:'lv', mass:upper, twr:perf.twr, pass});
+      if(!pass) ok=false;
+    }else{
+      inSpaceLegs++;
+      const mod=present[leg.by];
+      if(!mod){ legs.push({name:leg.name,dv:leg.dv,by:leg.by,cap:0,mass:0,pass:false}); ok=false; }
+      else{
+        const mBefore=stackMass();
+        const isp=(ENGINES[mod.eng]||ENGINES.a4).ispVac;
+        const burned=mBefore-(mBefore/Math.exp(leg.dv/(isp*G0)));
+        const cap=isp*G0*Math.log(mBefore/Math.max(mBefore-mod.propLeft, mBefore*0.001));
+        const pass=burned<=mod.propLeft+1e-9;
+        legs.push({name:leg.name, dv:leg.dv, cap:Math.round(cap), by:leg.by, mass:mBefore, pass});
+        if(pass) mod.propLeft-=burned; else ok=false;
+      }
+    }
+    if(leg.dropAfter) for(const d of leg.dropAfter) if(d!=='lv') delete present[d];
+  }
+  return {legs, ok, crewMass, inSpaceLegs};
+}
+
+function computeVehicle(){
+  const m=MISSIONS.find(x=>x.id===state.activeMission);
+  const crewed=!!(m && m.crew>0);
+  const payload=lvPayload(m);
+  const perf=stackPerformance(state.stages, payload);
+  const totalEng=state.stages.reduce((a,s)=>a+s.count,0);
+  let totalProp=state.stages.reduce((a,s)=>a+s.prop,0);
+  let buildCost=state.stages.reduce((a,s)=>a+ENGINES[s.eng].cost*s.count+0.02*s.prop,0.1);
+  if(m && m.profile){
+    if(m.modules.includes('transfer')){ buildCost+=(ENGINES[state.transfer.eng]||ENGINES.a4).cost+0.02*state.transfer.prop; totalProp+=state.transfer.prop; }
+    if(m.modules.includes('lander')){
+      buildCost+=(ENGINES[state.descent.eng]||ENGINES.a4).cost+0.02*state.descent.prop; totalProp+=state.descent.prop;
+      buildCost+=(ENGINES[state.ascent.eng]||ENGINES.a4).cost+0.02*state.ascent.prop;   totalProp+=state.ascent.prop;
+    }
+  }
+  const enginePenalty=Math.pow(0.975,totalEng-1);
+  const testBonus=TEST_LEVELS[state.testLevel].rel;
+  const reliability=Math.min(0.95,Math.max(0.35,(curRel()+testBonus)*enginePenalty*(crewed?0.92:1)));
+  const launchCost=0.12+0.01*totalProp;
+  return {payload, sm:perf.sm, stageDv:perf.stageDv, totalDv:perf.totalDv, liftoff:perf.liftoff, twr:perf.twr,
+          totalEng, totalProp, reliability, buildCost, launchCost, crewed,
+          dryTotal:perf.sm.reduce((a,b)=>a+b.dry,0)};
+}
+
+/* ---------- launch ---------- */
+function canLaunch(v,m,sim){
+  if(m.profile){
+    if(!sim||!sim.ok) return {ok:false,why:'A mission leg falls short — size the launch vehicle and transfer stage for every burn.'};
+  }else{
+    if(v.totalDv < m.reqDv) return {ok:false,why:'Δv shortfall — build more capability before flying.'};
+    if(v.twr<=1.0) return {ok:false,why:'Thrust-to-weight ≤ 1 — it will not leave the pad.'};
+  }
+  if(m.window){
+    const cw=state.committedWindow;
+    if(!cw||cw.missionId!==m.id) return {ok:false,why:'No launch window committed — pick one from the Launch Window Planner below.'};
+    const tl=TEST_LEVELS[state.testLevel], leadMonths=3+tl.months;
+    if(absMonth()+leadMonths>cw.abs) return {ok:false,why:'Too late for the committed window — build time would carry you past it. Cancel and pick a later one.'};
+    if(absMonth()+leadMonths<cw.abs-1) return {ok:false,why:`Window not yet open — ${monthToDate(cw.abs)}. Advance time (research keeps progressing) or build closer to launch.`};
+  }
+  const tl=TEST_LEVELS[state.testLevel];
+  const total=v.buildCost+v.launchCost+tl.cost+0.12*(3+tl.months);
+  if(state.money<total) return {ok:false,why:'Not enough capital to build, test, and fly this mission.'};
+  return {ok:true};
+}
+function launch(){
+  const m=MISSIONS.find(x=>x.id===state.activeMission);
+  const v=computeVehicle();
+  const sim=m.profile?simulateMission(m):null;
+  const chk=canLaunch(v,m,sim); if(!chk.ok){return;}
+  const tl=TEST_LEVELS[state.testLevel];
+  state.money-=(v.buildCost+v.launchCost+tl.cost);
+  let windowQuality=1;
+  if(m.window){
+    windowQuality=state.committedWindow.quality;
+    const gap=state.committedWindow.abs-absMonth();
+    advance(Math.max(3+tl.months, gap)); // wait out the rest of the window if build finishes early
+    state.committedWindow=null;
+  }else{
+    advance(3+tl.months); // build (2) + launch (1) + test campaign
+  }
+  state.flights++;
+  const routine=!!state.completed[m.id];
+  const crewed=m.crew>0;
+  let rel=v.reliability;
+  if(sim) rel=Math.max(0.30, rel*Math.pow(0.985, sim.inSpaceLegs)); // each deep-space burn is another thing to get right
+  const success=Math.random()<=rel;
+  let pendingCelebration=null, failPhase=null;
+  if(success){
+    state.successes++;
+    const payout=(routine?m.payout*0.4:m.payout)*windowQuality;
+    const rep=routine?2:m.rep;
+    state.money+=payout; state.rep+=rep;
+    const qTxt = m.window?(windowQuality>1.05?' Favorable window geometry boosted the payload value.':windowQuality<0.92?' A marginal window cut into the payload value.':''):'';
+    log('ok',`${m.name}: SUCCESS.${crewed?` Crew of ${m.crew} home safe.`:''} +${fM(payout)}, +${rep} rep. (reliability ${(rel*100|0)}%)${qTxt}`);
+    if(!routine){
+      state.completed[m.id]=true;
+      if(m.id==='first_sat' && !state.won){ state.won=true; pendingCelebration=victory; }
+      if(m.id==='endurance' && !state.wonM2){ state.wonM2=true; pendingCelebration=victoryM2; }
+      if(m.id==='luna_orbit' && !state.wonM3a){ state.wonM3a=true; pendingCelebration=victoryM3a; }
+      if(m.id==='luna_landing' && !state.wonM3aii){ state.wonM3aii=true; pendingCelebration=victoryM3aii; }
+      if(m.id==='mars_orbit' && !state.wonM3b){ state.wonM3b=true; pendingCelebration=victoryM3b; }
+    }
+    autoAdvanceMission();
+  }else{
+    failPhase = m.profile ? (Math.random()<0.6?'ascent':'deep') : 'ascent';
+    if(crewed){
+      if(state.research.launch_escape){
+        const rep=Math.min(state.rep,15); state.rep-=rep;
+        log('bad',`${m.name}: MISSION FAILURE. Abort/contingency saved the crew of ${m.crew} — but the vehicle and mission are lost, −${rep} rep.`);
+      }else{
+        const rep=Math.min(state.rep,40); state.rep-=rep;
+        advance(6); // grounding + investigation
+        log('bad',`${m.name}: CATASTROPHE. Vehicle lost with all ${m.crew} aboard. Six-month stand-down and inquiry, −${rep} rep. Fit an escape system before flying crew again.`);
+      }
+    }else{
+      const rep=Math.min(state.rep, routine?3:8);
+      state.rep-=rep;
+      const modes=['Engine failure at ignition — vehicle lost on the pad.',
+                   'Loss of control during ascent — vehicle destroyed.',
+                   'Structural failure under load — breakup before burnout.',
+                   'Premature shutdown — fell short and was lost.'];
+      log('bad',`${m.name}: FAILURE. ${modes[Math.floor(Math.random()*modes.length)]} Vehicle cost forfeit, −${rep} rep.`);
+    }
+  }
+  state.testLevel=0; // campaign applies to one flight
+  const rnd=()=>Math.random();
+  const spec={ title:m.name, crewed, success, failPhase,
+    stages: state.stages.map(s=>({prop:s.prop,count:s.count})),
+    transferProp: (m.profile&&m.modules.includes('transfer'))?state.transfer.prop:0,
+    isCislunar: !!m.profile, isOrbital: (!m.profile && m.reqDv>=9000),
+    reqDv: m.reqDv||9400,
+    rng: { wind:(rnd()-0.5)*0.9, windFreq:1.4+rnd()*1.6, windPhase:rnd()*6.283,
+           pitchJitter:(rnd()-0.5)*0.16, sep:state.stages.map(()=>(rnd()-0.5)*0.06),
+           apogee:0.86+rnd()*0.28, bow:(rnd()-0.5)*0.9 } };
+  const finish=()=>{ if(state.money<0){ gameOver(); } else { render(); if(pendingCelebration) pendingCelebration(); } };
+  if(animEnabled) playMission(spec, finish); else finish();
+}
+function autoAdvanceMission(){
+  // nudge player toward the next available, uncompleted mission they can actually fly
+  const next=MISSIONS.find(m=>!state.completed[m.id] && state.rep>=m.minRep && (!m.reqResearch||state.research[m.reqResearch]));
+  if(next) state.activeMission=next.id;
+}
+
+/* ---------- actions ---------- */
+function setTab(t){state.tab=t;render();}
+function addStage(){ if(state.stages.length>=3)return; state.stages.push({eng:firstUnlocked(),count:1,prop:2.0}); render(); }
+function removeStage(i){ if(state.stages.length<=1)return; state.stages.splice(i,1); render(); }
+function firstUnlocked(){return Object.keys(ENGINES).find(k=>state.unlocked[k])||'a4';}
+function setEngine(i,v){state.stages[i].eng=v;render();}
+function setCount(i,d){state.stages[i].count=Math.max(1,Math.min(8,state.stages[i].count+d));render();}
+function setProp(i,v){state.stages[i].prop=Math.max(0.1,Math.min(1000,parseFloat(v)||0.1));render();}
+function setTransferEng(v){state.transfer.eng=v;render();}
+function setTransferProp(v){state.transfer.prop=Math.max(0.1,Math.min(120,parseFloat(v)||0.1));render();}
+function setDescentEng(v){state.descent.eng=v;render();}
+function setDescentProp(v){state.descent.prop=Math.max(0.1,Math.min(60,parseFloat(v)||0.1));render();}
+function setAscentEng(v){state.ascent.eng=v;render();}
+function setAscentProp(v){state.ascent.prop=Math.max(0.1,Math.min(40,parseFloat(v)||0.1));render();}
+function setEclss(id){ const t=ECLSS[id]; if(t.research && !state.research[t.research]) return; state.eclss=id; render(); }
+function setTestLevel(n){ state.testLevel=n; render(); }
+function selectMission(id){const m=MISSIONS.find(x=>x.id===id); if(state.rep<m.minRep)return; if(m.reqResearch&&!state.research[m.reqResearch])return; state.activeMission=id; state.tab='bench'; render();}
+function buyResearch(id){
+  const r=RESEARCH.find(x=>x.id===id);
+  if(state.research[id]||state.activeResearch) return; // one project at a time
+  if(!r.req.every(q=>state.research[q])) return;
+  if(state.money < r.cost) return;
+  state.money-=r.cost;
+  state.activeResearch={id:r.id, monthsLeft:r.months};
+  log('note',`R&D started: ${r.name} (${r.months} mo). It advances while you build and fly.`);
+  if(state.money<0) gameOver(); else render();
+}
+
+/* ---------- modals ---------- */
+function victory(){
+  showModal(`<h2>Orbit achieved.</h2>
+    <p>You've flown a payload to orbital velocity — the summit of the Pioneer era. The core loop is proven: the rocket equation, staging, materials, and reliability all bent to your will.</p>
+    <p class="muted">Next milestone (M2): <b>crew &amp; life support</b> — keeping people alive becomes a mass &amp; power budget that rides the same rocket equation.</p>
+    <button class="btn" onclick="hideModal()">Keep flying</button>`);
+}
+function victoryM2(){
+  showModal(`<h2>Endurance achieved.</h2>
+    <p>Three crew, four months, home alive. You've felt the full weight of the rocket equation: life support is payload, payload is propellant, and closing the loop is the lever that bends the curve back.</p>
+    <p class="muted">Next milestone (M3): the <b>Solar System opens</b> — real Δv budgets to the Moon and beyond, in-space refueling, and ISRU to break the tyranny for good.</p>
+    <button class="btn" onclick="hideModal()">Keep flying</button>`);
+}
+function victoryM3a(){
+  showModal(`<h2>The Moon, captured and left.</h2>
+    <p>You flew a crew to lunar orbit and brought them home — a journey of stacked burns where the transfer stage spent one tank across three deep-space maneuvers while hauling everything above it. The mass compounded at every leg, and you beat it.</p>
+    <p class="muted">Coming next (M3a-ii): the <b>Lunar Lander</b> — a separate vehicle for descent and ascent — then M3b opens Mars, refueling depots, and ISRU.</p>
+    <button class="btn" onclick="hideModal()">Keep flying</button>`);
+}
+function victoryM3aii(){
+  showModal(`<h2>Boots on the Moon.</h2>
+    <p>Two crew rode the descent stage down, walked on another world, and lit the ascent engine to chase the transfer stage back into orbit — leaving the descent stage behind as a monument. Seven legs, three separate vehicles, one rocket equation, compounded all the way from the pad.</p>
+    <p class="muted">Next (M3b): <b>Mars</b> — launch windows, in-space refueling depots, and ISRU propellant that finally breaks the tyranny of the equation.</p>
+    <button class="btn" onclick="hideModal()">Keep flying</button>`);
+}
+function victoryM3b(){
+  showModal(`<h2>Mars, and back.</h2>
+    <p>Three crew spent five hundred and twenty days away from Earth — captured into Mars orbit, held through the long wait for the return window, then burned for home. Closed-loop life support, which never paid for itself on shorter flights, finally did its job: every kilogram it saved was a kilogram of propellant you didn't have to carry across two planets.</p>
+    <p class="muted">Next (M3b-ii): <b>refueling depots and ISRU</b> — pre-position propellant in orbit so the next mission doesn't have to launch with a full tank from Earth.</p>
+    <button class="btn" onclick="hideModal()">Keep flying</button>`);
+}
+function gameOver(){
+  state.over=true;
+  const usesLeft=2-(state.bailouts||0);
+  const loanBtn = usesLeft>0
+    ? `<button class="btn" onclick="bailout()">Emergency bridge loan (+$3.0M, −15 rep)</button>`
+    : `<div class="dim" style="font-size:12px;margin-top:6px">No further bridge loans available — investors have lost confidence.</div>`;
+  showModal(`<h2 style="color:var(--bad)">Out of capital.</h2>
+    <p>The company has run dry. Take a bridge loan to keep flying (it costs reputation — your backers aren't happy), or close the books and start a new company.</p>
+    ${loanBtn}
+    <button class="btn ghost" onclick="restart()" style="margin-top:8px">Start over</button>`);
+}
+function bailout(){
+  state.bailouts=(state.bailouts||0)+1;
+  state.money+=3.0; state.rep=Math.max(0,state.rep-15); state.over=false;
+  log('note',`Emergency bridge loan accepted: +${fM(3.0)}, −15 rep. (${2-state.bailouts} remaining)`);
+  hideModal(); render();
+}
+function restart(){hideModal();newGame();render();}
+function showModal(html){$('modalBody').innerHTML=html;$('modal').classList.remove('hidden');}
+function hideModal(){$('modal').classList.add('hidden');}
+
+/* ---------- flight animation (canvas) ---------- */
+let animEnabled=true, animState=null;
+function toggleAnim(){ animEnabled=!animEnabled; const b=$('animToggle'); if(b) b.textContent='Animation: '+(animEnabled?'On':'Off'); }
+function clampA(v,a,b){return Math.max(a,Math.min(b,v));}
+function smooth(t){return t*t*(3-2*t);}
+function hx(h){return [parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];}
+function mix(a,b,t){const A=hx(a),B=hx(b);return 'rgb('+A.map((v,i)=>Math.round(v+(B[i]-v)*t)).join(',')+')';}
+
+function playMission(spec, done){
+  const cv=$('flightCanvas'); const ctx=cv&&cv.getContext('2d');
+  if(!ctx){ if(done) done(); return; }
+  $('animTitle').textContent=spec.title+(spec.crewed?'  ·  crewed':'');
+  $('animOverlay').classList.remove('hidden');
+  const ascentDur=5200, cruiseDur=spec.isCislunar?7500:3400;
+  const stars=[]; for(let i=0;i<70;i++) stars.push({x:Math.random(),y:Math.random()*0.85});
+  let totalDur;
+  if(!spec.success && spec.failPhase==='ascent') totalDur=ascentDur*0.55+1500;
+  else if(!spec.success && spec.failPhase==='deep') totalDur=ascentDur+cruiseDur*0.42+1500;
+  else totalDur=ascentDur+cruiseDur+900;
+  const path=spec.isCislunar?buildLunarPath(cv.width,cv.height,spec.rng):null;
+  animState={spec,done,ctx,cv,t0:performance.now(),ascentDur,cruiseDur,totalDur,stars,path,raf:0};
+  animLoop();
+}
+function animLoop(){
+  const A=animState; if(!A) return;
+  const t=performance.now()-A.t0;
+  try{ drawScene(t); }catch(e){ endAnim(); return; }
+  if(t>=A.totalDur){ endAnim(); return; }
+  A.raf=requestAnimationFrame(animLoop);
+}
+function endAnim(){ const A=animState; if(!A) return; cancelAnimationFrame(A.raf); animState=null; $('animOverlay').classList.add('hidden'); if(A.done) A.done(); }
+function skipAnim(){ endAnim(); }
+
+function drawScene(t){
+  const A=animState,s=A.spec;
+  const ascentFail = !s.success && s.failPhase==='ascent';
+  if(t < A.ascentDur || ascentFail){ drawAscent(t, ascentFail); }
+  else {
+    const ct=t-A.ascentDur;
+    if(s.isCislunar) drawCislunar(ct);
+    else if(s.isOrbital) drawOrbit(ct);
+    else drawSuborbital(ct);
+  }
+}
+function buildVehicleShape(spec){
+  const segs=[];
+  spec.stages.forEach(s=>{
+    segs.push({ w:clampA(7+4.4*Math.cbrt(s.prop),8,30), h:clampA(15+3.3*Math.sqrt(s.prop),16,150), engines:Math.max(1,Math.min(s.count,8)), kind:'stage' });
+  });
+  if(spec.transferProp>0){
+    segs.push({ w:clampA(7+3.6*Math.cbrt(spec.transferProp),8,22), h:clampA(11+2.4*Math.sqrt(spec.transferProp),11,55), engines:1, kind:'transfer' });
+  }
+  const nose = spec.crewed ? 'capsule' : 'fairing';
+  const totalH=segs.reduce((a,s)=>a+s.h,0);
+  return {segs, nose, totalH, maxW:Math.max.apply(null,segs.map(s=>s.w))};
+}
+function drawVehicle(ctx, segs, nose, scale, flame){
+  if(!segs.length) return;
+  const base=segs[0], bw=base.w*scale, ne=base.engines;
+  for(let e=0;e<ne;e++){
+    const ex = ne===1?0:(-bw/2 + bw*(e+0.5)/ne), nz=bw/(ne*2.4);
+    ctx.fillStyle='#3a444b'; ctx.fillRect(ex-nz*0.6,-1,nz*1.2,4*scale);
+    if(flame>0){
+      const fl=flame*(0.7+Math.random()*0.5);
+      ctx.fillStyle='#ffd27a'; ctx.beginPath(); ctx.moveTo(ex-nz,2*scale); ctx.lineTo(ex+nz,2*scale); ctx.lineTo(ex,fl); ctx.closePath(); ctx.fill();
+      ctx.fillStyle='#f5a623'; ctx.beginPath(); ctx.moveTo(ex-nz*0.55,2*scale); ctx.lineTo(ex+nz*0.55,2*scale); ctx.lineTo(ex,fl*0.6); ctx.closePath(); ctx.fill();
+    }
+  }
+  let y=0;
+  for(let i=0;i<segs.length;i++){
+    const s=segs[i], w=s.w*scale, h=s.h*scale;
+    ctx.fillStyle = s.kind==='transfer'?'#97a3aa':(i%2?'#bcc6cc':'#c9d3d9');
+    ctx.strokeStyle='#566872'; ctx.lineWidth=1;
+    ctx.fillRect(-w/2,y-h,w,h); ctx.strokeRect(-w/2,y-h,w,h);
+    y-=h;
+  }
+  const fw=base.w*scale, fh=base.h*scale;
+  ctx.fillStyle='#7f8c95';
+  ctx.beginPath(); ctx.moveTo(-fw/2,0); ctx.lineTo(-fw*0.95,2*scale); ctx.lineTo(-fw/2,-fh*0.45); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(fw/2,0); ctx.lineTo(fw*0.95,2*scale); ctx.lineTo(fw/2,-fh*0.45); ctx.closePath(); ctx.fill();
+  const tw=segs[segs.length-1].w*scale;
+  if(nose==='capsule'){ ctx.fillStyle='#aeb8be'; ctx.beginPath(); ctx.moveTo(-tw*0.5,y); ctx.lineTo(-tw*0.3,y-11*scale); ctx.lineTo(tw*0.3,y-11*scale); ctx.lineTo(tw*0.5,y); ctx.closePath(); ctx.fill(); }
+  else if(nose==='fairing'){ ctx.fillStyle='#cdd6db'; ctx.beginPath(); ctx.moveTo(-tw/2,y); ctx.quadraticCurveTo(0,y-20*scale,tw/2,y); ctx.closePath(); ctx.fill(); }
+}
+function drawBoom(ctx,x,y,dt){
+  const r=clampA(dt/600,0,1)*46, a=clampA(1-dt/1400,0,1);
+  ctx.fillStyle='rgba(245,166,35,'+(a*0.8)+')'; ctx.beginPath(); ctx.arc(x,y,r,0,7); ctx.fill();
+  ctx.fillStyle='rgba(224,86,79,'+(a*0.6)+')'; ctx.beginPath(); ctx.arc(x,y,r*0.6,0,7); ctx.fill();
+  for(let i=0;i<10;i++){ const a2=i/10*6.28, d=r*1.4; ctx.fillStyle='rgba(255,210,122,'+(a*0.7)+')'; ctx.fillRect(x+Math.cos(a2)*d,y+Math.sin(a2)*d,3,3); }
+}
+function drawHud(left,right,phase,color){
+  const A=animState,ctx=A.ctx,W=A.cv.width,H=A.cv.height;
+  ctx.font='12px ui-monospace,monospace'; ctx.textBaseline='top';
+  ctx.fillStyle='#7d909b'; ctx.textAlign='left'; if(left)ctx.fillText(left,14,12);
+  ctx.textAlign='right'; if(right)ctx.fillText(right,W-14,12);
+  ctx.textAlign='center'; ctx.fillStyle=color||'#4fd1d9'; ctx.font='bold 13px ui-monospace,monospace';
+  ctx.fillText(phase,W/2,H-24); ctx.textAlign='left';
+}
+function drawCraftDot(ctx,x,y){
+  ctx.fillStyle='#f5a623'; ctx.beginPath(); ctx.arc(x,y,4,0,7); ctx.fill();
+  ctx.strokeStyle='rgba(245,166,35,0.5)'; ctx.lineWidth=1; ctx.beginPath(); ctx.arc(x,y,8,0,7); ctx.stroke();
+}
+function drawAscent(t,canFail){
+  const A=animState,s=A.spec,ctx=A.ctx,W=A.cv.width,H=A.cv.height;
+  const R=s.rng||{wind:0,windFreq:1,windPhase:0,pitchJitter:0,sep:[]};
+  const p=clampA(t/A.ascentDur,0,1);
+  const g=ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,mix('#0a1622','#04060a',p)); g.addColorStop(1,mix('#234a6e','#06090d',p));
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+  if(p>0.3){ const a=clampA((p-0.3)/0.5,0,1)*0.8; ctx.fillStyle='rgba(255,255,255,'+a+')'; for(const st of A.stars) ctx.fillRect(st.x*W,st.y*H,1.6,1.6); }
+  const groundY=H-24+p*p*200;
+  ctx.fillStyle='#15100a'; ctx.fillRect(0,groundY,W,H); ctx.strokeStyle='#33260f'; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(0,groundY); ctx.lineTo(W,groundY); ctx.stroke();
+  if(!A.shape) A.shape=buildVehicleShape(s);
+  const shape=A.shape, drawnPx=clampA(15+shape.totalH*0.75,33,141), scale=drawnPx/shape.totalH;
+  const orb=s.isOrbital||s.isCislunar;
+  const altFrac=Math.pow(p,1.5), baseY=(H-28)-altFrac*(H-66);
+  const finalPitch=(orb?1.12:0.55)+R.pitchJitter;
+  // near-vertical liftoff, gravity turn builds gradually and continues past ascent into cruise
+  const pp=clampA((p-0.08)/0.92,0,1), pitch=Math.pow(pp,1.6)*finalPitch;
+  const downrange=(W*0.05 + W*0.20*(finalPitch/1.2))*Math.pow(pp,1.8);
+  const wind=(R.wind||0)*30*Math.sin(p*6.283*(R.windFreq||1)+(R.windPhase||0))*p;
+  const x=W*0.28+downrange+wind;
+  const n=s.stages.length; let dropped=0; const seps=[];
+  for(let i=1;i<n;i++){ const thr=clampA(i/(n+0.25)+((R.sep&&R.sep[i])||0),0.12,0.95); seps.push(thr); if(p>thr) dropped++; }
+  const remaining=shape.segs.slice(dropped);
+  const exploding=canFail&&p>=0.5;
+  if(dropped>0 && !exploding){
+    const dt=(p-seps[dropped-1])*A.ascentDur;
+    if(dt<850){ const spent=shape.segs[dropped-1];
+      ctx.save(); ctx.translate(x-10-dt*0.02, baseY+dt*0.05); ctx.rotate(pitch+dt*0.004);
+      ctx.globalAlpha=clampA(1-dt/850,0,1); drawVehicle(ctx,[spent],'none',scale,0); ctx.globalAlpha=1; ctx.restore();
+    }
+  }
+  if(!exploding){
+    ctx.save(); ctx.translate(x,baseY); ctx.rotate(pitch);
+    drawVehicle(ctx, remaining.length?remaining:[shape.segs[shape.segs.length-1]], shape.nose, scale, 12+Math.random()*9);
+    ctx.restore();
+  } else { drawBoom(ctx,x,baseY-18,t-A.ascentDur*0.5); }
+  const maxA=orb?170:clampA(s.reqDv*0.045,40,150), maxV=orb?7800:clampA(s.reqDv*0.85,700,4000);
+  drawHud('ALT '+Math.round(altFrac*maxA)+' km','VEL '+Math.round(Math.pow(p,1.3)*maxV)+' m/s',exploding?'VEHICLE LOST':('ASCENT · STAGE '+Math.min(dropped+1,n)),exploding?'#e0564f':'#4fd1d9');
+}
+function earthLimb(ctx,W,H){
+  const cx=W/2,cy=H*2.3,r=H*2.0;
+  const grd=ctx.createRadialGradient(cx,cy,r*0.78,cx,cy,r);
+  grd.addColorStop(0,'#2b6cb0'); grd.addColorStop(1,'#15324f');
+  ctx.fillStyle=grd; ctx.beginPath(); ctx.arc(cx,cy,r,0,7); ctx.fill();
+  ctx.strokeStyle='rgba(120,180,240,0.35)'; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(cx,cy,r,0,7); ctx.stroke();
+  return {cx,cy,r};
+}
+function spaceBg(ctx,W,H){ const A=animState; ctx.fillStyle='#04060a'; ctx.fillRect(0,0,W,H); ctx.fillStyle='rgba(255,255,255,0.6)'; for(const st of A.stars) ctx.fillRect(st.x*W,st.y*H,1.4,1.4); }
+function drawOrbit(ct){
+  const A=animState,s=A.spec,ctx=A.ctx,W=A.cv.width,H=A.cv.height,R=s.rng||{bow:0,pitchJitter:0}; spaceBg(ctx,W,H);
+  const E=earthLimb(ctx,W,H), op=clampA(ct/A.cruiseDur,0,1), orbitR=E.r+68+(R.bow||0)*16, a0=Math.PI*(1.16+(R.pitchJitter||0)*0.12), a1=a0+Math.PI*0.68;
+  ctx.strokeStyle='rgba(79,209,217,0.4)'; ctx.setLineDash([5,5]); ctx.lineWidth=1.5; ctx.beginPath(); ctx.arc(E.cx,E.cy,orbitR,a0,a1); ctx.stroke(); ctx.setLineDash([]);
+  const ang=a0+op*(a1-a0), x=E.cx+Math.cos(ang)*orbitR, y=E.cy+Math.sin(ang)*orbitR;
+  ctx.strokeStyle='#4fd1d9'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(E.cx,E.cy,orbitR,a0,ang); ctx.stroke();
+  drawCraftDot(ctx,x,y);
+  drawHud('ORBITAL VELOCITY','ALT '+Math.round((180+(R.bow||0)*30)+op*15)+' km',op>0.85?'ORBIT ACHIEVED ✓':'ORBITAL INSERTION',op>0.85?'#58c47a':'#4fd1d9');
+}
+function drawSuborbital(ct){
+  const A=animState,s=A.spec,ctx=A.ctx,W=A.cv.width,H=A.cv.height,R=s.rng||{apogee:1,bow:0}; spaceBg(ctx,W,H); earthLimb(ctx,W,H);
+  const op=clampA(ct/A.cruiseDur,0,1), x0=W*0.18,x1=W*0.84, base=H-94;
+  const exitPitch=clampA(0.55+R.pitchJitter,0.2,1.0); // carried over from the ascent's final angle
+  const apexY=clampA(H*0.40 - s.reqDv*0.03, H*0.12, H*0.40)/(R.apogee||1);
+  const apexX=x0+(x1-x0)*clampA(0.30+exitPitch*0.30,0.2,0.7); // steeper ascent -> apex shifted left (more lofted, less downrange)
+  const xAt=f=> (1-f)*(1-f)*x0 + 2*(1-f)*f*apexX + f*f*x1 + (R.bow||0)*30*Math.sin(f*Math.PI);
+  const yAt=f=> base-Math.sin(f*Math.PI)*(base-apexY);
+  const angAt=f=>{ const e=0.01, d=Math.atan2(yAt(Math.min(f+e,1))-yAt(f), xAt(Math.min(f+e,1))-xAt(f)); return d; };
+  ctx.strokeStyle='rgba(79,209,217,0.35)'; ctx.setLineDash([5,5]); ctx.beginPath();
+  for(let i=0;i<=44;i++){const f=i/44; i?ctx.lineTo(xAt(f),yAt(f)):ctx.moveTo(xAt(f),yAt(f));} ctx.stroke(); ctx.setLineDash([]);
+  ctx.strokeStyle='#4fd1d9'; ctx.lineWidth=2; ctx.beginPath();
+  for(let i=0;i<=44;i++){const f=i/44*op; i?ctx.lineTo(xAt(f),yAt(f)):ctx.moveTo(xAt(f),yAt(f));} ctx.stroke();
+  // craft rotates to match the trajectory's instantaneous flight-path angle
+  ctx.save(); ctx.translate(xAt(op),yAt(op)); ctx.rotate(angAt(op));
+  drawCraftDot(ctx,0,0); ctx.restore();
+  const apogeeKm=Math.round((100+ s.reqDv*0.04)*(R.apogee||1)*Math.sin(Math.max(op,0.0001)*Math.PI)+ (op>0.5? s.reqDv*0.02:0));
+  const phase=op<0.5?'COAST TO APOGEE':(op<0.85?'REENTRY':'RECOVERED ✓');
+  drawHud('SUBORBITAL','APOGEE '+Math.max(0,apogeeKm)+' km',phase,op>0.85?'#58c47a':'#4fd1d9');
+}
+function buildLunarPath(W,H,rng){
+  rng=rng||{bow:0}; const bz=(rng.bow||0)*55;
+  const E={x:W*0.26,y:H*0.62,r:30}, M={x:W*0.8,y:H*0.34,r:13}, leoR=E.r+18;
+  const bez=(p0,p1,p2,p3,t)=>{const u=1-t;return{x:u*u*u*p0.x+3*u*u*t*p1.x+3*u*t*t*p2.x+t*t*t*p3.x,y:u*u*u*p0.y+3*u*u*t*p1.y+3*u*t*t*p2.y+t*t*t*p3.y};};
+  const S={x:E.x+leoR*Math.cos(-0.6),y:E.y+leoR*Math.sin(-0.6)};
+  const o1={x:W*0.45,y:H*0.10+bz},o2={x:W*0.66,y:H*0.12+bz},o3={x:M.x-2,y:M.y-M.r-6};
+  const i0={x:M.x+2,y:M.y+M.r+6},i1={x:W*0.62,y:H*0.80-bz},i2={x:W*0.42,y:H*0.90-bz},i3={x:E.x+E.r*0.2,y:E.y+E.r+10};
+  const pts=[],seg=[];
+  for(let i=0;i<=40;i++){pts.push(bez(S,o1,o2,o3,i/40)); seg.push('Trans-Lunar Injection');}
+  for(let i=0;i<=16;i++){const a=-Math.PI*0.5+(i/16)*6.28; pts.push({x:M.x+Math.cos(a)*(M.r+8),y:M.y+Math.sin(a)*(M.r+8)}); seg.push('Lunar Orbit Insertion');}
+  for(let i=0;i<=40;i++){pts.push(bez(i0,i1,i2,i3,i/40)); seg.push('Trans-Earth Injection');}
+  for(let i=0;i<=6;i++){pts.push({x:i3.x-i*1.4,y:i3.y+i*0.5}); seg.push('Reentry');}
+  return {E,M,leoR,pts,seg};
+}
+function drawCislunar(ct){
+  const A=animState,s=A.spec,ctx=A.ctx,W=A.cv.width,H=A.cv.height,P=A.path; spaceBg(ctx,W,H);
+  const eg=ctx.createRadialGradient(P.E.x-6,P.E.y-6,4,P.E.x,P.E.y,P.E.r); eg.addColorStop(0,'#4a90d9'); eg.addColorStop(1,'#173b5e');
+  ctx.fillStyle=eg; ctx.beginPath(); ctx.arc(P.E.x,P.E.y,P.E.r,0,7); ctx.fill();
+  ctx.strokeStyle='rgba(79,209,217,0.3)'; ctx.setLineDash([3,4]); ctx.beginPath(); ctx.arc(P.E.x,P.E.y,P.leoR,0,7); ctx.stroke(); ctx.setLineDash([]);
+  const mg=ctx.createRadialGradient(P.M.x-3,P.M.y-3,2,P.M.x,P.M.y,P.M.r); mg.addColorStop(0,'#b9c0c7'); mg.addColorStop(1,'#6b7178');
+  ctx.fillStyle=mg; ctx.beginPath(); ctx.arc(P.M.x,P.M.y,P.M.r,0,7); ctx.fill();
+  const deepFail=!s.success&&s.failPhase==='deep';
+  const op=clampA(ct/A.cruiseDur,0,1), maxIdx=P.pts.length-1;
+  const failIdx=deepFail?Math.floor(P.pts.length*0.34):null;
+  const curIdx=Math.min(Math.round(op*maxIdx), failIdx!=null?failIdx:maxIdx);
+  ctx.strokeStyle='rgba(125,144,155,0.3)'; ctx.lineWidth=1.2; ctx.setLineDash([4,5]); ctx.beginPath();
+  P.pts.forEach((p,i)=> i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)); ctx.stroke(); ctx.setLineDash([]);
+  ctx.strokeStyle='#4fd1d9'; ctx.lineWidth=2; ctx.beginPath();
+  for(let i=0;i<=curIdx;i++){const p=P.pts[i]; i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y);} ctx.stroke();
+  const cur=P.pts[curIdx];
+  if(failIdx!=null && curIdx>=failIdx){ drawBoom(ctx,cur.x,cur.y,ct-A.cruiseDur*0.34); drawHud('EARTH ⟶ MOON','','CONTACT LOST','#e0564f'); }
+  else { drawCraftDot(ctx,cur.x,cur.y); drawHud('EARTH ⟶ MOON','',op>0.96?'RETURNED ✓':(P.seg[curIdx]||'Trans-Earth Injection'),op>0.96?'#58c47a':'#4fd1d9'); }
+}
+
+/* ---------- render ---------- */
+function render(){
+  $('coName').textContent=state.company;
+  $('stDate').textContent=dateStr();
+  $('stMoney').textContent=fM(state.money);
+  $('stMoney').style.color = state.money<1.5?'var(--bad)':'var(--ink)';
+  $('stRep').textContent=fI(state.rep);
+  $('stFlights').textContent=state.flights;
+
+  $('tabBench').classList.toggle('active',state.tab==='bench');
+  $('tabMissions').classList.toggle('active',state.tab==='missions');
+  $('tabRnd').classList.toggle('active',state.tab==='rnd');
+  $('tabMap').classList.toggle('active',state.tab==='map');
+  $('benchView').classList.toggle('hidden',state.tab!=='bench');
+  $('missionsView').classList.toggle('hidden',state.tab!=='missions');
+  $('rndView').classList.toggle('hidden',state.tab!=='rnd');
+  $('mapView').classList.toggle('hidden',state.tab!=='map');
+
+  const ar=state.activeResearch;
+  $('rndStatus').innerHTML = ar
+    ? `<span style="color:var(--readout)">R&D in progress:</span> ${RESEARCH.find(r=>r.id===ar.id).name} — <span class="num">${ar.monthsLeft}</span> mo left`
+    : `<span class="dim">No active research. Start a project in R&D — it runs while you fly.</span>`;
+  $('skipBtn').disabled=!ar;
+
+  if(state.tab==='bench'){renderStages();renderTransfer();renderLander();renderCrew();renderWindowPlanner();renderReadout();}
+  if(state.tab==='missions')renderMissions();
+  if(state.tab==='rnd')renderRnd();
+  if(state.tab==='map')renderMap();
+  renderLog();
+}
+
+function renderStages(){
+  const box=$('stages'); box.innerHTML='';
+  state.stages.forEach((st,i)=>{
+    const sm=stageMasses(st);
+    const opts=Object.values(ENGINES).filter(e=>state.unlocked[e.id])
+      .map(e=>`<option value="${e.id}" ${e.id===st.eng?'selected':''}>${e.name} · ${e.prop} · Isp ${e.ispVac}s</option>`).join('');
+    const div=document.createElement('div'); div.className='stage';
+    div.innerHTML=`
+      <div class="stage-head">
+        <span class="label">STAGE ${i+1}${i===0?' · booster':''}</span>
+        <button class="btn x danger" onclick="removeStage(${i})" ${state.stages.length<=1?'disabled':''}>×</button>
+      </div>
+      <div class="row"><label>Engine</label><select onchange="setEngine(${i},this.value)" style="flex:1">${opts}</select></div>
+      <div class="row"><label>Count</label>
+        <div class="stepper"><button onclick="setCount(${i},-1)">−</button><span class="val">${st.count}</span><button onclick="setCount(${i},1)">+</button></div>
+        <span class="dim" style="font-size:11px">more engines = more thrust, more failure points</span></div>
+      <div class="row"><label>Propellant</label>
+        <input type="range" min="0.1" max="800" step="1" value="${st.prop}" oninput="setProp(${i},this.value)">
+        <input type="number" min="0.1" max="1000" step="0.1" value="${st.prop.toFixed(1)}" style="width:74px" onchange="setProp(${i},this.value)"><span class="muted" style="font-size:11px">t</span></div>
+      <div class="stage-stats">
+        <span class="ss">dry <b>${sm.dry.toFixed(2)} t</b></span>
+        <span class="ss">prop <b>${st.prop.toFixed(1)} t</b></span>
+        <span class="ss">wet <b>${sm.wet.toFixed(2)} t</b></span>
+        <span class="ss">Δv <b class="num">${fI(computeVehicle().stageDv[i])} m/s</b></span>
+      </div>`;
+    box.appendChild(div);
+  });
+  $('addStage').disabled = state.stages.length>=3;
+}
+
+function renderCrew(){
+  const m=MISSIONS.find(x=>x.id===state.activeMission);
+  const card=$('crewCard');
+  if(!m.crew){ card.classList.add('hidden'); return; }
+  card.classList.remove('hidden');
+  const ls=lifeSupport(m,state.eclss);
+  const durTxt = m.days<1 ? (m.days*24).toFixed(0)+' h' : m.days+' days';
+  const tiers=Object.values(ECLSS).map(t=>{
+    const locked=t.research && !state.research[t.research];
+    const sel=state.eclss===t.id;
+    const tot=lifeSupport(m,t.id).total;
+    return `<button class="btn" style="flex:1;${sel?'border-color:var(--ignite);color:var(--ignite)':''}" onclick="setEclss('${t.id}')" ${locked?'disabled':''}>
+      ${t.name}${locked?' 🔒':''}<br><span class="dim" style="font-size:10px">${(t.recovery*100)|0}% recovery · ${tot.toFixed(2)} t</span></button>`;
+  }).join('');
+  card.innerHTML=`<h2>Crew &amp; Life Support</h2>
+    <div class="sub" style="margin-bottom:10px">${m.crew} crew · ${durTxt} aloft. Everything that keeps them alive is payload you have to lift.</div>
+    <div class="row" style="gap:6px;align-items:stretch">${tiers}</div>
+    <div class="metrics" style="margin-top:12px">
+      <div class="metric"><div class="k">Capsule + crew</div><div class="v">${ls.capsule.toFixed(2)} t</div></div>
+      <div class="metric"><div class="k">ECLSS system</div><div class="v">${ls.system.toFixed(2)} t</div></div>
+      <div class="metric"><div class="k">Consumables</div><div class="v">${ls.consumables.toFixed(2)} t</div></div>
+      <div class="metric"><div class="k">Life-support payload</div><div class="v" style="color:var(--ignite)">${ls.total.toFixed(2)} t</div></div>
+    </div>
+    <div class="eq">consumables = ${m.crew} crew × ${m.days} d × 5 kg × (1 − ${(ls.recovery*100)|0}% recovery) = ${(ls.consumables*1000).toFixed(0)} kg<br>
+      ${state.research.launch_escape?'<span style="color:var(--ok)">abort tower fitted — crew survive a launch failure</span>':'<span style="color:var(--bad)">no escape system — a launch failure means loss of crew</span>'}</div>`;
+}
+
+function renderTransfer(){
+  const m=MISSIONS.find(x=>x.id===state.activeMission);
+  const card=$('transferCard');
+  if(!(m.profile && m.modules.includes('transfer'))){ card.classList.add('hidden'); return; }
+  card.classList.remove('hidden');
+  const opts=moduleOptions(state.transfer.eng);
+  const dry=inSpaceDry(state.transfer), wet=inSpaceWet(state.transfer);
+  card.innerHTML=`<h2>Transfer Stage — in-space propulsion</h2>
+    <div class="sub" style="margin-bottom:8px">A separate vehicle, lit in vacuum. One tank must cover every deep-space burn while carrying the crew module.</div>
+    <div class="row"><label>Engine</label><select onchange="setTransferEng(this.value)" style="flex:1">${opts}</select></div>
+    <div class="row"><label>Propellant</label>
+      <input type="range" min="0.1" max="90" step="0.5" value="${state.transfer.prop}" oninput="setTransferProp(this.value)">
+      <input type="number" min="0.1" max="120" step="0.1" value="${state.transfer.prop.toFixed(1)}" style="width:74px" onchange="setTransferProp(this.value)"><span class="muted" style="font-size:11px">t</span></div>
+    <div class="stage-stats">
+      <span class="ss">dry <b>${dry.toFixed(2)} t</b></span>
+      <span class="ss">prop <b>${state.transfer.prop.toFixed(1)} t</b></span>
+      <span class="ss">wet <b>${wet.toFixed(2)} t</b></span>
+    </div>`;
+}
+
+function moduleOptions(sel){
+  return Object.values(ENGINES).filter(e=>state.unlocked[e.id])
+    .map(e=>`<option value="${e.id}" ${e.id===sel?'selected':''}>${e.name} · Isp ${e.ispVac}s vac</option>`).join('');
+}
+function renderLander(){
+  const m=MISSIONS.find(x=>x.id===state.activeMission);
+  const card=$('landerCard');
+  if(!(m.profile && m.modules.includes('lander'))){ card.classList.add('hidden'); return; }
+  card.classList.remove('hidden');
+  const d=state.descent, a=state.ascent;
+  const dDry=inSpaceDry(d), dWet=inSpaceWet(d), aDry=inSpaceDry(a), aWet=inSpaceWet(a);
+  card.innerHTML=`<h2>Lunar Lander — two stages, Apollo LM model</h2>
+    <div class="sub" style="margin-bottom:8px">The descent stage carries everything down and is left on the surface. The ascent stage carries the crew back up on its own, separate tank.</div>
+    <div class="stage-head"><span class="label">DESCENT STAGE</span></div>
+    <div class="row"><label>Engine</label><select onchange="setDescentEng(this.value)" style="flex:1">${moduleOptions(d.eng)}</select></div>
+    <div class="row"><label>Propellant</label>
+      <input type="range" min="0.1" max="50" step="0.5" value="${d.prop}" oninput="setDescentProp(this.value)">
+      <input type="number" min="0.1" max="60" step="0.1" value="${d.prop.toFixed(1)}" style="width:74px" onchange="setDescentProp(this.value)"><span class="muted" style="font-size:11px">t</span></div>
+    <div class="stage-stats"><span class="ss">dry <b>${dDry.toFixed(2)} t</b></span><span class="ss">prop <b>${d.prop.toFixed(1)} t</b></span><span class="ss">wet <b>${dWet.toFixed(2)} t</b></span></div>
+
+    <div class="stage-head" style="margin-top:12px"><span class="label">ASCENT STAGE</span></div>
+    <div class="row"><label>Engine</label><select onchange="setAscentEng(this.value)" style="flex:1">${moduleOptions(a.eng)}</select></div>
+    <div class="row"><label>Propellant</label>
+      <input type="range" min="0.1" max="30" step="0.25" value="${a.prop}" oninput="setAscentProp(this.value)">
+      <input type="number" min="0.1" max="40" step="0.1" value="${a.prop.toFixed(1)}" style="width:74px" onchange="setAscentProp(this.value)"><span class="muted" style="font-size:11px">t</span></div>
+    <div class="stage-stats"><span class="ss">dry <b>${aDry.toFixed(2)} t</b></span><span class="ss">prop <b>${a.prop.toFixed(1)} t</b></span><span class="ss">wet <b>${aWet.toFixed(2)} t</b></span></div>
+    <div class="eq" style="margin-top:10px">Lander to LEO = descent (${dWet.toFixed(2)} t) + ascent (${aWet.toFixed(2)} t) = ${(dWet+aWet).toFixed(2)} t — all of it lifted from Earth, carried to lunar orbit, and lowered to the surface before any of it does useful work.</div>`;
+}
+
+function renderWindowPlanner(){
+  const m=MISSIONS.find(x=>x.id===state.activeMission);
+  const card=$('windowCard');
+  if(!m.window){ card.classList.add('hidden'); return; }
+  card.classList.remove('hidden');
+  const wins=windowsFor(m.id), now=absMonth();
+  const cw=state.committedWindow&&state.committedWindow.missionId===m.id?state.committedWindow:null;
+  const rows=wins.map((w,i)=>{
+    const monthsAway=w.abs-now;
+    const passed=monthsAway<0;
+    const qLabel = w.quality>1.08?'Favorable':(w.quality<0.95?'Marginal':'Average');
+    const qColor = w.quality>1.08?'var(--ok)':(w.quality<0.95?'var(--warn)':'var(--muted)');
+    const isCommitted=cw && cw.abs===w.abs;
+    let btn;
+    if(passed) btn=`<button class="btn" disabled>Closed</button>`;
+    else if(isCommitted) btn=`<button class="btn" style="border-color:var(--ignite);color:var(--ignite)" onclick="cancelWindow()">Committed — cancel</button>`;
+    else if(cw) btn=`<button class="btn" disabled>—</button>`;
+    else btn=`<button class="btn" onclick="commitWindow('${m.id}',${i})">Commit</button>`;
+    return `<div class="item" style="${passed?'opacity:.45':''}">
+      <div class="body">
+        <div class="title">${monthToDate(w.abs)} <span class="pill" style="color:${qColor};border-color:#3a3a3a">${qLabel} geometry</span></div>
+        <div class="sub">${monthsAway>=0?monthsAway+' months away':'window has closed'} · payout ×${w.quality.toFixed(2)}</div>
+      </div>
+      ${btn}</div>`;
+  }).join('');
+  card.innerHTML=`<h2>Launch Window Planner — Earth/Mars synodic cycle</h2>
+    <div class="sub" style="margin-bottom:8px">Transfer windows open roughly every 26 months. Commit to one, then build and test before it closes — being late means waiting for the next.</div>
+    ${rows}`;
+}
+
+function renderReadout(){
+  const m=MISSIONS.find(x=>x.id===state.activeMission);
+  if(m.profile){ renderProfileReadout(m); return; }
+  const v=computeVehicle();
+  const pct=Math.min(100, v.totalDv/m.reqDv*100);
+  const meets=v.totalDv>=m.reqDv;
+  const fillColor=meets?'var(--ok)':(pct>70?'var(--warn)':'var(--bad)');
+  const markerPos=Math.min(100,(m.reqDv/Math.max(v.totalDv,m.reqDv))*100);
+  const chk=canLaunch(v,m);
+  const e0=v.sm[0].eng;
+  const ispEff=((e0.ispSL+e0.ispVac)/2).toFixed(0);
+
+  let flags='';
+  if(!meets) flags+=`<div class="flag bad">▲ Δv short by ${fI(m.reqDv-v.totalDv)} m/s.</div>`;
+  if(v.twr<=1.0) flags+=`<div class="flag bad">▲ TWR ${v.twr.toFixed(2)} — won't lift off.</div>`;
+  else if(v.twr<1.2) flags+=`<div class="flag warn">△ TWR ${v.twr.toFixed(2)} is low; heavy gravity losses (add engines or cut mass).</div>`;
+  if(meets && v.twr>1.2) flags+=`<div class="flag ok">✓ Cleared to fly. Reliability ${(v.reliability*100|0)}%.</div>`;
+  if(v.crewed && v.twr>1.2 && meets && !state.research.launch_escape) flags+=`<div class="flag warn">△ No escape system — a failure at ${(100-(v.reliability*100|0))}% odds loses the crew.</div>`;
+
+  const testBtns=TEST_LEVELS.map((t,i)=>`<button class="btn" style="flex:1;font-size:11px;${state.testLevel===i?'border-color:var(--readout);color:var(--readout)':''}" onclick="setTestLevel(${i})">${t.name}${t.rel>0?` +${(t.rel*100)|0}%`:''}${t.cost>0?`<br><span class="dim" style="font-size:10px">${fM(t.cost)} · ${t.months} mo</span>`:''}</button>`).join('');
+
+  $('readoutCard').innerHTML=`
+    <div class="mission-tag">Flying against</div>
+    <div class="mission-name">${m.name} ${m.crew?`<span class="pill" style="color:var(--ignite);border-color:#5a4419">${m.crew} crew · ${m.days<1?(m.days*24).toFixed(0)+'h':m.days+'d'}</span>`:''} ${state.completed[m.id]?'<span class="pill ok">routine</span>':''}</div>
+
+    <div class="gauge">
+      <div class="nums"><span class="achieved" style="color:${meets?'var(--ok)':'var(--ink)'}">${fI(v.totalDv)}<span style="font-size:12px;color:var(--muted)"> m/s Δv</span></span>
+        <span class="req">req ${fI(m.reqDv)}</span></div>
+      <div class="bar"><div class="fill" style="width:${pct}%;background:${fillColor}"></div><div class="marker" style="left:${markerPos}%"></div></div>
+    </div>
+
+    <div class="metrics">
+      <div class="metric"><div class="k">Liftoff TWR</div><div class="v" style="color:${v.twr>1.2?'var(--ink)':(v.twr>1?'var(--warn)':'var(--bad)')}">${v.twr.toFixed(2)}</div></div>
+      <div class="metric"><div class="k">Reliability</div><div class="v">${(v.reliability*100|0)}%</div></div>
+      <div class="metric"><div class="k">Liftoff mass</div><div class="v">${v.liftoff.toFixed(1)} t</div></div>
+      <div class="metric"><div class="k">Payload</div><div class="v">${v.payload>=1?v.payload.toFixed(2)+' t':(v.payload*1000).toFixed(0)+' kg'}</div></div>
+      <div class="metric"><div class="k">Build cost</div><div class="v">${fM(v.buildCost)}</div></div>
+      <div class="metric"><div class="k">Launch cost</div><div class="v">${fM(v.launchCost)}</div></div>
+    </div>
+
+    <div class="eq">Δv = Isp · g₀ · ln(m₀/m_f)<br>
+      stage 1: ${ispEff} · 9.81 · ln(${v.liftoff.toFixed(1)}/${(v.liftoff-state.stages[0].prop).toFixed(1)}) = ${fI(v.stageDv[0])} m/s<br>
+      σ ${curSigma()} · ${v.totalEng} engine${v.totalEng>1?'s':''} · ${state.stages.length} stage${state.stages.length>1?'s':''}</div>
+
+    <div class="mission-tag" style="margin-top:6px">Test campaign — buy down risk before you fly</div>
+    <div class="row" style="gap:6px;align-items:stretch;margin:6px 0 4px">${testBtns}</div>
+
+    ${flags}
+    <button class="launch" onclick="launch()" ${chk.ok?'':'disabled'}>${chk.ok?(v.crewed?'■ Build & Launch (crewed)':'■ Build & Launch'):'Launch unavailable'}</button>
+    ${chk.ok?'':`<div class="flag dim" style="color:var(--dim)">${chk.why}</div>`}`;
+}
+
+function renderProfileReadout(m){
+  const v=computeVehicle();
+  const sim=simulateMission(m);
+  const chk=canLaunch(v,m,sim);
+  const rel=Math.max(0.30, v.reliability*Math.pow(0.985, sim.inSpaceLegs));
+  const fails=sim.legs.filter(l=>!l.pass).length;
+  const legRows=sim.legs.map(l=>{
+    const VEHICLE_LABEL={transfer:'transfer stage',descent:'descent stage',ascent:'ascent stage'};
+    const detail = l.by==='lv'
+      ? `LV lofts ${l.mass.toFixed(1)} t · capacity ${fI(l.cap)} m/s${l.twr?` · TWR ${l.twr.toFixed(2)}`:''}`
+      : `${VEHICLE_LABEL[l.by]||l.by} pushes ${l.mass.toFixed(1)} t · tank gives ${fI(l.cap)} m/s`;
+    return `<div class="leg ${l.pass?'':'bad'}">
+      <span class="legname" style="color:${l.pass?'var(--ok)':'var(--bad)'}">${l.pass?'✓':'✕'} ${l.name}</span>
+      <span class="legdv">${fI(l.dv)} m/s</span>
+      <span class="legdetail">${detail}</span></div>`;
+  }).join('');
+  const testBtns=TEST_LEVELS.map((t,i)=>`<button class="btn" style="flex:1;font-size:11px;${state.testLevel===i?'border-color:var(--readout);color:var(--readout)':''}" onclick="setTestLevel(${i})">${t.name}${t.rel>0?` +${(t.rel*100)|0}%`:''}${t.cost>0?`<br><span class="dim" style="font-size:10px">${fM(t.cost)} · ${t.months} mo</span>`:''}</button>`).join('');
+
+  let flags='';
+  if(fails) flags+=`<div class="flag bad">▲ ${fails} leg${fails>1?'s':''} short — fix the red rows above.</div>`;
+  else flags+=`<div class="flag ok">✓ Every leg passes. Mission reliability ${(rel*100|0)}%.</div>`;
+  if(!state.research.launch_escape) flags+=`<div class="flag warn">△ No escape system — a failure at ${(100-(rel*100|0))}% odds loses the crew.</div>`;
+
+  $('readoutCard').innerHTML=`
+    <div class="mission-tag">Mission profile — every leg must pass</div>
+    <div class="mission-name">${m.name} <span class="pill" style="color:var(--ignite);border-color:#5a4419">${m.crew} crew · ${m.days}d</span> ${state.completed[m.id]?'<span class="pill ok">routine</span>':''}</div>
+
+    <div class="legs">${legRows}</div>
+
+    <div class="metrics">
+      <div class="metric"><div class="k">Mission reliability</div><div class="v">${(rel*100|0)}%</div></div>
+      <div class="metric"><div class="k">Crew module</div><div class="v">${sim.crewMass.toFixed(2)} t</div></div>
+      <div class="metric"><div class="k">LV liftoff mass</div><div class="v">${v.liftoff.toFixed(1)} t</div></div>
+      <div class="metric"><div class="k">To LEO</div><div class="v">${v.payload.toFixed(2)} t</div></div>
+      <div class="metric"><div class="k">Build cost</div><div class="v">${fM(v.buildCost)}</div></div>
+      <div class="metric"><div class="k">Launch cost</div><div class="v">${fM(v.launchCost)}</div></div>
+    </div>
+
+    <div class="eq">The launch vehicle lofts the whole stack (${v.payload.toFixed(1)} t) to LEO; the transfer stage then spends one tank across ${sim.inSpaceLegs} deep-space burn${sim.inSpaceLegs>1?'s':''}, lighter after each — yet every burn still hauls everything still attached.${m.modules.includes('lander')?' The descent stage is dropped on the surface after landing; the ascent stage returns alone to meet the transfer stage.':''}</div>
+
+    <div class="mission-tag" style="margin-top:6px">Test campaign — buy down risk before you fly</div>
+    <div class="row" style="gap:6px;align-items:stretch;margin:6px 0 4px">${testBtns}</div>
+
+    ${flags}
+    <button class="launch" onclick="launch()" ${chk.ok?'':'disabled'}>${chk.ok?'■ Build & Launch mission':'Launch unavailable'}</button>
+    ${chk.ok?'':`<div class="flag dim" style="color:var(--dim)">${chk.why}</div>`}`;
+}
+
+/* ---------- Solar System map ---------- */
+/* ---------- planet/moon SVG textures (self-contained, no external images) ---------- */
+let _texSeq=0;
+function bodyTexture(id, cx, cy, r){
+  const uid='tex'+id+(_texSeq++);
+  switch(id){
+    case 'earth': return `
+      <defs><radialGradient id="${uid}" cx="35%" cy="32%" r="75%">
+        <stop offset="0%" stop-color="#6fb3ef"/><stop offset="45%" stop-color="#2f6fb0"/><stop offset="100%" stop-color="#0e2c4a"/>
+      </radialGradient><clipPath id="${uid}c"><circle cx="${cx}" cy="${cy}" r="${r}"/></clipPath></defs>
+      <circle cx="${cx}" cy="${cy}" r="${r}" fill="url(#${uid})"/>
+      <g clip-path="url(#${uid}c)" opacity="0.85" fill="#5fae62">
+        <ellipse cx="${cx-r*0.35}" cy="${cy-r*0.25}" rx="${r*0.42}" ry="${r*0.28}"/>
+        <ellipse cx="${cx+r*0.4}" cy="${cy+r*0.3}" rx="${r*0.3}" ry="${r*0.22}"/>
+        <ellipse cx="${cx+r*0.05}" cy="${cy-r*0.5}" rx="${r*0.22}" ry="${r*0.14}"/>
+      </g>
+      <g clip-path="url(#${uid}c)" opacity="0.5" fill="#fff">
+        <ellipse cx="${cx-r*0.1}" cy="${cy+r*0.15}" rx="${r*0.5}" ry="${r*0.12}"/>
+        <ellipse cx="${cx+r*0.3}" cy="${cy-r*0.4}" rx="${r*0.3}" ry="${r*0.1}"/>
+      </g>
+      <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="rgba(150,200,255,0.35)" stroke-width="${Math.max(1,r*0.06)}"/>`;
+    case 'moon': return `
+      <defs><radialGradient id="${uid}" cx="38%" cy="35%" r="75%">
+        <stop offset="0%" stop-color="#e4e6e8"/><stop offset="55%" stop-color="#aab0b5"/><stop offset="100%" stop-color="#6c7378"/>
+      </radialGradient><clipPath id="${uid}c"><circle cx="${cx}" cy="${cy}" r="${r}"/></clipPath></defs>
+      <circle cx="${cx}" cy="${cy}" r="${r}" fill="url(#${uid})"/>
+      <g clip-path="url(#${uid}c)" opacity="0.35" fill="#7d8388">
+        <circle cx="${cx-r*0.3}" cy="${cy-r*0.2}" r="${r*0.22}"/>
+        <circle cx="${cx+r*0.25}" cy="${cy+r*0.1}" r="${r*0.16}"/>
+        <circle cx="${cx+r*0.05}" cy="${cy-r*0.45}" r="${r*0.12}"/>
+        <circle cx="${cx-r*0.45}" cy="${cy+r*0.35}" r="${r*0.1}"/>
+      </g>`;
+    case 'venus': return `
+      <defs><radialGradient id="${uid}" cx="35%" cy="32%" r="75%">
+        <stop offset="0%" stop-color="#f7e3a8"/><stop offset="50%" stop-color="#d8b56a"/><stop offset="100%" stop-color="#8a6a30"/>
+      </radialGradient><clipPath id="${uid}c"><circle cx="${cx}" cy="${cy}" r="${r}"/></clipPath></defs>
+      <circle cx="${cx}" cy="${cy}" r="${r}" fill="url(#${uid})"/>
+      <g clip-path="url(#${uid}c)" opacity="0.4" fill="#fff8e0">
+        <ellipse cx="${cx-r*0.2}" cy="${cy-r*0.3}" rx="${r*0.6}" ry="${r*0.12}"/>
+        <ellipse cx="${cx+r*0.1}" cy="${cy+r*0.1}" rx="${r*0.55}" ry="${r*0.1}"/>
+        <ellipse cx="${cx-r*0.05}" cy="${cy+r*0.4}" rx="${r*0.5}" ry="${r*0.09}"/>
+      </g>`;
+    case 'mars': return `
+      <defs><radialGradient id="${uid}" cx="35%" cy="32%" r="75%">
+        <stop offset="0%" stop-color="#e8865a"/><stop offset="55%" stop-color="#bb5530"/><stop offset="100%" stop-color="#6e2f18"/>
+      </radialGradient><clipPath id="${uid}c"><circle cx="${cx}" cy="${cy}" r="${r}"/></clipPath></defs>
+      <circle cx="${cx}" cy="${cy}" r="${r}" fill="url(#${uid})"/>
+      <g clip-path="url(#${uid}c)" opacity="0.4" fill="#7a3a20">
+        <ellipse cx="${cx-r*0.2}" cy="${cy+r*0.15}" rx="${r*0.4}" ry="${r*0.2}"/>
+        <ellipse cx="${cx+r*0.3}" cy="${cy-r*0.1}" rx="${r*0.25}" ry="${r*0.15}"/>
+      </g>
+      <g clip-path="url(#${uid}c)" fill="#fff" opacity="0.85">
+        <circle cx="${cx}" cy="${cy-r*0.82}" r="${r*0.24}"/>
+        <circle cx="${cx+r*0.05}" cy="${cy+r*0.85}" r="${r*0.18}"/>
+      </g>`;
+    case 'phobos': return `
+      <defs><radialGradient id="${uid}" cx="38%" cy="35%" r="75%">
+        <stop offset="0%" stop-color="#a89e92"/><stop offset="55%" stop-color="#7d7468"/><stop offset="100%" stop-color="#4a423a"/>
+      </radialGradient></defs>
+      <path d="M ${cx-r} ${cy} q ${r*0.1} -${r*1.05} ${r*1.05} -${r*0.95} q ${r*0.95} ${r*0.15} ${r*0.95} ${r*1.0}
+               q -${r*0.1} ${r*1.0} -${r*1.0} ${r*0.95} q -${r*0.95} -${r*0.1} -${r*1.0} -${r*1.0} Z"
+        fill="url(#${uid})"/>
+      <circle cx="${cx-r*0.25}" cy="${cy-r*0.2}" r="${r*0.2}" fill="#3a332c" opacity="0.5"/>
+      <circle cx="${cx+r*0.3}" cy="${cy+r*0.15}" r="${r*0.14}" fill="#3a332c" opacity="0.5"/>`;
+    case 'belt': return `
+      <defs><radialGradient id="${uid}" cx="40%" cy="40%" r="70%">
+        <stop offset="0%" stop-color="#c4c0b8"/><stop offset="100%" stop-color="#7a766e"/>
+      </radialGradient></defs>
+      <circle cx="${cx}" cy="${cy}" r="${r}" fill="url(#${uid})"/>`;
+    case 'jupiter': return `
+      <defs><radialGradient id="${uid}" cx="35%" cy="32%" r="75%">
+        <stop offset="0%" stop-color="#f3d9b1"/><stop offset="55%" stop-color="#d9a572"/><stop offset="100%" stop-color="#8a5c34"/>
+      </radialGradient><clipPath id="${uid}c"><circle cx="${cx}" cy="${cy}" r="${r}"/></clipPath></defs>
+      <circle cx="${cx}" cy="${cy}" r="${r}" fill="url(#${uid})"/>
+      <g clip-path="url(#${uid}c)">
+        <rect x="${cx-r}" y="${cy-r*0.7}" width="${r*2}" height="${r*0.22}" fill="#c98f55" opacity="0.6"/>
+        <rect x="${cx-r}" y="${cy-r*0.2}" width="${r*2}" height="${r*0.3}" fill="#b87a45" opacity="0.55"/>
+        <rect x="${cx-r}" y="${cy+r*0.25}" width="${r*2}" height="${r*0.18}" fill="#c98f55" opacity="0.5"/>
+        <ellipse cx="${cx+r*0.35}" cy="${cy+r*0.05}" rx="${r*0.22}" ry="${r*0.14}" fill="#a8552f" opacity="0.7"/>
+      </g>`;
+    default: return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="#9aa0a6"/>`;
+  }
+}
+
+function selectBody(id){
+  state.selectedBody=id;
+  if(!state.mapZoom) state.mapZoom=id; // first click zooms in
+  render();
+}
+function zoomOut(){ state.mapZoom=null; render(); }
+function renderMap(){
+  const W=720,H=460;
+  let svg;
+  if(!state.mapZoom){ svg=renderMapOverview(W,H); }
+  else { svg=renderMapZoom(W,H,state.mapZoom); }
+  $('mapCanvas').innerHTML=svg;
+  renderBodyCard();
+}
+function renderMapOverview(W,H){
+  const cx=W*0.30,cy=H*0.62;
+  const planets=BODIES.filter(b=>!b.around);
+  let svg=`<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;background:#04060a;border:1px solid var(--line);border-radius:8px">`;
+  planets.forEach(b=>{
+    svg+=`<circle cx="${cx}" cy="${cy}" r="${b.r}" fill="none" stroke="rgba(125,144,155,0.25)" stroke-width="1" stroke-dasharray="${b.kind==='belt'?'2,3':'3,4'}"/>`;
+  });
+  svg+=`<circle cx="${cx}" cy="${cy}" r="9" fill="#f5c542"/><circle cx="${cx}" cy="${cy}" r="14" fill="none" stroke="rgba(245,197,66,0.3)" stroke-width="6"/>`;
+  planets.forEach(b=>{
+    const ang = ANGLES[b.id]!==undefined?ANGLES[b.id]:0;
+    const px=cx+Math.cos(ang)*b.r, py=cy+Math.sin(ang)*b.r;
+    const sel=state.selectedBody===b.id;
+    const rad = b.kind==='belt'?4:8;
+    if(b.kind==='belt'){
+      for(let i=0;i<14;i++){ const a=ang+i*0.45, bx=cx+Math.cos(a)*b.r, by=cy+Math.sin(a)*b.r;
+        svg+=`<circle cx="${bx}" cy="${by}" r="1.6" fill="${b.color}" opacity="0.5"/>`; }
+    }
+    svg+=`<g style="cursor:pointer" onclick="selectBody('${b.id}')">
+      <circle cx="${px}" cy="${py}" r="${rad+8}" fill="transparent"/>
+      ${bodyTexture(b.id,px,py,rad)}
+      ${sel?`<circle cx="${px}" cy="${py}" r="${rad+1.5}" fill="none" stroke="#f5a623" stroke-width="1.5"/>`:''}
+      <text x="${px}" y="${py-rad-6}" fill="${sel?'#f5a623':'#9aa7af'}" font-size="11" font-family="ui-monospace,monospace" text-anchor="middle">${b.name}</text>
+    </g>`;
+    BODIES.filter(m=>m.around===b.id).forEach(m=>{
+      const mAng=(ANGLES[m.id]!==undefined?ANGLES[m.id]:0);
+      const mr=rad+10;
+      const mx=px+Math.cos(mAng)*mr, my=py+Math.sin(mAng)*mr;
+      const msel=state.selectedBody===m.id;
+      svg+=`<circle cx="${px}" cy="${py}" r="${mr}" fill="none" stroke="rgba(125,144,155,0.2)" stroke-width="1"/>
+        <g style="cursor:pointer" onclick="selectBody('${m.id}')">
+          <circle cx="${mx}" cy="${my}" r="11" fill="transparent"/>
+          ${bodyTexture(m.id,mx,my,4.5)}
+          ${msel?`<circle cx="${mx}" cy="${my}" r="6" fill="none" stroke="#f5a623" stroke-width="1.5"/>`:''}
+          <text x="${mx}" y="${my-9}" fill="${msel?'#f5a623':'#7d909b'}" font-size="9" font-family="ui-monospace,monospace" text-anchor="middle">${m.name}</text>
+        </g>`;
+    });
+  });
+  svg+=`<text x="14" y="20" fill="#56666f" font-size="11" font-family="ui-monospace,monospace">Click a body to zoom in</text>`;
+  svg+=`</svg>`;
+  return svg;
+}
+function renderMapZoom(W,H,id){
+  const b=BODIES.find(x=>x.id===id);
+  const parent=b.around?BODIES.find(x=>x.id===b.around):null;
+  const cx=W/2, cy=H/2;
+  let svg=`<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;background:#04060a;border:1px solid var(--line);border-radius:8px">`;
+  // sun direction indicator (everything orbits sunward toward overview center)
+  svg+=`<g opacity="0.5"><circle cx="34" cy="${H-34}" r="7" fill="#f5c542"/><text x="50" y="${H-30}" fill="#7d909b" font-size="10" font-family="ui-monospace,monospace">toward Sun</text></g>`;
+
+  if(parent){
+    // zoomed on a moon: show parent planet large-ish off-center, moon prominent, orbit path
+    const pRad=34, pX=cx-130, pY=cy;
+    const mRad=22, mOrbit=150;
+    const mAng=(ANGLES[b.id]!==undefined?ANGLES[b.id]:0);
+    const mX=pX+Math.cos(mAng)*0+mOrbit, mY=cy; // place moon to the right along its orbit
+    svg+=`<circle cx="${pX}" cy="${pY}" r="${mOrbit}" fill="none" stroke="rgba(125,144,155,0.25)" stroke-width="1" stroke-dasharray="3,4"/>`;
+    svg+=`<g style="cursor:pointer" onclick="selectBody('${parent.id}')">
+      ${bodyTexture(parent.id,pX,pY,pRad)}
+      <text x="${pX}" y="${pY+pRad+16}" fill="#9aa7af" font-size="12" font-family="ui-monospace,monospace" text-anchor="middle">${parent.name}</text>
+    </g>`;
+    svg+=`<g onclick="selectBody('${b.id}')" style="cursor:pointer">
+      ${bodyTexture(b.id,mX,mY,mRad)}
+      <circle cx="${mX}" cy="${mY}" r="${mRad+1.5}" fill="none" stroke="#f5a623" stroke-width="2"/>
+      <text x="${mX}" y="${mY-mRad-10}" fill="#f5a623" font-size="13" font-family="ui-monospace,monospace" text-anchor="middle">${b.name}</text>
+    </g>`;
+  } else {
+    // zoomed on a planet/belt: show it large and centered, plus any moons around it
+    const rad = b.kind==='belt'?40:46;
+    if(b.kind==='belt'){
+      for(let i=0;i<22;i++){ const a=i*0.29, rr=rad+ (i%3)*10, bx=cx+Math.cos(a)*rr, by=cy+Math.sin(a)*rr;
+        svg+=`<circle cx="${bx}" cy="${by}" r="2.4" fill="${b.color}" opacity="0.6"/>`; }
+      svg+=`<text x="${cx}" y="${cy-rad-26}" fill="#f5a623" font-size="14" font-family="ui-monospace,monospace" text-anchor="middle">${b.name}</text>`;
+    } else {
+      svg+=`${bodyTexture(b.id,cx,cy,rad)}
+        <circle cx="${cx}" cy="${cy}" r="${rad+1.5}" fill="none" stroke="#f5a623" stroke-width="2.5"/>
+        <text x="${cx}" y="${cy-rad-14}" fill="#f5a623" font-size="14" font-family="ui-monospace,monospace" text-anchor="middle">${b.name}</text>`;
+    }
+    const moons=BODIES.filter(m=>m.around===b.id);
+    moons.forEach((m,i)=>{
+      const mOrbit=rad+60+i*40, mAng=(ANGLES[m.id]!==undefined?ANGLES[m.id]:0);
+      const mx=cx+Math.cos(mAng)*mOrbit, my=cy+Math.sin(mAng)*mOrbit, mRad=14;
+      const msel=state.selectedBody===m.id;
+      svg+=`<circle cx="${cx}" cy="${cy}" r="${mOrbit}" fill="none" stroke="rgba(125,144,155,0.2)" stroke-width="1" stroke-dasharray="3,4"/>
+        <g style="cursor:pointer" onclick="selectBody('${m.id}')">
+          ${bodyTexture(m.id,mx,my,mRad)}
+          ${msel?`<circle cx="${mx}" cy="${my}" r="${mRad+1.5}" fill="none" stroke="#f5a623" stroke-width="2"/>`:''}
+          <text x="${mx}" y="${my-mRad-8}" fill="${msel?'#f5a623':'#9aa7af'}" font-size="11" font-family="ui-monospace,monospace" text-anchor="middle">${m.name}</text>
+        </g>`;
+    });
+  }
+  svg+=`</svg>`;
+  return svg;
+}
+function renderBodyCard(){
+  const b=BODIES.find(x=>x.id===state.selectedBody)||BODIES[0];
+  let cum=0;
+  const rows=b.legs.map(leg=>{
+    cum+=leg.dv;
+    return `<div class="leg">
+      <span class="legname">${leg.label}</span>
+      <span class="legdv">${fI(leg.dv)} m/s</span>
+      ${leg.note?`<span class="legdetail">${leg.note}</span>`:''}
+    </div>`;
+  }).join('');
+  const backBtn = state.mapZoom ? `<button class="btn ghost" onclick="zoomOut()" style="margin-bottom:10px">← Overview</button>` : '';
+  const missionRows=(b.missions||[]).map(mid=>{
+    const m=MISSIONS.find(x=>x.id===mid); if(!m) return '';
+    const repOk=state.rep>=m.minRep, resOk=!m.reqResearch||state.research[m.reqResearch];
+    const winOk=!m.window||true; // window availability shown on the bench itself
+    const avail=repOk&&resOk;
+    const done=state.completed[mid];
+    const pill=done?'<span class="pill ok">done</span>':avail?'<span class="pill">available</span>':'<span class="pill lock">locked</span>';
+    return `<div class="item">
+      <div class="body"><div class="title">${m.name} ${pill}</div><div class="sub">${m.crew?`${m.crew} crew · ${m.days}d`:`req Δv ${fI(m.reqDv)} m/s`}</div></div>
+      <button class="btn" onclick="flyTo('${mid}')" ${avail?'':'disabled'}>${avail?'Fly this':'Locked'}</button>
+    </div>`;
+  }).join('');
+  const missionsBlock = (b.missions&&b.missions.length)
+    ? `<div class="mission-tag" style="margin-top:12px">Missions to ${b.name}</div><div style="margin-top:6px">${missionRows}</div>`
+    : `<div class="mission-tag" style="margin-top:12px">Missions to ${b.name}</div><div class="dim" style="font-size:12px;margin-top:4px">No missions to this body yet — a future milestone.</div>`;
+  $('bodyCard').innerHTML=`
+    ${backBtn}
+    <div class="mission-tag">Δv profile from Earth's surface</div>
+    <div class="mission-name">${b.name}</div>
+    <div class="sub" style="margin:6px 0 12px">${b.note}</div>
+    <div class="legs">${rows}</div>
+    <div class="metrics" style="margin-top:10px">
+      <div class="metric"><div class="k">Cumulative to final leg</div><div class="v" style="color:var(--ignite)">${fI(cum)} m/s</div></div>
+      <div class="metric"><div class="k">Legs</div><div class="v">${b.legs.length}</div></div>
+    </div>
+    <div class="eq">Each leg is a separate burn — a separate mass ratio. The cumulative figure is <em>not</em> a single Δv requirement; it's the sum of every burn a full round-trip architecture must budget for, in sequence, exactly like the mission profiles on the bench.</div>
+    ${missionsBlock}`;
+}
+function flyTo(missionId){
+  const m=MISSIONS.find(x=>x.id===missionId);
+  if(state.rep<m.minRep) return;
+  if(m.reqResearch && !state.research[m.reqResearch]) return;
+  state.activeMission=missionId;
+  state.tab='bench';
+  render();
+}
+
+function renderMissions(){
+  const box=$('missionList'); box.innerHTML='';
+  MISSIONS.forEach(m=>{
+    const done=state.completed[m.id];
+    const repOk=state.rep>=m.minRep;
+    const resOk=!m.reqResearch||state.research[m.reqResearch];
+    const avail=repOk&&resOk;
+    const active=state.activeMission===m.id;
+    let pill = active?'<span class="pill active">selected</span>'
+            : done?'<span class="pill ok">done</span>'
+            : !resOk?`<span class="pill lock">needs Crew Capsule</span>`
+            : !repOk?`<span class="pill lock">needs ${m.minRep} rep</span>`
+            : '<span class="pill">open</span>';
+    const detail = m.crew
+      ? `required Δv ${fI(m.reqDv)} m/s · ${m.crew} crew · ${m.days<1?(m.days*24).toFixed(0)+' h':m.days+' days'}`
+      : `required Δv ${fI(m.reqDv)} m/s · payload ${(m.payload*1000).toFixed(0)} kg`;
+    const div=document.createElement('div'); div.className='item';
+    div.innerHTML=`
+      <div class="body">
+        <div class="title">${m.name} ${pill}</div>
+        <div class="sub">${m.blurb}</div>
+        <div class="sub num" style="margin-top:4px;color:var(--readout)">${detail}</div>
+      </div>
+      <div class="reward"><div class="p">+${fM(done?m.payout*0.4:m.payout)}</div><div class="r">+${done?2:m.rep} rep</div></div>
+      <button class="btn" onclick="selectMission('${m.id}')" ${avail?'':'disabled'}>${active?'Selected':'Select'}</button>`;
+    box.appendChild(div);
+  });
+}
+
+function renderRnd(){
+  const box=$('rndList'); box.innerHTML='';
+  const busy=!!state.activeResearch;
+  RESEARCH.forEach(r=>{
+    const owned=state.research[r.id];
+    const active=busy && state.activeResearch.id===r.id;
+    const reqOk=r.req.every(q=>state.research[q]);
+    const afford=state.money>=r.cost;
+    const reqNames=r.req.map(q=>RESEARCH.find(x=>x.id===q).name).join(', ');
+    let btn;
+    if(owned) btn=`<button class="btn" disabled>Done</button>`;
+    else if(active) btn=`<button class="btn" disabled>${state.activeResearch.monthsLeft} mo left</button>`;
+    else btn=`<button class="btn" onclick="buyResearch('${r.id}')" ${(!reqOk||!afford||busy)?'disabled':''}>Research</button>`;
+    const tag = owned?'<span class="pill ok">researched</span>':active?'<span class="pill active">in progress</span>':'';
+    const div=document.createElement('div'); div.className='item';
+    div.innerHTML=`
+      <div class="body">
+        <div class="title">${r.name} ${tag}</div>
+        <div class="sub">${r.desc}</div>
+        ${!reqOk&&!owned?`<div class="sub" style="color:var(--bad)">requires: ${reqNames}</div>`:''}
+      </div>
+      <div class="reward"><div>${fM(r.cost)}</div><div class="muted">${r.months} mo</div></div>
+      ${btn}`;
+    box.appendChild(div);
+  });
+}
+
+function renderLog(){
+  const box=$('logBox'); box.innerHTML='';
+  if(!state.log.length){box.innerHTML='<div class="dim" style="font-size:12px">No flights yet.</div>';return;}
+  state.log.forEach(l=>{
+    const div=document.createElement('div'); div.className='line';
+    div.innerHTML=`<span class="when">${l.when}</span><span class="${l.kind}">${l.msg}</span>`;
+    box.appendChild(div);
+  });
+}
+
+newGame();
+render();
+</script>
+</body>
+</html>
