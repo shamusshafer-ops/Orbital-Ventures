@@ -122,16 +122,68 @@ companion to `orbital-ventures-design.md` (original full design doc) and
   trip can't benefit from it.
 - The Solar System map is a planning reference; it doesn't yet drive rival
   activity, economy-wide events, or fleet logistics.
-## Candidate next milestones (not yet sequenced)
+## Completed milestones (continued)
 
-- **M5 — Reusability & rapid cadence** (next up): propulsive landing, booster
-  recovery, refurbishment turnaround — the Commercial-era cost curve.
-- **M6 — Personnel depth**: named engineers/astronauts with skill growth,
-  morale, attrition, star-hire competition (per original design doc §8).
-- **M7 — Outer system**: asteroid belt mining (volatiles, PGMs), Jupiter
-  system, nuclear-thermal/electric propulsion, fusion-era speculative tech.
-- **Settings/difficulty panel** (Napkin vs Engineer mode per the original
-  design doc §13).
+- [x] **M5 — Reusability & rapid cadence**: `propulsive_landing` research
+      (req: kerosene + heavy_booster, $5M, 6 mo) unlocks a Recovery toggle on
+      Stage 1. With recovery ON: +$1.2M hardware cost (legs, grid fins,
+      propellant reserve) on every flight; on routine (already-completed)
+      missions the booster is reflown — build cost drops to 45% of base and
+      `buildMonths` sheds 1 month (min 1). First flight of a new mission with
+      recovery proves the hardware but earns no discount yet. Toggle, economics,
+      and flags surface in Stage 1 bench card and both readout views. Validated
+      headlessly: first-flight cost correct (+$1.2M), refly cost 45% of
+      base+hardware, turnaround −1 month on routine reflights.
+- [x] **M6 — Personnel depth**: `ENGINEERS` (12 named, era/rep-gated, 4
+      specialties) and `ASTRONAUTS` (8 named, era-gated) pools. `state.staff[]`
+      tracks hired personnel with per-person morale (0–100), attrition
+      counter, and commend cooldown. Monthly salary deducted in `advance()`;
+      morale passively ticks ±0.5/mo by financial health; mission success
+      +2/person, failure −5/person. Three consecutive months below morale 20
+      triggers attrition (person quits, log entry). Engineer team score (skill
+      × morale factor, averaged) drives `engRelBonus()` (up to +0.08 on
+      `curRel()`) and `engRdSpeedBonus()` (up to +30% fractional R&D
+      progress/mo via accumulator). One astronaut assignable to crewed
+      missions: skill × morale → up to +6% crewed reliability and +15%
+      payout multiplier. Player actions: Hire, Let go, Raise (+20k/mo salary,
+      +20 morale, $0.05M cost), Commend (+8 morale, 3mo cooldown). New
+      Personnel tab: team summary metrics (payroll, eng score, R&D/rel
+      bonuses), hired staff cards with morale/skill bars and management
+      buttons, available talent pool. Validated headlessly: salary deduction,
+      morale events, attrition trigger, astro bonus, render all correct.
+- [x] **M7 — Outer system**: NTR (`ntr_nerva`, NERVA, Isp 800s,
+      `transferOnly`) and NEP (`nep_snap`, SNAP-derived, Isp 3000s,
+      `lowThrust`, `transferOnly`) engines — both blocked from LV stage
+      selectors, available to transfer stage only. Four research nodes:
+      `nuclear_thermal` (req hydrolox_up+deep_space, $9M/10mo, unlocks NTR),
+      `nuclear_electric` (req nuclear_thermal, $12M/12mo, unlocks NEP),
+      `rad_shielding` (req nuclear_thermal, $6M/6mo, required for Jupiter
+      crewed missions), `belt_volatiles` (req nuclear_thermal + belt_mining
+      done, $8M/9mo, free return-leg propellant for Belt missions via
+      ISRU_FREE_LEG). Four missions: Belt Survey (robotic, 780d, $280M),
+      Belt Mining Claim (crewed, 960d, $320M — triggers $4.5M/mo PGM
+      royalties on first completion), Jupiter Flyby (crewed, 1460d, $480M,
+      req rad_shielding), Jupiter Orbital Mission (crewed, 2190d, $680M,
+      the M7 capstone). PGM royalties shown in header stat. NEP low-thrust
+      warning flag in readout. Validated headlessly: all engines, missions,
+      research, ISRU, PGM royalty, and LV/transfer engine filter correct.
+- [x] **Passive income contracts**: `PASSIVE_CONTRACT_DEFS` pool of 9 signable
+      contracts across 3 categories, all era/mission/research/rep gated.
+      Satellite (weather $0.9M/mo, comms $1.6M/mo, recon $2.4M/mo — all
+      req first_sat + Early Orbital era). Tourism (suborbital $0.6M/mo req
+      first_astro, orbital $1.8M/mo req crew_orbit + 100 rep, lunar flyby
+      $4.5M/mo req luna_flyby + 250 rep). Tech licensing (booster recovery
+      $2.0M/mo req propulsive_landing, NTR IP $3.5M/mo req nuclear_thermal,
+      Sabatier ISRU $2.8M/mo req mars_isru). `state.passiveContracts[]` drains
+      monthly in `advance()`, fires expiry log on completion. Max-1-active
+      per contract type prevents stacking. `signPassiveContract()` deducts
+      setup cost and starts the contract. New Passive Income section at top
+      of Missions tab with active progress bars, available-to-sign cards
+      grouped by category, and total income pill. Header "Passive Income"
+      stat shows combined total (contracts + PGM royalties). Validated
+      headlessly: gating, signing, income flow, expiry, and render all correct.
+- **Save/load** and a proper settings/difficulty panel (Napkin vs Engineer
+  mode per the original design doc §13).
 
 ## Repo
 

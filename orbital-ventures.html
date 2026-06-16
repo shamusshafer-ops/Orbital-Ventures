@@ -169,6 +169,7 @@
     <button id="tabRnd" onclick="setTab('rnd')">R&amp;D</button>
     <button id="tabMap" onclick="setTab('map')">Solar System</button>
     <button id="tabRivals" onclick="setTab('rivals')">Rivals</button>
+    <button id="tabPersonnel" onclick="setTab('personnel')">Personnel</button>
   </nav>
 
   <div class="opsbar">
@@ -227,6 +228,10 @@
     <div class="card" id="rivalsCard"></div>
   </div>
 
+  <div id="personnelView" class="hidden">
+    <div id="personnelCard"></div>
+  </div>
+
   <div class="card log">
     <h2>Flight &amp; Operations Log</h2>
     <div id="logBox"></div>
@@ -279,6 +284,50 @@ function eraIndex(e){ return ERAS.indexOf(e); }
 // missions, your own first-time completion payout for that mission is cut by
 // this factor (your rep reward is unaffected — you still proved capability).
 const SCOOP_PAYOUT_MULT = 0.6;
+
+/* ---------- M6: Personnel ---------- */
+// Named engineer pool. era: earliest era index (0=Pioneer) when they become hirable.
+// specialty: propulsion | structures | avionics | production
+const ENGINEERS = [
+  {id:'e01', name:'Wernher Haas',     specialty:'propulsion',  skill:0.82, salary:0.08, era:0, bio:'Propulsion veteran — drafted from the old V-2 program. Knows how to coax every Isp point out of an engine.'},
+  {id:'e02', name:'Ruth Kessler',     specialty:'structures',  skill:0.74, salary:0.07, era:0, bio:'Stress-analysis specialist. Her margins keep vehicles from shaking themselves apart.'},
+  {id:'e03', name:'Dmitri Volkov',    specialty:'avionics',    skill:0.68, salary:0.06, era:0, bio:'Guidance and navigation. Launched his first gyroscope before the war ended.'},
+  {id:'e04', name:'Anita Rhys',       specialty:'production',  skill:0.71, salary:0.06, era:0, bio:'Manufacturing lead — cuts build time and keeps the factory floor from chaos.'},
+  {id:'e05', name:'James Osei',       specialty:'propulsion',  skill:0.78, salary:0.09, era:1, bio:'Kerolox combustion expert. Arrived just as RP-1 was starting to look interesting.'},
+  {id:'e06', name:'Lena Marchetti',   specialty:'avionics',    skill:0.85, salary:0.11, era:1, bio:'Chief GNC. Her autopilot code flies tighter arcs than anyone else in the industry.'},
+  {id:'e07', name:'Sam Treadwell',    specialty:'structures',  skill:0.80, salary:0.10, era:2, bio:'Lightweight alloys and thermal protection. Critical once reentry heating became real.'},
+  {id:'e08', name:'Yuki Tanaka',      specialty:'production',  skill:0.88, salary:0.13, era:2, bio:'Rapid-integration specialist. Can cut a build campaign by weeks through sheer process discipline.'},
+  {id:'e09', name:'Priya Nambiar',    specialty:'propulsion',  skill:0.91, salary:0.15, era:3, bio:'Cryogenic propulsion lead. Wrote the book on LH2 handling in the field.'},
+  {id:'e10', name:'Carlos Reyes',     specialty:'avionics',    skill:0.87, salary:0.13, era:3, bio:'Fault-tolerant flight software. His triple-redundancy architecture has never lost a mission.'},
+  {id:'e11', name:'Saoirse Flynn',    specialty:'structures',  skill:0.93, salary:0.16, era:4, bio:'Composite structures. Cuts dry mass in ways that would have been impossible a decade earlier.'},
+  {id:'e12', name:'Marcus Chen',      specialty:'production',  skill:0.95, salary:0.18, era:4, bio:'Star hire. Built the automated factory floor that made rapid reuse economically viable.'},
+];
+
+// Named astronaut pool. era: earliest era index when hirable.
+const ASTRONAUTS = [
+  {id:'a01', name:'Jack Morrow',    skill:0.72, salary:0.05, era:1, bio:'Test pilot. Flew everything the Air Force had. Calm under pressure.'},
+  {id:'a02', name:'Valentina Sorokina', skill:0.78, salary:0.06, era:1, bio:'Aeronautical engineer and pilot. Her mission reports are as rigorous as her flying.'},
+  {id:'a03', name:'Ed Kamau',       skill:0.74, salary:0.05, era:1, bio:'Naval aviator. Specialized in high-G reentry profiles.'},
+  {id:'a04', name:'Mei-Lin Fong',   skill:0.82, salary:0.08, era:2, bio:'Mission specialist. Spacewalk record holder and ECLSS expert.'},
+  {id:'a05', name:'Renzo Bianchi',  skill:0.80, salary:0.07, era:2, bio:'Lunar surface geologist and pilot. Has spent more time on simulators than most have in orbit.'},
+  {id:'a06', name:'Aisha Diallo',   skill:0.88, salary:0.10, era:3, bio:'Commander-class. Her crew management cut mission-critical errors by 40% on long-duration flights.'},
+  {id:'a07', name:'Sven Lindqvist', skill:0.85, salary:0.09, era:3, bio:'Flight surgeon and pilot. Indispensable on multi-month crewed missions.'},
+  {id:'a08', name:'Nora Vasquez',   skill:0.93, salary:0.13, era:4, bio:'Star astronaut. Three deep-space missions, two EVA records, zero incidents. Rivals are trying to poach her.'},
+];
+
+// How many months of low morale (<20) before the person quits
+const MORALE_QUIT_MONTHS = 3;
+// Engineer team effects on reliability and R&D speed
+const ENG_REL_BONUS_MAX  = 0.08; // max reliability boost from a fully-skilled, high-morale team
+const ENG_RD_SPEED_MAX   = 0.30; // max fraction of extra R&D progress per month (0.3 = 30% faster)
+// Astronaut effects on crewed missions
+const ASTRO_REL_BONUS_MAX  = 0.06; // max reliability boost from the assigned astronaut
+const ASTRO_PAYOUT_BONUS_MAX = 0.15; // max payout multiplier bonus from assigned astronaut
+// Raise cost and morale effect
+const RAISE_SALARY_BUMP = 0.02; // $M/mo increase per raise
+const RAISE_MORALE_BUMP = 20;
+const COMMEND_MORALE_BUMP = 8;
+const COMMEND_COOLDOWN_MONTHS = 3;
 
 const RIVALS = [
   {
@@ -480,6 +529,7 @@ function newGame(){
     depot:0, depotUse:0,
     tab:'bench', won:false, wonM2:false, wonM3a:false, wonM3aii:false, wonM3b:false, wonM3bii:false, over:false,
     log:[], rivalFired:{}, scooped:{},
+    staff:[], assignedAstronaut:null,
   };
   log('info','Company founded. The pad is yours — go make some noise.');
 }
@@ -495,13 +545,47 @@ function curSigma(){return state.sigma;}
 function curRel(){
   let base=0.65+0.025*Math.min(state.successes,12); // heritage: green company is genuinely unreliable
   if(state.research.test_program) base+=0.08;
+  base+=engRelBonus(); // M6: engineer team reliability bonus
   return base;
 }
 function advance(months){
   for(let i=0;i<months;i++){
     state.month++; if(state.month>11){state.month=0;state.year++;}
     state.money-=0.12; // monthly overhead
-    if(state.activeResearch){ state.activeResearch.monthsLeft--; if(state.activeResearch.monthsLeft<=0) completeResearch(); }
+
+    // M6: personnel salary deduction
+    state.staff.forEach(s=>{
+      const p=personById(s.id);
+      if(p) state.money-=p.salary;
+    });
+
+    // M6: morale tick — slow drift toward 50 and commend cooldown
+    state.staff.forEach(s=>{
+      if(s.morale>50) s.morale=Math.max(50,s.morale-1);
+      else if(s.morale<50) s.morale=Math.min(50,s.morale+1);
+      if(s.commendCooldown>0) s.commendCooldown--;
+    });
+
+    // M6: attrition — personnel quit after sustained low morale
+    state.staff=state.staff.filter(s=>{
+      if(s.morale<20){ s.lowMoraleMonths=(s.lowMoraleMonths||0)+1; }
+      else{ s.lowMoraleMonths=0; }
+      if(s.lowMoraleMonths>=MORALE_QUIT_MONTHS){
+        const p=personById(s.id);
+        if(state.assignedAstronaut===s.id) state.assignedAstronaut=null;
+        log('bad',`${p?p.name:'A staff member'} quit due to low morale.`);
+        return false;
+      }
+      return true;
+    });
+
+    // M6: R&D speed bonus from engineers
+    if(state.activeResearch){
+      const rdBonus=engRdSpeedBonus();
+      state.activeResearch.monthsLeft-=(1+rdBonus);
+      if(state.activeResearch.monthsLeft<=0) completeResearch();
+    }
+
     checkRivalFirsts();
   }
   if(state.money<0 && !state.over){ gameOver(); }
@@ -742,11 +826,16 @@ function launch(){
   const crewed=m.crew>0;
   let rel=v.reliability;
   if(sim) rel=Math.max(0.30, rel*Math.pow(0.985, sim.inSpaceLegs)); // each deep-space burn is another thing to get right
+  // M6: astronaut reliability bonus on crewed missions
+  const ab=crewed?astroBonus():{rel:0,payoutMult:1};
+  if(crewed) rel=Math.min(0.99, rel+ab.rel);
   const success=Math.random()<=rel;
   let pendingCelebration=null, failPhase=null;
   if(success){
+    personnelMissionEvent(true); // M6: morale boost on success
     state.successes++;
     let payout=(routine?m.payout*0.4:m.payout)*windowQuality;
+    if(crewed) payout*=ab.payoutMult; // M6: astronaut payout bonus
     if(!routine && state.scooped[m.id]) payout*=SCOOP_PAYOUT_MULT;
     const rep=routine?2:m.rep;
     if(m.tanker){
@@ -778,6 +867,7 @@ function launch(){
     autoAdvanceMission();
   }else{
     failPhase = m.profile ? (Math.random()<0.6?'ascent':'deep') : 'ascent';
+    personnelMissionEvent(false); // M6: morale hit on failure
     if(crewed){
       if(state.research.launch_escape){
         const rep=Math.min(state.rep,15); state.rep-=rep;
@@ -866,6 +956,114 @@ function rushResearch(){
   const r=RESEARCH.find(x=>x.id===ar.id);
   log('note',`R&D rush: spent ${fM(cost)} to shave a month off ${r.name} — ${ar.monthsLeft} mo left.`);
   if(state.money<0) gameOver(); else render();
+}
+
+/* ---------- M6: personnel helpers ---------- */
+function personById(id){
+  return [...ENGINEERS,...ASTRONAUTS].find(p=>p.id===id);
+}
+function staffRecord(id){ return state.staff.find(s=>s.id===id); }
+function isHired(id){ return !!staffRecord(id); }
+
+// Available to hire: not already hired, era unlocked
+function availablePool(){
+  const ei=eraIndex(currentEra());
+  return [...ENGINEERS,...ASTRONAUTS].filter(p=>{
+    if(isHired(p.id)) return false;
+    if(p.era>ei) return false;
+    return true;
+  });
+}
+
+// Engineer team aggregate — skill weighted by morale (low morale = skill degraded)
+function engTeam(){ return state.staff.filter(s=>ENGINEERS.find(e=>e.id===s.id)); }
+function astroTeam(){ return state.staff.filter(s=>ASTRONAUTS.find(a=>a.id===s.id)); }
+
+function engTeamScore(){
+  const team=engTeam(); if(!team.length) return 0;
+  const score=team.reduce((a,s)=>{
+    const p=personById(s.id);
+    const moraleFactor=Math.max(0.2,(s.morale||50)/100);
+    return a+p.skill*moraleFactor;
+  },0)/team.length;
+  return Math.min(1,score);
+}
+
+function engRelBonus(){
+  return engTeamScore()*ENG_REL_BONUS_MAX;
+}
+
+function engRdSpeedBonus(){
+  // returns fractional extra R&D months per calendar month (0–ENG_RD_SPEED_MAX)
+  return engTeamScore()*ENG_RD_SPEED_MAX;
+}
+
+function assignedAstroRecord(){
+  if(!state.assignedAstronaut) return null;
+  return staffRecord(state.assignedAstronaut);
+}
+
+function astroBonus(){
+  const sr=assignedAstroRecord(); if(!sr) return {rel:0,payoutMult:1};
+  const p=personById(sr.id);
+  const moraleFactor=Math.max(0.2,(sr.morale||50)/100);
+  const score=p.skill*moraleFactor;
+  return {
+    rel: score*ASTRO_REL_BONUS_MAX,
+    payoutMult: 1+score*ASTRO_PAYOUT_BONUS_MAX,
+  };
+}
+
+function hirePersonnel(id){
+  if(isHired(id)) return;
+  state.staff.push({id, morale:70, lowMoraleMonths:0, commendCooldown:0});
+  const p=personById(id);
+  log('note',`Hired ${p.name} (${p.salary.toFixed(2)}M/mo salary).`);
+  render();
+}
+
+function firePersonnel(id){
+  const p=personById(id);
+  state.staff=state.staff.filter(s=>s.id!==id);
+  if(state.assignedAstronaut===id) state.assignedAstronaut=null;
+  log('note',`${p?p.name:'Staff'} let go. Monthly burn reduced.`);
+  render();
+}
+
+function giveRaise(id){
+  const p=personById(id); const sr=staffRecord(id); if(!p||!sr) return;
+  p.salary+=RAISE_SALARY_BUMP;
+  sr.morale=Math.min(100,sr.morale+RAISE_MORALE_BUMP);
+  state.money-=0.05; // signing cost
+  log('note',`Raise given to ${p.name}: salary now ${p.salary.toFixed(2)}M/mo. Morale +${RAISE_MORALE_BUMP}.`);
+  render();
+}
+
+function commendPersonnel(id){
+  const p=personById(id); const sr=staffRecord(id); if(!p||!sr) return;
+  if(sr.commendCooldown>0) return;
+  sr.morale=Math.min(100,sr.morale+COMMEND_MORALE_BUMP);
+  sr.commendCooldown=COMMEND_COOLDOWN_MONTHS;
+  log('note',`${p.name} commended. Morale +${COMMEND_MORALE_BUMP}.`);
+  render();
+}
+
+function assignAstronaut(id){
+  if(!isHired(id)) return;
+  state.assignedAstronaut=(state.assignedAstronaut===id)?null:id;
+  const p=personById(id);
+  log('note', state.assignedAstronaut
+    ? `${p.name} assigned as mission astronaut.`
+    : `${p.name} unassigned.`);
+  render();
+}
+
+// Called on mission success/failure to affect morale
+function personnelMissionEvent(success){
+  state.staff.forEach(s=>{
+    if(success) s.morale=Math.min(100,s.morale+2);
+    else s.morale=Math.max(0,s.morale-5);
+  });
 }
 
 
@@ -2384,11 +2582,13 @@ function render(){
   $('tabRnd').classList.toggle('active',state.tab==='rnd');
   $('tabMap').classList.toggle('active',state.tab==='map');
   $('tabRivals').classList.toggle('active',state.tab==='rivals');
+  $('tabPersonnel').classList.toggle('active',state.tab==='personnel');
   $('benchView').classList.toggle('hidden',state.tab!=='bench');
   $('missionsView').classList.toggle('hidden',state.tab!=='missions');
   $('rndView').classList.toggle('hidden',state.tab!=='rnd');
   $('mapView').classList.toggle('hidden',state.tab!=='map');
   $('rivalsView').classList.toggle('hidden',state.tab!=='rivals');
+  $('personnelView').classList.toggle('hidden',state.tab!=='personnel');
 
   const ar=state.activeResearch;
   $('rndStatus').innerHTML = ar
@@ -2401,6 +2601,7 @@ function render(){
   if(state.tab==='rnd')renderRnd();
   if(state.tab==='map')renderMap();
   if(state.tab==='rivals')renderRivals();
+  if(state.tab==='personnel')renderPersonnel();
   renderLog();
 }
 
@@ -2757,6 +2958,107 @@ function selectBody(id){
   render();
 }
 function zoomOut(){ state.mapZoom=null; render(); }
+/* ---------- M6: Personnel tab ---------- */
+function moraleColor(m){ return m>=70?'var(--ok)':m>=40?'var(--warn)':'var(--bad)'; }
+
+function renderPersonnelCard(p, sr){
+  const isEng = !!ENGINEERS.find(e=>e.id===p.id);
+  const isAstro = !!ASTRONAUTS.find(a=>a.id===p.id);
+  const morale = sr.morale|0;
+  const mColor = moraleColor(morale);
+  const canCommend = sr.commendCooldown===0;
+  const assigned = state.assignedAstronaut===p.id;
+  const ab = isAstro && assigned ? astroBonus() : null;
+  const moraleFactor = Math.max(0.2, sr.morale/100);
+  const engBonusStr = isEng ? (p.skill*moraleFactor*ENG_REL_BONUS_MAX).toFixed(3) : null;
+
+  return `<div class="card" style="margin-bottom:8px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+      <div>
+        <span style="font-size:14px;font-weight:600;color:var(--ink)">${p.name}</span>
+        <span class="pill" style="margin-left:6px">${isEng?p.specialty:'astronaut'}</span>
+        ${isAstro&&assigned?'<span class="pill active" style="margin-left:4px">assigned</span>':''}
+      </div>
+      <span style="font-family:var(--mono);font-size:12px;color:var(--muted)">${p.salary.toFixed(2)}M/mo</span>
+    </div>
+    <p class="muted" style="font-size:11px;margin:3px 0 6px">${p.bio}</p>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+      <span style="font-size:11px;color:var(--dim);width:50px">Morale</span>
+      <div style="flex:1;height:6px;background:var(--panel2);border-radius:3px;overflow:hidden">
+        <div style="height:100%;width:${morale}%;background:${mColor}"></div>
+      </div>
+      <span style="font-family:var(--mono);font-size:11px;color:${mColor}">${morale}</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+      <span style="font-size:11px;color:var(--dim);width:50px">Skill</span>
+      <div style="flex:1;height:6px;background:var(--panel2);border-radius:3px;overflow:hidden">
+        <div style="height:100%;width:${(p.skill*100)|0}%;background:var(--readout)"></div>
+      </div>
+      <span style="font-family:var(--mono);font-size:11px;color:var(--readout)">${(p.skill*100)|0}</span>
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:8px">
+      ${isEng?`Reliability contribution: <span style="color:var(--ok)">+${engBonusStr}</span> (factors into team average)`:''}
+      ${isAstro&&assigned&&ab?`<span style="color:var(--ok)">Crewed rel +${(ab.rel*100).toFixed(1)}% · Payout x${ab.payoutMult.toFixed(2)}</span>`:''}
+      ${isAstro&&!assigned?`<span class="dim">Not assigned to crewed missions</span>`:''}
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button class="btn ghost" style="font-size:11px" onclick="giveRaise('${p.id}')">Raise (+${(RAISE_SALARY_BUMP*1000)|0}k/mo, +${RAISE_MORALE_BUMP} morale)</button>
+      <button class="btn ghost" style="font-size:11px" onclick="commendPersonnel('${p.id}')" ${canCommend?'':'disabled'}>${sr.commendCooldown>0?`Commend (${sr.commendCooldown}mo)`:`Commend (+${COMMEND_MORALE_BUMP} morale)`}</button>
+      ${isAstro?`<button class="btn ghost" style="font-size:11px" onclick="assignAstronaut('${p.id}')">${assigned?'Unassign':'Assign to crew'}</button>`:''}
+      <button class="btn ghost danger" style="font-size:11px;margin-left:auto" onclick="firePersonnel('${p.id}')">Let go</button>
+    </div>
+  </div>`;
+}
+
+function renderPersonnel(){
+  const box=$('personnelCard');
+  const hired=state.staff.map(sr=>({p:personById(sr.id),sr})).filter(x=>x.p);
+  const available=availablePool();
+  const engScore=(engTeamScore()*100)|0;
+  const rdBonus=(engRdSpeedBonus()*100)|0;
+  const relBonus=engRelBonus().toFixed(3);
+  const monthlySalary=state.staff.reduce((a,s)=>{const p=personById(s.id);return a+(p?p.salary:0);},0);
+
+  let html=`<div class="card" style="margin-bottom:10px">
+    <h2>Personnel <span class="pill">${hired.length} on staff</span></h2>
+    <p class="muted" style="font-size:12px;margin:-4px 0 8px">Engineers boost reliability and R&D speed. Assign an astronaut to crewed missions for reliability and payout bonuses. Morale scales all bonuses and determines attrition.</p>
+    <div class="metrics">
+      <div class="metric"><div class="k">Monthly payroll</div><div class="v">${fM(monthlySalary)}</div></div>
+      <div class="metric"><div class="k">Eng team score</div><div class="v">${engScore}/100</div></div>
+      <div class="metric"><div class="k">R&D speed bonus</div><div class="v">+${rdBonus}%</div></div>
+      <div class="metric"><div class="k">Reliability bonus</div><div class="v">+${relBonus}</div></div>
+    </div>
+  </div>`;
+
+  if(hired.length){
+    html+=`<div style="margin-bottom:6px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">On Staff</div>`;
+    html+=hired.map(({p,sr})=>renderPersonnelCard(p,sr)).join('');
+  }
+
+  if(available.length){
+    html+=`<div style="margin:12px 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">Available to Hire</div>`;
+    html+=available.map(p=>{
+      const isEng=!!ENGINEERS.find(e=>e.id===p.id);
+      return `<div class="card" style="margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;gap:10px">
+        <div style="flex:1">
+          <span style="font-size:13px;font-weight:600;color:var(--ink)">${p.name}</span>
+          <span class="pill" style="margin-left:6px">${isEng?p.specialty:'astronaut'}</span>
+          <p class="muted" style="font-size:11px;margin:2px 0 0">${p.bio}</p>
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <div style="font-family:var(--mono);font-size:12px;color:var(--muted)">${p.salary.toFixed(2)}M/mo</div>
+          <div style="font-size:11px;color:var(--dim)">skill ${(p.skill*100)|0}</div>
+          <button class="btn" style="margin-top:4px;font-size:11px" onclick="hirePersonnel('${p.id}')">Hire</button>
+        </div>
+      </div>`;
+    }).join('');
+  } else if(!hired.length){
+    html+=`<p class="dim" style="font-size:12px;margin-top:8px">No personnel available yet — build reputation and advance through eras to unlock the talent pool.</p>`;
+  }
+
+  box.innerHTML=html;
+}
+
 // M4b: Rivals tab — each rival's profile plus their "firsts" timeline,
 // achieved vs upcoming, anchored to the current calendar year.
 function renderRivals(){
