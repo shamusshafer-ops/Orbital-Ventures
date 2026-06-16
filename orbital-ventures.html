@@ -113,6 +113,17 @@
   .pill.ok{color:var(--ok);border-color:#2c4a39}
   .pill.lock{color:var(--dim)}
   .pill.active{color:var(--ignite);border-color:#5a4419}
+
+  /* Era strip (M4a) */
+  .era-strip{display:flex;gap:4px;flex-wrap:wrap;margin:10px 0 4px}
+  .era-chip{flex:1;min-width:78px;border:1px solid var(--line);border-radius:6px;padding:6px 8px;
+    background:var(--panel2);text-align:center}
+  .era-chip .name{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+  .era-chip .yrs{font-family:var(--mono);font-size:10px;color:var(--dim);margin-top:2px}
+  .era-chip.now{border-color:var(--ignite);background:#241a0c}
+  .era-chip.now .name{color:var(--ignite)}
+  .era-chip.past{opacity:.55}
+  .pill.era{color:var(--readout);border-color:#1f4248}
   .reward{font-family:var(--mono);font-size:12px;text-align:right;min-width:96px}
   .reward .p{color:var(--ok)} .reward .r{color:var(--readout)}
 
@@ -121,6 +132,7 @@
   .log .line{font-family:var(--mono);font-size:12px;padding:4px 0;border-bottom:1px solid #1a242b;display:flex;gap:10px}
   .log .when{color:var(--dim);min-width:64px}
   .log .ok{color:var(--ok)} .log .bad{color:var(--bad)} .log .info{color:var(--ink)} .log .note{color:var(--readout)}
+  .log .rival{color:var(--ignite)}
 
   /* Modal */
   .scrim{position:fixed;inset:0;background:rgba(6,10,12,.78);display:flex;align-items:center;justify-content:center;z-index:20}
@@ -140,7 +152,7 @@
   <header>
     <div class="brand">
       <div class="co" id="coName">ORBITAL VENTURES</div>
-      <div class="tag">Cislunar · Δv Map &amp; Multi-Leg Missions</div>
+      <div class="tag" id="eraBadge">—</div>
     </div>
     <div class="stats">
       <div class="stat"><span class="k">Date</span><span class="v" id="stDate">—</span></div>
@@ -156,6 +168,7 @@
     <button id="tabMissions" onclick="setTab('missions')">Missions</button>
     <button id="tabRnd" onclick="setTab('rnd')">R&amp;D</button>
     <button id="tabMap" onclick="setTab('map')">Solar System</button>
+    <button id="tabRivals" onclick="setTab('rivals')">Rivals</button>
   </nav>
 
   <div class="opsbar">
@@ -189,6 +202,7 @@
   </div>
 
   <div id="rndView" class="hidden">
+    <div class="card" id="eraCard"></div>
     <div class="card"><h2>Research — converts capital + time into capability</h2>
       <p class="muted" style="font-size:12px;margin:-4px 0 12px">σ is your tank structural coefficient — lower means lighter dry mass and more Δv from the same propellant.</p>
       <div id="rndList"></div>
@@ -204,6 +218,10 @@
       </div>
       <div class="readout"><div class="card" id="bodyCard"></div></div>
     </div>
+  </div>
+
+  <div id="rivalsView" class="hidden">
+    <div class="card" id="rivalsCard"></div>
   </div>
 
   <div class="card log">
@@ -226,6 +244,69 @@
    Core loop: design (rocket equation) → launch → economy → research
    ============================================================ */
 const G0 = 9.81;
+
+const ERAS = [
+  {id:'pioneer',      name:'Pioneer',           from:1942, to:1957, blurb:'Liquid/solid sounding rockets, captured/derived V-2-class tech. Sub-orbital, upper atmosphere.'},
+  {id:'early_orbital',name:'Early Orbital',     from:1957, to:1969, blurb:'First satellites, expendable orbital launchers. LEO, basic comms/recon sats.'},
+  {id:'crewed_lunar', name:'Crewed &amp; Lunar',     from:1961, to:1975, blurb:'Human spaceflight, capsules, lunar trajectories. Crewed LEO, Moon flybys &amp; landings.'},
+  {id:'station_shuttle',name:'Station &amp; Shuttle',from:1975, to:2000, blurb:'Partial reuse, long-duration stations, deep-space probes. LEO stations, planetary probes.'},
+  {id:'commercial',   name:'Commercial',        from:2000, to:2030, blurb:'Cheap reusable launch, smallsats, commercial crew. Megaconstellations, crewed commercial.'},
+  {id:'expansion',    name:'Expansion',         from:2030, to:2060, blurb:'In-space refueling, ISRU, lunar/Mars surface ops. Lunar base, Mars landing.'},
+  {id:'interplanetary',name:'Interplanetary',   from:2060, to:2100, blurb:'Nuclear thermal/electric, asteroid mining, cyclers. Belt, outer-planet moons.'},
+  {id:'speculative',  name:'Speculative',       from:2100, to:9999, blurb:'Fusion drives, large-scale settlement, mass drivers. Whole system economy, precursor interstellar.'},
+];
+// Eras are soft and overlapping by design (calendar-driven, not a hard gate): the
+// "current" era is the LAST one whose start year has been reached.
+function currentEra(){
+  let cur=ERAS[0];
+  for(const e of ERAS){ if(state.year>=e.from) cur=e; else break; }
+  return cur;
+}
+function eraIndex(e){ return ERAS.indexOf(e); }
+
+// M4b: Rival agencies/firms — each pursues its own "firsts" on a calendar
+// roughly anchored to ERAS, independent of player progress. Surfaced as
+// log/news entries only (no economy effect — that's M4c).
+// M4c: if a rival claims a "first" tied to one of your not-yet-completed
+// missions, your own first-time completion payout for that mission is cut by
+// this factor (your rep reward is unaffected — you still proved capability).
+const SCOOP_PAYOUT_MULT = 0.6;
+
+const RIVALS = [
+  {
+    id:'vostochny', name:'Vostochny Dynamics', flag:'🛰', kind:'State Agency',
+    blurb:'A state-funded launch directorate that moves fast on national-prestige firsts, especially early in the space race.',
+    firsts:[
+      {year:1957, name:'First artificial satellite reaches orbit', missionId:'first_sat'},
+      {year:1961, name:'First crewed orbital flight', missionId:'crew_orbit'},
+      {year:1965, name:'First spacewalk (EVA)'},
+      {year:1971, name:'First space station launched'},
+      {year:1986, name:'First modular space station core'},
+    ],
+  },
+  {
+    id:'meridian', name:'Meridian Aerospace', flag:'🚀', kind:'Legacy Contractor',
+    blurb:'A well-funded, methodical contractor that wins the big crewed-lunar and station-era programs through sheer budget and engineering depth.',
+    firsts:[
+      {year:1969, name:'First crewed lunar landing', missionId:'luna_landing'},
+      {year:1981, name:'First reusable crewed orbiter'},
+      {year:1998, name:'First multinational station module integrated'},
+      {year:2012, name:'First robotic Mars rover with surface mobility'},
+      {year:2025, name:'First crewed lunar return (post-Apollo)'},
+    ],
+  },
+  {
+    id:'halcyon', name:'Halcyon Systems', flag:'⚡', kind:'Commercial Newcomer',
+    blurb:'A scrappy commercial upstart, late to the game but disruptive — drives down launch costs and pushes the reusability/expansion frontier.',
+    firsts:[
+      {year:2008, name:'First privately developed orbital launch vehicle'},
+      {year:2015, name:'First propulsive landing of an orbital booster'},
+      {year:2020, name:'First commercial crew flight to orbit'},
+      {year:2031, name:'First commercial lunar surface delivery'},
+      {year:2045, name:'First commercial propellant depot in LEO'},
+    ],
+  },
+];
 
 const ENGINES = {
   a4:          {id:'a4',          name:'V-2 (A-4) Powerplant',            prop:'Alcohol/LOX', ispSL:203, ispVac:215, thrustSL:245, thrustVac:265, mass:0.95, cost:0.30, rel:0.96, base:true},
@@ -390,7 +471,7 @@ function newGame(){
     windows:{}, committedWindow:null, selectedBody:'moon', mapZoom:null,
     depot:0, depotUse:0,
     tab:'bench', won:false, wonM2:false, wonM3a:false, wonM3aii:false, wonM3b:false, wonM3bii:false, over:false,
-    log:[],
+    log:[], rivalFired:{}, scooped:{},
   };
   log('info','Company founded. The pad is yours — go make some noise.');
 }
@@ -413,8 +494,31 @@ function advance(months){
     state.month++; if(state.month>11){state.month=0;state.year++;}
     state.money-=0.12; // monthly overhead
     if(state.activeResearch){ state.activeResearch.monthsLeft--; if(state.activeResearch.monthsLeft<=0) completeResearch(); }
+    checkRivalFirsts();
   }
   if(state.money<0 && !state.over){ gameOver(); }
+}
+
+// M4b: fire any rival "firsts" whose target year has now arrived. Calendar-only —
+// no economy effect (that's M4c). Each first fires once, recorded in
+// state.rivalFired so it survives across months and isn't re-logged.
+function checkRivalFirsts(){
+  for(const r of RIVALS){
+    for(const f of r.firsts){
+      const key=r.id+'|'+f.name;
+      if(state.year>f.year || (state.year===f.year)){
+        if(!state.rivalFired[key]){
+          state.rivalFired[key]=true;
+          log('rival', `${r.flag} ${r.name} claims: ${f.name} (${f.year})`);
+          if(f.missionId && !state.completed[f.missionId] && !state.scooped[f.missionId]){
+            state.scooped[f.missionId]=true;
+            const mm=MISSIONS.find(x=>x.id===f.missionId);
+            log('bad', `Scooped: ${r.name} beat you to "${mm.name}" — its first-time payout is cut to ${Math.round(SCOOP_PAYOUT_MULT*100)}% (rep reward unaffected).`);
+          }
+        }
+      }
+    }
+  }
 }
 function completeResearch(){
   const r=RESEARCH.find(x=>x.id===state.activeResearch.id);
@@ -564,6 +668,23 @@ function computeVehicle(){
           dryTotal:perf.sm.reduce((a,b)=>a+b.dry,0)};
 }
 
+// M-Complexity: base build time is 2 months for a single-stage vehicle with
+// no extra modules. Each additional stage beyond the first, and each extra
+// module a mission profile requires (transfer stage, lander — descent+ascent
+// counts as one module, crew systems), adds a month of integration/assembly
+// time. This is on top of the fixed 1-month launch campaign and any test
+// campaign months from TEST_LEVELS.
+const BASE_BUILD_MONTHS=2;
+function buildMonths(m){
+  let extra=Math.max(0, state.stages.length-1); // each stage beyond the first
+  if(m && m.profile){
+    if(m.modules.includes('transfer')) extra+=1;
+    if(m.modules.includes('lander')) extra+=1;     // descent+ascent stages, one integration unit
+    if(m.modules.includes('crew')) extra+=1;       // crew systems integration
+  }
+  return BASE_BUILD_MONTHS+extra;
+}
+
 /* ---------- launch ---------- */
 function canLaunch(v,m,sim){
   if(m.tanker){
@@ -579,12 +700,12 @@ function canLaunch(v,m,sim){
   if(m.window){
     const cw=state.committedWindow;
     if(!cw||cw.missionId!==m.id) return {ok:false,why:'No launch window committed — pick one from the Launch Window Planner below.'};
-    const tl=TEST_LEVELS[state.testLevel], leadMonths=3+tl.months;
+    const tl=TEST_LEVELS[state.testLevel], leadMonths=buildMonths(m)+1+tl.months;
     if(absMonth()+leadMonths>cw.abs) return {ok:false,why:'Too late for the committed window — build time would carry you past it. Cancel and pick a later one.'};
     if(absMonth()+leadMonths<cw.abs-1) return {ok:false,why:`Window not yet open — ${monthToDate(cw.abs)}. Advance time (research keeps progressing) or build closer to launch.`};
   }
   const tl=TEST_LEVELS[state.testLevel];
-  const total=v.buildCost+v.launchCost+tl.cost+0.12*(3+tl.months);
+  const total=v.buildCost+v.launchCost+tl.cost+0.12*(buildMonths(m)+1+tl.months);
   if(state.money<total) return {ok:false,why:'Not enough capital to build, test, and fly this mission.'};
   return {ok:true};
 }
@@ -603,10 +724,10 @@ function launch(){
   if(m.window){
     windowQuality=state.committedWindow.quality;
     const gap=state.committedWindow.abs-absMonth();
-    advance(Math.max(3+tl.months, gap)); // wait out the rest of the window if build finishes early
+    advance(Math.max(buildMonths(m)+1+tl.months, gap)); // wait out the rest of the window if build finishes early
     state.committedWindow=null;
   }else{
-    advance(3+tl.months); // build (2) + launch (1) + test campaign
+    advance(buildMonths(m)+1+tl.months); // build (complexity-scaled) + launch (1) + test campaign
   }
   state.flights++;
   const routine=!!state.completed[m.id];
@@ -618,6 +739,7 @@ function launch(){
   if(success){
     state.successes++;
     let payout=(routine?m.payout*0.4:m.payout)*windowQuality;
+    if(!routine && state.scooped[m.id]) payout*=SCOOP_PAYOUT_MULT;
     const rep=routine?2:m.rep;
     if(m.tanker){
       const delivered=tankerDelivery();
@@ -628,7 +750,8 @@ function launch(){
     }else{
       state.money+=payout; state.rep+=rep;
       const qTxt = m.window?(windowQuality>1.05?' Favorable window geometry boosted the payload value.':windowQuality<0.92?' A marginal window cut into the payload value.':''):'';
-      log('ok',`${m.name}: SUCCESS.${crewed?` Crew of ${m.crew} home safe.`:''} +${fM(payout)}, +${rep} rep. (reliability ${(rel*100|0)}%)${qTxt}`);
+      const scoopTxt = (!routine && state.scooped[m.id]) ? ' (scooped — reduced first-time payout)' : '';
+      log('ok',`${m.name}: SUCCESS.${crewed?` Crew of ${m.crew} home safe.`:''} +${fM(payout)}, +${rep} rep. (reliability ${(rel*100|0)}%)${qTxt}${scoopTxt}`);
     }
     if(m.profile && state.depotUse>0){ state.depot=Math.max(0,state.depot-state.depotUse);
       if(!state.wonM3bii && !pendingCelebration){ state.wonM3bii=true; pendingCelebration=()=>victoryM3bii('depot'); } }
@@ -713,10 +836,30 @@ function buyResearch(id){
   if(!reqsMet(r)) return;
   if(state.money < r.cost) return;
   state.money-=r.cost;
-  state.activeResearch={id:r.id, monthsLeft:r.months};
+  state.activeResearch={id:r.id, monthsLeft:r.months, rushed:0};
   log('note',`R&D started: ${r.name} (${r.months} mo). It advances while you build and fly.`);
   if(state.money<0) gameOver(); else render();
 }
+
+// M-Rush: pour extra capital into the active R&D project to shave a month off
+// its timeline. Cost scales quadratically with how many months have already
+// been rushed off THIS project, so rushing the last month of a long project
+// costs much more than the first. Floors at 1 month remaining (can't rush to
+// instant completion in the same tick — completeResearch() still needs the
+// final advance() to land).
+const RUSH_BASE_COST = 0.8; // $M for the 1st month rushed off any project
+function rushCost(rushedSoFar){ return RUSH_BASE_COST*Math.pow(rushedSoFar+1,2); }
+function rushResearch(){
+  const ar=state.activeResearch; if(!ar) return;
+  if(ar.monthsLeft<=1) return; // floor: can't rush below 1 month
+  const cost=rushCost(ar.rushed||0);
+  if(state.money<cost) return;
+  state.money-=cost; ar.monthsLeft--; ar.rushed=(ar.rushed||0)+1;
+  const r=RESEARCH.find(x=>x.id===ar.id);
+  log('note',`R&D rush: spent ${fM(cost)} to shave a month off ${r.name} — ${ar.monthsLeft} mo left.`);
+  if(state.money<0) gameOver(); else render();
+}
+
 
 /* ---------- modals ---------- */
 function victory(){
@@ -995,6 +1138,8 @@ function drawCislunar(ct){
 /* ---------- render ---------- */
 function render(){
   $('coName').textContent=state.company;
+  const era=currentEra();
+  $('eraBadge').innerHTML=`Era ${eraIndex(era)+1}/${ERAS.length} · ${era.name}`;
   $('stDate').textContent=dateStr();
   $('stMoney').textContent=fM(state.money);
   $('stMoney').style.color = state.money<1.5?'var(--bad)':'var(--ink)';
@@ -1007,10 +1152,12 @@ function render(){
   $('tabMissions').classList.toggle('active',state.tab==='missions');
   $('tabRnd').classList.toggle('active',state.tab==='rnd');
   $('tabMap').classList.toggle('active',state.tab==='map');
+  $('tabRivals').classList.toggle('active',state.tab==='rivals');
   $('benchView').classList.toggle('hidden',state.tab!=='bench');
   $('missionsView').classList.toggle('hidden',state.tab!=='missions');
   $('rndView').classList.toggle('hidden',state.tab!=='rnd');
   $('mapView').classList.toggle('hidden',state.tab!=='map');
+  $('rivalsView').classList.toggle('hidden',state.tab!=='rivals');
 
   const ar=state.activeResearch;
   $('rndStatus').innerHTML = ar
@@ -1022,6 +1169,7 @@ function render(){
   if(state.tab==='missions')renderMissions();
   if(state.tab==='rnd')renderRnd();
   if(state.tab==='map')renderMap();
+  if(state.tab==='rivals')renderRivals();
   renderLog();
 }
 
@@ -1222,6 +1370,7 @@ function renderReadout(){
       <div class="metric"><div class="k">Payload</div><div class="v">${v.payload>=1?v.payload.toFixed(2)+' t':(v.payload*1000).toFixed(0)+' kg'}</div></div>
       <div class="metric"><div class="k">Build cost</div><div class="v">${fM(v.buildCost)}</div></div>
       <div class="metric"><div class="k">Launch cost</div><div class="v">${fM(v.launchCost)}</div></div>
+      <div class="metric"><div class="k">Build time</div><div class="v">${buildMonths(m)+1+TEST_LEVELS[state.testLevel].months} mo</div></div>
     </div>
 
     <div class="eq">Δv = Isp · g₀ · ln(m₀/m_f)<br>
@@ -1274,6 +1423,7 @@ function renderProfileReadout(m){
       <div class="metric"><div class="k">To LEO</div><div class="v">${v.payload.toFixed(2)} t</div></div>
       <div class="metric"><div class="k">Build cost</div><div class="v">${fM(v.buildCost)}</div></div>
       <div class="metric"><div class="k">Launch cost</div><div class="v">${fM(v.launchCost)}</div></div>
+      <div class="metric"><div class="k">Build time</div><div class="v">${buildMonths(m)+1+TEST_LEVELS[state.testLevel].months} mo</div></div>
     </div>
 
     <div class="eq">The launch vehicle lofts the whole stack (${v.payload.toFixed(1)} t) to LEO; the transfer stage then spends one tank across ${sim.inSpaceLegs} deep-space burn${sim.inSpaceLegs>1?'s':''}, lighter after each — yet every burn still hauls everything still attached.${m.modules.includes('lander')?' The descent stage is dropped on the surface after landing; the ascent stage returns alone to meet the transfer stage.':''}${state.depotUse>0?` This run draws <b style="color:var(--readout)">${state.depotUse.toFixed(1)} t</b> from the LEO depot — propellant that never had to be launched from Earth.`:''}${ISRU_FREE_LEG[m.id]&&state.research[ISRU_FREE_LEG[m.id].research]?` <b style="color:var(--ok)">${ISRU_FREE_LEG[m.id].label}</b> is online — the ${ISRU_FREE_LEG[m.id].leg} burn is produced on-site.`:''}</div>
@@ -1376,6 +1526,39 @@ function selectBody(id){
   render();
 }
 function zoomOut(){ state.mapZoom=null; render(); }
+// M4b: Rivals tab — each rival's profile plus their "firsts" timeline,
+// achieved vs upcoming, anchored to the current calendar year.
+function renderRivals(){
+  const box=$('rivalsCard');
+  let html=`<h2>Rival Agencies &amp; Firms</h2>
+    <p class="muted" style="font-size:12px;margin:-4px 0 12px">Rivals pursue their own milestones on a fixed calendar, independent of your progress. Claimed firsts are logged below and in the Flight &amp; Operations Log — for now this is informational only.</p>`;
+  for(const r of RIVALS){
+    html+=`<div class="card" style="margin-bottom:10px"><h2 style="margin-bottom:2px">${r.flag} ${r.name} <span class="pill">${r.kind}</span></h2>
+      <p class="muted" style="font-size:12px;margin:2px 0 8px">${r.blurb}</p>
+      <div style="display:flex;flex-direction:column;gap:4px">`;
+    for(const f of r.firsts){
+      const key=r.id+'|'+f.name;
+      const done=!!state.rivalFired[key];
+      const cls = done?'ok':(f.year===state.year?'active':'lock');
+      const status = done? 'Claimed' : (f.year<=state.year? 'Pending' : f.year-state.year+'y away');
+      let linkTxt='';
+      if(f.missionId){
+        const mm=MISSIONS.find(x=>x.id===f.missionId);
+        if(done && state.completed[f.missionId]) linkTxt=` <span class="pill ok">you got there first</span>`;
+        else if(done && state.scooped[f.missionId]) linkTxt=` <span class="pill lock">scooped "${mm.name}"</span>`;
+        else linkTxt=` <span class="pill">linked: ${mm.name}</span>`;
+      }
+      html+=`<div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;border-bottom:1px solid var(--line);padding:4px 0">
+        <span>${f.name}${linkTxt}</span>
+        <span style="display:flex;gap:8px;align-items:center"><span class="dim" style="font-family:var(--mono)">${f.year}</span><span class="pill ${cls}">${status}</span></span>
+      </div>`;
+    }
+    html+=`</div></div>`;
+  }
+  box.innerHTML=html;
+}
+
+
 function renderMap(){
   const W=720,H=460;
   let svg;
@@ -1534,11 +1717,14 @@ function renderMissions(){
     const resOk=!m.reqResearch||state.research[m.reqResearch];
     const avail=repOk&&resOk;
     const active=state.activeMission===m.id;
+    const scooped = !done && state.scooped[m.id];
     let pill = active?'<span class="pill active">selected</span>'
             : done?'<span class="pill ok">done</span>'
             : !resOk?`<span class="pill lock">needs ${m.reqResearch?RESEARCH.find(r=>r.id===m.reqResearch).name:'research'}</span>`
             : !repOk?`<span class="pill lock">needs ${m.minRep} rep</span>`
             : '<span class="pill">open</span>';
+    if(scooped && avail) pill += ' <span class="pill lock">scooped</span>';
+    const previewPayout = done ? m.payout*0.4 : (scooped ? m.payout*SCOOP_PAYOUT_MULT : m.payout);
     const detail = m.tanker
       ? `required Δv ${fI(m.reqDv)} m/s · delivers propellant to the LEO depot`
       : m.crew
@@ -1551,13 +1737,31 @@ function renderMissions(){
         <div class="sub">${m.blurb}</div>
         <div class="sub num" style="margin-top:4px;color:var(--readout)">${detail}</div>
       </div>
-      <div class="reward"><div class="p">+${fM(done?m.payout*0.4:m.payout)}</div><div class="r">+${done?2:m.rep} rep</div></div>
+      <div class="reward"><div class="p">+${fM(previewPayout)}</div><div class="r">+${done?2:m.rep} rep</div></div>
       <button class="btn" onclick="selectMission('${m.id}')" ${avail?'':'disabled'}>${active?'Selected':'Select'}</button>`;
     box.appendChild(div);
   });
 }
 
+function renderEraCard(){
+  const box=$('eraCard'); const era=currentEra(); const idx=eraIndex(era);
+  const nextEra=ERAS[idx+1];
+  const stripHtml=ERAS.map((e,i)=>{
+    const cls = i===idx?'now':(i<idx?'past':'');
+    return `<div class="era-chip ${cls}"><div class="name">${e.name}</div><div class="yrs">${e.from}${e.to<9999?'–'+e.to:'+'}</div></div>`;
+  }).join('');
+  const nextNote = nextEra
+    ? `<span class="dim"> · ${nextEra.name} era opens ${nextEra.from}</span>`
+    : `<span class="dim"> · final era</span>`;
+  box.innerHTML=`
+    <h2>Era ${idx+1} of ${ERAS.length} — ${era.name}<span class="pill era">${era.from}${era.to<9999?'–'+era.to:'+'}</span>${nextNote}</h2>
+    <p class="muted" style="font-size:12px;margin:-4px 0 8px">${era.blurb}</p>
+    <div class="era-strip">${stripHtml}</div>
+    <p class="dim" style="font-size:11px;margin:8px 0 0">Eras are soft — calendar-driven context, not a hard lock on research below.</p>`;
+}
+
 function renderRnd(){
+  renderEraCard();
   const box=$('rndList'); box.innerHTML='';
   const busy=!!state.activeResearch;
   RESEARCH.forEach(r=>{
@@ -1570,7 +1774,14 @@ function renderRnd(){
     const allReqNames=[reqNames, missionReqName?`fly ${missionReqName}`:null].filter(Boolean).join(', ');
     let btn;
     if(owned) btn=`<button class="btn" disabled>Done</button>`;
-    else if(active) btn=`<button class="btn" disabled>${state.activeResearch.monthsLeft} mo left</button>`;
+    else if(active){
+      const rc=rushCost(state.activeResearch.rushed||0);
+      const canRush = state.activeResearch.monthsLeft>1 && state.money>=rc;
+      btn=`<div style="display:flex;flex-direction:column;gap:4px;align-items:stretch">
+        <button class="btn" disabled>${state.activeResearch.monthsLeft} mo left</button>
+        <button class="btn ghost" style="font-size:11px" onclick="rushResearch()" ${canRush?'':'disabled'}>Rush −1 mo (${fM(rc)})</button>
+      </div>`;
+    }
     else btn=`<button class="btn" onclick="buyResearch('${r.id}')" ${(!reqOk||!afford||busy)?'disabled':''}>Research</button>`;
     const tag = owned?'<span class="pill ok">researched</span>':active?'<span class="pill active">in progress</span>':'';
     const div=document.createElement('div'); div.className='item';
