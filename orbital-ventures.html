@@ -175,6 +175,9 @@
     <span id="rndStatus"></span>
     <span style="flex:1"></span>
     <button class="btn ghost" id="animToggle" onclick="toggleAnim()">Animation: On</button>
+    <button class="btn ghost" onclick="saveGame()">💾 Save</button>
+    <button class="btn ghost" onclick="loadGame()">📂 Load</button>
+    <button class="btn ghost" onclick="confirmNew()">New Game</button>
     <button class="btn" onclick="advanceMonth()">▸ Advance 1 month <span class="dim">(−$0.12M)</span></button>
     <button class="btn ghost" id="skipBtn" onclick="skipResearch()">Skip to R&amp;D done</button>
   </div>
@@ -921,6 +924,80 @@ function bailout(){
 function restart(){hideModal();newGame();render();}
 function showModal(html){$('modalBody').innerHTML=html;$('modal').classList.remove('hidden');}
 function hideModal(){$('modal').classList.add('hidden');}
+
+/* ---------- save / load ---------- */
+const SAVE_KEY='orbital_ventures_save';
+const SAVE_VERSION=1;
+function saveGame(){
+  try{
+    const payload={v:SAVE_VERSION, ts:Date.now(), state:JSON.parse(JSON.stringify(state))};
+    localStorage.setItem(SAVE_KEY, JSON.stringify(payload));
+    log('info','Game saved.');
+    render();
+    showModal(`<h2>Game Saved</h2><p class="muted">${dateStr()} — ${state.company}</p>
+      <p class="dim" style="font-size:12px">Saved to browser local storage. Clearing browser data will erase it.</p>
+      <button class="btn" onclick="hideModal()" style="margin-top:8px">OK</button>`);
+  }catch(e){
+    showModal(`<h2>Save Failed</h2><p class="muted">${e.message}</p>
+      <button class="btn" onclick="hideModal()" style="margin-top:8px">OK</button>`);
+  }
+}
+function loadGame(){
+  try{
+    const raw=localStorage.getItem(SAVE_KEY);
+    if(!raw){ showModal(`<h2>No Save Found</h2><p class="muted">No saved game in this browser.</p>
+      <button class="btn" onclick="hideModal()" style="margin-top:8px">OK</button>`); return; }
+    const payload=JSON.parse(raw);
+    const saved=payload.state||payload;
+    if(!saved.year||!saved.company){ throw new Error('Save data is corrupted.'); }
+    const defaults={
+      research:{}, unlocked:{a4:true}, completed:{}, stages:[{eng:'a4',count:1,prop:2.0}],
+      transfer:{eng:'hyper_storable',prop:10.0}, descent:{eng:'hyper_storable',prop:6.0},
+      ascent:{eng:'hyper_storable',prop:2.5}, eclss:'open', testLevel:0,
+      windows:{}, committedWindow:null, selectedBody:'moon', mapZoom:null,
+      depot:0, depotUse:0, tab:'bench', log:[], rivalFired:{}, scooped:{}, bailouts:0
+    };
+    for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
+    state=saved;
+    log('info','Game loaded.');
+    render();
+    showModal(`<h2>Game Loaded</h2><p class="muted">${dateStr()} — ${state.company}</p>
+      <p class="dim" style="font-size:12px">${state.flights} flights, ${fM(state.money)}, ${state.rep} rep</p>
+      <button class="btn" onclick="hideModal()" style="margin-top:8px">OK</button>`);
+  }catch(e){
+    showModal(`<h2>Load Failed</h2><p class="muted">${e.message}</p>
+      <button class="btn" onclick="hideModal()" style="margin-top:8px">OK</button>`);
+  }
+}
+function confirmNew(){
+  const hasSave=!!localStorage.getItem(SAVE_KEY);
+  showModal(`<h2>New Game</h2>
+    <p class="muted">Start a fresh company from 1942. Current progress will be lost unless you save first.</p>
+    ${hasSave?'<p class="dim" style="font-size:12px">A saved game exists in this browser and will not be overwritten.</p>':''}
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button class="btn" onclick="hideModal()" style="flex:1">Cancel</button>
+      <button class="btn danger" onclick="restart()" style="flex:1">Start New Game</button>
+    </div>`);
+}
+function autoLoad(){
+  try{
+    const raw=localStorage.getItem(SAVE_KEY);
+    if(!raw) return false;
+    const payload=JSON.parse(raw);
+    const saved=payload.state||payload;
+    if(!saved.year||!saved.company) return false;
+    const defaults={
+      research:{}, unlocked:{a4:true}, completed:{}, stages:[{eng:'a4',count:1,prop:2.0}],
+      transfer:{eng:'hyper_storable',prop:10.0}, descent:{eng:'hyper_storable',prop:6.0},
+      ascent:{eng:'hyper_storable',prop:2.5}, eclss:'open', testLevel:0,
+      windows:{}, committedWindow:null, selectedBody:'moon', mapZoom:null,
+      depot:0, depotUse:0, tab:'bench', log:[], rivalFired:{}, scooped:{}, bailouts:0
+    };
+    for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
+    state=saved;
+    return true;
+  }catch(e){ return false; }
+}
 
 /* ---------- flight animation (canvas) ---------- */
 let animEnabled=true, animState=null;
@@ -2309,6 +2386,7 @@ function renderLog(){
 }
 
 newGame();
+if(autoLoad()) log('info','Resumed from saved game.');
 render();
 </script>
 </body>

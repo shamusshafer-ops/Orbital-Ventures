@@ -91,6 +91,26 @@ companion to `orbital-ventures-design.md` (original full design doc) and
       launch. Build time is now shown as a metric in both the simple and
       profile readouts. Validated headlessly: a 1-stage no-module mission
       stays at 2 mo; a 2-stage Lunar Landing (transfer+lander+crew) is 6 mo.
+- [x] **Flight animation rewrite** — Complete overhaul of the canvas-based
+      mission playback. Ascent now features: multi-layer atmosphere transition
+      (troposphere → stratosphere → space), realistic exhaust plumes with
+      vacuum expansion and Mach diamonds, smoke/exhaust trail particles,
+      max-Q dynamic pressure with throttle bucket, stage separation with
+      tumbling debris and retro-fire sparks, fairing separation at ~100 km,
+      camera shake during max-Q, and a full telemetry panel (T+, ALT, VEL,
+      ACC, Q, DRANGE, THROTTLE%, STAGE). Orbit phase upgraded with detailed
+      Earth (landmasses, clouds, day/night terminator, 3-layer atmosphere
+      glow), periapsis/apoapsis orbit lines, prograde velocity marker, and
+      circularization burn glow. Suborbital adds reentry heating and chute
+      deploy phase. Cislunar adds sunlight direction, detailed Earth/Moon
+      surfaces, engine burns at TLI/LOI/TEI, trail glow, and mission elapsed
+      time in days. All phases have 160 twinkling stars, debris physics on
+      explosions, and a phase progress bar.
+- [x] **Save/load** — Game state persists to `localStorage` and auto-loads
+      on page open. Save/Load/New Game buttons in the ops bar. Load applies
+      forward-compatible defaults for any fields added in later milestones,
+      so old saves survive code updates. New Game confirms before wiping.
+      Save is versioned (`SAVE_VERSION`) for future migration hooks.
 
 ## Open threads / known scoping notes
 
@@ -102,8 +122,6 @@ companion to `orbital-ventures-design.md` (original full design doc) and
   trip can't benefit from it.
 - The Solar System map is a planning reference; it doesn't yet drive rival
   activity, economy-wide events, or fleet logistics.
-- No save/load yet — state is in-memory only for the session.
-
 ## Candidate next milestones (not yet sequenced)
 
 - **M5 — Reusability & rapid cadence** (next up): propulsive landing, booster
@@ -112,8 +130,8 @@ companion to `orbital-ventures-design.md` (original full design doc) and
   morale, attrition, star-hire competition (per original design doc §8).
 - **M7 — Outer system**: asteroid belt mining (volatiles, PGMs), Jupiter
   system, nuclear-thermal/electric propulsion, fusion-era speculative tech.
-- **Save/load** and a proper settings/difficulty panel (Napkin vs Engineer
-  mode per the original design doc §13).
+- **Settings/difficulty panel** (Napkin vs Engineer mode per the original
+  design doc §13).
 
 ## Repo
 
