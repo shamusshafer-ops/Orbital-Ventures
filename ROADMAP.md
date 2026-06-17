@@ -179,8 +179,8 @@ companion to `orbital-ventures-design.md` (original full design doc) and
 > mission-architecture choices, map-as-planning-tool, science track, one-more-
 > turn loop). Biggest-return picks: **subsystem-based reliability** (failures as
 > stories) and a **persistent infrastructure layer** (stations/depots/bases that
-> grow). Programs/ambition (above) is item #1 shipped; remaining items are
-> sequenced as future slices.
+> grow). Programs/ambition (above) is item #1 shipped; the full brief is tracked
+> item-by-item in **§ Design Brief — Forward Arc** near the end of this file.
 
 - [ ] **M5 — Reusability & rapid cadence** *(spec only — NOT yet in code)*: `propulsive_landing` research
       (req: kerosene + heavy_booster, $5M, 6 mo) unlocks a Recovery toggle on
@@ -261,6 +261,94 @@ companion to `orbital-ventures-design.md` (original full design doc) and
       headlessly (16 checks): start capital, overhead deduction, reliability
       bump/floor/cap, build-cost scaling, payout multiplier, and equation
       flags all correct per mode.
+
+## Design Brief — Forward Arc (15-point review)
+
+Source: game-design review (2026-06-17) from the angle of realistic spaceflight +
+long-term progression. Each item below is tracked with its current code reality and
+the proposed slice. `[~]` = partially exists / bones in place. Ordering here is the
+review's numbering, not the build order (see **Suggested build order** at the end).
+
+- [x] **1 · Stronger long-term dream** — *Shipped* as Programs & ambition (see
+      completed entry above). Player picks a personal goal; progress tracked to a
+      capstone; missions reframed as steps toward it.
+- [ ] **2 · Depot → living economy** — Today the LEO depot is a number
+      (`state.depot`) + a top-off slider. Turn it into a market: fluctuating fuel
+      price, buy/sell with rivals, resupply contracts, shortages, government
+      subsidies. Creates the "build a fuel empire vs. fly to Mars" fork. Hooks:
+      `state.depot`, `econEvents`, rival `color`/firsts already present.
+- [ ] **3 · Hardware reuse & vehicle families** — No persistent vehicle identity
+      today (each launch re-derives a design). Add named lineages (OV-1 → OV-2 →
+      OV-Heavy) that accumulate reliability heritage, manufacturing knowledge, and
+      brand/rep; losing a veteran airframe should sting. Needs a saved-design model
+      (`state.vehicles[]`) distinct from the live bench config.
+- [ ] **4 · Story failures** — *(pairs with #16 below)* Today failure is a single
+      roll with a coarse `failPhase` (ascent/deep) + launch-escape handling.
+      Expand to partial success (wrong orbit, reduced payout), crew abort (survive,
+      rep preserved), and deep-space stranding (TLI ok / TEI fails). Best built on
+      top of subsystem reliability (#16).
+- [~] **5 · Strategic rivals** — Bones in place: `RIVALS` with map reach markers,
+      firsts, scoop penalties, and ambient economy events. Make them *act*: steal
+      contracts, poach staff (ties to M6 morale/attrition), beat you to tech, cut
+      launch prices industry-wide (e.g. a rival's reusable booster drops everyone's
+      payouts), forcing the player to react. Emergent pressure, not a news feed.
+- [~] **6 · Multi-path tech tree** — Research exists but is largely linear with a
+      "correct" path. Add divergent branches (heavy-lift vs orbital-assembly vs
+      refueling vs reusable vs nuclear) so different strategies reach Mars
+      differently. Needs tree restructure + UI to show branches.
+- [ ] **7 · Manufacturing capacity** — Money is nearly the only resource. Add build
+      bays / engine production / launch-pad capacity as constraints, so "another pad
+      vs. hydrogen engines" becomes a real decision. New resource layer in `state`.
+- [~] **8 · Program politics** — Partially foreshadowed by rep + economy events.
+      Add government funding (budget increases/cuts), public support (Moon landing
+      ↑, crew deaths ↓), shareholders (demand profit), national prestige (the race).
+      Launches affect more than money.
+- [~] **9 · Personnel personality** — M6 gives named engineers/astronauts with
+      morale/attrition. Add traits (risk-taker, perfectionist, visionary,
+      bureaucrat) and events (raise demands, rival poaching, breakthrough paper,
+      costly mistake). Football-Manager/RimWorld-style story generation.
+- [~] **10 · Vehicle visualization** — The launch animation *already* renders a
+      design-driven silhouette (stage sizes, engine clusters, fairing vs capsule,
+      staging). Missing piece is a **static silhouette on the design bench** so you
+      see "my rocket" while tuning it — a small SVG/canvas add reusing
+      `buildVehicleShape`/`drawVehicle`.
+- [x] **11 · Milestone programs** — *Shipped* as Programs (campaigns with
+      objectives + completion bonuses). See completed entry above.
+- [ ] **12 · Mission-architecture choices** — Machinery exists (profiles already
+      model staging, depot top-off, ISRU free-legs as Δv trade-offs). Surface it as
+      a pre-mission *choice* screen: e.g. Lunar = direct ascent / EOR / LOR /
+      depot-assisted, each with different cost/complexity/risk. Deep strategy
+      without new missions.
+- [~] **13 · Map as planning tool** — Map now shows rival reach + economy activity
+      and is full-screen-capable. Go further: click Mars → show windows, transfer
+      opportunities, depot routes, estimated cost. Make the map a place players
+      *plan*, not just read.
+- [ ] **14 · Scientific discovery** — Rewards are money + rep only. Add a science
+      track (lunar ice found, Mars water confirmed, asteroid survey) yielding
+      science points that unlock tech or funding — a second progression axis.
+- [x] **15 · One-more-turn loop** — *Shipped* with Programs: `nextObjective()`
+      nudge in the opsbar + post-success log line dangle the next goal. Deepens as
+      more unlock-chains (#2 tourism→depot→base→ISRU→Mars) come online.
+
+**Biggest-return picks (called out by the review):**
+
+- [ ] **16 · Subsystem-based reliability (technical pick)** — Replace the single
+      success/fail roll (`curRel()` + clamps) with per-subsystem reliability
+      (engines, tanks, avionics, guidance, life-support, crew systems), each rolled
+      per phase. Turns failures into stories (#4) and gives test programs / heritage
+      / engineer specialties concrete subsystem effects. *Recommended next slice* —
+      self-contained, highest emotional return, plugs into existing `failPhase`.
+- [ ] **17 · Persistent infrastructure layer (playability pick)** — Stations,
+      depots, lunar/Mars bases as entities that persist after a mission and grow /
+      produce over decades (ISRU output, fuel, science, passive income). The "build
+      something that remains" addiction loop; the substrate that makes #2, #12, #14
+      compound. Largest structural change; high payoff.
+
+**Suggested build order:** 16 (subsystem reliability + story failures) → 17
+(infrastructure layer) → 2 (depot economy) → 10 (bench silhouette, quick win) →
+12 (architecture choices) → 5 (active rivals) → 9 (personnel traits) → 3 (vehicle
+families) → 14 (science) → 6 (multi-path tech) → 8 (politics) → 7 (manufacturing).
+Items 1/11/15 already shipped; 13 partially done.
 
 ## Repo
 
