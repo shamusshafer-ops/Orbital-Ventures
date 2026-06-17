@@ -106,6 +106,10 @@
   .customrow .cv{font-family:var(--mono);font-size:11px;color:var(--ignite);text-align:right}
   .customrow input[type=range]{width:100%;accent-color:var(--ignite)}
   .customrow input[type=checkbox]{accent-color:var(--ignite);justify-self:start}
+  .mapsvg{display:block;width:100%;height:auto;background:#04060a;border:1px solid var(--line);border-radius:8px}
+  #mapView.expanded{position:fixed;inset:0;z-index:24;background:var(--bg);padding:12px 18px;overflow:auto}
+  #mapView.expanded .grid{grid-template-columns:1fr;gap:12px;align-items:start}
+  #mapView.expanded .mapsvg{width:auto;max-width:100%;height:84vh;margin:0 auto}
   .launch{width:100%;padding:13px;border:1px solid var(--ignite);background:linear-gradient(180deg,#2a2113,#1c1810);
     color:var(--ignite);font-size:14px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;border-radius:6px;cursor:pointer}
   .launch:hover{background:linear-gradient(180deg,#3a2c12,#241d10)}
@@ -237,8 +241,11 @@
   <div id="mapView" class="hidden">
     <div class="grid">
       <div class="card">
-        <h2>Solar System — click a body for its Δv profile</h2>
-        <p class="muted" style="font-size:12px;margin:-4px 0 10px">Orbits are spaced for legibility, not to scale. Every figure assumes the same Earth-surface start.</p>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+          <h2 style="margin:0">Solar System — click a body for its Δv profile</h2>
+          <button class="btn ghost" id="mapExpandBtn" onclick="toggleMapExpand()">⛶ Expand</button>
+        </div>
+        <p class="muted" style="font-size:12px;margin:6px 0 10px">Orbits are spaced for legibility, not to scale. Every figure assumes the same Earth-surface start.</p>
         <div id="mapCanvas"></div>
       </div>
       <div class="readout"><div class="card" id="bodyCard"></div><div class="card" id="mapActivityCard" style="margin-top:14px"></div></div>
@@ -4029,12 +4036,16 @@ function renderRivals(){
 }
 
 
+let mapExpanded=false;
+function toggleMapExpand(){ mapExpanded=!mapExpanded; renderMap(); }
 function renderMap(){
   const W=720,H=460;
   let svg;
   if(!state.mapZoom){ svg=renderMapOverview(W,H); }
   else { svg=renderMapZoom(W,H,state.mapZoom); }
   $('mapCanvas').innerHTML=svg;
+  const mv=$('mapView'); if(mv) mv.classList.toggle('expanded', mapExpanded);
+  const eb=$('mapExpandBtn'); if(eb) eb.textContent = mapExpanded ? '⛶ Exit full screen' : '⛶ Expand';
   renderBodyCard();
   renderMapActivity();
 }
@@ -4089,9 +4100,14 @@ function renderMapActivity(){
     <div class="dim" style="font-size:11px;margin-top:10px">Coloured dots on the map mark where each rival has reached. Beating a rival to a linked mission avoids its scoop penalty.</div>`;
 }
 function renderMapOverview(W,H){
-  const cx=W*0.30,cy=H*0.62;
   const planets=BODIES.filter(b=>!b.around);
-  let svg=`<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;background:#04060a;border:1px solid var(--line);border-radius:8px">`;
+  // Centre the Sun and size a square viewBox to fit the outermost orbit (incl. Jupiter)
+  // plus padding for labels and rival markers, so the whole system is always on-screen.
+  const maxR=Math.max.apply(null, planets.map(b=>b.r));
+  const pad=48;
+  const S=2*(maxR+pad);
+  const cx=S/2, cy=S/2;
+  let svg=`<svg viewBox="0 0 ${S} ${S}" xmlns="http://www.w3.org/2000/svg" class="mapsvg">`;
   planets.forEach(b=>{
     svg+=`<circle cx="${cx}" cy="${cy}" r="${b.r}" fill="none" stroke="rgba(125,144,155,0.25)" stroke-width="1" stroke-dasharray="${b.kind==='belt'?'2,3':'3,4'}"/>`;
   });
@@ -4133,7 +4149,7 @@ function renderMapZoom(W,H,id){
   const b=BODIES.find(x=>x.id===id);
   const parent=b.around?BODIES.find(x=>x.id===b.around):null;
   const cx=W/2, cy=H/2;
-  let svg=`<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;background:#04060a;border:1px solid var(--line);border-radius:8px">`;
+  let svg=`<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" class="mapsvg">`;
   // sun direction indicator (everything orbits sunward toward overview center)
   svg+=`<g opacity="0.5"><circle cx="34" cy="${H-34}" r="7" fill="#f5c542"/><text x="50" y="${H-30}" fill="#7d909b" font-size="10" font-family="ui-monospace,monospace">toward Sun</text></g>`;
 
