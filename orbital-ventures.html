@@ -178,6 +178,7 @@
       <div class="stat"><span class="k">Reputation</span><span class="v" id="stRep">—</span></div>
       <div class="stat"><span class="k">Flights</span><span class="v" id="stFlights">—</span></div>
       <div class="stat hidden" id="stMarketWrap"><span class="k">Market</span><span class="v" id="stMarket">—</span></div>
+      <div class="stat hidden" id="stRoyaltyWrap"><span class="k">PGM Royalties</span><span class="v" id="stRoyalty">—</span></div>
       <div class="stat hidden" id="stDepotWrap"><span class="k">LEO Depot</span><span class="v" id="stDepot">—</span></div>
     </div>
   </header>
@@ -421,6 +422,9 @@ const ENGINES = {
   hyper_storable:{id:'hyper_storable',name:'AJ10 Aerozine/N₂O₄',prop:'Aerozine/N₂O₄',ispSL:270,ispVac:321, thrustSL:90,  thrustVac:100,  mass:0.45, cost:0.70, rel:0.97},
   hydrolox_up: {id:'hydrolox_up', name:'Rocketdyne J-2', prop:'LH₂/LOX',     ispSL:360, ispVac:425, thrustSL:800, thrustVac:900,  mass:1.80, cost:1.80, rel:0.95},
   f1_class:    {id:'f1_class',    name:'Rocketdyne F-1',  prop:'RP-1/LOX',    ispSL:263, ispVac:304, thrustSL:6700,thrustVac:7700, mass:8.40, cost:5.50, rel:0.93},
+  // M7 outer-system nuclear engines — in-space (transfer stage) only, blocked from launch-vehicle stages
+  ntr_nerva:   {id:'ntr_nerva',   name:'NERVA (NRX) NTR', prop:'LH₂ (nuclear-thermal)', ispSL:0, ispVac:825, thrustSL:0, thrustVac:330, mass:6.80, cost:7.00, rel:0.95, transferOnly:true},
+  nep_snap:    {id:'nep_snap',    name:'SNAP-derived NEP', prop:'Xe (nuclear-electric)', ispSL:0, ispVac:3000, thrustSL:0, thrustVac:5, mass:5.50, cost:9.00, rel:0.97, transferOnly:true, lowThrust:true},
 };
 
 const MISSIONS = [
@@ -458,6 +462,23 @@ const MISSIONS = [
     modules:['lv','transfer','crew'],
     profile:[{name:'Ascent to LEO', dv:9400, by:'lv'},{name:'Trans-Mars Injection', dv:3600, by:'transfer'},{name:'Mars Orbit Insertion', dv:1400, by:'transfer'},{name:'Trans-Earth Injection', dv:1400, by:'transfer'}],
     blurb:'Capture into Mars orbit, wait out the return window, then burn home — a year and a half away from Earth on one tank.<span class="hist">↳ Mars mission architectures from the 1980s onward converge on long-stay, opposition-class profiles like this one.</span>'},
+  {id:'belt_survey',  name:'Belt Survey',           crew:0, days:780, payout:280.0, rep:220, minRep:620, reqResearch:'nuclear_thermal',
+    modules:['lv','transfer'],
+    profile:[{name:'Ascent to LEO', dv:9400, by:'lv'},{name:'Trans-Belt Injection', dv:8000, by:'transfer'},{name:'Ceres Orbit Insertion', dv:500, by:'transfer'}],
+    blurb:'A robotic prospector to the Asteroid Belt — years of cruise on a single nuclear tank, then a gentle capture at Ceres. No return.<span class="hist">↳ Dawn used ion propulsion to orbit both Vesta and Ceres, proving low-thrust transfer to the Belt.</span>'},
+  {id:'belt_mining',  name:'Belt Mining Claim',     crew:2, days:960, payout:320.0, rep:300, minRep:760, reqResearch:'nuclear_thermal',
+    modules:['lv','transfer','crew'],
+    profile:[{name:'Ascent to LEO', dv:9400, by:'lv'},{name:'Trans-Belt Injection', dv:8000, by:'transfer'},{name:'Ceres Orbit Insertion', dv:500, by:'transfer'},{name:'Trans-Earth Injection', dv:7600, by:'transfer'}],
+    pgm:true,
+    blurb:'Two crew stake the first platinum-group mining claim in the Belt and bring a sample home. First success opens a standing royalty stream. The return burn is brutal — Belt Volatiles ISRU all but requires it.<span class="hist">↳ A single metallic asteroid may hold more platinum-group metal than has ever been mined on Earth.</span>'},
+  {id:'jupiter_flyby',name:'Jupiter Flyby',         crew:2, days:1460, payout:480.0, rep:360, minRep:900, reqResearch:'rad_shielding',
+    modules:['lv','transfer','crew'],
+    profile:[{name:'Ascent to LEO', dv:9400, by:'lv'},{name:'Trans-Jupiter Injection', dv:6300, by:'transfer'}],
+    blurb:'A crewed free-return swing through the Jovian system — four years aloft through the harshest radiation in the Solar System. Shielding is mandatory.<span class="hist">↳ Pioneer 10 was the first craft to cross the Belt and reach Jupiter, in 1973.</span>'},
+  {id:'jupiter_orbit',name:'Jupiter Orbital Mission',crew:3, days:2190, payout:680.0, rep:480, minRep:1100, reqResearch:'rad_shielding',
+    modules:['lv','transfer','crew'],
+    profile:[{name:'Ascent to LEO', dv:9400, by:'lv'},{name:'Trans-Jupiter Injection', dv:6300, by:'transfer'},{name:'Jovian Orbit Insertion', dv:1000, by:'transfer'},{name:'Trans-Earth Injection', dv:6300, by:'transfer'}],
+    blurb:'Capture three crew into the Jovian system, survey the Galilean moons, and burn home — six years on one transfer stage. The capstone of the interplanetary era; only nuclear-electric makes the mass ratio close.<span class="hist">↳ Galileo orbited Jupiter for eight years; a crewed equivalent is the defining goal of the outer-system era.</span>'},
   {id:'tanker_leo',   name:'Tanker Run (LEO Depot)', crew:0, days:0, payout:0, rep:6, minRep:38, reqResearch:'orbital_depot', reqDv:9400,
     payload:0, tanker:true,
     blurb:'No crew, no science — just propellant. Deliver a tank of fuel to the LEO depot for future missions to draw from.<span class="hist">↳ Propellant depots were proposed for Apollo-era architectures and became central to post-2010 reusable-launch economics.</span>'},
@@ -484,6 +505,10 @@ const RESEARCH = [
   {id:'orbital_depot',name:'Orbital Propellant Depot',       cost:5.5, months:6, req:['deep_space'], effect:{unlock:'depot'}, desc:'A propellant tank farm in LEO. Tanker Run contracts deposit fuel into it; any mission\'s transfer stage can then top off from the depot instead of carrying that propellant up from Earth.<span class="hist">↳ Depot-based architectures let a transfer stage launch nearly empty and fill up in orbit — the key to breaking the rocket equation\'s compounding.</span>'},
   {id:'lunar_isru',   name:'Lunar ISRU (Water → LOX/LH₂)',   cost:6.0, months:7, req:[], reqMissionDone:'luna_landing', effect:{unlock:'isru_moon'}, desc:'Polar water ice, electrolyzed into liquid oxygen and hydrogen at a surface plant. Once established, your lander\'s ascent stage refuels on the Moon — that propellant no longer has to be launched from Earth.<span class="hist">↳ Permanently shadowed craters at the lunar poles hold water ice — the resource every lunar architecture since Apollo has wanted to reach.</span>'},
   {id:'mars_isru',    name:'Mars ISRU (Sabatier Methalox)',  cost:7.5, months:8, req:[], reqMissionDone:'mars_orbit', effect:{unlock:'isru_mars'}, desc:'Atmospheric CO₂ plus water ice, run through the Sabatier reaction, yields methane and oxygen on the Martian surface. The return propellant for Trans-Earth Injection is made on Mars, not carried there.<span class="hist">↳ Sabatier-process ISRU is the linchpin of every serious Mars architecture — making the return fuel on-site instead of hauling it from Earth.</span>'},
+  {id:'nuclear_thermal', name:'Nuclear Thermal Propulsion (NERVA)', cost:9.0, months:10, req:['cryo_upper','deep_space'], effect:{engine:'ntr_nerva'}, desc:'A solid-core reactor heats liquid hydrogen to ~825 s Isp — roughly double the best chemical upper stage. Unlocks the NERVA transfer engine, the key to the high-Δv burns the outer system demands.<span class="hist">↳ The NERVA program ground-tested flight-class nuclear-thermal engines through the late 1960s before cancellation in 1973.</span>'},
+  {id:'nuclear_electric', name:'Nuclear-Electric Propulsion', cost:12.0, months:12, req:['nuclear_thermal'], effect:{engine:'nep_snap'}, desc:'A reactor-driven electric thruster: ~3,000 s Isp at minuscule thrust. Burns measured in months, not minutes — but the mass ratio it buys makes the deep outer system reachable. Unlocks the SNAP-derived NEP transfer engine.<span class="hist">↳ SNAP reactors flew in the 1960s; nuclear-electric remains the leading concept for crewed outer-planet transfer.</span>'},
+  {id:'rad_shielding', name:'Deep-Space Radiation Shielding', cost:6.0, months:6, req:['nuclear_thermal'], effect:{unlock:'rad_shield'}, desc:'Storm shelters and hydrogen-rich shielding to keep crews alive through Jovian radiation and multi-year cruises. Required for any crewed Jupiter mission.<span class="hist">↳ Jupiter\'s magnetosphere is the harshest radiation environment in the Solar System short of the Sun itself.</span>'},
+  {id:'belt_volatiles', name:'Belt Volatiles ISRU', cost:8.0, months:9, req:['nuclear_thermal'], reqMissionDone:'belt_mining', effect:{unlock:'isru_belt'}, desc:'Water and volatiles mined from carbonaceous asteroids, cracked into hydrogen/oxygen propellant at the claim. Once established, the Belt return burn (Trans-Earth Injection) is fuelled on-site instead of hauled from Earth.<span class="hist">↳ C-type asteroids are up to ~10% water by mass — the propellant depots of a spacefaring economy.</span>'},
 ];
 
 /* ---------- Solar System map data ---------- */
@@ -521,12 +546,14 @@ const BODIES = [
       {label:'TMI → Phobos rendezvous', dv:1500, note:'Phobos\'s gravity is negligible — this is essentially matching orbits.'},
     ]},
   {id:'belt', name:'Asteroid Belt (Ceres)', kind:'belt', r:165, color:'#9aa0a6', note:'Volatiles for propellant, metals, and platinum-group bounty — at the cost of years of transit.',
+    missions:['belt_survey','belt_mining'],
     legs:[
       {label:'Surface → LEO', dv:9400},
       {label:'LEO → Belt transfer', dv:8000, note:'Highly target-dependent — figure is illustrative.'},
       {label:'Transfer → Ceres orbit', dv:500, note:'Ceres\'s gravity is weak; capture is cheap once you arrive.'},
     ]},
   {id:'jupiter', name:'Jupiter System', kind:'planet', r:230, color:'#d9a066', note:'Europa and Ganymede beckon — but radiation, distance, and light-lag make this an autonomous-era destination.',
+    missions:['jupiter_flyby','jupiter_orbit'],
     legs:[
       {label:'Surface → LEO', dv:9400},
       {label:'LEO → Jupiter transfer', dv:6300, note:'Gravity assists can reduce this substantially.'},
@@ -629,7 +656,7 @@ function newGame(difficulty){
     tab:'bench', won:false, wonM2:false, wonM3a:false, wonM3aii:false, wonM3b:false, wonM3bii:false, over:false,
     log:[], rivalFired:{}, scooped:{},
     staff:[], assignedAstronaut:null,
-    econEvents:[], eventCooldown:6,
+    econEvents:[], eventCooldown:6, pgmRoyalty:0,
   };
   log('info','Company founded. The pad is yours — go make some noise.');
 }
@@ -653,6 +680,7 @@ function advance(months){
   for(let i=0;i<months;i++){
     state.month++; if(state.month>11){state.month=0;state.year++;}
     state.money-=Math.max(0,diff().overhead+econOverheadAdd()); // monthly overhead (difficulty + active market events)
+    if(state.pgmRoyalty>0) state.money+=state.pgmRoyalty; // M7: platinum-group royalties from an established Belt claim
 
     // M6: personnel salary deduction
     state.staff.forEach(s=>{
@@ -841,6 +869,7 @@ function stackPerformance(stages, payload){
 const ISRU_FREE_LEG = {
   luna_landing: {leg:'Ascent to Lunar Orbit', research:'lunar_isru', label:'Lunar ISRU'},
   mars_orbit:   {leg:'Trans-Earth Injection', research:'mars_isru',  label:'Mars ISRU'},
+  belt_mining:  {leg:'Trans-Earth Injection', research:'belt_volatiles', label:'Belt Volatiles ISRU'},
 };
 // walk a mission profile leg by leg; in-space stages spend propellant while carrying the surviving stack
 function simulateMission(m){
@@ -1013,6 +1042,7 @@ function launch(){
     }
     if(!routine){
       state.completed[m.id]=true;
+      if(m.pgm && state.pgmRoyalty<4.5){ state.pgmRoyalty=4.5; log('ok','Platinum-group royalties established — the Belt claim now pays +$4.5M/mo in standing income.'); }
       if(m.id==='first_sat' && !state.won){ state.won=true; pendingCelebration=victory; }
       if(m.id==='endurance' && !state.wonM2){ state.wonM2=true; pendingCelebration=victoryM2; }
       if(m.id==='luna_orbit' && !state.wonM3a){ state.wonM3a=true; pendingCelebration=victoryM3a; }
@@ -1071,7 +1101,7 @@ function setEngine(i,v){state.stages[i].eng=v;render();}
 function setCount(i,d){state.stages[i].count=Math.max(1,Math.min(8,state.stages[i].count+d));render();}
 function setProp(i,v){state.stages[i].prop=Math.max(0.1,Math.min(1000,parseFloat(v)||0.1));render();}
 function setTransferEng(v){state.transfer.eng=v;render();}
-function setTransferProp(v){state.transfer.prop=Math.max(0.1,Math.min(120,parseFloat(v)||0.1));render();}
+function setTransferProp(v){state.transfer.prop=Math.max(0.1,Math.min(400,parseFloat(v)||0.1));render();}
 function setDepotUse(v){state.depotUse=Math.max(0,Math.min(state.depot,parseFloat(v)||0));render();}
 function setDescentEng(v){state.descent.eng=v;render();}
 function setDescentProp(v){state.descent.prop=Math.max(0.1,Math.min(60,parseFloat(v)||0.1));render();}
@@ -1315,7 +1345,7 @@ function loadGame(){
       windows:{}, committedWindow:null, selectedBody:'moon', mapZoom:null,
       depot:0, depotUse:0, tab:'bench', log:[], rivalFired:{}, scooped:{}, bailouts:0,
       difficulty:'engineer', customDifficulty:customDefaults(),
-      econEvents:[], eventCooldown:6
+      econEvents:[], eventCooldown:6, pgmRoyalty:0
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -1357,7 +1387,7 @@ function autoLoad(){
       windows:{}, committedWindow:null, selectedBody:'moon', mapZoom:null,
       depot:0, depotUse:0, tab:'bench', log:[], rivalFired:{}, scooped:{}, bailouts:0,
       difficulty:'engineer', customDifficulty:customDefaults(),
-      econEvents:[], eventCooldown:6
+      econEvents:[], eventCooldown:6, pgmRoyalty:0
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -3391,6 +3421,8 @@ function render(){
   $('stFlights').textContent=state.flights;
   $('stDepotWrap').classList.toggle('hidden', !state.research.orbital_depot);
   if(state.research.orbital_depot) $('stDepot').textContent=state.depot.toFixed(1)+' t';
+  $('stRoyaltyWrap').classList.toggle('hidden', !(state.pgmRoyalty>0));
+  if(state.pgmRoyalty>0){ $('stRoyalty').textContent='+'+fM(state.pgmRoyalty)+'/mo'; $('stRoyalty').style.color='var(--ok)'; }
   renderMarketStat();
 
   $('tabBench').classList.toggle('active',state.tab==='bench');
@@ -3512,7 +3544,7 @@ function renderStages(){
   const box=$('stages'); box.innerHTML='';
   state.stages.forEach((st,i)=>{
     const sm=stageMasses(st);
-    const opts=Object.values(ENGINES).filter(e=>state.unlocked[e.id])
+    const opts=Object.values(ENGINES).filter(e=>state.unlocked[e.id] && !e.transferOnly)
       .map(e=>`<option value="${e.id}" ${e.id===st.eng?'selected':''}>${e.name} · ${e.prop} · Isp ${e.ispVac}s</option>`).join('');
     const div=document.createElement('div'); div.className='stage';
     div.innerHTML=`
@@ -3570,7 +3602,7 @@ function renderTransfer(){
   const card=$('transferCard');
   if(!(m.tanker || (m.profile && m.modules.includes('transfer')))){ card.classList.add('hidden'); return; }
   card.classList.remove('hidden');
-  const opts=moduleOptions(state.transfer.eng);
+  const opts=moduleOptions(state.transfer.eng, true);
   const dry=inSpaceDry(state.transfer), wet=inSpaceWet(state.transfer);
   if(m.tanker){
     card.innerHTML=`<h2>Cargo Tank — propellant for the depot</h2>
@@ -3590,13 +3622,14 @@ function renderTransfer(){
     <div class="sub" style="margin-bottom:8px">A separate vehicle, lit in vacuum. One tank must cover every deep-space burn while carrying the crew module.</div>
     <div class="row"><label>Engine</label><select onchange="setTransferEng(this.value)" style="flex:1">${opts}</select></div>
     <div class="row"><label>Propellant</label>
-      <input type="range" min="0.1" max="90" step="0.5" value="${state.transfer.prop}" oninput="setTransferProp(this.value)">
-      <input type="number" min="0.1" max="120" step="0.1" value="${state.transfer.prop.toFixed(1)}" style="width:74px" onchange="setTransferProp(this.value)"><span class="muted" style="font-size:11px">t</span></div>
+      <input type="range" min="0.1" max="250" step="0.5" value="${state.transfer.prop}" oninput="setTransferProp(this.value)">
+      <input type="number" min="0.1" max="400" step="0.1" value="${state.transfer.prop.toFixed(1)}" style="width:74px" onchange="setTransferProp(this.value)"><span class="muted" style="font-size:11px">t</span></div>
     <div class="stage-stats">
       <span class="ss">dry <b>${dry.toFixed(2)} t</b></span>
       <span class="ss">prop <b>${state.transfer.prop.toFixed(1)} t</b></span>
       <span class="ss">wet <b>${wet.toFixed(2)} t</b></span>
     </div>
+    ${(ENGINES[state.transfer.eng]||{}).lowThrust?`<div class="flag"><span style="color:var(--readout)">⚠ Low-thrust drive</span><span class="dim">The NEP's thrust is measured in newtons — burns take weeks to months. The Δv budget here is impulsive; treat real transit/burn times as far longer. Best for uncrewed cargo or where mass ratio, not time, is the constraint.</span></div>`:''}
     ${renderDepotDraw()}`;
 }
 function renderDepotDraw(){
@@ -3609,9 +3642,10 @@ function renderDepotDraw(){
       <input type="number" min="0" max="${state.depot.toFixed(1)}" step="0.1" value="${state.depotUse.toFixed(1)}" style="width:74px" onchange="setDepotUse(this.value)"><span class="muted" style="font-size:11px">t</span></div>`;
 }
 
-function moduleOptions(sel){
-  return Object.values(ENGINES).filter(e=>state.unlocked[e.id])
-    .map(e=>`<option value="${e.id}" ${e.id===sel?'selected':''}>${e.name} · Isp ${e.ispVac}s vac</option>`).join('');
+function moduleOptions(sel, allowTransferOnly){
+  // transferOnly (NTR/NEP) engines are available to the transfer stage only — never landers
+  return Object.values(ENGINES).filter(e=>state.unlocked[e.id] && (allowTransferOnly || !e.transferOnly))
+    .map(e=>`<option value="${e.id}" ${e.id===sel?'selected':''}>${e.name} · Isp ${e.ispVac}s vac${e.lowThrust?' · low-thrust':''}</option>`).join('');
 }
 function renderLander(){
   const m=MISSIONS.find(x=>x.id===state.activeMission);
