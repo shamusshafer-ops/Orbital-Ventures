@@ -120,11 +120,44 @@ companion to `orbital-ventures-design.md` (original full design doc) and
 - Mars ISRU only unlocks *after* a first successful Mars Orbit — by design
   (you discover the resource, then build the plant), but means the first Mars
   trip can't benefit from it.
-- The Solar System map is a planning reference; it doesn't yet drive rival
-  activity, economy-wide events, or fleet logistics.
+- The Solar System map now visualises rival expansion (coloured reach markers
+  per body) and ambient economy events; **fleet logistics** is still not modeled.
+
+> **Roadmap/code sync note (2026-06-17):** an audit found M5, M7, and the
+> passive-income section below were written up here ahead of implementation —
+> **they are not present in `orbital-ventures.html`** (no `propulsive_landing`,
+> `ntr_nerva`/`nep_snap`, `belt_mining`, or `PASSIVE_CONTRACT_DEFS`; the
+> `MISSIONS` array stops at Mars + tanker). They've been re-marked below as
+> specs-not-yet-built. M6 (personnel) *is* in code. The belt/Jupiter *bodies*
+> exist on the map as Δv references and now host rival activity, but there are
+> no missions/engines/research to fly there yet.
+
 ## Completed milestones (continued)
 
-- [x] **M5 — Reusability & rapid cadence**: `propulsive_landing` research
+- [x] **Custom difficulty (third mode)** — `DIFFICULTY.custom` + `state.customDifficulty`
+      plus a `CUSTOM_KNOBS` table drive seven live sliders in the Settings tab
+      (start capital, monthly overhead, reliability bump/floor/cap with a
+      floor≤cap interlock, payout ×, build-cost ×) and a math-exposure toggle.
+      `diff()` merges custom values when the mode is active; selecting Custom
+      seeds from whatever mode was active; New Game offers it; persists in saves.
+      Validated headlessly (13 checks) alongside the Napkin/Engineer suite (16).
+- [x] **Rival & economy events (ambient + map)** — events fire on the monthly
+      `advance()` tick via `checkEvents()`. **Economy:** `ECONOMY_EVENTS` pool
+      (grants/windfalls/patent/insurance, budget cuts/liability/supply spikes,
+      and temporary launch-market boom/downturn ×payout and subsidy/austerity
+      ±overhead), weighted + year/rep/flight-gated, rate-limited by
+      `EVENT_CHANCE`/`EVENT_MIN_GAP`. Instant events adjust capital; temporary
+      ones live in `state.econEvents[]` with `monthsLeft`, feeding
+      `econPayoutMult()` (into mission payout) and `econOverheadAdd()` (into
+      monthly overhead), and expire with a log entry. **Rivals:** each `RIVALS`
+      first now carries a `body` + rival `color`, with new outer-system firsts
+      (Belt, Jupiter) across the decades; `rivalsAtBody()` powers coloured reach
+      markers on the overview map and a "rival frontier" panel. New header
+      **Market** stat + map **Activity** card (active conditions + frontier).
+      Validated headlessly (14 checks): apply/expiry, payout & overhead
+      modifiers, gating, and rival reach earth→moon→mars→belt→jupiter.
+
+- [ ] **M5 — Reusability & rapid cadence** *(spec only — NOT yet in code)*: `propulsive_landing` research
       (req: kerosene + heavy_booster, $5M, 6 mo) unlocks a Recovery toggle on
       Stage 1. With recovery ON: +$1.2M hardware cost (legs, grid fins,
       propellant reserve) on every flight; on routine (already-completed)
@@ -151,7 +184,7 @@ companion to `orbital-ventures-design.md` (original full design doc) and
       bonuses), hired staff cards with morale/skill bars and management
       buttons, available talent pool. Validated headlessly: salary deduction,
       morale events, attrition trigger, astro bonus, render all correct.
-- [x] **M7 — Outer system**: NTR (`ntr_nerva`, NERVA, Isp 800s,
+- [ ] **M7 — Outer system** *(spec only — NOT yet in code)*: NTR (`ntr_nerva`, NERVA, Isp 800s,
       `transferOnly`) and NEP (`nep_snap`, SNAP-derived, Isp 3000s,
       `lowThrust`, `transferOnly`) engines — both blocked from LV stage
       selectors, available to transfer stage only. Four research nodes:
@@ -167,7 +200,7 @@ companion to `orbital-ventures-design.md` (original full design doc) and
       the M7 capstone). PGM royalties shown in header stat. NEP low-thrust
       warning flag in readout. Validated headlessly: all engines, missions,
       research, ISRU, PGM royalty, and LV/transfer engine filter correct.
-- [x] **Passive income contracts**: `PASSIVE_CONTRACT_DEFS` pool of 9 signable
+- [ ] **Passive income contracts** *(spec only — NOT yet in code)*: `PASSIVE_CONTRACT_DEFS` pool of 9 signable
       contracts across 3 categories, all era/mission/research/rep gated.
       Satellite (weather $0.9M/mo, comms $1.6M/mo, recon $2.4M/mo — all
       req first_sat + Early Orbital era). Tourism (suborbital $0.6M/mo req

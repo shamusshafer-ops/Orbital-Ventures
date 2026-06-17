@@ -99,6 +99,13 @@
   .diffcard.sel .tag{color:var(--ignite)}
   .diffcard p{font-size:12px;color:var(--muted);margin:8px 0 0;line-height:1.5}
   .diffknobs{font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:10px;display:grid;grid-template-columns:1fr auto;gap:2px 10px}
+  .diffcard.wide{grid-column:1/-1}
+  .customsliders{margin-top:10px;display:flex;flex-direction:column;gap:7px}
+  .customrow{display:grid;grid-template-columns:150px 1fr 70px;align-items:center;gap:10px;font-size:12px}
+  .customrow .cl{color:var(--muted)}
+  .customrow .cv{font-family:var(--mono);font-size:11px;color:var(--ignite);text-align:right}
+  .customrow input[type=range]{width:100%;accent-color:var(--ignite)}
+  .customrow input[type=checkbox]{accent-color:var(--ignite);justify-self:start}
   .launch{width:100%;padding:13px;border:1px solid var(--ignite);background:linear-gradient(180deg,#2a2113,#1c1810);
     color:var(--ignite);font-size:14px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;border-radius:6px;cursor:pointer}
   .launch:hover{background:linear-gradient(180deg,#3a2c12,#241d10)}
@@ -170,6 +177,7 @@
       <div class="stat"><span class="k">Capital</span><span class="v" id="stMoney">—</span></div>
       <div class="stat"><span class="k">Reputation</span><span class="v" id="stRep">—</span></div>
       <div class="stat"><span class="k">Flights</span><span class="v" id="stFlights">—</span></div>
+      <div class="stat hidden" id="stMarketWrap"><span class="k">Market</span><span class="v" id="stMarket">—</span></div>
       <div class="stat hidden" id="stDepotWrap"><span class="k">LEO Depot</span><span class="v" id="stDepot">—</span></div>
     </div>
   </header>
@@ -232,7 +240,7 @@
         <p class="muted" style="font-size:12px;margin:-4px 0 10px">Orbits are spaced for legibility, not to scale. Every figure assumes the same Earth-surface start.</p>
         <div id="mapCanvas"></div>
       </div>
-      <div class="readout"><div class="card" id="bodyCard"></div></div>
+      <div class="readout"><div class="card" id="bodyCard"></div><div class="card" id="mapActivityCard" style="margin-top:14px"></div></div>
     </div>
   </div>
 
@@ -347,39 +355,62 @@ const COMMEND_COOLDOWN_MONTHS = 3;
 
 const RIVALS = [
   {
-    id:'vostochny', name:'Vostochny Dynamics', flag:'🛰', kind:'State Agency',
+    id:'vostochny', name:'Vostochny Dynamics', flag:'🛰', kind:'State Agency', color:'#e0564f',
     blurb:'A state-funded launch directorate that moves fast on national-prestige firsts, especially early in the space race.',
     firsts:[
-      {year:1957, name:'First artificial satellite reaches orbit', missionId:'first_sat'},
-      {year:1961, name:'First crewed orbital flight', missionId:'crew_orbit'},
-      {year:1965, name:'First spacewalk (EVA)'},
-      {year:1971, name:'First space station launched'},
-      {year:1986, name:'First modular space station core'},
+      {year:1957, name:'First artificial satellite reaches orbit', missionId:'first_sat', body:'earth'},
+      {year:1961, name:'First crewed orbital flight', missionId:'crew_orbit', body:'earth'},
+      {year:1965, name:'First spacewalk (EVA)', body:'earth'},
+      {year:1971, name:'First space station launched', body:'earth'},
+      {year:1986, name:'First modular space station core', body:'earth'},
+      {year:2009, name:'First robotic sample return from a near-Earth asteroid', body:'belt'},
+      {year:2049, name:'First flyby of the Jovian system', body:'jupiter'},
     ],
   },
   {
-    id:'meridian', name:'Meridian Aerospace', flag:'🚀', kind:'Legacy Contractor',
+    id:'meridian', name:'Meridian Aerospace', flag:'🚀', kind:'Legacy Contractor', color:'#5aa9e0',
     blurb:'A well-funded, methodical contractor that wins the big crewed-lunar and station-era programs through sheer budget and engineering depth.',
     firsts:[
-      {year:1969, name:'First crewed lunar landing', missionId:'luna_landing'},
-      {year:1981, name:'First reusable crewed orbiter'},
-      {year:1998, name:'First multinational station module integrated'},
-      {year:2012, name:'First robotic Mars rover with surface mobility'},
-      {year:2025, name:'First crewed lunar return (post-Apollo)'},
+      {year:1969, name:'First crewed lunar landing', missionId:'luna_landing', body:'moon'},
+      {year:1981, name:'First reusable crewed orbiter', body:'earth'},
+      {year:1998, name:'First multinational station module integrated', body:'earth'},
+      {year:2012, name:'First robotic Mars rover with surface mobility', body:'mars'},
+      {year:2025, name:'First crewed lunar return (post-Apollo)', body:'moon'},
+      {year:2035, name:'First robotic mining survey of the Asteroid Belt', body:'belt'},
+      {year:2060, name:'First orbiter inserted around a Jovian moon', body:'jupiter'},
     ],
   },
   {
-    id:'halcyon', name:'Halcyon Systems', flag:'⚡', kind:'Commercial Newcomer',
+    id:'halcyon', name:'Halcyon Systems', flag:'⚡', kind:'Commercial Newcomer', color:'#f5a623',
     blurb:'A scrappy commercial upstart, late to the game but disruptive — drives down launch costs and pushes the reusability/expansion frontier.',
     firsts:[
-      {year:2008, name:'First privately developed orbital launch vehicle'},
-      {year:2015, name:'First propulsive landing of an orbital booster'},
-      {year:2020, name:'First commercial crew flight to orbit'},
-      {year:2031, name:'First commercial lunar surface delivery'},
-      {year:2045, name:'First commercial propellant depot in LEO'},
+      {year:2008, name:'First privately developed orbital launch vehicle', body:'earth'},
+      {year:2015, name:'First propulsive landing of an orbital booster', body:'earth'},
+      {year:2020, name:'First commercial crew flight to orbit', body:'earth'},
+      {year:2031, name:'First commercial lunar surface delivery', body:'moon'},
+      {year:2045, name:'First commercial propellant depot in LEO', body:'earth'},
+      {year:2053, name:'First commercial platinum-group claim in the Belt', body:'belt'},
     ],
   },
 ];
+// Ambient economy events — fire on the monthly tick (rate-limited), adjust capital
+// or apply a temporary market modifier. Gated by year/rep/flights so the early game
+// stays quiet. money/dur are [min,max] ranges rolled at fire time.
+const ECONOMY_EVENTS=[
+  {id:'gov_grant', kind:'good', weight:3, minYear:1945, label:'Government research grant', money:[1.5,4.0], blurb:'A national science directorate underwrites part of your program.'},
+  {id:'investor',  kind:'good', weight:2, minYear:1950, minRep:40, label:'Investor windfall', money:[2.0,5.0], blurb:'A backer buys into your rising reputation.'},
+  {id:'patent',    kind:'good', weight:2, minYear:1955, reqFlights:5, label:'Patent licensing payout', money:[1.0,3.0], blurb:'Rivals quietly license your hard-won engineering.'},
+  {id:'insurance', kind:'good', weight:1, minYear:1948, label:'Insurance settlement', money:[0.8,2.0], blurb:'A claim from an earlier loss finally pays out.'},
+  {id:'budget_cut',kind:'bad',  weight:2, minYear:1950, label:'Budget shortfall', money:[-3.0,-1.0], blurb:'A program overrun eats into your reserves.'},
+  {id:'liability', kind:'bad',  weight:2, minYear:1952, reqFlights:3, label:'Accident liability', money:[-2.5,-0.8], blurb:'A ground mishap brings a settlement.'},
+  {id:'supply',    kind:'bad',  weight:2, minYear:1955, label:'Propellant price spike', money:[-2.0,-0.6], blurb:'Commodity markets move against you.'},
+  {id:'boom',      kind:'good', weight:3, minYear:1957, label:'Launch market boom', dur:[5,9], payoutMult:1.15, blurb:'Demand for launch surges — contracts pay more.'},
+  {id:'downturn',  kind:'bad',  weight:3, minYear:1957, label:'Launch market downturn', dur:[5,9], payoutMult:0.85, blurb:'A glut of capacity drives contract prices down.'},
+  {id:'subsidy',   kind:'good', weight:2, minYear:1960, label:'Operations subsidy', dur:[4,8], overheadAdd:-0.05, blurb:'A standing grant offsets your monthly overhead.'},
+  {id:'austerity', kind:'bad',  weight:2, minYear:1960, label:'Austerity audit', dur:[4,8], overheadAdd:0.06, blurb:'Compliance overhead raises your monthly burn.'},
+];
+const EVENT_CHANCE=0.14;   // monthly probability of a new event (when off cooldown)
+const EVENT_MIN_GAP=5;     // months of quiet enforced after each event
 
 const ENGINES = {
   a4:          {id:'a4',          name:'V-2 (A-4) Powerplant',            prop:'Alcohol/LOX', ispSL:203, ispVac:215, thrustSL:245, thrustVac:265, mass:0.95, cost:0.30, rel:0.96, base:true},
@@ -544,17 +575,47 @@ const DIFFICULTY={
     blurb:'Slide-rule mode. Sub-scale budgets, the genuine unreliability of a green company, and the full rocket-equation math exposed at every step on the bench.',
     startMoney:5.0, overhead:0.12, relBonus:0.0, relFloor:0.35, relCap:0.95,
     payoutMult:1.0, buildCostMult:1.0, showEquations:true
+  },
+  custom:{
+    label:'Custom', tag:'Your rules',
+    blurb:'Set every knob yourself. Drag the sliders below to dial in budget, overhead, reliability, payouts, build cost, and whether the rocket-equation math is on display.',
+    // these double as the seed defaults for state.customDifficulty
+    startMoney:5.0, overhead:0.12, relBonus:0.06, relFloor:0.45, relCap:0.97,
+    payoutMult:1.1, buildCostMult:0.95, showEquations:true, custom:true
   }
 };
-function diff(){ return DIFFICULTY[(state&&state.difficulty)] || DIFFICULTY.engineer; }
+// Adjustable knobs for Custom mode: key, label, slider range, and value formatter.
+const CUSTOM_KNOBS=[
+  {key:'startMoney',    label:'Starting capital',  min:2,    max:20,   step:0.5,   fmt:v=>fM(v)},
+  {key:'overhead',      label:'Monthly overhead',  min:0.02, max:0.30, step:0.01,  fmt:v=>fM(v)},
+  {key:'relBonus',      label:'Reliability bump',  min:0,    max:0.25, step:0.01,  fmt:v=>(v>0?'+':'')+Math.round(v*100)+'%'},
+  {key:'relFloor',      label:'Reliability floor', min:0.20, max:0.80, step:0.05,  fmt:v=>Math.round(v*100)+'%'},
+  {key:'relCap',        label:'Reliability cap',   min:0.80, max:0.999,step:0.005, fmt:v=>(v*100).toFixed(1)+'%'},
+  {key:'payoutMult',    label:'Mission payouts',   min:0.5,  max:2.0,  step:0.05,  fmt:v=>'×'+v.toFixed(2)},
+  {key:'buildCostMult', label:'Build cost',        min:0.5,  max:1.5,  step:0.05,  fmt:v=>'×'+v.toFixed(2)}
+];
+function customDefaults(){
+  const c=DIFFICULTY.custom, o={};
+  CUSTOM_KNOBS.forEach(k=>o[k.key]=c[k.key]);
+  o.showEquations=c.showEquations;
+  return o;
+}
+function diff(){
+  const m=(state&&state.difficulty)||'engineer';
+  if(m==='custom') return Object.assign({label:'Custom',tag:'Your rules',custom:true}, customDefaults(), (state&&state.customDifficulty)||{});
+  return DIFFICULTY[m] || DIFFICULTY.engineer;
+}
+function diffLabel(m){ return (DIFFICULTY[m]&&DIFFICULTY[m].label)||'Engineer'; }
 let state;
 function newGame(difficulty){
   const mode=DIFFICULTY[difficulty]?difficulty:'engineer';
+  const customDifficulty=customDefaults();
+  const startMoney=mode==='custom'?customDifficulty.startMoney:DIFFICULTY[mode].startMoney;
   state = {
     company:'ORBITAL VENTURES',
-    difficulty:mode,
+    difficulty:mode, customDifficulty,
     year:1942, month:0, // month 0 = Jan
-    money:DIFFICULTY[mode].startMoney, rep:0, sigma:0.12,
+    money:startMoney, rep:0, sigma:0.12,
     successes:0, flights:0,
     research:{}, unlocked:{a4:true}, activeResearch:null,
     completed:{}, activeMission:'first_flight',
@@ -568,6 +629,7 @@ function newGame(difficulty){
     tab:'bench', won:false, wonM2:false, wonM3a:false, wonM3aii:false, wonM3b:false, wonM3bii:false, over:false,
     log:[], rivalFired:{}, scooped:{},
     staff:[], assignedAstronaut:null,
+    econEvents:[], eventCooldown:6,
   };
   log('info','Company founded. The pad is yours — go make some noise.');
 }
@@ -590,7 +652,7 @@ function curRel(){
 function advance(months){
   for(let i=0;i<months;i++){
     state.month++; if(state.month>11){state.month=0;state.year++;}
-    state.money-=diff().overhead; // monthly overhead (difficulty-scaled)
+    state.money-=Math.max(0,diff().overhead+econOverheadAdd()); // monthly overhead (difficulty + active market events)
 
     // M6: personnel salary deduction
     state.staff.forEach(s=>{
@@ -626,8 +688,61 @@ function advance(months){
     }
 
     checkRivalFirsts();
+    checkEvents();
   }
   if(state.money<0 && !state.over){ gameOver(); }
+}
+/* ---------- ambient events (economy + rival expansion) ---------- */
+function econPayoutMult(){ return (state.econEvents||[]).reduce((a,e)=>a*(e.payoutMult||1),1); }
+function econOverheadAdd(){ return (state.econEvents||[]).reduce((a,e)=>a+(e.overheadAdd||0),0); }
+function round2(v){ return Math.round(v*100)/100; }
+function rollEconEvent(){
+  const elig=ECONOMY_EVENTS.filter(e=> state.year>=(e.minYear||0) && state.rep>=(e.minRep||0) && state.flights>=(e.reqFlights||0));
+  if(!elig.length) return null;
+  const tot=elig.reduce((a,e)=>a+e.weight,0);
+  let r=Math.random()*tot, pick=elig[0];
+  for(const e of elig){ if((r-=e.weight)<=0){ pick=e; break; } }
+  const inst={id:pick.id, label:pick.label, kind:pick.kind, blurb:pick.blurb};
+  if(pick.money) inst.money=round2(pick.money[0]+Math.random()*(pick.money[1]-pick.money[0]));
+  if(pick.dur)   inst.monthsLeft=Math.round(pick.dur[0]+Math.random()*(pick.dur[1]-pick.dur[0]));
+  if(pick.payoutMult!=null) inst.payoutMult=pick.payoutMult;
+  if(pick.overheadAdd!=null) inst.overheadAdd=pick.overheadAdd;
+  return inst;
+}
+function applyEconEvent(inst){
+  if(inst.money!=null){
+    state.money+=inst.money;
+    log(inst.kind==='good'?'ok':'bad', `Market — ${inst.label}: ${inst.money>=0?'+':'−'}${fM(Math.abs(inst.money))}. ${inst.blurb}`);
+  } else {
+    state.econEvents.push(inst);
+    const eff=inst.payoutMult!=null ? `payouts ×${inst.payoutMult}`
+            : inst.overheadAdd!=null ? `overhead ${inst.overheadAdd>=0?'+':'−'}${fM(Math.abs(inst.overheadAdd))}/mo` : '';
+    log(inst.kind==='good'?'ok':'bad', `Market — ${inst.label}: ${eff} for ${inst.monthsLeft} mo. ${inst.blurb}`);
+  }
+}
+function checkEvents(){
+  // tick down active temporary events, expiring the ones that run out
+  state.econEvents=(state.econEvents||[]).filter(e=>{
+    e.monthsLeft--;
+    if(e.monthsLeft<=0){ log('note', `Market — ${e.label} has passed; conditions normalise.`); return false; }
+    return true;
+  });
+  // roll a new event, rate-limited by a cooldown
+  state.eventCooldown=(state.eventCooldown||0)-1;
+  if(state.eventCooldown<=0 && Math.random()<EVENT_CHANCE){
+    const inst=rollEconEvent();
+    if(inst){ applyEconEvent(inst); state.eventCooldown=EVENT_MIN_GAP; }
+  }
+}
+// rivals whose fired "firsts" reached a given body, most recent first
+function rivalsAtBody(bodyId){
+  const out=[];
+  for(const r of RIVALS){
+    for(const f of r.firsts){
+      if(f.body===bodyId && state.rivalFired[r.id+'|'+f.name]) out.push({rival:r, year:f.year, name:f.name});
+    }
+  }
+  return out.sort((a,b)=>b.year-a.year);
 }
 
 // M4b: fire any rival "firsts" whose target year has now arrived. Calendar-only —
@@ -874,7 +989,7 @@ function launch(){
   if(success){
     personnelMissionEvent(true); // M6: morale boost on success
     state.successes++;
-    let payout=(routine?m.payout*0.4:m.payout)*windowQuality*diff().payoutMult;
+    let payout=(routine?m.payout*0.4:m.payout)*windowQuality*diff().payoutMult*econPayoutMult();
     if(crewed) payout*=ab.payoutMult; // M6: astronaut payout bonus
     if(!routine && state.scooped[m.id]) payout*=SCOOP_PAYOUT_MULT;
     const rep=routine?2:m.rep;
@@ -1199,7 +1314,8 @@ function loadGame(){
       ascent:{eng:'hyper_storable',prop:2.5}, eclss:'open', testLevel:0,
       windows:{}, committedWindow:null, selectedBody:'moon', mapZoom:null,
       depot:0, depotUse:0, tab:'bench', log:[], rivalFired:{}, scooped:{}, bailouts:0,
-      difficulty:'engineer'
+      difficulty:'engineer', customDifficulty:customDefaults(),
+      econEvents:[], eventCooldown:6
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -1223,6 +1339,7 @@ function confirmNew(){
     <div style="display:flex;gap:8px;margin-top:8px">
       <button class="btn ${cur==='napkin'?'':'ghost'}" onclick="restart('napkin')" style="flex:1">Napkin<br><span class="dim" style="font-size:10px">forgiving · ${fM(DIFFICULTY.napkin.startMoney)} start</span></button>
       <button class="btn ${cur==='engineer'?'':'ghost'}" onclick="restart('engineer')" style="flex:1">Engineer<br><span class="dim" style="font-size:10px">realistic · ${fM(DIFFICULTY.engineer.startMoney)} start</span></button>
+      <button class="btn ${cur==='custom'?'':'ghost'}" onclick="restart('custom')" style="flex:1">Custom<br><span class="dim" style="font-size:10px">your rules · tune in Settings</span></button>
     </div>
     <button class="btn ghost" onclick="hideModal()" style="width:100%;margin-top:8px">Cancel</button>`);
 }
@@ -1239,7 +1356,8 @@ function autoLoad(){
       ascent:{eng:'hyper_storable',prop:2.5}, eclss:'open', testLevel:0,
       windows:{}, committedWindow:null, selectedBody:'moon', mapZoom:null,
       depot:0, depotUse:0, tab:'bench', log:[], rivalFired:{}, scooped:{}, bailouts:0,
-      difficulty:'engineer'
+      difficulty:'engineer', customDifficulty:customDefaults(),
+      econEvents:[], eventCooldown:6
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -3273,6 +3391,7 @@ function render(){
   $('stFlights').textContent=state.flights;
   $('stDepotWrap').classList.toggle('hidden', !state.research.orbital_depot);
   if(state.research.orbital_depot) $('stDepot').textContent=state.depot.toFixed(1)+' t';
+  renderMarketStat();
 
   $('tabBench').classList.toggle('active',state.tab==='bench');
   $('tabMissions').classList.toggle('active',state.tab==='missions');
@@ -3311,31 +3430,76 @@ function applyDifficultyUI(){
 }
 function setDifficulty(mode){
   if(!DIFFICULTY[mode] || state.difficulty===mode) return;
+  if(mode==='custom' && !state.customDifficulty){
+    const cur=diff(); // seed Custom from whatever mode is currently active
+    const seed={}; CUSTOM_KNOBS.forEach(k=>seed[k.key]=cur[k.key]); seed.showEquations=cur.showEquations;
+    state.customDifficulty=seed;
+  }
   state.difficulty=mode;
-  log('info',`Difficulty set to ${DIFFICULTY[mode].label} mode.`);
+  log('info',`Difficulty set to ${diffLabel(mode)} mode.`);
   render();
+}
+function setCustomKnob(key,val){
+  if(!state.customDifficulty) state.customDifficulty=customDefaults();
+  val=parseFloat(val); if(isNaN(val)) return;
+  state.customDifficulty[key]=val;
+  // keep the reliability floor at or below the cap whichever the player drags
+  if(key==='relFloor' && val>state.customDifficulty.relCap) state.customDifficulty.relCap=val;
+  if(key==='relCap'   && val<state.customDifficulty.relFloor) state.customDifficulty.relFloor=val;
+  render();
+}
+function setCustomEq(on){
+  if(!state.customDifficulty) state.customDifficulty=customDefaults();
+  state.customDifficulty.showEquations=!!on;
+  render();
+}
+function diffKnobTable(d){
+  return `<div class="diffknobs">
+    <span>Starting capital</span><span>${fM(d.startMoney)}</span>
+    <span>Monthly overhead</span><span>${fM(d.overhead)}</span>
+    <span>Reliability floor / cap</span><span>${(d.relFloor*100)|0}% / ${(d.relCap*100)|0}%</span>
+    <span>Reliability bump</span><span>${d.relBonus>0?'+'+((d.relBonus*100)|0)+'%':'—'}</span>
+    <span>Mission payouts</span><span>×${(+d.payoutMult).toFixed(2)}</span>
+    <span>Build cost</span><span>×${(+d.buildCostMult).toFixed(2)}</span>
+    <span>Rocket-equation math</span><span>${d.showEquations?'shown':'under the hood'}</span>
+  </div>`;
 }
 function renderSettings(){
   const cur=state.difficulty;
   const cards=Object.keys(DIFFICULTY).map(k=>{
-    const d=DIFFICULTY[k], sel=k===cur;
-    return `<div class="diffcard ${sel?'sel':''}" onclick="setDifficulty('${k}')">
-      <div class="tag">${d.tag}${sel?' · active':''}</div>
-      <h3>${d.label} mode</h3>
-      <p>${d.blurb}</p>
-      <div class="diffknobs">
-        <span>Starting capital</span><span>${fM(d.startMoney)}</span>
-        <span>Monthly overhead</span><span>${fM(d.overhead)}</span>
-        <span>Reliability floor / cap</span><span>${(d.relFloor*100)|0}% / ${(d.relCap*100)|0}%</span>
-        <span>Reliability bump</span><span>${d.relBonus>0?'+'+((d.relBonus*100)|0)+'%':'—'}</span>
-        <span>Mission payouts</span><span>×${d.payoutMult}</span>
-        <span>Build cost</span><span>×${d.buildCostMult}</span>
-        <span>Rocket-equation math</span><span>${d.showEquations?'shown':'under the hood'}</span>
-      </div>
+    const sel=k===cur;
+    const d=(k==='custom')?Object.assign({},customDefaults(),state.customDifficulty||{}):DIFFICULTY[k];
+    let extra='';
+    if(k==='custom' && sel){
+      const cd=state.customDifficulty||customDefaults();
+      const sliders=CUSTOM_KNOBS.map(kn=>{
+        const v=cd[kn.key];
+        return `<label class="customrow">
+          <span class="cl">${kn.label}</span>
+          <input type="range" min="${kn.min}" max="${kn.max}" step="${kn.step}" value="${v}"
+                 oninput="setCustomKnob('${kn.key}',this.value)">
+          <span class="cv">${kn.fmt(v)}</span>
+        </label>`;
+      }).join('');
+      extra=`<div class="customsliders" onclick="event.stopPropagation()">
+        ${sliders}
+        <label class="customrow" style="margin-top:4px">
+          <span class="cl">Rocket-equation math</span>
+          <input type="checkbox" ${cd.showEquations?'checked':''} onchange="setCustomEq(this.checked)">
+          <span class="cv">${cd.showEquations?'shown':'hidden'}</span>
+        </label>
+        <div class="dim" style="font-size:11px;margin-top:8px">Changes apply immediately (starting capital only on a new game).</div>
+      </div>`;
+    }
+    return `<div class="diffcard ${sel?'sel':''} ${k==='custom'?'wide':''}" onclick="setDifficulty('${k}')">
+      <div class="tag">${DIFFICULTY[k].tag}${sel?' · active':''}</div>
+      <h3>${DIFFICULTY[k].label} mode</h3>
+      <p>${DIFFICULTY[k].blurb}</p>
+      ${k==='custom'&&sel?extra:diffKnobTable(d)}
     </div>`;
   }).join('');
   $('settingsCard').innerHTML=`<h2>Settings — difficulty &amp; presentation</h2>
-    <p class="muted" style="font-size:12px;margin:-4px 0 6px">The rocket equation is identical in both modes — difficulty only scales the economy, how forgiving hardware reliability is, and how much of the underlying math is exposed. Switching mid-game applies from the next action onward; starting capital only applies to a new game.</p>
+    <p class="muted" style="font-size:12px;margin:-4px 0 6px">The rocket equation is identical in every mode — difficulty only scales the economy, how forgiving hardware reliability is, and how much of the underlying math is exposed. Switching mid-game applies from the next action onward; starting capital only applies to a new game.</p>
     <div class="diffgrid">${cards}</div>
     <div style="display:flex;gap:8px;margin-top:6px">
       <button class="btn ghost" onclick="saveGame()">💾 Save</button>
@@ -3838,6 +4002,57 @@ function renderMap(){
   else { svg=renderMapZoom(W,H,state.mapZoom); }
   $('mapCanvas').innerHTML=svg;
   renderBodyCard();
+  renderMapActivity();
+}
+function renderMarketStat(){
+  const wrap=$('stMarketWrap'), el=$('stMarket'); if(!wrap||!el) return;
+  const ev=state.econEvents||[];
+  wrap.classList.toggle('hidden', ev.length===0);
+  if(!ev.length) return;
+  const pm=econPayoutMult(), oh=econOverheadAdd();
+  const parts=[];
+  if(Math.abs(pm-1)>1e-6) parts.push(`payouts ${pm>1?'+':''}${Math.round((pm-1)*100)}%`);
+  if(Math.abs(oh)>1e-6)   parts.push(`overhead ${oh>0?'+':'−'}${fM(Math.abs(oh))}`);
+  el.textContent=parts.join(' · ')||`${ev.length} active`;
+  el.style.color = (pm<1||oh>0)?'var(--bad)':'var(--ok)';
+}
+// rival "flags" arranged around a body for those that have reached it
+function rivalMarkersSVG(bodyId,px,py,rad){
+  const here=rivalsAtBody(bodyId);
+  if(!here.length) return '';
+  const seen={}, uniq=[];
+  here.forEach(h=>{ if(!seen[h.rival.id]){ seen[h.rival.id]=1; uniq.push(h.rival); } });
+  let s='';
+  uniq.forEach((r,i)=>{
+    const a=-Math.PI/2 + (i-(uniq.length-1)/2)*0.5;
+    const dx=px+Math.cos(a)*(rad+11), dy=py+Math.sin(a)*(rad+11);
+    s+=`<circle cx="${dx.toFixed(1)}" cy="${dy.toFixed(1)}" r="3" fill="${r.color}" stroke="#04060a" stroke-width="0.8">
+      <title>${r.name} — reached ${BODIES.find(b=>b.id===bodyId).name}</title></circle>`;
+  });
+  return s;
+}
+function renderMapActivity(){
+  const el=$('mapActivityCard'); if(!el) return;
+  const ev=state.econEvents||[];
+  const evRows = ev.length
+    ? ev.map(e=>{
+        const eff=e.payoutMult!=null?`payouts ×${e.payoutMult}`:(e.overheadAdd!=null?`overhead ${e.overheadAdd>=0?'+':'−'}${fM(Math.abs(e.overheadAdd))}/mo`:'');
+        return `<div class="leg"><span class="legname" style="color:${e.kind==='good'?'var(--ok)':'var(--bad)'}">${e.label}</span><span class="legdv">${e.monthsLeft} mo</span><span class="legdetail">${eff}</span></div>`;
+      }).join('')
+    : `<div class="dim" style="font-size:12px;padding:4px 0">No active market events. Grants, downturns, and windfalls arrive as the program matures.</div>`;
+  // rival frontier — most recent reach per rival
+  const frontier=RIVALS.map(r=>{
+    const reached=r.firsts.filter(f=>f.body && state.rivalFired[r.id+'|'+f.name]).sort((a,b)=>b.year-a.year);
+    if(!reached.length) return '';
+    const latest=reached[0];
+    const bname=(BODIES.find(b=>b.id===latest.body)||{}).name||latest.body;
+    return `<div class="leg"><span class="legname"><span style="color:${r.color}">${r.flag} ${r.name}</span></span><span class="legdv">${bname}</span><span class="legdetail">${latest.name} (${latest.year})</span></div>`;
+  }).filter(Boolean).join('');
+  el.innerHTML=`<div class="mission-tag">Market conditions</div>
+    <div class="legs" style="margin-top:6px">${evRows}</div>
+    <div class="mission-tag" style="margin-top:14px">Rival frontier</div>
+    <div class="legs" style="margin-top:6px">${frontier||'<div class="dim" style="font-size:12px;padding:4px 0">No rival has staked a claim beyond Earth yet.</div>'}</div>
+    <div class="dim" style="font-size:11px;margin-top:10px">Coloured dots on the map mark where each rival has reached. Beating a rival to a linked mission avoids its scoop penalty.</div>`;
 }
 function renderMapOverview(W,H){
   const cx=W*0.30,cy=H*0.62;
@@ -3861,7 +4076,7 @@ function renderMapOverview(W,H){
       ${bodyTexture(b.id,px,py,rad)}
       ${sel?`<circle cx="${px}" cy="${py}" r="${rad+1.5}" fill="none" stroke="#f5a623" stroke-width="1.5"/>`:''}
       <text x="${px}" y="${py-rad-6}" fill="${sel?'#f5a623':'#9aa7af'}" font-size="11" font-family="ui-monospace,monospace" text-anchor="middle">${b.name}</text>
-    </g>`;
+    </g>${rivalMarkersSVG(b.id,px,py,rad)}`;
     BODIES.filter(m=>m.around===b.id).forEach(m=>{
       const mAng=(ANGLES[m.id]!==undefined?ANGLES[m.id]:0);
       const mr=rad+10;
@@ -3873,7 +4088,7 @@ function renderMapOverview(W,H){
           ${bodyTexture(m.id,mx,my,4.5)}
           ${msel?`<circle cx="${mx}" cy="${my}" r="6" fill="none" stroke="#f5a623" stroke-width="1.5"/>`:''}
           <text x="${mx}" y="${my-9}" fill="${msel?'#f5a623':'#7d909b'}" font-size="9" font-family="ui-monospace,monospace" text-anchor="middle">${m.name}</text>
-        </g>`;
+        </g>${rivalMarkersSVG(m.id,mx,my,5)}`;
     });
   });
   svg+=`<text x="14" y="20" fill="#56666f" font-size="11" font-family="ui-monospace,monospace">Click a body to zoom in</text>`;
