@@ -154,6 +154,33 @@ companion to `orbital-ventures-design.md` (original full design doc) and
       **Market** stat + map **Activity** card (active conditions + frontier).
       Validated headlessly (14 checks): apply/expiry, payout & overhead
       modifiers, gating, and rival reach earth→moon→mars→belt→jupiter.
+- [x] **Map: fit + full-screen** — overview centres the Sun and auto-sizes a
+      square viewBox to the outermost orbit so Belt/Jupiter are always on-screen
+      (Jupiter previously rendered off the bottom); `.mapsvg` sizing class + a
+      ⛶ Expand toggle for a full-screen map overlay. Validated (9 checks).
+- [x] **Programs & ambition (the "dream" layer)** — first slice of the
+      game-design brief (item #1/#11/#15). `PROGRAMS` groups the existing
+      missions into 7 named campaigns (Pioneer→Outer Worlds), each with a
+      one-time completion bonus (money+rep) awarded via `checkPrograms()` in the
+      success path (idempotent, tracked in `state.programsAwarded`). `AMBITIONS`
+      (4 chosen long-term goals) drive an `ambitionProgress()` bar toward a
+      capstone mission, with a one-shot "ambition fulfilled" celebration.
+      `nextObjective()` powers a persistent one-more-turn nudge in the opsbar and
+      a post-success log line. New **Programs** tab: ambition card (progress bar +
+      switchable goal cards) and the program ladder (objective checklists with
+      Fly-this, locked/available/done pills, the next objective highlighted).
+      Validated headlessly (15 checks): objective ordering, idempotent bonuses,
+      ambition progress/fulfilment, switching, and full-clear.
+
+> **Design brief (2026-06-17):** a 15-point game-design review is the forward
+> arc (stronger long-term dream, depot-as-economy, vehicle families, story
+> failures, strategic rivals, multi-path tech, manufacturing capacity, program
+> politics, personnel traits, bench vehicle silhouette, milestone programs,
+> mission-architecture choices, map-as-planning-tool, science track, one-more-
+> turn loop). Biggest-return picks: **subsystem-based reliability** (failures as
+> stories) and a **persistent infrastructure layer** (stations/depots/bases that
+> grow). Programs/ambition (above) is item #1 shipped; remaining items are
+> sequenced as future slices.
 
 - [ ] **M5 — Reusability & rapid cadence** *(spec only — NOT yet in code)*: `propulsive_landing` research
       (req: kerosene + heavy_booster, $5M, 6 mo) unlocks a Recovery toggle on

@@ -190,6 +190,7 @@
   <nav>
     <button id="tabBench" class="active" onclick="setTab('bench')">Design Bench</button>
     <button id="tabMissions" onclick="setTab('missions')">Missions</button>
+    <button id="tabPrograms" onclick="setTab('programs')">Programs</button>
     <button id="tabRnd" onclick="setTab('rnd')">R&amp;D</button>
     <button id="tabMap" onclick="setTab('map')">Solar System</button>
     <button id="tabRivals" onclick="setTab('rivals')">Rivals</button>
@@ -199,6 +200,7 @@
 
   <div class="opsbar">
     <span id="rndStatus"></span>
+    <span id="nextObjStatus" class="dim" style="font-size:11px"></span>
     <span style="flex:1"></span>
     <button class="btn ghost" id="animToggle" onclick="toggleAnim()">Animation: On</button>
     <button class="btn ghost" onclick="saveGame()">💾 Save</button>
@@ -228,6 +230,11 @@
 
   <div id="missionsView" class="hidden">
     <div class="card"><h2>Contracts</h2><div id="missionList"></div></div>
+  </div>
+
+  <div id="programsView" class="hidden">
+    <div class="card" id="ambitionCard"></div>
+    <div class="card" id="programsCard" style="margin-top:14px"></div>
   </div>
 
   <div id="rndView" class="hidden">
@@ -491,6 +498,27 @@ const MISSIONS = [
     blurb:'No crew, no science — just propellant. Deliver a tank of fuel to the LEO depot for future missions to draw from.<span class="hist">↳ Propellant depots were proposed for Apollo-era architectures and became central to post-2010 reusable-launch economics.</span>'},
 ];
 
+/* ---------- Programs & long-term ambition (the "dream" layer) ----------
+   Programs group the existing missions into named campaigns with objectives and a
+   one-time completion bonus. Ambitions are the player's chosen long-term goal; the
+   game tracks progress toward a capstone mission. Neither changes the rocket
+   equation — they frame the missions you already fly so each one means something. */
+const PROGRAMS = [
+  {id:'pioneer',  name:'Pioneer Program',     blurb:'Get off the pad and to the edge of space.',                  missions:['first_flight','sounding','reach_space','high_alt'], reward:{money:4, rep:15}},
+  {id:'vanguard', name:'Vanguard Program',    blurb:'Reach orbital velocity — the Space Age begins.',             missions:['first_sat'],                                       reward:{money:6, rep:25}},
+  {id:'mercury',  name:'Mercury Program',     blurb:'Put a human in space and bring them home.',                  missions:['first_astro','crew_orbit'],                        reward:{money:10, rep:35}},
+  {id:'gemini',   name:'Gemini Program',      blurb:'Endurance and operations — the skills the Moon demands.',    missions:['multi_day','endurance'],                           reward:{money:16, rep:45}},
+  {id:'apollo',   name:'Apollo Program',      blurb:'Fly to the Moon, orbit it, and land.',                       missions:['luna_flyby','luna_orbit','luna_landing'],          reward:{money:35, rep:90}},
+  {id:'ares',     name:'Ares Program',        blurb:'Carry a crew to Mars and bring them home.',                  missions:['mars_flyby','mars_orbit'],                         reward:{money:60, rep:130}},
+  {id:'outer',    name:'Outer Worlds Program',blurb:'The Belt and the Jovian system — the deep frontier.',        missions:['belt_survey','belt_mining','jupiter_flyby','jupiter_orbit'], reward:{money:110, rep:220}},
+];
+const AMBITIONS = [
+  {id:'flag',       name:'Plant the Flag',     blurb:'Put boots on another world. The Moon is the prize — and the proof your company can do the impossible.', capstone:'luna_landing'},
+  {id:'red_planet', name:'The Red Planet',     blurb:'Reach Mars with a crew and bring them home. The hardest thing anyone has ever attempted.',            capstone:'mars_orbit'},
+  {id:'belt_baron', name:'Baron of the Belt',  blurb:'Build a mining fortune in the Asteroid Belt — turn platinum-group metals into a launch empire.',       capstone:'belt_mining'},
+  {id:'jovian',     name:'The Jovian Frontier',blurb:'Carry a crew to Jupiter and back. The deep frontier; the furthest humans have ever gone.',             capstone:'jupiter_orbit'},
+];
+
 const RESEARCH = [
   {id:'kerosene',     name:'Kerosene Propulsion',           cost:2.0, months:3, req:[],          effect:{engine:'kerolox_mk1'}, desc:'Unlocks the Rocketdyne S-3D — higher Isp than alcohol/LOX.<span class="hist">↳ Refined kerosene (RP-1) replaced the V-2\'s alcohol in Rocketdyne\'s Atlas and Thor engines.</span>'},
   {id:'vac_upper',    name:'Vacuum-Optimized Upper Stage',  cost:2.5, months:3, req:[],          effect:{engine:'vernier_v'},   desc:'Unlocks the Bell Agena XLR81 upper stage engine (Isp 315 s in vacuum).<span class="hist">↳ Restartable vacuum stages like the Agena turned launchers into orbit-and-beyond vehicles.</span>'},
@@ -664,6 +692,7 @@ function newGame(difficulty){
     log:[], rivalFired:{}, scooped:{},
     staff:[], assignedAstronaut:null,
     econEvents:[], eventCooldown:6, pgmRoyalty:0,
+    ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
   };
   log('info','Company founded. The pad is yours — go make some noise.');
 }
@@ -778,6 +807,50 @@ function rivalsAtBody(bodyId){
     }
   }
   return out.sort((a,b)=>b.year-a.year);
+}
+/* ---------- programs & ambition ---------- */
+function programComplete(p){ return p.missions.every(mid=>state.completed[mid]); }
+function currentAmbition(){ return AMBITIONS.find(a=>a.id===state.ambition) || AMBITIONS[0]; }
+function setAmbition(id){ if(!AMBITIONS.find(a=>a.id===id)) return; state.ambition=id; log('info',`Long-term ambition set: ${AMBITIONS.find(a=>a.id===id).name}.`); render(); }
+// the next unfinished objective across the program ladder (drives the one-more-turn nudge)
+function nextObjective(){
+  for(const p of PROGRAMS){
+    for(const mid of p.missions){
+      if(!state.completed[mid]) return {program:p, missionId:mid, mission:MISSIONS.find(m=>m.id===mid)};
+    }
+  }
+  return null;
+}
+// progress toward the chosen ambition: completed objective-missions up to and
+// including the program that holds the capstone, as a fraction.
+function ambitionProgress(){
+  const amb=currentAmbition();
+  const path=[]; let found=false;
+  for(const p of PROGRAMS){ for(const mid of p.missions){ path.push(mid); } if(p.missions.includes(amb.capstone)){ found=true; break; } }
+  if(!found){ path.length=0; for(const p of PROGRAMS) for(const mid of p.missions) path.push(mid); }
+  const done=path.filter(mid=>state.completed[mid]).length;
+  return {done, total:path.length, pct: path.length?Math.round(100*done/path.length):0, capstoneDone:!!state.completed[amb.capstone]};
+}
+// award any newly-completed programs and the ambition capstone (each once); nudge the next goal.
+// returns a pendingCelebration thunk if the ambition was just fulfilled, else null.
+function checkPrograms(){
+  let celebrate=null;
+  for(const p of PROGRAMS){
+    if(programComplete(p) && !state.programsAwarded[p.id]){
+      state.programsAwarded[p.id]=true;
+      state.money+=p.reward.money; state.rep+=p.reward.rep;
+      log('ok',`★ ${p.name} complete — all objectives flown. Program bonus: +${fM(p.reward.money)}, +${p.reward.rep} rep.`);
+    }
+  }
+  const amb=currentAmbition();
+  if(state.completed[amb.capstone] && !state.ambitionFulfilled){
+    state.ambitionFulfilled=true;
+    log('ok',`✦ AMBITION FULFILLED — “${amb.name}.” The dream you set out to chase is real.`);
+    celebrate=()=>showModal(`<h2>✦ ${amb.name}</h2><p class="muted">${amb.blurb}</p><p>Your founding ambition is fulfilled. Set a new horizon in the Programs tab — there is always a further frontier.</p><button class="btn" onclick="hideModal()" style="margin-top:10px">Onward</button>`);
+  }
+  const nx=nextObjective();
+  if(nx) log('note',`Next objective: ${nx.mission.name} — ${nx.program.name}.`);
+  return celebrate;
 }
 
 // M4b: fire any rival "firsts" whose target year has now arrived. Calendar-only —
@@ -1055,6 +1128,8 @@ function launch(){
       if(m.id==='luna_orbit' && !state.wonM3a){ state.wonM3a=true; pendingCelebration=victoryM3a; }
       if(m.id==='luna_landing' && !state.wonM3aii){ state.wonM3aii=true; pendingCelebration=victoryM3aii; }
       if(m.id==='mars_orbit' && !state.wonM3b){ state.wonM3b=true; pendingCelebration=victoryM3b; }
+      const ambCeleb=checkPrograms(); // program bonuses + ambition capstone + next-objective nudge
+      if(ambCeleb && !pendingCelebration) pendingCelebration=ambCeleb;
     }
     autoAdvanceMission();
   }else{
@@ -1352,7 +1427,8 @@ function loadGame(){
       windows:{}, committedWindow:null, selectedBody:'moon', mapZoom:null,
       depot:0, depotUse:0, tab:'bench', log:[], rivalFired:{}, scooped:{}, bailouts:0,
       difficulty:'engineer', customDifficulty:customDefaults(),
-      econEvents:[], eventCooldown:6, pgmRoyalty:0
+      econEvents:[], eventCooldown:6, pgmRoyalty:0,
+      ambition:'flag', programsAwarded:{}, ambitionFulfilled:false
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -1394,7 +1470,8 @@ function autoLoad(){
       windows:{}, committedWindow:null, selectedBody:'moon', mapZoom:null,
       depot:0, depotUse:0, tab:'bench', log:[], rivalFired:{}, scooped:{}, bailouts:0,
       difficulty:'engineer', customDifficulty:customDefaults(),
-      econEvents:[], eventCooldown:6, pgmRoyalty:0
+      econEvents:[], eventCooldown:6, pgmRoyalty:0,
+      ambition:'flag', programsAwarded:{}, ambitionFulfilled:false
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -3434,6 +3511,7 @@ function render(){
 
   $('tabBench').classList.toggle('active',state.tab==='bench');
   $('tabMissions').classList.toggle('active',state.tab==='missions');
+  $('tabPrograms').classList.toggle('active',state.tab==='programs');
   $('tabRnd').classList.toggle('active',state.tab==='rnd');
   $('tabMap').classList.toggle('active',state.tab==='map');
   $('tabRivals').classList.toggle('active',state.tab==='rivals');
@@ -3441,6 +3519,7 @@ function render(){
   $('tabSettings').classList.toggle('active',state.tab==='settings');
   $('benchView').classList.toggle('hidden',state.tab!=='bench');
   $('missionsView').classList.toggle('hidden',state.tab!=='missions');
+  $('programsView').classList.toggle('hidden',state.tab!=='programs');
   $('rndView').classList.toggle('hidden',state.tab!=='rnd');
   $('mapView').classList.toggle('hidden',state.tab!=='map');
   $('rivalsView').classList.toggle('hidden',state.tab!=='rivals');
@@ -3456,6 +3535,8 @@ function render(){
 
   if(state.tab==='bench'){renderStages();renderTransfer();renderLander();renderCrew();renderWindowPlanner();renderReadout();}
   if(state.tab==='missions')renderMissions();
+  if(state.tab==='programs')renderPrograms();
+  renderNextObjective();
   if(state.tab==='rnd')renderRnd();
   if(state.tab==='map')renderMap();
   if(state.tab==='rivals')renderRivals();
@@ -4244,6 +4325,66 @@ function flyTo(missionId){
   state.activeMission=missionId;
   state.tab='bench';
   render();
+}
+function renderNextObjective(){
+  const el=$('nextObjStatus'); if(!el) return;
+  const nx=nextObjective();
+  el.innerHTML = nx
+    ? `<span style="color:var(--readout)">▶ Next:</span> ${nx.mission.name} <span class="dim">· ${nx.program.name}</span>`
+    : `<span style="color:var(--ok)">All programs complete — the frontier is yours.</span>`;
+}
+function renderPrograms(){
+  // ---- ambition card ----
+  const amb=currentAmbition(), prog=ambitionProgress();
+  const ambChips=AMBITIONS.map(a=>{
+    const sel=a.id===state.ambition;
+    const cap=MISSIONS.find(m=>m.id===a.capstone);
+    return `<div class="diffcard ${sel?'sel':''}" style="cursor:pointer" onclick="setAmbition('${a.id}')">
+      <div class="tag">${sel?'your ambition':'set as ambition'}</div>
+      <h3>${a.name}</h3>
+      <p>${a.blurb}</p>
+      <div class="dim" style="font-size:11px;margin-top:6px">Capstone: ${cap?cap.name:a.capstone}${state.completed[a.capstone]?' · <span style="color:var(--ok)">achieved</span>':''}</div>
+    </div>`;
+  }).join('');
+  $('ambitionCard').innerHTML=`<h2>Ambition — your company's long game</h2>
+    <p class="muted" style="font-size:12px;margin:-4px 0 10px">A personal goal to chase across the decades. Every contract is a step toward it. Change it anytime — there is always a further horizon.</p>
+    <div class="mission-tag">Progress toward “${amb.name}”</div>
+    <div class="bar" style="margin:6px 0 4px"><div class="fill" style="width:${prog.pct}%;background:${prog.capstoneDone?'var(--ok)':'var(--ignite)'}"></div></div>
+    <div class="dim" style="font-size:11px;margin-bottom:12px">${prog.done}/${prog.total} milestones flown · ${prog.pct}%${prog.capstoneDone?' · <span style="color:var(--ok)">ambition fulfilled</span>':''}</div>
+    <div class="diffgrid" style="grid-template-columns:1fr 1fr">${ambChips}</div>`;
+  // ---- program ladder ----
+  const nx=nextObjective();
+  const rows=PROGRAMS.map(p=>{
+    const done=programComplete(p), awarded=state.programsAwarded[p.id];
+    const total=p.missions.length, completed=p.missions.filter(mid=>state.completed[mid]).length;
+    const objs=p.missions.map(mid=>{
+      const m=MISSIONS.find(x=>x.id===mid); if(!m) return '';
+      const isDone=state.completed[mid];
+      const repOk=state.rep>=m.minRep, resOk=!m.reqResearch||state.research[m.reqResearch];
+      const isNext=nx&&nx.missionId===mid;
+      const pill=isDone?'<span class="pill ok">done</span>'
+                : (repOk&&resOk)?'<span class="pill">available</span>'
+                : `<span class="pill lock">locked</span>`;
+      const btn=(!isDone&&repOk&&resOk)?`<button class="btn" onclick="flyTo('${mid}')">Fly this</button>`:'';
+      return `<div class="leg" style="${isNext?'background:rgba(245,166,35,.08)':''}">
+        <span class="legname">${isNext?'▶ ':''}${m.name} ${pill}</span>
+        <span class="legdv">${m.crew?`${m.crew} crew`:'robotic'}</span>
+        <span class="legdetail" style="display:flex;justify-content:space-between;align-items:center"><span>${m.days?`${m.days<1?(m.days*24).toFixed(0)+'h':m.days+'d'}`:'suborbital'}</span>${btn}</span>
+      </div>`;
+    }).join('');
+    const status=done?`<span class="pill ok">complete${awarded?' · bonus paid':''}</span>`:`<span class="pill">${completed}/${total}</span>`;
+    return `<div class="card" style="background:var(--panel2);margin-bottom:12px;${done?'border-color:var(--ok)':''}">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+        <div class="mission-name" style="font-size:15px">${p.name} ${status}</div>
+        <div class="dim" style="font-size:11px;white-space:nowrap">Bonus: +${fM(p.reward.money)}, +${p.reward.rep} rep</div>
+      </div>
+      <div class="sub" style="margin:2px 0 8px">${p.blurb}</div>
+      <div class="legs">${objs}</div>
+    </div>`;
+  }).join('');
+  $('programsCard').innerHTML=`<h2>Programs — campaigns, not one-off contracts</h2>
+    <p class="muted" style="font-size:12px;margin:-4px 0 12px">Each program groups missions into a goal with a completion bonus. Fly them in any order you can unlock; finishing a program pays out and points you at the next.</p>
+    ${rows}`;
 }
 
 function renderMissions(){
