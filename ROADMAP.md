@@ -282,11 +282,10 @@ review's numbering, not the build order (see **Suggested build order** at the en
       OV-Heavy) that accumulate reliability heritage, manufacturing knowledge, and
       brand/rep; losing a veteran airframe should sting. Needs a saved-design model
       (`state.vehicles[]`) distinct from the live bench config.
-- [ ] **4 · Story failures** — *(pairs with #16 below)* Today failure is a single
-      roll with a coarse `failPhase` (ascent/deep) + launch-escape handling.
-      Expand to partial success (wrong orbit, reduced payout), crew abort (survive,
-      rep preserved), and deep-space stranding (TLI ok / TEI fails). Best built on
-      top of subsystem reliability (#16).
+- [x] **4 · Story failures** — *Built 2026-06-17, with #16.* Partial success
+      (guidance → wrong orbit, reduced payout, objective not completed), crew abort
+      (ascent fault + launch-escape → crew safe), deep-space stranding (crewed deep
+      fault), and subsystem-specific failure stories in the log. See #16.
 - [~] **5 · Strategic rivals** — Bones in place: `RIVALS` with map reach markers,
       firsts, scoop penalties, and ambient economy events. Make them *act*: steal
       contracts, poach staff (ties to M6 morale/attrition), beat you to tech, cut
@@ -332,23 +331,36 @@ review's numbering, not the build order (see **Suggested build order** at the en
 
 **Biggest-return picks (called out by the review):**
 
-- [ ] **16 · Subsystem-based reliability (technical pick)** — Replace the single
-      success/fail roll (`curRel()` + clamps) with per-subsystem reliability
-      (engines, tanks, avionics, guidance, life-support, crew systems), each rolled
-      per phase. Turns failures into stories (#4) and gives test programs / heritage
-      / engineer specialties concrete subsystem effects. *Recommended next slice* —
-      self-contained, highest emotional return, plugs into existing `failPhase`.
+- [x] **16 · Subsystem-based reliability + story failures (technical pick)** —
+      *Built 2026-06-17.* The single roll becomes per-subsystem rolls
+      (propulsion / structures / staging / guidance / deep-space propulsion /
+      life-support). `subsystemReport()` distributes failure so the **product of
+      subsystem reliabilities equals the same overall R** the game already
+      computed (balance exactly preserved) — `rel_i = R^(w_i/ΣW)`. Fragility
+      weights reflect the design: engine count, tank/guidance research, ECLSS +
+      mission duration, deep-leg count, transfer-engine reliability, and matched
+      **engineer specialties** (`specialistFactor`) each harden a specific link.
+      `resolveFlight()` picks the governing failed subsystem by phase/severity →
+      outcomes (**#4 also done**): full success, **partial** (guidance → wrong
+      orbit, salvage `PARTIAL_PAYOUT_MULT` payout, objective NOT completed),
+      **abort** (ascent hard fault + launch-escape → crew safe), **loss** (no
+      escape → crew lost, `loseAssignedCrew()` removes the astronaut), and
+      **strand** (deep-space prop/life-support fault on a crewed mission). Each
+      failure logs the specific subsystem story; failPhase drives the animation.
+      New **subsystem reliability** breakdown on both bench readouts. Validated
+      headlessly (9 checks incl. a 20k-roll Monte Carlo that full-success rate ≈
+      R) + a 300-launch integration smoke. *(Folds in brief item #4.)*
 - [ ] **17 · Persistent infrastructure layer (playability pick)** — Stations,
       depots, lunar/Mars bases as entities that persist after a mission and grow /
       produce over decades (ISRU output, fuel, science, passive income). The "build
       something that remains" addiction loop; the substrate that makes #2, #12, #14
       compound. Largest structural change; high payoff.
 
-**Suggested build order:** 16 (subsystem reliability + story failures) → 17
-(infrastructure layer) → 2 (depot economy) → 10 (bench silhouette, quick win) →
-12 (architecture choices) → 5 (active rivals) → 9 (personnel traits) → 3 (vehicle
-families) → 14 (science) → 6 (multi-path tech) → 8 (politics) → 7 (manufacturing).
-Items 1/11/15 already shipped; 13 partially done.
+**Suggested build order:** ~~16 (subsystem reliability + story failures)~~ ✓ →
+**17 (infrastructure layer) ← next** → 2 (depot economy) → 10 (bench silhouette,
+quick win) → 12 (architecture choices) → 5 (active rivals) → 9 (personnel traits)
+→ 3 (vehicle families) → 14 (science) → 6 (multi-path tech) → 8 (politics) → 7
+(manufacturing). Items 1/4/11/15/16 shipped; 13 partially done.
 
 ## Repo
 

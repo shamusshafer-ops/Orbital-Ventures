@@ -1041,6 +1041,108 @@ function buildMonths(m){
   return BASE_BUILD_MONTHS+extra;
 }
 
+/* ---------- M16: subsystem-based reliability & story failures ----------
+   The single success/fail roll becomes a set of subsystem rolls. Each subsystem's
+   reliability is distributed so the PRODUCT equals the same overall mission
+   reliability the game already computes (balance preserved) — but WHICH subsystem
+   fails, weighted by how fragile your design makes it, determines the outcome:
+   guidance faults degrade the orbit (partial), engine/structure/staging faults
+   lose the vehicle (abort if a launch-escape system is fitted), and deep-space
+   propulsion or life-support faults strand a crew on the way home. */
+const PARTIAL_PAYOUT_MULT = 0.45;
+const SUBSYS_LABEL = {propulsion:'Propulsion', structures:'Structures', separation:'Staging', avionics:'Guidance', deep_propulsion:'Deep-space propulsion', life_support:'Life support'};
+// best (morale-scaled) skill among hired engineers of a given specialty, 0..~1
+function bestSpecialistSkill(spec){
+  let best=0;
+  for(const s of (state.staff||[])){ const p=personById(s.id); if(p && p.specialty===spec){ best=Math.max(best, p.skill*(0.5+0.5*((s.morale||50)/100))); } }
+  return best;
+}
+function specialistFactor(spec){ return 1 - 0.45*bestSpecialistSkill(spec); } // a strong specialist cuts that subsystem's fragility
+// overall mission reliability actually used at launch (vehicle rel + deep-leg penalty + astronaut bonus)
+function effectiveReliability(m,v,sim,crewed){
+  let rel=v.reliability;
+  if(sim) rel=Math.max(0.30, rel*Math.pow(0.985, sim.inSpaceLegs));
+  if(crewed){ const ab=astroBonus(); rel=Math.min(0.99, rel+ab.rel); }
+  return rel;
+}
+// relative fragility weights per subsystem (higher = likelier culprit), reflecting the design
+function subsystemFragilities(m,v,sim,crewed){
+  const stages=state.stages, totalEng=stages.reduce((a,s)=>a+s.count,0);
+  let er=0,ec=0; stages.forEach(s=>{ const e=ENGINES[s.eng]||ENGINES.a4; er+=e.rel*s.count; ec+=s.count; });
+  const avgEngRel=ec?er/ec:0.95;
+  const list=[];
+  let wp=(1.0+0.22*(totalEng-1))*(1+(0.96-avgEngRel)*7);
+  if(state.research.test_program) wp*=0.7;
+  wp*=specialistFactor('propulsion');
+  list.push({key:'propulsion', label:SUBSYS_LABEL.propulsion, phase:'ascent', severity:'loss', weight:Math.max(0.05,wp)});
+  let ws=0.5;
+  if(state.research.balloon_tanks) ws*=0.6; else if(state.research.alloy_tanks) ws*=0.78;
+  ws*=specialistFactor('structures');
+  list.push({key:'structures', label:SUBSYS_LABEL.structures, phase:'ascent', severity:'loss', weight:Math.max(0.04,ws)});
+  const sepEvents=Math.max(0,stages.length-1)+((m.profile&&m.modules.includes('lander'))?2:0)+((m.profile||m.reqDv>=9000)?1:0);
+  if(sepEvents>0) list.push({key:'separation', label:SUBSYS_LABEL.separation, phase:'ascent', severity:'loss', weight:0.18*sepEvents});
+  let wa=0.6;
+  if(state.research.deep_space) wa*=0.7;
+  wa*=specialistFactor('avionics');
+  list.push({key:'avionics', label:SUBSYS_LABEL.avionics, phase:'ascent', severity:'partial', weight:Math.max(0.05,wa)});
+  if(m.profile && sim){
+    const te=ENGINES[state.transfer.eng]||ENGINES.a4;
+    const wd=0.4*(sim.inSpaceLegs||1)*(1+(0.96-te.rel)*6);
+    list.push({key:'deep_propulsion', label:SUBSYS_LABEL.deep_propulsion, phase:'deep', severity:'deep', weight:Math.max(0.05,wd)});
+  }
+  if(crewed){
+    const rec=(ECLSS[state.eclss]||ECLSS.open).recovery;
+    const stress=Math.min(3,(m.days||1)/45)*(1-rec*0.6);
+    list.push({key:'life_support', label:SUBSYS_LABEL.life_support, phase:'deep', severity:'deep', weight:0.45*Math.max(0.3,stress)});
+  }
+  return list;
+}
+// distribute the mission failure probability across subsystems so the product of
+// their reliabilities equals the overall R (rel_i = R^(weight_i / sum_weights))
+function subsystemReport(m,v,sim,crewed){
+  const R=effectiveReliability(m,v,sim,crewed);
+  const frs=subsystemFragilities(m,v,sim,crewed);
+  const W=frs.reduce((a,f)=>a+f.weight,0)||1;
+  return {R, subsystems:frs.map(f=>{ const rel=Math.pow(R, f.weight/W); return Object.assign({}, f, {rel, p:1-rel}); })};
+}
+const SUBSYS_PRIORITY=['propulsion','structures','separation','avionics','deep_propulsion','life_support'];
+function resolveFlight(m,v,sim,crewed){
+  const rep=subsystemReport(m,v,sim,crewed);
+  const failed={};
+  for(const s of rep.subsystems){ if(Math.random()>s.rel) failed[s.key]=s; }
+  let gov=null; for(const k of SUBSYS_PRIORITY){ if(failed[k]){ gov=failed[k]; break; } }
+  if(!gov) return {kind:'success', rel:rep.R, failPhase:null, subsystem:null};
+  if(gov.severity==='partial')
+    return {kind:'partial', subsystem:gov.key, failPhase:null, rel:rep.R, story:'guidance drifted during ascent — the payload reached space but in the wrong orbit.'};
+  if(gov.phase==='deep')
+    return {kind:crewed?'strand':'loss', subsystem:gov.key, failPhase:'deep', rel:rep.R,
+      story: gov.key==='life_support' ? 'a life-support failure on the long coast home.'
+           : (crewed ? 'the return burn failed and the crew could not get home.' : 'the deep-space stage failed mid-cruise.') };
+  const storyMap={propulsion:'an engine failed during powered ascent.', structures:'a structural failure under max-q.', separation:'a stage failed to separate cleanly.'};
+  if(crewed && state.research.launch_escape)
+    return {kind:'abort', subsystem:gov.key, failPhase:'ascent', rel:rep.R, story:storyMap[gov.key]+' The escape system pulled the crew clear.'};
+  return {kind:'loss', subsystem:gov.key, failPhase:'ascent', rel:rep.R, story:storyMap[gov.key]};
+}
+function loseAssignedCrew(){
+  if(!state.assignedAstronaut) return;
+  const p=personById(state.assignedAstronaut);
+  state.staff=(state.staff||[]).filter(s=>s.id!==state.assignedAstronaut);
+  if(p) log('bad',`Astronaut ${p.name} was lost with the vehicle.`);
+  state.assignedAstronaut=null;
+}
+function subsystemBreakdownHTML(m,v){
+  const sim=m.profile?simulateMission(m):null;
+  const rep=subsystemReport(m,v,sim,v.crewed);
+  const rows=rep.subsystems.map(s=>{
+    const pc=Math.round(s.rel*100), col=pc>=97?'var(--ok)':(pc>=92?'var(--warn)':'var(--bad)');
+    const sev=s.severity==='partial'?'wrong orbit':(s.phase==='deep'?'lost in deep space':'loss of vehicle');
+    return `<div class="leg"><span class="legname">${s.label}</span><span class="legdv" style="color:${col}">${pc}%</span><span class="legdetail">fault → ${sev}</span></div>`;
+  }).join('');
+  return `<div class="mission-tag" style="margin-top:12px">Subsystem reliability — the weakest link is where it breaks</div>
+    <div class="legs" style="margin-top:6px">${rows}</div>
+    <div class="dim" style="font-size:11px;margin-top:6px">Overall ${(rep.R*100)|0}% = the product of all subsystems. Test campaigns, tank/guidance research, and matching engineer specialists each harden a specific link.</div>`;
+}
+
 /* ---------- launch ---------- */
 function canLaunch(v,m,sim){
   if(m.tanker){
@@ -1088,13 +1190,12 @@ function launch(){
   state.flights++;
   const routine=!!state.completed[m.id];
   const crewed=m.crew>0;
-  let rel=v.reliability;
-  if(sim) rel=Math.max(0.30, rel*Math.pow(0.985, sim.inSpaceLegs)); // each deep-space burn is another thing to get right
-  // M6: astronaut reliability bonus on crewed missions
+  // M16: subsystem-based reliability — which subsystem (if any) fails decides the story
   const ab=crewed?astroBonus():{rel:0,payoutMult:1};
-  if(crewed) rel=Math.min(0.99, rel+ab.rel);
-  const success=Math.random()<=rel;
-  let pendingCelebration=null, failPhase=null;
+  const outcome=resolveFlight(m,v,sim,crewed);
+  const success=outcome.kind==='success';
+  const rel=outcome.rel;
+  let pendingCelebration=null, failPhase=outcome.failPhase;
   if(success){
     personnelMissionEvent(true); // M6: morale boost on success
     state.successes++;
@@ -1132,26 +1233,33 @@ function launch(){
       if(ambCeleb && !pendingCelebration) pendingCelebration=ambCeleb;
     }
     autoAdvanceMission();
-  }else{
-    failPhase = m.profile ? (Math.random()<0.6?'ascent':'deep') : 'ascent';
-    personnelMissionEvent(false); // M6: morale hit on failure
+  }else if(outcome.kind==='partial'){
+    // reached space but off-target — salvage some value, but the objective is not complete
+    let payout=(routine?m.payout*0.4:m.payout)*windowQuality*diff().payoutMult*econPayoutMult()*PARTIAL_PAYOUT_MULT;
+    state.money+=payout;
+    const rep=Math.max(1,Math.round((routine?2:m.rep)*0.25));
+    state.rep+=rep;
+    log('note',`${m.name}: PARTIAL SUCCESS — ${outcome.story} Salvaged value +${fM(payout)}, +${rep} rep, but the objective is not complete.`);
+  }else if(outcome.kind==='abort'){
+    personnelMissionEvent(false);
+    const rep=Math.min(state.rep,12); state.rep-=rep;
+    log('bad',`${m.name}: MISSION FAILURE — crew safe. The ${SUBSYS_LABEL[outcome.subsystem].toLowerCase()} gave out — ${outcome.story} Vehicle and mission lost, −${rep} rep.`);
+  }else if(outcome.kind==='strand'){
+    personnelMissionEvent(false);
+    const rep=Math.min(state.rep,40); state.rep-=rep;
+    loseAssignedCrew();
+    advance(6); // grounding + investigation
+    log('bad',`${m.name}: LOST IN DEEP SPACE — ${outcome.story} A long inquiry follows, −${rep} rep.`);
+  }else{ // loss of vehicle on ascent
+    personnelMissionEvent(false);
     if(crewed){
-      if(state.research.launch_escape){
-        const rep=Math.min(state.rep,15); state.rep-=rep;
-        log('bad',`${m.name}: MISSION FAILURE. Abort/contingency saved the crew of ${m.crew} — but the vehicle and mission are lost, −${rep} rep.`);
-      }else{
-        const rep=Math.min(state.rep,40); state.rep-=rep;
-        advance(6); // grounding + investigation
-        log('bad',`${m.name}: CATASTROPHE. Vehicle lost with all ${m.crew} aboard. Six-month stand-down and inquiry, −${rep} rep. Fit an escape system before flying crew again.`);
-      }
+      const rep=Math.min(state.rep,40); state.rep-=rep;
+      loseAssignedCrew();
+      advance(6); // grounding + investigation
+      log('bad',`${m.name}: CATASTROPHE. The ${SUBSYS_LABEL[outcome.subsystem].toLowerCase()} failed — ${outcome.story} Vehicle lost with all ${m.crew} aboard. Six-month stand-down, −${rep} rep. Fit a launch-escape system before flying crew again.`);
     }else{
-      const rep=Math.min(state.rep, routine?3:8);
-      state.rep-=rep;
-      const modes=['Engine failure at ignition — vehicle lost on the pad.',
-                   'Loss of control during ascent — vehicle destroyed.',
-                   'Structural failure under load — breakup before burnout.',
-                   'Premature shutdown — fell short and was lost.'];
-      log('bad',`${m.name}: FAILURE. ${modes[Math.floor(Math.random()*modes.length)]} Vehicle cost forfeit, −${rep} rep.`);
+      const rep=Math.min(state.rep, routine?3:8); state.rep-=rep;
+      log('bad',`${m.name}: FAILURE. The ${SUBSYS_LABEL[outcome.subsystem].toLowerCase()} failed — ${outcome.story} Vehicle cost forfeit, −${rep} rep.`);
     }
   }
   state.testLevel=0; // campaign applies to one flight
@@ -3830,6 +3938,8 @@ function renderReadout(){
       <div class="metric"><div class="k">Build time</div><div class="v">${buildMonths(m)+1+TEST_LEVELS[state.testLevel].months} mo</div></div>
     </div>
 
+    ${subsystemBreakdownHTML(m,v)}
+
     <div class="eq">Δv = Isp · g₀ · ln(m₀/m_f)<br>
       stage 1: ${ispEff} · 9.81 · ln(${v.liftoff.toFixed(1)}/${(v.liftoff-state.stages[0].prop).toFixed(1)}) = ${fI(v.stageDv[0])} m/s<br>
       σ ${curSigma()} · ${v.totalEng} engine${v.totalEng>1?'s':''} · ${state.stages.length} stage${state.stages.length>1?'s':''}</div>
@@ -3882,6 +3992,8 @@ function renderProfileReadout(m){
       <div class="metric"><div class="k">Launch cost</div><div class="v">${fM(v.launchCost)}</div></div>
       <div class="metric"><div class="k">Build time</div><div class="v">${buildMonths(m)+1+TEST_LEVELS[state.testLevel].months} mo</div></div>
     </div>
+
+    ${subsystemBreakdownHTML(m,v)}
 
     <div class="eq">The launch vehicle lofts the whole stack (${v.payload.toFixed(1)} t) to LEO; the transfer stage then spends one tank across ${sim.inSpaceLegs} deep-space burn${sim.inSpaceLegs>1?'s':''}, lighter after each — yet every burn still hauls everything still attached.${m.modules.includes('lander')?' The descent stage is dropped on the surface after landing; the ascent stage returns alone to meet the transfer stage.':''}${state.depotUse>0?` This run draws <b style="color:var(--readout)">${state.depotUse.toFixed(1)} t</b> from the LEO depot — propellant that never had to be launched from Earth.`:''}${ISRU_FREE_LEG[m.id]&&state.research[ISRU_FREE_LEG[m.id].research]?` <b style="color:var(--ok)">${ISRU_FREE_LEG[m.id].label}</b> is online — the ${ISRU_FREE_LEG[m.id].leg} burn is produced on-site.`:''}</div>
 
