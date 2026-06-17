@@ -89,6 +89,16 @@
   .metric .k{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
   .metric .v{font-family:var(--mono);font-size:16px;font-weight:600}
   .eq{font-family:var(--mono);font-size:11px;color:var(--dim);background:#0c1216;border:1px solid var(--line);border-radius:5px;padding:8px;margin:10px 0;line-height:1.6}
+  body.hide-eq .eq{display:none}
+  .diffgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0}
+  .diffcard{border:1px solid var(--line);border-radius:8px;padding:14px;background:var(--panel2);cursor:pointer;transition:border-color .15s,background .15s}
+  .diffcard:hover{border-color:var(--muted)}
+  .diffcard.sel{border-color:var(--ignite);background:#241a0c}
+  .diffcard h3{margin:0 0 4px;font-size:14px}
+  .diffcard .tag{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--dim)}
+  .diffcard.sel .tag{color:var(--ignite)}
+  .diffcard p{font-size:12px;color:var(--muted);margin:8px 0 0;line-height:1.5}
+  .diffknobs{font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:10px;display:grid;grid-template-columns:1fr auto;gap:2px 10px}
   .launch{width:100%;padding:13px;border:1px solid var(--ignite);background:linear-gradient(180deg,#2a2113,#1c1810);
     color:var(--ignite);font-size:14px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;border-radius:6px;cursor:pointer}
   .launch:hover{background:linear-gradient(180deg,#3a2c12,#241d10)}
@@ -142,7 +152,8 @@
   .modal .btn{margin-top:14px}
   .hidden{display:none!important}
   .animwrap{position:fixed;inset:0;background:rgba(4,7,10,.94);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;z-index:30}
-  .animwrap canvas{border:1px solid var(--line);border-radius:8px;max-width:94vw;height:auto;background:#04060a}
+  .animwrap #flightCanvasWrap{border:1px solid var(--line);border-radius:8px;max-width:94vw;overflow:hidden;background:#04060a}
+  .animwrap #flightCanvasWrap canvas{display:block;width:100%;height:auto}
   .animbar{display:flex;align-items:center;gap:14px}
   #animTitle{font-family:var(--mono);letter-spacing:.06em;color:var(--ink);font-size:14px}
 </style>
@@ -170,6 +181,7 @@
     <button id="tabMap" onclick="setTab('map')">Solar System</button>
     <button id="tabRivals" onclick="setTab('rivals')">Rivals</button>
     <button id="tabPersonnel" onclick="setTab('personnel')">Personnel</button>
+    <button id="tabSettings" onclick="setTab('settings')">Settings</button>
   </nav>
 
   <div class="opsbar">
@@ -179,7 +191,7 @@
     <button class="btn ghost" onclick="saveGame()">💾 Save</button>
     <button class="btn ghost" onclick="loadGame()">📂 Load</button>
     <button class="btn ghost" onclick="confirmNew()">New Game</button>
-    <button class="btn" onclick="advanceMonth()">▸ Advance 1 month <span class="dim">(−$0.12M)</span></button>
+    <button class="btn" onclick="advanceMonth()">▸ Advance 1 month <span class="dim" id="overheadLabel">(−$0.12M)</span></button>
     <button class="btn ghost" id="skipBtn" onclick="skipResearch()">Skip to R&amp;D done</button>
   </div>
 
@@ -232,6 +244,10 @@
     <div id="personnelCard"></div>
   </div>
 
+  <div id="settingsView" class="hidden">
+    <div class="card" id="settingsCard"></div>
+  </div>
+
   <div class="card log">
     <h2>Flight &amp; Operations Log</h2>
     <div id="logBox"></div>
@@ -242,7 +258,7 @@
 
 <div id="animOverlay" class="animwrap hidden">
   <div id="animTitle">—</div>
-  <canvas id="flightCanvas" width="900" height="520"></canvas>
+  <div id="flightCanvasWrap" style="position:relative;display:inline-block"><canvas id="flightCanvas" width="900" height="520"></canvas><canvas id="flightTextCanvas" width="900" height="520" style="position:absolute;left:0;top:0;pointer-events:none"></canvas></div>
   <div class="animbar">
     <span class="dim" style="font-size:11px">Mission playback</span>
     <button class="btn ghost" id="animSpeedBtn" onclick="cycleAnimSpeed()" style="min-width:90px;font-size:11px">1×  Slow</button>
@@ -511,12 +527,34 @@ function lifeSupport(m, eclssId){
   return {consumables, system, capsule, total, recovery:t.recovery};
 }
 
+/* ---------- difficulty (design §13: math exposure / forgiveness) ----------
+   Difficulty NEVER touches the rocket equation — Δv math is identical in both
+   modes. It scales economy, reliability forgiveness, and how much of the math
+   is exposed. Napkin: friendlier numbers, equations under the hood. Engineer:
+   sub-scale budgets, green-company unreliability, full math on display. */
+const DIFFICULTY={
+  napkin:{
+    label:'Napkin', tag:'Forgiving',
+    blurb:'Back-of-the-envelope mode. The budget is roomier, hardware is more reliable, and the rocket equation stays under the hood — you see the results, not the derivations.',
+    startMoney:8.0, overhead:0.08, relBonus:0.12, relFloor:0.55, relCap:0.985,
+    payoutMult:1.25, buildCostMult:0.85, showEquations:false
+  },
+  engineer:{
+    label:'Engineer', tag:'Realistic',
+    blurb:'Slide-rule mode. Sub-scale budgets, the genuine unreliability of a green company, and the full rocket-equation math exposed at every step on the bench.',
+    startMoney:5.0, overhead:0.12, relBonus:0.0, relFloor:0.35, relCap:0.95,
+    payoutMult:1.0, buildCostMult:1.0, showEquations:true
+  }
+};
+function diff(){ return DIFFICULTY[(state&&state.difficulty)] || DIFFICULTY.engineer; }
 let state;
-function newGame(){
+function newGame(difficulty){
+  const mode=DIFFICULTY[difficulty]?difficulty:'engineer';
   state = {
     company:'ORBITAL VENTURES',
+    difficulty:mode,
     year:1942, month:0, // month 0 = Jan
-    money:5.0, rep:0, sigma:0.12,
+    money:DIFFICULTY[mode].startMoney, rep:0, sigma:0.12,
     successes:0, flights:0,
     research:{}, unlocked:{a4:true}, activeResearch:null,
     completed:{}, activeMission:'first_flight',
@@ -546,12 +584,13 @@ function curRel(){
   let base=0.65+0.025*Math.min(state.successes,12); // heritage: green company is genuinely unreliable
   if(state.research.test_program) base+=0.08;
   base+=engRelBonus(); // M6: engineer team reliability bonus
+  base+=diff().relBonus; // difficulty: forgiveness bump
   return base;
 }
 function advance(months){
   for(let i=0;i<months;i++){
     state.month++; if(state.month>11){state.month=0;state.year++;}
-    state.money-=0.12; // monthly overhead
+    state.money-=diff().overhead; // monthly overhead (difficulty-scaled)
 
     // M6: personnel salary deduction
     state.staff.forEach(s=>{
@@ -753,7 +792,8 @@ function computeVehicle(){
   }
   const enginePenalty=Math.pow(0.975,totalEng-1);
   const testBonus=TEST_LEVELS[state.testLevel].rel;
-  const reliability=Math.min(0.95,Math.max(0.35,(curRel()+testBonus)*enginePenalty*(crewed?0.92:1)));
+  buildCost*=diff().buildCostMult; // difficulty: hardware-cost scaling
+  const reliability=Math.min(diff().relCap,Math.max(diff().relFloor,(curRel()+testBonus)*enginePenalty*(crewed?0.92:1)));
   const launchCost=0.12+0.01*totalProp;
   return {payload, sm:perf.sm, stageDv:perf.stageDv, totalDv:perf.totalDv, liftoff:perf.liftoff, twr:perf.twr,
           totalEng, totalProp, reliability, buildCost, launchCost, crewed,
@@ -834,7 +874,7 @@ function launch(){
   if(success){
     personnelMissionEvent(true); // M6: morale boost on success
     state.successes++;
-    let payout=(routine?m.payout*0.4:m.payout)*windowQuality;
+    let payout=(routine?m.payout*0.4:m.payout)*windowQuality*diff().payoutMult;
     if(crewed) payout*=ab.payoutMult; // M6: astronaut payout bonus
     if(!routine && state.scooped[m.id]) payout*=SCOOP_PAYOUT_MULT;
     const rep=routine?2:m.rep;
@@ -1124,7 +1164,7 @@ function bailout(){
   log('note',`Emergency bridge loan accepted: +${fM(3.0)}, −15 rep. (${2-state.bailouts} remaining)`);
   hideModal(); render();
 }
-function restart(){hideModal();newGame();render();}
+function restart(difficulty){hideModal();newGame(difficulty);render();}
 function showModal(html){$('modalBody').innerHTML=html;$('modal').classList.remove('hidden');}
 function hideModal(){$('modal').classList.add('hidden');}
 
@@ -1158,7 +1198,8 @@ function loadGame(){
       transfer:{eng:'hyper_storable',prop:10.0}, descent:{eng:'hyper_storable',prop:6.0},
       ascent:{eng:'hyper_storable',prop:2.5}, eclss:'open', testLevel:0,
       windows:{}, committedWindow:null, selectedBody:'moon', mapZoom:null,
-      depot:0, depotUse:0, tab:'bench', log:[], rivalFired:{}, scooped:{}, bailouts:0
+      depot:0, depotUse:0, tab:'bench', log:[], rivalFired:{}, scooped:{}, bailouts:0,
+      difficulty:'engineer'
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -1174,13 +1215,16 @@ function loadGame(){
 }
 function confirmNew(){
   const hasSave=!!localStorage.getItem(SAVE_KEY);
+  const cur=(state&&state.difficulty)||'engineer';
   showModal(`<h2>New Game</h2>
     <p class="muted">Start a fresh company from 1942. Current progress will be lost unless you save first.</p>
     ${hasSave?'<p class="dim" style="font-size:12px">A saved game exists in this browser and will not be overwritten.</p>':''}
-    <div style="display:flex;gap:8px;margin-top:12px">
-      <button class="btn" onclick="hideModal()" style="flex:1">Cancel</button>
-      <button class="btn danger" onclick="restart()" style="flex:1">Start New Game</button>
-    </div>`);
+    <p class="dim" style="font-size:12px;margin-top:10px">Choose a difficulty (changeable later in Settings):</p>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button class="btn ${cur==='napkin'?'':'ghost'}" onclick="restart('napkin')" style="flex:1">Napkin<br><span class="dim" style="font-size:10px">forgiving · ${fM(DIFFICULTY.napkin.startMoney)} start</span></button>
+      <button class="btn ${cur==='engineer'?'':'ghost'}" onclick="restart('engineer')" style="flex:1">Engineer<br><span class="dim" style="font-size:10px">realistic · ${fM(DIFFICULTY.engineer.startMoney)} start</span></button>
+    </div>
+    <button class="btn ghost" onclick="hideModal()" style="width:100%;margin-top:8px">Cancel</button>`);
 }
 function autoLoad(){
   try{
@@ -1194,7 +1238,8 @@ function autoLoad(){
       transfer:{eng:'hyper_storable',prop:10.0}, descent:{eng:'hyper_storable',prop:6.0},
       ascent:{eng:'hyper_storable',prop:2.5}, eclss:'open', testLevel:0,
       windows:{}, committedWindow:null, selectedBody:'moon', mapZoom:null,
-      depot:0, depotUse:0, tab:'bench', log:[], rivalFired:{}, scooped:{}, bailouts:0
+      depot:0, depotUse:0, tab:'bench', log:[], rivalFired:{}, scooped:{}, bailouts:0,
+      difficulty:'engineer'
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -1341,8 +1386,465 @@ function sfxBurn(intensity){
   sub.connect(sg); sg.connect(sfxCtx.destination); sub.start(); sfxEngNodes.push(sub);
 }
 
+/* ===== WebGL 2D compatibility layer ===== */
+const _glShaders={
+flatV:`attribute vec2 aPos;uniform mat3 uProj;uniform mat3 uTransform;void main(){vec3 p=uProj*uTransform*vec3(aPos,1.0);gl_Position=vec4(p.xy,0.0,1.0);}`,
+flatF:`precision mediump float;uniform vec4 uColor;void main(){gl_FragColor=uColor;}`,
+linGradV:`attribute vec2 aPos;uniform mat3 uProj;uniform mat3 uTransform;varying vec2 vWorldPos;void main(){vec3 w=uTransform*vec3(aPos,1.0);vWorldPos=w.xy;vec3 p=uProj*w;gl_Position=vec4(p.xy,0.0,1.0);}`,
+linGradF:`precision mediump float;varying vec2 vWorldPos;uniform vec2 uGradStart;uniform vec2 uGradEnd;uniform vec4 uStops[8];uniform float uStopPos[8];uniform int uNumStops;void main(){vec2 d=uGradEnd-uGradStart;float len2=dot(d,d);float t=len2>0.0?dot(vWorldPos-uGradStart,d)/len2:0.0;t=clamp(t,0.0,1.0);vec4 c=uStops[0];for(int i=1;i<8;i++){if(i>=uNumStops)break;float f=clamp((t-uStopPos[i-1])/(uStopPos[i]-uStopPos[i-1]+0.0001),0.0,1.0);c=mix(c,uStops[i],f);if(t<=uStopPos[i])break;}gl_FragColor=c;}`,
+radGradV:`attribute vec2 aPos;uniform mat3 uProj;uniform mat3 uTransform;varying vec2 vWorldPos;void main(){vec3 w=uTransform*vec3(aPos,1.0);vWorldPos=w.xy;vec3 p=uProj*w;gl_Position=vec4(p.xy,0.0,1.0);}`,
+radGradF:`precision mediump float;varying vec2 vWorldPos;uniform vec2 uCenter0;uniform vec2 uCenter1;uniform float uRadius0;uniform float uRadius1;uniform vec4 uStops[8];uniform float uStopPos[8];uniform int uNumStops;void main(){float dist=length(vWorldPos-uCenter1);float t=(dist-uRadius0)/(uRadius1-uRadius0+0.0001);t=clamp(t,0.0,1.0);vec4 c=uStops[0];for(int i=1;i<8;i++){if(i>=uNumStops)break;float f=clamp((t-uStopPos[i-1])/(uStopPos[i]-uStopPos[i-1]+0.0001),0.0,1.0);c=mix(c,uStops[i],f);if(t<=uStopPos[i])break;}gl_FragColor=c;}`,
+dashV:`attribute vec2 aPos;attribute float aDist;uniform mat3 uProj;uniform mat3 uTransform;varying float vDist;void main(){vDist=aDist;vec3 p=uProj*uTransform*vec3(aPos,1.0);gl_Position=vec4(p.xy,0.0,1.0);}`,
+dashF:`precision mediump float;varying float vDist;uniform vec4 uColor;uniform float uDashLen;uniform float uGapLen;void main(){float cycle=uDashLen+uGapLen;float m=mod(vDist,cycle);if(m>uDashLen)discard;gl_FragColor=uColor;}`
+};
+function glCompile(gl,vSrc,fSrc){
+  function sh(type,src){const s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)){console.error('Shader:',gl.getShaderInfoLog(s));}return s;}
+  const vs=sh(gl.VERTEX_SHADER,vSrc), fs=sh(gl.FRAGMENT_SHADER,fSrc);
+  const prog=gl.createProgram();gl.attachShader(prog,vs);gl.attachShader(prog,fs);gl.linkProgram(prog);
+  if(!gl.getProgramParameter(prog,gl.LINK_STATUS)) console.error('Link:',gl.getProgramInfoLog(prog));
+  const attrs={},uniforms={};
+  const na=gl.getProgramParameter(prog,gl.ACTIVE_ATTRIBUTES);
+  for(let i=0;i<na;i++){const a=gl.getActiveAttrib(prog,i);attrs[a.name]=gl.getAttribLocation(prog,a.name);}
+  const nu=gl.getProgramParameter(prog,gl.ACTIVE_UNIFORMS);
+  for(let i=0;i<nu;i++){const u=gl.getActiveUniform(prog,i);uniforms[u.name.replace(/\[0\]$/,'')]=gl.getUniformLocation(prog,u.name);}
+  return {prog,attrs,uniforms};
+}
+function tessCircle(cx,cy,r,n){
+  n=n||32;const out=new Float32Array((n+2)*2);out[0]=cx;out[1]=cy;
+  for(let i=0;i<=n;i++){const a=i/n*Math.PI*2;out[(i+1)*2]=cx+Math.cos(a)*r;out[(i+1)*2+1]=cy+Math.sin(a)*r;}
+  return out;
+}
+function tessArc(cx,cy,r,sa,ea,n){
+  n=n||32;const pts=[];
+  let sweep=ea-sa;if(Math.abs(sweep)>Math.PI*2)sweep=Math.PI*2*(sweep>0?1:-1);
+  for(let i=0;i<=n;i++){const a=sa+sweep*i/n;pts.push(cx+Math.cos(a)*r,cy+Math.sin(a)*r);}
+  return pts;
+}
+function tessEllipse(cx,cy,rx,ry,rot,n){
+  n=n||32;const pts=[];const cr=Math.cos(rot),sr=Math.sin(rot);
+  for(let i=0;i<=n;i++){const a=i/n*Math.PI*2;const px=rx*Math.cos(a),py=ry*Math.sin(a);
+    pts.push(cx+cr*px-sr*py,cy+sr*px+cr*py);}
+  return pts;
+}
+function tessQuadBezier(x0,y0,cpx,cpy,x1,y1,n){
+  n=n||20;const pts=[];
+  for(let i=0;i<=n;i++){const t=i/n,u=1-t;
+    pts.push(u*u*x0+2*u*t*cpx+t*t*x1,u*u*y0+2*u*t*cpy+t*t*y1);}
+  return pts;
+}
+function tessThickLine(points,width){
+  const hw=width/2,out=[];
+  for(let i=0;i<points.length;i+=2){
+    let nx=0,ny=-1;
+    if(i+2<points.length){const dx=points[i+2]-points[i],dy=points[i+3]-points[i+1];const len=Math.sqrt(dx*dx+dy*dy)||1;nx=-dy/len;ny=dx/len;}
+    else if(i>=2){const dx=points[i]-points[i-2],dy=points[i+1]-points[i-1];const len=Math.sqrt(dx*dx+dy*dy)||1;nx=-dy/len;ny=dx/len;}
+    out.push(points[i]+nx*hw,points[i+1]+ny*hw,points[i]-nx*hw,points[i+1]-ny*hw);
+  }
+  return out;
+}
+function tessThickLineDash(points,width){
+  const hw=width/2,out=[],dists=[];
+  let cumDist=0;
+  for(let i=0;i<points.length;i+=2){
+    if(i>=2){const dx=points[i]-points[i-2],dy=points[i+1]-points[i-1];cumDist+=Math.sqrt(dx*dx+dy*dy);}
+    let nx=0,ny=-1;
+    if(i+2<points.length){const dx=points[i+2]-points[i],dy=points[i+3]-points[i+1];const len=Math.sqrt(dx*dx+dy*dy)||1;nx=-dy/len;ny=dx/len;}
+    else if(i>=2){const dx=points[i]-points[i-2],dy=points[i+1]-points[i-1];const len=Math.sqrt(dx*dx+dy*dy)||1;nx=-dy/len;ny=dx/len;}
+    out.push(points[i]+nx*hw,points[i+1]+ny*hw,points[i]-nx*hw,points[i+1]-ny*hw);
+    dists.push(cumDist,cumDist);
+  }
+  return {verts:out,dists};
+}
+function earClipTriangulate(pts){
+  if(pts.length<6) return new Float32Array(0);
+  const n=pts.length/2;
+  if(n<3) return new Float32Array(0);
+  const idx=[];for(let i=0;i<n;i++) idx.push(i);
+  const out=[];
+  function cross(o,a,b){return (pts[a*2]-pts[o*2])*(pts[b*2+1]-pts[o*2+1])-(pts[a*2+1]-pts[o*2+1])*(pts[b*2]-pts[o*2]);}
+  function isEar(prev,cur,next){
+    if(cross(prev,cur,next)<=0) return false;
+    for(let i=0;i<idx.length;i++){
+      const p=idx[i];if(p===prev||p===cur||p===next) continue;
+      if(ptInTri(pts[p*2],pts[p*2+1],pts[prev*2],pts[prev*2+1],pts[cur*2],pts[cur*2+1],pts[next*2],pts[next*2+1])) return false;
+    }
+    return true;
+  }
+  function ptInTri(px,py,ax,ay,bx,by,cx,cy){
+    const d1=(px-bx)*(ay-by)-(ax-bx)*(py-by);
+    const d2=(px-cx)*(by-cy)-(bx-cx)*(py-cy);
+    const d3=(px-ax)*(cy-ay)-(cx-ax)*(py-ay);
+    const neg=(d1<0)||(d2<0)||(d3<0);
+    const pos=(d1>0)||(d2>0)||(d3>0);
+    return !(neg&&pos);
+  }
+  let safety=n*3;
+  while(idx.length>2&&safety-->0){
+    let found=false;
+    for(let i=0;i<idx.length;i++){
+      const prev=idx[(i-1+idx.length)%idx.length];
+      const cur=idx[i];
+      const next=idx[(i+1)%idx.length];
+      if(isEar(prev,cur,next)){
+        out.push(pts[prev*2],pts[prev*2+1],pts[cur*2],pts[cur*2+1],pts[next*2],pts[next*2+1]);
+        idx.splice(i,1);found=true;break;
+      }
+    }
+    if(!found) break;
+  }
+  return new Float32Array(out);
+}
+function parseColor(str){
+  if(!str||str==='transparent') return [0,0,0,0];
+  if(typeof str!=='string') return [0,0,0,1];
+  str=str.trim();
+  if(str.charAt(0)==='#'){
+    const h=str.substring(1);
+    if(h.length===8) return [parseInt(h.substring(0,2),16)/255,parseInt(h.substring(2,4),16)/255,parseInt(h.substring(4,6),16)/255,parseInt(h.substring(6,8),16)/255];
+    if(h.length===6) return [parseInt(h.substring(0,2),16)/255,parseInt(h.substring(2,4),16)/255,parseInt(h.substring(4,6),16)/255,1];
+    if(h.length===3) return [parseInt(h[0]+h[0],16)/255,parseInt(h[1]+h[1],16)/255,parseInt(h[2]+h[2],16)/255,1];
+  }
+  const rm=str.match(/^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)$/);
+  if(rm) return [parseFloat(rm[1])/255,parseFloat(rm[2])/255,parseFloat(rm[3])/255,rm[4]!==undefined?parseFloat(rm[4]):1];
+  return [0,0,0,1];
+}
+class GLLinearGradient{
+  constructor(x0,y0,x1,y1){this.x0=x0;this.y0=y0;this.x1=x1;this.y1=y1;this.stops=[];this.type='linearGradient';}
+  addColorStop(pos,color){this.stops.push({pos,color:parseColor(color)});}
+}
+class GLRadialGradient{
+  constructor(x0,y0,r0,x1,y1,r1){this.x0=x0;this.y0=y0;this.r0=r0;this.x1=x1;this.y1=y1;this.r1=r1;this.stops=[];this.type='radialGradient';}
+  addColorStop(pos,color){this.stops.push({pos,color:parseColor(color)});}
+}
+function createGL2D(gl,textCtx,W,H){
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
+  gl.enable(gl.STENCIL_TEST);
+  gl.stencilFunc(gl.ALWAYS,0,0xFF);
+  gl.stencilOp(gl.KEEP,gl.KEEP,gl.KEEP);
+  gl.viewport(0,0,W,H);
+  const flatProg=glCompile(gl,_glShaders.flatV,_glShaders.flatF);
+  const linGradProg=glCompile(gl,_glShaders.linGradV,_glShaders.linGradF);
+  const radGradProg=glCompile(gl,_glShaders.radGradV,_glShaders.radGradF);
+  const dashProg=glCompile(gl,_glShaders.dashV,_glShaders.dashF);
+  const projMat=new Float32Array([2/W,0,0, 0,-2/H,0, -1,1,1]);
+  const vBuf=gl.createBuffer();
+  const dBuf=gl.createBuffer();
+  function identMat(){return [1,0,0,1,0,0];}
+  function matMul(a,b){return [a[0]*b[0]+a[2]*b[1],a[1]*b[0]+a[3]*b[1],a[0]*b[2]+a[2]*b[3],a[1]*b[2]+a[3]*b[3],a[0]*b[4]+a[2]*b[5]+a[4],a[1]*b[4]+a[3]*b[5]+a[5]];}
+  function matToGL(m){return new Float32Array([m[0],m[1],0, m[2],m[3],0, m[4],m[5],1]);}
+  function txPt(m,x,y){return [m[0]*x+m[2]*y+m[4],m[1]*x+m[3]*y+m[5]];}
+  let stateStack=[];
+  let curTransform=identMat();
+  let _fillStyle=[0,0,0,1];
+  let _fillStyleRaw='#000000';
+  let _strokeStyle=[0,0,0,1];
+  let _strokeStyleRaw='#000000';
+  let _lineWidth=1;
+  let _globalAlpha=1;
+  let _lineDash=[];
+  let _font='10px sans-serif';
+  let _textAlign='left';
+  let _textBaseline='alphabetic';
+  let stencilLevel=0;
+  let subPaths=[];
+  let curSubPath=[];
+  const ctx={
+    canvas:gl.canvas,
+    get fillStyle(){return _fillStyleRaw;},
+    set fillStyle(v){
+      _fillStyleRaw=v;
+      if(typeof v==='string') _fillStyle=parseColor(v);
+      else _fillStyle=v;
+    },
+    get strokeStyle(){return _strokeStyleRaw;},
+    set strokeStyle(v){
+      _strokeStyleRaw=v;
+      if(typeof v==='string') _strokeStyle=parseColor(v);
+      else _strokeStyle=v;
+    },
+    get lineWidth(){return _lineWidth;},
+    set lineWidth(v){_lineWidth=v;},
+    get globalAlpha(){return _globalAlpha;},
+    set globalAlpha(v){_globalAlpha=v;},
+    get font(){return _font;},
+    set font(v){_font=v;textCtx.font=v;},
+    get textAlign(){return _textAlign;},
+    set textAlign(v){_textAlign=v;textCtx.textAlign=v;},
+    get textBaseline(){return _textBaseline;},
+    set textBaseline(v){_textBaseline=v;textCtx.textBaseline=v;},
+    save(){
+      stateStack.push({transform:curTransform.slice(),fillStyle:_fillStyle,fillStyleRaw:_fillStyleRaw,strokeStyle:_strokeStyle,strokeStyleRaw:_strokeStyleRaw,lineWidth:_lineWidth,globalAlpha:_globalAlpha,lineDash:_lineDash.slice(),font:_font,textAlign:_textAlign,textBaseline:_textBaseline,stencilLevel});
+    },
+    restore(){
+      if(!stateStack.length) return;
+      const s=stateStack.pop();
+      curTransform=s.transform;_fillStyle=s.fillStyle;_fillStyleRaw=s.fillStyleRaw;
+      _strokeStyle=s.strokeStyle;_strokeStyleRaw=s.strokeStyleRaw;
+      _lineWidth=s.lineWidth;_globalAlpha=s.globalAlpha;_lineDash=s.lineDash;
+      _font=s.font;textCtx.font=s.font;_textAlign=s.textAlign;textCtx.textAlign=s.textAlign;
+      _textBaseline=s.textBaseline;textCtx.textBaseline=s.textBaseline;
+      if(s.stencilLevel<stencilLevel){
+        stencilLevel=s.stencilLevel;
+        if(stencilLevel===0){gl.stencilFunc(gl.ALWAYS,0,0xFF);gl.stencilOp(gl.KEEP,gl.KEEP,gl.KEEP);}
+        else{gl.stencilFunc(gl.EQUAL,stencilLevel,0xFF);gl.stencilOp(gl.KEEP,gl.KEEP,gl.KEEP);}
+      }
+    },
+    translate(x,y){
+      curTransform=matMul(curTransform,[1,0,0,1,x,y]);
+    },
+    rotate(a){
+      const c=Math.cos(a),s=Math.sin(a);
+      curTransform=matMul(curTransform,[c,s,-s,c,0,0]);
+    },
+    scale(x,y){
+      curTransform=matMul(curTransform,[x,0,0,y,0,0]);
+    },
+    setLineDash(pattern){_lineDash=pattern&&pattern.length?pattern.slice():[];},
+    createLinearGradient(x0,y0,x1,y1){return new GLLinearGradient(x0,y0,x1,y1);},
+    createRadialGradient(x0,y0,r0,x1,y1,r1){return new GLRadialGradient(x0,y0,r0,x1,y1,r1);},
+    beginPath(){subPaths=[];curSubPath=[];},
+    moveTo(x,y){if(curSubPath.length)subPaths.push(curSubPath);curSubPath=[x,y];},
+    lineTo(x,y){if(!curSubPath.length)curSubPath=[x,y];else{curSubPath.push(x,y);}},
+    arc(cx,cy,r,sa,ea){
+      if(r<=0) return;
+      const fullCircle=Math.abs(ea-sa)>=Math.PI*2-0.0001||ea>Math.PI*2;
+      const n=Math.min(Math.max(12,Math.round(r*2)),128);
+      let pts;
+      if(fullCircle){pts=[];for(let i=0;i<=n;i++){const a=i/n*Math.PI*2;pts.push(cx+Math.cos(a)*r,cy+Math.sin(a)*r);}}
+      else{pts=tessArc(cx,cy,r,sa,ea,n);}
+      if(curSubPath.length) for(let i=0;i<pts.length;i+=2) curSubPath.push(pts[i],pts[i+1]);
+      else curSubPath=pts.slice();
+    },
+    ellipse(cx,cy,rx,ry,rot,sa,ea){
+      if(rx<=0||ry<=0) return;
+      const n=Math.min(Math.max(12,Math.round(Math.max(rx,ry)*2)),128);
+      const pts=tessEllipse(cx,cy,rx,ry,rot,n);
+      if(curSubPath.length) for(let i=0;i<pts.length;i+=2) curSubPath.push(pts[i],pts[i+1]);
+      else curSubPath=pts.slice();
+    },
+    quadraticCurveTo(cpx,cpy,x,y){
+      const sx=curSubPath.length>=2?curSubPath[curSubPath.length-2]:0;
+      const sy=curSubPath.length>=2?curSubPath[curSubPath.length-1]:0;
+      const pts=tessQuadBezier(sx,sy,cpx,cpy,x,y,20);
+      for(let i=2;i<pts.length;i+=2) curSubPath.push(pts[i],pts[i+1]);
+    },
+    closePath(){
+      if(curSubPath.length>=4){curSubPath.push(curSubPath[0],curSubPath[1]);}
+      subPaths.push(curSubPath);curSubPath=[];
+    },
+    rect(x,y,w,h){
+      // 4 distinct corners (no duplicated closing vertex): the closing point made
+      // ear-clipping collapse to a single triangle, so rect-based clip() only covered half the box.
+      if(curSubPath.length) subPaths.push(curSubPath);
+      curSubPath=[x,y,x+w,y,x+w,y+h,x,y+h];
+      subPaths.push(curSubPath);curSubPath=[];
+    },
+    fill(){
+      const allPts=curSubPath.length?subPaths.concat([curSubPath]):subPaths;
+      for(const sp of allPts){
+        if(sp.length<6) continue;
+        const n=sp.length/2;
+        if(n>=10){
+          const cx=sp.reduce((a,_,i)=>i%2===0?a+sp[i]:a,0)/n;
+          const cy=sp.reduce((a,_,i)=>i%2===1?a+sp[i]:a,0)/n;
+          const fan=new Float32Array(2+sp.length);
+          fan[0]=cx;fan[1]=cy;
+          for(let i=0;i<sp.length;i++) fan[i+2]=sp[i];
+          _draw(fan,_fillStyle,gl.TRIANGLE_FAN);
+        } else {
+          const tris=earClipTriangulate(sp);
+          if(tris.length) _draw(tris,_fillStyle,gl.TRIANGLES);
+        }
+      }
+    },
+    stroke(){
+      const allPts=curSubPath.length?subPaths.concat([curSubPath]):subPaths;
+      for(const sp of allPts){
+        if(sp.length<4) continue;
+        _strokePath(sp,_lineWidth,_strokeStyle,_lineDash);
+      }
+    },
+    clip(){
+      const allPts=curSubPath.length?subPaths.concat([curSubPath]):subPaths;
+      stencilLevel++;
+      gl.colorMask(false,false,false,false);
+      gl.stencilFunc(gl.ALWAYS,stencilLevel,0xFF);
+      gl.stencilOp(gl.KEEP,gl.KEEP,gl.REPLACE);
+      for(const sp of allPts){
+        if(sp.length<6) continue;
+        const n=sp.length/2;
+        if(n>=10){
+          const ccx=sp.reduce((a,_,i)=>i%2===0?a+sp[i]:a,0)/n;
+          const ccy=sp.reduce((a,_,i)=>i%2===1?a+sp[i]:a,0)/n;
+          const fan=new Float32Array(2+sp.length);
+          fan[0]=ccx;fan[1]=ccy;
+          for(let i=0;i<sp.length;i++) fan[i+2]=sp[i];
+          _draw(fan,[1,1,1,1],gl.TRIANGLE_FAN);
+        } else {
+          const tris=earClipTriangulate(sp);
+          if(tris.length) _draw(tris,[1,1,1,1],gl.TRIANGLES);
+        }
+      }
+      gl.colorMask(true,true,true,true);
+      gl.stencilFunc(gl.EQUAL,stencilLevel,0xFF);
+      gl.stencilOp(gl.KEEP,gl.KEEP,gl.KEEP);
+    },
+    fillRect(x,y,w,h){
+      const verts=new Float32Array([x,y,x+w,y,x,y+h, x+w,y,x+w,y+h,x,y+h]);
+      _draw(verts,_fillStyle,gl.TRIANGLES);
+    },
+    strokeRect(x,y,w,h){
+      const pts=[x,y,x+w,y,x+w,y+h,x,y+h,x,y];
+      _strokePath(pts,_lineWidth,_strokeStyle,_lineDash);
+    },
+    fillText(text,x,y){
+      textCtx.save();
+      const m=curTransform;
+      textCtx.setTransform(m[0],m[1],m[2],m[3],m[4],m[5]);
+      textCtx.globalAlpha=_globalAlpha;
+      const fs=_fillStyleRaw;
+      if(typeof fs==='string') textCtx.fillStyle=fs;
+      else if(fs&&fs.type) textCtx.fillStyle='#ffffff';
+      else{const c=_fillStyle;textCtx.fillStyle=`rgba(${Math.round(c[0]*255)},${Math.round(c[1]*255)},${Math.round(c[2]*255)},${c[3]})`;}
+      textCtx.fillText(text,x,y);
+      textCtx.restore();
+    },
+    measureText(text){return textCtx.measureText(text);},
+    clearFrame(){
+      gl.clear(gl.COLOR_BUFFER_BIT|gl.STENCIL_BUFFER_BIT);
+      textCtx.clearRect(0,0,W,H);
+      stateStack=[];curTransform=identMat();
+      _fillStyle=[0,0,0,1];_fillStyleRaw='#000000';
+      _strokeStyle=[0,0,0,1];_strokeStyleRaw='#000000';
+      _lineWidth=1;_globalAlpha=1;_lineDash=[];
+      stencilLevel=0;
+      gl.stencilFunc(gl.ALWAYS,0,0xFF);gl.stencilOp(gl.KEEP,gl.KEEP,gl.KEEP);
+      subPaths=[];curSubPath=[];
+    }
+  };
+  gl.clearColor(0.016,0.024,0.04,1);
+  function _draw(vertices,style,mode){
+    if(!vertices.length) return;
+    const isGrad=style&&typeof style==='object'&&style.type;
+    if(isGrad&&style.type==='linearGradient') _drawLinGrad(vertices,style,mode);
+    else if(isGrad&&style.type==='radialGradient') _drawRadGrad(vertices,style,mode);
+    else _drawFlat(vertices,style,mode);
+  }
+  function _applyAlpha(c){
+    if(_globalAlpha>=1) return c;
+    if(Array.isArray(c)) return [c[0],c[1],c[2],c[3]*_globalAlpha];
+    return c;
+  }
+  function _drawFlat(vertices,color,mode){
+    const p=flatProg;
+    gl.useProgram(p.prog);
+    gl.uniformMatrix3fv(p.uniforms.uProj,false,projMat);
+    gl.uniformMatrix3fv(p.uniforms.uTransform,false,matToGL(curTransform));
+    const c=_applyAlpha(Array.isArray(color)?color:[0,0,0,1]);
+    gl.uniform4f(p.uniforms.uColor,c[0],c[1],c[2],c[3]);
+    gl.bindBuffer(gl.ARRAY_BUFFER,vBuf);
+    gl.bufferData(gl.ARRAY_BUFFER,vertices instanceof Float32Array?vertices:new Float32Array(vertices),gl.DYNAMIC_DRAW);
+    gl.enableVertexAttribArray(p.attrs.aPos);
+    gl.vertexAttribPointer(p.attrs.aPos,2,gl.FLOAT,false,0,0);
+    gl.drawArrays(mode,0,vertices.length/2);
+    gl.disableVertexAttribArray(p.attrs.aPos);
+  }
+  function _setupGradStops(p,grad){
+    const stops=grad.stops.slice().sort((a,b)=>a.pos-b.pos);
+    const nStops=Math.min(stops.length,8);
+    gl.uniform1i(p.uniforms.uNumStops,nStops);
+    for(let i=0;i<8;i++){
+      const s=i<nStops?stops[i]:stops[nStops-1]||{pos:0,color:[0,0,0,1]};
+      const c=s.color;
+      const ac=[c[0],c[1],c[2],c[3]*_globalAlpha];
+      gl.uniform4f(gl.getUniformLocation(p.prog,'uStops['+i+']'),ac[0],ac[1],ac[2],ac[3]);
+      gl.uniform1f(gl.getUniformLocation(p.prog,'uStopPos['+i+']'),s.pos);
+    }
+  }
+  function _drawLinGrad(vertices,grad,mode){
+    const p=linGradProg;
+    gl.useProgram(p.prog);
+    gl.uniformMatrix3fv(p.uniforms.uProj,false,projMat);
+    gl.uniformMatrix3fv(p.uniforms.uTransform,false,matToGL(curTransform));
+    const gs=txPt(curTransform,grad.x0,grad.y0);
+    const ge=txPt(curTransform,grad.x1,grad.y1);
+    gl.uniform2f(p.uniforms.uGradStart,gs[0],gs[1]);
+    gl.uniform2f(p.uniforms.uGradEnd,ge[0],ge[1]);
+    _setupGradStops(p,grad);
+    gl.bindBuffer(gl.ARRAY_BUFFER,vBuf);
+    gl.bufferData(gl.ARRAY_BUFFER,vertices instanceof Float32Array?vertices:new Float32Array(vertices),gl.DYNAMIC_DRAW);
+    gl.enableVertexAttribArray(p.attrs.aPos);
+    gl.vertexAttribPointer(p.attrs.aPos,2,gl.FLOAT,false,0,0);
+    gl.drawArrays(mode,0,vertices.length/2);
+    gl.disableVertexAttribArray(p.attrs.aPos);
+  }
+  function _drawRadGrad(vertices,grad,mode){
+    const p=radGradProg;
+    gl.useProgram(p.prog);
+    gl.uniformMatrix3fv(p.uniforms.uProj,false,projMat);
+    gl.uniformMatrix3fv(p.uniforms.uTransform,false,matToGL(curTransform));
+    const c0=txPt(curTransform,grad.x0,grad.y0);
+    const c1=txPt(curTransform,grad.x1,grad.y1);
+    const sx=Math.sqrt(curTransform[0]*curTransform[0]+curTransform[1]*curTransform[1]);
+    gl.uniform2f(p.uniforms.uCenter0,c0[0],c0[1]);
+    gl.uniform2f(p.uniforms.uCenter1,c1[0],c1[1]);
+    gl.uniform1f(p.uniforms.uRadius0,grad.r0*sx);
+    gl.uniform1f(p.uniforms.uRadius1,grad.r1*sx);
+    _setupGradStops(p,grad);
+    gl.bindBuffer(gl.ARRAY_BUFFER,vBuf);
+    gl.bufferData(gl.ARRAY_BUFFER,vertices instanceof Float32Array?vertices:new Float32Array(vertices),gl.DYNAMIC_DRAW);
+    gl.enableVertexAttribArray(p.attrs.aPos);
+    gl.vertexAttribPointer(p.attrs.aPos,2,gl.FLOAT,false,0,0);
+    gl.drawArrays(mode,0,vertices.length/2);
+    gl.disableVertexAttribArray(p.attrs.aPos);
+  }
+  function _strokePath(pts,lineWidth,style,dashPattern){
+    if(pts.length<4) return;
+    if(dashPattern&&dashPattern.length>=2){
+      const td=tessThickLineDash(pts,lineWidth);
+      const p=dashProg;
+      gl.useProgram(p.prog);
+      gl.uniformMatrix3fv(p.uniforms.uProj,false,projMat);
+      gl.uniformMatrix3fv(p.uniforms.uTransform,false,matToGL(curTransform));
+      const c=_applyAlpha(Array.isArray(style)?style:(style&&style.type)?[1,1,1,1]:[0,0,0,1]);
+      gl.uniform4f(p.uniforms.uColor,c[0],c[1],c[2],c[3]);
+      gl.uniform1f(p.uniforms.uDashLen,dashPattern[0]);
+      gl.uniform1f(p.uniforms.uGapLen,dashPattern[1]||dashPattern[0]);
+      gl.bindBuffer(gl.ARRAY_BUFFER,vBuf);
+      gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(td.verts),gl.DYNAMIC_DRAW);
+      gl.enableVertexAttribArray(p.attrs.aPos);
+      gl.vertexAttribPointer(p.attrs.aPos,2,gl.FLOAT,false,0,0);
+      gl.bindBuffer(gl.ARRAY_BUFFER,dBuf);
+      gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(td.dists),gl.DYNAMIC_DRAW);
+      gl.enableVertexAttribArray(p.attrs.aDist);
+      gl.vertexAttribPointer(p.attrs.aDist,1,gl.FLOAT,false,0,0);
+      gl.drawArrays(gl.TRIANGLE_STRIP,0,td.verts.length/2);
+      gl.disableVertexAttribArray(p.attrs.aPos);
+      gl.disableVertexAttribArray(p.attrs.aDist);
+    } else {
+      const verts=tessThickLine(pts,lineWidth);
+      const isGrad=style&&typeof style==='object'&&style.type;
+      if(isGrad&&style.type==='linearGradient') _drawLinGrad(new Float32Array(verts),style,gl.TRIANGLE_STRIP);
+      else if(isGrad&&style.type==='radialGradient') _drawRadGrad(new Float32Array(verts),style,gl.TRIANGLE_STRIP);
+      else _drawFlat(new Float32Array(verts),style,gl.TRIANGLE_STRIP);
+    }
+  }
+  return ctx;
+}
+/* ===== End WebGL 2D compatibility layer ===== */
+
 function playMission(spec, done){
-  const cv=$('flightCanvas'); const ctx=cv&&cv.getContext('2d');
+  const cv=$('flightCanvas');
+  const gl=cv&&cv.getContext('webgl',{alpha:false,antialias:true,stencil:true,premultipliedAlpha:false});
+  let ctx;
+  if(gl){
+    const textCv=$('flightTextCanvas');
+    const textCtx=textCv.getContext('2d');
+    ctx=createGL2D(gl,textCtx,cv.width,cv.height);
+  } else {
+    ctx=cv&&cv.getContext('2d');
+  }
   if(!ctx){ if(done) done(); return; }
   $('animTitle').textContent=spec.title+(spec.crewed?'  ·  crewed':'');
   $('animOverlay').classList.remove('hidden');
@@ -1390,6 +1892,7 @@ function skipAnim(){ const A=animState; if(A&&A.held){ dismissAnim(); return; } 
 function drawPostFlight(){
   const A=animState; if(!A) return;
   const ctx=A.ctx,W=A.cv.width,H=A.cv.height,s=A.spec;
+  if(ctx.clearFrame) ctx.clearFrame();
   const fd=A.flightData||{};
   ctx.fillStyle='#04060a'; ctx.fillRect(0,0,W,H);
   drawStars(ctx,W,H,performance.now());
@@ -1541,6 +2044,7 @@ function drawPostFlight(){
 
 function drawScene(t){
   const A=animState,s=A.spec;
+  if(A.ctx&&A.ctx.clearFrame) A.ctx.clearFrame();
   const ascentFail = !s.success && s.failPhase==='ascent';
   if(t < A.ascentDur || ascentFail){ drawAscent(t, ascentFail); }
   else {
@@ -2009,6 +2513,40 @@ function drawStars(ctx,W,H,time){
     ctx.fillRect(st.x*W,st.y*H,st.s,st.s);
   }
 }
+function rndH(s){const x=Math.sin(s*127.1+0.7)*43758.5453;return x-Math.floor(x);}
+/* A cloud built from several soft, sun-lit lobes over a shadowed underside.
+   flatBase => cumulus seen from the side (puffy top, flat bottom);
+   otherwise => a cloud top seen from above (rounded, irregular). Sun is up-and-to-the-right. */
+function puffCloud(ctx,cx,cy,w,h,alpha,seed,flatBase){
+  if(alpha<=0.004) return;
+  const lobes=4+Math.floor(rndH(seed)*3);
+  ctx.save();
+  if(flatBase){
+    ctx.globalAlpha=alpha*0.45;
+    ctx.fillStyle='rgba(120,138,162,1)';
+    ctx.beginPath(); ctx.ellipse(cx,cy+h*0.12,w*0.96,h*0.24,0,0,7); ctx.fill();
+  } else {
+    ctx.globalAlpha=alpha*0.32;
+    ctx.fillStyle='rgba(86,106,136,1)';
+    ctx.beginPath(); ctx.ellipse(cx-w*0.12,cy+h*0.28,w*0.74,h*0.55,0,0,7); ctx.fill();
+  }
+  for(let k=0;k<lobes;k++){
+    const u=lobes>1?k/(lobes-1):0.5;
+    const bell=Math.sin(u*Math.PI);
+    const r=h*(0.35+0.65*bell)*(0.85+rndH(seed+k*3.3)*0.4);
+    const lx=cx+(u-0.5)*1.7*w+(rndH(seed+k*1.7)-0.5)*0.26*w;
+    const ly=flatBase ? cy-r*0.45-(1-bell)*h*0.16
+                      : cy+(rndH(seed+k*5.1)-0.5)*h*0.6;
+    const g=ctx.createRadialGradient(lx+r*0.34,ly-r*0.4,r*0.06,lx,ly,r);
+    g.addColorStop(0,'rgba(255,255,255,0.97)');
+    g.addColorStop(0.55,'rgba(244,248,253,0.7)');
+    g.addColorStop(1,'rgba(232,238,247,0)');
+    ctx.globalAlpha=alpha;
+    ctx.fillStyle=g;
+    ctx.beginPath(); ctx.arc(lx,ly,r,0,7); ctx.fill();
+  }
+  ctx.restore();
+}
 function drawAscent(t,canFail){
   const A=animState,s=A.spec,ctx=A.ctx,W=A.cv.width,H=A.cv.height;
   const R=s.rng||{wind:0,windFreq:1,windPhase:0,pitchJitter:0,sep:[]};
@@ -2044,42 +2582,74 @@ function drawAscent(t,canFail){
     const starAlpha=clampA((p-0.15)/0.4,0,0.85);
     ctx.globalAlpha=starAlpha; drawStars(ctx,W,H,t); ctx.globalAlpha=1;
   }
-  if(p>0.25){
-    const horizP=clampA((p-0.25)/0.45,0,1);
-    const curveR=2400-horizP*1600;
-    const horizCY=H+curveR*0.92-horizP*curveR*0.35;
-    const horizA=clampA(horizP*0.6,0,0.55);
-    const hGrad=ctx.createRadialGradient(W/2,horizCY,curveR*0.85,W/2,horizCY,curveR);
-    hGrad.addColorStop(0,`rgba(25,70,130,${horizA})`);
-    hGrad.addColorStop(0.6,`rgba(18,50,95,${horizA*0.7})`);
-    hGrad.addColorStop(1,'rgba(4,6,10,0)');
-    ctx.fillStyle=hGrad; ctx.beginPath(); ctx.arc(W/2,horizCY,curveR,0,7); ctx.fill();
-    for(let i=0;i<3;i++){
-      const ar=curveR+2+i*5;
-      ctx.strokeStyle=`rgba(100,180,255,${horizA*(0.5-i*0.14)})`;
-      ctx.lineWidth=2.5-i*0.7;
-      ctx.beginPath(); ctx.arc(W/2,horizCY,ar,Math.PI*1.05,Math.PI*1.95); ctx.stroke();
-    }
-    if(horizP>0.3){
-      ctx.save(); ctx.beginPath(); ctx.arc(W/2,horizCY,curveR,0,7); ctx.clip();
-      ctx.fillStyle=`rgba(2,5,15,${horizA*0.6})`;
-      ctx.beginPath(); ctx.arc(W/2+curveR*0.45,horizCY-curveR*0.08,curveR*1.02,0,7); ctx.fill();
-      ctx.fillStyle=`rgba(50,110,50,${horizA*0.25})`;
-      ctx.beginPath(); ctx.ellipse(W/2-curveR*0.15,horizCY-curveR*0.015,curveR*0.12,curveR*0.04,0.15,0,7); ctx.fill();
-      ctx.beginPath(); ctx.ellipse(W/2+curveR*0.06,horizCY-curveR*0.025,curveR*0.08,curveR*0.03,-0.1,0,7); ctx.fill();
-      ctx.fillStyle=`rgba(255,255,255,${horizA*0.12})`;
-      ctx.beginPath(); ctx.ellipse(W/2-curveR*0.05,horizCY-curveR*0.03,curveR*0.1,curveR*0.01,0.1,0,7); ctx.fill();
-      ctx.restore();
+  /* === Side-tracking liftoff camera: ground + horizon + clouds.
+     The horizon is present from liftoff and grows more curved with altitude;
+     the ground recedes but the horizon stays in frame the whole ascent. === */
+  const altN = clampA(curAlt/(orb?120:Math.max(50,maxA*0.9)),0,1);   // 0 on the pad, ~1 high up
+  // Horizon drops in frame (we look down on more of the Earth) and curves harder as we climb.
+  const horizonY = H*0.50 + smooth(altN)*(H*0.30);
+  const curveR   = 1000 + 30000*Math.pow(1-altN,1.6);                // huge R = flat; small R = strong curve
+  const horizCY  = horizonY + curveR;                                // arc centre, far below the frame
+  // --- Earth surface below the horizon arc ---
+  // Fill the disc directly (no clip): clipping here would leave stencil bits set
+  // that bleed into the HUD mini-map's own clip and flood the scene with its globe.
+  const surf=ctx.createLinearGradient(0,horizonY,0,H);
+  surf.addColorStop(0,    mix('#84937a','#327ab8',altN));            // hazy land near horizon -> ocean blue
+  surf.addColorStop(0.12, mix('#4d5a39','#206099',altN));
+  surf.addColorStop(0.5,  mix('#2d3621','#15436f',altN));
+  surf.addColorStop(1,    mix('#15130c','#0c2238',altN));            // dark foreground earth -> deep limb
+  ctx.fillStyle=surf; ctx.beginPath(); ctx.arc(W/2,horizCY,curveR,0,7); ctx.fill();
+  // cloud tops over the surface (denser and brighter the higher we are — looking down on the deck)
+  for(let i=0;i<13;i++){
+    const cx=W*(((i*0.173+0.03+t*0.000004*((i%3)+1))%1));
+    const depth=((i*7)%5)/5;                                         // 0 near horizon .. 1 deep below
+    let cy=horizonY+10+depth*(H-horizonY)*0.92;
+    const dx=cx-W/2;                                                 // keep clouds on the Earth side of the curved horizon
+    if(curveR*curveR>dx*dx){ const hAtX=horizCY-Math.sqrt(curveR*curveR-dx*dx); if(cy<hAtX+6) cy=hAtX+6; }
+    const cw=(11+(i%3)*9)*(0.6+depth);
+    const ca=clampA((0.12+0.16*altN)*(0.6+0.5*depth),0,0.7);
+    puffCloud(ctx,cx,cy,cw,cw*0.42,ca,i*4.7+1,false);
+  }
+  // night side / terminator shading once we are high enough to see Earth's shadow (fill the disc, stays on Earth)
+  if(altN>0.5){
+    const nA=clampA((altN-0.5)/0.5,0,1)*0.55;
+    const tg=ctx.createLinearGradient(0,0,W,0);
+    tg.addColorStop(0,`rgba(2,4,12,${nA})`);
+    tg.addColorStop(0.5,`rgba(2,4,12,${(nA*0.4).toFixed(3)})`);
+    tg.addColorStop(1,'rgba(2,4,12,0)');
+    ctx.fillStyle=tg; ctx.beginPath(); ctx.arc(W/2,horizCY,curveR,0,7); ctx.fill();
+  }
+  // --- horizon limb: a crisp edge plus an atmospheric glow rising into the sky ---
+  const limbA=clampA(0.4+altN*0.5,0,0.92);
+  const limbLayers=[[1,'150,210,255',0.34],[4,'110,185,255',0.22],[9,'80,160,240',0.13],[16,'60,135,215',0.07],[26,'50,115,195',0.035]];
+  for(let li=0;li<limbLayers.length;li++){
+    const off=limbLayers[li][0], col=limbLayers[li][1], a=limbLayers[li][2];
+    ctx.strokeStyle=`rgba(${col},${(a*limbA).toFixed(3)})`;
+    ctx.lineWidth=off<2?1.5:off*0.55;
+    ctx.beginPath(); ctx.arc(W/2,horizCY,curveR+off,0,7); ctx.stroke();          // +off rises into the sky
+  }
+  ctx.strokeStyle=`rgba(205,228,255,${(0.5*limbA).toFixed(3)})`; ctx.lineWidth=1.3;
+  ctx.beginPath(); ctx.arc(W/2,horizCY,curveR,0,7); ctx.stroke();
+  // --- distant cumulus sitting along the horizon (fade out as the air thins) ---
+  const skyCloudA=clampA(1-altN*1.25,0,1);
+  if(skyCloudA>0.02){
+    for(let i=0;i<7;i++){
+      const cx=W*(((i*0.241+0.05+t*0.000006)%1));
+      const cw=22+(i%4)*16;
+      const cy=horizonY-8-(i%3)*13;
+      puffCloud(ctx,cx,cy,cw,cw*0.5,skyCloudA*0.55,i*5.3+2,true);
     }
   }
-  const groundY=H-20+smooth(clampA(p/0.4,0,1))*280;
-  if(groundY<H+50){
-    ctx.fillStyle='#0e0a06'; ctx.fillRect(0,groundY,W,H-groundY+100);
-    const grd=ctx.createLinearGradient(0,groundY-2,0,groundY+8);
-    grd.addColorStop(0,'#3a2a10'); grd.addColorStop(1,'#1a1208');
-    ctx.fillStyle=grd; ctx.fillRect(0,groundY-2,W,10);
+  // --- launch pad + tower, planted on the ground, receding as the camera follows the rocket up ---
+  const padGroundY=(H-18)+smooth(clampA(p/0.32,0,1))*(H*0.95);
+  if(padGroundY<H+40){
+    ctx.fillStyle=`rgba(18,14,9,${clampA(1-altN*1.4,0,1).toFixed(3)})`;
+    ctx.fillRect(0,padGroundY,W,H-padGroundY+80);
+    const grd=ctx.createLinearGradient(0,padGroundY-2,0,padGroundY+10);
+    grd.addColorStop(0,'#46341a'); grd.addColorStop(1,'#1a1208');
+    ctx.fillStyle=grd; ctx.fillRect(0,padGroundY-2,W,12);
     const towerX=W*0.28-18, towerH=110, towerW=8;
-    const towerTop=groundY-towerH;
+    const towerTop=padGroundY-towerH;
     ctx.fillStyle='#3a3a3e'; ctx.fillRect(towerX-towerW/2,towerTop,towerW,towerH);
     for(let ly=0;ly<towerH;ly+=8){
       ctx.strokeStyle='rgba(90,90,100,0.5)'; ctx.lineWidth=0.5;
@@ -2090,7 +2660,7 @@ function drawAscent(t,canFail){
     ctx.fillStyle='#555'; ctx.fillRect(towerX-0.5,towerTop-14,1,14);
     ctx.fillStyle='#e03030'; ctx.beginPath(); ctx.arc(towerX,towerTop-14,2,0,7); ctx.fill();
     if(p<0.04){
-      const armY1=groundY-towerH*0.65, armY2=groundY-towerH*0.40;
+      const armY1=padGroundY-towerH*0.65, armY2=padGroundY-towerH*0.40;
       const armRetract=clampA(p/0.03,0,1);
       const armLen=22-armRetract*18;
       ctx.fillStyle='#505058'; ctx.fillRect(towerX+towerW/2,armY1-1.5,armLen,3);
@@ -2100,13 +2670,13 @@ function drawAscent(t,canFail){
       ctx.fillRect(towerX+towerW/2+armLen-2,armY2-3,3,6);
     }
     const padLeft=W*0.27-30, padRight=W*0.27+30;
-    ctx.fillStyle='#2a2a2e'; ctx.fillRect(padLeft,groundY-3,padRight-padLeft,5);
-    ctx.fillStyle='#1a1a1e'; ctx.fillRect(padLeft+8,groundY+2,padRight-padLeft-16,12);
+    ctx.fillStyle='#2a2a2e'; ctx.fillRect(padLeft,padGroundY-3,padRight-padLeft,5);
+    ctx.fillStyle='#1a1a1e'; ctx.fillRect(padLeft+8,padGroundY+2,padRight-padLeft-16,12);
     ctx.fillStyle='rgba(255,80,20,'+clampA(0.25-p*2,0,0.25)+')';
-    ctx.beginPath(); ctx.arc(W*0.27,groundY+8,6+p*30,0,7); ctx.fill();
+    ctx.beginPath(); ctx.arc(W*0.27,padGroundY+8,6+p*30,0,7); ctx.fill();
     ctx.fillStyle='rgba(180,180,190,'+clampA(0.4-p*3,0,0.4)+')';
     for(let si=0;si<3;si++){
-      const sx=W*0.27-12+si*12, sy=groundY+2;
+      const sx=W*0.27-12+si*12, sy=padGroundY+2;
       ctx.beginPath(); ctx.arc(sx,sy+4+Math.random()*3,5+Math.random()*8+p*40,0,7); ctx.fill();
     }
   }
@@ -2273,7 +2843,7 @@ function drawAscent(t,canFail){
           'ASCENT · STAGE '+(Math.min(dropped+1,n))))))));
   const phaseColor = exploding ? '#e0564f' : (qNorm>0.7 ? '#f5a623' : (p>0.92 ? '#58c47a' : '#4fd1d9'));
   drawPhaseBar(phaseTxt, phaseColor, p);
-  if(!exploding) drawNavBall(ctx,W,H,pitch,0,'ascent');
+
   A.flightData={
     maxAlt:maxA, curAlt:Math.round(curAlt), finalVel:Math.round(curVel),
     vx:vHoriz, vy:vVert, drangeKm, pitch, maxQ:Math.round(qNorm*maxQ),
@@ -2281,31 +2851,157 @@ function drawAscent(t,canFail){
     accel:parseFloat(accel.toFixed(1)), throttle:Math.round(throttle*100)
   };
 }
-function earthLimb(ctx,W,H,detailed){
+function earthLimb(ctx,W,H,detailed,sunAngle){
   const cx=W/2,cy=H*2.3,r=H*2.0;
+  const sa=sunAngle!=null?sunAngle:-0.6;
+  const sunX=Math.cos(sa),sunY=Math.sin(sa);
   if(detailed){
-    const grd=ctx.createRadialGradient(cx-r*0.15,cy-r*0.1,r*0.3,cx,cy,r);
-    grd.addColorStop(0,'#3a8cc7'); grd.addColorStop(0.4,'#2b6cb0');
-    grd.addColorStop(0.7,'#1a4a80'); grd.addColorStop(1,'#0e2840');
+    const grd=ctx.createRadialGradient(cx+sunX*r*0.18,cy+sunY*r*0.12,r*0.15,cx,cy,r);
+    grd.addColorStop(0,'#4da8d8'); grd.addColorStop(0.2,'#3a92c7');
+    grd.addColorStop(0.4,'#2b78b0'); grd.addColorStop(0.6,'#1e5c95');
+    grd.addColorStop(0.8,'#154578'); grd.addColorStop(1,'#0e2840');
     ctx.fillStyle=grd; ctx.beginPath(); ctx.arc(cx,cy,r,0,7); ctx.fill();
+    const tealGrd=ctx.createRadialGradient(cx+sunX*r*0.12,cy+sunY*r*0.08,r*0.02,cx+sunX*r*0.12,cy+sunY*r*0.08,r*0.35);
+    tealGrd.addColorStop(0,'rgba(50,160,180,0.25)');
+    tealGrd.addColorStop(0.5,'rgba(40,130,155,0.12)');
+    tealGrd.addColorStop(1,'rgba(40,130,155,0)');
+    ctx.fillStyle=tealGrd; ctx.beginPath(); ctx.arc(cx,cy,r,0,7); ctx.fill();
+    const edgeGrd=ctx.createRadialGradient(cx,cy,r*0.6,cx,cy,r);
+    edgeGrd.addColorStop(0,'rgba(0,0,0,0)');
+    edgeGrd.addColorStop(0.7,'rgba(8,20,50,0.15)');
+    edgeGrd.addColorStop(1,'rgba(5,12,30,0.3)');
+    ctx.fillStyle=edgeGrd; ctx.beginPath(); ctx.arc(cx,cy,r,0,7); ctx.fill();
     ctx.save(); ctx.beginPath(); ctx.arc(cx,cy,r,0,7); ctx.clip();
-    ctx.fillStyle='rgba(2,5,15,0.55)';
-    ctx.beginPath(); ctx.arc(cx+r*0.4,cy-r*0.1,r*1.05,0,7); ctx.fill();
-    const landColor='rgba(80,140,60,0.3)';
-    const shapes=[[cx-r*0.2,cy-r*0.02,r*0.15,r*0.08],[cx+r*0.05,cy-r*0.03,r*0.1,r*0.06],[cx-r*0.08,cy-r*0.06,r*0.08,r*0.04]];
-    ctx.fillStyle=landColor;
-    shapes.forEach(s=>{ ctx.beginPath(); ctx.ellipse(s[0],s[1],s[2],s[3],0.2,0,7); ctx.fill(); });
-    const cloudColor='rgba(255,255,255,0.15)';
-    ctx.fillStyle=cloudColor;
-    ctx.beginPath(); ctx.ellipse(cx-r*0.1,cy-r*0.04,r*0.12,r*0.015,0.1,0,7); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(cx+r*0.08,cy-r*0.06,r*0.09,r*0.01,-0.15,0,7); ctx.fill();
+    const nightCX=cx-sunX*r*0.6,nightCY=cy-sunY*r*0.3;
+    const termGrd=ctx.createRadialGradient(nightCX,nightCY,r*0.05,nightCX,nightCY,r*0.85);
+    termGrd.addColorStop(0,'rgba(2,3,10,0.7)');
+    termGrd.addColorStop(0.4,'rgba(2,3,10,0.35)');
+    termGrd.addColorStop(0.8,'rgba(2,3,10,0.08)');
+    termGrd.addColorStop(1,'rgba(2,3,10,0)');
+    ctx.fillStyle=termGrd; ctx.beginPath(); ctx.arc(cx,cy,r,0,7); ctx.fill();
+    ctx.fillStyle='rgba(160,130,75,0.3)';
+    ctx.beginPath(); ctx.ellipse(cx+r*0.06,cy-r*0.02,r*0.1,r*0.07,0.12,0,7); ctx.fill();
+    ctx.fillStyle='rgba(145,118,65,0.27)';
+    ctx.beginPath(); ctx.ellipse(cx+r*0.04,cy-r*0.015,r*0.08,r*0.055,-0.05,0,7); ctx.fill();
+    ctx.fillStyle='rgba(135,108,58,0.24)';
+    ctx.beginPath(); ctx.ellipse(cx+r*0.085,cy-r*0.008,r*0.055,r*0.05,0.3,0,7); ctx.fill();
+    /* Sahara/N.Africa desert */
+    ctx.fillStyle='rgba(195,165,105,0.22)';
+    ctx.beginPath(); ctx.ellipse(cx+r*0.035,cy-r*0.03,r*0.07,r*0.022,0.1,0,7); ctx.fill();
+    ctx.fillStyle='rgba(185,155,95,0.18)';
+    ctx.beginPath(); ctx.ellipse(cx+r*0.06,cy-r*0.035,r*0.04,r*0.015,0.2,0,7); ctx.fill();
+    /* Tropical Africa (darker green near equator) */
+    ctx.fillStyle='rgba(50,95,35,0.22)';
+    ctx.beginPath(); ctx.ellipse(cx+r*0.055,cy-r*0.005,r*0.04,r*0.025,0.15,0,7); ctx.fill();
+    /* East Africa highlands */
+    ctx.fillStyle='rgba(85,105,50,0.2)';
+    ctx.beginPath(); ctx.ellipse(cx+r*0.1,cy-r*0.003,r*0.025,r*0.04,0.2,0,7); ctx.fill();
+    /* Arabian peninsula */
+    ctx.fillStyle='rgba(175,150,95,0.24)';
+    ctx.beginPath(); ctx.ellipse(cx+r*0.125,cy-r*0.035,r*0.035,r*0.03,0.5,0,7); ctx.fill();
+    ctx.fillStyle='rgba(185,158,100,0.18)';
+    ctx.beginPath(); ctx.ellipse(cx+r*0.13,cy-r*0.03,r*0.022,r*0.022,0.4,0,7); ctx.fill();
+    /* --- Europe (green, above and left of Africa) --- */
+    ctx.fillStyle='rgba(72,125,55,0.24)';
+    ctx.beginPath(); ctx.ellipse(cx+r*0.02,cy-r*0.05,r*0.065,r*0.022,0.2,0,7); ctx.fill();
+    ctx.fillStyle='rgba(82,135,62,0.2)';
+    ctx.beginPath(); ctx.ellipse(cx-r*0.005,cy-r*0.055,r*0.045,r*0.016,-0.1,0,7); ctx.fill();
+    ctx.fillStyle='rgba(68,115,52,0.18)';
+    ctx.beginPath(); ctx.ellipse(cx+r*0.045,cy-r*0.052,r*0.03,r*0.013,0.35,0,7); ctx.fill();
+    ctx.fillStyle='rgba(75,120,55,0.16)';
+    ctx.beginPath(); ctx.ellipse(cx-r*0.02,cy-r*0.046,r*0.028,r*0.02,0.0,0,7); ctx.fill();
+    /* --- India subcontinent --- */
+    ctx.fillStyle='rgba(90,130,60,0.22)';
+    ctx.beginPath(); ctx.ellipse(cx+r*0.16,cy-r*0.02,r*0.02,r*0.035,0.15,0,7); ctx.fill();
+    ctx.fillStyle='rgba(140,120,70,0.18)';
+    ctx.beginPath(); ctx.ellipse(cx+r*0.155,cy-r*0.03,r*0.018,r*0.02,0.1,0,7); ctx.fill();
+    ctx.fillStyle='rgba(80,120,55,0.16)';
+    ctx.beginPath(); ctx.ellipse(cx+r*0.165,cy-r*0.012,r*0.012,r*0.022,0.2,0,7); ctx.fill();
+    /* --- South America (green, left edge) --- */
+    ctx.fillStyle='rgba(55,120,48,0.28)';
+    ctx.beginPath(); ctx.ellipse(cx-r*0.18,cy-r*0.015,r*0.045,r*0.08,-0.15,0,7); ctx.fill();
+    ctx.fillStyle='rgba(48,108,42,0.24)';
+    ctx.beginPath(); ctx.ellipse(cx-r*0.17,cy-r*0.005,r*0.038,r*0.065,-0.1,0,7); ctx.fill();
+    ctx.fillStyle='rgba(42,98,38,0.22)';
+    ctx.beginPath(); ctx.ellipse(cx-r*0.19,cy-r*0.028,r*0.03,r*0.045,-0.2,0,7); ctx.fill();
+    /* Amazon (dark green) */
+    ctx.fillStyle='rgba(32,82,28,0.22)';
+    ctx.beginPath(); ctx.ellipse(cx-r*0.17,cy-r*0.008,r*0.028,r*0.035,0.0,0,7); ctx.fill();
+    /* Andes */
+    ctx.fillStyle='rgba(105,88,58,0.18)';
+    ctx.beginPath(); ctx.ellipse(cx-r*0.195,cy-r*0.015,r*0.008,r*0.055,-0.12,0,7); ctx.fill();
+    /* --- Small islands/features --- */
+    ctx.fillStyle='rgba(70,115,50,0.15)';
+    ctx.beginPath(); ctx.ellipse(cx+r*0.14,cy-r*0.055,r*0.012,r*0.008,0.3,0,7); ctx.fill();
+    ctx.fillStyle='rgba(75,120,55,0.14)';
+    ctx.beginPath(); ctx.ellipse(cx-r*0.1,cy-r*0.06,r*0.015,r*0.01,0.1,0,7); ctx.fill();
+    /* --- Polar regions --- */
+    ctx.fillStyle='rgba(220,232,242,0.18)';
+    ctx.beginPath(); ctx.ellipse(cx+r*0.01,cy-r*0.085,r*0.08,r*0.018,0.05,0,7); ctx.fill();
+    ctx.fillStyle='rgba(210,225,238,0.12)';
+    ctx.beginPath(); ctx.ellipse(cx-r*0.02,cy+r*0.015,r*0.1,r*0.015,0.0,0,7); ctx.fill();
+    const glintX=cx+sunX*r*0.12,glintY=cy+sunY*r*0.08;
+    const glintGrd=ctx.createRadialGradient(glintX,glintY,r*0.005,glintX,glintY,r*0.06);
+    glintGrd.addColorStop(0,'rgba(255,255,255,0.2)');
+    glintGrd.addColorStop(0.4,'rgba(200,230,255,0.08)');
+    glintGrd.addColorStop(1,'rgba(200,230,255,0)');
+    ctx.fillStyle=glintGrd; ctx.beginPath(); ctx.arc(glintX,glintY,r*0.06,0,7); ctx.fill();
+    /* --- Clouds (15 formations) --- */
+    /* Large spiral weather systems */
+    ctx.fillStyle='rgba(255,255,255,0.14)';
+    ctx.beginPath(); ctx.ellipse(cx-r*0.08,cy-r*0.03,r*0.08,r*0.025,0.4,0,7); ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,0.1)';
+    ctx.beginPath(); ctx.ellipse(cx-r*0.075,cy-r*0.035,r*0.06,r*0.03,0.7,0,7); ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,0.08)';
+    ctx.beginPath(); ctx.ellipse(cx-r*0.07,cy-r*0.028,r*0.04,r*0.02,1.0,0,7); ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,0.12)';
+    ctx.beginPath(); ctx.ellipse(cx+r*0.14,cy-r*0.06,r*0.06,r*0.02,0.3,0,7); ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,0.09)';
+    ctx.beginPath(); ctx.ellipse(cx+r*0.135,cy-r*0.065,r*0.04,r*0.025,0.6,0,7); ctx.fill();
+    /* Long thin cloud bands */
+    ctx.fillStyle='rgba(255,255,255,0.1)';
+    ctx.beginPath(); ctx.ellipse(cx-r*0.02,cy-r*0.06,r*0.1,r*0.008,0.15,0,7); ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,0.08)';
+    ctx.beginPath(); ctx.ellipse(cx+r*0.05,cy-r*0.015,r*0.12,r*0.006,-0.1,0,7); ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,0.12)';
+    ctx.beginPath(); ctx.ellipse(cx-r*0.12,cy-r*0.04,r*0.08,r*0.007,0.25,0,7); ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,0.09)';
+    ctx.beginPath(); ctx.ellipse(cx+r*0.1,cy-r*0.04,r*0.09,r*0.005,-0.2,0,7); ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,0.07)';
+    ctx.beginPath(); ctx.ellipse(cx-r*0.05,cy-r*0.07,r*0.07,r*0.006,0.35,0,7); ctx.fill();
+    /* Small puffy cloud clusters */
+    ctx.fillStyle='rgba(255,255,255,0.16)';
+    ctx.beginPath(); ctx.ellipse(cx+r*0.02,cy-r*0.045,r*0.015,r*0.012,0,0,7); ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,0.14)';
+    ctx.beginPath(); ctx.ellipse(cx-r*0.14,cy-r*0.01,r*0.012,r*0.01,0,0,7); ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,0.12)';
+    ctx.beginPath(); ctx.ellipse(cx+r*0.08,cy-r*0.07,r*0.01,r*0.008,0,0,7); ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,0.15)';
+    ctx.beginPath(); ctx.ellipse(cx-r*0.06,cy-r*0.02,r*0.013,r*0.011,0,0,7); ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,0.11)';
+    ctx.beginPath(); ctx.ellipse(cx+r*0.18,cy-r*0.03,r*0.01,r*0.008,0,0,7); ctx.fill();
+    ctx.fillStyle='rgba(240,245,255,0.13)';
+    ctx.beginPath(); ctx.ellipse(cx-r*0.16,cy-r*0.05,r*0.011,r*0.009,0,0,7); ctx.fill();
     ctx.restore();
-    for(let i=0;i<3;i++){
-      const ar=r+4+i*6;
-      const ao=0.25-i*0.07;
-      ctx.strokeStyle=`rgba(100,180,255,${ao})`; ctx.lineWidth=3-i*0.8;
-      ctx.beginPath(); ctx.arc(cx,cy,ar,0,7); ctx.stroke();
-    }
+    /* --- Atmosphere glow (6 concentric layers) --- */
+    /* inner bright blue-white limb */
+    ctx.strokeStyle='rgba(150,210,255,0.3)'; ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.arc(cx,cy,r+1,0,7); ctx.stroke();
+    /* bright blue */
+    ctx.strokeStyle='rgba(110,185,255,0.22)'; ctx.lineWidth=2.5;
+    ctx.beginPath(); ctx.arc(cx,cy,r+4,0,7); ctx.stroke();
+    /* medium blue */
+    ctx.strokeStyle='rgba(80,160,240,0.16)'; ctx.lineWidth=3.5;
+    ctx.beginPath(); ctx.arc(cx,cy,r+8,0,7); ctx.stroke();
+    /* softer blue */
+    ctx.strokeStyle='rgba(65,140,220,0.1)'; ctx.lineWidth=4.5;
+    ctx.beginPath(); ctx.arc(cx,cy,r+14,0,7); ctx.stroke();
+    /* outer haze */
+    ctx.strokeStyle='rgba(55,120,200,0.06)'; ctx.lineWidth=6;
+    ctx.beginPath(); ctx.arc(cx,cy,r+22,0,7); ctx.stroke();
+    /* very subtle outer scatter */
+    ctx.strokeStyle='rgba(50,110,190,0.03)'; ctx.lineWidth=10;
+    ctx.beginPath(); ctx.arc(cx,cy,r+32,0,7); ctx.stroke();
   } else {
     const grd=ctx.createRadialGradient(cx,cy,r*0.78,cx,cy,r);
     grd.addColorStop(0,'#2b6cb0'); grd.addColorStop(1,'#15324f');
@@ -2322,7 +3018,8 @@ function drawOrbit(ct){
   const A=animState,s=A.spec,ctx=A.ctx,W=A.cv.width,H=A.cv.height,R=s.rng||{bow:0,pitchJitter:0};
   const time=ct+A.ascentDur;
   spaceBg(ctx,W,H,time);
-  const E=earthLimb(ctx,W,H,true);
+  const sunA=-0.6+time*0.0003;
+  const E=earthLimb(ctx,W,H,true,sunA);
   const op=clampA(ct/A.cruiseDur,0,1);
   const orbitR=E.r+68+(R.bow||0)*16;
   const peR=orbitR-8, apR=orbitR+12;
@@ -2411,13 +3108,13 @@ function drawOrbit(ct){
   const phaseCol = (failP!=null&&op>=failP) ? '#e0564f' : (op>0.9 ? '#58c47a' : '#4fd1d9');
   drawPhaseBar(phase, phaseCol, op);
   const orbPitch=curAng-Math.PI/2;
-  if(!(failP!=null&&op>=failP)) drawNavBall(ctx,W,H,orbPitch,0,'orbit');
+
 }
 function drawSuborbital(ct){
   const A=animState,s=A.spec,ctx=A.ctx,W=A.cv.width,H=A.cv.height,R=s.rng||{apogee:1,bow:0};
   const time=ct+A.ascentDur;
   spaceBg(ctx,W,H,time);
-  earthLimb(ctx,W,H,true);
+  earthLimb(ctx,W,H,true,-0.6+time*0.0003);
   const op=clampA(ct/A.cruiseDur,0,1), x0=W*0.18,x1=W*0.84, base=H-94;
   if(A.sfxEnginePhase==='ascent'){ sfxStop(); A.sfxEnginePhase='suborbital'; }
   const exitPitch=clampA(0.55+R.pitchJitter,0.2,1.0);
@@ -2457,7 +3154,7 @@ function drawSuborbital(ct){
   const phaseCol=op>0.95?'#58c47a':(op>0.7&&op<0.9?'#f5a623':'#4fd1d9');
   drawPhaseBar(phase,phaseCol,op);
   const subPitch=angAt(op);
-  drawNavBall(ctx,W,H,subPitch,0,'suborbital');
+
 }
 function buildLunarPath(W,H,rng){
   rng=rng||{bow:0}; const bz=(rng.bow||0)*55;
@@ -2560,7 +3257,7 @@ function drawCislunar(ct){
   if(!(failIdx!=null&&curIdx>=failIdx)){
     const prev=P.pts[Math.max(0,curIdx-1)];
     const cisTravel=Math.atan2(cur.y-prev.y,cur.x-prev.x);
-    drawNavBall(ctx,W,H,cisTravel,0,'cislunar');
+
   }
 }
 
@@ -2583,12 +3280,15 @@ function render(){
   $('tabMap').classList.toggle('active',state.tab==='map');
   $('tabRivals').classList.toggle('active',state.tab==='rivals');
   $('tabPersonnel').classList.toggle('active',state.tab==='personnel');
+  $('tabSettings').classList.toggle('active',state.tab==='settings');
   $('benchView').classList.toggle('hidden',state.tab!=='bench');
   $('missionsView').classList.toggle('hidden',state.tab!=='missions');
   $('rndView').classList.toggle('hidden',state.tab!=='rnd');
   $('mapView').classList.toggle('hidden',state.tab!=='map');
   $('rivalsView').classList.toggle('hidden',state.tab!=='rivals');
   $('personnelView').classList.toggle('hidden',state.tab!=='personnel');
+  $('settingsView').classList.toggle('hidden',state.tab!=='settings');
+  applyDifficultyUI();
 
   const ar=state.activeResearch;
   $('rndStatus').innerHTML = ar
@@ -2602,7 +3302,46 @@ function render(){
   if(state.tab==='map')renderMap();
   if(state.tab==='rivals')renderRivals();
   if(state.tab==='personnel')renderPersonnel();
+  if(state.tab==='settings')renderSettings();
   renderLog();
+}
+function applyDifficultyUI(){
+  document.body.classList.toggle('hide-eq', !diff().showEquations);
+  const ol=$('overheadLabel'); if(ol) ol.textContent=`(−${fM(diff().overhead)})`;
+}
+function setDifficulty(mode){
+  if(!DIFFICULTY[mode] || state.difficulty===mode) return;
+  state.difficulty=mode;
+  log('info',`Difficulty set to ${DIFFICULTY[mode].label} mode.`);
+  render();
+}
+function renderSettings(){
+  const cur=state.difficulty;
+  const cards=Object.keys(DIFFICULTY).map(k=>{
+    const d=DIFFICULTY[k], sel=k===cur;
+    return `<div class="diffcard ${sel?'sel':''}" onclick="setDifficulty('${k}')">
+      <div class="tag">${d.tag}${sel?' · active':''}</div>
+      <h3>${d.label} mode</h3>
+      <p>${d.blurb}</p>
+      <div class="diffknobs">
+        <span>Starting capital</span><span>${fM(d.startMoney)}</span>
+        <span>Monthly overhead</span><span>${fM(d.overhead)}</span>
+        <span>Reliability floor / cap</span><span>${(d.relFloor*100)|0}% / ${(d.relCap*100)|0}%</span>
+        <span>Reliability bump</span><span>${d.relBonus>0?'+'+((d.relBonus*100)|0)+'%':'—'}</span>
+        <span>Mission payouts</span><span>×${d.payoutMult}</span>
+        <span>Build cost</span><span>×${d.buildCostMult}</span>
+        <span>Rocket-equation math</span><span>${d.showEquations?'shown':'under the hood'}</span>
+      </div>
+    </div>`;
+  }).join('');
+  $('settingsCard').innerHTML=`<h2>Settings — difficulty &amp; presentation</h2>
+    <p class="muted" style="font-size:12px;margin:-4px 0 6px">The rocket equation is identical in both modes — difficulty only scales the economy, how forgiving hardware reliability is, and how much of the underlying math is exposed. Switching mid-game applies from the next action onward; starting capital only applies to a new game.</p>
+    <div class="diffgrid">${cards}</div>
+    <div style="display:flex;gap:8px;margin-top:6px">
+      <button class="btn ghost" onclick="saveGame()">💾 Save</button>
+      <button class="btn ghost" onclick="loadGame()">📂 Load</button>
+      <button class="btn ghost" onclick="confirmNew()">New Game</button>
+    </div>`;
 }
 
 function renderStages(){

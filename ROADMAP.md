@@ -182,8 +182,22 @@ companion to `orbital-ventures-design.md` (original full design doc) and
       grouped by category, and total income pill. Header "Passive Income"
       stat shows combined total (contracts + PGM royalties). Validated
       headlessly: gating, signing, income flow, expiry, and render all correct.
-- **Save/load** and a proper settings/difficulty panel (Napkin vs Engineer
-  mode per the original design doc §13).
+- [x] **Settings / difficulty panel (Napkin vs Engineer)** — design §13's
+      "math exposure" question, made playable. `DIFFICULTY` config with two
+      modes and a `diff()` accessor; `state.difficulty` persists in saves
+      (forward-compat default `engineer`). Difficulty never touches the rocket
+      equation — it only scales the economy and forgiveness and toggles math
+      exposure. **Napkin** (forgiving): $8M start, $0.08M/mo overhead, +12%
+      reliability bump, 55–98.5% reliability floor/cap, ×1.25 payouts, ×0.85
+      build cost, rocket-equation `.eq` blocks hidden (`body.hide-eq`).
+      **Engineer** (realistic, = prior balance): $5M start, $0.12M/mo, no bump,
+      35–95% floor/cap, ×1.0 payout/cost, full math shown. New **Settings** tab
+      (difficulty cards with live knob table, Save/Load/New), difficulty picker
+      on the New Game modal, mid-game switching from the next action onward, and
+      a difficulty-aware overhead label on the Advance button. Validated
+      headlessly (16 checks): start capital, overhead deduction, reliability
+      bump/floor/cap, build-cost scaling, payout multiplier, and equation
+      flags all correct per mode.
 
 ## Repo
 
