@@ -321,10 +321,19 @@ review's numbering, not the build order (see **Suggested build order** at the en
       Add government funding (budget increases/cuts), public support (Moon landing
       ↑, crew deaths ↓), shareholders (demand profit), national prestige (the race).
       Launches affect more than money.
-- [~] **9 · Personnel personality** — M6 gives named engineers/astronauts with
-      morale/attrition. Add traits (risk-taker, perfectionist, visionary,
-      bureaucrat) and events (raise demands, rival poaching, breakthrough paper,
-      costly mistake). Football-Manager/RimWorld-style story generation.
+- [x] **9 · Personnel personality** — *Built 2026-06-18.* Every hire now has a
+      **trait** (deterministic per id): engineers are Perfectionist / Risk-taker /
+      Visionary / Veteran / Mentor; astronauts Steady / Daredevil / Charismatic /
+      Iron-willed. Traits are real multipliers — `engScores()` splits the team
+      into trait-weighted **reliability** vs **R&D-speed** scores (mentors lift the
+      whole team), `astroBonus()` applies the astronaut's rel/payout traits, and
+      `specialistFactor()` folds the trait into subsystem hardening. **Personal
+      events** (`checkPersonnelEvents()`, rate-limited, trait-flavoured):
+      breakthroughs (rep + shave a research month), costly mistakes (−capital,
+      −morale), raise demands (morale slips → use Raise), and accolades (rep).
+      Trait shown on each Personnel card. Validated headlessly (11 checks): trait
+      assignment, rd-vs-rel weighting (visionary vs perfectionist), astronaut
+      payout/rel traits, and event firing/effects/empty-bench guard.
 - [x] **10 · Vehicle visualization** — *Built 2026-06-18.* A static, design-driven
       **silhouette on the design bench** (top of the readout column) that updates
       live as you tune stages/engines/propellant. `renderVehiclePreview()` builds a
@@ -357,9 +366,18 @@ review's numbering, not the build order (see **Suggested build order** at the en
       and is full-screen-capable. Go further: click Mars → show windows, transfer
       opportunities, depot routes, estimated cost. Make the map a place players
       *plan*, not just read.
-- [ ] **14 · Scientific discovery** — Rewards are money + rep only. Add a science
-      track (lunar ice found, Mars water confirmed, asteroid survey) yielding
-      science points that unlock tech or funding — a second progression axis.
+- [x] **14 · Scientific discovery** — *Built 2026-06-18.* A second progression
+      axis: `state.science`. **Sources** — every mission success yields science
+      (more for novel/deep/first-time flights), and infrastructure produces it
+      monthly (`sci` added to `FACILITY_DEFS`/`facilityProduction`, accrued in
+      `advance()`). **Sink** — `applyScience()` spends banked science (escalating
+      cost) to complete a month of the active research, a parallel lever to the
+      money-rush; surfaced as an "Apply science −1 mo" button in the tech-tree
+      detail panel. Header **Science** stat (`⚛`); science output shown per
+      facility and in the Infrastructure totals. So bases don't just earn money —
+      they accelerate the tech tree. Validated headlessly (8 checks): facility +
+      mission science sources, monthly accrual, and the apply/escalation/floor/
+      insufficient-science sink.
 - [x] **15 · One-more-turn loop** — *Shipped* with Programs: `nextObjective()`
       nudge in the opsbar + post-success log line dangle the next goal. Deepens as
       more unlock-chains (#2 tourism→depot→base→ISRU→Mars) come online.
@@ -405,9 +423,10 @@ review's numbering, not the build order (see **Suggested build order** at the en
 **Suggested build order:** ~~16 (subsystem reliability + story failures)~~ ✓ →
 ~~17 (infrastructure layer)~~ ✓ → ~~2 (depot economy)~~ ✓ → ~~10 (bench
 silhouette)~~ ✓ → ~~12 (architecture choices)~~ ✓ → ~~5 (active rivals)~~ ✓ →
-**9 (personnel traits) ← next** → 3 (vehicle families) → 14 (science) → 6
-(multi-path tech) → 8 (politics) → 7 (manufacturing). Items 1/2/4/5/10/11/12/15/16/17
-shipped; tech tree (part of #6) now a real interactive graph; 13 partially done.
+~~9 (personnel traits)~~ ✓ → ~~14 (science)~~ ✓ → **3 (vehicle families) ← next**
+→ 6 (multi-path tech) → 8 (politics) → 7 (manufacturing). Items
+1/2/4/5/9/10/11/12/14/15/16/17 shipped; tech tree (part of #6) now a real
+interactive graph; 13 partially done.
 
 ## Repo
 

@@ -184,6 +184,7 @@
       <div class="stat hidden" id="stMarketWrap"><span class="k">Market</span><span class="v" id="stMarket">—</span></div>
       <div class="stat hidden" id="stRoyaltyWrap"><span class="k">PGM Royalties</span><span class="v" id="stRoyalty">—</span></div>
       <div class="stat hidden" id="stInfraWrap"><span class="k">Facilities</span><span class="v" id="stInfra">—</span></div>
+      <div class="stat hidden" id="stSciWrap"><span class="k">Science</span><span class="v" id="stSci">—</span></div>
       <div class="stat hidden" id="stDepotWrap"><span class="k">LEO Depot</span><span class="v" id="stDepot">—</span></div>
     </div>
   </header>
@@ -372,6 +373,28 @@ const ASTRONAUTS = [
 
 // How many months of low morale (<20) before the person quits
 const MORALE_QUIT_MONTHS = 3;
+// M9: personnel traits — each hire has a temperament that bends their contribution.
+// Assigned deterministically per person id (stable across a save). rel/rd/pay are
+// multipliers on that person's reliability / R&D / astronaut-payout effect; `team`
+// (mentors) lifts the whole engineering team.
+const ENG_TRAITS={
+  perfectionist:{name:'Perfectionist', rel:1.30, rd:0.82, desc:'Obsessive margins — harder hardware, but slower research.'},
+  risk_taker:   {name:'Risk-taker',    rel:0.85, rd:1.30, desc:'Moves fast and breaks things — quick R&D, looser reliability.'},
+  visionary:    {name:'Visionary',     rel:1.00, rd:1.42, desc:'Sees three steps ahead — accelerates the research timeline.'},
+  veteran:      {name:'Veteran',       rel:1.35, rd:0.95, desc:'Decades of hard-won heritage — rock-steady hardware.'},
+  mentor:       {name:'Mentor',        rel:1.10, rd:1.10, team:0.12, desc:'Lifts the whole team\'s game.'},
+};
+const ASTRO_TRAITS={
+  steady:     {name:'Steady',       rel:1.30, pay:1.00, desc:'Calm under pressure — safer crewed flights.'},
+  daredevil:  {name:'Daredevil',    rel:0.85, pay:1.40, desc:'Bold and bankable — big PR, more risk.'},
+  charismatic:{name:'Charismatic',  rel:1.00, pay:1.55, desc:'A household name — sponsors love them.'},
+  iron:       {name:'Iron-willed',  rel:1.45, pay:1.00, desc:'Endures the longest missions without a wobble.'},
+};
+const ENG_TRAIT_KEYS=Object.keys(ENG_TRAITS), ASTRO_TRAIT_KEYS=Object.keys(ASTRO_TRAITS);
+function _hashStr(s){ let h=0; for(let i=0;i<s.length;i++){ h=(h*31+s.charCodeAt(i))|0; } return Math.abs(h); }
+function isEngineerId(id){ return !!ENGINEERS.find(e=>e.id===id); }
+function traitKeyOf(id){ const keys=isEngineerId(id)?ENG_TRAIT_KEYS:ASTRO_TRAIT_KEYS; return keys[_hashStr(id)%keys.length]; }
+function traitOf(id){ return (isEngineerId(id)?ENG_TRAITS:ASTRO_TRAITS)[traitKeyOf(id)]; }
 // Engineer team effects on reliability and R&D speed
 const ENG_REL_BONUS_MAX  = 0.08; // max reliability boost from a fully-skilled, high-morale team
 const ENG_RD_SPEED_MAX   = 0.30; // max fraction of extra R&D progress per month (0.3 = 30% faster)
@@ -551,15 +574,15 @@ const FACILITY_DEFS = [
   {id:'leo_station', name:'LEO Station', body:'earth', icon:'▣', color:'#5aa9e0',
    reqMission:'crew_orbit', foundCost:18, foundMonths:6,
    blurb:'A crewed outpost in low Earth orbit — laboratory, fuel node, and a permanent foothold above the atmosphere.',
-   base:{income:0.7, fuel:0, rep:1}, perModule:{income:0.5, fuel:0, rep:0.5}},
+   base:{income:0.7, fuel:0, rep:1, sci:1.5}, perModule:{income:0.5, fuel:0, rep:0.5, sci:1.2}},
   {id:'lunar_base', name:'Lunar Base', body:'moon', icon:'◆', color:'#b9c0c7',
    reqMission:'luna_landing', foundCost:55, foundMonths:12,
    blurb:'A permanent settlement on the Moon. Habitats, an ISRU plant cracking polar ice into propellant, and the first town beyond Earth.',
-   base:{income:1.4, fuel:0.4, rep:2}, perModule:{income:1.0, fuel:0.5, rep:1}},
+   base:{income:1.4, fuel:0.4, rep:2, sci:2.5}, perModule:{income:1.0, fuel:0.5, rep:1, sci:2}},
   {id:'mars_base', name:'Mars Base', body:'mars', icon:'★', color:'#c1532b',
    reqMission:'mars_orbit', foundCost:130, foundMonths:18,
    blurb:'A foothold on Mars. Sabatier methalox production, greenhouses, and the seed of a self-sustaining second home for humanity.',
-   base:{income:2.6, fuel:0.6, rep:3}, perModule:{income:1.8, fuel:0.8, rep:1.5}},
+   base:{income:2.6, fuel:0.6, rep:3, sci:4}, perModule:{income:1.8, fuel:0.8, rep:1.5, sci:3}},
 ];
 
 /* ---------- Mission architectures (how you get there is a strategy) ----------
@@ -784,11 +807,11 @@ function newGame(difficulty){
     depot:0, depotUse:0,
     tab:'bench', won:false, wonM2:false, wonM3a:false, wonM3aii:false, wonM3b:false, wonM3bii:false, over:false,
     log:[], rivalFired:{}, scooped:{}, rivalThreat:{},
-    staff:[], assignedAstronaut:null,
+    staff:[], assignedAstronaut:null, persEventCooldown:5,
     econEvents:[], eventCooldown:6, pgmRoyalty:0,
     ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
     facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
-    architectures:{},
+    architectures:{}, science:0,
   };
   log('info','Company founded. The pad is yours — go make some noise.');
 }
@@ -817,6 +840,7 @@ function advance(months){
       if(!facilityBuilt(fid)) continue;
       const pr=facilityProduction(facilityById(fid), facilityState(fid));
       state.money+=pr.income; state.rep+=pr.rep; if(pr.fuel>0) state.depot=round2(state.depot+pr.fuel);
+      if(pr.sci>0) state.science=round2((state.science||0)+pr.sci); // M14: facilities generate science
     }
     // M2: LEO propellant price — mean-reverting random walk, plus buyer-order countdown
     state.fuelPrevPrice=state.fuelPrice;
@@ -858,6 +882,7 @@ function advance(months){
 
     checkRivalFirsts();
     checkPoaching();
+    checkPersonnelEvents();
     checkEvents();
   }
   if(state.money<0 && !state.over){ gameOver(); }
@@ -978,7 +1003,7 @@ function missionBody(mid){ for(const b of BODIES){ if((b.missions||[]).includes(
 function facilityProduction(def, fs){
   const mod=Math.max(1, fs.modules||1);
   const add=(k)=> (def.base[k]||0) + (def.perModule[k]||0)*(mod-1);
-  return {income:add('income'), fuel:add('fuel'), rep:add('rep'), modules:mod};
+  return {income:add('income'), fuel:add('fuel'), rep:add('rep'), sci:add('sci'), modules:mod};
 }
 // home-field bonus for missions to a body that hosts one of your bases
 function facilityBonus(body){
@@ -1275,7 +1300,7 @@ const SUBSYS_LABEL = {propulsion:'Propulsion', structures:'Structures', separati
 // best (morale-scaled) skill among hired engineers of a given specialty, 0..~1
 function bestSpecialistSkill(spec){
   let best=0;
-  for(const s of (state.staff||[])){ const p=personById(s.id); if(p && p.specialty===spec){ best=Math.max(best, p.skill*(0.5+0.5*((s.morale||50)/100))); } }
+  for(const s of (state.staff||[])){ const p=personById(s.id); if(p && p.specialty===spec){ const tr=traitOf(s.id); best=Math.max(best, p.skill*(0.5+0.5*((s.morale||50)/100))*(tr.rel||1)); } }
   return best;
 }
 function specialistFactor(spec){ return 1 - 0.45*bestSpecialistSkill(spec); } // a strong specialist cuts that subsystem's fragility
@@ -1422,6 +1447,9 @@ function launch(){
   if(success){
     personnelMissionEvent(true); // M6: morale boost on success
     state.successes++;
+    // M14: missions yield science — more for novel, deep, or first-time flights
+    const sciGain=Math.max(1, Math.round((routine?0.3:1)*((m.rep||5)*0.12 + (m.profile?5:1))));
+    state.science=round2((state.science||0)+sciGain);
     let payout=(routine?m.payout*0.4:m.payout)*windowQuality*diff().payoutMult*econPayoutMult();
     if(crewed) payout*=ab.payoutMult; // M6: astronaut payout bonus
     if(!routine && state.scooped[m.id]) payout*=SCOOP_PAYOUT_MULT;
@@ -1431,12 +1459,12 @@ function launch(){
       state.depot+=delivered;
       payout = 0.4*delivered; // tankers earn by the tonne delivered, not a flat contract fee
       state.money+=payout; state.rep+=rep;
-      log('ok',`${m.name}: SUCCESS. Delivered ${delivered.toFixed(1)} t to the LEO depot (now ${state.depot.toFixed(1)} t). +${fM(payout)}, +${rep} rep.`);
+      log('ok',`${m.name}: SUCCESS. Delivered ${delivered.toFixed(1)} t to the LEO depot (now ${state.depot.toFixed(1)} t). +${fM(payout)}, +${rep} rep, +${sciGain} sci.`);
     }else{
       state.money+=payout; state.rep+=rep;
       const qTxt = m.window?(windowQuality>1.05?' Favorable window geometry boosted the payload value.':windowQuality<0.92?' A marginal window cut into the payload value.':''):'';
       const scoopTxt = (!routine && state.scooped[m.id]) ? ' (scooped — reduced first-time payout)' : '';
-      log('ok',`${m.name}: SUCCESS.${crewed?` Crew of ${m.crew} home safe.`:''} +${fM(payout)}, +${rep} rep. (reliability ${(rel*100|0)}%)${qTxt}${scoopTxt}`);
+      log('ok',`${m.name}: SUCCESS.${crewed?` Crew of ${m.crew} home safe.`:''} +${fM(payout)}, +${rep} rep, +${sciGain} sci. (reliability ${(rel*100|0)}%)${qTxt}${scoopTxt}`);
     }
     if(m.profile && state.depotUse>0){ state.depot=Math.max(0,state.depot-state.depotUse);
       if(!state.wonM3bii && !pendingCelebration){ state.wonM3bii=true; pendingCelebration=()=>victoryM3bii('depot'); } }
@@ -1555,6 +1583,19 @@ function rushResearch(){
   log('note',`R&D rush: spent ${fM(cost)} to shave a month off ${r.name} — ${ar.monthsLeft} mo left.`);
   if(state.money<0) gameOver(); else render();
 }
+// M14: spend accumulated science (not money) to complete a month of research
+const SCI_RUSH_BASE = 6;
+function sciRushCost(rushedSoFar){ return Math.round(SCI_RUSH_BASE*(rushedSoFar+1)); } // 6, 12, 18, ...
+function applyScience(){
+  const ar=state.activeResearch; if(!ar) return;
+  if(ar.monthsLeft<=1) return;
+  const cost=sciRushCost(ar.sciRushed||0);
+  if((state.science||0)<cost) return;
+  state.science=round2(state.science-cost); ar.monthsLeft--; ar.sciRushed=(ar.sciRushed||0)+1;
+  const r=RESEARCH.find(x=>x.id===ar.id);
+  log('note',`Applied ${cost} science to ${r.name} — a month of lab work done, ${ar.monthsLeft} mo left.`);
+  render();
+}
 
 /* ---------- M6: personnel helpers ---------- */
 function personById(id){
@@ -1577,23 +1618,25 @@ function availablePool(){
 function engTeam(){ return state.staff.filter(s=>ENGINEERS.find(e=>e.id===s.id)); }
 function astroTeam(){ return state.staff.filter(s=>ASTRONAUTS.find(a=>a.id===s.id)); }
 
-function engTeamScore(){
-  const team=engTeam(); if(!team.length) return 0;
-  const score=team.reduce((a,s)=>{
-    const p=personById(s.id);
-    const moraleFactor=Math.max(0.2,(s.morale||50)/100);
-    return a+p.skill*moraleFactor;
-  },0)/team.length;
-  return Math.min(1,score);
+// M9: two trait-weighted team scores — one for reliability, one for R&D speed.
+function engScores(){
+  const team=engTeam(); if(!team.length) return {rel:0, rd:0, avg:0};
+  let mentor=0; team.forEach(s=>{ const tr=traitOf(s.id); if(tr.team) mentor+=tr.team; });
+  const mult=1+Math.min(0.3, mentor); // mentors lift the whole team, capped
+  let relSum=0, rdSum=0, avgSum=0;
+  team.forEach(s=>{
+    const p=personById(s.id), tr=traitOf(s.id);
+    const mf=Math.max(0.2,(s.morale||50)/100), base=p.skill*mf;
+    relSum+=base*(tr.rel||1); rdSum+=base*(tr.rd||1); avgSum+=base;
+  });
+  const n=team.length;
+  return {rel:Math.min(1,relSum/n*mult), rd:Math.min(1,rdSum/n*mult), avg:Math.min(1,avgSum/n)};
 }
-
-function engRelBonus(){
-  return engTeamScore()*ENG_REL_BONUS_MAX;
-}
-
+function engTeamScore(){ return engScores().avg; }
+function engRelBonus(){ return engScores().rel*ENG_REL_BONUS_MAX; }
 function engRdSpeedBonus(){
   // returns fractional extra R&D months per calendar month (0–ENG_RD_SPEED_MAX)
-  return engTeamScore()*ENG_RD_SPEED_MAX;
+  return engScores().rd*ENG_RD_SPEED_MAX;
 }
 
 function assignedAstroRecord(){
@@ -1603,12 +1646,12 @@ function assignedAstroRecord(){
 
 function astroBonus(){
   const sr=assignedAstroRecord(); if(!sr) return {rel:0,payoutMult:1};
-  const p=personById(sr.id);
+  const p=personById(sr.id), tr=traitOf(sr.id);
   const moraleFactor=Math.max(0.2,(sr.morale||50)/100);
   const score=p.skill*moraleFactor;
   return {
-    rel: score*ASTRO_REL_BONUS_MAX,
-    payoutMult: 1+score*ASTRO_PAYOUT_BONUS_MAX,
+    rel: score*ASTRO_REL_BONUS_MAX*(tr.rel||1),
+    payoutMult: 1+score*ASTRO_PAYOUT_BONUS_MAX*(tr.pay||1),
   };
 }
 
@@ -1662,6 +1705,39 @@ function personnelMissionEvent(success){
     if(success) s.morale=Math.min(100,s.morale+2);
     else s.morale=Math.max(0,s.morale-5);
   });
+}
+// M9: personal events — trait-flavoured incidents for a hired staffer, rate-limited
+const PERS_EVENT_CHANCE=0.11, PERS_EVENT_GAP=4;
+function checkPersonnelEvents(){
+  state.persEventCooldown=(state.persEventCooldown||0)-1;
+  if(!state.staff || !state.staff.length || state.persEventCooldown>0) return;
+  if(Math.random()>PERS_EVENT_CHANCE) return;
+  const s=state.staff[Math.floor(Math.random()*state.staff.length)];
+  const p=personById(s.id); if(!p) return;
+  const tr=traitOf(s.id), trKey=traitKeyOf(s.id);
+  const riskish=(trKey==='risk_taker'||trKey==='daredevil');
+  const brilliant=(trKey==='visionary'||trKey==='perfectionist'||trKey==='mentor');
+  const roll=Math.random();
+  let type;
+  if(riskish)        type = roll<0.45?'mistake':(roll<0.70?'raise':'breakthrough');
+  else if(brilliant) type = roll<0.50?'breakthrough':(roll<0.75?'accolade':'raise');
+  else               type = roll<0.34?'breakthrough':(roll<0.67?'raise':'accolade');
+  state.persEventCooldown=PERS_EVENT_GAP;
+  if(type==='breakthrough'){
+    state.rep+=3; s.morale=Math.min(100,s.morale+6);
+    if(state.activeResearch && state.activeResearch.monthsLeft>1){ state.activeResearch.monthsLeft=Math.max(1,state.activeResearch.monthsLeft-1);
+      log('ok',`${p.name} (${tr.name}) had a breakthrough — a month shaved off ${RESEARCH.find(r=>r.id===state.activeResearch.id).name}, +3 rep.`); }
+    else log('ok',`${p.name} (${tr.name}) published a breakthrough — +3 rep, morale up.`);
+  } else if(type==='mistake'){
+    const loss=round2(0.3+Math.random()*0.9); state.money-=loss; s.morale=Math.max(0,s.morale-6);
+    log('bad',`${p.name} (${tr.name}) made a costly mistake — −${fM(loss)}, morale down.`);
+  } else if(type==='raise'){
+    s.morale=Math.max(0,s.morale-5);
+    log('note',`${p.name} is angling for a raise — morale slipping. A Raise in Personnel would keep them happy.`);
+  } else {
+    state.rep+=2; s.morale=Math.min(100,s.morale+5);
+    log('ok',`${p.name} (${tr.name}) earned an industry accolade — +2 rep.`);
+  }
 }
 
 
@@ -1761,7 +1837,7 @@ function loadGame(){
       econEvents:[], eventCooldown:6, pgmRoyalty:0,
       ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
       facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
-      architectures:{}
+      architectures:{}, science:0, persEventCooldown:5
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -1806,7 +1882,7 @@ function autoLoad(){
       econEvents:[], eventCooldown:6, pgmRoyalty:0,
       ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
       facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
-      architectures:{}
+      architectures:{}, science:0, persEventCooldown:5
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -3845,6 +3921,9 @@ function render(){
   const builtN=Object.keys(state.facilities||{}).filter(facilityBuilt).length;
   $('stInfraWrap').classList.toggle('hidden', builtN===0);
   if(builtN>0){ $('stInfra').textContent=`${builtN} · +${fM(totalFacilityIncome())}/mo`; $('stInfra').style.color='var(--ok)'; }
+  const sci=state.science||0;
+  $('stSciWrap').classList.toggle('hidden', sci<=0);
+  if(sci>0){ $('stSci').textContent=Math.round(sci)+' ⚛'; $('stSci').style.color='var(--readout)'; }
   renderMarketStat();
 
   $('tabBench').classList.toggle('active',state.tab==='bench');
@@ -4392,11 +4471,13 @@ function renderPersonnelCard(p, sr){
       <div>
         <span style="font-size:14px;font-weight:600;color:var(--ink)">${p.name}</span>
         <span class="pill" style="margin-left:6px">${isEng?p.specialty:'astronaut'}</span>
+        <span class="pill" style="margin-left:4px;color:var(--ignite);border-color:#5a4419" title="${traitOf(p.id).desc}">${traitOf(p.id).name}</span>
         ${isAstro&&assigned?'<span class="pill active" style="margin-left:4px">assigned</span>':''}
       </div>
       <span style="font-family:var(--mono);font-size:12px;color:var(--muted)">${p.salary.toFixed(2)}M/mo</span>
     </div>
-    <p class="muted" style="font-size:11px;margin:3px 0 6px">${p.bio}</p>
+    <p class="muted" style="font-size:11px;margin:3px 0 4px">${p.bio}</p>
+    <p class="dim" style="font-size:11px;margin:0 0 6px"><b style="color:var(--ignite)">${traitOf(p.id).name}:</b> ${traitOf(p.id).desc}</p>
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
       <span style="font-size:11px;color:var(--dim);width:50px">Morale</span>
       <div style="flex:1;height:6px;background:var(--panel2);border-radius:3px;overflow:hidden">
@@ -4742,6 +4823,7 @@ function renderInfrastructure(){
   const built=FACILITY_DEFS.filter(d=>facilityBuilt(d.id));
   const totalIncome=totalFacilityIncome();
   const totalFuel=built.reduce((a,d)=>a+facilityProduction(d,facilityState(d.id)).fuel,0);
+  const totalSci=built.reduce((a,d)=>a+facilityProduction(d,facilityState(d.id)).sci,0);
   const cards=FACILITY_DEFS.map(def=>{
     const bodyName=(BODIES.find(b=>b.id===def.body)||{}).name||def.body;
     if(facilityBuilt(def.id)){
@@ -4756,6 +4838,7 @@ function renderInfrastructure(){
         <div class="metrics">
           <div class="metric"><div class="k">Income</div><div class="v" style="color:var(--ok)">+${fM(pr.income)}/mo</div></div>
           ${pr.fuel>0?`<div class="metric"><div class="k">Propellant → depot</div><div class="v">+${pr.fuel.toFixed(1)} t/mo</div></div>`:''}
+          <div class="metric"><div class="k">Science</div><div class="v" style="color:var(--readout)">+${pr.sci.toFixed(1)} ⚛/mo</div></div>
           <div class="metric"><div class="k">Prestige</div><div class="v">+${pr.rep.toFixed(1)}/mo</div></div>
           <div class="metric"><div class="k">Home-field bonus</div><div class="v">−${Math.round(bonus.buildDiscount*100)}% build · +${(bonus.relBump*100).toFixed(1)}% rel</div></div>
         </div>
@@ -4799,6 +4882,7 @@ function renderInfrastructure(){
       <div class="metric"><div class="k">Facilities</div><div class="v">${built.length}</div></div>
       <div class="metric"><div class="k">Total income</div><div class="v" style="color:var(--ok)">+${fM(totalIncome)}/mo</div></div>
       <div class="metric"><div class="k">Propellant output</div><div class="v">+${totalFuel.toFixed(1)} t/mo</div></div>
+      <div class="metric"><div class="k">Science output</div><div class="v" style="color:var(--readout)">+${totalSci.toFixed(1)} ⚛/mo · ${Math.round(state.science||0)} banked</div></div>
     </div>`:''}
     ${cards}
     ${depotCard}`;
@@ -4982,8 +5066,10 @@ function renderResearchDetail(){
   if(st==='done') action=`<button class="btn" disabled style="width:100%">✓ Researched</button>`;
   else if(st==='active'){
     const rc=rushCost(state.activeResearch.rushed||0), canRush=state.activeResearch.monthsLeft>1 && state.money>=rc;
+    const sc=sciRushCost(state.activeResearch.sciRushed||0), canSci=state.activeResearch.monthsLeft>1 && (state.science||0)>=sc;
     action=`<button class="btn" disabled style="width:100%;margin-bottom:6px">${state.activeResearch.monthsLeft} mo left</button>
-      <button class="btn ghost" style="width:100%;font-size:11px" onclick="rushResearch()" ${canRush?'':'disabled'}>Rush −1 mo (${fM(rc)})</button>`;
+      <button class="btn ghost" style="width:100%;font-size:11px;margin-bottom:5px" onclick="rushResearch()" ${canRush?'':'disabled'}>Rush −1 mo (${fM(rc)})</button>
+      <button class="btn ghost" style="width:100%;font-size:11px" onclick="applyScience()" ${canSci?'':'disabled'}>Apply science −1 mo (${sc} ⚛)</button>`;
   } else {
     const afford=state.money>=r.cost, ok=st==='available'&&afford&&!busy;
     const why = busy?'Another project is in progress':(st!=='available'?'Prerequisites not met':(!afford?'Not enough capital':''));
