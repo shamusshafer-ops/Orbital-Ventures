@@ -226,7 +226,12 @@
       <div class="card hidden" id="windowCard"></div>
     </div>
     <div class="readout">
-      <div class="card" id="readoutCard"></div>
+      <div class="card" id="vehicleCard" style="text-align:center">
+        <div class="mission-tag" style="text-align:left">Your vehicle</div>
+        <canvas id="vehiclePreview" width="240" height="360" style="max-width:100%;height:auto;display:block;margin:6px auto 0"></canvas>
+        <div id="vehicleLabel" class="dim" style="font-size:11px;margin-top:6px"></div>
+      </div>
+      <div class="card" id="readoutCard" style="margin-top:14px"></div>
     </div>
   </div>
 
@@ -3782,7 +3787,7 @@ function render(){
     : `<span class="dim">No active research. Start a project in R&D — it runs while you fly.</span>`;
   $('skipBtn').disabled=!ar;
 
-  if(state.tab==='bench'){renderStages();renderTransfer();renderLander();renderCrew();renderWindowPlanner();renderReadout();}
+  if(state.tab==='bench'){renderStages();renderTransfer();renderLander();renderCrew();renderWindowPlanner();renderReadout();renderVehiclePreview();}
   if(state.tab==='missions')renderMissions();
   if(state.tab==='programs')renderPrograms();
   renderNextObjective();
@@ -4040,6 +4045,31 @@ function renderWindowPlanner(){
     ${rows}`;
 }
 
+// M10: static, design-driven silhouette of the current vehicle on the bench —
+// reuses the launch animation's buildVehicleShape/drawVehicle with no flame.
+function renderVehiclePreview(){
+  const cv=$('vehiclePreview'); if(!cv || !cv.getContext) return;
+  const ctx=cv.getContext('2d'); if(!ctx) return;
+  const W=cv.width, H=cv.height;
+  ctx.clearRect(0,0,W,H);
+  const m=MISSIONS.find(x=>x.id===state.activeMission);
+  const spec={
+    stages: state.stages.map(s=>({prop:s.prop, count:s.count})),
+    transferProp: (m&&m.profile&&m.modules.includes('transfer'))?state.transfer.prop:0,
+    crewed: !!(m&&m.crew>0)
+  };
+  let shape;
+  try{ shape=buildVehicleShape(spec); }catch(e){ return; }
+  if(!shape.segs.length) return;
+  const scale=Math.min((H-42)/(shape.totalH+16), (W-30)/(shape.maxW*1.9));
+  ctx.save();
+  ctx.translate(W/2, H-24);            // base at bottom-centre; engines/fins sit just below
+  drawVehicle(ctx, shape.segs, shape.nose, scale, 0, 0);
+  ctx.restore();
+  const eng=state.stages.reduce((a,s)=>a+s.count,0);
+  const el=$('vehicleLabel');
+  if(el) el.innerHTML=`${state.stages.length} stage${state.stages.length>1?'s':''} · ${eng} engine${eng>1?'s':''}${spec.transferProp>0?' · transfer stage':''} · ${spec.crewed?'crew capsule':'payload fairing'}`;
+}
 function renderReadout(){
   const m=MISSIONS.find(x=>x.id===state.activeMission);
   if(m.profile){ renderProfileReadout(m); return; }

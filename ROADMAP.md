@@ -315,11 +315,16 @@ review's numbering, not the build order (see **Suggested build order** at the en
       morale/attrition. Add traits (risk-taker, perfectionist, visionary,
       bureaucrat) and events (raise demands, rival poaching, breakthrough paper,
       costly mistake). Football-Manager/RimWorld-style story generation.
-- [~] **10 · Vehicle visualization** — The launch animation *already* renders a
-      design-driven silhouette (stage sizes, engine clusters, fairing vs capsule,
-      staging). Missing piece is a **static silhouette on the design bench** so you
-      see "my rocket" while tuning it — a small SVG/canvas add reusing
-      `buildVehicleShape`/`drawVehicle`.
+- [x] **10 · Vehicle visualization** — *Built 2026-06-18.* A static, design-driven
+      **silhouette on the design bench** (top of the readout column) that updates
+      live as you tune stages/engines/propellant. `renderVehiclePreview()` builds a
+      spec from `state` and reuses the launch animation's `buildVehicleShape` +
+      `drawVehicle` with `flame=0` (fully deterministic — no flicker) on a plain 2D
+      canvas, auto-scaled to fit, plus a label (stages · engines · transfer · crew
+      capsule/fairing). The launch animation already rendered the flying vehicle;
+      this closes the loop so you see "my rocket" while designing it. Validated
+      headlessly (7 checks: end-to-end drawVehicle against a 2D stub, spec/label for
+      simple + crewed-profile vehicles, shape segments, and a missing-context guard).
 - [x] **11 · Milestone programs** — *Shipped* as Programs (campaigns with
       objectives + completion bonuses). See completed entry above.
 - [ ] **12 · Mission-architecture choices** — Machinery exists (profiles already
@@ -377,10 +382,10 @@ review's numbering, not the build order (see **Suggested build order** at the en
       reliability home-field bonuses. Substrate for #2 (depot economy), #12, #14.
 
 **Suggested build order:** ~~16 (subsystem reliability + story failures)~~ ✓ →
-~~17 (infrastructure layer)~~ ✓ → ~~2 (depot economy)~~ ✓ → **10 (bench
-silhouette, quick win) ← next** → 12 (architecture choices) → 5 (active rivals) →
-9 (personnel traits) → 3 (vehicle families) → 14 (science) → 6 (multi-path tech) →
-8 (politics) → 7 (manufacturing). Items 1/2/4/11/15/16/17 shipped; 13 partially done.
+~~17 (infrastructure layer)~~ ✓ → ~~2 (depot economy)~~ ✓ → ~~10 (bench
+silhouette)~~ ✓ → **12 (architecture choices) ← next** → 5 (active rivals) → 9
+(personnel traits) → 3 (vehicle families) → 14 (science) → 6 (multi-path tech) →
+8 (politics) → 7 (manufacturing). Items 1/2/4/10/11/15/16/17 shipped; 13 partially done.
 
 ## Repo
 
