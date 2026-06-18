@@ -350,17 +350,28 @@ review's numbering, not the build order (see **Suggested build order** at the en
       New **subsystem reliability** breakdown on both bench readouts. Validated
       headlessly (9 checks incl. a 20k-roll Monte Carlo that full-success rate ≈
       R) + a 300-launch integration smoke. *(Folds in brief item #4.)*
-- [ ] **17 · Persistent infrastructure layer (playability pick)** — Stations,
-      depots, lunar/Mars bases as entities that persist after a mission and grow /
-      produce over decades (ISRU output, fuel, science, passive income). The "build
-      something that remains" addiction loop; the substrate that makes #2, #12, #14
-      compound. Largest structural change; high payoff.
+- [x] **17 · Persistent infrastructure layer (playability pick)** — *Built
+      2026-06-18.* `FACILITY_DEFS` — **LEO Station** (req crew_orbit), **Lunar
+      Base** (req luna_landing), **Mars Base** (req mars_orbit). `foundFacility()`
+      spends capital + build months (construction completes *before* it goes live);
+      `expandFacility()` adds modules at an escalating cost. Built facilities live
+      in `state.facilities[]` and produce every month in `advance()` —
+      passive income, propellant into the LEO depot (ISRU bases), and prestige —
+      all scaling with module count (`facilityProduction`). `facilityBonus()`
+      gives a **home-field** edge to missions at that body: build-cost discount
+      (≤25%) in `computeVehicle` + reliability bump (≤+3%) in
+      `effectiveReliability`, via a `missionBody()` reverse map. New
+      **Infrastructure** tab (found/expand cards, production metrics, totals), a
+      header **Facilities** income stat, and facility icons on the Solar map.
+      Validated headlessly (16 checks): mission gating, found/expand economics &
+      module scaling, monthly income/fuel/rep payout, and the build-cost +
+      reliability home-field bonuses. Substrate for #2 (depot economy), #12, #14.
 
 **Suggested build order:** ~~16 (subsystem reliability + story failures)~~ ✓ →
-**17 (infrastructure layer) ← next** → 2 (depot economy) → 10 (bench silhouette,
-quick win) → 12 (architecture choices) → 5 (active rivals) → 9 (personnel traits)
-→ 3 (vehicle families) → 14 (science) → 6 (multi-path tech) → 8 (politics) → 7
-(manufacturing). Items 1/4/11/15/16 shipped; 13 partially done.
+~~17 (infrastructure layer)~~ ✓ → **2 (depot economy) ← next** → 10 (bench
+silhouette, quick win) → 12 (architecture choices) → 5 (active rivals) → 9
+(personnel traits) → 3 (vehicle families) → 14 (science) → 6 (multi-path tech) →
+8 (politics) → 7 (manufacturing). Items 1/4/11/15/16/17 shipped; 13 partially done.
 
 ## Repo
 

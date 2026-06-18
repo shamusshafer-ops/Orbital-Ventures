@@ -183,6 +183,7 @@
       <div class="stat"><span class="k">Flights</span><span class="v" id="stFlights">—</span></div>
       <div class="stat hidden" id="stMarketWrap"><span class="k">Market</span><span class="v" id="stMarket">—</span></div>
       <div class="stat hidden" id="stRoyaltyWrap"><span class="k">PGM Royalties</span><span class="v" id="stRoyalty">—</span></div>
+      <div class="stat hidden" id="stInfraWrap"><span class="k">Facilities</span><span class="v" id="stInfra">—</span></div>
       <div class="stat hidden" id="stDepotWrap"><span class="k">LEO Depot</span><span class="v" id="stDepot">—</span></div>
     </div>
   </header>
@@ -195,6 +196,7 @@
     <button id="tabMap" onclick="setTab('map')">Solar System</button>
     <button id="tabRivals" onclick="setTab('rivals')">Rivals</button>
     <button id="tabPersonnel" onclick="setTab('personnel')">Personnel</button>
+    <button id="tabInfra" onclick="setTab('infra')">Infrastructure</button>
     <button id="tabSettings" onclick="setTab('settings')">Settings</button>
   </nav>
 
@@ -265,6 +267,10 @@
 
   <div id="personnelView" class="hidden">
     <div id="personnelCard"></div>
+  </div>
+
+  <div id="infraView" class="hidden">
+    <div class="card" id="infraCard"></div>
   </div>
 
   <div id="settingsView" class="hidden">
@@ -519,6 +525,27 @@ const AMBITIONS = [
   {id:'jovian',     name:'The Jovian Frontier',blurb:'Carry a crew to Jupiter and back. The deep frontier; the furthest humans have ever gone.',             capstone:'jupiter_orbit'},
 ];
 
+/* ---------- Persistent infrastructure (stations & bases that remain and grow) ----------
+   Found a facility once you've proven the capability (reqMission), then invest capital to
+   expand it module by module across the decades. Built facilities persist in
+   state.facilities[] and produce every month (passive income, propellant into the LEO
+   depot, prestige) and give a "home-field" bonus (cheaper builds + a small reliability
+   bump) to missions at that body. Unlike a one-off contract, what you build stays. */
+const FACILITY_DEFS = [
+  {id:'leo_station', name:'LEO Station', body:'earth', icon:'▣', color:'#5aa9e0',
+   reqMission:'crew_orbit', foundCost:18, foundMonths:6,
+   blurb:'A crewed outpost in low Earth orbit — laboratory, fuel node, and a permanent foothold above the atmosphere.',
+   base:{income:0.7, fuel:0, rep:1}, perModule:{income:0.5, fuel:0, rep:0.5}},
+  {id:'lunar_base', name:'Lunar Base', body:'moon', icon:'◆', color:'#b9c0c7',
+   reqMission:'luna_landing', foundCost:55, foundMonths:12,
+   blurb:'A permanent settlement on the Moon. Habitats, an ISRU plant cracking polar ice into propellant, and the first town beyond Earth.',
+   base:{income:1.4, fuel:0.4, rep:2}, perModule:{income:1.0, fuel:0.5, rep:1}},
+  {id:'mars_base', name:'Mars Base', body:'mars', icon:'★', color:'#c1532b',
+   reqMission:'mars_orbit', foundCost:130, foundMonths:18,
+   blurb:'A foothold on Mars. Sabatier methalox production, greenhouses, and the seed of a self-sustaining second home for humanity.',
+   base:{income:2.6, fuel:0.6, rep:3}, perModule:{income:1.8, fuel:0.8, rep:1.5}},
+];
+
 const RESEARCH = [
   {id:'kerosene',     name:'Kerosene Propulsion',           cost:2.0, months:3, req:[],          effect:{engine:'kerolox_mk1'}, desc:'Unlocks the Rocketdyne S-3D — higher Isp than alcohol/LOX.<span class="hist">↳ Refined kerosene (RP-1) replaced the V-2\'s alcohol in Rocketdyne\'s Atlas and Thor engines.</span>'},
   {id:'vac_upper',    name:'Vacuum-Optimized Upper Stage',  cost:2.5, months:3, req:[],          effect:{engine:'vernier_v'},   desc:'Unlocks the Bell Agena XLR81 upper stage engine (Isp 315 s in vacuum).<span class="hist">↳ Restartable vacuum stages like the Agena turned launchers into orbit-and-beyond vehicles.</span>'},
@@ -693,6 +720,7 @@ function newGame(difficulty){
     staff:[], assignedAstronaut:null,
     econEvents:[], eventCooldown:6, pgmRoyalty:0,
     ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
+    facilities:{},
   };
   log('info','Company founded. The pad is yours — go make some noise.');
 }
@@ -717,6 +745,11 @@ function advance(months){
     state.month++; if(state.month>11){state.month=0;state.year++;}
     state.money-=Math.max(0,diff().overhead+econOverheadAdd()); // monthly overhead (difficulty + active market events)
     if(state.pgmRoyalty>0) state.money+=state.pgmRoyalty; // M7: platinum-group royalties from an established Belt claim
+    for(const fid in (state.facilities||{})){ // M17: persistent facilities produce every month
+      if(!facilityBuilt(fid)) continue;
+      const pr=facilityProduction(facilityById(fid), facilityState(fid));
+      state.money+=pr.income; state.rep+=pr.rep; if(pr.fuel>0) state.depot+=pr.fuel;
+    }
 
     // M6: personnel salary deduction
     state.staff.forEach(s=>{
@@ -851,6 +884,56 @@ function checkPrograms(){
   const nx=nextObjective();
   if(nx) log('note',`Next objective: ${nx.mission.name} — ${nx.program.name}.`);
   return celebrate;
+}
+/* ---------- persistent infrastructure ---------- */
+function facilityById(id){ return FACILITY_DEFS.find(f=>f.id===id); }
+function facilityState(id){ return (state.facilities||{})[id]; }
+function facilityBuilt(id){ const fs=facilityState(id); return !!(fs&&fs.built); }
+function missionBody(mid){ for(const b of BODIES){ if((b.missions||[]).includes(mid)) return b.id; } return null; }
+// monthly output of a built facility, scaling with its module count
+function facilityProduction(def, fs){
+  const mod=Math.max(1, fs.modules||1);
+  const add=(k)=> (def.base[k]||0) + (def.perModule[k]||0)*(mod-1);
+  return {income:add('income'), fuel:add('fuel'), rep:add('rep'), modules:mod};
+}
+// home-field bonus for missions to a body that hosts one of your bases
+function facilityBonus(body){
+  const def=FACILITY_DEFS.find(f=>f.body===body);
+  if(!def || !facilityBuilt(def.id)) return {buildDiscount:0, relBump:0};
+  const mod=Math.max(1, facilityState(def.id).modules||1);
+  return {buildDiscount:Math.min(0.25, 0.05*mod), relBump:Math.min(0.03, 0.008*mod)};
+}
+function expandCost(id){ const def=facilityById(id), fs=facilityState(id); const mod=(fs&&fs.modules)||1; return round2(def.foundCost*0.45*mod); }
+function expandMonths(def){ return Math.max(2, Math.round(def.foundMonths*0.4)); }
+function totalFacilityIncome(){ let s=0; for(const id in (state.facilities||{})){ if(facilityBuilt(id)) s+=facilityProduction(facilityById(id), facilityState(id)).income; } return s; }
+function canFound(id){
+  const def=facilityById(id); if(!def) return {ok:false,why:'Unknown facility.'};
+  if(facilityBuilt(id)) return {ok:false,why:'Already established.'};
+  if(def.reqMission && !state.completed[def.reqMission]) return {ok:false,why:`Requires a completed ${MISSIONS.find(m=>m.id===def.reqMission).name}.`};
+  if(state.money<def.foundCost) return {ok:false,why:'Not enough capital.'};
+  return {ok:true};
+}
+function foundFacility(id){
+  const chk=canFound(id); if(!chk.ok) return;
+  const def=facilityById(id);
+  state.money-=def.foundCost;
+  advance(def.foundMonths); // construction — facility is not yet producing
+  if(state.over){ render(); return; }
+  state.facilities[id]={built:true, modules:1, since:state.year};
+  log('ok',`★ ${def.name} established — your first permanent presence at ${BODIES.find(b=>b.id===def.body).name}. It will grow and produce for decades.`);
+  render();
+}
+function expandFacility(id){
+  if(!facilityBuilt(id)) return;
+  const def=facilityById(id), cost=expandCost(id);
+  if(state.money<cost) return;
+  state.money-=cost;
+  advance(expandMonths(def)); // construction at the current module count
+  if(state.over){ render(); return; }
+  const fs=facilityState(id); fs.modules=(fs.modules||1)+1;
+  const pr=facilityProduction(def, fs);
+  log('ok',`${def.name} expanded to ${fs.modules} modules — now +${fM(pr.income)}/mo${pr.fuel>0?`, +${pr.fuel.toFixed(1)} t fuel/mo`:''}.`);
+  render();
 }
 
 // M4b: fire any rival "firsts" whose target year has now arrived. Calendar-only —
@@ -1017,6 +1100,7 @@ function computeVehicle(){
   const enginePenalty=Math.pow(0.975,totalEng-1);
   const testBonus=TEST_LEVELS[state.testLevel].rel;
   buildCost*=diff().buildCostMult; // difficulty: hardware-cost scaling
+  buildCost*=(1-facilityBonus(missionBody(m&&m.id)).buildDiscount); // M17: home-field build discount from a base at the destination
   const reliability=Math.min(diff().relCap,Math.max(diff().relFloor,(curRel()+testBonus)*enginePenalty*(crewed?0.92:1)));
   const launchCost=0.12+0.01*totalProp;
   return {payload, sm:perf.sm, stageDv:perf.stageDv, totalDv:perf.totalDv, liftoff:perf.liftoff, twr:perf.twr,
@@ -1063,6 +1147,7 @@ function effectiveReliability(m,v,sim,crewed){
   let rel=v.reliability;
   if(sim) rel=Math.max(0.30, rel*Math.pow(0.985, sim.inSpaceLegs));
   if(crewed){ const ab=astroBonus(); rel=Math.min(0.99, rel+ab.rel); }
+  rel=Math.min(0.995, rel + facilityBonus(missionBody(m&&m.id)).relBump); // M17: home-field operational bonus
   return rel;
 }
 // relative fragility weights per subsystem (higher = likelier culprit), reflecting the design
@@ -1536,7 +1621,8 @@ function loadGame(){
       depot:0, depotUse:0, tab:'bench', log:[], rivalFired:{}, scooped:{}, bailouts:0,
       difficulty:'engineer', customDifficulty:customDefaults(),
       econEvents:[], eventCooldown:6, pgmRoyalty:0,
-      ambition:'flag', programsAwarded:{}, ambitionFulfilled:false
+      ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
+      facilities:{}
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -1579,7 +1665,8 @@ function autoLoad(){
       depot:0, depotUse:0, tab:'bench', log:[], rivalFired:{}, scooped:{}, bailouts:0,
       difficulty:'engineer', customDifficulty:customDefaults(),
       econEvents:[], eventCooldown:6, pgmRoyalty:0,
-      ambition:'flag', programsAwarded:{}, ambitionFulfilled:false
+      ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
+      facilities:{}
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -3615,6 +3702,9 @@ function render(){
   if(state.research.orbital_depot) $('stDepot').textContent=state.depot.toFixed(1)+' t';
   $('stRoyaltyWrap').classList.toggle('hidden', !(state.pgmRoyalty>0));
   if(state.pgmRoyalty>0){ $('stRoyalty').textContent='+'+fM(state.pgmRoyalty)+'/mo'; $('stRoyalty').style.color='var(--ok)'; }
+  const builtN=Object.keys(state.facilities||{}).filter(facilityBuilt).length;
+  $('stInfraWrap').classList.toggle('hidden', builtN===0);
+  if(builtN>0){ $('stInfra').textContent=`${builtN} · +${fM(totalFacilityIncome())}/mo`; $('stInfra').style.color='var(--ok)'; }
   renderMarketStat();
 
   $('tabBench').classList.toggle('active',state.tab==='bench');
@@ -3624,6 +3714,7 @@ function render(){
   $('tabMap').classList.toggle('active',state.tab==='map');
   $('tabRivals').classList.toggle('active',state.tab==='rivals');
   $('tabPersonnel').classList.toggle('active',state.tab==='personnel');
+  $('tabInfra').classList.toggle('active',state.tab==='infra');
   $('tabSettings').classList.toggle('active',state.tab==='settings');
   $('benchView').classList.toggle('hidden',state.tab!=='bench');
   $('missionsView').classList.toggle('hidden',state.tab!=='missions');
@@ -3632,6 +3723,7 @@ function render(){
   $('mapView').classList.toggle('hidden',state.tab!=='map');
   $('rivalsView').classList.toggle('hidden',state.tab!=='rivals');
   $('personnelView').classList.toggle('hidden',state.tab!=='personnel');
+  $('infraView').classList.toggle('hidden',state.tab!=='infra');
   $('settingsView').classList.toggle('hidden',state.tab!=='settings');
   applyDifficultyUI();
 
@@ -3649,6 +3741,7 @@ function render(){
   if(state.tab==='map')renderMap();
   if(state.tab==='rivals')renderRivals();
   if(state.tab==='personnel')renderPersonnel();
+  if(state.tab==='infra')renderInfrastructure();
   if(state.tab==='settings')renderSettings();
   renderLog();
 }
@@ -4269,6 +4362,12 @@ function rivalMarkersSVG(bodyId,px,py,rad){
   });
   return s;
 }
+function facilityMarkerSVG(bodyId,px,py,rad){
+  const def=FACILITY_DEFS.find(f=>f.body===bodyId);
+  if(!def || !facilityBuilt(def.id)) return '';
+  const fs=facilityState(def.id);
+  return `<text x="${(px+rad+5).toFixed(1)}" y="${(py+4).toFixed(1)}" fill="${def.color}" font-size="13" font-family="ui-monospace,monospace">${def.icon}<title>${def.name} (${fs.modules} module${fs.modules>1?'s':''})</title></text>`;
+}
 function renderMapActivity(){
   const el=$('mapActivityCard'); if(!el) return;
   const ev=state.econEvents||[];
@@ -4319,7 +4418,7 @@ function renderMapOverview(W,H){
       ${bodyTexture(b.id,px,py,rad)}
       ${sel?`<circle cx="${px}" cy="${py}" r="${rad+1.5}" fill="none" stroke="#f5a623" stroke-width="1.5"/>`:''}
       <text x="${px}" y="${py-rad-6}" fill="${sel?'#f5a623':'#9aa7af'}" font-size="11" font-family="ui-monospace,monospace" text-anchor="middle">${b.name}</text>
-    </g>${rivalMarkersSVG(b.id,px,py,rad)}`;
+    </g>${rivalMarkersSVG(b.id,px,py,rad)}${facilityMarkerSVG(b.id,px,py,rad)}`;
     BODIES.filter(m=>m.around===b.id).forEach(m=>{
       const mAng=(ANGLES[m.id]!==undefined?ANGLES[m.id]:0);
       const mr=rad+10;
@@ -4331,7 +4430,7 @@ function renderMapOverview(W,H){
           ${bodyTexture(m.id,mx,my,4.5)}
           ${msel?`<circle cx="${mx}" cy="${my}" r="6" fill="none" stroke="#f5a623" stroke-width="1.5"/>`:''}
           <text x="${mx}" y="${my-9}" fill="${msel?'#f5a623':'#7d909b'}" font-size="9" font-family="ui-monospace,monospace" text-anchor="middle">${m.name}</text>
-        </g>${rivalMarkersSVG(m.id,mx,my,5)}`;
+        </g>${rivalMarkersSVG(m.id,mx,my,5)}${facilityMarkerSVG(m.id,mx,my,5)}`;
     });
   });
   svg+=`<text x="14" y="20" fill="#56666f" font-size="11" font-family="ui-monospace,monospace">Click a body to zoom in</text>`;
@@ -4437,6 +4536,55 @@ function flyTo(missionId){
   state.activeMission=missionId;
   state.tab='bench';
   render();
+}
+function renderInfrastructure(){
+  const built=FACILITY_DEFS.filter(d=>facilityBuilt(d.id));
+  const totalIncome=totalFacilityIncome();
+  const totalFuel=built.reduce((a,d)=>a+facilityProduction(d,facilityState(d.id)).fuel,0);
+  const cards=FACILITY_DEFS.map(def=>{
+    const bodyName=(BODIES.find(b=>b.id===def.body)||{}).name||def.body;
+    if(facilityBuilt(def.id)){
+      const fs=facilityState(def.id), pr=facilityProduction(def,fs), bonus=facilityBonus(def.body);
+      const ec=expandCost(def.id), em=expandMonths(def), canEx=state.money>=ec;
+      return `<div class="card" style="background:var(--panel2);margin-bottom:12px;border-color:${def.color}">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+          <div class="mission-name" style="font-size:15px"><span style="color:${def.color}">${def.icon} ${def.name}</span> <span class="pill ok">${fs.modules} module${fs.modules>1?'s':''}</span></div>
+          <div class="dim" style="font-size:11px">at ${bodyName} · since ${fs.since||'—'}</div>
+        </div>
+        <div class="sub" style="margin:2px 0 8px">${def.blurb}</div>
+        <div class="metrics">
+          <div class="metric"><div class="k">Income</div><div class="v" style="color:var(--ok)">+${fM(pr.income)}/mo</div></div>
+          ${pr.fuel>0?`<div class="metric"><div class="k">Propellant → depot</div><div class="v">+${pr.fuel.toFixed(1)} t/mo</div></div>`:''}
+          <div class="metric"><div class="k">Prestige</div><div class="v">+${pr.rep.toFixed(1)}/mo</div></div>
+          <div class="metric"><div class="k">Home-field bonus</div><div class="v">−${Math.round(bonus.buildDiscount*100)}% build · +${(bonus.relBump*100).toFixed(1)}% rel</div></div>
+        </div>
+        <button class="btn" style="margin-top:10px;width:100%" onclick="expandFacility('${def.id}')" ${canEx?'':'disabled'}>Expand → ${fs.modules+1} modules · ${fM(ec)} · ${em} mo</button>
+      </div>`;
+    }
+    const chk=canFound(def.id), reqDone=!def.reqMission||state.completed[def.reqMission];
+    const reqName=def.reqMission?MISSIONS.find(m=>m.id===def.reqMission).name:'';
+    return `<div class="card" style="margin-bottom:12px;opacity:${reqDone?1:0.7}">
+      <div class="mission-name" style="font-size:15px"><span style="color:${def.color}">${def.icon} ${def.name}</span> ${reqDone?'<span class="pill">foundable</span>':`<span class="pill lock">needs ${reqName}</span>`}</div>
+      <div class="sub" style="margin:2px 0 8px">${def.blurb}</div>
+      <div class="dim" style="font-size:12px;margin-bottom:8px">Found at ${bodyName}: ${fM(def.foundCost)} · ${def.foundMonths} mo. Then expand it module by module — it produces income and propellant, and makes missions to ${bodyName} cheaper and more reliable, forever.</div>
+      <button class="btn launch" onclick="foundFacility('${def.id}')" ${chk.ok?'':'disabled'}>${chk.ok?`Establish ${def.name} · ${fM(def.foundCost)}`:chk.why}</button>
+    </div>`;
+  }).join('');
+  const depotCard = state.research.orbital_depot
+    ? `<div class="card" style="margin-bottom:12px;background:var(--panel2)">
+        <div class="mission-name" style="font-size:15px">⬢ LEO Propellant Depot <span class="pill ok">${state.depot.toFixed(1)} t stored</span></div>
+        <div class="sub" style="margin:2px 0 6px">Your orbital fuel store. Tanker Runs and ISRU bases fill it; any mission's transfer stage can top off from it instead of lifting that propellant from Earth.</div>
+       </div>`
+    : '';
+  $('infraCard').innerHTML=`<h2>Infrastructure — what you build stays</h2>
+    <p class="muted" style="font-size:12px;margin:-4px 0 10px">Found a station or base once you've proven the capability, then invest to grow it. Facilities persist and produce every month for the rest of the game — passive income, propellant to the depot, prestige — and give a home-field advantage to missions at that body. A landing is a moment; a base is a legacy.</p>
+    ${built.length?`<div class="metrics" style="margin-bottom:12px">
+      <div class="metric"><div class="k">Facilities</div><div class="v">${built.length}</div></div>
+      <div class="metric"><div class="k">Total income</div><div class="v" style="color:var(--ok)">+${fM(totalIncome)}/mo</div></div>
+      <div class="metric"><div class="k">Propellant output</div><div class="v">+${totalFuel.toFixed(1)} t/mo</div></div>
+    </div>`:''}
+    ${cards}
+    ${depotCard}`;
 }
 function renderNextObjective(){
   const el=$('nextObjStatus'); if(!el) return;
