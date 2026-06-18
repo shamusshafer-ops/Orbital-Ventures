@@ -295,11 +295,21 @@ review's numbering, not the build order (see **Suggested build order** at the en
       (guidance → wrong orbit, reduced payout, objective not completed), crew abort
       (ascent fault + launch-escape → crew safe), deep-space stranding (crewed deep
       fault), and subsystem-specific failure stories in the log. See #16.
-- [~] **5 · Strategic rivals** — Bones in place: `RIVALS` with map reach markers,
-      firsts, scoop penalties, and ambient economy events. Make them *act*: steal
-      contracts, poach staff (ties to M6 morale/attrition), beat you to tech, cut
-      launch prices industry-wide (e.g. a rival's reusable booster drops everyone's
-      payouts), forcing the player to react. Emergent pressure, not a news feed.
+- [x] **5 · Strategic rivals** — *Built 2026-06-18.* Rivals now apply real
+      pressure, not just a news feed. **Staff poaching** (`checkPoaching()` each
+      month): a rival targets your lowest-morale hire; leave-probability scales
+      with low morale × skill, so your stars are most at risk and **morale is the
+      defence** (ties to M6 Raise/Commend) — a courting warning fires before they
+      jump. **Industry price wars**: select `RIVALS` firsts now carry a
+      `marketImpact`; when a rival commoditises launch (commercial LV 2008,
+      propulsive landing 2015, reusable orbiter 1981) it pushes a sustained
+      payout-reducing `econEvent` (×0.8–0.9 for 24–36 mo) — already surfaced by
+      the header **Market** stat. Both feed a per-rival `state.rivalThreat` score;
+      the **Rivals tab** now shows a Threat level (Dormant→Dominant), firsts-
+      claimed count, and any active price war. (Contract scooping already existed.)
+      Validated headlessly (7 checks): price-war trigger + payout reduction,
+      morale-scaled poach rates (low-morale star at risk, high-morale safe, empty
+      bench safe), and threat attribution.
 - [~] **6 · Multi-path tech tree** — Research exists but is largely linear with a
       "correct" path. Add divergent branches (heavy-lift vs orbital-assembly vs
       refueling vs reusable vs nuclear) so different strategies reach Mars
@@ -394,10 +404,10 @@ review's numbering, not the build order (see **Suggested build order** at the en
 
 **Suggested build order:** ~~16 (subsystem reliability + story failures)~~ ✓ →
 ~~17 (infrastructure layer)~~ ✓ → ~~2 (depot economy)~~ ✓ → ~~10 (bench
-silhouette)~~ ✓ → ~~12 (architecture choices)~~ ✓ → **5 (active rivals) ← next**
-→ 9 (personnel traits) → 3 (vehicle families) → 14 (science) → 6 (multi-path
-tech) → 8 (politics) → 7 (manufacturing). Items 1/2/4/10/11/12/15/16/17 shipped;
-tech tree (part of #6) now a real interactive graph; 13 partially done.
+silhouette)~~ ✓ → ~~12 (architecture choices)~~ ✓ → ~~5 (active rivals)~~ ✓ →
+**9 (personnel traits) ← next** → 3 (vehicle families) → 14 (science) → 6
+(multi-path tech) → 8 (politics) → 7 (manufacturing). Items 1/2/4/5/10/11/12/15/16/17
+shipped; tech tree (part of #6) now a real interactive graph; 13 partially done.
 
 ## Repo
 

@@ -403,7 +403,7 @@ const RIVALS = [
     blurb:'A well-funded, methodical contractor that wins the big crewed-lunar and station-era programs through sheer budget and engineering depth.',
     firsts:[
       {year:1969, name:'First crewed lunar landing', missionId:'luna_landing', body:'moon'},
-      {year:1981, name:'First reusable crewed orbiter', body:'earth'},
+      {year:1981, name:'First reusable crewed orbiter', body:'earth', marketImpact:{payoutMult:0.9, months:24, note:'shuttle-class reuse pressures the launch market'}},
       {year:1998, name:'First multinational station module integrated', body:'earth'},
       {year:2012, name:'First robotic Mars rover with surface mobility', body:'mars'},
       {year:2025, name:'First crewed lunar return (post-Apollo)', body:'moon'},
@@ -415,8 +415,8 @@ const RIVALS = [
     id:'halcyon', name:'Halcyon Systems', flag:'⚡', kind:'Commercial Newcomer', color:'#f5a623',
     blurb:'A scrappy commercial upstart, late to the game but disruptive — drives down launch costs and pushes the reusability/expansion frontier.',
     firsts:[
-      {year:2008, name:'First privately developed orbital launch vehicle', body:'earth'},
-      {year:2015, name:'First propulsive landing of an orbital booster', body:'earth'},
+      {year:2008, name:'First privately developed orbital launch vehicle', body:'earth', marketImpact:{payoutMult:0.9, months:24, note:'commercial entrants undercut launch prices'}},
+      {year:2015, name:'First propulsive landing of an orbital booster', body:'earth', marketImpact:{payoutMult:0.8, months:36, note:'reusable boosters commoditise launch'}},
       {year:2020, name:'First commercial crew flight to orbit', body:'earth'},
       {year:2031, name:'First commercial lunar surface delivery', body:'moon'},
       {year:2045, name:'First commercial propellant depot in LEO', body:'earth'},
@@ -783,7 +783,7 @@ function newGame(difficulty){
     windows:{}, committedWindow:null, selectedBody:'moon', mapZoom:null,
     depot:0, depotUse:0,
     tab:'bench', won:false, wonM2:false, wonM3a:false, wonM3aii:false, wonM3b:false, wonM3bii:false, over:false,
-    log:[], rivalFired:{}, scooped:{},
+    log:[], rivalFired:{}, scooped:{}, rivalThreat:{},
     staff:[], assignedAstronaut:null,
     econEvents:[], eventCooldown:6, pgmRoyalty:0,
     ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
@@ -857,6 +857,7 @@ function advance(months){
     }
 
     checkRivalFirsts();
+    checkPoaching();
     checkEvents();
   }
   if(state.money<0 && !state.over){ gameOver(); }
@@ -1057,15 +1058,40 @@ function checkRivalFirsts(){
       if(state.year>f.year || (state.year===f.year)){
         if(!state.rivalFired[key]){
           state.rivalFired[key]=true;
+          state.rivalThreat=state.rivalThreat||{}; state.rivalThreat[r.id]=(state.rivalThreat[r.id]||0)+1;
           log('rival', `${r.flag} ${r.name} claims: ${f.name} (${f.year})`);
           if(f.missionId && !state.completed[f.missionId] && !state.scooped[f.missionId]){
             state.scooped[f.missionId]=true;
             const mm=MISSIONS.find(x=>x.id===f.missionId);
             log('bad', `Scooped: ${r.name} beat you to "${mm.name}" — its first-time payout is cut to ${Math.round(SCOOP_PAYOUT_MULT*100)}% (rep reward unaffected).`);
           }
+          if(f.marketImpact){ // M5: a rival's cost/reuse breakthrough triggers an industry price war
+            state.rivalThreat[r.id]+=1;
+            state.econEvents.push({id:'pricewar_'+r.id, label:`${r.name} price pressure`, kind:'bad', payoutMult:f.marketImpact.payoutMult, monthsLeft:f.marketImpact.months});
+            log('rival', `${r.flag} ${r.name}: ${f.marketImpact.note} — industry launch payouts ×${f.marketImpact.payoutMult} for ${f.marketImpact.months} mo. Adapt or be undercut.`);
+          }
         }
       }
     }
+  }
+}
+// M5: rivals poach your most vulnerable (lowest-morale) staff — morale is your defence
+const POACH_CHANCE = 0.10; // monthly chance a rival looks at your bench
+function checkPoaching(){
+  if(!state.staff || !state.staff.length) return;
+  if(Math.random()>POACH_CHANCE) return;
+  const target=state.staff.slice().sort((a,b)=>(a.morale||50)-(b.morale||50))[0];
+  const p=personById(target.id); if(!p) return;
+  const morale=target.morale||50;
+  const rival=RIVALS[Math.floor(Math.random()*RIVALS.length)];
+  const leaveProb=clampA((55-morale)/55,0,0.9)*(0.4+0.6*p.skill); // low morale + high skill = most at risk
+  if(Math.random()<leaveProb){
+    state.staff=state.staff.filter(s=>s.id!==target.id);
+    if(state.assignedAstronaut===target.id) state.assignedAstronaut=null;
+    state.rivalThreat=state.rivalThreat||{}; state.rivalThreat[rival.id]=(state.rivalThreat[rival.id]||0)+1;
+    log('bad',`${rival.flag} ${rival.name} poached ${p.name} (${p.specialty}) — low morale made the offer easy to take. Keep your people happy.`);
+  } else if(morale<45){
+    log('rival',`${rival.flag} ${rival.name} is courting ${p.name}. Raise morale (Raise/Commend) or risk losing them.`);
   }
 }
 function completeResearch(){
@@ -1730,7 +1756,7 @@ function loadGame(){
       transfer:{eng:'hyper_storable',prop:10.0}, descent:{eng:'hyper_storable',prop:6.0},
       ascent:{eng:'hyper_storable',prop:2.5}, eclss:'open', testLevel:0,
       windows:{}, committedWindow:null, selectedBody:'moon', mapZoom:null,
-      depot:0, depotUse:0, tab:'bench', log:[], rivalFired:{}, scooped:{}, bailouts:0,
+      depot:0, depotUse:0, tab:'bench', log:[], rivalFired:{}, scooped:{}, rivalThreat:{}, bailouts:0,
       difficulty:'engineer', customDifficulty:customDefaults(),
       econEvents:[], eventCooldown:6, pgmRoyalty:0,
       ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
@@ -1775,7 +1801,7 @@ function autoLoad(){
       transfer:{eng:'hyper_storable',prop:10.0}, descent:{eng:'hyper_storable',prop:6.0},
       ascent:{eng:'hyper_storable',prop:2.5}, eclss:'open', testLevel:0,
       windows:{}, committedWindow:null, selectedBody:'moon', mapZoom:null,
-      depot:0, depotUse:0, tab:'bench', log:[], rivalFired:{}, scooped:{}, bailouts:0,
+      depot:0, depotUse:0, tab:'bench', log:[], rivalFired:{}, scooped:{}, rivalThreat:{}, bailouts:0,
       difficulty:'engineer', customDifficulty:customDefaults(),
       econEvents:[], eventCooldown:6, pgmRoyalty:0,
       ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
@@ -4450,13 +4476,29 @@ function renderPersonnel(){
 
 // M4b: Rivals tab — each rival's profile plus their "firsts" timeline,
 // achieved vs upcoming, anchored to the current calendar year.
+function rivalThreatLabel(score){
+  if(score>=6) return {txt:'Dominant', col:'var(--bad)'};
+  if(score>=4) return {txt:'Aggressive', col:'var(--bad)'};
+  if(score>=2) return {txt:'Active', col:'var(--warn)'};
+  if(score>=1) return {txt:'Emerging', col:'var(--warn)'};
+  return {txt:'Dormant', col:'var(--dim)'};
+}
 function renderRivals(){
   const box=$('rivalsCard');
   let html=`<h2>Rival Agencies &amp; Firms</h2>
-    <p class="muted" style="font-size:12px;margin:-4px 0 12px">Rivals pursue their own milestones on a fixed calendar, independent of your progress. Claimed firsts are logged below and in the Flight &amp; Operations Log — for now this is informational only.</p>`;
+    <p class="muted" style="font-size:12px;margin:-4px 0 12px">Rivals are active competitors: they claim firsts (scooping your contracts), poach your low-morale staff, and when one commoditises launch the whole industry's payouts fall. Keep morale high and your edge sharp.</p>`;
   for(const r of RIVALS){
-    html+=`<div class="card" style="margin-bottom:10px"><h2 style="margin-bottom:2px">${r.flag} ${r.name} <span class="pill">${r.kind}</span></h2>
-      <p class="muted" style="font-size:12px;margin:2px 0 8px">${r.blurb}</p>
+    const score=(state.rivalThreat&&state.rivalThreat[r.id])||0;
+    const tl=rivalThreatLabel(score);
+    const claimed=r.firsts.filter(f=>state.rivalFired[r.id+'|'+f.name]).length;
+    const priceWar=(state.econEvents||[]).find(e=>e.id==='pricewar_'+r.id);
+    html+=`<div class="card" style="margin-bottom:10px;border-color:${score>=4?'rgba(224,86,79,.4)':'var(--line)'}">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+        <h2 style="margin-bottom:2px">${r.flag} ${r.name} <span class="pill">${r.kind}</span></h2>
+        <span class="pill" style="color:${tl.col};border-color:${tl.col}">Threat: ${tl.txt}</span>
+      </div>
+      <p class="muted" style="font-size:12px;margin:2px 0 6px">${r.blurb}</p>
+      <div class="dim" style="font-size:11px;margin-bottom:6px">${claimed}/${r.firsts.length} firsts claimed${priceWar?` · <span style="color:var(--bad)">price war active: payouts ×${priceWar.payoutMult} (${priceWar.monthsLeft} mo left)</span>`:''}</div>
       <div style="display:flex;flex-direction:column;gap:4px">`;
     for(const f of r.firsts){
       const key=r.id+'|'+f.name;
