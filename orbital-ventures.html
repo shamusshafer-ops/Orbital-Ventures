@@ -246,9 +246,13 @@
 
   <div id="rndView" class="hidden">
     <div class="card" id="eraCard"></div>
-    <div class="card"><h2>Research — converts capital + time into capability</h2>
-      <p class="muted" style="font-size:12px;margin:-4px 0 12px">σ is your tank structural coefficient — lower means lighter dry mass and more Δv from the same propellant.</p>
-      <div id="rndList"></div>
+    <div class="grid" style="grid-template-columns:1fr 330px">
+      <div class="card">
+        <h2>Technology Tree — capital + time into capability</h2>
+        <p class="muted" style="font-size:12px;margin:-4px 0 10px">Each node unlocks an engine, material, or capability. Lines show prerequisites; dashed lines need a mission flown. Click a node to inspect it.</p>
+        <div id="techTree" style="overflow-x:auto;overflow-y:hidden"></div>
+      </div>
+      <div class="readout"><div class="card" id="researchDetail"></div></div>
     </div>
   </div>
 
@@ -4793,41 +4797,95 @@ function renderEraCard(){
     <p class="dim" style="font-size:11px;margin:8px 0 0">Eras are soft — calendar-driven context, not a hard lock on research below.</p>`;
 }
 
+/* ---------- tech tree (Civ/KSP-style horizontal flow) ---------- */
+function missionGateResearch(r){ return r.reqMissionDone ? (MISSIONS.find(m=>m.id===r.reqMissionDone)||{}).reqResearch : null; }
+let _tierCache=null;
+function researchTier(id){
+  if(!_tierCache) _tierCache={};
+  if(_tierCache[id]!=null) return _tierCache[id];
+  _tierCache[id]=0; // cycle guard
+  const r=RESEARCH.find(x=>x.id===id); if(!r){ return 0; }
+  let t=0;
+  r.req.forEach(q=>{ t=Math.max(t, researchTier(q)+1); });
+  const gate=missionGateResearch(r);
+  if(gate && RESEARCH.find(x=>x.id===gate)) t=Math.max(t, researchTier(gate)+1);
+  _tierCache[id]=t; return t;
+}
+function researchNodeState(r){
+  if(state.research[r.id]) return 'done';
+  if(state.activeResearch && state.activeResearch.id===r.id) return 'active';
+  if(reqsMet(r)) return 'available';
+  return 'locked';
+}
+function renderTechTree(){
+  const el=$('techTree'); if(!el) return;
+  const COLW=158, ROWH=58, NW=134, NH=42, PADX=14, PADY=14;
+  const tiers={}; let maxTier=0;
+  RESEARCH.forEach(r=>{ const t=researchTier(r.id); (tiers[t]=tiers[t]||[]).push(r); maxTier=Math.max(maxTier,t); });
+  const pos={}; let maxRows=0;
+  for(let t=0;t<=maxTier;t++){ const col=tiers[t]||[]; maxRows=Math.max(maxRows,col.length);
+    col.forEach((r,i)=>{ pos[r.id]={x:PADX+t*COLW, y:PADY+i*ROWH}; }); }
+  const W=PADX*2+(maxTier+1)*COLW, H=PADY*2+maxRows*ROWH;
+  const palette={ done:{fill:'#13241b',stroke:'#58c47a',text:'#cfe8d6'}, active:{fill:'#241a0c',stroke:'#f5a623',text:'#f2d6a0'},
+                  available:{fill:'#16222b',stroke:'#4fd1d9',text:'#d0dce4'}, locked:{fill:'#0c1318',stroke:'#26323a',text:'#5a6a75'} };
+  let edges='', nodes='';
+  RESEARCH.forEach(r=>{
+    const p=pos[r.id]; const x1=p.x, y1=p.y+NH/2;
+    const drawEdge=(q,dashed)=>{ const pq=pos[q]; if(!pq) return; const x0=pq.x+NW, y0=pq.y+NH/2;
+      const done=state.research[q];
+      edges+=`<path d="M ${x0} ${y0} C ${x0+38} ${y0}, ${x1-38} ${y1}, ${x1} ${y1}" fill="none" stroke="${done?'rgba(88,196,122,0.55)':'rgba(120,140,150,0.35)'}" stroke-width="${done?1.6:1.1}" ${dashed?'stroke-dasharray="3,4"':''}/>`; };
+    r.req.forEach(q=>drawEdge(q,false));
+    const gate=missionGateResearch(r); if(gate) drawEdge(gate,true);
+  });
+  RESEARCH.forEach(r=>{
+    const p=pos[r.id], st=researchNodeState(r), c=palette[st];
+    const sel=state.selectedResearch===r.id;
+    const name=r.name.length>20?r.name.slice(0,19)+'…':r.name;
+    const sub = st==='active' ? `${state.activeResearch.monthsLeft} mo left` : `${fM(r.cost)} · ${r.months} mo`;
+    nodes+=`<g style="cursor:pointer" onclick="selectResearch('${r.id}')">
+      <rect x="${p.x}" y="${p.y}" width="${NW}" height="${NH}" rx="6" fill="${c.fill}" stroke="${sel?'#ffffff':c.stroke}" stroke-width="${sel?2:1.2}"/>
+      ${st==='done'?`<text x="${p.x+NW-7}" y="${p.y+13}" fill="#58c47a" font-size="11" text-anchor="end">✓</text>`:''}
+      <text x="${p.x+8}" y="${p.y+17}" fill="${c.text}" font-size="10" font-family="ui-sans-serif,system-ui" font-weight="600">${name}<title>${r.name}</title></text>
+      <text x="${p.x+8}" y="${p.y+32}" fill="${c.text}" font-size="9" font-family="ui-monospace,monospace" opacity="0.8">${sub}</text>
+    </g>`;
+  });
+  el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg" style="max-width:none">${edges}${nodes}</svg>`;
+}
+function selectResearch(id){ state.selectedResearch=id; render(); }
+function renderResearchDetail(){
+  const el=$('researchDetail'); if(!el) return;
+  let id=state.selectedResearch;
+  if(!id || !RESEARCH.find(x=>x.id===id)){ id=(state.activeResearch&&state.activeResearch.id) || (RESEARCH.find(r=>researchNodeState(r)==='available')||RESEARCH[0]).id; state.selectedResearch=id; }
+  const r=RESEARCH.find(x=>x.id===id), st=researchNodeState(r);
+  const busy=!!state.activeResearch;
+  const reqNames=r.req.map(q=>RESEARCH.find(x=>x.id===q).name).join(', ');
+  const gateName=r.reqMissionDone?MISSIONS.find(m=>m.id===r.reqMissionDone).name:null;
+  let action;
+  if(st==='done') action=`<button class="btn" disabled style="width:100%">✓ Researched</button>`;
+  else if(st==='active'){
+    const rc=rushCost(state.activeResearch.rushed||0), canRush=state.activeResearch.monthsLeft>1 && state.money>=rc;
+    action=`<button class="btn" disabled style="width:100%;margin-bottom:6px">${state.activeResearch.monthsLeft} mo left</button>
+      <button class="btn ghost" style="width:100%;font-size:11px" onclick="rushResearch()" ${canRush?'':'disabled'}>Rush −1 mo (${fM(rc)})</button>`;
+  } else {
+    const afford=state.money>=r.cost, ok=st==='available'&&afford&&!busy;
+    const why = busy?'Another project is in progress':(st!=='available'?'Prerequisites not met':(!afford?'Not enough capital':''));
+    action=`<button class="launch" style="width:100%" onclick="buyResearch('${r.id}')" ${ok?'':'disabled'}>${ok?`Research · ${fM(r.cost)} · ${r.months} mo`:why}</button>`;
+  }
+  const stateTag={done:'<span class="pill ok">researched</span>',active:'<span class="pill active">in progress</span>',available:'<span class="pill">available</span>',locked:'<span class="pill lock">locked</span>'}[st];
+  el.innerHTML=`<div class="mission-tag">Technology</div>
+    <div class="mission-name" style="font-size:16px">${r.name} ${stateTag}</div>
+    <div class="sub" style="margin:8px 0 10px">${r.desc}</div>
+    <div class="metrics" style="margin-bottom:10px">
+      <div class="metric"><div class="k">Cost</div><div class="v">${fM(r.cost)}</div></div>
+      <div class="metric"><div class="k">Duration</div><div class="v">${r.months} mo</div></div>
+    </div>
+    ${(reqNames||gateName)?`<div class="dim" style="font-size:12px;margin-bottom:10px">Requires: ${[reqNames, gateName?`fly <b>${gateName}</b>`:null].filter(Boolean).join(' · ')}</div>`:''}
+    ${action}`;
+}
 function renderRnd(){
   renderEraCard();
-  const box=$('rndList'); box.innerHTML='';
-  const busy=!!state.activeResearch;
-  RESEARCH.forEach(r=>{
-    const owned=state.research[r.id];
-    const active=busy && state.activeResearch.id===r.id;
-    const reqOk=reqsMet(r);
-    const afford=state.money>=r.cost;
-    const reqNames=r.req.map(q=>RESEARCH.find(x=>x.id===q).name).join(', ');
-    const missionReqName = r.reqMissionDone ? MISSIONS.find(x=>x.id===r.reqMissionDone).name : null;
-    const allReqNames=[reqNames, missionReqName?`fly ${missionReqName}`:null].filter(Boolean).join(', ');
-    let btn;
-    if(owned) btn=`<button class="btn" disabled>Done</button>`;
-    else if(active){
-      const rc=rushCost(state.activeResearch.rushed||0);
-      const canRush = state.activeResearch.monthsLeft>1 && state.money>=rc;
-      btn=`<div style="display:flex;flex-direction:column;gap:4px;align-items:stretch">
-        <button class="btn" disabled>${state.activeResearch.monthsLeft} mo left</button>
-        <button class="btn ghost" style="font-size:11px" onclick="rushResearch()" ${canRush?'':'disabled'}>Rush −1 mo (${fM(rc)})</button>
-      </div>`;
-    }
-    else btn=`<button class="btn" onclick="buyResearch('${r.id}')" ${(!reqOk||!afford||busy)?'disabled':''}>Research</button>`;
-    const tag = owned?'<span class="pill ok">researched</span>':active?'<span class="pill active">in progress</span>':'';
-    const div=document.createElement('div'); div.className='item';
-    div.innerHTML=`
-      <div class="body">
-        <div class="title">${r.name} ${tag}</div>
-        <div class="sub">${r.desc}</div>
-        ${!reqOk&&!owned?`<div class="sub" style="color:var(--bad)">requires: ${allReqNames}</div>`:''}
-      </div>
-      <div class="reward"><div>${fM(r.cost)}</div><div class="muted">${r.months} mo</div></div>
-      ${btn}`;
-    box.appendChild(div);
-  });
+  renderTechTree();
+  renderResearchDetail();
 }
 
 function renderLog(){
