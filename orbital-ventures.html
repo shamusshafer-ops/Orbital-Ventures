@@ -429,9 +429,15 @@ const ECONOMY_EVENTS=[
   {id:'downturn',  kind:'bad',  weight:3, minYear:1957, label:'Launch market downturn', dur:[5,9], payoutMult:0.85, blurb:'A glut of capacity drives contract prices down.'},
   {id:'subsidy',   kind:'good', weight:2, minYear:1960, label:'Operations subsidy', dur:[4,8], overheadAdd:-0.05, blurb:'A standing grant offsets your monthly overhead.'},
   {id:'austerity', kind:'bad',  weight:2, minYear:1960, label:'Austerity audit', dur:[4,8], overheadAdd:0.06, blurb:'Compliance overhead raises your monthly burn.'},
+  // M2: fuel-market events (only once a LEO depot exists to trade through)
+  {id:'fuel_shortage', kind:'bad',  weight:2, minYear:1965, reqDepot:true, label:'Propellant shortage', fuelShock:1.45, blurb:'A supply crunch spikes orbital propellant prices.'},
+  {id:'fuel_glut',     kind:'good', weight:2, minYear:1965, reqDepot:true, label:'Propellant glut', fuelShock:0.7, blurb:'Oversupply drives propellant prices down — a buyer\'s market.'},
+  {id:'fuel_buyer',    kind:'good', weight:2, minYear:1965, reqDepot:true, label:'Rival propellant buy order', buyer:true, blurb:'A rival needs fuel fast and is paying a premium at your depot.'},
 ];
 const EVENT_CHANCE=0.14;   // monthly probability of a new event (when off cooldown)
 const EVENT_MIN_GAP=5;     // months of quiet enforced after each event
+// M2: LEO propellant market
+const FUEL_BASE=0.4, FUEL_MIN=0.18, FUEL_MAX=0.95, FUEL_SPREAD=0.10;
 
 const ENGINES = {
   a4:          {id:'a4',          name:'V-2 (A-4) Powerplant',            prop:'Alcohol/LOX', ispSL:203, ispVac:215, thrustSL:245, thrustVac:265, mass:0.95, cost:0.30, rel:0.96, base:true},
@@ -720,7 +726,7 @@ function newGame(difficulty){
     staff:[], assignedAstronaut:null,
     econEvents:[], eventCooldown:6, pgmRoyalty:0,
     ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
-    facilities:{},
+    facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
   };
   log('info','Company founded. The pad is yours — go make some noise.');
 }
@@ -748,8 +754,12 @@ function advance(months){
     for(const fid in (state.facilities||{})){ // M17: persistent facilities produce every month
       if(!facilityBuilt(fid)) continue;
       const pr=facilityProduction(facilityById(fid), facilityState(fid));
-      state.money+=pr.income; state.rep+=pr.rep; if(pr.fuel>0) state.depot+=pr.fuel;
+      state.money+=pr.income; state.rep+=pr.rep; if(pr.fuel>0) state.depot=round2(state.depot+pr.fuel);
     }
+    // M2: LEO propellant price — mean-reverting random walk, plus buyer-order countdown
+    state.fuelPrevPrice=state.fuelPrice;
+    state.fuelPrice=clampA(round2(state.fuelPrice+(FUEL_BASE-state.fuelPrice)*0.12+(Math.random()-0.5)*0.05), FUEL_MIN, FUEL_MAX);
+    if(state.fuelBuyer){ state.fuelBuyer.monthsLeft--; if(state.fuelBuyer.monthsLeft<=0 || state.fuelBuyer.cap<=0){ log('note',`Market — ${state.fuelBuyer.name}'s propellant buy order has closed.`); state.fuelBuyer=null; } }
 
     // M6: personnel salary deduction
     state.staff.forEach(s=>{
@@ -794,7 +804,7 @@ function econPayoutMult(){ return (state.econEvents||[]).reduce((a,e)=>a*(e.payo
 function econOverheadAdd(){ return (state.econEvents||[]).reduce((a,e)=>a+(e.overheadAdd||0),0); }
 function round2(v){ return Math.round(v*100)/100; }
 function rollEconEvent(){
-  const elig=ECONOMY_EVENTS.filter(e=> state.year>=(e.minYear||0) && state.rep>=(e.minRep||0) && state.flights>=(e.reqFlights||0));
+  const elig=ECONOMY_EVENTS.filter(e=> state.year>=(e.minYear||0) && state.rep>=(e.minRep||0) && state.flights>=(e.reqFlights||0) && (!e.reqDepot || state.research.orbital_depot));
   if(!elig.length) return null;
   const tot=elig.reduce((a,e)=>a+e.weight,0);
   let r=Math.random()*tot, pick=elig[0];
@@ -804,10 +814,21 @@ function rollEconEvent(){
   if(pick.dur)   inst.monthsLeft=Math.round(pick.dur[0]+Math.random()*(pick.dur[1]-pick.dur[0]));
   if(pick.payoutMult!=null) inst.payoutMult=pick.payoutMult;
   if(pick.overheadAdd!=null) inst.overheadAdd=pick.overheadAdd;
+  if(pick.fuelShock!=null) inst.fuelShock=pick.fuelShock;
+  if(pick.buyer) inst.buyer=true;
   return inst;
 }
 function applyEconEvent(inst){
-  if(inst.money!=null){
+  if(inst.fuelShock!=null){ // M2: immediate propellant price shock (mean reversion pulls it back)
+    state.fuelPrice=clampA(round2(state.fuelPrice*inst.fuelShock), FUEL_MIN, FUEL_MAX);
+    log(inst.kind==='good'?'ok':'bad', `Market — ${inst.label}: propellant now ${fM(state.fuelPrice)}/t. ${inst.blurb}`);
+  } else if(inst.buyer){ // M2: a rival posts a premium standing buy order at your depot
+    const r=RIVALS[Math.floor(Math.random()*RIVALS.length)];
+    const premium=round2(state.fuelPrice*(1.3+Math.random()*0.35));
+    const months=4+Math.floor(Math.random()*4);
+    state.fuelBuyer={name:r.name, color:r.color, price:premium, monthsLeft:months, cap:round2(20+Math.random()*40)};
+    log('ok', `Market — ${r.name} is buying propellant at ${fM(premium)}/t for ${months} mo (up to ${state.fuelBuyer.cap} t). ${inst.blurb}`);
+  } else if(inst.money!=null){
     state.money+=inst.money;
     log(inst.kind==='good'?'ok':'bad', `Market — ${inst.label}: ${inst.money>=0?'+':'−'}${fM(Math.abs(inst.money))}. ${inst.blurb}`);
   } else {
@@ -933,6 +954,34 @@ function expandFacility(id){
   const fs=facilityState(id); fs.modules=(fs.modules||1)+1;
   const pr=facilityProduction(def, fs);
   log('ok',`${def.name} expanded to ${fs.modules} modules — now +${fM(pr.income)}/mo${pr.fuel>0?`, +${pr.fuel.toFixed(1)} t fuel/mo`:''}.`);
+  render();
+}
+/* ---------- M2: LEO propellant market ---------- */
+function fuelBuyPrice(){ return round2(state.fuelPrice*(1+FUEL_SPREAD)); }          // what you pay to acquire fuel in LEO
+function fuelSellPrice(){ return round2(state.fuelPrice*(1-FUEL_SPREAD)); }         // baseline market rate you receive
+function buyFuel(t){
+  if(!state.research.orbital_depot) return;
+  t=round2(t); if(t<=0) return;
+  const cost=round2(t*fuelBuyPrice());
+  if(state.money<cost) return;
+  state.money-=cost; state.depot=round2(state.depot+t);
+  log('note',`Bought ${t.toFixed(1)} t propellant for −${fM(cost)} at ${fM(fuelBuyPrice())}/t — depot now ${state.depot.toFixed(1)} t.`);
+  render();
+}
+function sellFuel(t){
+  if(!state.research.orbital_depot) return;
+  t=round2(Math.min(t, state.depot)); if(t<=0) return;
+  let revenue=0, premiumSold=0;
+  if(state.fuelBuyer && state.fuelBuyer.cap>0){ // fill a rival's premium buy order first
+    const bt=round2(Math.min(t, state.fuelBuyer.cap));
+    revenue+=bt*state.fuelBuyer.price; premiumSold=bt;
+    state.fuelBuyer.cap=round2(state.fuelBuyer.cap-bt);
+    if(state.fuelBuyer.cap<=0){ log('note',`Market — ${state.fuelBuyer.name}'s buy order is filled.`); }
+  }
+  const rest=round2(t-premiumSold); if(rest>0) revenue+=rest*fuelSellPrice();
+  revenue=round2(revenue);
+  state.depot=round2(state.depot-t); state.money+=revenue;
+  log('ok',`Sold ${t.toFixed(1)} t propellant for +${fM(revenue)}${premiumSold>0?` (${premiumSold.toFixed(1)} t to ${state.fuelBuyer?state.fuelBuyer.name:'a buyer'} at premium)`:''}.`);
   render();
 }
 
@@ -1622,7 +1671,7 @@ function loadGame(){
       difficulty:'engineer', customDifficulty:customDefaults(),
       econEvents:[], eventCooldown:6, pgmRoyalty:0,
       ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
-      facilities:{}
+      facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -1666,7 +1715,7 @@ function autoLoad(){
       difficulty:'engineer', customDifficulty:customDefaults(),
       econEvents:[], eventCooldown:6, pgmRoyalty:0,
       ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
-      facilities:{}
+      facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -4570,10 +4619,26 @@ function renderInfrastructure(){
       <button class="btn launch" onclick="foundFacility('${def.id}')" ${chk.ok?'':'disabled'}>${chk.ok?`Establish ${def.name} · ${fM(def.foundCost)}`:chk.why}</button>
     </div>`;
   }).join('');
+  const fp=state.fuelPrice;
+  const trend = fp>state.fuelPrevPrice+0.001?'<span style="color:var(--bad)">▲</span>':(fp<state.fuelPrevPrice-0.001?'<span style="color:var(--ok)">▼</span>':'<span class="dim">—</span>');
+  const buyer=state.fuelBuyer;
   const depotCard = state.research.orbital_depot
     ? `<div class="card" style="margin-bottom:12px;background:var(--panel2)">
-        <div class="mission-name" style="font-size:15px">⬢ LEO Propellant Depot <span class="pill ok">${state.depot.toFixed(1)} t stored</span></div>
-        <div class="sub" style="margin:2px 0 6px">Your orbital fuel store. Tanker Runs and ISRU bases fill it; any mission's transfer stage can top off from it instead of lifting that propellant from Earth.</div>
+        <div class="mission-name" style="font-size:15px">⬢ LEO Propellant Market</div>
+        <div class="sub" style="margin:2px 0 8px">Trade propellant through your depot. Sell what your ISRU bases and tanker runs produce, or stockpile cheap fuel to top off a big mission. Prices drift with supply and demand — and a rival short on fuel may pay a premium.</div>
+        <div class="metrics">
+          <div class="metric"><div class="k">Spot price</div><div class="v">${fM(fp)}/t ${trend}</div></div>
+          <div class="metric"><div class="k">In depot</div><div class="v">${state.depot.toFixed(1)} t</div></div>
+          <div class="metric"><div class="k">Buy / Sell</div><div class="v">${fM(fuelBuyPrice())} / ${fM(fuelSellPrice())}</div></div>
+          <div class="metric"><div class="k">Holdings value</div><div class="v" style="color:var(--ok)">${fM(round2(state.depot*fuelSellPrice()))}</div></div>
+        </div>
+        ${buyer?`<div class="flag ok" style="margin-top:8px"><span style="color:${buyer.color}">◆ ${buyer.name}</span> is buying at <b>${fM(buyer.price)}/t</b> · up to ${buyer.cap.toFixed(0)} t · ${buyer.monthsLeft} mo left</div>`:''}
+        <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+          <button class="btn" onclick="buyFuel(10)" ${state.money>=10*fuelBuyPrice()?'':'disabled'}>Buy 10 t · ${fM(round2(10*fuelBuyPrice()))}</button>
+          <button class="btn" onclick="buyFuel(25)" ${state.money>=25*fuelBuyPrice()?'':'disabled'}>Buy 25 t</button>
+          <button class="btn" onclick="sellFuel(10)" ${state.depot>=10?'':'disabled'}>Sell 10 t</button>
+          <button class="btn" onclick="sellFuel(${state.depot})" ${state.depot>0?'':'disabled'}>Sell all (${state.depot.toFixed(1)} t)</button>
+        </div>
        </div>`
     : '';
   $('infraCard').innerHTML=`<h2>Infrastructure — what you build stays</h2>

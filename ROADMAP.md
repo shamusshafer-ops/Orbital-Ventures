@@ -272,11 +272,20 @@ review's numbering, not the build order (see **Suggested build order** at the en
 - [x] **1 · Stronger long-term dream** — *Shipped* as Programs & ambition (see
       completed entry above). Player picks a personal goal; progress tracked to a
       capstone; missions reframed as steps toward it.
-- [ ] **2 · Depot → living economy** — Today the LEO depot is a number
-      (`state.depot`) + a top-off slider. Turn it into a market: fluctuating fuel
-      price, buy/sell with rivals, resupply contracts, shortages, government
-      subsidies. Creates the "build a fuel empire vs. fly to Mars" fork. Hooks:
-      `state.depot`, `econEvents`, rival `color`/firsts already present.
+- [x] **2 · Depot → living economy** — *Built 2026-06-18.* The LEO depot is now a
+      market. `state.fuelPrice` mean-reverts (toward `FUEL_BASE`) with noise each
+      month in `advance()`, clamped to `[FUEL_MIN, FUEL_MAX]`. `buyFuel()` /
+      `sellFuel()` trade through the depot at a spread (`fuelBuyPrice`/
+      `fuelSellPrice`), gated on the `orbital_depot` research. New fuel events in
+      the existing `ECONOMY_EVENTS` pool (`reqDepot`-gated): **shortage**/**glut**
+      shock the price (`fuelShock`), and a **rival buy order** (`state.fuelBuyer`)
+      pays a premium for a capped tonnage over a few months — sell into it first.
+      Meshes with #17: ISRU bases feed the depot, so you choose to **sell fuel for
+      income or stockpile it** to top off a big mission ("fuel empire vs. fly to
+      Mars"). New LEO Propellant Market panel in the Infrastructure tab (spot price
+      + trend, holdings value, buy/sell, buyer banner). Validated headlessly (15
+      checks): buy/sell economics + spread, gating, mean-reversion within bounds,
+      price shocks, and capped premium buyer sales.
 - [ ] **3 · Hardware reuse & vehicle families** — No persistent vehicle identity
       today (each launch re-derives a design). Add named lineages (OV-1 → OV-2 →
       OV-Heavy) that accumulate reliability heritage, manufacturing knowledge, and
@@ -368,10 +377,10 @@ review's numbering, not the build order (see **Suggested build order** at the en
       reliability home-field bonuses. Substrate for #2 (depot economy), #12, #14.
 
 **Suggested build order:** ~~16 (subsystem reliability + story failures)~~ ✓ →
-~~17 (infrastructure layer)~~ ✓ → **2 (depot economy) ← next** → 10 (bench
-silhouette, quick win) → 12 (architecture choices) → 5 (active rivals) → 9
-(personnel traits) → 3 (vehicle families) → 14 (science) → 6 (multi-path tech) →
-8 (politics) → 7 (manufacturing). Items 1/4/11/15/16/17 shipped; 13 partially done.
+~~17 (infrastructure layer)~~ ✓ → ~~2 (depot economy)~~ ✓ → **10 (bench
+silhouette, quick win) ← next** → 12 (architecture choices) → 5 (active rivals) →
+9 (personnel traits) → 3 (vehicle families) → 14 (science) → 6 (multi-path tech) →
+8 (politics) → 7 (manufacturing). Items 1/2/4/11/15/16/17 shipped; 13 partially done.
 
 ## Repo
 
