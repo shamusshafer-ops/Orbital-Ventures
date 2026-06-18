@@ -214,6 +214,7 @@
 
   <div id="benchView" class="grid">
     <div>
+      <div class="card hidden" id="archCard"></div>
       <div class="card">
         <h2>Vehicle — Stages (bottom → top)</h2>
         <div id="stages"></div>
@@ -561,6 +562,57 @@ const FACILITY_DEFS = [
    base:{income:2.6, fuel:0.6, rep:3}, perModule:{income:1.8, fuel:0.8, rep:1.5}},
 ];
 
+/* ---------- Mission architectures (how you get there is a strategy) ----------
+   For supported missions, the player picks an architecture that reshapes the
+   mission profile (which legs, which stage does them), the hardware (modules),
+   the duration, and the risk. The rocket-equation engine already simulates any
+   profile, so an architecture is just a profile/modules/days swap + a small
+   reliability modifier — no new missions, but a deep strategic fork. */
+const MISSION_ARCH = {
+  luna_landing: [
+    {id:'lor', name:'Lunar Orbit Rendezvous', relMod:0,
+     blurb:'A dedicated two-stage lander descends while the transfer stage waits in orbit — the mass-efficient route Apollo took. Needs the lander, but the lightest propellant bill.',
+     modules:['lv','transfer','lander','crew'],
+     profile:[{name:'Ascent to LEO', dv:9400, by:'lv'},
+              {name:'Trans-Lunar Injection', dv:3120, by:'transfer'},
+              {name:'Lunar Orbit Insertion', dv:900, by:'transfer'},
+              {name:'Powered Descent', dv:1730, by:'descent', dropAfter:['descent']},
+              {name:'Ascent to Lunar Orbit', dv:1730, by:'ascent', dropAfter:['ascent']},
+              {name:'Trans-Earth Injection', dv:900, by:'transfer'}]},
+    {id:'direct', name:'Direct Ascent', relMod:0.02,
+     blurb:'No separate lander — the transfer stage carries the whole crew stack down to the surface and back. Far fewer separations (steadier reliability), but it must haul all the return propellant down and up: a brutal mass penalty demanding an enormous stage.',
+     modules:['lv','transfer','crew'],
+     profile:[{name:'Ascent to LEO', dv:9400, by:'lv'},
+              {name:'Trans-Lunar Injection', dv:3120, by:'transfer'},
+              {name:'Lunar Orbit Insertion', dv:900, by:'transfer'},
+              {name:'Powered Descent', dv:1730, by:'transfer'},
+              {name:'Ascent from Surface', dv:1730, by:'transfer'},
+              {name:'Trans-Earth Injection', dv:900, by:'transfer'}]},
+  ],
+  mars_orbit: [
+    {id:'conjunction', name:'Conjunction-class', relMod:0, days:520,
+     blurb:'Long surface/orbit stay, minimum-energy transfers both ways — the cheapest path to Mars, but you are gone over 17 months.',
+     modules:['lv','transfer','crew'],
+     profile:[{name:'Ascent to LEO', dv:9400, by:'lv'},{name:'Trans-Mars Injection', dv:3600, by:'transfer'},{name:'Mars Orbit Insertion', dv:1400, by:'transfer'},{name:'Trans-Earth Injection', dv:1400, by:'transfer'}]},
+    {id:'opposition', name:'Opposition-class (fast)', relMod:-0.015, days:330,
+     blurb:'A short-stay sprint home — back in under a year. But the high-energy transfers and a hot inner-system swing-by demand far more propellant and add risk.',
+     modules:['lv','transfer','crew'],
+     profile:[{name:'Ascent to LEO', dv:9400, by:'lv'},{name:'Trans-Mars Injection', dv:4700, by:'transfer'},{name:'Mars Orbit Insertion', dv:1700, by:'transfer'},{name:'Trans-Earth Injection', dv:2600, by:'transfer'}]},
+  ],
+};
+function missionArchList(id){ return MISSION_ARCH[id]||null; }
+function activeArchId(id){ const list=missionArchList(id); if(!list) return null; return (state.architectures&&state.architectures[id]) || list[0].id; }
+function missionArchOf(id){ const list=missionArchList(id); if(!list) return null; const aid=activeArchId(id); return list.find(a=>a.id===aid)||list[0]; }
+// the active mission as the player will actually fly it (base merged with the chosen architecture)
+function curMission(){
+  const base=MISSIONS.find(x=>x.id===state.activeMission);
+  if(!base) return base;
+  const arch=missionArchOf(base.id);
+  if(!arch) return base;
+  return Object.assign({}, base, {profile:arch.profile||base.profile, modules:arch.modules||base.modules, days:arch.days!=null?arch.days:base.days, _arch:arch});
+}
+function setArchitecture(missionId, archId){ if(!missionArchList(missionId)) return; state.architectures=state.architectures||{}; state.architectures[missionId]=archId; render(); }
+
 const RESEARCH = [
   {id:'kerosene',     name:'Kerosene Propulsion',           cost:2.0, months:3, req:[],          effect:{engine:'kerolox_mk1'}, desc:'Unlocks the Rocketdyne S-3D — higher Isp than alcohol/LOX.<span class="hist">↳ Refined kerosene (RP-1) replaced the V-2\'s alcohol in Rocketdyne\'s Atlas and Thor engines.</span>'},
   {id:'vac_upper',    name:'Vacuum-Optimized Upper Stage',  cost:2.5, months:3, req:[],          effect:{engine:'vernier_v'},   desc:'Unlocks the Bell Agena XLR81 upper stage engine (Isp 315 s in vacuum).<span class="hist">↳ Restartable vacuum stages like the Agena turned launchers into orbit-and-beyond vehicles.</span>'},
@@ -736,6 +788,7 @@ function newGame(difficulty){
     econEvents:[], eventCooldown:6, pgmRoyalty:0,
     ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
     facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
+    architectures:{},
   };
   log('info','Company founded. The pad is yours — go make some noise.');
 }
@@ -1138,7 +1191,7 @@ function simulateMission(m){
 }
 
 function computeVehicle(){
-  const m=MISSIONS.find(x=>x.id===state.activeMission);
+  const m=curMission();
   const crewed=!!(m && m.crew>0);
   const payload=lvPayload(m);
   const perf=stackPerformance(state.stages, payload);
@@ -1206,6 +1259,7 @@ function effectiveReliability(m,v,sim,crewed){
   if(sim) rel=Math.max(0.30, rel*Math.pow(0.985, sim.inSpaceLegs));
   if(crewed){ const ab=astroBonus(); rel=Math.min(0.99, rel+ab.rel); }
   rel=Math.min(0.995, rel + facilityBonus(missionBody(m&&m.id)).relBump); // M17: home-field operational bonus
+  if(m && m._arch && m._arch.relMod) rel=clampA(rel + m._arch.relMod, 0.1, 0.995); // M12: architecture reliability modifier
   return rel;
 }
 // relative fragility weights per subsystem (higher = likelier culprit), reflecting the design
@@ -1315,7 +1369,7 @@ function tankerDelivery(){
   return state.transfer.prop;
 }
 function launch(){
-  const m=MISSIONS.find(x=>x.id===state.activeMission);
+  const m=curMission();
   const v=computeVehicle();
   const sim=m.profile?simulateMission(m):null;
   const chk=canLaunch(v,m,sim); if(!chk.ok){return;}
@@ -1680,7 +1734,8 @@ function loadGame(){
       difficulty:'engineer', customDifficulty:customDefaults(),
       econEvents:[], eventCooldown:6, pgmRoyalty:0,
       ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
-      facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null
+      facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
+      architectures:{}
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -1724,7 +1779,8 @@ function autoLoad(){
       difficulty:'engineer', customDifficulty:customDefaults(),
       econEvents:[], eventCooldown:6, pgmRoyalty:0,
       ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
-      facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null
+      facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
+      architectures:{}
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -3791,7 +3847,7 @@ function render(){
     : `<span class="dim">No active research. Start a project in R&D — it runs while you fly.</span>`;
   $('skipBtn').disabled=!ar;
 
-  if(state.tab==='bench'){renderStages();renderTransfer();renderLander();renderCrew();renderWindowPlanner();renderReadout();renderVehiclePreview();}
+  if(state.tab==='bench'){renderArchitecture();renderStages();renderTransfer();renderLander();renderCrew();renderWindowPlanner();renderReadout();renderVehiclePreview();}
   if(state.tab==='missions')renderMissions();
   if(state.tab==='programs')renderPrograms();
   renderNextObjective();
@@ -3918,7 +3974,7 @@ function renderStages(){
 }
 
 function renderCrew(){
-  const m=MISSIONS.find(x=>x.id===state.activeMission);
+  const m=curMission();
   const card=$('crewCard');
   if(!m.crew){ card.classList.add('hidden'); return; }
   card.classList.remove('hidden');
@@ -3945,7 +4001,7 @@ function renderCrew(){
 }
 
 function renderTransfer(){
-  const m=MISSIONS.find(x=>x.id===state.activeMission);
+  const m=curMission();
   const card=$('transferCard');
   if(!(m.tanker || (m.profile && m.modules.includes('transfer')))){ card.classList.add('hidden'); return; }
   card.classList.remove('hidden');
@@ -3995,7 +4051,7 @@ function moduleOptions(sel, allowTransferOnly){
     .map(e=>`<option value="${e.id}" ${e.id===sel?'selected':''}>${e.name} · Isp ${e.ispVac}s vac${e.lowThrust?' · low-thrust':''}</option>`).join('');
 }
 function renderLander(){
-  const m=MISSIONS.find(x=>x.id===state.activeMission);
+  const m=curMission();
   const card=$('landerCard');
   if(!(m.profile && m.modules.includes('lander'))){ card.classList.add('hidden'); return; }
   card.classList.remove('hidden');
@@ -4020,7 +4076,7 @@ function renderLander(){
 }
 
 function renderWindowPlanner(){
-  const m=MISSIONS.find(x=>x.id===state.activeMission);
+  const m=curMission();
   const card=$('windowCard');
   if(!m.window){ card.classList.add('hidden'); return; }
   card.classList.remove('hidden');
@@ -4049,6 +4105,26 @@ function renderWindowPlanner(){
     ${rows}`;
 }
 
+// M12: mission-architecture selector — reshapes the profile/hardware/risk
+function renderArchitecture(){
+  const card=$('archCard'); if(!card) return;
+  const id=state.activeMission;
+  const list=missionArchList(id);
+  if(!list){ card.classList.add('hidden'); return; }
+  card.classList.remove('hidden');
+  const aid=activeArchId(id);
+  const opts=list.map(a=>{
+    const sel=a.id===aid;
+    return `<div class="diffcard ${sel?'sel':''}" style="cursor:pointer" onclick="setArchitecture('${id}','${a.id}')">
+      <div class="tag">${sel?'flying this way':'choose'}</div>
+      <h3 style="font-size:13px">${a.name}</h3>
+      <p style="font-size:11px">${a.blurb}</p>
+    </div>`;
+  }).join('');
+  card.innerHTML=`<h2>Mission Architecture</h2>
+    <p class="muted" style="font-size:12px;margin:-4px 0 8px">How you get there is a strategy in itself — each path reshapes the burns, the hardware it needs, and the risk. Pick one, then size the vehicle for its profile on the right.</p>
+    <div class="diffgrid" style="grid-template-columns:1fr 1fr">${opts}</div>`;
+}
 // M10: static, design-driven silhouette of the current vehicle on the bench —
 // reuses the launch animation's buildVehicleShape/drawVehicle with no flame.
 function renderVehiclePreview(){
@@ -4056,7 +4132,7 @@ function renderVehiclePreview(){
   const ctx=cv.getContext('2d'); if(!ctx) return;
   const W=cv.width, H=cv.height;
   ctx.clearRect(0,0,W,H);
-  const m=MISSIONS.find(x=>x.id===state.activeMission);
+  const m=curMission();
   const spec={
     stages: state.stages.map(s=>({prop:s.prop, count:s.count})),
     transferProp: (m&&m.profile&&m.modules.includes('transfer'))?state.transfer.prop:0,
@@ -4075,7 +4151,7 @@ function renderVehiclePreview(){
   if(el) el.innerHTML=`${state.stages.length} stage${state.stages.length>1?'s':''} · ${eng} engine${eng>1?'s':''}${spec.transferProp>0?' · transfer stage':''} · ${spec.crewed?'crew capsule':'payload fairing'}`;
 }
 function renderReadout(){
-  const m=MISSIONS.find(x=>x.id===state.activeMission);
+  const m=curMission();
   if(m.profile){ renderProfileReadout(m); return; }
   const v=computeVehicle();
   const pct=Math.min(100, v.totalDv/m.reqDv*100);

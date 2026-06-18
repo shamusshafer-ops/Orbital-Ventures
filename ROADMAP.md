@@ -327,11 +327,22 @@ review's numbering, not the build order (see **Suggested build order** at the en
       simple + crewed-profile vehicles, shape segments, and a missing-context guard).
 - [x] **11 · Milestone programs** — *Shipped* as Programs (campaigns with
       objectives + completion bonuses). See completed entry above.
-- [ ] **12 · Mission-architecture choices** — Machinery exists (profiles already
-      model staging, depot top-off, ISRU free-legs as Δv trade-offs). Surface it as
-      a pre-mission *choice* screen: e.g. Lunar = direct ascent / EOR / LOR /
-      depot-assisted, each with different cost/complexity/risk. Deep strategy
-      without new missions.
+- [x] **12 · Mission-architecture choices** — *Built 2026-06-18.* `MISSION_ARCH`
+      gives supported missions selectable architectures that swap the **profile,
+      modules, duration, and a reliability modifier** — the engine already
+      simulates any profile, so no new missions, but a real strategic fork. A new
+      `curMission()` accessor merges the active mission with its chosen
+      architecture, and the 8 bench/launch/readout lookups now route through it
+      (so Δv legs, build time, life-support consumables, the silhouette, and
+      reliability all follow the choice). **Lunar Landing**: Lunar Orbit
+      Rendezvous (efficient, needs the lander) vs Direct Ascent (no lander —
+      fewer separations/+reliability and faster build, but the transfer stage
+      hauls all return propellant down and back: a brutal mass bill). **Mars
+      Orbit**: Conjunction-class (cheap, ~17 mo) vs Opposition-class (fast, ~11
+      mo, far higher Δv + a small reliability hit). New Mission Architecture card
+      on the bench. Validated headlessly (12 checks): profile/modules/days swap,
+      transfer-stage burden shift, build-time + consumables + reliability deltas,
+      and that non-arch missions are untouched.
 - [~] **13 · Map as planning tool** — Map now shows rival reach + economy activity
       and is full-screen-capable. Go further: click Mars → show windows, transfer
       opportunities, depot routes, estimated cost. Make the map a place players
@@ -383,9 +394,10 @@ review's numbering, not the build order (see **Suggested build order** at the en
 
 **Suggested build order:** ~~16 (subsystem reliability + story failures)~~ ✓ →
 ~~17 (infrastructure layer)~~ ✓ → ~~2 (depot economy)~~ ✓ → ~~10 (bench
-silhouette)~~ ✓ → **12 (architecture choices) ← next** → 5 (active rivals) → 9
-(personnel traits) → 3 (vehicle families) → 14 (science) → 6 (multi-path tech) →
-8 (politics) → 7 (manufacturing). Items 1/2/4/10/11/15/16/17 shipped; 13 partially done.
+silhouette)~~ ✓ → ~~12 (architecture choices)~~ ✓ → **5 (active rivals) ← next**
+→ 9 (personnel traits) → 3 (vehicle families) → 14 (science) → 6 (multi-path
+tech) → 8 (politics) → 7 (manufacturing). Items 1/2/4/10/11/12/15/16/17 shipped;
+tech tree (part of #6) now a real interactive graph; 13 partially done.
 
 ## Repo
 
