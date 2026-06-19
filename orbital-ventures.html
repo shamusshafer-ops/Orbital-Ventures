@@ -117,6 +117,19 @@
   .flag{font-size:12px;margin-top:8px;display:flex;gap:6px;align-items:flex-start}
   .flag.bad{color:var(--bad)} .flag.warn{color:var(--warn)} .flag.ok{color:var(--ok)}
 
+  /* Command Center (#18) */
+  .cc-hero{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:6px}
+  .cc-net{font-family:var(--mono);font-size:13px}
+  .sitegrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:10px;margin-top:4px}
+  .bldg{border:1px solid var(--line);background:var(--panel2);border-radius:8px;padding:12px;cursor:pointer;
+    transition:border-color .15s,transform .08s;display:flex;flex-direction:column;gap:3px;text-align:left}
+  .bldg:hover{border-color:var(--ignite);transform:translateY(-1px)}
+  .bldg.planned{opacity:.55;cursor:default}
+  .bldg.planned:hover{border-color:var(--line);transform:none}
+  .bldg .ic{font-size:22px;line-height:1}
+  .bldg .nm{font-weight:600;font-size:13px;margin-top:2px}
+  .bldg .st{font-family:var(--mono);font-size:11px;color:var(--muted)}
+
   /* Mission & research lists */
   .item{display:flex;gap:12px;align-items:center;border:1px solid var(--line);border-radius:6px;padding:11px 13px;margin-bottom:9px;background:var(--panel2)}
   .item .body{flex:1}
@@ -190,7 +203,8 @@
   </header>
 
   <nav>
-    <button id="tabBench" class="active" onclick="setTab('bench')">Design Bench</button>
+    <button id="tabCommand" class="active" onclick="setTab('command')">Command Center</button>
+    <button id="tabBench" onclick="setTab('bench')">Design Bench</button>
     <button id="tabMissions" onclick="setTab('missions')">Missions</button>
     <button id="tabPrograms" onclick="setTab('programs')">Programs</button>
     <button id="tabRnd" onclick="setTab('rnd')">R&amp;D</button>
@@ -213,8 +227,13 @@
     <button class="btn ghost" id="skipBtn" onclick="skipResearch()">Skip to R&amp;D done</button>
   </div>
 
-  <div id="benchView" class="grid">
+  <div id="commandView">
+    <div class="card" id="commandCard"></div>
+  </div>
+
+  <div id="benchView" class="hidden grid">
     <div>
+      <div class="card" id="vehicleFamilyCard"></div>
       <div class="card hidden" id="archCard"></div>
       <div class="card">
         <h2>Vehicle — Stages (bottom → top)</h2>
@@ -636,6 +655,65 @@ function curMission(){
 }
 function setArchitecture(missionId, archId){ if(!missionArchList(missionId)) return; state.architectures=state.architectures||{}; state.architectures[missionId]=archId; render(); }
 
+/* ---------- #3: Vehicle families (named lineages with heritage) ----------
+   A family is a persistent, named saved design (OV-1 → OV-2 → OV-Heavy) that lives
+   in state.vehicles, distinct from the live bench config. Flying the active family
+   accrues heritage: reliability climbs as it proves itself, manufacturing knowledge
+   makes it cheaper to build, milestones earn brand reputation, and a derived family
+   inherits a fraction of its parent's experience. All bonuses are bounded so the
+   existing reliability caps remain the ceiling. activeVehicle=null = an untracked
+   one-off (the original behaviour, zero heritage). */
+const FAM_REL_PER = 0.02, FAM_REL_CAP = 0.12;   // +rel per experience point, capped
+const FAM_BUILD_PER = 0.03, FAM_BUILD_FLOOR = 0.70; // build-cost learning curve floor
+const FAM_INHERIT = 0.4;                          // fraction of parent experience carried to a derived family
+const FAM_EXP_CAP = 6;                            // experience contribution saturates here
+const FAM_MILESTONES = [5,10,20];                 // successful-flight brand-rep milestones
+function vehicleFamilies(){ return state.vehicles||(state.vehicles=[]); }
+function familyById(fid){ return vehicleFamilies().find(f=>f.id===fid); }
+function activeFamily(){ return state.activeVehicle?familyById(state.activeVehicle):null; }
+function familyExperience(fam){ return fam?Math.min(FAM_EXP_CAP,(fam.successes||0)+(fam.inherited||0)):0; }
+function familyRelBonus(fam){ return Math.min(FAM_REL_CAP, FAM_REL_PER*familyExperience(fam)); }
+function familyBuildMult(fam){ return fam?Math.max(FAM_BUILD_FLOOR, 1-FAM_BUILD_PER*(fam.successes||0)):1; }
+function familySuccessRate(fam){ return (fam&&fam.flights>0)?Math.round(100*(fam.successes||0)/fam.flights):null; }
+function nextFamilyName(){
+  let n=1; const taken=new Set(vehicleFamilies().map(f=>f.name));
+  while(taken.has('OV-'+n)) n++;
+  return 'OV-'+n;
+}
+function benchSpecSnapshot(){
+  return JSON.parse(JSON.stringify({stages:state.stages, transfer:state.transfer, descent:state.descent, ascent:state.ascent, eclss:state.eclss}));
+}
+function saveAsFamily(){
+  const parent=activeFamily();
+  const fam={ id:'veh_'+Date.now().toString(36)+Math.floor(Math.random()*1e4).toString(36),
+    name:nextFamilyName(), born:dateStr(), parentId:parent?parent.id:null,
+    inherited: parent?Math.floor(FAM_INHERIT*familyExperience(parent)):0,
+    flights:0, successes:0, losses:0, spec:benchSpecSnapshot() };
+  vehicleFamilies().push(fam);
+  state.activeVehicle=fam.id;
+  log('info',`New vehicle family registered: ${fam.name}${parent?` (derived from ${parent.name}, inheriting ${fam.inherited} flights of heritage)`:''}. Heritage will build as it flies.`);
+  render();
+}
+function loadFamily(fid){
+  const fam=familyById(fid); if(!fam) return;
+  const s=fam.spec||{};
+  if(s.stages) state.stages=JSON.parse(JSON.stringify(s.stages));
+  if(s.transfer) state.transfer=JSON.parse(JSON.stringify(s.transfer));
+  if(s.descent) state.descent=JSON.parse(JSON.stringify(s.descent));
+  if(s.ascent) state.ascent=JSON.parse(JSON.stringify(s.ascent));
+  if(s.eclss) state.eclss=s.eclss;
+  state.activeVehicle=fid;
+  render();
+}
+function setActiveVehicle(fid){ state.activeVehicle=fid||null; render(); }
+function retireFamily(fid){
+  const fam=familyById(fid); if(!fam) return;
+  state.vehicles=vehicleFamilies().filter(f=>f.id!==fid);
+  if(state.activeVehicle===fid) state.activeVehicle=null;
+  log('info',`${fam.name} retired from the fleet after ${fam.flights} flight${fam.flights===1?'':'s'}.`);
+  render();
+}
+
 const RESEARCH = [
   {id:'kerosene',     name:'Kerosene Propulsion',           cost:2.0, months:3, req:[],          effect:{engine:'kerolox_mk1'}, desc:'Unlocks the Rocketdyne S-3D — higher Isp than alcohol/LOX.<span class="hist">↳ Refined kerosene (RP-1) replaced the V-2\'s alcohol in Rocketdyne\'s Atlas and Thor engines.</span>'},
   {id:'vac_upper',    name:'Vacuum-Optimized Upper Stage',  cost:2.5, months:3, req:[],          effect:{engine:'vernier_v'},   desc:'Unlocks the Bell Agena XLR81 upper stage engine (Isp 315 s in vacuum).<span class="hist">↳ Restartable vacuum stages like the Agena turned launchers into orbit-and-beyond vehicles.</span>'},
@@ -805,13 +883,14 @@ function newGame(difficulty){
     eclss:'open', testLevel:0,
     windows:{}, committedWindow:null, selectedBody:'moon', mapZoom:null,
     depot:0, depotUse:0,
-    tab:'bench', won:false, wonM2:false, wonM3a:false, wonM3aii:false, wonM3b:false, wonM3bii:false, over:false,
+    tab:'command', won:false, wonM2:false, wonM3a:false, wonM3aii:false, wonM3b:false, wonM3bii:false, over:false,
     log:[], rivalFired:{}, scooped:{}, rivalThreat:{},
     staff:[], assignedAstronaut:null, persEventCooldown:5,
     econEvents:[], eventCooldown:6, pgmRoyalty:0,
     ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
     facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
     architectures:{}, science:0,
+    vehicles:[], activeVehicle:null, // #3: named vehicle lineages with heritage
   };
   log('info','Company founded. The pad is yours — go make some noise.');
 }
@@ -1263,6 +1342,7 @@ function computeVehicle(){
   const testBonus=TEST_LEVELS[state.testLevel].rel;
   buildCost*=diff().buildCostMult; // difficulty: hardware-cost scaling
   buildCost*=(1-facilityBonus(missionBody(m&&m.id)).buildDiscount); // M17: home-field build discount from a base at the destination
+  buildCost*=familyBuildMult(activeFamily()); // #3: a proven lineage gets cheaper to build (manufacturing knowledge)
   const reliability=Math.min(diff().relCap,Math.max(diff().relFloor,(curRel()+testBonus)*enginePenalty*(crewed?0.92:1)));
   const launchCost=0.12+0.01*totalProp;
   return {payload, sm:perf.sm, stageDv:perf.stageDv, totalDv:perf.totalDv, liftoff:perf.liftoff, twr:perf.twr,
@@ -1310,6 +1390,7 @@ function effectiveReliability(m,v,sim,crewed){
   if(sim) rel=Math.max(0.30, rel*Math.pow(0.985, sim.inSpaceLegs));
   if(crewed){ const ab=astroBonus(); rel=Math.min(0.99, rel+ab.rel); }
   rel=Math.min(0.995, rel + facilityBonus(missionBody(m&&m.id)).relBump); // M17: home-field operational bonus
+  rel=Math.min(0.995, rel + familyRelBonus(activeFamily())); // #3: reliability heritage of a proven lineage
   if(m && m._arch && m._arch.relMod) rel=clampA(rel + m._arch.relMod, 0.1, 0.995); // M12: architecture reliability modifier
   return rel;
 }
@@ -1386,9 +1467,11 @@ function subsystemBreakdownHTML(m,v){
     const sev=s.severity==='partial'?'wrong orbit':(s.phase==='deep'?'lost in deep space':'loss of vehicle');
     return `<div class="leg"><span class="legname">${s.label}</span><span class="legdv" style="color:${col}">${pc}%</span><span class="legdetail">fault → ${sev}</span></div>`;
   }).join('');
+  const fam=activeFamily();
+  const famNote=fam&&familyRelBonus(fam)>0?` <span style="color:var(--ok)">${fam.name} heritage adds +${(familyRelBonus(fam)*100).toFixed(1)}% from ${fam.successes} proven flight${fam.successes===1?'':'s'}.</span>`:'';
   return `<div class="mission-tag" style="margin-top:12px">Subsystem reliability — the weakest link is where it breaks</div>
     <div class="legs" style="margin-top:6px">${rows}</div>
-    <div class="dim" style="font-size:11px;margin-top:6px">Overall ${(rep.R*100)|0}% = the product of all subsystems. Test campaigns, tank/guidance research, and matching engineer specialists each harden a specific link.</div>`;
+    <div class="dim" style="font-size:11px;margin-top:6px">Overall ${(rep.R*100)|0}% = the product of all subsystems. Test campaigns, tank/guidance research, and matching engineer specialists each harden a specific link.${famNote}</div>`;
 }
 
 /* ---------- launch ---------- */
@@ -1511,6 +1594,27 @@ function launch(){
     }else{
       const rep=Math.min(state.rep, routine?3:8); state.rep-=rep;
       log('bad',`${m.name}: FAILURE. The ${SUBSYS_LABEL[outcome.subsystem].toLowerCase()} failed — ${outcome.story} Vehicle cost forfeit, −${rep} rep.`);
+    }
+  }
+  // #3: attribute this flight to the active vehicle family and accrue/dent its heritage
+  const fam=activeFamily();
+  if(fam){
+    fam.flights=(fam.flights||0)+1;
+    if(success){
+      fam.successes=(fam.successes||0)+1;
+      if(FAM_MILESTONES.includes(fam.successes)){
+        const brandRep=fam.successes; // 5 / 10 / 20 rep as the lineage becomes a household name
+        state.rep+=brandRep;
+        log('ok',`${fam.name} reaches ${fam.successes} successful flights — a trusted name now. +${brandRep} rep (brand heritage).`);
+      }
+    }else if(outcome.kind!=='partial'){ // abort / strand / loss — a veteran going down stings more
+      const exp=familyExperience(fam); // proven-ness before recording the loss
+      fam.losses=(fam.losses||0)+1;
+      const extra=Math.round(Math.min(15, 2*exp));
+      if(extra>0){
+        const hit=Math.min(state.rep, extra); state.rep-=hit;
+        log('bad',`Losing ${fam.name} — a ${familySuccessRate(fam)!=null?familySuccessRate(fam)+'%-record':'veteran'} airframe — is a public blow. −${hit} rep beyond the mission penalty.`);
+      }
     }
   }
   state.testLevel=0; // campaign applies to one flight
@@ -1804,7 +1908,7 @@ function hideModal(){$('modal').classList.add('hidden');}
 
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=1;
+const SAVE_VERSION=2;
 function saveGame(){
   try{
     const payload={v:SAVE_VERSION, ts:Date.now(), state:JSON.parse(JSON.stringify(state))};
@@ -1832,12 +1936,13 @@ function loadGame(){
       transfer:{eng:'hyper_storable',prop:10.0}, descent:{eng:'hyper_storable',prop:6.0},
       ascent:{eng:'hyper_storable',prop:2.5}, eclss:'open', testLevel:0,
       windows:{}, committedWindow:null, selectedBody:'moon', mapZoom:null,
-      depot:0, depotUse:0, tab:'bench', log:[], rivalFired:{}, scooped:{}, rivalThreat:{}, bailouts:0,
+      depot:0, depotUse:0, tab:'command', log:[], rivalFired:{}, scooped:{}, rivalThreat:{}, bailouts:0,
       difficulty:'engineer', customDifficulty:customDefaults(),
       econEvents:[], eventCooldown:6, pgmRoyalty:0,
       ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
       facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
-      architectures:{}, science:0, persEventCooldown:5
+      architectures:{}, science:0, persEventCooldown:5,
+      vehicles:[], activeVehicle:null
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -1877,12 +1982,13 @@ function autoLoad(){
       transfer:{eng:'hyper_storable',prop:10.0}, descent:{eng:'hyper_storable',prop:6.0},
       ascent:{eng:'hyper_storable',prop:2.5}, eclss:'open', testLevel:0,
       windows:{}, committedWindow:null, selectedBody:'moon', mapZoom:null,
-      depot:0, depotUse:0, tab:'bench', log:[], rivalFired:{}, scooped:{}, rivalThreat:{}, bailouts:0,
+      depot:0, depotUse:0, tab:'command', log:[], rivalFired:{}, scooped:{}, rivalThreat:{}, bailouts:0,
       difficulty:'engineer', customDifficulty:customDefaults(),
       econEvents:[], eventCooldown:6, pgmRoyalty:0,
       ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
       facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
-      architectures:{}, science:0, persEventCooldown:5
+      architectures:{}, science:0, persEventCooldown:5,
+      vehicles:[], activeVehicle:null
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -3926,6 +4032,7 @@ function render(){
   if(sci>0){ $('stSci').textContent=Math.round(sci)+' ⚛'; $('stSci').style.color='var(--readout)'; }
   renderMarketStat();
 
+  $('tabCommand').classList.toggle('active',state.tab==='command');
   $('tabBench').classList.toggle('active',state.tab==='bench');
   $('tabMissions').classList.toggle('active',state.tab==='missions');
   $('tabPrograms').classList.toggle('active',state.tab==='programs');
@@ -3935,6 +4042,7 @@ function render(){
   $('tabPersonnel').classList.toggle('active',state.tab==='personnel');
   $('tabInfra').classList.toggle('active',state.tab==='infra');
   $('tabSettings').classList.toggle('active',state.tab==='settings');
+  $('commandView').classList.toggle('hidden',state.tab!=='command');
   $('benchView').classList.toggle('hidden',state.tab!=='bench');
   $('missionsView').classList.toggle('hidden',state.tab!=='missions');
   $('programsView').classList.toggle('hidden',state.tab!=='programs');
@@ -3952,7 +4060,8 @@ function render(){
     : `<span class="dim">No active research. Start a project in R&D — it runs while you fly.</span>`;
   $('skipBtn').disabled=!ar;
 
-  if(state.tab==='bench'){renderArchitecture();renderStages();renderTransfer();renderLander();renderCrew();renderWindowPlanner();renderReadout();renderVehiclePreview();}
+  if(state.tab==='command')renderCommandCenter();
+  if(state.tab==='bench'){renderVehicleFamilies();renderArchitecture();renderStages();renderTransfer();renderLander();renderCrew();renderWindowPlanner();renderReadout();renderVehiclePreview();}
   if(state.tab==='missions')renderMissions();
   if(state.tab==='programs')renderPrograms();
   renderNextObjective();
@@ -3963,6 +4072,97 @@ function render(){
   if(state.tab==='infra')renderInfrastructure();
   if(state.tab==='settings')renderSettings();
   renderLog();
+}
+/* ---------- #18: Agency Command Center (home screen + ground site map) ----------
+   The new default landing screen: an at-a-glance dashboard plus a drill-down "site
+   map" of the ground facilities that routes into the existing tabs. The data layer
+   (commandSummary / siteBuildings) is pure so it can be exercised headlessly.
+   Manufacturing & Production tiles are present-but-passive hooks for the unbuilt
+   manufacturing system (#7). */
+function monthlyPayroll(){ return round2((state.staff||[]).reduce((a,s)=>{const p=personById(s.id);return a+(p?p.salary:0);},0)); }
+function availableContracts(){
+  return MISSIONS.filter(m=> state.rep>=m.minRep && (!m.reqResearch||state.research[m.reqResearch]) && !state.completed[m.id]).length;
+}
+function commandSummary(){
+  const era=currentEra();
+  const overhead=Math.max(0, diff().overhead+econOverheadAdd());
+  const income=round2(totalFacilityIncome()+(state.pgmRoyalty||0));
+  const payroll=monthlyPayroll();
+  const net=round2(income-overhead-payroll);
+  const m=curMission();
+  const ar=state.activeResearch;
+  const no=nextObjective();
+  return {
+    capital:state.money, rep:state.rep, flights:state.flights,
+    era:era.name, eraIdx:eraIndex(era)+1, eraTotal:ERAS.length,
+    successRate: state.flights>0?Math.round(100*state.successes/state.flights):null,
+    income, overhead, payroll, net, science:Math.round(state.science||0),
+    research: ar?{name:(RESEARCH.find(r=>r.id===ar.id)||{}).name||ar.id, monthsLeft:ar.monthsLeft}:null,
+    nextObjective: no?no.mission.name:null,
+    activeMission: m?{name:m.name, buildMo:buildMonths(m)+1+TEST_LEVELS[state.testLevel].months}:null,
+  };
+}
+function siteBuildings(){
+  const fams=vehicleFamilies();
+  const builtFac=Object.keys(state.facilities||{}).filter(facilityBuilt).length;
+  const ar=state.activeResearch;
+  const m=curMission();
+  let topThreat=null, topScore=-1;
+  for(const id in (state.rivalThreat||{})){ if(state.rivalThreat[id]>topScore){ topScore=state.rivalThreat[id]; topThreat=id; } }
+  const threatTxt=topThreat?rivalThreatLabel(topScore):'quiet';
+  return [
+    {key:'pad', icon:'🚀', name:'Launch Pad', tab:'bench',
+     status: m?`${m.name} · ${buildMonths(m)+1+TEST_LEVELS[state.testLevel].months} mo to fly`:'no mission selected', planned:false},
+    {key:'mission', icon:'📡', name:'Mission Control', tab:'missions',
+     status:`${availableContracts()} contract${availableContracts()===1?'':'s'} available`, planned:false},
+    {key:'mfg', icon:'🏭', name:'Manufacturing', tab:'bench',
+     status: fams.length?`${fams.length} vehicle famil${fams.length===1?'y':'ies'}`:'no families yet', planned:true},
+    {key:'prod', icon:'⚙', name:'Production', tab:null,
+     status:'engine & inventory lines', planned:true},
+    {key:'rnd', icon:'⚗', name:'R&D Lab', tab:'rnd',
+     status: ar?`${(RESEARCH.find(r=>r.id===ar.id)||{}).name||ar.id} · ${ar.monthsLeft} mo`:'idle', planned:false},
+    {key:'personnel', icon:'👥', name:'Personnel', tab:'personnel',
+     status: (state.staff||[]).length?`${state.staff.length} hired · ${fM(monthlyPayroll())}/mo`:'unstaffed', planned:false},
+    {key:'infra', icon:'▣', name:'Orbital Ops', tab:'infra',
+     status: builtFac?`${builtFac} facilit${builtFac===1?'y':'ies'} · +${fM(totalFacilityIncome())}/mo`:'no facilities', planned:false},
+    {key:'map', icon:'🪐', name:'Solar System', tab:'map', status:'plan & track missions', planned:false},
+    {key:'rivals', icon:'◆', name:'Rivals', tab:'rivals', status:`threat: ${threatTxt}`, planned:false},
+  ];
+}
+function renderCommandCenter(){
+  const card=$('commandCard'); if(!card) return;
+  const s=commandSummary();
+  const netCol=s.net>=0?'var(--ok)':'var(--bad)';
+  const tiles=siteBuildings().map(b=>{
+    const planned=b.planned||!b.tab;
+    const onclick=b.tab?` onclick="setTab('${b.tab}')"`:'';
+    return `<div class="bldg${planned?' planned':''}"${onclick}>
+      <span class="ic">${b.icon}</span>
+      <span class="nm">${b.name} ${b.planned?'<span class="pill lock">planned</span>':''}</span>
+      <span class="st">${b.status}</span>
+    </div>`;
+  }).join('');
+  card.innerHTML=`<div class="cc-hero">
+      <div>
+        <h2 style="margin:0 0 2px">Agency Command Center</h2>
+        <div class="muted" style="font-size:12px">${state.company} · ${dateStr()} · Era ${s.eraIdx}/${s.eraTotal} ${s.era}</div>
+      </div>
+      <div class="cc-net" style="text-align:right">
+        <div class="dim" style="font-size:10px;text-transform:uppercase;letter-spacing:.12em">Monthly net</div>
+        <div style="color:${netCol};font-size:18px;font-weight:700">${s.net>=0?'+':''}${fM(s.net)}/mo</div>
+        <div class="dim" style="font-size:10px">+${fM(s.income)} in · −${fM(s.overhead)} ovh · −${fM(s.payroll)} pay</div>
+      </div>
+    </div>
+    <div class="metrics" style="grid-template-columns:repeat(4,1fr)">
+      <div class="metric"><div class="k">Capital</div><div class="v" style="color:${state.money<1.5?'var(--bad)':'var(--ink)'}">${fM(s.capital)}</div></div>
+      <div class="metric"><div class="k">Reputation</div><div class="v">${fI(s.rep)}</div></div>
+      <div class="metric"><div class="k">Flights</div><div class="v">${s.flights}${s.successRate!=null?` · ${s.successRate}%`:''}</div></div>
+      <div class="metric"><div class="k">Science</div><div class="v" style="color:var(--readout)">${s.science} ⚛</div></div>
+    </div>
+    ${s.nextObjective?`<div class="flag ok" style="margin:2px 0 4px">▸ Next objective: <b style="margin-left:4px">${s.nextObjective}</b></div>`:''}
+    <div class="mission-tag" style="margin-top:10px">Agency site — click a building to drill in</div>
+    <div class="sitegrid">${tiles}</div>
+    <p class="muted" style="font-size:11px;margin:10px 0 0">Manufacturing and Production are scaffolded here — they become live systems when the production layer (#7) is built.</p>`;
 }
 function applyDifficultyUI(){
   document.body.classList.toggle('hide-eq', !diff().showEquations);
@@ -4210,6 +4410,53 @@ function renderWindowPlanner(){
     ${rows}`;
 }
 
+// #3: vehicle families — persistent named lineages and their accumulated heritage
+function renderVehicleFamilies(){
+  const card=$('vehicleFamilyCard'); if(!card) return;
+  const fams=vehicleFamilies();
+  const active=activeFamily();
+  let activeHtml;
+  if(active){
+    const exp=familyExperience(active);
+    const relB=Math.round(familyRelBonus(active)*1000)/10; // % to 0.1
+    const buildCut=Math.round((1-familyBuildMult(active))*100);
+    const sr=familySuccessRate(active);
+    const parent=active.parentId?familyById(active.parentId):null;
+    activeHtml=`<div class="card" style="background:var(--panel2);border-color:var(--ignite);margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <div class="mission-name" style="margin:0;font-size:15px"><span style="color:var(--ignite)">▲ ${active.name}</span> <span class="pill active">flying</span></div>
+        <div class="dim" style="font-size:11px">since ${active.born}${parent?` · from ${parent.name}`:''}</div>
+      </div>
+      <div class="metrics" style="margin:8px 0 0">
+        <div class="metric"><div class="k">Flights</div><div class="v">${active.flights||0}${sr!=null?` · ${sr}%`:''}</div></div>
+        <div class="metric"><div class="k">Losses</div><div class="v" style="color:${active.losses?'var(--bad)':'var(--ink)'}">${active.losses||0}</div></div>
+        <div class="metric"><div class="k">Reliability heritage</div><div class="v" style="color:var(--ok)">+${relB.toFixed(1)}%</div></div>
+        <div class="metric"><div class="k">Build discount</div><div class="v" style="color:var(--ok)">−${buildCut}%</div></div>
+      </div>
+      <div class="dim" style="font-size:11px;margin-top:8px">${exp>=FAM_EXP_CAP?'Heritage maxed — a fully proven airframe.':`Heritage builds with every success (${exp}/${FAM_EXP_CAP}). Losing it would sting.`}</div>
+    </div>`;
+  }else{
+    activeHtml=`<div class="dim" style="font-size:12px;margin-bottom:8px">Flying an <b>untracked one-off</b> — no heritage. Register this design as a family to start accumulating reliability, manufacturing savings, and brand reputation across its flights.</div>`;
+  }
+  const others=fams.filter(f=>!active||f.id!==active.id);
+  const list=others.length?`<div class="mission-tag" style="margin-top:4px">Fleet lineages</div>`+others.map(f=>{
+    const sr=familySuccessRate(f);
+    return `<div class="item" style="margin-top:8px">
+      <div class="body">
+        <div class="title" style="font-size:13px">${f.name} ${f.parentId&&familyById(f.parentId)?`<span class="pill">↳ ${familyById(f.parentId).name}</span>`:''}</div>
+        <div class="sub">${f.flights||0} flights${sr!=null?` · ${sr}% success`:''}${f.losses?` · ${f.losses} lost`:''} · +${(familyRelBonus(f)*100).toFixed(1)}% rel</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <button class="btn" style="font-size:11px;padding:4px 8px" onclick="loadFamily('${f.id}')">Load &amp; fly</button>
+        <button class="btn ghost danger" style="font-size:11px;padding:4px 8px" onclick="retireFamily('${f.id}')">Retire</button>
+      </div>
+    </div>`;
+  }).join(''):'';
+  card.innerHTML=`<h2>Vehicle Family</h2>
+    ${activeHtml}
+    <button class="btn" style="width:100%" onclick="saveAsFamily()">+ Register current design${active?` as a new family (derives from ${active.name})`:' as a family'}</button>
+    ${list}`;
+}
 // M12: mission-architecture selector — reshapes the profile/hardware/risk
 function renderArchitecture(){
   const card=$('archCard'); if(!card) return;

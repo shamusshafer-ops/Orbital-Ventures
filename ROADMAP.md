@@ -121,7 +121,9 @@ companion to `orbital-ventures-design.md` (original full design doc) and
   (you discover the resource, then build the plant), but means the first Mars
   trip can't benefit from it.
 - The Solar System map now visualises rival expansion (coloured reach markers
-  per body) and ambient economy events; **fleet logistics** is still not modeled.
+  per body) and ambient economy events; **fleet logistics** is still not modeled
+  (the home for Strategic-Vision Phase 5 colony/interplanetary-logistics work —
+  see § Strategic Vision).
 
 > **Roadmap/code sync note (2026-06-17):** an audit found M5, M7, and the
 > passive-income section below had been written up here ahead of implementation
@@ -286,11 +288,26 @@ review's numbering, not the build order (see **Suggested build order** at the en
       + trend, holdings value, buy/sell, buyer banner). Validated headlessly (15
       checks): buy/sell economics + spread, gating, mean-reversion within bounds,
       price shocks, and capped premium buyer sales.
-- [ ] **3 · Hardware reuse & vehicle families** — No persistent vehicle identity
-      today (each launch re-derives a design). Add named lineages (OV-1 → OV-2 →
-      OV-Heavy) that accumulate reliability heritage, manufacturing knowledge, and
-      brand/rep; losing a veteran airframe should sting. Needs a saved-design model
-      (`state.vehicles[]`) distinct from the live bench config.
+- [x] **3 · Hardware reuse & vehicle families** — *Built 2026-06-19.* Persistent
+      vehicle identity now lives in `state.vehicles[]` (each record: name, born,
+      `parentId`, `inherited`, flights/successes/losses, and a deep `spec` snapshot
+      of the bench), distinct from the live bench config. `state.activeVehicle` tags
+      the design you're flying (`null` = an untracked one-off, the original
+      zero-heritage behaviour). **Heritage**, all bounded so the existing reliability
+      caps stay the ceiling: `familyRelBonus` (+0.02/experience, cap +0.12 at 6) adds
+      a term in `effectiveReliability`; `familyBuildMult` (−0.03/success, floor 0.70)
+      cuts `buildCost` in `computeVehicle` — manufacturing knowledge; brand-rep awards
+      at the 5th/10th/20th successful flight; a derived family inherits 40% of its
+      parent's experience (`OV-1 → OV-2 → …`, auto-named, gap-filling). **Losing a
+      veteran stings**: abort/strand/loss records `losses++` and an extra rep penalty
+      scaling with prior heritage (`min(15, 2·experience)`) on top of the mission
+      penalty. New **Vehicle Family** card on the bench (active heritage readout,
+      Register / Load & fly / Retire, fleet lineage list) + a heritage line in the
+      reliability breakdown. `SAVE_VERSION`→2; forward-compat defaults added to both
+      load paths. Validated headlessly (44 checks): naming/gaps, snapshot, inherit
+      math, rel/build curves + caps, milestone rep, veteran-loss penalty, retire,
+      save/load round-trip, and the rel-cap bound under absurd heritage; + a render
+      smoke over command/bench/readout.
 - [x] **4 · Story failures** — *Built 2026-06-17, with #16.* Partial success
       (guidance → wrong orbit, reduced payout, objective not completed), crew abort
       (ascent fault + launch-escape → crew safe), deep-space stranding (crewed deep
@@ -314,13 +331,28 @@ review's numbering, not the build order (see **Suggested build order** at the en
       "correct" path. Add divergent branches (heavy-lift vs orbital-assembly vs
       refueling vs reusable vs nuclear) so different strategies reach Mars
       differently. Needs tree restructure + UI to show branches.
+      *(Absorbs Strategic-Vision Phase 7: technology readiness levels (TRL),
+      prototype/testing programs, and research partnerships layer on top of these
+      branches; patent/licensing already partly covered by the patent econ event +
+      spec'd passive-income tech-licensing, breakthroughs by #9/#14.)*
 - [ ] **7 · Manufacturing capacity** — Money is nearly the only resource. Add build
       bays / engine production / launch-pad capacity as constraints, so "another pad
       vs. hydrogen engines" becomes a real decision. New resource layer in `state`.
+      *(Primary home for Strategic-Vision Phase 3 (v2.5): factories that build
+      engines/tanks/spacecraft/habitats, raw-material supply chains, production
+      scheduling + bottleneck management, quality-assurance that feeds the #16
+      subsystem-reliability model, reusable-hardware refurbishment workflows (ties
+      to M5), and forecasting/inventory. The single biggest unbuilt bucket in the
+      strategic doc.)*
 - [~] **8 · Program politics** — Partially foreshadowed by rep + economy events.
       Add government funding (budget increases/cuts), public support (Moon landing
       ↑, crew deaths ↓), shareholders (demand profit), national prestige (the race).
       Launches affect more than money.
+      *(Absorbs Strategic-Vision Phase 6 (v4.0): government funding structures,
+      political influence, media coverage / public opinion, and the still-new
+      investor-expectations / stock-market sub-system. Global launch market +
+      dynamic economic cycles are already shipped via econ events + the #2 fuel
+      market.)*
 - [x] **9 · Personnel personality** — *Built 2026-06-18.* Every hire now has a
       **trait** (deterministic per id): engineers are Perfectionist / Risk-taker /
       Visionary / Veteran / Mentor; astronauts Steady / Daredevil / Charismatic /
@@ -423,10 +455,90 @@ review's numbering, not the build order (see **Suggested build order** at the en
 **Suggested build order:** ~~16 (subsystem reliability + story failures)~~ ✓ →
 ~~17 (infrastructure layer)~~ ✓ → ~~2 (depot economy)~~ ✓ → ~~10 (bench
 silhouette)~~ ✓ → ~~12 (architecture choices)~~ ✓ → ~~5 (active rivals)~~ ✓ →
-~~9 (personnel traits)~~ ✓ → ~~14 (science)~~ ✓ → **3 (vehicle families) ← next**
-→ 6 (multi-path tech) → 8 (politics) → 7 (manufacturing). Items
-1/2/4/5/9/10/11/12/14/15/16/17 shipped; tech tree (part of #6) now a real
-interactive graph; 13 partially done.
+~~9 (personnel traits)~~ ✓ → ~~14 (science)~~ ✓ → ~~3 (vehicle families)~~ ✓ →
+~~18 (Command Center, first slice)~~ ✓ → **6 (multi-path tech) ← next** → 8
+(politics) → 7 (manufacturing). Items 1/2/3/4/5/9/10/11/12/14/15/16/17 shipped +
+18 first slice; tech tree (part of #6) now a real interactive graph; 13 partially
+done.
+
+## Strategic Vision — 8-Phase Grand-Strategy Arc
+
+Source: *Orbital Ventures: Strategic Development Roadmap* (`.docx`) and *Game
+Design Roadmap V1* (`.xlsx`), imported 2026-06-19. These two are the same
+document in two formats — a long-horizon north star that reframes the project
+from "rocket-design simulator" into a **deep space-agency grand-strategy sim**:
+begin in the 1940s with a handful of engineers, end guiding a spacefaring
+civilization across multiple worlds, with every system feeding every other
+(research → manufacturing → missions → politics/economics → colonization →
+future opportunities).
+
+**Important reconciliation note:** this vision was written as if the game were
+still an early rocket-design sim, but the tactical build (M1–M7 + the 15-point
+forward arc above) has already shipped large parts of several phases. The table
+below maps each phase to current code reality so the vision stays honest. The
+genuinely-new work has been folded into the existing forward-arc numbering
+rather than tracked as a parallel ladder — cross-references in **bold** point to
+where each item actually lives.
+
+| Phase (target version) | Status vs. shipped code | New work & where it's tracked |
+| --- | --- | --- |
+| **P1 · Foundation & UX** (v1.5) | Vehicle visualization shipped (**#10** bench silhouette); save/load shipped | **NEW:** Agency Command Center home screen, customizable dashboards/analytics, mission-planning timelines + launch manifests, save-game reporting/historical stats, advanced filtering/sorting. No existing home — see **new arc item #18** below. |
+| **P2 · Personnel & org depth** (v2.0) | Shipped at individual scale: **M6** (12 eng/8 astro, morale, attrition, salary) + **#9** (traits, personal events) + **#5** (poaching/retention) | **NEW:** scale individuals → departments; career progression, training/specialization tracks, executive/leadership roles, succession/workforce planning. Extends **M6/#9** — see **new arc item #19**. |
+| **P3 · Manufacturing & production** (v2.5) | Not built; QA→reliability bridge exists via **#16** | Factories, supply chains, scheduling, bottlenecks, inventory, refurbishment → folded into **#7 Manufacturing capacity** (the single biggest unbuilt bucket). |
+| **P4 · Mission Control & operations** (v3.0) | Flight telemetry exists *visually* in the launch animation | **NEW:** interactive Mission Control, in-flight player decisions, rescue missions, launch **weather**/environmental systems, rehearsal tools. (Story-failure outcomes already exist via **#4/#16**.) See **new arc item #20**. |
+| **P5 · Infrastructure & colonization** (v3.5) | Persistent bases/stations shipped (**#17**); ISRU shipped; depot economy (**#2**) | **NEW:** colony **population growth**/management, typed habitat/mine/power construction, and **interplanetary logistics/trade routes** = the open *fleet-logistics* thread. Extends **#17** — see **new arc item #21**. |
+| **P6 · Economic & political** (v4.0) | Global launch market + dynamic cycles shipped (econ events, **#2** fuel market) | Government funding, political influence, media/public opinion, **investor/stock-market** → folded into **#8 Program politics**. |
+| **P7 · Research ecosystem** (v4.5) | Test campaigns (**M2**), science track (**#14**), breakthroughs (**#9**) shipped; tech tree now interactive | TRL, prototype/testing programs, competing pathways, patent licensing, research partnerships → folded into **#6 Multi-path tech tree**. |
+| **P8 · Deep-space civilization** (v5.0) | Foreshadowed by facilities (**#17**) + programs/ambitions (**#1/#11**) | **NEW endgame cluster:** planetary economies, interplanetary trade networks, orbital shipyards, megaproject construction, terraforming, generation/precursor interstellar ships. See **new arc item #22**. |
+
+### New forward-arc items extracted from the strategic vision
+
+These are the buckets with no existing home in the 15-point arc. Numbered to
+continue that list. All are **[ ] not started**; ordering is by the strategic
+doc's own priority grid (Player Impact / Dev Complexity), not committed build
+order — the near-term build order (#3 vehicle families → … → #7) is unchanged.
+
+- [~] **18 · Agency Command Center & UX layer** *(P1, v1.5)* — *First slice built
+      2026-06-19.* The Command Center is now the **default landing screen** (first
+      nav tab, default `state.tab`): an at-a-glance dashboard (`commandSummary()` —
+      capital, rep, flights+success rate, science, era, and a monthly **net
+      cashflow** = facility/royalty income − overhead − payroll) plus a drill-down
+      **ground site map** (`siteBuildings()` → clickable tiles routing into the
+      existing tabs: Launch Pad→bench, Mission Control→missions, R&D→rnd,
+      Personnel→personnel, Orbital Ops→infra, Solar System→map, Rivals→rivals).
+      **Manufacturing** and **Production** tiles are present-but-passive hooks, wired
+      to light up when the production layer (**#7**) lands. Data layer is pure and
+      headless-tested (building set/order, planned/routing flags, net-cashflow math,
+      default tab). *Deferred to later slices:* customizable dashboards, launch
+      manifests, advanced filtering/sorting, historical reporting.
+- [ ] **19 · Organizational scaling (departments)** *(P2, v2.0)* — Grow personnel
+      from named individuals into **departments** with leaders/executive roles,
+      career progression + training/specialization tracks, and
+      succession/workforce planning. Builds directly on **M6** (morale/attrition/
+      salary), **#9** (traits/events), and **#5** (poaching/retention) rather than
+      replacing them.
+- [ ] **20 · Interactive Mission Control & operations** *(P4, v3.0)* — Turn the
+      passive launch animation into a live **Mission Control**: in-flight player
+      decisions/events, rescue missions & contingency planning, launch
+      **weather**/environmental systems, and pre-flight rehearsal tools. Leans on
+      the existing per-subsystem failure model (**#16**) and abort/strand outcomes
+      (**#4**) for the decision content.
+- [ ] **21 · Colony population & interplanetary logistics** *(P5, v3.5)* — Extend
+      the **#17** facility layer into living colonies: population growth/management,
+      typed construction (habitats/mines/power/fuel), and **interplanetary
+      logistics & trade routes** (this is the long-open *fleet-logistics* thread).
+      Self-sustaining settlements become the bridge to Phase 8.
+- [ ] **22 · Endgame: deep-space civilization** *(P8, v5.0 — ultimate horizon)* —
+      The capstone cluster: planetary economies, interplanetary trade networks,
+      massive orbital shipyards, megaproject construction, terraforming programs,
+      and generation/precursor interstellar missions. Long-horizon; depends on
+      most of the above (esp. #7 manufacturing, #21 logistics) being in place.
+
+> **Incorporation note (2026-06-19):** strategic-vision Phases 3/6/7 were merged
+> into existing arc items #7/#8/#6 (see those entries); Phases 1/2/4/5/8 are
+> captured as new items #18–#22 above. Phases that were already shipped (vehicle
+> viz, save/load, facilities, ISRU, launch-market/econ cycles, science,
+> breakthroughs) are recorded in the reconciliation table, not re-opened.
 
 ## Repo
 
