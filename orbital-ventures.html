@@ -130,6 +130,20 @@
   .bldg .nm{font-weight:600;font-size:13px;margin-top:2px}
   .bldg .st{font-family:var(--mono);font-size:11px;color:var(--muted)}
 
+  /* Command Center — animated Cape Canaveral scene */
+  .ccscene-wrap{position:relative;margin-top:4px;line-height:0}
+  .ccscene{display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:8px;background:#05070d}
+  .ccspot{position:absolute;border:1px solid transparent;border-radius:6px;cursor:pointer;
+    transition:border-color .12s,background .12s;display:flex;flex-direction:column;justify-content:flex-end;
+    padding:4px 6px;overflow:visible}
+  .ccspot:hover{border-color:var(--ignite);background:rgba(245,166,35,0.08)}
+  .ccspot .nm{font-size:11px;font-weight:600;color:var(--ink);line-height:1.15;text-shadow:0 1px 3px #000,0 0 6px #000}
+  .ccspot .st{font-family:var(--mono);font-size:10px;color:var(--readout);line-height:1.2;text-shadow:0 1px 3px #000,0 0 5px #000}
+  .ccspot .pill{align-self:flex-start;margin-bottom:2px}
+  .ccspot.planned{cursor:default}
+  .ccspot.planned:hover{border-color:rgba(125,144,155,0.4);background:rgba(125,144,155,0.06)}
+  .ccspot.planned .nm{color:var(--muted)}
+
   /* Mission & research lists */
   .item{display:flex;gap:12px;align-items:center;border:1px solid var(--line);border-radius:6px;padding:11px 13px;margin-bottom:9px;background:var(--panel2)}
   .item .body{flex:1}
@@ -4121,7 +4135,7 @@ function render(){
     : `<span class="dim">No active research. Start a project in R&D — it runs while you fly.</span>`;
   $('skipBtn').disabled=!ar;
 
-  if(state.tab==='command')renderCommandCenter();
+  if(state.tab==='command')renderCommandCenter(); else stopCCScene();
   if(state.tab==='bench'){renderVehicleFamilies();renderArchitecture();renderStages();renderTransfer();renderLander();renderCrew();renderWindowPlanner();renderRoutes();renderReadout();renderVehiclePreview();}
   if(state.tab==='missions')renderMissions();
   if(state.tab==='programs')renderPrograms();
@@ -4190,16 +4204,166 @@ function siteBuildings(){
     {key:'rivals', icon:'◆', name:'Rivals', tab:'rivals', status:`threat: ${threatTxt}`, planned:false},
   ];
 }
+// #18 (scene): each building's footprint on the Cape panorama as percent coords (0–100).
+// Shared by the canvas painter and the DOM hotspot overlay so they stay aligned.
+const CC_SPOTS = {
+  rnd:       {x:2,  y:50, w:13, h:20},
+  personnel: {x:16, y:53, w:11, h:17},
+  mfg:       {x:28, y:32, w:14, h:38},  // VAB — tall assembly building
+  prod:      {x:43, y:57, w:10, h:13},  // production sheds (planned)
+  mission:   {x:54, y:49, w:12, h:21},
+  infra:     {x:66, y:51, w:10, h:19},  // tracking dishes
+  map:       {x:76, y:48, w:9,  h:22},  // planetarium dome
+  pad:       {x:84, y:28, w:13, h:42},  // gantry + rocket at the water's edge
+  rivals:    {x:90, y:39, w:8,  h:9},   // distant rival pad on the horizon
+};
+function ccHotspots(){ return siteBuildings().map(b=>Object.assign({}, b, CC_SPOTS[b.key]||{x:0,y:0,w:0,h:0})); }
+/* ---------- #18 (scene): animated Cape Canaveral panorama on a 2D canvas ---------- */
+function ccRect(key,W,H){ const s=CC_SPOTS[key]||{x:0,y:0,w:0,h:0}; return {x:s.x/100*W, y:s.y/100*H, w:s.w/100*W, h:s.h/100*H}; }
+function ccWindows(ctx,x,y,w,h,cols,rows,t,seed,col){
+  col=col||'#f5a623'; const gx=w/cols, gy=h/rows, ww=Math.max(2,gx*0.5), wh=Math.max(2,gy*0.5);
+  for(let c=0;c<cols;c++)for(let r=0;r<rows;r++){
+    const lit=0.5+0.5*Math.sin(t*1.8+(c*3+r*7+seed*5));
+    const flick=(Math.sin(t*9+c*13+r*5+seed)>0.9)?0.35:1;
+    ctx.globalAlpha=0.22+0.6*lit*flick; ctx.fillStyle=col;
+    ctx.fillRect(x+c*gx+(gx-ww)/2, y+r*gy+(gy-wh)/2, ww, wh);
+  }
+  ctx.globalAlpha=1;
+}
+function ccCloud(ctx,x,y,s,a){ ctx.fillStyle=`rgba(38,54,76,${a})`;
+  [[0,0,1],[-0.6,0.12,0.7],[0.6,0.1,0.72],[-0.28,-0.18,0.55],[0.32,-0.16,0.6]].forEach(o=>{
+    ctx.beginPath(); ctx.ellipse(x+o[0]*s,y+o[1]*s,s*o[2],s*o[2]*0.55,0,0,7); ctx.fill(); }); }
+function drawClouds(ctx,W,gY,t){ const n=5; for(let i=0;i<n;i++){ const sp=5+i*2.5; const x=((i*W/n)+t*sp)%(W+220)-110; const y=gY*(0.16+0.1*((i*37)%5)/5); ccCloud(ctx,x,y,24+(i%3)*9,0.45); } }
+function drawSmoke(ctx,x,y,t,seed,sc){ for(let i=0;i<6;i++){ const p=((t*0.32+i/6+seed*0.37)%1); const sy=y-p*42*sc; const sx=x+Math.sin(p*6+seed*3)*8*sc; const rr=(2.5+p*10)*sc; ctx.fillStyle=`rgba(205,214,224,${0.22*(1-p)})`; ctx.beginPath(); ctx.arc(sx,sy,rr,0,7); ctx.fill(); } }
+function drawLab(ctx,r,t){
+  ctx.fillStyle='#1b252c'; ctx.fillRect(r.x,r.y,r.w,r.h);
+  ctx.strokeStyle='#33424c'; ctx.lineWidth=1; ctx.strokeRect(r.x,r.y,r.w,r.h);
+  ctx.fillStyle='#26323a'; ctx.beginPath(); ctx.moveTo(r.x,r.y); ctx.lineTo(r.x+r.w,r.y); ctx.lineTo(r.x+r.w,r.y-r.h*0.16); ctx.lineTo(r.x,r.y); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle='#4fd1d9'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(r.x+r.w*0.8,r.y); ctx.lineTo(r.x+r.w*0.8,r.y-9); ctx.stroke();
+  ccWindows(ctx,r.x+4,r.y+5,r.w-8,r.h-9,4,2,t,3,'#4fd1d9');
+}
+function drawAdmin(ctx,r,t){
+  ctx.fillStyle='#1a232a'; ctx.fillRect(r.x,r.y,r.w,r.h);
+  ctx.strokeStyle='#32414b'; ctx.lineWidth=1; ctx.strokeRect(r.x,r.y,r.w,r.h);
+  ccWindows(ctx,r.x+3,r.y+4,r.w-6,r.h-8,3,3,t,7,'#f5a623');
+}
+function drawVAB(ctx,r,t,dim){
+  ctx.globalAlpha=dim?0.8:1;
+  ctx.fillStyle='#202b33'; ctx.fillRect(r.x,r.y,r.w,r.h);
+  ctx.strokeStyle='#3a4a55'; ctx.lineWidth=1.2; ctx.strokeRect(r.x,r.y,r.w,r.h);
+  ctx.strokeStyle='rgba(90,110,125,0.35)'; ctx.lineWidth=1;
+  for(let i=1;i<5;i++){ const sx=r.x+r.w*i/5; ctx.beginPath(); ctx.moveTo(sx,r.y); ctx.lineTo(sx,r.y+r.h); ctx.stroke(); }
+  ctx.fillStyle='#10171c'; ctx.fillRect(r.x+r.w*0.3,r.y+r.h*0.58,r.w*0.4,r.h*0.42);
+  ctx.strokeStyle='rgba(245,166,35,0.5)'; ctx.lineWidth=1; ctx.strokeRect(r.x+r.w*0.3,r.y+r.h*0.58,r.w*0.4,r.h*0.42);
+  ctx.strokeStyle='#9aa7b0'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(r.x+r.w*0.5,r.y); ctx.lineTo(r.x+r.w*0.5,r.y-11); ctx.stroke();
+  ctx.fillStyle='#e0564f'; ctx.fillRect(r.x+r.w*0.5,r.y-11,8+Math.sin(t*3)*1.6,5);
+  ctx.globalAlpha=1;
+}
+function drawProd(ctx,r,t,dim){
+  ctx.globalAlpha=dim?0.72:1;
+  for(let i=0;i<2;i++){ const sx=r.x+i*r.w*0.52, sw=r.w*0.46;
+    ctx.fillStyle='#1a242b'; ctx.fillRect(sx,r.y+r.h*0.25,sw,r.h*0.75);
+    ctx.fillStyle='#222e36'; ctx.beginPath(); ctx.moveTo(sx,r.y+r.h*0.25); ctx.lineTo(sx+sw*0.5,r.y); ctx.lineTo(sx+sw,r.y+r.h*0.25); ctx.closePath(); ctx.fill(); }
+  ctx.globalAlpha=1;
+}
+function drawControl(ctx,r,t){
+  ctx.fillStyle='#1b262e'; ctx.fillRect(r.x,r.y+r.h*0.3,r.w,r.h*0.7);
+  ctx.strokeStyle='#34444f'; ctx.lineWidth=1; ctx.strokeRect(r.x,r.y+r.h*0.3,r.w,r.h*0.7);
+  ccWindows(ctx,r.x+3,r.y+r.h*0.34,r.w-6,r.h*0.6,4,2,t,5,'#58c47a');
+  // antenna mast + blinking light
+  const mx=r.x+r.w*0.5; ctx.strokeStyle='#8794a0'; ctx.lineWidth=1.6; ctx.beginPath(); ctx.moveTo(mx,r.y+r.h*0.3); ctx.lineTo(mx,r.y-r.h*0.2); ctx.stroke();
+  const bl=(Math.sin(t*4)>0)?1:0.25; ctx.fillStyle=`rgba(255,70,50,${0.4+0.6*bl})`; ctx.beginPath(); ctx.arc(mx,r.y-r.h*0.2,2.6,0,7); ctx.fill();
+}
+function drawDish(ctx,cx,cy,rad,ang){ ctx.save(); ctx.translate(cx,cy); ctx.rotate(ang);
+  ctx.fillStyle='#2b3942'; ctx.beginPath(); ctx.ellipse(0,0,rad,rad*0.66,0,Math.PI*0.1,Math.PI*1.9); ctx.fill();
+  ctx.strokeStyle='#485a66'; ctx.lineWidth=1; ctx.stroke();
+  ctx.strokeStyle='#6b7c88'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(rad*0.5,-rad*0.4); ctx.stroke(); ctx.restore(); }
+function drawDishes(ctx,r,t){
+  ctx.strokeStyle='#3a4a55'; ctx.lineWidth=2;
+  const base=r.y+r.h; for(let i=0;i<2;i++){ const cx=r.x+r.w*(0.3+i*0.45), cy=r.y+r.h*0.4;
+    ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(cx,base); ctx.stroke();
+    drawDish(ctx,cx,cy,r.w*0.26, -0.9+0.18*Math.sin(t*0.6+i)); }
+}
+function drawDome(ctx,r,t){
+  const cx=r.x+r.w*0.5, by=r.y+r.h;
+  ctx.fillStyle='#1c2730'; ctx.fillRect(r.x,by-r.h*0.35,r.w,r.h*0.35);
+  ctx.fillStyle='#243440'; ctx.beginPath(); ctx.ellipse(cx,by-r.h*0.35,r.w*0.5,r.h*0.55,0,Math.PI,0); ctx.fill();
+  ctx.strokeStyle='#3c4e5a'; ctx.lineWidth=1; ctx.beginPath(); ctx.ellipse(cx,by-r.h*0.35,r.w*0.5,r.h*0.55,0,Math.PI,0); ctx.stroke();
+  ctx.strokeStyle='rgba(79,209,217,0.6)'; ctx.lineWidth=1.4; ctx.beginPath(); ctx.moveTo(cx,by-r.h*0.35); ctx.lineTo(cx,by-r.h*0.9); ctx.stroke();
+  ctx.fillStyle=`rgba(245,197,66,${0.5+0.5*Math.abs(Math.sin(t*1.5))})`; ctx.beginPath(); ctx.arc(cx,by-r.h*0.62,1.8,0,7); ctx.fill();
+}
+function drawRivalPad(ctx,r,t){
+  ctx.globalAlpha=0.7; const cx=r.x+r.w*0.5, by=r.y+r.h;
+  ctx.strokeStyle='#5a4a44'; ctx.lineWidth=1; ctx.strokeRect(r.x+r.w*0.55,r.y,r.w*0.35,r.h);
+  ctx.fillStyle='#c2b8b2'; ctx.fillRect(cx-1.5,r.y+r.h*0.2,3,r.h*0.8);
+  ctx.fillStyle='#e0564f'; ctx.beginPath(); ctx.moveTo(cx-1.5,r.y+r.h*0.2); ctx.lineTo(cx+1.5,r.y+r.h*0.2); ctx.lineTo(cx,r.y+r.h*0.08); ctx.closePath(); ctx.fill();
+  ctx.globalAlpha=1;
+}
+function drawPad(ctx,r,groundY,t){
+  const cx=r.x+r.w*0.5;
+  ctx.fillStyle='#10171c'; ctx.fillRect(r.x,groundY-6,r.w,8);
+  // lattice gantry
+  const gx=r.x+r.w*0.66, gw=r.w*0.26, gTop=r.y, gBot=groundY-4;
+  ctx.strokeStyle='#8a6038'; ctx.lineWidth=2; ctx.strokeRect(gx,gTop,gw,gBot-gTop);
+  ctx.strokeStyle='rgba(180,120,70,0.45)'; ctx.lineWidth=1;
+  for(let yy=gTop; yy<gBot; yy+=11){ ctx.beginPath(); ctx.moveTo(gx,yy); ctx.lineTo(gx+gw,yy+11); ctx.moveTo(gx+gw,yy); ctx.lineTo(gx,yy+11); ctx.stroke(); }
+  const bl=(Math.sin(t*4)>0)?1:0.2; ctx.fillStyle=`rgba(255,60,40,${0.4+0.6*bl})`; ctx.beginPath(); ctx.arc(gx+gw,gTop,3,0,7); ctx.fill();
+  drawSmoke(ctx,cx-5,groundY-6,t,1,1.1); drawSmoke(ctx,cx+7,groundY-6,t,2,0.9);
+  // the player's current vehicle, drawn on the pad
+  let spec=null; try{ const m=curMission(); spec={ stages: state.stages.map(s=>({prop:s.prop,count:s.count})), transferProp:(m&&m.profile&&m.modules&&m.modules.includes('transfer'))?state.transfer.prop:0, crewed:!!(m&&m.crew>0) }; }catch(e){}
+  if(spec){ let shape=null; try{ shape=buildVehicleShape(spec); }catch(e){}
+    if(shape&&shape.segs.length){ const scale=Math.min((r.h*0.82)/(shape.totalH+16),(r.w*0.42)/(shape.maxW*1.9));
+      ctx.save(); ctx.translate(cx-r.w*0.14, groundY-6); drawVehicle(ctx, shape.segs, shape.nose, scale, 0, 0); ctx.restore(); } }
+}
+function drawCape(cv, t){
+  const ctx=cv && cv.getContext && cv.getContext('2d'); if(!ctx) return;
+  const W=cv.width, H=cv.height, groundY=H*0.70, waterX=W*0.78;
+  ctx.clearRect(0,0,W,H);
+  const sky=ctx.createLinearGradient(0,0,0,groundY);
+  sky.addColorStop(0,'#0b1830'); sky.addColorStop(0.45,'#26405d'); sky.addColorStop(0.82,'#c97a4a'); sky.addColorStop(1,'#e8b36a');
+  ctx.fillStyle=sky; ctx.fillRect(0,0,W,groundY);
+  for(let i=0;i<60;i++){ const sx=(i*137.5)%W, sy=(i*73.3)%(groundY*0.5); const tw=Math.abs(Math.sin(t*1.5+i)); ctx.fillStyle=`rgba(220,230,255,${0.12+0.25*tw})`; ctx.fillRect(sx,sy,1.2,1.2); }
+  const sunX=waterX+(W-waterX)*0.5, sunY=groundY*0.6;
+  const sg=ctx.createRadialGradient(sunX,sunY,2,sunX,sunY,48); sg.addColorStop(0,'rgba(255,232,184,0.95)'); sg.addColorStop(0.4,'rgba(255,180,90,0.5)'); sg.addColorStop(1,'rgba(255,150,60,0)');
+  ctx.fillStyle=sg; ctx.beginPath(); ctx.arc(sunX,sunY,48,0,7); ctx.fill();
+  ctx.fillStyle='#ffd9a0'; ctx.beginPath(); ctx.arc(sunX,sunY,12,0,7); ctx.fill();
+  drawClouds(ctx,W,groundY,t);
+  ctx.fillStyle='#0e2c44'; ctx.fillRect(waterX,groundY-2,W-waterX,H-(groundY-2));
+  for(let i=0;i<26;i++){ const ry=groundY+(H-groundY)*((i+0.5)/26); const amp=2+i*0.6; const rx=sunX+Math.sin(t*1.2+i*0.5)*amp; const wl=18+i*2; ctx.strokeStyle=`rgba(255,210,150,${0.2*(1-i/26)})`; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(rx-wl/2,ry); ctx.lineTo(rx+wl/2,ry); ctx.stroke(); }
+  const gg=ctx.createLinearGradient(0,groundY,0,H); gg.addColorStop(0,'#243027'); gg.addColorStop(1,'#161e18');
+  ctx.fillStyle=gg; ctx.fillRect(0,groundY,waterX,H-groundY);
+  ctx.strokeStyle='rgba(255,220,170,0.22)'; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(waterX,groundY-2); ctx.lineTo(waterX,H); ctx.stroke();
+  drawLab(ctx,ccRect('rnd',W,H),t);
+  drawAdmin(ctx,ccRect('personnel',W,H),t);
+  drawVAB(ctx,ccRect('mfg',W,H),t,true);
+  drawProd(ctx,ccRect('prod',W,H),t,true);
+  drawControl(ctx,ccRect('mission',W,H),t);
+  drawDishes(ctx,ccRect('infra',W,H),t);
+  drawDome(ctx,ccRect('map',W,H),t);
+  drawRivalPad(ctx,ccRect('rivals',W,H),t);
+  drawPad(ctx,ccRect('pad',W,H),groundY,t);
+}
+let ccAnim=null, ccT0=0;
+function ccNow(){ return (typeof performance!=='undefined'&&performance.now)?performance.now():Date.now(); }
+function startCCScene(){ if(ccAnim!=null) return; ccT0=ccNow(); ccAnim=requestAnimationFrame(ccLoop); }
+function stopCCScene(){ if(ccAnim!=null){ cancelAnimationFrame(ccAnim); ccAnim=null; } }
+function ccLoop(){
+  if(!state || state.tab!=='command'){ ccAnim=null; return; }
+  const cv=$('ccScene'); if(!cv){ ccAnim=null; return; }
+  try{ drawCape(cv, (ccNow()-ccT0)/1000); }catch(e){}
+  ccAnim=requestAnimationFrame(ccLoop);
+}
 function renderCommandCenter(){
   const card=$('commandCard'); if(!card) return;
   const s=commandSummary();
   const netCol=s.net>=0?'var(--ok)':'var(--bad)';
-  const tiles=siteBuildings().map(b=>{
+  const spots=ccHotspots().map(b=>{
     const planned=b.planned||!b.tab;
-    const onclick=b.tab?` onclick="setTab('${b.tab}')"`:'';
-    return `<div class="bldg${planned?' planned':''}"${onclick}>
-      <span class="ic">${b.icon}</span>
-      <span class="nm">${b.name} ${b.planned?'<span class="pill lock">planned</span>':''}</span>
+    const onclick=(!planned&&b.tab)?` onclick="setTab('${b.tab}')"`:'';
+    const style=`left:${b.x}%;top:${b.y}%;width:${b.w}%;height:${b.h}%`;
+    return `<div class="ccspot${planned?' planned':''}" style="${style}"${onclick} title="${b.name} — ${b.status}">
+      ${b.planned?'<span class="pill lock">planned</span>':''}
+      <span class="nm">${b.name}</span>
       <span class="st">${b.status}</span>
     </div>`;
   }).join('');
@@ -4221,9 +4385,13 @@ function renderCommandCenter(){
       <div class="metric"><div class="k">Science</div><div class="v" style="color:var(--readout)">${s.science} ⚛</div></div>
     </div>
     ${s.nextObjective?`<div class="flag ok" style="margin:2px 0 4px">▸ Next objective: <b style="margin-left:4px">${s.nextObjective}</b></div>`:''}
-    <div class="mission-tag" style="margin-top:10px">Agency site — click a building to drill in</div>
-    <div class="sitegrid">${tiles}</div>
+    <div class="mission-tag" style="margin-top:10px">Cape Canaveral — click a building to drill in</div>
+    <div class="ccscene-wrap">
+      <canvas id="ccScene" class="ccscene" width="900" height="420"></canvas>
+      ${spots}
+    </div>
     <p class="muted" style="font-size:11px;margin:10px 0 0">Manufacturing and Production are scaffolded here — they become live systems when the production layer (#7) is built.</p>`;
+  startCCScene();
 }
 function applyDifficultyUI(){
   document.body.classList.toggle('hide-eq', !diff().showEquations);

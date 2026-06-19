@@ -528,7 +528,18 @@ order — the near-term build order (#3 vehicle families → … → #7) is unch
       **Manufacturing** and **Production** tiles are present-but-passive hooks, wired
       to light up when the production layer (**#7**) lands. Data layer is pure and
       headless-tested (building set/order, planned/routing flags, net-cashflow math,
-      default tab). *Deferred to later slices:* customizable dashboards, launch
+      default tab).
+      **Second slice built 2026-06-19** — the flat tile grid is now an **animated
+      Cape Canaveral side-elevation panorama**: a `requestAnimationFrame` canvas scene
+      (`drawCape`/`ccLoop`, self-cancels off-tab) painting a dusk sky over the
+      Atlantic with sun-glow + shimmer, drifting clouds, smoke, blinking gantry/control
+      beacons and flickering windows, a VAB, mission control, tracking dishes,
+      planetarium dome, distant rival pad, and a **launch pad showing the player's
+      current vehicle** (reuses `buildVehicleShape`/`drawVehicle`). A percent-coord
+      layout (`CC_SPOTS`) is shared by the painter and a DOM **hotspot overlay**
+      (`ccHotspots()` merging `siteBuildings()`) so labels stay crisp, clickable, and
+      live; planned buildings render dimmed. Validated headlessly (54 checks) + a scene
+      screenshot. *Deferred to later slices:* customizable dashboards, launch
       manifests, advanced filtering/sorting, historical reporting.
 - [ ] **19 · Organizational scaling (departments)** *(P2, v2.0)* — Grow personnel
       from named individuals into **departments** with leaders/executive roles,
