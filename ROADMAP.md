@@ -327,14 +327,33 @@ review's numbering, not the build order (see **Suggested build order** at the en
       Validated headlessly (7 checks): price-war trigger + payout reduction,
       morale-scaled poach rates (low-morale star at risk, high-morale safe, empty
       bench safe), and threat attribution.
-- [~] **6 · Multi-path tech tree** — Research exists but is largely linear with a
-      "correct" path. Add divergent branches (heavy-lift vs orbital-assembly vs
-      refueling vs reusable vs nuclear) so different strategies reach Mars
-      differently. Needs tree restructure + UI to show branches.
-      *(Absorbs Strategic-Vision Phase 7: technology readiness levels (TRL),
-      prototype/testing programs, and research partnerships layer on top of these
-      branches; patent/licensing already partly covered by the patent econ event +
-      spec'd passive-income tech-licensing, breakthroughs by #9/#14.)*
+- [~] **6 · Multi-path tech tree** — *First slice built 2026-06-19.* **Branches are
+      now visible and divergent.** Every `RESEARCH` node carries a `track`
+      (Propulsion / Structures & Test / Crew & Life Support / Deep Space / Nuclear /
+      Refueling & ISRU / Orbital Assembly); a new pure `techLayout()` lays nodes into
+      per-track **swimlanes** (x by tier, sub-rows to avoid collisions) and the
+      rewritten `renderTechTree()` draws labeled colored lane bands, track-tinted
+      nodes (left stripe + border) and edges, and a legend. **Divergent routes to a
+      destination** are now real and surfaced: three already existed mechanically —
+      **heavy-lift** (chemical), **refueling** (`orbital_depot` + depot draw),
+      **nuclear** (NTR/NEP transfer engine) — and a genuinely new **Orbital Assembly**
+      route ships: research `orbital_assembly` (+`auto_rendezvous`) unlocks an
+      "Assemble in orbit" toggle that pre-positions the heavy in-space modules
+      (transfer/lander) on separate launches so the main rocket never lifts them
+      (`simulateMission` subtracts them from the LEO-ascent mass, mirroring depot
+      top-off), trading raw lift for +flights (`launchCost`), +integration months
+      (`buildMonths`), and a bounded per-docking reliability hit
+      (`assemblyDockPenalty`, halved by `auto_rendezvous`, inside existing caps). A
+      **Routes to <body>** bench card (`marsRoutes()`) shows each route as
+      locked/available/in-use. Validated headlessly (83 checks: track coverage, layout
+      disjoint lanes + no overlaps, assembly gating/flights/cost/penalty, reliability
+      caps, and a *route-divergence proof* — an otherwise-too-heavy Mars stack that
+      fails LEO ascent flies once assembled in orbit) + render smoke + tree
+      screenshot.
+      *Still open in #6 (later slices):* technology readiness levels (TRL),
+      prototype/testing programs, research partnerships, reusable route (M5).
+      *(Strategic-Vision Phase 7; patent/licensing partly covered by the patent econ
+      event + spec'd passive-income tech-licensing, breakthroughs by #9/#14.)*
 - [ ] **7 · Manufacturing capacity** — Money is nearly the only resource. Add build
       bays / engine production / launch-pad capacity as constraints, so "another pad
       vs. hydrogen engines" becomes a real decision. New resource layer in `state`.
@@ -456,10 +475,10 @@ review's numbering, not the build order (see **Suggested build order** at the en
 ~~17 (infrastructure layer)~~ ✓ → ~~2 (depot economy)~~ ✓ → ~~10 (bench
 silhouette)~~ ✓ → ~~12 (architecture choices)~~ ✓ → ~~5 (active rivals)~~ ✓ →
 ~~9 (personnel traits)~~ ✓ → ~~14 (science)~~ ✓ → ~~3 (vehicle families)~~ ✓ →
-~~18 (Command Center, first slice)~~ ✓ → **6 (multi-path tech) ← next** → 8
-(politics) → 7 (manufacturing). Items 1/2/3/4/5/9/10/11/12/14/15/16/17 shipped +
-18 first slice; tech tree (part of #6) now a real interactive graph; 13 partially
-done.
+~~18 (Command Center, first slice)~~ ✓ → ~~6 (multi-path tech, first slice)~~ ✓ →
+**8 (politics) ← next** → 7 (manufacturing). Items 1/2/3/4/5/9/10/11/12/14/15/16/17
+shipped + 18 & 6 first slices; tech tree now a real swimlane graph with divergent
+routes; 13 partially done. (#6 later slices: TRL, partnerships, reusable route.)
 
 ## Strategic Vision — 8-Phase Grand-Strategy Arc
 

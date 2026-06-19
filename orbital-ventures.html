@@ -245,6 +245,7 @@
       <div class="card hidden" id="landerCard"></div>
       <div class="card hidden" id="crewCard"></div>
       <div class="card hidden" id="windowCard"></div>
+      <div class="card hidden" id="routesCard"></div>
     </div>
     <div class="readout">
       <div class="card" id="vehicleCard" style="text-align:center">
@@ -715,31 +716,46 @@ function retireFamily(fid){
 }
 
 const RESEARCH = [
-  {id:'kerosene',     name:'Kerosene Propulsion',           cost:2.0, months:3, req:[],          effect:{engine:'kerolox_mk1'}, desc:'Unlocks the Rocketdyne S-3D — higher Isp than alcohol/LOX.<span class="hist">↳ Refined kerosene (RP-1) replaced the V-2\'s alcohol in Rocketdyne\'s Atlas and Thor engines.</span>'},
-  {id:'vac_upper',    name:'Vacuum-Optimized Upper Stage',  cost:2.5, months:3, req:[],          effect:{engine:'vernier_v'},   desc:'Unlocks the Bell Agena XLR81 upper stage engine (Isp 315 s in vacuum).<span class="hist">↳ Restartable vacuum stages like the Agena turned launchers into orbit-and-beyond vehicles.</span>'},
-  {id:'sustainer',    name:'High-Thrust Sustainer',         cost:3.0, months:4, req:['kerosene'],effect:{engine:'kerolox_mk2'}, desc:'Unlocks the Rocketdyne MA-3 Sustainer — more thrust and Isp for first stages.<span class="hist">↳ Atlas\'s sustainer kept firing to orbit after the boosters dropped away — &ldquo;stage-and-a-half.&rdquo;</span>'},
-  {id:'alloy_tanks',  name:'Welded Alloy Tanks',            cost:2.0, months:3, req:[],          effect:{sigma:0.09},           desc:'Lowers σ from 0.12 to 0.09. Lighter tanks, better mass ratio.<span class="hist">↳ Welded aluminium alloy replaced the heavy riveted steel of the earliest airframes.</span>'},
-  {id:'balloon_tanks',name:'Stainless Balloon Tanks',       cost:3.0, months:3, req:['alloy_tanks'],effect:{sigma:0.07},        desc:'Lowers σ to 0.07. The mass-ratio edge that makes orbit reachable.<span class="hist">↳ Atlas used pressure-stabilized stainless &ldquo;balloon&rdquo; tanks so thin they\'d crumple unless kept inflated.</span>'},
-  {id:'test_program', name:'Static Fire Test Program',      cost:1.5, months:2, req:[],          effect:{reliability:0.08},     desc:'Ground-fire engines before flight: +8% launch reliability. Vital while heritage is low.<span class="hist">↳ Test stands from Peenemünde to Santa Susana turned ground explosions into flight reliability.</span>'},
-  {id:'heavy_booster',name:'Heavy Booster',                 cost:4.0, months:5, req:['sustainer'],   effect:{engine:'kerolox_mk3'}, desc:'Unlocks the Rocketdyne H-1 — the lift needed to put crew and life support into orbit.<span class="hist">↳ The high-thrust machines that first lifted people: Atlas for Mercury, the clustered R-7 for Vostok.</span>'},
-  {id:'crew_capsule', name:'Pressurized Crew Capsule',      cost:3.0, months:4, req:[],              effect:{unlock:'crew'},        desc:'Pressure vessel, heat shield, parachutes. Enables crewed missions.<span class="hist">↳ Mercury and Vostok — blunt-body capsules with ablative heat shields and parachute recovery.</span>'},
-  {id:'launch_escape',name:'Launch Escape System',          cost:2.5, months:3, req:['crew_capsule'],effect:{unlock:'les'},         desc:'Abort tower (+0.3 t). Crew survive a launch failure instead of being lost with the vehicle.<span class="hist">↳ In 1983 a Soyuz escape tower pulled its two crew clear of a rocket exploding on the pad.</span>'},
-  {id:'eclss_partial',name:'CO₂ &amp; Water Recovery',          cost:3.0, months:4, req:['crew_capsule'],effect:{unlock:'eclss'},       desc:'Scrub CO₂, recycle water: 60% consumable recovery. Pays off on multi-day missions.<span class="hist">↳ Gemini and Apollo scrubbed CO₂ with lithium-hydroxide canisters and carried their water.</span>'},
-  {id:'eclss_closed', name:'Closed-Loop ECLSS',             cost:4.5, months:5, req:['eclss_partial'],effect:{unlock:'eclss'},       desc:'90% recovery plus its own power — heavy. Only worth it on very long missions (foreshadows deep space).<span class="hist">↳ Mir and the ISS recover most of their water and oxygen to sustain months-long stays.</span>'},
-  {id:'hypergolic',   name:'Storable Hypergolic Propulsion',cost:3.5, months:4, req:['vac_upper'],     effect:{engine:'hyper_storable'},desc:'Unlocks the AJ10 (Aerozine/N₂O₄) — a restartable, storable in-space engine (Isp 321 s) ideal for transfer stages and landers that must coast for days then reignite.<span class="hist">↳ Aerozine-50/N₂O₄ powered the Apollo service and lunar modules: storable, hypergolic, restart-on-demand.</span>'},
-  {id:'cryo_upper',   name:'Cryogenic Hydrogen Upper Stage',cost:4.0, months:5, req:['vac_upper'],     effect:{engine:'hydrolox_up'},  desc:'Unlocks the Rocketdyne J-2 — a high-Isp LH₂/LOX upper stage engine (Isp 425 s), the energy to throw heavy payloads to orbit and beyond. (Cryogenic: boils off over long coasts.)<span class="hist">↳ The hydrogen-fuelled Centaur and Saturn\'s S-IVB gave deep-space launch its decisive edge.</span>'},
-  {id:'deep_space',   name:'Lunar Trajectory &amp; Deep-Space Tracking',cost:5.0, months:6, req:['heavy_booster'],effect:{unlock:'lunar'},desc:'Trajectory design and a tracking network — enough to navigate to the Moon and back. Unlocks cislunar missions.<span class="hist">↳ NASA\'s Deep Space Network and Apollo\'s guidance computers turned a quarter-million-mile shot into routine.</span>'},
-  {id:'lunar_lander', name:'Lunar Lander (Descent &amp; Ascent)', cost:6.0, months:7, req:['deep_space','hypergolic'], effect:{unlock:'lander'}, desc:'A two-stage lander: a descent stage for the powered landing, left on the surface, and a separate ascent stage to return to orbit. Unlocks Lunar Landing.<span class="hist">↳ The Apollo Lunar Module flew as two stages — Eagle\'s descent stage is still on the Sea of Tranquility.</span>'},
-  {id:'super_heavy',  name:'Rocketdyne F-1 Engine Development',  cost:7.0, months:8, req:['lunar_lander'], effect:{engine:'f1_class'}, desc:'A first-stage engine an order of magnitude beyond anything before it (6.7 MN thrust). The lander\'s mass — lifted, carried to the Moon, and lowered to the surface — demands a booster this size.<span class="hist">↳ Five F-1 engines powered the Saturn V\'s first stage, still the most powerful rocket ever flown.</span>'},
-  {id:'mars_traj',    name:'Mars Transfer Trajectory Planning', cost:6.5, months:7, req:['deep_space'], effect:{unlock:'mars'}, desc:'Interplanetary navigation for Hohmann-class transfers to Mars. Launch windows open roughly every 26 months — miss one and you wait for the next.<span class="hist">↳ Mariner and Viking proved the trajectories; the synodic period of Earth and Mars sets the rhythm ever since.</span>'},
-  {id:'orbital_depot',name:'Orbital Propellant Depot',       cost:5.5, months:6, req:['deep_space'], effect:{unlock:'depot'}, desc:'A propellant tank farm in LEO. Tanker Run contracts deposit fuel into it; any mission\'s transfer stage can then top off from the depot instead of carrying that propellant up from Earth.<span class="hist">↳ Depot-based architectures let a transfer stage launch nearly empty and fill up in orbit — the key to breaking the rocket equation\'s compounding.</span>'},
-  {id:'lunar_isru',   name:'Lunar ISRU (Water → LOX/LH₂)',   cost:6.0, months:7, req:[], reqMissionDone:'luna_landing', effect:{unlock:'isru_moon'}, desc:'Polar water ice, electrolyzed into liquid oxygen and hydrogen at a surface plant. Once established, your lander\'s ascent stage refuels on the Moon — that propellant no longer has to be launched from Earth.<span class="hist">↳ Permanently shadowed craters at the lunar poles hold water ice — the resource every lunar architecture since Apollo has wanted to reach.</span>'},
-  {id:'mars_isru',    name:'Mars ISRU (Sabatier Methalox)',  cost:7.5, months:8, req:[], reqMissionDone:'mars_orbit', effect:{unlock:'isru_mars'}, desc:'Atmospheric CO₂ plus water ice, run through the Sabatier reaction, yields methane and oxygen on the Martian surface. The return propellant for Trans-Earth Injection is made on Mars, not carried there.<span class="hist">↳ Sabatier-process ISRU is the linchpin of every serious Mars architecture — making the return fuel on-site instead of hauling it from Earth.</span>'},
-  {id:'nuclear_thermal', name:'Nuclear Thermal Propulsion (NERVA)', cost:9.0, months:10, req:['cryo_upper','deep_space'], effect:{engine:'ntr_nerva'}, desc:'A solid-core reactor heats liquid hydrogen to ~825 s Isp — roughly double the best chemical upper stage. Unlocks the NERVA transfer engine, the key to the high-Δv burns the outer system demands.<span class="hist">↳ The NERVA program ground-tested flight-class nuclear-thermal engines through the late 1960s before cancellation in 1973.</span>'},
-  {id:'nuclear_electric', name:'Nuclear-Electric Propulsion', cost:12.0, months:12, req:['nuclear_thermal'], effect:{engine:'nep_snap'}, desc:'A reactor-driven electric thruster: ~3,000 s Isp at minuscule thrust. Burns measured in months, not minutes — but the mass ratio it buys makes the deep outer system reachable. Unlocks the SNAP-derived NEP transfer engine.<span class="hist">↳ SNAP reactors flew in the 1960s; nuclear-electric remains the leading concept for crewed outer-planet transfer.</span>'},
-  {id:'rad_shielding', name:'Deep-Space Radiation Shielding', cost:6.0, months:6, req:['nuclear_thermal'], effect:{unlock:'rad_shield'}, desc:'Storm shelters and hydrogen-rich shielding to keep crews alive through Jovian radiation and multi-year cruises. Required for any crewed Jupiter mission.<span class="hist">↳ Jupiter\'s magnetosphere is the harshest radiation environment in the Solar System short of the Sun itself.</span>'},
-  {id:'belt_volatiles', name:'Belt Volatiles ISRU', cost:8.0, months:9, req:['nuclear_thermal'], reqMissionDone:'belt_mining', effect:{unlock:'isru_belt'}, desc:'Water and volatiles mined from carbonaceous asteroids, cracked into hydrogen/oxygen propellant at the claim. Once established, the Belt return burn (Trans-Earth Injection) is fuelled on-site instead of hauled from Earth.<span class="hist">↳ C-type asteroids are up to ~10% water by mass — the propellant depots of a spacefaring economy.</span>'},
+  {id:'kerosene', track:'propulsion',     name:'Kerosene Propulsion',           cost:2.0, months:3, req:[],          effect:{engine:'kerolox_mk1'}, desc:'Unlocks the Rocketdyne S-3D — higher Isp than alcohol/LOX.<span class="hist">↳ Refined kerosene (RP-1) replaced the V-2\'s alcohol in Rocketdyne\'s Atlas and Thor engines.</span>'},
+  {id:'vac_upper', track:'propulsion',    name:'Vacuum-Optimized Upper Stage',  cost:2.5, months:3, req:[],          effect:{engine:'vernier_v'},   desc:'Unlocks the Bell Agena XLR81 upper stage engine (Isp 315 s in vacuum).<span class="hist">↳ Restartable vacuum stages like the Agena turned launchers into orbit-and-beyond vehicles.</span>'},
+  {id:'sustainer', track:'propulsion',    name:'High-Thrust Sustainer',         cost:3.0, months:4, req:['kerosene'],effect:{engine:'kerolox_mk2'}, desc:'Unlocks the Rocketdyne MA-3 Sustainer — more thrust and Isp for first stages.<span class="hist">↳ Atlas\'s sustainer kept firing to orbit after the boosters dropped away — &ldquo;stage-and-a-half.&rdquo;</span>'},
+  {id:'alloy_tanks', track:'structures',  name:'Welded Alloy Tanks',            cost:2.0, months:3, req:[],          effect:{sigma:0.09},           desc:'Lowers σ from 0.12 to 0.09. Lighter tanks, better mass ratio.<span class="hist">↳ Welded aluminium alloy replaced the heavy riveted steel of the earliest airframes.</span>'},
+  {id:'balloon_tanks', track:'structures',name:'Stainless Balloon Tanks',       cost:3.0, months:3, req:['alloy_tanks'],effect:{sigma:0.07},        desc:'Lowers σ to 0.07. The mass-ratio edge that makes orbit reachable.<span class="hist">↳ Atlas used pressure-stabilized stainless &ldquo;balloon&rdquo; tanks so thin they\'d crumple unless kept inflated.</span>'},
+  {id:'test_program', track:'structures', name:'Static Fire Test Program',      cost:1.5, months:2, req:[],          effect:{reliability:0.08},     desc:'Ground-fire engines before flight: +8% launch reliability. Vital while heritage is low.<span class="hist">↳ Test stands from Peenemünde to Santa Susana turned ground explosions into flight reliability.</span>'},
+  {id:'heavy_booster', track:'propulsion',name:'Heavy Booster',                 cost:4.0, months:5, req:['sustainer'],   effect:{engine:'kerolox_mk3'}, desc:'Unlocks the Rocketdyne H-1 — the lift needed to put crew and life support into orbit.<span class="hist">↳ The high-thrust machines that first lifted people: Atlas for Mercury, the clustered R-7 for Vostok.</span>'},
+  {id:'crew_capsule', track:'crew', name:'Pressurized Crew Capsule',      cost:3.0, months:4, req:[],              effect:{unlock:'crew'},        desc:'Pressure vessel, heat shield, parachutes. Enables crewed missions.<span class="hist">↳ Mercury and Vostok — blunt-body capsules with ablative heat shields and parachute recovery.</span>'},
+  {id:'launch_escape', track:'crew',name:'Launch Escape System',          cost:2.5, months:3, req:['crew_capsule'],effect:{unlock:'les'},         desc:'Abort tower (+0.3 t). Crew survive a launch failure instead of being lost with the vehicle.<span class="hist">↳ In 1983 a Soyuz escape tower pulled its two crew clear of a rocket exploding on the pad.</span>'},
+  {id:'eclss_partial', track:'crew',name:'CO₂ &amp; Water Recovery',          cost:3.0, months:4, req:['crew_capsule'],effect:{unlock:'eclss'},       desc:'Scrub CO₂, recycle water: 60% consumable recovery. Pays off on multi-day missions.<span class="hist">↳ Gemini and Apollo scrubbed CO₂ with lithium-hydroxide canisters and carried their water.</span>'},
+  {id:'eclss_closed', track:'crew', name:'Closed-Loop ECLSS',             cost:4.5, months:5, req:['eclss_partial'],effect:{unlock:'eclss'},       desc:'90% recovery plus its own power — heavy. Only worth it on very long missions (foreshadows deep space).<span class="hist">↳ Mir and the ISS recover most of their water and oxygen to sustain months-long stays.</span>'},
+  {id:'hypergolic', track:'propulsion',   name:'Storable Hypergolic Propulsion',cost:3.5, months:4, req:['vac_upper'],     effect:{engine:'hyper_storable'},desc:'Unlocks the AJ10 (Aerozine/N₂O₄) — a restartable, storable in-space engine (Isp 321 s) ideal for transfer stages and landers that must coast for days then reignite.<span class="hist">↳ Aerozine-50/N₂O₄ powered the Apollo service and lunar modules: storable, hypergolic, restart-on-demand.</span>'},
+  {id:'cryo_upper', track:'propulsion',   name:'Cryogenic Hydrogen Upper Stage',cost:4.0, months:5, req:['vac_upper'],     effect:{engine:'hydrolox_up'},  desc:'Unlocks the Rocketdyne J-2 — a high-Isp LH₂/LOX upper stage engine (Isp 425 s), the energy to throw heavy payloads to orbit and beyond. (Cryogenic: boils off over long coasts.)<span class="hist">↳ The hydrogen-fuelled Centaur and Saturn\'s S-IVB gave deep-space launch its decisive edge.</span>'},
+  {id:'deep_space', track:'deepspace',   name:'Lunar Trajectory &amp; Deep-Space Tracking',cost:5.0, months:6, req:['heavy_booster'],effect:{unlock:'lunar'},desc:'Trajectory design and a tracking network — enough to navigate to the Moon and back. Unlocks cislunar missions.<span class="hist">↳ NASA\'s Deep Space Network and Apollo\'s guidance computers turned a quarter-million-mile shot into routine.</span>'},
+  {id:'lunar_lander', track:'deepspace', name:'Lunar Lander (Descent &amp; Ascent)', cost:6.0, months:7, req:['deep_space','hypergolic'], effect:{unlock:'lander'}, desc:'A two-stage lander: a descent stage for the powered landing, left on the surface, and a separate ascent stage to return to orbit. Unlocks Lunar Landing.<span class="hist">↳ The Apollo Lunar Module flew as two stages — Eagle\'s descent stage is still on the Sea of Tranquility.</span>'},
+  {id:'super_heavy', track:'propulsion',  name:'Rocketdyne F-1 Engine Development',  cost:7.0, months:8, req:['lunar_lander'], effect:{engine:'f1_class'}, desc:'A first-stage engine an order of magnitude beyond anything before it (6.7 MN thrust). The lander\'s mass — lifted, carried to the Moon, and lowered to the surface — demands a booster this size.<span class="hist">↳ Five F-1 engines powered the Saturn V\'s first stage, still the most powerful rocket ever flown.</span>'},
+  {id:'mars_traj', track:'deepspace',    name:'Mars Transfer Trajectory Planning', cost:6.5, months:7, req:['deep_space'], effect:{unlock:'mars'}, desc:'Interplanetary navigation for Hohmann-class transfers to Mars. Launch windows open roughly every 26 months — miss one and you wait for the next.<span class="hist">↳ Mariner and Viking proved the trajectories; the synodic period of Earth and Mars sets the rhythm ever since.</span>'},
+  {id:'orbital_depot', track:'refueling',name:'Orbital Propellant Depot',       cost:5.5, months:6, req:['deep_space'], effect:{unlock:'depot'}, desc:'A propellant tank farm in LEO. Tanker Run contracts deposit fuel into it; any mission\'s transfer stage can then top off from the depot instead of carrying that propellant up from Earth.<span class="hist">↳ Depot-based architectures let a transfer stage launch nearly empty and fill up in orbit — the key to breaking the rocket equation\'s compounding.</span>'},
+  {id:'lunar_isru', track:'refueling',   name:'Lunar ISRU (Water → LOX/LH₂)',   cost:6.0, months:7, req:[], reqMissionDone:'luna_landing', effect:{unlock:'isru_moon'}, desc:'Polar water ice, electrolyzed into liquid oxygen and hydrogen at a surface plant. Once established, your lander\'s ascent stage refuels on the Moon — that propellant no longer has to be launched from Earth.<span class="hist">↳ Permanently shadowed craters at the lunar poles hold water ice — the resource every lunar architecture since Apollo has wanted to reach.</span>'},
+  {id:'mars_isru', track:'refueling',    name:'Mars ISRU (Sabatier Methalox)',  cost:7.5, months:8, req:[], reqMissionDone:'mars_orbit', effect:{unlock:'isru_mars'}, desc:'Atmospheric CO₂ plus water ice, run through the Sabatier reaction, yields methane and oxygen on the Martian surface. The return propellant for Trans-Earth Injection is made on Mars, not carried there.<span class="hist">↳ Sabatier-process ISRU is the linchpin of every serious Mars architecture — making the return fuel on-site instead of hauling it from Earth.</span>'},
+  {id:'nuclear_thermal', track:'nuclear', name:'Nuclear Thermal Propulsion (NERVA)', cost:9.0, months:10, req:['cryo_upper','deep_space'], effect:{engine:'ntr_nerva'}, desc:'A solid-core reactor heats liquid hydrogen to ~825 s Isp — roughly double the best chemical upper stage. Unlocks the NERVA transfer engine, the key to the high-Δv burns the outer system demands.<span class="hist">↳ The NERVA program ground-tested flight-class nuclear-thermal engines through the late 1960s before cancellation in 1973.</span>'},
+  {id:'nuclear_electric', track:'nuclear', name:'Nuclear-Electric Propulsion', cost:12.0, months:12, req:['nuclear_thermal'], effect:{engine:'nep_snap'}, desc:'A reactor-driven electric thruster: ~3,000 s Isp at minuscule thrust. Burns measured in months, not minutes — but the mass ratio it buys makes the deep outer system reachable. Unlocks the SNAP-derived NEP transfer engine.<span class="hist">↳ SNAP reactors flew in the 1960s; nuclear-electric remains the leading concept for crewed outer-planet transfer.</span>'},
+  {id:'rad_shielding', track:'deepspace', name:'Deep-Space Radiation Shielding', cost:6.0, months:6, req:['nuclear_thermal'], effect:{unlock:'rad_shield'}, desc:'Storm shelters and hydrogen-rich shielding to keep crews alive through Jovian radiation and multi-year cruises. Required for any crewed Jupiter mission.<span class="hist">↳ Jupiter\'s magnetosphere is the harshest radiation environment in the Solar System short of the Sun itself.</span>'},
+  {id:'belt_volatiles', track:'refueling', name:'Belt Volatiles ISRU', cost:8.0, months:9, req:['nuclear_thermal'], reqMissionDone:'belt_mining', effect:{unlock:'isru_belt'}, desc:'Water and volatiles mined from carbonaceous asteroids, cracked into hydrogen/oxygen propellant at the claim. Once established, the Belt return burn (Trans-Earth Injection) is fuelled on-site instead of hauled from Earth.<span class="hist">↳ C-type asteroids are up to ~10% water by mass — the propellant depots of a spacefaring economy.</span>'},
+  {id:'orbital_assembly', track:'assembly', name:'Orbital Assembly &amp; Docking', cost:5.0, months:6, req:['deep_space'], effect:{unlock:'assembly'}, desc:'Rendezvous and docking, plus the structures and procedures to mate modules in orbit. Lets you launch a heavy in-space stack (transfer stage, lander) on separate flights and assemble it in LEO — so no single rocket has to lift the whole thing. An alternative to brute-force heavy lift.<span class="hist">↑ From Gemini’s first dockings to the on-orbit assembly of Mir and the ISS — the route to big spacecraft without a giant booster.</span>'},
+  {id:'auto_rendezvous', track:'assembly', name:'Automated Rendezvous &amp; Docking', cost:4.0, months:5, req:['orbital_assembly'], effect:{unlock:'auto_dock'}, desc:'Sensors and guidance for hands-off docking. Halves the reliability penalty of orbital assembly, making multi-launch architectures dependable enough to bet a crewed mission on.<span class="hist">↑ Progress, ATV and Dragon refined fully automated rendezvous — turning docking from a piloted feat into routine logistics.</span>'},
 ];
+
+// #6: research tracks — divergent branches, used by the swimlane tech-tree layout.
+const TRACKS = [
+  {key:'propulsion', label:'Propulsion',          color:'#f5a623'},
+  {key:'structures', label:'Structures & Test',   color:'#9aa7b0'},
+  {key:'crew',       label:'Crew & Life Support', color:'#58c47a'},
+  {key:'deepspace',  label:'Deep Space',          color:'#5aa9e0'},
+  {key:'nuclear',    label:'Nuclear',             color:'#b07ce0'},
+  {key:'refueling',  label:'Refueling & ISRU',    color:'#4fd1d9'},
+  {key:'assembly',   label:'Orbital Assembly',    color:'#e08a4f'},
+];
+function trackOf(id){ const r=RESEARCH.find(x=>x.id===id); return (r&&r.track)||'propulsion'; }
+function trackColor(key){ const t=TRACKS.find(x=>x.key===key); return t?t.color:'#9aa7b0'; }
 
 /* ---------- Solar System map data ---------- */
 // Orbital radius is schematic (log-ish spacing for legibility), not to scale.
@@ -891,6 +907,7 @@ function newGame(difficulty){
     facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
     architectures:{}, science:0,
     vehicles:[], activeVehicle:null, // #3: named vehicle lineages with heritage
+    assembleOrbit:false, // #6: orbital-assembly route toggle (per-launch, resets after flight)
   };
   log('info','Company founded. The pad is yours — go make some noise.');
 }
@@ -1276,6 +1293,39 @@ const ISRU_FREE_LEG = {
   belt_mining:  {leg:'Trans-Earth Injection', research:'belt_volatiles', label:'Belt Volatiles ISRU'},
 };
 // walk a mission profile leg by leg; in-space stages spend propellant while carrying the surviving stack
+// #6: orbital-assembly route — pre-position the heavy in-space modules on separate
+// launches and dock them in LEO, so the main launch never has to loft them. Trades
+// raw lift for extra flights, integration time, and docking risk.
+const ASSEMBLY_LAUNCH_COST=0.5;  // $M per extra dedicated assembly flight
+const ASSEMBLY_DOCK_REL=0.97;    // reliability factor per docking (halved by auto_rendezvous)
+function assemblyAvailable(m){ return !!(state.research.orbital_assembly && m && m.profile && m.modules && m.modules.includes('transfer')); }
+function assemblyOn(m){ return !!(state.assembleOrbit && assemblyAvailable(m)); }
+function assemblyModules(m){ const mods=[]; if(!assemblyAvailable(m)) return mods; if(m.modules.includes('transfer')) mods.push('transfer'); if(m.modules.includes('lander')) mods.push('lander'); return mods; }
+function assemblyFlights(m){ return assemblyOn(m)?assemblyModules(m).length:0; }
+function assemblyDockPenalty(m){
+  const n=assemblyFlights(m); if(n<=0) return 1;
+  const p = state.research.auto_rendezvous ? 1-(1-ASSEMBLY_DOCK_REL)/2 : ASSEMBLY_DOCK_REL;
+  return Math.pow(p, n);
+}
+// #6: the strategic routes to a deep-space destination, with unlocked/in-use status
+function marsRoutes(m){
+  if(!m || !m.profile) return [];
+  const nuclearEng=!!((ENGINES[state.transfer.eng]||{}).transferOnly); // NTR/NEP transfer engine
+  return [
+    {key:'heavy',    name:'Heavy-lift',        color:trackColor('propulsion'), available:true,
+     active:!assemblyOn(m)&&!(state.depotUse>0)&&!nuclearEng,
+     note:(state.research.super_heavy||state.research.cryo_upper)?'Brute-force chemical stack lifted from the pad.':'Bigger chemical engines (cryo upper / F-1) make this route practical.'},
+    {key:'refuel',   name:'Refueling (depot)', color:trackColor('refueling'),  available:!!state.research.orbital_depot,
+     active:state.depotUse>0,
+     note:state.research.orbital_depot?'Top off the transfer stage from the LEO depot — launch it nearly dry.':'Needs Orbital Propellant Depot.'},
+    {key:'nuclear',  name:'Nuclear (NTR/NEP)', color:trackColor('nuclear'),    available:!!state.research.nuclear_thermal,
+     active:nuclearEng,
+     note:state.research.nuclear_thermal?'High-Isp nuclear transfer engine — far less propellant mass.':'Needs Nuclear Thermal Propulsion.'},
+    {key:'assembly', name:'Orbital Assembly',  color:trackColor('assembly'),   available:!!state.research.orbital_assembly,
+     active:assemblyOn(m),
+     note:state.research.orbital_assembly?'Assemble the stack in LEO from several launches — no giant booster.':'Needs Orbital Assembly & Docking.'},
+  ];
+}
 function simulateMission(m){
   const crewMass=lifeSupport(m,state.eclss).total;
   const present={};
@@ -1287,10 +1337,17 @@ function simulateMission(m){
   const isru=ISRU_FREE_LEG[m.id];
   const isruActive = isru && state.research[isru.research];
   const stackMass=()=>{let s=crewMass; for(const k in present) s+=present[k].dry+present[k].propLeft; return s;};
+  // #6: orbital assembly — these modules are pre-positioned in LEO, so the main launch doesn't lift them
+  const asmSet = assemblyOn(m) ? new Set(assemblyModules(m)) : null;
   const legs=[]; let ok=true, inSpaceLegs=0;
   for(const leg of m.profile){
     if(leg.by==='lv'){
-      const upper=stackMass();
+      let upper=stackMass();
+      if(asmSet){ // subtract pre-assembled modules from the lift mass (they're already docked in orbit)
+        if(asmSet.has('transfer') && present.transfer) upper-=(present.transfer.dry+present.transfer.propLeft);
+        if(asmSet.has('lander')){ if(present.descent) upper-=(present.descent.dry+present.descent.propLeft); if(present.ascent) upper-=(present.ascent.dry+present.ascent.propLeft); }
+        upper=Math.max(upper, crewMass*0.5);
+      }
       const perf=stackPerformance(state.stages, upper);
       const pass=perf.totalDv>=leg.dv && perf.twr>1.0;
       legs.push({name:leg.name, dv:leg.dv, cap:Math.round(perf.totalDv), by:'lv', mass:upper, twr:perf.twr, pass});
@@ -1344,7 +1401,7 @@ function computeVehicle(){
   buildCost*=(1-facilityBonus(missionBody(m&&m.id)).buildDiscount); // M17: home-field build discount from a base at the destination
   buildCost*=familyBuildMult(activeFamily()); // #3: a proven lineage gets cheaper to build (manufacturing knowledge)
   const reliability=Math.min(diff().relCap,Math.max(diff().relFloor,(curRel()+testBonus)*enginePenalty*(crewed?0.92:1)));
-  const launchCost=0.12+0.01*totalProp;
+  const launchCost=0.12+0.01*totalProp + assemblyFlights(m)*ASSEMBLY_LAUNCH_COST; // #6: extra dedicated assembly flights
   return {payload, sm:perf.sm, stageDv:perf.stageDv, totalDv:perf.totalDv, liftoff:perf.liftoff, twr:perf.twr,
           totalEng, totalProp, reliability, buildCost, launchCost, crewed,
           dryTotal:perf.sm.reduce((a,b)=>a+b.dry,0)};
@@ -1364,6 +1421,7 @@ function buildMonths(m){
     if(m.modules.includes('lander')) extra+=1;     // descent+ascent stages, one integration unit
     if(m.modules.includes('crew')) extra+=1;       // crew systems integration
   }
+  extra+=assemblyFlights(m); // #6: each pre-positioned assembly flight adds integration time
   return BASE_BUILD_MONTHS+extra;
 }
 
@@ -1391,6 +1449,7 @@ function effectiveReliability(m,v,sim,crewed){
   if(crewed){ const ab=astroBonus(); rel=Math.min(0.99, rel+ab.rel); }
   rel=Math.min(0.995, rel + facilityBonus(missionBody(m&&m.id)).relBump); // M17: home-field operational bonus
   rel=Math.min(0.995, rel + familyRelBonus(activeFamily())); // #3: reliability heritage of a proven lineage
+  rel*=assemblyDockPenalty(m); // #6: each orbital docking is a chance to fail (halved by auto-rendezvous)
   if(m && m._arch && m._arch.relMod) rel=clampA(rel + m._arch.relMod, 0.1, 0.995); // M12: architecture reliability modifier
   return rel;
 }
@@ -1619,6 +1678,7 @@ function launch(){
   }
   state.testLevel=0; // campaign applies to one flight
   state.depotUse=0;
+  state.assembleOrbit=false; // #6: assembly choice applies to one flight
   const rnd=()=>Math.random();
   const spec={ title:m.name, crewed, success, failPhase,
     stages: state.stages.map(s=>({prop:s.prop,count:s.count})),
@@ -1648,6 +1708,7 @@ function setProp(i,v){state.stages[i].prop=Math.max(0.1,Math.min(1000,parseFloat
 function setTransferEng(v){state.transfer.eng=v;render();}
 function setTransferProp(v){state.transfer.prop=Math.max(0.1,Math.min(400,parseFloat(v)||0.1));render();}
 function setDepotUse(v){state.depotUse=Math.max(0,Math.min(state.depot,parseFloat(v)||0));render();}
+function setAssembleOrbit(on){ state.assembleOrbit=!!on; render(); } // #6: orbital-assembly route toggle
 function setDescentEng(v){state.descent.eng=v;render();}
 function setDescentProp(v){state.descent.prop=Math.max(0.1,Math.min(60,parseFloat(v)||0.1));render();}
 function setAscentEng(v){state.ascent.eng=v;render();}
@@ -1942,7 +2003,7 @@ function loadGame(){
       ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
       facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
       architectures:{}, science:0, persEventCooldown:5,
-      vehicles:[], activeVehicle:null
+      vehicles:[], activeVehicle:null, assembleOrbit:false
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -1988,7 +2049,7 @@ function autoLoad(){
       ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
       facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
       architectures:{}, science:0, persEventCooldown:5,
-      vehicles:[], activeVehicle:null
+      vehicles:[], activeVehicle:null, assembleOrbit:false
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -4061,7 +4122,7 @@ function render(){
   $('skipBtn').disabled=!ar;
 
   if(state.tab==='command')renderCommandCenter();
-  if(state.tab==='bench'){renderVehicleFamilies();renderArchitecture();renderStages();renderTransfer();renderLander();renderCrew();renderWindowPlanner();renderReadout();renderVehiclePreview();}
+  if(state.tab==='bench'){renderVehicleFamilies();renderArchitecture();renderStages();renderTransfer();renderLander();renderCrew();renderWindowPlanner();renderRoutes();renderReadout();renderVehiclePreview();}
   if(state.tab==='missions')renderMissions();
   if(state.tab==='programs')renderPrograms();
   renderNextObjective();
@@ -4338,7 +4399,8 @@ function renderTransfer(){
       <span class="ss">wet <b>${wet.toFixed(2)} t</b></span>
     </div>
     ${(ENGINES[state.transfer.eng]||{}).lowThrust?`<div class="flag"><span style="color:var(--readout)">⚠ Low-thrust drive</span><span class="dim">The NEP's thrust is measured in newtons — burns take weeks to months. The Δv budget here is impulsive; treat real transit/burn times as far longer. Best for uncrewed cargo or where mass ratio, not time, is the constraint.</span></div>`:''}
-    ${renderDepotDraw()}`;
+    ${renderDepotDraw()}
+    ${renderAssemblyToggle()}`;
 }
 function renderDepotDraw(){
   if(!state.research.orbital_depot) return '';
@@ -4348,6 +4410,19 @@ function renderDepotDraw(){
     <div class="row"><label>Draw</label>
       <input type="range" min="0" max="${max}" step="0.5" value="${Math.min(state.depotUse,max)}" oninput="setDepotUse(this.value)">
       <input type="number" min="0" max="${state.depot.toFixed(1)}" step="0.1" value="${state.depotUse.toFixed(1)}" style="width:74px" onchange="setDepotUse(this.value)"><span class="muted" style="font-size:11px">t</span></div>`;
+}
+// #6: orbital-assembly toggle — sits with the other in-LEO route options on the transfer card
+function renderAssemblyToggle(){
+  const m=curMission();
+  if(!assemblyAvailable(m)) return '';
+  const on=assemblyOn(m), n=assemblyModules(m).length, dock=assemblyDockPenalty(m);
+  const hit=Math.round((1-dock)*100);
+  const mods=assemblyModules(m).map(k=>k==='transfer'?'transfer stage':'lander').join(' + ');
+  return `<div class="stage-head" style="margin-top:12px"><span class="label">ORBITAL ASSEMBLY (route)</span>
+      <button class="btn ghost" style="font-size:11px;padding:4px 10px;${on?'border-color:var(--ignite);color:var(--ignite)':''}" onclick="setAssembleOrbit(${on?'false':'true'})">${on?'On ✓':'Off'}</button></div>
+    <div class="sub">${on
+      ? `Assembling <b>${mods}</b> in LEO across <b>${n}</b> extra launch${n>1?'es':''}. The main rocket no longer lifts ${n>1?'them':'it'} — but pays +${n} mo build, +${fM(n*ASSEMBLY_LAUNCH_COST)} launch, and a ${hit}% docking-reliability hit${state.research.auto_rendezvous?' (halved by auto-rendezvous)':''}.`
+      : `Launch the heavy in-space modules separately and dock them in orbit, so a smaller rocket can fly the mission. Trades raw lift for extra flights and docking risk.`}</div>`;
 }
 
 function moduleOptions(sel, allowTransferOnly){
@@ -4456,6 +4531,24 @@ function renderVehicleFamilies(){
     ${activeHtml}
     <button class="btn" style="width:100%" onclick="saveAsFamily()">+ Register current design${active?` as a new family (derives from ${active.name})`:' as a family'}</button>
     ${list}`;
+}
+// #6: strategic routes to a deep-space destination — makes the branch choice explicit
+function renderRoutes(){
+  const card=$('routesCard'); if(!card) return;
+  const m=curMission();
+  if(!m || !m.profile){ card.classList.add('hidden'); return; }
+  card.classList.remove('hidden');
+  const body=(BODIES.find(b=>(b.missions||[]).includes(m.id))||{}).name||'deep space';
+  const rows=marsRoutes(m).map(r=>{
+    const pill = r.active?'<span class="pill active">in use</span>':(r.available?'<span class="pill ok">available</span>':'<span class="pill lock">locked</span>');
+    return `<div class="item" style="margin-bottom:8px;${r.active?'border-color:'+r.color:''}">
+      <div style="width:4px;align-self:stretch;background:${r.color};border-radius:2px"></div>
+      <div class="body"><div class="title" style="font-size:13px">${r.name} ${pill}</div>
+        <div class="sub">${r.note}</div></div></div>`;
+  }).join('');
+  card.innerHTML=`<h2>Routes to ${body}</h2>
+    <p class="muted" style="font-size:12px;margin:-4px 0 8px">Different tech branches reach the same destination differently — trade raw lift, propellant logistics, nuclear Isp, or in-orbit assembly. Unlock more in R&D; you can combine them.</p>
+    ${rows}`;
 }
 // M12: mission-architecture selector — reshapes the profile/hardware/risk
 function renderArchitecture(){
@@ -5266,39 +5359,64 @@ function researchNodeState(r){
   if(reqsMet(r)) return 'available';
   return 'locked';
 }
+// #6: pure swimlane layout — nodes grouped into per-track lanes, x by tier.
+// No DOM access, so it can be exercised headlessly.
+const TECH_DIMS={COLW:158, ROWH:50, NW:134, NH:42, PADX:118, PADTOP:12, LANEGAP:8};
+function techLayout(){
+  const D=TECH_DIMS;
+  const nodes={}; const lanes=[]; let laneTop=D.PADTOP, maxTier=0;
+  RESEARCH.forEach(r=>{ maxTier=Math.max(maxTier, researchTier(r.id)); });
+  TRACKS.forEach(tr=>{
+    const list=RESEARCH.filter(r=>(r.track||'propulsion')===tr.key).sort((a,b)=>researchTier(a.id)-researchTier(b.id));
+    if(!list.length) return;
+    // sub-row per node: nodes sharing a tier get distinct rows so none collide on (x,y)
+    const tierSeen={}; let subRows=1;
+    list.forEach(r=>{ const t=researchTier(r.id); const idx=(tierSeen[t]=(tierSeen[t]||0)); tierSeen[t]++; subRows=Math.max(subRows, idx+1);
+      nodes[r.id]={x:D.PADX+t*D.COLW, y:laneTop+idx*D.ROWH, track:tr.key}; });
+    const h=subRows*D.ROWH;
+    lanes.push({key:tr.key, label:tr.label, color:tr.color, y:laneTop, h});
+    laneTop+=h+D.LANEGAP;
+  });
+  const W=D.PADX+(maxTier+1)*D.COLW+14, H=laneTop-D.LANEGAP+D.PADTOP;
+  return {nodes, lanes, W, H, NW:D.NW, NH:D.NH};
+}
 function renderTechTree(){
   const el=$('techTree'); if(!el) return;
-  const COLW=158, ROWH=58, NW=134, NH=42, PADX=14, PADY=14;
-  const tiers={}; let maxTier=0;
-  RESEARCH.forEach(r=>{ const t=researchTier(r.id); (tiers[t]=tiers[t]||[]).push(r); maxTier=Math.max(maxTier,t); });
-  const pos={}; let maxRows=0;
-  for(let t=0;t<=maxTier;t++){ const col=tiers[t]||[]; maxRows=Math.max(maxRows,col.length);
-    col.forEach((r,i)=>{ pos[r.id]={x:PADX+t*COLW, y:PADY+i*ROWH}; }); }
-  const W=PADX*2+(maxTier+1)*COLW, H=PADY*2+maxRows*ROWH;
-  const palette={ done:{fill:'#13241b',stroke:'#58c47a',text:'#cfe8d6'}, active:{fill:'#241a0c',stroke:'#f5a623',text:'#f2d6a0'},
-                  available:{fill:'#16222b',stroke:'#4fd1d9',text:'#d0dce4'}, locked:{fill:'#0c1318',stroke:'#26323a',text:'#5a6a75'} };
+  const L=techLayout(), NW=L.NW, NH=L.NH;
+  const palette={ done:{fill:'#13241b',text:'#cfe8d6'}, active:{fill:'#241a0c',text:'#f2d6a0'},
+                  available:{fill:'#16222b',text:'#d0dce4'}, locked:{fill:'#0c1318',text:'#5a6a75'} };
+  // faint lane bands + left-edge labels
+  let bands='';
+  L.lanes.forEach(ln=>{
+    bands+=`<rect x="0" y="${ln.y-4}" width="${L.W}" height="${ln.h}" fill="${ln.color}" opacity="0.05" rx="6"/>
+      <text x="10" y="${ln.y+ln.h/2+3}" fill="${ln.color}" font-size="10" font-family="ui-sans-serif,system-ui" font-weight="600" opacity="0.85">${ln.label}</text>`;
+  });
   let edges='', nodes='';
   RESEARCH.forEach(r=>{
-    const p=pos[r.id]; const x1=p.x, y1=p.y+NH/2;
-    const drawEdge=(q,dashed)=>{ const pq=pos[q]; if(!pq) return; const x0=pq.x+NW, y0=pq.y+NH/2;
-      const done=state.research[q];
-      edges+=`<path d="M ${x0} ${y0} C ${x0+38} ${y0}, ${x1-38} ${y1}, ${x1} ${y1}" fill="none" stroke="${done?'rgba(88,196,122,0.55)':'rgba(120,140,150,0.35)'}" stroke-width="${done?1.6:1.1}" ${dashed?'stroke-dasharray="3,4"':''}/>`; };
+    const p=L.nodes[r.id]; if(!p) return; const x1=p.x, y1=p.y+NH/2;
+    const drawEdge=(q,dashed)=>{ const pq=L.nodes[q]; if(!pq) return; const x0=pq.x+NW, y0=pq.y+NH/2;
+      const done=state.research[q], col=trackColor(trackOf(q));
+      edges+=`<path d="M ${x0} ${y0} C ${x0+38} ${y0}, ${x1-38} ${y1}, ${x1} ${y1}" fill="none" stroke="${col}" stroke-opacity="${done?0.6:0.25}" stroke-width="${done?1.7:1.1}" ${dashed?'stroke-dasharray="3,4"':''}/>`; };
     r.req.forEach(q=>drawEdge(q,false));
     const gate=missionGateResearch(r); if(gate) drawEdge(gate,true);
   });
   RESEARCH.forEach(r=>{
-    const p=pos[r.id], st=researchNodeState(r), c=palette[st];
-    const sel=state.selectedResearch===r.id;
+    const p=L.nodes[r.id]; if(!p) return;
+    const st=researchNodeState(r), c=palette[st], tcol=trackColor(r.track);
+    const sel=state.selectedResearch===r.id, locked=st==='locked';
     const name=r.name.length>20?r.name.slice(0,19)+'…':r.name;
     const sub = st==='active' ? `${state.activeResearch.monthsLeft} mo left` : `${fM(r.cost)} · ${r.months} mo`;
-    nodes+=`<g style="cursor:pointer" onclick="selectResearch('${r.id}')">
-      <rect x="${p.x}" y="${p.y}" width="${NW}" height="${NH}" rx="6" fill="${c.fill}" stroke="${sel?'#ffffff':c.stroke}" stroke-width="${sel?2:1.2}"/>
+    nodes+=`<g style="cursor:pointer" onclick="selectResearch('${r.id}')" opacity="${locked?0.72:1}">
+      <rect x="${p.x}" y="${p.y}" width="${NW}" height="${NH}" rx="6" fill="${c.fill}" stroke="${sel?'#ffffff':tcol}" stroke-width="${sel?2.2:1.3}"/>
+      <rect x="${p.x}" y="${p.y}" width="4" height="${NH}" rx="2" fill="${tcol}"/>
       ${st==='done'?`<text x="${p.x+NW-7}" y="${p.y+13}" fill="#58c47a" font-size="11" text-anchor="end">✓</text>`:''}
-      <text x="${p.x+8}" y="${p.y+17}" fill="${c.text}" font-size="10" font-family="ui-sans-serif,system-ui" font-weight="600">${name}<title>${r.name}</title></text>
-      <text x="${p.x+8}" y="${p.y+32}" fill="${c.text}" font-size="9" font-family="ui-monospace,monospace" opacity="0.8">${sub}</text>
+      <text x="${p.x+11}" y="${p.y+17}" fill="${c.text}" font-size="10" font-family="ui-sans-serif,system-ui" font-weight="600">${name}<title>${r.name} — ${TRACKS.find(t=>t.key===r.track)?.label||''}</title></text>
+      <text x="${p.x+11}" y="${p.y+32}" fill="${c.text}" font-size="9" font-family="ui-monospace,monospace" opacity="0.8">${sub}</text>
     </g>`;
   });
-  el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg" style="max-width:none">${edges}${nodes}</svg>`;
+  const legend=TRACKS.map(t=>`<span style="display:inline-flex;align-items:center;gap:4px;margin-right:12px;font-size:11px;color:var(--muted)"><span style="width:10px;height:10px;border-radius:2px;background:${t.color};display:inline-block"></span>${t.label}</span>`).join('');
+  el.innerHTML=`<div style="margin-bottom:8px">${legend}</div>
+    <svg viewBox="0 0 ${L.W} ${L.H}" width="${L.W}" height="${L.H}" xmlns="http://www.w3.org/2000/svg" style="max-width:none">${bands}${edges}${nodes}</svg>`;
 }
 function selectResearch(id){ state.selectedResearch=id; render(); }
 function renderResearchDetail(){
