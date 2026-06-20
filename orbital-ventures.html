@@ -302,6 +302,7 @@
     <div class="readout">
       <div class="card" id="vehicleCard" style="text-align:center">
         <div class="mission-tag" style="text-align:left">Your vehicle</div>
+        <div id="vehHost" style="display:none;width:240px;max-width:100%;margin:6px auto 0;aspect-ratio:240/360"></div>
         <canvas id="vehiclePreview" width="240" height="360" style="max-width:100%;height:auto;display:block;margin:6px auto 0"></canvas>
         <div id="vehicleLabel" class="dim" style="font-size:11px;margin-top:6px"></div>
       </div>
@@ -3213,6 +3214,12 @@ function drawVehicle(ctx, segs, nose, scale, flame, altFrac, hideBells){
     ctx.fillStyle=bellGrad;
     ctx.beginPath(); ctx.moveTo(ex-nz*0.35,-1*scale); ctx.lineTo(ex-nz*0.6,4.5*scale);
     ctx.lineTo(ex+nz*0.6,4.5*scale); ctx.lineTo(ex+nz*0.35,-1*scale); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle='rgba(28,34,38,0.5)'; ctx.lineWidth=0.4; // bell ribs
+    ctx.beginPath(); ctx.moveTo(ex,-1*scale); ctx.lineTo(ex,4.5*scale);
+    ctx.moveTo(ex-nz*0.22,-1*scale); ctx.lineTo(ex-nz*0.42,4.5*scale);
+    ctx.moveTo(ex+nz*0.22,-1*scale); ctx.lineTo(ex+nz*0.42,4.5*scale); ctx.stroke();
+    ctx.strokeStyle='rgba(170,182,190,0.5)'; ctx.lineWidth=0.5; // bell rim highlight
+    ctx.beginPath(); ctx.moveTo(ex-nz*0.6,4.5*scale); ctx.lineTo(ex+nz*0.6,4.5*scale); ctx.stroke();
     if(flame>0){
       const fl=flame*(0.7+Math.random()*0.4)*plumeExpand;
       const nzE=nz*plumeExpand*0.85;
@@ -3274,7 +3281,24 @@ function drawVehicle(ctx, segs, nose, scale, flame, altFrac, hideBells){
         ctx.beginPath(); ctx.moveTo(-w/2+1,sy); ctx.lineTo(w/2-1,sy); ctx.stroke();
       }
     }
-    if(s.kind==='stage' && h>20*scale){
+    // --- surface detail: specular highlight, cable raceway, panel seams, interstage band, rivets ---
+    if(w>7){
+      ctx.fillStyle='rgba(255,255,255,0.10)'; ctx.fillRect(-w*0.20, y-h+1.5, Math.max(0.6,w*0.05), h-3); // highlight
+      const rcx=w*0.30; // cable raceway / conduit
+      ctx.fillStyle='rgba(38,46,52,0.85)'; ctx.fillRect(rcx-0.9, y-h+2, 1.8, h-4);
+      ctx.fillStyle='rgba(150,162,170,0.45)'; ctx.fillRect(rcx-1.3, y-h+2, 0.55, h-4);
+      ctx.strokeStyle='rgba(60,72,82,0.22)'; ctx.lineWidth=0.4; // vertical panel seams
+      [-0.22,0.08].forEach(fx=>{ const px=w*fx; ctx.beginPath(); ctx.moveTo(px,y-h+2); ctx.lineTo(px,y-2); ctx.stroke(); });
+      ctx.fillStyle='rgba(28,34,40,0.55)'; ctx.fillRect(-w/2+0.5, y-h, w-1, Math.max(1.2,h*0.045)); // dark interstage band at top
+      if(w>10){ ctx.fillStyle='rgba(70,82,92,0.55)'; const rn=Math.min(9,Math.max(3,Math.floor(w/2))); for(let r=0;r<rn;r++){ const rx=-w/2+2+(w-4)*r/(rn-1); ctx.fillRect(rx-0.4,y-3,0.8,0.8); } } // rivets along lower seam
+    }
+    if(s.kind==='stage' && h>22*scale && w>11){
+      // agency roundel marking
+      const rcy=y-h*0.4, rr=Math.min(w*0.16, h*0.085);
+      ctx.fillStyle='#e8edf1'; ctx.beginPath(); ctx.arc(0,rcy,rr,0,7); ctx.fill();
+      ctx.fillStyle='#2a5fa0'; ctx.beginPath(); ctx.arc(0,rcy,rr*0.66,0,7); ctx.fill();
+      ctx.fillStyle='#e0564f'; ctx.beginPath(); ctx.arc(0,rcy,rr*0.28,0,7); ctx.fill();
+    } else if(s.kind==='stage' && h>20*scale){
       ctx.fillStyle='rgba(60,72,82,0.3)';
       const patchY=y-h*0.35, patchH=h*0.12, patchW=w*0.3;
       ctx.fillRect(-patchW/2,patchY,patchW,patchH);
@@ -3305,11 +3329,13 @@ function drawVehicle(ctx, segs, nose, scale, flame, altFrac, hideBells){
   }
   const fw=base.w*scale, fh=base.h*scale;
   const finH=fh*0.45, finW=fw*0.55;
+  if(!hideBells){ // booster fins (hidden once lifted off, like the bells)
   ctx.fillStyle='#5a666e'; ctx.strokeStyle='rgba(60,72,82,0.6)'; ctx.lineWidth=0.5;
   ctx.beginPath(); ctx.moveTo(-fw/2,0); ctx.lineTo(-fw/2-finW*0.6,4*scale);
   ctx.lineTo(-fw/2-finW*0.3,4*scale); ctx.lineTo(-fw/2,-finH); ctx.closePath(); ctx.fill(); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(fw/2,0); ctx.lineTo(fw/2+finW*0.6,4*scale);
   ctx.lineTo(fw/2+finW*0.3,4*scale); ctx.lineTo(fw/2,-finH); ctx.closePath(); ctx.fill(); ctx.stroke();
+  }
   const topSeg=segs[segs.length-1];
   const tw=topSeg.w*scale, th=topSeg.h*scale;
   if(segs.length>1 || topSeg.kind==='transfer'){
@@ -3331,6 +3357,12 @@ function drawVehicle(ctx, segs, nose, scale, flame, altFrac, hideBells){
     ctx.beginPath(); ctx.moveTo(-tw*0.35,y-3*scale); ctx.lineTo(tw*0.35,y-3*scale); ctx.stroke();
     ctx.fillStyle='rgba(120,180,220,0.3)';
     ctx.beginPath(); ctx.arc(0,y-8*scale,tw*0.1,0,7); ctx.fill();
+    // side windows + RCS quad nubs
+    ctx.fillStyle='rgba(120,180,220,0.28)';
+    [-tw*0.24, tw*0.24].forEach(wx=>{ ctx.beginPath(); ctx.arc(wx,y-6*scale,tw*0.045,0,7); ctx.fill(); });
+    ctx.fillStyle='#6a747c';
+    ctx.fillRect(-tw*0.5-1.5*scale, y-4*scale, 1.5*scale, 2*scale);
+    ctx.fillRect(tw*0.5, y-4*scale, 1.5*scale, 2*scale);
     ctx.strokeStyle='rgba(60,72,82,0.5)'; ctx.lineWidth=0.4;
     ctx.beginPath(); ctx.arc(0,y-8*scale,tw*0.1,0,7); ctx.stroke();
     const dockY=y-14*scale;
@@ -4447,6 +4479,7 @@ function render(){
   $('skipBtn').disabled=!ar;
 
   if(state.tab==='command')renderCommandCenter(); else { stopCCScene(); pauseCapeGame(); }
+  if(state.tab!=='bench') pauseVehGame();
   if(state.tab==='bench'){renderVehicleFamilies();renderArchitecture();renderStages();renderTransfer();renderLander();renderCrew();renderWindowPlanner();renderRoutes();renderReadout();renderVehiclePreview();}
   if(state.tab==='missions')renderMissions();
   if(state.tab==='programs')renderPrograms();
@@ -5341,29 +5374,90 @@ function renderArchitecture(){
 }
 // M10: static, design-driven silhouette of the current vehicle on the bench —
 // reuses the launch animation's buildVehicleShape/drawVehicle with no flame.
-function renderVehiclePreview(){
-  const cv=$('vehiclePreview'); if(!cv || !cv.getContext) return;
-  const ctx=cv.getContext('2d'); if(!ctx) return;
-  const W=cv.width, H=cv.height;
-  ctx.clearRect(0,0,W,H);
+function currentVehicleSpec(){
   const m=curMission();
-  const spec={
-    stages: state.stages.map(s=>({prop:s.prop, count:s.count})),
+  return { stages: state.stages.map(s=>({prop:s.prop, count:s.count})),
     transferProp: (m&&m.profile&&m.modules.includes('transfer'))?state.transfer.prop:0,
-    crewed: !!(m&&m.crew>0)
-  };
-  let shape;
-  try{ shape=buildVehicleShape(spec); }catch(e){ return; }
+    crewed: !!(m&&m.crew>0) };
+}
+// shared 2D draw of the bench silhouette onto any 2D context sized W×H
+function drawVehiclePreviewTo(ctx, W, H, spec){
+  ctx.clearRect(0,0,W,H);
+  let shape; try{ shape=buildVehicleShape(spec); }catch(e){ return; }
   if(!shape.segs.length) return;
-  const scale=Math.min((H-42)/(shape.totalH+16), (W-30)/(shape.maxW*1.9));
-  ctx.save();
-  ctx.translate(W/2, H-24);            // base at bottom-centre; engines/fins sit just below
-  drawVehicle(ctx, shape.segs, shape.nose, scale, 0, 0);
-  ctx.restore();
+  // ~0.66× the fit-to-frame size so the vehicle sits with comfortable margins
+  const scale=0.66*Math.min((H-42)/(shape.totalH+16), (W-30)/(shape.maxW*1.9));
+  ctx.save(); ctx.translate(W/2, H-34); drawVehicle(ctx, shape.segs, shape.nose, scale, 0, 0); ctx.restore();
+}
+function renderVehiclePreview(){
+  const spec=currentVehicleSpec();
   const eng=state.stages.reduce((a,s)=>a+s.count,0);
   const el=$('vehicleLabel');
   if(el) el.innerHTML=`${state.stages.length} stage${state.stages.length>1?'s':''} · ${eng} engine${eng>1?'s':''}${spec.transferProp>0?' · transfer stage':''} · ${spec.crewed?'crew capsule':'payload fairing'}`;
+  // Slice 2: prefer the Phaser-hosted preview scene; fall back to the plain 2D canvas.
+  if(phaserOK() && startVehPreview(spec)) return;
+  const cv=$('vehiclePreview'); if(!cv || !cv.getContext) return;
+  const ctx=cv.getContext('2d'); if(!ctx) return;
+  drawVehiclePreviewTo(ctx, cv.width, cv.height, spec);
 }
+/* ---------- Hybrid Phaser layer (Slice 2): VehiclePreviewScene ----------
+   The bench silhouette in a Phaser scene: the proven 2D drawing on a CanvasTexture
+   (redrawn live as you tune the vehicle) over ambient stars, with a soft engine-base
+   glow and a gentle idle bob. Guarded + lazy; falls back to the 2D canvas. */
+const VEH_W=480, VEH_H=720; // 2× internal res (displayed at ~240×360) so fine rocket detail stays crisp
+let VehScene=null, vehGame=null, vehScene=null, vehPending=null;
+function defineVehScene(){
+  if(VehScene || !phaserOK()) return;
+  VehScene=class extends Phaser.Scene {
+    constructor(){ super('vehprev'); }
+    create(){
+      const W=VEH_W, H=VEH_H;
+      const mk=(key,draw,w,h)=>{ if(!this.textures.exists(key)){ const g=this.make.graphics({x:0,y:0,add:false}); draw(g); g.generateTexture(key,w,h); g.destroy(); } };
+      mk('vehStar',g=>{ g.fillStyle(0xffffff,1); g.fillCircle(2,2,2); },4,4);
+      mk('vehGlow',g=>{ for(let i=10;i>=1;i--){ g.fillStyle(0xffffff,0.05); g.fillCircle(32,32,i*3); } },64,64);
+      this.cameras.main.setBackgroundColor('#0a1016');
+      for(let i=0;i<46;i++){ const s=this.add.image(Math.random()*W, Math.random()*H, 'vehStar').setAlpha(0.12+Math.random()*0.5).setScale(0.4+Math.random()*0.9);
+        this.tweens.add({targets:s, alpha:Math.random()*0.2, duration:900+Math.random()*2200, yoyo:true, repeat:-1, ease:'Sine.easeInOut'}); }
+      this.tex=this.textures.exists('vehTex')?this.textures.get('vehTex'):this.textures.createCanvas('vehTex',W,H);
+      this.glow=this.add.image(W/2, H-26, 'vehGlow').setTint(0xffb060).setBlendMode(Phaser.BlendModes.ADD).setScale(1.4).setAlpha(0.5);
+      this.tweens.add({targets:this.glow, alpha:0.75, scale:1.7, duration:1800, yoyo:true, repeat:-1, ease:'Sine.easeInOut'});
+      this.img=this.add.image(W/2, H/2, 'vehTex').setOrigin(0.5,0.5);
+      this.tweens.add({targets:this.img, y:H/2-5, duration:2400, yoyo:true, repeat:-1, ease:'Sine.easeInOut'});
+      vehScene=this;
+      this.redraw();
+    }
+    redraw(){
+      if(vehPending) this._spec=vehPending; vehPending=null;
+      if(!this._spec || !this.tex) return;
+      try{ drawVehiclePreviewTo(this.tex.context, this.tex.canvas.width, this.tex.canvas.height, this._spec); this.tex.refresh(); }catch(e){}
+    }
+  };
+}
+function ensureVehHost(){
+  const host=$('vehHost'); if(!host) return false;
+  host.style.display='block';
+  const cv=$('vehiclePreview'); if(cv) cv.style.display='none';
+  return true;
+}
+function startVehPreview(spec){
+  defineVehScene();
+  if(!ensureVehHost()) return false;
+  try{
+    vehPending=spec;
+    if(!vehGame){
+      vehGame=new Phaser.Game({ type:Phaser.AUTO, parent:'vehHost', width:VEH_W, height:VEH_H,
+        transparent:false, banner:false, audio:{noAudio:true}, scale:{mode:Phaser.Scale.NONE}, scene:[VehScene] });
+      const c=vehGame.canvas; if(c){ c.style.width='100%'; c.style.height='auto'; c.style.display='block'; c.style.borderRadius='8px'; }
+    } else { resumeVehGame(); if(vehScene && vehScene.redraw) vehScene.redraw(); }
+    return true;
+  }catch(e){ console.warn('vehicle preview scene failed, using fallback:',e);
+    const h=$('vehHost'); if(h) h.style.display='none';
+    const cv=$('vehiclePreview'); if(cv) cv.style.display='block';
+    return false;
+  }
+}
+function pauseVehGame(){ if(vehGame){ try{ vehGame.scene.pause('vehprev'); }catch(e){} } }
+function resumeVehGame(){ if(vehGame){ try{ vehGame.scene.resume('vehprev'); }catch(e){} } }
 function renderReadout(){
   const m=curMission();
   if(m.profile){ renderProfileReadout(m); return; }

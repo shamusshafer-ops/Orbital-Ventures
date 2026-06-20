@@ -688,8 +688,18 @@ logic with no Phaser global.
       `postFX.addGlow` on the plume/fireball + a ColorMatrix brightness lift (the earlier
       full-screen bloom was dropped — it hazed the frame). Camera shake on liftoff and
       vehicle loss. Added a **Space** hotkey to launch (and skip/continue playback).
-- [ ] **Slice 2 — `VehiclePreviewScene`**: bench silhouette as a Phaser scene from the
-      same `buildVehicleShape` data.
+- [x] **Slice 2 — `VehiclePreviewScene`** *(2026-06-20).* The Design Bench "Your vehicle"
+      preview is a Phaser scene: the shared 2D draw (`drawVehiclePreviewTo` /
+      `currentVehicleSpec`, factored out of `renderVehiclePreview`) renders onto a
+      CanvasTexture (2× internal res for crispness), redrawn live as the vehicle is tuned,
+      over a twinkling starfield with a pulsing engine-base glow and a gentle idle bob.
+      Persistent `#vehHost`, paused off-bench; 2D-canvas fallback retained. Vehicle scaled
+      to ~0.66× for comfortable margins.
+      **Rocket detail pass:** `drawVehicle` (shared by preview, flight, Cape pad) gained
+      cable raceways, panel seams, interstage bands, rivets, an agency roundel, a specular
+      highlight, bell ribs/rim highlight, and capsule side-windows + RCS nubs; booster fins
+      now also clear after liftoff via `hideBells`. Validated: suites green (38/38) + flight
+      fallback probe; in-browser confirmed.
 - [ ] **Slice 3 (optional) — `MapScene`**: interactive solar map (orbit rings, planet
       sprites, pan/zoom camera). Tech tree + all management UI stay DOM.
 
