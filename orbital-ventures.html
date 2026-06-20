@@ -162,6 +162,8 @@
   .bldg .st{font-family:var(--mono);font-size:11px;color:var(--muted)}
 
   /* Command Center — animated Cape Canaveral scene */
+  /* Phaser canvases must never exceed their host (Scale.NONE writes a fixed px width) */
+  #ccSceneHost canvas, #flightHost canvas, #vehHost canvas{max-width:100%!important;height:auto!important;display:block}
   .ccscene-wrap{position:relative;margin-top:4px;line-height:0}
   .ccscene{display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:8px;background:#05070d}
   .ccspot{position:absolute;border:1px solid transparent;border-radius:6px;cursor:pointer;
@@ -321,14 +323,13 @@
 
   <div id="rndView" class="hidden">
     <div class="card" id="eraCard"></div>
-    <div class="grid" style="grid-template-columns:1fr 330px">
-      <div class="card">
-        <h2>Technology Tree — capital + time into capability</h2>
-        <p class="muted" style="font-size:12px;margin:-4px 0 10px">Each node unlocks an engine, material, or capability. Lines show prerequisites; dashed lines need a mission flown. Click a node to inspect it.</p>
-        <div id="techTree" style="overflow-x:auto;overflow-y:hidden"></div>
-      </div>
-      <div class="readout"><div class="card" id="researchDetail"></div></div>
+    <div class="card">
+      <h2>Technology Tree — capital + time into capability</h2>
+      <p class="muted" style="font-size:12px;margin:-4px 0 10px">Each node unlocks an engine, material, or capability. Lines show prerequisites; dashed lines need a mission flown. Click a node to inspect it.</p>
+      <div id="techAction" style="margin-bottom:10px"></div>
+      <div id="techTree" style="overflow-x:auto;overflow-y:hidden"></div>
     </div>
+    <div class="card" id="researchDetail" style="margin-top:14px"></div>
   </div>
 
   <div id="mapView" class="hidden">
@@ -6364,9 +6365,30 @@ function renderResearchDetail(){
     ${(reqNames||gateName)?`<div class="dim" style="font-size:12px;margin-bottom:10px">Requires: ${[reqNames, gateName?`fly <b>${gateName}</b>`:null].filter(Boolean).join(' · ')}</div>`:''}
     ${action}`;
 }
+// confirm/Research action bar shown inside the tech-tree card, so it's always in the
+// same area as the tree (not only in the right-hand detail panel)
+function renderTechAction(){
+  const el=$('techAction'); if(!el) return;
+  const r=RESEARCH.find(x=>x.id===state.selectedResearch);
+  if(!r){ el.innerHTML=''; return; }
+  const st=researchNodeState(r), busy=!!state.activeResearch;
+  let btn;
+  if(st==='done') btn=`<button class="btn" disabled>✓ Researched</button>`;
+  else if(st==='active') btn=`<button class="btn" disabled>${state.activeResearch.monthsLeft} mo left</button>`;
+  else{
+    const afford=state.money>=r.cost, ok=st==='available'&&afford&&!busy;
+    const why=busy?'Another project in progress':(st!=='available'?'Prerequisites not met':(!afford?'Not enough capital':''));
+    btn=`<button class="launch" onclick="buyResearch('${r.id}')" ${ok?'':'disabled'}>${ok?`Research · ${fM(r.cost)} · ${r.months} mo`:why}</button>`;
+  }
+  const tag={done:'researched',active:'in progress',available:'available',locked:'locked'}[st];
+  el.innerHTML=`<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 11px;border:1px solid var(--line);border-radius:6px;background:var(--panel2)">
+    <span style="font-weight:600">${r.name}</span><span class="dim" style="font-size:11px">${tag}</span>
+    <span style="flex:1;min-width:8px"></span>${btn}</div>`;
+}
 function renderRnd(){
   renderEraCard();
   renderTechTree();
+  renderTechAction();
   renderResearchDetail();
 }
 
