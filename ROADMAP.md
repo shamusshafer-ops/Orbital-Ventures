@@ -350,6 +350,12 @@ review's numbering, not the build order (see **Suggested build order** at the en
       caps, and a *route-divergence proof* — an otherwise-too-heavy Mars stack that
       fails LEO ascent flies once assembled in orbit) + render smoke + tree
       screenshot.
+      *Content update (2026-06-20):* the **Structures & Test** track was expanded
+      from 3 to 8 nodes — `composite_structures` (σ→0.055, after balloon tanks) plus a
+      reliability sub-branch (`flight_telemetry`, `qa_program`, `vibration_testing`,
+      `redundant_avionics`). `curRel()` now sums every completed node's
+      `effect.reliability` (was hard-coded to `test_program`), so the track is
+      extensible; `effectiveReliability`'s cap still preserves balance.
       *Still open in #6 (later slices):* technology readiness levels (TRL),
       prototype/testing programs, research partnerships, reusable route (M5).
       *(Strategic-Vision Phase 7; patent/licensing partly covered by the patent econ
