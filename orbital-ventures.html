@@ -136,6 +136,9 @@
   .rec-card{border:1px solid var(--ignite);border-radius:8px;padding:12px;background:linear-gradient(180deg,rgba(245,166,35,.10),rgba(245,166,35,.02))}
   .rec-card .lbl{font-size:10px;text-transform:uppercase;letter-spacing:.16em;color:var(--ignite)}
   .rec-card .ttl{font-size:16px;font-weight:700;margin:4px 0 2px}
+  .adv-reqs{margin:8px 0 2px;border-top:1px solid rgba(245,166,35,.25);padding-top:7px}
+  .adv-req{font-size:11.5px;line-height:1.5;color:var(--ink)}
+  .adv-ok{color:var(--ok);font-weight:700} .adv-no{color:var(--bad);font-weight:700}
   /* contracts / alerts / news rows */
   .row-item{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #1a242b;font-size:12px}
   .row-item:last-child{border-bottom:none}
@@ -706,12 +709,16 @@ const PRODUCTION_DEFS = [
    blurb:'In-house engine and tank production. Economies of scale cut the marginal cost of every vehicle you build.'},
   {key:'pads',    name:'Launch Pads', icon:'🛫', baseCost:5, months:3, upkeep:0.04,
    blurb:'Additional pads and integration towers. More ground capacity amortizes launch operations across more flights — cheaper per launch.'},
+  {key:'qa',      name:'Quality Assurance', icon:'🔬', baseCost:7, months:3, upkeep:0.05,
+   blurb:'Inspection, traceability, and process control on the line — fewer manufacturing defects, so every vehicle you build flies a little more reliably.'},
 ];
 const PROD_MAX_LEVEL = 5;
 const BAY_CAP_BASE = 3, BAY_CAP_PER = 2;        // assembly capacity = base + per·(level−1)
 const BAY_SPEED_CAP = 2;                         // most build-months a roomy plant can shave
 const FOUNDRY_PER = 0.05, FOUNDRY_FLOOR = 0.78;  // build-cost multiplier (≤22% off at L5)
 const PAD_PER = 0.12, PAD_FLOOR = 0.60;          // launch-cost multiplier (≤40% off at L5)
+const QA_REL_PER = 0.012, QA_REL_CAP = 0.05;     // #7 slice 2: QA reliability bonus per level / cap (≤+4.8% at L5)
+const OVERSTRETCH_REL_PER = 0.015, OVERSTRETCH_REL_CAP = 0.06; // reliability lost per build-month over bay capacity / cap
 
 /* ---------- Mission architectures (how you get there is a strategy) ----------
    For supported missions, the player picks an architecture that reshapes the
@@ -1017,7 +1024,7 @@ function newGame(difficulty){
     staff:[], assignedAstronaut:null, persEventCooldown:5,
     econEvents:[], eventCooldown:6, pgmRoyalty:0,
     publicSupport:SUPPORT_BASE, // #8: program politics — public mood dial
-    production:{bays:1,foundry:1,pads:1}, // #7: manufacturing capacity — leveled production lines
+    production:{bays:1,foundry:1,pads:1,qa:1}, // #7: manufacturing capacity — leveled production lines
     lastMonth:{revenue:0,expenses:0,net:0,flights:0}, // #18: rolling ops-summary ledger
     history:{}, // #18: missionId -> completion year, for the Home timeline
     ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
@@ -1302,6 +1309,10 @@ function bayBuildDelta(m){
 }
 function foundryCostMult(){ return Math.max(FOUNDRY_FLOOR, 1 - FOUNDRY_PER*(prodLevel('foundry')-1)); }
 function padLaunchMult(){ return Math.max(PAD_FLOOR, 1 - PAD_PER*(prodLevel('pads')-1)); }
+// #7 slice 2: production-quality bridge into reliability (QA helps; overstretching the bays hurts)
+function qaRelBonus(){ return Math.min(QA_REL_CAP, QA_REL_PER*(prodLevel('qa')-1)); }
+function overstretchRelPenalty(m){ const d=bayBuildDelta(m); return d>0?Math.min(OVERSTRETCH_REL_CAP, OVERSTRETCH_REL_PER*d):0; }
+function productionRelMod(m){ return qaRelBonus() - overstretchRelPenalty(m); }
 function productionUpkeep(){ let u=0; for(const d of PRODUCTION_DEFS) u+=d.upkeep*(prodLevel(d.key)-1); return round2(u); }
 function prodUpgradeCost(key){ const d=prodDef(key); return round2(d.baseCost*prodLevel(key)); } // escalates with level
 function canUpgradeProduction(key){
@@ -1584,7 +1595,7 @@ function computeVehicle(){
   buildCost*=(1-facilityBonus(missionBody(m&&m.id)).buildDiscount); // M17: home-field build discount from a base at the destination
   buildCost*=familyBuildMult(activeFamily()); // #3: a proven lineage gets cheaper to build (manufacturing knowledge)
   buildCost*=foundryCostMult(); // #7: engine-foundry economies of scale cut marginal build cost
-  const reliability=Math.min(diff().relCap,Math.max(diff().relFloor,(curRel()+testBonus)*enginePenalty*(crewed?0.92:1)));
+  const reliability=Math.min(diff().relCap,Math.max(diff().relFloor,(curRel()+testBonus)*enginePenalty*(crewed?0.92:1)+productionRelMod(m))); // #7: QA bonus − bay-overstretch penalty
   const launchCost=(0.12+0.01*totalProp)*padLaunchMult() + assemblyFlights(m)*ASSEMBLY_LAUNCH_COST; // #7: extra pads amortize launch ops; #6: extra dedicated assembly flights
   return {payload, sm:perf.sm, stageDv:perf.stageDv, totalDv:perf.totalDv, liftoff:perf.liftoff, twr:perf.twr,
           totalEng, totalProp, reliability, buildCost, launchCost, crewed,
@@ -2188,7 +2199,7 @@ function loadGame(){
       depot:0, depotUse:0, tab:'command', log:[], rivalFired:{}, scooped:{}, rivalThreat:{}, bailouts:0,
       difficulty:'engineer', customDifficulty:customDefaults(),
       econEvents:[], eventCooldown:6, pgmRoyalty:0, publicSupport:SUPPORT_BASE,
-      production:{bays:1,foundry:1,pads:1}, lastMonth:{revenue:0,expenses:0,net:0,flights:0}, history:{},
+      production:{bays:1,foundry:1,pads:1,qa:1}, lastMonth:{revenue:0,expenses:0,net:0,flights:0}, history:{},
       ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
       facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
       architectures:{}, science:0, persEventCooldown:5,
@@ -2236,7 +2247,7 @@ function autoLoad(){
       depot:0, depotUse:0, tab:'command', log:[], rivalFired:{}, scooped:{}, rivalThreat:{}, bailouts:0,
       difficulty:'engineer', customDifficulty:customDefaults(),
       econEvents:[], eventCooldown:6, pgmRoyalty:0, publicSupport:SUPPORT_BASE,
-      production:{bays:1,foundry:1,pads:1}, lastMonth:{revenue:0,expenses:0,net:0,flights:0}, history:{},
+      production:{bays:1,foundry:1,pads:1,qa:1}, lastMonth:{revenue:0,expenses:0,net:0,flights:0}, history:{},
       ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
       facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
       architectures:{}, science:0, persEventCooldown:5,
@@ -4638,6 +4649,40 @@ function recommendedAction(){
   }
   return {kind:'advance', title:'Advance the calendar', detail:'Let R&D and the program move forward a month.', tab:null};
 }
+// #18 slice 4: Mission Control Advisor — focus goal, requirement ✓/✗ analysis, and ranked actions.
+// Pure: reuses nextObjective/missionFlyable/firstResearchableToward/computeVehicle/simulateMission.
+function missionAdvisor(){
+  const no=nextObjective();
+  if(!no) return {goal:null, program:null, reqs:[], actions:[{label:'Set a new ambition',tab:'programs'}], ready:false, summary:'All program objectives achieved — push the frontier or set a new ambition.'};
+  const mm=no.mission, reqs=[], actions=[];
+  // research gate
+  if(mm.reqResearch){ const done=!!state.research[mm.reqResearch], rn=(RESEARCH.find(r=>r.id===mm.reqResearch)||{}).name||mm.reqResearch;
+    reqs.push({ok:done, label:'Research: '+rn});
+    if(!done){ if(state.activeResearch) actions.push({label:`R&D in progress · ${state.activeResearch.monthsLeft} mo`,tab:'rnd'}); else { const r=firstResearchableToward(mm.reqResearch); if(r) actions.push({label:'Research '+r.name,tab:'rnd',researchId:r.id}); } }
+  }
+  // reputation gate
+  const repOk=state.rep>=mm.minRep;
+  reqs.push({ok:repOk, label:`Reputation ≥ ${mm.minRep} (have ${Math.round(state.rep)})`});
+  if(!repOk){ const avail=MISSIONS.find(x=>!state.completed[x.id]&&missionFlyable(x)&&x.id!==mm.id); if(avail) actions.push({label:`Fly ${avail.name} to build rep`,tab:'bench',missionId:avail.id}); }
+  // vehicle feasibility — only meaningful when this mission is the one on the bench
+  if(state.activeMission===mm.id){
+    const v=computeVehicle(), sim=mm.profile?simulateMission(mm):null;
+    if(mm.profile){ const fails=sim.legs.filter(l=>!l.pass).length; reqs.push({ok:fails===0, label: fails?`${fails} mission leg${fails>1?'s':''} short on Δv`:'Δv — all legs pass'}); if(fails) actions.push({label:'Boost Δv — Vehicle Design',tab:'bench'}); }
+    else { const ok=v.totalDv>=mm.reqDv; reqs.push({ok, label:`Δv ${fI(v.totalDv)} / ${fI(mm.reqDv)} m/s`}); if(!ok) actions.push({label:'Add capability — Vehicle Design',tab:'bench'});
+      if(v.twr<=1.0){ reqs.push({ok:false, label:`TWR ${v.twr.toFixed(2)} — won't lift off`}); actions.push({label:'Add engines — Vehicle Design',tab:'bench'}); } }
+    const relTarget=mm.crew>0?0.80:0.70, relOk=v.reliability>=relTarget;
+    reqs.push({ok:relOk, label:`Reliability ${(v.reliability*100|0)}% (target ${(relTarget*100)|0}%)`});
+    if(!relOk){ if(!state.research.test_program) actions.push({label:'Research Static Fire Test',tab:'rnd'}); else actions.push({label:'Run a test campaign / upgrade QA',tab:'bench'}); }
+  } else {
+    reqs.push({ok:false, label:'Design a vehicle for this mission'});
+    actions.push({label:`Select ${mm.name} on the bench`,tab:'bench',missionId:mm.id});
+  }
+  const ready=reqs.every(r=>r.ok);
+  if(ready) actions.unshift({label:`Launch ${mm.name}`,tab:'bench',missionId:mm.id,primary:true});
+  return {goal:mm.name, program:no.program.name, reward:{money:mm.payout||0, rep:mm.rep||0}, reqs, actions:actions.slice(0,4), ready};
+}
+// onclick string for an advisor/action object
+function advisorClick(a){ return a.missionId?`selectMission('${a.missionId}')`:(a.researchId?`setTab('rnd')`:(a.tab?`setTab('${a.tab}')`:`advanceMonth()`)); }
 // red/amber/green operational alerts derived from state
 function agencyAlerts(){
   const out=[]; const s=commandSummary();
@@ -4980,13 +5025,18 @@ function renderExecOverview(){
 }
 // LEFT — "what should I do next?"
 function renderCCLeft(){
-  const rec=recommendedAction();
-  let recBtn;
-  if(rec.missionId) recBtn=`<button class="btn launch" style="width:100%;margin-top:8px" onclick="selectMission('${rec.missionId}')">▸ Set up this flight</button>`;
-  else if(rec.researchId) recBtn=`<button class="btn launch" style="width:100%;margin-top:8px" onclick="setTab('rnd')">▸ Go to R&amp;D</button>`;
-  else if(rec.tab) recBtn=`<button class="btn" style="width:100%;margin-top:8px" onclick="setTab('${rec.tab}')">▸ Open</button>`;
-  else recBtn=`<button class="btn" style="width:100%;margin-top:8px" onclick="advanceMonth()">▸ Advance 1 month</button>`;
-  const reward=rec.reward?`<div class="dim" style="font-size:11px;margin-top:4px">Reward: ${fM(rec.reward.money)} · +${rec.reward.rep} rep</div>`:'';
+  // ---- Mission Control Advisor (slice 4) ----
+  const adv=missionAdvisor();
+  const reqRows=adv.reqs.map(r=>`<div class="adv-req"><span class="${r.ok?'adv-ok':'adv-no'}">${r.ok?'✓':'✗'}</span> ${r.label}</div>`).join('');
+  const actBtns=adv.actions.map((a,i)=>`<button class="btn ${a.primary?'launch':(i===0?'launch':'ghost')}" style="width:100%;margin-top:6px;font-size:12px" onclick="${advisorClick(a)}">▸ ${a.label}</button>`).join('');
+  const advHTML=`<div class="card">
+      <div class="cc-panel-h">🎛 Mission Control Advisor</div>
+      <div class="rec-card">
+        ${adv.goal?`<div class="lbl">${adv.ready?'cleared for launch':'goal'}</div><div class="ttl">${adv.goal}</div>${adv.program?`<div class="muted" style="font-size:12px">${adv.program}${adv.reward?` · reward ${fM(adv.reward.money)} / +${adv.reward.rep} rep`:''}</div>`:''}`:`<div class="muted" style="font-size:12px">${adv.summary||''}</div>`}
+        ${reqRows?`<div class="adv-reqs">${reqRows}</div>`:''}
+        ${actBtns}
+      </div>
+    </div>`;
 
   const contracts=ccContracts();
   const avail=contracts.filter(c=>!c.locked).slice(0,4);
@@ -5001,16 +5051,7 @@ function renderCCLeft(){
   const bar=`<div style="height:8px;border-radius:4px;background:#0d1418;overflow:hidden;margin:7px 0 5px"><div style="height:100%;width:${prog.pct}%;background:var(--ok)"></div></div>`;
 
   $('ccLeft').innerHTML=`
-    <div class="card">
-      <div class="cc-panel-h">Recommended next step</div>
-      <div class="rec-card">
-        <div class="lbl">${rec.kind}</div>
-        <div class="ttl">${rec.title}</div>
-        <div class="muted" style="font-size:12px">${rec.detail}</div>
-        ${reward}
-        ${recBtn}
-      </div>
-    </div>
+    ${advHTML}
     <div class="card">
       <div class="cc-panel-h">Active contracts</div>
       ${cRows}
@@ -5555,7 +5596,7 @@ function renderReadout(){
   if(v.twr<=1.0) flags+=`<div class="flag bad">▲ TWR ${v.twr.toFixed(2)} — won't lift off.</div>`;
   else if(v.twr<1.2) flags+=`<div class="flag warn">△ TWR ${v.twr.toFixed(2)} is low; heavy gravity losses (add engines or cut mass).</div>`;
   if(meets && v.twr>1.2) flags+=`<div class="flag ok">✓ Cleared to fly. Reliability ${(v.reliability*100|0)}%.</div>`;
-  if(bayBuildDelta(m)>0) flags+=`<div class="flag warn">△ Over assembly-bay capacity (${vehicleUnits(m)}/${bayCapacity()} units) — build runs +${bayBuildDelta(m)} mo. Expand Assembly Bays in Orbital Ops.</div>`;
+  if(bayBuildDelta(m)>0) flags+=`<div class="flag warn">△ Over assembly-bay capacity (${vehicleUnits(m)}/${bayCapacity()} units) — build runs +${bayBuildDelta(m)} mo and −${(overstretchRelPenalty(m)*100).toFixed(1)}% reliability. Expand Assembly Bays in Orbital Ops.</div>`;
   if(v.crewed && v.twr>1.2 && meets && !state.research.launch_escape) flags+=`<div class="flag warn">△ No escape system — a failure at ${(100-(v.reliability*100|0))}% odds loses the crew.</div>`;
   const testBtns=TEST_LEVELS.map((t,i)=>`<button class="btn" style="flex:1;font-size:11px;${state.testLevel===i?'border-color:var(--readout);color:var(--readout)':''}" onclick="setTestLevel(${i})">${t.name}${t.rel>0?` +${(t.rel*100)|0}%`:''}${t.cost>0?`<br><span class="dim" style="font-size:10px">${fM(t.cost)} · ${t.months} mo</span>`:''}</button>`).join('');
 
@@ -5616,7 +5657,7 @@ function renderProfileReadout(m){
   let flags='';
   if(fails) flags+=`<div class="flag bad">▲ ${fails} leg${fails>1?'s':''} short — fix the red rows above.</div>`;
   else flags+=`<div class="flag ok">✓ Every leg passes. Mission reliability ${(rel*100|0)}%.</div>`;
-  if(bayBuildDelta(m)>0) flags+=`<div class="flag warn">△ Over assembly-bay capacity (${vehicleUnits(m)}/${bayCapacity()} units) — build runs +${bayBuildDelta(m)} mo. Expand Assembly Bays in Orbital Ops.</div>`;
+  if(bayBuildDelta(m)>0) flags+=`<div class="flag warn">△ Over assembly-bay capacity (${vehicleUnits(m)}/${bayCapacity()} units) — build runs +${bayBuildDelta(m)} mo and −${(overstretchRelPenalty(m)*100).toFixed(1)}% reliability. Expand Assembly Bays in Orbital Ops.</div>`;
   if(!state.research.launch_escape) flags+=`<div class="flag warn">△ No escape system — a failure at ${(100-(rel*100|0))}% odds loses the crew.</div>`;
 
   $('readoutCard').innerHTML=`
@@ -6181,13 +6222,15 @@ function prodEffectText(key,lvl){
   if(key==='bays') return `capacity ${BAY_CAP_BASE+BAY_CAP_PER*(lvl-1)} units`;
   if(key==='foundry') return `−${Math.round((1-Math.max(FOUNDRY_FLOOR,1-FOUNDRY_PER*(lvl-1)))*100)}% build cost`;
   if(key==='pads') return `−${Math.round((1-Math.max(PAD_FLOOR,1-PAD_PER*(lvl-1)))*100)}% launch cost`;
+  if(key==='qa') return `+${(Math.min(QA_REL_CAP,QA_REL_PER*(lvl-1))*100).toFixed(1)}% reliability`;
   return '';
 }
 function productionPanelHTML(){
   const m=curMission();
   const units=vehicleUnits(m), cap=bayCapacity(), delta=bayBuildDelta(m);
+  const osPen=overstretchRelPenalty(m);
   const capNote = delta>0
-    ? `<span style="color:var(--warn)">current build needs ${units} units — over capacity by ${units-cap} (+${delta} mo)</span>`
+    ? `<span style="color:var(--warn)">current build needs ${units} units — over capacity by ${units-cap} (+${delta} mo, −${(osPen*100).toFixed(1)}% reliability)</span>`
     : (delta<0 ? `<span style="color:var(--ok)">current build (${units} units) fits with room to spare (${delta} mo)</span>`
                : `<span class="dim">current build needs ${units}/${cap} units</span>`);
   const cards=PRODUCTION_DEFS.map(d=>{
@@ -6218,6 +6261,7 @@ function productionPanelHTML(){
         <div class="metric"><div class="k">Assembly capacity</div><div class="v">${cap} units</div></div>
         <div class="metric"><div class="k">Build-cost economy</div><div class="v">−${Math.round((1-foundryCostMult())*100)}%</div></div>
         <div class="metric"><div class="k">Launch-cost economy</div><div class="v">−${Math.round((1-padLaunchMult())*100)}%</div></div>
+        <div class="metric"><div class="k">Build quality</div><div class="v" style="color:${qaRelBonus()>0?'var(--ok)':'var(--ink)'}">+${(qaRelBonus()*100).toFixed(1)}% rel</div></div>
         <div class="metric"><div class="k">Total upkeep</div><div class="v" style="color:${productionUpkeep()>0?'var(--bad)':'var(--ink)'}">${productionUpkeep()>0?'−'+fM(productionUpkeep())+'/mo':'none'}</div></div>
       </div>
       ${cards}

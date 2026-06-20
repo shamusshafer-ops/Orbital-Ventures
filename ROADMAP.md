@@ -614,6 +614,19 @@ order — the near-term build order (#3 vehicle families → … → #7) is unch
       save defaults, and a render smoke. *Deferred to later slices:* click-to-jump
       notification system, and animated scene art (extra pads, building-level
       visuals, crew/trucks/smoke).
+      **Mission Control deepening (slices 4–9, from a UX review):** turn the dashboard
+      into a true "home base." Planned: 4 · Mission Control Advisor (focus goal +
+      requirement ✓/✗ analysis + ranked actions); 5 · structured Objectives checklist
+      (main/recommended/optional/long-term); 6 · growing Space Center (era/asset-gated
+      buildings); 7 · alert-priority polish (info level, icons, sort, cap); 8 · Company
+      History milestone list; 9 · Program Status strip + prominent CTAs.
+      - [x] **Slice 4 — Mission Control Advisor** *(2026-06-20).* `missionAdvisor()` extends
+        `recommendedAction` into a focus-goal card with a requirement ✓/✗ checklist
+        (research, reputation, Δv/TWR, reliability-vs-target — reused from
+        `computeVehicle`/`simulateMission`/`missionFlyable`) and up to 4 ranked, one-click
+        action buttons (research / fly-for-rep / fix Δv / test campaign / Launch when
+        ready). Replaces the old "Recommended next step" card. Validated headlessly (9
+        checks) + render smoke; suites green.
 - [ ] **19 · Organizational scaling (departments)** *(P2, v2.0)* — Grow personnel
       from named individuals into **departments** with leaders/executive roles,
       career progression + training/specialization tracks, and
