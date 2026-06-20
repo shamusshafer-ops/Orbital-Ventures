@@ -679,8 +679,15 @@ logic with no Phaser global.
       "Continue" click routes to the visible canvas (`A.viewCanvas`). Validated: vm suites
       stay green (34/38/38); a fallback probe runs `playMission` with no throws across
       success/ascent-fail/deep-strand/cislunar/suborbital; in-browser confirmed (renders
-      correctly, slightly clearer, no console errors). *Deferred:* native particle/camera-
-      shake embellishments (currently drawScene renders plumes/debris itself).
+      correctly, slightly clearer, no console errors).
+      **Enhancement pass (2026-06-20):** native GPU exhaust — the 2D plume/trail/flame are
+      suppressed (`A.fxNative`) and replaced by Phaser particle emitters (engine plume,
+      launch smoke, staging sparks, explosion debris + fireball) that track the rocket;
+      the plume aims along the rocket's axis via a per-particle `onEmit` angle callback;
+      engine bells are hidden after liftoff (`drawVehicle(...hideBells)`). Localized
+      `postFX.addGlow` on the plume/fireball + a ColorMatrix brightness lift (the earlier
+      full-screen bloom was dropped — it hazed the frame). Camera shake on liftoff and
+      vehicle loss. Added a **Space** hotkey to launch (and skip/continue playback).
 - [ ] **Slice 2 — `VehiclePreviewScene`**: bench silhouette as a Phaser scene from the
       same `buildVehicleShape` data.
 - [ ] **Slice 3 (optional) — `MapScene`**: interactive solar map (orbit rings, planet

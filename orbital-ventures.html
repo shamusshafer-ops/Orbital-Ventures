@@ -2254,9 +2254,27 @@ function cycleAnimSpeed(){
 }
 function animSpeed(){ return ANIM_SPEEDS[animSpeedIdx].mult; }
 document.addEventListener('keydown',function(e){
+  // Space: launch the current mission (or skip/continue the playback if one is running)
+  if(e.key===' '||e.code==='Space'){
+    const tag=(e.target&&e.target.tagName)||'';
+    if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT') return; // never hijack typing
+    e.preventDefault();
+    if(animState){ if(animState.held) dismissAnim(); else skipAnim(); return; }
+    tryLaunchHotkey();
+    return;
+  }
   if(!animState) return;
   if(e.key==='Enter'){ e.preventDefault(); if(animState.held){ dismissAnim(); } else { cycleAnimSpeed(); } }
 });
+// fire a launch from the keyboard, only when one is actually available (mirrors the Launch button gate)
+function tryLaunchHotkey(){
+  if(!state || state.over || animState) return;
+  try{
+    const m=curMission(); if(!m) return;
+    const v=computeVehicle(); const sim=m.profile?simulateMission(m):null;
+    if(canLaunch(v,m,sim).ok){ if(state.tab!=='bench'){ state.tab='bench'; render(); } launch(); }
+  }catch(err){}
+}
 function clampA(v,a,b){return Math.max(a,Math.min(b,v));}
 function smooth(t){return t*t*(3-2*t);}
 function hx(h){return [parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];}
@@ -2903,22 +2921,71 @@ function defineFlightScene(){
     create(){
       this.tex = this.textures.exists('flightTex') ? this.textures.get('flightTex') : this.textures.createCanvas('flightTex',900,520);
       this.add.image(0,0,'flightTex').setOrigin(0,0);
-      this.playing=false; flightScene=this;
+      // "best of Phaser": cinematic postFX over the whole flight — bloom makes the
+      // plume / atmosphere limb / Earth / stars / orbital burns glow; vignette frames it.
+      // No full-screen bloom (it hazes the whole frame). Keep the rendered scene crisp
+      // and just lift overall brightness with a ColorMatrix; the glow lives on the plume.
+      this.bloom=null;
+      try{
+        const fx=this.cameras.main.postFX;
+        if(fx){ const cm=fx.addColorMatrix(); if(cm&&cm.brightness){ cm.brightness(1.18); } this.camFX=cm; }
+      }catch(e){ console.warn('flight postFX unavailable:',e); }
+      // native GPU particle layer (exhaust plume, launch smoke, staging sparks, debris/fireball)
+      this.np=false; const self=this; this._plumeAngle=90;
+      try{
+        const mk=(key,draw,w,h)=>{ if(!this.textures.exists(key)){ const g=this.make.graphics({x:0,y:0,add:false}); draw(g); g.generateTexture(key,w,h); g.destroy(); } };
+        mk('fxFlame',g=>{ g.fillStyle(0xffffff,1); g.fillCircle(12,12,12); },24,24);
+        mk('fxSmoke',g=>{ g.fillStyle(0xffffff,1); g.fillCircle(16,16,16); },32,32);
+        mk('fxChunk',g=>{ g.fillStyle(0xffffff,1); g.fillRect(0,0,6,6); },6,6);
+        // angle via onEmit callback so the plume reliably tracks the rocket's pitch each particle
+        this.plume=this.add.particles(0,0,'fxFlame',{ lifespan:{min:260,max:520}, speed:{min:70,max:190}, angle:{ onEmit:()=> self._plumeAngle + (Math.random()*16-8) }, scale:{start:0.6,end:0}, alpha:{start:0.95,end:0}, tint:[0xffffff,0xffe48a,0xffa83a,0xff5a22], blendMode:'ADD', frequency:12, quantity:2, emitting:false });
+        this.smoke=this.add.particles(0,0,'fxSmoke',{ lifespan:{min:700,max:1300}, speed:{min:20,max:70}, angle:{min:60,max:120}, scale:{start:0.3,end:1.5}, alpha:{start:0.35,end:0}, tint:[0xbfc7cf,0x8a949d], frequency:28, quantity:1, emitting:false });
+        this.sparks=this.add.particles(0,0,'fxFlame',{ lifespan:{min:300,max:700}, speed:{min:50,max:220}, scale:{start:0.4,end:0}, alpha:{start:1,end:0}, tint:[0xffe07a,0xff9836], blendMode:'ADD', emitting:false });
+        this.debris=this.add.particles(0,0,'fxChunk',{ lifespan:{min:900,max:1700}, speed:{min:80,max:300}, gravityY:160, scale:{start:1.1,end:0.3}, alpha:{start:1,end:0}, rotate:{min:0,max:360}, tint:[0x8a6a44,0x554433,0xff7a30], emitting:false });
+        this.fireball=this.add.particles(0,0,'fxFlame',{ lifespan:{min:400,max:900}, speed:{min:40,max:200}, scale:{start:1.3,end:0}, alpha:{start:1,end:0}, tint:[0xffffff,0xffd060,0xff5020,0x802000], blendMode:'ADD', emitting:false });
+        // glow localized to the exhaust/fireball — bright plume without hazing the scene
+        try{ if(this.plume.postFX) this.plume.postFX.addGlow(0xffd49a, 4, 0); }catch(_){}
+        try{ if(this.fireball.postFX) this.fireball.postFX.addGlow(0xff7a30, 6, 0); }catch(_){}
+        this.np=true;
+      }catch(e){ console.warn('flight native particles unavailable:',e); this.np=false; }
+      this.playing=false; this.didBoomShake=false; flightScene=this;
       if(flightPending) this.beginFlight();
     }
     beginFlight(){
       if(!flightPending) return;
       const {spec,done}=flightPending; flightPending=null;
       setupFlightState(spec, done, this.tex.context, this.tex.canvas, (flightGame&&flightGame.canvas)||this.tex.canvas);
+      animState.fxNative=!!this.np; // suppress the 2D plume/trail/flame only if native particles are live
+      this.didBoomShake=false; this._lastDropped=0; this._didDebris=false;
+      if(this.np){ try{ this.plume.stop(); this.smoke.stop(); }catch(e){} }
       this.playing=true;
+      try{ this.cameras.main.shake(1000, 0.006); }catch(e){} // liftoff rumble
+    }
+    aimPlume(pitch){ // exhaust fires straight out the nozzle, along the rocket's axis
+      this._plumeAngle = Math.atan2(Math.cos(pitch||0), -Math.sin(pitch||0))*180/Math.PI; // 90° = down when pitch 0
+    }
+    driveParticles(A){
+      const ascent=A.phase==='ascent', haveXY=A.rocketX!=null;
+      const fire = ascent && !A.exploding && haveXY && (A.ascentP==null || A.ascentP<0.96);
+      if(fire){ this.aimPlume(A.pitch); this.plume.setPosition(A.rocketX, A.rocketY); if(!this.plume.emitting) this.plume.start(); }
+      else if(this.plume.emitting) this.plume.stop();
+      if(ascent && !A.exploding && haveXY && A.ascentP!=null && A.ascentP<0.14){ this.smoke.setPosition(A.rocketX, A.rocketY+4); if(!this.smoke.emitting) this.smoke.start(); }
+      else if(this.smoke.emitting) this.smoke.stop();
+      if(A.dropped!=null && A.dropped>this._lastDropped){ this._lastDropped=A.dropped; if(haveXY) this.sparks.explode(22, A.rocketX, A.rocketY); }
+      if(A.exploding && !this._didDebris){ this._didDebris=true; if(this.plume.emitting) this.plume.stop(); if(this.smoke.emitting) this.smoke.stop();
+        if(haveXY){ this.debris.explode(46, A.rocketX, A.rocketY-12); this.fireball.explode(34, A.rocketX, A.rocketY-14); } }
     }
     update(time,delta){
       if(!this.playing) return;
-      const A=animState; if(!A||A.held){ this.playing=false; return; }
+      const A=animState; if(!A||A.held){ this.playing=false; if(this.np&&this.plume.emitting) this.plume.stop(); if(this.np&&this.smoke.emitting) this.smoke.stop(); return; }
       A.virtT += (delta||16)*animSpeed();
       const t=A.virtT;
       try{ drawScene(t); this.tex.refresh(); }catch(e){ console.error('flight anim error:',e); this.playing=false; endAnim(); return; }
-      if(t>=A.totalDur){ this.playing=false; endAnim(true); }
+      if(this.np){ try{ this.driveParticles(A); }catch(e){} }
+      // dynamic bloom: punch up engine glow during powered ascent, ease off in coast/orbit
+      if(this.bloom){ const want = (A.ascentP!=null && A.ascentP<0.95 && t<A.ascentDur) ? 1.0 : 0.7; this.bloom.strength += (want-this.bloom.strength)*0.05; }
+      if(A.exploding && !this.didBoomShake){ this.didBoomShake=true; try{ this.cameras.main.shake(700, 0.022); }catch(e){} } // vehicle-loss kick
+      if(t>=A.totalDur){ this.playing=false; if(this.np){ if(this.plume.emitting) this.plume.stop(); if(this.smoke.emitting) this.smoke.stop(); } endAnim(true); }
     }
   };
 }
@@ -3109,12 +3176,12 @@ function drawScene(t){
   const A=animState,s=A.spec;
   if(A.ctx&&A.ctx.clearFrame) A.ctx.clearFrame();
   const ascentFail = !s.success && s.failPhase==='ascent';
-  if(t < A.ascentDur || ascentFail){ drawAscent(t, ascentFail); }
+  if(t < A.ascentDur || ascentFail){ A.phase='ascent'; drawAscent(t, ascentFail); }
   else {
     const ct=t-A.ascentDur;
-    if(s.isCislunar) drawCislunar(ct);
-    else if(s.isOrbital) drawOrbit(ct);
-    else drawSuborbital(ct);
+    if(s.isCislunar){ A.phase='cislunar'; drawCislunar(ct); }
+    else if(s.isOrbital){ A.phase='orbit'; drawOrbit(ct); }
+    else { A.phase='suborbital'; drawSuborbital(ct); }
   }
   A.lastT=t;
 }
@@ -3130,12 +3197,12 @@ function buildVehicleShape(spec){
   const totalH=segs.reduce((a,s)=>a+s.h,0);
   return {segs, nose, totalH, maxW:Math.max.apply(null,segs.map(s=>s.w))};
 }
-function drawVehicle(ctx, segs, nose, scale, flame, altFrac){
+function drawVehicle(ctx, segs, nose, scale, flame, altFrac, hideBells){
   if(!segs.length) return;
   altFrac=altFrac||0;
   const base=segs[0], bw=base.w*scale, ne=base.engines;
   const plumeExpand = 1 + altFrac * 2.5;
-  for(let e=0;e<ne;e++){
+  if(!hideBells) for(let e=0;e<ne;e++){
     const ex = ne===1?0:(-bw/2 + bw*(e+0.5)/ne), nz=bw/(ne*2.2);
     ctx.beginPath(); ctx.moveTo(ex-nz*0.4,-2*scale); ctx.lineTo(ex-nz*0.75,5*scale);
     ctx.lineTo(ex+nz*0.75,5*scale); ctx.lineTo(ex+nz*0.4,-2*scale); ctx.closePath();
@@ -3757,7 +3824,9 @@ function drawAscent(t,canFail){
   const n=s.stages.length; let dropped=0; const seps=[];
   for(let i=1;i<n;i++){ const thr=clampA(i/(n+0.25)+((R.sep&&R.sep[i])||0),0.12,0.95); seps.push(thr); if(p>thr) dropped++; }
   const remaining=shape.segs.slice(dropped);
+  A.rocketX=x; A.rocketY=baseY; A.pitch=pitch; A.throttle=throttle; A.altFrac=altFrac; A.dropped=dropped; // expose for native Phaser particle FX
   const exploding=canFail&&p>=0.5;
+  A.exploding=exploding; A.ascentP=p; // expose for the Phaser FX layer (camera shake)
   const fairingSep = orb && p>0.45 && !A.fairingSep;
   if(fairingSep){ A.fairingSep=t; sfxSep(); }
   const fairingGone = A.fairingSep && (t-A.fairingSep)>0;
@@ -3768,7 +3837,7 @@ function drawAscent(t,canFail){
   if(exploding&&!A.sfxBoomFired){ A.sfxBoomFired=true; sfxEngineOff(); sfxBoom(); }
   ctx.save();
   ctx.translate(A.shakeX, A.shakeY);
-  if(p<0.5 && !exploding){
+  if(!A.fxNative && p<0.5 && !exploding){
     let ti=A.trail.length;
     while(ti-->0){
       const tr=A.trail[ti];
@@ -3838,9 +3907,9 @@ function drawAscent(t,canFail){
   }
   if(!exploding){
     ctx.save(); ctx.translate(x,baseY); ctx.rotate(pitch);
-    const flameSize=(10+Math.random()*8)*throttle*(1+p*0.5);
+    const flameSize=A.fxNative?0:(10+Math.random()*8)*throttle*(1+p*0.5); // native Phaser plume replaces the 2D flame
     const noseType = (fairingGone && shape.nose==='fairing') ? 'none' : shape.nose;
-    drawVehicle(ctx, remaining.length?remaining:[shape.segs[shape.segs.length-1]], noseType, scale, flameSize, altFrac);
+    drawVehicle(ctx, remaining.length?remaining:[shape.segs[shape.segs.length-1]], noseType, scale, flameSize, altFrac, (A.fxNative && p>0.04)); // hide engine bells once lifted off (native plume covers the base)
     ctx.restore();
   } else {
     drawBoom(ctx,x,baseY-18,t-A.ascentDur*0.5);
@@ -5347,7 +5416,7 @@ function renderReadout(){
 
     ${flags}
     <button class="launch" onclick="launch()" ${chk.ok?'':'disabled'}>${chk.ok?(m.tanker?'■ Launch Tanker':(v.crewed?'■ Build & Launch (crewed)':'■ Build & Launch')):'Launch unavailable'}</button>
-    ${chk.ok?'':`<div class="flag dim" style="color:var(--dim)">${chk.why}</div>`}`;
+    ${chk.ok?'<div class="dim" style="font-size:11px;text-align:center;margin-top:4px">or press <b>Space</b></div>':`<div class="flag dim" style="color:var(--dim)">${chk.why}</div>`}`;
 }
 
 function renderProfileReadout(m){
@@ -5401,7 +5470,7 @@ function renderProfileReadout(m){
 
     ${flags}
     <button class="launch" onclick="launch()" ${chk.ok?'':'disabled'}>${chk.ok?'■ Build & Launch mission':'Launch unavailable'}</button>
-    ${chk.ok?'':`<div class="flag dim" style="color:var(--dim)">${chk.why}</div>`}`;
+    ${chk.ok?'<div class="dim" style="font-size:11px;text-align:center;margin-top:4px">or press <b>Space</b></div>':`<div class="flag dim" style="color:var(--dim)">${chk.why}</div>`}`;
 }
 
 /* ---------- Solar System map ---------- */
