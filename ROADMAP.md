@@ -363,10 +363,26 @@ review's numbering, not the build order (see **Suggested build order** at the en
       subsystem-reliability model, reusable-hardware refurbishment workflows (ties
       to M5), and forecasting/inventory. The single biggest unbuilt bucket in the
       strategic doc.)*
-- [~] **8 · Program politics** — Partially foreshadowed by rep + economy events.
-      Add government funding (budget increases/cuts), public support (Moon landing
-      ↑, crew deaths ↓), shareholders (demand profit), national prestige (the race).
-      Launches affect more than money.
+- [~] **8 · Program politics** — *First slice built 2026-06-20: public support →
+      government funding.* `state.publicSupport` (0–100, `SAVE_VERSION`→3, forward-
+      compat default 50) is a national-mood dial with five tiers (Hostile→Galvanized,
+      `publicMood()`). It moves on outcomes — a win lifts it (scaled by mission size,
+      `SUPPORT_DELTA`), a crewed loss/strand is the worst blow, aborts/uncrewed losses
+      dent it — and on **national prestige**: when a rival claims a first you haven't
+      matched it sags (`checkRivalFirsts`), far less if you'd already done that mission.
+      It mean-reverts toward neutral each month (`SUPPORT_REVERT`). Support pays out:
+      `govMonthlyFunding()` = `GOV_FUNDING_BASE · support% · (1+0.15·era)` is added to
+      capital every `advance()`, so a launch's value is now reputational + political,
+      not just cash. Surfaced as an always-on header **Public Support** stat (`% ·
+      mood`, tier-coloured) and a **Public & Government** panel on the Command Center
+      (mood bar + funding rate; funding folded into the dashboard's monthly-net income).
+      Validated headlessly (34 checks): tier thresholds, clamping, funding curve
+      (support×era), monthly drift + payout, prestige erosion + idempotence + the
+      already-completed soft path, `commandSummary` fields, save/load round-trip +
+      old-save default, and a render smoke.
+      *Still open in #8 (later slices):* budget shocks/cuts as discrete events,
+      shareholders/investor expectations (profit pressure), media coverage, and a
+      stock-market sub-system.
       *(Absorbs Strategic-Vision Phase 6 (v4.0): government funding structures,
       political influence, media coverage / public opinion, and the still-new
       investor-expectations / stock-market sub-system. Global launch market +
@@ -476,9 +492,11 @@ review's numbering, not the build order (see **Suggested build order** at the en
 silhouette)~~ ✓ → ~~12 (architecture choices)~~ ✓ → ~~5 (active rivals)~~ ✓ →
 ~~9 (personnel traits)~~ ✓ → ~~14 (science)~~ ✓ → ~~3 (vehicle families)~~ ✓ →
 ~~18 (Command Center, first slice)~~ ✓ → ~~6 (multi-path tech, first slice)~~ ✓ →
-**8 (politics) ← next** → 7 (manufacturing). Items 1/2/3/4/5/9/10/11/12/14/15/16/17
-shipped + 18 & 6 first slices; tech tree now a real swimlane graph with divergent
-routes; 13 partially done. (#6 later slices: TRL, partnerships, reusable route.)
+~~8 (politics, first slice)~~ ✓ → **7 (manufacturing) ← next**. Items
+1/2/3/4/5/9/10/11/12/14/15/16/17 shipped + 18, 6 & 8 first slices; tech tree now a
+real swimlane graph with divergent routes; 13 partially done. (#6 later slices: TRL,
+partnerships, reusable route. #8 later slices: budget shocks, shareholders, media,
+stock market.)
 
 ## Strategic Vision — 8-Phase Grand-Strategy Arc
 
@@ -506,7 +524,7 @@ where each item actually lives.
 | **P3 · Manufacturing & production** (v2.5) | Not built; QA→reliability bridge exists via **#16** | Factories, supply chains, scheduling, bottlenecks, inventory, refurbishment → folded into **#7 Manufacturing capacity** (the single biggest unbuilt bucket). |
 | **P4 · Mission Control & operations** (v3.0) | Flight telemetry exists *visually* in the launch animation | **NEW:** interactive Mission Control, in-flight player decisions, rescue missions, launch **weather**/environmental systems, rehearsal tools. (Story-failure outcomes already exist via **#4/#16**.) See **new arc item #20**. |
 | **P5 · Infrastructure & colonization** (v3.5) | Persistent bases/stations shipped (**#17**); ISRU shipped; depot economy (**#2**) | **NEW:** colony **population growth**/management, typed habitat/mine/power construction, and **interplanetary logistics/trade routes** = the open *fleet-logistics* thread. Extends **#17** — see **new arc item #21**. |
-| **P6 · Economic & political** (v4.0) | Global launch market + dynamic cycles shipped (econ events, **#2** fuel market) | Government funding, political influence, media/public opinion, **investor/stock-market** → folded into **#8 Program politics**. |
+| **P6 · Economic & political** (v4.0) | Global launch market + dynamic cycles shipped (econ events, **#2** fuel market); **#8** first slice shipped — public support → government funding | Remaining: budget shocks/cuts, political influence, media/public opinion, **investor/stock-market** → tracked under **#8 Program politics**. |
 | **P7 · Research ecosystem** (v4.5) | Test campaigns (**M2**), science track (**#14**), breakthroughs (**#9**) shipped; tech tree now interactive | TRL, prototype/testing programs, competing pathways, patent licensing, research partnerships → folded into **#6 Multi-path tech tree**. |
 | **P8 · Deep-space civilization** (v5.0) | Foreshadowed by facilities (**#17**) + programs/ambitions (**#1/#11**) | **NEW endgame cluster:** planetary economies, interplanetary trade networks, orbital shipyards, megaproject construction, terraforming, generation/precursor interstellar ships. See **new arc item #22**. |
 

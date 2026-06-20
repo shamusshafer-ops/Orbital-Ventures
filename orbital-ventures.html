@@ -208,6 +208,7 @@
       <div class="stat"><span class="k">Capital</span><span class="v" id="stMoney">—</span></div>
       <div class="stat"><span class="k">Reputation</span><span class="v" id="stRep">—</span></div>
       <div class="stat"><span class="k">Flights</span><span class="v" id="stFlights">—</span></div>
+      <div class="stat"><span class="k">Public Support</span><span class="v" id="stSupport">—</span></div>
       <div class="stat hidden" id="stMarketWrap"><span class="k">Market</span><span class="v" id="stMarket">—</span></div>
       <div class="stat hidden" id="stRoyaltyWrap"><span class="k">PGM Royalties</span><span class="v" id="stRoyalty">—</span></div>
       <div class="stat hidden" id="stInfraWrap"><span class="k">Facilities</span><span class="v" id="stInfra">—</span></div>
@@ -505,6 +506,25 @@ const EVENT_CHANCE=0.14;   // monthly probability of a new event (when off coold
 const EVENT_MIN_GAP=5;     // months of quiet enforced after each event
 // M2: LEO propellant market
 const FUEL_BASE=0.4, FUEL_MIN=0.18, FUEL_MAX=0.95, FUEL_SPREAD=0.10;
+
+// #8 Program politics (first slice): public support drives government funding.
+// Support is a 0–100 mood dial; missions move it, the rivalry erodes it (national
+// prestige), and it mean-reverts toward neutral. High support unlocks real monthly
+// government grants — so a launch's value is reputational + political, not just cash.
+const SUPPORT_BASE=50, SUPPORT_MIN=0, SUPPORT_MAX=100;
+const SUPPORT_REVERT=0.04;        // monthly pull back toward neutral (slow — events lead)
+const GOV_FUNDING_BASE=0.5;       // $M/mo at 100% support, era 0; grows +15%/era
+const SUPPORT_TIERS=[             // ordered high→low; first match wins
+  {min:85, label:'Galvanized',  color:'var(--ok)'},
+  {min:65, label:'Supportive',  color:'var(--ok)'},
+  {min:45, label:'Neutral',     color:'var(--readout)'},
+  {min:25, label:'Skeptical',   color:'var(--warn)'},
+  {min:0,  label:'Hostile',     color:'var(--bad)'},
+];
+const SUPPORT_DELTA={             // outcome-driven support swings
+  routineSuccess:0.5, partial:1.0, abort:-3, lossUncrewed:-2,
+  lossCrewed:-12, strand:-14, rivalFirst:-2.5, rivalFirstDone:-0.5,
+};
 
 const ENGINES = {
   a4:          {id:'a4',          name:'V-2 (A-4) Powerplant',            prop:'Alcohol/LOX', ispSL:203, ispVac:215, thrustSL:245, thrustVac:265, mass:0.95, cost:0.30, rel:0.96, base:true},
@@ -917,6 +937,7 @@ function newGame(difficulty){
     log:[], rivalFired:{}, scooped:{}, rivalThreat:{},
     staff:[], assignedAstronaut:null, persEventCooldown:5,
     econEvents:[], eventCooldown:6, pgmRoyalty:0,
+    publicSupport:SUPPORT_BASE, // #8: program politics — public mood dial
     ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
     facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
     architectures:{}, science:0,
@@ -946,6 +967,8 @@ function advance(months){
     state.month++; if(state.month>11){state.month=0;state.year++;}
     state.money-=Math.max(0,diff().overhead+econOverheadAdd()); // monthly overhead (difficulty + active market events)
     if(state.pgmRoyalty>0) state.money+=state.pgmRoyalty; // M7: platinum-group royalties from an established Belt claim
+    state.publicSupport=clampA(publicSupport()+(SUPPORT_BASE-publicSupport())*SUPPORT_REVERT, SUPPORT_MIN, SUPPORT_MAX); // #8: mood drifts back to neutral
+    state.money+=govMonthlyFunding(); // #8: public support buys government funding
     for(const fid in (state.facilities||{})){ // M17: persistent facilities produce every month
       if(!facilityBuilt(fid)) continue;
       const pr=facilityProduction(facilityById(fid), facilityState(fid));
@@ -1001,6 +1024,12 @@ function advance(months){
 function econPayoutMult(){ return (state.econEvents||[]).reduce((a,e)=>a*(e.payoutMult||1),1); }
 function econOverheadAdd(){ return (state.econEvents||[]).reduce((a,e)=>a+(e.overheadAdd||0),0); }
 function round2(v){ return Math.round(v*100)/100; }
+// #8 Program politics helpers
+function publicSupport(){ return clampA(state.publicSupport==null?SUPPORT_BASE:state.publicSupport, SUPPORT_MIN, SUPPORT_MAX); }
+function publicMood(){ const s=publicSupport(); return SUPPORT_TIERS.find(t=>s>=t.min)||SUPPORT_TIERS[SUPPORT_TIERS.length-1]; }
+function addSupport(delta){ state.publicSupport=clampA(publicSupport()+delta, SUPPORT_MIN, SUPPORT_MAX); return state.publicSupport; }
+// monthly government grant: scales with support (linear, 0 at no support) and era
+function govMonthlyFunding(){ return round2(GOV_FUNDING_BASE*(publicSupport()/100)*(1+0.15*eraIndex(currentEra()))); }
 function rollEconEvent(){
   const elig=ECONOMY_EVENTS.filter(e=> state.year>=(e.minYear||0) && state.rep>=(e.minRep||0) && state.flights>=(e.reqFlights||0) && (!e.reqDepot || state.research.orbital_depot));
   if(!elig.length) return null;
@@ -1195,6 +1224,8 @@ function checkRivalFirsts(){
           state.rivalFired[key]=true;
           state.rivalThreat=state.rivalThreat||{}; state.rivalThreat[r.id]=(state.rivalThreat[r.id]||0)+1;
           log('rival', `${r.flag} ${r.name} claims: ${f.name} (${f.year})`);
+          // #8: national prestige — a rival's first stings the home crowd, but far less if you'd already done it
+          addSupport((f.missionId && state.completed[f.missionId]) ? SUPPORT_DELTA.rivalFirstDone : SUPPORT_DELTA.rivalFirst);
           if(f.missionId && !state.completed[f.missionId] && !state.scooped[f.missionId]){
             state.scooped[f.missionId]=true;
             const mm=MISSIONS.find(x=>x.id===f.missionId);
@@ -1610,6 +1641,7 @@ function launch(){
     if(crewed) payout*=ab.payoutMult; // M6: astronaut payout bonus
     if(!routine && state.scooped[m.id]) payout*=SCOOP_PAYOUT_MULT;
     const rep=routine?2:m.rep;
+    addSupport(routine?SUPPORT_DELTA.routineSuccess:clampA(2+(m.rep||5)*0.05,2,10)); // #8: a win lifts public mood, scaled by how big a win
     if(m.tanker){
       const delivered=tankerDelivery();
       state.depot+=delivered;
@@ -1646,14 +1678,17 @@ function launch(){
     state.money+=payout;
     const rep=Math.max(1,Math.round((routine?2:m.rep)*0.25));
     state.rep+=rep;
+    addSupport(SUPPORT_DELTA.partial); // #8: a salvaged flight still reads as progress
     log('note',`${m.name}: PARTIAL SUCCESS — ${outcome.story} Salvaged value +${fM(payout)}, +${rep} rep, but the objective is not complete.`);
   }else if(outcome.kind==='abort'){
     personnelMissionEvent(false);
     const rep=Math.min(state.rep,12); state.rep-=rep;
+    addSupport(SUPPORT_DELTA.abort); // #8: a failure dents mood, but a safe crew limits the damage
     log('bad',`${m.name}: MISSION FAILURE — crew safe. The ${SUBSYS_LABEL[outcome.subsystem].toLowerCase()} gave out — ${outcome.story} Vehicle and mission lost, −${rep} rep.`);
   }else if(outcome.kind==='strand'){
     personnelMissionEvent(false);
     const rep=Math.min(state.rep,40); state.rep-=rep;
+    addSupport(SUPPORT_DELTA.strand); // #8: a crew stranded in deep space is a national shock
     loseAssignedCrew();
     advance(6); // grounding + investigation
     log('bad',`${m.name}: LOST IN DEEP SPACE — ${outcome.story} A long inquiry follows, −${rep} rep.`);
@@ -1661,11 +1696,13 @@ function launch(){
     personnelMissionEvent(false);
     if(crewed){
       const rep=Math.min(state.rep,40); state.rep-=rep;
+      addSupport(SUPPORT_DELTA.lossCrewed); // #8: losing a crew is the worst political blow
       loseAssignedCrew();
       advance(6); // grounding + investigation
       log('bad',`${m.name}: CATASTROPHE. The ${SUBSYS_LABEL[outcome.subsystem].toLowerCase()} failed — ${outcome.story} Vehicle lost with all ${m.crew} aboard. Six-month stand-down, −${rep} rep. Fit a launch-escape system before flying crew again.`);
     }else{
       const rep=Math.min(state.rep, routine?3:8); state.rep-=rep;
+      addSupport(SUPPORT_DELTA.lossUncrewed); // #8: an uncrewed loss costs some goodwill
       log('bad',`${m.name}: FAILURE. The ${SUBSYS_LABEL[outcome.subsystem].toLowerCase()} failed — ${outcome.story} Vehicle cost forfeit, −${rep} rep.`);
     }
   }
@@ -1983,7 +2020,7 @@ function hideModal(){$('modal').classList.add('hidden');}
 
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=2;
+const SAVE_VERSION=3; // v3: #8 program politics — state.publicSupport
 function saveGame(){
   try{
     const payload={v:SAVE_VERSION, ts:Date.now(), state:JSON.parse(JSON.stringify(state))};
@@ -2013,7 +2050,7 @@ function loadGame(){
       windows:{}, committedWindow:null, selectedBody:'moon', mapZoom:null,
       depot:0, depotUse:0, tab:'command', log:[], rivalFired:{}, scooped:{}, rivalThreat:{}, bailouts:0,
       difficulty:'engineer', customDifficulty:customDefaults(),
-      econEvents:[], eventCooldown:6, pgmRoyalty:0,
+      econEvents:[], eventCooldown:6, pgmRoyalty:0, publicSupport:SUPPORT_BASE,
       ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
       facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
       architectures:{}, science:0, persEventCooldown:5,
@@ -2059,7 +2096,7 @@ function autoLoad(){
       windows:{}, committedWindow:null, selectedBody:'moon', mapZoom:null,
       depot:0, depotUse:0, tab:'command', log:[], rivalFired:{}, scooped:{}, rivalThreat:{}, bailouts:0,
       difficulty:'engineer', customDifficulty:customDefaults(),
-      econEvents:[], eventCooldown:6, pgmRoyalty:0,
+      econEvents:[], eventCooldown:6, pgmRoyalty:0, publicSupport:SUPPORT_BASE,
       ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
       facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
       architectures:{}, science:0, persEventCooldown:5,
@@ -4095,6 +4132,9 @@ function render(){
   $('stMoney').style.color = state.money<1.5?'var(--bad)':'var(--ink)';
   $('stRep').textContent=fI(state.rep);
   $('stFlights').textContent=state.flights;
+  const mood=publicMood();
+  $('stSupport').textContent=`${Math.round(publicSupport())}% · ${mood.label}`;
+  $('stSupport').style.color=mood.color;
   $('stDepotWrap').classList.toggle('hidden', !state.research.orbital_depot);
   if(state.research.orbital_depot) $('stDepot').textContent=state.depot.toFixed(1)+' t';
   $('stRoyaltyWrap').classList.toggle('hidden', !(state.pgmRoyalty>0));
@@ -4161,8 +4201,10 @@ function availableContracts(){
 function commandSummary(){
   const era=currentEra();
   const overhead=Math.max(0, diff().overhead+econOverheadAdd());
-  const income=round2(totalFacilityIncome()+(state.pgmRoyalty||0));
+  const govFunding=govMonthlyFunding(); // #8: political funding from public support
+  const income=round2(totalFacilityIncome()+(state.pgmRoyalty||0)+govFunding);
   const payroll=monthlyPayroll();
+  const mood=publicMood();
   const net=round2(income-overhead-payroll);
   const m=curMission();
   const ar=state.activeResearch;
@@ -4172,6 +4214,7 @@ function commandSummary(){
     era:era.name, eraIdx:eraIndex(era)+1, eraTotal:ERAS.length,
     successRate: state.flights>0?Math.round(100*state.successes/state.flights):null,
     income, overhead, payroll, net, science:Math.round(state.science||0),
+    support:Math.round(publicSupport()), mood:mood.label, moodColor:mood.color, govFunding,
     research: ar?{name:(RESEARCH.find(r=>r.id===ar.id)||{}).name||ar.id, monthsLeft:ar.monthsLeft}:null,
     nextObjective: no?no.mission.name:null,
     activeMission: m?{name:m.name, buildMo:buildMonths(m)+1+TEST_LEVELS[state.testLevel].months}:null,
@@ -4383,6 +4426,16 @@ function renderCommandCenter(){
       <div class="metric"><div class="k">Reputation</div><div class="v">${fI(s.rep)}</div></div>
       <div class="metric"><div class="k">Flights</div><div class="v">${s.flights}${s.successRate!=null?` · ${s.successRate}%`:''}</div></div>
       <div class="metric"><div class="k">Science</div><div class="v" style="color:var(--readout)">${s.science} ⚛</div></div>
+    </div>
+    <div class="cc-politics" style="margin-top:10px;border:1px solid var(--line);border-radius:6px;padding:10px 12px;background:var(--panel2)">
+      <div style="display:flex;justify-content:space-between;align-items:baseline">
+        <span class="k" style="font-size:10px;text-transform:uppercase;letter-spacing:.14em;color:var(--muted)">Public &amp; Government</span>
+        <span style="font-size:12px"><span class="num" style="color:${s.moodColor}">${s.support}%</span> <span class="dim">·</span> <span style="color:${s.moodColor}">${s.mood}</span></span>
+      </div>
+      <div style="height:7px;border-radius:4px;background:#0d1418;margin:7px 0 6px;overflow:hidden">
+        <div style="height:100%;width:${s.support}%;background:${s.moodColor};transition:width .3s"></div>
+      </div>
+      <div class="dim" style="font-size:11px">Government funding <span class="num" style="color:${s.govFunding>0?'var(--ok)':'var(--dim)'}">+${fM(s.govFunding)}/mo</span> — rises with public support &amp; era. Wins lift the mood; failures and a rival's firsts erode it.</div>
     </div>
     ${s.nextObjective?`<div class="flag ok" style="margin:2px 0 4px">▸ Next objective: <b style="margin-left:4px">${s.nextObjective}</b></div>`:''}
     <div class="mission-tag" style="margin-top:10px">Cape Canaveral — click a building to drill in</div>
