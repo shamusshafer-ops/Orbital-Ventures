@@ -637,6 +637,40 @@ order — the near-term build order (#3 vehicle families → … → #7) is unch
 > viz, save/load, facilities, ISRU, launch-market/econ cycles, science,
 > breakthroughs) are recorded in the reconciliation table, not re-opened.
 
+## Engine — hybrid Phaser conversion
+
+Source: a decision (2026-06-20) to move the **animated visual scenes** onto the
+**Phaser 3** game engine for richer visuals + engine features (scenes, tweens,
+particles, cameras), while the data-dense DOM management UI stays exactly as it is.
+Confirmed shape: **hybrid** (Phaser for scenes only), **single-file + Phaser via CDN,
+no build** — pure game logic stays framework-free and headless-testable. Phaser is
+loaded from `cdn.jsdelivr.net/npm/phaser@3.90.0`; **all** Phaser use is feature-
+guarded (`phaserOK()`), so the game still runs (DOM UI + missions via the retained
+fallback canvas) if Phaser fails to load, and the `vm` harness still loads/tests
+logic with no Phaser global.
+
+- [x] **Slice 0 — Phaser bootstrap + `CapeScene`** *(2026-06-20).* Added the pinned
+      CDN script and a lazily-defined, guarded `CapeScene` (`defineCapeScene`/
+      `startCapeGame`/`pauseCapeGame`/`resumeCapeGame`). Phaser owns the scene/loop/
+      scale/camera and adds a **particle smoke emitter** (generated texture — no binary
+      assets) + a **breathing camera** tween, while the proven Cape art (`drawCape` and
+      its building helpers) is reused verbatim by drawing onto a Phaser **CanvasTexture**
+      each frame (`drawPad` skips its baked smoke when `ccPhaserSmoke` is set).
+      `renderCCCenter` mounts a **persistent** `#ccSceneHost` (built once; later renders
+      only refresh the `.ccspot` DOM hotspot overlay, which is unchanged and still sits
+      over the canvas); `render()` pauses the scene on tab-switch. The original
+      `drawCape`/`ccLoop` 2D path is kept as the no-Phaser fallback. Validated: all three
+      vm harnesses stay green (34/38/38) — proving the guard keeps headless load + logic
+      intact — plus in-browser check.
+- [ ] **Slice 1 — `FlightScene`** (mission playback): port `playMission`/`animLoop`
+      rendering to Phaser (particles for plumes/smoke/debris, camera shake, stage-sep
+      tweens), reusing the `spec`, phase timing, trajectory math, SFX, and `done`
+      callback. Replaces the hand-rolled `createGL2D` WebGL path.
+- [ ] **Slice 2 — `VehiclePreviewScene`**: bench silhouette as a Phaser scene from the
+      same `buildVehicleShape` data.
+- [ ] **Slice 3 (optional) — `MapScene`**: interactive solar map (orbit rings, planet
+      sprites, pan/zoom camera). Tech tree + all management UI stay DOM.
+
 ## Repo
 
 `shamusshafer-ops/Orbital-Ventures` (private), branch `main`.

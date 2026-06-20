@@ -122,7 +122,7 @@
   .cc-net{font-family:var(--mono);font-size:13px}
 
   /* Home dashboard — 3-column layout */
-  .cc-cols{display:grid;grid-template-columns:300px 1fr 300px;gap:14px;align-items:start;margin-bottom:14px}
+  .cc-cols{display:grid;grid-template-columns:270px 1fr 270px;gap:14px;align-items:start;margin-bottom:14px}
   @media(max-width:980px){.cc-cols{grid-template-columns:1fr}}
   .cc-cols > div > .card{margin-top:0}
   .cc-cols > div > .card + .card{margin-top:14px}
@@ -379,6 +379,10 @@
   </div>
 </div>
 
+<!-- Phaser 3 (hybrid conversion): powers the animated visual scenes only. Loaded
+     from CDN so the file stays single-file/no-build. ALL Phaser use is guarded so
+     the game still runs (DOM UI + missions via fallback canvas) if it fails to load. -->
+<script src="https://cdn.jsdelivr.net/npm/phaser@3.90.0/dist/phaser.min.js"></script>
 <script>
 /* ============================================================
    ORBITAL VENTURES — M1 vertical slice
@@ -1952,8 +1956,8 @@ function availablePool(){
 }
 
 // Engineer team aggregate — skill weighted by morale (low morale = skill degraded)
-function engTeam(){ return state.staff.filter(s=>ENGINEERS.find(e=>e.id===s.id)); }
-function astroTeam(){ return state.staff.filter(s=>ASTRONAUTS.find(a=>a.id===s.id)); }
+function engTeam(){ return (state.staff||[]).filter(s=>ENGINEERS.find(e=>e.id===s.id)); }
+function astroTeam(){ return (state.staff||[]).filter(s=>ASTRONAUTS.find(a=>a.id===s.id)); }
 
 // M9: two trait-weighted team scores — one for reliability, one for R&D speed.
 function engScores(){
@@ -2176,6 +2180,7 @@ function loadGame(){
       ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
       facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
       architectures:{}, science:0, persEventCooldown:5,
+      staff:[], assignedAstronaut:null,
       vehicles:[], activeVehicle:null, assembleOrbit:false
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
@@ -2223,6 +2228,7 @@ function autoLoad(){
       ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
       facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
       architectures:{}, science:0, persEventCooldown:5,
+      staff:[], assignedAstronaut:null,
       vehicles:[], activeVehicle:null, assembleOrbit:false
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
@@ -4298,7 +4304,7 @@ function render(){
     : `<span class="dim">No active research. Start a project in R&D — it runs while you fly.</span>`;
   $('skipBtn').disabled=!ar;
 
-  if(state.tab==='command')renderCommandCenter(); else stopCCScene();
+  if(state.tab==='command')renderCommandCenter(); else { stopCCScene(); pauseCapeGame(); }
   if(state.tab==='bench'){renderVehicleFamilies();renderArchitecture();renderStages();renderTransfer();renderLander();renderCrew();renderWindowPlanner();renderRoutes();renderReadout();renderVehiclePreview();}
   if(state.tab==='missions')renderMissions();
   if(state.tab==='programs')renderPrograms();
@@ -4552,7 +4558,7 @@ function drawPad(ctx,r,groundY,t){
   ctx.strokeStyle='rgba(180,120,70,0.45)'; ctx.lineWidth=1;
   for(let yy=gTop; yy<gBot; yy+=11){ ctx.beginPath(); ctx.moveTo(gx,yy); ctx.lineTo(gx+gw,yy+11); ctx.moveTo(gx+gw,yy); ctx.lineTo(gx,yy+11); ctx.stroke(); }
   const bl=(Math.sin(t*4)>0)?1:0.2; ctx.fillStyle=`rgba(255,60,40,${0.4+0.6*bl})`; ctx.beginPath(); ctx.arc(gx+gw,gTop,3,0,7); ctx.fill();
-  drawSmoke(ctx,cx-5,groundY-6,t,1,1.1); drawSmoke(ctx,cx+7,groundY-6,t,2,0.9);
+  if(!ccPhaserSmoke){ drawSmoke(ctx,cx-5,groundY-6,t,1,1.1); drawSmoke(ctx,cx+7,groundY-6,t,2,0.9); } // #engine: Phaser particle emitter replaces baked smoke when active
   // the player's current vehicle, drawn on the pad
   let spec=null; try{ const m=curMission(); spec={ stages: state.stages.map(s=>({prop:s.prop,count:s.count})), transferProp:(m&&m.profile&&m.modules&&m.modules.includes('transfer'))?state.transfer.prop:0, crewed:!!(m&&m.crew>0) }; }catch(e){}
   if(spec){ let shape=null; try{ shape=buildVehicleShape(spec); }catch(e){}
@@ -4566,12 +4572,12 @@ function drawCape(cv, t){
   const sky=ctx.createLinearGradient(0,0,0,groundY);
   sky.addColorStop(0,'#0b1830'); sky.addColorStop(0.45,'#26405d'); sky.addColorStop(0.82,'#c97a4a'); sky.addColorStop(1,'#e8b36a');
   ctx.fillStyle=sky; ctx.fillRect(0,0,W,groundY);
-  for(let i=0;i<60;i++){ const sx=(i*137.5)%W, sy=(i*73.3)%(groundY*0.5); const tw=Math.abs(Math.sin(t*1.5+i)); ctx.fillStyle=`rgba(220,230,255,${0.12+0.25*tw})`; ctx.fillRect(sx,sy,1.2,1.2); }
+  if(!ccPhaserDetail) for(let i=0;i<60;i++){ const sx=(i*137.5)%W, sy=(i*73.3)%(groundY*0.5); const tw=Math.abs(Math.sin(t*1.5+i)); ctx.fillStyle=`rgba(220,230,255,${0.12+0.25*tw})`; ctx.fillRect(sx,sy,1.2,1.2); }
   const sunX=waterX+(W-waterX)*0.5, sunY=groundY*0.6;
   const sg=ctx.createRadialGradient(sunX,sunY,2,sunX,sunY,48); sg.addColorStop(0,'rgba(255,232,184,0.95)'); sg.addColorStop(0.4,'rgba(255,180,90,0.5)'); sg.addColorStop(1,'rgba(255,150,60,0)');
   ctx.fillStyle=sg; ctx.beginPath(); ctx.arc(sunX,sunY,48,0,7); ctx.fill();
   ctx.fillStyle='#ffd9a0'; ctx.beginPath(); ctx.arc(sunX,sunY,12,0,7); ctx.fill();
-  drawClouds(ctx,W,groundY,t);
+  if(!ccPhaserDetail) drawClouds(ctx,W,groundY,t);
   ctx.fillStyle='#0e2c44'; ctx.fillRect(waterX,groundY-2,W-waterX,H-(groundY-2));
   for(let i=0;i<26;i++){ const ry=groundY+(H-groundY)*((i+0.5)/26); const amp=2+i*0.6; const rx=sunX+Math.sin(t*1.2+i*0.5)*amp; const wl=18+i*2; ctx.strokeStyle=`rgba(255,210,150,${0.2*(1-i/26)})`; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(rx-wl/2,ry); ctx.lineTo(rx+wl/2,ry); ctx.stroke(); }
   const gg=ctx.createLinearGradient(0,groundY,0,H); gg.addColorStop(0,'#243027'); gg.addColorStop(1,'#161e18');
@@ -4587,7 +4593,7 @@ function drawCape(cv, t){
   drawRivalPad(ctx,ccRect('rivals',W,H),t);
   drawPad(ctx,ccRect('pad',W,H),groundY,t);
 }
-let ccAnim=null, ccT0=0;
+let ccAnim=null, ccT0=0, ccPhaserSmoke=false, ccPhaserDetail=false;
 function ccNow(){ return (typeof performance!=='undefined'&&performance.now)?performance.now():Date.now(); }
 function startCCScene(){ if(ccAnim!=null) return; ccT0=ccNow(); ccAnim=requestAnimationFrame(ccLoop); }
 function stopCCScene(){ if(ccAnim!=null){ cancelAnimationFrame(ccAnim); ccAnim=null; } }
@@ -4597,6 +4603,84 @@ function ccLoop(){
   try{ drawCape(cv, (ccNow()-ccT0)/1000); }catch(e){}
   ccAnim=requestAnimationFrame(ccLoop);
 }
+
+/* ---------- Hybrid Phaser layer (Slice 0): CapeScene ----------
+   Phaser owns the scene/loop/scale/camera and adds particle smoke + a breathing
+   camera, while the proven Cape art is reused verbatim by drawing it onto a Phaser
+   CanvasTexture each frame. Everything here is lazily defined and feature-guarded so
+   the headless vm harness (no Phaser global) loads the script and tests logic fine. */
+function phaserOK(){ return typeof Phaser!=='undefined' && !!Phaser.Scene; }
+const CAPE_W=1200, CAPE_H=600; // Cape scene render resolution (CSS scales to the column)
+let CapeScene=null, capeGame=null;
+function defineCapeScene(){
+  if(CapeScene || !phaserOK()) return;
+  CapeScene=class extends Phaser.Scene {
+    constructor(){ super('cape'); }
+    create(){
+      const W=CAPE_W, H=CAPE_H;
+      this.tex = this.textures.exists('capeTex') ? this.textures.get('capeTex') : this.textures.createCanvas('capeTex',W,H);
+      this.add.image(0,0,'capeTex').setOrigin(0,0);
+      ccPhaserSmoke=true;   // baked pad smoke replaced by emitters
+      ccPhaserDetail=true;  // baked stars+clouds replaced by Phaser sky layers
+      this.t0=ccNow();
+      try{ this.buildDetail(W,H); }catch(e){ console.warn('cape detail failed (base scene still renders):',e); }
+    }
+    // generate a texture once from a Graphics draw callback
+    mkTex(key,draw,w,h){ if(this.textures.exists(key)) return; const g=this.make.graphics({x:0,y:0,add:false}); draw(g); g.generateTexture(key,w,h); g.destroy(); }
+    buildDetail(W,H){
+      const groundY=H*0.70, waterX=W*0.78, ADD=Phaser.BlendModes.ADD;
+      this.mkTex('smokeDot',g=>{g.fillStyle(0xffffff,1);g.fillCircle(16,16,16);},32,32);
+      this.mkTex('glowTex',g=>{ for(let i=12;i>=1;i--){ g.fillStyle(0xffffff,0.05); g.fillCircle(32,32,i*2.6); } },64,64);
+      this.mkTex('puffTex',g=>{ g.fillStyle(0xffffff,1); [[26,22,20],[50,18,16],[72,22,18],[42,12,13],[62,13,14]].forEach(c=>g.fillCircle(c[0],c[1],c[2])); },96,44);
+      this.mkTex('starTex',g=>{g.fillStyle(0xffffff,1);g.fillCircle(2,2,2);},4,4);
+      // twinkling stars in the upper sky
+      for(let i=0;i<80;i++){ const a=0.15+Math.random()*0.6; const s=this.add.image(Math.random()*W, Math.random()*groundY*0.55, 'starTex').setAlpha(a).setScale(0.5+Math.random()*1.1);
+        this.tweens.add({targets:s, alpha:Math.random()*0.25, duration:700+Math.random()*2000, yoyo:true, repeat:-1, ease:'Sine.easeInOut'}); }
+      // additive sun-glow bloom over the baked sun
+      const sunX=waterX+(W-waterX)*0.5, sunY=groundY*0.6;
+      const sun=this.add.image(sunX,sunY,'glowTex').setScale(4).setTint(0xffd49a).setBlendMode(ADD).setAlpha(0.55);
+      this.tweens.add({targets:sun, scale:4.6, alpha:0.8, duration:4200, yoyo:true, repeat:-1, ease:'Sine.easeInOut'});
+      // drifting parallax clouds (moved each frame in update)
+      this.clouds=[]; for(let i=0;i<6;i++){ const c=this.add.image(Math.random()*W, groundY*(0.10+0.12*Math.random()), 'puffTex').setTint(0x2b3d54).setAlpha(0.4+Math.random()*0.2).setScale(0.7+i*0.28); c.spd=7+i*5; this.clouds.push(c); }
+      // pad smoke column + ground steam + VAB roof vent
+      const pad=ccRect('pad',W,H), pcx=pad.x+pad.w*0.5;
+      this.add.particles(pcx-4, groundY-6, 'smokeDot', { speedY:{min:-28,max:-64}, speedX:{min:-14,max:14}, scale:{start:0.2,end:1.0}, alpha:{start:0.34,end:0}, lifespan:2700, frequency:75, tint:0xc9d2dc });
+      this.add.particles(pcx, groundY-4, 'smokeDot', { speedY:{min:-6,max:-18}, speedX:{min:-30,max:30}, scale:{start:0.25,end:1.2}, alpha:{start:0.20,end:0}, lifespan:1800, frequency:110, tint:0xeef3f7 });
+      const vab=ccRect('mfg',W,H);
+      this.add.particles(vab.x+vab.w*0.5, vab.y+4, 'smokeDot', { speedY:{min:-12,max:-28}, speedX:{min:-6,max:6}, scale:{start:0.1,end:0.45}, alpha:{start:0.16,end:0}, lifespan:2400, frequency:240, tint:0xaab4bd });
+      // blinking beacon glows (additive) over the baked building beacons
+      const beacon=(x,y,col)=>{ const b=this.add.image(x,y,'glowTex').setScale(0.6).setTint(col).setBlendMode(ADD).setAlpha(0.9); this.tweens.add({targets:b, alpha:0.1, duration:650, yoyo:true, repeat:-1}); };
+      beacon(pad.x+pad.w*0.66+pad.w*0.26, pad.y, 0xff3c28);            // gantry top
+      const ctrl=ccRect('mission',W,H); beacon(ctrl.x+ctrl.w*0.5, ctrl.y-ctrl.h*0.2, 0xff4632); // control mast
+      beacon(vab.x+vab.w*0.5, vab.y-8, 0xe0564f);                       // VAB roof
+      // living camera: gentle breathe + slow horizontal drift
+      this.tweens.add({targets:this.cameras.main, zoom:1.035, duration:9000, yoyo:true, repeat:-1, ease:'Sine.easeInOut'});
+      this.tweens.add({targets:this.cameras.main, scrollX:10, duration:13000, yoyo:true, repeat:-1, ease:'Sine.easeInOut'});
+    }
+    update(time,delta){
+      if(this.tex&&this.tex.canvas){ try{ drawCape(this.tex.canvas, (ccNow()-this.t0)/1000); this.tex.refresh(); }catch(e){} }
+      if(this.clouds){ const W=CAPE_W; for(const c of this.clouds){ c.x += c.spd*(delta||16)/1000; if(c.x-70>W) c.x=-70; } }
+    }
+  };
+}
+function startCapeGame(){
+  if(!phaserOK()){ return false; }
+  defineCapeScene();
+  if(capeGame){ resumeCapeGame(); return true; }
+  if(!$('ccSceneHost')) return false;
+  try{
+    capeGame=new Phaser.Game({
+      type:Phaser.AUTO, parent:'ccSceneHost', width:CAPE_W, height:CAPE_H,
+      backgroundColor:'#05070d', banner:false, audio:{noAudio:true},
+      scale:{mode:Phaser.Scale.NONE}, scene:[CapeScene]
+    });
+    // mirror the old .ccscene canvas sizing (CSS scales the fixed 900x420 canvas)
+    const cv=capeGame.canvas; if(cv){ cv.style.width='100%'; cv.style.height='auto'; cv.style.display='block'; cv.style.borderRadius='8px'; }
+  }catch(e){ capeGame=null; return false; }
+  return true;
+}
+function pauseCapeGame(){ if(capeGame){ try{ capeGame.scene.pause('cape'); }catch(e){} } }
+function resumeCapeGame(){ if(capeGame){ try{ capeGame.scene.resume('cape'); }catch(e){} } }
 function renderCommandCenter(){
   if(!$('execOverview')) return;
   renderExecOverview();
@@ -4604,7 +4688,7 @@ function renderCommandCenter(){
   renderCCCenter();
   renderCCRight();
   renderCCTimeline();
-  startCCScene();
+  // renderCCCenter starts the correct renderer (Phaser CapeScene, or the fallback RAF loop)
 }
 // top executive overview — "how is my company doing?"
 function renderExecOverview(){
@@ -4697,6 +4781,24 @@ function renderCCCenter(){
       <span class="st">${b.status}</span>
     </div>`;
   }).join('');
+  if(phaserOK()){
+    // persistent Phaser host: build the scaffold once, then only refresh the overlay
+    if(!$('ccSceneHost')){
+      $('ccCenter').innerHTML=`<div class="card">
+        <div class="cc-panel-h">Cape Canaveral — click a building to drill in</div>
+        <div class="ccscene-wrap">
+          <div id="ccSceneHost" class="ccscene" style="width:100%;aspect-ratio:1200/600;padding:0"></div>
+          <div id="ccSpots">${spots}</div>
+        </div>
+      </div>`;
+      startCapeGame();
+    } else {
+      $('ccSpots').innerHTML=spots;
+      resumeCapeGame();
+    }
+    return;
+  }
+  // fallback (no Phaser): the original 2D canvas + RAF loop
   $('ccCenter').innerHTML=`<div class="card">
     <div class="cc-panel-h">Cape Canaveral — click a building to drill in</div>
     <div class="ccscene-wrap">
@@ -4704,6 +4806,7 @@ function renderCCCenter(){
       ${spots}
     </div>
   </div>`;
+  startCCScene();
 }
 // RIGHT — "what's happening right now?" (alerts · this-month · news)
 function renderCCRight(){
@@ -6041,8 +6144,9 @@ function renderLog(){
   });
 }
 
+// Always start a fresh company on page load. A saved game is only restored when the
+// player explicitly clicks Load (loadGame()) — autoLoad() is kept for that path's reuse.
 newGame();
-if(autoLoad()) log('info','Resumed from saved game.');
 render();
 </script>
 </body>
