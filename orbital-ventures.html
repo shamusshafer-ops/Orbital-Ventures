@@ -370,7 +370,7 @@
 
 <div id="animOverlay" class="animwrap hidden">
   <div id="animTitle">—</div>
-  <div id="flightCanvasWrap" style="position:relative;display:inline-block"><canvas id="flightCanvas" width="900" height="520"></canvas><canvas id="flightTextCanvas" width="900" height="520" style="position:absolute;left:0;top:0;pointer-events:none"></canvas></div>
+  <div id="flightCanvasWrap" style="position:relative;display:inline-block"><div id="flightHost" style="display:none"></div><canvas id="flightCanvas" width="900" height="520"></canvas><canvas id="flightTextCanvas" width="900" height="520" style="position:absolute;left:0;top:0;pointer-events:none"></canvas></div>
   <div class="animbar">
     <span class="dim" style="font-size:11px">Mission playback</span>
     <button class="btn ghost" id="animSpeedBtn" onclick="cycleAnimSpeed()" style="min-width:90px;font-size:11px">1×  Slow</button>
@@ -2830,7 +2830,28 @@ function createGL2D(gl,textCtx,W,H){
 }
 /* ===== End WebGL 2D compatibility layer ===== */
 
+// Shared flight setup — builds animState for either the Phaser host (CanvasTexture
+// 2D context) or the legacy WebGL/2D canvas. drawScene drives everything from t.
+function setupFlightState(spec, done, ctx, cv, viewCanvas){
+  const ascentDur=7200, cruiseDur=spec.isCislunar?9000:4800;
+  let totalDur;
+  if(!spec.success && spec.failPhase==='ascent') totalDur=ascentDur*0.55+2000;
+  else if(!spec.success && spec.failPhase==='deep') totalDur=ascentDur+cruiseDur*0.42+2000;
+  else totalDur=ascentDur+cruiseDur+1200;
+  const stars=[]; for(let i=0;i<160;i++) stars.push({x:Math.random(),y:Math.random()*0.92,b:0.3+Math.random()*0.7,s:0.8+Math.random()*1.4,twinkle:Math.random()*6.28});
+  const path=spec.isCislunar?buildLunarPath(cv.width,cv.height,spec.rng):null;
+  animState={spec,done,ctx,cv,viewCanvas:viewCanvas||cv,t0:performance.now(),ascentDur,cruiseDur,totalDur,stars,path,raf:0,trail:[],particles:[],debris:[],shakeX:0,shakeY:0,lastT:0,virtT:0,prevWall:performance.now(),sfxSepFired:{},sfxBoomFired:false,sfxEnginePhase:null};
+  sfxInit();
+  const totalProp=spec.stages.reduce((a,s)=>a+s.prop,0)+(spec.transferProp||0);
+  const engCount=spec.stages[0]?spec.stages[0].count||1:1;
+  sfxStartEngine(engCount, totalProp);
+  animState.sfxEnginePhase='ascent';
+}
 function playMission(spec, done){
+  $('animTitle').textContent=spec.title+(spec.crewed?'  ·  crewed':'');
+  $('animOverlay').classList.remove('hidden');
+  // Slice 1: prefer the Phaser-hosted FlightScene; fall back to the legacy renderer.
+  if(phaserOK() && startFlightScene(spec, done)) return;
   const cv=$('flightCanvas');
   const gl=cv&&cv.getContext('webgl',{alpha:false,antialias:true,stencil:true,premultipliedAlpha:false});
   let ctx;
@@ -2842,22 +2863,7 @@ function playMission(spec, done){
     ctx=cv&&cv.getContext('2d');
   }
   if(!ctx){ if(done) done(); return; }
-  $('animTitle').textContent=spec.title+(spec.crewed?'  ·  crewed':'');
-  $('animOverlay').classList.remove('hidden');
-  const ascentDur=7200, cruiseDur=spec.isCislunar?9000:4800;
-  const stars=[]; for(let i=0;i<160;i++) stars.push({x:Math.random(),y:Math.random()*0.92,b:0.3+Math.random()*0.7,s:0.8+Math.random()*1.4,twinkle:Math.random()*6.28});
-  let totalDur;
-  if(!spec.success && spec.failPhase==='ascent') totalDur=ascentDur*0.55+2000;
-  else if(!spec.success && spec.failPhase==='deep') totalDur=ascentDur+cruiseDur*0.42+2000;
-  else totalDur=ascentDur+cruiseDur+1200;
-  const path=spec.isCislunar?buildLunarPath(cv.width,cv.height,spec.rng):null;
-  const trail=[]; const particles=[]; const debris=[];
-  animState={spec,done,ctx,cv,t0:performance.now(),ascentDur,cruiseDur,totalDur,stars,path,raf:0,trail,particles,debris,shakeX:0,shakeY:0,lastT:0,virtT:0,prevWall:performance.now(),sfxSepFired:{},sfxBoomFired:false,sfxEnginePhase:null};
-  sfxInit();
-  const totalProp=spec.stages.reduce((a,s)=>a+s.prop,0)+(spec.transferProp||0);
-  const engCount=spec.stages[0]?spec.stages[0].count||1:1;
-  sfxStartEngine(engCount, totalProp);
-  animState.sfxEnginePhase='ascent';
+  setupFlightState(spec, done, ctx, cv, cv);
   animLoop();
 }
 function animLoop(){
@@ -2878,11 +2884,71 @@ function endAnim(hold){
   if(hold && A.spec.success && (A.spec.isOrbital||A.spec.isCislunar)){
     A.held=true;
     drawPostFlight();
+    flightRefresh(); // push the post-flight frame to the Phaser texture (no-op in fallback)
     return;
   }
   animState=null; $('animOverlay').classList.add('hidden'); if(A.done) A.done();
 }
-function sfxCleanupClickHandler(A){ if(A&&A.clickHandler&&A.cv){ A.cv.removeEventListener('click',A.clickHandler); A.clickHandler=null; } }
+/* ---------- Hybrid Phaser layer (Slice 1): FlightScene ----------
+   Hosts the mission flight playback in Phaser. The proven drawScene renderer (its
+   2D path) draws each frame onto a Phaser CanvasTexture; Phaser owns the scene and
+   loop. Reuses spec/timing/sfx/post-flight/done verbatim. Lazily defined + guarded
+   so the headless vm harness still loads. Falls back to the legacy WebGL/RAF path. */
+let FlightScene=null, flightGame=null, flightScene=null, flightPending=null;
+function flightRefresh(){ if(flightScene && flightScene.tex){ try{ flightScene.tex.refresh(); }catch(e){} } }
+function defineFlightScene(){
+  if(FlightScene || !phaserOK()) return;
+  FlightScene=class extends Phaser.Scene {
+    constructor(){ super('flight'); }
+    create(){
+      this.tex = this.textures.exists('flightTex') ? this.textures.get('flightTex') : this.textures.createCanvas('flightTex',900,520);
+      this.add.image(0,0,'flightTex').setOrigin(0,0);
+      this.playing=false; flightScene=this;
+      if(flightPending) this.beginFlight();
+    }
+    beginFlight(){
+      if(!flightPending) return;
+      const {spec,done}=flightPending; flightPending=null;
+      setupFlightState(spec, done, this.tex.context, this.tex.canvas, (flightGame&&flightGame.canvas)||this.tex.canvas);
+      this.playing=true;
+    }
+    update(time,delta){
+      if(!this.playing) return;
+      const A=animState; if(!A||A.held){ this.playing=false; return; }
+      A.virtT += (delta||16)*animSpeed();
+      const t=A.virtT;
+      try{ drawScene(t); this.tex.refresh(); }catch(e){ console.error('flight anim error:',e); this.playing=false; endAnim(); return; }
+      if(t>=A.totalDur){ this.playing=false; endAnim(true); }
+    }
+  };
+}
+function ensureFlightHost(){
+  const host=$('flightHost'); if(!host) return false;
+  host.style.display='block';
+  const c1=$('flightCanvas'), c2=$('flightTextCanvas');
+  if(c1) c1.style.display='none'; if(c2) c2.style.display='none';
+  return true;
+}
+function startFlightScene(spec, done){
+  defineFlightScene();
+  if(!ensureFlightHost()) return false;
+  try{
+    if(!flightGame){
+      flightGame=new Phaser.Game({ type:Phaser.AUTO, parent:'flightHost', width:900, height:520,
+        backgroundColor:'#04060a', banner:false, audio:{noAudio:true}, scale:{mode:Phaser.Scale.NONE}, scene:[FlightScene] });
+      const cv=flightGame.canvas; if(cv){ cv.style.maxWidth='100%'; cv.style.height='auto'; cv.style.display='block'; }
+    }
+    flightPending={spec,done};
+    if(flightScene && flightScene.beginFlight) flightScene.beginFlight(); // already booted → start now
+    return true;
+  }catch(e){
+    console.warn('flight scene failed, using fallback:',e);
+    const h=$('flightHost'); if(h) h.style.display='none';
+    const c1=$('flightCanvas'), c2=$('flightTextCanvas'); if(c1) c1.style.display=''; if(c2) c2.style.display='';
+    return false;
+  }
+}
+function sfxCleanupClickHandler(A){ if(A&&A.clickHandler){ const vc=A.viewCanvas||A.cv; if(vc) vc.removeEventListener('click',A.clickHandler); A.clickHandler=null; } }
 function dismissAnim(){ const A=animState; if(!A) return; sfxStop(); sfxCleanupClickHandler(A); const done=A.done; animState=null; $('animOverlay').classList.add('hidden'); if(done) done(); }
 function skipAnim(){ const A=animState; if(A&&A.held){ dismissAnim(); return; } if(!A) return; cancelAnimationFrame(A.raf); sfxStop(); sfxCleanupClickHandler(A); animState=null; $('animOverlay').classList.add('hidden'); if(A.done) A.done(); }
 function drawPostFlight(){
@@ -3025,16 +3091,17 @@ function drawPostFlight(){
   ctx.textAlign='left';
   A.continueBtn={x:btnX,y:btnY,w:btnW,h:btnH};
   if(!A.clickHandler){
+    const vc=A.viewCanvas||A.cv; // the on-screen canvas (Phaser canvas in the hosted path)
     A.clickHandler=function(ev){
-      const rect=A.cv.getBoundingClientRect();
-      const sx=(ev.clientX-rect.left)*(A.cv.width/rect.width);
-      const sy=(ev.clientY-rect.top)*(A.cv.height/rect.height);
+      const rect=vc.getBoundingClientRect();
+      const sx=(ev.clientX-rect.left)*(vc.width/rect.width);
+      const sy=(ev.clientY-rect.top)*(vc.height/rect.height);
       if(A.continueBtn && sx>=A.continueBtn.x && sx<=A.continueBtn.x+A.continueBtn.w && sy>=A.continueBtn.y && sy<=A.continueBtn.y+A.continueBtn.h){
-        A.cv.removeEventListener('click',A.clickHandler);
+        vc.removeEventListener('click',A.clickHandler);
         dismissAnim();
       }
     };
-    A.cv.addEventListener('click',A.clickHandler);
+    vc.addEventListener('click',A.clickHandler);
   }
 }
 

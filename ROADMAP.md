@@ -668,10 +668,19 @@ logic with no Phaser global.
       `drawCape`/`ccLoop` 2D path is kept as the no-Phaser fallback. Validated: all three
       vm harnesses stay green (34/38/38) — proving the guard keeps headless load + logic
       intact — plus in-browser check.
-- [ ] **Slice 1 — `FlightScene`** (mission playback): port `playMission`/`animLoop`
-      rendering to Phaser (particles for plumes/smoke/debris, camera shake, stage-sep
-      tweens), reusing the `spec`, phase timing, trajectory math, SFX, and `done`
-      callback. Replaces the hand-rolled `createGL2D` WebGL path.
+- [x] **Slice 1 — `FlightScene`** *(2026-06-20).* Mission flight playback is now hosted
+      in Phaser: `drawScene` renders each frame onto a Phaser **CanvasTexture** (`FlightScene`,
+      lazily defined + guarded) and Phaser owns the scene/loop, while the `spec`, phase
+      timing (`ascentDur`/`cruiseDur`/`totalDur`), `buildLunarPath`, SFX, post-flight hold,
+      and `done` callback are reused verbatim. `playMission` was refactored to share
+      `setupFlightState` and to try the Phaser path first (`startFlightScene`), falling back
+      to the legacy `createGL2D` WebGL/RAF renderer if Phaser is absent or fails. New
+      `#flightHost` mount; legacy canvases hidden when Phaser is active; the post-flight
+      "Continue" click routes to the visible canvas (`A.viewCanvas`). Validated: vm suites
+      stay green (34/38/38); a fallback probe runs `playMission` with no throws across
+      success/ascent-fail/deep-strand/cislunar/suborbital; in-browser confirmed (renders
+      correctly, slightly clearer, no console errors). *Deferred:* native particle/camera-
+      shake embellishments (currently drawScene renders plumes/debris itself).
 - [ ] **Slice 2 — `VehiclePreviewScene`**: bench silhouette as a Phaser scene from the
       same `buildVehicleShape` data.
 - [ ] **Slice 3 (optional) — `MapScene`**: interactive solar map (orbit rings, planet
