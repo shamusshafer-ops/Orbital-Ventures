@@ -544,7 +544,7 @@ where each item actually lives.
 
 | Phase (target version) | Status vs. shipped code | New work & where it's tracked |
 | --- | --- | --- |
-| **P1 · Foundation & UX** (v1.5) | Vehicle visualization shipped (**#10** bench silhouette); save/load shipped | **NEW:** Agency Command Center home screen, customizable dashboards/analytics, mission-planning timelines + launch manifests, save-game reporting/historical stats, advanced filtering/sorting. No existing home — see **new arc item #18** below. |
+| **P1 · Foundation & UX** (v1.5) | Vehicle viz (**#10**) + save/load shipped; **#18** shipped through its 3rd slice — Command Center home, animated Cape scene, and the 3-column dashboard (exec overview, recommended action, alerts/news, ops summary, era timeline) | Remaining: customizable dashboards, launch manifests, advanced filtering/sorting, click-to-jump notifications, animated scene art → tracked under **#18**. |
 | **P2 · Personnel & org depth** (v2.0) | Shipped at individual scale: **M6** (12 eng/8 astro, morale, attrition, salary) + **#9** (traits, personal events) + **#5** (poaching/retention) | **NEW:** scale individuals → departments; career progression, training/specialization tracks, executive/leadership roles, succession/workforce planning. Extends **M6/#9** — see **new arc item #19**. |
 | **P3 · Manufacturing & production** (v2.5) | **#7** first slice shipped — capacity layer (assembly bays/foundry/pads with upkeep); QA→reliability bridge exists via **#16** | Remaining: supply chains, scheduling, bottlenecks, inventory, refurbishment → tracked under **#7 Manufacturing capacity**. |
 | **P4 · Mission Control & operations** (v3.0) | Flight telemetry exists *visually* in the launch animation | **NEW:** interactive Mission Control, in-flight player decisions, rescue missions, launch **weather**/environmental systems, rehearsal tools. (Story-failure outcomes already exist via **#4/#16**.) See **new arc item #20**. |
@@ -582,8 +582,32 @@ order — the near-term build order (#3 vehicle families → … → #7) is unch
       layout (`CC_SPOTS`) is shared by the painter and a DOM **hotspot overlay**
       (`ccHotspots()` merging `siteBuildings()`) so labels stay crisp, clickable, and
       live; planned buildings render dimmed. Validated headlessly (54 checks) + a scene
-      screenshot. *Deferred to later slices:* customizable dashboards, launch
-      manifests, advanced filtering/sorting, historical reporting.
+      screenshot.
+      **Third slice built 2026-06-20 — Home dashboard redesign.** The single
+      stacked `#commandCard` is replaced by a modern strategy-game layout that
+      answers *what's happening / what to do next / how am I doing* at a glance,
+      decided with the user as **enrich-Home-only** (all 10 tabs unchanged — Home
+      is the hub, everything still one click away). Structure: a top **executive
+      overview** (`renderExecOverview` — capital/rep/science/staff/flights/support,
+      active R&D, gov funding, current vehicle, monthly net); a **3-column grid**
+      (`.cc-cols`, collapses to 1 col <980px) — **left** = recommended next step +
+      active contracts + ambition (`renderCCLeft`), **center** = the existing Cape
+      scene reused verbatim (`renderCCCenter`, `drawCape`/`CC_SPOTS`/hotspots
+      untouched), **right** = alerts + this-month ops + space news (`renderCCRight`);
+      and a bottom **program timeline** (`renderCCTimeline` — era bands, your firsts
+      in green, rival firsts in red, a "now" marker). Logic lives in pure builders
+      (`recommendedAction`, `firstResearchableToward`, `agencyAlerts`, `ccContracts`,
+      `ccOpsSummary`, `ccTimeline`, `ccNews`) beside `commandSummary()`. New minimal
+      state: `state.lastMonth` (rolling revenue/expenses/net/flights ledger — set per
+      month in `advance()`, plus a `recordFlightLedger()` hook in `launch()`) and
+      `state.history` (missionId→completion year, for the timeline). `SAVE_VERSION`→5
+      with forward-compat defaults. Validated headlessly (38 checks): ledger math +
+      flight hook, `recommendedAction` across scenarios (launch/research-chain/rep/
+      all-done/idle), alerts firing/omission, contracts lock filtering, timeline
+      ranges + player/rival markers, news filtering, ops summary, save/load + old-
+      save defaults, and a render smoke. *Deferred to later slices:* click-to-jump
+      notification system, and animated scene art (extra pads, building-level
+      visuals, crew/trucks/smoke).
 - [ ] **19 · Organizational scaling (departments)** *(P2, v2.0)* — Grow personnel
       from named individuals into **departments** with leaders/executive roles,
       career progression + training/specialization tracks, and

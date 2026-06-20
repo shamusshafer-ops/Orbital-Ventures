@@ -120,6 +120,37 @@
   /* Command Center (#18) */
   .cc-hero{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:6px}
   .cc-net{font-family:var(--mono);font-size:13px}
+
+  /* Home dashboard — 3-column layout */
+  .cc-cols{display:grid;grid-template-columns:300px 1fr 300px;gap:14px;align-items:start;margin-bottom:14px}
+  @media(max-width:980px){.cc-cols{grid-template-columns:1fr}}
+  .cc-cols > div > .card{margin-top:0}
+  .cc-cols > div > .card + .card{margin-top:14px}
+  .cc-panel-h{font-size:11px;text-transform:uppercase;letter-spacing:.14em;color:var(--muted);margin-bottom:8px}
+  /* exec overview */
+  .exec-grid{display:flex;gap:22px;flex-wrap:wrap}
+  .exec-stat{display:flex;flex-direction:column}
+  .exec-stat .k{font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted)}
+  .exec-stat .v{font-family:var(--mono);font-size:20px;font-weight:700}
+  /* recommended-action hero card */
+  .rec-card{border:1px solid var(--ignite);border-radius:8px;padding:12px;background:linear-gradient(180deg,rgba(245,166,35,.10),rgba(245,166,35,.02))}
+  .rec-card .lbl{font-size:10px;text-transform:uppercase;letter-spacing:.16em;color:var(--ignite)}
+  .rec-card .ttl{font-size:16px;font-weight:700;margin:4px 0 2px}
+  /* contracts / alerts / news rows */
+  .row-item{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #1a242b;font-size:12px}
+  .row-item:last-child{border-bottom:none}
+  .row-item.clk{cursor:pointer} .row-item.clk:hover{color:var(--ignite)}
+  .row-item.locked{opacity:.5}
+  .alert-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px;flex:none}
+  .news-line{font-family:var(--mono);font-size:11px;padding:5px 0;border-bottom:1px solid #1a242b;line-height:1.35}
+  .news-line:last-child{border-bottom:none}
+  /* era timeline */
+  .tl-track{position:relative;height:54px;margin:10px 0 4px;border-radius:6px;overflow:hidden;background:#0d1418;border:1px solid var(--line)}
+  .tl-era{position:absolute;top:0;bottom:0;border-right:1px solid #223039;display:flex;align-items:flex-start;padding:4px 6px;font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);overflow:hidden;white-space:nowrap}
+  .tl-now{position:absolute;top:0;bottom:0;width:2px;background:var(--ignite);box-shadow:0 0 6px var(--ignite)}
+  .tl-mark{position:absolute;bottom:4px;width:1px;height:20px}
+  .tl-mark.you{background:var(--ok)} .tl-mark.rival{background:var(--bad)}
+  .tl-axis{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--dim)}
   .sitegrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:10px;margin-top:4px}
   .bldg{border:1px solid var(--line);background:var(--panel2);border-radius:8px;padding:12px;cursor:pointer;
     transition:border-color .15s,transform .08s;display:flex;flex-direction:column;gap:3px;text-align:left}
@@ -243,7 +274,13 @@
   </div>
 
   <div id="commandView">
-    <div class="card" id="commandCard"></div>
+    <div class="card" id="execOverview"></div>
+    <div class="cc-cols">
+      <div id="ccLeft"></div>
+      <div id="ccCenter"></div>
+      <div id="ccRight"></div>
+    </div>
+    <div class="card" id="ccTimeline"></div>
   </div>
 
   <div id="benchView" class="hidden grid">
@@ -966,6 +1003,8 @@ function newGame(difficulty){
     econEvents:[], eventCooldown:6, pgmRoyalty:0,
     publicSupport:SUPPORT_BASE, // #8: program politics — public mood dial
     production:{bays:1,foundry:1,pads:1}, // #7: manufacturing capacity — leveled production lines
+    lastMonth:{revenue:0,expenses:0,net:0,flights:0}, // #18: rolling ops-summary ledger
+    history:{}, // #18: missionId -> completion year, for the Home timeline
     ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
     facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
     architectures:{}, science:0,
@@ -1041,6 +1080,11 @@ function advance(months){
       if(state.activeResearch.monthsLeft<=0) completeResearch();
     }
 
+    // #18 (Home): snapshot this month's recurring cashflow for the ops-summary panel
+    const mRev=round2(totalFacilityIncome()+(state.pgmRoyalty>0?state.pgmRoyalty:0)+govMonthlyFunding());
+    const mExp=round2(Math.max(0,diff().overhead+econOverheadAdd()+productionUpkeep())+monthlyPayroll());
+    state.lastMonth={revenue:mRev, expenses:mExp, net:round2(mRev-mExp), flights:0};
+
     checkRivalFirsts();
     checkPoaching();
     checkPersonnelEvents();
@@ -1052,6 +1096,14 @@ function advance(months){
 function econPayoutMult(){ return (state.econEvents||[]).reduce((a,e)=>a*(e.payoutMult||1),1); }
 function econOverheadAdd(){ return (state.econEvents||[]).reduce((a,e)=>a+(e.overheadAdd||0),0); }
 function round2(v){ return Math.round(v*100)/100; }
+// #18 (Home): fold a flown mission's lumpy revenue/cost onto the current month's ledger
+function recordFlightLedger(revenue, expense){
+  if(!state.lastMonth) state.lastMonth={revenue:0,expenses:0,net:0,flights:0};
+  state.lastMonth.revenue=round2(state.lastMonth.revenue+(revenue||0));
+  state.lastMonth.expenses=round2(state.lastMonth.expenses+(expense||0));
+  state.lastMonth.net=round2(state.lastMonth.revenue-state.lastMonth.expenses);
+  state.lastMonth.flights=(state.lastMonth.flights||0)+1;
+}
 // #8 Program politics helpers
 function publicSupport(){ return clampA(state.publicSupport==null?SUPPORT_BASE:state.publicSupport, SUPPORT_MIN, SUPPORT_MAX); }
 function publicMood(){ const s=publicSupport(); return SUPPORT_TIERS.find(t=>s>=t.min)||SUPPORT_TIERS[SUPPORT_TIERS.length-1]; }
@@ -1688,6 +1740,8 @@ function launch(){
     advance(buildMonths(m)+1+tl.months); // build (complexity-scaled) + launch (1) + test campaign
   }
   state.flights++;
+  const flightExpense=v.buildCost+v.launchCost+tl.cost; // #18: this flight's outlay for the ops ledger
+  let flightRevenue=0;
   const routine=!!state.completed[m.id];
   const crewed=m.crew>0;
   // M16: subsystem-based reliability — which subsystem (if any) fails decides the story
@@ -1711,10 +1765,10 @@ function launch(){
       const delivered=tankerDelivery();
       state.depot+=delivered;
       payout = 0.4*delivered; // tankers earn by the tonne delivered, not a flat contract fee
-      state.money+=payout; state.rep+=rep;
+      state.money+=payout; state.rep+=rep; flightRevenue=payout;
       log('ok',`${m.name}: SUCCESS. Delivered ${delivered.toFixed(1)} t to the LEO depot (now ${state.depot.toFixed(1)} t). +${fM(payout)}, +${rep} rep, +${sciGain} sci.`);
     }else{
-      state.money+=payout; state.rep+=rep;
+      state.money+=payout; state.rep+=rep; flightRevenue=payout;
       const qTxt = m.window?(windowQuality>1.05?' Favorable window geometry boosted the payload value.':windowQuality<0.92?' A marginal window cut into the payload value.':''):'';
       const scoopTxt = (!routine && state.scooped[m.id]) ? ' (scooped — reduced first-time payout)' : '';
       log('ok',`${m.name}: SUCCESS.${crewed?` Crew of ${m.crew} home safe.`:''} +${fM(payout)}, +${rep} rep, +${sciGain} sci. (reliability ${(rel*100|0)}%)${qTxt}${scoopTxt}`);
@@ -1727,6 +1781,7 @@ function launch(){
     }
     if(!routine){
       state.completed[m.id]=true;
+      state.history=state.history||{}; state.history[m.id]=state.year; // #18: record the year for the Home timeline
       if(m.pgm && state.pgmRoyalty<4.5){ state.pgmRoyalty=4.5; log('ok','Platinum-group royalties established — the Belt claim now pays +$4.5M/mo in standing income.'); }
       if(m.id==='first_sat' && !state.won){ state.won=true; pendingCelebration=victory; }
       if(m.id==='endurance' && !state.wonM2){ state.wonM2=true; pendingCelebration=victoryM2; }
@@ -1740,7 +1795,7 @@ function launch(){
   }else if(outcome.kind==='partial'){
     // reached space but off-target — salvage some value, but the objective is not complete
     let payout=(routine?m.payout*0.4:m.payout)*windowQuality*diff().payoutMult*econPayoutMult()*PARTIAL_PAYOUT_MULT;
-    state.money+=payout;
+    state.money+=payout; flightRevenue=payout;
     const rep=Math.max(1,Math.round((routine?2:m.rep)*0.25));
     state.rep+=rep;
     addSupport(SUPPORT_DELTA.partial); // #8: a salvaged flight still reads as progress
@@ -1792,6 +1847,7 @@ function launch(){
       }
     }
   }
+  recordFlightLedger(flightRevenue, flightExpense); // #18: attribute this flight to the current month's ops summary
   state.testLevel=0; // campaign applies to one flight
   state.depotUse=0;
   state.assembleOrbit=false; // #6: assembly choice applies to one flight
@@ -2085,7 +2141,7 @@ function hideModal(){$('modal').classList.add('hidden');}
 
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=4; // v4: #7 manufacturing capacity — state.production
+const SAVE_VERSION=5; // v5: #18 Home dashboard — state.lastMonth ops ledger
 function saveGame(){
   try{
     const payload={v:SAVE_VERSION, ts:Date.now(), state:JSON.parse(JSON.stringify(state))};
@@ -2116,7 +2172,7 @@ function loadGame(){
       depot:0, depotUse:0, tab:'command', log:[], rivalFired:{}, scooped:{}, rivalThreat:{}, bailouts:0,
       difficulty:'engineer', customDifficulty:customDefaults(),
       econEvents:[], eventCooldown:6, pgmRoyalty:0, publicSupport:SUPPORT_BASE,
-      production:{bays:1,foundry:1,pads:1},
+      production:{bays:1,foundry:1,pads:1}, lastMonth:{revenue:0,expenses:0,net:0,flights:0}, history:{},
       ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
       facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
       architectures:{}, science:0, persEventCooldown:5,
@@ -2163,7 +2219,7 @@ function autoLoad(){
       depot:0, depotUse:0, tab:'command', log:[], rivalFired:{}, scooped:{}, rivalThreat:{}, bailouts:0,
       difficulty:'engineer', customDifficulty:customDefaults(),
       econEvents:[], eventCooldown:6, pgmRoyalty:0, publicSupport:SUPPORT_BASE,
-      production:{bays:1,foundry:1,pads:1},
+      production:{bays:1,foundry:1,pads:1}, lastMonth:{revenue:0,expenses:0,net:0,flights:0}, history:{},
       ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
       facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
       architectures:{}, science:0, persEventCooldown:5,
@@ -4287,6 +4343,85 @@ function commandSummary(){
     activeMission: m?{name:m.name, buildMo:buildMonths(m)+1+TEST_LEVELS[state.testLevel].months}:null,
   };
 }
+/* ---------- #18 (Home redesign): pure builders for the dashboard panels ----------
+   These take no DOM and return plain data, so the Home logic is unit-testable just
+   like commandSummary()/siteBuildings(). The render functions below consume them. */
+// walk a research prereq chain to the first node the player can start *now* toward targetId
+function firstResearchableToward(targetId){
+  if(!targetId || state.research[targetId]) return null;
+  const r=RESEARCH.find(x=>x.id===targetId); if(!r) return null;
+  for(const q of (r.req||[])){ if(!state.research[q]){ const deeper=firstResearchableToward(q); if(deeper) return deeper; } }
+  return reqsMet(r) ? r : null; // all research prereqs met (else gated by a mission we can't shortcut)
+}
+function missionFlyable(mm){ return !!(mm && state.rep>=mm.minRep && (!mm.reqResearch||state.research[mm.reqResearch])); }
+// the single best next move — answers "what should I do next?"
+function recommendedAction(){
+  const no=nextObjective();
+  if(no){
+    const mm=no.mission;
+    if(mm.reqResearch && !state.research[mm.reqResearch]){
+      if(state.activeResearch) return {kind:'wait', title:'R&D in progress', detail:`${(RESEARCH.find(x=>x.id===state.activeResearch.id)||{}).name||''} — ${state.activeResearch.monthsLeft} mo left, on the path to ${mm.name}.`, tab:'rnd'};
+      const r=firstResearchableToward(mm.reqResearch);
+      if(r) return {kind:'research', title:`Research: ${r.name}`, detail:`Unlocks the path to ${mm.name}.`, tab:'rnd', researchId:r.id};
+    }
+    if(missionFlyable(mm)) return {kind:'launch', title:`Launch: ${mm.name}`, detail:`Your next objective — ${no.program.name}.`, tab:'bench', missionId:mm.id, reward:{money:mm.payout, rep:mm.rep}};
+    if(state.rep<mm.minRep){
+      const avail=MISSIONS.find(x=>!state.completed[x.id] && missionFlyable(x) && x.id!==mm.id);
+      if(avail) return {kind:'rep', title:`Fly: ${avail.name}`, detail:`Build reputation toward ${mm.name} (needs ${mm.minRep}, you have ${Math.round(state.rep)}).`, tab:'bench', missionId:avail.id, reward:{money:avail.payout, rep:avail.rep}};
+      return {kind:'rep', title:'Build reputation', detail:`${mm.name} needs ${mm.minRep} rep — fly available contracts to earn it.`, tab:'missions'};
+    }
+  }
+  if(!state.activeResearch){
+    const next=RESEARCH.find(r=>!state.research[r.id] && reqsMet(r) && state.money>=r.cost);
+    if(next) return {kind:'research', title:`Research: ${next.name}`, detail:'Expand your capabilities.', tab:'rnd', researchId:next.id};
+  }
+  return {kind:'advance', title:'Advance the calendar', detail:'Let R&D and the program move forward a month.', tab:null};
+}
+// red/amber/green operational alerts derived from state
+function agencyAlerts(){
+  const out=[]; const s=commandSummary();
+  if(state.money<1.5) out.push({level:'bad', msg:`Capital low — ${fM(state.money)}`, tab:'missions'});
+  if(!state.activeResearch && RESEARCH.some(r=>!state.research[r.id]&&reqsMet(r))) out.push({level:'warn', msg:'No active research', tab:'rnd'});
+  if(publicSupport()<25) out.push({level:'warn', msg:`Public support low (${Math.round(publicSupport())}%)`, tab:'command'});
+  const lowMorale=(state.staff||[]).filter(x=>(x.morale||50)<35).length;
+  if(lowMorale) out.push({level:'warn', msg:`${lowMorale} staff with low morale`, tab:'personnel'});
+  const m=curMission(); if(m && bayBuildDelta(m)>0) out.push({level:'warn', msg:`Build over bay capacity (+${bayBuildDelta(m)} mo)`, tab:'infra'});
+  for(const fid in (state.facilities||{})){ if(facilityBuilt(fid)){ const pr=facilityProduction(facilityById(fid), facilityState(fid)); if(pr.fuel>0){ out.push({level:'ok', msg:`${facilityById(fid).name} producing fuel`, tab:'infra'}); break; } } }
+  if(s.net>0) out.push({level:'ok', msg:`Positive cashflow (+${fM(s.net)}/mo)`, tab:'command'});
+  return out.slice(0,6);
+}
+// uncompleted contracts with reward + lock state, for the left panel
+function ccContracts(){
+  return MISSIONS.filter(m=>!state.completed[m.id]).map(m=>{
+    const repOk=state.rep>=m.minRep, resOk=!m.reqResearch||state.research[m.reqResearch];
+    let why=''; if(!resOk) why=`needs ${(RESEARCH.find(r=>r.id===m.reqResearch)||{}).name||'research'}`; else if(!repOk) why=`needs ${m.minRep} rep`;
+    return {id:m.id, name:m.name, payout:m.payout||0, rep:m.rep||0, crew:m.crew||0, locked:!(repOk&&resOk), why};
+  });
+}
+// this-month operations summary from the ledger + lifetime stats
+function ccOpsSummary(){
+  const lm=state.lastMonth||{revenue:0,expenses:0,net:0,flights:0};
+  const s=commandSummary();
+  return {revenue:lm.revenue||0, expenses:lm.expenses||0, net:lm.net||0, flights:lm.flights||0,
+          lifetimeFlights:state.flights, successRate:s.successRate, monthlyNet:s.net};
+}
+// era band + claimed-first markers for the bottom timeline
+function ccTimeline(){
+  const minYear=ERAS[0].from;
+  const maxYear=Math.max(2100, state.year);
+  const span=Math.max(1, maxYear-minYear);
+  const pos=y=>clampA(Math.round((y-minYear)/span*100),0,100);
+  const eras=ERAS.map(e=>({name:e.name, from:e.from, to:Math.min(e.to, maxYear), pos:pos(e.from)}));
+  const markers=[];
+  // player firsts (recorded years)
+  for(const id in (state.history||{})){ const mm=MISSIONS.find(x=>x.id===id); if(mm) markers.push({year:state.history[id], label:mm.name, who:'you', pos:pos(state.history[id])}); }
+  // rival firsts that have fired
+  for(const r of RIVALS){ for(const f of r.firsts){ if(state.rivalFired[r.id+'|'+f.name]) markers.push({year:f.year, label:f.name, who:'rival', flag:r.flag, pos:pos(f.year)}); } }
+  markers.sort((a,b)=>a.year-b.year);
+  return {minYear, maxYear, curYear:state.year, curPos:pos(state.year), eras, markers};
+}
+// recent newsworthy log lines for the right panel
+function ccNews(n){ return (state.log||[]).filter(l=>['rival','ok','bad','note'].includes(l.kind)).slice(0, n||7); }
 function siteBuildings(){
   const builtFac=Object.keys(state.facilities||{}).filter(facilityBuilt).length;
   const ar=state.activeResearch;
@@ -4463,9 +4598,95 @@ function ccLoop(){
   ccAnim=requestAnimationFrame(ccLoop);
 }
 function renderCommandCenter(){
-  const card=$('commandCard'); if(!card) return;
+  if(!$('execOverview')) return;
+  renderExecOverview();
+  renderCCLeft();
+  renderCCCenter();
+  renderCCRight();
+  renderCCTimeline();
+  startCCScene();
+}
+// top executive overview — "how is my company doing?"
+function renderExecOverview(){
   const s=commandSummary();
   const netCol=s.net>=0?'var(--ok)':'var(--bad)';
+  const fam=activeFamily();
+  const vehName = (fam&&fam.name) ? fam.name : (curMission()?curMission().name:'—');
+  const ar=s.research;
+  $('execOverview').innerHTML=`
+    <div class="cc-hero">
+      <div>
+        <h2 style="margin:0 0 2px">${state.company}</h2>
+        <div class="muted" style="font-size:12px">${dateStr()} · Era ${s.eraIdx}/${s.eraTotal} · ${s.era}</div>
+      </div>
+      <div class="cc-net" style="text-align:right">
+        <div class="dim" style="font-size:10px;text-transform:uppercase;letter-spacing:.12em">Monthly net</div>
+        <div style="color:${netCol};font-size:18px;font-weight:700">${s.net>=0?'+':''}${fM(s.net)}/mo</div>
+        <div class="dim" style="font-size:10px">+${fM(s.income)} in · −${fM(s.overhead)} ovh · −${fM(s.payroll)} pay</div>
+      </div>
+    </div>
+    <div class="exec-grid" style="margin-top:8px">
+      <div class="exec-stat"><span class="k">Capital</span><span class="v" style="color:${state.money<1.5?'var(--bad)':'var(--ink)'}">${fM(s.capital)}</span></div>
+      <div class="exec-stat"><span class="k">Reputation</span><span class="v">${fI(s.rep)}</span></div>
+      <div class="exec-stat"><span class="k">Science</span><span class="v" style="color:var(--readout)">${s.science}</span></div>
+      <div class="exec-stat"><span class="k">Staff</span><span class="v">${(state.staff||[]).length}</span></div>
+      <div class="exec-stat"><span class="k">Flights</span><span class="v">${s.flights}${s.successRate!=null?` · ${s.successRate}%`:''}</span></div>
+      <div class="exec-stat"><span class="k">Public Support</span><span class="v" style="color:${s.moodColor}">${s.support}% <span style="font-size:11px;font-weight:400">${s.mood}</span></span></div>
+    </div>
+    <div style="display:flex;gap:22px;flex-wrap:wrap;margin-top:10px;font-size:12px;border-top:1px solid var(--line);padding-top:8px">
+      <div><span class="dim">Active R&amp;D:</span> ${ar?`<b>${ar.name}</b> <span class="dim">(${ar.monthsLeft} mo left)</span>`:'<span class="dim">none — start a project</span>'}</div>
+      <div><span class="dim">Gov funding:</span> <b style="color:${s.govFunding>0?'var(--ok)':'var(--dim)'}">+${fM(s.govFunding)}/mo</b></div>
+      <div><span class="dim">Current vehicle:</span> <b>${vehName}</b></div>
+    </div>`;
+}
+// LEFT — "what should I do next?"
+function renderCCLeft(){
+  const rec=recommendedAction();
+  let recBtn;
+  if(rec.missionId) recBtn=`<button class="btn launch" style="width:100%;margin-top:8px" onclick="selectMission('${rec.missionId}')">▸ Set up this flight</button>`;
+  else if(rec.researchId) recBtn=`<button class="btn launch" style="width:100%;margin-top:8px" onclick="setTab('rnd')">▸ Go to R&amp;D</button>`;
+  else if(rec.tab) recBtn=`<button class="btn" style="width:100%;margin-top:8px" onclick="setTab('${rec.tab}')">▸ Open</button>`;
+  else recBtn=`<button class="btn" style="width:100%;margin-top:8px" onclick="advanceMonth()">▸ Advance 1 month</button>`;
+  const reward=rec.reward?`<div class="dim" style="font-size:11px;margin-top:4px">Reward: ${fM(rec.reward.money)} · +${rec.reward.rep} rep</div>`:'';
+
+  const contracts=ccContracts();
+  const avail=contracts.filter(c=>!c.locked).slice(0,4);
+  const locked=contracts.filter(c=>c.locked).slice(0,2);
+  const cRows=[...avail,...locked].map(c=>`
+    <div class="row-item ${c.locked?'locked':'clk'}"${c.locked?'':` onclick="selectMission('${c.id}')"`}>
+      <span>${c.locked?'🔒 ':''}${c.name}${c.crew?` <span class="dim">· ${c.crew}c</span>`:''}</span>
+      <span class="num">${c.locked?`<span class="dim">${c.why}</span>`:`${fM(c.payout)} · +${c.rep}`}</span>
+    </div>`).join('') || '<div class="dim" style="font-size:12px">All contracts complete.</div>';
+
+  const amb=currentAmbition(), prog=ambitionProgress(), no=nextObjective();
+  const bar=`<div style="height:8px;border-radius:4px;background:#0d1418;overflow:hidden;margin:7px 0 5px"><div style="height:100%;width:${prog.pct}%;background:var(--ok)"></div></div>`;
+
+  $('ccLeft').innerHTML=`
+    <div class="card">
+      <div class="cc-panel-h">Recommended next step</div>
+      <div class="rec-card">
+        <div class="lbl">${rec.kind}</div>
+        <div class="ttl">${rec.title}</div>
+        <div class="muted" style="font-size:12px">${rec.detail}</div>
+        ${reward}
+        ${recBtn}
+      </div>
+    </div>
+    <div class="card">
+      <div class="cc-panel-h">Active contracts</div>
+      ${cRows}
+      <button class="btn ghost" style="width:100%;margin-top:8px;font-size:11px" onclick="setTab('missions')">All contracts →</button>
+    </div>
+    <div class="card">
+      <div class="cc-panel-h">Ambition — ${amb.name}</div>
+      ${bar}
+      <div style="display:flex;justify-content:space-between;font-size:11px"><span class="dim">${prog.done}/${prog.total} objectives</span><span class="num">${prog.pct}%</span></div>
+      ${no?`<div style="font-size:12px;margin-top:6px"><span class="dim">Current step:</span> <b>${no.mission.name}</b></div>`:`<div class="flag ok" style="margin-top:6px">Ambition complete!</div>`}
+      <button class="btn ghost" style="width:100%;margin-top:8px;font-size:11px" onclick="setTab('programs')">Programs →</button>
+    </div>`;
+}
+// CENTER — the animated Space Center (scene + clickable hotspots, reused verbatim)
+function renderCCCenter(){
   const spots=ccHotspots().map(b=>{
     const planned=b.planned||!b.tab;
     const onclick=(!planned&&b.tab)?` onclick="setTab('${b.tab}')"`:'';
@@ -4476,41 +4697,57 @@ function renderCommandCenter(){
       <span class="st">${b.status}</span>
     </div>`;
   }).join('');
-  card.innerHTML=`<div class="cc-hero">
-      <div>
-        <h2 style="margin:0 0 2px">Agency Command Center</h2>
-        <div class="muted" style="font-size:12px">${state.company} · ${dateStr()} · Era ${s.eraIdx}/${s.eraTotal} ${s.era}</div>
-      </div>
-      <div class="cc-net" style="text-align:right">
-        <div class="dim" style="font-size:10px;text-transform:uppercase;letter-spacing:.12em">Monthly net</div>
-        <div style="color:${netCol};font-size:18px;font-weight:700">${s.net>=0?'+':''}${fM(s.net)}/mo</div>
-        <div class="dim" style="font-size:10px">+${fM(s.income)} in · −${fM(s.overhead)} ovh · −${fM(s.payroll)} pay</div>
-      </div>
-    </div>
-    <div class="metrics" style="grid-template-columns:repeat(4,1fr)">
-      <div class="metric"><div class="k">Capital</div><div class="v" style="color:${state.money<1.5?'var(--bad)':'var(--ink)'}">${fM(s.capital)}</div></div>
-      <div class="metric"><div class="k">Reputation</div><div class="v">${fI(s.rep)}</div></div>
-      <div class="metric"><div class="k">Flights</div><div class="v">${s.flights}${s.successRate!=null?` · ${s.successRate}%`:''}</div></div>
-      <div class="metric"><div class="k">Science</div><div class="v" style="color:var(--readout)">${s.science} ⚛</div></div>
-    </div>
-    <div class="cc-politics" style="margin-top:10px;border:1px solid var(--line);border-radius:6px;padding:10px 12px;background:var(--panel2)">
-      <div style="display:flex;justify-content:space-between;align-items:baseline">
-        <span class="k" style="font-size:10px;text-transform:uppercase;letter-spacing:.14em;color:var(--muted)">Public &amp; Government</span>
-        <span style="font-size:12px"><span class="num" style="color:${s.moodColor}">${s.support}%</span> <span class="dim">·</span> <span style="color:${s.moodColor}">${s.mood}</span></span>
-      </div>
-      <div style="height:7px;border-radius:4px;background:#0d1418;margin:7px 0 6px;overflow:hidden">
-        <div style="height:100%;width:${s.support}%;background:${s.moodColor};transition:width .3s"></div>
-      </div>
-      <div class="dim" style="font-size:11px">Government funding <span class="num" style="color:${s.govFunding>0?'var(--ok)':'var(--dim)'}">+${fM(s.govFunding)}/mo</span> — rises with public support &amp; era. Wins lift the mood; failures and a rival's firsts erode it.</div>
-    </div>
-    ${s.nextObjective?`<div class="flag ok" style="margin:2px 0 4px">▸ Next objective: <b style="margin-left:4px">${s.nextObjective}</b></div>`:''}
-    <div class="mission-tag" style="margin-top:10px">Cape Canaveral — click a building to drill in</div>
+  $('ccCenter').innerHTML=`<div class="card">
+    <div class="cc-panel-h">Cape Canaveral — click a building to drill in</div>
     <div class="ccscene-wrap">
       <canvas id="ccScene" class="ccscene" width="900" height="420"></canvas>
       ${spots}
     </div>
-    <p class="muted" style="font-size:11px;margin:10px 0 0">Manufacturing and Production are scaffolded here — they become live systems when the production layer (#7) is built.</p>`;
-  startCCScene();
+  </div>`;
+}
+// RIGHT — "what's happening right now?" (alerts · this-month · news)
+function renderCCRight(){
+  const dotCol={bad:'var(--bad)',warn:'var(--warn)',ok:'var(--ok)'};
+  const alerts=agencyAlerts();
+  const aRows=alerts.map(a=>`<div class="row-item clk" onclick="setTab('${a.tab||'command'}')"><span><span class="alert-dot" style="background:${dotCol[a.level]}"></span>${a.msg}</span></div>`).join('') || '<div class="dim" style="font-size:12px">All systems nominal.</div>';
+  const o=ccOpsSummary();
+  const news=ccNews(7);
+  const nRows=news.map(l=>`<div class="news-line"><span class="dim">${l.when}</span> <span class="${l.kind}">${l.msg.replace(/<[^>]*>/g,'')}</span></div>`).join('') || '<div class="dim" style="font-size:12px">No news yet.</div>';
+  $('ccRight').innerHTML=`
+    <div class="card">
+      <div class="cc-panel-h">Alerts</div>
+      ${aRows}
+    </div>
+    <div class="card">
+      <div class="cc-panel-h">This month</div>
+      <div class="row-item"><span class="dim">Flights</span><span class="num">${o.flights}</span></div>
+      <div class="row-item"><span class="dim">Revenue</span><span class="num" style="color:var(--ok)">+${fM(o.revenue)}</span></div>
+      <div class="row-item"><span class="dim">Expenses</span><span class="num" style="color:var(--bad)">−${fM(o.expenses)}</span></div>
+      <div class="row-item"><span class="dim">Net</span><span class="num" style="color:${o.net>=0?'var(--ok)':'var(--bad)'}">${o.net>=0?'+':''}${fM(o.net)}</span></div>
+    </div>
+    <div class="card">
+      <div class="cc-panel-h">Space news</div>
+      ${nRows}
+    </div>`;
+}
+// BOTTOM — global program timeline (eras + your firsts + rival firsts + now)
+function renderCCTimeline(){
+  const tl=ccTimeline();
+  const eraBands=tl.eras.map((e,i)=>{
+    const right=tl.eras[i+1]?tl.eras[i+1].pos:100;
+    return `<div class="tl-era" style="left:${e.pos}%;width:${Math.max(0,right-e.pos)}%">${e.name}</div>`;
+  }).join('');
+  const marks=tl.markers.map(m=>`<div class="tl-mark ${m.who}" style="left:${m.pos}%" title="${m.year} · ${m.who==='you'?'You':'Rival'}: ${m.label.replace(/"/g,'')}"></div>`).join('');
+  const axisYears=[tl.minYear,1957,1969,1981,2000,tl.maxYear].filter((y,i,a)=>y>=tl.minYear&&y<=tl.maxYear&&a.indexOf(y)===i);
+  const axis=axisYears.map(y=>`<span>${y}</span>`).join('');
+  $('ccTimeline').innerHTML=`
+    <div class="cc-panel-h">Program timeline — <span style="color:var(--ok)">● you</span> · <span style="color:var(--bad)">● rivals</span> · <span style="color:var(--ignite)">▮ now (${tl.curYear})</span></div>
+    <div class="tl-track">
+      ${eraBands}
+      ${marks}
+      <div class="tl-now" style="left:${tl.curPos}%"></div>
+    </div>
+    <div class="tl-axis">${axis}</div>`;
 }
 function applyDifficultyUI(){
   document.body.classList.toggle('hide-eq', !diff().showEquations);
