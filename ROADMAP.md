@@ -354,9 +354,32 @@ review's numbering, not the build order (see **Suggested build order** at the en
       prototype/testing programs, research partnerships, reusable route (M5).
       *(Strategic-Vision Phase 7; patent/licensing partly covered by the patent econ
       event + spec'd passive-income tech-licensing, breakthroughs by #9/#14.)*
-- [ ] **7 · Manufacturing capacity** — Money is nearly the only resource. Add build
-      bays / engine production / launch-pad capacity as constraints, so "another pad
-      vs. hydrogen engines" becomes a real decision. New resource layer in `state`.
+- [~] **7 · Manufacturing capacity** — *First slice built 2026-06-20: industrial
+      capacity as a real resource layer.* `state.production` (`SAVE_VERSION`→4,
+      forward-compat default `{bays:1,foundry:1,pads:1}`) adds three leveled
+      production lines (`PRODUCTION_DEFS`, max L5), each funded with **capital + a
+      monthly upkeep** (`productionUpkeep()` folded into `advance()` overhead and the
+      Command Center net) — so growing the factory competes with R&D and missions for
+      the budget. All three start at L1 with **no effect**, so early-game balance is
+      untouched; only investment changes the pipeline. **Assembly Bays** are a genuine
+      *constraint*: `vehicleUnits()` (stages + transfer/lander/crew + assembly flights)
+      must fit `bayCapacity()` (3 + 2·(L−1)) or `buildMonths` balloons (+1 mo/unit
+      over); a roomy plant streamlines builds (−≤2 mo, `bayBuildDelta`). **Engine
+      Foundry** cuts marginal build cost (`foundryCostMult`, −5%/level, floor 22%).
+      **Launch Pads** amortize launch-ops cost (`padLaunchMult`, −12%/level, floor
+      40%). Surfaced: the Command Center **Manufacturing/Production** tiles are now
+      live (route to Orbital Ops with capacity/level status), a **Manufacturing
+      Capacity** panel in the Infrastructure tab (per-line level, current vs. next
+      effect, upkeep, escalating upgrade button), and an over-capacity warning flag in
+      both bench readouts. `buildMonths` was refactored onto `vehicleUnits` (same
+      output at L1). Validated headlessly (38 checks): neutrality at L1, units math,
+      bay overstretch/surplus/floor, build-cost & launch-cost multipliers + floors,
+      upkeep math + monthly burn, upgrade flow (cost escalation, deduction, max-level
+      & insufficient-funds guards), summary overhead, lit-up tiles, save/load + old-
+      save default, and a render smoke (infra+bench+command).
+      *Still open in #7 (later slices):* raw-material supply chains, production
+      scheduling/bottlenecks, QA→#16 reliability bridge, inventory/forecasting, and
+      reusable-hardware refurbishment (ties to M5).
       *(Primary home for Strategic-Vision Phase 3 (v2.5): factories that build
       engines/tanks/spacecraft/habitats, raw-material supply chains, production
       scheduling + bottleneck management, quality-assurance that feeds the #16
@@ -492,11 +515,13 @@ review's numbering, not the build order (see **Suggested build order** at the en
 silhouette)~~ ✓ → ~~12 (architecture choices)~~ ✓ → ~~5 (active rivals)~~ ✓ →
 ~~9 (personnel traits)~~ ✓ → ~~14 (science)~~ ✓ → ~~3 (vehicle families)~~ ✓ →
 ~~18 (Command Center, first slice)~~ ✓ → ~~6 (multi-path tech, first slice)~~ ✓ →
-~~8 (politics, first slice)~~ ✓ → **7 (manufacturing) ← next**. Items
-1/2/3/4/5/9/10/11/12/14/15/16/17 shipped + 18, 6 & 8 first slices; tech tree now a
-real swimlane graph with divergent routes; 13 partially done. (#6 later slices: TRL,
-partnerships, reusable route. #8 later slices: budget shocks, shareholders, media,
-stock market.)
+~~8 (politics, first slice)~~ ✓ → ~~7 (manufacturing, first slice)~~ ✓ → **next:
+later slices / remaining arc (#5 M5 reusability, #13 map planning, deeper #6/#7/#8)**.
+Items 1/2/3/4/5/9/10/11/12/14/15/16/17 shipped + 18, 6, 8 & 7 first slices; tech tree
+now a real swimlane graph with divergent routes; 13 partially done. (#6 later slices:
+TRL, partnerships, reusable route. #7 later slices: supply chains, scheduling,
+QA→reliability, inventory, refurbishment. #8 later slices: budget shocks,
+shareholders, media, stock market.)
 
 ## Strategic Vision — 8-Phase Grand-Strategy Arc
 
@@ -521,7 +546,7 @@ where each item actually lives.
 | --- | --- | --- |
 | **P1 · Foundation & UX** (v1.5) | Vehicle visualization shipped (**#10** bench silhouette); save/load shipped | **NEW:** Agency Command Center home screen, customizable dashboards/analytics, mission-planning timelines + launch manifests, save-game reporting/historical stats, advanced filtering/sorting. No existing home — see **new arc item #18** below. |
 | **P2 · Personnel & org depth** (v2.0) | Shipped at individual scale: **M6** (12 eng/8 astro, morale, attrition, salary) + **#9** (traits, personal events) + **#5** (poaching/retention) | **NEW:** scale individuals → departments; career progression, training/specialization tracks, executive/leadership roles, succession/workforce planning. Extends **M6/#9** — see **new arc item #19**. |
-| **P3 · Manufacturing & production** (v2.5) | Not built; QA→reliability bridge exists via **#16** | Factories, supply chains, scheduling, bottlenecks, inventory, refurbishment → folded into **#7 Manufacturing capacity** (the single biggest unbuilt bucket). |
+| **P3 · Manufacturing & production** (v2.5) | **#7** first slice shipped — capacity layer (assembly bays/foundry/pads with upkeep); QA→reliability bridge exists via **#16** | Remaining: supply chains, scheduling, bottlenecks, inventory, refurbishment → tracked under **#7 Manufacturing capacity**. |
 | **P4 · Mission Control & operations** (v3.0) | Flight telemetry exists *visually* in the launch animation | **NEW:** interactive Mission Control, in-flight player decisions, rescue missions, launch **weather**/environmental systems, rehearsal tools. (Story-failure outcomes already exist via **#4/#16**.) See **new arc item #20**. |
 | **P5 · Infrastructure & colonization** (v3.5) | Persistent bases/stations shipped (**#17**); ISRU shipped; depot economy (**#2**) | **NEW:** colony **population growth**/management, typed habitat/mine/power construction, and **interplanetary logistics/trade routes** = the open *fleet-logistics* thread. Extends **#17** — see **new arc item #21**. |
 | **P6 · Economic & political** (v4.0) | Global launch market + dynamic cycles shipped (econ events, **#2** fuel market); **#8** first slice shipped — public support → government funding | Remaining: budget shocks/cuts, political influence, media/public opinion, **investor/stock-market** → tracked under **#8 Program politics**. |

@@ -639,6 +639,33 @@ const FACILITY_DEFS = [
    base:{income:2.6, fuel:0.6, rep:3, sci:4}, perModule:{income:1.8, fuel:0.8, rep:1.5, sci:3}},
 ];
 
+/* ---------- #7: Manufacturing capacity (first slice) ----------
+   Money was nearly the only resource. This adds an industrial layer: three
+   leveled production lines you fund with capital AND ongoing monthly upkeep, so
+   "another pad vs. hydrogen engines" becomes a real allocation decision. All
+   three start at level 1 (the garage baseline) with NO effect, so early-game
+   balance is preserved — only investment changes the pipeline.
+     • Assembly Bays  — a CAPACITY CONSTRAINT: a vehicle's integration "units"
+       (stages + transfer/lander/crew + assembly flights) must fit your bay
+       throughput, or build time balloons; surplus bays streamline every build.
+     • Engine Foundry — economies of scale cut the marginal BUILD COST.
+     • Launch Pads    — more ground capacity amortizes LAUNCH COST per flight.
+   Later slices (tracked in ROADMAP #7): raw-material supply chains, production
+   scheduling/bottlenecks, QA→#16 reliability, inventory, refurbishment. */
+const PRODUCTION_DEFS = [
+  {key:'bays',    name:'Assembly Bays', icon:'🏭', baseCost:6, months:3, upkeep:0.05,
+   blurb:'Parallel integration cells. Capacity to assemble complex vehicles without overstretching the line — and surplus bays streamline every build.'},
+  {key:'foundry', name:'Engine Foundry', icon:'⚙', baseCost:8, months:4, upkeep:0.06,
+   blurb:'In-house engine and tank production. Economies of scale cut the marginal cost of every vehicle you build.'},
+  {key:'pads',    name:'Launch Pads', icon:'🛫', baseCost:5, months:3, upkeep:0.04,
+   blurb:'Additional pads and integration towers. More ground capacity amortizes launch operations across more flights — cheaper per launch.'},
+];
+const PROD_MAX_LEVEL = 5;
+const BAY_CAP_BASE = 3, BAY_CAP_PER = 2;        // assembly capacity = base + per·(level−1)
+const BAY_SPEED_CAP = 2;                         // most build-months a roomy plant can shave
+const FOUNDRY_PER = 0.05, FOUNDRY_FLOOR = 0.78;  // build-cost multiplier (≤22% off at L5)
+const PAD_PER = 0.12, PAD_FLOOR = 0.60;          // launch-cost multiplier (≤40% off at L5)
+
 /* ---------- Mission architectures (how you get there is a strategy) ----------
    For supported missions, the player picks an architecture that reshapes the
    mission profile (which legs, which stage does them), the hardware (modules),
@@ -938,6 +965,7 @@ function newGame(difficulty){
     staff:[], assignedAstronaut:null, persEventCooldown:5,
     econEvents:[], eventCooldown:6, pgmRoyalty:0,
     publicSupport:SUPPORT_BASE, // #8: program politics — public mood dial
+    production:{bays:1,foundry:1,pads:1}, // #7: manufacturing capacity — leveled production lines
     ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
     facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
     architectures:{}, science:0,
@@ -965,7 +993,7 @@ function curRel(){
 function advance(months){
   for(let i=0;i<months;i++){
     state.month++; if(state.month>11){state.month=0;state.year++;}
-    state.money-=Math.max(0,diff().overhead+econOverheadAdd()); // monthly overhead (difficulty + active market events)
+    state.money-=Math.max(0,diff().overhead+econOverheadAdd()+productionUpkeep()); // monthly overhead (difficulty + active market events + #7 production upkeep)
     if(state.pgmRoyalty>0) state.money+=state.pgmRoyalty; // M7: platinum-group royalties from an established Belt claim
     state.publicSupport=clampA(publicSupport()+(SUPPORT_BASE-publicSupport())*SUPPORT_REVERT, SUPPORT_MIN, SUPPORT_MAX); // #8: mood drifts back to neutral
     state.money+=govMonthlyFunding(); // #8: public support buys government funding
@@ -1181,6 +1209,48 @@ function expandFacility(id){
   const fs=facilityState(id); fs.modules=(fs.modules||1)+1;
   const pr=facilityProduction(def, fs);
   log('ok',`${def.name} expanded to ${fs.modules} modules — now +${fM(pr.income)}/mo${pr.fuel>0?`, +${pr.fuel.toFixed(1)} t fuel/mo`:''}.`);
+  render();
+}
+/* ---------- #7: Manufacturing capacity helpers & actions ---------- */
+function prodDef(key){ return PRODUCTION_DEFS.find(d=>d.key===key); }
+function prodLevel(key){ return Math.max(1, (state.production&&state.production[key])||1); }
+// integration "units" a vehicle needs — the same components buildMonths counts, +1 core
+function vehicleUnits(m){
+  let extra=Math.max(0, state.stages.length-1);
+  if(m && m.profile){
+    if(m.modules.includes('transfer')) extra+=1;
+    if(m.modules.includes('lander')) extra+=1;
+    if(m.modules.includes('crew')) extra+=1;
+  }
+  extra+=assemblyFlights(m);
+  return extra+1;
+}
+function bayCapacity(){ return BAY_CAP_BASE + BAY_CAP_PER*(prodLevel('bays')-1); }
+// build-time months added (overstretch) or removed (roomy plant) by assembly-bay capacity
+function bayBuildDelta(m){
+  const units=vehicleUnits(m), cap=bayCapacity();
+  if(units>cap) return units-cap;                       // overstretched: +1 mo per unit over
+  return -Math.min(BAY_SPEED_CAP, Math.floor((cap-units)/3)); // surplus: streamlined, bounded
+}
+function foundryCostMult(){ return Math.max(FOUNDRY_FLOOR, 1 - FOUNDRY_PER*(prodLevel('foundry')-1)); }
+function padLaunchMult(){ return Math.max(PAD_FLOOR, 1 - PAD_PER*(prodLevel('pads')-1)); }
+function productionUpkeep(){ let u=0; for(const d of PRODUCTION_DEFS) u+=d.upkeep*(prodLevel(d.key)-1); return round2(u); }
+function prodUpgradeCost(key){ const d=prodDef(key); return round2(d.baseCost*prodLevel(key)); } // escalates with level
+function canUpgradeProduction(key){
+  const d=prodDef(key); if(!d) return {ok:false,why:'Unknown line.'};
+  if(prodLevel(key)>=PROD_MAX_LEVEL) return {ok:false,why:'At maximum capacity.'};
+  if(state.money<prodUpgradeCost(key)) return {ok:false,why:'Not enough capital.'};
+  return {ok:true};
+}
+function upgradeProduction(key){
+  const chk=canUpgradeProduction(key); if(!chk.ok) return;
+  const d=prodDef(key), cost=prodUpgradeCost(key);
+  state.money-=cost;
+  advance(d.months); // construction/installation — capacity comes online after the build
+  if(state.over){ render(); return; }
+  if(!state.production) state.production={bays:1,foundry:1,pads:1};
+  state.production[key]=prodLevel(key)+1;
+  log('ok',`${d.icon} ${d.name} expanded to level ${state.production[key]} — +${fM(d.upkeep)}/mo upkeep.`);
   render();
 }
 /* ---------- M2: LEO propellant market ---------- */
@@ -1445,8 +1515,9 @@ function computeVehicle(){
   buildCost*=diff().buildCostMult; // difficulty: hardware-cost scaling
   buildCost*=(1-facilityBonus(missionBody(m&&m.id)).buildDiscount); // M17: home-field build discount from a base at the destination
   buildCost*=familyBuildMult(activeFamily()); // #3: a proven lineage gets cheaper to build (manufacturing knowledge)
+  buildCost*=foundryCostMult(); // #7: engine-foundry economies of scale cut marginal build cost
   const reliability=Math.min(diff().relCap,Math.max(diff().relFloor,(curRel()+testBonus)*enginePenalty*(crewed?0.92:1)));
-  const launchCost=0.12+0.01*totalProp + assemblyFlights(m)*ASSEMBLY_LAUNCH_COST; // #6: extra dedicated assembly flights
+  const launchCost=(0.12+0.01*totalProp)*padLaunchMult() + assemblyFlights(m)*ASSEMBLY_LAUNCH_COST; // #7: extra pads amortize launch ops; #6: extra dedicated assembly flights
   return {payload, sm:perf.sm, stageDv:perf.stageDv, totalDv:perf.totalDv, liftoff:perf.liftoff, twr:perf.twr,
           totalEng, totalProp, reliability, buildCost, launchCost, crewed,
           dryTotal:perf.sm.reduce((a,b)=>a+b.dry,0)};
@@ -1460,14 +1531,8 @@ function computeVehicle(){
 // campaign months from TEST_LEVELS.
 const BASE_BUILD_MONTHS=2;
 function buildMonths(m){
-  let extra=Math.max(0, state.stages.length-1); // each stage beyond the first
-  if(m && m.profile){
-    if(m.modules.includes('transfer')) extra+=1;
-    if(m.modules.includes('lander')) extra+=1;     // descent+ascent stages, one integration unit
-    if(m.modules.includes('crew')) extra+=1;       // crew systems integration
-  }
-  extra+=assemblyFlights(m); // #6: each pre-positioned assembly flight adds integration time
-  return BASE_BUILD_MONTHS+extra;
+  const extra=vehicleUnits(m)-1; // stages beyond the first + profile modules + assembly flights
+  return Math.max(1, BASE_BUILD_MONTHS+extra+bayBuildDelta(m)); // #7: assembly-bay capacity speeds or stretches the build
 }
 
 /* ---------- M16: subsystem-based reliability & story failures ----------
@@ -2020,7 +2085,7 @@ function hideModal(){$('modal').classList.add('hidden');}
 
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=3; // v3: #8 program politics — state.publicSupport
+const SAVE_VERSION=4; // v4: #7 manufacturing capacity — state.production
 function saveGame(){
   try{
     const payload={v:SAVE_VERSION, ts:Date.now(), state:JSON.parse(JSON.stringify(state))};
@@ -2051,6 +2116,7 @@ function loadGame(){
       depot:0, depotUse:0, tab:'command', log:[], rivalFired:{}, scooped:{}, rivalThreat:{}, bailouts:0,
       difficulty:'engineer', customDifficulty:customDefaults(),
       econEvents:[], eventCooldown:6, pgmRoyalty:0, publicSupport:SUPPORT_BASE,
+      production:{bays:1,foundry:1,pads:1},
       ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
       facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
       architectures:{}, science:0, persEventCooldown:5,
@@ -2097,6 +2163,7 @@ function autoLoad(){
       depot:0, depotUse:0, tab:'command', log:[], rivalFired:{}, scooped:{}, rivalThreat:{}, bailouts:0,
       difficulty:'engineer', customDifficulty:customDefaults(),
       econEvents:[], eventCooldown:6, pgmRoyalty:0, publicSupport:SUPPORT_BASE,
+      production:{bays:1,foundry:1,pads:1},
       ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
       facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
       architectures:{}, science:0, persEventCooldown:5,
@@ -4200,7 +4267,7 @@ function availableContracts(){
 }
 function commandSummary(){
   const era=currentEra();
-  const overhead=Math.max(0, diff().overhead+econOverheadAdd());
+  const overhead=Math.max(0, diff().overhead+econOverheadAdd()+productionUpkeep()); // includes #7 production upkeep
   const govFunding=govMonthlyFunding(); // #8: political funding from public support
   const income=round2(totalFacilityIncome()+(state.pgmRoyalty||0)+govFunding);
   const payroll=monthlyPayroll();
@@ -4221,7 +4288,6 @@ function commandSummary(){
   };
 }
 function siteBuildings(){
-  const fams=vehicleFamilies();
   const builtFac=Object.keys(state.facilities||{}).filter(facilityBuilt).length;
   const ar=state.activeResearch;
   const m=curMission();
@@ -4233,10 +4299,10 @@ function siteBuildings(){
      status: m?`${m.name} · ${buildMonths(m)+1+TEST_LEVELS[state.testLevel].months} mo to fly`:'no mission selected', planned:false},
     {key:'mission', icon:'📡', name:'Mission Control', tab:'missions',
      status:`${availableContracts()} contract${availableContracts()===1?'':'s'} available`, planned:false},
-    {key:'mfg', icon:'🏭', name:'Manufacturing', tab:'bench',
-     status: fams.length?`${fams.length} vehicle famil${fams.length===1?'y':'ies'}`:'no families yet', planned:true},
-    {key:'prod', icon:'⚙', name:'Production', tab:null,
-     status:'engine & inventory lines', planned:true},
+    {key:'mfg', icon:'🏭', name:'Manufacturing', tab:'infra',
+     status:`Bays L${prodLevel('bays')} · capacity ${bayCapacity()}`, planned:false},
+    {key:'prod', icon:'⚙', name:'Production', tab:'infra',
+     status:`Foundry L${prodLevel('foundry')} · Pads L${prodLevel('pads')}`, planned:false},
     {key:'rnd', icon:'⚗', name:'R&D Lab', tab:'rnd',
      status: ar?`${(RESEARCH.find(r=>r.id===ar.id)||{}).name||ar.id} · ${ar.monthsLeft} mo`:'idle', planned:false},
     {key:'personnel', icon:'👥', name:'Personnel', tab:'personnel',
@@ -4833,6 +4899,7 @@ function renderReadout(){
   if(v.twr<=1.0) flags+=`<div class="flag bad">▲ TWR ${v.twr.toFixed(2)} — won't lift off.</div>`;
   else if(v.twr<1.2) flags+=`<div class="flag warn">△ TWR ${v.twr.toFixed(2)} is low; heavy gravity losses (add engines or cut mass).</div>`;
   if(meets && v.twr>1.2) flags+=`<div class="flag ok">✓ Cleared to fly. Reliability ${(v.reliability*100|0)}%.</div>`;
+  if(bayBuildDelta(m)>0) flags+=`<div class="flag warn">△ Over assembly-bay capacity (${vehicleUnits(m)}/${bayCapacity()} units) — build runs +${bayBuildDelta(m)} mo. Expand Assembly Bays in Orbital Ops.</div>`;
   if(v.crewed && v.twr>1.2 && meets && !state.research.launch_escape) flags+=`<div class="flag warn">△ No escape system — a failure at ${(100-(v.reliability*100|0))}% odds loses the crew.</div>`;
   const testBtns=TEST_LEVELS.map((t,i)=>`<button class="btn" style="flex:1;font-size:11px;${state.testLevel===i?'border-color:var(--readout);color:var(--readout)':''}" onclick="setTestLevel(${i})">${t.name}${t.rel>0?` +${(t.rel*100)|0}%`:''}${t.cost>0?`<br><span class="dim" style="font-size:10px">${fM(t.cost)} · ${t.months} mo</span>`:''}</button>`).join('');
 
@@ -4893,6 +4960,7 @@ function renderProfileReadout(m){
   let flags='';
   if(fails) flags+=`<div class="flag bad">▲ ${fails} leg${fails>1?'s':''} short — fix the red rows above.</div>`;
   else flags+=`<div class="flag ok">✓ Every leg passes. Mission reliability ${(rel*100|0)}%.</div>`;
+  if(bayBuildDelta(m)>0) flags+=`<div class="flag warn">△ Over assembly-bay capacity (${vehicleUnits(m)}/${bayCapacity()} units) — build runs +${bayBuildDelta(m)} mo. Expand Assembly Bays in Orbital Ops.</div>`;
   if(!state.research.launch_escape) flags+=`<div class="flag warn">△ No escape system — a failure at ${(100-(rel*100|0))}% odds loses the crew.</div>`;
 
   $('readoutCard').innerHTML=`
@@ -5380,6 +5448,53 @@ function flyTo(missionId){
   state.tab='bench';
   render();
 }
+// #7: describe a production line's effect at a given level (current vs. a hypothetical next)
+function prodEffectText(key,lvl){
+  if(key==='bays') return `capacity ${BAY_CAP_BASE+BAY_CAP_PER*(lvl-1)} units`;
+  if(key==='foundry') return `−${Math.round((1-Math.max(FOUNDRY_FLOOR,1-FOUNDRY_PER*(lvl-1)))*100)}% build cost`;
+  if(key==='pads') return `−${Math.round((1-Math.max(PAD_FLOOR,1-PAD_PER*(lvl-1)))*100)}% launch cost`;
+  return '';
+}
+function productionPanelHTML(){
+  const m=curMission();
+  const units=vehicleUnits(m), cap=bayCapacity(), delta=bayBuildDelta(m);
+  const capNote = delta>0
+    ? `<span style="color:var(--warn)">current build needs ${units} units — over capacity by ${units-cap} (+${delta} mo)</span>`
+    : (delta<0 ? `<span style="color:var(--ok)">current build (${units} units) fits with room to spare (${delta} mo)</span>`
+               : `<span class="dim">current build needs ${units}/${cap} units</span>`);
+  const cards=PRODUCTION_DEFS.map(d=>{
+    const lvl=prodLevel(d.key), maxed=lvl>=PROD_MAX_LEVEL;
+    const chk=canUpgradeProduction(d.key), cost=prodUpgradeCost(d.key);
+    const upkeep=round2(d.upkeep*(lvl-1));
+    const btn = maxed
+      ? `<button class="btn" style="margin-top:10px;width:100%" disabled>At maximum (L${PROD_MAX_LEVEL})</button>`
+      : `<button class="btn" style="margin-top:10px;width:100%" onclick="upgradeProduction('${d.key}')" ${chk.ok?'':'disabled'}>${chk.ok?`Upgrade → L${lvl+1} · ${fM(cost)} · ${d.months} mo`:chk.why}</button>`;
+    return `<div class="card" style="background:var(--panel2);margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+        <div class="mission-name" style="font-size:15px">${d.icon} ${d.name} <span class="pill ${lvl>1?'ok':''}">L${lvl}${maxed?' · max':''}</span></div>
+        <div class="dim" style="font-size:11px">upkeep ${upkeep>0?'−'+fM(upkeep)+'/mo':'none'}</div>
+      </div>
+      <div class="sub" style="margin:2px 0 8px">${d.blurb}</div>
+      <div class="metrics">
+        <div class="metric"><div class="k">Now</div><div class="v" style="font-size:13px">${prodEffectText(d.key,lvl)}</div></div>
+        ${maxed?'':`<div class="metric"><div class="k">Next level</div><div class="v" style="font-size:13px;color:var(--readout)">${prodEffectText(d.key,lvl+1)}</div></div>`}
+        ${maxed?'':`<div class="metric"><div class="k">Added upkeep</div><div class="v" style="font-size:13px">−${fM(d.upkeep)}/mo</div></div>`}
+      </div>
+      ${btn}
+    </div>`;
+  }).join('');
+  return `<div class="card" style="margin-bottom:12px;border-color:#5a4419">
+      <h2 style="margin-bottom:6px">🏭 Manufacturing Capacity</h2>
+      <p class="muted" style="font-size:12px;margin:-2px 0 8px">Industry is a resource of its own. Each production line costs capital to expand and adds monthly upkeep — so growing your factory competes with R&amp;D and missions for the budget. ${capNote}.</p>
+      <div class="metrics" style="margin-bottom:10px">
+        <div class="metric"><div class="k">Assembly capacity</div><div class="v">${cap} units</div></div>
+        <div class="metric"><div class="k">Build-cost economy</div><div class="v">−${Math.round((1-foundryCostMult())*100)}%</div></div>
+        <div class="metric"><div class="k">Launch-cost economy</div><div class="v">−${Math.round((1-padLaunchMult())*100)}%</div></div>
+        <div class="metric"><div class="k">Total upkeep</div><div class="v" style="color:${productionUpkeep()>0?'var(--bad)':'var(--ink)'}">${productionUpkeep()>0?'−'+fM(productionUpkeep())+'/mo':'none'}</div></div>
+      </div>
+      ${cards}
+    </div>`;
+}
 function renderInfrastructure(){
   const built=FACILITY_DEFS.filter(d=>facilityBuilt(d.id));
   const totalIncome=totalFacilityIncome();
@@ -5437,7 +5552,8 @@ function renderInfrastructure(){
         </div>
        </div>`
     : '';
-  $('infraCard').innerHTML=`<h2>Infrastructure — what you build stays</h2>
+  $('infraCard').innerHTML=`${productionPanelHTML()}
+    <h2>Infrastructure — what you build stays</h2>
     <p class="muted" style="font-size:12px;margin:-4px 0 10px">Found a station or base once you've proven the capability, then invest to grow it. Facilities persist and produce every month for the rest of the game — passive income, propellant to the depot, prestige — and give a home-field advantage to missions at that body. A landing is a moment; a base is a legacy.</p>
     ${built.length?`<div class="metrics" style="margin-bottom:12px">
       <div class="metric"><div class="k">Facilities</div><div class="v">${built.length}</div></div>
