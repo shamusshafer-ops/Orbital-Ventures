@@ -165,7 +165,7 @@
 
   /* Command Center — animated Cape Canaveral scene */
   /* Phaser canvases must never exceed their host (Scale.NONE writes a fixed px width) */
-  #ccSceneHost canvas, #flightHost canvas, #vehHost canvas{max-width:100%!important;height:auto!important;display:block}
+  #ccSceneHost canvas, #flightHost canvas, #vehHost canvas, #mapHost canvas{max-width:100%!important;height:auto!important;display:block}
   .ccscene-wrap{position:relative;margin-top:4px;line-height:0}
   .ccscene{display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:8px;background:#05070d}
   .ccspot{position:absolute;border:1px solid transparent;border-radius:6px;cursor:pointer;
@@ -342,7 +342,8 @@
           <h2 style="margin:0">Solar System — click a body for its Δv profile</h2>
           <button class="btn ghost" id="mapExpandBtn" onclick="toggleMapExpand()">⛶ Expand</button>
         </div>
-        <p class="muted" style="font-size:12px;margin:6px 0 10px">Orbits are spaced for legibility, not to scale. Every figure assumes the same Earth-surface start.</p>
+        <p class="muted" style="font-size:12px;margin:6px 0 10px">Orbits are spaced for legibility, not to scale. Drag to pan, scroll to zoom; click a body for its Δv profile.</p>
+        <div id="mapHost" style="display:none;width:100%;aspect-ratio:760/480"></div>
         <div id="mapCanvas"></div>
       </div>
       <div class="readout"><div class="card" id="bodyCard"></div><div class="card" id="mapActivityCard" style="margin-top:14px"></div></div>
@@ -2284,6 +2285,80 @@ function clampA(v,a,b){return Math.max(a,Math.min(b,v));}
 function smooth(t){return t*t*(3-2*t);}
 function hx(h){return [parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];}
 function mix(a,b,t){const A=hx(a),B=hx(b);return 'rgb('+A.map((v,i)=>Math.round(v+(B[i]-v)*t)).join(',')+')';}
+// shade a #hex toward white (amt>0) or black (amt<0)
+function shade(hex,amt){ const c=hx(hex), f=amt<0?0:255, t=Math.abs(amt); return 'rgb('+c.map(v=>Math.round(v+(f-v)*t)).join(',')+')'; }
+function hashStr(s){ let h=2166136261; for(let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,16777619); } return h>>>0; }
+function mulberry(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+function ovBlob(ctx,x,y,r,rnd){ ctx.beginPath(); const n=8; for(let i=0;i<=n;i++){ const a=i/n*6.283, rr=r*(0.7+rnd()*0.5), px=x+Math.cos(a)*rr, py=y+Math.sin(a)*rr; i?ctx.lineTo(px,py):ctx.moveTo(px,py); } ctx.closePath(); ctx.fill(); }
+// per-body surface features (drawn inside the disc clip)
+function planetFeatures(ctx,cx,cy,R,b){
+  const rnd=mulberry(hashStr(b.id));
+  if(b.id==='earth'){
+    const greens=['rgba(56,116,54,0.95)','rgba(74,104,46,0.9)','rgba(96,84,48,0.7)'];
+    for(let i=0;i<9;i++){ ctx.fillStyle=greens[i%3]; ovBlob(ctx,cx+(rnd()-0.5)*R*1.6,cy+(rnd()-0.5)*R*1.6,R*(0.16+rnd()*0.30),rnd); }
+    ctx.fillStyle='rgba(150,120,70,0.5)'; for(let i=0;i<3;i++) ovBlob(ctx,cx+(rnd()-0.5)*R*1.3,cy+(rnd()-0.5)*R*1.3,R*0.16,rnd);
+    ctx.fillStyle='rgba(244,250,255,0.9)'; ctx.beginPath(); ctx.ellipse(cx,cy-R*0.93,R*0.72,R*0.27,0,0,7); ctx.fill(); ctx.beginPath(); ctx.ellipse(cx,cy+R*0.95,R*0.72,R*0.25,0,0,7); ctx.fill();
+    ctx.strokeStyle='rgba(255,255,255,0.42)'; ctx.lineWidth=R*0.045; ctx.beginPath(); for(let a=0;a<6;a+=0.25){ const rr=R*0.05+a*R*0.05, x=cx+R*0.4+Math.cos(a*1.6)*rr, y=cy+R*0.3+Math.sin(a*1.6)*rr; a?ctx.lineTo(x,y):ctx.moveTo(x,y);} ctx.stroke();
+    ctx.fillStyle='rgba(255,255,255,0.34)'; for(let i=0;i<11;i++){ ctx.save(); ctx.translate(cx+(rnd()-0.5)*R*1.7,cy+(rnd()-0.5)*R*1.7); ctx.rotate(rnd()*3); ctx.beginPath(); ctx.ellipse(0,0,R*(0.14+rnd()*0.22),R*0.07,0,0,7); ctx.fill(); ctx.restore(); }
+  } else if(b.id==='mars'){
+    ctx.fillStyle='rgba(122,52,28,0.55)'; for(let i=0;i<7;i++) ovBlob(ctx,cx+(rnd()-0.5)*R*1.5,cy+(rnd()-0.5)*R*1.5,R*(0.14+rnd()*0.3),rnd);
+    ctx.fillStyle='rgba(86,38,20,0.45)'; for(let i=0;i<4;i++) ovBlob(ctx,cx+(rnd()-0.5)*R*1.3,cy+(rnd()-0.5)*R*1.3,R*0.12,rnd);
+    ctx.strokeStyle='rgba(70,30,16,0.6)'; ctx.lineWidth=R*0.05; ctx.beginPath(); ctx.moveTo(cx-R*0.5,cy+R*0.12); ctx.quadraticCurveTo(cx,cy+R*0.02,cx+R*0.55,cy+R*0.2); ctx.stroke(); // Valles Marineris
+    ctx.fillStyle='rgba(172,92,52,0.7)'; ctx.beginPath(); ctx.arc(cx-R*0.35,cy-R*0.25,R*0.12,0,7); ctx.fill(); ctx.fillStyle='rgba(60,26,14,0.55)'; ctx.beginPath(); ctx.arc(cx-R*0.35,cy-R*0.25,R*0.04,0,7); ctx.fill(); // Olympus Mons
+    for(let i=0;i<8;i++){ const x=cx+(rnd()-0.5)*R*1.6,y=cy+(rnd()-0.5)*R*1.6,cr=R*(0.03+rnd()*0.06); ctx.fillStyle='rgba(70,30,16,0.4)'; ctx.beginPath(); ctx.arc(x,y,cr,0,7); ctx.fill(); }
+    ctx.fillStyle='rgba(246,248,252,0.92)'; ctx.beginPath(); ctx.ellipse(cx,cy-R*0.93,R*0.5,R*0.22,0,0,7); ctx.fill(); ctx.beginPath(); ctx.ellipse(cx,cy+R*0.96,R*0.4,R*0.18,0,0,7); ctx.fill();
+  } else if(b.id==='moon'||b.id==='phobos'){
+    ctx.fillStyle='rgba(64,68,76,0.5)'; for(let i=0;i<5;i++) ovBlob(ctx,cx+(rnd()-0.5)*R*1.3,cy+(rnd()-0.5)*R*1.3,R*(0.2+rnd()*0.32),rnd);
+    for(let k=0;k<2;k++){ const bx=cx+(rnd()-0.5)*R, by=cy+(rnd()-0.5)*R, br=R*(0.1+rnd()*0.05); ctx.strokeStyle='rgba(210,212,218,0.22)'; ctx.lineWidth=R*0.018; for(let a=0;a<6.28;a+=0.5){ ctx.beginPath(); ctx.moveTo(bx,by); ctx.lineTo(bx+Math.cos(a)*br*3,by+Math.sin(a)*br*3); ctx.stroke(); } ctx.fillStyle='rgba(218,220,226,0.5)'; ctx.beginPath(); ctx.arc(bx,by,br,0,7); ctx.fill(); ctx.fillStyle='rgba(40,42,46,0.5)'; ctx.beginPath(); ctx.arc(bx,by,br*0.7,0,7); ctx.fill(); } // ray craters
+    for(let i=0;i<22;i++){ const x=cx+(rnd()-0.5)*R*1.8,y=cy+(rnd()-0.5)*R*1.8,cr=R*(0.03+rnd()*0.11); ctx.fillStyle='rgba(38,40,45,0.5)'; ctx.beginPath(); ctx.arc(x,y,cr,0,7); ctx.fill(); ctx.strokeStyle='rgba(216,218,222,0.4)'; ctx.lineWidth=Math.max(0.5,cr*0.22); ctx.beginPath(); ctx.arc(x,y,cr,0,7); ctx.stroke(); }
+  } else if(b.id==='jupiter'){
+    for(let i=-7;i<=7;i++){ const yy=cy+i*R*0.13, zone=i%2===0; ctx.fillStyle=zone?'rgba(198,168,124,0.6)':'rgba(126,92,60,0.55)'; ctx.fillRect(cx-R*1.1,yy-R*0.07,R*2.2,R*0.14);
+      ctx.fillStyle=zone?'rgba(150,110,72,0.28)':'rgba(210,184,140,0.22)'; for(let j=0;j<5;j++){ ctx.beginPath(); ctx.ellipse(cx-R+(j+(i%2?0.5:0))*R*0.45, yy, R*0.16, R*0.035,0,0,7); ctx.fill(); } }
+    ctx.fillStyle='rgba(205,82,52,0.8)'; ctx.beginPath(); ctx.ellipse(cx+R*0.32,cy+R*0.28,R*0.22,R*0.12,0,0,7); ctx.fill(); ctx.strokeStyle='rgba(150,50,30,0.5)'; ctx.lineWidth=R*0.02; ctx.beginPath(); ctx.ellipse(cx+R*0.32,cy+R*0.28,R*0.22,R*0.12,0,0,7); ctx.stroke();
+    ctx.fillStyle='rgba(240,236,220,0.5)'; ctx.beginPath(); ctx.ellipse(cx-R*0.35,cy-R*0.15,R*0.1,R*0.05,0,0,7); ctx.fill();
+  } else if(b.id==='venus'){
+    for(let i=0;i<11;i++){ ctx.fillStyle=(i%2)?'rgba(238,224,166,0.42)':'rgba(196,168,112,0.42)'; ctx.save(); ctx.translate(cx,cy-R+ i*R*0.20); ctx.rotate(0.2); ctx.beginPath(); ctx.ellipse(0,0,R*0.98,R*0.1,0,0,7); ctx.fill(); ctx.restore(); }
+    ctx.strokeStyle='rgba(255,245,210,0.25)'; ctx.lineWidth=R*0.04; ctx.beginPath(); for(let a=0;a<5;a+=0.3){ const rr=a*R*0.06, x=cx-R*0.2+Math.cos(a*1.5)*rr, y=cy-R*0.2+Math.sin(a*1.5)*rr; a?ctx.lineTo(x,y):ctx.moveTo(x,y);} ctx.stroke();
+  } else {
+    ctx.fillStyle='rgba(0,0,0,0.18)'; for(let i=0;i<5;i++) ovBlob(ctx,cx+(rnd()-0.5)*R*1.3,cy+(rnd()-0.5)*R*1.3,R*(0.15+rnd()*0.25),rnd);
+  }
+}
+const RINGED={jupiter:1};
+const PLANET_TEX_R=0.45, RINGED_TEX_R=0.32; // planet radius as a fraction of the texture half-size
+// baked lit direction (upper-left highlight) — used to rotate the sprite so it faces the Sun
+const BAKED_LIT_ANGLE=Math.atan2(-0.38,-0.38);
+function texGrain(ctx,cx,cy,R,b){ const rn=mulberry(hashStr(b.id+'grain')); ctx.globalAlpha=0.06; for(let i=0;i<340;i++){ ctx.fillStyle=rn()<0.5?'#000':'#fff'; ctx.fillRect(cx+(rn()-0.5)*2*R, cy+(rn()-0.5)*2*R, Math.max(1,R*0.009), Math.max(1,R*0.009)); } ctx.globalAlpha=1; }
+function ringBands(ctx,cx,cy,S){
+  const tilt=-0.22;
+  const bands=[[0.49,0.165,0.44,0.148,'rgba(206,188,150,0.6)'],[0.435,0.146,0.405,0.136,'rgba(150,128,92,0.45)'],[0.40,0.134,0.355,0.119,'rgba(216,202,166,0.55)']];
+  for(const bd of bands){ ctx.fillStyle=bd[4]; ctx.beginPath(); ctx.ellipse(cx,cy,bd[0]*S,bd[1]*S,tilt,0,7); ctx.ellipse(cx,cy,bd[2]*S,bd[3]*S,tilt,0,7); ctx.fill('evenodd'); }
+}
+// draw a detailed, lit, shaded planet sphere onto a 2D context (S×S)
+function drawPlanetTex(ctx,S,b){
+  const ringed=RINGED[b.id], R=(ringed?RINGED_TEX_R:PLANET_TEX_R)*S, cx=S/2, cy=S/2;
+  ctx.clearRect(0,0,S,S);
+  if(ringed){ ctx.save(); ctx.beginPath(); ctx.rect(0,0,S,cy); ctx.clip(); ringBands(ctx,cx,cy,S); ctx.restore(); } // far half (behind)
+  ctx.save(); ctx.beginPath(); ctx.arc(cx,cy,R,0,7); ctx.clip();
+  if(ringed){
+    const g=ctx.createRadialGradient(cx,cy,R*0.1,cx,cy,R*1.05); g.addColorStop(0,shade(b.color,0.4)); g.addColorStop(0.6,b.color); g.addColorStop(1,shade(b.color,-0.5));
+    ctx.fillStyle=g; ctx.fillRect(0,0,S,S);
+    planetFeatures(ctx,cx,cy,R,b); texGrain(ctx,cx,cy,R,b);
+    const v=ctx.createRadialGradient(cx,cy,R*0.45,cx,cy,R); v.addColorStop(0,'rgba(0,0,8,0)'); v.addColorStop(1,'rgba(0,0,10,0.42)'); ctx.fillStyle=v; ctx.fillRect(0,0,S,S); // symmetric limb darkening (no fixed terminator → rings can stay upright)
+  } else {
+    const g=ctx.createRadialGradient(cx-R*0.38,cy-R*0.38,R*0.1, cx,cy,R*1.05); g.addColorStop(0,shade(b.color,0.45)); g.addColorStop(0.55,b.color); g.addColorStop(1,shade(b.color,-0.6));
+    ctx.fillStyle=g; ctx.fillRect(0,0,S,S);
+    planetFeatures(ctx,cx,cy,R,b); texGrain(ctx,cx,cy,R,b);
+    const tg=ctx.createRadialGradient(cx-R*0.45,cy-R*0.45,R*0.15, cx+R*0.55,cy+R*0.55,R*1.5); // directional terminator (sprite is rotated so this faces the Sun)
+    tg.addColorStop(0,'rgba(0,0,10,0)'); tg.addColorStop(0.72,'rgba(0,0,10,0.22)'); tg.addColorStop(1,'rgba(0,0,12,0.78)');
+    ctx.fillStyle=tg; ctx.fillRect(0,0,S,S);
+    ctx.fillStyle='rgba(255,255,255,0.16)'; ctx.beginPath(); ctx.ellipse(cx-R*0.4,cy-R*0.42,R*0.2,R*0.12,-0.6,0,7); ctx.fill();
+  }
+  ctx.restore();
+  const atm={earth:'120,180,255',venus:'232,212,150',mars:'210,140,100',jupiter:'220,190,150'}[b.id];
+  if(atm){ ctx.strokeStyle=`rgba(${atm},0.5)`; ctx.lineWidth=S*0.016; ctx.beginPath(); ctx.arc(cx,cy,R+S*0.011,0,7); ctx.stroke();
+    ctx.strokeStyle=`rgba(${atm},0.16)`; ctx.lineWidth=S*0.045; ctx.beginPath(); ctx.arc(cx,cy,R+S*0.028,0,7); ctx.stroke(); }
+  if(ringed){ ctx.save(); ctx.beginPath(); ctx.rect(0,cy,S,S-cy); ctx.clip(); ringBands(ctx,cx,cy,S); ctx.restore(); } // near half (in front)
+}
 function mixRgba(r1,g1,b1,a1,r2,g2,b2,a2,t){
   return `rgba(${Math.round(r1+(r2-r1)*t)},${Math.round(g1+(g2-g1)*t)},${Math.round(b1+(b2-b1)*t)},${(a1+(a2-a1)*t).toFixed(3)})`;
 }
@@ -4484,6 +4559,7 @@ function render(){
 
   if(state.tab==='command')renderCommandCenter(); else { stopCCScene(); pauseCapeGame(); }
   if(state.tab!=='bench') pauseVehGame();
+  if(state.tab!=='map') pauseMapGame();
   if(state.tab==='bench'){renderVehicleFamilies();renderArchitecture();renderStages();renderTransfer();renderLander();renderCrew();renderWindowPlanner();renderRoutes();renderReadout();renderVehiclePreview();}
   if(state.tab==='missions')renderMissions();
   if(state.tab==='programs')renderPrograms();
@@ -5815,14 +5891,86 @@ function renderRivals(){
 
 let mapExpanded=false;
 function toggleMapExpand(){ mapExpanded=!mapExpanded; renderMap(); }
+/* ---------- Hybrid Phaser layer (Slice 3): MapScene ----------
+   The solar-system overview in Phaser: Sun + orbit rings, planets/moons as
+   interactive bodies with labels, slow orbital motion, drag-to-pan + wheel-zoom
+   camera, and rival/facility markers. Reuses BODIES/ANGLES/selectBody/rivalsAtBody.
+   Guarded + lazy; falls back to the SVG map (overview + click-zoom) when absent. */
+const MAP_W=760, MAP_H=480;
+let MapScene=null, mapGame=null, mapScene=null;
+function defineMapScene(){
+  if(MapScene || !phaserOK()) return;
+  const hx=h=>{ try{ return Phaser.Display.Color.HexStringToColor(h).color; }catch(e){ return 0xffffff; } };
+  MapScene=class extends Phaser.Scene{
+    constructor(){ super('solarmap'); }
+    create(){
+      this.cam=this.cameras.main; this.cam.setBackgroundColor('#05080d');
+      for(let i=0;i<70;i++){ this.add.circle((Math.random()-0.5)*MAP_W*3,(Math.random()-0.5)*MAP_H*3, Math.random()*1.2+0.3, 0xffffff, 0.1+Math.random()*0.4).setScrollFactor(0.4); }
+      this.rings=this.add.graphics(); this.markers=this.add.graphics(); this.selRing=this.add.graphics();
+      // detailed per-body planet textures (generated once)
+      const S=448;
+      for(const bb of BODIES){ if(bb.kind==='belt') continue; const key='planet_'+bb.id; if(!this.textures.exists(key)){ const tx=this.textures.createCanvas(key,S,S); try{ drawPlanetTex(tx.context,S,bb); }catch(e){} tx.refresh(); } }
+      if(!this.textures.exists('sunGlow')){ const sg=this.textures.createCanvas('sunGlow',128,128); const sc=sg.context; const gg=sc.createRadialGradient(64,64,4,64,64,64); gg.addColorStop(0,'rgba(255,232,150,0.95)'); gg.addColorStop(0.4,'rgba(255,180,60,0.4)'); gg.addColorStop(1,'rgba(255,150,40,0)'); sc.fillStyle=gg; sc.fillRect(0,0,128,128); sg.refresh(); }
+      this.add.image(0,0,'sunGlow').setDisplaySize(70,70).setBlendMode(Phaser.BlendModes.ADD);
+      this.add.circle(0,0,9,0xfff0c0);
+      this.bodies=[];
+      const planets=BODIES.filter(b=>!b.around);
+      for(const b of planets){ this.addBody(b,null,hx); for(const m of BODIES.filter(x=>x.around===b.id)) this.addBody(m,b,hx); }
+      const maxR=Math.max.apply(null, planets.map(p=>p.r));
+      this.fitZoom=Math.min(MAP_W,MAP_H)/(2*(maxR+60));
+      this.cam.centerOn(0,0); this.cam.setZoom(this.fitZoom);
+      this.input.on('pointermove',p=>{ if(p.isDown){ this.cam.scrollX-=(p.x-p.prevPosition.x)/this.cam.zoom; this.cam.scrollY-=(p.y-p.prevPosition.y)/this.cam.zoom; } });
+      this.input.on('wheel',(p,go,dx,dy)=>{ this.cam.setZoom(Phaser.Math.Clamp(this.cam.zoom*(dy>0?0.88:1.14), this.fitZoom*0.6, this.fitZoom*42)); });
+      mapScene=this;
+    }
+    addBody(b,parent,hx){
+      const rad=parent?6:(b.kind==='belt'?3:11);
+      const ringed=!!RINGED[b.id]; let c, isImg=false;
+      if(b.kind==='belt' || !this.textures.exists('planet_'+b.id)){ c=this.add.circle(0,0,rad,hx(b.color)); }
+      else { c=this.add.image(0,0,'planet_'+b.id); const frac=ringed?RINGED_TEX_R:PLANET_TEX_R; c.setDisplaySize(rad/frac, rad/frac); isImg=true; }
+      c.setInteractive({useHandCursor:true});
+      c.on('pointerdown',()=>selectBody(b.id));
+      const t=this.add.text(0,0,b.name,{fontFamily:'ui-monospace,monospace',fontSize:parent?'9px':'11px',color:'#9aa7af'}).setOrigin(0.5,1);
+      this.bodies.push({b,parentId:parent?parent.id:null,ang:(ANGLES[b.id]!==undefined?ANGLES[b.id]:0),speed:(parent?0.12:0.05)/Math.sqrt(Math.max(10,b.r)),c,t,rad,x:0,y:0,ringed,isImg});
+    }
+    faceSun(o){ if(o.isImg && !o.ringed) o.c.rotation = Math.atan2(-o.y,-o.x) - BAKED_LIT_ANGLE; } // lit side toward the Sun (map centre)
+    update(time,delta){
+      const dt=(delta||16)/1000;
+      for(const o of this.bodies){ if(o.parentId) continue; o.ang+=o.speed*dt; o.x=Math.cos(o.ang)*o.b.r; o.y=Math.sin(o.ang)*o.b.r; o.c.setPosition(o.x,o.y); o.t.setPosition(o.x,o.y-o.rad-3); this.faceSun(o); }
+      for(const o of this.bodies){ if(!o.parentId) continue; const p=this.bodies.find(q=>q.b.id===o.parentId); if(!p) continue; const mr=p.rad+12; o.ang+=o.speed*dt; o.x=p.x+Math.cos(o.ang)*mr; o.y=p.y+Math.sin(o.ang)*mr; o.c.setPosition(o.x,o.y); o.t.setPosition(o.x,o.y-o.rad-3); this.faceSun(o); }
+      this.drawRings(); this.drawMarkers(); this.drawSel();
+    }
+    drawRings(){ const g=this.rings; g.clear(); g.lineStyle(1,0x7d909b,0.22);
+      for(const o of this.bodies){ if(o.parentId){ const p=this.bodies.find(q=>q.b.id===o.parentId); if(p) g.strokeCircle(p.x,p.y,p.rad+12); } else { g.strokeCircle(0,0,o.b.r); } } }
+    drawMarkers(){ const g=this.markers; g.clear(); const C=h=>{ try{ return Phaser.Display.Color.HexStringToColor(h).color; }catch(e){ return 0xffffff; } };
+      for(const o of this.bodies){ const rv=rivalsAtBody(o.b.id)||[]; const seen={}; let i=0;
+        for(const h of rv){ if(seen[h.rival.id])continue; seen[h.rival.id]=1; const a=-1.57+(i-0.5)*0.5; g.fillStyle(C(h.rival.color),1); g.fillCircle(o.x+Math.cos(a)*(o.rad+6),o.y+Math.sin(a)*(o.rad+6),2); i++; }
+        const def=FACILITY_DEFS.find(f=>f.body===o.b.id); if(def&&facilityBuilt(def.id)){ g.fillStyle(C(def.color),1); g.fillRect(o.x+o.rad+3,o.y-2,4,4); } } }
+    drawSel(){ const g=this.selRing; g.clear(); const o=this.bodies.find(q=>q.b.id===state.selectedBody); if(o){ g.lineStyle(1.5,0xf5a623,1); g.strokeCircle(o.x,o.y,o.rad+3); } }
+  };
+}
+function ensureMapHost(){ const host=$('mapHost'); if(!host) return false; host.style.display='block'; const c=$('mapCanvas'); if(c) c.style.display='none'; return true; }
+function startMapScene(){
+  defineMapScene();
+  if(!ensureMapHost()) return false;
+  try{
+    if(!mapGame){
+      mapGame=new Phaser.Game({ type:Phaser.AUTO, parent:'mapHost', width:MAP_W, height:MAP_H, backgroundColor:'#05080d', banner:false, audio:{noAudio:true}, scale:{mode:Phaser.Scale.NONE}, scene:[MapScene] });
+      const c=mapGame.canvas; if(c){ c.style.maxWidth='100%'; c.style.height='auto'; c.style.display='block'; }
+    } else resumeMapGame();
+    return true;
+  }catch(e){ console.warn('map scene failed, using SVG:',e); const h=$('mapHost'); if(h) h.style.display='none'; const c=$('mapCanvas'); if(c) c.style.display='block'; return false; }
+}
+function pauseMapGame(){ if(mapGame){ try{ mapGame.scene.pause('solarmap'); }catch(e){} } }
+function resumeMapGame(){ if(mapGame){ try{ mapGame.scene.resume('solarmap'); }catch(e){} } }
 function renderMap(){
-  const W=720,H=460;
-  let svg;
+  const mv=$('mapView'); if(mv) mv.classList.toggle('expanded', mapExpanded);
+  const eb=$('mapExpandBtn'); if(eb) eb.textContent = mapExpanded ? '⛶ Exit full screen' : '⛶ Expand';
+  if(phaserOK() && startMapScene()){ renderBodyCard(); renderMapActivity(); return; }
+  const W=720,H=460; let svg;
   if(!state.mapZoom){ svg=renderMapOverview(W,H); }
   else { svg=renderMapZoom(W,H,state.mapZoom); }
   $('mapCanvas').innerHTML=svg;
-  const mv=$('mapView'); if(mv) mv.classList.toggle('expanded', mapExpanded);
-  const eb=$('mapExpandBtn'); if(eb) eb.textContent = mapExpanded ? '⛶ Exit full screen' : '⛶ Expand';
   renderBodyCard();
   renderMapActivity();
 }

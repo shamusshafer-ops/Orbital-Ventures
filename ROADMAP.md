@@ -700,8 +700,19 @@ logic with no Phaser global.
       highlight, bell ribs/rim highlight, and capsule side-windows + RCS nubs; booster fins
       now also clear after liftoff via `hideBells`. Validated: suites green (38/38) + flight
       fallback probe; in-browser confirmed.
-- [ ] **Slice 3 (optional) — `MapScene`**: interactive solar map (orbit rings, planet
-      sprites, pan/zoom camera). Tech tree + all management UI stay DOM.
+- [x] **Slice 3 — `MapScene`** *(2026-06-20).* The Solar System tab is a Phaser scene:
+      Sun + orbit rings, bodies in slow orbital motion, **drag-to-pan + wheel-zoom camera**,
+      parallax starfield, rival-reach + facility markers, and click→`selectBody` (reuses
+      the DOM Δv detail card). Replaces the discrete SVG click-zoom with free camera zoom;
+      SVG map retained as fallback (and used headlessly). **Detailed planets:** procedurally
+      generated 448px textures per body — shaded sphere, surface grain, atmosphere rim, and
+      body-specific features (Earth continents/clouds/ice/storm, Mars Valles Marineris +
+      Olympus Mons + caps, Moon crater-ray systems + maria, Jupiter banding + Great Red Spot,
+      Venus cloud swirls). **Jupiter rings** with proper front/back occlusion. **Sun-accurate
+      terminator:** rocky bodies rotate so their lit hemisphere faces the Sun as they orbit
+      (Jupiter uses symmetric limb-shading + stays upright so its rings hold a fixed tilt).
+      Validated: suites green (38/38/34) + map render smoke; in-browser confirmed. *This
+      completes the planned hybrid Phaser conversion (Slices 0–3).*
 
 ## Repo
 
