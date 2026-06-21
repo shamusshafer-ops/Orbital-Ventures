@@ -798,6 +798,15 @@ Science), not a single line — that's the "decades-long effort" feel.
    (28), slice 2 (29), M5 (31), #13 (33) suites green. *Still deferred:* the
    remaining ~10 early-era nodes (materials front, more crew/guidance) — content,
    now that the effect machinery exists.
+- ✅ **Tech-tree hover tooltips** — *Built 2026-06-21.* Hovering any tech node pops
+   a rich `#techTip` card: name + track chip + status/cost, a derived **benefits &
+   modifiers** block (`techModifierText` — engine unlock w/ Isp+thrust, +Isp/+thrust,
+   +reliability, σ, capability unlock, or "leveled technology" w/ per-level effect &
+   current level), the full description, the **real-world example** (the existing
+   `.hist` note), and the requirement chain. Cursor-following, edge-flipping,
+   pointer-events-none overlay; replaced the plain SVG `<title>`. Validated (10
+   tooltip-content checks across every node type; never throws); suites green.
+
 3. ✅ **Tech Levels mechanic** — *Built 2026-06-21.* Flagship technologies you keep
    investing in. `TECH_LEVELS` config + `state.techLevel` (`SAVE_VERSION`→7,
    forward-compat default `{}`; a researched leveled tech with no entry reads as
