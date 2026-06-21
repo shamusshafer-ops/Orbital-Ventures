@@ -173,7 +173,9 @@
   /* Command Center — animated Cape Canaveral scene */
   /* Phaser canvases must never exceed their host (Scale.NONE writes a fixed px width) */
   #ccSceneHost canvas, #flightHost canvas, #vehHost canvas, #mapHost canvas{max-width:100%!important;height:auto!important;display:block}
-  .ccscene-wrap{position:relative;margin-top:4px;line-height:0}
+  .ccscene-wrap{position:relative;margin-top:4px;line-height:0;overflow:hidden;border-radius:8px}
+  #ccZoom{position:absolute;inset:0;transform-origin:0 0}
+  .cc-zoomhint{position:absolute;left:8px;bottom:6px;font-family:var(--mono);font-size:10px;color:rgba(200,210,220,0.5);line-height:1;pointer-events:none;z-index:6}
   .ccscene{display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:8px;background:#05070d}
   .ccspot{position:absolute;border:1px solid transparent;border-radius:6px;cursor:pointer;
     transition:border-color .12s,background .12s;display:flex;flex-direction:column;justify-content:flex-end;
@@ -5196,7 +5198,7 @@ function defineCapeScene(){
       let pad; try{ pad=isoLayout().pad; }catch(e){}
       const px=pad?pad.sx-ISO_TW*0.35:W*0.5, py=pad?pad.sy:H*0.6;
       this.add.particles(px, py, 'smokeDot', { speedY:{min:-26,max:-58}, speedX:{min:-12,max:12}, scale:{start:0.18,end:0.9}, alpha:{start:0.30,end:0}, lifespan:2600, frequency:90, tint:0xc9d2dc });
-      this.tweens.add({targets:this.cameras.main, zoom:1.03, duration:9000, yoyo:true, repeat:-1, ease:'Sine.easeInOut'});
+      // (no camera breathe — CSS zoom/pan is the interaction now, and breathe would desync the hotspots)
     }
     update(time,delta){
       if(this.tex&&this.tex.canvas){ try{ drawCape(this.tex.canvas, (ccNow()-this.t0)/1000); this.tex.refresh(); }catch(e){} }
@@ -5218,6 +5220,24 @@ function startCapeGame(){
     const cv=capeGame.canvas; if(cv){ cv.style.width='100%'; cv.style.height='auto'; cv.style.display='block'; cv.style.borderRadius='8px'; }
   }catch(e){ capeGame=null; return false; }
   return true;
+}
+// CSS-transform zoom/pan over the Cape scene — moves the canvas AND the hotspot overlay
+// together (so labels stay aligned), like the solar map's camera.
+let capeZoom=1, capePanX=0, capePanY=0;
+function applyCapeZoom(){ const z=$('ccZoom'); if(z) z.style.transform=`translate(${capePanX}px,${capePanY}px) scale(${capeZoom})`; }
+function capeClampPan(w,h){ capePanX=Math.min(0,Math.max(w*(1-capeZoom),capePanX)); capePanY=Math.min(0,Math.max(h*(1-capeZoom),capePanY)); }
+function initCapeZoom(){
+  const wrap=$('ccSceneWrap'); if(!wrap||wrap._zoomInit) return; wrap._zoomInit=true;
+  let drag=false, lx=0, ly=0, moved=0;
+  wrap.addEventListener('wheel',e=>{ e.preventDefault(); const r=wrap.getBoundingClientRect(); const cx=e.clientX-r.left, cy=e.clientY-r.top, z0=capeZoom;
+    capeZoom=Math.min(3,Math.max(1, capeZoom*(e.deltaY<0?1.12:0.89)));
+    capePanX=cx-(cx-capePanX)*(capeZoom/z0); capePanY=cy-(cy-capePanY)*(capeZoom/z0);
+    capeClampPan(r.width,r.height); applyCapeZoom(); },{passive:false});
+  wrap.addEventListener('pointerdown',e=>{ if(capeZoom<=1) return; drag=true; moved=0; lx=e.clientX; ly=e.clientY; try{wrap.setPointerCapture(e.pointerId);}catch(_){}});
+  wrap.addEventListener('pointermove',e=>{ if(!drag) return; const dx=e.clientX-lx, dy=e.clientY-ly; lx=e.clientX; ly=e.clientY; moved+=Math.abs(dx)+Math.abs(dy); const r=wrap.getBoundingClientRect(); capePanX+=dx; capePanY+=dy; capeClampPan(r.width,r.height); applyCapeZoom(); });
+  wrap.addEventListener('pointerup',()=>{ drag=false; });
+  wrap.addEventListener('click',e=>{ if(moved>6){ e.stopPropagation(); e.preventDefault(); moved=0; } }, true); // swallow click-through after a drag
+  wrap.addEventListener('dblclick',()=>{ capeZoom=1; capePanX=0; capePanY=0; applyCapeZoom(); });
 }
 function pauseCapeGame(){ if(capeGame){ try{ capeGame.scene.pause('cape'); }catch(e){} } }
 function resumeCapeGame(){ if(capeGame){ try{ capeGame.scene.resume('cape'); }catch(e){} } }
@@ -5318,12 +5338,16 @@ function renderCCCenter(){
     if(!$('ccSceneHost')){
       $('ccCenter').innerHTML=`<div class="card">
         <div class="cc-panel-h">Cape Canaveral — click a building to drill in</div>
-        <div class="ccscene-wrap">
-          <div id="ccSceneHost" class="ccscene" style="width:100%;aspect-ratio:1200/860;padding:0"></div>
-          <div id="ccSpots">${spots}</div>
+        <div class="ccscene-wrap" id="ccSceneWrap" style="aspect-ratio:1200/860">
+          <div id="ccZoom">
+            <div id="ccSceneHost" class="ccscene" style="position:absolute;inset:0;padding:0"></div>
+            <div id="ccSpots">${spots}</div>
+          </div>
+          <div class="cc-zoomhint">scroll to zoom · drag to pan · dbl-click reset</div>
         </div>
       </div>`;
       startCapeGame();
+      initCapeZoom();
     } else {
       $('ccSpots').innerHTML=spots;
       resumeCapeGame();

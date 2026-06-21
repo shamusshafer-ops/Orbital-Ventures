@@ -656,6 +656,10 @@ order — the near-term build order (#3 vehicle families → … → #7) is unch
         facade ribs, VAB flag/logo + bay doors, a Production roll-up door, scaffolding towers,
         plus decorative ground dishes + a lightning rod. Sun moved to the top-right corner.
         Validated (6 checks) + suites; browser-confirmed.
+        **Zoom/pan (2026-06-20):** scroll-to-zoom (1–3×, toward cursor) + drag-to-pan +
+        dbl-click reset, via a CSS transform on a shared `#ccZoom` container holding the
+        canvas *and* the hotspot overlay so labels stay aligned (Phaser camera-breathe
+        removed to avoid desync; drag-then-click swallowed).
 - [ ] **19 · Organizational scaling (departments)** *(P2, v2.0)* — Grow personnel
       from named individuals into **departments** with leaders/executive roles,
       career progression + training/specialization tracks, and
