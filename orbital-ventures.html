@@ -6530,6 +6530,49 @@ function selectBody(id){
 function zoomOut(){ state.mapZoom=null; render(); }
 /* ---------- M6: Personnel tab ---------- */
 function moraleColor(m){ return m>=70?'var(--ok)':m>=40?'var(--warn)':'var(--bad)'; }
+// Deterministic generated "roster headshot" — unique per person id, no binary assets.
+let _ppSeq=0;
+function _phash(s){ let h=2166136261>>>0; for(let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,16777619); } return h>>>0; }
+function personPortrait(p, size){
+  size=size||56;
+  const id=(p&&p.id)||'x';
+  let seed=_phash(id)||1;
+  const rnd=()=>{ seed=(seed*1103515245+12345)>>>0; return seed/4294967296; };
+  const pick=a=>a[Math.floor(rnd()*a.length)];
+  const isAstro=!!ASTRONAUTS.find(a=>a.id===id);
+  const skin=pick(['#f4cda6','#e7b38a','#cf9d6f','#b07c4f','#8d5a34','#6e4426']);
+  const hairc=pick(['#23211f','#4a3526','#6b4a2a','#a8842f','#9aa3ab','#caa55a','#2b2b2b','#7a4a2a']);
+  const bgA=pick(['#16222b','#1a2331','#221a2b','#122019','#231d18']);
+  const suit=isAstro?pick(['#e08a4f','#d7dde1','#c9532b','#e0e4e8']):pick(['#39434f','#46506a','#4a5a4a','#5a4a3a','#3f4a55']);
+  const hairStyle=Math.floor(rnd()*5);
+  const glasses=!isAstro && rnd()<0.45;
+  const beard=rnd()<0.26, mustache=!beard && rnd()<0.18;
+  const eyeY=43, eyeDx=8, browY=37, uid='pp'+(_ppSeq++);
+  let hair='';
+  if(hairStyle!==4) hair+=`<path d="M30 41 Q30 19 50 18 Q70 19 70 41 Q66 29 50 28 Q34 29 30 41 Z" fill="${hairc}"/>`;
+  else hair+=`<path d="M31 42 Q31 25 41 23 L41 33 Q34 34 31 42 Z" fill="${hairc}"/><path d="M69 42 Q69 25 59 23 L59 33 Q66 34 69 42 Z" fill="${hairc}"/>`;
+  if(hairStyle===1) hair+=`<path d="M48 19 Q61 19 69 33 L66 23 Q58 18 48 19 Z" fill="${hairc}"/>`;
+  if(hairStyle===3) hair+=`<ellipse cx="30" cy="45" rx="6" ry="12" fill="${hairc}"/><ellipse cx="70" cy="45" rx="6" ry="12" fill="${hairc}"/>`;
+  const gl=glasses?`<g fill="none" stroke="#1c1c1c" stroke-width="1.6"><circle cx="${50-eyeDx}" cy="${eyeY}" r="5"/><circle cx="${50+eyeDx}" cy="${eyeY}" r="5"/><line x1="${50-eyeDx+5}" y1="${eyeY}" x2="${50+eyeDx-5}" y2="${eyeY}"/></g>`:'';
+  const fh=beard?`<path d="M34 49 Q34 67 50 69 Q66 67 66 49 Q60 59 50 59 Q40 59 34 49 Z" fill="${hairc}" opacity="0.92"/>`:(mustache?`<path d="M42 55 Q50 59 58 55 Q50 57 42 55 Z" fill="${hairc}"/>`:'');
+  const patch=isAstro?(()=>{ const pc=pick(['#e0564f','#4fd1d9','#58c47a','#f5a623']); return `<rect x="59" y="85" width="12" height="9" rx="1.5" fill="${pc}" stroke="#0007"/><circle cx="65" cy="89.5" r="2" fill="#ffffffaa"/>`; })():'';
+  return `<svg width="${size}" height="${size}" viewBox="0 0 100 100" style="display:block;border-radius:8px;flex-shrink:0;background:#0c1318" xmlns="http://www.w3.org/2000/svg">
+    <defs><linearGradient id="${uid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${bgA}"/><stop offset="1" stop-color="#0c1318"/></linearGradient></defs>
+    <rect width="100" height="100" rx="10" fill="url(#${uid})"/>
+    <ellipse cx="50" cy="104" rx="40" ry="28" fill="${suit}"/>
+    <path d="M38 86 Q50 96 62 86" fill="none" stroke="#00000033" stroke-width="2"/>
+    <rect x="44" y="61" width="12" height="17" rx="4" fill="${skin}"/>
+    <ellipse cx="30" cy="47" rx="4" ry="6" fill="${skin}"/><ellipse cx="70" cy="47" rx="4" ry="6" fill="${skin}"/>
+    <ellipse cx="50" cy="46" rx="19" ry="23" fill="${skin}"/>
+    ${hair}
+    <line x1="${50-eyeDx-3}" y1="${browY}" x2="${50-eyeDx+3}" y2="${browY-1}" stroke="${hairc}" stroke-width="1.8" stroke-linecap="round"/>
+    <line x1="${50+eyeDx-3}" y1="${browY-1}" x2="${50+eyeDx+3}" y2="${browY}" stroke="${hairc}" stroke-width="1.8" stroke-linecap="round"/>
+    <circle cx="${50-eyeDx}" cy="${eyeY}" r="2.1" fill="#2a2320"/><circle cx="${50+eyeDx}" cy="${eyeY}" r="2.1" fill="#2a2320"/>
+    <path d="M50 47 L48 53 Q50 55 52 53" fill="none" stroke="#00000033" stroke-width="1.4"/>
+    <path d="M44 57 Q50 60 56 57" fill="none" stroke="#7a4a44" stroke-width="1.8" stroke-linecap="round"/>
+    ${fh}${gl}${patch}
+  </svg>`;
+}
 
 function renderPersonnelCard(p, sr){
   const isEng = !!ENGINEERS.find(e=>e.id===p.id);
@@ -6542,7 +6585,9 @@ function renderPersonnelCard(p, sr){
   const moraleFactor = Math.max(0.2, sr.morale/100);
   const engBonusStr = isEng ? (p.skill*moraleFactor*ENG_REL_BONUS_MAX).toFixed(3) : null;
 
-  return `<div class="card" style="margin-bottom:8px">
+  return `<div class="card" style="margin-bottom:8px;display:flex;gap:12px;align-items:flex-start">
+    ${personPortrait(p,64)}
+    <div style="flex:1;min-width:0">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
       <div>
         <span style="font-size:14px;font-weight:600;color:var(--ink)">${p.name}</span>
@@ -6585,6 +6630,7 @@ function renderPersonnelCard(p, sr){
       ${isAstro?`<button class="btn ghost" style="font-size:11px" onclick="assignAstronaut('${p.id}')">${assigned?'Unassign':'Assign to crew'}</button>`:''}
       <button class="btn ghost danger" style="font-size:11px;margin-left:auto" onclick="firePersonnel('${p.id}')">Let go</button>
     </div>
+    </div>
   </div>`;
 }
 
@@ -6618,6 +6664,7 @@ function renderPersonnel(){
     html+=available.map(p=>{
       const isEng=!!ENGINEERS.find(e=>e.id===p.id);
       return `<div class="card" style="margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;gap:10px">
+        ${personPortrait(p,48)}
         <div style="flex:1">
           <span style="font-size:13px;font-weight:600;color:var(--ink)">${p.name}</span>
           <span class="pill" style="margin-left:6px">${isEng?p.specialty:'astronaut'}</span>
