@@ -1449,6 +1449,60 @@ function commitWindow(missionId, idx){
 }
 function cancelWindow(){ state.committedWindow=null; render(); }
 
+/* ---------- #13: map as a planning surface ----------
+   Pure planners (no DOM) that turn the selected body into actionable plans:
+   the next transfer window, propellant routes (LEO depot / on-site ISRU), and
+   per-mission lead time + economics. renderBodyCard() consumes these so the
+   solar map becomes a place you plan, not just read. Headless-testable. */
+function bodyMissions(bodyId){
+  const b=BODIES.find(x=>x.id===bodyId); if(!b) return [];
+  return (b.missions||[]).map(id=>MISSIONS.find(m=>m.id===id)).filter(Boolean);
+}
+function nextWindowFor(missionId){
+  const wins=windowsFor(missionId), now=absMonth();
+  let best=-1;
+  for(let i=0;i<wins.length;i++){ if(wins[i].abs>=now && (best<0||wins[i].abs<wins[best].abs)) best=i; }
+  if(best<0) return null;
+  const w=wins[best];
+  const q = w.quality>1.08?'Favorable':(w.quality<0.95?'Marginal':'Average');
+  return {idx:best, abs:w.abs, monthsAway:w.abs-now, quality:w.quality, qLabel:q, date:monthToDate(w.abs)};
+}
+// propellant routes that serve a body: the LEO depot (top-off) and on-site ISRU (free return leg)
+function bodyRoutes(bodyId){
+  const depotResearch=!!state.research.orbital_depot;
+  let isru=null;
+  for(const m of bodyMissions(bodyId)){
+    const f=ISRU_FREE_LEG[m.id];
+    if(f){ isru={mission:m.id, leg:f.leg, label:f.label, research:f.research, online:!!state.research[f.research]}; break; }
+  }
+  return {depotResearch, depotTons:round2(state.depot||0), isru};
+}
+// lead time + economics for a single mission, estimated against the current bench
+function missionPlan(m){
+  const tl=TEST_LEVELS[state.testLevel]||TEST_LEVELS[0];
+  const lead=buildMonths(m)+1+tl.months;
+  const win = m.window ? nextWindowFor(m.id) : null;
+  const base=m.payout||0;
+  return {
+    id:m.id, name:m.name, crew:m.crew||0, days:m.days||0,
+    available:missionFlyable(m), done:!!state.completed[m.id],
+    leadMonths:lead, travelMonths:Math.round((m.days||0)/30),
+    window:win, payout:base, adjPayout: win?round2(base*win.quality):base,
+    minRep:m.minRep||0, reqResearch:m.reqResearch||null
+  };
+}
+function bodyPlan(bodyId){
+  const b=BODIES.find(x=>x.id===bodyId); if(!b) return null;
+  const missions=bodyMissions(bodyId).map(missionPlan);
+  const transferLeg=(b.legs||[]).find(l=>/Injection|Trans-|transfer/i.test(l.label))||null;
+  const totalDv=(b.legs||[]).reduce((s,l)=>s+l.dv,0);
+  // soonest window across all window-gated missions to this body
+  let nextWin=null;
+  for(const mp of missions){ if(mp.window && (!nextWin || mp.window.abs<nextWin.abs)) nextWin=mp.window; }
+  return { body:b, transferLeg, totalDv, routes:bodyRoutes(bodyId), missions,
+           anyWindows:missions.some(x=>x.window), nextWindow:nextWin };
+}
+
 /* ---------- physics ---------- */
 function tankStruct(prop){const s=curSigma();return s/(1-s)*prop;}
 function stageMasses(st){
@@ -6441,21 +6495,55 @@ function renderBodyCard(){
     </div>`;
   }).join('');
   const backBtn = state.mapZoom ? `<button class="btn ghost" onclick="zoomOut()" style="margin-bottom:10px">← Overview</button>` : '';
-  const missionRows=(b.missions||[]).map(mid=>{
-    const m=MISSIONS.find(x=>x.id===mid); if(!m) return '';
-    const repOk=state.rep>=m.minRep, resOk=!m.reqResearch||state.research[m.reqResearch];
-    const winOk=!m.window||true; // window availability shown on the bench itself
-    const avail=repOk&&resOk;
-    const done=state.completed[mid];
-    const pill=done?'<span class="pill ok">done</span>':avail?'<span class="pill">available</span>':'<span class="pill lock">locked</span>';
+  // #13: planning surface — transfer windows, propellant routes, lead time + economics
+  const plan=bodyPlan(b.id);
+  const missionRows=plan.missions.map(mp=>{
+    const pill=mp.done?'<span class="pill ok">done</span>':mp.available?'<span class="pill">available</span>':'<span class="pill lock">locked</span>';
+    const leadStr=`${mp.leadMonths} mo to fly${mp.travelMonths?` · ${mp.travelMonths} mo transit`:''}`;
+    let winLine='';
+    if(mp.window){
+      const w=mp.window;
+      const qColor=w.quality>1.08?'var(--ok)':(w.quality<0.95?'var(--warn)':'var(--muted)');
+      winLine=`<div class="sub" style="margin-top:2px">⊕ Next window <b>${w.date}</b> · ${w.monthsAway} mo away · <span style="color:${qColor}">${w.qLabel} geometry</span> · payout ×${w.quality.toFixed(2)} → ${fM(mp.adjPayout)}</div>`;
+    }
+    let reqLine='';
+    if(!mp.available){
+      const bits=[];
+      if(mp.minRep>state.rep) bits.push(`rep ${mp.minRep} (have ${Math.round(state.rep)})`);
+      if(mp.reqResearch && !state.research[mp.reqResearch]) bits.push(`research ${mp.reqResearch}`);
+      if(bits.length) reqLine=`<div class="sub" style="color:var(--warn);margin-top:2px">Needs ${bits.join(' · ')}</div>`;
+    }
+    const commitBtn = (mp.window&&mp.available&&!mp.done)
+      ? `<button class="btn ghost" style="font-size:11px;padding:4px 8px" onclick="commitWindow('${mp.id}',${mp.window.idx})">Commit window</button>` : '';
     return `<div class="item">
-      <div class="body"><div class="title">${m.name} ${pill}</div><div class="sub">${m.crew?`${m.crew} crew · ${m.days}d`:`req Δv ${fI(m.reqDv)} m/s`}</div></div>
-      <button class="btn" onclick="flyTo('${mid}')" ${avail?'':'disabled'}>${avail?'Fly this':'Locked'}</button>
+      <div class="body">
+        <div class="title">${mp.name} ${pill}</div>
+        <div class="sub">${mp.crew?`${mp.crew} crew · ${mp.days}d`:'uncrewed'} · payout ${fM(mp.payout)} · ${leadStr}</div>
+        ${winLine}${reqLine}
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px;align-items:stretch">
+        <button class="btn" onclick="flyTo('${mp.id}')" ${mp.available?'':'disabled'}>${mp.available?'Fly this':'Locked'}</button>
+        ${commitBtn}
+      </div>
     </div>`;
   }).join('');
-  const missionsBlock = (b.missions&&b.missions.length)
-    ? `<div class="mission-tag" style="margin-top:12px">Missions to ${b.name}</div><div style="margin-top:6px">${missionRows}</div>`
-    : `<div class="mission-tag" style="margin-top:12px">Missions to ${b.name}</div><div class="dim" style="font-size:12px;margin-top:4px">No missions to this body yet — a future milestone.</div>`;
+  // propellant routes + soonest window summary
+  const r=plan.routes;
+  const routePills=[];
+  if(r.depotResearch) routePills.push(`<span class="pill ${r.depotTons>0?'ok':''}">LEO depot · ${r.depotTons>0?r.depotTons.toFixed(1)+' t ready':'empty'}</span>`);
+  else routePills.push(`<span class="pill lock">LEO depot · research orbital_depot</span>`);
+  if(r.isru) routePills.push(`<span class="pill ${r.isru.online?'ok':'lock'}" title="${r.isru.research}">${r.isru.label} · ${r.isru.online?'online (free '+r.isru.leg+')':'locked'}</span>`);
+  const transferLine = plan.transferLeg
+    ? `<div class="sub" style="margin-top:6px">Transfer opportunity: <b>${plan.transferLeg.label}</b> — ${fI(plan.transferLeg.dv)} m/s${plan.anyWindows?' · window-dependent':''}.</div>` : '';
+  const nextWinLine = plan.nextWindow
+    ? `<div class="sub" style="margin-top:4px;color:var(--ignite)">⊕ Soonest transfer window: <b>${plan.nextWindow.date}</b> (${plan.nextWindow.monthsAway} mo away, ${plan.nextWindow.qLabel} geometry).</div>` : '';
+  const planningBlock = (b.missions&&b.missions.length)
+    ? `<div class="mission-tag" style="margin-top:14px">Mission planning — ${b.name}</div>
+       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${routePills.join('')}</div>
+       ${transferLine}${nextWinLine}
+       <div style="margin-top:8px">${missionRows}</div>`
+    : `<div class="mission-tag" style="margin-top:14px">Mission planning — ${b.name}</div><div class="dim" style="font-size:12px;margin-top:4px">No missions to this body yet — a future milestone.</div>`;
+  const missionsBlock = planningBlock;
   $('bodyCard').innerHTML=`
     ${backBtn}
     <div class="mission-tag">Δv profile from Earth's surface</div>

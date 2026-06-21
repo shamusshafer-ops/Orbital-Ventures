@@ -458,10 +458,31 @@ review's numbering, not the build order (see **Suggested build order** at the en
       on the bench. Validated headlessly (12 checks): profile/modules/days swap,
       transfer-stage burden shift, build-time + consumables + reliability deltas,
       and that non-arch missions are untouched.
-- [~] **13 · Map as planning tool** — Map now shows rival reach + economy activity
-      and is full-screen-capable. Go further: click Mars → show windows, transfer
-      opportunities, depot routes, estimated cost. Make the map a place players
-      *plan*, not just read.
+- [x] **13 · Map as planning tool** — *Built 2026-06-21.* Selecting a body on the
+      Solar map now opens a **Mission planning** section in the body card (shared by
+      both the Phaser `MapScene` and the SVG fallback, since both call
+      `renderBodyCard`). Pure, headless-testable planners drive it: `bodyMissions`
+      (a body's missions), `nextWindowFor` (soonest *future* transfer window + index,
+      countdown, and geometry label — reuses `windowsFor`/`absMonth`/`monthToDate`),
+      `bodyRoutes` (LEO-depot status + tonnage and on-site **ISRU** detection/online
+      state via `ISRU_FREE_LEG`), `missionPlan` (lead time `buildMonths+1+test`,
+      transit months, availability via `missionFlyable`, base + geometry-adjusted
+      payout), and `bodyPlan` (composes them + finds the transfer-injection leg, total
+      Δv, and the soonest window across the body's missions). The card now shows
+      **propellant-route pills** (depot ready/empty/locked, ISRU online/locked), the
+      **transfer opportunity** (injection leg Δv, flagged window-dependent), the
+      **soonest window**, and per-mission rows enriched with payout, lead/transit
+      time, next-window date + payout-×geometry, unmet-requirement hints, and a
+      one-click **Commit window** action (into the existing `commitWindow`) alongside
+      Fly-this. So clicking Mars answers *when can I go, how long will it take, what's
+      it worth, and how do I get the propellant there* — the map plans, not just reads.
+      Validated headlessly (33 checks): window selection/advance-past-closed, route
+      detection + depot/ISRU online flips, lead-time + geometry-adjusted payout math,
+      availability gating, soonest-window selection, empty/unknown-body guards, and a
+      `renderBodyCard`/`renderMap` smoke across all bodies incl. late-game state.
+      *Still open (later slices):* per-mission cost estimate against a recomputed
+      vehicle (currently lead-time + payout only), and depot-route cost/ROI overlays
+      drawn on the map itself.
 - [x] **14 · Scientific discovery** — *Built 2026-06-18.* A second progression
       axis: `state.science`. **Sources** — every mission success yields science
       (more for novel/deep/first-time flights), and infrastructure produces it
@@ -521,10 +542,11 @@ review's numbering, not the build order (see **Suggested build order** at the en
 silhouette)~~ ✓ → ~~12 (architecture choices)~~ ✓ → ~~5 (active rivals)~~ ✓ →
 ~~9 (personnel traits)~~ ✓ → ~~14 (science)~~ ✓ → ~~3 (vehicle families)~~ ✓ →
 ~~18 (Command Center, first slice)~~ ✓ → ~~6 (multi-path tech, first slice)~~ ✓ →
-~~8 (politics, first slice)~~ ✓ → ~~7 (manufacturing, first slice)~~ ✓ → **next:
-later slices / remaining arc (#5 M5 reusability, #13 map planning, deeper #6/#7/#8)**.
-Items 1/2/3/4/5/9/10/11/12/14/15/16/17 shipped + 18, 6, 8 & 7 first slices; tech tree
-now a real swimlane graph with divergent routes; 13 partially done. (#6 later slices:
+~~8 (politics, first slice)~~ ✓ → ~~7 (manufacturing, first slice)~~ ✓ →
+~~13 (map as planning tool)~~ ✓ → **next: later slices / remaining arc (#5 M5
+reusability, deeper #6/#7/#8, map cost/ROI overlays)**.
+Items 1/2/3/4/5/9/10/11/12/13/14/15/16/17 shipped + 18, 6, 8 & 7 first slices; tech tree
+now a real swimlane graph with divergent routes. (#6 later slices:
 TRL, partnerships, reusable route. #7 later slices: supply chains, scheduling,
 QA→reliability, inventory, refurbishment. #8 later slices: budget shocks,
 shareholders, media, stock market.)
