@@ -1123,21 +1123,47 @@ equation:
    data + a flag + selector filtering — no parallel math yet. Validate: solid stage Δv
    matches the rocket equation at the solid's low Isp; gating; an all-solid stack
    computes + flies; existing liquid suites untouched.
-2. **Side-booster construct (parallel "stage 0").** Add `state.boosters` + the
-   serial-equivalent boost-phase math in `stackPerformance` (combined-thrust TWR,
-   base-segment boost Δv, jettison bookkeeping). Bench gets a **Boosters card** (engine
-   picker incl. solids + liquids, count stepper, propellant) and the readout shows the
-   boost-phase Δv + the augmented liftoff TWR. `SAVE_VERSION` bump + forward-compat
-   default (`{eng:null,count:0,prop:0}` = no boosters; old saves unchanged). Validate:
-   `count:0` is *exactly* today's numbers (balance-preserved proof); boosters raise TWR
-   and total Δv; jettison mass bookkeeping never double-counts propellant; a thrust-
-   starved heavy core that fails TWR today *does* clear the pad with boosters.
+2. ✅ **Side-booster construct (parallel "stage 0") — liquid first** *(Built
+   2026-06-21; built ahead of slice 1 per the user's "liquid side boosters first"
+   request, using the existing liquid engines — solids fold in once slice 1 lands).*
+   `state.boosters = {eng,count,prop}` (count identical strap-ons, per-booster
+   propellant; `count:0` = none). `stackPerformance` now reads `boosterMasses()`
+   internally — so every call site (`computeVehicle`, the `simulateMission` LV leg)
+   picks boosters up automatically — and adds a **serial-equivalent boost segment**:
+   the boosters lift the full wet stack and jettison their dry mass + spent propellant
+   (`m0 = payload+stackWet+boosterWet → mf = …+boosterDry`, Isp = SL/Vac average since
+   they fly through the atmosphere), so the core stack's own Δv above is untouched and
+   `boostDv` adds on top. **Liftoff TWR uses combined thrust** (core stage-1 + every
+   booster, both lit at liftoff) — the whole point of strap-ons is getting a
+   thrust-starved heavy core off the pad. `computeVehicle` folds booster engine +
+   propellant cost into `buildCost`/`totalProp`; `vehicleUnits` counts each strap-on as
+   an integration unit (so boosters consume #7 assembly-bay capacity → build time/cost).
+   Gated behind a new propulsion-track research node **`strapon_integration`** (req
+   `turbopump`, $3.5M/4 mo — the slice-3 node, pulled forward so boosters aren't a
+   turn-1 freebie, keeping the balance-preserved stance). Bench gets a **Strap-on
+   Boosters card** (count stepper 0–8 with auto engine-pick, engine picker over unlocked
+   LV engines, per-booster propellant, live each/cluster-wet/boost-Δv/TWR readout); both
+   readouts gain a ⫶ booster flag; the silhouette label notes the booster count.
+   `SAVE_VERSION`→12 + forward-compat default on both load paths (legacy saves read as
+   no boosters). Validated headlessly (`/tmp/ov-boosters.js`, 33/33): node shape +
+   gating, **the balance-preservation proof (`count:0` == today's exact totalDv / TWR /
+   liftoff / buildCost)**, boosters raise TWR + total Δv, **boost Δv equals
+   Isp·g₀·ln(m0/mf) to the tonne**, combined-thrust TWR formula, jettison bookkeeping
+   (no double-counted propellant), a thrust-starved core that fails TWR alone clearing
+   the pad once boosted, `vehicleUnits`/bays, the profile-mission LV leg seeing boosters,
+   save version + legacy no-crash, setter clamps [0,8], and a bench/both-readouts render
+   smoke; all prior suites green (node-count assertions in slice6d/propexp bumped for the
+   +1 node). *Deferred to later slices:* the solid engine class (slice 1) and drawing the
+   strap-ons on the silhouette/pad/flight + a separation event (slice 4) — the bench
+   currently surfaces boosters numerically + via the label, not yet on the silhouette.
 3. **Research gating + economy + reliability (#7 / #16).** Propulsion-track nodes:
    `solid_propellant` (Solid Propellant Casting — unlocks the class) → `segmented_srb`
-   (Segmented Solid Motors — larger grains/thrust) → `strapon_integration` (Strap-on
-   Booster Integration — unlocks the boosters card / more boosters). Boosters add to
-   `vehicleUnits` (so they consume #7 assembly-bay capacity and `buildMonths`/`buildCost`)
-   and add a `boosters` link to the #16 subsystem model (booster ignition + separation),
+   (Segmented Solid Motors — larger grains/thrust) → `strapon_integration` ✅ (Strap-on
+   Booster Integration — *built in slice 2*; unlocks the boosters card). *Remaining
+   here:* the two solid-specific nodes above + the #16 reliability link. Boosters already
+   add to `vehicleUnits` (so they consume #7 assembly-bay capacity and
+   `buildMonths`/`buildCost`, done in slice 2); still to add is a `boosters` link to the
+   #16 subsystem model (booster ignition + separation),
    with solids' distinct high-ignition / catastrophic-if-failed character. Balance-
    preserved: nodes are time+capital sinks; numbers tuned so boosters are a *cost/thrust*
    trade, not free performance. Validate: gating, units/bays/build math, subsystem
