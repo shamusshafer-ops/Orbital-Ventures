@@ -648,7 +648,14 @@ order — the near-term build order (#3 vehicle families → … → #7) is unch
         coastline (land/water matched); `siteScale` growth re-expressed; `ISO_SPREAD`
         controls spacing. CapeScene thinned (pad smoke at iso anchor + camera breathe).
         Validated (6 checks) + suites; browser-confirmed clean iso + aligned hotspots.
-        *Phase B (next):* realistic building models, shadows, roads, ground vehicles, water/boats.
+        **Phase B (2026-06-20):** realism pass — drop shadows; a logical road network (campus
+        avenue + per-building driveways + VAB→pad crawlerway); moving crawler-transporter +
+        truck; a drifting boat; varied vegetation (broadleaf/palm/shrub/scrub); richer ground
+        (diagonal gradient + mottled terrain + sandy shore); per-building variance (dimensions
+        + neutral/light tints incl. a pale VAB) and greebles — rooftop units, antenna arrays,
+        facade ribs, VAB flag/logo + bay doors, a Production roll-up door, scaffolding towers,
+        plus decorative ground dishes + a lightning rod. Sun moved to the top-right corner.
+        Validated (6 checks) + suites; browser-confirmed.
 - [ ] **19 · Organizational scaling (departments)** *(P2, v2.0)* — Grow personnel
       from named individuals into **departments** with leaders/executive roles,
       career progression + training/specialization tracks, and
