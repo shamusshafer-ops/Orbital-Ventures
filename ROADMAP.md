@@ -368,9 +368,15 @@ review's numbering, not the build order (see **Suggested build order** at the en
       `effect.reliability` (was hard-coded to `test_program`), so the track is
       extensible; `effectiveReliability`'s cap still preserves balance.
       *Still open in #6 (later slices):* technology readiness levels (TRL),
-      prototype/testing programs, research partnerships, reusable route (M5).
+      prototype/testing programs, research partnerships, reusable route (M5 ✓).
       *(Strategic-Vision Phase 7; patent/licensing partly covered by the patent econ
       event + spec'd passive-income tech-licensing, breakthroughs by #9/#14.)*
+      > **Superseded/expanded by the R&D Deep Expansion epic (2026-06-21):** #6 is
+      > now the home of a much larger plan — tripling/quadrupling the tree to ~100–125
+      > nodes across 13 tracks, plus Tech Levels, Research Divisions, and Breakthrough
+      > Events. The TRL/partnerships/reusable items above are folded into it. See
+      > **§ R&D Deep Expansion — The Research Pillar** for the full track-by-track plan
+      > and build order. This is now the **primary near-term focus**.
 - [~] **7 · Manufacturing capacity** — *First slice built 2026-06-20: industrial
       capacity as a real resource layer.* `state.production` (`SAVE_VERSION`→4,
       forward-compat default `{bays:1,foundry:1,pads:1}`) adds three leveled
@@ -555,13 +561,217 @@ silhouette)~~ ✓ → ~~12 (architecture choices)~~ ✓ → ~~5 (active rivals)~
 ~~18 (Command Center, first slice)~~ ✓ → ~~6 (multi-path tech, first slice)~~ ✓ →
 ~~8 (politics, first slice)~~ ✓ → ~~7 (manufacturing, first slice)~~ ✓ →
 ~~13 (map as planning tool)~~ ✓ → ~~M5 (reusability & rapid cadence)~~ ✓ →
-**next: later slices / remaining arc (passive-income contracts, deeper #6/#7/#8,
+**next: the R&D Deep Expansion epic (see its own section below — now the primary
+near-term focus), then remaining arc (passive-income contracts, deeper #7/#8,
 map cost/ROI overlays)**.
 Items 1/2/3/4/5/9/10/11/12/13/14/15/16/17 + M5 shipped + 18, 6, 8 & 7 first slices; tech tree
-now a real swimlane graph with divergent routes. (#6 later slices:
-TRL, partnerships, reusable route. #7 later slices: supply chains, scheduling,
+now a real swimlane graph with divergent routes. (#6 is being supplanted by the
+R&D Deep Expansion epic. #7 later slices: supply chains, scheduling,
 QA→reliability, inventory, refurbishment. #8 later slices: budget shocks,
 shareholders, media, stock market.)
+
+## R&D Deep Expansion — The Research Pillar (epic)
+
+Source: a game-design proposal (2026-06-21) to make R&D one of the *major*
+gameplay pillars — transform research from "research thing → unlock thing" into
+"develop an entire aerospace ecosystem over decades." The headline: roughly
+**triple/quadruple the tech tree** to **~100–125 nodes across 13 tracks**, add
+**Tech Levels** (keep-investing technologies), **Research Divisions** (teams that
+gate research speed), and **Breakthrough Events**, and make every major mission
+demand progress across several independent tracks.
+
+**Decisions taken with the user (2026-06-21):**
+- **Priority — capture now, build *next*.** This epic is the **primary near-term
+  focus**, ahead of passive-income / deeper #7-#8 / map ROI overlays. It expands
+  and largely supersedes forward-arc **#6 (Multi-path tech tree)**; #6's open
+  "later slices" (TRL, partnerships, reusable route) fold in here.
+- **Balance — rebalance for a decades-feel** *(a deliberate departure from the
+  project's prior "balance exactly preserved" ethos)*. The larger tree is allowed
+  to **re-gate and lengthen** progression so research genuinely spans decades:
+  early game slows, existing missions get retimed behind richer prerequisite
+  chains. **Implications to honour during the build:** (a) every milestone still
+  needs a *reachable* path (no dead-ends / unwinnable gates); (b) the rocket
+  equation is still never touched — only gating, cost, time, and economy move;
+  (c) old saves must survive (forward-compat defaults; a one-time research
+  reconciliation on load, granting prerequisite nodes implied by already-completed
+  research/missions so nobody is soft-locked); (d) re-validate that each era's
+  flagship mission is still flyable once its new prerequisites exist. Each slice's
+  headless harness must include a "reachability" check, not just unit math.
+- **Scope — full epic.** Track-by-track sub-plans **with the proposal's node
+  chains listed** (not full per-node stat specs yet), plus all three meta-systems
+  (Tech Levels, Research Divisions, Breakthrough Events) and heavy mission-gating.
+
+**Current baseline (what we're expanding from):** 32 nodes / 7 tracks —
+`propulsion`(8), `structures`(8), `crew`(4), `deepspace`(4), `refueling`(4),
+`nuclear`(2), `assembly`(2). Critically, today's **`structures` track bundles
+three of the proposed tracks**: materials (`alloy_tanks`, `balloon_tanks`,
+`composite_structures`), testing/reliability (`test_program`, `flight_telemetry`,
+`qa_program`, `vibration_testing`), and an avionics node (`redundant_avionics`).
+`curRel()` already sums every completed node's `effect.reliability`, so splitting
+the track is safe. The tech-tree UI is already a swimlane graph (`techLayout()` /
+`renderTechTree()`) keyed on each node's `track`, so adding tracks + nodes is
+mostly data plus lane-layout work.
+
+### Target track structure (13 tracks)
+
+Legend: **[E]** expand existing · **[S]** split out of today's `structures` ·
+**[R]** rename+expand · **[N]** new track. Existing node ids marked ✓.
+
+**T1 · Propulsion [E]** — branch the currently-linear line.
+- *Chemical core:* Alcohol/LOX ✓(base) → RP-1 Combustion Stability → Turbopump
+  Engineering → Regenerative Cooling → High Chamber Pressure. (folds `kerosene`✓,
+  `sustainer`✓, `heavy_booster`✓, `super_heavy`✓)
+- *Cryogenic branch:* Cryogenic Propellants ✓(`cryo_upper`) → Hydrogen Storage →
+  Expander Cycle → Staged Combustion → Advanced Cryo Upper Stages.
+- *Methane branch (new):* Methane Propulsion → Deep Throttling → Full-Flow Staged
+  Combustion → Rapid Reusability (ties T11).
+- *Electric branch (new):* Ion Thrusters → Hall-Effect Thrusters → High-Power SEP
+  → MW-class Electric (meshes with Nuclear T9 `nuclear_electric`✓).
+- Also holds `vac_upper`✓, `hypergolic`✓. Effects: +Isp, +reliability, +thrust,
+  bigger engines.
+
+**T2 · Structures & Materials [S]** — Riveted Steel → Aluminum Alloys
+✓(`alloy_tanks`) → Monocoque → Honeycomb Panels → Friction Stir Welding →
+Composite Structures ✓(`composite_structures`) → Carbon-Fiber Cryotanks →
+Self-Healing Materials. (`balloon_tanks`✓ sits on the alloy→composite line.)
+Effects: lower dry mass (σ), reduced cost, +reliability, larger payloads.
+
+**T3 · Guidance & Avionics [N]** — Radio Guidance → Inertial Navigation → Digital
+Flight Computers → Redundant Computers ✓(`redundant_avionics`) → Star Trackers →
+Autonomous Navigation → AI Mission Management (bridges T12). Effects: +launch
+reliability, −mission-failure chance, unlocks automated docking + deep-space.
+**Hard gate example:** Digital Flight Computers required for Mars-class missions.
+
+**T4 · Crew Systems [E]** — Pressure Suit Systems → Environmental Control
+✓(`eclss_partial`/`eclss_closed`) → Orbital EVA → Docking Airlocks → Long-Duration
+Habitats → Artificial-Gravity Research → Radiation Countermeasures →
+Interplanetary Habitats. (`crew_capsule`✓, `launch_escape`✓ feed the front.)
+
+**T5 · Manufacturing & Production [N]** *(research track; feeds the #7 capacity
+layer)* — Hand Fabrication → Assembly-Line Production → Modular Vehicle Design →
+Computer-Aided Manufacturing → Automated Assembly → Rapid Prototyping → Additive
+Manufacturing → Fully Automated Factory. Effects: shorter build times, lower
+vehicle cost, larger production queue. **Cross-ref #7** (production lines /
+`buildMonths` / `vehicleUnits` / foundry) — research here should *raise the
+ceilings* the #7 resource layer operates within.
+
+**T6 · Testing & Reliability [S]** — Static Fire ✓(`test_program`) → Engine Test
+Stands → Component Qualification → Stage Test Facilities → Integrated Vehicle
+Testing → Accelerated Lifetime Testing → Failure Analysis Lab → Digital-Twin
+Simulation. (folds `flight_telemetry`✓, `qa_program`✓, `vibration_testing`✓.)
+Effects: +reliability, fewer catastrophic failures, lower dev cost. **Cross-ref
+#16** subsystem-reliability + **#7** QA bridge.
+
+**T7 · Ground Infrastructure [N]** — Concrete Launch Pads → Flame Trenches →
+Mobile Service Towers → Vehicle Assembly Buildings → Crawler Transporters →
+Cryogenic Ground Systems → Dual Launch Pads → Heavy-Lift Infrastructure. Effects:
+bigger rockets possible, reduced turnaround, higher cadence. **Cross-ref #7**
+(launch pads / `padLaunchMult`), **#17** (facilities), **#18** (the Space Center
+scene already grows with `siteScale()` — ground-infra research should drive that).
+
+**T8 · Orbital Operations [R]** *(rename of `assembly`)* — Orbital Rendezvous →
+Manual Docking → Automated Docking ✓(`auto_rendezvous`) → Orbital Construction
+✓(`orbital_assembly`) → Station Keeping → Large Space Stations → On-Orbit Servicing
+→ Orbital Shipyards. **Cross-ref #17/#21** (stations/shipyards) and #6's assembly
+route.
+
+**T9 · Nuclear Technologies [E]** — keep `nuclear_thermal`✓ / `nuclear_electric`✓;
+add upstream/downstream nodes (reactor materials, NTR restart, bimodal NTR, surface
+fission power → ties **#21** colony power, gated on Lunar/Mars Base).
+
+**T10 · Refueling & ISRU [E]** — keep `orbital_depot`✓, `lunar_isru`✓,
+`mars_isru`✓, `belt_volatiles`✓; add cryo-depot boil-off control (closes the
+long-open boil-off scoping note), electrolysis scale-up, mobile ISRU. **Cross-ref
+#2** fuel market.
+
+**T11 · Reusability [N/E]** *(extends shipped M5)* — Parachute Recovery → Powered
+Landing → Precision Landing ✓(`propulsive_landing` = M5) → Rapid Inspection →
+Reusable First Stage → Reusable Upper Stage → Full Vehicle Reuse. Effects:
+escalating launch-cost reduction (M5's refly economics are the first rung).
+
+**T12 · Automation & AI [N]** — Flight Automation → Automated Range Safety →
+Autonomous Mission Ops → Fleet Autonomy → AI R&D Assistant (cross-feeds research
+speed) → AI Mission Management (shared capstone with T3). Effects: reduces
+crew/ops burden, enables uncrewed deep-space + high-cadence ops.
+
+**T13 · Science & Exploration [N]** *(research track distinct from the `state.science`
+currency in #14)* — Earth Observation → Planetary Science → Astronomy Instruments
+→ Astrobiology → Geology Labs → Sample-Return Science → Exobiology → Advanced
+Research Institutes. Effects: +mission science yield (feeds #14), unlocks special
+contracts + prestige missions. **Cross-ref #14** (science is the currency; this
+track is the multiplier + unlock chain).
+
+### Meta-systems (all three in scope)
+
+- **Heavy mission-gating** *(extend existing `reqMissionDone`)* — many nodes gate
+  on flown missions, e.g. Orbital EVA ⇐ Crewed Orbit, Mars EDL ⇐ Mars Flyby,
+  Orbital Shipyards ⇐ Space Station, Nuclear Surface Power ⇐ Lunar Base. Already
+  supported by `researchAvailable()`'s `reqMissionDone`; just author more of them.
+- **Technology Levels** *(new mechanic)* — flagship technologies become
+  multi-level (e.g. Cryogenic Engines L I Atlas-Centaur → L II Saturn → L III
+  Shuttle → L IV modern-reusable). Players keep investing capital/time/science for
+  escalating effect. Mechanically analogous to the #7 production lines (level,
+  escalating cost, per-level effect) — reuse that pattern (`prodLevel`-style) for
+  research. New `state.techLevel[id]`; forward-compat default L1 for completed
+  nodes.
+- **Research Divisions** *(new; overlaps M6 + #19)* — group R&D into divisions
+  (Propulsion / Structures / Life Sciences / …), each with skill, experience,
+  morale, budget; **research speed depends on division quality** for that node's
+  track. Generalises today's flat `engRdSpeedBonus()` into per-track speed.
+  **Cross-ref M6** (engineers/morale/attrition), **#9** (traits), **#19**
+  (departments) — Divisions are the concrete first slice of #19, scoped to R&D.
+- **Breakthrough Events** *(new; extends #9)* — rare events ("BREAKTHROUGH! …
+  cryogenic research time −40%") that shock a track's cost/time. Today #9's
+  personnel breakthroughs already shave one research month — generalise into
+  track-scoped, division-driven breakthroughs (higher-skill/morale divisions roll
+  them more often). **Do not duplicate #9** — extend the same event plumbing.
+
+### Era node-count targets (~100–125 total)
+
+Rocketry/Early ~20 · Orbital ~25 · Lunar ~30 · Interplanetary ~30 · Far-Future
+~20. Each era's flagship mission should require progress across several tracks
+(Propulsion + Structures + Guidance + Crew + Ground + Ops + Manufacturing +
+Science), not a single line — that's the "decades-long effort" feel.
+
+### Suggested build order (slices)
+
+1. **Track split (foundation, low risk)** — split today's `structures` into **T2
+   Structures & Materials**, **T6 Testing & Reliability**, and move
+   `redundant_avionics` into **T3 Guidance & Avionics**; rename `assembly`→**T8
+   Orbital Operations**. Pure data + `techLayout()` lane additions; no balance
+   change yet. Harness: track coverage, no orphan nodes, `curRel()` unchanged,
+   render/layout smoke.
+2. **Early-era content + rebalance pass** — author the ~20 Rocketry/Early nodes
+   (new T1 chemical sub-steps, T2/T3/T6 fronts), re-gate the early missions, add
+   the **load-time research reconciliation** for old saves. Harness adds the
+   **reachability check**.
+3. **Tech Levels mechanic** — `state.techLevel`, escalating invest, UI in the
+   tech-tree detail panel (reuse #7 level pattern). Start with Cryogenic Engines.
+4. **Research Divisions** — `state.divisions`, per-track speed from division
+   quality; wire into the existing R&D-progress accumulator; Personnel/R&D UI.
+5. **Breakthrough Events** — generalise #9 breakthroughs to track-scoped,
+   division-driven.
+6. **Mid/late-era content** — Orbital → Lunar → Interplanetary → Far-Future node
+   waves (T4/T5/T7/T9/T10/T11/T12/T13), each with heavy mission-gating and a
+   per-era reachability + flagship-flyability harness.
+
+### Cross-reference map (this epic ↔ existing items)
+
+- **#6 Multi-path tech tree** — parent item; this epic *is* its expansion.
+- **#7 Manufacturing capacity** — T5 (research) raises the ceilings the #7
+  resource layer works within; T7 ground infra ↔ pads.
+- **#9 Personnel personality** — Breakthrough Events extend #9; Divisions build on
+  traits.
+- **#14 Scientific discovery** — T13 multiplies yield for / unlocks via the `state.science`
+  currency.
+- **#16 Subsystem reliability** — T6 testing nodes harden subsystems.
+- **#17 Infrastructure / #21 colonies** — T7/T8/T9 feed stations, shipyards,
+  surface power.
+- **#18 Command Center** — T7 ground-infra research drives `siteScale()` scene
+  growth.
+- **#19 Departments** — Research Divisions are the first concrete slice.
+- **M5 Reusability ✓** — first rung of the T11 reusability chain.
+- **Boil-off scoping note** — addressed by a T10 cryo-depot node.
 
 ## Strategic Vision — 8-Phase Grand-Strategy Arc
 
