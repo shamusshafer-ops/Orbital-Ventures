@@ -4794,7 +4794,7 @@ const CC_SPOTS = {
   pad:       {x:84, y:28, w:13, h:42},  // gantry + rocket at the water's edge
   rivals:    {x:90, y:39, w:8,  h:9},   // distant rival pad on the horizon
 };
-function ccHotspots(){ return siteBuildings().map(b=>Object.assign({}, b, CC_SPOTS[b.key]||{x:0,y:0,w:0,h:0})); }
+function ccHotspots(){ const L=isoLayout(); return siteBuildings().map(b=>Object.assign({}, b, (L[b.key]&&L[b.key].rect)||{x:0,y:0,w:0,h:0})); }
 /* ---------- #18 (scene): animated Cape Canaveral panorama on a 2D canvas ---------- */
 function ccRect(key,W,H){ const s=CC_SPOTS[key]||{x:0,y:0,w:0,h:0}; return {x:s.x/100*W, y:s.y/100*H, w:s.w/100*W, h:s.h/100*H}; }
 function ccWindows(ctx,x,y,w,h,cols,rows,t,seed,col){
@@ -4928,35 +4928,139 @@ function drawSiteGrowth(ctx,W,H,groundY,t){
   const oy=groundY+(H-groundY)*0.34;
   ops.forEach((o,i)=>drawOpsBuilding(ctx, W*0.04 + i*(W*0.085), oy, W*0.07, H*0.10, o[1], o[0], t));
 }
+/* ===================== Isometric Cape scene (Part 2) ===================== */
+const ISO_TW=120, ISO_TH=60; // tile screen size
+const ISO_BUILDINGS=[
+  {key:'rivals',    gx:7, gy:1, fw:1.0, fd:1.0, h:54, type:'rivalpad'},
+  {key:'mfg',       gx:3, gy:0, fw:1.6, fd:1.6, h:130, type:'vab'},
+  {key:'rnd',       gx:1, gy:0, fw:1.1, fd:1.1, h:46, type:'lab'},
+  {key:'prod',      gx:4, gy:1, fw:1.3, fd:1.0, h:40, type:'prod'},
+  {key:'personnel', gx:0, gy:1, fw:1.1, fd:1.1, h:38, type:'admin'},
+  {key:'mission',   gx:2, gy:2, fw:1.1, fd:1.1, h:58, type:'control'},
+  {key:'infra',     gx:5, gy:2, fw:1.1, fd:1.1, h:26, type:'dishes'},
+  {key:'map',       gx:3, gy:3, fw:1.1, fd:1.1, h:48, type:'dome'},
+  {key:'pad',       gx:6, gy:4, fw:1.3, fd:1.3, h:150, type:'pad'},
+];
+const ISO_SPREAD=1.7; // gap multiplier between cells (buildings keep their size, just spread apart)
+function isoOrigin(){ return {ox:CAPE_W*0.36, oy:CAPE_H*0.13}; }
+function isoX(gx,gy){ const o=isoOrigin(); return o.ox+(gx-gy)*ISO_TW/2*ISO_SPREAD; }
+function isoY(gx,gy){ const o=isoOrigin(); return o.oy+(gx+gy)*ISO_TH/2*ISO_SPREAD; }
+function isoVAB_h(){ return 130*(1+Math.min(0.6,(prodLevel('bays')-1)*0.15)); } // VAB grows with bays
+function isoLayout(){
+  const out={};
+  for(const b of ISO_BUILDINGS){
+    const sx=isoX(b.gx,b.gy), sy=isoY(b.gx,b.gy);
+    const h=(b.key==='mfg')?isoVAB_h():b.h;
+    const halfW=(b.fw+b.fd)*ISO_TW/4+8, topY=sy-h-(b.fw+b.fd)*ISO_TH/4, botY=sy+(b.fw+b.fd)*ISO_TH/4+4;
+    out[b.key]={sx,sy,h,def:b, rect:{x:(sx-halfW)/CAPE_W*100, y:topY/CAPE_H*100, w:(2*halfW)/CAPE_W*100, h:(botY-topY)/CAPE_H*100}};
+  }
+  return out;
+}
+function isoQuad(ctx, pts, fill, stroke){ ctx.beginPath(); pts.forEach((p,i)=>i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1])); ctx.closePath(); if(fill){ctx.fillStyle=fill;ctx.fill();} if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=0.7;ctx.stroke();} }
+// shaded iso box centred at ground (sx,sy), footprint fw×fd tiles, height h px
+function isoBox(ctx,sx,sy,fw,fd,h,base){
+  const ex=ISO_TW/2, ey=ISO_TH/2, a=fw/2, b=fd/2;
+  const Cb=[sx -a*ex +b*ex, sy -a*ey -b*ey]; // back
+  const Cr=[sx +a*ex +b*ex, sy +a*ey -b*ey]; // right
+  const Cf=[sx +a*ex -b*ex, sy +a*ey +b*ey]; // front
+  const Cl=[sx -a*ex -b*ex, sy -a*ey +b*ey]; // left
+  const up=p=>[p[0],p[1]-h];
+  isoQuad(ctx,[Cl,Cf,up(Cf),up(Cl)], shade(base,-0.35), 'rgba(0,0,0,0.3)'); // left face (dark)
+  isoQuad(ctx,[Cf,Cr,up(Cr),up(Cf)], shade(base,-0.12), 'rgba(0,0,0,0.25)'); // right face
+  isoQuad(ctx,[up(Cb),up(Cr),up(Cf),up(Cl)], shade(base,0.18), 'rgba(255,255,255,0.12)'); // top (light)
+  return {Cb,Cr,Cf,Cl,up};
+}
+function isoWindows(ctx,p0,p1,h,rows,cols,col){ // grid of lit windows on a face (p0→p1 bottom edge)
+  for(let r=0;r<rows;r++) for(let c=0;c<cols;c++){
+    const fx=(c+0.5)/cols, fy=(r+0.6)/rows;
+    const x=p0[0]+(p1[0]-p0[0])*fx, y=p0[1]+(p1[1]-p0[1])*fx - h*fy;
+    const lit=0.3+0.5*Math.abs(Math.sin(r*3+c*7));
+    ctx.fillStyle=`rgba(${col},${lit.toFixed(2)})`; ctx.fillRect(x-1.4,y-1.4,2.8,2.8);
+  }
+}
+function drawIsoBuilding(ctx,L,t){
+  if(!L) return; const b=L.def, sx=L.sx, sy=L.sy, h=L.h;
+  if(b.type==='pad'){ drawIsoPad(ctx,sx,sy,b,t); return; }
+  if(b.type==='dishes'){ drawIsoDishes(ctx,sx,sy,b,t); return; }
+  if(b.type==='dome'){ drawIsoDome(ctx,sx,sy,b,t); return; }
+  if(b.type==='rivalpad'){ ctx.globalAlpha=0.7; drawIsoPad(ctx,sx,sy,b,t,true); ctx.globalAlpha=1; return; }
+  const palette={vab:'#2b3a44', lab:'#26323a', admin:'#2a3540', prod:'#222e36', control:'#243038'}[b.type]||'#283139';
+  const box=isoBox(ctx,sx,sy,b.fw,b.fd,h,palette);
+  // windows on the two visible faces
+  isoWindows(ctx,box.Cl,box.Cf,h, Math.max(2,Math.round(h/22)), 3, b.type==='control'?'88,196,122':(b.type==='lab'?'79,209,217':'245,166,35'));
+  isoWindows(ctx,box.Cf,box.Cr,h, Math.max(2,Math.round(h/22)), 3, '245,166,35');
+  if(b.type==='vab'){ // VAB: big bay door + roof beacon
+    const dh=h*0.5, dw=(b.fw)*ISO_TW*0.18;
+    ctx.fillStyle='#10171c'; const dx=sx+(b.fd/2)*ISO_TW/2, dy=sy; isoQuad(ctx,[[dx-dw,dy-2],[dx,dy+ISO_TH*0.2],[dx,dy+ISO_TH*0.2-dh],[dx-dw,dy-2-dh]],'#10171c','rgba(245,166,35,0.4)');
+    const top=box.up([sx,sy]); ctx.fillStyle=`rgba(255,70,50,${0.4+0.6*(Math.sin(t*3)>0?1:0.3)})`; ctx.beginPath(); ctx.arc(top[0],top[1]-4,3,0,7); ctx.fill();
+  }
+  if(b.type==='control'){ const top=box.up([sx,sy]); ctx.strokeStyle='#8794a0'; ctx.lineWidth=1.6; ctx.beginPath(); ctx.moveTo(top[0],top[1]); ctx.lineTo(top[0],top[1]-22); ctx.stroke(); const bl=(Math.sin(t*4)>0)?1:0.3; ctx.fillStyle=`rgba(255,70,50,${0.4+0.6*bl})`; ctx.beginPath(); ctx.arc(top[0],top[1]-22,2.6,0,7); ctx.fill(); }
+}
+function drawIsoPad(ctx,sx,sy,b,t,rival){
+  const ex=ISO_TW/2, ey=ISO_TH/2, a=b.fw/2, bb=b.fd/2;
+  // concrete pad diamond
+  isoQuad(ctx,[[sx-a*ex+bb*ex,sy-a*ey-bb*ey],[sx+a*ex+bb*ex,sy+a*ey-bb*ey],[sx+a*ex-bb*ex,sy+a*ey+bb*ey],[sx-a*ex-bb*ex,sy-a*ey+bb*ey]], rival?'#2a2622':'#2a2e33', 'rgba(0,0,0,0.4)');
+  // lattice gantry (vertical) to one side
+  const gx=sx+ex*0.5, gTop=sy-(rival?b.h:b.h), gBot=sy;
+  ctx.strokeStyle=rival?'#5a4a44':'#8a6038'; ctx.lineWidth=2; ctx.strokeRect(gx-6, gTop, 12, gBot-gTop);
+  ctx.strokeStyle='rgba(180,120,70,0.4)'; ctx.lineWidth=1; for(let yy=gTop;yy<gBot;yy+=12){ ctx.beginPath(); ctx.moveTo(gx-6,yy); ctx.lineTo(gx+6,yy+12); ctx.moveTo(gx+6,yy); ctx.lineTo(gx-6,yy+12); ctx.stroke(); }
+  const bl=(Math.sin(t*4)>0)?1:0.2; ctx.fillStyle=`rgba(255,60,40,${0.4+0.6*bl})`; ctx.beginPath(); ctx.arc(gx+6,gTop,3,0,7); ctx.fill();
+  if(rival){ ctx.fillStyle='#c2b8b2'; ctx.fillRect(sx-1.5,sy-b.h*0.7,3,b.h*0.7); return; }
+  // the player's current vehicle, standing upright on the pad
+  let spec=null; try{ const m=curMission(); spec={ stages: state.stages.map(s=>({prop:s.prop,count:s.count})), transferProp:(m&&m.profile&&m.modules&&m.modules.includes('transfer'))?state.transfer.prop:0, crewed:!!(m&&m.crew>0) }; }catch(e){}
+  if(spec){ let shape=null; try{ shape=buildVehicleShape(spec); }catch(e){}
+    if(shape&&shape.segs.length){ const scale=Math.min((b.h*0.92)/(shape.totalH+16),(ISO_TW*0.5)/(shape.maxW*1.9));
+      ctx.save(); ctx.translate(sx-ex*0.35, sy+2); drawVehicle(ctx, shape.segs, shape.nose, scale, 0, 0); ctx.restore(); } }
+}
+function drawIsoDishes(ctx,sx,sy,b,t){
+  isoBox(ctx,sx,sy,b.fw,b.fd,b.h,'#1f2933');
+  const n=Math.max(2, 2+Math.min(3, (function(){try{return eraIndex(currentEra());}catch(e){return 0;}})()));
+  for(let i=0;i<n;i++){ const cx=sx-ISO_TW*0.25+i*(ISO_TW*0.55/Math.max(1,n-1)), cy=sy-b.h-6; ctx.strokeStyle='#3a4a55'; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(cx,sy-b.h+4); ctx.stroke(); drawDish(ctx,cx,cy,18,-0.9+0.18*Math.sin(t*0.6+i)); }
+}
+function drawIsoDome(ctx,sx,sy,b,t){
+  isoBox(ctx,sx,sy,b.fw,b.fd,b.h*0.4,'#1c2730');
+  const cy=sy-b.h*0.4, rw=ISO_TW*0.34;
+  ctx.fillStyle='#243440'; ctx.beginPath(); ctx.ellipse(sx,cy,rw,rw*0.6,0,Math.PI,0); ctx.fill();
+  ctx.strokeStyle='#3c4e5a'; ctx.lineWidth=1; ctx.beginPath(); ctx.ellipse(sx,cy,rw,rw*0.6,0,Math.PI,0); ctx.stroke();
+  ctx.fillStyle=`rgba(245,197,66,${0.5+0.5*Math.abs(Math.sin(t*1.5))})`; ctx.beginPath(); ctx.arc(sx,cy-rw*0.5,2,0,7); ctx.fill();
+}
+function isoDiamond(ctx,g0x,g0y,g1x,g1y){ const p=[[g0x,g0y],[g1x,g0y],[g1x,g1y],[g0x,g1y]].map(c=>[isoX(c[0],c[1]),isoY(c[0],c[1])]); ctx.beginPath(); p.forEach((q,i)=>i?ctx.lineTo(q[0],q[1]):ctx.moveTo(q[0],q[1])); ctx.closePath(); }
+function drawIsoGround(ctx,W,H,t){
+  // water on the far side of the coastline — shares the land's gy range so the shore matches
+  ctx.fillStyle='#0e2c44'; isoDiamond(ctx,7.5,-2,11,6.5); ctx.fill();
+  for(let i=0;i<18;i++){ const f=i/18; const x=isoX(7.5+f*3.5,2.25), y=isoY(7.5+f*3.5,2.25)+Math.sin(t*1.2+i)*2; ctx.strokeStyle=`rgba(255,210,150,${0.12*(1-f)})`; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(x-10,y); ctx.lineTo(x+10,y); ctx.stroke(); }
+  // grass landmass (same gy range; right edge gx=7.5 is the coastline)
+  const gg=ctx.createLinearGradient(0,isoY(-2,-2),0,isoY(7.5,6.5)); gg.addColorStop(0,'#2a382c'); gg.addColorStop(1,'#1a241b');
+  ctx.fillStyle=gg; isoDiamond(ctx,-2,-2,7.5,6.5); ctx.fill();
+  ctx.strokeStyle='rgba(120,140,110,0.10)'; ctx.lineWidth=1;
+  for(let gx=-1;gx<=8;gx++){ ctx.beginPath(); ctx.moveTo(isoX(gx,-2),isoY(gx,-2)); ctx.lineTo(isoX(gx,6.5),isoY(gx,6.5)); ctx.stroke(); }
+  for(let gy=-1;gy<=6;gy++){ ctx.beginPath(); ctx.moveTo(isoX(-2,gy),isoY(-2,gy)); ctx.lineTo(isoX(7.5,gy),isoY(7.5,gy)); ctx.stroke(); }
+}
+function drawIsoGrowth(ctx,W,H,t,L){
+  let sc; try{ sc=siteScale(); }catch(e){ return; }
+  // extra launch pads behind the main pad along gy
+  const pad=ISO_BUILDINGS.find(x=>x.key==='pad');
+  for(let i=1;i<sc.pads;i++){ const gx=pad.gx-1-i*0.9, gy=pad.gy-0.6; if(gx<2) break; const sx=isoX(gx,gy), sy=isoY(gx,gy);
+    ctx.strokeStyle='#7a5532'; ctx.lineWidth=1.6; ctx.strokeRect(sx-5, sy-70, 10, 70);
+    ctx.strokeStyle='rgba(170,115,65,0.4)'; ctx.lineWidth=0.8; for(let yy=sy-70;yy<sy;yy+=10){ ctx.beginPath(); ctx.moveTo(sx-5,yy); ctx.lineTo(sx+5,yy+10); ctx.stroke(); } }
+  // ops buildings in the front-left as facilities come online
+  const ops=[]; if(sc.leoOps) ops.push(['LEO','#5aa9e0']); if(sc.lunarOps) ops.push(['LUNAR','#b9c0c7']); if(sc.marsOps) ops.push(['MARS','#c1532b']);
+  ops.forEach((o,i)=>{ const gx=0.5+i*0.1, gy=4+i*0.9; const sx=isoX(gx,gy), sy=isoY(gx,gy); const box=isoBox(ctx,sx,sy,1,1,42,'#1a232a');
+    ctx.fillStyle=o[1]; ctx.beginPath(); ctx.arc(box.up([sx,sy])[0],box.up([sx,sy])[1]-3,2.4,0,7); ctx.fill();
+    ctx.fillStyle=o[1]; ctx.font='8px ui-monospace,monospace'; ctx.textAlign='center'; ctx.fillText(o[0], sx, sy+14); ctx.textAlign='left'; });
+}
 function drawCape(cv, t){
   const ctx=cv && cv.getContext && cv.getContext('2d'); if(!ctx) return;
-  const W=cv.width, H=cv.height, groundY=H*0.70, waterX=W*0.78;
-  ctx.clearRect(0,0,W,H);
-  const sky=ctx.createLinearGradient(0,0,0,groundY);
-  sky.addColorStop(0,'#0b1830'); sky.addColorStop(0.45,'#26405d'); sky.addColorStop(0.82,'#c97a4a'); sky.addColorStop(1,'#e8b36a');
-  ctx.fillStyle=sky; ctx.fillRect(0,0,W,groundY);
-  if(!ccPhaserDetail) for(let i=0;i<60;i++){ const sx=(i*137.5)%W, sy=(i*73.3)%(groundY*0.5); const tw=Math.abs(Math.sin(t*1.5+i)); ctx.fillStyle=`rgba(220,230,255,${0.12+0.25*tw})`; ctx.fillRect(sx,sy,1.2,1.2); }
-  const sunX=waterX+(W-waterX)*0.5, sunY=groundY*0.6;
-  const sg=ctx.createRadialGradient(sunX,sunY,2,sunX,sunY,48); sg.addColorStop(0,'rgba(255,232,184,0.95)'); sg.addColorStop(0.4,'rgba(255,180,90,0.5)'); sg.addColorStop(1,'rgba(255,150,60,0)');
-  ctx.fillStyle=sg; ctx.beginPath(); ctx.arc(sunX,sunY,48,0,7); ctx.fill();
+  const W=cv.width, H=cv.height;
+  const sky=ctx.createLinearGradient(0,0,0,H*0.7); sky.addColorStop(0,'#0a1428'); sky.addColorStop(0.5,'#1d3450'); sky.addColorStop(1,'#3a5570');
+  ctx.fillStyle=sky; ctx.fillRect(0,0,W,H);
+  for(let i=0;i<70;i++){ const sx=(i*137.5)%W, sy=(i*61.7)%(H*0.4); const tw=Math.abs(Math.sin(t*1.3+i)); ctx.fillStyle=`rgba(220,230,255,${0.1+0.22*tw})`; ctx.fillRect(sx,sy,1.2,1.2); }
+  const sunX=W*0.70, sunY=H*0.10; const sg=ctx.createRadialGradient(sunX,sunY,2,sunX,sunY,70); sg.addColorStop(0,'rgba(255,230,180,0.7)'); sg.addColorStop(0.4,'rgba(255,180,90,0.32)'); sg.addColorStop(1,'rgba(255,150,60,0)'); ctx.fillStyle=sg; ctx.beginPath(); ctx.arc(sunX,sunY,70,0,7); ctx.fill();
   ctx.fillStyle='#ffd9a0'; ctx.beginPath(); ctx.arc(sunX,sunY,12,0,7); ctx.fill();
-  if(!ccPhaserDetail) drawClouds(ctx,W,groundY,t);
-  ctx.fillStyle='#0e2c44'; ctx.fillRect(waterX,groundY-2,W-waterX,H-(groundY-2));
-  for(let i=0;i<26;i++){ const ry=groundY+(H-groundY)*((i+0.5)/26); const amp=2+i*0.6; const rx=sunX+Math.sin(t*1.2+i*0.5)*amp; const wl=18+i*2; ctx.strokeStyle=`rgba(255,210,150,${0.2*(1-i/26)})`; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(rx-wl/2,ry); ctx.lineTo(rx+wl/2,ry); ctx.stroke(); }
-  const gg=ctx.createLinearGradient(0,groundY,0,H); gg.addColorStop(0,'#243027'); gg.addColorStop(1,'#161e18');
-  ctx.fillStyle=gg; ctx.fillRect(0,groundY,waterX,H-groundY);
-  ctx.strokeStyle='rgba(255,220,170,0.22)'; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(waterX,groundY-2); ctx.lineTo(waterX,H); ctx.stroke();
-  drawLab(ctx,ccRect('rnd',W,H),t);
-  drawAdmin(ctx,ccRect('personnel',W,H),t);
-  const vab=ccRect('mfg',W,H); const vGrow=Math.min(0.5,(prodLevel('bays')-1)*0.12); vab.y-=vab.h*vGrow; vab.h+=vab.h*vGrow; // VAB grows with Assembly Bays
-  drawVAB(ctx,vab,t,true);
-  drawProd(ctx,ccRect('prod',W,H),t,true);
-  drawControl(ctx,ccRect('mission',W,H),t);
-  drawDishes(ctx,ccRect('infra',W,H),t);
-  drawDome(ctx,ccRect('map',W,H),t);
-  drawRivalPad(ctx,ccRect('rivals',W,H),t);
-  drawPad(ctx,ccRect('pad',W,H),groundY,t);
-  drawSiteGrowth(ctx,W,H,groundY,t); // #18 slice 6: extra pads, era dishes, facility ops buildings
+  drawIsoGround(ctx,W,H,t);
+  const L=isoLayout();
+  ISO_BUILDINGS.slice().sort((a,b)=>(a.gx+a.gy)-(b.gx+b.gy)).forEach(b=>drawIsoBuilding(ctx,L[b.key],t));
+  drawIsoGrowth(ctx,W,H,t,L);
 }
 let ccAnim=null, ccT0=0, ccPhaserSmoke=false, ccPhaserDetail=false;
 function ccNow(){ return (typeof performance!=='undefined'&&performance.now)?performance.now():Date.now(); }
@@ -4975,7 +5079,7 @@ function ccLoop(){
    CanvasTexture each frame. Everything here is lazily defined and feature-guarded so
    the headless vm harness (no Phaser global) loads the script and tests logic fine. */
 function phaserOK(){ return typeof Phaser!=='undefined' && !!Phaser.Scene; }
-const CAPE_W=1200, CAPE_H=600; // Cape scene render resolution (CSS scales to the column)
+const CAPE_W=1200, CAPE_H=860; // Cape scene render resolution (taller for the isometric view; CSS scales to the column)
 let CapeScene=null, capeGame=null;
 function defineCapeScene(){
   if(CapeScene || !phaserOK()) return;
@@ -4993,38 +5097,15 @@ function defineCapeScene(){
     // generate a texture once from a Graphics draw callback
     mkTex(key,draw,w,h){ if(this.textures.exists(key)) return; const g=this.make.graphics({x:0,y:0,add:false}); draw(g); g.generateTexture(key,w,h); g.destroy(); }
     buildDetail(W,H){
-      const groundY=H*0.70, waterX=W*0.78, ADD=Phaser.BlendModes.ADD;
+      // The iso drawCape paints sky/stars/sun/ground/buildings; Phaser adds pad smoke + a living camera.
       this.mkTex('smokeDot',g=>{g.fillStyle(0xffffff,1);g.fillCircle(16,16,16);},32,32);
-      this.mkTex('glowTex',g=>{ for(let i=12;i>=1;i--){ g.fillStyle(0xffffff,0.05); g.fillCircle(32,32,i*2.6); } },64,64);
-      this.mkTex('puffTex',g=>{ g.fillStyle(0xffffff,1); [[26,22,20],[50,18,16],[72,22,18],[42,12,13],[62,13,14]].forEach(c=>g.fillCircle(c[0],c[1],c[2])); },96,44);
-      this.mkTex('starTex',g=>{g.fillStyle(0xffffff,1);g.fillCircle(2,2,2);},4,4);
-      // twinkling stars in the upper sky
-      for(let i=0;i<80;i++){ const a=0.15+Math.random()*0.6; const s=this.add.image(Math.random()*W, Math.random()*groundY*0.55, 'starTex').setAlpha(a).setScale(0.5+Math.random()*1.1);
-        this.tweens.add({targets:s, alpha:Math.random()*0.25, duration:700+Math.random()*2000, yoyo:true, repeat:-1, ease:'Sine.easeInOut'}); }
-      // additive sun-glow bloom over the baked sun
-      const sunX=waterX+(W-waterX)*0.5, sunY=groundY*0.6;
-      const sun=this.add.image(sunX,sunY,'glowTex').setScale(4).setTint(0xffd49a).setBlendMode(ADD).setAlpha(0.55);
-      this.tweens.add({targets:sun, scale:4.6, alpha:0.8, duration:4200, yoyo:true, repeat:-1, ease:'Sine.easeInOut'});
-      // drifting parallax clouds (moved each frame in update)
-      this.clouds=[]; for(let i=0;i<6;i++){ const c=this.add.image(Math.random()*W, groundY*(0.10+0.12*Math.random()), 'puffTex').setTint(0x2b3d54).setAlpha(0.4+Math.random()*0.2).setScale(0.7+i*0.28); c.spd=7+i*5; this.clouds.push(c); }
-      // pad smoke column + ground steam + VAB roof vent
-      const pad=ccRect('pad',W,H), pcx=pad.x+pad.w*0.5;
-      this.add.particles(pcx-4, groundY-6, 'smokeDot', { speedY:{min:-28,max:-64}, speedX:{min:-14,max:14}, scale:{start:0.2,end:1.0}, alpha:{start:0.34,end:0}, lifespan:2700, frequency:75, tint:0xc9d2dc });
-      this.add.particles(pcx, groundY-4, 'smokeDot', { speedY:{min:-6,max:-18}, speedX:{min:-30,max:30}, scale:{start:0.25,end:1.2}, alpha:{start:0.20,end:0}, lifespan:1800, frequency:110, tint:0xeef3f7 });
-      const vab=ccRect('mfg',W,H);
-      this.add.particles(vab.x+vab.w*0.5, vab.y+4, 'smokeDot', { speedY:{min:-12,max:-28}, speedX:{min:-6,max:6}, scale:{start:0.1,end:0.45}, alpha:{start:0.16,end:0}, lifespan:2400, frequency:240, tint:0xaab4bd });
-      // blinking beacon glows (additive) over the baked building beacons
-      const beacon=(x,y,col)=>{ const b=this.add.image(x,y,'glowTex').setScale(0.6).setTint(col).setBlendMode(ADD).setAlpha(0.9); this.tweens.add({targets:b, alpha:0.1, duration:650, yoyo:true, repeat:-1}); };
-      beacon(pad.x+pad.w*0.66+pad.w*0.26, pad.y, 0xff3c28);            // gantry top
-      const ctrl=ccRect('mission',W,H); beacon(ctrl.x+ctrl.w*0.5, ctrl.y-ctrl.h*0.2, 0xff4632); // control mast
-      beacon(vab.x+vab.w*0.5, vab.y-8, 0xe0564f);                       // VAB roof
-      // living camera: gentle breathe + slow horizontal drift
-      this.tweens.add({targets:this.cameras.main, zoom:1.035, duration:9000, yoyo:true, repeat:-1, ease:'Sine.easeInOut'});
-      this.tweens.add({targets:this.cameras.main, scrollX:10, duration:13000, yoyo:true, repeat:-1, ease:'Sine.easeInOut'});
+      let pad; try{ pad=isoLayout().pad; }catch(e){}
+      const px=pad?pad.sx-ISO_TW*0.35:W*0.5, py=pad?pad.sy:H*0.6;
+      this.add.particles(px, py, 'smokeDot', { speedY:{min:-26,max:-58}, speedX:{min:-12,max:12}, scale:{start:0.18,end:0.9}, alpha:{start:0.30,end:0}, lifespan:2600, frequency:90, tint:0xc9d2dc });
+      this.tweens.add({targets:this.cameras.main, zoom:1.03, duration:9000, yoyo:true, repeat:-1, ease:'Sine.easeInOut'});
     }
     update(time,delta){
       if(this.tex&&this.tex.canvas){ try{ drawCape(this.tex.canvas, (ccNow()-this.t0)/1000); this.tex.refresh(); }catch(e){} }
-      if(this.clouds){ const W=CAPE_W; for(const c of this.clouds){ c.x += c.spd*(delta||16)/1000; if(c.x-70>W) c.x=-70; } }
     }
   };
 }
@@ -5144,7 +5225,7 @@ function renderCCCenter(){
       $('ccCenter').innerHTML=`<div class="card">
         <div class="cc-panel-h">Cape Canaveral — click a building to drill in</div>
         <div class="ccscene-wrap">
-          <div id="ccSceneHost" class="ccscene" style="width:100%;aspect-ratio:1200/600;padding:0"></div>
+          <div id="ccSceneHost" class="ccscene" style="width:100%;aspect-ratio:1200/860;padding:0"></div>
           <div id="ccSpots">${spots}</div>
         </div>
       </div>`;

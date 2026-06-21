@@ -639,6 +639,16 @@ order — the near-term build order (#3 vehicle families → … → #7) is unch
         LEO/Lunar/Mars ops buildings appear once those facilities exist. Painters
         (`drawSiteGrowth`/`drawMiniPad`/`drawOpsBuilding`) append to `drawCape`. Validated
         (9 checks incl. a drawCape no-throw with full growth) + suites.
+      - [~] **Isometric Cape scene** *(Phase A, 2026-06-20).* The space-center scene was
+        rebuilt from side-elevation to a true **isometric** 3/4 view on a taller canvas
+        (`CAPE_H` 600→860, same width). `isoLayout()` (grid cells → iso screen anchor +
+        % rect) is shared by the painter and `ccHotspots()` so labels stay on their
+        buildings. New iso painter (`isoX/isoY`/`isoBox`/`drawIso*`) draws shaded prism
+        buildings (lit windows), pad with gantry + upright rocket, dishes, dome, and the
+        coastline (land/water matched); `siteScale` growth re-expressed; `ISO_SPREAD`
+        controls spacing. CapeScene thinned (pad smoke at iso anchor + camera breathe).
+        Validated (6 checks) + suites; browser-confirmed clean iso + aligned hotspots.
+        *Phase B (next):* realistic building models, shadows, roads, ground vehicles, water/boats.
 - [ ] **19 · Organizational scaling (departments)** *(P2, v2.0)* — Grow personnel
       from named individuals into **departments** with leaders/executive roles,
       career progression + training/specialization tracks, and
