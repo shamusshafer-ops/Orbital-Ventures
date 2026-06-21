@@ -919,8 +919,23 @@ Science), not a single line — that's the "decades-long effort" feel.
    0.040, all economy caps still clamp with everything researched + both new techs at L3,
    leveled-tech accumulator feed, flyability preserved, reconcile over the deepest chain,
    render/tooltip smoke; 8-tab all-98-researched render clean; all prior suites green.
-   *Remaining (slice 6e+):* the last ~25 nodes toward the 125 ceiling; TRL/research-
+   *Remaining (slice 6e+):* the last ~15 nodes toward the 125 ceiling; TRL/research-
    partnerships (#6 leftovers); Ground→true launch-cadence (the fixed +1 campaign month).
+- ✅ **Propulsion branch expansion** — *Built 2026-06-21.* Built out the three missing
+   propulsion branches from the original design sketch (98 → 107 nodes; propulsion track
+   12 → 21). **3 new engines** (pure data — the stage/transfer selectors are already
+   `unlocked`/`transferOnly`-filtered): **Methalox Full-Flow** (Raptor-class — high Isp
+   *and* high thrust, launch-vehicle usable) and two solar-electric transfer drives,
+   **Hall-Effect** (Isp 1800) and **Gridded Ion** (Isp 3600, both `transferOnly`+
+   `lowThrust`). **9 nodes** across: *methane* (`methane_propulsion`→methalox,
+   `deep_throttling`), *electric* (`ion_propulsion`→ion, `hall_effect`→hall,
+   `high_power_sep`, `megawatt_electric` ⇐ Belt Survey), and *deeper cryogenic*
+   (`hydrogen_storage`→`expander_cycle`→`advanced_cryo_upper`, the last bringing the Isp
+   accumulator to its 0.10 cap). Validated headlessly (23 checks): engines + flags,
+   node/track counts, engine-unlock effects + actual unlock on completion, reachability,
+   mission gate, **selector routing** (electrics transfer-only, methalox on LV stages),
+   Isp-cap clamp, and a methalox launch-vehicle design that computes + renders; all prior
+   suites green (13 total).
 
 ### Cross-reference map (this epic ↔ existing items)
 
