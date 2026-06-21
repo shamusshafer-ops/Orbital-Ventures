@@ -903,9 +903,24 @@ Science), not a single line — that's the "decades-long effort" feel.
    Validated headlessly (14 checks): effect assignment + multi-effect preservation,
    accumulation + cap clamp, `buildMonths` shave (1 mo and capped 3 mo), 1-month floor,
    tooltip display, render smoke; all prior suites green.
-   *Remaining (slice 6d+):* far-future depth toward the ~100–125 target; TRL/partnerships
-   (#6 leftovers); more `TECH_LEVELS`; Ground→true launch-cadence (the fixed +1 launch
-   campaign month).
+6d. ✅ **Far-future / capstone tier** — *Built 2026-06-21.* Grew the tree **78 → 98
+   nodes** with a 20-node endgame wave capping every track and gated to the deepest
+   missions (Orbital Shipyards ⇐ Mars Orbit; Megastructure Construction, Fusion
+   Propulsion Research, Atmospheric ISRU ⇐ Jupiter Orbit; Artificial Gravity ⇐ Mars
+   Orbit): full-flow staged combustion, bimodal NTR, Full Vehicle Reuse, metamaterial
+   structures (σ→0.040), quantum nav, fleet autonomy, closed-ecology life support,
+   aerocapture/gravity-assist, Heavy-Lift Infra + Dual Pads, Exoplanet Survey + Research
+   Institutes, Fully Automated Factory, etc. Effects reuse the capped vocabulary
+   (reliability / σ / buildCost / launchCost / sciYield / buildTime), so the caps keep
+   balance bounded. **Two more leveled techs** added (`full_vehicle_reuse` → launchCostCut/
+   level, `automated_factory` → buildCostCut/level), demonstrating leveled *economy*
+   effects. Validated headlessly (19 checks): 98-node count, all 20 present, no dangling
+   reqs, valid deep-mission gates, **full reachability proof**, monotonic σ ladder to
+   0.040, all economy caps still clamp with everything researched + both new techs at L3,
+   leveled-tech accumulator feed, flyability preserved, reconcile over the deepest chain,
+   render/tooltip smoke; 8-tab all-98-researched render clean; all prior suites green.
+   *Remaining (slice 6e+):* the last ~25 nodes toward the 125 ceiling; TRL/research-
+   partnerships (#6 leftovers); Ground→true launch-cadence (the fixed +1 campaign month).
 
 ### Cross-reference map (this epic ↔ existing items)
 
