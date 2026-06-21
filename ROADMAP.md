@@ -650,6 +650,9 @@ Legend: **[E]** expand existing · **[S]** split out of today's `structures` ·
   Combustion → Rapid Reusability (ties T11).
 - *Electric branch (new):* Ion Thrusters → Hall-Effect Thrusters → High-Power SEP
   → MW-class Electric (meshes with Nuclear T9 `nuclear_electric`✓).
+- *Solid branch (new):* Solid Propellant Casting → Segmented Solid Motors → Strap-on
+  Booster Integration. Home of the solid-rocket engine class + side-booster mechanic —
+  see **§ Vehicle Architecture — Side Boosters & Solid Rockets** for the full plan.
 - Also holds `vac_upper`✓, `hypergolic`✓. Effects: +Isp, +reliability, +thrust,
   bigger engines.
 
@@ -1054,6 +1057,112 @@ Science), not a single line — that's the "decades-long effort" feel.
 - **#19 Departments** — Research Divisions are the first concrete slice.
 - **M5 Reusability ✓** — first rung of the T11 reusability chain.
 - **Boil-off scoping note** — addressed by a T10 cryo-depot node.
+
+## Vehicle Architecture — Side Boosters & Solid Rockets (epic)
+
+Source: a user request (2026-06-21) to add **strap-on side boosters** and **solid
+rocket motors** as buildable vehicle elements — the staging architecture every real
+launcher from Atlas/Titan to the Shuttle, Ariane, Atlas V and SLS is built on. This is
+the first time the bench models anything other than a **serial** liquid stack, so it is
+both a new **engine class** (solids) and a new **vehicle-architecture mechanic**
+(parallel "stage 0" boosters), with a visual payoff (strap-ons on the silhouette + in
+flight).
+
+**Decisions taken with the user (2026-06-21):**
+- **Balance — preserve the existing balance (sidegrade, not power creep).** Solids and
+  boosters are an *alternative architecture* (cheaper, higher-thrust, simpler — traded
+  against lower Isp and no throttle/restart), gated behind new research so they don't
+  trivialise the early game. Every mission that is winnable today stays winnable on the
+  same timeline; the rocket equation is untouched — only new inputs (a solid engine
+  class, a parallel boost phase) and gating/economy are added. *(This deliberately keeps
+  the older "balance exactly preserved" ethos, unlike the R&D Deep Expansion epic.)*
+- **Solid role — boosters AND standalone stages.** Solid motors can populate strap-on
+  boosters *and* serve as cheap standalone lower/upper stages, so an all-solid
+  small-launcher (Scout/Minuteman style) is a real, emergent option — not just
+  liquid-core augmentation.
+
+**Current baseline (what we're extending):** `state.stages[]` is a **serial** stack
+(max 3), every `ENGINES` entry is liquid, and `stackPerformance()` computes Δv serially
+(stage *i*'s payload = all stages above + payload; first-stage Isp = SL/Vac average,
+others vacuum) with **TWR derived from the first stage only** (`sm[0].eng.thrustSL ·
+count`). There is no parallel element and no solid flag. `stageMasses()` →
+`computeVehicle()` → `lvPayload()` → `canLaunch()` (TWR>1 gate) → `buildCost`/
+`buildMonths` (#7 `vehicleUnits`) → `subsystemReport()` (#16) → the silhouette (#10) →
+the Phaser `FlightScene` all read off `state.stages`, so each is a known integration
+point.
+
+### Modeling approach (the one real physics decision)
+
+True parallel burn (crossfeed, simultaneous core+booster thrust) is more than the serial
+math supports. The plan uses a **serial-equivalent boost phase** — physically honest and
+conservative (never *more* generous than reality), and validatable against the rocket
+equation:
+- A new `state.boosters = {eng, count, prop}` parallel cluster (count identical strap-ons;
+  `count:0` = none, the current behaviour).
+- **Liftoff TWR** uses combined thrust: `(core stage-1 SL thrust × count) + (booster SL
+  thrust × booster count)` over total liftoff weight — so boosters are what gets a
+  thrust-starved heavy core off the pad.
+- **Boost-phase Δv** is added as a base segment beneath stage 1: the boosters (and,
+  optionally, the core firing alongside) burn, then jettison their **dry mass + spent
+  propellant** at burnout; the core continues serially from the lighter post-jettison
+  mass. Modeled as an extra bottom segment in `stackPerformance`, mass-bookkept so no
+  propellant is double-counted.
+- Solids: a `solid:true` engine flag — high thrust, **low Isp** (~250–290 s), cheap,
+  high *ignition* reliability but **no throttle and no restart** (can't be shut down once
+  lit), so their failure character is distinct (feeds #16 as a `boosters`/separation
+  subsystem; Challenger is the cautionary historical anchor). `ispSL`/`ispVac` are close
+  (little altitude compensation). They burn their `prop` (grain mass) at a fixed profile.
+
+### Suggested build order (slices)
+
+1. **Solid motor engine class (data + model).** Add a `solid:true` flag to `ENGINES`
+   and 2–3 solid motors with historical anchors (e.g. a Castor-class strap-on, a
+   Scout-class standalone stage, a large Segmented SRB). Teach `stageMasses` and the
+   stage engine selectors to accept solids as **standalone stages** (so an all-solid
+   small launcher works), gated behind a new `solid_propellant` research node. Pure
+   data + a flag + selector filtering — no parallel math yet. Validate: solid stage Δv
+   matches the rocket equation at the solid's low Isp; gating; an all-solid stack
+   computes + flies; existing liquid suites untouched.
+2. **Side-booster construct (parallel "stage 0").** Add `state.boosters` + the
+   serial-equivalent boost-phase math in `stackPerformance` (combined-thrust TWR,
+   base-segment boost Δv, jettison bookkeeping). Bench gets a **Boosters card** (engine
+   picker incl. solids + liquids, count stepper, propellant) and the readout shows the
+   boost-phase Δv + the augmented liftoff TWR. `SAVE_VERSION` bump + forward-compat
+   default (`{eng:null,count:0,prop:0}` = no boosters; old saves unchanged). Validate:
+   `count:0` is *exactly* today's numbers (balance-preserved proof); boosters raise TWR
+   and total Δv; jettison mass bookkeeping never double-counts propellant; a thrust-
+   starved heavy core that fails TWR today *does* clear the pad with boosters.
+3. **Research gating + economy + reliability (#7 / #16).** Propulsion-track nodes:
+   `solid_propellant` (Solid Propellant Casting — unlocks the class) → `segmented_srb`
+   (Segmented Solid Motors — larger grains/thrust) → `strapon_integration` (Strap-on
+   Booster Integration — unlocks the boosters card / more boosters). Boosters add to
+   `vehicleUnits` (so they consume #7 assembly-bay capacity and `buildMonths`/`buildCost`)
+   and add a `boosters` link to the #16 subsystem model (booster ignition + separation),
+   with solids' distinct high-ignition / catastrophic-if-failed character. Balance-
+   preserved: nodes are time+capital sinks; numbers tuned so boosters are a *cost/thrust*
+   trade, not free performance. Validate: gating, units/bays/build math, subsystem
+   product still equals overall R, reliability caps still bound everything.
+4. **Visuals (#10 silhouette + Phaser `FlightScene` + Cape pad).** Draw the strap-on
+   cluster around the core on the design-bench silhouette, on the launch pad in the Cape
+   scene, and in flight — with a **booster-separation** event (jettison + tumble, the
+   liquid/solid plume difference) at boost-phase burnout, mirroring the existing stage-sep
+   animation. The payoff slice: "my rocket has boosters and they fall away on ascent."
+   Validate: silhouette/flight render smokes with boosters present across configs.
+
+### Cross-reference map (this epic ↔ existing items)
+
+- **R&D epic T1 Propulsion** — the solid branch (`solid_propellant` → `segmented_srb` →
+  `strapon_integration`) lands in the Propulsion swimlane; this epic is its content.
+- **#7 Manufacturing capacity** — boosters add `vehicleUnits` (bay capacity / build
+  time / cost).
+- **#16 Subsystem reliability** — boosters/separation become a distributed subsystem
+  link; solids' failure character is the story material (Challenger anchor).
+- **#10 Vehicle visualization + Phaser `FlightScene`** — strap-ons drawn on the
+  silhouette, pad, and in flight with a separation event.
+- **M5 Reusability** — *optional later tie-in:* recoverable solids (Shuttle SRBs
+  parachuted into the sea) could extend the T11 reuse chain.
+- **Eras** — solids fit the Pioneer era (the design doc already names "Liquid/solid
+  sounding rockets"); an early solid sounding-rocket path is era-appropriate.
 
 ## Strategic Vision — 8-Phase Grand-Strategy Arc
 
