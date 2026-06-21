@@ -921,6 +921,21 @@ Science), not a single line — that's the "decades-long effort" feel.
    render/tooltip smoke; 8-tab all-98-researched render clean; all prior suites green.
    *Remaining (slice 6e+):* the last ~15 nodes toward the 125 ceiling; TRL/research-
    partnerships (#6 leftovers); Ground→true launch-cadence (the fixed +1 campaign month).
+- ✅ **Crew life-support recycling effect** — *Built 2026-06-21.* Fixed a gap the
+   player spotted: the crew-track research nodes only granted *reliability* — they
+   didn't reduce the consumable/supply mass that is the whole point of life-support
+   tech (only the ECLSS tier's `recovery` did). New `lsRecovery` effect key +
+   `lsRecoveryBonus()`/`eclssRecovery()`: crew research now pushes consumable recovery
+   **above** the base ECLSS tier (`consumables = crew·days·5kg·(1−recovery)`), capped at
+   `LS_RECOVERY_CAP` 98% (never a perfect closed loop) and gated to only apply once you
+   actually have a recycling system (partial/closed tier, not open-loop). Assigned to
+   **Long-Duration Habitats** (+2%) and **Closed Ecological Life Support** (+7%,
+   bioregenerative) as multi-effects beside their reliability. The saved mass flows
+   through `lvPayload` into the rocket equation. Surfaced in the Crew & Life Support
+   bench card (effective recovery + a recycling-research note) and the node tooltips.
+   Validated headlessly (17 checks): effect assignment, recovery raise + cap clamp,
+   consumables drop matching the formula, **open-loop gets no bonus** while partial/closed
+   do, `lvPayload` shrinks, tooltip, render; all 13 prior suites green.
 - ✅ **Propulsion branch expansion** — *Built 2026-06-21.* Built out the three missing
    propulsion branches from the original design sketch (98 → 107 nodes; propulsion track
    12 → 21). **3 new engines** (pure data — the stage/transfer selectors are already

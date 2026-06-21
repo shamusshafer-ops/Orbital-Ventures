@@ -917,7 +917,7 @@ const RESEARCH = [
   {id:'autonomous_navigation', track:'guidance', name:'Autonomous Navigation', cost:5.0, months:6, req:['star_trackers'], effect:{reliability:0.03}, desc:'Onboard optical navigation lets a spacecraft fix its own position against planets and stars without waiting on light-lagged ground tracking. <b>+3% reliability.</b><span class="hist">↳ Deep Impact and OSIRIS-REx proved autonomous optical nav at other worlds.</span>'},
   // Crew & Life Support
   {id:'orbital_eva', track:'crew', name:'Orbital EVA Suits', cost:4.0, months:5, req:['crew_capsule'], reqMissionDone:'crew_orbit', effect:{}, desc:'Pressure suits, airlocks and tethers for working outside the spacecraft. The prerequisite for assembly, servicing and exploration on foot.<span class="hist">↳ Leonov first floated free of his Voskhod in 1965; EVA became routine by Gemini.</span>'},
-  {id:'long_duration_hab', track:'crew', name:'Long-Duration Habitats', cost:5.5, months:6, req:['eclss_closed'], reqMissionDone:'multi_day', effect:{reliability:0.02}, desc:'Galleys, sleep stations, exercise and hygiene that keep crews healthy and effective for months. <b>+2% crewed reliability.</b><span class="hist">↳ Salyut, Skylab and the ISS turned spacecraft into places people live.</span>'},
+  {id:'long_duration_hab', track:'crew', name:'Long-Duration Habitats', cost:5.5, months:6, req:['eclss_closed'], reqMissionDone:'multi_day', effect:{reliability:0.02,lsRecovery:0.02}, desc:'Galleys, sleep stations, exercise and hygiene that keep crews healthy and effective for months. <b>+2% crewed reliability.</b><span class="hist">↳ Salyut, Skylab and the ISS turned spacecraft into places people live.</span>'},
   {id:'radiation_countermeasures', track:'crew', name:'Radiation Countermeasures', cost:6.0, months:6, req:['long_duration_hab'], effect:{reliability:0.02}, desc:'Storm shelters, dosimetry and pharmacology to keep crews within dose limits on multi-year flights. <b>+2% crewed reliability.</b><span class="hist">↳ Solar-particle events make radiation the gating crew-health problem for Mars.</span>'},
   // Deep Space
   {id:'high_gain_antenna', track:'deepspace', name:'High-Gain Antennas', cost:3.5, months:4, req:['deep_space'], effect:{reliability:0.02}, desc:'Steerable dish antennas and deep-space transponders that hold a data link across hundreds of millions of kilometers. <b>+2% reliability.</b><span class="hist">↳ The Deep Space Network and onboard high-gain dishes keep distant probes in contact.</span>'},
@@ -976,7 +976,7 @@ const RESEARCH = [
   {id:'quantum_navigation', track:'guidance', name:'Quantum Inertial Navigation', cost:8.0, months:8, req:['autonomous_navigation'], effect:{reliability:0.02}, desc:'Cold-atom interferometers that measure acceleration with quantum precision, holding a position fix for years without drift. <b>+2% reliability.</b><span class="hist">↳ Quantum inertial sensors promise GPS-free navigation that never drifts.</span>'},
   {id:'fleet_autonomy', track:'automation', name:'Fleet Autonomy', cost:10.0, months:9, req:['ai_mission_management'], effect:{reliability:0.02}, desc:'Whole fleets of vehicles that coordinate, refuel and repair each other with no ground intervention — the nervous system of an interplanetary logistics network. <b>+2% reliability.</b><span class="hist">↳ Fleet-scale autonomy is the prerequisite for any self-sustaining off-world economy.</span>'},
   {id:'artificial_gravity', track:'crew', name:'Artificial Gravity', cost:9.0, months:9, req:['radiation_countermeasures'], reqMissionDone:'mars_orbit', effect:{reliability:0.02}, desc:'Rotating habitats that spin up a fraction of a gee, holding off the bone and muscle loss of years in freefall. <b>+2% crewed reliability.</b><span class="hist">↳ Tethered or rotating habitats are the leading answer to long-duration deconditioning.</span>'},
-  {id:'closed_ecology', track:'crew', name:'Closed Ecological Life Support', cost:11.0, months:11, req:['artificial_gravity'], effect:{reliability:0.02}, desc:'A bioregenerative loop — plants, algae and microbes — that grows food and recycles air and water indefinitely. The biology a self-sufficient colony runs on. <b>+2% crewed reliability.</b><span class="hist">↳ BIOS-3 and MELiSSA pioneered the closed ecologies a Mars colony will need.</span>'},
+  {id:'closed_ecology', track:'crew', name:'Closed Ecological Life Support', cost:11.0, months:11, req:['artificial_gravity'], effect:{reliability:0.02,lsRecovery:0.07}, desc:'A bioregenerative loop — plants, algae and microbes — that grows food and recycles air and water indefinitely. The biology a self-sufficient colony runs on. <b>+2% crewed reliability.</b><span class="hist">↳ BIOS-3 and MELiSSA pioneered the closed ecologies a Mars colony will need.</span>'},
   {id:'gravity_assist_planning', track:'deepspace', name:'Gravity-Assist Trajectory Design', cost:6.0, months:6, req:['high_gain_antenna'], effect:{}, desc:'Multi-body trajectory optimization that steals momentum from planets to reach targets no direct burn could afford. The math that opened the outer system.<span class="hist">↳ Voyager toured four planets on a single gravity-assist chain discovered by a grad student.</span>'},
   {id:'aerocapture', track:'deepspace', name:'Aerocapture', cost:7.5, months:7, req:['precision_edl'], effect:{}, desc:'Skim a planetary atmosphere once to shed orbital velocity, capturing into orbit with almost no propellant. The trick that makes heavy outer-planet orbiters affordable.<span class="hist">↳ Aerocapture has been studied for every ice-giant mission as the enabling technology.</span>'},
   {id:'atmospheric_isru', track:'refueling', name:'Atmospheric ISRU', cost:10.0, months:10, req:['electrolysis_scaleup'], reqMissionDone:'jupiter_orbit', effect:{}, desc:'Scoop and process the atmospheres of the gas giants and their moons for hydrogen, helium-3 and volatiles — refueling at the edge of the Solar System.<span class="hist">↳ Gas-giant atmospheres are the largest propellant and helium-3 reservoirs in the system.</span>'},
@@ -1078,13 +1078,24 @@ const TEST_LEVELS = [
   {name:'Static fire',         rel:0.05, cost:0.6, months:1},
   {name:'Uncrewed test flight',rel:0.12, cost:2.5, months:3},
 ];
+// Crew & Life Support research that improves recycling (e.g. bioregenerative loops)
+// pushes consumable recovery beyond the base ECLSS tier — directly shrinking the
+// supply mass you must lift. Only applies once you have an actual recycling system
+// (partial/closed tier), and can never reach a perfect 100% closed loop.
+const LS_RECOVERY_CAP=0.98;
+function lsRecoveryBonus(){ return researchEffectSum('lsRecovery'); }
+function eclssRecovery(eclssId){
+  const t=ECLSS[eclssId]||ECLSS.open;
+  return t.recovery>0 ? Math.min(LS_RECOVERY_CAP, t.recovery + lsRecoveryBonus()) : t.recovery;
+}
 function lifeSupport(m, eclssId){
   const t=ECLSS[eclssId]||ECLSS.open;
-  const consumables = m.crew*m.days*DAILY_CONSUMABLE*(1-t.recovery);
+  const recovery = eclssRecovery(eclssId); // base tier + crew-research recycling bonus (capped)
+  const consumables = m.crew*m.days*DAILY_CONSUMABLE*(1-recovery);
   const system = t.sysBase + t.perCrew*m.crew;
   const capsule = CAPSULE.base + CAPSULE.perCrew*m.crew + (state.research.launch_escape?CAPSULE.les:0);
   const total = capsule + system + consumables + (m.payload||0);
-  return {consumables, system, capsule, total, recovery:t.recovery};
+  return {consumables, system, capsule, total, recovery, baseRecovery:t.recovery};
 }
 
 /* ---------- difficulty (design §13: math exposure / forgiveness) ----------
@@ -5956,10 +5967,16 @@ function renderCrew(){
   const tiers=Object.values(ECLSS).map(t=>{
     const locked=t.research && !state.research[t.research];
     const sel=state.eclss===t.id;
-    const tot=lifeSupport(m,t.id).total;
+    const lt=lifeSupport(m,t.id);
     return `<button class="btn" style="flex:1;${sel?'border-color:var(--ignite);color:var(--ignite)':''}" onclick="setEclss('${t.id}')" ${locked?'disabled':''}>
-      ${t.name}${locked?' 🔒':''}<br><span class="dim" style="font-size:10px">${(t.recovery*100)|0}% recovery · ${tot.toFixed(2)} t</span></button>`;
+      ${t.name}${locked?' 🔒':''}<br><span class="dim" style="font-size:10px">${(lt.recovery*100)|0}% recovery · ${lt.total.toFixed(2)} t</span></button>`;
   }).join('');
+  const lsBonus=lsRecoveryBonus();
+  const recNote = ls.baseRecovery>0 && lsBonus>0
+    ? `<div class="dim" style="font-size:11px;margin-top:8px"><span style="color:var(--ok)">Recycling research +${Math.round(lsBonus*100)}%</span> on top of the closed-loop base → <b>${Math.round(ls.recovery*100)}%</b> recovery (capped at ${Math.round(LS_RECOVERY_CAP*100)}%). That much less food, water and air to lift.</div>`
+    : (ls.baseRecovery===0
+        ? `<div class="dim" style="font-size:11px;margin-top:8px">Open-loop carries every gram of consumables. Recovery tech (and crew-track recycling research) pays off as missions get longer.</div>`
+        : `<div class="dim" style="font-size:11px;margin-top:8px">Crew-track research (Long-Duration Habitats, Closed Ecological Life Support) raises recycling further, shrinking consumable mass.</div>`);
   card.innerHTML=`<h2>Crew &amp; Life Support</h2>
     <div class="sub" style="margin-bottom:10px">${m.crew} crew · ${durTxt} aloft. Everything that keeps them alive is payload you have to lift.</div>
     <div class="row" style="gap:6px;align-items:stretch">${tiers}</div>
@@ -5969,6 +5986,7 @@ function renderCrew(){
       <div class="metric"><div class="k">Consumables</div><div class="v">${ls.consumables.toFixed(2)} t</div></div>
       <div class="metric"><div class="k">Life-support payload</div><div class="v" style="color:var(--ignite)">${ls.total.toFixed(2)} t</div></div>
     </div>
+    ${recNote}
     <div class="eq">consumables = ${m.crew} crew × ${m.days} d × 5 kg × (1 − ${(ls.recovery*100)|0}% recovery) = ${(ls.consumables*1000).toFixed(0)} kg<br>
       ${state.research.launch_escape?'<span style="color:var(--ok)">abort tower fitted — crew survive a launch failure</span>':'<span style="color:var(--bad)">no escape system — a launch failure means loss of crew</span>'}</div>`;
 }
@@ -7264,6 +7282,7 @@ function techModifierText(r){
   if(e.buildCostCut) bits.push(`<b>−${Math.round(e.buildCostCut*100)}%</b> vehicle build cost`);
   if(e.launchCostCut) bits.push(`<b>−${Math.round(e.launchCostCut*100)}%</b> launch-ops cost`);
   if(e.buildTimeCut) bits.push(`<b>−${e.buildTimeCut}</b> mo build time (industrial cadence)`);
+  if(e.lsRecovery) bits.push(`<b>+${Math.round(e.lsRecovery*100)}%</b> life-support recycling (less consumable mass)`);
   if(e.sciYield) bits.push(`<b>+${Math.round(e.sciYield*100)}%</b> mission science yield`);
   if(e.unlock) bits.push(`Unlocks — <b>${UNLOCK_LABELS[e.unlock]||e.unlock}</b>`);
   if(isLeveledTech(r.id)){ const d=TECH_LEVELS[r.id]; const per=Object.entries(d.per||{}).map(([k,v])=>`+${Math.round(v*100)}% ${k}`).join(', '); bits.push(`Leveled technology — keep investing: <b>${per} per level</b>, up to L${d.max}`); }
