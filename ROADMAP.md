@@ -982,8 +982,25 @@ Science), not a single line — that's the "decades-long effort" feel.
    Validated headlessly (17 checks): engine flags, flux falloff, viability by destination,
    blocked only when profile+transfer+solar-electric+outer, `canLaunch` enforcement +
    clear reason, NEP/chemical/Mars all unblocked, render; all 15 prior suites green.
-   *Phase 2 (later):* a full supply-vs-demand power budget — solar/RTG/reactor mass + a
-   must-balance gauge + demand from ECLSS/comms; reactors emit radiation (links the rad model).
+   *(Superseded by Phase 2 below — the engine-level block became a general power-source rule.)*
+- ✅ **Power — Phase 2 (supply-vs-demand budget)** — *Built 2026-06-21.* The full power
+   model. `powerDemand(m)` = baseline comms (more in deep space) + ECLSS (crew × tier;
+   closed-loop is power-hungry) + electric-drive draw (`powerDraw`: ion 25 kW, Hall 15).
+   A chosen **power source** (`state.powerSource`, `SAVE_VERSION`→10) — Solar (12 kW/t,
+   ∝ sunlight), RTG (0.6 kW/t anywhere), or Fission Reactor (6 kW/t anywhere, gated on
+   `nuclear_electric`) — must supply it; `powerSystemMass = demand / specific-power` is
+   added to `lvPayload` (so the power plant rides the rocket equation). **NEP self-powers**
+   (its onboard reactor covers the craft, mass 0). `powerViable`/`canLaunch` block a
+   non-viable source (solar below 20% sunlight in the outer system, or an un-researched
+   reactor) with a clear reason — **generalising & replacing the Phase-1 engine block**, and
+   now ion+reactor = a nuclear-electric craft that *can* run in the outer system. New
+   **Power bench card**: source picker (per-source mass estimate), demand breakdown, specific
+   power at the destination, plant mass, and a viability flag. Validated headlessly (27
+   checks): sources/flags, demand breakdown + electric draw, distance-scaled vs flat specific
+   power, mass into payload (heavier source → more payload), viability matrix
+   (solar-outer-blocked / RTG / reactor-gated / NEP self-powered / inner-solar-OK), canLaunch
+   enforcement + reactor clearing it, `setPowerSource` research gate, save default/version,
+   render across combos; all 15 prior suites green.
 
 ### Cross-reference map (this epic ↔ existing items)
 

@@ -325,6 +325,7 @@
       <div class="card hidden" id="transferCard"></div>
       <div class="card hidden" id="landerCard"></div>
       <div class="card hidden" id="crewCard"></div>
+      <div class="card hidden" id="powerCard"></div>
       <div class="card hidden" id="windowCard"></div>
       <div class="card hidden" id="routesCard"></div>
     </div>
@@ -612,9 +613,9 @@ const ENGINES = {
   methalox:    {id:'methalox',    name:'Methalox Full-Flow (Raptor-class)', prop:'CH₄/LOX', ispSL:330, ispVac:363, thrustSL:1850, thrustVac:2000, mass:1.60, cost:1.90, rel:0.95},
   // M7 outer-system nuclear engines + solar-electric — in-space (transfer stage) only, blocked from launch-vehicle stages
   ntr_nerva:   {id:'ntr_nerva',   name:'NERVA (NRX) NTR', prop:'LH₂ (nuclear-thermal)', ispSL:0, ispVac:825, thrustSL:0, thrustVac:330, mass:6.80, cost:7.00, rel:0.95, transferOnly:true},
-  nep_snap:    {id:'nep_snap',    name:'SNAP-derived NEP', prop:'Xe (nuclear-electric)', ispSL:0, ispVac:3000, thrustSL:0, thrustVac:5, mass:5.50, cost:9.00, rel:0.97, transferOnly:true, lowThrust:true},
-  hall_thruster:{id:'hall_thruster',name:'Hall-Effect Thruster', prop:'Xe (solar-electric)', ispSL:0, ispVac:1800, thrustSL:0, thrustVac:3, mass:1.20, cost:3.50, rel:0.98, transferOnly:true, lowThrust:true, solarElectric:true},
-  ion_xenon:   {id:'ion_xenon',   name:'Gridded Ion Thruster', prop:'Xe (solar-electric)', ispSL:0, ispVac:3600, thrustSL:0, thrustVac:0.5, mass:0.80, cost:4.00, rel:0.98, transferOnly:true, lowThrust:true, solarElectric:true},
+  nep_snap:    {id:'nep_snap',    name:'SNAP-derived NEP', prop:'Xe (nuclear-electric)', ispSL:0, ispVac:3000, thrustSL:0, thrustVac:5, mass:5.50, cost:9.00, rel:0.97, transferOnly:true, lowThrust:true, selfPowered:true},
+  hall_thruster:{id:'hall_thruster',name:'Hall-Effect Thruster', prop:'Xe (solar-electric)', ispSL:0, ispVac:1800, thrustSL:0, thrustVac:3, mass:1.20, cost:3.50, rel:0.98, transferOnly:true, lowThrust:true, solarElectric:true, powerDraw:15},
+  ion_xenon:   {id:'ion_xenon',   name:'Gridded Ion Thruster', prop:'Xe (solar-electric)', ispSL:0, ispVac:3600, thrustSL:0, thrustVac:0.5, mass:0.80, cost:4.00, rel:0.98, transferOnly:true, lowThrust:true, solarElectric:true, powerDraw:25},
 };
 
 const MISSIONS = [
@@ -1183,6 +1184,7 @@ function newGame(difficulty){
     techLevel:{}, // #3: per-tech investment level for leveled technologies
     divisions:{}, // #4: research divisions (skill/exp/morale per division)
     breakthroughCooldown:3, // #5: division R&D breakthrough rate-limiter
+    powerSource:'solar', // Phase 2: vehicle power plant (solar/rtg/reactor)
   };
   log('info','Company founded. The pad is yours — go make some noise.');
 }
@@ -1836,6 +1838,7 @@ function lvPayload(m){
   if(m && m.tanker) return inSpaceWet(state.transfer); // the tank itself is the cargo
   if(m && m.profile){
     let p=lifeSupport(m,state.eclss).total; // crew module
+    p+=powerSystemMass(m); // Phase 2: power plant (solar/RTG/reactor) is mass you must lift
     if(m.modules.includes('transfer')) p+=inSpaceWet(state.transfer);
     if(m.modules.includes('lander')){ p+=inSpaceWet(state.descent)+inSpaceWet(state.ascent); }
     return p;
@@ -2047,11 +2050,38 @@ function radRelPenalty(m,crewed){ const f = crewed ? (radShieldEquip()+radShield
    run their thrusters in the outer system — which forces a nuclear-electric (NEP)
    reactor drive there. Ties the electric and nuclear tracks together. */
 const SOLAR_FLUX = {earth:1, moon:1, venus:1.9, mars:0.43, phobos:0.43, belt:0.11, jupiter:0.037};
-const SOLAR_ELECTRIC_MIN_FLUX = 0.2; // below this, a solar array can't power the thruster usefully
+const SOLAR_MIN_FLUX = 0.2; // below this a solar array can't deploy enough to be practical
 function destSolarFlux(m){ const b=missionBody(m&&m.id); return (b!=null && SOLAR_FLUX[b]!=null) ? SOLAR_FLUX[b] : 1; }
-function solarElectricViable(m){ return destSolarFlux(m) >= SOLAR_ELECTRIC_MIN_FLUX; }
 function usesTransfer(m){ return !!(m && m.profile && m.modules && m.modules.includes('transfer')); }
-function solarElectricBlocked(m){ return usesTransfer(m) && !!(ENGINES[state.transfer.eng]||{}).solarElectric && !solarElectricViable(m); }
+function transferEng(){ return ENGINES[state.transfer.eng]||ENGINES.a4; }
+// Phase 2 power budget: a chosen source (solar/RTG/reactor) must supply the vehicle's
+// demand (baseline comms + ECLSS + electric-propulsion draw). Source mass adds to payload
+// (rocket equation). Solar dies with distance; a nuclear-electric (NEP) drive self-powers.
+const POWER_SOURCES = {
+  solar:   {id:'solar',   name:'Solar Arrays',     kwPerTonne:12,  distScaled:true,  research:null,             rad:0,    blurb:'Light and cheap, but output falls with distance from the Sun.'},
+  rtg:     {id:'rtg',     name:'RTGs',             kwPerTonne:0.6, distScaled:false, research:null,             rad:0.15, blurb:'A steady trickle of power anywhere — but very heavy per kilowatt.'},
+  reactor: {id:'reactor', name:'Fission Reactor',  kwPerTonne:6,   distScaled:false, research:'nuclear_electric',rad:0.4,  blurb:'High output anywhere — the only practical source for power-hungry electric propulsion in the deep outer system.'},
+};
+function powerSourceDef(id){ return POWER_SOURCES[id]||POWER_SOURCES.solar; }
+function selfPoweredCraft(m){ return usesTransfer(m) && !!transferEng().selfPowered; } // NEP carries its own reactor
+function eclssPowerPerCrew(){ const r=(ECLSS[state.eclss]||ECLSS.open).recovery; return 0.2 + r*1.4; } // closed-loop is power-hungry
+function powerDemand(m){
+  if(!(m&&m.profile)) return 0;
+  let kw = 1.5 + (radEnvironment(m)>=4?1.5:0);          // avionics/comms baseline (more deep-space)
+  if(m.crew>0) kw += m.crew*eclssPowerPerCrew();         // life support
+  if(usesTransfer(m) && transferEng().powerDraw) kw += transferEng().powerDraw; // electric thruster draw
+  return kw;
+}
+function powerSpecific(m){ const s=powerSourceDef(state.powerSource); return s.kwPerTonne*(s.distScaled?destSolarFlux(m):1); } // kW per tonne at this destination
+function powerSystemMass(m){ if(!(m&&m.profile)||selfPoweredCraft(m)) return 0; const sp=powerSpecific(m); return sp>0? powerDemand(m)/sp : 0; }
+function powerViable(m){
+  if(!(m&&m.profile) || selfPoweredCraft(m)) return {ok:true};
+  const s=powerSourceDef(state.powerSource);
+  if(s.research && !state.research[s.research]) return {ok:false, why:`${s.name} needs the ${s.research} research before it can be fitted.`};
+  if(s.distScaled && destSolarFlux(m) < SOLAR_MIN_FLUX){ const bn=(BODIES.find(x=>x.id===missionBody(m.id))||{}).name||'the destination';
+    return {ok:false, why:`Solar Arrays can't power the spacecraft this far from the Sun (~${Math.round(destSolarFlux(m)*100)}% sunlight at ${bn}). Fit RTGs or a Fission Reactor.`}; }
+  return {ok:true};
+}
 function effectiveReliability(m,v,sim,crewed){
   let rel=v.reliability;
   if(sim) rel=Math.max(0.30, rel*Math.pow(0.985, sim.inSpaceLegs));
@@ -2169,8 +2199,7 @@ function canLaunch(v,m,sim){
     if(v.totalDv < m.reqDv) return {ok:false,why:'Δv shortfall — this design can\'t reach LEO to deliver propellant.'};
     if(v.twr<=1.0) return {ok:false,why:'Thrust-to-weight ≤ 1 — it will not leave the pad.'};
   }else if(m.profile){
-    if(solarElectricBlocked(m)){ const bn=(BODIES.find(x=>x.id===missionBody(m.id))||{}).name||'the destination';
-      return {ok:false,why:`Solar-electric drive can't power its thrusters this far from the Sun (~${Math.round(destSolarFlux(m)*100)}% of Earth's sunlight at ${bn}). Switch the transfer stage to a nuclear-electric (NEP) reactor drive.`}; }
+    const pw=powerViable(m); if(!pw.ok) return {ok:false,why:pw.why};
     if(!sim||!sim.ok) return {ok:false,why:'A mission leg falls short — size the launch vehicle and transfer stage for every burn.'};
     if((state.depotUse||0) > state.depot) return {ok:false,why:`Depot only holds ${state.depot.toFixed(1)} t — reduce the depot draw.`};
   }else{
@@ -2613,7 +2642,7 @@ function hideModal(){$('modal').classList.add('hidden');}
 
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=9; // v9: R&D epic slice 5 — division breakthrough events (breakthroughCooldown)
+const SAVE_VERSION=10; // v10: Phase 2 power budget — state.powerSource
 function saveGame(){
   try{
     const payload={v:SAVE_VERSION, ts:Date.now(), state:JSON.parse(JSON.stringify(state))};
@@ -2649,7 +2678,7 @@ function loadGame(){
       facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
       architectures:{}, science:0, persEventCooldown:5,
       staff:[], assignedAstronaut:null,
-      vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, techLevel:{}, divisions:{}, breakthroughCooldown:3
+      vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, techLevel:{}, divisions:{}, breakthroughCooldown:3, powerSource:'solar'
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -2698,7 +2727,7 @@ function autoLoad(){
       facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
       architectures:{}, science:0, persEventCooldown:5,
       staff:[], assignedAstronaut:null,
-      vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, techLevel:{}, divisions:{}, breakthroughCooldown:3
+      vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, techLevel:{}, divisions:{}, breakthroughCooldown:3, powerSource:'solar'
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -5046,7 +5075,7 @@ function render(){
   if(state.tab==='command')renderCommandCenter(); else { stopCCScene(); pauseCapeGame(); }
   if(state.tab!=='bench') pauseVehGame();
   if(state.tab!=='map') pauseMapGame();
-  if(state.tab==='bench'){renderVehicleFamilies();renderArchitecture();renderStages();renderTransfer();renderLander();renderCrew();renderWindowPlanner();renderRoutes();renderReadout();renderVehiclePreview();}
+  if(state.tab==='bench'){renderVehicleFamilies();renderArchitecture();renderStages();renderTransfer();renderLander();renderCrew();renderPower();renderWindowPlanner();renderRoutes();renderReadout();renderVehiclePreview();}
   if(state.tab==='missions')renderMissions();
   if(state.tab==='programs')renderPrograms();
   renderNextObjective();
@@ -6043,6 +6072,35 @@ function renderCrew(){
       ${state.research.launch_escape?'<span style="color:var(--ok)">abort tower fitted — crew survive a launch failure</span>':'<span style="color:var(--bad)">no escape system — a launch failure means loss of crew</span>'}</div>`;
 }
 
+function setPowerSource(id){ const s=POWER_SOURCES[id]; if(!s) return; if(s.research&&!state.research[s.research]) return; state.powerSource=id; render(); }
+function renderPower(){
+  const m=curMission(), card=$('powerCard'); if(!card) return;
+  if(!(m&&m.profile)){ card.classList.add('hidden'); return; }
+  card.classList.remove('hidden');
+  if(selfPoweredCraft(m)){
+    card.innerHTML=`<h2>Power</h2><div class="flag"><span style="color:var(--ok)">⚛ Nuclear-electric drive — self-powered</span><span class="dim">The NEP reactor powers the whole spacecraft anywhere in the Solar System; no separate power plant is needed.</span></div>`;
+    return;
+  }
+  const demand=powerDemand(m), src=powerSourceDef(state.powerSource), pv=powerViable(m), mass=powerSystemMass(m), flux=destSolarFlux(m);
+  const sources=Object.values(POWER_SOURCES).map(s=>{
+    const locked=s.research && !state.research[s.research], sel=state.powerSource===s.id;
+    const sp=s.kwPerTonne*(s.distScaled?flux:1);
+    const note = (s.distScaled && flux<SOLAR_MIN_FLUX) ? 'unusable here' : (sp>0?`${(demand/sp).toFixed(2)} t`:'—');
+    return `<button class="btn" style="flex:1;${sel?'border-color:var(--ignite);color:var(--ignite)':''}" onclick="setPowerSource('${s.id}')" ${locked?'disabled':''}>${s.name}${locked?' 🔒':''}<br><span class="dim" style="font-size:10px">${note}</span></button>`;
+  }).join('');
+  const base=1.5+(radEnvironment(m)>=4?1.5:0), eclss=m.crew>0?m.crew*eclssPowerPerCrew():0, prop=(usesTransfer(m)&&transferEng().powerDraw)?transferEng().powerDraw:0;
+  card.innerHTML=`<h2>Power — supply vs demand</h2>
+    <div class="sub" style="margin-bottom:8px">The spacecraft needs electrical power for avionics, life support, and any electric drive. The power plant is mass you must lift — pick the source that's viable at the destination for the least mass.</div>
+    <div class="row" style="gap:6px;align-items:stretch">${sources}</div>
+    <div class="metrics" style="margin-top:12px">
+      <div class="metric"><div class="k">Demand</div><div class="v" style="color:var(--ignite)">${demand.toFixed(1)} kW</div></div>
+      <div class="metric"><div class="k">Source</div><div class="v">${src.name}</div></div>
+      <div class="metric"><div class="k">Specific power here</div><div class="v">${powerSpecific(m).toFixed(1)} kW/t</div></div>
+      <div class="metric"><div class="k">Power-plant mass</div><div class="v" style="color:${pv.ok?'var(--ignite)':'var(--bad)'}">${pv.ok?mass.toFixed(2)+' t':'—'}</div></div>
+    </div>
+    <div class="eq">demand = ${base.toFixed(1)} baseline${eclss>0?` + ${eclss.toFixed(1)} life support`:''}${prop>0?` + ${prop} electric drive`:''} = <b>${demand.toFixed(1)} kW</b> · ${Math.round(flux*100)}% sunlight at the destination${src.rad>0?` · ${src.name} add radiation — keep crews shielded`:''}</div>
+    ${pv.ok?'':`<div class="flag warn"><span style="color:var(--warn)">⚠ Power not viable</span><span class="dim">${pv.why}</span></div>`}`;
+}
 function renderTransfer(){
   const m=curMission();
   const card=$('transferCard');
@@ -6076,9 +6134,8 @@ function renderTransfer(){
       <span class="ss">wet <b>${wet.toFixed(2)} t</b></span>
     </div>
     ${(ENGINES[state.transfer.eng]||{}).lowThrust?`<div class="flag"><span style="color:var(--readout)">⚠ Low-thrust drive</span><span class="dim">The NEP's thrust is measured in newtons — burns take weeks to months. The Δv budget here is impulsive; treat real transit/burn times as far longer. Best for uncrewed cargo or where mass ratio, not time, is the constraint.</span></div>`:''}
-    ${(ENGINES[state.transfer.eng]||{}).solarElectric?(solarElectricViable(m)
-      ? `<div class="flag"><span style="color:var(--ok)">☀ Solar-electric — powered here</span><span class="dim">~${Math.round(destSolarFlux(m)*100)}% of Earth's sunlight at this destination; the arrays can drive the thrusters.</span></div>`
-      : `<div class="flag warn"><span style="color:var(--warn)">☀ Too far from the Sun</span><span class="dim">Only ~${Math.round(destSolarFlux(m)*100)}% sunlight at this destination — a solar array can't power this drive. Use a nuclear-electric (NEP) reactor drive for the outer system.</span></div>`):''}
+    ${(ENGINES[state.transfer.eng]||{}).powerDraw?`<div class="flag"><span style="color:var(--readout)">⚡ Electric drive — draws ${(ENGINES[state.transfer.eng]||{}).powerDraw} kW</span><span class="dim">Needs a power source sized for it (see the Power card). Solar works inner-system; the outer system needs a reactor.</span></div>`:''}
+    ${(ENGINES[state.transfer.eng]||{}).selfPowered?`<div class="flag"><span style="color:var(--ok)">⚛ Self-powered (onboard reactor)</span><span class="dim">A nuclear-electric drive carries its own reactor — it powers the craft anywhere, no separate source needed.</span></div>`:''}
     ${renderDepotDraw()}
     ${renderAssemblyToggle()}`;
 }
