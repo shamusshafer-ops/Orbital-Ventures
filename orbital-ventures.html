@@ -139,6 +139,10 @@
   .adv-reqs{margin:8px 0 2px;border-top:1px solid rgba(245,166,35,.25);padding-top:7px}
   .adv-req{font-size:11.5px;line-height:1.5;color:var(--ink)}
   .adv-ok{color:var(--ok);font-weight:700} .adv-no{color:var(--bad);font-weight:700}
+  .obj-item{display:flex;align-items:baseline;gap:7px;font-size:12px;padding:3px 0}
+  .obj-item.clk{cursor:pointer;border-radius:4px} .obj-item.clk:hover{color:var(--ignite)}
+  .obj-done{color:var(--ok)} .obj-todo{color:var(--muted)}
+  .obj-label{flex:1} .obj-sub{font-family:var(--mono);font-size:10px;color:var(--readout)}
   /* contracts / alerts / news rows */
   .row-item{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #1a242b;font-size:12px}
   .row-item:last-child{border-bottom:none}
@@ -4683,6 +4687,29 @@ function missionAdvisor(){
 }
 // onclick string for an advisor/action object
 function advisorClick(a){ return a.missionId?`selectMission('${a.missionId}')`:(a.researchId?`setTab('rnd')`:(a.tab?`setTab('${a.tab}')`:`advanceMonth()`)); }
+// #18 slice 5: grouped objectives checklist (main / recommended / long-term / completed)
+function objectivesList(){
+  const groups=[];
+  const no=nextObjective();
+  if(no){ const mm=no.mission; let sub;
+    if(state.rep<mm.minRep) sub=`reputation ${Math.round(state.rep)}/${mm.minRep}`;
+    else if(mm.reqResearch && !state.research[mm.reqResearch]) sub=`needs ${(RESEARCH.find(r=>r.id===mm.reqResearch)||{}).name||'research'}`;
+    else sub='ready to fly';
+    groups.push({title:'Main objective', items:[{label:mm.name, done:false, sub, tab:'bench', missionId:mm.id}]});
+  } else groups.push({title:'Main objective', items:[{label:'All objectives complete', done:true}]});
+  const rec=[];
+  if(!(state.staff||[]).some(s=>ENGINEERS.find(e=>e.id===s.id))) rec.push({label:'Hire an engineer', done:false, tab:'personnel'});
+  if(!state.activeResearch && RESEARCH.some(r=>!state.research[r.id]&&reqsMet(r))) rec.push({label:'Start a research project', done:false, tab:'rnd'});
+  for(const def of FACILITY_DEFS){ if(!facilityBuilt(def.id) && canFound(def.id).ok){ rec.push({label:`Found ${def.name}`, done:false, tab:'infra'}); break; } }
+  if(rec.length) groups.push({title:'Recommended', items:rec.slice(0,3)});
+  const HEAD=['first_sat','crew_orbit','luna_landing','mars_orbit','jupiter_orbit'];
+  const lt=HEAD.map(id=>{ const m=MISSIONS.find(x=>x.id===id); return m?{label:m.name, done:!!state.completed[id]}:null; }).filter(Boolean);
+  if(lt.length) groups.push({title:'Long-term', items:lt});
+  const recent=Object.keys(state.history||{}).sort((a,b)=>state.history[b]-state.history[a]).slice(0,3)
+    .map(id=>{ const m=MISSIONS.find(x=>x.id===id); return m?{label:`${m.name} (${state.history[id]})`, done:true}:null; }).filter(Boolean);
+  if(recent.length) groups.push({title:'Completed', items:recent});
+  return groups;
+}
 // red/amber/green operational alerts derived from state
 function agencyAlerts(){
   const out=[]; const s=commandSummary();
@@ -5038,31 +5065,27 @@ function renderCCLeft(){
       </div>
     </div>`;
 
-  const contracts=ccContracts();
-  const avail=contracts.filter(c=>!c.locked).slice(0,4);
-  const locked=contracts.filter(c=>c.locked).slice(0,2);
-  const cRows=[...avail,...locked].map(c=>`
-    <div class="row-item ${c.locked?'locked':'clk'}"${c.locked?'':` onclick="selectMission('${c.id}')"`}>
-      <span>${c.locked?'🔒 ':''}${c.name}${c.crew?` <span class="dim">· ${c.crew}c</span>`:''}</span>
-      <span class="num">${c.locked?`<span class="dim">${c.why}</span>`:`${fM(c.payout)} · +${c.rep}`}</span>
-    </div>`).join('') || '<div class="dim" style="font-size:12px">All contracts complete.</div>';
-
-  const amb=currentAmbition(), prog=ambitionProgress(), no=nextObjective();
+  // ---- Objectives checklist (slice 5) ----
+  const amb=currentAmbition(), prog=ambitionProgress();
   const bar=`<div style="height:8px;border-radius:4px;background:#0d1418;overflow:hidden;margin:7px 0 5px"><div style="height:100%;width:${prog.pct}%;background:var(--ok)"></div></div>`;
+  const objHTML=objectivesList().map(g=>`
+    <div class="cc-panel-h" style="margin:10px 0 3px">${g.title}</div>
+    ${g.items.map(it=>`<div class="obj-item ${it.tab?'clk':''}"${it.tab?` onclick="${it.missionId?`selectMission('${it.missionId}')`:`setTab('${it.tab}')`}"`:''}>
+        <span class="${it.done?'obj-done':'obj-todo'}">${it.done?'☑':'☐'}</span>
+        <span class="obj-label">${it.label}</span>${it.sub?`<span class="obj-sub">${it.sub}</span>`:''}
+      </div>`).join('')}`).join('');
 
   $('ccLeft').innerHTML=`
     ${advHTML}
     <div class="card">
-      <div class="cc-panel-h">Active contracts</div>
-      ${cRows}
-      <button class="btn ghost" style="width:100%;margin-top:8px;font-size:11px" onclick="setTab('missions')">All contracts →</button>
-    </div>
-    <div class="card">
-      <div class="cc-panel-h">Ambition — ${amb.name}</div>
+      <div class="cc-panel-h">Current Objectives — ${amb.name}</div>
       ${bar}
-      <div style="display:flex;justify-content:space-between;font-size:11px"><span class="dim">${prog.done}/${prog.total} objectives</span><span class="num">${prog.pct}%</span></div>
-      ${no?`<div style="font-size:12px;margin-top:6px"><span class="dim">Current step:</span> <b>${no.mission.name}</b></div>`:`<div class="flag ok" style="margin-top:6px">Ambition complete!</div>`}
-      <button class="btn ghost" style="width:100%;margin-top:8px;font-size:11px" onclick="setTab('programs')">Programs →</button>
+      <div style="display:flex;justify-content:space-between;font-size:11px"><span class="dim">ambition ${prog.done}/${prog.total}</span><span class="num">${prog.pct}%</span></div>
+      ${objHTML}
+      <div style="display:flex;gap:6px;margin-top:10px">
+        <button class="btn ghost" style="flex:1;font-size:11px" onclick="setTab('missions')">Contracts →</button>
+        <button class="btn ghost" style="flex:1;font-size:11px" onclick="setTab('programs')">Programs →</button>
+      </div>
     </div>`;
 }
 // CENTER — the animated Space Center (scene + clickable hotspots, reused verbatim)

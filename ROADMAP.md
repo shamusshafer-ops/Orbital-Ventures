@@ -627,6 +627,12 @@ order — the near-term build order (#3 vehicle families → … → #7) is unch
         action buttons (research / fly-for-rep / fix Δv / test campaign / Launch when
         ready). Replaces the old "Recommended next step" card. Validated headlessly (9
         checks) + render smoke; suites green.
+      - [x] **Slice 5 — Objectives checklist** *(2026-06-20).* `objectivesList()` builds a
+        grouped, checkmarked list (Main objective + live sub-status · Recommended
+        situational items · Long-term headline milestones with ☑/☐ · recently Completed
+        with year) from `nextObjective`/`PROGRAMS`/`state.completed`/`state.history`,
+        rendered as one "Current Objectives" card (with the ambition bar) replacing the
+        separate contracts/ambition cards; items click-route. Validated (10 checks) + smoke.
 - [ ] **19 · Organizational scaling (departments)** *(P2, v2.0)* — Grow personnel
       from named individuals into **departments** with leaders/executive roles,
       career progression + training/specialization tracks, and
