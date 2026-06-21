@@ -2037,13 +2037,15 @@ const RAD_EQUIP_MAX=2.2;   // max extra avionics fragility from radiation
 const RAD_CREW_MAX=2.8;    // max extra life-support fragility from radiation
 const RAD_REL_MAX=0.12;    // max overall-reliability penalty from radiation
 const DOSE_EXPO_DIVISOR=37, DOSE_PER_MISSION_CAP=60, RAD_CAREER_LIMIT=100, RAD_CAREER_WARN=75;
+const RAD_REACTOR_CREW=1.2, REACTOR_DOSE_K=0.04; // onboard reactor/RTG radiation on the crew
+function reactorCrewLoad(m){ return RAD_REACTOR_CREW*powerRad(m)*Math.min(1.5,(Math.max(0,(m&&m.days)||0))/365); } // proximity dose, duration-weighted
 function radEnvironment(m){ const b=missionBody(m&&m.id); return (b&&RAD_ENV[b]) || (m&&m.profile?3:1); }
 function radLoad(m){ return radEnvironment(m)*(Math.max(0,(m&&m.days)||0)/365); } // env·years
 function radSeverity(m){ const L=radLoad(m); return L/(L+RAD_K); }                  // 0..1, saturating
 function radShieldEquip(){ return (state.research.rad_shielding?0.5:1)*(state.research.redundant_avionics?0.8:1); } // ↓ = better shielded
 function radShieldCrew(){ return (state.research.rad_shielding?0.5:1)*(state.research.radiation_countermeasures?0.6:1)*(state.research.closed_ecology?0.85:1); }
 function radEquipMult(m){ return 1 + RAD_EQUIP_MAX*radSeverity(m)*radShieldEquip(); } // avionics fragility ×
-function radCrewMult(m){ return 1 + RAD_CREW_MAX*radSeverity(m)*radShieldCrew(); }   // life-support fragility ×
+function radCrewMult(m){ return 1 + (RAD_CREW_MAX*radSeverity(m) + reactorCrewLoad(m))*radShieldCrew(); } // ambient + onboard-reactor radiation on the crew (shielding mitigates both)
 function radRelPenalty(m,crewed){ const f = crewed ? (radShieldEquip()+radShieldCrew())/2 : radShieldEquip(); return 1 - RAD_REL_MAX*radSeverity(m)*f; }
 /* ---------- Power (Phase 1): solar-electric propulsion needs sunlight. Solar flux
    falls ~1/r² from the Sun, so ion/Hall drives power up fine inner-system but can't
@@ -2064,6 +2066,8 @@ const POWER_SOURCES = {
 };
 function powerSourceDef(id){ return POWER_SOURCES[id]||POWER_SOURCES.solar; }
 function selfPoweredCraft(m){ return usesTransfer(m) && !!transferEng().selfPowered; } // NEP carries its own reactor
+// radiation from the onboard power source — a self-powered NEP counts as a full reactor
+function powerRad(m){ if(!(m&&m.profile)) return 0; return selfPoweredCraft(m) ? POWER_SOURCES.reactor.rad : powerSourceDef(state.powerSource).rad; }
 function eclssPowerPerCrew(){ const r=(ECLSS[state.eclss]||ECLSS.open).recovery; return 0.2 + r*1.4; } // closed-loop is power-hungry
 function powerDemand(m){
   if(!(m&&m.profile)) return 0;
@@ -2164,7 +2168,10 @@ function loseAssignedCrew(){
 function applyCrewDose(m){
   if(!(m && m.crew>0) || !state.assignedAstronaut) return;
   const sr=staffRecord(state.assignedAstronaut); if(!sr) return;
-  const gain=Math.min(DOSE_PER_MISSION_CAP, radEnvironment(m)*Math.max(0,(m.days||0))/DOSE_EXPO_DIVISOR*radShieldCrew());
+  const days=Math.max(0,(m.days||0));
+  const ambient=radEnvironment(m)*days/DOSE_EXPO_DIVISOR;
+  const reactor=powerRad(m)*days*REACTOR_DOSE_K; // proximity dose from the onboard reactor/RTG
+  const gain=Math.min(DOSE_PER_MISSION_CAP, (ambient+reactor)*radShieldCrew());
   if(gain<=0) return;
   const before=sr.dose||0; sr.dose=before+gain;
   const p=personById(sr.id), nm=p?p.name:'Astronaut';
@@ -6415,7 +6422,7 @@ function renderReadout(){
   if(recoveryActive(m)) flags+=`<div class="flag ok">♻ Reusable booster fitted — ${recoveryRefly(m)?`reflown on this routine mission: build −${Math.round((1-RECOVERY_REFLY_MULT)*100)}%, turnaround −1 mo`:`first flight proves it (+${fM(RECOVERY_HARDWARE)} hardware; refly discount once routine)`}.</div>`;
   if(ispMult()>1||thrustMult()>1) flags+=`<div class="flag ok">⚙ Propulsion R&D on the launch vehicle: +${Math.round((ispMult()-1)*100)}% Isp · +${Math.round((thrustMult()-1)*100)}% thrust.</div>`;
   if(mfgBuildMult()<1||groundLaunchMult()<1||buildTimeCut()>=0.5) flags+=`<div class="flag ok">🏭 Industrial R&D: −${Math.round((1-mfgBuildMult())*100)}% build cost · −${Math.round((1-groundLaunchMult())*100)}% launch-ops cost${buildTimeCut()>=0.5?` · −${Math.round(buildTimeCut())} mo build time`:''}.</div>`;
-  { const _rs=radSeverity(m); if(_rs>=0.12) flags+=`<div class="flag ${_rs>=0.5?'warn':''}">☢ Radiation ${_rs>=0.7?'extreme':_rs>=0.4?'high':'moderate'} (env ${radEnvironment(m)} · ${m.days||0}d) — ${state.research.rad_shielding?'shielding fitted':'<b>no shielding</b>'}: equipment ×${radEquipMult(m).toFixed(2)} fragility${m.crew>0?` · crew ×${radCrewMult(m).toFixed(2)}`:''}.</div>`; }
+  { const _rs=radSeverity(m), _pr=(m.crew>0?powerRad(m):0); if(_rs>=0.12||_pr>0) flags+=`<div class="flag ${_rs>=0.5||_pr>=0.3?'warn':''}">☢ Radiation ${_rs>=0.7?'extreme':_rs>=0.4?'high':_rs>=0.12?'moderate':'low'} (env ${radEnvironment(m)} · ${m.days||0}d)${_pr>0?` + onboard ${selfPoweredCraft(m)?'NEP reactor':powerSourceDef(state.powerSource).name}`:''} — ${state.research.rad_shielding?'shielding fitted':'<b>no shielding</b>'}: equipment ×${radEquipMult(m).toFixed(2)} fragility${m.crew>0?` · crew ×${radCrewMult(m).toFixed(2)}`:''}.</div>`; }
   const testBtns=TEST_LEVELS.map((t,i)=>`<button class="btn" style="flex:1;font-size:11px;${state.testLevel===i?'border-color:var(--readout);color:var(--readout)':''}" onclick="setTestLevel(${i})">${t.name}${t.rel>0?` +${(t.rel*100)|0}%`:''}${t.cost>0?`<br><span class="dim" style="font-size:10px">${fM(t.cost)} · ${t.months} mo</span>`:''}</button>`).join('');
 
   $('readoutCard').innerHTML=`
@@ -6480,7 +6487,7 @@ function renderProfileReadout(m){
   if(recoveryActive(m)) flags+=`<div class="flag ok">♻ Reusable booster fitted — ${recoveryRefly(m)?`reflown on this routine mission: build −${Math.round((1-RECOVERY_REFLY_MULT)*100)}%, turnaround −1 mo`:`first flight proves it (+${fM(RECOVERY_HARDWARE)} hardware; refly discount once routine)`}.</div>`;
   if(ispMult()>1||thrustMult()>1) flags+=`<div class="flag ok">⚙ Propulsion R&D on the launch vehicle: +${Math.round((ispMult()-1)*100)}% Isp · +${Math.round((thrustMult()-1)*100)}% thrust.</div>`;
   if(mfgBuildMult()<1||groundLaunchMult()<1||buildTimeCut()>=0.5) flags+=`<div class="flag ok">🏭 Industrial R&D: −${Math.round((1-mfgBuildMult())*100)}% build cost · −${Math.round((1-groundLaunchMult())*100)}% launch-ops cost${buildTimeCut()>=0.5?` · −${Math.round(buildTimeCut())} mo build time`:''}.</div>`;
-  { const _rs=radSeverity(m); if(_rs>=0.12) flags+=`<div class="flag ${_rs>=0.5?'warn':''}">☢ Radiation ${_rs>=0.7?'extreme':_rs>=0.4?'high':'moderate'} (env ${radEnvironment(m)} · ${m.days||0}d) — ${state.research.rad_shielding?'shielding fitted':'<b>no shielding</b>'}: equipment ×${radEquipMult(m).toFixed(2)} fragility${m.crew>0?` · crew ×${radCrewMult(m).toFixed(2)}`:''}.</div>`; }
+  { const _rs=radSeverity(m), _pr=(m.crew>0?powerRad(m):0); if(_rs>=0.12||_pr>0) flags+=`<div class="flag ${_rs>=0.5||_pr>=0.3?'warn':''}">☢ Radiation ${_rs>=0.7?'extreme':_rs>=0.4?'high':_rs>=0.12?'moderate':'low'} (env ${radEnvironment(m)} · ${m.days||0}d)${_pr>0?` + onboard ${selfPoweredCraft(m)?'NEP reactor':powerSourceDef(state.powerSource).name}`:''} — ${state.research.rad_shielding?'shielding fitted':'<b>no shielding</b>'}: equipment ×${radEquipMult(m).toFixed(2)} fragility${m.crew>0?` · crew ×${radCrewMult(m).toFixed(2)}`:''}.</div>`; }
 
   $('readoutCard').innerHTML=`
     <div class="mission-tag">Mission profile — every leg must pass</div>

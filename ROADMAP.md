@@ -1001,6 +1001,18 @@ Science), not a single line — that's the "decades-long effort" feel.
    (solar-outer-blocked / RTG / reactor-gated / NEP self-powered / inner-solar-OK), canLaunch
    enforcement + reactor clearing it, `setPowerSource` research gate, save default/version,
    render across combos; all 15 prior suites green.
+- ✅ **Reactor → radiation link** — *Built 2026-06-21.* Closes the loop between the
+   power and radiation systems: an onboard reactor (the Reactor power source, or a
+   self-powered NEP) — and to a lesser degree RTGs — irradiate the **crew**. `powerRad(m)`
+   (solar 0, RTG 0.15, reactor/NEP 0.4) feeds a duration-weighted `reactorCrewLoad` into
+   `radCrewMult` and an extra term into the `applyCrewDose` career dose, both **mitigated by
+   shielding/countermeasures**. Zero when the source is solar, so the prior radiation model
+   is exactly preserved (rad suite still 26/26). Equipment fragility is deliberately
+   untouched (crew-proximity effect). Surfaced in the bench radiation flag, which now shows
+   even on shorter missions when a reactor is aboard ("+ onboard Fission Reactor / NEP
+   reactor"). Validated headlessly (13 checks): powerRad by source incl. NEP, crew fragility
+   reactor>RTG>solar, shielding mitigation, solar-unchanged-formula proof, equipment
+   untouched, career dose adds + shielding reduces, render; all 16 prior suites green.
 
 ### Cross-reference map (this epic ↔ existing items)
 
