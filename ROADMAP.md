@@ -971,6 +971,19 @@ Science), not a single line — that's the "decades-long effort" feel.
    `effectiveReliability`, subsystem report on a high-rad crewed mission, career-dose
    accumulation + per-mission cap + shielding reduction + force-retirement + no-op guards,
    render smoke; all 14 prior suites green.
+- ✅ **Power — Phase 1 (solar-electric needs sunlight)** — *Built 2026-06-21.* First
+   step of the power model, tying the electric + nuclear tracks. The ion/Hall drives are
+   flagged `solarElectric`; a `SOLAR_FLUX` map (∼1/r²: Earth 1 → Mars 0.43 → Belt 0.11 →
+   Jupiter 0.037) + `solarElectricViable`/`solarElectricBlocked` gate them. `canLaunch`
+   now blocks a solar-electric transfer drive on outer-system missions (below 20% of
+   Earth's sunlight — Belt/Jupiter) with a clear reason, so the outer system **forces a
+   nuclear-electric (NEP) reactor drive** (which works anywhere); inner-system electric
+   (to Mars) still flies. Surfaced proactively as a ☀ viability note in the transfer card.
+   Validated headlessly (17 checks): engine flags, flux falloff, viability by destination,
+   blocked only when profile+transfer+solar-electric+outer, `canLaunch` enforcement +
+   clear reason, NEP/chemical/Mars all unblocked, render; all 15 prior suites green.
+   *Phase 2 (later):* a full supply-vs-demand power budget — solar/RTG/reactor mass + a
+   must-balance gauge + demand from ECLSS/comms; reactors emit radiation (links the rad model).
 
 ### Cross-reference map (this epic ↔ existing items)
 

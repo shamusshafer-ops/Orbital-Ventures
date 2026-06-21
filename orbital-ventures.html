@@ -613,8 +613,8 @@ const ENGINES = {
   // M7 outer-system nuclear engines + solar-electric — in-space (transfer stage) only, blocked from launch-vehicle stages
   ntr_nerva:   {id:'ntr_nerva',   name:'NERVA (NRX) NTR', prop:'LH₂ (nuclear-thermal)', ispSL:0, ispVac:825, thrustSL:0, thrustVac:330, mass:6.80, cost:7.00, rel:0.95, transferOnly:true},
   nep_snap:    {id:'nep_snap',    name:'SNAP-derived NEP', prop:'Xe (nuclear-electric)', ispSL:0, ispVac:3000, thrustSL:0, thrustVac:5, mass:5.50, cost:9.00, rel:0.97, transferOnly:true, lowThrust:true},
-  hall_thruster:{id:'hall_thruster',name:'Hall-Effect Thruster', prop:'Xe (solar-electric)', ispSL:0, ispVac:1800, thrustSL:0, thrustVac:3, mass:1.20, cost:3.50, rel:0.98, transferOnly:true, lowThrust:true},
-  ion_xenon:   {id:'ion_xenon',   name:'Gridded Ion Thruster', prop:'Xe (solar-electric)', ispSL:0, ispVac:3600, thrustSL:0, thrustVac:0.5, mass:0.80, cost:4.00, rel:0.98, transferOnly:true, lowThrust:true},
+  hall_thruster:{id:'hall_thruster',name:'Hall-Effect Thruster', prop:'Xe (solar-electric)', ispSL:0, ispVac:1800, thrustSL:0, thrustVac:3, mass:1.20, cost:3.50, rel:0.98, transferOnly:true, lowThrust:true, solarElectric:true},
+  ion_xenon:   {id:'ion_xenon',   name:'Gridded Ion Thruster', prop:'Xe (solar-electric)', ispSL:0, ispVac:3600, thrustSL:0, thrustVac:0.5, mass:0.80, cost:4.00, rel:0.98, transferOnly:true, lowThrust:true, solarElectric:true},
 };
 
 const MISSIONS = [
@@ -2042,6 +2042,16 @@ function radShieldCrew(){ return (state.research.rad_shielding?0.5:1)*(state.res
 function radEquipMult(m){ return 1 + RAD_EQUIP_MAX*radSeverity(m)*radShieldEquip(); } // avionics fragility ×
 function radCrewMult(m){ return 1 + RAD_CREW_MAX*radSeverity(m)*radShieldCrew(); }   // life-support fragility ×
 function radRelPenalty(m,crewed){ const f = crewed ? (radShieldEquip()+radShieldCrew())/2 : radShieldEquip(); return 1 - RAD_REL_MAX*radSeverity(m)*f; }
+/* ---------- Power (Phase 1): solar-electric propulsion needs sunlight. Solar flux
+   falls ~1/r² from the Sun, so ion/Hall drives power up fine inner-system but can't
+   run their thrusters in the outer system — which forces a nuclear-electric (NEP)
+   reactor drive there. Ties the electric and nuclear tracks together. */
+const SOLAR_FLUX = {earth:1, moon:1, venus:1.9, mars:0.43, phobos:0.43, belt:0.11, jupiter:0.037};
+const SOLAR_ELECTRIC_MIN_FLUX = 0.2; // below this, a solar array can't power the thruster usefully
+function destSolarFlux(m){ const b=missionBody(m&&m.id); return (b!=null && SOLAR_FLUX[b]!=null) ? SOLAR_FLUX[b] : 1; }
+function solarElectricViable(m){ return destSolarFlux(m) >= SOLAR_ELECTRIC_MIN_FLUX; }
+function usesTransfer(m){ return !!(m && m.profile && m.modules && m.modules.includes('transfer')); }
+function solarElectricBlocked(m){ return usesTransfer(m) && !!(ENGINES[state.transfer.eng]||{}).solarElectric && !solarElectricViable(m); }
 function effectiveReliability(m,v,sim,crewed){
   let rel=v.reliability;
   if(sim) rel=Math.max(0.30, rel*Math.pow(0.985, sim.inSpaceLegs));
@@ -2159,6 +2169,8 @@ function canLaunch(v,m,sim){
     if(v.totalDv < m.reqDv) return {ok:false,why:'Δv shortfall — this design can\'t reach LEO to deliver propellant.'};
     if(v.twr<=1.0) return {ok:false,why:'Thrust-to-weight ≤ 1 — it will not leave the pad.'};
   }else if(m.profile){
+    if(solarElectricBlocked(m)){ const bn=(BODIES.find(x=>x.id===missionBody(m.id))||{}).name||'the destination';
+      return {ok:false,why:`Solar-electric drive can't power its thrusters this far from the Sun (~${Math.round(destSolarFlux(m)*100)}% of Earth's sunlight at ${bn}). Switch the transfer stage to a nuclear-electric (NEP) reactor drive.`}; }
     if(!sim||!sim.ok) return {ok:false,why:'A mission leg falls short — size the launch vehicle and transfer stage for every burn.'};
     if((state.depotUse||0) > state.depot) return {ok:false,why:`Depot only holds ${state.depot.toFixed(1)} t — reduce the depot draw.`};
   }else{
@@ -6064,6 +6076,9 @@ function renderTransfer(){
       <span class="ss">wet <b>${wet.toFixed(2)} t</b></span>
     </div>
     ${(ENGINES[state.transfer.eng]||{}).lowThrust?`<div class="flag"><span style="color:var(--readout)">⚠ Low-thrust drive</span><span class="dim">The NEP's thrust is measured in newtons — burns take weeks to months. The Δv budget here is impulsive; treat real transit/burn times as far longer. Best for uncrewed cargo or where mass ratio, not time, is the constraint.</span></div>`:''}
+    ${(ENGINES[state.transfer.eng]||{}).solarElectric?(solarElectricViable(m)
+      ? `<div class="flag"><span style="color:var(--ok)">☀ Solar-electric — powered here</span><span class="dim">~${Math.round(destSolarFlux(m)*100)}% of Earth's sunlight at this destination; the arrays can drive the thrusters.</span></div>`
+      : `<div class="flag warn"><span style="color:var(--warn)">☀ Too far from the Sun</span><span class="dim">Only ~${Math.round(destSolarFlux(m)*100)}% sunlight at this destination — a solar array can't power this drive. Use a nuclear-electric (NEP) reactor drive for the outer system.</span></div>`):''}
     ${renderDepotDraw()}
     ${renderAssemblyToggle()}`;
 }
