@@ -128,8 +128,9 @@ companion to `orbital-ventures-design.md` (original full design doc) and
 > **Roadmap/code sync note (2026-06-17):** an audit found M5, M7, and the
 > passive-income section below had been written up here ahead of implementation
 > (not present in `orbital-ventures.html`). **M7 has since been built for real**
-> (see the M7 entry below, now `[x]`). **M5 (reusability) and passive-income
-> remain spec-only / not in code** — no `propulsive_landing` or
+> (see the M7 entry below, now `[x]`). **M5 (reusability) has since been built too**
+> (2026-06-21 — `propulsive_landing` + recovery economics; see the M5 entry, now
+> `[x]`). **Passive-income remains spec-only / not in code** — no
 > `PASSIVE_CONTRACT_DEFS`. M6 (personnel) *is* in code.
 
 ## Completed milestones (continued)
@@ -184,16 +185,26 @@ companion to `orbital-ventures-design.md` (original full design doc) and
 > grow). Programs/ambition (above) is item #1 shipped; the full brief is tracked
 > item-by-item in **§ Design Brief — Forward Arc** near the end of this file.
 
-- [ ] **M5 — Reusability & rapid cadence** *(spec only — NOT yet in code)*: `propulsive_landing` research
-      (req: kerosene + heavy_booster, $5M, 6 mo) unlocks a Recovery toggle on
-      Stage 1. With recovery ON: +$1.2M hardware cost (legs, grid fins,
-      propellant reserve) on every flight; on routine (already-completed)
-      missions the booster is reflown — build cost drops to 45% of base and
-      `buildMonths` sheds 1 month (min 1). First flight of a new mission with
-      recovery proves the hardware but earns no discount yet. Toggle, economics,
-      and flags surface in Stage 1 bench card and both readout views. Validated
-      headlessly: first-flight cost correct (+$1.2M), refly cost 45% of
-      base+hardware, turnaround −1 month on routine reflights.
+- [x] **M5 — Reusability & rapid cadence** *(Built 2026-06-21.)* New
+      `propulsive_landing` research (Propulsion track, req: `kerosene` +
+      `heavy_booster`, $5M, 6 mo) unlocks a **Recovery toggle on Stage 1**
+      (`state.recovery`, persisted; `SAVE_VERSION`→6 with forward-compat default).
+      Economics live in `computeVehicle`/`buildMonths` via three guards
+      (`recoveryAvailable`/`recoveryActive`/`recoveryRefly`) and two constants
+      (`RECOVERY_HARDWARE` $1.2M, `RECOVERY_REFLY_MULT` 0.45): with recovery ON,
+      +$1.2M hardware (legs, grid fins, reserved propellant) on **every** flight;
+      on routine (already-completed) missions the booster is **reflown** — build
+      cost drops to 45% of base *and* `buildMonths` sheds 1 month (floored at 1).
+      The first flight of a new mission proves the hardware but earns no discount
+      yet (`state.completed[id]` gates the refly). Surfaced as a Recovery toggle +
+      live economics line on the **Stage 1 bench card** (`recoveryStageHTML`) and a
+      ♻ status flag in **both readout views** (simple + profile). Validated
+      headlessly (31 checks): research node fields, gating without research,
+      OFF==base, ON-new == base+hardware (months unchanged), ON-routine ==
+      base×0.45+hardware (months −1), the min-1 floor, profile-mission parity
+      (Lunar Landing), save defaults + `SAVE_VERSION`, toggle gating, and a
+      bench/readout render smoke; plus a 24-combo full-render smoke and an R&D-tab
+      render confirming the node lands in the propulsion swimlane.
 - [x] **M6 — Personnel depth**: `ENGINEERS` (12 named, era/rep-gated, 4
       specialties) and `ASTRONAUTS` (8 named, era-gated) pools. `state.staff[]`
       tracks hired personnel with per-person morale (0–100), attrition
@@ -543,9 +554,10 @@ silhouette)~~ ✓ → ~~12 (architecture choices)~~ ✓ → ~~5 (active rivals)~
 ~~9 (personnel traits)~~ ✓ → ~~14 (science)~~ ✓ → ~~3 (vehicle families)~~ ✓ →
 ~~18 (Command Center, first slice)~~ ✓ → ~~6 (multi-path tech, first slice)~~ ✓ →
 ~~8 (politics, first slice)~~ ✓ → ~~7 (manufacturing, first slice)~~ ✓ →
-~~13 (map as planning tool)~~ ✓ → **next: later slices / remaining arc (#5 M5
-reusability, deeper #6/#7/#8, map cost/ROI overlays)**.
-Items 1/2/3/4/5/9/10/11/12/13/14/15/16/17 shipped + 18, 6, 8 & 7 first slices; tech tree
+~~13 (map as planning tool)~~ ✓ → ~~M5 (reusability & rapid cadence)~~ ✓ →
+**next: later slices / remaining arc (passive-income contracts, deeper #6/#7/#8,
+map cost/ROI overlays)**.
+Items 1/2/3/4/5/9/10/11/12/13/14/15/16/17 + M5 shipped + 18, 6, 8 & 7 first slices; tech tree
 now a real swimlane graph with divergent routes. (#6 later slices:
 TRL, partnerships, reusable route. #7 later slices: supply chains, scheduling,
 QA→reliability, inventory, refurbishment. #8 later slices: budget shocks,

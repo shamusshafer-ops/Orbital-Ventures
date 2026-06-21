@@ -849,6 +849,7 @@ const RESEARCH = [
   {id:'vibration_testing', track:'structures', name:'Vibration &amp; Acoustic Qualification', cost:2.5, months:3, req:['flight_telemetry'], effect:{reliability:0.03}, desc:'Shake tables and acoustic chambers qualify the vehicle against launch loads before it ever flies. +3% reliability.<span class="hist">↳ The brutal acoustic and vibration environment of liftoff has killed more hardware than vacuum ever has — qualification testing tames it.</span>'},
   {id:'redundant_avionics', track:'structures', name:'Redundant Flight Avionics', cost:3.5, months:4, req:['qa_program'], effect:{reliability:0.05}, desc:'Triple-redundant flight computers that vote out a failed unit mid-ascent, so a single fault no longer loses the vehicle. +5% reliability.<span class="hist">↳ The Shuttle flew four identical computers voting in lockstep plus a fifth on independent software — fault tolerance as doctrine.</span>'},
   {id:'heavy_booster', track:'propulsion',name:'Heavy Booster',                 cost:4.0, months:5, req:['sustainer'],   effect:{engine:'kerolox_mk3'}, desc:'Unlocks the Rocketdyne H-1 — the lift needed to put crew and life support into orbit.<span class="hist">↳ The high-thrust machines that first lifted people: Atlas for Mercury, the clustered R-7 for Vostok.</span>'},
+  {id:'propulsive_landing', track:'propulsion', name:'Propulsive Landing & Recovery', cost:5.0, months:6, req:['kerosene','heavy_booster'], effect:{unlock:'recovery'}, desc:'Landing legs, grid fins, and a reserved propellant margin let the first stage fly itself back instead of being thrown away. Fit recovery to a booster (+hardware cost every flight); once a mission is routine, the booster is reflown — far cheaper to refurbish than rebuild, and faster to turn around.<span class="hist">↳ Reusing the most expensive part of the rocket — the booster — is what finally bent the launch-cost curve downward.</span>'},
   {id:'crew_capsule', track:'crew', name:'Pressurized Crew Capsule',      cost:3.0, months:4, req:[],              effect:{unlock:'crew'},        desc:'Pressure vessel, heat shield, parachutes. Enables crewed missions.<span class="hist">↳ Mercury and Vostok — blunt-body capsules with ablative heat shields and parachute recovery.</span>'},
   {id:'launch_escape', track:'crew',name:'Launch Escape System',          cost:2.5, months:3, req:['crew_capsule'],effect:{unlock:'les'},         desc:'Abort tower (+0.3 t). Crew survive a launch failure instead of being lost with the vehicle.<span class="hist">↳ In 1983 a Soyuz escape tower pulled its two crew clear of a rocket exploding on the pad.</span>'},
   {id:'eclss_partial', track:'crew',name:'CO₂ &amp; Water Recovery',          cost:3.0, months:4, req:['crew_capsule'],effect:{unlock:'eclss'},       desc:'Scrub CO₂, recycle water: 60% consumable recovery. Pays off on multi-day missions.<span class="hist">↳ Gemini and Apollo scrubbed CO₂ with lithium-hydroxide canisters and carried their water.</span>'},
@@ -1038,6 +1039,7 @@ function newGame(difficulty){
     architectures:{}, science:0,
     vehicles:[], activeVehicle:null, // #3: named vehicle lineages with heritage
     assembleOrbit:false, // #6: orbital-assembly route toggle (per-launch, resets after flight)
+    recovery:false, // M5: reusability — first-stage recovery fitted to the current design (persists)
   };
   log('info','Company founded. The pad is yours — go make some noise.');
 }
@@ -1655,6 +1657,10 @@ function computeVehicle(){
   buildCost*=(1-facilityBonus(missionBody(m&&m.id)).buildDiscount); // M17: home-field build discount from a base at the destination
   buildCost*=familyBuildMult(activeFamily()); // #3: a proven lineage gets cheaper to build (manufacturing knowledge)
   buildCost*=foundryCostMult(); // #7: engine-foundry economies of scale cut marginal build cost
+  if(recoveryActive(m)){ // M5: reusability — recovery hardware every flight; reflown booster on routine missions
+    if(recoveryRefly(m)) buildCost*=RECOVERY_REFLY_MULT; // proven, routine mission: refurbish a recovered booster (45% of new)
+    buildCost+=RECOVERY_HARDWARE; // legs, grid fins, reserved propellant — fitted on every recovery flight
+  }
   const reliability=Math.min(diff().relCap,Math.max(diff().relFloor,(curRel()+testBonus)*enginePenalty*(crewed?0.92:1)+productionRelMod(m))); // #7: QA bonus − bay-overstretch penalty
   const launchCost=(0.12+0.01*totalProp)*padLaunchMult() + assemblyFlights(m)*ASSEMBLY_LAUNCH_COST; // #7: extra pads amortize launch ops; #6: extra dedicated assembly flights
   return {payload, sm:perf.sm, stageDv:perf.stageDv, totalDv:perf.totalDv, liftoff:perf.liftoff, twr:perf.twr,
@@ -1669,9 +1675,17 @@ function computeVehicle(){
 // time. This is on top of the fixed 1-month launch campaign and any test
 // campaign months from TEST_LEVELS.
 const BASE_BUILD_MONTHS=2;
+// M5: reusability & rapid cadence — first-stage recovery economics
+const RECOVERY_HARDWARE=1.2;   // $M of legs/grid-fins/reserve propellant fitted on every recovery flight
+const RECOVERY_REFLY_MULT=0.45;// a reflown (routine-mission) booster costs 45% of building new
+function recoveryAvailable(){ return !!state.research.propulsive_landing; }
+function recoveryActive(m){ return recoveryAvailable() && !!state.recovery; } // recovery fitted to this design
+function recoveryRefly(m){ return recoveryActive(m) && !!(m && state.completed[m.id]); } // booster already proven on a now-routine mission
 function buildMonths(m){
   const extra=vehicleUnits(m)-1; // stages beyond the first + profile modules + assembly flights
-  return Math.max(1, BASE_BUILD_MONTHS+extra+bayBuildDelta(m)); // #7: assembly-bay capacity speeds or stretches the build
+  let mo=BASE_BUILD_MONTHS+extra+bayBuildDelta(m); // #7: assembly-bay capacity speeds or stretches the build
+  if(recoveryRefly(m)) mo-=1; // M5: reflying a recovered booster shortens turnaround (floored below)
+  return Math.max(1, mo);
 }
 
 /* ---------- M16: subsystem-based reliability & story failures ----------
@@ -1968,6 +1982,7 @@ function setTransferEng(v){state.transfer.eng=v;render();}
 function setTransferProp(v){state.transfer.prop=Math.max(0.1,Math.min(400,parseFloat(v)||0.1));render();}
 function setDepotUse(v){state.depotUse=Math.max(0,Math.min(state.depot,parseFloat(v)||0));render();}
 function setAssembleOrbit(on){ state.assembleOrbit=!!on; render(); } // #6: orbital-assembly route toggle
+function toggleRecovery(){ if(!recoveryAvailable()) return; state.recovery=!state.recovery; render(); } // M5: fit/remove first-stage recovery
 function setDescentEng(v){state.descent.eng=v;render();}
 function setDescentProp(v){state.descent.prop=Math.max(0.1,Math.min(60,parseFloat(v)||0.1));render();}
 function setAscentEng(v){state.ascent.eng=v;render();}
@@ -2228,7 +2243,7 @@ function hideModal(){$('modal').classList.add('hidden');}
 
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=5; // v5: #18 Home dashboard — state.lastMonth ops ledger
+const SAVE_VERSION=6; // v6: M5 reusability — state.recovery (first-stage recovery toggle)
 function saveGame(){
   try{
     const payload={v:SAVE_VERSION, ts:Date.now(), state:JSON.parse(JSON.stringify(state))};
@@ -2264,7 +2279,7 @@ function loadGame(){
       facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
       architectures:{}, science:0, persEventCooldown:5,
       staff:[], assignedAstronaut:null,
-      vehicles:[], activeVehicle:null, assembleOrbit:false
+      vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -2312,7 +2327,7 @@ function autoLoad(){
       facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
       architectures:{}, science:0, persEventCooldown:5,
       staff:[], assignedAstronaut:null,
-      vehicles:[], activeVehicle:null, assembleOrbit:false
+      vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -5546,8 +5561,25 @@ function renderSettings(){
     </div>`;
 }
 
+// M5: first-stage recovery toggle + economics, shown on the booster once researched
+function recoveryStageHTML(m){
+  if(!recoveryAvailable()) return '';
+  const on=!!state.recovery;
+  const routine=!!(m && state.completed[m.id]);
+  let econ;
+  if(!on) econ=`<span class="dim">Throwaway booster. Fit recovery to refly it on routine missions.</span>`;
+  else if(routine) econ=`<span style="color:var(--ok)">Reflown booster: build −${Math.round((1-RECOVERY_REFLY_MULT)*100)}% &amp; turnaround −1 mo</span> · <span class="dim">+${fM(RECOVERY_HARDWARE)} recovery hardware/flight</span>`;
+  else econ=`<span style="color:var(--warn)">+${fM(RECOVERY_HARDWARE)} hardware/flight</span> · <span class="dim">first flight proves it — refly discount applies once this mission is routine</span>`;
+  return `<div class="flag" style="margin-top:8px;${on?'border-color:#2f6b4e':''}">
+      <span style="display:flex;align-items:center;gap:8px">
+        <button class="btn" style="font-size:11px;padding:4px 10px;${on?'border-color:var(--ok);color:var(--ok)':''}" onclick="toggleRecovery()">${on?'✓ Recovery ON':'Recovery OFF'}</button>
+        <b style="color:${on?'var(--ok)':'var(--ink)'}">Reusable first stage</b>
+      </span>
+      <span style="font-size:11px;margin-top:4px">${econ}</span>
+    </div>`;
+}
 function renderStages(){
-  const box=$('stages'); box.innerHTML='';
+  const box=$('stages'); box.innerHTML=''; const curM=curMission();
   state.stages.forEach((st,i)=>{
     const sm=stageMasses(st);
     const opts=Object.values(ENGINES).filter(e=>state.unlocked[e.id] && !e.transferOnly)
@@ -5570,7 +5602,8 @@ function renderStages(){
         <span class="ss">prop <b>${st.prop.toFixed(1)} t</b></span>
         <span class="ss">wet <b>${sm.wet.toFixed(2)} t</b></span>
         <span class="ss">Δv <b class="num">${fI(computeVehicle().stageDv[i])} m/s</b></span>
-      </div>`;
+      </div>
+      ${i===0?recoveryStageHTML(curM):''}`;
     box.appendChild(div);
   });
   $('addStage').disabled = state.stages.length>=3;
@@ -5912,6 +5945,7 @@ function renderReadout(){
   if(meets && v.twr>1.2) flags+=`<div class="flag ok">✓ Cleared to fly. Reliability ${(v.reliability*100|0)}%.</div>`;
   if(bayBuildDelta(m)>0) flags+=`<div class="flag warn">△ Over assembly-bay capacity (${vehicleUnits(m)}/${bayCapacity()} units) — build runs +${bayBuildDelta(m)} mo and −${(overstretchRelPenalty(m)*100).toFixed(1)}% reliability. Expand Assembly Bays in Orbital Ops.</div>`;
   if(v.crewed && v.twr>1.2 && meets && !state.research.launch_escape) flags+=`<div class="flag warn">△ No escape system — a failure at ${(100-(v.reliability*100|0))}% odds loses the crew.</div>`;
+  if(recoveryActive(m)) flags+=`<div class="flag ok">♻ Reusable booster fitted — ${recoveryRefly(m)?`reflown on this routine mission: build −${Math.round((1-RECOVERY_REFLY_MULT)*100)}%, turnaround −1 mo`:`first flight proves it (+${fM(RECOVERY_HARDWARE)} hardware; refly discount once routine)`}.</div>`;
   const testBtns=TEST_LEVELS.map((t,i)=>`<button class="btn" style="flex:1;font-size:11px;${state.testLevel===i?'border-color:var(--readout);color:var(--readout)':''}" onclick="setTestLevel(${i})">${t.name}${t.rel>0?` +${(t.rel*100)|0}%`:''}${t.cost>0?`<br><span class="dim" style="font-size:10px">${fM(t.cost)} · ${t.months} mo</span>`:''}</button>`).join('');
 
   $('readoutCard').innerHTML=`
@@ -5973,6 +6007,7 @@ function renderProfileReadout(m){
   else flags+=`<div class="flag ok">✓ Every leg passes. Mission reliability ${(rel*100|0)}%.</div>`;
   if(bayBuildDelta(m)>0) flags+=`<div class="flag warn">△ Over assembly-bay capacity (${vehicleUnits(m)}/${bayCapacity()} units) — build runs +${bayBuildDelta(m)} mo and −${(overstretchRelPenalty(m)*100).toFixed(1)}% reliability. Expand Assembly Bays in Orbital Ops.</div>`;
   if(!state.research.launch_escape) flags+=`<div class="flag warn">△ No escape system — a failure at ${(100-(rel*100|0))}% odds loses the crew.</div>`;
+  if(recoveryActive(m)) flags+=`<div class="flag ok">♻ Reusable booster fitted — ${recoveryRefly(m)?`reflown on this routine mission: build −${Math.round((1-RECOVERY_REFLY_MULT)*100)}%, turnaround −1 mo`:`first flight proves it (+${fM(RECOVERY_HARDWARE)} hardware; refly discount once routine)`}.</div>`;
 
   $('readoutCard').innerHTML=`
     <div class="mission-tag">Mission profile — every leg must pass</div>
