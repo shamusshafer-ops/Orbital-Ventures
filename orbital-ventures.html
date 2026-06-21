@@ -2502,6 +2502,7 @@ function launch(){
   const rnd=()=>Math.random();
   const spec={ title:m.name, crewed, success, failPhase,
     stages: state.stages.map(s=>({prop:s.prop,count:s.count})),
+    boosters: boostersFitted()?{count:state.boosters.count,prop:state.boosters.prop}:null,
     transferProp: (m.profile&&m.modules.includes('transfer'))?state.transfer.prop:0,
     isCislunar: !!m.profile, isOrbital: (!m.profile && m.reqDv>=9000),
     reqDv: m.reqDv||9400,
@@ -3942,13 +3943,26 @@ function buildVehicleShape(spec){
   }
   const nose = spec.crewed ? 'capsule' : 'fairing';
   const totalH=segs.reduce((a,s)=>a+s.h,0);
-  return {segs, nose, totalH, maxW:Math.max.apply(null,segs.map(s=>s.w))};
+  let maxW=Math.max.apply(null,segs.map(s=>s.w));
+  // strap-on boosters flank the first stage — shorter + narrower than the core
+  let boosters=null;
+  if(spec.boosters && spec.boosters.count>0 && segs.length){
+    const bp=spec.boosters.prop||10;
+    boosters={ count:Math.min(spec.boosters.count,8),
+      w:clampA(4+2.2*Math.cbrt(bp),4,segs[0].w*0.8),
+      h:clampA(16+4.4*Math.sqrt(bp),16,segs[0].h*0.95) };
+    maxW += 2*(boosters.w+1.5); // leave room so the fit-to-frame scale doesn't clip them
+    segs.boosters=boosters; // carried on the FULL seg array → drawVehicle renders them (sliced arrays won't)
+  }
+  return {segs, nose, totalH, maxW, boosters};
 }
 function drawVehicle(ctx, segs, nose, scale, flame, altFrac, hideBells){
   if(!segs.length) return;
   altFrac=altFrac||0;
   const base=segs[0], bw=base.w*scale, ne=base.engines;
   const plumeExpand = 1 + altFrac * 2.5;
+  // strap-on boosters (only the full shape's seg array carries .boosters — sliced/spent draws won't)
+  if(segs.boosters && segs.boosters.count>0) drawStrapOns(ctx, base, segs.boosters, scale, flame, altFrac, hideBells);
   if(!hideBells) for(let e=0;e<ne;e++){
     const ex = ne===1?0:(-bw/2 + bw*(e+0.5)/ne), nz=bw/(ne*2.2);
     ctx.beginPath(); ctx.moveTo(ex-nz*0.4,-2*scale); ctx.lineTo(ex-nz*0.75,5*scale);
@@ -4129,6 +4143,66 @@ function drawVehicle(ctx, segs, nose, scale, flame, altFrac, hideBells){
     ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(0,y-28*scale); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(-tw*0.35,y-6*scale); ctx.lineTo(tw*0.35,y-6*scale); ctx.stroke();
   }
+}
+// One strap-on booster (body + ogive nose + bell + optional flame), centered at the
+// local origin with its base at y=0 (so it shares drawVehicle's "engines downward" frame).
+function drawOneBooster(ctx, boostW, boostH, scale, flame, altFrac, hideBells, dim){
+  dim=dim||1; altFrac=altFrac||0;
+  const C=(r,g,b)=>`rgb(${(r*dim)|0},${(g*dim)|0},${(b*dim)|0})`;
+  const grad=ctx.createLinearGradient(-boostW/2,0,boostW/2,0);
+  grad.addColorStop(0,C(149,160,168)); grad.addColorStop(0.5,C(208,216,222)); grad.addColorStop(1,C(149,160,168));
+  const rr=Math.min(boostW*0.3,2.2);
+  ctx.beginPath();
+  ctx.moveTo(-boostW/2+rr,-boostH); ctx.lineTo(boostW/2-rr,-boostH);
+  ctx.quadraticCurveTo(boostW/2,-boostH,boostW/2,-boostH+rr); ctx.lineTo(boostW/2,-rr);
+  ctx.quadraticCurveTo(boostW/2,0,boostW/2-rr,0); ctx.lineTo(-boostW/2+rr,0);
+  ctx.quadraticCurveTo(-boostW/2,0,-boostW/2,-rr); ctx.lineTo(-boostW/2,-boostH+rr);
+  ctx.quadraticCurveTo(-boostW/2,-boostH,-boostW/2+rr,-boostH); ctx.closePath();
+  ctx.fillStyle=grad; ctx.fill();
+  ctx.strokeStyle='rgba(60,72,82,0.7)'; ctx.lineWidth=0.6; ctx.stroke();
+  // ogive nose cone
+  ctx.beginPath(); ctx.moveTo(-boostW/2,-boostH);
+  ctx.quadraticCurveTo(0,-boostH-boostW*1.15,boostW/2,-boostH); ctx.closePath();
+  ctx.fillStyle=C(190,198,205); ctx.fill();
+  ctx.strokeStyle='rgba(60,72,82,0.5)'; ctx.lineWidth=0.5; ctx.stroke();
+  // engine bell
+  if(!hideBells){
+    const nz=boostW/2.4;
+    ctx.fillStyle=C(58,68,75);
+    ctx.beginPath(); ctx.moveTo(-nz*0.5,-1*scale); ctx.lineTo(-nz*0.78,4*scale); ctx.lineTo(nz*0.78,4*scale); ctx.lineTo(nz*0.5,-1*scale); ctx.closePath(); ctx.fill();
+  }
+  if(flame>0){
+    const fl=flame*(0.7+Math.random()*0.4)*(1+altFrac*2.5)*0.9, nzE=boostW*0.42;
+    const g=ctx.createLinearGradient(0,3*scale,0,fl);
+    g.addColorStop(0,'rgba(210,230,255,0.9)'); g.addColorStop(0.28,'rgba(255,220,130,0.8)');
+    g.addColorStop(0.65,'rgba(255,120,40,0.4)'); g.addColorStop(1,'rgba(200,40,10,0)');
+    ctx.fillStyle=g;
+    ctx.beginPath(); ctx.moveTo(-nzE*0.8,3*scale); ctx.lineTo(nzE*0.8,3*scale);
+    ctx.quadraticCurveTo(nzE*0.2,fl*0.7,0,fl); ctx.quadraticCurveTo(-nzE*0.2,fl*0.7,-nzE*0.8,3*scale); ctx.closePath(); ctx.fill();
+  }
+}
+// The strap-on cluster flanking the core's first stage. Draws a primary booster on each
+// side (one only, if count===1), plus any extras peeking from behind toward the centerline.
+function drawStrapOns(ctx, base, b, scale, flame, altFrac, hideBells){
+  const n=b.count, bw=base.w*scale, boostW=b.w*scale, boostH=b.h*scale;
+  const gap=Math.max(1,boostW*0.14), outX=bw/2+boostW/2+gap;
+  const list=[];
+  if(n===1){ list.push({x:outX,behind:false}); }
+  else {
+    list.push({x:-outX,behind:false}); list.push({x:outX,behind:false});
+    let extra=n-2, side=1;
+    while(extra>0){ list.push({x:side*(outX-boostW*0.55),behind:true}); side=-side; extra--; }
+  }
+  list.sort((a,c)=>(a.behind===c.behind)?0:(a.behind?-1:1)); // behind ones first
+  list.forEach(pos=>{
+    ctx.save(); ctx.translate(pos.x,0);
+    drawOneBooster(ctx, boostW, boostH, scale, pos.behind?0:flame, altFrac, hideBells, pos.behind?0.8:1);
+    if(!pos.behind){ // attach struts toward the core
+      ctx.strokeStyle='rgba(70,82,92,0.8)'; ctx.lineWidth=0.8; const dir=pos.x>0?-1:1;
+      [0.7,0.28].forEach(fy=>{ ctx.beginPath(); ctx.moveTo(dir*boostW/2,-boostH*fy); ctx.lineTo(dir*(boostW/2+gap+1),-boostH*fy); ctx.stroke(); });
+    }
+    ctx.restore();
+  });
 }
 function drawBoom(ctx,x,y,dt){
   const p=clampA(dt/1800,0,1);
@@ -4681,6 +4755,33 @@ function drawAscent(t,canFail){
       ctx.restore();
       ctx.globalAlpha=1;
       ctx.restore();
+    }
+  }
+  // strap-on boosters: lit alongside the core through the boost phase, then jettisoned
+  if(shape.boosters && shape.boosters.count>0 && !exploding){
+    const BOOST_SEP=0.14, base0=shape.segs[0];
+    if(p<=BOOST_SEP){
+      ctx.save(); ctx.translate(x,baseY); ctx.rotate(pitch);
+      const bflame=A.fxNative?0:(p>0.05?(9+Math.random()*7)*throttle:0);
+      drawStrapOns(ctx, base0, shape.boosters, scale, bflame, altFrac, A.fxNative&&p>0.04);
+      ctx.restore();
+    } else {
+      const bdt=(p-BOOST_SEP)*A.ascentDur;
+      if(bdt<1500){
+        const bp2=bdt/1500, bw=base0.w*scale, boostW=shape.boosters.w*scale, boostH=shape.boosters.h*scale;
+        const outX=bw/2+boostW/2+Math.max(1,boostW*0.14);
+        if(!A.sfxBoostSep){ A.sfxBoostSep=true; sfxSep(); }
+        [-1,1].forEach(side=>{
+          ctx.save();
+          ctx.translate(x+side*outX+side*bdt*0.05, baseY+bdt*0.045+bp2*bp2*36);
+          ctx.rotate(pitch+side*bp2*0.7);
+          ctx.globalAlpha=clampA(1-bp2,0,1);
+          drawOneBooster(ctx, boostW, boostH, scale, 0, altFrac, true, 0.95);
+          ctx.globalAlpha=1; ctx.restore();
+        });
+        if(bdt<220){ for(let si=0;si<6;si++){ const sa=Math.random()*6.28, sd=6+Math.random()*14;
+          ctx.fillStyle=`rgba(255,200,100,${0.6-bdt/400})`; ctx.fillRect(x+Math.cos(sa)*sd, baseY+Math.sin(sa)*sd, 2,2); } }
+      }
     }
   }
   if(!exploding){
@@ -5542,7 +5643,7 @@ function drawPad(ctx,r,groundY,t){
   const bl=(Math.sin(t*4)>0)?1:0.2; ctx.fillStyle=`rgba(255,60,40,${0.4+0.6*bl})`; ctx.beginPath(); ctx.arc(gx+gw,gTop,3,0,7); ctx.fill();
   if(!ccPhaserSmoke){ drawSmoke(ctx,cx-5,groundY-6,t,1,1.1); drawSmoke(ctx,cx+7,groundY-6,t,2,0.9); } // #engine: Phaser particle emitter replaces baked smoke when active
   // the player's current vehicle, drawn on the pad
-  let spec=null; try{ const m=curMission(); spec={ stages: state.stages.map(s=>({prop:s.prop,count:s.count})), transferProp:(m&&m.profile&&m.modules&&m.modules.includes('transfer'))?state.transfer.prop:0, crewed:!!(m&&m.crew>0) }; }catch(e){}
+  let spec=null; try{ const m=curMission(); spec={ stages: state.stages.map(s=>({prop:s.prop,count:s.count})), boosters: boostersFitted()?{count:state.boosters.count,prop:state.boosters.prop}:null, transferProp:(m&&m.profile&&m.modules&&m.modules.includes('transfer'))?state.transfer.prop:0, crewed:!!(m&&m.crew>0) }; }catch(e){}
   if(spec){ let shape=null; try{ shape=buildVehicleShape(spec); }catch(e){}
     if(shape&&shape.segs.length){ const scale=Math.min((r.h*0.82)/(shape.totalH+16),(r.w*0.42)/(shape.maxW*1.9));
       ctx.save(); ctx.translate(cx-r.w*0.14, groundY-6); drawVehicle(ctx, shape.segs, shape.nose, scale, 0, 0); ctx.restore(); } }
@@ -5679,7 +5780,7 @@ function drawIsoPad(ctx,sx,sy,b,t,rival){
   const bl=(Math.sin(t*4)>0)?1:0.2; ctx.fillStyle=`rgba(255,60,40,${0.4+0.6*bl})`; ctx.beginPath(); ctx.arc(gx+6,gTop,3,0,7); ctx.fill();
   if(rival){ ctx.fillStyle='#c2b8b2'; ctx.fillRect(sx-1.5,sy-b.h*0.7,3,b.h*0.7); return; }
   // the player's current vehicle, standing upright on the pad
-  let spec=null; try{ const m=curMission(); spec={ stages: state.stages.map(s=>({prop:s.prop,count:s.count})), transferProp:(m&&m.profile&&m.modules&&m.modules.includes('transfer'))?state.transfer.prop:0, crewed:!!(m&&m.crew>0) }; }catch(e){}
+  let spec=null; try{ const m=curMission(); spec={ stages: state.stages.map(s=>({prop:s.prop,count:s.count})), boosters: boostersFitted()?{count:state.boosters.count,prop:state.boosters.prop}:null, transferProp:(m&&m.profile&&m.modules&&m.modules.includes('transfer'))?state.transfer.prop:0, crewed:!!(m&&m.crew>0) }; }catch(e){}
   if(spec){ let shape=null; try{ shape=buildVehicleShape(spec); }catch(e){}
     if(shape&&shape.segs.length){ const scale=Math.min((b.h*0.92)/(shape.totalH+16),(ISO_TW*0.5)/(shape.maxW*1.9));
       ctx.save(); ctx.translate(sx-ex*0.35, sy+2); drawVehicle(ctx, shape.segs, shape.nose, scale, 0, 0); ctx.restore(); } }
@@ -6504,6 +6605,7 @@ function renderArchitecture(){
 function currentVehicleSpec(){
   const m=curMission();
   return { stages: state.stages.map(s=>({prop:s.prop, count:s.count})),
+    boosters: boostersFitted()?{count:state.boosters.count, prop:state.boosters.prop}:null,
     transferProp: (m&&m.profile&&m.modules.includes('transfer'))?state.transfer.prop:0,
     crewed: !!(m&&m.crew>0) };
 }

@@ -1153,9 +1153,9 @@ equation:
    the pad once boosted, `vehicleUnits`/bays, the profile-mission LV leg seeing boosters,
    save version + legacy no-crash, setter clamps [0,8], and a bench/both-readouts render
    smoke; all prior suites green (node-count assertions in slice6d/propexp bumped for the
-   +1 node). *Deferred to later slices:* the solid engine class (slice 1) and drawing the
-   strap-ons on the silhouette/pad/flight + a separation event (slice 4) — the bench
-   currently surfaces boosters numerically + via the label, not yet on the silhouette.
+   +1 node). *Deferred to later slices:* the solid engine class (slice 1); slice-4 visuals
+   (strap-ons drawn on the silhouette/pad/flight + a separation event) have **since been
+   built** — see slice 4 below.
 3. **Research gating + economy + reliability (#7 / #16).** Propulsion-track nodes:
    `solid_propellant` (Solid Propellant Casting — unlocks the class) → `segmented_srb`
    (Segmented Solid Motors — larger grains/thrust) → `strapon_integration` ✅ (Strap-on
@@ -1168,12 +1168,31 @@ equation:
    preserved: nodes are time+capital sinks; numbers tuned so boosters are a *cost/thrust*
    trade, not free performance. Validate: gating, units/bays/build math, subsystem
    product still equals overall R, reliability caps still bound everything.
-4. **Visuals (#10 silhouette + Phaser `FlightScene` + Cape pad).** Draw the strap-on
-   cluster around the core on the design-bench silhouette, on the launch pad in the Cape
-   scene, and in flight — with a **booster-separation** event (jettison + tumble, the
-   liquid/solid plume difference) at boost-phase burnout, mirroring the existing stage-sep
-   animation. The payoff slice: "my rocket has boosters and they fall away on ascent."
-   Validate: silhouette/flight render smokes with boosters present across configs.
+4. ✅ **Visuals — strap-ons on the silhouette, pad & in flight** *(Built 2026-06-21.)*
+   The boosters are now drawn everywhere a vehicle is. `buildVehicleShape` computes a
+   booster geometry (shorter + narrower than the core stage 1, scaled from per-booster
+   propellant) and **attaches it to the full seg array** (`shape.segs.boosters`) — the
+   key trick that makes the rest fall out cleanly: `drawVehicle` renders the cluster when
+   it sees `segs.boosters`, but the flight animation's **sliced** `remaining`/spent arrays
+   don't carry the property, so they never accidentally draw boosters. Two new shared
+   painters: `drawOneBooster` (body + ogive nose + bell + optional flame, in
+   drawVehicle's "engines-downward" frame) and `drawStrapOns` (a primary booster each
+   side — one only if count===1 — plus extras peeking from behind toward the centerline,
+   with attach struts). `drawVehicle` calls `drawStrapOns` near the top so the core
+   overlaps the inner edges (attached look); `maxW` is widened so the silhouette's
+   fit-to-frame scale never clips them. **In flight** the boosters are lit alongside the
+   core through the boost phase, then **jettisoned at p≈0.14** — both clusters peel
+   outward, tumble (pitch ± progress), fall behind and fade, with a separation-spark burst
+   and an `sfxSep()` cue — mirroring the existing stage-sep choreography. `boosters` was
+   added to all four vehicle specs (silhouette `currentVehicleSpec`, the flight spec, and
+   both Cape-scene specs), so the design-bench preview, the launch-pad rocket in the Cape
+   panorama, and the ascent animation all show them. Validated headlessly (8 new checks,
+   41/41 total): shape geometry (present/null, w/h>0, h ≤ core, count clamped to 8,
+   widened `maxW`, attached to the seg array) and the **draw paths run for real against a
+   2D-context stub** — a boostered vehicle issues more draw ops than the bare core, a
+   sliced array skips the cluster without throwing, and `drawStrapOns`/`drawOneBooster`
+   are callable with flame on. All prior suites green. *(Drawing is liquid-styled; the
+   solid-motor visual differentiation rides along once slice 1's solid class lands.)*
 
 ### Cross-reference map (this epic ↔ existing items)
 
