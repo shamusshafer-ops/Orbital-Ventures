@@ -749,10 +749,38 @@ Science), not a single line — that's the "decades-long effort" feel.
    0.25 across the now-split tracks, `techLayout` places every node with one lane
    per non-empty track (in order) and no (x,y) collisions, plus a tech-tree render
    smoke. No regression in the M5 (31) or #13 (33) suites.
-2. **Early-era content + rebalance pass** — author the ~20 Rocketry/Early nodes
-   (new T1 chemical sub-steps, T2/T3/T6 fronts), re-gate the early missions, add
-   the **load-time research reconciliation** for old saves. Harness adds the
-   **reachability check**.
+2. ✅ **Early-era content + first rebalance pass** — *Built 2026-06-21.* Added a
+   first wave of **9 early nodes** as capability/maturity **gates** (no direct stat
+   effect yet — pure time+capital sinks that lengthen the road, so the rocket
+   equation and reliability ceilings stay untouched; quantitative +Isp/+thrust
+   effects await the engine-model extension noted below): Propulsion refinement
+   chain — `combustion_stability`→`turbopump`→`regen_cooling`→`chamber_pressure`;
+   Guidance front — `radio_guidance`→`inertial_nav`→`digital_computer`; Testing
+   front — `engine_test_stands`→`stage_test`. **Decades-feel re-gating** threads
+   the new tracks through the existing ladder: `sustainer` now sits behind
+   `combustion_stability`; `heavy_booster` behind `turbopump`+`engine_test_stands`;
+   **the whole deep-space era (`deep_space`) now requires `digital_computer`
+   + `stage_test`** (Moon/Mars need flight computers + integrated-stage testing),
+   and `super_heavy` (F-1) behind `chamber_pressure` — so the lunar era demands
+   built-up Propulsion + Guidance + Testing, not a single line. Early *orbital* path
+   is deliberately untouched (`first_sat` still has no research gate; new nodes carry
+   no σ/reliability/engine effect). **Save safety:** new `reconcileResearch()` runs
+   on both load paths — it transitively backfills every completed node's
+   (now-deeper) prerequisites and re-applies engine unlocks, so a legacy save with
+   `deep_space` done but the new guidance/testing gates unresearched can never
+   soft-lock. Validated headlessly (29 checks) incl. the **reachability proof**
+   (closure from prerequisite-free roots covers all 41 nodes — no orphans/cycles;
+   every engine-unlock node reachable), the re-gates, fresh-start gating via
+   `reqsMet`, and reconciliation (no completed node left with an unmet prereq,
+   idempotent, fresh-game no-op); 8-tab render clean; slice 1 (28), M5 (31), #13
+   (33) suites still green. *Deferred to slice 2b:* the remaining ~10 early nodes
+   (materials front, more crew/guidance) and **quantitative node effects**, which
+   need a small engine-model extension (research-driven Isp/thrust/σ deltas) so
+   gates can also confer measurable performance.
+2b. **Engine-model extension + remaining early nodes** — add research-driven
+   performance deltas (Isp/thrust/σ) so the slice-2 gates and future nodes confer
+   measurable effect, not just gating; author the remaining ~10 early-era nodes
+   (materials front, more crew/guidance). Re-validate flagship-mission flyability.
 3. **Tech Levels mechanic** — `state.techLevel`, escalating invest, UI in the
    tech-tree detail panel (reuse #7 level pattern). Start with Cryogenic Engines.
 4. **Research Divisions** — `state.divisions`, per-track speed from division
