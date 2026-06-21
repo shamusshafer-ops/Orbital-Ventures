@@ -735,12 +735,20 @@ Science), not a single line — that's the "decades-long effort" feel.
 
 ### Suggested build order (slices)
 
-1. **Track split (foundation, low risk)** — split today's `structures` into **T2
-   Structures & Materials**, **T6 Testing & Reliability**, and move
-   `redundant_avionics` into **T3 Guidance & Avionics**; rename `assembly`→**T8
-   Orbital Operations**. Pure data + `techLayout()` lane additions; no balance
-   change yet. Harness: track coverage, no orphan nodes, `curRel()` unchanged,
-   render/layout smoke.
+1. ✅ **Track split (foundation, low risk)** — *Built 2026-06-21.* Split today's
+   `structures` track into **Structures & Materials** (3 materials nodes),
+   **Testing & Reliability** (`test_program`, `flight_telemetry`, `qa_program`,
+   `vibration_testing`), and **Guidance & Avionics** (`redundant_avionics`);
+   relabelled `assembly`→**Orbital Operations** (track key kept for back-compat).
+   Pure data: 2 new `TRACKS` entries + node `track` reassignments; `techLayout()`
+   is fully data-driven so lanes/legend/colors follow automatically. Balance-neutral
+   — `curRel()` sums `effect.reliability` across all tracks and `researchTier`
+   keys off `req` chains, both track-agnostic. Validated headlessly (28 checks):
+   TRACKS shape + distinct colors, no orphan tracks, every node reassigned
+   correctly, node count unchanged (32), `curRel()` rises by exactly the summed
+   0.25 across the now-split tracks, `techLayout` places every node with one lane
+   per non-empty track (in order) and no (x,y) collisions, plus a tech-tree render
+   smoke. No regression in the M5 (31) or #13 (33) suites.
 2. **Early-era content + rebalance pass** — author the ~20 Rocketry/Early nodes
    (new T1 chemical sub-steps, T2/T3/T6 fronts), re-gate the early missions, add
    the **load-time research reconciliation** for old saves. Harness adds the

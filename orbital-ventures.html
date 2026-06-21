@@ -842,12 +842,12 @@ const RESEARCH = [
   {id:'sustainer', track:'propulsion',    name:'High-Thrust Sustainer',         cost:3.0, months:4, req:['kerosene'],effect:{engine:'kerolox_mk2'}, desc:'Unlocks the Rocketdyne MA-3 Sustainer — more thrust and Isp for first stages.<span class="hist">↳ Atlas\'s sustainer kept firing to orbit after the boosters dropped away — &ldquo;stage-and-a-half.&rdquo;</span>'},
   {id:'alloy_tanks', track:'structures',  name:'Welded Alloy Tanks',            cost:2.0, months:3, req:[],          effect:{sigma:0.09},           desc:'Lowers σ from 0.12 to 0.09. Lighter tanks, better mass ratio.<span class="hist">↳ Welded aluminium alloy replaced the heavy riveted steel of the earliest airframes.</span>'},
   {id:'balloon_tanks', track:'structures',name:'Stainless Balloon Tanks',       cost:3.0, months:3, req:['alloy_tanks'],effect:{sigma:0.07},        desc:'Lowers σ to 0.07. The mass-ratio edge that makes orbit reachable.<span class="hist">↳ Atlas used pressure-stabilized stainless &ldquo;balloon&rdquo; tanks so thin they\'d crumple unless kept inflated.</span>'},
-  {id:'test_program', track:'structures', name:'Static Fire Test Program',      cost:1.5, months:2, req:[],          effect:{reliability:0.08},     desc:'Ground-fire engines before flight: +8% launch reliability. Vital while heritage is low.<span class="hist">↳ Test stands from Peenemünde to Santa Susana turned ground explosions into flight reliability.</span>'},
+  {id:'test_program', track:'testing', name:'Static Fire Test Program',      cost:1.5, months:2, req:[],          effect:{reliability:0.08},     desc:'Ground-fire engines before flight: +8% launch reliability. Vital while heritage is low.<span class="hist">↳ Test stands from Peenemünde to Santa Susana turned ground explosions into flight reliability.</span>'},
   {id:'composite_structures', track:'structures', name:'Composite &amp; Isogrid Structures', cost:4.0, months:4, req:['balloon_tanks'], effect:{sigma:0.055}, desc:'Machined isogrid panels and filament-wound composite tanks: lowers σ to 0.055. The last big mass-ratio gain chemistry can give you.<span class="hist">↳ Saturn used machined isogrid; later stages and fairings went to carbon-fibre composites for the lightest structures flown.</span>'},
-  {id:'flight_telemetry', track:'structures', name:'Flight Telemetry &amp; Instrumentation', cost:2.0, months:3, req:['test_program'], effect:{reliability:0.04}, desc:'Dense sensor suites and downlinked telemetry turn every flight — success or failure — into data you can act on. +4% reliability.<span class="hist">↳ Heavily instrumented early flights let engineers trace failures to a single valve or weld and fix them for the next launch.</span>'},
-  {id:'qa_program', track:'structures', name:'Quality-Assurance Program', cost:2.5, months:3, req:['test_program'], effect:{reliability:0.05}, desc:'Inspection, traceability, and process control across the whole build — catching defects on the bench instead of on the pad. +5% reliability.<span class="hist">↳ Apollo-era QA traced every part to its lot and operator; process discipline, not heroics, is what made crewed flight survivable.</span>'},
-  {id:'vibration_testing', track:'structures', name:'Vibration &amp; Acoustic Qualification', cost:2.5, months:3, req:['flight_telemetry'], effect:{reliability:0.03}, desc:'Shake tables and acoustic chambers qualify the vehicle against launch loads before it ever flies. +3% reliability.<span class="hist">↳ The brutal acoustic and vibration environment of liftoff has killed more hardware than vacuum ever has — qualification testing tames it.</span>'},
-  {id:'redundant_avionics', track:'structures', name:'Redundant Flight Avionics', cost:3.5, months:4, req:['qa_program'], effect:{reliability:0.05}, desc:'Triple-redundant flight computers that vote out a failed unit mid-ascent, so a single fault no longer loses the vehicle. +5% reliability.<span class="hist">↳ The Shuttle flew four identical computers voting in lockstep plus a fifth on independent software — fault tolerance as doctrine.</span>'},
+  {id:'flight_telemetry', track:'testing', name:'Flight Telemetry &amp; Instrumentation', cost:2.0, months:3, req:['test_program'], effect:{reliability:0.04}, desc:'Dense sensor suites and downlinked telemetry turn every flight — success or failure — into data you can act on. +4% reliability.<span class="hist">↳ Heavily instrumented early flights let engineers trace failures to a single valve or weld and fix them for the next launch.</span>'},
+  {id:'qa_program', track:'testing', name:'Quality-Assurance Program', cost:2.5, months:3, req:['test_program'], effect:{reliability:0.05}, desc:'Inspection, traceability, and process control across the whole build — catching defects on the bench instead of on the pad. +5% reliability.<span class="hist">↳ Apollo-era QA traced every part to its lot and operator; process discipline, not heroics, is what made crewed flight survivable.</span>'},
+  {id:'vibration_testing', track:'testing', name:'Vibration &amp; Acoustic Qualification', cost:2.5, months:3, req:['flight_telemetry'], effect:{reliability:0.03}, desc:'Shake tables and acoustic chambers qualify the vehicle against launch loads before it ever flies. +3% reliability.<span class="hist">↳ The brutal acoustic and vibration environment of liftoff has killed more hardware than vacuum ever has — qualification testing tames it.</span>'},
+  {id:'redundant_avionics', track:'guidance', name:'Redundant Flight Avionics', cost:3.5, months:4, req:['qa_program'], effect:{reliability:0.05}, desc:'Triple-redundant flight computers that vote out a failed unit mid-ascent, so a single fault no longer loses the vehicle. +5% reliability.<span class="hist">↳ The Shuttle flew four identical computers voting in lockstep plus a fifth on independent software — fault tolerance as doctrine.</span>'},
   {id:'heavy_booster', track:'propulsion',name:'Heavy Booster',                 cost:4.0, months:5, req:['sustainer'],   effect:{engine:'kerolox_mk3'}, desc:'Unlocks the Rocketdyne H-1 — the lift needed to put crew and life support into orbit.<span class="hist">↳ The high-thrust machines that first lifted people: Atlas for Mercury, the clustered R-7 for Vostok.</span>'},
   {id:'propulsive_landing', track:'propulsion', name:'Propulsive Landing & Recovery', cost:5.0, months:6, req:['kerosene','heavy_booster'], effect:{unlock:'recovery'}, desc:'Landing legs, grid fins, and a reserved propellant margin let the first stage fly itself back instead of being thrown away. Fit recovery to a booster (+hardware cost every flight); once a mission is routine, the booster is reflown — far cheaper to refurbish than rebuild, and faster to turn around.<span class="hist">↳ Reusing the most expensive part of the rocket — the booster — is what finally bent the launch-cost curve downward.</span>'},
   {id:'crew_capsule', track:'crew', name:'Pressurized Crew Capsule',      cost:3.0, months:4, req:[],              effect:{unlock:'crew'},        desc:'Pressure vessel, heat shield, parachutes. Enables crewed missions.<span class="hist">↳ Mercury and Vostok — blunt-body capsules with ablative heat shields and parachute recovery.</span>'},
@@ -872,14 +872,19 @@ const RESEARCH = [
 ];
 
 // #6: research tracks — divergent branches, used by the swimlane tech-tree layout.
+// R&D epic slice 1: the old combined 'structures' track is split into
+// Structures & Materials, Testing & Reliability, and Guidance & Avionics.
+// 'assembly' is relabelled Orbital Operations (key kept for back-compat).
 const TRACKS = [
-  {key:'propulsion', label:'Propulsion',          color:'#f5a623'},
-  {key:'structures', label:'Structures & Test',   color:'#9aa7b0'},
-  {key:'crew',       label:'Crew & Life Support', color:'#58c47a'},
-  {key:'deepspace',  label:'Deep Space',          color:'#5aa9e0'},
-  {key:'nuclear',    label:'Nuclear',             color:'#b07ce0'},
-  {key:'refueling',  label:'Refueling & ISRU',    color:'#4fd1d9'},
-  {key:'assembly',   label:'Orbital Assembly',    color:'#e08a4f'},
+  {key:'propulsion', label:'Propulsion',             color:'#f5a623'},
+  {key:'structures', label:'Structures & Materials', color:'#9aa7b0'},
+  {key:'testing',    label:'Testing & Reliability',  color:'#cf7a6a'},
+  {key:'guidance',   label:'Guidance & Avionics',    color:'#c9a23a'},
+  {key:'crew',       label:'Crew & Life Support',    color:'#58c47a'},
+  {key:'deepspace',  label:'Deep Space',             color:'#5aa9e0'},
+  {key:'nuclear',    label:'Nuclear',                color:'#b07ce0'},
+  {key:'refueling',  label:'Refueling & ISRU',       color:'#4fd1d9'},
+  {key:'assembly',   label:'Orbital Operations',     color:'#e08a4f'},
 ];
 function trackOf(id){ const r=RESEARCH.find(x=>x.id===id); return (r&&r.track)||'propulsion'; }
 function trackColor(key){ const t=TRACKS.find(x=>x.key===key); return t?t.color:'#9aa7b0'; }
@@ -1054,7 +1059,7 @@ function log(kind,msg){state.log.unshift({when:dateStr(),kind,msg}); if(state.lo
 function curSigma(){return state.sigma;}
 function curRel(){
   let base=0.65+0.025*Math.min(state.successes,12); // heritage: green company is genuinely unreliable
-  // Structures & Test track: sum every completed node that buys reliability (test_program + later QA/telemetry/redundancy nodes)
+  // sum every completed node that buys reliability — now spread across the Testing & Reliability and Guidance & Avionics tracks (test_program, telemetry, QA, vibration, redundant avionics); track-agnostic so the split is balance-neutral
   for(const r of RESEARCH){ if(state.research[r.id] && r.effect && r.effect.reliability) base+=r.effect.reliability; }
   base+=engRelBonus(); // M6: engineer team reliability bonus
   base+=diff().relBonus; // difficulty: forgiveness bump
