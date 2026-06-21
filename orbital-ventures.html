@@ -875,15 +875,15 @@ const RESEARCH = [
   // the road through the early game. They carry no direct stat effect yet
   // (quantitative +Isp/+thrust effects await the engine-model extension in a
   // later slice) — so the rocket equation and reliability ceilings are untouched.
-  {id:'combustion_stability', track:'propulsion', name:'RP-1 Combustion Stability', cost:2.0, months:3, req:['kerosene'], effect:{}, desc:'Baffled injectors and acoustic cavities tame the combustion instabilities that wreck kerosene engines on the test stand. The groundwork every higher-thrust chamber is built on.<span class="hist">↳ The F-1 program spent years and hundreds of tests beating combustion instability before the engine could be trusted to fly.</span>'},
-  {id:'turbopump', track:'propulsion', name:'Turbopump Engineering', cost:2.5, months:3, req:['combustion_stability'], effect:{}, desc:'High-speed turbopumps feed propellant at the pressures big chambers demand — the difference between a pressure-fed toy and a real launch engine.<span class="hist">↳ The turbopump is the beating heart of a liquid engine: the V-2\'s steam-driven pump was its most advanced single component.</span>'},
-  {id:'regen_cooling', track:'propulsion', name:'Regenerative Cooling', cost:3.0, months:4, req:['turbopump'], effect:{}, desc:'Route cryogenic propellant through the chamber walls before burning it, so the engine cools itself. Unlocks the sustained, high-output firing longer burns need.<span class="hist">↳ Regenerative cooling let engines run for minutes instead of seconds without melting their own throats.</span>'},
-  {id:'chamber_pressure', track:'propulsion', name:'High Chamber Pressure', cost:3.5, months:4, req:['regen_cooling'], effect:{}, desc:'Push chamber pressure higher for more thrust and efficiency from the same engine size — the discipline a truly heavy booster is built on.<span class="hist">↳ Staged-combustion engines reach chamber pressures of hundreds of atmospheres; raw pressure is raw performance.</span>'},
-  {id:'radio_guidance', track:'guidance', name:'Radio Command Guidance', cost:1.5, months:2, req:[], effect:{}, desc:'Ground stations track the vehicle and radio steering corrections up to it. Crude and range-limited, but the first step off a ballistic arc toward a controlled trajectory.<span class="hist">↳ Early Atlas and Thor flights were steered from the ground by radio command before inertial guidance matured.</span>'},
-  {id:'inertial_nav', track:'guidance', name:'Inertial Navigation', cost:2.5, months:3, req:['radio_guidance'], effect:{}, desc:'Gyroscopes and accelerometers let the vehicle know where it is and where it\'s pointed without help from the ground — guidance that works beyond radio range.<span class="hist">↳ Inertial platforms freed rockets from ground control and made precise orbital insertion possible.</span>'},
-  {id:'digital_computer', track:'guidance', name:'Digital Flight Computer', cost:3.5, months:4, req:['inertial_nav'], effect:{}, desc:'A programmable onboard computer that flies the vehicle and runs the navigation in real time. The hard prerequisite for any mission that has to navigate to another world.<span class="hist">↳ The Apollo Guidance Computer — kilobytes of memory — flew humans to the Moon and back.</span>'},
-  {id:'engine_test_stands', track:'testing', name:'Engine Test Stands', cost:2.0, months:3, req:['test_program'], effect:{}, desc:'Dedicated stands to fire engines through their full duty cycle on the ground, again and again, until they\'re trusted. The backbone of a real test discipline.<span class="hist">↳ Sprawling test-stand complexes at Santa Susana, Edwards and Stennis turned engine development from guesswork into engineering.</span>'},
-  {id:'stage_test', track:'testing', name:'Stage Test Facilities', cost:3.0, months:4, req:['engine_test_stands'], effect:{}, desc:'Test a complete stage — engines, plumbing, structure, avionics — as an integrated system before committing it to flight. The qualification step a deep-space campaign cannot skip.<span class="hist">↳ Full-stage green runs caught integration failures that no single-component test ever could.</span>'},
+  {id:'combustion_stability', track:'propulsion', name:'RP-1 Combustion Stability', cost:2.0, months:3, req:['kerosene'], effect:{thrust:0.04}, desc:'Baffled injectors and acoustic cavities tame the combustion instabilities that wreck kerosene engines on the test stand. The groundwork every higher-thrust chamber is built on. <b>+4% liftoff thrust.</b><span class="hist">↳ The F-1 program spent years and hundreds of tests beating combustion instability before the engine could be trusted to fly.</span>'},
+  {id:'turbopump', track:'propulsion', name:'Turbopump Engineering', cost:2.5, months:3, req:['combustion_stability'], effect:{thrust:0.05}, desc:'High-speed turbopumps feed propellant at the pressures big chambers demand — the difference between a pressure-fed toy and a real launch engine. <b>+5% liftoff thrust.</b><span class="hist">↳ The turbopump is the beating heart of a liquid engine: the V-2\'s steam-driven pump was its most advanced single component.</span>'},
+  {id:'regen_cooling', track:'propulsion', name:'Regenerative Cooling', cost:3.0, months:4, req:['turbopump'], effect:{isp:0.04}, desc:'Route cryogenic propellant through the chamber walls before burning it, so the engine cools itself. Unlocks the sustained, high-output firing longer burns need. <b>+4% Isp.</b><span class="hist">↳ Regenerative cooling let engines run for minutes instead of seconds without melting their own throats.</span>'},
+  {id:'chamber_pressure', track:'propulsion', name:'High Chamber Pressure', cost:3.5, months:4, req:['regen_cooling'], effect:{isp:0.04,thrust:0.05}, desc:'Push chamber pressure higher for more thrust and efficiency from the same engine size — the discipline a truly heavy booster is built on. <b>+4% Isp, +5% thrust.</b><span class="hist">↳ Staged-combustion engines reach chamber pressures of hundreds of atmospheres; raw pressure is raw performance.</span>'},
+  {id:'radio_guidance', track:'guidance', name:'Radio Command Guidance', cost:1.5, months:2, req:[], effect:{reliability:0.02}, desc:'Ground stations track the vehicle and radio steering corrections up to it. Crude and range-limited, but the first step off a ballistic arc toward a controlled trajectory. <b>+2% reliability.</b><span class="hist">↳ Early Atlas and Thor flights were steered from the ground by radio command before inertial guidance matured.</span>'},
+  {id:'inertial_nav', track:'guidance', name:'Inertial Navigation', cost:2.5, months:3, req:['radio_guidance'], effect:{reliability:0.02}, desc:'Gyroscopes and accelerometers let the vehicle know where it is and where it\'s pointed without help from the ground — guidance that works beyond radio range. <b>+2% reliability.</b><span class="hist">↳ Inertial platforms freed rockets from ground control and made precise orbital insertion possible.</span>'},
+  {id:'digital_computer', track:'guidance', name:'Digital Flight Computer', cost:3.5, months:4, req:['inertial_nav'], effect:{reliability:0.03}, desc:'A programmable onboard computer that flies the vehicle and runs the navigation in real time. The hard prerequisite for any mission that has to navigate to another world. <b>+3% reliability.</b><span class="hist">↳ The Apollo Guidance Computer — kilobytes of memory — flew humans to the Moon and back.</span>'},
+  {id:'engine_test_stands', track:'testing', name:'Engine Test Stands', cost:2.0, months:3, req:['test_program'], effect:{reliability:0.02}, desc:'Dedicated stands to fire engines through their full duty cycle on the ground, again and again, until they\'re trusted. The backbone of a real test discipline. <b>+2% reliability.</b><span class="hist">↳ Sprawling test-stand complexes at Santa Susana, Edwards and Stennis turned engine development from guesswork into engineering.</span>'},
+  {id:'stage_test', track:'testing', name:'Stage Test Facilities', cost:3.0, months:4, req:['engine_test_stands'], effect:{reliability:0.03}, desc:'Test a complete stage — engines, plumbing, structure, avionics — as an integrated system before committing it to flight. The qualification step a deep-space campaign cannot skip. <b>+3% reliability.</b><span class="hist">↳ Full-stage green runs caught integration failures that no single-component test ever could.</span>'},
 ];
 
 // #6: research tracks — divergent branches, used by the swimlane tech-tree layout.
@@ -1080,6 +1080,15 @@ function curRel(){
   base+=diff().relBonus; // difficulty: forgiveness bump
   return base; // note: effectiveReliability still clamps to diff().relCap, so the cap preserves balance
 }
+// R&D epic slice 2b: research-driven engine performance. Completed nodes can carry
+// effect.isp / effect.thrust (fractional); these accumulate (capped) and scale the
+// LAUNCH-VEHICLE stages' Isp/thrust — the rocket equation itself is untouched, only
+// its inputs. In-space legs (transfer/lander) are deliberately NOT scaled, so
+// deep-space mass ratios stay as balanced and the buff is bounded to ascent.
+const ISP_BONUS_CAP=0.10, THRUST_BONUS_CAP=0.15;
+function researchEffectSum(key){ let s=0; for(const r of RESEARCH){ if(state.research[r.id] && r.effect && r.effect[key]) s+=r.effect[key]; } return s; }
+function ispMult(){ return 1 + Math.min(ISP_BONUS_CAP, researchEffectSum('isp')); }
+function thrustMult(){ return 1 + Math.min(THRUST_BONUS_CAP, researchEffectSum('thrust')); }
 function advance(months){
   for(let i=0;i<months;i++){
     state.month++; if(state.month>11){state.month=0;state.year++;}
@@ -1443,6 +1452,7 @@ function completeResearch(){
   if(r.effect.engine){state.unlocked[r.effect.engine]=true; log('note',`R&D complete: ${r.name}. New engine available — ${ENGINES[r.effect.engine].name}.`);}
   else if(r.effect.sigma){state.sigma=r.effect.sigma; log('note',`R&D complete: ${r.name}. σ is now ${r.effect.sigma}.`);}
   else if(r.effect.reliability){log('note',`R&D complete: ${r.name}. Launch reliability improved.`);}
+  else if(r.effect.isp||r.effect.thrust){log('note',`R&D complete: ${r.name}. Engine performance improved${r.effect.isp?` (+${Math.round(r.effect.isp*100)}% Isp)`:''}${r.effect.thrust?`${r.effect.isp?',':''} (+${Math.round(r.effect.thrust*100)}% thrust)`:''}.`);}
   else { log('note',`R&D complete: ${r.name}.`); }
 }
 // R&D epic slice 2: when the tech tree is re-shaped (nodes added / re-parented),
@@ -1572,12 +1582,12 @@ function stackPerformance(stages, payload){
     let above=payload;
     for(let j=i+1;j<stages.length;j++) above+=sm[j].wet;
     const m0=above+sm[i].wet, mf=above+sm[i].dry, e=sm[i].eng;
-    const isp=(i===0)?(e.ispSL+e.ispVac)/2:e.ispVac; // first stage flies through atmosphere
+    const isp=((i===0)?(e.ispSL+e.ispVac)/2:e.ispVac)*ispMult(); // first stage flies through atmosphere; #2b research scales Isp
     const dv=(mf>0 && m0>mf)? isp*G0*Math.log(m0/mf):0;
     stageDv.push(dv); totalDv+=dv;
   }
   const liftoff=payload+sm.reduce((a,b)=>a+b.wet,0);
-  const twr=(sm[0].eng.thrustSL*stages[0].count)/(liftoff*G0);
+  const twr=(sm[0].eng.thrustSL*stages[0].count*thrustMult())/(liftoff*G0); // #2b research scales liftoff thrust
   return {sm,stageDv,totalDv,liftoff,twr};
 }
 // Legs that ISRU makes "free" once the relevant tech is researched, keyed by mission id.
@@ -5976,7 +5986,7 @@ function renderReadout(){
   const markerPos=Math.min(100,(m.reqDv/Math.max(v.totalDv,m.reqDv))*100);
   const chk=canLaunch(v,m);
   const e0=v.sm[0].eng;
-  const ispEff=((e0.ispSL+e0.ispVac)/2).toFixed(0);
+  const ispEff=(((e0.ispSL+e0.ispVac)/2)*ispMult()).toFixed(0); // #2b: reflect research Isp bonus in the shown equation
 
   let flags='';
   if(!meets) flags+=`<div class="flag bad">▲ Δv short by ${fI(m.reqDv-v.totalDv)} m/s.</div>`;
@@ -5986,6 +5996,7 @@ function renderReadout(){
   if(bayBuildDelta(m)>0) flags+=`<div class="flag warn">△ Over assembly-bay capacity (${vehicleUnits(m)}/${bayCapacity()} units) — build runs +${bayBuildDelta(m)} mo and −${(overstretchRelPenalty(m)*100).toFixed(1)}% reliability. Expand Assembly Bays in Orbital Ops.</div>`;
   if(v.crewed && v.twr>1.2 && meets && !state.research.launch_escape) flags+=`<div class="flag warn">△ No escape system — a failure at ${(100-(v.reliability*100|0))}% odds loses the crew.</div>`;
   if(recoveryActive(m)) flags+=`<div class="flag ok">♻ Reusable booster fitted — ${recoveryRefly(m)?`reflown on this routine mission: build −${Math.round((1-RECOVERY_REFLY_MULT)*100)}%, turnaround −1 mo`:`first flight proves it (+${fM(RECOVERY_HARDWARE)} hardware; refly discount once routine)`}.</div>`;
+  if(ispMult()>1||thrustMult()>1) flags+=`<div class="flag ok">⚙ Propulsion R&D on the launch vehicle: +${Math.round((ispMult()-1)*100)}% Isp · +${Math.round((thrustMult()-1)*100)}% thrust.</div>`;
   const testBtns=TEST_LEVELS.map((t,i)=>`<button class="btn" style="flex:1;font-size:11px;${state.testLevel===i?'border-color:var(--readout);color:var(--readout)':''}" onclick="setTestLevel(${i})">${t.name}${t.rel>0?` +${(t.rel*100)|0}%`:''}${t.cost>0?`<br><span class="dim" style="font-size:10px">${fM(t.cost)} · ${t.months} mo</span>`:''}</button>`).join('');
 
   $('readoutCard').innerHTML=`
@@ -6048,6 +6059,7 @@ function renderProfileReadout(m){
   if(bayBuildDelta(m)>0) flags+=`<div class="flag warn">△ Over assembly-bay capacity (${vehicleUnits(m)}/${bayCapacity()} units) — build runs +${bayBuildDelta(m)} mo and −${(overstretchRelPenalty(m)*100).toFixed(1)}% reliability. Expand Assembly Bays in Orbital Ops.</div>`;
   if(!state.research.launch_escape) flags+=`<div class="flag warn">△ No escape system — a failure at ${(100-(rel*100|0))}% odds loses the crew.</div>`;
   if(recoveryActive(m)) flags+=`<div class="flag ok">♻ Reusable booster fitted — ${recoveryRefly(m)?`reflown on this routine mission: build −${Math.round((1-RECOVERY_REFLY_MULT)*100)}%, turnaround −1 mo`:`first flight proves it (+${fM(RECOVERY_HARDWARE)} hardware; refly discount once routine)`}.</div>`;
+  if(ispMult()>1||thrustMult()>1) flags+=`<div class="flag ok">⚙ Propulsion R&D on the launch vehicle: +${Math.round((ispMult()-1)*100)}% Isp · +${Math.round((thrustMult()-1)*100)}% thrust.</div>`;
 
   $('readoutCard').innerHTML=`
     <div class="mission-tag">Mission profile — every leg must pass</div>

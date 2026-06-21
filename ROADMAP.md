@@ -777,10 +777,27 @@ Science), not a single line — that's the "decades-long effort" feel.
    (materials front, more crew/guidance) and **quantitative node effects**, which
    need a small engine-model extension (research-driven Isp/thrust/σ deltas) so
    gates can also confer measurable performance.
-2b. **Engine-model extension + remaining early nodes** — add research-driven
-   performance deltas (Isp/thrust/σ) so the slice-2 gates and future nodes confer
-   measurable effect, not just gating; author the remaining ~10 early-era nodes
-   (materials front, more crew/guidance). Re-validate flagship-mission flyability.
+2b. ✅ **Engine-model extension (research-driven performance)** — *Built
+   2026-06-21.* New `effect.isp` / `effect.thrust` node-effect vocabulary +
+   accumulators (`researchEffectSum`, `ispMult`, `thrustMult`) capped at +10% Isp /
+   +15% thrust, wired into `stackPerformance` (Isp scales each stage's effective
+   Isp; thrust scales liftoff TWR) and reflected in the shown Δv equation. **The
+   rocket equation itself is untouched — only its Isp/thrust *inputs* scale**, and
+   the buff is applied to the **launch vehicle only**: in-space transfer/lander legs
+   are deliberately not scaled, so deep-space mass ratios stay as balanced and the
+   effect is bounded to ascent. The 9 slice-2 gates now confer measurable effect:
+   propulsion chain → Isp/thrust (combustion +4% thrust, turbopump +5% thrust,
+   regen +4% Isp, chamber +4% Isp/+5% thrust; sums 0.08 Isp / 0.14 thrust, both
+   under cap), guidance + testing fronts → small reliability (+0.02–0.03 each,
+   bounded by the existing `relCap`). Effects stated in each node's description
+   (the detail panel shows `desc`) and in a new bench-readout flag + the completion
+   log. Validated headlessly (25 checks): effect assignment, multiplier
+   accumulation + clamp formula, Δv/TWR scaling *exactly* by the multipliers,
+   **in-space legs provably unchanged**, reliability into `curRel` within cap, and
+   monotonic "research only ever helps flyability"; 8-tab render clean; slice 1
+   (28), slice 2 (29), M5 (31), #13 (33) suites green. *Still deferred:* the
+   remaining ~10 early-era nodes (materials front, more crew/guidance) — content,
+   now that the effect machinery exists.
 3. **Tech Levels mechanic** — `state.techLevel`, escalating invest, UI in the
    tech-tree detail panel (reuse #7 level pattern). Start with Cryogenic Engines.
 4. **Research Divisions** — `state.divisions`, per-track speed from division
