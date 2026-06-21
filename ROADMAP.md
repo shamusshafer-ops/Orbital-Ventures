@@ -893,9 +893,19 @@ Science), not a single line — that's the "decades-long effort" feel.
    science-yield cap clamp, all three caps, exact buildCost/launchCost scaling in
    `computeVehicle`, per-mission science gain rising, tooltip/detail display, render smoke;
    all prior suites green (slice 1/2/2b/3/4/5/6 + M5 + #13).
-   *Remaining (slice 6c+):* far-future depth toward the ~100–125 target; Manufacturing→
-   build-*time*, Ground→launch cadence (deeper #7/#18 ties); TRL/partnerships (#6
-   leftovers); more `TECH_LEVELS`.
+6c. ✅ **Industrial build-time** — *Built 2026-06-21.* Gave Manufacturing & Ground
+   real *time* weight (they previously cut only cost): new `buildTimeCut` effect key +
+   `buildTimeCut()` accumulator (cap **3 mo**, fed by `researchEffectSum`), wired into
+   `buildMonths` (rounded, still floored at 1, stacking with bay-capacity and M5 refly).
+   Assigned to 6 nodes (assembly_line/modular/cad 0.5, additive 1.0, mobile tower &
+   cryo-ground 0.5; total 3.5 → clamps at 3) as multi-effects alongside their existing
+   cost cuts. Shown in tooltip/detail (`techModifierText`) and the 🏭 bench-readout flag.
+   Validated headlessly (14 checks): effect assignment + multi-effect preservation,
+   accumulation + cap clamp, `buildMonths` shave (1 mo and capped 3 mo), 1-month floor,
+   tooltip display, render smoke; all prior suites green.
+   *Remaining (slice 6d+):* far-future depth toward the ~100–125 target; TRL/partnerships
+   (#6 leftovers); more `TECH_LEVELS`; Ground→true launch-cadence (the fixed +1 launch
+   campaign month).
 
 ### Cross-reference map (this epic ↔ existing items)
 
