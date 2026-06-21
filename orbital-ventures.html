@@ -1076,6 +1076,7 @@ function newGame(difficulty){
     recovery:false, // M5: reusability — first-stage recovery fitted to the current design (persists)
     techLevel:{}, // #3: per-tech investment level for leveled technologies
     divisions:{}, // #4: research divisions (skill/exp/morale per division)
+    breakthroughCooldown:3, // #5: division R&D breakthrough rate-limiter
   };
   log('info','Company founded. The pad is yours — go make some noise.');
 }
@@ -1195,6 +1196,40 @@ function tickDivisionMorale(){
   for(const d of DIVISIONS){ const cur=divisionState(d.id); const target=healthy?70:25; const m=cur.morale + Math.sign(target-cur.morale)*0.6;
     state.divisions[d.id]={skill:cur.skill, exp:cur.exp, morale:Math.max(0,Math.min(100, m))}; }
 }
+/* R&D epic slice 5: Breakthrough Events — the division-driven sibling of the #9
+   personnel breakthroughs (extends, doesn't duplicate: the #9 one is staff/trait-
+   driven, this one is the active project's covering DIVISION). A higher-quality
+   division rolls breakthroughs more often; each shaves months off the active
+   project and lifts the division's morale. Rate-limited by its own cooldown. */
+const BREAK_BASE_CHANCE=0.03, BREAK_QUALITY_SCALE=0.14, BREAK_GAP=4;
+const BREAK_PHRASE={
+  propulsion:'cracked a stubborn combustion-stability problem',
+  nuclear:'stabilised a troublesome reactor design',
+  structures:'found a markedly lighter structural layout',
+  testing:'caught a hidden failure mode on the test stand',
+  guidance:'simplified a thorny guidance algorithm',
+  crew:'made a life-support breakthrough',
+  deepspace:'refined the trajectory and navigation math',
+  refueling:'improved the propellant-transfer process',
+  assembly:'streamlined the rendezvous-and-docking procedure',
+};
+function checkDivisionBreakthroughs(){
+  state.breakthroughCooldown=(state.breakthroughCooldown||0)-1;
+  if(state.breakthroughCooldown>0) return;
+  const ar=state.activeResearch; if(!ar || ar.monthsLeft<=1) return;
+  const r=RESEARCH.find(x=>x.id===ar.id); if(!r) return;
+  const divId=divisionForResearch(r); if(!divId) return;
+  const q=divisionQuality(divId);
+  if(Math.random() > BREAK_BASE_CHANCE + q*BREAK_QUALITY_SCALE) return; // higher quality → more frequent
+  state.breakthroughCooldown=BREAK_GAP;
+  const shave=Math.min(ar.monthsLeft-1, q>0.6?2:1);
+  ar.monthsLeft=Math.max(1, ar.monthsLeft-shave);
+  if(!state.divisions) state.divisions={}; const cur=divisionState(divId);
+  state.divisions[divId]={skill:cur.skill, exp:cur.exp, morale:Math.min(100,cur.morale+4)};
+  state.rep+=2;
+  const phrase=BREAK_PHRASE[r.track]||'had a research breakthrough';
+  log('ok',`⚡ BREAKTHROUGH! The ${divisionDef(divId).name} ${phrase} — ${shave} month${shave>1?'s':''} shaved off ${r.name}. +2 rep.`);
+}
 function advance(months){
   for(let i=0;i<months;i++){
     state.month++; if(state.month>11){state.month=0;state.year++;}
@@ -1255,6 +1290,7 @@ function advance(months){
     checkRivalFirsts();
     checkPoaching();
     checkPersonnelEvents();
+    checkDivisionBreakthroughs(); // #5: division-driven R&D breakthroughs (sibling of #9)
     checkEvents();
   }
   if(state.money<0 && !state.over){ gameOver(); }
@@ -2400,7 +2436,7 @@ function hideModal(){$('modal').classList.add('hidden');}
 
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=8; // v8: R&D epic slice 4 — state.divisions (research divisions)
+const SAVE_VERSION=9; // v9: R&D epic slice 5 — division breakthrough events (breakthroughCooldown)
 function saveGame(){
   try{
     const payload={v:SAVE_VERSION, ts:Date.now(), state:JSON.parse(JSON.stringify(state))};
@@ -2436,7 +2472,7 @@ function loadGame(){
       facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
       architectures:{}, science:0, persEventCooldown:5,
       staff:[], assignedAstronaut:null,
-      vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, techLevel:{}, divisions:{}
+      vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, techLevel:{}, divisions:{}, breakthroughCooldown:3
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -2485,7 +2521,7 @@ function autoLoad(){
       facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
       architectures:{}, science:0, persEventCooldown:5,
       staff:[], assignedAstronaut:null,
-      vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, techLevel:{}, divisions:{}
+      vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, techLevel:{}, divisions:{}, breakthroughCooldown:3
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -7208,7 +7244,7 @@ function renderDivisions(){
     </div>`;
   }).join('');
   box.innerHTML=`<h2>Research Divisions <span class="pill">${DIVISIONS.length} teams</span></h2>
-    <p class="muted" style="font-size:12px;margin:-4px 0 10px">Each division researches its own tracks. A division's <b>quality</b> — skill + accumulated experience + morale — accelerates projects in those tracks (stacks with your engineers). Invest capital to train them; experience grows as they ship; morale follows the company's finances.</p>
+    <p class="muted" style="font-size:12px;margin:-4px 0 10px">Each division researches its own tracks. A division's <b>quality</b> — skill + accumulated experience + morale — accelerates projects in those tracks (stacks with your engineers) and makes <b>⚡ breakthroughs</b> (months shaved off the active project) more frequent. Invest capital to train them; experience grows as they ship; morale follows the company's finances.</p>
     ${cards}`;
 }
 

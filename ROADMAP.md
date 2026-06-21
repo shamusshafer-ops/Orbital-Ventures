@@ -847,8 +847,22 @@ Science), not a single line — that's the "decades-long effort" feel.
    the bonus accelerating the R&D tick (top division finishes ≤ a poor one), save
    default/version + old-save defaults, and a panel render; 8-tab render clean;
    slice 1/2/2b/3 + M5 + #13 suites green.
-5. **Breakthrough Events** — generalise #9 breakthroughs to track-scoped,
-   division-driven.
+5. ✅ **Breakthrough Events** — *Built 2026-06-21.* The division-driven sibling of
+   the #9 personnel breakthroughs (**extends, doesn't duplicate**: #9 is staff/trait-
+   driven and still fires; this one keys off the active project's **covering
+   division**). `checkDivisionBreakthroughs()` runs each month in `advance()`: a
+   higher-quality division rolls a breakthrough more often (chance = `BREAK_BASE` +
+   quality·`BREAK_QUALITY_SCALE`), each shaving 1–2 months off the active project
+   (more for high quality, floored at 1 mo), lifting the division's morale and
+   awarding rep, with a flavored, track-specific "⚡ BREAKTHROUGH!" log line.
+   Rate-limited by its own `state.breakthroughCooldown` (`SAVE_VERSION`→9; missing
+   field defaults gracefully). Surfaced in the Divisions panel blurb. Validated
+   headlessly (20 checks, deterministic RNG): fires/shaves/cooldown/rep/log,
+   quality→shave (1 vs 2 mo), cooldown blocks back-to-back, roll can fail,
+   **monotonic chance** (mid-roll fires for a top division but not a poor one),
+   guards (no active research, 1-mo floor, no staff needed), save default/version;
+   plus a 200-month long-run smoke (12 breakthroughs, rate-limited, no errors);
+   slice 1/2/2b/3/4 + M5 + #13 suites green.
 6. **Mid/late-era content** — Orbital → Lunar → Interplanetary → Far-Future node
    waves (T4/T5/T7/T9/T10/T11/T12/T13), each with heavy mission-gating and a
    per-era reachability + flagship-flyability harness.
