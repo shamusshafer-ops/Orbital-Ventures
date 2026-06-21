@@ -951,6 +951,26 @@ Science), not a single line — that's the "decades-long effort" feel.
    mission gate, **selector routing** (electrics transfer-only, methalox on LV stages),
    Isp-cap clamp, and a methalox launch-vehicle design that computes + renders; all prior
    suites green (13 total).
+- ✅ **Radiation — equipment + personnel + career dose** — *Built 2026-06-21.* Turned the
+   previously-binary rad techs into a real mechanic. Per-mission **dose = environment ×
+   duration**: `RAD_ENV` per destination (LEO 1 → Lunar 2 → interplanetary 3 → Belt 4 →
+   Jupiter 9), `radSeverity` saturating in [0,1) — **negligible for LEO/short flights (so
+   existing early/mid balance is exactly preserved)**, severe on long deep missions.
+   **Equipment:** radiation multiplies the **avionics** subsystem fragility (`radEquipMult`,
+   bought down by `rad_shielding` + `redundant_avionics`). **Personnel:** it multiplies the
+   **life-support** fragility (`radCrewMult`, bought down by `radiation_countermeasures` +
+   `rad_shielding` + `closed_ecology`). Both feed the #16 product-preserving subsystem
+   model, and `effectiveReliability` takes a bounded overall penalty (`radRelPenalty`, ≤12%,
+   mitigated). **Astronaut career dose:** the assigned crew accumulate `dose` on surviving
+   crewed flights (`applyCrewDose`, per-mission capped, shielding-reduced); at
+   `RAD_CAREER_LIMIT` they're force-retired — unshielded ≈3 Mars missions, shielded ≈8.
+   Surfaced: a ☢ dose bar on astronaut cards (warns near the limit) and a ☢ radiation flag
+   in both bench readouts (env, shielding state, equipment/crew fragility ×). Validated
+   headlessly (26 checks): env/severity scaling + LEO≈0, shielding cuts equip/crew mults
+   (never below 1×), bounded reliability penalty + mitigation flowing into
+   `effectiveReliability`, subsystem report on a high-rad crewed mission, career-dose
+   accumulation + per-mission cap + shielding reduction + force-retirement + no-op guards,
+   render smoke; all 14 prior suites green.
 
 ### Cross-reference map (this epic ↔ existing items)
 
