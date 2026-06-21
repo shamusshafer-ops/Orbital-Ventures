@@ -863,9 +863,26 @@ Science), not a single line — that's the "decades-long effort" feel.
    guards (no active research, 1-mo floor, no staff needed), save default/version;
    plus a 200-month long-run smoke (12 breakthroughs, rate-limited, no errors);
    slice 1/2/2b/3/4 + M5 + #13 suites green.
-6. **Mid/late-era content** — Orbital → Lunar → Interplanetary → Far-Future node
-   waves (T4/T5/T7/T9/T10/T11/T12/T13), each with heavy mission-gating and a
-   per-era reachability + flagship-flyability harness.
+6. 🟡 **Mid/late-era content (first wave)** — *Built 2026-06-21.* Grew the tree
+   **41 → 78 nodes** and completed the 13-track vision: added the **5 missing
+   tracks** — Manufacturing & Production, Ground Infrastructure, Reusability
+   (`propulsive_landing` moved here), Automation & AI, Science & Exploration — and
+   deepened every existing track with mid/late-era nodes (materials ladder extended
+   to σ 0.042, testing/guidance/crew/deepspace/nuclear/refueling/orbital-ops chains),
+   **heavily mission-gated** via `reqMissionDone` (Orbital EVA⇐Crewed Orbit, Precision
+   EDL⇐Mars Flyby, Surface Fission Power⇐Lunar Landing, Astrobiology⇐Mars Orbit, etc).
+   All effects use the existing vocabulary (σ / reliability / Isp / leveled / gate),
+   so balance stays bounded; several new-track nodes are honest capability gates
+   pending effect-wiring (see remaining). Divisions broadened to cover all 14 tracks;
+   2nd leveled tech added (Flight Computers). Validated headlessly (slice-6 suite
+   23/23: 78-node count, 14 tracks, **full reachability proof** from roots, no
+   dangling reqs, valid mission gates, division coverage, monotonic σ ladder,
+   flyability preserved, reconcile over the deeper chains, render/tooltip smoke) +
+   8-tab all-78-researched render clean; all prior suites green.
+   *Remaining (slice 6b+):* far-future depth toward the ~100–125 target; **effect-
+   wiring** for the gate nodes — Manufacturing→build cost/time (#7), Ground→cadence/
+   pads (#7/#18), Science→`state.science` yield (#14), Reusability→deeper reuse
+   economics (M5); plus TRL/partnerships (#6 leftovers) and more `TECH_LEVELS`.
 
 ### Cross-reference map (this epic ↔ existing items)
 
