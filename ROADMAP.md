@@ -879,10 +879,23 @@ Science), not a single line — that's the "decades-long effort" feel.
    dangling reqs, valid mission gates, division coverage, monotonic σ ladder,
    flyability preserved, reconcile over the deeper chains, render/tooltip smoke) +
    8-tab all-78-researched render clean; all prior suites green.
-   *Remaining (slice 6b+):* far-future depth toward the ~100–125 target; **effect-
-   wiring** for the gate nodes — Manufacturing→build cost/time (#7), Ground→cadence/
-   pads (#7/#18), Science→`state.science` yield (#14), Reusability→deeper reuse
-   economics (M5); plus TRL/partnerships (#6 leftovers) and more `TECH_LEVELS`.
+6b. ✅ **Effect-wiring for the new-track nodes** — *Built 2026-06-21.* Gave the
+   Slice 6 gate nodes real, capped economy effects via three new accumulators
+   (mirroring the 2b Isp/thrust pattern, all fed by `researchEffectSum`): `mfgBuildMult`
+   (Manufacturing + Reuse → −build cost, cap 30%, wired into `computeVehicle` buildCost),
+   `groundLaunchMult` (Ground + Reuse → −launch-ops cost, cap 30%, into the launchCost
+   base), and `sciYieldMult` (Science track → +mission science yield, cap 50%, into the
+   `sciGain` grant). 15 nodes assigned new effect keys (`buildCostCut`/`launchCostCut`/
+   `sciYield`; manufacturing nodes carry reliability *and* build-cut). Effects now show in
+   the **tooltip** (`techModifierText` extended) and the **click detail panel** (reuses
+   `techModifierText` — no per-desc edits), plus a 🏭 bench-readout flag for active
+   build/launch savings. Validated headlessly (20 checks): baselines, accumulation, the
+   science-yield cap clamp, all three caps, exact buildCost/launchCost scaling in
+   `computeVehicle`, per-mission science gain rising, tooltip/detail display, render smoke;
+   all prior suites green (slice 1/2/2b/3/4/5/6 + M5 + #13).
+   *Remaining (slice 6c+):* far-future depth toward the ~100–125 target; Manufacturing→
+   build-*time*, Ground→launch cadence (deeper #7/#18 ties); TRL/partnerships (#6
+   leftovers); more `TECH_LEVELS`.
 
 ### Cross-reference map (this epic ↔ existing items)
 

@@ -926,28 +926,28 @@ const RESEARCH = [
   {id:'large_space_stations', track:'assembly', name:'Large Space Stations', cost:6.5, months:7, req:['station_keeping'], reqMissionDone:'crew_orbit', effect:{}, desc:'Multi-module pressurized complexes assembled in orbit — the staging posts, laboratories and shipyards of a spacefaring economy.<span class="hist">↳ Mir and the ISS proved that permanent, expandable orbital outposts are possible.</span>'},
   {id:'onorbit_servicing', track:'assembly', name:'On-Orbit Servicing', cost:6.0, months:7, req:['auto_rendezvous'], effect:{}, desc:'Robotic refueling, repair and upgrade of spacecraft already in orbit — extending lifetimes and recovering stranded missions instead of replacing them.<span class="hist">↳ MEV-1 docked with and relocated a live commercial satellite in 2020.</span>'},
   // Manufacturing & Production
-  {id:'assembly_line', track:'manufacturing', name:'Assembly-Line Production', cost:2.5, months:3, req:[], effect:{}, desc:'Move vehicle build off the artisan bench and onto a repeatable line with stations, jigs and travelers — the foundation of building more than one of anything.<span class="hist">↳ The assembly line is what turned aircraft, then rockets, from craft into industry.</span>'},
-  {id:'modular_design', track:'manufacturing', name:'Modular Vehicle Design', cost:3.5, months:4, req:['assembly_line'], effect:{reliability:0.02}, desc:'Standard interfaces and interchangeable modules so subsystems are designed once and reused across the fleet. <b>+2% reliability.</b><span class="hist">↳ Common cores and modular buses cut cost and risk across whole families of vehicles.</span>'},
-  {id:'cad_manufacturing', track:'manufacturing', name:'Computer-Aided Manufacturing', cost:4.5, months:5, req:['modular_design'], effect:{reliability:0.02}, desc:'CNC machining and digital work instructions tie design straight to the shop floor, cutting human error out of fabrication. <b>+2% reliability.</b><span class="hist">↳ CAM closed the loop from CAD model to finished part.</span>'},
-  {id:'additive_manufacturing', track:'manufacturing', name:'Additive Manufacturing', cost:6.0, months:6, req:['cad_manufacturing'], reqMissionDone:'first_sat', effect:{reliability:0.02}, desc:'3D-printed combustion chambers, brackets and structures — fewer parts, fewer joints, fewer ways to fail. <b>+2% reliability.</b><span class="hist">↳ Printed engine parts went from novelty to flight hardware within a decade.</span>'},
+  {id:'assembly_line', track:'manufacturing', name:'Assembly-Line Production', cost:2.5, months:3, req:[], effect:{buildCostCut:0.04}, desc:'Move vehicle build off the artisan bench and onto a repeatable line with stations, jigs and travelers — the foundation of building more than one of anything.<span class="hist">↳ The assembly line is what turned aircraft, then rockets, from craft into industry.</span>'},
+  {id:'modular_design', track:'manufacturing', name:'Modular Vehicle Design', cost:3.5, months:4, req:['assembly_line'], effect:{reliability:0.02,buildCostCut:0.05}, desc:'Standard interfaces and interchangeable modules so subsystems are designed once and reused across the fleet. <b>+2% reliability.</b><span class="hist">↳ Common cores and modular buses cut cost and risk across whole families of vehicles.</span>'},
+  {id:'cad_manufacturing', track:'manufacturing', name:'Computer-Aided Manufacturing', cost:4.5, months:5, req:['modular_design'], effect:{reliability:0.02,buildCostCut:0.05}, desc:'CNC machining and digital work instructions tie design straight to the shop floor, cutting human error out of fabrication. <b>+2% reliability.</b><span class="hist">↳ CAM closed the loop from CAD model to finished part.</span>'},
+  {id:'additive_manufacturing', track:'manufacturing', name:'Additive Manufacturing', cost:6.0, months:6, req:['cad_manufacturing'], reqMissionDone:'first_sat', effect:{reliability:0.02,buildCostCut:0.06}, desc:'3D-printed combustion chambers, brackets and structures — fewer parts, fewer joints, fewer ways to fail. <b>+2% reliability.</b><span class="hist">↳ Printed engine parts went from novelty to flight hardware within a decade.</span>'},
   // Ground Infrastructure
-  {id:'concrete_pads', track:'ground', name:'Reinforced Launch Pads', cost:2.0, months:3, req:[], effect:{}, desc:'Hardened concrete pads, hold-downs and blast protection that let a real launch vehicle leave the ground without destroying the site.<span class="hist">↳ The pad is the unglamorous foundation every launch depends on.</span>'},
-  {id:'flame_trenches', track:'ground', name:'Flame Trenches & Deluge', cost:3.0, months:4, req:['concrete_pads'], effect:{}, desc:'Flame deflectors, trenches and sound-suppression water that channel a booster exhaust and tame the acoustic shock of ignition.<span class="hist">↳ Sound-suppression deluge protects both pad and vehicle from their own noise.</span>'},
-  {id:'mobile_service_tower', track:'ground', name:'Mobile Service Towers', cost:4.0, months:5, req:['flame_trenches'], effect:{}, desc:'Gantries and swing arms for vertical integration, crew access and propellant loading — the scaffolding of a real launch campaign.<span class="hist">↳ Service towers and crawler-transporters defined the look of the Apollo pads.</span>'},
-  {id:'cryo_ground_systems', track:'ground', name:'Cryogenic Ground Systems', cost:5.0, months:6, req:['mobile_service_tower'], reqMissionDone:'first_sat', effect:{}, desc:'Storage farms, vacuum-jacketed lines and fast-fill systems to load deep-cryo propellants reliably, the ground half of any hydrogen or methane vehicle.<span class="hist">↳ Cryogenic ground support is as demanding as the flight hardware it feeds.</span>'},
+  {id:'concrete_pads', track:'ground', name:'Reinforced Launch Pads', cost:2.0, months:3, req:[], effect:{launchCostCut:0.04}, desc:'Hardened concrete pads, hold-downs and blast protection that let a real launch vehicle leave the ground without destroying the site.<span class="hist">↳ The pad is the unglamorous foundation every launch depends on.</span>'},
+  {id:'flame_trenches', track:'ground', name:'Flame Trenches & Deluge', cost:3.0, months:4, req:['concrete_pads'], effect:{launchCostCut:0.04}, desc:'Flame deflectors, trenches and sound-suppression water that channel a booster exhaust and tame the acoustic shock of ignition.<span class="hist">↳ Sound-suppression deluge protects both pad and vehicle from their own noise.</span>'},
+  {id:'mobile_service_tower', track:'ground', name:'Mobile Service Towers', cost:4.0, months:5, req:['flame_trenches'], effect:{launchCostCut:0.05}, desc:'Gantries and swing arms for vertical integration, crew access and propellant loading — the scaffolding of a real launch campaign.<span class="hist">↳ Service towers and crawler-transporters defined the look of the Apollo pads.</span>'},
+  {id:'cryo_ground_systems', track:'ground', name:'Cryogenic Ground Systems', cost:5.0, months:6, req:['mobile_service_tower'], reqMissionDone:'first_sat', effect:{launchCostCut:0.05}, desc:'Storage farms, vacuum-jacketed lines and fast-fill systems to load deep-cryo propellants reliably, the ground half of any hydrogen or methane vehicle.<span class="hist">↳ Cryogenic ground support is as demanding as the flight hardware it feeds.</span>'},
   // Automation & AI
   {id:'flight_automation', track:'automation', name:'Flight Automation', cost:4.0, months:5, req:['digital_computer'], effect:{reliability:0.02}, desc:'Automated countdown, abort and range-safety logic that reacts faster and more consistently than any human operator. <b>+2% reliability.</b><span class="hist">↳ Autonomous flight-termination systems replaced ground range-safety officers.</span>'},
   {id:'autonomous_operations', track:'automation', name:'Autonomous Mission Operations', cost:5.5, months:6, req:['flight_automation'], reqMissionDone:'crew_orbit', effect:{}, desc:'Spacecraft that plan, sequence and recover from faults on their own — essential where light-lag makes ground control too slow to help.<span class="hist">↳ Remote Agent flew an AI that ran a spacecraft autonomously back in 1999.</span>'},
   {id:'ai_mission_management', track:'automation', name:'AI Mission Management', cost:8.0, months:8, req:['autonomous_operations'], effect:{reliability:0.03}, desc:'A learning mission-management layer that coordinates whole fleets and campaigns, anticipating failures before they cascade. <b>+3% reliability.</b><span class="hist">↳ Fleet-scale autonomy is the frontier of modern mission operations.</span>'},
   // Science & Exploration
-  {id:'earth_observation', track:'science', name:'Earth Observation', cost:2.0, months:3, req:[], effect:{}, desc:'Imaging, weather and remote-sensing instruments — the first science payloads, and the contracts that pay for an early program.<span class="hist">↳ TIROS and Landsat turned orbit into a vantage point on our own world.</span>'},
-  {id:'planetary_science', track:'science', name:'Planetary Science Instruments', cost:3.5, months:4, req:['earth_observation'], effect:{}, desc:'Cameras, spectrometers and particle detectors built to characterize other worlds from flyby and orbit.<span class="hist">↳ Mariner and Voyager carried the instruments that first mapped the planets.</span>'},
-  {id:'sample_return_science', track:'science', name:'Sample-Return Science', cost:6.0, months:7, req:['planetary_science'], reqMissionDone:'luna_landing', effect:{}, desc:'Curation, containment and analysis of returned material — the deepest science a robotic or crewed mission can deliver.<span class="hist">↳ Apollo, Hayabusa and OSIRIS-REx brought pieces of other worlds home to the lab.</span>'},
-  {id:'astrobiology', track:'science', name:'Astrobiology', cost:7.0, months:8, req:['sample_return_science'], reqMissionDone:'mars_orbit', effect:{}, desc:'Life-detection instruments and planetary-protection protocols — the search for whether we are alone, and the prestige missions that chase it.<span class="hist">↳ From Viking biology to Mars Sample Return, astrobiology drives the boldest missions.</span>'},
+  {id:'earth_observation', track:'science', name:'Earth Observation', cost:2.0, months:3, req:[], effect:{sciYield:0.10}, desc:'Imaging, weather and remote-sensing instruments — the first science payloads, and the contracts that pay for an early program.<span class="hist">↳ TIROS and Landsat turned orbit into a vantage point on our own world.</span>'},
+  {id:'planetary_science', track:'science', name:'Planetary Science Instruments', cost:3.5, months:4, req:['earth_observation'], effect:{sciYield:0.12}, desc:'Cameras, spectrometers and particle detectors built to characterize other worlds from flyby and orbit.<span class="hist">↳ Mariner and Voyager carried the instruments that first mapped the planets.</span>'},
+  {id:'sample_return_science', track:'science', name:'Sample-Return Science', cost:6.0, months:7, req:['planetary_science'], reqMissionDone:'luna_landing', effect:{sciYield:0.15}, desc:'Curation, containment and analysis of returned material — the deepest science a robotic or crewed mission can deliver.<span class="hist">↳ Apollo, Hayabusa and OSIRIS-REx brought pieces of other worlds home to the lab.</span>'},
+  {id:'astrobiology', track:'science', name:'Astrobiology', cost:7.0, months:8, req:['sample_return_science'], reqMissionDone:'mars_orbit', effect:{sciYield:0.15}, desc:'Life-detection instruments and planetary-protection protocols — the search for whether we are alone, and the prestige missions that chase it.<span class="hist">↳ From Viking biology to Mars Sample Return, astrobiology drives the boldest missions.</span>'},
   // Reusability
-  {id:'parachute_recovery', track:'reuse', name:'Parachute Recovery', cost:2.5, months:3, req:[], effect:{}, desc:'Recover boosters and capsules by parachute into the ocean or onto land — the first, simplest step toward not throwing the rocket away.<span class="hist">↳ Mercury capsules and Shuttle SRBs were fished from the Atlantic and reflown.</span>'},
-  {id:'rapid_inspection', track:'reuse', name:'Rapid Inspection & Refurbishment', cost:5.0, months:6, req:['propulsive_landing'], effect:{}, desc:'Borescopes, automated NDE and lean refurbishment that turn a landed booster around in days instead of months — the difference between reuse and rapid reuse.<span class="hist">↳ Fast inspection is what separates an airliner from a refurbished spacecraft.</span>'},
-  {id:'reusable_upper_stage', track:'reuse', name:'Reusable Upper Stage', cost:9.0, months:9, req:['propulsive_landing','cryo_upper'], reqMissionDone:'first_sat', effect:{}, desc:'A heat-shielded, recoverable upper stage — the hardest part of full reuse, since it must survive orbital re-entry. The last piece of a fully reusable vehicle.<span class="hist">↳ A reusable second stage is the holy grail that bends launch cost toward airline economics.</span>'},
+  {id:'parachute_recovery', track:'reuse', name:'Parachute Recovery', cost:2.5, months:3, req:[], effect:{launchCostCut:0.02}, desc:'Recover boosters and capsules by parachute into the ocean or onto land — the first, simplest step toward not throwing the rocket away.<span class="hist">↳ Mercury capsules and Shuttle SRBs were fished from the Atlantic and reflown.</span>'},
+  {id:'rapid_inspection', track:'reuse', name:'Rapid Inspection & Refurbishment', cost:5.0, months:6, req:['propulsive_landing'], effect:{launchCostCut:0.05}, desc:'Borescopes, automated NDE and lean refurbishment that turn a landed booster around in days instead of months — the difference between reuse and rapid reuse.<span class="hist">↳ Fast inspection is what separates an airliner from a refurbished spacecraft.</span>'},
+  {id:'reusable_upper_stage', track:'reuse', name:'Reusable Upper Stage', cost:9.0, months:9, req:['propulsive_landing','cryo_upper'], reqMissionDone:'first_sat', effect:{buildCostCut:0.05}, desc:'A heat-shielded, recoverable upper stage — the hardest part of full reuse, since it must survive orbital re-entry. The last piece of a fully reusable vehicle.<span class="hist">↳ A reusable second stage is the holy grail that bends launch cost toward airline economics.</span>'},
   {id:'stage_test', track:'testing', name:'Stage Test Facilities', cost:3.0, months:4, req:['engine_test_stands'], effect:{reliability:0.03}, desc:'Test a complete stage — engines, plumbing, structure, avionics — as an integrated system before committing it to flight. The qualification step a deep-space campaign cannot skip. <b>+3% reliability.</b><span class="hist">↳ Full-stage green runs caught integration failures that no single-component test ever could.</span>'},
 ];
 
@@ -1164,6 +1164,13 @@ const ISP_BONUS_CAP=0.10, THRUST_BONUS_CAP=0.15;
 function researchEffectSum(key){ let s=0; for(const r of RESEARCH){ if(state.research[r.id] && r.effect && r.effect[key]) s+=r.effect[key]; } return s + techLevelEffectSum(key); }
 function ispMult(){ return 1 + Math.min(ISP_BONUS_CAP, researchEffectSum('isp')); }
 function thrustMult(){ return 1 + Math.min(THRUST_BONUS_CAP, researchEffectSum('thrust')); }
+// R&D epic slice 6b: wire the new-track gate nodes to real economy effects (capped,
+// so balance stays bounded). Manufacturing/Reuse cut build cost; Ground/Reuse cut
+// launch-ops cost; Science multiplies mission science yield. All feed researchEffectSum.
+const BUILD_CUT_CAP=0.30, LAUNCH_CUT_CAP=0.30, SCI_YIELD_CAP=0.50;
+function mfgBuildMult(){ return 1 - Math.min(BUILD_CUT_CAP, researchEffectSum('buildCostCut')); }
+function groundLaunchMult(){ return 1 - Math.min(LAUNCH_CUT_CAP, researchEffectSum('launchCostCut')); }
+function sciYieldMult(){ return 1 + Math.min(SCI_YIELD_CAP, researchEffectSum('sciYield')); }
 // R&D epic slice 3: Tech Levels — flagship technologies you keep investing in.
 // After a leveled tech is researched (L1), capital + time raise it to L2..max; each
 // level adds to the SAME isp/thrust/reliability accumulators above, so the existing
@@ -1910,12 +1917,13 @@ function computeVehicle(){
   buildCost*=(1-facilityBonus(missionBody(m&&m.id)).buildDiscount); // M17: home-field build discount from a base at the destination
   buildCost*=familyBuildMult(activeFamily()); // #3: a proven lineage gets cheaper to build (manufacturing knowledge)
   buildCost*=foundryCostMult(); // #7: engine-foundry economies of scale cut marginal build cost
+  buildCost*=mfgBuildMult(); // #6b: Manufacturing/Reuse research lowers build cost
   if(recoveryActive(m)){ // M5: reusability — recovery hardware every flight; reflown booster on routine missions
     if(recoveryRefly(m)) buildCost*=RECOVERY_REFLY_MULT; // proven, routine mission: refurbish a recovered booster (45% of new)
     buildCost+=RECOVERY_HARDWARE; // legs, grid fins, reserved propellant — fitted on every recovery flight
   }
   const reliability=Math.min(diff().relCap,Math.max(diff().relFloor,(curRel()+testBonus)*enginePenalty*(crewed?0.92:1)+productionRelMod(m))); // #7: QA bonus − bay-overstretch penalty
-  const launchCost=(0.12+0.01*totalProp)*padLaunchMult() + assemblyFlights(m)*ASSEMBLY_LAUNCH_COST; // #7: extra pads amortize launch ops; #6: extra dedicated assembly flights
+  const launchCost=(0.12+0.01*totalProp)*padLaunchMult()*groundLaunchMult() + assemblyFlights(m)*ASSEMBLY_LAUNCH_COST; // #7: pads + #6b: Ground/Reuse research amortize launch ops; #6: dedicated assembly flights
   return {payload, sm:perf.sm, stageDv:perf.stageDv, totalDv:perf.totalDv, liftoff:perf.liftoff, twr:perf.twr,
           totalEng, totalProp, reliability, buildCost, launchCost, crewed,
           dryTotal:perf.sm.reduce((a,b)=>a+b.dry,0)};
@@ -2108,7 +2116,7 @@ function launch(){
     personnelMissionEvent(true); // M6: morale boost on success
     state.successes++;
     // M14: missions yield science — more for novel, deep, or first-time flights
-    const sciGain=Math.max(1, Math.round((routine?0.3:1)*((m.rep||5)*0.12 + (m.profile?5:1))));
+    const sciGain=Math.max(1, Math.round((routine?0.3:1)*((m.rep||5)*0.12 + (m.profile?5:1))*sciYieldMult())); // #6b: Science track multiplies mission science yield
     state.science=round2((state.science||0)+sciGain);
     let payout=(routine?m.payout*0.4:m.payout)*windowQuality*diff().payoutMult*econPayoutMult();
     if(crewed) payout*=ab.payoutMult; // M6: astronaut payout bonus
@@ -6202,6 +6210,7 @@ function renderReadout(){
   if(v.crewed && v.twr>1.2 && meets && !state.research.launch_escape) flags+=`<div class="flag warn">△ No escape system — a failure at ${(100-(v.reliability*100|0))}% odds loses the crew.</div>`;
   if(recoveryActive(m)) flags+=`<div class="flag ok">♻ Reusable booster fitted — ${recoveryRefly(m)?`reflown on this routine mission: build −${Math.round((1-RECOVERY_REFLY_MULT)*100)}%, turnaround −1 mo`:`first flight proves it (+${fM(RECOVERY_HARDWARE)} hardware; refly discount once routine)`}.</div>`;
   if(ispMult()>1||thrustMult()>1) flags+=`<div class="flag ok">⚙ Propulsion R&D on the launch vehicle: +${Math.round((ispMult()-1)*100)}% Isp · +${Math.round((thrustMult()-1)*100)}% thrust.</div>`;
+  if(mfgBuildMult()<1||groundLaunchMult()<1) flags+=`<div class="flag ok">🏭 Industrial R&D: −${Math.round((1-mfgBuildMult())*100)}% build cost · −${Math.round((1-groundLaunchMult())*100)}% launch-ops cost.</div>`;
   const testBtns=TEST_LEVELS.map((t,i)=>`<button class="btn" style="flex:1;font-size:11px;${state.testLevel===i?'border-color:var(--readout);color:var(--readout)':''}" onclick="setTestLevel(${i})">${t.name}${t.rel>0?` +${(t.rel*100)|0}%`:''}${t.cost>0?`<br><span class="dim" style="font-size:10px">${fM(t.cost)} · ${t.months} mo</span>`:''}</button>`).join('');
 
   $('readoutCard').innerHTML=`
@@ -6265,6 +6274,7 @@ function renderProfileReadout(m){
   if(!state.research.launch_escape) flags+=`<div class="flag warn">△ No escape system — a failure at ${(100-(rel*100|0))}% odds loses the crew.</div>`;
   if(recoveryActive(m)) flags+=`<div class="flag ok">♻ Reusable booster fitted — ${recoveryRefly(m)?`reflown on this routine mission: build −${Math.round((1-RECOVERY_REFLY_MULT)*100)}%, turnaround −1 mo`:`first flight proves it (+${fM(RECOVERY_HARDWARE)} hardware; refly discount once routine)`}.</div>`;
   if(ispMult()>1||thrustMult()>1) flags+=`<div class="flag ok">⚙ Propulsion R&D on the launch vehicle: +${Math.round((ispMult()-1)*100)}% Isp · +${Math.round((thrustMult()-1)*100)}% thrust.</div>`;
+  if(mfgBuildMult()<1||groundLaunchMult()<1) flags+=`<div class="flag ok">🏭 Industrial R&D: −${Math.round((1-mfgBuildMult())*100)}% build cost · −${Math.round((1-groundLaunchMult())*100)}% launch-ops cost.</div>`;
 
   $('readoutCard').innerHTML=`
     <div class="mission-tag">Mission profile — every leg must pass</div>
@@ -7177,6 +7187,9 @@ function techModifierText(r){
   if(e.thrust) bits.push(`<b>+${Math.round(e.thrust*100)}% liftoff thrust</b> (higher TWR)`);
   if(e.reliability) bits.push(`<b>+${Math.round(e.reliability*100)}%</b> launch reliability`);
   if(e.sigma) bits.push(`Structural coefficient σ → <b>${e.sigma}</b> (lighter tanks, better mass ratio)`);
+  if(e.buildCostCut) bits.push(`<b>−${Math.round(e.buildCostCut*100)}%</b> vehicle build cost`);
+  if(e.launchCostCut) bits.push(`<b>−${Math.round(e.launchCostCut*100)}%</b> launch-ops cost`);
+  if(e.sciYield) bits.push(`<b>+${Math.round(e.sciYield*100)}%</b> mission science yield`);
   if(e.unlock) bits.push(`Unlocks — <b>${UNLOCK_LABELS[e.unlock]||e.unlock}</b>`);
   if(isLeveledTech(r.id)){ const d=TECH_LEVELS[r.id]; const per=Object.entries(d.per||{}).map(([k,v])=>`+${Math.round(v*100)}% ${k}`).join(', '); bits.push(`Leveled technology — keep investing: <b>${per} per level</b>, up to L${d.max}`); }
   if(!bits.length) bits.push('Capability/maturity prerequisite — gates later technologies and missions.');
@@ -7244,6 +7257,7 @@ function renderResearchDetail(){
   const stateTag={done:'<span class="pill ok">researched</span>',active:'<span class="pill active">in progress</span>',available:'<span class="pill">available</span>',locked:'<span class="pill lock">locked</span>'}[st];
   el.innerHTML=`<div class="mission-tag">Technology</div>
     <div class="mission-name" style="font-size:16px">${r.name} ${stateTag}</div>
+    <div class="tt-mods" style="margin:8px 0 10px">${techModifierText(r).map(m=>`<div class="tt-mod">▸ ${m}</div>`).join('')}</div>
     <div class="sub" style="margin:8px 0 10px">${r.desc}</div>
     <div class="metrics" style="margin-bottom:10px">
       <div class="metric"><div class="k">Cost</div><div class="v">${fM(r.cost)}</div></div>
