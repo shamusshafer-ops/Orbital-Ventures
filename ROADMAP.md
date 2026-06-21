@@ -130,8 +130,9 @@ companion to `orbital-ventures-design.md` (original full design doc) and
 > (not present in `orbital-ventures.html`). **M7 has since been built for real**
 > (see the M7 entry below, now `[x]`). **M5 (reusability) has since been built too**
 > (2026-06-21 — `propulsive_landing` + recovery economics; see the M5 entry, now
-> `[x]`). **Passive-income remains spec-only / not in code** — no
-> `PASSIVE_CONTRACT_DEFS`. M6 (personnel) *is* in code.
+> `[x]`). **Passive-income contracts have since been built too** (2026-06-21 —
+> `PASSIVE_CONTRACT_DEFS`, repeatable with cooldown + diminishing returns + a military
+> category; see the `[x]` entry below). M6 (personnel) *is* in code.
 
 ## Completed milestones (continued)
 
@@ -243,21 +244,43 @@ companion to `orbital-ventures-design.md` (original full design doc) and
       flags + LV/lander/transfer filtering, research + `reqMissionDone` gating,
       map links, ISRU-free Belt TEI, Δv feasibility (NTR passes Belt injection,
       hypergolic fails), and PGM royalty payout.
-- [ ] **Passive income contracts** *(spec only — NOT yet in code)*: `PASSIVE_CONTRACT_DEFS` pool of 9 signable
-      contracts across 3 categories, all era/mission/research/rep gated.
-      Satellite (weather $0.9M/mo, comms $1.6M/mo, recon $2.4M/mo — all
-      req first_sat + Early Orbital era). Tourism (suborbital $0.6M/mo req
-      first_astro, orbital $1.8M/mo req crew_orbit + 100 rep, lunar flyby
-      $4.5M/mo req luna_flyby + 250 rep). Tech licensing (booster recovery
-      $2.0M/mo req propulsive_landing, NTR IP $3.5M/mo req nuclear_thermal,
-      Sabatier ISRU $2.8M/mo req mars_isru). `state.passiveContracts[]` drains
-      monthly in `advance()`, fires expiry log on completion. Max-1-active
-      per contract type prevents stacking. `signPassiveContract()` deducts
-      setup cost and starts the contract. New Passive Income section at top
-      of Missions tab with active progress bars, available-to-sign cards
-      grouped by category, and total income pill. Header "Passive Income"
-      stat shows combined total (contracts + PGM royalties). Validated
-      headlessly: gating, signing, income flow, expiry, and render all correct.
+- [x] **Passive income contracts** *(Built 2026-06-21 — repeatable, with cooldown +
+      diminishing returns + a military category, per the user's request.)*
+      `PASSIVE_CONTRACT_DEFS` — **12** signable standing contracts across **4**
+      categories (`PASSIVE_CATS`), each gated by flown mission / research / reputation:
+      **Satellite Services** (weather $0.9M/mo, comms $1.6M/mo, imaging $2.4M/mo — req
+      `first_sat` + rising rep); **Human Spaceflight** (suborbital $0.7M/mo req
+      `first_astro`, orbital $1.8M/mo req `crew_orbit`, lunar flyby $4.5M/mo req
+      `luna_flyby`); **Technology Licensing** (booster recovery $2.0M/mo req
+      `propulsive_landing`, NTR IP $3.5M/mo req `nuclear_thermal`, Sabatier ISRU
+      $2.8M/mo req `mars_isru`); and a new **Military & Defense** category (defense
+      launch $2.2M/mo, recon-sat program $3.2M/mo, missile-warning $4.0M/mo — higher
+      pay, **shorter terms** (24–30 mo / 10–12 mo cooldown → more renewal churn), and
+      each **lifts public support** `+3–5` via `addSupport`). **Repeatable with a
+      cooldown + diminishing returns** (the user's headline ask): a signed contract
+      pays a fixed income for its term, then expires onto a per-def cooldown
+      (`PASSIVE_COOLDOWN` 12 mo default) before it can be re-signed; each renewal pays
+      `PASSIVE_DIMINISH`^signings (0.85/renewal) of base, floored at `PASSIVE_FLOOR`
+      40% — a renewable-but-fading stream, not infinite money. State:
+      `state.passiveContracts[]` (active `{id,monthsLeft,income}`, income locked at
+      sign time), `state.contractCooldown{}`, `state.contractSignings{}`
+      (`SAVE_VERSION`→11, forward-compat defaults on both load paths). Income locked
+      per-sign so later diminishing never retroactively changes a running contract.
+      `tickPassiveContracts()` pays each active contract every `advance()` tick, expires
+      to cooldown with a log line, and counts cooldowns down; folded into the #18 Home
+      ledger + `commandSummary` net cashflow. Max-1-active per contract (the active-check
+      blocks re-signing). New **Passive Income** card atop the Missions tab — grouped by
+      category, active contracts show a term progress bar + months left, cooldowns show
+      the renew countdown, available ones show the (diminished) income + setup + a Sign
+      button; fully-locked contracts are hidden until their prerequisites are met. New
+      header **Passive Income** stat (`+$X/mo`, shown when >0). Validated headlessly
+      (37 checks): data shape + military category, fresh-game gating, unlock +
+      affordability, signing (setup deduction, income lock, active flip, no double-sign),
+      monthly payout + term countdown, expiry→cooldown→renewable cycle, **diminishing
+      returns + the 40% floor**, military support lift, research-gated licensing, save
+      default/version, legacy-save no-crash, and a missions-tab render smoke; all 8
+      sampled prior suites green (power2 27, rad 26, reactorrad 13, ls 17, M5 31, #13 33,
+      slice6d 19, propexp 23).
 - [x] **Settings / difficulty panel (Napkin vs Engineer)** — design §13's
       "math exposure" question, made playable. `DIFFICULTY` config with two
       modes and a `diff()` accessor; `state.difficulty` persists in saves

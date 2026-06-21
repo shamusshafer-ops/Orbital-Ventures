@@ -272,6 +272,7 @@
       <div class="stat"><span class="k">Public Support</span><span class="v" id="stSupport">—</span></div>
       <div class="stat hidden" id="stMarketWrap"><span class="k">Market</span><span class="v" id="stMarket">—</span></div>
       <div class="stat hidden" id="stRoyaltyWrap"><span class="k">PGM Royalties</span><span class="v" id="stRoyalty">—</span></div>
+      <div class="stat hidden" id="stPassiveWrap"><span class="k">Passive Income</span><span class="v" id="stPassive">—</span></div>
       <div class="stat hidden" id="stInfraWrap"><span class="k">Facilities</span><span class="v" id="stInfra">—</span></div>
       <div class="stat hidden" id="stSciWrap"><span class="k">Science</span><span class="v" id="stSci">—</span></div>
       <div class="stat hidden" id="stDepotWrap"><span class="k">LEO Depot</span><span class="v" id="stDepot">—</span></div>
@@ -344,7 +345,8 @@
   </div>
 
   <div id="missionsView" class="hidden">
-    <div class="card"><h2>Contracts</h2><div id="missionList"></div></div>
+    <div class="card" id="passiveCard"></div>
+    <div class="card" style="margin-top:14px"><h2>Contracts</h2><div id="missionList"></div></div>
   </div>
 
   <div id="programsView" class="hidden">
@@ -583,6 +585,47 @@ const EVENT_CHANCE=0.14;   // monthly probability of a new event (when off coold
 const EVENT_MIN_GAP=5;     // months of quiet enforced after each event
 // M2: LEO propellant market
 const FUEL_BASE=0.4, FUEL_MIN=0.18, FUEL_MAX=0.95, FUEL_SPREAD=0.10;
+
+// ── Passive-income contracts (repeatable, with cooldown + diminishing returns) ──
+// Standing service / licensing / defense contracts that pay a fixed monthly income for
+// a fixed term, then expire onto a cooldown before they can be re-signed. Each renewal
+// of the same contract pays a little less (PASSIVE_DIMINISH^signings, floored), so they
+// are a renewable-but-fading revenue stream rather than infinite money. Gated by flown
+// mission / research / reputation.
+const PASSIVE_DIMINISH=0.85;        // each renewal of a contract pays 85% of the previous
+const PASSIVE_FLOOR=0.40;           // …but never below 40% of the contract's base income
+const PASSIVE_COOLDOWN=12;          // default months a contract rests before it can re-sign
+const PASSIVE_CONTRACT_DEFS=[
+  // satellite services — open up once you can reach orbit
+  {id:'sat_weather', cat:'sat', name:'Weather Satellite Operations', income:0.9, term:36, setup:2.0,
+    reqMission:'first_sat', minRep:40, blurb:'Operate a meteorological satellite for the national weather service.'},
+  {id:'sat_comms', cat:'sat', name:'Commercial Comms Relay', income:1.6, term:36, setup:4.0,
+    reqMission:'first_sat', minRep:90, blurb:'Lease transponder capacity on a commercial communications relay.'},
+  {id:'sat_imaging', cat:'sat', name:'Earth-Imaging Constellation', income:2.4, term:36, setup:6.0,
+    reqMission:'first_sat', minRep:140, blurb:'Sell multispectral imagery to agriculture, insurance and mapping clients.'},
+  // human spaceflight / tourism
+  {id:'tour_suborbit', cat:'tour', name:'Suborbital Tourism', income:0.7, term:30, setup:1.5,
+    reqMission:'first_astro', minRep:70, blurb:'Fly paying passengers on suborbital arcs to the edge of space.'},
+  {id:'tour_orbital', cat:'tour', name:'Orbital Tourism', income:1.8, term:30, setup:4.5,
+    reqMission:'crew_orbit', minRep:120, blurb:'Private astronauts buy seats for a few days in orbit.'},
+  {id:'tour_lunar', cat:'tour', name:'Lunar Flyby Tourism', income:4.5, term:36, setup:12.0,
+    reqMission:'luna_flyby', minRep:240, blurb:'The ultimate ticket: a free-return loop around the Moon.'},
+  // technology licensing — needs the technology, not just a flight
+  {id:'lic_recovery', cat:'lic', name:'Booster-Recovery Licensing', income:2.0, term:36, setup:5.0,
+    reqResearch:'propulsive_landing', minRep:120, blurb:'License your propulsive-landing IP to other launch providers.'},
+  {id:'lic_ntr', cat:'lic', name:'Nuclear-Thermal Patent Licensing', income:3.5, term:36, setup:9.0,
+    reqResearch:'nuclear_thermal', minRep:200, blurb:'Space agencies and defense pay to use your NTR designs.'},
+  {id:'lic_isru', cat:'lic', name:'Sabatier ISRU Licensing', income:2.8, term:36, setup:7.0,
+    reqResearch:'mars_isru', minRep:220, blurb:'License in-situ propellant production to the wider industry.'},
+  // military & defense — pay more, shorter terms (more churn), and lift public support
+  {id:'mil_launch', cat:'mil', name:'Defense Launch Services', income:2.2, term:24, setup:5.0, cooldown:10, support:3,
+    reqMission:'first_sat', minRep:90, blurb:'Assured-access launch for military payloads on a standing contract.'},
+  {id:'mil_recon', cat:'mil', name:'Reconnaissance Satellite Program', income:3.2, term:24, setup:8.0, cooldown:10, support:4,
+    reqMission:'first_sat', minRep:160, blurb:'Build and operate classified imaging satellites for the defense ministry.'},
+  {id:'mil_warning', cat:'mil', name:'Missile-Warning Constellation', income:4.0, term:30, setup:11.0, cooldown:12, support:5,
+    reqMission:'crew_orbit', minRep:220, blurb:'Early-warning infrared sentinels in high orbit — a national-security backbone.'},
+];
+const PASSIVE_CATS={sat:'Satellite Services', tour:'Human Spaceflight', lic:'Technology Licensing', mil:'Military & Defense'};
 
 // #8 Program politics (first slice): public support drives government funding.
 // Support is a 0–100 mood dial; missions move it, the rivalry erodes it (national
@@ -1174,6 +1217,7 @@ function newGame(difficulty){
     log:[], rivalFired:{}, scooped:{}, rivalThreat:{},
     staff:[], assignedAstronaut:null, persEventCooldown:5,
     econEvents:[], eventCooldown:6, pgmRoyalty:0,
+    passiveContracts:[], contractCooldown:{}, contractSignings:{}, // passive-income contracts (repeatable + cooldown + diminishing)
     publicSupport:SUPPORT_BASE, // #8: program politics — public mood dial
     production:{bays:1,foundry:1,pads:1,qa:1}, // #7: manufacturing capacity — leveled production lines
     lastMonth:{revenue:0,expenses:0,net:0,flights:0}, // #18: rolling ops-summary ledger
@@ -1363,6 +1407,7 @@ function advance(months){
     state.month++; if(state.month>11){state.month=0;state.year++;}
     state.money-=Math.max(0,diff().overhead+econOverheadAdd()+productionUpkeep()); // monthly overhead (difficulty + active market events + #7 production upkeep)
     if(state.pgmRoyalty>0) state.money+=state.pgmRoyalty; // M7: platinum-group royalties from an established Belt claim
+    tickPassiveContracts(); // passive-income contracts pay monthly, then age toward expiry/cooldown
     state.publicSupport=clampA(publicSupport()+(SUPPORT_BASE-publicSupport())*SUPPORT_REVERT, SUPPORT_MIN, SUPPORT_MAX); // #8: mood drifts back to neutral
     state.money+=govMonthlyFunding(); // #8: public support buys government funding
     for(const fid in (state.facilities||{})){ // M17: persistent facilities produce every month
@@ -1411,7 +1456,7 @@ function advance(months){
     }
 
     // #18 (Home): snapshot this month's recurring cashflow for the ops-summary panel
-    const mRev=round2(totalFacilityIncome()+(state.pgmRoyalty>0?state.pgmRoyalty:0)+govMonthlyFunding());
+    const mRev=round2(totalFacilityIncome()+(state.pgmRoyalty>0?state.pgmRoyalty:0)+govMonthlyFunding()+passiveMonthlyIncome());
     const mExp=round2(Math.max(0,diff().overhead+econOverheadAdd()+productionUpkeep())+monthlyPayroll());
     state.lastMonth={revenue:mRev, expenses:mExp, net:round2(mRev-mExp), flights:0};
 
@@ -1441,6 +1486,65 @@ function publicMood(){ const s=publicSupport(); return SUPPORT_TIERS.find(t=>s>=
 function addSupport(delta){ state.publicSupport=clampA(publicSupport()+delta, SUPPORT_MIN, SUPPORT_MAX); return state.publicSupport; }
 // monthly government grant: scales with support (linear, 0 at no support) and era
 function govMonthlyFunding(){ return round2(GOV_FUNDING_BASE*(publicSupport()/100)*(1+0.15*eraIndex(currentEra()))); }
+
+/* ---------- passive-income contracts (repeatable · cooldown · diminishing) ---------- */
+function passiveDef(id){ return PASSIVE_CONTRACT_DEFS.find(c=>c.id===id); }
+function passiveActive(id){ return (state.passiveContracts||[]).find(c=>c.id===id); }
+function passiveSignings(id){ return (state.contractSignings||{})[id]||0; }
+function passiveCooldownLeft(id){ return (state.contractCooldown||{})[id]||0; }
+// diminishing multiplier applied to the NEXT signing, given how many times it's been signed
+function passiveDiminish(id){ return clampA(Math.pow(PASSIVE_DIMINISH, passiveSignings(id)), PASSIVE_FLOOR, 1); }
+// income the contract would pay if signed right now (base × diminishing, rounded)
+function passiveIncomeNow(id){ const d=passiveDef(id); return d?round2(d.income*passiveDiminish(id)):0; }
+function passiveReqMet(d){
+  if(!d) return false;
+  if(d.reqMission && !state.completed[d.reqMission]) return false;
+  if(d.reqResearch && !state.research[d.reqResearch]) return false;
+  if(d.minRep && state.rep<d.minRep) return false;
+  return true;
+}
+// 'active' (running) · 'cooldown' (resting) · 'available' (signable) · 'unaffordable' · 'locked'
+function passiveStatus(id){
+  const d=passiveDef(id); if(!d) return 'locked';
+  if(passiveActive(id)) return 'active';
+  if(!passiveReqMet(d)) return 'locked';
+  if(passiveCooldownLeft(id)>0) return 'cooldown';
+  if(state.money < d.setup) return 'unaffordable';
+  return 'available';
+}
+function signPassiveContract(id){
+  const d=passiveDef(id); if(!d || passiveStatus(id)!=='available') return false;
+  const mult=passiveDiminish(id);
+  const income=round2(d.income*mult);
+  state.money=round2(state.money-d.setup);
+  state.passiveContracts=state.passiveContracts||[];
+  state.passiveContracts.push({id, monthsLeft:d.term, income});
+  state.contractSignings=state.contractSignings||{};
+  const n=(state.contractSignings[id]=passiveSignings(id)+1);
+  if(d.support) addSupport(d.support);
+  log('ok',`Signed ${d.name} — +${fM(income)}/mo for ${d.term} months${n>1?` (renewal #${n-1}, ${Math.round(mult*100)}% of base)`:''}.`);
+  render();
+  return true;
+}
+function passiveMonthlyIncome(){ return round2((state.passiveContracts||[]).reduce((a,c)=>a+(c.income||0),0)); }
+// monthly tick: pay each active contract, expire it onto cooldown, count cooldowns down
+function tickPassiveContracts(){
+  const still=[];
+  (state.passiveContracts||[]).forEach(c=>{
+    state.money=round2(state.money+(c.income||0));
+    c.monthsLeft--;
+    if(c.monthsLeft<=0){
+      const d=passiveDef(c.id);
+      state.contractCooldown=state.contractCooldown||{};
+      const cd=(d&&d.cooldown)||PASSIVE_COOLDOWN;
+      state.contractCooldown[c.id]=cd;
+      if(d) log('note',`${d.name} contract has run its term — renewable in ${cd} months.`);
+    } else still.push(c);
+  });
+  state.passiveContracts=still;
+  const cool=state.contractCooldown||{};
+  for(const k in cool){ if(cool[k]>0) cool[k]--; }
+}
 function rollEconEvent(){
   const elig=ECONOMY_EVENTS.filter(e=> state.year>=(e.minYear||0) && state.rep>=(e.minRep||0) && state.flights>=(e.reqFlights||0) && (!e.reqDepot || state.research.orbital_depot));
   if(!elig.length) return null;
@@ -2652,7 +2756,7 @@ function hideModal(){$('modal').classList.add('hidden');}
 
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=10; // v10: Phase 2 power budget — state.powerSource
+const SAVE_VERSION=11; // v11: passive-income contracts — state.passiveContracts/contractCooldown/contractSignings
 function saveGame(){
   try{
     const payload={v:SAVE_VERSION, ts:Date.now(), state:JSON.parse(JSON.stringify(state))};
@@ -2683,6 +2787,7 @@ function loadGame(){
       depot:0, depotUse:0, tab:'command', log:[], rivalFired:{}, scooped:{}, rivalThreat:{}, bailouts:0,
       difficulty:'engineer', customDifficulty:customDefaults(),
       econEvents:[], eventCooldown:6, pgmRoyalty:0, publicSupport:SUPPORT_BASE,
+      passiveContracts:[], contractCooldown:{}, contractSignings:{},
       production:{bays:1,foundry:1,pads:1,qa:1}, lastMonth:{revenue:0,expenses:0,net:0,flights:0}, history:{},
       ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
       facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
@@ -2732,6 +2837,7 @@ function autoLoad(){
       depot:0, depotUse:0, tab:'command', log:[], rivalFired:{}, scooped:{}, rivalThreat:{}, bailouts:0,
       difficulty:'engineer', customDifficulty:customDefaults(),
       econEvents:[], eventCooldown:6, pgmRoyalty:0, publicSupport:SUPPORT_BASE,
+      passiveContracts:[], contractCooldown:{}, contractSignings:{},
       production:{bays:1,foundry:1,pads:1,qa:1}, lastMonth:{revenue:0,expenses:0,net:0,flights:0}, history:{},
       ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
       facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
@@ -5046,6 +5152,9 @@ function render(){
   if(state.research.orbital_depot) $('stDepot').textContent=state.depot.toFixed(1)+' t';
   $('stRoyaltyWrap').classList.toggle('hidden', !(state.pgmRoyalty>0));
   if(state.pgmRoyalty>0){ $('stRoyalty').textContent='+'+fM(state.pgmRoyalty)+'/mo'; $('stRoyalty').style.color='var(--ok)'; }
+  const passInc=passiveMonthlyIncome();
+  $('stPassiveWrap').classList.toggle('hidden', !(passInc>0));
+  if(passInc>0){ $('stPassive').textContent='+'+fM(passInc)+'/mo'; $('stPassive').style.color='var(--ok)'; }
   const builtN=Object.keys(state.facilities||{}).filter(facilityBuilt).length;
   $('stInfraWrap').classList.toggle('hidden', builtN===0);
   if(builtN>0){ $('stInfra').textContent=`${builtN} · +${fM(totalFacilityIncome())}/mo`; $('stInfra').style.color='var(--ok)'; }
@@ -5111,7 +5220,7 @@ function commandSummary(){
   const era=currentEra();
   const overhead=Math.max(0, diff().overhead+econOverheadAdd()+productionUpkeep()); // includes #7 production upkeep
   const govFunding=govMonthlyFunding(); // #8: political funding from public support
-  const income=round2(totalFacilityIncome()+(state.pgmRoyalty||0)+govFunding);
+  const income=round2(totalFacilityIncome()+(state.pgmRoyalty||0)+govFunding+passiveMonthlyIncome());
   const payroll=monthlyPayroll();
   const mood=publicMood();
   const net=round2(income-overhead-payroll);
@@ -7316,7 +7425,49 @@ function renderPrograms(){
     ${rows}`;
 }
 
+function renderPassiveContracts(){
+  const box=$('passiveCard'); if(!box) return;
+  const totMo=passiveMonthlyIncome();
+  let html=`<h2>Passive Income${totMo>0?` <span class="pill ok">+${fM(totMo)}/mo</span>`:''}</h2>
+    <p class="muted" style="font-size:12px;margin:-4px 0 10px">Standing contracts pay a fixed monthly income for a fixed term, then expire onto a cooldown. Each renewal of the same contract pays a little less.</p>`;
+  let any=false;
+  for(const cat in PASSIVE_CATS){
+    const rows=PASSIVE_CONTRACT_DEFS.filter(d=>d.cat===cat).map(d=>{
+      const st=passiveStatus(d.id), ac=passiveActive(d.id);
+      if(st==='locked' && !ac) return ''; // hide contracts whose prerequisites aren't met yet
+      any=true;
+      const signings=passiveSignings(d.id);
+      const dimNote = signings>0 ? ` <span class="dim">· renewals pay ${Math.round(passiveDiminish(d.id)*100)}% of base (${signings} prior)</span>` : '';
+      let pill='', right='', btn='';
+      if(ac){
+        const pct=Math.round(100*(d.term-ac.monthsLeft)/d.term);
+        pill=' <span class="pill ok">active</span>';
+        right=`<div class="reward"><div class="p">+${fM(ac.income)}/mo</div><div class="r">${ac.monthsLeft} mo left</div></div>`;
+        btn=`<button class="btn" disabled>Running</button>`;
+        right+=`<div style="width:100%;height:4px;background:#1a2230;border-radius:3px;margin-top:6px"><div style="width:${pct}%;height:100%;background:var(--ok);border-radius:3px"></div></div>`;
+      } else if(st==='cooldown'){
+        pill=' <span class="pill lock">cooldown</span>';
+        right=`<div class="reward"><div class="r">renew in ${passiveCooldownLeft(d.id)} mo</div></div>`;
+        btn=`<button class="btn" disabled>On cooldown</button>`;
+      } else {
+        const inc=passiveIncomeNow(d.id), afford=state.money>=d.setup;
+        right=`<div class="reward"><div class="p">+${fM(inc)}/mo</div><div class="r">${d.term} mo term</div></div>`;
+        btn=`<button class="btn" onclick="signPassiveContract('${d.id}')" ${afford?'':'disabled'}>Sign · ${fM(d.setup)}</button>`;
+      }
+      const meta=`base +${fM(d.income)}/mo · setup ${fM(d.setup)} · ${(d.cooldown||PASSIVE_COOLDOWN)} mo cooldown${d.support?` · +${d.support} public support`:''}${dimNote}`;
+      return `<div class="item"><div class="body"><div class="title">${d.name}${pill}</div>
+        <div class="sub">${d.blurb}</div>
+        <div class="sub num" style="margin-top:4px;color:var(--readout)">${meta}</div></div>${right}${btn}</div>`;
+    }).filter(Boolean);
+    if(!rows.length) continue;
+    html+=`<div class="dim" style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;margin:12px 0 4px">${PASSIVE_CATS[cat]}</div>${rows.join('')}`;
+  }
+  if(!any) html+=`<p class="dim" style="font-size:12px">No standing contracts available yet — reach orbit, fly crews and license technology to open them up.</p>`;
+  box.innerHTML=html;
+}
+
 function renderMissions(){
+  renderPassiveContracts();
   const box=$('missionList'); box.innerHTML='';
   MISSIONS.forEach(m=>{
     const done=state.completed[m.id];
