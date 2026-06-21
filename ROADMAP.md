@@ -798,8 +798,25 @@ Science), not a single line — that's the "decades-long effort" feel.
    (28), slice 2 (29), M5 (31), #13 (33) suites green. *Still deferred:* the
    remaining ~10 early-era nodes (materials front, more crew/guidance) — content,
    now that the effect machinery exists.
-3. **Tech Levels mechanic** — `state.techLevel`, escalating invest, UI in the
-   tech-tree detail panel (reuse #7 level pattern). Start with Cryogenic Engines.
+3. ✅ **Tech Levels mechanic** — *Built 2026-06-21.* Flagship technologies you keep
+   investing in. `TECH_LEVELS` config + `state.techLevel` (`SAVE_VERSION`→7,
+   forward-compat default `{}`; a researched leveled tech with no entry reads as
+   L1). Helpers mirror the #7 production-line pattern: `techLevel`/`techLevelName`/
+   `techUpgradeCost` (escalates ×`costMul`)/`canUpgradeTech`/`upgradeTech` (deducts
+   capital, `advance`s the dev months, raises the level). Level effects feed the
+   **same** isp/thrust/reliability accumulators (`techLevelEffectSum` folded into
+   `researchEffectSum` + `curRel`), so the existing caps still bound performance.
+   Shipped tech: **Cryogenic Engines** (L1 Atlas-Centaur → L2 Saturn → L3 Shuttle →
+   L4 Modern Reusable; +2% Isp/level beyond L1). The tech-tree detail panel now
+   shows level/max + the per-level effect + an Upgrade button for a researched
+   leveled tech (and "max level" when capped); `completeResearch` seeds L1.
+   Validated headlessly (27 checks): config, L1 seeding, cost escalation, upgrade
+   (level↑ + capital↓ + time advance), max guard + no-op, research/funds/busy
+   guards, accumulator feed (+ global-cap clamp when combined with the propulsion
+   chain), exact Δv scaling on a fixed design, save default/version, old-entry→L1,
+   and detail-panel render; 8-tab render clean; slice 1/2/2b + M5 + #13 suites
+   green. *Next leveled techs* (engines, materials, etc.) are now just `TECH_LEVELS`
+   entries.
 4. **Research Divisions** — `state.divisions`, per-track speed from division
    quality; wire into the existing R&D-progress accumulator; Personnel/R&D UI.
 5. **Breakthrough Events** — generalise #9 breakthroughs to track-scoped,

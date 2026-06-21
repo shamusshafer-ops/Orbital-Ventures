@@ -1060,6 +1060,7 @@ function newGame(difficulty){
     vehicles:[], activeVehicle:null, // #3: named vehicle lineages with heritage
     assembleOrbit:false, // #6: orbital-assembly route toggle (per-launch, resets after flight)
     recovery:false, // M5: reusability — first-stage recovery fitted to the current design (persists)
+    techLevel:{}, // #3: per-tech investment level for leveled technologies
   };
   log('info','Company founded. The pad is yours — go make some noise.');
 }
@@ -1076,6 +1077,7 @@ function curRel(){
   let base=0.65+0.025*Math.min(state.successes,12); // heritage: green company is genuinely unreliable
   // sum every completed node that buys reliability — now spread across the Testing & Reliability and Guidance & Avionics tracks (test_program, telemetry, QA, vibration, redundant avionics); track-agnostic so the split is balance-neutral
   for(const r of RESEARCH){ if(state.research[r.id] && r.effect && r.effect.reliability) base+=r.effect.reliability; }
+  base+=techLevelEffectSum('reliability'); // #3: any reliability from leveled techs (still under relCap)
   base+=engRelBonus(); // M6: engineer team reliability bonus
   base+=diff().relBonus; // difficulty: forgiveness bump
   return base; // note: effectiveReliability still clamps to diff().relCap, so the cap preserves balance
@@ -1086,9 +1088,47 @@ function curRel(){
 // its inputs. In-space legs (transfer/lander) are deliberately NOT scaled, so
 // deep-space mass ratios stay as balanced and the buff is bounded to ascent.
 const ISP_BONUS_CAP=0.10, THRUST_BONUS_CAP=0.15;
-function researchEffectSum(key){ let s=0; for(const r of RESEARCH){ if(state.research[r.id] && r.effect && r.effect[key]) s+=r.effect[key]; } return s; }
+function researchEffectSum(key){ let s=0; for(const r of RESEARCH){ if(state.research[r.id] && r.effect && r.effect[key]) s+=r.effect[key]; } return s + techLevelEffectSum(key); }
 function ispMult(){ return 1 + Math.min(ISP_BONUS_CAP, researchEffectSum('isp')); }
 function thrustMult(){ return 1 + Math.min(THRUST_BONUS_CAP, researchEffectSum('thrust')); }
+// R&D epic slice 3: Tech Levels — flagship technologies you keep investing in.
+// After a leveled tech is researched (L1), capital + time raise it to L2..max; each
+// level adds to the SAME isp/thrust/reliability accumulators above, so the existing
+// caps still bound performance. Mirrors the #7 production-line level pattern.
+const TECH_LEVELS = {
+  cryo_upper: { name:'Cryogenic Engines', max:4, baseCost:4.0, costMul:1.7, months:5,
+                names:['Atlas-Centaur','Saturn','Shuttle','Modern Reusable'],
+                per:{ isp:0.02 } }, // +2% Isp per level beyond L1 (global Isp cap still applies)
+};
+function isLeveledTech(id){ return !!TECH_LEVELS[id]; }
+function techLevel(id){ if(!state.research||!state.research[id]) return 0; return Math.max(1, (state.techLevel&&state.techLevel[id])||1); }
+function techLevelName(id){ const d=TECH_LEVELS[id], l=techLevel(id); return (d&&d.names&&d.names[l-1])||('Level '+l); }
+function techUpgradeCost(id){ const d=TECH_LEVELS[id]; return round2(d.baseCost*Math.pow(d.costMul, techLevel(id)-1)); }
+function canUpgradeTech(id){
+  const d=TECH_LEVELS[id]; if(!d) return {ok:false,why:'Not a leveled technology.'};
+  if(!state.research||!state.research[id]) return {ok:false,why:'Research it first.'};
+  if(techLevel(id)>=d.max) return {ok:false,why:'At maximum level.'};
+  if(state.activeResearch) return {ok:false,why:'Another project in progress.'};
+  if(state.money<techUpgradeCost(id)) return {ok:false,why:'Not enough capital.'};
+  return {ok:true};
+}
+function upgradeTech(id){
+  const chk=canUpgradeTech(id); if(!chk.ok) return;
+  const d=TECH_LEVELS[id], cost=techUpgradeCost(id);
+  state.money-=cost;
+  advance(d.months); // development time — the new level comes online after the work
+  if(state.over){ render(); return; }
+  if(!state.techLevel) state.techLevel={};
+  state.techLevel[id]=techLevel(id)+1;
+  log('ok',`${d.name} advanced to ${techLevelName(id)} (Level ${state.techLevel[id]}/${d.max}).`);
+  render();
+}
+// total bonus contributed by leveled techs for an effect key (levels beyond L1)
+function techLevelEffectSum(key){
+  let s=0;
+  for(const id in TECH_LEVELS){ const d=TECH_LEVELS[id]; if(d.per&&d.per[key]&&state.research&&state.research[id]) s+=d.per[key]*(techLevel(id)-1); }
+  return s;
+}
 function advance(months){
   for(let i=0;i<months;i++){
     state.month++; if(state.month>11){state.month=0;state.year++;}
@@ -1449,6 +1489,7 @@ function checkPoaching(){
 function completeResearch(){
   const r=RESEARCH.find(x=>x.id===state.activeResearch.id);
   state.research[r.id]=true; state.activeResearch=null;
+  if(isLeveledTech(r.id)){ if(!state.techLevel) state.techLevel={}; state.techLevel[r.id]=1; } // #3: leveled techs start at L1
   if(r.effect.engine){state.unlocked[r.effect.engine]=true; log('note',`R&D complete: ${r.name}. New engine available — ${ENGINES[r.effect.engine].name}.`);}
   else if(r.effect.sigma){state.sigma=r.effect.sigma; log('note',`R&D complete: ${r.name}. σ is now ${r.effect.sigma}.`);}
   else if(r.effect.reliability){log('note',`R&D complete: ${r.name}. Launch reliability improved.`);}
@@ -2291,7 +2332,7 @@ function hideModal(){$('modal').classList.add('hidden');}
 
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=6; // v6: M5 reusability — state.recovery (first-stage recovery toggle)
+const SAVE_VERSION=7; // v7: R&D epic slice 3 — state.techLevel (per-tech investment levels)
 function saveGame(){
   try{
     const payload={v:SAVE_VERSION, ts:Date.now(), state:JSON.parse(JSON.stringify(state))};
@@ -2327,7 +2368,7 @@ function loadGame(){
       facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
       architectures:{}, science:0, persEventCooldown:5,
       staff:[], assignedAstronaut:null,
-      vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false
+      vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, techLevel:{}
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -2376,7 +2417,7 @@ function autoLoad(){
       facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
       architectures:{}, science:0, persEventCooldown:5,
       staff:[], assignedAstronaut:null,
-      vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false
+      vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, techLevel:{}
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -6972,7 +7013,18 @@ function renderResearchDetail(){
   const reqNames=r.req.map(q=>RESEARCH.find(x=>x.id===q).name).join(', ');
   const gateName=r.reqMissionDone?MISSIONS.find(m=>m.id===r.reqMissionDone).name:null;
   let action;
-  if(st==='done') action=`<button class="btn" disabled style="width:100%">✓ Researched</button>`;
+  if(st==='done' && isLeveledTech(id)){
+    const d=TECH_LEVELS[id], lvl=techLevel(id), maxed=lvl>=d.max;
+    const chk=canUpgradeTech(id), cost=techUpgradeCost(id);
+    const perLine=Object.entries(d.per||{}).map(([k,v])=>`+${Math.round(v*100)}% ${k}`).join(' · ');
+    const curBonus=Object.entries(d.per||{}).map(([k,v])=>`+${Math.round(v*(lvl-1)*100)}% ${k}`).join(' · ');
+    action=`<div class="metric" style="margin-bottom:8px"><div class="k">Tech level</div><div class="v" style="color:var(--ignite)">${lvl} / ${d.max} · ${techLevelName(id)}</div></div>
+      <div class="dim" style="font-size:11px;margin-bottom:8px">A leveled technology — keep investing to advance it. Each level: <b>${perLine}/level</b>${lvl>1?` · current bonus from this tech: <b style="color:var(--ok)">${curBonus}</b>`:''}.</div>
+      ${maxed
+        ? `<button class="btn" disabled style="width:100%">✓ ${techLevelName(id)} — max level (${d.max})</button>`
+        : `<button class="launch" style="width:100%" onclick="upgradeTech('${id}')" ${chk.ok?'':'disabled'}>${chk.ok?`Upgrade → ${(d.names&&d.names[lvl])||('Level '+(lvl+1))} · ${fM(cost)} · ${d.months} mo`:chk.why}</button>`}`;
+  }
+  else if(st==='done') action=`<button class="btn" disabled style="width:100%">✓ Researched</button>`;
   else if(st==='active'){
     const rc=rushCost(state.activeResearch.rushed||0), canRush=state.activeResearch.monthsLeft>1 && state.money>=rc;
     const sc=sciRushCost(state.activeResearch.sciRushed||0), canSci=state.activeResearch.monthsLeft>1 && (state.science||0)>=sc;
