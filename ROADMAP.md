@@ -826,8 +826,27 @@ Science), not a single line — that's the "decades-long effort" feel.
    and detail-panel render; 8-tab render clean; slice 1/2/2b + M5 + #13 suites
    green. *Next leveled techs* (engines, materials, etc.) are now just `TECH_LEVELS`
    entries.
-4. **Research Divisions** — `state.divisions`, per-track speed from division
-   quality; wire into the existing R&D-progress accumulator; Personnel/R&D UI.
+4. ✅ **Research Divisions** — *Built 2026-06-21.* Org-level depth above individual
+   engineers (M6) and the first concrete slice of arc **#19**. `DIVISIONS` (5 teams,
+   each covering a few tracks — Propulsion[+nuclear], Structures & Test[+testing],
+   Avionics & Software[guidance+assembly], Life Sciences[crew], Deep Space[+refueling];
+   every track covered exactly once) + `state.divisions` (`SAVE_VERSION`→8,
+   forward-compat default `{}`; a missing entry reads defaults skill 0.40/exp 0/
+   morale 60). A division's **quality** = 0.5·skill + 0.3·experience + 0.2·morale
+   drives `divisionSpeedBonus` (a pure +0–25%/mo R&D accelerator for projects in its
+   tracks), folded into the existing R&D tick beside `engRdSpeedBonus`
+   (`divisionForResearch`/`divisionQuality`/`divisionSpeedBonus`). **Experience**
+   grows as a division ships projects (`divisionGainExp` in `completeResearch`);
+   **morale** drifts with company finances each month (`tickDivisionMorale`);
+   **training** spends escalating capital to raise skill (`trainDivision`). New
+   Research Divisions panel in the R&D tab (per-division track chips, skill/exp/
+   morale bars, live +%/mo, the active project's division highlighted, Train
+   button). Validated headlessly (27 checks): full track coverage (no gaps/overlap),
+   quality formula + range, speed-bonus scaling, training (skill↑ capped + cost
+   escalation + morale + funds/maxed guards), exp accrual, morale drift by solvency,
+   the bonus accelerating the R&D tick (top division finishes ≤ a poor one), save
+   default/version + old-save defaults, and a panel render; 8-tab render clean;
+   slice 1/2/2b/3 + M5 + #13 suites green.
 5. **Breakthrough Events** — generalise #9 breakthroughs to track-scoped,
    division-driven.
 6. **Mid/late-era content** — Orbital → Lunar → Interplanetary → Far-Future node

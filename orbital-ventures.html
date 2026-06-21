@@ -354,6 +354,7 @@
       <div id="techTree" style="overflow-x:auto;overflow-y:hidden"></div>
     </div>
     <div class="card" id="researchDetail" style="margin-top:14px"></div>
+    <div class="card" id="divisionsCard" style="margin-top:14px"></div>
   </div>
 
   <div id="mapView" class="hidden">
@@ -1074,6 +1075,7 @@ function newGame(difficulty){
     assembleOrbit:false, // #6: orbital-assembly route toggle (per-launch, resets after flight)
     recovery:false, // M5: reusability — first-stage recovery fitted to the current design (persists)
     techLevel:{}, // #3: per-tech investment level for leveled technologies
+    divisions:{}, // #4: research divisions (skill/exp/morale per division)
   };
   log('info','Company founded. The pad is yours — go make some noise.');
 }
@@ -1142,6 +1144,57 @@ function techLevelEffectSum(key){
   for(const id in TECH_LEVELS){ const d=TECH_LEVELS[id]; if(d.per&&d.per[key]&&state.research&&state.research[id]) s+=d.per[key]*(techLevel(id)-1); }
   return s;
 }
+
+/* ---------- R&D epic slice 4: Research Divisions (first slice of #19) ----------
+   Org-level depth above individual engineers (M6). Research is carried out by named
+   divisions, each covering a few tracks. A division's QUALITY (skill + accumulated
+   experience + morale) accelerates research in its tracks — a pure speed bonus that
+   stacks with the engineer-team bonus. You invest capital to train a division
+   (raise skill); experience grows as it completes projects; morale tracks financial
+   health. Generalises the flat engRdSpeedBonus() into per-track speed. */
+const DIVISIONS = [
+  {id:'propulsion', name:'Propulsion Division',        tracks:['propulsion','nuclear'],     blurb:'Engines, combustion, nuclear thermal/electric.'},
+  {id:'structures', name:'Structures & Test Division', tracks:['structures','testing'],     blurb:'Airframes, materials, qualification & reliability.'},
+  {id:'avionics',   name:'Avionics & Software Division',tracks:['guidance','assembly'],     blurb:'Guidance, flight computers, rendezvous & docking.'},
+  {id:'lifesci',    name:'Life Sciences Division',     tracks:['crew'],                     blurb:'Crew systems, life support, human factors.'},
+  {id:'deepspace',  name:'Deep Space Division',        tracks:['deepspace','refueling'],    blurb:'Trajectories, deep-space ops, refueling & ISRU.'},
+];
+const DIV_EXP_FULL=8;        // completed projects for full experience credit
+const DIV_SPEED_MAX=0.25;    // max fractional R&D-speed bonus from a top-quality division
+const DIV_TRAIN_BASE=1.0;    // $M base training cost (escalates with skill)
+const DIV_TRAIN_SKILL=0.12;  // skill gained per training investment
+const DIV_TRAIN_MORALE=5;    // morale gained per training investment
+const DIV_SKILL0=0.40, DIV_MORALE0=60; // starting skill / morale
+function divisionDef(id){ return DIVISIONS.find(d=>d.id===id); }
+function divisionState(id){ const s=(state.divisions&&state.divisions[id])||{}; return {skill:s.skill!=null?s.skill:DIV_SKILL0, exp:s.exp||0, morale:s.morale!=null?s.morale:DIV_MORALE0}; }
+function divisionForTrack(track){ const d=DIVISIONS.find(x=>x.tracks.includes(track)); return d?d.id:null; }
+function divisionForResearch(r){ return r?divisionForTrack(r.track||'propulsion'):null; }
+function divisionExpLevel(id){ return Math.min(1, divisionState(id).exp/DIV_EXP_FULL); }
+function divisionQuality(id){ const s=divisionState(id); return Math.max(0, Math.min(1, 0.5*s.skill + 0.3*divisionExpLevel(id) + 0.2*(s.morale/100))); }
+function divisionSpeedBonus(r){ const id=divisionForResearch(r); if(!id) return 0; return divisionQuality(id)*DIV_SPEED_MAX; }
+function divisionTrainCost(id){ return round2(DIV_TRAIN_BASE*(1+divisionState(id).skill*4)); }
+function canTrainDivision(id){
+  if(!divisionDef(id)) return {ok:false,why:'Unknown division.'};
+  if(divisionState(id).skill>=1) return {ok:false,why:'Fully trained.'};
+  if(state.money<divisionTrainCost(id)) return {ok:false,why:'Not enough capital.'};
+  return {ok:true};
+}
+function trainDivision(id){
+  const chk=canTrainDivision(id); if(!chk.ok) return;
+  const cost=divisionTrainCost(id); state.money-=cost;
+  if(!state.divisions) state.divisions={};
+  const cur=divisionState(id);
+  state.divisions[id]={skill:Math.min(1, cur.skill+DIV_TRAIN_SKILL), exp:cur.exp, morale:Math.min(100, cur.morale+DIV_TRAIN_MORALE)};
+  log('ok',`${divisionDef(id).name} trained — skill now ${Math.round(state.divisions[id].skill*100)}% (−${fM(cost)}).`);
+  render();
+}
+function divisionGainExp(r){ const id=divisionForResearch(r); if(!id) return; if(!state.divisions) state.divisions={}; const cur=divisionState(id); state.divisions[id]={skill:cur.skill, exp:cur.exp+1, morale:Math.min(100,cur.morale+2)}; }
+function tickDivisionMorale(){
+  if(!state.divisions) state.divisions={};
+  const healthy=state.money>0;
+  for(const d of DIVISIONS){ const cur=divisionState(d.id); const target=healthy?70:25; const m=cur.morale + Math.sign(target-cur.morale)*0.6;
+    state.divisions[d.id]={skill:cur.skill, exp:cur.exp, morale:Math.max(0,Math.min(100, m))}; }
+}
 function advance(months){
   for(let i=0;i<months;i++){
     state.month++; if(state.month>11){state.month=0;state.year++;}
@@ -1186,9 +1239,10 @@ function advance(months){
       return true;
     });
 
-    // M6: R&D speed bonus from engineers
+    // M6 engineers + #4 division: R&D speed bonus (both pure accelerators)
+    tickDivisionMorale();
     if(state.activeResearch){
-      const rdBonus=engRdSpeedBonus();
+      const rdBonus=engRdSpeedBonus()+divisionSpeedBonus(RESEARCH.find(r=>r.id===state.activeResearch.id));
       state.activeResearch.monthsLeft-=(1+rdBonus);
       if(state.activeResearch.monthsLeft<=0) completeResearch();
     }
@@ -1502,6 +1556,7 @@ function checkPoaching(){
 function completeResearch(){
   const r=RESEARCH.find(x=>x.id===state.activeResearch.id);
   state.research[r.id]=true; state.activeResearch=null;
+  divisionGainExp(r); // #4: the covering division gains experience from completing a project
   if(isLeveledTech(r.id)){ if(!state.techLevel) state.techLevel={}; state.techLevel[r.id]=1; } // #3: leveled techs start at L1
   if(r.effect.engine){state.unlocked[r.effect.engine]=true; log('note',`R&D complete: ${r.name}. New engine available — ${ENGINES[r.effect.engine].name}.`);}
   else if(r.effect.sigma){state.sigma=r.effect.sigma; log('note',`R&D complete: ${r.name}. σ is now ${r.effect.sigma}.`);}
@@ -2345,7 +2400,7 @@ function hideModal(){$('modal').classList.add('hidden');}
 
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=7; // v7: R&D epic slice 3 — state.techLevel (per-tech investment levels)
+const SAVE_VERSION=8; // v8: R&D epic slice 4 — state.divisions (research divisions)
 function saveGame(){
   try{
     const payload={v:SAVE_VERSION, ts:Date.now(), state:JSON.parse(JSON.stringify(state))};
@@ -2381,7 +2436,7 @@ function loadGame(){
       facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
       architectures:{}, science:0, persEventCooldown:5,
       staff:[], assignedAstronaut:null,
-      vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, techLevel:{}
+      vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, techLevel:{}, divisions:{}
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -2430,7 +2485,7 @@ function autoLoad(){
       facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
       architectures:{}, science:0, persEventCooldown:5,
       staff:[], assignedAstronaut:null,
-      vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, techLevel:{}
+      vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, techLevel:{}, divisions:{}
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -7126,6 +7181,35 @@ function renderRnd(){
   renderTechTree();
   renderTechAction();
   renderResearchDetail();
+  renderDivisions();
+}
+// #4: Research Divisions panel — quality drives per-track research speed
+function renderDivisions(){
+  const box=$('divisionsCard'); if(!box) return;
+  const activeDiv = state.activeResearch ? divisionForResearch(RESEARCH.find(r=>r.id===state.activeResearch.id)) : null;
+  const cards=DIVISIONS.map(d=>{
+    const s=divisionState(d.id), q=divisionQuality(d.id), bonus=Math.round(q*DIV_SPEED_MAX*100);
+    const chk=canTrainDivision(d.id), cost=divisionTrainCost(d.id), maxed=s.skill>=1;
+    const isActive=activeDiv===d.id;
+    const mColor=s.morale>=70?'var(--ok)':s.morale>=40?'var(--warn)':'var(--bad)';
+    const trackChips=d.tracks.map(t=>{const tr=TRACKS.find(x=>x.key===t)||{};return `<span class="pill" style="color:${tr.color};border-color:${tr.color};font-size:10px">${tr.label||t}</span>`;}).join(' ');
+    const bar=(label,val,col)=>`<div style="display:flex;align-items:center;gap:8px;margin-top:4px"><span style="font-size:10px;color:var(--dim);width:46px">${label}</span><div style="flex:1;height:5px;background:var(--panel2);border-radius:3px;overflow:hidden"><div style="height:100%;width:${Math.round(val)}%;background:${col}"></div></div><span style="font-family:var(--mono);font-size:10px;color:${col};width:30px;text-align:right">${Math.round(val)}</span></div>`;
+    return `<div class="card" style="background:var(--panel2);margin-bottom:10px;${isActive?'border-color:var(--ignite)':''}">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <div class="mission-name" style="font-size:14px;margin:0">${d.name} ${isActive?'<span class="pill active" style="font-size:10px">researching</span>':''}</div>
+        <div style="text-align:right"><div class="dim" style="font-size:10px">R&D speed</div><div style="font-family:var(--mono);color:var(--ok)">+${bonus}%/mo</div></div>
+      </div>
+      <div style="margin:4px 0 2px">${trackChips}</div>
+      <p class="muted" style="font-size:11px;margin:4px 0 2px">${d.blurb}</p>
+      ${bar('Skill', s.skill*100, 'var(--readout)')}
+      ${bar('Experience', divisionExpLevel(d.id)*100, 'var(--ignite)')}
+      ${bar('Morale', s.morale, mColor)}
+      <button class="btn" style="width:100%;margin-top:8px;font-size:11px" onclick="trainDivision('${d.id}')" ${chk.ok?'':'disabled'}>${maxed?'✓ Fully trained':(chk.ok?`Train (+${Math.round(DIV_TRAIN_SKILL*100)}% skill · ${fM(cost)})`:chk.why)}</button>
+    </div>`;
+  }).join('');
+  box.innerHTML=`<h2>Research Divisions <span class="pill">${DIVISIONS.length} teams</span></h2>
+    <p class="muted" style="font-size:12px;margin:-4px 0 10px">Each division researches its own tracks. A division's <b>quality</b> — skill + accumulated experience + morale — accelerates projects in those tracks (stacks with your engineers). Invest capital to train them; experience grows as they ship; morale follows the company's finances.</p>
+    ${cards}`;
 }
 
 function renderLog(){
