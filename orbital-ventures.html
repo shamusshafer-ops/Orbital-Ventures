@@ -4892,6 +4892,42 @@ function drawPad(ctx,r,groundY,t){
     if(shape&&shape.segs.length){ const scale=Math.min((r.h*0.82)/(shape.totalH+16),(r.w*0.42)/(shape.maxW*1.9));
       ctx.save(); ctx.translate(cx-r.w*0.14, groundY-6); drawVehicle(ctx, shape.segs, shape.nose, scale, 0, 0); ctx.restore(); } }
 }
+// #18 slice 6: the Space Center grows with company scale (pure — headless-testable)
+function siteScale(){
+  const fb=id=>{ try{ return facilityBuilt(id); }catch(e){ return false; } };
+  const era=eraIndex(currentEra());
+  return { pads:prodLevel('pads'), vab:prodLevel('bays'), foundry:prodLevel('foundry'),
+    era, dishes:2+Math.min(3,era), leoOps:fb('leo_station'), lunarOps:fb('lunar_base'), marsOps:fb('mars_base'),
+    flights:state.flights||0 };
+}
+function drawMiniPad(ctx,px,groundY,w,top,t,seed){
+  const gx=px, gw=w*0.5, gTop=top+(groundY-top)*0.30, gBot=groundY-3;
+  ctx.fillStyle='#10171c'; ctx.fillRect(px-2,groundY-5,w,6);
+  ctx.strokeStyle='#7a5532'; ctx.lineWidth=1.4; ctx.strokeRect(gx,gTop,gw,gBot-gTop);
+  ctx.strokeStyle='rgba(170,115,65,0.4)'; ctx.lineWidth=0.8;
+  for(let yy=gTop;yy<gBot;yy+=9){ ctx.beginPath(); ctx.moveTo(gx,yy); ctx.lineTo(gx+gw,yy+9); ctx.moveTo(gx+gw,yy); ctx.lineTo(gx,yy+9); ctx.stroke(); }
+  const bl=(Math.sin(t*4+seed)>0)?1:0.25; ctx.fillStyle=`rgba(255,60,40,${0.35+0.55*bl})`; ctx.beginPath(); ctx.arc(gx+gw,gTop,2,0,7); ctx.fill();
+}
+function drawOpsBuilding(ctx,x,y,w,h,color,label,t){
+  ctx.fillStyle='#1a232a'; ctx.fillRect(x,y-h,w,h);
+  ctx.strokeStyle='#33424c'; ctx.lineWidth=1; ctx.strokeRect(x,y-h,w,h);
+  ctx.fillStyle='#243440'; ctx.beginPath(); ctx.ellipse(x+w*0.5,y-h,w*0.5,h*0.42,0,Math.PI,0); ctx.fill();
+  ctx.fillStyle=color; ctx.beginPath(); ctx.arc(x+w*0.5,y-h-2,2.2,0,7); ctx.fill();
+  ccWindows(ctx, x+2, y-h+h*0.45, w-4, h*0.45, 3,1, t, 9, color);
+  ctx.fillStyle=color; ctx.font='7px ui-monospace,monospace'; ctx.textAlign='center'; ctx.fillText(label, x+w*0.5, y-3); ctx.textAlign='left';
+}
+function drawSiteGrowth(ctx,W,H,groundY,t){
+  let sc; try{ sc=siteScale(); }catch(e){ return; }
+  const pad=ccRect('pad',W,H);
+  for(let i=1;i<sc.pads;i++){ const px=pad.x - i*(W*0.075); if(px<W*0.34) break; drawMiniPad(ctx,px,groundY,W*0.05,pad.y+pad.h*0.2,t,i*2); }
+  const infra=ccRect('infra',W,H);
+  for(let i=2;i<sc.dishes;i++){ const cx=infra.x+infra.w*0.3+i*infra.w*0.30, cy=infra.y+infra.h*0.4; if(cx>W*0.75) break;
+    ctx.strokeStyle='#3a4a55'; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(cx,infra.y+infra.h); ctx.stroke();
+    drawDish(ctx,cx,cy,infra.w*0.22,-0.9+0.18*Math.sin(t*0.6+i)); }
+  const ops=[]; if(sc.leoOps) ops.push(['LEO','#5aa9e0']); if(sc.lunarOps) ops.push(['LUNAR','#b9c0c7']); if(sc.marsOps) ops.push(['MARS','#c1532b']);
+  const oy=groundY+(H-groundY)*0.34;
+  ops.forEach((o,i)=>drawOpsBuilding(ctx, W*0.04 + i*(W*0.085), oy, W*0.07, H*0.10, o[1], o[0], t));
+}
 function drawCape(cv, t){
   const ctx=cv && cv.getContext && cv.getContext('2d'); if(!ctx) return;
   const W=cv.width, H=cv.height, groundY=H*0.70, waterX=W*0.78;
@@ -4912,13 +4948,15 @@ function drawCape(cv, t){
   ctx.strokeStyle='rgba(255,220,170,0.22)'; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(waterX,groundY-2); ctx.lineTo(waterX,H); ctx.stroke();
   drawLab(ctx,ccRect('rnd',W,H),t);
   drawAdmin(ctx,ccRect('personnel',W,H),t);
-  drawVAB(ctx,ccRect('mfg',W,H),t,true);
+  const vab=ccRect('mfg',W,H); const vGrow=Math.min(0.5,(prodLevel('bays')-1)*0.12); vab.y-=vab.h*vGrow; vab.h+=vab.h*vGrow; // VAB grows with Assembly Bays
+  drawVAB(ctx,vab,t,true);
   drawProd(ctx,ccRect('prod',W,H),t,true);
   drawControl(ctx,ccRect('mission',W,H),t);
   drawDishes(ctx,ccRect('infra',W,H),t);
   drawDome(ctx,ccRect('map',W,H),t);
   drawRivalPad(ctx,ccRect('rivals',W,H),t);
   drawPad(ctx,ccRect('pad',W,H),groundY,t);
+  drawSiteGrowth(ctx,W,H,groundY,t); // #18 slice 6: extra pads, era dishes, facility ops buildings
 }
 let ccAnim=null, ccT0=0, ccPhaserSmoke=false, ccPhaserDetail=false;
 function ccNow(){ return (typeof performance!=='undefined'&&performance.now)?performance.now():Date.now(); }

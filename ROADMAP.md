@@ -633,6 +633,12 @@ order — the near-term build order (#3 vehicle families → … → #7) is unch
         with year) from `nextObjective`/`PROGRAMS`/`state.completed`/`state.history`,
         rendered as one "Current Objectives" card (with the ambition bar) replacing the
         separate contracts/ambition cards; items click-route. Validated (10 checks) + smoke.
+      - [x] **Slice 6 — Growing Space Center** *(2026-06-20).* `siteScale()` (pure) drives a
+        scene that reflects company scale: the VAB grows taller with Assembly Bays, extra
+        launch pads appear with the Pads line, tracking dishes multiply by era, and
+        LEO/Lunar/Mars ops buildings appear once those facilities exist. Painters
+        (`drawSiteGrowth`/`drawMiniPad`/`drawOpsBuilding`) append to `drawCape`. Validated
+        (9 checks incl. a drawCape no-throw with full growth) + suites.
 - [ ] **19 · Organizational scaling (departments)** *(P2, v2.0)* — Grow personnel
       from named individuals into **departments** with leaders/executive roles,
       career progression + training/specialization tracks, and
