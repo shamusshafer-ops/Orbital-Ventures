@@ -609,6 +609,34 @@ review's numbering, not the build order (see **Suggested build order** at the en
       cadence rush, refly+wear, family heritage, custom difficulty, and a
       composite where multiple modifiers fire at once. Slice harnesses
       3–7 re-run: 20+31+25+28+36 = 140/140 still green (173/173 total).
+
+      *Visualisation layer extended 2026-06-22 — **per-material spot-price
+      sparklines**.* Now that material spot prices wander monthly and the
+      blend feeds into every build, the player needs to see the *trend* —
+      is alloy mid-bull-run, or settling back toward 1.0× after a spike?
+      Each material now records its post-tick spot into a ring buffer
+      (`state.materials[k].history`, capped at `MATERIAL_HISTORY_LEN = 24`
+      months — long enough to see a contract's full life). `materialPriceTick`
+      pushes one sample per material per month and trims to the cap.
+      `materialSparklineSVG(key, w, h)` emits a tiny inline SVG (120×28 by
+      default): a dashed baseline at 1.0×, the spot path normalised to the
+      `[MATERIAL_PRICE_MIN, MATERIAL_PRICE_MAX]` band, and a coloured
+      endpoint dot (red when above 1.05×, green below 0.95×, default ink
+      in the dead-band) plus a stroke colour matched to the current
+      regime. Wired into the Raw-material supply card in
+      `productionPanelHTML` between the material blurb and the spot-price
+      column, with a `title=` tooltip naming the baseline. `SAVE_VERSION`→17;
+      forward-compat: missing `history` arrays are lazy-filled to `[]` by
+      `materialState` and the sparkline tolerates 0/1-point histories
+      gracefully (centres a single dot, no crash). Validated headlessly
+      (25/25, `/tmp/ov-sparkline.js`): buffer append, cap enforcement,
+      sample equals current spot, SVG structure (`<svg>`/`<path>`/dashed
+      baseline), single-point render, missing-history forward-compat,
+      save/load round-trip, v16-style save lazy-fill, panel embeds at
+      least one `<svg>` per material, `advance(n)` records ~n points.
+      Prior slice harnesses still green: 36+28+33+25 = 122/122 (the
+      v16 `===` check in `/tmp/ov-inventory.js` was loosened to `>=`,
+      same forward-compat pattern used after slices 6 and 7).
       *(Primary home for Strategic-Vision Phase 3 (v2.5): factories that build
       engines/tanks/spacecraft/habitats, raw-material supply chains, production
       scheduling + bottleneck management, quality-assurance that feeds the #16

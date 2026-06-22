@@ -824,6 +824,7 @@ const MATERIAL_CONTRACT_PREMIUM = 0.05;// pay +5% over spot to lock the price in
 // the next build runs, insulating you from spot moves you've already bought past.
 const MATERIAL_STOCK_UNIT_BUILD = 1.0; // calibrated against a $1M reference build (share*spot = $M/unit)
 const MATERIAL_STOCK_CAP = 24;          // can't pile more than 24 builds' worth in the yard
+const MATERIAL_HISTORY_LEN = 24;        // months of spot-price history retained for the sparkline
 
 /* ---------- Mission architectures (how you get there is a strategy) ----------
    For supported missions, the player picks an architecture that reshapes the
@@ -1782,9 +1783,9 @@ function bottleneckLine(m){
 }
 // #7 slice 6: raw-material supply chains. Each commodity wanders on a spot market;
 // a contract trades a small premium for predictability over a year.
-function defaultMaterialsState(){ const o={}; for(const d of MATERIAL_DEFS) o[d.key]={spot:1.0, prev:1.0, contract:null, stock:0, avgCost:1.0}; return o; }
+function defaultMaterialsState(){ const o={}; for(const d of MATERIAL_DEFS) o[d.key]={spot:1.0, prev:1.0, contract:null, stock:0, avgCost:1.0, history:[]}; return o; }
 function materialDef(key){ return MATERIAL_DEFS.find(d=>d.key===key); }
-function materialState(key){ const ms=state&&state.materials; if(!ms) return null; if(!ms[key]) ms[key]={spot:1.0, prev:1.0, contract:null, stock:0, avgCost:1.0}; const s=ms[key]; if(typeof s.stock!=='number') s.stock=0; if(typeof s.avgCost!=='number') s.avgCost=1.0; return s; }
+function materialState(key){ const ms=state&&state.materials; if(!ms) return null; if(!ms[key]) ms[key]={spot:1.0, prev:1.0, contract:null, stock:0, avgCost:1.0, history:[]}; const s=ms[key]; if(typeof s.stock!=='number') s.stock=0; if(typeof s.avgCost!=='number') s.avgCost=1.0; if(!Array.isArray(s.history)) s.history=[]; return s; }
 function materialEffectivePrice(key){
   const s=materialState(key); if(!s) return 1.0;
   if(s.stock>=1) return s.avgCost; // #7 slice 7: this build pulls from inventory at the price you paid
@@ -1842,6 +1843,8 @@ function materialPriceTick(){
     const s=materialState(d.key);
     s.prev=s.spot;
     s.spot=clampA(round2(s.spot + (1.0 - s.spot)*MATERIAL_PRICE_REVERT + (Math.random()-0.5)*2*MATERIAL_PRICE_WALK), MATERIAL_PRICE_MIN, MATERIAL_PRICE_MAX);
+    s.history.push(s.spot);
+    if(s.history.length>MATERIAL_HISTORY_LEN) s.history.splice(0, s.history.length-MATERIAL_HISTORY_LEN);
     if(s.contract){ s.contract.monthsLeft--; if(s.contract.monthsLeft<=0){ log('note', `Supply — ${d.name} contract expired; back to spot pricing (${s.spot.toFixed(2)}×).`); s.contract=null; } }
   }
 }
@@ -1857,6 +1860,25 @@ function signMaterialContract(key){
   s.contract={lockedPrice:locked, monthsLeft:MATERIAL_CONTRACT_MONTHS};
   log('ok', `Supply — locked ${d.name} at ${locked.toFixed(2)}× for ${MATERIAL_CONTRACT_MONTHS} months (spot ${s.spot.toFixed(2)}× + ${(MATERIAL_CONTRACT_PREMIUM*100|0)}% premium).`);
   render();
+}
+function materialSparklineSVG(key, width, height){
+  width = width||120; height = height||24;
+  const s = materialState(key); if(!s) return '';
+  const pts = (s.history && s.history.length) ? s.history.slice(-MATERIAL_HISTORY_LEN) : [s.spot];
+  const lo = MATERIAL_PRICE_MIN, hi = MATERIAL_PRICE_MAX, range = hi - lo;
+  const pad = 2, w = width-pad*2, h = height-pad*2;
+  const xFor = i => pad + (pts.length<=1 ? w/2 : (i/(pts.length-1))*w);
+  const yFor = v => pad + h - ((Math.max(lo,Math.min(hi,v))-lo)/range)*h;
+  const path = pts.map((v,i)=>(i===0?'M':'L')+xFor(i).toFixed(1)+' '+yFor(v).toFixed(1)).join(' ');
+  const baselineY = yFor(1.0).toFixed(1);
+  const cur = pts[pts.length-1];
+  const color = cur>1.05?'var(--bad)':(cur<0.95?'var(--ok)':'var(--ink)');
+  const last = pts.length ? `<circle cx="${xFor(pts.length-1).toFixed(1)}" cy="${yFor(cur)}" r="1.8" fill="${color}"/>` : '';
+  return `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" style="display:block" aria-label="${key} spot-price history">
+    <line x1="${pad}" x2="${width-pad}" y1="${baselineY}" y2="${baselineY}" stroke="#444" stroke-width="0.6" stroke-dasharray="2 2"/>
+    <path d="${path}" fill="none" stroke="${color}" stroke-width="1.2" stroke-linejoin="round" stroke-linecap="round"/>
+    ${last}
+  </svg>`;
 }
 function productionUpkeep(){ let u=0; for(const d of PRODUCTION_DEFS) u+=d.upkeep*(prodLevel(d.key)-1); return round2(u); }
 function prodUpgradeCost(key){ const d=prodDef(key); return round2(d.baseCost*prodLevel(key)); } // escalates with level
@@ -3065,7 +3087,7 @@ function hideModal(){$('modal').classList.add('hidden');}
 
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=16; // v16: per-material inventory stock + avg cost (state.materials[k].stock/avgCost)
+const SAVE_VERSION=17; // v17: per-material spot-price history ring buffer (state.materials[k].history)
 function saveGame(){
   try{
     const payload={v:SAVE_VERSION, ts:Date.now(), state:JSON.parse(JSON.stringify(state))};
@@ -7796,6 +7818,7 @@ function productionPanelHTML(){
           <div style="font-weight:600">${d.icon} ${d.name} <span class="dim" style="font-size:11px">· ${Math.round(d.share*100)}% of build</span></div>
           <div class="dim" style="font-size:11px">${d.blurb}</div>
         </div>
+        <div title="Spot-price history (last ${MATERIAL_HISTORY_LEN} months) · dashed line is baseline 1.0×" style="opacity:.95">${materialSparklineSVG(d.key, 120, 28)}</div>
         <div style="text-align:right;min-width:140px">
           <div style="color:${spotCol};font-weight:600">spot ${s.spot.toFixed(2)}× <span class="dim" style="font-size:11px">${trend}</span></div>
           <div class="dim" style="font-size:11px">effective ${eff.toFixed(2)}× ${fromStock?'<span class="pill ok" style="font-size:10px">from stock</span>':''}</div>
