@@ -1874,10 +1874,44 @@ function materialSparklineSVG(key, width, height){
   const cur = pts[pts.length-1];
   const color = cur>1.05?'var(--bad)':(cur<0.95?'var(--ok)':'var(--ink)');
   const last = pts.length ? `<circle cx="${xFor(pts.length-1).toFixed(1)}" cy="${yFor(cur)}" r="1.8" fill="${color}"/>` : '';
+  // Contract-lock band: solid gold when locked (at the actual lockedPrice),
+  // dashed gold when free (at what a lock signed now would cost: spot*(1+premium)).
+  const lockColor = '#e6c14a';
+  let lockLine = '';
+  if (s.contract && isFinite(s.contract.lockedPrice)) {
+    const y = yFor(s.contract.lockedPrice).toFixed(1);
+    lockLine = `<line x1="${pad}" x2="${width-pad}" y1="${y}" y2="${y}" stroke="${lockColor}" stroke-width="0.9" opacity="0.95"/>`;
+  } else {
+    const y = yFor(s.spot * (1 + MATERIAL_CONTRACT_PREMIUM)).toFixed(1);
+    lockLine = `<line x1="${pad}" x2="${width-pad}" y1="${y}" y2="${y}" stroke="${lockColor}" stroke-width="0.7" stroke-dasharray="1.5 1.5" opacity="0.65"/>`;
+  }
   return `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" style="display:block" aria-label="${key} spot-price history">
     <line x1="${pad}" x2="${width-pad}" y1="${baselineY}" y2="${baselineY}" stroke="#444" stroke-width="0.6" stroke-dasharray="2 2"/>
+    ${lockLine}
     <path d="${path}" fill="none" stroke="${color}" stroke-width="1.2" stroke-linejoin="round" stroke-linecap="round"/>
     ${last}
+  </svg>`;
+}
+// #7 visualization #1: cadence load gauge — horizontal bar of recent-build load
+// vs. sustainable capacity, with the 100% surcharge threshold marked. Visual scale
+// runs 0..1.5 so over-capacity overflow is visible without dwarfing normal ops.
+function cadenceGaugeSVG(width, height){
+  width = width||160; height = height||10;
+  const load = Math.max(0, cadenceLoad());
+  const surch = cadenceSurcharge();
+  const maxScale = 1.5;
+  const pad = 1, w = width - pad*2, h = height - pad*2;
+  const fillFrac = Math.min(load, maxScale) / maxScale;
+  const thresholdX = pad + (1.0/maxScale)*w;
+  const color = surch>0?'var(--bad)':(load>0.8?'var(--warn)':(load>0?'var(--ok)':'#3a3a3a'));
+  const overFrac = Math.max(0, Math.min(load, maxScale) - 1.0) / maxScale;
+  const okW  = Math.min(fillFrac, 1.0/maxScale) * w;
+  const overW = overFrac * w;
+  return `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" style="display:block" aria-label="Build cadence load gauge">
+    <rect x="${pad}" y="${pad}" width="${w}" height="${h}" rx="2" fill="#1b1b1b" stroke="#333" stroke-width="0.6"/>
+    <rect x="${pad}" y="${pad}" width="${okW.toFixed(1)}" height="${h}" rx="2" fill="${load>0.8&&surch===0?'var(--warn)':'var(--ok)'}" opacity="0.85"/>
+    ${overW>0?`<rect x="${thresholdX.toFixed(1)}" y="${pad}" width="${overW.toFixed(1)}" height="${h}" fill="var(--bad)" opacity="0.9"/>`:''}
+    <line x1="${thresholdX.toFixed(1)}" x2="${thresholdX.toFixed(1)}" y1="0" y2="${height}" stroke="#e6c14a" stroke-width="1" stroke-dasharray="2 1"/>
   </svg>`;
 }
 function productionUpkeep(){ let u=0; for(const d of PRODUCTION_DEFS) u+=d.upkeep*(prodLevel(d.key)-1); return round2(u); }
@@ -7834,7 +7868,7 @@ function productionPanelHTML(){
       ${banner}
       <div class="metrics" style="margin-bottom:10px">
         <div class="metric"><div class="k">Assembly capacity</div><div class="v">${cap} units</div></div>
-        <div class="metric" title="Recent build volume vs. sustainable cadence (last ${CADENCE_WINDOW} mo). Over 100% triggers a rush surcharge."><div class="k">Build cadence</div><div class="v" style="color:${cadenceColor}">${cadenceVal}</div></div>
+        <div class="metric" title="Recent build volume vs. sustainable cadence (last ${CADENCE_WINDOW} mo). Bar fills toward the dashed 100% line — once you cross it you pay a rush surcharge."><div class="k">Build cadence</div><div class="v" style="color:${cadenceColor}">${cadenceVal}</div><div style="margin-top:4px">${cadenceGaugeSVG(160,8)}</div></div>
         <div class="metric"><div class="k">Build-cost economy</div><div class="v">−${Math.round((1-foundryCostMult())*100)}%</div></div>
         <div class="metric"><div class="k">Launch-cost economy</div><div class="v">−${Math.round((1-padLaunchMult())*100)}%</div></div>
         <div class="metric"><div class="k">Build quality</div><div class="v" style="color:${qaRelBonus()>0?'var(--ok)':'var(--ink)'}">+${(qaRelBonus()*100).toFixed(1)}% rel</div></div>

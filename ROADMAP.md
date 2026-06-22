@@ -637,6 +637,28 @@ review's numbering, not the build order (see **Suggested build order** at the en
       Prior slice harnesses still green: 36+28+33+25 = 122/122 (the
       v16 `===` check in `/tmp/ov-inventory.js` was loosened to `>=`,
       same forward-compat pattern used after slices 6 and 7).
+
+      *Visualisation layer extended 2026-06-22 — **cadence load gauge +
+      contract-lock band**.* Two more reads-at-a-glance for the production
+      panel, both pure derived visuals (no save bump). (1) `cadenceGaugeSVG`
+      draws a 160×8 horizontal bar inside the Build-cadence metric tile:
+      green fill for in-band load, a red overflow segment past the 100%
+      mark when you're paying a rush surcharge, and a dashed gold tick at
+      the 100% threshold. Visual scale runs 0–150% so the bar tells you
+      *how far* over you are without growing without bound. (2) The
+      existing material sparklines now carry a gold horizontal line
+      showing your contract position: **solid** at `lockedPrice` when a
+      contract is active (it stays put even as spot wanders, so you see
+      whether your lock is winning or losing), **dashed** at
+      `spot × (1 + MATERIAL_CONTRACT_PREMIUM)` when free (where signing
+      *now* would land, relative to recent history). Validated headlessly
+      (24/24, `/tmp/ov-gauges.js`): gauge structure (track, fill, threshold
+      tick), no over-bar when load≤1, over-bar appears past 100%, bar
+      widths clamp under extreme load so they fit the track, sparkline
+      lock-line solid-vs-dashed by contract presence, locked-line y stays
+      pinned across spot shocks, dashed-line y tracks spot. Prior
+      harnesses still green: 25+28+36+33+25 = 147/147 (171/171 total
+      across all manufacturing slices and viz adds).
       *(Primary home for Strategic-Vision Phase 3 (v2.5): factories that build
       engines/tanks/spacecraft/habitats, raw-material supply chains, production
       scheduling + bottleneck management, quality-assurance that feeds the #16
