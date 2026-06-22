@@ -805,6 +805,19 @@ const OVERSTRETCH_REL_PER = 0.015, OVERSTRETCH_REL_CAP = 0.06; // reliability lo
 const CADENCE_WINDOW = 12;             // months of recent build history that counts
 const CADENCE_SURCHARGE_PER = 0.05;    // +5% buildCost per 0.10 load over capacity
 const CADENCE_SURCHARGE_CAP = 0.30;    // ≤30% rush surcharge at extreme cadence
+// #7 slice 6 — raw-material supply chains. Two commodities you can't avoid buying;
+// the spot price wanders and a long-term contract trades a small premium for predictability.
+const MATERIAL_DEFS = [
+  {key:'alloy',       name:'Alloys',      icon:'⛓', share:0.50, blurb:'Aerospace-grade aluminum, steel, and titanium for tankage, structures, and engines.'},
+  {key:'electronics', name:'Electronics', icon:'💾', share:0.20, blurb:'Avionics-grade integrated circuits, guidance hardware, sensors.'},
+];
+const MATERIAL_BASELINE_SHARE = 0.30;  // labor + everything that isn't a tracked commodity
+const MATERIAL_PRICE_MIN = 0.7;
+const MATERIAL_PRICE_MAX = 1.4;
+const MATERIAL_PRICE_REVERT = 0.10;    // mean-revert pull toward 1.0
+const MATERIAL_PRICE_WALK = 0.05;      // ±5% random walk per month
+const MATERIAL_CONTRACT_MONTHS = 12;   // 1-year lock
+const MATERIAL_CONTRACT_PREMIUM = 0.05;// pay +5% over spot to lock the price in
 
 /* ---------- Mission architectures (how you get there is a strategy) ----------
    For supported missions, the player picks an architecture that reshapes the
@@ -1249,6 +1262,7 @@ function newGame(difficulty){
     breakthroughCooldown:3, // #5: division R&D breakthrough rate-limiter
     powerSource:'solar', // Phase 2: vehicle power plant (solar/rtg/reactor)
     recentBuilds:[], // #7 slice 5: rolling ring buffer {at,units} of the last CADENCE_WINDOW months of builds
+    materials:defaultMaterialsState(), // #7 slice 6: per-commodity spot price + optional fixed-price contract
   };
   log('info','Company founded. The pad is yours — go make some noise.');
 }
@@ -1437,6 +1451,8 @@ function advance(months){
     state.fuelPrevPrice=state.fuelPrice;
     state.fuelPrice=clampA(round2(state.fuelPrice+(FUEL_BASE-state.fuelPrice)*0.12+(Math.random()-0.5)*0.05), FUEL_MIN, FUEL_MAX);
     if(state.fuelBuyer){ state.fuelBuyer.monthsLeft--; if(state.fuelBuyer.monthsLeft<=0 || state.fuelBuyer.cap<=0){ log('note',`Market — ${state.fuelBuyer.name}'s propellant buy order has closed.`); state.fuelBuyer=null; } }
+    // #7 slice 6: raw-material spot prices wander; active contracts tick toward expiry
+    materialPriceTick();
 
     // M6: personnel salary deduction
     state.staff.forEach(s=>{
@@ -1757,6 +1773,44 @@ function bottleneckLine(m){
   if(cadenceSurcharge()>0) return 'bays';
   if(m && bayBuildDelta(m)>0) return 'bays';
   return null;
+}
+// #7 slice 6: raw-material supply chains. Each commodity wanders on a spot market;
+// a contract trades a small premium for predictability over a year.
+function defaultMaterialsState(){ const o={}; for(const d of MATERIAL_DEFS) o[d.key]={spot:1.0, prev:1.0, contract:null}; return o; }
+function materialDef(key){ return MATERIAL_DEFS.find(d=>d.key===key); }
+function materialState(key){ const ms=state&&state.materials; if(!ms) return null; if(!ms[key]) ms[key]={spot:1.0, prev:1.0, contract:null}; return ms[key]; }
+function materialEffectivePrice(key){
+  const s=materialState(key); if(!s) return 1.0;
+  if(s.contract && s.contract.monthsLeft>0) return s.contract.lockedPrice;
+  return s.spot;
+}
+function materialBlendMult(){
+  let acc=MATERIAL_BASELINE_SHARE;
+  for(const d of MATERIAL_DEFS) acc += d.share * materialEffectivePrice(d.key);
+  return acc;
+}
+function materialCostMult(){ return materialBlendMult(); }
+function materialPriceTick(){
+  if(!state.materials) state.materials=defaultMaterialsState();
+  for(const d of MATERIAL_DEFS){
+    const s=materialState(d.key);
+    s.prev=s.spot;
+    s.spot=clampA(round2(s.spot + (1.0 - s.spot)*MATERIAL_PRICE_REVERT + (Math.random()-0.5)*2*MATERIAL_PRICE_WALK), MATERIAL_PRICE_MIN, MATERIAL_PRICE_MAX);
+    if(s.contract){ s.contract.monthsLeft--; if(s.contract.monthsLeft<=0){ log('note', `Supply — ${d.name} contract expired; back to spot pricing (${s.spot.toFixed(2)}×).`); s.contract=null; } }
+  }
+}
+function canSignMaterialContract(key){
+  const s=materialState(key); if(!s) return {ok:false,why:'No market data.'};
+  if(s.contract) return {ok:false,why:'Already under contract.'};
+  return {ok:true};
+}
+function signMaterialContract(key){
+  const chk=canSignMaterialContract(key); if(!chk.ok) return;
+  const s=materialState(key), d=materialDef(key);
+  const locked=round2(s.spot*(1+MATERIAL_CONTRACT_PREMIUM));
+  s.contract={lockedPrice:locked, monthsLeft:MATERIAL_CONTRACT_MONTHS};
+  log('ok', `Supply — locked ${d.name} at ${locked.toFixed(2)}× for ${MATERIAL_CONTRACT_MONTHS} months (spot ${s.spot.toFixed(2)}× + ${(MATERIAL_CONTRACT_PREMIUM*100|0)}% premium).`);
+  render();
 }
 function productionUpkeep(){ let u=0; for(const d of PRODUCTION_DEFS) u+=d.upkeep*(prodLevel(d.key)-1); return round2(u); }
 function prodUpgradeCost(key){ const d=prodDef(key); return round2(d.baseCost*prodLevel(key)); } // escalates with level
@@ -2159,6 +2213,7 @@ function computeVehicle(){
   buildCost*=familyBuildMult(activeFamily()); // #3: a proven lineage gets cheaper to build (manufacturing knowledge)
   buildCost*=foundryCostMult(); // #7: engine-foundry economies of scale cut marginal build cost
   const cadence=cadenceSurcharge(); if(cadence>0) buildCost*=1+cadence; // #7 slice 5: rush surcharge if recent build volume exceeds sustainable cadence
+  buildCost*=materialCostMult(); // #7 slice 6: raw-material market price (alloys + electronics, blended with non-material baseline)
   buildCost*=mfgBuildMult(); // #6b: Manufacturing/Reuse research lowers build cost
   if(recoveryActive(m)){ // M5: reusability — recovery hardware every flight; reflown booster on routine missions
     if(recoveryRefly(m)) buildCost*=refurbCostMult(); // refurbish a recovered booster: 45% of new, rising with wear (each refly chips +8%)
@@ -2865,7 +2920,7 @@ function hideModal(){$('modal').classList.add('hidden');}
 
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=14; // v14: rolling build-cadence ring buffer (state.recentBuilds)
+const SAVE_VERSION=15; // v15: raw-material supply-chain prices + contracts (state.materials)
 function saveGame(){
   try{
     const payload={v:SAVE_VERSION, ts:Date.now(), state:JSON.parse(JSON.stringify(state))};
@@ -2904,7 +2959,7 @@ function loadGame(){
       architectures:{}, science:0, persEventCooldown:5,
       staff:[], assignedAstronaut:null,
       vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, techLevel:{}, divisions:{}, breakthroughCooldown:3, powerSource:'solar',
-      recentBuilds:[]
+      recentBuilds:[], materials:defaultMaterialsState()
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -2956,7 +3011,7 @@ function autoLoad(){
       architectures:{}, science:0, persEventCooldown:5,
       staff:[], assignedAstronaut:null,
       vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, techLevel:{}, divisions:{}, breakthroughCooldown:3, powerSource:'solar',
-      recentBuilds:[]
+      recentBuilds:[], materials:defaultMaterialsState()
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -6796,6 +6851,7 @@ function renderReadout(){
   if(meets && v.twr>1.2) flags+=`<div class="flag ok">✓ Cleared to fly. Reliability ${(v.reliability*100|0)}%.</div>`;
   if(bayBuildDelta(m)>0) flags+=`<div class="flag warn">△ Over assembly-bay capacity (${vehicleUnits(m)}/${bayCapacity()} units) — build runs +${bayBuildDelta(m)} mo and −${(overstretchRelPenalty(m)*100).toFixed(1)}% reliability. Expand Assembly Bays in Orbital Ops.</div>`;
   if(cadenceSurcharge()>0) flags+=`<div class="flag warn">△ Build cadence ${Math.round(cadenceLoad()*100)}% of sustainable — rush surcharge +${Math.round(cadenceSurcharge()*100)}% on this build. Slow down or expand Assembly Bays.</div>`;
+  { const _mb=materialCostMult(); if(_mb>1.05) flags+=`<div class="flag warn">△ Raw-material market hot — +${Math.round((_mb-1)*100)}% on this build. Sign a supply contract in Manufacturing Capacity to lock prices.</div>`; else if(_mb<0.95) flags+=`<div class="flag ok">📦 Raw-material market favorable — −${Math.round((1-_mb)*100)}% on this build.</div>`; }
   if(v.crewed && v.twr>1.2 && meets && !state.research.launch_escape) flags+=`<div class="flag warn">△ No escape system — a failure at ${(100-(v.reliability*100|0))}% odds loses the crew.</div>`;
   if(recoveryActive(m)) flags+=`<div class="flag ok">♻ Reusable booster fitted — ${recoveryRefly(m)?`reflown on this routine mission: build ×${refurbCostMult().toFixed(2)}, turnaround −1 mo${refurbWear()>0?`, wear ${refurbWear()}/${REFLY_WEAR_MAX} (−${(refurbRelPenalty()*100).toFixed(1)}% rel)`:''}`:`first flight proves it (+${fM(RECOVERY_HARDWARE)} hardware; refly discount once routine)`}.</div>`;
   if(ispMult()>1||thrustMult()>1) flags+=`<div class="flag ok">⚙ Propulsion R&D on the launch vehicle: +${Math.round((ispMult()-1)*100)}% Isp · +${Math.round((thrustMult()-1)*100)}% thrust.</div>`;
@@ -6863,6 +6919,7 @@ function renderProfileReadout(m){
   else flags+=`<div class="flag ok">✓ Every leg passes. Mission reliability ${(rel*100|0)}%.</div>`;
   if(bayBuildDelta(m)>0) flags+=`<div class="flag warn">△ Over assembly-bay capacity (${vehicleUnits(m)}/${bayCapacity()} units) — build runs +${bayBuildDelta(m)} mo and −${(overstretchRelPenalty(m)*100).toFixed(1)}% reliability. Expand Assembly Bays in Orbital Ops.</div>`;
   if(cadenceSurcharge()>0) flags+=`<div class="flag warn">△ Build cadence ${Math.round(cadenceLoad()*100)}% of sustainable — rush surcharge +${Math.round(cadenceSurcharge()*100)}% on this build. Slow down or expand Assembly Bays.</div>`;
+  { const _mb=materialCostMult(); if(_mb>1.05) flags+=`<div class="flag warn">△ Raw-material market hot — +${Math.round((_mb-1)*100)}% on this build. Sign a supply contract in Manufacturing Capacity to lock prices.</div>`; else if(_mb<0.95) flags+=`<div class="flag ok">📦 Raw-material market favorable — −${Math.round((1-_mb)*100)}% on this build.</div>`; }
   if(!state.research.launch_escape) flags+=`<div class="flag warn">△ No escape system — a failure at ${(100-(rel*100|0))}% odds loses the crew.</div>`;
   if(recoveryActive(m)) flags+=`<div class="flag ok">♻ Reusable booster fitted — ${recoveryRefly(m)?`reflown on this routine mission: build ×${refurbCostMult().toFixed(2)}, turnaround −1 mo${refurbWear()>0?`, wear ${refurbWear()}/${REFLY_WEAR_MAX} (−${(refurbRelPenalty()*100).toFixed(1)}% rel)`:''}`:`first flight proves it (+${fM(RECOVERY_HARDWARE)} hardware; refly discount once routine)`}.</div>`;
   if(ispMult()>1||thrustMult()>1) flags+=`<div class="flag ok">⚙ Propulsion R&D on the launch vehicle: +${Math.round((ispMult()-1)*100)}% Isp · +${Math.round((thrustMult()-1)*100)}% thrust.</div>`;
@@ -7559,6 +7616,30 @@ function productionPanelHTML(){
       ${btn}
     </div>`;
   }).join('');
+  // #7 slice 6: raw-material supply rows — current spot, contract status, sign button
+  const blend=materialCostMult();
+  const blendColor = blend>1.10?'var(--bad)':(blend>1.03?'var(--warn)':(blend<0.97?'var(--ok)':'var(--ink)'));
+  const blendDelta = ((blend-1)*100);
+  const materialRows = MATERIAL_DEFS.map(d=>{
+    const s=materialState(d.key);
+    const eff=materialEffectivePrice(d.key);
+    const spotCol = s.spot>1.15?'var(--bad)':(s.spot>1.05?'var(--warn)':(s.spot<0.92?'var(--ok)':'var(--ink)'));
+    const trend = s.spot>s.prev?'↑':(s.spot<s.prev?'↓':'·');
+    const contractTxt = s.contract
+      ? `<span class="pill ok" title="Locked at ${s.contract.lockedPrice.toFixed(2)}× for ${s.contract.monthsLeft} more month${s.contract.monthsLeft===1?'':'s'}">contract ${s.contract.lockedPrice.toFixed(2)}× · ${s.contract.monthsLeft} mo left</span>`
+      : `<button class="btn ghost" style="padding:4px 8px;font-size:11px" onclick="signMaterialContract('${d.key}')">Sign ${MATERIAL_CONTRACT_MONTHS}-mo lock @ ${round2(s.spot*(1+MATERIAL_CONTRACT_PREMIUM)).toFixed(2)}×</button>`;
+    return `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:6px 0;border-top:1px solid #2a2a2a">
+      <div style="min-width:180px">
+        <div style="font-weight:600">${d.icon} ${d.name} <span class="dim" style="font-size:11px">· ${Math.round(d.share*100)}% of build</span></div>
+        <div class="dim" style="font-size:11px">${d.blurb}</div>
+      </div>
+      <div style="text-align:right;min-width:120px">
+        <div style="color:${spotCol};font-weight:600">spot ${s.spot.toFixed(2)}× <span class="dim" style="font-size:11px">${trend}</span></div>
+        <div class="dim" style="font-size:11px">effective ${eff.toFixed(2)}×</div>
+      </div>
+      <div>${contractTxt}</div>
+    </div>`;
+  }).join('');
   return `<div class="card" style="margin-bottom:12px;border-color:#5a4419">
       <h2 style="margin-bottom:6px">🏭 Manufacturing Capacity</h2>
       <p class="muted" style="font-size:12px;margin:-2px 0 8px">Industry is a resource of its own. Each production line costs capital to expand and adds monthly upkeep — so growing your factory competes with R&amp;D and missions for the budget. ${capNote}.</p>
@@ -7570,7 +7651,15 @@ function productionPanelHTML(){
         <div class="metric"><div class="k">Launch-cost economy</div><div class="v">−${Math.round((1-padLaunchMult())*100)}%</div></div>
         <div class="metric"><div class="k">Build quality</div><div class="v" style="color:${qaRelBonus()>0?'var(--ok)':'var(--ink)'}">+${(qaRelBonus()*100).toFixed(1)}% rel</div></div>
         <div class="metric"><div class="k">Defect catch</div><div class="v" style="color:${(1-qaFragMult())>0?'var(--ok)':'var(--ink)'}">−${Math.round((1-qaFragMult())*100)}% mfg share</div></div>
+        <div class="metric" title="Blended raw-material multiplier on every new build: ${Math.round(MATERIAL_BASELINE_SHARE*100)}% baseline + ${MATERIAL_DEFS.map(d=>Math.round(d.share*100)+'% '+d.name.toLowerCase()).join(' + ')}."><div class="k">Materials</div><div class="v" style="color:${blendColor}">${blendDelta>=0?'+':''}${blendDelta.toFixed(0)}%</div></div>
         <div class="metric"><div class="k">Total upkeep</div><div class="v" style="color:${productionUpkeep()>0?'var(--bad)':'var(--ink)'}">${productionUpkeep()>0?'−'+fM(productionUpkeep())+'/mo':'none'}</div></div>
+      </div>
+      <div class="card" style="background:var(--panel2);margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline">
+          <div class="mission-name" style="font-size:14px">📦 Raw-material supply</div>
+          <div class="dim" style="font-size:11px">spot prices wander monthly · contracts lock for ${MATERIAL_CONTRACT_MONTHS} mo at +${(MATERIAL_CONTRACT_PREMIUM*100|0)}% over spot</div>
+        </div>
+        ${materialRows}
       </div>
       ${cards}
     </div>`;

@@ -512,8 +512,41 @@ review's numbering, not the build order (see **Suggested build order** at the en
       missing buffer (forward-compat), panel renders with the new metric, the
       banner appears only when bottlenecked, and `bottleneckLine` correctly fires
       on single-build overstretch as well as cadence pressure.
-      *Still open in #7 (later slices):* raw-material supply chains and
-      inventory/forecasting.
+      *Sixth slice built 2026-06-22 — **raw-material supply chains**.* Two
+      tracked commodities (`alloy` 50%, `electronics` 20%, plus 30% non-material
+      baseline) each wander on a spot market — mean-reverting random walk toward
+      1.0, clamped to [0.7, 1.4], ±5% walk with 10% revert pull per month
+      (`MATERIAL_PRICE_REVERT` / `MATERIAL_PRICE_WALK`). The blended multiplier
+      `materialCostMult()` = baseline + Σ(share × effective price) wires into
+      `computeVehicle` right after the cadence surcharge, so foundry/refurb/
+      cadence all compose with material costs. `materialPriceTick()` is called
+      every month in `advance()` alongside the existing fuel walk. Players can
+      sign a 12-month fixed-price contract on either commodity at a +5%
+      premium over spot (`MATERIAL_CONTRACT_MONTHS` / `MATERIAL_CONTRACT_PREMIUM`)
+      — the lock holds even when the market swings, trading optionality for
+      predictability. Contracts decay one month per tick and expire automatically
+      with a log notice. State (`state.materials`, `SAVE_VERSION`→15, forward-
+      compat via `defaultMaterialsState()` + `materialState()` lazy-init guard,
+      so old saves auto-seed to 1.0× spot with no contracts on first read).
+      Surfaced: Production panel gets a new "Materials" delta metric (ok/warn/
+      bad shading on ±3%/±10%) and a dedicated supply card with per-commodity
+      spot price, trend arrow, effective price, and a sign-lock button (swaps
+      to a "contract X.XX× · N mo left" pill while active). Bench-readout flag
+      blocks gain a hot/cold market warning when blend exceeds ±5%. *Story:*
+      alloy prices spike during a war scare and your next vehicle is suddenly
+      28% pricier — unless you locked in a contract last quarter, in which case
+      you ride out the storm.
+      Validated headlessly (28/28, `/tmp/ov-supply.js`): state seeding, blend
+      math at extremes matches formula, contract locks effective price under
+      spot shock, double-sign rejected, contract decay/expiry, 2000-tick band
+      invariant, long-run mean reversion to ~1.0 over 5000 ticks, buildCost
+      ratio matches `materialCostMult` analytically, contract insulates
+      buildCost from spot moves, save/load preserves the entire materials
+      block including active contract, missing-`materials` forward-compat,
+      panel surfaces Materials metric and supply card, contract pill appears
+      while active, and `advance()` actually calls the tick (mean-reverts when
+      spot is high). Slices 3–5 harnesses re-run: all green (20+31+25 = 76/76).
+      *Still open in #7:* inventory/forecasting (last slice).
       *(Primary home for Strategic-Vision Phase 3 (v2.5): factories that build
       engines/tanks/spacecraft/habitats, raw-material supply chains, production
       scheduling + bottleneck management, quality-assurance that feeds the #16
