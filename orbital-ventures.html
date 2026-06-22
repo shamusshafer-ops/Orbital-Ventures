@@ -2141,7 +2141,7 @@ function computeVehicle(){
   buildCost*=foundryCostMult(); // #7: engine-foundry economies of scale cut marginal build cost
   buildCost*=mfgBuildMult(); // #6b: Manufacturing/Reuse research lowers build cost
   if(recoveryActive(m)){ // M5: reusability — recovery hardware every flight; reflown booster on routine missions
-    if(recoveryRefly(m)) buildCost*=RECOVERY_REFLY_MULT; // proven, routine mission: refurbish a recovered booster (45% of new)
+    if(recoveryRefly(m)) buildCost*=refurbCostMult(); // refurbish a recovered booster: 45% of new, rising with wear (each refly chips +8%)
     buildCost+=RECOVERY_HARDWARE; // legs, grid fins, reserved propellant — fitted on every recovery flight
   }
   const reliability=Math.min(diff().relCap,Math.max(diff().relFloor,(curRel()+testBonus)*enginePenalty*boosterRelPenalty()*(crewed?0.92:1)+productionRelMod(m))); // #7: QA bonus − bay-overstretch penalty; #16: booster failure-point penalty
@@ -2161,10 +2161,23 @@ function computeVehicle(){
 const BASE_BUILD_MONTHS=2;
 // M5: reusability & rapid cadence — first-stage recovery economics
 const RECOVERY_HARDWARE=1.2;   // $M of legs/grid-fins/reserve propellant fitted on every recovery flight
-const RECOVERY_REFLY_MULT=0.45;// a reflown (routine-mission) booster costs 45% of building new
+const RECOVERY_REFLY_MULT=0.45;// a reflown (routine-mission) booster costs 45% of building new (1st refly)
+// #7 slice 4 — refurbishment wear: each refly costs more and chips reliability; bounded so old boosters
+// stay flyable but eventually want retirement. Foundry/QA still apply (foundryCostMult discounts
+// buildCost unconditionally; the QA→#16 bridge tightens per-subsystem weights every flight).
+const REFLY_WEAR_MAX=5;        // counter saturates at 5 reflights
+const REFLY_WEAR_COST_PER=0.08;// cost mult rises +0.08/refly (0.45 → 0.85 at full wear)
+const REFLY_WEAR_COST_CAP=0.85;
+const REFLY_WEAR_REL_PER=0.008;// reliability hit per refly (0 → −4% at full wear)
+const REFLY_WEAR_REL_CAP=0.04;
 function recoveryAvailable(){ return !!state.research.propulsive_landing; }
 function recoveryActive(m){ return recoveryAvailable() && !!state.recovery; } // recovery fitted to this design
 function recoveryRefly(m){ return recoveryActive(m) && !!(m && state.completed[m.id]); } // booster already proven on a now-routine mission
+// #7 slice 4: wear on the active family's recovered booster — proxy for accumulated micro-damage
+function vehicleReflights(){ const f=activeFamily(); return f?(f.reflights||0):0; }
+function refurbWear(){ return Math.min(REFLY_WEAR_MAX, vehicleReflights()); }
+function refurbCostMult(){ return Math.min(REFLY_WEAR_COST_CAP, RECOVERY_REFLY_MULT + REFLY_WEAR_COST_PER*refurbWear()); }
+function refurbRelPenalty(){ return Math.min(REFLY_WEAR_REL_CAP, REFLY_WEAR_REL_PER*refurbWear()); }
 function buildMonths(m){
   const extra=vehicleUnits(m)-1; // stages beyond the first + profile modules + assembly flights
   let mo=BASE_BUILD_MONTHS+extra+bayBuildDelta(m); // #7: assembly-bay capacity speeds or stretches the build
@@ -2257,6 +2270,7 @@ function effectiveReliability(m,v,sim,crewed){
   if(crewed){ const ab=astroBonus(); rel=Math.min(0.99, rel+ab.rel); }
   rel=Math.min(0.995, rel + facilityBonus(missionBody(m&&m.id)).relBump); // M17: home-field operational bonus
   rel=Math.min(0.995, rel + familyRelBonus(activeFamily())); // #3: reliability heritage of a proven lineage
+  if(recoveryRefly(m)) rel=Math.max(diff().relFloor, rel - refurbRelPenalty()); // #7 slice 4: refurbishment wear — each refly chips a little reliability (bounded; mitigated by retiring the airframe)
   rel*=assemblyDockPenalty(m); // #6: each orbital docking is a chance to fail (halved by auto-rendezvous)
   if(m && m._arch && m._arch.relMod) rel=clampA(rel + m._arch.relMod, 0.1, 0.995); // M12: architecture reliability modifier
   return rel;
@@ -2514,6 +2528,7 @@ function launch(){
     fam.flights=(fam.flights||0)+1;
     if(success){
       fam.successes=(fam.successes||0)+1;
+      if(recoveryRefly(m)) fam.reflights=(fam.reflights||0)+1; // #7 slice 4: a successful refly adds wear to the recovered booster
       if(FAM_MILESTONES.includes(fam.successes)){
         const brandRep=fam.successes; // 5 / 10 / 20 rep as the lineage becomes a household name
         state.rep+=brandRep;
@@ -2825,7 +2840,7 @@ function hideModal(){$('modal').classList.add('hidden');}
 
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=12; // v12: parallel strap-on boosters — state.boosters
+const SAVE_VERSION=13; // v13: per-family refurbishment wear counter (vehicles[].reflights)
 function saveGame(){
   try{
     const payload={v:SAVE_VERSION, ts:Date.now(), state:JSON.parse(JSON.stringify(state))};
@@ -6293,7 +6308,13 @@ function recoveryStageHTML(m){
   const routine=!!(m && state.completed[m.id]);
   let econ;
   if(!on) econ=`<span class="dim">Throwaway booster. Fit recovery to refly it on routine missions.</span>`;
-  else if(routine) econ=`<span style="color:var(--ok)">Reflown booster: build −${Math.round((1-RECOVERY_REFLY_MULT)*100)}% &amp; turnaround −1 mo</span> · <span class="dim">+${fM(RECOVERY_HARDWARE)} recovery hardware/flight</span>`;
+  else if(routine){
+    const wear=refurbWear(), mult=refurbCostMult(), pen=refurbRelPenalty();
+    const wearNote = wear>0
+      ? ` · <span style="color:${wear>=REFLY_WEAR_MAX?'var(--warn)':'var(--ink)'}">wear ${wear}/${REFLY_WEAR_MAX} · −${(pen*100).toFixed(1)}% rel${wear>=REFLY_WEAR_MAX?' (retire & build fresh)':''}</span>`
+      : '';
+    econ=`<span style="color:var(--ok)">Reflown booster: build ×${mult.toFixed(2)} &amp; turnaround −1 mo</span> · <span class="dim">+${fM(RECOVERY_HARDWARE)} recovery hardware/flight</span>${wearNote}`;
+  }
   else econ=`<span style="color:var(--warn)">+${fM(RECOVERY_HARDWARE)} hardware/flight</span> · <span class="dim">first flight proves it — refly discount applies once this mission is routine</span>`;
   return `<div class="flag" style="margin-top:8px;${on?'border-color:#2f6b4e':''}">
       <span style="display:flex;align-items:center;gap:8px">
@@ -6748,7 +6769,7 @@ function renderReadout(){
   if(meets && v.twr>1.2) flags+=`<div class="flag ok">✓ Cleared to fly. Reliability ${(v.reliability*100|0)}%.</div>`;
   if(bayBuildDelta(m)>0) flags+=`<div class="flag warn">△ Over assembly-bay capacity (${vehicleUnits(m)}/${bayCapacity()} units) — build runs +${bayBuildDelta(m)} mo and −${(overstretchRelPenalty(m)*100).toFixed(1)}% reliability. Expand Assembly Bays in Orbital Ops.</div>`;
   if(v.crewed && v.twr>1.2 && meets && !state.research.launch_escape) flags+=`<div class="flag warn">△ No escape system — a failure at ${(100-(v.reliability*100|0))}% odds loses the crew.</div>`;
-  if(recoveryActive(m)) flags+=`<div class="flag ok">♻ Reusable booster fitted — ${recoveryRefly(m)?`reflown on this routine mission: build −${Math.round((1-RECOVERY_REFLY_MULT)*100)}%, turnaround −1 mo`:`first flight proves it (+${fM(RECOVERY_HARDWARE)} hardware; refly discount once routine)`}.</div>`;
+  if(recoveryActive(m)) flags+=`<div class="flag ok">♻ Reusable booster fitted — ${recoveryRefly(m)?`reflown on this routine mission: build ×${refurbCostMult().toFixed(2)}, turnaround −1 mo${refurbWear()>0?`, wear ${refurbWear()}/${REFLY_WEAR_MAX} (−${(refurbRelPenalty()*100).toFixed(1)}% rel)`:''}`:`first flight proves it (+${fM(RECOVERY_HARDWARE)} hardware; refly discount once routine)`}.</div>`;
   if(ispMult()>1||thrustMult()>1) flags+=`<div class="flag ok">⚙ Propulsion R&D on the launch vehicle: +${Math.round((ispMult()-1)*100)}% Isp · +${Math.round((thrustMult()-1)*100)}% thrust.</div>`;
   if(boostersFitted()){ const relCost=Math.round((1-boosterRelPenalty())*100); flags+=`<div class="flag ok">⫶ ${v.boosters.count} strap-on booster${v.boosters.count>1?'s':''} (${v.boosters.eng.name}${v.boosters.eng.solid?', solid':''}) — +${fI(v.boostDv||0)} m/s boost-phase Δv, combined-thrust liftoff${relCost>0?` · −${relCost}% reliability (extra failure points)`:''}.</div>`; }
   if(mfgBuildMult()<1||groundLaunchMult()<1||buildTimeCut()>=0.5) flags+=`<div class="flag ok">🏭 Industrial R&D: −${Math.round((1-mfgBuildMult())*100)}% build cost · −${Math.round((1-groundLaunchMult())*100)}% launch-ops cost${buildTimeCut()>=0.5?` · −${Math.round(buildTimeCut())} mo build time`:''}.</div>`;
@@ -6814,7 +6835,7 @@ function renderProfileReadout(m){
   else flags+=`<div class="flag ok">✓ Every leg passes. Mission reliability ${(rel*100|0)}%.</div>`;
   if(bayBuildDelta(m)>0) flags+=`<div class="flag warn">△ Over assembly-bay capacity (${vehicleUnits(m)}/${bayCapacity()} units) — build runs +${bayBuildDelta(m)} mo and −${(overstretchRelPenalty(m)*100).toFixed(1)}% reliability. Expand Assembly Bays in Orbital Ops.</div>`;
   if(!state.research.launch_escape) flags+=`<div class="flag warn">△ No escape system — a failure at ${(100-(rel*100|0))}% odds loses the crew.</div>`;
-  if(recoveryActive(m)) flags+=`<div class="flag ok">♻ Reusable booster fitted — ${recoveryRefly(m)?`reflown on this routine mission: build −${Math.round((1-RECOVERY_REFLY_MULT)*100)}%, turnaround −1 mo`:`first flight proves it (+${fM(RECOVERY_HARDWARE)} hardware; refly discount once routine)`}.</div>`;
+  if(recoveryActive(m)) flags+=`<div class="flag ok">♻ Reusable booster fitted — ${recoveryRefly(m)?`reflown on this routine mission: build ×${refurbCostMult().toFixed(2)}, turnaround −1 mo${refurbWear()>0?`, wear ${refurbWear()}/${REFLY_WEAR_MAX} (−${(refurbRelPenalty()*100).toFixed(1)}% rel)`:''}`:`first flight proves it (+${fM(RECOVERY_HARDWARE)} hardware; refly discount once routine)`}.</div>`;
   if(ispMult()>1||thrustMult()>1) flags+=`<div class="flag ok">⚙ Propulsion R&D on the launch vehicle: +${Math.round((ispMult()-1)*100)}% Isp · +${Math.round((thrustMult()-1)*100)}% thrust.</div>`;
   if(boostersFitted()){ const relCost=Math.round((1-boosterRelPenalty())*100); flags+=`<div class="flag ok">⫶ ${v.boosters.count} strap-on booster${v.boosters.count>1?'s':''} (${v.boosters.eng.name}${v.boosters.eng.solid?', solid':''}) — +${fI(v.boostDv||0)} m/s boost-phase Δv, combined-thrust liftoff${relCost>0?` · −${relCost}% reliability (extra failure points)`:''}.</div>`; }
   if(mfgBuildMult()<1||groundLaunchMult()<1||buildTimeCut()>=0.5) flags+=`<div class="flag ok">🏭 Industrial R&D: −${Math.round((1-mfgBuildMult())*100)}% build cost · −${Math.round((1-groundLaunchMult())*100)}% launch-ops cost${buildTimeCut()>=0.5?` · −${Math.round(buildTimeCut())} mo build time`:''}.</div>`;

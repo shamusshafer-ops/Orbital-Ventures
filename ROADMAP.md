@@ -453,9 +453,37 @@ review's numbering, not the build order (see **Suggested build order** at the en
       no subsystem disappears), UI text/render smoke (`prodEffectText`,
       `productionPanelHTML` includes "Defect catch", `subsystemBreakdownHTML`
       chip present at L4 and absent on the Guidance row).
+      *Fourth slice built 2026-06-22 — **reusable-hardware refurbishment** (M5
+      tie-in).* Per-family `reflights` counter (`SAVE_VERSION`→13, forward-compat
+      via `||0` guards on read + at the increment site, so legacy vehicles read as
+      zero wear and only gain the field on first refly). Wear curve saturates at
+      5: `refurbCostMult()` rises 0.45 → 0.85 (+0.08/refly, `REFLY_WEAR_COST_PER`
+      / `REFLY_WEAR_COST_CAP`); `refurbRelPenalty()` chips 0 → 4% (+0.8%/refly,
+      `REFLY_WEAR_REL_PER` / `REFLY_WEAR_REL_CAP`, capped against `diff().relFloor`).
+      Wired into `computeVehicle` (`buildCost*=refurbCostMult()` replacing the
+      flat `RECOVERY_REFLY_MULT`) and `effectiveReliability` (subtracts the wear
+      penalty when `recoveryRefly(m)`). Foundry and the QA→#16 bridge still flow
+      through unchanged — the foundry discount applies to the refly cost via the
+      unconditional `buildCost*=foundryCostMult()` upstream, and QA continues to
+      reshape per-subsystem weights every flight. The increment hook lives next
+      to the `fam.successes++` line: a successful routine refly bumps `reflights`.
+      Surfaced: recovery card shows `wear N/5 · −X% rel` and flips to a *(retire &
+      build fresh)* hint at saturation; both bench readout flags swap the flat
+      `−55%` for the live `×{mult}` and the wear note. *Story:* an aging booster
+      gets cheaper for a while, then costs more per refly **and** flies a touch
+      less reliably — at saturation, the foundry savings on a fresh airframe
+      (with zero wear) beat reflying a 5-time-tired one.
+      Validated headlessly (31/31, `/tmp/ov-refurb.js`): cost & rel curves
+      across r=0..5, saturation past 5, no-active-family guard (no crash, wear=0),
+      `buildCost` rises with wear in `computeVehicle`, `effectiveReliability` drops
+      ~4% at full wear and only when the mission is *routine* (first flight on a
+      worn airframe is unpenalised because the refly mult never fires), Foundry
+      still cuts refly buildCost, QA→#16 bridge still scales subsystem weights on
+      refly designs, `recoveryStageHTML` shows/hides the wear note correctly,
+      save/load preserves `reflights`, and the saturation render includes the
+      retire hint. Slice-3 QA suite re-run: 20/20 still green.
       *Still open in #7 (later slices):* raw-material supply chains, production
-      scheduling/bottlenecks, inventory/forecasting, and reusable-hardware
-      refurbishment (ties to M5).
+      scheduling/bottlenecks, and inventory/forecasting.
       *(Primary home for Strategic-Vision Phase 3 (v2.5): factories that build
       engines/tanks/spacecraft/habitats, raw-material supply chains, production
       scheduling + bottleneck management, quality-assurance that feeds the #16
