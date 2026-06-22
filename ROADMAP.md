@@ -659,12 +659,14 @@ review's numbering, not the build order (see **Suggested build order** at the en
       pinned across spot shocks, dashed-line y tracks spot. Prior
       harnesses still green: 25+28+36+33+25 = 147/147 (171/171 total
       across all manufacturing slices and viz adds).
-      *(Primary home for Strategic-Vision Phase 3 (v2.5): factories that build
-      engines/tanks/spacecraft/habitats, raw-material supply chains, production
-      scheduling + bottleneck management, quality-assurance that feeds the #16
-      subsystem-reliability model, reusable-hardware refurbishment workflows (ties
-      to M5), and forecasting/inventory. The single biggest unbuilt bucket in the
-      strategic doc.)*
+      *(Primary home for Strategic-Vision Phase 3 (v2.5). The bulk of that phase
+      is now shipped: the capacity layer (bays/foundry/pads), raw-material supply
+      chains, build-cadence pressure + bottleneck management, quality-assurance
+      feeding the #16 subsystem-reliability model, reusable-hardware refurbishment
+      (ties to M5), and forecasting/inventory. Remaining within #7: an explicit
+      visible **multi-build production queue / manifest** (scheduling order across
+      concurrent builds), and the deeper "build named engine/tank/habitat sub-
+      assemblies" vision.)*
 - [~] **8 · Program politics** — *First slice built 2026-06-20: public support →
       government funding.* `state.publicSupport` (0–100, `SAVE_VERSION`→3, forward-
       compat default 50) is a national-mood dial with five tiers (Hostile→Galvanized,
@@ -820,11 +822,12 @@ silhouette)~~ ✓ → ~~12 (architecture choices)~~ ✓ → ~~5 (active rivals)~
 **next: the R&D Deep Expansion epic (see its own section below — now the primary
 near-term focus), then remaining arc (passive-income contracts, deeper #7/#8,
 map cost/ROI overlays)**.
-Items 1/2/3/4/5/9/10/11/12/13/14/15/16/17 + M5 shipped + 18, 6, 8 & 7 first slices; tech tree
-now a real swimlane graph with divergent routes. (#6 is being supplanted by the
-R&D Deep Expansion epic. #7 later slices: supply chains, scheduling,
-QA→reliability, inventory, refurbishment. #8 later slices: budget shocks,
-shareholders, media, stock market.)
+Items 1/2/3/4/5/9/10/11/12/13/14/15/16/17 + M5 shipped + #7 fully built (7 slices)
++ 18, 6 & 8 first slices; tech tree now a real swimlane graph with divergent
+routes. (#6 is being supplanted by the R&D Deep Expansion epic. #7 is complete —
+supply chains, build-cadence pressure, QA→reliability, inventory/forecasting, and
+refurbishment all shipped; only an explicit multi-build production queue/manifest
+remains. #8 later slices: budget shocks, shareholders, media, stock market.)
 
 ## R&D Deep Expansion — The Research Pillar (epic)
 
@@ -1490,7 +1493,7 @@ where each item actually lives.
 | --- | --- | --- |
 | **P1 · Foundation & UX** (v1.5) | Vehicle viz (**#10**) + save/load shipped; **#18** shipped through its 3rd slice — Command Center home, animated Cape scene, and the 3-column dashboard (exec overview, recommended action, alerts/news, ops summary, era timeline) | Remaining: customizable dashboards, launch manifests, advanced filtering/sorting, click-to-jump notifications, animated scene art → tracked under **#18**. |
 | **P2 · Personnel & org depth** (v2.0) | Shipped at individual scale: **M6** (12 eng/8 astro, morale, attrition, salary) + **#9** (traits, personal events) + **#5** (poaching/retention) | **NEW:** scale individuals → departments; career progression, training/specialization tracks, executive/leadership roles, succession/workforce planning. Extends **M6/#9** — see **new arc item #19**. |
-| **P3 · Manufacturing & production** (v2.5) | **#7** first slice shipped — capacity layer (assembly bays/foundry/pads with upkeep); QA→reliability bridge exists via **#16** | Remaining: supply chains, scheduling, bottlenecks, inventory, refurbishment → tracked under **#7 Manufacturing capacity**. |
+| **P3 · Manufacturing & production** (v2.5) | **Largely shipped** — **#7** fully built across 7 slices: capacity layer (bays/foundry/pads + upkeep), QA→reliability bridge (**#16**), refurbishment wear, build-cadence pressure/bottlenecks, raw-material supply chains, inventory & forecasting | Remaining: an explicit visible **multi-build production queue / manifest** → tracked under **#7**. |
 | **P4 · Mission Control & operations** (v3.0) | Flight telemetry exists *visually* in the launch animation | **NEW:** interactive Mission Control, in-flight player decisions, rescue missions, launch **weather**/environmental systems, rehearsal tools. (Story-failure outcomes already exist via **#4/#16**.) See **new arc item #20**. |
 | **P5 · Infrastructure & colonization** (v3.5) | Persistent bases/stations shipped (**#17**); ISRU shipped; depot economy (**#2**) | **NEW:** colony **population growth**/management, typed habitat/mine/power construction, and **interplanetary logistics/trade routes** = the open *fleet-logistics* thread. Extends **#17** — see **new arc item #21**. |
 | **P6 · Economic & political** (v4.0) | Global launch market + dynamic cycles shipped (econ events, **#2** fuel market); **#8** first slice shipped — public support → government funding | Remaining: budget shocks/cuts, political influence, media/public opinion, **investor/stock-market** → tracked under **#8 Program politics**. |
