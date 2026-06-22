@@ -2232,6 +2232,103 @@ function simulateMission(m){
   return {legs, ok, crewMass, inSpaceLegs};
 }
 
+// #7 manufacturing-visualisation: a step-by-step waterfall of how buildCost is built up.
+// Mirrors the buildCost math in computeVehicle exactly — a validation test pins
+// breakdown.total to v.buildCost across many state shapes, so the two stay in sync.
+function buildCostBreakdown(m){
+  if(!m) m=curMission();
+  const rows=[];
+  let cost=state.stages.reduce((a,s)=>a+ENGINES[s.eng].cost*s.count+0.02*s.prop,0.1);
+  const bmCost=boosterMasses();
+  if(bmCost) cost+=bmCost.eng.cost*bmCost.count + 0.02*bmCost.propTotal;
+  if(m && m.tanker){ cost+=0.02*state.transfer.prop; }
+  else if(m && m.profile){
+    if(m.modules.includes('transfer')) cost+=(ENGINES[state.transfer.eng]||ENGINES.a4).cost+0.02*state.transfer.prop;
+    if(m.modules.includes('lander')){
+      cost+=(ENGINES[state.descent.eng]||ENGINES.a4).cost+0.02*state.descent.prop;
+      cost+=(ENGINES[state.ascent.eng]||ENGINES.a4).cost+0.02*state.ascent.prop;
+    }
+  }
+  rows.push({label:'Base hardware (engines + props + modules)', kind:'base', factor:null, delta:cost, running:cost});
+
+  function mult(label, factor){
+    if(!isFinite(factor) || factor===1) return;
+    const prev=cost; cost=cost*factor;
+    rows.push({label, kind:'mult', factor, delta:cost-prev, running:cost});
+  }
+  function add(label, amount){
+    if(!isFinite(amount) || amount===0) return;
+    const prev=cost; cost=cost+amount;
+    rows.push({label, kind:'add', factor:null, delta:cost-prev, running:cost});
+  }
+
+  const d=diff().buildCostMult; if(d!==1) mult(`Difficulty (×${d.toFixed(2)})`, d);
+  const facDisc=facilityBonus(missionBody(m&&m.id)).buildDiscount;
+  if(facDisc>0) mult(`Home-field facility (−${(facDisc*100).toFixed(0)}%)`, 1-facDisc);
+  const fam=activeFamily(), famMult=familyBuildMult(fam);
+  if(famMult<1) mult(`Family heritage${fam?` "${fam.name}"`:''} (×${famMult.toFixed(2)})`, famMult);
+  const foundry=foundryCostMult();
+  if(foundry<1) mult(`Foundry L${prodLevel('foundry')} (×${foundry.toFixed(2)})`, foundry);
+  const cad=cadenceSurcharge();
+  if(cad>0) mult(`Cadence rush surcharge (+${(cad*100).toFixed(0)}%)`, 1+cad);
+  const matMult=materialCostMult();
+  if(matMult!==1){
+    // Label hints at which side of the blend is moving — most useful when stockpiled.
+    const inStock = MATERIAL_DEFS.filter(md=>{const s=materialState(md.key); return s&&s.stock>=1;}).map(md=>md.name);
+    const tag = inStock.length>0?` · ${inStock.length===MATERIAL_DEFS.length?'all':inStock.join('+')} from stock`:'';
+    mult(`Materials blend (×${matMult.toFixed(2)})${tag}`, matMult);
+  }
+  const mfg=mfgBuildMult();
+  if(mfg<1) mult(`Manufacturing R&D (×${mfg.toFixed(2)})`, mfg);
+  if(recoveryActive(m)){
+    if(recoveryRefly(m)){
+      const r=refurbCostMult();
+      const wear=refurbWear();
+      mult(`Refly refurbishment${wear>0?` (wear ${wear}/${REFLY_WEAR_MAX})`:''} (×${r.toFixed(2)})`, r);
+    }
+    add(`Recovery hardware (legs/fins/reserve)`, RECOVERY_HARDWARE);
+  }
+  return {rows, total: cost};
+}
+function buildCostBreakdownHTML(m){
+  const bd=buildCostBreakdown(m);
+  if(!bd.rows.length) return '';
+  // Scale mini-bars against the largest |delta| in non-base rows so the smallest step still reads.
+  const deltas=bd.rows.slice(1).map(r=>Math.abs(r.delta));
+  const maxAbs=Math.max(0.01, ...deltas, Math.abs(bd.rows[0].delta));
+  const rowsHTML=bd.rows.map((r,i)=>{
+    const isBase=(i===0);
+    const sign = r.delta>=0?'+':'';
+    const deltaColor = isBase?'var(--ink)':(r.delta>0?'var(--bad)':'var(--ok)');
+    const barFrac = Math.min(1, Math.abs(r.delta)/maxAbs);
+    const barW = (barFrac*100).toFixed(1)+'%';
+    const barColor = isBase?'var(--readout)':(r.delta>0?'var(--bad)':'var(--ok)');
+    const side = r.delta>0?'left':(r.delta<0?'right':'left');
+    return `<tr>
+      <td style="padding:2px 6px;color:${isBase?'var(--ink)':'var(--dim)'};font-size:11px">${r.label}</td>
+      <td style="padding:2px 4px;text-align:right;color:${deltaColor};font-size:11px;font-weight:600;white-space:nowrap">${sign}${fM(r.delta)}</td>
+      <td style="padding:2px 6px;width:120px">
+        <div style="position:relative;height:8px;background:#1a1a1a;border-radius:2px">
+          <div style="position:absolute;top:0;${side}:0;width:${barW};height:100%;background:${barColor};border-radius:2px"></div>
+        </div>
+      </td>
+      <td style="padding:2px 6px;text-align:right;color:var(--ink);font-size:11px;font-weight:${isBase?'400':'600'};white-space:nowrap">${fM(r.running)}</td>
+    </tr>`;
+  }).join('');
+  return `<details style="margin:6px 0 10px"><summary style="cursor:pointer;color:var(--dim);font-size:11px;user-select:none;padding:4px 0">▸ Build-cost breakdown — ${bd.rows.length} step${bd.rows.length===1?'':'s'} · final ${fM(bd.total)}</summary>
+    <table style="width:100%;margin-top:4px;border-collapse:collapse;background:var(--panel2);border-radius:4px">
+      <thead><tr style="color:var(--dim);font-size:10px;text-transform:uppercase">
+        <th style="padding:4px 6px;text-align:left;font-weight:500">Step</th>
+        <th style="padding:4px 6px;text-align:right;font-weight:500">Δ</th>
+        <th style="padding:4px 6px;text-align:left;font-weight:500">Effect</th>
+        <th style="padding:4px 6px;text-align:right;font-weight:500">Running</th>
+      </tr></thead>
+      <tbody>${rowsHTML}</tbody>
+    </table>
+    <div class="dim" style="font-size:10px;padding:4px 6px;font-style:italic">Green bars are cuts (production R&amp;D, family heritage, inventory). Red bars are adds (difficulty, cadence rush, hot materials, recovery hardware).</div>
+  </details>`;
+}
+
 function computeVehicle(){
   const m=curMission();
   const crewed=!!(m && m.crew>0);
@@ -6929,6 +7026,7 @@ function renderReadout(){
       <div class="metric"><div class="k">Build time</div><div class="v">${buildMonths(m)+1+TEST_LEVELS[state.testLevel].months} mo</div></div>
     </div>
 
+    ${buildCostBreakdownHTML(m)}
     ${subsystemBreakdownHTML(m,v)}
 
     <div class="eq">Δv = Isp · g₀ · ln(m₀/m_f)<br>
@@ -6993,6 +7091,7 @@ function renderProfileReadout(m){
       <div class="metric"><div class="k">Build time</div><div class="v">${buildMonths(m)+1+TEST_LEVELS[state.testLevel].months} mo</div></div>
     </div>
 
+    ${buildCostBreakdownHTML(m)}
     ${subsystemBreakdownHTML(m,v)}
 
     <div class="eq">The launch vehicle lofts the whole stack (${v.payload.toFixed(1)} t) to LEO; the transfer stage then spends one tank across ${sim.inSpaceLegs} deep-space burn${sim.inSpaceLegs>1?'s':''}, lighter after each — yet every burn still hauls everything still attached.${m.modules.includes('lander')?' The descent stage is dropped on the surface after landing; the ascent stage returns alone to meet the transfer stage.':''}${state.depotUse>0?` This run draws <b style="color:var(--readout)">${state.depotUse.toFixed(1)} t</b> from the LEO depot — propellant that never had to be launched from Earth.`:''}${ISRU_FREE_LEG[m.id]&&state.research[ISRU_FREE_LEG[m.id].research]?` <b style="color:var(--ok)">${ISRU_FREE_LEG[m.id].label}</b> is online — the ${ISRU_FREE_LEG[m.id].leg} burn is produced on-site.`:''}</div>

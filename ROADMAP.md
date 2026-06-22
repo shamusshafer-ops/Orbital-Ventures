@@ -586,6 +586,29 @@ review's numbering, not the build order (see **Suggested build order** at the en
       "from stock" badge. Slices 3–6 harnesses re-run: 20+31+25+28 = 104/104
       still green. *#7 Manufacturing Capacity is now complete (slices 1–7
       built).*
+      *Visualisation layer added 2026-06-22 — **bench build-cost waterfall**.*
+      Now that the buildCost passes through 6+ modifiers (difficulty, facility,
+      family, foundry, cadence, materials, mfg R&D, refurb, recovery hardware),
+      the player needs to see *why* the number is what it is.
+      `buildCostBreakdown(m)` mirrors `computeVehicle`'s exact accumulation,
+      returning `{rows, total}` where each row is `{label, kind, factor?, delta,
+      running}`. `buildCostBreakdownHTML(m)` renders it as a collapsible
+      `<details>` table on the bench (both renderers — simple-mission and
+      profile-mission), inserted right above the subsystem breakdown. Each row
+      shows the step label, the $ delta (red for adds, green for cuts), a
+      mini-bar scaled against the largest |Δ| in the breakdown (anchored left
+      for adds, right for cuts so the eye reads direction), and the running
+      total. The Materials row gets a "from stock" annotation when inventory
+      is feeding the price, so the player sees which discounts are theirs.
+      Rows for no-op modifiers (e.g. Family heritage on a fresh program,
+      Foundry at L1) are suppressed to keep the table to the steps that
+      actually move the cost. Validated headlessly (33/33,
+      `/tmp/ov-bdbreakdown.js`): the breakdown total is pinned to
+      `v.buildCost` to floating-point tolerance across 8 distinct state
+      shapes — vanilla, foundry L5, hot/cold materials, inventory-drawn,
+      cadence rush, refly+wear, family heritage, custom difficulty, and a
+      composite where multiple modifiers fire at once. Slice harnesses
+      3–7 re-run: 20+31+25+28+36 = 140/140 still green (173/173 total).
       *(Primary home for Strategic-Vision Phase 3 (v2.5): factories that build
       engines/tanks/spacecraft/habitats, raw-material supply chains, production
       scheduling + bottleneck management, quality-assurance that feeds the #16
