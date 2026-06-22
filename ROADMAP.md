@@ -114,9 +114,11 @@ companion to `orbital-ventures-design.md` (original full design doc) and
 
 ## Open threads / known scoping notes
 
-- Cryogenic boil-off is not modeled (hydrolox transfer stages are currently
-  "free" on long coasts) — a future realism pass that would strengthen the
-  case for hypergolic/ISRU choices.
+- Cryogenic boil-off is not modeled as a *mechanic* (hydrolox transfer stages
+  are still "free" on long coasts) — a future realism pass that would strengthen
+  the case for hypergolic/ISRU choices. A `cryo_boiloff_control` research node
+  now exists (refueling track) but ships with an empty `effect:{}` — a capability
+  gate placeholder, so it does **not** yet close this note.
 - Mars ISRU only unlocks *after* a first successful Mars Orbit — by design
   (you discover the resource, then build the plant), but means the first Mars
   trip can't benefit from it.
@@ -942,9 +944,10 @@ add upstream/downstream nodes (reactor materials, NTR restart, bimodal NTR, surf
 fission power → ties **#21** colony power, gated on Lunar/Mars Base).
 
 **T10 · Refueling & ISRU [E]** — keep `orbital_depot`✓, `lunar_isru`✓,
-`mars_isru`✓, `belt_volatiles`✓; add cryo-depot boil-off control (closes the
-long-open boil-off scoping note), electrolysis scale-up, mobile ISRU. **Cross-ref
-#2** fuel market.
+`mars_isru`✓, `belt_volatiles`✓; cryo-depot boil-off control node shipped as a
+gate (`cryo_boiloff_control`✓) but still `effect:{}` — the boil-off *mechanic*
+(and thus closing the long-open scoping note) is pending; add electrolysis
+scale-up, mobile ISRU. **Cross-ref #2** fuel market.
 
 **T11 · Reusability [N/E]** *(extends shipped M5)* — Parachute Recovery → Powered
 Landing → Precision Landing ✓(`propulsive_landing` = M5) → Rapid Inspection →
