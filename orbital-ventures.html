@@ -658,6 +658,11 @@ const ENGINES = {
   f1_class:    {id:'f1_class',    name:'Rocketdyne F-1',  prop:'RP-1/LOX',    ispSL:263, ispVac:304, thrustSL:6700,thrustVac:7700, mass:8.40, cost:5.50, rel:0.93},
   // Propulsion expansion: methane (full-flow, reusable) — high Isp AND high thrust, usable on launch stages
   methalox:    {id:'methalox',    name:'Methalox Full-Flow (Raptor-class)', prop:'CH₄/LOX', ispSL:330, ispVac:363, thrustSL:1850, thrustVac:2000, mass:1.60, cost:1.90, rel:0.95},
+  // Solid motors: high thrust, low Isp (little altitude compensation → SL≈Vac), cheap, very reliable to
+  // ignite but no throttle and no shutdown once lit (solid:true). Usable as launch stages + strap-on boosters.
+  solid_castor:{id:'solid_castor',name:'Castor Solid Motor', prop:'Solid (PBAN)', ispSL:235, ispVac:265, thrustSL:430, thrustVac:480, mass:1.10, cost:0.50, rel:0.975, solid:true, noThrottle:true},
+  solid_scout: {id:'solid_scout', name:'Scout-class Solid Stage', prop:'Solid (CTPB)', ispSL:250, ispVac:278, thrustSL:100, thrustVac:120, mass:0.50, cost:0.55, rel:0.975, solid:true, noThrottle:true},
+  solid_srb:   {id:'solid_srb',   name:'Segmented Solid Booster', prop:'Solid (APCP)', ispSL:242, ispVac:268, thrustSL:13000, thrustVac:14000, mass:11.0, cost:6.50, rel:0.965, solid:true, noThrottle:true},
   // M7 outer-system nuclear engines + solar-electric — in-space (transfer stage) only, blocked from launch-vehicle stages
   ntr_nerva:   {id:'ntr_nerva',   name:'NERVA (NRX) NTR', prop:'LH₂ (nuclear-thermal)', ispSL:0, ispVac:825, thrustSL:0, thrustVac:330, mass:6.80, cost:7.00, rel:0.95, transferOnly:true},
   nep_snap:    {id:'nep_snap',    name:'SNAP-derived NEP', prop:'Xe (nuclear-electric)', ispSL:0, ispVac:3000, thrustSL:0, thrustVac:5, mass:5.50, cost:9.00, rel:0.97, transferOnly:true, lowThrust:true, selfPowered:true},
@@ -918,7 +923,9 @@ const RESEARCH = [
   {id:'vibration_testing', track:'testing', name:'Vibration &amp; Acoustic Qualification', cost:2.5, months:3, req:['flight_telemetry'], effect:{reliability:0.03}, desc:'Shake tables and acoustic chambers qualify the vehicle against launch loads before it ever flies. +3% reliability.<span class="hist">↳ The brutal acoustic and vibration environment of liftoff has killed more hardware than vacuum ever has — qualification testing tames it.</span>'},
   {id:'redundant_avionics', track:'guidance', name:'Redundant Flight Avionics', cost:3.5, months:4, req:['qa_program'], effect:{reliability:0.05}, desc:'Triple-redundant flight computers that vote out a failed unit mid-ascent, so a single fault no longer loses the vehicle. +5% reliability.<span class="hist">↳ The Shuttle flew four identical computers voting in lockstep plus a fifth on independent software — fault tolerance as doctrine.</span>'},
   {id:'heavy_booster', track:'propulsion',name:'Heavy Booster',                 cost:4.0, months:5, req:['sustainer','turbopump','engine_test_stands'],   effect:{engine:'kerolox_mk3'}, desc:'Unlocks the Rocketdyne H-1 — the lift needed to put crew and life support into orbit.<span class="hist">↳ The high-thrust machines that first lifted people: Atlas for Mercury, the clustered R-7 for Vostok.</span>'},
-  {id:'strapon_integration', track:'propulsion', name:'Strap-on Booster Integration', cost:3.5, months:4, req:['turbopump'], effect:{}, desc:'Structural attach points, separation ordnance and combined-thrust guidance to clamp liquid strap-on boosters around a core stage — extra liftoff thrust and a Δv kick without redesigning the core. <b>Unlocks the Boosters card on the design bench.</b><span class="hist">↳ Strap-on boosters — from the Titan III to Atlas V, Ariane and the Delta IV Heavy — are how a core stage is scaled up without a clean-sheet vehicle.</span>'},
+  {id:'strapon_integration', track:'propulsion', name:'Strap-on Booster Integration', cost:3.5, months:4, req:['turbopump'], effect:{}, desc:'Structural attach points, separation ordnance and combined-thrust guidance to clamp strap-on boosters around a core stage — extra liftoff thrust and a Δv kick without redesigning the core. <b>Unlocks the Boosters card on the design bench.</b><span class="hist">↳ Strap-on boosters — from the Titan III to Atlas V, Ariane and the Delta IV Heavy — are how a core stage is scaled up without a clean-sheet vehicle.</span>'},
+  {id:'solid_propellant', track:'propulsion', name:'Solid Propellant Casting', cost:1.5, months:2, req:[], effect:{engines:['solid_castor','solid_scout']}, desc:'Cast composite solid grains, igniters and ablative nozzles — motors with no turbopumps to fail, ready to fire after years in storage. High thrust and dead-simple, but low Isp and no throttle or shutdown once lit. <b>Unlocks the Castor strap-on motor and the Scout-class solid stage.</b><span class="hist">↳ From JATO bottles to the all-solid Scout and the Minuteman ICBM, cast solids are the simplest path to high thrust.</span>'},
+  {id:'segmented_srb', track:'propulsion', name:'Segmented Solid Motors', cost:4.5, months:5, req:['solid_propellant'], effect:{engine:'solid_srb'}, desc:'Field-jointed segmented casings let a solid motor scale to enormous thrust — the heavy-lift strap-on that augments a liquid core off the pad. <b>Unlocks the Segmented Solid Booster.</b><span class="hist">↳ The Space Shuttle SRBs, Ariane 5 EAP and Titan III UA1205 were segmented solids — the most powerful boosters ever flown. Their field joints are also what doomed Challenger.</span>'},
   {id:'propulsive_landing', track:'reuse', name:'Propulsive Landing & Recovery', cost:5.0, months:6, req:['kerosene','heavy_booster'], effect:{unlock:'recovery'}, desc:'Landing legs, grid fins, and a reserved propellant margin let the first stage fly itself back instead of being thrown away. Fit recovery to a booster (+hardware cost every flight); once a mission is routine, the booster is reflown — far cheaper to refurbish than rebuild, and faster to turn around.<span class="hist">↳ Reusing the most expensive part of the rocket — the booster — is what finally bent the launch-cost curve downward.</span>'},
   {id:'crew_capsule', track:'crew', name:'Pressurized Crew Capsule',      cost:3.0, months:4, req:[],              effect:{unlock:'crew'},        desc:'Pressure vessel, heat shield, parachutes. Enables crewed missions.<span class="hist">↳ Mercury and Vostok — blunt-body capsules with ablative heat shields and parachute recovery.</span>'},
   {id:'launch_escape', track:'crew',name:'Launch Escape System',          cost:2.5, months:3, req:['crew_capsule'],effect:{unlock:'les'},         desc:'Abort tower (+0.3 t). Crew survive a launch failure instead of being lost with the vehicle.<span class="hist">↳ In 1983 a Soyuz escape tower pulled its two crew clear of a rocket exploding on the pad.</span>'},
@@ -1830,7 +1837,8 @@ function completeResearch(){
   state.research[r.id]=true; state.activeResearch=null;
   divisionGainExp(r); // #4: the covering division gains experience from completing a project
   if(isLeveledTech(r.id)){ if(!state.techLevel) state.techLevel={}; state.techLevel[r.id]=1; } // #3: leveled techs start at L1
-  if(r.effect.engine){state.unlocked[r.effect.engine]=true; log('note',`R&D complete: ${r.name}. New engine available — ${ENGINES[r.effect.engine].name}.`);}
+  if(r.effect.engines){ r.effect.engines.forEach(id=>state.unlocked[id]=true); log('note',`R&D complete: ${r.name}. New engines available — ${r.effect.engines.map(id=>ENGINES[id].name).join(', ')}.`);}
+  else if(r.effect.engine){state.unlocked[r.effect.engine]=true; log('note',`R&D complete: ${r.name}. New engine available — ${ENGINES[r.effect.engine].name}.`);}
   else if(r.effect.sigma){state.sigma=r.effect.sigma; log('note',`R&D complete: ${r.name}. σ is now ${r.effect.sigma}.`);}
   else if(r.effect.reliability){log('note',`R&D complete: ${r.name}. Launch reliability improved.`);}
   else if(r.effect.isp||r.effect.thrust){log('note',`R&D complete: ${r.name}. Engine performance improved${r.effect.isp?` (+${Math.round(r.effect.isp*100)}% Isp)`:''}${r.effect.thrust?`${r.effect.isp?',':''} (+${Math.round(r.effect.thrust*100)}% thrust)`:''}.`);}
@@ -1852,7 +1860,7 @@ function reconcileResearch(){
       for(const q of (r.req||[])){ if(!state.research[q]){ state.research[q]=true; changed=true; } }
     }
   }
-  for(const r of RESEARCH){ if(state.research[r.id] && r.effect && r.effect.engine) state.unlocked[r.effect.engine]=true; }
+  for(const r of RESEARCH){ if(state.research[r.id] && r.effect){ if(r.effect.engine) state.unlocked[r.effect.engine]=true; if(r.effect.engines) r.effect.engines.forEach(id=>state.unlocked[id]=true); } }
 }
 function advanceMonth(){ advance(1); if(!state.over) render(); }
 function skipResearch(){ if(!state.activeResearch) return; const n=state.activeResearch.monthsLeft; advance(n); if(!state.over) render(); }
@@ -1951,6 +1959,18 @@ function boosterMasses(){
   const perDry=e.mass + tankStruct(b.prop);
   const dry=perDry*b.count, propTotal=b.prop*b.count;
   return {dry, wet:dry+propTotal, eng:e, count:b.count, propEach:b.prop, propTotal};
+}
+// #16: boosters are extra failure points (ignition + separation). More boosters → lower
+// reliability; a high-reliability engine (solids ignite very reliably) costs less per unit.
+// Bounded so boosters stay a cost/thrust trade, never a reliability cliff.
+// vehicle-spec booster descriptor (count/prop + solid flag for drawing), or null when none fitted
+function boosterSpec(){ return boostersFitted()?{count:state.boosters.count, prop:state.boosters.prop, solid:!!(ENGINES[state.boosters.eng]&&ENGINES[state.boosters.eng].solid)}:null; }
+const BOOST_REL_CAP=0.12; // boosters never cost more than 12% reliability
+function boosterRelPenalty(){
+  if(!boostersFitted()) return 1;
+  const e=ENGINES[state.boosters.eng]||ENGINES.a4;
+  const perBooster=Math.max(0.005, 0.015*(1+(0.96-e.rel)*8));
+  return 1 - Math.min(BOOST_REL_CAP, state.boosters.count*perBooster);
 }
 /* ---------- M3: in-space modules & multi-leg missions ---------- */
 function inSpaceDry(mod){const e=ENGINES[mod.eng]||ENGINES.a4;const s=curSigma();return e.mass + s/(1-s)*mod.prop;}
@@ -2121,7 +2141,7 @@ function computeVehicle(){
     if(recoveryRefly(m)) buildCost*=RECOVERY_REFLY_MULT; // proven, routine mission: refurbish a recovered booster (45% of new)
     buildCost+=RECOVERY_HARDWARE; // legs, grid fins, reserved propellant — fitted on every recovery flight
   }
-  const reliability=Math.min(diff().relCap,Math.max(diff().relFloor,(curRel()+testBonus)*enginePenalty*(crewed?0.92:1)+productionRelMod(m))); // #7: QA bonus − bay-overstretch penalty
+  const reliability=Math.min(diff().relCap,Math.max(diff().relFloor,(curRel()+testBonus)*enginePenalty*boosterRelPenalty()*(crewed?0.92:1)+productionRelMod(m))); // #7: QA bonus − bay-overstretch penalty; #16: booster failure-point penalty
   const launchCost=(0.12+0.01*totalProp)*padLaunchMult()*groundLaunchMult() + assemblyFlights(m)*ASSEMBLY_LAUNCH_COST; // #7: pads + #6b: Ground/Reuse research amortize launch ops; #6: dedicated assembly flights
   return {payload, sm:perf.sm, stageDv:perf.stageDv, totalDv:perf.totalDv, liftoff:perf.liftoff, twr:perf.twr,
           boostDv:perf.boostDv||0, boosters:perf.boosters||null,
@@ -2159,7 +2179,7 @@ function buildMonths(m){
    lose the vehicle (abort if a launch-escape system is fitted), and deep-space
    propulsion or life-support faults strand a crew on the way home. */
 const PARTIAL_PAYOUT_MULT = 0.45;
-const SUBSYS_LABEL = {propulsion:'Propulsion', structures:'Structures', separation:'Staging', avionics:'Guidance', deep_propulsion:'Deep-space propulsion', life_support:'Life support'};
+const SUBSYS_LABEL = {propulsion:'Propulsion', boosters:'Boosters', structures:'Structures', separation:'Staging', avionics:'Guidance', deep_propulsion:'Deep-space propulsion', life_support:'Life support'};
 // best (morale-scaled) skill among hired engineers of a given specialty, 0..~1
 function bestSpecialistSkill(spec){
   let best=0;
@@ -2248,6 +2268,11 @@ function subsystemFragilities(m,v,sim,crewed){
   if(state.research.test_program) wp*=0.7;
   wp*=specialistFactor('propulsion');
   list.push({key:'propulsion', label:SUBSYS_LABEL.propulsion, phase:'ascent', severity:'loss', weight:Math.max(0.05,wp)});
+  if(boostersFitted()){ // #16: strap-on boosters are a distinct ascent failure point (ignition + separation)
+    const eb=ENGINES[state.boosters.eng]||ENGINES.a4;
+    const wb=0.14*state.boosters.count*(1+(0.95-eb.rel)*6)*specialistFactor('propulsion');
+    list.push({key:'boosters', label:SUBSYS_LABEL.boosters, phase:'ascent', severity:'loss', weight:Math.max(0.05,wb)});
+  }
   let ws=0.5;
   if(state.research.balloon_tanks) ws*=0.6; else if(state.research.alloy_tanks) ws*=0.78;
   ws*=specialistFactor('structures');
@@ -2279,7 +2304,7 @@ function subsystemReport(m,v,sim,crewed){
   const W=frs.reduce((a,f)=>a+f.weight,0)||1;
   return {R, subsystems:frs.map(f=>{ const rel=Math.pow(R, f.weight/W); return Object.assign({}, f, {rel, p:1-rel}); })};
 }
-const SUBSYS_PRIORITY=['propulsion','structures','separation','avionics','deep_propulsion','life_support'];
+const SUBSYS_PRIORITY=['propulsion','boosters','structures','separation','avionics','deep_propulsion','life_support'];
 function resolveFlight(m,v,sim,crewed){
   const rep=subsystemReport(m,v,sim,crewed);
   const failed={};
@@ -2292,7 +2317,9 @@ function resolveFlight(m,v,sim,crewed){
     return {kind:crewed?'strand':'loss', subsystem:gov.key, failPhase:'deep', rel:rep.R,
       story: gov.key==='life_support' ? 'a life-support failure on the long coast home.'
            : (crewed ? 'the return burn failed and the crew could not get home.' : 'the deep-space stage failed mid-cruise.') };
-  const storyMap={propulsion:'an engine failed during powered ascent.', structures:'a structural failure under max-q.', separation:'a stage failed to separate cleanly.'};
+  const solidBoost=boostersFitted() && ENGINES[state.boosters.eng] && ENGINES[state.boosters.eng].solid;
+  const storyMap={propulsion:'an engine failed during powered ascent.', structures:'a structural failure under max-q.', separation:'a stage failed to separate cleanly.',
+    boosters: solidBoost ? 'a solid strap-on booster burned through its casing — with no way to shut it down, the vehicle was lost.' : 'a strap-on booster failed during the boost phase and took the vehicle with it.'};
   if(crewed && state.research.launch_escape)
     return {kind:'abort', subsystem:gov.key, failPhase:'ascent', rel:rep.R, story:storyMap[gov.key]+' The escape system pulled the crew clear.'};
   return {kind:'loss', subsystem:gov.key, failPhase:'ascent', rel:rep.R, story:storyMap[gov.key]};
@@ -2502,7 +2529,7 @@ function launch(){
   const rnd=()=>Math.random();
   const spec={ title:m.name, crewed, success, failPhase,
     stages: state.stages.map(s=>({prop:s.prop,count:s.count})),
-    boosters: boostersFitted()?{count:state.boosters.count,prop:state.boosters.prop}:null,
+    boosters: boosterSpec(),
     transferProp: (m.profile&&m.modules.includes('transfer'))?state.transfer.prop:0,
     isCislunar: !!m.profile, isOrbital: (!m.profile && m.reqDv>=9000),
     reqDv: m.reqDv||9400,
@@ -3948,7 +3975,7 @@ function buildVehicleShape(spec){
   let boosters=null;
   if(spec.boosters && spec.boosters.count>0 && segs.length){
     const bp=spec.boosters.prop||10;
-    boosters={ count:Math.min(spec.boosters.count,8),
+    boosters={ count:Math.min(spec.boosters.count,8), solid:!!spec.boosters.solid,
       w:clampA(4+2.2*Math.cbrt(bp),4,segs[0].w*0.8),
       h:clampA(16+4.4*Math.sqrt(bp),16,segs[0].h*0.95) };
     maxW += 2*(boosters.w+1.5); // leave room so the fit-to-frame scale doesn't clip them
@@ -4146,11 +4173,12 @@ function drawVehicle(ctx, segs, nose, scale, flame, altFrac, hideBells){
 }
 // One strap-on booster (body + ogive nose + bell + optional flame), centered at the
 // local origin with its base at y=0 (so it shares drawVehicle's "engines downward" frame).
-function drawOneBooster(ctx, boostW, boostH, scale, flame, altFrac, hideBells, dim){
+function drawOneBooster(ctx, boostW, boostH, scale, flame, altFrac, hideBells, dim, solid){
   dim=dim||1; altFrac=altFrac||0;
   const C=(r,g,b)=>`rgb(${(r*dim)|0},${(g*dim)|0},${(b*dim)|0})`;
   const grad=ctx.createLinearGradient(-boostW/2,0,boostW/2,0);
-  grad.addColorStop(0,C(149,160,168)); grad.addColorStop(0.5,C(208,216,222)); grad.addColorStop(1,C(149,160,168));
+  if(solid){ grad.addColorStop(0,C(196,200,204)); grad.addColorStop(0.5,C(238,240,242)); grad.addColorStop(1,C(196,200,204)); } // solids: pale composite casing
+  else { grad.addColorStop(0,C(149,160,168)); grad.addColorStop(0.5,C(208,216,222)); grad.addColorStop(1,C(149,160,168)); }
   const rr=Math.min(boostW*0.3,2.2);
   ctx.beginPath();
   ctx.moveTo(-boostW/2+rr,-boostH); ctx.lineTo(boostW/2-rr,-boostH);
@@ -4160,6 +4188,11 @@ function drawOneBooster(ctx, boostW, boostH, scale, flame, altFrac, hideBells, d
   ctx.quadraticCurveTo(-boostW/2,-boostH,-boostW/2+rr,-boostH); ctx.closePath();
   ctx.fillStyle=grad; ctx.fill();
   ctx.strokeStyle='rgba(60,72,82,0.7)'; ctx.lineWidth=0.6; ctx.stroke();
+  if(solid){ // segment field joints across the casing
+    ctx.strokeStyle='rgba(80,90,98,0.5)'; ctx.lineWidth=0.5;
+    const segN=Math.max(2,Math.floor(boostH/(7*scale)));
+    for(let k=1;k<segN;k++){ const sy=-boostH*k/segN; ctx.beginPath(); ctx.moveTo(-boostW/2+0.6,sy); ctx.lineTo(boostW/2-0.6,sy); ctx.stroke(); }
+  }
   // ogive nose cone
   ctx.beginPath(); ctx.moveTo(-boostW/2,-boostH);
   ctx.quadraticCurveTo(0,-boostH-boostW*1.15,boostW/2,-boostH); ctx.closePath();
@@ -4196,7 +4229,7 @@ function drawStrapOns(ctx, base, b, scale, flame, altFrac, hideBells){
   list.sort((a,c)=>(a.behind===c.behind)?0:(a.behind?-1:1)); // behind ones first
   list.forEach(pos=>{
     ctx.save(); ctx.translate(pos.x,0);
-    drawOneBooster(ctx, boostW, boostH, scale, pos.behind?0:flame, altFrac, hideBells, pos.behind?0.8:1);
+    drawOneBooster(ctx, boostW, boostH, scale, pos.behind?0:flame, altFrac, hideBells, pos.behind?0.8:1, b.solid);
     if(!pos.behind){ // attach struts toward the core
       ctx.strokeStyle='rgba(70,82,92,0.8)'; ctx.lineWidth=0.8; const dir=pos.x>0?-1:1;
       [0.7,0.28].forEach(fy=>{ ctx.beginPath(); ctx.moveTo(dir*boostW/2,-boostH*fy); ctx.lineTo(dir*(boostW/2+gap+1),-boostH*fy); ctx.stroke(); });
@@ -4776,7 +4809,7 @@ function drawAscent(t,canFail){
           ctx.translate(x+side*outX+side*bdt*0.05, baseY+bdt*0.045+bp2*bp2*36);
           ctx.rotate(pitch+side*bp2*0.7);
           ctx.globalAlpha=clampA(1-bp2,0,1);
-          drawOneBooster(ctx, boostW, boostH, scale, 0, altFrac, true, 0.95);
+          drawOneBooster(ctx, boostW, boostH, scale, 0, altFrac, true, 0.95, shape.boosters.solid);
           ctx.globalAlpha=1; ctx.restore();
         });
         if(bdt<220){ for(let si=0;si<6;si++){ const sa=Math.random()*6.28, sd=6+Math.random()*14;
@@ -5643,7 +5676,7 @@ function drawPad(ctx,r,groundY,t){
   const bl=(Math.sin(t*4)>0)?1:0.2; ctx.fillStyle=`rgba(255,60,40,${0.4+0.6*bl})`; ctx.beginPath(); ctx.arc(gx+gw,gTop,3,0,7); ctx.fill();
   if(!ccPhaserSmoke){ drawSmoke(ctx,cx-5,groundY-6,t,1,1.1); drawSmoke(ctx,cx+7,groundY-6,t,2,0.9); } // #engine: Phaser particle emitter replaces baked smoke when active
   // the player's current vehicle, drawn on the pad
-  let spec=null; try{ const m=curMission(); spec={ stages: state.stages.map(s=>({prop:s.prop,count:s.count})), boosters: boostersFitted()?{count:state.boosters.count,prop:state.boosters.prop}:null, transferProp:(m&&m.profile&&m.modules&&m.modules.includes('transfer'))?state.transfer.prop:0, crewed:!!(m&&m.crew>0) }; }catch(e){}
+  let spec=null; try{ const m=curMission(); spec={ stages: state.stages.map(s=>({prop:s.prop,count:s.count})), boosters: boosterSpec(), transferProp:(m&&m.profile&&m.modules&&m.modules.includes('transfer'))?state.transfer.prop:0, crewed:!!(m&&m.crew>0) }; }catch(e){}
   if(spec){ let shape=null; try{ shape=buildVehicleShape(spec); }catch(e){}
     if(shape&&shape.segs.length){ const scale=Math.min((r.h*0.82)/(shape.totalH+16),(r.w*0.42)/(shape.maxW*1.9));
       ctx.save(); ctx.translate(cx-r.w*0.14, groundY-6); drawVehicle(ctx, shape.segs, shape.nose, scale, 0, 0); ctx.restore(); } }
@@ -5780,7 +5813,7 @@ function drawIsoPad(ctx,sx,sy,b,t,rival){
   const bl=(Math.sin(t*4)>0)?1:0.2; ctx.fillStyle=`rgba(255,60,40,${0.4+0.6*bl})`; ctx.beginPath(); ctx.arc(gx+6,gTop,3,0,7); ctx.fill();
   if(rival){ ctx.fillStyle='#c2b8b2'; ctx.fillRect(sx-1.5,sy-b.h*0.7,3,b.h*0.7); return; }
   // the player's current vehicle, standing upright on the pad
-  let spec=null; try{ const m=curMission(); spec={ stages: state.stages.map(s=>({prop:s.prop,count:s.count})), boosters: boostersFitted()?{count:state.boosters.count,prop:state.boosters.prop}:null, transferProp:(m&&m.profile&&m.modules&&m.modules.includes('transfer'))?state.transfer.prop:0, crewed:!!(m&&m.crew>0) }; }catch(e){}
+  let spec=null; try{ const m=curMission(); spec={ stages: state.stages.map(s=>({prop:s.prop,count:s.count})), boosters: boosterSpec(), transferProp:(m&&m.profile&&m.modules&&m.modules.includes('transfer'))?state.transfer.prop:0, crewed:!!(m&&m.crew>0) }; }catch(e){}
   if(spec){ let shape=null; try{ shape=buildVehicleShape(spec); }catch(e){}
     if(shape&&shape.segs.length){ const scale=Math.min((b.h*0.92)/(shape.totalH+16),(ISO_TW*0.5)/(shape.maxW*1.9));
       ctx.save(); ctx.translate(sx-ex*0.35, sy+2); drawVehicle(ctx, shape.segs, shape.nose, scale, 0, 0); ctx.restore(); } }
@@ -6327,6 +6360,7 @@ function renderBoosters(){
       <span class="ss">cluster wet <b>${bm.wet.toFixed(2)} t</b></span>
       <span class="ss">boost Δv <b class="num">+${fI(v.boostDv||0)} m/s</b></span>
       <span class="ss">liftoff TWR <b class="num">${v.twr.toFixed(2)}</b></span>
+      <span class="ss">reliability <b class="num">−${Math.round((1-boosterRelPenalty())*100)}%</b></span>
     </div>
     <div class="dim" style="font-size:11px;margin-top:6px">Boosters lift the full wet stack, then drop away; the core's own Δv is unchanged. They add ${b.count} assembly unit${b.count>1?'s':''} (build time/cost) and combined liftoff thrust.</div>`:''}`;
 }
@@ -6456,8 +6490,9 @@ function renderAssemblyToggle(){
 }
 
 function moduleOptions(sel, allowTransferOnly){
-  // transferOnly (NTR/NEP) engines are available to the transfer stage only — never landers
-  return Object.values(ENGINES).filter(e=>state.unlocked[e.id] && (allowTransferOnly || !e.transferOnly))
+  // transferOnly (NTR/NEP) engines are available to the transfer stage only — never landers.
+  // Solids are launch motors (no restart/throttle for precise in-space burns) — excluded from in-space modules.
+  return Object.values(ENGINES).filter(e=>state.unlocked[e.id] && !e.solid && (allowTransferOnly || !e.transferOnly))
     .map(e=>`<option value="${e.id}" ${e.id===sel?'selected':''}>${e.name} · Isp ${e.ispVac}s vac${e.lowThrust?' · low-thrust':''}</option>`).join('');
 }
 function renderLander(){
@@ -6605,7 +6640,7 @@ function renderArchitecture(){
 function currentVehicleSpec(){
   const m=curMission();
   return { stages: state.stages.map(s=>({prop:s.prop, count:s.count})),
-    boosters: boostersFitted()?{count:state.boosters.count, prop:state.boosters.prop}:null,
+    boosters: boosterSpec(),
     transferProp: (m&&m.profile&&m.modules.includes('transfer'))?state.transfer.prop:0,
     crewed: !!(m&&m.crew>0) };
 }
@@ -6708,7 +6743,7 @@ function renderReadout(){
   if(v.crewed && v.twr>1.2 && meets && !state.research.launch_escape) flags+=`<div class="flag warn">△ No escape system — a failure at ${(100-(v.reliability*100|0))}% odds loses the crew.</div>`;
   if(recoveryActive(m)) flags+=`<div class="flag ok">♻ Reusable booster fitted — ${recoveryRefly(m)?`reflown on this routine mission: build −${Math.round((1-RECOVERY_REFLY_MULT)*100)}%, turnaround −1 mo`:`first flight proves it (+${fM(RECOVERY_HARDWARE)} hardware; refly discount once routine)`}.</div>`;
   if(ispMult()>1||thrustMult()>1) flags+=`<div class="flag ok">⚙ Propulsion R&D on the launch vehicle: +${Math.round((ispMult()-1)*100)}% Isp · +${Math.round((thrustMult()-1)*100)}% thrust.</div>`;
-  if(boostersFitted()) flags+=`<div class="flag ok">⫶ ${v.boosters.count} strap-on booster${v.boosters.count>1?'s':''} (${v.boosters.eng.name}) — +${fI(v.boostDv||0)} m/s boost-phase Δv, combined-thrust liftoff.</div>`;
+  if(boostersFitted()){ const relCost=Math.round((1-boosterRelPenalty())*100); flags+=`<div class="flag ok">⫶ ${v.boosters.count} strap-on booster${v.boosters.count>1?'s':''} (${v.boosters.eng.name}${v.boosters.eng.solid?', solid':''}) — +${fI(v.boostDv||0)} m/s boost-phase Δv, combined-thrust liftoff${relCost>0?` · −${relCost}% reliability (extra failure points)`:''}.</div>`; }
   if(mfgBuildMult()<1||groundLaunchMult()<1||buildTimeCut()>=0.5) flags+=`<div class="flag ok">🏭 Industrial R&D: −${Math.round((1-mfgBuildMult())*100)}% build cost · −${Math.round((1-groundLaunchMult())*100)}% launch-ops cost${buildTimeCut()>=0.5?` · −${Math.round(buildTimeCut())} mo build time`:''}.</div>`;
   { const _rs=radSeverity(m), _pr=(m.crew>0?powerRad(m):0); if(_rs>=0.12||_pr>0) flags+=`<div class="flag ${_rs>=0.5||_pr>=0.3?'warn':''}">☢ Radiation ${_rs>=0.7?'extreme':_rs>=0.4?'high':_rs>=0.12?'moderate':'low'} (env ${radEnvironment(m)} · ${m.days||0}d)${_pr>0?` + onboard ${selfPoweredCraft(m)?'NEP reactor':powerSourceDef(state.powerSource).name}`:''} — ${state.research.rad_shielding?'shielding fitted':'<b>no shielding</b>'}: equipment ×${radEquipMult(m).toFixed(2)} fragility${m.crew>0?` · crew ×${radCrewMult(m).toFixed(2)}`:''}.</div>`; }
   const testBtns=TEST_LEVELS.map((t,i)=>`<button class="btn" style="flex:1;font-size:11px;${state.testLevel===i?'border-color:var(--readout);color:var(--readout)':''}" onclick="setTestLevel(${i})">${t.name}${t.rel>0?` +${(t.rel*100)|0}%`:''}${t.cost>0?`<br><span class="dim" style="font-size:10px">${fM(t.cost)} · ${t.months} mo</span>`:''}</button>`).join('');
@@ -6774,7 +6809,7 @@ function renderProfileReadout(m){
   if(!state.research.launch_escape) flags+=`<div class="flag warn">△ No escape system — a failure at ${(100-(rel*100|0))}% odds loses the crew.</div>`;
   if(recoveryActive(m)) flags+=`<div class="flag ok">♻ Reusable booster fitted — ${recoveryRefly(m)?`reflown on this routine mission: build −${Math.round((1-RECOVERY_REFLY_MULT)*100)}%, turnaround −1 mo`:`first flight proves it (+${fM(RECOVERY_HARDWARE)} hardware; refly discount once routine)`}.</div>`;
   if(ispMult()>1||thrustMult()>1) flags+=`<div class="flag ok">⚙ Propulsion R&D on the launch vehicle: +${Math.round((ispMult()-1)*100)}% Isp · +${Math.round((thrustMult()-1)*100)}% thrust.</div>`;
-  if(boostersFitted()) flags+=`<div class="flag ok">⫶ ${v.boosters.count} strap-on booster${v.boosters.count>1?'s':''} (${v.boosters.eng.name}) — +${fI(v.boostDv||0)} m/s boost-phase Δv, combined-thrust liftoff.</div>`;
+  if(boostersFitted()){ const relCost=Math.round((1-boosterRelPenalty())*100); flags+=`<div class="flag ok">⫶ ${v.boosters.count} strap-on booster${v.boosters.count>1?'s':''} (${v.boosters.eng.name}${v.boosters.eng.solid?', solid':''}) — +${fI(v.boostDv||0)} m/s boost-phase Δv, combined-thrust liftoff${relCost>0?` · −${relCost}% reliability (extra failure points)`:''}.</div>`; }
   if(mfgBuildMult()<1||groundLaunchMult()<1||buildTimeCut()>=0.5) flags+=`<div class="flag ok">🏭 Industrial R&D: −${Math.round((1-mfgBuildMult())*100)}% build cost · −${Math.round((1-groundLaunchMult())*100)}% launch-ops cost${buildTimeCut()>=0.5?` · −${Math.round(buildTimeCut())} mo build time`:''}.</div>`;
   { const _rs=radSeverity(m), _pr=(m.crew>0?powerRad(m):0); if(_rs>=0.12||_pr>0) flags+=`<div class="flag ${_rs>=0.5||_pr>=0.3?'warn':''}">☢ Radiation ${_rs>=0.7?'extreme':_rs>=0.4?'high':_rs>=0.12?'moderate':'low'} (env ${radEnvironment(m)} · ${m.days||0}d)${_pr>0?` + onboard ${selfPoweredCraft(m)?'NEP reactor':powerSourceDef(state.powerSource).name}`:''} — ${state.research.rad_shielding?'shielding fitted':'<b>no shielding</b>'}: equipment ×${radEquipMult(m).toFixed(2)} fragility${m.crew>0?` · crew ×${radCrewMult(m).toFixed(2)}`:''}.</div>`; }
 

@@ -1115,14 +1115,23 @@ equation:
 
 ### Suggested build order (slices)
 
-1. **Solid motor engine class (data + model).** Add a `solid:true` flag to `ENGINES`
-   and 2–3 solid motors with historical anchors (e.g. a Castor-class strap-on, a
-   Scout-class standalone stage, a large Segmented SRB). Teach `stageMasses` and the
-   stage engine selectors to accept solids as **standalone stages** (so an all-solid
-   small launcher works), gated behind a new `solid_propellant` research node. Pure
-   data + a flag + selector filtering — no parallel math yet. Validate: solid stage Δv
-   matches the rocket equation at the solid's low Isp; gating; an all-solid stack
-   computes + flies; existing liquid suites untouched.
+1. ✅ **Solid motor engine class (data + model)** *(Built 2026-06-21.)* Three
+   `solid:true` motors with historical anchors: **Castor** (strap-on/small-stage
+   workhorse), **Scout-class solid stage** (small standalone/upper), and the **Segmented
+   Solid Booster** (Shuttle-SRB/Ariane-EAP-class heavy strap-on). Solids are high-thrust,
+   **low-Isp** (≤290 s, with SL≈Vac — little altitude compensation), cheap, very reliable
+   to ignite (`rel` 0.965–0.975) but `noThrottle` (no throttle/shutdown once lit). They
+   flow through `stageMasses`/`stackPerformance` unchanged (the rocket equation is
+   untouched — solids are just low-Isp inputs), so they work as **standalone stages** (an
+   all-solid Scout-style small launcher computes + clears the pad) *and* as strap-on
+   boosters; the stage + booster selectors already accept them (filtered by
+   `!transferOnly`), while `moduleOptions` now also excludes `solid` engines from in-space
+   transfer/lander modules (no restart/throttle for precise burns). New `effect.engines`
+   (array) research-effect vocabulary added to `completeResearch` + `reconcileResearch`
+   so one node can unlock several engines. Validated (in `/tmp/ov-solids.js`): flags/Isp/
+   thrust/reliability, gating, **solid stage Δv = Isp·g₀·ln(m0/mf)** at the low Isp, an
+   all-solid stack flying, and in-space exclusion. Balance-preserved by physics — low Isp
+   means solids never trivialise efficient orbit; they buy thrust, not Δv.
 2. ✅ **Side-booster construct (parallel "stage 0") — liquid first** *(Built
    2026-06-21; built ahead of slice 1 per the user's "liquid side boosters first"
    request, using the existing liquid engines — solids fold in once slice 1 lands).*
@@ -1156,18 +1165,26 @@ equation:
    +1 node). *Deferred to later slices:* the solid engine class (slice 1); slice-4 visuals
    (strap-ons drawn on the silhouette/pad/flight + a separation event) have **since been
    built** — see slice 4 below.
-3. **Research gating + economy + reliability (#7 / #16).** Propulsion-track nodes:
-   `solid_propellant` (Solid Propellant Casting — unlocks the class) → `segmented_srb`
-   (Segmented Solid Motors — larger grains/thrust) → `strapon_integration` ✅ (Strap-on
-   Booster Integration — *built in slice 2*; unlocks the boosters card). *Remaining
-   here:* the two solid-specific nodes above + the #16 reliability link. Boosters already
-   add to `vehicleUnits` (so they consume #7 assembly-bay capacity and
-   `buildMonths`/`buildCost`, done in slice 2); still to add is a `boosters` link to the
-   #16 subsystem model (booster ignition + separation),
-   with solids' distinct high-ignition / catastrophic-if-failed character. Balance-
-   preserved: nodes are time+capital sinks; numbers tuned so boosters are a *cost/thrust*
-   trade, not free performance. Validate: gating, units/bays/build math, subsystem
-   product still equals overall R, reliability caps still bound everything.
+3. ✅ **Research gating + economy + reliability (#7 / #16)** *(Built 2026-06-21.)*
+   Propulsion-track nodes now complete the chain: `solid_propellant` (Solid Propellant
+   Casting, req none, `effect.engines:['solid_castor','solid_scout']`) → `segmented_srb`
+   (Segmented Solid Motors, req `solid_propellant`, unlocks `solid_srb` — the Challenger
+   field-joint history is in the node text) → `strapon_integration` ✅ (built slice 2,
+   unlocks the boosters card). **#16 booster reliability link:** boosters are now a real
+   reliability trade, not free thrust. `boosterRelPenalty()` (folded into
+   `computeVehicle`'s reliability) makes more boosters lower R — a higher-ignition-
+   reliability engine costs less per unit (so **solids penalise less than equal-count
+   liquids**, capturing their high-ignition character), bounded at `BOOST_REL_CAP` 12% so
+   it's a trade not a cliff. A new **`boosters`** subsystem joins the #16 product-
+   preserving model (`subsystemFragilities` adds a weighted ascent `loss` link when
+   fitted, in `SUBSYS_LABEL`/`SUBSYS_PRIORITY`), so a booster failure becomes a named,
+   catastrophic story (`resolveFlight` storyMap — solids get a distinct "burned through
+   its casing, no way to shut it down" line). Boosters already consumed #7 assembly-bay
+   capacity (slice 2). Surfaced: reliability cost shown in the Boosters card + the readout
+   booster flag. Validated (`/tmp/ov-solids.js`, 35/35): node shape + `effect.engines`
+   unlock + reconcile, penalty neutrality at count 0 / monotonic / cap / solid-vs-liquid,
+   the `boosters` link appears only when fitted, and **the subsystem product still equals
+   overall R** with boosters present.
 4. ✅ **Visuals — strap-ons on the silhouette, pad & in flight** *(Built 2026-06-21.)*
    The boosters are now drawn everywhere a vehicle is. `buildVehicleShape` computes a
    booster geometry (shorter + narrower than the core stage 1, scaled from per-booster
@@ -1191,8 +1208,16 @@ equation:
    widened `maxW`, attached to the seg array) and the **draw paths run for real against a
    2D-context stub** — a boostered vehicle issues more draw ops than the bare core, a
    sliced array skips the cluster without throwing, and `drawStrapOns`/`drawOneBooster`
-   are callable with flame on. All prior suites green. *(Drawing is liquid-styled; the
-   solid-motor visual differentiation rides along once slice 1's solid class lands.)*
+   are callable with flame on. All prior suites green. *(Solid-motor visual
+   differentiation has since landed with slice 1: a shared `boosterSpec()` carries a
+   `solid` flag through the shape, and `drawOneBooster` paints solids with a pale
+   composite casing + segment field-joint bands — see slices 1/3 above.)*
+
+> **Epic status (2026-06-21):** slices 1–4 + #16 all shipped. The side-boosters /
+> solid-rockets epic is **functionally complete** — liquid & solid strap-ons, all-solid
+> launchers, research gating, the #16 reliability link, and full visuals. *Optional
+> future polish:* recoverable solids (Shuttle-SRB-style sea recovery → the T11 reuse
+> chain); a solid-specific plume tint in flight.
 
 ### Cross-reference map (this epic ↔ existing items)
 
