@@ -818,6 +818,12 @@ const MATERIAL_PRICE_REVERT = 0.10;    // mean-revert pull toward 1.0
 const MATERIAL_PRICE_WALK = 0.05;      // ±5% random walk per month
 const MATERIAL_CONTRACT_MONTHS = 12;   // 1-year lock
 const MATERIAL_CONTRACT_PREMIUM = 0.05;// pay +5% over spot to lock the price in
+// #7 slice 7 — inventory & forecasting. 1 stock unit = 1 build's worth of that commodity.
+// Cost per stock unit = spot × share (so a build-worth of alloy at spot 1.0 buys for $0.50M,
+// matching alloy's 50% slice of a notional $1.0M build). Held stock is used at avg cost when
+// the next build runs, insulating you from spot moves you've already bought past.
+const MATERIAL_STOCK_UNIT_BUILD = 1.0; // calibrated against a $1M reference build (share*spot = $M/unit)
+const MATERIAL_STOCK_CAP = 24;          // can't pile more than 24 builds' worth in the yard
 
 /* ---------- Mission architectures (how you get there is a strategy) ----------
    For supported missions, the player picks an architecture that reshapes the
@@ -1776,13 +1782,53 @@ function bottleneckLine(m){
 }
 // #7 slice 6: raw-material supply chains. Each commodity wanders on a spot market;
 // a contract trades a small premium for predictability over a year.
-function defaultMaterialsState(){ const o={}; for(const d of MATERIAL_DEFS) o[d.key]={spot:1.0, prev:1.0, contract:null}; return o; }
+function defaultMaterialsState(){ const o={}; for(const d of MATERIAL_DEFS) o[d.key]={spot:1.0, prev:1.0, contract:null, stock:0, avgCost:1.0}; return o; }
 function materialDef(key){ return MATERIAL_DEFS.find(d=>d.key===key); }
-function materialState(key){ const ms=state&&state.materials; if(!ms) return null; if(!ms[key]) ms[key]={spot:1.0, prev:1.0, contract:null}; return ms[key]; }
+function materialState(key){ const ms=state&&state.materials; if(!ms) return null; if(!ms[key]) ms[key]={spot:1.0, prev:1.0, contract:null, stock:0, avgCost:1.0}; const s=ms[key]; if(typeof s.stock!=='number') s.stock=0; if(typeof s.avgCost!=='number') s.avgCost=1.0; return s; }
 function materialEffectivePrice(key){
   const s=materialState(key); if(!s) return 1.0;
+  if(s.stock>=1) return s.avgCost; // #7 slice 7: this build pulls from inventory at the price you paid
   if(s.contract && s.contract.monthsLeft>0) return s.contract.lockedPrice;
   return s.spot;
+}
+// #7 slice 7: buy stock at the current spot, weighted-average into existing inventory
+function materialUnitBuyCost(key){ const s=materialState(key), d=materialDef(key); if(!s||!d) return 0; return round2(d.share*s.spot*MATERIAL_STOCK_UNIT_BUILD); }
+function materialBuyTotal(key, units){ return round2(materialUnitBuyCost(key)*units); }
+function canBuyMaterialStock(key, units){
+  const s=materialState(key); if(!s||units<=0) return {ok:false,why:'No units selected.'};
+  if(s.stock+units>MATERIAL_STOCK_CAP) return {ok:false,why:`Yard cap is ${MATERIAL_STOCK_CAP} builds worth.`};
+  const cost=materialBuyTotal(key,units);
+  if(state.money<cost) return {ok:false,why:'Not enough capital.'};
+  return {ok:true,cost};
+}
+function buyMaterialStock(key, units){
+  const chk=canBuyMaterialStock(key,units); if(!chk.ok) return;
+  const s=materialState(key), d=materialDef(key);
+  state.money-=chk.cost;
+  const newStock=s.stock+units;
+  s.avgCost = round2((s.stock*s.avgCost + units*s.spot)/newStock);
+  s.stock=newStock;
+  log('ok', `Supply — bought ${units} build${units===1?'':'s'}-worth of ${d.name} at ${s.spot.toFixed(2)}× spot (${fM(chk.cost)}). Stock ${s.stock} · avg ${s.avgCost.toFixed(2)}×.`);
+  render();
+}
+// Consumes one build's worth from each commodity's stock if available. Avg cost is unchanged
+// (we're removing units at the current avg). Returns a {key:drewFromStock} map for diagnostics.
+function consumeMaterialsForBuild(){
+  const drew={};
+  for(const d of MATERIAL_DEFS){
+    const s=materialState(d.key);
+    if(s && s.stock>=1){ s.stock=round2(s.stock-1); drew[d.key]=true; }
+    else drew[d.key]=false;
+  }
+  return drew;
+}
+// Forecast: months of coverage at the recent build cadence.
+function materialMonthsCoverage(key){
+  const s=materialState(key); if(!s) return 0;
+  const builds=cadenceRecent().length;
+  if(builds<=0) return Infinity; // no recent flights → coverage is unbounded
+  const ratePerMonth = builds / CADENCE_WINDOW;
+  return s.stock / Math.max(0.0001, ratePerMonth);
 }
 function materialBlendMult(){
   let acc=MATERIAL_BASELINE_SHARE;
@@ -2515,6 +2561,8 @@ function launch(){
   state.recentBuilds.push({at:absMonth(), units:vehicleUnits(m)});
   const _cutoff=absMonth()-CADENCE_WINDOW;
   state.recentBuilds=state.recentBuilds.filter(r=>r&&r.at>_cutoff);
+  // #7 slice 7: this build draws one unit from each material's stock if any is on hand
+  consumeMaterialsForBuild();
   const flightExpense=v.buildCost+v.launchCost+tl.cost; // #18: this flight's outlay for the ops ledger
   let flightRevenue=0;
   const routine=!!state.completed[m.id];
@@ -2920,7 +2968,7 @@ function hideModal(){$('modal').classList.add('hidden');}
 
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=15; // v15: raw-material supply-chain prices + contracts (state.materials)
+const SAVE_VERSION=16; // v16: per-material inventory stock + avg cost (state.materials[k].stock/avgCost)
 function saveGame(){
   try{
     const payload={v:SAVE_VERSION, ts:Date.now(), state:JSON.parse(JSON.stringify(state))};
@@ -6851,7 +6899,8 @@ function renderReadout(){
   if(meets && v.twr>1.2) flags+=`<div class="flag ok">✓ Cleared to fly. Reliability ${(v.reliability*100|0)}%.</div>`;
   if(bayBuildDelta(m)>0) flags+=`<div class="flag warn">△ Over assembly-bay capacity (${vehicleUnits(m)}/${bayCapacity()} units) — build runs +${bayBuildDelta(m)} mo and −${(overstretchRelPenalty(m)*100).toFixed(1)}% reliability. Expand Assembly Bays in Orbital Ops.</div>`;
   if(cadenceSurcharge()>0) flags+=`<div class="flag warn">△ Build cadence ${Math.round(cadenceLoad()*100)}% of sustainable — rush surcharge +${Math.round(cadenceSurcharge()*100)}% on this build. Slow down or expand Assembly Bays.</div>`;
-  { const _mb=materialCostMult(); if(_mb>1.05) flags+=`<div class="flag warn">△ Raw-material market hot — +${Math.round((_mb-1)*100)}% on this build. Sign a supply contract in Manufacturing Capacity to lock prices.</div>`; else if(_mb<0.95) flags+=`<div class="flag ok">📦 Raw-material market favorable — −${Math.round((1-_mb)*100)}% on this build.</div>`; }
+  { const _mb=materialCostMult(); if(_mb>1.05) flags+=`<div class="flag warn">△ Raw-material market hot — +${Math.round((_mb-1)*100)}% on this build. Sign a supply contract or stockpile in Manufacturing Capacity.</div>`; else if(_mb<0.95) flags+=`<div class="flag ok">📦 Raw-material market favorable — −${Math.round((1-_mb)*100)}% on this build.</div>`; }
+  { const _drew=MATERIAL_DEFS.filter(d=>{const s=materialState(d.key); return s&&s.stock>=1;}); if(_drew.length>0){ const lbls=_drew.map(d=>`${d.name} @ ${materialState(d.key).avgCost.toFixed(2)}×`).join(', '); flags+=`<div class="flag ok">📦 Drawing from inventory: ${lbls}. This build leaves the yard with ${_drew.map(d=>materialState(d.key).stock-1).join('/')} build${_drew.length===1?'':'s'}-worth remaining.</div>`; } }
   if(v.crewed && v.twr>1.2 && meets && !state.research.launch_escape) flags+=`<div class="flag warn">△ No escape system — a failure at ${(100-(v.reliability*100|0))}% odds loses the crew.</div>`;
   if(recoveryActive(m)) flags+=`<div class="flag ok">♻ Reusable booster fitted — ${recoveryRefly(m)?`reflown on this routine mission: build ×${refurbCostMult().toFixed(2)}, turnaround −1 mo${refurbWear()>0?`, wear ${refurbWear()}/${REFLY_WEAR_MAX} (−${(refurbRelPenalty()*100).toFixed(1)}% rel)`:''}`:`first flight proves it (+${fM(RECOVERY_HARDWARE)} hardware; refly discount once routine)`}.</div>`;
   if(ispMult()>1||thrustMult()>1) flags+=`<div class="flag ok">⚙ Propulsion R&D on the launch vehicle: +${Math.round((ispMult()-1)*100)}% Isp · +${Math.round((thrustMult()-1)*100)}% thrust.</div>`;
@@ -6919,7 +6968,8 @@ function renderProfileReadout(m){
   else flags+=`<div class="flag ok">✓ Every leg passes. Mission reliability ${(rel*100|0)}%.</div>`;
   if(bayBuildDelta(m)>0) flags+=`<div class="flag warn">△ Over assembly-bay capacity (${vehicleUnits(m)}/${bayCapacity()} units) — build runs +${bayBuildDelta(m)} mo and −${(overstretchRelPenalty(m)*100).toFixed(1)}% reliability. Expand Assembly Bays in Orbital Ops.</div>`;
   if(cadenceSurcharge()>0) flags+=`<div class="flag warn">△ Build cadence ${Math.round(cadenceLoad()*100)}% of sustainable — rush surcharge +${Math.round(cadenceSurcharge()*100)}% on this build. Slow down or expand Assembly Bays.</div>`;
-  { const _mb=materialCostMult(); if(_mb>1.05) flags+=`<div class="flag warn">△ Raw-material market hot — +${Math.round((_mb-1)*100)}% on this build. Sign a supply contract in Manufacturing Capacity to lock prices.</div>`; else if(_mb<0.95) flags+=`<div class="flag ok">📦 Raw-material market favorable — −${Math.round((1-_mb)*100)}% on this build.</div>`; }
+  { const _mb=materialCostMult(); if(_mb>1.05) flags+=`<div class="flag warn">△ Raw-material market hot — +${Math.round((_mb-1)*100)}% on this build. Sign a supply contract or stockpile in Manufacturing Capacity.</div>`; else if(_mb<0.95) flags+=`<div class="flag ok">📦 Raw-material market favorable — −${Math.round((1-_mb)*100)}% on this build.</div>`; }
+  { const _drew=MATERIAL_DEFS.filter(d=>{const s=materialState(d.key); return s&&s.stock>=1;}); if(_drew.length>0){ const lbls=_drew.map(d=>`${d.name} @ ${materialState(d.key).avgCost.toFixed(2)}×`).join(', '); flags+=`<div class="flag ok">📦 Drawing from inventory: ${lbls}. This build leaves the yard with ${_drew.map(d=>materialState(d.key).stock-1).join('/')} build${_drew.length===1?'':'s'}-worth remaining.</div>`; } }
   if(!state.research.launch_escape) flags+=`<div class="flag warn">△ No escape system — a failure at ${(100-(rel*100|0))}% odds loses the crew.</div>`;
   if(recoveryActive(m)) flags+=`<div class="flag ok">♻ Reusable booster fitted — ${recoveryRefly(m)?`reflown on this routine mission: build ×${refurbCostMult().toFixed(2)}, turnaround −1 mo${refurbWear()>0?`, wear ${refurbWear()}/${REFLY_WEAR_MAX} (−${(refurbRelPenalty()*100).toFixed(1)}% rel)`:''}`:`first flight proves it (+${fM(RECOVERY_HARDWARE)} hardware; refly discount once routine)`}.</div>`;
   if(ispMult()>1||thrustMult()>1) flags+=`<div class="flag ok">⚙ Propulsion R&D on the launch vehicle: +${Math.round((ispMult()-1)*100)}% Isp · +${Math.round((thrustMult()-1)*100)}% thrust.</div>`;
@@ -7628,16 +7678,32 @@ function productionPanelHTML(){
     const contractTxt = s.contract
       ? `<span class="pill ok" title="Locked at ${s.contract.lockedPrice.toFixed(2)}× for ${s.contract.monthsLeft} more month${s.contract.monthsLeft===1?'':'s'}">contract ${s.contract.lockedPrice.toFixed(2)}× · ${s.contract.monthsLeft} mo left</span>`
       : `<button class="btn ghost" style="padding:4px 8px;font-size:11px" onclick="signMaterialContract('${d.key}')">Sign ${MATERIAL_CONTRACT_MONTHS}-mo lock @ ${round2(s.spot*(1+MATERIAL_CONTRACT_PREMIUM)).toFixed(2)}×</button>`;
-    return `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:6px 0;border-top:1px solid #2a2a2a">
-      <div style="min-width:180px">
-        <div style="font-weight:600">${d.icon} ${d.name} <span class="dim" style="font-size:11px">· ${Math.round(d.share*100)}% of build</span></div>
-        <div class="dim" style="font-size:11px">${d.blurb}</div>
+    // #7 slice 7: stock + buy + coverage
+    const fromStock = s.stock>=1;
+    const cov = materialMonthsCoverage(d.key);
+    const covTxt = cov===Infinity?'∞':(cov<1?`${(cov*30|0)}d`:`${cov.toFixed(1)} mo`);
+    const stockCol = s.stock<=0?'var(--bad)':(cov!==Infinity&&cov<2?'var(--warn)':'var(--ok)');
+    const buy1=canBuyMaterialStock(d.key,1), buy6=canBuyMaterialStock(d.key,6);
+    const stockLine = `<div style="display:flex;align-items:center;gap:8px;margin-top:4px">
+      <span class="dim" style="font-size:11px">stock</span>
+      <span style="color:${stockCol};font-weight:600">${s.stock} build${s.stock===1?'':'s'}</span>
+      <span class="dim" style="font-size:11px">· avg ${s.avgCost.toFixed(2)}× · coverage ${covTxt}</span>
+      <button class="btn ghost" style="padding:3px 7px;font-size:11px" onclick="buyMaterialStock('${d.key}',1)" ${buy1.ok?'':'disabled'} title="${buy1.ok?`Buy 1 build's worth at spot ${s.spot.toFixed(2)}×`:buy1.why}">+1 · ${fM(materialUnitBuyCost(d.key))}</button>
+      <button class="btn ghost" style="padding:3px 7px;font-size:11px" onclick="buyMaterialStock('${d.key}',6)" ${buy6.ok?'':'disabled'} title="${buy6.ok?`Buy 6 builds at spot ${s.spot.toFixed(2)}×`:buy6.why}">+6 · ${fM(materialBuyTotal(d.key,6))}</button>
+    </div>`;
+    return `<div style="padding:6px 0;border-top:1px solid #2a2a2a">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+        <div style="min-width:180px">
+          <div style="font-weight:600">${d.icon} ${d.name} <span class="dim" style="font-size:11px">· ${Math.round(d.share*100)}% of build</span></div>
+          <div class="dim" style="font-size:11px">${d.blurb}</div>
+        </div>
+        <div style="text-align:right;min-width:140px">
+          <div style="color:${spotCol};font-weight:600">spot ${s.spot.toFixed(2)}× <span class="dim" style="font-size:11px">${trend}</span></div>
+          <div class="dim" style="font-size:11px">effective ${eff.toFixed(2)}× ${fromStock?'<span class="pill ok" style="font-size:10px">from stock</span>':''}</div>
+        </div>
+        <div>${contractTxt}</div>
       </div>
-      <div style="text-align:right;min-width:120px">
-        <div style="color:${spotCol};font-weight:600">spot ${s.spot.toFixed(2)}× <span class="dim" style="font-size:11px">${trend}</span></div>
-        <div class="dim" style="font-size:11px">effective ${eff.toFixed(2)}×</div>
-      </div>
-      <div>${contractTxt}</div>
+      ${stockLine}
     </div>`;
   }).join('');
   return `<div class="card" style="margin-bottom:12px;border-color:#5a4419">

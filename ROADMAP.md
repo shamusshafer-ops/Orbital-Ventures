@@ -400,7 +400,7 @@ review's numbering, not the build order (see **Suggested build order** at the en
       > Events. The TRL/partnerships/reusable items above are folded into it. See
       > **§ R&D Deep Expansion — The Research Pillar** for the full track-by-track plan
       > and build order. This is now the **primary near-term focus**.
-- [~] **7 · Manufacturing capacity** — *First slice built 2026-06-20: industrial
+- [x] **7 · Manufacturing capacity** — *Fully built across 7 slices 2026-06-20 → 2026-06-22.* *First slice built 2026-06-20: industrial
       capacity as a real resource layer.* `state.production` (`SAVE_VERSION`→4,
       forward-compat default `{bays:1,foundry:1,pads:1}`) adds three leveled
       production lines (`PRODUCTION_DEFS`, max L5), each funded with **capital + a
@@ -546,7 +546,46 @@ review's numbering, not the build order (see **Suggested build order** at the en
       panel surfaces Materials metric and supply card, contract pill appears
       while active, and `advance()` actually calls the tick (mean-reverts when
       spot is high). Slices 3–5 harnesses re-run: all green (20+31+25 = 76/76).
-      *Still open in #7:* inventory/forecasting (last slice).
+      *Seventh slice built 2026-06-22 — **inventory & forecasting**.* Each
+      commodity gains a per-build stockpile (`state.materials[k].stock`,
+      `avgCost`, `SAVE_VERSION`→16). 1 stock unit = 1 build's worth at
+      `share × spot × MATERIAL_STOCK_UNIT_BUILD` (so an alloy build-worth at
+      spot 1.0 costs $0.50M, calibrated against a $1M reference build).
+      Players buy in +1/+6 chunks at the current spot via the production
+      panel; the weighted-average price is rolled into `avgCost` so subsequent
+      builds price against what you actually paid, not what the market shows
+      today. `materialEffectivePrice(key)` now returns `avgCost` whenever
+      `stock>=1`, beating both the contract lock and the live spot — held
+      inventory is *settled* cost. `consumeMaterialsForBuild()` runs in
+      `launch()` right after the cadence buffer append, dropping one unit
+      from each material that has stock; an empty stock is a no-op (falls
+      back to spot/contract pricing). Forecast: `materialMonthsCoverage(key)`
+      = `stock / (recentBuilds / CADENCE_WINDOW)`, with ∞ when nothing has
+      flown recently — surfaced in the supply card alongside stock count
+      and avg cost. Yard cap of 24 builds-worth (`MATERIAL_STOCK_CAP`)
+      prevents infinite stockpiling. Forward-compat: `materialState()` lazy-
+      inits `stock`/`avgCost` on read, so a v15 save with only spot/contract
+      auto-fills to zero stock the first time it's touched.
+      Surfaced: the supply card now renders per-commodity stock line with
+      buy buttons, an avg/coverage subline, and a *from stock* pill on the
+      effective-price row whenever the next build draws from inventory.
+      The bench-readout flag block gains an inventory-draw note so the
+      player sees the discount before launch. *Story:* alloy hit 0.75× last
+      quarter; you spent $3M filling the yard with 6 builds-worth at avg
+      0.78×. Now spot is 1.30× — your next six vehicles ship at 0.78×
+      while a rival without stockpile eats the markup, and the bench reads
+      "Drawing from inventory: Alloys @ 0.78×."
+      Validated headlessly (36/36, `/tmp/ov-inventory.js`): default state,
+      `SAVE_VERSION` bump, buy cost = `share × spot`, weighted-avg math
+      (1@1.0 + 1@1.3 → 1.15), inventory beats contract beats spot fall-
+      through chain, buildCost ratio matches material-mult ratio analytically
+      under inventory pricing, consume drops stock without touching avgCost,
+      yard cap & out-of-money gating, coverage math (∞ idle, `stock/rate`
+      with traffic), forward-compat with v15-style materials, save/load
+      round-trip of stock+avgCost, panel renders all three controls and the
+      "from stock" badge. Slices 3–6 harnesses re-run: 20+31+25+28 = 104/104
+      still green. *#7 Manufacturing Capacity is now complete (slices 1–7
+      built).*
       *(Primary home for Strategic-Vision Phase 3 (v2.5): factories that build
       engines/tanks/spacecraft/habitats, raw-material supply chains, production
       scheduling + bottleneck management, quality-assurance that feeds the #16
