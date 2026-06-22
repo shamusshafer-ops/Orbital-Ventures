@@ -5821,7 +5821,7 @@ function drawIsoPad(ctx,sx,sy,b,t,rival){
 function drawIsoDishes(ctx,sx,sy,b,t){
   isoBox(ctx,sx,sy,b.fw,b.fd,b.h,'#1f2933');
   const n=Math.max(2, 2+Math.min(3, (function(){try{return eraIndex(currentEra());}catch(e){return 0;}})()));
-  for(let i=0;i<n;i++){ const cx=sx-ISO_TW*0.25+i*(ISO_TW*0.55/Math.max(1,n-1)), cy=sy-b.h-6; ctx.strokeStyle='#3a4a55'; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(cx,sy-b.h+4); ctx.stroke(); drawDish(ctx,cx,cy,18,-0.9+0.18*Math.sin(t*0.6+i)); }
+  for(let i=0;i<n;i++){ const cx=sx+ISO_TW*0.12+i*(ISO_TW*0.55/Math.max(1,n-1)), cy=sy-b.h-6; ctx.strokeStyle='#3a4a55'; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(cx,sy-b.h+4); ctx.stroke(); drawDish(ctx,cx,cy,18,-0.9+0.18*Math.sin(t*0.6+i)); }
 }
 function drawIsoDome(ctx,sx,sy,b,t){
   isoBox(ctx,sx,sy,b.fw,b.fd,b.h*0.4,'#1c2730');
