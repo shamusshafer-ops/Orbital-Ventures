@@ -2591,15 +2591,15 @@ function subsystemFragilities(m,v,sim,crewed){
 }
 // distribute the mission failure probability across subsystems so the product of
 // their reliabilities equals the overall R (rel_i = R^(weight_i / sum_weights))
-function subsystemReport(m,v,sim,crewed){
-  const R=effectiveReliability(m,v,sim,crewed);
+function subsystemReport(m,v,sim,crewed,relMult=1){
+  const R=effectiveReliability(m,v,sim,crewed)*(relMult||1); // #20: weather/ops penalties scale R for one flight
   const frs=subsystemFragilities(m,v,sim,crewed);
   const W=frs.reduce((a,f)=>a+f.weight,0)||1;
   return {R, subsystems:frs.map(f=>{ const rel=Math.pow(R, f.weight/W); return Object.assign({}, f, {rel, p:1-rel}); })};
 }
 const SUBSYS_PRIORITY=['propulsion','boosters','structures','separation','avionics','deep_propulsion','life_support'];
-function resolveFlight(m,v,sim,crewed){
-  const rep=subsystemReport(m,v,sim,crewed);
+function resolveFlight(m,v,sim,crewed,relPenalty=0){
+  const rep=subsystemReport(m,v,sim,crewed,1-(relPenalty||0));
   const failed={};
   for(const s of rep.subsystems){ if(Math.random()>s.rel) failed[s.key]=s; }
   let gov=null; for(const k of SUBSYS_PRIORITY){ if(failed[k]){ gov=failed[k]; break; } }
@@ -2663,6 +2663,52 @@ function subsystemBreakdownHTML(m,v){
     <div class="dim" style="font-size:11px;margin-top:6px">Overall ${(rep.R*100)|0}% = the product of all subsystems. Test campaigns, tank/guidance research, and matching engineer specialists each harden a specific link.${famNote}</div>`;
 }
 
+/* ---------- #20 launch weather (go / no-go) ---------- */
+// Slice 1 of Interactive Mission Control. On launch day the range is clear (GO) or
+// hits an adverse condition; adverse weather is a player decision — scrub & wait
+// (costs schedule) or launch anyway at a reliability penalty on this flight only.
+// The rocket equation is untouched; weather scales reliability and time, nothing else.
+let _pendingLaunch=null; // launch held at the weather gate, awaiting the go/no-go call
+const WEATHER_CONDITIONS=[
+  {id:'go',    weight:62,               label:'GO for launch'},
+  {id:'wind',  weight:9, penalty:0.06,  clear:1, label:'High winds aloft',          detail:'Upper-level winds are over the airframe load limit — flying now overstresses the structure.'},
+  {id:'storm', weight:8, penalty:0.08,  clear:1, label:'Thunderstorms in the area', detail:'Lightning is within the field. A strike during ascent would be catastrophic.'},
+  {id:'cloud', weight:8, penalty:0.035, clear:1, label:'Heavy cloud cover',         detail:'Thick cloud blocks optical tracking and triggers cloud-electrification flight rules.'},
+  {id:'shear', weight:7, penalty:0.05,  clear:1, label:'Wind shear aloft',          detail:'A shear layer could push the vehicle off its load-bearing attitude through max-q.'},
+  {id:'cold',  weight:6, penalty:0.07,  clear:1, label:'Sub-limit low temperatures',detail:'Temperatures are below qualification — seals and joints stiffen in the cold.'},
+];
+function rollWeather(m){
+  const total=WEATHER_CONDITIONS.reduce((a,c)=>a+c.weight,0);
+  let r=Math.random()*total, pick=WEATHER_CONDITIONS[0];
+  for(const c of WEATHER_CONDITIONS){ r-=c.weight; if(r<0){ pick=c; break; } }
+  let penalty=pick.penalty||0, detail=pick.detail||'';
+  // Challenger anchor: cold + solid strap-on boosters → field-joint O-ring risk
+  const solidBoost=boostersFitted() && ENGINES[state.boosters.eng] && ENGINES[state.boosters.eng].solid;
+  if(pick.id==='cold' && solidBoost){ penalty+=0.06; detail+=' The solid boosters’ field-joint O-rings stiffen dangerously in the cold (the Challenger lesson, 1986).'; }
+  return {id:pick.id, label:pick.label, adverse:pick.id!=='go', penalty, clear:pick.clear||1, detail};
+}
+function showWeatherModal(m,wx){
+  const pen=Math.round(wx.penalty*100);
+  showModal(`<h2>Launch weather — go / no-go</h2>
+    <p><b>${m.name}</b> is built and on the pad. Range weather: <b style="color:var(--warn)">${wx.label}</b>.</p>
+    <p class="muted">${wx.detail}</p>
+    <p>Scrubbing waits about <b>${wx.clear} month${wx.clear>1?'s':''}</b> for conditions to clear. Flying through it carries a <b style="color:var(--bad)">−${pen}% reliability</b> hit on this flight only.</p>
+    <button class="btn" onclick="scrubLaunch()">Scrub &amp; wait (${wx.clear} mo)</button>
+    <button class="btn ghost" onclick="launchAnyway()" style="margin-top:8px">Launch anyway (−${pen}% reliability)</button>`);
+}
+function launchAnyway(){
+  if(!_pendingLaunch) return; const p=_pendingLaunch; _pendingLaunch=null; hideModal();
+  log('note',`${p.m.name}: launch director polled GO despite ${p.wx.label.toLowerCase()} — flying with a ${Math.round(p.wx.penalty*100)}% reliability penalty.`);
+  proceedLaunch(p.m,p.v,p.sim,p.windowQuality,p.wx.penalty);
+}
+function scrubLaunch(){
+  if(!_pendingLaunch) return; const p=_pendingLaunch; _pendingLaunch=null; hideModal();
+  advance(p.wx.clear);
+  log('note',`${p.m.name}: scrubbed for weather (${p.wx.label}). Waited ${p.wx.clear} mo; the front passed.`);
+  if(state.money<0){ gameOver(); return; }
+  proceedLaunch(p.m,p.v,p.sim,p.windowQuality,0);
+}
+
 /* ---------- launch ---------- */
 function canLaunch(v,m,sim){
   if(m.tanker){
@@ -2708,6 +2754,17 @@ function launch(){
   }else{
     advance(buildMonths(m)+1+tl.months); // build (complexity-scaled) + launch (1) + test campaign
   }
+  // #20 slice 1: launch-day weather go/no-go — the vehicle is built and rolled out
+  const wx=rollWeather(m);
+  if(wx.adverse){
+    if(animEnabled){ _pendingLaunch={m,v,sim,windowQuality,wx}; showWeatherModal(m,wx); return; }
+    advance(wx.clear); // animations off / headless: take the safe call and wait it out
+    log('note',`${m.name}: launch scrubbed for weather (${wx.label}); waited ${wx.clear} mo.`);
+  }
+  proceedLaunch(m,v,sim,windowQuality,0);
+}
+function proceedLaunch(m,v,sim,windowQuality,weatherPenalty){
+  const tl=TEST_LEVELS[state.testLevel];
   state.flights++;
   // #7 slice 5: log this build into the cadence buffer (units are the assembly load), then prune the window
   state.recentBuilds=state.recentBuilds||[];
@@ -2722,7 +2779,7 @@ function launch(){
   const crewed=m.crew>0;
   // M16: subsystem-based reliability — which subsystem (if any) fails decides the story
   const ab=crewed?astroBonus():{rel:0,payoutMult:1};
-  const outcome=resolveFlight(m,v,sim,crewed);
+  const outcome=resolveFlight(m,v,sim,crewed,weatherPenalty);
   const success=outcome.kind==='success';
   const rel=outcome.rel;
   let pendingCelebration=null, failPhase=outcome.failPhase;

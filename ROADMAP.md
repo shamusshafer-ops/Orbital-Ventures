@@ -1610,12 +1610,47 @@ order — the near-term build order (#3 vehicle families → … → #7) is unch
       succession/workforce planning. Builds directly on **M6** (morale/attrition/
       salary), **#9** (traits/events), and **#5** (poaching/retention) rather than
       replacing them.
-- [ ] **20 · Interactive Mission Control & operations** *(P4, v3.0)* — Turn the
+- [~] **20 · Interactive Mission Control & operations** *(P4, v3.0)* — Turn the
       passive launch animation into a live **Mission Control**: in-flight player
       decisions/events, rescue missions & contingency planning, launch
       **weather**/environmental systems, and pre-flight rehearsal tools. Leans on
       the existing per-subsystem failure model (**#16**) and abort/strand outcomes
-      (**#4**) for the decision content.
+      (**#4**) for the decision content. *(Corroborated by the 2026-06-22 evaluation
+      review #6 — see that section.)*
+      - [~] **Slice 1 — Launch weather & go/no-go scrub** *(Built 2026-06-22.)* The
+        first real player **ops decision**, chosen with the user as the low-risk
+        opener (synchronous, pre-resolution — no surgery on the resolve→animate
+        pipeline). On launch day (after the build/rollout advance) `rollWeather(m)`
+        draws from `WEATHER_CONDITIONS` — mostly **GO** (~62%), else an adverse
+        condition (high winds / thunderstorms / heavy cloud / wind shear / sub-limit
+        cold), each with a reliability `penalty` (3.5–8%) and a `clear` time. Adverse
+        weather opens a **go/no-go modal** (`showWeatherModal`): **Scrub & wait**
+        (`scrubLaunch` — advance the clear time, then fly in the clear) or **Launch
+        anyway** (`launchAnyway` — fly now at the penalty). **Challenger anchor:**
+        cold + *solid* strap-on boosters bumps the penalty (field-joint O-rings).
+        Implementation: `launch()` was split into `launch()` (build/cost/window +
+        the weather gate) and **`proceedLaunch(m,v,sim,windowQuality,weatherPenalty)`**
+        (the unchanged outcome/ledger/spec/animation body); the penalty threads
+        through `resolveFlight(…,relPenalty)` → `subsystemReport(…,relMult)` as a
+        one-flight multiplier on `R` (`R·(1−penalty)`), so the **#16 subsystem product
+        still equals the penalized R** and the **rocket equation is untouched** — only
+        reliability and schedule move. The held launch lives in a transient
+        `_pendingLaunch` (no save change / no `SAVE_VERSION` bump). Animations-off /
+        headless takes the conservative auto-scrub. Validated headlessly
+        (`/tmp/ov-weather.js`, 30/30): condition distribution + fields, the
+        Challenger cold+solid synergy, **penalty neutrality** (default param ==
+        no-penalty == `effectiveReliability`), exact `R·(1−p)` scaling, the
+        subsystem-product-==-R invariant under penalty, a `proceedLaunch` end-to-end
+        flight, and `launch()` GO + adverse-auto-scrub integration on a flyable
+        orbital config; plus a 10-tab render smoke (11/11). *Deferred to later
+        slices:* weather interaction with committed launch **windows** (a scrub can
+        currently push past a window only via the time advance — no explicit
+        miss-the-window path yet); a pre-flight weather forecast surfaced on the
+        bench; and an animated weather state in the Cape scene.
+      *Remaining slices (per the first-slice decision):* 2 · in-flight anomaly
+      decisions (EVA-repair / reboot / continue-degraded — needs the async mid-flight
+      pause); 3 · rescue missions & contingency planning; 4 · pre-flight rehearsal
+      tools.
 - [ ] **21 · Colony population & interplanetary logistics** *(P5, v3.5)* — Extend
       the **#17** facility layer into living colonies: population growth/management,
       typed construction (habitats/mines/power/fuel), and **interplanetary
