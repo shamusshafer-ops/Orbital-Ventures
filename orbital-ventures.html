@@ -798,6 +798,8 @@ const BAY_SPEED_CAP = 2;                         // most build-months a roomy pl
 const FOUNDRY_PER = 0.05, FOUNDRY_FLOOR = 0.78;  // build-cost multiplier (≤22% off at L5)
 const PAD_PER = 0.12, PAD_FLOOR = 0.60;          // launch-cost multiplier (≤40% off at L5)
 const QA_REL_PER = 0.012, QA_REL_CAP = 0.05;     // #7 slice 2: QA reliability bonus per level / cap (≤+4.8% at L5)
+const QA_FRAG_PER = 0.05, QA_FRAG_CAP = 0.20;    // #7 slice 3 (QA→#16): mfg-subsystem fragility weight cut per level / cap (≤−20% at L5)
+const QA_MFG_SUBSYS = new Set(['propulsion','structures','separation','boosters']); // subsystems QA can actually fix (welds, tolerances, pyros, integration) — avionics/life-support/deep-propulsion are software/environment-driven
 const OVERSTRETCH_REL_PER = 0.015, OVERSTRETCH_REL_CAP = 0.06; // reliability lost per build-month over bay capacity / cap
 
 /* ---------- Mission architectures (how you get there is a strategy) ----------
@@ -1734,6 +1736,7 @@ function foundryCostMult(){ return Math.max(FOUNDRY_FLOOR, 1 - FOUNDRY_PER*(prod
 function padLaunchMult(){ return Math.max(PAD_FLOOR, 1 - PAD_PER*(prodLevel('pads')-1)); }
 // #7 slice 2: production-quality bridge into reliability (QA helps; overstretching the bays hurts)
 function qaRelBonus(){ return Math.min(QA_REL_CAP, QA_REL_PER*(prodLevel('qa')-1)); }
+function qaFragMult(){ return 1 - Math.min(QA_FRAG_CAP, QA_FRAG_PER*(prodLevel('qa')-1)); } // #7→#16: QA shrinks mfg-subsystem weight share; lvl 1 → 1.00, lvl 5 → 0.80
 function overstretchRelPenalty(m){ const d=bayBuildDelta(m); return d>0?Math.min(OVERSTRETCH_REL_CAP, OVERSTRETCH_REL_PER*d):0; }
 function productionRelMod(m){ return qaRelBonus() - overstretchRelPenalty(m); }
 function productionUpkeep(){ let u=0; for(const d of PRODUCTION_DEFS) u+=d.upkeep*(prodLevel(d.key)-1); return round2(u); }
@@ -2294,6 +2297,8 @@ function subsystemFragilities(m,v,sim,crewed){
     const stress=Math.min(3,(m.days||1)/45)*(1-rec*0.6);
     list.push({key:'life_support', label:SUBSYS_LABEL.life_support, phase:'deep', severity:'deep', weight:0.45*Math.max(0.3,stress)*radCrewMult(m)}); // radiation is a crew-health stressor (mitigated by countermeasures/shielding)
   }
+  const qm=qaFragMult(); // #7→#16: a QA-heavy line catches manufacturing defects, so mfg-subsystem failures lose share of the residual risk (avionics/life-support/deep-prop unchanged — QA can't fix software or radiation)
+  if(qm<1) for(const e of list) if(QA_MFG_SUBSYS.has(e.key)) e.weight*=qm;
   return list;
 }
 // distribute the mission failure probability across subsystems so the product of
@@ -2356,10 +2361,12 @@ function applyCrewDose(m){
 function subsystemBreakdownHTML(m,v){
   const sim=m.profile?simulateMission(m):null;
   const rep=subsystemReport(m,v,sim,v.crewed);
+  const qaLvl=prodLevel('qa'), qaChip=qaLvl>1?` <span class="pill ok" title="QA L${qaLvl}: catches manufacturing defects on this subsystem before flight">🔬 QA L${qaLvl}</span>`:'';
   const rows=rep.subsystems.map(s=>{
     const pc=Math.round(s.rel*100), col=pc>=97?'var(--ok)':(pc>=92?'var(--warn)':'var(--bad)');
     const sev=s.severity==='partial'?'wrong orbit':(s.phase==='deep'?'lost in deep space':'loss of vehicle');
-    return `<div class="leg"><span class="legname">${s.label}</span><span class="legdv" style="color:${col}">${pc}%</span><span class="legdetail">fault → ${sev}</span></div>`;
+    const chip=QA_MFG_SUBSYS.has(s.key)?qaChip:'';
+    return `<div class="leg"><span class="legname">${s.label}${chip}</span><span class="legdv" style="color:${col}">${pc}%</span><span class="legdetail">fault → ${sev}</span></div>`;
   }).join('');
   const fam=activeFamily();
   const famNote=fam&&familyRelBonus(fam)>0?` <span style="color:var(--ok)">${fam.name} heritage adds +${(familyRelBonus(fam)*100).toFixed(1)}% from ${fam.successes} proven flight${fam.successes===1?'':'s'}.</span>`:'';
@@ -7462,7 +7469,7 @@ function prodEffectText(key,lvl){
   if(key==='bays') return `capacity ${BAY_CAP_BASE+BAY_CAP_PER*(lvl-1)} units`;
   if(key==='foundry') return `−${Math.round((1-Math.max(FOUNDRY_FLOOR,1-FOUNDRY_PER*(lvl-1)))*100)}% build cost`;
   if(key==='pads') return `−${Math.round((1-Math.max(PAD_FLOOR,1-PAD_PER*(lvl-1)))*100)}% launch cost`;
-  if(key==='qa') return `+${(Math.min(QA_REL_CAP,QA_REL_PER*(lvl-1))*100).toFixed(1)}% reliability`;
+  if(key==='qa'){ const rel=Math.min(QA_REL_CAP,QA_REL_PER*(lvl-1))*100, frag=Math.min(QA_FRAG_CAP,QA_FRAG_PER*(lvl-1))*100; return `+${rel.toFixed(1)}% reliability · −${frag.toFixed(0)}% mfg-defect share`; }
   return '';
 }
 function productionPanelHTML(){
@@ -7502,6 +7509,7 @@ function productionPanelHTML(){
         <div class="metric"><div class="k">Build-cost economy</div><div class="v">−${Math.round((1-foundryCostMult())*100)}%</div></div>
         <div class="metric"><div class="k">Launch-cost economy</div><div class="v">−${Math.round((1-padLaunchMult())*100)}%</div></div>
         <div class="metric"><div class="k">Build quality</div><div class="v" style="color:${qaRelBonus()>0?'var(--ok)':'var(--ink)'}">+${(qaRelBonus()*100).toFixed(1)}% rel</div></div>
+        <div class="metric"><div class="k">Defect catch</div><div class="v" style="color:${(1-qaFragMult())>0?'var(--ok)':'var(--ink)'}">−${Math.round((1-qaFragMult())*100)}% mfg share</div></div>
         <div class="metric"><div class="k">Total upkeep</div><div class="v" style="color:${productionUpkeep()>0?'var(--bad)':'var(--ink)'}">${productionUpkeep()>0?'−'+fM(productionUpkeep())+'/mo':'none'}</div></div>
       </div>
       ${cards}

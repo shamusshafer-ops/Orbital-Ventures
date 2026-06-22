@@ -423,9 +423,39 @@ review's numbering, not the build order (see **Suggested build order** at the en
       upkeep math + monthly burn, upgrade flow (cost escalation, deduction, max-level
       & insufficient-funds guards), summary overhead, lit-up tiles, save/load + old-
       save default, and a render smoke (infra+bench+command).
+      *Second slice (in code ahead of this entry): a 4th production line, **Quality
+      Assurance** (`qa`), was added with a flat reliability bonus (`qaRelBonus`,
+      `QA_REL_PER`/`QA_REL_CAP`, ≤+4.8% at L5) folded into `productionRelMod`.*
+      *Third slice built 2026-06-22 — **QA → #16 reliability bridge**.* QA now
+      speaks to the subsystem model, not just the overall rate. New `qaFragMult()`
+      (`QA_FRAG_PER` 5%/level, cap **20% at L5**; L1 → 1.00, L5 → 0.80) scales down
+      the weights of the **manufacturing-touched** subsystems inside
+      `subsystemFragilities()` — `QA_MFG_SUBSYS = {propulsion, structures,
+      separation, boosters}` — leaving `avionics` / `life_support` /
+      `deep_propulsion` untouched (QA can't fix software, radiation, or in-space
+      restart physics). Because the #16 model normalises (`rel_i = R^(w_i/ΣW)`),
+      reducing a subsystem's weight shifts the *picked-failure distribution* away
+      from it: a high-QA program that loses a vehicle is now more likely to lose
+      it to guidance or radiation than to a welded tank or turbopump. **Overall R
+      is untouched by this slice** (the rate is still governed by `effectiveReliability`
+      and the existing flat `qaRelBonus`); this is purely a redistribution, so all
+      prior balance is exactly preserved at L1 (no-op). Surfaced: the production
+      panel **Build quality** card gains a sibling **Defect catch −X% mfg share**
+      metric, the QA line's `prodEffectText` shows both effects (`+X% reliability ·
+      −Y% mfg-defect share`), and the subsystem-breakdown readout rows for mfg
+      subsystems carry a **🔬 QA L{n}** chip when L≥2 (avionics/life-support rows
+      explicitly excluded). No new save fields — derives from existing
+      `state.production.qa`. Validated headlessly (20/20, `/tmp/ov-qa-bridge.js`):
+      `qaFragMult` cap formula across L1–L5, L1 no-op, mfg subsystems scaled by
+      exactly 0.80 at L5 + non-mfg byte-identical, product-preservation invariant
+      (`Π rel_i == R`) holds at L5, boosters fitted respect the scaling, a Monte-
+      Carlo-style failure-share shift on a richer mission (mfg share drops L1→L5,
+      no subsystem disappears), UI text/render smoke (`prodEffectText`,
+      `productionPanelHTML` includes "Defect catch", `subsystemBreakdownHTML`
+      chip present at L4 and absent on the Guidance row).
       *Still open in #7 (later slices):* raw-material supply chains, production
-      scheduling/bottlenecks, QA→#16 reliability bridge, inventory/forecasting, and
-      reusable-hardware refurbishment (ties to M5).
+      scheduling/bottlenecks, inventory/forecasting, and reusable-hardware
+      refurbishment (ties to M5).
       *(Primary home for Strategic-Vision Phase 3 (v2.5): factories that build
       engines/tanks/spacecraft/habitats, raw-material supply chains, production
       scheduling + bottleneck management, quality-assurance that feeds the #16
