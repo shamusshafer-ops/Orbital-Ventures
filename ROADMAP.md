@@ -482,8 +482,38 @@ review's numbering, not the build order (see **Suggested build order** at the en
       refly designs, `recoveryStageHTML` shows/hides the wear note correctly,
       save/load preserves `reflights`, and the saturation render includes the
       retire hint. Slice-3 QA suite re-run: 20/20 still green.
-      *Still open in #7 (later slices):* raw-material supply chains, production
-      scheduling/bottlenecks, and inventory/forecasting.
+      *Fifth slice built 2026-06-22 — **production scheduling: build-cadence
+      pressure & bottleneck identification.*** A rolling ring buffer
+      (`state.recentBuilds`, `SAVE_VERSION`→14, forward-compat default `[]`) records
+      `{at, units}` for every launch. `cadenceLoad()` divides total recent units by
+      sustainable throughput (`bayCapacity() × CADENCE_WINDOW = 12 mo`); at load 1.0
+      you're running flat-out, past that overtime + expediting parts cost extra.
+      `cadenceSurcharge()` returns `min(0.30, (load−1)·0.5)` so each +0.10 of load
+      over 1.0 is +5% buildCost (`CADENCE_SURCHARGE_PER` / `CADENCE_SURCHARGE_CAP`).
+      Wired into `computeVehicle()` as `buildCost *= 1 + cadenceSurcharge()` right
+      after the foundry discount, so foundry/family/refurb all compose with it.
+      The buffer is appended + pruned inside `launch()` immediately after the time
+      advance, so this launch shows up in the *next* launch's cadence — the rush
+      surcharge you pay reflects the program you've actually been running.
+      `bottleneckLine(m)` returns `'bays'` whenever you're paying a cadence
+      surcharge **or** the current order is overstretched (`bayBuildDelta>0`),
+      otherwise `null` — a single, unambiguous "expand bays" signal. Surfaced:
+      Production panel gets a new "Build cadence" metric (colour shifts ok→warn→bad
+      at 0%/80%/over-cap) and a top-of-panel bottleneck banner; both bench-readout
+      flag blocks show a rush-surcharge warning when active. *Story:* growing fast
+      gets expensive — three launches in a quarter on L1 bays means overtime, rushed
+      part orders, and a 5–30% rush premium baked into every new build until you
+      either slow down or pay the upgrade.
+      Validated headlessly (25/25, `/tmp/ov-cadence.js`): empty buffer is a no-op,
+      stale entries are pruned outside the window, load math hits exactly 0 at
+      cap·window units and ≈10% surcharge at load 1.2, cap saturates at 30%,
+      buildCost ratio matches `1+surcharge` analytically, higher bay capacity
+      clears the surcharge, save/load round-trips the buffer, helpers tolerate a
+      missing buffer (forward-compat), panel renders with the new metric, the
+      banner appears only when bottlenecked, and `bottleneckLine` correctly fires
+      on single-build overstretch as well as cadence pressure.
+      *Still open in #7 (later slices):* raw-material supply chains and
+      inventory/forecasting.
       *(Primary home for Strategic-Vision Phase 3 (v2.5): factories that build
       engines/tanks/spacecraft/habitats, raw-material supply chains, production
       scheduling + bottleneck management, quality-assurance that feeds the #16

@@ -801,6 +801,10 @@ const QA_REL_PER = 0.012, QA_REL_CAP = 0.05;     // #7 slice 2: QA reliability b
 const QA_FRAG_PER = 0.05, QA_FRAG_CAP = 0.20;    // #7 slice 3 (QA→#16): mfg-subsystem fragility weight cut per level / cap (≤−20% at L5)
 const QA_MFG_SUBSYS = new Set(['propulsion','structures','separation','boosters']); // subsystems QA can actually fix (welds, tolerances, pyros, integration) — avionics/life-support/deep-propulsion are software/environment-driven
 const OVERSTRETCH_REL_PER = 0.015, OVERSTRETCH_REL_CAP = 0.06; // reliability lost per build-month over bay capacity / cap
+// #7 slice 5 — cadence pressure: pushing builds through faster than the line can sustain costs extra (overtime, expediting parts).
+const CADENCE_WINDOW = 12;             // months of recent build history that counts
+const CADENCE_SURCHARGE_PER = 0.05;    // +5% buildCost per 0.10 load over capacity
+const CADENCE_SURCHARGE_CAP = 0.30;    // ≤30% rush surcharge at extreme cadence
 
 /* ---------- Mission architectures (how you get there is a strategy) ----------
    For supported missions, the player picks an architecture that reshapes the
@@ -1244,6 +1248,7 @@ function newGame(difficulty){
     divisions:{}, // #4: research divisions (skill/exp/morale per division)
     breakthroughCooldown:3, // #5: division R&D breakthrough rate-limiter
     powerSource:'solar', // Phase 2: vehicle power plant (solar/rtg/reactor)
+    recentBuilds:[], // #7 slice 5: rolling ring buffer {at,units} of the last CADENCE_WINDOW months of builds
   };
   log('info','Company founded. The pad is yours — go make some noise.');
 }
@@ -1739,6 +1744,20 @@ function qaRelBonus(){ return Math.min(QA_REL_CAP, QA_REL_PER*(prodLevel('qa')-1
 function qaFragMult(){ return 1 - Math.min(QA_FRAG_CAP, QA_FRAG_PER*(prodLevel('qa')-1)); } // #7→#16: QA shrinks mfg-subsystem weight share; lvl 1 → 1.00, lvl 5 → 0.80
 function overstretchRelPenalty(m){ const d=bayBuildDelta(m); return d>0?Math.min(OVERSTRETCH_REL_CAP, OVERSTRETCH_REL_PER*d):0; }
 function productionRelMod(m){ return qaRelBonus() - overstretchRelPenalty(m); }
+// #7 slice 5: build cadence. The rolling buffer is summed against sustainable throughput
+// (bayCapacity units/month × CADENCE_WINDOW months). load=1.0 means you've been running flat-out;
+// past that you start paying overtime, expediting parts, etc. — modeled as a buildCost surcharge.
+function cadenceRecent(){ const list=state&&state.recentBuilds; if(!Array.isArray(list)) return []; const cutoff=absMonth()-CADENCE_WINDOW; return list.filter(r=>r&&r.at>cutoff); }
+function cadenceUnits(){ return cadenceRecent().reduce((a,r)=>a+(r.units||0),0); }
+function cadenceLoad(){ const cap=bayCapacity()*CADENCE_WINDOW; return cap>0?cadenceUnits()/cap:0; }
+function cadenceSurcharge(){ const over=cadenceLoad()-1; if(over<=0) return 0; return Math.min(CADENCE_SURCHARGE_CAP, over*(CADENCE_SURCHARGE_PER/0.10)); }
+// Bottleneck = whichever line is hurting the player the most right now. Bays cover both
+// overstretch (single-build, too big) and cadence (long-run, too many).
+function bottleneckLine(m){
+  if(cadenceSurcharge()>0) return 'bays';
+  if(m && bayBuildDelta(m)>0) return 'bays';
+  return null;
+}
 function productionUpkeep(){ let u=0; for(const d of PRODUCTION_DEFS) u+=d.upkeep*(prodLevel(d.key)-1); return round2(u); }
 function prodUpgradeCost(key){ const d=prodDef(key); return round2(d.baseCost*prodLevel(key)); } // escalates with level
 function canUpgradeProduction(key){
@@ -2139,6 +2158,7 @@ function computeVehicle(){
   buildCost*=(1-facilityBonus(missionBody(m&&m.id)).buildDiscount); // M17: home-field build discount from a base at the destination
   buildCost*=familyBuildMult(activeFamily()); // #3: a proven lineage gets cheaper to build (manufacturing knowledge)
   buildCost*=foundryCostMult(); // #7: engine-foundry economies of scale cut marginal build cost
+  const cadence=cadenceSurcharge(); if(cadence>0) buildCost*=1+cadence; // #7 slice 5: rush surcharge if recent build volume exceeds sustainable cadence
   buildCost*=mfgBuildMult(); // #6b: Manufacturing/Reuse research lowers build cost
   if(recoveryActive(m)){ // M5: reusability — recovery hardware every flight; reflown booster on routine missions
     if(recoveryRefly(m)) buildCost*=refurbCostMult(); // refurbish a recovered booster: 45% of new, rising with wear (each refly chips +8%)
@@ -2435,6 +2455,11 @@ function launch(){
     advance(buildMonths(m)+1+tl.months); // build (complexity-scaled) + launch (1) + test campaign
   }
   state.flights++;
+  // #7 slice 5: log this build into the cadence buffer (units are the assembly load), then prune the window
+  state.recentBuilds=state.recentBuilds||[];
+  state.recentBuilds.push({at:absMonth(), units:vehicleUnits(m)});
+  const _cutoff=absMonth()-CADENCE_WINDOW;
+  state.recentBuilds=state.recentBuilds.filter(r=>r&&r.at>_cutoff);
   const flightExpense=v.buildCost+v.launchCost+tl.cost; // #18: this flight's outlay for the ops ledger
   let flightRevenue=0;
   const routine=!!state.completed[m.id];
@@ -2840,7 +2865,7 @@ function hideModal(){$('modal').classList.add('hidden');}
 
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=13; // v13: per-family refurbishment wear counter (vehicles[].reflights)
+const SAVE_VERSION=14; // v14: rolling build-cadence ring buffer (state.recentBuilds)
 function saveGame(){
   try{
     const payload={v:SAVE_VERSION, ts:Date.now(), state:JSON.parse(JSON.stringify(state))};
@@ -2878,7 +2903,8 @@ function loadGame(){
       facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
       architectures:{}, science:0, persEventCooldown:5,
       staff:[], assignedAstronaut:null,
-      vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, techLevel:{}, divisions:{}, breakthroughCooldown:3, powerSource:'solar'
+      vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, techLevel:{}, divisions:{}, breakthroughCooldown:3, powerSource:'solar',
+      recentBuilds:[]
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -2929,7 +2955,8 @@ function autoLoad(){
       facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
       architectures:{}, science:0, persEventCooldown:5,
       staff:[], assignedAstronaut:null,
-      vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, techLevel:{}, divisions:{}, breakthroughCooldown:3, powerSource:'solar'
+      vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, techLevel:{}, divisions:{}, breakthroughCooldown:3, powerSource:'solar',
+      recentBuilds:[]
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -6768,6 +6795,7 @@ function renderReadout(){
   else if(v.twr<1.2) flags+=`<div class="flag warn">△ TWR ${v.twr.toFixed(2)} is low; heavy gravity losses (add engines or cut mass).</div>`;
   if(meets && v.twr>1.2) flags+=`<div class="flag ok">✓ Cleared to fly. Reliability ${(v.reliability*100|0)}%.</div>`;
   if(bayBuildDelta(m)>0) flags+=`<div class="flag warn">△ Over assembly-bay capacity (${vehicleUnits(m)}/${bayCapacity()} units) — build runs +${bayBuildDelta(m)} mo and −${(overstretchRelPenalty(m)*100).toFixed(1)}% reliability. Expand Assembly Bays in Orbital Ops.</div>`;
+  if(cadenceSurcharge()>0) flags+=`<div class="flag warn">△ Build cadence ${Math.round(cadenceLoad()*100)}% of sustainable — rush surcharge +${Math.round(cadenceSurcharge()*100)}% on this build. Slow down or expand Assembly Bays.</div>`;
   if(v.crewed && v.twr>1.2 && meets && !state.research.launch_escape) flags+=`<div class="flag warn">△ No escape system — a failure at ${(100-(v.reliability*100|0))}% odds loses the crew.</div>`;
   if(recoveryActive(m)) flags+=`<div class="flag ok">♻ Reusable booster fitted — ${recoveryRefly(m)?`reflown on this routine mission: build ×${refurbCostMult().toFixed(2)}, turnaround −1 mo${refurbWear()>0?`, wear ${refurbWear()}/${REFLY_WEAR_MAX} (−${(refurbRelPenalty()*100).toFixed(1)}% rel)`:''}`:`first flight proves it (+${fM(RECOVERY_HARDWARE)} hardware; refly discount once routine)`}.</div>`;
   if(ispMult()>1||thrustMult()>1) flags+=`<div class="flag ok">⚙ Propulsion R&D on the launch vehicle: +${Math.round((ispMult()-1)*100)}% Isp · +${Math.round((thrustMult()-1)*100)}% thrust.</div>`;
@@ -6834,6 +6862,7 @@ function renderProfileReadout(m){
   if(fails) flags+=`<div class="flag bad">▲ ${fails} leg${fails>1?'s':''} short — fix the red rows above.</div>`;
   else flags+=`<div class="flag ok">✓ Every leg passes. Mission reliability ${(rel*100|0)}%.</div>`;
   if(bayBuildDelta(m)>0) flags+=`<div class="flag warn">△ Over assembly-bay capacity (${vehicleUnits(m)}/${bayCapacity()} units) — build runs +${bayBuildDelta(m)} mo and −${(overstretchRelPenalty(m)*100).toFixed(1)}% reliability. Expand Assembly Bays in Orbital Ops.</div>`;
+  if(cadenceSurcharge()>0) flags+=`<div class="flag warn">△ Build cadence ${Math.round(cadenceLoad()*100)}% of sustainable — rush surcharge +${Math.round(cadenceSurcharge()*100)}% on this build. Slow down or expand Assembly Bays.</div>`;
   if(!state.research.launch_escape) flags+=`<div class="flag warn">△ No escape system — a failure at ${(100-(rel*100|0))}% odds loses the crew.</div>`;
   if(recoveryActive(m)) flags+=`<div class="flag ok">♻ Reusable booster fitted — ${recoveryRefly(m)?`reflown on this routine mission: build ×${refurbCostMult().toFixed(2)}, turnaround −1 mo${refurbWear()>0?`, wear ${refurbWear()}/${REFLY_WEAR_MAX} (−${(refurbRelPenalty()*100).toFixed(1)}% rel)`:''}`:`first flight proves it (+${fM(RECOVERY_HARDWARE)} hardware; refly discount once routine)`}.</div>`;
   if(ispMult()>1||thrustMult()>1) flags+=`<div class="flag ok">⚙ Propulsion R&D on the launch vehicle: +${Math.round((ispMult()-1)*100)}% Isp · +${Math.round((thrustMult()-1)*100)}% thrust.</div>`;
@@ -7501,6 +7530,14 @@ function productionPanelHTML(){
     ? `<span style="color:var(--warn)">current build needs ${units} units — over capacity by ${units-cap} (+${delta} mo, −${(osPen*100).toFixed(1)}% reliability)</span>`
     : (delta<0 ? `<span style="color:var(--ok)">current build (${units} units) fits with room to spare (${delta} mo)</span>`
                : `<span class="dim">current build needs ${units}/${cap} units</span>`);
+  const load=cadenceLoad(), surch=cadenceSurcharge();
+  const loadPct=Math.round(load*100);
+  const cadenceColor = surch>0?'var(--bad)':(load>0.8?'var(--warn)':(load>0?'var(--ok)':'var(--ink)'));
+  const cadenceVal = `${loadPct}%${surch>0?` · +${Math.round(surch*100)}% rush`:''}`;
+  const bn=bottleneckLine(m);
+  const banner = bn==='bays'
+    ? `<div class="flag warn" style="margin-bottom:8px">🏭 Bays bottleneck — recent build load ${loadPct}% of sustainable cadence${surch>0?`; paying a +${Math.round(surch*100)}% rush surcharge on every new build`:''}${delta>0?`; current order is over single-build capacity by ${units-cap} units`:''}. Upgrade Assembly Bays to relieve the pressure.</div>`
+    : '';
   const cards=PRODUCTION_DEFS.map(d=>{
     const lvl=prodLevel(d.key), maxed=lvl>=PROD_MAX_LEVEL;
     const chk=canUpgradeProduction(d.key), cost=prodUpgradeCost(d.key);
@@ -7525,8 +7562,10 @@ function productionPanelHTML(){
   return `<div class="card" style="margin-bottom:12px;border-color:#5a4419">
       <h2 style="margin-bottom:6px">🏭 Manufacturing Capacity</h2>
       <p class="muted" style="font-size:12px;margin:-2px 0 8px">Industry is a resource of its own. Each production line costs capital to expand and adds monthly upkeep — so growing your factory competes with R&amp;D and missions for the budget. ${capNote}.</p>
+      ${banner}
       <div class="metrics" style="margin-bottom:10px">
         <div class="metric"><div class="k">Assembly capacity</div><div class="v">${cap} units</div></div>
+        <div class="metric" title="Recent build volume vs. sustainable cadence (last ${CADENCE_WINDOW} mo). Over 100% triggers a rush surcharge."><div class="k">Build cadence</div><div class="v" style="color:${cadenceColor}">${cadenceVal}</div></div>
         <div class="metric"><div class="k">Build-cost economy</div><div class="v">−${Math.round((1-foundryCostMult())*100)}%</div></div>
         <div class="metric"><div class="k">Launch-cost economy</div><div class="v">−${Math.round((1-padLaunchMult())*100)}%</div></div>
         <div class="metric"><div class="k">Build quality</div><div class="v" style="color:${qaRelBonus()>0?'var(--ok)':'var(--ink)'}">+${(qaRelBonus()*100).toFixed(1)}% rel</div></div>
