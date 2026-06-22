@@ -820,8 +820,8 @@ silhouette)~~ ✓ → ~~12 (architecture choices)~~ ✓ → ~~5 (active rivals)~
 ~~8 (politics, first slice)~~ ✓ → ~~7 (manufacturing, first slice)~~ ✓ →
 ~~13 (map as planning tool)~~ ✓ → ~~M5 (reusability & rapid cadence)~~ ✓ →
 **next: the R&D Deep Expansion epic (see its own section below — now the primary
-near-term focus), then remaining arc (passive-income contracts, deeper #7/#8,
-map cost/ROI overlays)**.
+near-term focus), then remaining arc (deeper #8, the #7 production queue/manifest,
+map cost/ROI overlays)**. (Passive-income contracts shipped 2026-06-21.)
 Items 1/2/3/4/5/9/10/11/12/13/14/15/16/17 + M5 shipped + #7 fully built (7 slices)
 + 18, 6 & 8 first slices; tech tree now a real swimlane graph with divergent
 routes. (#6 is being supplanted by the R&D Deep Expansion epic. #7 is complete —
