@@ -1627,6 +1627,112 @@ order — the near-term build order (#3 vehicle families → … → #7) is unch
 > viz, save/load, facilities, ISRU, launch-market/econ cycles, science,
 > breakthroughs) are recorded in the reconciliation table, not re-opened.
 
+## Evaluation Review — UX, Manufacturing & Mission-Ops Pass
+
+Source: a play-and-code evaluation (2026-06-22) scoring the game **Concept 10 ·
+Gameplay 10 · UI 7 · Graphics 6 · Architecture 6 · Sim depth 9 · Long-term 10**,
+framing it as "a modern successor to Buzz Aldrin's Race Into Space × KSP × Aurora
+4X." Its headline call: the next leap should target **UI clarity, manufacturing,
+and mission operations**, since those three multiply engagement on top of the
+already-strong simulation foundation.
+
+**Important reconciliation note (same discipline as the Strategic Vision import):**
+the review reads the game as earlier-stage than it is — several of its
+recommendations are **already shipped or already tracked**. The table below maps
+each of its 12 points to current code reality so the plan stays honest; genuinely-
+new work is then extracted as numbered arc items (continuing the #18–#22 list) or
+folded into the item where it already lives. **No committed build order** — this is
+a capture pass (decided with the user 2026-06-22); sequencing is a later call, and
+nothing here re-prioritizes the in-flight R&D / boosters work.
+
+**Decisions taken with the user (2026-06-22):**
+- **#11 Code modularization — declined; single-file ethos preserved.** Moving to a
+  `src/` module tree + build step contradicts the project's core working agreement
+  (single `orbital-ventures.html`, no build, headless `vm` validation). Recorded as
+  a known tension, *not* a planned epic. Any maintainability relief stays **in-file**
+  (clearer section banners / organization), never a build pipeline. See the
+  reconciliation row for #11.
+- **Priority — capture only.** Mapped honestly with no build order; pick sequencing
+  in a later session.
+
+### Reconciliation table (review's 12 points ↔ code reality)
+
+| Review point | Status vs. shipped code | New work & where it's tracked |
+| --- | --- | --- |
+| **1 · UI complexity layers** (Basic/Advanced/Expert) | Partial — a **Napkin vs Engineer** difficulty toggle already hides/show the rocket-equation `.eq` blocks (`body.hide-eq`) | **NEW:** a true 3-tier *progressive-disclosure* view layer (Basic = money/rep/active mission/research/success%/recommended action; Advanced = today's UI; Expert = exact reliability eqns, mass fractions, subsystem risk, hidden rival stats). Extends the difficulty math-exposure toggle → **new arc item #23**. |
+| **2 · Mission Planner wizard** (step-by-step) | Not started — systems live in separate tabs (Command Center is the hub, all one click away via **#18**) | **NEW:** an optional guided flow (Choose mission → architecture → design vehicle → assign crew → review reliability → integrate → launch) layered over the freeform tabs. → **new arc item #24**. |
+| **3A · Side-by-side vehicle comparison** | Not started | **NEW:** compare two saved vehicles on payload/reliability/cost/build-time/TWR/Δv. Builds on `state.vehicles[]` (**#3**) + `computeVehicle`. → **new arc item #25**. |
+| **3B · Saved vehicle families** (operational/retire/upgrade/heritage) | **Shipped** as forward-arc **#3** — `state.vehicles[]`, lineage (OV-1→OV-2…), heritage reliability/build bonuses, register/retire | Remaining nuance (explicit "mark operational" flag, in-place upgrade vs. derive) → folds into **#3**. |
+| **3C · Manufacturing queue** (build hardware before launch) | Largely **shipped** — **#7** capacity layer (bays/foundry/pads) + slices 5–7 (build-cadence pressure, raw-material supply chains, inventory & forecasting) | Remaining: an explicit visible **multi-build production queue / manifest** (scheduling order across concurrent builds) → folds into **#7**. |
+| **4 · Living Command Center** (trucks, cranes, day/night, weather, launch-campaign rollout) | Largely **shipped** via **#18** — animated isometric Cape scene with moving crawler-transporter + truck, drifting boat, growing site, beacons/lit windows | Remaining: **launch-campaign rollout choreography** (rollout→fueling→tower retract→countdown), **weather**, **day/night + seasonal** cycles → rollout/weather fold into **#18**/**#20**; ambient cycles fold into **#18**. |
+| **5 · R&D: TRL, experimental failures, competing paths** | Competing paths **shipped** (multi-path swimlane tree, divergent routes); TRL is the known open **#6** leftover | TRL (research→testing→operational gating) → **#6 / R&D epic** leftover (already listed). **NEW: experimental research failures** (combustion instability destroyed prototype → spend more / delay / accept lower reliability) — extends **Breakthrough Events** (their negative sibling) → **new arc item #26**. |
+| **6 · Mission operations** (in-flight events/decisions) | Not started — exactly **arc #20** (interactive Mission Control) | All of it → **#20** (this review is strong corroboration; the EVA/repair/abort decision content is the heart of that item). |
+| **7 · Persistent map assets** (stations, depots, probes, colonies, mining, active craft) | Partial — **#13** map-as-planner; rival-reach + facility markers; **#17** facilities visible | **NEW:** render *persistent player assets* on the map (stations/depots/probes/active spacecraft as living objects) → folds into **#13** (display) + **#21** (the assets/logistics themselves). |
+| **8 · Personnel careers/injuries/poaching/departments** | Poaching **shipped** (**#5**); traits/events (**#9**); morale/attrition/salary (**M6**) | **NEW:** career progression (junior→chief→retire), **injuries** (EVA accident → out N months), promotions, and **departments** → departments are **#19**; careers/injuries/promotions fold into **#19**. |
+| **9 · Rivals: behaviors/espionage/partnerships/market** | **Shipped** (**#5**): per-rival threat, price wars, scooping, staff poaching, behavior-flavored timelines; launch market via econ events + **#2** | **NEW:** **espionage** (steal/protect research, hire-away as a player-vs-rival action) and **partnerships** (joint missions, tech sharing) → folds into **#5** (deeper strategic-rival slice). |
+| **10 · Graphics** (particles/plumes → detailed viewer → Electron/Godot/Unity) | Short/mid-term largely **shipped** — Phaser hybrid conversion (Slices 0–3), GPU exhaust plumes/particles, detailed rocket + planet textures, stage-sep animation | Long-term **engine migration** (Electron/Godot/Unity, multi-window desktop app) conflicts with the single-file/no-build ethos — recorded as a *horizon idea only*, same status as #11 below; not planned. |
+| **11 · Code modularization** (single file → `src/` modules + build) | n/a — by design the project is **single-file, no build, headless-`vm` tested** | **Declined** (decision above). Tension acknowledged; relief stays in-file only. |
+| **12 · Version ladder** (v0.6–v2.0) | Parallels the existing **v1.5–v5.0** Strategic-Vision ladder | The review's 0.6–2.0 milestones map onto already-tracked work: 0.6 UX→#18/#23/#24/#25; 0.7 manufacturing→#7; 0.8 mission ops→#20/#26; 0.9 personnel→#19; 1.0 living agency→#8/#5; 1.5 colonization→#21; 2.0 civilization→#22. No separate version ladder added — use the existing one. |
+
+### New forward-arc items extracted from the review
+
+Continuing the #18–#22 numbering. All **[ ] not started**; **no committed build
+order** (capture pass). The review's own "biggest-return" picks were UI clarity
+(#23/#24), manufacturing (#7), and mission ops (#20).
+
+- [ ] **23 · Progressive UI complexity layers** *(review #1)* — a 3-tier view mode
+      (Basic / Advanced / Expert) for **progressive disclosure**, distinct from the
+      Napkin/Engineer *difficulty* (which changes economy + math exposure). Basic
+      surfaces only money, reputation, active mission, current research, success
+      chance, and the recommended action (reusing `recommendedAction`/
+      `missionAdvisor` from **#18**), hiding advanced metrics; Advanced = today's UI;
+      Expert exposes exact reliability equations, mass fractions, subsystem risk
+      (**#16**), economic modifiers, and hidden rival stats (**#5**). Likely a
+      `state.uiLayer` + CSS body-class gating (mirrors `body.hide-eq`). Lowers the
+      newcomer cognitive load the review flags as the single biggest UI issue.
+- [ ] **24 · Mission Planner wizard** *(review #2)* — an optional guided, linear
+      flow over the existing systems (Choose mission → assign architecture → design
+      vehicle → assign crew → review reliability → integrate → launch), each step a
+      thin wrapper around the tab it already drives (missions / `MISSION_ARCH` / bench
+      / personnel / `subsystemReport` / build / `launch`). Tabs stay for freeform
+      play; the wizard is the on-ramp that removes the tab-hopping friction the review
+      calls out. Pairs naturally with **#23 Basic mode**.
+- [ ] **25 · Side-by-side vehicle comparison** *(review #3A)* — compare two saved
+      `state.vehicles[]` designs across payload / reliability / cost / build-time /
+      TWR / Δv (all already derivable via `computeVehicle`/`stackPerformance`). A
+      bench/family-card comparison view; becomes essential once families branch.
+- [ ] **26 · Experimental research failures** *(review #5)* — the negative sibling of
+      **Breakthrough Events**: a research project can hit a setback ("combustion
+      instability destroyed the prototype") forcing a choice — spend more capital,
+      accept a delay, or accept a lower reliability/effect on completion. Reuses the
+      Breakthrough plumbing (division-quality-driven, rate-limited via a cooldown);
+      higher-quality **Research Divisions** fail less. Turns the TRL idea (research →
+      *testing* → operational) into drama rather than a pure timer. Cross-ref **#6 /
+      R&D epic** (TRL gating), **#9** (event plumbing), Research Divisions.
+
+### Folded into existing items (no new number)
+
+- **Launch-campaign rollout choreography + weather + day/night/seasons** (review #4)
+  → **#18** (ambient scene life + rollout animation) and **#20** (weather as a
+  launch-ops constraint).
+- **Visible multi-build production queue / manifest** (review #3C; inventory &
+  supply chains already shipped in #7 slices 6–7) → **#7**.
+- **Persistent player assets drawn on the Solar map** (review #7) → **#13** (render)
+  + **#21** (the assets/logistics model).
+- **Careers / injuries / promotions** (review #8) → **#19** (departments/org scaling).
+- **Espionage + partnerships** (review #9) → **#5** (deeper strategic rivals).
+- **TRL gating** (review #5) → already an open **#6 / R&D Deep Expansion** leftover.
+- **In-flight mission events/decisions** (review #6) → **#20** (its core content).
+
+> **Incorporation note (2026-06-22):** of the review's 12 points, **#3B/#5/#6
+> (firsts)/#9/#10 short-mid** are already shipped; **#4/#7/#8** ship through
+> existing items #18/#7/#19/#20/#21/#5/#13; genuinely-new buckets become arc items
+> **#23–#26**; **#11 (modularization)** and the **#10 long-term engine migration**
+> are declined as contrary to the single-file/no-build ethos (recorded, not
+> planned). The review's "UI clarity / manufacturing / mission ops" thesis lines up
+> with #23/#24 · #7 · #20 — a useful corroboration of where the highest-impact
+> unbuilt work sits.
+
 ## Engine — hybrid Phaser conversion
 
 Source: a decision (2026-06-20) to move the **animated visual scenes** onto the
