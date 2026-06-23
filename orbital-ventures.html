@@ -93,6 +93,7 @@
   body.hide-eq .eq{display:none}
   /* #23 progressive UI complexity layers (independent of difficulty). Advanced = default. */
   body.ui-basic .adv-only{display:none !important}            /* advanced metrics hidden in Basic */
+  body:not(.ui-basic) .basic-only{display:none !important}    /* the simplified "what to do next" focal element — Basic only */
   body:not(.ui-expert) .expert-only{display:none !important}  /* deep internals only in Expert (keeps natural display when shown) */
   body.ui-basic .eq{display:none !important}                  /* Basic always hides the equation blocks */
   body.ui-expert .eq{display:block !important}                /* Expert forces equations on, even if difficulty hid them */
@@ -6790,7 +6791,25 @@ function renderCCLeft(){
   const adv=missionAdvisor();
   const reqRows=adv.reqs.map(r=>`<div class="adv-req"><span class="${r.ok?'adv-ok':'adv-no'}">${r.ok?'✓':'✗'}</span> ${r.label}</div>`).join('');
   const actBtns=adv.actions.map((a,i)=>`<button class="btn ${a.primary?'launch':(i===0?'launch':'ghost')}" style="width:100%;margin-top:6px;font-size:12px" onclick="${advisorClick(a)}">▸ ${a.label}</button>`).join('');
-  const advHTML=`<div class="card">
+  // ---- Basic focal "what to do next" (slice 3): one recommendation, one button ----
+  // In Basic this single card replaces the detailed advisor below (which is adv-only),
+  // surfacing recommendedAction()'s why + reward + (when the vehicle's on the bench) the
+  // success chance, with one primary button that runs the same advisorClick navigation.
+  const rec=recommendedAction();
+  let recSuccess='';
+  if(rec.kind==='launch' && state.activeMission===rec.missionId){
+    try{ const rv=computeVehicle(); if(rv) recSuccess=`<div class="muted" style="font-size:12px;margin-top:4px">Est. success chance: <b style="color:${rv.reliability>=0.7?'var(--ok)':'var(--warn)'}">${(rv.reliability*100)|0}%</b></div>`; }catch(e){}
+  }
+  const recReward = rec.reward ? `<div class="muted" style="font-size:12px;margin-top:4px">Reward: ${fM(rec.reward.money)} · +${rec.reward.rep} rep</div>` : '';
+  const focalHTML=`<div class="card basic-only" style="border-color:var(--ignite)">
+      <div class="cc-panel-h">▶ What to do next</div>
+      <div class="rec-card">
+        <div class="muted" style="font-size:13px">${rec.detail}</div>
+        ${recSuccess}${recReward}
+        <button class="btn launch" style="width:100%;margin-top:10px;font-size:14px;padding:10px" onclick="${advisorClick(rec)}">▸ ${rec.title}</button>
+      </div>
+    </div>`;
+  const advHTML=`<div class="card adv-only">
       <div class="cc-panel-h">🎛 Mission Control Advisor</div>
       <div class="rec-card">
         ${adv.goal?`<div class="lbl">${adv.ready?'cleared for launch':'goal'}</div><div class="ttl">${adv.goal}</div>${adv.program?`<div class="muted" style="font-size:12px">${adv.program}${adv.reward?` · reward ${fM(adv.reward.money)} / +${adv.reward.rep} rep`:''}</div>`:''}`:`<div class="muted" style="font-size:12px">${adv.summary||''}</div>`}
@@ -6810,6 +6829,7 @@ function renderCCLeft(){
       </div>`).join('')}`).join('');
 
   $('ccLeft').innerHTML=`
+    ${focalHTML}
     ${advHTML}
     <div class="card">
       <div class="cc-panel-h">Current Objectives — ${amb.name}</div>
@@ -7791,11 +7811,12 @@ function renderPersonnelCard(p, sr){
       <div style="flex:1;height:6px;background:var(--panel2);border-radius:3px;overflow:hidden"><div style="height:100%;width:${Math.min(100,dose)}%;background:${dc}"></div></div>
       <span style="font-family:var(--mono);font-size:11px;color:${dc}">${dose}/${RAD_CAREER_LIMIT}</span>
     </div>`; })():''}
-    <div style="font-size:11px;color:var(--muted);margin-bottom:8px">
+    <div class="adv-only" style="font-size:11px;color:var(--muted);margin-bottom:8px">
       ${isEng?`Reliability contribution: <span style="color:var(--ok)">+${engBonusStr}</span> (factors into team average)`:''}
       ${isAstro&&assigned&&ab?`<span style="color:var(--ok)">Crewed rel +${(ab.rel*100).toFixed(1)}% · Payout x${ab.payoutMult.toFixed(2)}</span>`:''}
       ${isAstro&&!assigned?`<span class="dim">Not assigned to crewed missions</span>`:''}
     </div>
+    ${isEng?`<div class="expert-only" style="font-size:11px;color:var(--dim);margin-bottom:8px;font-family:var(--mono)">rel = skill ${p.skill.toFixed(2)} × morale ${moraleFactor.toFixed(2)} × ${ENG_REL_BONUS_MAX} = +${engBonusStr}</div>`:''}
     <div style="display:flex;gap:6px;flex-wrap:wrap">
       <button class="btn ghost" style="font-size:11px" onclick="giveRaise('${p.id}')">Raise (+${(RAISE_SALARY_BUMP*1000)|0}k/mo, +${RAISE_MORALE_BUMP} morale)</button>
       <button class="btn ghost" style="font-size:11px" onclick="commendPersonnel('${p.id}')" ${canCommend?'':'disabled'}>${sr.commendCooldown>0?`Commend (${sr.commendCooldown}mo)`:`Commend (+${COMMEND_MORALE_BUMP} morale)`}</button>
@@ -7818,7 +7839,7 @@ function renderPersonnel(){
   let html=`<div class="card" style="margin-bottom:10px">
     <h2>Personnel <span class="pill">${hired.length} on staff</span></h2>
     <p class="muted" style="font-size:12px;margin:-4px 0 8px">Engineers boost reliability and R&D speed. Assign an astronaut to crewed missions for reliability and payout bonuses. Morale scales all bonuses and determines attrition.</p>
-    <div class="metrics">
+    <div class="metrics adv-only">
       <div class="metric"><div class="k">Monthly payroll</div><div class="v">${fM(monthlySalary)}</div></div>
       <div class="metric"><div class="k">Eng team score</div><div class="v">${engScore}/100</div></div>
       <div class="metric"><div class="k">R&D speed bonus</div><div class="v">+${rdBonus}%</div></div>
@@ -7881,7 +7902,8 @@ function renderRivals(){
       </div>
       <p class="muted" style="font-size:12px;margin:2px 0 6px">${r.blurb}</p>
       <div class="dim" style="font-size:11px;margin-bottom:6px">${claimed}/${r.firsts.length} firsts claimed${priceWar?` · <span style="color:var(--bad)">price war active: payouts ×${priceWar.payoutMult} (${priceWar.monthsLeft} mo left)</span>`:''}</div>
-      <div style="display:flex;flex-direction:column;gap:4px">`;
+      <div class="expert-only dim" style="font-size:11px;margin-bottom:6px;font-family:var(--mono)">threat score ${score.toFixed(1)}${priceWar?` · price-war payout ×${priceWar.payoutMult}`:''}</div>
+      <div class="adv-only" style="display:flex;flex-direction:column;gap:4px">`;
     for(const f of r.firsts){
       const key=r.id+'|'+f.name;
       const done=!!state.rivalFired[key];
@@ -8040,11 +8062,11 @@ function renderMapActivity(){
     const bname=(BODIES.find(b=>b.id===latest.body)||{}).name||latest.body;
     return `<div class="leg"><span class="legname"><span style="color:${r.color}">${r.flag} ${r.name}</span></span><span class="legdv">${bname}</span><span class="legdetail">${latest.name} (${latest.year})</span></div>`;
   }).filter(Boolean).join('');
-  el.innerHTML=`<div class="mission-tag">Market conditions</div>
+  el.innerHTML=`<div class="adv-only"><div class="mission-tag">Market conditions</div>
     <div class="legs" style="margin-top:6px">${evRows}</div>
     <div class="mission-tag" style="margin-top:14px">Rival frontier</div>
     <div class="legs" style="margin-top:6px">${frontier||'<div class="dim" style="font-size:12px;padding:4px 0">No rival has staked a claim beyond Earth yet.</div>'}</div>
-    <div class="dim" style="font-size:11px;margin-top:10px">Coloured dots on the map mark where each rival has reached. Beating a rival to a linked mission avoids its scoop penalty.</div>`;
+    <div class="dim" style="font-size:11px;margin-top:10px">Coloured dots on the map mark where each rival has reached. Beating a rival to a linked mission avoids its scoop penalty.</div></div>`;
 }
 function renderMapOverview(W,H){
   const planets=BODIES.filter(b=>!b.around);
@@ -8207,11 +8229,11 @@ function renderBodyCard(){
   const missionsBlock = planningBlock;
   $('bodyCard').innerHTML=`
     ${backBtn}
-    <div class="mission-tag">Δv profile from Earth's surface</div>
+    <div class="mission-tag adv-only">Δv profile from Earth's surface</div>
     <div class="mission-name">${b.name}</div>
     <div class="sub" style="margin:6px 0 12px">${b.note}</div>
-    <div class="legs">${rows}</div>
-    <div class="metrics" style="margin-top:10px">
+    <div class="legs adv-only">${rows}</div>
+    <div class="metrics adv-only" style="margin-top:10px">
       <div class="metric"><div class="k">Cumulative to final leg</div><div class="v" style="color:var(--ignite)">${fI(cum)} m/s</div></div>
       <div class="metric"><div class="k">Legs</div><div class="v">${b.legs.length}</div></div>
     </div>
@@ -8316,7 +8338,7 @@ function productionPanelHTML(){
       <h2 style="margin-bottom:6px">🏭 Manufacturing Capacity</h2>
       <p class="muted" style="font-size:12px;margin:-2px 0 8px">Industry is a resource of its own. Each production line costs capital to expand and adds monthly upkeep — so growing your factory competes with R&amp;D and missions for the budget. ${capNote}.</p>
       ${banner}
-      <div class="metrics" style="margin-bottom:10px">
+      <div class="metrics adv-only" style="margin-bottom:10px">
         <div class="metric"><div class="k">Assembly capacity</div><div class="v">${cap} units</div></div>
         <div class="metric" title="Recent build volume vs. sustainable cadence (last ${CADENCE_WINDOW} mo). Bar fills toward the dashed 100% line — once you cross it you pay a rush surcharge."><div class="k">Build cadence</div><div class="v" style="color:${cadenceColor}">${cadenceVal}</div><div style="margin-top:4px">${cadenceGaugeSVG(160,8)}</div></div>
         <div class="metric"><div class="k">Build-cost economy</div><div class="v">−${Math.round((1-foundryCostMult())*100)}%</div></div>
@@ -8327,7 +8349,7 @@ function productionPanelHTML(){
         <div class="metric"><div class="k">Total upkeep</div><div class="v" style="color:${productionUpkeep()>0?'var(--bad)':'var(--ink)'}">${productionUpkeep()>0?'−'+fM(productionUpkeep())+'/mo':'none'}</div></div>
       </div>
       ${buildQueuePanelHTML()}
-      <div class="card" style="background:var(--panel2);margin-bottom:12px">
+      <div class="card adv-only" style="background:var(--panel2);margin-bottom:12px">
         <div style="display:flex;justify-content:space-between;align-items:baseline">
           <div class="mission-name" style="font-size:14px">📦 Raw-material supply</div>
           <div class="dim" style="font-size:11px">spot prices wander monthly · contracts lock for ${MATERIAL_CONTRACT_MONTHS} mo at +${(MATERIAL_CONTRACT_PREMIUM*100|0)}% over spot</div>
@@ -8397,7 +8419,7 @@ function renderInfrastructure(){
   $('infraCard').innerHTML=`${productionPanelHTML()}
     <h2>Infrastructure — what you build stays</h2>
     <p class="muted" style="font-size:12px;margin:-4px 0 10px">Found a station or base once you've proven the capability, then invest to grow it. Facilities persist and produce every month for the rest of the game — passive income, propellant to the depot, prestige — and give a home-field advantage to missions at that body. A landing is a moment; a base is a legacy.</p>
-    ${built.length?`<div class="metrics" style="margin-bottom:12px">
+    ${built.length?`<div class="metrics adv-only" style="margin-bottom:12px">
       <div class="metric"><div class="k">Facilities</div><div class="v">${built.length}</div></div>
       <div class="metric"><div class="k">Total income</div><div class="v" style="color:var(--ok)">+${fM(totalIncome)}/mo</div></div>
       <div class="metric"><div class="k">Propellant output</div><div class="v">+${totalFuel.toFixed(1)} t/mo</div></div>
@@ -8721,7 +8743,7 @@ function renderResearchDetail(){
   const stateTag={done:'<span class="pill ok">researched</span>',active:'<span class="pill active">in progress</span>',available:'<span class="pill">available</span>',locked:'<span class="pill lock">locked</span>'}[st];
   el.innerHTML=`<div class="mission-tag">Technology</div>
     <div class="mission-name" style="font-size:16px">${r.name} ${stateTag}</div>
-    <div class="tt-mods" style="margin:8px 0 10px">${techModifierText(r).map(m=>`<div class="tt-mod">▸ ${m}</div>`).join('')}</div>
+    <div class="tt-mods adv-only" style="margin:8px 0 10px">${techModifierText(r).map(m=>`<div class="tt-mod">▸ ${m}</div>`).join('')}</div>
     <div class="sub" style="margin:8px 0 10px">${r.desc}</div>
     <div class="metrics" style="margin-bottom:10px">
       <div class="metric"><div class="k">Cost</div><div class="v">${fM(r.cost)}</div></div>
@@ -8775,9 +8797,11 @@ function renderDivisions(){
       </div>
       <div style="margin:4px 0 2px">${trackChips}</div>
       <p class="muted" style="font-size:11px;margin:4px 0 2px">${d.blurb}</p>
+      <div class="adv-only">
       ${bar('Skill', s.skill*100, 'var(--readout)')}
       ${bar('Experience', divisionExpLevel(d.id)*100, 'var(--ignite)')}
       ${bar('Morale', s.morale, mColor)}
+      </div>
       <button class="btn" style="width:100%;margin-top:8px;font-size:11px" onclick="trainDivision('${d.id}')" ${chk.ok?'':'disabled'}>${maxed?'✓ Fully trained':(chk.ok?`Train (+${Math.round(DIV_TRAIN_SKILL*100)}% skill · ${fM(cost)})`:chk.why)}</button>
     </div>`;
   }).join('');

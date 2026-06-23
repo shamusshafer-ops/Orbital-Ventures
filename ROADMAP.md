@@ -1814,7 +1814,7 @@ nothing here re-prioritizes the in-flight R&D / boosters work.
 
 | Review point | Status vs. shipped code | New work & where it's tracked |
 | --- | --- | --- |
-| **1 · UI complexity layers** (Basic/Advanced/Expert) | **First slice shipped** (2026-06-22) — `state.uiLayer` 3-tier disclosure (independent of the Napkin/Engineer math toggle), applied to header/Home/Bench readout; ops-bar + Settings controls | Remaining: extend tagging to the other tabs → **arc item #23** (now `[~]`). |
+| **1 · UI complexity layers** (Basic/Advanced/Expert) | **Shipped — #23 complete** (slices 1–3, 2026-06-22/23) — `state.uiLayer` 3-tier disclosure (independent of the Napkin/Engineer math toggle), ops-bar + Settings controls; tagging spans header/Home/Bench/Personnel/Rivals/Infrastructure/Map/R&D, and Basic gets a focal "what to do next" card | Done. |
 | **2 · Mission Planner wizard** (step-by-step) | Not started — systems live in separate tabs (Command Center is the hub, all one click away via **#18**) | **NEW:** an optional guided flow (Choose mission → architecture → design vehicle → assign crew → review reliability → integrate → launch) layered over the freeform tabs. → **new arc item #24**. |
 | **3A · Side-by-side vehicle comparison** | Not started | **NEW:** compare two saved vehicles on payload/reliability/cost/build-time/TWR/Δv. Builds on `state.vehicles[]` (**#3**) + `computeVehicle`. → **new arc item #25**. |
 | **3B · Saved vehicle families** (operational/retire/upgrade/heritage) | **Shipped** as forward-arc **#3** — `state.vehicles[]`, lineage (OV-1→OV-2…), heritage reliability/build bonuses, register/retire | Remaining nuance (explicit "mark operational" flag, in-place upgrade vs. derive) → folds into **#3**. |
@@ -1835,7 +1835,7 @@ Continuing the #18–#22 numbering. All **[ ] not started**; **no committed buil
 order** (capture pass). The review's own "biggest-return" picks were UI clarity
 (#23/#24), manufacturing (#7), and mission ops (#20).
 
-- [~] **23 · Progressive UI complexity layers** *(review #1)* — a 3-tier view mode
+- [x] **23 · Progressive UI complexity layers** *(review #1)* — a 3-tier view mode
       (Basic / Advanced / Expert) for **progressive disclosure**, distinct from the
       Napkin/Engineer *difficulty* (which changes economy + math exposure). Basic
       surfaces only money, reputation, active mission, current research, success
@@ -1847,7 +1847,7 @@ order** (capture pass). The review's own "biggest-return" picks were UI clarity
       **Decisions taken with the user (2026-06-22):** an **independent axis** from
       difficulty (Expert overrides the difficulty hide-equations); **full 3-tier
       mechanism**, applied to the key screens first.
-      - [~] **Slice 1 — mechanism + key screens** *(Built 2026-06-22.)* `state.uiLayer`
+      - [x] **Slice 1 — mechanism + key screens** *(Built 2026-06-22.)* `state.uiLayer`
         ∈ basic/advanced/expert (default **advanced** → nothing changes unless chosen;
         `SAVE_VERSION`→20, forward-compat default on both load paths). `applyUiLayer()`
         (folded into `applyDifficultyUI`, called every render) toggles a body class
@@ -1872,6 +1872,42 @@ order** (capture pass). The review's own "biggest-return" picks were UI clarity
         *Next slices:* extend `adv-only`/`expert-only` tagging to the remaining tabs
         (R&D tree detail, Personnel, Rivals internals, Infrastructure, Map), and a Basic
         "what do I do next" emphasis pass.
+      - [x] **Slice 2 — remaining-tab tagging** *(Built 2026-06-23.)* Extended the same
+        CSS-driven disclosure (`adv-only`/`expert-only`, no new state, no `SAVE_VERSION`
+        bump) to the five highest-density tabs left after slice 1:
+        **Personnel** — summary metrics row + each card's reliability-contribution line →
+        `adv-only`; a new **`expert-only`** engineer reliability formula
+        (`skill × morale × ENG_REL_BONUS_MAX`). **Rivals** — the per-rival firsts timeline
+        → `adv-only`; a new **`expert-only`** raw threat score (+ price-war multiplier).
+        **Infrastructure** — manufacturing-capacity metrics, the raw-material supply card,
+        and the facility summary metrics → `adv-only`. **Map** — the body-card Δv profile
+        (tag + leg breakdown + cumulative metrics) and the market/rival-frontier activity
+        card → `adv-only`. **R&D** — the research-detail exact-modifier list (`tt-mods`) and
+        the division skill/experience/morale bars → `adv-only`. Basic now shows each tab's
+        identity + primary action (hire/fire, found/expand, fly-this, research) while the
+        dense numeric breakdowns recede; Expert adds the reliability formula + raw rival
+        stats on top of Advanced. Validated headlessly (`/tmp/ov-uilayer2.js`, 30/30):
+        mechanism intact, all five tabs render across basic/advanced/expert without
+        throwing, the expected disclosure classes are present, the engineer expert-formula
+        appears after hiring, and the layer stays independent of difficulty.
+        *Next slice:* the Basic **"what do I do next"** emphasis pass (surfacing
+        `recommendedAction`/`missionAdvisor` as the focal element in Basic) — **slice 3**.
+      - [x] **Slice 3 — Basic "what to do next" focal element** *(Built 2026-06-23.)*
+        Added a new **`basic-only`** disclosure class (`body:not(.ui-basic) .basic-only{display:none}`,
+        the mirror of `adv-only`). On the Command Center, Basic now leads with a single
+        focal card driven by **`recommendedAction()`** — the why (its `detail`), the reward
+        preview, an **estimated success chance** (from `computeVehicle()` when the
+        recommended launch's vehicle is on the bench), and **one** primary button that runs
+        the same `advisorClick()` navigation. In Advanced/Expert that card is hidden and the
+        full **🎛 Mission Control Advisor** (now `adv-only`, with its requirement ✓/✗
+        checklist and ranked actions) shows instead — a clean Basic↔Advanced swap rather
+        than two stacked panels. No new state (pure CSS + existing pure helpers). Validated
+        headlessly (`/tmp/ov-uilayer3.js`, 15/15; slice-2 suite re-run 30/30): the
+        `basic-only` CSS rule exists, `renderCCLeft` emits both the focal card and the
+        adv-only advisor and never throws across all three layers, the focal button wires
+        `advisorClick(recommendedAction())` with the recommended title, and the success
+        chance appears exactly when a launch is recommended with the vehicle on the bench.
+        **This completes arc item #23.**
 - [ ] **24 · Mission Planner wizard** *(review #2)* — an optional guided, linear
       flow over the existing systems (Choose mission → assign architecture → design
       vehicle → assign crew → review reliability → integrate → launch), each step a
