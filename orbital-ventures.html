@@ -1264,6 +1264,7 @@ function newGame(difficulty){
     vehicles:[], activeVehicle:null, // #3: named vehicle lineages with heritage
     assembleOrbit:false, // #6: orbital-assembly route toggle (per-launch, resets after flight)
     recovery:false, // M5: reusability — first-stage recovery fitted to the current design (persists)
+    rehearsal:false, // #20 slice 4: pre-flight rehearsal fitted to this flight (per-launch, resets after flight)
     techLevel:{}, // #3: per-tech investment level for leveled technologies
     divisions:{}, // #4: research divisions (skill/exp/morale per division)
     breakthroughCooldown:3, // #5: division R&D breakthrough rate-limiter
@@ -2760,7 +2761,8 @@ function rollMissionEvents(ctx, rng){
   rng=rng||Math.random;
   const eligible=MISSION_ANOMALIES.filter(a=>{ try{ return a.when(ctx) && a.options(ctx).length>0; }catch(e){ return false; } });
   if(!eligible.length) return null;
-  const chance=ANOMALY_CHANCE_BASE + (ctx.crewed?0.06:0) + (ctx.m.profile?0.06:0);
+  let chance=ANOMALY_CHANCE_BASE + (ctx.crewed?0.06:0) + (ctx.m.profile?0.06:0);
+  if(ctx.rehearsed) chance*=REHEARSAL_ANOMALY_MULT; // #20 slice 4: rehearsal buys down ops risk
   if(rng()>=chance) return null;
   return eligible[Math.min(eligible.length-1, Math.floor(rng()*eligible.length))];
 }
@@ -2782,6 +2784,90 @@ function resolveAnomaly(i){
   finalizeLaunch(ctx, eff);
 }
 
+/* ---------- #20 slice 3: rescue missions & contingency ---------- */
+// A strand (deep-space crew that can't get home) is no longer an automatic loss: the
+// player can mount a rescue — capital + months + a success chance. The chance is the
+// "contingency planning" lever — it rises with rendezvous/propulsion tech, standing
+// infrastructure (facilities), and reputation, so a prepared agency saves more crews.
+// A successful rescue is the new `rescued` outcome (crew home, vehicle/mission lost).
+let _pendingRescue=null; // a strand paused at the rescue decision
+function rescueChance(m){
+  let c=0.55;
+  c -= Math.min(0.35, (m.days||0)/2000*0.35);                  // farther / longer → harder to reach in time
+  c += Math.min(0.15, (state.rep||0)/600);                     // a well-funded agency mounts a better effort
+  if(state.research&&state.research.auto_rendezvous) c+=0.10;  // rapid automated rendezvous
+  if(state.research&&state.research.nuclear_thermal) c+=0.10;  // fast-transit rescue craft
+  if((state.facilities||[]).length>0) c+=0.08;                 // standing infrastructure = contingency capability
+  return Math.max(0.10, Math.min(0.90, c));
+}
+function rescueCost(m){ return Math.max(3, Math.round((m.payout||10)*0.6)); }
+function rescueMonths(m){ return m.profile?6:3; }
+function showRescueModal(ctx, outcome){
+  const m=ctx.m, cost=rescueCost(m), months=rescueMonths(m), chance=Math.round(rescueChance(m)*100);
+  const afford=state.money>=cost;
+  const sub=outcome.subsystem?(SUBSYS_LABEL[outcome.subsystem]||'systems').toLowerCase():'systems';
+  const mountBtn=afford
+    ? `<button class="btn" onclick="mountRescue()">Mount a rescue (${fM(cost)}, ~${months} mo, ${chance}% chance)</button>`
+    : `<div class="dim" style="font-size:12px;margin:8px 0">A rescue would cost ${fM(cost)} — you can't afford one.</div>`;
+  showModal(`<h2 style="color:var(--bad)">Crew stranded in deep space</h2>
+    <p><b>${m.name}</b>: a ${sub} failure has left the crew stranded but alive — they can't get home on their own.</p>
+    <p class="muted">A rescue is a long shot: a fast-tracked launch, a hard rendezvous, and the clock against you. Odds rise with rendezvous/propulsion tech, standing infrastructure, and reputation.</p>
+    ${mountBtn}
+    <button class="btn ghost" onclick="abandonRescue()" style="margin-top:8px">Abandon the mission (crew lost)</button>`);
+}
+function mountRescue(){
+  if(!_pendingRescue) return;
+  const {ctx}=_pendingRescue; _pendingRescue=null; hideModal();
+  const m=ctx.m, cost=rescueCost(m), months=rescueMonths(m), chance=rescueChance(m);
+  state.money-=cost;
+  log('note',`${m.name}: emergency rescue launched — ${fM(cost)} committed; crews work around the clock.`);
+  advance(months);
+  if(Math.random()<chance){
+    finalizeLaunch(ctx, {rescueResolved:true, outcomeOverride:'rescued',
+      story:`After ${months} tense months a rescue craft reached the stranded crew and brought them home alive.`});
+  }else{
+    finalizeLaunch(ctx, {rescueResolved:true, outcomeOverride:'strand',
+      story:`a rescue launched but couldn't reach the crew in time — they were lost ${months} months into the ordeal.`});
+  }
+}
+function abandonRescue(){
+  if(!_pendingRescue) return;
+  const {ctx, ops}=_pendingRescue; _pendingRescue=null; hideModal();
+  finalizeLaunch(ctx, Object.assign({}, ops||{}, {rescueResolved:true}));
+}
+
+/* ---------- #20 slice 4: pre-flight rehearsal & readiness ---------- */
+// A test campaign buys down hardware reliability; a rehearsal buys down OPERATIONS risk —
+// rehearsing contingencies cuts the in-flight anomaly chance (slice 2) for a cost + a month.
+// The readiness readout is the "tools" layer: weather GO odds, anomaly risk, and rescue odds.
+const REHEARSAL_ANOMALY_MULT=0.4; // a rehearsed flight runs anomalies at 40% of the base chance
+const REHEARSAL_MONTHS=1;
+function rehearsalCost(m){ return Math.max(1, Math.round((m.payout||10)*0.15)); }
+function toggleRehearsal(){ state.rehearsal=!state.rehearsal; render(); }
+function flightReadiness(m){
+  const wTotal=WEATHER_CONDITIONS.reduce((a,c)=>a+c.weight,0);
+  const goPct=Math.round((WEATHER_CONDITIONS.find(c=>c.id==='go').weight/wTotal)*100);
+  const crewed=m.crew>0, ctx={m,crewed};
+  const eligible=MISSION_ANOMALIES.some(a=>{ try{ return a.when(ctx)&&a.options(ctx).length>0; }catch(e){ return false; } });
+  const anomaly=eligible?Math.min(0.99, ANOMALY_CHANCE_BASE+(crewed?0.06:0)+(m.profile?0.06:0)):0;
+  return {goPct, anomaly, anomalyRehearsed:Math.min(0.99, anomaly*REHEARSAL_ANOMALY_MULT),
+          crewed, rescue:crewed?rescueChance(m):null};
+}
+function rehearsalHTML(m){
+  const on=!!state.rehearsal, cost=rehearsalCost(m), rd=flightReadiness(m);
+  const anomTxt=rd.anomaly>0
+    ? `${Math.round(rd.anomaly*100)}%${on?` → <b style="color:var(--ok)">${Math.round(rd.anomalyRehearsed*100)}%</b> (rehearsed)`:''}`
+    : 'none likely for this profile';
+  return `<div class="mission-tag" style="margin-top:8px">Mission readiness & rehearsal</div>
+    <div style="font-size:11px;line-height:1.8;margin:4px 0;color:var(--muted)">
+      <div>Weather GO odds: <b style="color:var(--ink)">${rd.goPct}%</b> <span class="dim">(else a launch-day go/no-go call)</span></div>
+      <div>In-flight anomaly risk: <b style="color:var(--ink)">${anomTxt}</b></div>
+      ${rd.crewed?`<div>Deep-space rescue odds if stranded: <b style="color:var(--ink)">${Math.round(rd.rescue*100)}%</b></div>`:''}
+    </div>
+    <button class="btn" style="font-size:11px;padding:4px 10px;${on?'border-color:var(--ok);color:var(--ok)':''}" onclick="toggleRehearsal()">${on?'✓ Rehearsal ON':'Rehearsal OFF'}</button>
+    <span class="dim" style="font-size:11px;margin-left:8px">Rehearse contingencies — ${fM(cost)} · +${REHEARSAL_MONTHS} mo · anomaly risk × ${REHEARSAL_ANOMALY_MULT}.</span>`;
+}
+
 /* ---------- launch ---------- */
 function canLaunch(v,m,sim){
   if(m.tanker){
@@ -2798,12 +2884,12 @@ function canLaunch(v,m,sim){
   if(m.window){
     const cw=state.committedWindow;
     if(!cw||cw.missionId!==m.id) return {ok:false,why:'No launch window committed — pick one from the Launch Window Planner below.'};
-    const tl=TEST_LEVELS[state.testLevel], leadMonths=buildMonths(m)+1+tl.months;
+    const tl=TEST_LEVELS[state.testLevel], leadMonths=buildMonths(m)+1+tl.months+(state.rehearsal?REHEARSAL_MONTHS:0);
     if(absMonth()+leadMonths>cw.abs) return {ok:false,why:'Too late for the committed window — build time would carry you past it. Cancel and pick a later one.'};
     if(absMonth()+leadMonths<cw.abs-1) return {ok:false,why:`Window not yet open — ${monthToDate(cw.abs)}. Advance time (research keeps progressing) or build closer to launch.`};
   }
   const tl=TEST_LEVELS[state.testLevel];
-  const total=v.buildCost+v.launchCost+tl.cost+0.12*(buildMonths(m)+1+tl.months);
+  const total=v.buildCost+v.launchCost+tl.cost+(state.rehearsal?rehearsalCost(m):0)+0.12*(buildMonths(m)+1+tl.months);
   if(state.money<total) return {ok:false,why:'Not enough capital to build, test, and fly this mission.'};
   return {ok:true};
 }
@@ -2817,15 +2903,16 @@ function launch(){
   const sim=m.profile?simulateMission(m):null;
   const chk=canLaunch(v,m,sim); if(!chk.ok){return;}
   const tl=TEST_LEVELS[state.testLevel];
-  state.money-=(v.buildCost+v.launchCost+tl.cost);
+  const rehMo=state.rehearsal?REHEARSAL_MONTHS:0; // #20 slice 4: rehearsal adds cost + a month of prep
+  state.money-=(v.buildCost+v.launchCost+tl.cost+(state.rehearsal?rehearsalCost(m):0));
   let windowQuality=1;
   if(m.window){
     windowQuality=state.committedWindow.quality;
     const gap=state.committedWindow.abs-absMonth();
-    advance(Math.max(buildMonths(m)+1+tl.months, gap)); // wait out the rest of the window if build finishes early
+    advance(Math.max(buildMonths(m)+1+tl.months+rehMo, gap)); // wait out the rest of the window if build finishes early
     state.committedWindow=null;
   }else{
-    advance(buildMonths(m)+1+tl.months); // build (complexity-scaled) + launch (1) + test campaign
+    advance(buildMonths(m)+1+tl.months+rehMo); // build (complexity-scaled) + launch (1) + test campaign + rehearsal
   }
   // #20 slice 1: launch-day weather go/no-go — the vehicle is built and rolled out
   const wx=rollWeather(m);
@@ -2846,12 +2933,12 @@ function proceedLaunch(m,v,sim,windowQuality,weatherPenalty){
   state.recentBuilds=state.recentBuilds.filter(r=>r&&r.at>_cutoff);
   // #7 slice 7: this build draws one unit from each material's stock if any is on hand
   consumeMaterialsForBuild();
-  const flightExpense=v.buildCost+v.launchCost+tl.cost; // #18: this flight's outlay for the ops ledger
+  const flightExpense=v.buildCost+v.launchCost+tl.cost+(state.rehearsal?rehearsalCost(m):0); // #18: this flight's outlay for the ops ledger
   const routine=!!state.completed[m.id];
   const crewed=m.crew>0;
   // M16: subsystem-based reliability — which subsystem (if any) fails decides the story
   const outcome=resolveFlight(m,v,sim,crewed,weatherPenalty);
-  const ctx={m,v,sim,windowQuality,flightExpense,routine,crewed,outcome};
+  const ctx={m,v,sim,windowQuality,flightExpense,routine,crewed,outcome,rehearsed:!!state.rehearsal};
   // #20 slice 2: an in-flight anomaly can occur once the mission reaches its operational phase
   if(animEnabled && (outcome.kind==='success'||outcome.kind==='partial')){
     const ev=rollMissionEvents(ctx);
@@ -2866,6 +2953,10 @@ function finalizeLaunch(ctx, ops){
   let {m,v,sim,windowQuality,flightExpense,routine,crewed,outcome}=ctx;
   if(ops.outcomeOverride && ops.outcomeOverride!==outcome.kind)
     outcome=Object.assign({},outcome,{kind:ops.outcomeOverride, story:(ops.story||ops.log||outcome.story)});
+  // #20 slice 3: a strand becomes a rescue decision — the crew is alive but can't get home
+  if(outcome.kind==='strand' && crewed && state.assignedAstronaut && animEnabled && !ops.rescueResolved){
+    _pendingRescue={ctx, ops, outcome}; showRescueModal(ctx, outcome); return;
+  }
   if(ops.log) log(/strand|loss|abort/.test(ops.outcomeOverride||'')?'bad':'note', `${m.name}: ${ops.log}`);
   const opsPayoutMult=(ops.payoutMult==null?1:ops.payoutMult);
   const opsRep=ops.repDelta||0;
@@ -2936,6 +3027,12 @@ function finalizeLaunch(ctx, ops){
     loseAssignedCrew();
     advance(6); // grounding + investigation
     log('bad',`${m.name}: LOST IN DEEP SPACE — ${outcome.story} A long inquiry follows, −${rep} rep.`);
+  }else if(outcome.kind==='rescued'){
+    // #20 slice 3: a deep-space rescue brought the crew home — mission & vehicle lost, crew safe
+    personnelMissionEvent(false);
+    const rep=Math.min(state.rep,10); state.rep-=rep;
+    addSupport(SUPPORT_DELTA.abort); // relief tempered by a lost mission
+    log('ok',`${m.name}: CREW RESCUED — ${outcome.story} The mission and vehicle are lost, but the crew is home. −${rep} rep.`);
   }else{ // loss of vehicle on ascent
     personnelMissionEvent(false);
     if(crewed){
@@ -2975,6 +3072,7 @@ function finalizeLaunch(ctx, ops){
   }
   recordFlightLedger(flightRevenue, flightExpense); // #18: attribute this flight to the current month's ops summary
   state.testLevel=0; // campaign applies to one flight
+  state.rehearsal=false; // #20 slice 4: rehearsal applies to one flight
   state.depotUse=0;
   state.assembleOrbit=false; // #6: assembly choice applies to one flight
   const rnd=()=>Math.random();
@@ -3269,7 +3367,7 @@ function hideModal(){$('modal').classList.add('hidden');}
 
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=17; // v17: per-material spot-price history ring buffer (state.materials[k].history)
+const SAVE_VERSION=18; // v18: #20 slice 4 — pre-flight rehearsal toggle (state.rehearsal)
 function saveGame(){
   try{
     const payload={v:SAVE_VERSION, ts:Date.now(), state:JSON.parse(JSON.stringify(state))};
@@ -3307,7 +3405,7 @@ function loadGame(){
       facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
       architectures:{}, science:0, persEventCooldown:5,
       staff:[], assignedAstronaut:null,
-      vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, techLevel:{}, divisions:{}, breakthroughCooldown:3, powerSource:'solar',
+      vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, rehearsal:false, techLevel:{}, divisions:{}, breakthroughCooldown:3, powerSource:'solar',
       recentBuilds:[], materials:defaultMaterialsState()
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
@@ -3359,7 +3457,7 @@ function autoLoad(){
       facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
       architectures:{}, science:0, persEventCooldown:5,
       staff:[], assignedAstronaut:null,
-      vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, techLevel:{}, divisions:{}, breakthroughCooldown:3, powerSource:'solar',
+      vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, rehearsal:false, techLevel:{}, divisions:{}, breakthroughCooldown:3, powerSource:'solar',
       recentBuilds:[], materials:defaultMaterialsState()
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
@@ -7239,6 +7337,7 @@ function renderReadout(){
 
     <div class="mission-tag" style="margin-top:6px">Test campaign — buy down risk before you fly</div>
     <div class="row" style="gap:6px;align-items:stretch;margin:6px 0 4px">${testBtns}</div>
+    ${rehearsalHTML(m)}
 
     ${flags}
     <button class="launch" onclick="launch()" ${chk.ok?'':'disabled'}>${chk.ok?(m.tanker?'■ Launch Tanker':(v.crewed?'■ Build & Launch (crewed)':'■ Build & Launch')):'Launch unavailable'}</button>
@@ -7302,6 +7401,7 @@ function renderProfileReadout(m){
 
     <div class="mission-tag" style="margin-top:6px">Test campaign — buy down risk before you fly</div>
     <div class="row" style="gap:6px;align-items:stretch;margin:6px 0 4px">${testBtns}</div>
+    ${rehearsalHTML(m)}
 
     ${flags}
     <button class="launch" onclick="launch()" ${chk.ok?'':'disabled'}>${chk.ok?'■ Build & Launch mission':'Launch unavailable'}</button>

@@ -1610,7 +1610,8 @@ order — the near-term build order (#3 vehicle families → … → #7) is unch
       succession/workforce planning. Builds directly on **M6** (morale/attrition/
       salary), **#9** (traits/events), and **#5** (poaching/retention) rather than
       replacing them.
-- [~] **20 · Interactive Mission Control & operations** *(P4, v3.0)* — Turn the
+- [x] **20 · Interactive Mission Control & operations** *(P4, v3.0)* — *All four
+      slices shipped 2026-06-22 (see the epic-status note below).* Turn the
       passive launch animation into a live **Mission Control**: in-flight player
       decisions/events, rescue missions & contingency planning, launch
       **weather**/environmental systems, and pre-flight rehearsal tools. Leans on
@@ -1678,8 +1679,63 @@ order — the near-term build order (#3 vehicle families → … → #7) is unch
         smoke 11/11. *Deferred to later slices:* multiple anomalies per flight; anomalies
         woven into the real-time flight animation (currently a pre-animation modal);
         anomaly outcomes feeding the radiation/dose & morale systems.
-      *Remaining slices (per the first-slice decision):* 3 · rescue missions &
-      contingency planning; 4 · pre-flight rehearsal tools.
+      - [x] **Slice 3 — Rescue missions & contingency** *(Built 2026-06-22.)* A
+        **strand** (deep-space crew that can't get home) is no longer an automatic loss —
+        it becomes a decision. When `finalizeLaunch` resolves to `strand` with a crew
+        aboard (from either `resolveFlight` or a slice-2 life-support gamble), it pauses on
+        a **rescue modal** (transient `_pendingRescue`, before any effects/logs fire): *Mount
+        a rescue* (`mountRescue` — spend `rescueCost(m)` capital, advance `rescueMonths(m)`,
+        roll `rescueChance(m)`) or *Abandon* (`abandonRescue` — the old strand: crew lost).
+        A success becomes the **new `rescued` outcome** (crew home, vehicle/mission lost,
+        a light ≤10 rep hit); a failure falls back to `strand` (crew lost + the wasted
+        cost/time). **`rescueChance` is the "contingency planning" lever** — base 0.55,
+        bounded [0.10, 0.90], *lowered* by mission depth (`m.days`) and *raised* by
+        `auto_rendezvous` / `nuclear_thermal` research, standing **facilities** (#17), and
+        reputation — so a prepared, well-resourced agency saves more crews. Implementation:
+        a re-entrant guard (`ops.rescueResolved`) lets `mountRescue`/`abandonRescue` call
+        `finalizeLaunch` again to apply the resolved outcome; **no save change** (transient
+        state + existing research/facilities/rep drive the odds). Animations-off / headless
+        **skips** the rescue (strand resolves as before — deterministic, no regression). The
+        new `rescued` branch keeps the crew (no `loseAssignedCrew`) but still records a
+        family vehicle loss (#3). Validated headlessly (`/tmp/ov-rescue.js`, 26/26):
+        chance formula (each factor's direction, both clamps, depth penalty), cost/months
+        scaling, the strand→pause interception (crew alive while pending), abandon (crew
+        lost), mount success (crew kept + capital spent) and failure (crew lost),
+        animations-off no-pause regression, the `rescued` rep/crew effects, modal
+        affordability render, and a **slice-2 interaction** (anomaly-driven strand also
+        triggers the rescue). Slices 1 & 2 still 30/30 each; render smoke 11/11. *Deferred:*
+        a designed/launched rescue *vehicle* (currently abstract); active pre-funded
+        contingency (insurance/reserves); the rescue playing out in the flight animation.
+      - [x] **Slice 4 — Pre-flight rehearsal & readiness tools** *(Built 2026-06-22.)*
+        The complement to the hardware **test campaign**: where a test campaign buys down
+        *reliability*, a **rehearsal** buys down *operations* risk. A per-flight
+        `state.rehearsal` toggle (`SAVE_VERSION`→18, forward-compat default false, resets
+        after each flight like `testLevel`) costs `rehearsalCost(m)` (~15% of payout) + one
+        prep month and multiplies the slice-2 **anomaly chance by `REHEARSAL_ANOMALY_MULT`
+        (0.4)** — rehearsed contingencies mean fewer surprises in flight. Wired through:
+        `launch()` deducts the cost + adds the month to the build advance, `canLaunch` folds
+        both into the affordability + window-lead checks, `proceedLaunch` stamps
+        `ctx.rehearsed` and `rollMissionEvents` applies the multiplier, and `finalizeLaunch`
+        resets the flag. The **"tools" layer** is `flightReadiness(m)` — a pure readout of
+        weather **GO odds**, in-flight **anomaly risk** (base → rehearsed), and (crewed)
+        **deep-space rescue odds** — surfaced via `rehearsalHTML(m)` on **both** bench
+        readouts beneath the test-campaign row, so the player can see all the slice-1–3 odds
+        and decide before committing. The rocket equation is untouched (cost/time/anomaly-rate
+        only). Validated headlessly (`/tmp/ov-rehearsal.js`, 22/22): defaults + save version,
+        toggle, cost scaling, `flightReadiness` fields (GO %, anomaly = base×mult, rescue only
+        when crewed), the **rehearsal lowers the fire rate** (an rng between rehearsed and base
+        chance fires un-rehearsed but not rehearsed), `launch()` adds the cost + month + resets
+        the flag, **balance neutrality** (rehearsal-off chance == base), save/load round-trip +
+        legacy default, and a render smoke (both readouts show the card). Slices 1/2/3 still
+        30/30/30/26; render 11/11. *Deferred:* rehearsal also improving anomaly *decision*
+        odds (not just the rate); a multi-step rehearsal/readiness-review mini-flow.
+      > **Epic status (2026-06-22):** all four planned slices shipped — launch weather
+      > go/no-go (1), in-flight anomaly decisions (2), deep-space rescue & contingency (3),
+      > and pre-flight rehearsal & readiness tools (4). #20 turns the once-passive launch
+      > into a chain of real operational decisions, built on the #16 subsystem model and
+      > #4 outcomes. *Optional future polish:* decisions woven into the real-time flight
+      > animation (currently pre/post-animation modals); a designed rescue **vehicle**;
+      > active pre-funded contingency; anomaly outcomes feeding radiation/dose & morale.
 - [ ] **21 · Colony population & interplanetary logistics** *(P5, v3.5)* — Extend
       the **#17** facility layer into living colonies: population growth/management,
       typed construction (habitats/mines/power/fuel), and **interplanetary
