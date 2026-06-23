@@ -2096,6 +2096,22 @@ logic with no Phaser global.
       (Jupiter uses symmetric limb-shading + stays upright so its rings hold a fixed tilt).
       Validated: suites green (38/38/34) + map render smoke; in-browser confirmed. *This
       completes the planned hybrid Phaser conversion (Slices 0–3).*
+      **Transfer-trajectory arcs (2026-06-23):** when a launch window is **committed**
+      (`state.committedWindow`), the Solar System map draws the transfer trajectory from
+      Earth to the destination — a dashed amber quadratic arc, bowed away from the Sun for
+      higher orbits (inward for lower), with a departure tick and a "⊕ transfer → Dest"
+      label. Geometry is a pure `transferArc(cx,cy,destId)` (resolves moons to their
+      parent's orbit; Earth's Moon = a short cislunar hop) shared by the **SVG overview**
+      (static, headless-tested) and the **Phaser `MapScene`**, where a new `transfer`
+      graphics layer redraws it each frame from the *live* moving Earth/destination
+      positions as an animated dashed curve with a travelling marker. Driven entirely by
+      the existing committed-window mechanic; no new state. Validated headlessly
+      (`/tmp/ov-transfer.js`, 16/16): arc geometry (endpoints on the right orbits, bow
+      direction tracking orbit radius, moon/Phobos parent-resolution, null for unknown
+      bodies), the SVG arc appearing only with a committed window + labelling the
+      destination, graceful handling of an unmapped mission, and the Phaser wiring; all
+      prior suites green (setback/planner/compare/uilayer/recovery 24/18/21/30/15/9).
+      Browser check pending.
 
 ## Repo
 

@@ -8201,7 +8201,7 @@ function defineMapScene(){
     create(){
       this.cam=this.cameras.main; this.cam.setBackgroundColor('#05080d');
       for(let i=0;i<70;i++){ this.add.circle((Math.random()-0.5)*MAP_W*3,(Math.random()-0.5)*MAP_H*3, Math.random()*1.2+0.3, 0xffffff, 0.1+Math.random()*0.4).setScrollFactor(0.4); }
-      this.rings=this.add.graphics(); this.markers=this.add.graphics(); this.selRing=this.add.graphics();
+      this.rings=this.add.graphics(); this.transfer=this.add.graphics(); this.markers=this.add.graphics(); this.selRing=this.add.graphics();
       // detailed per-body planet textures (generated once)
       const S=448;
       for(const bb of BODIES){ if(bb.kind==='belt') continue; const key='planet_'+bb.id; if(!this.textures.exists(key)){ const tx=this.textures.createCanvas(key,S,S); try{ drawPlanetTex(tx.context,S,bb); }catch(e){} tx.refresh(); } }
@@ -8233,7 +8233,29 @@ function defineMapScene(){
       const dt=(delta||16)/1000;
       for(const o of this.bodies){ if(o.parentId) continue; o.ang+=o.speed*dt; o.x=Math.cos(o.ang)*o.b.r; o.y=Math.sin(o.ang)*o.b.r; o.c.setPosition(o.x,o.y); o.t.setPosition(o.x,o.y-o.rad-3); this.faceSun(o); }
       for(const o of this.bodies){ if(!o.parentId) continue; const p=this.bodies.find(q=>q.b.id===o.parentId); if(!p) continue; const mr=p.rad+12; o.ang+=o.speed*dt; o.x=p.x+Math.cos(o.ang)*mr; o.y=p.y+Math.sin(o.ang)*mr; o.c.setPosition(o.x,o.y); o.t.setPosition(o.x,o.y-o.rad-3); this.faceSun(o); }
-      this.drawRings(); this.drawMarkers(); this.drawSel();
+      this.drawRings(); this.drawTransfer(time); this.drawMarkers(); this.drawSel();
+    }
+    // #graphics: live committed-window transfer arc between the moving Earth and destination,
+    // drawn as an animated dashed quadratic curve with a travelling marker.
+    drawTransfer(time){
+      const g=this.transfer; g.clear();
+      const cw=state.committedWindow; if(!cw) return;
+      const destId=missionBody(cw.missionId); if(!destId) return;
+      const eo=this.bodies.find(o=>o.b.id==='earth'); let to=this.bodies.find(o=>o.b.id===destId);
+      if(!eo||!to) return;
+      const fx=eo.x, fy=eo.y, tx=to.x, ty=to.y;
+      const rE=eo.b.r, rT=(to.parentId?(this.bodies.find(o=>o.b.id===to.parentId)||{b:{r:rE}}).b.r:to.b.r);
+      const mx=(fx+tx)/2, my=(fy+ty)/2, mr=Math.hypot(mx,my)||1;
+      const dir=rT>=rE?1:-1, bow=(Math.abs(rT-rE)*0.45+18)*dir;
+      const cxp=mx/mr*(mr+bow), cyp=my/mr*(mr+bow);
+      const N=48, pts=[];
+      for(let i=0;i<=N;i++){ const u=i/N, iu=1-u; pts.push({x:iu*iu*fx+2*iu*u*cxp+u*u*tx, y:iu*iu*fy+2*iu*u*cyp+u*u*ty}); }
+      g.lineStyle(1.4,0xf5a623,0.85);
+      const ph=Math.floor((time*0.004))%2;
+      for(let i=0;i<N;i++){ if(((i+ph)%2)===0) continue; g.beginPath(); g.moveTo(pts[i].x,pts[i].y); g.lineTo(pts[i+1].x,pts[i+1].y); g.strokePath(); }
+      const idx=Math.floor(((time*0.00012)%1)*N); const pp=pts[Math.min(N,Math.max(0,idx))];
+      g.fillStyle(0xffe08a,1); g.fillCircle(pp.x,pp.y,2.2);
+      g.fillStyle(0xf5a623,1); g.fillCircle(fx,fy,2.2);
     }
     drawRings(){ const g=this.rings; g.clear(); g.lineStyle(1,0x7d909b,0.22);
       for(const o of this.bodies){ if(o.parentId){ const p=this.bodies.find(q=>q.b.id===o.parentId); if(p) g.strokeCircle(p.x,p.y,p.rad+12); } else { g.strokeCircle(0,0,o.b.r); } } }
@@ -8325,6 +8347,32 @@ function renderMapActivity(){
     <div class="legs" style="margin-top:6px">${frontier||'<div class="dim" style="font-size:12px;padding:4px 0">No rival has staked a claim beyond Earth yet.</div>'}</div>
     <div class="dim" style="font-size:11px;margin-top:10px">Coloured dots on the map mark where each rival has reached. Beating a rival to a linked mission avoids its scoop penalty.</div></div>`;
 }
+// #graphics: Hohmann-style transfer arc geometry for a committed launch window. Pure
+// (takes the map centre + a destination body id, returns from/ctrl/to points), so both
+// the SVG overview and the Phaser MapScene draw the same curve and it's headless-testable.
+// A quadratic curve bowed away from (or toward) the Sun reads as the transfer trajectory;
+// moons resolve to their parent's orbit (Earth's Moon is a short cislunar hop).
+function transferArc(cx,cy,destId){
+  const dest=BODIES.find(b=>b.id===destId); if(!dest) return null;
+  const earth=BODIES.find(b=>b.id==='earth'); if(!earth) return null;
+  const aE=ANGLES.earth, rE=earth.r;
+  const from={x:cx+Math.cos(aE)*rE, y:cy+Math.sin(aE)*rE};
+  let tR=dest.r, tx, ty;
+  if(dest.around){
+    const parent=BODIES.find(b=>b.id===dest.around);
+    if(parent){ const pAng=(ANGLES[parent.id]||0), pR=parent.r;
+      const pX=cx+Math.cos(pAng)*pR, pY=cy+Math.sin(pAng)*pR;
+      const mr=(parent.kind==='belt'?4:8)+10, mAng=(ANGLES[dest.id]||0);
+      tx=pX+Math.cos(mAng)*mr; ty=pY+Math.sin(mAng)*mr; tR=pR;
+    }
+  }
+  if(tx===undefined){ const a=(ANGLES[dest.id]!==undefined?ANGLES[dest.id]:0); tx=cx+Math.cos(a)*tR; ty=cy+Math.sin(a)*tR; }
+  const to={x:tx,y:ty};
+  const mx=(from.x+tx)/2, my=(from.y+ty)/2, mr=Math.hypot(mx-cx,my-cy)||1;
+  const dir=tR>=rE?1:-1, bow=(Math.abs(tR-rE)*0.45+18)*dir; // bow outward for higher orbits, inward for Venus
+  const ctrl={x:cx+(mx-cx)/mr*(mr+bow), y:cy+(my-cy)/mr*(mr+bow)};
+  return {from,to,ctrl,destName:dest.name};
+}
 function renderMapOverview(W,H){
   const planets=BODIES.filter(b=>!b.around);
   // Centre the Sun and size a square viewBox to fit the outermost orbit (incl. Jupiter)
@@ -8338,6 +8386,13 @@ function renderMapOverview(W,H){
     svg+=`<circle cx="${cx}" cy="${cy}" r="${b.r}" fill="none" stroke="rgba(125,144,155,0.25)" stroke-width="1" stroke-dasharray="${b.kind==='belt'?'2,3':'3,4'}"/>`;
   });
   svg+=`<circle cx="${cx}" cy="${cy}" r="9" fill="#f5c542"/><circle cx="${cx}" cy="${cy}" r="14" fill="none" stroke="rgba(245,197,66,0.3)" stroke-width="6"/>`;
+  // #graphics: committed-window transfer trajectory, drawn under the bodies
+  const cw=state.committedWindow;
+  if(cw){ const arc=transferArc(cx,cy,missionBody(cw.missionId));
+    if(arc){ svg+=`<path d="M ${arc.from.x.toFixed(1)} ${arc.from.y.toFixed(1)} Q ${arc.ctrl.x.toFixed(1)} ${arc.ctrl.y.toFixed(1)} ${arc.to.x.toFixed(1)} ${arc.to.y.toFixed(1)}" fill="none" stroke="#f5a623" stroke-width="1.6" stroke-dasharray="5,5" opacity="0.85"><title>Committed transfer to ${arc.destName}</title></path>
+      <circle cx="${arc.from.x.toFixed(1)}" cy="${arc.from.y.toFixed(1)}" r="2.5" fill="#f5a623"/>
+      <text x="${arc.ctrl.x.toFixed(1)}" y="${(arc.ctrl.y-4).toFixed(1)}" fill="#f5a623" font-size="9" font-family="ui-monospace,monospace" text-anchor="middle">⊕ transfer → ${arc.destName}</text>`; }
+  }
   planets.forEach(b=>{
     const ang = ANGLES[b.id]!==undefined?ANGLES[b.id]:0;
     const px=cx+Math.cos(ang)*b.r, py=cy+Math.sin(ang)*b.r;
