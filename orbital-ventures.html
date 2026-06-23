@@ -7328,6 +7328,65 @@ function renderWindowPlanner(){
 }
 
 // #3: vehicle families — persistent named lineages and their accumulated heritage
+// #25: side-by-side vehicle comparison. Selection is transient UI state (like
+// mapExpanded) — not persisted, so no SAVE_VERSION bump. '__bench__' compares the
+// live bench config; any other id is a saved family.
+let cmpA=null, cmpB=null;
+function setCompare(side,id){ if(side==='A') cmpA=id; else cmpB=id; render(); }
+// Compute a comparison row's metrics by temporarily applying the design's spec to the
+// live state, running the existing computeVehicle/buildMonths, then restoring. The
+// active mission (curMission) is the shared yardstick both designs are measured against.
+function compareMetrics(id){
+  const m=curMission();
+  if(id==='__bench__'){ const v=computeVehicle(); return {label:'Current bench', v, months:buildMonths(m)}; }
+  const fam=familyById(id); if(!fam) return null;
+  const save={stages:state.stages,transfer:state.transfer,descent:state.descent,ascent:state.ascent,eclss:state.eclss,activeVehicle:state.activeVehicle};
+  try{
+    const s=fam.spec||{};
+    if(s.stages) state.stages=JSON.parse(JSON.stringify(s.stages));
+    if(s.transfer) state.transfer=JSON.parse(JSON.stringify(s.transfer));
+    if(s.descent) state.descent=JSON.parse(JSON.stringify(s.descent));
+    if(s.ascent) state.ascent=JSON.parse(JSON.stringify(s.ascent));
+    if(s.eclss!=null) state.eclss=s.eclss;
+    state.activeVehicle=fam.id;
+    const v=computeVehicle(); const months=buildMonths(curMission());
+    return {label:fam.name, v, months, fam};
+  } finally { Object.assign(state, save); }
+}
+// the comparison grid HTML — two selectable designs, six metrics, better value in green
+function vehicleCompareHTML(){
+  const fams=vehicleFamilies();
+  const opts=[{id:'__bench__',name:'Current bench'}, ...fams.map(f=>({id:f.id,name:f.name}))];
+  if(opts.length<2) return ''; // need at least the bench + one family
+  const ids=opts.map(o=>o.id);
+  let a=ids.includes(cmpA)?cmpA:opts[0].id;
+  let b=ids.includes(cmpB)?cmpB:(opts.find(o=>o.id!==a)||opts[0]).id;
+  const sel=(side,cur)=>`<select onchange="setCompare('${side}',this.value)" style="width:100%;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:5px;padding:4px 6px;font-size:12px">${opts.map(o=>`<option value="${o.id}" ${o.id===cur?'selected':''}>${o.name}</option>`).join('')}</select>`;
+  const A=compareMetrics(a), B=compareMetrics(b);
+  if(!A||!B) return '';
+  const row=(label,av,bv,fmt,better)=>{
+    const eq=Math.abs(av-bv)<1e-9;
+    const aWin=!eq&&(better==='high'?av>bv:av<bv), bWin=!eq&&(better==='high'?bv>av:bv<av);
+    const cell=(val,win)=>`<span style="font-family:var(--mono);font-size:12px;${win?'color:var(--ok);font-weight:600':''}">${fmt(val)}${win?' ▸':''}</span>`;
+    return `<span class="dim" style="font-size:12px">${label}</span>${cell(av,aWin)}${cell(bv,bWin)}`;
+  };
+  const rows=[
+    row('Payload', A.v.payload, B.v.payload, t=>t.toFixed(1)+' t','high'),
+    row('Δv', A.v.totalDv, B.v.totalDv, t=>fI(t)+' m/s','high'),
+    row('TWR', A.v.twr, B.v.twr, t=>t.toFixed(2),'high'),
+    row('Reliability', A.v.reliability, B.v.reliability, t=>(t*100|0)+'%','high'),
+    row('Build cost', A.v.buildCost, B.v.buildCost, t=>fM(t),'low'),
+    row('Build time', A.months, B.months, t=>t+' mo','low'),
+  ].join('');
+  return `<div class="card adv-only" style="background:var(--panel2);margin-top:10px">
+    <div class="mission-tag">⚖ Compare designs</div>
+    <div class="dim" style="font-size:11px;margin:2px 0 8px">Measured against <b>${curMission()?curMission().name:'the current mission'}</b> — green ▸ marks the better value (higher payload/Δv/TWR/reliability, lower cost/time).</div>
+    <div style="display:grid;grid-template-columns:1.1fr 1fr 1fr;gap:7px 10px;align-items:center">
+      <span></span>${sel('A',a)}${sel('B',b)}
+      ${rows}
+    </div>
+  </div>`;
+}
 function renderVehicleFamilies(){
   const card=$('vehicleFamilyCard'); if(!card) return;
   const fams=vehicleFamilies();
@@ -7372,7 +7431,8 @@ function renderVehicleFamilies(){
   card.innerHTML=`<h2>Vehicle Family</h2>
     ${activeHtml}
     <button class="btn" style="width:100%" onclick="saveAsFamily()">+ Register current design${active?` as a new family (derives from ${active.name})`:' as a family'}</button>
-    ${list}`;
+    ${list}
+    ${vehicleCompareHTML()}`;
 }
 // #6: strategic routes to a deep-space destination — makes the branch choice explicit
 function renderRoutes(){

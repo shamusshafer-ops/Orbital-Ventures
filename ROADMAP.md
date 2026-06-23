@@ -1915,10 +1915,29 @@ order** (capture pass). The review's own "biggest-return" picks were UI clarity
       / personnel / `subsystemReport` / build / `launch`). Tabs stay for freeform
       play; the wizard is the on-ramp that removes the tab-hopping friction the review
       calls out. Pairs naturally with **#23 Basic mode**.
-- [ ] **25 · Side-by-side vehicle comparison** *(review #3A)* — compare two saved
+- [x] **25 · Side-by-side vehicle comparison** *(review #3A)* — compare two saved
       `state.vehicles[]` designs across payload / reliability / cost / build-time /
       TWR / Δv (all already derivable via `computeVehicle`/`stackPerformance`). A
       bench/family-card comparison view; becomes essential once families branch.
+      *(Built 2026-06-23.)* A **⚖ Compare designs** panel inside the Vehicle Family
+      card (bench tab): two dropdowns pick any two of **Current bench** + the saved
+      families, and a six-row grid shows payload / Δv / TWR / reliability / build cost /
+      build time, with the better value flagged green ▸ (higher payload/Δv/TWR/rel,
+      lower cost/time). Both designs are measured against the **active mission** as a
+      shared yardstick. Implemented by `compareMetrics(id)` — for a family it
+      temporarily applies the saved `spec` (+ its heritage as `activeVehicle`) to live
+      state, runs the existing `computeVehicle()`/`buildMonths()`, then restores via
+      `try/finally`; `'__bench__'` reads the live config directly. Selection is
+      transient module state (`cmpA`/`cmpB`, like `mapExpanded`) — **no new save field,
+      no `SAVE_VERSION` bump** — and stale ids (a retired family) fall back gracefully.
+      The panel is `adv-only` (hidden in #23 Basic). Validated headlessly
+      (`/tmp/ov-compare.js`, 21/21): no panel under 2 options; bench metrics match a
+      direct `computeVehicle()`; family compute **restores** live state exactly; a
+      half-propellant design correctly shows less Δv; building the panel mutates no
+      state; better-value highlighting fires; stale selections don't throw; and
+      `renderVehicleFamilies` embeds the panel end-to-end. *(Known limitation, shared
+      with `loadFamily`: families don't carry booster/recovery flags, so those use the
+      live bench values during comparison.)*
 - [ ] **26 · Experimental research failures** *(review #5)* — the negative sibling of
       **Breakthrough Events**: a research project can hit a setback ("combustion
       instability destroyed the prototype") forcing a choice — spend more capital,
