@@ -2709,6 +2709,79 @@ function scrubLaunch(){
   proceedLaunch(p.m,p.v,p.sim,p.windowQuality,0);
 }
 
+/* ---------- #20 slice 2: in-flight anomaly decisions ---------- */
+// Independent in-space incidents on missions that reach their operational phase. The
+// player's call modifies the result (payout/rep, or at worst a downgrade to partial —
+// or, on a crewed life-support gamble, a strand). The base #16 failure model still
+// governs hardware loss; anomalies are an ops-skill layer on top, and the safe option
+// is always available. The rocket equation is untouched.
+let _pendingOps=null; // a flight paused at an in-flight anomaly modal
+const ANOMALY_CHANCE_BASE=0.26;
+const MISSION_ANOMALIES=[
+  { id:'solar_array', title:'Solar array failed to deploy',
+    when:c=> (c.m.profile || (!c.m.tanker && (c.m.reqDv||0)>=9000)),
+    detail:'One solar wing is stuck half-latched and the power margin is falling — the payload can’t run every system.',
+    options:c=>{ const o=[];
+      if(c.crewed) o.push({id:'eva', label:'Send the crew on an EVA to free it', resolve:rng=> rng()<0.82
+        ? {repDelta:2, log:'a spacewalk freed the stuck wing — full power restored, mission nominal.'}
+        : {payoutMult:0.8, outcomeOverride:'partial', log:'the EVA couldn’t free the array and burned consumables — the mission limps on at reduced output.'} });
+      o.push({id:'reboot', label:'Command a deploy-motor reboot', resolve:rng=> rng()<0.55
+        ? {log:'the reboot cycled the motor and the wing latched — power restored.'}
+        : {payoutMult:0.8, outcomeOverride:'partial', log:'the motor wouldn’t cycle; the array stays half-deployed and the payload runs degraded.'} });
+      o.push({id:'degraded', label:'Accept it and run on reduced power', resolve:()=>
+        ({payoutMult:0.82, outcomeOverride:'partial', log:'you fly a reduced-power mission — the objective is only partly met.'}) });
+      return o; } },
+  { id:'ls_leak', title:'Life-support leak detected',
+    when:c=> c.crewed && (c.m.days||0)>=10,
+    detail:'A slow cabin leak is bleeding atmosphere. At this rate the margins won’t last the whole flight.',
+    options:c=>[
+      {id:'reserves', label:'Tap emergency reserves and patch it', resolve:rng=> rng()<0.9
+        ? {repDelta:1, log:'the crew patched the leak and rode the reserves home — shaken but safe.'}
+        : {payoutMult:0.7, outcomeOverride:'partial', log:'the patch held but reserves ran thin; the crew cut the mission short.'} },
+      {id:'press_on', label:'Press on and hope it holds', resolve:rng=> rng()<0.6
+        ? {log:'the leak stabilized on its own — a lucky break, mission complete.'}
+        : {outcomeOverride:'strand', log:'the leak worsened catastrophically far from home — the crew was lost.'} },
+      {id:'abort', label:'Abort and bring the crew home now', resolve:()=>
+        ({payoutMult:0, outcomeOverride:'partial', log:'you called it early — the crew is safe but the objective is forfeit.'}) },
+    ] },
+  { id:'guidance', title:'Terminal guidance radar malfunction',
+    when:c=> !!c.m.profile,
+    detail:'The terminal guidance radar is dropping out at the worst possible moment.',
+    options:c=>{ const o=[];
+      if(c.crewed) o.push({id:'manual', label:'Crew takes manual control', resolve:rng=> rng()<0.75
+        ? {repDelta:3, log:'steady hands flew it in by hand — a textbook result.'}
+        : {payoutMult:0.8, outcomeOverride:'partial', log:'the manual approach drifted off-target — a partial result.'} });
+      o.push({id:'retry', label:'Cycle the radar and retry the automated sequence', resolve:rng=> rng()<0.6
+        ? {log:'the radar recovered on the retry — nominal.'}
+        : {payoutMult:0.82, outcomeOverride:'partial', log:'the automated system settled for a safe but off-target result.'} });
+      return o; } },
+];
+function rollMissionEvents(ctx, rng){
+  rng=rng||Math.random;
+  const eligible=MISSION_ANOMALIES.filter(a=>{ try{ return a.when(ctx) && a.options(ctx).length>0; }catch(e){ return false; } });
+  if(!eligible.length) return null;
+  const chance=ANOMALY_CHANCE_BASE + (ctx.crewed?0.06:0) + (ctx.m.profile?0.06:0);
+  if(rng()>=chance) return null;
+  return eligible[Math.min(eligible.length-1, Math.floor(rng()*eligible.length))];
+}
+function showAnomalyModal(ev, ctx){
+  const opts=ev.options(ctx);
+  if(_pendingOps){ _pendingOps.ev=ev; _pendingOps.opts=opts; }
+  const btns=opts.map((o,i)=>`<button class="btn${i?' ghost':''}"${i?' style="margin-top:8px"':''} onclick="resolveAnomaly(${i})">${o.label}</button>`).join('');
+  showModal(`<h2 style="color:var(--warn)">⚠ In-flight anomaly</h2>
+    <p><b>${ctx.m.name}</b> — ${ev.title}.</p>
+    <p class="muted">${ev.detail}</p>
+    <p>Mission Control needs a call.</p>
+    ${btns}`);
+}
+function resolveAnomaly(i){
+  if(!_pendingOps||!_pendingOps.opts) return;
+  const ctx=_pendingOps, o=ctx.opts[i]; if(!o) return;
+  _pendingOps=null; hideModal();
+  const eff=o.resolve(Math.random)||{};
+  finalizeLaunch(ctx, eff);
+}
+
 /* ---------- launch ---------- */
 function canLaunch(v,m,sim){
   if(m.tanker){
@@ -2774,12 +2847,30 @@ function proceedLaunch(m,v,sim,windowQuality,weatherPenalty){
   // #7 slice 7: this build draws one unit from each material's stock if any is on hand
   consumeMaterialsForBuild();
   const flightExpense=v.buildCost+v.launchCost+tl.cost; // #18: this flight's outlay for the ops ledger
-  let flightRevenue=0;
   const routine=!!state.completed[m.id];
   const crewed=m.crew>0;
   // M16: subsystem-based reliability — which subsystem (if any) fails decides the story
-  const ab=crewed?astroBonus():{rel:0,payoutMult:1};
   const outcome=resolveFlight(m,v,sim,crewed,weatherPenalty);
+  const ctx={m,v,sim,windowQuality,flightExpense,routine,crewed,outcome};
+  // #20 slice 2: an in-flight anomaly can occur once the mission reaches its operational phase
+  if(animEnabled && (outcome.kind==='success'||outcome.kind==='partial')){
+    const ev=rollMissionEvents(ctx);
+    if(ev){ _pendingOps=ctx; showAnomalyModal(ev,ctx); return; }
+  }
+  finalizeLaunch(ctx,null);
+}
+// applies the (possibly anomaly-modified) outcome: money/rep/science, logs, family heritage,
+// the ops ledger, and the flight animation. `ops` carries the in-flight decision's effect.
+function finalizeLaunch(ctx, ops){
+  ops=ops||{};
+  let {m,v,sim,windowQuality,flightExpense,routine,crewed,outcome}=ctx;
+  if(ops.outcomeOverride && ops.outcomeOverride!==outcome.kind)
+    outcome=Object.assign({},outcome,{kind:ops.outcomeOverride, story:(ops.story||ops.log||outcome.story)});
+  if(ops.log) log(/strand|loss|abort/.test(ops.outcomeOverride||'')?'bad':'note', `${m.name}: ${ops.log}`);
+  const opsPayoutMult=(ops.payoutMult==null?1:ops.payoutMult);
+  const opsRep=ops.repDelta||0;
+  const ab=crewed?astroBonus():{rel:0,payoutMult:1};
+  let flightRevenue=0;
   const success=outcome.kind==='success';
   const rel=outcome.rel;
   let pendingCelebration=null, failPhase=outcome.failPhase;
@@ -2789,10 +2880,10 @@ function proceedLaunch(m,v,sim,windowQuality,weatherPenalty){
     // M14: missions yield science — more for novel, deep, or first-time flights
     const sciGain=Math.max(1, Math.round((routine?0.3:1)*((m.rep||5)*0.12 + (m.profile?5:1))*sciYieldMult())); // #6b: Science track multiplies mission science yield
     state.science=round2((state.science||0)+sciGain);
-    let payout=(routine?m.payout*0.4:m.payout)*windowQuality*diff().payoutMult*econPayoutMult();
+    let payout=(routine?m.payout*0.4:m.payout)*windowQuality*diff().payoutMult*econPayoutMult()*opsPayoutMult;
     if(crewed) payout*=ab.payoutMult; // M6: astronaut payout bonus
     if(!routine && state.scooped[m.id]) payout*=SCOOP_PAYOUT_MULT;
-    const rep=routine?2:m.rep;
+    const rep=Math.max(0,(routine?2:m.rep)+opsRep);
     addSupport(routine?SUPPORT_DELTA.routineSuccess:clampA(2+(m.rep||5)*0.05,2,10)); // #8: a win lifts public mood, scaled by how big a win
     if(m.tanker){
       const delivered=tankerDelivery();
@@ -2827,9 +2918,9 @@ function proceedLaunch(m,v,sim,windowQuality,weatherPenalty){
     autoAdvanceMission();
   }else if(outcome.kind==='partial'){
     // reached space but off-target — salvage some value, but the objective is not complete
-    let payout=(routine?m.payout*0.4:m.payout)*windowQuality*diff().payoutMult*econPayoutMult()*PARTIAL_PAYOUT_MULT;
+    let payout=(routine?m.payout*0.4:m.payout)*windowQuality*diff().payoutMult*econPayoutMult()*PARTIAL_PAYOUT_MULT*opsPayoutMult;
     state.money+=payout; flightRevenue=payout;
-    const rep=Math.max(1,Math.round((routine?2:m.rep)*0.25));
+    const rep=Math.max(0,Math.round((routine?2:m.rep)*0.25)+opsRep);
     state.rep+=rep;
     addSupport(SUPPORT_DELTA.partial); // #8: a salvaged flight still reads as progress
     log('note',`${m.name}: PARTIAL SUCCESS — ${outcome.story} Salvaged value +${fM(payout)}, +${rep} rep, but the objective is not complete.`);

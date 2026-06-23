@@ -1647,10 +1647,39 @@ order — the near-term build order (#3 vehicle families → … → #7) is unch
         currently push past a window only via the time advance — no explicit
         miss-the-window path yet); a pre-flight weather forecast surfaced on the
         bench; and an animated weather state in the Cape scene.
-      *Remaining slices (per the first-slice decision):* 2 · in-flight anomaly
-      decisions (EVA-repair / reboot / continue-degraded — needs the async mid-flight
-      pause); 3 · rescue missions & contingency planning; 4 · pre-flight rehearsal
-      tools.
+      - [x] **Slice 2 — In-flight anomaly decisions** *(Built 2026-06-22.)* The
+        eval review #6 headline drama, and the async mid-flight pause slice 1 deferred.
+        On missions that **reach their operational phase** (base outcome success/partial)
+        an in-flight incident can fire — `MISSION_ANOMALIES` (3 to start, data-driven):
+        **solar-array deploy fault** (orbital+; EVA-repair[crewed] / deploy-motor reboot /
+        run-degraded), **life-support leak** (crewed ≥10-day; tap-reserves / press-on /
+        abort), **guidance-radar glitch** (profile missions; manual[crewed] / auto-retry).
+        `rollMissionEvents(ctx,rng)` gates by `when(ctx)` + a modest chance
+        (`ANOMALY_CHANCE_BASE` 0.26, +0.06 crewed, +0.06 profile) and returns at most one;
+        `showAnomalyModal`/`resolveAnomaly` present the choice and apply the picked option's
+        `resolve(rng)` **effect** — a bounded `{payoutMult, repDelta, outcomeOverride, log}`.
+        Most calls resolve cleanly; the worst case is a **downgrade to partial** (lost
+        payout + the objective doesn't count), or — only via a crewed life-support *gamble*
+        — a **strand** (crew lost). **The base #16 subsystem model still governs hardware
+        loss**; anomalies are an ops-skill layer with the safe option always available, and
+        the rocket equation is untouched. Implementation: `proceedLaunch` was split — setup
+        (flights++/cadence/materials/`resolveFlight`) stays, the outcome-application body
+        moved to **`finalizeLaunch(ctx, ops)`**, and the anomaly modal pauses between them
+        via a transient `_pendingOps` (no save change). `ops.outcomeOverride` rewrites the
+        outcome kind; `ops.payoutMult`/`ops.repDelta` fold into the success & partial
+        branches. Animations-off / headless **skips** anomalies (deterministic — no
+        auto-pick), so prior headless flights are unchanged. Validated headlessly
+        (`/tmp/ov-anomaly.js`, 30/30): data shape, eligibility gating (orbital→solar only,
+        crewed-deep→all three, sounding-rocket→none, uncrewed solar drops the EVA option),
+        chance gating, both probabilistic branches of each risky option, **payout/rep
+        scaling** (routine flights to isolate from completion bonuses), `outcomeOverride`
+        partial→mission not completed & strand→crew lost, the animations-off skip
+        (regression), and a modal+`resolveAnomaly` integration; slice 1 still 30/30, render
+        smoke 11/11. *Deferred to later slices:* multiple anomalies per flight; anomalies
+        woven into the real-time flight animation (currently a pre-animation modal);
+        anomaly outcomes feeding the radiation/dose & morale systems.
+      *Remaining slices (per the first-slice decision):* 3 · rescue missions &
+      contingency planning; 4 · pre-flight rehearsal tools.
 - [ ] **21 · Colony population & interplanetary logistics** *(P5, v3.5)* — Extend
       the **#17** facility layer into living colonies: population growth/management,
       typed construction (habitats/mines/power/fuel), and **interplanetary
