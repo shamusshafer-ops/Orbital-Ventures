@@ -1271,6 +1271,7 @@ function newGame(difficulty){
     powerSource:'solar', // Phase 2: vehicle power plant (solar/rtg/reactor)
     recentBuilds:[], // #7 slice 5: rolling ring buffer {at,units} of the last CADENCE_WINDOW months of builds
     materials:defaultMaterialsState(), // #7 slice 6: per-commodity spot price + optional fixed-price contract
+    buildQueue:[], hangar:[], orderSeq:0, // #7 final: production queue (in-progress orders) + hangar (finished vehicles)
   };
   log('info','Company founded. The pad is yours — go make some noise.');
 }
@@ -1461,6 +1462,7 @@ function advance(months){
     if(state.fuelBuyer){ state.fuelBuyer.monthsLeft--; if(state.fuelBuyer.monthsLeft<=0 || state.fuelBuyer.cap<=0){ log('note',`Market — ${state.fuelBuyer.name}'s propellant buy order has closed.`); state.fuelBuyer=null; } }
     // #7 slice 6: raw-material spot prices wander; active contracts tick toward expiry
     materialPriceTick();
+    tickBuildQueue(); // #7 final: progress queued vehicle builds; finished ones go to the hangar
 
     // M6: personnel salary deduction
     state.staff.forEach(s=>{
@@ -1781,6 +1783,154 @@ function bottleneckLine(m){
   if(cadenceSurcharge()>0) return 'bays';
   if(m && bayBuildDelta(m)>0) return 'bays';
   return null;
+}
+/* ---------- #7 final: production queue & manifest ----------
+   Decouples building from launching. Queue a vehicle from the bench: the build cost is
+   paid up front and the order builds over its buildMonths during advance(), occupying a
+   bay slot. Assembly Bays level sets how many orders build in PARALLEL (L1=1 → sequential,
+   exactly today's feel; each level adds a slot). Finished vehicles go to the hangar and
+   launch on demand, skipping the build wait — the timing lever for tight launch windows
+   and sustained cadence. Total cost is identical to building on demand (no discount). */
+const QUEUE_MAX=8;
+function buildSlots(){ return prodLevel('bays'); }   // parallel build capacity = Assembly Bays level
+function buildQueueList(){ return Array.isArray(state.buildQueue)?state.buildQueue:(state.buildQueue=[]); }
+function hangarList(){ return Array.isArray(state.hangar)?state.hangar:(state.hangar=[]); }
+// snapshot the full bench design (incl. boosters/recovery/family) so a queued order builds
+// the design as it was when ordered, even if the bench changes afterward
+function queueSpecSnapshot(){
+  return JSON.parse(JSON.stringify({stages:state.stages, transfer:state.transfer, descent:state.descent,
+    ascent:state.ascent, eclss:state.eclss, boosters:state.boosters, recovery:!!state.recovery, activeVehicle:state.activeVehicle}));
+}
+function loadOrderSpec(s){
+  if(!s) return;
+  if(s.stages) state.stages=JSON.parse(JSON.stringify(s.stages));
+  if(s.transfer) state.transfer=JSON.parse(JSON.stringify(s.transfer));
+  if(s.descent) state.descent=JSON.parse(JSON.stringify(s.descent));
+  if(s.ascent) state.ascent=JSON.parse(JSON.stringify(s.ascent));
+  if(s.eclss) state.eclss=s.eclss;
+  if(s.boosters) state.boosters=JSON.parse(JSON.stringify(s.boosters));
+  if(typeof s.recovery==='boolean') state.recovery=s.recovery;
+  if('activeVehicle' in s) state.activeVehicle=s.activeVehicle;
+}
+// feasibility to queue: the design must be able to do the mission (same core checks as
+// canLaunch, minus window/test/weather, which are resolved at launch), plus pay the build now.
+function canQueue(m,v,sim){
+  if(!m) return {ok:false,why:'no mission'};
+  if(m.tanker){
+    if(v.totalDv < m.reqDv) return {ok:false,why:'Δv shortfall'};
+    if(v.twr<=1.0) return {ok:false,why:'TWR ≤ 1'};
+  }else if(m.profile){
+    const pw=powerViable(m); if(!pw.ok) return {ok:false,why:pw.why};
+    if(!sim||!sim.ok) return {ok:false,why:'a mission leg falls short'};
+  }else{
+    if(v.totalDv < m.reqDv) return {ok:false,why:'Δv shortfall'};
+    if(v.twr<=1.0) return {ok:false,why:'TWR ≤ 1'};
+  }
+  if(buildQueueList().length>=QUEUE_MAX) return {ok:false,why:'queue full'};
+  if(state.money < v.buildCost) return {ok:false,why:'can’t afford the build'};
+  return {ok:true};
+}
+function queueBuild(){
+  const m=curMission(); const v=computeVehicle(); const sim=m&&m.profile?simulateMission(m):null;
+  const chk=canQueue(m,v,sim); if(!chk.ok){ return; }
+  state.money-=v.buildCost;                       // build cost committed up front
+  consumeMaterialsForBuild();                     // #7 s7: draw materials now (the build is starting)
+  buildQueueList();                               // ensure array
+  state.recentBuilds=state.recentBuilds||[];      // #7 s5: cadence load is incurred when work begins
+  state.recentBuilds.push({at:absMonth(), units:vehicleUnits(m)});
+  const _cut=absMonth()-CADENCE_WINDOW; state.recentBuilds=state.recentBuilds.filter(r=>r&&r.at>_cut);
+  const mo=buildMonths(m);
+  const fam=activeFamily();
+  const order={ id:'ord'+(state.orderSeq=(state.orderSeq||0)+1),
+    name:(fam?fam.name:'Vehicle')+' — '+m.name, missionId:m.id, missionName:m.name,
+    spec:queueSpecSnapshot(), units:vehicleUnits(m), monthsTotal:mo, monthsLeft:mo, cost:v.buildCost, started:false };
+  state.buildQueue.push(order);
+  log('note',`Manufacturing — queued ${order.name} (${mo} mo, ${fM(order.cost)}). It builds while you work.`);
+  render();
+}
+// runs each month in advance(): fill bay slots FIFO, progress active orders, retire finished ones to the hangar
+function tickBuildQueue(){
+  const q=buildQueueList(); if(!q.length) return;
+  let active=q.filter(o=>o.started).length;
+  for(const o of q){ if(active>=buildSlots()) break; if(!o.started){ o.started=true; active++; } }
+  const done=[];
+  for(const o of q){ if(o.started){ o.monthsLeft--; if(o.monthsLeft<=0) done.push(o); } }
+  if(done.length){
+    for(const o of done){
+      hangarList().push({id:o.id, name:o.name, missionId:o.missionId, missionName:o.missionName, spec:o.spec, units:o.units, builtMonth:absMonth()});
+      log('ok',`Manufacturing — ${o.name} rolled out, ready to fly.`);
+    }
+    state.buildQueue=q.filter(o=>o.monthsLeft>0);
+  }
+}
+function cancelOrder(id){
+  const q=buildQueueList(); const i=q.findIndex(o=>o.id===id); if(i<0) return;
+  const o=q[i];
+  if(!o.started){ state.money+=o.cost; log('note',`Manufacturing — cancelled ${o.name}; ${fM(o.cost)} refunded (build not yet started).`); }
+  else { log('note',`Manufacturing — scrapped ${o.name} mid-build; the committed ${fM(o.cost)} is lost.`); }
+  q.splice(i,1); render();
+}
+function scrapHangar(id){
+  const h=hangarList(); const i=h.findIndex(x=>x.id===id); if(i<0) return;
+  log('note',`Manufacturing — scrapped ${h[i].name} from the hangar.`);
+  h.splice(i,1); render();
+}
+function hangarToBench(id){ const h=hangarList().find(x=>x.id===id); if(h){ state.activeMission=h.missionId; setTab('bench'); } }
+function hangarFor(m){ return m?hangarList().filter(h=>h.missionId===m.id):[]; }
+// launch a finished vehicle: load its snapshot into the bench, validate, then fly prebuilt
+function launchFromHangar(id){
+  const h=hangarList().find(x=>x.id===id); if(!h) return;
+  state.activeMission=h.missionId; loadOrderSpec(h.spec);
+  const m=curMission(), v=computeVehicle(), sim=m&&m.profile?simulateMission(m):null;
+  const chk=canLaunch(v,m,sim,true); // prebuilt-aware (build cost already paid)
+  if(!chk.ok){ log('note',`Can’t fly ${h.name}: ${chk.why}`); render(); return; }
+  state.hangar=hangarList().filter(x=>x.id!==id); // consumed by this flight
+  launch(true);
+}
+// bench affordance: a "queue this build" button + a "fly a ready hangar vehicle" shortcut
+function benchQueueHTML(m){
+  if(!m) return '';
+  const v=computeVehicle(); const sim=m.profile?simulateMission(m):null;
+  const cq=canQueue(m,v,sim); const ready=hangarFor(m); const slots=buildSlots();
+  let html='';
+  if(ready.length){
+    html+=`<div class="flag ok" style="margin-top:6px">✓ ${ready.length} ${m.name} vehicle${ready.length>1?'s':''} built &amp; waiting — <button class="btn ghost" style="padding:2px 8px;font-size:11px" onclick="launchFromHangar('${ready[0].id}')">Fly from hangar</button> <span class="dim">skips the build wait</span></div>`;
+  }
+  html += cq.ok
+    ? `<button class="btn ghost" style="width:100%;margin-top:6px" onclick="queueBuild()">⊕ Queue this build — ${fM(v.buildCost)} now · ${buildMonths(m)} mo${slots>1?` · ${slots} bay slots`:''}</button>`
+    : `<button class="btn ghost" style="width:100%;margin-top:6px" disabled>Queue build — ${cq.why}</button>`;
+  return html;
+}
+function buildQueuePanelHTML(){
+  const q=buildQueueList(), hangar=hangarList(), slots=buildSlots();
+  const active=q.filter(o=>o.started).length;
+  const orderRows = q.length ? q.map(o=>{
+    const pct=Math.round(100*(o.monthsTotal-o.monthsLeft)/Math.max(1,o.monthsTotal));
+    const status=o.started?`building · ${o.monthsLeft} mo left`:'queued · waiting for a bay slot';
+    return `<div style="padding:6px 0;border-top:1px solid #2a2a2a">
+      <div style="display:flex;justify-content:space-between;gap:8px"><b>${o.name}</b><span class="dim" style="font-size:11px">${status}</span></div>
+      <div class="bar" style="margin:4px 0;height:6px"><div class="fill" style="width:${o.started?pct:0}%;background:var(--readout)"></div></div>
+      <div style="display:flex;justify-content:space-between;align-items:center"><span class="dim" style="font-size:11px">${o.units} units · ${fM(o.cost)} committed</span>
+      <button class="btn ghost" style="padding:2px 8px;font-size:11px" onclick="cancelOrder('${o.id}')">${o.started?'Scrap':'Cancel · refund'}</button></div>
+    </div>`;
+  }).join('') : `<div class="dim" style="font-size:12px;padding:6px 0">No builds in progress. Queue a vehicle from the Design Bench to build it ahead of launch.</div>`;
+  const hangarRows = hangar.length ? hangar.map(h=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 0;border-top:1px solid #2a2a2a">
+      <div><b>${h.name}</b> <span class="dim" style="font-size:11px">· ${h.missionName}</span></div>
+      <div style="display:flex;gap:4px"><button class="btn ghost" style="padding:2px 8px;font-size:11px" onclick="hangarToBench('${h.id}')">Bench</button>
+      <button class="btn" style="padding:2px 8px;font-size:11px" onclick="launchFromHangar('${h.id}')">Fly</button>
+      <button class="btn ghost" style="padding:2px 8px;font-size:11px" onclick="scrapHangar('${h.id}')">Scrap</button></div>
+    </div>`).join('') : `<div class="dim" style="font-size:12px;padding:6px 0">Hangar empty — finished vehicles wait here, ready to launch on demand.</div>`;
+  return `<div class="card" style="background:var(--panel2);margin-bottom:12px">
+    <div style="display:flex;justify-content:space-between;align-items:baseline">
+      <div class="mission-name" style="font-size:14px">🏗 Production queue &amp; manifest</div>
+      <div class="dim" style="font-size:11px">${active}/${slots} bay slot${slots>1?'s':''} active · Assembly Bays sets parallel slots</div>
+    </div>
+    <p class="muted" style="font-size:11px;margin:4px 0 6px">Pre-build vehicles so they're ready when you are — hit tight launch windows and sustain cadence. Build cost is paid up front; flying from the hangar skips the build wait.</p>
+    <div style="font-weight:600;font-size:12px;margin-top:6px">Build queue</div>
+    ${orderRows}
+    <div style="font-weight:600;font-size:12px;margin-top:10px">Hangar — ready to fly (${hangar.length})</div>
+    ${hangarRows}
+  </div>`;
 }
 // #7 slice 6: raw-material supply chains. Each commodity wanders on a spot market;
 // a contract trades a small premium for predictability over a year.
@@ -2700,14 +2850,14 @@ function showWeatherModal(m,wx){
 function launchAnyway(){
   if(!_pendingLaunch) return; const p=_pendingLaunch; _pendingLaunch=null; hideModal();
   log('note',`${p.m.name}: launch director polled GO despite ${p.wx.label.toLowerCase()} — flying with a ${Math.round(p.wx.penalty*100)}% reliability penalty.`);
-  proceedLaunch(p.m,p.v,p.sim,p.windowQuality,p.wx.penalty);
+  proceedLaunch(p.m,p.v,p.sim,p.windowQuality,p.wx.penalty,p.prebuilt);
 }
 function scrubLaunch(){
   if(!_pendingLaunch) return; const p=_pendingLaunch; _pendingLaunch=null; hideModal();
   advance(p.wx.clear);
   log('note',`${p.m.name}: scrubbed for weather (${p.wx.label}). Waited ${p.wx.clear} mo; the front passed.`);
   if(state.money<0){ gameOver(); return; }
-  proceedLaunch(p.m,p.v,p.sim,p.windowQuality,0);
+  proceedLaunch(p.m,p.v,p.sim,p.windowQuality,0,p.prebuilt);
 }
 
 /* ---------- #20 slice 2: in-flight anomaly decisions ---------- */
@@ -2869,7 +3019,7 @@ function rehearsalHTML(m){
 }
 
 /* ---------- launch ---------- */
-function canLaunch(v,m,sim){
+function canLaunch(v,m,sim,prebuilt){
   if(m.tanker){
     if(v.totalDv < m.reqDv) return {ok:false,why:'Δv shortfall — this design can\'t reach LEO to deliver propellant.'};
     if(v.twr<=1.0) return {ok:false,why:'Thrust-to-weight ≤ 1 — it will not leave the pad.'};
@@ -2884,12 +3034,12 @@ function canLaunch(v,m,sim){
   if(m.window){
     const cw=state.committedWindow;
     if(!cw||cw.missionId!==m.id) return {ok:false,why:'No launch window committed — pick one from the Launch Window Planner below.'};
-    const tl=TEST_LEVELS[state.testLevel], leadMonths=buildMonths(m)+1+tl.months+(state.rehearsal?REHEARSAL_MONTHS:0);
+    const tl=TEST_LEVELS[state.testLevel], leadMonths=(prebuilt?0:buildMonths(m))+1+tl.months+(state.rehearsal?REHEARSAL_MONTHS:0);
     if(absMonth()+leadMonths>cw.abs) return {ok:false,why:'Too late for the committed window — build time would carry you past it. Cancel and pick a later one.'};
     if(absMonth()+leadMonths<cw.abs-1) return {ok:false,why:`Window not yet open — ${monthToDate(cw.abs)}. Advance time (research keeps progressing) or build closer to launch.`};
   }
   const tl=TEST_LEVELS[state.testLevel];
-  const total=v.buildCost+v.launchCost+tl.cost+(state.rehearsal?rehearsalCost(m):0)+0.12*(buildMonths(m)+1+tl.months);
+  const total=(prebuilt?0:v.buildCost)+v.launchCost+tl.cost+(state.rehearsal?rehearsalCost(m):0)+0.12*((prebuilt?0:buildMonths(m))+1+tl.months);
   if(state.money<total) return {ok:false,why:'Not enough capital to build, test, and fly this mission.'};
   return {ok:true};
 }
@@ -2897,43 +3047,46 @@ function tankerDelivery(){
   // the transfer-stage tank IS the cargo on a tanker run: its propellant is delivered to the depot.
   return state.transfer.prop;
 }
-function launch(){
+function launch(prebuilt){
   const m=curMission();
   const v=computeVehicle();
   const sim=m.profile?simulateMission(m):null;
-  const chk=canLaunch(v,m,sim); if(!chk.ok){return;}
+  const chk=canLaunch(v,m,sim,prebuilt); if(!chk.ok){return;}
   const tl=TEST_LEVELS[state.testLevel];
   const rehMo=state.rehearsal?REHEARSAL_MONTHS:0; // #20 slice 4: rehearsal adds cost + a month of prep
-  state.money-=(v.buildCost+v.launchCost+tl.cost+(state.rehearsal?rehearsalCost(m):0));
+  const buildMo=prebuilt?0:buildMonths(m), buildPart=prebuilt?0:v.buildCost; // #7 final: a hangar vehicle is already built & paid for
+  state.money-=(buildPart+v.launchCost+tl.cost+(state.rehearsal?rehearsalCost(m):0));
   let windowQuality=1;
   if(m.window){
     windowQuality=state.committedWindow.quality;
     const gap=state.committedWindow.abs-absMonth();
-    advance(Math.max(buildMonths(m)+1+tl.months+rehMo, gap)); // wait out the rest of the window if build finishes early
+    advance(Math.max(buildMo+1+tl.months+rehMo, gap)); // wait out the rest of the window if build finishes early
     state.committedWindow=null;
   }else{
-    advance(buildMonths(m)+1+tl.months+rehMo); // build (complexity-scaled) + launch (1) + test campaign + rehearsal
+    advance(buildMo+1+tl.months+rehMo); // build (complexity-scaled) + launch (1) + test campaign + rehearsal
   }
   // #20 slice 1: launch-day weather go/no-go — the vehicle is built and rolled out
   const wx=rollWeather(m);
   if(wx.adverse){
-    if(animEnabled){ _pendingLaunch={m,v,sim,windowQuality,wx}; showWeatherModal(m,wx); return; }
+    if(animEnabled){ _pendingLaunch={m,v,sim,windowQuality,wx,prebuilt}; showWeatherModal(m,wx); return; }
     advance(wx.clear); // animations off / headless: take the safe call and wait it out
     log('note',`${m.name}: launch scrubbed for weather (${wx.label}); waited ${wx.clear} mo.`);
   }
-  proceedLaunch(m,v,sim,windowQuality,0);
+  proceedLaunch(m,v,sim,windowQuality,0,prebuilt);
 }
-function proceedLaunch(m,v,sim,windowQuality,weatherPenalty){
+function proceedLaunch(m,v,sim,windowQuality,weatherPenalty,prebuilt){
   const tl=TEST_LEVELS[state.testLevel];
   state.flights++;
-  // #7 slice 5: log this build into the cadence buffer (units are the assembly load), then prune the window
-  state.recentBuilds=state.recentBuilds||[];
-  state.recentBuilds.push({at:absMonth(), units:vehicleUnits(m)});
-  const _cutoff=absMonth()-CADENCE_WINDOW;
-  state.recentBuilds=state.recentBuilds.filter(r=>r&&r.at>_cutoff);
-  // #7 slice 7: this build draws one unit from each material's stock if any is on hand
-  consumeMaterialsForBuild();
-  const flightExpense=v.buildCost+v.launchCost+tl.cost+(state.rehearsal?rehearsalCost(m):0); // #18: this flight's outlay for the ops ledger
+  if(!prebuilt){ // #7 final: a hangar vehicle already registered its cadence load + materials when it was queued
+    // #7 slice 5: log this build into the cadence buffer (units are the assembly load), then prune the window
+    state.recentBuilds=state.recentBuilds||[];
+    state.recentBuilds.push({at:absMonth(), units:vehicleUnits(m)});
+    const _cutoff=absMonth()-CADENCE_WINDOW;
+    state.recentBuilds=state.recentBuilds.filter(r=>r&&r.at>_cutoff);
+    // #7 slice 7: this build draws one unit from each material's stock if any is on hand
+    consumeMaterialsForBuild();
+  }
+  const flightExpense=(prebuilt?0:v.buildCost)+v.launchCost+tl.cost+(state.rehearsal?rehearsalCost(m):0); // #18: this flight's outlay for the ops ledger
   const routine=!!state.completed[m.id];
   const crewed=m.crew>0;
   // M16: subsystem-based reliability — which subsystem (if any) fails decides the story
@@ -3367,7 +3520,7 @@ function hideModal(){$('modal').classList.add('hidden');}
 
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=18; // v18: #20 slice 4 — pre-flight rehearsal toggle (state.rehearsal)
+const SAVE_VERSION=19; // v19: #7 final — production queue + hangar (state.buildQueue/hangar/orderSeq)
 function saveGame(){
   try{
     const payload={v:SAVE_VERSION, ts:Date.now(), state:JSON.parse(JSON.stringify(state))};
@@ -3406,7 +3559,8 @@ function loadGame(){
       architectures:{}, science:0, persEventCooldown:5,
       staff:[], assignedAstronaut:null,
       vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, rehearsal:false, techLevel:{}, divisions:{}, breakthroughCooldown:3, powerSource:'solar',
-      recentBuilds:[], materials:defaultMaterialsState()
+      recentBuilds:[], materials:defaultMaterialsState(),
+      buildQueue:[], hangar:[], orderSeq:0
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -3458,7 +3612,8 @@ function autoLoad(){
       architectures:{}, science:0, persEventCooldown:5,
       staff:[], assignedAstronaut:null,
       vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, rehearsal:false, techLevel:{}, divisions:{}, breakthroughCooldown:3, powerSource:'solar',
-      recentBuilds:[], materials:defaultMaterialsState()
+      recentBuilds:[], materials:defaultMaterialsState(),
+      buildQueue:[], hangar:[], orderSeq:0
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -7340,6 +7495,7 @@ function renderReadout(){
     ${rehearsalHTML(m)}
 
     ${flags}
+    ${benchQueueHTML(m)}
     <button class="launch" onclick="launch()" ${chk.ok?'':'disabled'}>${chk.ok?(m.tanker?'■ Launch Tanker':(v.crewed?'■ Build & Launch (crewed)':'■ Build & Launch')):'Launch unavailable'}</button>
     ${chk.ok?'<div class="dim" style="font-size:11px;text-align:center;margin-top:4px">or press <b>Space</b></div>':`<div class="flag dim" style="color:var(--dim)">${chk.why}</div>`}`;
 }
@@ -7404,6 +7560,7 @@ function renderProfileReadout(m){
     ${rehearsalHTML(m)}
 
     ${flags}
+    ${benchQueueHTML(m)}
     <button class="launch" onclick="launch()" ${chk.ok?'':'disabled'}>${chk.ok?'■ Build & Launch mission':'Launch unavailable'}</button>
     ${chk.ok?'<div class="dim" style="font-size:11px;text-align:center;margin-top:4px">or press <b>Space</b></div>':`<div class="flag dim" style="color:var(--dim)">${chk.why}</div>`}`;
 }
@@ -8124,6 +8281,7 @@ function productionPanelHTML(){
         <div class="metric" title="Blended raw-material multiplier on every new build: ${Math.round(MATERIAL_BASELINE_SHARE*100)}% baseline + ${MATERIAL_DEFS.map(d=>Math.round(d.share*100)+'% '+d.name.toLowerCase()).join(' + ')}."><div class="k">Materials</div><div class="v" style="color:${blendColor}">${blendDelta>=0?'+':''}${blendDelta.toFixed(0)}%</div></div>
         <div class="metric"><div class="k">Total upkeep</div><div class="v" style="color:${productionUpkeep()>0?'var(--bad)':'var(--ink)'}">${productionUpkeep()>0?'−'+fM(productionUpkeep())+'/mo':'none'}</div></div>
       </div>
+      ${buildQueuePanelHTML()}
       <div class="card" style="background:var(--panel2);margin-bottom:12px">
         <div style="display:flex;justify-content:space-between;align-items:baseline">
           <div class="mission-name" style="font-size:14px">📦 Raw-material supply</div>

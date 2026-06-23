@@ -402,7 +402,7 @@ review's numbering, not the build order (see **Suggested build order** at the en
       > Events. The TRL/partnerships/reusable items above are folded into it. See
       > **§ R&D Deep Expansion — The Research Pillar** for the full track-by-track plan
       > and build order. This is now the **primary near-term focus**.
-- [x] **7 · Manufacturing capacity** — *Fully built across 7 slices 2026-06-20 → 2026-06-22.* *First slice built 2026-06-20: industrial
+- [x] **7 · Manufacturing capacity** — *Fully built across 8 slices 2026-06-20 → 2026-06-22.* *First slice built 2026-06-20: industrial
       capacity as a real resource layer.* `state.production` (`SAVE_VERSION`→4,
       forward-compat default `{bays:1,foundry:1,pads:1}`) adds three leveled
       production lines (`PRODUCTION_DEFS`, max L5), each funded with **capital + a
@@ -661,14 +661,42 @@ review's numbering, not the build order (see **Suggested build order** at the en
       pinned across spot shocks, dashed-line y tracks spot. Prior
       harnesses still green: 25+28+36+33+25 = 147/147 (171/171 total
       across all manufacturing slices and viz adds).
-      *(Primary home for Strategic-Vision Phase 3 (v2.5). The bulk of that phase
-      is now shipped: the capacity layer (bays/foundry/pads), raw-material supply
-      chains, build-cadence pressure + bottleneck management, quality-assurance
-      feeding the #16 subsystem-reliability model, reusable-hardware refurbishment
-      (ties to M5), and forecasting/inventory. Remaining within #7: an explicit
-      visible **multi-build production queue / manifest** (scheduling order across
-      concurrent builds), and the deeper "build named engine/tank/habitat sub-
-      assemblies" vision.)*
+
+      *Eighth slice built 2026-06-22 — **production queue & vehicle manifest**.* The
+      capstone that **decouples building from launching**. New `state.buildQueue[]`
+      (in-progress/waiting orders) + `state.hangar[]` (finished vehicles), `SAVE_VERSION`
+      →19 with forward-compat defaults on both load paths. **Queue from the bench**
+      (`queueBuild` → `canQueue` feasibility, build cost paid up front, materials drawn
+      and cadence load registered *now*); the order builds over its locked `buildMonths`
+      during `advance()` via `tickBuildQueue()`. **Assembly Bays level now also sets
+      parallel build slots** (`buildSlots()`=bays level: L1=1 → sequential, exactly
+      today's feel; each level adds a concurrent slot) — a tangible *new* payoff for the
+      Bays line, balance-neutral for non-users. Finished vehicles roll to the **hangar**
+      and **launch on demand** (`launchFromHangar` loads the snapshot, validates, flies
+      `prebuilt`), **skipping the build wait & cost** — the timing lever for tight launch
+      windows and sustained cadence. Threaded a `prebuilt` flag through
+      `launch`/`canLaunch`/`proceedLaunch` (and the weather-pause handlers) so a hangar
+      flight charges only launch+test+rehearsal, advances only the launch month, and does
+      **not** re-incur cadence/materials. **Total cost is identical to building on
+      demand** — a timing tool, not a discount. `cancelOrder` refunds an un-started order
+      (scraps a started one); `scrapHangar` clears finished stock. New **🏗 Production
+      queue & manifest** panel in the Manufacturing tab (in-progress bars + ETA, waiting
+      orders, hangar with Fly/Bench/Scrap) and a **⊕ Queue this build** button + a
+      hangar-ready "Fly from hangar" shortcut on both bench readouts. Validated headlessly
+      (`/tmp/ov-queue.js`, 38/38): defaults/save-version, `buildSlots`=bays, `canQueue`
+      gating (Δv/affordability/queue-full), `queueBuild` economics + order shape + cadence
+      registration, **sequential at L1 vs parallel at L3**, completion→hangar, `advance()`
+      integration, cancel-refund vs scrap-no-refund, `launchFromHangar` end-to-end, the
+      **prebuilt economics** (skips build months + excludes build cost from affordability +
+      no double cadence), **balance equivalence** (queued cost == on-demand build cost),
+      save/load + legacy default, and render smoke (empty + populated). All #20 suites
+      green (30/30/26/22); render 11/11.
+      *(Primary home for Strategic-Vision Phase 3 (v2.5) — now essentially complete: the
+      capacity layer (bays/foundry/pads), raw-material supply chains, build-cadence
+      pressure + bottleneck management, quality-assurance feeding the #16 reliability
+      model, reusable-hardware refurbishment (ties to M5), forecasting/inventory, and the
+      production queue/manifest are all shipped. Only the deeper "build named
+      engine/tank/habitat **sub-assemblies**" vision remains as a future direction.)*
 - [~] **8 · Program politics** — *First slice built 2026-06-20: public support →
       government funding.* `state.publicSupport` (0–100, `SAVE_VERSION`→3, forward-
       compat default 50) is a national-mood dial with five tiers (Hostile→Galvanized,
@@ -822,14 +850,15 @@ silhouette)~~ ✓ → ~~12 (architecture choices)~~ ✓ → ~~5 (active rivals)~
 ~~8 (politics, first slice)~~ ✓ → ~~7 (manufacturing, first slice)~~ ✓ →
 ~~13 (map as planning tool)~~ ✓ → ~~M5 (reusability & rapid cadence)~~ ✓ →
 **next: the R&D Deep Expansion epic (see its own section below — now the primary
-near-term focus), then remaining arc (deeper #8, the #7 production queue/manifest,
-map cost/ROI overlays)**. (Passive-income contracts shipped 2026-06-21.)
+near-term focus), then remaining arc (deeper #8, map cost/ROI overlays)**.
+(Passive-income contracts shipped 2026-06-21; #7 production queue shipped 2026-06-22.)
 Items 1/2/3/4/5/9/10/11/12/13/14/15/16/17 + M5 shipped + #7 fully built (7 slices)
 + 18, 6 & 8 first slices; tech tree now a real swimlane graph with divergent
 routes. (#6 is being supplanted by the R&D Deep Expansion epic. #7 is complete —
-supply chains, build-cadence pressure, QA→reliability, inventory/forecasting, and
-refurbishment all shipped; only an explicit multi-build production queue/manifest
-remains. #8 later slices: budget shocks, shareholders, media, stock market.)
+supply chains, build-cadence pressure, QA→reliability, inventory/forecasting,
+refurbishment, and the production queue/manifest all shipped; only the deeper
+"build named sub-assemblies" vision remains. #8 later slices: budget shocks,
+shareholders, media, stock market.)
 
 ## R&D Deep Expansion — The Research Pillar (epic)
 
@@ -1496,7 +1525,7 @@ where each item actually lives.
 | --- | --- | --- |
 | **P1 · Foundation & UX** (v1.5) | Vehicle viz (**#10**) + save/load shipped; **#18** shipped through its 3rd slice — Command Center home, animated Cape scene, and the 3-column dashboard (exec overview, recommended action, alerts/news, ops summary, era timeline) | Remaining: customizable dashboards, launch manifests, advanced filtering/sorting, click-to-jump notifications, animated scene art → tracked under **#18**. |
 | **P2 · Personnel & org depth** (v2.0) | Shipped at individual scale: **M6** (12 eng/8 astro, morale, attrition, salary) + **#9** (traits, personal events) + **#5** (poaching/retention) | **NEW:** scale individuals → departments; career progression, training/specialization tracks, executive/leadership roles, succession/workforce planning. Extends **M6/#9** — see **new arc item #19**. |
-| **P3 · Manufacturing & production** (v2.5) | **Largely shipped** — **#7** fully built across 7 slices: capacity layer (bays/foundry/pads + upkeep), QA→reliability bridge (**#16**), refurbishment wear, build-cadence pressure/bottlenecks, raw-material supply chains, inventory & forecasting | Remaining: an explicit visible **multi-build production queue / manifest** → tracked under **#7**. |
+| **P3 · Manufacturing & production** (v2.5) | **Essentially complete** — **#7** fully built across 8 slices: capacity layer (bays/foundry/pads + upkeep), QA→reliability bridge (**#16**), refurbishment wear, build-cadence pressure/bottlenecks, raw-material supply chains, inventory & forecasting, and the production queue/manifest | Remaining: only the deeper "build named engine/tank/habitat **sub-assemblies**" vision → tracked under **#7**. |
 | **P4 · Mission Control & operations** (v3.0) | Flight telemetry exists *visually* in the launch animation | **NEW:** interactive Mission Control, in-flight player decisions, rescue missions, launch **weather**/environmental systems, rehearsal tools. (Story-failure outcomes already exist via **#4/#16**.) See **new arc item #20**. |
 | **P5 · Infrastructure & colonization** (v3.5) | Persistent bases/stations shipped (**#17**); ISRU shipped; depot economy (**#2**) | **NEW:** colony **population growth**/management, typed habitat/mine/power construction, and **interplanetary logistics/trade routes** = the open *fleet-logistics* thread. Extends **#17** — see **new arc item #21**. |
 | **P6 · Economic & political** (v4.0) | Global launch market + dynamic cycles shipped (econ events, **#2** fuel market); **#8** first slice shipped — public support → government funding | Remaining: budget shocks/cuts, political influence, media/public opinion, **investor/stock-market** → tracked under **#8 Program politics**. |
@@ -1789,7 +1818,7 @@ nothing here re-prioritizes the in-flight R&D / boosters work.
 | **2 · Mission Planner wizard** (step-by-step) | Not started — systems live in separate tabs (Command Center is the hub, all one click away via **#18**) | **NEW:** an optional guided flow (Choose mission → architecture → design vehicle → assign crew → review reliability → integrate → launch) layered over the freeform tabs. → **new arc item #24**. |
 | **3A · Side-by-side vehicle comparison** | Not started | **NEW:** compare two saved vehicles on payload/reliability/cost/build-time/TWR/Δv. Builds on `state.vehicles[]` (**#3**) + `computeVehicle`. → **new arc item #25**. |
 | **3B · Saved vehicle families** (operational/retire/upgrade/heritage) | **Shipped** as forward-arc **#3** — `state.vehicles[]`, lineage (OV-1→OV-2…), heritage reliability/build bonuses, register/retire | Remaining nuance (explicit "mark operational" flag, in-place upgrade vs. derive) → folds into **#3**. |
-| **3C · Manufacturing queue** (build hardware before launch) | Largely **shipped** — **#7** capacity layer (bays/foundry/pads) + slices 5–7 (build-cadence pressure, raw-material supply chains, inventory & forecasting) | Remaining: an explicit visible **multi-build production queue / manifest** (scheduling order across concurrent builds) → folds into **#7**. |
+| **3C · Manufacturing queue** (build hardware before launch) | **Shipped** — **#7** capacity layer (bays/foundry/pads) + slices 5–7 (cadence, supply chains, inventory) + the **production queue & manifest** (slice 8): queue vehicles, build in parallel by Bays level, stockpile in a hangar, launch on demand | Remaining: only the deeper "build named **sub-assemblies**" vision → **#7**. |
 | **4 · Living Command Center** (trucks, cranes, day/night, weather, launch-campaign rollout) | Largely **shipped** via **#18** — animated isometric Cape scene with moving crawler-transporter + truck, drifting boat, growing site, beacons/lit windows | Remaining: **launch-campaign rollout choreography** (rollout→fueling→tower retract→countdown), **weather**, **day/night + seasonal** cycles → rollout/weather fold into **#18**/**#20**; ambient cycles fold into **#18**. |
 | **5 · R&D: TRL, experimental failures, competing paths** | Competing paths **shipped** (multi-path swimlane tree, divergent routes); TRL is the known open **#6** leftover | TRL (research→testing→operational gating) → **#6 / R&D epic** leftover (already listed). **NEW: experimental research failures** (combustion instability destroyed prototype → spend more / delay / accept lower reliability) — extends **Breakthrough Events** (their negative sibling) → **new arc item #26**. |
 | **6 · Mission operations** (in-flight events/decisions) | Not started — exactly **arc #20** (interactive Mission Control) | All of it → **#20** (this review is strong corroboration; the EVA/repair/abort decision content is the heart of that item). |
@@ -1841,8 +1870,8 @@ order** (capture pass). The review's own "biggest-return" picks were UI clarity
 - **Launch-campaign rollout choreography + weather + day/night/seasons** (review #4)
   → **#18** (ambient scene life + rollout animation) and **#20** (weather as a
   launch-ops constraint).
-- **Visible multi-build production queue / manifest** (review #3C; inventory &
-  supply chains already shipped in #7 slices 6–7) → **#7**.
+- ~~Visible multi-build production queue / manifest~~ (review #3C) — **shipped** as
+  **#7** slice 8 (queue + hangar, parallel builds by Bays level, launch-from-hangar).
 - **Persistent player assets drawn on the Solar map** (review #7) → **#13** (render)
   + **#21** (the assets/logistics model).
 - **Careers / injuries / promotions** (review #8) → **#19** (departments/org scaling).
