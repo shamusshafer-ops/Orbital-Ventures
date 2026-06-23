@@ -1957,7 +1957,7 @@ order** (capture pass). The review's own "biggest-return" picks were UI clarity
       `renderVehicleFamilies` embeds the panel end-to-end. *(Known limitation, shared
       with `loadFamily`: families don't carry booster/recovery flags, so those use the
       live bench values during comparison.)*
-- [ ] **26 · Experimental research failures** *(review #5)* — the negative sibling of
+- [x] **26 · Experimental research failures** *(review #5)* — the negative sibling of
       **Breakthrough Events**: a research project can hit a setback ("combustion
       instability destroyed the prototype") forcing a choice — spend more capital,
       accept a delay, or accept a lower reliability/effect on completion. Reuses the
@@ -1965,6 +1965,29 @@ order** (capture pass). The review's own "biggest-return" picks were UI clarity
       higher-quality **Research Divisions** fail less. Turns the TRL idea (research →
       *testing* → operational) into drama rather than a pure timer. Cross-ref **#6 /
       R&D epic** (TRL gating), **#9** (event plumbing), Research Divisions.
+      *(Built 2026-06-23.)* `checkResearchSetback()` runs in the `advance()` loop right
+      beside `checkDivisionBreakthroughs()` — same cadence, mirror logic: a per-month
+      roll, gated by `monthsLeft>1` + a cooldown (`_setbackCooldown`, `SETBACK_GAP`=6),
+      with the chance **lowered by the covering division's quality**
+      (`SETBACK_BASE_CHANCE − q·SCALE`, floored at `SETBACK_MIN_CHANCE`). When it fires it
+      sets a transient **`_pendingSetback`** (like `_pendingOps`) that **freezes research
+      progress** (the tick is guarded by `!_pendingSetback`) and, after the tick,
+      `advanceMonth`/`skipResearch` raise a modal reusing the **#20 anomaly-decision
+      pattern**. Three calls: **Fund an emergency fix** (pay ~40% of the project cost, no
+      slip), **Rework it properly** (+2–4 mo, free, small division-morale dip), or **Push
+      it through as-is** (no cost/slip but a **permanent, bounded reliability debt** —
+      `state.relDebt`, +3%/setback capped at 9%, subtracted in `curRel()` so it flows
+      through every reliability calc under the existing `relCap`). `skipResearch` was
+      reworked to advance month-by-month and **halt at a setback** instead of skipping
+      past it. New save field `state.relDebt` (forward-compat default `0` in both load
+      blocks + newGame; **`SAVE_VERSION`→21**). The R&D detail panel shows a
+      cut-corner-penalty banner whenever `relDebt()>0`. Validated headlessly
+      (`/tmp/ov-setback.js`, 24/24; planner/compare/uilayer suites re-run 18/21/30/15, no
+      regression): RNG-gated fire/no-fire, well-formed setback fields + cooldown reset,
+      no double-fire + frozen progress while pending, all three resolutions
+      (delay/fund/ship) with their exact economic/schedule/reliability effects, the
+      relDebt cap, `skipResearch` halting at a setback, the detail banner, and the wiring
+      + save-version bump.
 
 ### Folded into existing items (no new number)
 

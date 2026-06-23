@@ -1281,6 +1281,7 @@ function newGame(difficulty){
     techLevel:{}, // #3: per-tech investment level for leveled technologies
     divisions:{}, // #4: research divisions (skill/exp/morale per division)
     breakthroughCooldown:3, // #5: division R&D breakthrough rate-limiter
+    relDebt:0, // #26: permanent reliability penalty from "ship it degraded" research setbacks
     powerSource:'solar', // Phase 2: vehicle power plant (solar/rtg/reactor)
     recentBuilds:[], // #7 slice 5: rolling ring buffer {at,units} of the last CADENCE_WINDOW months of builds
     materials:defaultMaterialsState(), // #7 slice 6: per-commodity spot price + optional fixed-price contract
@@ -1305,8 +1306,11 @@ function curRel(){
   base+=techLevelEffectSum('reliability'); // #3: any reliability from leveled techs (still under relCap)
   base+=engRelBonus(); // M6: engineer team reliability bonus
   base+=diff().relBonus; // difficulty: forgiveness bump
+  base-=relDebt(); // #26: lasting penalty from research setbacks shipped with the flaw unresolved
   return base; // note: effectiveReliability still clamps to diff().relCap, so the cap preserves balance
 }
+// #26: bounded reliability debt accumulated from "ship it degraded" research-setback calls
+function relDebt(){ return Math.min(SETBACK_REL_DEBT_CAP, state.relDebt||0); }
 // R&D epic slice 2b: research-driven engine performance. Completed nodes can carry
 // effect.isp / effect.thrust (fractional); these accumulate (capped) and scale the
 // LAUNCH-VEHICLE stages' Isp/thrust — the rocket equation itself is untouched, only
@@ -1456,6 +1460,77 @@ function checkDivisionBreakthroughs(){
   const phrase=BREAK_PHRASE[r.track]||'had a research breakthrough';
   log('ok',`⚡ BREAKTHROUGH! The ${divisionDef(divId).name} ${phrase} — ${shave} month${shave>1?'s':''} shaved off ${r.name}. +2 rep.`);
 }
+/* ---------- #26: Experimental research failures ----------
+   The negative sibling of Breakthrough Events. While a project runs, it can hit a
+   setback (combustion instability, a buckled test article, a guidance defect…) that
+   pauses progress and forces a call: fund an emergency fix (capital, no delay), rework
+   it properly (a schedule slip), or push it through with the flaw unresolved (a lasting
+   reliability penalty via relDebt). Division quality lowers the odds, and a cooldown
+   rate-limits it — exactly like breakthroughs. _pendingSetback freezes the research tick
+   until resolved; the modal reuses the #20 anomaly-decision pattern. */
+const SETBACK_BASE_CHANCE=0.05, SETBACK_QUALITY_SCALE=0.05, SETBACK_MIN_CHANCE=0.015, SETBACK_GAP=6;
+const SETBACK_DELAY_MIN=2, SETBACK_DELAY_MAX=4;
+const SETBACK_REL_DEBT=0.03, SETBACK_REL_DEBT_CAP=0.09;
+const SETBACK_PHRASE={
+  propulsion:'combustion instability destroyed a prototype on the test stand',
+  nuclear:'a reactor test scrammed and set the program back',
+  structures:'a structural test article buckled under load',
+  testing:'the test campaign uncovered a flaw that needs rework',
+  guidance:'a guidance-software defect failed verification',
+  crew:'a life-support loop failed its qualification run',
+  deepspace:'a navigation-model error invalidated months of analysis',
+  refueling:'a cryogenic-transfer test sprang a leak',
+  assembly:'the docking mechanism jammed in rehearsal',
+};
+let _pendingSetback=null;          // a research project paused at a setback decision (transient, like _pendingOps)
+let _setbackCooldown=SETBACK_GAP;  // rate-limiter, mirrors state.breakthroughCooldown
+function checkResearchSetback(){
+  if(_pendingSetback) return;
+  _setbackCooldown=(_setbackCooldown||0)-1;
+  if(_setbackCooldown>0) return;
+  const ar=state.activeResearch; if(!ar || ar.monthsLeft<=1) return; // need remaining work to disrupt
+  const r=RESEARCH.find(x=>x.id===ar.id); if(!r) return;
+  const divId=divisionForResearch(r);
+  const q=divId?divisionQuality(divId):0.3; // a covered project (a trained division) fails less; uncovered work sits at a middling baseline
+  const chance=Math.max(SETBACK_MIN_CHANCE, SETBACK_BASE_CHANCE - q*SETBACK_QUALITY_SCALE);
+  if(Math.random()>=chance) return;
+  _setbackCooldown=SETBACK_GAP;
+  const delay=SETBACK_DELAY_MIN+Math.floor(Math.random()*(SETBACK_DELAY_MAX-SETBACK_DELAY_MIN+1));
+  const fundCost=round2(Math.max(0.6, r.cost*0.4));
+  _pendingSetback={ rId:r.id, rName:r.name, divId, phrase:SETBACK_PHRASE[r.track]||'hit an unexpected setback', delay, fundCost };
+  log('bad',`⚠ R&D SETBACK — ${r.name}: ${_pendingSetback.phrase}. A decision is needed.`);
+}
+function maybeShowSetback(){ if(_pendingSetback) showSetbackModal(); }
+function showSetbackModal(){
+  const s=_pendingSetback; if(!s) return;
+  const fundOk=state.money>=s.fundCost;
+  showModal(`<h2 style="color:var(--bad)">⚠ Research setback</h2>
+    <p><b>${s.rName}</b> — ${s.phrase}.</p>
+    <p class="muted">Progress is halted until you make a call.</p>
+    <button class="btn" onclick="resolveSetback('fund')" ${fundOk?'':'disabled'} title="${fundOk?'':'Not enough capital'}">Fund an emergency fix — ${fM(s.fundCost)} <span class="dim">· no delay</span></button>
+    <button class="btn ghost" style="margin-top:8px" onclick="resolveSetback('delay')">Rework it properly — +${s.delay} mo <span class="dim">· free</span></button>
+    <button class="btn ghost" style="margin-top:8px" onclick="resolveSetback('ship')">Push it through as-is <span class="dim">· −${Math.round(SETBACK_REL_DEBT*100)}% reliability, permanent</span></button>`);
+}
+function resolveSetback(choice){
+  const s=_pendingSetback; if(!s) return;
+  const ar=state.activeResearch;
+  if(!ar || ar.id!==s.rId){ _pendingSetback=null; hideModal(); render(); return; } // research ended underneath us — just clear
+  if(choice==='fund'){
+    if(state.money<s.fundCost) return; // guarded; button is disabled when unaffordable
+    state.money-=s.fundCost;
+    log('note',`Emergency funding cleared the ${s.rName} setback — no schedule slip.`);
+  } else if(choice==='delay'){
+    ar.monthsLeft+=s.delay;
+    if(s.divId){ const cur=divisionState(s.divId); state.divisions=state.divisions||{}; state.divisions[s.divId]={skill:cur.skill,exp:cur.exp,morale:Math.max(0,cur.morale-3)}; }
+    log('note',`${s.rName} reworked properly — +${s.delay} mo to the schedule.`);
+  } else { // ship it degraded
+    state.relDebt=Math.min(SETBACK_REL_DEBT_CAP,(state.relDebt||0)+SETBACK_REL_DEBT);
+    state.rep=Math.max(0,state.rep-1);
+    log('bad',`${s.rName} pushed through with the flaw unresolved — a lasting −${Math.round(relDebt()*100)}% reliability penalty on every vehicle.`);
+  }
+  _pendingSetback=null; hideModal();
+  if(state.money<0) gameOver(); else render();
+}
 function advance(months){
   for(let i=0;i<months;i++){
     state.month++; if(state.month>11){state.month=0;state.year++;}
@@ -1506,7 +1581,7 @@ function advance(months){
 
     // M6 engineers + #4 division: R&D speed bonus (both pure accelerators)
     tickDivisionMorale();
-    if(state.activeResearch){
+    if(state.activeResearch && !_pendingSetback){ // #26: a pending setback freezes progress until resolved
       const rdBonus=engRdSpeedBonus()+divisionSpeedBonus(RESEARCH.find(r=>r.id===state.activeResearch.id));
       state.activeResearch.monthsLeft-=(1+rdBonus);
       if(state.activeResearch.monthsLeft<=0) completeResearch();
@@ -1521,6 +1596,7 @@ function advance(months){
     checkPoaching();
     checkPersonnelEvents();
     checkDivisionBreakthroughs(); // #5: division-driven R&D breakthroughs (sibling of #9)
+    checkResearchSetback(); // #26: experimental research failures (negative sibling of breakthroughs)
     checkEvents();
   }
   if(state.money<0 && !state.over){ gameOver(); }
@@ -2205,8 +2281,12 @@ function reconcileResearch(){
   }
   for(const r of RESEARCH){ if(state.research[r.id] && r.effect){ if(r.effect.engine) state.unlocked[r.effect.engine]=true; if(r.effect.engines) r.effect.engines.forEach(id=>state.unlocked[id]=true); } }
 }
-function advanceMonth(){ advance(1); if(!state.over) render(); }
-function skipResearch(){ if(!state.activeResearch) return; const n=state.activeResearch.monthsLeft; advance(n); if(!state.over) render(); }
+function advanceMonth(){ advance(1); if(!state.over){ render(); maybeShowSetback(); } } // #26: surface a setback decision after the tick
+function skipResearch(){ if(!state.activeResearch) return;
+  let n=state.activeResearch.monthsLeft+1; // each month removes ≥1; +1 guarantees completion absent a setback
+  while(n-->0 && state.activeResearch && !_pendingSetback && !state.over) advance(1); // #26: stop the skip at a setback decision
+  if(!state.over){ render(); maybeShowSetback(); }
+}
 
 /* ---------- M3b: launch windows ---------- */
 const SYNODIC_MONTHS=26; // Earth-Mars synodic period, abstracted to whole months
@@ -3534,7 +3614,7 @@ function hideModal(){$('modal').classList.add('hidden');}
 
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=20; // v20: #23 — progressive UI complexity layer (state.uiLayer)
+const SAVE_VERSION=21; // v21: #26 — research-setback reliability debt (state.relDebt)
 function saveGame(){
   try{
     const payload={v:SAVE_VERSION, ts:Date.now(), state:JSON.parse(JSON.stringify(state))};
@@ -3572,7 +3652,7 @@ function loadGame(){
       facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
       architectures:{}, science:0, persEventCooldown:5,
       staff:[], assignedAstronaut:null,
-      vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, rehearsal:false, techLevel:{}, divisions:{}, breakthroughCooldown:3, powerSource:'solar',
+      vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, rehearsal:false, techLevel:{}, divisions:{}, breakthroughCooldown:3, relDebt:0, powerSource:'solar',
       recentBuilds:[], materials:defaultMaterialsState(),
       buildQueue:[], hangar:[], orderSeq:0, uiLayer:'advanced'
     };
@@ -3625,7 +3705,7 @@ function autoLoad(){
       facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
       architectures:{}, science:0, persEventCooldown:5,
       staff:[], assignedAstronaut:null,
-      vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, rehearsal:false, techLevel:{}, divisions:{}, breakthroughCooldown:3, powerSource:'solar',
+      vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, rehearsal:false, techLevel:{}, divisions:{}, breakthroughCooldown:3, relDebt:0, powerSource:'solar',
       recentBuilds:[], materials:defaultMaterialsState(),
       buildQueue:[], hangar:[], orderSeq:0, uiLayer:'advanced'
     };
@@ -8872,7 +8952,8 @@ function renderResearchDetail(){
     action=`<button class="launch" style="width:100%" onclick="buyResearch('${r.id}')" ${ok?'':'disabled'}>${ok?`Research · ${fM(r.cost)} · ${r.months} mo`:why}</button>`;
   }
   const stateTag={done:'<span class="pill ok">researched</span>',active:'<span class="pill active">in progress</span>',available:'<span class="pill">available</span>',locked:'<span class="pill lock">locked</span>'}[st];
-  el.innerHTML=`<div class="mission-tag">Technology</div>
+  const debtBanner = relDebt()>0 ? `<div class="flag bad" style="margin-bottom:8px">⚠ Cut-corner penalty: −${Math.round(relDebt()*100)}% reliability on every vehicle, from pushing a flawed project through a past setback. It's permanent — weigh the schedule against the risk next time.</div>` : '';
+  el.innerHTML=`${debtBanner}<div class="mission-tag">Technology</div>
     <div class="mission-name" style="font-size:16px">${r.name} ${stateTag}</div>
     <div class="tt-mods adv-only" style="margin:8px 0 10px">${techModifierText(r).map(m=>`<div class="tt-mod">▸ ${m}</div>`).join('')}</div>
     <div class="sub" style="margin:8px 0 10px">${r.desc}</div>
