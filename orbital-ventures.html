@@ -3327,6 +3327,7 @@ function finalizeLaunch(ctx, ops){
     stages: state.stages.map(s=>({prop:s.prop,count:s.count})),
     boosters: boosterSpec(),
     transferProp: (m.profile&&m.modules.includes('transfer'))?state.transfer.prop:0,
+    recovering: recoveryActive(m) && state.stages.length>1 && failPhase!=='ascent', // #graphics: fly the first stage back for a landing instead of tumbling away
     isCislunar: !!m.profile, isOrbital: (!m.profile && m.reqDv>=9000),
     reqDv: m.reqDv||9400,
     rng: { wind:(rnd()-0.5)*0.9, windFreq:1.4+rnd()*1.6, windPhase:rnd()*6.283,
@@ -4433,7 +4434,7 @@ function setupFlightState(spec, done, ctx, cv, viewCanvas){
   else totalDur=ascentDur+cruiseDur+1200;
   const stars=[]; for(let i=0;i<160;i++) stars.push({x:Math.random(),y:Math.random()*0.92,b:0.3+Math.random()*0.7,s:0.8+Math.random()*1.4,twinkle:Math.random()*6.28});
   const path=spec.isCislunar?buildLunarPath(cv.width,cv.height,spec.rng):null;
-  animState={spec,done,ctx,cv,viewCanvas:viewCanvas||cv,t0:performance.now(),ascentDur,cruiseDur,totalDur,stars,path,raf:0,trail:[],particles:[],debris:[],shakeX:0,shakeY:0,lastT:0,virtT:0,prevWall:performance.now(),sfxSepFired:{},sfxBoomFired:false,sfxEnginePhase:null};
+  animState={spec,done,ctx,cv,viewCanvas:viewCanvas||cv,t0:performance.now(),ascentDur,cruiseDur,totalDur,stars,path,raf:0,trail:[],particles:[],debris:[],shakeX:0,shakeY:0,lastT:0,virtT:0,prevWall:performance.now(),sfxSepFired:{},sfxBoomFired:false,sfxEnginePhase:null,recovering:!!spec.recovering};
   sfxInit();
   const totalProp=spec.stages.reduce((a,s)=>a+s.prop,0)+(spec.transferProp||0);
   const engCount=spec.stages[0]?spec.stages[0].count||1:1;
@@ -4782,6 +4783,50 @@ function buildVehicleShape(spec){
     segs.boosters=boosters; // carried on the FULL seg array → drawVehicle renders them (sliced arrays won't)
   }
   return {segs, nose, totalH, maxW, boosters};
+}
+// #graphics: a recovered first stage flies itself back — settle from the sep kick to
+// engine-down, deploy grid fins, light a landing burn, drop legs — instead of tumbling
+// away as spent debris. Makes the M5 reuse mechanic (recoveryActive) visible.
+function drawRecoveryStage(ctx, spent, x, baseY, dt, scale, altFrac, pitch){
+  if(dt>3600) return;
+  const SETTLE=600, BURN=1400, LEGS=2400;
+  const w=spent.w*scale, h=spent.h*scale;
+  const rx = x - 22 - dt*0.010;     // drift downrange
+  const ry = baseY + 44 + dt*0.050; // fall away below the climbing stack
+  let rot;
+  if(dt<SETTLE){ const fp=dt/SETTLE; rot=(pitch+0.45)*(1-fp); } // settle to engine-down upright
+  else rot=Math.sin(dt*0.004)*0.05; // gentle attitude hold
+  const fade = dt>3100 ? clampA(1-(dt-3100)/500,0,1) : 1; // touchdown fade-out
+  const burning = dt>=BURN;
+  ctx.save();
+  ctx.globalAlpha=fade;
+  ctx.translate(rx,ry); ctx.rotate(rot);
+  if(dt>400){ // grid fins near the aero (top) end
+    [-1,1].forEach(s=>{ ctx.save(); ctx.translate(s*w*0.5, -h*0.86);
+      ctx.fillStyle='rgba(120,130,138,0.9)'; ctx.strokeStyle='#6a747c'; ctx.lineWidth=0.8;
+      ctx.beginPath(); ctx.rect(0,-1.5*scale, s*3.2*scale, 4*scale); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle='rgba(40,48,54,0.6)'; ctx.lineWidth=0.4;
+      ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(s*3.2*scale,0); ctx.moveTo(s*1.6*scale,-1.5*scale); ctx.lineTo(s*1.6*scale,2.5*scale); ctx.stroke();
+      ctx.restore(); });
+  }
+  if(dt>LEGS){ // landing legs splay out near touchdown
+    const lp=clampA((dt-LEGS)/700,0,1);
+    ctx.strokeStyle='#3a444b'; ctx.lineWidth=1.4*scale; ctx.lineCap='round';
+    [-1,1].forEach(s=>{ ctx.beginPath(); ctx.moveTo(s*w*0.42,-1*scale);
+      ctx.lineTo(s*(w*0.42+lp*7*scale), 3*scale+6*scale*lp); ctx.stroke(); });
+  }
+  const flame = burning ? (7+Math.random()*5) : 0;
+  drawVehicle(ctx,[spent],'none',scale*0.95, flame, altFrac);
+  ctx.restore();
+  if(burning){ // landing-burn plume puffs (2D — native FX tracks the main vehicle only)
+    for(let i=0;i<3;i++){ const px=rx+(Math.random()-0.5)*w*0.5, py=ry+5*scale+Math.random()*10*scale;
+      ctx.fillStyle=`rgba(255,${150+(Math.random()*60|0)},60,${0.4*fade})`;
+      ctx.beginPath(); ctx.arc(px,py,1.5+Math.random()*2,0,7); ctx.fill(); }
+  } else if(dt<SETTLE){ // boostback RCS puffs during the settle
+    for(let i=0;i<2;i++){ const a=Math.random()*6.28;
+      ctx.fillStyle=`rgba(220,230,240,${0.5*fade})`;
+      ctx.fillRect(rx+Math.cos(a)*w*0.6, ry-h*0.7+Math.sin(a)*4, 1.6,1.6); }
+  }
 }
 function drawVehicle(ctx, segs, nose, scale, flame, altFrac, hideBells){
   if(!segs.length) return;
@@ -5548,6 +5593,7 @@ function drawAscent(t,canFail){
     for(let d=0;d<dropped;d++){
       const sepTime=seps[d];
       const dt=(p-sepTime)*A.ascentDur;
+      if(d===0 && A.recovering){ drawRecoveryStage(ctx, shape.segs[0], x, baseY, dt, scale, altFrac, pitch); continue; }
       if(dt<1200){
         const spent=shape.segs[d];
         const sepProgress=dt/1200;

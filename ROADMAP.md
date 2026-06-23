@@ -2057,6 +2057,20 @@ logic with no Phaser global.
       `postFX.addGlow` on the plume/fireball + a ColorMatrix brightness lift (the earlier
       full-screen bloom was dropped — it hazed the frame). Camera shake on liftoff and
       vehicle loss. Added a **Space** hotkey to launch (and skip/continue playback).
+      **Booster recovery landing (2026-06-23):** the M5 reuse mechanic (`recoveryActive`)
+      finally has a visual payoff. When recovery is fitted to a multi-stage vehicle and the
+      ascent doesn't fail, the first stage no longer tumbles away as spent debris —
+      `drawRecoveryStage()` flies it back: it settles from the separation kick to
+      engine-down, deploys **grid fins**, lights a **landing burn** (base flame + plume
+      puffs), drops **landing legs**, and fades out at touchdown. Driven by a new
+      `spec.recovering` flag (set in `finalizeLaunch`, `recoveryActive(m) &&
+      stages.length>1 && failPhase!=='ascent'`) carried into `animState.recovering`; the
+      `d===0` branch in `drawAscent` routes the recovered stage to the new painter.
+      Pure-2D (no native-FX dependency), canvas-fallback safe. Validated headlessly
+      (`/tmp/ov-recovery.js`, 9/9): `recoveryActive` gating, `drawRecoveryStage` no-throw
+      across the full beat + past-window + edge inputs, and the spec/animState/ascent
+      wiring; suites green (setback/planner/compare/uilayer 24/18/21/30/15); browser check
+      pending.
 - [x] **Slice 2 — `VehiclePreviewScene`** *(2026-06-20).* The Design Bench "Your vehicle"
       preview is a Phaser scene: the shared 2D draw (`drawVehiclePreviewTo` /
       `currentVehicleSpec`, factored out of `renderVehiclePreview`) renders onto a
