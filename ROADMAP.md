@@ -1814,7 +1814,7 @@ nothing here re-prioritizes the in-flight R&D / boosters work.
 
 | Review point | Status vs. shipped code | New work & where it's tracked |
 | --- | --- | --- |
-| **1 · UI complexity layers** (Basic/Advanced/Expert) | Partial — a **Napkin vs Engineer** difficulty toggle already hides/show the rocket-equation `.eq` blocks (`body.hide-eq`) | **NEW:** a true 3-tier *progressive-disclosure* view layer (Basic = money/rep/active mission/research/success%/recommended action; Advanced = today's UI; Expert = exact reliability eqns, mass fractions, subsystem risk, hidden rival stats). Extends the difficulty math-exposure toggle → **new arc item #23**. |
+| **1 · UI complexity layers** (Basic/Advanced/Expert) | **First slice shipped** (2026-06-22) — `state.uiLayer` 3-tier disclosure (independent of the Napkin/Engineer math toggle), applied to header/Home/Bench readout; ops-bar + Settings controls | Remaining: extend tagging to the other tabs → **arc item #23** (now `[~]`). |
 | **2 · Mission Planner wizard** (step-by-step) | Not started — systems live in separate tabs (Command Center is the hub, all one click away via **#18**) | **NEW:** an optional guided flow (Choose mission → architecture → design vehicle → assign crew → review reliability → integrate → launch) layered over the freeform tabs. → **new arc item #24**. |
 | **3A · Side-by-side vehicle comparison** | Not started | **NEW:** compare two saved vehicles on payload/reliability/cost/build-time/TWR/Δv. Builds on `state.vehicles[]` (**#3**) + `computeVehicle`. → **new arc item #25**. |
 | **3B · Saved vehicle families** (operational/retire/upgrade/heritage) | **Shipped** as forward-arc **#3** — `state.vehicles[]`, lineage (OV-1→OV-2…), heritage reliability/build bonuses, register/retire | Remaining nuance (explicit "mark operational" flag, in-place upgrade vs. derive) → folds into **#3**. |
@@ -1835,16 +1835,43 @@ Continuing the #18–#22 numbering. All **[ ] not started**; **no committed buil
 order** (capture pass). The review's own "biggest-return" picks were UI clarity
 (#23/#24), manufacturing (#7), and mission ops (#20).
 
-- [ ] **23 · Progressive UI complexity layers** *(review #1)* — a 3-tier view mode
+- [~] **23 · Progressive UI complexity layers** *(review #1)* — a 3-tier view mode
       (Basic / Advanced / Expert) for **progressive disclosure**, distinct from the
       Napkin/Engineer *difficulty* (which changes economy + math exposure). Basic
       surfaces only money, reputation, active mission, current research, success
       chance, and the recommended action (reusing `recommendedAction`/
       `missionAdvisor` from **#18**), hiding advanced metrics; Advanced = today's UI;
       Expert exposes exact reliability equations, mass fractions, subsystem risk
-      (**#16**), economic modifiers, and hidden rival stats (**#5**). Likely a
-      `state.uiLayer` + CSS body-class gating (mirrors `body.hide-eq`). Lowers the
+      (**#16**), economic modifiers, and hidden rival stats (**#5**). Lowers the
       newcomer cognitive load the review flags as the single biggest UI issue.
+      **Decisions taken with the user (2026-06-22):** an **independent axis** from
+      difficulty (Expert overrides the difficulty hide-equations); **full 3-tier
+      mechanism**, applied to the key screens first.
+      - [~] **Slice 1 — mechanism + key screens** *(Built 2026-06-22.)* `state.uiLayer`
+        ∈ basic/advanced/expert (default **advanced** → nothing changes unless chosen;
+        `SAVE_VERSION`→20, forward-compat default on both load paths). `applyUiLayer()`
+        (folded into `applyDifficultyUI`, called every render) toggles a body class
+        (`ui-basic`/`ui-advanced`/`ui-expert`); pure CSS does the disclosure —
+        `body.ui-basic .adv-only{display:none}`, `body:not(.ui-expert) .expert-only{display:none}`,
+        and the equation override (`ui-basic` hides `.eq`, `ui-expert` forces it on even
+        when difficulty set `hide-eq` — the independent-axis decision). Controls: an
+        ops-bar **View: Basic/Advanced/Expert** cycle button (`cycleUiLayer`) + a
+        Settings **Interface detail level** card (`setUiLayer`). Coverage this slice
+        (the highest-overload surfaces): **header** (secondary stats tagged `adv-only`,
+        leaving Date/Capital/Reputation in Basic), **Home** (the program timeline + the
+        dense right column hidden in Basic; `cc-cols` collapses to two columns), and the
+        **Design Bench readout** (build-cost waterfall + subsystem breakdown wrapped
+        `adv-only`; the `.eq` blocks follow the layer; a new **Expert-only mass-fraction**
+        block, `massFractionHTML`, exposes per-stage propellant ÷ wet mass). Validated
+        headlessly (`/tmp/ov-uilayer.js`, 23/23): defaults/save-version, `uiLayer()`
+        fallback, `setUiLayer` valid/invalid + **body-class toggles** (one layer class at
+        a time, asserted via a tracking `classList`), `cycleUiLayer` order, `massFractionHTML`
+        content/empty-guard, **per-layer render smoke across all 10 tabs**, save/load +
+        legacy default, and **independence from difficulty** (switching difficulty leaves
+        the layer untouched). All prior suites green (#20 30/30/26/22, #7 38/38; render 11/11).
+        *Next slices:* extend `adv-only`/`expert-only` tagging to the remaining tabs
+        (R&D tree detail, Personnel, Rivals internals, Infrastructure, Map), and a Basic
+        "what do I do next" emphasis pass.
 - [ ] **24 · Mission Planner wizard** *(review #2)* — an optional guided, linear
       flow over the existing systems (Choose mission → assign architecture → design
       vehicle → assign crew → review reliability → integrate → launch), each step a

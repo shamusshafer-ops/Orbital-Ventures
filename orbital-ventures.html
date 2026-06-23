@@ -91,6 +91,12 @@
   .metric .v{font-family:var(--mono);font-size:16px;font-weight:600}
   .eq{font-family:var(--mono);font-size:11px;color:var(--dim);background:#0c1216;border:1px solid var(--line);border-radius:5px;padding:8px;margin:10px 0;line-height:1.6}
   body.hide-eq .eq{display:none}
+  /* #23 progressive UI complexity layers (independent of difficulty). Advanced = default. */
+  body.ui-basic .adv-only{display:none !important}            /* advanced metrics hidden in Basic */
+  body:not(.ui-expert) .expert-only{display:none !important}  /* deep internals only in Expert (keeps natural display when shown) */
+  body.ui-basic .eq{display:none !important}                  /* Basic always hides the equation blocks */
+  body.ui-expert .eq{display:block !important}                /* Expert forces equations on, even if difficulty hid them */
+  body.ui-basic .cc-cols{grid-template-columns:240px 1fr}     /* Basic Home drops the dense right column */
   .diffgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0}
   .diffcard{border:1px solid var(--line);border-radius:8px;padding:14px;background:var(--panel2);cursor:pointer;transition:border-color .15s,background .15s}
   .diffcard:hover{border-color:var(--muted)}
@@ -268,14 +274,14 @@
       <div class="stat"><span class="k">Date</span><span class="v" id="stDate">—</span></div>
       <div class="stat"><span class="k">Capital</span><span class="v" id="stMoney">—</span></div>
       <div class="stat"><span class="k">Reputation</span><span class="v" id="stRep">—</span></div>
-      <div class="stat"><span class="k">Flights</span><span class="v" id="stFlights">—</span></div>
-      <div class="stat"><span class="k">Public Support</span><span class="v" id="stSupport">—</span></div>
-      <div class="stat hidden" id="stMarketWrap"><span class="k">Market</span><span class="v" id="stMarket">—</span></div>
-      <div class="stat hidden" id="stRoyaltyWrap"><span class="k">PGM Royalties</span><span class="v" id="stRoyalty">—</span></div>
-      <div class="stat hidden" id="stPassiveWrap"><span class="k">Passive Income</span><span class="v" id="stPassive">—</span></div>
-      <div class="stat hidden" id="stInfraWrap"><span class="k">Facilities</span><span class="v" id="stInfra">—</span></div>
-      <div class="stat hidden" id="stSciWrap"><span class="k">Science</span><span class="v" id="stSci">—</span></div>
-      <div class="stat hidden" id="stDepotWrap"><span class="k">LEO Depot</span><span class="v" id="stDepot">—</span></div>
+      <div class="stat adv-only"><span class="k">Flights</span><span class="v" id="stFlights">—</span></div>
+      <div class="stat adv-only"><span class="k">Public Support</span><span class="v" id="stSupport">—</span></div>
+      <div class="stat hidden adv-only" id="stMarketWrap"><span class="k">Market</span><span class="v" id="stMarket">—</span></div>
+      <div class="stat hidden adv-only" id="stRoyaltyWrap"><span class="k">PGM Royalties</span><span class="v" id="stRoyalty">—</span></div>
+      <div class="stat hidden adv-only" id="stPassiveWrap"><span class="k">Passive Income</span><span class="v" id="stPassive">—</span></div>
+      <div class="stat hidden adv-only" id="stInfraWrap"><span class="k">Facilities</span><span class="v" id="stInfra">—</span></div>
+      <div class="stat hidden adv-only" id="stSciWrap"><span class="k">Science</span><span class="v" id="stSci">—</span></div>
+      <div class="stat hidden adv-only" id="stDepotWrap"><span class="k">LEO Depot</span><span class="v" id="stDepot">—</span></div>
     </div>
   </header>
 
@@ -296,6 +302,7 @@
     <span id="rndStatus"></span>
     <span id="nextObjStatus" class="dim" style="font-size:11px"></span>
     <span style="flex:1"></span>
+    <button class="btn ghost" id="uiLayerBtn" onclick="cycleUiLayer()" title="Detail level — Basic hides advanced metrics; Expert shows everything (equations, mass fractions, subsystem %, rival internals)">View: Advanced</button>
     <button class="btn ghost" id="animToggle" onclick="toggleAnim()">Animation: On</button>
     <button class="btn ghost" id="fullscreenBtn" onclick="toggleFullscreen()" title="Fill the screen — browser fullscreen (Esc exits)">⛶ Full screen</button>
     <button class="btn ghost" id="wideBtn" onclick="toggleWide()" title="Use the full window width without browser fullscreen">↔ Wide</button>
@@ -311,9 +318,9 @@
     <div class="cc-cols">
       <div id="ccLeft"></div>
       <div id="ccCenter"></div>
-      <div id="ccRight"></div>
+      <div id="ccRight" class="adv-only"></div>
     </div>
-    <div class="card" id="ccTimeline"></div>
+    <div class="card adv-only" id="ccTimeline"></div>
   </div>
 
   <div id="benchView" class="hidden grid">
@@ -1272,6 +1279,7 @@ function newGame(difficulty){
     recentBuilds:[], // #7 slice 5: rolling ring buffer {at,units} of the last CADENCE_WINDOW months of builds
     materials:defaultMaterialsState(), // #7 slice 6: per-commodity spot price + optional fixed-price contract
     buildQueue:[], hangar:[], orderSeq:0, // #7 final: production queue (in-progress orders) + hangar (finished vehicles)
+    uiLayer:'advanced', // #23: progressive UI complexity (basic/advanced/expert), independent of difficulty
   };
   log('info','Company founded. The pad is yours — go make some noise.');
 }
@@ -3520,7 +3528,7 @@ function hideModal(){$('modal').classList.add('hidden');}
 
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=19; // v19: #7 final — production queue + hangar (state.buildQueue/hangar/orderSeq)
+const SAVE_VERSION=20; // v20: #23 — progressive UI complexity layer (state.uiLayer)
 function saveGame(){
   try{
     const payload={v:SAVE_VERSION, ts:Date.now(), state:JSON.parse(JSON.stringify(state))};
@@ -3560,7 +3568,7 @@ function loadGame(){
       staff:[], assignedAstronaut:null,
       vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, rehearsal:false, techLevel:{}, divisions:{}, breakthroughCooldown:3, powerSource:'solar',
       recentBuilds:[], materials:defaultMaterialsState(),
-      buildQueue:[], hangar:[], orderSeq:0
+      buildQueue:[], hangar:[], orderSeq:0, uiLayer:'advanced'
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -3613,7 +3621,7 @@ function autoLoad(){
       staff:[], assignedAstronaut:null,
       vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, rehearsal:false, techLevel:{}, divisions:{}, breakthroughCooldown:3, powerSource:'solar',
       recentBuilds:[], materials:defaultMaterialsState(),
-      buildQueue:[], hangar:[], orderSeq:0
+      buildQueue:[], hangar:[], orderSeq:0, uiLayer:'advanced'
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -6904,6 +6912,31 @@ function renderCCTimeline(){
 function applyDifficultyUI(){
   document.body.classList.toggle('hide-eq', !diff().showEquations);
   const ol=$('overheadLabel'); if(ol) ol.textContent=`(−${fM(diff().overhead)})`;
+  applyUiLayer();
+}
+// #23: progressive UI complexity — independent of difficulty
+const UI_LAYERS=['basic','advanced','expert'];
+const UI_LAYER_LABEL={basic:'Basic',advanced:'Advanced',expert:'Expert'};
+function uiLayer(){ return UI_LAYERS.includes(state.uiLayer)?state.uiLayer:'advanced'; }
+function applyUiLayer(){
+  const L=uiLayer();
+  document.body.classList.toggle('ui-basic', L==='basic');
+  document.body.classList.toggle('ui-advanced', L==='advanced');
+  document.body.classList.toggle('ui-expert', L==='expert');
+  const b=$('uiLayerBtn'); if(b) b.textContent='View: '+UI_LAYER_LABEL[L];
+}
+function setUiLayer(L){ if(!UI_LAYERS.includes(L)) return; state.uiLayer=L; render(); }
+function cycleUiLayer(){ setUiLayer(UI_LAYERS[(UI_LAYERS.indexOf(uiLayer())+1)%UI_LAYERS.length]); }
+// #23 Expert-only: per-stage propellant mass fraction (propellant ÷ wet mass)
+function massFractionHTML(v){
+  if(!v||!Array.isArray(v.sm)||!v.sm.length) return '';
+  const rows=v.sm.map((s,i)=>{
+    const prop=(state.stages[i]&&state.stages[i].prop)||0, wet=s.dry+prop, mf=wet>0?prop/wet:0;
+    return `<div class="leg"><span class="legname">Stage ${i+1}</span><span class="legdv">${mf.toFixed(3)}</span><span class="legdetail">${prop.toFixed(1)}t prop / ${wet.toFixed(1)}t wet · dry ${s.dry.toFixed(1)}t</span></div>`;
+  }).join('');
+  return `<div class="expert-only"><div class="mission-tag" style="margin-top:12px">Mass fractions (propellant ÷ wet) — Expert</div>
+    <div class="legs" style="margin-top:6px">${rows}</div>
+    <div class="dim" style="font-size:11px;margin-top:6px">Higher is better — a bigger propellant fraction means a lighter structure for the same Δv (the rocket equation rewards it exponentially).</div></div>`;
 }
 function setDifficulty(mode){
   if(!DIFFICULTY[mode] || state.difficulty===mode) return;
@@ -6975,7 +7008,19 @@ function renderSettings(){
       ${k==='custom'&&sel?extra:diffKnobTable(d)}
     </div>`;
   }).join('');
+  const L=uiLayer();
+  const layerInfo={basic:'Just the essentials — money, reputation, the active mission, research, success chance, and the recommended next step. Advanced metrics, breakdowns, and equations are hidden.',
+    advanced:'The full interface — every metric, subsystem breakdown, and economy stat (the default).',
+    expert:'Everything Advanced shows, plus the deepest internals: rocket-equation blocks (even if difficulty would hide them), per-stage mass fractions, subsystem failure percentages, and hidden rival stats.'};
+  const layerBtns=UI_LAYERS.map(k=>`<button class="btn ${k===L?'':'ghost'}" style="flex:1" onclick="setUiLayer('${k}')">${UI_LAYER_LABEL[k]}${k===L?' · active':''}</button>`).join('');
+  const layerCard=`<div class="card" style="background:var(--panel2);margin-bottom:12px">
+    <div class="mission-name" style="font-size:15px">🪟 Interface detail level</div>
+    <p class="muted" style="font-size:12px;margin:2px 0 8px">How much the UI shows — independent of difficulty (which controls the economy). Pick the depth that fits you; switch any time.</p>
+    <div style="display:flex;gap:8px">${layerBtns}</div>
+    <div class="dim" style="font-size:12px;margin-top:8px">${layerInfo[L]}</div>
+  </div>`;
   $('settingsCard').innerHTML=`<h2>Settings — difficulty &amp; presentation</h2>
+    ${layerCard}
     <p class="muted" style="font-size:12px;margin:-4px 0 6px">The rocket equation is identical in every mode — difficulty only scales the economy, how forgiving hardware reliability is, and how much of the underlying math is exposed. Switching mid-game applies from the next action onward; starting capital only applies to a new game.</p>
     <div class="diffgrid">${cards}</div>
     <div style="display:flex;gap:8px;margin-top:6px">
@@ -7483,8 +7528,8 @@ function renderReadout(){
       <div class="metric"><div class="k">Build time</div><div class="v">${buildMonths(m)+1+TEST_LEVELS[state.testLevel].months} mo</div></div>
     </div>
 
-    ${buildCostBreakdownHTML(m)}
-    ${subsystemBreakdownHTML(m,v)}
+    <div class="adv-only">${buildCostBreakdownHTML(m)}${subsystemBreakdownHTML(m,v)}</div>
+    ${massFractionHTML(v)}
 
     <div class="eq">Δv = Isp · g₀ · ln(m₀/m_f)<br>
       stage 1: ${ispEff} · 9.81 · ln(${v.liftoff.toFixed(1)}/${(v.liftoff-state.stages[0].prop).toFixed(1)}) = ${fI(v.stageDv[0])} m/s<br>
@@ -7550,8 +7595,8 @@ function renderProfileReadout(m){
       <div class="metric"><div class="k">Build time</div><div class="v">${buildMonths(m)+1+TEST_LEVELS[state.testLevel].months} mo</div></div>
     </div>
 
-    ${buildCostBreakdownHTML(m)}
-    ${subsystemBreakdownHTML(m,v)}
+    <div class="adv-only">${buildCostBreakdownHTML(m)}${subsystemBreakdownHTML(m,v)}</div>
+    ${massFractionHTML(v)}
 
     <div class="eq">The launch vehicle lofts the whole stack (${v.payload.toFixed(1)} t) to LEO; the transfer stage then spends one tank across ${sim.inSpaceLegs} deep-space burn${sim.inSpaceLegs>1?'s':''}, lighter after each — yet every burn still hauls everything still attached.${m.modules.includes('lander')?' The descent stage is dropped on the surface after landing; the ascent stage returns alone to meet the transfer stage.':''}${state.depotUse>0?` This run draws <b style="color:var(--readout)">${state.depotUse.toFixed(1)} t</b> from the LEO depot — propellant that never had to be launched from Earth.`:''}${ISRU_FREE_LEG[m.id]&&state.research[ISRU_FREE_LEG[m.id].research]?` <b style="color:var(--ok)">${ISRU_FREE_LEG[m.id].label}</b> is online — the ${ISRU_FREE_LEG[m.id].leg} burn is produced on-site.`:''}</div>
 
