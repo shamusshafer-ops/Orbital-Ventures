@@ -1908,13 +1908,32 @@ order** (capture pass). The review's own "biggest-return" picks were UI clarity
         `advisorClick(recommendedAction())` with the recommended title, and the success
         chance appears exactly when a launch is recommended with the vehicle on the bench.
         **This completes arc item #23.**
-- [ ] **24 · Mission Planner wizard** *(review #2)* — an optional guided, linear
+- [x] **24 · Mission Planner wizard** *(review #2)* — an optional guided, linear
       flow over the existing systems (Choose mission → assign architecture → design
       vehicle → assign crew → review reliability → integrate → launch), each step a
       thin wrapper around the tab it already drives (missions / `MISSION_ARCH` / bench
       / personnel / `subsystemReport` / build / `launch`). Tabs stay for freeform
       play; the wizard is the on-ramp that removes the tab-hopping friction the review
       calls out. Pairs naturally with **#23 Basic mode**.
+      *(Built 2026-06-23.)* New **🧭 Planner** tab (nav button + `plannerView`,
+      between Command Center and Design Bench). A pure **`plannerSteps()`** produces the
+      ordered 6-step flight plan — **mission · architecture · design · crew ·
+      reliability · launch** — each step a ✓/done, ○/todo, or —/skip with a one-line
+      status and a contextual button that links to the tab doing the real work (bench /
+      personnel) or opens the inline mission picker. Every check **reuses existing pure
+      helpers** (no logic duplicated): design feasibility via `computeVehicle()` +
+      `simulateMission()`, crew via `state.assignedAstronaut`, reliability vs the
+      crewed/uncrewed target, and the final **Build & Launch** button gated by the same
+      **`canLaunch()`** the bench uses (so committed-window / capital / Δv blocks surface
+      with their real reasons). Step 1 lists only flyable, incomplete missions
+      (`plannerSetMission` rejects unflyable, mirroring `selectMission`); architecture is
+      a real step only when the mission offers >1 profile, else it's auto-skipped.
+      Selection-picker visibility is transient module state (`plannerShowMissions`) —
+      **no new save field, no `SAVE_VERSION` bump**. Validated headlessly
+      (`/tmp/ov-planner.js`, 18/18; compare/uilayer suites re-run 21/30/15, no
+      regression): step count/order/skip logic, design & launch gates mirroring their
+      direct checks, crew-assignment toggling, unflyable rejection, render smoke
+      (title + steps + launch button), picker-on-empty, and nav/dispatch wiring.
 - [x] **25 · Side-by-side vehicle comparison** *(review #3A)* — compare two saved
       `state.vehicles[]` designs across payload / reliability / cost / build-time /
       TWR / Δv (all already derivable via `computeVehicle`/`stackPerformance`). A
