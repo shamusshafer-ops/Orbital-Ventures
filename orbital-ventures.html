@@ -4519,15 +4519,8 @@ function defineFlightScene(){
         this.sparks=this.add.particles(0,0,'fxFlame',{ lifespan:{min:300,max:700}, speed:{min:50,max:220}, scale:{start:0.4,end:0}, alpha:{start:1,end:0}, tint:[0xffe07a,0xff9836], blendMode:'ADD', emitting:false });
         this.debris=this.add.particles(0,0,'fxChunk',{ lifespan:{min:900,max:1700}, speed:{min:80,max:300}, gravityY:160, scale:{start:1.1,end:0.3}, alpha:{start:1,end:0}, rotate:{min:0,max:360}, tint:[0x8a6a44,0x554433,0xff7a30], emitting:false });
         this.fireball=this.add.particles(0,0,'fxFlame',{ lifespan:{min:400,max:900}, speed:{min:40,max:200}, scale:{start:1.3,end:0}, alpha:{start:1,end:0}, tint:[0xffffff,0xffd060,0xff5020,0x802000], blendMode:'ADD', emitting:false });
-        // slice 3 — volumetric plume: a bright tight core + a wide diffuse "vacuum bloom" layer
-        this.plumeCore=this.add.particles(0,0,'fxFlame',{ lifespan:{min:180,max:360}, speed:{min:60,max:150}, angle:{ onEmit:()=> self._plumeAngle+(Math.random()*8-4) }, scale:{start:0.32,end:0}, alpha:{start:1,end:0}, tint:[0xffffff,0xdfeaff,0x9fc0ff], blendMode:'ADD', frequency:10, quantity:2, emitting:false });
-        this.plumeOuter=this.add.particles(0,0,'fxSmoke',{ lifespan:{min:380,max:760}, speed:{min:40,max:120}, angle:{ onEmit:()=> self._plumeAngle+(Math.random()*30-15) }, scale:{start:0.4,end:1.5}, alpha:{start:0.20,end:0}, tint:[0xffb060,0xff7a30], blendMode:'ADD', frequency:18, quantity:1, emitting:false });
-        // slice 3 — Mach diamonds: shock nodes drawn along the exhaust axis in the lower atmosphere
-        this.machG=this.add.graphics();
         // glow localized to the exhaust/fireball — bright plume without hazing the scene
         try{ if(this.plume.postFX) this.plume.postFX.addGlow(0xffd49a, 4, 0); }catch(_){}
-        try{ if(this.plumeCore.postFX) this.plumeCore.postFX.addGlow(0xbcd4ff, 4, 0); }catch(_){}
-        try{ if(this.machG.postFX) this.machG.postFX.addGlow(0xffe6a0, 5, 0); }catch(_){}
         try{ if(this.fireball.postFX) this.fireball.postFX.addGlow(0xff7a30, 6, 0); }catch(_){}
         this.np=true;
       }catch(e){ console.warn('flight native particles unavailable:',e); this.np=false; }
@@ -4629,23 +4622,15 @@ function defineFlightScene(){
       const fire = ascent && !A.exploding && haveXY && (A.ascentP==null || A.ascentP<0.96);
       if(fire){ this.aimPlume(A.pitch); this.plume.setPosition(A.rocketX, A.rocketY); if(!this.plume.emitting) this.plume.start(); }
       else if(this.plume.emitting) this.plume.stop();
-      // slice 3 — volumetric plume layers track the main plume
-      if(this.plumeCore){ if(fire){ this.plumeCore.setPosition(A.rocketX,A.rocketY); if(!this.plumeCore.emitting) this.plumeCore.start(); this.plumeOuter.setPosition(A.rocketX,A.rocketY); if(!this.plumeOuter.emitting) this.plumeOuter.start(); }
-        else { if(this.plumeCore.emitting) this.plumeCore.stop(); if(this.plumeOuter.emitting) this.plumeOuter.stop(); } }
-      // slice 3 — Mach diamonds along the exhaust axis while in the lower atmosphere
-      if(this.machG){ this.machG.clear();
-        if(fire && (A.altFrac||0)<0.45){ const rad=this._plumeAngle*Math.PI/180, dx=Math.cos(rad), dy=Math.sin(rad), fade=1-(A.altFrac||0)/0.45;
-          for(let i=0;i<3;i++){ const d=10+i*9, x=A.rocketX+dx*d, y=A.rocketY+dy*d;
-            this.machG.fillStyle(0xfff0c0, clampA((0.5-i*0.14)*fade,0,0.6)); this.machG.fillEllipse(x,y, 5-i*1.1, 3-i*0.6); } } }
       if(ascent && !A.exploding && haveXY && A.ascentP!=null && A.ascentP<0.14){ this.smoke.setPosition(A.rocketX, A.rocketY+4); if(!this.smoke.emitting) this.smoke.start(); }
       else if(this.smoke.emitting) this.smoke.stop();
-      if(A.dropped!=null && A.dropped>this._lastDropped){ this._lastDropped=A.dropped; if(haveXY) this.sparks.explode(22, A.rocketX, A.rocketY); try{ this.cameras.main.shake(220,0.006); }catch(e){} } // slice 3: staging jolt
+      if(A.dropped!=null && A.dropped>this._lastDropped){ this._lastDropped=A.dropped; if(haveXY) this.sparks.explode(22, A.rocketX, A.rocketY); }
       if(A.exploding && !this._didDebris){ this._didDebris=true; if(this.plume.emitting) this.plume.stop(); if(this.smoke.emitting) this.smoke.stop();
         if(haveXY){ this.debris.explode(46, A.rocketX, A.rocketY-12); this.fireball.explode(34, A.rocketX, A.rocketY-14); } }
     }
     update(time,delta){
       if(!this.playing) return;
-      const A=animState; if(!A||A.held){ this.playing=false; if(this.np){ if(this.plume.emitting) this.plume.stop(); if(this.smoke.emitting) this.smoke.stop(); if(this.plumeCore&&this.plumeCore.emitting) this.plumeCore.stop(); if(this.plumeOuter&&this.plumeOuter.emitting) this.plumeOuter.stop(); if(this.machG) this.machG.clear(); } return; }
+      const A=animState; if(!A||A.held){ this.playing=false; if(this.np&&this.plume.emitting) this.plume.stop(); if(this.np&&this.smoke.emitting) this.smoke.stop(); return; }
       A.virtT += (delta||16)*animSpeed();
       const t=A.virtT;
       try{ drawScene(t); this.tex.refresh(); }catch(e){ console.error('flight anim error:',e); this.playing=false; endAnim(); return; }
@@ -4655,7 +4640,7 @@ function defineFlightScene(){
       // dynamic bloom: punch up engine glow during powered ascent, ease off in coast/orbit
       if(this.bloom){ const want = (A.ascentP!=null && A.ascentP<0.95 && t<A.ascentDur) ? 1.0 : 0.7; this.bloom.strength += (want-this.bloom.strength)*0.05; }
       if(A.exploding && !this.didBoomShake){ this.didBoomShake=true; try{ this.cameras.main.shake(700, 0.022); }catch(e){} } // vehicle-loss kick
-      if(t>=A.totalDur){ this.playing=false; if(this.np){ if(this.plume.emitting) this.plume.stop(); if(this.smoke.emitting) this.smoke.stop(); if(this.plumeCore&&this.plumeCore.emitting) this.plumeCore.stop(); if(this.plumeOuter&&this.plumeOuter.emitting) this.plumeOuter.stop(); if(this.machG) this.machG.clear(); } endAnim(true); }
+      if(t>=A.totalDur){ this.playing=false; if(this.np){ if(this.plume.emitting) this.plume.stop(); if(this.smoke.emitting) this.smoke.stop(); } endAnim(true); }
     }
   };
 }
