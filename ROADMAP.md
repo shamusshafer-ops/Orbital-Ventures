@@ -2113,34 +2113,6 @@ logic with no Phaser global.
       prior suites green (setback/planner/compare/uilayer/recovery 24/18/21/30/15/9).
       Browser check pending.
 
-### Scene realism overhaul (post-conversion, 2026-06-23)
-
-A push to make the **ascent and orbital flight scenes** dramatically more realistic by
-using Phaser capabilities the flat-canvas hybrid can't do cheaply — additive blending,
-bloom/glow postFX, parallax, and (later) custom WebGL shaders. Decided with the user as a
-**full overhaul in sequence (orbital → ascent → plume/FX), committed one slice at a time**,
-each keeping the no-Phaser 2D fallback intact.
-
-- [x] **Slice 1 — Orbital Earth (native FX layer).** The orbital phase keeps the detailed
-      2D limb (`earthLimb`) as the surface but composites Phaser-native layers in front of
-      it: a **parallax twinkling starfield** (additive sprites, slow drift; replaces the
-      canvas stars via a new `spaceBg(...,skipStars)` arg + `A.nativeStars`), a **glowing
-      additive atmosphere limb rim** (three stacked arcs with `addGlow` bloom — the iconic
-      blue horizon line), **night-side city lights** (warm additive dots, stable positions,
-      shown only where the limb is unlit per the sun vector), and a **sun glint** on the lit
-      limb. `drawOrbit` publishes the limb geometry to `A.earthGeom`/`A.earthPhase`; the
-      scene's `buildEarthFX`/`updateEarthFX` position and show/hide the layers per phase, all
-      feature-guarded so a Phaser failure falls back to today's canvas Earth. Validated
-      headlessly (`/tmp/ov-orbital.js`, 14/14): `skipStars` gating, geometry/phase publish,
-      build/drive/flag wiring, and the additive+glow techniques present; all prior suites
-      green (setback/planner/compare/uilayer/recovery/transfer 24/18/21/30/15/9/16). Browser
-      check pending (needs an orbital flight to view).
-- [ ] **Slice 2 — Ascent sky & atmosphere.** Custom altitude-driven sky-scattering shader
-      (blue→black), native parallax cloud decks the rocket flies through, stars fading in
-      with altitude, max-Q vapor cone.
-- [ ] **Slice 3 — Plume & FX polish.** Volumetric GPU plume, heat-haze postFX behind the
-      exhaust, Mach diamonds, staging/reentry particle upgrades, camera work.
-
 ## Repo
 
 `shamusshafer-ops/Orbital-Ventures` (private), branch `main`.
