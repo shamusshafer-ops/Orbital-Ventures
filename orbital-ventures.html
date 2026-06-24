@@ -4427,6 +4427,16 @@ function createGL2D(gl,textCtx,W,H){
 // Shared flight setup — builds animState for either the Phaser host (CanvasTexture
 // 2D context) or the legacy WebGL/2D canvas. drawScene drives everything from t.
 function setupFlightState(spec, done, ctx, cv, viewCanvas){
+  // The Phaser path reuses ONE CanvasTexture 2D context across launches. Any residual
+  // state from the previous flight (a leftover clip region, transform, alpha, or line
+  // dash) would otherwise confine/blank the next flight's drawing — the "black square
+  // blocking everything, only a segment of the globe shows" replay bug. Reset it.
+  try{
+    if(ctx){
+      if(typeof ctx.reset==='function') ctx.reset();
+      else { if(ctx.setTransform) ctx.setTransform(1,0,0,1,0,0); if(ctx.setLineDash) ctx.setLineDash([]); ctx.globalAlpha=1; if('globalCompositeOperation' in ctx) ctx.globalCompositeOperation='source-over'; }
+    }
+  }catch(e){}
   const ascentDur=7200, cruiseDur=spec.isCislunar?9000:4800;
   let totalDur;
   if(!spec.success && spec.failPhase==='ascent') totalDur=ascentDur*0.55+2000;
