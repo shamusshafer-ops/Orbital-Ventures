@@ -2135,9 +2135,23 @@ each keeping the no-Phaser 2D fallback intact.
       build/drive/flag wiring, and the additive+glow techniques present; all prior suites
       green (setback/planner/compare/uilayer/recovery/transfer 24/18/21/30/15/9/16). Browser
       check pending (needs an orbital flight to view).
-- [ ] **Slice 2 — Ascent sky & atmosphere.** Custom altitude-driven sky-scattering shader
-      (blue→black), native parallax cloud decks the rocket flies through, stars fading in
-      with altitude, max-Q vapor cone.
+- [x] **Slice 2 — Ascent sky & atmosphere.** *(Built 2026-06-23.)* The canvas ascent sky
+      is already strong (altitude-driven gradient + curved limb + fading stars), so rather
+      than risk regressing it with an un-tunable native sky, slice 2 adds **front-layer
+      Phaser effects that physically belong in front and canvas can't do cheaply**:
+      **fly-through cloud decks** — a pool of soft `fxCloud` sprites that spawn near the
+      vehicle during the low-altitude climb (`p∈[0.015,0.34]`) and stream downward past it,
+      scaling up and fading, so you punch up through the deck; and a **max-Q condensation
+      cone** — a native particle emitter (`fxVapor`) wrapping the vehicle through the
+      transonic window (`qNorm>0.45 & p<0.45`). `drawAscent` now publishes
+      `A.ascentP/qNorm/altFrac`; the scene's `buildAscentFX`/`updateAscentFX` spawn/recycle
+      and gate by phase, feature-guarded with the canvas path intact. (The fuller native
+      sky/scattering shader — replacing the canvas gradient + stars-behind — is deferred: it
+      risks looking *worse* than today's sky without live tuning; revisit if wanted.)
+      Validated headlessly (`/tmp/ov-ascent.js`, 10/10: parse + signal publish + build/drive
+      wiring + cloud/vapor gates); all prior suites green
+      (orbital/setback/planner/compare/uilayer/recovery/transfer 14/24/18/21/30/15/9/16).
+      Browser check pending.
 - [ ] **Slice 3 — Plume & FX polish.** Volumetric GPU plume, heat-haze postFX behind the
       exhaust, Mach diamonds, staging/reentry particle upgrades, camera work.
 

@@ -4525,6 +4525,7 @@ function defineFlightScene(){
         this.np=true;
       }catch(e){ console.warn('flight native particles unavailable:',e); this.np=false; }
       try{ this.buildEarthFX(); }catch(e){ console.warn('flight earth FX unavailable:',e); }
+      try{ this.buildAscentFX(); }catch(e){ console.warn('flight ascent FX unavailable:',e); }
       this.playing=false; this.didBoomShake=false; flightScene=this;
       if(flightPending) this.beginFlight();
     }
@@ -4571,6 +4572,37 @@ function defineFlightScene(){
       if(litAt>0.08){ this.glint.setVisible(true).setPosition(cx+Math.cos(ga)*(r-6), cy+Math.sin(ga)*(r-6)).setScale(1.5+0.5*Math.sin(time*0.005)).setAlpha(0.45); }
       else this.glint.setVisible(false);
     }
+    // Ascent FX (slice 2): soft cloud decks the rocket streams past as it climbs through the
+    // troposphere, plus a max-Q condensation cone — both in front of the canvas (where they
+    // physically belong) with soft scaling/blur that flat canvas can't do cheaply.
+    buildAscentFX(){
+      if(this.afxBuilt || !phaserOK()) return;
+      if(!this.textures.exists('fxCloud')){ const cv=this.textures.createCanvas('fxCloud',96,64); const c=cv.context;
+        for(let k=0;k<6;k++){ const gx=12+Math.random()*72, gy=18+Math.random()*28, gr=12+Math.random()*18;
+          const g=c.createRadialGradient(gx,gy,0,gx,gy,gr); g.addColorStop(0,'rgba(255,255,255,0.5)'); g.addColorStop(1,'rgba(255,255,255,0)'); c.fillStyle=g; c.fillRect(0,0,96,64); }
+        cv.refresh(); }
+      this.clouds=[]; for(let i=0;i<8;i++){ const im=this.add.image(0,0,'fxCloud').setDepth(4).setVisible(false); im.live=false; this.clouds.push(im); }
+      try{ if(!this.textures.exists('fxVapor')){ const g=this.make.graphics({x:0,y:0,add:false}); g.fillStyle(0xffffff,1); g.fillCircle(10,10,10); g.generateTexture('fxVapor',20,20); g.destroy(); }
+        this.vapor=this.add.particles(0,0,'fxVapor',{ lifespan:{min:260,max:520}, speed:{min:30,max:90}, angle:{min:60,max:120}, scale:{start:0.5,end:1.7}, alpha:{start:0.26,end:0}, tint:0xeaf2ff, frequency:30, quantity:1, emitting:false }).setDepth(4);
+      }catch(e){}
+      this.afxBuilt=true;
+    }
+    updateAscentFX(A){
+      if(!this.afxBuilt) return;
+      const ascent=A.phase==='ascent' && !A.exploding, p=A.ascentP||0, haveXY=A.rocketX!=null;
+      const cloudOn = ascent && haveXY && p>0.015 && p<0.34; // climbing through the cloud deck
+      for(const im of this.clouds){
+        if(im.live){ im.y+=im.vy; im.vy*=1.012; im.sc+=im.gr; im.setScale(im.sc); im.setAlpha(im.alpha=clampA(im.alpha-0.012,0,1));
+          if(im.y>560||im.alpha<=0.01){ im.live=false; im.setVisible(false); } continue; }
+        if(cloudOn && Math.random()<0.06){ im.live=true; im.setVisible(true);
+          im.x=90+Math.random()*720; im.y=(A.rocketY||120)-30-Math.random()*60;
+          im.sc=0.25+Math.random()*0.3; im.gr=0.01+Math.random()*0.02; im.vy=2.2+Math.random()*2.6;
+          im.alpha=0.45+Math.random()*0.3; im.setScale(im.sc).setAlpha(im.alpha); }
+      }
+      const q=A.qNorm||0;
+      if(ascent && haveXY && q>0.45 && p<0.45){ this.vapor.setPosition(A.rocketX, A.rocketY-6); if(!this.vapor.emitting) this.vapor.start(); }
+      else if(this.vapor && this.vapor.emitting) this.vapor.stop();
+    }
     beginFlight(){
       if(!flightPending) return;
       const {spec,done}=flightPending; flightPending=null;
@@ -4604,6 +4636,7 @@ function defineFlightScene(){
       try{ drawScene(t); this.tex.refresh(); }catch(e){ console.error('flight anim error:',e); this.playing=false; endAnim(); return; }
       if(this.np){ try{ this.driveParticles(A); }catch(e){} }
       try{ this.updateEarthFX(A,t); }catch(e){}
+      try{ this.updateAscentFX(A); }catch(e){}
       // dynamic bloom: punch up engine glow during powered ascent, ease off in coast/orbit
       if(this.bloom){ const want = (A.ascentP!=null && A.ascentP<0.95 && t<A.ascentDur) ? 1.0 : 0.7; this.bloom.strength += (want-this.bloom.strength)*0.05; }
       if(A.exploding && !this.didBoomShake){ this.didBoomShake=true; try{ this.cameras.main.shake(700, 0.022); }catch(e){} } // vehicle-loss kick
@@ -5468,6 +5501,7 @@ function drawAscent(t,canFail){
   const maxQ = 35 + s.reqDv*0.003;
   const throttle = (p>0.12 && p<0.40) ? clampA(1 - qNorm*0.25, 0.65, 1.0) : 1.0;
   const accel = (1 + p*2.5) * throttle;
+  A.ascentP=p; A.qNorm=qNorm; A.altFrac=altFrac; // publish for the Phaser scene's ascent FX (clouds, max-Q vapor)
   const g=ctx.createLinearGradient(0,0,0,H);
   const skyP=smooth(clampA(p/0.7,0,1));
   if(skyP<0.3){
