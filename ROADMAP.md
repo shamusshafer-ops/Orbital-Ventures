@@ -2152,8 +2152,29 @@ each keeping the no-Phaser 2D fallback intact.
       wiring + cloud/vapor gates); all prior suites green
       (orbital/setback/planner/compare/uilayer/recovery/transfer 14/24/18/21/30/15/9/16).
       Browser check pending.
-- [ ] **Slice 3 — Plume & FX polish.** Volumetric GPU plume, heat-haze postFX behind the
-      exhaust, Mach diamonds, staging/reentry particle upgrades, camera work.
+- [x] **Slice 3 — Plume & FX polish.** *(Built 2026-06-23.)* The ascent exhaust gains a
+      **volumetric, multi-layer plume**: the existing mid plume now sits between a bright
+      tight **core** emitter (white→blue, additive, `addGlow`) and a wide diffuse
+      **vacuum-bloom outer** emitter (orange, additive) — all tracking the vehicle and
+      aimed along its axis via the shared `_plumeAngle`. Added **Mach diamonds** — shock
+      nodes drawn as additive glowing ellipses along the exhaust axis, present only in the
+      lower atmosphere (`altFrac<0.45`) and fading with altitude — and a **staging camera
+      jolt** (a short `cameras.main.shake` when a stage drops, on top of the existing
+      liftoff/loss shakes). All new emitters are stopped + the Mach graphics cleared on
+      flight end/hold; everything lives in the `np` (native-particles) guard so the 2D
+      fallback is untouched. *(True displacement-based heat-haze was scoped out — Phaser's
+      Displacement postFX is camera-wide and hard to localize to the plume without live
+      tuning; the additive core/outer + glow already read as heat bloom.)* Validated
+      headlessly (`/tmp/ov-plume.js`, 9/9: parse + core/outer/mach wiring + glow + drive +
+      altitude gate + staging jolt + end-stop); all prior suites green
+      (ascent/orbital/setback/planner/compare/uilayer/recovery/transfer
+      10/14/24/18/21/30/15/9/16). Browser check pending.
+
+> **Overhaul status:** all three planned slices shipped. Orbital gained a native glowing
+> Earth-FX layer; ascent gained fly-through clouds + a max-Q vapor cone; the plume is now
+> volumetric with Mach diamonds and staging camera work. Deferred-by-choice (would risk
+> regressing already-good canvas art without live tuning): a full native ascent sky /
+> scattering shader and displacement heat-haze. Revisit those if a deeper pass is wanted.
 
 ## Repo
 
