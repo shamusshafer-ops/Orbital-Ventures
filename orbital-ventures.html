@@ -338,9 +338,8 @@
         <button id="tabRnd" class="scene" onclick="setTab('rnd')">⚛ R&amp;D</button>
         <button id="tabMap" class="scene" onclick="setTab('map')">☉ Solar System</button>
         <div class="rail-group">Operations</div>
-        <button id="tabInfra" onclick="setTab('infra')">Infrastructure</button>
         <button id="tabSettings" onclick="setTab('settings')">Settings</button>
-        <!-- Programs / Rivals / Personnel retired in slice 6 → modals + hub drills -->
+        <!-- Programs/Rivals/Personnel (s6) + Infrastructure (s7) retired → modals + hub drills -->
       </nav>
       <!-- slice 4: the Mission Control Advisor + Objectives (was commandView's ccLeft) is
            promoted to the always-on left rail; render() rebuilds it on every scene. The
@@ -415,9 +414,8 @@
   <!-- Personnel retired in slice 6 → the Personnel hub-building drill modal
        (showPersonnelModal builds #personnelCard on demand). -->
 
-  <div id="infraView" class="hidden">
-    <div class="card" id="infraCard"></div>
-  </div>
+  <!-- Infrastructure retired in slice 7 → the mfg/prod/orbital-ops hub buildings open
+       showInfrastructureModal (builds #infraCard on demand). -->
 
   <div id="settingsView" class="hidden">
     <div class="card" id="settingsCard"></div>
@@ -3404,7 +3402,7 @@ const SCENE_TABS = Object.keys(SCENES);
 // slice 4: Planner folded into the left-rail advisor. slice 5: Missions → the Command
 // Center "Mission Control" drill. slice 6: Programs/Rivals/Personnel → modals + hub drills.
 // All land on Command Center (their new homes hang off the hub).
-const RETIRED_TABS = { planner:'command', missions:'command', programs:'command', rivals:'command', personnel:'command' };
+const RETIRED_TABS = { planner:'command', missions:'command', programs:'command', rivals:'command', personnel:'command', infra:'command' };
 function isSceneTab(t){ return SCENE_TABS.indexOf(t)>=0; }
 // slice 5/6: a legacy "go to tab X" intent → the onclick expression for X's new home
 // (a hub drill or a modal). Used by the advisor, alerts, planner steps and hub buildings.
@@ -3413,6 +3411,7 @@ function tabIntent(t){
   if(t==='programs')  return "showProgramsModal()";
   if(t==='personnel') return "showPersonnelModal()";
   if(t==='rivals')    return "showRivalsModal()";
+  if(t==='infra')     return "showInfrastructureModal()";
   return `setTab('${t}')`;
 }
 // slice 5: which panel the Command Center right rail shows — 'alerts' (default) or
@@ -3428,6 +3427,7 @@ function modalClose(){ return `<div style="text-align:right;margin-top:12px"><bu
 function showProgramsModal(){ activeModal=()=>{ showModal(`<div id="ambitionCard"></div><div id="programsCard" style="margin-top:14px"></div>${modalClose()}`,true); renderPrograms(); }; activeModal(); }
 function showRivalsModal(){ activeModal=()=>{ showModal(`<div id="rivalsCard"></div>${modalClose()}`,true); renderRivals(); }; activeModal(); }
 function showPersonnelModal(){ activeModal=()=>{ showModal(`<div id="personnelCard"></div>${modalClose()}`,true); renderPersonnel(); }; activeModal(); }
+function showInfrastructureModal(){ activeModal=()=>{ showModal(`<div id="infraCard"></div>${modalClose()}`,true); renderInfrastructure(); }; activeModal(); } // slice 7: the Infra tab → a hub-building drill modal
 // 'scene' = owns the center viewport; 'panel' = secondary view (future rail/modal home).
 function viewKind(t){ return isSceneTab(t) ? 'scene' : 'panel'; }
 function setTab(t){closeLiveModal();hubPanel='alerts';state.tab=t;render();} // nav resets the hub drill + closes any live modal (slice 5/6)
@@ -6346,13 +6346,11 @@ function render(){
   $('tabBench').classList.toggle('active',state.tab==='bench');
   $('tabRnd').classList.toggle('active',state.tab==='rnd');
   $('tabMap').classList.toggle('active',state.tab==='map');
-  $('tabInfra').classList.toggle('active',state.tab==='infra');
   $('tabSettings').classList.toggle('active',state.tab==='settings');
   $('commandView').classList.toggle('hidden',state.tab!=='command');
   $('benchView').classList.toggle('hidden',state.tab!=='bench');
   $('rndView').classList.toggle('hidden',state.tab!=='rnd');
   $('mapView').classList.toggle('hidden',state.tab!=='map');
-  $('infraView').classList.toggle('hidden',state.tab!=='infra');
   $('settingsView').classList.toggle('hidden',state.tab!=='settings');
   applyDifficultyUI();
 
@@ -6371,7 +6369,6 @@ function render(){
   renderNextObjective();
   if(state.tab==='rnd')renderRnd();
   if(state.tab==='map')renderMap();
-  if(state.tab==='infra')renderInfrastructure();
   if(state.tab==='settings')renderSettings();
   renderLog();
   if(activeModal) activeModal(); // slice 6: keep an open deep-view modal (Programs/Rivals/Personnel) in sync with state
@@ -6556,15 +6553,15 @@ function siteBuildings(){
      status: m?`${m.name} · ${buildMonths(m)+1+TEST_LEVELS[state.testLevel].months} mo to fly`:'no mission selected', planned:false},
     {key:'mission', icon:'📡', name:'Mission Control', tab:'missions', act:"openHubPanel('contracts')",
      status:`${availableContracts()} contract${availableContracts()===1?'':'s'} available`, planned:false},
-    {key:'mfg', icon:'🏭', name:'Manufacturing', tab:'infra',
+    {key:'mfg', icon:'🏭', name:'Manufacturing', tab:'infra', act:"showInfrastructureModal()",
      status:`Bays L${prodLevel('bays')} · capacity ${bayCapacity()}`, planned:false},
-    {key:'prod', icon:'⚙', name:'Production', tab:'infra',
+    {key:'prod', icon:'⚙', name:'Production', tab:'infra', act:"showInfrastructureModal()",
      status:`Foundry L${prodLevel('foundry')} · Pads L${prodLevel('pads')}`, planned:false},
     {key:'rnd', icon:'⚗', name:'R&D Lab', tab:'rnd',
      status: ar?`${(RESEARCH.find(r=>r.id===ar.id)||{}).name||ar.id} · ${ar.monthsLeft} mo`:'idle', planned:false},
     {key:'personnel', icon:'👥', name:'Personnel', tab:'personnel', act:"showPersonnelModal()",
      status: (state.staff||[]).length?`${state.staff.length} hired · ${fM(monthlyPayroll())}/mo`:'unstaffed', planned:false},
-    {key:'infra', icon:'▣', name:'Orbital Ops', tab:'infra',
+    {key:'infra', icon:'▣', name:'Orbital Ops', tab:'infra', act:"showInfrastructureModal()",
      status: builtFac?`${builtFac} facilit${builtFac===1?'y':'ies'} · +${fM(totalFacilityIncome())}/mo`:'no facilities', planned:false},
     {key:'map', icon:'🪐', name:'Solar System', tab:'map', status:'plan & track missions', planned:false},
     {key:'rivals', icon:'◆', name:'Rivals', tab:'rivals', act:"showRivalsModal()", status:`threat: ${threatTxt}`, planned:false},

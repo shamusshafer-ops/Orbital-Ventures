@@ -2332,11 +2332,23 @@ right-rail mini + modal; **Personnel** → hub building drill / modal;
       (`.modal{max-height:88vh;overflow-y:auto}` + a new `.modal.view`, via a
       `showModal(html,view)` flag) — the long Rivals card was overflowing with the Close
       button off-screen and no scroll.
-- [ ] **Slice 7 — Merge Infrastructure into hub building drill-ins; remove tab.**
-      Clicking mfg / prod / orbital-ops buildings opens that facility's panel in
-      the right rail (production panel, capacity, etc.) instead of the flat `infra`
-      tab. Remove the Infrastructure tab. Validate: every infra control reachable
-      from a building, production math unchanged.
+- [x] **Slice 7 — Merge Infrastructure into hub building drill-ins; remove tab.**
+      *(Built 2026-06-24.)* **Removed the Infrastructure tab + `infraView`.** The three
+      Cape hub buildings — **Manufacturing, Production, Orbital Ops** (mfg/prod/infra) —
+      now each carry `act:"showInfrastructureModal()"`, which builds `#infraCard` inside a
+      wide `.modal.view` and calls `renderInfrastructure()` **untouched** (production /
+      facility / fuel-market math identical). It's a **live modal** like slice 6's deep
+      views: `foundFacility`/`expandFacility`/`buyFuel`/`sellFuel` all call `render()` (no
+      tab change), so founding/expanding/trading refresh in place; navigation closes it.
+      `tabIntent('infra')` + `RETIRED_TABS.infra='command'` route the advisor's "Found …"
+      actions, bay-capacity/fuel alerts, and legacy saves to the same modal — **every
+      infra control reachable from a building**. **Deviation from the original plan:** the
+      spec said "right rail," but the infra content (metrics grids + the multi-button fuel
+      market) is too wide/dense for the 300px rail, so it uses the wide modal for
+      consistency with Personnel/Programs/Rivals. Validated headlessly (`ov-shell.js`,
+      **95/95**, slices 1–7): tab/view gone, all 3 buildings drill to the modal, it opens
+      + populates `#infraCard`, survives a re-render, closes on nav, and `infra` saves
+      migrate. **Browser check pending.**
 - [ ] **Slice 8 — ⚙ menu + final cleanup.** Settings + save/load/new/fullscreen/
       wide/uiLayer move into a HUD-corner ⚙ menu; remove the old top tab bar
       entirely and the now-dead `setTab` targets (with load-time migration of any
