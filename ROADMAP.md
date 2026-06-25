@@ -2419,19 +2419,37 @@ lives.
 
 Continuing the #23–#26 numbering. All **[ ] not started**.
 
-- [ ] **27 · Visual stage-stack Design Bench** *(review #6)* — replace the form-like
-      stage editor with a **vertically-stacked, draggable card** assembly (payload →
-      upper → transfer → core → boosters), each card collapsible with engine icons,
-      fuel-tank art, and a thrust/Δv indicator — the KSP-VAB feel. Reuses the existing
-      `computeVehicle`/`stackPerformance` math and the Phaser rocket preview; the cards
-      are a new DOM front-end over the same stage config. Highest-value net-new item.
-      - **First step taken (2026-06-25):** the **rocket preview is now the bench
-        centerpiece** — moved out of the cramped right rail into a prominent sticky
-        column at the center of a new `.bench-stage` grid (`[300px | editor]`), with the
-        readout left in the right rail. Element ids (`vehicleCard`/`vehHost`/
-        `vehiclePreview`/`vehicleLabel`) unchanged, so `renderVehiclePreview`/`startVehGame`
-        are untouched; collapses to one column under 900px. The draggable stage-stack
-        cards themselves remain the bulk of this item.
+- [x] **27 · Visual stage-stack Design Bench** *(review #6)* — replace the form-like
+      stage editor with a **vertically-stacked, draggable card** assembly, each card
+      collapsible with an engine/propellant chip, a thrust bar, and a Δv indicator —
+      the KSP-VAB feel. Reuses the existing `computeVehicle`/`stackPerformance` math and
+      the Phaser rocket preview; the cards are a new DOM front-end over the same stage
+      config.
+      - **Slice 1 — rocket as centerpiece (2026-06-25):** the **rocket preview** moved
+        out of the cramped right rail into a prominent sticky column at the center of a
+        new `.bench-stage` grid (`[300px | editor]`), readout left in the right rail.
+        Element ids (`vehicleCard`/`vehHost`/`vehiclePreview`/`vehicleLabel`) unchanged,
+        so `renderVehiclePreview`/`startVehGame` are untouched; one column under 900px.
+      - **Slice 2 — draggable visual stage cards (2026-06-25):** `renderStages` rebuilt
+        as `.stage-card`s — a **drag-handle grip** (HTML5 DnD: `stageDragStart`/`Over`/
+        `Leave`/`Drop`/`End` → **`moveStage(from,to)`** reorders `state.stages`), a
+        **collapse toggle** (`toggleStageCollapse`, transient `collapsedStages`), a
+        **thrust bar** (per-stage `thrustVac×count`, scaled to the strongest stage), an
+        engine/propellant **chip** + per-position **role** (`stageRole`: booster/core/
+        upper), and a **Δv badge**. Engine/count/propellant controls + masses move into a
+        collapsible `.stage-body`; `addStage`/`removeStage` reset collapse flags. All
+        transient UI — **no new save field**.
+      - **Slice 3 — Build & Launch under the rocket (2026-06-25):** the primary
+        **Build & Launch** CTA moved out of the right-rail readout into a `#benchLaunch`
+        host **directly under the rocket** in `#vehicleCard`, via `renderBenchLaunch()`
+        (same `canLaunch` gate + `launch()` action; label centralized in
+        `launchButtonLabel`). The readout keeps its flags/metrics and now points to the
+        rocket CTA. Validated (`ov-launch.js`, 13/13): host placement, label variants
+        (basic/crewed/tanker/profile), button wiring, readout no longer carries a launch
+        button, and render-bench wiring. *Validated headlessly* (`ov-bench-nav.js`,
+        28/28): `moveStage` reorder/no-op/out-of-range/collapse-reset, `toggleStageCollapse`,
+        `stageRole`, drag handlers no-throw with a stub event, the rendered card structure
+        (grip/thrust/role/chip/Δv/collapse), and the collapsed-class on the right card.
 - [x] **28 · Sparkline dashboards on core metrics** *(review #8)* — extend the shipped
       `materialSparklineSVG` + history-buffer pattern to **capital, reputation, public
       support, launch-success rate, and science**, rendered as tiny inline SVGs on
@@ -2462,10 +2480,19 @@ Continuing the #23–#26 numbering. All **[ ] not started**.
       unlocked-tech glow, mission-success pulse, completed-objective sparkle, a scrolling
       news ticker, and the literal **slide animation** for the right-rail drawer. Pure
       presentation polish over the now-stable Shell; feature-guard anything heavy.
-- [ ] **32 · Keyboard navigation** *(review #9)* — ESC = back/close-modal, TAB = next
+- [x] **32 · Keyboard navigation** *(review #9)* — ESC = back/close-modal, TAB = next
       scene, plus number keys for the 4 scene selectors. Small; builds on the Shell's
       `setTab`/`closeLiveModal`/`SCENES` plumbing.
-      - **First slice taken (2026-06-25) — tech-tree zoom + arrow-key pan** *(review #5
+      - **Slice 2 — scene nav keys (2026-06-25):** a global keydown handler — **ESC**
+        closes an open modal (`modalOpen()`→`hideModal`), else backs out of the Mission
+        Control contracts drill, else returns to the Command Center; **TAB / Shift+TAB**
+        cycle scenes (`nextScene(±1)` over `SCENE_TABS`); **1–4** jump to a scene. It
+        never hijacks typing (skips `INPUT`/`TEXTAREA`/`SELECT` and ignores TAB/numbers
+        while a modal is open, so form tabbing and in-modal input are unaffected) and
+        ignores Ctrl/Meta/Alt chords + flight-playback. Validated headlessly
+        (`ov-bench-nav.js`, 28/28): `nextScene` fwd/back/wrap, `modalOpen` reflects the
+        `#modal` hidden class, `setTab` resets the hub drill, render smoke.
+      - **Slice 1 (2026-06-25) — tech-tree zoom + arrow-key pan** *(review #5
         "interactive tech web" + #9 keyboard)*: the Tech Tree is now **zoomable and
         keyboard-navigable**. A module `techZoom` (0.5–2.4) scales the rendered SVG (the
         viewBox is unchanged, so node `onclick`/coords stay exact) while the `#techTree`
@@ -2494,13 +2521,13 @@ most of the *structural* asks already shipped. The remaining net-new work is mos
 **presentation polish**, best sequenced by value-per-effort:
 
 1. **#28 Sparklines** — ✓ **done 2026-06-25** (the predicted cheapest win).
-2. **#27 Visual stage-stack Bench** — the biggest *gameplay-feel* upgrade and the
-   review's own top pick; larger but self-contained over existing math. *Rocket-as-
-   centerpiece relocation done 2026-06-25; draggable stage cards remain.*
-3. **#29 Filtered log timeline** — moderate, high day-to-day usefulness.
-4. **#30 Color-coding** + **#31 microanimations** — polish layer; do after #27/#28 so
-   they style real content. #30 pairs naturally with #28's graphs.
-5. **#32 Keyboard nav** — small, drop in whenever convenient.
+2. **#27 Visual stage-stack Bench** — ✓ **done 2026-06-25** (rocket centerpiece +
+   draggable/collapsible stage cards with thrust/Δv indicators).
+3. **#32 Keyboard nav** — ✓ **done 2026-06-25** (tech-tree zoom/arrows + ESC/TAB/1–4
+   scene nav).
+4. **#29 Filtered log timeline** — moderate, high day-to-day usefulness. *(next up)*
+5. **#30 Color-coding** + **#31 microanimations** — polish layer; do after the graphs/
+   bench so they style real content. #30 pairs naturally with #28's sparklines.
 
 > **Incorporation note (2026-06-25):** of the review's 12 points, **#2/#3/#4/#5** are
 > essentially shipped (Mission Control Shell + #23 + #18); **#1/#9/#10** ship through
@@ -2508,6 +2535,35 @@ most of the *structural* asks already shipped. The remaining net-new work is mos
 > The review's "make it *feel* commercial" thesis is sound, but the structural half of
 > it was delivered by the Shell epic the day before — what's left is a focused
 > presentation-polish track led by **#28** (cheap) and **#27** (highest-impact).
+
+## Bench Customization (mini-epic)
+
+Source: a user request (2026-06-25) to make the Design Bench rockets **more
+customizable**. Asked which axes; the user picked **all four**, so this is a
+mini-epic built in the standard small, validated slices. Order = safest/highest-value
+first.
+
+- [x] **BC1 · Cosmetic livery** *(Built 2026-06-25.)* A pure-visual `state.livery`
+      (`{body, accent, nose, name}`, `defaultLivery()`/`curLivery()` merge-over-defaults;
+      **`SAVE_VERSION`→23**, forward-compat default in both load paths + newGame).
+      Threaded into **`drawVehicle`** (read once via `curLivery()`), so it shows on the
+      bench preview (Phaser + 2D fallback both draw through `drawVehiclePreviewTo`) **and
+      in flight**: body gradient derived by `shade()`-ing the chosen hull color, an
+      **accent stripe** per stage + accent-tinted roundel/patch, and three **nose styles**
+      for uncrewed fairings (ogive/cone/blunt; crewed always flies a capsule). A
+      **🎨 Livery** card (body+accent `<input type=color>`, a name field, nose buttons) in
+      the bench editor; the **name** shows under the ship. Validated headlessly
+      (`ov-livery.js`, 20/20): defaults/merge/setters/name-clamp, card UI, `drawVehicle`
+      executing through a real ctx stub across all nose styles + crewed, `shade()`, the
+      under-ship name, and autoLoad backfill. Regressions green (launch 13, bench-nav 28,
+      presentation 40).
+- [ ] **BC2 · Performance parts** — new engineering levers feeding `computeVehicle`:
+      payload fairing (mass, protects payload), nose-cone drag, avionics/guidance tier
+      (+reliability/+cost), tank material (better σ). Balance-sensitive — needs care.
+- [ ] **BC3 · Per-stage geometry** — diameter/length (tank count) per stage feeding both
+      `buildVehicleShape` (preview) and the dry-mass model. Most invasive; do after BC2.
+- [ ] **BC4 · More part variety** — wider catalog: more engines, booster options, and
+      propellant choices per era. Mostly data; balance-check each addition.
 
 ## Repo
 

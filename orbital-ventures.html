@@ -80,6 +80,20 @@
   .stage{border:1px solid var(--line);border-radius:6px;padding:10px 12px;margin-bottom:10px;background:var(--panel2)}
   .stage-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
   .stage-head .label{font-family:var(--mono);font-size:12px;color:var(--ignite);letter-spacing:.06em}
+  /* #27: visual draggable stage cards */
+  .stage-card{transition:border-color .12s,box-shadow .12s}
+  .stage-card .stage-head{gap:8px;margin-bottom:6px}
+  .stage-card.drag-over{border-color:var(--ignite);box-shadow:0 0 0 1px var(--ignite) inset}
+  .grip{cursor:grab;color:var(--dim);font-size:14px;user-select:none;padding:0 2px}
+  .grip:active{cursor:grabbing}
+  .stage-toggle{background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px;padding:0 2px;line-height:1}
+  .stage-role{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+  .stage-chip{font-size:10px;color:var(--readout);border:1px solid var(--line);border-radius:10px;padding:1px 7px;white-space:nowrap}
+  .stage-dv{font-family:var(--mono);font-size:11px;color:var(--muted)} .stage-dv b{color:var(--ink)}
+  .stage-thrust{position:relative;height:14px;border-radius:7px;background:#0d1418;border:1px solid var(--line);overflow:hidden;margin:2px 0 4px}
+  .stage-thrust-fill{height:100%;background:linear-gradient(90deg,var(--ignite),#ff7a3c);opacity:.55}
+  .stage-thrust-lbl{position:absolute;left:8px;top:0;line-height:14px;font-family:var(--mono);font-size:9px;color:var(--ink)}
+  .stage-card.collapsed .stage-body{display:none}
   .row{display:flex;align-items:center;gap:8px;margin:6px 0;flex-wrap:wrap}
   .row label{font-size:11px;color:var(--muted);min-width:78px;text-transform:uppercase;letter-spacing:.08em}
   select,input[type=number],input[type=text]{background:#0d1418;color:var(--ink);border:1px solid var(--line);
@@ -370,9 +384,11 @@
         <div id="vehHost" style="display:none;width:100%;max-width:300px;margin:8px auto 0;aspect-ratio:240/360"></div>
         <canvas id="vehiclePreview" width="240" height="360" style="max-width:100%;height:auto;display:block;margin:8px auto 0"></canvas>
         <div id="vehicleLabel" class="dim" style="font-size:11px;margin-top:8px"></div>
+        <div id="benchLaunch" style="margin-top:10px"></div>
       </div>
       <div class="bench-editor">
         <div class="card" id="vehicleFamilyCard"></div>
+        <div class="card" id="liveryCard"></div>
         <div class="card hidden" id="archCard"></div>
         <div class="card">
           <h2>Vehicle — Stages (bottom → top)</h2>
@@ -897,6 +913,11 @@ const MATERIAL_HISTORY_LEN = 24;        // months of spot-price history retained
 const METRIC_HISTORY_LEN = 24;          // #28: months of core-metric history retained for dashboard sparklines
 // #28: per-metric monthly trend buffers (capital/rep/support/success-rate/science)
 function defaultMetricHist(){ return {money:[], rep:[], support:[], success:[], science:[]}; }
+// Bench customization slice 1: cosmetic livery (body + accent color, nose style, name).
+// Pure visual — read by drawVehicle, so it shows on the bench preview AND in flight.
+const DEFAULT_LIVERY={ body:'#d4dee4', accent:'#e0564f', nose:'auto', name:'' };
+function defaultLivery(){ return Object.assign({}, DEFAULT_LIVERY); }
+function curLivery(){ const l=state&&state.livery; return l?Object.assign(defaultLivery(),l):defaultLivery(); }
 
 /* ---------- Mission architectures (how you get there is a strategy) ----------
    For supported missions, the player picks an architecture that reshapes the
@@ -1331,6 +1352,7 @@ function newGame(difficulty){
     lastMonth:{revenue:0,expenses:0,net:0,flights:0}, // #18: rolling ops-summary ledger
     history:{}, // #18: missionId -> completion year, for the Home timeline
     metricHist:defaultMetricHist(), // #28: monthly trend buffers for dashboard sparklines
+    livery:defaultLivery(), // bench customization: cosmetic vehicle livery
     ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
     facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
     architectures:{}, science:0,
@@ -3508,12 +3530,47 @@ function showSettingsMenu(){
 // 'scene' = owns the center viewport; 'panel' = secondary view (future rail/modal home).
 function viewKind(t){ return isSceneTab(t) ? 'scene' : 'panel'; }
 function setTab(t){closeLiveModal();hubPanel='alerts';state.tab=t;render();} // nav resets the hub drill + closes any live modal (slice 5/6)
-function addStage(){ if(state.stages.length>=3)return; state.stages.push({eng:firstUnlocked(),count:1,prop:2.0}); render(); }
-function removeStage(i){ if(state.stages.length<=1)return; state.stages.splice(i,1); render(); }
+function addStage(){ if(state.stages.length>=3)return; state.stages.push({eng:firstUnlocked(),count:1,prop:2.0}); collapsedStages={}; render(); }
+function removeStage(i){ if(state.stages.length<=1)return; state.stages.splice(i,1); collapsedStages={}; render(); }
+// #27: reorder the stage stack (drag-to-reorder). Indices are validated; a no-op move
+// just re-renders. Collapse flags are keyed by position, so reset them on a structural change.
+function moveStage(from,to){
+  const n=state.stages.length;
+  if(from==null||to==null||from===to||from<0||to<0||from>=n||to>=n) return;
+  const [s]=state.stages.splice(from,1);
+  state.stages.splice(to,0,s);
+  collapsedStages={};
+  render();
+}
+// #27: transient drag/collapse UI (not persisted, like mapExpanded/cmpA)
+let stageDrag=null, collapsedStages={};
+function stageDragStart(e,i){ stageDrag=i; if(e&&e.dataTransfer){ e.dataTransfer.effectAllowed='move'; try{ e.dataTransfer.setData('text/plain',String(i)); }catch(_){} } }
+function stageDragOver(e){ if(e){ e.preventDefault(); if(e.dataTransfer) e.dataTransfer.dropEffect='move'; const t=e.currentTarget; if(t&&t.classList) t.classList.add('drag-over'); } }
+function stageDragLeave(e){ const t=e&&e.currentTarget; if(t&&t.classList) t.classList.remove('drag-over'); }
+function stageDrop(e,i){ if(e){ e.preventDefault(); const t=e.currentTarget; if(t&&t.classList) t.classList.remove('drag-over'); } if(stageDrag!=null) moveStage(stageDrag,i); stageDrag=null; }
+function stageDragEnd(){ stageDrag=null; }
+function toggleStageCollapse(i){ collapsedStages[i]=!collapsedStages[i]; render(); }
 function firstUnlocked(){return Object.keys(ENGINES).find(k=>state.unlocked[k])||'a4';}
 function setEngine(i,v){state.stages[i].eng=v;render();}
 function setCount(i,d){state.stages[i].count=Math.max(1,Math.min(8,state.stages[i].count+d));render();}
 function setProp(i,v){state.stages[i].prop=Math.max(0.1,Math.min(1000,parseFloat(v)||0.1));render();}
+// Bench customization slice 1: livery controls (cosmetic only)
+function ensureLivery(){ if(!state.livery) state.livery=defaultLivery(); return state.livery; }
+function setLiveryBody(v){ ensureLivery().body=v; render(); }
+function setLiveryAccent(v){ ensureLivery().accent=v; render(); }
+function setLiveryNose(v){ ensureLivery().nose=v; render(); }
+function setLiveryName(v){ ensureLivery().name=(v||'').slice(0,24); render(); }
+function renderLivery(){
+  const el=$('liveryCard'); if(!el) return;
+  const l=curLivery();
+  const noseBtn=(id,label)=>`<button class="btn ${l.nose===id?'':'ghost'}" style="font-size:11px;padding:4px 9px" onclick="setLiveryNose('${id}')">${label}</button>`;
+  el.innerHTML=`<h2>🎨 Livery</h2>
+    <div class="row"><label>Name</label><input type="text" maxlength="24" value="${(l.name||'').replace(/"/g,'&quot;')}" placeholder="e.g. Vanguard" onchange="setLiveryName(this.value)" style="flex:1"></div>
+    <div class="row"><label>Body</label><input type="color" value="${l.body}" onchange="setLiveryBody(this.value)" style="width:46px;padding:2px"><span class="dim" style="font-size:11px">hull color</span></div>
+    <div class="row"><label>Accent</label><input type="color" value="${l.accent}" onchange="setLiveryAccent(this.value)" style="width:46px;padding:2px"><span class="dim" style="font-size:11px">stripe + roundel</span></div>
+    <div class="row"><label>Nose</label><div style="display:flex;gap:5px;flex-wrap:wrap">${noseBtn('auto','Ogive')}${noseBtn('cone','Cone')}${noseBtn('blunt','Blunt')}</div></div>
+    <div class="dim" style="font-size:11px;margin-top:2px">Nose style applies to uncrewed payload fairings; crewed flights fly a capsule.</div>`;
+}
 function setTransferEng(v){state.transfer.eng=v;render();}
 function setTransferProp(v){state.transfer.prop=Math.max(0.1,Math.min(400,parseFloat(v)||0.1));render();}
 function setDepotUse(v){state.depotUse=Math.max(0,Math.min(state.depot,parseFloat(v)||0));render();}
@@ -3779,7 +3836,7 @@ function hideModal(){activeModal=null;$('modal').classList.add('hidden');} // sl
 
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=22; // v22: #28 — core-metric trend buffers (state.metricHist)
+const SAVE_VERSION=23; // v23: bench livery (state.livery)
 function saveGame(){
   try{
     const payload={v:SAVE_VERSION, ts:Date.now(), state:JSON.parse(JSON.stringify(state))};
@@ -3819,7 +3876,7 @@ function loadGame(){
       staff:[], assignedAstronaut:null,
       vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, rehearsal:false, techLevel:{}, divisions:{}, breakthroughCooldown:3, relDebt:0, powerSource:'solar',
       recentBuilds:[], materials:defaultMaterialsState(),
-      buildQueue:[], hangar:[], orderSeq:0, uiLayer:'advanced', metricHist:defaultMetricHist()
+      buildQueue:[], hangar:[], orderSeq:0, uiLayer:'advanced', metricHist:defaultMetricHist(), livery:defaultLivery()
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -3872,7 +3929,7 @@ function autoLoad(){
       staff:[], assignedAstronaut:null,
       vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, rehearsal:false, techLevel:{}, divisions:{}, breakthroughCooldown:3, relDebt:0, powerSource:'solar',
       recentBuilds:[], materials:defaultMaterialsState(),
-      buildQueue:[], hangar:[], orderSeq:0, uiLayer:'advanced', metricHist:defaultMetricHist()
+      buildQueue:[], hangar:[], orderSeq:0, uiLayer:'advanced', metricHist:defaultMetricHist(), livery:defaultLivery()
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -3949,6 +4006,31 @@ document.addEventListener('keydown',function(e){
     case '-': case '_': zoomTech(1/1.15); e.preventDefault(); break;
     case '0': resetTechZoom(); e.preventDefault(); break;
   }
+});
+// #32: keyboard scene navigation — ESC = close modal / back to Command Center,
+// TAB = next scene, number keys 1–4 = jump to a scene. Never hijacks typing.
+function modalOpen(){ const m=$('modal'); return !!m && m.classList && !m.classList.contains('hidden'); }
+function nextScene(dir){
+  const i=SCENE_TABS.indexOf(state.tab);
+  const base=i<0?0:i;
+  const ni=((base+(dir||1))%SCENE_TABS.length+SCENE_TABS.length)%SCENE_TABS.length;
+  setTab(SCENE_TABS[ni]);
+}
+document.addEventListener('keydown',function(e){
+  if(!state || animState) return;
+  if(e.ctrlKey||e.metaKey||e.altKey) return;
+  const tag=(e.target&&e.target.tagName)||'';
+  const typing=(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT');
+  // ESC works even from a focused control: close an open modal/drill, else step back.
+  if(e.key==='Escape'){
+    if(modalOpen()){ hideModal(); e.preventDefault(); return; }
+    if(hubPanel==='contracts'){ openHubPanel('alerts'); e.preventDefault(); return; }
+    if(state.tab!=='command'){ setTab('command'); e.preventDefault(); return; }
+    return;
+  }
+  if(typing || modalOpen()) return; // don't grab TAB/numbers while typing or in a modal
+  if(e.key==='Tab'){ nextScene(e.shiftKey?-1:1); e.preventDefault(); return; }
+  if(e.key>='1' && e.key<='4'){ const idx=+e.key-1; if(idx<SCENE_TABS.length){ setTab(SCENE_TABS[idx]); e.preventDefault(); } }
 });
 // fire a launch from the keyboard, only when one is actually available (mirrors the Launch button gate)
 function tryLaunchHotkey(){
@@ -5070,6 +5152,7 @@ function drawRecoveryStage(ctx, spent, x, baseY, dt, scale, altFrac, pitch){
 function drawVehicle(ctx, segs, nose, scale, flame, altFrac, hideBells){
   if(!segs.length) return;
   altFrac=altFrac||0;
+  const liv=curLivery(); // bench livery: body color, accent, nose style
   const base=segs[0], bw=base.w*scale, ne=base.engines;
   const plumeExpand = 1 + altFrac * 2.5;
   // strap-on boosters (only the full shape's seg array carries .boosters — sliced/spent draws won't)
@@ -5130,9 +5213,10 @@ function drawVehicle(ctx, segs, nose, scale, flame, altFrac, hideBells){
     if(s.kind==='transfer'){
       bodyGrad.addColorStop(0,'#6a7580'); bodyGrad.addColorStop(0.3,'#8a949e'); bodyGrad.addColorStop(0.5,'#a0aab2'); bodyGrad.addColorStop(0.7,'#8a949e'); bodyGrad.addColorStop(1,'#6a7580');
     } else {
-      const light=i%2?'#d4dee4':'#e0e8ee';
-      const mid=i%2?'#c0cad2':'#ccd6dc';
-      const dark=i%2?'#95a0a8':'#a5b0b8';
+      // livery-tinted body: derive light/mid/dark by shading the chosen body color
+      const light=shade(liv.body, i%2?0.14:0.20);
+      const mid=shade(liv.body, i%2?-0.02:0.03);
+      const dark=shade(liv.body, i%2?-0.20:-0.15);
       bodyGrad.addColorStop(0,dark); bodyGrad.addColorStop(0.2,mid); bodyGrad.addColorStop(0.45,light);
       bodyGrad.addColorStop(0.55,light); bodyGrad.addColorStop(0.8,mid); bodyGrad.addColorStop(1,dark);
     }
@@ -5161,20 +5245,22 @@ function drawVehicle(ctx, segs, nose, scale, flame, altFrac, hideBells){
       ctx.strokeStyle='rgba(60,72,82,0.22)'; ctx.lineWidth=0.4; // vertical panel seams
       [-0.22,0.08].forEach(fx=>{ const px=w*fx; ctx.beginPath(); ctx.moveTo(px,y-h+2); ctx.lineTo(px,y-2); ctx.stroke(); });
       ctx.fillStyle='rgba(28,34,40,0.55)'; ctx.fillRect(-w/2+0.5, y-h, w-1, Math.max(1.2,h*0.045)); // dark interstage band at top
+      // livery accent stripe near the top of the stage
+      ctx.save(); ctx.globalAlpha=0.88; ctx.fillStyle=liv.accent; ctx.fillRect(-w/2+0.5, y-h+Math.max(3,h*0.11), w-1, Math.max(1.4,h*0.035)); ctx.restore();
       if(w>10){ ctx.fillStyle='rgba(70,82,92,0.55)'; const rn=Math.min(9,Math.max(3,Math.floor(w/2))); for(let r=0;r<rn;r++){ const rx=-w/2+2+(w-4)*r/(rn-1); ctx.fillRect(rx-0.4,y-3,0.8,0.8); } } // rivets along lower seam
     }
     if(s.kind==='stage' && h>22*scale && w>11){
       // agency roundel marking
       const rcy=y-h*0.4, rr=Math.min(w*0.16, h*0.085);
       ctx.fillStyle='#e8edf1'; ctx.beginPath(); ctx.arc(0,rcy,rr,0,7); ctx.fill();
-      ctx.fillStyle='#2a5fa0'; ctx.beginPath(); ctx.arc(0,rcy,rr*0.66,0,7); ctx.fill();
-      ctx.fillStyle='#e0564f'; ctx.beginPath(); ctx.arc(0,rcy,rr*0.28,0,7); ctx.fill();
+      ctx.fillStyle=liv.accent; ctx.beginPath(); ctx.arc(0,rcy,rr*0.66,0,7); ctx.fill();
+      ctx.fillStyle=shade(liv.accent,-0.35); ctx.beginPath(); ctx.arc(0,rcy,rr*0.28,0,7); ctx.fill();
     } else if(s.kind==='stage' && h>20*scale){
       ctx.fillStyle='rgba(60,72,82,0.3)';
       const patchY=y-h*0.35, patchH=h*0.12, patchW=w*0.3;
       ctx.fillRect(-patchW/2,patchY,patchW,patchH);
-      ctx.fillStyle='rgba(200,80,40,0.25)';
-      ctx.fillRect(-patchW/2+1,patchY+1,patchW*0.3,patchH-2);
+      ctx.save(); ctx.globalAlpha=0.5; ctx.fillStyle=liv.accent;
+      ctx.fillRect(-patchW/2+1,patchY+1,patchW*0.3,patchH-2); ctx.restore();
     }
     if(i<segs.length-1){
       const nextW=segs[i+1].w*scale;
@@ -5243,15 +5329,25 @@ function drawVehicle(ctx, segs, nose, scale, flame, altFrac, hideBells){
     const fairGrad=ctx.createLinearGradient(-tw/2,y,tw/2,y);
     fairGrad.addColorStop(0,'#a0aab2'); fairGrad.addColorStop(0.3,'#c8d2d8'); fairGrad.addColorStop(0.5,'#dce4ea');
     fairGrad.addColorStop(0.7,'#c8d2d8'); fairGrad.addColorStop(1,'#a0aab2');
-    ctx.beginPath(); ctx.moveTo(-tw/2,y);
-    ctx.lineTo(-tw*0.48,y-4*scale);
-    ctx.quadraticCurveTo(-tw*0.25,y-22*scale,0,y-28*scale);
-    ctx.quadraticCurveTo(tw*0.25,y-22*scale,tw*0.48,y-4*scale);
+    // livery nose style — cone (sharp), blunt (short rounded), ogive/auto (default shroud)
+    const ns=liv.nose||'auto';
+    const tipH=(ns==='cone'?34:ns==='blunt'?18:28)*scale;
+    ctx.beginPath(); ctx.moveTo(-tw/2,y); ctx.lineTo(-tw*0.48,y-4*scale);
+    if(ns==='cone'){
+      ctx.lineTo(0,y-tipH);                                   // straight pointed cone
+      ctx.lineTo(tw*0.48,y-4*scale);
+    } else if(ns==='blunt'){
+      ctx.quadraticCurveTo(-tw*0.34,y-tipH,0,y-tipH);         // broad rounded dome
+      ctx.quadraticCurveTo(tw*0.34,y-tipH,tw*0.48,y-4*scale);
+    } else {
+      ctx.quadraticCurveTo(-tw*0.25,y-(tipH-6*scale),0,y-tipH); // ogive shroud (default)
+      ctx.quadraticCurveTo(tw*0.25,y-(tipH-6*scale),tw*0.48,y-4*scale);
+    }
     ctx.lineTo(tw/2,y); ctx.closePath();
     ctx.fillStyle=fairGrad; ctx.fill();
     ctx.strokeStyle='rgba(60,72,82,0.6)'; ctx.lineWidth=0.7; ctx.stroke();
     ctx.strokeStyle='rgba(60,72,82,0.35)'; ctx.lineWidth=0.4;
-    ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(0,y-28*scale); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(0,y-tipH); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(-tw*0.35,y-6*scale); ctx.lineTo(tw*0.35,y-6*scale); ctx.stroke();
   }
 }
@@ -6457,7 +6553,7 @@ function render(){
   if(state.tab==='command')renderCommandCenter(); else { stopCCScene(); pauseCapeGame(); }
   if(state.tab!=='bench') pauseVehGame();
   if(state.tab!=='map') pauseMapGame();
-  if(state.tab==='bench'){renderVehicleFamilies();renderArchitecture();renderStages();renderBoosters();renderTransfer();renderLander();renderCrew();renderPower();renderWindowPlanner();renderRoutes();renderReadout();renderVehiclePreview();}
+  if(state.tab==='bench'){renderVehicleFamilies();renderLivery();renderArchitecture();renderStages();renderBoosters();renderTransfer();renderLander();renderCrew();renderPower();renderWindowPlanner();renderRoutes();renderReadout();renderVehiclePreview();renderBenchLaunch();}
   if(state.tab==='command' && hubPanel==='contracts') renderMissions(); // slice 5: contracts drill content (passiveCard + missionList)
   renderNextObjective();
   if(state.tab==='rnd')renderRnd();
@@ -7490,35 +7586,58 @@ function recoveryStageHTML(m){
       <span style="font-size:11px;margin-top:4px">${econ}</span>
     </div>`;
 }
+// #27: stage role by position in the bottom→top stack (≤3 stages)
+function stageRole(i, n){ if(i===0) return n>1?'1st stage · booster':'single stage'; if(i===n-1) return 'upper stage'; return 'core stage'; }
 function renderStages(){
   const box=$('stages'); box.innerHTML=''; const curM=curMission();
+  const n=state.stages.length;
+  const cv=computeVehicle();
+  // thrust per stage (kN) → relative bar scale across the stack
+  const thrusts=state.stages.map(s=>{ const e=ENGINES[s.eng]; return e?e.thrustVac*s.count:0; });
+  const maxThrust=Math.max(1, ...thrusts);
   state.stages.forEach((st,i)=>{
     const sm=stageMasses(st);
+    const eng=ENGINES[st.eng]||{};
+    const collapsed=!!collapsedStages[i];
     const opts=Object.values(ENGINES).filter(e=>state.unlocked[e.id] && !e.transferOnly)
       .map(e=>`<option value="${e.id}" ${e.id===st.eng?'selected':''}>${e.name} · ${e.prop} · Isp ${e.ispVac}s</option>`).join('');
-    const div=document.createElement('div'); div.className='stage';
+    const dv=(cv&&cv.stageDv&&cv.stageDv[i]!=null)?fI(cv.stageDv[i]):'—';
+    const thrustPct=Math.round(thrusts[i]/maxThrust*100);
+    const div=document.createElement('div'); div.className='stage stage-card'+(collapsed?' collapsed':'');
+    div.setAttribute('ondragover','stageDragOver(event)');
+    div.setAttribute('ondragleave','stageDragLeave(event)');
+    div.setAttribute('ondrop',`stageDrop(event,${i})`);
     div.innerHTML=`
       <div class="stage-head">
-        <span class="label">STAGE ${i+1}${i===0?' · booster':''}</span>
-        <button class="btn x danger" onclick="removeStage(${i})" ${state.stages.length<=1?'disabled':''}>×</button>
+        <span class="grip" draggable="true" ondragstart="stageDragStart(event,${i})" ondragend="stageDragEnd()" title="Drag to reorder">⠿</span>
+        <button class="stage-toggle" onclick="toggleStageCollapse(${i})" title="${collapsed?'Expand':'Collapse'}">${collapsed?'▸':'▾'}</button>
+        <span class="label">STAGE ${i+1}</span>
+        <span class="stage-role">${stageRole(i,n)}</span>
+        <span class="stage-chip" title="${eng.name||''} · ${eng.prop||''}">🚀 ${eng.prop||'—'}</span>
+        <span style="flex:1"></span>
+        <span class="stage-dv">Δv <b class="num">${dv}</b> m/s</span>
+        <button class="btn x danger" onclick="removeStage(${i})" ${n<=1?'disabled':''}>×</button>
       </div>
-      <div class="row"><label>Engine</label><select onchange="setEngine(${i},this.value)" style="flex:1">${opts}</select></div>
-      <div class="row"><label>Count</label>
-        <div class="stepper"><button onclick="setCount(${i},-1)">−</button><span class="val">${st.count}</span><button onclick="setCount(${i},1)">+</button></div>
-        <span class="dim" style="font-size:11px">more engines = more thrust, more failure points</span></div>
-      <div class="row"><label>Propellant</label>
-        <input type="range" min="0.1" max="800" step="1" value="${st.prop}" oninput="setProp(${i},this.value)">
-        <input type="number" min="0.1" max="1000" step="0.1" value="${st.prop.toFixed(1)}" style="width:74px" onchange="setProp(${i},this.value)"><span class="muted" style="font-size:11px">t</span></div>
-      <div class="stage-stats">
-        <span class="ss">dry <b>${sm.dry.toFixed(2)} t</b></span>
-        <span class="ss">prop <b>${st.prop.toFixed(1)} t</b></span>
-        <span class="ss">wet <b>${sm.wet.toFixed(2)} t</b></span>
-        <span class="ss">Δv <b class="num">${fI(computeVehicle().stageDv[i])} m/s</b></span>
-      </div>
-      ${i===0?recoveryStageHTML(curM):''}`;
+      <div class="stage-thrust" title="Stage thrust ${fI(thrusts[i])} kN (vac)"><div class="stage-thrust-fill" style="width:${thrustPct}%"></div><span class="stage-thrust-lbl">${fI(thrusts[i])} kN${st.count>1?` · ${st.count}×`:''}</span></div>
+      <div class="stage-body">
+        <div class="row"><label>Engine</label><select onchange="setEngine(${i},this.value)" style="flex:1">${opts}</select></div>
+        <div class="row"><label>Count</label>
+          <div class="stepper"><button onclick="setCount(${i},-1)">−</button><span class="val">${st.count}</span><button onclick="setCount(${i},1)">+</button></div>
+          <span class="dim" style="font-size:11px">more engines = more thrust, more failure points</span></div>
+        <div class="row"><label>Propellant</label>
+          <input type="range" min="0.1" max="800" step="1" value="${st.prop}" oninput="setProp(${i},this.value)">
+          <input type="number" min="0.1" max="1000" step="0.1" value="${st.prop.toFixed(1)}" style="width:74px" onchange="setProp(${i},this.value)"><span class="muted" style="font-size:11px">t</span></div>
+        <div class="stage-stats">
+          <span class="ss">dry <b>${sm.dry.toFixed(2)} t</b></span>
+          <span class="ss">prop <b>${st.prop.toFixed(1)} t</b></span>
+          <span class="ss">wet <b>${sm.wet.toFixed(2)} t</b></span>
+          <span class="ss">Isp <b>${eng.ispVac||'—'} s</b></span>
+        </div>
+        ${i===0?recoveryStageHTML(curM):''}
+      </div>`;
     box.appendChild(div);
   });
-  $('addStage').disabled = state.stages.length>=3;
+  $('addStage').disabled = n>=3;
 }
 
 function ensureBoosterEng(){
@@ -7952,7 +8071,8 @@ function renderVehiclePreview(){
   const spec=currentVehicleSpec();
   const eng=state.stages.reduce((a,s)=>a+s.count,0);
   const el=$('vehicleLabel');
-  if(el) el.innerHTML=`${state.stages.length} stage${state.stages.length>1?'s':''} · ${eng} engine${eng>1?'s':''}${boostersFitted()?` · ${state.boosters.count} booster${state.boosters.count>1?'s':''}`:''}${spec.transferProp>0?' · transfer stage':''} · ${spec.crewed?'crew capsule':'payload fairing'}`;
+  const nm=(curLivery().name||'').trim();
+  if(el) el.innerHTML=`${nm?`<div style="font-weight:600;color:var(--ink);font-size:13px;margin-bottom:2px">${nm}</div>`:''}${state.stages.length} stage${state.stages.length>1?'s':''} · ${eng} engine${eng>1?'s':''}${boostersFitted()?` · ${state.boosters.count} booster${state.boosters.count>1?'s':''}`:''}${spec.transferProp>0?' · transfer stage':''} · ${spec.crewed?'crew capsule':'payload fairing'}`;
   // Slice 2: prefer the Phaser-hosted preview scene; fall back to the plain 2D canvas.
   if(phaserOK() && startVehPreview(spec)) return;
   const cv=$('vehiclePreview'); if(!cv || !cv.getContext) return;
@@ -8017,6 +8137,22 @@ function startVehPreview(spec){
 }
 function pauseVehGame(){ if(vehGame){ try{ vehGame.scene.pause('vehprev'); }catch(e){} } }
 function resumeVehGame(){ if(vehGame){ try{ vehGame.scene.resume('vehprev'); }catch(e){} } }
+// Presentation: the primary Build & Launch CTA sits directly under the rocket on the
+// bench (in #vehicleCard), not in the right-rail readout. Same gate (canLaunch) + same
+// label logic as the readout used to carry.
+function launchButtonLabel(m,v){
+  if(!m) return '■ Build & Launch';
+  if(!m.profile) return m.tanker?'■ Launch Tanker':(v.crewed?'■ Build & Launch (crewed)':'■ Build & Launch');
+  return '■ Build & Launch mission';
+}
+function renderBenchLaunch(){
+  const host=$('benchLaunch'); if(!host) return;
+  let m,v,sim,chk;
+  try{ m=curMission(); if(!m){ host.innerHTML=''; return; } v=computeVehicle(); sim=m.profile?simulateMission(m):null; chk=canLaunch(v,m,sim); }
+  catch(e){ host.innerHTML=''; return; }
+  host.innerHTML=`<button class="launch" style="width:100%" onclick="launch()" ${chk.ok?'':'disabled'}>${chk.ok?launchButtonLabel(m,v):'Launch unavailable'}</button>
+    ${chk.ok?'<div class="dim" style="font-size:11px;text-align:center;margin-top:4px">or press <b>Space</b></div>':`<div class="flag dim" style="color:var(--dim);margin-top:4px">${chk.why}</div>`}`;
+}
 function renderReadout(){
   const m=curMission();
   if(m.profile){ renderProfileReadout(m); return; }
@@ -8079,8 +8215,7 @@ function renderReadout(){
 
     ${flags}
     ${benchQueueHTML(m)}
-    <button class="launch" onclick="launch()" ${chk.ok?'':'disabled'}>${chk.ok?(m.tanker?'■ Launch Tanker':(v.crewed?'■ Build & Launch (crewed)':'■ Build & Launch')):'Launch unavailable'}</button>
-    ${chk.ok?'<div class="dim" style="font-size:11px;text-align:center;margin-top:4px">or press <b>Space</b></div>':`<div class="flag dim" style="color:var(--dim)">${chk.why}</div>`}`;
+    <div class="dim" style="font-size:11px;text-align:center;margin-top:6px">▸ Build &amp; Launch is under the rocket</div>`;
 }
 
 function renderProfileReadout(m){
@@ -8144,8 +8279,7 @@ function renderProfileReadout(m){
 
     ${flags}
     ${benchQueueHTML(m)}
-    <button class="launch" onclick="launch()" ${chk.ok?'':'disabled'}>${chk.ok?'■ Build & Launch mission':'Launch unavailable'}</button>
-    ${chk.ok?'<div class="dim" style="font-size:11px;text-align:center;margin-top:4px">or press <b>Space</b></div>':`<div class="flag dim" style="color:var(--dim)">${chk.why}</div>`}`;
+    <div class="dim" style="font-size:11px;text-align:center;margin-top:6px">▸ Build &amp; Launch is under the rocket</div>`;
 }
 
 /* ---------- Solar System map ---------- */
