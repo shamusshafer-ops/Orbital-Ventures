@@ -167,6 +167,14 @@
   .exec-stat{display:flex;flex-direction:column}
   .exec-stat .k{font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted)}
   .exec-stat .v{font-family:var(--mono);font-size:20px;font-weight:700}
+  /* #28: dashboard trend sparklines */
+  .exec-sparks{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:12px;margin-top:10px;border-top:1px solid var(--line);padding-top:10px}
+  .spark-cell{min-width:0}
+  .spark-k{font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:3px}
+  /* Presentation pass: Design Bench centerpiece — rocket preview beside the editor */
+  .bench-stage{display:grid;grid-template-columns:300px minmax(0,1fr);gap:16px;align-items:start}
+  .bench-rocket{position:sticky;top:8px}
+  @media(max-width:900px){ .bench-stage{grid-template-columns:1fr} .bench-rocket{position:static} }
   /* recommended-action hero card */
   .rec-card{border:1px solid var(--ignite);border-radius:8px;padding:12px;background:linear-gradient(180deg,rgba(245,166,35,.10),rgba(245,166,35,.02))}
   .rec-card .lbl{font-size:10px;text-transform:uppercase;letter-spacing:.16em;color:var(--ignite)}
@@ -354,24 +362,35 @@
   </div>
 
   <div id="benchView" class="hidden">
-    <div>
-      <div class="card" id="vehicleFamilyCard"></div>
-      <div class="card hidden" id="archCard"></div>
-      <div class="card">
-        <h2>Vehicle — Stages (bottom → top)</h2>
-        <div id="stages"></div>
-        <button class="btn ghost" id="addStage" onclick="addStage()">+ Add stage</button>
-        <span class="dim" style="font-size:11px;margin-left:8px">Lower stages carry everything above them — that's the tax staging pays.</span>
+    <div class="bench-stage">
+      <!-- #27/Presentation: the rocket is the bench centerpiece — moved out of the cramped
+           right rail into a prominent sticky column at the center of the build stage. -->
+      <div class="card bench-rocket" id="vehicleCard" style="text-align:center">
+        <div class="mission-tag" style="text-align:left">Your vehicle</div>
+        <div id="vehHost" style="display:none;width:100%;max-width:300px;margin:8px auto 0;aspect-ratio:240/360"></div>
+        <canvas id="vehiclePreview" width="240" height="360" style="max-width:100%;height:auto;display:block;margin:8px auto 0"></canvas>
+        <div id="vehicleLabel" class="dim" style="font-size:11px;margin-top:8px"></div>
       </div>
-      <div class="card hidden" id="boostersCard"></div>
-      <div class="card hidden" id="transferCard"></div>
-      <div class="card hidden" id="landerCard"></div>
-      <div class="card hidden" id="crewCard"></div>
-      <div class="card hidden" id="powerCard"></div>
-      <div class="card hidden" id="windowCard"></div>
-      <div class="card hidden" id="routesCard"></div>
+      <div class="bench-editor">
+        <div class="card" id="vehicleFamilyCard"></div>
+        <div class="card hidden" id="archCard"></div>
+        <div class="card">
+          <h2>Vehicle — Stages (bottom → top)</h2>
+          <div id="stages"></div>
+          <button class="btn ghost" id="addStage" onclick="addStage()">+ Add stage</button>
+          <span class="dim" style="font-size:11px;margin-left:8px">Lower stages carry everything above them — that's the tax staging pays.</span>
+        </div>
+        <div class="card hidden" id="boostersCard"></div>
+        <div class="card hidden" id="transferCard"></div>
+        <div class="card hidden" id="landerCard"></div>
+        <div class="card hidden" id="crewCard"></div>
+        <div class="card hidden" id="powerCard"></div>
+        <div class="card hidden" id="windowCard"></div>
+        <div class="card hidden" id="routesCard"></div>
+      </div>
     </div>
-    <!-- vehicle preview + readout relocated to the persistent right rail in slice 3 -->
+    <!-- readout stays in the persistent right rail (slice 3); the rocket preview now lives
+         in the center stage above. -->
   </div>
 
   <!-- Missions tab retired in slice 5 — Contracts live in the right-rail "Mission Control"
@@ -386,7 +405,7 @@
       <h2>Technology Tree — capital + time into capability</h2>
       <p class="muted" style="font-size:12px;margin:-4px 0 10px">Each node unlocks an engine, material, or capability. Lines show prerequisites; dashed lines need a mission flown. Click a node to inspect it.</p>
       <div id="techAction" style="margin-bottom:10px"></div>
-      <div id="techTree" style="overflow-x:auto;overflow-y:hidden"></div>
+      <div id="techTree" style="overflow:auto;max-height:70vh" tabindex="0"></div>
     </div>
     <!-- researchDetail (node inspector) relocated to the persistent right rail in slice 3 -->
     <div class="card" id="divisionsCard" style="margin-top:14px"></div>
@@ -424,13 +443,9 @@
            #appShell.has-right. Element ids are unchanged so the render fns are untouched. -->
       <div id="railCommand" class="rail-panel adv-only hidden"><div id="ccRight"></div></div>
       <div id="railBench" class="rail-panel hidden">
-        <div class="card" id="vehicleCard" style="text-align:center">
-          <div class="mission-tag" style="text-align:left">Your vehicle</div>
-          <div id="vehHost" style="display:none;width:240px;max-width:100%;margin:6px auto 0;aspect-ratio:240/360"></div>
-          <canvas id="vehiclePreview" width="240" height="360" style="max-width:100%;height:auto;display:block;margin:6px auto 0"></canvas>
-          <div id="vehicleLabel" class="dim" style="font-size:11px;margin-top:6px"></div>
-        </div>
-        <div class="card" id="readoutCard" style="margin-top:14px"></div>
+        <!-- vehicle preview moved to the bench center stage (Presentation pass); the
+             readout stays here in the contextual right rail. -->
+        <div class="card" id="readoutCard"></div>
       </div>
       <div id="railMap" class="rail-panel hidden">
         <div class="card" id="bodyCard"></div>
@@ -879,6 +894,9 @@ const MATERIAL_CONTRACT_PREMIUM = 0.05;// pay +5% over spot to lock the price in
 const MATERIAL_STOCK_UNIT_BUILD = 1.0; // calibrated against a $1M reference build (share*spot = $M/unit)
 const MATERIAL_STOCK_CAP = 24;          // can't pile more than 24 builds' worth in the yard
 const MATERIAL_HISTORY_LEN = 24;        // months of spot-price history retained for the sparkline
+const METRIC_HISTORY_LEN = 24;          // #28: months of core-metric history retained for dashboard sparklines
+// #28: per-metric monthly trend buffers (capital/rep/support/success-rate/science)
+function defaultMetricHist(){ return {money:[], rep:[], support:[], success:[], science:[]}; }
 
 /* ---------- Mission architectures (how you get there is a strategy) ----------
    For supported missions, the player picks an architecture that reshapes the
@@ -1312,6 +1330,7 @@ function newGame(difficulty){
     production:{bays:1,foundry:1,pads:1,qa:1}, // #7: manufacturing capacity — leveled production lines
     lastMonth:{revenue:0,expenses:0,net:0,flights:0}, // #18: rolling ops-summary ledger
     history:{}, // #18: missionId -> completion year, for the Home timeline
+    metricHist:defaultMetricHist(), // #28: monthly trend buffers for dashboard sparklines
     ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
     facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
     architectures:{}, science:0,
@@ -1639,8 +1658,20 @@ function advance(months){
     checkDivisionBreakthroughs(); // #5: division-driven R&D breakthroughs (sibling of #9)
     checkResearchSetback(); // #26: experimental research failures (negative sibling of breakthroughs)
     checkEvents();
+    pushMetricHistory(); // #28: snapshot this month's core metrics for the dashboard sparklines
   }
   if(state.money<0 && !state.over){ gameOver(); }
+}
+// #28: append the current core-metric values to their trend buffers (capped at METRIC_HISTORY_LEN).
+function pushMetricHistory(){
+  if(!state.metricHist) state.metricHist=defaultMetricHist();
+  const h=state.metricHist;
+  const push=(key,v)=>{ if(!Array.isArray(h[key])) h[key]=[]; h[key].push(round2(v)); if(h[key].length>METRIC_HISTORY_LEN) h[key].splice(0, h[key].length-METRIC_HISTORY_LEN); };
+  push('money', state.money);
+  push('rep', state.rep);
+  push('support', publicSupport());
+  push('success', state.flights>0 ? 100*state.successes/state.flights : 0);
+  push('science', state.science||0);
 }
 /* ---------- ambient events (economy + rival expansion) ---------- */
 function econPayoutMult(){ return (state.econEvents||[]).reduce((a,e)=>a*(e.payoutMult||1),1); }
@@ -2173,6 +2204,33 @@ function materialSparklineSVG(key, width, height){
     <path d="${path}" fill="none" stroke="${color}" stroke-width="1.2" stroke-linejoin="round" stroke-linecap="round"/>
     ${last}
   </svg>`;
+}
+// #28: a generic auto-scaling sparkline for any numeric series (dashboard trend lines).
+// Auto-fits to the data's own min/max (optionally clamped via opts.min/opts.max, e.g. 0..100
+// for a percentage), draws a flat centred line for empty/constant series, and tints the
+// stroke green when the series ended up rising vs its start, red when falling.
+function sparklineSVG(points, opts){
+  opts=opts||{};
+  const width=opts.width||124, height=opts.height||30, pad=3;
+  let pts=(points&&points.length)?points.slice():[0];
+  if(pts.length===1) pts=[pts[0],pts[0]]; // a single sample → a flat line, not a dot
+  let lo=Math.min.apply(null,pts), hi=Math.max.apply(null,pts);
+  if(opts.min!=null) lo=Math.min(lo,opts.min);
+  if(opts.max!=null) hi=Math.max(hi,opts.max);
+  if(hi-lo<1e-9){ hi=lo+1; lo=lo-1; }              // constant series → centre the line
+  const w=width-pad*2, h=height-pad*2, range=hi-lo;
+  const xFor=i=> pad + (i/(pts.length-1))*w;
+  const yFor=v=> pad + h - ((v-lo)/range)*h;
+  const path=pts.map((v,i)=>(i===0?'M':'L')+xFor(i).toFixed(1)+' '+yFor(v).toFixed(1)).join(' ');
+  const cur=pts[pts.length-1], first=pts[0];
+  const color=opts.color || (cur>=first?'var(--ok)':'var(--bad)');
+  const area=`<path d="${path} L ${xFor(pts.length-1).toFixed(1)} ${(height-pad).toFixed(1)} L ${xFor(0).toFixed(1)} ${(height-pad).toFixed(1)} Z" fill="${color}" opacity="0.10"/>`;
+  const dot=`<circle cx="${xFor(pts.length-1).toFixed(1)}" cy="${yFor(cur).toFixed(1)}" r="1.9" fill="${color}"/>`;
+  return `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" style="display:block;width:100%" preserveAspectRatio="none" aria-label="${opts.label||'trend'}">${area}<path d="${path}" fill="none" stroke="${color}" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/>${dot}</svg>`;
+}
+// #28: one labelled sparkline cell for the dashboard trend strip.
+function metricSpark(label, arr, opts){
+  return `<div class="spark-cell"><div class="spark-k">${label}</div>${sparklineSVG(arr||[], opts)}</div>`;
 }
 // #7 visualization #1: cadence load gauge — horizontal bar of recent-build load
 // vs. sustainable capacity, with the 100% surcharge threshold marked. Visual scale
@@ -3721,7 +3779,7 @@ function hideModal(){activeModal=null;$('modal').classList.add('hidden');} // sl
 
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=21; // v21: #26 — research-setback reliability debt (state.relDebt)
+const SAVE_VERSION=22; // v22: #28 — core-metric trend buffers (state.metricHist)
 function saveGame(){
   try{
     const payload={v:SAVE_VERSION, ts:Date.now(), state:JSON.parse(JSON.stringify(state))};
@@ -3761,7 +3819,7 @@ function loadGame(){
       staff:[], assignedAstronaut:null,
       vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, rehearsal:false, techLevel:{}, divisions:{}, breakthroughCooldown:3, relDebt:0, powerSource:'solar',
       recentBuilds:[], materials:defaultMaterialsState(),
-      buildQueue:[], hangar:[], orderSeq:0, uiLayer:'advanced'
+      buildQueue:[], hangar:[], orderSeq:0, uiLayer:'advanced', metricHist:defaultMetricHist()
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -3814,7 +3872,7 @@ function autoLoad(){
       staff:[], assignedAstronaut:null,
       vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, rehearsal:false, techLevel:{}, divisions:{}, breakthroughCooldown:3, relDebt:0, powerSource:'solar',
       recentBuilds:[], materials:defaultMaterialsState(),
-      buildQueue:[], hangar:[], orderSeq:0, uiLayer:'advanced'
+      buildQueue:[], hangar:[], orderSeq:0, uiLayer:'advanced', metricHist:defaultMetricHist()
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -3873,6 +3931,24 @@ document.addEventListener('keydown',function(e){
   }
   if(!animState) return;
   if(e.key==='Enter'){ e.preventDefault(); if(animState.held){ dismissAnim(); } else { cycleAnimSpeed(); } }
+});
+// Presentation pass: tech-tree keyboard navigation — only on the R&D scene, never while typing.
+// Arrow keys pan the scroll pane; +/-/0 zoom.
+document.addEventListener('keydown',function(e){
+  if(!state || state.tab!=='rnd' || animState) return;
+  const tag=(e.target&&e.target.tagName)||'';
+  if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT') return;
+  const el=$('techTree'); if(!el) return;
+  const STEP=64;
+  switch(e.key){
+    case 'ArrowLeft':  el.scrollLeft-=STEP; e.preventDefault(); break;
+    case 'ArrowRight': el.scrollLeft+=STEP; e.preventDefault(); break;
+    case 'ArrowUp':    el.scrollTop-=STEP;  e.preventDefault(); break;
+    case 'ArrowDown':  el.scrollTop+=STEP;  e.preventDefault(); break;
+    case '+': case '=': zoomTech(1.15); e.preventDefault(); break;
+    case '-': case '_': zoomTech(1/1.15); e.preventDefault(); break;
+    case '0': resetTechZoom(); e.preventDefault(); break;
+  }
 });
 // fire a launch from the keyboard, only when one is actually available (mirrors the Launch button gate)
 function tryLaunchHotkey(){
@@ -7057,6 +7133,7 @@ function renderExecOverview(){
   const fam=activeFamily();
   const vehName = (fam&&fam.name) ? fam.name : (curMission()?curMission().name:'—');
   const ar=s.research;
+  const mh=state.metricHist||{}; // #28: dashboard trend buffers
   $('execOverview').innerHTML=`
     <div class="cc-hero">
       <div>
@@ -7076,6 +7153,13 @@ function renderExecOverview(){
       <div class="exec-stat"><span class="k">Staff</span><span class="v">${(state.staff||[]).length}</span></div>
       <div class="exec-stat"><span class="k">Flights</span><span class="v">${s.flights}${s.successRate!=null?` · ${s.successRate}%`:''}</span></div>
       <div class="exec-stat"><span class="k">Public Support</span><span class="v" style="color:${s.moodColor}">${s.support}% <span style="font-size:11px;font-weight:400">${s.mood}</span></span></div>
+    </div>
+    <div class="exec-sparks adv-only">
+      ${metricSpark('Capital', mh.money, {color:'var(--ignite)', label:'capital trend'})}
+      ${metricSpark('Reputation', mh.rep, {color:'#6db3ff', label:'reputation trend'})}
+      ${metricSpark('Public Support', mh.support, {min:0, max:100, color:'#caa3ff', label:'public support trend'})}
+      ${metricSpark('Launch Success', mh.success, {min:0, max:100, color:'var(--ok)', label:'launch success-rate trend'})}
+      ${metricSpark('Science', mh.science, {color:'var(--readout)', label:'science trend'})}
     </div>
     <div style="display:flex;gap:22px;flex-wrap:wrap;margin-top:10px;font-size:12px;border-top:1px solid var(--line);padding-top:8px">
       <div><span class="dim">Active R&amp;D:</span> ${ar?`<b>${ar.name}</b> <span class="dim">(${ar.monthsLeft} mo left)</span>`:'<span class="dim">none — start a project</span>'}</div>
@@ -9113,6 +9197,14 @@ function techLayout(){
   const W=D.PADX+(maxTier+1)*D.COLW+14, H=laneTop-D.LANEGAP+D.PADTOP;
   return {nodes, lanes, W, H, NW:D.NW, NH:D.NH};
 }
+// Presentation pass: tech-tree zoom. techZoom scales the rendered SVG (the viewBox is
+// unchanged, so coordinates/onclick stay correct); the #techTree pane scrolls to reach
+// off-screen nodes. Driven by the toolbar buttons, wheel-to-zoom, and the +/-/0 keys.
+let techZoom=1;
+const TECH_ZOOM_MIN=0.5, TECH_ZOOM_MAX=2.4;
+function setTechZoom(z){ techZoom=clampA(z, TECH_ZOOM_MIN, TECH_ZOOM_MAX); renderTechTree(); }
+function zoomTech(factor){ setTechZoom(techZoom*factor); }
+function resetTechZoom(){ setTechZoom(1); }
 function renderTechTree(){
   const el=$('techTree'); if(!el) return;
   const L=techLayout(), NW=L.NW, NH=L.NH;
@@ -9148,8 +9240,23 @@ function renderTechTree(){
     </g>`;
   });
   const legend=TRACKS.map(t=>`<span style="display:inline-flex;align-items:center;gap:4px;margin-right:12px;font-size:11px;color:var(--muted)"><span style="width:10px;height:10px;border-radius:2px;background:${t.color};display:inline-block"></span>${t.label}</span>`).join('');
-  el.innerHTML=`<div style="margin-bottom:8px">${legend}</div>
-    <svg viewBox="0 0 ${L.W} ${L.H}" width="${L.W}" height="${L.H}" xmlns="http://www.w3.org/2000/svg" style="max-width:none">${bands}${edges}${nodes}</svg>`;
+  const zw=(L.W*techZoom).toFixed(0), zh=(L.H*techZoom).toFixed(0);
+  el.innerHTML=`<div style="position:sticky;top:0;z-index:2;background:var(--panel);display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:0 2px 8px">
+      <div style="flex:1;min-width:120px">${legend}</div>
+      <div style="display:flex;align-items:center;gap:4px">
+        <button class="btn ghost" style="padding:2px 9px" onclick="zoomTech(1/1.2)" title="Zoom out (−)">−</button>
+        <span class="dim" style="font-size:11px;width:40px;text-align:center">${Math.round(techZoom*100)}%</span>
+        <button class="btn ghost" style="padding:2px 9px" onclick="zoomTech(1.2)" title="Zoom in (+)">+</button>
+        <button class="btn ghost" style="padding:2px 9px;font-size:11px" onclick="resetTechZoom()" title="Reset (0)">Reset</button>
+        <span class="dim" style="font-size:10px;margin-left:4px">scroll = zoom · arrows = pan</span>
+      </div>
+    </div>
+    <svg viewBox="0 0 ${L.W} ${L.H}" width="${zw}" height="${zh}" xmlns="http://www.w3.org/2000/svg" style="max-width:none;display:block">${bands}${edges}${nodes}</svg>`;
+  // wire wheel-to-zoom once (the pane div persists across re-renders; only innerHTML changes)
+  if(!el._zoomWired){
+    el._zoomWired=true;
+    el.addEventListener('wheel', function(e){ e.preventDefault(); zoomTech(e.deltaY<0?1.12:1/1.12); }, {passive:false});
+  }
 }
 function selectResearch(id){ state.selectedResearch=id; render(); }
 // hover tooltip: describe a tech, its benefits/modifiers, and a real-world example

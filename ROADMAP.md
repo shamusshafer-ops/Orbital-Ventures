@@ -2374,6 +2374,141 @@ right-rail mini + modal; **Personnel** → hub building drill / modal;
 shell (persistent left rail with advisor/objectives, contextual right rail, hub-building
 drills, deep-view modals, and the ⚙ menu). Headless suite green at 104/104.
 
+## Visual & UX Review — Presentation Pass (2026-06-25)
+
+Source: a third external review (2026-06-25), framing the game as "already more
+advanced than most hobby space sims" (UI 7.5 · Presentation 7 · Info-architecture
+8 · Long-term scalability 9 · **Visual immersion 6**) and arguing the next leap is
+**presentation** — making it *feel* like a commercial strategy game rather than
+"simulation software." Its headline picks: living Command Center, a persistent
+"what next?" panel, a visual rocket-assembly bench, lower info density, facility
+growth visuals, trend graphs, and more animation.
+
+**Reconciliation note (same discipline as the Strategic Vision and Evaluation
+Review imports):** this review **landed one day after the Mission Control Shell
+epic shipped** (2026-06-24) and reads the game as earlier-stage than it is —
+several of its top recommendations are **already shipped** (often *by* that epic,
+by **#23** progressive disclosure, or by **#18** the living Cape scene). The table
+maps each of its 12 points to current code reality; genuinely-new work is extracted
+as numbered arc items continuing the **#27+** list, or folded where it already
+lives.
+
+**Decisions taken with the user (2026-06-25):**
+- **Folded in with a recommended priority** (unlike the prior two capture-only
+  passes). Sequencing below is a *recommendation*, not a commitment — the in-flight
+  R&D / boosters work is not re-prioritized.
+
+### Reconciliation table (review's 12 points ↔ code reality)
+
+| Review point | Status vs. shipped code | New work & where it's tracked |
+| --- | --- | --- |
+| **1 · Living Command Center** (pads, cranes, vehicles, smoke, ships, day/night, weather; facilities visually evolve) | **Largely shipped** — **#18** animated isometric Cape (crawler-transporter, truck, drifting boat, growing site, beacons/lit windows) + Phaser conversion + scene-realism overhaul + **#17** visible facilities | Weather + day/night/seasons + launch-rollout choreography already fold into **#18/#20** (prior review). **NEW nuance:** distinct early→mid→late facility *art tiers* (1 pad → multi-pad → spaceport) → folds into **#18/#17**. |
+| **2 · Reduce density ~30% / progressive disclosure** | **Shipped** — **#23** Basic/Advanced/Expert layers **and** the Shell HUD (date·capital·rep·science·advance) + ⚙ menu absorbing utilities | Done. |
+| **3 · Persistent "Next Goal" hero panel** (reqs ✓/✗, rewards, unlocks) | **Shipped** — **#23** slice 3 Basic focal card (`recommendedAction()`: why + reward + success-chance) + the Mission Control Advisor ✓/✗ checklist, promoted to the **always-on left rail** (Shell slice 4) | Minor nuance: surface "unlocks" explicitly in the card → folds into **#23/#18**. |
+| **4 · Slide-out drawers / inspector flyouts** | **Shipped in substance** — the Shell's contextual right rail (reskins per scene), hub drill-ins, and deep-view modals replaced the crowded sibling panels | Only the literal *slide animation* is unbuilt → **#31** (microanimations). |
+| **5 · Scenes 70% visual / dominant centerpiece each** | **Shipped** — the Shell makes all 4 scenes Phaser center viewports (Cape hub, rocket preview, tech swimlane, orbital map) with text in rails | Done. |
+| **6 · Design Bench as "rocket factory"** (draggable stacked stage cards, engine icons, tank art, thrust bars) | **Not started** — a Phaser rocket *preview* exists, but the *editor* is form-like | **NEW — the review's strongest net-new idea.** → **new arc item #27**. |
+| **7 · Systematic color-coding language** (econ=green, eng=blue, research=purple, military=red, exploration=orange, crew=cyan, warn=yellow) | Ad-hoc color only (sparklines, cadence ok/warn/bad, rival reach) — no consistent domain palette | **NEW (polish).** → **new arc item #30**. |
+| **8 · Sparklines/graphs everywhere** (capital, reputation, public support, launch-success, R&D) | **Partly shipped** — `materialSparklineSVG` + a history-buffer pattern already power material-price sparklines | **NEW but cheap** (reuses that plumbing) → **new arc item #28**. |
+| **9 · Icon-first nav + keyboard (ESC/TAB)** | Icon-first nav **shipped** — Shell rail ⌂ ✎ ⚛ ☉ via the `SCENES` registry `{tab,label,icon}` | **NEW:** keyboard shortcuts (ESC=back, TAB=next scene) → **new arc item #32** (small). |
+| **10 · Solar System layers** (orbits, transfer windows, colonies, resources, traffic, rival missions) + many moving craft | **Mostly tracked** — **#13** map-as-planner (Δv, rival-reach + facility markers) + **#21** persistent assets/logistics | **NEW nuance:** a *layer-toggle* control + transfer-window layer + spacecraft traffic → folds into **#13** (display) + **#21** (the assets). |
+| **11 · More motion / microanimations** (counter tweens, tech glow, success pulse, objective sparkle, news ticker) | Partly shipped — Phaser scene life, growing site, beacons; DOM-level microanimations absent | **NEW (polish)** → **new arc item #31** (includes the literal rail-drawer slide from #4). |
+| **12 · Flight & Ops log → collapsible filtered timeline + icons** | Log exists (persistent bottom strip) | **NEW:** filters (All/Launches/Research/Economy/Rivals/Crew/Infra) + per-entry icons + collapsible timeline → **new arc item #29**. |
+
+### New forward-arc items extracted from the review
+
+Continuing the #23–#26 numbering. All **[ ] not started**.
+
+- [ ] **27 · Visual stage-stack Design Bench** *(review #6)* — replace the form-like
+      stage editor with a **vertically-stacked, draggable card** assembly (payload →
+      upper → transfer → core → boosters), each card collapsible with engine icons,
+      fuel-tank art, and a thrust/Δv indicator — the KSP-VAB feel. Reuses the existing
+      `computeVehicle`/`stackPerformance` math and the Phaser rocket preview; the cards
+      are a new DOM front-end over the same stage config. Highest-value net-new item.
+      - **First step taken (2026-06-25):** the **rocket preview is now the bench
+        centerpiece** — moved out of the cramped right rail into a prominent sticky
+        column at the center of a new `.bench-stage` grid (`[300px | editor]`), with the
+        readout left in the right rail. Element ids (`vehicleCard`/`vehHost`/
+        `vehiclePreview`/`vehicleLabel`) unchanged, so `renderVehiclePreview`/`startVehGame`
+        are untouched; collapses to one column under 900px. The draggable stage-stack
+        cards themselves remain the bulk of this item.
+- [x] **28 · Sparkline dashboards on core metrics** *(review #8)* — extend the shipped
+      `materialSparklineSVG` + history-buffer pattern to **capital, reputation, public
+      support, launch-success rate, and science**, rendered as tiny inline SVGs on
+      the dashboard. Low effort, high perceived-quality return; `adv-only`-gated.
+      *(Built 2026-06-25.)* A generic, auto-scaling **`sparklineSVG(points, opts)`**
+      (fits to the data's own min/max, optionally clamped via `opts.min`/`opts.max` for
+      0–100 percentages, flat line for empty/constant series, green-up/red-down tint) +
+      a `metricSpark(label,arr,opts)` cell. New monthly trend buffers
+      **`state.metricHist`** (`{money,rep,support,success,science}`, seeded by
+      `defaultMetricHist()`), appended each month by **`pushMetricHistory()`** in the
+      `advance()` loop and capped at `METRIC_HISTORY_LEN` (24). `renderExecOverview`
+      gains an **`adv-only` `.exec-sparks`** strip of five labelled sparklines.
+      New save field `state.metricHist` (forward-compat default in both load paths +
+      newGame; **`SAVE_VERSION`→22**). Validated headlessly
+      (`ov-presentation.js`, 40/40): save-version, default shape, sparkline
+      empty/single/rising/falling/clamped/constant (no `NaN`), `pushMetricHistory`
+      append + success-rate math + cap, `advance()` snapshotting, the rendered strip
+      (5 svgs, labels), and autoLoad backfill of a legacy save.
+- [ ] **29 · Filtered Flight & Ops log timeline** *(review #12)* — turn the bottom log
+      into a collapsible timeline with category filters (All / Launches / Research /
+      Economy / Rivals / Crew / Infrastructure) and per-entry icons. Needs the existing
+      log entries tagged with a category at emit time.
+- [ ] **30 · Domain color-coding language** *(review #7)* — a consistent palette
+      (economy=green · engineering=blue · research=purple · military=red ·
+      exploration=orange · crew=cyan · warnings=yellow) applied as CSS custom properties
+      so every metric/panel reads its domain at a glance. Polish; pairs with #28's graphs.
+- [ ] **31 · UI microanimations pass** *(review #11, #4)* — counter tween-ups, newly-
+      unlocked-tech glow, mission-success pulse, completed-objective sparkle, a scrolling
+      news ticker, and the literal **slide animation** for the right-rail drawer. Pure
+      presentation polish over the now-stable Shell; feature-guard anything heavy.
+- [ ] **32 · Keyboard navigation** *(review #9)* — ESC = back/close-modal, TAB = next
+      scene, plus number keys for the 4 scene selectors. Small; builds on the Shell's
+      `setTab`/`closeLiveModal`/`SCENES` plumbing.
+      - **First slice taken (2026-06-25) — tech-tree zoom + arrow-key pan** *(review #5
+        "interactive tech web" + #9 keyboard)*: the Tech Tree is now **zoomable and
+        keyboard-navigable**. A module `techZoom` (0.5–2.4) scales the rendered SVG (the
+        viewBox is unchanged, so node `onclick`/coords stay exact) while the `#techTree`
+        pane (now `overflow:auto; max-height:70vh`, `tabindex="0"`) scrolls. Controls: a
+        sticky toolbar (− / % / + / Reset via `zoomTech`/`setTechZoom`/`resetTechZoom`),
+        wheel-to-zoom (wired once on the persistent pane), and a scene-scoped **keydown
+        handler** — arrow keys pan, `+`/`-` zoom, `0` resets — that only fires on the R&D
+        scene and never while typing. Validated in `ov-presentation.js` (zoom clamp/
+        multiply/reset, svg width scales with zoom, toolbar + hint present, `renderTechTree`/
+        `renderRnd` no-throw). Remaining #32 scope: ESC/TAB scene nav + number keys.
+
+### Folded into existing items (no new number)
+
+- **Facility art tiers** (early→mid→late: 1 pad → multi-pad → spaceport) (review #1) →
+  **#18** (scene) + **#17** (facilities).
+- **Weather / day-night / seasons / launch-rollout choreography** (review #1) → **#18/#20**
+  (already folded by the Evaluation Review).
+- **Map layer-toggles + transfer-window layer + spacecraft traffic** (review #10) →
+  **#13** (display) + **#21** (the assets/logistics model).
+- **"Unlocks" line on the next-goal card** (review #3) → **#23/#18**.
+
+### Recommended priority (recommendation, not a commitment)
+
+The review's "visual immersion 6" is the lowest score, so the payoff is real — but
+most of the *structural* asks already shipped. The remaining net-new work is mostly
+**presentation polish**, best sequenced by value-per-effort:
+
+1. **#28 Sparklines** — ✓ **done 2026-06-25** (the predicted cheapest win).
+2. **#27 Visual stage-stack Bench** — the biggest *gameplay-feel* upgrade and the
+   review's own top pick; larger but self-contained over existing math. *Rocket-as-
+   centerpiece relocation done 2026-06-25; draggable stage cards remain.*
+3. **#29 Filtered log timeline** — moderate, high day-to-day usefulness.
+4. **#30 Color-coding** + **#31 microanimations** — polish layer; do after #27/#28 so
+   they style real content. #30 pairs naturally with #28's graphs.
+5. **#32 Keyboard nav** — small, drop in whenever convenient.
+
+> **Incorporation note (2026-06-25):** of the review's 12 points, **#2/#3/#4/#5** are
+> essentially shipped (Mission Control Shell + #23 + #18); **#1/#9/#10** ship through
+> existing items with small nuances; genuinely-new buckets become arc items **#27–#32**.
+> The review's "make it *feel* commercial" thesis is sound, but the structural half of
+> it was delivered by the Shell epic the day before — what's left is a focused
+> presentation-polish track led by **#28** (cheap) and **#27** (highest-impact).
+
 ## Repo
 
 `shamusshafer-ops/Orbital-Ventures` (private), branch `main`.
