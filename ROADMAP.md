@@ -2246,10 +2246,25 @@ right-rail mini + modal; **Personnel** → hub building drill / modal;
       registry keys/helpers correct, rail grouped with scenes before the Operations
       divider and panels after, scene buttons carry `class="scene"`, all 11 `setTab`
       routes still throw nothing, no `*View` orphaned. Browser check pending.
-- [ ] **Slice 3 — Contextual right rail.** Consolidate today's per-view sidebars
-      (`ccRight` alerts/news, bench `.readout`, map `bodyCard`+activity, rnd
-      `researchDetail`) into **one persistent right rail** that reskins by scene.
-      Validate: each scene shows its correct context panel; uiLayer gating holds.
+- [x] **Slice 3 — Contextual right rail.** *(Built 2026-06-24.)* Relocated the four
+      per-view sidebars into the persistent `#railRight` as per-scene `.rail-panel`
+      wrappers — `railCommand` (`ccRight` Alerts/News), `railBench` (the vehicle
+      preview `vehHost`/`vehiclePreview` + `readoutCard`), `railMap` (`bodyCard` +
+      `mapActivityCard`), `railRnd` (`researchDetail`). **Every element id is
+      unchanged**, so the render functions (`renderCommandCenter`, `renderReadout`,
+      `renderVehiclePreview`, `renderMap`, `renderRnd`) are untouched; the Phaser
+      vehicle-preview host moves with its `vehHost` div (no rebuild). `render()` now
+      shows only the active scene's panel and toggles `#appShell.has-right` to
+      reserve/collapse the 300px track (`.shell:not(.has-right) .rail-right` hides it
+      on panel scenes). The vacated views reflow to full width — `commandView`'s
+      `cc-cols` drops to two columns, `benchView` loses its `1fr 380px` grid,
+      `mapView` loses its inner grid/readout. **uiLayer gating preserved**: the
+      command panel is `adv-only`, and `render()` collapses the rail in Basic so the
+      track isn't reserved empty. Validated headlessly (`ov-shell.js`, **41/41**,
+      slices 1–3): every scene shows only its own panel + reserves the track, panel
+      views collapse it, Basic+Command collapses while Advanced+Command reserves, no
+      relocated id duplicated/orphaned. **Browser check pending** (Phaser host
+      relocation + the new reflow want a visual pass).
 - [ ] **Slice 4 — Persistent left-rail Advisor + Objectives; fold in Planner.**
       Promote `ccLeft` (advisor "what to do next" + objectives + ambition bar) to
       the always-on left rail, visible on every scene. Fold the **Planner**'s

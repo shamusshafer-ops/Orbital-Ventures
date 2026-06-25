@@ -42,7 +42,8 @@
   .rail-left{position:sticky;top:14px;align-self:start}
   .viewport{min-width:0}                                              /* lets overflow children (tech tree, map) size within the column */
   .rail-right{position:sticky;top:14px;align-self:start}
-  .rail-right:empty{display:none}                                     /* stub for now — populated in slice 3 */
+  .shell:not(.has-right) .rail-right{display:none}                    /* collapse the rail on panel scenes (slice 3) */
+  .rail-panel > .card:first-child{margin-top:0}
   nav.rail-nav{display:flex;flex-direction:column;gap:5px;margin:0}
   nav.rail-nav button{display:block;width:100%;text-align:left;background:var(--panel);color:var(--muted);
     border:1px solid var(--line);padding:9px 12px;border-radius:6px;cursor:pointer;font-family:var(--sans);
@@ -153,7 +154,7 @@
   .cc-net{font-family:var(--mono);font-size:13px}
 
   /* Home dashboard — 3-column layout */
-  .cc-cols{display:grid;grid-template-columns:224px 1fr 224px;gap:14px;align-items:start;margin-bottom:14px}
+  .cc-cols{display:grid;grid-template-columns:224px 1fr;gap:14px;align-items:start;margin-bottom:14px}  /* ccRight moved to the right rail (slice 3) */
   @media(max-width:980px){.cc-cols{grid-template-columns:1fr}}
   .cc-cols > div > .card{margin-top:0}
   .cc-cols > div > .card + .card{margin-top:14px}
@@ -349,7 +350,7 @@
     <div class="cc-cols">
       <div id="ccLeft"></div>
       <div id="ccCenter"></div>
-      <div id="ccRight" class="adv-only"></div>
+      <!-- ccRight (Alerts/News) relocated to the persistent right rail in slice 3 -->
     </div>
     <div class="card adv-only" id="ccTimeline"></div>
   </div>
@@ -358,7 +359,7 @@
     <div class="card" id="plannerCard"></div>
   </div>
 
-  <div id="benchView" class="hidden grid">
+  <div id="benchView" class="hidden">
     <div>
       <div class="card" id="vehicleFamilyCard"></div>
       <div class="card hidden" id="archCard"></div>
@@ -376,15 +377,7 @@
       <div class="card hidden" id="windowCard"></div>
       <div class="card hidden" id="routesCard"></div>
     </div>
-    <div class="readout">
-      <div class="card" id="vehicleCard" style="text-align:center">
-        <div class="mission-tag" style="text-align:left">Your vehicle</div>
-        <div id="vehHost" style="display:none;width:240px;max-width:100%;margin:6px auto 0;aspect-ratio:240/360"></div>
-        <canvas id="vehiclePreview" width="240" height="360" style="max-width:100%;height:auto;display:block;margin:6px auto 0"></canvas>
-        <div id="vehicleLabel" class="dim" style="font-size:11px;margin-top:6px"></div>
-      </div>
-      <div class="card" id="readoutCard" style="margin-top:14px"></div>
-    </div>
+    <!-- vehicle preview + readout relocated to the persistent right rail in slice 3 -->
   </div>
 
   <div id="missionsView" class="hidden">
@@ -405,23 +398,21 @@
       <div id="techAction" style="margin-bottom:10px"></div>
       <div id="techTree" style="overflow-x:auto;overflow-y:hidden"></div>
     </div>
-    <div class="card" id="researchDetail" style="margin-top:14px"></div>
+    <!-- researchDetail (node inspector) relocated to the persistent right rail in slice 3 -->
     <div class="card" id="divisionsCard" style="margin-top:14px"></div>
   </div>
 
   <div id="mapView" class="hidden">
-    <div class="grid">
-      <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
-          <h2 style="margin:0">Solar System — click a body for its Δv profile</h2>
-          <button class="btn ghost" id="mapExpandBtn" onclick="toggleMapExpand()">⛶ Expand</button>
-        </div>
-        <p class="muted" style="font-size:12px;margin:6px 0 10px">Orbits are spaced for legibility, not to scale. Drag to pan, scroll to zoom; click a body for its Δv profile.</p>
-        <div id="mapHost" style="display:none;width:100%;aspect-ratio:760/480"></div>
-        <div id="mapCanvas"></div>
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+        <h2 style="margin:0">Solar System — click a body for its Δv profile</h2>
+        <button class="btn ghost" id="mapExpandBtn" onclick="toggleMapExpand()">⛶ Expand</button>
       </div>
-      <div class="readout"><div class="card" id="bodyCard"></div><div class="card" id="mapActivityCard" style="margin-top:14px"></div></div>
+      <p class="muted" style="font-size:12px;margin:6px 0 10px">Orbits are spaced for legibility, not to scale. Drag to pan, scroll to zoom; click a body for its Δv profile.</p>
+      <div id="mapHost" style="display:none;width:100%;aspect-ratio:760/480"></div>
+      <div id="mapCanvas"></div>
     </div>
+    <!-- bodyCard + mapActivityCard relocated to the persistent right rail in slice 3 -->
   </div>
 
   <div id="rivalsView" class="hidden">
@@ -441,7 +432,28 @@
   </div>
 
     </main>
-    <aside class="rail-right" id="railRight"></aside>
+    <aside class="rail-right" id="railRight">
+      <!-- slice 3: the contextual right rail. Each scene's former sidebar lives here as a
+           .rail-panel; render() shows the one matching the active scene and toggles
+           #appShell.has-right. Element ids are unchanged so the render fns are untouched. -->
+      <div id="railCommand" class="rail-panel adv-only hidden"><div id="ccRight"></div></div>
+      <div id="railBench" class="rail-panel hidden">
+        <div class="card" id="vehicleCard" style="text-align:center">
+          <div class="mission-tag" style="text-align:left">Your vehicle</div>
+          <div id="vehHost" style="display:none;width:240px;max-width:100%;margin:6px auto 0;aspect-ratio:240/360"></div>
+          <canvas id="vehiclePreview" width="240" height="360" style="max-width:100%;height:auto;display:block;margin:6px auto 0"></canvas>
+          <div id="vehicleLabel" class="dim" style="font-size:11px;margin-top:6px"></div>
+        </div>
+        <div class="card" id="readoutCard" style="margin-top:14px"></div>
+      </div>
+      <div id="railMap" class="rail-panel hidden">
+        <div class="card" id="bodyCard"></div>
+        <div class="card" id="mapActivityCard" style="margin-top:14px"></div>
+      </div>
+      <div id="railRnd" class="rail-panel hidden">
+        <div class="card" id="researchDetail"></div>
+      </div>
+    </aside>
   </div>
 
   <div class="card log">
@@ -6285,7 +6297,18 @@ function render(){
 
   // slice 2: tag the shell with the active view's kind (scene vs panel) so CSS / later
   // slices (right rail, center takeover) can react without re-deriving it.
-  const shell=$('appShell'); if(shell){ shell.classList.toggle('viewing-scene', isSceneTab(state.tab)); shell.classList.toggle('viewing-panel', !isSceneTab(state.tab)); }
+  const shell=$('appShell');
+  if(shell){
+    shell.classList.toggle('viewing-scene', isSceneTab(state.tab));
+    shell.classList.toggle('viewing-panel', !isSceneTab(state.tab));
+    // slice 3: show the active scene's contextual right-rail panel; collapse the rail on panels.
+    const RAIL={command:'railCommand',bench:'railBench',map:'railMap',rnd:'railRnd'};
+    const activePanel=RAIL[state.tab]||null;
+    for(const k in RAIL){ const p=$(RAIL[k]); if(p) p.classList.toggle('hidden', RAIL[k]!==activePanel); }
+    // command's only rail content (ccRight) is adv-only, so the rail is empty in Basic → don't reserve it.
+    const railShown=!!activePanel && !(state.tab==='command' && uiLayer()==='basic');
+    shell.classList.toggle('has-right', railShown);
+  }
   $('tabCommand').classList.toggle('active',state.tab==='command');
   $('tabPlanner').classList.toggle('active',state.tab==='planner');
   $('tabBench').classList.toggle('active',state.tab==='bench');
