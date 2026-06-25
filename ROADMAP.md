@@ -2226,7 +2226,7 @@ right-rail mini + modal; **Personnel** → hub building drill / modal;
       routing to the right tab, every `*View` inside the viewport (none orphaned),
       HUD/opsbar/log persist outside it, shell region tag-balanced (64/64),
       `render()`/`setTab()` to all destinations throw nothing, game script still
-      loads. Browser check pending.
+      loads. **Browser-verified 2026-06-24** (full shell sweep).
 - [x] **Slice 2 — Scene registry + center viewport.** *(Built 2026-06-24.)* Added a
       `SCENES` registry (`command`, `bench`, `rnd`, `map` — each `{tab,label,icon}`)
       with `SCENE_TABS`, `isSceneTab()`, and `viewKind()` (`scene` vs `panel`) so the
@@ -2245,7 +2245,7 @@ right-rail mini + modal; **Personnel** → hub building drill / modal;
       `phaserOK()`. Validated headlessly (`ov-shell.js`, **29/29**, slices 1+2):
       registry keys/helpers correct, rail grouped with scenes before the Operations
       divider and panels after, scene buttons carry `class="scene"`, all 11 `setTab`
-      routes still throw nothing, no `*View` orphaned. Browser check pending.
+      routes still throw nothing, no `*View` orphaned. **Browser-verified 2026-06-24** (full shell sweep).
 - [x] **Slice 3 — Contextual right rail.** *(Built 2026-06-24.)* Relocated the four
       per-view sidebars into the persistent `#railRight` as per-scene `.rail-panel`
       wrappers — `railCommand` (`ccRight` Alerts/News), `railBench` (the vehicle
@@ -2263,8 +2263,8 @@ right-rail mini + modal; **Personnel** → hub building drill / modal;
       track isn't reserved empty. Validated headlessly (`ov-shell.js`, **41/41**,
       slices 1–3): every scene shows only its own panel + reserves the track, panel
       views collapse it, Basic+Command collapses while Advanced+Command reserves, no
-      relocated id duplicated/orphaned. **Browser check pending** (Phaser host
-      relocation + the new reflow want a visual pass).
+      relocated id duplicated/orphaned. **Browser-verified 2026-06-24** (full shell
+      sweep — Phaser vehicle host relocation + the reflow confirmed).
 - [x] **Slice 4 — Persistent left-rail Advisor + Objectives; fold in Planner.**
       *(Built 2026-06-24.)* Promoted `#ccLeft` (the focal "what to do next", Mission
       Control Advisor, and Objectives/ambition bar) out of `commandView` and into the
@@ -2285,8 +2285,8 @@ right-rail mini + modal; **Personnel** → hub building drill / modal;
       headlessly (`ov-shell.js`, **53/53**, slices 1–4): exactly 10 nav buttons / 10
       views, Planner fully gone, `#ccLeft` moved (single occurrence) into the rail,
       advisor renders on every remaining scene, and a `state.tab==='planner'` save
-      migrates to `command` on render. **Browser check pending** (rail width + the
-      folded flight-plan layout want a visual pass).
+      migrates to `command` on render. **Browser-verified 2026-06-24** (full shell
+      sweep — rail width + the folded flight-plan layout confirmed).
 - [x] **Slice 5 — Contracts into a rail panel + hub drill; remove Missions tab.**
       *(Built 2026-06-24.)* The **Missions tab, `missionsView` are removed**; Contracts
       + passive income move into a new `#railContracts` right-rail panel (the relocated
@@ -2304,7 +2304,7 @@ right-rail mini + modal; **Personnel** → hub building drill / modal;
       **68/68**, slices 1–5): Missions tab/view gone, `railContracts` holds the relocated
       (single-occurrence) cards, the drill shows contracts + hides alerts + reserves the
       track in every layer, `renderMissions` populates the list (19 contracts), and the
-      Command nav resets the drill. **Browser check pending.**
+      Command nav resets the drill. **Browser-verified 2026-06-24** (full shell sweep).
 - [x] **Slice 6 — Programs / Rivals / Personnel into panels + modals.**
       *(Built 2026-06-24.)* **Removed all three tabs + their views**; each function
       moves to a new home reachable in ≤2 clicks, with the existing render fns
@@ -2348,7 +2348,7 @@ right-rail mini + modal; **Personnel** → hub building drill / modal;
       consistency with Personnel/Programs/Rivals. Validated headlessly (`ov-shell.js`,
       **95/95**, slices 1–7): tab/view gone, all 3 buildings drill to the modal, it opens
       + populates `#infraCard`, survives a re-render, closes on nav, and `infra` saves
-      migrate. **Browser check pending.**
+      migrate. **Browser-verified 2026-06-24** (full shell sweep).
 - [x] **Slice 8 — ⚙ menu + final cleanup.** *(Built 2026-06-24.)* Added a HUD
       **⚙ Menu** (`showSettingsMenu()`, a live `.modal.view`) that folds in the display
       toggles (Animation / Wide / Full screen — each `toggle*(); render()` so the menu
@@ -2367,7 +2367,8 @@ right-rail mini + modal; **Personnel** → hub building drill / modal;
       (`ov-shell.js`, **104/104**, slices 1–8): nav is exactly the 4 scene buttons, every
       retired tab/view gone, the ⚙ menu opens with Save/Load/New + populated Settings,
       survives a re-render, closes on nav, and a `settings` save migrates to `command`.
-      **Browser check pending.**
+      **Browser-verified 2026-06-24** (full end-to-end shell sweep — all 4 scenes, every
+      hub drill, every modal, and the ⚙ menu confirmed clean).
 
 **Epic status:** all 8 slices shipped — the 11-tab bar is now a 4-scene Mission Control
 shell (persistent left rail with advisor/objectives, contextual right rail, hub-building
