@@ -276,7 +276,8 @@
 
   /* Modal */
   .scrim{position:fixed;inset:0;background:rgba(6,10,12,.78);display:flex;align-items:center;justify-content:center;z-index:20}
-  .modal{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:26px;max-width:440px;text-align:center}
+  .modal{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:26px;max-width:440px;text-align:center;max-height:88vh;overflow-y:auto}
+  .modal.view{max-width:680px;width:92vw;text-align:left}   /* slice 6 deep-view modals (Programs/Rivals/Personnel): wide, left-aligned, scrollable */
   .modal h2{font-size:18px;color:var(--ignite);margin-bottom:10px;text-transform:none;letter-spacing:0}
   .modal p{color:var(--muted);margin:10px 0}
   .modal .btn{margin-top:14px}
@@ -337,11 +338,9 @@
         <button id="tabRnd" class="scene" onclick="setTab('rnd')">⚛ R&amp;D</button>
         <button id="tabMap" class="scene" onclick="setTab('map')">☉ Solar System</button>
         <div class="rail-group">Operations</div>
-        <button id="tabPrograms" onclick="setTab('programs')">Programs</button>
-        <button id="tabRivals" onclick="setTab('rivals')">Rivals</button>
-        <button id="tabPersonnel" onclick="setTab('personnel')">Personnel</button>
         <button id="tabInfra" onclick="setTab('infra')">Infrastructure</button>
         <button id="tabSettings" onclick="setTab('settings')">Settings</button>
+        <!-- Programs / Rivals / Personnel retired in slice 6 → modals + hub drills -->
       </nav>
       <!-- slice 4: the Mission Control Advisor + Objectives (was commandView's ccLeft) is
            promoted to the always-on left rail; render() rebuilds it on every scene. The
@@ -382,10 +381,8 @@
   <!-- Missions tab retired in slice 5 — Contracts live in the right-rail "Mission Control"
        drill (railContracts), opened from the hub building or the advisor's Contracts link. -->
 
-  <div id="programsView" class="hidden">
-    <div class="card" id="ambitionCard"></div>
-    <div class="card" id="programsCard" style="margin-top:14px"></div>
-  </div>
+  <!-- Programs retired in slice 6 → left-rail Objectives + the Programs detail modal
+       (showProgramsModal builds #ambitionCard/#programsCard on demand). -->
 
   <div id="rndView" class="hidden">
     <div class="card" id="eraCard"></div>
@@ -412,13 +409,11 @@
     <!-- bodyCard + mapActivityCard relocated to the persistent right rail in slice 3 -->
   </div>
 
-  <div id="rivalsView" class="hidden">
-    <div class="card" id="rivalsCard"></div>
-  </div>
+  <!-- Rivals retired in slice 6 → hub right-rail mini-leaderboard + the deep-view modal
+       (showRivalsModal builds #rivalsCard on demand). -->
 
-  <div id="personnelView" class="hidden">
-    <div id="personnelCard"></div>
-  </div>
+  <!-- Personnel retired in slice 6 → the Personnel hub-building drill modal
+       (showPersonnelModal builds #personnelCard on demand). -->
 
   <div id="infraView" class="hidden">
     <div class="card" id="infraCard"></div>
@@ -1827,7 +1822,7 @@ function checkPrograms(){
   if(state.completed[amb.capstone] && !state.ambitionFulfilled){
     state.ambitionFulfilled=true;
     log('ok',`✦ AMBITION FULFILLED — “${amb.name}.” The dream you set out to chase is real.`);
-    celebrate=()=>showModal(`<h2>✦ ${amb.name}</h2><p class="muted">${amb.blurb}</p><p>Your founding ambition is fulfilled. Set a new horizon in the Programs tab — there is always a further frontier.</p><button class="btn" onclick="hideModal()" style="margin-top:10px">Onward</button>`);
+    celebrate=()=>showModal(`<h2>✦ ${amb.name}</h2><p class="muted">${amb.blurb}</p><p>Your founding ambition is fulfilled. Set a new horizon from the Objectives panel's <b>Programs →</b> — there is always a further frontier.</p><button class="btn" onclick="hideModal()" style="margin-top:10px">Onward</button>`);
   }
   const nx=nextObjective();
   if(nx) log('note',`Next objective: ${nx.mission.name} — ${nx.program.name}.`);
@@ -3407,16 +3402,35 @@ const SCENES = {
 const SCENE_TABS = Object.keys(SCENES);
 // Retired tab ids → where they now live, so legacy saves / stray setTab calls resolve.
 // slice 4: Planner folded into the left-rail advisor. slice 5: Missions → the Command
-// Center "Mission Control" drill (Contracts in the right rail). Both land on Command Center.
-const RETIRED_TABS = { planner:'command', missions:'command' };
+// Center "Mission Control" drill. slice 6: Programs/Rivals/Personnel → modals + hub drills.
+// All land on Command Center (their new homes hang off the hub).
+const RETIRED_TABS = { planner:'command', missions:'command', programs:'command', rivals:'command', personnel:'command' };
 function isSceneTab(t){ return SCENE_TABS.indexOf(t)>=0; }
+// slice 5/6: a legacy "go to tab X" intent → the onclick expression for X's new home
+// (a hub drill or a modal). Used by the advisor, alerts, planner steps and hub buildings.
+function tabIntent(t){
+  if(t==='missions')  return "openHubPanel('contracts')";
+  if(t==='programs')  return "showProgramsModal()";
+  if(t==='personnel') return "showPersonnelModal()";
+  if(t==='rivals')    return "showRivalsModal()";
+  return `setTab('${t}')`;
+}
 // slice 5: which panel the Command Center right rail shows — 'alerts' (default) or
 // 'contracts' (the Mission Control hub drill). Transient UI, not persisted.
 let hubPanel='alerts';
-function openHubPanel(p){ hubPanel=p; state.tab='command'; render(); }
+function openHubPanel(p){ closeLiveModal(); hubPanel=p; state.tab='command'; render(); }
+// slice 6: deep views (Programs/Rivals/Personnel) are live modals. activeModal is a thunk
+// that rebuilds the open modal's body; render() re-runs it so the modal tracks state changes.
+// Navigation (setTab/openHubPanel/flyTo/selectMission) clears it so leaving closes the modal.
+let activeModal=null;
+function closeLiveModal(){ if(activeModal){ activeModal=null; $('modal').classList.add('hidden'); } } // navigation dismisses an open deep-view modal
+function modalClose(){ return `<div style="text-align:right;margin-top:12px"><button class="btn ghost" onclick="hideModal()">Close</button></div>`; }
+function showProgramsModal(){ activeModal=()=>{ showModal(`<div id="ambitionCard"></div><div id="programsCard" style="margin-top:14px"></div>${modalClose()}`,true); renderPrograms(); }; activeModal(); }
+function showRivalsModal(){ activeModal=()=>{ showModal(`<div id="rivalsCard"></div>${modalClose()}`,true); renderRivals(); }; activeModal(); }
+function showPersonnelModal(){ activeModal=()=>{ showModal(`<div id="personnelCard"></div>${modalClose()}`,true); renderPersonnel(); }; activeModal(); }
 // 'scene' = owns the center viewport; 'panel' = secondary view (future rail/modal home).
 function viewKind(t){ return isSceneTab(t) ? 'scene' : 'panel'; }
-function setTab(t){hubPanel='alerts';state.tab=t;render();} // nav always resets the hub drill to Alerts (slice 5)
+function setTab(t){closeLiveModal();hubPanel='alerts';state.tab=t;render();} // nav resets the hub drill + closes any live modal (slice 5/6)
 function addStage(){ if(state.stages.length>=3)return; state.stages.push({eng:firstUnlocked(),count:1,prop:2.0}); render(); }
 function removeStage(i){ if(state.stages.length<=1)return; state.stages.splice(i,1); render(); }
 function firstUnlocked(){return Object.keys(ENGINES).find(k=>state.unlocked[k])||'a4';}
@@ -3434,7 +3448,7 @@ function setAscentEng(v){state.ascent.eng=v;render();}
 function setAscentProp(v){state.ascent.prop=Math.max(0.1,Math.min(40,parseFloat(v)||0.1));render();}
 function setEclss(id){ const t=ECLSS[id]; if(t.research && !state.research[t.research]) return; state.eclss=id; render(); }
 function setTestLevel(n){ state.testLevel=n; render(); }
-function selectMission(id){const m=MISSIONS.find(x=>x.id===id); if(state.rep<m.minRep)return; if(m.reqResearch&&!state.research[m.reqResearch])return; state.activeMission=id; state.tab='bench'; render();}
+function selectMission(id){const m=MISSIONS.find(x=>x.id===id); if(state.rep<m.minRep)return; if(m.reqResearch&&!state.research[m.reqResearch])return; state.activeMission=id; closeLiveModal(); state.tab='bench'; render();}
 function reqsMet(r){
   return r.req.every(q=>state.research[q]) && (!r.reqMissionDone || state.completed[r.reqMissionDone]);
 }
@@ -3683,8 +3697,8 @@ function bailout(){
   hideModal(); render();
 }
 function restart(difficulty){hideModal();newGame(difficulty);render();}
-function showModal(html){$('modalBody').innerHTML=html;$('modal').classList.remove('hidden');}
-function hideModal(){$('modal').classList.add('hidden');}
+function showModal(html,view){const mb=$('modalBody');mb.className='modal'+(view?' view':'');mb.innerHTML=html;$('modal').classList.remove('hidden');} // view=true → wide, left-aligned, scrollable deep-view layout
+function hideModal(){activeModal=null;$('modal').classList.add('hidden');} // slice 6: closing clears the live-modal thunk
 
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
@@ -6330,20 +6344,14 @@ function render(){
   }
   $('tabCommand').classList.toggle('active',state.tab==='command');
   $('tabBench').classList.toggle('active',state.tab==='bench');
-  $('tabPrograms').classList.toggle('active',state.tab==='programs');
   $('tabRnd').classList.toggle('active',state.tab==='rnd');
   $('tabMap').classList.toggle('active',state.tab==='map');
-  $('tabRivals').classList.toggle('active',state.tab==='rivals');
-  $('tabPersonnel').classList.toggle('active',state.tab==='personnel');
   $('tabInfra').classList.toggle('active',state.tab==='infra');
   $('tabSettings').classList.toggle('active',state.tab==='settings');
   $('commandView').classList.toggle('hidden',state.tab!=='command');
   $('benchView').classList.toggle('hidden',state.tab!=='bench');
-  $('programsView').classList.toggle('hidden',state.tab!=='programs');
   $('rndView').classList.toggle('hidden',state.tab!=='rnd');
   $('mapView').classList.toggle('hidden',state.tab!=='map');
-  $('rivalsView').classList.toggle('hidden',state.tab!=='rivals');
-  $('personnelView').classList.toggle('hidden',state.tab!=='personnel');
   $('infraView').classList.toggle('hidden',state.tab!=='infra');
   $('settingsView').classList.toggle('hidden',state.tab!=='settings');
   applyDifficultyUI();
@@ -6360,15 +6368,13 @@ function render(){
   if(state.tab!=='map') pauseMapGame();
   if(state.tab==='bench'){renderVehicleFamilies();renderArchitecture();renderStages();renderBoosters();renderTransfer();renderLander();renderCrew();renderPower();renderWindowPlanner();renderRoutes();renderReadout();renderVehiclePreview();}
   if(state.tab==='command' && hubPanel==='contracts') renderMissions(); // slice 5: contracts drill content (passiveCard + missionList)
-  if(state.tab==='programs')renderPrograms();
   renderNextObjective();
   if(state.tab==='rnd')renderRnd();
   if(state.tab==='map')renderMap();
-  if(state.tab==='rivals')renderRivals();
-  if(state.tab==='personnel')renderPersonnel();
   if(state.tab==='infra')renderInfrastructure();
   if(state.tab==='settings')renderSettings();
   renderLog();
+  if(activeModal) activeModal(); // slice 6: keep an open deep-view modal (Programs/Rivals/Personnel) in sync with state
 }
 /* ---------- #18: Agency Command Center (home screen + ground site map) ----------
    The new default landing screen: an at-a-glance dashboard plus a drill-down "site
@@ -6469,7 +6475,7 @@ function missionAdvisor(){
   return {goal:mm.name, program:no.program.name, reward:{money:mm.payout||0, rep:mm.rep||0}, reqs, actions:actions.slice(0,4), ready};
 }
 // onclick string for an advisor/action object
-function advisorClick(a){ return a.missionId?`selectMission('${a.missionId}')`:(a.researchId?`setTab('rnd')`:(a.tab==='missions'?`openHubPanel('contracts')`:(a.tab?`setTab('${a.tab}')`:`advanceMonth()`))); } // slice 5: 'missions' intents open the contracts drill
+function advisorClick(a){ return a.missionId?`selectMission('${a.missionId}')`:(a.researchId?`setTab('rnd')`:(a.tab?tabIntent(a.tab):`advanceMonth()`)); } // slice 5/6: tab intents route to drills/modals via tabIntent
 // #18 slice 5: grouped objectives checklist (main / recommended / long-term / completed)
 function objectivesList(){
   const groups=[];
@@ -6556,12 +6562,12 @@ function siteBuildings(){
      status:`Foundry L${prodLevel('foundry')} · Pads L${prodLevel('pads')}`, planned:false},
     {key:'rnd', icon:'⚗', name:'R&D Lab', tab:'rnd',
      status: ar?`${(RESEARCH.find(r=>r.id===ar.id)||{}).name||ar.id} · ${ar.monthsLeft} mo`:'idle', planned:false},
-    {key:'personnel', icon:'👥', name:'Personnel', tab:'personnel',
+    {key:'personnel', icon:'👥', name:'Personnel', tab:'personnel', act:"showPersonnelModal()",
      status: (state.staff||[]).length?`${state.staff.length} hired · ${fM(monthlyPayroll())}/mo`:'unstaffed', planned:false},
     {key:'infra', icon:'▣', name:'Orbital Ops', tab:'infra',
      status: builtFac?`${builtFac} facilit${builtFac===1?'y':'ies'} · +${fM(totalFacilityIncome())}/mo`:'no facilities', planned:false},
     {key:'map', icon:'🪐', name:'Solar System', tab:'map', status:'plan & track missions', planned:false},
-    {key:'rivals', icon:'◆', name:'Rivals', tab:'rivals', status:`threat: ${threatTxt}`, planned:false},
+    {key:'rivals', icon:'◆', name:'Rivals', tab:'rivals', act:"showRivalsModal()", status:`threat: ${threatTxt}`, planned:false},
   ];
 }
 // #18 (scene): each building's footprint on the Cape panorama as percent coords (0–100).
@@ -7141,7 +7147,7 @@ function renderCCLeft(){
       ${objHTML}
       <div style="display:flex;gap:6px;margin-top:10px">
         <button class="btn ghost" style="flex:1;font-size:11px" onclick="openHubPanel('contracts')">Contracts →</button>
-        <button class="btn ghost" style="flex:1;font-size:11px" onclick="setTab('programs')">Programs →</button>
+        <button class="btn ghost" style="flex:1;font-size:11px" onclick="showProgramsModal()">Programs →</button>
       </div>
     </div>`;
 }
@@ -7192,14 +7198,25 @@ function renderCCCenter(){
 function renderCCRight(){
   const dotCol={bad:'var(--bad)',warn:'var(--warn)',ok:'var(--ok)'};
   const alerts=agencyAlerts();
-  const aRows=alerts.map(a=>`<div class="row-item clk" onclick="${a.tab==='missions'?`openHubPanel('contracts')`:`setTab('${a.tab||'command'}')`}"><span><span class="alert-dot" style="background:${dotCol[a.level]}"></span>${a.msg}</span></div>`).join('') || '<div class="dim" style="font-size:12px">All systems nominal.</div>';
+  const aRows=alerts.map(a=>`<div class="row-item clk" onclick="${a.tab?tabIntent(a.tab):`setTab('command')`}"><span><span class="alert-dot" style="background:${dotCol[a.level]}"></span>${a.msg}</span></div>`).join('') || '<div class="dim" style="font-size:12px">All systems nominal.</div>';
   const o=ccOpsSummary();
   const news=ccNews(7);
   const nRows=news.map(l=>`<div class="news-line"><span class="dim">${l.when}</span> <span class="${l.kind}">${l.msg.replace(/<[^>]*>/g,'')}</span></div>`).join('') || '<div class="dim" style="font-size:12px">No news yet.</div>';
+  // slice 6: rivals mini-leaderboard (top threats) + deep-view modal — the Rivals tab's hub home
+  const rivalMini=RIVALS.map(r=>({r,score:(state.rivalThreat&&state.rivalThreat[r.id])||0}))
+    .sort((a,b)=>b.score-a.score).slice(0,3)
+    .map(({r,score})=>{ const tl=rivalThreatLabel(score); return `<div class="row-item"><span>${r.flag} ${r.name}</span><span class="pill" style="color:${tl.col};border-color:${tl.col}">${tl.txt}</span></div>`; }).join('');
   $('ccRight').innerHTML=`
     <div class="card">
       <div class="cc-panel-h">Alerts</div>
       ${aRows}
+    </div>
+    <div class="card adv-only">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div class="cc-panel-h" style="margin:0">Rivals</div>
+        <button class="btn ghost" style="font-size:10px;padding:3px 8px" onclick="showRivalsModal()">Deep view →</button>
+      </div>
+      ${rivalMini}
     </div>
     <div class="card">
       <div class="cc-panel-h">This month</div>
@@ -7669,7 +7686,7 @@ function plannerSteps(){
   steps.push({key:'launch',n:6,title:'Integrate & launch',done:chk.ok,ready:chk.ok,detail:chk.ok?'All systems go — build & launch when ready.':chk.why,launch:true});
   return steps;
 }
-function plannerStepClick(s){ return s.focus==='mission'?'plannerChoose()':(s.tab?`setTab('${s.tab}')`:''); }
+function plannerStepClick(s){ return s.focus==='mission'?'plannerChoose()':(s.tab?tabIntent(s.tab):''); } // slice 6: crew step → personnel modal via tabIntent
 // renderPlanner() retired in slice 4 — the Planner tab folded into the left-rail advisor's
 // "Flight plan" block (renderCCLeft), which reuses these same plannerSteps()/planner* helpers.
 // #25: side-by-side vehicle comparison. Selection is transient UI state (like
@@ -8704,6 +8721,7 @@ function flyTo(missionId){
   if(state.rep<m.minRep) return;
   if(m.reqResearch && !state.research[m.reqResearch]) return;
   state.activeMission=missionId;
+  closeLiveModal(); // slice 6: navigating to the bench closes any open deep-view modal
   state.tab='bench';
   render();
 }

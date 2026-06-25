@@ -2305,11 +2305,33 @@ right-rail mini + modal; **Personnel** → hub building drill / modal;
       (single-occurrence) cards, the drill shows contracts + hides alerts + reserves the
       track in every layer, `renderMissions` populates the list (19 contracts), and the
       Command nav resets the drill. **Browser check pending.**
-- [ ] **Slice 6 — Programs / Rivals / Personnel into panels + modals.** Programs →
-      left-rail objectives + detail modal; Rivals → right-rail mini-leaderboard +
-      deep-view modal; Personnel → hub "Personnel" building drill / modal. Remove
-      all three tabs. Validate: each function reachable, rival/personnel deep data
-      intact behind ≤2 clicks.
+- [x] **Slice 6 — Programs / Rivals / Personnel into panels + modals.**
+      *(Built 2026-06-24.)* **Removed all three tabs + their views**; each function
+      moves to a new home reachable in ≤2 clicks, with the existing render fns
+      (`renderPrograms`/`renderRivals`/`renderPersonnel`) reused untouched by building
+      their `#…Card` ids inside a modal on demand:
+      • **Programs** → the always-on left-rail Objectives card's **"Programs →"** opens
+        `showProgramsModal()` (ambition + programs detail).
+      • **Rivals** → a **right-rail mini-leaderboard** (top-3 by threat, in the hub
+        alerts panel) plus a **"Deep view →"** / Rivals hub-building **`showRivalsModal()`**.
+      • **Personnel** → the Cape **Personnel building** (and the advisor's crew / "hire
+        an engineer" actions) open **`showPersonnelModal()`**.
+      A small router `tabIntent(t)` maps any legacy "go to tab" intent (advisor, alerts,
+      planner crew step, hub buildings) to the right drill/modal, and
+      `RETIRED_TABS` now also migrates `programs`/`rivals`/`personnel` → `command`.
+      The deep views are **live modals**: `activeModal` is a thunk `render()` re-runs so
+      the modal tracks state (hiring, raises, ambition changes refresh in place);
+      `closeLiveModal()` in `setTab`/`openHubPanel`/`flyTo`/`selectMission` dismisses it
+      on navigation, and `hideModal()` clears it. uiLayer gating intact (rivals mini +
+      expert internals stay `adv-only`/`expert-only`). Validated headlessly
+      (`ov-shell.js`, **85/85**, slices 1–6): three tabs/views gone, the modals open
+      with their card containers + get populated, an open modal survives a re-render and
+      closes on nav, and a `state.tab` of any retired id migrates to `command`. Plus an
+      interaction sanity run (open → live refresh → close-on-nav). **Browser-verified**;
+      a follow-up fix gave the deep-view modals a scrollable, wide, left-aligned layout
+      (`.modal{max-height:88vh;overflow-y:auto}` + a new `.modal.view`, via a
+      `showModal(html,view)` flag) — the long Rivals card was overflowing with the Close
+      button off-screen and no scroll.
 - [ ] **Slice 7 — Merge Infrastructure into hub building drill-ins; remove tab.**
       Clicking mfg / prod / orbital-ops buildings opens that facility's panel in
       the right rail (production panel, capacity, etc.) instead of the flat `infra`
