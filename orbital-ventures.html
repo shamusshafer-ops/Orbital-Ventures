@@ -37,9 +37,12 @@
 
   /* Tabs */
   /* --- Mission Control Shell (UI Consolidation slice 1): persistent left rail + center viewport + (stub) right rail --- */
-  .shell{display:grid;grid-template-columns:184px minmax(0,1fr);gap:14px;align-items:start}
-  .shell.has-right{grid-template-columns:184px minmax(0,1fr) 300px}   /* right rail enabled in a later slice */
-  .rail-left{position:sticky;top:14px;align-self:start}
+  .shell{display:grid;grid-template-columns:220px minmax(0,1fr);gap:14px;align-items:start}
+  .shell.has-right{grid-template-columns:220px minmax(0,1fr) 300px}   /* right rail enabled in a later slice */
+  .rail-left{align-self:start}                                         /* nav + persistent advisor/objectives (slice 4) */
+  .rail-advisor{margin-top:12px}
+  .rail-advisor .card{padding:11px 12px}
+  .rail-advisor .cc-panel-h{font-size:11px}
   .viewport{min-width:0}                                              /* lets overflow children (tech tree, map) size within the column */
   .rail-right{position:sticky;top:14px;align-self:start}
   .shell:not(.has-right) .rail-right{display:none}                    /* collapse the rail on panel scenes (slice 3) */
@@ -334,7 +337,6 @@
         <button id="tabRnd" class="scene" onclick="setTab('rnd')">⚛ R&amp;D</button>
         <button id="tabMap" class="scene" onclick="setTab('map')">☉ Solar System</button>
         <div class="rail-group">Operations</div>
-        <button id="tabPlanner" onclick="setTab('planner')">🧭 Planner</button>
         <button id="tabMissions" onclick="setTab('missions')">Missions</button>
         <button id="tabPrograms" onclick="setTab('programs')">Programs</button>
         <button id="tabRivals" onclick="setTab('rivals')">Rivals</button>
@@ -342,21 +344,19 @@
         <button id="tabInfra" onclick="setTab('infra')">Infrastructure</button>
         <button id="tabSettings" onclick="setTab('settings')">Settings</button>
       </nav>
+      <!-- slice 4: the Mission Control Advisor + Objectives (was commandView's ccLeft) is
+           promoted to the always-on left rail; render() rebuilds it on every scene. The
+           retired Planner tab's flight-plan steps are folded in here. -->
+      <div id="ccLeft" class="rail-advisor"></div>
     </aside>
     <main class="viewport">
 
   <div id="commandView">
     <div class="card" id="execOverview"></div>
-    <div class="cc-cols">
-      <div id="ccLeft"></div>
-      <div id="ccCenter"></div>
-      <!-- ccRight (Alerts/News) relocated to the persistent right rail in slice 3 -->
-    </div>
+    <!-- ccLeft (advisor/objectives) promoted to the left rail in slice 4;
+         ccRight (Alerts/News) relocated to the right rail in slice 3 -->
+    <div id="ccCenter"></div>
     <div class="card adv-only" id="ccTimeline"></div>
-  </div>
-
-  <div id="plannerView" class="hidden">
-    <div class="card" id="plannerCard"></div>
   </div>
 
   <div id="benchView" class="hidden">
@@ -3398,6 +3398,9 @@ const SCENES = {
   map:     { tab:'map',     label:'Solar System',   icon:'☉' },
 };
 const SCENE_TABS = Object.keys(SCENES);
+// Retired tab ids → where they now live, so legacy saves / stray setTab calls resolve.
+// slice 4: the Planner folded into the always-on left-rail advisor → land on Command Center.
+const RETIRED_TABS = { planner:'command' };
 function isSceneTab(t){ return SCENE_TABS.indexOf(t)>=0; }
 // 'scene' = owns the center viewport; 'panel' = secondary view (future rail/modal home).
 function viewKind(t){ return isSceneTab(t) ? 'scene' : 'panel'; }
@@ -6269,6 +6272,7 @@ function drawCislunar(ct){
 
 /* ---------- render ---------- */
 function render(){
+  if(RETIRED_TABS[state.tab]) state.tab=RETIRED_TABS[state.tab]; // migrate retired tabs (slice 4: planner) on every render, incl. legacy saves
   $('coName').textContent=state.company;
   const era=currentEra();
   $('eraBadge').innerHTML=`Era ${eraIndex(era)+1}/${ERAS.length} · ${era.name}`;
@@ -6310,7 +6314,6 @@ function render(){
     shell.classList.toggle('has-right', railShown);
   }
   $('tabCommand').classList.toggle('active',state.tab==='command');
-  $('tabPlanner').classList.toggle('active',state.tab==='planner');
   $('tabBench').classList.toggle('active',state.tab==='bench');
   $('tabMissions').classList.toggle('active',state.tab==='missions');
   $('tabPrograms').classList.toggle('active',state.tab==='programs');
@@ -6321,7 +6324,6 @@ function render(){
   $('tabInfra').classList.toggle('active',state.tab==='infra');
   $('tabSettings').classList.toggle('active',state.tab==='settings');
   $('commandView').classList.toggle('hidden',state.tab!=='command');
-  $('plannerView').classList.toggle('hidden',state.tab!=='planner');
   $('benchView').classList.toggle('hidden',state.tab!=='bench');
   $('missionsView').classList.toggle('hidden',state.tab!=='missions');
   $('programsView').classList.toggle('hidden',state.tab!=='programs');
@@ -6339,11 +6341,11 @@ function render(){
     : `<span class="dim">No active research. Start a project in R&D — it runs while you fly.</span>`;
   $('skipBtn').disabled=!ar;
 
+  renderCCLeft(); // slice 4: the advisor/objectives live in the persistent left rail — rebuild on every scene
   if(state.tab==='command')renderCommandCenter(); else { stopCCScene(); pauseCapeGame(); }
   if(state.tab!=='bench') pauseVehGame();
   if(state.tab!=='map') pauseMapGame();
   if(state.tab==='bench'){renderVehicleFamilies();renderArchitecture();renderStages();renderBoosters();renderTransfer();renderLander();renderCrew();renderPower();renderWindowPlanner();renderRoutes();renderReadout();renderVehiclePreview();}
-  if(state.tab==='planner')renderPlanner();
   if(state.tab==='missions')renderMissions();
   if(state.tab==='programs')renderPrograms();
   renderNextObjective();
@@ -7010,7 +7012,7 @@ function resumeCapeGame(){ if(capeGame){ try{ capeGame.scene.resume('cape'); }ca
 function renderCommandCenter(){
   if(!$('execOverview')) return;
   renderExecOverview();
-  renderCCLeft();
+  // renderCCLeft() now runs unconditionally from render() (slice 4: persistent left rail)
   renderCCCenter();
   renderCCRight();
   renderCCTimeline();
@@ -7092,9 +7094,33 @@ function renderCCLeft(){
         <span class="obj-label">${it.label}</span>${it.sub?`<span class="obj-sub">${it.sub}</span>`:''}
       </div>`).join('')}`).join('');
 
+  // ---- Flight plan (slice 4: folded from the retired Planner tab) ----
+  // Reuses the same pure plannerSteps()/plannerStepClick()/planner* mission picker that the
+  // old Planner tab drove; rendered compactly in the rail so the on-ramp survives the tab's removal.
+  const fpM=curMission();
+  const fpShowPicker = !fpM || plannerShowMissions;
+  const fpStepsHTML = fpM ? plannerSteps().map(s=>{
+    const icon = s.skip?'<span class="dim">—</span>':(s.done?'<span style="color:var(--ok)">✓</span>':'<span style="color:var(--warn)">○</span>');
+    let actBtn='';
+    if(s.launch){ actBtn=`<button class="launch" style="font-size:10px;padding:3px 8px" onclick="launch()" ${s.ready?'':'disabled'} title="${s.ready?'':s.detail.replace(/"/g,'')}">■ Launch</button>`; }
+    else if(s.actLabel){ actBtn=`<button class="btn ghost" style="font-size:10px;padding:3px 7px" onclick="${plannerStepClick(s)}">${s.actLabel}</button>`; }
+    return `<div class="obj-item" style="${s.skip?'opacity:.55':''}"><span class="obj-label" style="flex:1">${icon} ${s.title}</span>${actBtn}</div>`;
+  }).join('') : '';
+  const fpFlyable=MISSIONS.filter(x=>!state.completed[x.id]&&missionFlyable(x));
+  const fpPicker = fpShowPicker ? `<div class="cc-panel-h" style="margin:8px 0 3px">${fpM?'Switch mission':'Available missions'}</div>`+(fpFlyable.length
+      ? fpFlyable.map(x=>`<div class="obj-item clk" onclick="plannerSetMission('${x.id}')"><span class="obj-label" style="flex:1">${x.name}${x.id===(fpM&&fpM.id)?' <span class="pill active">sel</span>':''}</span><span class="obj-sub">${fM(x.payout)}</span></div>`).join('')
+      : `<div class="dim" style="font-size:11px;margin-top:4px">No missions flyable yet — build reputation or research prerequisites.</div>`) : '';
+  const flightPlanHTML=`<div class="card adv-only">
+      <div class="cc-panel-h">🧭 Flight plan</div>
+      ${fpM?`<div class="muted" style="font-size:11px;margin:2px 0 4px">${fpM.name}</div>`:''}
+      ${fpStepsHTML}
+      ${fpPicker}
+    </div>`;
+
   $('ccLeft').innerHTML=`
     ${focalHTML}
     ${advHTML}
+    ${flightPlanHTML}
     <div class="card">
       <div class="cc-panel-h">Current Objectives — ${amb.name}</div>
       ${bar}
@@ -7631,30 +7657,8 @@ function plannerSteps(){
   return steps;
 }
 function plannerStepClick(s){ return s.focus==='mission'?'plannerChoose()':(s.tab?`setTab('${s.tab}')`:''); }
-function renderPlanner(){
-  const card=$('plannerCard'); if(!card) return;
-  const m=curMission();
-  const steps=plannerSteps();
-  const showPicker = !m || plannerShowMissions;
-  const flyable=MISSIONS.filter(x=>!state.completed[x.id]&&missionFlyable(x));
-  const stepHTML = m ? `<div class="mission-tag" style="margin-top:6px">Flight plan</div>`+steps.map(s=>{
-    const icon = s.skip?'<span class="dim">—</span>':(s.done?'<span style="color:var(--ok)">✓</span>':'<span style="color:var(--warn)">○</span>');
-    let actBtn='';
-    if(s.launch){ actBtn=`<button class="launch" style="font-size:12px;padding:6px 14px" onclick="launch()" ${s.ready?'':'disabled'} title="${s.ready?'':s.detail.replace(/"/g,'')}">■ Build &amp; Launch</button>`; }
-    else if(s.actLabel){ actBtn=`<button class="btn ghost" style="font-size:11px;padding:4px 10px" onclick="${plannerStepClick(s)}">${s.actLabel}</button>`; }
-    return `<div class="item" style="margin-top:6px;${s.skip?'opacity:.6':''}"><div class="body"><div class="title" style="font-size:13px">${icon} Step ${s.n}: ${s.title}</div><div class="sub">${s.detail}</div></div>${actBtn}</div>`;
-  }).join('') : '';
-  let pickerHTML='';
-  if(showPicker){
-    pickerHTML = `<div class="mission-tag" style="margin-top:14px">${m?'Switch mission':'Available missions'}</div>`+(flyable.length
-      ? flyable.map(x=>`<div class="item" style="margin-top:6px"><div class="body"><div class="title" style="font-size:13px">${x.name}${x.id===(m&&m.id)?' <span class="pill active">selected</span>':''}</div><div class="sub">${x.crew>0?x.crew+' crew · '+x.days+'d':'uncrewed'} · payout ${fM(x.payout)} · rep +${x.rep}</div></div><button class="btn" style="font-size:11px;padding:4px 10px" onclick="plannerSetMission('${x.id}')">Select</button></div>`).join('')
-      : `<div class="dim" style="font-size:12px;margin-top:6px">No missions are flyable yet — build reputation or research prerequisites (the Command Center advisor shows the path).</div>`);
-  }
-  card.innerHTML=`<h2>🧭 Mission Planner</h2>
-    <p class="muted" style="font-size:12px;margin:-4px 0 8px">A guided walkthrough from picking a mission to launch — each step links to the tab that does the work. The freeform tabs stay available; this is just the on-ramp.</p>
-    ${stepHTML}
-    ${pickerHTML}`;
-}
+// renderPlanner() retired in slice 4 — the Planner tab folded into the left-rail advisor's
+// "Flight plan" block (renderCCLeft), which reuses these same plannerSteps()/planner* helpers.
 // #25: side-by-side vehicle comparison. Selection is transient UI state (like
 // mapExpanded) — not persisted, so no SAVE_VERSION bump. '__bench__' compares the
 // live bench config; any other id is a saved family.

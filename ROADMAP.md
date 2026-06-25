@@ -2265,12 +2265,28 @@ right-rail mini + modal; **Personnel** → hub building drill / modal;
       views collapse it, Basic+Command collapses while Advanced+Command reserves, no
       relocated id duplicated/orphaned. **Browser check pending** (Phaser host
       relocation + the new reflow want a visual pass).
-- [ ] **Slice 4 — Persistent left-rail Advisor + Objectives; fold in Planner.**
-      Promote `ccLeft` (advisor "what to do next" + objectives + ambition bar) to
-      the always-on left rail, visible on every scene. Fold the **Planner**'s
-      guided steps into the advisor and **remove the Planner tab** (first
-      subtractive slice). Validate: advisor present on all scenes, planner step
-      actions still reachable, no dead "Planner" route.
+- [x] **Slice 4 — Persistent left-rail Advisor + Objectives; fold in Planner.**
+      *(Built 2026-06-24.)* Promoted `#ccLeft` (the focal "what to do next", Mission
+      Control Advisor, and Objectives/ambition bar) out of `commandView` and into the
+      **always-on left rail**, below the nav; `render()` calls `renderCCLeft()` on
+      every scene (removed from `renderCommandCenter`'s sequence), so the advisor is
+      visible everywhere. The left-rail track widened 184→**220px** and dropped its
+      sticky (the advisor is tall). **First subtractive slice:** the **Planner tab,
+      `plannerView`, `plannerCard`, and `renderPlanner()` are removed**. Its guided
+      flight-plan is **folded into the rail advisor** as a compact "🧭 Flight plan"
+      card that reuses the same pure `plannerSteps()`/`plannerStepClick()`/
+      `plannerSetMission()` helpers (kept), so every step action (Architecture, Design
+      Bench, Personnel, Tune, Launch, switch-mission picker) stays reachable. A new
+      `RETIRED_TABS={planner:'command'}` map is applied at the top of `render()` so
+      legacy saves / stray `setTab('planner')` calls migrate to Command Center — **no
+      dead route**. `commandView` collapses to exec-overview + the Cape scene
+      (`ccCenter`) + timeline (the `cc-cols` wrapper is gone). uiLayer gating intact
+      (focal card `basic-only`, advisor + flight-plan `adv-only`). Validated
+      headlessly (`ov-shell.js`, **53/53**, slices 1–4): exactly 10 nav buttons / 10
+      views, Planner fully gone, `#ccLeft` moved (single occurrence) into the rail,
+      advisor renders on every remaining scene, and a `state.tab==='planner'` save
+      migrates to `command` on render. **Browser check pending** (rail width + the
+      folded flight-plan layout want a visual pass).
 - [ ] **Slice 5 — Contracts into a rail panel + hub drill; remove Missions tab.**
       Contracts/passive-income become a **right-rail list** plus the hub "Mission
       Control" building drill-in; `selectMission`/launch flow unchanged. Remove the
