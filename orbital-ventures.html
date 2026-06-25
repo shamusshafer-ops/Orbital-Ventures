@@ -315,13 +315,10 @@
     <span id="rndStatus"></span>
     <span id="nextObjStatus" class="dim" style="font-size:11px"></span>
     <span style="flex:1"></span>
-    <button class="btn ghost" id="uiLayerBtn" onclick="cycleUiLayer()" title="Detail level — Basic hides advanced metrics; Expert shows everything (equations, mass fractions, subsystem %, rival internals)">View: Advanced</button>
-    <button class="btn ghost" id="animToggle" onclick="toggleAnim()">Animation: On</button>
-    <button class="btn ghost" id="fullscreenBtn" onclick="toggleFullscreen()" title="Fill the screen — browser fullscreen (Esc exits)">⛶ Full screen</button>
-    <button class="btn ghost" id="wideBtn" onclick="toggleWide()" title="Use the full window width without browser fullscreen">↔ Wide</button>
-    <button class="btn ghost" onclick="saveGame()">💾 Save</button>
-    <button class="btn ghost" onclick="loadGame()">📂 Load</button>
-    <button class="btn ghost" onclick="confirmNew()">New Game</button>
+    <!-- slice 8: Settings + save/load/new + display toggles (detail level / animation /
+         fullscreen / wide) all live in the HUD ⚙ menu now, decluttering the opsbar. -->
+    <button class="btn ghost" id="uiLayerBtn" onclick="cycleUiLayer()" title="Detail level — Basic hides advanced metrics; Expert shows everything. (Also in the ⚙ menu.)">View: Advanced</button>
+    <button class="btn ghost" onclick="showSettingsMenu()" title="Settings, save / load / new game, and display options">⚙ Menu</button>
     <button class="btn" onclick="advanceMonth()">▸ Advance 1 month <span class="dim" id="overheadLabel">(−$0.12M)</span></button>
     <button class="btn ghost" id="skipBtn" onclick="skipResearch()">Skip to R&amp;D done</button>
   </div>
@@ -337,9 +334,9 @@
         <button id="tabBench" class="scene" onclick="setTab('bench')">✎ Design Bench</button>
         <button id="tabRnd" class="scene" onclick="setTab('rnd')">⚛ R&amp;D</button>
         <button id="tabMap" class="scene" onclick="setTab('map')">☉ Solar System</button>
-        <div class="rail-group">Operations</div>
-        <button id="tabSettings" onclick="setTab('settings')">Settings</button>
-        <!-- Programs/Rivals/Personnel (s6) + Infrastructure (s7) retired → modals + hub drills -->
+        <!-- slice 8: the Operations group is gone — Settings → the HUD ⚙ menu; Programs/
+             Rivals/Personnel/Infrastructure → modals + hub drills. The rail is now purely
+             the four scene selectors. -->
       </nav>
       <!-- slice 4: the Mission Control Advisor + Objectives (was commandView's ccLeft) is
            promoted to the always-on left rail; render() rebuilds it on every scene. The
@@ -417,9 +414,8 @@
   <!-- Infrastructure retired in slice 7 → the mfg/prod/orbital-ops hub buildings open
        showInfrastructureModal (builds #infraCard on demand). -->
 
-  <div id="settingsView" class="hidden">
-    <div class="card" id="settingsCard"></div>
-  </div>
+  <!-- Settings retired in slice 8 → the HUD ⚙ menu (showSettingsMenu builds #settingsCard
+       on demand via renderSettings). -->
 
     </main>
     <aside class="rail-right" id="railRight">
@@ -3402,7 +3398,7 @@ const SCENE_TABS = Object.keys(SCENES);
 // slice 4: Planner folded into the left-rail advisor. slice 5: Missions → the Command
 // Center "Mission Control" drill. slice 6: Programs/Rivals/Personnel → modals + hub drills.
 // All land on Command Center (their new homes hang off the hub).
-const RETIRED_TABS = { planner:'command', missions:'command', programs:'command', rivals:'command', personnel:'command', infra:'command' };
+const RETIRED_TABS = { planner:'command', missions:'command', programs:'command', rivals:'command', personnel:'command', infra:'command', settings:'command' };
 function isSceneTab(t){ return SCENE_TABS.indexOf(t)>=0; }
 // slice 5/6: a legacy "go to tab X" intent → the onclick expression for X's new home
 // (a hub drill or a modal). Used by the advisor, alerts, planner steps and hub buildings.
@@ -3412,6 +3408,7 @@ function tabIntent(t){
   if(t==='personnel') return "showPersonnelModal()";
   if(t==='rivals')    return "showRivalsModal()";
   if(t==='infra')     return "showInfrastructureModal()";
+  if(t==='settings')  return "showSettingsMenu()";
   return `setTab('${t}')`;
 }
 // slice 5: which panel the Command Center right rail shows — 'alerts' (default) or
@@ -3428,6 +3425,28 @@ function showProgramsModal(){ activeModal=()=>{ showModal(`<div id="ambitionCard
 function showRivalsModal(){ activeModal=()=>{ showModal(`<div id="rivalsCard"></div>${modalClose()}`,true); renderRivals(); }; activeModal(); }
 function showPersonnelModal(){ activeModal=()=>{ showModal(`<div id="personnelCard"></div>${modalClose()}`,true); renderPersonnel(); }; activeModal(); }
 function showInfrastructureModal(){ activeModal=()=>{ showModal(`<div id="infraCard"></div>${modalClose()}`,true); renderInfrastructure(); }; activeModal(); } // slice 7: the Infra tab → a hub-building drill modal
+// slice 8: the HUD ⚙ menu — display toggles + save/load/new + the full Settings panel.
+// A live modal: the display toggles call render() to refresh in place; Settings controls
+// (difficulty/detail/sliders) refresh via renderSettings() on the same re-run. Save/Load/New
+// close the menu first (they open their own dialogs).
+function showSettingsMenu(){
+  activeModal=()=>{
+    const fs=inFullscreen();
+    showModal(`<h2 style="text-align:left">⚙ Menu</h2>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:4px">
+        <button class="btn ghost" onclick="toggleAnim();render()">Animation: ${animEnabled?'On':'Off'}</button>
+        <button class="btn ghost" onclick="toggleWide();render()">↔ Wide: ${wideOn?'On':'Off'}</button>
+        <button class="btn ghost" onclick="toggleFullscreen();render()">${fs?'⛶ Exit full screen':'⛶ Full screen'}</button>
+        <button class="btn ghost" onclick="hideModal();saveGame()">💾 Save</button>
+        <button class="btn ghost" onclick="hideModal();loadGame()">📂 Load</button>
+        <button class="btn ghost" onclick="hideModal();confirmNew()">New Game</button>
+      </div>
+      <div id="settingsCard" style="margin-top:12px"></div>
+      ${modalClose()}`,true);
+    renderSettings();
+  };
+  activeModal();
+}
 // 'scene' = owns the center viewport; 'panel' = secondary view (future rail/modal home).
 function viewKind(t){ return isSceneTab(t) ? 'scene' : 'panel'; }
 function setTab(t){closeLiveModal();hubPanel='alerts';state.tab=t;render();} // nav resets the hub drill + closes any live modal (slice 5/6)
@@ -6346,12 +6365,10 @@ function render(){
   $('tabBench').classList.toggle('active',state.tab==='bench');
   $('tabRnd').classList.toggle('active',state.tab==='rnd');
   $('tabMap').classList.toggle('active',state.tab==='map');
-  $('tabSettings').classList.toggle('active',state.tab==='settings');
   $('commandView').classList.toggle('hidden',state.tab!=='command');
   $('benchView').classList.toggle('hidden',state.tab!=='bench');
   $('rndView').classList.toggle('hidden',state.tab!=='rnd');
   $('mapView').classList.toggle('hidden',state.tab!=='map');
-  $('settingsView').classList.toggle('hidden',state.tab!=='settings');
   applyDifficultyUI();
 
   const ar=state.activeResearch;
@@ -6369,7 +6386,6 @@ function render(){
   renderNextObjective();
   if(state.tab==='rnd')renderRnd();
   if(state.tab==='map')renderMap();
-  if(state.tab==='settings')renderSettings();
   renderLog();
   if(activeModal) activeModal(); // slice 6: keep an open deep-view modal (Programs/Rivals/Personnel) in sync with state
 }

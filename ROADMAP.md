@@ -2349,12 +2349,29 @@ right-rail mini + modal; **Personnel** → hub building drill / modal;
       **95/95**, slices 1–7): tab/view gone, all 3 buildings drill to the modal, it opens
       + populates `#infraCard`, survives a re-render, closes on nav, and `infra` saves
       migrate. **Browser check pending.**
-- [ ] **Slice 8 — ⚙ menu + final cleanup.** Settings + save/load/new/fullscreen/
-      wide/uiLayer move into a HUD-corner ⚙ menu; remove the old top tab bar
-      entirely and the now-dead `setTab` targets (with load-time migration of any
-      retired `state.tab` value). Click-depth audit: confirm every primary function
-      is ≤2 clicks. Validate: legacy saves open onto a valid scene, no orphaned
-      handlers, full prior harness suite green.
+- [x] **Slice 8 — ⚙ menu + final cleanup.** *(Built 2026-06-24.)* Added a HUD
+      **⚙ Menu** (`showSettingsMenu()`, a live `.modal.view`) that folds in the display
+      toggles (Animation / Wide / Full screen — each `toggle*(); render()` so the menu
+      refreshes in place), **Save / Load / New Game** (which `hideModal()` first, then
+      open their own dialogs), and the full **Settings** panel (`#settingsCard` via
+      `renderSettings()`, difficulty + detail-level). The opsbar drops its seven utility
+      buttons down to one **⚙ Menu** button (plus the kept quick **View:** detail toggle,
+      Advance, and Skip). **Removed the Settings tab + `settingsView`**, and with it the
+      now-empty *Operations* rail group — **the left rail is now purely the four scene
+      selectors.** `tabIntent('settings')` + `RETIRED_TABS.settings='command'` keep legacy
+      saves / stray intents valid. The old horizontal top tab bar was already gone (slice
+      1); no dead `setTab` targets remain (every retired tab routes through `RETIRED_TABS`
+      / `tabIntent`). **Click-depth audit passes** — 4 scenes are one rail click; Contracts
+      /Personnel/Infra/Rivals are a hub-building click; Programs is the always-on Objectives
+      link; Settings/save/load/new are the ⚙ menu — all ≤2 clicks. Validated headlessly
+      (`ov-shell.js`, **104/104**, slices 1–8): nav is exactly the 4 scene buttons, every
+      retired tab/view gone, the ⚙ menu opens with Save/Load/New + populated Settings,
+      survives a re-render, closes on nav, and a `settings` save migrates to `command`.
+      **Browser check pending.**
+
+**Epic status:** all 8 slices shipped — the 11-tab bar is now a 4-scene Mission Control
+shell (persistent left rail with advisor/objectives, contextual right rail, hub-building
+drills, deep-view modals, and the ⚙ menu). Headless suite green at 104/104.
 
 ## Repo
 
