@@ -44,7 +44,7 @@
   .rail-advisor .card{padding:11px 12px}
   .rail-advisor .cc-panel-h{font-size:11px}
   .viewport{min-width:0}                                              /* lets overflow children (tech tree, map) size within the column */
-  .rail-right{position:sticky;top:14px;align-self:start}
+  .rail-right{position:sticky;top:14px;align-self:start;max-height:calc(100vh - 28px);overflow-y:auto}  /* tall panels (e.g. contracts) scroll within the sticky rail */
   .shell:not(.has-right) .rail-right{display:none}                    /* collapse the rail on panel scenes (slice 3) */
   .rail-panel > .card:first-child{margin-top:0}
   nav.rail-nav{display:flex;flex-direction:column;gap:5px;margin:0}
@@ -337,7 +337,6 @@
         <button id="tabRnd" class="scene" onclick="setTab('rnd')">⚛ R&amp;D</button>
         <button id="tabMap" class="scene" onclick="setTab('map')">☉ Solar System</button>
         <div class="rail-group">Operations</div>
-        <button id="tabMissions" onclick="setTab('missions')">Missions</button>
         <button id="tabPrograms" onclick="setTab('programs')">Programs</button>
         <button id="tabRivals" onclick="setTab('rivals')">Rivals</button>
         <button id="tabPersonnel" onclick="setTab('personnel')">Personnel</button>
@@ -380,10 +379,8 @@
     <!-- vehicle preview + readout relocated to the persistent right rail in slice 3 -->
   </div>
 
-  <div id="missionsView" class="hidden">
-    <div class="card" id="passiveCard"></div>
-    <div class="card" style="margin-top:14px"><h2>Contracts</h2><div id="missionList"></div></div>
-  </div>
+  <!-- Missions tab retired in slice 5 — Contracts live in the right-rail "Mission Control"
+       drill (railContracts), opened from the hub building or the advisor's Contracts link. -->
 
   <div id="programsView" class="hidden">
     <div class="card" id="ambitionCard"></div>
@@ -452,6 +449,16 @@
       </div>
       <div id="railRnd" class="rail-panel hidden">
         <div class="card" id="researchDetail"></div>
+      </div>
+      <!-- slice 5: the Mission Control hub drill — Contracts + passive income, shown on the
+           Command Center scene when the player drills into the Mission Control building. -->
+      <div id="railContracts" class="rail-panel hidden">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px">
+          <div class="cc-panel-h" style="margin:0">📡 Mission Control</div>
+          <button class="btn ghost" style="font-size:10px;padding:3px 8px" onclick="openHubPanel('alerts')" title="Back to Alerts &amp; News">← Alerts</button>
+        </div>
+        <div class="card" id="passiveCard"></div>
+        <div class="card" style="margin-top:10px"><h2 style="font-size:15px">Contracts</h2><div id="missionList"></div></div>
       </div>
     </aside>
   </div>
@@ -3399,12 +3406,17 @@ const SCENES = {
 };
 const SCENE_TABS = Object.keys(SCENES);
 // Retired tab ids → where they now live, so legacy saves / stray setTab calls resolve.
-// slice 4: the Planner folded into the always-on left-rail advisor → land on Command Center.
-const RETIRED_TABS = { planner:'command' };
+// slice 4: Planner folded into the left-rail advisor. slice 5: Missions → the Command
+// Center "Mission Control" drill (Contracts in the right rail). Both land on Command Center.
+const RETIRED_TABS = { planner:'command', missions:'command' };
 function isSceneTab(t){ return SCENE_TABS.indexOf(t)>=0; }
+// slice 5: which panel the Command Center right rail shows — 'alerts' (default) or
+// 'contracts' (the Mission Control hub drill). Transient UI, not persisted.
+let hubPanel='alerts';
+function openHubPanel(p){ hubPanel=p; state.tab='command'; render(); }
 // 'scene' = owns the center viewport; 'panel' = secondary view (future rail/modal home).
 function viewKind(t){ return isSceneTab(t) ? 'scene' : 'panel'; }
-function setTab(t){state.tab=t;render();}
+function setTab(t){hubPanel='alerts';state.tab=t;render();} // nav always resets the hub drill to Alerts (slice 5)
 function addStage(){ if(state.stages.length>=3)return; state.stages.push({eng:firstUnlocked(),count:1,prop:2.0}); render(); }
 function removeStage(i){ if(state.stages.length<=1)return; state.stages.splice(i,1); render(); }
 function firstUnlocked(){return Object.keys(ENGINES).find(k=>state.unlocked[k])||'a4';}
@@ -6307,15 +6319,17 @@ function render(){
     shell.classList.toggle('viewing-panel', !isSceneTab(state.tab));
     // slice 3: show the active scene's contextual right-rail panel; collapse the rail on panels.
     const RAIL={command:'railCommand',bench:'railBench',map:'railMap',rnd:'railRnd'};
-    const activePanel=RAIL[state.tab]||null;
-    for(const k in RAIL){ const p=$(RAIL[k]); if(p) p.classList.toggle('hidden', RAIL[k]!==activePanel); }
-    // command's only rail content (ccRight) is adv-only, so the rail is empty in Basic → don't reserve it.
-    const railShown=!!activePanel && !(state.tab==='command' && uiLayer()==='basic');
+    let activePanel=RAIL[state.tab]||null;
+    // command's alerts panel (ccRight) is adv-only, so the rail is empty in Basic → don't reserve it.
+    let railAdvOnly=(state.tab==='command');
+    // slice 5: on the hub, the Mission Control drill swaps Alerts for the Contracts panel (shown in all layers).
+    if(state.tab==='command' && hubPanel==='contracts'){ activePanel='railContracts'; railAdvOnly=false; }
+    for(const id of ['railCommand','railBench','railMap','railRnd','railContracts']){ const p=$(id); if(p) p.classList.toggle('hidden', id!==activePanel); }
+    const railShown=!!activePanel && !(railAdvOnly && uiLayer()==='basic');
     shell.classList.toggle('has-right', railShown);
   }
   $('tabCommand').classList.toggle('active',state.tab==='command');
   $('tabBench').classList.toggle('active',state.tab==='bench');
-  $('tabMissions').classList.toggle('active',state.tab==='missions');
   $('tabPrograms').classList.toggle('active',state.tab==='programs');
   $('tabRnd').classList.toggle('active',state.tab==='rnd');
   $('tabMap').classList.toggle('active',state.tab==='map');
@@ -6325,7 +6339,6 @@ function render(){
   $('tabSettings').classList.toggle('active',state.tab==='settings');
   $('commandView').classList.toggle('hidden',state.tab!=='command');
   $('benchView').classList.toggle('hidden',state.tab!=='bench');
-  $('missionsView').classList.toggle('hidden',state.tab!=='missions');
   $('programsView').classList.toggle('hidden',state.tab!=='programs');
   $('rndView').classList.toggle('hidden',state.tab!=='rnd');
   $('mapView').classList.toggle('hidden',state.tab!=='map');
@@ -6346,7 +6359,7 @@ function render(){
   if(state.tab!=='bench') pauseVehGame();
   if(state.tab!=='map') pauseMapGame();
   if(state.tab==='bench'){renderVehicleFamilies();renderArchitecture();renderStages();renderBoosters();renderTransfer();renderLander();renderCrew();renderPower();renderWindowPlanner();renderRoutes();renderReadout();renderVehiclePreview();}
-  if(state.tab==='missions')renderMissions();
+  if(state.tab==='command' && hubPanel==='contracts') renderMissions(); // slice 5: contracts drill content (passiveCard + missionList)
   if(state.tab==='programs')renderPrograms();
   renderNextObjective();
   if(state.tab==='rnd')renderRnd();
@@ -6456,7 +6469,7 @@ function missionAdvisor(){
   return {goal:mm.name, program:no.program.name, reward:{money:mm.payout||0, rep:mm.rep||0}, reqs, actions:actions.slice(0,4), ready};
 }
 // onclick string for an advisor/action object
-function advisorClick(a){ return a.missionId?`selectMission('${a.missionId}')`:(a.researchId?`setTab('rnd')`:(a.tab?`setTab('${a.tab}')`:`advanceMonth()`)); }
+function advisorClick(a){ return a.missionId?`selectMission('${a.missionId}')`:(a.researchId?`setTab('rnd')`:(a.tab==='missions'?`openHubPanel('contracts')`:(a.tab?`setTab('${a.tab}')`:`advanceMonth()`))); } // slice 5: 'missions' intents open the contracts drill
 // #18 slice 5: grouped objectives checklist (main / recommended / long-term / completed)
 function objectivesList(){
   const groups=[];
@@ -6535,7 +6548,7 @@ function siteBuildings(){
   return [
     {key:'pad', icon:'🚀', name:'Launch Pad', tab:'bench',
      status: m?`${m.name} · ${buildMonths(m)+1+TEST_LEVELS[state.testLevel].months} mo to fly`:'no mission selected', planned:false},
-    {key:'mission', icon:'📡', name:'Mission Control', tab:'missions',
+    {key:'mission', icon:'📡', name:'Mission Control', tab:'missions', act:"openHubPanel('contracts')",
      status:`${availableContracts()} contract${availableContracts()===1?'':'s'} available`, planned:false},
     {key:'mfg', icon:'🏭', name:'Manufacturing', tab:'infra',
      status:`Bays L${prodLevel('bays')} · capacity ${bayCapacity()}`, planned:false},
@@ -7127,7 +7140,7 @@ function renderCCLeft(){
       <div style="display:flex;justify-content:space-between;font-size:11px"><span class="dim">ambition ${prog.done}/${prog.total}</span><span class="num">${prog.pct}%</span></div>
       ${objHTML}
       <div style="display:flex;gap:6px;margin-top:10px">
-        <button class="btn ghost" style="flex:1;font-size:11px" onclick="setTab('missions')">Contracts →</button>
+        <button class="btn ghost" style="flex:1;font-size:11px" onclick="openHubPanel('contracts')">Contracts →</button>
         <button class="btn ghost" style="flex:1;font-size:11px" onclick="setTab('programs')">Programs →</button>
       </div>
     </div>`;
@@ -7136,7 +7149,7 @@ function renderCCLeft(){
 function renderCCCenter(){
   const spots=ccHotspots().map(b=>{
     const planned=b.planned||!b.tab;
-    const onclick=(!planned&&b.tab)?` onclick="setTab('${b.tab}')"`:'';
+    const onclick=(!planned&&b.tab)?` onclick="${b.act||`setTab('${b.tab}')`}"`:''; // slice 5: a building may define a custom act (e.g. the Mission Control contracts drill)
     const style=`left:${b.x}%;top:${b.y}%;width:${b.w}%;height:${b.h}%`;
     return `<div class="ccspot${planned?' planned':''}" style="${style}"${onclick} title="${b.name} — ${b.status}">
       ${b.planned?'<span class="pill lock">planned</span>':''}
@@ -7179,7 +7192,7 @@ function renderCCCenter(){
 function renderCCRight(){
   const dotCol={bad:'var(--bad)',warn:'var(--warn)',ok:'var(--ok)'};
   const alerts=agencyAlerts();
-  const aRows=alerts.map(a=>`<div class="row-item clk" onclick="setTab('${a.tab||'command'}')"><span><span class="alert-dot" style="background:${dotCol[a.level]}"></span>${a.msg}</span></div>`).join('') || '<div class="dim" style="font-size:12px">All systems nominal.</div>';
+  const aRows=alerts.map(a=>`<div class="row-item clk" onclick="${a.tab==='missions'?`openHubPanel('contracts')`:`setTab('${a.tab||'command'}')`}"><span><span class="alert-dot" style="background:${dotCol[a.level]}"></span>${a.msg}</span></div>`).join('') || '<div class="dim" style="font-size:12px">All systems nominal.</div>';
   const o=ccOpsSummary();
   const news=ccNews(7);
   const nRows=news.map(l=>`<div class="news-line"><span class="dim">${l.when}</span> <span class="${l.kind}">${l.msg.replace(/<[^>]*>/g,'')}</span></div>`).join('') || '<div class="dim" style="font-size:12px">No news yet.</div>';

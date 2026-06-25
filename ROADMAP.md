@@ -2287,11 +2287,24 @@ right-rail mini + modal; **Personnel** → hub building drill / modal;
       advisor renders on every remaining scene, and a `state.tab==='planner'` save
       migrates to `command` on render. **Browser check pending** (rail width + the
       folded flight-plan layout want a visual pass).
-- [ ] **Slice 5 — Contracts into a rail panel + hub drill; remove Missions tab.**
-      Contracts/passive-income become a **right-rail list** plus the hub "Mission
-      Control" building drill-in; `selectMission`/launch flow unchanged. Remove the
-      Missions tab. Validate: every contract selectable in ≤2 clicks, launch path
-      intact.
+- [x] **Slice 5 — Contracts into a rail panel + hub drill; remove Missions tab.**
+      *(Built 2026-06-24.)* The **Missions tab, `missionsView` are removed**; Contracts
+      + passive income move into a new `#railContracts` right-rail panel (the relocated
+      `passiveCard` + `missionList`, ids unchanged so `renderMissions`/`selectMission`/
+      launch are untouched). It surfaces as the **Mission Control hub drill**: a transient
+      `hubPanel` ('alerts' | 'contracts') decides whether the Command Center right rail
+      shows Alerts/News (`railCommand`) or Contracts; `openHubPanel('contracts')` (from
+      the Cape **Mission Control building's new `act`**, the advisor's "Contracts →" link,
+      the rep-building advisor action, and low-capital alerts) drills in, and a "← Alerts"
+      button / any nav click resets it. Reachable in **≤2 clicks** (scene → building, or
+      one click when already on the hub) and **works in all uiLayers** (the contracts
+      panel isn't `adv-only`, unlike the alerts panel). `RETIRED_TABS.missions='command'`
+      migrates legacy saves; the sticky right rail gained `max-height`/`overflow-y:auto`
+      so a long contracts list scrolls within it. Validated headlessly (`ov-shell.js`,
+      **68/68**, slices 1–5): Missions tab/view gone, `railContracts` holds the relocated
+      (single-occurrence) cards, the drill shows contracts + hides alerts + reserves the
+      track in every layer, `renderMissions` populates the list (19 contracts), and the
+      Command nav resets the drill. **Browser check pending.**
 - [ ] **Slice 6 — Programs / Rivals / Personnel into panels + modals.** Programs →
       left-rail objectives + detail modal; Rivals → right-rail mini-leaderboard +
       deep-view modal; Personnel → hub "Personnel" building drill / modal. Remove
