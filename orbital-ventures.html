@@ -36,11 +36,31 @@
   .stat .v{font-family:var(--mono);font-size:18px;font-weight:600}
 
   /* Tabs */
-  nav{display:flex;gap:6px;margin-bottom:14px}
-  nav button{background:var(--panel);color:var(--muted);border:1px solid var(--line);
-    padding:9px 16px;border-radius:6px 6px 0 0;cursor:pointer;font-family:var(--sans);
-    font-size:12px;text-transform:uppercase;letter-spacing:.1em}
-  nav button.active{background:var(--panel2);color:var(--ink);border-bottom-color:var(--panel2);box-shadow:inset 0 2px 0 var(--ignite)}
+  /* --- Mission Control Shell (UI Consolidation slice 1): persistent left rail + center viewport + (stub) right rail --- */
+  .shell{display:grid;grid-template-columns:184px minmax(0,1fr);gap:14px;align-items:start}
+  .shell.has-right{grid-template-columns:184px minmax(0,1fr) 300px}   /* right rail enabled in a later slice */
+  .rail-left{position:sticky;top:14px;align-self:start}
+  .viewport{min-width:0}                                              /* lets overflow children (tech tree, map) size within the column */
+  .rail-right{position:sticky;top:14px;align-self:start}
+  .rail-right:empty{display:none}                                     /* stub for now — populated in slice 3 */
+  nav.rail-nav{display:flex;flex-direction:column;gap:5px;margin:0}
+  nav.rail-nav button{display:block;width:100%;text-align:left;background:var(--panel);color:var(--muted);
+    border:1px solid var(--line);padding:9px 12px;border-radius:6px;cursor:pointer;font-family:var(--sans);
+    font-size:12px;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  nav.rail-nav button:hover{color:var(--ink);border-color:var(--ignite)}
+  nav.rail-nav button.active{background:var(--panel2);color:var(--ink);border-color:var(--line);box-shadow:inset 3px 0 0 var(--ignite)}
+  /* slice 2: group headers + scene emphasis (scenes own the center viewport; panels are secondary) */
+  nav.rail-nav .rail-group{font-size:10px;text-transform:uppercase;letter-spacing:.14em;color:var(--muted);
+    opacity:.6;margin:10px 2px 2px;font-family:var(--sans)}
+  nav.rail-nav .rail-group:first-child{margin-top:0}
+  nav.rail-nav button.scene{font-weight:600}
+  @media(max-width:880px){
+    .shell,.shell.has-right{grid-template-columns:1fr}
+    .rail-left{position:static}
+    nav.rail-nav{flex-direction:row;flex-wrap:wrap;align-items:center}
+    nav.rail-nav button{width:auto}
+    nav.rail-nav .rail-group{width:100%;margin:6px 2px 0}
+  }
 
   .opsbar{display:flex;align-items:center;gap:10px;margin-bottom:14px;padding:8px 12px;
     border:1px solid var(--line);border-radius:6px;background:var(--panel);font-size:12px}
@@ -286,20 +306,6 @@
     </div>
   </header>
 
-  <nav>
-    <button id="tabCommand" class="active" onclick="setTab('command')">Command Center</button>
-    <button id="tabPlanner" onclick="setTab('planner')">🧭 Planner</button>
-    <button id="tabBench" onclick="setTab('bench')">Design Bench</button>
-    <button id="tabMissions" onclick="setTab('missions')">Missions</button>
-    <button id="tabPrograms" onclick="setTab('programs')">Programs</button>
-    <button id="tabRnd" onclick="setTab('rnd')">R&amp;D</button>
-    <button id="tabMap" onclick="setTab('map')">Solar System</button>
-    <button id="tabRivals" onclick="setTab('rivals')">Rivals</button>
-    <button id="tabPersonnel" onclick="setTab('personnel')">Personnel</button>
-    <button id="tabInfra" onclick="setTab('infra')">Infrastructure</button>
-    <button id="tabSettings" onclick="setTab('settings')">Settings</button>
-  </nav>
-
   <div class="opsbar">
     <span id="rndStatus"></span>
     <span id="nextObjStatus" class="dim" style="font-size:11px"></span>
@@ -314,6 +320,29 @@
     <button class="btn" onclick="advanceMonth()">▸ Advance 1 month <span class="dim" id="overheadLabel">(−$0.12M)</span></button>
     <button class="btn ghost" id="skipBtn" onclick="skipResearch()">Skip to R&amp;D done</button>
   </div>
+
+  <div class="shell" id="appShell">
+    <aside class="rail-left">
+      <nav class="rail-nav">
+        <!-- Mission Control Shell slice 2: the rail is split into the four center "scenes"
+             (own the center viewport) and the "operations" panels (destined for the rails /
+             modals in later slices). Same button ids + setTab handlers — nothing removed. -->
+        <div class="rail-group">Mission Control</div>
+        <button id="tabCommand" class="scene active" onclick="setTab('command')">⌂ Command Center</button>
+        <button id="tabBench" class="scene" onclick="setTab('bench')">✎ Design Bench</button>
+        <button id="tabRnd" class="scene" onclick="setTab('rnd')">⚛ R&amp;D</button>
+        <button id="tabMap" class="scene" onclick="setTab('map')">☉ Solar System</button>
+        <div class="rail-group">Operations</div>
+        <button id="tabPlanner" onclick="setTab('planner')">🧭 Planner</button>
+        <button id="tabMissions" onclick="setTab('missions')">Missions</button>
+        <button id="tabPrograms" onclick="setTab('programs')">Programs</button>
+        <button id="tabRivals" onclick="setTab('rivals')">Rivals</button>
+        <button id="tabPersonnel" onclick="setTab('personnel')">Personnel</button>
+        <button id="tabInfra" onclick="setTab('infra')">Infrastructure</button>
+        <button id="tabSettings" onclick="setTab('settings')">Settings</button>
+      </nav>
+    </aside>
+    <main class="viewport">
 
   <div id="commandView">
     <div class="card" id="execOverview"></div>
@@ -409,6 +438,10 @@
 
   <div id="settingsView" class="hidden">
     <div class="card" id="settingsCard"></div>
+  </div>
+
+    </main>
+    <aside class="rail-right" id="railRight"></aside>
   </div>
 
   <div class="card log">
@@ -3343,6 +3376,19 @@ function autoAdvanceMission(){
 }
 
 /* ---------- actions ---------- */
+// UI Consolidation slice 2: the center-viewport scene registry. These four tabs are full
+// "scenes" that own the center stage; the remaining tabs are "panels" headed for the rails /
+// modals in later slices. Mission Playback is a contextual center takeover (already an overlay).
+const SCENES = {
+  command: { tab:'command', label:'Command Center', icon:'⌂' },
+  bench:   { tab:'bench',   label:'Design Bench',   icon:'✎' },
+  rnd:     { tab:'rnd',     label:'R&D',            icon:'⚛' },
+  map:     { tab:'map',     label:'Solar System',   icon:'☉' },
+};
+const SCENE_TABS = Object.keys(SCENES);
+function isSceneTab(t){ return SCENE_TABS.indexOf(t)>=0; }
+// 'scene' = owns the center viewport; 'panel' = secondary view (future rail/modal home).
+function viewKind(t){ return isSceneTab(t) ? 'scene' : 'panel'; }
 function setTab(t){state.tab=t;render();}
 function addStage(){ if(state.stages.length>=3)return; state.stages.push({eng:firstUnlocked(),count:1,prop:2.0}); render(); }
 function removeStage(i){ if(state.stages.length<=1)return; state.stages.splice(i,1); render(); }
@@ -6237,6 +6283,9 @@ function render(){
   if(sci>0){ $('stSci').textContent=Math.round(sci)+' ⚛'; $('stSci').style.color='var(--readout)'; }
   renderMarketStat();
 
+  // slice 2: tag the shell with the active view's kind (scene vs panel) so CSS / later
+  // slices (right rail, center takeover) can react without re-deriving it.
+  const shell=$('appShell'); if(shell){ shell.classList.toggle('viewing-scene', isSceneTab(state.tab)); shell.classList.toggle('viewing-panel', !isSceneTab(state.tab)); }
   $('tabCommand').classList.toggle('active',state.tab==='command');
   $('tabPlanner').classList.toggle('active',state.tab==='planner');
   $('tabBench').classList.toggle('active',state.tab==='bench');

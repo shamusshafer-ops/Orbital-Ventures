@@ -2141,6 +2141,143 @@ each keeping the no-Phaser 2D fallback intact.
 - [ ] **Slice 3 — Plume & FX polish.** Volumetric GPU plume, heat-haze postFX behind the
       exhaust, Mach diamonds, staging/reentry particle upgrades, camera work.
 
+## UI Consolidation — The Mission Control Shell (epic)
+
+Source: a top-down, game-dev layout review (2026-06-24). Goal: stop making the
+player hop between flat sibling pages to reach a function ("nobody should be five
+clicks from a thing they do every turn"), consolidate the 11 top-level tabs, and
+turn the central **Mission Control** area into a **selectable viewport over all
+the game's scenes**, with persistent **left and right sidebars** holding the
+recurring functions.
+
+**The core finding.** The game already navigates two ways at once — an
+**11-button top tab bar** (`setTab` → hide every `*View` div, show one) *and* a
+**clickable Cape Canaveral scene** whose buildings (`siteBuildings`) route to the
+same tabs (`tab:'bench'`, `tab:'missions'`, `tab:'infra'`…, with mfg/prod/orbital-
+ops all collapsing onto `infra`). Both lead to the same flat full-page swaps. And
+the **Command Center is already the layout we want** — top `execOverview` HUD,
+`ccLeft` advisor + objectives, `ccCenter` animated selectable Space Center scene,
+`ccRight` alerts/news, `ccTimeline` strip (`cc-cols` = `224px 1fr 224px`) — but
+that shell applies to **one tab only**; every other tab throws it away and renders
+a lone single-column card stack. The epic **promotes that shell to the whole app.**
+
+**Decisions taken with the user (2026-06-24):**
+- **Scope — full shell, built incrementally.** Commit to the Mission Control Shell
+  as the end state; reach it in small, individually-shippable slices (the project's
+  standard per-slice loop), keeping the game fully playable at every step. Slices
+  are ordered **non-destructive first** (build the frame, reparent existing views)
+  then **subtractive** (remove redundant tabs once their function lives in a rail or
+  on a scene). No tab is deleted until its function has a new home.
+- **Target click-depth — ≤2 for every primary function.** Scene = 1 click in the
+  left rail; the action within sits on that scene or in a persistent rail.
+
+**Target architecture.** One persistent frame:
+- **HUD (top, persistent):** date · capital · rep · science · ▸ Advance month,
+  plus a ⚙ menu (absorbs Settings + save/load/new/fullscreen/wide/uiLayer).
+- **Left rail (persistent):** the only "navigation" — 4 scene selectors
+  (⌂ Space Center · ✎ Design Bench · ⚛ R&D · ☉ Solar System) above the always-on
+  Advisor ("what to do next") + Objectives/ambition progress.
+- **Center viewport:** swaps **scenes** — Space Center (the clickable Cape hub),
+  Design Bench (+ vehicle preview), Tech Tree, Solar System map, and Mission
+  Playback as a contextual center takeover (already an overlay).
+- **Right rail (contextual):** reskins per scene — hub→alerts/news + rivals mini;
+  bench→readout; map→body Δv + activity; rnd→node detail. Also the home for
+  Contracts and the Rivals mini-leaderboard.
+- **Bottom (persistent):** Flight & Operations Log + program timeline strip.
+
+**11 tabs → 4 center scenes + rail panels:** Command Center becomes the shell
+itself; Space Center / Bench / R&D / Solar System become the 4 center scenes;
+**Planner** folds into the left-rail Advisor (kills the duplicate "next step"
+system); **Missions/Contracts** → right-rail list + hub "Mission Control" building
+drill; **Programs/Ambition** → left-rail objectives + detail modal; **Rivals** →
+right-rail mini + modal; **Personnel** → hub building drill / modal;
+**Infrastructure** → *is* the hub building drill-ins (merge, don't duplicate);
+**Settings** → ⚙ menu.
+
+**Constraints to honour during the build:**
+- **Save-compat.** `state.tab` persists; keep every legacy value resolving (map
+  retired tab ids → their new scene/panel on load; bump `SAVE_VERSION` only if a
+  new persisted field is added). Transient UI (mapExpanded, plannerShowMissions,
+  compare selection) stays unpersisted.
+- **uiLayer gating preserved.** Basic/Advanced/Expert (`adv-only`/`basic-only`,
+  `cycleUiLayer`) must keep hiding/showing the same metrics in the new rails.
+- **Phaser scene lifecycle.** The Cape `ccSceneHost` is expensive to rebuild
+  (`startCapeGame`/`resumeCapeGame`/`pauseCapeGame`/`stopCCScene`). Switching
+  *away* from the hub scene must **pause**, not destroy, and switching back must
+  resume — don't reparent/rebuild the Phaser host on every scene change.
+- **2D fallback intact.** Everything stays feature-guarded by `phaserOK()`.
+
+### Suggested build order (slices)
+
+- [x] **Slice 1 — Persistent shell frame (non-destructive).** *(Built 2026-06-24.)*
+      Introduced the permanent frame: a `.shell` CSS grid (`184px minmax(0,1fr)`,
+      `#appShell`) holding `aside.rail-left` → `nav.rail-nav` (the 11 tab buttons
+      relocated from the old horizontal top `<nav>`, **same ids + same
+      `setTab('…')` onclicks**, restyled as a vertical list with an active inset
+      bar) and `main.viewport` (all 11 `*View` divs moved inside, unchanged). The
+      right rail is a stubbed `aside.rail-right#railRight` (`.rail-right:empty`
+      collapses it; `.shell.has-right` reserves the 300px track for slice 3). The
+      header HUD, opsbar, and Flight Log stay outside the shell, so they persist
+      across scene changes; rail-left is `position:sticky`. A `max-width:880px`
+      media query collapses the rail back to a horizontal wrap. **Nothing removed**
+      — because the button ids/handlers are unchanged, `render()`'s active-toggle
+      and all `setTab` flows work untouched. Validated headlessly
+      (`ov-shell.js`, 53/53): shell regions present, exactly 11 rail buttons each
+      routing to the right tab, every `*View` inside the viewport (none orphaned),
+      HUD/opsbar/log persist outside it, shell region tag-balanced (64/64),
+      `render()`/`setTab()` to all destinations throw nothing, game script still
+      loads. Browser check pending.
+- [x] **Slice 2 — Scene registry + center viewport.** *(Built 2026-06-24.)* Added a
+      `SCENES` registry (`command`, `bench`, `rnd`, `map` — each `{tab,label,icon}`)
+      with `SCENE_TABS`, `isSceneTab()`, and `viewKind()` (`scene` vs `panel`) so the
+      four center-stage views are first-class and the other seven are tagged as
+      future rail/modal panels. The **left rail is regrouped** into a *Mission
+      Control* block (the 4 `scene`-classed selectors) above an *Operations* block
+      (the 7 panels), with group-header + scene-emphasis CSS — same button ids and
+      `setTab` handlers, **nothing removed**. `render()` now tags `#appShell` with
+      `viewing-scene`/`viewing-panel` for the active view so slice 3's right rail and
+      the center-takeover work can react without re-deriving it. Mission Playback
+      stays the existing full-overlay center takeover (no rebuild needed). The
+      Phaser pause-not-destroy lifecycle this slice depends on **already existed** —
+      `render()` calls `pauseCapeGame`/`pauseVehGame`/`pauseMapGame` on leaving each
+      scene and `start*Game` resumes an existing game rather than recreating it, so
+      switching scenes keeps the Cape/veh/map hosts alive; all feature-guarded by
+      `phaserOK()`. Validated headlessly (`ov-shell.js`, **29/29**, slices 1+2):
+      registry keys/helpers correct, rail grouped with scenes before the Operations
+      divider and panels after, scene buttons carry `class="scene"`, all 11 `setTab`
+      routes still throw nothing, no `*View` orphaned. Browser check pending.
+- [ ] **Slice 3 — Contextual right rail.** Consolidate today's per-view sidebars
+      (`ccRight` alerts/news, bench `.readout`, map `bodyCard`+activity, rnd
+      `researchDetail`) into **one persistent right rail** that reskins by scene.
+      Validate: each scene shows its correct context panel; uiLayer gating holds.
+- [ ] **Slice 4 — Persistent left-rail Advisor + Objectives; fold in Planner.**
+      Promote `ccLeft` (advisor "what to do next" + objectives + ambition bar) to
+      the always-on left rail, visible on every scene. Fold the **Planner**'s
+      guided steps into the advisor and **remove the Planner tab** (first
+      subtractive slice). Validate: advisor present on all scenes, planner step
+      actions still reachable, no dead "Planner" route.
+- [ ] **Slice 5 — Contracts into a rail panel + hub drill; remove Missions tab.**
+      Contracts/passive-income become a **right-rail list** plus the hub "Mission
+      Control" building drill-in; `selectMission`/launch flow unchanged. Remove the
+      Missions tab. Validate: every contract selectable in ≤2 clicks, launch path
+      intact.
+- [ ] **Slice 6 — Programs / Rivals / Personnel into panels + modals.** Programs →
+      left-rail objectives + detail modal; Rivals → right-rail mini-leaderboard +
+      deep-view modal; Personnel → hub "Personnel" building drill / modal. Remove
+      all three tabs. Validate: each function reachable, rival/personnel deep data
+      intact behind ≤2 clicks.
+- [ ] **Slice 7 — Merge Infrastructure into hub building drill-ins; remove tab.**
+      Clicking mfg / prod / orbital-ops buildings opens that facility's panel in
+      the right rail (production panel, capacity, etc.) instead of the flat `infra`
+      tab. Remove the Infrastructure tab. Validate: every infra control reachable
+      from a building, production math unchanged.
+- [ ] **Slice 8 — ⚙ menu + final cleanup.** Settings + save/load/new/fullscreen/
+      wide/uiLayer move into a HUD-corner ⚙ menu; remove the old top tab bar
+      entirely and the now-dead `setTab` targets (with load-time migration of any
+      retired `state.tab` value). Click-depth audit: confirm every primary function
+      is ≤2 clicks. Validate: legacy saves open onto a valid scene, no orphaned
+      handlers, full prior harness suite green.
+
 ## Repo
 
 `shamusshafer-ops/Orbital-Ventures` (private), branch `main`.
