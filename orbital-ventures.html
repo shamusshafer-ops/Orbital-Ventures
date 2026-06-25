@@ -4534,14 +4534,59 @@ function defineFlightScene(){
         try{ if(this.fireball.postFX) this.fireball.postFX.addGlow(0xff7a30, 6, 0); }catch(_){}
         this.np=true;
       }catch(e){ console.warn('flight native particles unavailable:',e); this.np=false; }
+      try{ this.buildEarthFX(); }catch(e){ console.warn('flight earth FX unavailable:',e); }
       this.playing=false; this.didBoomShake=false; flightScene=this;
       if(flightPending) this.beginFlight();
+    }
+    // Native orbital-Earth layer (slice 1): a parallax twinkling starfield, an additive
+    // glowing atmosphere limb rim, night-side city lights, and a sun glint — composited in
+    // front of the existing 2D limb. All additive/bloomed, which plain canvas can't do cheaply.
+    buildEarthFX(){
+      if(this.efxBuilt || !phaserOK()) return;
+      if(!this.textures.exists('fxDot')){ const g=this.make.graphics({x:0,y:0,add:false}); g.fillStyle(0xffffff,1); g.fillCircle(8,8,8); g.generateTexture('fxDot',16,16); g.destroy(); }
+      this.stars=[];
+      for(let i=0;i<120;i++){
+        const st=this.add.image(Math.random()*900, Math.random()*300, 'fxDot').setBlendMode('ADD').setDepth(1).setVisible(false);
+        st.setScale(0.04+Math.random()*0.10);
+        st.baseA=0.25+Math.random()*0.6; st.tw=Math.random()*6.28; st.twS=0.5+Math.random()*1.6; st.par=0.15+Math.random()*0.7;
+        this.stars.push(st);
+      }
+      this.cityPts=[]; for(let i=0;i<90;i++){ this.cityPts.push({a:-Math.PI/2+(Math.random()-0.5)*1.05, rf:1-(0.003+Math.random()*0.02), br:0.25+Math.random()*0.55, sz:0.6+Math.random()*1.1}); }
+      this.atmoG=this.add.graphics().setDepth(2).setVisible(false);
+      try{ if(this.atmoG.postFX) this.atmoG.postFX.addGlow(0x7fc7ff, 6, 0); }catch(_){}
+      this.cityG=this.add.graphics().setDepth(2).setVisible(false);
+      try{ if(this.cityG.postFX) this.cityG.postFX.addGlow(0xffd07a, 4, 0); }catch(_){}
+      this.glint=this.add.image(0,0,'fxDot').setBlendMode('ADD').setDepth(3).setVisible(false).setTint(0xfff4d0);
+      this.efxBuilt=true;
+    }
+    updateEarthFX(A,time){
+      if(!this.efxBuilt) return;
+      const on=!!A.earthPhase && !!A.earthGeom;
+      for(const st of this.stars){ if(!A.earthPhase){ if(st.visible) st.setVisible(false); continue; }
+        if(!st.visible) st.setVisible(true);
+        st.tw+=0.016*st.twS; st.setAlpha(st.baseA*(0.5+0.5*Math.sin(st.tw)));
+        st.x-=0.02*st.par; if(st.x<-4) st.x=904; }
+      if(!on){ this.atmoG.setVisible(false); this.cityG.setVisible(false); this.glint.setVisible(false); return; }
+      const {cx,cy,r,sunA}=A.earthGeom, sx=Math.cos(sunA), sy=Math.sin(sunA);
+      const ag=this.atmoG; ag.setVisible(true); ag.clear();
+      ag.lineStyle(7,0x8fd0ff,0.55);  ag.beginPath(); ag.arc(cx,cy,r+3, Math.PI*1.15, Math.PI*1.85); ag.strokePath();
+      ag.lineStyle(16,0x4fa6e8,0.20);  ag.beginPath(); ag.arc(cx,cy,r+12,Math.PI*1.12, Math.PI*1.88); ag.strokePath();
+      ag.lineStyle(32,0x2f7bd0,0.10);  ag.beginPath(); ag.arc(cx,cy,r+30,Math.PI*1.10, Math.PI*1.90); ag.strokePath();
+      const cg=this.cityG; cg.setVisible(true); cg.clear();
+      for(const p of this.cityPts){ const dx=Math.cos(p.a), dy=Math.sin(p.a); const lit=dx*sx+dy*sy;
+        if(lit>-0.04) continue; // night side only
+        const rr=r*p.rf, px=cx+dx*rr, py=cy+dy*rr; if(py<-2||py>522) continue;
+        cg.fillStyle(0xffd890, p.br); cg.fillCircle(px,py,p.sz); }
+      const ga=-Math.PI/2 + Math.max(-1,Math.min(1,sx))*0.5, litAt=Math.cos(ga)*sx+Math.sin(ga)*sy;
+      if(litAt>0.08){ this.glint.setVisible(true).setPosition(cx+Math.cos(ga)*(r-6), cy+Math.sin(ga)*(r-6)).setScale(1.5+0.5*Math.sin(time*0.005)).setAlpha(0.45); }
+      else this.glint.setVisible(false);
     }
     beginFlight(){
       if(!flightPending) return;
       const {spec,done}=flightPending; flightPending=null;
       setupFlightState(spec, done, this.tex.context, this.tex.canvas, (flightGame&&flightGame.canvas)||this.tex.canvas);
       animState.fxNative=!!this.np; // suppress the 2D plume/trail/flame only if native particles are live
+      animState.nativeStars=!!this.efxBuilt; // native parallax starfield replaces the canvas stars in the orbit phase
       this.didBoomShake=false; this._lastDropped=0; this._didDebris=false;
       if(this.np){ try{ this.plume.stop(); this.smoke.stop(); }catch(e){} }
       this.playing=true;
@@ -4568,6 +4613,7 @@ function defineFlightScene(){
       const t=A.virtT;
       try{ drawScene(t); this.tex.refresh(); }catch(e){ console.error('flight anim error:',e); this.playing=false; endAnim(); return; }
       if(this.np){ try{ this.driveParticles(A); }catch(e){} }
+      try{ this.updateEarthFX(A,t); }catch(e){}
       // dynamic bloom: punch up engine glow during powered ascent, ease off in coast/orbit
       if(this.bloom){ const want = (A.ascentP!=null && A.ascentP<0.95 && t<A.ascentDur) ? 1.0 : 0.7; this.bloom.strength += (want-this.bloom.strength)*0.05; }
       if(A.exploding && !this.didBoomShake){ this.didBoomShake=true; try{ this.cameras.main.shake(700, 0.022); }catch(e){} } // vehicle-loss kick
@@ -4761,6 +4807,7 @@ function drawPostFlight(){
 function drawScene(t){
   const A=animState,s=A.spec;
   if(A.ctx&&A.ctx.clearFrame) A.ctx.clearFrame();
+  A.earthPhase=false; // set true by drawOrbit so the Phaser scene knows to show the native Earth FX layer
   const ascentFail = !s.success && s.failPhase==='ascent';
   if(t < A.ascentDur || ascentFail){ A.phase='ascent'; drawAscent(t, ascentFail); }
   else {
@@ -5910,16 +5957,17 @@ function earthLimb(ctx,W,H,detailed,sunAngle){
   }
   return {cx,cy,r};
 }
-function spaceBg(ctx,W,H,time){
+function spaceBg(ctx,W,H,time,skipStars){
   ctx.fillStyle='#04060a'; ctx.fillRect(0,0,W,H);
-  drawStars(ctx,W,H,time||0);
+  if(!skipStars) drawStars(ctx,W,H,time||0); // skipped when the Phaser scene paints a native parallax starfield
 }
 function drawOrbit(ct){
   const A=animState,s=A.spec,ctx=A.ctx,W=A.cv.width,H=A.cv.height,R=s.rng||{bow:0,pitchJitter:0};
   const time=ct+A.ascentDur;
-  spaceBg(ctx,W,H,time);
+  spaceBg(ctx,W,H,time,A.nativeStars); // native parallax stars replace the canvas ones when the Phaser scene is live
   const sunA=-0.6+time*0.0003;
   const E=earthLimb(ctx,W,H,true,sunA);
+  A.earthGeom={cx:E.cx,cy:E.cy,r:E.r,sunA}; A.earthPhase=true; // hand the limb geometry to the native Earth FX layer
   const op=clampA(ct/A.cruiseDur,0,1);
   const orbitR=E.r+68+(R.bow||0)*16;
   const peR=orbitR-8, apR=orbitR+12;
