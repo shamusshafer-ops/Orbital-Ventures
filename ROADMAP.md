@@ -2872,6 +2872,27 @@ poaching, passive-income contracts.
    spend/​momentum/​morale/​rep/​return-true when affordable and a clean no-op (false) when broke,
    floored; full-run regression stays bounded and still fires goals. Slice-(a) suite still
    16/16; real `advance()` path clean.
+- ✅ **CE1 slice (c) — Standings panel + live timeline projection (CE1 complete).** *Built
+   2026-06-26.* The race is now legible and the offensive lever is clickable. New
+   `rivalProjectedYear(r)` projects WHEN a rival claims its pending goal from its current
+   `capital`/`momentum`/`rivalCrowdFactor()` — a snapshot that shifts live as the player acts
+   (validated: base 1957 → momentum 2.0 pulls to 1954, 0.5 slips to 1963, 8 contracts slip to
+   1960, a runaway-hot rival floored at 1953 by `RIVAL_MAX_PULL_IN`; `null` once all goals
+   claimed). **Standings** added to each `renderRivals()` card: a momentum arrow (▲ surging /
+   ▬ steady / ▼ stalling, numeric in expert-only), the live "next: <goal> — projected <year>"
+   with ahead-of-/behind-history coloring, an expert market-crowding readout, and the
+   **Counter-poach −$2.5M** button (disabled when broke) that fires `counterPoach(r.id)` —
+   which now refreshes the open panel (`$('rivalsCard')`). **Timeline:** `ccTimeline()` emits a
+   dashed `.tl-mark.proj` marker for each rival's pending goal at its projected year (legend
+   gains "⇠ projected"), so the program timeline shows projected rival dates moving as you
+   crowd/deny/counter-poach them. Validated headlessly (16 checks): projection reactivity to
+   momentum & crowd, the historical-floor cap, null-when-claimed, `{goal,nominal,year}` shape,
+   timeline emits projected markers (all ≥ current year) while fired goals keep solid markers,
+   `counterPoach` panel-refresh path no-throw + still correct, and render smoke for
+   `renderRivals`/`renderCCTimeline`/`render` across fired-goals/price-war/broke states. Slice
+   (a) 16/16, slice (b) 26/26, real `advance()`+`render()` path clean. **→ CE1 (rival agent
+   model) is done across (a) goals-not-dates, (b) player levers, (c) standings+projection. Next
+   in the build sequence: CE2/CE3.**
 
 ### CE2 · The Power Curve — controlled compounding (let the player feel growth)
 

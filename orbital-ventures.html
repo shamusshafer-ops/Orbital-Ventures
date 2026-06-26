@@ -219,6 +219,7 @@
   .tl-now{position:absolute;top:0;bottom:0;width:2px;background:var(--ignite);box-shadow:0 0 6px var(--ignite)}
   .tl-mark{position:absolute;bottom:4px;width:1px;height:20px}
   .tl-mark.you{background:var(--ok)} .tl-mark.rival{background:var(--bad)}
+  .tl-mark.proj{background:transparent;border-left:1px dashed var(--bad);opacity:.55;height:14px} /* CE1(c): projected rival goal */
   .tl-axis{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--dim)}
   .sitegrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:10px;margin-top:4px}
   .bldg{border:1px solid var(--line);background:var(--panel2);border-radius:8px;padding:12px;cursor:pointer;
@@ -2558,7 +2559,25 @@ function counterPoach(rivalId){
   state.rep+=2;
   log('ok', `${r.flag} You hired away ${r.name}'s engineers — their program loses momentum, your team is energised. −${fM(RIVAL_COUNTERPOACH_COST)}, +2 rep.`);
   render();
+  if(typeof $==='function' && $('rivalsCard')) renderRivals(); // CE1(c): refresh the open Standings panel
   return true;
+}
+// CE1(c) — snapshot projection of WHEN a rival will claim its pending goal, from its current
+// capital, momentum and the market crowding you're applying. Shifts live as those change;
+// the historical floor still applies. Returns null once a rival has claimed everything.
+function rivalProjectedYear(r){
+  const rs=rivalStateFor(r);
+  if(rs.idx>=r.firsts.length) return null;
+  const f=r.firsts[rs.idx];
+  const prof=RIVAL_PROFILES[r.id]||{income:1.0};
+  const prevYear=(rs.prevYear==null)?f.year-RIVAL_FIRST_RUNWAY:rs.prevYear;
+  const window=Math.max(RIVAL_MIN_WINDOW, f.year-prevYear);
+  const cost=prof.income*12*window;
+  const rate=prof.income*Math.max(0.01,rs.momentum)*rivalCrowdFactor(); // capital/month at the current snapshot
+  const capNow=(state.year>=prevYear)?(rs.capital||0):0; // accrual hasn't started before the window opens
+  const monthsLeft=Math.max(0,(cost-capNow)/rate);
+  const proj=Math.max(state.year, prevYear)+monthsLeft/12;
+  return {goal:f, year:Math.round(Math.max(proj, f.year-RIVAL_MAX_PULL_IN)), nominal:f.year};
 }
 // M5 + CE1(b): rivals poach your most vulnerable (lowest-morale) staff — morale is your
 // defence. The talent war is now reactive: a high-MOMENTUM rival (well-funded, on a roll)
@@ -7084,6 +7103,8 @@ function ccTimeline(){
   for(const id in (state.history||{})){ const mm=MISSIONS.find(x=>x.id===id); if(mm) markers.push({year:state.history[id], label:mm.name, who:'you', pos:pos(state.history[id])}); }
   // rival firsts that have fired
   for(const r of RIVALS){ for(const f of r.firsts){ if(state.rivalFired[r.id+'|'+f.name]) markers.push({year:f.year, label:f.name, who:'rival', flag:r.flag, pos:pos(f.year)}); } }
+  // CE1(c): live projection — each rival's PENDING goal at its currently-projected year
+  for(const r of RIVALS){ const pj=rivalProjectedYear(r); if(pj && pj.year>=state.year && pj.year<=maxYear) markers.push({year:pj.year, label:pj.goal.name+' (projected)', who:'rival', proj:true, flag:r.flag, pos:pos(pj.year)}); }
   markers.sort((a,b)=>a.year-b.year);
   return {minYear, maxYear, curYear:state.year, curPos:pos(state.year), eras, markers};
 }
@@ -7790,11 +7811,11 @@ function renderCCTimeline(){
     const right=tl.eras[i+1]?tl.eras[i+1].pos:100;
     return `<div class="tl-era" style="left:${e.pos}%;width:${Math.max(0,right-e.pos)}%">${e.name}</div>`;
   }).join('');
-  const marks=tl.markers.map(m=>`<div class="tl-mark ${m.who}" style="left:${m.pos}%" title="${m.year} · ${m.who==='you'?'You':'Rival'}: ${m.label.replace(/"/g,'')}"></div>`).join('');
+  const marks=tl.markers.map(m=>`<div class="tl-mark ${m.who}${m.proj?' proj':''}" style="left:${m.pos}%" title="${m.year} · ${m.who==='you'?'You':'Rival'}${m.proj?' (projected)':''}: ${m.label.replace(/"/g,'')}"></div>`).join('');
   const axisYears=[tl.minYear,1957,1969,1981,2000,tl.maxYear].filter((y,i,a)=>y>=tl.minYear&&y<=tl.maxYear&&a.indexOf(y)===i);
   const axis=axisYears.map(y=>`<span>${y}</span>`).join('');
   $('ccTimeline').innerHTML=`
-    <div class="cc-panel-h">Program timeline — <span style="color:var(--ok)">● you</span> · <span style="color:var(--bad)">● rivals</span> · <span style="color:var(--ignite)">▮ now (${tl.curYear})</span></div>
+    <div class="cc-panel-h">Program timeline — <span style="color:var(--ok)">● you</span> · <span style="color:var(--bad)">● rivals</span> · <span style="color:var(--bad)">⇠ projected</span> · <span style="color:var(--ignite)">▮ now (${tl.curYear})</span></div>
     <div class="tl-track">
       ${eraBands}
       ${marks}
@@ -8917,6 +8938,22 @@ function renderRivals(){
       </div>
       <p class="muted" style="font-size:12px;margin:2px 0 6px">${r.blurb}</p>
       <div class="dim" style="font-size:11px;margin-bottom:6px">${claimed}/${r.firsts.length} firsts claimed${priceWar?` · <span style="color:var(--bad)">price war active: payouts ×${priceWar.payoutMult} (${priceWar.monthsLeft} mo left)</span>`:''}</div>
+      ${(()=>{ // CE1(c): Standings — momentum, live projection of the next goal, and the counter-poach lever
+        const rs=rivalStateFor(r), mom=rs.momentum||1;
+        const arrow = mom>1.05?'<span style="color:var(--bad)">▲ surging</span>':(mom<0.95?'<span style="color:var(--ok)">▼ stalling</span>':'<span class="dim">▬ steady</span>');
+        const pj=rivalProjectedYear(r);
+        const projTxt = !pj ? '<span class="dim">all goals claimed</span>'
+          : `next: <b>${pj.goal.name}</b> — projected <b>${pj.year}</b>`
+            + (pj.year<pj.nominal?` <span style="color:var(--bad)">(${pj.nominal-pj.year}y ahead of history)</span>`
+             : pj.year>pj.nominal?` <span style="color:var(--ok)">(${pj.year-pj.nominal}y behind — you're slowing them)</span>`:'');
+        const crowd=rivalCrowdFactor();
+        const crowdTxt = crowd<1 ? ` <span class="dim expert-only">· market crowding ×${crowd.toFixed(2)}</span>` : '';
+        const canCP=state.money>=RIVAL_COUNTERPOACH_COST;
+        return `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;font-size:12px">
+          <span>Momentum ${arrow} <span class="dim expert-only" style="font-family:var(--mono)">${mom.toFixed(2)}×</span> · ${projTxt}${crowdTxt}</span>
+          <button class="btn ghost" style="font-size:11px;white-space:nowrap" ${canCP?'':'disabled'} onclick="counterPoach('${r.id}')" title="Hire away their engineers: knocks their momentum (−${RIVAL_COUNTERPOACH_MOM}), lifts your staff morale (+${RIVAL_COUNTERPOACH_MORALE}), +2 rep">Counter-poach −${fM(RIVAL_COUNTERPOACH_COST)}</button>
+        </div>`;
+      })()}
       <div class="expert-only dim" style="font-size:11px;margin-bottom:6px;font-family:var(--mono)">threat score ${score.toFixed(1)}${priceWar?` · price-war payout ×${priceWar.payoutMult}`:''}</div>
       <div class="adv-only" style="display:flex;flex-direction:column;gap:4px">`;
     for(const f of r.firsts){
