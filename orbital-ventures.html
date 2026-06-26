@@ -6,6 +6,7 @@
 <title>Orbital Ventures — M3a (Cislunar)</title>
 <style>
   :root{
+    --topbar-h:120px; /* height of the pinned header+opsbar; updated live in JS so sticky panels clear it */
     --bg:#0e1418; --panel:#151d23; --panel2:#1b252c; --line:#2a3a44;
     --ink:#d8e2e7; --muted:#7d909b; --dim:#56666f;
     --ignite:#f5a623; --readout:#4fd1d9; --ok:#58c47a; --bad:#e0564f; --warn:#e8b341;
@@ -24,9 +25,11 @@
   .muted{color:var(--muted)} .dim{color:var(--dim)}
 
   /* Top status bar */
+  /* Pinned top bar: header + opsbar stay fixed while the rest scrolls */
+  .topbar{position:sticky;top:0;z-index:40;background:var(--bg);padding-top:4px;margin-top:-4px}
   header{display:flex;align-items:center;gap:18px;flex-wrap:wrap;
     border:1px solid var(--line);background:linear-gradient(180deg,#18222a,#131b21);
-    padding:12px 16px;border-radius:8px;margin-bottom:14px}
+    padding:12px 16px;border-radius:8px;margin-bottom:10px}
   .brand{display:flex;flex-direction:column}
   .brand .co{font-size:16px;font-weight:700;letter-spacing:.04em}
   .brand .tag{font-size:11px;text-transform:uppercase;letter-spacing:.18em;color:var(--ignite)}
@@ -44,7 +47,7 @@
   .rail-advisor .card{padding:11px 12px}
   .rail-advisor .cc-panel-h{font-size:11px}
   .viewport{min-width:0}                                              /* lets overflow children (tech tree, map) size within the column */
-  .rail-right{position:sticky;top:14px;align-self:start;max-height:calc(100vh - 28px);overflow-y:auto}  /* tall panels (e.g. contracts) scroll within the sticky rail */
+  .rail-right{position:sticky;top:calc(var(--topbar-h) + 10px);align-self:start;max-height:calc(100vh - var(--topbar-h) - 24px);overflow-y:auto}  /* tall panels (e.g. contracts) scroll within the sticky rail; clears the pinned topbar */
   .shell:not(.has-right) .rail-right{display:none}                    /* collapse the rail on panel scenes (slice 3) */
   .rail-panel > .card:first-child{margin-top:0}
   nav.rail-nav{display:flex;flex-direction:column;gap:5px;margin:0}
@@ -187,7 +190,7 @@
   .spark-k{font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:3px}
   /* Presentation pass: Design Bench centerpiece — rocket preview beside the editor */
   .bench-stage{display:grid;grid-template-columns:300px minmax(0,1fr);gap:16px;align-items:start}
-  .bench-rocket{position:sticky;top:8px}
+  .bench-rocket{position:sticky;top:calc(var(--topbar-h) + 8px)}
   @media(max-width:900px){ .bench-stage{grid-template-columns:1fr} .bench-rocket{position:static} }
   /* recommended-action hero card */
   .rec-card{border:1px solid var(--ignite);border-radius:8px;padding:12px;background:linear-gradient(180deg,rgba(245,166,35,.10),rgba(245,166,35,.02))}
@@ -313,6 +316,7 @@
 </head>
 <body>
 <div class="wrap">
+  <div class="topbar" id="topbar">
   <header>
     <div class="brand">
       <div class="co" id="coName">ORBITAL VENTURES</div>
@@ -344,6 +348,7 @@
     <button class="btn" onclick="advanceMonth()">▸ Advance 1 month <span class="dim" id="overheadLabel">(−$0.12M)</span></button>
     <button class="btn ghost" id="skipBtn" onclick="skipResearch()">Skip to R&amp;D done</button>
   </div>
+  </div><!-- /topbar -->
 
   <div class="shell" id="appShell">
     <aside class="rail-left">
@@ -388,7 +393,9 @@
       </div>
       <div class="bench-editor">
         <div class="card" id="vehicleFamilyCard"></div>
+        <div class="card" id="blueprintsCard"></div>
         <div class="card" id="liveryCard"></div>
+        <div class="card" id="partsCard"></div>
         <div class="card hidden" id="archCard"></div>
         <div class="card">
           <h2>Vehicle — Stages (bottom → top)</h2>
@@ -741,8 +748,14 @@ const ENGINES = {
   hyper_storable:{id:'hyper_storable',name:'AJ10 Aerozine/N₂O₄',prop:'Aerozine/N₂O₄',ispSL:270,ispVac:321, thrustSL:90,  thrustVac:100,  mass:0.45, cost:0.70, rel:0.97},
   hydrolox_up: {id:'hydrolox_up', name:'Rocketdyne J-2', prop:'LH₂/LOX',     ispSL:360, ispVac:425, thrustSL:800, thrustVac:900,  mass:1.80, cost:1.80, rel:0.95},
   f1_class:    {id:'f1_class',    name:'Rocketdyne F-1',  prop:'RP-1/LOX',    ispSL:263, ispVac:304, thrustSL:6700,thrustVac:7700, mass:8.40, cost:5.50, rel:0.93},
+  // BC4 sidegrade: high-thrust kerolox first-stage engine — more thrust, less Isp, cheaper, heavier than the S-3D
+  kerolox_le:  {id:'kerolox_le',  name:'Rocketdyne LR79',  prop:'RP-1/LOX',    ispSL:250, ispVac:278, thrustSL:480, thrustVac:520, mass:1.25, cost:0.55, rel:0.95},
+  // BC4 sidegrade: small high-Isp cryo upper (RL10-class) — far higher Isp but little thrust; light + cheap
+  hydrolox_rl10:{id:'hydrolox_rl10',name:'RL10-class Cryo Upper', prop:'LH₂/LOX', ispSL:150, ispVac:450, thrustSL:90, thrustVac:110, mass:0.55, cost:1.50, rel:0.96},
   // Propulsion expansion: methane (full-flow, reusable) — high Isp AND high thrust, usable on launch stages
   methalox:    {id:'methalox',    name:'Methalox Full-Flow (Raptor-class)', prop:'CH₄/LOX', ispSL:330, ispVac:363, thrustSL:1850, thrustVac:2000, mass:1.60, cost:1.90, rel:0.95},
+  // BC4 sidegrade: vacuum-optimized methalox upper — more vac Isp, much less thrust than the full-flow booster
+  methalox_vac:{id:'methalox_vac',name:'Methalox Vacuum (RL-class)', prop:'CH₄/LOX', ispSL:170, ispVac:385, thrustSL:600, thrustVac:750, mass:1.20, cost:1.70, rel:0.95},
   // Solid motors: high thrust, low Isp (little altitude compensation → SL≈Vac), cheap, very reliable to
   // ignite but no throttle and no shutdown once lit (solid:true). Usable as launch stages + strap-on boosters.
   solid_castor:{id:'solid_castor',name:'Castor Solid Motor', prop:'Solid (PBAN)', ispSL:235, ispVac:265, thrustSL:430, thrustVac:480, mass:1.10, cost:0.50, rel:0.975, solid:true, noThrottle:true},
@@ -918,6 +931,46 @@ function defaultMetricHist(){ return {money:[], rep:[], support:[], success:[], 
 const DEFAULT_LIVERY={ body:'#d4dee4', accent:'#e0564f', nose:'auto', name:'' };
 function defaultLivery(){ return Object.assign({}, DEFAULT_LIVERY); }
 function curLivery(){ const l=state&&state.livery; return l?Object.assign(defaultLivery(),l):defaultLivery(); }
+// Bench customization slice 2 (BC2): performance parts — engineering levers that feed
+// computeVehicle. The DEFAULT of each lever is a zero-impact baseline (sigmaMult 1, cost 0,
+// rel 0, mass 0) so default vehicles compute EXACTLY as before — every option is a real
+// tradeoff away from that baseline, keeping existing balance intact.
+const TANK_MATERIALS={
+  standard:{name:'Aluminum alloy',    sigmaMult:1.00, costMult:1.00, rel:0,     desc:'Baseline tank structure.'},
+  alli:    {name:'Aluminum-lithium',  sigmaMult:0.85, costMult:1.30, rel:-0.01, desc:'−15% structural mass (more Δv), +30% build cost, −1% reliability (thinner walls).'},
+  steel:   {name:'Stainless steel',   sigmaMult:1.20, costMult:0.78, rel:0.02,  desc:'+20% structural mass (less Δv), −22% build cost, +2% reliability (rugged).'},
+};
+const AVIONICS={
+  basic:   {name:'Basic guidance',    rel:0,    cost:0,   mass:0,    desc:'Minimal autopilot — baseline.'},
+  standard:{name:'Inertial + radio',  rel:0.03, cost:0.4, mass:0.05, desc:'+3% reliability · +$0.4M · +0.05 t.'},
+  triple:  {name:'Triple-redundant',  rel:0.06, cost:1.0, mass:0.12, desc:'+6% reliability · +$1.0M · +0.12 t.'},
+};
+const FAIRINGS={
+  standard:{name:'Standard fairing',  mass:0,   cost:0,    rel:0,     desc:'Protects the payload through max-Q — baseline.'},
+  none:    {name:'No fairing',        mass:0,   cost:-0.1, rel:-0.02, desc:'Strip the shroud — −$0.1M but −2% reliability (exposed payload). Uncrewed only.'},
+  heavy:   {name:'Extended fairing',  mass:0.5, cost:0.4,  rel:0.02,  desc:'Larger shroud: +2% reliability but +0.5 t to loft and +$0.4M.'},
+};
+function defaultParts(){ return {tank:'standard', avionics:'basic', fairing:'standard'}; }
+function curParts(){ const p=state&&state.parts; return p?Object.assign(defaultParts(),p):defaultParts(); }
+function tankMaterial(){ return TANK_MATERIALS[curParts().tank]||TANK_MATERIALS.standard; }
+function avionicsPart(){ return AVIONICS[curParts().avionics]||AVIONICS.basic; }
+function fairingPart(){ return FAIRINGS[curParts().fairing]||FAIRINGS.standard; }
+// extra lofted mass from parts (avionics always; fairing only on uncrewed flights, which use a capsule)
+function partsExtraMass(m){ const crewed=!!(m&&m.crew>0); return avionicsPart().mass + (crewed?0:fairingPart().mass); }
+// reliability delta from parts (tank + avionics always; fairing only uncrewed)
+function partsRelBonus(crewed){ return avionicsPart().rel + tankMaterial().rel + (crewed?0:fairingPart().rel); }
+// additive part build cost (fairing only on uncrewed)
+function partsBuildCost(crewed){ return avionicsPart().cost + (crewed?0:fairingPart().cost); }
+// BC3: per-stage geometry — diameter as a multiplier around the natural (volume-derived)
+// size. Default 1.0 == today's shape AND mass (so balance is unchanged). Wider = stouter
+// (more structural mass → less Δv, but +reliability); narrower = slender (lighter → more
+// Δv, but −reliability). Length follows from propellant volume, so diameter is the lever.
+const GEO_DIA_MIN=0.7, GEO_DIA_MAX=1.4;
+const GEO_MASS_K=0.5;  // structural-mass sensitivity to diameter (0.7→0.85×, 1.4→1.20×)
+const GEO_REL_K=0.06;  // reliability per stage per unit diameter deviation
+function stageDia(st){ return clampA((st&&st.dia)||1, GEO_DIA_MIN, GEO_DIA_MAX); }
+function geoStructMult(dia){ dia=dia||1; return clampA(1+GEO_MASS_K*(dia-1), 0.6, 1.6); }
+function geoRelBonus(){ let s=0; for(const st of (state.stages||[])) s+=GEO_REL_K*(stageDia(st)-1); return clampA(s,-0.05,0.05); }
 
 /* ---------- Mission architectures (how you get there is a strategy) ----------
    For supported missions, the player picks an architecture that reshapes the
@@ -1028,9 +1081,58 @@ function retireFamily(fid){
   log('info',`${fam.name} retired from the fleet after ${fam.flights} flight${fam.flights===1?'':'s'}.`);
   render();
 }
+// Saved designs (blueprints): the FULL bench configuration — stages (incl. per-stage
+// diameter), boosters, in-space stages, ECLSS, power, recovery, plus the BC livery & parts —
+// captured to a named slot and reloadable, independent of the family/heritage system.
+function blueprints(){ return state.blueprints||(state.blueprints=[]); }
+function fullBenchSnapshot(){
+  return JSON.parse(JSON.stringify({
+    stages:state.stages, boosters:state.boosters, transfer:state.transfer, descent:state.descent, ascent:state.ascent,
+    eclss:state.eclss, powerSource:state.powerSource, recovery:state.recovery,
+    livery:curLivery(), parts:curParts()
+  }));
+}
+function applyFullSnapshot(s){
+  if(!s) return;
+  if(s.stages) state.stages=JSON.parse(JSON.stringify(s.stages));
+  if(s.boosters) state.boosters=JSON.parse(JSON.stringify(s.boosters));
+  if(s.transfer) state.transfer=JSON.parse(JSON.stringify(s.transfer));
+  if(s.descent) state.descent=JSON.parse(JSON.stringify(s.descent));
+  if(s.ascent) state.ascent=JSON.parse(JSON.stringify(s.ascent));
+  if(s.eclss) state.eclss=s.eclss;
+  if(s.powerSource) state.powerSource=s.powerSource;
+  if(typeof s.recovery==='boolean') state.recovery=s.recovery;
+  if(s.livery) state.livery=Object.assign(defaultLivery(), s.livery);
+  if(s.parts) state.parts=Object.assign(defaultParts(), s.parts);
+}
+function blueprintSummary(){
+  const eng=state.stages.reduce((a,s)=>a+s.count,0);
+  return `${state.stages.length} stage${state.stages.length>1?'s':''} · ${eng} eng${boostersFitted()?` · ${state.boosters.count} bstr`:''}`;
+}
+function saveBlueprint(){
+  const inp=$('bpName'); let name=((inp&&inp.value)||'').trim();
+  if(!name) name='Design '+(blueprints().length+1);
+  const bp={ id:'bp_'+Date.now().toString(36)+Math.floor(Math.random()*1e4).toString(36),
+    name:name.slice(0,28), born:dateStr(), summary:blueprintSummary(), spec:fullBenchSnapshot() };
+  blueprints().push(bp);
+  log('info',`Design saved: ${bp.name}.`);
+  render();
+}
+function loadBlueprint(id){
+  const bp=blueprints().find(b=>b.id===id); if(!bp) return;
+  applyFullSnapshot(bp.spec);
+  log('info',`Design loaded: ${bp.name}.`);
+  render();
+}
+function deleteBlueprint(id){
+  const bp=blueprints().find(b=>b.id===id);
+  state.blueprints=blueprints().filter(b=>b.id!==id);
+  if(bp) log('info',`Design deleted: ${bp.name}.`);
+  render();
+}
 
 const RESEARCH = [
-  {id:'kerosene', track:'propulsion',     name:'Kerosene Propulsion',           cost:2.0, months:3, req:[],          effect:{engine:'kerolox_mk1'}, desc:'Unlocks the Rocketdyne S-3D — higher Isp than alcohol/LOX.<span class="hist">↳ Refined kerosene (RP-1) replaced the V-2\'s alcohol in Rocketdyne\'s Atlas and Thor engines.</span>'},
+  {id:'kerosene', track:'propulsion',     name:'Kerosene Propulsion',           cost:2.0, months:3, req:[],          effect:{engines:['kerolox_mk1','kerolox_le']}, desc:'Unlocks the Rocketdyne S-3D (efficient) and the LR79 (more thrust, cheaper, lower Isp) — higher Isp than alcohol/LOX.<span class="hist">↳ Refined kerosene (RP-1) replaced the V-2\'s alcohol in Rocketdyne\'s Atlas and Thor engines.</span>'},
   {id:'vac_upper', track:'propulsion',    name:'Vacuum-Optimized Upper Stage',  cost:2.5, months:3, req:[],          effect:{engine:'vernier_v'},   desc:'Unlocks the Bell Agena XLR81 upper stage engine (Isp 315 s in vacuum).<span class="hist">↳ Restartable vacuum stages like the Agena turned launchers into orbit-and-beyond vehicles.</span>'},
   {id:'sustainer', track:'propulsion',    name:'High-Thrust Sustainer',         cost:3.0, months:4, req:['combustion_stability'],effect:{engine:'kerolox_mk2'}, desc:'Unlocks the Rocketdyne MA-3 Sustainer — more thrust and Isp for first stages.<span class="hist">↳ Atlas\'s sustainer kept firing to orbit after the boosters dropped away — &ldquo;stage-and-a-half.&rdquo;</span>'},
   {id:'alloy_tanks', track:'structures',  name:'Welded Alloy Tanks',            cost:2.0, months:3, req:[],          effect:{sigma:0.09},           desc:'Lowers σ from 0.12 to 0.09. Lighter tanks, better mass ratio.<span class="hist">↳ Welded aluminium alloy replaced the heavy riveted steel of the earliest airframes.</span>'},
@@ -1051,7 +1153,7 @@ const RESEARCH = [
   {id:'eclss_partial', track:'crew',name:'CO₂ &amp; Water Recovery',          cost:3.0, months:4, req:['crew_capsule'],effect:{unlock:'eclss'},       desc:'Scrub CO₂, recycle water: 60% consumable recovery. Pays off on multi-day missions.<span class="hist">↳ Gemini and Apollo scrubbed CO₂ with lithium-hydroxide canisters and carried their water.</span>'},
   {id:'eclss_closed', track:'crew', name:'Closed-Loop ECLSS',             cost:4.5, months:5, req:['eclss_partial'],effect:{unlock:'eclss'},       desc:'90% recovery plus its own power — heavy. Only worth it on very long missions (foreshadows deep space).<span class="hist">↳ Mir and the ISS recover most of their water and oxygen to sustain months-long stays.</span>'},
   {id:'hypergolic', track:'propulsion',   name:'Storable Hypergolic Propulsion',cost:3.5, months:4, req:['vac_upper'],     effect:{engine:'hyper_storable'},desc:'Unlocks the AJ10 (Aerozine/N₂O₄) — a restartable, storable in-space engine (Isp 321 s) ideal for transfer stages and landers that must coast for days then reignite.<span class="hist">↳ Aerozine-50/N₂O₄ powered the Apollo service and lunar modules: storable, hypergolic, restart-on-demand.</span>'},
-  {id:'cryo_upper', track:'propulsion',   name:'Cryogenic Hydrogen Upper Stage',cost:4.0, months:5, req:['vac_upper'],     effect:{engine:'hydrolox_up'},  desc:'Unlocks the Rocketdyne J-2 — a high-Isp LH₂/LOX upper stage engine (Isp 425 s), the energy to throw heavy payloads to orbit and beyond. (Cryogenic: boils off over long coasts.)<span class="hist">↳ The hydrogen-fuelled Centaur and Saturn\'s S-IVB gave deep-space launch its decisive edge.</span>'},
+  {id:'cryo_upper', track:'propulsion',   name:'Cryogenic Hydrogen Upper Stage',cost:4.0, months:5, req:['vac_upper'],     effect:{engines:['hydrolox_up','hydrolox_rl10']},  desc:'Unlocks the Rocketdyne J-2 (high-thrust) and the RL10-class (small, very high Isp) LH₂/LOX upper stages (Isp 425–450 s), the energy to throw heavy payloads to orbit and beyond. (Cryogenic: boils off over long coasts.)<span class="hist">↳ The hydrogen-fuelled Centaur and Saturn\'s S-IVB gave deep-space launch its decisive edge.</span>'},
   {id:'deep_space', track:'deepspace',   name:'Lunar Trajectory &amp; Deep-Space Tracking',cost:5.0, months:6, req:['heavy_booster','digital_computer','stage_test'],effect:{unlock:'lunar'},desc:'Trajectory design and a tracking network — enough to navigate to the Moon and back. Unlocks cislunar missions.<span class="hist">↳ NASA\'s Deep Space Network and Apollo\'s guidance computers turned a quarter-million-mile shot into routine.</span>'},
   {id:'lunar_lander', track:'deepspace', name:'Lunar Lander (Descent &amp; Ascent)', cost:6.0, months:7, req:['deep_space','hypergolic'], effect:{unlock:'lander'}, desc:'A two-stage lander: a descent stage for the powered landing, left on the surface, and a separate ascent stage to return to orbit. Unlocks Lunar Landing.<span class="hist">↳ The Apollo Lunar Module flew as two stages — Eagle\'s descent stage is still on the Sea of Tranquility.</span>'},
   {id:'super_heavy', track:'propulsion',  name:'Rocketdyne F-1 Engine Development',  cost:7.0, months:8, req:['lunar_lander','chamber_pressure'], effect:{engine:'f1_class'}, desc:'A first-stage engine an order of magnitude beyond anything before it (6.7 MN thrust). The lander\'s mass — lifted, carried to the Moon, and lowered to the surface — demands a booster this size.<span class="hist">↳ Five F-1 engines powered the Saturn V\'s first stage, still the most powerful rocket ever flown.</span>'},
@@ -1132,7 +1234,7 @@ const RESEARCH = [
   {id:'reusable_upper_stage', track:'reuse', name:'Reusable Upper Stage', cost:9.0, months:9, req:['propulsive_landing','cryo_upper'], reqMissionDone:'first_sat', effect:{buildCostCut:0.05}, desc:'A heat-shielded, recoverable upper stage — the hardest part of full reuse, since it must survive orbital re-entry. The last piece of a fully reusable vehicle.<span class="hist">↳ A reusable second stage is the holy grail that bends launch cost toward airline economics.</span>'},
   {id:'stage_test', track:'testing', name:'Stage Test Facilities', cost:3.0, months:4, req:['engine_test_stands'], effect:{reliability:0.03}, desc:'Test a complete stage — engines, plumbing, structure, avionics — as an integrated system before committing it to flight. The qualification step a deep-space campaign cannot skip. <b>+3% reliability.</b><span class="hist">↳ Full-stage green runs caught integration failures that no single-component test ever could.</span>'},
   // ── Propulsion expansion: methane, electric, and deeper cryogenic branches ──
-  {id:'methane_propulsion', track:'propulsion', name:'Methane Propulsion', cost:4.5, months:5, req:['regen_cooling'], effect:{engine:'methalox'}, desc:'Liquid methane burns clean, stores at temperatures close to oxygen, and can be made from CO2 and water off-world. Unlocks a full-flow methalox engine — high Isp and high thrust on one engine, and the basis of a reusable booster. <b>Unlocks the Methalox Full-Flow engine.</b><span class="hist">↳ Methane went from a fringe choice to the propellant of the reusable era.</span>'},
+  {id:'methane_propulsion', track:'propulsion', name:'Methane Propulsion', cost:4.5, months:5, req:['regen_cooling'], effect:{engines:['methalox','methalox_vac']}, desc:'Liquid methane burns clean, stores at temperatures close to oxygen, and can be made from CO2 and water off-world. Unlocks a full-flow methalox engine — high Isp and high thrust on one engine, and the basis of a reusable booster. <b>Unlocks the Methalox Full-Flow engine + a vacuum-optimized methalox upper.</b><span class="hist">↳ Methane went from a fringe choice to the propellant of the reusable era.</span>'},
   {id:'deep_throttling', track:'propulsion', name:'Deep Throttling', cost:4.0, months:4, req:['methane_propulsion'], effect:{reliability:0.02}, desc:'Run an engine smoothly from full thrust down to a fraction of it — the control authority a powered landing and a gentle crewed ascent both demand. <b>+2% reliability.</b><span class="hist">↳ Deep, stable throttling is what lets a booster hover and set itself down.</span>'},
   {id:'ion_propulsion', track:'propulsion', name:'Ion Thrusters', cost:5.0, months:5, req:['vac_upper'], effect:{engine:'ion_xenon'}, desc:'Electrostatically accelerate xenon ions to enormous exhaust velocity — vanishingly little thrust, but Isp no chemical engine can touch. A solar-electric transfer drive for patient cargo. <b>Unlocks the Gridded Ion Thruster (transfer stage).</b><span class="hist">↳ Deep Space 1 and Dawn proved ion propulsion on real interplanetary missions.</span>'},
   {id:'hall_effect', track:'propulsion', name:'Hall-Effect Thrusters', cost:4.5, months:5, req:['ion_propulsion'], effect:{engine:'hall_thruster'}, desc:'A higher-thrust electric drive that trades some Isp for thrust — the workhorse between gridded ion and chemical. <b>Unlocks the Hall-Effect Thruster (transfer stage).</b><span class="hist">↳ Hall thrusters now fly by the thousand on commercial satellites.</span>'},
@@ -1353,6 +1455,8 @@ function newGame(difficulty){
     history:{}, // #18: missionId -> completion year, for the Home timeline
     metricHist:defaultMetricHist(), // #28: monthly trend buffers for dashboard sparklines
     livery:defaultLivery(), // bench customization: cosmetic vehicle livery
+    parts:defaultParts(), // BC2: performance parts (tank material / avionics / fairing)
+    blueprints:[], // saved full ship designs (reloadable blueprints)
     ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
     facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
     architectures:{}, science:0,
@@ -1380,7 +1484,7 @@ const fM=v=>'$'+v.toFixed(2)+'M';
 const fI=v=>Math.round(v).toLocaleString();
 function dateStr(){return MONTHS[state.month]+' '+state.year;}
 function log(kind,msg){state.log.unshift({when:dateStr(),kind,msg}); if(state.log.length>40)state.log.pop();}
-function curSigma(){return state.sigma;}
+function curSigma(){return clampA(state.sigma * tankMaterial().sigmaMult, 0.02, 0.9);} // BC2: tank material scales structural coefficient
 function curRel(){
   let base=0.65+0.025*Math.min(state.successes,12); // heritage: green company is genuinely unreliable
   // sum every completed node that buys reliability — now spread across the Testing & Reliability and Guidance & Avionics tracks (test_program, telemetry, QA, vibration, redundant avionics); track-agnostic so the split is balance-neutral
@@ -2487,10 +2591,10 @@ function bodyPlan(bodyId){
 }
 
 /* ---------- physics ---------- */
-function tankStruct(prop){const s=curSigma();return s/(1-s)*prop;}
+function tankStruct(prop, dia){const s=curSigma();return s/(1-s)*prop*geoStructMult(dia);} // BC3: diameter scales tank structure
 function stageMasses(st){
   const e=ENGINES[st.eng];
-  const dry=e.mass*st.count + tankStruct(st.prop);
+  const dry=e.mass*st.count + tankStruct(st.prop, stageDia(st));
   return {dry, wet:dry+st.prop, eng:e};
 }
 // Parallel strap-on boosters (a "stage 0"): `count` identical liquid units, each with its
@@ -2521,16 +2625,17 @@ function inSpaceDry(mod){const e=ENGINES[mod.eng]||ENGINES.a4;const s=curSigma()
 function inSpaceWet(mod){return inSpaceDry(mod)+mod.prop;}
 function lvPayload(m){
   // what the launch vehicle must loft to LEO
-  if(m && m.tanker) return inSpaceWet(state.transfer); // the tank itself is the cargo
-  if(m && m.profile){
-    let p=lifeSupport(m,state.eclss).total; // crew module
+  let p;
+  if(m && m.tanker) p=inSpaceWet(state.transfer); // the tank itself is the cargo
+  else if(m && m.profile){
+    p=lifeSupport(m,state.eclss).total; // crew module
     p+=powerSystemMass(m); // Phase 2: power plant (solar/RTG/reactor) is mass you must lift
     if(m.modules.includes('transfer')) p+=inSpaceWet(state.transfer);
     if(m.modules.includes('lander')){ p+=inSpaceWet(state.descent)+inSpaceWet(state.ascent); }
-    return p;
   }
-  if(m && m.crew>0) return lifeSupport(m,state.eclss).total;
-  return m?m.payload:0.05;
+  else if(m && m.crew>0) p=lifeSupport(m,state.eclss).total;
+  else p=m?m.payload:0.05;
+  return p + partsExtraMass(m); // BC2: avionics + fairing add lofted mass
 }
 function stackPerformance(stages, payload){
   const sm=stages.map(stageMasses);
@@ -2771,8 +2876,10 @@ function computeVehicle(){
       buildCost+=(ENGINES[state.ascent.eng]||ENGINES.a4).cost+0.02*state.ascent.prop;   totalProp+=state.ascent.prop;
     }
   }
+  buildCost+=partsBuildCost(crewed); // BC2: avionics + fairing hardware cost
   const enginePenalty=Math.pow(0.975,totalEng-1);
   const testBonus=TEST_LEVELS[state.testLevel].rel;
+  buildCost*=tankMaterial().costMult; // BC2: tank material cost factor
   buildCost*=diff().buildCostMult; // difficulty: hardware-cost scaling
   buildCost*=(1-facilityBonus(missionBody(m&&m.id)).buildDiscount); // M17: home-field build discount from a base at the destination
   buildCost*=familyBuildMult(activeFamily()); // #3: a proven lineage gets cheaper to build (manufacturing knowledge)
@@ -2784,7 +2891,7 @@ function computeVehicle(){
     if(recoveryRefly(m)) buildCost*=refurbCostMult(); // refurbish a recovered booster: 45% of new, rising with wear (each refly chips +8%)
     buildCost+=RECOVERY_HARDWARE; // legs, grid fins, reserved propellant — fitted on every recovery flight
   }
-  const reliability=Math.min(diff().relCap,Math.max(diff().relFloor,(curRel()+testBonus)*enginePenalty*boosterRelPenalty()*(crewed?0.92:1)+productionRelMod(m))); // #7: QA bonus − bay-overstretch penalty; #16: booster failure-point penalty
+  const reliability=Math.min(diff().relCap,Math.max(diff().relFloor,(curRel()+testBonus+partsRelBonus(crewed)+geoRelBonus())*enginePenalty*boosterRelPenalty()*(crewed?0.92:1)+productionRelMod(m))); // #7: QA bonus − bay-overstretch penalty; #16: booster failure-point penalty; BC2 parts + BC3 geometry reliability
   const launchCost=(0.12+0.01*totalProp)*padLaunchMult()*groundLaunchMult() + assemblyFlights(m)*ASSEMBLY_LAUNCH_COST; // #7: pads + #6b: Ground/Reuse research amortize launch ops; #6: dedicated assembly flights
   return {payload, sm:perf.sm, stageDv:perf.stageDv, totalDv:perf.totalDv, liftoff:perf.liftoff, twr:perf.twr,
           boostDv:perf.boostDv||0, boosters:perf.boosters||null,
@@ -3445,7 +3552,7 @@ function finalizeLaunch(ctx, ops){
   state.assembleOrbit=false; // #6: assembly choice applies to one flight
   const rnd=()=>Math.random();
   const spec={ title:m.name, crewed, success, failPhase,
-    stages: state.stages.map(s=>({prop:s.prop,count:s.count})),
+    stages: state.stages.map(s=>({prop:s.prop,count:s.count,dia:s.dia})),
     boosters: boosterSpec(),
     transferProp: (m.profile&&m.modules.includes('transfer'))?state.transfer.prop:0,
     recovering: recoveryActive(m) && state.stages.length>1 && failPhase!=='ascent', // #graphics: fly the first stage back for a landing instead of tumbling away
@@ -3554,12 +3661,45 @@ function firstUnlocked(){return Object.keys(ENGINES).find(k=>state.unlocked[k])|
 function setEngine(i,v){state.stages[i].eng=v;render();}
 function setCount(i,d){state.stages[i].count=Math.max(1,Math.min(8,state.stages[i].count+d));render();}
 function setProp(i,v){state.stages[i].prop=Math.max(0.1,Math.min(1000,parseFloat(v)||0.1));render();}
+function setStageDia(i,v){ if(!state.stages[i])return; state.stages[i].dia=clampA(parseFloat(v)||1,GEO_DIA_MIN,GEO_DIA_MAX); render(); } // BC3: per-stage diameter
 // Bench customization slice 1: livery controls (cosmetic only)
 function ensureLivery(){ if(!state.livery) state.livery=defaultLivery(); return state.livery; }
 function setLiveryBody(v){ ensureLivery().body=v; render(); }
 function setLiveryAccent(v){ ensureLivery().accent=v; render(); }
 function setLiveryNose(v){ ensureLivery().nose=v; render(); }
 function setLiveryName(v){ ensureLivery().name=(v||'').slice(0,24); render(); }
+// Saved designs (blueprints) card
+function renderBlueprints(){
+  const el=$('blueprintsCard'); if(!el) return;
+  const list=blueprints();
+  const rows=list.map(b=>`<div style="display:flex;align-items:center;gap:8px;justify-content:space-between;padding:6px 0;border-top:1px solid var(--line)">
+      <span style="min-width:0"><b>${b.name}</b> <span class="dim" style="font-size:11px">${b.summary||''} · ${b.born||''}</span></span>
+      <span style="display:flex;gap:5px;flex-shrink:0">
+        <button class="btn" style="font-size:11px;padding:3px 9px" onclick="loadBlueprint('${b.id}')">Load</button>
+        <button class="btn ghost danger" style="font-size:11px;padding:3px 8px" onclick="deleteBlueprint('${b.id}')" title="Delete">✕</button>
+      </span></div>`).join('') || '<div class="dim" style="font-size:11px;margin-top:4px">No saved designs yet — save the current build to reload it later (captures stages, geometry, boosters, livery & parts).</div>';
+  el.innerHTML=`<h2>💾 Saved Designs</h2>
+    <div class="row"><input type="text" id="bpName" maxlength="28" placeholder="Name this design" style="flex:1"><button class="btn" onclick="saveBlueprint()">Save current</button></div>
+    ${rows}`;
+}
+// BC2: performance-parts controls
+function ensureParts(){ if(!state.parts) state.parts=defaultParts(); return state.parts; }
+function setPart(slot,value){ ensureParts()[slot]=value; render(); }
+function renderParts(){
+  const el=$('partsCard'); if(!el) return;
+  const p=curParts();
+  const crewed=!!(curMission()&&curMission().crew>0);
+  const group=(slot, table, sel, opts)=>{
+    const btns=Object.keys(table).map(k=>`<button class="btn ${sel===k?'':'ghost'}" style="font-size:11px;padding:4px 8px" onclick="setPart('${slot}','${k}')">${table[k].name}</button>`).join(' ');
+    return `<div style="margin-top:8px"><div class="mission-tag" style="text-align:left">${opts.label}</div>
+      <div style="display:flex;gap:5px;flex-wrap:wrap;margin:4px 0">${btns}</div>
+      <div class="dim" style="font-size:11px">${table[sel].desc}</div>${opts.note||''}</div>`;
+  };
+  el.innerHTML=`<h2>🔧 Performance Parts</h2>
+    ${group('tank', TANK_MATERIALS, p.tank, {label:'Tank material (structure σ)'})}
+    ${group('avionics', AVIONICS, p.avionics, {label:'Avionics / guidance'})}
+    ${group('fairing', FAIRINGS, p.fairing, {label:'Payload fairing', note:crewed?`<div class="dim" style="font-size:11px;color:var(--warn)">Crewed flight — flies a capsule; fairing choice is ignored this mission.</div>`:''})}`;
+}
 function renderLivery(){
   const el=$('liveryCard'); if(!el) return;
   const l=curLivery();
@@ -3836,7 +3976,7 @@ function hideModal(){activeModal=null;$('modal').classList.add('hidden');} // sl
 
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=23; // v23: bench livery (state.livery)
+const SAVE_VERSION=25; // v25: saved designs / blueprints (state.blueprints)
 function saveGame(){
   try{
     const payload={v:SAVE_VERSION, ts:Date.now(), state:JSON.parse(JSON.stringify(state))};
@@ -3876,7 +4016,7 @@ function loadGame(){
       staff:[], assignedAstronaut:null,
       vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, rehearsal:false, techLevel:{}, divisions:{}, breakthroughCooldown:3, relDebt:0, powerSource:'solar',
       recentBuilds:[], materials:defaultMaterialsState(),
-      buildQueue:[], hangar:[], orderSeq:0, uiLayer:'advanced', metricHist:defaultMetricHist(), livery:defaultLivery()
+      buildQueue:[], hangar:[], orderSeq:0, uiLayer:'advanced', metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[]
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -3929,7 +4069,7 @@ function autoLoad(){
       staff:[], assignedAstronaut:null,
       vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, rehearsal:false, techLevel:{}, divisions:{}, breakthroughCooldown:3, relDebt:0, powerSource:'solar',
       recentBuilds:[], materials:defaultMaterialsState(),
-      buildQueue:[], hangar:[], orderSeq:0, uiLayer:'advanced', metricHist:defaultMetricHist(), livery:defaultLivery()
+      buildQueue:[], hangar:[], orderSeq:0, uiLayer:'advanced', metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[]
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -3961,7 +4101,10 @@ function applyWide(){
   const wb=$('wideBtn'); if(wb){ wb.textContent=wideOn?'↔ Comfortable':'↔ Wide'; wb.style.borderColor=wideOn?'var(--ignite)':''; wb.style.color=wideOn?'var(--ignite)':''; }
   const fb=$('fullscreenBtn'); if(fb){ fb.textContent=fs?'⛶ Exit full screen':'⛶ Full screen'; fb.style.borderColor=fs?'var(--ignite)':''; fb.style.color=fs?'var(--ignite)':''; }
 }
-function toggleWide(){ wideOn=!wideOn; try{ localStorage.setItem('ov_wide', wideOn?'1':'0'); }catch(e){} applyWide(); }
+function toggleWide(){ wideOn=!wideOn; try{ localStorage.setItem('ov_wide', wideOn?'1':'0'); }catch(e){} applyWide(); syncTopbarH(); }
+// keep --topbar-h in sync with the pinned header+opsbar so sticky panels always clear it
+function syncTopbarH(){ const tb=$('topbar'); if(tb && tb.offsetHeight){ try{ document.documentElement.style.setProperty('--topbar-h', tb.offsetHeight+'px'); }catch(e){} } }
+try{ window.addEventListener('resize', syncTopbarH); }catch(e){}
 function _requestFs(){ const el=document.documentElement; const fn=el.requestFullscreen||el.webkitRequestFullscreen; if(fn){ try{ const p=fn.call(el); if(p&&p.catch)p.catch(()=>{}); }catch(e){} } }
 function _exitFs(){ const fn=document.exitFullscreen||document.webkitExitFullscreen; if(fn){ try{ const p=fn.call(document); if(p&&p.catch)p.catch(()=>{}); }catch(e){} } }
 function toggleFullscreen(){ if(!inFullscreen()){ setFsOptOut(false); _requestFs(); } else { setFsOptOut(true); _exitFs(); } }
@@ -4852,6 +4995,10 @@ function defineFlightScene(){
       animState.fxNative=!!this.np; // suppress the 2D plume/trail/flame only if native particles are live
       animState.nativeStars=!!this.efxBuilt; // native parallax starfield replaces the canvas stars in the orbit phase
       this.didBoomShake=false; this._lastDropped=0; this._didDebris=false;
+      try{ if(this.scene && !this.scene.isActive()) this.scene.resume(); }catch(e){} // defensive: a paused flight scene won't drive particles
+      // reset the exhaust emitters to a known-stopped state each flight so the plume reliably
+      // re-emits on repeat launches (a prior failure/explosion can leave .emitting stale)
+      this._plumeOn=false; this._smokeOn=false;
       if(this.np){ try{ this.plume.stop(); this.smoke.stop(); }catch(e){} }
       this.playing=true;
       try{ this.cameras.main.shake(1000, 0.006); }catch(e){} // liftoff rumble
@@ -4862,17 +5009,17 @@ function defineFlightScene(){
     driveParticles(A){
       const ascent=A.phase==='ascent', haveXY=A.rocketX!=null;
       const fire = ascent && !A.exploding && haveXY && (A.ascentP==null || A.ascentP<0.96);
-      if(fire){ this.aimPlume(A.pitch); this.plume.setPosition(A.rocketX, A.rocketY); if(!this.plume.emitting) this.plume.start(); }
-      else if(this.plume.emitting) this.plume.stop();
-      if(ascent && !A.exploding && haveXY && A.ascentP!=null && A.ascentP<0.14){ this.smoke.setPosition(A.rocketX, A.rocketY+4); if(!this.smoke.emitting) this.smoke.start(); }
-      else if(this.smoke.emitting) this.smoke.stop();
+      if(fire){ this.aimPlume(A.pitch); this.plume.setPosition(A.rocketX, A.rocketY); if(!this._plumeOn){ this.plume.start(); this._plumeOn=true; } }
+      else if(this._plumeOn){ this.plume.stop(); this._plumeOn=false; }
+      if(ascent && !A.exploding && haveXY && A.ascentP!=null && A.ascentP<0.14){ this.smoke.setPosition(A.rocketX, A.rocketY+4); if(!this._smokeOn){ this.smoke.start(); this._smokeOn=true; } }
+      else if(this._smokeOn){ this.smoke.stop(); this._smokeOn=false; }
       if(A.dropped!=null && A.dropped>this._lastDropped){ this._lastDropped=A.dropped; if(haveXY) this.sparks.explode(22, A.rocketX, A.rocketY); }
-      if(A.exploding && !this._didDebris){ this._didDebris=true; if(this.plume.emitting) this.plume.stop(); if(this.smoke.emitting) this.smoke.stop();
+      if(A.exploding && !this._didDebris){ this._didDebris=true; if(this._plumeOn){ this.plume.stop(); this._plumeOn=false; } if(this._smokeOn){ this.smoke.stop(); this._smokeOn=false; }
         if(haveXY){ this.debris.explode(46, A.rocketX, A.rocketY-12); this.fireball.explode(34, A.rocketX, A.rocketY-14); } }
     }
     update(time,delta){
       if(!this.playing) return;
-      const A=animState; if(!A||A.held){ this.playing=false; if(this.np&&this.plume.emitting) this.plume.stop(); if(this.np&&this.smoke.emitting) this.smoke.stop(); return; }
+      const A=animState; if(!A||A.held){ this.playing=false; if(this.np){ if(this._plumeOn){ this.plume.stop(); this._plumeOn=false; } if(this._smokeOn){ this.smoke.stop(); this._smokeOn=false; } } return; }
       A.virtT += (delta||16)*animSpeed();
       const t=A.virtT;
       try{ drawScene(t); this.tex.refresh(); }catch(e){ console.error('flight anim error:',e); this.playing=false; endAnim(); return; }
@@ -4881,7 +5028,7 @@ function defineFlightScene(){
       // dynamic bloom: punch up engine glow during powered ascent, ease off in coast/orbit
       if(this.bloom){ const want = (A.ascentP!=null && A.ascentP<0.95 && t<A.ascentDur) ? 1.0 : 0.7; this.bloom.strength += (want-this.bloom.strength)*0.05; }
       if(A.exploding && !this.didBoomShake){ this.didBoomShake=true; try{ this.cameras.main.shake(700, 0.022); }catch(e){} } // vehicle-loss kick
-      if(t>=A.totalDur){ this.playing=false; if(this.np){ if(this.plume.emitting) this.plume.stop(); if(this.smoke.emitting) this.smoke.stop(); } endAnim(true); }
+      if(t>=A.totalDur){ this.playing=false; if(this.np){ if(this._plumeOn){ this.plume.stop(); this._plumeOn=false; } if(this._smokeOn){ this.smoke.stop(); this._smokeOn=false; } } endAnim(true); }
     }
   };
 }
@@ -5085,7 +5232,10 @@ function drawScene(t){
 function buildVehicleShape(spec){
   const segs=[];
   spec.stages.forEach(s=>{
-    segs.push({ w:clampA(5+2.8*Math.cbrt(s.prop),6,20), h:clampA(22+5.0*Math.sqrt(s.prop),24,200), engines:Math.max(1,Math.min(s.count,8)), kind:'stage', prop:s.prop });
+    const dia=clampA(s.dia||1, GEO_DIA_MIN, GEO_DIA_MAX); // BC3: wider tank → shorter for the same propellant
+    const w=clampA(clampA(5+2.8*Math.cbrt(s.prop),6,20)*dia, 4, 30);
+    const h=clampA(clampA(22+5.0*Math.sqrt(s.prop),24,200)/dia, 16, 260);
+    segs.push({ w, h, engines:Math.max(1,Math.min(s.count,8)), kind:'stage', prop:s.prop });
   });
   if(spec.transferProp>0){
     segs.push({ w:clampA(5+2.4*Math.cbrt(spec.transferProp),6,16), h:clampA(16+3.6*Math.sqrt(spec.transferProp),16,80), engines:1, kind:'transfer', prop:spec.transferProp });
@@ -6553,13 +6703,14 @@ function render(){
   if(state.tab==='command')renderCommandCenter(); else { stopCCScene(); pauseCapeGame(); }
   if(state.tab!=='bench') pauseVehGame();
   if(state.tab!=='map') pauseMapGame();
-  if(state.tab==='bench'){renderVehicleFamilies();renderLivery();renderArchitecture();renderStages();renderBoosters();renderTransfer();renderLander();renderCrew();renderPower();renderWindowPlanner();renderRoutes();renderReadout();renderVehiclePreview();renderBenchLaunch();}
+  if(state.tab==='bench'){renderVehicleFamilies();renderBlueprints();renderLivery();renderParts();renderArchitecture();renderStages();renderBoosters();renderTransfer();renderLander();renderCrew();renderPower();renderWindowPlanner();renderRoutes();renderReadout();renderVehiclePreview();renderBenchLaunch();}
   if(state.tab==='command' && hubPanel==='contracts') renderMissions(); // slice 5: contracts drill content (passiveCard + missionList)
   renderNextObjective();
   if(state.tab==='rnd')renderRnd();
   if(state.tab==='map')renderMap();
   renderLog();
   if(activeModal) activeModal(); // slice 6: keep an open deep-view modal (Programs/Rivals/Personnel) in sync with state
+  syncTopbarH(); // keep sticky-panel offsets matched to the pinned topbar's actual height
 }
 /* ---------- #18: Agency Command Center (home screen + ground site map) ----------
    The new default landing screen: an at-a-glance dashboard plus a drill-down "site
@@ -6861,7 +7012,7 @@ function drawPad(ctx,r,groundY,t){
   const bl=(Math.sin(t*4)>0)?1:0.2; ctx.fillStyle=`rgba(255,60,40,${0.4+0.6*bl})`; ctx.beginPath(); ctx.arc(gx+gw,gTop,3,0,7); ctx.fill();
   if(!ccPhaserSmoke){ drawSmoke(ctx,cx-5,groundY-6,t,1,1.1); drawSmoke(ctx,cx+7,groundY-6,t,2,0.9); } // #engine: Phaser particle emitter replaces baked smoke when active
   // the player's current vehicle, drawn on the pad
-  let spec=null; try{ const m=curMission(); spec={ stages: state.stages.map(s=>({prop:s.prop,count:s.count})), boosters: boosterSpec(), transferProp:(m&&m.profile&&m.modules&&m.modules.includes('transfer'))?state.transfer.prop:0, crewed:!!(m&&m.crew>0) }; }catch(e){}
+  let spec=null; try{ const m=curMission(); spec={ stages: state.stages.map(s=>({prop:s.prop,count:s.count,dia:s.dia})), boosters: boosterSpec(), transferProp:(m&&m.profile&&m.modules&&m.modules.includes('transfer'))?state.transfer.prop:0, crewed:!!(m&&m.crew>0) }; }catch(e){}
   if(spec){ let shape=null; try{ shape=buildVehicleShape(spec); }catch(e){}
     if(shape&&shape.segs.length){ const scale=Math.min((r.h*0.82)/(shape.totalH+16),(r.w*0.42)/(shape.maxW*1.9));
       ctx.save(); ctx.translate(cx-r.w*0.14, groundY-6); drawVehicle(ctx, shape.segs, shape.nose, scale, 0, 0); ctx.restore(); } }
@@ -6998,7 +7149,7 @@ function drawIsoPad(ctx,sx,sy,b,t,rival){
   const bl=(Math.sin(t*4)>0)?1:0.2; ctx.fillStyle=`rgba(255,60,40,${0.4+0.6*bl})`; ctx.beginPath(); ctx.arc(gx+6,gTop,3,0,7); ctx.fill();
   if(rival){ ctx.fillStyle='#c2b8b2'; ctx.fillRect(sx-1.5,sy-b.h*0.7,3,b.h*0.7); return; }
   // the player's current vehicle, standing upright on the pad
-  let spec=null; try{ const m=curMission(); spec={ stages: state.stages.map(s=>({prop:s.prop,count:s.count})), boosters: boosterSpec(), transferProp:(m&&m.profile&&m.modules&&m.modules.includes('transfer'))?state.transfer.prop:0, crewed:!!(m&&m.crew>0) }; }catch(e){}
+  let spec=null; try{ const m=curMission(); spec={ stages: state.stages.map(s=>({prop:s.prop,count:s.count,dia:s.dia})), boosters: boosterSpec(), transferProp:(m&&m.profile&&m.modules&&m.modules.includes('transfer'))?state.transfer.prop:0, crewed:!!(m&&m.crew>0) }; }catch(e){}
   if(spec){ let shape=null; try{ shape=buildVehicleShape(spec); }catch(e){}
     if(shape&&shape.segs.length){ const scale=Math.min((b.h*0.92)/(shape.totalH+16),(ISO_TW*0.5)/(shape.maxW*1.9));
       ctx.save(); ctx.translate(sx-ex*0.35, sy+2); drawVehicle(ctx, shape.segs, shape.nose, scale, 0, 0); ctx.restore(); } }
@@ -7211,7 +7362,7 @@ function initCapeZoom(){
   wrap.addEventListener('click',e=>{ if(moved>6){ e.stopPropagation(); e.preventDefault(); moved=0; } }, true); // swallow click-through after a drag
   wrap.addEventListener('dblclick',()=>{ capeZoom=1; capePanX=0; capePanY=0; applyCapeZoom(); });
 }
-function pauseCapeGame(){ if(capeGame){ try{ capeGame.scene.pause('cape'); }catch(e){} } }
+function pauseCapeGame(){ if(capeGame){ try{ if(capeGame.scene.isActive('cape')) capeGame.scene.pause('cape'); }catch(e){} } }
 function resumeCapeGame(){ if(capeGame){ try{ capeGame.scene.resume('cape'); }catch(e){} } }
 function renderCommandCenter(){
   if(!$('execOverview')) return;
@@ -7627,6 +7778,9 @@ function renderStages(){
         <div class="row"><label>Propellant</label>
           <input type="range" min="0.1" max="800" step="1" value="${st.prop}" oninput="setProp(${i},this.value)">
           <input type="number" min="0.1" max="1000" step="0.1" value="${st.prop.toFixed(1)}" style="width:74px" onchange="setProp(${i},this.value)"><span class="muted" style="font-size:11px">t</span></div>
+        <div class="row"><label>Diameter</label>
+          <input type="range" min="${GEO_DIA_MIN}" max="${GEO_DIA_MAX}" step="0.05" value="${stageDia(st)}" oninput="setStageDia(${i},this.value)">
+          <span class="dim" style="font-size:11px">${Math.round(stageDia(st)*100)}% — ${stageDia(st)>1.02?'stouter (+rel, −Δv)':stageDia(st)<0.98?'slender (−rel, +Δv)':'standard'}</span></div>
         <div class="stage-stats">
           <span class="ss">dry <b>${sm.dry.toFixed(2)} t</b></span>
           <span class="ss">prop <b>${st.prop.toFixed(1)} t</b></span>
@@ -8053,7 +8207,7 @@ function renderArchitecture(){
 // reuses the launch animation's buildVehicleShape/drawVehicle with no flame.
 function currentVehicleSpec(){
   const m=curMission();
-  return { stages: state.stages.map(s=>({prop:s.prop, count:s.count})),
+  return { stages: state.stages.map(s=>({prop:s.prop, count:s.count, dia:s.dia})),
     boosters: boosterSpec(),
     transferProp: (m&&m.profile&&m.modules.includes('transfer'))?state.transfer.prop:0,
     crewed: !!(m&&m.crew>0) };
@@ -8135,7 +8289,7 @@ function startVehPreview(spec){
     return false;
   }
 }
-function pauseVehGame(){ if(vehGame){ try{ vehGame.scene.pause('vehprev'); }catch(e){} } }
+function pauseVehGame(){ if(vehGame){ try{ if(vehGame.scene.isActive('vehprev')) vehGame.scene.pause('vehprev'); }catch(e){} } }
 function resumeVehGame(){ if(vehGame){ try{ vehGame.scene.resume('vehprev'); }catch(e){} } }
 // Presentation: the primary Build & Launch CTA sits directly under the rocket on the
 // bench (in #vehicleCard), not in the right-rail readout. Same gate (canLaunch) + same
@@ -8673,7 +8827,7 @@ function startMapScene(){
     return true;
   }catch(e){ console.warn('map scene failed, using SVG:',e); const h=$('mapHost'); if(h) h.style.display='none'; const c=$('mapCanvas'); if(c) c.style.display='block'; return false; }
 }
-function pauseMapGame(){ if(mapGame){ try{ mapGame.scene.pause('solarmap'); }catch(e){} } }
+function pauseMapGame(){ if(mapGame){ try{ if(mapGame.scene.isActive('solarmap')) mapGame.scene.pause('solarmap'); }catch(e){} } }
 function resumeMapGame(){ if(mapGame){ try{ mapGame.scene.resume('solarmap'); }catch(e){} } }
 function renderMap(){
   const mv=$('mapView'); if(mv) mv.classList.toggle('expanded', mapExpanded);
@@ -9398,6 +9552,7 @@ const UNLOCK_LABELS={crew:'crewed missions',les:'launch-escape system',eclss:'ad
 function techModifierText(r){
   const e=r.effect||{}, bits=[];
   if(e.engine && ENGINES[e.engine]){ const en=ENGINES[e.engine]; bits.push(`Unlocks engine — <b>${en.name}</b> (${en.prop}, Isp ${en.ispVac}s vac, ${en.thrustVac} kN)`); }
+  if(e.engines){ e.engines.filter(id=>ENGINES[id]).forEach(id=>{ const en=ENGINES[id]; bits.push(`Unlocks engine — <b>${en.name}</b> (${en.prop}, Isp ${en.ispVac}s vac, ${en.thrustVac} kN)`); }); }
   if(e.isp) bits.push(`<b>+${Math.round(e.isp*100)}% Isp</b> on the launch vehicle (more Δv)`);
   if(e.thrust) bits.push(`<b>+${Math.round(e.thrust*100)}% liftoff thrust</b> (higher TWR)`);
   if(e.reliability) bits.push(`<b>+${Math.round(e.reliability*100)}%</b> launch reliability`);

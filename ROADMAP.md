@@ -2557,13 +2557,88 @@ first.
       executing through a real ctx stub across all nose styles + crewed, `shade()`, the
       under-ship name, and autoLoad backfill. Regressions green (launch 13, bench-nav 28,
       presentation 40).
-- [ ] **BC2 · Performance parts** — new engineering levers feeding `computeVehicle`:
-      payload fairing (mass, protects payload), nose-cone drag, avionics/guidance tier
-      (+reliability/+cost), tank material (better σ). Balance-sensitive — needs care.
-- [ ] **BC3 · Per-stage geometry** — diameter/length (tank count) per stage feeding both
-      `buildVehicleShape` (preview) and the dry-mass model. Most invasive; do after BC2.
-- [ ] **BC4 · More part variety** — wider catalog: more engines, booster options, and
-      propellant choices per era. Mostly data; balance-check each addition.
+- [x] **BC2 · Performance parts** *(Built 2026-06-25.)* Three balance-honest levers in
+      `state.parts` (`{tank, avionics, fairing}`; `defaultParts()`/`curParts()` merge;
+      **`SAVE_VERSION`→24**, forward-compat backfill in both load paths + newGame), each
+      **defaulting to a zero-impact baseline so default vehicles compute exactly as
+      before** — every option is a tradeoff away from that baseline, so existing balance
+      is untouched.
+      • **Tank material** → `curSigma()` scales by `sigmaMult` (Al-Li −15% σ = more Δv,
+        +30% cost, −1% rel; stainless +20% σ = less Δv, −22% cost, +2% rel).
+      • **Avionics tier** → `partsRelBonus` (+3%/+6% reliability) at added cost + a little
+        lofted mass.
+      • **Payload fairing** → mass + cost + reliability (none/standard/extended);
+        "nose-cone drag" folded in as the heavier shroud's extra lofted mass. Fairing is
+        **excluded on crewed flights** (they fly a capsule) in both mass and reliability.
+      Hooks: `lvPayload` adds `partsExtraMass`; `computeVehicle` adds `partsBuildCost`,
+      `tankMaterial().costMult`, and `partsRelBonus(crewed)` (still under `relCap`). A
+      **🔧 Performance Parts** card in the bench editor. Validated headlessly
+      (`ov-parts.js`, 32/32): default-neutrality of all helpers, each lever moving Δv/
+      cost/reliability the right direction, σ clamp, crewed fairing exclusion, UI wiring,
+      and autoLoad backfill. Regressions green (livery 20, launch 13, bench-nav 28,
+      presentation 40).
+- [x] **BC3 · Per-stage geometry** *(Built 2026-06-25.)* An optional per-stage
+      **diameter** (`st.dia`, 0.7–1.4) — the one meaningful lever, since length follows
+      from propellant volume. **Defaults to 1.0 = today's exact shape AND mass**, so
+      balance is unchanged; deviating is a tradeoff: **wider** = stouter (more structural
+      mass via `geoStructMult` → less Δv, but `geoRelBonus` +reliability), **narrower** =
+      slender (lighter → more Δv, −reliability). Hooks: `tankStruct(prop,dia)` scales
+      structure; `stageMasses` passes `stageDia(st)`; `computeVehicle` adds `geoRelBonus()`
+      (clamped ±0.05, under `relCap`); `buildVehicleShape` widens the seg and shortens it
+      for the same propellant; all four spec builders carry `dia` so the bench preview AND
+      flight animation reflect it. A **Diameter** slider per stage card. No `SAVE_VERSION`
+      bump — `dia` is a nested optional read through `stageDia()` (safe default), and family
+      snapshots deep-copy it. Validated headlessly (`ov-geo.js`, 22/22): default-neutrality,
+      wider/narrower moving dry-mass/Δv/reliability correctly, `geoRelBonus` clamp, shape
+      width/height response, setter clamps, UI slider, spec/family `dia` carry. Regressions
+      green (parts 32, livery 20, bench-nav 28, presentation 40, launch 13).
+- [x] **BC4 · More part variety** *(Built 2026-06-25.)* Three **sidegrade engines**
+      added to `ENGINES`, each a lateral tradeoff (not a strict upgrade) and unlocked via
+      an **existing** research node (no new tech, no balance upset): **LR79** (RP-1/LOX —
+      more thrust, lower Isp, cheaper than the S-3D) on `kerosene`; **RL10-class** (small,
+      very high-Isp cryo upper) on `cryo_upper`; **Methalox Vacuum** (vac-optimized upper)
+      on `methane_propulsion`. Each node switched from `effect.engine` to the
+      already-supported **`effect.engines[]`** (unlocked by `completeResearch` +
+      backfilled by `reconcileResearch`, so pre-BC4 saves gain the new engine on load);
+      `techModifierText` now lists plural unlocks. All three are non-`transferOnly`, so
+      they appear in the stage **and booster** menus automatically, widening per-era
+      propellant/engine choice. No `SAVE_VERSION` bump (static data + reconcile backfill).
+      Validated headlessly (`ov-variety.js`, 23/23): engines exist + are sidegrades (not
+      dominant), node `effect.engines` wiring, unlock via reconcile, dropdown presence +
+      buildability, plural tooltip, render no-throw, and legacy-save backfill. Regressions
+      green (geo 22, parts 32, livery 20, bench-nav 28, presentation 40, launch 13).
+
+**Epic status:** all four slices shipped — the Design Bench is now customizable across
+cosmetic livery (BC1), performance parts (BC2), per-stage geometry (BC3), and a wider
+engine catalog (BC4).
+
+- [x] **BC5 · Saved designs (blueprints)** *(Built 2026-06-25, on user request.)* Save the
+      **full** current bench configuration to a named, reloadable slot — distinct from the
+      heritage **families** (which carry lineage/reliability bonuses). `fullBenchSnapshot()`
+      captures stages (incl. per-stage `dia`), boosters, transfer/descent/ascent, ECLSS,
+      power, recovery, **and** the BC livery + parts; `applyFullSnapshot()` restores them
+      (deep-copied, so a loaded design is independent of the stored blueprint). State
+      `state.blueprints[]` (**`SAVE_VERSION`→25**, forward-compat backfill); a **💾 Saved
+      Designs** card (name field + Save current; per-row Load / Delete) in the bench editor.
+      Validated headlessly (`ov-blueprints.js`, 25/25 incl. the topbar checks): snapshot
+      completeness, save/mutate/load round-trip, independence of the stored copy, delete,
+      auto-naming, render, and autoLoad backfill.
+
+## Polish & fixes (2026-06-25)
+
+- [x] **Pinned top bar.** The header (date/capital/rep…) + opsbar (View/Menu/Advance/Skip)
+      are wrapped in a `position:sticky` `.topbar` so the **top two rows stay put while the
+      page scrolls**. A `--topbar-h` CSS var (kept in sync with the bar's real height by
+      `syncTopbarH()` on render + resize) offsets the sticky right rail and bench rocket so
+      they clear the pinned bar. (`ov-blueprints.js` covers the markup/CSS/wiring.)
+- [x] **Flight FX robustness.** Fixed the **missing exhaust plume on repeat launches** —
+      the emitters were gated on Phaser's `.emitting` flag, which goes stale after a flight
+      (especially a failure that stops the plume on explosion). Now tracked via explicit
+      `_plumeOn`/`_smokeOn` flags reset every `beginFlight()`, plus a defensive scene-resume.
+      Also silenced the **"Cannot pause non-running Scene"** console warning by guarding
+      `pauseCapeGame`/`pauseVehGame`/`pauseMapGame` with `scene.isActive()`. (The benign
+      WebGL `texImage`/`generateMipmap` warnings are Firefox verbosity from the per-frame
+      flight-canvas texture upload — left as-is.) Browser-verify the plume on a 2nd launch.
 
 ## Repo
 
