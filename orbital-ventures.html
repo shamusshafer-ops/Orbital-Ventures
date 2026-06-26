@@ -654,6 +654,26 @@ const RIVALS = [
     ],
   },
 ];
+// CE1 slice (a): rival AGENTS. Each rival's `firsts` become GOALS, not scripted dates.
+// A rival accrues budget into capital and "buys" its next goal when capital clears the
+// goal's cost; momentum (reactive to the race) speeds or slows that. Because
+// cost = income·12·window and accrual = income·momentum, income cancels in timing —
+// a goal fires after ~12·window/momentum months from its saving window opening, so
+// MOMENTUM is the whole reactive lever (>1 pulls the date in, <1 slips it). A historical
+// floor (MAX_PULL_IN) keeps the year plausible; income magnitude is reserved for the
+// shared-resource levers in slice (b) (contract crowding draining capital).
+const RIVAL_PROFILES = {
+  vostochny:{income:1.0}, // fast-moving state agency
+  meridian: {income:1.2}, // deep-budgeted legacy contractor
+  halcyon:  {income:1.5}, // disruptive commercial newcomer (late but accelerating)
+};
+const RIVAL_FIRST_RUNWAY=6;  // years a rival "saves" before its debut goal's nominal year
+const RIVAL_MAX_PULL_IN=4;   // a goal can fire at most this many years before its nominal year
+const RIVAL_MIN_WINDOW=2;    // floor on a goal's saving window (years) so cost stays sane
+const RIVAL_MOM_MIN=0.5, RIVAL_MOM_MAX=1.8; // momentum bounds (slip ↔ pull-in)
+const RIVAL_MOM_SENS=0.18;   // momentum sensitivity to how far ahead/behind the rival is
+const RIVAL_MOM_DRIFT=0.15;  // monthly drift of momentum toward its standing-derived target
+const RIVAL_MOM_RUBBER=0.8;  // rubber-band floor: a dominated rival never fully stalls
 // Ambient economy events — fire on the monthly tick (rate-limited), adjust capital
 // or apply a temporary market modifier. Gated by year/rep/flights so the early game
 // stays quiet. money/dur are [min,max] ranges rolled at fire time.
@@ -1445,7 +1465,7 @@ function newGame(difficulty){
     windows:{}, committedWindow:null, selectedBody:'moon', mapZoom:null,
     depot:0, depotUse:0,
     tab:'command', won:false, wonM2:false, wonM3a:false, wonM3aii:false, wonM3b:false, wonM3bii:false, over:false,
-    log:[], rivalFired:{}, scooped:{}, rivalThreat:{},
+    log:[], rivalFired:{}, scooped:{}, rivalThreat:{}, rivalState:{},
     staff:[], assignedAstronaut:null, persEventCooldown:5,
     econEvents:[], eventCooldown:6, pgmRoyalty:0,
     passiveContracts:[], contractCooldown:{}, contractSignings:{}, // passive-income contracts (repeatable + cooldown + diminishing)
@@ -1778,7 +1798,7 @@ function advance(months){
     const mExp=round2(Math.max(0,diff().overhead+econOverheadAdd()+productionUpkeep())+monthlyPayroll());
     state.lastMonth={revenue:mRev, expenses:mExp, net:round2(mRev-mExp), flights:0};
 
-    checkRivalFirsts();
+    tickRivals(); // CE1: rival agents (budget + reactive momentum) — replaces calendar-only firing
     checkPoaching();
     checkPersonnelEvents();
     checkDivisionBreakthroughs(); // #5: division-driven R&D breakthroughs (sibling of #9)
@@ -2428,32 +2448,68 @@ function sellFuel(t){
   render();
 }
 
-// M4b: fire any rival "firsts" whose target year has now arrived. Calendar-only —
-// no economy effect (that's M4c). Each first fires once, recorded in
+// CE1: apply the effects of a rival claiming a "first" (extracted so both the agent
+// loop and any future trigger share one path). Fires once per goal, recorded in
 // state.rivalFired so it survives across months and isn't re-logged.
-function checkRivalFirsts(){
+function fireRivalFirst(r, f){
+  const key=r.id+'|'+f.name;
+  if(state.rivalFired[key]) return;
+  state.rivalFired[key]=true;
+  state.rivalThreat=state.rivalThreat||{}; state.rivalThreat[r.id]=(state.rivalThreat[r.id]||0)+1;
+  log('rival', `${r.flag} ${r.name} claims: ${f.name} (${state.year})`);
+  // #8: national prestige — a rival's first stings the home crowd, but far less if you'd already done it
+  addSupport((f.missionId && state.completed[f.missionId]) ? SUPPORT_DELTA.rivalFirstDone : SUPPORT_DELTA.rivalFirst);
+  if(f.missionId && !state.completed[f.missionId] && !state.scooped[f.missionId]){
+    state.scooped[f.missionId]=true;
+    const mm=MISSIONS.find(x=>x.id===f.missionId);
+    log('bad', `Scooped: ${r.name} beat you to "${mm.name}" — its first-time payout is cut to ${Math.round(SCOOP_PAYOUT_MULT*100)}% (rep reward unaffected).`);
+  }
+  if(f.marketImpact){ // M5: a rival's cost/reuse breakthrough triggers an industry price war
+    state.rivalThreat[r.id]+=1;
+    state.econEvents.push({id:'pricewar_'+r.id, label:`${r.name} price pressure`, kind:'bad', payoutMult:f.marketImpact.payoutMult, monthsLeft:f.marketImpact.months});
+    log('rival', `${r.flag} ${r.name}: ${f.marketImpact.note} — industry launch payouts ×${f.marketImpact.payoutMult} for ${f.marketImpact.months} mo. Adapt or be undercut.`);
+  }
+}
+// CE1: how many flagship "firsts" the PLAYER has banked — the rival's race yardstick.
+function playerFirstsScore(){ return Object.keys(state.completed||{}).length; }
+// CE1: seed (or migrate) a rival's agent state. Back-compat: a save with goals already
+// fired by the OLD calendar code (state.rivalFired) advances `idx` past them so they're
+// never re-fired, and prevYear picks up where the timeline left off.
+function seedRivalState(r){
+  const rs={ capital:0, momentum:1.0, idx:0, prevYear:null };
+  for(let i=0;i<r.firsts.length;i++){ if(state.rivalFired[r.id+'|'+r.firsts[i].name]) rs.idx=i+1; else break; }
+  if(rs.idx>0){ const last=r.firsts[rs.idx-1]; rs.prevYear=Math.max(last.year, state.year); }
+  return rs;
+}
+function rivalStateFor(r){
+  state.rivalState=state.rivalState||{};
+  if(!state.rivalState[r.id]) state.rivalState[r.id]=seedRivalState(r);
+  return state.rivalState[r.id];
+}
+// CE1 slice (a): the rival AGENT turn — replaces the calendar-only checkRivalFirsts.
+// Each rival accrues budget·momentum into capital and buys its next goal when capital
+// clears the cost; momentum tracks the race (ahead → faster, dominated → rubber-banded).
+function tickRivals(){
+  const playerScore=playerFirstsScore();
   for(const r of RIVALS){
-    for(const f of r.firsts){
-      const key=r.id+'|'+f.name;
-      if(state.year>f.year || (state.year===f.year)){
-        if(!state.rivalFired[key]){
-          state.rivalFired[key]=true;
-          state.rivalThreat=state.rivalThreat||{}; state.rivalThreat[r.id]=(state.rivalThreat[r.id]||0)+1;
-          log('rival', `${r.flag} ${r.name} claims: ${f.name} (${f.year})`);
-          // #8: national prestige — a rival's first stings the home crowd, but far less if you'd already done it
-          addSupport((f.missionId && state.completed[f.missionId]) ? SUPPORT_DELTA.rivalFirstDone : SUPPORT_DELTA.rivalFirst);
-          if(f.missionId && !state.completed[f.missionId] && !state.scooped[f.missionId]){
-            state.scooped[f.missionId]=true;
-            const mm=MISSIONS.find(x=>x.id===f.missionId);
-            log('bad', `Scooped: ${r.name} beat you to "${mm.name}" — its first-time payout is cut to ${Math.round(SCOOP_PAYOUT_MULT*100)}% (rep reward unaffected).`);
-          }
-          if(f.marketImpact){ // M5: a rival's cost/reuse breakthrough triggers an industry price war
-            state.rivalThreat[r.id]+=1;
-            state.econEvents.push({id:'pricewar_'+r.id, label:`${r.name} price pressure`, kind:'bad', payoutMult:f.marketImpact.payoutMult, monthsLeft:f.marketImpact.months});
-            log('rival', `${r.flag} ${r.name}: ${f.marketImpact.note} — industry launch payouts ×${f.marketImpact.payoutMult} for ${f.marketImpact.months} mo. Adapt or be undercut.`);
-          }
-        }
-      }
+    const prof=RIVAL_PROFILES[r.id]||{income:1.0};
+    const rs=rivalStateFor(r);
+    // --- momentum: drift toward a target set by how far ahead/behind the rival is ---
+    const lead=rs.idx-playerScore; // >0 rival ahead of player on firsts, <0 player ahead
+    let targetMom=clampA(1.0+lead*RIVAL_MOM_SENS, RIVAL_MOM_MIN, RIVAL_MOM_MAX);
+    if(lead<0) targetMom=Math.max(targetMom, RIVAL_MOM_RUBBER); // rubber-band: never fully stall
+    rs.momentum+=(targetMom-rs.momentum)*RIVAL_MOM_DRIFT;
+    if(rs.idx>=r.firsts.length) continue; // rival has claimed all its goals
+    const f=r.firsts[rs.idx];
+    if(rs.prevYear==null) rs.prevYear=f.year-RIVAL_FIRST_RUNWAY; // debut saving window opens here
+    if(state.year<rs.prevYear) continue; // saving window not open yet (keeps early game quiet)
+    const window=Math.max(RIVAL_MIN_WINDOW, f.year-rs.prevYear);
+    const cost=prof.income*12*window;
+    rs.capital+=prof.income*rs.momentum; // monthly accrual, sped/slowed by momentum
+    const earliest=f.year-RIVAL_MAX_PULL_IN; // historical floor — no absurdly early firsts
+    if(rs.capital>=cost && state.year>=earliest){
+      fireRivalFirst(r,f);
+      rs.capital-=cost; rs.prevYear=state.year; rs.idx++;
     }
   }
 }
@@ -3976,7 +4032,7 @@ function hideModal(){activeModal=null;$('modal').classList.add('hidden');} // sl
 
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=25; // v25: saved designs / blueprints (state.blueprints)
+const SAVE_VERSION=26; // v26: CE1 rival agents (state.rivalState) — forward-compat: seedRivalState migrates old rivalFired
 function saveGame(){
   try{
     const payload={v:SAVE_VERSION, ts:Date.now(), state:JSON.parse(JSON.stringify(state))};
@@ -4005,7 +4061,7 @@ function loadGame(){
       transfer:{eng:'hyper_storable',prop:10.0}, descent:{eng:'hyper_storable',prop:6.0},
       ascent:{eng:'hyper_storable',prop:2.5}, eclss:'open', testLevel:0,
       windows:{}, committedWindow:null, selectedBody:'moon', mapZoom:null,
-      depot:0, depotUse:0, tab:'command', log:[], rivalFired:{}, scooped:{}, rivalThreat:{}, bailouts:0,
+      depot:0, depotUse:0, tab:'command', log:[], rivalFired:{}, scooped:{}, rivalThreat:{}, rivalState:{}, bailouts:0,
       difficulty:'engineer', customDifficulty:customDefaults(),
       econEvents:[], eventCooldown:6, pgmRoyalty:0, publicSupport:SUPPORT_BASE,
       passiveContracts:[], contractCooldown:{}, contractSignings:{},
@@ -4058,7 +4114,7 @@ function autoLoad(){
       transfer:{eng:'hyper_storable',prop:10.0}, descent:{eng:'hyper_storable',prop:6.0},
       ascent:{eng:'hyper_storable',prop:2.5}, eclss:'open', testLevel:0,
       windows:{}, committedWindow:null, selectedBody:'moon', mapZoom:null,
-      depot:0, depotUse:0, tab:'command', log:[], rivalFired:{}, scooped:{}, rivalThreat:{}, bailouts:0,
+      depot:0, depotUse:0, tab:'command', log:[], rivalFired:{}, scooped:{}, rivalThreat:{}, rivalState:{}, bailouts:0,
       difficulty:'engineer', customDifficulty:customDefaults(),
       econEvents:[], eventCooldown:6, pgmRoyalty:0, publicSupport:SUPPORT_BASE,
       passiveContracts:[], contractCooldown:{}, contractSignings:{},

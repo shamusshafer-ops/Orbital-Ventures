@@ -126,6 +126,19 @@ companion to `orbital-ventures-design.md` (original full design doc) and
   per body) and ambient economy events; **fleet logistics** is still not modeled
   (the home for Strategic-Vision Phase 5 colony/interplanetary-logistics work —
   see § Strategic Vision).
+- **Early-game Δv spike before orbit** *(from the 2026-06-26 M3a review, Point A)* —
+  the early `MISSIONS` ladder is `first_flight` 1,000 → `sounding` 1,900 →
+  `reach_space` 2,900 → `high_alt` 4,200 → `first_sat` **9,400** m/s. Every step is
+  ~1.0–1.4× except the last, which is **2.2×** — the single steepest jump in the game,
+  right at the orbital wall. (Staging is already taught one rung earlier at `high_alt`,
+  so the reviewer's "single hop → orbit" framing is wrong, but the *spike* is real.)
+  **Proposed fix:** insert one intermediate node at ~6,000 m/s between `high_alt` and
+  `first_sat` — a downrange / booster-clustering test (no natural *physical* mission
+  sits at 6,000 m/s suborbital, so frame it as a high-energy staging trial) that
+  teaches multi-stage TWR management before the orbital squeeze. Pure content: one
+  `MISSIONS` entry + slot it into the Pioneer program's `missions:[]` list; no
+  mechanic or balance change (existing missions stay exactly as winnable). Low risk,
+  on-philosophy with the soft early-game pacing.
 
 > **Roadmap/code sync note (2026-06-17):** an audit found M5, M7, and the
 > passive-income section below had been written up here ahead of implementation
@@ -947,6 +960,17 @@ Manufacturing → Fully Automated Factory. Effects: shorter build times, lower
 vehicle cost, larger production queue. **Cross-ref #7** (production lines /
 `buildMonths` / `vehicleUnits` / foundry) — research here should *raise the
 ceilings* the #7 resource layer operates within.
+> **Manufacturing↔research coupling — direction decision** *(from the 2026-06-26
+> M3a review, Point C).* Today `PRODUCTION_DEFS` (bays/foundry/pads/QA) upgrades are
+> gated by **cash + time only** (`baseCost`/`months`/`upkeep`, escalating via
+> `prodUpgradeCost`) — money is the sole lever, which the review correctly flags. The
+> review proposes **hard-gating** (e.g. L2 Engine Foundry needs a metallurgy node).
+> **Decision: prefer the soft *ceiling-raise* coupling above, not hard gates.** Hard
+> prerequisites fight the soft-progression / "race ahead" philosophy the first review
+> praised, and risk soft-locking the industrial loop behind the research loop. Instead,
+> let T5 nodes lift the per-level *effect ceilings* (a higher foundry level buys more
+> once the metallurgy exists, but is never *blocked*) — same intent (binds industry to
+> engineering), keeps every path open. Hard-gate only a top end-game tier if at all.
 
 **T6 · Testing & Reliability [S]** — Static Fire ✓(`test_program`) → Engine Test
 Stands → Component Qualification → Stage Test Facilities → Integrated Vehicle
@@ -1019,6 +1043,44 @@ track is the multiplier + unlock chain).
   personnel breakthroughs already shave one research month — generalise into
   track-scoped, division-driven breakthroughs (higher-skill/morale divisions roll
   them more often). **Do not duplicate #9** — extend the same event plumbing.
+
+### Cross-Track Synergies (new system — from the 2026-06-26 review, Rec #5)
+
+The tracks today interact only through **gating** ("you may not research Y until X is
+done" — `req` chains and `reqMissionDone`). What's missing is *additive* interaction:
+owning capability in two different tracks making a third thing **better**. That's the
+"aha!" the review asks for — tracks that feel interdependent rather than parallel. (The
+review's Rec #8 *vehicle-family heritage* is already shipped as forward-arc **#3**; only
+this synergy idea is new.)
+
+**Mechanic.** A new `SYNERGIES` config array, each entry
+`{id, name, requires:[nodeId,…], effect:{…}, desc}` where `requires` **spans ≥2 distinct
+tracks**. `synergyActive(s)` = every required node researched. Active synergies fold their
+effects into the **same accumulators** the per-node effects already use
+(`researchEffectSum` → `ispMult`/`thrustMult`/`mfgBuildMult`/…, and `curRel`), so **every
+existing cap still bounds the total** — a synergy can never push Isp past +10% or
+reliability past its ceiling. This is the load-bearing balance decision: synergies are a
+*reason to research across tracks*, not a new power-creep channel.
+
+**Save-compat is free.** A synergy's state is fully derived from the researched-node set —
+no new `state` field, **no `SAVE_VERSION` bump**. `reconcileResearch()` already backfills
+prerequisites on load, so synergies light up correctly for legacy saves with no extra work.
+
+**Seed synergies (all use existing node ids, each spanning ≥2 tracks):**
+- *Propulsion × Structures* — **Lightweight Cryotanks:** `composite_structures` +
+  `advanced_cryo_upper` → small +Isp-effectiveness (lighter tanks raise the effective mass
+  ratio). Folds into `ispMult` under its +10% cap.
+- *Guidance × Reuse* — **Autonomous Landing:** `propulsive_landing` + `redundant_avionics`
+  (+ a precision-nav node) → +recovery reliability, the review's headline example.
+- *Crew × Deep Space × Nuclear × Materials* — **Radiation Hardening:** crew + `rad_shielding`
+  + a nuclear/materials node → buys down the #16/`radCrewMult` fragility beyond either node
+  alone (threads the already-built radiation model).
+- *Manufacturing × Reuse* — **Rapid Refurbishment:** an additive-manufacturing node +
+  `full_vehicle_reuse` → extra `buildTimeCut` (faster turnaround between reflights).
+
+**Surfacing.** A small **Synergies** strip in the R&D tab (active vs. locked, with the
+contributing nodes named) and a one-line note in the node tooltip ("contributes to N
+synergy: …") so the player can *see* the cross-track payoff while planning research.
 
 ### Era node-count targets (~100–125 total)
 
@@ -1307,6 +1369,17 @@ Science), not a single line — that's the "decades-long effort" feel.
    reactor"). Validated headlessly (13 checks): powerRad by source incl. NEP, crew fragility
    reactor>RTG>solar, shielding mitigation, solar-unchanged-formula proof, equipment
    untouched, career dose adds + shielding reduces, render; all 16 prior suites green.
+- 🔲 **Cross-Track Synergies** *(from the 2026-06-26 review, Rec #5 — not yet built)* —
+   add the `SYNERGIES` config + `synergyActive()`, fold active-synergy effects into the
+   existing `researchEffectSum`/`curRel` accumulators (so the current caps still bound
+   everything), and ship the 4 seed synergies above. Surface a Synergies strip in the
+   R&D tab + the tooltip "contributes to N synergy" note. **No `SAVE_VERSION` bump** —
+   state is derived from the researched set. *Headless validation to author:* a synergy
+   activates only when **all** its cross-track reqs are met (and not before); each synergy
+   provably spans ≥2 tracks; its effect folds into the right accumulator and the global
+   caps still clamp with everything researched; no double-count vs. the per-node effects;
+   reconcile lights synergies correctly for a legacy save; render/tooltip smoke; all prior
+   suites green.
 
 ### Cross-reference map (this epic ↔ existing items)
 
@@ -1325,6 +1398,10 @@ Science), not a single line — that's the "decades-long effort" feel.
 - **#19 Departments** — Research Divisions are the first concrete slice.
 - **M5 Reusability ✓** — first rung of the T11 reusability chain.
 - **Boil-off scoping note** — addressed by a T10 cryo-depot node.
+- **Forward-arc #3 Vehicle families ✓** — already shipped (heritage reliability/build/
+  brand-rep, `FAM_*`); the 2026-06-26 review's Rec #8 is **done**, *not* a planned item.
+- **Cross-Track Synergies** — the only new system from the 2026-06-26 review (Rec #5);
+  threads tracks via shared accumulators (see its subsection above).
 
 ## Vehicle Architecture — Side Boosters & Solid Rockets (epic)
 
@@ -2687,6 +2764,211 @@ engine catalog (BC4).
       `pauseCape/Veh/MapGame` that silenced the "Cannot pause non-running Scene" warning.
       The benign WebGL `texImage`/`generateMipmap` warnings are Firefox verbosity from the
       per-frame flight-canvas upload — left as-is.) **Browser-verify two launches in a row.**
+
+## Design-Critique Epics — Depth & Stakes (2026-06-26)
+
+Source: a brutal-honesty design pass (2026-06-26) on the *whole* game, not a feature.
+Diagnosis: the codebase has been optimised to **protect the simulation** (bounded caps,
+"balance exactly preserved," rivals-on-rails, snowballing income, single-roll launches)
+rather than to **pressure the player**. The game is stable and low-stakes. These five
+epics deliberately add the things that ethos sanded off — *scarcity, irreversibility, a
+real opponent, a rising stakes curve, and live decisions.* Ordered by leverage; #1 is the
+highest-impact. **These intentionally break the older "balance exactly preserved" rule
+where it conflicts with player payoff** — call that out per slice so it's a conscious
+choice, not a regression.
+
+### CE1 · Rival Agent Model — make the race real (highest leverage)
+
+**Problem.** `RIVALS` is three companies with hardcoded `firsts:[{year,…}]` that fire on
+the calendar in `checkRivalFirsts()` regardless of player action. They have no budget,
+build nothing, never react. The whole "competitive race" framing (timeline marks,
+`scooped`/`SCOOP_PAYOUT_MULT`) is a cutscene — you cannot out-compete an opponent that
+isn't simulated.
+
+**The fix — turn each rival into a lightweight agent with state + a turn.** Add
+`state.rivalState[id] = {capital, rep, techIndex, programFocus, momentum}` (`SAVE_VERSION`
+bump; absent → seed from a per-rival profile so old saves animate forward). Each monthly
+tick, `tickRivals()`:
+- accrues each rival a budget (profile income + a `momentum` multiplier that *rises when
+  they're ahead of you on firsts and falls when you scoop them* — this is the reactive
+  core);
+- spends it down a rival-specific *target list* derived from the existing `firsts` (keep
+  the historical flavour as **goals**, not scripted dates) — completing one when
+  accumulated budget clears its cost, so a well-funded rival **pulls its dates earlier**
+  and a starved one slips later;
+- a rival you dominate (you hold most recent firsts) gets a **rubber-band**: momentum
+  climbs so the race never goes fully dead, but capped so it can't snowball past a player
+  who's executing.
+
+**Player levers against rivals (so it's a contest, not a spectator sport):**
+- *Contract crowding* — signing/holding passive contracts (`PASSIVE_CONTRACT_DEFS`) and
+  winning bid missions removes that income from the rival pool; corner the market and you
+  starve them.
+- *Talent war* — extend the existing `checkPoaching()` so rivals with momentum poach
+  **your** staff, and you can counter-poach theirs. Ties to M6/#9.
+- *Firsts denial* — beating a rival to a `first` doesn't just scoop your payout; it
+  **denies them the momentum** they'd have gained, materially slowing their other targets.
+
+**Surfacing.** The timeline (`tl-mark.rival`) becomes live — projected vs. actual dates
+shift as momentum changes. A compact **Competitive Standings** readout (capital tier, last
+first, momentum arrow) in the rivals hub panel. Rival firsts already log; keep that.
+
+**Build order.** (a) `rivalState` + `tickRivals` budget/target model replacing the calendar
+fire, with old `firsts` reframed as goals (the date becomes an *expected* date the sim can
+beat or miss); momentum reactive to scoops. (b) Rubber-band + the three player levers
+(contract crowding, poaching war, firsts-denial). (c) Standings UI + live timeline
+projection. **Validation:** a starved rival provably slips its dates and a flush one pulls
+them in; scooping a rival measurably lowers its momentum and delays its *next* target;
+rubber-band keeps a dominated rival progressing but never overtaking a faster player;
+contract crowding reduces rival income; save seeds old games; 200-month long-run smoke (no
+runaway, no stall, no errors). **Cross-ref:** M4 rivals/scoop, #8 public support, M6/#9
+poaching, passive-income contracts.
+
+- ✅ **CE1 slice (a) — rival agents replace calendar firing.** *Built 2026-06-26.* The
+   scripted `checkRivalFirsts()` (fire when `state.year>=f.year`) is gone; the `firsts` are
+   now **goals**. New `RIVAL_PROFILES` + `state.rivalState[id]={capital, momentum, idx,
+   prevYear}` (`SAVE_VERSION`→26). `tickRivals()` (called in `advance()`) accrues
+   `income·momentum` into capital each month and buys the next goal when capital clears
+   `cost = income·12·window` (`window` = years since the prior goal/debut-runway, floored at
+   `RIVAL_MIN_WINDOW`). **Insight that makes it simple & testable:** income cancels in
+   timing, so a goal fires after ~`12·window/momentum` months — **momentum is the whole
+   reactive lever.** Momentum drifts (`RIVAL_MOM_DRIFT`) toward a standing-derived target
+   (`1 + (rivalIdx − playerFirsts)·RIVAL_MOM_SENS`, clamped `[0.5,1.8]`) so a rival that's
+   ahead accelerates and a dominated one slows — with a **rubber-band floor**
+   (`RIVAL_MOM_RUBBER`) so it never fully stalls. A historical floor (`RIVAL_MAX_PULL_IN`)
+   blocks absurdly-early firsts. Effect block extracted to `fireRivalFirst(r,f)` (logs,
+   support, scoop, price-war — all preserved). **Back-compat:** `seedRivalState()` advances
+   `idx` past any goal already in a legacy save's `rivalFired`, so old saves continue without
+   re-firing. Validated headlessly (16 checks): default pacing fires every goal (Sputnik
+   1956, nominal 1957) and never below the floor; a **leading** rival pulls a late goal in
+   (Halcyon depot 2041 ≤ nominal 2045) while a **dominated** rival slips it (2048); momentum
+   stays in `[MOM_MIN,MOM_MAX]`; `idx` == fired-goal count (no double-fire); migration seeds
+   `idx≥2` from pre-fired keys without disturbing them; a rival first on an already-done
+   mission doesn't scoop; 300-month run no-throw + `rivalFired` monotonic; render smoke. Real
+   `advance(12)×8` path clean (all three rivals seeded, none fire before the 1957 window).
+   *Next:* slice (b) — rubber-band already in; add the three **player levers** (contract
+   crowding, poaching war via `checkPoaching()`, explicit firsts-denial) and (c) Standings UI
+   + live timeline projection.
+
+### CE2 · The Power Curve — controlled compounding (let the player feel growth)
+
+**Problem.** Every research effect folds into a hard cap (Isp +10%, thrust +15%, build
+cost −30%, science +50%, `FAM_REL_CAP` +12%, reliability → `relCap`). A 100+ node tree
+where the marginal node is +2% into a ceiling kills the tech-tree power fantasy. "Balance
+preserved" has been pointed at the wrong target.
+
+**The fix — keep *flyability* bounded, let *economy & scale* compound.** The caps exist
+to stop the **rocket equation** breaking (Δv/reliability must stay bounded, or missions
+trivialise) — keep those. But the *empire* layer has no reason to be capped:
+- **Uncapped economy multipliers on a curve, not a ceiling.** Manufacturing/Ground/Reuse
+  cost-and-time effects (`mfgBuildMult`, `groundLaunchMult`, `buildTimeCut`) become
+  *diminishing but unbounded* (e.g. logarithmic) so a late juggernaut genuinely builds
+  10× cheaper/faster than a startup — felt power, without touching Δv.
+- **Throughput, not per-unit stats.** Let leveled tech + facilities raise **how many**
+  vehicles/launches per month (parallel bays, pads, cadence), so growth shows up as
+  *scale* (a launch tempo a beginner can't match) rather than a bigger Isp number.
+- **A capstone "juggernaut" tier** where a maxed company unlocks qualitatively new verbs
+  (standing megafleet, self-funding production) — the payoff for the whole tree.
+
+**Decision to take with the user:** which caps are *physics* (keep — Δv, reliability) vs
+*economy* (release to a diminishing curve). Author the split explicitly. **Validation:**
+flyability/reliability caps provably still clamp (missions don't trivialise); economy
+multipliers compound past the old ceilings on the intended curve; a maxed late-game build
+is dramatically cheaper/faster than early; no division-by-zero / runaway at the tail.
+**Cross-ref:** R&D epic accumulators, #7 production, Tech Levels.
+
+### CE3 · Strategic Identity — opportunity cost & company doctrine
+
+**Problem.** Nothing in the tree is mutually exclusive and (post-CE4) everything is
+affordable, so every game researches the whole tree in the same order. "Specialization" is
+just *sequencing*; the "what kind of company am I?" fantasy is cosmetic.
+
+**The fix — a one-time, semi-irreversible Doctrine choice + branch opportunity cost.**
+- **Company Doctrine** (pick one early, à la the review's philosophies): *Reusability /
+  Heavy-Lift / Commercial / Statecraft / Science*. Each gives a standing bonus **and a
+  standing penalty** (e.g. Reusability: −launch cost, +R&D cost & early reliability
+  penalty), stored as `state.doctrine`. Switching costs a heavy capital + rep + time hit
+  (doctrine drift), so it's a commitment, not a menu.
+- **Branch opportunity cost on the big forks.** The propulsion/architecture branches
+  (already built as data) gain *cross-branch cost penalties*: going deep on one branch
+  makes the competing branch's nodes more expensive/slower (a `branchAffinity` discount on
+  your chosen line, surcharge on the road not taken). You *can* still get everything, but
+  the **order and focus cost you**, so a focused company reaches its capstone far sooner
+  than a generalist — a real trade.
+- **Lunar architecture fork (from the first review, Rec #3):** LOR vs Direct Ascent vs EOR
+  as *mutually exclusive* unlocks — different launcher size + docking-tech requirements,
+  different vehicle options. The one place a hard either/or fits cleanly.
+
+**Validation:** doctrine bonus/penalty both apply and switching is provably expensive;
+branch affinity makes the focused path cheaper and the off-path dearer (sums bounded so no
+negative costs); architecture fork is exclusive and each option is independently winnable;
+saves default to "undeclared doctrine" (today's neutral behaviour). **Cross-ref:** R&D epic
+T1 branches, first-review Rec #1/#3, CE2 (focus → faster capstone).
+
+### CE4 · The Stakes Curve — economic pressure that rises, not falls
+
+**Problem.** Tension is inverted: tight at the start (good), trivial once `pgmRoyalty`
+$4.5M/mo + passive contracts + facilities + gov funding stack against flat overhead.
+`gameOver()` (`money<0` + bailout) can only bite a beginner; the late game has no downside.
+
+**The fix — make ambition expensive to *hold*, not just to buy.**
+- **Scaling upkeep / fixed costs that track your size.** Stations, depots, colonies,
+  fleets, divisions carry monthly upkeep that grows with how much empire you run (extend
+  `productionUpkeep()` / `facilityProduction()` into a real opex line), so big income is
+  met by big burn and idle expansion bleeds you.
+- **Standing obligations.** Crewed stations/colonies require recurring resupply launches or
+  they decay (rep/política hit) — recurring *commitments*, not one-time wins. Ties CE1
+  (a rival can exploit your overstretch) and fleet logistics (open thread).
+- **Era-scaled failure stakes.** Late losses should hurt proportionally — a lost colony or
+  flagship is a genuine setback, not a forfeit-and-regrind. Replace easy rep regrind with
+  consequences that compound (lost contracts, support collapse, rival momentum spike).
+- **Retune the bailout.** Bridge loans should carry rising interest / equity cost so
+  late-game insolvency is actually losable.
+
+**Validation:** opex provably rises with empire size (a sprawling idle company trends
+toward insolvency); abandoning a station/colony incurs decay; a late-game catastrophe
+produces a multi-system setback (not just −rep); the *early* game's tuning is unchanged
+(stakes rise, they don't shift earlier). **Cross-ref:** #7 upkeep, M17 facilities, #21
+colonies, CE1 rivals, fleet-logistics open thread.
+
+### CE5 · Live Launch — give the player verbs in the moment
+
+**Problem.** `resolveFlight()` rolls each subsystem once and returns an outcome the player
+can't touch. The subsystem-narrative model (`subsystemReport` distributing R so the
+*failure story* varies) is the best-designed thing in the codebase — but it resolves in one
+hidden instant. High reliability = always win (boring); low = coin flip (feels unfair).
+
+**The fix — turn the single roll into a short, decision-bearing sequence.** Resolve the
+flight as **phases** (pad → ascent → staging → orbit/coast → deep-space/return), each its
+own subsystem roll, and on a *near-miss* surface a **live call** (reuse the existing
+`#20` anomaly-decision modal pattern already in the code):
+- *Marginal subsystem flags amber mid-ascent* → **abort now** (save the vehicle/crew, lose
+  the mission + payout) **vs press on** (gamble the rest of the flight). This is the verb
+  the launch moment is missing.
+- *Reserve-propellant / power calls* on deep-space legs → spend margin to recover a
+  drifting subsystem vs bank it.
+- Crew flights make the abort call weightier (launch-escape interaction already modelled).
+
+Keep the math honest: the per-phase reliabilities still multiply to the same overall R the
+game computes today (balance-preserving *here* is correct — this is the rocket equation
+layer), so the change is **agency, not power**. High-reliability flights rarely prompt a
+call (fast, as now); risky flights become tense *decisions* instead of coin flips.
+
+**Build order.** (a) Phase-split `resolveFlight` preserving ∏R = R (provable). (b) The
+near-miss live-call hook on the worst-flagged subsystem, wired to the `#20` modal, with a
+default (auto-resolve) for headless/animations-off so the sim stays deterministic. (c)
+Reserve-margin calls on deep legs. **Validation:** product of per-phase reliabilities
+equals the old single R within ε (balance preserved); abort saves vehicle but forfeits
+mission; pressing on re-exposes the remaining phases; headless path auto-resolves
+identically to today (no behavioural drift in existing suites); the call only fires in the
+near-miss band. **Cross-ref:** #16 subsystem model, #20 anomaly-decision modal, launch-escape.
+
+### Build sequence across CE1–CE5
+
+CE1 first (fixes the framing + gives the economy something to push against), then CE2/CE3
+together (compounding + opportunity cost are the two halves of "felt strategic growth"),
+then CE4 (rising stakes needs CE1's rival to exploit overstretch), then CE5 (independent;
+slot whenever — it's the moment-to-moment polish that makes every launch matter).
 
 ## Repo
 
