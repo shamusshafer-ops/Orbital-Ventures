@@ -916,7 +916,7 @@ const PRODUCTION_DEFS = [
   {key:'foundry', name:'Engine Foundry', icon:'⚙', baseCost:8, months:4, upkeep:0.06,
    blurb:'In-house engine and tank production. Economies of scale cut the marginal cost of every vehicle you build.'},
   {key:'pads',    name:'Launch Pads', icon:'🛫', baseCost:5, months:3, upkeep:0.04,
-   blurb:'Additional pads and integration towers. More ground capacity amortizes launch operations across more flights — cheaper per launch.'},
+   blurb:'Additional pads and integration towers. Each level both amortizes launch operations (cheaper per launch) AND raises launch CADENCE — fly one prebuilt rapid flight per pad in the same month (L1 → 1/mo, L5 → 5/mo) so a real fleet flies on a tempo, not one at a time.'},
   {key:'qa',      name:'Quality Assurance', icon:'🔬', baseCost:7, months:3, upkeep:0.05,
    blurb:'Inspection, traceability, and process control on the line — fewer manufacturing defects, so every vehicle you build flies a little more reliably.'},
 ];
@@ -1502,6 +1502,7 @@ function newGame(difficulty){
     recentBuilds:[], // #7 slice 5: rolling ring buffer {at,units} of the last CADENCE_WINDOW months of builds
     materials:defaultMaterialsState(), // #7 slice 6: per-commodity spot price + optional fixed-price contract
     buildQueue:[], hangar:[], orderSeq:0, // #7 final: production queue (in-progress orders) + hangar (finished vehicles)
+    padMonthAbs:-1, padMonthUsed:0, // CE2(b): launch-cadence — pad slots used in the current calendar month
     uiLayer:'advanced', // #23: progressive UI complexity (basic/advanced/expert), independent of difficulty
   };
   log('info','Company founded. The pad is yours — go make some noise.');
@@ -2100,6 +2101,29 @@ function bayBuildDelta(m){
 }
 function foundryCostMult(){ return Math.max(FOUNDRY_FLOOR, 1 - FOUNDRY_PER*(prodLevel('foundry')-1)); }
 function padLaunchMult(){ return Math.max(PAD_FLOOR, 1 - PAD_PER*(prodLevel('pads')-1)); }
+// CE2 slice (b) — launch CADENCE. A launch normally costs a calendar month (advance(+1)).
+// Extra pads let *prebuilt, rapid* launches (hangar vehicle, no test campaign, no rehearsal,
+// no transfer window) share a month: the first flight of a month advances the calendar; up to
+// launchPadCap()-1 further flights that same month fly in parallel off the other pads with no
+// extra month charged. So launches/month == Launch Pads level — a late juggernaut sustains a
+// tempo (5/mo at L5) a one-pad startup (1/mo, today's exact behavior) can't match. This is
+// throughput growth, not a stat buff: Δv/reliability are untouched. Build throughput already
+// scales the same way via buildSlots()==Assembly Bays (parallel in-progress orders).
+function launchPadCap(){ return prodLevel('pads'); }                 // flights you can fly in one calendar month
+function curMonthPadUsed(){ return state.padMonthAbs===absMonth() ? (state.padMonthUsed||0) : 0; } // slots reset each new month
+function padSlotsLeft(){ return Math.max(0, launchPadCap()-curMonthPadUsed()); }
+// a prebuilt, rapid flight can share the month iff a pad already flew this month and a slot is free
+function canParallelLaunch(prebuilt, tl, rehMo, buildMo, m){
+  if(!prebuilt || buildMo>0 || rehMo>0) return false;               // real multi-month work can't be parallelised
+  if(tl && tl.months>0) return false;                               // a test campaign serialises the flight
+  if(m && m.window) return false;                                   // a transfer window pins the launch to its date
+  const used=curMonthPadUsed();
+  return used>=1 && used<launchPadCap();                            // 1st flight of the month is normal; extras up to the cap are free
+}
+function recordPadLaunch(){ // call AFTER the launch's advance(); stamps the calendar month this flight occupied
+  if(state.padMonthAbs!==absMonth()){ state.padMonthAbs=absMonth(); state.padMonthUsed=0; }
+  state.padMonthUsed=(state.padMonthUsed||0)+1;
+}
 // #7 slice 2: production-quality bridge into reliability (QA helps; overstretching the bays hurts)
 function qaRelBonus(){ return Math.min(QA_REL_CAP, QA_REL_PER*(prodLevel('qa')-1)); }
 function qaFragMult(){ return 1 - Math.min(QA_FRAG_CAP, QA_FRAG_PER*(prodLevel('qa')-1)); } // #7→#16: QA shrinks mfg-subsystem weight share; lvl 1 → 1.00, lvl 5 → 0.80
@@ -2263,7 +2287,10 @@ function buildQueuePanelHTML(){
     <p class="muted" style="font-size:11px;margin:4px 0 6px">Pre-build vehicles so they're ready when you are — hit tight launch windows and sustain cadence. Build cost is paid up front; flying from the hangar skips the build wait.</p>
     <div style="font-weight:600;font-size:12px;margin-top:6px">Build queue</div>
     ${orderRows}
-    <div style="font-weight:600;font-size:12px;margin-top:10px">Hangar — ready to fly (${hangar.length})</div>
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:10px">
+      <div style="font-weight:600;font-size:12px">Hangar — ready to fly (${hangar.length})</div>
+      <div class="dim" style="font-size:11px" title="Launch Pads set how many prebuilt rapid flights share one calendar month. Extra flights this month fly off the other pads with no added wait.">🛫 ${launchPadCap()}/mo cadence${curMonthPadUsed()>0?` · ${padSlotsLeft()} pad${padSlotsLeft()===1?'':'s'} free this month`:''}</div>
+    </div>
     ${hangarRows}
   </div>`;
 }
@@ -3530,15 +3557,18 @@ function launch(prebuilt){
   const rehMo=state.rehearsal?REHEARSAL_MONTHS:0; // #20 slice 4: rehearsal adds cost + a month of prep
   const buildMo=prebuilt?0:buildMonths(m), buildPart=prebuilt?0:v.buildCost; // #7 final: a hangar vehicle is already built & paid for
   state.money-=(buildPart+v.launchCost+tl.cost+(state.rehearsal?rehearsalCost(m):0));
+  // CE2(b): an extra pad lets a prebuilt rapid flight share this calendar month (cadence); else the launch costs its usual +1 month
+  const launchMo = canParallelLaunch(prebuilt, tl, rehMo, buildMo, m) ? 0 : 1;
   let windowQuality=1;
   if(m.window){
     windowQuality=state.committedWindow.quality;
     const gap=state.committedWindow.abs-absMonth();
-    advance(Math.max(buildMo+1+tl.months+rehMo, gap)); // wait out the rest of the window if build finishes early
+    advance(Math.max(buildMo+launchMo+tl.months+rehMo, gap)); // wait out the rest of the window if build finishes early
     state.committedWindow=null;
   }else{
-    advance(buildMo+1+tl.months+rehMo); // build (complexity-scaled) + launch (1) + test campaign + rehearsal
+    advance(buildMo+launchMo+tl.months+rehMo); // build (complexity-scaled) + launch (1, or 0 on a parallel pad) + test campaign + rehearsal
   }
+  recordPadLaunch(); // CE2(b): stamp the pad slot this flight occupied this month
   // #20 slice 1: launch-day weather go/no-go — the vehicle is built and rolled out
   const wx=rollWeather(m);
   if(wx.adverse){
@@ -4129,7 +4159,7 @@ function hideModal(){activeModal=null;$('modal').classList.add('hidden');} // sl
 
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=26; // v26: CE1 rival agents (state.rivalState) — forward-compat: seedRivalState migrates old rivalFired
+const SAVE_VERSION=27; // v27: CE2(b) launch cadence (state.padMonthAbs/padMonthUsed) — forward-compat: load defaults seed them; v26: CE1 rival agents (state.rivalState), seedRivalState migrates old rivalFired
 function saveGame(){
   try{
     const payload={v:SAVE_VERSION, ts:Date.now(), state:JSON.parse(JSON.stringify(state))};
@@ -4169,7 +4199,7 @@ function loadGame(){
       staff:[], assignedAstronaut:null,
       vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, rehearsal:false, techLevel:{}, divisions:{}, breakthroughCooldown:3, relDebt:0, powerSource:'solar',
       recentBuilds:[], materials:defaultMaterialsState(),
-      buildQueue:[], hangar:[], orderSeq:0, uiLayer:'advanced', metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[]
+      buildQueue:[], hangar:[], orderSeq:0, padMonthAbs:-1, padMonthUsed:0, uiLayer:'advanced', metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[]
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -4222,7 +4252,7 @@ function autoLoad(){
       staff:[], assignedAstronaut:null,
       vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, rehearsal:false, techLevel:{}, divisions:{}, breakthroughCooldown:3, relDebt:0, powerSource:'solar',
       recentBuilds:[], materials:defaultMaterialsState(),
-      buildQueue:[], hangar:[], orderSeq:0, uiLayer:'advanced', metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[]
+      buildQueue:[], hangar:[], orderSeq:0, padMonthAbs:-1, padMonthUsed:0, uiLayer:'advanced', metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[]
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -7142,7 +7172,7 @@ function siteBuildings(){
     {key:'mfg', icon:'🏭', name:'Manufacturing', tab:'infra', act:"showInfrastructureModal()",
      status:`Bays L${prodLevel('bays')} · capacity ${bayCapacity()}`, planned:false},
     {key:'prod', icon:'⚙', name:'Production', tab:'infra', act:"showInfrastructureModal()",
-     status:`Foundry L${prodLevel('foundry')} · Pads L${prodLevel('pads')}`, planned:false},
+     status:`Foundry L${prodLevel('foundry')} · Pads L${prodLevel('pads')} (${launchPadCap()}/mo${curMonthPadUsed()>0?`, ${padSlotsLeft()} free`:''})`, planned:false},
     {key:'rnd', icon:'⚗', name:'R&D Lab', tab:'rnd',
      status: ar?`${(RESEARCH.find(r=>r.id===ar.id)||{}).name||ar.id} · ${ar.monthsLeft} mo`:'idle', planned:false},
     {key:'personnel', icon:'👥', name:'Personnel', tab:'personnel', act:"showPersonnelModal()",

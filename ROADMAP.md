@@ -2946,9 +2946,30 @@ capped (CE4 owns reward inflation).
   ≤ cap, C1 slope≈1 at the kink, strictly increasing & asymptote-bounded past it, cost mult
   always > 0 (no free/negative cost), `buildMonths` floors ≥1 under an extreme cut, sciYield
   *still* clamped at 1.50, Isp/thrust physics caps *still* clamp at +10%/+15%, render()+
-  advance() clean with all research maxed. CE1 regression green (a/b/c). **Next: CE2 slice
-  (b) — throughput/cadence (parallel bays/pads → vehicles & launches per month), then slice
-  (c) juggernaut capstone.**
+  advance() clean with all research maxed. CE1 regression green (a/b/c).
+
+- ✅ **CE2 slice (b) — launch cadence (Pads → launches per month).** *Built 2026-06-26.* The
+  *build*-throughput half already existed (`buildSlots()` == Assembly Bays → parallel
+  in-progress orders). The gap was *launch* tempo: `launch()` always `advance()`s ≥1 calendar
+  month, so even flying prebuilt hangar vehicles was serialised one-per-month — a late
+  juggernaut couldn't fly faster than a startup, and Launch Pads only trimmed *cost*
+  (`padLaunchMult`). Now Pads also set **launches/month**: `launchPadCap()` == `prodLevel('pads')`;
+  a prebuilt, *rapid* flight (hangar vehicle, no test campaign, no rehearsal, no transfer
+  window) shares a month via `canParallelLaunch()` — the first flight of a month advances the
+  calendar, up to `cap−1` more that month fly off the other pads with `launchMo=0` (no extra
+  wait). New state `padMonthAbs`/`padMonthUsed` (reset each new month via `curMonthPadUsed()`,
+  stamped by `recordPadLaunch()` after the advance); `SAVE_VERSION`→27 (load-defaults seed
+  them). **L1 reproduces today's behavior exactly** (cap 1 → never parallel → 1 flight/mo).
+  Readouts: pad def blurb, infra "Pads L3 (3/mo, N free)" status, hangar-panel "🛫 N/mo
+  cadence" line. **Why it matters:** growth now shows up as *tempo a beginner can't match* —
+  end-to-end, 5 prebuilt flights take **5 months at L1 pads vs 1 month at L5**; 6 flights take
+  2 months at L3 (3+3). Δv/reliability untouched — pure throughput. **Validation:**
+  `/tmp/ov-ce2b.js` 25/25 — cap==level, month-rollover reset, `recordPadLaunch` increment +
+  rollover, the full `canParallelLaunch` gate (not-prebuilt / build-months / rehearsal /
+  multi-month test / window / slots-exhausted all block; only a 2nd-plus rapid prebuilt
+  passes), L1 stays serialised, and the end-to-end months-elapsed-vs-pad-level table. CE2(a) +
+  CE1 regression green. **Next: CE2 slice (c) — the juggernaut capstone (qualitatively new
+  verbs for a maxed company: standing megafleet / self-funding production).**
 
 ### CE3 · Strategic Identity — opportunity cost & company doctrine
 
