@@ -674,6 +674,15 @@ const RIVAL_MOM_MIN=0.5, RIVAL_MOM_MAX=1.8; // momentum bounds (slip ↔ pull-in
 const RIVAL_MOM_SENS=0.18;   // momentum sensitivity to how far ahead/behind the rival is
 const RIVAL_MOM_DRIFT=0.15;  // monthly drift of momentum toward its standing-derived target
 const RIVAL_MOM_RUBBER=0.8;  // rubber-band floor: a dominated rival never fully stalls
+// CE1 slice (b) — player levers against the rival agents.
+const RIVAL_CROWD_PER=0.06;  // each active passive contract slows EVERY rival's saving by this
+const RIVAL_CROWD_CAP=0.35;  // ...up to this much (cornering the market starves rivals)
+const RIVAL_DENY_MOM=0.30;   // momentum knocked off a rival when you beat it to its pending goal
+const RIVAL_DENY_DRAIN=0.5;  // and its accumulated capital toward that goal is cut to this
+const RIVAL_POACH_MOM_BUMP=0.08; // a successful poach feeds the rival's momentum (it got your talent)
+const RIVAL_COUNTERPOACH_COST=2.5; // $M to counter-poach a rival's engineers
+const RIVAL_COUNTERPOACH_MOM=0.25; // momentum knocked off the rival you counter-poach
+const RIVAL_COUNTERPOACH_MORALE=4; // morale lift to your staff when you win a talent fight
 // Ambient economy events — fire on the monthly tick (rate-limited), adjust capital
 // or apply a temporary market modifier. Gated by year/rep/flights so the early game
 // stays quiet. money/dur are [min,max] ranges rolled at fire time.
@@ -2491,6 +2500,7 @@ function rivalStateFor(r){
 // clears the cost; momentum tracks the race (ahead → faster, dominated → rubber-banded).
 function tickRivals(){
   const playerScore=playerFirstsScore();
+  const crowd=rivalCrowdFactor(); // CE1(b): contract crowding slows every rival's saving
   for(const r of RIVALS){
     const prof=RIVAL_PROFILES[r.id]||{income:1.0};
     const rs=rivalStateFor(r);
@@ -2505,7 +2515,7 @@ function tickRivals(){
     if(state.year<rs.prevYear) continue; // saving window not open yet (keeps early game quiet)
     const window=Math.max(RIVAL_MIN_WINDOW, f.year-rs.prevYear);
     const cost=prof.income*12*window;
-    rs.capital+=prof.income*rs.momentum; // monthly accrual, sped/slowed by momentum
+    rs.capital+=prof.income*rs.momentum*crowd; // monthly accrual, sped/slowed by momentum & market crowding
     const earliest=f.year-RIVAL_MAX_PULL_IN; // historical floor — no absurdly early firsts
     if(rs.capital>=cost && state.year>=earliest){
       fireRivalFirst(r,f);
@@ -2513,21 +2523,71 @@ function tickRivals(){
     }
   }
 }
-// M5: rivals poach your most vulnerable (lowest-morale) staff — morale is your defence
+// CE1(b) · Contract crowding — every active passive contract you hold removes income from
+// the market the rivals draw on, slowing their saving (cap RIVAL_CROWD_CAP). 1.0 = no squeeze.
+function rivalCrowdFactor(){
+  const n=(state.passiveContracts||[]).length;
+  return 1 - Math.min(RIVAL_CROWD_CAP, n*RIVAL_CROWD_PER);
+}
+// CE1(b) · Firsts-denial — when you complete a mission, any rival still chasing it as a goal
+// loses momentum (and, if it was their *active* target, the capital saved toward it). Beating
+// a rival to a first doesn't just cut your scoop penalty — it materially slows their program.
+function denyRivalGoal(missionId){
+  if(!missionId) return;
+  for(const r of RIVALS){
+    const rs=rivalStateFor(r);
+    let idxOfGoal=-1;
+    for(let i=rs.idx;i<r.firsts.length;i++){ if(r.firsts[i].missionId===missionId){ idxOfGoal=i; break; } }
+    if(idxOfGoal<0) continue;
+    const pending=(idxOfGoal===rs.idx);
+    rs.momentum=Math.max(RIVAL_MOM_MIN, rs.momentum-(pending?RIVAL_DENY_MOM:RIVAL_DENY_MOM*0.5));
+    if(pending) rs.capital*=RIVAL_DENY_DRAIN;
+    log('rival', `${r.flag} ${r.name} loses ground — you reached ${MISSIONS.find(x=>x.id===missionId)?.name||missionId} first, blunting a goal they were chasing.`);
+  }
+}
+// CE1(b) · Counter-poach — spend capital to hire away a rival's engineers: knocks the rival's
+// momentum, lifts your own staff's morale (you fight for talent), and earns a little rep.
+// Logic lives here; the trigger button arrives with the slice (c) Standings panel.
+function counterPoach(rivalId){
+  const r=RIVALS.find(x=>x.id===rivalId); if(!r) return false;
+  if(state.money<RIVAL_COUNTERPOACH_COST){ log('note','Not enough capital to counter-poach right now.'); return false; }
+  const rs=rivalStateFor(r);
+  state.money=round2(state.money-RIVAL_COUNTERPOACH_COST);
+  rs.momentum=Math.max(RIVAL_MOM_MIN, rs.momentum-RIVAL_COUNTERPOACH_MOM);
+  (state.staff||[]).forEach(s=>{ s.morale=clampA((s.morale||50)+RIVAL_COUNTERPOACH_MORALE,0,100); });
+  state.rep+=2;
+  log('ok', `${r.flag} You hired away ${r.name}'s engineers — their program loses momentum, your team is energised. −${fM(RIVAL_COUNTERPOACH_COST)}, +2 rep.`);
+  render();
+  return true;
+}
+// M5 + CE1(b): rivals poach your most vulnerable (lowest-morale) staff — morale is your
+// defence. The talent war is now reactive: a high-MOMENTUM rival (well-funded, on a roll)
+// courts harder, and a successful poach feeds its momentum (it got your people).
 const POACH_CHANCE = 0.10; // monthly chance a rival looks at your bench
+function rivalMomentumOf(r){ return ((state.rivalState||{})[r.id]||{}).momentum||1.0; }
+// pick a rival weighted by momentum — the company that's surging is the one knocking on your door
+function poachingRival(){
+  const w=RIVALS.map(r=>Math.max(0.1, rivalMomentumOf(r)));
+  let roll=Math.random()*w.reduce((a,b)=>a+b,0);
+  for(let i=0;i<RIVALS.length;i++){ roll-=w[i]; if(roll<=0) return RIVALS[i]; }
+  return RIVALS[RIVALS.length-1];
+}
 function checkPoaching(){
   if(!state.staff || !state.staff.length) return;
   if(Math.random()>POACH_CHANCE) return;
   const target=state.staff.slice().sort((a,b)=>(a.morale||50)-(b.morale||50))[0];
   const p=personById(target.id); if(!p) return;
   const morale=target.morale||50;
-  const rival=RIVALS[Math.floor(Math.random()*RIVALS.length)];
-  const leaveProb=clampA((55-morale)/55,0,0.9)*(0.4+0.6*p.skill); // low morale + high skill = most at risk
+  const rival=poachingRival();
+  const mom=rivalMomentumOf(rival);
+  // a surging rival (momentum>1) presses harder; a stalled one (momentum<1) less so — clamped sane
+  const leaveProb=clampA((55-morale)/55,0,0.9)*(0.4+0.6*p.skill)*clampA(mom,0.6,1.4);
   if(Math.random()<leaveProb){
     state.staff=state.staff.filter(s=>s.id!==target.id);
     if(state.assignedAstronaut===target.id) state.assignedAstronaut=null;
     state.rivalThreat=state.rivalThreat||{}; state.rivalThreat[rival.id]=(state.rivalThreat[rival.id]||0)+1;
-    log('bad',`${rival.flag} ${rival.name} poached ${p.name} (${p.specialty}) — low morale made the offer easy to take. Keep your people happy.`);
+    const rs=rivalStateFor(rival); rs.momentum=Math.min(RIVAL_MOM_MAX, rs.momentum+RIVAL_POACH_MOM_BUMP); // they gained your talent
+    log('bad',`${rival.flag} ${rival.name} poached ${p.name} (${p.specialty}) — low morale made the offer easy to take, and it feeds their momentum. Keep your people happy (or counter-poach).`);
   } else if(morale<45){
     log('rival',`${rival.flag} ${rival.name} is courting ${p.name}. Raise morale (Raise/Commend) or risk losing them.`);
   }
@@ -3527,6 +3587,7 @@ function finalizeLaunch(ctx, ops){
     }
     if(!routine){
       state.completed[m.id]=true;
+      denyRivalGoal(m.id); // CE1(b): beating a rival to its goal blunts that rival's momentum
       state.history=state.history||{}; state.history[m.id]=state.year; // #18: record the year for the Home timeline
       if(m.pgm && state.pgmRoyalty<4.5){ state.pgmRoyalty=4.5; log('ok','Platinum-group royalties established — the Belt claim now pays +$4.5M/mo in standing income.'); }
       if(m.id==='first_sat' && !state.won){ state.won=true; pendingCelebration=victory; }

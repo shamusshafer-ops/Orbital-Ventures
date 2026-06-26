@@ -2849,6 +2849,29 @@ poaching, passive-income contracts.
    *Next:* slice (b) — rubber-band already in; add the three **player levers** (contract
    crowding, poaching war via `checkPoaching()`, explicit firsts-denial) and (c) Standings UI
    + live timeline projection.
+- ✅ **CE1 slice (b) — the three player levers.** *Built 2026-06-26.* The race is now a
+   contest you can act on, not just watch. **(1) Contract crowding** — `rivalCrowdFactor()`
+   = `1 − min(RIVAL_CROWD_CAP 0.35, n·RIVAL_CROWD_PER 0.06)` over your active
+   `passiveContracts`; folded into the `tickRivals()` accrual, so cornering the market
+   literally starves every rival's saving (validated: Halcyon's depot goal slips 2041→2043
+   when you hold 8 contracts). **(2) Firsts-denial** — `denyRivalGoal(missionId)` called from
+   the mission-success path (beside `state.completed[m.id]=true`): any rival still chasing
+   that mission as a goal loses momentum (`RIVAL_DENY_MOM 0.30` if it's their *pending* target,
+   half for a future one) and, for the pending target, its saved capital is cut to
+   `RIVAL_DENY_DRAIN 0.5` — beating them there materially slows their program, not just your
+   scoop penalty. **(3) Poaching war** — `checkPoaching()` now picks the rival
+   **momentum-weighted** (`poachingRival()`) and scales the offer by momentum (a surging rival
+   courts harder, clamped 0.6–1.4×); a successful poach **bumps that rival's momentum**
+   (`RIVAL_POACH_MOM_BUMP 0.08` — they got your talent). Your offensive counter is
+   `counterPoach(rivalId)`: spend `RIVAL_COUNTERPOACH_COST $2.5M` → knock the rival's momentum
+   (`−0.25`, floored at `MOM_MIN`), lift your staff morale (`+4` each), `+2` rep (logic shipped;
+   its **button lands with the slice (c) Standings panel**). Validated headlessly (26 checks):
+   crowd factor formula + cap + the integration slip; denial momentum/​capital math for
+   pending vs future vs non-goal, floored at `MOM_MIN`; poach selection is momentum-weighted
+   (deterministic roll), a poach removes staff + bumps rival momentum; counter-poach
+   spend/​momentum/​morale/​rep/​return-true when affordable and a clean no-op (false) when broke,
+   floored; full-run regression stays bounded and still fires goals. Slice-(a) suite still
+   16/16; real `advance()` path clean.
 
 ### CE2 · The Power Curve — controlled compounding (let the player feel growth)
 
