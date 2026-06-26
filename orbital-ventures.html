@@ -1504,6 +1504,7 @@ function newGame(difficulty){
     buildQueue:[], hangar:[], orderSeq:0, // #7 final: production queue (in-progress orders) + hangar (finished vehicles)
     padMonthAbs:-1, padMonthUsed:0, // CE2(b): launch-cadence — pad slots used in the current calendar month
     standingProd:null, juggernautReached:false, // CE2(c): juggernaut capstone — standing production line + milestone flag
+    doctrine:null, // CE3(a): company doctrine (strategic identity) — null = undeclared/neutral
     uiLayer:'advanced', // #23: progressive UI complexity (basic/advanced/expert), independent of difficulty
   };
   log('info','Company founded. The pad is yours — go make some noise.');
@@ -1563,6 +1564,69 @@ function mfgBuildMult(){ return 1 - dimCurve(researchEffectSum('buildCostCut'), 
 function groundLaunchMult(){ return 1 - dimCurve(researchEffectSum('launchCostCut'), LAUNCH_CUT_CAP, LAUNCH_CUT_ASYMP); }
 function sciYieldMult(){ return 1 + Math.min(SCI_YIELD_CAP, researchEffectSum('sciYield')); } // payout multiplier — stays bounded (CE4 owns reward inflation)
 function buildTimeCut(){ return dimCurve(researchEffectSum('buildTimeCut'), BUILD_TIME_CAP, BUILD_TIME_ASYMP); } // #6c: months shaved (Manufacturing/Ground), now uncapped-on-curve
+// ---------- CE3 slice (a): Company Doctrine — strategic identity ----------
+// A one-time, semi-irreversible identity choice. Each doctrine grants a standing BONUS *and* a
+// standing PENALTY (multipliers folded into the existing economy hooks below), so "what kind of
+// company am I?" becomes a real trade, not a cosmetic label. state.doctrine=null = UNDECLARED —
+// every doctrine multiplier defaults to 1 / delta 0, i.e. today's exact neutral behaviour, so a
+// save with no doctrine is unchanged. The first declaration is free; switching afterward (doctrine
+// drift) costs heavy capital + rep + months of upheaval, making it a commitment, not a menu.
+const DOCTRINES = {
+  reuse:     { name:'Reusability', icon:'♻', tag:'fly it, land it, fly it again',
+    blurb:'Cheap launch ops above all — at the price of a harder, costlier R&D road and shakier early hardware.',
+    effects:{ launch:0.80, rd:1.20, relEarly:-0.05 },
+    pros:['−20% launch-ops cost'], cons:['+20% R&D cost','−5% reliability, fading over your first 12 flights'] },
+  heavy:     { name:'Heavy-Lift', icon:'🏗', tag:'no payload too big',
+    blurb:'Brute-force throw weight. Vehicles are cheaper to build but expensive to fly — you move mass, not pennies.',
+    effects:{ build:0.85, launch:1.15 },
+    pros:['−15% build cost'], cons:['+15% launch-ops cost'] },
+  commercial:{ name:'Commercial', icon:'$', tag:'spaceflight as a business',
+    blurb:'Chase the contract. Missions pay more, but the state keeps its distance — far less public funding.',
+    effects:{ payout:1.20, gov:0.70 },
+    pros:['+20% mission payout'], cons:['−30% government funding'] },
+  statecraft:{ name:'Statecraft', icon:'★', tag:'an instrument of the nation',
+    blurb:'A flag-planting national program. Generous public funding and prestige — but commercial work pays you less.',
+    effects:{ gov:1.40, rep:1.25, payout:0.88 },
+    pros:['+40% government funding','+25% reputation gain'], cons:['−12% mission payout'] },
+  science:   { name:'Science', icon:'⚗', tag:'knowledge is the mission',
+    blurb:'Discovery first. Missions yield far more science, but the flights pay less and R&D runs dearer.',
+    effects:{ sci:1.40, payout:0.85, rd:1.10 },
+    pros:['+40% mission science yield'], cons:['−15% mission payout','+10% R&D cost'] },
+};
+function activeDoctrine(){ return state.doctrine ? DOCTRINES[state.doctrine] : null; }
+function doctrineMult(key){ const d=activeDoctrine(); return d && d.effects && d.effects[key]!=null ? d.effects[key] : 1; }
+// reliability delta — an early-heritage penalty that fades to 0 by 12 successes (bounded)
+function doctrineRelMod(){
+  const d=activeDoctrine(); if(!d||!d.effects||d.effects.relEarly==null) return 0;
+  const fade=Math.max(0, 1 - Math.min(state.successes||0,12)/12);
+  return d.effects.relEarly*fade;
+}
+function rdCostOf(r){ return round2((r?r.cost:0)*doctrineMult('rd')); } // doctrine-adjusted R&D capital price
+// switching ("doctrine drift") is a real commitment: capital that grows with company size, rep, and time
+const DOCTRINE_SWITCH_REP=20, DOCTRINE_SWITCH_MONTHS=6;
+function doctrineSwitchCost(){ return round2(Math.max(8, (state.flights||0)*0.8 + 6)); }
+function canSetDoctrine(id){
+  if(!DOCTRINES[id]) return {ok:false,why:'unknown doctrine'};
+  if(state.doctrine===id) return {ok:false,why:'already your doctrine'};
+  if(!state.doctrine) return {ok:true, first:true};                         // first declaration is free
+  if(state.money < doctrineSwitchCost()) return {ok:false,why:`switching costs ${fM(doctrineSwitchCost())}`};
+  if(state.rep < DOCTRINE_SWITCH_REP) return {ok:false,why:`switching costs ${DOCTRINE_SWITCH_REP} rep`};
+  return {ok:true, first:false};
+}
+function setDoctrine(id){
+  const chk=canSetDoctrine(id); if(!chk.ok) return;
+  if(chk.first){
+    state.doctrine=id;
+    log('ok',`Company doctrine declared: ${DOCTRINES[id].icon} ${DOCTRINES[id].name} — ${DOCTRINES[id].tag}.`);
+  }else{
+    const cost=doctrineSwitchCost();
+    state.money=round2(state.money-cost); state.rep=Math.max(0,state.rep-DOCTRINE_SWITCH_REP);
+    state.doctrine=id;
+    log('note',`Doctrine drift — refocused to ${DOCTRINES[id].icon} ${DOCTRINES[id].name} at a cost of ${fM(cost)}, ${DOCTRINE_SWITCH_REP} rep and ${DOCTRINE_SWITCH_MONTHS} months of upheaval.`);
+    advance(DOCTRINE_SWITCH_MONTHS);
+  }
+  render();
+}
 // R&D epic slice 3: Tech Levels — flagship technologies you keep investing in.
 // After a leveled tech is researched (L1), capital + time raise it to L2..max; each
 // level adds to the SAME isp/thrust/reliability accumulators above, so the existing
@@ -1731,7 +1795,7 @@ function checkResearchSetback(){
   if(Math.random()>=chance) return;
   _setbackCooldown=SETBACK_GAP;
   const delay=SETBACK_DELAY_MIN+Math.floor(Math.random()*(SETBACK_DELAY_MAX-SETBACK_DELAY_MIN+1));
-  const fundCost=round2(Math.max(0.6, r.cost*0.4));
+  const fundCost=round2(Math.max(0.6, rdCostOf(r)*0.4)); // CE3(a): setback-recovery scales with the doctrine-adjusted R&D price
   _pendingSetback={ rId:r.id, rName:r.name, divId, phrase:SETBACK_PHRASE[r.track]||'hit an unexpected setback', delay, fundCost };
   log('bad',`⚠ R&D SETBACK — ${r.name}: ${_pendingSetback.phrase}. A decision is needed.`);
 }
@@ -1866,7 +1930,7 @@ function publicSupport(){ return clampA(state.publicSupport==null?SUPPORT_BASE:s
 function publicMood(){ const s=publicSupport(); return SUPPORT_TIERS.find(t=>s>=t.min)||SUPPORT_TIERS[SUPPORT_TIERS.length-1]; }
 function addSupport(delta){ state.publicSupport=clampA(publicSupport()+delta, SUPPORT_MIN, SUPPORT_MAX); return state.publicSupport; }
 // monthly government grant: scales with support (linear, 0 at no support) and era
-function govMonthlyFunding(){ return round2(GOV_FUNDING_BASE*(publicSupport()/100)*(1+0.15*eraIndex(currentEra()))); }
+function govMonthlyFunding(){ return round2(GOV_FUNDING_BASE*(publicSupport()/100)*(1+0.15*eraIndex(currentEra()))*doctrineMult('gov')); } // CE3(a): Statecraft +, Commercial −
 
 /* ---------- passive-income contracts (repeatable · cooldown · diminishing) ---------- */
 function passiveDef(id){ return PASSIVE_CONTRACT_DEFS.find(c=>c.id===id); }
@@ -3147,12 +3211,13 @@ function computeVehicle(){
   const cadence=cadenceSurcharge(); if(cadence>0) buildCost*=1+cadence; // #7 slice 5: rush surcharge if recent build volume exceeds sustainable cadence
   buildCost*=materialCostMult(); // #7 slice 6: raw-material market price (alloys + electronics, blended with non-material baseline)
   buildCost*=mfgBuildMult(); // #6b: Manufacturing/Reuse research lowers build cost
+  buildCost*=doctrineMult('build'); // CE3(a): Heavy-Lift doctrine builds cheaper
   if(recoveryActive(m)){ // M5: reusability — recovery hardware every flight; reflown booster on routine missions
     if(recoveryRefly(m)) buildCost*=refurbCostMult(); // refurbish a recovered booster: 45% of new, rising with wear (each refly chips +8%)
     buildCost+=RECOVERY_HARDWARE; // legs, grid fins, reserved propellant — fitted on every recovery flight
   }
-  const reliability=Math.min(diff().relCap,Math.max(diff().relFloor,(curRel()+testBonus+partsRelBonus(crewed)+geoRelBonus())*enginePenalty*boosterRelPenalty()*(crewed?0.92:1)+productionRelMod(m))); // #7: QA bonus − bay-overstretch penalty; #16: booster failure-point penalty; BC2 parts + BC3 geometry reliability
-  const launchCost=(0.12+0.01*totalProp)*padLaunchMult()*groundLaunchMult() + assemblyFlights(m)*ASSEMBLY_LAUNCH_COST; // #7: pads + #6b: Ground/Reuse research amortize launch ops; #6: dedicated assembly flights
+  const reliability=Math.min(diff().relCap,Math.max(diff().relFloor,(curRel()+testBonus+partsRelBonus(crewed)+geoRelBonus()+doctrineRelMod())*enginePenalty*boosterRelPenalty()*(crewed?0.92:1)+productionRelMod(m))); // #7: QA bonus − bay-overstretch penalty; #16: booster failure-point penalty; BC2 parts + BC3 geometry reliability; CE3(a) doctrine early-reliability delta
+  const launchCost=((0.12+0.01*totalProp)*padLaunchMult()*groundLaunchMult()*doctrineMult('launch')) + assemblyFlights(m)*ASSEMBLY_LAUNCH_COST; // #7: pads + #6b: Ground/Reuse research amortize launch ops; #6: dedicated assembly flights; CE3(a) doctrine launch-cost factor
   return {payload, sm:perf.sm, stageDv:perf.stageDv, totalDv:perf.totalDv, liftoff:perf.liftoff, twr:perf.twr,
           boostDv:perf.boostDv||0, boosters:perf.boosters||null,
           totalEng, totalProp, reliability, buildCost, launchCost, crewed,
@@ -3707,12 +3772,12 @@ function finalizeLaunch(ctx, ops){
     personnelMissionEvent(true); // M6: morale boost on success
     state.successes++;
     // M14: missions yield science — more for novel, deep, or first-time flights
-    const sciGain=Math.max(1, Math.round((routine?0.3:1)*((m.rep||5)*0.12 + (m.profile?5:1))*sciYieldMult())); // #6b: Science track multiplies mission science yield
+    const sciGain=Math.max(1, Math.round((routine?0.3:1)*((m.rep||5)*0.12 + (m.profile?5:1))*sciYieldMult()*doctrineMult('sci'))); // #6b: Science track multiplies mission science yield; CE3(a) Science doctrine boosts it
     state.science=round2((state.science||0)+sciGain);
-    let payout=(routine?m.payout*0.4:m.payout)*windowQuality*diff().payoutMult*econPayoutMult()*opsPayoutMult;
+    let payout=(routine?m.payout*0.4:m.payout)*windowQuality*diff().payoutMult*econPayoutMult()*opsPayoutMult*doctrineMult('payout'); // CE3(a): Commercial +, Statecraft/Science −
     if(crewed) payout*=ab.payoutMult; // M6: astronaut payout bonus
     if(!routine && state.scooped[m.id]) payout*=SCOOP_PAYOUT_MULT;
-    const rep=Math.max(0,(routine?2:m.rep)+opsRep);
+    const rep=Math.max(0,Math.round(((routine?2:m.rep)+opsRep)*doctrineMult('rep'))); // CE3(a): Statecraft lifts reputation gain
     addSupport(routine?SUPPORT_DELTA.routineSuccess:clampA(2+(m.rep||5)*0.05,2,10)); // #8: a win lifts public mood, scaled by how big a win
     if(m.tanker){
       const delivered=tankerDelivery();
@@ -3748,7 +3813,7 @@ function finalizeLaunch(ctx, ops){
     autoAdvanceMission();
   }else if(outcome.kind==='partial'){
     // reached space but off-target — salvage some value, but the objective is not complete
-    let payout=(routine?m.payout*0.4:m.payout)*windowQuality*diff().payoutMult*econPayoutMult()*PARTIAL_PAYOUT_MULT*opsPayoutMult;
+    let payout=(routine?m.payout*0.4:m.payout)*windowQuality*diff().payoutMult*econPayoutMult()*PARTIAL_PAYOUT_MULT*opsPayoutMult*doctrineMult('payout'); // CE3(a): doctrine payout factor
     state.money+=payout; flightRevenue=payout;
     const rep=Math.max(0,Math.round((routine?2:m.rep)*0.25)+opsRep);
     state.rep+=rep;
@@ -3876,6 +3941,31 @@ function showProgramsModal(){ activeModal=()=>{ showModal(`<div id="ambitionCard
 function showRivalsModal(){ activeModal=()=>{ showModal(`<div id="rivalsCard"></div>${modalClose()}`,true); renderRivals(); }; activeModal(); }
 function showPersonnelModal(){ activeModal=()=>{ showModal(`<div id="personnelCard"></div>${modalClose()}`,true); renderPersonnel(); }; activeModal(); }
 function showInfrastructureModal(){ activeModal=()=>{ showModal(`<div id="infraCard"></div>${modalClose()}`,true); renderInfrastructure(); }; activeModal(); } // slice 7: the Infra tab → a hub-building drill modal
+// CE3(a): Company Doctrine modal — declare/switch the company's strategic identity
+function doctrineModalHTML(){
+  const cur=state.doctrine;
+  const cards=Object.keys(DOCTRINES).map(id=>{
+    const d=DOCTRINES[id], active=cur===id, chk=canSetDoctrine(id);
+    const pros=d.pros.map(p=>`<li style="color:var(--ok,#4ade80)">▲ ${p}</li>`).join('');
+    const cons=d.cons.map(c=>`<li style="color:var(--bad,#f87171)">▼ ${c}</li>`).join('');
+    let btn;
+    if(active) btn=`<button class="btn ghost" disabled style="width:100%">✓ Current doctrine</button>`;
+    else if(chk.ok && chk.first) btn=`<button class="btn" style="width:100%" onclick="setDoctrine('${id}');showDoctrineModal()">Declare — free</button>`;
+    else if(chk.ok) btn=`<button class="btn" style="width:100%" onclick="setDoctrine('${id}');showDoctrineModal()">Switch — ${fM(doctrineSwitchCost())} · ${DOCTRINE_SWITCH_REP} rep · ${DOCTRINE_SWITCH_MONTHS} mo</button>`;
+    else btn=`<button class="btn ghost" disabled style="width:100%">Locked — ${chk.why}</button>`;
+    return `<div class="card" style="background:var(--panel2);border:1px solid ${active?'var(--readout,#e6c14a)':'#2a2a2a'};margin-bottom:8px">
+      <div style="font-weight:700">${d.icon} ${d.name} ${active?'<span class="pill ok">active</span>':''}</div>
+      <div class="dim" style="font-size:11px;font-style:italic">${d.tag}</div>
+      <p class="muted" style="font-size:12px;margin:4px 0">${d.blurb}</p>
+      <ul style="list-style:none;padding:0;margin:4px 0;font-size:11px;line-height:1.5">${pros}${cons}</ul>
+      ${btn}</div>`;
+  }).join('');
+  const head = cur
+    ? `<p class="muted" style="font-size:12px">Your company flies as <b>${DOCTRINES[cur].icon} ${DOCTRINES[cur].name}</b>. Switching is a heavy commitment — capital, reputation and ${DOCTRINE_SWITCH_MONTHS} months of upheaval.</p>`
+    : `<p class="muted" style="font-size:12px">Declare a doctrine to define what kind of company you are. The first choice is <b>free</b>; changing it later costs dearly. Each doctrine is a real trade — a standing strength bought with a standing weakness.</p>`;
+  return `<h2>⚑ Company Doctrine</h2>${head}${cards}`;
+}
+function showDoctrineModal(){ activeModal=()=>showModal(doctrineModalHTML()+modalClose(),true); activeModal(); }
 // slice 8: the HUD ⚙ menu — display toggles + save/load/new + the full Settings panel.
 // A live modal: the display toggles call render() to refresh in place; Settings controls
 // (difficulty/detail/sliders) refresh via renderSettings() on the same re-run. Save/Load/New
@@ -3994,8 +4084,9 @@ function buyResearch(id){
   const r=RESEARCH.find(x=>x.id===id);
   if(state.research[id]||state.activeResearch) return; // one project at a time
   if(!reqsMet(r)) return;
-  if(state.money < r.cost) return;
-  state.money-=r.cost;
+  const rc=rdCostOf(r); // CE3(a): doctrine-adjusted R&D price
+  if(state.money < rc) return;
+  state.money-=rc;
   state.activeResearch={id:r.id, monthsLeft:r.months, rushed:0};
   log('note',`R&D started: ${r.name} (${r.months} mo). It advances while you build and fly.`);
   if(state.money<0) gameOver(); else render();
@@ -4240,7 +4331,7 @@ function hideModal(){activeModal=null;$('modal').classList.add('hidden');} // sl
 
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=28; // v28: CE2(c) juggernaut capstone (state.standingProd/juggernautReached); v27: CE2(b) launch cadence (state.padMonthAbs/padMonthUsed) — load defaults seed all of these; v26: CE1 rival agents (state.rivalState), seedRivalState migrates old rivalFired
+const SAVE_VERSION=29; // v29: CE3(a) company doctrine (state.doctrine, null=undeclared/neutral); v28: CE2(c) juggernaut capstone (state.standingProd/juggernautReached); v27: CE2(b) launch cadence (state.padMonthAbs/padMonthUsed) — load defaults seed all of these; v26: CE1 rival agents (state.rivalState), seedRivalState migrates old rivalFired
 function saveGame(){
   try{
     const payload={v:SAVE_VERSION, ts:Date.now(), state:JSON.parse(JSON.stringify(state))};
@@ -4280,7 +4371,7 @@ function loadGame(){
       staff:[], assignedAstronaut:null,
       vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, rehearsal:false, techLevel:{}, divisions:{}, breakthroughCooldown:3, relDebt:0, powerSource:'solar',
       recentBuilds:[], materials:defaultMaterialsState(),
-      buildQueue:[], hangar:[], orderSeq:0, padMonthAbs:-1, padMonthUsed:0, standingProd:null, juggernautReached:false, uiLayer:'advanced', metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[]
+      buildQueue:[], hangar:[], orderSeq:0, padMonthAbs:-1, padMonthUsed:0, standingProd:null, juggernautReached:false, doctrine:null, uiLayer:'advanced', metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[]
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -4333,7 +4424,7 @@ function autoLoad(){
       staff:[], assignedAstronaut:null,
       vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, rehearsal:false, techLevel:{}, divisions:{}, breakthroughCooldown:3, relDebt:0, powerSource:'solar',
       recentBuilds:[], materials:defaultMaterialsState(),
-      buildQueue:[], hangar:[], orderSeq:0, padMonthAbs:-1, padMonthUsed:0, standingProd:null, juggernautReached:false, uiLayer:'advanced', metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[]
+      buildQueue:[], hangar:[], orderSeq:0, padMonthAbs:-1, padMonthUsed:0, standingProd:null, juggernautReached:false, doctrine:null, uiLayer:'advanced', metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[]
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -7129,7 +7220,7 @@ function recommendedAction(){
     }
   }
   if(!state.activeResearch){
-    const next=RESEARCH.find(r=>!state.research[r.id] && reqsMet(r) && state.money>=r.cost);
+    const next=RESEARCH.find(r=>!state.research[r.id] && reqsMet(r) && state.money>=rdCostOf(r));
     if(next) return {kind:'research', title:`Research: ${next.name}`, detail:'Expand your capabilities.', tab:'rnd', researchId:next.id};
   }
   return {kind:'advance', title:'Advance the calendar', detail:'Let R&D and the program move forward a month.', tab:null};
@@ -7262,6 +7353,8 @@ function siteBuildings(){
      status: builtFac?`${builtFac} facilit${builtFac===1?'y':'ies'} · +${fM(totalFacilityIncome())}/mo`:'no facilities', planned:false},
     {key:'map', icon:'🪐', name:'Solar System', tab:'map', status:'plan & track missions', planned:false},
     {key:'rivals', icon:'◆', name:'Rivals', tab:'rivals', act:"showRivalsModal()", status:`threat: ${threatTxt}`, planned:false},
+    {key:'doctrine', icon: state.doctrine?DOCTRINES[state.doctrine].icon:'⚑', name:'Doctrine', act:"showDoctrineModal()",
+     status: state.doctrine?DOCTRINES[state.doctrine].name:'undeclared — pick an identity', planned:false},
   ];
 }
 // #18 (scene): each building's footprint on the Cape panorama as percent coords (0–100).
@@ -9892,7 +9985,7 @@ function renderTechTree(){
     const st=researchNodeState(r), c=palette[st], tcol=trackColor(r.track);
     const sel=state.selectedResearch===r.id, locked=st==='locked';
     const name=r.name.length>20?r.name.slice(0,19)+'…':r.name;
-    const sub = st==='active' ? `${state.activeResearch.monthsLeft} mo left` : `${fM(r.cost)} · ${r.months} mo`;
+    const sub = st==='active' ? `${state.activeResearch.monthsLeft} mo left` : `${fM(rdCostOf(r))} · ${r.months} mo`;
     nodes+=`<g style="cursor:pointer" onclick="selectResearch('${r.id}')" onmouseenter="showTechTip(event,'${r.id}')" onmousemove="moveTechTip(event)" onmouseleave="hideTechTip()" opacity="${locked?0.72:1}">
       <rect x="${p.x}" y="${p.y}" width="${NW}" height="${NH}" rx="6" fill="${c.fill}" stroke="${sel?'#ffffff':tcol}" stroke-width="${sel?2.2:1.3}"/>
       <rect x="${p.x}" y="${p.y}" width="4" height="${NH}" rx="2" fill="${tcol}"/>
@@ -9944,7 +10037,7 @@ function techModifierText(r){
 function techTooltipHTML(r){
   const st=researchNodeState(r), tr=TRACKS.find(t=>t.key===r.track)||{};
   const stTag={done:'researched',active:'in progress',available:'available',locked:'locked'}[st];
-  const meta = st==='active' ? `${state.activeResearch.monthsLeft} mo left` : `${fM(r.cost)} · ${r.months} mo`;
+  const meta = st==='active' ? `${state.activeResearch.monthsLeft} mo left` : `${fM(rdCostOf(r))} · ${r.months} mo`;
   const mods=techModifierText(r);
   const reqNames=r.req.map(q=>(RESEARCH.find(x=>x.id===q)||{}).name).filter(Boolean).join(', ');
   const gate=r.reqMissionDone?(MISSIONS.find(m=>m.id===r.reqMissionDone)||{}).name:null;
@@ -9996,9 +10089,9 @@ function renderResearchDetail(){
       <button class="btn ghost" style="width:100%;font-size:11px;margin-bottom:5px" onclick="rushResearch()" ${canRush?'':'disabled'}>Rush −1 mo (${fM(rc)})</button>
       <button class="btn ghost" style="width:100%;font-size:11px" onclick="applyScience()" ${canSci?'':'disabled'}>Apply science −1 mo (${sc} ⚛)</button>`;
   } else {
-    const afford=state.money>=r.cost, ok=st==='available'&&afford&&!busy;
+    const afford=state.money>=rdCostOf(r), ok=st==='available'&&afford&&!busy;
     const why = busy?'Another project is in progress':(st!=='available'?'Prerequisites not met':(!afford?'Not enough capital':''));
-    action=`<button class="launch" style="width:100%" onclick="buyResearch('${r.id}')" ${ok?'':'disabled'}>${ok?`Research · ${fM(r.cost)} · ${r.months} mo`:why}</button>`;
+    action=`<button class="launch" style="width:100%" onclick="buyResearch('${r.id}')" ${ok?'':'disabled'}>${ok?`Research · ${fM(rdCostOf(r))} · ${r.months} mo`:why}</button>`;
   }
   const stateTag={done:'<span class="pill ok">researched</span>',active:'<span class="pill active">in progress</span>',available:'<span class="pill">available</span>',locked:'<span class="pill lock">locked</span>'}[st];
   const debtBanner = relDebt()>0 ? `<div class="flag bad" style="margin-bottom:8px">⚠ Cut-corner penalty: −${Math.round(relDebt()*100)}% reliability on every vehicle, from pushing a flawed project through a past setback. It's permanent — weigh the schedule against the risk next time.</div>` : '';
@@ -10007,7 +10100,7 @@ function renderResearchDetail(){
     <div class="tt-mods adv-only" style="margin:8px 0 10px">${techModifierText(r).map(m=>`<div class="tt-mod">▸ ${m}</div>`).join('')}</div>
     <div class="sub" style="margin:8px 0 10px">${r.desc}</div>
     <div class="metrics" style="margin-bottom:10px">
-      <div class="metric"><div class="k">Cost</div><div class="v">${fM(r.cost)}</div></div>
+      <div class="metric"><div class="k">Cost</div><div class="v">${fM(rdCostOf(r))}</div></div>
       <div class="metric"><div class="k">Duration</div><div class="v">${r.months} mo</div></div>
     </div>
     ${(reqNames||gateName)?`<div class="dim" style="font-size:12px;margin-bottom:10px">Requires: ${[reqNames, gateName?`fly <b>${gateName}</b>`:null].filter(Boolean).join(' · ')}</div>`:''}
@@ -10024,9 +10117,9 @@ function renderTechAction(){
   if(st==='done') btn=`<button class="btn" disabled>✓ Researched</button>`;
   else if(st==='active') btn=`<button class="btn" disabled>${state.activeResearch.monthsLeft} mo left</button>`;
   else{
-    const afford=state.money>=r.cost, ok=st==='available'&&afford&&!busy;
+    const afford=state.money>=rdCostOf(r), ok=st==='available'&&afford&&!busy;
     const why=busy?'Another project in progress':(st!=='available'?'Prerequisites not met':(!afford?'Not enough capital':''));
-    btn=`<button class="launch" onclick="buyResearch('${r.id}')" ${ok?'':'disabled'}>${ok?`Research · ${fM(r.cost)} · ${r.months} mo`:why}</button>`;
+    btn=`<button class="launch" onclick="buyResearch('${r.id}')" ${ok?'':'disabled'}>${ok?`Research · ${fM(rdCostOf(r))} · ${r.months} mo`:why}</button>`;
   }
   const tag={done:'researched',active:'in progress',available:'available',locked:'locked'}[st];
   el.innerHTML=`<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 11px;border:1px solid var(--line);border-radius:6px;background:var(--panel2)">

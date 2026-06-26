@@ -3024,6 +3024,29 @@ negative costs); architecture fork is exclusive and each option is independently
 saves default to "undeclared doctrine" (today's neutral behaviour). **Cross-ref:** R&D epic
 T1 branches, first-review Rec #1/#3, CE2 (focus → faster capstone).
 
+- ✅ **CE3 slice (a) — Company Doctrine (strategic identity).** *Built 2026-06-26.* A one-time,
+  semi-irreversible identity choice; `state.doctrine` (null = undeclared = today's exact neutral
+  behaviour — every doctrine multiplier defaults to 1 / delta 0, so old saves are unchanged).
+  Five doctrines, **each a standing bonus bought with a standing penalty** (folded into existing
+  economy hooks as named multipliers via `doctrineMult(key)` / `doctrineRelMod()`): **Reusability**
+  −20% launch ops / +20% R&D cost + −5% reliability fading over 12 flights · **Heavy-Lift** −15%
+  build / +15% launch ops · **Commercial** +20% payout / −30% gov funding · **Statecraft** +40%
+  gov +25% rep / −12% payout · **Science** +40% science / −15% payout +10% R&D cost. Hooks:
+  `computeVehicle` build+launch+reliability, payout (success & partial), science yield, rep gain,
+  `govMonthlyFunding`, and R&D price via `rdCostOf(r)` threaded through every capital site (buy
+  charge + affordability check + auto-research + division-setback fund + all displays). **First
+  declaration is free; switching ("doctrine drift") is provably expensive** — `doctrineSwitchCost()`
+  (scales with `flights`, ≥$8M) + 20 rep + 6 months of upheaval (`advance`), gated by
+  `canSetDoctrine` (blocked when broke / low-rep / re-picking current). UI: `⚑ Doctrine` system
+  tile + `showDoctrineModal()` (pros/cons cards, free-declare vs priced-switch buttons).
+  `SAVE_VERSION`→29. **Validation:** `/tmp/ov-ce3a.js` 39/39 — undeclared = all mults 1 / delta 0
+  / rdCostOf == raw, every doctrine's bonus *and* penalty land at the right magnitude on the live
+  functions (launch/build/gov/payout/sci/rd/rel), early-rel penalty fades to 0 by 12 successes,
+  switch charges capital+rep+months & a blocked switch is a clean no-op, the R&D price gate
+  actually makes a node unaffordable under Reusability, render+modal smoke (all 5 listed). CE1/CE2
+  regression green. **Next: CE3 slice (b) — branch opportunity cost (`branchAffinity` cross-branch
+  R&D surcharge/discount), then slice (c) — the LOR/Direct-Ascent/EOR lunar fork.**
+
 ### CE4 · The Stakes Curve — economic pressure that rises, not falls
 
 **Problem.** Tension is inverted: tight at the start (good), trivial once `pgmRoyalty`
