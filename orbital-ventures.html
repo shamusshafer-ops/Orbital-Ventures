@@ -1536,14 +1536,31 @@ const ISP_BONUS_CAP=0.10, THRUST_BONUS_CAP=0.15;
 function researchEffectSum(key){ let s=0; for(const r of RESEARCH){ if(state.research[r.id] && r.effect && r.effect[key]) s+=r.effect[key]; } return s + techLevelEffectSum(key); }
 function ispMult(){ return 1 + Math.min(ISP_BONUS_CAP, researchEffectSum('isp')); }
 function thrustMult(){ return 1 + Math.min(THRUST_BONUS_CAP, researchEffectSum('thrust')); }
-// R&D epic slice 6b: wire the new-track gate nodes to real economy effects (capped,
-// so balance stays bounded). Manufacturing/Reuse cut build cost; Ground/Reuse cut
-// launch-ops cost; Science multiplies mission science yield. All feed researchEffectSum.
+// R&D epic slice 6b: wire the new-track gate nodes to real economy effects.
+// Manufacturing/Reuse cut build cost; Ground/Reuse cut launch-ops cost; Science
+// multiplies mission science yield. All feed researchEffectSum.
+// CE2 · Power Curve (2026-06-26): the ECONOMY effects (build cost, launch-ops cost,
+// build time) are released from hard ceilings to a *diminishing-but-unbounded* curve so
+// a maxed late-game company genuinely builds far cheaper/faster than a startup — felt
+// power that never touches the rocket equation. PHYSICS effects (Isp, thrust, reliability
+// → relCap) keep their hard caps elsewhere; those bound Δv/reliability so missions can't
+// trivialise. sciYield is a *payout* multiplier (not a cost curve) so it stays bounded —
+// reward inflation is CE4's concern, not this epic's.
+// dimCurve is the identity at/below the old cap (so a save already sitting under the cap
+// sees ZERO change — exact balance preservation) and bends smoothly past it: slope 1 at
+// the cap (C1-continuous, no kink), asymptoting toward `asymptote` but never reaching it,
+// so every further node still pays off and cost/time can never hit zero (no runaway).
 const BUILD_CUT_CAP=0.30, LAUNCH_CUT_CAP=0.30, SCI_YIELD_CAP=0.50, BUILD_TIME_CAP=3;
-function mfgBuildMult(){ return 1 - Math.min(BUILD_CUT_CAP, researchEffectSum('buildCostCut')); }
-function groundLaunchMult(){ return 1 - Math.min(LAUNCH_CUT_CAP, researchEffectSum('launchCostCut')); }
-function sciYieldMult(){ return 1 + Math.min(SCI_YIELD_CAP, researchEffectSum('sciYield')); }
-function buildTimeCut(){ return Math.min(BUILD_TIME_CAP, researchEffectSum('buildTimeCut')); } // #6c: months shaved off the build (Manufacturing/Ground)
+const BUILD_CUT_ASYMP=0.80, LAUNCH_CUT_ASYMP=0.80, BUILD_TIME_ASYMP=6; // CE2 curve ceilings (asymptotic — never reached)
+function dimCurve(sum, cap, asymptote){
+  if(sum<=cap) return sum;                          // identity below the old cap — balance preserved exactly
+  const span=asymptote-cap;                          // headroom past the cap (>0)
+  return cap + span*(1-Math.exp(-(sum-cap)/span));   // smooth join (slope 1 at cap), → asymptote
+}
+function mfgBuildMult(){ return 1 - dimCurve(researchEffectSum('buildCostCut'), BUILD_CUT_CAP, BUILD_CUT_ASYMP); }
+function groundLaunchMult(){ return 1 - dimCurve(researchEffectSum('launchCostCut'), LAUNCH_CUT_CAP, LAUNCH_CUT_ASYMP); }
+function sciYieldMult(){ return 1 + Math.min(SCI_YIELD_CAP, researchEffectSum('sciYield')); } // payout multiplier — stays bounded (CE4 owns reward inflation)
+function buildTimeCut(){ return dimCurve(researchEffectSum('buildTimeCut'), BUILD_TIME_CAP, BUILD_TIME_ASYMP); } // #6c: months shaved (Manufacturing/Ground), now uncapped-on-curve
 // R&D epic slice 3: Tech Levels — flagship technologies you keep investing in.
 // After a leveled tech is researched (L1), capital + time raise it to L2..max; each
 // level adds to the SAME isp/thrust/reliability accumulators above, so the existing

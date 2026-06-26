@@ -2921,6 +2921,35 @@ multipliers compound past the old ceilings on the intended curve; a maxed late-g
 is dramatically cheaper/faster than early; no division-by-zero / runaway at the tail.
 **Cross-ref:** R&D epic accumulators, #7 production, Tech Levels.
 
+**The split (authored 2026-06-26):** *PHYSICS — keep hard caps* (bound Δv/reliability so
+missions can't trivialise): `ISP_BONUS_CAP` (+10%), `THRUST_BONUS_CAP` (+15%), `relCap` and
+every reliability contributor (`FAM_REL_CAP`, `QA_REL_CAP`, `OVERSTRETCH_REL_CAP`).
+*ECONOMY — release to a diminishing curve:* `mfgBuildMult`, `groundLaunchMult`,
+`buildTimeCut`. *Held bounded on purpose:* `SCI_YIELD_CAP` — it's a **payout** multiplier,
+not a cost curve; releasing it inflates rewards and fights CE4's stakes work, so it stays
+capped (CE4 owns reward inflation).
+
+- ✅ **CE2 slice (a) — economy caps released to a diminishing-but-unbounded curve.** *Built
+  2026-06-26.* New `dimCurve(sum, cap, asymptote)`: the **identity at/below the old cap**
+  (so a save already sitting under the ceiling sees *zero* change — exact balance
+  preservation) and bends smoothly past it — `cap + span·(1−e^(−(sum−cap)/span))`, slope 1
+  at the cap (C1-continuous, no kink), asymptoting toward but never reaching `asymptote`, so
+  every further node still pays off and cost/time can never hit zero (no runaway). Wired the
+  three ECONOMY effects through it: `mfgBuildMult`/`groundLaunchMult` (cap 0.30 → asymptote
+  0.80) and `buildTimeCut` (cap 3 → asymptote 6 mo; `buildMonths` still floors at 1). Physics
+  multipliers (`ispMult`/`thrustMult`) and `sciYieldMult` left on their hard `Math.min` caps.
+  **Why it matters:** a fully-maxed manufacturing tree already accumulates 0.39 buildCostCut
+  / 0.43 launchCostCut / 5.0 buildTimeCut — i.e. it was *slamming into* the old walls and
+  wasting nodes. Now: build mult **0.618 (38% off)** vs old flat 0.700, launch mult **0.586
+  (41% off)** vs 0.700, build-time cut **4.46 mo** vs old hard 3 — felt late-game power with
+  the rocket equation untouched. **Validation:** `/tmp/ov-ce2a.js` 25/25 — dimCurve identity
+  ≤ cap, C1 slope≈1 at the kink, strictly increasing & asymptote-bounded past it, cost mult
+  always > 0 (no free/negative cost), `buildMonths` floors ≥1 under an extreme cut, sciYield
+  *still* clamped at 1.50, Isp/thrust physics caps *still* clamp at +10%/+15%, render()+
+  advance() clean with all research maxed. CE1 regression green (a/b/c). **Next: CE2 slice
+  (b) — throughput/cadence (parallel bays/pads → vehicles & launches per month), then slice
+  (c) juggernaut capstone.**
+
 ### CE3 · Strategic Identity — opportunity cost & company doctrine
 
 **Problem.** Nothing in the tree is mutually exclusive and (post-CE4) everything is
