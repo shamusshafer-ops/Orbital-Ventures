@@ -2115,6 +2115,20 @@ logic with no Phaser global.
 
 ### Scene realism overhaul (post-conversion, 2026-06-23)
 
+> **⚠ Reverted to the proven 2D flight renderer (2026-06-25).** Slices 1–3 below were built
+> on the **Phaser-hosted FlightScene**, which rendered the ascent richly but whose reused
+> **CanvasTexture blanked the post-ascent phases** (orbit / suborbital / cislunar) in the
+> user's WebGL setup — the scene played the ascent, then went black on the trajectory-arc
+> screen. We chased it through several fixes (per-frame context reset, one-time transition
+> reset, scene-rebuild) confirming it's a GPU-texture issue not observable/fixable from
+> outside the browser. **Decision (with the user): disable the Phaser flight scene and use
+> the proven direct renderer** (`createGL2D` WebGL-2D + 2D-canvas fallback, the pre-conversion
+> path) which draws every phase reliably. The `playMission` call to `startFlightScene` is
+> commented out; the Slice 1–3 code is kept dormant behind it (easy to re-enable if the
+> texture issue is ever solved). **Phaser still powers the Cape / bench / map scenes.** Net:
+> the flight uses its solid 2D sky/clouds/plume; the new GPU particle FX (native plume core,
+> ascent clouds, Mach diamonds, Earth FX) are not shown.
+
 A push to make the **ascent and orbital flight scenes** dramatically more realistic by
 using Phaser capabilities the flat-canvas hybrid can't do cheaply — additive blending,
 bloom/glow postFX, parallax, and (later) custom WebGL shaders. Decided with the user as a
@@ -2153,8 +2167,22 @@ each keeping the no-Phaser 2D fallback intact.
       atmospherics mid-ascent and clearing `ascentPhase` post-ascent, no-throw across the
       ascent→orbit transition; all 8 prior suites green. **Browser check pending** (needs a
       launch to view).
-- [ ] **Slice 3 — Plume & FX polish.** Volumetric GPU plume, heat-haze postFX behind the
-      exhaust, Mach diamonds, staging/reentry particle upgrades, camera work.
+- [x] **Slice 3 — Plume & FX polish.** *(Built 2026-06-25.)* Native FX polish on the
+      ascent: a **layered/volumetric plume** (a tighter, bluish-white inner-core emitter
+      `plumeCore` over the existing plume, each glow-postFX'd) that **blooms wider with
+      altitude** (`setScale` driven by `altFrac` — the vacuum-expansion look); **Mach
+      (shock) diamonds** (a row of additive nodes spaced along the exhaust axis, shown only
+      in the atmospheric supersonic window and faded out by vacuum); a **punchier stage
+      separation** (bigger spark burst + a fireball flash + debris bits + a short camera
+      shake). Core mirrors the plume's `_plumeOn` lifecycle (stopped/restarted with it) and
+      is rebuilt by the per-launch scene restart. Feature-guarded over the 2D fallback.
+      *(A liftoff camera **zoom** punch was tried and removed 2026-06-25 — it regressed the
+      post-ascent scene; `beginFlight` now just resets zoom to 1, and camera "work" is the
+      transient shakes only.)* Validated headlessly
+      (`ov-ascentfx.js`, 21/21 — publishing + all-slice wiring; drawScene no-throw incl.
+      orbital/cislunar/suborbital post-ascent); all 8 prior suites green. **Browser check pending.**
+      *(Deferred: heat-haze displacement postFX — needs a custom WebGL pipeline, contrary
+      to the single-file/no-build ethos; and reentry plasma — a smaller suborbital case.)*
 
 ## UI Consolidation — The Mission Control Shell (epic)
 
