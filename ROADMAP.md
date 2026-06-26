@@ -2135,9 +2135,24 @@ each keeping the no-Phaser 2D fallback intact.
       build/drive/flag wiring, and the additive+glow techniques present; all prior suites
       green (setback/planner/compare/uilayer/recovery/transfer 24/18/21/30/15/9/16). Browser
       check pending (needs an orbital flight to view).
-- [ ] **Slice 2 — Ascent sky & atmosphere.** Custom altitude-driven sky-scattering shader
-      (blue→black), native parallax cloud decks the rocket flies through, stars fading in
-      with altitude, max-Q vapor cone.
+- [x] **Slice 2 — Ascent sky & atmosphere.** *(Built 2026-06-25.)* A native ascent FX
+      layer composited over the 2D scene during the ascent phase, mirroring Slice 1's
+      pattern: `drawAscent` publishes `A.ascentPhase`/`A.qNorm`/`A.altN`/`A.horizonY`
+      (cleared in `drawScene`), and the FlightScene's **`buildAscentFX`/`updateAscentFX`**
+      drive — **parallax cloud decks** (12 soft `fxCloud` sprites that ramp in just off the
+      pad and stream down past the climbing rocket, growing with depth, then thin out by the
+      mid-stratosphere), a **max-Q vapor cone** (additive sprite hugging the vehicle through
+      the transonic window, scaled/faded by `qNorm`), and **stars fading in with altitude**
+      (the Slice-1 native starfield, its gate extended so it ramps up during high ascent).
+      All feature-guarded (`phaserOK`) over the intact 2D fallback. The literal sky-scattering
+      *shader* is left to the existing altitude-driven 2D sky gradient (keeps the no-build/
+      single-file ethos). *(A native additive horizon-scattering band was tried and removed
+      2026-06-25 — a flat filled rect read as a UI bar over the scene; the 2D horizon already
+      handles it.)* Validated headlessly
+      (`ov-ascentfx.js`, 15/15): build/update wiring, `drawScene` publishing the
+      atmospherics mid-ascent and clearing `ascentPhase` post-ascent, no-throw across the
+      ascent→orbit transition; all 8 prior suites green. **Browser check pending** (needs a
+      launch to view).
 - [ ] **Slice 3 — Plume & FX polish.** Volumetric GPU plume, heat-haze postFX behind the
       exhaust, Mach diamonds, staging/reentry particle upgrades, camera work.
 
@@ -2631,14 +2646,19 @@ engine catalog (BC4).
       page scrolls**. A `--topbar-h` CSS var (kept in sync with the bar's real height by
       `syncTopbarH()` on render + resize) offsets the sticky right rail and bench rocket so
       they clear the pinned bar. (`ov-blueprints.js` covers the markup/CSS/wiring.)
-- [x] **Flight FX robustness.** Fixed the **missing exhaust plume on repeat launches** —
-      the emitters were gated on Phaser's `.emitting` flag, which goes stale after a flight
-      (especially a failure that stops the plume on explosion). Now tracked via explicit
-      `_plumeOn`/`_smokeOn` flags reset every `beginFlight()`, plus a defensive scene-resume.
-      Also silenced the **"Cannot pause non-running Scene"** console warning by guarding
-      `pauseCapeGame`/`pauseVehGame`/`pauseMapGame` with `scene.isActive()`. (The benign
-      WebGL `texImage`/`generateMipmap` warnings are Firefox verbosity from the per-frame
-      flight-canvas texture upload — left as-is.) Browser-verify the plume on a 2nd launch.
+- [x] **Flight FX robustness (repeat-launch reuse bug).** The flight scene was **reused**
+      across launches via `beginFlight()`, but its native FX objects (particle emitters,
+      cloud sprites, starfield) didn't survive between flights — after the first flight
+      (especially a failure/explosion) the **2nd launch rendered the 2D scene with ALL
+      native FX gone** (no plume, no ascent clouds/vapor). Fix: **rebuild the scene fresh
+      each launch** — `startFlightScene` sets `flightPending` then calls
+      `flightScene.scene.restart()` (first boot still creates the game); `create()`'s tail
+      starts the flight. Generated textures are cached via `exists()` guards so the restart
+      is cheap, and every emitter/sprite/star is recreated clean. (Kept the earlier
+      `_plumeOn`/`_smokeOn` flag reset and the `scene.isActive()` guards on
+      `pauseCape/Veh/MapGame` that silenced the "Cannot pause non-running Scene" warning.
+      The benign WebGL `texImage`/`generateMipmap` warnings are Firefox verbosity from the
+      per-frame flight-canvas upload — left as-is.) **Browser-verify two launches in a row.**
 
 ## Repo
 
