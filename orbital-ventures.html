@@ -1503,6 +1503,7 @@ function newGame(difficulty){
     materials:defaultMaterialsState(), // #7 slice 6: per-commodity spot price + optional fixed-price contract
     buildQueue:[], hangar:[], orderSeq:0, // #7 final: production queue (in-progress orders) + hangar (finished vehicles)
     padMonthAbs:-1, padMonthUsed:0, // CE2(b): launch-cadence — pad slots used in the current calendar month
+    standingProd:null, juggernautReached:false, // CE2(c): juggernaut capstone — standing production line + milestone flag
     uiLayer:'advanced', // #23: progressive UI complexity (basic/advanced/expert), independent of difficulty
   };
   log('info','Company founded. The pad is yours — go make some noise.');
@@ -1786,6 +1787,7 @@ function advance(months){
     // #7 slice 6: raw-material spot prices wander; active contracts tick toward expiry
     materialPriceTick();
     tickBuildQueue(); // #7 final: progress queued vehicle builds; finished ones go to the hangar
+    checkJuggernaut(); tickStandingProduction(); // CE2(c): juggernaut milestone + standing self-funding production line
 
     // M6: personnel salary deduction
     state.staff.forEach(s=>{
@@ -2246,6 +2248,57 @@ function launchFromHangar(id){
   state.hangar=hangarList().filter(x=>x.id!==id); // consumed by this flight
   launch(true);
 }
+// ---------- CE2 slice (c): the JUGGERNAUT capstone — standing, self-funding production ----------
+// The payoff for maxing the whole production tree. A juggernaut (all four production lines at
+// PROD_MAX_LEVEL *and* the automated_factory research node — "the line that builds itself")
+// unlocks a qualitatively new VERB: designate ONE proven design for STANDING PRODUCTION and the
+// factory builds it on its own — a finished copy rolls into the hangar every month (instant: the
+// self-replicating-line fantasy), up to a stock cap that scales with launch cadence, paying full
+// build cost each time and never dipping below a cash reserve. Set-and-forget: paired with slice
+// (b) launch cadence it sustains a standing megafleet no hand-queued company could. It can't print
+// money (it SPENDS capital to make vehicles) and is bounded by the stock cap + reserve — no runaway.
+const STANDING_RESERVE = 3.0;                 // never auto-spend below this much cash on hand
+function isJuggernaut(){
+  for(const d of PRODUCTION_DEFS){ if(prodLevel(d.key) < PROD_MAX_LEVEL) return false; }
+  return !!(state.research && state.research.automated_factory);
+}
+function standingStockCap(){ return Math.max(2, launchPadCap()*2); } // keep ~2 months of launch tempo stocked
+function standingHangarCount(){ const sp=state.standingProd; if(!sp) return 0; return hangarList().filter(h=>h.missionId===sp.missionId).length; }
+// snapshot the CURRENT bench design as the standing line (must be a juggernaut + a flyable design)
+function setStandingProduction(missionId){
+  if(!isJuggernaut()) return;
+  const m = (missionId && MISSIONS.find(x=>x.id===missionId)) || curMission(); if(!m) return;
+  const v = computeVehicle(); const sim=m.profile?simulateMission(m):null;
+  const chk=canQueue(m,v,sim); if(!chk.ok && chk.why!=='can’t afford the build' && chk.why!=='queue full'){ log('note',`Can’t set standing production: ${chk.why}`); return; }
+  const fam = activeFamily();
+  state.standingProd = { missionId:m.id, missionName:m.name, name:(fam?fam.name:'Vehicle')+' — '+m.name,
+    spec:queueSpecSnapshot(), units:vehicleUnits(m), buildCost:round2(v.buildCost), enabled:true };
+  log('ok',`🏭 Standing production online — ${state.standingProd.name}. The line builds itself now, ${fM(state.standingProd.buildCost)}/copy, up to ${standingStockCap()} in stock.`);
+  render();
+}
+function toggleStandingProduction(){ if(state.standingProd){ state.standingProd.enabled=!state.standingProd.enabled; log('note',`Standing production ${state.standingProd.enabled?'resumed':'paused'}.`); render(); } }
+function clearStandingProduction(){ if(state.standingProd){ log('note',`Standing production line cleared (${state.standingProd.name}).`); state.standingProd=null; render(); } }
+// runs each month in advance(): the line rolls one finished copy into the hangar if there's stock
+// room and cash stays above the reserve. Pays full build cost and logs cadence load — real work.
+function tickStandingProduction(){
+  const sp=state.standingProd;
+  if(!sp || !sp.enabled || !isJuggernaut()) return;
+  if(standingHangarCount() >= standingStockCap()) return;        // stock full — idle until a copy is flown
+  if(state.money - sp.buildCost < STANDING_RESERVE) return;      // protect the cash reserve
+  state.money = round2(state.money - sp.buildCost);
+  hangarList().push({ id:'sp'+(state.orderSeq=(state.orderSeq||0)+1), name:sp.name, missionId:sp.missionId,
+    missionName:sp.missionName, spec:JSON.parse(JSON.stringify(sp.spec)), units:sp.units, builtMonth:absMonth(), standing:true });
+  state.recentBuilds=state.recentBuilds||[];                     // the standing line still loads the cadence buffer
+  state.recentBuilds.push({at:absMonth(), units:sp.units});
+  const _cut=absMonth()-CADENCE_WINDOW; state.recentBuilds=state.recentBuilds.filter(r=>r&&r.at>_cut);
+}
+// fire a one-time milestone the first time juggernaut status is reached (whichever action completes the set)
+function checkJuggernaut(){
+  if(isJuggernaut() && !state.juggernautReached){
+    state.juggernautReached=true;
+    log('info','🏆 JUGGERNAUT — every production line is maxed and the automated factory is online. Standing production unlocked: set a design and the line builds itself.');
+  }
+}
 // bench affordance: a "queue this build" button + a "fly a ready hangar vehicle" shortcut
 function benchQueueHTML(m){
   if(!m) return '';
@@ -2259,6 +2312,33 @@ function benchQueueHTML(m){
     ? `<button class="btn ghost" style="width:100%;margin-top:6px" onclick="queueBuild()">⊕ Queue this build — ${fM(v.buildCost)} now · ${buildMonths(m)} mo${slots>1?` · ${slots} bay slots`:''}</button>`
     : `<button class="btn ghost" style="width:100%;margin-top:6px" disabled>Queue build — ${cq.why}</button>`;
   return html;
+}
+// CE2(c): the standing-production control — only shown to a juggernaut
+function standingProductionHTML(){
+  if(!isJuggernaut()) return '';
+  const sp=state.standingProd, cap=standingStockCap();
+  let body;
+  if(sp){
+    const stock=standingHangarCount();
+    const stateTxt = !sp.enabled ? '<span class="dim">paused</span>'
+      : stock>=cap ? `<span class="dim">stock full (${stock}/${cap}) — fly a copy to resume</span>`
+      : `<span class="flag-ok-text" style="color:var(--ok)">building — ${stock}/${cap} in stock · ${fM(sp.buildCost)}/copy</span>`;
+    body = `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 0">
+        <div><b>${sp.name}</b><br><span style="font-size:11px">${stateTxt}</span></div>
+        <div style="display:flex;gap:4px">
+          <button class="btn ghost" style="padding:2px 8px;font-size:11px" onclick="toggleStandingProduction()">${sp.enabled?'Pause':'Resume'}</button>
+          <button class="btn ghost" style="padding:2px 8px;font-size:11px" onclick="clearStandingProduction()">Clear</button>
+        </div></div>`;
+  }else{
+    const m=curMission();
+    const can = m ? (()=>{ const v=computeVehicle(); const sim=m.profile?simulateMission(m):null; const c=canQueue(m,v,sim); return c.ok||c.why==='can’t afford the build'||c.why==='queue full'; })() : false;
+    body = `<div style="padding:5px 0">${can
+      ? `<button class="btn" style="width:100%;padding:4px 8px;font-size:11px" onclick="setStandingProduction()">⚙ Put “${m.name}” into standing production — the line auto-builds up to ${cap} copies</button>`
+      : `<span class="dim" style="font-size:11px">Bench a flyable design, then set it as your standing line — the factory builds it on its own.</span>`}</div>`;
+  }
+  return `<div style="margin-top:12px;border-top:1px solid #3a3320;padding-top:8px">
+    <div style="font-weight:600;font-size:12px;color:#e6c14a">🏭 Standing production <span class="dim" style="font-weight:400">· juggernaut capstone · self-funding line</span></div>
+    ${body}</div>`;
 }
 function buildQueuePanelHTML(){
   const q=buildQueueList(), hangar=hangarList(), slots=buildSlots();
@@ -2281,7 +2361,7 @@ function buildQueuePanelHTML(){
     </div>`).join('') : `<div class="dim" style="font-size:12px;padding:6px 0">Hangar empty — finished vehicles wait here, ready to launch on demand.</div>`;
   return `<div class="card" style="background:var(--panel2);margin-bottom:12px">
     <div style="display:flex;justify-content:space-between;align-items:baseline">
-      <div class="mission-name" style="font-size:14px">🏗 Production queue &amp; manifest</div>
+      <div class="mission-name" style="font-size:14px">🏗 Production queue &amp; manifest${isJuggernaut()?' <span style="font-size:10px;color:#e6c14a;border:1px solid #e6c14a;border-radius:3px;padding:0 4px;vertical-align:middle">JUGGERNAUT</span>':''}</div>
       <div class="dim" style="font-size:11px">${active}/${slots} bay slot${slots>1?'s':''} active · Assembly Bays sets parallel slots</div>
     </div>
     <p class="muted" style="font-size:11px;margin:4px 0 6px">Pre-build vehicles so they're ready when you are — hit tight launch windows and sustain cadence. Build cost is paid up front; flying from the hangar skips the build wait.</p>
@@ -2292,6 +2372,7 @@ function buildQueuePanelHTML(){
       <div class="dim" style="font-size:11px" title="Launch Pads set how many prebuilt rapid flights share one calendar month. Extra flights this month fly off the other pads with no added wait.">🛫 ${launchPadCap()}/mo cadence${curMonthPadUsed()>0?` · ${padSlotsLeft()} pad${padSlotsLeft()===1?'':'s'} free this month`:''}</div>
     </div>
     ${hangarRows}
+    ${standingProductionHTML()}
   </div>`;
 }
 // #7 slice 6: raw-material supply chains. Each commodity wanders on a spot market;
@@ -4159,7 +4240,7 @@ function hideModal(){activeModal=null;$('modal').classList.add('hidden');} // sl
 
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=27; // v27: CE2(b) launch cadence (state.padMonthAbs/padMonthUsed) — forward-compat: load defaults seed them; v26: CE1 rival agents (state.rivalState), seedRivalState migrates old rivalFired
+const SAVE_VERSION=28; // v28: CE2(c) juggernaut capstone (state.standingProd/juggernautReached); v27: CE2(b) launch cadence (state.padMonthAbs/padMonthUsed) — load defaults seed all of these; v26: CE1 rival agents (state.rivalState), seedRivalState migrates old rivalFired
 function saveGame(){
   try{
     const payload={v:SAVE_VERSION, ts:Date.now(), state:JSON.parse(JSON.stringify(state))};
@@ -4199,7 +4280,7 @@ function loadGame(){
       staff:[], assignedAstronaut:null,
       vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, rehearsal:false, techLevel:{}, divisions:{}, breakthroughCooldown:3, relDebt:0, powerSource:'solar',
       recentBuilds:[], materials:defaultMaterialsState(),
-      buildQueue:[], hangar:[], orderSeq:0, padMonthAbs:-1, padMonthUsed:0, uiLayer:'advanced', metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[]
+      buildQueue:[], hangar:[], orderSeq:0, padMonthAbs:-1, padMonthUsed:0, standingProd:null, juggernautReached:false, uiLayer:'advanced', metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[]
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -4252,7 +4333,7 @@ function autoLoad(){
       staff:[], assignedAstronaut:null,
       vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, rehearsal:false, techLevel:{}, divisions:{}, breakthroughCooldown:3, relDebt:0, powerSource:'solar',
       recentBuilds:[], materials:defaultMaterialsState(),
-      buildQueue:[], hangar:[], orderSeq:0, padMonthAbs:-1, padMonthUsed:0, uiLayer:'advanced', metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[]
+      buildQueue:[], hangar:[], orderSeq:0, padMonthAbs:-1, padMonthUsed:0, standingProd:null, juggernautReached:false, uiLayer:'advanced', metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[]
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;

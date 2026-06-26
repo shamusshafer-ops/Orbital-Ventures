@@ -2968,8 +2968,33 @@ capped (CE4 owns reward inflation).
   rollover, the full `canParallelLaunch` gate (not-prebuilt / build-months / rehearsal /
   multi-month test / window / slots-exhausted all block; only a 2nd-plus rapid prebuilt
   passes), L1 stays serialised, and the end-to-end months-elapsed-vs-pad-level table. CE2(a) +
-  CE1 regression green. **Next: CE2 slice (c) — the juggernaut capstone (qualitatively new
-  verbs for a maxed company: standing megafleet / self-funding production).**
+  CE1 regression green.
+
+- ✅ **CE2 slice (c) — the juggernaut capstone: standing, self-funding production (CE2
+  complete).** *Built 2026-06-26.* The payoff for maxing the whole production tree — a
+  qualitatively new *verb*, not another multiplier. `isJuggernaut()` = all four production
+  lines at `PROD_MAX_LEVEL` **and** the `automated_factory` node ("the line that builds
+  itself"). On reaching it, `checkJuggernaut()` fires a one-time milestone and unlocks
+  **Standing Production**: `setStandingProduction()` snapshots the current bench design
+  (`{missionId, spec, units, buildCost, enabled}`); each month `tickStandingProduction()` rolls
+  one finished copy into the hangar (instant — the self-replicating-line fantasy), bounded by
+  `standingStockCap()` = `2·launchPadCap()` (stock scales with launch cadence) and a
+  `STANDING_RESERVE` ($3M) cash floor, paying full build cost each copy and logging cadence
+  load. **It can't print money** (it *spends* capital to make vehicles) and is double-bounded by
+  the stock cap + reserve — no runaway. Pause/resume/clear controls; combined with slice (b)
+  cadence it sustains a standing megafleet no hand-queued company could. UI: `JUGGERNAUT` badge
+  + gold `standingProductionHTML()` block in the production panel (juggernaut-gated). State
+  `standingProd`/`juggernautReached`; `SAVE_VERSION`→28 (load-defaults seed them). **Validation:**
+  `/tmp/ov-ce2c.js` 30/30 — juggernaut gate (maxed-but-no-factory and any line below max both
+  fail), milestone fires once & is idempotent, stock cap scales with pads & floors ≥2, set/
+  toggle/clear, the tick builds one/month up to cap & never overfills, spend == copies·cost,
+  copies flagged `standing:true`, the reserve floor blocks a build that would breach it, paused
+  & juggernaut-revoked lines build nothing, `advance()` wires both (milestone + one copy/month),
+  render smoke (panel renders for juggernaut & startup; empty for non-juggernaut). CE2(a)/(b) +
+  CE1 regression green. **→ CE2 (Power Curve) is done across (a)(b)(c): economy compounds on a
+  curve, throughput scales build+launch tempo, and a maxed company gets a self-funding megafleet
+  — felt growth with the rocket equation untouched. Next in the sequence: CE3 (Strategic
+  Identity) or CE4 (Stakes Curve).**
 
 ### CE3 · Strategic Identity — opportunity cost & company doctrine
 
