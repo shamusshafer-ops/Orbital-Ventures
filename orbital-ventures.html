@@ -1601,7 +1601,25 @@ function doctrineRelMod(){
   const fade=Math.max(0, 1 - Math.min(state.successes||0,12)/12);
   return d.effects.relEarly*fade;
 }
-function rdCostOf(r){ return round2((r?r.cost:0)*doctrineMult('rd')); } // doctrine-adjusted R&D capital price
+// CE3 slice (b): branch opportunity cost (branchAffinity). Depth in a research track DISCOUNTS
+// its further nodes (a focused line compounds toward its capstone); tracks you've fallen behind
+// on carry a SURCHARGE proportional to the gap below your most-developed track (the road not
+// taken costs more). Purely derived from state.research + node.track — no new state, and at game
+// start every track's affinity is 0 so the multiplier is exactly 1 (today's neutral behaviour).
+// You can still get everything; focus just reaches its capstone far sooner than a generalist.
+const BRANCH_DISC_PER=0.035, BRANCH_DISC_CAP=0.35;   // depth discount: per owned node in the track / cap
+const BRANCH_SUR_PER=0.030,  BRANCH_SUR_CAP=0.30;    // neglect surcharge: per node of gap below your top track / cap
+const BRANCH_MULT_FLOOR=0.55, BRANCH_MULT_CEIL=1.30; // net R&D-cost multiplier is clamped here (never free, never punitive)
+function trackAffinity(track){ if(!track) return 0; let n=0; for(const r of RESEARCH){ if(r.track===track && state.research && state.research[r.id]) n++; } return n; }
+function maxTrackAffinity(){ const seen={}; let mx=0; for(const r of RESEARCH){ if(state.research && state.research[r.id]){ seen[r.track]=(seen[r.track]||0)+1; if(seen[r.track]>mx) mx=seen[r.track]; } } return mx; }
+function branchAffinityMult(track){
+  const aff=trackAffinity(track);
+  const discount=Math.min(BRANCH_DISC_CAP, BRANCH_DISC_PER*aff);            // your depth in THIS track
+  const gap=Math.max(0, maxTrackAffinity()-aff);                            // how far behind your strongest line
+  const surcharge=Math.min(BRANCH_SUR_CAP, BRANCH_SUR_PER*gap);            // the road not taken
+  return clampA(1 - discount + surcharge, BRANCH_MULT_FLOOR, BRANCH_MULT_CEIL);
+}
+function rdCostOf(r){ return round2((r?r.cost:0)*doctrineMult('rd')*branchAffinityMult(r&&r.track)); } // doctrine + branch-affinity R&D price
 // switching ("doctrine drift") is a real commitment: capital that grows with company size, rep, and time
 const DOCTRINE_SWITCH_REP=20, DOCTRINE_SWITCH_MONTHS=6;
 function doctrineSwitchCost(){ return round2(Math.max(8, (state.flights||0)*0.8 + 6)); }
@@ -10016,6 +10034,16 @@ function renderTechTree(){
 function selectResearch(id){ state.selectedResearch=id; render(); }
 // hover tooltip: describe a tech, its benefits/modifiers, and a real-world example
 const UNLOCK_LABELS={crew:'crewed missions',les:'launch-escape system',eclss:'advanced life support (ECLSS)',lunar:'cislunar / lunar missions',mars:'Mars missions',depot:'LEO propellant depot',lander:'two-stage lunar lander',assembly:'orbital assembly & docking',auto_dock:'automated rendezvous & docking',recovery:'first-stage recovery (reuse)',rad_shield:'deep-space radiation shielding',isru_moon:'lunar ISRU (in-situ propellant)',isru_mars:'Mars ISRU (Sabatier methalox)',isru_belt:'asteroid-belt ISRU'};
+// CE3(b): a one-line readout of the branch-affinity effect on this node's R&D price
+function branchAffinityNote(r){
+  if(!r||!r.track) return '';
+  const mult=branchAffinityMult(r.track), pct=Math.round((mult-1)*100);
+  if(pct===0) return '';
+  const cheaper=pct<0, aff=trackAffinity(r.track);
+  const why=cheaper ? `${aff} node${aff===1?'':'s'} of ${r.track} focus` : `behind your strongest track`;
+  return `<div class="dim" style="font-size:11px;margin:-2px 0 10px;color:${cheaper?'var(--ok,#4ade80)':'var(--bad,#f87171)'}">
+    ${cheaper?'▼':'▲'} Branch affinity: <b>${cheaper?'':'+'}${pct}%</b> R&D cost — ${why}.</div>`;
+}
 function techModifierText(r){
   const e=r.effect||{}, bits=[];
   if(e.engine && ENGINES[e.engine]){ const en=ENGINES[e.engine]; bits.push(`Unlocks engine — <b>${en.name}</b> (${en.prop}, Isp ${en.ispVac}s vac, ${en.thrustVac} kN)`); }
@@ -10103,6 +10131,7 @@ function renderResearchDetail(){
       <div class="metric"><div class="k">Cost</div><div class="v">${fM(rdCostOf(r))}</div></div>
       <div class="metric"><div class="k">Duration</div><div class="v">${r.months} mo</div></div>
     </div>
+    ${branchAffinityNote(r)}
     ${(reqNames||gateName)?`<div class="dim" style="font-size:12px;margin-bottom:10px">Requires: ${[reqNames, gateName?`fly <b>${gateName}</b>`:null].filter(Boolean).join(' · ')}</div>`:''}
     ${action}`;
 }

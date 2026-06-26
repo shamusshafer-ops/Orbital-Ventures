@@ -3044,8 +3044,28 @@ T1 branches, first-review Rec #1/#3, CE2 (focus → faster capstone).
   functions (launch/build/gov/payout/sci/rd/rel), early-rel penalty fades to 0 by 12 successes,
   switch charges capital+rep+months & a blocked switch is a clean no-op, the R&D price gate
   actually makes a node unaffordable under Reusability, render+modal smoke (all 5 listed). CE1/CE2
-  regression green. **Next: CE3 slice (b) — branch opportunity cost (`branchAffinity` cross-branch
-  R&D surcharge/discount), then slice (c) — the LOR/Direct-Ascent/EOR lunar fork.**
+  regression green.
+
+- ✅ **CE3 slice (b) — branch opportunity cost (`branchAffinity`).** *Built 2026-06-26.* Depth in
+  a research track now **discounts** its further nodes (a focused line compounds toward its
+  capstone) while tracks you've fallen behind on carry a **surcharge** proportional to the gap
+  below your most-developed track (the road not taken costs more). `trackAffinity(track)` (owned
+  nodes in track), `maxTrackAffinity()`, and `branchAffinityMult(track)` =
+  `clamp(1 − min(0.35, 0.035·aff) + min(0.30, 0.030·gap), 0.55, 1.30)` — folded straight into the
+  existing single `rdCostOf(r)` hook (so it stacks multiplicatively with the doctrine R&D mult and
+  flows through *every* capital site already wired in slice (a)). **Purely derived from
+  `state.research` + `node.track` — no new state, no `SAVE_VERSION` bump, and every affinity is 0
+  at game start so the multiplier is exactly 1 (today's neutral behaviour).** You can still get
+  everything; focus just gets there sooner — a 14-track tree (100 nodes) where the marginal node
+  is a *choice*, not a foregone tour. UI: `branchAffinityNote(r)` one-liner on the tech detail
+  panel (green ▼ discount with the focus-node count / red ▲ surcharge). **Validation:**
+  `/tmp/ov-ce3b.js` 24/24 — neutral at start, depth discount == `0.035·aff` then capped at 0.35
+  (never below the 0.55 floor), neglect surcharge == `0.030·gap` then capped at 0.30 (never above
+  the 1.30 ceiling), the focus track is never self-surcharged, **the same target node is cheaper
+  for a specialist than a generalist ($2.64M vs $3.61M)**, stacks with doctrine R&D mult, the
+  surcharge actually gates affordability at the `buyResearch` site, affinity-note sign/empty
+  cases, render smoke. CE1/CE2 + CE3(a) regression green. **Next: CE3 slice (c) — the
+  LOR/Direct-Ascent/EOR lunar architecture fork (the one hard either/or).**
 
 ### CE4 · The Stakes Curve — economic pressure that rises, not falls
 
