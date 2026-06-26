@@ -3064,8 +3064,33 @@ T1 branches, first-review Rec #1/#3, CE2 (focus → faster capstone).
   the 1.30 ceiling), the focus track is never self-surcharged, **the same target node is cheaper
   for a specialist than a generalist ($2.64M vs $3.61M)**, stacks with doctrine R&D mult, the
   surcharge actually gates affordability at the `buyResearch` site, affinity-note sign/empty
-  cases, render smoke. CE1/CE2 + CE3(a) regression green. **Next: CE3 slice (c) — the
-  LOR/Direct-Ascent/EOR lunar architecture fork (the one hard either/or).**
+  cases, render smoke. CE1/CE2 + CE3(a) regression green.
+
+- ✅ **CE3 slice (c) — the lunar architecture fork (CE3 complete).** *Built 2026-06-26.* The
+  existing free per-flight `MISSION_ARCH.luna_landing` toggle (LOR/Direct) is now a **committed,
+  mutually-exclusive, tech-gated fork** with a third route, **EOR**. Each architecture demands a
+  *different* enabling technology — LOR→`lunar_lander`, Direct→`heavy_lift_infrastructure`,
+  EOR→`orbital_assembly` — so your CE3(b) research focus decides which lunar path is open and
+  cheap (true synergy). `luna_landing.reqResearch` moved off a single tech to `null`+`archFork`;
+  the mission is flyable once **any** architecture is unlocked (`missionTechMet(m)` now the single
+  gate helper, routed into `missionFlyable`/`selectMission`/`flyTo`/available-counts/advisor —
+  behaviour-identical for every other mission). Commitment: `state.lunarArch` (null = uncommitted;
+  `activeArchId('luna_landing')` previews the first *unlocked* arch). `commitLunarArch()` — **first
+  commitment free**, switching afterward is a major capital event (`lunarSwitchCost()` scales with
+  flights, ≥$20M, + 8 months via `advance`), gated by `canCommitLunarArch` (locked archs / broke /
+  re-pick blocked); `setArchitecture('luna_landing',…)` routes through it while Mars/other forks
+  stay free toggles. EOR uses a lander (mass-efficient like LOR) at `relMod −0.02` (docking risk).
+  UI: `renderArchitecture` shows 🔒-locked vs commit-free vs priced-switch cards + a one-way-
+  commitment lead; advisor surfaces the unlock/commit step. `SAVE_VERSION`→30; old saves stay
+  flyable (lander-researched → auto-LOR preview). **Validation:** `/tmp/ov-ce3c.js` 38/38 — three
+  distinct tech gates, **each path independently unlocks the mission on its own tech** (heavy-lift
+  alone → Direct, assembly alone → EOR, lander alone → LOR), per-arch unlock reflects only its
+  tech, first-commit-free / mutual exclusivity / switch charges capital+months / blocked switch is
+  a no-op, the committed arch reshapes `curMission` (Direct drops the lander module, LOR keeps it),
+  Mars fork stays a free toggle, backward-compat, render smoke. CE1/CE2 + CE3(a)(b) green.
+  **→ CE3 (Strategic Identity) is done across (a)(b)(c): doctrine identity, branch opportunity
+  cost, and a hard lunar either/or — focus now beats generalism and "what kind of company am I?"
+  is a real, costed choice. Next in the sequence: CE4 (Stakes Curve) or CE5 (Live Launch).**
 
 ### CE4 · The Stakes Curve — economic pressure that rises, not falls
 

@@ -816,7 +816,7 @@ const MISSIONS = [
     modules:['lv','transfer','crew'],
     profile:[{name:'Ascent to LEO', dv:9400, by:'lv'},{name:'Trans-Lunar Injection', dv:3120, by:'transfer'},{name:'Lunar Orbit Insertion', dv:900, by:'transfer'},{name:'Trans-Earth Injection', dv:900, by:'transfer'}],
     blurb:'Capture into lunar orbit, hold, then burn home. Your transfer stage must do all three deep-space burns on one tank.<span class="hist">↳ Apollo 10 rehearsed the full profile bar the landing in May 1969.</span>'},
-  {id:'luna_landing', name:'Lunar Landing',         crew:2, days:10, payout:160.0, rep:260, minRep:420, reqResearch:'lunar_lander',
+  {id:'luna_landing', name:'Lunar Landing',         crew:2, days:10, payout:160.0, rep:260, minRep:420, reqResearch:null, archFork:'luna_landing', // CE3(c): gated by the committed lunar architecture (LOR/Direct/EOR), not a single tech
     modules:['lv','transfer','lander','crew'],
     profile:[{name:'Ascent to LEO', dv:9400, by:'lv'},
              {name:'Trans-Lunar Injection', dv:3120, by:'transfer'},
@@ -1010,7 +1010,11 @@ function geoRelBonus(){ let s=0; for(const st of (state.stages||[])) s+=GEO_REL_
    reliability modifier — no new missions, but a deep strategic fork. */
 const MISSION_ARCH = {
   luna_landing: [
-    {id:'lor', name:'Lunar Orbit Rendezvous', relMod:0,
+    // CE3(c): the lunar architecture fork — a committed, mutually-exclusive company choice.
+    // Each route demands a DIFFERENT enabling technology (lander vs heavy-lift vs rendezvous),
+    // so your research focus (CE3b) decides which path is open and cheap. reqResearch gates which
+    // architectures you may commit to; the base luna_landing mission is flyable once ANY is unlocked.
+    {id:'lor', name:'Lunar Orbit Rendezvous', relMod:0, reqResearch:'lunar_lander', needs:'a dedicated lunar lander',
      blurb:'A dedicated two-stage lander descends while the transfer stage waits in orbit — the mass-efficient route Apollo took. Needs the lander, but the lightest propellant bill.',
      modules:['lv','transfer','lander','crew'],
      profile:[{name:'Ascent to LEO', dv:9400, by:'lv'},
@@ -1019,14 +1023,23 @@ const MISSION_ARCH = {
               {name:'Powered Descent', dv:1730, by:'descent', dropAfter:['descent']},
               {name:'Ascent to Lunar Orbit', dv:1730, by:'ascent', dropAfter:['ascent']},
               {name:'Trans-Earth Injection', dv:900, by:'transfer'}]},
-    {id:'direct', name:'Direct Ascent', relMod:0.02,
-     blurb:'No separate lander — the transfer stage carries the whole crew stack down to the surface and back. Far fewer separations (steadier reliability), but it must haul all the return propellant down and up: a brutal mass penalty demanding an enormous stage.',
+    {id:'direct', name:'Direct Ascent', relMod:0.02, reqResearch:'heavy_lift_infrastructure', needs:'heavy-lift ground infrastructure',
+     blurb:'No separate lander — the transfer stage carries the whole crew stack down to the surface and back. Far fewer separations (steadier reliability), but it must haul all the return propellant down and up: a brutal mass penalty demanding an enormous launcher.',
      modules:['lv','transfer','crew'],
      profile:[{name:'Ascent to LEO', dv:9400, by:'lv'},
               {name:'Trans-Lunar Injection', dv:3120, by:'transfer'},
               {name:'Lunar Orbit Insertion', dv:900, by:'transfer'},
               {name:'Powered Descent', dv:1730, by:'transfer'},
               {name:'Ascent from Surface', dv:1730, by:'transfer'},
+              {name:'Trans-Earth Injection', dv:900, by:'transfer'}]},
+    {id:'eor', name:'Earth Orbit Rendezvous', relMod:-0.02, reqResearch:'orbital_assembly', days:12, needs:'orbital assembly & docking',
+     blurb:'Assemble the lunar stack in Earth orbit from several smaller launches, then depart as one — the route for a company that mastered rendezvous instead of a giant rocket or a bespoke lander. A lander still descends (mass-efficient), but every docking is a chance to fail: more ops, more risk.',
+     modules:['lv','transfer','lander','crew','assembly'],
+     profile:[{name:'Ascent to LEO (assembled)', dv:9400, by:'lv'},
+              {name:'Trans-Lunar Injection', dv:3120, by:'transfer'},
+              {name:'Lunar Orbit Insertion', dv:900, by:'transfer'},
+              {name:'Powered Descent', dv:1730, by:'descent', dropAfter:['descent']},
+              {name:'Ascent to Lunar Orbit', dv:1730, by:'ascent', dropAfter:['ascent']},
               {name:'Trans-Earth Injection', dv:900, by:'transfer'}]},
   ],
   mars_orbit: [
@@ -1041,7 +1054,51 @@ const MISSION_ARCH = {
   ],
 };
 function missionArchList(id){ return MISSION_ARCH[id]||null; }
-function activeArchId(id){ const list=missionArchList(id); if(!list) return null; return (state.architectures&&state.architectures[id]) || list[0].id; }
+// ---------- CE3 slice (c): the lunar architecture fork — a committed, mutually-exclusive choice ----------
+// luna_landing's three routes each demand a different enabling tech; you can only commit to one you've
+// unlocked, the base mission is flyable once ANY is unlocked, and switching afterward (you've built a
+// whole program around it) costs heavy capital + months — a genuine either/or, the one hard fork.
+function lunarArchUnlocked(a){ return !!(a && (!a.reqResearch || (state.research && state.research[a.reqResearch]))); }
+function anyLunarArchUnlocked(){ const l=missionArchList('luna_landing')||[]; return l.some(lunarArchUnlocked); }
+function firstUnlockedLunarArch(){ const l=missionArchList('luna_landing')||[]; const a=l.find(lunarArchUnlocked); return a?a.id:(l[0]&&l[0].id)||null; }
+function committedLunarArch(){ return state.lunarArch||null; }
+const LUNAR_SWITCH_MONTHS=8;
+function lunarSwitchCost(){ return round2(Math.max(20, (state.flights||0)*1.0 + 15)); } // re-architecting a lunar program is a major capital event
+function canCommitLunarArch(id){
+  const l=missionArchList('luna_landing')||[]; const a=l.find(x=>x.id===id);
+  if(!a) return {ok:false,why:'unknown architecture'};
+  if(!lunarArchUnlocked(a)) return {ok:false,why:`needs ${a.needs}`};
+  if(state.lunarArch===id) return {ok:false,why:'already committed'};
+  if(!state.lunarArch) return {ok:true, first:true};                       // first commitment is free
+  if(state.money < lunarSwitchCost()) return {ok:false,why:`re-architecting costs ${fM(lunarSwitchCost())}`};
+  return {ok:true, first:false};
+}
+function commitLunarArch(id){
+  const chk=canCommitLunarArch(id); if(!chk.ok) return;
+  const a=(missionArchList('luna_landing')||[]).find(x=>x.id===id);
+  if(chk.first){
+    state.lunarArch=id;
+    log('ok',`Lunar architecture committed: ${a.name}. Your whole lunar program is built around it now.`);
+  }else{
+    const cost=lunarSwitchCost();
+    state.money=round2(state.money-cost); state.lunarArch=id;
+    log('note',`Lunar program re-architected to ${a.name} — ${fM(cost)} and ${LUNAR_SWITCH_MONTHS} months of redesign.`);
+    advance(LUNAR_SWITCH_MONTHS);
+  }
+  render();
+}
+// the gate a player actually flies through: normal reqResearch, plus the luna_landing arch fork
+function missionTechMet(m){
+  if(!m) return false;
+  if(m.reqResearch && !(state.research && state.research[m.reqResearch])) return false;
+  if(m.id==='luna_landing') return anyLunarArchUnlocked();
+  return true;
+}
+function activeArchId(id){
+  const list=missionArchList(id); if(!list) return null;
+  if(id==='luna_landing') return committedLunarArch() || firstUnlockedLunarArch() || list[0].id; // committed fork (or first unlocked preview)
+  return (state.architectures&&state.architectures[id]) || list[0].id;
+}
 function missionArchOf(id){ const list=missionArchList(id); if(!list) return null; const aid=activeArchId(id); return list.find(a=>a.id===aid)||list[0]; }
 // the active mission as the player will actually fly it (base merged with the chosen architecture)
 function curMission(){
@@ -1051,7 +1108,11 @@ function curMission(){
   if(!arch) return base;
   return Object.assign({}, base, {profile:arch.profile||base.profile, modules:arch.modules||base.modules, days:arch.days!=null?arch.days:base.days, _arch:arch});
 }
-function setArchitecture(missionId, archId){ if(!missionArchList(missionId)) return; state.architectures=state.architectures||{}; state.architectures[missionId]=archId; render(); }
+function setArchitecture(missionId, archId){
+  if(!missionArchList(missionId)) return;
+  if(missionId==='luna_landing'){ commitLunarArch(archId); return; } // CE3(c): the lunar fork is a committed choice, not a free toggle
+  state.architectures=state.architectures||{}; state.architectures[missionId]=archId; render();
+}
 
 /* ---------- #3: Vehicle families (named lineages with heritage) ----------
    A family is a persistent, named saved design (OV-1 → OV-2 → OV-Heavy) that lives
@@ -1505,6 +1566,7 @@ function newGame(difficulty){
     padMonthAbs:-1, padMonthUsed:0, // CE2(b): launch-cadence — pad slots used in the current calendar month
     standingProd:null, juggernautReached:false, // CE2(c): juggernaut capstone — standing production line + milestone flag
     doctrine:null, // CE3(a): company doctrine (strategic identity) — null = undeclared/neutral
+    lunarArch:null, // CE3(c): committed lunar architecture (LOR/Direct/EOR) — null = uncommitted
     uiLayer:'advanced', // #23: progressive UI complexity (basic/advanced/expert), independent of difficulty
   };
   log('info','Company founded. The pad is yours — go make some noise.');
@@ -3913,7 +3975,7 @@ function finalizeLaunch(ctx, ops){
 }
 function autoAdvanceMission(){
   // nudge player toward the next available, uncompleted mission they can actually fly
-  const next=MISSIONS.find(m=>!state.completed[m.id] && state.rep>=m.minRep && (!m.reqResearch||state.research[m.reqResearch]));
+  const next=MISSIONS.find(m=>!state.completed[m.id] && state.rep>=m.minRep && missionTechMet(m));
   if(next) state.activeMission=next.id;
 }
 
@@ -4094,7 +4156,7 @@ function setAscentEng(v){state.ascent.eng=v;render();}
 function setAscentProp(v){state.ascent.prop=Math.max(0.1,Math.min(40,parseFloat(v)||0.1));render();}
 function setEclss(id){ const t=ECLSS[id]; if(t.research && !state.research[t.research]) return; state.eclss=id; render(); }
 function setTestLevel(n){ state.testLevel=n; render(); }
-function selectMission(id){const m=MISSIONS.find(x=>x.id===id); if(state.rep<m.minRep)return; if(m.reqResearch&&!state.research[m.reqResearch])return; state.activeMission=id; closeLiveModal(); state.tab='bench'; render();}
+function selectMission(id){const m=MISSIONS.find(x=>x.id===id); if(state.rep<m.minRep)return; if(!missionTechMet(m))return; state.activeMission=id; closeLiveModal(); state.tab='bench'; render();}
 function reqsMet(r){
   return r.req.every(q=>state.research[q]) && (!r.reqMissionDone || state.completed[r.reqMissionDone]);
 }
@@ -4349,7 +4411,7 @@ function hideModal(){activeModal=null;$('modal').classList.add('hidden');} // sl
 
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=29; // v29: CE3(a) company doctrine (state.doctrine, null=undeclared/neutral); v28: CE2(c) juggernaut capstone (state.standingProd/juggernautReached); v27: CE2(b) launch cadence (state.padMonthAbs/padMonthUsed) — load defaults seed all of these; v26: CE1 rival agents (state.rivalState), seedRivalState migrates old rivalFired
+const SAVE_VERSION=30; // v30: CE3(c) lunar architecture fork (state.lunarArch, null=uncommitted; luna_landing reqResearch moved to per-arch gates); v29: CE3(a) company doctrine (state.doctrine, null=undeclared/neutral); v28: CE2(c) juggernaut capstone (state.standingProd/juggernautReached); v27: CE2(b) launch cadence (state.padMonthAbs/padMonthUsed) — load defaults seed all of these; v26: CE1 rival agents (state.rivalState), seedRivalState migrates old rivalFired
 function saveGame(){
   try{
     const payload={v:SAVE_VERSION, ts:Date.now(), state:JSON.parse(JSON.stringify(state))};
@@ -4389,7 +4451,7 @@ function loadGame(){
       staff:[], assignedAstronaut:null,
       vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, rehearsal:false, techLevel:{}, divisions:{}, breakthroughCooldown:3, relDebt:0, powerSource:'solar',
       recentBuilds:[], materials:defaultMaterialsState(),
-      buildQueue:[], hangar:[], orderSeq:0, padMonthAbs:-1, padMonthUsed:0, standingProd:null, juggernautReached:false, doctrine:null, uiLayer:'advanced', metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[]
+      buildQueue:[], hangar:[], orderSeq:0, padMonthAbs:-1, padMonthUsed:0, standingProd:null, juggernautReached:false, doctrine:null, lunarArch:null, uiLayer:'advanced', metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[]
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -4442,7 +4504,7 @@ function autoLoad(){
       staff:[], assignedAstronaut:null,
       vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, rehearsal:false, techLevel:{}, divisions:{}, breakthroughCooldown:3, relDebt:0, powerSource:'solar',
       recentBuilds:[], materials:defaultMaterialsState(),
-      buildQueue:[], hangar:[], orderSeq:0, padMonthAbs:-1, padMonthUsed:0, standingProd:null, juggernautReached:false, doctrine:null, uiLayer:'advanced', metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[]
+      buildQueue:[], hangar:[], orderSeq:0, padMonthAbs:-1, padMonthUsed:0, standingProd:null, juggernautReached:false, doctrine:null, lunarArch:null, uiLayer:'advanced', metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[]
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -7185,7 +7247,7 @@ function render(){
    manufacturing system (#7). */
 function monthlyPayroll(){ return round2((state.staff||[]).reduce((a,s)=>{const p=personById(s.id);return a+(p?p.salary:0);},0)); }
 function availableContracts(){
-  return MISSIONS.filter(m=> state.rep>=m.minRep && (!m.reqResearch||state.research[m.reqResearch]) && !state.completed[m.id]).length;
+  return MISSIONS.filter(m=> state.rep>=m.minRep && missionTechMet(m) && !state.completed[m.id]).length;
 }
 function commandSummary(){
   const era=currentEra();
@@ -7219,7 +7281,7 @@ function firstResearchableToward(targetId){
   for(const q of (r.req||[])){ if(!state.research[q]){ const deeper=firstResearchableToward(q); if(deeper) return deeper; } }
   return reqsMet(r) ? r : null; // all research prereqs met (else gated by a mission we can't shortcut)
 }
-function missionFlyable(mm){ return !!(mm && state.rep>=mm.minRep && (!mm.reqResearch||state.research[mm.reqResearch])); }
+function missionFlyable(mm){ return !!(mm && state.rep>=mm.minRep && missionTechMet(mm)); }
 // the single best next move — answers "what should I do next?"
 function recommendedAction(){
   const no=nextObjective();
@@ -7253,6 +7315,12 @@ function missionAdvisor(){
   if(mm.reqResearch){ const done=!!state.research[mm.reqResearch], rn=(RESEARCH.find(r=>r.id===mm.reqResearch)||{}).name||mm.reqResearch;
     reqs.push({ok:done, label:'Research: '+rn});
     if(!done){ if(state.activeResearch) actions.push({label:`R&D in progress · ${state.activeResearch.monthsLeft} mo`,tab:'rnd'}); else { const r=firstResearchableToward(mm.reqResearch); if(r) actions.push({label:'Research '+r.name,tab:'rnd',researchId:r.id}); } }
+  }
+  // CE3(c): lunar architecture fork gate — unlock + commit to a route (LOR/Direct/EOR)
+  if(mm.archFork==='luna_landing'){ const any=anyLunarArchUnlocked(), committed=!!committedLunarArch();
+    reqs.push({ok:any, label: any?(committed?`Lunar architecture: ${missionArchOf('luna_landing').name}`:'Commit a lunar architecture'):'Unlock a lunar architecture (LOR / Direct / EOR)'});
+    if(!any){ const a=(missionArchList('luna_landing')||[]).find(x=>x.reqResearch); const r=a&&firstResearchableToward(a.reqResearch); if(r) actions.push({label:'Research '+r.name,tab:'rnd',researchId:r.id}); }
+    else if(!committed) actions.push({label:'Choose a lunar architecture',tab:'bench'});
   }
   // reputation gate
   const repOk=state.rep>=mm.minRep;
@@ -7316,8 +7384,8 @@ function agencyAlerts(){
 // uncompleted contracts with reward + lock state, for the left panel
 function ccContracts(){
   return MISSIONS.filter(m=>!state.completed[m.id]).map(m=>{
-    const repOk=state.rep>=m.minRep, resOk=!m.reqResearch||state.research[m.reqResearch];
-    let why=''; if(!resOk) why=`needs ${(RESEARCH.find(r=>r.id===m.reqResearch)||{}).name||'research'}`; else if(!repOk) why=`needs ${m.minRep} rep`;
+    const repOk=state.rep>=m.minRep, resOk=missionTechMet(m);
+    let why=''; if(!resOk) why = m.archFork ? 'needs a lunar architecture' : `needs ${(RESEARCH.find(r=>r.id===m.reqResearch)||{}).name||'research'}`; else if(!repOk) why=`needs ${m.minRep} rep`;
     return {id:m.id, name:m.name, payout:m.payout||0, rep:m.rep||0, crew:m.crew||0, locked:!(repOk&&resOk), why};
   });
 }
@@ -8660,17 +8728,26 @@ function renderArchitecture(){
   if(!list){ card.classList.add('hidden'); return; }
   card.classList.remove('hidden');
   const aid=activeArchId(id);
+  const fork = id==='luna_landing'; // CE3(c): the committed, tech-gated lunar fork
+  const committed = fork ? committedLunarArch() : null;
   const opts=list.map(a=>{
     const sel=a.id===aid;
-    return `<div class="diffcard ${sel?'sel':''}" style="cursor:pointer" onclick="setArchitecture('${id}','${a.id}')">
-      <div class="tag">${sel?'flying this way':'choose'}</div>
+    const locked = fork && !lunarArchUnlocked(a);
+    const isCommitted = fork && committed===a.id;
+    const tag = locked ? `🔒 needs ${a.needs}` : (fork ? (isCommitted?'committed — flying this way':(committed?`switch · ${fM(lunarSwitchCost())}`:'commit (free)')) : (sel?'flying this way':'choose'));
+    const click = locked ? '' : ` onclick="setArchitecture('${id}','${a.id}')"`;
+    return `<div class="diffcard ${sel?'sel':''}" style="${locked?'opacity:.55;cursor:not-allowed':'cursor:pointer'}"${click}>
+      <div class="tag">${tag}</div>
       <h3 style="font-size:13px">${a.name}</h3>
       <p style="font-size:11px">${a.blurb}</p>
     </div>`;
   }).join('');
+  const lead = fork
+    ? `Your lunar architecture is a <b>one-way commitment</b> — three routes, each demanding a different technology. ${committed?`You're committed to <b>${missionArchOf(id).name}</b>; re-architecting costs ${fM(lunarSwitchCost())} and ${LUNAR_SWITCH_MONTHS} months.`:'The first commitment is free; switching later is a major capital event.'}`
+    : 'How you get there is a strategy in itself — each path reshapes the burns, the hardware it needs, and the risk. Pick one, then size the vehicle for its profile on the right.';
   card.innerHTML=`<h2>Mission Architecture</h2>
-    <p class="muted" style="font-size:12px;margin:-4px 0 8px">How you get there is a strategy in itself — each path reshapes the burns, the hardware it needs, and the risk. Pick one, then size the vehicle for its profile on the right.</p>
-    <div class="diffgrid" style="grid-template-columns:1fr 1fr">${opts}</div>`;
+    <p class="muted" style="font-size:12px;margin:-4px 0 8px">${lead}</p>
+    <div class="diffgrid" style="grid-template-columns:${list.length>2?'1fr 1fr 1fr':'1fr 1fr'}">${opts}</div>`;
 }
 // M10: static, design-driven silhouette of the current vehicle on the bench —
 // reuses the launch animation's buildVehicleShape/drawVehicle with no flame.
@@ -9589,7 +9666,7 @@ function renderBodyCard(){
 function flyTo(missionId){
   const m=MISSIONS.find(x=>x.id===missionId);
   if(state.rep<m.minRep) return;
-  if(m.reqResearch && !state.research[m.reqResearch]) return;
+  if(!missionTechMet(m)) return;
   state.activeMission=missionId;
   closeLiveModal(); // slice 6: navigating to the bench closes any open deep-view modal
   state.tab='bench';
@@ -9809,7 +9886,7 @@ function renderPrograms(){
     const objs=p.missions.map(mid=>{
       const m=MISSIONS.find(x=>x.id===mid); if(!m) return '';
       const isDone=state.completed[mid];
-      const repOk=state.rep>=m.minRep, resOk=!m.reqResearch||state.research[m.reqResearch];
+      const repOk=state.rep>=m.minRep, resOk=missionTechMet(m);
       const isNext=nx&&nx.missionId===mid;
       const pill=isDone?'<span class="pill ok">done</span>'
                 : (repOk&&resOk)?'<span class="pill">available</span>'
