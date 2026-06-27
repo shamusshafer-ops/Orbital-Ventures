@@ -2820,6 +2820,25 @@ engine catalog (BC4).
       stays under 50 m/s loss; renderStages/readout no-throw. **Browser-verify: a low-thrust upper
       stage now shows the loss and can fail an otherwise-sufficient Δv.**
 
+## Design Bench UX — sticky rocket + editor tabs (2026-06-27)
+
+- [x] **Build & Launch on top + rocket always in view + editor tabs** *(Built 2026-06-27.)* Three
+      bench fixes. (1) **Build & Launch moved above the rocket image** in `#vehicleCard` so the primary
+      CTA sits at the pinned top of the card. (2) **Rocket stays in view while scrolling the editor:**
+      `.bench-rocket` was already `position:sticky`, but a tall card let its bottom (the old CTA spot)
+      scroll out of reach — added `max-height:calc(100vh − topbar − 20px)` + `overflow:auto` and a
+      responsive `max-height` on the preview/host, so the whole card (CTA + rocket) stays pinned and
+      wholly visible, scrolling within itself only if the viewport is very short (and reverts to static
+      on the ≤900px stacked layout). (3) **Editor cards consolidated under tabs:** the long stack of
+      editor cards is grouped into four tabs — **Vehicle** (stages + boosters), **Modules** (transfer/
+      lander/crew/power), **Customize** (livery/parts/blueprints/family), **Mission** (architecture/
+      window/routes). `renderBenchTabs()` builds the bar, **hides any tab whose cards are all empty/
+      hidden** for the current mission, and falls back if the active tab empties; card ids are
+      unchanged so every render function is untouched. **Validation:** load + `render()` + `renderStages`
+      regression green (ov-reentry-station 55/55); `renderBenchTabs`/`setBenchTab`/`render` no-throw on
+      the bench tab. **Browser-verify: CTA pinned above the rocket, rocket stays put while scrolling,
+      tabs switch + auto-hide when empty.**
+
 ## Always-visible Ops Timeline (2026-06-27)
 
 - [x] **Flight & Ops log → pinned top-bar timeline** *(Built 2026-06-27. Partially delivers #29.)*

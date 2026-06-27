@@ -200,8 +200,18 @@
   .spark-k{font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:3px}
   /* Presentation pass: Design Bench centerpiece — rocket preview beside the editor */
   .bench-stage{display:grid;grid-template-columns:300px minmax(0,1fr);gap:16px;align-items:start}
-  .bench-rocket{position:sticky;top:calc(var(--topbar-h) + 8px)}
-  @media(max-width:900px){ .bench-stage{grid-template-columns:1fr} .bench-rocket{position:static} }
+  /* rocket stays pinned & wholly in view while the editor scrolls; if it would exceed the
+     viewport it scrolls within itself so the Build & Launch CTA (now at the top) never leaves. */
+  .bench-rocket{position:sticky;top:calc(var(--topbar-h) + 8px);max-height:calc(100vh - var(--topbar-h) - 20px);overflow:auto}
+  .bench-rocket #vehiclePreview,.bench-rocket #vehHost{max-height:calc(100vh - var(--topbar-h) - 150px)}
+  @media(max-width:900px){ .bench-stage{grid-template-columns:1fr} .bench-rocket{position:static;max-height:none;overflow:visible} }
+  /* bench editor tabs — consolidate the many editor cards under a few tabs */
+  .bench-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+  .bench-tab{font-family:var(--mono);font-size:12px;padding:5px 12px;border:1px solid var(--line);border-radius:7px;background:var(--panel);color:var(--muted);cursor:pointer}
+  .bench-tab:hover{border-color:var(--readout)}
+  .bench-tab.active{border-color:var(--readout);color:var(--readout);background:var(--panel2)}
+  .bench-panel{display:none;flex-direction:column;gap:14px}
+  .bench-panel.active{display:flex}
   /* recommended-action hero card */
   .rec-card{border:1px solid var(--ignite);border-radius:8px;padding:12px;background:linear-gradient(180deg,rgba(245,166,35,.10),rgba(245,166,35,.02))}
   .rec-card .lbl{font-size:10px;text-transform:uppercase;letter-spacing:.16em;color:var(--ignite)}
@@ -413,30 +423,42 @@
            right rail into a prominent sticky column at the center of the build stage. -->
       <div class="card bench-rocket" id="vehicleCard" style="text-align:center">
         <div class="mission-tag" style="text-align:left">Your vehicle</div>
-        <div id="vehHost" style="display:none;width:100%;max-width:300px;margin:8px auto 0;aspect-ratio:240/360"></div>
-        <canvas id="vehiclePreview" width="240" height="360" style="max-width:100%;height:auto;display:block;margin:8px auto 0"></canvas>
+        <!-- Build & Launch sits ABOVE the rocket so the primary CTA is always at the pinned top -->
+        <div id="benchLaunch" style="margin:6px 0 10px"></div>
+        <div id="vehHost" style="display:none;width:100%;max-width:260px;margin:0 auto;aspect-ratio:240/360"></div>
+        <canvas id="vehiclePreview" width="240" height="360" style="max-width:100%;height:auto;display:block;margin:0 auto"></canvas>
         <div id="vehicleLabel" class="dim" style="font-size:11px;margin-top:8px"></div>
-        <div id="benchLaunch" style="margin-top:10px"></div>
       </div>
       <div class="bench-editor">
-        <div class="card" id="vehicleFamilyCard"></div>
-        <div class="card" id="blueprintsCard"></div>
-        <div class="card" id="liveryCard"></div>
-        <div class="card" id="partsCard"></div>
-        <div class="card hidden" id="archCard"></div>
-        <div class="card">
-          <h2>Vehicle — Stages (bottom → top)</h2>
-          <div id="stages"></div>
-          <button class="btn ghost" id="addStage" onclick="addStage()">+ Add stage</button>
-          <span class="dim" style="font-size:11px;margin-left:8px">Lower stages carry everything above them — that's the tax staging pays.</span>
+        <!-- editor cards consolidated under tabs (renderBenchTabs builds the bar + hides empty
+             tabs). Card ids are unchanged so every render function is untouched. -->
+        <div class="bench-tabs" id="benchTabs"></div>
+        <div class="bench-panel active" data-benchtab="vehicle">
+          <div class="card">
+            <h2>Vehicle — Stages (bottom → top)</h2>
+            <div id="stages"></div>
+            <button class="btn ghost" id="addStage" onclick="addStage()">+ Add stage</button>
+            <span class="dim" style="font-size:11px;margin-left:8px">Lower stages carry everything above them — that's the tax staging pays.</span>
+          </div>
+          <div class="card hidden" id="boostersCard"></div>
         </div>
-        <div class="card hidden" id="boostersCard"></div>
-        <div class="card hidden" id="transferCard"></div>
-        <div class="card hidden" id="landerCard"></div>
-        <div class="card hidden" id="crewCard"></div>
-        <div class="card hidden" id="powerCard"></div>
-        <div class="card hidden" id="windowCard"></div>
-        <div class="card hidden" id="routesCard"></div>
+        <div class="bench-panel" data-benchtab="modules">
+          <div class="card hidden" id="transferCard"></div>
+          <div class="card hidden" id="landerCard"></div>
+          <div class="card hidden" id="crewCard"></div>
+          <div class="card hidden" id="powerCard"></div>
+        </div>
+        <div class="bench-panel" data-benchtab="customize">
+          <div class="card" id="liveryCard"></div>
+          <div class="card" id="partsCard"></div>
+          <div class="card" id="blueprintsCard"></div>
+          <div class="card" id="vehicleFamilyCard"></div>
+        </div>
+        <div class="bench-panel" data-benchtab="mission">
+          <div class="card hidden" id="archCard"></div>
+          <div class="card hidden" id="windowCard"></div>
+          <div class="card hidden" id="routesCard"></div>
+        </div>
       </div>
     </div>
     <!-- readout stays in the persistent right rail (slice 3); the rocket preview now lives
@@ -7590,7 +7612,7 @@ function render(){
   if(state.tab!=='bench') pauseVehGame();
   if(state.tab!=='map') pauseMapGame();
   if(state.tab!=='station') pauseStationGame();
-  if(state.tab==='bench'){renderVehicleFamilies();renderBlueprints();renderLivery();renderParts();renderArchitecture();renderStages();renderBoosters();renderTransfer();renderLander();renderCrew();renderPower();renderWindowPlanner();renderRoutes();renderReadout();renderVehiclePreview();renderBenchLaunch();}
+  if(state.tab==='bench'){renderVehicleFamilies();renderBlueprints();renderLivery();renderParts();renderArchitecture();renderStages();renderBoosters();renderTransfer();renderLander();renderCrew();renderPower();renderWindowPlanner();renderRoutes();renderReadout();renderVehiclePreview();renderBenchLaunch();renderBenchTabs();}
   if(state.tab==='command' && hubPanel==='contracts') renderMissions(); // slice 5: contracts drill content (passiveCard + missionList)
   renderNextObjective();
   if(state.tab==='rnd')renderRnd();
@@ -9225,6 +9247,29 @@ function renderBenchLaunch(){
   catch(e){ host.innerHTML=''; return; }
   host.innerHTML=`<button class="launch" style="width:100%" onclick="launch()" ${chk.ok?'':'disabled'}>${chk.ok?launchButtonLabel(m,v):'Launch unavailable'}</button>
     ${chk.ok?'<div class="dim" style="font-size:11px;text-align:center;margin-top:4px">or press <b>Space</b></div>':`<div class="flag dim" style="color:var(--dim);margin-top:4px">${chk.why}</div>`}`;
+}
+// Design-bench editor tabs: consolidate the stacked editor cards under a few tabs. The cards keep
+// their ids (render functions untouched); this only builds the tab bar, hides tabs whose cards are
+// all empty/hidden for the current mission, and shows the active panel.
+const BENCH_TABS=[
+  {key:'vehicle',   label:'🚀 Vehicle'},
+  {key:'modules',   label:'🛰 Modules'},
+  {key:'customize', label:'🎨 Customize'},
+  {key:'mission',   label:'◎ Mission'},
+];
+let benchTab='vehicle';
+function setBenchTab(k){ benchTab=k; renderBenchTabs(); }
+function renderBenchTabs(){
+  const bar=$('benchTabs'); if(!bar) return;
+  const panels=document.querySelectorAll('.bench-panel');
+  const hasContent={};
+  panels.forEach(p=>{ const k=p.getAttribute('data-benchtab'); let any=false;
+    p.querySelectorAll('.card').forEach(c=>{ if(!c.classList.contains('hidden') && (c.innerHTML||'').trim()) any=true; });
+    hasContent[k]=any; });
+  const avail=BENCH_TABS.filter(t=>hasContent[t.key]);
+  if(avail.length && !avail.some(t=>t.key===benchTab)) benchTab=avail[0].key; // active tab emptied → fall back
+  bar.innerHTML=avail.map(t=>`<button class="bench-tab ${t.key===benchTab?'active':''}" onclick="setBenchTab('${t.key}')">${t.label}</button>`).join('');
+  panels.forEach(p=>{ const k=p.getAttribute('data-benchtab'); p.classList.toggle('active', k===benchTab && !!hasContent[k]); });
 }
 function renderReadout(){
   const m=curMission();
