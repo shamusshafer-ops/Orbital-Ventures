@@ -377,7 +377,12 @@
          fullscreen / wide) all live in the HUD ⚙ menu now, decluttering the opsbar. -->
     <button class="btn ghost" id="uiLayerBtn" onclick="cycleUiLayer()" title="Detail level — Basic hides advanced metrics; Expert shows everything. (Also in the ⚙ menu.)">View: Advanced</button>
     <button class="btn ghost" onclick="showSettingsMenu()" title="Settings, save / load / new game, and display options">⚙ Menu</button>
-    <button class="btn" onclick="advanceMonth()">▸ Advance 1 month <span class="dim" id="overheadLabel">(−$0.12M)</span></button>
+    <span class="timestep" style="display:inline-flex;gap:4px;align-items:center" title="Advance time — overhead accrues per day">
+      <button class="btn ghost" onclick="stepTime(1)" title="Advance 1 day">+1d</button>
+      <button class="btn ghost" onclick="stepTime(7)" title="Advance 1 week">+1w</button>
+      <button class="btn" onclick="stepTime(DAYS_PER_MONTH)">▸ +1 month <span class="dim" id="overheadLabel">(−$0.12M/mo)</span></button>
+      <button class="btn ghost" onclick="stepTime(DAYS_PER_MONTH*12)" title="Advance 1 year">+1y</button>
+    </span>
     <button class="btn ghost" id="skipBtn" onclick="skipResearch()">Skip to R&amp;D done</button>
   </div>
   <!-- Always-visible flight & ops timeline: current date + upcoming (R&D, builds, windows) +
@@ -1639,7 +1644,7 @@ const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov',
 const $=id=>document.getElementById(id);
 const fM=v=>'$'+v.toFixed(2)+'M';
 const fI=v=>Math.round(v).toLocaleString();
-function dateStr(){return MONTHS[state.month]+' '+state.year;}
+function dateStr(){return ((state.day||0)+1)+' '+MONTHS[state.month]+' '+state.year;} // "14 Mar 1962" — day-of-month is 1-based (Time Granularity)
 function log(kind,msg,nav){state.log.unshift({when:dateStr(),kind,msg,nav}); if(state.log.length>40)state.log.pop();}
 function curSigma(){return clampA(state.sigma * tankMaterial().sigmaMult, 0.02, 0.9);} // BC2: tank material scales structural coefficient
 function curRel(){
@@ -1972,32 +1977,41 @@ function resolveSetback(choice){
   _pendingSetback=null; hideModal();
   if(state.money<0) gameOver(); else render();
 }
-// Time Granularity epic, slice 1 — the simulation funnel now iterates DAYS, not months. The
-// (unchanged) monthly subsystem block fires only when a whole month completes, so any whole-month
-// advance is BIT-IDENTICAL to the old monthly tick: every caller passes integer months → exactly
-// `months` boundary crossings, in the same order, calling the same RNG the same number of times.
-// state.day + absDay() are now live for sub-month scheduling; the per-day split of continuous flows
-// (overhead/payroll/R&D accruing 1/30 each day) lands with the day-granular features that use it,
-// where it can be validated against real fractional-advance behaviour rather than speculatively.
+// Time Granularity epic — the simulation funnel iterates DAYS, not months. Each day runs the
+// CONTINUOUS money flows (slice 2: overhead, payroll, Belt royalty — flows whose inputs are stable
+// within a month) at perDay() strength; the discrete MONTHLY block (markets, facilities, R&D
+// countdown, morale, events, rivals, snapshots) fires only when a whole month completes.
+// Whole-month equivalence: every caller still passes integer months, and 30·perDay(x)=x, so a
+// whole-month advance reproduces the old monthly economy within float ε, crossing exactly `months`
+// boundaries in the same order with the same RNG stream. Continuous flows accrue sub-month (so
+// day/week stepping charges proportional overhead — no free time); the monthly-gated subsystems
+// (R&D progress, funding, facility output) still land on the boundary — re-authoring those at day
+// resolution is slice 3. The continuous set is intentionally the within-month-stable flows only:
+// R&D stays monthly-gated because its rate reads staff morale, which drifts on the monthly tick.
 const DAYS_PER_MONTH=30; // abstracted flat 30-day month — keeps absMonth()/synodic/pad-cadence math exact
 function perDay(monthlyRate){ return monthlyRate/DAYS_PER_MONTH; } // a monthly rate spread across the month
 function daysFor(months){ return Math.round(months*DAYS_PER_MONTH); } // a duration in months → whole days
 function absDay(){ return absMonth()*DAYS_PER_MONTH + (state.day||0); }
 function advance(months){ advanceDays(daysFor(months)); }
 function advanceDays(days){
-  for(let d=0; d<days; d++){
+  for(let i=0; i<days; i++){
     state.day=(state.day||0)+1;
-    if(state.day<DAYS_PER_MONTH) continue;            // still mid-month — only the calendar moved
-    state.day=0; state.month++; if(state.month>11){state.month=0;state.year++;} // a month completed
-    tickMonthlyBoundary();
+    const monthEnd = state.day>=DAYS_PER_MONTH;
+    if(monthEnd){ state.day=0; state.month++; if(state.month>11){state.month=0;state.year++;} } // a month completed
+    tickContinuousDay();              // per-day money flows (overhead, payroll, royalty)
+    if(monthEnd) tickMonthlyBoundary(); // discrete monthly subsystems — same order as the old tick
   }
   if(state.money<0 && !state.over){ gameOver(); }
 }
-// the monthly subsystem tick — unchanged from the original advance() body (≈25 subsystems), now
-// fired once per completed month instead of per loop iteration.
+// the smooth daily flows — inputs are stable within a month, so 30 days sum to the old monthly total.
+function tickContinuousDay(){
+  state.money-=perDay(Math.max(0,diff().overhead+econOverheadAdd()+productionUpkeep()+empireOpex()+loanInterest())); // overhead (difficulty + market events + #7 production upkeep + CE4(a) empire carrying cost + CE4(c) bridge-loan interest)
+  if(state.pgmRoyalty>0) state.money+=perDay(state.pgmRoyalty); // M7: platinum-group royalties from an established Belt claim
+  state.staff.forEach(s=>{ const p=personById(s.id); if(p) state.money-=perDay(p.salary); }); // M6: personnel salary
+}
+// the monthly subsystem tick — the original advance() body minus the now-continuous flows (≈22
+// subsystems), fired once per completed month instead of per loop iteration.
 function tickMonthlyBoundary(){
-    state.money-=Math.max(0,diff().overhead+econOverheadAdd()+productionUpkeep()+empireOpex()+loanInterest()); // monthly overhead (difficulty + market events + #7 production upkeep + CE4(a) empire carrying cost + CE4(c) bridge-loan interest)
-    if(state.pgmRoyalty>0) state.money+=state.pgmRoyalty; // M7: platinum-group royalties from an established Belt claim
     tickPassiveContracts(); // passive-income contracts pay monthly, then age toward expiry/cooldown
     state.publicSupport=clampA(publicSupport()+(SUPPORT_BASE-publicSupport())*SUPPORT_REVERT, SUPPORT_MIN, SUPPORT_MAX); // #8: mood drifts back to neutral
     state.money+=govMonthlyFunding(); // #8: public support buys government funding
@@ -2029,12 +2043,6 @@ function tickMonthlyBoundary(){
     materialPriceTick();
     tickBuildQueue(); // #7 final: progress queued vehicle builds; finished ones go to the hangar
     checkJuggernaut(); tickStandingProduction(); // CE2(c): juggernaut milestone + standing self-funding production line
-
-    // M6: personnel salary deduction
-    state.staff.forEach(s=>{
-      const p=personById(s.id);
-      if(p) state.money-=p.salary;
-    });
 
     // M6: morale tick — slow drift toward 50 and commend cooldown
     state.staff.forEach(s=>{
@@ -3078,7 +3086,11 @@ function reconcileResearch(){
   }
   for(const r of RESEARCH){ if(state.research[r.id] && r.effect){ if(r.effect.engine) state.unlocked[r.effect.engine]=true; if(r.effect.engines) r.effect.engines.forEach(id=>state.unlocked[id]=true); } }
 }
-function advanceMonth(){ advance(1); if(!state.over){ render(); maybeShowSetback(); } } // #26: surface a setback decision after the tick
+// Time Granularity slice 2: the player's time control. Advance N days, then render + surface any
+// pending R&D setback (the one decision the monthly tick can raise). Overhead accrues per day, so
+// short steps cost proportionally — there is no free time.
+function stepTime(days){ advanceDays(days); if(!state.over){ render(); maybeShowSetback(); } }
+function advanceMonth(){ stepTime(DAYS_PER_MONTH); } // #26: one-month step (used by the advisor nudge)
 function skipResearch(){ if(!state.activeResearch) return;
   let n=state.activeResearch.monthsLeft+1; // each month removes ≥1; +1 guarantees completion absent a setback
   while(n-->0 && state.activeResearch && !_pendingSetback && !state.over) advance(1); // #26: stop the skip at a setback decision
@@ -8678,7 +8690,7 @@ function renderCCTimeline(){
 }
 function applyDifficultyUI(){
   document.body.classList.toggle('hide-eq', !diff().showEquations);
-  const ol=$('overheadLabel'); if(ol) ol.textContent=`(−${fM(diff().overhead)})`;
+  const ol=$('overheadLabel'); if(ol) ol.textContent=`(−${fM(diff().overhead)}/mo)`;
   applyUiLayer();
 }
 // #23: progressive UI complexity — independent of difficulty

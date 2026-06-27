@@ -3454,7 +3454,7 @@ slot whenever — it's the moment-to-moment polish that makes every launch matte
 
 **Goal.** Replace the discrete *monthly* tick with a *daily* one, so time passes (and the
 calendar reads) in days and finer-grained scheduling/events become possible. Status:
-**🟡 IN PROGRESS — slice 1 (equivalence refactor) SHIPPED 2026-06-27; slices 2–5 remain.**
+**🟡 IN PROGRESS — slices 1 (equivalence refactor) + 2 (calendar/controls/per-day overhead) SHIPPED 2026-06-27; slices 3–5 remain.**
 
 **Why it's contained, and why it's still hard.** The simulation is *architecturally
 concentrated*: nearly all time-driven logic lives in one funnel, `advance(months)` — a loop
@@ -3511,15 +3511,29 @@ cadence — run them daily unchanged and events fire ~30× as often.
    exactly one; a 10-year run is monthly≡daily with the sparkline buffer staying capped (no 30× balloon);
    legacy save (no `state.day`) migrates to `day:0`. Render+advance smoke across a year boundary clean; CE5
    regression green (ov-ce5b 31/31, ov-ce5c 26/26, ov-ce5-regress 9/9 — all route through the new funnel).
-2. [ ] **Calendar + controls + labels.** `dateStr()` → "14 Mar 1962"; the "▸ Advance 1 month" button
-   becomes day/week/month steps (advance N days); `skipResearch`/window-wait/launch advances expressed
-   in days. Sweep the ~357 "month"/"/mo" strings (readout, cashflow, cadence, tooltips). **Validation:**
-   render smoke across tabs; date formatting unit checks; no balance drift from slice 1.
-3. [ ] **Duration re-authoring + balance pass.** Re-express research/build/facility/window durations
-   at day resolution where finer steps improve feel (e.g. a 2-day build vs "1 month"), and retune the
-   CE1–CE4 numbers that read better daily (carrying cost, cadence, resupply). **Validation:** re-pin the
-   CE1–CE4 regression harnesses to the daily model; confirm early-game pacing and late-game stakes
-   curves hold.
+2. [x] ✅ **Calendar + controls + per-day overhead — SHIPPED 2026-06-27.** `dateStr()` → "14 Mar 1962"
+   (day-of-month, 1-based). The single "Advance 1 month" button became a **+1d / +1w / ▸+1 month / +1y**
+   stepper (`stepTime(days)` → `advanceDays` + render + setback surface). **Brought forward from slice 4:**
+   the per-day **continuous-flow split** — overhead, payroll, and Belt royalty now accrue via `perDay()`
+   every day in `tickContinuousDay()`, so sub-month steps charge proportional overhead (no free time) and
+   the funnel is honest at day resolution. The continuous set is deliberately the *within-month-stable*
+   flows only: **R&D progress, gov funding, and facility output stay monthly-gated** because their rates
+   read state that the monthly tick itself updates (R&D rate ← staff morale drift; funding ← support
+   revert), so making them per-day now would break equivalence — they convert with the slice-3 duration
+   re-authoring. Whole-month advances stay equivalent (30·perDay(x)=x; the three advance paths remain
+   mutually bit-identical). **The bulk ~357 "month"/"/mo" string sweep is folded into slice 3** — those
+   labels (monthly *rates* "/mo", month-authored *durations*) are still accurate today and should change
+   *with* the numbers, not before them. **Validation — /tmp/ov-tg1.js 29/29:** all slice-1 equivalence
+   holds; sub-month step charges continuous flow but fires no monthly-gated subsystem; two 15-day steps ≡
+   one 30-day step (split sums exactly); pre-boundary money is linear in days; `dateStr`/`stepTime` clock +
+   format checks; `stepTime(30)` ≡ `advanceMonth()`. Render+advance smoke clean; CE5 regression green.
+3. [ ] **Duration re-authoring + per-day conversion + label sweep + balance pass.** Re-express
+   research/build/facility/window durations at day resolution where finer steps improve feel (e.g. a 2-day
+   build vs "1 month"); convert the still-monthly-gated flows (R&D progress, gov funding, facility output)
+   to per-day now that their day-resolution behaviour is being authored; and sweep the ~357 "month"/"/mo"
+   strings *together with* the numbers they describe (absorbed here from slice 2). Retune the CE1–CE4
+   numbers that read better daily (carrying cost, cadence, resupply). **Validation:** re-pin the CE1–CE4
+   regression harnesses to the daily model; confirm early-game pacing and late-game stakes curves hold.
 4. [ ] **Day-granular gameplay (the payoff).** The features daily time unlocks: mission durations that
    actually occupy calendar days (crewed flight = its `days` aloft, deep-space cruise as elapsed days),
    day-scheduled launch windows, short-fuse events/contracts measured in days, and finer launch cadence.
