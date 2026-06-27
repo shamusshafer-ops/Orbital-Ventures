@@ -3454,7 +3454,7 @@ slot whenever — it's the moment-to-moment polish that makes every launch matte
 
 **Goal.** Replace the discrete *monthly* tick with a *daily* one, so time passes (and the
 calendar reads) in days and finer-grained scheduling/events become possible. Status:
-**🟡 IN PROGRESS — slices 1 (equivalence refactor) + 2 (calendar/controls/per-day overhead) + 3a (per-day R&D/funding/support) SHIPPED 2026-06-27; slice 3b + 4–5 remain.**
+**🟡 IN PROGRESS — slices 1 (equivalence refactor) + 2 (calendar/controls/per-day overhead) + 3a (per-day R&D/funding/support) + 3b (per-day facility output → whole money economy now flows daily) SHIPPED 2026-06-27; slice 3c (duration re-authoring + label sweep + balance re-pin) + 4–5 remain.**
 
 **Why it's contained, and why it's still hard.** The simulation is *architecturally
 concentrated*: nearly all time-driven logic lives in one funnel, `advance(months)` — a loop
@@ -3537,10 +3537,22 @@ cadence — run them daily unchanged and events fire ~30× as often.
      **Validation — /tmp/ov-tg1.js 34/34:** 1 day of R&D = perDay(1+bonus), 30 days = (1+bonus); support
      per-day compounds to the monthly revert; gov funding 15-day net = 15×perDay(funding−overhead); all
      slice-1/2 equivalence + split-sum checks still hold. CE5 regression green.
-   - [ ] **3b — facility output + morale drift per-day; duration re-authoring (build/research/facility/window
-     in days); the bulk ~357 "month"/"/mo" string sweep *with* the numbers; CE1–CE4 balance re-pin.**
-     **Validation:** re-pin the CE1–CE4 regression harnesses to the daily model; confirm early-game pacing
-     and late-game stakes curves hold.
+   - [x] ✅ **3b — facility output per-day, SHIPPED 2026-06-27.** Facility *production payout* (income/rep/
+     fuel/sci × supply factor) moved into `tickContinuousDay()`, accruing raw (no per-day `round2` — rounding
+     tiny daily fuel/sci would inflate the monthly total; depot/science are re-tidied with one `round2` at the
+     boundary). Supply drain + starvation/abandon bookkeeping stay on the monthly boundary (they're
+     month-quantized: "8 months of supply", "abandoned after 6 months starved"). **The whole money economy now
+     flows daily.** Morale drift stays monthly *by design* — it's a slow background mood, not a watched flow, and
+     per-day morale would couple noise into the R&D rate for no real benefit. **Validation — /tmp/ov-tg1.js
+     41/41:** facility fuel→depot / science / rep accrue at perDay() and a full month sums to the monthly figure;
+     facility money contribution accrues per-day (and is continuous for a fuel-less base — the fuelled case is
+     correctly *non*-linear because depot growth feeds CE4(a) empireOpex); supplied factor = 1. CE5 regression
+     green; render+advance smoke clean.
+   - [ ] **3c — duration re-authoring + label sweep + balance re-pin.** Re-express build/research/facility/window
+     durations at day resolution where finer steps improve feel (e.g. a short build in days, not a forced 1-month
+     floor); sweep the ~357 "month"/"/mo" strings *with* the numbers they describe; re-pin the CE1–CE4 balance
+     harnesses to the daily model. **Highest regression risk of the epic (the string sweep) — lean on a
+     render smoke across every tab.**
 4. [ ] **Day-granular gameplay (the payoff).** The features daily time unlocks: mission durations that
    actually occupy calendar days (crewed flight = its `days` aloft, deep-space cruise as elapsed days),
    day-scheduled launch windows, short-fuse events/contracts measured in days, and finer launch cadence.

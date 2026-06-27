@@ -1979,14 +1979,15 @@ function resolveSetback(choice){
 }
 // Time Granularity epic — the simulation funnel iterates DAYS, not months. Each day runs the
 // CONTINUOUS flows in `tickContinuousDay()` (slice 2: overhead, payroll, Belt royalty; slice 3a:
-// public-support revert, gov funding, R&D progress) at perDay() strength; the discrete MONTHLY
-// block (markets, facilities, build queue, morale/attrition, events, rivals, snapshots) fires only
-// when a whole month completes. Whole-month behaviour stays balance-preserving: 30·perDay(x)=x, and
-// support reverts at the exact geometric day-rate that compounds to SUPPORT_REVERT/mo, so the
-// monthly aggregates match the old economy within float ε (R&D/funding now read morale/support a
-// drift-step earlier within the month — a deliberately tiny shift, this being the day-resolution
-// retune slice). Sub-month steps now visibly progress research, funding, and overhead. Still
-// monthly-gated (slice 3b): facility output + supply/starvation, morale drift, market price walks.
+// public-support revert, gov funding, R&D progress; slice 3b: facility production payout) at
+// perDay() strength; the discrete MONTHLY block (markets, facility supply/starvation bookkeeping,
+// build queue, morale/attrition, events, rivals, snapshots) fires only when a whole month completes.
+// Whole-month behaviour stays balance-preserving: 30·perDay(x)=x, and support reverts at the exact
+// geometric day-rate that compounds to SUPPORT_REVERT/mo, so the monthly aggregates match the old
+// economy within float ε (R&D/funding/facility output now read morale/support/supply a drift-step
+// earlier within the month — a deliberately tiny shift, this being the day-resolution retune slice).
+// The whole money economy now flows daily. Still monthly-gated (genuinely month-quantized concepts):
+// supply drain + starvation/abandon counters, morale drift, market RNG walks, build/event cadence.
 const DAYS_PER_MONTH=30; // abstracted flat 30-day month — keeps absMonth()/synodic/pad-cadence math exact
 const SUPPORT_REVERT_DAY = 1 - Math.pow(1-SUPPORT_REVERT, 1/DAYS_PER_MONTH); // per-day rate that compounds to SUPPORT_REVERT over a month
 function perDay(monthlyRate){ return monthlyRate/DAYS_PER_MONTH; } // a monthly rate spread across the month
@@ -2015,19 +2016,25 @@ function tickContinuousDay(){
     state.activeResearch.monthsLeft-=perDay(1+rdBonus); // rate reads (monthly-drifting) morale — stable within a month
     if(state.activeResearch.monthsLeft<=0) completeResearch();
   }
+  // M17: persistent facilities produce daily (slice 3b). The supply factor is stable within a month —
+  // supply drain + starvation/abandon bookkeeping stay on the monthly boundary. Accumulate raw (no
+  // per-day round2 — rounding tiny daily fuel/sci increments would inflate the monthly total).
+  for(const fid in (state.facilities||{})){
+    if(!facilityBuilt(fid)) continue;
+    const factor=facilitySupplyFactor(fid), pr=facilityProduction(facilityById(fid), facilityState(fid));
+    state.money+=perDay(pr.income*factor); state.rep+=perDay(pr.rep*factor);
+    if(pr.fuel>0) state.depot+=perDay(pr.fuel*factor);
+    if(pr.sci>0) state.science=(state.science||0)+perDay(pr.sci*factor);
+  }
 }
 // the monthly subsystem tick — the original advance() body minus the now-continuous flows (≈22
 // subsystems), fired once per completed month instead of per loop iteration.
 function tickMonthlyBoundary(){
     tickPassiveContracts(); // passive-income contracts pay monthly, then age toward expiry/cooldown
-    for(const fid in (state.facilities||{})){ // M17: persistent facilities produce every month
+    for(const fid in (state.facilities||{})){ // M17: facility bookkeeping — supply drain + starvation/abandon (production payout is now the daily flow in tickContinuousDay)
       if(!facilityBuilt(fid)) continue;
       const fdef=facilityById(fid), fst=facilityState(fid);
       fst.supply=Math.max(0,(fst.supply!=null?fst.supply:FAC_SUPPLY_MONTHS)-facilitySupplyDrain(fid)); // CE4(b): consume a month of provisions
-      const factor=facilitySupplyFactor(fid); // a starved outpost runs on reserves at reduced output
-      const pr=facilityProduction(fdef, fst);
-      state.money+=pr.income*factor; state.rep+=pr.rep*factor; if(pr.fuel>0) state.depot=round2(state.depot+pr.fuel*factor);
-      if(pr.sci>0) state.science=round2((state.science||0)+pr.sci*factor); // M14: facilities generate science
       if(fst.supply<=0){ // CE4(b): an unsupplied crewed outpost decays — rep/politics bleed, then crew evacuate a module
         fst.starvedMonths=(fst.starvedMonths||0)+1;
         state.rep=Math.max(0, state.rep-FAC_STARVE_REP);
@@ -2040,6 +2047,7 @@ function tickMonthlyBoundary(){
         }
       } else if(fst.starvedMonths){ fst.starvedMonths=0; }
     }
+    state.depot=round2(state.depot); state.science=round2(state.science||0); // tidy the daily facility accruals once a month
     // M2: LEO propellant price — mean-reverting random walk, plus buyer-order countdown
     state.fuelPrevPrice=state.fuelPrice;
     state.fuelPrice=clampA(round2(state.fuelPrice+(FUEL_BASE-state.fuelPrice)*0.12+(Math.random()-0.5)*0.05), FUEL_MIN, FUEL_MAX);
