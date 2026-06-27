@@ -1913,7 +1913,7 @@ function resolveSetback(choice){
 function advance(months){
   for(let i=0;i<months;i++){
     state.month++; if(state.month>11){state.month=0;state.year++;}
-    state.money-=Math.max(0,diff().overhead+econOverheadAdd()+productionUpkeep()); // monthly overhead (difficulty + active market events + #7 production upkeep)
+    state.money-=Math.max(0,diff().overhead+econOverheadAdd()+productionUpkeep()+empireOpex()); // monthly overhead (difficulty + market events + #7 production upkeep + CE4(a) empire carrying cost)
     if(state.pgmRoyalty>0) state.money+=state.pgmRoyalty; // M7: platinum-group royalties from an established Belt claim
     tickPassiveContracts(); // passive-income contracts pay monthly, then age toward expiry/cooldown
     state.publicSupport=clampA(publicSupport()+(SUPPORT_BASE-publicSupport())*SUPPORT_REVERT, SUPPORT_MIN, SUPPORT_MAX); // #8: mood drifts back to neutral
@@ -1969,7 +1969,7 @@ function advance(months){
 
     // #18 (Home): snapshot this month's recurring cashflow for the ops-summary panel
     const mRev=round2(totalFacilityIncome()+(state.pgmRoyalty>0?state.pgmRoyalty:0)+govMonthlyFunding()+passiveMonthlyIncome());
-    const mExp=round2(Math.max(0,diff().overhead+econOverheadAdd()+productionUpkeep())+monthlyPayroll());
+    const mExp=round2(Math.max(0,diff().overhead+econOverheadAdd()+productionUpkeep()+empireOpex())+monthlyPayroll());
     state.lastMonth={revenue:mRev, expenses:mExp, net:round2(mRev-mExp), flights:0};
 
     tickRivals(); // CE1: rival agents (budget + reactive momentum) — replaces calendar-only firing
@@ -2680,6 +2680,38 @@ function cadenceGaugeSVG(width, height){
   </svg>`;
 }
 function productionUpkeep(){ let u=0; for(const d of PRODUCTION_DEFS) u+=d.upkeep*(prodLevel(d.key)-1); return round2(u); }
+/* ---------- CE4(a): empire operating expense — the cost of HOLDING ambition ----------
+   Late game, passive income (facility production, Belt royalties, gov funding, passive
+   contracts) stacked against a FLAT overhead, so a sprawling company coasted to victory.
+   empireOpex() is a carrying cost that scales with the size of what you've built: every
+   off-world facility module, every tonne parked in the LEO depot, the Belt mining
+   operation, every vehicle idling in the hangar, and every research division you've stood
+   up. It is derived ENTIRELY from existing state — a fresh company owns none of these — so
+   it is exactly $0 early and the early-game tuning is untouched. It bends the curve only as
+   the empire grows: ambition is no longer free to hold. (add-to, don't-take-away: a NEW
+   monthly cost; the old overhead path is unchanged.) No new state, no SAVE bump. */
+const EMPIRE_FAC_OPEX_BASE=0.6;    // $M/mo to operate a built off-world facility (life support, comms, staff rotation)
+const EMPIRE_FAC_OPEX_MODULE=0.45; // + per additional module — expansion buys income AND carrying cost
+const EMPIRE_DEPOT_OPEX=0.02;      // $M/mo per tonne held in the LEO depot (boil-off management, station-keeping)
+const EMPIRE_BELT_OPEX=1.5;        // $M/mo to keep the platinum-group Belt claim operating (against its +$4.5M royalty)
+const EMPIRE_HANGAR_OPEX=0.15;     // $M/mo to keep each parked vehicle flight-ready
+const EMPIRE_DIV_OPEX=0.25;        // $M/mo standing overhead per research division you've actually invested in
+function empireOpex(){
+  let o=0;
+  for(const id in (state.facilities||{})){ // off-world facilities: every module costs to run
+    if(!facilityBuilt(id)) continue;
+    const mod=Math.max(1, facilityState(id).modules||1);
+    o += EMPIRE_FAC_OPEX_BASE + EMPIRE_FAC_OPEX_MODULE*(mod-1);
+  }
+  o += EMPIRE_DEPOT_OPEX*Math.max(0, state.depot||0);                 // LEO propellant holding
+  if((state.pgmRoyalty||0)>0) o += EMPIRE_BELT_OPEX;                  // Belt mining operation
+  o += EMPIRE_HANGAR_OPEX*hangarList().length;                       // standing fleet maintenance
+  for(const id in (state.divisions||{})){                            // research divisions actually stood up (trained beyond baseline, or with project experience)
+    const ds=state.divisions[id];
+    if(ds && ((ds.skill>DIV_SKILL0+1e-9) || (ds.exp>0))) o += EMPIRE_DIV_OPEX;
+  }
+  return round2(o);
+}
 function prodUpgradeCost(key){ const d=prodDef(key); return round2(d.baseCost*prodLevel(key)); } // escalates with level
 function canUpgradeProduction(key){
   const d=prodDef(key); if(!d) return {ok:false,why:'Unknown line.'};
@@ -7251,7 +7283,8 @@ function availableContracts(){
 }
 function commandSummary(){
   const era=currentEra();
-  const overhead=Math.max(0, diff().overhead+econOverheadAdd()+productionUpkeep()); // includes #7 production upkeep
+  const eOpex=empireOpex(); // CE4(a): empire carrying cost
+  const overhead=Math.max(0, diff().overhead+econOverheadAdd()+productionUpkeep()+eOpex); // includes #7 production upkeep + CE4(a) empire opex
   const govFunding=govMonthlyFunding(); // #8: political funding from public support
   const income=round2(totalFacilityIncome()+(state.pgmRoyalty||0)+govFunding+passiveMonthlyIncome());
   const payroll=monthlyPayroll();
@@ -7264,7 +7297,7 @@ function commandSummary(){
     capital:state.money, rep:state.rep, flights:state.flights,
     era:era.name, eraIdx:eraIndex(era)+1, eraTotal:ERAS.length,
     successRate: state.flights>0?Math.round(100*state.successes/state.flights):null,
-    income, overhead, payroll, net, science:Math.round(state.science||0),
+    income, overhead, empireOpex:eOpex, payroll, net, science:Math.round(state.science||0),
     support:Math.round(publicSupport()), mood:mood.label, moodColor:mood.color, govFunding,
     research: ar?{name:(RESEARCH.find(r=>r.id===ar.id)||{}).name||ar.id, monthsLeft:ar.monthsLeft}:null,
     nextObjective: no?no.mission.name:null,
@@ -7927,7 +7960,7 @@ function renderExecOverview(){
       <div class="cc-net" style="text-align:right">
         <div class="dim" style="font-size:10px;text-transform:uppercase;letter-spacing:.12em">Monthly net</div>
         <div style="color:${netCol};font-size:18px;font-weight:700">${s.net>=0?'+':''}${fM(s.net)}/mo</div>
-        <div class="dim" style="font-size:10px">+${fM(s.income)} in · −${fM(s.overhead)} ovh · −${fM(s.payroll)} pay</div>
+        <div class="dim" style="font-size:10px">+${fM(s.income)} in · −${fM(s.overhead)} ovh${s.empireOpex>0?` <span style="color:var(--bad)">(incl. −${fM(s.empireOpex)} empire)</span>`:''} · −${fM(s.payroll)} pay</div>
       </div>
     </div>
     <div class="exec-grid" style="margin-top:8px">

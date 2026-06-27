@@ -3094,6 +3094,28 @@ T1 branches, first-review Rec #1/#3, CE2 (focus → faster capstone).
 
 ### CE4 · The Stakes Curve — economic pressure that rises, not falls
 
+> 🟡 **Slice (a) SHIPPED 2026-06-26 — scaling empire opex.** New `empireOpex()` (a sibling of
+> `productionUpkeep()`): a monthly carrying cost summed from what you've *built*, not bought —
+> `EMPIRE_FAC_OPEX_BASE 0.6` + `EMPIRE_FAC_OPEX_MODULE 0.45`/extra module per built facility,
+> `EMPIRE_DEPOT_OPEX 0.02`/t held in the LEO depot, `EMPIRE_BELT_OPEX 1.5` while the Belt claim
+> runs (vs its +$4.5M royalty → still worth holding, no longer free), `EMPIRE_HANGAR_OPEX 0.15`
+> per parked vehicle, `EMPIRE_DIV_OPEX 0.25` per research division you've actually invested in
+> (skill above `DIV_SKILL0` or any project exp — so the monthly division-morale tick that seeds
+> all divisions at baseline does NOT count). **Derived entirely from existing state → exactly $0
+> for a fresh company, so the early game is provably untouched** (no new state, no SAVE bump,
+> add-to-don't-take-away: a new cost; the old overhead path is unchanged). Wired into all three
+> burn sites: `advance()` monthly deduction (line ~1916), the `lastMonth` ledger `mExp`, and
+> `commandSummary().overhead` — plus a distinct `empireOpex` field surfaced in the command-centre
+> cashflow line (`… ovh (incl. −$X empire) …`). **Validation — /tmp/ov-ce4a.js 26/26:** opex is 0
+> fresh AND after 12 idle months (baseline divisions ignored); strictly rises with each dimension
+> (facility/module/depot/Belt/hangar/division) and each term equals its formula; genuinely in the
+> burn (a 100 t depot makes `advance(1)` cost exactly +$2M, same RNG isolates it); folded into
+> `commandSummary` overhead and shrinks net; and the headline narrative holds — a sprawling **idle**
+> empire (3-module station + 200 t depot + Belt + 20-ship fleet + 5 maxed divisions, no active
+> program) pays **$11.25M/mo** to hold it all and runs **−$5.17M/mo net**, where without the
+> carrying cost it would have been **+$6.08M/mo** solvent: opex is exactly what sinks it. Remaining:
+> (b) standing resupply obligations that decay, (c) era-scaled failure stakes + bailout retune.
+
 **Problem.** Tension is inverted: tight at the start (good), trivial once `pgmRoyalty`
 $4.5M/mo + passive contracts + facilities + gov funding stack against flat overhead.
 `gameOver()` (`money<0` + bailout) can only bite a beginner; the late game has no downside.
