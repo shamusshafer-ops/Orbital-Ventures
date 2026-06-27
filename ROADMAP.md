@@ -2838,6 +2838,9 @@ engine catalog (BC4).
       `upcomingEvents` surfaces active R&D and a committed window with correct nav; `renderLog`
       no-throw across tabs; `timelineGo(null)` safe. **Still open under #29:** category filters
       (Launches/Research/Economy/…) and a collapse toggle. **Browser-verify the strip + click-through.**
+  - *Fix 2026-06-27:* raised the flight overlay `.animwrap` to `z-index:70` so the active launch
+    scene sits above the pinned top bar (40) / show-bar button (50) / expanded views (60) — the
+    taller top bar had been painting over the launch playback.
 
 ## Readout clarity — engines, TWR, module stats (2026-06-27)
 

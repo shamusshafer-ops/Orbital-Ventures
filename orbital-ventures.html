@@ -326,7 +326,9 @@
   .modal p{color:var(--muted);margin:10px 0}
   .modal .btn{margin-top:14px}
   .hidden{display:none!important}
-  .animwrap{position:fixed;inset:0;background:rgba(4,7,10,.94);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;z-index:30}
+  /* z-index 70: the active launch scene sits above the pinned top bar (40), the "show bar" button
+     (50) and the expanded full-screen views (60) so it's the foremost screen while it plays. */
+  .animwrap{position:fixed;inset:0;background:rgba(4,7,10,.94);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;z-index:70}
   .animwrap #flightCanvasWrap{border:1px solid var(--line);border-radius:8px;max-width:94vw;overflow:hidden;background:#04060a}
   .animwrap #flightCanvasWrap canvas{display:block;width:100%;height:auto}
   .animbar{display:flex;align-items:center;gap:14px}
