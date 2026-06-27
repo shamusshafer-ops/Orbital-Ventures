@@ -302,12 +302,20 @@
   .reward{font-family:var(--mono);font-size:12px;text-align:right;min-width:96px}
   .reward .p{color:var(--ok)} .reward .r{color:var(--readout)}
 
-  /* Log */
-  .log{margin-top:14px}
-  #logBox{display:flex;gap:12px;overflow-x:auto;overflow-y:hidden;padding-bottom:8px}
-  .log .line{font-family:var(--mono);font-size:12px;flex:0 0 300px;display:flex;flex-direction:column;gap:2px;border-right:1px solid #1a242b;padding-right:12px;white-space:normal}
-  .log .when{color:var(--dim)}
-  .log .ok{color:var(--ok)} .log .bad{color:var(--bad)} .log .info{color:var(--ink)} .log .note{color:var(--readout)}
+  /* Ops timeline — always-visible flight & ops log, pinned in the top bar */
+  .timeline{display:flex;align-items:stretch;gap:7px;overflow-x:auto;overflow-y:hidden;padding:6px 0 4px;margin-top:6px;border-top:1px solid var(--line);scrollbar-width:thin}
+  .timeline::-webkit-scrollbar{height:6px} .timeline::-webkit-scrollbar-thumb{background:#243038;border-radius:3px}
+  .tl-date{flex:0 0 auto;display:flex;flex-direction:column;justify-content:center;font-family:var(--mono);font-size:13px;font-weight:700;color:var(--ignite);border:1px solid #5a4419;border-radius:7px;padding:2px 11px;background:#1a1510}
+  .tl-date small{font-size:8.5px;font-weight:500;color:var(--dim);letter-spacing:.6px}
+  .tl-chip{flex:0 0 auto;max-width:250px;min-width:0;display:flex;flex-direction:column;gap:1px;font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-radius:7px;padding:3px 10px;background:var(--panel)}
+  .tl-chip .tl-when{font-size:8.5px;color:var(--dim);white-space:nowrap}
+  .tl-chip .tl-msg{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tl-chip.clk{cursor:pointer} .tl-chip.clk:hover{border-color:var(--readout);background:var(--panel2)}
+  .tl-chip.next{border-style:dashed;border-color:#3a5566;background:#0f1a1e}
+  .tl-chip.next .tl-msg{color:var(--readout)}
+  .tl-chip.ok .tl-msg{color:var(--ok)} .tl-chip.bad .tl-msg{color:var(--bad)} .tl-chip.info .tl-msg{color:var(--ink)} .tl-chip.note .tl-msg{color:var(--readout)} .tl-chip.rival .tl-msg{color:var(--ignite)}
+  .tl-empty{align-self:center;color:var(--dim);font-size:11px;padding:4px 8px}
+  .tl-sep{flex:0 0 auto;align-self:center;color:var(--dim);font-size:9px;letter-spacing:1px;padding:0 1px}
   .log .rival{color:var(--ignite)}
 
   /* Modal */
@@ -360,6 +368,9 @@
     <button class="btn" onclick="advanceMonth()">▸ Advance 1 month <span class="dim" id="overheadLabel">(−$0.12M)</span></button>
     <button class="btn ghost" id="skipBtn" onclick="skipResearch()">Skip to R&amp;D done</button>
   </div>
+  <!-- Always-visible flight & ops timeline: current date + upcoming (R&D, builds, windows) +
+       recent log (flights, tech, events). Pinned in the top bar; click an entry to jump to it. -->
+  <div class="timeline" id="opsTimeline"></div>
   </div><!-- /topbar -->
   <button class="btn ghost hidden" id="topbarShow" onclick="toggleTopbar()" title="Show the top bar (h)">▾ Show bar</button>
 
@@ -519,10 +530,7 @@
     </aside>
   </div>
 
-  <div class="card log">
-    <h2>Flight &amp; Operations Log</h2>
-    <div id="logBox"></div>
-  </div>
+  <!-- Flight & Operations log relocated to the always-visible #opsTimeline strip in the top bar. -->
 </div>
 
 <div id="modal" class="scrim hidden"><div class="modal" id="modalBody"></div></div>
@@ -1607,7 +1615,7 @@ const $=id=>document.getElementById(id);
 const fM=v=>'$'+v.toFixed(2)+'M';
 const fI=v=>Math.round(v).toLocaleString();
 function dateStr(){return MONTHS[state.month]+' '+state.year;}
-function log(kind,msg){state.log.unshift({when:dateStr(),kind,msg}); if(state.log.length>40)state.log.pop();}
+function log(kind,msg,nav){state.log.unshift({when:dateStr(),kind,msg,nav}); if(state.log.length>40)state.log.pop();}
 function curSigma(){return clampA(state.sigma * tankMaterial().sigmaMult, 0.02, 0.9);} // BC2: tank material scales structural coefficient
 function curRel(){
   let base=0.65+0.025*Math.min(state.successes,12); // heritage: green company is genuinely unreliable
@@ -10755,14 +10763,44 @@ function renderDivisions(){
     ${cards}`;
 }
 
+function tlStrip(s){ return (s||'').replace(/<[^>]*>/g,''); }
+function tlAttr(s){ return tlStrip(s).replace(/"/g,'&quot;'); }
+// Forward-looking items derived from state (not stored in state.log): active R&D, in-progress
+// builds, and a committed launch window. These ride at the front of the timeline as "UPCOMING".
+function upcomingEvents(){
+  const out=[];
+  const ar=state.activeResearch;
+  if(ar){ const r=RESEARCH.find(x=>x.id===ar.id); if(r) out.push({icon:'⚛', msg:`R&D: ${r.name} · ${Math.max(1,Math.ceil(ar.monthsLeft))} mo left`, nav:'rnd'}); }
+  (state.buildQueue||[]).forEach(o=>{ out.push({icon:'🔧', msg:(o.started?`Build: ${o.missionName||o.name} · ${Math.max(1,o.monthsLeft)} mo left`:`Queued: ${o.missionName||o.name}`), nav:'command'}); });
+  const cw=state.committedWindow;
+  if(cw){ const m=MISSIONS.find(x=>x.id===cw.missionId); out.push({icon:'🪟', msg:`Window: ${m?m.name:cw.missionId} opens ${monthToDate(cw.abs)}`, nav:'map'}); }
+  return out;
+}
+// Where clicking a past log entry should jump: explicit entry.nav wins, else infer from the text.
+function logNav(e){
+  if(e.nav) return e.nav;
+  const s=tlStrip(e.msg);
+  if(/R&D|research|breakthrough|σ|Isp|thrust/i.test(s)) return 'rnd';
+  if(e.kind==='rival') return 'command';
+  if(/SUCCESS|FAILURE|LOST|RESCUED|CATASTROPHE|reached|achieved|delivered|rolled out|crew/i.test(s)) return 'command';
+  if(/facilit|outpost|depot|station|module|royalt/i.test(s)) return 'command';
+  return null;
+}
+function timelineGo(nav){ if(nav) setTab(nav); }
+// Always-visible flight & ops timeline: leading date, then UPCOMING items, then the recent log
+// (newest first). Each chip jumps to a relevant screen when it has a navigation target.
 function renderLog(){
-  const box=$('logBox'); box.innerHTML='';
-  if(!state.log.length){box.innerHTML='<div class="dim" style="font-size:12px">No flights yet.</div>';return;}
-  state.log.forEach(l=>{
-    const div=document.createElement('div'); div.className='line';
-    div.innerHTML=`<span class="when">${l.when}</span><span class="${l.kind}">${l.msg}</span>`;
-    box.appendChild(div);
-  });
+  const box=$('opsTimeline'); if(!box) return; box.innerHTML='';
+  const d=document.createElement('div'); d.className='tl-date'; d.innerHTML=`<small>DATE</small>${dateStr()}`; box.appendChild(d);
+  const up=upcomingEvents();
+  up.forEach(u=>{ const c=document.createElement('div'); c.className='tl-chip next'+(u.nav?' clk':'');
+    c.innerHTML=`<span class="tl-when">UPCOMING</span><span class="tl-msg" title="${tlAttr(u.msg)}">${u.icon} ${tlStrip(u.msg)}</span>`;
+    if(u.nav) c.onclick=()=>timelineGo(u.nav); box.appendChild(c); });
+  if(up.length){ const sep=document.createElement('div'); sep.className='tl-sep'; sep.textContent='◂ NOW'; box.appendChild(sep); }
+  if(!state.log.length){ const e=document.createElement('div'); e.className='tl-empty'; e.textContent='No flights or events yet — advance time or fly a mission.'; box.appendChild(e); return; }
+  state.log.forEach(l=>{ const nav=logNav(l); const c=document.createElement('div'); c.className='tl-chip '+(l.kind||'note')+(nav?' clk':'');
+    c.innerHTML=`<span class="tl-when">${l.when}</span><span class="tl-msg" title="${tlAttr(l.msg)}">${tlStrip(l.msg)}</span>`;
+    if(nav) c.onclick=()=>timelineGo(nav); box.appendChild(c); });
 }
 
 // Always start a fresh company on page load. A saved game is only restored when the

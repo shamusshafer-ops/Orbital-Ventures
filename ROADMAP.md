@@ -2820,6 +2820,25 @@ engine catalog (BC4).
       stays under 50 m/s loss; renderStages/readout no-throw. **Browser-verify: a low-thrust upper
       stage now shows the loss and can fail an otherwise-sufficient Δv.**
 
+## Always-visible Ops Timeline (2026-06-27)
+
+- [x] **Flight & Ops log → pinned top-bar timeline** *(Built 2026-06-27. Partially delivers #29.)*
+      Relocated the bottom-of-page "Flight & Operations Log" card into an always-visible, horizontally
+      scrolling **timeline strip pinned in the top bar** (`#opsTimeline`, inside `.topbar` so it stays
+      on screen while the page scrolls; `syncTopbarH` already measures the taller bar). Layout:
+      a prominent leading **DATE** chip (`dateStr()`), then **UPCOMING** items derived live from
+      state — active R&D (`name · N mo left`), in-progress/queued builds, and a committed launch
+      window (`opens <date>`) — then the recent log newest-first. **Clicking** any chip jumps to the
+      relevant screen: `log()` gained an optional `nav` target, and `logNav()` infers one from the
+      entry when not set (R&D→`rnd`, flights/rivals/infra→`command`, window→`map`); `upcoming` chips
+      carry explicit nav. Compact single row (chips truncate with ellipsis + full text on hover) so it
+      stays out of the way. No persisted-state change beyond the additive `nav` field on log entries
+      (legacy entries simply have none), no SAVE bump. **Validation — ov-reentry-station.js (55/55):**
+      `log()` stores `nav`; `logNav` explicit-wins + infers R&D/flight/rival/plain correctly;
+      `upcomingEvents` surfaces active R&D and a committed window with correct nav; `renderLog`
+      no-throw across tabs; `timelineGo(null)` safe. **Still open under #29:** category filters
+      (Launches/Research/Economy/…) and a collapse toggle. **Browser-verify the strip + click-through.**
+
 ## Readout clarity — engines, TWR, module stats (2026-06-27)
 
 - [x] **Per-stage TWR + engine data on the Design Bench** *(Built 2026-06-27.)* Investigation
