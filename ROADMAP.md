@@ -3454,7 +3454,7 @@ slot whenever — it's the moment-to-moment polish that makes every launch matte
 
 **Goal.** Replace the discrete *monthly* tick with a *daily* one, so time passes (and the
 calendar reads) in days and finer-grained scheduling/events become possible. Status:
-**🟡 IN PROGRESS — slices 1 (equivalence refactor) + 2 (calendar/controls/per-day overhead) SHIPPED 2026-06-27; slices 3–5 remain.**
+**🟡 IN PROGRESS — slices 1 (equivalence refactor) + 2 (calendar/controls/per-day overhead) + 3a (per-day R&D/funding/support) SHIPPED 2026-06-27; slice 3b + 4–5 remain.**
 
 **Why it's contained, and why it's still hard.** The simulation is *architecturally
 concentrated*: nearly all time-driven logic lives in one funnel, `advance(months)` — a loop
@@ -3527,13 +3527,20 @@ cadence — run them daily unchanged and events fire ~30× as often.
    holds; sub-month step charges continuous flow but fires no monthly-gated subsystem; two 15-day steps ≡
    one 30-day step (split sums exactly); pre-boundary money is linear in days; `dateStr`/`stepTime` clock +
    format checks; `stepTime(30)` ≡ `advanceMonth()`. Render+advance smoke clean; CE5 regression green.
-3. [ ] **Duration re-authoring + per-day conversion + label sweep + balance pass.** Re-express
-   research/build/facility/window durations at day resolution where finer steps improve feel (e.g. a 2-day
-   build vs "1 month"); convert the still-monthly-gated flows (R&D progress, gov funding, facility output)
-   to per-day now that their day-resolution behaviour is being authored; and sweep the ~357 "month"/"/mo"
-   strings *together with* the numbers they describe (absorbed here from slice 2). Retune the CE1–CE4
-   numbers that read better daily (carrying cost, cadence, resupply). **Validation:** re-pin the CE1–CE4
-   regression harnesses to the daily model; confirm early-game pacing and late-game stakes curves hold.
+3. 🟡 **Duration re-authoring + per-day conversion + label sweep + balance pass.**
+   - [x] ✅ **3a — per-day smooth flows, SHIPPED 2026-06-27.** Moved **R&D progress, gov funding, and
+     public-support revert** into `tickContinuousDay()` (so research/funding/support visibly progress sub-month).
+     Support reverts at `SUPPORT_REVERT_DAY = 1−(1−SUPPORT_REVERT)^(1/30)` — the exact geometric day-rate that
+     compounds to `SUPPORT_REVERT`/mo, so the monthly aggregate is preserved exactly. R&D/funding now read
+     morale/support a drift-step earlier within the month (a deliberately tiny shift — this is the retune slice).
+     R&D rate stays morale-driven but morale is stable within a month, so 30 days = (1+bonus) exactly.
+     **Validation — /tmp/ov-tg1.js 34/34:** 1 day of R&D = perDay(1+bonus), 30 days = (1+bonus); support
+     per-day compounds to the monthly revert; gov funding 15-day net = 15×perDay(funding−overhead); all
+     slice-1/2 equivalence + split-sum checks still hold. CE5 regression green.
+   - [ ] **3b — facility output + morale drift per-day; duration re-authoring (build/research/facility/window
+     in days); the bulk ~357 "month"/"/mo" string sweep *with* the numbers; CE1–CE4 balance re-pin.**
+     **Validation:** re-pin the CE1–CE4 regression harnesses to the daily model; confirm early-game pacing
+     and late-game stakes curves hold.
 4. [ ] **Day-granular gameplay (the payoff).** The features daily time unlocks: mission durations that
    actually occupy calendar days (crewed flight = its `days` aloft, deep-space cruise as elapsed days),
    day-scheduled launch windows, short-fuse events/contracts measured in days, and finer launch cadence.

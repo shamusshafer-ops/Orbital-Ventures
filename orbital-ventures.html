@@ -1978,17 +1978,17 @@ function resolveSetback(choice){
   if(state.money<0) gameOver(); else render();
 }
 // Time Granularity epic — the simulation funnel iterates DAYS, not months. Each day runs the
-// CONTINUOUS money flows (slice 2: overhead, payroll, Belt royalty — flows whose inputs are stable
-// within a month) at perDay() strength; the discrete MONTHLY block (markets, facilities, R&D
-// countdown, morale, events, rivals, snapshots) fires only when a whole month completes.
-// Whole-month equivalence: every caller still passes integer months, and 30·perDay(x)=x, so a
-// whole-month advance reproduces the old monthly economy within float ε, crossing exactly `months`
-// boundaries in the same order with the same RNG stream. Continuous flows accrue sub-month (so
-// day/week stepping charges proportional overhead — no free time); the monthly-gated subsystems
-// (R&D progress, funding, facility output) still land on the boundary — re-authoring those at day
-// resolution is slice 3. The continuous set is intentionally the within-month-stable flows only:
-// R&D stays monthly-gated because its rate reads staff morale, which drifts on the monthly tick.
+// CONTINUOUS flows in `tickContinuousDay()` (slice 2: overhead, payroll, Belt royalty; slice 3a:
+// public-support revert, gov funding, R&D progress) at perDay() strength; the discrete MONTHLY
+// block (markets, facilities, build queue, morale/attrition, events, rivals, snapshots) fires only
+// when a whole month completes. Whole-month behaviour stays balance-preserving: 30·perDay(x)=x, and
+// support reverts at the exact geometric day-rate that compounds to SUPPORT_REVERT/mo, so the
+// monthly aggregates match the old economy within float ε (R&D/funding now read morale/support a
+// drift-step earlier within the month — a deliberately tiny shift, this being the day-resolution
+// retune slice). Sub-month steps now visibly progress research, funding, and overhead. Still
+// monthly-gated (slice 3b): facility output + supply/starvation, morale drift, market price walks.
 const DAYS_PER_MONTH=30; // abstracted flat 30-day month — keeps absMonth()/synodic/pad-cadence math exact
+const SUPPORT_REVERT_DAY = 1 - Math.pow(1-SUPPORT_REVERT, 1/DAYS_PER_MONTH); // per-day rate that compounds to SUPPORT_REVERT over a month
 function perDay(monthlyRate){ return monthlyRate/DAYS_PER_MONTH; } // a monthly rate spread across the month
 function daysFor(months){ return Math.round(months*DAYS_PER_MONTH); } // a duration in months → whole days
 function absDay(){ return absMonth()*DAYS_PER_MONTH + (state.day||0); }
@@ -2003,18 +2003,23 @@ function advanceDays(days){
   }
   if(state.money<0 && !state.over){ gameOver(); }
 }
-// the smooth daily flows — inputs are stable within a month, so 30 days sum to the old monthly total.
+// the smooth daily flows — inputs are stable within a month, so 30 days sum to the monthly total.
 function tickContinuousDay(){
   state.money-=perDay(Math.max(0,diff().overhead+econOverheadAdd()+productionUpkeep()+empireOpex()+loanInterest())); // overhead (difficulty + market events + #7 production upkeep + CE4(a) empire carrying cost + CE4(c) bridge-loan interest)
   if(state.pgmRoyalty>0) state.money+=perDay(state.pgmRoyalty); // M7: platinum-group royalties from an established Belt claim
   state.staff.forEach(s=>{ const p=personById(s.id); if(p) state.money-=perDay(p.salary); }); // M6: personnel salary
+  state.publicSupport=clampA(publicSupport()+(SUPPORT_BASE-publicSupport())*SUPPORT_REVERT_DAY, SUPPORT_MIN, SUPPORT_MAX); // #8: mood reverts toward neutral (slice 3a: per-day at the compounding rate)
+  state.money+=perDay(govMonthlyFunding()); // #8: public support buys government funding (slice 3a: accrues daily)
+  if(state.activeResearch && !_pendingSetback){ // #26: R&D progresses daily; a pending setback freezes it
+    const rdBonus=engRdSpeedBonus()+divisionSpeedBonus(RESEARCH.find(r=>r.id===state.activeResearch.id));
+    state.activeResearch.monthsLeft-=perDay(1+rdBonus); // rate reads (monthly-drifting) morale — stable within a month
+    if(state.activeResearch.monthsLeft<=0) completeResearch();
+  }
 }
 // the monthly subsystem tick — the original advance() body minus the now-continuous flows (≈22
 // subsystems), fired once per completed month instead of per loop iteration.
 function tickMonthlyBoundary(){
     tickPassiveContracts(); // passive-income contracts pay monthly, then age toward expiry/cooldown
-    state.publicSupport=clampA(publicSupport()+(SUPPORT_BASE-publicSupport())*SUPPORT_REVERT, SUPPORT_MIN, SUPPORT_MAX); // #8: mood drifts back to neutral
-    state.money+=govMonthlyFunding(); // #8: public support buys government funding
     for(const fid in (state.facilities||{})){ // M17: persistent facilities produce every month
       if(!facilityBuilt(fid)) continue;
       const fdef=facilityById(fid), fst=facilityState(fid);
@@ -2064,13 +2069,8 @@ function tickMonthlyBoundary(){
       return true;
     });
 
-    // M6 engineers + #4 division: R&D speed bonus (both pure accelerators)
+    // #4 division: morale drift toward baseline (R&D progress itself is now a continuous daily flow)
     tickDivisionMorale();
-    if(state.activeResearch && !_pendingSetback){ // #26: a pending setback freezes progress until resolved
-      const rdBonus=engRdSpeedBonus()+divisionSpeedBonus(RESEARCH.find(r=>r.id===state.activeResearch.id));
-      state.activeResearch.monthsLeft-=(1+rdBonus);
-      if(state.activeResearch.monthsLeft<=0) completeResearch();
-    }
 
     // #18 (Home): snapshot this month's recurring cashflow for the ops-summary panel
     const mRev=round2(totalFacilityIncome()+(state.pgmRoyalty>0?state.pgmRoyalty:0)+govMonthlyFunding()+passiveMonthlyIncome());
