@@ -162,6 +162,10 @@
   #mapView.expanded{position:fixed;inset:0;z-index:24;background:var(--bg);padding:12px 18px;overflow:auto}
   #mapView.expanded .grid{grid-template-columns:1fr;gap:12px;align-items:start}
   #mapView.expanded .mapsvg{width:auto;max-width:100%;height:84vh;margin:0 auto}
+  /* tech tree: grab-to-pan + pop-out full-screen */
+  #techTree{cursor:grab}
+  #techTree.grabbing{cursor:grabbing}
+  #techTree.expanded{position:fixed;inset:0;z-index:24;background:var(--bg);max-height:none !important;padding:8px 14px}
   .launch{width:100%;padding:13px;border:1px solid var(--ignite);background:linear-gradient(180deg,#2a2113,#1c1810);
     color:var(--ignite);font-size:14px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;border-radius:6px;cursor:pointer}
   .launch:hover{background:linear-gradient(180deg,#3a2c12,#241d10)}
@@ -10150,11 +10154,13 @@ function techLayout(){
 // Presentation pass: tech-tree zoom. techZoom scales the rendered SVG (the viewBox is
 // unchanged, so coordinates/onclick stay correct); the #techTree pane scrolls to reach
 // off-screen nodes. Driven by the toolbar buttons, wheel-to-zoom, and the +/-/0 keys.
-let techZoom=1;
+let techZoom=1, techExpanded=false;
 const TECH_ZOOM_MIN=0.5, TECH_ZOOM_MAX=2.4;
 function setTechZoom(z){ techZoom=clampA(z, TECH_ZOOM_MIN, TECH_ZOOM_MAX); renderTechTree(); }
 function zoomTech(factor){ setTechZoom(techZoom*factor); }
 function resetTechZoom(){ setTechZoom(1); }
+// pop the tree out to a full-screen overlay (same pane, so zoom/drag/clicks keep working)
+function toggleTechExpand(){ techExpanded=!techExpanded; renderTechTree(); const el=$('techTree'); if(el){ try{ el.focus(); }catch(e){} } }
 function renderTechTree(){
   const el=$('techTree'); if(!el) return;
   const L=techLayout(), NW=L.NW, NH=L.NH;
@@ -10198,14 +10204,32 @@ function renderTechTree(){
         <span class="dim" style="font-size:11px;width:40px;text-align:center">${Math.round(techZoom*100)}%</span>
         <button class="btn ghost" style="padding:2px 9px" onclick="zoomTech(1.2)" title="Zoom in (+)">+</button>
         <button class="btn ghost" style="padding:2px 9px;font-size:11px" onclick="resetTechZoom()" title="Reset (0)">Reset</button>
-        <span class="dim" style="font-size:10px;margin-left:4px">scroll = zoom · arrows = pan</span>
+        <button class="btn ghost" style="padding:2px 9px;font-size:11px" onclick="toggleTechExpand()" title="Pop out to full screen">${techExpanded?'⛶ Close':'⛶ Pop out'}</button>
+        <span class="dim" style="font-size:10px;margin-left:4px">drag = pan · scroll = zoom</span>
       </div>
     </div>
     <svg viewBox="0 0 ${L.W} ${L.H}" width="${zw}" height="${zh}" xmlns="http://www.w3.org/2000/svg" style="max-width:none;display:block">${bands}${edges}${nodes}</svg>`;
-  // wire wheel-to-zoom once (the pane div persists across re-renders; only innerHTML changes)
+  el.classList.toggle('expanded', techExpanded); // pop-out full-screen state
+  // wire wheel-to-zoom + grab-to-pan once (the pane div persists across re-renders; only innerHTML changes)
   if(!el._zoomWired){
     el._zoomWired=true;
     el.addEventListener('wheel', function(e){ e.preventDefault(); zoomTech(e.deltaY<0?1.12:1/1.12); }, {passive:false});
+    // grab-to-pan: press the canvas and drag to move around the tree, like grabbing a map
+    let dragging=false, moved=false, sx=0, sy=0, sl=0, st=0;
+    el.addEventListener('mousedown', function(e){
+      if(e.button!==0 || e.target.closest('button')) return; // left-drag only; let toolbar buttons work
+      dragging=true; moved=false; sx=e.clientX; sy=e.clientY; sl=el.scrollLeft; st=el.scrollTop;
+      el.classList.add('grabbing');
+    });
+    window.addEventListener('mousemove', function(e){
+      if(!dragging) return;
+      const dx=e.clientX-sx, dy=e.clientY-sy;
+      if(Math.abs(dx)>3 || Math.abs(dy)>3) moved=true;
+      el.scrollLeft=sl-dx; el.scrollTop=st-dy;
+    });
+    window.addEventListener('mouseup', function(){ if(dragging){ dragging=false; el.classList.remove('grabbing'); } });
+    // a drag that actually panned must not also select the node it ended on (capture beats the node's onclick)
+    el.addEventListener('click', function(e){ if(moved){ e.preventDefault(); e.stopPropagation(); moved=false; } }, true);
   }
 }
 function selectResearch(id){ state.selectedResearch=id; render(); }
