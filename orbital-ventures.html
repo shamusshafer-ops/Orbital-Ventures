@@ -342,7 +342,7 @@
     </div>
   </header>
 
-  <div class="opsbar">
+  <div class="opsbar" id="opsbar">
     <span id="rndStatus"></span>
     <span id="nextObjStatus" class="dim" style="font-size:11px"></span>
     <span style="flex:1"></span>
@@ -440,7 +440,7 @@
   </div>
 
   <div id="mapView" class="hidden">
-    <div class="card">
+    <div class="card" id="mapCard">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
         <h2 style="margin:0">Solar System — click a body for its Δv profile</h2>
         <button class="btn ghost" id="mapExpandBtn" onclick="toggleMapExpand()">⛶ Expand</button>
@@ -4630,6 +4630,19 @@ function applyWide(){
 function toggleWide(){ wideOn=!wideOn; try{ localStorage.setItem('ov_wide', wideOn?'1':'0'); }catch(e){} applyWide(); syncTopbarH(); }
 // keep --topbar-h in sync with the pinned header+opsbar so sticky panels always clear it
 function syncTopbarH(){ const tb=$('topbar'); if(tb && tb.offsetHeight){ try{ document.documentElement.style.setProperty('--topbar-h', tb.offsetHeight+'px'); }catch(e){} } }
+// The ops controls (row 2) are a single shared node: on the Map view they ride across the top of the
+// map card; on every other view they sit pinned in the topbar. One node relocated by reference — no
+// duplication, and the inline onclick handlers survive the move — so Advance/Menu stay available everywhere.
+function placeOpsbar(){
+  const ops=$('opsbar'); if(!ops) return;
+  if(state.tab==='map'){
+    const host=$('mapCard'); if(host && ops.parentNode!==host){ host.insertBefore(ops, host.firstChild); }
+    ops.classList.add('in-map');
+  } else {
+    const tb=$('topbar'); if(tb && ops.parentNode!==tb){ tb.appendChild(ops); } // home position: after <header>
+    ops.classList.remove('in-map');
+  }
+}
 try{ window.addEventListener('resize', syncTopbarH); }catch(e){}
 function _requestFs(){ const el=document.documentElement; const fn=el.requestFullscreen||el.webkitRequestFullscreen; if(fn){ try{ const p=fn.call(el); if(p&&p.catch)p.catch(()=>{}); }catch(e){} } }
 function _exitFs(){ const fn=document.exitFullscreen||document.webkitExitFullscreen; if(fn){ try{ const p=fn.call(document); if(p&&p.catch)p.catch(()=>{}); }catch(e){} } }
@@ -7309,6 +7322,7 @@ function render(){
   $('benchView').classList.toggle('hidden',state.tab!=='bench');
   $('rndView').classList.toggle('hidden',state.tab!=='rnd');
   $('mapView').classList.toggle('hidden',state.tab!=='map');
+  placeOpsbar(); // on the Map view, the ops controls (row 2) ride across the top of the map card; elsewhere they stay pinned in the topbar
   applyDifficultyUI();
 
   const ar=state.activeResearch;
