@@ -2035,6 +2035,7 @@ function tickContinuousDay(){
     if(pr.fuel>0) state.depot+=perDay(pr.fuel*factor);
     if(pr.sci>0) state.science=(state.science||0)+perDay(pr.sci*factor);
   }
+  tickBuildQueue(); // #7 final: progress queued vehicle builds (slice 3c: per-day); finished ones go to the hangar
 }
 // the monthly subsystem tick — the original advance() body minus the now-continuous flows (≈22
 // subsystems), fired once per completed month instead of per loop iteration.
@@ -2063,7 +2064,6 @@ function tickMonthlyBoundary(){
     if(state.fuelBuyer){ state.fuelBuyer.monthsLeft--; if(state.fuelBuyer.monthsLeft<=0 || state.fuelBuyer.cap<=0){ log('note',`Market — ${state.fuelBuyer.name}'s propellant buy order has closed.`); state.fuelBuyer=null; } }
     // #7 slice 6: raw-material spot prices wander; active contracts tick toward expiry
     materialPriceTick();
-    tickBuildQueue(); // #7 final: progress queued vehicle builds; finished ones go to the hangar
     checkJuggernaut(); tickStandingProduction(); // CE2(c): juggernaut milestone + standing self-funding production line
 
     // M6: morale tick — slow drift toward 50 and commend cooldown
@@ -2515,12 +2515,15 @@ function queueBuild(){
   render();
 }
 // runs each month in advance(): fill bay slots FIFO, progress active orders, retire finished ones to the hangar
+// Time Granularity slice 3c: builds progress per DAY (parallel to per-day R&D). Slot assignment
+// (FIFO into free bays) runs daily too, so an order starts the moment a bay frees. 30 days of
+// perDay(1) = one month — the old monthly cadence — but step-by-day now visibly advances the build.
 function tickBuildQueue(){
   const q=buildQueueList(); if(!q.length) return;
   let active=q.filter(o=>o.started).length;
   for(const o of q){ if(active>=buildSlots()) break; if(!o.started){ o.started=true; active++; } }
   const done=[];
-  for(const o of q){ if(o.started){ o.monthsLeft--; if(o.monthsLeft<=0) done.push(o); } }
+  for(const o of q){ if(o.started){ o.monthsLeft-=perDay(1); if(o.monthsLeft<=0) done.push(o); } }
   if(done.length){
     for(const o of done){
       hangarList().push({id:o.id, name:o.name, missionId:o.missionId, missionName:o.missionName, spec:o.spec, units:o.units, builtMonth:absMonth()});
@@ -2650,7 +2653,7 @@ function buildQueuePanelHTML(){
   const active=q.filter(o=>o.started).length;
   const orderRows = q.length ? q.map(o=>{
     const pct=Math.round(100*(o.monthsTotal-o.monthsLeft)/Math.max(1,o.monthsTotal));
-    const status=o.started?`building · ${o.monthsLeft} mo left`:'queued · waiting for a bay slot';
+    const status=o.started?`building · ${fmtTimeLeft(o.monthsLeft)} left`:'queued · waiting for a bay slot';
     return `<div style="padding:6px 0;border-top:1px solid #2a2a2a">
       <div style="display:flex;justify-content:space-between;gap:8px"><b>${o.name}</b><span class="dim" style="font-size:11px">${status}</span></div>
       <div class="bar" style="margin:4px 0;height:6px"><div class="fill" style="width:${o.started?pct:0}%;background:var(--readout)"></div></div>
@@ -11072,7 +11075,7 @@ function upcomingEvents(){
   const out=[];
   const ar=state.activeResearch;
   if(ar){ const r=RESEARCH.find(x=>x.id===ar.id); if(r) out.push({icon:'⚛', msg:`R&D: ${r.name} · ${fmtTimeLeft(ar.monthsLeft)} left`, nav:'rnd'}); }
-  (state.buildQueue||[]).forEach(o=>{ out.push({icon:'🔧', msg:(o.started?`Build: ${o.missionName||o.name} · ${Math.max(1,o.monthsLeft)} mo left`:`Queued: ${o.missionName||o.name}`), nav:'command'}); });
+  (state.buildQueue||[]).forEach(o=>{ out.push({icon:'🔧', msg:(o.started?`Build: ${o.missionName||o.name} · ${fmtTimeLeft(o.monthsLeft)} left`:`Queued: ${o.missionName||o.name}`), nav:'command'}); });
   const cw=state.committedWindow;
   if(cw){ const m=MISSIONS.find(x=>x.id===cw.missionId); out.push({icon:'🪟', msg:`Window: ${m?m.name:cw.missionId} opens ${monthToDate(cw.abs)}`, nav:'map'}); }
   return out;

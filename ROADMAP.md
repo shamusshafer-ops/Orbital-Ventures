@@ -3548,11 +3548,17 @@ cadence — run them daily unchanged and events fire ~30× as often.
      facility money contribution accrues per-day (and is continuous for a fuel-less base — the fuelled case is
      correctly *non*-linear because depot growth feeds CE4(a) empireOpex); supplied factor = 1. CE5 regression
      green; render+advance smoke clean.
-   - [ ] **3c — duration re-authoring + label sweep + balance re-pin.** Re-express build/research/facility/window
-     durations at day resolution where finer steps improve feel (e.g. a short build in days, not a forced 1-month
-     floor); sweep the ~357 "month"/"/mo" strings *with* the numbers they describe; re-pin the CE1–CE4 balance
-     harnesses to the daily model. **Highest regression risk of the epic (the string sweep) — lean on a
-     render smoke across every tab.**
+   - 🟡 **3c — day-resolution countdowns + build-per-day (in progress 2026-06-27); duration re-authoring +
+     label sweep + balance re-pin remain.** Done so far: (i) `fmtTimeLeft(months)` → a "2 mo 27 d" countdown
+     (days round up), applied to all R&D readouts (the per-day float was showing ~"2.8999 mo"); (ii) **build
+     queue progresses per-day** — `tickBuildQueue` decrements `perDay(1)` and assigns bay slots daily (moved
+     from the monthly boundary into `tickContinuousDay`), 30 days = one month, with the same `fmtTimeLeft`
+     countdown on the build readouts. **Validation — /tmp/ov-tg1.js 45/45** (build starts + progresses per-day,
+     30 days = 1 month, completes to hangar after 2 months, advances sub-month) + `fmtTimeLeft` unit 8/8.
+     **Remaining:** re-express facility/window/research durations at day resolution where finer steps improve
+     feel (e.g. a short build in days, not a forced 1-month floor); sweep the ~357 "month"/"/mo" strings *with*
+     the numbers they describe; re-pin the CE1–CE4 balance harnesses to the daily model. **Highest regression
+     risk of the epic (the string sweep) — lean on a render smoke across every tab.**
 4. [ ] **Day-granular gameplay (the payoff).** The features daily time unlocks: mission durations that
    actually occupy calendar days (crewed flight = its `days` aloft, deep-space cruise as elapsed days),
    day-scheduled launch windows, short-fuse events/contracts measured in days, and finer launch cadence.
