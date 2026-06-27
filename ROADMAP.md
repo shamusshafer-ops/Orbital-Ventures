@@ -3317,6 +3317,77 @@ together (compounding + opportunity cost are the two halves of "felt strategic g
 then CE4 (rising stakes needs CE1's rival to exploit overstretch), then CE5 (independent;
 slot whenever — it's the moment-to-moment polish that makes every launch matter).
 
+## Time Granularity — Monthly → Daily Simulation (epic)
+
+**Goal.** Replace the discrete *monthly* tick with a *daily* one, so time passes (and the
+calendar reads) in days and finer-grained scheduling/events become possible. Status:
+**[ ] not started — scoped 2026-06-27.**
+
+**Why it's contained, and why it's still hard.** The simulation is *architecturally
+concentrated*: nearly all time-driven logic lives in one funnel, `advance(months)` — a loop
+where ~25 subsystems each tick once per month (overhead, `empireOpex`, payroll, `pgmRoyalty`,
+`govMonthlyFunding`, passive contracts, facility production + `FAC_SUPPLY_MONTHS` supply drain,
+fuel/material price walks, `tickBuildQueue`, R&D `monthsLeft`, morale/attrition, `tickRivals`
+budget accrual, the `lastMonth` cashflow snapshot, `checkEvents`/poaching/personnel/breakthrough/
+setback, `pushMetricHistory` sparklines). Durations are mostly **centralized constants**
+(research `.months`, `BASE_BUILD_MONTHS 2`, `FAC_SUPPLY_MONTHS 8`, `FAC_STARVE_ABANDON_MONTHS 6`,
+`SYNODIC_MONTHS 26`, `REHEARSAL_MONTHS 1`, `DOCTRINE/LUNAR_SWITCH_MONTHS`, `MATERIAL_CONTRACT_MONTHS`,
+`MORALE_QUIT_MONTHS`, `COMMEND_COOLDOWN_MONTHS`, econ `monthsLeft`). The *code* change is therefore
+focused. The **hard part is balance**: the month is the atomic unit every CE1–CE4 system was tuned
+against, ~357 UI strings say "month"/"/mo", and every probabilistic per-tick check assumes monthly
+cadence — run them daily unchanged and events fire ~30× as often.
+
+**Core design decisions.**
+- **`DAYS_PER_MONTH = 30` (abstracted month), real calendar optional.** A flat 30-day month keeps
+  `absMonth()` / `SYNODIC_MONTHS` / pad-cadence math clean and makes the daily↔monthly conversion
+  exact. A true variable-length Gregorian calendar is a *later* cosmetic upgrade, not part of the
+  mechanical conversion.
+- **Time state.** Add `state.day` (0..DAYS_PER_MONTH-1) alongside `state.month`/`state.year`; an
+  `absDay()` sibling of `absMonth()`. SAVE_VERSION bump + legacy default `day:0`.
+- **One conversion layer.** Introduce `perDay(monthlyRate)` and `daysFor(months)` helpers so rates
+  and durations convert in *one* place, not scattered. Durations can stay authored in months and be
+  converted at use; rates divide by DAYS_PER_MONTH.
+- **De-risk by equivalence first.** The daily tick must be **balance-equivalent** to the old monthly
+  one before any new day-granular feature lands: 30 daily ticks must reproduce the old single-month
+  totals within ε. That splits the risky *refactor* from the *new gameplay*.
+- **Cadence-gated subsystems.** Things that are conceptually monthly (rival budget windows, the
+  cashflow `lastMonth` panel, sparkline snapshots, pad-cadence reset, morale drift, market price
+  walks) stay on a **monthly boundary** — fire them only when `absDay() % DAYS_PER_MONTH === 0` —
+  rather than running 1/30 strength every day. Continuous flows (overhead, payroll, opex, royalty,
+  funding, contract income, supply drain, R&D progress, build progress) convert to per-day.
+- **Probabilistic events.** Rescale each per-tick chance by ~1/DAYS_PER_MONTH *or* keep the roll
+  monthly-gated — chosen per system so observed frequency is unchanged.
+
+**Suggested build order (each slice shippable + headless-validated).**
+1. [ ] **Equivalence-preserving refactor (highest risk, do first).** Add `state.day`/`absDay()`,
+   `DAYS_PER_MONTH`, and the `perDay`/`daysFor` layer. Rewrite `advance()` to iterate days, splitting
+   each subsystem into *continuous* (per-day) vs *monthly-gated* (boundary-only). **Validation:**
+   a harness proves advancing 360 days yields the same money/rep/research-progress/build-progress/
+   facility-output as the old 12-month advance within ε, with identical event/setback frequency over
+   a long run. No UI/label change yet, no new features — pure equivalence.
+2. [ ] **Calendar + controls + labels.** `dateStr()` → "14 Mar 1962"; the "▸ Advance 1 month" button
+   becomes day/week/month steps (advance N days); `skipResearch`/window-wait/launch advances expressed
+   in days. Sweep the ~357 "month"/"/mo" strings (readout, cashflow, cadence, tooltips). **Validation:**
+   render smoke across tabs; date formatting unit checks; no balance drift from slice 1.
+3. [ ] **Duration re-authoring + balance pass.** Re-express research/build/facility/window durations
+   at day resolution where finer steps improve feel (e.g. a 2-day build vs "1 month"), and retune the
+   CE1–CE4 numbers that read better daily (carrying cost, cadence, resupply). **Validation:** re-pin the
+   CE1–CE4 regression harnesses to the daily model; confirm early-game pacing and late-game stakes
+   curves hold.
+4. [ ] **Day-granular gameplay (the payoff).** The features daily time unlocks: mission durations that
+   actually occupy calendar days (crewed flight = its `days` aloft, deep-space cruise as elapsed days),
+   day-scheduled launch windows, short-fuse events/contracts measured in days, and finer launch cadence.
+   **Validation:** mission-clock + window-timing checks; event-fuse checks.
+5. [ ] **(Optional, later) True Gregorian calendar.** Variable month lengths + leap years, purely
+   cosmetic over the 30-day-abstracted economy. **Validation:** date-math unit tests.
+
+**Risks / watch-items.** Save migration (legacy month/year → day-aware); performance (advancing a
+year is 360 iterations not 12 — keep the per-day path light, especially deep-space window waits that
+can advance hundreds of days); the `lastMonth` panel + sparklines must aggregate days→months or they
+balloon 30×; double-check `absMonth()`-keyed systems (pad cadence CE2(b), Mars synodic windows) after
+the switch. **Cross-ref:** `advance()` funnel, CE2(b) launch cadence, CE4 carrying cost/resupply,
+M3b launch-window planner, #28 sparklines, #18 cashflow panel.
+
 ## Repo
 
 `shamusshafer-ops/Orbital-Ventures` (private), branch `main`.
