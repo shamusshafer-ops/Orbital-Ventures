@@ -10,6 +10,11 @@
     --bg:#0e1418; --panel:#151d23; --panel2:#1b252c; --line:#2a3a44;
     --ink:#d8e2e7; --muted:#7d909b; --dim:#56666f;
     --ignite:#f5a623; --readout:#4fd1d9; --ok:#58c47a; --bad:#e0564f; --warn:#e8b341;
+    /* #30 domain color-coding language — one hue per domain, so every metric/panel reads
+       its domain at a glance. Reused where the existing palette already fits (military=bad,
+       exploration=ignite, crew=readout, warn=warn) + new hues for economy/engineering/research. */
+    --dom-economy:#5ec27a; --dom-engineering:#5b9bd5; --dom-research:#a98bd6;
+    --dom-military:#e0564f; --dom-exploration:#f5a623; --dom-crew:#4fd1d9; --dom-warn:#e8b341;
     --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
     --sans:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
   }
@@ -39,6 +44,22 @@
   .stat{display:flex;flex-direction:column;align-items:flex-end}
   .stat .k{font-size:10px;text-transform:uppercase;letter-spacing:.14em;color:var(--muted)}
   .stat .v{font-family:var(--mono);font-size:18px;font-weight:600}
+  /* #30: a domain class tints the metric label (keys are static text — values keep their own
+     state colours). .dombar-* adds a left accent so a panel reads its domain at a glance. */
+  .dom-economy>.k,.k.dom-economy{color:var(--dom-economy)}
+  .dom-engineering>.k,.k.dom-engineering{color:var(--dom-engineering)}
+  .dom-research>.k,.k.dom-research{color:var(--dom-research)}
+  .dom-military>.k,.k.dom-military{color:var(--dom-military)}
+  .dom-exploration>.k,.k.dom-exploration{color:var(--dom-exploration)}
+  .dom-crew>.k,.k.dom-crew{color:var(--dom-crew)}
+  .dom-warn>.k,.k.dom-warn{color:var(--dom-warn)}
+  .dombar-economy{border-left:3px solid var(--dom-economy)}
+  .dombar-engineering{border-left:3px solid var(--dom-engineering)}
+  .dombar-research{border-left:3px solid var(--dom-research)}
+  .dombar-military{border-left:3px solid var(--dom-military)}
+  .dombar-exploration{border-left:3px solid var(--dom-exploration)}
+  .dombar-crew{border-left:3px solid var(--dom-crew)}
+  .dom-dot{display:inline-block;width:8px;height:8px;border-radius:50%;vertical-align:middle;margin-right:5px}
 
   /* Tabs */
   /* --- Mission Control Shell (UI Consolidation slice 1): persistent left rail + center viewport + (stub) right rail --- */
@@ -355,16 +376,16 @@
     </div>
     <div class="stats">
       <div class="stat"><span class="k">Date</span><span class="v" id="stDate">—</span></div>
-      <div class="stat"><span class="k">Capital</span><span class="v" id="stMoney">—</span></div>
-      <div class="stat"><span class="k">Reputation</span><span class="v" id="stRep">—</span></div>
-      <div class="stat adv-only"><span class="k">Flights</span><span class="v" id="stFlights">—</span></div>
-      <div class="stat adv-only"><span class="k">Public Support</span><span class="v" id="stSupport">—</span></div>
-      <div class="stat hidden adv-only" id="stMarketWrap"><span class="k">Market</span><span class="v" id="stMarket">—</span></div>
-      <div class="stat hidden adv-only" id="stRoyaltyWrap"><span class="k">PGM Royalties</span><span class="v" id="stRoyalty">—</span></div>
-      <div class="stat hidden adv-only" id="stPassiveWrap"><span class="k">Passive Income</span><span class="v" id="stPassive">—</span></div>
-      <div class="stat hidden adv-only" id="stInfraWrap"><span class="k">Facilities</span><span class="v" id="stInfra">—</span></div>
-      <div class="stat hidden adv-only" id="stSciWrap"><span class="k">Science</span><span class="v" id="stSci">—</span></div>
-      <div class="stat hidden adv-only" id="stDepotWrap"><span class="k">LEO Depot</span><span class="v" id="stDepot">—</span></div>
+      <div class="stat dom-economy"><span class="k">Capital</span><span class="v" id="stMoney">—</span></div>
+      <div class="stat dom-exploration"><span class="k">Reputation</span><span class="v" id="stRep">—</span></div>
+      <div class="stat adv-only dom-engineering"><span class="k">Flights</span><span class="v" id="stFlights">—</span></div>
+      <div class="stat adv-only dom-warn"><span class="k">Public Support</span><span class="v" id="stSupport">—</span></div>
+      <div class="stat hidden adv-only dom-economy" id="stMarketWrap"><span class="k">Market</span><span class="v" id="stMarket">—</span></div>
+      <div class="stat hidden adv-only dom-economy" id="stRoyaltyWrap"><span class="k">PGM Royalties</span><span class="v" id="stRoyalty">—</span></div>
+      <div class="stat hidden adv-only dom-economy" id="stPassiveWrap"><span class="k">Passive Income</span><span class="v" id="stPassive">—</span></div>
+      <div class="stat hidden adv-only dom-economy" id="stInfraWrap"><span class="k">Facilities</span><span class="v" id="stInfra">—</span></div>
+      <div class="stat hidden adv-only dom-research" id="stSciWrap"><span class="k">Science</span><span class="v" id="stSci">—</span></div>
+      <div class="stat hidden adv-only dom-economy" id="stDepotWrap"><span class="k">LEO Depot</span><span class="v" id="stDepot">—</span></div>
     </div>
     <button class="btn ghost" id="topbarHideBtn" onclick="toggleTopbar()" title="Hide the top bar (h)" style="padding:2px 10px;font-size:11px;align-self:center;margin-left:14px">▴ Hide bar</button>
   </header>
@@ -1648,6 +1669,19 @@ const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov',
 const $=id=>document.getElementById(id);
 const fM=v=>'$'+v.toFixed(2)+'M';
 const fI=v=>Math.round(v).toLocaleString();
+// #30 domain color-coding — the shared vocabulary. Each domain maps to a CSS custom property
+// (defined in :root) so dynamic markup can tint to match the static .dom-* / .dombar-* classes.
+const DOMAINS={
+  economy:    {label:'Economy',     color:'var(--dom-economy)'},
+  engineering:{label:'Engineering', color:'var(--dom-engineering)'},
+  research:   {label:'Research',    color:'var(--dom-research)'},
+  military:   {label:'Military',    color:'var(--dom-military)'},
+  exploration:{label:'Exploration', color:'var(--dom-exploration)'},
+  crew:       {label:'Crew',        color:'var(--dom-crew)'},
+  warn:       {label:'Warning',     color:'var(--dom-warn)'},
+};
+function domColor(d){ return (DOMAINS[d]||{}).color || 'var(--ink)'; }
+function domDot(d){ return `<span class="dom-dot" style="background:${domColor(d)}"></span>`; } // a small colored chip prefix
 function dateStr(){return ((state.day||0)+1)+' '+MONTHS[state.month]+' '+state.year;} // "14 Mar 1962" — day-of-month is 1-based (Time Granularity)
 function log(kind,msg,nav){state.log.unshift({when:dateStr(),kind,msg,nav}); if(state.log.length>40)state.log.pop();}
 function curSigma(){return clampA(state.sigma * tankMaterial().sigmaMult, 0.02, 0.9);} // BC2: tank material scales structural coefficient
@@ -10668,7 +10702,7 @@ function engineYardPanelHTML(){
   const draw=m?engineDrawForBuild(m):{total:0,saveDays:0,credit:0,tested:0};
   const provenNote = draw.tested>0 ? ` · ${draw.tested} bench-tested → +${(benchRelBonus(m)*100).toFixed(1)}% reliability` : '';
   const drawNote = draw.total>0 ? `<div class="flag ok" style="margin-top:6px">⚙ ${draw.total} engine${draw.total===1?'':'s'} on hand for the current build → assembly ~${draw.saveDays} d faster, ${fM(draw.credit)} pre-paid${provenNote}.</div>` : '';
-  return `<div class="card adv-only" style="background:var(--panel2);margin-bottom:12px">
+  return `<div class="card adv-only dombar-engineering" style="background:var(--panel2);margin-bottom:12px">
       <div style="display:flex;justify-content:space-between;align-items:baseline">
         <div class="mission-name" style="font-size:14px">⚙ Engine yard</div>
         <div class="dim" style="font-size:11px">pre-build engines in downtime · foundry L${prodLevel('foundry')} builds ${engineParallel()} at once · fitted engines speed assembly (cost-neutral) · ⛉ bench-test for flight-proven reliability</div>
@@ -10694,7 +10728,7 @@ function partYardPanelHTML(){
   const draw=m?partDrawForBuild(m):{total:0,saveDays:0,credit:0,tested:0};
   const provenNote = draw.tested>0 ? ` · ${draw.tested} bench-tested → +${(benchRelBonus(m)*100).toFixed(1)}% reliability` : '';
   const drawNote = draw.total>0 ? `<div class="flag ok" style="margin-top:6px">🛠 ${draw.total} structural component${draw.total===1?'':'s'} on hand for the current build → assembly ~${draw.saveDays} d faster, ${fM(draw.credit)} pre-paid${provenNote}.</div>` : '';
-  return `<div class="card adv-only" style="background:var(--panel2);margin-bottom:12px">
+  return `<div class="card adv-only dombar-engineering" style="background:var(--panel2);margin-bottom:12px">
       <div style="display:flex;justify-content:space-between;align-items:baseline">
         <div class="mission-name" style="font-size:14px">🛠 Structures &amp; habitats</div>
         <div class="dim" style="font-size:11px">pre-build tank sets &amp; crew modules in downtime · foundry L${prodLevel('foundry')} builds ${partParallel()} at once · fitted parts speed assembly (cost-neutral) · ⛉ bench-test for proven reliability</div>
@@ -10796,7 +10830,7 @@ function productionPanelHTML(){
         <div class="metric"><div class="k">Total upkeep</div><div class="v" style="color:${productionUpkeep()>0?'var(--bad)':'var(--ink)'}">${productionUpkeep()>0?'−'+fM(productionUpkeep())+'/mo':'none'}</div></div>
       </div>
       ${buildQueuePanelHTML()}
-      <div class="card adv-only" style="background:var(--panel2);margin-bottom:12px">
+      <div class="card adv-only dombar-economy" style="background:var(--panel2);margin-bottom:12px">
         <div style="display:flex;justify-content:space-between;align-items:baseline">
           <div class="mission-name" style="font-size:14px">📦 Raw-material supply</div>
           <div class="dim" style="font-size:11px">spot prices wander monthly · contracts lock for ${MATERIAL_CONTRACT_MONTHS} mo at +${(MATERIAL_CONTRACT_PREMIUM*100|0)}% over spot</div>

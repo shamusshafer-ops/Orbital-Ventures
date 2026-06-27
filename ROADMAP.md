@@ -2644,10 +2644,24 @@ Continuing the #23–#26 numbering. All **[ ] not started**.
       into a collapsible timeline with category filters (All / Launches / Research /
       Economy / Rivals / Crew / Infrastructure) and per-entry icons. Needs the existing
       log entries tagged with a category at emit time.
-- [ ] **30 · Domain color-coding language** *(review #7)* — a consistent palette
+- [~] **30 · Domain color-coding language** *(review #7)* — a consistent palette
       (economy=green · engineering=blue · research=purple · military=red ·
       exploration=orange · crew=cyan · warnings=yellow) applied as CSS custom properties
       so every metric/panel reads its domain at a glance. Polish; pairs with #28's graphs.
+      **Slice 1 — palette + first application — built 2026-06-27.** Seven `--dom-*` CSS custom
+      properties in `:root` (reusing the existing palette where it already fits — military=`--bad`,
+      exploration=`--ignite`, crew=`--readout`, warn=`--warn` — plus new economy/engineering/research
+      hues). Reusable utilities: `.dom-<domain>` tints a metric's static `.k` label (values keep their
+      own state colours), `.dombar-<domain>` adds a left accent so a panel reads its domain, `.dom-dot`
+      a chip. JS vocabulary `DOMAINS{}` + `domColor(d)` (var or `--ink` fallback) + `domDot(d)` for
+      dynamic markup. Applied to the **top status bar** (Capital/Market/Royalties/Passive/Facilities/
+      Depot = economy, Science = research, Reputation = exploration, Flights = engineering, Public
+      Support = warn) and the **manufacturing panels** (Engine + Structures yards = engineering accent,
+      Raw-material supply = economy accent). **Validation — /tmp/ov-dom.js 23/23:** palette defined,
+      utility classes present, `domColor`/`domDot` values + fallback, every top-bar metric carries its
+      domain class, yard/supply panels carry their accent and still render. Render 8/8 + smoke green.
+      *Remaining: extend the accent/dot language to the remaining scenes (R&D=research, crew/personnel=crew,
+      map/missions=exploration, rivals=military) + readouts; pairs with #28 graphs when those land.*
 - [ ] **31 · UI microanimations pass** *(review #11, #4)* — counter tween-ups, newly-
       unlocked-tech glow, mission-success pulse, completed-objective sparkle, a scrolling
       news ticker, and the literal **slide animation** for the right-rail drawer. Pure
