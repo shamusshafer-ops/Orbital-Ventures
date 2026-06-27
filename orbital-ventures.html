@@ -329,7 +329,7 @@
   .log .rival{color:var(--ignite)}
 
   /* Modal */
-  .scrim{position:fixed;inset:0;background:rgba(6,10,12,.78);display:flex;align-items:center;justify-content:center;z-index:20}
+  .scrim{position:fixed;inset:0;background:rgba(6,10,12,.78);display:flex;align-items:center;justify-content:center;z-index:80} /* above the pinned topbar (40), show-bar btn (50), expanded views (60) and launch scene (70) — a modal backdrop must cover everything */
   .modal{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:26px;max-width:440px;text-align:center;max-height:88vh;overflow-y:auto}
   .modal.view{max-width:680px;width:92vw;text-align:left}   /* slice 6 deep-view modals (Programs/Rivals/Personnel): wide, left-aligned, scrollable */
   .modal h2{font-size:18px;color:var(--ignite);margin-bottom:10px;text-transform:none;letter-spacing:0}
@@ -1609,6 +1609,7 @@ function newGame(difficulty){
     publicSupport:SUPPORT_BASE, // #8: program politics — public mood dial
     production:{bays:1,foundry:1,pads:1,qa:1}, // #7: manufacturing capacity — leveled production lines
     engineStock:{}, // #7 sub-assemblies: pre-built engines in the yard (engId -> count)
+    partStock:{}, // #7 sub-assemblies slice 2: pre-built tank sets / crew modules ("kind:sub" -> count)
     lastMonth:{revenue:0,expenses:0,net:0,flights:0}, // #18: rolling ops-summary ledger
     history:{}, // #18: missionId -> completion year, for the Home timeline
     metricHist:defaultMetricHist(), // #28: monthly trend buffers for dashboard sparklines
@@ -2779,6 +2780,82 @@ function buildEngineStock(engId, count){
   state.engineStock[engId]=engineStockCount(engId)+count;
   log('ok', `Engine yard — manufacturing ${count}× ${ENGINES[engId].name} (${fM(chk.cost)}, ${chk.days} d). Stock now ${engineStockCount(engId)}.`);
   advanceDays(chk.days); // the engines take calendar time to build (do it during downtime)
+  if(!state.over){ render(); maybeShowSetback(); }
+}
+
+/* ===== #7 sub-assemblies slice 2 — structures & habitats ==============================
+   The same cadence-tool pattern as the Engine Yard, extended to the rest of the airframe:
+   pre-fabricate named STRUCTURAL sub-assemblies during downtime and stock them. A vehicle
+   assembly draws matching components — a stage TANK SET per stage (keyed by tank material)
+   and a crew-module HABITAT per crewed flight (keyed by ECLSS tier). Cost-neutral (charged
+   when stocked, credited at assembly → only the payment TIMING shifts) and each fitted
+   component shaves PART_ASSEMBLY_SAVE_DAYS off the build. state.partStock is keyed by a
+   composite "kind:sub" key ("tank:steel", "hab:closed"). Foundry level builds in parallel
+   and shortens per-unit build time, exactly like the engine yard. */
+const PART_BUILD_DAYS_BASE=16;        // days to fabricate one structural component at foundry L1
+const PART_BUILD_DAYS_PER_FOUNDRY=2;  // each foundry level shaves this off
+const PART_BUILD_DAYS_MIN=5;          // floor on per-component build time
+const PART_ASSEMBLY_SAVE_DAYS=5;      // days shaved off assembly per pre-built component fitted
+const PART_STOCK_CAP=12;              // yard holds at most this many of one component type
+const TANK_UNIT_BASE=0.15;            // representative stage tank-set fabrication cost ($M, before material × difficulty)
+const HAB_UNIT_BASE=0.3;             // representative crew-module pressure-vessel fabrication cost ($M)
+                                     // kept modest so a fitted component's credit never exceeds even a small vehicle's buildCost
+function partKindLabel(kind){ return kind==='tank'?'tank set':kind==='hab'?'crew module':kind; }
+function partCompName(key){ const [kind,sub]=key.split(':');
+  if(kind==='tank') return (TANK_MATERIALS[sub]||TANK_MATERIALS.standard).name+' tank set';
+  if(kind==='hab')  return (ECLSS[sub]||ECLSS.open).name+' crew module';
+  return key; }
+// per-unit fabrication cost — charged at stock, credited at assembly (cost-neutral, like engines)
+function partCompCost(key){ const [kind,sub]=key.split(':');
+  if(kind==='tank'){ const t=TANK_MATERIALS[sub]||TANK_MATERIALS.standard; return round2(TANK_UNIT_BASE*t.costMult*diff().buildCostMult); }
+  if(kind==='hab'){  const t=ECLSS[sub]||ECLSS.open; return round2((HAB_UNIT_BASE+0.4*t.sysBase)*diff().buildCostMult); }
+  return 0; }
+function partCompBuildable(key){ const [kind,sub]=key.split(':');
+  if(kind==='tank') return !!TANK_MATERIALS[sub]; // tank materials carry no research gate
+  if(kind==='hab'){ const t=ECLSS[sub]; return !!(t && (!t.research || (state.research&&state.research[t.research]))); }
+  return false; }
+function partStockCount(key){ const s=state.partStock; return s? Math.max(0, Math.floor(s[key]||0)) : 0; }
+function partBuildDays(){ return Math.max(PART_BUILD_DAYS_MIN, Math.round(PART_BUILD_DAYS_BASE-PART_BUILD_DAYS_PER_FOUNDRY*(prodLevel('foundry')-1))); }
+function partParallel(){ return prodLevel('foundry'); } // foundry level = components built in parallel
+function partBuildBatchDays(count){ return partBuildDays()*Math.max(1, Math.ceil(count/partParallel())); }
+// the structural components the catalog can stock right now (current tank material + reachable ECLSS tiers)
+function stockablePartKeys(){
+  const keys=['tank:'+curParts().tank];
+  for(const id in ECLSS){ if(partCompBuildable('hab:'+id)) keys.push('hab:'+id); }
+  return keys;
+}
+// every structural sub-assembly the current vehicle design needs → {compKey:count}
+function vehiclePartNeeds(m){
+  const need={};
+  const stageN=(state.stages||[]).length + (boostersFitted()?1:0); // one tank set per stage + a booster set
+  if(stageN>0) need['tank:'+curParts().tank]=stageN;
+  if(m && m.crew>0) need['hab:'+state.eclss]=1; // a crewed flight needs its pressurized crew module
+  return need;
+}
+// how many components this build can pull from the yard: {draw, total, credit (pre-paid), saveDays}
+function partDrawForBuild(m){
+  const need=vehiclePartNeeds(m), draw={}; let total=0, credit=0;
+  for(const key in need){ const d=Math.min(need[key], partStockCount(key)); if(d>0){ draw[key]=d; total+=d; credit+=d*partCompCost(key); } }
+  return {draw, total, credit:round2(credit), saveDays:total*PART_ASSEMBLY_SAVE_DAYS};
+}
+function consumePartStock(draw){ state.partStock=state.partStock||{}; for(const key in draw) state.partStock[key]=Math.max(0, partStockCount(key)-draw[key]); }
+function canBuildPartStock(key, count){
+  count=count||1;
+  if(!partCompBuildable(key)) return {ok:false, why:'Component not available.'};
+  if(count<=0) return {ok:false, why:'Nothing selected.'};
+  if(partStockCount(key)+count>PART_STOCK_CAP) return {ok:false, why:`Yard holds at most ${PART_STOCK_CAP} of a type.`};
+  const cost=round2(partCompCost(key)*count);
+  if(state.money<cost) return {ok:false, why:'Not enough capital.'};
+  return {ok:true, cost, days:partBuildBatchDays(count)};
+}
+function buildPartStock(key, count){
+  count=count||1;
+  const chk=canBuildPartStock(key,count); if(!chk.ok) return;
+  state.money-=chk.cost;
+  state.partStock=state.partStock||{};
+  state.partStock[key]=partStockCount(key)+count;
+  log('ok', `Structures yard — fabricating ${count}× ${partCompName(key)} (${fM(chk.cost)}, ${chk.days} d). Stock now ${partStockCount(key)}.`);
+  advanceDays(chk.days); // structural components take calendar time to fabricate (do it during downtime)
   if(!state.over){ render(); maybeShowSetback(); }
 }
 // Forecast: months of coverage at the recent build cadence.
@@ -4198,12 +4275,15 @@ function launch(prebuilt){
   // #7 sub-assemblies: a non-prebuilt build pulls matching engines from the yard — already paid for
   // (credit cuts the build cost to keep it cost-neutral) and already made (shaves assembly days).
   const draw = prebuilt ? {draw:{},total:0,credit:0,saveDays:0} : engineDrawForBuild(m);
-  const buildPart = prebuilt ? 0 : Math.max(0.1, v.buildCost - draw.credit);
+  const pdraw = prebuilt ? {draw:{},total:0,credit:0,saveDays:0} : partDrawForBuild(m); // #7 slice 2: tank/habitat sub-assemblies
+  const drawCredit = round2(draw.credit + pdraw.credit), drawSaveDays = draw.saveDays + pdraw.saveDays;
+  const buildPart = prebuilt ? 0 : Math.max(0.1, v.buildCost - drawCredit);
   state.money-=(buildPart+v.launchCost+tl.cost+(state.rehearsal?rehearsalCost(m):0));
   if(draw.total>0){ consumeEngineStock(draw.draw); log('note',`Assembly — fitted ${draw.total} pre-built engine${draw.total===1?'':'s'} from the yard (${fM(draw.credit)} pre-paid, ~${draw.saveDays} d faster).`); }
+  if(pdraw.total>0){ consumePartStock(pdraw.draw); log('note',`Assembly — fitted ${pdraw.total} pre-built structural component${pdraw.total===1?'':'s'} from the yard (${fM(pdraw.credit)} pre-paid, ~${pdraw.saveDays} d faster).`); }
   // CE2(b): an extra pad lets a prebuilt rapid flight share this calendar month (cadence); else the launch costs its usual +1 month
   const launchMo = canParallelLaunch(prebuilt, tl, rehMo, buildMo, m) ? 0 : 1;
-  const buildDays = prebuilt ? 0 : Math.max(ENGINE_BUILD_FLOOR_DAYS, daysFor(buildMo)-draw.saveDays); // pre-built engines shorten assembly
+  const buildDays = prebuilt ? 0 : Math.max(ENGINE_BUILD_FLOOR_DAYS, daysFor(buildMo)-drawSaveDays); // pre-built engines + structures shorten assembly
   const leadDays = buildDays + daysFor(launchMo+tl.months+rehMo);
   let windowQuality=1;
   if(m.window){
@@ -4480,7 +4560,8 @@ function modalClose(){ return `<div style="text-align:right;margin-top:12px"><bu
 function showProgramsModal(){ activeModal=()=>{ showModal(`<div id="ambitionCard"></div><div id="programsCard" style="margin-top:14px"></div>${modalClose()}`,true); renderPrograms(); }; activeModal(); }
 function showRivalsModal(){ activeModal=()=>{ showModal(`<div id="rivalsCard"></div>${modalClose()}`,true); renderRivals(); }; activeModal(); }
 function showPersonnelModal(){ activeModal=()=>{ showModal(`<div id="personnelCard"></div>${modalClose()}`,true); renderPersonnel(); }; activeModal(); }
-function showInfrastructureModal(){ activeModal=()=>{ showModal(`<div id="infraCard"></div>${modalClose()}`,true); renderInfrastructure(); }; activeModal(); } // slice 7: the Infra tab → a hub-building drill modal
+let _prodModalOpen=false; // true while the Infrastructure/Production drill is the top layer → Enter (as well as Esc) minimizes it
+function showInfrastructureModal(){ activeModal=()=>{ showModal(`<div id="infraCard"></div>${modalClose()}`,true); renderInfrastructure(); }; activeModal(); _prodModalOpen=true; } // slice 7: the Infra tab → a hub-building drill modal
 // CE3(a): Company Doctrine modal — declare/switch the company's strategic identity
 function doctrineModalHTML(){
   const cur=state.doctrine;
@@ -4901,11 +4982,11 @@ function bailout(){
 }
 function restart(difficulty){hideModal();newGame(difficulty);render();}
 function showModal(html,view){const mb=$('modalBody');mb.className='modal'+(view?' view':'');mb.innerHTML=html;$('modal').classList.remove('hidden');} // view=true → wide, left-aligned, scrollable deep-view layout
-function hideModal(){activeModal=null;$('modal').classList.add('hidden');} // slice 6: closing clears the live-modal thunk
+function hideModal(){activeModal=null;_prodModalOpen=false;$('modal').classList.add('hidden');} // slice 6: closing clears the live-modal thunk
 
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=35; // v35: #7 sub-assemblies — Engine Yard (state.engineStock {engId:count}; legacy saves default {}); v34: Time Granularity slice 4b — launch windows day-scheduled (window/committedWindow .abs moved from absMonth to absDay; migrateWindowsToDays ×30 on pre-v34 load + clears the regenerable windows cache); v33: Time Granularity slice 1 — day-iterating advance() funnel (state.day 0..29 + absDay(); legacy saves default day:0 via load defaults; whole-month advances stay bit-identical so no balance migration needed); v32: CE4(c) era-scaled failure stakes + bailout retune (state.loanInterest — permanent bridge-loan debt service; legacy saves default to 0 via load defaults + loanInterest() guard); v31: CE4(b) standing resupply obligations (per-facility supply/starvedMonths; legacy facilities default to fully provisioned via facilitySupply()); v30: CE3(c) lunar architecture fork (state.lunarArch, null=uncommitted; luna_landing reqResearch moved to per-arch gates); v29: CE3(a) company doctrine (state.doctrine, null=undeclared/neutral); v28: CE2(c) juggernaut capstone (state.standingProd/juggernautReached); v27: CE2(b) launch cadence (state.padMonthAbs/padMonthUsed) — load defaults seed all of these; v26: CE1 rival agents (state.rivalState), seedRivalState migrates old rivalFired
+const SAVE_VERSION=36; // v36: #7 sub-assemblies slice 2 — structures & habitats yard (state.partStock {"kind:sub":count}, e.g. "tank:steel"/"hab:closed"; legacy saves default {}); same cost-neutral cadence pattern as the Engine Yard; v35: #7 sub-assemblies — Engine Yard (state.engineStock {engId:count}; legacy saves default {}); v34: Time Granularity slice 4b — launch windows day-scheduled (window/committedWindow .abs moved from absMonth to absDay; migrateWindowsToDays ×30 on pre-v34 load + clears the regenerable windows cache); v33: Time Granularity slice 1 — day-iterating advance() funnel (state.day 0..29 + absDay(); legacy saves default day:0 via load defaults; whole-month advances stay bit-identical so no balance migration needed); v32: CE4(c) era-scaled failure stakes + bailout retune (state.loanInterest — permanent bridge-loan debt service; legacy saves default to 0 via load defaults + loanInterest() guard); v31: CE4(b) standing resupply obligations (per-facility supply/starvedMonths; legacy facilities default to fully provisioned via facilitySupply()); v30: CE3(c) lunar architecture fork (state.lunarArch, null=uncommitted; luna_landing reqResearch moved to per-arch gates); v29: CE3(a) company doctrine (state.doctrine, null=undeclared/neutral); v28: CE2(c) juggernaut capstone (state.standingProd/juggernautReached); v27: CE2(b) launch cadence (state.padMonthAbs/padMonthUsed) — load defaults seed all of these; v26: CE1 rival agents (state.rivalState), seedRivalState migrates old rivalFired
 function saveGame(){
   try{
     const payload={v:SAVE_VERSION, ts:Date.now(), state:JSON.parse(JSON.stringify(state))};
@@ -4953,7 +5034,7 @@ function loadGame(){
       staff:[], assignedAstronaut:null,
       vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, rehearsal:false, techLevel:{}, divisions:{}, breakthroughCooldown:3, relDebt:0, powerSource:'solar',
       recentBuilds:[], materials:defaultMaterialsState(),
-      buildQueue:[], hangar:[], orderSeq:0, padMonthAbs:-1, padMonthUsed:0, standingProd:null, juggernautReached:false, doctrine:null, lunarArch:null, uiLayer:'advanced', loanInterest:0, metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[], day:0, engineStock:{}
+      buildQueue:[], hangar:[], orderSeq:0, padMonthAbs:-1, padMonthUsed:0, standingProd:null, juggernautReached:false, doctrine:null, lunarArch:null, uiLayer:'advanced', loanInterest:0, metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[], day:0, engineStock:{}, partStock:{}
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -5007,7 +5088,7 @@ function autoLoad(){
       staff:[], assignedAstronaut:null,
       vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, rehearsal:false, techLevel:{}, divisions:{}, breakthroughCooldown:3, relDebt:0, powerSource:'solar',
       recentBuilds:[], materials:defaultMaterialsState(),
-      buildQueue:[], hangar:[], orderSeq:0, padMonthAbs:-1, padMonthUsed:0, standingProd:null, juggernautReached:false, doctrine:null, lunarArch:null, uiLayer:'advanced', loanInterest:0, metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[], day:0, engineStock:{}
+      buildQueue:[], hangar:[], orderSeq:0, padMonthAbs:-1, padMonthUsed:0, standingProd:null, juggernautReached:false, doctrine:null, lunarArch:null, uiLayer:'advanced', loanInterest:0, metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[], day:0, engineStock:{}, partStock:{}
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -5140,6 +5221,8 @@ document.addEventListener('keydown',function(e){
     if(state.tab!=='command'){ setTab('command'); e.preventDefault(); return; }
     return;
   }
+  // Enter also minimizes the Production drill (the boot-time top layer) — but never while typing in a field.
+  if(e.key==='Enter' && _prodModalOpen && modalOpen() && !typing){ hideModal(); e.preventDefault(); return; }
   if(typing || modalOpen()) return; // don't grab TAB/numbers while typing or in a modal
   if(e.key==='Tab'){ nextScene(e.shiftKey?-1:1); e.preventDefault(); return; }
   if(e.key>='1' && e.key<='5'){ const idx=+e.key-1; if(idx<SCENE_TABS.length){ setTab(SCENE_TABS[idx]); e.preventDefault(); } }
@@ -10551,6 +10634,30 @@ function engineYardPanelHTML(){
       ${drawNote}
     </div>`;
 }
+function partYardPanelHTML(){
+  const keys=stockablePartKeys(), m=curMission(), need=m?vehiclePartNeeds(m):{};
+  const rows=keys.map(key=>{
+    const stk=partStockCount(key), needN=need[key]||0;
+    const needNote = needN>0 ? `<span class="dim" style="font-size:11px"> · build uses ${needN} (${Math.min(needN,stk)} on hand)</span>` : '';
+    const c1=canBuildPartStock(key,1), c3=canBuildPartStock(key,3);
+    return `<div class="leg" style="align-items:center;gap:8px">
+      <span class="legname">${partCompName(key)} <span class="pill ${stk>0?'ok':''}">×${stk}</span>${needNote}</span>
+      <span class="legdetail">${fM(partCompCost(key))} · ${partBuildDays()} d ea</span>
+      <button class="btn ghost" style="padding:3px 8px;font-size:11px" onclick="buildPartStock('${key}',1)" ${c1.ok?'':'disabled'} title="${c1.ok?`${fM(c1.cost)} · ${c1.days} d`:c1.why}">Build ×1</button>
+      <button class="btn ghost" style="padding:3px 8px;font-size:11px" onclick="buildPartStock('${key}',3)" ${c3.ok?'':'disabled'} title="${c3.ok?`${fM(c3.cost)} · ${c3.days} d`:c3.why}">×3</button>
+    </div>`;
+  }).join('');
+  const draw=m?partDrawForBuild(m):{total:0,saveDays:0,credit:0};
+  const drawNote = draw.total>0 ? `<div class="flag ok" style="margin-top:6px">🛠 ${draw.total} structural component${draw.total===1?'':'s'} on hand for the current build → assembly ~${draw.saveDays} d faster, ${fM(draw.credit)} pre-paid.</div>` : '';
+  return `<div class="card adv-only" style="background:var(--panel2);margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline">
+        <div class="mission-name" style="font-size:14px">🛠 Structures &amp; habitats</div>
+        <div class="dim" style="font-size:11px">pre-build tank sets &amp; crew modules in downtime · foundry L${prodLevel('foundry')} builds ${partParallel()} at once · fitted parts speed assembly (cost-neutral)</div>
+      </div>
+      <div class="legs" style="margin-top:6px">${rows||'<div class="dim" style="font-size:12px">No structural components available yet.</div>'}</div>
+      ${drawNote}
+    </div>`;
+}
 function productionPanelHTML(){
   const m=curMission();
   const units=vehicleUnits(m), cap=bayCapacity(), delta=bayBuildDelta(m);
@@ -10652,6 +10759,7 @@ function productionPanelHTML(){
         ${materialRows}
       </div>
       ${engineYardPanelHTML()}
+      ${partYardPanelHTML()}
       ${cards}
     </div>`;
 }
@@ -11219,6 +11327,7 @@ function renderLog(){
 newGame();
 render();
 applyWide(); // restore the saved Wide-mode preference + sync the toolbar buttons
+showInfrastructureModal(); // open the Production drill as the first viewable layer — Esc or Enter minimizes it
 </script>
 </body>
 </html>

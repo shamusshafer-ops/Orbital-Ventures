@@ -734,8 +734,21 @@ review's numbering, not the build order (see **Suggested build order** at the en
       /tmp/ov-engyard.js 23/23:** cost/time scaling + foundry parallelism, needs/draw, **exact cost-neutrality**
       (stock charge == build credit), launch shaves exactly the save-days + consumes stock, cap/lock gating,
       render smoke. TG 66/66 + CE5 green (launch path unchanged for whole-vehicle builds).
-      *Remaining: tank/structure and habitat/module sub-assembly types (same pattern); an optional reliability/
-      heritage angle for bench-tested components.*
+      **Slice 2 — Structures & Habitats yard — built 2026-06-27.** Same cost-neutral cadence pattern extended to the
+      rest of the airframe: pre-fabricate **stage tank sets** (keyed by tank material) and **crew-module habitats**
+      (keyed by ECLSS tier) during downtime. A build needs one tank set per stage (+ a booster set) and, when crewed,
+      one crew module of the current ECLSS tier; each fitted component shaves `PART_ASSEMBLY_SAVE_DAYS` (5 d) and is
+      pre-paid (credited at assembly → cost-neutral, payment-timing only). `state.partStock{"kind:sub":count}` (keys
+      `tank:<mat>` / `hab:<eclss>`, SAVE_VERSION→36, legacy `{}`); components cost `base × material/system × difficulty`
+      (`TANK_UNIT_BASE` 0.15 × tank costMult, `HAB_UNIT_BASE` 0.3 + 0.4×sysBase — kept modest so a credit never exceeds
+      a small vehicle's buildCost), build in `partBuildDays` (16 d at foundry L1 → 8 d at L5), **foundry level = built in
+      parallel**, `PART_STOCK_CAP` 12/type; hab tiers gate on their ECLSS research, tank materials are ungated. Helpers
+      `vehiclePartNeeds`/`partDrawForBuild`/`consumePartStock`; `launch()` sums engine+part credit & save-days; new 🛠
+      Structures & habitats panel beside the Engine Yard. **Validation — /tmp/ov-partyard.js 31/31:** cost/time scaling
+      + foundry parallelism, needs across kinds, draw/credit/save-days, cap/research gating, launch shaves exactly the
+      save-days + consumes stock, **exact cost-neutrality**, render smoke. Engine Yard 23/23 + TG 66/66 + CE5 green
+      (combined draw leaves the engine path untouched).
+      *Remaining: an optional reliability/heritage angle for bench-tested components.*
 - [~] **8 · Program politics** — *First slice built 2026-06-20: public support →
       government funding.* `state.publicSupport` (0–100, `SAVE_VERSION`→3, forward-
       compat default 50) is a national-mood dial with five tiers (Hostile→Galvanized,
@@ -1628,7 +1641,7 @@ where each item actually lives.
 | --- | --- | --- |
 | **P1 · Foundation & UX** (v1.5) | Vehicle viz (**#10**) + save/load shipped; **#18** shipped through its 3rd slice — Command Center home, animated Cape scene, and the 3-column dashboard (exec overview, recommended action, alerts/news, ops summary, era timeline) | Remaining: customizable dashboards, launch manifests, advanced filtering/sorting, click-to-jump notifications, animated scene art → tracked under **#18**. |
 | **P2 · Personnel & org depth** (v2.0) | Shipped at individual scale: **M6** (12 eng/8 astro, morale, attrition, salary) + **#9** (traits, personal events) + **#5** (poaching/retention) | **NEW:** scale individuals → departments; career progression, training/specialization tracks, executive/leadership roles, succession/workforce planning. Extends **M6/#9** — see **new arc item #19**. |
-| **P3 · Manufacturing & production** (v2.5) | **Essentially complete** — **#7** fully built across 8 slices: capacity layer (bays/foundry/pads + upkeep), QA→reliability bridge (**#16**), refurbishment wear, build-cadence pressure/bottlenecks, raw-material supply chains, inventory & forecasting, and the production queue/manifest | Remaining: the deeper **sub-assemblies** layer — Engine Yard slice shipped 2026-06-27; tank/habitat component types still open → tracked under **#7 · Sub-assemblies**. |
+| **P3 · Manufacturing & production** (v2.5) | **Essentially complete** — **#7** fully built across 8 slices: capacity layer (bays/foundry/pads + upkeep), QA→reliability bridge (**#16**), refurbishment wear, build-cadence pressure/bottlenecks, raw-material supply chains, inventory & forecasting, and the production queue/manifest | Remaining: the deeper **sub-assemblies** layer — Engine Yard + Structures & Habitats yards both shipped 2026-06-27 (engines, tank sets, crew modules); only an optional bench-test reliability/heritage angle is still open → tracked under **#7 · Sub-assemblies**. |
 | **P4 · Mission Control & operations** (v3.0) | Flight telemetry exists *visually* in the launch animation | **NEW:** interactive Mission Control, in-flight player decisions, rescue missions, launch **weather**/environmental systems, rehearsal tools. (Story-failure outcomes already exist via **#4/#16**.) See **new arc item #20**. |
 | **P5 · Infrastructure & colonization** (v3.5) | Persistent bases/stations shipped (**#17**); ISRU shipped; depot economy (**#2**) | **NEW:** colony **population growth**/management, typed habitat/mine/power construction, and **interplanetary logistics/trade routes** = the open *fleet-logistics* thread. Extends **#17** — see **new arc item #21**. |
 | **P6 · Economic & political** (v4.0) | Global launch market + dynamic cycles shipped (econ events, **#2** fuel market); **#8** first slice shipped — public support → government funding | Remaining: budget shocks/cuts, political influence, media/public opinion, **investor/stock-market** → tracked under **#8 Program politics**. |
