@@ -1583,7 +1583,7 @@ function newGame(difficulty){
   state = {
     company:'ORBITAL VENTURES',
     difficulty:mode, customDifficulty,
-    year:1942, month:0, // month 0 = Jan
+    year:1942, month:0, day:0, // month 0 = Jan; day 0..DAYS_PER_MONTH-1 (Time Granularity epic)
     money:startMoney, rep:0, sigma:0.12,
     successes:0, flights:0,
     research:{}, unlocked:{a4:true}, activeResearch:null,
@@ -1972,9 +1972,30 @@ function resolveSetback(choice){
   _pendingSetback=null; hideModal();
   if(state.money<0) gameOver(); else render();
 }
-function advance(months){
-  for(let i=0;i<months;i++){
-    state.month++; if(state.month>11){state.month=0;state.year++;}
+// Time Granularity epic, slice 1 — the simulation funnel now iterates DAYS, not months. The
+// (unchanged) monthly subsystem block fires only when a whole month completes, so any whole-month
+// advance is BIT-IDENTICAL to the old monthly tick: every caller passes integer months → exactly
+// `months` boundary crossings, in the same order, calling the same RNG the same number of times.
+// state.day + absDay() are now live for sub-month scheduling; the per-day split of continuous flows
+// (overhead/payroll/R&D accruing 1/30 each day) lands with the day-granular features that use it,
+// where it can be validated against real fractional-advance behaviour rather than speculatively.
+const DAYS_PER_MONTH=30; // abstracted flat 30-day month — keeps absMonth()/synodic/pad-cadence math exact
+function perDay(monthlyRate){ return monthlyRate/DAYS_PER_MONTH; } // a monthly rate spread across the month
+function daysFor(months){ return Math.round(months*DAYS_PER_MONTH); } // a duration in months → whole days
+function absDay(){ return absMonth()*DAYS_PER_MONTH + (state.day||0); }
+function advance(months){ advanceDays(daysFor(months)); }
+function advanceDays(days){
+  for(let d=0; d<days; d++){
+    state.day=(state.day||0)+1;
+    if(state.day<DAYS_PER_MONTH) continue;            // still mid-month — only the calendar moved
+    state.day=0; state.month++; if(state.month>11){state.month=0;state.year++;} // a month completed
+    tickMonthlyBoundary();
+  }
+  if(state.money<0 && !state.over){ gameOver(); }
+}
+// the monthly subsystem tick — unchanged from the original advance() body (≈25 subsystems), now
+// fired once per completed month instead of per loop iteration.
+function tickMonthlyBoundary(){
     state.money-=Math.max(0,diff().overhead+econOverheadAdd()+productionUpkeep()+empireOpex()+loanInterest()); // monthly overhead (difficulty + market events + #7 production upkeep + CE4(a) empire carrying cost + CE4(c) bridge-loan interest)
     if(state.pgmRoyalty>0) state.money+=state.pgmRoyalty; // M7: platinum-group royalties from an established Belt claim
     tickPassiveContracts(); // passive-income contracts pay monthly, then age toward expiry/cooldown
@@ -2055,8 +2076,6 @@ function advance(months){
     checkResearchSetback(); // #26: experimental research failures (negative sibling of breakthroughs)
     checkEvents();
     pushMetricHistory(); // #28: snapshot this month's core metrics for the dashboard sparklines
-  }
-  if(state.money<0 && !state.over){ gameOver(); }
 }
 // #28: append the current core-metric values to their trend buffers (capped at METRIC_HISTORY_LEN).
 function pushMetricHistory(){
@@ -4782,7 +4801,7 @@ function hideModal(){activeModal=null;$('modal').classList.add('hidden');} // sl
 
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=32; // v32: CE4(c) era-scaled failure stakes + bailout retune (state.loanInterest — permanent bridge-loan debt service; legacy saves default to 0 via load defaults + loanInterest() guard); v31: CE4(b) standing resupply obligations (per-facility supply/starvedMonths; legacy facilities default to fully provisioned via facilitySupply()); v30: CE3(c) lunar architecture fork (state.lunarArch, null=uncommitted; luna_landing reqResearch moved to per-arch gates); v29: CE3(a) company doctrine (state.doctrine, null=undeclared/neutral); v28: CE2(c) juggernaut capstone (state.standingProd/juggernautReached); v27: CE2(b) launch cadence (state.padMonthAbs/padMonthUsed) — load defaults seed all of these; v26: CE1 rival agents (state.rivalState), seedRivalState migrates old rivalFired
+const SAVE_VERSION=33; // v33: Time Granularity slice 1 — day-iterating advance() funnel (state.day 0..29 + absDay(); legacy saves default day:0 via load defaults; whole-month advances stay bit-identical so no balance migration needed); v32: CE4(c) era-scaled failure stakes + bailout retune (state.loanInterest — permanent bridge-loan debt service; legacy saves default to 0 via load defaults + loanInterest() guard); v31: CE4(b) standing resupply obligations (per-facility supply/starvedMonths; legacy facilities default to fully provisioned via facilitySupply()); v30: CE3(c) lunar architecture fork (state.lunarArch, null=uncommitted; luna_landing reqResearch moved to per-arch gates); v29: CE3(a) company doctrine (state.doctrine, null=undeclared/neutral); v28: CE2(c) juggernaut capstone (state.standingProd/juggernautReached); v27: CE2(b) launch cadence (state.padMonthAbs/padMonthUsed) — load defaults seed all of these; v26: CE1 rival agents (state.rivalState), seedRivalState migrates old rivalFired
 function saveGame(){
   try{
     const payload={v:SAVE_VERSION, ts:Date.now(), state:JSON.parse(JSON.stringify(state))};
@@ -4822,7 +4841,7 @@ function loadGame(){
       staff:[], assignedAstronaut:null,
       vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, rehearsal:false, techLevel:{}, divisions:{}, breakthroughCooldown:3, relDebt:0, powerSource:'solar',
       recentBuilds:[], materials:defaultMaterialsState(),
-      buildQueue:[], hangar:[], orderSeq:0, padMonthAbs:-1, padMonthUsed:0, standingProd:null, juggernautReached:false, doctrine:null, lunarArch:null, uiLayer:'advanced', loanInterest:0, metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[]
+      buildQueue:[], hangar:[], orderSeq:0, padMonthAbs:-1, padMonthUsed:0, standingProd:null, juggernautReached:false, doctrine:null, lunarArch:null, uiLayer:'advanced', loanInterest:0, metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[], day:0
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -4875,7 +4894,7 @@ function autoLoad(){
       staff:[], assignedAstronaut:null,
       vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, rehearsal:false, techLevel:{}, divisions:{}, breakthroughCooldown:3, relDebt:0, powerSource:'solar',
       recentBuilds:[], materials:defaultMaterialsState(),
-      buildQueue:[], hangar:[], orderSeq:0, padMonthAbs:-1, padMonthUsed:0, standingProd:null, juggernautReached:false, doctrine:null, lunarArch:null, uiLayer:'advanced', loanInterest:0, metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[]
+      buildQueue:[], hangar:[], orderSeq:0, padMonthAbs:-1, padMonthUsed:0, standingProd:null, juggernautReached:false, doctrine:null, lunarArch:null, uiLayer:'advanced', loanInterest:0, metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[], day:0
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;

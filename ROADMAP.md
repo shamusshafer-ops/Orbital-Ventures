@@ -3454,7 +3454,7 @@ slot whenever — it's the moment-to-moment polish that makes every launch matte
 
 **Goal.** Replace the discrete *monthly* tick with a *daily* one, so time passes (and the
 calendar reads) in days and finer-grained scheduling/events become possible. Status:
-**[ ] not started — scoped 2026-06-27.**
+**🟡 IN PROGRESS — slice 1 (equivalence refactor) SHIPPED 2026-06-27; slices 2–5 remain.**
 
 **Why it's contained, and why it's still hard.** The simulation is *architecturally
 concentrated*: nearly all time-driven logic lives in one funnel, `advance(months)` — a loop
@@ -3492,12 +3492,25 @@ cadence — run them daily unchanged and events fire ~30× as often.
   monthly-gated — chosen per system so observed frequency is unchanged.
 
 **Suggested build order (each slice shippable + headless-validated).**
-1. [ ] **Equivalence-preserving refactor (highest risk, do first).** Add `state.day`/`absDay()`,
-   `DAYS_PER_MONTH`, and the `perDay`/`daysFor` layer. Rewrite `advance()` to iterate days, splitting
-   each subsystem into *continuous* (per-day) vs *monthly-gated* (boundary-only). **Validation:**
-   a harness proves advancing 360 days yields the same money/rep/research-progress/build-progress/
-   facility-output as the old 12-month advance within ε, with identical event/setback frequency over
-   a long run. No UI/label change yet, no new features — pure equivalence.
+1. [x] ✅ **Equivalence-preserving refactor — SHIPPED 2026-06-27 (highest-risk core, done first).**
+   Added `DAYS_PER_MONTH=30`, `state.day` (0..29), `absDay()`, and the `perDay`/`daysFor` conversion layer.
+   `advance(months)` is now a thin wrapper over `advanceDays(daysFor(months))`; the funnel iterates **day by
+   day**, and the (verbatim-unchanged) ≈25-subsystem monthly block — extracted into `tickMonthlyBoundary()` —
+   fires only when a whole month completes. **Design call:** since every current caller passes *integer*
+   months, the cleanest de-risking is **bit-identical** equivalence, not just within-ε: a whole-month advance
+   crosses exactly `months` boundaries, in the same order, consuming the same RNG stream, so it reproduces the
+   old monthly tick exactly. The per-day split of *continuous* flows (overhead/payroll/R&D accruing 1/30 each
+   day) is **deliberately deferred** to the slice that introduces sub-month advances (slice 4) — there it can
+   be validated against real fractional-advance behaviour instead of speculatively; until then a sub-month
+   advance only moves the calendar (no economy tick), which is correct because nothing advances < 1 month yet.
+   SAVE_VERSION→33 (legacy saves default `day:0`; no balance migration needed — whole-month behaviour is
+   unchanged). **Validation — /tmp/ov-tg1.js 22/22:** `advance(12)` ≡ `12×advance(1)` ≡ `advanceDays(360)` on
+   money/rep/science/clock/R&D/fuel/support/depot/sparkline-count (seeded RNG); `absDay` advances exactly +360
+   and = `absMonth()*30+day`; `daysFor`/`perDay` math; a sub-month `advanceDays(15)` moves the day to 15 but
+   charges no overhead, makes no R&D progress, and fires no monthly block, then completing the month fires
+   exactly one; a 10-year run is monthly≡daily with the sparkline buffer staying capped (no 30× balloon);
+   legacy save (no `state.day`) migrates to `day:0`. Render+advance smoke across a year boundary clean; CE5
+   regression green (ov-ce5b 31/31, ov-ce5c 26/26, ov-ce5-regress 9/9 — all route through the new funnel).
 2. [ ] **Calendar + controls + labels.** `dateStr()` → "14 Mar 1962"; the "▸ Advance 1 month" button
    becomes day/week/month steps (advance N days); `skipResearch`/window-wait/launch advances expressed
    in days. Sweep the ~357 "month"/"/mo" strings (readout, cashflow, cadence, tooltips). **Validation:**
