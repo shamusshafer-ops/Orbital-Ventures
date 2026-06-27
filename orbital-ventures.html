@@ -1607,6 +1607,7 @@ function newGame(difficulty){
     doctrine:null, // CE3(a): company doctrine (strategic identity) — null = undeclared/neutral
     lunarArch:null, // CE3(c): committed lunar architecture (LOR/Direct/EOR) — null = uncommitted
     uiLayer:'advanced', // #23: progressive UI complexity (basic/advanced/expert), independent of difficulty
+    loanInterest:0, // CE4(c): permanent monthly bridge-loan debt service
   };
   log('info','Company founded. The pad is yours — go make some noise.');
 }
@@ -1952,7 +1953,7 @@ function resolveSetback(choice){
 function advance(months){
   for(let i=0;i<months;i++){
     state.month++; if(state.month>11){state.month=0;state.year++;}
-    state.money-=Math.max(0,diff().overhead+econOverheadAdd()+productionUpkeep()+empireOpex()); // monthly overhead (difficulty + market events + #7 production upkeep + CE4(a) empire carrying cost)
+    state.money-=Math.max(0,diff().overhead+econOverheadAdd()+productionUpkeep()+empireOpex()+loanInterest()); // monthly overhead (difficulty + market events + #7 production upkeep + CE4(a) empire carrying cost + CE4(c) bridge-loan interest)
     if(state.pgmRoyalty>0) state.money+=state.pgmRoyalty; // M7: platinum-group royalties from an established Belt claim
     tickPassiveContracts(); // passive-income contracts pay monthly, then age toward expiry/cooldown
     state.publicSupport=clampA(publicSupport()+(SUPPORT_BASE-publicSupport())*SUPPORT_REVERT, SUPPORT_MIN, SUPPORT_MAX); // #8: mood drifts back to neutral
@@ -2022,7 +2023,7 @@ function advance(months){
 
     // #18 (Home): snapshot this month's recurring cashflow for the ops-summary panel
     const mRev=round2(totalFacilityIncome()+(state.pgmRoyalty>0?state.pgmRoyalty:0)+govMonthlyFunding()+passiveMonthlyIncome());
-    const mExp=round2(Math.max(0,diff().overhead+econOverheadAdd()+productionUpkeep()+empireOpex())+monthlyPayroll());
+    const mExp=round2(Math.max(0,diff().overhead+econOverheadAdd()+productionUpkeep()+empireOpex()+loanInterest())+monthlyPayroll());
     state.lastMonth={revenue:mRev, expenses:mExp, net:round2(mRev-mExp), flights:0};
 
     tickRivals(); // CE1: rival agents (budget + reactive momentum) — replaces calendar-only firing
@@ -4053,6 +4054,7 @@ function finalizeLaunch(ctx, ops){
     loseAssignedCrew();
     advance(6); // grounding + investigation
     log('bad',`${m.name}: LOST IN DEEP SPACE — ${outcome.story} A long inquiry follows, −${rep} rep.`);
+    applyEraStakes('loss of the crew'); // CE4(c): era-scaled compounding setback
   }else if(outcome.kind==='rescued'){
     // #20 slice 3: a deep-space rescue brought the crew home — mission & vehicle lost, crew safe
     personnelMissionEvent(false);
@@ -4067,10 +4069,12 @@ function finalizeLaunch(ctx, ops){
       loseAssignedCrew();
       advance(6); // grounding + investigation
       log('bad',`${m.name}: CATASTROPHE. The ${SUBSYS_LABEL[outcome.subsystem].toLowerCase()} failed — ${outcome.story} Vehicle lost with all ${m.crew} aboard. Six-month stand-down, −${rep} rep. Fit a launch-escape system before flying crew again.`);
+      applyEraStakes('loss of the crew and vehicle'); // CE4(c): era-scaled compounding setback
     }else{
       const rep=Math.min(state.rep, routine?3:8); state.rep-=rep;
       addSupport(SUPPORT_DELTA.lossUncrewed); // #8: an uncrewed loss costs some goodwill
       log('bad',`${m.name}: FAILURE. The ${SUBSYS_LABEL[outcome.subsystem].toLowerCase()} failed — ${outcome.story} Vehicle cost forfeit, −${rep} rep.`);
+      if(m.profile) applyEraStakes('loss of a flagship mission'); // CE4(c): a deep-space robotic flagship is a real setback late
     }
   }
   if(crewed && (outcome.kind==='success'||outcome.kind==='partial')) applyCrewDose(m); // surviving crew take a radiation dose
@@ -4531,21 +4535,55 @@ function victoryM3bii(reason){
     <p class="muted">This is the lever the whole rocket equation has been pointing at: every kilogram you don't have to launch from Earth's surface is a kilogram you never have to multiply through every leg that follows.</p>
     <button class="btn" onclick="hideModal()">Keep flying</button>`);
 }
+// ── CE4(c): era-scaled failure stakes + bailout retune ────────────────────────────────
+// "Stakes rise, they don't shift earlier": every term is keyed to eraStakesFrac(), which is 0 in
+// the Pioneer era — so the early game is provably unchanged (add-don't-take-away).
+const CE4_LOSS_REP_FRAC=0.22;   // severe loss also bites this fraction of CURRENT rep at the final era
+const CE4_LOSS_SUPPORT=8;       // extra public-support collapse on a severe loss (× era frac)
+const CE4_LOSS_RIVAL_MOM=0.22;  // rivals capitalize: momentum spike on a severe loss (× era frac)
+const BAILOUT_BASE=3.0;         // base bridge-loan principal
+const BAILOUT_REP_BASE=12;      // base rep cost (rises with era and each successive loan)
+const BAILOUT_INTEREST=0.06;    // permanent monthly debt service added per loan (fraction of principal)
+function eraStakesFrac(){ return clampA(eraIndex(currentEra())/Math.max(1,ERAS.length-1), 0, 1); } // 0 = Pioneer, 1 = final era
+function loanInterest(){ return Math.max(0, state.loanInterest||0); } // CE4(c): recurring bridge-loan debt service (legacy saves → 0)
+// A severe late-game loss reverberates: a proportional rep bite, a support collapse, and a rival
+// momentum spike — all × era frac, so a beginner's loss is unchanged but a late catastrophe is a
+// genuine, compounding setback rather than forfeit-and-regrind. Returns the extra rep lost.
+function applyEraStakes(label){
+  const frac=eraStakesFrac(); if(frac<=0) return 0;
+  const repBite=Math.round(CE4_LOSS_REP_FRAC*state.rep*frac);
+  if(repBite>0) state.rep=Math.max(0,state.rep-repBite);
+  addSupport(-CE4_LOSS_SUPPORT*frac);
+  let spiked=false;
+  for(const r of RIVALS){ const rs=rivalStateFor(r); const b=rs.momentum; rs.momentum=clampA(rs.momentum+CE4_LOSS_RIVAL_MOM*frac, RIVAL_MOM_MIN, RIVAL_MOM_MAX); if(rs.momentum>b+1e-9) spiked=true; }
+  if(repBite>0||spiked) log('bad',`The ${label} reverberates through the program — −${repBite} rep beyond the mission penalty${spiked?'; rivals press their advantage':''}.`);
+  return repBite;
+}
+// CE4(c): bridge-loan terms scale with era — bigger principal (you need more to survive late), but a
+// steeper rep cost AND a permanent monthly interest drag, so late-game insolvency is truly losable.
+function bailoutTerms(){
+  const era=eraIndex(currentEra()), uses=state.bailouts||0;
+  return { amount:round2(BAILOUT_BASE*(1+era*0.6)), repCost:Math.round(BAILOUT_REP_BASE*(1+era*0.5)*(1+uses*0.5)), interest:round2(BAILOUT_BASE*(1+era*0.6)*BAILOUT_INTEREST) };
+}
 function gameOver(){
   state.over=true;
   const usesLeft=2-(state.bailouts||0);
+  const t=bailoutTerms();
   const loanBtn = usesLeft>0
-    ? `<button class="btn" onclick="bailout()">Emergency bridge loan (+$3.0M, −15 rep)</button>`
+    ? `<button class="btn" onclick="bailout()">Emergency bridge loan (+${fM(t.amount)}, −${t.repCost} rep, +${fM(t.interest)}/mo interest)</button>`
     : `<div class="dim" style="font-size:12px;margin-top:6px">No further bridge loans available — investors have lost confidence.</div>`;
   showModal(`<h2 style="color:var(--bad)">Out of capital.</h2>
-    <p>The company has run dry. Take a bridge loan to keep flying (it costs reputation — your backers aren't happy), or close the books and start a new company.</p>
+    <p>The company has run dry. Take a bridge loan to keep flying — late loans are larger but carry a steeper reputation hit and a <b>permanent monthly interest drag</b>${loanInterest()>0?` (you already owe ${fM(loanInterest())}/mo)`:''}. Or close the books and start a new company.</p>
     ${loanBtn}
     <button class="btn ghost" onclick="restart()" style="margin-top:8px">Start over</button>`);
 }
 function bailout(){
+  const t=bailoutTerms();
   state.bailouts=(state.bailouts||0)+1;
-  state.money+=3.0; state.rep=Math.max(0,state.rep-15); state.over=false;
-  log('note',`Emergency bridge loan accepted: +${fM(3.0)}, −15 rep. (${2-state.bailouts} remaining)`);
+  state.money+=t.amount; state.rep=Math.max(0,state.rep-t.repCost);
+  state.loanInterest=round2(loanInterest()+t.interest); // CE4(c): the loan's interest is forever
+  state.over=false;
+  log('note',`Emergency bridge loan: +${fM(t.amount)}, −${t.repCost} rep, +${fM(t.interest)}/mo permanent interest. (${2-state.bailouts} remaining)`);
   hideModal(); render();
 }
 function restart(difficulty){hideModal();newGame(difficulty);render();}
@@ -4554,7 +4592,7 @@ function hideModal(){activeModal=null;$('modal').classList.add('hidden');} // sl
 
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=31; // v31: CE4(b) standing resupply obligations (per-facility supply/starvedMonths; legacy facilities default to fully provisioned via facilitySupply()); v30: CE3(c) lunar architecture fork (state.lunarArch, null=uncommitted; luna_landing reqResearch moved to per-arch gates); v29: CE3(a) company doctrine (state.doctrine, null=undeclared/neutral); v28: CE2(c) juggernaut capstone (state.standingProd/juggernautReached); v27: CE2(b) launch cadence (state.padMonthAbs/padMonthUsed) — load defaults seed all of these; v26: CE1 rival agents (state.rivalState), seedRivalState migrates old rivalFired
+const SAVE_VERSION=32; // v32: CE4(c) era-scaled failure stakes + bailout retune (state.loanInterest — permanent bridge-loan debt service; legacy saves default to 0 via load defaults + loanInterest() guard); v31: CE4(b) standing resupply obligations (per-facility supply/starvedMonths; legacy facilities default to fully provisioned via facilitySupply()); v30: CE3(c) lunar architecture fork (state.lunarArch, null=uncommitted; luna_landing reqResearch moved to per-arch gates); v29: CE3(a) company doctrine (state.doctrine, null=undeclared/neutral); v28: CE2(c) juggernaut capstone (state.standingProd/juggernautReached); v27: CE2(b) launch cadence (state.padMonthAbs/padMonthUsed) — load defaults seed all of these; v26: CE1 rival agents (state.rivalState), seedRivalState migrates old rivalFired
 function saveGame(){
   try{
     const payload={v:SAVE_VERSION, ts:Date.now(), state:JSON.parse(JSON.stringify(state))};
@@ -4594,7 +4632,7 @@ function loadGame(){
       staff:[], assignedAstronaut:null,
       vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, rehearsal:false, techLevel:{}, divisions:{}, breakthroughCooldown:3, relDebt:0, powerSource:'solar',
       recentBuilds:[], materials:defaultMaterialsState(),
-      buildQueue:[], hangar:[], orderSeq:0, padMonthAbs:-1, padMonthUsed:0, standingProd:null, juggernautReached:false, doctrine:null, lunarArch:null, uiLayer:'advanced', metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[]
+      buildQueue:[], hangar:[], orderSeq:0, padMonthAbs:-1, padMonthUsed:0, standingProd:null, juggernautReached:false, doctrine:null, lunarArch:null, uiLayer:'advanced', loanInterest:0, metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[]
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -4647,7 +4685,7 @@ function autoLoad(){
       staff:[], assignedAstronaut:null,
       vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, rehearsal:false, techLevel:{}, divisions:{}, breakthroughCooldown:3, relDebt:0, powerSource:'solar',
       recentBuilds:[], materials:defaultMaterialsState(),
-      buildQueue:[], hangar:[], orderSeq:0, padMonthAbs:-1, padMonthUsed:0, standingProd:null, juggernautReached:false, doctrine:null, lunarArch:null, uiLayer:'advanced', metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[]
+      buildQueue:[], hangar:[], orderSeq:0, padMonthAbs:-1, padMonthUsed:0, standingProd:null, juggernautReached:false, doctrine:null, lunarArch:null, uiLayer:'advanced', loanInterest:0, metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[]
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -7550,7 +7588,7 @@ function availableContracts(){
 function commandSummary(){
   const era=currentEra();
   const eOpex=empireOpex(); // CE4(a): empire carrying cost
-  const overhead=Math.max(0, diff().overhead+econOverheadAdd()+productionUpkeep()+eOpex); // includes #7 production upkeep + CE4(a) empire opex
+  const overhead=Math.max(0, diff().overhead+econOverheadAdd()+productionUpkeep()+eOpex+loanInterest()); // includes #7 production upkeep + CE4(a) empire opex + CE4(c) bridge-loan interest
   const govFunding=govMonthlyFunding(); // #8: political funding from public support
   const income=round2(totalFacilityIncome()+(state.pgmRoyalty||0)+govFunding+passiveMonthlyIncome());
   const payroll=monthlyPayroll();
@@ -7563,7 +7601,7 @@ function commandSummary(){
     capital:state.money, rep:state.rep, flights:state.flights,
     era:era.name, eraIdx:eraIndex(era)+1, eraTotal:ERAS.length,
     successRate: state.flights>0?Math.round(100*state.successes/state.flights):null,
-    income, overhead, empireOpex:eOpex, payroll, net, science:Math.round(state.science||0),
+    income, overhead, empireOpex:eOpex, loanInterest:loanInterest(), payroll, net, science:Math.round(state.science||0),
     support:Math.round(publicSupport()), mood:mood.label, moodColor:mood.color, govFunding,
     research: ar?{name:(RESEARCH.find(r=>r.id===ar.id)||{}).name||ar.id, monthsLeft:ar.monthsLeft}:null,
     nextObjective: no?no.mission.name:null,
@@ -8226,7 +8264,7 @@ function renderExecOverview(){
       <div class="cc-net" style="text-align:right">
         <div class="dim" style="font-size:10px;text-transform:uppercase;letter-spacing:.12em">Monthly net</div>
         <div style="color:${netCol};font-size:18px;font-weight:700">${s.net>=0?'+':''}${fM(s.net)}/mo</div>
-        <div class="dim" style="font-size:10px">+${fM(s.income)} in · −${fM(s.overhead)} ovh${s.empireOpex>0?` <span style="color:var(--bad)">(incl. −${fM(s.empireOpex)} empire)</span>`:''} · −${fM(s.payroll)} pay</div>
+        <div class="dim" style="font-size:10px">+${fM(s.income)} in · −${fM(s.overhead)} ovh${(s.empireOpex>0||s.loanInterest>0)?` <span style="color:var(--bad)">(incl.${s.empireOpex>0?` −${fM(s.empireOpex)} empire`:''}${s.loanInterest>0?` −${fM(s.loanInterest)} loan`:''})</span>`:''} · −${fM(s.payroll)} pay</div>
       </div>
     </div>
     <div class="exec-grid" style="margin-top:8px">

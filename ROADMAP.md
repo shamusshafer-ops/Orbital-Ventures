@@ -3275,6 +3275,33 @@ T1 branches, first-review Rec #1/#3, CE2 (focus → faster capstone).
 > cut to 0.4×; neglect bleeds rep/support; 6 starved months evacuate a module (3→2), a last module is
 > abandoned; legacy saves read as provisioned; and the synergy holds — an evacuated module also drops
 > the CE4(a) `empireOpex`. Remaining: (c) era-scaled failure stakes + bailout retune.
+>
+> ✅ **Slice (c) SHIPPED 2026-06-27 — era-scaled failure stakes + bailout retune (CE4 complete).**
+> *Failure stakes:* a new `applyEraStakes(label)` runs on the **severe** loss outcomes (deep-space
+> strand, crewed catastrophe, and an uncrewed *flagship* `m.profile` loss) — on top of the existing
+> mission penalty it bites a **proportional** slice of *current* rep (`CE4_LOSS_REP_FRAC 0.22` of
+> rep), collapses public support (`CE4_LOSS_SUPPORT 8`), and **spikes every rival's momentum**
+> (`CE4_LOSS_RIVAL_MOM 0.22`, clamped to `RIVAL_MOM_MAX`) so the field capitalizes on your stumble.
+> Every term is multiplied by `eraStakesFrac() = eraIndex/(ERAS.length−1)`, which is **0 in the
+> Pioneer era** → the early game is provably unchanged (add-don't-take-away), rising to full weight
+> in the final era, where a −22%-of-rep hit is a real, compounding setback instead of a regrind.
+> *Bailout retune:* `bailoutTerms()` now scales the bridge loan with era — bigger principal
+> (`BAILOUT_BASE 3.0 ×(1+era·0.6)`, you need more to survive late) but a steeper rep cost
+> (`BAILOUT_REP_BASE 12 ×(1+era·0.5)×(1+uses·0.5)`, rising with era *and* each successive loan) and a
+> **permanent monthly interest drag** (`state.loanInterest += amount×BAILOUT_INTEREST 0.06`), folded
+> into all three overhead sites (`advance()`, `lastMonth.mExp`, `commandSummary.overhead`) and the
+> command-centre cashflow note (`… (incl. −$X empire −$Y loan)`). So late-game insolvency is genuinely
+> losable: each loan digs a deeper recurring hole. `SAVE_VERSION`→32 (`state.loanInterest`; legacy
+> saves default 0 via load defaults + the `loanInterest()` guard). **Validation — /tmp/ov-ce4c.js
+> 18/18:** `eraStakesFrac` 0 in Pioneer / 1 in the final era; era-0 `applyEraStakes` is a no-op (rep
+> + support unchanged); late-game applies a ≈22%-of-rep bite, collapses support, and spikes rival
+> momentum; bailout principal + rep cost grow with era, successive loans cost more rep, the loan
+> records permanent interest that folds into `commandSummary` overhead and is burned exactly in
+> `advance()`; legacy `loanInterest` reads as 0. CE1/CE2/CE3 regression green (ov-reentry-station.js
+> 55/55). **→ CE4 (The Stakes Curve) is done across (a)(b)(c): a sprawling idle empire bleeds
+> carrying cost, crewed outposts are standing commitments, and late losses + insolvency finally bite
+> proportionally. Next in the sequence: CE5 (Live Launch).** **Browser-verify a late-era crewed loss
+> + a bridge loan's recurring interest.**
 
 **Problem.** Tension is inverted: tight at the start (good), trivial once `pgmRoyalty`
 $4.5M/mo + passive contracts + facilities + gov funding stack against flat overhead.
