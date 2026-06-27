@@ -447,8 +447,8 @@
     <div class="bench-stage">
       <!-- #27/Presentation: the rocket is the bench centerpiece — moved out of the cramped
            right rail into a prominent sticky column at the center of the build stage. -->
-      <div class="card bench-rocket" id="vehicleCard" style="text-align:center">
-        <div class="mission-tag" style="text-align:left">Your vehicle</div>
+      <div class="card bench-rocket dombar-engineering" id="vehicleCard" style="text-align:center">
+        <div class="mission-tag" style="text-align:left"><span class="dom-dot" style="background:var(--dom-engineering)"></span>Your vehicle</div>
         <!-- Build & Launch sits ABOVE the rocket so the primary CTA is always at the pinned top -->
         <div id="benchLaunch" style="margin:6px 0 10px"></div>
         <div id="vehHost" style="display:none;width:100%;max-width:260px;margin:0 auto;aspect-ratio:240/360"></div>
@@ -499,8 +499,8 @@
 
   <div id="rndView" class="hidden">
     <div class="card" id="eraCard"></div>
-    <div class="card">
-      <h2>Technology Tree — capital + time into capability</h2>
+    <div class="card dombar-research">
+      <h2><span class="dom-dot" style="background:var(--dom-research)"></span>Technology Tree — capital + time into capability</h2>
       <p class="muted" style="font-size:12px;margin:-4px 0 10px">Each node unlocks an engine, material, or capability. Lines show prerequisites; dashed lines need a mission flown. Click a node to inspect it.</p>
       <div id="techAction" style="margin-bottom:10px"></div>
       <div id="techTree" style="overflow:auto;max-height:70vh" tabindex="0"></div>
@@ -510,9 +510,9 @@
   </div>
 
   <div id="mapView" class="hidden">
-    <div class="card" id="mapCard">
+    <div class="card dombar-exploration" id="mapCard">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
-        <h2 style="margin:0">Solar System — click a body for its Δv profile</h2>
+        <h2 style="margin:0"><span class="dom-dot" style="background:var(--dom-exploration)"></span>Solar System — click a body for its Δv profile</h2>
         <button class="btn ghost" id="mapExpandBtn" onclick="toggleMapExpand()">⛶ Expand</button>
       </div>
       <p class="muted" style="font-size:12px;margin:6px 0 10px">Orbits are spaced for legibility, not to scale. Drag to pan, scroll to zoom; click a body for its Δv profile.</p>
@@ -10041,8 +10041,8 @@ function renderPersonnel(){
   const relBonus=engRelBonus().toFixed(3);
   const monthlySalary=state.staff.reduce((a,s)=>{const p=personById(s.id);return a+(p?p.salary:0);},0);
 
-  let html=`<div class="card" style="margin-bottom:10px">
-    <h2>Personnel <span class="pill">${hired.length} on staff</span></h2>
+  let html=`<div class="card dombar-crew" style="margin-bottom:10px">
+    <h2>${domDot('crew')}Personnel <span class="pill">${hired.length} on staff</span></h2>
     <p class="muted" style="font-size:12px;margin:-4px 0 8px">Engineers boost reliability and R&D speed. Assign an astronaut to crewed missions for reliability and payout bonuses. Morale scales all bonuses and determines attrition.</p>
     <div class="metrics adv-only">
       <div class="metric"><div class="k">Monthly payroll</div><div class="v">${fM(monthlySalary)}</div></div>
@@ -10093,7 +10093,7 @@ function rivalThreatLabel(score){
 }
 function renderRivals(){
   const box=$('rivalsCard');
-  let html=`<h2>Rival Agencies &amp; Firms</h2>
+  let html=`<h2>${domDot('military')}Rival Agencies &amp; Firms</h2>
     <p class="muted" style="font-size:12px;margin:-4px 0 12px">Rivals are active competitors: they claim firsts (scooping your contracts), poach your low-morale staff, and when one commoditises launch the whole industry's payouts fall. Keep morale high and your edge sharp.</p>`;
   for(const r of RIVALS){
     const score=(state.rivalThreat&&state.rivalThreat[r.id])||0;
