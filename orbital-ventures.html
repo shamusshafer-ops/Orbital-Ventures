@@ -2057,7 +2057,7 @@ function tickMonthlyBoundary(){
         }
       } else if(fst.starvedMonths){ fst.starvedMonths=0; }
     }
-    state.depot=round2(state.depot); state.science=round2(state.science||0); // tidy the daily facility accruals once a month
+    state.depot=round2(state.depot); state.science=round2(state.science||0); state.rep=round2(state.rep); // tidy the daily facility accruals (depot/science/rep) once a month
     // M2: LEO propellant price — mean-reverting random walk, plus buyer-order countdown
     state.fuelPrevPrice=state.fuelPrice;
     state.fuelPrice=clampA(round2(state.fuelPrice+(FUEL_BASE-state.fuelPrice)*0.12+(Math.random()-0.5)*0.05), FUEL_MIN, FUEL_MAX);
@@ -4881,7 +4881,7 @@ function loadGame(){
     log('info','Game loaded.');
     render();
     showModal(`<h2>Game Loaded</h2><p class="muted">${dateStr()} — ${state.company}</p>
-      <p class="dim" style="font-size:12px">${state.flights} flights, ${fM(state.money)}, ${state.rep} rep</p>
+      <p class="dim" style="font-size:12px">${state.flights} flights, ${fM(state.money)}, ${Math.round(state.rep)} rep</p>
       <button class="btn" onclick="hideModal()" style="margin-top:8px">OK</button>`);
   }catch(e){
     showModal(`<h2>Load Failed</h2><p class="muted">${e.message}</p>

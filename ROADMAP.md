@@ -3454,7 +3454,7 @@ slot whenever — it's the moment-to-moment polish that makes every launch matte
 
 **Goal.** Replace the discrete *monthly* tick with a *daily* one, so time passes (and the
 calendar reads) in days and finer-grained scheduling/events become possible. Status:
-**🟡 IN PROGRESS — slices 1 (equivalence refactor) + 2 (calendar/controls/per-day overhead) + 3a (per-day R&D/funding/support) + 3b (per-day facility output → whole money economy now flows daily) SHIPPED 2026-06-27; slice 3c (duration re-authoring + label sweep + balance re-pin) + 4–5 remain.**
+**🟡 IN PROGRESS — slices 1–3 SHIPPED 2026-06-27 (1: equivalence refactor; 2: calendar/controls/per-day overhead; 3a: per-day R&D/funding/support; 3b: per-day facility output; 3c: day-resolution countdowns + build-per-day + CE re-pin). The whole economy now flows daily. Slices 4 (day-granular gameplay + duration re-authoring) + 5 (optional Gregorian) remain.**
 
 **Why it's contained, and why it's still hard.** The simulation is *architecturally
 concentrated*: nearly all time-driven logic lives in one funnel, `advance(months)` — a loop
@@ -3548,21 +3548,27 @@ cadence — run them daily unchanged and events fire ~30× as often.
      facility money contribution accrues per-day (and is continuous for a fuel-less base — the fuelled case is
      correctly *non*-linear because depot growth feeds CE4(a) empireOpex); supplied factor = 1. CE5 regression
      green; render+advance smoke clean.
-   - 🟡 **3c — day-resolution countdowns + build-per-day (in progress 2026-06-27); duration re-authoring +
-     label sweep + balance re-pin remain.** Done so far: (i) `fmtTimeLeft(months)` → a "2 mo 27 d" countdown
-     (days round up), applied to all R&D readouts (the per-day float was showing ~"2.8999 mo"); (ii) **build
-     queue progresses per-day** — `tickBuildQueue` decrements `perDay(1)` and assigns bay slots daily (moved
-     from the monthly boundary into `tickContinuousDay`), 30 days = one month, with the same `fmtTimeLeft`
-     countdown on the build readouts. **Validation — /tmp/ov-tg1.js 45/45** (build starts + progresses per-day,
-     30 days = 1 month, completes to hangar after 2 months, advances sub-month) + `fmtTimeLeft` unit 8/8.
-     **Remaining:** re-express facility/window/research durations at day resolution where finer steps improve
-     feel (e.g. a short build in days, not a forced 1-month floor); sweep the ~357 "month"/"/mo" strings *with*
-     the numbers they describe; re-pin the CE1–CE4 balance harnesses to the daily model. **Highest regression
-     risk of the epic (the string sweep) — lean on a render smoke across every tab.**
-4. [ ] **Day-granular gameplay (the payoff).** The features daily time unlocks: mission durations that
-   actually occupy calendar days (crewed flight = its `days` aloft, deep-space cruise as elapsed days),
-   day-scheduled launch windows, short-fuse events/contracts measured in days, and finer launch cadence.
-   **Validation:** mission-clock + window-timing checks; event-fuse checks.
+   - [x] ✅ **3c — day-resolution display + build-per-day + CE re-pin, SHIPPED 2026-06-27 (targeted approach).**
+     (i) `fmtTimeLeft(months)` → a "2 mo 27 d" countdown (days round up), applied to all R&D + build readouts
+     (the per-day float was showing ~"2.8999 mo"). (ii) **Build queue progresses per-day** — `tickBuildQueue`
+     decrements `perDay(1)` and assigns bay slots daily (moved into `tickContinuousDay`), 30 days = one month.
+     (iii) **Targeted display fixes** for state that per-day turned fractional: rep now accrues fractionally from
+     per-day facility output → rounded the one raw readout (load modal) and added `rep` to the monthly `round2`
+     tidy (depot/science/rep). **Decision (with the user): no blanket ~357-string sweep** — the "/mo" rate
+     labels and month-authored duration labels are still *accurate*, so rewriting them blindly is pure regression
+     risk for no gain; only the genuinely-fractional countdowns needed fixing. **True duration re-authoring
+     (day-scale build/research/facility/window minimums) moves to slice 4**, where mission clocks occupy real
+     calendar days and day-scale durations actually matter. (iv) **CE1–CE4 balance re-pin**: facility supply
+     drains only on the monthly boundary (not sub-month) and stays whole-month equivalent; starvation still cuts
+     output to `FAC_STARVE_PROD`; `empireOpex`/`loanInterest` are pure & day-invariant (folded into per-day
+     overhead); CE1 rival accrual is whole-month equivalent. **Validation — /tmp/ov-tg1.js 53/53** (incl. the CE
+     re-pin section) + `fmtTimeLeft` 8/8 + render smoke across 8 tabs with fractional state 8/8 + CE5 green.
+4. [ ] **Day-granular gameplay (the payoff) + duration re-authoring.** The features daily time unlocks:
+   mission durations that actually occupy calendar days (crewed flight = its `days` aloft, deep-space cruise as
+   elapsed days), day-scheduled launch windows, short-fuse events/contracts measured in days, and finer launch
+   cadence. **Includes the duration re-authoring deferred from slice 3c** — day-scale build/research/facility/
+   window minimums (e.g. a short build in days, not a forced 1-month floor) authored here, where day-scale
+   durations actually matter. **Validation:** mission-clock + window-timing checks; event-fuse checks.
 5. [ ] **(Optional, later) True Gregorian calendar.** Variable month lengths + leap years, purely
    cosmetic over the 30-day-abstracted economy. **Validation:** date-math unit tests.
 
