@@ -3346,7 +3346,7 @@ produces a multi-system setback (not just −rep); the *early* game's tuning is 
 (stakes rise, they don't shift earlier). **Cross-ref:** #7 upkeep, M17 facilities, #21
 colonies, CE1 rivals, fleet-logistics open thread.
 
-### CE5 · Live Launch — give the player verbs in the moment
+### CE5 · Live Launch — give the player verbs in the moment ✅ DONE (a/b/c) 2026-06-27
 
 **Problem.** `resolveFlight()` rolls each subsystem once and returns an outcome the player
 can't touch. The subsystem-narrative model (`subsystemReport` distributing R so the
@@ -3409,6 +3409,30 @@ call (fast, as now); risky flights become tense *decisions* instead of coin flip
 > NOT lost & rep −8 & no 6-mo stand-down; family losses untouched, flight still logged); success rate over
 > 20k rolls ≈ R (no drift). CE5(a)+(b) regression /tmp/ov-ce5-regress.js 9/9 (∏phaseRel=R + no drift across
 > uncrewed/crewed/deep). Remaining: (c) reserve-margin deep-leg calls.
+
+> 🟢 **Slice (c) SHIPPED 2026-06-27 — the deep-leg reserve-margin (bank / burn) call. CE5 COMPLETE.**
+> The deep-phase counterpart to (b): far from home a *deep* subsystem (`deep_propulsion` / `life_support`)
+> drifting in the amber band (rel ≤ `LIVE_CALL_SUB_HI` 0.94), on a flight that **carries reserve margin**,
+> surfaces a bank/burn call. `deepReserveMargin(sim)` = the tightest spare-dV fraction `(cap−dv)/dv` across
+> the in-space legs (≥ `RESERVE_MARGIN_MIN` 0.08 to count — carrying reserves is a rocket-equation cost paid
+> at build time, which is what *buys* this option). `deepCallFlag(outcome, sim)` reads the drift off the
+> CE5(a) per-phase breakdown — **deterministic, no RNG**, deep-phase only, picks the worst drifting sub, and
+> returns null below `LIVE_CALL_R_FLOOR` or with no reserve. Hooked into `postResolve` (which now also splits
+> out `maybeAnomaly`) so it sits between the press-on path and the slice-2 anomaly, gated `animEnabled &&
+> (crewed || !routine)`. **Bank the reserve** → `maybeAnomaly` flies the *exact* rolled outcome (≡ headless ≡
+> today → **provably balance-neutral**; the anomaly check still follows). **Burn the reserve** → the drifting
+> system is nursed through to a guaranteed salvaged **`partial`** (existing `PARTIAL_PAYOUT_MULT` haircut;
+> crewed → crew comes home, takes the dose) — eliminating the downside variance (clean success *or* deep
+> loss/strand) at the cost of a degraded result and the margin you burned. *Intentional, flagged override of
+> "balance exactly preserved": the burn lets a player trade reserve margin to convert a deep loss/strand into
+> a partial — agency that rewards carrying reserves and punishes over-caution (burn when it would have held =
+> a wasted-margin partial), never available headlessly.* No new persistent state, no SAVE bump (derived from
+> `sim`). **Validation — /tmp/ov-ce5c.js 26/26:** `deepReserveMargin` (tightest-leg, LV-leg-ignored, neg→0);
+> `deepCallFlag` gating (reserve / R-floor / drift-band / deep-only / worst-pick / determinism); real-sim
+> margin rises with carried propellant; bank keeps the rolled outcome, burn overrides to partial;
+> `finalizeLaunch` reserve-salvage (crewed crew NOT lost, pays salvage value, no mission-complete, no
+> game-over); ∏phaseRel=R + success rate ≈ R over 20k rolls (no drift). CE5(b) 31/31 + ce5-regress 9/9 green
+> after the `postResolve` refactor.
 
 **Build order.** (a) Phase-split `resolveFlight` preserving ∏R = R (provable). (b) The
 near-miss live-call hook on the worst-flagged subsystem, wired to the `#20` modal, with a

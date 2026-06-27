@@ -3709,6 +3709,35 @@ function liveCallFlag(outcome){
   }
   return worst;
 }
+// CE5(c): the deep-leg reserve-margin call. Far from home a deep-phase subsystem (deep propulsion
+// or life support) can drift; if the flight was built carrying spare margin on its in-space burns,
+// the player can BURN that reserve to nurse it through — salvaging a degraded result instead of
+// gambling on the full roll. Like (b) this is deterministic eligibility + a balance-neutral default:
+// the headless / animations-off path always BANKS the reserve, finalizing the exact rolled outcome.
+const RESERVE_MARGIN_MIN=0.08; // min spare dV fraction on the tightest deep leg to have a reserve worth spending
+// the tightest spare-dV fraction across the in-space (deep) legs — the mission's reserve margin
+function deepReserveMargin(sim){
+  if(!sim || !sim.legs) return 0;
+  let worst=Infinity;
+  for(const lg of sim.legs){ if(lg.by==='lv' || !lg.dv) continue;
+    const frac=(lg.cap-lg.dv)/lg.dv; if(frac<worst) worst=frac; }
+  return worst===Infinity ? 0 : Math.max(0, worst);
+}
+// the weakest drifting deep-phase subsystem on a flight that carries reserve margin, or null
+function deepCallFlag(outcome, sim){
+  if(!outcome || !outcome.phases || (outcome.rel||0)<LIVE_CALL_R_FLOOR) return null;
+  if(deepReserveMargin(sim) < RESERVE_MARGIN_MIN) return null; // no reserve to burn → no call
+  let worst=null;
+  for(const ph of outcome.phases){
+    if(ph.phase!=='deep') continue;
+    for(const s of ph.subsystems){
+      if(s.rel>LIVE_CALL_SUB_HI) continue;               // not drifting — holding fine
+      if(!worst || s.rel<worst.sub.rel) worst={sub:s, phase:ph};
+    }
+  }
+  return worst;
+}
+function reserveKindWord(key){ return key==='life_support' ? 'consumables and power' : 'propellant'; }
 function loseAssignedCrew(){
   if(!state.assignedAstronaut) return;
   const p=personById(state.assignedAstronaut);
@@ -3904,6 +3933,37 @@ function resolveLiveCall(pressOn){
   finalizeLaunch(ctx, null);
 }
 
+/* ---------- CE5(c): the deep-leg reserve-margin call ---------- */
+// Far from home a deep-phase subsystem is drifting. With reserve margin aboard the player can
+// BURN it to nurse the system through — guaranteeing a salvaged `partial` instead of gambling on
+// the full roll (which could come home a clean success or a deep loss / crew strand). Banking the
+// reserve flies the exact outcome resolveFlight already rolled — the balance-neutral default the
+// headless path also takes. The trade is real: spend and the system would have held, you've burned
+// margin for a degraded result; bank and it lets go, you eat the loss. Carrying reserves (extra
+// propellant = more mass, a rocket-equation cost paid at build time) is what buys this option.
+let _pendingReserve=null; // a flight paused at the deep-leg reserve call
+function showReserveModal(ctx, flag){
+  const m=ctx.m, sub=flag.sub, ph=flag.phase, pc=Math.round(sub.rel*100);
+  const subName=SUBSYS_LABEL[sub.key]||sub.label;
+  const word=reserveKindWord(sub.key);
+  const marginPct=Math.round(deepReserveMargin(ctx.sim)*100);
+  showModal(`<h2 style="color:var(--warn)">⚠ Deep-space drift — reserve call</h2>
+    <p><b>${m.name}</b> — far from home, the <b>${subName.toLowerCase()}</b> is drifting (holding at <b>${pc}%</b>). You carry roughly <b>${marginPct}%</b> reserve margin on this leg.</p>
+    <p class="muted">Burn the reserve ${word} to nurse it through and you salvage a degraded result for certain. Bank the reserve and you fly it as-is — it may come home clean, or let go this far out.</p>
+    <button class="btn" onclick="resolveReserveCall(true)">Burn the reserve — salvage a partial result</button>
+    <button class="btn ghost" onclick="resolveReserveCall(false)" style="margin-top:8px">Bank the reserve — fly it as built</button>`);
+}
+function resolveReserveCall(spend){
+  const ctx=_pendingReserve; if(!ctx) return;
+  _pendingReserve=null; hideModal();
+  if(!spend){ maybeAnomaly(ctx); return; } // bank → today's flow (balance-neutral), anomaly may still fire
+  const f=ctx.deepFlag, subKey=f?f.sub.key:null;
+  const subName=(SUBSYS_LABEL[subKey]||'systems').toLowerCase();
+  ctx.outcome=Object.assign({}, ctx.outcome, { kind:'partial', subsystem:subKey, failPhase:null,
+    story:`reserve ${reserveKindWord(subKey)} was burned deep in the cruise to nurse the drifting ${subName} through — the objective was salvaged, degraded.` });
+  finalizeLaunch(ctx, null); // the deep-space decision was the drama; resolve it directly
+}
+
 /* ---------- #20 slice 3: rescue missions & contingency ---------- */
 // A strand (deep-space crew that can't get home) is no longer an automatic loss: the
 // player can mount a rescue — capital + months + a success chance. The chance is the
@@ -4074,10 +4134,19 @@ function proceedLaunch(m,v,sim,windowQuality,weatherPenalty,prebuilt){
   }
   postResolve(ctx);
 }
-// the post-resolve flow shared by the headless path and the live-call's "press on": an in-flight
-// anomaly may still fire on a flight that reaches its operational phase, else the outcome is applied.
+// the post-resolve flow shared by the headless path and the live-call's "press on".
 function postResolve(ctx){
-  const {outcome,crewed}=ctx;
+  // CE5(c): a drifting deep-phase subsystem on a flight carrying reserve margin → a bank/spend call.
+  // Skipped on routine uncrewed re-flights and never headless (which banks → today's exact outcome).
+  if(animEnabled && (ctx.crewed || !ctx.routine)){
+    const dflag=deepCallFlag(ctx.outcome, ctx.sim);
+    if(dflag){ _pendingReserve=ctx; ctx.deepFlag=dflag; showReserveModal(ctx, dflag); return; }
+  }
+  maybeAnomaly(ctx);
+}
+// an in-flight anomaly may still fire on a flight that reaches its operational phase, else apply the outcome.
+function maybeAnomaly(ctx){
+  const {outcome}=ctx;
   // #20 slice 2: an in-flight anomaly can occur once the mission reaches its operational phase
   if(animEnabled && (outcome.kind==='success'||outcome.kind==='partial')){
     const ev=rollMissionEvents(ctx);
