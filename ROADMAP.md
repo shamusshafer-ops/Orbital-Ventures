@@ -2774,6 +2774,27 @@ engine catalog (BC4).
       The benign WebGL `texImage`/`generateMipmap` warnings are Firefox verbosity from the
       per-frame flight-canvas upload — left as-is.) **Browser-verify two launches in a row.**
 
+## Tech-Tree Rebalance (2026-06-27)
+
+- [x] **Lunar gate decoupled from lift** *(Built 2026-06-27.)* The road to the Moon was a single
+      serial chain of **12 nodes / $32.5M / 42 months** before `deep_space` (Lunar Trajectory)
+      even unlocked — and ~7 of those were no-payoff "capability gates," so the player hit a
+      ~3.5-year research wall right after the fast arc to crewed Earth orbit. Root cause: two
+      cross-links into `deep_space` conflated **navigation** with **lift/qualification** —
+      requiring `heavy_booster` (lift is already gated twice, by the mission `reqDv` and the
+      vehicle you build) and `stage_test` (a reliability concern, not a trajectory prerequisite).
+      Changed `deep_space.req` from `['heavy_booster','digital_computer','stage_test']` →
+      `['digital_computer','sustainer']` (the genuine navigation spine + a credible mid-tier
+      propulsion node) and trimmed it $5.0M/6mo → **$4.0M/5mo**. Result: pre-lunar chain
+      **12 → 7 nodes, 42 → 24 months (3.5 → 2.0 yr)**; lunar_lander 56 → 38 mo; mars_traj 49 →
+      31 mo. `heavy_booster` still gates `propulsive_landing` (and you still *want* it for the
+      Moon-bound Δv — just aren't tech-blocked on it); `stage_test` becomes an optional +3%
+      reliability buy instead of a mandatory gate. Pure static-data change — no SAVE bump.
+      **Validation — tree.js:** prereq closure recomputed (deep_space 7 / lunar_lander 10 /
+      mars_traj 8 nodes); **no dangling req ids; every node still reachable from the `req:[]`
+      roots**; load + render smoke green (ov-reentry-station.js 28/28). **Browser-verify the
+      R&D tree still lays out and lunar missions unlock after `deep_space`.**
+
 ## Graphics & Scenes (2026-06-27)
 
 - [x] **Capsule reentry & recovery scene** *(Built 2026-06-27.)* A crewed capsule returning
