@@ -3454,7 +3454,7 @@ slot whenever — it's the moment-to-moment polish that makes every launch matte
 
 **Goal.** Replace the discrete *monthly* tick with a *daily* one, so time passes (and the
 calendar reads) in days and finer-grained scheduling/events become possible. Status:
-**🟡 IN PROGRESS — slices 1–3 SHIPPED 2026-06-27 (1: equivalence refactor; 2: calendar/controls/per-day overhead; 3a: per-day R&D/funding/support; 3b: per-day facility output; 3c: day-resolution countdowns + build-per-day + CE re-pin). The whole economy now flows daily. Slices 4a (mission clocks — flights occupy real calendar days) + 4b (day-scheduled launch windows) SHIPPED 2026-06-27. Slice 4c (short-fuse events + finer cadence + duration re-authoring — lower priority) + 5 (optional Gregorian) remain. The core daily-time payoff is delivered.**
+**🟡 IN PROGRESS — slices 1–3 SHIPPED 2026-06-27 (1: equivalence refactor; 2: calendar/controls/per-day overhead; 3a: per-day R&D/funding/support; 3b: per-day facility output; 3c: day-resolution countdowns + build-per-day + CE re-pin). The whole economy now flows daily. Slices 4a (mission clocks — flights occupy real calendar days) + 4b (day-scheduled launch windows) SHIPPED 2026-06-27. **Epic wrapped here by choice — the core daily-time payoff is delivered (slices 1–4b).** Slice 4c (short-fuse events + finer cadence + duration re-authoring) + 5 (optional Gregorian) are deferred polish, not queued work — pick up only if revisited.**
 
 **Why it's contained, and why it's still hard.** The simulation is *architecturally
 concentrated*: nearly all time-driven logic lives in one funnel, `advance(months)` — a loop
