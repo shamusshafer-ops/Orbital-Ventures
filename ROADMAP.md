@@ -126,19 +126,28 @@ companion to `orbital-ventures-design.md` (original full design doc) and
   per body) and ambient economy events; **fleet logistics** is still not modeled
   (the home for Strategic-Vision Phase 5 colony/interplanetary-logistics work —
   see § Strategic Vision).
-- **Early-game Δv spike before orbit** *(from the 2026-06-26 M3a review, Point A)* —
-  the early `MISSIONS` ladder is `first_flight` 1,000 → `sounding` 1,900 →
-  `reach_space` 2,900 → `high_alt` 4,200 → `first_sat` **9,400** m/s. Every step is
-  ~1.0–1.4× except the last, which is **2.2×** — the single steepest jump in the game,
-  right at the orbital wall. (Staging is already taught one rung earlier at `high_alt`,
-  so the reviewer's "single hop → orbit" framing is wrong, but the *spike* is real.)
-  **Proposed fix:** insert one intermediate node at ~6,000 m/s between `high_alt` and
-  `first_sat` — a downrange / booster-clustering test (no natural *physical* mission
-  sits at 6,000 m/s suborbital, so frame it as a high-energy staging trial) that
-  teaches multi-stage TWR management before the orbital squeeze. Pure content: one
-  `MISSIONS` entry + slot it into the Pioneer program's `missions:[]` list; no
-  mechanic or balance change (existing missions stay exactly as winnable). Low risk,
-  on-philosophy with the soft early-game pacing.
+- ✅ **Early-game Δv spike before orbit — FIXED** *(2026-06-27, from the 2026-06-26 M3a
+  review, Point A).* The early `MISSIONS` ladder was `first_flight` 1,000 → `sounding`
+  1,900 → `reach_space` 2,900 → `high_alt` 4,200 → `first_sat` **9,400** m/s — every step
+  ~1.0–1.4× except the last, which was **2.24×**, the single steepest jump in the game,
+  right at the orbital wall. **Fix (pure content, exactly as proposed):** inserted one
+  intermediate mission **`reentry_test` — "Reentry Test Vehicle" at 6,000 m/s** between
+  `high_alt` and `first_sat` (payload 0.10t, payout $8.5M, rep 38, minRep 26; no research
+  gate). Framed as a high-energy downrange staging/booster-clustering trial just short of
+  orbital speed (Jupiter-C, 1956: a Redstone with clustered solid upper stages flew 1,094
+  km high / 5,300 km downrange — "would have orbited but for an inert final stage"). Slotted
+  into the **Pioneer program** `missions:[]` and the **Earth body** map mission list. No
+  mechanic or balance change — every surrounding mission's fields are byte-identical and
+  the rocket equation is untouched; the ladder's steepest consecutive ratio drops from
+  2.24× to **1.57×** (high_alt→reentry_test 1.43×, reentry_test→first_sat 1.57×). Validated
+  headlessly (`/tmp/ov-m3a-pointa.js`, 43/43): mission fields + placement/ordering, unique
+  ids, surrounding missions untouched, the max-ratio<2.0 spike proof + both new step ratios,
+  monotone reqDv/rep/minRep/payout ramp, Pioneer+Earth-body slotting, `curMission`/
+  `missionFlyable` gating (minRep only, no research gate), a **winnability proof** (a modest
+  2-stage kerolox build hits ~7,400 m/s — clears reentry_test 6,000 and high_alt 4,200 but
+  **still falls short of first_sat 9,400**, so it's a real intermediate rung, not a freebie;
+  `canLaunch` ok), program-completion award, and a render smoke (missions/programs/map/full/
+  nextObjective).
 
 > **Roadmap/code sync note (2026-06-17):** an audit found M5, M7, and the
 > passive-income section below had been written up here ahead of implementation
@@ -2764,6 +2773,44 @@ engine catalog (BC4).
       `pauseCape/Veh/MapGame` that silenced the "Cannot pause non-running Scene" warning.
       The benign WebGL `texImage`/`generateMipmap` warnings are Firefox verbosity from the
       per-frame flight-canvas upload — left as-is.) **Browser-verify two launches in a row.**
+
+## Graphics & Scenes (2026-06-27)
+
+- [x] **Capsule reentry & recovery scene** *(Built 2026-06-27.)* A crewed capsule returning
+      from Earth orbit now gets a full reentry beat after the orbit phase instead of cutting
+      straight to the post-flight summary. New `flightHasReentry(s)` gate (success + `isOrbital`
+      + `crewed`, i.e. a capsule nose) drives a `reentryDur` (6.4 s) appended to `totalDur` in
+      `setupFlightState`; `drawScene` dispatches `A.phase='reentry'` → `drawReentry(rt)` once the
+      orbit cruise completes. `drawReentry` plays three beats over `rt`: **plasma** (blunt-body
+      capsule rides a glowing bow-shock sheath down through an atmosphere-gradient sky, ablative
+      spark wake in `A.rePlasma`, buffeting jitter, glowing heat shield, G-load/skin-temp
+      telemetry), **chutes** (drogue at p0.52, three mains blossom at p0.66 via `drawChute` with
+      animated inflation + risers), and **splashdown** (capsule hits an animated ocean, water
+      droplets in `A.reSplash` + expanding rings, chutes collapse, "SPLASHDOWN ✓"). Pure-canvas on
+      the live `drawScene` renderer (the Phaser FlightScene stays disabled); no persisted state, no
+      SAVE bump. **Validation — ov-reentry-station.js (28/28, shared with the station bench):**
+      gating truth-table (crewed-orbital ✓, uncrewed/suborbital/cislunar/failed ✗); `setupFlightState`
+      sets `reentryDur>0` and `totalDur=ascent+cruise+reentry+1200` for a capsule and `0` otherwise;
+      `drawScene` dispatches `reentry` after the orbit phase (and `orbit` before it); `drawReentry`
+      renders all four beats without throwing; plasma spawns the spark wake; splashdown spawns
+      droplets and sets `_splashed`. **Browser-verify a crewed-orbit launch.**
+
+- [x] **Station Bench — framework slice** *(Built 2026-06-27.)* A new fifth scene tab (`⬡ Station
+      Bench`) built on the Solar System scene's Phaser-camera pattern: drag-to-pan, scroll-to-zoom
+      (clamped to `fitZoom`), and a `⛶ Expand` pop-out (`stationExpanded` / `toggleStationExpand`,
+      `#stationView.expanded` fixed full-screen, mirroring the map). `StationScene` renders a 2D
+      side view of one annotated "can"-type module — pressurized hull with end domes, ring frames
+      and a window row, an axial docking node, radial berthing ports, high-gain dish + omni whip
+      antennas, two solar wings, a thermal radiator, and handrails — each detail tagged with a
+      leader line + label. `STATION_MODULES` / `stationActiveModule()` are the data seam the future
+      module library, multi-module assembly, docking and economy hang off. A static
+      `renderStationSVG` fallback covers no-Phaser / headless. Wired through `SCENES` (SCENE_TABS → 5,
+      keyboard `5`), `render()` (tab toggle + `pauseStationGame`), and the rail nav. No persisted
+      state (like `mapExpanded`), no SAVE bump. **Validation — ov-reentry-station.js (28/28):** SCENES
+      has `station`, SCENE_TABS length 5, `isSceneTab('station')`; module exposes ≥6 parts incl. axial
+      dock + radial ports + dish; `renderStationSVG` emits an `<svg>` labelling every part + the
+      module name; `renderStation()` and full `render()` on the station tab don't throw (SVG-fallback
+      path); expand toggle flips. **Explicitly a framework — assembly/economy fleshed out later.**
 
 ## Design-Critique Epics — Depth & Stakes (2026-06-26)
 

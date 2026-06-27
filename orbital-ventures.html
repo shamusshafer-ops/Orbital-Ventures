@@ -161,6 +161,10 @@
   /* cap the Phaser map (760x480 internal) to its native size + centre it, so the
      full-width "Wide" layout can't inflate the canvas past its drawing buffer and blank it */
   #mapHost{max-width:760px;margin:0 auto}
+  #stationHost{max-width:760px;margin:0 auto}
+  #stationView.expanded{position:fixed;inset:0;z-index:60;background:var(--bg);padding:12px 18px;overflow:auto}
+  #stationView.expanded #stationHost{max-width:100%}
+  #stationView.expanded .stationsvg{width:auto;max-width:100%;height:84vh;margin:0 auto}
   #mapView.expanded{position:fixed;inset:0;z-index:60;background:var(--bg);padding:12px 18px;overflow:auto}
   #mapView.expanded .grid{grid-template-columns:1fr;gap:12px;align-items:start}
   #mapView.expanded .mapsvg{width:auto;max-width:100%;height:84vh;margin:0 auto}
@@ -370,6 +374,7 @@
         <button id="tabBench" class="scene" onclick="setTab('bench')">✎ Design Bench</button>
         <button id="tabRnd" class="scene" onclick="setTab('rnd')">⚛ R&amp;D</button>
         <button id="tabMap" class="scene" onclick="setTab('map')">☉ Solar System</button>
+        <button id="tabStation" class="scene" onclick="setTab('station')">⬡ Station Bench</button>
         <!-- slice 8: the Operations group is gone — Settings → the HUD ⚙ menu; Programs/
              Rivals/Personnel/Infrastructure → modals + hub drills. The rail is now purely
              the four scene selectors. -->
@@ -454,6 +459,20 @@
       <div id="mapCanvas"></div>
     </div>
     <!-- bodyCard + mapActivityCard relocated to the persistent right rail in slice 3 -->
+  </div>
+
+  <!-- Station Bench (framework only): a pan/zoom/pop-out 2D side-view module canvas, mirroring
+       the Solar System scene's controls. Real station assembly/economy is fleshed out later. -->
+  <div id="stationView" class="hidden">
+    <div class="card" id="stationCard">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+        <h2 style="margin:0">Station Bench — module assembly (preview)</h2>
+        <button class="btn ghost" id="stationExpandBtn" onclick="toggleStationExpand()">⛶ Expand</button>
+      </div>
+      <p class="muted" style="font-size:12px;margin:6px 0 10px">A 2D side view of an orbital module. Drag to pan, scroll to zoom. This is an early framework — module library, docking and assembly come later.</p>
+      <div id="stationHost" style="display:none;width:100%;aspect-ratio:760/480"></div>
+      <div id="stationCanvas"></div>
+    </div>
   </div>
 
   <!-- Rivals retired in slice 6 → hub right-rail mini-leaderboard + the deep-view modal
@@ -811,6 +830,7 @@ const MISSIONS = [
   {id:'sounding',     name:'Sounding Rocket',       reqDv:1900, payload:0.10, crew:0, days:0, payout:2.3,  rep:9,  minRep:4,  blurb:'Loft instruments into the upper atmosphere, roughly 80 km.<span class="hist">↳ The WAC Corporal and Aerobee first carried science into the upper atmosphere in the late 1940s.</span>'},
   {id:'reach_space',  name:'Reach Space',           reqDv:2900, payload:0.10, crew:0, days:0, payout:3.3,  rep:15, minRep:10, blurb:'Cross the Kármán line at 100 km — at the edge of what alcohol/LOX can do.<span class="hist">↳ A V-2 fired straight up in 1944 became the first craft to cross 100 km into space.</span>'},
   {id:'high_alt',     name:'High-Altitude Science', reqDv:4200, payload:0.25, crew:0, days:0, payout:5.0,  rep:22, minRep:16, blurb:'Carry a heavier package higher than the A-4 can reach — kerosene or staging required.<span class="hist">↳ The two-stage Bumper-WAC hit 393 km in 1949 — altitudes a single stage couldn\'t touch.</span>'},
+  {id:'reentry_test', name:'Reentry Test Vehicle',  reqDv:6000, payload:0.10, crew:0, days:0, payout:8.5,  rep:38, minRep:26, blurb:'Loft a scaled nose cone on a high-energy ballistic arc far downrange — a staging and booster-clustering trial just short of orbital speed.<span class="hist">↳ Jupiter-C, 1956: a Redstone with clustered solid upper stages flew 1,094 km high and 5,300 km downrange — it would have orbited but for an inert final stage, a year before Sputnik.</span>'},
   {id:'first_sat',    name:'First Satellite',       reqDv:9400, payload:0.05, crew:0, days:0, payout:18.0, rep:60, minRep:38, blurb:'Reach orbital velocity (~9,400 m/s incl. losses). The Pioneer-era summit.<span class="hist">↳ Sputnik 1, October 1957: an 84 kg sphere whose radio beep opened the Space Age.</span>'},
   {id:'first_astro',  name:'First Astronaut',       reqDv:2900, payload:0.0, crew:1, days:0.2, payout:16.0, rep:50,  minRep:80,  reqResearch:'crew_capsule', blurb:'Put a person on a suborbital arc and bring them home alive. Man-rating begins here.<span class="hist">↳ Alan Shepard\'s 15-minute suborbital hop aboard Freedom 7, May 1961.</span>'},
   {id:'crew_orbit',   name:'Crewed Orbit',          reqDv:9400, payload:0.0, crew:1, days:1,   payout:30.0, rep:70,  minRep:105, reqResearch:'crew_capsule', blurb:'One astronaut, a day in orbit, a safe reentry. The defining flight of the era.<span class="hist">↳ Yuri Gagarin circled the Earth once aboard Vostok 1 on 12 April 1961.</span>'},
@@ -869,7 +889,7 @@ const MISSIONS = [
    game tracks progress toward a capstone mission. Neither changes the rocket
    equation — they frame the missions you already fly so each one means something. */
 const PROGRAMS = [
-  {id:'pioneer',  name:'Pioneer Program',     blurb:'Get off the pad and to the edge of space.',                  missions:['first_flight','sounding','reach_space','high_alt'], reward:{money:4, rep:15}},
+  {id:'pioneer',  name:'Pioneer Program',     blurb:'Get off the pad and to the edge of space.',                  missions:['first_flight','sounding','reach_space','high_alt','reentry_test'], reward:{money:4, rep:15}},
   {id:'vanguard', name:'Vanguard Program',    blurb:'Reach orbital velocity — the Space Age begins.',             missions:['first_sat'],                                       reward:{money:6, rep:25}},
   {id:'mercury',  name:'Mercury Program',     blurb:'Put a human in space and bring them home.',                  missions:['first_astro','crew_orbit'],                        reward:{money:10, rep:35}},
   {id:'gemini',   name:'Gemini Program',      blurb:'Endurance and operations — the skills the Moon demands.',    missions:['multi_day','endurance'],                           reward:{money:16, rep:45}},
@@ -1394,7 +1414,7 @@ function trackColor(key){ const t=TRACKS.find(x=>x.key===key); return t?t.color:
 // legs: each Δv segment a mission must budget, in sequence from Earth's surface.
 const BODIES = [
   {id:'earth', name:'Earth', kind:'planet', r:62, color:'#3a7bd5', note:'Home. Every mission starts (and most end) here.',
-    missions:['first_flight','sounding','reach_space','high_alt','first_sat','first_astro','crew_orbit','multi_day','endurance'],
+    missions:['first_flight','sounding','reach_space','high_alt','reentry_test','first_sat','first_astro','crew_orbit','multi_day','endurance'],
     legs:[{label:'Surface → LEO', dv:9400, note:'The great filter — gravity, drag, and steering losses included.'}]},
   {id:'moon', name:'The Moon', kind:'moon', r:30, around:'earth', color:'#b9c0c7', note:'Closest body beyond Earth. Water ice at the poles makes it the first refueling target.',
     missions:['luna_flyby','luna_orbit','luna_landing'],
@@ -4083,6 +4103,7 @@ const SCENES = {
   bench:   { tab:'bench',   label:'Design Bench',   icon:'✎' },
   rnd:     { tab:'rnd',     label:'R&D',            icon:'⚛' },
   map:     { tab:'map',     label:'Solar System',   icon:'☉' },
+  station: { tab:'station', label:'Station Bench',   icon:'⬡' },
 };
 const SCENE_TABS = Object.keys(SCENES);
 // Retired tab ids → where they now live, so legacy saves / stray setTab calls resolve.
@@ -4734,7 +4755,7 @@ document.addEventListener('keydown',function(e){
   }
   if(typing || modalOpen()) return; // don't grab TAB/numbers while typing or in a modal
   if(e.key==='Tab'){ nextScene(e.shiftKey?-1:1); e.preventDefault(); return; }
-  if(e.key>='1' && e.key<='4'){ const idx=+e.key-1; if(idx<SCENE_TABS.length){ setTab(SCENE_TABS[idx]); e.preventDefault(); } }
+  if(e.key>='1' && e.key<='5'){ const idx=+e.key-1; if(idx<SCENE_TABS.length){ setTab(SCENE_TABS[idx]); e.preventDefault(); } }
 });
 // fire a launch from the keyboard, only when one is actually available (mirrors the Launch button gate)
 function tryLaunchHotkey(){
@@ -5392,6 +5413,11 @@ function createGL2D(gl,textCtx,W,H){
 }
 /* ===== End WebGL 2D compatibility layer ===== */
 
+// A crewed capsule returning from Earth orbit gets a reentry-&-recovery scene after the
+// orbit phase: plasma sheath + heat down through the atmosphere, then chutes into the ocean.
+// Gated to success + orbital + crewed (the capsule nose) — suborbital already shows reentry
+// inline, and cislunar/deep returns aren't wired here yet (future extension).
+function flightHasReentry(s){ return !!(s && s.success && s.isOrbital && s.crewed); }
 // Shared flight setup — builds animState for either the Phaser host (CanvasTexture
 // 2D context) or the legacy WebGL/2D canvas. drawScene drives everything from t.
 function setupFlightState(spec, done, ctx, cv, viewCanvas){
@@ -5406,13 +5432,14 @@ function setupFlightState(spec, done, ctx, cv, viewCanvas){
     }
   }catch(e){}
   const ascentDur=7200, cruiseDur=spec.isCislunar?9000:4800;
+  const reentryDur=flightHasReentry(spec)?6400:0; // appended after the orbit phase for a returning capsule
   let totalDur;
   if(!spec.success && spec.failPhase==='ascent') totalDur=ascentDur*0.55+2000;
   else if(!spec.success && spec.failPhase==='deep') totalDur=ascentDur+cruiseDur*0.42+2000;
-  else totalDur=ascentDur+cruiseDur+1200;
+  else totalDur=ascentDur+cruiseDur+reentryDur+1200;
   const stars=[]; for(let i=0;i<160;i++) stars.push({x:Math.random(),y:Math.random()*0.92,b:0.3+Math.random()*0.7,s:0.8+Math.random()*1.4,twinkle:Math.random()*6.28});
   const path=spec.isCislunar?buildLunarPath(cv.width,cv.height,spec.rng):null;
-  animState={spec,done,ctx,cv,viewCanvas:viewCanvas||cv,t0:performance.now(),ascentDur,cruiseDur,totalDur,stars,path,raf:0,trail:[],particles:[],debris:[],shakeX:0,shakeY:0,lastT:0,virtT:0,prevWall:performance.now(),sfxSepFired:{},sfxBoomFired:false,sfxEnginePhase:null,recovering:!!spec.recovering};
+  animState={spec,done,ctx,cv,viewCanvas:viewCanvas||cv,t0:performance.now(),ascentDur,cruiseDur,reentryDur,totalDur,stars,path,raf:0,trail:[],particles:[],debris:[],rePlasma:[],reSplash:[],shakeX:0,shakeY:0,lastT:0,virtT:0,prevWall:performance.now(),sfxSepFired:{},sfxBoomFired:false,sfxEnginePhase:null,recovering:!!spec.recovering};
   sfxInit();
   const totalProp=spec.stages.reduce((a,s)=>a+s.prop,0)+(spec.transferProp||0);
   const engCount=spec.stages[0]?spec.stages[0].count||1:1;
@@ -5874,7 +5901,8 @@ function drawScene(t){
         else { if(A.ctx.setTransform) A.ctx.setTransform(1,0,0,1,0,0); if(A.ctx.setLineDash) A.ctx.setLineDash([]); A.ctx.globalAlpha=1; if('globalCompositeOperation' in A.ctx) A.ctx.globalCompositeOperation='source-over'; } }catch(e){}
     }
     const ct=t-A.ascentDur;
-    if(s.isCislunar){ A.phase='cislunar'; drawCislunar(ct); }
+    if(A.reentryDur>0 && ct>=A.cruiseDur){ A.phase='reentry'; drawReentry(ct-A.cruiseDur); }
+    else if(s.isCislunar){ A.phase='cislunar'; drawCislunar(ct); }
     else if(s.isOrbital){ A.phase='orbit'; drawOrbit(ct); }
     else { A.phase='suborbital'; drawSuborbital(ct); }
   }
@@ -7139,6 +7167,118 @@ function drawOrbit(ct){
   const orbPitch=curAng-Math.PI/2;
 
 }
+// Reentry & recovery for a crewed capsule coming home from orbit. Three beats over rt∈[0,reentryDur]:
+//   plasma     (p<0.46) — blunt-body capsule rides a glowing plasma sheath down, ablative spark wake, heat shimmer
+//   chutes     (0.52 drogue, 0.66 mains) — canopies blossom and deceleration kicks in
+//   splashdown (>0.96) — capsule hits the ocean, water bursts, chutes collapse, it bobs
+// Pure canvas (the live renderer); particles live in A.rePlasma / A.reSplash.
+function drawReentry(rt){
+  const A=animState,s=A.spec,ctx=A.ctx,W=A.cv.width,H=A.cv.height;
+  const dur=A.reentryDur||6400, p=clampA(rt/dur,0,1);
+  const DROGUE=0.52, MAIN=0.66, SPLASH=0.96, PLASMA_END=0.46;
+  const horizon=Math.round(H*0.80);
+  // segment lerp over keyframes [[p,val],...]
+  const kf=(x,pts)=>{ for(let i=0;i<pts.length-1;i++){ const a=pts[i],b=pts[i+1]; if(x<=b[0]){ const f=clampA((x-a[0])/((b[0]-a[0])||1),0,1); return a[1]+(b[1]-a[1])*f; } } return pts[pts.length-1][1]; };
+  // --- sky: space-black up high fading down to atmosphere blue at the horizon ---
+  const sky=ctx.createLinearGradient(0,0,0,horizon);
+  sky.addColorStop(0,'#04060a'); sky.addColorStop(0.42,'#0a2236'); sky.addColorStop(0.74,'#27506f'); sky.addColorStop(1,'#7fa3bc');
+  ctx.fillStyle=sky; ctx.fillRect(0,0,W,horizon);
+  const starA=clampA(1-p*1.5,0,1)*0.55;
+  if(starA>0.02){ ctx.fillStyle='#dfe8f2'; for(const st of (A.stars||[])){ if(st.y>0.42) continue; ctx.globalAlpha=starA*st.b; ctx.fillRect(st.x*W, st.y*H*0.5, st.s*0.8, st.s*0.8); } ctx.globalAlpha=1; }
+  // --- ocean ---
+  const og=ctx.createLinearGradient(0,horizon,0,H);
+  og.addColorStop(0,'#15455f'); og.addColorStop(1,'#08263a');
+  ctx.fillStyle=og; ctx.fillRect(0,horizon,W,H-horizon);
+  ctx.fillStyle='rgba(180,220,240,0.10)'; ctx.fillRect(0,horizon-1,W,2); // horizon haze
+  for(let i=0;i<22;i++){ const f=i/22, wy=horizon+6+f*(H-horizon-6); ctx.strokeStyle=`rgba(150,200,225,${0.05+0.10*(1-f)})`; ctx.lineWidth=1; ctx.beginPath(); for(let x=0;x<=W;x+=24){ const yy=wy+Math.sin((x*0.03)+(rt*0.004)+i)*1.8; x?ctx.lineTo(x,yy):ctx.moveTo(x,yy);} ctx.stroke(); }
+  // --- capsule travel: fast under plasma, eases once the chutes are out ---
+  const capR=16;
+  const capTopY=H*0.10, capWaterY=horizon-capR*0.4;
+  let capY=capTopY+(capWaterY-capTopY)*kf(p,[[0,0],[PLASMA_END,0.52],[MAIN,0.72],[SPLASH,0.985],[1,1]]);
+  const drift=Math.sin(rt*0.0007)*W*0.05*(1-clampA(p/MAIN,0,1)); // cross-range early, steadies under canopy
+  let capX=W*0.5+drift;
+  const jit = p<PLASMA_END ? (1-p/PLASMA_END) : 0; // buffeting during the fireball
+  capX+=(Math.random()-0.5)*jit*3; capY+=(Math.random()-0.5)*jit*2.4;
+  const plasma=clampA((PLASMA_END-p)/PLASMA_END,0,1); // hottest at entry interface, fades as it slows
+  const tilt = p>MAIN ? Math.sin(rt*0.002)*0.12 : 0; // gentle swing hanging under the mains
+  // --- plasma sheath + ablative spark wake (drawn behind the capsule, i.e. above it) ---
+  if(plasma>0.04){
+    const shY=capY+capR*0.7; // leading heat-shield point
+    if(A.rePlasma.length<170){ for(let i=0;i<3;i++) A.rePlasma.push({x:capX+(Math.random()-0.5)*capR*1.7, y:shY, vx:(Math.random()-0.5)*1.2, vy:-(1.6+Math.random()*2.8), life:1, hot:Math.random()}); }
+    // bow-shock cap ahead of the shield
+    const bow=ctx.createRadialGradient(capX,shY+4,2,capX,shY+4,capR*2.4);
+    bow.addColorStop(0,`rgba(255,255,250,${0.85*plasma})`); bow.addColorStop(0.35,`rgba(255,210,120,${0.7*plasma})`);
+    bow.addColorStop(0.7,`rgba(255,110,40,${0.45*plasma})`); bow.addColorStop(1,'rgba(200,40,20,0)');
+    ctx.fillStyle=bow; ctx.beginPath(); ctx.ellipse(capX,shY+4,capR*2.0,capR*2.4,0,0,7); ctx.fill();
+  }
+  // advance + draw the spark wake regardless (it lingers a moment after plasma ends)
+  for(const q of A.rePlasma){ q.x+=q.vx; q.y+=q.vy; q.vy-=0.015; q.vx*=0.99; q.life-=0.02; }
+  A.rePlasma=A.rePlasma.filter(q=>q.life>0);
+  for(const q of A.rePlasma){ const l=q.life; const r=140+115*(1-l)*q.hot, g=Math.round(90+120*l), b=Math.round(30+40*(1-q.hot)*l);
+    ctx.fillStyle=`rgba(255,${g},${b},${0.7*l})`; ctx.fillRect(q.x-1, q.y-1, 2.2, 2.2); }
+  // --- chutes ---
+  const drogueOn=p>=DROGUE && p<MAIN+0.04, mainOn=p>=MAIN;
+  const apexX=capX-Math.sin(tilt)*capR*2, apexY=capY-capR*1.3;
+  if(drogueOn){ const inf=clampA((p-DROGUE)/0.06,0,1); drawChute(ctx,apexX,apexY-26*inf,13*inf,'#d6dde2','#9aa5ad',[apexX-6,apexX+6],capY-capR*0.6,inf); }
+  if(mainOn){ const inf=clampA((p-MAIN)/0.07,0,1); const collapse=p>=SPLASH?clampA(1-(p-SPLASH)/0.03,0,1):1; const sc=inf*collapse;
+    [-1,0,1].forEach(k=>{ const cxp=apexX+k*26*sc, cyp=apexY-44*sc-Math.abs(k)*4*sc; drawChute(ctx,cxp,cyp,22*sc,k?'#e8552f':'#f2f4f6',k?'#b53a1c':'#c6ccd2',[capX-7,capX+7],capY-capR*0.7,sc); }); }
+  // --- the capsule (blunt-body: wide ablative shield at the bottom, tapering up) ---
+  ctx.save(); ctx.translate(capX,capY); ctx.rotate(tilt);
+  ctx.beginPath();
+  ctx.moveTo(-capR*0.55,-capR*0.95); ctx.lineTo(capR*0.55,-capR*0.95);   // narrow top
+  ctx.lineTo(capR,capR*0.45); ctx.quadraticCurveTo(capR,capR*0.95,0,capR*0.95);  // flared side → shield
+  ctx.quadraticCurveTo(-capR,capR*0.95,-capR,capR*0.45); ctx.closePath();
+  const body=ctx.createLinearGradient(-capR,0,capR,0); body.addColorStop(0,'#3a4650'); body.addColorStop(0.5,'#9aa6ae'); body.addColorStop(1,'#566069');
+  ctx.fillStyle=body; ctx.fill();
+  ctx.fillStyle = plasma>0.04 ? `rgba(255,${Math.round(120+120*(1-plasma))},60,1)` : '#2a2118'; // heat-shield glows while hot
+  ctx.beginPath(); ctx.moveTo(-capR,capR*0.45); ctx.quadraticCurveTo(-capR,capR*0.95,0,capR*0.95); ctx.quadraticCurveTo(capR,capR*0.95,capR,capR*0.45); ctx.lineTo(capR*0.78,capR*0.3); ctx.quadraticCurveTo(0,capR*0.7,-capR*0.78,capR*0.3); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle='rgba(20,26,32,0.6)'; ctx.lineWidth=0.8; for(let i=-1;i<=1;i++){ ctx.beginPath(); ctx.moveTo(i*capR*0.4,-capR*0.9); ctx.lineTo(i*capR*0.55,capR*0.4); ctx.stroke(); } // hull panel lines
+  ctx.fillStyle='#1a2a36'; ctx.beginPath(); ctx.arc(capR*0.2,-capR*0.3,capR*0.16,0,7); ctx.fill(); // window
+  ctx.restore();
+  // --- splashdown ---
+  if(p>=SPLASH){
+    if(!A._splashed){ A._splashed=true; for(let i=0;i<46;i++){ const a=-Math.PI/2+(Math.random()-0.5)*2.2, spd=1.5+Math.random()*4.5; A.reSplash.push({x:capX,y:capWaterY,vx:Math.cos(a)*spd,vy:Math.sin(a)*spd,life:1,sz:1.5+Math.random()*2.5}); } }
+    A.reRing=(A.reRing||0)+1;
+    for(let r=0;r<3;r++){ const rr=10+A.reRing*1.6+r*14; ctx.strokeStyle=`rgba(200,230,245,${clampA(0.4-A.reRing*0.01-r*0.1,0,0.4)})`; ctx.lineWidth=1.5; ctx.beginPath(); ctx.ellipse(capX,capWaterY+4,rr,rr*0.34,0,0,7); ctx.stroke(); }
+  }
+  for(const d of A.reSplash){ d.x+=d.vx; d.y+=d.vy; d.vy+=0.16; d.life-=0.02; }
+  A.reSplash=A.reSplash.filter(d=>d.life>0 && d.y<H);
+  ctx.fillStyle='#cfeaf5'; for(const d of A.reSplash){ ctx.globalAlpha=clampA(d.life,0,1); ctx.fillRect(d.x-d.sz/2,d.y-d.sz/2,d.sz,d.sz); } ctx.globalAlpha=1;
+  // --- telemetry + phase ---
+  const alt=Math.max(0,Math.round(kf(p,[[0,122],[PLASMA_END,55],[MAIN,8],[SPLASH,0.1],[1,0]])));
+  const vel=Math.max(0,Math.round(kf(p,[[0,7650],[0.30,4200],[PLASMA_END,820],[MAIN,95],[SPLASH,8],[1,0]])));
+  const gLoad=(plasma>0.04?(1.2+plasma*5.6):(p<MAIN?2.0:1.0)).toFixed(1);
+  const skinT=Math.round(kf(p,[[0,420],[0.10,1620],[PLASMA_END,540],[1,35]]));
+  drawTelemetry([
+    {label:'PHASE', value:'REENTRY', color:'#f5a623'},
+    {label:'ALT', value:alt+' km'},
+    {label:'VEL', value:vel.toLocaleString()+' m/s'},
+    {label:'G-LOAD', value:gLoad+' g', color:(+gLoad>4?'#e0564f':'#d0dce4')},
+    {label:'SKIN', value:skinT+' °C', color:(skinT>900?'#ff7a30':'#d0dce4')},
+    {label:'CHUTES', value:mainOn?'MAIN ✓':(drogueOn?'DROGUE':'STOWED'), color:mainOn?'#58c47a':'#c0ccd4'}
+  ]);
+  const phase = p>=SPLASH?'SPLASHDOWN ✓' : (mainOn?'MAINS · DESCENT' : (drogueOn?'DROGUE OUT' : (plasma>0.15?'PLASMA BLACKOUT':'REENTRY INTERFACE')));
+  const phaseCol = p>=SPLASH?'#58c47a' : (plasma>0.15?'#ff7a30':'#f5a623');
+  drawPhaseBar(phase,phaseCol,p);
+  ctx.save();
+  ctx.font='bold 12px ui-monospace,monospace'; ctx.textAlign='right'; ctx.textBaseline='top';
+  ctx.fillStyle='#5a6a75'; ctx.fillText('RECOVERY', W-18, 12); ctx.fillStyle='#d0dce4'; ctx.fillText(s.title, W-18, 28);
+  ctx.fillStyle='#f5a623'; ctx.font='10px ui-monospace,monospace'; ctx.fillText('▲ CREW ABOARD', W-18, 46);
+  ctx.restore();
+}
+// a single parachute canopy + risers, drawn at (cx,cy) with the given radius, inflating with f∈[0,1]
+function drawChute(ctx,cx,cy,r,fill,edge,attachX,attachY,f){
+  if(r<1) return;
+  ctx.save();
+  ctx.beginPath(); ctx.moveTo(cx-r,cy); ctx.quadraticCurveTo(cx,cy-r*1.5,cx+r,cy); // canopy dome
+  ctx.quadraticCurveTo(cx+r*0.5,cy+r*0.45,cx,cy+r*0.32); ctx.quadraticCurveTo(cx-r*0.5,cy+r*0.45,cx-r,cy); ctx.closePath();
+  ctx.fillStyle=fill; ctx.fill();
+  ctx.strokeStyle=edge; ctx.lineWidth=1; ctx.stroke();
+  ctx.lineWidth=0.7; for(let i=-2;i<=2;i++){ ctx.beginPath(); ctx.moveTo(cx+i*r*0.32, cy-r*1.0*(1-Math.abs(i)*0.18)); ctx.lineTo(cx+i*r*0.3, cy+r*0.3); ctx.stroke(); } // panel seams
+  ctx.strokeStyle='rgba(200,210,218,0.7)'; ctx.lineWidth=0.8; // risers to the capsule
+  for(const ax of attachX){ ctx.beginPath(); ctx.moveTo(cx+(ax-cx)*0.18, cy+r*0.25); ctx.lineTo(ax,attachY); ctx.stroke(); }
+  ctx.restore();
+}
 function drawSuborbital(ct){
   const A=animState,s=A.spec,ctx=A.ctx,W=A.cv.width,H=A.cv.height,R=s.rng||{apogee:1,bow:0};
   const time=ct+A.ascentDur;
@@ -7340,10 +7480,12 @@ function render(){
   $('tabBench').classList.toggle('active',state.tab==='bench');
   $('tabRnd').classList.toggle('active',state.tab==='rnd');
   $('tabMap').classList.toggle('active',state.tab==='map');
+  $('tabStation').classList.toggle('active',state.tab==='station');
   $('commandView').classList.toggle('hidden',state.tab!=='command');
   $('benchView').classList.toggle('hidden',state.tab!=='bench');
   $('rndView').classList.toggle('hidden',state.tab!=='rnd');
   $('mapView').classList.toggle('hidden',state.tab!=='map');
+  $('stationView').classList.toggle('hidden',state.tab!=='station');
   placeOpsbar(); // on the Map view, the ops controls (row 2) ride across the top of the map card; elsewhere they stay pinned in the topbar
   applyDifficultyUI();
 
@@ -7357,11 +7499,13 @@ function render(){
   if(state.tab==='command')renderCommandCenter(); else { stopCCScene(); pauseCapeGame(); }
   if(state.tab!=='bench') pauseVehGame();
   if(state.tab!=='map') pauseMapGame();
+  if(state.tab!=='station') pauseStationGame();
   if(state.tab==='bench'){renderVehicleFamilies();renderBlueprints();renderLivery();renderParts();renderArchitecture();renderStages();renderBoosters();renderTransfer();renderLander();renderCrew();renderPower();renderWindowPlanner();renderRoutes();renderReadout();renderVehiclePreview();renderBenchLaunch();}
   if(state.tab==='command' && hubPanel==='contracts') renderMissions(); // slice 5: contracts drill content (passiveCard + missionList)
   renderNextObjective();
   if(state.tab==='rnd')renderRnd();
   if(state.tab==='map')renderMap();
+  if(state.tab==='station')renderStation();
   renderLog();
   if(activeModal) activeModal(); // slice 6: keep an open deep-view modal (Programs/Rivals/Personnel) in sync with state
   syncTopbarH(); // keep sticky-panel offsets matched to the pinned topbar's actual height
@@ -9529,6 +9673,134 @@ function renderMap(){
   $('mapCanvas').innerHTML=svg;
   renderBodyCard();
   renderMapActivity();
+}
+/* ---------- Station Bench (framework) ----------
+   A pan/zoom/pop-out 2D side-view module canvas, built on the same Phaser-camera pattern as
+   the Solar System scene. For now it renders ONE annotated "can"-type module so the framework
+   (scene + controls + pop-out + SVG fallback) is in place; the module library, multi-module
+   assembly, docking logic and economy are deferred. STATION_MODULES is the seam those will hang
+   off. Pure-data + a render smoke keep it headless-safe. */
+const STN_W=760, STN_H=480;
+// Side-view module spec (model space, +x downstream): a pressurized can with an axial docking
+// node, radial berthing ports, dish + whip antennas, solar wings and a radiator. Each `parts`
+// entry is a labelled detail the bench annotates with a leader line — the hook future content
+// extends. Coordinates are relative to the module centre.
+const STATION_MODULES = [
+  { id:'can_std', name:'Standard Pressurized Module', len:240, dia:96,
+    parts:[
+      { key:'axial_dock', label:'Axial docking port',   x:120,  y:0,   note:'Forward CBM / androgynous dock' },
+      { key:'port_p',     label:'Radial berthing port', x:30,   y:-48, note:'Side hatch for branch modules' },
+      { key:'port_s',     label:'Radial berthing port', x:-30,  y:48,  note:'Side hatch (opposite face)' },
+      { key:'dish',       label:'High-gain antenna',    x:-70,  y:-78, note:'Steerable comms dish' },
+      { key:'whip',       label:'Omni antenna',         x:70,   y:-72, note:'Low-gain whip' },
+      { key:'solar_p',    label:'Solar array wing',     x:0,    y:-150,note:'Photovoltaic wing (port)' },
+      { key:'solar_s',    label:'Solar array wing',     x:0,    y:150, note:'Photovoltaic wing (starboard)' },
+      { key:'radiator',   label:'Thermal radiator',     x:-95,  y:60,  note:'Heat-rejection panel' },
+      { key:'aft',        label:'Aft node / endcap',    x:-120, y:0,   note:'Pressure dome + utility trunk' },
+    ] },
+];
+function stationActiveModule(){ return STATION_MODULES[0]; }
+let stationExpanded=false;
+function toggleStationExpand(){ stationExpanded=!stationExpanded; renderStation(); }
+let StationScene=null, stationGame=null, stationScene=null;
+function defineStationScene(){
+  if(StationScene || !phaserOK()) return;
+  StationScene=class extends Phaser.Scene{
+    constructor(){ super('station'); }
+    create(){
+      this.cam=this.cameras.main; this.cam.setBackgroundColor('#070b11');
+      for(let i=0;i<80;i++){ this.add.circle((Math.random()-0.5)*STN_W*3,(Math.random()-0.5)*STN_H*3, Math.random()*1.1+0.3, 0xffffff, 0.08+Math.random()*0.4).setScrollFactor(0.4); }
+      this.g=this.add.graphics(); this.labels=[];
+      this.drawModule(stationActiveModule());
+      // fit + centre, then drag-to-pan / wheel-to-zoom, exactly like the Solar System scene
+      const mod=stationActiveModule(), span=Math.max(mod.len, 360)+220;
+      this.fitZoom=Math.min(STN_W/span, STN_H/(mod.dia+360));
+      this.cam.centerOn(0,0); this.cam.setZoom(this.fitZoom);
+      this.input.on('pointermove',p=>{ if(p.isDown){ this.cam.scrollX-=(p.x-p.prevPosition.x)/this.cam.zoom; this.cam.scrollY-=(p.y-p.prevPosition.y)/this.cam.zoom; } });
+      this.input.on('wheel',(p,go,dx,dy)=>{ this.cam.setZoom(Phaser.Math.Clamp(this.cam.zoom*(dy>0?0.88:1.14), this.fitZoom*0.5, this.fitZoom*10)); });
+      stationScene=this;
+    }
+    drawModule(mod){
+      const g=this.g; g.clear(); this.labels.forEach(t=>t.destroy()); this.labels=[];
+      const L=mod.len, hd=mod.dia/2;
+      // solar wings (behind the hull)
+      [-1,1].forEach(sgn=>{ const wy=sgn*(hd+24), wh=110, ww=150;
+        g.fillStyle(0x12243a,1); g.fillRect(-ww/2, sgn>0?wy:wy-wh, ww, wh);
+        g.lineStyle(1,0x2f5a8a,0.9); for(let c=-ww/2;c<=ww/2;c+=16){ g.beginPath(); g.moveTo(c, sgn>0?wy:wy-wh); g.lineTo(c, sgn>0?wy+wh:wy); g.strokePath(); }
+        g.lineStyle(2,0x6a7782,1); g.beginPath(); g.moveTo(0,sgn*hd); g.lineTo(0,wy); g.strokePath(); }); // boom
+      // radiator (one side)
+      g.fillStyle(0x20262c,1); g.fillRect(-95-46, hd+8, 92, 54); g.lineStyle(1,0x3a444d,1); for(let r=hd+8;r<=hd+62;r+=10){ g.beginPath(); g.moveTo(-95-46,r); g.lineTo(-95+46,r); g.strokePath(); }
+      // pressurized hull (cylinder side view: body + end domes)
+      g.fillStyle(0xb8c0c7,1); g.fillRect(-L/2, -hd, L, mod.dia);
+      g.fillStyle(0x9aa3ab,1); g.fillEllipse(L/2, 0, 34, mod.dia); g.fillEllipse(-L/2, 0, 34, mod.dia); // domes
+      g.lineStyle(2,0x6c757d,1); g.strokeRect(-L/2,-hd,L,mod.dia);
+      g.lineStyle(1,0x8b949c,0.8); for(let x=-L/2+24;x<L/2;x+=28){ g.beginPath(); g.moveTo(x,-hd); g.lineTo(x,hd); g.strokePath(); } // ring frames
+      g.fillStyle(0x33424d,1); for(let x=-L/2+44;x<L/2-20;x+=52){ g.fillCircle(x,-hd*0.35,5); } // windows row
+      // micrometeoroid blanket hint
+      g.lineStyle(1,0xcfd6db,0.5); g.strokeRect(-L/2+6,-hd+6,L-12,mod.dia-12);
+      // axial docking node (forward)
+      g.fillStyle(0x7e8990,1); g.fillRect(L/2+22, -16, 26, 32); g.lineStyle(2,0x586066,1); g.strokeRect(L/2+22,-16,26,32);
+      g.fillStyle(0x2a333a,1); g.fillCircle(L/2+48, 0, 11);
+      // radial berthing ports (top + bottom)
+      [-1,1].forEach(sgn=>{ g.fillStyle(0x7e8990,1); g.fillRect(-16, sgn>0?hd:-hd-18, 32, 18); g.fillStyle(0x2a333a,1); g.fillEllipse(0, sgn>0?hd+16:-hd-16, 22, 12); });
+      // antennas: dish (aft-top) + whip (fwd-top)
+      const dx=-70,dy=-hd-30; g.lineStyle(2,0x9aa3ab,1); g.beginPath(); g.moveTo(dx,-hd); g.lineTo(dx,dy); g.strokePath();
+      g.lineStyle(2,0xcdd3d8,1); g.beginPath(); g.arc(dx,dy,15,Math.PI*0.15,Math.PI*0.85); g.strokePath(); g.fillStyle(0xcdd3d8,1); g.fillCircle(dx,dy,2);
+      const wx=70; g.lineStyle(1.5,0xbfc7cf,1); g.beginPath(); g.moveTo(wx,-hd); g.lineTo(wx,-hd-34); g.strokePath(); g.fillStyle(0xffd07a,1); g.fillCircle(wx,-hd-34,2.5);
+      // handrails along the hull
+      g.lineStyle(1.4,0xf5c84a,0.85); g.beginPath(); g.moveTo(-L/2+20,-hd+10); g.lineTo(L/2-20,-hd+10); g.strokePath();
+      // annotation leader lines + labels
+      for(const pr of mod.parts){ g.lineStyle(1,0x4fd1d9,0.55); g.beginPath(); g.moveTo(pr.x,pr.y); const lx=pr.x+(pr.x>=0?60:-60), ly=pr.y+(pr.y>=0?40:-40); g.lineTo(lx,ly); g.strokePath();
+        g.fillStyle(0x4fd1d9,1); g.fillCircle(pr.x,pr.y,2.4);
+        const t=this.add.text(lx+(pr.x>=0?4:-4), ly, pr.label, {fontFamily:'ui-monospace,monospace',fontSize:'11px',color:'#cfe6ff'}).setOrigin(pr.x>=0?0:1,0.5);
+        this.labels.push(t); }
+      const title=this.add.text(0,-STN_H*0.5+10, mod.name, {fontFamily:'ui-monospace,monospace',fontSize:'13px',color:'#9aa7af'}).setOrigin(0.5,0); this.labels.push(title);
+    }
+  };
+}
+function ensureStationHost(){ const host=$('stationHost'); if(!host) return false; host.style.display='block'; const c=$('stationCanvas'); if(c) c.style.display='none'; return true; }
+function startStationScene(){
+  defineStationScene();
+  if(!ensureStationHost()) return false;
+  try{
+    if(!stationGame){
+      stationGame=new Phaser.Game({ type:Phaser.AUTO, parent:'stationHost', width:STN_W, height:STN_H, backgroundColor:'#070b11', banner:false, audio:{noAudio:true}, scale:{mode:Phaser.Scale.NONE}, scene:[StationScene] });
+      const c=stationGame.canvas; if(c){ c.style.maxWidth='100%'; c.style.height='auto'; c.style.display='block'; }
+    } else resumeStationGame();
+    return true;
+  }catch(e){ console.warn('station scene failed, using SVG:',e); const h=$('stationHost'); if(h) h.style.display='none'; const c=$('stationCanvas'); if(c) c.style.display='block'; return false; }
+}
+function pauseStationGame(){ if(stationGame){ try{ if(stationGame.scene.isActive('station')) stationGame.scene.pause('station'); }catch(e){} } }
+function resumeStationGame(){ if(stationGame){ try{ stationGame.scene.resume('station'); }catch(e){} } }
+function renderStation(){
+  const sv=$('stationView'); if(sv) sv.classList.toggle('expanded', stationExpanded);
+  const eb=$('stationExpandBtn'); if(eb) eb.textContent = stationExpanded ? '⛶ Exit full screen' : '⛶ Expand';
+  if(phaserOK() && startStationScene()) return;
+  const c=$('stationCanvas'); if(c) c.innerHTML=renderStationSVG(720,460,stationActiveModule());
+}
+// Static SVG fallback (no Phaser / headless): the same annotated module, no pan/zoom.
+function renderStationSVG(W,H,mod){
+  const cx=W*0.46, cy=H*0.5, L=mod.len, hd=mod.dia/2;
+  const x=v=>cx+v, y=v=>cy+v;
+  let s=`<svg class="stationsvg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="max-width:100%;height:auto;background:#070b11;border-radius:8px">`;
+  // solar wings + radiator
+  [-1,1].forEach(sgn=>{ const wy=sgn>0?hd+24:-(hd+24)-110; s+=`<rect x="${x(-75)}" y="${y(wy)}" width="150" height="110" fill="#12243a" stroke="#2f5a8a"/>`; s+=`<line x1="${x(0)}" y1="${y(sgn*hd)}" x2="${x(0)}" y2="${y(sgn*(hd+24))}" stroke="#6a7782" stroke-width="2"/>`; });
+  s+=`<rect x="${x(-95-46)}" y="${y(hd+8)}" width="92" height="54" fill="#20262c" stroke="#3a444d"/>`;
+  // hull
+  s+=`<rect x="${x(-L/2)}" y="${y(-hd)}" width="${L}" height="${mod.dia}" fill="#b8c0c7" stroke="#6c757d" stroke-width="2"/>`;
+  s+=`<ellipse cx="${x(L/2)}" cy="${y(0)}" rx="17" ry="${hd}" fill="#9aa3ab"/><ellipse cx="${x(-L/2)}" cy="${y(0)}" rx="17" ry="${hd}" fill="#9aa3ab"/>`;
+  // axial dock + radial ports + antennas
+  s+=`<rect x="${x(L/2+22)}" y="${y(-16)}" width="26" height="32" fill="#7e8990" stroke="#586066"/><circle cx="${x(L/2+48)}" cy="${y(0)}" r="11" fill="#2a333a"/>`;
+  [-1,1].forEach(sgn=>{ s+=`<rect x="${x(-16)}" y="${y(sgn>0?hd:-hd-18)}" width="32" height="18" fill="#7e8990"/>`; });
+  s+=`<path d="M ${x(-85)} ${y(-hd-30)} A 15 15 0 0 1 ${x(-55)} ${y(-hd-30)}" fill="none" stroke="#cdd3d8" stroke-width="2"/><line x1="${x(-70)}" y1="${y(-hd)}" x2="${x(-70)}" y2="${y(-hd-30)}" stroke="#9aa3ab" stroke-width="2"/>`;
+  s+=`<line x1="${x(70)}" y1="${y(-hd)}" x2="${x(70)}" y2="${y(-hd-34)}" stroke="#bfc7cf" stroke-width="1.5"/>`;
+  // annotations
+  for(const pr of mod.parts){ const lx=pr.x+(pr.x>=0?60:-60), ly=pr.y+(pr.y>=0?40:-40);
+    s+=`<line x1="${x(pr.x)}" y1="${y(pr.y)}" x2="${x(lx)}" y2="${y(ly)}" stroke="#4fd1d9" stroke-opacity="0.55"/><circle cx="${x(pr.x)}" cy="${y(pr.y)}" r="2.4" fill="#4fd1d9"/>`;
+    s+=`<text x="${x(lx+(pr.x>=0?4:-4))}" y="${y(ly)+3}" fill="#cfe6ff" font-family="ui-monospace,monospace" font-size="11" text-anchor="${pr.x>=0?'start':'end'}">${pr.label}</text>`; }
+  s+=`<text x="${W/2}" y="22" fill="#9aa7af" font-family="ui-monospace,monospace" font-size="13" text-anchor="middle">${mod.name}</text>`;
+  s+=`</svg>`;
+  return s;
 }
 function renderMarketStat(){
   const wrap=$('stMarketWrap'), el=$('stMarket'); if(!wrap||!el) return;
