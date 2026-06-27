@@ -3385,6 +3385,31 @@ call (fast, as now); risky flights become tense *decisions* instead of coin flip
 > 2%** (no behavioural drift). CE1–CE4 regression green (ov-ce4c 18/18, ov-reentry-station 55/55).
 > Remaining: (b) the near-miss live-call modal hook, (c) reserve-margin deep-leg calls.
 
+> 🟡 **Slice (b) SHIPPED 2026-06-27 — the near-miss live abort / press-on call.** A *loss-severity*
+> subsystem on an early phase (pad/ascent/staging) sitting in the **amber band** (rel ≤ `LIVE_CALL_SUB_HI`
+> 0.94) on a flight that is still a real gamble (overall R ≥ `LIVE_CALL_R_FLOOR` 0.40) is the marginal flag
+> the player can act on mid-launch. `liveCallFlag(outcome)` reads it straight off the CE5(a) per-phase
+> breakdown — **deterministic, no RNG**, excludes partial-severity (avionics → can't lose the vehicle) and
+> deep-phase subsystems, and picks the *worst* eligible. `proceedLaunch` consults it only when
+> `animEnabled && (crewed || !routine)` (no spam on routine cargo re-flights, **never headless**); the
+> shared `postResolve(ctx)` helper carries the press-on path so the in-flight anomaly (slice 2) still
+> fires after. **Press on** → `postResolve` finalizes the *exact* outcome `resolveFlight` already
+> rolled — identical to the headless default, so the sim stays **provably balance-neutral**. **Abort
+> now** → new `scrub` outcome: vehicle & crew recovered, mission + payout forfeit, rep −min(rep, crewed?8:5),
+> support dip, **no crew loss, no stand-down/investigation, no family-heritage loss** (the airframe
+> survived). The verb is **agency, not power**: amber ≠ doomed, so the abort trades a possibly-successful
+> mission for certainty — a real opportunity cost (and uncrewed losses are cheap enough that pressing on
+> stays +EV, so default behaviour barely moves; the call earns its weight on *crewed* flights, exactly as
+> designed). *Intentional override of "balance exactly preserved": the abort lets a player convert some
+> would-be losses into a forfeit — flagged as the deliberate added-agency it is, gated behind a genuinely
+> risky launch and the mission's whole payout.* **Validation — /tmp/ov-ce5b.js 31/31:** band/severity/
+> phase/R-floor gating + worst-pick + determinism (11 synthetic + real-data: risky flight flags, hopeless
+> flight below the floor doesn't); press-on keeps the rolled outcome, abort overrides to `scrub`;
+> `finalizeLaunch` scrub application (uncrewed rep −5 & no mission-complete & no game-over; crewed crew
+> NOT lost & rep −8 & no 6-mo stand-down; family losses untouched, flight still logged); success rate over
+> 20k rolls ≈ R (no drift). CE5(a)+(b) regression /tmp/ov-ce5-regress.js 9/9 (∏phaseRel=R + no drift across
+> uncrewed/crewed/deep). Remaining: (c) reserve-margin deep-leg calls.
+
 **Build order.** (a) Phase-split `resolveFlight` preserving ∏R = R (provable). (b) The
 near-miss live-call hook on the worst-flagged subsystem, wired to the `#20` modal, with a
 default (auto-resolve) for headless/animations-off so the sim stays deterministic. (c)

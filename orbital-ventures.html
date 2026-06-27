@@ -3685,6 +3685,30 @@ function resolveFlight(m,v,sim,crewed,relPenalty=0){
   out.phases=phases; out.govPhase=gov?livePhaseOf(gov.key):null; // CE5(a) seam for the live-call hook
   return out;
 }
+// CE5(b): the near-miss live call. A loss-severity subsystem on an early phase (pad/ascent/
+// staging) sitting in the amber band, on a flight that is still a real gamble, is the marginal
+// flag the player can act on mid-launch. Eligibility is DETERMINISTIC (read off the per-phase
+// breakdown, no RNG) so the headless / animations-off path never branches here and always
+// "presses on" — i.e. finalizes the exact outcome resolveFlight already rolled. That keeps the
+// sim provably balance-neutral; the abort is new AGENCY (trade the mission for the hardware/crew),
+// available only as a live decision, with a real opportunity cost (amber ≠ doomed — it might hold).
+const LIVE_CALL_SUB_HI=0.94;  // a loss-severity early subsystem at/under this reads as "amber"
+const LIVE_CALL_R_FLOOR=0.40; // ...but only fire when the flight overall is still a real gamble
+const LIVE_CALL_PHASES={pad:1, ascent:1, staging:1}; // early phases where an abort can still save the vehicle
+function liveCallFlag(outcome){
+  // the weakest loss-severity early-phase subsystem in the amber band, or null
+  if(!outcome || !outcome.phases || (outcome.rel||0)<LIVE_CALL_R_FLOOR) return null;
+  let worst=null;
+  for(const ph of outcome.phases){
+    if(!LIVE_CALL_PHASES[ph.phase]) continue;
+    for(const s of ph.subsystems){
+      if(s.severity==='partial') continue;          // a partial-severity flag can't lose the vehicle — nothing to abort for
+      if(s.rel>LIVE_CALL_SUB_HI) continue;           // green enough — no call
+      if(!worst || s.rel<worst.sub.rel) worst={sub:s, phase:ph};
+    }
+  }
+  return worst;
+}
 function loseAssignedCrew(){
   if(!state.assignedAstronaut) return;
   const p=personById(state.assignedAstronaut);
@@ -3851,6 +3875,35 @@ function resolveAnomaly(i){
   finalizeLaunch(ctx, eff);
 }
 
+/* ---------- CE5(b): the live abort / press-on call ---------- */
+// A marginal early-phase subsystem flags amber mid-launch. The player chooses, BEFORE the
+// outcome is revealed, to press on (fly the flight as resolveFlight already rolled it — the
+// balance-neutral default the headless path also takes) or abort now: a precautionary `scrub`
+// that saves the vehicle and crew but forfeits the mission. Amber ≠ doomed, so the abort trades
+// a possibly-successful mission for certainty — genuine agency with a real opportunity cost.
+let _pendingLive=null; // a flight paused at the live abort / press-on call
+function showLiveCallModal(ctx, flag){
+  const m=ctx.m, sub=flag.sub, ph=flag.phase, pc=Math.round(sub.rel*100);
+  const subName=SUBSYS_LABEL[sub.key]||sub.label;
+  const crewLine=ctx.crewed?' The crew is strapped in and awaiting your call.':'';
+  showModal(`<h2 style="color:var(--warn)">⚠ Marginal subsystem — live call</h2>
+    <p><b>${m.name}</b> — the <b>${subName.toLowerCase()}</b> is flagging amber on ${ph.label.toLowerCase()}, holding at just <b>${pc}%</b>.${crewLine}</p>
+    <p class="muted">It may hold all the way — or let go and take the vehicle with it. Abort now and you bring the hardware${ctx.crewed?' and crew':''} home safe but forfeit the mission and its payout. Press on and you fly it exactly as built.</p>
+    <button class="btn" onclick="resolveLiveCall(true)">Press on — fly it</button>
+    <button class="btn ghost" onclick="resolveLiveCall(false)" style="margin-top:8px">Abort now — save the vehicle${ctx.crewed?' & crew':''}, forfeit the mission</button>`);
+}
+function resolveLiveCall(pressOn){
+  const ctx=_pendingLive; if(!ctx) return;
+  _pendingLive=null; hideModal();
+  if(pressOn){ postResolve(ctx); return; } // fly the outcome resolveFlight already rolled (balance-neutral)
+  const flag=ctx.liveFlag, ph=flag?flag.phase:null, subKey=flag?flag.sub.key:null;
+  const subName=(SUBSYS_LABEL[subKey]||'systems').toLowerCase();
+  ctx.outcome=Object.assign({}, ctx.outcome, { kind:'scrub', subsystem:subKey,
+    failPhase:ph?ph.phase:'ascent',
+    story:`a precautionary abort on ${(ph?ph.label:'ascent').toLowerCase()} after the ${subName} flagged marginal — the vehicle was brought back intact.` });
+  finalizeLaunch(ctx, null);
+}
+
 /* ---------- #20 slice 3: rescue missions & contingency ---------- */
 // A strand (deep-space crew that can't get home) is no longer an automatic loss: the
 // player can mount a rescue — capital + months + a success chance. The chance is the
@@ -4012,6 +4065,19 @@ function proceedLaunch(m,v,sim,windowQuality,weatherPenalty,prebuilt){
   // M16: subsystem-based reliability — which subsystem (if any) fails decides the story
   const outcome=resolveFlight(m,v,sim,crewed,weatherPenalty);
   const ctx={m,v,sim,windowQuality,flightExpense,routine,crewed,outcome,rehearsed:!!state.rehearsal};
+  // CE5(b): a marginal early-phase subsystem surfaces a live abort / press-on call before the
+  // outcome is revealed. Skipped on routine uncrewed re-flights (low-stakes spam) and never in
+  // the headless / animations-off path — which presses on, reproducing today's outcome exactly.
+  if(animEnabled && (crewed || !routine)){
+    const flag=liveCallFlag(outcome);
+    if(flag){ _pendingLive=ctx; ctx.liveFlag=flag; showLiveCallModal(ctx, flag); return; }
+  }
+  postResolve(ctx);
+}
+// the post-resolve flow shared by the headless path and the live-call's "press on": an in-flight
+// anomaly may still fire on a flight that reaches its operational phase, else the outcome is applied.
+function postResolve(ctx){
+  const {outcome,crewed}=ctx;
   // #20 slice 2: an in-flight anomaly can occur once the mission reaches its operational phase
   if(animEnabled && (outcome.kind==='success'||outcome.kind==='partial')){
     const ev=rollMissionEvents(ctx);
@@ -4089,6 +4155,14 @@ function finalizeLaunch(ctx, ops){
     state.rep+=rep;
     addSupport(SUPPORT_DELTA.partial); // #8: a salvaged flight still reads as progress
     log('note',`${m.name}: PARTIAL SUCCESS — ${outcome.story} Salvaged value +${fM(payout)}, +${rep} rep, but the objective is not complete.`);
+  }else if(outcome.kind==='scrub'){
+    // CE5(b): the player called a precautionary in-flight abort — vehicle & crew recovered, mission
+    // forfeit. No catastrophe: no crew loss, no stand-down/investigation, a lighter rep dent than a
+    // loss. The flight outlay is still sunk; the payoff is avoiding the worse outcome you gambled on.
+    personnelMissionEvent(false);
+    const rep=Math.min(state.rep, crewed?8:5); state.rep-=rep;
+    addSupport(SUPPORT_DELTA.abort); // a scrubbed flight dents mood, but a saved vehicle limits it
+    log('note',`${m.name}: ABORTED IN FLIGHT — ${outcome.story} Crew and vehicle safe; the mission is forfeit, −${rep} rep.`);
   }else if(outcome.kind==='abort'){
     personnelMissionEvent(false);
     const rep=Math.min(state.rep,12); state.rep-=rep;
@@ -4137,7 +4211,7 @@ function finalizeLaunch(ctx, ops){
         state.rep+=brandRep;
         log('ok',`${fam.name} reaches ${fam.successes} successful flights — a trusted name now. +${brandRep} rep (brand heritage).`);
       }
-    }else if(outcome.kind!=='partial'){ // abort / strand / loss — a veteran going down stings more
+    }else if(outcome.kind!=='partial' && outcome.kind!=='scrub'){ // abort / strand / loss — a veteran going down stings more (a scrub saved the airframe, so the lineage is intact)
       const exp=familyExperience(fam); // proven-ness before recording the loss
       fam.losses=(fam.losses||0)+1;
       const extra=Math.round(Math.min(15, 2*exp));
