@@ -472,6 +472,7 @@
       <p class="muted" style="font-size:12px;margin:6px 0 10px">A 2D side view of an orbital module. Drag to pan, scroll to zoom. This is an early framework — module library, docking and assembly come later.</p>
       <div id="stationHost" style="display:none;width:100%;aspect-ratio:760/480"></div>
       <div id="stationCanvas"></div>
+      <div id="stationStats" style="margin-top:12px"></div>
     </div>
   </div>
 
@@ -3156,36 +3157,52 @@ function lvPayload(m){
   else p=m?m.payload:0.05;
   return p + partsExtraMass(m); // BC2: avionics + fairing add lofted mass
 }
+// Gravity-loss model: a low-TWR burn spends longer fighting gravity, so it delivers less of its
+// ideal Δv. Mission reqDv ALREADY budgets a nominal gravity/drag loss (LEO 9400 vs ~7800 m/s
+// orbital velocity), so this is a penalty applied ONLY BELOW a nominal TWR — a sensibly-thrusted
+// stage (TWR ≥ nominal) is unchanged, and only an anemic stage bleeds Δv. Stage 1 keys off the
+// booster-assisted liftoff TWR; upper stages off their own ignition TWR.
+const GRAV_NOM_TWR0=1.25, GRAV_NOM_TWR_UP=0.40, GRAV_LOSS_K=0.55, GRAV_LOSS_CAP=0.40;
+function gravLossFrac(twr, nom){ return clampA(GRAV_LOSS_K*Math.max(0,(nom-twr)/nom), 0, GRAV_LOSS_CAP); }
 function stackPerformance(stages, payload){
   const sm=stages.map(stageMasses);
-  let totalDv=0; const stageDv=[];
+  // strap-on boosters lift the full wet stack then jettison; the liftoff TWR they add reduces the
+  // boost-phase gravity loss. Compute liftoff mass + combined liftoff TWR up front so stage 1's
+  // gravity loss can use it. Zero boosters == exactly the prior (loss-free-for-good-TWR) numbers.
+  const bm=boosterMasses();
+  const stackWet=sm.reduce((a,b)=>a+b.wet,0);
+  const liftoff=payload+stackWet+(bm?bm.wet:0);
+  const coreThrust=sm[0].eng.thrustSL*stages[0].count;
+  const boostThrust=bm?bm.eng.thrustSL*bm.count:0;
+  const twr=((coreThrust+boostThrust)*thrustMult())/(liftoff*G0); // #2b research scales liftoff thrust
+  let totalDv=0; const stageDv=[], stageTwr=[], stageGravLoss=[];
   for(let i=0;i<stages.length;i++){
     let above=payload;
     for(let j=i+1;j<stages.length;j++) above+=sm[j].wet;
     const m0=above+sm[i].wet, mf=above+sm[i].dry, e=sm[i].eng;
     const isp=((i===0)?(e.ispSL+e.ispVac)/2:e.ispVac)*ispMult(); // first stage flies through atmosphere; #2b research scales Isp
-    const dv=(mf>0 && m0>mf)? isp*G0*Math.log(m0/mf):0;
-    stageDv.push(dv); totalDv+=dv;
+    const ideal=(mf>0 && m0>mf)? isp*G0*Math.log(m0/mf):0;
+    // per-stage ignition TWR (SL thrust for stage 1, vac for uppers)
+    const th=((i===0)?e.thrustSL:e.thrustVac)*stages[i].count*thrustMult();
+    const ignTwr=m0>0? th/(m0*G0):0;
+    stageTwr.push(ignTwr);
+    // gravity loss: stage 1 keyed to the booster-assisted liftoff TWR, uppers to ignition TWR
+    const lossFrac=gravLossFrac((i===0)?twr:ignTwr, (i===0)?GRAV_NOM_TWR0:GRAV_NOM_TWR_UP);
+    const loss=ideal*lossFrac; stageGravLoss.push(loss);
+    stageDv.push(ideal-loss); totalDv+=ideal-loss;
   }
-  // parallel strap-on boosters — a serial-equivalent boost segment beneath stage 1.
-  // The boosters lift the full wet stack, then jettison (dry + spent prop), so the core
-  // stack's own Δv above is unchanged → zero boosters == exactly the prior numbers.
-  const bm=boosterMasses();
-  const stackWet=sm.reduce((a,b)=>a+b.wet,0);
-  let boostDv=0;
+  // booster boost segment — shares stage 1's boost-phase gravity loss (same low, vertical phase)
+  let boostDv=0, boostGravLoss=0;
   if(bm){
     const e=bm.eng;
     const isp=((e.ispSL+e.ispVac)/2)*ispMult(); // boosters fly through the atmosphere → SL/Vac average
     const m0=payload+stackWet+bm.wet, mf=payload+stackWet+bm.dry;
-    boostDv=(mf>0 && m0>mf)? isp*G0*Math.log(m0/mf):0;
+    const idealB=(mf>0 && m0>mf)? isp*G0*Math.log(m0/mf):0;
+    boostGravLoss=idealB*gravLossFrac(twr, GRAV_NOM_TWR0); boostDv=idealB-boostGravLoss;
     totalDv+=boostDv;
   }
-  const liftoff=payload+stackWet+(bm?bm.wet:0);
-  // both the core stage-1 engines and every booster are lit at liftoff → combined thrust
-  const coreThrust=sm[0].eng.thrustSL*stages[0].count;
-  const boostThrust=bm?bm.eng.thrustSL*bm.count:0;
-  const twr=((coreThrust+boostThrust)*thrustMult())/(liftoff*G0); // #2b research scales liftoff thrust
-  return {sm,stageDv,totalDv,liftoff,twr,boostDv,boosters:bm};
+  const gravLoss=stageGravLoss.reduce((a,b)=>a+b,0)+boostGravLoss;
+  return {sm,stageDv,totalDv,stageTwr,stageGravLoss,gravLoss,liftoff,twr,boostDv,boosters:bm};
 }
 // Legs that ISRU makes "free" once the relevant tech is researched, keyed by mission id.
 const ISRU_FREE_LEG = {
@@ -3413,7 +3430,7 @@ function computeVehicle(){
   }
   const reliability=Math.min(diff().relCap,Math.max(diff().relFloor,(curRel()+testBonus+partsRelBonus(crewed)+geoRelBonus()+doctrineRelMod())*enginePenalty*boosterRelPenalty()*(crewed?0.92:1)+productionRelMod(m))); // #7: QA bonus − bay-overstretch penalty; #16: booster failure-point penalty; BC2 parts + BC3 geometry reliability; CE3(a) doctrine early-reliability delta
   const launchCost=((0.12+0.01*totalProp)*padLaunchMult()*groundLaunchMult()*doctrineMult('launch')) + assemblyFlights(m)*ASSEMBLY_LAUNCH_COST; // #7: pads + #6b: Ground/Reuse research amortize launch ops; #6: dedicated assembly flights; CE3(a) doctrine launch-cost factor
-  return {payload, sm:perf.sm, stageDv:perf.stageDv, totalDv:perf.totalDv, liftoff:perf.liftoff, twr:perf.twr,
+  return {payload, sm:perf.sm, stageDv:perf.stageDv, stageTwr:perf.stageTwr, stageGravLoss:perf.stageGravLoss, gravLoss:perf.gravLoss, totalDv:perf.totalDv, liftoff:perf.liftoff, twr:perf.twr,
           boostDv:perf.boostDv||0, boosters:perf.boosters||null,
           totalEng, totalProp, reliability, buildCost, launchCost, crewed,
           dryTotal:perf.sm.reduce((a,b)=>a+b.dry,0)};
@@ -8562,6 +8579,14 @@ function renderStages(){
     const opts=Object.values(ENGINES).filter(e=>state.unlocked[e.id] && !e.transferOnly)
       .map(e=>`<option value="${e.id}" ${e.id===st.eng?'selected':''}>${e.name} · ${e.prop} · Isp ${e.ispVac}s</option>`).join('');
     const dv=(cv&&cv.stageDv&&cv.stageDv[i]!=null)?fI(cv.stageDv[i]):'—';
+    const sTwr=(cv&&cv.stageTwr&&cv.stageTwr[i]!=null)?cv.stageTwr[i]:null;
+    const sLoss=(cv&&cv.stageGravLoss&&cv.stageGravLoss[i]!=null)?cv.stageGravLoss[i]:0;
+    const nomTwr=i===0?GRAV_NOM_TWR0:GRAV_NOM_TWR_UP;
+    // colour by gravity-loss bite: green = at/above nominal (no loss), amber/red as the penalty grows
+    const twrCol = sTwr==null ? 'var(--muted)' : (sLoss<=0 ? 'var(--ok)' : (sLoss>250?'var(--bad)':'var(--warn)'));
+    const thrSL=(eng.thrustSL||0)*st.count, thrVac=(eng.thrustVac||0)*st.count;
+    const im=ispMult(), tm=thrustMult();
+    const engSpec = eng.name ? `${eng.name} · Isp ${eng.ispSL||0}/${eng.ispVac||0}s · ${fI(eng.thrustSL||0)}/${fI(eng.thrustVac||0)} kN ea${st.count>1?` · ${st.count}× = ${fI(thrVac)} kN vac`:''} · ${(eng.mass||0).toFixed(2)} t ea${(im>1||tm>1)?` · R&D +${Math.round((im-1)*100)}% Isp/+${Math.round((tm-1)*100)}% thr`:''}` : '—';
     const thrustPct=Math.round(thrusts[i]/maxThrust*100);
     const div=document.createElement('div'); div.className='stage stage-card'+(collapsed?' collapsed':'');
     div.setAttribute('ondragover','stageDragOver(event)');
@@ -8581,6 +8606,7 @@ function renderStages(){
       <div class="stage-thrust" title="Stage thrust ${fI(thrusts[i])} kN (vac)"><div class="stage-thrust-fill" style="width:${thrustPct}%"></div><span class="stage-thrust-lbl">${fI(thrusts[i])} kN${st.count>1?` · ${st.count}×`:''}</span></div>
       <div class="stage-body">
         <div class="row"><label>Engine</label><select onchange="setEngine(${i},this.value)" style="flex:1">${opts}</select></div>
+        <div class="dim" style="font-size:10.5px;margin:-2px 0 4px 0">${engSpec}</div>
         <div class="row"><label>Count</label>
           <div class="stepper"><button onclick="setCount(${i},-1)">−</button><span class="val">${st.count}</span><button onclick="setCount(${i},1)">+</button></div>
           <span class="dim" style="font-size:11px">more engines = more thrust, more failure points</span></div>
@@ -8595,6 +8621,8 @@ function renderStages(){
           <span class="ss">prop <b>${st.prop.toFixed(1)} t</b></span>
           <span class="ss">wet <b>${sm.wet.toFixed(2)} t</b></span>
           <span class="ss">Isp <b>${eng.ispVac||'—'} s</b></span>
+          <span class="ss" title="Thrust-to-weight at this stage's ignition (lifting itself + everything above). Below the nominal TWR (${nomTwr.toFixed(2)}) the stage spends longer fighting gravity and loses Δv.${i===0?' Stage 1 must also exceed 1.0 to lift off.':''}">TWR@ign <b style="color:${twrCol}">${sTwr==null?'—':sTwr.toFixed(2)}</b></span>
+          ${sLoss>1?`<span class="ss" title="Δv lost to gravity because this stage's TWR is below nominal (${nomTwr.toFixed(2)})">grav <b style="color:var(--warn)">−${fI(sLoss)} m/s</b></span>`:''}
         </div>
         ${i===0?recoveryStageHTML(curM):''}
       </div>`;
@@ -9139,8 +9167,9 @@ function renderReadout(){
 
   let flags='';
   if(!meets) flags+=`<div class="flag bad">▲ Δv short by ${fI(m.reqDv-v.totalDv)} m/s.</div>`;
-  if(v.twr<=1.0) flags+=`<div class="flag bad">▲ TWR ${v.twr.toFixed(2)} — won't lift off.</div>`;
-  else if(v.twr<1.2) flags+=`<div class="flag warn">△ TWR ${v.twr.toFixed(2)} is low; heavy gravity losses (add engines or cut mass).</div>`;
+  if(v.twr<=1.0) flags+=`<div class="flag bad">▲ Liftoff TWR ${v.twr.toFixed(2)} ≤ 1 — won't leave the pad (add engines or cut mass).</div>`;
+  else if(v.twr<1.2) flags+=`<div class="flag warn">△ Liftoff TWR ${v.twr.toFixed(2)} is marginal — leaves the pad sluggishly. (Upper-stage TWR is shown per stage but is advisory: Δv here is the ideal rocket equation, with no gravity-loss penalty.)</div>`;
+  if(v.gravLoss>200){ const worst=(v.stageGravLoss||[]).reduce((b,l,i)=>l>(b.l||0)?{l,i}:b,{l:0,i:0}); flags+=`<div class="flag ${v.gravLoss>800?'warn':''}">▾ Gravity losses −${fI(v.gravLoss)} m/s from low thrust-to-weight${(v.stageGravLoss&&v.stageGravLoss.length>1)?` (worst: stage ${worst.i+1})`:''} — add or upsize engines to recover that Δv.</div>`; }
   if(meets && v.twr>1.2) flags+=`<div class="flag ok">✓ Cleared to fly. Reliability ${(v.reliability*100|0)}%.</div>`;
   if(bayBuildDelta(m)>0) flags+=`<div class="flag warn">△ Over assembly-bay capacity (${vehicleUnits(m)}/${bayCapacity()} units) — build runs +${bayBuildDelta(m)} mo and −${(overstretchRelPenalty(m)*100).toFixed(1)}% reliability. Expand Assembly Bays in Orbital Ops.</div>`;
   if(cadenceSurcharge()>0) flags+=`<div class="flag warn">△ Build cadence ${Math.round(cadenceLoad()*100)}% of sustainable — rush surcharge +${Math.round(cadenceSurcharge()*100)}% on this build. Slow down or expand Assembly Bays.</div>`;
@@ -9166,6 +9195,7 @@ function renderReadout(){
 
     <div class="metrics">
       <div class="metric"><div class="k">Liftoff TWR</div><div class="v" style="color:${v.twr>1.2?'var(--ink)':(v.twr>1?'var(--warn)':'var(--bad)')}">${v.twr.toFixed(2)}</div></div>
+      <div class="metric" title="Δv bled by stages whose TWR is below nominal — raise thrust to recover it"><div class="k">Gravity loss</div><div class="v" style="color:${v.gravLoss>800?'var(--bad)':(v.gravLoss>200?'var(--warn)':'var(--ink)')}">${v.gravLoss>1?'−'+fI(v.gravLoss)+' m/s':'—'}</div></div>
       <div class="metric"><div class="k">Reliability</div><div class="v">${(v.reliability*100|0)}%</div></div>
       <div class="metric"><div class="k">Liftoff mass</div><div class="v">${v.liftoff.toFixed(1)} t</div></div>
       <div class="metric"><div class="k">Payload</div><div class="v">${v.payload>=1?v.payload.toFixed(2)+' t':(v.payload*1000).toFixed(0)+' kg'}</div></div>
@@ -9177,8 +9207,8 @@ function renderReadout(){
     <div class="adv-only">${buildCostBreakdownHTML(m)}${subsystemBreakdownHTML(m,v)}</div>
     ${massFractionHTML(v)}
 
-    <div class="eq">Δv = Isp · g₀ · ln(m₀/m_f)<br>
-      stage 1: ${ispEff} · 9.81 · ln(${v.liftoff.toFixed(1)}/${(v.liftoff-state.stages[0].prop).toFixed(1)}) = ${fI(v.stageDv[0])} m/s<br>
+    <div class="eq">Δv = Isp · g₀ · ln(m₀/m_f) − gravity loss<br>
+      stage 1: ${ispEff} · 9.81 · ln(${v.liftoff.toFixed(1)}/${(v.liftoff-state.stages[0].prop).toFixed(1)}) = ${fI(v.stageDv[0]+(v.stageGravLoss?v.stageGravLoss[0]:0))} m/s${(v.stageGravLoss&&v.stageGravLoss[0]>1)?` − ${fI(v.stageGravLoss[0])} grav = ${fI(v.stageDv[0])}`:''}<br>
       σ ${curSigma()} · ${v.totalEng} engine${v.totalEng>1?'s':''} · ${state.stages.length} stage${state.stages.length>1?'s':''}</div>
 
     <div class="mission-tag" style="margin-top:6px">Test campaign — buy down risk before you fly</div>
@@ -9687,6 +9717,8 @@ const STN_W=760, STN_H=480;
 // extends. Coordinates are relative to the module centre.
 const STATION_MODULES = [
   { id:'can_std', name:'Standard Pressurized Module', len:240, dia:96,
+    // engineering stats (placeholder values — the balance pass comes with the assembly system)
+    stats:{ mass:18.0, volM3:90, crew:3, powerGenKw:9.0, powerDrawKw:4.2, consumDays:180, consumPerCrewDay:0.012, dockPorts:3 },
     parts:[
       { key:'axial_dock', label:'Axial docking port',   x:120,  y:0,   note:'Forward CBM / androgynous dock' },
       { key:'port_p',     label:'Radial berthing port', x:30,   y:-48, note:'Side hatch for branch modules' },
@@ -9772,11 +9804,32 @@ function startStationScene(){
 }
 function pauseStationGame(){ if(stationGame){ try{ if(stationGame.scene.isActive('station')) stationGame.scene.pause('station'); }catch(e){} } }
 function resumeStationGame(){ if(stationGame){ try{ stationGame.scene.resume('station'); }catch(e){} } }
+// Module engineering stats below the bench. Pure data → string, so it renders identically on
+// the Phaser and SVG-fallback paths and is headless-safe.
+function stationStatsHTML(mod){
+  const s=mod&&mod.stats; if(!s) return '';
+  const netP=(s.powerGenKw-s.powerDrawKw);
+  const consumTotal=(s.consumPerCrewDay*s.crew).toFixed(3);
+  const enduranceDays=s.consumPerCrewDay>0?Math.round(s.consumDays):'—'; // store already expressed in days here
+  const cell=(k,v,sub)=>`<div class="metric"><div class="k">${k}</div><div class="v">${v}</div>${sub?`<div class="dim" style="font-size:10px">${sub}</div>`:''}</div>`;
+  return `<div class="mission-tag">${mod.name} — engineering stats</div>
+    <div class="metrics">
+      ${cell('Pressurized vol', s.volM3+' m³')}
+      ${cell('Crew capacity', s.crew, 'nominal')}
+      ${cell('Module mass', s.mass.toFixed(1)+' t')}
+      ${cell('Power', (netP>=0?'+':'')+netP.toFixed(1)+' kW', `${s.powerGenKw} gen − ${s.powerDrawKw} draw`)}
+      ${cell('Consumables', s.consumDays+' d', `${consumTotal} t/day @ ${s.crew} crew`)}
+      ${cell('Docking ports', s.dockPorts, '1 axial · 2 radial')}
+    </div>
+    <div class="dim" style="font-size:11px;margin-top:6px">Placeholder values — these become real (and balance-tuned) when module assembly &amp; the station economy are built out.</div>`;
+}
 function renderStation(){
   const sv=$('stationView'); if(sv) sv.classList.toggle('expanded', stationExpanded);
   const eb=$('stationExpandBtn'); if(eb) eb.textContent = stationExpanded ? '⛶ Exit full screen' : '⛶ Expand';
+  const mod=stationActiveModule();
+  const st=$('stationStats'); if(st) st.innerHTML=stationStatsHTML(mod);
   if(phaserOK() && startStationScene()) return;
-  const c=$('stationCanvas'); if(c) c.innerHTML=renderStationSVG(720,460,stationActiveModule());
+  const c=$('stationCanvas'); if(c) c.innerHTML=renderStationSVG(720,460,mod);
 }
 // Static SVG fallback (no Phaser / headless): the same annotated module, no pan/zoom.
 function renderStationSVG(W,H,mod){

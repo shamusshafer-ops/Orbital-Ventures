@@ -2795,6 +2795,56 @@ engine catalog (BC4).
       roots**; load + render smoke green (ov-reentry-station.js 28/28). **Browser-verify the
       R&D tree still lays out and lunar missions unlock after `deep_space`.**
 
+## Gravity-Loss Model — TWR now affects Δv (2026-06-27)
+
+- [x] **Gravity losses from low TWR** *(Built 2026-06-27. Balance change.)* Closes the loophole the
+      TWR investigation surfaced: a stage's thrust had **zero** effect on Δv, so a near-zero-thrust
+      upper stage flew identically to a well-thrusted one. Now a low-TWR burn spends longer fighting
+      gravity and **delivers less of its ideal Δv**. Implemented in the single source of truth
+      `stackPerformance`: per stage, `effectiveDv = idealDv · (1 − gravLossFrac)`, where
+      `gravLossFrac = clamp(K·max(0,(nom−TWR)/nom), 0, cap)`. **Penalty-below-nominal only** —
+      mission `reqDv` already budgets a nominal loss (LEO 9400 vs ~7800 m/s orbital velocity), so a
+      sensibly-thrusted stage (TWR ≥ nominal) is untouched and only an anemic one bleeds Δv (no
+      double-counting, no mission retune). Stage 1 keys off the **booster-assisted liftoff TWR**
+      (`GRAV_NOM_TWR0 1.25`); upper stages off their own **ignition TWR** (`GRAV_NOM_TWR_UP 0.40`,
+      ≈ a real hydrolox upper); `GRAV_LOSS_K 0.55`, `GRAV_LOSS_CAP 0.40` (a stage loses at most 40%
+      of its ideal Δv). The strap-on boost segment shares stage 1's boost-phase loss. Exposed as
+      `stageGravLoss[]` + total `gravLoss` through `computeVehicle`. **Display:** per-stage `grav
+      −X m/s` chip + TWR@ign recoloured by loss bite (green at/above nominal); a **Gravity loss**
+      metric and a "raise thrust" flag in the readout; the Δv equation now reads `… ln(m₀/m_f) −
+      gravity loss` with the stage-1 ideal − grav = delivered breakdown. This supersedes the
+      previous slice's "advisory only" note (upper-stage TWR now genuinely matters). Pure compute +
+      display — no new persisted state, no SAVE bump. **Validation — ov-reentry-station.js (45/45):**
+      `gravLossFrac` 0 at/above nominal, positive below, capped; a starved upper stage raises
+      `gravLoss`, cuts delivered `totalDv`, and attributes the loss to stage 2; a well-thrusted stack
+      stays under 50 m/s loss; renderStages/readout no-throw. **Browser-verify: a low-thrust upper
+      stage now shows the loss and can fail an otherwise-sufficient Δv.**
+
+## Readout clarity — engines, TWR, module stats (2026-06-27)
+
+- [x] **Per-stage TWR + engine data on the Design Bench** *(Built 2026-06-27.)* Investigation
+      first: **upper-stage TWR is not modeled.** `stackPerformance` computes Δv as the pure ideal
+      rocket equation (`Isp·g₀·ln(m₀/m_f)`) per stage — thrust never enters it, there's no
+      gravity-loss term — and `v.twr` is computed only at *liftoff* (stage-1 core + strap-ons).
+      So an upper stage's thrust had **zero** effect on Δv or any gate; the old readout's "heavy
+      gravity losses" warning implied a penalty that was never applied. Added an advisory per-stage
+      **TWR@ign** (thrust at that stage's ignition ÷ its stack mass · g₀; SL thrust for stage 1,
+      vac for uppers) threaded from the single source of truth: `stackPerformance` → `stageTwr`,
+      passed through `computeVehicle`. Each stage card now also shows a full **engine-spec line**
+      (Isp SL/vac, thrust SL/vac per engine, ×count total, mass, live R&D Isp/thrust bonus). The
+      readout's TWR warnings were rewritten to be honest — only liftoff TWR gates flight; per-stage
+      TWR is labelled advisory. No physics/balance change (display + an additive return field only).
+      **Validation — ov-reentry-station.js (36/36):** `computeVehicle.stageTwr` present, length =
+      stage count, all finite ≥0, stage-0 TWR>0; `renderStages` no-throw.
+
+- [x] **Station module engineering stats** *(Built 2026-06-27.)* The Station Bench module now
+      carries a `stats` block — pressurized volume (m³), crew capacity, module mass, power
+      (gen − draw → net kW), consumables (store-days + t/day at crew), docking ports — surfaced in
+      a `#stationStats` metrics grid below the bench (renders on both the Phaser and SVG-fallback
+      paths). Values are explicit placeholders pending the assembly/economy build-out.
+      **Validation — ov-reentry-station.js (36/36):** module exposes the full stats block;
+      `stationStatsHTML` emits a populated grid (vol/crew/power); `renderStation` no-throw.
+
 ## Graphics & Scenes (2026-06-27)
 
 - [x] **Capsule reentry & recovery scene** *(Built 2026-06-27.)* A crewed capsule returning
