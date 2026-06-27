@@ -1920,9 +1920,23 @@ function advance(months){
     state.money+=govMonthlyFunding(); // #8: public support buys government funding
     for(const fid in (state.facilities||{})){ // M17: persistent facilities produce every month
       if(!facilityBuilt(fid)) continue;
-      const pr=facilityProduction(facilityById(fid), facilityState(fid));
-      state.money+=pr.income; state.rep+=pr.rep; if(pr.fuel>0) state.depot=round2(state.depot+pr.fuel);
-      if(pr.sci>0) state.science=round2((state.science||0)+pr.sci); // M14: facilities generate science
+      const fdef=facilityById(fid), fst=facilityState(fid);
+      fst.supply=Math.max(0,(fst.supply!=null?fst.supply:FAC_SUPPLY_MONTHS)-facilitySupplyDrain(fid)); // CE4(b): consume a month of provisions
+      const factor=facilitySupplyFactor(fid); // a starved outpost runs on reserves at reduced output
+      const pr=facilityProduction(fdef, fst);
+      state.money+=pr.income*factor; state.rep+=pr.rep*factor; if(pr.fuel>0) state.depot=round2(state.depot+pr.fuel*factor);
+      if(pr.sci>0) state.science=round2((state.science||0)+pr.sci*factor); // M14: facilities generate science
+      if(fst.supply<=0){ // CE4(b): an unsupplied crewed outpost decays — rep/politics bleed, then crew evacuate a module
+        fst.starvedMonths=(fst.starvedMonths||0)+1;
+        state.rep=Math.max(0, state.rep-FAC_STARVE_REP);
+        state.publicSupport=clampA(publicSupport()-FAC_STARVE_SUPPORT, SUPPORT_MIN, SUPPORT_MAX);
+        if(fst.starvedMonths===1) log('bad',`${fdef.icon} ${fdef.name} has run out of supplies — the crew are on emergency reserves. Resupply now or you'll start losing modules.`);
+        if(fst.starvedMonths>=FAC_STARVE_ABANDON_MONTHS){
+          fst.starvedMonths=0;
+          if((fst.modules||1)>1){ fst.modules-=1; log('bad',`${fdef.icon} ${fdef.name}: a module was evacuated and mothballed — capacity cut to ${fst.modules}. Resupply to halt the decline.`); }
+          else { fst.built=false; log('bad',`${fdef.icon} ${fdef.name} was abandoned — the outpost is lost. Re-establish it to return.`); }
+        }
+      } else if(fst.starvedMonths){ fst.starvedMonths=0; }
     }
     // M2: LEO propellant price — mean-reverting random walk, plus buyer-order countdown
     state.fuelPrevPrice=state.fuelPrice;
@@ -2193,7 +2207,47 @@ function facilityBonus(body){
 }
 function expandCost(id){ const def=facilityById(id), fs=facilityState(id); const mod=(fs&&fs.modules)||1; return round2(def.foundCost*0.45*mod); }
 function expandMonths(def){ return Math.max(2, Math.round(def.foundMonths*0.4)); }
-function totalFacilityIncome(){ let s=0; for(const id in (state.facilities||{})){ if(facilityBuilt(id)) s+=facilityProduction(facilityById(id), facilityState(id)).income; } return s; }
+function totalFacilityIncome(){ let s=0; for(const id in (state.facilities||{})){ if(facilityBuilt(id)) s+=facilityProduction(facilityById(id), facilityState(id)).income*facilitySupplyFactor(id); } return s; }
+/* ---------- CE4(b): standing resupply obligations — a base is a commitment, not a trophy ----------
+   A crewed outpost is not a one-time win: it consumes consumables every month and must be
+   resupplied or it decays. Each built facility carries a supply meter (months of provisions);
+   `advance()` burns one month per calendar month. While stocked it produces normally; once it
+   runs dry it runs on emergency reserves (output cut to FAC_STARVE_PROD), bleeds reputation and
+   public support every month, and after FAC_STARVE_ABANDON_MONTHS of neglect the crew evacuate a
+   module — and a single-module outpost is abandoned outright. Resupply is a contracted launch
+   whose cost scales with size AND distance (a Mars run costs far more than a LEO top-up), so the
+   bigger and farther your empire, the heavier the standing logistics burden. Derived from a new
+   per-facility `supply` field defaulting to full for legacy saves, so nothing already built is
+   retroactively starved; a fresh company has no facilities, so the early game is untouched. */
+const FAC_SUPPLY_MONTHS=8;            // a fully-provisioned facility holds 8 months of consumables
+const FAC_RESUPPLY_PER_MODULE=0.95;  // $M to fully provision one module from empty (before distance)
+const FAC_STARVE_PROD=0.4;           // production multiplier while a facility is starved (out of supply)
+const FAC_STARVE_REP=2;              // reputation lost each month a crewed facility goes unsupplied
+const FAC_STARVE_SUPPORT=1.5;        // public support lost per starved month
+const FAC_STARVE_ABANDON_MONTHS=6;   // consecutive starved months before crew evacuate a module
+const BODY_RESUPPLY_MULT={earth:1.0, moon:2.2, mars:4.2}; // launch-logistics multiplier by destination
+function bodyResupplyMult(body){ return BODY_RESUPPLY_MULT[body]||1; }
+function facilitySupplyCap(){ return FAC_SUPPLY_MONTHS; }
+function facilitySupply(id){ const fs=facilityState(id); if(!fs) return 0; return fs.supply!=null?fs.supply:FAC_SUPPLY_MONTHS; } // legacy facilities default to fully provisioned
+function facilitySupplyDrain(){ return 1; } // one month of provisions consumed per calendar month
+function facilityStarved(id){ return facilityBuilt(id) && facilitySupply(id)<=0; }
+function facilitySupplyFactor(id){ return facilityStarved(id)?FAC_STARVE_PROD:1; } // starved bases run at reduced output
+function facilitySupplyMonths(id){ return Math.round(facilitySupply(id)); } // months of runway remaining
+function resupplyCostFull(id){ const def=facilityById(id), fs=facilityState(id); if(!def||!fs) return 0; const mod=Math.max(1,fs.modules||1); return round2(FAC_RESUPPLY_PER_MODULE*mod*bodyResupplyMult(def.body)); }
+function resupplyCost(id){ const missing=Math.max(0, FAC_SUPPLY_MONTHS-facilitySupply(id)); return round2(resupplyCostFull(id)*(missing/FAC_SUPPLY_MONTHS)); } // pay for what you actually ship up
+function canResupply(id){
+  if(!facilityBuilt(id)) return {ok:false,why:'No facility.'};
+  if(facilitySupply(id)>=FAC_SUPPLY_MONTHS) return {ok:false,why:'Fully provisioned.'};
+  if(state.money<resupplyCost(id)) return {ok:false,why:'Not enough capital.'};
+  return {ok:true};
+}
+function resupplyFacility(id){
+  const chk=canResupply(id); if(!chk.ok) return;
+  const cost=resupplyCost(id), def=facilityById(id), fs=facilityState(id);
+  state.money-=cost; fs.supply=FAC_SUPPLY_MONTHS; fs.starvedMonths=0;
+  log('ok',`${def.icon} ${def.name} resupplied — ${FAC_SUPPLY_MONTHS} months of provisions aboard (−${fM(cost)}).`);
+  render();
+}
 function canFound(id){
   const def=facilityById(id); if(!def) return {ok:false,why:'Unknown facility.'};
   if(facilityBuilt(id)) return {ok:false,why:'Already established.'};
@@ -2207,7 +2261,7 @@ function foundFacility(id){
   state.money-=def.foundCost;
   advance(def.foundMonths); // construction — facility is not yet producing
   if(state.over){ render(); return; }
-  state.facilities[id]={built:true, modules:1, since:state.year};
+  state.facilities[id]={built:true, modules:1, since:state.year, supply:FAC_SUPPLY_MONTHS, starvedMonths:0}; // CE4(b): founded fully provisioned
   log('ok',`★ ${def.name} established — your first permanent presence at ${BODIES.find(b=>b.id===def.body).name}. It will grow and produce for decades.`);
   render();
 }
@@ -2219,6 +2273,7 @@ function expandFacility(id){
   advance(expandMonths(def)); // construction at the current module count
   if(state.over){ render(); return; }
   const fs=facilityState(id); fs.modules=(fs.modules||1)+1;
+  fs.supply=FAC_SUPPLY_MONTHS; fs.starvedMonths=0; // CE4(b): the expansion ships up fresh provisions
   const pr=facilityProduction(def, fs);
   log('ok',`${def.name} expanded to ${fs.modules} modules — now +${fM(pr.income)}/mo${pr.fuel>0?`, +${pr.fuel.toFixed(1)} t fuel/mo`:''}.`);
   render();
@@ -4443,7 +4498,7 @@ function hideModal(){activeModal=null;$('modal').classList.add('hidden');} // sl
 
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=30; // v30: CE3(c) lunar architecture fork (state.lunarArch, null=uncommitted; luna_landing reqResearch moved to per-arch gates); v29: CE3(a) company doctrine (state.doctrine, null=undeclared/neutral); v28: CE2(c) juggernaut capstone (state.standingProd/juggernautReached); v27: CE2(b) launch cadence (state.padMonthAbs/padMonthUsed) — load defaults seed all of these; v26: CE1 rival agents (state.rivalState), seedRivalState migrates old rivalFired
+const SAVE_VERSION=31; // v31: CE4(b) standing resupply obligations (per-facility supply/starvedMonths; legacy facilities default to fully provisioned via facilitySupply()); v30: CE3(c) lunar architecture fork (state.lunarArch, null=uncommitted; luna_landing reqResearch moved to per-arch gates); v29: CE3(a) company doctrine (state.doctrine, null=undeclared/neutral); v28: CE2(c) juggernaut capstone (state.standingProd/juggernautReached); v27: CE2(b) launch cadence (state.padMonthAbs/padMonthUsed) — load defaults seed all of these; v26: CE1 rival agents (state.rivalState), seedRivalState migrates old rivalFired
 function saveGame(){
   try{
     const payload={v:SAVE_VERSION, ts:Date.now(), state:JSON.parse(JSON.stringify(state))};
@@ -9826,12 +9881,21 @@ function renderInfrastructure(){
     if(facilityBuilt(def.id)){
       const fs=facilityState(def.id), pr=facilityProduction(def,fs), bonus=facilityBonus(def.body);
       const ec=expandCost(def.id), em=expandMonths(def), canEx=state.money>=ec;
-      return `<div class="card" style="background:var(--panel2);margin-bottom:12px;border-color:${def.color}">
+      // CE4(b): standing resupply obligation
+      const sup=facilitySupplyMonths(def.id), starved=facilityStarved(def.id), rsC=resupplyCost(def.id), canRs=canResupply(def.id).ok;
+      const supFrac=Math.max(0,Math.min(1, facilitySupply(def.id)/FAC_SUPPLY_MONTHS));
+      const supCol=starved?'var(--bad)':(sup<=2?'var(--warn,#d9a441)':'var(--ok)');
+      const supLabel=starved?'OUT OF SUPPLY — crew on reserves':(sup<=2?`${sup} mo of provisions — resupply soon`:`${sup} mo of provisions`);
+      return `<div class="card" style="background:var(--panel2);margin-bottom:12px;border-color:${starved?'var(--bad)':def.color}">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
-          <div class="mission-name" style="font-size:15px"><span style="color:${def.color}">${def.icon} ${def.name}</span> <span class="pill ok">${fs.modules} module${fs.modules>1?'s':''}</span></div>
+          <div class="mission-name" style="font-size:15px"><span style="color:${def.color}">${def.icon} ${def.name}</span> <span class="pill ok">${fs.modules} module${fs.modules>1?'s':''}</span>${starved?' <span class="pill lock" style="color:var(--bad)">starved</span>':''}</div>
           <div class="dim" style="font-size:11px">at ${bodyName} · since ${fs.since||'—'}</div>
         </div>
         <div class="sub" style="margin:2px 0 8px">${def.blurb}</div>
+        <div style="margin:6px 0 8px">
+          <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px"><span class="dim">Resupply</span><span style="color:${supCol}">${supLabel}</span></div>
+          <div style="height:6px;border-radius:3px;background:var(--panel);overflow:hidden"><div style="height:100%;width:${Math.round(supFrac*100)}%;background:${supCol}"></div></div>
+        </div>
         <div class="metrics">
           <div class="metric"><div class="k">Income</div><div class="v" style="color:var(--ok)">+${fM(pr.income)}/mo</div></div>
           ${pr.fuel>0?`<div class="metric"><div class="k">Propellant → depot</div><div class="v">+${pr.fuel.toFixed(1)} t/mo</div></div>`:''}
@@ -9839,7 +9903,10 @@ function renderInfrastructure(){
           <div class="metric"><div class="k">Prestige</div><div class="v">+${pr.rep.toFixed(1)}/mo</div></div>
           <div class="metric"><div class="k">Home-field bonus</div><div class="v">−${Math.round(bonus.buildDiscount*100)}% build · +${(bonus.relBump*100).toFixed(1)}% rel</div></div>
         </div>
-        <button class="btn" style="margin-top:10px;width:100%" onclick="expandFacility('${def.id}')" ${canEx?'':'disabled'}>Expand → ${fs.modules+1} modules · ${fM(ec)} · ${em} mo</button>
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <button class="btn" style="flex:1" onclick="resupplyFacility('${def.id}')" ${canRs?'':'disabled'}>${facilitySupply(def.id)>=FAC_SUPPLY_MONTHS?'Fully provisioned':`Resupply · ${fM(rsC)}`}</button>
+          <button class="btn" style="flex:1" onclick="expandFacility('${def.id}')" ${canEx?'':'disabled'}>Expand → ${fs.modules+1} · ${fM(ec)} · ${em} mo</button>
+        </div>
       </div>`;
     }
     const chk=canFound(def.id), reqDone=!def.reqMission||state.completed[def.reqMission];

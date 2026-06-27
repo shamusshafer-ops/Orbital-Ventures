@@ -3115,6 +3115,26 @@ T1 branches, first-review Rec #1/#3, CE2 (focus → faster capstone).
 > program) pays **$11.25M/mo** to hold it all and runs **−$5.17M/mo net**, where without the
 > carrying cost it would have been **+$6.08M/mo** solvent: opex is exactly what sinks it. Remaining:
 > (b) standing resupply obligations that decay, (c) era-scaled failure stakes + bailout retune.
+>
+> 🟡 **Slice (b) SHIPPED 2026-06-26 — standing resupply obligations (resupply-or-decay).** A crewed
+> outpost is now a *commitment*, not a trophy: each built facility carries a `supply` meter
+> (`FAC_SUPPLY_MONTHS 8` months of provisions); `advance()` burns one month per calendar month.
+> While stocked it produces normally; once dry it runs on reserves (output ×`FAC_STARVE_PROD 0.4`),
+> bleeds `FAC_STARVE_REP 2` rep + `FAC_STARVE_SUPPORT 1.5` support every month, and after
+> `FAC_STARVE_ABANDON_MONTHS 6` of neglect the crew evacuate a module — a single-module outpost is
+> abandoned outright. `resupplyFacility()` is a *contracted launch* (instantaneous, no months pass):
+> `resupplyCost = FAC_RESUPPLY_PER_MODULE 0.95 × modules × bodyResupplyMult(earth 1.0 / moon 2.2 /
+> mars 4.2) × (missing/cap)` — you pay for what you ship, so the bigger and farther the empire, the
+> heavier the standing logistics burden. Founding/expanding provisions to full; the new per-facility
+> `supply`/`starvedMonths` fields default to fully-provisioned for legacy saves (`facilitySupply()`),
+> so nothing already built is retroactively starved and a fresh company (no facilities) is untouched.
+> UI: a supply bar + status + Resupply button on each facility card. SAVE_VERSION→31. **Validation —
+> /tmp/ov-ce4b.js 29/29:** founding provisions to full; `advance()` drains 1/mo and floors at 0;
+> resupply cost scales with size AND distance (LEO $1.9M < Moon $4.18M < Mars $7.98M per full cycle)
+> and with the missing fraction; resupply refills + charges capital + passes no time; starved output
+> cut to 0.4×; neglect bleeds rep/support; 6 starved months evacuate a module (3→2), a last module is
+> abandoned; legacy saves read as provisioned; and the synergy holds — an evacuated module also drops
+> the CE4(a) `empireOpex`. Remaining: (c) era-scaled failure stakes + bailout retune.
 
 **Problem.** Tension is inverted: tight at the start (good), trivial once `pgmRoyalty`
 $4.5M/mo + passive contracts + facilities + gov funding stack against flat overhead.
