@@ -3619,24 +3619,49 @@ function subsystemReport(m,v,sim,crewed,relMult=1){
   return {R, subsystems:frs.map(f=>{ const rel=Math.pow(R, f.weight/W); return Object.assign({}, f, {rel, p:1-rel}); })};
 }
 const SUBSYS_PRIORITY=['propulsion','boosters','structures','separation','avionics','deep_propulsion','life_support'];
+// CE5(a): the flight resolves as an ordered sequence of PHASES, each owning a set of subsystems.
+// Per-phase reliability = the product of its subsystems' reliabilities, so the product across all
+// phases equals the overall R (∏ phaseRel = R) — provably balance-neutral. This is the seam CE5(b)
+// hooks a live abort / press-on call into; here the outcome selection is unchanged from the
+// single-roll model (same rolls, same governing-priority pick).
+const FLIGHT_PHASE_ORDER=['pad','ascent','staging','coast','deep','return'];
+const FLIGHT_PHASE_LABEL={pad:'Pad & ignition', ascent:'Ascent', staging:'Staging', coast:'Orbit / coast', deep:'Deep space', return:'Reentry / return'};
+const SUBSYS_PHASE={propulsion:'ascent', boosters:'ascent', structures:'ascent', avionics:'ascent', separation:'staging', deep_propulsion:'deep', life_support:'deep'};
+function livePhaseOf(key){ return SUBSYS_PHASE[key]||'ascent'; }
+// group a subsystemReport into ordered phases, each carrying its product reliability (∏ phaseRel = R)
+function flightPhaseBreakdown(rep){
+  const byPhase={};
+  for(const s of rep.subsystems){ const ph=livePhaseOf(s.key); (byPhase[ph]=byPhase[ph]||[]).push(s); }
+  const phases=[];
+  for(const ph of FLIGHT_PHASE_ORDER){ const subs=byPhase[ph]; if(!subs||!subs.length) continue;
+    const rel=subs.reduce((a,s)=>a*s.rel,1);
+    phases.push({phase:ph, label:FLIGHT_PHASE_LABEL[ph], rel, p:1-rel, subsystems:subs}); }
+  return phases;
+}
 function resolveFlight(m,v,sim,crewed,relPenalty=0){
   const rep=subsystemReport(m,v,sim,crewed,1-(relPenalty||0));
+  const phases=flightPhaseBreakdown(rep); // CE5(a): per-phase decomposition (outcome unchanged)
   const failed={};
   for(const s of rep.subsystems){ if(Math.random()>s.rel) failed[s.key]=s; }
   let gov=null; for(const k of SUBSYS_PRIORITY){ if(failed[k]){ gov=failed[k]; break; } }
-  if(!gov) return {kind:'success', rel:rep.R, failPhase:null, subsystem:null};
-  if(gov.severity==='partial')
-    return {kind:'partial', subsystem:gov.key, failPhase:null, rel:rep.R, story:'guidance drifted during ascent — the payload reached space but in the wrong orbit.'};
-  if(gov.phase==='deep')
-    return {kind:crewed?'strand':'loss', subsystem:gov.key, failPhase:'deep', rel:rep.R,
+  let out;
+  if(!gov) out={kind:'success', rel:rep.R, failPhase:null, subsystem:null};
+  else if(gov.severity==='partial')
+    out={kind:'partial', subsystem:gov.key, failPhase:null, rel:rep.R, story:'guidance drifted during ascent — the payload reached space but in the wrong orbit.'};
+  else if(gov.phase==='deep')
+    out={kind:crewed?'strand':'loss', subsystem:gov.key, failPhase:'deep', rel:rep.R,
       story: gov.key==='life_support' ? 'a life-support failure on the long coast home.'
            : (crewed ? 'the return burn failed and the crew could not get home.' : 'the deep-space stage failed mid-cruise.') };
-  const solidBoost=boostersFitted() && ENGINES[state.boosters.eng] && ENGINES[state.boosters.eng].solid;
-  const storyMap={propulsion:'an engine failed during powered ascent.', structures:'a structural failure under max-q.', separation:'a stage failed to separate cleanly.',
-    boosters: solidBoost ? 'a solid strap-on booster burned through its casing — with no way to shut it down, the vehicle was lost.' : 'a strap-on booster failed during the boost phase and took the vehicle with it.'};
-  if(crewed && state.research.launch_escape)
-    return {kind:'abort', subsystem:gov.key, failPhase:'ascent', rel:rep.R, story:storyMap[gov.key]+' The escape system pulled the crew clear.'};
-  return {kind:'loss', subsystem:gov.key, failPhase:'ascent', rel:rep.R, story:storyMap[gov.key]};
+  else {
+    const solidBoost=boostersFitted() && ENGINES[state.boosters.eng] && ENGINES[state.boosters.eng].solid;
+    const storyMap={propulsion:'an engine failed during powered ascent.', structures:'a structural failure under max-q.', separation:'a stage failed to separate cleanly.',
+      boosters: solidBoost ? 'a solid strap-on booster burned through its casing — with no way to shut it down, the vehicle was lost.' : 'a strap-on booster failed during the boost phase and took the vehicle with it.'};
+    if(crewed && state.research.launch_escape)
+      out={kind:'abort', subsystem:gov.key, failPhase:'ascent', rel:rep.R, story:storyMap[gov.key]+' The escape system pulled the crew clear.'};
+    else out={kind:'loss', subsystem:gov.key, failPhase:'ascent', rel:rep.R, story:storyMap[gov.key]};
+  }
+  out.phases=phases; out.govPhase=gov?livePhaseOf(gov.key):null; // CE5(a) seam for the live-call hook
+  return out;
 }
 function loseAssignedCrew(){
   if(!state.assignedAstronaut) return;

@@ -3350,6 +3350,22 @@ game computes today (balance-preserving *here* is correct — this is the rocket
 layer), so the change is **agency, not power**. High-reliability flights rarely prompt a
 call (fast, as now); risky flights become tense *decisions* instead of coin flips.
 
+> 🟡 **Slice (a) SHIPPED 2026-06-27 — phase-split `resolveFlight` (the balance-neutral seam).**
+> The flight now decomposes into an ordered phase sequence (`FLIGHT_PHASE_ORDER` pad → ascent →
+> staging → coast → deep → return), each phase owning its subsystems via `SUBSYS_PHASE`/`livePhaseOf`.
+> `flightPhaseBreakdown(report)` groups the existing subsystem report into phases, each carrying its
+> **product reliability** (∏ of its subsystems' rel) — so the product across phases equals the overall
+> R exactly (∏ phaseRel = R), since every subsystem lands in exactly one phase. `resolveFlight` now
+> attaches `phases` + `govPhase` to its return and routes every outcome through one exit, but the
+> **outcome selection is unchanged** (same per-subsystem rolls, same `SUBSYS_PRIORITY` governing pick)
+> — this is the seam (b) will hook the live abort/press-on call into, not a behaviour change.
+> **Validation — /tmp/ov-ce5a.js 15/15:** ∏ phaseRel = R within ε across uncrewed/crewed/deep
+> missions; phases stay in canonical order, non-empty, each rel = product of its subsystems; deep
+> missions expose a deep phase; `resolveFlight` carries `phases`/`govPhase`, rng=0→success,
+> rng=1→propulsion-governed loss at the ascent phase; and **success rate over 20k rolls ≈ R within
+> 2%** (no behavioural drift). CE1–CE4 regression green (ov-ce4c 18/18, ov-reentry-station 55/55).
+> Remaining: (b) the near-miss live-call modal hook, (c) reserve-margin deep-leg calls.
+
 **Build order.** (a) Phase-split `resolveFlight` preserving ∏R = R (provable). (b) The
 near-miss live-call hook on the worst-flagged subsystem, wired to the `#20` modal, with a
 default (auto-resolve) for headless/animations-off so the sim stays deterministic. (c)
