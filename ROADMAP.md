@@ -3454,7 +3454,7 @@ slot whenever — it's the moment-to-moment polish that makes every launch matte
 
 **Goal.** Replace the discrete *monthly* tick with a *daily* one, so time passes (and the
 calendar reads) in days and finer-grained scheduling/events become possible. Status:
-**🟡 IN PROGRESS — slices 1–3 SHIPPED 2026-06-27 (1: equivalence refactor; 2: calendar/controls/per-day overhead; 3a: per-day R&D/funding/support; 3b: per-day facility output; 3c: day-resolution countdowns + build-per-day + CE re-pin). The whole economy now flows daily. Slices 4 (day-granular gameplay + duration re-authoring) + 5 (optional Gregorian) remain.**
+**🟡 IN PROGRESS — slices 1–3 SHIPPED 2026-06-27 (1: equivalence refactor; 2: calendar/controls/per-day overhead; 3a: per-day R&D/funding/support; 3b: per-day facility output; 3c: day-resolution countdowns + build-per-day + CE re-pin). The whole economy now flows daily. Slice 4a (mission clocks — flights occupy real calendar days) SHIPPED 2026-06-27; slice 4b (day-scheduled windows + short-fuse events + finer cadence + duration re-authoring) + 5 (optional Gregorian) remain.**
 
 **Why it's contained, and why it's still hard.** The simulation is *architecturally
 concentrated*: nearly all time-driven logic lives in one funnel, `advance(months)` — a loop
@@ -3563,12 +3563,21 @@ cadence — run them daily unchanged and events fire ~30× as often.
      output to `FAC_STARVE_PROD`; `empireOpex`/`loanInterest` are pure & day-invariant (folded into per-day
      overhead); CE1 rival accrual is whole-month equivalent. **Validation — /tmp/ov-tg1.js 53/53** (incl. the CE
      re-pin section) + `fmtTimeLeft` 8/8 + render smoke across 8 tabs with fractional state 8/8 + CE5 green.
-4. [ ] **Day-granular gameplay (the payoff) + duration re-authoring.** The features daily time unlocks:
-   mission durations that actually occupy calendar days (crewed flight = its `days` aloft, deep-space cruise as
-   elapsed days), day-scheduled launch windows, short-fuse events/contracts measured in days, and finer launch
-   cadence. **Includes the duration re-authoring deferred from slice 3c** — day-scale build/research/facility/
-   window minimums (e.g. a short build in days, not a forced 1-month floor) authored here, where day-scale
-   durations actually matter. **Validation:** mission-clock + window-timing checks; event-fuse checks.
+4. 🟡 **Day-granular gameplay (the payoff) + duration re-authoring.**
+   - [x] ✅ **4a — mission clocks: a flight occupies its real calendar duration. SHIPPED 2026-06-27.** A flown
+     mission now advances the calendar by its `m.days` (cruise/ops time), wired into `proceedLaunch` right
+     *after* `resolveFlight` (so the outcome locks at launch-time tech) and routed through `advanceDays`, so
+     overhead, R&D, rivals, and facilities all tick during the mission. Early/suborbital missions are `days:0`
+     → **early game provably unchanged**; deep missions become major commitments (endurance 120 d, Mars 520 d,
+     Jupiter 2190 d ≈ 6 years in one launch) — the intentional payoff of daily time. A long cruise that
+     bankrupts the company raises the gameOver modal mid-flight (guarded `if(state.over) return`). The CE5
+     live-call / anomaly / finalize paths are untouched (they run after, off the single `finalizeLaunch` exit).
+     **Validation — /tmp/ov-tg1.js 58/58:** days:0 → no advance; 7/120/520-day missions advance exactly that
+     many days; the flight still resolves (flights++), and payroll/overhead accrue over the cruise. CE5
+     regression green (CE5 tests call `finalizeLaunch` directly, so they're unaffected); render smoke 8 tabs.
+   - [ ] **4b — day-scheduled launch windows, short-fuse events/contracts in days, finer launch cadence, and
+     the duration re-authoring deferred from 3c** (day-scale build/research/facility/window minimums — e.g. a
+     short build in days, not a forced 1-month floor). **Validation:** window-timing + event-fuse checks.
 5. [ ] **(Optional, later) True Gregorian calendar.** Variable month lengths + leap years, purely
    cosmetic over the 30-day-abstracted economy. **Validation:** date-math unit tests.
 

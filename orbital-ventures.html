@@ -4174,7 +4174,13 @@ function proceedLaunch(m,v,sim,windowQuality,weatherPenalty,prebuilt){
   const routine=!!state.completed[m.id];
   const crewed=m.crew>0;
   // M16: subsystem-based reliability — which subsystem (if any) fails decides the story
-  const outcome=resolveFlight(m,v,sim,crewed,weatherPenalty);
+  const outcome=resolveFlight(m,v,sim,crewed,weatherPenalty); // outcome locks at launch-time tech (resolve BEFORE the cruise advances time)
+  // Time Granularity slice 4: the flight now occupies its REAL calendar duration — the cruise/ops days.
+  // Early/suborbital missions are days:0 (early game provably unchanged); deep missions become major
+  // time commitments (overhead, R&D, rivals, facilities all advance during the mission). Intentional
+  // payoff of daily time. If the long cruise bankrupts the company, the gameOver modal is already up.
+  const missionDays=Math.round(m.days||0);
+  if(missionDays>=1){ advanceDays(missionDays); if(state.over){ render(); return; } }
   const ctx={m,v,sim,windowQuality,flightExpense,routine,crewed,outcome,rehearsed:!!state.rehearsal};
   // CE5(b): a marginal early-phase subsystem surfaces a live abort / press-on call before the
   // outcome is revealed. Skipped on routine uncrewed re-flights (low-stakes spam) and never in
