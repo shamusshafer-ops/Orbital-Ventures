@@ -1609,7 +1609,9 @@ function newGame(difficulty){
     publicSupport:SUPPORT_BASE, // #8: program politics — public mood dial
     production:{bays:1,foundry:1,pads:1,qa:1}, // #7: manufacturing capacity — leveled production lines
     engineStock:{}, // #7 sub-assemblies: pre-built engines in the yard (engId -> count)
+    engineStockTested:{}, // #7 slice 3: bench-tested subset of engineStock (engId -> count)
     partStock:{}, // #7 sub-assemblies slice 2: pre-built tank sets / crew modules ("kind:sub" -> count)
+    partStockTested:{}, // #7 slice 3: bench-tested subset of partStock ("kind:sub" -> count)
     lastMonth:{revenue:0,expenses:0,net:0,flights:0}, // #18: rolling ops-summary ledger
     history:{}, // #18: missionId -> completion year, for the Home timeline
     metricHist:defaultMetricHist(), // #28: monthly trend buffers for dashboard sparklines
@@ -2739,11 +2741,28 @@ const ENGINE_BUILD_DAYS_MIN=6;        // floor on per-engine build time
 const ENGINE_ASSEMBLY_SAVE_DAYS=6;    // days shaved off a vehicle's assembly per pre-built engine fitted
 const ENGINE_BUILD_FLOOR_DAYS=8;      // a vehicle still needs this much assembly even with every engine on hand
 const ENGINE_STOCK_CAP=24;            // yard holds at most this many of one engine type
+// #7 sub-assemblies slice 3 — bench-tested / flight-proven components. A stocked component can be
+// run through a proof/static-fire campaign during downtime: it costs more and takes longer, but a
+// bench-tested component fitted to a build adds a reliability bump to that flight (heritage you can
+// bank). Default (untested) stock is unchanged → balance-neutral when you never bench-test.
+const BENCH_TEST_COST_MULT=0.6;       // bench-testing adds this fraction of the component's unit cost
+const BENCH_TEST_DAYS_MULT=0.5;       // …and this fraction of its build time (the test campaign)
+const BENCH_REL_PER=0.015;            // each fitted bench-tested component adds +1.5% flight reliability
+const BENCH_REL_CAP=0.06;             // …capped at +6% from proven hardware on hand
 function engineUnitCost(engId){ const e=ENGINES[engId]; return e? round2(e.cost*diff().buildCostMult) : 0; } // stock charge == vehicle-build credit → cost-neutral
+// #7 sub-assemblies: a propulsion-type icon for each engine so the yard reads at a glance
+function engineIcon(engId){ const e=ENGINES[engId]||{};
+  if(e.solid) return '🧨';                              // solid motor
+  if(e.transferOnly && e.lowThrust) return '⚡';         // ion / Hall / NEP electric
+  if(e.transferOnly) return '☢️';                       // nuclear-thermal (NERVA)
+  if(/LH₂/.test(e.prop||'')) return '❄️';               // cryogenic hydrolox upper
+  return '🔥';                                          // chemical liquid (kerolox / hypergolic / methalox)
+}
 function engineBuildDays(){ return Math.max(ENGINE_BUILD_DAYS_MIN, Math.round(ENGINE_BUILD_DAYS_BASE-ENGINE_BUILD_DAYS_PER_FOUNDRY*(prodLevel('foundry')-1))); }
 function engineParallel(){ return prodLevel('foundry'); } // foundry level = engines built in parallel
 function engineBuildBatchDays(count){ return engineBuildDays()*Math.max(1, Math.ceil(count/engineParallel())); }
 function engineStockCount(engId){ const s=state.engineStock; return s? Math.max(0, Math.floor(s[engId]||0)) : 0; }
+function engineStockTestedCount(engId){ const s=state.engineStockTested; return s? Math.min(engineStockCount(engId), Math.max(0, Math.floor(s[engId]||0))) : 0; } // bench-tested subset, never exceeds total
 function unlockedEngines(){ return Object.keys(ENGINES).filter(id=>state.unlocked&&state.unlocked[id]); }
 // every engine the current vehicle design needs (stages + boosters + transfer/lander) → {engId:count}
 function vehicleEngineNeeds(m){
@@ -2758,29 +2777,40 @@ function vehicleEngineNeeds(m){
 }
 // how many engines this build can pull from the yard: {draw, total, credit (cost pre-paid), saveDays}
 function engineDrawForBuild(m){
-  const need=vehicleEngineNeeds(m), draw={}; let total=0, credit=0;
-  for(const eng in need){ const d=Math.min(need[eng], engineStockCount(eng)); if(d>0){ draw[eng]=d; total+=d; credit+=d*engineUnitCost(eng); } }
-  return {draw, total, credit:round2(credit), saveDays:total*ENGINE_ASSEMBLY_SAVE_DAYS};
+  const need=vehicleEngineNeeds(m), draw={}; let total=0, credit=0, tested=0;
+  for(const eng in need){ const d=Math.min(need[eng], engineStockCount(eng)); if(d>0){ draw[eng]=d; total+=d; credit+=d*engineUnitCost(eng); tested+=Math.min(d, engineStockTestedCount(eng)); } }
+  return {draw, total, credit:round2(credit), saveDays:total*ENGINE_ASSEMBLY_SAVE_DAYS, tested};
 }
-function consumeEngineStock(draw){ state.engineStock=state.engineStock||{}; for(const eng in draw) state.engineStock[eng]=Math.max(0, engineStockCount(eng)-draw[eng]); }
-function canBuildEngineStock(engId, count){
+function consumeEngineStock(draw){ state.engineStock=state.engineStock||{}; state.engineStockTested=state.engineStockTested||{};
+  for(const eng in draw){ const fitTested=Math.min(draw[eng], engineStockTestedCount(eng)); // proven units are fitted (and consumed) first
+    state.engineStockTested[eng]=Math.max(0, engineStockTestedCount(eng)-fitTested); state.engineStock[eng]=Math.max(0, engineStockCount(eng)-draw[eng]); } }
+function canBuildEngineStock(engId, count, tested){
   count=count||1;
   if(!ENGINES[engId] || !(state.unlocked&&state.unlocked[engId])) return {ok:false, why:'Engine not unlocked.'};
   if(count<=0) return {ok:false, why:'No engines selected.'};
   if(engineStockCount(engId)+count>ENGINE_STOCK_CAP) return {ok:false, why:`Yard holds at most ${ENGINE_STOCK_CAP} of a type.`};
-  const cost=round2(engineUnitCost(engId)*count);
+  const cost=round2(engineUnitCost(engId)*(tested?1+BENCH_TEST_COST_MULT:1)*count);
   if(state.money<cost) return {ok:false, why:'Not enough capital.'};
-  return {ok:true, cost, days:engineBuildBatchDays(count)};
+  const base=engineBuildBatchDays(count), days=base+(tested?Math.ceil(base*BENCH_TEST_DAYS_MULT):0);
+  return {ok:true, cost, days};
 }
-function buildEngineStock(engId, count){
+function buildEngineStock(engId, count, tested){
   count=count||1;
-  const chk=canBuildEngineStock(engId,count); if(!chk.ok) return;
+  const chk=canBuildEngineStock(engId,count,tested); if(!chk.ok) return;
   state.money-=chk.cost;
   state.engineStock=state.engineStock||{};
   state.engineStock[engId]=engineStockCount(engId)+count;
-  log('ok', `Engine yard — manufacturing ${count}× ${ENGINES[engId].name} (${fM(chk.cost)}, ${chk.days} d). Stock now ${engineStockCount(engId)}.`);
+  if(tested){ state.engineStockTested=state.engineStockTested||{}; state.engineStockTested[engId]=engineStockTestedCount(engId)+count; }
+  const proven=engineStockTestedCount(engId);
+  log('ok', `Engine yard — manufacturing ${count}× ${engineIcon(engId)} ${ENGINES[engId].name}${tested?' (bench-tested)':''} (${fM(chk.cost)}, ${chk.days} d). Stock now ${engineStockCount(engId)}${proven>0?` · ${proven} proven`:''}.`);
   advanceDays(chk.days); // the engines take calendar time to build (do it during downtime)
   if(!state.over){ render(); maybeShowSetback(); }
+}
+// reliability bump from bench-tested engines + structural components fitted to the current build (heritage you banked)
+function benchRelBonus(m){
+  if(!m) return 0;
+  const e=engineDrawForBuild(m).tested||0, p=partDrawForBuild(m).tested||0;
+  return Math.min(BENCH_REL_CAP, BENCH_REL_PER*(e+p));
 }
 
 /* ===== #7 sub-assemblies slice 2 — structures & habitats ==============================
@@ -2805,6 +2835,11 @@ function partCompName(key){ const [kind,sub]=key.split(':');
   if(kind==='tank') return (TANK_MATERIALS[sub]||TANK_MATERIALS.standard).name+' tank set';
   if(kind==='hab')  return (ECLSS[sub]||ECLSS.open).name+' crew module';
   return key; }
+// an icon per structural sub-assembly — tank materials read by their property, crew modules by their recycling tier
+function partCompIcon(key){ const [kind,sub]=key.split(':');
+  if(kind==='tank') return sub==='alli'?'🪶':sub==='steel'?'🔩':'🛢️';   // lightweight Al-Li / rugged steel / baseline aluminum
+  if(kind==='hab')  return sub==='closed'?'🌱':sub==='partial'?'♻️':'🧑‍🚀'; // closed-loop / recovery / open-loop life support
+  return '🛠️'; }
 // per-unit fabrication cost — charged at stock, credited at assembly (cost-neutral, like engines)
 function partCompCost(key){ const [kind,sub]=key.split(':');
   if(kind==='tank'){ const t=TANK_MATERIALS[sub]||TANK_MATERIALS.standard; return round2(TANK_UNIT_BASE*t.costMult*diff().buildCostMult); }
@@ -2815,6 +2850,7 @@ function partCompBuildable(key){ const [kind,sub]=key.split(':');
   if(kind==='hab'){ const t=ECLSS[sub]; return !!(t && (!t.research || (state.research&&state.research[t.research]))); }
   return false; }
 function partStockCount(key){ const s=state.partStock; return s? Math.max(0, Math.floor(s[key]||0)) : 0; }
+function partStockTestedCount(key){ const s=state.partStockTested; return s? Math.min(partStockCount(key), Math.max(0, Math.floor(s[key]||0))) : 0; } // bench-tested subset
 function partBuildDays(){ return Math.max(PART_BUILD_DAYS_MIN, Math.round(PART_BUILD_DAYS_BASE-PART_BUILD_DAYS_PER_FOUNDRY*(prodLevel('foundry')-1))); }
 function partParallel(){ return prodLevel('foundry'); } // foundry level = components built in parallel
 function partBuildBatchDays(count){ return partBuildDays()*Math.max(1, Math.ceil(count/partParallel())); }
@@ -2834,27 +2870,32 @@ function vehiclePartNeeds(m){
 }
 // how many components this build can pull from the yard: {draw, total, credit (pre-paid), saveDays}
 function partDrawForBuild(m){
-  const need=vehiclePartNeeds(m), draw={}; let total=0, credit=0;
-  for(const key in need){ const d=Math.min(need[key], partStockCount(key)); if(d>0){ draw[key]=d; total+=d; credit+=d*partCompCost(key); } }
-  return {draw, total, credit:round2(credit), saveDays:total*PART_ASSEMBLY_SAVE_DAYS};
+  const need=vehiclePartNeeds(m), draw={}; let total=0, credit=0, tested=0;
+  for(const key in need){ const d=Math.min(need[key], partStockCount(key)); if(d>0){ draw[key]=d; total+=d; credit+=d*partCompCost(key); tested+=Math.min(d, partStockTestedCount(key)); } }
+  return {draw, total, credit:round2(credit), saveDays:total*PART_ASSEMBLY_SAVE_DAYS, tested};
 }
-function consumePartStock(draw){ state.partStock=state.partStock||{}; for(const key in draw) state.partStock[key]=Math.max(0, partStockCount(key)-draw[key]); }
-function canBuildPartStock(key, count){
+function consumePartStock(draw){ state.partStock=state.partStock||{}; state.partStockTested=state.partStockTested||{};
+  for(const key in draw){ const fitTested=Math.min(draw[key], partStockTestedCount(key)); // proven units fitted (and consumed) first
+    state.partStockTested[key]=Math.max(0, partStockTestedCount(key)-fitTested); state.partStock[key]=Math.max(0, partStockCount(key)-draw[key]); } }
+function canBuildPartStock(key, count, tested){
   count=count||1;
   if(!partCompBuildable(key)) return {ok:false, why:'Component not available.'};
   if(count<=0) return {ok:false, why:'Nothing selected.'};
   if(partStockCount(key)+count>PART_STOCK_CAP) return {ok:false, why:`Yard holds at most ${PART_STOCK_CAP} of a type.`};
-  const cost=round2(partCompCost(key)*count);
+  const cost=round2(partCompCost(key)*(tested?1+BENCH_TEST_COST_MULT:1)*count);
   if(state.money<cost) return {ok:false, why:'Not enough capital.'};
-  return {ok:true, cost, days:partBuildBatchDays(count)};
+  const base=partBuildBatchDays(count), days=base+(tested?Math.ceil(base*BENCH_TEST_DAYS_MULT):0);
+  return {ok:true, cost, days};
 }
-function buildPartStock(key, count){
+function buildPartStock(key, count, tested){
   count=count||1;
-  const chk=canBuildPartStock(key,count); if(!chk.ok) return;
+  const chk=canBuildPartStock(key,count,tested); if(!chk.ok) return;
   state.money-=chk.cost;
   state.partStock=state.partStock||{};
   state.partStock[key]=partStockCount(key)+count;
-  log('ok', `Structures yard — fabricating ${count}× ${partCompName(key)} (${fM(chk.cost)}, ${chk.days} d). Stock now ${partStockCount(key)}.`);
+  if(tested){ state.partStockTested=state.partStockTested||{}; state.partStockTested[key]=partStockTestedCount(key)+count; }
+  const proven=partStockTestedCount(key);
+  log('ok', `Structures yard — fabricating ${count}× ${partCompIcon(key)} ${partCompName(key)}${tested?' (bench-tested)':''} (${fM(chk.cost)}, ${chk.days} d). Stock now ${partStockCount(key)}${proven>0?` · ${proven} proven`:''}.`);
   advanceDays(chk.days); // structural components take calendar time to fabricate (do it during downtime)
   if(!state.over){ render(); maybeShowSetback(); }
 }
@@ -3648,7 +3689,7 @@ function computeVehicle(){
     if(recoveryRefly(m)) buildCost*=refurbCostMult(); // refurbish a recovered booster: 45% of new, rising with wear (each refly chips +8%)
     buildCost+=RECOVERY_HARDWARE; // legs, grid fins, reserved propellant — fitted on every recovery flight
   }
-  const reliability=Math.min(diff().relCap,Math.max(diff().relFloor,(curRel()+testBonus+partsRelBonus(crewed)+geoRelBonus()+doctrineRelMod())*enginePenalty*boosterRelPenalty()*(crewed?0.92:1)+productionRelMod(m))); // #7: QA bonus − bay-overstretch penalty; #16: booster failure-point penalty; BC2 parts + BC3 geometry reliability; CE3(a) doctrine early-reliability delta
+  const reliability=Math.min(diff().relCap,Math.max(diff().relFloor,(curRel()+testBonus+partsRelBonus(crewed)+geoRelBonus()+benchRelBonus(m)+doctrineRelMod())*enginePenalty*boosterRelPenalty()*(crewed?0.92:1)+productionRelMod(m))); // #7: QA bonus − bay-overstretch penalty + bench-tested sub-assembly heritage; #16: booster failure-point penalty; BC2 parts + BC3 geometry reliability; CE3(a) doctrine early-reliability delta
   const launchCost=((0.12+0.01*totalProp)*padLaunchMult()*groundLaunchMult()*doctrineMult('launch')) + assemblyFlights(m)*ASSEMBLY_LAUNCH_COST; // #7: pads + #6b: Ground/Reuse research amortize launch ops; #6: dedicated assembly flights; CE3(a) doctrine launch-cost factor
   return {payload, sm:perf.sm, stageDv:perf.stageDv, stageTwr:perf.stageTwr, stageGravLoss:perf.stageGravLoss, gravLoss:perf.gravLoss, totalDv:perf.totalDv, liftoff:perf.liftoff, twr:perf.twr,
           boostDv:perf.boostDv||0, boosters:perf.boosters||null,
@@ -4986,7 +5027,7 @@ function hideModal(){activeModal=null;_prodModalOpen=false;$('modal').classList.
 
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=36; // v36: #7 sub-assemblies slice 2 — structures & habitats yard (state.partStock {"kind:sub":count}, e.g. "tank:steel"/"hab:closed"; legacy saves default {}); same cost-neutral cadence pattern as the Engine Yard; v35: #7 sub-assemblies — Engine Yard (state.engineStock {engId:count}; legacy saves default {}); v34: Time Granularity slice 4b — launch windows day-scheduled (window/committedWindow .abs moved from absMonth to absDay; migrateWindowsToDays ×30 on pre-v34 load + clears the regenerable windows cache); v33: Time Granularity slice 1 — day-iterating advance() funnel (state.day 0..29 + absDay(); legacy saves default day:0 via load defaults; whole-month advances stay bit-identical so no balance migration needed); v32: CE4(c) era-scaled failure stakes + bailout retune (state.loanInterest — permanent bridge-loan debt service; legacy saves default to 0 via load defaults + loanInterest() guard); v31: CE4(b) standing resupply obligations (per-facility supply/starvedMonths; legacy facilities default to fully provisioned via facilitySupply()); v30: CE3(c) lunar architecture fork (state.lunarArch, null=uncommitted; luna_landing reqResearch moved to per-arch gates); v29: CE3(a) company doctrine (state.doctrine, null=undeclared/neutral); v28: CE2(c) juggernaut capstone (state.standingProd/juggernautReached); v27: CE2(b) launch cadence (state.padMonthAbs/padMonthUsed) — load defaults seed all of these; v26: CE1 rival agents (state.rivalState), seedRivalState migrates old rivalFired
+const SAVE_VERSION=37; // v37: #7 sub-assemblies slice 3 — bench-tested / flight-proven components (state.engineStockTested + state.partStockTested, the bench-tested subset of each yard; legacy saves default {}); a fitted bench-tested component adds +1.5% reliability (cap +6%, benchRelBonus), built at +60% cost / +50% time; v36: #7 sub-assemblies slice 2 — structures & habitats yard (state.partStock {"kind:sub":count}, e.g. "tank:steel"/"hab:closed"; legacy saves default {}); same cost-neutral cadence pattern as the Engine Yard; v35: #7 sub-assemblies — Engine Yard (state.engineStock {engId:count}; legacy saves default {}); v34: Time Granularity slice 4b — launch windows day-scheduled (window/committedWindow .abs moved from absMonth to absDay; migrateWindowsToDays ×30 on pre-v34 load + clears the regenerable windows cache); v33: Time Granularity slice 1 — day-iterating advance() funnel (state.day 0..29 + absDay(); legacy saves default day:0 via load defaults; whole-month advances stay bit-identical so no balance migration needed); v32: CE4(c) era-scaled failure stakes + bailout retune (state.loanInterest — permanent bridge-loan debt service; legacy saves default to 0 via load defaults + loanInterest() guard); v31: CE4(b) standing resupply obligations (per-facility supply/starvedMonths; legacy facilities default to fully provisioned via facilitySupply()); v30: CE3(c) lunar architecture fork (state.lunarArch, null=uncommitted; luna_landing reqResearch moved to per-arch gates); v29: CE3(a) company doctrine (state.doctrine, null=undeclared/neutral); v28: CE2(c) juggernaut capstone (state.standingProd/juggernautReached); v27: CE2(b) launch cadence (state.padMonthAbs/padMonthUsed) — load defaults seed all of these; v26: CE1 rival agents (state.rivalState), seedRivalState migrates old rivalFired
 function saveGame(){
   try{
     const payload={v:SAVE_VERSION, ts:Date.now(), state:JSON.parse(JSON.stringify(state))};
@@ -5034,7 +5075,7 @@ function loadGame(){
       staff:[], assignedAstronaut:null,
       vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, rehearsal:false, techLevel:{}, divisions:{}, breakthroughCooldown:3, relDebt:0, powerSource:'solar',
       recentBuilds:[], materials:defaultMaterialsState(),
-      buildQueue:[], hangar:[], orderSeq:0, padMonthAbs:-1, padMonthUsed:0, standingProd:null, juggernautReached:false, doctrine:null, lunarArch:null, uiLayer:'advanced', loanInterest:0, metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[], day:0, engineStock:{}, partStock:{}
+      buildQueue:[], hangar:[], orderSeq:0, padMonthAbs:-1, padMonthUsed:0, standingProd:null, juggernautReached:false, doctrine:null, lunarArch:null, uiLayer:'advanced', loanInterest:0, metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[], day:0, engineStock:{}, engineStockTested:{}, partStock:{}, partStockTested:{}
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -5088,7 +5129,7 @@ function autoLoad(){
       staff:[], assignedAstronaut:null,
       vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, rehearsal:false, techLevel:{}, divisions:{}, breakthroughCooldown:3, relDebt:0, powerSource:'solar',
       recentBuilds:[], materials:defaultMaterialsState(),
-      buildQueue:[], hangar:[], orderSeq:0, padMonthAbs:-1, padMonthUsed:0, standingProd:null, juggernautReached:false, doctrine:null, lunarArch:null, uiLayer:'advanced', loanInterest:0, metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[], day:0, engineStock:{}, partStock:{}
+      buildQueue:[], hangar:[], orderSeq:0, padMonthAbs:-1, padMonthUsed:0, standingProd:null, juggernautReached:false, doctrine:null, lunarArch:null, uiLayer:'advanced', loanInterest:0, metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[], day:0, engineStock:{}, engineStockTested:{}, partStock:{}, partStockTested:{}
     };
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -10613,22 +10654,24 @@ function prodEffectText(key,lvl){
 function engineYardPanelHTML(){
   const engs=unlockedEngines(), m=curMission(), need=m?vehicleEngineNeeds(m):{};
   const rows=engs.map(id=>{
-    const e=ENGINES[id], stk=engineStockCount(id), needN=need[id]||0;
+    const e=ENGINES[id], stk=engineStockCount(id), tst=engineStockTestedCount(id), needN=need[id]||0;
     const needNote = needN>0 ? `<span class="dim" style="font-size:11px"> · build uses ${needN} (${Math.min(needN,stk)} on hand)</span>` : '';
-    const c1=canBuildEngineStock(id,1), c5=canBuildEngineStock(id,5);
+    const c1=canBuildEngineStock(id,1), c5=canBuildEngineStock(id,5), ct=canBuildEngineStock(id,1,true);
     return `<div class="leg" style="align-items:center;gap:8px">
-      <span class="legname">${e.name} <span class="pill ${stk>0?'ok':''}">×${stk}</span>${needNote}</span>
+      <span class="legname">${engineIcon(id)} ${e.name} <span class="pill ${stk>0?'ok':''}">×${stk}${tst>0?` · ⛉${tst}`:''}</span>${needNote}</span>
       <span class="legdetail">${fM(engineUnitCost(id))} · ${engineBuildDays()} d ea</span>
       <button class="btn ghost" style="padding:3px 8px;font-size:11px" onclick="buildEngineStock('${id}',1)" ${c1.ok?'':'disabled'} title="${c1.ok?`${fM(c1.cost)} · ${c1.days} d`:c1.why}">Build ×1</button>
       <button class="btn ghost" style="padding:3px 8px;font-size:11px" onclick="buildEngineStock('${id}',5)" ${c5.ok?'':'disabled'} title="${c5.ok?`${fM(c5.cost)} · ${c5.days} d`:c5.why}">×5</button>
+      <button class="btn ghost" style="padding:3px 8px;font-size:11px" onclick="buildEngineStock('${id}',1,true)" ${ct.ok?'':'disabled'} title="${ct.ok?`Bench-test: ${fM(ct.cost)} · ${ct.days} d → +${(BENCH_REL_PER*100).toFixed(1)}% reliability when fitted`:ct.why}">⛉ test ×1</button>
     </div>`;
   }).join('');
-  const draw=m?engineDrawForBuild(m):{total:0,saveDays:0,credit:0};
-  const drawNote = draw.total>0 ? `<div class="flag ok" style="margin-top:6px">⚙ ${draw.total} engine${draw.total===1?'':'s'} on hand for the current build → assembly ~${draw.saveDays} d faster, ${fM(draw.credit)} pre-paid.</div>` : '';
+  const draw=m?engineDrawForBuild(m):{total:0,saveDays:0,credit:0,tested:0};
+  const provenNote = draw.tested>0 ? ` · ${draw.tested} bench-tested → +${(benchRelBonus(m)*100).toFixed(1)}% reliability` : '';
+  const drawNote = draw.total>0 ? `<div class="flag ok" style="margin-top:6px">⚙ ${draw.total} engine${draw.total===1?'':'s'} on hand for the current build → assembly ~${draw.saveDays} d faster, ${fM(draw.credit)} pre-paid${provenNote}.</div>` : '';
   return `<div class="card adv-only" style="background:var(--panel2);margin-bottom:12px">
       <div style="display:flex;justify-content:space-between;align-items:baseline">
         <div class="mission-name" style="font-size:14px">⚙ Engine yard</div>
-        <div class="dim" style="font-size:11px">pre-build engines in downtime · foundry L${prodLevel('foundry')} builds ${engineParallel()} at once · fitted engines speed assembly (cost-neutral)</div>
+        <div class="dim" style="font-size:11px">pre-build engines in downtime · foundry L${prodLevel('foundry')} builds ${engineParallel()} at once · fitted engines speed assembly (cost-neutral) · ⛉ bench-test for flight-proven reliability</div>
       </div>
       <div class="legs" style="margin-top:6px">${rows||'<div class="dim" style="font-size:12px">No engines unlocked yet.</div>'}</div>
       ${drawNote}
@@ -10637,22 +10680,24 @@ function engineYardPanelHTML(){
 function partYardPanelHTML(){
   const keys=stockablePartKeys(), m=curMission(), need=m?vehiclePartNeeds(m):{};
   const rows=keys.map(key=>{
-    const stk=partStockCount(key), needN=need[key]||0;
+    const stk=partStockCount(key), tst=partStockTestedCount(key), needN=need[key]||0;
     const needNote = needN>0 ? `<span class="dim" style="font-size:11px"> · build uses ${needN} (${Math.min(needN,stk)} on hand)</span>` : '';
-    const c1=canBuildPartStock(key,1), c3=canBuildPartStock(key,3);
+    const c1=canBuildPartStock(key,1), c3=canBuildPartStock(key,3), ct=canBuildPartStock(key,1,true);
     return `<div class="leg" style="align-items:center;gap:8px">
-      <span class="legname">${partCompName(key)} <span class="pill ${stk>0?'ok':''}">×${stk}</span>${needNote}</span>
+      <span class="legname">${partCompIcon(key)} ${partCompName(key)} <span class="pill ${stk>0?'ok':''}">×${stk}${tst>0?` · ⛉${tst}`:''}</span>${needNote}</span>
       <span class="legdetail">${fM(partCompCost(key))} · ${partBuildDays()} d ea</span>
       <button class="btn ghost" style="padding:3px 8px;font-size:11px" onclick="buildPartStock('${key}',1)" ${c1.ok?'':'disabled'} title="${c1.ok?`${fM(c1.cost)} · ${c1.days} d`:c1.why}">Build ×1</button>
       <button class="btn ghost" style="padding:3px 8px;font-size:11px" onclick="buildPartStock('${key}',3)" ${c3.ok?'':'disabled'} title="${c3.ok?`${fM(c3.cost)} · ${c3.days} d`:c3.why}">×3</button>
+      <button class="btn ghost" style="padding:3px 8px;font-size:11px" onclick="buildPartStock('${key}',1,true)" ${ct.ok?'':'disabled'} title="${ct.ok?`Bench-test: ${fM(ct.cost)} · ${ct.days} d → +${(BENCH_REL_PER*100).toFixed(1)}% reliability when fitted`:ct.why}">⛉ test ×1</button>
     </div>`;
   }).join('');
-  const draw=m?partDrawForBuild(m):{total:0,saveDays:0,credit:0};
-  const drawNote = draw.total>0 ? `<div class="flag ok" style="margin-top:6px">🛠 ${draw.total} structural component${draw.total===1?'':'s'} on hand for the current build → assembly ~${draw.saveDays} d faster, ${fM(draw.credit)} pre-paid.</div>` : '';
+  const draw=m?partDrawForBuild(m):{total:0,saveDays:0,credit:0,tested:0};
+  const provenNote = draw.tested>0 ? ` · ${draw.tested} bench-tested → +${(benchRelBonus(m)*100).toFixed(1)}% reliability` : '';
+  const drawNote = draw.total>0 ? `<div class="flag ok" style="margin-top:6px">🛠 ${draw.total} structural component${draw.total===1?'':'s'} on hand for the current build → assembly ~${draw.saveDays} d faster, ${fM(draw.credit)} pre-paid${provenNote}.</div>` : '';
   return `<div class="card adv-only" style="background:var(--panel2);margin-bottom:12px">
       <div style="display:flex;justify-content:space-between;align-items:baseline">
         <div class="mission-name" style="font-size:14px">🛠 Structures &amp; habitats</div>
-        <div class="dim" style="font-size:11px">pre-build tank sets &amp; crew modules in downtime · foundry L${prodLevel('foundry')} builds ${partParallel()} at once · fitted parts speed assembly (cost-neutral)</div>
+        <div class="dim" style="font-size:11px">pre-build tank sets &amp; crew modules in downtime · foundry L${prodLevel('foundry')} builds ${partParallel()} at once · fitted parts speed assembly (cost-neutral) · ⛉ bench-test for proven reliability</div>
       </div>
       <div class="legs" style="margin-top:6px">${rows||'<div class="dim" style="font-size:12px">No structural components available yet.</div>'}</div>
       ${drawNote}

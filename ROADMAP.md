@@ -719,7 +719,7 @@ review's numbering, not the build order (see **Suggested build order** at the en
       model, reusable-hardware refurbishment (ties to M5), forecasting/inventory, and the
       production queue/manifest are all shipped. The deeper "build named
       engine/tank/habitat **sub-assemblies**" vision is now under way — see **#7 · Sub-assemblies (Engine Yard)** below.)*
-- [~] **7 · Sub-assemblies — the Engine Yard** — *First slice built 2026-06-27.* The missing middle
+- [x] **7 · Sub-assemblies — Engine Yard + Structures/Habitats + Bench-test** — *Complete 2026-06-27 (3 slices).* The missing middle
       manufacturing layer (between raw-commodity inventory and whole-vehicle hangar): **named engines you
       pre-build during downtime and stock**, then a vehicle assembly draws matching engines from the yard.
       Chosen mechanic (with the user): a **cadence/timing tool** — fitted engines shave `ENGINE_ASSEMBLY_SAVE_DAYS`
@@ -748,7 +748,20 @@ review's numbering, not the build order (see **Suggested build order** at the en
       + foundry parallelism, needs across kinds, draw/credit/save-days, cap/research gating, launch shaves exactly the
       save-days + consumes stock, **exact cost-neutrality**, render smoke. Engine Yard 23/23 + TG 66/66 + CE5 green
       (combined draw leaves the engine path untouched).
-      *Remaining: an optional reliability/heritage angle for bench-tested components.*
+      **Slice 3 — Bench-tested / flight-proven components — built 2026-06-27 (closes #7).** A stocked component can be run
+      through a proof/static-fire campaign during downtime: it costs **+60%** (`BENCH_TEST_COST_MULT`) and takes **+50%**
+      time (`BENCH_TEST_DAYS_MULT`), but a fitted bench-tested component adds **+1.5%** flight reliability (`BENCH_REL_PER`,
+      capped **+6%** `BENCH_REL_CAP`) — heritage you can bank ahead of a high-stakes flight. `state.engineStockTested` +
+      `state.partStockTested` track the proven subset of each yard (SAVE_VERSION→37, legacy `{}`); proven units are fitted
+      **and consumed first**. `benchRelBonus(m)` sums fitted-tested engines + structural components and is wired into the
+      `computeVehicle` reliability inner sum (so it flows to the readout, canLaunch gates, and `simulateMission`). Default
+      (untested) stock is unchanged → **balance-neutral when you never bench-test** (benchRelBonus 0 → reliability bit-
+      identical, all CE5/TG suites green). Yard panels gained a **⛉ test ×1** button per row, a `⛉N` proven-count pill, and a
+      "N bench-tested → +X% reliability" note on the current build. **Validation — /tmp/ov-bench.js 23/23:** cost/time
+      premiums, proven-subset tracking + cap, draw-tested counting, benchRelBonus value + cap, reliability lift (monotonic,
+      bounded), proven-consumed-first on launch, part path, render smoke + save defaults. Full regression green (partyard
+      31/31, engyard 23/23, TG 66/66, CE5 31/31·26/26·9/9, tabs 8/8, fmt 8/8).
+      **#7 Sub-assemblies is fully delivered: engines, tank sets, crew modules + a bench-test reliability/heritage layer.**
 - [~] **8 · Program politics** — *First slice built 2026-06-20: public support →
       government funding.* `state.publicSupport` (0–100, `SAVE_VERSION`→3, forward-
       compat default 50) is a national-mood dial with five tiers (Hostile→Galvanized,
@@ -1641,7 +1654,7 @@ where each item actually lives.
 | --- | --- | --- |
 | **P1 · Foundation & UX** (v1.5) | Vehicle viz (**#10**) + save/load shipped; **#18** shipped through its 3rd slice — Command Center home, animated Cape scene, and the 3-column dashboard (exec overview, recommended action, alerts/news, ops summary, era timeline) | Remaining: customizable dashboards, launch manifests, advanced filtering/sorting, click-to-jump notifications, animated scene art → tracked under **#18**. |
 | **P2 · Personnel & org depth** (v2.0) | Shipped at individual scale: **M6** (12 eng/8 astro, morale, attrition, salary) + **#9** (traits, personal events) + **#5** (poaching/retention) | **NEW:** scale individuals → departments; career progression, training/specialization tracks, executive/leadership roles, succession/workforce planning. Extends **M6/#9** — see **new arc item #19**. |
-| **P3 · Manufacturing & production** (v2.5) | **Essentially complete** — **#7** fully built across 8 slices: capacity layer (bays/foundry/pads + upkeep), QA→reliability bridge (**#16**), refurbishment wear, build-cadence pressure/bottlenecks, raw-material supply chains, inventory & forecasting, and the production queue/manifest | Remaining: the deeper **sub-assemblies** layer — Engine Yard + Structures & Habitats yards both shipped 2026-06-27 (engines, tank sets, crew modules); only an optional bench-test reliability/heritage angle is still open → tracked under **#7 · Sub-assemblies**. |
+| **P3 · Manufacturing & production** (v2.5) | **Essentially complete** — **#7** fully built across 8 slices: capacity layer (bays/foundry/pads + upkeep), QA→reliability bridge (**#16**), refurbishment wear, build-cadence pressure/bottlenecks, raw-material supply chains, inventory & forecasting, and the production queue/manifest | **#7 fully complete** — the deeper **sub-assemblies** layer shipped across 3 slices 2026-06-27: Engine Yard, Structures & Habitats yard (tank sets + crew modules), and a bench-test reliability/heritage layer (flight-proven components). |
 | **P4 · Mission Control & operations** (v3.0) | Flight telemetry exists *visually* in the launch animation | **NEW:** interactive Mission Control, in-flight player decisions, rescue missions, launch **weather**/environmental systems, rehearsal tools. (Story-failure outcomes already exist via **#4/#16**.) See **new arc item #20**. |
 | **P5 · Infrastructure & colonization** (v3.5) | Persistent bases/stations shipped (**#17**); ISRU shipped; depot economy (**#2**) | **NEW:** colony **population growth**/management, typed habitat/mine/power construction, and **interplanetary logistics/trade routes** = the open *fleet-logistics* thread. Extends **#17** — see **new arc item #21**. |
 | **P6 · Economic & political** (v4.0) | Global launch market + dynamic cycles shipped (econ events, **#2** fuel market); **#8** first slice shipped — public support → government funding | Remaining: budget shocks/cuts, political influence, media/public opinion, **investor/stock-market** → tracked under **#8 Program politics**. |
