@@ -1993,6 +1993,15 @@ const SUPPORT_REVERT_DAY = 1 - Math.pow(1-SUPPORT_REVERT, 1/DAYS_PER_MONTH); // 
 function perDay(monthlyRate){ return monthlyRate/DAYS_PER_MONTH; } // a monthly rate spread across the month
 function daysFor(months){ return Math.round(months*DAYS_PER_MONTH); } // a duration in months → whole days
 function absDay(){ return absMonth()*DAYS_PER_MONTH + (state.day||0); }
+// format a fractional month-count as a human countdown — e.g. 2.9 → "2 mo 27 d", 0.4 → "12 d", 1 → "1 mo".
+// Days round UP so the readout counts down to completion (… "1 mo 1 d" → "1 mo" → "29 d" …).
+function fmtTimeLeft(months){
+  const totalDays=Math.max(0, Math.ceil((months||0)*DAYS_PER_MONTH));
+  const mo=Math.floor(totalDays/DAYS_PER_MONTH), d=totalDays%DAYS_PER_MONTH;
+  if(mo<=0) return d+' d';
+  if(d<=0) return mo+' mo';
+  return mo+' mo '+d+' d';
+}
 function advance(months){ advanceDays(daysFor(months)); }
 function advanceDays(days){
   for(let i=0; i<days; i++){
@@ -4563,7 +4572,7 @@ function rushResearch(){
   if(state.money<cost) return;
   state.money-=cost; ar.monthsLeft--; ar.rushed=(ar.rushed||0)+1;
   const r=RESEARCH.find(x=>x.id===ar.id);
-  log('note',`R&D rush: spent ${fM(cost)} to shave a month off ${r.name} — ${ar.monthsLeft} mo left.`);
+  log('note',`R&D rush: spent ${fM(cost)} to shave a month off ${r.name} — ${fmtTimeLeft(ar.monthsLeft)} left.`);
   if(state.money<0) gameOver(); else render();
 }
 // M14: spend accumulated science (not money) to complete a month of research
@@ -4576,7 +4585,7 @@ function applyScience(){
   if((state.science||0)<cost) return;
   state.science=round2(state.science-cost); ar.monthsLeft--; ar.sciRushed=(ar.sciRushed||0)+1;
   const r=RESEARCH.find(x=>x.id===ar.id);
-  log('note',`Applied ${cost} science to ${r.name} — a month of lab work done, ${ar.monthsLeft} mo left.`);
+  log('note',`Applied ${cost} science to ${r.name} — a month of lab work done, ${fmtTimeLeft(ar.monthsLeft)} left.`);
   render();
 }
 
@@ -7785,7 +7794,7 @@ function render(){
 
   const ar=state.activeResearch;
   $('rndStatus').innerHTML = ar
-    ? `<span style="color:var(--readout)">R&D in progress:</span> ${RESEARCH.find(r=>r.id===ar.id).name} — <span class="num">${ar.monthsLeft}</span> mo left`
+    ? `<span style="color:var(--readout)">R&D in progress:</span> ${RESEARCH.find(r=>r.id===ar.id).name} — <span class="num">${fmtTimeLeft(ar.monthsLeft)}</span> left`
     : `<span class="dim">No active research. Start a project in R&D — it runs while you fly.</span>`;
   $('skipBtn').disabled=!ar;
 
@@ -7854,7 +7863,7 @@ function recommendedAction(){
   if(no){
     const mm=no.mission;
     if(mm.reqResearch && !state.research[mm.reqResearch]){
-      if(state.activeResearch) return {kind:'wait', title:'R&D in progress', detail:`${(RESEARCH.find(x=>x.id===state.activeResearch.id)||{}).name||''} — ${state.activeResearch.monthsLeft} mo left, on the path to ${mm.name}.`, tab:'rnd'};
+      if(state.activeResearch) return {kind:'wait', title:'R&D in progress', detail:`${(RESEARCH.find(x=>x.id===state.activeResearch.id)||{}).name||''} — ${fmtTimeLeft(state.activeResearch.monthsLeft)} left, on the path to ${mm.name}.`, tab:'rnd'};
       const r=firstResearchableToward(mm.reqResearch);
       if(r) return {kind:'research', title:`Research: ${r.name}`, detail:`Unlocks the path to ${mm.name}.`, tab:'rnd', researchId:r.id};
     }
@@ -7880,7 +7889,7 @@ function missionAdvisor(){
   // research gate
   if(mm.reqResearch){ const done=!!state.research[mm.reqResearch], rn=(RESEARCH.find(r=>r.id===mm.reqResearch)||{}).name||mm.reqResearch;
     reqs.push({ok:done, label:'Research: '+rn});
-    if(!done){ if(state.activeResearch) actions.push({label:`R&D in progress · ${state.activeResearch.monthsLeft} mo`,tab:'rnd'}); else { const r=firstResearchableToward(mm.reqResearch); if(r) actions.push({label:'Research '+r.name,tab:'rnd',researchId:r.id}); } }
+    if(!done){ if(state.activeResearch) actions.push({label:`R&D in progress · ${fmtTimeLeft(state.activeResearch.monthsLeft)}`,tab:'rnd'}); else { const r=firstResearchableToward(mm.reqResearch); if(r) actions.push({label:'Research '+r.name,tab:'rnd',researchId:r.id}); } }
   }
   // CE3(c): lunar architecture fork gate — unlock + commit to a route (LOR/Direct/EOR)
   if(mm.archFork==='luna_landing'){ const any=anyLunarArchUnlocked(), committed=!!committedLunarArch();
@@ -7998,7 +8007,7 @@ function siteBuildings(){
     {key:'prod', icon:'⚙', name:'Production', tab:'infra', act:"showInfrastructureModal()",
      status:`Foundry L${prodLevel('foundry')} · Pads L${prodLevel('pads')} (${launchPadCap()}/mo${curMonthPadUsed()>0?`, ${padSlotsLeft()} free`:''})`, planned:false},
     {key:'rnd', icon:'⚗', name:'R&D Lab', tab:'rnd',
-     status: ar?`${(RESEARCH.find(r=>r.id===ar.id)||{}).name||ar.id} · ${ar.monthsLeft} mo`:'idle', planned:false},
+     status: ar?`${(RESEARCH.find(r=>r.id===ar.id)||{}).name||ar.id} · ${fmtTimeLeft(ar.monthsLeft)}`:'idle', planned:false},
     {key:'personnel', icon:'👥', name:'Personnel', tab:'personnel', act:"showPersonnelModal()",
      status: (state.staff||[]).length?`${state.staff.length} hired · ${fM(monthlyPayroll())}/mo`:'unstaffed', planned:false},
     {key:'infra', icon:'▣', name:'Orbital Ops', tab:'infra', act:"showInfrastructureModal()",
@@ -8512,7 +8521,7 @@ function renderExecOverview(){
       ${metricSpark('Science', mh.science, {color:'var(--readout)', label:'science trend'})}
     </div>
     <div style="display:flex;gap:22px;flex-wrap:wrap;margin-top:10px;font-size:12px;border-top:1px solid var(--line);padding-top:8px">
-      <div><span class="dim">Active R&amp;D:</span> ${ar?`<b>${ar.name}</b> <span class="dim">(${ar.monthsLeft} mo left)</span>`:'<span class="dim">none — start a project</span>'}</div>
+      <div><span class="dim">Active R&amp;D:</span> ${ar?`<b>${ar.name}</b> <span class="dim">(${fmtTimeLeft(ar.monthsLeft)} left)</span>`:'<span class="dim">none — start a project</span>'}</div>
       <div><span class="dim">Gov funding:</span> <b style="color:${s.govFunding>0?'var(--ok)':'var(--dim)'}">+${fM(s.govFunding)}/mo</b></div>
       <div><span class="dim">Current vehicle:</span> <b>${vehName}</b></div>
     </div>`;
@@ -10847,7 +10856,7 @@ function renderTechTree(){
     const st=researchNodeState(r), c=palette[st], tcol=trackColor(r.track);
     const sel=state.selectedResearch===r.id, locked=st==='locked';
     const name=r.name.length>20?r.name.slice(0,19)+'…':r.name;
-    const sub = st==='active' ? `${state.activeResearch.monthsLeft} mo left` : `${fM(rdCostOf(r))} · ${r.months} mo`;
+    const sub = st==='active' ? `${fmtTimeLeft(state.activeResearch.monthsLeft)} left` : `${fM(rdCostOf(r))} · ${r.months} mo`;
     nodes+=`<g style="cursor:pointer" onclick="selectResearch('${r.id}')" onmouseenter="showTechTip(event,'${r.id}')" onmousemove="moveTechTip(event)" onmouseleave="hideTechTip()" opacity="${locked?0.72:1}">
       <rect x="${p.x}" y="${p.y}" width="${NW}" height="${NH}" rx="6" fill="${c.fill}" stroke="${sel?'#ffffff':tcol}" stroke-width="${sel?2.2:1.3}"/>
       <rect x="${p.x}" y="${p.y}" width="4" height="${NH}" rx="2" fill="${tcol}"/>
@@ -10927,7 +10936,7 @@ function techModifierText(r){
 function techTooltipHTML(r){
   const st=researchNodeState(r), tr=TRACKS.find(t=>t.key===r.track)||{};
   const stTag={done:'researched',active:'in progress',available:'available',locked:'locked'}[st];
-  const meta = st==='active' ? `${state.activeResearch.monthsLeft} mo left` : `${fM(rdCostOf(r))} · ${r.months} mo`;
+  const meta = st==='active' ? `${fmtTimeLeft(state.activeResearch.monthsLeft)} left` : `${fM(rdCostOf(r))} · ${r.months} mo`;
   const mods=techModifierText(r);
   const reqNames=r.req.map(q=>(RESEARCH.find(x=>x.id===q)||{}).name).filter(Boolean).join(', ');
   const gate=r.reqMissionDone?(MISSIONS.find(m=>m.id===r.reqMissionDone)||{}).name:null;
@@ -10975,7 +10984,7 @@ function renderResearchDetail(){
   else if(st==='active'){
     const rc=rushCost(state.activeResearch.rushed||0), canRush=state.activeResearch.monthsLeft>1 && state.money>=rc;
     const sc=sciRushCost(state.activeResearch.sciRushed||0), canSci=state.activeResearch.monthsLeft>1 && (state.science||0)>=sc;
-    action=`<button class="btn" disabled style="width:100%;margin-bottom:6px">${state.activeResearch.monthsLeft} mo left</button>
+    action=`<button class="btn" disabled style="width:100%;margin-bottom:6px">${fmtTimeLeft(state.activeResearch.monthsLeft)} left</button>
       <button class="btn ghost" style="width:100%;font-size:11px;margin-bottom:5px" onclick="rushResearch()" ${canRush?'':'disabled'}>Rush −1 mo (${fM(rc)})</button>
       <button class="btn ghost" style="width:100%;font-size:11px" onclick="applyScience()" ${canSci?'':'disabled'}>Apply science −1 mo (${sc} ⚛)</button>`;
   } else {
@@ -11006,7 +11015,7 @@ function renderTechAction(){
   const st=researchNodeState(r), busy=!!state.activeResearch;
   let btn;
   if(st==='done') btn=`<button class="btn" disabled>✓ Researched</button>`;
-  else if(st==='active') btn=`<button class="btn" disabled>${state.activeResearch.monthsLeft} mo left</button>`;
+  else if(st==='active') btn=`<button class="btn" disabled>${fmtTimeLeft(state.activeResearch.monthsLeft)} left</button>`;
   else{
     const afford=state.money>=rdCostOf(r), ok=st==='available'&&afford&&!busy;
     const why=busy?'Another project in progress':(st!=='available'?'Prerequisites not met':(!afford?'Not enough capital':''));
@@ -11062,7 +11071,7 @@ function tlAttr(s){ return tlStrip(s).replace(/"/g,'&quot;'); }
 function upcomingEvents(){
   const out=[];
   const ar=state.activeResearch;
-  if(ar){ const r=RESEARCH.find(x=>x.id===ar.id); if(r) out.push({icon:'⚛', msg:`R&D: ${r.name} · ${Math.max(1,Math.ceil(ar.monthsLeft))} mo left`, nav:'rnd'}); }
+  if(ar){ const r=RESEARCH.find(x=>x.id===ar.id); if(r) out.push({icon:'⚛', msg:`R&D: ${r.name} · ${fmtTimeLeft(ar.monthsLeft)} left`, nav:'rnd'}); }
   (state.buildQueue||[]).forEach(o=>{ out.push({icon:'🔧', msg:(o.started?`Build: ${o.missionName||o.name} · ${Math.max(1,o.monthsLeft)} mo left`:`Queued: ${o.missionName||o.name}`), nav:'command'}); });
   const cw=state.committedWindow;
   if(cw){ const m=MISSIONS.find(x=>x.id===cw.missionId); out.push({icon:'🪟', msg:`Window: ${m?m.name:cw.missionId} opens ${monthToDate(cw.abs)}`, nav:'map'}); }
