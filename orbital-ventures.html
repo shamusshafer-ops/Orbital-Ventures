@@ -3119,23 +3119,26 @@ function skipResearch(){ if(!state.activeResearch) return;
 
 /* ---------- M3b: launch windows ---------- */
 const SYNODIC_MONTHS=26; // Earth-Mars synodic period, abstracted to whole months
+const SYNODIC_DAYS=SYNODIC_MONTHS*30; // Time Granularity slice 4b: transfer windows are now day-scheduled
 function absMonth(){ return (state.year-1942)*12+state.month; }
 function windowsFor(missionId){
   if(!state.windows[missionId]){
-    const list=[]; let m=absMonth()+4; // first opportunity needs prep time
+    const list=[]; let d=absDay()+daysFor(4); // first opportunity needs ~4 months prep (in days)
     // jitter so windows aren't perfectly periodic, and vary "quality" (geometry favorability)
     let seed=missionId.length*7+13;
     const rnd=()=>{seed=(seed*9301+49297)%233280; return seed/233280;};
-    for(let i=0;i<4;i++){ m+=Math.round(SYNODIC_MONTHS+(rnd()-0.5)*4); list.push({abs:m, quality:0.85+rnd()*0.3}); }
+    for(let i=0;i<4;i++){ d+=Math.round(SYNODIC_DAYS+(rnd()-0.5)*4*30); list.push({abs:d, quality:0.85+rnd()*0.3}); } // abs is an absDay; jitter ±60 d
     state.windows[missionId]=list;
   }
   return state.windows[missionId];
 }
 function monthToDate(abs){ const y=1942+Math.floor(abs/12), mo=((abs%12)+12)%12; return MONTHS[mo]+' '+y; }
+// day-precise date from an absDay (sibling of monthToDate) — "14 Mar 1962"
+function dayToDate(absD){ const mo=Math.floor(absD/DAYS_PER_MONTH), dd=(((absD%DAYS_PER_MONTH)+DAYS_PER_MONTH)%DAYS_PER_MONTH)+1, y=1942+Math.floor(mo/12), m=((mo%12)+12)%12; return dd+' '+MONTHS[m]+' '+y; }
 function commitWindow(missionId, idx){
   const w=windowsFor(missionId)[idx];
   state.committedWindow={missionId, abs:w.abs, quality:w.quality};
-  log('note',`Committed to the ${monthToDate(w.abs)} window for ${MISSIONS.find(x=>x.id===missionId).name}. Build and test before it closes.`);
+  log('note',`Committed to the ${dayToDate(w.abs)} window for ${MISSIONS.find(x=>x.id===missionId).name}. Build and test before it closes.`);
   render();
 }
 function cancelWindow(){ state.committedWindow=null; render(); }
@@ -3150,13 +3153,13 @@ function bodyMissions(bodyId){
   return (b.missions||[]).map(id=>MISSIONS.find(m=>m.id===id)).filter(Boolean);
 }
 function nextWindowFor(missionId){
-  const wins=windowsFor(missionId), now=absMonth();
+  const wins=windowsFor(missionId), now=absDay();
   let best=-1;
   for(let i=0;i<wins.length;i++){ if(wins[i].abs>=now && (best<0||wins[i].abs<wins[best].abs)) best=i; }
   if(best<0) return null;
   const w=wins[best];
   const q = w.quality>1.08?'Favorable':(w.quality<0.95?'Marginal':'Average');
-  return {idx:best, abs:w.abs, monthsAway:w.abs-now, quality:w.quality, qLabel:q, date:monthToDate(w.abs)};
+  return {idx:best, abs:w.abs, daysAway:w.abs-now, monthsAway:Math.round((w.abs-now)/DAYS_PER_MONTH), quality:w.quality, qLabel:q, date:dayToDate(w.abs)};
 }
 // propellant routes that serve a body: the LEO depot (top-off) and on-site ISRU (free return leg)
 function bodyRoutes(bodyId){
@@ -4115,9 +4118,9 @@ function canLaunch(v,m,sim,prebuilt){
   if(m.window){
     const cw=state.committedWindow;
     if(!cw||cw.missionId!==m.id) return {ok:false,why:'No launch window committed — pick one from the Launch Window Planner below.'};
-    const tl=TEST_LEVELS[state.testLevel], leadMonths=(prebuilt?0:buildMonths(m))+1+tl.months+(state.rehearsal?REHEARSAL_MONTHS:0);
-    if(absMonth()+leadMonths>cw.abs) return {ok:false,why:'Too late for the committed window — build time would carry you past it. Cancel and pick a later one.'};
-    if(absMonth()+leadMonths<cw.abs-1) return {ok:false,why:`Window not yet open — ${monthToDate(cw.abs)}. Advance time (research keeps progressing) or build closer to launch.`};
+    const tl=TEST_LEVELS[state.testLevel], leadDays=((prebuilt?0:buildMonths(m))+1+tl.months+(state.rehearsal?REHEARSAL_MONTHS:0))*DAYS_PER_MONTH; // build/test/launch lead in days
+    if(absDay()+leadDays>cw.abs) return {ok:false,why:'Too late for the committed window — build time would carry you past it. Cancel and pick a later one.'};
+    if(absDay()+leadDays<cw.abs-DAYS_PER_MONTH) return {ok:false,why:`Window not yet open — ${dayToDate(cw.abs)}. Advance time (research keeps progressing) or build closer to launch.`};
   }
   const tl=TEST_LEVELS[state.testLevel];
   const total=(prebuilt?0:v.buildCost)+v.launchCost+tl.cost+(state.rehearsal?rehearsalCost(m):0)+0.12*((prebuilt?0:buildMonths(m))+1+tl.months);
@@ -4142,8 +4145,8 @@ function launch(prebuilt){
   let windowQuality=1;
   if(m.window){
     windowQuality=state.committedWindow.quality;
-    const gap=state.committedWindow.abs-absMonth();
-    advance(Math.max(buildMo+launchMo+tl.months+rehMo, gap)); // wait out the rest of the window if build finishes early
+    const gap=state.committedWindow.abs-absDay(); // days until the committed window (slice 4b)
+    advanceDays(Math.max(daysFor(buildMo+launchMo+tl.months+rehMo), gap)); // wait out the rest of the window if build finishes early
     state.committedWindow=null;
   }else{
     advance(buildMo+launchMo+tl.months+rehMo); // build (complexity-scaled) + launch (1, or 0 on a parallel pad) + test campaign + rehearsal
@@ -4839,7 +4842,7 @@ function hideModal(){activeModal=null;$('modal').classList.add('hidden');} // sl
 
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=33; // v33: Time Granularity slice 1 — day-iterating advance() funnel (state.day 0..29 + absDay(); legacy saves default day:0 via load defaults; whole-month advances stay bit-identical so no balance migration needed); v32: CE4(c) era-scaled failure stakes + bailout retune (state.loanInterest — permanent bridge-loan debt service; legacy saves default to 0 via load defaults + loanInterest() guard); v31: CE4(b) standing resupply obligations (per-facility supply/starvedMonths; legacy facilities default to fully provisioned via facilitySupply()); v30: CE3(c) lunar architecture fork (state.lunarArch, null=uncommitted; luna_landing reqResearch moved to per-arch gates); v29: CE3(a) company doctrine (state.doctrine, null=undeclared/neutral); v28: CE2(c) juggernaut capstone (state.standingProd/juggernautReached); v27: CE2(b) launch cadence (state.padMonthAbs/padMonthUsed) — load defaults seed all of these; v26: CE1 rival agents (state.rivalState), seedRivalState migrates old rivalFired
+const SAVE_VERSION=34; // v34: Time Granularity slice 4b — launch windows day-scheduled (window/committedWindow .abs moved from absMonth to absDay; migrateWindowsToDays ×30 on pre-v34 load + clears the regenerable windows cache); v33: Time Granularity slice 1 — day-iterating advance() funnel (state.day 0..29 + absDay(); legacy saves default day:0 via load defaults; whole-month advances stay bit-identical so no balance migration needed); v32: CE4(c) era-scaled failure stakes + bailout retune (state.loanInterest — permanent bridge-loan debt service; legacy saves default to 0 via load defaults + loanInterest() guard); v31: CE4(b) standing resupply obligations (per-facility supply/starvedMonths; legacy facilities default to fully provisioned via facilitySupply()); v30: CE3(c) lunar architecture fork (state.lunarArch, null=uncommitted; luna_landing reqResearch moved to per-arch gates); v29: CE3(a) company doctrine (state.doctrine, null=undeclared/neutral); v28: CE2(c) juggernaut capstone (state.standingProd/juggernautReached); v27: CE2(b) launch cadence (state.padMonthAbs/padMonthUsed) — load defaults seed all of these; v26: CE1 rival agents (state.rivalState), seedRivalState migrates old rivalFired
 function saveGame(){
   try{
     const payload={v:SAVE_VERSION, ts:Date.now(), state:JSON.parse(JSON.stringify(state))};
@@ -4854,6 +4857,13 @@ function saveGame(){
       <button class="btn" onclick="hideModal()" style="margin-top:8px">OK</button>`);
   }
 }
+// Time Granularity 4b: launch windows moved from absMonth to absDay. Pre-v34 saves stored
+// window/committedWindow .abs in months — scale to days, and drop the (regenerable) windows cache.
+function migrateWindowsToDays(saved, ver){
+  if((ver||0) >= 34) return;
+  if(saved.committedWindow && saved.committedWindow.abs!=null) saved.committedWindow.abs*=DAYS_PER_MONTH;
+  saved.windows={};
+}
 function loadGame(){
   try{
     const raw=localStorage.getItem(SAVE_KEY);
@@ -4862,6 +4872,7 @@ function loadGame(){
     const payload=JSON.parse(raw);
     const saved=payload.state||payload;
     if(!saved.year||!saved.company){ throw new Error('Save data is corrupted.'); }
+    migrateWindowsToDays(saved, payload.v); // 4b: month→day window abs
     const defaults={
       research:{}, unlocked:{a4:true}, completed:{}, stages:[{eng:'a4',count:1,prop:2.0}],
       boosters:{eng:null,count:0,prop:0},
@@ -4915,6 +4926,7 @@ function autoLoad(){
     const payload=JSON.parse(raw);
     const saved=payload.state||payload;
     if(!saved.year||!saved.company) return false;
+    migrateWindowsToDays(saved, payload.v); // 4b: month→day window abs
     const defaults={
       research:{}, unlocked:{a4:true}, completed:{}, stages:[{eng:'a4',count:1,prop:2.0}],
       boosters:{eng:null,count:0,prop:0},
@@ -9124,11 +9136,11 @@ function renderWindowPlanner(){
   const card=$('windowCard');
   if(!m.window){ card.classList.add('hidden'); return; }
   card.classList.remove('hidden');
-  const wins=windowsFor(m.id), now=absMonth();
+  const wins=windowsFor(m.id), now=absDay();
   const cw=state.committedWindow&&state.committedWindow.missionId===m.id?state.committedWindow:null;
   const rows=wins.map((w,i)=>{
-    const monthsAway=w.abs-now;
-    const passed=monthsAway<0;
+    const daysAway=w.abs-now;
+    const passed=daysAway<0;
     const qLabel = w.quality>1.08?'Favorable':(w.quality<0.95?'Marginal':'Average');
     const qColor = w.quality>1.08?'var(--ok)':(w.quality<0.95?'var(--warn)':'var(--muted)');
     const isCommitted=cw && cw.abs===w.abs;
@@ -9139,8 +9151,8 @@ function renderWindowPlanner(){
     else btn=`<button class="btn" onclick="commitWindow('${m.id}',${i})">Commit</button>`;
     return `<div class="item" style="${passed?'opacity:.45':''}">
       <div class="body">
-        <div class="title">${monthToDate(w.abs)} <span class="pill" style="color:${qColor};border-color:#3a3a3a">${qLabel} geometry</span></div>
-        <div class="sub">${monthsAway>=0?monthsAway+' months away':'window has closed'} · payout ×${w.quality.toFixed(2)}</div>
+        <div class="title">${dayToDate(w.abs)} <span class="pill" style="color:${qColor};border-color:#3a3a3a">${qLabel} geometry</span></div>
+        <div class="sub">${daysAway>=0?fmtTimeLeft(daysAway/DAYS_PER_MONTH)+' away':'window has closed'} · payout ×${w.quality.toFixed(2)}</div>
       </div>
       ${btn}</div>`;
   }).join('');
@@ -11083,7 +11095,7 @@ function upcomingEvents(){
   if(ar){ const r=RESEARCH.find(x=>x.id===ar.id); if(r) out.push({icon:'⚛', msg:`R&D: ${r.name} · ${fmtTimeLeft(ar.monthsLeft)} left`, nav:'rnd'}); }
   (state.buildQueue||[]).forEach(o=>{ out.push({icon:'🔧', msg:(o.started?`Build: ${o.missionName||o.name} · ${fmtTimeLeft(o.monthsLeft)} left`:`Queued: ${o.missionName||o.name}`), nav:'command'}); });
   const cw=state.committedWindow;
-  if(cw){ const m=MISSIONS.find(x=>x.id===cw.missionId); out.push({icon:'🪟', msg:`Window: ${m?m.name:cw.missionId} opens ${monthToDate(cw.abs)}`, nav:'map'}); }
+  if(cw){ const m=MISSIONS.find(x=>x.id===cw.missionId); out.push({icon:'🪟', msg:`Window: ${m?m.name:cw.missionId} opens ${dayToDate(cw.abs)}`, nav:'map'}); }
   return out;
 }
 // Where clicking a past log entry should jump: explicit entry.nav wins, else infer from the text.

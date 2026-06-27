@@ -3454,7 +3454,7 @@ slot whenever — it's the moment-to-moment polish that makes every launch matte
 
 **Goal.** Replace the discrete *monthly* tick with a *daily* one, so time passes (and the
 calendar reads) in days and finer-grained scheduling/events become possible. Status:
-**🟡 IN PROGRESS — slices 1–3 SHIPPED 2026-06-27 (1: equivalence refactor; 2: calendar/controls/per-day overhead; 3a: per-day R&D/funding/support; 3b: per-day facility output; 3c: day-resolution countdowns + build-per-day + CE re-pin). The whole economy now flows daily. Slice 4a (mission clocks — flights occupy real calendar days) SHIPPED 2026-06-27; slice 4b (day-scheduled windows + short-fuse events + finer cadence + duration re-authoring) + 5 (optional Gregorian) remain.**
+**🟡 IN PROGRESS — slices 1–3 SHIPPED 2026-06-27 (1: equivalence refactor; 2: calendar/controls/per-day overhead; 3a: per-day R&D/funding/support; 3b: per-day facility output; 3c: day-resolution countdowns + build-per-day + CE re-pin). The whole economy now flows daily. Slices 4a (mission clocks — flights occupy real calendar days) + 4b (day-scheduled launch windows) SHIPPED 2026-06-27. Slice 4c (short-fuse events + finer cadence + duration re-authoring — lower priority) + 5 (optional Gregorian) remain. The core daily-time payoff is delivered.**
 
 **Why it's contained, and why it's still hard.** The simulation is *architecturally
 concentrated*: nearly all time-driven logic lives in one funnel, `advance(months)` — a loop
@@ -3575,9 +3575,19 @@ cadence — run them daily unchanged and events fire ~30× as often.
      **Validation — /tmp/ov-tg1.js 58/58:** days:0 → no advance; 7/120/520-day missions advance exactly that
      many days; the flight still resolves (flights++), and payroll/overhead accrue over the cruise. CE5
      regression green (CE5 tests call `finalizeLaunch` directly, so they're unaffected); render smoke 8 tabs.
-   - [ ] **4b — day-scheduled launch windows, short-fuse events/contracts in days, finer launch cadence, and
-     the duration re-authoring deferred from 3c** (day-scale build/research/facility/window minimums — e.g. a
-     short build in days, not a forced 1-month floor). **Validation:** window-timing + event-fuse checks.
+   - [x] ✅ **4b — day-scheduled launch windows, SHIPPED 2026-06-27.** Transfer windows moved from month- to
+     day-resolution: `SYNODIC_DAYS = SYNODIC_MONTHS·30`, `windowsFor` generates `abs` in `absDay` (≈4-month prep
+     lead + a synodic period ± ~60 d of jitter), and a new `dayToDate(absDay)` → "14 Mar 1962". `nextWindowFor`
+     now returns `daysAway` + a day-precise `date` (keeps a coarse `monthsAway` for the readouts); `canLaunch`'s
+     window gate and the `launch` gap-wait compare/advance in days (`advanceDays`); the planner, advisor, and
+     commit log read day-precise. SAVE_VERSION→34 with `migrateWindowsToDays` (pre-v34 `committedWindow.abs`
+     ×30, regenerable windows cache cleared) wired into both load paths. **Validation — /tmp/ov-tg1.js 66/66**
+     (windows scheduled in absDay, spaced ~a synodic period, `daysAway`/day-precise date, `dayToDate` format,
+     month→day migration + v≥34 no-op) + render smoke 8 tabs + CE5 green.
+   - [ ] **4c — short-fuse events/contracts in days, finer launch cadence, and the duration re-authoring
+     deferred from 3c** (day-scale build/research/facility minimums — e.g. a short build in days, not a forced
+     1-month floor). Lower priority — the core daily-time payoff is delivered. **Validation:** event-fuse +
+     cadence checks; CE re-pin if durations are retuned.
 5. [ ] **(Optional, later) True Gregorian calendar.** Variable month lengths + leap years, purely
    cosmetic over the 30-day-abstracted economy. **Validation:** date-math unit tests.
 
