@@ -266,6 +266,7 @@
   .vehpop-stage{flex:1;position:relative;overflow:hidden;cursor:grab;touch-action:none}
   .vehpop-stage.grabbing{cursor:grabbing}
   .vehpop-stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+  .vehpop-stage .mapsvg,.vehpop-stage .stationsvg{width:100%;height:100%;max-width:none;margin:0;border:none}
   .vehpop-stats{flex:0 0 300px;border-left:1px solid var(--line);background:var(--bg);overflow-y:auto;padding:14px 16px}
   .vehpop-stats h4{font-size:var(--fs-min);text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin:14px 0 5px}
   .vehpop-stats h4:first-child{margin-top:0}
@@ -565,7 +566,10 @@
     <div class="card dombar-exploration" id="mapCard">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
         <h2 style="margin:0"><span class="dom-dot" style="background:var(--dom-exploration)"></span>Solar System — click a body for its Δv profile</h2>
-        <button class="btn ghost" id="mapExpandBtn" onclick="toggleMapExpand()">⛶ Expand</button>
+        <div style="display:flex;gap:6px">
+          <button class="btn ghost" onclick="openMapPopout()" title="Pop out — interactive map + planet info (Esc/Enter to close)">⤢ Pop out</button>
+          <button class="btn ghost" id="mapExpandBtn" onclick="toggleMapExpand()">⛶ Expand</button>
+        </div>
       </div>
       <p class="muted" style="font-size:12px;margin:6px 0 10px">Orbits are spaced for legibility, not to scale. Drag to pan, scroll to zoom; click a body for its Δv profile.</p>
       <div id="mapHost" style="display:none;width:100%;aspect-ratio:760/480"></div>
@@ -581,7 +585,10 @@
     <div class="card" id="stationCard">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
         <h2 style="margin:0">Station Bench — module assembly (preview)</h2>
-        <button class="btn ghost" id="stationExpandBtn" onclick="toggleStationExpand()">⛶ Expand</button>
+        <div style="display:flex;gap:6px">
+          <button class="btn ghost" onclick="openStationPopout()" title="Pop out — large pan/zoom view + stats (Esc/Enter to close)">⤢ Pop out</button>
+          <button class="btn ghost" id="stationExpandBtn" onclick="toggleStationExpand()">⛶ Expand</button>
+        </div>
       </div>
       <p class="muted" style="font-size:12px;margin:6px 0 10px">A 2D side view of an orbital module. Drag to pan, scroll to zoom. This is an early framework — module library, docking and assembly come later.</p>
       <div id="stationHost" style="display:none;width:100%;aspect-ratio:760/480"></div>
@@ -1525,10 +1532,17 @@ function trackColor(key){ const t=TRACKS.find(x=>x.key===key); return t?t.color:
 // Orbital radius is schematic (log-ish spacing for legibility), not to scale.
 // legs: each Δv segment a mission must budget, in sequence from Earth's surface.
 const BODIES = [
-  {id:'earth', name:'Earth', kind:'planet', r:62, color:'#3a7bd5', note:'Home. Every mission starts (and most end) here.',
+  {id:'mercury', name:'Mercury', kind:'planet', r:40, dotR:5, color:'#9a8a7a', note:'Sun-scorched and airless — a high-Δv target deep in the Sun\'s gravity well, mostly a gravity-assist waypoint.',
+    legs:[{label:'Surface → LEO', dv:9400},{label:'LEO → Mercury transfer', dv:6400, note:'Shedding Earth\'s orbital speed to fall inward is expensive.'},{label:'Transfer → Mercury orbit', dv:4500, note:'No atmosphere to brake against — all propulsive.'}]},
+  {id:'venus', name:'Venus', kind:'planet', r:60, dotR:8, color:'#e0c068', note:'Earth\'s near-twin in size, hostile in every other way — crushing pressure, acid clouds. Flyby and gravity-assist target.',
+    legs:[
+      {label:'Surface → LEO', dv:9400},
+      {label:'LEO → Trans-Venus Injection', dv:3300, note:'Inbound transfer; capture into orbit costs considerably more due to Venus\'s deep gravity well and thick atmosphere.'},
+    ]},
+  {id:'earth', name:'Earth', kind:'planet', r:82, dotR:8, color:'#3a7bd5', note:'Home. Every mission starts (and most end) here.',
     missions:['first_flight','sounding','reach_space','high_alt','reentry_test','first_sat','first_astro','crew_orbit','multi_day','endurance'],
     legs:[{label:'Surface → LEO', dv:9400, note:'The great filter — gravity, drag, and steering losses included.'}]},
-  {id:'moon', name:'The Moon', kind:'moon', r:30, around:'earth', color:'#b9c0c7', note:'Closest body beyond Earth. Water ice at the poles makes it the first refueling target.',
+  {id:'moon', name:'The Moon', kind:'moon', around:'earth', moonR:14, dotR:5, color:'#b9c0c7', note:'Closest body beyond Earth. Water ice at the poles makes it the first refueling target.',
     missions:['luna_flyby','luna_orbit','luna_landing'],
     legs:[
       {label:'Surface → LEO', dv:9400},
@@ -1536,12 +1550,7 @@ const BODIES = [
       {label:'TLI → Lunar Orbit (LOI)', dv:900},
       {label:'Lunar Orbit → Surface (descent)', dv:1730, note:'Ascent back to orbit costs roughly the same.'},
     ]},
-  {id:'venus', name:'Venus', kind:'planet', r:84, color:'#e0c068', note:'Earth\'s near-twin in size, hostile in every other way — crushing pressure, acid clouds. Flyby and gravity-assist target.',
-    legs:[
-      {label:'Surface → LEO', dv:9400},
-      {label:'LEO → Trans-Venus Injection', dv:3300, note:'Inbound transfer; capture into orbit costs considerably more due to Venus\'s deep gravity well and thick atmosphere.'},
-    ]},
-  {id:'mars', name:'Mars', kind:'planet', r:118, color:'#c1532b', note:'The long-term goal. CO₂ + water ice enables Sabatier-process methalox — propellant made on-site.',
+  {id:'mars', name:'Mars', kind:'planet', r:104, dotR:6, color:'#c1532b', note:'The long-term goal. CO₂ + water ice enables Sabatier-process methalox — propellant made on-site.',
     missions:['mars_flyby','mars_orbit'],
     legs:[
       {label:'Surface → LEO', dv:9400},
@@ -1549,29 +1558,59 @@ const BODIES = [
       {label:'TMI → Mars Orbit (MOI)', dv:1400, note:'Less with aerobraking.'},
       {label:'Mars Orbit → Surface', dv:1000, note:'Mostly aerodynamic; powered terminal descent.'},
     ]},
-  {id:'phobos', name:'Phobos', kind:'moon', r:24, around:'mars', color:'#8a8378', note:'Tiny, low-gravity Mars moon — a candidate staging point that barely costs anything to land on.',
+  {id:'phobos', name:'Phobos', kind:'moon', around:'mars', moonR:11, dotR:3, color:'#8a8378', note:'Tiny, low-gravity Mars moon — a candidate staging point that barely costs anything to land on.',
     legs:[
       {label:'Surface → LEO', dv:9400},
       {label:'LEO → Trans-Mars Injection', dv:3600},
       {label:'TMI → Phobos rendezvous', dv:1500, note:'Phobos\'s gravity is negligible — this is essentially matching orbits.'},
     ]},
-  {id:'belt', name:'Asteroid Belt (Ceres)', kind:'belt', r:165, color:'#9aa0a6', note:'Volatiles for propellant, metals, and platinum-group bounty — at the cost of years of transit.',
+  {id:'belt', name:'Asteroid Belt (Ceres)', kind:'belt', r:128, color:'#9aa0a6', note:'Volatiles for propellant, metals, and platinum-group bounty — at the cost of years of transit.',
     missions:['belt_survey','belt_mining'],
     legs:[
       {label:'Surface → LEO', dv:9400},
       {label:'LEO → Belt transfer', dv:8000, note:'Highly target-dependent — figure is illustrative.'},
       {label:'Transfer → Ceres orbit', dv:500, note:'Ceres\'s gravity is weak; capture is cheap once you arrive.'},
     ]},
-  {id:'jupiter', name:'Jupiter System', kind:'planet', r:230, color:'#d9a066', note:'Europa and Ganymede beckon — but radiation, distance, and light-lag make this an autonomous-era destination.',
+  {id:'jupiter', name:'Jupiter System', kind:'planet', r:156, dotR:14, color:'#d9a066', note:'Europa and Ganymede beckon — but radiation, distance, and light-lag make this an autonomous-era destination.',
     missions:['jupiter_flyby','jupiter_orbit'],
     legs:[
       {label:'Surface → LEO', dv:9400},
       {label:'LEO → Jupiter transfer', dv:6300, note:'Gravity assists can reduce this substantially.'},
       {label:'Transfer → Jovian system capture', dv:1000, note:'Highly mission-dependent — orbit insertion around a moon, not Jupiter itself.'},
     ]},
+  {id:'io', name:'Io', kind:'moon', around:'jupiter', moonR:18, dotR:4, color:'#e8d44a', note:'The most volcanically active world in the system — sulphur plains under a lethal radiation bath.',
+    legs:[{label:'Surface → LEO', dv:9400},{label:'LEO → Jupiter transfer', dv:6300},{label:'Capture → Io orbit', dv:1700, note:'Deep in Jupiter\'s radiation belts.'}]},
+  {id:'europa', name:'Europa', kind:'moon', around:'jupiter', moonR:25, dotR:4, color:'#cdb89a', note:'An ice shell over a global ocean — the system\'s prime astrobiology target.',
+    legs:[{label:'Surface → LEO', dv:9400},{label:'LEO → Jupiter transfer', dv:6300},{label:'Capture → Europa orbit', dv:1400}]},
+  {id:'ganymede', name:'Ganymede', kind:'moon', around:'jupiter', moonR:32, dotR:5, color:'#9a8f80', note:'The largest moon in the solar system — bigger than Mercury, with its own magnetic field.',
+    legs:[{label:'Surface → LEO', dv:9400},{label:'LEO → Jupiter transfer', dv:6300},{label:'Capture → Ganymede orbit', dv:1100}]},
+  {id:'callisto', name:'Callisto', kind:'moon', around:'jupiter', moonR:39, dotR:5, color:'#6f6a63', note:'The most heavily cratered body known — outside the worst radiation, the safest Jovian base site.',
+    legs:[{label:'Surface → LEO', dv:9400},{label:'LEO → Jupiter transfer', dv:6300},{label:'Capture → Callisto orbit', dv:900}]},
+  {id:'saturn', name:'Saturn System', kind:'planet', r:188, dotR:12, color:'#e3c68a', note:'The ringed jewel — Titan and Enceladus make it a premier outer-system destination.',
+    legs:[{label:'Surface → LEO', dv:9400},{label:'LEO → Saturn transfer', dv:7000, note:'Gravity assists strongly recommended.'},{label:'Transfer → Saturn system capture', dv:1100}]},
+  {id:'titan', name:'Titan', kind:'moon', around:'saturn', moonR:18, dotR:5, color:'#d98a3a', note:'A thick nitrogen atmosphere and methane lakes — you can aerobrake here, and almost fly.',
+    legs:[{label:'Surface → LEO', dv:9400},{label:'LEO → Saturn transfer', dv:7000},{label:'Capture → Titan (aerobrake)', dv:700, note:'The atmosphere does most of the braking.'}]},
+  {id:'rhea', name:'Rhea', kind:'moon', around:'saturn', moonR:26, dotR:4, color:'#c8ccd0', note:'Saturn\'s second-largest moon — a cratered iceball.',
+    legs:[{label:'Surface → LEO', dv:9400},{label:'LEO → Saturn transfer', dv:7000},{label:'Capture → Rhea orbit', dv:900}]},
+  {id:'uranus', name:'Uranus System', kind:'planet', r:218, dotR:9, color:'#9fe3e0', note:'The tipped ice giant — orbiting on its side, a cold and distant frontier.',
+    legs:[{label:'Surface → LEO', dv:9400},{label:'LEO → Uranus transfer', dv:7700},{label:'Transfer → Uranus system capture', dv:1000}]},
+  {id:'titania', name:'Titania', kind:'moon', around:'uranus', moonR:15, dotR:4, color:'#b8a89a', note:'Uranus\'s largest moon — fault canyons across an icy crust.',
+    legs:[{label:'Surface → LEO', dv:9400},{label:'LEO → Uranus transfer', dv:7700},{label:'Capture → Titania orbit', dv:800}]},
+  {id:'oberon', name:'Oberon', kind:'moon', around:'uranus', moonR:21, dotR:4, color:'#9a8a80', note:'The outermost large Uranian moon — ancient, dark, cratered.',
+    legs:[{label:'Surface → LEO', dv:9400},{label:'LEO → Uranus transfer', dv:7700},{label:'Capture → Oberon orbit', dv:700}]},
+  {id:'neptune', name:'Neptune System', kind:'planet', r:246, dotR:9, color:'#3a6ed0', note:'The windiest world — supersonic storms on the outermost ice giant.',
+    legs:[{label:'Surface → LEO', dv:9400},{label:'LEO → Neptune transfer', dv:8200},{label:'Transfer → Neptune system capture', dv:1100}]},
+  {id:'triton', name:'Triton', kind:'moon', around:'neptune', moonR:16, dotR:4, color:'#cfe0e6', note:'A captured Kuiper-belt world orbiting backwards, with nitrogen geysers — likely an ocean within.',
+    legs:[{label:'Surface → LEO', dv:9400},{label:'LEO → Neptune transfer', dv:8200},{label:'Capture → Triton orbit', dv:900, note:'Retrograde orbit makes capture geometry tricky.'}]},
+  {id:'pluto', name:'Pluto', kind:'dwarf', r:272, dotR:4, color:'#caa884', note:'The classic ninth — a nitrogen-ice dwarf with a heart-shaped plain, far out in the Kuiper Belt.',
+    legs:[{label:'Surface → LEO', dv:9400},{label:'LEO → Pluto transfer', dv:8800, note:'A decade-plus cruise even with assists.'},{label:'Transfer → Pluto orbit', dv:1300, note:'No atmosphere — all propulsive capture.'}]},
+  {id:'oort', name:'Oort Cloud', kind:'cloud', r:320, color:'#8fb3c8', note:'A vast spherical shell of icy planetesimals at the edge of the Sun\'s gravity — the source of long-period comets, light-months away. Schematic ring only.',
+    legs:[]},
 ];
-// fixed display angles (radians) so bodies aren't collinear — purely cosmetic
-const ANGLES = {earth:-0.7, moon:0.9, venus:2.1, mars:-1.6, phobos:0.3, belt:-0.2, jupiter:1.3};
+// fixed display angles (radians) so bodies aren't collinear — purely cosmetic. Moons use the angle about their planet.
+const ANGLES = {mercury:2.6, venus:2.1, earth:-0.7, moon:0.9, mars:-1.6, phobos:0.3, belt:-0.2,
+  jupiter:1.3, io:0.2, europa:1.7, ganymede:3.2, callisto:4.7,
+  saturn:0.4, titan:0.6, rhea:3.5, uranus:-2.4, titania:1.2, oberon:4.0, neptune:3.0, triton:2.3, pluto:-2.9, oort:0};
 
 /* ---------- M2: crew & life support ---------- */
 const DAILY_CONSUMABLE = 0.005; // t per crew per day (~5 kg: O2 + water + food + packaging)
@@ -5477,7 +5516,7 @@ function planetFeatures(ctx,cx,cy,R,b){
     ctx.fillStyle='rgba(0,0,0,0.18)'; for(let i=0;i<5;i++) ovBlob(ctx,cx+(rnd()-0.5)*R*1.3,cy+(rnd()-0.5)*R*1.3,R*(0.15+rnd()*0.25),rnd);
   }
 }
-const RINGED={jupiter:1};
+const RINGED={saturn:1};
 const PLANET_TEX_R=0.45, RINGED_TEX_R=0.32; // planet radius as a fraction of the texture half-size
 // baked lit direction (upper-left highlight) — used to rotate the sprite so it faces the Sun
 const BAKED_LIT_ANGLE=Math.atan2(-0.38,-0.38);
@@ -10030,10 +10069,80 @@ function initVehPopZoom(){
   stage.addEventListener('pointerup',end); stage.addEventListener('pointercancel',end);
   stage.addEventListener('dblclick',()=>{ vpZoom=1; vpPanX=0; vpPanY=0; drawVehPopout(); });
 }
-// Esc/Enter closes the pop-out — capture phase so it beats the scene-nav + launch key handlers.
+/* ---------- Station pop-out viewer ----------
+   Same overlay chrome (reuses the .vehpop-* styles) for the Station Bench: the annotated module
+   SVG (vector-crisp at any zoom) with grab-to-pan + wheel-to-zoom via a CSS transform, and the
+   module's engineering stats on the right. Enter/Esc closes. */
+// Generic SVG pop-out pan/zoom: drag to pan, wheel to zoom toward the cursor, double-click reset.
+// Transforms the zoom wrapper (SVG stays vector-crisp). State is a {z,x,y} object owned by the caller.
+function initSvgPopZoom(stageId, zoomId, st){
+  const stage=$(stageId); if(!stage) return;
+  const apply=()=>{ const z=$(zoomId); if(z) z.style.transform=`translate(${st.x}px,${st.y}px) scale(${st.z})`; };
+  let down=false, drag=false, lx=0, ly=0, sx=0, sy=0, pid=null;
+  stage.addEventListener('wheel',e=>{ e.preventDefault(); const r=stage.getBoundingClientRect(), cx=e.clientX-r.left, cy=e.clientY-r.top, z0=st.z;
+    st.z=Math.min(18,Math.max(0.3, st.z*(e.deltaY<0?1.12:0.89)));
+    st.x=cx-(cx-st.x)*(st.z/z0); st.y=cy-(cy-st.y)*(st.z/z0); apply(); },{passive:false});
+  // Don't capture the pointer on a plain click — only once it's clearly a drag — so clicks reach the SVG
+  // bodies' onclick (selectBody). Capturing on pointerdown would redirect the click to the stage.
+  stage.addEventListener('pointerdown',e=>{ down=true; drag=false; lx=sx=e.clientX; ly=sy=e.clientY; pid=e.pointerId; });
+  stage.addEventListener('pointermove',e=>{ if(!down) return;
+    if(!drag){ if(Math.abs(e.clientX-sx)+Math.abs(e.clientY-sy)<5) return; drag=true; stage.classList.add('grabbing'); try{stage.setPointerCapture(pid);}catch(_){} }
+    st.x+=e.clientX-lx; st.y+=e.clientY-ly; lx=e.clientX; ly=e.clientY; apply(); });
+  const end=()=>{ down=false; drag=false; stage.classList.remove('grabbing'); };
+  stage.addEventListener('pointerup',end); stage.addEventListener('pointercancel',end);
+  stage.addEventListener('dblclick',()=>{ st.z=1; st.x=0; st.y=0; apply(); });
+  apply();
+}
+let stnPopoutOpen=false, stnPop={z:1,x:0,y:0};
+function openStationPopout(){
+  if(stnPopoutOpen) return; stnPopoutOpen=true; stnPop={z:1,x:0,y:0};
+  let mod; try{ mod=stationActiveModule(); }catch(e){ stnPopoutOpen=false; return; }
+  const ov=document.createElement('div'); ov.className='vehpop-scrim'; ov.id='stnPopout';
+  ov.innerHTML=`<div class="vehpop-bar">
+      <span class="vehpop-title">⬡ ${mod.name}</span>
+      <span class="vehpop-hint">drag to pan · scroll to zoom · double-click reset · Esc/Enter to close</span>
+      <button class="vehpop-x" onclick="closeStationPopout()">✕ Close</button>
+    </div>
+    <div class="vehpop-body">
+      <div class="vehpop-stage" id="stnPopStage"><div id="stnPopZoom" style="position:absolute;inset:0;transform-origin:0 0;display:flex;align-items:center;justify-content:center">${renderStationSVG(900,560,mod)}</div></div>
+      <aside class="vehpop-stats" id="stnPopStats"></aside>
+    </div>`;
+  document.body.appendChild(ov);
+  const sp=$('stnPopStats'); if(sp) sp.innerHTML=stationStatsHTML(mod);
+  initSvgPopZoom('stnPopStage','stnPopZoom',stnPop);
+}
+function closeStationPopout(){ if(!stnPopoutOpen) return; stnPopoutOpen=false; const ov=$('stnPopout'); if(ov&&ov.parentNode) ov.parentNode.removeChild(ov); }
+/* ---------- Solar System pop-out viewer ----------
+   Same overlay chrome: the interactive system map (clickable bodies, vector-crisp) on the left with
+   grab-to-pan + wheel-to-zoom, and the selected body's Δv profile + mission planning on the right.
+   Opens defaulted to Earth. Clicking a body re-selects it (selectBody → refreshMapPopout). */
+let mapPopoutOpen=false, mapPop={z:1,x:0,y:0};
+function refreshMapPopout(){
+  const z=$('mapPopZoom'); if(z) z.innerHTML=renderMapOverview(900,900);
+  const inf=$('mapPopInfo'); if(inf) inf.innerHTML=bodyCardHTML();
+}
+function openMapPopout(){
+  if(mapPopoutOpen) return; mapPopoutOpen=true; mapPop={z:1,x:0,y:0};
+  state.selectedBody='earth'; state.mapZoom=null; // default selection on Earth, full-system view
+  const ov=document.createElement('div'); ov.className='vehpop-scrim'; ov.id='mapPopout';
+  ov.innerHTML=`<div class="vehpop-bar">
+      <span class="vehpop-title">🪐 Solar System</span>
+      <span class="vehpop-hint">click a body to select · drag to pan · scroll to zoom · double-click reset · Esc/Enter to close</span>
+      <button class="vehpop-x" onclick="closeMapPopout()">✕ Close</button>
+    </div>
+    <div class="vehpop-body">
+      <div class="vehpop-stage" id="mapPopStage"><div id="mapPopZoom" style="position:absolute;inset:0;transform-origin:0 0;display:flex;align-items:center;justify-content:center"></div></div>
+      <aside class="vehpop-stats" id="mapPopInfo"></aside>
+    </div>`;
+  document.body.appendChild(ov);
+  refreshMapPopout();
+  initSvgPopZoom('mapPopStage','mapPopZoom',mapPop);
+}
+function closeMapPopout(){ if(!mapPopoutOpen) return; mapPopoutOpen=false; const ov=$('mapPopout'); if(ov&&ov.parentNode) ov.parentNode.removeChild(ov); }
+// Esc/Enter closes whichever pop-out is open — capture phase so it beats the scene-nav + launch key handlers.
 document.addEventListener('keydown',function(e){
-  if(!vehPopoutOpen) return;
-  if(e.key==='Escape'||e.key==='Enter'){ e.preventDefault(); e.stopPropagation(); closeVehPopout(); }
+  if(!vehPopoutOpen && !stnPopoutOpen && !mapPopoutOpen) return;
+  if(e.key==='Escape'||e.key==='Enter'){ e.preventDefault(); e.stopPropagation(); if(vehPopoutOpen) closeVehPopout(); if(stnPopoutOpen) closeStationPopout(); if(mapPopoutOpen) closeMapPopout(); }
 },true);
 // Presentation: the primary Build & Launch CTA sits directly under the rocket on the
 // bench (in #vehicleCard), not in the right-rail readout. Same gate (canLaunch) + same
@@ -10285,12 +10394,27 @@ function bodyTexture(id, cx, cy, r){
         <rect x="${cx-r}" y="${cy+r*0.25}" width="${r*2}" height="${r*0.18}" fill="#c98f55" opacity="0.5"/>
         <ellipse cx="${cx+r*0.35}" cy="${cy+r*0.05}" rx="${r*0.22}" ry="${r*0.14}" fill="#a8552f" opacity="0.7"/>
       </g>`;
-    default: return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="#9aa0a6"/>`;
+    case 'saturn':
+      return `<defs><radialGradient id="${uid}" cx="35%" cy="32%" r="75%">
+          <stop offset="0%" stop-color="#f5e6bc"/><stop offset="55%" stop-color="#dcb86e"/><stop offset="100%" stop-color="#8c6a34"/>
+        </radialGradient></defs>
+        <ellipse cx="${cx}" cy="${cy}" rx="${r*2.05}" ry="${r*0.6}" fill="none" stroke="rgba(225,205,150,0.45)" stroke-width="${Math.max(1.2,r*0.34)}" transform="rotate(-18 ${cx} ${cy})"/>
+        <circle cx="${cx}" cy="${cy}" r="${r}" fill="url(#${uid})"/>
+        <path d="M ${cx-r*2.05} ${cy} A ${r*2.05} ${r*0.6} 0 0 0 ${cx+r*2.05} ${cy}" fill="none" stroke="rgba(245,228,180,0.8)" stroke-width="${Math.max(1.2,r*0.34)}" transform="rotate(-18 ${cx} ${cy})"/>`;
+    default: {
+      // generically shaded sphere in the body's own colour, so every world reads as a lit globe
+      const bd=BODIES.find(x=>x.id===id)||{}, col=bd.color||'#9aa0a6';
+      return `<defs><radialGradient id="${uid}" cx="36%" cy="33%" r="76%">
+          <stop offset="0%" stop-color="${shade(col,0.4)}"/><stop offset="60%" stop-color="${col}"/><stop offset="100%" stop-color="${shade(col,-0.45)}"/>
+        </radialGradient></defs>
+        <circle cx="${cx}" cy="${cy}" r="${r}" fill="url(#${uid})"/>`;
+    }
   }
 }
 
 function selectBody(id){
   state.selectedBody=id;
+  if(mapPopoutOpen){ refreshMapPopout(); return; } // in the pop-out: select + refresh info; the overlay owns pan/zoom
   if(!state.mapZoom) state.mapZoom=id; // first click zooms in
   render();
 }
@@ -10538,14 +10662,24 @@ function defineMapScene(){
       this.rings=this.add.graphics(); this.transfer=this.add.graphics(); this.markers=this.add.graphics(); this.selRing=this.add.graphics();
       // detailed per-body planet textures (generated once)
       const S=448;
-      for(const bb of BODIES){ if(bb.kind==='belt') continue; const key='planet_'+bb.id; if(!this.textures.exists(key)){ const tx=this.textures.createCanvas(key,S,S); try{ drawPlanetTex(tx.context,S,bb); }catch(e){} tx.refresh(); } }
-      if(!this.textures.exists('sunGlow')){ const sg=this.textures.createCanvas('sunGlow',128,128); const sc=sg.context; const gg=sc.createRadialGradient(64,64,4,64,64,64); gg.addColorStop(0,'rgba(255,232,150,0.95)'); gg.addColorStop(0.4,'rgba(255,180,60,0.4)'); gg.addColorStop(1,'rgba(255,150,40,0)'); sc.fillStyle=gg; sc.fillRect(0,0,128,128); sg.refresh(); }
-      this.add.image(0,0,'sunGlow').setDisplaySize(70,70).setBlendMode(Phaser.BlendModes.ADD);
-      this.add.circle(0,0,9,0xfff0c0);
+      for(const bb of BODIES){ if(bb.kind==='belt'||bb.kind==='cloud') continue; const key='planet_'+bb.id; if(!this.textures.exists(key)){ const tx=this.textures.createCanvas(key,S,S); try{ drawPlanetTex(tx.context,S,bb); }catch(e){} tx.refresh(); } }
+      // Epic Sun: pulsing corona glow + radiating flares + a granulated photosphere core
+      if(!this.textures.exists('sunGlow')){ const sg=this.textures.createCanvas('sunGlow',256,256); const sc=sg.context; const gg=sc.createRadialGradient(128,128,6,128,128,128); gg.addColorStop(0,'rgba(255,240,180,0.95)'); gg.addColorStop(0.35,'rgba(255,180,70,0.5)'); gg.addColorStop(0.7,'rgba(255,140,40,0.18)'); gg.addColorStop(1,'rgba(255,120,30,0)'); sc.fillStyle=gg; sc.fillRect(0,0,256,256); sg.refresh(); }
+      if(!this.textures.exists('sunCore')){ const sd=this.textures.createCanvas('sunCore',64,64); const cc=sd.context; const cg=cc.createRadialGradient(28,26,2,32,32,32); cg.addColorStop(0,'#fff8e0'); cg.addColorStop(0.45,'#ffe28a'); cg.addColorStop(0.78,'#ffb12a'); cg.addColorStop(1,'#ff7a18'); cc.fillStyle=cg; cc.beginPath(); cc.arc(32,32,30,0,7); cc.fill(); cc.fillStyle='rgba(170,70,15,0.45)'; cc.beginPath(); cc.arc(26,36,3,0,7); cc.fill(); cc.beginPath(); cc.arc(38,28,2,0,7); cc.fill(); sd.refresh(); }
+      const cr=this.add.graphics(); cr.lineStyle(1.5,0xffc450,0.5); for(let i=0;i<32;i++){ const a=i*Math.PI/16, r1=15, r2=15+((i%2)?9:18); cr.beginPath(); cr.moveTo(Math.cos(a)*r1,Math.sin(a)*r1); cr.lineTo(Math.cos(a)*r2,Math.sin(a)*r2); cr.strokePath(); }
+      const sgI=this.add.image(0,0,'sunGlow').setDisplaySize(135,135).setBlendMode(Phaser.BlendModes.ADD);
+      const k=sgI.scaleX; this.tweens.add({targets:sgI, scaleX:k*1.08, scaleY:k*1.08, alpha:0.8, duration:2600, yoyo:true, repeat:-1, ease:'Sine.easeInOut'});
+      this.add.image(0,0,'sunCore').setDisplaySize(28,28);
       this.bodies=[];
       const planets=BODIES.filter(b=>!b.around);
-      for(const b of planets){ this.addBody(b,null,hx); for(const m of BODIES.filter(x=>x.around===b.id)) this.addBody(m,b,hx); }
-      const maxR=Math.max.apply(null, planets.map(p=>p.r));
+      for(const b of planets){ if(b.kind==='cloud') continue; this.addBody(b,null,hx); for(const m of BODIES.filter(x=>x.around===b.id)) this.addBody(m,b,hx); }
+      // Oort Cloud — speckled spherical shell + a clickable label
+      const oc=BODIES.find(b=>b.id==='oort');
+      if(oc){ const og=this.add.graphics(); const orn=mulberry(9001);
+        for(let i=0;i<260;i++){ const a=orn()*6.2832, rr=oc.r+(orn()-0.5)*58; og.fillStyle(0xbcd4e0, 0.2+orn()*0.4); og.fillCircle(Math.cos(a)*rr, Math.sin(a)*rr, 0.6+orn()*1.0); }
+        const ot=this.add.text(0,-oc.r-8,'Oort Cloud',{fontFamily:'ui-monospace,monospace',fontSize:'12px',color:'#8fb3c8'}).setOrigin(0.5,1);
+        ot.setInteractive({useHandCursor:true}); ot.on('pointerdown',()=>selectBody('oort')); }
+      const maxR=Math.max.apply(null, planets.filter(b=>b.kind!=='cloud').map(p=>p.r));
       this.fitZoom=Math.min(MAP_W,MAP_H)/(2*(maxR+60));
       this.cam.centerOn(0,0); this.cam.setZoom(this.fitZoom);
       this.input.on('pointermove',p=>{ if(p.isDown){ this.cam.scrollX-=(p.x-p.prevPosition.x)/this.cam.zoom; this.cam.scrollY-=(p.y-p.prevPosition.y)/this.cam.zoom; } });
@@ -10553,7 +10687,7 @@ function defineMapScene(){
       mapScene=this;
     }
     addBody(b,parent,hx){
-      const rad=parent?6:(b.kind==='belt'?3:11);
+      const rad=parent?((b.dotR||4.5)*1.3):(b.kind==='belt'?3:((b.dotR||8)*1.35));
       const ringed=!!RINGED[b.id]; let c, isImg=false;
       if(b.kind==='belt' || !this.textures.exists('planet_'+b.id)){ c=this.add.circle(0,0,rad,hx(b.color)); }
       else { c=this.add.image(0,0,'planet_'+b.id); const frac=ringed?RINGED_TEX_R:PLANET_TEX_R; c.setDisplaySize(rad/frac, rad/frac); isImg=true; }
@@ -10566,7 +10700,7 @@ function defineMapScene(){
     update(time,delta){
       const dt=(delta||16)/1000;
       for(const o of this.bodies){ if(o.parentId) continue; o.ang+=o.speed*dt; o.x=Math.cos(o.ang)*o.b.r; o.y=Math.sin(o.ang)*o.b.r; o.c.setPosition(o.x,o.y); o.t.setPosition(o.x,o.y-o.rad-3); this.faceSun(o); }
-      for(const o of this.bodies){ if(!o.parentId) continue; const p=this.bodies.find(q=>q.b.id===o.parentId); if(!p) continue; const mr=p.rad+12; o.ang+=o.speed*dt; o.x=p.x+Math.cos(o.ang)*mr; o.y=p.y+Math.sin(o.ang)*mr; o.c.setPosition(o.x,o.y); o.t.setPosition(o.x,o.y-o.rad-3); this.faceSun(o); }
+      for(const o of this.bodies){ if(!o.parentId) continue; const p=this.bodies.find(q=>q.b.id===o.parentId); if(!p) continue; const mr=p.rad+(o.b.moonR||10)*1.3; o.ang+=o.speed*dt; o.x=p.x+Math.cos(o.ang)*mr; o.y=p.y+Math.sin(o.ang)*mr; o.c.setPosition(o.x,o.y); o.t.setPosition(o.x,o.y-o.rad-3); this.faceSun(o); }
       this.drawRings(); this.drawTransfer(time); this.drawMarkers(); this.drawSel();
     }
     // #graphics: live committed-window transfer arc between the moving Earth and destination,
@@ -10592,7 +10726,7 @@ function defineMapScene(){
       g.fillStyle(0xf5a623,1); g.fillCircle(fx,fy,2.2);
     }
     drawRings(){ const g=this.rings; g.clear(); g.lineStyle(1,0x7d909b,0.22);
-      for(const o of this.bodies){ if(o.parentId){ const p=this.bodies.find(q=>q.b.id===o.parentId); if(p) g.strokeCircle(p.x,p.y,p.rad+12); } else { g.strokeCircle(0,0,o.b.r); } } }
+      for(const o of this.bodies){ if(o.parentId){ const p=this.bodies.find(q=>q.b.id===o.parentId); if(p) g.strokeCircle(p.x,p.y,p.rad+(o.b.moonR||10)*1.3); } else { g.strokeCircle(0,0,o.b.r); } } }
     drawMarkers(){ const g=this.markers; g.clear(); const C=h=>{ try{ return Phaser.Display.Color.HexStringToColor(h).color; }catch(e){ return 0xffffff; } };
       for(const o of this.bodies){ const rv=rivalsAtBody(o.b.id)||[]; const seen={}; let i=0;
         for(const h of rv){ if(seen[h.rival.id])continue; seen[h.rival.id]=1; const a=-1.57+(i-0.5)*0.5; g.fillStyle(C(h.rival.color),1); g.fillCircle(o.x+Math.cos(a)*(o.rad+6),o.y+Math.sin(a)*(o.rad+6),2); i++; }
@@ -10868,9 +11002,29 @@ function renderMapOverview(W,H){
   const cx=S/2, cy=S/2;
   let svg=`<svg viewBox="0 0 ${S} ${S}" xmlns="http://www.w3.org/2000/svg" class="mapsvg">`;
   planets.forEach(b=>{
+    if(b.kind==='cloud') return; // the Oort shell is drawn separately
     svg+=`<circle cx="${cx}" cy="${cy}" r="${b.r}" fill="none" stroke="rgba(125,144,155,0.25)" stroke-width="1" stroke-dasharray="${b.kind==='belt'?'2,3':'3,4'}"/>`;
   });
-  svg+=`<circle cx="${cx}" cy="${cy}" r="9" fill="#f5c542"/><circle cx="${cx}" cy="${cy}" r="14" fill="none" stroke="rgba(245,197,66,0.3)" stroke-width="6"/>`;
+  // Oort Cloud — a wide speckled spherical shell at the edge of the system
+  { const oc=BODIES.find(b=>b.id==='oort'); if(oc){ const rnd=mulberry(9001);
+      svg+=`<circle cx="${cx}" cy="${cy}" r="${oc.r}" fill="none" stroke="rgba(143,179,200,0.16)" stroke-width="${(pad*0.9).toFixed(1)}"/>`;
+      let dots=''; for(let i=0;i<240;i++){ const a=rnd()*6.2832, rr=oc.r+(rnd()-0.5)*pad*0.85, dx=cx+Math.cos(a)*rr, dy=cy+Math.sin(a)*rr; dots+=`<circle cx="${dx.toFixed(1)}" cy="${dy.toFixed(1)}" r="${(0.5+rnd()*1.1).toFixed(2)}" fill="#bcd4e0" opacity="${(0.2+rnd()*0.5).toFixed(2)}"/>`; }
+      svg+=dots;
+      const osel=state.selectedBody==='oort';
+      svg+=`<g style="cursor:pointer" onclick="selectBody('oort')"><circle cx="${cx}" cy="${(cy-oc.r).toFixed(1)}" r="16" fill="transparent"/><text x="${cx}" y="${(cy-oc.r-6).toFixed(1)}" fill="${osel?'#f5a623':'#8fb3c8'}" font-size="12" font-family="ui-monospace,monospace" text-anchor="middle">Oort Cloud</text></g>`;
+  } }
+  // Epic Sun: outer corona glow + radiating flares + granulated photosphere
+  { const sid='sun'+(_texSeq++);
+    svg+=`<defs>
+      <radialGradient id="${sid}" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#fff8e0"/><stop offset="32%" stop-color="#ffe48c"/><stop offset="64%" stop-color="#ffb12a"/><stop offset="100%" stop-color="#ff7a18"/></radialGradient>
+      <radialGradient id="${sid}h" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="rgba(255,190,70,0.5)"/><stop offset="55%" stop-color="rgba(255,140,40,0.16)"/><stop offset="100%" stop-color="rgba(255,120,30,0)"/></radialGradient>
+    </defs>
+    <circle cx="${cx}" cy="${cy}" r="50" fill="url(#${sid}h)"/>`;
+    let rays=''; for(let i=0;i<28;i++){ const a=i*Math.PI/14, r1=15, r2=15+((i%2)?9:17); rays+=`<line x1="${(cx+Math.cos(a)*r1).toFixed(1)}" y1="${(cy+Math.sin(a)*r1).toFixed(1)}" x2="${(cx+Math.cos(a)*r2).toFixed(1)}" y2="${(cy+Math.sin(a)*r2).toFixed(1)}" stroke="rgba(255,196,80,0.55)" stroke-width="${(i%2)?1:1.6}"/>`; }
+    svg+=rays;
+    svg+=`<circle cx="${cx}" cy="${cy}" r="13.5" fill="url(#${sid})"/><circle cx="${cx}" cy="${cy}" r="13.5" fill="none" stroke="rgba(255,244,210,0.7)" stroke-width="0.8"/>`;
+    svg+=`<circle cx="${cx-4}" cy="${cy+3}" r="1.7" fill="rgba(170,70,15,0.5)"/><circle cx="${cx+3.5}" cy="${cy-2}" r="1.2" fill="rgba(170,70,15,0.45)"/><circle cx="${cx-1}" cy="${cy-4}" r="0.9" fill="rgba(170,70,15,0.4)"/>`;
+  }
   // #graphics: committed-window transfer trajectory, drawn under the bodies
   const cw=state.committedWindow;
   if(cw){ const arc=transferArc(cx,cy,missionBody(cw.missionId));
@@ -10881,8 +11035,9 @@ function renderMapOverview(W,H){
   planets.forEach(b=>{
     const ang = ANGLES[b.id]!==undefined?ANGLES[b.id]:0;
     const px=cx+Math.cos(ang)*b.r, py=cy+Math.sin(ang)*b.r;
+    if(b.kind==='cloud') return; // already drawn as the Oort shell
     const sel=state.selectedBody===b.id;
-    const rad = b.kind==='belt'?4:8;
+    const rad = b.dotR || (b.kind==='belt'?4:8);
     if(b.kind==='belt'){
       for(let i=0;i<14;i++){ const a=ang+i*0.45, bx=cx+Math.cos(a)*b.r, by=cy+Math.sin(a)*b.r;
         svg+=`<circle cx="${bx}" cy="${by}" r="1.6" fill="${b.color}" opacity="0.5"/>`; }
@@ -10895,15 +11050,15 @@ function renderMapOverview(W,H){
     </g>${rivalMarkersSVG(b.id,px,py,rad)}${facilityMarkerSVG(b.id,px,py,rad)}`;
     BODIES.filter(m=>m.around===b.id).forEach(m=>{
       const mAng=(ANGLES[m.id]!==undefined?ANGLES[m.id]:0);
-      const mr=rad+10;
+      const mr=rad+(m.moonR||10), mRad=m.dotR||4.5;
       const mx=px+Math.cos(mAng)*mr, my=py+Math.sin(mAng)*mr;
       const msel=state.selectedBody===m.id;
       svg+=`<circle cx="${px}" cy="${py}" r="${mr}" fill="none" stroke="rgba(125,144,155,0.2)" stroke-width="1"/>
         <g style="cursor:pointer" onclick="selectBody('${m.id}')">
-          <circle cx="${mx}" cy="${my}" r="11" fill="transparent"/>
-          ${bodyTexture(m.id,mx,my,4.5)}
-          ${msel?`<circle cx="${mx}" cy="${my}" r="6" fill="none" stroke="#f5a623" stroke-width="1.5"/>`:''}
-          <text x="${mx}" y="${my-9}" fill="${msel?'#f5a623':'#7d909b'}" font-size="9" font-family="ui-monospace,monospace" text-anchor="middle">${m.name}</text>
+          <circle cx="${mx}" cy="${my}" r="${mRad+6}" fill="transparent"/>
+          ${bodyTexture(m.id,mx,my,mRad)}
+          ${msel?`<circle cx="${mx}" cy="${my}" r="${mRad+2}" fill="none" stroke="#f5a623" stroke-width="1.5"/>`:''}
+          <text x="${mx}" y="${my-mRad-4}" fill="${msel?'#f5a623':'#7d909b'}" font-size="9" font-family="ui-monospace,monospace" text-anchor="middle">${m.name}</text>
         </g>${rivalMarkersSVG(m.id,mx,my,5)}${facilityMarkerSVG(m.id,mx,my,5)}`;
     });
   });
@@ -10963,7 +11118,7 @@ function renderMapZoom(W,H,id){
   svg+=`</svg>`;
   return svg;
 }
-function renderBodyCard(){
+function bodyCardHTML(){
   const b=BODIES.find(x=>x.id===state.selectedBody)||BODIES[0];
   let cum=0;
   const rows=b.legs.map(leg=>{
@@ -11024,7 +11179,7 @@ function renderBodyCard(){
        <div style="margin-top:8px">${missionRows}</div>`
     : `<div class="mission-tag" style="margin-top:14px">Mission planning — ${b.name}</div><div class="dim" style="font-size:12px;margin-top:4px">No missions to this body yet — a future milestone.</div>`;
   const missionsBlock = planningBlock;
-  $('bodyCard').innerHTML=`
+  return `
     ${backBtn}
     <div class="mission-tag adv-only">Δv profile from Earth's surface</div>
     <div class="mission-name">${b.name}</div>
@@ -11037,7 +11192,9 @@ function renderBodyCard(){
     <div class="eq">Each leg is a separate burn — a separate mass ratio. The cumulative figure is <em>not</em> a single Δv requirement; it's the sum of every burn a full round-trip architecture must budget for, in sequence, exactly like the mission profiles on the bench.</div>
     ${missionsBlock}`;
 }
+function renderBodyCard(){ const el=$('bodyCard'); if(el) el.innerHTML=bodyCardHTML(); }
 function flyTo(missionId){
+  if(mapPopoutOpen) closeMapPopout(); // flying from the map pop-out returns to the normal flow
   const m=MISSIONS.find(x=>x.id===missionId);
   if(state.rep<m.minRep) return;
   if(!missionTechMet(m)) return;
