@@ -8742,18 +8742,18 @@ function renderExecOverview(){
         <div class="muted" style="font-size:12px">${dateStr()} · Era ${s.eraIdx}/${s.eraTotal} · ${s.era}</div>
       </div>
       <div class="cc-net" style="text-align:right">
-        <div class="dim" style="font-size:10px;text-transform:uppercase;letter-spacing:.12em">Monthly net</div>
+        <div class="dim" style="font-size:10px;text-transform:uppercase;letter-spacing:.12em">${domDot('economy')}Monthly net</div>
         <div style="color:${netCol};font-size:18px;font-weight:700">${s.net>=0?'+':''}${fM(s.net)}/mo</div>
         <div class="dim" style="font-size:10px">+${fM(s.income)} in · −${fM(s.overhead)} ovh${(s.empireOpex>0||s.loanInterest>0)?` <span style="color:var(--bad)">(incl.${s.empireOpex>0?` −${fM(s.empireOpex)} empire`:''}${s.loanInterest>0?` −${fM(s.loanInterest)} loan`:''})</span>`:''} · −${fM(s.payroll)} pay</div>
       </div>
     </div>
     <div class="exec-grid" style="margin-top:8px">
-      <div class="exec-stat"><span class="k">Capital</span><span class="v" style="color:${state.money<1.5?'var(--bad)':'var(--ink)'}">${fM(s.capital)}</span></div>
-      <div class="exec-stat"><span class="k">Reputation</span><span class="v">${fI(s.rep)}</span></div>
-      <div class="exec-stat"><span class="k">Science</span><span class="v" style="color:var(--readout)">${s.science}</span></div>
-      <div class="exec-stat"><span class="k">Staff</span><span class="v">${(state.staff||[]).length}</span></div>
-      <div class="exec-stat"><span class="k">Flights</span><span class="v">${s.flights}${s.successRate!=null?` · ${s.successRate}%`:''}</span></div>
-      <div class="exec-stat"><span class="k">Public Support</span><span class="v" style="color:${s.moodColor}">${s.support}% <span style="font-size:11px;font-weight:400">${s.mood}</span></span></div>
+      <div class="exec-stat"><span class="k">${domDot('economy')}Capital</span><span class="v" style="color:${state.money<1.5?'var(--bad)':'var(--ink)'}">${fM(s.capital)}</span></div>
+      <div class="exec-stat"><span class="k">${domDot('exploration')}Reputation</span><span class="v">${fI(s.rep)}</span></div>
+      <div class="exec-stat"><span class="k">${domDot('research')}Science</span><span class="v" style="color:var(--dom-research)">${s.science}</span></div>
+      <div class="exec-stat"><span class="k">${domDot('crew')}Staff</span><span class="v">${(state.staff||[]).length}</span></div>
+      <div class="exec-stat"><span class="k">${domDot('engineering')}Flights</span><span class="v">${s.flights}${s.successRate!=null?` · ${s.successRate}%`:''}</span></div>
+      <div class="exec-stat"><span class="k">${domDot('warn')}Public Support</span><span class="v" style="color:${s.moodColor}">${s.support}% <span style="font-size:11px;font-weight:400">${s.mood}</span></span></div>
     </div>
     <div class="exec-sparks adv-only">
       ${metricSpark('Capital', mh.money, {color:'var(--ignite)', label:'capital trend'})}

@@ -2665,7 +2665,12 @@ Continuing the #23–#26 numbering. All **[ ] not started**.
       Tree = research, Solar System map = exploration, Design Bench (vehicle card) = engineering, Personnel = crew,
       Rivals = military. **Validation — /tmp/ov-dom.js 29/29** (slice-1 22 + 6 new scene-accent checks; rivals +
       personnel still render). Render 8/8 + smoke + yards/bench green.
-      *Remaining: per-readout dots (individual metrics inside each scene) + pairs with #28 graphs when those land.*
+      **Slice 3 — per-readout dots on the Command Center — built 2026-06-27.** The landing scene's exec overview now
+      tags each headline metric with a `dom-dot` chip: Capital + Monthly-net = economy, Reputation = exploration, Science
+      = research (value also re-tinted from the old cyan `--readout` to `--dom-research`), Staff = crew, Flights =
+      engineering, Public Support = warn — mirroring the top-bar mapping so the two read identically. **Validation —
+      /tmp/ov-dom.js 36/36** (+7 exec-overview checks; renders cleanly). Render 8/8 + smoke + bench green.
+      *Remaining: optional — extend per-readout dots into the bench/personnel/rivals metric grids; pairs with #28 graphs.*
 - [ ] **31 · UI microanimations pass** *(review #11, #4)* — counter tween-ups, newly-
       unlocked-tech glow, mission-success pulse, completed-objective sparkle, a scrolling
       news ticker, and the literal **slide animation** for the right-rail drawer. Pure
