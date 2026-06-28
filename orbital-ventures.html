@@ -262,9 +262,17 @@
   .vehpop-hint{font-family:var(--mono);font-size:var(--fs-min);color:var(--muted);margin-left:auto;white-space:nowrap}
   .vehpop-x{background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:6px;cursor:pointer;font-size:14px;padding:5px 10px}
   .vehpop-x:hover{border-color:var(--ignite);color:var(--ignite)}
+  .vehpop-body{flex:1;display:flex;min-height:0}
   .vehpop-stage{flex:1;position:relative;overflow:hidden;cursor:grab;touch-action:none}
   .vehpop-stage.grabbing{cursor:grabbing}
   .vehpop-stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+  .vehpop-stats{flex:0 0 300px;border-left:1px solid var(--line);background:var(--bg);overflow-y:auto;padding:14px 16px}
+  .vehpop-stats h4{font-size:var(--fs-min);text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin:14px 0 5px}
+  .vehpop-stats h4:first-child{margin-top:0}
+  .vps-row{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:4px 0;border-bottom:1px solid var(--line);font-size:13px}
+  .vps-row .lbl{color:var(--muted)}
+  .vps-row .val{font-family:var(--mono);color:var(--ink);font-weight:600;text-align:right;white-space:nowrap}
+  @media(max-width:760px){ .vehpop-stats{display:none} }
   /* bench editor tabs — consolidate the many editor cards under a few tabs */
   .bench-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
   .bench-tab{font-family:var(--mono);font-size:12px;padding:5px 12px;border:1px solid var(--line);border-radius:7px;background:var(--panel);color:var(--muted);cursor:pointer}
@@ -9941,6 +9949,44 @@ function drawVehPopout(){
   try{ drawVehiclePreviewTo(ctx, w, h, spec); }catch(e){}
   ctx.restore();
 }
+// The vehicle's characteristics for the pop-out's right rail — reuses computeVehicle()/curMission()
+// so the numbers match the bench readout exactly (TWR, Δv, reliability, mass, costs, per-stage).
+function vehPopStatsHTML(){
+  let m,v; try{ m=curMission(); v=computeVehicle(); }catch(e){ v=null; }
+  if(!v) return '<div class="dim" style="font-size:12px">Select a mission and a vehicle to see its characteristics.</div>';
+  const row=(lbl,val,col)=>`<div class="vps-row"><span class="lbl">${lbl}</span><span class="val"${col?` style="color:${col}"`:''}>${val}</span></div>`;
+  const twrCol=v.twr>1.2?'var(--ink)':(v.twr>1?'var(--warn)':'var(--bad)');
+  const reqTxt=(m&&m.reqDv)?` <span class="dim" style="font-weight:400">/ req ${fI(m.reqDv)}</span>`:'';
+  const dvCol=(m&&m.reqDv)?(v.totalDv>=m.reqDv?'var(--ok)':'var(--warn)'):'var(--ink)';
+  const gravCol=v.gravLoss>800?'var(--bad)':(v.gravLoss>200?'var(--warn)':null);
+  let stageRows='';
+  for(let i=0;i<state.stages.length;i++){
+    const sd=(v.stageDv&&v.stageDv[i]!=null)?fI(v.stageDv[i]):'—';
+    const st=(v.stageTwr&&v.stageTwr[i]!=null)?v.stageTwr[i].toFixed(2):'—';
+    stageRows+=row(`Stage ${i+1}`, `${sd} m/s · TWR ${st}`);
+  }
+  const buildT=m?(buildMonths(m)+1+TEST_LEVELS[state.testLevel].months):null;
+  return `<h4>Performance</h4>
+    ${row('Δv total', `${fI(v.totalDv)} m/s${reqTxt}`, dvCol)}
+    ${row('Liftoff TWR', v.twr.toFixed(2), twrCol)}
+    ${row('Gravity loss', v.gravLoss>1?`−${fI(v.gravLoss)} m/s`:'—', gravCol)}
+    ${row('Reliability', `${(v.reliability*100|0)}%`)}
+    <h4>Mass</h4>
+    ${row('Liftoff mass', `${v.liftoff.toFixed(1)} t`)}
+    ${row('Dry mass', `${v.dryTotal.toFixed(1)} t`)}
+    ${row('Propellant', `${v.totalProp.toFixed(1)} t`)}
+    ${row('Payload', v.payload>=1?`${v.payload.toFixed(2)} t`:`${(v.payload*1000).toFixed(0)} kg`)}
+    <h4>Configuration</h4>
+    ${row('Stages', state.stages.length)}
+    ${row('Engines', v.totalEng)}
+    ${(boostersFitted()&&v.boosters)?row('Boosters', `${v.boosters.count}×${v.boosters.eng.solid?' solid':''} ${v.boosters.eng.name||''}`.trim()):''}
+    ${v.crewed?row('Crew', (m&&m.crew)||0):''}
+    ${stageRows?`<h4>Per stage</h4>${stageRows}`:''}
+    <h4>Economics</h4>
+    ${row('Build cost', fM(v.buildCost))}
+    ${row('Launch cost', fM(v.launchCost))}
+    ${buildT!=null?row('Build time', `${buildT} mo`):''}`;
+}
 function openVehPopout(){
   if(vehPopoutOpen) return; vehPopoutOpen=true; vpZoom=1; vpPanX=0; vpPanY=0;
   let title='Vehicle'; try{ title=(curLivery().name||'').trim() || (curMission()?curMission().name:'Vehicle'); }catch(e){}
@@ -9951,11 +9997,15 @@ function openVehPopout(){
       <span class="vehpop-hint">drag to pan · scroll to zoom · double-click reset · Esc/Enter to close</span>
       <button class="vehpop-x" onclick="closeVehPopout()">✕ Close</button>
     </div>
-    <div class="vehpop-stage" id="vehPopStage"><canvas id="vehPopCanvas"></canvas></div>`;
+    <div class="vehpop-body">
+      <div class="vehpop-stage" id="vehPopStage"><canvas id="vehPopCanvas"></canvas></div>
+      <aside class="vehpop-stats" id="vehPopStats"></aside>
+    </div>`;
   document.body.appendChild(ov);
   // move the LIVE Build/Launch node into the bar, remembering its home so we can restore it exactly
   const host=$('benchLaunch');
   if(host){ _vpLaunchHome={parent:host.parentNode, next:host.nextSibling}; $('vehPopLaunchHost').appendChild(host); }
+  const sp=$('vehPopStats'); if(sp) sp.innerHTML=vehPopStatsHTML(); // characteristics on the right
   initVehPopZoom();
   drawVehPopout();
   window.addEventListener('resize', drawVehPopout);
