@@ -9747,11 +9747,11 @@ function renderReadout(){
     <div class="metrics">
       <div class="metric"><div class="k">Liftoff TWR</div><div class="v" style="color:${v.twr>1.2?'var(--ink)':(v.twr>1?'var(--warn)':'var(--bad)')}">${v.twr.toFixed(2)}</div></div>
       <div class="metric" title="Δv bled by stages whose TWR is below nominal — raise thrust to recover it"><div class="k">Gravity loss</div><div class="v" style="color:${v.gravLoss>800?'var(--bad)':(v.gravLoss>200?'var(--warn)':'var(--ink)')}">${v.gravLoss>1?'−'+fI(v.gravLoss)+' m/s':'—'}</div></div>
-      <div class="metric"><div class="k">Reliability</div><div class="v">${(v.reliability*100|0)}%</div></div>
+      <div class="metric"><div class="k">${domDot('engineering')}Reliability</div><div class="v">${(v.reliability*100|0)}%</div></div>
       <div class="metric"><div class="k">Liftoff mass</div><div class="v">${v.liftoff.toFixed(1)} t</div></div>
       <div class="metric"><div class="k">Payload</div><div class="v">${v.payload>=1?v.payload.toFixed(2)+' t':(v.payload*1000).toFixed(0)+' kg'}</div></div>
-      <div class="metric"><div class="k">Build cost</div><div class="v">${fM(v.buildCost)}</div></div>
-      <div class="metric"><div class="k">Launch cost</div><div class="v">${fM(v.launchCost)}</div></div>
+      <div class="metric"><div class="k">${domDot('economy')}Build cost</div><div class="v">${fM(v.buildCost)}</div></div>
+      <div class="metric"><div class="k">${domDot('economy')}Launch cost</div><div class="v">${fM(v.launchCost)}</div></div>
       <div class="metric"><div class="k">Build time</div><div class="v">${buildMonths(m)+1+TEST_LEVELS[state.testLevel].months} mo</div></div>
     </div>
 
@@ -9812,12 +9812,12 @@ function renderProfileReadout(m){
     <div class="legs">${legRows}</div>
 
     <div class="metrics">
-      <div class="metric"><div class="k">Mission reliability</div><div class="v">${(rel*100|0)}%</div></div>
-      <div class="metric"><div class="k">Crew module</div><div class="v">${sim.crewMass.toFixed(2)} t</div></div>
+      <div class="metric"><div class="k">${domDot('engineering')}Mission reliability</div><div class="v">${(rel*100|0)}%</div></div>
+      <div class="metric"><div class="k">${domDot('crew')}Crew module</div><div class="v">${sim.crewMass.toFixed(2)} t</div></div>
       <div class="metric"><div class="k">LV liftoff mass</div><div class="v">${v.liftoff.toFixed(1)} t</div></div>
       <div class="metric"><div class="k">To LEO</div><div class="v">${v.payload.toFixed(2)} t</div></div>
-      <div class="metric"><div class="k">Build cost</div><div class="v">${fM(v.buildCost)}</div></div>
-      <div class="metric"><div class="k">Launch cost</div><div class="v">${fM(v.launchCost)}</div></div>
+      <div class="metric"><div class="k">${domDot('economy')}Build cost</div><div class="v">${fM(v.buildCost)}</div></div>
+      <div class="metric"><div class="k">${domDot('economy')}Launch cost</div><div class="v">${fM(v.launchCost)}</div></div>
       <div class="metric"><div class="k">Build time</div><div class="v">${buildMonths(m)+1+TEST_LEVELS[state.testLevel].months} mo</div></div>
     </div>
 

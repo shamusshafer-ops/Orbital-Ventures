@@ -2644,7 +2644,7 @@ Continuing the #23–#26 numbering. All **[ ] not started**.
       into a collapsible timeline with category filters (All / Launches / Research /
       Economy / Rivals / Crew / Infrastructure) and per-entry icons. Needs the existing
       log entries tagged with a category at emit time.
-- [~] **30 · Domain color-coding language** *(review #7)* — a consistent palette
+- [x] **30 · Domain color-coding language** *(review #7)* — *Complete 2026-06-27 (4 slices).* a consistent palette
       (economy=green · engineering=blue · research=purple · military=red ·
       exploration=orange · crew=cyan · warnings=yellow) applied as CSS custom properties
       so every metric/panel reads its domain at a glance. Polish; pairs with #28's graphs.
@@ -2670,7 +2670,13 @@ Continuing the #23–#26 numbering. All **[ ] not started**.
       = research (value also re-tinted from the old cyan `--readout` to `--dom-research`), Staff = crew, Flights =
       engineering, Public Support = warn — mirroring the top-bar mapping so the two read identically. **Validation —
       /tmp/ov-dom.js 36/36** (+7 exec-overview checks; renders cleanly). Render 8/8 + smoke + bench green.
-      *Remaining: optional — extend per-readout dots into the bench/personnel/rivals metric grids; pairs with #28 graphs.*
+      **Slice 4 — per-readout dots in the Design Bench readout — built 2026-06-27 (closes #30).** Both readout paths
+      (mission profile + suborbital gauge) now dot the cross-domain metrics — Build/Launch cost = economy, Mission
+      reliability / Reliability = engineering, Crew module = crew — while pure-performance lines (TWR, mass, payload,
+      gravity loss, build time) stay neutral, so the dots are a signal not a wall. **Validation — /tmp/ov-dom.js 41/41**
+      (+5 bench-readout checks, both paths). Render 8/8 + smoke + yards/bench green.
+      **#30 delivered across 4 slices: palette + top bar → scene accents → exec-overview readouts → bench readouts.**
+      *(Future, when #28 graphs land: reuse `domColor()` for series colors.)*
 - [ ] **31 · UI microanimations pass** *(review #11, #4)* — counter tween-ups, newly-
       unlocked-tech glow, mission-success pulse, completed-objective sparkle, a scrolling
       news ticker, and the literal **slide animation** for the right-rail drawer. Pure
