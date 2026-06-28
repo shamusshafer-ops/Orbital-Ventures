@@ -251,6 +251,20 @@
   .bench-rocket{position:sticky;top:calc(var(--topbar-h) + 8px);max-height:calc(100vh - var(--topbar-h) - 20px);overflow:auto}
   .bench-rocket #vehiclePreview,.bench-rocket #vehHost{max-height:calc(100vh - var(--topbar-h) - 150px)}
   @media(max-width:900px){ .bench-stage{grid-template-columns:1fr} .bench-rocket{position:static;max-height:none;overflow:visible} }
+  /* Vehicle pop-out viewer — takes over the screen for a large pan/zoom look at the rocket, above every layer */
+  .vehpop-btn{position:absolute;top:8px;right:8px;z-index:2;background:var(--panel2);border:1px solid var(--line);color:var(--muted);
+    border-radius:6px;cursor:pointer;font-size:13px;line-height:1;padding:4px 7px}
+  .vehpop-btn:hover{border-color:var(--ignite);color:var(--ignite)}
+  .vehpop-scrim{position:fixed;inset:0;z-index:120;background:rgba(6,9,13,0.94);display:flex;flex-direction:column}
+  .vehpop-bar{display:flex;align-items:center;gap:14px;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--bg)}
+  .vehpop-bar .vehpop-launchhost{flex:1;max-width:560px}
+  .vehpop-title{font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ink);white-space:nowrap}
+  .vehpop-hint{font-family:var(--mono);font-size:var(--fs-min);color:var(--muted);margin-left:auto;white-space:nowrap}
+  .vehpop-x{background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:6px;cursor:pointer;font-size:14px;padding:5px 10px}
+  .vehpop-x:hover{border-color:var(--ignite);color:var(--ignite)}
+  .vehpop-stage{flex:1;position:relative;overflow:hidden;cursor:grab;touch-action:none}
+  .vehpop-stage.grabbing{cursor:grabbing}
+  .vehpop-stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
   /* bench editor tabs — consolidate the many editor cards under a few tabs */
   .bench-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
   .bench-tab{font-family:var(--mono);font-size:12px;padding:5px 12px;border:1px solid var(--line);border-radius:7px;background:var(--panel);color:var(--muted);cursor:pointer}
@@ -470,11 +484,11 @@
   </div>
 
   <div id="benchView" class="hidden">
-    <h1 class="scene-title">Vehicle Design</h1>
     <div class="bench-stage">
       <!-- #27/Presentation: the rocket is the bench centerpiece — moved out of the cramped
            right rail into a prominent sticky column at the center of the build stage. -->
       <div class="card bench-rocket dombar-engineering" id="vehicleCard" style="text-align:center">
+        <button class="vehpop-btn" onclick="openVehPopout()" title="Pop out — large pan/zoom view (Esc/Enter to close)">⤢</button>
         <div class="mission-tag" style="text-align:left"><span class="dom-dot" style="background:var(--dom-engineering)"></span>Your vehicle</div>
         <!-- Build & Launch sits ABOVE the rocket so the primary CTA is always at the pinned top -->
         <div id="benchLaunch" style="margin:6px 0 10px"></div>
@@ -4417,6 +4431,7 @@ function tankerDelivery(){
   return state.transfer.prop;
 }
 function launch(prebuilt){
+  if(vehPopoutOpen) closeVehPopout(); // launching from the pop-out returns to the normal flight flow
   const m=curMission();
   const v=computeVehicle();
   const sim=m.profile?simulateMission(m):null;
@@ -9909,6 +9924,67 @@ function startVehPreview(spec){
 }
 function pauseVehGame(){ if(vehGame){ try{ if(vehGame.scene.isActive('vehprev')) vehGame.scene.pause('vehprev'); }catch(e){} } }
 function resumeVehGame(){ if(vehGame){ try{ vehGame.scene.resume('vehprev'); }catch(e){} } }
+/* ---------- Vehicle pop-out viewer ----------
+   Lifts the bench rocket — and its live Build/Launch button — into a full-screen overlay above
+   every layer, with grab-to-pan + wheel-to-zoom for a big look at the design. The rocket is
+   redrawn vector-crisp at any zoom (canvas transform, not a stretched bitmap). Enter/Esc closes
+   it and returns the button to its place on the bench card. */
+let vehPopoutOpen=false, vpZoom=1, vpPanX=0, vpPanY=0, _vpLaunchHome=null;
+function drawVehPopout(){
+  const stage=$('vehPopStage'), cv=$('vehPopCanvas'); if(!stage||!cv) return;
+  const w=stage.clientWidth, h=stage.clientHeight; if(w<2||h<2) return;
+  if(cv.width!==w||cv.height!==h){ cv.width=w; cv.height=h; }
+  const ctx=cv.getContext('2d'); if(!ctx) return;
+  ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,w,h);
+  ctx.save(); ctx.translate(vpPanX,vpPanY); ctx.scale(vpZoom,vpZoom);
+  let spec; try{ spec=currentVehicleSpec(); }catch(e){ ctx.restore(); return; }
+  try{ drawVehiclePreviewTo(ctx, w, h, spec); }catch(e){}
+  ctx.restore();
+}
+function openVehPopout(){
+  if(vehPopoutOpen) return; vehPopoutOpen=true; vpZoom=1; vpPanX=0; vpPanY=0;
+  let title='Vehicle'; try{ title=(curLivery().name||'').trim() || (curMission()?curMission().name:'Vehicle'); }catch(e){}
+  const ov=document.createElement('div'); ov.className='vehpop-scrim'; ov.id='vehPopout';
+  ov.innerHTML=`<div class="vehpop-bar">
+      <span class="vehpop-title">🚀 ${title}</span>
+      <div class="vehpop-launchhost" id="vehPopLaunchHost"></div>
+      <span class="vehpop-hint">drag to pan · scroll to zoom · double-click reset · Esc/Enter to close</span>
+      <button class="vehpop-x" onclick="closeVehPopout()">✕ Close</button>
+    </div>
+    <div class="vehpop-stage" id="vehPopStage"><canvas id="vehPopCanvas"></canvas></div>`;
+  document.body.appendChild(ov);
+  // move the LIVE Build/Launch node into the bar, remembering its home so we can restore it exactly
+  const host=$('benchLaunch');
+  if(host){ _vpLaunchHome={parent:host.parentNode, next:host.nextSibling}; $('vehPopLaunchHost').appendChild(host); }
+  initVehPopZoom();
+  drawVehPopout();
+  window.addEventListener('resize', drawVehPopout);
+}
+function closeVehPopout(){
+  if(!vehPopoutOpen) return; vehPopoutOpen=false;
+  window.removeEventListener('resize', drawVehPopout);
+  const host=$('benchLaunch');
+  if(host && _vpLaunchHome && _vpLaunchHome.parent){ _vpLaunchHome.parent.insertBefore(host, _vpLaunchHome.next); } // back to its bench spot
+  _vpLaunchHome=null;
+  const ov=$('vehPopout'); if(ov && ov.parentNode) ov.parentNode.removeChild(ov);
+}
+function initVehPopZoom(){
+  const stage=$('vehPopStage'); if(!stage) return;
+  let drag=false, lx=0, ly=0;
+  stage.addEventListener('wheel',e=>{ e.preventDefault(); const r=stage.getBoundingClientRect(), cx=e.clientX-r.left, cy=e.clientY-r.top, z0=vpZoom;
+    vpZoom=Math.min(8,Math.max(0.4, vpZoom*(e.deltaY<0?1.12:0.89)));
+    vpPanX=cx-(cx-vpPanX)*(vpZoom/z0); vpPanY=cy-(cy-vpPanY)*(vpZoom/z0); drawVehPopout(); },{passive:false});
+  stage.addEventListener('pointerdown',e=>{ drag=true; lx=e.clientX; ly=e.clientY; stage.classList.add('grabbing'); try{stage.setPointerCapture(e.pointerId);}catch(_){}});
+  stage.addEventListener('pointermove',e=>{ if(!drag) return; vpPanX+=e.clientX-lx; vpPanY+=e.clientY-ly; lx=e.clientX; ly=e.clientY; drawVehPopout(); });
+  const end=()=>{ drag=false; stage.classList.remove('grabbing'); };
+  stage.addEventListener('pointerup',end); stage.addEventListener('pointercancel',end);
+  stage.addEventListener('dblclick',()=>{ vpZoom=1; vpPanX=0; vpPanY=0; drawVehPopout(); });
+}
+// Esc/Enter closes the pop-out — capture phase so it beats the scene-nav + launch key handlers.
+document.addEventListener('keydown',function(e){
+  if(!vehPopoutOpen) return;
+  if(e.key==='Escape'||e.key==='Enter'){ e.preventDefault(); e.stopPropagation(); closeVehPopout(); }
+},true);
 // Presentation: the primary Build & Launch CTA sits directly under the rocket on the
 // bench (in #vehicleCard), not in the right-rail readout. Same gate (canLaunch) + same
 // label logic as the readout used to carry.
