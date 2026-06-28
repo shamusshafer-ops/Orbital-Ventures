@@ -414,8 +414,19 @@ review's numbering, not the build order (see **Suggested build order** at the en
       `redundant_avionics`). `curRel()` now sums every completed node's
       `effect.reliability` (was hard-coded to `test_program`), so the track is
       extensible; `effectiveReliability`'s cap still preserves balance.
-      *Still open in #6 (later slices):* technology readiness levels (TRL),
-      prototype/testing programs, research partnerships, reusable route (M5 ✓).
+      *Research partnerships — built 2026-06-27 (chosen over TRL, which would have overlapped the
+      family-heritage + bench-tested-component reliability layers).* `PARTNERS` catalog (5 institutions,
+      each focused on 1–3 tracks): form a standing partnership for a setup fee + monthly upkeep to get a
+      capped, track-specific R&D-speed boost. `partnerSpeedBonus(node)` stacks additively with engineers +
+      `divisionSpeedBonus` on the active project's track (clamped `PARTNER_SPEED_CAP` 0.45); `partnershipUpkeep()`
+      folds into the per-day burn + monthly summary + `commandSummary` overhead. Rep/research-gated, `PARTNERSHIP_CAP`
+      3 simultaneous — a "back the fronts that matter" decision, dissolvable. `state.partnerships[]` (SAVE_VERSION→38,
+      legacy `[]`); new Research Partnerships panel in the R&D scene (research-domain accent). Balance-neutral by
+      default (no partner → 0 upkeep + 0 speed → bit-identical; TG 66/66). **Validation — /tmp/ov-partners.js 22/22:**
+      rep/research gating, setup charge + active + upkeep sum, cap + duplicate guards, track-matched + capped speed
+      bonus, research-finishes-sooner proof, dissolve, overhead inclusion, render + save default.
+      *Still open in #6 (later slices):* technology readiness levels (TRL — deferred, overlaps heritage),
+      prototype/testing programs, reusable route (M5 ✓).
       *(Strategic-Vision Phase 7; patent/licensing partly covered by the patent econ
       event + spec'd passive-income tech-licensing, breakthroughs by #9/#14.)*
       > **Superseded/expanded by the R&D Deep Expansion epic (2026-06-21):** #6 is
@@ -1327,8 +1338,9 @@ Science), not a single line — that's the "decades-long effort" feel.
    0.040, all economy caps still clamp with everything researched + both new techs at L3,
    leveled-tech accumulator feed, flyability preserved, reconcile over the deepest chain,
    render/tooltip smoke; 8-tab all-98-researched render clean; all prior suites green.
-   *Remaining (slice 6e+):* the last ~15 nodes toward the 125 ceiling; TRL/research-
-   partnerships (#6 leftovers); Ground→true launch-cadence (the fixed +1 campaign month).
+   *Remaining (slice 6e+):* the last ~15 nodes toward the 125 ceiling; TRL (#6 leftover, deferred —
+   overlaps heritage); Ground→true launch-cadence (the fixed +1 campaign month).
+   (Research partnerships shipped 2026-06-27 — see the #6 entry above.)
 - ✅ **Crew life-support recycling effect** — *Built 2026-06-21.* Fixed a gap the
    player spotted: the crew-track research nodes only granted *reliability* — they
    didn't reduce the consumable/supply mass that is the whole point of life-support

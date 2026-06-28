@@ -507,6 +507,7 @@
     </div>
     <!-- researchDetail (node inspector) relocated to the persistent right rail in slice 3 -->
     <div class="card" id="divisionsCard" style="margin-top:14px"></div>
+    <div class="card dombar-research" id="partnershipsCard" style="margin-top:14px"></div>
   </div>
 
   <div id="mapView" class="hidden">
@@ -1648,6 +1649,7 @@ function newGame(difficulty){
     rehearsal:false, // #20 slice 4: pre-flight rehearsal fitted to this flight (per-launch, resets after flight)
     techLevel:{}, // #3: per-tech investment level for leveled technologies
     divisions:{}, // #4: research divisions (skill/exp/morale per division)
+    partnerships:[], // #6: active research-partnership ids (accelerate a track for setup + upkeep)
     breakthroughCooldown:3, // #5: division R&D breakthrough rate-limiter
     relDebt:0, // #26: permanent reliability penalty from "ship it degraded" research setbacks
     powerSource:'solar', // Phase 2: vehicle power plant (solar/rtg/reactor)
@@ -1888,6 +1890,50 @@ function divisionExpLevel(id){ return Math.min(1, divisionState(id).exp/DIV_EXP_
 function divisionQuality(id){ const s=divisionState(id); return Math.max(0, Math.min(1, 0.5*s.skill + 0.3*divisionExpLevel(id) + 0.2*(s.morale/100))); }
 function divisionSpeedBonus(r){ const id=divisionForResearch(r); if(!id) return 0; return divisionQuality(id)*DIV_SPEED_MAX; }
 function divisionTrainCost(id){ return round2(DIV_TRAIN_BASE*(1+divisionState(id).skill*4)); }
+
+/* ===== #6 / R&D pillar — Research Partnerships =======================================
+   Form a standing partnership with an external institution to accelerate one or more
+   research TRACKS, in exchange for an upfront fee + ongoing monthly upkeep. A real
+   strategic choice: a capped number of slots + the recurring cost mean you back only
+   the tracks your program actually needs right now. Stacks additively (capped) with
+   your engineers and Research Divisions on the active project's track. */
+const PARTNERS = [
+  {id:'university',    name:'University Aerospace Consortium', tracks:['structures','testing','guidance'], speed:0.18, setup:2.0, upkeep:0.08, minRep:30,  blurb:'Academic labs co-develop materials, test rigs and guidance — broad but modest acceleration.'},
+  {id:'propulsion_lab',name:'National Propulsion Laboratory',  tracks:['propulsion','reuse'],              speed:0.30, setup:3.5, upkeep:0.14, minRep:70,  blurb:'A government engine lab — deep combustion and reusable-booster expertise.'},
+  {id:'med_institute', name:'Aerospace Medical Institute',     tracks:['crew'],                            speed:0.32, setup:3.0, upkeep:0.12, minRep:95,  blurb:'Human-factors and life-support research for long-duration crews.'},
+  {id:'planetary_sci', name:'Planetary Science Foundation',    tracks:['deepspace','refueling','science'], speed:0.24, setup:4.0, upkeep:0.15, minRep:130, blurb:'Trajectory science, ISRU chemistry and deep-space instrumentation.'},
+  {id:'atomic',        name:'Atomic Energy Commission',        tracks:['nuclear'],                         speed:0.40, setup:6.0, upkeep:0.22, minRep:170, reqResearch:'deep_space', blurb:'Classified reactor work — the fast path through nuclear propulsion.'},
+];
+const PARTNERSHIP_CAP=3;       // simultaneous partnerships — you can't back every front at once
+const PARTNER_SPEED_CAP=0.45;  // bound on the combined partner R&D-speed bonus for any one track
+function partnerDef(id){ return PARTNERS.find(p=>p.id===id); }
+function partnerActive(id){ return !!(state.partnerships && state.partnerships.indexOf(id)>=0); }
+function partnerUnlocked(p){ if(!p) return false; if((state.rep||0)<p.minRep) return false; if(p.reqResearch && !(state.research&&state.research[p.reqResearch])) return false; return true; }
+// fractional R&D-speed bonus a research node gets from active partnerships covering its track
+function partnerSpeedBonus(r){ if(!r || !state.partnerships) return 0; const track=r.track||'propulsion'; let b=0;
+  for(const id of state.partnerships){ const p=partnerDef(id); if(p && p.tracks.indexOf(track)>=0) b+=p.speed; }
+  return Math.min(PARTNER_SPEED_CAP, b); }
+function partnershipUpkeep(){ if(!state.partnerships) return 0; return round2(state.partnerships.reduce((a,id)=>{ const p=partnerDef(id); return a+(p?p.upkeep:0); },0)); }
+function canFormPartnership(id){
+  const p=partnerDef(id); if(!p) return {ok:false, why:'Unknown partner.'};
+  if(partnerActive(id)) return {ok:false, why:'Already partnered.'};
+  if(!partnerUnlocked(p)) return {ok:false, why:(state.rep||0)<p.minRep?`Needs ${p.minRep} reputation.`:'Needs prerequisite research.'};
+  if((state.partnerships||[]).length>=PARTNERSHIP_CAP) return {ok:false, why:`At the ${PARTNERSHIP_CAP}-partnership limit — dissolve one first.`};
+  if(state.money<p.setup) return {ok:false, why:'Not enough capital for the setup fee.'};
+  return {ok:true, cost:p.setup};
+}
+function formPartnership(id){
+  const chk=canFormPartnership(id); if(!chk.ok) return;
+  const p=partnerDef(id); state.money-=p.setup; state.partnerships=state.partnerships||[]; state.partnerships.push(id);
+  log('ok', `Partnership formed — ${p.name} (${fM(p.setup)} setup · −${fM(p.upkeep)}/mo). +${Math.round(p.speed*100)}% R&D speed on ${p.tracks.map(t=>(TRACKS.find(x=>x.key===t)||{}).label||t).join(', ')}.`);
+  render();
+}
+function dissolvePartnership(id){
+  if(!partnerActive(id)) return; const p=partnerDef(id);
+  state.partnerships=state.partnerships.filter(x=>x!==id);
+  log('note', `Partnership with ${p.name} dissolved — its upkeep ends.`);
+  render();
+}
 function canTrainDivision(id){
   if(!divisionDef(id)) return {ok:false,why:'Unknown division.'};
   if(divisionState(id).skill>=1) return {ok:false,why:'Fully trained.'};
@@ -2053,13 +2099,14 @@ function advanceDays(days){
 }
 // the smooth daily flows — inputs are stable within a month, so 30 days sum to the monthly total.
 function tickContinuousDay(){
-  state.money-=perDay(Math.max(0,diff().overhead+econOverheadAdd()+productionUpkeep()+empireOpex()+loanInterest())); // overhead (difficulty + market events + #7 production upkeep + CE4(a) empire carrying cost + CE4(c) bridge-loan interest)
+  state.money-=perDay(Math.max(0,diff().overhead+econOverheadAdd()+productionUpkeep()+empireOpex()+loanInterest()+partnershipUpkeep())); // overhead (difficulty + market events + #7 production upkeep + CE4(a) empire carrying cost + CE4(c) bridge-loan interest + #6 research-partnership upkeep)
   if(state.pgmRoyalty>0) state.money+=perDay(state.pgmRoyalty); // M7: platinum-group royalties from an established Belt claim
   state.staff.forEach(s=>{ const p=personById(s.id); if(p) state.money-=perDay(p.salary); }); // M6: personnel salary
   state.publicSupport=clampA(publicSupport()+(SUPPORT_BASE-publicSupport())*SUPPORT_REVERT_DAY, SUPPORT_MIN, SUPPORT_MAX); // #8: mood reverts toward neutral (slice 3a: per-day at the compounding rate)
   state.money+=perDay(govMonthlyFunding()); // #8: public support buys government funding (slice 3a: accrues daily)
   if(state.activeResearch && !_pendingSetback){ // #26: R&D progresses daily; a pending setback freezes it
-    const rdBonus=engRdSpeedBonus()+divisionSpeedBonus(RESEARCH.find(r=>r.id===state.activeResearch.id));
+    const _rdNode=RESEARCH.find(r=>r.id===state.activeResearch.id);
+    const rdBonus=engRdSpeedBonus()+divisionSpeedBonus(_rdNode)+partnerSpeedBonus(_rdNode); // #6: research partnerships accelerate their track
     state.activeResearch.monthsLeft-=perDay(1+rdBonus); // rate reads (monthly-drifting) morale — stable within a month
     if(state.activeResearch.monthsLeft<=0) completeResearch();
   }
@@ -2129,7 +2176,7 @@ function tickMonthlyBoundary(){
 
     // #18 (Home): snapshot this month's recurring cashflow for the ops-summary panel
     const mRev=round2(totalFacilityIncome()+(state.pgmRoyalty>0?state.pgmRoyalty:0)+govMonthlyFunding()+passiveMonthlyIncome());
-    const mExp=round2(Math.max(0,diff().overhead+econOverheadAdd()+productionUpkeep()+empireOpex()+loanInterest())+monthlyPayroll());
+    const mExp=round2(Math.max(0,diff().overhead+econOverheadAdd()+productionUpkeep()+empireOpex()+loanInterest()+partnershipUpkeep())+monthlyPayroll());
     state.lastMonth={revenue:mRev, expenses:mExp, net:round2(mRev-mExp), flights:0};
 
     tickRivals(); // CE1: rival agents (budget + reactive momentum) — replaces calendar-only firing
@@ -5061,7 +5108,7 @@ function hideModal(){activeModal=null;_prodModalOpen=false;$('modal').classList.
 
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=37; // v37: #7 sub-assemblies slice 3 — bench-tested / flight-proven components (state.engineStockTested + state.partStockTested, the bench-tested subset of each yard; legacy saves default {}); a fitted bench-tested component adds +1.5% reliability (cap +6%, benchRelBonus), built at +60% cost / +50% time; v36: #7 sub-assemblies slice 2 — structures & habitats yard (state.partStock {"kind:sub":count}, e.g. "tank:steel"/"hab:closed"; legacy saves default {}); same cost-neutral cadence pattern as the Engine Yard; v35: #7 sub-assemblies — Engine Yard (state.engineStock {engId:count}; legacy saves default {}); v34: Time Granularity slice 4b — launch windows day-scheduled (window/committedWindow .abs moved from absMonth to absDay; migrateWindowsToDays ×30 on pre-v34 load + clears the regenerable windows cache); v33: Time Granularity slice 1 — day-iterating advance() funnel (state.day 0..29 + absDay(); legacy saves default day:0 via load defaults; whole-month advances stay bit-identical so no balance migration needed); v32: CE4(c) era-scaled failure stakes + bailout retune (state.loanInterest — permanent bridge-loan debt service; legacy saves default to 0 via load defaults + loanInterest() guard); v31: CE4(b) standing resupply obligations (per-facility supply/starvedMonths; legacy facilities default to fully provisioned via facilitySupply()); v30: CE3(c) lunar architecture fork (state.lunarArch, null=uncommitted; luna_landing reqResearch moved to per-arch gates); v29: CE3(a) company doctrine (state.doctrine, null=undeclared/neutral); v28: CE2(c) juggernaut capstone (state.standingProd/juggernautReached); v27: CE2(b) launch cadence (state.padMonthAbs/padMonthUsed) — load defaults seed all of these; v26: CE1 rival agents (state.rivalState), seedRivalState migrates old rivalFired
+const SAVE_VERSION=38; // v38: #6 research partnerships (state.partnerships — active partner ids that accelerate a research track for setup + monthly upkeep; legacy saves default []); v37: #7 sub-assemblies slice 3 — bench-tested / flight-proven components (state.engineStockTested + state.partStockTested, the bench-tested subset of each yard; legacy saves default {}); a fitted bench-tested component adds +1.5% reliability (cap +6%, benchRelBonus), built at +60% cost / +50% time; v36: #7 sub-assemblies slice 2 — structures & habitats yard (state.partStock {"kind:sub":count}, e.g. "tank:steel"/"hab:closed"; legacy saves default {}); same cost-neutral cadence pattern as the Engine Yard; v35: #7 sub-assemblies — Engine Yard (state.engineStock {engId:count}; legacy saves default {}); v34: Time Granularity slice 4b — launch windows day-scheduled (window/committedWindow .abs moved from absMonth to absDay; migrateWindowsToDays ×30 on pre-v34 load + clears the regenerable windows cache); v33: Time Granularity slice 1 — day-iterating advance() funnel (state.day 0..29 + absDay(); legacy saves default day:0 via load defaults; whole-month advances stay bit-identical so no balance migration needed); v32: CE4(c) era-scaled failure stakes + bailout retune (state.loanInterest — permanent bridge-loan debt service; legacy saves default to 0 via load defaults + loanInterest() guard); v31: CE4(b) standing resupply obligations (per-facility supply/starvedMonths; legacy facilities default to fully provisioned via facilitySupply()); v30: CE3(c) lunar architecture fork (state.lunarArch, null=uncommitted; luna_landing reqResearch moved to per-arch gates); v29: CE3(a) company doctrine (state.doctrine, null=undeclared/neutral); v28: CE2(c) juggernaut capstone (state.standingProd/juggernautReached); v27: CE2(b) launch cadence (state.padMonthAbs/padMonthUsed) — load defaults seed all of these; v26: CE1 rival agents (state.rivalState), seedRivalState migrates old rivalFired
 function saveGame(){
   try{
     const payload={v:SAVE_VERSION, ts:Date.now(), state:JSON.parse(JSON.stringify(state))};
@@ -5107,7 +5154,7 @@ function loadGame(){
       facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
       architectures:{}, science:0, persEventCooldown:5,
       staff:[], assignedAstronaut:null,
-      vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, rehearsal:false, techLevel:{}, divisions:{}, breakthroughCooldown:3, relDebt:0, powerSource:'solar',
+      vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, rehearsal:false, techLevel:{}, divisions:{}, partnerships:[], breakthroughCooldown:3, relDebt:0, powerSource:'solar',
       recentBuilds:[], materials:defaultMaterialsState(),
       buildQueue:[], hangar:[], orderSeq:0, padMonthAbs:-1, padMonthUsed:0, standingProd:null, juggernautReached:false, doctrine:null, lunarArch:null, uiLayer:'advanced', loanInterest:0, metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[], day:0, engineStock:{}, engineStockTested:{}, partStock:{}, partStockTested:{}
     };
@@ -5161,7 +5208,7 @@ function autoLoad(){
       facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
       architectures:{}, science:0, persEventCooldown:5,
       staff:[], assignedAstronaut:null,
-      vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, rehearsal:false, techLevel:{}, divisions:{}, breakthroughCooldown:3, relDebt:0, powerSource:'solar',
+      vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, rehearsal:false, techLevel:{}, divisions:{}, partnerships:[], breakthroughCooldown:3, relDebt:0, powerSource:'solar',
       recentBuilds:[], materials:defaultMaterialsState(),
       buildQueue:[], hangar:[], orderSeq:0, padMonthAbs:-1, padMonthUsed:0, standingProd:null, juggernautReached:false, doctrine:null, lunarArch:null, uiLayer:'advanced', loanInterest:0, metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[], day:0, engineStock:{}, engineStockTested:{}, partStock:{}, partStockTested:{}
     };
@@ -8068,7 +8115,7 @@ function availableContracts(){
 function commandSummary(){
   const era=currentEra();
   const eOpex=empireOpex(); // CE4(a): empire carrying cost
-  const overhead=Math.max(0, diff().overhead+econOverheadAdd()+productionUpkeep()+eOpex+loanInterest()); // includes #7 production upkeep + CE4(a) empire opex + CE4(c) bridge-loan interest
+  const overhead=Math.max(0, diff().overhead+econOverheadAdd()+productionUpkeep()+eOpex+loanInterest()+partnershipUpkeep()); // includes #7 production upkeep + CE4(a) empire opex + CE4(c) bridge-loan interest + #6 research-partnership upkeep
   const govFunding=govMonthlyFunding(); // #8: political funding from public support
   const income=round2(totalFacilityIncome()+(state.pgmRoyalty||0)+govFunding+passiveMonthlyIncome());
   const payroll=monthlyPayroll();
@@ -11329,6 +11376,7 @@ function renderRnd(){
   renderTechAction();
   renderResearchDetail();
   renderDivisions();
+  renderPartnerships();
 }
 // #4: Research Divisions panel — quality drives per-track research speed
 function renderDivisions(){
@@ -11361,6 +11409,32 @@ function renderDivisions(){
     ${cards}`;
 }
 
+// #6: Research Partnerships panel — outside institutions that accelerate a research track
+function renderPartnerships(){
+  const box=$('partnershipsCard'); if(!box) return;
+  const active=(state.partnerships||[]);
+  const activeTrack = state.activeResearch ? (RESEARCH.find(r=>r.id===state.activeResearch.id)||{}).track : null;
+  const cards=PARTNERS.map(p=>{
+    const on=partnerActive(p.id), chk=canFormPartnership(p.id);
+    const boosting = on && activeTrack && p.tracks.indexOf(activeTrack)>=0;
+    const trackChips=p.tracks.map(t=>{const tr=TRACKS.find(x=>x.key===t)||{};return `<span class="pill" style="color:${tr.color};border-color:${tr.color};font-size:10px">${tr.label||t}</span>`;}).join(' ');
+    const btn = on
+      ? `<button class="btn ghost" style="width:100%;margin-top:8px;font-size:11px" onclick="dissolvePartnership('${p.id}')">Dissolve — ends the −${fM(p.upkeep)}/mo upkeep</button>`
+      : `<button class="btn" style="width:100%;margin-top:8px;font-size:11px" onclick="formPartnership('${p.id}')" ${chk.ok?'':'disabled'}>${chk.ok?`Partner — ${fM(p.setup)} setup · −${fM(p.upkeep)}/mo`:chk.why}</button>`;
+    return `<div class="card" style="background:var(--panel2);margin-bottom:10px;${on?'border-color:var(--dom-research)':''}">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <div class="mission-name" style="font-size:14px;margin:0">${p.name} ${on?'<span class="pill ok" style="font-size:10px">active</span>':''}${boosting?' <span class="pill active" style="font-size:10px">boosting now</span>':''}</div>
+        <div style="text-align:right"><div class="dim" style="font-size:10px">R&amp;D speed</div><div style="font-family:var(--mono);color:var(--dom-research)">+${Math.round(p.speed*100)}%</div></div>
+      </div>
+      <div style="margin:4px 0 2px">${trackChips}</div>
+      <p class="muted" style="font-size:11px;margin:4px 0 2px">${p.blurb}</p>
+      ${btn}
+    </div>`;
+  }).join('');
+  box.innerHTML=`<h2><span class="dom-dot" style="background:var(--dom-research)"></span>Research Partnerships <span class="pill">${active.length}/${PARTNERSHIP_CAP} active</span>${partnershipUpkeep()>0?` <span class="pill" style="font-size:10px">−${fM(partnershipUpkeep())}/mo</span>`:''}</h2>
+    <p class="muted" style="font-size:12px;margin:-4px 0 10px">Partner with outside institutions to accelerate a research <b>track</b> — a setup fee plus ongoing upkeep buys a standing R&amp;D-speed boost on their tracks (stacks with engineers + divisions, capped at +${Math.round(PARTNER_SPEED_CAP*100)}%). Hold up to <b>${PARTNERSHIP_CAP}</b> at once: back the fronts your program needs now, and dissolve them when the work is done.</p>
+    ${cards}`;
+}
 function tlStrip(s){ return (s||'').replace(/<[^>]*>/g,''); }
 function tlAttr(s){ return tlStrip(s).replace(/"/g,'&quot;'); }
 // Forward-looking items derived from state (not stored in state.log): active R&D, in-progress
