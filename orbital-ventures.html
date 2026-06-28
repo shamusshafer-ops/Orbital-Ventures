@@ -17,6 +17,12 @@
     --dom-military:#e0564f; --dom-exploration:#f5a623; --dom-crew:#4fd1d9; --dom-warn:#e8b341;
     --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
     --sans:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    /* Typography scale */
+    --fs-h1:28px; --fw-h1:700;
+    --fs-h2:18px; --fw-h2:600;
+    --fs-body:14px;
+    --fs-sm:12px; --op-sm:0.7;
+    --fs-min:11px;
   }
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
@@ -25,7 +31,10 @@
     background-size:28px 28px;}
   .wrap{max-width:1320px;margin:0 auto;padding:16px 16px 64px}
   body.fullwide .wrap{max-width:none;padding:12px 24px 48px}
-  h1,h2,h3{margin:0;font-weight:600;letter-spacing:.02em}
+  h1{margin:0;font-size:var(--fs-h1);font-weight:var(--fw-h1);letter-spacing:.02em}
+  h2{margin:0;font-size:var(--fs-h2);font-weight:var(--fw-h2);letter-spacing:.02em}
+  h3{margin:0;font-size:16px;font-weight:600;letter-spacing:.02em}
+  .scene-title{font-size:var(--fs-h1);font-weight:var(--fw-h1);letter-spacing:.03em;text-transform:uppercase;margin:0 0 16px;color:var(--ink)}
   .num{font-family:var(--mono);font-variant-numeric:tabular-nums}
   .muted{color:var(--muted)} .dim{color:var(--dim)}
 
@@ -42,7 +51,7 @@
   .brand .tag{font-size:11px;text-transform:uppercase;letter-spacing:.18em;color:var(--ignite)}
   .stats{margin-left:auto;display:flex;gap:22px}
   .stat{display:flex;flex-direction:column;align-items:flex-end}
-  .stat .k{font-size:10px;text-transform:uppercase;letter-spacing:.14em;color:var(--muted)}
+  .stat .k{font-size:var(--fs-sm);text-transform:uppercase;letter-spacing:.14em;color:var(--muted);opacity:var(--op-sm)}
   .stat .v{font-family:var(--mono);font-size:18px;font-weight:600}
   /* #30: a domain class tints the metric label (keys are static text — values keep their own
      state colours). .dombar-* adds a left accent so a panel reads its domain at a glance. */
@@ -69,7 +78,7 @@
   .rail-advisor{margin-top:12px}
   .rail-advisor .card{padding:11px 12px}
   .rail-advisor .cc-panel-h{font-size:11px}
-  .viewport{min-width:0}                                              /* lets overflow children (tech tree, map) size within the column */
+  .viewport{min-width:0;transition:opacity .15s ease}                 /* lets overflow children (tech tree, map) size within the column */
   .rail-right{position:sticky;top:calc(var(--topbar-h) + 10px);align-self:start;max-height:calc(100vh - var(--topbar-h) - 24px);overflow-y:auto}  /* tall panels (e.g. contracts) scroll within the sticky rail; clears the pinned topbar */
   .shell:not(.has-right) .rail-right{display:none}                    /* collapse the rail on panel scenes (slice 3) */
   .rail-panel > .card:first-child{margin-top:0}
@@ -80,7 +89,7 @@
   nav.rail-nav button:hover{color:var(--ink);border-color:var(--ignite)}
   nav.rail-nav button.active{background:var(--panel2);color:var(--ink);border-color:var(--line);box-shadow:inset 3px 0 0 var(--ignite)}
   /* slice 2: group headers + scene emphasis (scenes own the center viewport; panels are secondary) */
-  nav.rail-nav .rail-group{font-size:10px;text-transform:uppercase;letter-spacing:.14em;color:var(--muted);
+  nav.rail-nav .rail-group{font-size:var(--fs-min);text-transform:uppercase;letter-spacing:.14em;color:var(--muted);
     opacity:.6;margin:10px 2px 2px;font-family:var(--sans)}
   nav.rail-nav .rail-group:first-child{margin-top:0}
   nav.rail-nav button.scene{font-weight:600}
@@ -113,12 +122,12 @@
   .grip{cursor:grab;color:var(--dim);font-size:14px;user-select:none;padding:0 2px}
   .grip:active{cursor:grabbing}
   .stage-toggle{background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px;padding:0 2px;line-height:1}
-  .stage-role{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
-  .stage-chip{font-size:10px;color:var(--readout);border:1px solid var(--line);border-radius:10px;padding:1px 7px;white-space:nowrap}
+  .stage-role{font-size:var(--fs-min);text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+  .stage-chip{font-size:var(--fs-min);color:var(--readout);border:1px solid var(--line);border-radius:10px;padding:1px 7px;white-space:nowrap}
   .stage-dv{font-family:var(--mono);font-size:11px;color:var(--muted)} .stage-dv b{color:var(--ink)}
   .stage-thrust{position:relative;height:14px;border-radius:7px;background:#0d1418;border:1px solid var(--line);overflow:hidden;margin:2px 0 4px}
   .stage-thrust-fill{height:100%;background:linear-gradient(90deg,var(--ignite),#ff7a3c);opacity:.55}
-  .stage-thrust-lbl{position:absolute;left:8px;top:0;line-height:14px;font-family:var(--mono);font-size:9px;color:var(--ink)}
+  .stage-thrust-lbl{position:absolute;left:8px;top:0;line-height:14px;font-family:var(--mono);font-size:var(--fs-min);color:var(--ink)}
   .stage-card.collapsed .stage-body{display:none}
   .row{display:flex;align-items:center;gap:8px;margin:6px 0;flex-wrap:wrap}
   .row label{font-size:11px;color:var(--muted);min-width:78px;text-transform:uppercase;letter-spacing:.08em}
@@ -148,10 +157,10 @@
   .bar{position:relative;height:18px;background:#0c1216;border:1px solid var(--line);border-radius:4px;overflow:hidden}
   .bar .fill{height:100%;transition:width .25s ease,background .25s}
   .bar .marker{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--ink)}
-  .bar .marker::after{content:"REQ";position:absolute;top:-13px;left:50%;transform:translateX(-50%);font-size:8px;color:var(--ink);font-family:var(--mono)}
+  .bar .marker::after{content:"REQ";position:absolute;top:-13px;left:50%;transform:translateX(-50%);font-size:var(--fs-min);color:var(--ink);font-family:var(--mono)}
   .metrics{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:6px;overflow:hidden;margin:12px 0}
   .metric{background:var(--panel);padding:9px 10px}
-  .metric .k{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
+  .metric .k{font-size:var(--fs-sm);text-transform:uppercase;letter-spacing:.1em;color:var(--muted);opacity:var(--op-sm)}
   .metric .v{font-family:var(--mono);font-size:16px;font-weight:600}
   .eq{font-family:var(--mono);font-size:11px;color:var(--dim);background:#0c1216;border:1px solid var(--line);border-radius:5px;padding:8px;margin:10px 0;line-height:1.6}
   body.hide-eq .eq{display:none}
@@ -167,7 +176,7 @@
   .diffcard:hover{border-color:var(--muted)}
   .diffcard.sel{border-color:var(--ignite);background:#241a0c}
   .diffcard h3{margin:0 0 4px;font-size:14px}
-  .diffcard .tag{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--dim)}
+  .diffcard .tag{font-size:var(--fs-min);text-transform:uppercase;letter-spacing:.5px;color:var(--dim)}
   .diffcard.sel .tag{color:var(--ignite)}
   .diffcard p{font-size:12px;color:var(--muted);margin:8px 0 0;line-height:1.5}
   .diffknobs{font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:10px;display:grid;grid-template-columns:1fr auto;gap:2px 10px}
@@ -209,16 +218,16 @@
   @media(max-width:980px){.cc-cols{grid-template-columns:1fr}}
   .cc-cols > div > .card{margin-top:0}
   .cc-cols > div > .card + .card{margin-top:14px}
-  .cc-panel-h{font-size:11px;text-transform:uppercase;letter-spacing:.14em;color:var(--muted);margin-bottom:8px}
+  .cc-panel-h{font-size:var(--fs-sm);text-transform:uppercase;letter-spacing:.14em;color:var(--muted);opacity:var(--op-sm);margin-bottom:8px}
   /* exec overview */
   .exec-grid{display:flex;gap:22px;flex-wrap:wrap}
   .exec-stat{display:flex;flex-direction:column}
-  .exec-stat .k{font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted)}
+  .exec-stat .k{font-size:var(--fs-sm);text-transform:uppercase;letter-spacing:.12em;color:var(--muted);opacity:var(--op-sm)}
   .exec-stat .v{font-family:var(--mono);font-size:20px;font-weight:700}
   /* #28: dashboard trend sparklines */
   .exec-sparks{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:12px;margin-top:10px;border-top:1px solid var(--line);padding-top:10px}
   .spark-cell{min-width:0}
-  .spark-k{font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:3px}
+  .spark-k{font-size:var(--fs-min);text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:3px}
   /* Presentation pass: Design Bench centerpiece — rocket preview beside the editor */
   .bench-stage{display:grid;grid-template-columns:300px minmax(0,1fr);gap:16px;align-items:start}
   /* rocket stays pinned & wholly in view while the editor scrolls; if it would exceed the
@@ -235,7 +244,7 @@
   .bench-panel.active{display:flex}
   /* recommended-action hero card */
   .rec-card{border:1px solid var(--ignite);border-radius:8px;padding:12px;background:linear-gradient(180deg,rgba(245,166,35,.10),rgba(245,166,35,.02))}
-  .rec-card .lbl{font-size:10px;text-transform:uppercase;letter-spacing:.16em;color:var(--ignite)}
+  .rec-card .lbl{font-size:var(--fs-min);text-transform:uppercase;letter-spacing:.16em;color:var(--ignite)}
   .rec-card .ttl{font-size:16px;font-weight:700;margin:4px 0 2px}
   .adv-reqs{margin:8px 0 2px;border-top:1px solid rgba(245,166,35,.25);padding-top:7px}
   .adv-req{font-size:11.5px;line-height:1.5;color:var(--ink)}
@@ -243,7 +252,7 @@
   .obj-item{display:flex;align-items:baseline;gap:7px;font-size:12px;padding:3px 0}
   .obj-item.clk{cursor:pointer;border-radius:4px} .obj-item.clk:hover{color:var(--ignite)}
   .obj-done{color:var(--ok)} .obj-todo{color:var(--muted)}
-  .obj-label{flex:1} .obj-sub{font-family:var(--mono);font-size:10px;color:var(--readout)}
+  .obj-label{flex:1} .obj-sub{font-family:var(--mono);font-size:var(--fs-min);color:var(--readout)}
   /* contracts / alerts / news rows */
   .row-item{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #1a242b;font-size:12px}
   .row-item:last-child{border-bottom:none}
@@ -256,12 +265,12 @@
   .news-line:last-child{border-bottom:none}
   /* era timeline */
   .tl-track{position:relative;height:54px;margin:10px 0 4px;border-radius:6px;overflow:hidden;background:#0d1418;border:1px solid var(--line)}
-  .tl-era{position:absolute;top:0;bottom:0;border-right:1px solid #223039;display:flex;align-items:flex-start;padding:4px 6px;font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);overflow:hidden;white-space:nowrap}
+  .tl-era{position:absolute;top:0;bottom:0;border-right:1px solid #223039;display:flex;align-items:flex-start;padding:4px 6px;font-size:var(--fs-min);text-transform:uppercase;letter-spacing:.08em;color:var(--dim);overflow:hidden;white-space:nowrap}
   .tl-now{position:absolute;top:0;bottom:0;width:2px;background:var(--ignite);box-shadow:0 0 6px var(--ignite)}
   .tl-mark{position:absolute;bottom:4px;width:1px;height:20px}
   .tl-mark.you{background:var(--ok)} .tl-mark.rival{background:var(--bad)}
   .tl-mark.proj{background:transparent;border-left:1px dashed var(--bad);opacity:.55;height:14px} /* CE1(c): projected rival goal */
-  .tl-axis{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--dim)}
+  .tl-axis{display:flex;justify-content:space-between;font-family:var(--mono);font-size:var(--fs-min);color:var(--dim)}
   .sitegrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:10px;margin-top:4px}
   .bldg{border:1px solid var(--line);background:var(--panel2);border-radius:8px;padding:12px;cursor:pointer;
     transition:border-color .15s,transform .08s;display:flex;flex-direction:column;gap:3px;text-align:left}
@@ -277,14 +286,14 @@
   #ccSceneHost canvas, #flightHost canvas, #vehHost canvas, #mapHost canvas{max-width:100%!important;height:auto!important;display:block}
   .ccscene-wrap{position:relative;margin-top:4px;line-height:0;overflow:hidden;border-radius:8px}
   #ccZoom{position:absolute;inset:0;transform-origin:0 0}
-  .cc-zoomhint{position:absolute;left:8px;bottom:6px;font-family:var(--mono);font-size:10px;color:rgba(200,210,220,0.5);line-height:1;pointer-events:none;z-index:6}
+  .cc-zoomhint{position:absolute;left:8px;bottom:6px;font-family:var(--mono);font-size:var(--fs-min);color:rgba(200,210,220,0.5);line-height:1;pointer-events:none;z-index:6}
   .ccscene{display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:8px;background:#05070d}
   .ccspot{position:absolute;border:1px solid transparent;border-radius:6px;cursor:pointer;
     transition:border-color .12s,background .12s;display:flex;flex-direction:column;justify-content:flex-end;
     padding:4px 6px;overflow:visible}
   .ccspot:hover{border-color:var(--ignite);background:rgba(245,166,35,0.08)}
   .ccspot .nm{font-size:11px;font-weight:600;color:var(--ink);line-height:1.15;text-shadow:0 1px 3px #000,0 0 6px #000}
-  .ccspot .st{font-family:var(--mono);font-size:10px;color:var(--readout);line-height:1.2;text-shadow:0 1px 3px #000,0 0 5px #000}
+  .ccspot .st{font-family:var(--mono);font-size:var(--fs-min);color:var(--readout);line-height:1.2;text-shadow:0 1px 3px #000,0 0 5px #000}
   .ccspot .pill{align-self:flex-start;margin-bottom:2px}
   .ccspot.planned{cursor:default}
   .ccspot.planned:hover{border-color:rgba(125,144,155,0.4);background:rgba(125,144,155,0.06)}
@@ -315,7 +324,7 @@
   .legname{font-weight:600;font-size:12px}
   .legdv{font-family:var(--mono);font-size:12px;color:var(--readout)}
   .legdetail{grid-column:1/-1;font-family:var(--mono);font-size:11px;color:var(--muted)}
-  .pill{font-family:var(--mono);font-size:10px;padding:2px 7px;border-radius:20px;border:1px solid var(--line);text-transform:uppercase;letter-spacing:.08em}
+  .pill{font-family:var(--mono);font-size:var(--fs-min);padding:2px 7px;border-radius:20px;border:1px solid var(--line);text-transform:uppercase;letter-spacing:.08em}
   .pill.ok{color:var(--ok);border-color:#2c4a39}
   .pill.lock{color:var(--dim)}
   .pill.active{color:var(--ignite);border-color:#5a4419}
@@ -324,8 +333,8 @@
   .era-strip{display:flex;gap:4px;flex-wrap:wrap;margin:10px 0 4px}
   .era-chip{flex:1;min-width:78px;border:1px solid var(--line);border-radius:6px;padding:6px 8px;
     background:var(--panel2);text-align:center}
-  .era-chip .name{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
-  .era-chip .yrs{font-family:var(--mono);font-size:10px;color:var(--dim);margin-top:2px}
+  .era-chip .name{font-size:var(--fs-min);text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+  .era-chip .yrs{font-family:var(--mono);font-size:var(--fs-min);color:var(--dim);margin-top:2px}
   .era-chip.now{border-color:var(--ignite);background:#241a0c}
   .era-chip.now .name{color:var(--ignite)}
   .era-chip.past{opacity:.55}
@@ -346,7 +355,7 @@
   .tl-chip.next .tl-msg{color:var(--readout)}
   .tl-chip.ok .tl-msg{color:var(--ok)} .tl-chip.bad .tl-msg{color:var(--bad)} .tl-chip.info .tl-msg{color:var(--ink)} .tl-chip.note .tl-msg{color:var(--readout)} .tl-chip.rival .tl-msg{color:var(--ignite)}
   .tl-empty{align-self:center;color:var(--dim);font-size:11px;padding:4px 8px}
-  .tl-sep{flex:0 0 auto;align-self:center;color:var(--dim);font-size:9px;letter-spacing:1px;padding:0 1px}
+  .tl-sep{flex:0 0 auto;align-self:center;color:var(--dim);font-size:var(--fs-min);letter-spacing:1px;padding:0 1px}
   .log .rival{color:var(--ignite)}
 
   /* Modal */
@@ -436,6 +445,7 @@
     <main class="viewport">
 
   <div id="commandView">
+    <h1 class="scene-title">Mission Control</h1>
     <div class="card" id="execOverview"></div>
     <!-- ccLeft (advisor/objectives) promoted to the left rail in slice 4;
          ccRight (Alerts/News) relocated to the right rail in slice 3 -->
@@ -444,6 +454,7 @@
   </div>
 
   <div id="benchView" class="hidden">
+    <h1 class="scene-title">Vehicle Design</h1>
     <div class="bench-stage">
       <!-- #27/Presentation: the rocket is the bench centerpiece — moved out of the cramped
            right rail into a prominent sticky column at the center of the build stage. -->
@@ -498,6 +509,7 @@
        (showProgramsModal builds #ambitionCard/#programsCard on demand). -->
 
   <div id="rndView" class="hidden">
+    <h1 class="scene-title">Research Division</h1>
     <div class="card" id="eraCard"></div>
     <div class="card dombar-research">
       <h2><span class="dom-dot" style="background:var(--dom-research)"></span>Technology Tree — capital + time into capability</h2>
@@ -511,6 +523,7 @@
   </div>
 
   <div id="mapView" class="hidden">
+    <h1 class="scene-title">Solar System</h1>
     <div class="card dombar-exploration" id="mapCard">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
         <h2 style="margin:0"><span class="dom-dot" style="background:var(--dom-exploration)"></span>Solar System — click a body for its Δv profile</h2>
@@ -526,6 +539,7 @@
   <!-- Station Bench (framework only): a pan/zoom/pop-out 2D side-view module canvas, mirroring
        the Solar System scene's controls. Real station assembly/economy is fleshed out later. -->
   <div id="stationView" class="hidden">
+    <h1 class="scene-title">Station Operations</h1>
     <div class="card" id="stationCard">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
         <h2 style="margin:0">Station Bench — module assembly (preview)</h2>
@@ -4733,7 +4747,14 @@ function showSettingsMenu(){
 }
 // 'scene' = owns the center viewport; 'panel' = secondary view (future rail/modal home).
 function viewKind(t){ return isSceneTab(t) ? 'scene' : 'panel'; }
-function setTab(t){closeLiveModal();hubPanel='alerts';state.tab=t;render();} // nav resets the hub drill + closes any live modal (slice 5/6)
+function setTab(t){
+  closeLiveModal();
+  if(state.tab===t){hubPanel='alerts';render();return;}
+  const vp=document.querySelector('.viewport');
+  hubPanel='alerts';
+  if(vp){vp.style.opacity='0';setTimeout(()=>{state.tab=t;render();vp.style.opacity='1';},150);}
+  else{state.tab=t;render();}
+} // nav resets the hub drill + closes any live modal (slice 5/6)
 function addStage(){ if(state.stages.length>=3)return; state.stages.push({eng:firstUnlocked(),count:1,prop:2.0}); collapsedStages={}; render(); }
 function removeStage(i){ if(state.stages.length<=1)return; state.stages.splice(i,1); collapsedStages={}; render(); }
 // #27: reorder the stage stack (drag-to-reorder). Indices are validated; a no-op move
@@ -8287,7 +8308,7 @@ function siteBuildings(){
   for(const id in (state.rivalThreat||{})){ if(state.rivalThreat[id]>topScore){ topScore=state.rivalThreat[id]; topThreat=id; } }
   const threatTxt=topThreat?rivalThreatLabel(topScore):'quiet';
   return [
-    {key:'pad', icon:'🚀', name:'Launch Pad', tab:'bench',
+    {key:'pad', icon:'🚀', name:'Launch Pad', tab:'bench', labelDx:-104, // shift label left so it clears the rocket on the pad
      status: m?`${m.name} · ${buildMonths(m)+1+TEST_LEVELS[state.testLevel].months} mo to fly`:'no mission selected', planned:false},
     {key:'mission', icon:'📡', name:'Mission Control', tab:'missions', act:"openHubPanel('contracts')",
      status:`${availableContracts()} contract${availableContracts()===1?'':'s'} available`, planned:false},
@@ -8320,7 +8341,7 @@ const CC_SPOTS = {
   pad:       {x:84, y:28, w:13, h:42},  // gantry + rocket at the water's edge
   rivals:    {x:90, y:39, w:8,  h:9},   // distant rival pad on the horizon
 };
-function ccHotspots(){ const L=isoLayout(); return siteBuildings().map(b=>Object.assign({}, b, (L[b.key]&&L[b.key].rect)||{x:0,y:0,w:0,h:0})); }
+function ccHotspots(){ const L=isoLayout(); return siteBuildings().map(b=>Object.assign({}, b, (L[b.key]&&L[b.key].rect)||null)).filter(b=>b&&b.w>0); }
 /* ---------- #18 (scene): animated Cape Canaveral panorama on a 2D canvas ---------- */
 function ccRect(key,W,H){ const s=CC_SPOTS[key]||{x:0,y:0,w:0,h:0}; return {x:s.x/100*W, y:s.y/100*H, w:s.w/100*W, h:s.h/100*H}; }
 function ccWindows(ctx,x,y,w,h,cols,rows,t,seed,col){
@@ -8483,6 +8504,31 @@ function isoLayout(){
   return out;
 }
 function isoQuad(ctx, pts, fill, stroke){ ctx.beginPath(); pts.forEach((p,i)=>i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1])); ctx.closePath(); if(fill){ctx.fillStyle=fill;ctx.fill();} if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=0.7;ctx.stroke();} }
+const ISO_AV=2.85; // avenue grid-row (shared by the road painter and the vehicle router so traffic stays on the tarmac)
+// position along a polyline of grid waypoints at param p∈[0,1]; returns grid pos + travel direction
+function gridPath(wps,p){
+  let total=0; const segs=[];
+  for(let i=0;i<wps.length-1;i++){ const a=wps[i],b=wps[i+1],dx=b[0]-a[0],dy=b[1]-a[1],len=Math.hypot(dx,dy)||1e-6; segs.push({a,dx,dy,len}); total+=len; }
+  let d=p*total;
+  for(let i=0;i<segs.length;i++){ const s=segs[i]; if(d<=s.len||i===segs.length-1){ const f=Math.max(0,Math.min(1,d/s.len)); return {gx:s.a[0]+s.dx*f, gy:s.a[1]+s.dy*f, dgx:s.dx, dgy:s.dy}; } d-=s.len; }
+  const e=wps[wps.length-1]; return {gx:e[0],gy:e[1],dgx:0,dgy:0};
+}
+function pingpong(t,speed,phase){ const u=((t*speed+(phase||0))%2+2)%2; return u>1?2-u:u; } // 0→1→0 triangle, no teleport-jump
+// Crawlerway waypoints (grid space) — detours east of Orbital Ops (infra) so the crawler never clips the building.
+// Shared by the road painter and the crawler so the tarmac and the tracks always agree.
+function crawlerRouteGrid(){
+  const mfg=ISO_BUILDINGS.find(b=>b.key==='mfg'), pad=ISO_BUILDINGS.find(b=>b.key==='pad');
+  const bx=pad.gx+0.35; // bypass lane to the east of Orbital Ops
+  return [[mfg.gx,mfg.gy],[bx,mfg.gy+0.45],[bx,pad.gy-0.5],[pad.gx,pad.gy]];
+}
+// One-way delivery cycle: crawl VAB→pad, park (dwell) at the pad, then reset OFF-SCREEN (loading the next stack
+// back at the VAB) — so it always moves toward the pad and terminates there, never reversing across the scene.
+function crawlerCycle(t){ const CRAWL=26, DWELL=11, RESET=7, T=CRAWL+DWELL+RESET, u=((t%T)+T)%T;
+  if(u<CRAWL) return {p:u/CRAWL, show:true};        // moving to the pad
+  if(u<CRAWL+DWELL) return {p:1, show:true};         // parked at the pad
+  return {p:0, show:false}; }                         // resetting at the VAB (hidden)
+// a small standing ground-crew figure with a soft shadow
+function isoPerson(ctx,x,y,col){ ctx.fillStyle='rgba(0,0,0,0.18)'; ctx.beginPath(); ctx.ellipse(x,y+1.5,2.6,1.1,0,0,7); ctx.fill(); ctx.strokeStyle=col; ctx.lineWidth=1.6; ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x,y-4); ctx.stroke(); ctx.fillStyle=col; ctx.beginPath(); ctx.arc(x,y-5.4,1.5,0,7); ctx.fill(); }
 // shaded iso box centred at ground (sx,sy), footprint fw×fd tiles, height h px
 function isoBox(ctx,sx,sy,fw,fd,h,base){
   const ex=ISO_TW/2, ey=ISO_TH/2, a=fw/2, b=fd/2;
@@ -8552,7 +8598,14 @@ function drawIsoPad(ctx,sx,sy,b,t,rival){
   // the player's current vehicle, standing upright on the pad
   let spec=null; try{ const m=curMission(); spec={ stages: state.stages.map(s=>({prop:s.prop,count:s.count,dia:s.dia})), boosters: boosterSpec(), transferProp:(m&&m.profile&&m.modules&&m.modules.includes('transfer'))?state.transfer.prop:0, crewed:!!(m&&m.crew>0) }; }catch(e){}
   if(spec){ let shape=null; try{ shape=buildVehicleShape(spec); }catch(e){}
-    if(shape&&shape.segs.length){ const scale=Math.min((b.h*0.92)/(shape.totalH+16),(ISO_TW*0.5)/(shape.maxW*1.9));
+    if(shape&&shape.segs.length){
+      // PHYSICAL scale (fixed px per shape-unit) instead of fit-to-gantry, so a tiny first-launch rocket reads as
+      // tiny dwarfed by the gantry and bigger vehicles visibly grow toward (and eventually tower past) it.
+      const PAD_ROCKET_K=0.40; let scale=PAD_ROCKET_K;
+      const maxDrawH=b.h*1.18, minDrawH=11, maxDrawW=ISO_TW*0.46;
+      if(shape.totalH*scale>maxDrawH) scale=maxDrawH/shape.totalH; // a giant booster towers but won't overflow the scene
+      if(shape.maxW*scale>maxDrawW) scale=maxDrawW/shape.maxW;     // keep it on the pad footprint
+      if(shape.totalH*scale<minDrawH) scale=minDrawH/shape.totalH; // a sounding rocket stays a readable speck
       ctx.save(); ctx.translate(sx-ex*0.35, sy+2); drawVehicle(ctx, shape.segs, shape.nose, scale, 0, 0); ctx.restore(); } }
 }
 function drawIsoDishes(ctx,sx,sy,b,t){
@@ -8577,8 +8630,14 @@ function isoGreebles(ctx,box,h,key){
   const rnd=mulberry(hashStr(key||'x'));
   const A=box.up(box.Cb), B=box.up(box.Cr), Cc=box.up(box.Cf), D=box.up(box.Cl);
   const onTop=(u,v)=>{ const p1=[A[0]+(B[0]-A[0])*u,A[1]+(B[1]-A[1])*u], p2=[D[0]+(Cc[0]-D[0])*u,D[1]+(Cc[1]-D[1])*u]; return [p1[0]+(p2[0]-p1[0])*v, p1[1]+(p2[1]-p1[1])*v]; };
+  // rooftop AC/vent stacks drawn as tiny isometric diamonds so they sit on the surface
   const n=1+Math.floor(rnd()*3);
-  for(let i=0;i<n;i++){ const p=onTop(0.25+rnd()*0.5, 0.25+rnd()*0.5), w=3+rnd()*4; ctx.fillStyle='#3a464e'; ctx.fillRect(p[0]-w/2,p[1]-w*0.8,w,w*0.7); ctx.fillStyle='#2a343c'; ctx.fillRect(p[0]-w/2,p[1]-w*0.1,w,2); }
+  for(let i=0;i<n;i++){
+    const p=onTop(0.2+rnd()*0.6, 0.2+rnd()*0.6), s=2.5+rnd()*2.5;
+    isoQuad(ctx,[[p[0]-s,p[1]],[p[0],p[1]+s*0.5],[p[0],p[1]+s*0.5-s],[p[0]-s,p[1]-s]],'#2e3a42',null);
+    isoQuad(ctx,[[p[0],p[1]+s*0.5],[p[0]+s,p[1]],[p[0]+s,p[1]-s],[p[0],p[1]+s*0.5-s]],'#374650',null);
+    isoQuad(ctx,[[p[0]-s,p[1]-s],[p[0],p[1]+s*0.5-s],[p[0]+s,p[1]-s],[p[0],p[1]-s*1.5]],'#4a5860',null);
+  }
   // antenna array (1–3 masts)
   const masts=1+Math.floor(rnd()*3);
   for(let m=0;m<masts;m++){ const ap=onTop(0.35+rnd()*0.3, 0.35+rnd()*0.3), mh=10+rnd()*14; ctx.strokeStyle='#8794a0'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(ap[0],ap[1]); ctx.lineTo(ap[0],ap[1]-mh); ctx.stroke(); if(rnd()>0.5){ ctx.fillStyle='rgba(255,80,60,0.7)'; ctx.beginPath(); ctx.arc(ap[0],ap[1]-mh,1.6,0,7); ctx.fill(); } }
@@ -8589,17 +8648,111 @@ function isoGreebles(ctx,box,h,key){
 function isoScaffold(ctx,x,y,h){ ctx.strokeStyle='rgba(150,158,166,0.8)'; ctx.lineWidth=1; const w=11; ctx.strokeRect(x-w/2,y-h,w,h); for(let yy=y-h;yy<y-2;yy+=9){ ctx.beginPath(); ctx.moveTo(x-w/2,yy); ctx.lineTo(x+w/2,yy); ctx.stroke(); ctx.beginPath(); ctx.moveTo(x-w/2,yy); ctx.lineTo(x+w/2,yy+9); ctx.stroke(); } }
 // logical road network: a campus avenue along the front with a driveway to each building, plus the crawlerway
 function drawIsoRoads(ctx,L){
-  const AV=2.85; // avenue grid-row
+  const AV=ISO_AV; // avenue grid-row (shared with the vehicle router)
   roadSeg(ctx, isoX(-1.2,AV),isoY(-1.2,AV), isoX(6.8,AV),isoY(6.8,AV), 9, '#33383d'); // main avenue
   ctx.strokeStyle='rgba(220,200,120,0.18)'; ctx.setLineDash([8,10]); ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(isoX(-1.2,AV),isoY(-1.2,AV)); ctx.lineTo(isoX(6.8,AV),isoY(6.8,AV)); ctx.stroke(); ctx.setLineDash([]);
   for(const b of ISO_BUILDINGS){ if(b.type==='pad'||b.type==='rivalpad'||b.type==='dishes') continue; // driveway from each building to the avenue
     roadSeg(ctx, isoX(b.gx,b.gy),isoY(b.gx,b.gy), isoX(b.gx,AV),isoY(b.gx,AV), 5, '#2c3137'); }
-  if(L.mfg&&L.pad){ roadSeg(ctx,L.mfg.sx,L.mfg.sy,L.pad.sx,L.pad.sy,16,'#3a3f44'); // crawlerway VAB→pad
-    ctx.strokeStyle='rgba(220,200,120,0.22)'; ctx.setLineDash([7,9]); ctx.lineWidth=1.4; ctx.beginPath(); ctx.moveTo(L.mfg.sx,L.mfg.sy); ctx.lineTo(L.pad.sx,L.pad.sy); ctx.stroke(); ctx.setLineDash([]); }
+  if(L.mfg&&L.pad){ // crawlerway VAB→pad — multi-segment so it bends cleanly around Orbital Ops
+    const wp=crawlerRouteGrid().map(g=>[isoX(g[0],g[1]),isoY(g[0],g[1])]);
+    const poly=()=>{ ctx.beginPath(); wp.forEach((p,i)=>i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1])); };
+    ctx.strokeStyle='#3a3f44'; ctx.lineWidth=16; ctx.lineJoin='round'; ctx.lineCap='round'; poly(); ctx.stroke();
+    ctx.strokeStyle='rgba(220,200,120,0.22)'; ctx.setLineDash([7,9]); ctx.lineWidth=1.4; poly(); ctx.stroke(); ctx.setLineDash([]); ctx.lineCap='butt'; ctx.lineJoin='miter'; }
 }
-function drawIsoVehicles(ctx,t,L){
-  if(L.mfg&&L.pad){ const p=(t*0.04)%1, cx=L.mfg.sx+(L.pad.sx-L.mfg.sx)*p, cy=L.mfg.sy+(L.pad.sy-L.mfg.sy)*p; isoBox(ctx,cx,cy,0.32,0.52,9,'#4a463f'); } // crawler-transporter
-  if(L.rnd&&L.pad&&L.mfg){ const mid={x:(L.mfg.sx+L.pad.sx)/2,y:(L.mfg.sy+L.pad.sy)/2}, q=(t*0.11)%1, tx=L.rnd.sx+(mid.x-L.rnd.sx)*q, ty=L.rnd.sy+(mid.y-L.rnd.sy)*q; isoBox(ctx,tx,ty,0.16,0.28,6,'#5a5048'); } // truck
+// ---- Detailed space-center vehicles ----
+// footprint helper: long axis runs along the travel direction so vehicles look like they're driving down the road
+function vfoot(alongGx,len,wid){ return alongGx?{fw:len,fd:wid}:{fw:wid,fd:len}; }
+function vehCrawler(ctx,cx,cy,alongGx,t){
+  // Crawler-transporter: massive orange tracked platform carrying a rocket to the pad
+  const f=vfoot(alongGx,0.70,0.52), box=isoBox(ctx,cx,cy,f.fw,f.fd,10,'#2e3438');
+  // Orange tread marks on the two visible faces
+  ctx.strokeStyle='#c07828'; ctx.lineWidth=1.6;
+  for(let i=0;i<7;i++){ const u=(i+0.3)/7, x=box.Cl[0]+(box.Cf[0]-box.Cl[0])*u, y=box.Cl[1]+(box.Cf[1]-box.Cl[1])*u; ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x,y-10); ctx.stroke(); }
+  for(let i=0;i<7;i++){ const u=(i+0.3)/7, x=box.Cf[0]+(box.Cr[0]-box.Cf[0])*u, y=box.Cf[1]+(box.Cr[1]-box.Cf[1])*u; ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x,y-10); ctx.stroke(); }
+  // Platform deck (lighter, separate from box top)
+  isoQuad(ctx,[box.up(box.Cb),box.up(box.Cr),box.up(box.Cf),box.up(box.Cl)],'#4a5460','rgba(255,255,255,0.1)');
+  // Lattice tower — two orange uprights + cross-members
+  const top=box.up([cx,cy]);
+  ctx.strokeStyle='#d07828'; ctx.lineWidth=2.2;
+  ctx.beginPath(); ctx.moveTo(cx-5,top[1]); ctx.lineTo(cx-5,top[1]-42); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx+5,top[1]); ctx.lineTo(cx+5,top[1]-42); ctx.stroke();
+  ctx.strokeStyle='#e08c38'; ctx.lineWidth=0.9;
+  for(let yy=top[1]-42;yy<top[1];yy+=8){ ctx.beginPath(); ctx.moveTo(cx-5,yy); ctx.lineTo(cx+5,yy+4); ctx.stroke(); }
+  // Rocket body on the tower
+  const rb=top[1]-42;
+  ctx.fillStyle='#ccd6e0'; ctx.fillRect(cx-3,rb-26,6,26); // stage body
+  ctx.fillStyle='#8a9aaa'; ctx.fillRect(cx-3,rb-18,6,2); // interstage band
+  ctx.fillStyle='#dde6f0'; ctx.beginPath(); ctx.moveTo(cx,rb-36); ctx.lineTo(cx-3,rb-26); ctx.lineTo(cx+3,rb-26); ctx.closePath(); ctx.fill(); // nose cone
+  ctx.fillStyle='#7a5a34'; ctx.beginPath(); ctx.arc(cx,rb+1,4,Math.PI,0); ctx.fill(); // engine bell
+  const bl=Math.sin(t*4)>0?0.9:0.3; ctx.fillStyle=`rgba(255,80,50,${bl})`; ctx.beginPath(); ctx.arc(cx,top[1]-44,2.2,0,7); ctx.fill(); // beacon
+}
+function vehTanker(ctx,cx,cy,alongGx){
+  // LOX/LH2 cryogenic tanker: white elongated tank on a truck, blue stripe
+  const f=vfoot(alongGx,0.40,0.18), box=isoBox(ctx,cx,cy,f.fw,f.fd,12,'#d0dce6');
+  const sh=12*0.42;
+  isoQuad(ctx,[[box.Cl[0],box.Cl[1]-sh],[box.Cf[0],box.Cf[1]-sh],[box.Cf[0],box.Cf[1]-sh-3],[box.Cl[0],box.Cl[1]-sh-3]],'#1a4a8a',null);
+  isoQuad(ctx,[[box.Cf[0],box.Cf[1]-sh],[box.Cr[0],box.Cr[1]-sh],[box.Cr[0],box.Cr[1]-sh-3],[box.Cf[0],box.Cf[1]-sh-3]],'#1a4a8a',null);
+  ctx.fillStyle='rgba(140,195,235,0.28)'; ctx.beginPath(); ctx.ellipse(cx,box.up([cx,cy])[1],14,6,0,0,7); ctx.fill(); // cryo frost on tank top
+  isoBox(ctx,box.Cf[0]*0.6+cx*0.4, box.Cf[1]*0.6+cy*0.4, 0.09,0.10,15,'#1a2e44'); // cab at the front
+  ctx.fillStyle='#8090a0'; ctx.beginPath(); ctx.arc(box.Cb[0]*0.55+cx*0.45, box.Cb[1]*0.55+cy*0.45-6, 3,Math.PI,0); ctx.fill(); // rear valve dome
+}
+function vehFireTruck(ctx,cx,cy,alongGx,t){
+  // Emergency fire truck: red body, yellow stripe, ladder, flashing light
+  const f=vfoot(alongGx,0.32,0.17), box=isoBox(ctx,cx,cy,f.fw,f.fd,14,'#b02020');
+  const sh=14*0.38;
+  isoQuad(ctx,[[box.Cl[0],box.Cl[1]-sh],[box.Cf[0],box.Cf[1]-sh],[box.Cf[0],box.Cf[1]-sh-3.5],[box.Cl[0],box.Cl[1]-sh-3.5]],'#e8c020',null);
+  isoQuad(ctx,[[box.Cf[0],box.Cf[1]-sh],[box.Cr[0],box.Cr[1]-sh],[box.Cr[0],box.Cr[1]-sh-3.5],[box.Cf[0],box.Cf[1]-sh-3.5]],'#e8c020',null);
+  const top=box.up([cx,cy]);
+  ctx.strokeStyle='#707880'; ctx.lineWidth=1.2; // ladder rack
+  ctx.beginPath(); ctx.moveTo(top[0]-12,top[1]-1); ctx.lineTo(top[0]+12,top[1]-5); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(top[0]-12,top[1]-4); ctx.lineTo(top[0]+12,top[1]-8); ctx.stroke();
+  for(let i=0;i<5;i++){ const u=i/4, x=top[0]-12+u*24, y=top[1]-1-u*4; ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x,y-3); ctx.stroke(); }
+  const fl=Math.sin(t*7)>0?1:0.2; ctx.fillStyle=`rgba(255,90,50,${fl})`; ctx.beginPath(); ctx.arc(top[0]-5,top[1]-2,2,0,7); ctx.fill(); // flashers
+  ctx.fillStyle=`rgba(80,160,255,${1-fl})`; ctx.beginPath(); ctx.arc(top[0]+5,top[1]-3,2,0,7); ctx.fill();
+}
+function vehBus(ctx,cx,cy,alongGx){
+  // Crew transport bus: white body, blue window band, agency stripe
+  const f=vfoot(alongGx,0.42,0.19), box=isoBox(ctx,cx,cy,f.fw,f.fd,16,'#e2eaf2');
+  const wt=16*0.58, wb=16*0.78;
+  isoQuad(ctx,[[box.Cl[0],box.Cl[1]-wt],[box.Cf[0],box.Cf[1]-wt],[box.Cf[0],box.Cf[1]-wb],[box.Cl[0],box.Cl[1]-wb]],'#1e3c70',null);
+  isoQuad(ctx,[[box.Cf[0],box.Cf[1]-wt],[box.Cr[0],box.Cr[1]-wt],[box.Cr[0],box.Cr[1]-wb],[box.Cf[0],box.Cf[1]-wb]],'#1e3c70',null);
+  ctx.fillStyle='rgba(190,220,245,0.75)'; // window panes
+  for(let i=0;i<5;i++){ const u=(i+0.5)/5, x=box.Cl[0]+(box.Cf[0]-box.Cl[0])*u, y=box.Cl[1]+(box.Cf[1]-box.Cl[1])*u-(wt+wb)/2; ctx.beginPath(); ctx.arc(x,y,2.0,0,7); ctx.fill(); }
+  for(let i=0;i<5;i++){ const u=(i+0.5)/5, x=box.Cf[0]+(box.Cr[0]-box.Cf[0])*u, y=box.Cf[1]+(box.Cr[1]-box.Cf[1])*u-(wt+wb)/2; ctx.beginPath(); ctx.arc(x,y,2.0,0,7); ctx.fill(); }
+  const st=16*0.52;
+  isoQuad(ctx,[[box.Cl[0],box.Cl[1]-st],[box.Cf[0],box.Cf[1]-st],[box.Cf[0],box.Cf[1]-st-2],[box.Cl[0],box.Cl[1]-st-2]],'#c02828',null); // agency stripe
+}
+// Build depth-sortable vehicle render items that follow the actual road network in grid space.
+function isoVehicleItems(ctx,t,L){
+  const items=[], G=k=>L[k]&&L[k].def;
+  const add=(s,fn)=>{ const cx=isoX(s.gx,s.gy), cy=isoY(s.gx,s.gy), alongGx=Math.abs(s.dgx)>=Math.abs(s.dgy); items.push({d:s.gx+s.gy, draw:()=>fn(cx,cy,alongGx)}); };
+  const mfg=G('mfg'), pad=G('pad'), prod=G('prod'), mission=G('mission'), personnel=G('personnel'), infra=G('infra');
+  // 1. Crawler-transporter — one-way VAB→pad delivery along the bypass crawlerway, terminating (parking) at the pad
+  if(mfg&&pad){ const cc=crawlerCycle(t); if(cc.show) add(gridPath(crawlerRouteGrid(), cc.p), (cx,cy,a)=>vehCrawler(ctx,cx,cy,a,t)); }
+  // 2. LOX tanker — prod shed → mission control, via its driveway, the avenue, and mission's driveway
+  if(prod&&mission) add(gridPath([[prod.gx,prod.gy],[prod.gx,ISO_AV],[mission.gx,ISO_AV],[mission.gx,mission.gy]], pingpong(t,0.05,0.4)), (cx,cy,a)=>vehTanker(ctx,cx,cy,a));
+  // 3. Crew bus — personnel → VAB, same driveway/avenue routing
+  if(personnel&&mfg) add(gridPath([[personnel.gx,personnel.gy],[personnel.gx,ISO_AV],[mfg.gx,ISO_AV],[mfg.gx,mfg.gy]], pingpong(t,0.06,0.9)), (cx,cy,a)=>vehBus(ctx,cx,cy,a));
+  // 4. Fire truck — fast patrol up and down the eastern avenue (standby near the pad)
+  if(mission&&infra) add(gridPath([[mission.gx,ISO_AV],[infra.gx,ISO_AV]], pingpong(t,0.12,0.2)), (cx,cy,a)=>vehFireTruck(ctx,cx,cy,a,t));
+  // 5. Ground crew — small standing figures just in front of the busiest buildings
+  ['pad','mfg','mission'].forEach(k=>{ const e=L[k]; if(!e) return; const b=e.def, wr=mulberry(hashStr('crew'+k)); const pts=[]; for(let i=0;i<4;i++) pts.push([(wr()-0.5)*34,(wr()*0.5)*16+4]);
+    items.push({d:b.gx+b.gy+0.06, draw:()=>pts.forEach(o=>isoPerson(ctx,e.sx+o[0],e.sy+o[1],'rgba(208,218,225,0.85)'))}); });
+  return items;
+}
+function drawIsoClouds(ctx,W,H,t){
+  const rnd=mulberry(334455);
+  ctx.save(); ctx.globalCompositeOperation='screen';
+  for(let i=0;i<6;i++){
+    const baseX=rnd()*W*1.1-W*0.05, cy=(rnd()*0.22+0.03)*H;
+    const x=((baseX+t*(8+rnd()*6))%(W*1.15))-W*0.07;
+    const r=28+rnd()*44, alpha=0.055+rnd()*0.055;
+    ctx.fillStyle=`rgba(180,210,230,${alpha})`;
+    ctx.beginPath(); ctx.ellipse(x,cy,r,r*0.32,0,0,7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(x-r*0.35,cy-r*0.08,r*0.65,r*0.24,0,0,7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(x+r*0.38,cy-r*0.06,r*0.55,r*0.20,0,0,7); ctx.fill();
+  }
+  ctx.restore();
 }
 function drawIsoBoat(ctx,t){ const p=(t*0.025)%1, x=isoX(8.6+p*1.6,1+p*3), y=isoY(8.6+p*1.6,1+p*3);
   ctx.fillStyle='#cdd3d8'; isoQuad(ctx,[[x-9,y],[x+9,y],[x+4,y-5],[x-4,y-5]],'#cdd3d8','rgba(0,0,0,0.3)'); ctx.fillStyle='#8a949d'; ctx.fillRect(x-1,y-11,2,6); }
@@ -8649,18 +8802,21 @@ function drawIsoGround(ctx,W,H,t){
   for(let gx=-1;gx<=8;gx++){ ctx.beginPath(); ctx.moveTo(isoX(gx,-2),isoY(gx,-2)); ctx.lineTo(isoX(gx,6.5),isoY(gx,6.5)); ctx.stroke(); }
   for(let gy=-1;gy<=6;gy++){ ctx.beginPath(); ctx.moveTo(isoX(-2,gy),isoY(-2,gy)); ctx.lineTo(isoX(7.5,gy),isoY(7.5,gy)); ctx.stroke(); }
 }
-function drawIsoGrowth(ctx,W,H,t,L){
-  let sc; try{ sc=siteScale(); }catch(e){ return; }
-  // extra launch pads behind the main pad along gy
+// Depth-sortable growth items (extra pads, ops buildings) so they occlude/are-occluded correctly with traffic.
+function isoGrowthItems(ctx,t,L){
+  const items=[]; let sc; try{ sc=siteScale(); }catch(e){ return items; }
+  // extra launch pads behind the main pad along gx
   const pad=ISO_BUILDINGS.find(x=>x.key==='pad');
   for(let i=1;i<sc.pads;i++){ const gx=pad.gx-1-i*0.9, gy=pad.gy-0.6; if(gx<2) break; const sx=isoX(gx,gy), sy=isoY(gx,gy);
-    ctx.strokeStyle='#7a5532'; ctx.lineWidth=1.6; ctx.strokeRect(sx-5, sy-70, 10, 70);
-    ctx.strokeStyle='rgba(170,115,65,0.4)'; ctx.lineWidth=0.8; for(let yy=sy-70;yy<sy;yy+=10){ ctx.beginPath(); ctx.moveTo(sx-5,yy); ctx.lineTo(sx+5,yy+10); ctx.stroke(); } }
+    items.push({d:gx+gy, draw:()=>{ ctx.strokeStyle='#7a5532'; ctx.lineWidth=1.6; ctx.strokeRect(sx-5, sy-70, 10, 70);
+      ctx.strokeStyle='rgba(170,115,65,0.4)'; ctx.lineWidth=0.8; for(let yy=sy-70;yy<sy;yy+=10){ ctx.beginPath(); ctx.moveTo(sx-5,yy); ctx.lineTo(sx+5,yy+10); ctx.stroke(); } }}); }
   // ops buildings in the front-left as facilities come online
   const ops=[]; if(sc.leoOps) ops.push(['LEO','#5aa9e0']); if(sc.lunarOps) ops.push(['LUNAR','#b9c0c7']); if(sc.marsOps) ops.push(['MARS','#c1532b']);
-  ops.forEach((o,i)=>{ const gx=0.5+i*0.1, gy=4+i*0.9; const sx=isoX(gx,gy), sy=isoY(gx,gy); const box=isoBox(ctx,sx,sy,1,1,42,'#1a232a');
-    ctx.fillStyle=o[1]; ctx.beginPath(); ctx.arc(box.up([sx,sy])[0],box.up([sx,sy])[1]-3,2.4,0,7); ctx.fill();
-    ctx.fillStyle=o[1]; ctx.font='8px ui-monospace,monospace'; ctx.textAlign='center'; ctx.fillText(o[0], sx, sy+14); ctx.textAlign='left'; });
+  ops.forEach((o,i)=>{ const gx=0.5+i*0.1, gy=4+i*0.9; const sx=isoX(gx,gy), sy=isoY(gx,gy);
+    items.push({d:gx+gy, draw:()=>{ const box=isoBox(ctx,sx,sy,1,1,42,'#1a232a');
+      ctx.fillStyle=o[1]; ctx.beginPath(); ctx.arc(box.up([sx,sy])[0],box.up([sx,sy])[1]-3,2.4,0,7); ctx.fill();
+      ctx.fillStyle=o[1]; ctx.font='8px ui-monospace,monospace'; ctx.textAlign='center'; ctx.fillText(o[0], sx, sy+14); ctx.textAlign='left'; }}); });
+  return items;
 }
 function drawCape(cv, t){
   const ctx=cv && cv.getContext && cv.getContext('2d'); if(!ctx) return;
@@ -8670,6 +8826,7 @@ function drawCape(cv, t){
   for(let i=0;i<70;i++){ const sx=(i*137.5)%W, sy=(i*61.7)%(H*0.4); const tw=Math.abs(Math.sin(t*1.3+i)); ctx.fillStyle=`rgba(220,230,255,${0.1+0.22*tw})`; ctx.fillRect(sx,sy,1.2,1.2); }
   const sunX=W*0.92, sunY=H*0.07; const sg=ctx.createRadialGradient(sunX,sunY,2,sunX,sunY,70); sg.addColorStop(0,'rgba(255,230,180,0.7)'); sg.addColorStop(0.4,'rgba(255,180,90,0.32)'); sg.addColorStop(1,'rgba(255,150,60,0)'); ctx.fillStyle=sg; ctx.beginPath(); ctx.arc(sunX,sunY,70,0,7); ctx.fill();
   ctx.fillStyle='#ffd9a0'; ctx.beginPath(); ctx.arc(sunX,sunY,12,0,7); ctx.fill();
+  drawIsoClouds(ctx,W,H,t);
   drawIsoGround(ctx,W,H,t);
   const L=isoLayout();
   drawIsoBoat(ctx,t);
@@ -8677,10 +8834,16 @@ function drawCape(cv, t){
   drawIsoRoads(ctx,L);
   drawIsoDecor(ctx,t);
   const list=ISO_BUILDINGS.slice().sort((a,b)=>(a.gx+a.gy)-(b.gx+b.gy));
+  // shadows are flat on the ground — draw them all first, beneath every standing object
   for(const b of list){ const e=L[b.key]; if(e) isoShadow(ctx,e.sx,e.sy,b.fw,b.fd); }
-  list.forEach(b=>drawIsoBuilding(ctx,L[b.key],t));
-  drawIsoGrowth(ctx,W,H,t,L);
-  drawIsoVehicles(ctx,t,L);
+  // unified painter's-algorithm pass: buildings, growth, and road traffic share one depth (gx+gy) sort,
+  // so a vehicle is correctly occluded by anything in front of it and draws over anything behind it.
+  const items=[];
+  for(const b of list){ const e=L[b.key]; if(e) items.push({d:b.gx+b.gy, draw:()=>drawIsoBuilding(ctx,e,t)}); }
+  isoGrowthItems(ctx,t,L).forEach(it=>items.push(it));
+  isoVehicleItems(ctx,t,L).forEach(it=>items.push(it));
+  items.sort((a,b)=>a.d-b.d);
+  items.forEach(it=>it.draw());
 }
 let ccAnim=null, ccT0=0, ccPhaserSmoke=false, ccPhaserDetail=false;
 function ccNow(){ return (typeof performance!=='undefined'&&performance.now)?performance.now():Date.now(); }
@@ -8902,10 +9065,11 @@ function renderCCCenter(){
     const planned=b.planned||!b.tab;
     const onclick=(!planned&&b.tab)?` onclick="${b.act||`setTab('${b.tab}')`}"`:''; // slice 5: a building may define a custom act (e.g. the Mission Control contracts drill)
     const style=`left:${b.x}%;top:${b.y}%;width:${b.w}%;height:${b.h}%`;
+    const lx=b.labelDx?` style="transform:translateX(${b.labelDx}px)"`:''; // nudge a label clear of scene art (e.g. the pad rocket)
     return `<div class="ccspot${planned?' planned':''}" style="${style}"${onclick} title="${b.name} — ${b.status}">
-      ${b.planned?'<span class="pill lock">planned</span>':''}
-      <span class="nm">${b.name}</span>
-      <span class="st">${b.status}</span>
+      ${b.planned?`<span class="pill lock"${lx}>planned</span>`:''}
+      <span class="nm"${lx}>${b.name}</span>
+      <span class="st"${lx}>${b.status}</span>
     </div>`;
   }).join('');
   if(phaserOK()){
@@ -11387,8 +11551,8 @@ function renderDivisions(){
     const chk=canTrainDivision(d.id), cost=divisionTrainCost(d.id), maxed=s.skill>=1;
     const isActive=activeDiv===d.id;
     const mColor=s.morale>=70?'var(--ok)':s.morale>=40?'var(--warn)':'var(--bad)';
-    const trackChips=d.tracks.map(t=>{const tr=TRACKS.find(x=>x.key===t)||{};return `<span class="pill" style="color:${tr.color};border-color:${tr.color};font-size:10px">${tr.label||t}</span>`;}).join(' ');
-    const bar=(label,val,col)=>`<div style="display:flex;align-items:center;gap:8px;margin-top:4px"><span style="font-size:10px;color:var(--dim);width:46px">${label}</span><div style="flex:1;height:5px;background:var(--panel2);border-radius:3px;overflow:hidden"><div style="height:100%;width:${Math.round(val)}%;background:${col}"></div></div><span style="font-family:var(--mono);font-size:10px;color:${col};width:30px;text-align:right">${Math.round(val)}</span></div>`;
+    const trackChips=d.tracks.map(t=>{const tr=TRACKS.find(x=>x.key===t)||{};return `<span class="pill" style="color:${tr.color};border-color:${tr.color}">${tr.label||t}</span>`;}).join(' ');
+    const bar=(label,val,col)=>`<div style="display:flex;align-items:center;gap:8px;margin-top:4px"><span style="font-size:11px;color:var(--dim);width:46px">${label}</span><div style="flex:1;height:5px;background:var(--panel2);border-radius:3px;overflow:hidden"><div style="height:100%;width:${Math.round(val)}%;background:${col}"></div></div><span style="font-family:var(--mono);font-size:11px;color:${col};width:30px;text-align:right">${Math.round(val)}</span></div>`;
     return `<div class="card" style="background:var(--panel2);margin-bottom:10px;${isActive?'border-color:var(--ignite)':''}">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
         <div class="mission-name" style="font-size:14px;margin:0">${d.name} ${isActive?'<span class="pill active" style="font-size:10px">researching</span>':''}</div>
