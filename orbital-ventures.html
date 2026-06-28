@@ -255,7 +255,7 @@
   .vehpop-btn{position:absolute;top:8px;right:8px;z-index:2;background:var(--panel2);border:1px solid var(--line);color:var(--muted);
     border-radius:6px;cursor:pointer;font-size:13px;line-height:1;padding:4px 7px}
   .vehpop-btn:hover{border-color:var(--ignite);color:var(--ignite)}
-  .vehpop-scrim{position:fixed;inset:0;z-index:120;background:rgba(6,9,13,0.94);display:flex;flex-direction:column}
+  .vehpop-scrim{position:fixed;inset:0;z-index:120;background:rgba(6,9,13,0.94);display:flex;flex-direction:column;opacity:1;transition:opacity .15s ease}
   .vehpop-bar{display:flex;align-items:center;gap:14px;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--bg)}
   .vehpop-bar .vehpop-launchhost{flex:1;max-width:560px}
   .vehpop-title{font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ink);white-space:nowrap}
@@ -4736,12 +4736,14 @@ function autoAdvanceMission(){
 // UI Consolidation slice 2: the center-viewport scene registry. These four tabs are full
 // "scenes" that own the center stage; the remaining tabs are "panels" headed for the rails /
 // modals in later slices. Mission Playback is a contextual center takeover (already an overlay).
+// Tab/number-key order follows the natural build→fly flow: Vehicle → Station → Solar System →
+// Control Center, with R&D last. (Rail nav order is independent.)
 const SCENES = {
-  command: { tab:'command', label:'Command Center', icon:'⌂' },
   bench:   { tab:'bench',   label:'Design Bench',   icon:'✎' },
-  rnd:     { tab:'rnd',     label:'R&D',            icon:'⚛' },
-  map:     { tab:'map',     label:'Solar System',   icon:'☉' },
   station: { tab:'station', label:'Station Bench',   icon:'⬡' },
+  map:     { tab:'map',     label:'Solar System',   icon:'☉' },
+  command: { tab:'command', label:'Command Center', icon:'⌂' },
+  rnd:     { tab:'rnd',     label:'R&D',            icon:'⚛' },
 };
 const SCENE_TABS = Object.keys(SCENES);
 // Retired tab ids → where they now live, so legacy saves / stray setTab calls resolve.
@@ -9171,7 +9173,10 @@ function renderCCCenter(){
     // persistent Phaser host: build the scaffold once, then only refresh the overlay
     if(!$('ccSceneHost')){
       $('ccCenter').innerHTML=`<div class="card">
-        <div class="cc-panel-h">Cape Canaveral — click a building to drill in</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+          <div class="cc-panel-h" style="margin:0">Cape Canaveral — click a building to drill in</div>
+          <button class="btn ghost" onclick="openCCPopout()" title="Pop out — large pan/zoom view + agency summary (Esc/Enter to close)" style="font-size:11px;padding:3px 9px">⤢ Pop out</button>
+        </div>
         <div class="ccscene-wrap" id="ccSceneWrap" style="aspect-ratio:1200/860">
           <div id="ccZoom">
             <div id="ccSceneHost" class="ccscene" style="position:absolute;inset:0;padding:0"></div>
@@ -9190,7 +9195,10 @@ function renderCCCenter(){
   }
   // fallback (no Phaser): the original 2D canvas + RAF loop
   $('ccCenter').innerHTML=`<div class="card">
-    <div class="cc-panel-h">Cape Canaveral — click a building to drill in</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+      <div class="cc-panel-h" style="margin:0">Cape Canaveral — click a building to drill in</div>
+      <button class="btn ghost" onclick="openCCPopout()" title="Pop out — large pan/zoom view + agency summary (Esc/Enter to close)" style="font-size:11px;padding:3px 9px">⤢ Pop out</button>
+    </div>
     <div class="ccscene-wrap">
       <canvas id="ccScene" class="ccscene" width="900" height="420"></canvas>
       ${spots}
@@ -10026,8 +10034,19 @@ function vehPopStatsHTML(){
     ${row('Launch cost', fM(v.launchCost))}
     ${buildT!=null?row('Build time', `${buildT} mo`):''}`;
 }
+// Shared pop-out fade: every overlay fades in on open and out on close (150ms, matching scene transitions).
+function fadeInScrim(ov){ if(!ov) return; ov.style.opacity='0'; requestAnimationFrame(()=>{ if(ov) ov.style.opacity='1'; }); }
+function removeScrim(id){ const ov=$(id); if(!ov||!ov.parentNode) return; ov.id=''; ov.style.opacity='0'; setTimeout(()=>{ if(ov.parentNode) ov.parentNode.removeChild(ov); },170); }
+// only one pop-out is open at a time — opening any closes the rest (they cross-fade)
+function closeOtherPopouts(keep){
+  if(keep!=='veh' && vehPopoutOpen) closeVehPopout();
+  if(keep!=='stn' && stnPopoutOpen) closeStationPopout();
+  if(keep!=='map' && mapPopoutOpen) closeMapPopout();
+  if(keep!=='earth' && earthPopoutOpen) closeEarthPopout();
+  if(keep!=='cc' && ccPopoutOpen) closeCCPopout();
+}
 function openVehPopout(){
-  if(vehPopoutOpen) return; vehPopoutOpen=true; vpZoom=1; vpPanX=0; vpPanY=0;
+  if(vehPopoutOpen) return; vehPopoutOpen=true; closeOtherPopouts('veh'); vpZoom=1; vpPanX=0; vpPanY=0;
   let title='Vehicle'; try{ title=(curLivery().name||'').trim() || (curMission()?curMission().name:'Vehicle'); }catch(e){}
   const ov=document.createElement('div'); ov.className='vehpop-scrim'; ov.id='vehPopout';
   ov.innerHTML=`<div class="vehpop-bar">
@@ -10040,7 +10059,7 @@ function openVehPopout(){
       <div class="vehpop-stage" id="vehPopStage"><canvas id="vehPopCanvas"></canvas></div>
       <aside class="vehpop-stats" id="vehPopStats"></aside>
     </div>`;
-  document.body.appendChild(ov);
+  document.body.appendChild(ov); fadeInScrim(ov);
   // move the LIVE Build/Launch node into the bar, remembering its home so we can restore it exactly
   const host=$('benchLaunch');
   if(host){ _vpLaunchHome={parent:host.parentNode, next:host.nextSibling}; $('vehPopLaunchHost').appendChild(host); }
@@ -10055,7 +10074,7 @@ function closeVehPopout(){
   const host=$('benchLaunch');
   if(host && _vpLaunchHome && _vpLaunchHome.parent){ _vpLaunchHome.parent.insertBefore(host, _vpLaunchHome.next); } // back to its bench spot
   _vpLaunchHome=null;
-  const ov=$('vehPopout'); if(ov && ov.parentNode) ov.parentNode.removeChild(ov);
+  removeScrim('vehPopout');
 }
 function initVehPopZoom(){
   const stage=$('vehPopStage'); if(!stage) return;
@@ -10095,7 +10114,7 @@ function initSvgPopZoom(stageId, zoomId, st){
 }
 let stnPopoutOpen=false, stnPop={z:1,x:0,y:0};
 function openStationPopout(){
-  if(stnPopoutOpen) return; stnPopoutOpen=true; stnPop={z:1,x:0,y:0};
+  if(stnPopoutOpen) return; stnPopoutOpen=true; closeOtherPopouts('stn'); stnPop={z:1,x:0,y:0};
   let mod; try{ mod=stationActiveModule(); }catch(e){ stnPopoutOpen=false; return; }
   const ov=document.createElement('div'); ov.className='vehpop-scrim'; ov.id='stnPopout';
   ov.innerHTML=`<div class="vehpop-bar">
@@ -10107,11 +10126,11 @@ function openStationPopout(){
       <div class="vehpop-stage" id="stnPopStage"><div id="stnPopZoom" style="position:absolute;inset:0;transform-origin:0 0;display:flex;align-items:center;justify-content:center">${renderStationSVG(900,560,mod)}</div></div>
       <aside class="vehpop-stats" id="stnPopStats"></aside>
     </div>`;
-  document.body.appendChild(ov);
+  document.body.appendChild(ov); fadeInScrim(ov);
   const sp=$('stnPopStats'); if(sp) sp.innerHTML=stationStatsHTML(mod);
   initSvgPopZoom('stnPopStage','stnPopZoom',stnPop);
 }
-function closeStationPopout(){ if(!stnPopoutOpen) return; stnPopoutOpen=false; const ov=$('stnPopout'); if(ov&&ov.parentNode) ov.parentNode.removeChild(ov); }
+function closeStationPopout(){ if(!stnPopoutOpen) return; stnPopoutOpen=false; removeScrim('stnPopout'); }
 /* ---------- Solar System pop-out viewer ----------
    Same overlay chrome: the interactive system map (clickable bodies, vector-crisp) on the left with
    grab-to-pan + wheel-to-zoom, and the selected body's Δv profile + mission planning on the right.
@@ -10122,7 +10141,7 @@ function refreshMapPopout(){
   const inf=$('mapPopInfo'); if(inf) inf.innerHTML=bodyCardHTML();
 }
 function openMapPopout(){
-  if(mapPopoutOpen) return; mapPopoutOpen=true; mapPop={z:1,x:0,y:0};
+  if(mapPopoutOpen) return; mapPopoutOpen=true; closeOtherPopouts('map'); mapPop={z:1,x:0,y:0};
   state.selectedBody='earth'; state.mapZoom=null; // default selection on Earth, full-system view
   const ov=document.createElement('div'); ov.className='vehpop-scrim'; ov.id='mapPopout';
   ov.innerHTML=`<div class="vehpop-bar">
@@ -10134,11 +10153,11 @@ function openMapPopout(){
       <div class="vehpop-stage" id="mapPopStage"><div id="mapPopZoom" style="position:absolute;inset:0;transform-origin:0 0;display:flex;align-items:center;justify-content:center"></div></div>
       <aside class="vehpop-stats" id="mapPopInfo"></aside>
     </div>`;
-  document.body.appendChild(ov);
+  document.body.appendChild(ov); fadeInScrim(ov);
   refreshMapPopout();
   initSvgPopZoom('mapPopStage','mapPopZoom',mapPop);
 }
-function closeMapPopout(){ if(!mapPopoutOpen) return; mapPopoutOpen=false; const ov=$('mapPopout'); if(ov&&ov.parentNode) ov.parentNode.removeChild(ov); }
+function closeMapPopout(){ if(!mapPopoutOpen) return; mapPopoutOpen=false; removeScrim('mapPopout'); }
 /* ---------- Live Earth pop-out ----------
    A dedicated, animated globe: a rotating surface (coarse but recognisable continents over ocean) with a
    moving day/night terminator, on its own full-screen overlay with grab-pan/wheel-zoom. drawEarthOrbits()
@@ -10238,7 +10257,7 @@ function earthLoop(){
 }
 function openEarthPopout(){
   if(earthPopoutOpen) return;
-  if(vehPopoutOpen) closeVehPopout(); if(stnPopoutOpen) closeStationPopout(); if(mapPopoutOpen) closeMapPopout();
+  closeOtherPopouts('earth');
   earthPopoutOpen=true; earthPop={z:1,x:0,y:0}; earthT0=ccNow(); state.selectedBody='earth';
   const ov=document.createElement('div'); ov.className='vehpop-scrim'; ov.id='earthPopout';
   ov.innerHTML=`<div class="vehpop-bar">
@@ -10250,31 +10269,102 @@ function openEarthPopout(){
       <div class="vehpop-stage" id="earthPopStage"><canvas id="earthPopCanvas"></canvas></div>
       <aside class="vehpop-stats" id="earthPopInfo"></aside>
     </div>`;
-  document.body.appendChild(ov);
+  document.body.appendChild(ov); fadeInScrim(ov);
   const inf=$('earthPopInfo'); if(inf) inf.innerHTML=earthPopInfoHTML();
   initEarthPopZoom();
   earthAnim=requestAnimationFrame(earthLoop);
 }
-function closeEarthPopout(){ if(!earthPopoutOpen) return; earthPopoutOpen=false; if(earthAnim){ cancelAnimationFrame(earthAnim); earthAnim=null; } const ov=$('earthPopout'); if(ov&&ov.parentNode) ov.parentNode.removeChild(ov); }
-function initEarthPopZoom(){
-  const stage=$('earthPopStage'); if(!stage) return;
+function closeEarthPopout(){ if(!earthPopoutOpen) return; earthPopoutOpen=false; if(earthAnim){ cancelAnimationFrame(earthAnim); earthAnim=null; } removeScrim('earthPopout'); }
+// Generic canvas pop-out pan/zoom (the RAF loop reads the {z,x,y} state each frame; no redraw call needed).
+// Drag only begins past a threshold so clicks can still reach future interactive overlays.
+function initCanvasPopZoom(stageId, st){
+  const stage=$(stageId); if(!stage) return;
   let down=false, drag=false, lx=0, ly=0, sx=0, sy=0, pid=null;
-  stage.addEventListener('wheel',e=>{ e.preventDefault(); const r=stage.getBoundingClientRect(), ox=e.clientX-r.left-r.width/2, oy=e.clientY-r.top-r.height/2, z0=earthPop.z;
-    earthPop.z=Math.min(8,Math.max(0.5, earthPop.z*(e.deltaY<0?1.12:0.89)));
-    earthPop.x=ox-(ox-earthPop.x)*(earthPop.z/z0); earthPop.y=oy-(oy-earthPop.y)*(earthPop.z/z0); },{passive:false});
+  stage.addEventListener('wheel',e=>{ e.preventDefault(); const r=stage.getBoundingClientRect(), ox=e.clientX-r.left-r.width/2, oy=e.clientY-r.top-r.height/2, z0=st.z;
+    st.z=Math.min(8,Math.max(0.5, st.z*(e.deltaY<0?1.12:0.89)));
+    st.x=ox-(ox-st.x)*(st.z/z0); st.y=oy-(oy-st.y)*(st.z/z0); },{passive:false});
   stage.addEventListener('pointerdown',e=>{ down=true; drag=false; lx=sx=e.clientX; ly=sy=e.clientY; pid=e.pointerId; });
   stage.addEventListener('pointermove',e=>{ if(!down) return;
     if(!drag){ if(Math.abs(e.clientX-sx)+Math.abs(e.clientY-sy)<5) return; drag=true; stage.classList.add('grabbing'); try{stage.setPointerCapture(pid);}catch(_){} }
-    earthPop.x+=e.clientX-lx; earthPop.y+=e.clientY-ly; lx=e.clientX; ly=e.clientY; });
+    st.x+=e.clientX-lx; st.y+=e.clientY-ly; lx=e.clientX; ly=e.clientY; });
   const end=()=>{ down=false; drag=false; stage.classList.remove('grabbing'); };
   stage.addEventListener('pointerup',end); stage.addEventListener('pointercancel',end);
-  stage.addEventListener('dblclick',()=>{ earthPop={z:1,x:0,y:0}; });
+  stage.addEventListener('dblclick',()=>{ st.z=1; st.x=0; st.y=0; });
 }
-// Esc/Enter closes whichever pop-out is open — capture phase so it beats the scene-nav + launch key handlers.
+function initEarthPopZoom(){ initCanvasPopZoom('earthPopStage', earthPop); }
+/* ---------- Command Center pop-out ----------
+   The animated Cape Canaveral scene blown up to full screen (drawn off-screen at native res, then
+   blitted with grab-pan/wheel-zoom), with the agency summary on the right — same chrome as the others. */
+let ccPopoutOpen=false, ccPopAnim=null, ccPopT0=0, ccPop={z:1,x:0,y:0}, _ccOff=null;
+function ccPopInfoHTML(){
+  let s; try{ s=commandSummary(); }catch(e){ return ''; }
+  const row=(l,v,c)=>`<div class="vps-row"><span class="lbl">${l}</span><span class="val"${c?` style="color:${c}"`:''}>${v}</span></div>`;
+  return `<h4>${state.company}</h4>
+    <div class="dim" style="font-size:12px;margin-bottom:6px">${dateStr()} · Era ${s.eraIdx}/${s.eraTotal} · ${s.era}</div>
+    <h4>Finance</h4>
+    ${row('Capital', fM(s.capital))}
+    ${row('Monthly net', (s.net>=0?'+':'')+fM(s.net)+'/mo', s.net>=0?'var(--ok)':'var(--bad)')}
+    ${row('Income', '+'+fM(s.income))}
+    ${row('Overhead', '−'+fM(s.overhead))}
+    ${row('Payroll', '−'+fM(s.payroll))}
+    <h4>Standing</h4>
+    ${row('Reputation', fI(s.rep))}
+    ${row('Science', s.science)}
+    ${row('Public support', s.support+'%', s.moodColor)}
+    ${row('Flights', s.flights+(s.successRate!=null?` · ${s.successRate}%`:''))}
+    <h4>Facility</h4>
+    <div class="dim" style="font-size:12px">Cape Canaveral. Click a building in the Command Center scene to drill into Manufacturing, R&amp;D, Mission Control, and more.</div>`;
+}
+function ccPopLoop(){
+  if(!ccPopoutOpen){ ccPopAnim=null; return; }
+  const cv=$('ccPopCanvas'), stage=$('ccPopStage');
+  if(cv&&stage){ const w=stage.clientWidth, h=stage.clientHeight;
+    if(w>1&&h>1){ if(cv.width!==w||cv.height!==h){ cv.width=w; cv.height=h; }
+      if(!_ccOff){ _ccOff=document.createElement('canvas'); _ccOff.width=CAPE_W; _ccOff.height=CAPE_H; }
+      try{ drawCape(_ccOff,(ccNow()-ccPopT0)/1000); }catch(e){}
+      const ctx=cv.getContext('2d');
+      if(ctx){ ctx.setTransform(1,0,0,1,0,0); ctx.fillStyle='#05070d'; ctx.fillRect(0,0,w,h);
+        const fit=Math.min(w/CAPE_W,h/CAPE_H), s=fit*ccPop.z, dw=CAPE_W*s, dh=CAPE_H*s;
+        try{ ctx.drawImage(_ccOff, (w-dw)/2+ccPop.x, (h-dh)/2+ccPop.y, dw, dh); }catch(e){}
+      } } }
+  ccPopAnim=requestAnimationFrame(ccPopLoop);
+}
+function openCCPopout(){
+  if(ccPopoutOpen) return;
+  closeOtherPopouts('cc');
+  ccPopoutOpen=true; ccPop={z:1,x:0,y:0}; ccPopT0=ccNow();
+  const ov=document.createElement('div'); ov.className='vehpop-scrim'; ov.id='ccPopout';
+  ov.innerHTML=`<div class="vehpop-bar">
+      <span class="vehpop-title">⌂ Command Center</span>
+      <span class="vehpop-hint">drag to pan · scroll to zoom · double-click reset · Esc/Enter to close</span>
+      <button class="vehpop-x" onclick="closeCCPopout()">✕ Close</button>
+    </div>
+    <div class="vehpop-body">
+      <div class="vehpop-stage" id="ccPopStage"><canvas id="ccPopCanvas"></canvas></div>
+      <aside class="vehpop-stats" id="ccPopInfo"></aside>
+    </div>`;
+  document.body.appendChild(ov); fadeInScrim(ov);
+  const inf=$('ccPopInfo'); if(inf) inf.innerHTML=ccPopInfoHTML();
+  initCanvasPopZoom('ccPopStage', ccPop);
+  ccPopAnim=requestAnimationFrame(ccPopLoop);
+}
+function closeCCPopout(){ if(!ccPopoutOpen) return; ccPopoutOpen=false; if(ccPopAnim){ cancelAnimationFrame(ccPopAnim); ccPopAnim=null; } removeScrim('ccPopout'); }
+// Scene ↔ pop-out parity: the same Vehicle → Station → Solar System → Control Center order works whether
+// you're in the normal scenes (Tab via nextScene) OR popped out (Tab here switches pop-out → pop-out).
+const POPOUT_OF = { bench:openVehPopout, station:openStationPopout, map:openMapPopout, command:openCCPopout };
+const POPOUT_ORDER = ['bench','station','map','command'];
+function anyPopoutOpen(){ return vehPopoutOpen||stnPopoutOpen||mapPopoutOpen||earthPopoutOpen||ccPopoutOpen; }
+function currentPopoutSceneKey(){ if(vehPopoutOpen)return'bench'; if(stnPopoutOpen)return'station'; if(mapPopoutOpen||earthPopoutOpen)return'map'; if(ccPopoutOpen)return'command'; return null; }
+function switchPopoutTo(key){ if(!POPOUT_OF[key]) return; closeOtherPopouts(null); state.tab=key; render(); POPOUT_OF[key](); } // underlying scene follows, so closing lands you here
+function tabPopout(dir){ const cur=currentPopoutSceneKey(); let i=POPOUT_ORDER.indexOf(cur); if(i<0)i=0; switchPopoutTo(POPOUT_ORDER[((i+dir)%POPOUT_ORDER.length+POPOUT_ORDER.length)%POPOUT_ORDER.length]); }
+// Capture-phase pop-out keys (beat the scene-nav + launch handlers): Esc/Enter close, Tab/Shift-Tab and
+// number keys 1–4 hop pop-out → pop-out in the same order as the scenes.
 document.addEventListener('keydown',function(e){
-  if(!vehPopoutOpen && !stnPopoutOpen && !mapPopoutOpen && !earthPopoutOpen) return;
+  if(!anyPopoutOpen()) return;
   if(e.key==='Escape'||e.key==='Enter'){ e.preventDefault(); e.stopPropagation();
-    if(earthPopoutOpen) closeEarthPopout(); if(vehPopoutOpen) closeVehPopout(); if(stnPopoutOpen) closeStationPopout(); if(mapPopoutOpen) closeMapPopout(); }
+    if(earthPopoutOpen) closeEarthPopout(); if(vehPopoutOpen) closeVehPopout(); if(stnPopoutOpen) closeStationPopout(); if(mapPopoutOpen) closeMapPopout(); if(ccPopoutOpen) closeCCPopout(); return; }
+  if(e.key==='Tab'){ e.preventDefault(); e.stopPropagation(); tabPopout(e.shiftKey?-1:1); return; }
+  if(e.key>='1' && e.key<='4'){ const k=POPOUT_ORDER[+e.key-1]; if(k){ e.preventDefault(); e.stopPropagation(); switchPopoutTo(k); } }
 },true);
 // Presentation: the primary Build & Launch CTA sits directly under the rocket on the
 // bench (in #vehicleCard), not in the right-rail readout. Same gate (canLaunch) + same
