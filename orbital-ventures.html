@@ -10232,37 +10232,65 @@ function drawEarthGlobe(ctx,cx,cy,R,center,sunLon,tilt){
   // atmosphere rim
   ctx.lineWidth=Math.max(2,R*0.05); ctx.strokeStyle='rgba(120,180,255,0.35)'; ctx.beginPath(); ctx.arc(cx,cy,R+R*0.012,0,7); ctx.stroke();
   ctx.lineWidth=Math.max(4,R*0.12); ctx.strokeStyle='rgba(90,150,235,0.10)'; ctx.beginPath(); ctx.arc(cx,cy,R+R*0.06,0,7); ctx.stroke();
+  // Cape Canaveral marker (28.4°N, 80.6°W) — clickable hot-spot that jumps to Mission Control
+  const cape=P(-80.6,28.4);
+  if(cape.z>=0.04){
+    const mx=cx+cape.x*R, my=cy-cape.y*R, mr=Math.max(3.4,R*0.026);
+    const pulse=0.5+0.5*Math.sin((typeof ccNow==='function'?ccNow():Date.now())/280);
+    ctx.save();
+    ctx.beginPath(); ctx.arc(mx,my,mr*(1.8+pulse*0.9),0,7); ctx.fillStyle=`rgba(255,196,72,${0.20+pulse*0.18})`; ctx.fill();
+    ctx.beginPath(); ctx.arc(mx,my,mr,0,7); ctx.fillStyle='#ffcb45'; ctx.fill();
+    ctx.lineWidth=Math.max(1,R*0.006); ctx.strokeStyle='#7a4a06'; ctx.stroke();
+    ctx.font=`600 ${Math.max(10,R*0.055)}px system-ui,sans-serif`; ctx.textBaseline='middle';
+    const lx=mx+mr*2.0; ctx.fillStyle='rgba(8,12,22,0.6)';
+    const lbl='Cape Canaveral', tw=ctx.measureText(lbl).width;
+    ctx.fillRect(lx-3,my-Math.max(7,R*0.05),tw+6,Math.max(14,R*0.1));
+    ctx.fillStyle='#ffe6a6'; ctx.fillText(lbl,lx,my+1);
+    ctx.restore();
+    _capeLocal={x:mx,y:my,r:mr,visible:true};
+  } else _capeLocal={visible:false};
   drawEarthOrbits(ctx,cx,cy,R,center*_DEG);
 }
+let _capeLocal={visible:false};
 function earthPopInfoHTML(){
   return `<h4>Home World</h4>
-    <div class="dim" style="font-size:12px;margin-bottom:6px">Live globe — rotating surface with a moving day/night terminator. Orbital infrastructure (stations, LEO satellites, fuel depots) will be represented in orbit here as it's built. <b>(Preview)</b></div>
+    <div class="dim" style="font-size:12px;margin-bottom:6px">Live globe — <b>drag to spin</b> it east/west; <b>Auto-spin</b> toggles the idle rotation. The 🟡 marker is <b>Cape Canaveral</b> — click it to jump to Mission Control. Orbital infrastructure (stations, LEO satellites, fuel depots) will be represented in orbit here as it's built. <b>(Preview)</b></div>
+    <button class="btn" style="width:100%;margin-bottom:8px" onclick="earthGoToCape()">🟡 Go to Cape Canaveral — Mission Control</button>
     ${bodyCardHTML()}`;
 }
 let earthPopoutOpen=false, earthAnim=null, earthT0=0, earthPop={z:1,x:0,y:0};
+// Manual-spin view: `lon` is the centre meridian (driven by drag, or auto-advanced when `auto`).
+let earthView={lon:-80,auto:true}, earthLastT=0, earthCapeHit={visible:false};
 function earthLoop(){
   if(!earthPopoutOpen){ earthAnim=null; return; }
   const cv=$('earthPopCanvas'), stage=$('earthPopStage');
   if(cv&&stage){ const w=stage.clientWidth, h=stage.clientHeight;
     if(w>1&&h>1){ if(cv.width!==w||cv.height!==h){ cv.width=w; cv.height=h; }
       const ctx=cv.getContext('2d');
-      if(ctx){ const t=(ccNow()-earthT0)/1000;
+      if(ctx){ const now=ccNow(), t=(now-earthT0)/1000;
+        let dt=(now-(earthLastT||now))/1000; earthLastT=now; if(dt>0.1) dt=0.1;
+        if(earthView.auto) earthView.lon += dt*9; // ~9°/s auto-spin when enabled
         ctx.setTransform(1,0,0,1,0,0); ctx.fillStyle='#05080f'; ctx.fillRect(0,0,w,h);
         const rnd=mulberry(424242); for(let i=0;i<90;i++){ const x=rnd()*w, y=rnd()*h, tw=0.3+0.5*Math.abs(Math.sin(t*1.1+i)); ctx.fillStyle=`rgba(220,230,255,${(tw*0.5).toFixed(2)})`; ctx.fillRect(x,y,1.1,1.1); }
+        const R=Math.min(w,h)*0.30;
         ctx.save(); ctx.translate(w/2+earthPop.x, h/2+earthPop.y); ctx.scale(earthPop.z,earthPop.z);
-        drawEarthGlobe(ctx,0,0,Math.min(w,h)*0.30, t*4, t*1.5, Math.sin(t*0.22)*0.41); // spin ~4°/s; sun drifts → terminator sweeps; gentle ±23.5° nod reveals both poles
+        drawEarthGlobe(ctx,0,0,R, earthView.lon, t*1.5, 0.2); // drag spins `lon`; sun drifts → terminator sweeps; fixed gentle tilt
         ctx.restore();
+        // project the Cape marker into stage coords for hit-testing (globe-local → screen)
+        if(_capeLocal && _capeLocal.visible){ earthCapeHit={ x:w/2+earthPop.x+_capeLocal.x*earthPop.z, y:h/2+earthPop.y+_capeLocal.y*earthPop.z, r:_capeLocal.r*earthPop.z, visible:true }; }
+        else earthCapeHit={visible:false};
       } } }
   earthAnim=requestAnimationFrame(earthLoop);
 }
 function openEarthPopout(){
   if(earthPopoutOpen) return;
   closeOtherPopouts('earth');
-  earthPopoutOpen=true; earthPop={z:1,x:0,y:0}; earthT0=ccNow(); state.selectedBody='earth';
+  earthPopoutOpen=true; earthPop={z:1,x:0,y:0}; earthView={lon:-80,auto:true}; earthLastT=0; earthT0=ccNow(); state.selectedBody='earth';
   const ov=document.createElement('div'); ov.className='vehpop-scrim'; ov.id='earthPopout';
   ov.innerHTML=`<div class="vehpop-bar">
       <span class="vehpop-title">🌍 Earth</span>
-      <span class="vehpop-hint">drag to pan · scroll to zoom · double-click reset · Esc/Enter to close</span>
+      <span class="vehpop-hint">drag to spin · scroll to zoom · click 🟡 Cape Canaveral → Mission Control · Esc/Enter to close</span>
+      <button class="vehpop-x" id="earthRotBtn" style="margin-right:8px" onclick="toggleEarthRot()"></button>
       <button class="vehpop-x" onclick="closeEarthPopout()">✕ Close</button>
     </div>
     <div class="vehpop-body">
@@ -10271,9 +10299,12 @@ function openEarthPopout(){
     </div>`;
   document.body.appendChild(ov); fadeInScrim(ov);
   const inf=$('earthPopInfo'); if(inf) inf.innerHTML=earthPopInfoHTML();
-  initEarthPopZoom();
+  initEarthPopZoom(); updateEarthRotBtn();
   earthAnim=requestAnimationFrame(earthLoop);
 }
+function toggleEarthRot(){ earthView.auto=!earthView.auto; updateEarthRotBtn(); }
+function updateEarthRotBtn(){ const b=$('earthRotBtn'); if(b) b.textContent=earthView.auto?'⏸ Auto-spin: On':'🔄 Auto-spin: Off'; }
+function earthGoToCape(){ closeEarthPopout(); setTab('command'); }
 function closeEarthPopout(){ if(!earthPopoutOpen) return; earthPopoutOpen=false; if(earthAnim){ cancelAnimationFrame(earthAnim); earthAnim=null; } removeScrim('earthPopout'); }
 // Generic canvas pop-out pan/zoom (the RAF loop reads the {z,x,y} state each frame; no redraw call needed).
 // Drag only begins past a threshold so clicks can still reach future interactive overlays.
@@ -10291,7 +10322,23 @@ function initCanvasPopZoom(stageId, st){
   stage.addEventListener('pointerup',end); stage.addEventListener('pointercancel',end);
   stage.addEventListener('dblclick',()=>{ st.z=1; st.x=0; st.y=0; });
 }
-function initEarthPopZoom(){ initCanvasPopZoom('earthPopStage', earthPop); }
+// Earth gets a bespoke handler: horizontal drag spins the globe (pausing auto-spin), wheel zooms,
+// and a click (no drag) on the Cape Canaveral hot-spot jumps to Mission Control.
+function earthOverCape(e){ if(!earthCapeHit||!earthCapeHit.visible) return false; const stage=$('earthPopStage'); if(!stage) return false;
+  const r=stage.getBoundingClientRect(); return Math.hypot((e.clientX-r.left)-earthCapeHit.x,(e.clientY-r.top)-earthCapeHit.y) <= Math.max(15,earthCapeHit.r+9); }
+function initEarthPopZoom(){
+  const stage=$('earthPopStage'); if(!stage) return;
+  let down=false, drag=false, sx=0, sy=0, lx=0, pid=null;
+  stage.addEventListener('wheel',e=>{ e.preventDefault(); earthPop.z=Math.min(8,Math.max(0.6, earthPop.z*(e.deltaY<0?1.12:0.89))); },{passive:false});
+  stage.addEventListener('pointerdown',e=>{ down=true; drag=false; sx=lx=e.clientX; sy=e.clientY; pid=e.pointerId; });
+  stage.addEventListener('pointermove',e=>{
+    if(!down){ stage.style.cursor=earthOverCape(e)?'pointer':'grab'; return; }
+    if(!drag){ if(Math.abs(e.clientX-sx)+Math.abs(e.clientY-sy)<5) return; drag=true; earthView.auto=false; updateEarthRotBtn(); stage.classList.add('grabbing'); try{stage.setPointerCapture(pid);}catch(_){} }
+    earthView.lon += (e.clientX-lx)*0.4; lx=e.clientX; });
+  const end=e=>{ if(down && !drag && earthOverCape(e)){ earthGoToCape(); } down=false; drag=false; stage.classList.remove('grabbing'); };
+  stage.addEventListener('pointerup',end); stage.addEventListener('pointercancel',()=>{down=false;drag=false;stage.classList.remove('grabbing');});
+  stage.addEventListener('dblclick',()=>{ earthPop.z=1; earthPop.x=0; earthPop.y=0; });
+}
 /* ---------- Command Center pop-out ----------
    The animated Cape Canaveral scene blown up to full screen (drawn off-screen at native res, then
    blitted with grab-pan/wheel-zoom), with the agency summary on the right — same chrome as the others. */
