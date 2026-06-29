@@ -1046,6 +1046,17 @@ const MISSIONS = [
   {id:'tanker_leo',   name:'Tanker Run (LEO Depot)', crew:0, days:0, payout:0, rep:6, minRep:38, reqResearch:'orbital_depot', reqDv:9400,
     payload:0, tanker:true,
     blurb:'No crew, no science — just propellant. Deliver a tank of fuel to the LEO depot for future missions to draw from.<span class="hist">↳ Propellant depots were proposed for Apollo-era architectures and became central to post-2010 reusable-launch economics.</span>'},
+  // #3: prestige science missions — pay little money, but bank a large knowledge windfall (sciYield)
+  // that funds the science-gated deep-tech nodes (#1). The reason to collect science.
+  {id:'space_telescope', name:'Orbital Observatory',  reqDv:9700, payload:0.12, crew:0, days:0, payout:6.0,  rep:24, minRep:70,  sciMission:true, sciYield:22, blurb:'Loft a long-baseline space telescope above the atmosphere — little commercial return, but years of discovery and prestige. A pure science play that banks the knowledge to unlock deep tech.<span class="hist">↳ The Hubble Space Telescope reshaped astronomy from low Earth orbit after its 1990 launch.</span>'},
+  {id:'sample_return',   name:'Lunar Sample Return',   crew:0, days:12, payout:14.0, rep:40, minRep:230, reqResearch:'deep_space', sciMission:true, sciYield:42,
+    modules:['lv','transfer'],
+    profile:[{name:'Ascent to LEO', dv:9400, by:'lv'},{name:'Trans-Lunar Injection', dv:3120, by:'transfer'},{name:'Lunar Orbit Insertion', dv:900, by:'transfer'},{name:'Trans-Earth Injection', dv:900, by:'transfer'}],
+    blurb:'A robotic lander scoops lunar regolith and rockets the capsule home — modest pay, a scientific windfall that funds your deep-tech programs.<span class="hist">↳ Luna 16 returned the first robotic soil sample from the Moon in 1970.</span>'},
+  {id:'astrobiology',    name:'Astrobiology Survey',   crew:2, days:540, payout:48.0, rep:70, minRep:600, reqResearch:'mars_traj', window:true, sciMission:true, sciYield:78,
+    modules:['lv','transfer','crew'],
+    profile:[{name:'Ascent to LEO', dv:9400, by:'lv'},{name:'Trans-Mars Injection', dv:3600, by:'transfer'},{name:'Mars Orbit Insertion', dv:1400, by:'transfer'},{name:'Trans-Earth Injection', dv:1400, by:'transfer'}],
+    blurb:'A dedicated search for life in the Martian subsurface — the science payoff dwarfs the contract fee, and only flights like this bank enough knowledge for the deepest tech.<span class="hist">↳ Viking\'s 1976 biology experiments remain the only direct astrobiology tests run on another planet.</span>'},
 ];
 
 /* ---------- Programs & long-term ambition (the "dream" layer) ----------
@@ -1441,13 +1452,13 @@ const RESEARCH = [
   {id:'deep_space', track:'deepspace',   name:'Lunar Trajectory &amp; Deep-Space Tracking',cost:4.0, months:5, req:['digital_computer','sustainer'],effect:{unlock:'lunar'},desc:'Trajectory design and a tracking network — enough to navigate to the Moon and back. Unlocks cislunar missions. (Navigation, not lift: the Moon-bound Δv still comes from the vehicle you build — a heavy booster is wanted, not required, here.)<span class="hist">↳ NASA\'s Deep Space Network and Apollo\'s guidance computers turned a quarter-million-mile shot into routine.</span>'},
   {id:'lunar_lander', track:'deepspace', name:'Lunar Lander (Descent &amp; Ascent)', cost:6.0, months:7, req:['deep_space','hypergolic'], effect:{unlock:'lander'}, desc:'A two-stage lander: a descent stage for the powered landing, left on the surface, and a separate ascent stage to return to orbit. Unlocks Lunar Landing.<span class="hist">↳ The Apollo Lunar Module flew as two stages — Eagle\'s descent stage is still on the Sea of Tranquility.</span>'},
   {id:'super_heavy', track:'propulsion',  name:'Rocketdyne F-1 Engine Development',  cost:7.0, months:8, req:['lunar_lander','chamber_pressure'], effect:{engine:'f1_class'}, desc:'A first-stage engine an order of magnitude beyond anything before it (6.7 MN thrust). The lander\'s mass — lifted, carried to the Moon, and lowered to the surface — demands a booster this size.<span class="hist">↳ Five F-1 engines powered the Saturn V\'s first stage, still the most powerful rocket ever flown.</span>'},
-  {id:'mars_traj', track:'deepspace',    name:'Mars Transfer Trajectory Planning', cost:6.5, months:7, req:['deep_space'], effect:{unlock:'mars'}, desc:'Interplanetary navigation for Hohmann-class transfers to Mars. Launch windows open roughly every 26 months — miss one and you wait for the next.<span class="hist">↳ Mariner and Viking proved the trajectories; the synodic period of Earth and Mars sets the rhythm ever since.</span>'},
+  {id:'mars_traj', track:'deepspace',    name:'Mars Transfer Trajectory Planning', cost:6.5, months:7, req:['deep_space'], sciCost:18, effect:{unlock:'mars'}, desc:'Interplanetary navigation for Hohmann-class transfers to Mars. Launch windows open roughly every 26 months — miss one and you wait for the next.<span class="hist">↳ Mariner and Viking proved the trajectories; the synodic period of Earth and Mars sets the rhythm ever since.</span>'},
   {id:'orbital_depot', track:'refueling',name:'Orbital Propellant Depot',       cost:5.5, months:6, req:['deep_space'], effect:{unlock:'depot'}, desc:'A propellant tank farm in LEO. Tanker Run contracts deposit fuel into it; any mission\'s transfer stage can then top off from the depot instead of carrying that propellant up from Earth.<span class="hist">↳ Depot-based architectures let a transfer stage launch nearly empty and fill up in orbit — the key to breaking the rocket equation\'s compounding.</span>'},
   {id:'lunar_isru', track:'refueling',   name:'Lunar ISRU (Water → LOX/LH₂)',   cost:6.0, months:7, req:[], reqMissionDone:'luna_landing', effect:{unlock:'isru_moon'}, desc:'Polar water ice, electrolyzed into liquid oxygen and hydrogen at a surface plant. Once established, your lander\'s ascent stage refuels on the Moon — that propellant no longer has to be launched from Earth.<span class="hist">↳ Permanently shadowed craters at the lunar poles hold water ice — the resource every lunar architecture since Apollo has wanted to reach.</span>'},
   {id:'mars_isru', track:'refueling',    name:'Mars ISRU (Sabatier Methalox)',  cost:7.5, months:8, req:[], reqMissionDone:'mars_orbit', effect:{unlock:'isru_mars'}, desc:'Atmospheric CO₂ plus water ice, run through the Sabatier reaction, yields methane and oxygen on the Martian surface. The return propellant for Trans-Earth Injection is made on Mars, not carried there.<span class="hist">↳ Sabatier-process ISRU is the linchpin of every serious Mars architecture — making the return fuel on-site instead of hauling it from Earth.</span>'},
-  {id:'nuclear_thermal', track:'nuclear', name:'Nuclear Thermal Propulsion (NERVA)', cost:9.0, months:10, req:['cryo_upper','deep_space'], effect:{engine:'ntr_nerva'}, desc:'A solid-core reactor heats liquid hydrogen to ~825 s Isp — roughly double the best chemical upper stage. Unlocks the NERVA transfer engine, the key to the high-Δv burns the outer system demands.<span class="hist">↳ The NERVA program ground-tested flight-class nuclear-thermal engines through the late 1960s before cancellation in 1973.</span>'},
-  {id:'nuclear_electric', track:'nuclear', name:'Nuclear-Electric Propulsion', cost:12.0, months:12, req:['nuclear_thermal'], effect:{engine:'nep_snap'}, desc:'A reactor-driven electric thruster: ~3,000 s Isp at minuscule thrust. Burns measured in months, not minutes — but the mass ratio it buys makes the deep outer system reachable. Unlocks the SNAP-derived NEP transfer engine.<span class="hist">↳ SNAP reactors flew in the 1960s; nuclear-electric remains the leading concept for crewed outer-planet transfer.</span>'},
-  {id:'rad_shielding', track:'deepspace', name:'Deep-Space Radiation Shielding', cost:6.0, months:6, req:['nuclear_thermal'], effect:{unlock:'rad_shield'}, desc:'Storm shelters and hydrogen-rich shielding to keep crews alive through Jovian radiation and multi-year cruises. Required for any crewed Jupiter mission.<span class="hist">↳ Jupiter\'s magnetosphere is the harshest radiation environment in the Solar System short of the Sun itself.</span>'},
+  {id:'nuclear_thermal', track:'nuclear', name:'Nuclear Thermal Propulsion (NERVA)', cost:9.0, months:10, req:['cryo_upper','deep_space'], sciCost:30, effect:{engine:'ntr_nerva'}, desc:'A solid-core reactor heats liquid hydrogen to ~825 s Isp — roughly double the best chemical upper stage. Unlocks the NERVA transfer engine, the key to the high-Δv burns the outer system demands.<span class="hist">↳ The NERVA program ground-tested flight-class nuclear-thermal engines through the late 1960s before cancellation in 1973.</span>'},
+  {id:'nuclear_electric', track:'nuclear', name:'Nuclear-Electric Propulsion', cost:12.0, months:12, req:['nuclear_thermal'], sciCost:45, effect:{engine:'nep_snap'}, desc:'A reactor-driven electric thruster: ~3,000 s Isp at minuscule thrust. Burns measured in months, not minutes — but the mass ratio it buys makes the deep outer system reachable. Unlocks the SNAP-derived NEP transfer engine.<span class="hist">↳ SNAP reactors flew in the 1960s; nuclear-electric remains the leading concept for crewed outer-planet transfer.</span>'},
+  {id:'rad_shielding', track:'deepspace', name:'Deep-Space Radiation Shielding', cost:6.0, months:6, req:['nuclear_thermal'], sciCost:24, effect:{unlock:'rad_shield'}, desc:'Storm shelters and hydrogen-rich shielding to keep crews alive through Jovian radiation and multi-year cruises. Required for any crewed Jupiter mission.<span class="hist">↳ Jupiter\'s magnetosphere is the harshest radiation environment in the Solar System short of the Sun itself.</span>'},
   {id:'belt_volatiles', track:'refueling', name:'Belt Volatiles ISRU', cost:8.0, months:9, req:['nuclear_thermal'], reqMissionDone:'belt_mining', effect:{unlock:'isru_belt'}, desc:'Water and volatiles mined from carbonaceous asteroids, cracked into hydrogen/oxygen propellant at the claim. Once established, the Belt return burn (Trans-Earth Injection) is fuelled on-site instead of hauled from Earth.<span class="hist">↳ C-type asteroids are up to ~10% water by mass — the propellant depots of a spacefaring economy.</span>'},
   {id:'orbital_assembly', track:'assembly', name:'Orbital Assembly &amp; Docking', cost:5.0, months:6, req:['deep_space'], effect:{unlock:'assembly'}, desc:'Rendezvous and docking, plus the structures and procedures to mate modules in orbit. Lets you launch a heavy in-space stack (transfer stage, lander) on separate flights and assemble it in LEO — so no single rocket has to lift the whole thing. An alternative to brute-force heavy lift.<span class="hist">↑ From Gemini’s first dockings to the on-orbit assembly of Mir and the ISS — the route to big spacecraft without a giant booster.</span>'},
   {id:'auto_rendezvous', track:'assembly', name:'Automated Rendezvous &amp; Docking', cost:4.0, months:5, req:['orbital_assembly'], effect:{unlock:'auto_dock'}, desc:'Sensors and guidance for hands-off docking. Halves the reliability penalty of orbital assembly, making multi-launch architectures dependable enough to bet a crewed mission on.<span class="hist">↑ Progress, ATV and Dragon refined fully automated rendezvous — turning docking from a piloted feat into routine logistics.</span>'},
@@ -1472,7 +1483,7 @@ const RESEARCH = [
   {id:'self_healing_materials', track:'structures', name:'Self-Healing Materials', cost:8.0, months:7, req:['carbon_cryotanks'], effect:{sigma:0.042}, desc:'Microcapsule and vascular composites that seal micrometeoroid and fatigue damage in flight. The lightest, most durable structures yet. <b>σ → 0.042.</b><span class="hist">↳ Self-healing polymers move from the lab toward spaceflight as long-duration missions demand it.</span>'},
   // Testing & Reliability
   {id:'accelerated_life_testing', track:'testing', name:'Accelerated Lifetime Testing', cost:3.5, months:4, req:['vibration_testing'], effect:{reliability:0.03}, desc:'Run hardware through compressed years of thermal, vacuum and load cycles to find what wears out before it flies. <b>+3% reliability.</b><span class="hist">↳ Accelerated-life rigs let engineers age a part decades in months.</span>'},
-  {id:'digital_twin', track:'testing', name:'Digital-Twin Simulation', cost:5.0, months:5, req:['accelerated_life_testing'], effect:{reliability:0.04}, desc:'A high-fidelity simulation of every vehicle, updated from flight data, that predicts failures before the hardware does. <b>+4% reliability.</b><span class="hist">↳ Digital twins now shadow real spacecraft through their entire lives.</span>'},
+  {id:'digital_twin', track:'testing', name:'Digital-Twin Simulation', cost:5.0, months:5, req:['accelerated_life_testing'], sciCost:20, effect:{reliability:0.04}, desc:'A high-fidelity simulation of every vehicle, updated from flight data, that predicts failures before the hardware does. <b>+4% reliability.</b><span class="hist">↳ Digital twins now shadow real spacecraft through their entire lives.</span>'},
   // Guidance & Avionics
   {id:'star_trackers', track:'guidance', name:'Star Trackers', cost:3.5, months:4, req:['digital_computer'], effect:{reliability:0.03}, desc:'Optical star sensors fix the vehicle attitude against the sky to arc-second precision, far beyond gyros alone. <b>+3% reliability.</b><span class="hist">↳ Star trackers are the gold standard for deep-space attitude reference.</span>'},
   {id:'autonomous_navigation', track:'guidance', name:'Autonomous Navigation', cost:5.0, months:6, req:['star_trackers'], effect:{reliability:0.03}, desc:'Onboard optical navigation lets a spacecraft fix its own position against planets and stars without waiting on light-lagged ground tracking. <b>+3% reliability.</b><span class="hist">↳ Deep Impact and OSIRIS-REx proved autonomous optical nav at other worlds.</span>'},
@@ -1537,7 +1548,7 @@ const RESEARCH = [
   {id:'quantum_navigation', track:'guidance', name:'Quantum Inertial Navigation', cost:8.0, months:8, req:['autonomous_navigation'], effect:{reliability:0.02}, desc:'Cold-atom interferometers that measure acceleration with quantum precision, holding a position fix for years without drift. <b>+2% reliability.</b><span class="hist">↳ Quantum inertial sensors promise GPS-free navigation that never drifts.</span>'},
   {id:'fleet_autonomy', track:'automation', name:'Fleet Autonomy', cost:10.0, months:9, req:['ai_mission_management'], effect:{reliability:0.02}, desc:'Whole fleets of vehicles that coordinate, refuel and repair each other with no ground intervention — the nervous system of an interplanetary logistics network. <b>+2% reliability.</b><span class="hist">↳ Fleet-scale autonomy is the prerequisite for any self-sustaining off-world economy.</span>'},
   {id:'artificial_gravity', track:'crew', name:'Artificial Gravity', cost:9.0, months:9, req:['radiation_countermeasures'], reqMissionDone:'mars_orbit', effect:{reliability:0.02}, desc:'Rotating habitats that spin up a fraction of a gee, holding off the bone and muscle loss of years in freefall. <b>+2% crewed reliability.</b><span class="hist">↳ Tethered or rotating habitats are the leading answer to long-duration deconditioning.</span>'},
-  {id:'closed_ecology', track:'crew', name:'Closed Ecological Life Support', cost:9.0, months:9, req:['long_duration_hab'], reqMissionDone:'endurance', effect:{reliability:0.02,lsRecovery:0.07}, desc:'A bioregenerative loop — plants, algae and microbes — that grows food and recycles air and water indefinitely. The biology a self-sufficient colony runs on. <b>+2% crewed reliability.</b><span class="hist">↳ BIOS-3 and MELiSSA pioneered the closed ecologies a Mars colony will need.</span>'},
+  {id:'closed_ecology', track:'crew', name:'Closed Ecological Life Support', cost:9.0, months:9, req:['long_duration_hab'], reqMissionDone:'endurance', sciCost:36, effect:{reliability:0.02,lsRecovery:0.07}, desc:'A bioregenerative loop — plants, algae and microbes — that grows food and recycles air and water indefinitely. The biology a self-sufficient colony runs on. <b>+2% crewed reliability.</b><span class="hist">↳ BIOS-3 and MELiSSA pioneered the closed ecologies a Mars colony will need.</span>'},
   {id:'gravity_assist_planning', track:'deepspace', name:'Gravity-Assist Trajectory Design', cost:6.0, months:6, req:['high_gain_antenna'], effect:{}, desc:'Multi-body trajectory optimization that steals momentum from planets to reach targets no direct burn could afford. The math that opened the outer system.<span class="hist">↳ Voyager toured four planets on a single gravity-assist chain discovered by a grad student.</span>'},
   {id:'aerocapture', track:'deepspace', name:'Aerocapture', cost:7.5, months:7, req:['precision_edl'], effect:{}, desc:'Skim a planetary atmosphere once to shed orbital velocity, capturing into orbit with almost no propellant. The trick that makes heavy outer-planet orbiters affordable.<span class="hist">↳ Aerocapture has been studied for every ice-giant mission as the enabling technology.</span>'},
   {id:'atmospheric_isru', track:'refueling', name:'Atmospheric ISRU', cost:10.0, months:10, req:['electrolysis_scaleup'], reqMissionDone:'jupiter_orbit', effect:{}, desc:'Scoop and process the atmospheres of the gas giants and their moons for hydrogen, helium-3 and volatiles — refueling at the edge of the Solar System.<span class="hist">↳ Gas-giant atmospheres are the largest propellant and helium-3 reservoirs in the system.</span>'},
@@ -1926,6 +1937,10 @@ function branchAffinityMult(track){
   return clampA(1 - discount + surcharge, BRANCH_MULT_FLOOR, BRANCH_MULT_CEIL);
 }
 function rdCostOf(r){ return round2((r?r.cost:0)*doctrineMult('rd')*branchAffinityMult(r&&r.track)); } // doctrine + branch-affinity R&D price
+// #1 science gate: a handful of flagship deep-tech nodes also cost banked science to *start* —
+// knowledge you can only have by flying (prestige science missions feed this). 0 = ungated.
+function sciGateCost(r){ return (r&&r.sciCost)||0; }
+function sciGateMet(r){ return (state.science||0) >= sciGateCost(r); }
 // switching ("doctrine drift") is a real commitment: capital that grows with company size, rep, and time
 const DOCTRINE_SWITCH_REP=20, DOCTRINE_SWITCH_MONTHS=6;
 function doctrineSwitchCost(){ return round2(Math.max(8, (state.flights||0)*0.8 + 6)); }
@@ -4658,7 +4673,8 @@ function finalizeLaunch(ctx, ops){
     personnelMissionEvent(true); // M6: morale boost on success
     state.successes++;
     // M14: missions yield science — more for novel, deep, or first-time flights
-    const sciGain=Math.max(1, Math.round((routine?0.3:1)*((m.rep||5)*0.12 + (m.profile?5:1))*sciYieldMult()*doctrineMult('sci'))); // #6b: Science track multiplies mission science yield; CE3(a) Science doctrine boosts it
+    let sciGain=Math.max(1, Math.round((routine?0.3:1)*((m.rep||5)*0.12 + (m.profile?5:1))*sciYieldMult()*doctrineMult('sci'))); // #6b: Science track multiplies mission science yield; CE3(a) Science doctrine boosts it
+    if(m.sciYield && !routine) sciGain += Math.round(m.sciYield*sciYieldMult()*doctrineMult('sci')); // #3: prestige science missions bank a large knowledge windfall (first flight only — not farmable on routine reflights)
     state.science=round2((state.science||0)+sciGain);
     let payout=(routine?m.payout*0.4:m.payout)*windowQuality*diff().payoutMult*econPayoutMult()*opsPayoutMult*doctrineMult('payout'); // CE3(a): Commercial +, Statecraft/Science −
     if(crewed) payout*=ab.payoutMult; // M6: astronaut payout bonus
@@ -5000,9 +5016,12 @@ function buyResearch(id){
   if(!reqsMet(r)) return;
   const rc=rdCostOf(r); // CE3(a): doctrine-adjusted R&D price
   if(state.money < rc) return;
+  const sciNeed=sciGateCost(r); // #1: flagship deep-tech also costs banked science to start
+  if(!sciGateMet(r)) return;
   state.money-=rc;
+  if(sciNeed) state.science=round2((state.science||0)-sciNeed);
   state.activeResearch={id:r.id, monthsLeft:r.months, rushed:0};
-  log('note',`R&D started: ${r.name} (${r.months} mo). It advances while you build and fly.`);
+  log('note',`R&D started: ${r.name} (${r.months} mo)${sciNeed?` · ${sciNeed} ⚛ science invested`:''}. It advances while you build and fly.`);
   if(state.money<0) gameOver(); else render();
 }
 
@@ -12010,19 +12029,23 @@ function renderMissions(){
             : '<span class="pill">open</span>';
     if(scooped && avail) pill += ' <span class="pill lock">scooped</span>';
     const previewPayout = done ? m.payout*0.4 : (scooped ? m.payout*SCOOP_PAYOUT_MULT : m.payout);
+    const durTxt = m.days>=1 ? m.days+' days' : (m.days*24).toFixed(0)+' h';
     const detail = m.tanker
       ? `required Δv ${fI(m.reqDv)} m/s · delivers propellant to the LEO depot`
+      : m.profile // deep-space missions: total profile Δv (no single reqDv)
+      ? `${fI(m.profile.reduce((a,p)=>a+p.dv,0))} m/s total Δv${m.crew?` · ${m.crew} crew`:''} · ${durTxt}`
       : m.crew
-      ? `required Δv ${fI(m.reqDv)} m/s · ${m.crew} crew · ${m.days<1?(m.days*24).toFixed(0)+' h':m.days+' days'}`
+      ? `required Δv ${fI(m.reqDv)} m/s · ${m.crew} crew · ${durTxt}`
       : `required Δv ${fI(m.reqDv)} m/s · payload ${(m.payload*1000).toFixed(0)} kg`;
+    const sciTag = m.sciMission ? ' <span class="pill" style="color:var(--readout);border-color:var(--readout)">science</span>' : '';
     const div=document.createElement('div'); div.className='item';
     div.innerHTML=`
       <div class="body">
-        <div class="title">${m.name} ${pill}</div>
+        <div class="title">${m.name} ${pill}${sciTag}</div>
         <div class="sub">${m.blurb}</div>
         <div class="sub num" style="margin-top:4px;color:var(--readout)">${detail}</div>
       </div>
-      <div class="reward"><div class="p">+${fM(previewPayout)}</div><div class="r">+${done?2:m.rep} rep</div></div>
+      <div class="reward"><div class="p">+${fM(previewPayout)}</div><div class="r">+${done?2:m.rep} rep</div>${m.sciYield?`<div class="r" style="color:var(--readout)">+${m.sciYield} ⚛</div>`:''}</div>
       <button class="btn" onclick="selectMission('${m.id}')" ${avail?'':'disabled'}>${active?'Selected':'Select'}</button>`;
     box.appendChild(div);
   });
@@ -12121,7 +12144,7 @@ function renderTechTree(){
     const st=researchNodeState(r), c=palette[st], tcol=trackColor(r.track);
     const sel=state.selectedResearch===r.id, locked=st==='locked';
     const name=r.name.length>20?r.name.slice(0,19)+'…':r.name;
-    const sub = st==='active' ? `${fmtTimeLeft(state.activeResearch.monthsLeft)} left` : `${fM(rdCostOf(r))} · ${r.months} mo`;
+    const sub = st==='active' ? `${fmtTimeLeft(state.activeResearch.monthsLeft)} left` : `${fM(rdCostOf(r))}${sciGateCost(r)?` · ${sciGateCost(r)}⚛`:''} · ${r.months}mo`;
     nodes+=`<g id="tn-${r.id}" style="cursor:pointer" onclick="selectResearch('${r.id}')" onmouseenter="showTechTip(event,'${r.id}')" onmousemove="moveTechTip(event)" onmouseleave="hideTechTip()" opacity="${locked?0.72:1}">
       <rect x="${p.x}" y="${p.y}" width="${NW}" height="${NH}" rx="6" fill="${c.fill}" stroke="${sel?'#ffffff':tcol}" stroke-width="${sel?2.2:1.3}"/>
       <rect x="${p.x}" y="${p.y}" width="4" height="${NH}" rx="2" fill="${tcol}"/>
@@ -12203,7 +12226,7 @@ function techModifierText(r){
 function techTooltipHTML(r){
   const st=researchNodeState(r), tr=TRACKS.find(t=>t.key===r.track)||{};
   const stTag={done:'researched',active:'in progress',available:'available',locked:'locked'}[st];
-  const meta = st==='active' ? `${fmtTimeLeft(state.activeResearch.monthsLeft)} left` : `${fM(rdCostOf(r))} · ${r.months} mo`;
+  const meta = st==='active' ? `${fmtTimeLeft(state.activeResearch.monthsLeft)} left` : `${fM(rdCostOf(r))}${sciGateCost(r)?` · ${sciGateCost(r)} ⚛`:''} · ${r.months} mo`;
   const mods=techModifierText(r);
   const reqNames=r.req.map(q=>(RESEARCH.find(x=>x.id===q)||{}).name).filter(Boolean).join(', ');
   const gate=r.reqMissionDone?(MISSIONS.find(m=>m.id===r.reqMissionDone)||{}).name:null;
@@ -12255,9 +12278,10 @@ function renderResearchDetail(){
       <button class="btn ghost" style="width:100%;font-size:11px;margin-bottom:5px" onclick="rushResearch()" ${canRush?'':'disabled'}>Rush −1 mo (${fM(rc)})</button>
       <button class="btn ghost" style="width:100%;font-size:11px" onclick="applyScience()" ${canSci?'':'disabled'}>Apply science −1 mo (${sc} ⚛)</button>`;
   } else {
-    const afford=state.money>=rdCostOf(r), ok=st==='available'&&afford&&!busy;
-    const why = busy?'Another project is in progress':(st!=='available'?'Prerequisites not met':(!afford?'Not enough capital':''));
-    action=`<button class="launch" style="width:100%" onclick="buyResearch('${r.id}')" ${ok?'':'disabled'}>${ok?`Research · ${fM(rdCostOf(r))} · ${r.months} mo`:why}</button>`;
+    const afford=state.money>=rdCostOf(r), sciNeed=sciGateCost(r), sciOk=sciGateMet(r), ok=st==='available'&&afford&&sciOk&&!busy;
+    const why = busy?'Another project is in progress':(st!=='available'?'Prerequisites not met':(!afford?'Not enough capital':(!sciOk?`Needs ${sciNeed} ⚛ (have ${Math.round(state.science||0)})`:'')));
+    const sciTag = sciNeed?` · ${sciNeed} ⚛`:'';
+    action=`<button class="launch" style="width:100%" onclick="buyResearch('${r.id}')" ${ok?'':'disabled'}>${ok?`Research · ${fM(rdCostOf(r))}${sciTag} · ${r.months} mo`:why}</button>`;
   }
   const stateTag={done:'<span class="pill ok">researched</span>',active:'<span class="pill active">in progress</span>',available:'<span class="pill">available</span>',locked:'<span class="pill lock">locked</span>'}[st];
   const debtBanner = relDebt()>0 ? `<div class="flag bad" style="margin-bottom:8px">⚠ Cut-corner penalty: −${Math.round(relDebt()*100)}% reliability on every vehicle, from pushing a flawed project through a past setback. It's permanent — weigh the schedule against the risk next time.</div>` : '';
@@ -12268,6 +12292,7 @@ function renderResearchDetail(){
     <div class="metrics" style="margin-bottom:10px">
       <div class="metric"><div class="k">Cost</div><div class="v">${fM(rdCostOf(r))}</div></div>
       <div class="metric"><div class="k">Duration</div><div class="v">${r.months} mo</div></div>
+      ${sciGateCost(r)?`<div class="metric"><div class="k">Science</div><div class="v" style="color:var(--readout)">${sciGateCost(r)} ⚛</div></div>`:''}
     </div>
     ${branchAffinityNote(r)}
     ${(reqNames||gateName)?`<div class="dim" style="font-size:12px;margin-bottom:10px">Requires: ${[reqNames, gateName?`fly <b>${gateName}</b>`:null].filter(Boolean).join(' · ')}</div>`:''}
@@ -12284,9 +12309,10 @@ function renderTechAction(){
   if(st==='done') btn=`<button class="btn" disabled>✓ Researched</button>`;
   else if(st==='active') btn=`<button class="btn" disabled>${fmtTimeLeft(state.activeResearch.monthsLeft)} left</button>`;
   else{
-    const afford=state.money>=rdCostOf(r), ok=st==='available'&&afford&&!busy;
-    const why=busy?'Another project in progress':(st!=='available'?'Prerequisites not met':(!afford?'Not enough capital':''));
-    btn=`<button class="launch" onclick="buyResearch('${r.id}')" ${ok?'':'disabled'}>${ok?`Research · ${fM(rdCostOf(r))} · ${r.months} mo`:why}</button>`;
+    const afford=state.money>=rdCostOf(r), sciNeed=sciGateCost(r), sciOk=sciGateMet(r), ok=st==='available'&&afford&&sciOk&&!busy;
+    const why=busy?'Another project in progress':(st!=='available'?'Prerequisites not met':(!afford?'Not enough capital':(!sciOk?`Needs ${sciNeed} ⚛ (have ${Math.round(state.science||0)})`:'')));
+    const sciTag=sciNeed?` · ${sciNeed} ⚛`:'';
+    btn=`<button class="launch" onclick="buyResearch('${r.id}')" ${ok?'':'disabled'}>${ok?`Research · ${fM(rdCostOf(r))}${sciTag} · ${r.months} mo`:why}</button>`;
   }
   const tag={done:'researched',active:'in progress',available:'available',locked:'locked'}[st];
   el.innerHTML=`<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 11px;border:1px solid var(--line);border-radius:6px;background:var(--panel2)">
