@@ -429,6 +429,27 @@
   .animwrap #flightCanvasWrap canvas{display:block;width:100%;height:auto}
   .animbar{display:flex;align-items:center;gap:14px}
   #animTitle{font-family:var(--mono);letter-spacing:.06em;color:var(--ink);font-size:14px}
+
+  /* #31 · UI microanimations */
+  /* Slice 1: HUD stat bump — text-shadow glow on change */
+  @keyframes statBumpUp{0%,40%{text-shadow:0 0 10px var(--ok),0 0 3px var(--ok)}100%{text-shadow:none}}
+  @keyframes statBumpDown{0%,40%{text-shadow:0 0 10px var(--ignite),0 0 3px var(--ignite)}100%{text-shadow:none}}
+  .stat-bump-up{animation:statBumpUp .55s ease-out}
+  .stat-bump-down{animation:statBumpDown .55s ease-out}
+  /* Slice 2: Tech-unlock amber glow + mission rep pulse */
+  @keyframes techUnlockGlow{0%{filter:drop-shadow(0 0 6px #ffb840)}40%{filter:drop-shadow(0 0 16px #ffb840) drop-shadow(0 0 5px #fff0c0)}100%{filter:none}}
+  .tech-just-unlocked{animation:techUnlockGlow 1.5s ease-out forwards}
+  @keyframes pulseOk{0%,45%{text-shadow:0 0 12px var(--ok),0 0 3px var(--ok);transform:scale(1.07)}100%{text-shadow:none;transform:scale(1)}}
+  @keyframes pulseBad{0%,45%{text-shadow:0 0 12px var(--bad),0 0 3px var(--bad);transform:scale(.94)}100%{text-shadow:none;transform:scale(1)}}
+  .pulse-ok{animation:pulseOk .7s ease-out;display:inline-block}
+  .pulse-bad{animation:pulseBad .7s ease-out;display:inline-block}
+  /* Slice 3: Modal slide-in, new log chip slide, objective sparkle */
+  @keyframes modalSlideIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+  .modal-entering{animation:modalSlideIn .2s ease-out}
+  @keyframes chipSlideIn{from{opacity:0;transform:translateX(-16px)}to{opacity:1;transform:none}}
+  .tl-chip-new{animation:chipSlideIn .28s ease-out}
+  @keyframes objSparkle{0%{background:rgba(80,200,100,.2);outline:1.5px solid var(--ok)}60%{background:rgba(80,200,100,.07);outline:1.5px solid transparent}100%{background:transparent;outline:none}}
+  .obj-just-done{animation:objSparkle .75s ease-out;border-radius:4px}
 </style>
 </head>
 <body>
@@ -3458,6 +3479,7 @@ function completeResearch(){
   else if(r.effect.reliability){log('note',`R&D complete: ${r.name}. Launch reliability improved.`);}
   else if(r.effect.isp||r.effect.thrust){log('note',`R&D complete: ${r.name}. Engine performance improved${r.effect.isp?` (+${Math.round(r.effect.isp*100)}% Isp)`:''}${r.effect.thrust?`${r.effect.isp?',':''} (+${Math.round(r.effect.thrust*100)}% thrust)`:''}.`);}
   else { log('note',`R&D complete: ${r.name}.`); }
+  _lastUnlockedTech=r.id; // #31 Slice 2: flag for tech-tree glow on next renderTechTree()
 }
 // R&D epic slice 2: when the tech tree is re-shaped (nodes added / re-parented),
 // an existing save can hold a completed node whose NEW prerequisites it never
@@ -4765,7 +4787,7 @@ function finalizeLaunch(ctx, ops){
     rng: { wind:(rnd()-0.5)*0.9, windFreq:1.4+rnd()*1.6, windPhase:rnd()*6.283,
            pitchJitter:(rnd()-0.5)*0.16, sep:state.stages.map(()=>(rnd()-0.5)*0.06),
            apogee:0.86+rnd()*0.28, bow:(rnd()-0.5)*0.9 } };
-  const finish=()=>{ if(state.money<0){ gameOver(); } else { render(); if(pendingCelebration) pendingCelebration(); } };
+  const finish=()=>{ if(state.money<0){ gameOver(); } else { _missionPulse=success?'ok':(outcome.kind==='loss'||outcome.kind==='strand')?'bad':null; render(); if(pendingCelebration) pendingCelebration(); } };
   if(animEnabled) playMission(spec, finish); else finish();
 }
 function autoAdvanceMission(){
@@ -5252,7 +5274,7 @@ function bailout(){
   hideModal(); render();
 }
 function restart(difficulty){hideModal();newGame(difficulty);render();}
-function showModal(html,view){const mb=$('modalBody');mb.className='modal'+(view?' view':'');mb.innerHTML=html;$('modal').classList.remove('hidden');} // view=true → wide, left-aligned, scrollable deep-view layout
+function showModal(html,view){const mb=$('modalBody');mb.className='modal'+(view?' view':'');mb.innerHTML=html;$('modal').classList.remove('hidden');mb.classList.add('modal-entering');mb.addEventListener('animationend',()=>mb.classList.remove('modal-entering'),{once:true});} // view=true → wide, left-aligned, scrollable deep-view layout
 function hideModal(){activeModal=null;_prodModalOpen=false;$('modal').classList.add('hidden');} // slice 6: closing clears the live-modal thunk
 
 /* ---------- save / load ---------- */
@@ -8182,6 +8204,29 @@ function drawCislunar(ct){
   }
 }
 
+/* ---------- #31 microanimation helpers ---------- */
+// Slice 1: HUD stat bump — flash the value element when it changes
+const _prevStats={};
+function _statBump(id,numVal){
+  const el=$(id); if(!el) return;
+  const prev=_prevStats[id];
+  _prevStats[id]=numVal;
+  if(prev===undefined||prev===numVal) return;
+  const cls=numVal>prev?'stat-bump-up':'stat-bump-down';
+  el.classList.remove('stat-bump-up','stat-bump-down');
+  void el.offsetWidth; // reflow to restart animation
+  el.classList.add(cls);
+  el.addEventListener('animationend',()=>el.classList.remove(cls),{once:true});
+}
+// Slice 2: ephemeral flags consumed once per render
+let _lastUnlockedTech=null; // set by completeResearch(), consumed by renderTechTree()
+let _missionPulse=null;     // 'ok'|'bad', set by finalizeLaunch(), consumed by render()
+// Slice 3: log chip tracking
+let _prevLogLength=0;
+// Slice 3: objective sparkle tracking
+const _prevObjDoneSet=new Set();
+let _objSectionOpen=false;
+
 /* ---------- render ---------- */
 function render(){
   if(RETIRED_TABS[state.tab]) state.tab=RETIRED_TABS[state.tab]; // migrate retired tabs (slice 4: planner) on every render, incl. legacy saves
@@ -8191,11 +8236,17 @@ function render(){
   $('stDate').textContent=dateStr();
   $('stMoney').textContent=fM(state.money);
   $('stMoney').style.color = state.money<1.5?'var(--bad)':'var(--ink)';
+  _statBump('stMoney', state.money);
   $('stRep').textContent=fI(state.rep);
+  _statBump('stRep', state.rep);
+  // #31 Slice 2: consume mission pulse (set by finalizeLaunch finish callback)
+  if(_missionPulse){ const el=$('stRep'); if(el){ el.classList.remove('pulse-ok','pulse-bad'); void el.offsetWidth; el.classList.add(_missionPulse==='ok'?'pulse-ok':'pulse-bad'); el.addEventListener('animationend',()=>el.classList.remove('pulse-ok','pulse-bad'),{once:true}); } _missionPulse=null; }
   $('stFlights').textContent=state.flights;
+  _statBump('stFlights', state.flights);
   const mood=publicMood();
   $('stSupport').textContent=`${Math.round(publicSupport())}% · ${mood.label}`;
   $('stSupport').style.color=mood.color;
+  _statBump('stSupport', Math.round(publicSupport()));
   $('stDepotWrap').classList.toggle('hidden', !state.research.orbital_depot);
   if(state.research.orbital_depot) $('stDepot').textContent=state.depot.toFixed(1)+' t';
   $('stRoyaltyWrap').classList.toggle('hidden', !(state.pgmRoyalty>0));
@@ -8209,6 +8260,7 @@ function render(){
   const sci=state.science||0;
   $('stSciWrap').classList.toggle('hidden', sci<=0);
   if(sci>0){ $('stSci').textContent=Math.round(sci)+' ⚛'; $('stSci').style.color='var(--readout)'; }
+  _statBump('stSci', sci);
   renderMarketStat();
 
   // slice 2: tag the shell with the active view's kind (scene vs panel) so CSS / later
@@ -9210,7 +9262,7 @@ function railObjectivesHTML(){
   const bar=`<div style="height:8px;border-radius:4px;background:#0d1418;overflow:hidden;margin:7px 0 5px"><div style="height:100%;width:${prog.pct}%;background:var(--ok)"></div></div>`;
   const objHTML=objectivesList().map(g=>`
     <div class="cc-panel-h" style="margin:10px 0 3px">${g.title}</div>
-    ${g.items.map(it=>`<div class="obj-item ${it.tab?'clk':''}"${it.tab?` onclick="${it.missionId?`selectMission('${it.missionId}')`:`setTab('${it.tab}')`}"`:''}>
+    ${g.items.map(it=>`<div class="obj-item ${it.tab?'clk':''}" data-obj-id="${it.missionId||'__'+(it.label.replace(/\W/g,'_'))}"${it.tab?` onclick="${it.missionId?`selectMission('${it.missionId}')`:`setTab('${it.tab}')`}"`:''}>
         <span class="${it.done?'obj-done':'obj-todo'}">${it.done?'☑':'☐'}</span>
         <span class="obj-label">${it.label}</span>${it.sub?`<span class="obj-sub">${it.sub}</span>`:''}
       </div>`).join('')}`).join('');
@@ -9264,8 +9316,22 @@ function renderRailPersistent(){
   for(const s of RAIL_ACC){ const open=railOpen===s.key, btn=$(s.btn), body=$(s.body);
     if(btn) btn.classList.toggle('open', open);
     if(body){ body.classList.toggle('open', open);
-      body.innerHTML = open ? s.html()+`<div class="dim rail-acc-hint">⇲ Double-click the header to open ${s.label} →</div>` : ''; }
+      // #31 Slice 3: close objectives section → reset sparkle state
+      if(s.key==='objectives'&&!open&&_objSectionOpen){ _prevObjDoneSet.clear(); _objSectionOpen=false; }
+      body.innerHTML = open ? s.html()+`<div class="dim rail-acc-hint">⇲ Double-click the header to open ${s.label} →</div>` : '';
+      // #31 Slice 3: objective sparkle — seed on first open, diff on subsequent renders
+      if(s.key==='objectives'&&open){ _applyObjSparkle(body); }
+    }
   }
+}
+function _applyObjSparkle(body){
+  const allItems=objectivesList().flatMap(g=>g.items);
+  const nowDoneIds=new Set(allItems.filter(it=>it.done).map(it=>it.missionId||'__'+(it.label.replace(/\W/g,'_'))));
+  if(!_objSectionOpen){ _objSectionOpen=true; nowDoneIds.forEach(id=>_prevObjDoneSet.add(id)); return; } // seed, no sparkle
+  const newlyDone=[...nowDoneIds].filter(id=>!_prevObjDoneSet.has(id));
+  nowDoneIds.forEach(id=>_prevObjDoneSet.add(id));
+  newlyDone.forEach(id=>{ const el=body.querySelector(`[data-obj-id="${id}"]`);
+    if(el){ el.classList.add('obj-just-done'); el.addEventListener('animationend',()=>el.classList.remove('obj-just-done'),{once:true}); } });
 }
 // CENTER — the animated Space Center (scene + clickable hotspots, reused verbatim)
 function renderCCCenter(){
@@ -12056,7 +12122,7 @@ function renderTechTree(){
     const sel=state.selectedResearch===r.id, locked=st==='locked';
     const name=r.name.length>20?r.name.slice(0,19)+'…':r.name;
     const sub = st==='active' ? `${fmtTimeLeft(state.activeResearch.monthsLeft)} left` : `${fM(rdCostOf(r))} · ${r.months} mo`;
-    nodes+=`<g style="cursor:pointer" onclick="selectResearch('${r.id}')" onmouseenter="showTechTip(event,'${r.id}')" onmousemove="moveTechTip(event)" onmouseleave="hideTechTip()" opacity="${locked?0.72:1}">
+    nodes+=`<g id="tn-${r.id}" style="cursor:pointer" onclick="selectResearch('${r.id}')" onmouseenter="showTechTip(event,'${r.id}')" onmousemove="moveTechTip(event)" onmouseleave="hideTechTip()" opacity="${locked?0.72:1}">
       <rect x="${p.x}" y="${p.y}" width="${NW}" height="${NH}" rx="6" fill="${c.fill}" stroke="${sel?'#ffffff':tcol}" stroke-width="${sel?2.2:1.3}"/>
       <rect x="${p.x}" y="${p.y}" width="4" height="${NH}" rx="2" fill="${tcol}"/>
       ${st==='done'?`<text x="${p.x+NW-7}" y="${p.y+13}" fill="#58c47a" font-size="11" text-anchor="end">✓</text>`:''}
@@ -12079,6 +12145,8 @@ function renderTechTree(){
     </div>
     <svg viewBox="0 0 ${L.W} ${L.H}" width="${zw}" height="${zh}" xmlns="http://www.w3.org/2000/svg" style="max-width:none;display:block">${bands}${edges}${nodes}</svg>`;
   el.classList.toggle('expanded', techExpanded); // pop-out full-screen state
+  // #31 Slice 2: amber glow on the just-unlocked tech node
+  if(_lastUnlockedTech){ const tg=el.querySelector('#tn-'+_lastUnlockedTech); if(tg){ tg.classList.add('tech-just-unlocked'); tg.addEventListener('animationend',()=>{ tg.classList.remove('tech-just-unlocked'); _lastUnlockedTech=null; },{once:true}); } else { _lastUnlockedTech=null; } }
   // wire wheel-to-zoom + grab-to-pan once (the pane div persists across re-renders; only innerHTML changes)
   if(!el._zoomWired){
     el._zoomWired=true;
@@ -12318,6 +12386,8 @@ function timelineGo(nav){ if(nav) setTab(nav); }
 // (newest first). Each chip jumps to a relevant screen when it has a navigation target.
 function renderLog(){
   const box=$('opsTimeline'); if(!box) return; box.innerHTML='';
+  // #31 Slice 3: slide in the newest chip when a new entry is added
+  const hasNew=state.log.length>_prevLogLength; _prevLogLength=state.log.length;
   const d=document.createElement('div'); d.className='tl-date'; d.innerHTML=`<small>DATE</small>${dateStr()}`; box.appendChild(d);
   const up=upcomingEvents();
   up.forEach(u=>{ const c=document.createElement('div'); c.className='tl-chip next'+(u.nav?' clk':'');
@@ -12325,7 +12395,9 @@ function renderLog(){
     if(u.nav) c.onclick=()=>timelineGo(u.nav); box.appendChild(c); });
   if(up.length){ const sep=document.createElement('div'); sep.className='tl-sep'; sep.textContent='◂ NOW'; box.appendChild(sep); }
   if(!state.log.length){ const e=document.createElement('div'); e.className='tl-empty'; e.textContent='No flights or events yet — advance time or fly a mission.'; box.appendChild(e); return; }
-  state.log.forEach(l=>{ const nav=logNav(l); const c=document.createElement('div'); c.className='tl-chip '+(l.kind||'note')+(nav?' clk':'');
+  let firstLogChip=true;
+  state.log.forEach(l=>{ const nav=logNav(l); const c=document.createElement('div'); c.className='tl-chip '+(l.kind||'note')+(nav?' clk':'')+(hasNew&&firstLogChip?' tl-chip-new':'');
+    firstLogChip=false;
     c.innerHTML=`<span class="tl-when">${l.when}</span><span class="tl-msg" title="${tlAttr(l.msg)}">${tlStrip(l.msg)}</span>`;
     if(nav) c.onclick=()=>timelineGo(nav); box.appendChild(c); });
 }
