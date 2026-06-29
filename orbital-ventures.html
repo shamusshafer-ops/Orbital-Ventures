@@ -50,7 +50,6 @@
   h1{margin:0;font-size:var(--fs-h1);font-weight:var(--fw-h1);letter-spacing:.02em}
   h2{margin:0;font-size:var(--fs-h2);font-weight:var(--fw-h2);letter-spacing:.02em}
   h3{margin:0;font-size:16px;font-weight:600;letter-spacing:.02em}
-  .scene-title{font-size:var(--fs-h1);font-weight:var(--fw-h1);letter-spacing:.03em;text-transform:uppercase;margin:0 0 16px;color:var(--ink)}
   .num{font-family:var(--mono);font-variant-numeric:tabular-nums}
   .muted{color:var(--muted)} .dim{color:var(--dim)}
 
@@ -69,6 +68,10 @@
   .stat{display:flex;flex-direction:column;align-items:flex-end}
   .stat .k{font-size:var(--fs-sm);text-transform:uppercase;letter-spacing:.14em;color:var(--muted);opacity:var(--op-sm)}
   .stat .v{font-family:var(--mono);font-size:18px;font-weight:600}
+  /* Header time-advance arrows (▸ day / ▸▸ week / ▸▸▸ month); .running = auto-advancing 1 step/sec */
+  .timectl{display:inline-flex;gap:3px;align-items:center;align-self:center}
+  .timectl .tarrow{padding:3px 7px;font-size:12px;line-height:1;letter-spacing:1px;min-width:0}
+  .timectl .tarrow.running{background:var(--ignite);color:#0a0a0a;border-color:var(--ignite);box-shadow:0 0 8px var(--ignite)}
   /* #30: a domain class tints the metric label (keys are static text — values keep their own
      state colours). .dombar-* adds a left accent so a panel reads its domain at a glance. */
   .dom-economy>.k,.k.dom-economy{color:var(--dom-economy)}
@@ -88,14 +91,28 @@
 
   /* Tabs */
   /* --- Mission Control Shell (UI Consolidation slice 1): persistent left rail + center viewport + (stub) right rail --- */
-  .shell{display:grid;grid-template-columns:220px minmax(0,1fr);gap:14px;align-items:start}
-  .shell.has-right{grid-template-columns:220px minmax(0,1fr) 300px}   /* right rail enabled in a later slice */
+  /* The right-rail column is ALWAYS reserved (even on scenes with no rail panel) so the center
+     viewport keeps a constant width — tabbing between scenes only swaps content, never shifts layout. */
+  .shell,.shell.has-right{display:grid;grid-template-columns:220px minmax(0,1fr) 300px;gap:14px;align-items:start}
   .rail-left{align-self:start}                                         /* nav + persistent advisor/objectives (slice 4) */
   .rail-advisor{margin-top:12px}
   .rail-advisor .card{padding:11px 12px}
   .rail-advisor .cc-panel-h{font-size:11px}
   .viewport{min-width:0;transition:opacity .15s ease}                 /* lets overflow children (tech tree, map) size within the column */
   .rail-right{position:sticky;top:calc(var(--topbar-h) + 10px);align-self:start;max-height:calc(100vh - var(--topbar-h) - 24px);overflow-y:auto}  /* tall panels (e.g. contracts) scroll within the sticky rail; clears the pinned topbar */
+  /* Persistent right-rail accordion (Mission Control / Flight Plan / Current Objectives) */
+  .rail-accordion{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
+  .rail-acc-btn{display:flex;align-items:center;justify-content:space-between;width:100%;text-align:left;
+    background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:9px 11px;
+    cursor:pointer;font-family:var(--sans);font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em}
+  .rail-acc-btn:hover{border-color:var(--ignite)}
+  .rail-acc-btn.open{border-color:var(--ignite);color:var(--ignite);box-shadow:inset 3px 0 0 var(--ignite)}
+  .rail-acc-sign{font-family:var(--mono);font-size:16px;line-height:1;opacity:.85;width:14px;text-align:center}
+  .rail-acc-sign::after{content:'+'}
+  .rail-acc-btn.open .rail-acc-sign::after{content:'−'}
+  .rail-acc-body{max-height:0;overflow:hidden;transition:max-height .22s ease}
+  .rail-acc-body.open{max-height:1600px;padding:2px 2px 4px}
+  .rail-acc-hint{font-size:10px;margin-top:8px;border-top:1px dashed var(--line);padding-top:6px;opacity:.8}
   .shell:not(.has-right) .rail-right{display:none}                    /* collapse the rail on panel scenes (slice 3) */
   .rail-panel > .card:first-child{margin-top:0}
   nav.rail-nav{display:flex;flex-direction:column;gap:5px;margin:0}
@@ -424,6 +441,11 @@
     </div>
     <div class="stats">
       <div class="stat"><span class="k">Date</span><span class="v" id="stDate">—</span></div>
+      <span class="timectl" title="Advance time — 1 click steps once, 2 clicks auto-runs (1 step/sec), click again to stop">
+        <button class="btn ghost tarrow" id="tArrowDay" onclick="clickTimeArrow('day')" title="Day · 1 click = +1 day · 2 clicks = 1 day/sec">▸</button>
+        <button class="btn ghost tarrow" id="tArrowWeek" onclick="clickTimeArrow('week')" title="Week · 1 click = +1 week · 2 clicks = 1 week/sec">▸▸</button>
+        <button class="btn ghost tarrow" id="tArrowMonth" onclick="clickTimeArrow('month')" title="Month · 1 click = +1 month · 2 clicks = 1 month/sec">▸▸▸</button>
+      </span>
       <div class="stat dom-economy"><span class="k">Capital</span><span class="v" id="stMoney">—</span></div>
       <div class="stat dom-exploration"><span class="k">Reputation</span><span class="v" id="stRep">—</span></div>
       <div class="stat adv-only dom-engineering"><span class="k">Flights</span><span class="v" id="stFlights">—</span></div>
@@ -435,27 +457,15 @@
       <div class="stat hidden adv-only dom-research" id="stSciWrap"><span class="k">Science</span><span class="v" id="stSci">—</span></div>
       <div class="stat hidden adv-only dom-economy" id="stDepotWrap"><span class="k">LEO Depot</span><span class="v" id="stDepot">—</span></div>
     </div>
-    <button class="btn ghost" id="topbarHideBtn" onclick="toggleTopbar()" title="Hide the top bar (h)" style="padding:2px 10px;font-size:11px;align-self:center;margin-left:14px">▴ Hide bar</button>
+    <div style="display:flex;align-items:center;gap:8px;margin-left:14px;align-self:center">
+      <button class="btn ghost" onclick="showSettingsMenu()" title="Settings, save / load / new game, display options, and interface detail level">⚙ Menu</button>
+      <button class="btn ghost" id="topbarHideBtn" onclick="toggleTopbar()" title="Hide the top bar (h)" style="padding:2px 10px;font-size:11px">▴ Hide bar</button>
+    </div>
   </header>
 
-  <div class="opsbar" id="opsbar">
-    <span id="rndStatus"></span>
-    <span id="nextObjStatus" class="dim" style="font-size:11px"></span>
-    <span style="flex:1"></span>
-    <!-- slice 8: Settings + save/load/new + display toggles (detail level / animation /
-         fullscreen / wide) all live in the HUD ⚙ menu now, decluttering the opsbar. -->
-    <button class="btn ghost" id="uiLayerBtn" onclick="cycleUiLayer()" title="Detail level — Basic hides advanced metrics; Expert shows everything. (Also in the ⚙ menu.)">View: Advanced</button>
-    <button class="btn ghost" onclick="showSettingsMenu()" title="Settings, save / load / new game, and display options">⚙ Menu</button>
-    <span class="timestep" style="display:inline-flex;gap:4px;align-items:center" title="Advance time — overhead accrues per day">
-      <button class="btn ghost" onclick="stepTime(1)" title="Advance 1 day">+1d</button>
-      <button class="btn ghost" onclick="stepTime(7)" title="Advance 1 week">+1w</button>
-      <button class="btn" onclick="stepTime(DAYS_PER_MONTH)">▸ +1 month <span class="dim" id="overheadLabel">(−$0.12M/mo)</span></button>
-      <button class="btn ghost" onclick="stepTime(DAYS_PER_MONTH*12)" title="Advance 1 year">+1y</button>
-    </span>
-    <button class="btn ghost" id="skipBtn" onclick="skipResearch()">Skip to R&amp;D done</button>
-  </div>
-  <!-- Always-visible flight & ops timeline: current date + upcoming (R&D, builds, windows) +
-       recent log (flights, tech, events). Pinned in the top bar; click an entry to jump to it. -->
+  <!-- The R&D status row (rndStatus / next-objective hint / Skip) moved into the R&D scene; the
+       flight-log timeline stays pinned here as the only row under the header. Time controls + the
+       ⚙ Menu (with the interface detail-level "View" option folded in) now live in the header. -->
   <div class="timeline" id="opsTimeline"></div>
   </div><!-- /topbar -->
   <button class="btn ghost hidden" id="topbarShow" onclick="toggleTopbar()" title="Show the top bar (h)">▾ Show bar</button>
@@ -484,7 +494,6 @@
     <main class="viewport">
 
   <div id="commandView">
-    <h1 class="scene-title">Mission Control</h1>
     <div class="card" id="execOverview"></div>
     <!-- ccLeft (advisor/objectives) promoted to the left rail in slice 4;
          ccRight (Alerts/News) relocated to the right rail in slice 3 -->
@@ -548,7 +557,13 @@
        (showProgramsModal builds #ambitionCard/#programsCard on demand). -->
 
   <div id="rndView" class="hidden">
-    <h1 class="scene-title">Research Division</h1>
+    <!-- R&D status + Skip moved here from the old global opsbar row (render() still drives these ids) -->
+    <div class="opsbar" id="rndStatusBar" style="margin-bottom:12px">
+      <span id="rndStatus"></span>
+      <span id="nextObjStatus" class="dim" style="font-size:11px"></span>
+      <span style="flex:1"></span>
+      <button class="btn ghost" id="skipBtn" onclick="skipResearch()">Skip to R&amp;D done</button>
+    </div>
     <div class="card" id="eraCard"></div>
     <div class="card dombar-research">
       <h2><span class="dom-dot" style="background:var(--dom-research)"></span>Technology Tree — capital + time into capability</h2>
@@ -562,7 +577,6 @@
   </div>
 
   <div id="mapView" class="hidden">
-    <h1 class="scene-title">Solar System</h1>
     <div class="card dombar-exploration" id="mapCard">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
         <h2 style="margin:0"><span class="dom-dot" style="background:var(--dom-exploration)"></span>Solar System — click a body for its Δv profile</h2>
@@ -581,7 +595,6 @@
   <!-- Station Bench (framework only): a pan/zoom/pop-out 2D side-view module canvas, mirroring
        the Solar System scene's controls. Real station assembly/economy is fleshed out later. -->
   <div id="stationView" class="hidden">
-    <h1 class="scene-title">Station Operations</h1>
     <div class="card" id="stationCard">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
         <h2 style="margin:0">Station Bench — module assembly (preview)</h2>
@@ -593,7 +606,6 @@
       <p class="muted" style="font-size:12px;margin:6px 0 10px">A 2D side view of an orbital module. Drag to pan, scroll to zoom. This is an early framework — module library, docking and assembly come later.</p>
       <div id="stationHost" style="display:none;width:100%;aspect-ratio:760/480"></div>
       <div id="stationCanvas"></div>
-      <div id="stationStats" style="margin-top:12px"></div>
     </div>
   </div>
 
@@ -611,6 +623,16 @@
 
     </main>
     <aside class="rail-right" id="railRight">
+      <!-- Persistent accordion (shown on every scene): one click drops a section down to preview it,
+           a second click on an open section jumps to its page. renderRailPersistent() fills the bodies. -->
+      <div id="railPersistent" class="rail-accordion">
+        <button class="rail-acc-btn" id="raccMission" onclick="railAccordClick('mission')" ondblclick="railAccordDbl('mission')" title="Click +/− to expand or collapse · double-click to open Mission Control"><span>🎛 Mission Control</span><span class="rail-acc-sign"></span></button>
+        <div class="rail-acc-body" id="raccMissionBody"></div>
+        <button class="rail-acc-btn" id="raccFlight" onclick="railAccordClick('flight')" ondblclick="railAccordDbl('flight')" title="Click +/− to expand or collapse · double-click to open the Design Bench"><span>🧭 Flight Plan</span><span class="rail-acc-sign"></span></button>
+        <div class="rail-acc-body" id="raccFlightBody"></div>
+        <button class="rail-acc-btn" id="raccObj" onclick="railAccordClick('objectives')" ondblclick="railAccordDbl('objectives')" title="Click +/− to expand or collapse · double-click to open Programs"><span>✔ Current Objectives</span><span class="rail-acc-sign"></span></button>
+        <div class="rail-acc-body" id="raccObjBody"></div>
+      </div>
       <!-- slice 3: the contextual right rail. Each scene's former sidebar lives here as a
            .rail-panel; render() shows the one matching the active scene and toggles
            #appShell.has-right. Element ids are unchanged so the render fns are untouched. -->
@@ -626,6 +648,9 @@
       </div>
       <div id="railRnd" class="rail-panel hidden">
         <div class="card" id="researchDetail"></div>
+      </div>
+      <div id="railStation" class="rail-panel hidden">
+        <div class="card" id="stationStats"></div>
       </div>
       <!-- slice 5: the Mission Control hub drill — Contracts + passive income, shown on the
            Command Center scene when the player drills into the Mission Control building. -->
@@ -3457,6 +3482,23 @@ function reconcileResearch(){
 // short steps cost proportionally — there is no free time.
 function stepTime(days){ advanceDays(days); if(!state.over){ render(); maybeShowSetback(); } }
 function advanceMonth(){ stepTime(DAYS_PER_MONTH); } // #26: one-month step (used by the advisor nudge)
+// Header time arrows: ▸ day / ▸▸ week / ▸▸▸ month. First click on an arrow steps once; a second
+// click on the same arrow starts auto-advancing that unit at 1 step/sec; a third click (or clicking
+// it while it's running) stops. Clicking a different arrow drops back to single-step on the new unit.
+const TIME_UNIT_DAYS={day:1,week:7,month:DAYS_PER_MONTH};
+let timeAuto={unit:null,timer:null}, timePrimed=null;
+function stopTimeAuto(){ if(timeAuto.timer) clearInterval(timeAuto.timer); timeAuto={unit:null,timer:null}; updateTimeArrows(); }
+function startTimeAuto(unit){ stopTimeAuto(); timeAuto.unit=unit;
+  timeAuto.timer=setInterval(()=>{ if(state.over){ stopTimeAuto(); return; } stepTime(TIME_UNIT_DAYS[unit]); }, 1000);
+  updateTimeArrows(); }
+function clickTimeArrow(unit){
+  if(!TIME_UNIT_DAYS[unit]||state.over) return;
+  if(timeAuto.unit===unit){ stopTimeAuto(); timePrimed=null; return; }   // running this unit → stop
+  if(timeAuto.unit) stopTimeAuto();                                      // running another unit → drop to single-step
+  if(timePrimed===unit){ timePrimed=null; startTimeAuto(unit); return; } // 2nd consecutive press → auto-run 1/sec
+  stepTime(TIME_UNIT_DAYS[unit]); timePrimed=unit;                       // 1st press → step once + prime
+}
+function updateTimeArrows(){ for(const u in TIME_UNIT_DAYS){ const b=$('tArrow'+u[0].toUpperCase()+u.slice(1)); if(b) b.classList.toggle('running', timeAuto.unit===u); } }
 function skipResearch(){ if(!state.activeResearch) return;
   let n=state.activeResearch.monthsLeft+1; // each month removes ≥1; +1 guarantees completion absent a setback
   while(n-->0 && state.activeResearch && !_pendingSetback && !state.over) advance(1); // #26: stop the skip at a setback decision
@@ -8176,15 +8218,14 @@ function render(){
     shell.classList.toggle('viewing-scene', isSceneTab(state.tab));
     shell.classList.toggle('viewing-panel', !isSceneTab(state.tab));
     // slice 3: show the active scene's contextual right-rail panel; collapse the rail on panels.
-    const RAIL={command:'railCommand',bench:'railBench',map:'railMap',rnd:'railRnd'};
+    const RAIL={command:'railCommand',bench:'railBench',map:'railMap',rnd:'railRnd',station:'railStation'};
     let activePanel=RAIL[state.tab]||null;
     // command's alerts panel (ccRight) is adv-only, so the rail is empty in Basic → don't reserve it.
     let railAdvOnly=(state.tab==='command');
     // slice 5: on the hub, the Mission Control drill swaps Alerts for the Contracts panel (shown in all layers).
     if(state.tab==='command' && hubPanel==='contracts'){ activePanel='railContracts'; railAdvOnly=false; }
-    for(const id of ['railCommand','railBench','railMap','railRnd','railContracts']){ const p=$(id); if(p) p.classList.toggle('hidden', id!==activePanel); }
-    const railShown=!!activePanel && !(railAdvOnly && uiLayer()==='basic');
-    shell.classList.toggle('has-right', railShown);
+    for(const id of ['railCommand','railBench','railMap','railRnd','railStation','railContracts']){ const p=$(id); if(p) p.classList.toggle('hidden', id!==activePanel); }
+    shell.classList.add('has-right'); // the persistent accordion always occupies the right rail, so keep it shown on every scene
   }
   $('tabCommand').classList.toggle('active',state.tab==='command');
   $('tabBench').classList.toggle('active',state.tab==='bench');
@@ -8200,12 +8241,14 @@ function render(){
   applyDifficultyUI();
 
   const ar=state.activeResearch;
+  const rbar=$('rndStatusBar'); if(rbar) rbar.classList.toggle('hidden', !ar); // only show the bar while R&D is running
   $('rndStatus').innerHTML = ar
     ? `<span style="color:var(--readout)">R&D in progress:</span> ${RESEARCH.find(r=>r.id===ar.id).name} — <span class="num">${fmtTimeLeft(ar.monthsLeft)}</span> left`
-    : `<span class="dim">No active research. Start a project in R&D — it runs while you fly.</span>`;
+    : '';
   $('skipBtn').disabled=!ar;
 
-  renderCCLeft(); // slice 4: the advisor/objectives live in the persistent left rail — rebuild on every scene
+  renderCCLeft(); // slice 4: the Basic-only focal guide lives in the left rail — rebuild on every scene
+  renderRailPersistent(); // persistent right-rail accordion (Mission Control / Flight Plan / Objectives)
   if(state.tab==='command')renderCommandCenter(); else { stopCCScene(); pauseCapeGame(); }
   if(state.tab!=='bench') pauseVehGame();
   if(state.tab!=='map') pauseMapGame();
@@ -8218,6 +8261,7 @@ function render(){
   if(state.tab==='station')renderStation();
   renderLog();
   if(activeModal) activeModal(); // slice 6: keep an open deep-view modal (Programs/Rivals/Personnel) in sync with state
+  updateTimeArrows(); // keep the header time-arrow auto-run highlight in sync after a re-render
   syncTopbarH(); // keep sticky-panel offsets matched to the pinned topbar's actual height
 }
 /* ---------- #18: Agency Command Center (home screen + ground site map) ----------
@@ -8664,6 +8708,11 @@ function drawIsoBuilding(ctx,L,t){
     for(let d=-1;d<=1;d++){ const fx=0.5+d*0.27; const px=box.Cf[0]+(box.Cr[0]-box.Cf[0])*fx, py=box.Cf[1]+(box.Cr[1]-box.Cf[1])*fx, dh=h*0.55; ctx.fillStyle='#0e151b'; ctx.fillRect(px-4,py-dh,8,dh); ctx.strokeStyle='rgba(245,166,35,0.35)'; ctx.lineWidth=0.6; ctx.strokeRect(px-4,py-dh,8,dh); }
     isoQuad(ctx,[box.up(box.Cb),box.up(box.Cr),box.up(box.Cf),box.up(box.Cl)], shade('#2b3a44',0.30), 'rgba(255,255,255,0.1)'); // bright roof ridge
     ctx.fillStyle=`rgba(255,70,50,${0.4+0.6*(Math.sin(t*3)>0?1:0.3)})`; ctx.beginPath(); ctx.arc(top[0],top[1]-4,3,0,7); ctx.fill();
+    // manufacturing exhaust stack + darker, sootier smoke (reads heavier than the light pad smoke)
+    const bkT=box.up(box.Cb), stkX=bkT[0]+15, stkBot=bkT[1]+9, stkTop=stkBot-22;
+    ctx.fillStyle='#363c42'; ctx.fillRect(stkX-2.4, stkTop, 4.8, stkBot-stkTop);
+    ctx.fillStyle='#2a2f34'; ctx.fillRect(stkX-2.9, stkTop-2, 5.8, 2.4); // stack cap
+    drawIsoSmoke(ctx, stkX, stkTop-2, t, 5, 1.05, '74,70,64', 0.34);
     // flag + agency wordmark band on the front-right face (à la the real VAB)
     const fA=box.Cf, fB=box.Cr, ufx=0.16, flx=fA[0]+(fB[0]-fA[0])*ufx, fly=fA[1]+(fB[1]-fA[1])*ufx, fyT=fly-h*0.78;
     ctx.fillStyle='#c43b32'; for(let s=0;s<7;s+=2) ctx.fillRect(flx-8, fyT+s*1.4, 16, 1.4);
@@ -8682,6 +8731,18 @@ function drawIsoBuilding(ctx,L,t){
   } else if(b.type==='lab'){ ctx.fillStyle='#3a464e'; ctx.fillRect(top[0]-8,top[1]-6,5,6); ctx.fillRect(top[0]+4,top[1]-5,5,5); // roof vents
   } else if(b.type==='admin'){ ctx.fillStyle='#3a464e'; isoQuad(ctx,[[box.Cf[0]-11,box.Cf[1]],[box.Cf[0]+11,box.Cf[1]],[box.Cf[0]+8,box.Cf[1]-7],[box.Cf[0]-8,box.Cf[1]-7]],'#3a464e'); } // entrance canopy
 }
+// A spherical cryogenic propellant tank on a support skirt (returns its geometry so pipes can attach).
+function isoCryoTank(ctx,x,baseY,r,col,frost,t){
+  ctx.fillStyle='rgba(0,0,0,0.16)'; ctx.beginPath(); ctx.ellipse(x,baseY+1.5,r*1.05,r*0.4,0,0,7); ctx.fill(); // ground shadow
+  ctx.fillStyle='#3a4047'; ctx.beginPath(); ctx.moveTo(x-r*0.72,baseY); ctx.lineTo(x-r*0.52,baseY-r*0.62); ctx.lineTo(x+r*0.52,baseY-r*0.62); ctx.lineTo(x+r*0.72,baseY); ctx.closePath(); ctx.fill(); // skirt
+  const cyc=baseY-r*0.62-r*0.92; // sphere centre
+  const g=ctx.createRadialGradient(x-r*0.4,cyc-r*0.4,r*0.2, x,cyc,r*1.15);
+  g.addColorStop(0,shade(col,0.42)); g.addColorStop(1,shade(col,-0.32));
+  ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x,cyc,r,0,7); ctx.fill();
+  ctx.strokeStyle='rgba(0,0,0,0.28)'; ctx.lineWidth=1; ctx.stroke();
+  if(frost){ ctx.fillStyle=`rgba(190,222,245,${(0.22+0.06*Math.abs(Math.sin(t))).toFixed(3)})`; ctx.beginPath(); ctx.arc(x,cyc,r*0.95,0.25,Math.PI-0.25); ctx.fill(); } // cryo frost on the underside
+  return {x, baseY, cyc, top:cyc-r};
+}
 function drawIsoPad(ctx,sx,sy,b,t,rival){
   const ex=ISO_TW/2, ey=ISO_TH/2, a=b.fw/2, bb=b.fd/2;
   // concrete pad diamond
@@ -8692,6 +8753,17 @@ function drawIsoPad(ctx,sx,sy,b,t,rival){
   ctx.strokeStyle='rgba(180,120,70,0.4)'; ctx.lineWidth=1; for(let yy=gTop;yy<gBot;yy+=12){ ctx.beginPath(); ctx.moveTo(gx-6,yy); ctx.lineTo(gx+6,yy+12); ctx.moveTo(gx+6,yy); ctx.lineTo(gx-6,yy+12); ctx.stroke(); }
   const bl=(Math.sin(t*4)>0)?1:0.2; ctx.fillStyle=`rgba(255,60,40,${0.4+0.6*bl})`; ctx.beginPath(); ctx.arc(gx+6,gTop,3,0,7); ctx.fill();
   if(rival){ ctx.fillStyle='#c2b8b2'; ctx.fillRect(sx-1.5,sy-b.h*0.7,3,b.h*0.7); return; }
+  // Propellant farm: spherical LOX (oxygen) + RP-1 (fuel) tanks on the open grass to the screen-LEFT of
+  // the pad (clear of the gantry on the right and the crawlerway to the east), with feed pipes to the
+  // gantry base. Kept short and off to the side so they never occlude the rocket, gantry, or any road.
+  const tA=isoCryoTank(ctx, sx-58, sy+10, 9,   '#e8eef4', true,  t);  // LOX / oxygen — white, frosted
+  const tB=isoCryoTank(ctx, sx-78, sy+19, 7.5, '#d9cdb0', false, t);  // RP-1 / fuel — tan
+  ctx.lineCap='round';
+  ctx.strokeStyle='#5f666d'; ctx.lineWidth=2.6;
+  [tA,tB].forEach(tk=>{ ctx.beginPath(); ctx.moveTo(tk.x, tk.baseY); ctx.lineTo((tk.x+gx)/2, tk.baseY+2); ctx.lineTo(gx, sy); ctx.stroke(); });
+  ctx.strokeStyle='rgba(175,185,195,0.4)'; ctx.lineWidth=0.9;
+  [tA,tB].forEach(tk=>{ ctx.beginPath(); ctx.moveTo(tk.x, tk.baseY-1); ctx.lineTo((tk.x+gx)/2, tk.baseY+1); ctx.lineTo(gx, sy-1); ctx.stroke(); });
+  ctx.lineCap='butt';
   // the player's current vehicle, standing upright on the pad
   let spec=null; try{ const m=curMission(); spec={ stages: state.stages.map(s=>({prop:s.prop,count:s.count,dia:s.dia})), boosters: boosterSpec(), transferProp:(m&&m.profile&&m.modules&&m.modules.includes('transfer'))?state.transfer.prop:0, crewed:!!(m&&m.crew>0) }; }catch(e){}
   if(spec){ let shape=null; try{ shape=buildVehicleShape(spec); }catch(e){}
@@ -8759,6 +8831,15 @@ function drawIsoRoads(ctx,L){
 // ---- Detailed space-center vehicles ----
 // footprint helper: long axis runs along the travel direction so vehicles look like they're driving down the road
 function vfoot(alongGx,len,wid){ return alongGx?{fw:len,fd:wid}:{fw:wid,fd:len}; }
+// ---- Flat side-view cartoon vehicles (clean profile silhouettes — a real bus / truck / car shape) ----
+// Each is a billboard drawn at the ground point (cx,cy); `face` (+1/−1) flips it to point along travel.
+function rrPath(ctx,x,y,w,h,r){ r=Math.min(r,Math.abs(w)/2,Math.abs(h)/2); ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+function vWheel(ctx,x,gy,r){ ctx.fillStyle='#1b1f24'; ctx.beginPath(); ctx.arc(x,gy-r,r,0,7); ctx.fill();   // tyre seats on ground line gy
+  ctx.fillStyle='#c2cad2'; ctx.beginPath(); ctx.arc(x,gy-r,r*0.46,0,7); ctx.fill();                          // hub
+  ctx.fillStyle='#5a636b'; ctx.beginPath(); ctx.arc(x,gy-r,r*0.18,0,7); ctx.fill(); }                        // axle cap
+function vShadow(ctx,cx,gy,w){ ctx.fillStyle='rgba(0,0,0,0.18)'; ctx.beginPath(); ctx.ellipse(cx,gy+1.5,w*0.55,3,0,0,7); ctx.fill(); }
+// rising smoke puffs in the iso scene; colour/alpha parameterised so manufacturing smoke can read darker than pad smoke
+function drawIsoSmoke(ctx,x,y,t,seed,sc,col,baseA){ for(let i=0;i<6;i++){ const p=((t*0.28+i/6+seed*0.37)%1); const sy=y-p*40*sc; const sx=x+Math.sin(p*6+seed*3)*7*sc; const rr=(2.2+p*9)*sc; ctx.fillStyle=`rgba(${col},${(baseA*(1-p)).toFixed(3)})`; ctx.beginPath(); ctx.arc(sx,sy,rr,0,7); ctx.fill(); } }
 function vehCrawler(ctx,cx,cy,alongGx,t){
   // Crawler-transporter: massive orange tracked platform carrying a rocket to the pad
   const f=vfoot(alongGx,0.70,0.52), box=isoBox(ctx,cx,cy,f.fw,f.fd,10,'#2e3438');
@@ -8783,55 +8864,74 @@ function vehCrawler(ctx,cx,cy,alongGx,t){
   ctx.fillStyle='#7a5a34'; ctx.beginPath(); ctx.arc(cx,rb+1,4,Math.PI,0); ctx.fill(); // engine bell
   const bl=Math.sin(t*4)>0?0.9:0.3; ctx.fillStyle=`rgba(255,80,50,${bl})`; ctx.beginPath(); ctx.arc(cx,top[1]-44,2.2,0,7); ctx.fill(); // beacon
 }
-function vehTanker(ctx,cx,cy,alongGx){
-  // LOX/LH2 cryogenic tanker: white elongated tank on a truck, blue stripe
-  const f=vfoot(alongGx,0.40,0.18), box=isoBox(ctx,cx,cy,f.fw,f.fd,12,'#d0dce6');
-  const sh=12*0.42;
-  isoQuad(ctx,[[box.Cl[0],box.Cl[1]-sh],[box.Cf[0],box.Cf[1]-sh],[box.Cf[0],box.Cf[1]-sh-3],[box.Cl[0],box.Cl[1]-sh-3]],'#1a4a8a',null);
-  isoQuad(ctx,[[box.Cf[0],box.Cf[1]-sh],[box.Cr[0],box.Cr[1]-sh],[box.Cr[0],box.Cr[1]-sh-3],[box.Cf[0],box.Cf[1]-sh-3]],'#1a4a8a',null);
-  ctx.fillStyle='rgba(140,195,235,0.28)'; ctx.beginPath(); ctx.ellipse(cx,box.up([cx,cy])[1],14,6,0,0,7); ctx.fill(); // cryo frost on tank top
-  isoBox(ctx,box.Cf[0]*0.6+cx*0.4, box.Cf[1]*0.6+cy*0.4, 0.09,0.10,15,'#1a2e44'); // cab at the front
-  ctx.fillStyle='#8090a0'; ctx.beginPath(); ctx.arc(box.Cb[0]*0.55+cx*0.45, box.Cb[1]*0.55+cy*0.45-6, 3,Math.PI,0); ctx.fill(); // rear valve dome
+function vehTanker(ctx,cx,cy,alongGx,face){
+  // LOX/RP-1 cryogenic tanker: cab + horizontal cylinder tank, 3 wheels (1 front, 2 rear) — flat side view
+  vShadow(ctx,cx,cy,36);
+  ctx.save(); ctx.translate(cx,cy); ctx.scale(face||1,1);
+  const W=36,wr=3.3, bb=-wr;
+  vWheel(ctx,-W*0.30,0,wr); vWheel(ctx,W*0.16,0,wr); vWheel(ctx,W*0.31,0,wr);
+  ctx.fillStyle='#8a939c'; ctx.fillRect(-W/2,bb-3,W,3); // chassis
+  // cab (front = +x)
+  ctx.fillStyle='#21466a'; rrPath(ctx,W*0.20,bb-12,W*0.29,12,3); ctx.fill(); ctx.strokeStyle='rgba(0,0,0,0.22)'; ctx.lineWidth=1; ctx.stroke();
+  ctx.fillStyle='#bfe0f5'; ctx.fillRect(W*0.30,bb-11,W*0.14,4.6); // windscreen
+  ctx.fillStyle='#ffe39a'; ctx.beginPath(); ctx.arc(W/2-1.6,bb-2.4,1.3,0,7); ctx.fill(); // headlight
+  // cylindrical cryo tank behind the cab
+  const tx0=-W/2+1, tw=W*0.60, th=11, ty=bb-3-th;
+  ctx.fillStyle='#eef3f8'; rrPath(ctx,tx0,ty,tw,th,th/2); ctx.fill(); ctx.strokeStyle='rgba(0,0,0,0.18)'; ctx.lineWidth=1; ctx.stroke();
+  ctx.strokeStyle='#1a4a8a'; ctx.lineWidth=2.4; ctx.beginPath(); ctx.moveTo(tx0+tw*0.5,ty+0.5); ctx.lineTo(tx0+tw*0.5,ty+th-0.5); ctx.stroke(); // blue band
+  ctx.fillStyle='rgba(150,200,235,0.55)'; rrPath(ctx,tx0+2.5,ty+1.6,tw-6,2.6,1.3); ctx.fill(); // frost sheen
+  ctx.restore();
 }
-function vehFireTruck(ctx,cx,cy,alongGx,t){
-  // Emergency fire truck: red body, yellow stripe, ladder, flashing light
-  const f=vfoot(alongGx,0.32,0.17), box=isoBox(ctx,cx,cy,f.fw,f.fd,14,'#b02020');
-  const sh=14*0.38;
-  isoQuad(ctx,[[box.Cl[0],box.Cl[1]-sh],[box.Cf[0],box.Cf[1]-sh],[box.Cf[0],box.Cf[1]-sh-3.5],[box.Cl[0],box.Cl[1]-sh-3.5]],'#e8c020',null);
-  isoQuad(ctx,[[box.Cf[0],box.Cf[1]-sh],[box.Cr[0],box.Cr[1]-sh],[box.Cr[0],box.Cr[1]-sh-3.5],[box.Cf[0],box.Cf[1]-sh-3.5]],'#e8c020',null);
-  const top=box.up([cx,cy]);
-  ctx.strokeStyle='#707880'; ctx.lineWidth=1.2; // ladder rack
-  ctx.beginPath(); ctx.moveTo(top[0]-12,top[1]-1); ctx.lineTo(top[0]+12,top[1]-5); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(top[0]-12,top[1]-4); ctx.lineTo(top[0]+12,top[1]-8); ctx.stroke();
-  for(let i=0;i<5;i++){ const u=i/4, x=top[0]-12+u*24, y=top[1]-1-u*4; ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x,y-3); ctx.stroke(); }
-  const fl=Math.sin(t*7)>0?1:0.2; ctx.fillStyle=`rgba(255,90,50,${fl})`; ctx.beginPath(); ctx.arc(top[0]-5,top[1]-2,2,0,7); ctx.fill(); // flashers
-  ctx.fillStyle=`rgba(80,160,255,${1-fl})`; ctx.beginPath(); ctx.arc(top[0]+5,top[1]-3,2,0,7); ctx.fill();
+function vehFireTruck(ctx,cx,cy,alongGx,t,face){
+  // Fire truck: red body + taller cab, roof ladder, yellow stripe, beacon — flat side view
+  vShadow(ctx,cx,cy,34);
+  ctx.save(); ctx.translate(cx,cy); ctx.scale(face||1,1);
+  const W=34,H=12,wr=3.3, bb=-wr;
+  vWheel(ctx,-W*0.30,0,wr); vWheel(ctx,W*0.16,0,wr); vWheel(ctx,W*0.32,0,wr);
+  ctx.fillStyle='#cf2330'; rrPath(ctx,-W/2,bb-H,W*0.74,H,3.2); ctx.fill(); ctx.strokeStyle='rgba(0,0,0,0.22)'; ctx.lineWidth=1; ctx.stroke(); // body
+  ctx.fillStyle='#b81d28'; rrPath(ctx,W*0.18,bb-H-3,W*0.30,H+3,3); ctx.fill(); ctx.stroke(); // cab (front)
+  ctx.fillStyle='#bfe0f5'; ctx.fillRect(W*0.235,bb-H-1.5,W*0.18,4.8); // cab window
+  ctx.strokeStyle='#9aa3ab'; ctx.lineWidth=1.1; // roof ladder
+  ctx.beginPath(); ctx.moveTo(-W*0.46,bb-H-1); ctx.lineTo(W*0.12,bb-H-2.5); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-W*0.46,bb-H-3); ctx.lineTo(W*0.12,bb-H-4.5); ctx.stroke();
+  for(let i=0;i<6;i++){ const u=i/5, x=-W*0.46+u*(W*0.58), y=bb-H-1-u*1.5; ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x,y-2); ctx.stroke(); }
+  ctx.fillStyle='#f5d23a'; ctx.fillRect(-W/2,bb-5,W*0.7,2.2); // yellow stripe
+  const fl=Math.sin(t*7)>0?1:0.25; ctx.fillStyle=`rgba(255,90,50,${fl})`; ctx.beginPath(); ctx.arc(W*0.30,bb-H-4,1.6,0,7); ctx.fill(); // beacon
+  ctx.fillStyle='#ffe39a'; ctx.beginPath(); ctx.arc(W/2-1.6,bb-2.2,1.3,0,7); ctx.fill(); // headlight
+  ctx.restore();
 }
-function vehBus(ctx,cx,cy,alongGx){
-  // Crew transport bus: white body, blue window band, agency stripe
-  const f=vfoot(alongGx,0.42,0.19), box=isoBox(ctx,cx,cy,f.fw,f.fd,16,'#e2eaf2');
-  const wt=16*0.58, wb=16*0.78;
-  isoQuad(ctx,[[box.Cl[0],box.Cl[1]-wt],[box.Cf[0],box.Cf[1]-wt],[box.Cf[0],box.Cf[1]-wb],[box.Cl[0],box.Cl[1]-wb]],'#1e3c70',null);
-  isoQuad(ctx,[[box.Cf[0],box.Cf[1]-wt],[box.Cr[0],box.Cr[1]-wt],[box.Cr[0],box.Cr[1]-wb],[box.Cf[0],box.Cf[1]-wb]],'#1e3c70',null);
-  ctx.fillStyle='rgba(190,220,245,0.75)'; // window panes
-  for(let i=0;i<5;i++){ const u=(i+0.5)/5, x=box.Cl[0]+(box.Cf[0]-box.Cl[0])*u, y=box.Cl[1]+(box.Cf[1]-box.Cl[1])*u-(wt+wb)/2; ctx.beginPath(); ctx.arc(x,y,2.0,0,7); ctx.fill(); }
-  for(let i=0;i<5;i++){ const u=(i+0.5)/5, x=box.Cf[0]+(box.Cr[0]-box.Cf[0])*u, y=box.Cf[1]+(box.Cr[1]-box.Cf[1])*u-(wt+wb)/2; ctx.beginPath(); ctx.arc(x,y,2.0,0,7); ctx.fill(); }
-  const st=16*0.52;
-  isoQuad(ctx,[[box.Cl[0],box.Cl[1]-st],[box.Cf[0],box.Cf[1]-st],[box.Cf[0],box.Cf[1]-st-2],[box.Cl[0],box.Cl[1]-st-2]],'#c02828',null); // agency stripe
+function vehBus(ctx,cx,cy,alongGx,face){
+  // Crew transport bus: long blue body, big window band, door + skirt stripe — flat side view
+  vShadow(ctx,cx,cy,34);
+  ctx.save(); ctx.translate(cx,cy); ctx.scale(face||1,1);
+  const W=34,H=14,wr=3.4, bb=-wr;
+  vWheel(ctx,-W*0.30,0,wr); vWheel(ctx,W*0.30,0,wr);
+  ctx.fillStyle='#3f8fd0'; rrPath(ctx,-W/2,bb-H,W,H,5); ctx.fill(); ctx.strokeStyle='rgba(0,0,0,0.2)'; ctx.lineWidth=1; ctx.stroke(); // body
+  ctx.fillStyle='#d2ecfb'; rrPath(ctx,-W/2+3.5,bb-H+3,W-7,H*0.42,2.2); ctx.fill(); // window band
+  ctx.strokeStyle='#3f8fd0'; ctx.lineWidth=1.3; for(let i=1;i<5;i++){ const x=-W/2+3.5+(W-7)*i/5; ctx.beginPath(); ctx.moveTo(x,bb-H+3); ctx.lineTo(x,bb-H+3+H*0.42); ctx.stroke(); } // mullions
+  ctx.fillStyle='#2b6fa8'; ctx.fillRect(W*0.16,bb-H*0.52,4.5,H*0.52); // door
+  ctx.fillStyle='#c0353a'; ctx.fillRect(-W/2,bb-2,W,2); // skirt stripe
+  ctx.fillStyle='#ffe39a'; ctx.beginPath(); ctx.arc(W/2-2,bb-2.4,1.4,0,7); ctx.fill(); // headlight (front)
+  ctx.restore();
 }
 // Build depth-sortable vehicle render items that follow the actual road network in grid space.
 function isoVehicleItems(ctx,t,L){
   const items=[], G=k=>L[k]&&L[k].def;
-  const add=(s,fn)=>{ const cx=isoX(s.gx,s.gy), cy=isoY(s.gx,s.gy), alongGx=Math.abs(s.dgx)>=Math.abs(s.dgy); items.push({d:s.gx+s.gy, draw:()=>fn(cx,cy,alongGx)}); };
+  // place a vehicle at path param pNow; `face` (+1/−1) is derived from screen-x travel vs a slightly
+  // earlier sample (pPrev) so flat side-view vehicles point the way they're actually moving.
+  const place=(wps,pNow,pPrev,fn)=>{ const s=gridPath(wps,pNow), a=gridPath(wps,pPrev);
+    const cx=isoX(s.gx,s.gy), cy=isoY(s.gx,s.gy), alongGx=Math.abs(s.dgx)>=Math.abs(s.dgy);
+    const sdx=(s.gx-s.gy)-(a.gx-a.gy), face=sdx>1e-4?1:(sdx<-1e-4?-1:1);
+    items.push({d:s.gx+s.gy, draw:()=>fn(cx,cy,alongGx,face)}); };
   const mfg=G('mfg'), pad=G('pad'), prod=G('prod'), mission=G('mission'), personnel=G('personnel'), infra=G('infra');
   // 1. Crawler-transporter — one-way VAB→pad delivery along the bypass crawlerway, terminating (parking) at the pad
-  if(mfg&&pad){ const cc=crawlerCycle(t); if(cc.show) add(gridPath(crawlerRouteGrid(), cc.p), (cx,cy,a)=>vehCrawler(ctx,cx,cy,a,t)); }
+  if(mfg&&pad){ const cc=crawlerCycle(t); if(cc.show){ const ccp=crawlerCycle(Math.max(0,t-0.12)); place(crawlerRouteGrid(), cc.p, ccp.show?ccp.p:cc.p-0.01, (cx,cy,a)=>vehCrawler(ctx,cx,cy,a,t)); } }
   // 2. LOX tanker — prod shed → mission control, via its driveway, the avenue, and mission's driveway
-  if(prod&&mission) add(gridPath([[prod.gx,prod.gy],[prod.gx,ISO_AV],[mission.gx,ISO_AV],[mission.gx,mission.gy]], pingpong(t,0.05,0.4)), (cx,cy,a)=>vehTanker(ctx,cx,cy,a));
+  if(prod&&mission){ const w=[[prod.gx,prod.gy],[prod.gx,ISO_AV],[mission.gx,ISO_AV],[mission.gx,mission.gy]]; place(w, pingpong(t,0.05,0.4), pingpong(t-0.08,0.05,0.4), (cx,cy,a,fa)=>vehTanker(ctx,cx,cy,a,fa)); }
   // 3. Crew bus — personnel → VAB, same driveway/avenue routing
-  if(personnel&&mfg) add(gridPath([[personnel.gx,personnel.gy],[personnel.gx,ISO_AV],[mfg.gx,ISO_AV],[mfg.gx,mfg.gy]], pingpong(t,0.06,0.9)), (cx,cy,a)=>vehBus(ctx,cx,cy,a));
+  if(personnel&&mfg){ const w=[[personnel.gx,personnel.gy],[personnel.gx,ISO_AV],[mfg.gx,ISO_AV],[mfg.gx,mfg.gy]]; place(w, pingpong(t,0.06,0.9), pingpong(t-0.08,0.06,0.9), (cx,cy,a,fa)=>vehBus(ctx,cx,cy,a,fa)); }
   // 4. Fire truck — fast patrol up and down the eastern avenue (standby near the pad)
-  if(mission&&infra) add(gridPath([[mission.gx,ISO_AV],[infra.gx,ISO_AV]], pingpong(t,0.12,0.2)), (cx,cy,a)=>vehFireTruck(ctx,cx,cy,a,t));
+  if(mission&&infra){ const w=[[mission.gx,ISO_AV],[infra.gx,ISO_AV]]; place(w, pingpong(t,0.12,0.2), pingpong(t-0.06,0.12,0.2), (cx,cy,a,fa)=>vehFireTruck(ctx,cx,cy,a,t,fa)); }
   // 5. Ground crew — small standing figures just in front of the busiest buildings
   ['pad','mfg','mission'].forEach(k=>{ const e=L[k]; if(!e) return; const b=e.def, wr=mulberry(hashStr('crew'+k)); const pts=[]; for(let i=0;i<4;i++) pts.push([(wr()-0.5)*34,(wr()*0.5)*16+4]);
     items.push({d:b.gx+b.gy+0.06, draw:()=>pts.forEach(o=>isoPerson(ctx,e.sx+o[0],e.sy+o[1],'rgba(208,218,225,0.85)'))}); });
@@ -9076,51 +9176,19 @@ function renderExecOverview(){
     </div>`;
 }
 // LEFT — "what should I do next?"
-function renderCCLeft(){
-  // ---- Mission Control Advisor (slice 4) ----
+// ---- Mission Control Advisor body (slice 4) — reused by the persistent right-rail accordion ----
+function railMissionHTML(){
   const adv=missionAdvisor();
   const reqRows=adv.reqs.map(r=>`<div class="adv-req"><span class="${r.ok?'adv-ok':'adv-no'}">${r.ok?'✓':'✗'}</span> ${r.label}</div>`).join('');
   const actBtns=adv.actions.map((a,i)=>`<button class="btn ${a.primary?'launch':(i===0?'launch':'ghost')}" style="width:100%;margin-top:6px;font-size:12px" onclick="${advisorClick(a)}">▸ ${a.label}</button>`).join('');
-  // ---- Basic focal "what to do next" (slice 3): one recommendation, one button ----
-  // In Basic this single card replaces the detailed advisor below (which is adv-only),
-  // surfacing recommendedAction()'s why + reward + (when the vehicle's on the bench) the
-  // success chance, with one primary button that runs the same advisorClick navigation.
-  const rec=recommendedAction();
-  let recSuccess='';
-  if(rec.kind==='launch' && state.activeMission===rec.missionId){
-    try{ const rv=computeVehicle(); if(rv) recSuccess=`<div class="muted" style="font-size:12px;margin-top:4px">Est. success chance: <b style="color:${rv.reliability>=0.7?'var(--ok)':'var(--warn)'}">${(rv.reliability*100)|0}%</b></div>`; }catch(e){}
-  }
-  const recReward = rec.reward ? `<div class="muted" style="font-size:12px;margin-top:4px">Reward: ${fM(rec.reward.money)} · +${rec.reward.rep} rep</div>` : '';
-  const focalHTML=`<div class="card basic-only" style="border-color:var(--ignite)">
-      <div class="cc-panel-h">▶ What to do next</div>
-      <div class="rec-card">
-        <div class="muted" style="font-size:13px">${rec.detail}</div>
-        ${recSuccess}${recReward}
-        <button class="btn launch" style="width:100%;margin-top:10px;font-size:14px;padding:10px" onclick="${advisorClick(rec)}">▸ ${rec.title}</button>
-      </div>
-    </div>`;
-  const advHTML=`<div class="card adv-only">
-      <div class="cc-panel-h">🎛 Mission Control Advisor</div>
-      <div class="rec-card">
+  return `<div class="rec-card">
         ${adv.goal?`<div class="lbl">${adv.ready?'cleared for launch':'goal'}</div><div class="ttl">${adv.goal}</div>${adv.program?`<div class="muted" style="font-size:12px">${adv.program}${adv.reward?` · reward ${fM(adv.reward.money)} / +${adv.reward.rep} rep`:''}</div>`:''}`:`<div class="muted" style="font-size:12px">${adv.summary||''}</div>`}
         ${reqRows?`<div class="adv-reqs">${reqRows}</div>`:''}
         ${actBtns}
-      </div>
-    </div>`;
-
-  // ---- Objectives checklist (slice 5) ----
-  const amb=currentAmbition(), prog=ambitionProgress();
-  const bar=`<div style="height:8px;border-radius:4px;background:#0d1418;overflow:hidden;margin:7px 0 5px"><div style="height:100%;width:${prog.pct}%;background:var(--ok)"></div></div>`;
-  const objHTML=objectivesList().map(g=>`
-    <div class="cc-panel-h" style="margin:10px 0 3px">${g.title}</div>
-    ${g.items.map(it=>`<div class="obj-item ${it.tab?'clk':''}"${it.tab?` onclick="${it.missionId?`selectMission('${it.missionId}')`:`setTab('${it.tab}')`}"`:''}>
-        <span class="${it.done?'obj-done':'obj-todo'}">${it.done?'☑':'☐'}</span>
-        <span class="obj-label">${it.label}</span>${it.sub?`<span class="obj-sub">${it.sub}</span>`:''}
-      </div>`).join('')}`).join('');
-
-  // ---- Flight plan (slice 4: folded from the retired Planner tab) ----
-  // Reuses the same pure plannerSteps()/plannerStepClick()/planner* mission picker that the
-  // old Planner tab drove; rendered compactly in the rail so the on-ramp survives the tab's removal.
+      </div>`;
+}
+// ---- Flight plan (slice 4: folded from the retired Planner tab) ----
+function railFlightPlanHTML(){
   const fpM=curMission();
   const fpShowPicker = !fpM || plannerShowMissions;
   const fpStepsHTML = fpM ? plannerSteps().map(s=>{
@@ -9134,27 +9202,70 @@ function renderCCLeft(){
   const fpPicker = fpShowPicker ? `<div class="cc-panel-h" style="margin:8px 0 3px">${fpM?'Switch mission':'Available missions'}</div>`+(fpFlyable.length
       ? fpFlyable.map(x=>`<div class="obj-item clk" onclick="plannerSetMission('${x.id}')"><span class="obj-label" style="flex:1">${x.name}${x.id===(fpM&&fpM.id)?' <span class="pill active">sel</span>':''}</span><span class="obj-sub">${fM(x.payout)}</span></div>`).join('')
       : `<div class="dim" style="font-size:11px;margin-top:4px">No missions flyable yet — build reputation or research prerequisites.</div>`) : '';
-  const flightPlanHTML=`<div class="card adv-only">
-      <div class="cc-panel-h">🧭 Flight plan</div>
-      ${fpM?`<div class="muted" style="font-size:11px;margin:2px 0 4px">${fpM.name}</div>`:''}
-      ${fpStepsHTML}
-      ${fpPicker}
-    </div>`;
-
-  $('ccLeft').innerHTML=`
-    ${focalHTML}
-    ${advHTML}
-    ${flightPlanHTML}
-    <div class="card">
-      <div class="cc-panel-h">Current Objectives — ${amb.name}</div>
+  return `${fpM?`<div class="muted" style="font-size:11px;margin:2px 0 4px">${fpM.name}</div>`:''}${fpStepsHTML}${fpPicker}`;
+}
+// ---- Objectives checklist (slice 5) ----
+function railObjectivesHTML(){
+  const amb=currentAmbition(), prog=ambitionProgress();
+  const bar=`<div style="height:8px;border-radius:4px;background:#0d1418;overflow:hidden;margin:7px 0 5px"><div style="height:100%;width:${prog.pct}%;background:var(--ok)"></div></div>`;
+  const objHTML=objectivesList().map(g=>`
+    <div class="cc-panel-h" style="margin:10px 0 3px">${g.title}</div>
+    ${g.items.map(it=>`<div class="obj-item ${it.tab?'clk':''}"${it.tab?` onclick="${it.missionId?`selectMission('${it.missionId}')`:`setTab('${it.tab}')`}"`:''}>
+        <span class="${it.done?'obj-done':'obj-todo'}">${it.done?'☑':'☐'}</span>
+        <span class="obj-label">${it.label}</span>${it.sub?`<span class="obj-sub">${it.sub}</span>`:''}
+      </div>`).join('')}`).join('');
+  return `<div class="muted" style="font-size:11px;margin:0 0 2px">${amb.name}</div>
       ${bar}
       <div style="display:flex;justify-content:space-between;font-size:11px"><span class="dim">ambition ${prog.done}/${prog.total}</span><span class="num">${prog.pct}%</span></div>
       ${objHTML}
       <div style="display:flex;gap:6px;margin-top:10px">
         <button class="btn ghost" style="flex:1;font-size:11px" onclick="openHubPanel('contracts')">Contracts →</button>
         <button class="btn ghost" style="flex:1;font-size:11px" onclick="showProgramsModal()">Programs →</button>
+      </div>`;
+}
+// Left rail keeps only the Basic-only focal "what to do next"; the advisor / flight plan / objectives
+// now live in the persistent right-rail accordion (renderRailPersistent).
+function renderCCLeft(){
+  const rec=recommendedAction();
+  let recSuccess='';
+  if(rec.kind==='launch' && state.activeMission===rec.missionId){
+    try{ const rv=computeVehicle(); if(rv) recSuccess=`<div class="muted" style="font-size:12px;margin-top:4px">Est. success chance: <b style="color:${rv.reliability>=0.7?'var(--ok)':'var(--warn)'}">${(rv.reliability*100)|0}%</b></div>`; }catch(e){}
+  }
+  const recReward = rec.reward ? `<div class="muted" style="font-size:12px;margin-top:4px">Reward: ${fM(rec.reward.money)} · +${rec.reward.rep} rep</div>` : '';
+  $('ccLeft').innerHTML=`<div class="card basic-only" style="border-color:var(--ignite)">
+      <div class="cc-panel-h">▶ What to do next</div>
+      <div class="rec-card">
+        <div class="muted" style="font-size:13px">${rec.detail}</div>
+        ${recSuccess}${recReward}
+        <button class="btn launch" style="width:100%;margin-top:10px;font-size:14px;padding:10px" onclick="${advisorClick(rec)}">▸ ${rec.title}</button>
       </div>
     </div>`;
+}
+// Persistent right-rail accordion: one click drops a section down to preview it; a second click on an
+// already-open section navigates to its page (others collapse when a new one opens).
+let railOpen=null;
+const RAIL_ACC=[
+  {key:'mission',    label:'Mission Control',    btn:'raccMission', body:'raccMissionBody', html:railMissionHTML,    nav:()=>setTab('command')},
+  {key:'flight',     label:'Design Bench',       btn:'raccFlight',  body:'raccFlightBody',  html:railFlightPlanHTML, nav:()=>setTab('bench')},
+  {key:'objectives', label:'Programs',           btn:'raccObj',     body:'raccObjBody',     html:railObjectivesHTML, nav:()=>showProgramsModal()},
+];
+let railClickTimer=null;
+// Single click toggles a section open/closed (the +/− sign). We delay it briefly so a double-click can
+// pre-empt the toggle and navigate to the section's page instead.
+function railAccordClick(key){
+  clearTimeout(railClickTimer);
+  railClickTimer=setTimeout(()=>{ railClickTimer=null; railOpen=(railOpen===key)?null:key; renderRailPersistent(); }, 220);
+}
+function railAccordDbl(key){
+  clearTimeout(railClickTimer); railClickTimer=null;
+  const sec=RAIL_ACC.find(s=>s.key===key); if(sec) sec.nav();
+}
+function renderRailPersistent(){
+  for(const s of RAIL_ACC){ const open=railOpen===s.key, btn=$(s.btn), body=$(s.body);
+    if(btn) btn.classList.toggle('open', open);
+    if(body){ body.classList.toggle('open', open);
+      body.innerHTML = open ? s.html()+`<div class="dim rail-acc-hint">⇲ Double-click the header to open ${s.label} →</div>` : ''; }
+  }
 }
 // CENTER — the animated Space Center (scene + clickable hotspots, reused verbatim)
 function renderCCCenter(){
@@ -9208,9 +9319,7 @@ function renderCCCenter(){
 }
 // RIGHT — "what's happening right now?" (alerts · this-month · news)
 function renderCCRight(){
-  const dotCol={bad:'var(--bad)',warn:'var(--warn)',ok:'var(--ok)'};
-  const alerts=agencyAlerts();
-  const aRows=alerts.map(a=>`<div class="row-item clk" onclick="${a.tab?tabIntent(a.tab):`setTab('command')`}"><span><span class="alert-dot" style="background:${dotCol[a.level]}"></span>${a.msg}</span></div>`).join('') || '<div class="dim" style="font-size:12px">All systems nominal.</div>';
+  // Alerts box removed from the right rail per request — agencyAlerts() still drives advisor/log signals.
   const o=ccOpsSummary();
   const news=ccNews(7);
   const nRows=news.map(l=>`<div class="news-line"><span class="dim">${l.when}</span> <span class="${l.kind}">${l.msg.replace(/<[^>]*>/g,'')}</span></div>`).join('') || '<div class="dim" style="font-size:12px">No news yet.</div>';
@@ -9219,10 +9328,6 @@ function renderCCRight(){
     .sort((a,b)=>b.score-a.score).slice(0,3)
     .map(({r,score})=>{ const tl=rivalThreatLabel(score); return `<div class="row-item"><span>${r.flag} ${r.name}</span><span class="pill" style="color:${tl.col};border-color:${tl.col}">${tl.txt}</span></div>`; }).join('');
   $('ccRight').innerHTML=`
-    <div class="card">
-      <div class="cc-panel-h">Alerts</div>
-      ${aRows}
-    </div>
     <div class="card adv-only">
       <div style="display:flex;justify-content:space-between;align-items:center">
         <div class="cc-panel-h" style="margin:0">Rivals</div>
