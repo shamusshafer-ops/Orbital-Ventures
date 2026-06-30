@@ -1368,7 +1368,6 @@ function loadFamily(fid){
   state.activeVehicle=fid;
   render();
 }
-function setActiveVehicle(fid){ state.activeVehicle=fid||null; render(); }
 function retireFamily(fid){
   const fam=familyById(fid); if(!fam) return;
   state.vehicles=vehicleFamilies().filter(f=>f.id!==fid);
@@ -2570,7 +2569,6 @@ const FAC_STARVE_SUPPORT=1.5;        // public support lost per starved month
 const FAC_STARVE_ABANDON_MONTHS=6;   // consecutive starved months before crew evacuate a module
 const BODY_RESUPPLY_MULT={earth:1.0, moon:2.2, mars:4.2}; // launch-logistics multiplier by destination
 function bodyResupplyMult(body){ return BODY_RESUPPLY_MULT[body]||1; }
-function facilitySupplyCap(){ return FAC_SUPPLY_MONTHS; }
 function facilitySupply(id){ const fs=facilityState(id); if(!fs) return 0; return fs.supply!=null?fs.supply:FAC_SUPPLY_MONTHS; } // legacy facilities default to fully provisioned
 function facilitySupplyDrain(){ return 1; } // one month of provisions consumed per calendar month
 function facilityStarved(id){ return facilityBuilt(id) && facilitySupply(id)<=0; }
@@ -3063,7 +3061,6 @@ const PART_STOCK_CAP=12;              // yard holds at most this many of one com
 const TANK_UNIT_BASE=0.15;            // representative stage tank-set fabrication cost ($M, before material × difficulty)
 const HAB_UNIT_BASE=0.3;             // representative crew-module pressure-vessel fabrication cost ($M)
                                      // kept modest so a fitted component's credit never exceeds even a small vehicle's buildCost
-function partKindLabel(kind){ return kind==='tank'?'tank set':kind==='hab'?'crew module':kind; }
 function partCompName(key){ const [kind,sub]=key.split(':');
   if(kind==='tank') return (TANK_MATERIALS[sub]||TANK_MATERIALS.standard).name+' tank set';
   if(kind==='hab')  return (ECLSS[sub]||ECLSS.open).name+' crew module';
@@ -4912,7 +4909,6 @@ function showSettingsMenu(){
   activeModal();
 }
 // 'scene' = owns the center viewport; 'panel' = secondary view (future rail/modal home).
-function viewKind(t){ return isSceneTab(t) ? 'scene' : 'panel'; }
 function setTab(t){
   closeLiveModal();
   if(state.tab===t){hubPanel='alerts';render();return;}
@@ -5076,7 +5072,6 @@ function availablePool(){
 
 // Engineer team aggregate — skill weighted by morale (low morale = skill degraded)
 function engTeam(){ return (state.staff||[]).filter(s=>ENGINEERS.find(e=>e.id===s.id)); }
-function astroTeam(){ return (state.staff||[]).filter(s=>ASTRONAUTS.find(a=>a.id===s.id)); }
 
 // M9: two trait-weighted team scores — one for reliability, one for R&D speed.
 function engScores(){
@@ -5320,16 +5315,8 @@ function migrateWindowsToDays(saved, ver){
   if(saved.committedWindow && saved.committedWindow.abs!=null) saved.committedWindow.abs*=DAYS_PER_MONTH;
   saved.windows={};
 }
-function loadGame(){
-  try{
-    const raw=localStorage.getItem(SAVE_KEY);
-    if(!raw){ showModal(`<h2>No Save Found</h2><p class="muted">No saved game in this browser.</p>
-      <button class="btn" onclick="hideModal()" style="margin-top:8px">OK</button>`); return; }
-    const payload=JSON.parse(raw);
-    const saved=payload.state||payload;
-    if(!saved.year||!saved.company){ throw new Error('Save data is corrupted.'); }
-    migrateWindowsToDays(saved, payload.v); // 4b: month→day window abs
-    const defaults={
+// forward-compat load defaults: applied to any save missing newer fields (shared by loadGame + autoLoad)
+function loadDefaults(){ return {
       research:{}, unlocked:{a4:true}, completed:{}, stages:[{eng:'a4',count:1,prop:2.0}],
       boosters:{eng:null,count:0,prop:0},
       transfer:{eng:'hyper_storable',prop:10.0}, descent:{eng:'hyper_storable',prop:6.0},
@@ -5347,7 +5334,17 @@ function loadGame(){
       vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, rehearsal:false, techLevel:{}, divisions:{}, partnerships:[], breakthroughCooldown:3, relDebt:0, powerSource:'solar',
       recentBuilds:[], materials:defaultMaterialsState(),
       buildQueue:[], hangar:[], orderSeq:0, padMonthAbs:-1, padMonthUsed:0, standingProd:null, juggernautReached:false, doctrine:null, lunarArch:null, uiLayer:'advanced', loanInterest:0, metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[], day:0, engineStock:{}, engineStockTested:{}, partStock:{}, partStockTested:{}
-    };
+}; }
+function loadGame(){
+  try{
+    const raw=localStorage.getItem(SAVE_KEY);
+    if(!raw){ showModal(`<h2>No Save Found</h2><p class="muted">No saved game in this browser.</p>
+      <button class="btn" onclick="hideModal()" style="margin-top:8px">OK</button>`); return; }
+    const payload=JSON.parse(raw);
+    const saved=payload.state||payload;
+    if(!saved.year||!saved.company){ throw new Error('Save data is corrupted.'); }
+    migrateWindowsToDays(saved, payload.v); // 4b: month→day window abs
+    const defaults=loadDefaults();
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
     reconcileResearch(); // close any prerequisite gaps opened by tech-tree changes
@@ -5383,25 +5380,7 @@ function autoLoad(){
     const saved=payload.state||payload;
     if(!saved.year||!saved.company) return false;
     migrateWindowsToDays(saved, payload.v); // 4b: month→day window abs
-    const defaults={
-      research:{}, unlocked:{a4:true}, completed:{}, stages:[{eng:'a4',count:1,prop:2.0}],
-      boosters:{eng:null,count:0,prop:0},
-      transfer:{eng:'hyper_storable',prop:10.0}, descent:{eng:'hyper_storable',prop:6.0},
-      ascent:{eng:'hyper_storable',prop:2.5}, eclss:'open', testLevel:0,
-      windows:{}, committedWindow:null, selectedBody:'moon', mapZoom:null,
-      depot:0, depotUse:0, tab:'command', log:[], rivalFired:{}, scooped:{}, rivalThreat:{}, rivalState:{}, bailouts:0,
-      difficulty:'engineer', customDifficulty:customDefaults(),
-      econEvents:[], eventCooldown:6, pgmRoyalty:0, publicSupport:SUPPORT_BASE,
-      passiveContracts:[], contractCooldown:{}, contractSignings:{},
-      production:{bays:1,foundry:1,pads:1,qa:1}, lastMonth:{revenue:0,expenses:0,net:0,flights:0}, history:{},
-      ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
-      facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
-      architectures:{}, science:0, persEventCooldown:5,
-      staff:[], assignedAstronaut:null,
-      vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, rehearsal:false, techLevel:{}, divisions:{}, partnerships:[], breakthroughCooldown:3, relDebt:0, powerSource:'solar',
-      recentBuilds:[], materials:defaultMaterialsState(),
-      buildQueue:[], hangar:[], orderSeq:0, padMonthAbs:-1, padMonthUsed:0, standingProd:null, juggernautReached:false, doctrine:null, lunarArch:null, uiLayer:'advanced', loanInterest:0, metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[], day:0, engineStock:{}, engineStockTested:{}, partStock:{}, partStockTested:{}
-    };
+    const defaults=loadDefaults();
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
     reconcileResearch(); // close any prerequisite gaps opened by tech-tree changes
@@ -5637,9 +5616,6 @@ function drawPlanetTex(ctx,S,b){
     ctx.strokeStyle=`rgba(${atm},0.16)`; ctx.lineWidth=S*0.045; ctx.beginPath(); ctx.arc(cx,cy,R+S*0.028,0,7); ctx.stroke(); }
   if(ringed){ ctx.save(); ctx.beginPath(); ctx.rect(0,cy,S,S-cy); ctx.clip(); ringBands(ctx,cx,cy,S); ctx.restore(); } // near half (in front)
 }
-function mixRgba(r1,g1,b1,a1,r2,g2,b2,a2,t){
-  return `rgba(${Math.round(r1+(r2-r1)*t)},${Math.round(g1+(g2-g1)*t)},${Math.round(b1+(b2-b1)*t)},${(a1+(a2-a1)*t).toFixed(3)})`;
-}
 
 /* ── Procedural Audio (Web Audio API) ── */
 let sfxCtx=null, sfxMaster=null, sfxEngNodes=[], sfxBufCache={};
@@ -5780,11 +5756,6 @@ function glCompile(gl,vSrc,fSrc){
   const nu=gl.getProgramParameter(prog,gl.ACTIVE_UNIFORMS);
   for(let i=0;i<nu;i++){const u=gl.getActiveUniform(prog,i);uniforms[u.name.replace(/\[0\]$/,'')]=gl.getUniformLocation(prog,u.name);}
   return {prog,attrs,uniforms};
-}
-function tessCircle(cx,cy,r,n){
-  n=n||32;const out=new Float32Array((n+2)*2);out[0]=cx;out[1]=cy;
-  for(let i=0;i<=n;i++){const a=i/n*Math.PI*2;out[(i+1)*2]=cx+Math.cos(a)*r;out[(i+1)*2+1]=cy+Math.sin(a)*r;}
-  return out;
 }
 function tessArc(cx,cy,r,sa,ea,n){
   n=n||32;const pts=[];
@@ -7133,62 +7104,6 @@ function drawPhaseBar(phase,color,progress){
   ctx.fillText(phase,W/2,by+barH/2);
   ctx.restore();
 }
-function drawNavBall(ctx,W,H,pitch,roll,phase){
-  const cx=W-62, cy=H-62, r=44;
-  ctx.save();
-  ctx.beginPath(); ctx.arc(cx,cy,r+4,0,7);
-  ctx.fillStyle='rgba(4,7,12,0.85)'; ctx.fill();
-  ctx.strokeStyle='rgba(79,209,217,0.3)'; ctx.lineWidth=1; ctx.stroke();
-  ctx.beginPath(); ctx.arc(cx,cy,r,0,7); ctx.clip();
-  const skyBot=cy-r*Math.cos(pitch)*0.8;
-  const skyGrad=ctx.createLinearGradient(cx,cy-r,cx,cy+r);
-  skyGrad.addColorStop(0,'#1a4070'); skyGrad.addColorStop(0.5,'#2a6090'); skyGrad.addColorStop(1,'#3a80b0');
-  ctx.fillStyle=skyGrad; ctx.fillRect(cx-r,cy-r,r*2,r*2);
-  ctx.save(); ctx.translate(cx,cy); ctx.rotate(roll);
-  const horizY=r*0.5*Math.sin(pitch);
-  const gndGrad=ctx.createLinearGradient(0,horizY,0,horizY+r);
-  gndGrad.addColorStop(0,'#8a5a30'); gndGrad.addColorStop(1,'#5a3820');
-  ctx.fillStyle=gndGrad; ctx.fillRect(-r,horizY,r*2,r*2);
-  ctx.strokeStyle='rgba(255,255,255,0.7)'; ctx.lineWidth=1.5;
-  ctx.beginPath(); ctx.moveTo(-r,horizY); ctx.lineTo(r,horizY); ctx.stroke();
-  ctx.strokeStyle='rgba(255,255,255,0.3)'; ctx.lineWidth=0.5;
-  for(let d=-3;d<=3;d++){
-    if(d===0) continue;
-    const ly=horizY+d*8;
-    const lw=Math.abs(d)===3?8:(Math.abs(d)===2?14:20);
-    ctx.beginPath(); ctx.moveTo(-lw,ly); ctx.lineTo(lw,ly); ctx.stroke();
-  }
-  ctx.strokeStyle='rgba(255,255,255,0.15)'; ctx.lineWidth=0.4;
-  for(let a=0;a<360;a+=30){
-    if(a===0||a===180) continue;
-    const ar=a*Math.PI/180;
-    ctx.beginPath(); ctx.moveTo(Math.cos(ar)*r*0.6,Math.sin(ar)*r*0.6+horizY*0.3);
-    ctx.lineTo(Math.cos(ar)*r*0.75,Math.sin(ar)*r*0.75+horizY*0.3); ctx.stroke();
-  }
-  ctx.restore();
-  ctx.restore();
-  ctx.save();
-  ctx.strokeStyle='#f5a623'; ctx.lineWidth=2;
-  ctx.beginPath(); ctx.moveTo(cx-18,cy); ctx.lineTo(cx-8,cy); ctx.lineTo(cx-5,cy+4); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(cx+18,cy); ctx.lineTo(cx+8,cy); ctx.lineTo(cx+5,cy+4); ctx.stroke();
-  ctx.fillStyle='#f5a623'; ctx.beginPath(); ctx.arc(cx,cy,2,0,7); ctx.fill();
-  ctx.strokeStyle='rgba(79,209,217,0.5)'; ctx.lineWidth=0.8;
-  ctx.beginPath(); ctx.moveTo(cx,cy-r-6); ctx.lineTo(cx-3,cy-r-2); ctx.lineTo(cx+3,cy-r-2); ctx.closePath(); ctx.stroke();
-  ctx.font='8px ui-monospace,monospace'; ctx.fillStyle='rgba(79,209,217,0.6)'; ctx.textAlign='center'; ctx.textBaseline='top';
-  ctx.fillText('N',cx,cy-r-14);
-  const pitchDeg=Math.round(pitch*180/Math.PI);
-  ctx.font='9px ui-monospace,monospace'; ctx.fillStyle='rgba(200,210,220,0.7)'; ctx.textBaseline='bottom';
-  ctx.fillText(pitchDeg+'°',cx,cy+r+14);
-  ctx.restore();
-}
-function drawHud(left,right,phase,color){
-  const A=animState,ctx=A.ctx,W=A.cv.width,H=A.cv.height;
-  ctx.font='12px ui-monospace,monospace'; ctx.textBaseline='top';
-  ctx.fillStyle='#7d909b'; ctx.textAlign='left'; if(left)ctx.fillText(left,14,12);
-  ctx.textAlign='right'; if(right)ctx.fillText(right,W-14,12);
-  ctx.textAlign='center'; ctx.fillStyle=color||'#4fd1d9'; ctx.font='bold 13px ui-monospace,monospace';
-  ctx.fillText(phase,W/2,H-24); ctx.textAlign='left';
-}
 function drawCraftDot(ctx,x,y,glow){
   glow=glow||false;
   ctx.fillStyle='#f5a623'; ctx.beginPath(); ctx.arc(x,y,4,0,7); ctx.fill();
@@ -8478,14 +8393,6 @@ function agencyAlerts(){
   if(s.net>0) out.push({level:'ok', msg:`Positive cashflow (+${fM(s.net)}/mo)`, tab:'command'});
   return out.slice(0,6);
 }
-// uncompleted contracts with reward + lock state, for the left panel
-function ccContracts(){
-  return MISSIONS.filter(m=>!state.completed[m.id]).map(m=>{
-    const repOk=state.rep>=m.minRep, resOk=missionTechMet(m);
-    let why=''; if(!resOk) why = m.archFork ? 'needs a lunar architecture' : `needs ${(RESEARCH.find(r=>r.id===m.reqResearch)||{}).name||'research'}`; else if(!repOk) why=`needs ${m.minRep} rep`;
-    return {id:m.id, name:m.name, payout:m.payout||0, rep:m.rep||0, crew:m.crew||0, locked:!(repOk&&resOk), why};
-  });
-}
 // this-month operations summary from the ledger + lifetime stats
 function ccOpsSummary(){
   const lm=state.lastMonth||{revenue:0,expenses:0,net:0,flights:0};
@@ -8542,115 +8449,11 @@ function siteBuildings(){
 }
 // #18 (scene): each building's footprint on the Cape panorama as percent coords (0–100).
 // Shared by the canvas painter and the DOM hotspot overlay so they stay aligned.
-const CC_SPOTS = {
-  rnd:       {x:2,  y:50, w:13, h:20},
-  personnel: {x:16, y:53, w:11, h:17},
-  mfg:       {x:28, y:32, w:14, h:38},  // VAB — tall assembly building
-  prod:      {x:43, y:57, w:10, h:13},  // production sheds (planned)
-  mission:   {x:54, y:49, w:12, h:21},
-  infra:     {x:66, y:51, w:10, h:19},  // tracking dishes
-  map:       {x:76, y:48, w:9,  h:22},  // planetarium dome
-  pad:       {x:84, y:28, w:13, h:42},  // gantry + rocket at the water's edge
-  rivals:    {x:90, y:39, w:8,  h:9},   // distant rival pad on the horizon
-};
 function ccHotspots(){ const L=isoLayout(); return siteBuildings().map(b=>Object.assign({}, b, (L[b.key]&&L[b.key].rect)||null)).filter(b=>b&&b.w>0); }
-/* ---------- #18 (scene): animated Cape Canaveral panorama on a 2D canvas ---------- */
-function ccRect(key,W,H){ const s=CC_SPOTS[key]||{x:0,y:0,w:0,h:0}; return {x:s.x/100*W, y:s.y/100*H, w:s.w/100*W, h:s.h/100*H}; }
-function ccWindows(ctx,x,y,w,h,cols,rows,t,seed,col){
-  col=col||'#f5a623'; const gx=w/cols, gy=h/rows, ww=Math.max(2,gx*0.5), wh=Math.max(2,gy*0.5);
-  for(let c=0;c<cols;c++)for(let r=0;r<rows;r++){
-    const lit=0.5+0.5*Math.sin(t*1.8+(c*3+r*7+seed*5));
-    const flick=(Math.sin(t*9+c*13+r*5+seed)>0.9)?0.35:1;
-    ctx.globalAlpha=0.22+0.6*lit*flick; ctx.fillStyle=col;
-    ctx.fillRect(x+c*gx+(gx-ww)/2, y+r*gy+(gy-wh)/2, ww, wh);
-  }
-  ctx.globalAlpha=1;
-}
-function ccCloud(ctx,x,y,s,a){ ctx.fillStyle=`rgba(38,54,76,${a})`;
-  [[0,0,1],[-0.6,0.12,0.7],[0.6,0.1,0.72],[-0.28,-0.18,0.55],[0.32,-0.16,0.6]].forEach(o=>{
-    ctx.beginPath(); ctx.ellipse(x+o[0]*s,y+o[1]*s,s*o[2],s*o[2]*0.55,0,0,7); ctx.fill(); }); }
-function drawClouds(ctx,W,gY,t){ const n=5; for(let i=0;i<n;i++){ const sp=5+i*2.5; const x=((i*W/n)+t*sp)%(W+220)-110; const y=gY*(0.16+0.1*((i*37)%5)/5); ccCloud(ctx,x,y,24+(i%3)*9,0.45); } }
-function drawSmoke(ctx,x,y,t,seed,sc){ for(let i=0;i<6;i++){ const p=((t*0.32+i/6+seed*0.37)%1); const sy=y-p*42*sc; const sx=x+Math.sin(p*6+seed*3)*8*sc; const rr=(2.5+p*10)*sc; ctx.fillStyle=`rgba(205,214,224,${0.22*(1-p)})`; ctx.beginPath(); ctx.arc(sx,sy,rr,0,7); ctx.fill(); } }
-function drawLab(ctx,r,t){
-  ctx.fillStyle='#1b252c'; ctx.fillRect(r.x,r.y,r.w,r.h);
-  ctx.strokeStyle='#33424c'; ctx.lineWidth=1; ctx.strokeRect(r.x,r.y,r.w,r.h);
-  ctx.fillStyle='#26323a'; ctx.beginPath(); ctx.moveTo(r.x,r.y); ctx.lineTo(r.x+r.w,r.y); ctx.lineTo(r.x+r.w,r.y-r.h*0.16); ctx.lineTo(r.x,r.y); ctx.closePath(); ctx.fill();
-  ctx.strokeStyle='#4fd1d9'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(r.x+r.w*0.8,r.y); ctx.lineTo(r.x+r.w*0.8,r.y-9); ctx.stroke();
-  ccWindows(ctx,r.x+4,r.y+5,r.w-8,r.h-9,4,2,t,3,'#4fd1d9');
-}
-function drawAdmin(ctx,r,t){
-  ctx.fillStyle='#1a232a'; ctx.fillRect(r.x,r.y,r.w,r.h);
-  ctx.strokeStyle='#32414b'; ctx.lineWidth=1; ctx.strokeRect(r.x,r.y,r.w,r.h);
-  ccWindows(ctx,r.x+3,r.y+4,r.w-6,r.h-8,3,3,t,7,'#f5a623');
-}
-function drawVAB(ctx,r,t,dim){
-  ctx.globalAlpha=dim?0.8:1;
-  ctx.fillStyle='#202b33'; ctx.fillRect(r.x,r.y,r.w,r.h);
-  ctx.strokeStyle='#3a4a55'; ctx.lineWidth=1.2; ctx.strokeRect(r.x,r.y,r.w,r.h);
-  ctx.strokeStyle='rgba(90,110,125,0.35)'; ctx.lineWidth=1;
-  for(let i=1;i<5;i++){ const sx=r.x+r.w*i/5; ctx.beginPath(); ctx.moveTo(sx,r.y); ctx.lineTo(sx,r.y+r.h); ctx.stroke(); }
-  ctx.fillStyle='#10171c'; ctx.fillRect(r.x+r.w*0.3,r.y+r.h*0.58,r.w*0.4,r.h*0.42);
-  ctx.strokeStyle='rgba(245,166,35,0.5)'; ctx.lineWidth=1; ctx.strokeRect(r.x+r.w*0.3,r.y+r.h*0.58,r.w*0.4,r.h*0.42);
-  ctx.strokeStyle='#9aa7b0'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(r.x+r.w*0.5,r.y); ctx.lineTo(r.x+r.w*0.5,r.y-11); ctx.stroke();
-  ctx.fillStyle='#e0564f'; ctx.fillRect(r.x+r.w*0.5,r.y-11,8+Math.sin(t*3)*1.6,5);
-  ctx.globalAlpha=1;
-}
-function drawProd(ctx,r,t,dim){
-  ctx.globalAlpha=dim?0.72:1;
-  for(let i=0;i<2;i++){ const sx=r.x+i*r.w*0.52, sw=r.w*0.46;
-    ctx.fillStyle='#1a242b'; ctx.fillRect(sx,r.y+r.h*0.25,sw,r.h*0.75);
-    ctx.fillStyle='#222e36'; ctx.beginPath(); ctx.moveTo(sx,r.y+r.h*0.25); ctx.lineTo(sx+sw*0.5,r.y); ctx.lineTo(sx+sw,r.y+r.h*0.25); ctx.closePath(); ctx.fill(); }
-  ctx.globalAlpha=1;
-}
-function drawControl(ctx,r,t){
-  ctx.fillStyle='#1b262e'; ctx.fillRect(r.x,r.y+r.h*0.3,r.w,r.h*0.7);
-  ctx.strokeStyle='#34444f'; ctx.lineWidth=1; ctx.strokeRect(r.x,r.y+r.h*0.3,r.w,r.h*0.7);
-  ccWindows(ctx,r.x+3,r.y+r.h*0.34,r.w-6,r.h*0.6,4,2,t,5,'#58c47a');
-  // antenna mast + blinking light
-  const mx=r.x+r.w*0.5; ctx.strokeStyle='#8794a0'; ctx.lineWidth=1.6; ctx.beginPath(); ctx.moveTo(mx,r.y+r.h*0.3); ctx.lineTo(mx,r.y-r.h*0.2); ctx.stroke();
-  const bl=(Math.sin(t*4)>0)?1:0.25; ctx.fillStyle=`rgba(255,70,50,${0.4+0.6*bl})`; ctx.beginPath(); ctx.arc(mx,r.y-r.h*0.2,2.6,0,7); ctx.fill();
-}
 function drawDish(ctx,cx,cy,rad,ang){ ctx.save(); ctx.translate(cx,cy); ctx.rotate(ang);
   ctx.fillStyle='#2b3942'; ctx.beginPath(); ctx.ellipse(0,0,rad,rad*0.66,0,Math.PI*0.1,Math.PI*1.9); ctx.fill();
   ctx.strokeStyle='#485a66'; ctx.lineWidth=1; ctx.stroke();
   ctx.strokeStyle='#6b7c88'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(rad*0.5,-rad*0.4); ctx.stroke(); ctx.restore(); }
-function drawDishes(ctx,r,t){
-  ctx.strokeStyle='#3a4a55'; ctx.lineWidth=2;
-  const base=r.y+r.h; for(let i=0;i<2;i++){ const cx=r.x+r.w*(0.3+i*0.45), cy=r.y+r.h*0.4;
-    ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(cx,base); ctx.stroke();
-    drawDish(ctx,cx,cy,r.w*0.26, -0.9+0.18*Math.sin(t*0.6+i)); }
-}
-function drawDome(ctx,r,t){
-  const cx=r.x+r.w*0.5, by=r.y+r.h;
-  ctx.fillStyle='#1c2730'; ctx.fillRect(r.x,by-r.h*0.35,r.w,r.h*0.35);
-  ctx.fillStyle='#243440'; ctx.beginPath(); ctx.ellipse(cx,by-r.h*0.35,r.w*0.5,r.h*0.55,0,Math.PI,0); ctx.fill();
-  ctx.strokeStyle='#3c4e5a'; ctx.lineWidth=1; ctx.beginPath(); ctx.ellipse(cx,by-r.h*0.35,r.w*0.5,r.h*0.55,0,Math.PI,0); ctx.stroke();
-  ctx.strokeStyle='rgba(79,209,217,0.6)'; ctx.lineWidth=1.4; ctx.beginPath(); ctx.moveTo(cx,by-r.h*0.35); ctx.lineTo(cx,by-r.h*0.9); ctx.stroke();
-  ctx.fillStyle=`rgba(245,197,66,${0.5+0.5*Math.abs(Math.sin(t*1.5))})`; ctx.beginPath(); ctx.arc(cx,by-r.h*0.62,1.8,0,7); ctx.fill();
-}
-function drawRivalPad(ctx,r,t){
-  ctx.globalAlpha=0.7; const cx=r.x+r.w*0.5, by=r.y+r.h;
-  ctx.strokeStyle='#5a4a44'; ctx.lineWidth=1; ctx.strokeRect(r.x+r.w*0.55,r.y,r.w*0.35,r.h);
-  ctx.fillStyle='#c2b8b2'; ctx.fillRect(cx-1.5,r.y+r.h*0.2,3,r.h*0.8);
-  ctx.fillStyle='#e0564f'; ctx.beginPath(); ctx.moveTo(cx-1.5,r.y+r.h*0.2); ctx.lineTo(cx+1.5,r.y+r.h*0.2); ctx.lineTo(cx,r.y+r.h*0.08); ctx.closePath(); ctx.fill();
-  ctx.globalAlpha=1;
-}
-function drawPad(ctx,r,groundY,t){
-  const cx=r.x+r.w*0.5;
-  ctx.fillStyle='#10171c'; ctx.fillRect(r.x,groundY-6,r.w,8);
-  // lattice gantry
-  const gx=r.x+r.w*0.66, gw=r.w*0.26, gTop=r.y, gBot=groundY-4;
-  ctx.strokeStyle='#8a6038'; ctx.lineWidth=2; ctx.strokeRect(gx,gTop,gw,gBot-gTop);
-  ctx.strokeStyle='rgba(180,120,70,0.45)'; ctx.lineWidth=1;
-  for(let yy=gTop; yy<gBot; yy+=11){ ctx.beginPath(); ctx.moveTo(gx,yy); ctx.lineTo(gx+gw,yy+11); ctx.moveTo(gx+gw,yy); ctx.lineTo(gx,yy+11); ctx.stroke(); }
-  const bl=(Math.sin(t*4)>0)?1:0.2; ctx.fillStyle=`rgba(255,60,40,${0.4+0.6*bl})`; ctx.beginPath(); ctx.arc(gx+gw,gTop,3,0,7); ctx.fill();
-  if(!ccPhaserSmoke){ drawSmoke(ctx,cx-5,groundY-6,t,1,1.1); drawSmoke(ctx,cx+7,groundY-6,t,2,0.9); } // #engine: Phaser particle emitter replaces baked smoke when active
-  // the player's current vehicle, drawn on the pad
-  let spec=null; try{ const m=curMission(); spec={ stages: state.stages.map(s=>({prop:s.prop,count:s.count,dia:s.dia})), boosters: boosterSpec(), transferProp:(m&&m.profile&&m.modules&&m.modules.includes('transfer'))?state.transfer.prop:0, crewed:!!(m&&m.crew>0) }; }catch(e){}
-  if(spec){ let shape=null; try{ shape=buildVehicleShape(spec); }catch(e){}
-    if(shape&&shape.segs.length){ const scale=Math.min((r.h*0.82)/(shape.totalH+16),(r.w*0.42)/(shape.maxW*1.9));
-      ctx.save(); ctx.translate(cx-r.w*0.14, groundY-6); drawVehicle(ctx, shape.segs, shape.nose, scale, 0, 0); ctx.restore(); } }
-}
 // #18 slice 6: the Space Center grows with company scale (pure — headless-testable)
 function siteScale(){
   const fb=id=>{ try{ return facilityBuilt(id); }catch(e){ return false; } };
@@ -8658,34 +8461,6 @@ function siteScale(){
   return { pads:prodLevel('pads'), vab:prodLevel('bays'), foundry:prodLevel('foundry'),
     era, dishes:2+Math.min(3,era), leoOps:fb('leo_station'), lunarOps:fb('lunar_base'), marsOps:fb('mars_base'),
     flights:state.flights||0 };
-}
-function drawMiniPad(ctx,px,groundY,w,top,t,seed){
-  const gx=px, gw=w*0.5, gTop=top+(groundY-top)*0.30, gBot=groundY-3;
-  ctx.fillStyle='#10171c'; ctx.fillRect(px-2,groundY-5,w,6);
-  ctx.strokeStyle='#7a5532'; ctx.lineWidth=1.4; ctx.strokeRect(gx,gTop,gw,gBot-gTop);
-  ctx.strokeStyle='rgba(170,115,65,0.4)'; ctx.lineWidth=0.8;
-  for(let yy=gTop;yy<gBot;yy+=9){ ctx.beginPath(); ctx.moveTo(gx,yy); ctx.lineTo(gx+gw,yy+9); ctx.moveTo(gx+gw,yy); ctx.lineTo(gx,yy+9); ctx.stroke(); }
-  const bl=(Math.sin(t*4+seed)>0)?1:0.25; ctx.fillStyle=`rgba(255,60,40,${0.35+0.55*bl})`; ctx.beginPath(); ctx.arc(gx+gw,gTop,2,0,7); ctx.fill();
-}
-function drawOpsBuilding(ctx,x,y,w,h,color,label,t){
-  ctx.fillStyle='#1a232a'; ctx.fillRect(x,y-h,w,h);
-  ctx.strokeStyle='#33424c'; ctx.lineWidth=1; ctx.strokeRect(x,y-h,w,h);
-  ctx.fillStyle='#243440'; ctx.beginPath(); ctx.ellipse(x+w*0.5,y-h,w*0.5,h*0.42,0,Math.PI,0); ctx.fill();
-  ctx.fillStyle=color; ctx.beginPath(); ctx.arc(x+w*0.5,y-h-2,2.2,0,7); ctx.fill();
-  ccWindows(ctx, x+2, y-h+h*0.45, w-4, h*0.45, 3,1, t, 9, color);
-  ctx.fillStyle=color; ctx.font='7px ui-monospace,monospace'; ctx.textAlign='center'; ctx.fillText(label, x+w*0.5, y-3); ctx.textAlign='left';
-}
-function drawSiteGrowth(ctx,W,H,groundY,t){
-  let sc; try{ sc=siteScale(); }catch(e){ return; }
-  const pad=ccRect('pad',W,H);
-  for(let i=1;i<sc.pads;i++){ const px=pad.x - i*(W*0.075); if(px<W*0.34) break; drawMiniPad(ctx,px,groundY,W*0.05,pad.y+pad.h*0.2,t,i*2); }
-  const infra=ccRect('infra',W,H);
-  for(let i=2;i<sc.dishes;i++){ const cx=infra.x+infra.w*0.3+i*infra.w*0.30, cy=infra.y+infra.h*0.4; if(cx>W*0.75) break;
-    ctx.strokeStyle='#3a4a55'; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(cx,infra.y+infra.h); ctx.stroke();
-    drawDish(ctx,cx,cy,infra.w*0.22,-0.9+0.18*Math.sin(t*0.6+i)); }
-  const ops=[]; if(sc.leoOps) ops.push(['LEO','#5aa9e0']); if(sc.lunarOps) ops.push(['LUNAR','#b9c0c7']); if(sc.marsOps) ops.push(['MARS','#c1532b']);
-  const oy=groundY+(H-groundY)*0.34;
-  ops.forEach((o,i)=>drawOpsBuilding(ctx, W*0.04 + i*(W*0.085), oy, W*0.07, H*0.10, o[1], o[0], t));
 }
 /* ===================== Isometric Cape scene (Part 2) ===================== */
 const ISO_TW=120, ISO_TH=60; // tile screen size
@@ -9468,7 +9243,6 @@ function applyUiLayer(){
   const b=$('uiLayerBtn'); if(b) b.textContent='View: '+UI_LAYER_LABEL[L];
 }
 function setUiLayer(L){ if(!UI_LAYERS.includes(L)) return; state.uiLayer=L; render(); }
-function cycleUiLayer(){ setUiLayer(UI_LAYERS[(UI_LAYERS.indexOf(uiLayer())+1)%UI_LAYERS.length]); }
 // #23 Expert-only: per-stage propellant mass fraction (propellant ÷ wet mass)
 function massFractionHTML(v){
   if(!v||!Array.isArray(v.sm)||!v.sm.length) return '';
