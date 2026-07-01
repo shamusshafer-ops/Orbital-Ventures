@@ -22,7 +22,7 @@
     --fs-h2:18px; --fw-h2:600;
     --fs-body:14px;
     --fs-sm:12px; --op-sm:0.7;
-    --fs-min:11px;
+    --fs-min:12px;
   }
   /* ---- Optional nostalgia theme variants (chrome only; the cinematic canvas scenes keep their own art).
      Each just re-points the core CSS vars, so the whole DOM UI re-tints with no other code. ---- */
@@ -57,13 +57,13 @@
   /* Pinned top bar: header + opsbar stay fixed while the rest scrolls */
   .topbar{position:sticky;top:0;z-index:40;background:var(--bg);padding-top:4px;margin-top:-4px}
   .topbar.collapsed{display:none}
-  #topbarShow{position:fixed;top:6px;right:12px;z-index:50;padding:3px 11px;font-size:11px;box-shadow:0 4px 14px rgba(0,0,0,.5)}
+  #topbarShow{position:fixed;top:6px;right:12px;z-index:50;padding:3px 11px;font-size:12px;box-shadow:0 4px 14px rgba(0,0,0,.5)}
   header{display:flex;align-items:center;gap:18px;flex-wrap:wrap;
     border:1px solid var(--line);background:linear-gradient(180deg,#18222a,#131b21);
     padding:12px 16px;border-radius:8px;margin-bottom:10px}
   .brand{display:flex;flex-direction:column}
   .brand .co{font-size:16px;font-weight:700;letter-spacing:.04em}
-  .brand .tag{font-size:11px;text-transform:uppercase;letter-spacing:.18em;color:var(--ignite)}
+  .brand .tag{font-size:12px;text-transform:uppercase;letter-spacing:.18em;color:var(--ignite)}
   .stats{margin-left:auto;display:flex;gap:22px}
   .stat{display:flex;flex-direction:column;align-items:flex-end}
   .stat .k{font-size:var(--fs-sm);text-transform:uppercase;letter-spacing:.14em;color:var(--muted);opacity:var(--op-sm)}
@@ -97,7 +97,7 @@
   .rail-left{align-self:start}                                         /* nav + persistent advisor/objectives (slice 4) */
   .rail-advisor{margin-top:12px}
   .rail-advisor .card{padding:11px 12px}
-  .rail-advisor .cc-panel-h{font-size:11px}
+  .rail-advisor .cc-panel-h{font-size:12px}
   .viewport{min-width:0;transition:opacity .15s ease}                 /* lets overflow children (tech tree, map) size within the column */
   .rail-right{position:sticky;top:calc(var(--topbar-h) + 10px);align-self:start;max-height:calc(100vh - var(--topbar-h) - 24px);overflow-y:auto}  /* tall panels (e.g. contracts) scroll within the sticky rail; clears the pinned topbar */
   /* Persistent right-rail accordion (Mission Control / Flight Plan / Current Objectives) */
@@ -112,7 +112,12 @@
   .rail-acc-btn.open .rail-acc-sign::after{content:'−'}
   .rail-acc-body{max-height:0;overflow:hidden;transition:max-height .22s ease}
   .rail-acc-body.open{max-height:1600px;padding:2px 2px 4px}
-  .rail-acc-hint{font-size:10px;margin-top:8px;border-top:1px dashed var(--line);padding-top:6px;opacity:.8}
+  .rail-acc-hint{font-size:11px;margin-top:8px;border-top:1px dashed var(--line);padding-top:6px;opacity:.8}
+  /* attention badges on scene tabs (Stellaris-style "something needs you") */
+  .tabbadge{display:inline-flex;align-items:center;justify-content:center;min-width:15px;height:15px;padding:0 4px;
+    margin-left:6px;border-radius:8px;background:var(--ignite);color:#1a1206;font-size:11px;font-weight:700;
+    font-family:var(--mono);vertical-align:1px}
+  .tabbadge.hidden{display:none}
   .shell:not(.has-right) .rail-right{display:none}                    /* collapse the rail on panel scenes (slice 3) */
   .rail-panel > .card:first-child{margin-top:0}
   nav.rail-nav{display:flex;flex-direction:column;gap:5px;margin:0}
@@ -157,13 +162,13 @@
   .stage-toggle{background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px;padding:0 2px;line-height:1}
   .stage-role{font-size:var(--fs-min);text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
   .stage-chip{font-size:var(--fs-min);color:var(--readout);border:1px solid var(--line);border-radius:10px;padding:1px 7px;white-space:nowrap}
-  .stage-dv{font-family:var(--mono);font-size:11px;color:var(--muted)} .stage-dv b{color:var(--ink)}
+  .stage-dv{font-family:var(--mono);font-size:12px;color:var(--muted)} .stage-dv b{color:var(--ink)}
   .stage-thrust{position:relative;height:14px;border-radius:7px;background:#0d1418;border:1px solid var(--line);overflow:hidden;margin:2px 0 4px}
   .stage-thrust-fill{height:100%;background:linear-gradient(90deg,var(--ignite),#ff7a3c);opacity:.55}
   .stage-thrust-lbl{position:absolute;left:8px;top:0;line-height:14px;font-family:var(--mono);font-size:var(--fs-min);color:var(--ink)}
   .stage-card.collapsed .stage-body{display:none}
   .row{display:flex;align-items:center;gap:8px;margin:6px 0;flex-wrap:wrap}
-  .row label{font-size:11px;color:var(--muted);min-width:78px;text-transform:uppercase;letter-spacing:.08em}
+  .row label{font-size:12px;color:var(--muted);min-width:78px;text-transform:uppercase;letter-spacing:.08em}
   select,input[type=number],input[type=text]{background:#0d1418;color:var(--ink);border:1px solid var(--line);
     border-radius:5px;padding:6px 8px;font-family:var(--mono);font-size:13px}
   input[type=range]{flex:1;accent-color:var(--ignite)}
@@ -171,7 +176,7 @@
   .stepper button{width:28px;height:28px;background:#0d1418;border:1px solid var(--line);color:var(--ink);cursor:pointer;font-size:15px}
   .stepper .val{min-width:34px;text-align:center;font-family:var(--mono);border-top:1px solid var(--line);border-bottom:1px solid var(--line);height:28px;line-height:28px}
   .stage-stats{display:flex;gap:16px;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px dashed var(--line)}
-  .ss{font-family:var(--mono);font-size:11px;color:var(--muted)}
+  .ss{font-family:var(--mono);font-size:12px;color:var(--muted)}
   .ss b{color:var(--ink);font-weight:600}
   .btn{background:var(--panel2);border:1px solid var(--line);color:var(--ink);padding:7px 12px;border-radius:6px;cursor:pointer;font-size:12px}
   .btn:hover{border-color:var(--ignite)}
@@ -181,7 +186,7 @@
 
   /* Readout / Δv gauge (signature) */
   .readout{position:sticky;top:14px}
-  .mission-tag{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.12em}
+  .mission-tag{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.12em}
   .mission-name{font-size:15px;font-weight:600;margin:2px 0 10px}
   .gauge{margin:14px 0}
   .gauge .nums{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
@@ -195,7 +200,7 @@
   .metric{background:var(--panel);padding:9px 10px}
   .metric .k{font-size:var(--fs-sm);text-transform:uppercase;letter-spacing:.1em;color:var(--muted);opacity:var(--op-sm)}
   .metric .v{font-family:var(--mono);font-size:16px;font-weight:600}
-  .eq{font-family:var(--mono);font-size:11px;color:var(--dim);background:#0c1216;border:1px solid var(--line);border-radius:5px;padding:8px;margin:10px 0;line-height:1.6}
+  .eq{font-family:var(--mono);font-size:12px;color:var(--dim);background:#0c1216;border:1px solid var(--line);border-radius:5px;padding:8px;margin:10px 0;line-height:1.6}
   body.hide-eq .eq{display:none}
   /* #23 progressive UI complexity layers (independent of difficulty). Advanced = default. */
   body.ui-basic .adv-only{display:none !important}            /* advanced metrics hidden in Basic */
@@ -212,12 +217,12 @@
   .diffcard .tag{font-size:var(--fs-min);text-transform:uppercase;letter-spacing:.5px;color:var(--dim)}
   .diffcard.sel .tag{color:var(--ignite)}
   .diffcard p{font-size:12px;color:var(--muted);margin:8px 0 0;line-height:1.5}
-  .diffknobs{font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:10px;display:grid;grid-template-columns:1fr auto;gap:2px 10px}
+  .diffknobs{font-family:var(--mono);font-size:12px;color:var(--dim);margin-top:10px;display:grid;grid-template-columns:1fr auto;gap:2px 10px}
   .diffcard.wide{grid-column:1/-1}
   .customsliders{margin-top:10px;display:flex;flex-direction:column;gap:7px}
   .customrow{display:grid;grid-template-columns:150px 1fr 70px;align-items:center;gap:10px;font-size:12px}
   .customrow .cl{color:var(--muted)}
-  .customrow .cv{font-family:var(--mono);font-size:11px;color:var(--ignite);text-align:right}
+  .customrow .cv{font-family:var(--mono);font-size:12px;color:var(--ignite);text-align:right}
   .customrow input[type=range]{width:100%;accent-color:var(--ignite)}
   .customrow input[type=checkbox]{accent-color:var(--ignite);justify-self:start}
   .mapsvg{display:block;width:100%;max-width:760px;height:auto;margin:0 auto;background:#04060a;border:1px solid var(--line);border-radius:8px}
@@ -317,7 +322,7 @@
   .alert-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px;flex:none}
   /* horizontal-scrolling news strip */
   .news-scroll{display:flex;gap:10px;overflow-x:auto;overflow-y:hidden;padding-bottom:6px}
-  .news-line{flex:0 0 190px;font-family:var(--mono);font-size:11px;line-height:1.35;border-right:1px solid #1a242b;padding:0 10px 0 0;white-space:normal}
+  .news-line{flex:0 0 190px;font-family:var(--mono);font-size:12px;line-height:1.35;border-right:1px solid #1a242b;padding:0 10px 0 0;white-space:normal}
   .news-line:last-child{border-bottom:none}
   /* era timeline */
   .tl-track{position:relative;height:54px;margin:10px 0 4px;border-radius:6px;overflow:hidden;background:#0d1418;border:1px solid var(--line)}
@@ -335,7 +340,7 @@
   .bldg.planned:hover{border-color:var(--line);transform:none}
   .bldg .ic{font-size:22px;line-height:1}
   .bldg .nm{font-weight:600;font-size:13px;margin-top:2px}
-  .bldg .st{font-family:var(--mono);font-size:11px;color:var(--muted)}
+  .bldg .st{font-family:var(--mono);font-size:12px;color:var(--muted)}
 
   /* Command Center — animated Cape Canaveral scene */
   /* Phaser canvases must never exceed their host (Scale.NONE writes a fixed px width) */
@@ -348,7 +353,7 @@
     transition:border-color .12s,background .12s;display:flex;flex-direction:column;justify-content:flex-end;
     padding:4px 6px;overflow:visible}
   .ccspot:hover{border-color:var(--ignite);background:rgba(245,166,35,0.08)}
-  .ccspot .nm{font-size:11px;font-weight:600;color:var(--ink);line-height:1.15;text-shadow:0 1px 3px #000,0 0 6px #000}
+  .ccspot .nm{font-size:12px;font-weight:600;color:var(--ink);line-height:1.15;text-shadow:0 1px 3px #000,0 0 6px #000}
   .ccspot .st{font-family:var(--mono);font-size:var(--fs-min);color:var(--readout);line-height:1.2;text-shadow:0 1px 3px #000,0 0 5px #000}
   .ccspot .pill{align-self:flex-start;margin-bottom:2px}
   .ccspot.planned{cursor:default}
@@ -360,26 +365,26 @@
   .item .body{flex:1}
   .item .title{font-weight:600;margin-bottom:2px}
   .item .sub{font-size:12px;color:var(--muted)}
-  .hist{display:block;margin-top:4px;font-style:italic;color:var(--dim);font-size:11px;line-height:1.4}
+  .hist{display:block;margin-top:4px;font-style:italic;color:var(--dim);font-size:12px;line-height:1.4}
   /* tech-tree hover tooltip */
   .techtip{position:fixed;z-index:2000;max-width:340px;pointer-events:none;background:#0d1620;border:1px solid var(--line);border-left:3px solid var(--ignite);border-radius:8px;padding:11px 13px;box-shadow:0 10px 30px rgba(0,0,0,.55);font-size:12px;color:var(--ink)}
   .techtip.hidden{display:none}
   .techtip .tt-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:3px}
   .techtip .tt-name{font-weight:700;font-size:13.5px;color:var(--ink)}
-  .techtip .tt-chip{font-size:10px;border:1px solid;border-radius:10px;padding:1px 7px;white-space:nowrap}
+  .techtip .tt-chip{font-size:11px;border:1px solid;border-radius:10px;padding:1px 7px;white-space:nowrap}
   .techtip .tt-status{font-family:var(--mono);font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:7px}
   .techtip .tt-mods{margin:6px 0;padding:6px 8px;background:var(--panel2);border-radius:5px}
   .techtip .tt-mod{font-size:11.5px;color:var(--ink);line-height:1.5}
   .techtip .tt-mod b{color:var(--ok)}
   .techtip .tt-desc{font-size:11.5px;color:var(--muted);line-height:1.5;margin-top:6px}
-  .techtip .tt-req{margin-top:7px;font-size:11px;color:var(--dim);border-top:1px solid var(--line);padding-top:6px}
+  .techtip .tt-req{margin-top:7px;font-size:12px;color:var(--dim);border-top:1px solid var(--line);padding-top:6px}
   .legs{border:1px solid var(--line);border-radius:6px;overflow:hidden;margin:6px 0 12px}
   .leg{display:grid;grid-template-columns:1fr auto;gap:1px 10px;padding:8px 10px;border-bottom:1px solid #1a242b}
   .leg:last-child{border-bottom:none}
   .leg.bad{background:rgba(224,86,79,.08)}
   .legname{font-weight:600;font-size:12px}
   .legdv{font-family:var(--mono);font-size:12px;color:var(--readout)}
-  .legdetail{grid-column:1/-1;font-family:var(--mono);font-size:11px;color:var(--muted)}
+  .legdetail{grid-column:1/-1;font-family:var(--mono);font-size:12px;color:var(--muted)}
   .pill{font-family:var(--mono);font-size:var(--fs-min);padding:2px 7px;border-radius:20px;border:1px solid var(--line);text-transform:uppercase;letter-spacing:.08em}
   .pill.ok{color:var(--ok);border-color:#2c4a39}
   .pill.lock{color:var(--dim)}
@@ -403,14 +408,14 @@
   .timeline::-webkit-scrollbar{height:6px} .timeline::-webkit-scrollbar-thumb{background:#243038;border-radius:3px}
   .tl-date{flex:0 0 auto;display:flex;flex-direction:column;justify-content:center;font-family:var(--mono);font-size:13px;font-weight:700;color:var(--ignite);border:1px solid #5a4419;border-radius:7px;padding:2px 11px;background:#1a1510}
   .tl-date small{font-size:8.5px;font-weight:500;color:var(--dim);letter-spacing:.6px}
-  .tl-chip{flex:0 0 auto;max-width:250px;min-width:0;display:flex;flex-direction:column;gap:1px;font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-radius:7px;padding:3px 10px;background:var(--panel)}
+  .tl-chip{flex:0 0 auto;max-width:250px;min-width:0;display:flex;flex-direction:column;gap:1px;font-family:var(--mono);font-size:12px;border:1px solid var(--line);border-radius:7px;padding:3px 10px;background:var(--panel)}
   .tl-chip .tl-when{font-size:8.5px;color:var(--dim);white-space:nowrap}
   .tl-chip .tl-msg{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .tl-chip.clk{cursor:pointer} .tl-chip.clk:hover{border-color:var(--readout);background:var(--panel2)}
   .tl-chip.next{border-style:dashed;border-color:#3a5566;background:#0f1a1e}
   .tl-chip.next .tl-msg{color:var(--readout)}
   .tl-chip.ok .tl-msg{color:var(--ok)} .tl-chip.bad .tl-msg{color:var(--bad)} .tl-chip.info .tl-msg{color:var(--ink)} .tl-chip.note .tl-msg{color:var(--readout)} .tl-chip.rival .tl-msg{color:var(--ignite)}
-  .tl-empty{align-self:center;color:var(--dim);font-size:11px;padding:4px 8px}
+  .tl-empty{align-self:center;color:var(--dim);font-size:12px;padding:4px 8px}
   .tl-sep{flex:0 0 auto;align-self:center;color:var(--dim);font-size:var(--fs-min);letter-spacing:1px;padding:0 1px}
   .log .rival{color:var(--ignite)}
 
@@ -480,7 +485,7 @@
     </div>
     <div style="display:flex;align-items:center;gap:8px;margin-left:14px;align-self:center">
       <button class="btn ghost" onclick="showSettingsMenu()" title="Settings, save / load / new game, display options, and interface detail level">⚙ Menu</button>
-      <button class="btn ghost" id="topbarHideBtn" onclick="toggleTopbar()" title="Hide the top bar (h)" style="padding:2px 10px;font-size:11px">▴ Hide bar</button>
+      <button class="btn ghost" id="topbarHideBtn" onclick="toggleTopbar()" title="Hide the top bar (h)" style="padding:2px 10px;font-size:12px">▴ Hide bar</button>
     </div>
   </header>
 
@@ -498,11 +503,11 @@
              (own the center viewport) and the "operations" panels (destined for the rails /
              modals in later slices). Same button ids + setTab handlers — nothing removed. -->
         <div class="rail-group">Mission Control</div>
-        <button id="tabCommand" class="scene active" onclick="setTab('command')">⌂ Command Center</button>
-        <button id="tabBench" class="scene" onclick="setTab('bench')">✎ Design Bench</button>
-        <button id="tabRnd" class="scene" onclick="setTab('rnd')">⚛ R&amp;D</button>
-        <button id="tabMap" class="scene" onclick="setTab('map')">☉ Solar System</button>
-        <button id="tabStation" class="scene" onclick="setTab('station')">⬡ Station Bench</button>
+        <button id="tabCommand" class="scene active" onclick="setTab('command')">⌂ Command Center<span class="tabbadge hidden" id="badgeCommand"></span></button>
+        <button id="tabBench" class="scene" onclick="setTab('bench')">✎ Design Bench<span class="tabbadge hidden" id="badgeBench"></span></button>
+        <button id="tabRnd" class="scene" onclick="setTab('rnd')">⚛ R&amp;D<span class="tabbadge hidden" id="badgeRnd"></span></button>
+        <button id="tabMap" class="scene" onclick="setTab('map')">☉ Solar System<span class="tabbadge hidden" id="badgeMap"></span></button>
+        <button id="tabStation" class="scene" onclick="setTab('station')">⬡ Station Bench<span class="tabbadge hidden" id="badgeStation"></span></button>
         <!-- slice 8: the Operations group is gone — Settings → the HUD ⚙ menu; Programs/
              Rivals/Personnel/Infrastructure → modals + hub drills. The rail is now purely
              the four scene selectors. -->
@@ -533,7 +538,7 @@
         <div id="benchLaunch" style="margin:6px 0 10px"></div>
         <div id="vehHost" style="display:none;width:100%;max-width:260px;margin:0 auto;aspect-ratio:240/360"></div>
         <canvas id="vehiclePreview" width="240" height="360" style="max-width:100%;height:auto;display:block;margin:0 auto"></canvas>
-        <div id="vehicleLabel" class="dim" style="font-size:11px;margin-top:8px"></div>
+        <div id="vehicleLabel" class="dim" style="font-size:12px;margin-top:8px"></div>
       </div>
       <div class="bench-editor">
         <!-- editor cards consolidated under tabs (renderBenchTabs builds the bar + hides empty
@@ -544,7 +549,7 @@
             <h2>Vehicle — Stages (bottom → top)</h2>
             <div id="stages"></div>
             <button class="btn ghost" id="addStage" onclick="addStage()">+ Add stage</button>
-            <span class="dim" style="font-size:11px;margin-left:8px">Lower stages carry everything above them — that's the tax staging pays.</span>
+            <span class="dim" style="font-size:12px;margin-left:8px">Lower stages carry everything above them — that's the tax staging pays.</span>
           </div>
           <div class="card hidden" id="boostersCard"></div>
         </div>
@@ -581,7 +586,7 @@
     <!-- R&D status + Skip moved here from the old global opsbar row (render() still drives these ids) -->
     <div class="opsbar" id="rndStatusBar" style="margin-bottom:12px">
       <span id="rndStatus"></span>
-      <span id="nextObjStatus" class="dim" style="font-size:11px"></span>
+      <span id="nextObjStatus" class="dim" style="font-size:12px"></span>
       <span style="flex:1"></span>
       <button class="btn ghost" id="skipBtn" onclick="skipResearch()">Skip to R&amp;D done</button>
     </div>
@@ -678,7 +683,7 @@
       <div id="railContracts" class="rail-panel hidden">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px">
           <div class="cc-panel-h" style="margin:0">📡 Mission Control</div>
-          <button class="btn ghost" style="font-size:10px;padding:3px 8px" onclick="openHubPanel('alerts')" title="Back to Alerts &amp; News">← Alerts</button>
+          <button class="btn ghost" style="font-size:11px;padding:3px 8px" onclick="openHubPanel('alerts')" title="Back to Alerts &amp; News">← Alerts</button>
         </div>
         <div class="card" id="passiveCard"></div>
         <div class="card" style="margin-top:10px"><h2 style="font-size:15px">Contracts</h2><div id="missionList"></div></div>
@@ -696,9 +701,9 @@
   <div id="animTitle">—</div>
   <div id="flightCanvasWrap" style="position:relative;display:inline-block"><div id="flightHost" style="display:none"></div><canvas id="flightCanvas" width="900" height="520"></canvas><canvas id="flightTextCanvas" width="900" height="520" style="position:absolute;left:0;top:0;pointer-events:none"></canvas></div>
   <div class="animbar">
-    <span class="dim" style="font-size:11px">Mission playback</span>
-    <button class="btn ghost" id="animSpeedBtn" onclick="cycleAnimSpeed()" style="min-width:90px;font-size:11px">1×  Slow</button>
-    <span class="dim" style="font-size:10px">[Enter]</span>
+    <span class="dim" style="font-size:12px">Mission playback</span>
+    <button class="btn ghost" id="animSpeedBtn" onclick="cycleAnimSpeed()" style="min-width:90px;font-size:12px">1×  Slow</button>
+    <span class="dim" style="font-size:11px">[Enter]</span>
     <button class="btn" onclick="skipAnim()">Skip ▸</button>
   </div>
 </div>
@@ -883,7 +888,7 @@ const ECONOMY_EVENTS=[
   {id:'gov_grant', kind:'good', weight:3, minYear:1945, label:'Government research grant', money:[1.5,4.0], blurb:'A national science directorate underwrites part of your program.'},
   {id:'investor',  kind:'good', weight:2, minYear:1950, minRep:40, label:'Investor windfall', money:[2.0,5.0], blurb:'A backer buys into your rising reputation.'},
   {id:'patent',    kind:'good', weight:2, minYear:1955, reqFlights:5, label:'Patent licensing payout', money:[1.0,3.0], blurb:'Rivals quietly license your hard-won engineering.'},
-  {id:'insurance', kind:'good', weight:1, minYear:1948, label:'Insurance settlement', money:[0.8,2.0], blurb:'A claim from an earlier loss finally pays out.'},
+  {id:'insurance', kind:'good', weight:1, minYear:1948, reqFlights:1, label:'Insurance settlement', money:[0.8,2.0], blurb:'A claim from an earlier loss finally pays out.'},
   {id:'budget_cut',kind:'bad',  weight:2, minYear:1950, label:'Budget shortfall', money:[-3.0,-1.0], blurb:'A program overrun eats into your reserves.'},
   {id:'liability', kind:'bad',  weight:2, minYear:1952, reqFlights:3, label:'Accident liability', money:[-2.5,-0.8], blurb:'A ground mishap brings a settlement.'},
   {id:'supply',    kind:'bad',  weight:2, minYear:1955, label:'Propellant price spike', money:[-2.0,-0.6], blurb:'Commodity markets move against you.'},
@@ -911,6 +916,8 @@ const PASSIVE_DIMINISH=0.85;        // each renewal of a contract pays 85% of th
 const PASSIVE_FLOOR=0.40;           // …but never below 40% of the contract's base income
 const PASSIVE_COOLDOWN=12;          // default months a contract rests before it can re-sign
 const PASSIVE_CONTRACT_DEFS=[
+  {id:'svc_orbit', cat:'sat', name:'Satellite Servicing Fleet', income:2.6, term:30, setup:5.0,
+    reqResearch:'onorbit_servicing', minRep:150, blurb:'Robotic tugs refuel, repair and relocate customer satellites on retainer — the fleet On-Orbit Servicing research put in reach.'},
   // satellite services — open up once you can reach orbit
   {id:'sat_weather', cat:'sat', name:'Weather Satellite Operations', income:0.9, term:36, setup:2.0,
     reqMission:'first_sat', minRep:40, blurb:'Operate a meteorological satellite for the national weather service.'},
@@ -948,7 +955,7 @@ const PASSIVE_CATS={sat:'Satellite Services', tour:'Human Spaceflight', lic:'Tec
 // government grants — so a launch's value is reputational + political, not just cash.
 const SUPPORT_BASE=50, SUPPORT_MIN=0, SUPPORT_MAX=100;
 const SUPPORT_REVERT=0.04;        // monthly pull back toward neutral (slow — events lead)
-const GOV_FUNDING_BASE=0.5;       // $M/mo at 100% support, era 0; grows +15%/era
+const GOV_FUNDING_BASE=1.0;       // $M/mo at 100% support, era 0; grows +15%/era. Earned above neutral support only (see govMonthlyFunding).
 const SUPPORT_TIERS=[             // ordered high→low; first match wins
   {min:85, label:'Galvanized',  color:'var(--ok)'},
   {min:65, label:'Supportive',  color:'var(--ok)'},
@@ -988,6 +995,7 @@ const ENGINES = {
   nep_snap:    {id:'nep_snap',    name:'SNAP-derived NEP', prop:'Xe (nuclear-electric)', ispSL:0, ispVac:3000, thrustSL:0, thrustVac:5, mass:5.50, cost:9.00, rel:0.97, transferOnly:true, lowThrust:true, selfPowered:true},
   hall_thruster:{id:'hall_thruster',name:'Hall-Effect Thruster', prop:'Xe (solar-electric)', ispSL:0, ispVac:1800, thrustSL:0, thrustVac:3, mass:1.20, cost:3.50, rel:0.98, transferOnly:true, lowThrust:true, solarElectric:true, powerDraw:15},
   ion_xenon:   {id:'ion_xenon',   name:'Gridded Ion Thruster', prop:'Xe (solar-electric)', ispSL:0, ispVac:3600, thrustSL:0, thrustVac:0.5, mass:0.80, cost:4.00, rel:0.98, transferOnly:true, lowThrust:true, solarElectric:true, powerDraw:25},
+  fusion_torch:{id:'fusion_torch', name:'Daedalus Fusion Torch', prop:'D–He₃ plasma', ispSL:0, ispVac:6000, thrustSL:0, thrustVac:60, mass:9.0, cost:25.0, rel:0.92, transferOnly:true},
 };
 
 const MISSIONS = [
@@ -1487,7 +1495,7 @@ const RESEARCH = [
   {id:'star_trackers', track:'guidance', name:'Star Trackers', cost:3.5, months:4, req:['digital_computer'], effect:{reliability:0.03}, desc:'Optical star sensors fix the vehicle attitude against the sky to arc-second precision, far beyond gyros alone. <b>+3% reliability.</b><span class="hist">↳ Star trackers are the gold standard for deep-space attitude reference.</span>'},
   {id:'autonomous_navigation', track:'guidance', name:'Autonomous Navigation', cost:5.0, months:6, req:['star_trackers'], effect:{reliability:0.03}, desc:'Onboard optical navigation lets a spacecraft fix its own position against planets and stars without waiting on light-lagged ground tracking. <b>+3% reliability.</b><span class="hist">↳ Deep Impact and OSIRIS-REx proved autonomous optical nav at other worlds.</span>'},
   // Crew & Life Support
-  {id:'orbital_eva', track:'crew', name:'Orbital EVA Suits', cost:4.0, months:5, req:['crew_capsule'], reqMissionDone:'crew_orbit', effect:{}, desc:'Pressure suits, airlocks and tethers for working outside the spacecraft. The prerequisite for assembly, servicing and exploration on foot.<span class="hist">↳ Leonov first floated free of his Voskhod in 1965; EVA became routine by Gemini.</span>'},
+  {id:'orbital_eva', track:'crew', name:'Orbital EVA Suits', cost:4.0, months:5, req:['crew_capsule'], reqMissionDone:'crew_orbit', effect:{}, desc:'Pressure suits, airlocks and tethers for working outside the spacecraft. <b>Crewed missions become more reliable (in-flight inspection &amp; repair: crew penalty 0.92 → 0.95).</b><span class="hist">↳ Leonov first floated free of his Voskhod in 1965; EVA became routine by Gemini.</span>'},
   {id:'long_duration_hab', track:'crew', name:'Long-Duration Habitats', cost:5.5, months:6, req:['eclss_closed'], reqMissionDone:'multi_day', effect:{reliability:0.02,lsRecovery:0.02}, desc:'Galleys, sleep stations, exercise and hygiene that keep crews healthy and effective for months. <b>+2% crewed reliability.</b><span class="hist">↳ Salyut, Skylab and the ISS turned spacecraft into places people live.</span>'},
   {id:'radiation_countermeasures', track:'crew', name:'Radiation Countermeasures', cost:6.0, months:6, req:['long_duration_hab'], effect:{reliability:0.02}, desc:'Storm shelters, dosimetry and pharmacology to keep crews within dose limits on multi-year flights. <b>+2% crewed reliability.</b><span class="hist">↳ Solar-particle events make radiation the gating crew-health problem for Mars.</span>'},
   // Deep Space
@@ -1495,14 +1503,14 @@ const RESEARCH = [
   {id:'precision_edl', track:'deepspace', name:'Precision Entry, Descent & Landing', cost:6.5, months:7, req:['mars_traj'], reqMissionDone:'mars_flyby', effect:{}, desc:'Guided hypersonic entry, supersonic retropropulsion and terrain-relative navigation to put a lander within meters of its target on another world.<span class="hist">↳ Curiosity and Perseverance landed with guided entry and skycrane precision.</span>'},
   // Nuclear
   {id:'reactor_materials', track:'nuclear', name:'High-Temperature Reactor Materials', cost:7.0, months:7, req:['nuclear_thermal'], effect:{reliability:0.02}, desc:'Refractory fuel elements and moderators that survive the extreme temperatures a nuclear engine demands. <b>+2% reliability.</b><span class="hist">↳ Coated-particle and carbide fuels are the heart of modern nuclear-thermal designs.</span>'},
-  {id:'surface_fission_power', track:'nuclear', name:'Surface Fission Power', cost:8.0, months:8, req:['nuclear_thermal'], reqMissionDone:'luna_landing', effect:{}, desc:'A compact surface reactor that powers a base through the long lunar night or a Martian winter — the energy a permanent outpost runs on.<span class="hist">↳ NASA Kilopower / FSP work targets tens of kilowatts on the surface of another world.</span>'},
+  {id:'surface_fission_power', track:'nuclear', name:'Surface Fission Power', cost:8.0, months:8, req:['nuclear_thermal'], reqMissionDone:'luna_landing', effect:{}, desc:'A compact surface reactor that powers a base through the long lunar night or a Martian winter. <b>Cuts every facility&apos;s standing resupply cost by 25%</b> — a base that makes its own power ships fewer consumables.<span class="hist">↳ NASA Kilopower / FSP work targets tens of kilowatts on the surface of another world.</span>'},
   // Refueling & ISRU
-  {id:'cryo_boiloff_control', track:'refueling', name:'Cryogenic Boil-off Control', cost:5.0, months:6, req:['cryo_upper'], effect:{}, desc:'Active cooling, multilayer insulation and zero-boil-off systems that let hydrogen and methane survive long coasts instead of evaporating away — keeping cryogenic transfer stages viable on deep missions.<span class="hist">↳ Boil-off is the quiet enemy of every long cryogenic mission; zero-boil-off cryocoolers are the answer.</span>'},
+  {id:'cryo_boiloff_control', track:'refueling', name:'Cryogenic Boil-off Control', cost:5.0, months:6, req:['cryo_upper'], effect:{}, desc:'Active cooling, multilayer insulation and zero-boil-off systems. <b>Cryogenic in-space stages (LH₂; methane at half rate) now lose propellant to boil-off on long missions — this cuts the loss rate ~4× (1.5%/mo → 0.4%/mo).</b><span class="hist">↳ Boil-off is the quiet enemy of every long cryogenic mission; zero-boil-off cryocoolers are the answer.</span>'},
   {id:'electrolysis_scaleup', track:'refueling', name:'Electrolysis Scale-Up', cost:6.0, months:7, req:['orbital_depot'], effect:{}, desc:'Industrial-scale water electrolysis and propellant liquefaction — the plant that turns mined water into tonnes of LOX and LH2 at a depot or base.<span class="hist">↳ Scaling electrolysis is what turns a trickle of ISRU propellant into a real supply.</span>'},
   // Orbital Operations
   {id:'station_keeping', track:'assembly', name:'Station Keeping', cost:4.0, months:5, req:['orbital_assembly'], effect:{}, desc:'Reaction control, momentum management and orbit maintenance that hold a large structure in a stable orbit and attitude for years.<span class="hist">↳ Control moment gyros keep stations pointed without burning precious propellant.</span>'},
   {id:'large_space_stations', track:'assembly', name:'Large Space Stations', cost:6.5, months:7, req:['station_keeping'], reqMissionDone:'crew_orbit', effect:{}, desc:'Multi-module pressurized complexes assembled in orbit — the staging posts, laboratories and shipyards of a spacefaring economy.<span class="hist">↳ Mir and the ISS proved that permanent, expandable orbital outposts are possible.</span>'},
-  {id:'onorbit_servicing', track:'assembly', name:'On-Orbit Servicing', cost:6.0, months:7, req:['auto_rendezvous'], effect:{}, desc:'Robotic refueling, repair and upgrade of spacecraft already in orbit — extending lifetimes and recovering stranded missions instead of replacing them.<span class="hist">↳ MEV-1 docked with and relocated a live commercial satellite in 2020.</span>'},
+  {id:'onorbit_servicing', track:'assembly', name:'On-Orbit Servicing', cost:6.0, months:7, req:['auto_rendezvous'], effect:{}, desc:'Robotic refueling, repair and upgrade of spacecraft already in orbit. <b>Unlocks the Satellite Servicing Fleet standing contract</b> ($2.6M/mo retainer).<span class="hist">↳ MEV-1 docked with and relocated a live commercial satellite in 2020.</span>'},
   // Manufacturing & Production
   {id:'assembly_line', track:'manufacturing', name:'Assembly-Line Production', cost:2.5, months:3, req:[], effect:{buildCostCut:0.04,buildTimeCut:0.5}, desc:'Move vehicle build off the artisan bench and onto a repeatable line with stations, jigs and travelers — the foundation of building more than one of anything.<span class="hist">↳ The assembly line is what turned aircraft, then rockets, from craft into industry.</span>'},
   {id:'modular_design', track:'manufacturing', name:'Modular Vehicle Design', cost:3.5, months:4, req:['assembly_line'], effect:{reliability:0.02,buildCostCut:0.05,buildTimeCut:0.5}, desc:'Standard interfaces and interchangeable modules so subsystems are designed once and reused across the fleet. <b>+2% reliability.</b><span class="hist">↳ Common cores and modular buses cut cost and risk across whole families of vehicles.</span>'},
@@ -1533,14 +1541,14 @@ const RESEARCH = [
   {id:'ion_propulsion', track:'propulsion', name:'Ion Thrusters', cost:5.0, months:5, req:['vac_upper'], effect:{engine:'ion_xenon'}, desc:'Electrostatically accelerate xenon ions to enormous exhaust velocity — vanishingly little thrust, but Isp no chemical engine can touch. A solar-electric transfer drive for patient cargo. <b>Unlocks the Gridded Ion Thruster (transfer stage).</b><span class="hist">↳ Deep Space 1 and Dawn proved ion propulsion on real interplanetary missions.</span>'},
   {id:'hall_effect', track:'propulsion', name:'Hall-Effect Thrusters', cost:4.5, months:5, req:['ion_propulsion'], effect:{engine:'hall_thruster'}, desc:'A higher-thrust electric drive that trades some Isp for thrust — the workhorse between gridded ion and chemical. <b>Unlocks the Hall-Effect Thruster (transfer stage).</b><span class="hist">↳ Hall thrusters now fly by the thousand on commercial satellites.</span>'},
   {id:'high_power_sep', track:'propulsion', name:'High-Power Solar Electric', cost:6.0, months:6, req:['hall_effect'], effect:{reliability:0.02}, desc:'Large, lightweight solar arrays feeding clustered thrusters — the power to push real cargo with electric propulsion. <b>+2% reliability.</b><span class="hist">↳ Roll-out solar arrays made tens-of-kilowatt electric propulsion practical.</span>'},
-  {id:'megawatt_electric', track:'propulsion', name:'Megawatt Electric Propulsion', cost:9.0, months:9, req:['high_power_sep'], reqMissionDone:'belt_survey', effect:{}, desc:'Megawatt-class electric drives — nuclear- or vast-array-powered — that move heavy cargo through the outer system on a schedule. The freight engine of an interplanetary economy.<span class="hist">↳ MW-class electric propulsion is the leading concept for crewed and cargo outer-system transport.</span>'},
+  {id:'megawatt_electric', track:'propulsion', name:'Megawatt Electric Propulsion', cost:9.0, months:9, req:['high_power_sep'], reqMissionDone:'belt_survey', effect:{}, desc:'Megawatt-class electric drives — nuclear- or vast-array-powered. <b>+10% Isp on every electric drive (Hall, Ion, NEP).</b> The freight engine of an interplanetary economy.<span class="hist">↳ MW-class electric propulsion is the leading concept for crewed and cargo outer-system transport.</span>'},
   {id:'hydrogen_storage', track:'propulsion', name:'Liquid Hydrogen Storage', cost:4.0, months:4, req:['cryo_upper'], effect:{}, desc:'Densified hydrogen, advanced insulation and slosh control that make the lightest, highest-Isp propellant manageable on a real vehicle.<span class="hist">↳ Taming liquid hydrogen is half the battle of every high-energy upper stage.</span>'},
   {id:'expander_cycle', track:'propulsion', name:'Expander Cycle', cost:5.0, months:5, req:['hydrogen_storage'], effect:{reliability:0.02}, desc:'Drive the turbopumps with propellant warmed by the chamber walls instead of a gas generator — an inherently benign, restartable upper-stage cycle. <b>+2% reliability.</b><span class="hist">↳ The expander-cycle RL10 has flown reliably for over half a century.</span>'},
   {id:'advanced_cryo_upper', track:'propulsion', name:'Advanced Cryogenic Upper Stage', cost:6.0, months:6, req:['expander_cycle'], effect:{isp:0.02}, desc:'A long-duration, restartable hydrolox upper stage with low boil-off and high performance — the energy to throw heavy payloads onto interplanetary trajectories. <b>+2% Isp.</b><span class="hist">↳ Centaur and the S-IVB set the template every high-energy upper stage still follows.</span>'},
   // ── R&D epic slice 6d: far-future / capstone tier (gated to the deepest missions) ──
   {id:'full_flow_staged', track:'propulsion', name:'Full-Flow Staged Combustion', cost:9.0, months:9, req:['chamber_pressure'], effect:{reliability:0.02}, desc:'Burn every gram of propellant through the turbines before the chamber — the most efficient, most durable, hardest-to-build engine cycle there is. <b>+2% reliability.</b><span class="hist">↳ Full-flow staged combustion ran on test stands for decades before flight hardware finally caught up.</span>'},
   {id:'bimodal_ntr', track:'nuclear', name:'Bimodal Nuclear Thermal', cost:11.0, months:11, req:['reactor_materials'], effect:{reliability:0.02}, desc:'A nuclear engine that doubles as a power reactor between burns — thrust when you need it, kilowatts the rest of the cruise. <b>+2% reliability.</b><span class="hist">↳ Bimodal NTR concepts promise both propulsion and abundant electrical power on one reactor.</span>'},
-  {id:'fusion_propulsion_research', track:'nuclear', name:'Fusion Propulsion Research', cost:16.0, months:16, req:['nuclear_electric'], reqMissionDone:'jupiter_orbit', effect:{}, desc:'The long-shot program: confined-plasma fusion drives that would put the outer system within months and the stars within reach of a lifetime. Decades of work for a generational payoff.<span class="hist">↳ Fusion propulsion remains the most-studied path to true interstellar precursor missions.</span>'},
+  {id:'fusion_propulsion_research', track:'nuclear', name:'Fusion Propulsion Research', cost:16.0, months:16, req:['nuclear_electric'], reqMissionDone:'jupiter_orbit', effect:{engine:'fusion_torch'}, desc:'The long-shot program: confined-plasma fusion drives that would put the outer system within months. <b>Unlocks the Daedalus Fusion Torch</b> — Isp 6,000 s with real thrust (60 kN), the drive every other transfer stage has been building toward.<span class="hist">↳ Fusion propulsion remains the most-studied path to true interstellar precursor missions.</span>'},
   {id:'full_vehicle_reuse', track:'reuse', name:'Full Vehicle Reuse', cost:12.0, months:10, req:['reusable_upper_stage'], effect:{launchCostCut:0.06}, desc:'Both stages fly home, are inspected, and fly again — the airline model finally applied to spaceflight. <b>−6% launch-ops cost.</b><span class="hist">↳ Full reuse is the line beyond which launch stops being an event and becomes a schedule.</span>'},
   {id:'metamaterial_structures', track:'structures', name:'Metamaterial Structures', cost:10.0, months:9, req:['self_healing_materials'], effect:{sigma:0.040}, desc:'Engineered lattices with properties no natural material has — stiffer, lighter, and tunable. The last word in mass ratio. <b>σ → 0.040.</b><span class="hist">↳ Architected metamaterials reach strength-to-weight ratios bulk materials cannot.</span>'},
   {id:'autonomous_qa', track:'testing', name:'Autonomous Quality Assurance', cost:6.0, months:6, req:['digital_twin'], effect:{reliability:0.02}, desc:'Machine-vision inspection and self-checking systems that qualify hardware continuously, with no human in the loop. <b>+2% reliability.</b><span class="hist">↳ Automated NDE catches defects that tired human inspectors miss.</span>'},
@@ -1548,7 +1556,7 @@ const RESEARCH = [
   {id:'fleet_autonomy', track:'automation', name:'Fleet Autonomy', cost:10.0, months:9, req:['ai_mission_management'], effect:{reliability:0.02}, desc:'Whole fleets of vehicles that coordinate, refuel and repair each other with no ground intervention — the nervous system of an interplanetary logistics network. <b>+2% reliability.</b><span class="hist">↳ Fleet-scale autonomy is the prerequisite for any self-sustaining off-world economy.</span>'},
   {id:'artificial_gravity', track:'crew', name:'Artificial Gravity', cost:9.0, months:9, req:['radiation_countermeasures'], reqMissionDone:'mars_orbit', effect:{reliability:0.02}, desc:'Rotating habitats that spin up a fraction of a gee, holding off the bone and muscle loss of years in freefall. <b>+2% crewed reliability.</b><span class="hist">↳ Tethered or rotating habitats are the leading answer to long-duration deconditioning.</span>'},
   {id:'closed_ecology', track:'crew', name:'Closed Ecological Life Support', cost:9.0, months:9, req:['long_duration_hab'], reqMissionDone:'endurance', sciCost:36, effect:{reliability:0.02,lsRecovery:0.07}, desc:'A bioregenerative loop — plants, algae and microbes — that grows food and recycles air and water indefinitely. The biology a self-sufficient colony runs on. <b>+2% crewed reliability.</b><span class="hist">↳ BIOS-3 and MELiSSA pioneered the closed ecologies a Mars colony will need.</span>'},
-  {id:'gravity_assist_planning', track:'deepspace', name:'Gravity-Assist Trajectory Design', cost:6.0, months:6, req:['high_gain_antenna'], effect:{}, desc:'Multi-body trajectory optimization that steals momentum from planets to reach targets no direct burn could afford. The math that opened the outer system.<span class="hist">↳ Voyager toured four planets on a single gravity-assist chain discovered by a grad student.</span>'},
+  {id:'gravity_assist_planning', track:'deepspace', name:'Gravity-Assist Trajectory Design', cost:6.0, months:6, req:['high_gain_antenna'], effect:{}, desc:'Multi-body trajectory optimization that steals momentum from planets. <b>Jupiter, Saturn and Belt transfer burns cost 8% less Δv.</b> The math that opened the outer system.<span class="hist">↳ Voyager toured four planets on a single gravity-assist chain discovered by a grad student.</span>'},
   {id:'aerocapture', track:'deepspace', name:'Aerocapture', cost:7.5, months:7, req:['precision_edl'], effect:{}, desc:'Skim a planetary atmosphere once to shed orbital velocity, capturing into orbit with almost no propellant. The trick that makes heavy outer-planet orbiters affordable.<span class="hist">↳ Aerocapture has been studied for every ice-giant mission as the enabling technology.</span>'},
   {id:'atmospheric_isru', track:'refueling', name:'Atmospheric ISRU', cost:10.0, months:10, req:['electrolysis_scaleup'], reqMissionDone:'jupiter_orbit', effect:{}, desc:'Scoop and process the atmospheres of the gas giants and their moons for hydrogen, helium-3 and volatiles — refueling at the edge of the Solar System.<span class="hist">↳ Gas-giant atmospheres are the largest propellant and helium-3 reservoirs in the system.</span>'},
   {id:'orbital_shipyards', track:'assembly', name:'Orbital Shipyards', cost:13.0, months:12, req:['large_space_stations'], reqMissionDone:'mars_orbit', effect:{buildCostCut:0.05}, desc:'Build spacecraft in orbit that never have to survive a launch — larger, lighter, and assembled from delivered parts. <b>−5% build cost.</b><span class="hist">↳ A true orbital shipyard is the point where spacecraft stop being launched and start being built in space.</span>'},
@@ -1711,7 +1719,7 @@ const DIFFICULTY={
     label:'Napkin', tag:'Forgiving',
     blurb:'Back-of-the-envelope mode. The budget is roomier, hardware is more reliable, and the rocket equation stays under the hood — you see the results, not the derivations.',
     startMoney:8.0, overhead:0.08, relBonus:0.12, relFloor:0.55, relCap:0.985,
-    payoutMult:1.25, buildCostMult:0.85, showEquations:false
+    payoutMult:1.25, buildCostMult:0.85, showEquations:false, govFloor:0.05
   },
   engineer:{
     label:'Engineer', tag:'Realistic',
@@ -1811,6 +1819,7 @@ function newGame(difficulty){
     loanInterest:0, // CE4(c): permanent monthly bridge-loan debt service
   };
   log('info','Company founded. The pad is yours — go make some noise.');
+  reconcileEngineMods(); // reset engine stats to base for a fresh company
 }
 
 /* ---------- helpers ---------- */
@@ -2253,7 +2262,8 @@ function tickContinuousDay(){
   state.money-=perDay(Math.max(0,diff().overhead+econOverheadAdd()+productionUpkeep()+empireOpex()+loanInterest()+partnershipUpkeep())); // overhead (difficulty + market events + #7 production upkeep + CE4(a) empire carrying cost + CE4(c) bridge-loan interest + #6 research-partnership upkeep)
   if(state.pgmRoyalty>0) state.money+=perDay(state.pgmRoyalty); // M7: platinum-group royalties from an established Belt claim
   state.staff.forEach(s=>{ const p=personById(s.id); if(p) state.money-=perDay(p.salary); }); // M6: personnel salary
-  state.publicSupport=clampA(publicSupport()+(SUPPORT_BASE-publicSupport())*SUPPORT_REVERT_DAY, SUPPORT_MIN, SUPPORT_MAX); // #8: mood reverts toward neutral (slice 3a: per-day at the compounding rate)
+  { const rate=publicSupport()>SUPPORT_BASE ? SUPPORT_REVERT_DAY*0.5 : SUPPORT_REVERT_DAY; // earned goodwill fades half as fast as bad blood heals
+    state.publicSupport=clampA(publicSupport()+(SUPPORT_BASE-publicSupport())*rate, SUPPORT_MIN, SUPPORT_MAX); } // #8: mood reverts toward neutral
   state.money+=perDay(govMonthlyFunding()); // #8: public support buys government funding (slice 3a: accrues daily)
   if(state.activeResearch && !_pendingSetback){ // #26: R&D progresses daily; a pending setback freezes it
     const _rdNode=RESEARCH.find(r=>r.id===state.activeResearch.id);
@@ -2329,6 +2339,11 @@ function tickMonthlyBoundary(){
     const mRev=round2(totalFacilityIncome()+(state.pgmRoyalty>0?state.pgmRoyalty:0)+govMonthlyFunding()+passiveMonthlyIncome());
     const mExp=round2(Math.max(0,diff().overhead+econOverheadAdd()+productionUpkeep()+empireOpex()+loanInterest()+partnershipUpkeep())+monthlyPayroll());
     state.lastMonth={revenue:mRev, expenses:mExp, net:round2(mRev-mExp), flights:0};
+    // Economy tension: warn (once per threshold crossing) when the runway gets short.
+    const rw=runwayMonths();
+    if(rw<=6 && state._runwayWarned!==6){ state._runwayWarned=6; log('bad',`⚠ Treasury critical — about ${Math.max(1,Math.round(rw))} months of runway at current burn. Fly something, sign a contract, or cut payroll.`); }
+    else if(rw<=12 && rw>6 && state._runwayWarned!==12){ state._runwayWarned=12; log('note',`Treasury warning — roughly ${Math.round(rw)} months of runway at current burn.`); }
+    else if(rw>18 && state._runwayWarned){ state._runwayWarned=null; }
 
     tickRivals(); // CE1: rival agents (budget + reactive momentum) — replaces calendar-only firing
     checkPoaching();
@@ -2336,6 +2351,7 @@ function tickMonthlyBoundary(){
     checkDivisionBreakthroughs(); // #5: division-driven R&D breakthroughs (sibling of #9)
     checkResearchSetback(); // #26: experimental research failures (negative sibling of breakthroughs)
     checkEvents();
+    tickMandate(); // mandates: offer / deadline check (economy tension pass)
     pushMetricHistory(); // #28: snapshot this month's core metrics for the dashboard sparklines
 }
 // #28: append the current core-metric values to their trend buffers (capped at METRIC_HISTORY_LEN).
@@ -2349,6 +2365,101 @@ function pushMetricHistory(){
   push('success', state.flights>0 ? 100*state.successes/state.flights : 0);
   push('science', state.science||0);
 }
+
+
+/* ---------- Milestone "FIRST!" celebrations (KSP-style fanfare with the space-race angle) ----------
+   Fires once per first-time mission completion. Frames the achievement against the rival
+   timeline: did you beat them to it, match them, or arrive after being scooped? */
+function rivalRaceLine(missionId){
+  for(const r of RIVALS){
+    const f=(r.firsts||[]).find(x=>x.missionId===missionId);
+    if(!f) continue;
+    const claimed=!!state.rivalFired[r.id+'|'+f.name];
+    if(claimed) return `<span style="color:var(--muted)">${r.name} got there first (${f.year}) — but flying it yourself is what builds an agency.</span>`;
+    const margin=f.year-state.year;
+    if(margin>0) return `<span style="color:var(--ok)">You beat ${r.name} to it by ~${margin} year${margin===1?'':'s'}. The history books will remember.</span>`;
+    return `<span style="color:var(--ok)">You edged out ${r.name} — they were months away.</span>`;
+  }
+  return '';
+}
+function showMilestoneModal(m, payout, rep){
+  const race=rivalRaceLine(m.id);
+  const hist=(m.blurb||'').match(/<span class="hist">([\s\S]*?)<\/span>/);
+  showModal(`<div style="text-align:center">
+    <div style="font-size:12px;letter-spacing:.35em;color:var(--ignite);text-transform:uppercase;margin-bottom:6px">✦ Milestone ✦</div>
+    <h2 style="margin:0 0 2px">${m.name}</h2>
+    <div class="dim" style="font-family:var(--mono);font-size:12px;margin-bottom:10px">${dateStr()} · Era ${eraIndex(currentEra())+1}: ${currentEra().name}</div>
+    ${race?`<p style="font-size:13px;margin:8px 0">${race}</p>`:''}
+    ${hist?`<p class="muted" style="font-size:12px;margin:8px 0">${hist[1]}</p>`:''}
+    <div style="display:flex;gap:14px;justify-content:center;font-family:var(--mono);font-size:13px;margin:12px 0">
+      <span style="color:var(--ok)">+${fM(payout)}</span><span style="color:var(--readout)">+${rep} rep</span>
+    </div>
+    <button class="btn launch" onclick="hideModal()">Onward ▸</button>
+  </div>`);
+}
+
+/* ---------- Government mandates (economy tension + Stellaris-style arriving decisions) ----------
+   Every so often the government offers a MANDATE: complete a specific not-yet-flown mission by a
+   deadline for a cash bonus + support boost. Decline freely (small cooldown); accept and miss the
+   deadline and support takes a real hit. Mandates are the designed bridge financing for an ACTIVE
+   agency — the replacement for the old ambient grants — and they make the calendar matter. */
+const MANDATE_COOLDOWN_MO=15;     // months between offers (after resolve/decline)
+const MANDATE_BONUS_MULT=0.65;    // bonus = mission payout × this (+ era scaling)
+const MANDATE_SUPPORT_WIN=8;      // support gained on fulfilment
+const MANDATE_SUPPORT_MISS=-10;   // support lost on a missed deadline
+function mandateCandidate(){
+  // a mission the player hasn't flown, whose research gate is already met (or nearly-met via
+  // an affordable node), and whose rep gate is within reach — i.e. plausibly achievable
+  return MISSIONS.filter(m=>!state.completed[m.id] && (m.payout||0)>0
+      && (!m.reqResearch || state.research[m.reqResearch] || (RESEARCH.find(r=>r.id===m.reqResearch && reqsMet(r))))
+      && state.rep >= (m.minRep||0)*0.5)
+    .sort((a,b)=>(a.minRep||0)-(b.minRep||0))[0]||null;
+}
+function offerMandate(){
+  if(state.mandate || (state.mandateCooldown||0)>0) return;
+  const m=mandateCandidate(); if(!m) return;
+  const lead=Math.max(24, Math.round(buildMonths(m)*3+18)); // generous: 3× build + margin
+  const bonus=round2((m.payout||2)*MANDATE_BONUS_MULT*(1+0.15*eraIndex(currentEra())));
+  state.mandate={missionId:m.id, name:m.name, bonus, deadlineAbs:absMonth()+lead, offeredAbs:absMonth()};
+  log('note',`📜 Government mandate offered: fly ${m.name} within ${lead} months for a ${fM(bonus)} bonus.`);
+  if(animEnabled) showMandateModal();
+}
+function showMandateModal(){
+  const md=state.mandate; if(!md) return;
+  const left=md.deadlineAbs-absMonth();
+  showModal(`<h2>📜 Government mandate</h2>
+    <p>The national space directorate offers a mandate: <b>${md.name}</b> within <b>${left} months</b>.</p>
+    <p>Fulfil it for a <b style="color:var(--ok)">${fM(md.bonus)} bonus</b> and <b style="color:var(--ok)">+${MANDATE_SUPPORT_WIN} public support</b>.
+    Accept and miss the deadline, and support takes a <b style="color:var(--bad)">${MANDATE_SUPPORT_MISS}</b> hit.</p>
+    <button class="btn launch" onclick="acceptMandate()">Accept the mandate</button>
+    <button class="btn ghost" onclick="declineMandate()" style="margin-top:8px">Decline (no penalty)</button>`);
+}
+function acceptMandate(){ if(state.mandate) state.mandate.accepted=true; hideModal(); log('note',`Mandate accepted: ${state.mandate.name} by ${dateOfAbs(state.mandate.deadlineAbs)}.`); render(); }
+function declineMandate(){ if(state.mandate){ log('note',`Mandate declined: ${state.mandate.name}.`); state.mandate=null; state.mandateCooldown=MANDATE_COOLDOWN_MO; } hideModal(); render(); }
+function dateOfAbs(abs){ const y=1942+Math.floor(abs/12), mo=abs%12; return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][mo]+' '+y; }
+// called monthly from the tick + on mission completion
+function tickMandate(){
+  if(state.mandateCooldown>0) state.mandateCooldown--;
+  const md=state.mandate;
+  if(md){
+    if(!md.accepted){ // unanswered offer in headless/anims-off: auto-accept (it's strictly optional upside until accepted... keep it pending 6mo then quietly lapse)
+      if(absMonth()-md.offeredAbs>6){ state.mandate=null; state.mandateCooldown=MANDATE_COOLDOWN_MO; }
+    } else if(absMonth()>md.deadlineAbs){
+      addSupport(MANDATE_SUPPORT_MISS);
+      log('bad',`📜 Mandate FAILED — ${md.name} was not flown by the deadline. Public support ${MANDATE_SUPPORT_MISS}.`);
+      state.mandate=null; state.mandateCooldown=MANDATE_COOLDOWN_MO;
+    }
+  } else offerMandate();
+}
+function fulfillMandateIfMatch(missionId){
+  const md=state.mandate; if(!md || !md.accepted || md.missionId!==missionId) return;
+  if(absMonth()<=md.deadlineAbs){
+    state.money+=md.bonus; addSupport(MANDATE_SUPPORT_WIN);
+    log('ok',`📜 Mandate fulfilled: ${md.name}. +${fM(md.bonus)} bonus, +${MANDATE_SUPPORT_WIN} public support.`);
+  }
+  state.mandate=null; state.mandateCooldown=MANDATE_COOLDOWN_MO;
+}
+
 /* ---------- ambient events (economy + rival expansion) ---------- */
 function econPayoutMult(){ return (state.econEvents||[]).reduce((a,e)=>a*(e.payoutMult||1),1); }
 function econOverheadAdd(){ return (state.econEvents||[]).reduce((a,e)=>a+(e.overheadAdd||0),0); }
@@ -2366,7 +2477,22 @@ function publicSupport(){ return clampA(state.publicSupport==null?SUPPORT_BASE:s
 function publicMood(){ const s=publicSupport(); return SUPPORT_TIERS.find(t=>s>=t.min)||SUPPORT_TIERS[SUPPORT_TIERS.length-1]; }
 function addSupport(delta){ state.publicSupport=clampA(publicSupport()+delta, SUPPORT_MIN, SUPPORT_MAX); return state.publicSupport; }
 // monthly government grant: scales with support (linear, 0 at no support) and era
-function govMonthlyFunding(){ return round2(GOV_FUNDING_BASE*(publicSupport()/100)*(1+0.15*eraIndex(currentEra()))*doctrineMult('gov')); } // CE3(a): Statecraft +, Commercial −
+// Economy tension pass: government funding is EARNED, not ambient. Only support above
+// neutral (50) buys funding — an idle agency reverts to neutral and the grants dry up,
+// leaving overhead to eat the balance sheet. Napkin difficulty keeps a small floor grant
+// (still below its overhead, so idling stays net-negative — just slower to bite).
+function govMonthlyFunding(){
+  const excess=Math.max(0, publicSupport()-SUPPORT_BASE);
+  const earned=GOV_FUNDING_BASE*Math.min(1,excess/30)*(1+0.15*eraIndex(currentEra()))*doctrineMult('gov'); // full grant at 80 support — every point above neutral pays
+  return round2(earned + (diff().govFloor||0));
+} // CE3(a): Statecraft +, Commercial −
+// Months of cash left at the current monthly burn (Infinity when cash-positive).
+function runwayMonths(){
+  const lm=state.lastMonth; if(!lm) return Infinity;
+  const net=lm.net!=null?lm.net:0;
+  if(net>=0) return Infinity;
+  return state.money/(-net);
+}
 
 /* ---------- passive-income contracts (repeatable · cooldown · diminishing) ---------- */
 function passiveDef(id){ return PASSIVE_CONTRACT_DEFS.find(c=>c.id===id); }
@@ -2427,7 +2553,10 @@ function tickPassiveContracts(){
   for(const k in cool){ if(cool[k]>0) cool[k]--; }
 }
 function rollEconEvent(){
-  const elig=ECONOMY_EVENTS.filter(e=> state.year>=(e.minYear||0) && state.rep>=(e.minRep||0) && state.flights>=(e.reqFlights||0) && (!e.reqDepot || state.research.orbital_depot));
+  // Economy tension: positive windfalls require a recently ACTIVE program (a flight in the
+  // last 24 months or support above neutral). Nobody grants money to an agency going nowhere.
+  const activeProgram = (absMonth()-(state.lastFlightAbs??-999))<=36 || !!state.activeResearch || publicSupport()>SUPPORT_BASE+3;
+  const elig=ECONOMY_EVENTS.filter(e=> state.year>=(e.minYear||0) && state.rep>=(e.minRep||0) && state.flights>=(e.reqFlights||0) && (!e.reqDepot || state.research.orbital_depot) && !(e.kind==='good' && e.money && !activeProgram));
   if(!elig.length) return null;
   const tot=elig.reduce((a,e)=>a+e.weight,0);
   let r=Math.random()*tot, pick=elig[0];
@@ -2574,7 +2703,7 @@ function facilitySupplyDrain(){ return 1; } // one month of provisions consumed 
 function facilityStarved(id){ return facilityBuilt(id) && facilitySupply(id)<=0; }
 function facilitySupplyFactor(id){ return facilityStarved(id)?FAC_STARVE_PROD:1; } // starved bases run at reduced output
 function facilitySupplyMonths(id){ return Math.round(facilitySupply(id)); } // months of runway remaining
-function resupplyCostFull(id){ const def=facilityById(id), fs=facilityState(id); if(!def||!fs) return 0; const mod=Math.max(1,fs.modules||1); return round2(FAC_RESUPPLY_PER_MODULE*mod*bodyResupplyMult(def.body)); }
+function resupplyCostFull(id){ const def=facilityById(id), fs=facilityState(id); if(!def||!fs) return 0; const mod=Math.max(1,fs.modules||1); const fission=state.research.surface_fission_power?0.75:1; /* a base that makes its own power ships fewer consumables */ return round2(FAC_RESUPPLY_PER_MODULE*mod*bodyResupplyMult(def.body)*fission); }
 function resupplyCost(id){ const missing=Math.max(0, FAC_SUPPLY_MONTHS-facilitySupply(id)); return round2(resupplyCostFull(id)*(missing/FAC_SUPPLY_MONTHS)); } // pay for what you actually ship up
 function canResupply(id){
   if(!facilityBuilt(id)) return {ok:false,why:'No facility.'};
@@ -2849,7 +2978,7 @@ function benchQueueHTML(m){
   const cq=canQueue(m,v,sim); const ready=hangarFor(m); const slots=buildSlots();
   let html='';
   if(ready.length){
-    html+=`<div class="flag ok" style="margin-top:6px">✓ ${ready.length} ${m.name} vehicle${ready.length>1?'s':''} built &amp; waiting — <button class="btn ghost" style="padding:2px 8px;font-size:11px" onclick="launchFromHangar('${ready[0].id}')">Fly from hangar</button> <span class="dim">skips the build wait</span></div>`;
+    html+=`<div class="flag ok" style="margin-top:6px">✓ ${ready.length} ${m.name} vehicle${ready.length>1?'s':''} built &amp; waiting — <button class="btn ghost" style="padding:2px 8px;font-size:12px" onclick="launchFromHangar('${ready[0].id}')">Fly from hangar</button> <span class="dim">skips the build wait</span></div>`;
   }
   html += cq.ok
     ? `<button class="btn ghost" style="width:100%;margin-top:6px" onclick="queueBuild()">⊕ Queue this build — ${fM(v.buildCost)} now · ${buildMonths(m)} mo${slots>1?` · ${slots} bay slots`:''}</button>`
@@ -2867,17 +2996,17 @@ function standingProductionHTML(){
       : stock>=cap ? `<span class="dim">stock full (${stock}/${cap}) — fly a copy to resume</span>`
       : `<span class="flag-ok-text" style="color:var(--ok)">building — ${stock}/${cap} in stock · ${fM(sp.buildCost)}/copy</span>`;
     body = `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 0">
-        <div><b>${sp.name}</b><br><span style="font-size:11px">${stateTxt}</span></div>
+        <div><b>${sp.name}</b><br><span style="font-size:12px">${stateTxt}</span></div>
         <div style="display:flex;gap:4px">
-          <button class="btn ghost" style="padding:2px 8px;font-size:11px" onclick="toggleStandingProduction()">${sp.enabled?'Pause':'Resume'}</button>
-          <button class="btn ghost" style="padding:2px 8px;font-size:11px" onclick="clearStandingProduction()">Clear</button>
+          <button class="btn ghost" style="padding:2px 8px;font-size:12px" onclick="toggleStandingProduction()">${sp.enabled?'Pause':'Resume'}</button>
+          <button class="btn ghost" style="padding:2px 8px;font-size:12px" onclick="clearStandingProduction()">Clear</button>
         </div></div>`;
   }else{
     const m=curMission();
     const can = m ? (()=>{ const v=computeVehicle(); const sim=m.profile?simulateMission(m):null; const c=canQueue(m,v,sim); return c.ok||c.why==='can’t afford the build'||c.why==='queue full'; })() : false;
     body = `<div style="padding:5px 0">${can
-      ? `<button class="btn" style="width:100%;padding:4px 8px;font-size:11px" onclick="setStandingProduction()">⚙ Put “${m.name}” into standing production — the line auto-builds up to ${cap} copies</button>`
-      : `<span class="dim" style="font-size:11px">Bench a flyable design, then set it as your standing line — the factory builds it on its own.</span>`}</div>`;
+      ? `<button class="btn" style="width:100%;padding:4px 8px;font-size:12px" onclick="setStandingProduction()">⚙ Put “${m.name}” into standing production — the line auto-builds up to ${cap} copies</button>`
+      : `<span class="dim" style="font-size:12px">Bench a flyable design, then set it as your standing line — the factory builds it on its own.</span>`}</div>`;
   }
   return `<div style="margin-top:12px;border-top:1px solid #3a3320;padding-top:8px">
     <div style="font-weight:600;font-size:12px;color:#e6c14a">🏭 Standing production <span class="dim" style="font-weight:400">· juggernaut capstone · self-funding line</span></div>
@@ -2890,29 +3019,29 @@ function buildQueuePanelHTML(){
     const pct=Math.round(100*(o.monthsTotal-o.monthsLeft)/Math.max(1,o.monthsTotal));
     const status=o.started?`building · ${fmtTimeLeft(o.monthsLeft)} left`:'queued · waiting for a bay slot';
     return `<div style="padding:6px 0;border-top:1px solid #2a2a2a">
-      <div style="display:flex;justify-content:space-between;gap:8px"><b>${o.name}</b><span class="dim" style="font-size:11px">${status}</span></div>
+      <div style="display:flex;justify-content:space-between;gap:8px"><b>${o.name}</b><span class="dim" style="font-size:12px">${status}</span></div>
       <div class="bar" style="margin:4px 0;height:6px"><div class="fill" style="width:${o.started?pct:0}%;background:var(--readout)"></div></div>
-      <div style="display:flex;justify-content:space-between;align-items:center"><span class="dim" style="font-size:11px">${o.units} units · ${fM(o.cost)} committed</span>
-      <button class="btn ghost" style="padding:2px 8px;font-size:11px" onclick="cancelOrder('${o.id}')">${o.started?'Scrap':'Cancel · refund'}</button></div>
+      <div style="display:flex;justify-content:space-between;align-items:center"><span class="dim" style="font-size:12px">${o.units} units · ${fM(o.cost)} committed</span>
+      <button class="btn ghost" style="padding:2px 8px;font-size:12px" onclick="cancelOrder('${o.id}')">${o.started?'Scrap':'Cancel · refund'}</button></div>
     </div>`;
   }).join('') : `<div class="dim" style="font-size:12px;padding:6px 0">No builds in progress. Queue a vehicle from the Design Bench to build it ahead of launch.</div>`;
   const hangarRows = hangar.length ? hangar.map(h=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 0;border-top:1px solid #2a2a2a">
-      <div><b>${h.name}</b> <span class="dim" style="font-size:11px">· ${h.missionName}</span></div>
-      <div style="display:flex;gap:4px"><button class="btn ghost" style="padding:2px 8px;font-size:11px" onclick="hangarToBench('${h.id}')">Bench</button>
-      <button class="btn" style="padding:2px 8px;font-size:11px" onclick="launchFromHangar('${h.id}')">Fly</button>
-      <button class="btn ghost" style="padding:2px 8px;font-size:11px" onclick="scrapHangar('${h.id}')">Scrap</button></div>
+      <div><b>${h.name}</b> <span class="dim" style="font-size:12px">· ${h.missionName}</span></div>
+      <div style="display:flex;gap:4px"><button class="btn ghost" style="padding:2px 8px;font-size:12px" onclick="hangarToBench('${h.id}')">Bench</button>
+      <button class="btn" style="padding:2px 8px;font-size:12px" onclick="launchFromHangar('${h.id}')">Fly</button>
+      <button class="btn ghost" style="padding:2px 8px;font-size:12px" onclick="scrapHangar('${h.id}')">Scrap</button></div>
     </div>`).join('') : `<div class="dim" style="font-size:12px;padding:6px 0">Hangar empty — finished vehicles wait here, ready to launch on demand.</div>`;
   return `<div class="card" style="background:var(--panel2);margin-bottom:12px">
     <div style="display:flex;justify-content:space-between;align-items:baseline">
-      <div class="mission-name" style="font-size:14px">🏗 Production queue &amp; manifest${isJuggernaut()?' <span style="font-size:10px;color:#e6c14a;border:1px solid #e6c14a;border-radius:3px;padding:0 4px;vertical-align:middle">JUGGERNAUT</span>':''}</div>
-      <div class="dim" style="font-size:11px">${active}/${slots} bay slot${slots>1?'s':''} active · Assembly Bays sets parallel slots</div>
+      <div class="mission-name" style="font-size:14px">🏗 Production queue &amp; manifest${isJuggernaut()?' <span style="font-size:11px;color:#e6c14a;border:1px solid #e6c14a;border-radius:3px;padding:0 4px;vertical-align:middle">JUGGERNAUT</span>':''}</div>
+      <div class="dim" style="font-size:12px">${active}/${slots} bay slot${slots>1?'s':''} active · Assembly Bays sets parallel slots</div>
     </div>
-    <p class="muted" style="font-size:11px;margin:4px 0 6px">Pre-build vehicles so they're ready when you are — hit tight launch windows and sustain cadence. Build cost is paid up front; flying from the hangar skips the build wait.</p>
+    <p class="muted" style="font-size:12px;margin:4px 0 6px">Pre-build vehicles so they're ready when you are — hit tight launch windows and sustain cadence. Build cost is paid up front; flying from the hangar skips the build wait.</p>
     <div style="font-weight:600;font-size:12px;margin-top:6px">Build queue</div>
     ${orderRows}
     <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:10px">
       <div style="font-weight:600;font-size:12px">Hangar — ready to fly (${hangar.length})</div>
-      <div class="dim" style="font-size:11px" title="Launch Pads set how many prebuilt rapid flights share one calendar month. Extra flights this month fly off the other pads with no added wait.">🛫 ${launchPadCap()}/mo cadence${curMonthPadUsed()>0?` · ${padSlotsLeft()} pad${padSlotsLeft()===1?'':'s'} free this month`:''}</div>
+      <div class="dim" style="font-size:12px" title="Launch Pads set how many prebuilt rapid flights share one calendar month. Extra flights this month fly off the other pads with no added wait.">🛫 ${launchPadCap()}/mo cadence${curMonthPadUsed()>0?` · ${padSlotsLeft()} pad${padSlotsLeft()===1?'':'s'} free this month`:''}</div>
     </div>
     ${hangarRows}
     ${standingProductionHTML()}
@@ -3485,6 +3614,7 @@ function completeResearch(){
   state.research[r.id]=true; state.activeResearch=null;
   divisionGainExp(r); // #4: the covering division gains experience from completing a project
   if(isLeveledTech(r.id)){ if(!state.techLevel) state.techLevel={}; state.techLevel[r.id]=1; } // #3: leveled techs start at L1
+  reconcileEngineMods(); // engine-stat research (e.g. Megawatt Electric) reflects immediately
   if(r.effect.engines){ r.effect.engines.forEach(id=>state.unlocked[id]=true); log('note',`R&D complete: ${r.name}. New engines available — ${r.effect.engines.map(id=>ENGINES[id].name).join(', ')}.`);}
   else if(r.effect.engine){state.unlocked[r.effect.engine]=true; log('note',`R&D complete: ${r.name}. New engine available — ${ENGINES[r.effect.engine].name}.`);}
   else if(r.effect.sigma){state.sigma=r.effect.sigma; log('note',`R&D complete: ${r.name}. σ is now ${r.effect.sigma}.`);}
@@ -3763,10 +3893,30 @@ function simulateMission(m){
   }
   const isru=ISRU_FREE_LEG[m.id];
   const isruActive = isru && state.research[isru.research];
+  // Cryogenic boil-off: LH₂ (and, at half rate, CH₄) in-space stages lose propellant over the
+  // mission's coast time. Cryo Boil-off Control research cuts the rate ~4×. Capped at 30% loss.
+  let boiloff=null;
+  { const mo=(m.days||0)/30;
+    if(mo>0.5){
+      const controlled=!!state.research.cryo_boiloff_control;
+      const rate=controlled?0.004:0.015; // per month, LH₂; CH₄ at half
+      let lost=0;
+      for(const k in present){
+        const prop=(ENGINES[present[k].eng]||{}).prop||'';
+        const cryo=/LH₂/.test(prop)?1:(/CH₄|methal/i.test(prop)?0.5:0);
+        if(!cryo) continue;
+        const frac=Math.min(0.30, rate*cryo*mo);
+        const dl=present[k].propLeft*frac;
+        present[k].propLeft-=dl; lost+=dl;
+      }
+      if(lost>0.01) boiloff={lost:Math.round(lost*100)/100, controlled};
+    } }
   const stackMass=()=>{let s=crewMass; for(const k in present) s+=present[k].dry+present[k].propLeft; return s;};
   // #6: orbital assembly — these modules are pre-positioned in LEO, so the main launch doesn't lift them
   const asmSet = assemblyOn(m) ? new Set(assemblyModules(m)) : null;
   const legs=[]; let ok=true, inSpaceLegs=0;
+  const gaMult=state.research.gravity_assist_planning?0.92:1; // gravity-assist chains shave the big injection burns
+  const legDv=(leg)=> (gaMult<1 && leg.by!=='lv' && /Jupiter|Belt Transfer|Saturn/i.test(leg.name||'')) ? Math.round(leg.dv*gaMult) : leg.dv;
   for(const leg of m.profile){
     if(leg.by==='lv'){
       let upper=stackMass();
@@ -3784,24 +3934,25 @@ function simulateMission(m){
     }else if(isruActive && leg.name===isru.leg){
       // ISRU-produced propellant covers this burn entirely — no mass drawn from carried tanks
       inSpaceLegs++;
-      legs.push({name:leg.name, dv:leg.dv, cap:leg.dv, by:leg.by, mass:stackMass(), pass:true, isru:isru.label});
+      legs.push({name:leg.name, dv:legDv(leg), cap:legDv(leg), by:leg.by, mass:stackMass(), pass:true, isru:isru.label});
     }else{
       inSpaceLegs++;
       const mod=present[leg.by];
-      if(!mod){ legs.push({name:leg.name,dv:leg.dv,by:leg.by,cap:0,mass:0,pass:false}); ok=false; }
+      if(!mod){ legs.push({name:leg.name,dv:legDv(leg),by:leg.by,cap:0,mass:0,pass:false}); ok=false; }
       else{
         const mBefore=stackMass();
         const isp=(ENGINES[mod.eng]||ENGINES.a4).ispVac;
-        const burned=mBefore-(mBefore/Math.exp(leg.dv/(isp*G0)));
+        const dvNeed=legDv(leg); const ga=dvNeed<leg.dv;
+        const burned=mBefore-(mBefore/Math.exp(dvNeed/(isp*G0)));
         const cap=isp*G0*Math.log(mBefore/Math.max(mBefore-mod.propLeft, mBefore*0.001));
         const pass=burned<=mod.propLeft+1e-9;
-        legs.push({name:leg.name, dv:leg.dv, cap:Math.round(cap), by:leg.by, mass:mBefore, pass});
+        legs.push({name:leg.name, dv:dvNeed, cap:Math.round(cap), by:leg.by, mass:mBefore, pass, ga});
         if(pass) mod.propLeft-=burned; else ok=false;
       }
     }
     if(leg.dropAfter) for(const d of leg.dropAfter) if(d!=='lv') delete present[d];
   }
-  return {legs, ok, crewMass, inSpaceLegs};
+  return {boiloff, legs, ok, crewMass, inSpaceLegs};
 }
 
 // #7 manufacturing-visualisation: a step-by-step waterfall of how buildCost is built up.
@@ -3877,19 +4028,19 @@ function buildCostBreakdownHTML(m){
     const barColor = isBase?'var(--readout)':(r.delta>0?'var(--bad)':'var(--ok)');
     const side = r.delta>0?'left':(r.delta<0?'right':'left');
     return `<tr>
-      <td style="padding:2px 6px;color:${isBase?'var(--ink)':'var(--dim)'};font-size:11px">${r.label}</td>
-      <td style="padding:2px 4px;text-align:right;color:${deltaColor};font-size:11px;font-weight:600;white-space:nowrap">${sign}${fM(r.delta)}</td>
+      <td style="padding:2px 6px;color:${isBase?'var(--ink)':'var(--dim)'};font-size:12px">${r.label}</td>
+      <td style="padding:2px 4px;text-align:right;color:${deltaColor};font-size:12px;font-weight:600;white-space:nowrap">${sign}${fM(r.delta)}</td>
       <td style="padding:2px 6px;width:120px">
         <div style="position:relative;height:8px;background:#1a1a1a;border-radius:2px">
           <div style="position:absolute;top:0;${side}:0;width:${barW};height:100%;background:${barColor};border-radius:2px"></div>
         </div>
       </td>
-      <td style="padding:2px 6px;text-align:right;color:var(--ink);font-size:11px;font-weight:${isBase?'400':'600'};white-space:nowrap">${fM(r.running)}</td>
+      <td style="padding:2px 6px;text-align:right;color:var(--ink);font-size:12px;font-weight:${isBase?'400':'600'};white-space:nowrap">${fM(r.running)}</td>
     </tr>`;
   }).join('');
-  return `<details style="margin:6px 0 10px"><summary style="cursor:pointer;color:var(--dim);font-size:11px;user-select:none;padding:4px 0">▸ Build-cost breakdown — ${bd.rows.length} step${bd.rows.length===1?'':'s'} · final ${fM(bd.total)}</summary>
+  return `<details style="margin:6px 0 10px"><summary style="cursor:pointer;color:var(--dim);font-size:12px;user-select:none;padding:4px 0">▸ Build-cost breakdown — ${bd.rows.length} step${bd.rows.length===1?'':'s'} · final ${fM(bd.total)}</summary>
     <table style="width:100%;margin-top:4px;border-collapse:collapse;background:var(--panel2);border-radius:4px">
-      <thead><tr style="color:var(--dim);font-size:10px;text-transform:uppercase">
+      <thead><tr style="color:var(--dim);font-size:11px;text-transform:uppercase">
         <th style="padding:4px 6px;text-align:left;font-weight:500">Step</th>
         <th style="padding:4px 6px;text-align:right;font-weight:500">Δ</th>
         <th style="padding:4px 6px;text-align:left;font-weight:500">Effect</th>
@@ -3897,7 +4048,7 @@ function buildCostBreakdownHTML(m){
       </tr></thead>
       <tbody>${rowsHTML}</tbody>
     </table>
-    <div class="dim" style="font-size:10px;padding:4px 6px;font-style:italic">Green bars are cuts (production R&amp;D, family heritage, inventory). Red bars are adds (difficulty, cadence rush, hot materials, recovery hardware).</div>
+    <div class="dim" style="font-size:11px;padding:4px 6px;font-style:italic">Green bars are cuts (production R&amp;D, family heritage, inventory). Red bars are adds (difficulty, cadence rush, hot materials, recovery hardware).</div>
   </details>`;
 }
 
@@ -3937,7 +4088,7 @@ function computeVehicle(){
     if(recoveryRefly(m)) buildCost*=refurbCostMult(); // refurbish a recovered booster: 45% of new, rising with wear (each refly chips +8%)
     buildCost+=RECOVERY_HARDWARE; // legs, grid fins, reserved propellant — fitted on every recovery flight
   }
-  const reliability=Math.min(diff().relCap,Math.max(diff().relFloor,(curRel()+testBonus+partsRelBonus(crewed)+geoRelBonus()+benchRelBonus(m)+doctrineRelMod())*enginePenalty*boosterRelPenalty()*(crewed?0.92:1)+productionRelMod(m))); // #7: QA bonus − bay-overstretch penalty + bench-tested sub-assembly heritage; #16: booster failure-point penalty; BC2 parts + BC3 geometry reliability; CE3(a) doctrine early-reliability delta
+  const reliability=Math.min(diff().relCap,Math.max(diff().relFloor,(curRel()+testBonus+partsRelBonus(crewed)+geoRelBonus()+benchRelBonus(m)+doctrineRelMod())*enginePenalty*boosterRelPenalty()*(crewed?(state.research.orbital_eva?0.95:0.92):1)+productionRelMod(m))); // #7: QA bonus − bay-overstretch penalty + bench-tested sub-assembly heritage; #16: booster failure-point penalty; BC2 parts + BC3 geometry reliability; CE3(a) doctrine early-reliability delta
   const launchCost=((0.12+0.01*totalProp)*padLaunchMult()*groundLaunchMult()*doctrineMult('launch')) + assemblyFlights(m)*ASSEMBLY_LAUNCH_COST; // #7: pads + #6b: Ground/Reuse research amortize launch ops; #6: dedicated assembly flights; CE3(a) doctrine launch-cost factor
   return {payload, sm:perf.sm, stageDv:perf.stageDv, stageTwr:perf.stageTwr, stageGravLoss:perf.stageGravLoss, gravLoss:perf.gravLoss, totalDv:perf.totalDv, liftoff:perf.liftoff, twr:perf.twr,
           boostDv:perf.boostDv||0, boosters:perf.boosters||null,
@@ -4035,6 +4186,14 @@ const POWER_SOURCES = {
   reactor: {id:'reactor', name:'Fission Reactor',  kwPerTonne:6,   distScaled:false, research:'nuclear_electric',rad:0.4,  blurb:'High output anywhere — the only practical source for power-hungry electric propulsion in the deep outer system.'},
 };
 function powerSourceDef(id){ return POWER_SOURCES[id]||POWER_SOURCES.solar; }
+// Megawatt Electric Propulsion: +10% Isp on every electric drive. Applied by reconciliation
+// against captured base values (safe across newGame / loadGame — never double-applies).
+const _ELECTRIC_ENGS=['hall_thruster','ion_xenon','nep_snap'];
+const _ELECTRIC_BASE_ISP={}; _ELECTRIC_ENGS.forEach(id=>{ if(ENGINES[id]) _ELECTRIC_BASE_ISP[id]=ENGINES[id].ispVac; });
+function reconcileEngineMods(){
+  const mult=(state&&state.research&&state.research.megawatt_electric)?1.10:1;
+  _ELECTRIC_ENGS.forEach(id=>{ if(ENGINES[id]) ENGINES[id].ispVac=Math.round(_ELECTRIC_BASE_ISP[id]*mult); });
+}
 function selfPoweredCraft(m){ return usesTransfer(m) && !!transferEng().selfPowered; } // NEP carries its own reactor
 // radiation from the onboard power source — a self-powered NEP counts as a full reactor
 function powerRad(m){ if(!(m&&m.profile)) return 0; return selfPoweredCraft(m) ? POWER_SOURCES.reactor.rad : powerSourceDef(state.powerSource).rad; }
@@ -4257,7 +4416,7 @@ function subsystemBreakdownHTML(m,v){
   const famNote=fam&&familyRelBonus(fam)>0?` <span style="color:var(--ok)">${fam.name} heritage adds +${(familyRelBonus(fam)*100).toFixed(1)}% from ${fam.successes} proven flight${fam.successes===1?'':'s'}.</span>`:'';
   return `<div class="mission-tag" style="margin-top:12px">Subsystem reliability — the weakest link is where it breaks</div>
     <div class="legs" style="margin-top:6px">${rows}</div>
-    <div class="dim" style="font-size:11px;margin-top:6px">Overall ${(rep.R*100)|0}% = the product of all subsystems. Test campaigns, tank/guidance research, and matching engineer specialists each harden a specific link.${famNote}</div>`;
+    <div class="dim" style="font-size:12px;margin-top:6px">Overall ${(rep.R*100)|0}% = the product of all subsystems. Test campaigns, tank/guidance research, and matching engineer specialists each harden a specific link.${famNote}</div>`;
 }
 
 /* ---------- #20 launch weather (go / no-go) ---------- */
@@ -4515,13 +4674,13 @@ function rehearsalHTML(m){
     ? `${Math.round(rd.anomaly*100)}%${on?` → <b style="color:var(--ok)">${Math.round(rd.anomalyRehearsed*100)}%</b> (rehearsed)`:''}`
     : 'none likely for this profile';
   return `<div class="mission-tag" style="margin-top:8px">Mission readiness & rehearsal</div>
-    <div style="font-size:11px;line-height:1.8;margin:4px 0;color:var(--muted)">
+    <div style="font-size:12px;line-height:1.8;margin:4px 0;color:var(--muted)">
       <div>Weather GO odds: <b style="color:var(--ink)">${rd.goPct}%</b> <span class="dim">(else a launch-day go/no-go call)</span></div>
       <div>In-flight anomaly risk: <b style="color:var(--ink)">${anomTxt}</b></div>
       ${rd.crewed?`<div>Deep-space rescue odds if stranded: <b style="color:var(--ink)">${Math.round(rd.rescue*100)}%</b></div>`:''}
     </div>
-    <button class="btn" style="font-size:11px;padding:4px 10px;${on?'border-color:var(--ok);color:var(--ok)':''}" onclick="toggleRehearsal()">${on?'✓ Rehearsal ON':'Rehearsal OFF'}</button>
-    <span class="dim" style="font-size:11px;margin-left:8px">Rehearse contingencies — ${fM(cost)} · +${REHEARSAL_MONTHS} mo · anomaly risk × ${REHEARSAL_ANOMALY_MULT}.</span>`;
+    <button class="btn" style="font-size:12px;padding:4px 10px;${on?'border-color:var(--ok);color:var(--ok)':''}" onclick="toggleRehearsal()">${on?'✓ Rehearsal ON':'Rehearsal OFF'}</button>
+    <span class="dim" style="font-size:12px;margin-left:8px">Rehearse contingencies — ${fM(cost)} · +${REHEARSAL_MONTHS} mo · anomaly risk × ${REHEARSAL_ANOMALY_MULT}.</span>`;
 }
 
 /* ---------- launch ---------- */
@@ -4534,7 +4693,7 @@ function canLaunch(v,m,sim,prebuilt){
     if(!sim||!sim.ok) return {ok:false,why:'A mission leg falls short — size the launch vehicle and transfer stage for every burn.'};
     if((state.depotUse||0) > state.depot) return {ok:false,why:`Depot only holds ${state.depot.toFixed(1)} t — reduce the depot draw.`};
   }else{
-    if(v.totalDv < m.reqDv) return {ok:false,why:'Δv shortfall — build more capability before flying.'};
+    if(v.totalDv < m.reqDv) return {ok:false,why:`Δv shortfall — ${Math.round(v.totalDv).toLocaleString()} of ${m.reqDv.toLocaleString()} m/s (${Math.round(m.reqDv-v.totalDv).toLocaleString()} short). Add propellant, engines, or a stage on the bench.`};
     if(v.twr<=1.0) return {ok:false,why:'Thrust-to-weight ≤ 1 — it will not leave the pad.'};
   }
   if(m.window){
@@ -4554,6 +4713,7 @@ function tankerDelivery(){
   return state.transfer.prop;
 }
 function launch(prebuilt){
+  if(_pendingLaunch||_pendingLive||_pendingSetback) return; // a decision modal owns the flow — no re-entry
   if(vehPopoutOpen) closeVehPopout(); // launching from the pop-out returns to the normal flight flow
   const m=curMission();
   const v=computeVehicle();
@@ -4597,6 +4757,7 @@ function launch(prebuilt){
 function proceedLaunch(m,v,sim,windowQuality,weatherPenalty,prebuilt){
   const tl=TEST_LEVELS[state.testLevel];
   state.flights++;
+  state.lastFlightAbs=absMonth(); // economy tension: windfall events require recent activity
   if(!prebuilt){ // #7 final: a hangar vehicle already registered its cadence load + materials when it was queued
     // #7 slice 5: log this build into the cadence buffer (units are the assembly load), then prune the window
     state.recentBuilds=state.recentBuilds||[];
@@ -4698,10 +4859,13 @@ function finalizeLaunch(ctx, ops){
     }
     if(!routine){
       state.completed[m.id]=true;
+      fulfillMandateIfMatch(m.id); // mandate bonus if this was the mandated mission, in time
       denyRivalGoal(m.id); // CE1(b): beating a rival to its goal blunts that rival's momentum
       state.history=state.history||{}; state.history[m.id]=state.year; // #18: record the year for the Home timeline
       if(m.pgm && state.pgmRoyalty<4.5){ state.pgmRoyalty=4.5; log('ok','Platinum-group royalties established — the Belt claim now pays +$4.5M/mo in standing income.'); }
       if(m.id==='first_sat' && !state.won){ state.won=true; pendingCelebration=victory; }
+      // KSP-style milestone fanfare for every OTHER first (epoch victories keep their own modals)
+      if(!pendingCelebration && animEnabled){ const _pm=payout,_pr=rep; pendingCelebration=()=>showMilestoneModal(m,_pm,_pr); }
       if(m.id==='endurance' && !state.wonM2){ state.wonM2=true; pendingCelebration=victoryM2; }
       if(m.id==='luna_orbit' && !state.wonM3a){ state.wonM3a=true; pendingCelebration=victoryM3a; }
       if(m.id==='luna_landing' && !state.wonM3aii){ state.wonM3aii=true; pendingCelebration=victoryM3aii; }
@@ -4869,9 +5033,9 @@ function doctrineModalHTML(){
     else btn=`<button class="btn ghost" disabled style="width:100%">Locked — ${chk.why}</button>`;
     return `<div class="card" style="background:var(--panel2);border:1px solid ${active?'var(--readout,#e6c14a)':'#2a2a2a'};margin-bottom:8px">
       <div style="font-weight:700">${d.icon} ${d.name} ${active?'<span class="pill ok">active</span>':''}</div>
-      <div class="dim" style="font-size:11px;font-style:italic">${d.tag}</div>
+      <div class="dim" style="font-size:12px;font-style:italic">${d.tag}</div>
       <p class="muted" style="font-size:12px;margin:4px 0">${d.blurb}</p>
-      <ul style="list-style:none;padding:0;margin:4px 0;font-size:11px;line-height:1.5">${pros}${cons}</ul>
+      <ul style="list-style:none;padding:0;margin:4px 0;font-size:12px;line-height:1.5">${pros}${cons}</ul>
       ${btn}</div>`;
   }).join('');
   const head = cur
@@ -4899,7 +5063,7 @@ function showSettingsMenu(){
       <div style="margin:10px 0 2px">
         <div class="cc-panel-h" style="margin-bottom:6px">Theme</div>
         <div style="display:flex;gap:6px">
-          ${Object.keys(THEMES).map(k=>`<button class="btn ghost" onclick="pickTheme('${k}')" style="flex:1;font-size:11px;${currentTheme===k?'border-color:var(--ignite);color:var(--ignite)':''}">${THEMES[k]}</button>`).join('')}
+          ${Object.keys(THEMES).map(k=>`<button class="btn ghost" onclick="pickTheme('${k}')" style="flex:1;font-size:12px;${currentTheme===k?'border-color:var(--ignite);color:var(--ignite)':''}">${THEMES[k]}</button>`).join('')}
         </div>
       </div>
       <div id="settingsCard" style="margin-top:12px"></div>
@@ -4953,11 +5117,11 @@ function renderBlueprints(){
   const el=$('blueprintsCard'); if(!el) return;
   const list=blueprints();
   const rows=list.map(b=>`<div style="display:flex;align-items:center;gap:8px;justify-content:space-between;padding:6px 0;border-top:1px solid var(--line)">
-      <span style="min-width:0"><b>${b.name}</b> <span class="dim" style="font-size:11px">${b.summary||''} · ${b.born||''}</span></span>
+      <span style="min-width:0"><b>${b.name}</b> <span class="dim" style="font-size:12px">${b.summary||''} · ${b.born||''}</span></span>
       <span style="display:flex;gap:5px;flex-shrink:0">
-        <button class="btn" style="font-size:11px;padding:3px 9px" onclick="loadBlueprint('${b.id}')">Load</button>
-        <button class="btn ghost danger" style="font-size:11px;padding:3px 8px" onclick="deleteBlueprint('${b.id}')" title="Delete">✕</button>
-      </span></div>`).join('') || '<div class="dim" style="font-size:11px;margin-top:4px">No saved designs yet — save the current build to reload it later (captures stages, geometry, boosters, livery & parts).</div>';
+        <button class="btn" style="font-size:12px;padding:3px 9px" onclick="loadBlueprint('${b.id}')">Load</button>
+        <button class="btn ghost danger" style="font-size:12px;padding:3px 8px" onclick="deleteBlueprint('${b.id}')" title="Delete">✕</button>
+      </span></div>`).join('') || '<div class="dim" style="font-size:12px;margin-top:4px">No saved designs yet — save the current build to reload it later (captures stages, geometry, boosters, livery & parts).</div>';
   el.innerHTML=`<h2>💾 Saved Designs</h2>
     <div class="row"><input type="text" id="bpName" maxlength="28" placeholder="Name this design" style="flex:1"><button class="btn" onclick="saveBlueprint()">Save current</button></div>
     ${rows}`;
@@ -4970,26 +5134,26 @@ function renderParts(){
   const p=curParts();
   const crewed=!!(curMission()&&curMission().crew>0);
   const group=(slot, table, sel, opts)=>{
-    const btns=Object.keys(table).map(k=>`<button class="btn ${sel===k?'':'ghost'}" style="font-size:11px;padding:4px 8px" onclick="setPart('${slot}','${k}')">${table[k].name}</button>`).join(' ');
+    const btns=Object.keys(table).map(k=>`<button class="btn ${sel===k?'':'ghost'}" style="font-size:12px;padding:4px 8px" onclick="setPart('${slot}','${k}')">${table[k].name}</button>`).join(' ');
     return `<div style="margin-top:8px"><div class="mission-tag" style="text-align:left">${opts.label}</div>
       <div style="display:flex;gap:5px;flex-wrap:wrap;margin:4px 0">${btns}</div>
-      <div class="dim" style="font-size:11px">${table[sel].desc}</div>${opts.note||''}</div>`;
+      <div class="dim" style="font-size:12px">${table[sel].desc}</div>${opts.note||''}</div>`;
   };
   el.innerHTML=`<h2>🔧 Performance Parts</h2>
     ${group('tank', TANK_MATERIALS, p.tank, {label:'Tank material (structure σ)'})}
     ${group('avionics', AVIONICS, p.avionics, {label:'Avionics / guidance'})}
-    ${group('fairing', FAIRINGS, p.fairing, {label:'Payload fairing', note:crewed?`<div class="dim" style="font-size:11px;color:var(--warn)">Crewed flight — flies a capsule; fairing choice is ignored this mission.</div>`:''})}`;
+    ${group('fairing', FAIRINGS, p.fairing, {label:'Payload fairing', note:crewed?`<div class="dim" style="font-size:12px;color:var(--warn)">Crewed flight — flies a capsule; fairing choice is ignored this mission.</div>`:''})}`;
 }
 function renderLivery(){
   const el=$('liveryCard'); if(!el) return;
   const l=curLivery();
-  const noseBtn=(id,label)=>`<button class="btn ${l.nose===id?'':'ghost'}" style="font-size:11px;padding:4px 9px" onclick="setLiveryNose('${id}')">${label}</button>`;
+  const noseBtn=(id,label)=>`<button class="btn ${l.nose===id?'':'ghost'}" style="font-size:12px;padding:4px 9px" onclick="setLiveryNose('${id}')">${label}</button>`;
   el.innerHTML=`<h2>🎨 Livery</h2>
     <div class="row"><label>Name</label><input type="text" maxlength="24" value="${(l.name||'').replace(/"/g,'&quot;')}" placeholder="e.g. Vanguard" onchange="setLiveryName(this.value)" style="flex:1"></div>
-    <div class="row"><label>Body</label><input type="color" value="${l.body}" onchange="setLiveryBody(this.value)" style="width:46px;padding:2px"><span class="dim" style="font-size:11px">hull color</span></div>
-    <div class="row"><label>Accent</label><input type="color" value="${l.accent}" onchange="setLiveryAccent(this.value)" style="width:46px;padding:2px"><span class="dim" style="font-size:11px">stripe + roundel</span></div>
+    <div class="row"><label>Body</label><input type="color" value="${l.body}" onchange="setLiveryBody(this.value)" style="width:46px;padding:2px"><span class="dim" style="font-size:12px">hull color</span></div>
+    <div class="row"><label>Accent</label><input type="color" value="${l.accent}" onchange="setLiveryAccent(this.value)" style="width:46px;padding:2px"><span class="dim" style="font-size:12px">stripe + roundel</span></div>
     <div class="row"><label>Nose</label><div style="display:flex;gap:5px;flex-wrap:wrap">${noseBtn('auto','Ogive')}${noseBtn('cone','Cone')}${noseBtn('blunt','Blunt')}</div></div>
-    <div class="dim" style="font-size:11px;margin-top:2px">Nose style applies to uncrewed payload fairings; crewed flights fly a capsule.</div>`;
+    <div class="dim" style="font-size:12px;margin-top:2px">Nose style applies to uncrewed payload fairings; crewed flights fly a capsule.</div>`;
 }
 function setTransferEng(v){state.transfer.eng=v;render();}
 function setTransferProp(v){state.transfer.prop=Math.max(0.1,Math.min(400,parseFloat(v)||0.1));render();}
@@ -5366,9 +5530,9 @@ function confirmNew(){
     ${hasSave?'<p class="dim" style="font-size:12px">A saved game exists in this browser and will not be overwritten.</p>':''}
     <p class="dim" style="font-size:12px;margin-top:10px">Choose a difficulty (changeable later in Settings):</p>
     <div style="display:flex;gap:8px;margin-top:8px">
-      <button class="btn ${cur==='napkin'?'':'ghost'}" onclick="restart('napkin')" style="flex:1">Napkin<br><span class="dim" style="font-size:10px">forgiving · ${fM(DIFFICULTY.napkin.startMoney)} start</span></button>
-      <button class="btn ${cur==='engineer'?'':'ghost'}" onclick="restart('engineer')" style="flex:1">Engineer<br><span class="dim" style="font-size:10px">realistic · ${fM(DIFFICULTY.engineer.startMoney)} start</span></button>
-      <button class="btn ${cur==='custom'?'':'ghost'}" onclick="restart('custom')" style="flex:1">Custom<br><span class="dim" style="font-size:10px">your rules · tune in Settings</span></button>
+      <button class="btn ${cur==='napkin'?'':'ghost'}" onclick="restart('napkin')" style="flex:1">Napkin<br><span class="dim" style="font-size:11px">forgiving · ${fM(DIFFICULTY.napkin.startMoney)} start</span></button>
+      <button class="btn ${cur==='engineer'?'':'ghost'}" onclick="restart('engineer')" style="flex:1">Engineer<br><span class="dim" style="font-size:11px">realistic · ${fM(DIFFICULTY.engineer.startMoney)} start</span></button>
+      <button class="btn ${cur==='custom'?'':'ghost'}" onclick="restart('custom')" style="flex:1">Custom<br><span class="dim" style="font-size:11px">your rules · tune in Settings</span></button>
     </div>
     <button class="btn ghost" onclick="hideModal()" style="width:100%;margin-top:8px">Cancel</button>`);
 }
@@ -8162,8 +8326,47 @@ const _prevObjDoneSet=new Set();
 let _objSectionOpen=false;
 
 /* ---------- render ---------- */
+
+/* ---------- attention badges: what needs the player, per scene ----------
+   Cheap checks only — this runs every render. A badge shows a count; hover text names the items. */
+function tabAlerts(){
+  const a={command:[], bench:[], rnd:[], map:[], station:[]};
+  // Command: financial danger, mandate deadline, morale crises, expiring passive contracts
+  const rw=runwayMonths();
+  if(rw<=12) a.command.push(rw<=6?'Treasury critical':'Treasury warning');
+  const md=state.mandate;
+  if(md && md.accepted && md.deadlineAbs-absMonth()<=6) a.command.push('Mandate deadline near');
+  if(md && !md.accepted) a.command.push('Mandate offer pending');
+  (state.staff||[]).forEach(s=>{ if(s.morale<30){ const p=personById(s.id); a.command.push((p?p.name:'Staff')+' morale critical'); } });
+  (state.passiveContracts||[]).forEach(cn=>{ if(cn.monthsLeft<=3) a.command.push(cn.name+' expiring'); });
+  // Bench: active mission blocked by the current design
+  const m=MISSIONS.find(x=>x.id===state.activeMission);
+  if(m){ try{ const v=computeVehicle(); const chk=canLaunch(v,m,m.profile?simulateMission(m):null);
+    if(!chk.ok && /shortfall|TWR|thrust/i.test(chk.why||'')) a.bench.push('Design can\'t fly '+m.name); }catch(e){} }
+  // R&D: idle lab with an affordable node
+  if(!state.activeResearch){
+    const afford=RESEARCH.some(r=>!state.research[r.id] && reqsMet(r) && state.money>=r.cost);
+    if(afford) a.rnd.push('Lab idle — research available');
+  }
+  // Map: committed launch window approaching
+  if(state.committedWindow && state.committedWindow.abs-absDay()<=45) a.map.push('Committed window imminent');
+  // Station: standing resupply shortfall
+  try{ if(typeof resupplyShortfall==='function' && resupplyShortfall()>0) a.station.push('Resupply shortfall'); }catch(e){}
+  return a;
+}
+function renderTabBadges(){
+  const a=tabAlerts();
+  const map={command:'badgeCommand', bench:'badgeBench', rnd:'badgeRnd', map:'badgeMap', station:'badgeStation'};
+  for(const k in map){ const el=$(map[k]); if(!el) continue;
+    const n=a[k].length;
+    el.classList.toggle('hidden', n===0);
+    if(n){ el.textContent=n; el.title=a[k].join(' · '); }
+  }
+}
+
 function render(){
   if(RETIRED_TABS[state.tab]) state.tab=RETIRED_TABS[state.tab]; // migrate retired tabs (slice 4: planner) on every render, incl. legacy saves
+  renderTabBadges(); // attention badges (UX pass)
   $('coName').textContent=state.company;
   const era=currentEra();
   $('eraBadge').innerHTML=`Era ${eraIndex(era)+1}/${ERAS.length} · ${era.name}`;
@@ -8995,9 +9198,9 @@ function renderExecOverview(){
         <div class="muted" style="font-size:12px">${dateStr()} · Era ${s.eraIdx}/${s.eraTotal} · ${s.era}</div>
       </div>
       <div class="cc-net" style="text-align:right">
-        <div class="dim" style="font-size:10px;text-transform:uppercase;letter-spacing:.12em">${domDot('economy')}Monthly net</div>
+        <div class="dim" style="font-size:11px;text-transform:uppercase;letter-spacing:.12em">${domDot('economy')}Monthly net</div>
         <div style="color:${netCol};font-size:18px;font-weight:700">${s.net>=0?'+':''}${fM(s.net)}/mo</div>
-        <div class="dim" style="font-size:10px">+${fM(s.income)} in · −${fM(s.overhead)} ovh${(s.empireOpex>0||s.loanInterest>0)?` <span style="color:var(--bad)">(incl.${s.empireOpex>0?` −${fM(s.empireOpex)} empire`:''}${s.loanInterest>0?` −${fM(s.loanInterest)} loan`:''})</span>`:''} · −${fM(s.payroll)} pay</div>
+        <div class="dim" style="font-size:11px">+${fM(s.income)} in · −${fM(s.overhead)} ovh${(s.empireOpex>0||s.loanInterest>0)?` <span style="color:var(--bad)">(incl.${s.empireOpex>0?` −${fM(s.empireOpex)} empire`:''}${s.loanInterest>0?` −${fM(s.loanInterest)} loan`:''})</span>`:''} · −${fM(s.payroll)} pay</div>
       </div>
     </div>
     <div class="exec-grid" style="margin-top:8px">
@@ -9006,7 +9209,7 @@ function renderExecOverview(){
       <div class="exec-stat"><span class="k">${domDot('research')}Science</span><span class="v" style="color:var(--dom-research)">${s.science}</span></div>
       <div class="exec-stat"><span class="k">${domDot('crew')}Staff</span><span class="v">${(state.staff||[]).length}</span></div>
       <div class="exec-stat"><span class="k">${domDot('engineering')}Flights</span><span class="v">${s.flights}${s.successRate!=null?` · ${s.successRate}%`:''}</span></div>
-      <div class="exec-stat"><span class="k">${domDot('warn')}Public Support</span><span class="v" style="color:${s.moodColor}">${s.support}% <span style="font-size:11px;font-weight:400">${s.mood}</span></span></div>
+      <div class="exec-stat"><span class="k">${domDot('warn')}Public Support</span><span class="v" style="color:${s.moodColor}">${s.support}% <span style="font-size:12px;font-weight:400">${s.mood}</span></span></div>
     </div>
     <div class="exec-sparks adv-only">
       ${metricSpark('Capital', mh.money, {color:'var(--ignite)', label:'capital trend'})}
@@ -9040,15 +9243,15 @@ function railFlightPlanHTML(){
   const fpStepsHTML = fpM ? plannerSteps().map(s=>{
     const icon = s.skip?'<span class="dim">—</span>':(s.done?'<span style="color:var(--ok)">✓</span>':'<span style="color:var(--warn)">○</span>');
     let actBtn='';
-    if(s.launch){ actBtn=`<button class="launch" style="font-size:10px;padding:3px 8px" onclick="launch()" ${s.ready?'':'disabled'} title="${s.ready?'':s.detail.replace(/"/g,'')}">■ Launch</button>`; }
-    else if(s.actLabel){ actBtn=`<button class="btn ghost" style="font-size:10px;padding:3px 7px" onclick="${plannerStepClick(s)}">${s.actLabel}</button>`; }
+    if(s.launch){ actBtn=`<button class="launch" style="font-size:11px;padding:3px 8px" onclick="launch()" ${s.ready?'':'disabled'} title="${s.ready?'':s.detail.replace(/"/g,'')}">■ Launch</button>`; }
+    else if(s.actLabel){ actBtn=`<button class="btn ghost" style="font-size:11px;padding:3px 7px" onclick="${plannerStepClick(s)}">${s.actLabel}</button>`; }
     return `<div class="obj-item" style="${s.skip?'opacity:.55':''}"><span class="obj-label" style="flex:1">${icon} ${s.title}</span>${actBtn}</div>`;
   }).join('') : '';
   const fpFlyable=MISSIONS.filter(x=>!state.completed[x.id]&&missionFlyable(x));
   const fpPicker = fpShowPicker ? `<div class="cc-panel-h" style="margin:8px 0 3px">${fpM?'Switch mission':'Available missions'}</div>`+(fpFlyable.length
       ? fpFlyable.map(x=>`<div class="obj-item clk" onclick="plannerSetMission('${x.id}')"><span class="obj-label" style="flex:1">${x.name}${x.id===(fpM&&fpM.id)?' <span class="pill active">sel</span>':''}</span><span class="obj-sub">${fM(x.payout)}</span></div>`).join('')
-      : `<div class="dim" style="font-size:11px;margin-top:4px">No missions flyable yet — build reputation or research prerequisites.</div>`) : '';
-  return `${fpM?`<div class="muted" style="font-size:11px;margin:2px 0 4px">${fpM.name}</div>`:''}${fpStepsHTML}${fpPicker}`;
+      : `<div class="dim" style="font-size:12px;margin-top:4px">No missions flyable yet — build reputation or research prerequisites.</div>`) : '';
+  return `${fpM?`<div class="muted" style="font-size:12px;margin:2px 0 4px">${fpM.name}</div>`:''}${fpStepsHTML}${fpPicker}`;
 }
 // ---- Objectives checklist (slice 5) ----
 function railObjectivesHTML(){
@@ -9060,13 +9263,13 @@ function railObjectivesHTML(){
         <span class="${it.done?'obj-done':'obj-todo'}">${it.done?'☑':'☐'}</span>
         <span class="obj-label">${it.label}</span>${it.sub?`<span class="obj-sub">${it.sub}</span>`:''}
       </div>`).join('')}`).join('');
-  return `<div class="muted" style="font-size:11px;margin:0 0 2px">${amb.name}</div>
+  return `<div class="muted" style="font-size:12px;margin:0 0 2px">${amb.name}</div>
       ${bar}
-      <div style="display:flex;justify-content:space-between;font-size:11px"><span class="dim">ambition ${prog.done}/${prog.total}</span><span class="num">${prog.pct}%</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:12px"><span class="dim">ambition ${prog.done}/${prog.total}</span><span class="num">${prog.pct}%</span></div>
       ${objHTML}
       <div style="display:flex;gap:6px;margin-top:10px">
-        <button class="btn ghost" style="flex:1;font-size:11px" onclick="openHubPanel('contracts')">Contracts →</button>
-        <button class="btn ghost" style="flex:1;font-size:11px" onclick="showProgramsModal()">Programs →</button>
+        <button class="btn ghost" style="flex:1;font-size:12px" onclick="openHubPanel('contracts')">Contracts →</button>
+        <button class="btn ghost" style="flex:1;font-size:12px" onclick="showProgramsModal()">Programs →</button>
       </div>`;
 }
 // Left rail keeps only the Basic-only focal "what to do next"; the advisor / flight plan / objectives
@@ -9146,7 +9349,7 @@ function renderCCCenter(){
       $('ccCenter').innerHTML=`<div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
           <div class="cc-panel-h" style="margin:0">Cape Canaveral — click a building to drill in</div>
-          <button class="btn ghost" onclick="openCCPopout()" title="Pop out — large pan/zoom view + agency summary (Esc/Enter to close)" style="font-size:11px;padding:3px 9px">⤢ Pop out</button>
+          <button class="btn ghost" onclick="openCCPopout()" title="Pop out — large pan/zoom view + agency summary (Esc/Enter to close)" style="font-size:12px;padding:3px 9px">⤢ Pop out</button>
         </div>
         <div class="ccscene-wrap" id="ccSceneWrap" style="aspect-ratio:1200/860">
           <div id="ccZoom">
@@ -9168,7 +9371,7 @@ function renderCCCenter(){
   $('ccCenter').innerHTML=`<div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
       <div class="cc-panel-h" style="margin:0">Cape Canaveral — click a building to drill in</div>
-      <button class="btn ghost" onclick="openCCPopout()" title="Pop out — large pan/zoom view + agency summary (Esc/Enter to close)" style="font-size:11px;padding:3px 9px">⤢ Pop out</button>
+      <button class="btn ghost" onclick="openCCPopout()" title="Pop out — large pan/zoom view + agency summary (Esc/Enter to close)" style="font-size:12px;padding:3px 9px">⤢ Pop out</button>
     </div>
     <div class="ccscene-wrap">
       <canvas id="ccScene" class="ccscene" width="900" height="420"></canvas>
@@ -9191,7 +9394,7 @@ function renderCCRight(){
     <div class="card adv-only">
       <div style="display:flex;justify-content:space-between;align-items:center">
         <div class="cc-panel-h" style="margin:0">Rivals</div>
-        <button class="btn ghost" style="font-size:10px;padding:3px 8px" onclick="showRivalsModal()">Deep view →</button>
+        <button class="btn ghost" style="font-size:11px;padding:3px 8px" onclick="showRivalsModal()">Deep view →</button>
       </div>
       ${rivalMini}
     </div>
@@ -9252,7 +9455,7 @@ function massFractionHTML(v){
   }).join('');
   return `<div class="expert-only"><div class="mission-tag" style="margin-top:12px">Mass fractions (propellant ÷ wet) — Expert</div>
     <div class="legs" style="margin-top:6px">${rows}</div>
-    <div class="dim" style="font-size:11px;margin-top:6px">Higher is better — a bigger propellant fraction means a lighter structure for the same Δv (the rocket equation rewards it exponentially).</div></div>`;
+    <div class="dim" style="font-size:12px;margin-top:6px">Higher is better — a bigger propellant fraction means a lighter structure for the same Δv (the rocket equation rewards it exponentially).</div></div>`;
 }
 function setDifficulty(mode){
   if(!DIFFICULTY[mode] || state.difficulty===mode) return;
@@ -9314,7 +9517,7 @@ function renderSettings(){
           <input type="checkbox" ${cd.showEquations?'checked':''} onchange="setCustomEq(this.checked)">
           <span class="cv">${cd.showEquations?'shown':'hidden'}</span>
         </label>
-        <div class="dim" style="font-size:11px;margin-top:8px">Changes apply immediately (starting capital only on a new game).</div>
+        <div class="dim" style="font-size:12px;margin-top:8px">Changes apply immediately (starting capital only on a new game).</div>
       </div>`;
     }
     return `<div class="diffcard ${sel?'sel':''} ${k==='custom'?'wide':''}" onclick="setDifficulty('${k}')">
@@ -9363,10 +9566,10 @@ function recoveryStageHTML(m){
   else econ=`<span style="color:var(--warn)">+${fM(RECOVERY_HARDWARE)} hardware/flight</span> · <span class="dim">first flight proves it — refly discount applies once this mission is routine</span>`;
   return `<div class="flag" style="margin-top:8px;${on?'border-color:#2f6b4e':''}">
       <span style="display:flex;align-items:center;gap:8px">
-        <button class="btn" style="font-size:11px;padding:4px 10px;${on?'border-color:var(--ok);color:var(--ok)':''}" onclick="toggleRecovery()">${on?'✓ Recovery ON':'Recovery OFF'}</button>
+        <button class="btn" style="font-size:12px;padding:4px 10px;${on?'border-color:var(--ok);color:var(--ok)':''}" onclick="toggleRecovery()">${on?'✓ Recovery ON':'Recovery OFF'}</button>
         <b style="color:${on?'var(--ok)':'var(--ink)'}">Reusable first stage</b>
       </span>
-      <span style="font-size:11px;margin-top:4px">${econ}</span>
+      <span style="font-size:12px;margin-top:4px">${econ}</span>
     </div>`;
 }
 // #27: stage role by position in the bottom→top stack (≤3 stages)
@@ -9415,13 +9618,13 @@ function renderStages(){
         <div class="dim" style="font-size:10.5px;margin:-2px 0 4px 0">${engSpec}</div>
         <div class="row"><label>Count</label>
           <div class="stepper"><button onclick="setCount(${i},-1)">−</button><span class="val">${st.count}</span><button onclick="setCount(${i},1)">+</button></div>
-          <span class="dim" style="font-size:11px">more engines = more thrust, more failure points</span></div>
+          <span class="dim" style="font-size:12px">more engines = more thrust, more failure points</span></div>
         <div class="row"><label>Propellant</label>
           <input type="range" min="0.1" max="800" step="1" value="${st.prop}" oninput="setProp(${i},this.value)">
-          <input type="number" min="0.1" max="1000" step="0.1" value="${st.prop.toFixed(1)}" style="width:74px" onchange="setProp(${i},this.value)"><span class="muted" style="font-size:11px">t</span></div>
+          <input type="number" min="0.1" max="1000" step="0.1" value="${st.prop.toFixed(1)}" style="width:74px" onchange="setProp(${i},this.value)"><span class="muted" style="font-size:12px">t</span></div>
         <div class="row"><label>Diameter</label>
           <input type="range" min="${GEO_DIA_MIN}" max="${GEO_DIA_MAX}" step="0.05" value="${stageDia(st)}" oninput="setStageDia(${i},this.value)">
-          <span class="dim" style="font-size:11px">${Math.round(stageDia(st)*100)}% — ${stageDia(st)>1.02?'stouter (+rel, −Δv)':stageDia(st)<0.98?'slender (−rel, +Δv)':'standard'}</span></div>
+          <span class="dim" style="font-size:12px">${Math.round(stageDia(st)*100)}% — ${stageDia(st)>1.02?'stouter (+rel, −Δv)':stageDia(st)<0.98?'slender (−rel, +Δv)':'standard'}</span></div>
         <div class="stage-stats">
           <span class="ss">dry <b>${sm.dry.toFixed(2)} t</b></span>
           <span class="ss">prop <b>${st.prop.toFixed(1)} t</b></span>
@@ -9456,15 +9659,15 @@ function renderBoosters(){
   const opts=Object.values(ENGINES).filter(e=>state.unlocked[e.id] && !e.transferOnly)
     .map(e=>`<option value="${e.id}" ${e.id===b.eng?'selected':''}>${e.name} · ${e.prop} · Isp ${e.ispVac}s</option>`).join('');
   const fitted=boostersFitted(), bm=boosterMasses(), v=computeVehicle();
-  card.innerHTML=`<h2>Strap-on Boosters <span class="dim" style="font-size:11px;font-weight:normal">parallel "stage 0"</span></h2>
+  card.innerHTML=`<h2>Strap-on Boosters <span class="dim" style="font-size:12px;font-weight:normal">parallel "stage 0"</span></h2>
     <div class="sub" style="margin-bottom:10px">Clamp identical liquid boosters around the core. They light at liftoff for extra thrust and a Δv kick, then jettison — the core stack flies on unchanged.</div>
     <div class="row"><label>Count</label>
       <div class="stepper"><button onclick="setBoosterCount(-1)">−</button><span class="val">${b.count}</span><button onclick="setBoosterCount(1)">+</button></div>
-      <span class="dim" style="font-size:11px">${b.count===0?'no boosters — core only (default)':`${b.count} strap-on${b.count>1?'s':''} around the core`}</span></div>
+      <span class="dim" style="font-size:12px">${b.count===0?'no boosters — core only (default)':`${b.count} strap-on${b.count>1?'s':''} around the core`}</span></div>
     <div class="row"><label>Engine</label><select onchange="setBoosterEng(this.value)" style="flex:1" ${fitted?'':'disabled'}>${opts}</select></div>
     <div class="row"><label>Propellant</label>
       <input type="range" min="0.1" max="800" step="1" value="${b.prop||0.1}" oninput="setBoosterProp(this.value)" ${fitted?'':'disabled'}>
-      <input type="number" min="0.1" max="1000" step="0.1" value="${(b.prop||0).toFixed(1)}" style="width:74px" onchange="setBoosterProp(this.value)" ${fitted?'':'disabled'}><span class="muted" style="font-size:11px">t each</span></div>
+      <input type="number" min="0.1" max="1000" step="0.1" value="${(b.prop||0).toFixed(1)}" style="width:74px" onchange="setBoosterProp(this.value)" ${fitted?'':'disabled'}><span class="muted" style="font-size:12px">t each</span></div>
     ${fitted&&bm?`<div class="stage-stats">
       <span class="ss">each <b>${(bm.wet/bm.count).toFixed(2)} t</b></span>
       <span class="ss">cluster wet <b>${bm.wet.toFixed(2)} t</b></span>
@@ -9472,7 +9675,7 @@ function renderBoosters(){
       <span class="ss">liftoff TWR <b class="num">${v.twr.toFixed(2)}</b></span>
       <span class="ss">reliability <b class="num">−${Math.round((1-boosterRelPenalty())*100)}%</b></span>
     </div>
-    <div class="dim" style="font-size:11px;margin-top:6px">Boosters lift the full wet stack, then drop away; the core's own Δv is unchanged. They add ${b.count} assembly unit${b.count>1?'s':''} (build time/cost) and combined liftoff thrust.</div>`:''}`;
+    <div class="dim" style="font-size:12px;margin-top:6px">Boosters lift the full wet stack, then drop away; the core's own Δv is unchanged. They add ${b.count} assembly unit${b.count>1?'s':''} (build time/cost) and combined liftoff thrust.</div>`:''}`;
 }
 
 function renderCrew(){
@@ -9487,14 +9690,14 @@ function renderCrew(){
     const sel=state.eclss===t.id;
     const lt=lifeSupport(m,t.id);
     return `<button class="btn" style="flex:1;${sel?'border-color:var(--ignite);color:var(--ignite)':''}" onclick="setEclss('${t.id}')" ${locked?'disabled':''}>
-      ${t.name}${locked?' 🔒':''}<br><span class="dim" style="font-size:10px">${(lt.recovery*100)|0}% recovery · ${lt.total.toFixed(2)} t</span></button>`;
+      ${t.name}${locked?' 🔒':''}<br><span class="dim" style="font-size:11px">${(lt.recovery*100)|0}% recovery · ${lt.total.toFixed(2)} t</span></button>`;
   }).join('');
   const lsBonus=lsRecoveryBonus();
   const recNote = ls.baseRecovery>0 && lsBonus>0
-    ? `<div class="dim" style="font-size:11px;margin-top:8px"><span style="color:var(--ok)">Recycling research +${Math.round(lsBonus*100)}%</span> on top of the closed-loop base → <b>${Math.round(ls.recovery*100)}%</b> recovery (capped at ${Math.round(LS_RECOVERY_CAP*100)}%). That much less food, water and air to lift.</div>`
+    ? `<div class="dim" style="font-size:12px;margin-top:8px"><span style="color:var(--ok)">Recycling research +${Math.round(lsBonus*100)}%</span> on top of the closed-loop base → <b>${Math.round(ls.recovery*100)}%</b> recovery (capped at ${Math.round(LS_RECOVERY_CAP*100)}%). That much less food, water and air to lift.</div>`
     : (ls.baseRecovery===0
-        ? `<div class="dim" style="font-size:11px;margin-top:8px">Open-loop carries every gram of consumables. Recovery tech (and crew-track recycling research) pays off as missions get longer.</div>`
-        : `<div class="dim" style="font-size:11px;margin-top:8px">Crew-track research (Long-Duration Habitats, Closed Ecological Life Support) raises recycling further, shrinking consumable mass.</div>`);
+        ? `<div class="dim" style="font-size:12px;margin-top:8px">Open-loop carries every gram of consumables. Recovery tech (and crew-track recycling research) pays off as missions get longer.</div>`
+        : `<div class="dim" style="font-size:12px;margin-top:8px">Crew-track research (Long-Duration Habitats, Closed Ecological Life Support) raises recycling further, shrinking consumable mass.</div>`);
   card.innerHTML=`<h2>Crew &amp; Life Support</h2>
     <div class="sub" style="margin-bottom:10px">${m.crew} crew · ${durTxt} aloft. Everything that keeps them alive is payload you have to lift.</div>
     <div class="row" style="gap:6px;align-items:stretch">${tiers}</div>
@@ -9523,7 +9726,7 @@ function renderPower(){
     const locked=s.research && !state.research[s.research], sel=state.powerSource===s.id;
     const sp=s.kwPerTonne*(s.distScaled?flux:1);
     const note = (s.distScaled && flux<SOLAR_MIN_FLUX) ? 'unusable here' : (sp>0?`${(demand/sp).toFixed(2)} t`:'—');
-    return `<button class="btn" style="flex:1;${sel?'border-color:var(--ignite);color:var(--ignite)':''}" onclick="setPowerSource('${s.id}')" ${locked?'disabled':''}>${s.name}${locked?' 🔒':''}<br><span class="dim" style="font-size:10px">${note}</span></button>`;
+    return `<button class="btn" style="flex:1;${sel?'border-color:var(--ignite);color:var(--ignite)':''}" onclick="setPowerSource('${s.id}')" ${locked?'disabled':''}>${s.name}${locked?' 🔒':''}<br><span class="dim" style="font-size:11px">${note}</span></button>`;
   }).join('');
   const base=1.5+(radEnvironment(m)>=4?1.5:0), eclss=m.crew>0?m.crew*eclssPowerPerCrew():0, prop=(usesTransfer(m)&&transferEng().powerDraw)?transferEng().powerDraw:0;
   card.innerHTML=`<h2>Power — supply vs demand</h2>
@@ -9550,7 +9753,7 @@ function renderTransfer(){
       <div class="sub" style="margin-bottom:8px">No engine fires on this run; the tank itself is the payload. Every tonne of propellant loaded here is a tonne delivered to the LEO depot.</div>
       <div class="row"><label>Propellant</label>
         <input type="range" min="0.1" max="90" step="0.5" value="${state.transfer.prop}" oninput="setTransferProp(this.value)">
-        <input type="number" min="0.1" max="120" step="0.1" value="${state.transfer.prop.toFixed(1)}" style="width:74px" onchange="setTransferProp(this.value)"><span class="muted" style="font-size:11px">t</span></div>
+        <input type="number" min="0.1" max="120" step="0.1" value="${state.transfer.prop.toFixed(1)}" style="width:74px" onchange="setTransferProp(this.value)"><span class="muted" style="font-size:12px">t</span></div>
       <div class="stage-stats">
         <span class="ss">tank dry <b>${dry.toFixed(2)} t</b></span>
         <span class="ss">propellant cargo <b>${state.transfer.prop.toFixed(1)} t</b></span>
@@ -9564,7 +9767,7 @@ function renderTransfer(){
     <div class="row"><label>Engine</label><select onchange="setTransferEng(this.value)" style="flex:1">${opts}</select></div>
     <div class="row"><label>Propellant</label>
       <input type="range" min="0.1" max="250" step="0.5" value="${state.transfer.prop}" oninput="setTransferProp(this.value)">
-      <input type="number" min="0.1" max="400" step="0.1" value="${state.transfer.prop.toFixed(1)}" style="width:74px" onchange="setTransferProp(this.value)"><span class="muted" style="font-size:11px">t</span></div>
+      <input type="number" min="0.1" max="400" step="0.1" value="${state.transfer.prop.toFixed(1)}" style="width:74px" onchange="setTransferProp(this.value)"><span class="muted" style="font-size:12px">t</span></div>
     <div class="stage-stats">
       <span class="ss">dry <b>${dry.toFixed(2)} t</b></span>
       <span class="ss">prop <b>${state.transfer.prop.toFixed(1)} t</b></span>
@@ -9583,7 +9786,7 @@ function renderDepotDraw(){
     <div class="sub" style="margin-bottom:6px">Depot holds <b style="color:var(--ignite)">${state.depot.toFixed(1)} t</b>. Propellant drawn here doesn't count toward the launch vehicle's lift — only the carried tank does.</div>
     <div class="row"><label>Draw</label>
       <input type="range" min="0" max="${max}" step="0.5" value="${Math.min(state.depotUse,max)}" oninput="setDepotUse(this.value)">
-      <input type="number" min="0" max="${state.depot.toFixed(1)}" step="0.1" value="${state.depotUse.toFixed(1)}" style="width:74px" onchange="setDepotUse(this.value)"><span class="muted" style="font-size:11px">t</span></div>`;
+      <input type="number" min="0" max="${state.depot.toFixed(1)}" step="0.1" value="${state.depotUse.toFixed(1)}" style="width:74px" onchange="setDepotUse(this.value)"><span class="muted" style="font-size:12px">t</span></div>`;
 }
 // #6: orbital-assembly toggle — sits with the other in-LEO route options on the transfer card
 function renderAssemblyToggle(){
@@ -9593,7 +9796,7 @@ function renderAssemblyToggle(){
   const hit=Math.round((1-dock)*100);
   const mods=assemblyModules(m).map(k=>k==='transfer'?'transfer stage':'lander').join(' + ');
   return `<div class="stage-head" style="margin-top:12px"><span class="label">ORBITAL ASSEMBLY (route)</span>
-      <button class="btn ghost" style="font-size:11px;padding:4px 10px;${on?'border-color:var(--ignite);color:var(--ignite)':''}" onclick="setAssembleOrbit(${on?'false':'true'})">${on?'On ✓':'Off'}</button></div>
+      <button class="btn ghost" style="font-size:12px;padding:4px 10px;${on?'border-color:var(--ignite);color:var(--ignite)':''}" onclick="setAssembleOrbit(${on?'false':'true'})">${on?'On ✓':'Off'}</button></div>
     <div class="sub">${on
       ? `Assembling <b>${mods}</b> in LEO across <b>${n}</b> extra launch${n>1?'es':''}. The main rocket no longer lifts ${n>1?'them':'it'} — but pays +${n} mo build, +${fM(n*ASSEMBLY_LAUNCH_COST)} launch, and a ${hit}% docking-reliability hit${state.research.auto_rendezvous?' (halved by auto-rendezvous)':''}.`
       : `Launch the heavy in-space modules separately and dock them in orbit, so a smaller rocket can fly the mission. Trades raw lift for extra flights and docking risk.`}</div>`;
@@ -9618,14 +9821,14 @@ function renderLander(){
     <div class="row"><label>Engine</label><select onchange="setDescentEng(this.value)" style="flex:1">${moduleOptions(d.eng)}</select></div>
     <div class="row"><label>Propellant</label>
       <input type="range" min="0.1" max="50" step="0.5" value="${d.prop}" oninput="setDescentProp(this.value)">
-      <input type="number" min="0.1" max="60" step="0.1" value="${d.prop.toFixed(1)}" style="width:74px" onchange="setDescentProp(this.value)"><span class="muted" style="font-size:11px">t</span></div>
+      <input type="number" min="0.1" max="60" step="0.1" value="${d.prop.toFixed(1)}" style="width:74px" onchange="setDescentProp(this.value)"><span class="muted" style="font-size:12px">t</span></div>
     <div class="stage-stats"><span class="ss">dry <b>${dDry.toFixed(2)} t</b></span><span class="ss">prop <b>${d.prop.toFixed(1)} t</b></span><span class="ss">wet <b>${dWet.toFixed(2)} t</b></span></div>
 
     <div class="stage-head" style="margin-top:12px"><span class="label">ASCENT STAGE</span></div>
     <div class="row"><label>Engine</label><select onchange="setAscentEng(this.value)" style="flex:1">${moduleOptions(a.eng)}</select></div>
     <div class="row"><label>Propellant</label>
       <input type="range" min="0.1" max="30" step="0.25" value="${a.prop}" oninput="setAscentProp(this.value)">
-      <input type="number" min="0.1" max="40" step="0.1" value="${a.prop.toFixed(1)}" style="width:74px" onchange="setAscentProp(this.value)"><span class="muted" style="font-size:11px">t</span></div>
+      <input type="number" min="0.1" max="40" step="0.1" value="${a.prop.toFixed(1)}" style="width:74px" onchange="setAscentProp(this.value)"><span class="muted" style="font-size:12px">t</span></div>
     <div class="stage-stats"><span class="ss">dry <b>${aDry.toFixed(2)} t</b></span><span class="ss">prop <b>${a.prop.toFixed(1)} t</b></span><span class="ss">wet <b>${aWet.toFixed(2)} t</b></span></div>
     <div class="eq" style="margin-top:10px">Lander to LEO = descent (${dWet.toFixed(2)} t) + ascent (${aWet.toFixed(2)} t) = ${(dWet+aWet).toFixed(2)} t — all of it lifted from Earth, carried to lunar orbit, and lowered to the surface before any of it does useful work.</div>`;
 }
@@ -9754,7 +9957,7 @@ function vehicleCompareHTML(){
   ].join('');
   return `<div class="card adv-only" style="background:var(--panel2);margin-top:10px">
     <div class="mission-tag">⚖ Compare designs</div>
-    <div class="dim" style="font-size:11px;margin:2px 0 8px">Measured against <b>${curMission()?curMission().name:'the current mission'}</b> — green ▸ marks the better value (higher payload/Δv/TWR/reliability, lower cost/time).</div>
+    <div class="dim" style="font-size:12px;margin:2px 0 8px">Measured against <b>${curMission()?curMission().name:'the current mission'}</b> — green ▸ marks the better value (higher payload/Δv/TWR/reliability, lower cost/time).</div>
     <div style="display:grid;grid-template-columns:1.1fr 1fr 1fr;gap:7px 10px;align-items:center">
       <span></span>${sel('A',a)}${sel('B',b)}
       ${rows}
@@ -9775,7 +9978,7 @@ function renderVehicleFamilies(){
     activeHtml=`<div class="card" style="background:var(--panel2);border-color:var(--ignite);margin-bottom:10px">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
         <div class="mission-name" style="margin:0;font-size:15px"><span style="color:var(--ignite)">▲ ${active.name}</span> <span class="pill active">flying</span></div>
-        <div class="dim" style="font-size:11px">since ${active.born}${parent?` · from ${parent.name}`:''}</div>
+        <div class="dim" style="font-size:12px">since ${active.born}${parent?` · from ${parent.name}`:''}</div>
       </div>
       <div class="metrics" style="margin:8px 0 0">
         <div class="metric"><div class="k">Flights</div><div class="v">${active.flights||0}${sr!=null?` · ${sr}%`:''}</div></div>
@@ -9783,7 +9986,7 @@ function renderVehicleFamilies(){
         <div class="metric"><div class="k">Reliability heritage</div><div class="v" style="color:var(--ok)">+${relB.toFixed(1)}%</div></div>
         <div class="metric"><div class="k">Build discount</div><div class="v" style="color:var(--ok)">−${buildCut}%</div></div>
       </div>
-      <div class="dim" style="font-size:11px;margin-top:8px">${exp>=FAM_EXP_CAP?'Heritage maxed — a fully proven airframe.':`Heritage builds with every success (${exp}/${FAM_EXP_CAP}). Losing it would sting.`}</div>
+      <div class="dim" style="font-size:12px;margin-top:8px">${exp>=FAM_EXP_CAP?'Heritage maxed — a fully proven airframe.':`Heritage builds with every success (${exp}/${FAM_EXP_CAP}). Losing it would sting.`}</div>
     </div>`;
   }else{
     activeHtml=`<div class="dim" style="font-size:12px;margin-bottom:8px">Flying an <b>untracked one-off</b> — no heritage. Register this design as a family to start accumulating reliability, manufacturing savings, and brand reputation across its flights.</div>`;
@@ -9797,8 +10000,8 @@ function renderVehicleFamilies(){
         <div class="sub">${f.flights||0} flights${sr!=null?` · ${sr}% success`:''}${f.losses?` · ${f.losses} lost`:''} · +${(familyRelBonus(f)*100).toFixed(1)}% rel</div>
       </div>
       <div style="display:flex;flex-direction:column;gap:4px">
-        <button class="btn" style="font-size:11px;padding:4px 8px" onclick="loadFamily('${f.id}')">Load &amp; fly</button>
-        <button class="btn ghost danger" style="font-size:11px;padding:4px 8px" onclick="retireFamily('${f.id}')">Retire</button>
+        <button class="btn" style="font-size:12px;padding:4px 8px" onclick="loadFamily('${f.id}')">Load &amp; fly</button>
+        <button class="btn ghost danger" style="font-size:12px;padding:4px 8px" onclick="retireFamily('${f.id}')">Retire</button>
       </div>
     </div>`;
   }).join(''):'';
@@ -9845,7 +10048,7 @@ function renderArchitecture(){
     return `<div class="diffcard ${sel?'sel':''}" style="${locked?'opacity:.55;cursor:not-allowed':'cursor:pointer'}"${click}>
       <div class="tag">${tag}</div>
       <h3 style="font-size:13px">${a.name}</h3>
-      <p style="font-size:11px">${a.blurb}</p>
+      <p style="font-size:12px">${a.blurb}</p>
     </div>`;
   }).join('');
   const lead = fork
@@ -10391,7 +10594,7 @@ function renderBenchLaunch(){
   try{ m=curMission(); if(!m){ host.innerHTML=''; return; } v=computeVehicle(); sim=m.profile?simulateMission(m):null; chk=canLaunch(v,m,sim); }
   catch(e){ host.innerHTML=''; return; }
   host.innerHTML=`<button class="launch" style="width:100%" onclick="launch()" ${chk.ok?'':'disabled'}>${chk.ok?launchButtonLabel(m,v):'Launch unavailable'}</button>
-    ${chk.ok?'<div class="dim" style="font-size:11px;text-align:center;margin-top:4px">or press <b>Space</b></div>':`<div class="flag dim" style="color:var(--dim);margin-top:4px">${chk.why}</div>`}`;
+    ${chk.ok?'<div class="dim" style="font-size:12px;text-align:center;margin-top:4px">or press <b>Space</b></div>':`<div class="flag dim" style="color:var(--dim);margin-top:4px">${chk.why}</div>`}`;
 }
 // Design-bench editor tabs: consolidate the stacked editor cards under a few tabs. The cards keep
 // their ids (render functions untouched); this only builds the tab bar, hides tabs whose cards are
@@ -10444,7 +10647,7 @@ function renderReadout(){
   if(boostersFitted()){ const relCost=Math.round((1-boosterRelPenalty())*100); flags+=`<div class="flag ok">⫶ ${v.boosters.count} strap-on booster${v.boosters.count>1?'s':''} (${v.boosters.eng.name}${v.boosters.eng.solid?', solid':''}) — +${fI(v.boostDv||0)} m/s boost-phase Δv, combined-thrust liftoff${relCost>0?` · −${relCost}% reliability (extra failure points)`:''}.</div>`; }
   if(mfgBuildMult()<1||groundLaunchMult()<1||buildTimeCut()>=0.5) flags+=`<div class="flag ok">🏭 Industrial R&D: −${Math.round((1-mfgBuildMult())*100)}% build cost · −${Math.round((1-groundLaunchMult())*100)}% launch-ops cost${buildTimeCut()>=0.5?` · −${Math.round(buildTimeCut())} mo build time`:''}.</div>`;
   { const _rs=radSeverity(m), _pr=(m.crew>0?powerRad(m):0); if(_rs>=0.12||_pr>0) flags+=`<div class="flag ${_rs>=0.5||_pr>=0.3?'warn':''}">☢ Radiation ${_rs>=0.7?'extreme':_rs>=0.4?'high':_rs>=0.12?'moderate':'low'} (env ${radEnvironment(m)} · ${m.days||0}d)${_pr>0?` + onboard ${selfPoweredCraft(m)?'NEP reactor':powerSourceDef(state.powerSource).name}`:''} — ${state.research.rad_shielding?'shielding fitted':'<b>no shielding</b>'}: equipment ×${radEquipMult(m).toFixed(2)} fragility${m.crew>0?` · crew ×${radCrewMult(m).toFixed(2)}`:''}.</div>`; }
-  const testBtns=TEST_LEVELS.map((t,i)=>`<button class="btn" style="flex:1;font-size:11px;${state.testLevel===i?'border-color:var(--readout);color:var(--readout)':''}" onclick="setTestLevel(${i})">${t.name}${t.rel>0?` +${(t.rel*100)|0}%`:''}${t.cost>0?`<br><span class="dim" style="font-size:10px">${fM(t.cost)} · ${t.months} mo</span>`:''}</button>`).join('');
+  const testBtns=TEST_LEVELS.map((t,i)=>`<button class="btn" style="flex:1;font-size:12px;${state.testLevel===i?'border-color:var(--readout);color:var(--readout)':''}" onclick="setTestLevel(${i})">${t.name}${t.rel>0?` +${(t.rel*100)|0}%`:''}${t.cost>0?`<br><span class="dim" style="font-size:11px">${fM(t.cost)} · ${t.months} mo</span>`:''}</button>`).join('');
 
   $('readoutCard').innerHTML=`
     <div class="mission-tag">Flying against</div>
@@ -10480,7 +10683,7 @@ function renderReadout(){
 
     ${flags}
     ${benchQueueHTML(m)}
-    <div class="dim" style="font-size:11px;text-align:center;margin-top:6px">▸ Build &amp; Launch is under the rocket</div>`;
+    <div class="dim" style="font-size:12px;text-align:center;margin-top:6px">▸ Build &amp; Launch is under the rocket</div>`;
 }
 
 function renderProfileReadout(m){
@@ -10494,18 +10697,21 @@ function renderProfileReadout(m){
     let detail;
     if(l.isru) detail=`<span style="color:var(--ok)">${l.isru}</span> covers this burn — no carried propellant spent`;
     else if(l.by==='lv') detail=`LV lofts ${l.mass.toFixed(1)} t · capacity ${fI(l.cap)} m/s${l.twr?` · TWR ${l.twr.toFixed(2)}`:''}`;
-    else detail=`${VEHICLE_LABEL[l.by]||l.by} pushes ${l.mass.toFixed(1)} t · tank gives ${fI(l.cap)} m/s`;
+    else detail=`${VEHICLE_LABEL[l.by]||l.by} pushes ${l.mass.toFixed(1)} t · tank gives ${fI(l.cap)} m/s${l.ga?` · <span style="color:var(--ok)">gravity assist −8%</span>`:''}`;
     const depotNote = (l.name==='Ascent to LEO' && state.depotUse>0) ? ` · <span style="color:var(--readout)">+${state.depotUse.toFixed(1)} t from depot after this leg</span>` : '';
     return `<div class="leg ${l.pass?'':'bad'}">
       <span class="legname" style="color:${l.pass?'var(--ok)':'var(--bad)'}">${l.pass?'✓':'✕'} ${l.name}</span>
       <span class="legdv">${fI(l.dv)} m/s</span>
       <span class="legdetail">${detail}${depotNote}</span></div>`;
   }).join('');
-  const testBtns=TEST_LEVELS.map((t,i)=>`<button class="btn" style="flex:1;font-size:11px;${state.testLevel===i?'border-color:var(--readout);color:var(--readout)':''}" onclick="setTestLevel(${i})">${t.name}${t.rel>0?` +${(t.rel*100)|0}%`:''}${t.cost>0?`<br><span class="dim" style="font-size:10px">${fM(t.cost)} · ${t.months} mo</span>`:''}</button>`).join('');
+  const testBtns=TEST_LEVELS.map((t,i)=>`<button class="btn" style="flex:1;font-size:12px;${state.testLevel===i?'border-color:var(--readout);color:var(--readout)':''}" onclick="setTestLevel(${i})">${t.name}${t.rel>0?` +${(t.rel*100)|0}%`:''}${t.cost>0?`<br><span class="dim" style="font-size:11px">${fM(t.cost)} · ${t.months} mo</span>`:''}</button>`).join('');
 
   let flags='';
   if(fails) flags+=`<div class="flag bad">▲ ${fails} leg${fails>1?'s':''} short — fix the red rows above.</div>`;
   else flags+=`<div class="flag ok">✓ Every leg passes. Mission reliability ${(rel*100|0)}%.</div>`;
+  if(sim.boiloff) flags+= sim.boiloff.controlled
+    ? `<div class="flag ok">❄ Cryo boil-off (controlled): ~${sim.boiloff.lost} t evaporates over the cruise — already reflected in the legs above.</div>`
+    : `<div class="flag warn">❄ Cryo boil-off: ~${sim.boiloff.lost} t of cryogenic propellant evaporates over the cruise (reflected above). Cryogenic Boil-off Control research cuts the rate ~4×.</div>`;
   if(bayBuildDelta(m)>0) flags+=`<div class="flag warn">△ Over assembly-bay capacity (${vehicleUnits(m)}/${bayCapacity()} units) — build runs +${bayBuildDelta(m)} mo and −${(overstretchRelPenalty(m)*100).toFixed(1)}% reliability. Expand Assembly Bays in Orbital Ops.</div>`;
   if(cadenceSurcharge()>0) flags+=`<div class="flag warn">△ Build cadence ${Math.round(cadenceLoad()*100)}% of sustainable — rush surcharge +${Math.round(cadenceSurcharge()*100)}% on this build. Slow down or expand Assembly Bays.</div>`;
   { const _mb=materialCostMult(); if(_mb>1.05) flags+=`<div class="flag warn">△ Raw-material market hot — +${Math.round((_mb-1)*100)}% on this build. Sign a supply contract or stockpile in Manufacturing Capacity.</div>`; else if(_mb<0.95) flags+=`<div class="flag ok">📦 Raw-material market favorable — −${Math.round((1-_mb)*100)}% on this build.</div>`; }
@@ -10544,7 +10750,7 @@ function renderProfileReadout(m){
 
     ${flags}
     ${benchQueueHTML(m)}
-    <div class="dim" style="font-size:11px;text-align:center;margin-top:6px">▸ Build &amp; Launch is under the rocket</div>`;
+    <div class="dim" style="font-size:12px;text-align:center;margin-top:6px">▸ Build &amp; Launch is under the rocket</div>`;
 }
 
 /* ---------- Solar System map ---------- */
@@ -10721,39 +10927,39 @@ function renderPersonnelCard(p, sr){
       </div>
       <span style="font-family:var(--mono);font-size:12px;color:var(--muted)">${p.salary.toFixed(2)}M/mo</span>
     </div>
-    <p class="muted" style="font-size:11px;margin:3px 0 4px">${p.bio}</p>
-    <p class="dim" style="font-size:11px;margin:0 0 6px"><b style="color:var(--ignite)">${traitOf(p.id).name}:</b> ${traitOf(p.id).desc}</p>
+    <p class="muted" style="font-size:12px;margin:3px 0 4px">${p.bio}</p>
+    <p class="dim" style="font-size:12px;margin:0 0 6px"><b style="color:var(--ignite)">${traitOf(p.id).name}:</b> ${traitOf(p.id).desc}</p>
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-      <span style="font-size:11px;color:var(--dim);width:50px">Morale</span>
+      <span style="font-size:12px;color:var(--dim);width:50px">Morale</span>
       <div style="flex:1;height:6px;background:var(--panel2);border-radius:3px;overflow:hidden">
         <div style="height:100%;width:${morale}%;background:${mColor}"></div>
       </div>
-      <span style="font-family:var(--mono);font-size:11px;color:${mColor}">${morale}</span>
+      <span style="font-family:var(--mono);font-size:12px;color:${mColor}">${morale}</span>
     </div>
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-      <span style="font-size:11px;color:var(--dim);width:50px">Skill</span>
+      <span style="font-size:12px;color:var(--dim);width:50px">Skill</span>
       <div style="flex:1;height:6px;background:var(--panel2);border-radius:3px;overflow:hidden">
         <div style="height:100%;width:${(p.skill*100)|0}%;background:var(--readout)"></div>
       </div>
-      <span style="font-family:var(--mono);font-size:11px;color:var(--readout)">${(p.skill*100)|0}</span>
+      <span style="font-family:var(--mono);font-size:12px;color:var(--readout)">${(p.skill*100)|0}</span>
     </div>
     ${isAstro?(()=>{ const dose=Math.round(sr.dose||0); const dc=dose>=RAD_CAREER_WARN?'var(--bad)':dose>=RAD_CAREER_WARN*0.6?'var(--warn)':'var(--ok)';
       return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px" title="Career radiation dose — at ${RAD_CAREER_LIMIT} the astronaut must retire">
-      <span style="font-size:11px;color:var(--dim);width:50px">☢ Dose</span>
+      <span style="font-size:12px;color:var(--dim);width:50px">☢ Dose</span>
       <div style="flex:1;height:6px;background:var(--panel2);border-radius:3px;overflow:hidden"><div style="height:100%;width:${Math.min(100,dose)}%;background:${dc}"></div></div>
-      <span style="font-family:var(--mono);font-size:11px;color:${dc}">${dose}/${RAD_CAREER_LIMIT}</span>
+      <span style="font-family:var(--mono);font-size:12px;color:${dc}">${dose}/${RAD_CAREER_LIMIT}</span>
     </div>`; })():''}
-    <div class="adv-only" style="font-size:11px;color:var(--muted);margin-bottom:8px">
+    <div class="adv-only" style="font-size:12px;color:var(--muted);margin-bottom:8px">
       ${isEng?`Reliability contribution: <span style="color:var(--ok)">+${engBonusStr}</span> (factors into team average)`:''}
       ${isAstro&&assigned&&ab?`<span style="color:var(--ok)">Crewed rel +${(ab.rel*100).toFixed(1)}% · Payout x${ab.payoutMult.toFixed(2)}</span>`:''}
       ${isAstro&&!assigned?`<span class="dim">Not assigned to crewed missions</span>`:''}
     </div>
-    ${isEng?`<div class="expert-only" style="font-size:11px;color:var(--dim);margin-bottom:8px;font-family:var(--mono)">rel = skill ${p.skill.toFixed(2)} × morale ${moraleFactor.toFixed(2)} × ${ENG_REL_BONUS_MAX} = +${engBonusStr}</div>`:''}
+    ${isEng?`<div class="expert-only" style="font-size:12px;color:var(--dim);margin-bottom:8px;font-family:var(--mono)">rel = skill ${p.skill.toFixed(2)} × morale ${moraleFactor.toFixed(2)} × ${ENG_REL_BONUS_MAX} = +${engBonusStr}</div>`:''}
     <div style="display:flex;gap:6px;flex-wrap:wrap">
-      <button class="btn ghost" style="font-size:11px" onclick="giveRaise('${p.id}')">Raise (+${(RAISE_SALARY_BUMP*1000)|0}k/mo, +${RAISE_MORALE_BUMP} morale)</button>
-      <button class="btn ghost" style="font-size:11px" onclick="commendPersonnel('${p.id}')" ${canCommend?'':'disabled'}>${sr.commendCooldown>0?`Commend (${sr.commendCooldown}mo)`:`Commend (+${COMMEND_MORALE_BUMP} morale)`}</button>
-      ${isAstro?`<button class="btn ghost" style="font-size:11px" onclick="assignAstronaut('${p.id}')">${assigned?'Unassign':'Assign to crew'}</button>`:''}
-      <button class="btn ghost danger" style="font-size:11px;margin-left:auto" onclick="firePersonnel('${p.id}')">Let go</button>
+      <button class="btn ghost" style="font-size:12px" onclick="giveRaise('${p.id}')">Raise (+${(RAISE_SALARY_BUMP*1000)|0}k/mo, +${RAISE_MORALE_BUMP} morale)</button>
+      <button class="btn ghost" style="font-size:12px" onclick="commendPersonnel('${p.id}')" ${canCommend?'':'disabled'}>${sr.commendCooldown>0?`Commend (${sr.commendCooldown}mo)`:`Commend (+${COMMEND_MORALE_BUMP} morale)`}</button>
+      ${isAstro?`<button class="btn ghost" style="font-size:12px" onclick="assignAstronaut('${p.id}')">${assigned?'Unassign':'Assign to crew'}</button>`:''}
+      <button class="btn ghost danger" style="font-size:12px;margin-left:auto" onclick="firePersonnel('${p.id}')">Let go</button>
     </div>
     </div>
   </div>`;
@@ -10793,12 +10999,12 @@ function renderPersonnel(){
         <div style="flex:1">
           <span style="font-size:13px;font-weight:600;color:var(--ink)">${p.name}</span>
           <span class="pill" style="margin-left:6px">${isEng?p.specialty:'astronaut'}</span>
-          <p class="muted" style="font-size:11px;margin:2px 0 0">${p.bio}</p>
+          <p class="muted" style="font-size:12px;margin:2px 0 0">${p.bio}</p>
         </div>
         <div style="text-align:right;flex-shrink:0">
           <div style="font-family:var(--mono);font-size:12px;color:var(--muted)">${p.salary.toFixed(2)}M/mo</div>
-          <div style="font-size:11px;color:var(--dim)">skill ${(p.skill*100)|0}</div>
-          <button class="btn" style="margin-top:4px;font-size:11px" onclick="hirePersonnel('${p.id}')">Hire</button>
+          <div style="font-size:12px;color:var(--dim)">skill ${(p.skill*100)|0}</div>
+          <button class="btn" style="margin-top:4px;font-size:12px" onclick="hirePersonnel('${p.id}')">Hire</button>
         </div>
       </div>`;
     }).join('');
@@ -10833,7 +11039,7 @@ function renderRivals(){
         <span class="pill" style="color:${tl.col};border-color:${tl.col}">Threat: ${tl.txt}</span>
       </div>
       <p class="muted" style="font-size:12px;margin:2px 0 6px">${r.blurb}</p>
-      <div class="dim" style="font-size:11px;margin-bottom:6px">${claimed}/${r.firsts.length} firsts claimed${priceWar?` · <span style="color:var(--bad)">price war active: payouts ×${priceWar.payoutMult} (${priceWar.monthsLeft} mo left)</span>`:''}</div>
+      <div class="dim" style="font-size:12px;margin-bottom:6px">${claimed}/${r.firsts.length} firsts claimed${priceWar?` · <span style="color:var(--bad)">price war active: payouts ×${priceWar.payoutMult} (${priceWar.monthsLeft} mo left)</span>`:''}</div>
       ${(()=>{ // CE1(c): Standings — momentum, live projection of the next goal, and the counter-poach lever
         const rs=rivalStateFor(r), mom=rs.momentum||1;
         const arrow = mom>1.05?'<span style="color:var(--bad)">▲ surging</span>':(mom<0.95?'<span style="color:var(--ok)">▼ stalling</span>':'<span class="dim">▬ steady</span>');
@@ -10847,10 +11053,10 @@ function renderRivals(){
         const canCP=state.money>=RIVAL_COUNTERPOACH_COST;
         return `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;font-size:12px">
           <span>Momentum ${arrow} <span class="dim expert-only" style="font-family:var(--mono)">${mom.toFixed(2)}×</span> · ${projTxt}${crowdTxt}</span>
-          <button class="btn ghost" style="font-size:11px;white-space:nowrap" ${canCP?'':'disabled'} onclick="counterPoach('${r.id}')" title="Hire away their engineers: knocks their momentum (−${RIVAL_COUNTERPOACH_MOM}), lifts your staff morale (+${RIVAL_COUNTERPOACH_MORALE}), +2 rep">Counter-poach −${fM(RIVAL_COUNTERPOACH_COST)}</button>
+          <button class="btn ghost" style="font-size:12px;white-space:nowrap" ${canCP?'':'disabled'} onclick="counterPoach('${r.id}')" title="Hire away their engineers: knocks their momentum (−${RIVAL_COUNTERPOACH_MOM}), lifts your staff morale (+${RIVAL_COUNTERPOACH_MORALE}), +2 rep">Counter-poach −${fM(RIVAL_COUNTERPOACH_COST)}</button>
         </div>`;
       })()}
-      <div class="expert-only dim" style="font-size:11px;margin-bottom:6px;font-family:var(--mono)">threat score ${score.toFixed(1)}${priceWar?` · price-war payout ×${priceWar.payoutMult}`:''}</div>
+      <div class="expert-only dim" style="font-size:12px;margin-bottom:6px;font-family:var(--mono)">threat score ${score.toFixed(1)}${priceWar?` · price-war payout ×${priceWar.payoutMult}`:''}</div>
       <div class="adv-only" style="display:flex;flex-direction:column;gap:4px">`;
     for(const f of r.firsts){
       const key=r.id+'|'+f.name;
@@ -11004,9 +11210,10 @@ const STN_W=760, STN_H=480;
 // entry is a labelled detail the bench annotates with a leader line — the hook future content
 // extends. Coordinates are relative to the module centre.
 const STATION_MODULES = [
-  { id:'can_std', name:'Standard Pressurized Module', len:240, dia:96,
-    // engineering stats (placeholder values — the balance pass comes with the assembly system)
-    stats:{ mass:18.0, volM3:90, crew:3, powerGenKw:9.0, powerDrawKw:4.2, consumDays:180, consumPerCrewDay:0.012, dockPorts:3 },
+  { id:'can_std', name:'Pressurized Habitat', short:'HAB', len:200, dia:88, color:'#b8c0c7',
+    cost:8, buildMo:4, stats:{ mass:18.0, crew:3, powerGenKw:4.0, powerDrawKw:4.2 },
+    prod:{ income:0.5, fuel:0, rep:0.5, sci:0.8 },
+    blurb:'Crew quarters, galley and workstations — the living space every station grows from.',
     parts:[
       { key:'axial_dock', label:'Axial docking port',   x:120,  y:0,   note:'Forward CBM / androgynous dock' },
       { key:'port_p',     label:'Radial berthing port', x:30,   y:-48, note:'Side hatch for branch modules' },
@@ -11018,7 +11225,28 @@ const STATION_MODULES = [
       { key:'radiator',   label:'Thermal radiator',     x:-95,  y:60,  note:'Heat-rejection panel' },
       { key:'aft',        label:'Aft node / endcap',    x:-120, y:0,   note:'Pressure dome + utility trunk' },
     ] },
+  { id:'lab_mod', name:'Research Laboratory', short:'LAB', len:180, dia:84, color:'#5aa9e0',
+    cost:11, buildMo:5, stats:{ mass:16.5, crew:0, powerGenKw:0, powerDrawKw:5.5 },
+    prod:{ income:0.2, fuel:0, rep:0.3, sci:2.6 },
+    blurb:'Racks of microgravity experiments — materials, biology, fluids. The station\'s science engine.' },
+  { id:'power_truss', name:'Solar Power Truss', short:'PWR', len:150, dia:36, color:'#e8b64c',
+    cost:6, buildMo:3, stats:{ mass:12.0, crew:0, powerGenKw:16.0, powerDrawKw:0.4 },
+    prod:{ income:0.25, fuel:0, rep:0, sci:0 },
+    blurb:'Deployable photovoltaic wings and batteries. Power-hungry modules need one of these behind them.' },
+  { id:'node_hub', name:'Docking Node', short:'NODE', len:90, dia:76, color:'#8f9aa6',
+    cost:5, buildMo:3, stats:{ mass:9.0, crew:0, powerGenKw:0, powerDrawKw:0.8 },
+    prod:{ income:0.1, fuel:0, rep:0.2, sci:0 }, ports:3,
+    blurb:'A six-port junction sphere. Every node adds 3 berths of growth room to the station.' },
+  { id:'depot_mod', name:'Propellant Depot Module', short:'FUEL', len:170, dia:96, color:'#67c587',
+    cost:12, buildMo:5, stats:{ mass:20.0, crew:0, powerGenKw:0, powerDrawKw:2.2 }, reqResearch:'orbital_depot',
+    prod:{ income:0.35, fuel:0.8, rep:0.3, sci:0 },
+    blurb:'Insulated tankage and transfer plumbing — the station becomes a gas station, feeding the LEO depot economy.' },
+  { id:'greenhouse', name:'Greenhouse Module', short:'GRN', len:190, dia:90, color:'#7bc46a',
+    cost:10, buildMo:5, stats:{ mass:15.0, crew:0, powerGenKw:0, powerDrawKw:4.8 }, reqResearch:'eclss_partial',
+    prod:{ income:0.15, fuel:0, rep:0.4, sci:0.4 }, resupplyCut:0.15,
+    blurb:'Crops under grow-lights. Each greenhouse cuts this facility\'s standing resupply cost 15% — food grown on-site never needs launching.' },
 ];
+const STATION_PORT_BASE=4; // a core stack holds 4 modules; each Docking Node adds its ports
 function stationActiveModule(){ return STATION_MODULES[0]; }
 let stationExpanded=false;
 function toggleStationExpand(){ stationExpanded=!stationExpanded; renderStation(); }
@@ -11097,19 +11325,16 @@ function resumeStationGame(){ if(stationGame){ try{ stationGame.scene.resume('st
 function stationStatsHTML(mod){
   const s=mod&&mod.stats; if(!s) return '';
   const netP=(s.powerGenKw-s.powerDrawKw);
-  const consumTotal=(s.consumPerCrewDay*s.crew).toFixed(3);
-  const enduranceDays=s.consumPerCrewDay>0?Math.round(s.consumDays):'—'; // store already expressed in days here
-  const cell=(k,v,sub)=>`<div class="metric"><div class="k">${k}</div><div class="v">${v}</div>${sub?`<div class="dim" style="font-size:10px">${sub}</div>`:''}</div>`;
+  const cell=(k,v,sub)=>`<div class="metric"><div class="k">${k}</div><div class="v">${v}</div>${sub?`<div class="dim" style="font-size:11px">${sub}</div>`:''}</div>`;
   return `<div class="mission-tag">${mod.name} — engineering stats</div>
     <div class="metrics">
-      ${cell('Pressurized vol', s.volM3+' m³')}
       ${cell('Crew capacity', s.crew, 'nominal')}
       ${cell('Module mass', s.mass.toFixed(1)+' t')}
       ${cell('Power', (netP>=0?'+':'')+netP.toFixed(1)+' kW', `${s.powerGenKw} gen − ${s.powerDrawKw} draw`)}
-      ${cell('Consumables', s.consumDays+' d', `${consumTotal} t/day @ ${s.crew} crew`)}
-      ${cell('Docking ports', s.dockPorts, '1 axial · 2 radial')}
+      ${cell('Build cost', fM(mod.cost), (mod.buildMo||0)+' mo')}
+      ${cell('Docking ports', mod.ports||3, mod.ports?'junction hub':'1 axial · 2 radial')}
     </div>
-    <div class="dim" style="font-size:11px;margin-top:6px">Placeholder values — these become real (and balance-tuned) when module assembly &amp; the station economy are built out.</div>`;
+    <div class="dim" style="font-size:12px;margin-top:6px">Module library in place — six typed modules with cost, power and production stats. Assembly (adding these to your built facilities) lands in the next slice.</div>`;
 }
 function renderStation(){
   const sv=$('stationView'); if(sv) sv.classList.toggle('expanded', stationExpanded);
@@ -11197,7 +11422,7 @@ function renderMapActivity(){
     <div class="legs" style="margin-top:6px">${evRows}</div>
     <div class="mission-tag" style="margin-top:14px">Rival frontier</div>
     <div class="legs" style="margin-top:6px">${frontier||'<div class="dim" style="font-size:12px;padding:4px 0">No rival has staked a claim beyond Earth yet.</div>'}</div>
-    <div class="dim" style="font-size:11px;margin-top:10px">Coloured dots on the map mark where each rival has reached. Beating a rival to a linked mission avoids its scoop penalty.</div></div>`;
+    <div class="dim" style="font-size:12px;margin-top:10px">Coloured dots on the map mark where each rival has reached. Beating a rival to a linked mission avoids its scoop penalty.</div></div>`;
 }
 // #graphics: Hohmann-style transfer arc geometry for a committed launch window. Pure
 // (takes the map centre + a destination body id, returns from/ctrl/to points), so both
@@ -11382,7 +11607,7 @@ function bodyCardHTML(){
       if(bits.length) reqLine=`<div class="sub" style="color:var(--warn);margin-top:2px">Needs ${bits.join(' · ')}</div>`;
     }
     const commitBtn = (mp.window&&mp.available&&!mp.done)
-      ? `<button class="btn ghost" style="font-size:11px;padding:4px 8px" onclick="commitWindow('${mp.id}',${mp.window.idx})">Commit window</button>` : '';
+      ? `<button class="btn ghost" style="font-size:12px;padding:4px 8px" onclick="commitWindow('${mp.id}',${mp.window.idx})">Commit window</button>` : '';
     return `<div class="item">
       <div class="body">
         <div class="title">${mp.name} ${pill}</div>
@@ -11450,14 +11675,14 @@ function engineYardPanelHTML(){
   const engs=unlockedEngines(), m=curMission(), need=m?vehicleEngineNeeds(m):{};
   const rows=engs.map(id=>{
     const e=ENGINES[id], stk=engineStockCount(id), tst=engineStockTestedCount(id), needN=need[id]||0;
-    const needNote = needN>0 ? `<span class="dim" style="font-size:11px"> · build uses ${needN} (${Math.min(needN,stk)} on hand)</span>` : '';
+    const needNote = needN>0 ? `<span class="dim" style="font-size:12px"> · build uses ${needN} (${Math.min(needN,stk)} on hand)</span>` : '';
     const c1=canBuildEngineStock(id,1), c5=canBuildEngineStock(id,5), ct=canBuildEngineStock(id,1,true);
     return `<div class="leg" style="align-items:center;gap:8px">
       <span class="legname">${engineIcon(id)} ${e.name} <span class="pill ${stk>0?'ok':''}">×${stk}${tst>0?` · ⛉${tst}`:''}</span>${needNote}</span>
       <span class="legdetail">${fM(engineUnitCost(id))} · ${engineBuildDays()} d ea</span>
-      <button class="btn ghost" style="padding:3px 8px;font-size:11px" onclick="buildEngineStock('${id}',1)" ${c1.ok?'':'disabled'} title="${c1.ok?`${fM(c1.cost)} · ${c1.days} d`:c1.why}">Build ×1</button>
-      <button class="btn ghost" style="padding:3px 8px;font-size:11px" onclick="buildEngineStock('${id}',5)" ${c5.ok?'':'disabled'} title="${c5.ok?`${fM(c5.cost)} · ${c5.days} d`:c5.why}">×5</button>
-      <button class="btn ghost" style="padding:3px 8px;font-size:11px" onclick="buildEngineStock('${id}',1,true)" ${ct.ok?'':'disabled'} title="${ct.ok?`Bench-test: ${fM(ct.cost)} · ${ct.days} d → +${(BENCH_REL_PER*100).toFixed(1)}% reliability when fitted`:ct.why}">⛉ test ×1</button>
+      <button class="btn ghost" style="padding:3px 8px;font-size:12px" onclick="buildEngineStock('${id}',1)" ${c1.ok?'':'disabled'} title="${c1.ok?`${fM(c1.cost)} · ${c1.days} d`:c1.why}">Build ×1</button>
+      <button class="btn ghost" style="padding:3px 8px;font-size:12px" onclick="buildEngineStock('${id}',5)" ${c5.ok?'':'disabled'} title="${c5.ok?`${fM(c5.cost)} · ${c5.days} d`:c5.why}">×5</button>
+      <button class="btn ghost" style="padding:3px 8px;font-size:12px" onclick="buildEngineStock('${id}',1,true)" ${ct.ok?'':'disabled'} title="${ct.ok?`Bench-test: ${fM(ct.cost)} · ${ct.days} d → +${(BENCH_REL_PER*100).toFixed(1)}% reliability when fitted`:ct.why}">⛉ test ×1</button>
     </div>`;
   }).join('');
   const draw=m?engineDrawForBuild(m):{total:0,saveDays:0,credit:0,tested:0};
@@ -11466,7 +11691,7 @@ function engineYardPanelHTML(){
   return `<div class="card adv-only dombar-engineering" style="background:var(--panel2);margin-bottom:12px">
       <div style="display:flex;justify-content:space-between;align-items:baseline">
         <div class="mission-name" style="font-size:14px">⚙ Engine yard</div>
-        <div class="dim" style="font-size:11px">pre-build engines in downtime · foundry L${prodLevel('foundry')} builds ${engineParallel()} at once · fitted engines speed assembly (cost-neutral) · ⛉ bench-test for flight-proven reliability</div>
+        <div class="dim" style="font-size:12px">pre-build engines in downtime · foundry L${prodLevel('foundry')} builds ${engineParallel()} at once · fitted engines speed assembly (cost-neutral) · ⛉ bench-test for flight-proven reliability</div>
       </div>
       <div class="legs" style="margin-top:6px">${rows||'<div class="dim" style="font-size:12px">No engines unlocked yet.</div>'}</div>
       ${drawNote}
@@ -11476,14 +11701,14 @@ function partYardPanelHTML(){
   const keys=stockablePartKeys(), m=curMission(), need=m?vehiclePartNeeds(m):{};
   const rows=keys.map(key=>{
     const stk=partStockCount(key), tst=partStockTestedCount(key), needN=need[key]||0;
-    const needNote = needN>0 ? `<span class="dim" style="font-size:11px"> · build uses ${needN} (${Math.min(needN,stk)} on hand)</span>` : '';
+    const needNote = needN>0 ? `<span class="dim" style="font-size:12px"> · build uses ${needN} (${Math.min(needN,stk)} on hand)</span>` : '';
     const c1=canBuildPartStock(key,1), c3=canBuildPartStock(key,3), ct=canBuildPartStock(key,1,true);
     return `<div class="leg" style="align-items:center;gap:8px">
       <span class="legname">${partCompIcon(key)} ${partCompName(key)} <span class="pill ${stk>0?'ok':''}">×${stk}${tst>0?` · ⛉${tst}`:''}</span>${needNote}</span>
       <span class="legdetail">${fM(partCompCost(key))} · ${partBuildDays()} d ea</span>
-      <button class="btn ghost" style="padding:3px 8px;font-size:11px" onclick="buildPartStock('${key}',1)" ${c1.ok?'':'disabled'} title="${c1.ok?`${fM(c1.cost)} · ${c1.days} d`:c1.why}">Build ×1</button>
-      <button class="btn ghost" style="padding:3px 8px;font-size:11px" onclick="buildPartStock('${key}',3)" ${c3.ok?'':'disabled'} title="${c3.ok?`${fM(c3.cost)} · ${c3.days} d`:c3.why}">×3</button>
-      <button class="btn ghost" style="padding:3px 8px;font-size:11px" onclick="buildPartStock('${key}',1,true)" ${ct.ok?'':'disabled'} title="${ct.ok?`Bench-test: ${fM(ct.cost)} · ${ct.days} d → +${(BENCH_REL_PER*100).toFixed(1)}% reliability when fitted`:ct.why}">⛉ test ×1</button>
+      <button class="btn ghost" style="padding:3px 8px;font-size:12px" onclick="buildPartStock('${key}',1)" ${c1.ok?'':'disabled'} title="${c1.ok?`${fM(c1.cost)} · ${c1.days} d`:c1.why}">Build ×1</button>
+      <button class="btn ghost" style="padding:3px 8px;font-size:12px" onclick="buildPartStock('${key}',3)" ${c3.ok?'':'disabled'} title="${c3.ok?`${fM(c3.cost)} · ${c3.days} d`:c3.why}">×3</button>
+      <button class="btn ghost" style="padding:3px 8px;font-size:12px" onclick="buildPartStock('${key}',1,true)" ${ct.ok?'':'disabled'} title="${ct.ok?`Bench-test: ${fM(ct.cost)} · ${ct.days} d → +${(BENCH_REL_PER*100).toFixed(1)}% reliability when fitted`:ct.why}">⛉ test ×1</button>
     </div>`;
   }).join('');
   const draw=m?partDrawForBuild(m):{total:0,saveDays:0,credit:0,tested:0};
@@ -11492,7 +11717,7 @@ function partYardPanelHTML(){
   return `<div class="card adv-only dombar-engineering" style="background:var(--panel2);margin-bottom:12px">
       <div style="display:flex;justify-content:space-between;align-items:baseline">
         <div class="mission-name" style="font-size:14px">🛠 Structures &amp; habitats</div>
-        <div class="dim" style="font-size:11px">pre-build tank sets &amp; crew modules in downtime · foundry L${prodLevel('foundry')} builds ${partParallel()} at once · fitted parts speed assembly (cost-neutral) · ⛉ bench-test for proven reliability</div>
+        <div class="dim" style="font-size:12px">pre-build tank sets &amp; crew modules in downtime · foundry L${prodLevel('foundry')} builds ${partParallel()} at once · fitted parts speed assembly (cost-neutral) · ⛉ bench-test for proven reliability</div>
       </div>
       <div class="legs" style="margin-top:6px">${rows||'<div class="dim" style="font-size:12px">No structural components available yet.</div>'}</div>
       ${drawNote}
@@ -11524,7 +11749,7 @@ function productionPanelHTML(){
     return `<div class="card" style="background:var(--panel2);margin-bottom:12px">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
         <div class="mission-name" style="font-size:15px">${d.icon} ${d.name} <span class="pill ${lvl>1?'ok':''}">L${lvl}${maxed?' · max':''}</span></div>
-        <div class="dim" style="font-size:11px">upkeep ${upkeep>0?'−'+fM(upkeep)+'/mo':'none'}</div>
+        <div class="dim" style="font-size:12px">upkeep ${upkeep>0?'−'+fM(upkeep)+'/mo':'none'}</div>
       </div>
       <div class="sub" style="margin:2px 0 8px">${d.blurb}</div>
       <div class="metrics">
@@ -11546,7 +11771,7 @@ function productionPanelHTML(){
     const trend = s.spot>s.prev?'↑':(s.spot<s.prev?'↓':'·');
     const contractTxt = s.contract
       ? `<span class="pill ok" title="Locked at ${s.contract.lockedPrice.toFixed(2)}× for ${s.contract.monthsLeft} more month${s.contract.monthsLeft===1?'':'s'}">contract ${s.contract.lockedPrice.toFixed(2)}× · ${s.contract.monthsLeft} mo left</span>`
-      : `<button class="btn ghost" style="padding:4px 8px;font-size:11px" onclick="signMaterialContract('${d.key}')">Sign ${MATERIAL_CONTRACT_MONTHS}-mo lock @ ${round2(s.spot*(1+MATERIAL_CONTRACT_PREMIUM)).toFixed(2)}×</button>`;
+      : `<button class="btn ghost" style="padding:4px 8px;font-size:12px" onclick="signMaterialContract('${d.key}')">Sign ${MATERIAL_CONTRACT_MONTHS}-mo lock @ ${round2(s.spot*(1+MATERIAL_CONTRACT_PREMIUM)).toFixed(2)}×</button>`;
     // #7 slice 7: stock + buy + coverage
     const fromStock = s.stock>=1;
     const cov = materialMonthsCoverage(d.key);
@@ -11554,22 +11779,22 @@ function productionPanelHTML(){
     const stockCol = s.stock<=0?'var(--bad)':(cov!==Infinity&&cov<2?'var(--warn)':'var(--ok)');
     const buy1=canBuyMaterialStock(d.key,1), buy6=canBuyMaterialStock(d.key,6);
     const stockLine = `<div style="display:flex;align-items:center;gap:8px;margin-top:4px">
-      <span class="dim" style="font-size:11px">stock</span>
+      <span class="dim" style="font-size:12px">stock</span>
       <span style="color:${stockCol};font-weight:600">${s.stock} build${s.stock===1?'':'s'}</span>
-      <span class="dim" style="font-size:11px">· avg ${s.avgCost.toFixed(2)}× · coverage ${covTxt}</span>
-      <button class="btn ghost" style="padding:3px 7px;font-size:11px" onclick="buyMaterialStock('${d.key}',1)" ${buy1.ok?'':'disabled'} title="${buy1.ok?`Buy 1 build's worth at spot ${s.spot.toFixed(2)}×`:buy1.why}">+1 · ${fM(materialUnitBuyCost(d.key))}</button>
-      <button class="btn ghost" style="padding:3px 7px;font-size:11px" onclick="buyMaterialStock('${d.key}',6)" ${buy6.ok?'':'disabled'} title="${buy6.ok?`Buy 6 builds at spot ${s.spot.toFixed(2)}×`:buy6.why}">+6 · ${fM(materialBuyTotal(d.key,6))}</button>
+      <span class="dim" style="font-size:12px">· avg ${s.avgCost.toFixed(2)}× · coverage ${covTxt}</span>
+      <button class="btn ghost" style="padding:3px 7px;font-size:12px" onclick="buyMaterialStock('${d.key}',1)" ${buy1.ok?'':'disabled'} title="${buy1.ok?`Buy 1 build's worth at spot ${s.spot.toFixed(2)}×`:buy1.why}">+1 · ${fM(materialUnitBuyCost(d.key))}</button>
+      <button class="btn ghost" style="padding:3px 7px;font-size:12px" onclick="buyMaterialStock('${d.key}',6)" ${buy6.ok?'':'disabled'} title="${buy6.ok?`Buy 6 builds at spot ${s.spot.toFixed(2)}×`:buy6.why}">+6 · ${fM(materialBuyTotal(d.key,6))}</button>
     </div>`;
     return `<div style="padding:6px 0;border-top:1px solid #2a2a2a">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
         <div style="min-width:180px">
-          <div style="font-weight:600">${d.icon} ${d.name} <span class="dim" style="font-size:11px">· ${Math.round(d.share*100)}% of build</span></div>
-          <div class="dim" style="font-size:11px">${d.blurb}</div>
+          <div style="font-weight:600">${d.icon} ${d.name} <span class="dim" style="font-size:12px">· ${Math.round(d.share*100)}% of build</span></div>
+          <div class="dim" style="font-size:12px">${d.blurb}</div>
         </div>
         <div title="Spot-price history (last ${MATERIAL_HISTORY_LEN} months) · dashed line is baseline 1.0×" style="opacity:.95">${materialSparklineSVG(d.key, 120, 28)}</div>
         <div style="text-align:right;min-width:140px">
-          <div style="color:${spotCol};font-weight:600">spot ${s.spot.toFixed(2)}× <span class="dim" style="font-size:11px">${trend}</span></div>
-          <div class="dim" style="font-size:11px">effective ${eff.toFixed(2)}× ${fromStock?'<span class="pill ok" style="font-size:10px">from stock</span>':''}</div>
+          <div style="color:${spotCol};font-weight:600">spot ${s.spot.toFixed(2)}× <span class="dim" style="font-size:12px">${trend}</span></div>
+          <div class="dim" style="font-size:12px">effective ${eff.toFixed(2)}× ${fromStock?'<span class="pill ok" style="font-size:11px">from stock</span>':''}</div>
         </div>
         <div>${contractTxt}</div>
       </div>
@@ -11594,7 +11819,7 @@ function productionPanelHTML(){
       <div class="card adv-only dombar-economy" style="background:var(--panel2);margin-bottom:12px">
         <div style="display:flex;justify-content:space-between;align-items:baseline">
           <div class="mission-name" style="font-size:14px">📦 Raw-material supply</div>
-          <div class="dim" style="font-size:11px">spot prices wander monthly · contracts lock for ${MATERIAL_CONTRACT_MONTHS} mo at +${(MATERIAL_CONTRACT_PREMIUM*100|0)}% over spot</div>
+          <div class="dim" style="font-size:12px">spot prices wander monthly · contracts lock for ${MATERIAL_CONTRACT_MONTHS} mo at +${(MATERIAL_CONTRACT_PREMIUM*100|0)}% over spot</div>
         </div>
         ${materialRows}
       </div>
@@ -11621,11 +11846,11 @@ function renderInfrastructure(){
       return `<div class="card" style="background:var(--panel2);margin-bottom:12px;border-color:${starved?'var(--bad)':def.color}">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
           <div class="mission-name" style="font-size:15px"><span style="color:${def.color}">${def.icon} ${def.name}</span> <span class="pill ok">${fs.modules} module${fs.modules>1?'s':''}</span>${starved?' <span class="pill lock" style="color:var(--bad)">starved</span>':''}</div>
-          <div class="dim" style="font-size:11px">at ${bodyName} · since ${fs.since||'—'}</div>
+          <div class="dim" style="font-size:12px">at ${bodyName} · since ${fs.since||'—'}</div>
         </div>
         <div class="sub" style="margin:2px 0 8px">${def.blurb}</div>
         <div style="margin:6px 0 8px">
-          <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px"><span class="dim">Resupply</span><span style="color:${supCol}">${supLabel}</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span class="dim">Resupply</span><span style="color:${supCol}">${supLabel}</span></div>
           <div style="height:6px;border-radius:3px;background:var(--panel);overflow:hidden"><div style="height:100%;width:${Math.round(supFrac*100)}%;background:${supCol}"></div></div>
         </div>
         <div class="metrics">
@@ -11701,14 +11926,14 @@ function renderPrograms(){
       <div class="tag">${sel?'your ambition':'set as ambition'}</div>
       <h3>${a.name}</h3>
       <p>${a.blurb}</p>
-      <div class="dim" style="font-size:11px;margin-top:6px">Capstone: ${cap?cap.name:a.capstone}${state.completed[a.capstone]?' · <span style="color:var(--ok)">achieved</span>':''}</div>
+      <div class="dim" style="font-size:12px;margin-top:6px">Capstone: ${cap?cap.name:a.capstone}${state.completed[a.capstone]?' · <span style="color:var(--ok)">achieved</span>':''}</div>
     </div>`;
   }).join('');
   $('ambitionCard').innerHTML=`<h2>Ambition — your company's long game</h2>
     <p class="muted" style="font-size:12px;margin:-4px 0 10px">A personal goal to chase across the decades. Every contract is a step toward it. Change it anytime — there is always a further horizon.</p>
     <div class="mission-tag">Progress toward “${amb.name}”</div>
     <div class="bar" style="margin:6px 0 4px"><div class="fill" style="width:${prog.pct}%;background:${prog.capstoneDone?'var(--ok)':'var(--ignite)'}"></div></div>
-    <div class="dim" style="font-size:11px;margin-bottom:12px">${prog.done}/${prog.total} milestones flown · ${prog.pct}%${prog.capstoneDone?' · <span style="color:var(--ok)">ambition fulfilled</span>':''}</div>
+    <div class="dim" style="font-size:12px;margin-bottom:12px">${prog.done}/${prog.total} milestones flown · ${prog.pct}%${prog.capstoneDone?' · <span style="color:var(--ok)">ambition fulfilled</span>':''}</div>
     <div class="diffgrid" style="grid-template-columns:1fr 1fr">${ambChips}</div>`;
   // ---- program ladder ----
   const nx=nextObjective();
@@ -11734,7 +11959,7 @@ function renderPrograms(){
     return `<div class="card" style="background:var(--panel2);margin-bottom:12px;${done?'border-color:var(--ok)':''}">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
         <div class="mission-name" style="font-size:15px">${p.name} ${status}</div>
-        <div class="dim" style="font-size:11px;white-space:nowrap">Bonus: +${fM(p.reward.money)}, +${p.reward.rep} rep</div>
+        <div class="dim" style="font-size:12px;white-space:nowrap">Bonus: +${fM(p.reward.money)}, +${p.reward.rep} rep</div>
       </div>
       <div class="sub" style="margin:2px 0 8px">${p.blurb}</div>
       <div class="legs">${objs}</div>
@@ -11780,7 +12005,7 @@ function renderPassiveContracts(){
         <div class="sub num" style="margin-top:4px;color:var(--readout)">${meta}</div></div>${right}${btn}</div>`;
     }).filter(Boolean);
     if(!rows.length) continue;
-    html+=`<div class="dim" style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;margin:12px 0 4px">${PASSIVE_CATS[cat]}</div>${rows.join('')}`;
+    html+=`<div class="dim" style="font-size:12px;text-transform:uppercase;letter-spacing:.5px;margin:12px 0 4px">${PASSIVE_CATS[cat]}</div>${rows.join('')}`;
   }
   if(!any) html+=`<p class="dim" style="font-size:12px">No standing contracts available yet — reach orbit, fly crews and license technology to open them up.</p>`;
   box.innerHTML=html;
@@ -11839,7 +12064,7 @@ function renderEraCard(){
     <h2>Era ${idx+1} of ${ERAS.length} — ${era.name}<span class="pill era">${era.from}${era.to<9999?'–'+era.to:'+'}</span>${nextNote}</h2>
     <p class="muted" style="font-size:12px;margin:-4px 0 8px">${era.blurb}</p>
     <div class="era-strip">${stripHtml}</div>
-    <p class="dim" style="font-size:11px;margin:8px 0 0">Eras are soft — calendar-driven context, not a hard lock on research below.</p>`;
+    <p class="dim" style="font-size:12px;margin:8px 0 0">Eras are soft — calendar-driven context, not a hard lock on research below.</p>`;
 }
 
 /* ---------- tech tree (Civ/KSP-style horizontal flow) ---------- */
@@ -11927,17 +12152,17 @@ function renderTechTree(){
       <text x="${p.x+11}" y="${p.y+32}" fill="${c.text}" font-size="9" font-family="ui-monospace,monospace" opacity="0.8">${sub}</text>
     </g>`;
   });
-  const legend=TRACKS.map(t=>`<span style="display:inline-flex;align-items:center;gap:4px;margin-right:12px;font-size:11px;color:var(--muted)"><span style="width:10px;height:10px;border-radius:2px;background:${t.color};display:inline-block"></span>${t.label}</span>`).join('');
+  const legend=TRACKS.map(t=>`<span style="display:inline-flex;align-items:center;gap:4px;margin-right:12px;font-size:12px;color:var(--muted)"><span style="width:10px;height:10px;border-radius:2px;background:${t.color};display:inline-block"></span>${t.label}</span>`).join('');
   const zw=(L.W*techZoom).toFixed(0), zh=(L.H*techZoom).toFixed(0);
   el.innerHTML=`<div style="position:sticky;top:0;z-index:2;background:var(--panel);display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:0 2px 8px">
       <div style="flex:1;min-width:120px">${legend}</div>
       <div style="display:flex;align-items:center;gap:4px">
         <button class="btn ghost" style="padding:2px 9px" onclick="zoomTech(1/1.2)" title="Zoom out (−)">−</button>
-        <span class="dim" style="font-size:11px;width:40px;text-align:center">${Math.round(techZoom*100)}%</span>
+        <span class="dim" style="font-size:12px;width:40px;text-align:center">${Math.round(techZoom*100)}%</span>
         <button class="btn ghost" style="padding:2px 9px" onclick="zoomTech(1.2)" title="Zoom in (+)">+</button>
-        <button class="btn ghost" style="padding:2px 9px;font-size:11px" onclick="resetTechZoom()" title="Reset (0)">Reset</button>
-        <button class="btn ghost" style="padding:2px 9px;font-size:11px" onclick="toggleTechExpand()" title="Pop out to full screen">${techExpanded?'⛶ Close':'⛶ Pop out'}</button>
-        <span class="dim" style="font-size:10px;margin-left:4px">drag = pan · scroll = zoom</span>
+        <button class="btn ghost" style="padding:2px 9px;font-size:12px" onclick="resetTechZoom()" title="Reset (0)">Reset</button>
+        <button class="btn ghost" style="padding:2px 9px;font-size:12px" onclick="toggleTechExpand()" title="Pop out to full screen">${techExpanded?'⛶ Close':'⛶ Pop out'}</button>
+        <span class="dim" style="font-size:11px;margin-left:4px">drag = pan · scroll = zoom</span>
       </div>
     </div>
     <svg viewBox="0 0 ${L.W} ${L.H}" width="${zw}" height="${zh}" xmlns="http://www.w3.org/2000/svg" style="max-width:none;display:block">${bands}${edges}${nodes}</svg>`;
@@ -11976,7 +12201,7 @@ function branchAffinityNote(r){
   if(pct===0) return '';
   const cheaper=pct<0, aff=trackAffinity(r.track);
   const why=cheaper ? `${aff} node${aff===1?'':'s'} of ${r.track} focus` : `behind your strongest track`;
-  return `<div class="dim" style="font-size:11px;margin:-2px 0 10px;color:${cheaper?'var(--ok,#4ade80)':'var(--bad,#f87171)'}">
+  return `<div class="dim" style="font-size:12px;margin:-2px 0 10px;color:${cheaper?'var(--ok,#4ade80)':'var(--bad,#f87171)'}">
     ${cheaper?'▼':'▲'} Branch affinity: <b>${cheaper?'':'+'}${pct}%</b> R&D cost — ${why}.</div>`;
 }
 function techModifierText(r){
@@ -12039,7 +12264,7 @@ function renderResearchDetail(){
     const perLine=Object.entries(d.per||{}).map(([k,v])=>`+${Math.round(v*100)}% ${k}`).join(' · ');
     const curBonus=Object.entries(d.per||{}).map(([k,v])=>`+${Math.round(v*(lvl-1)*100)}% ${k}`).join(' · ');
     action=`<div class="metric" style="margin-bottom:8px"><div class="k">Tech level</div><div class="v" style="color:var(--ignite)">${lvl} / ${d.max} · ${techLevelName(id)}</div></div>
-      <div class="dim" style="font-size:11px;margin-bottom:8px">A leveled technology — keep investing to advance it. Each level: <b>${perLine}/level</b>${lvl>1?` · current bonus from this tech: <b style="color:var(--ok)">${curBonus}</b>`:''}.</div>
+      <div class="dim" style="font-size:12px;margin-bottom:8px">A leveled technology — keep investing to advance it. Each level: <b>${perLine}/level</b>${lvl>1?` · current bonus from this tech: <b style="color:var(--ok)">${curBonus}</b>`:''}.</div>
       ${maxed
         ? `<button class="btn" disabled style="width:100%">✓ ${techLevelName(id)} — max level (${d.max})</button>`
         : `<button class="launch" style="width:100%" onclick="upgradeTech('${id}')" ${chk.ok?'':'disabled'}>${chk.ok?`Upgrade → ${(d.names&&d.names[lvl])||('Level '+(lvl+1))} · ${fM(cost)} · ${d.months} mo`:chk.why}</button>`}`;
@@ -12049,8 +12274,8 @@ function renderResearchDetail(){
     const rc=rushCost(state.activeResearch.rushed||0), canRush=state.activeResearch.monthsLeft>1 && state.money>=rc;
     const sc=sciRushCost(state.activeResearch.sciRushed||0), canSci=state.activeResearch.monthsLeft>1 && (state.science||0)>=sc;
     action=`<button class="btn" disabled style="width:100%;margin-bottom:6px">${fmtTimeLeft(state.activeResearch.monthsLeft)} left</button>
-      <button class="btn ghost" style="width:100%;font-size:11px;margin-bottom:5px" onclick="rushResearch()" ${canRush?'':'disabled'}>Rush −1 mo (${fM(rc)})</button>
-      <button class="btn ghost" style="width:100%;font-size:11px" onclick="applyScience()" ${canSci?'':'disabled'}>Apply science −1 mo (${sc} ⚛)</button>`;
+      <button class="btn ghost" style="width:100%;font-size:12px;margin-bottom:5px" onclick="rushResearch()" ${canRush?'':'disabled'}>Rush −1 mo (${fM(rc)})</button>
+      <button class="btn ghost" style="width:100%;font-size:12px" onclick="applyScience()" ${canSci?'':'disabled'}>Apply science −1 mo (${sc} ⚛)</button>`;
   } else {
     const afford=state.money>=rdCostOf(r), sciNeed=sciGateCost(r), sciOk=sciGateMet(r), ok=st==='available'&&afford&&sciOk&&!busy;
     const why = busy?'Another project is in progress':(st!=='available'?'Prerequisites not met':(!afford?'Not enough capital':(!sciOk?`Needs ${sciNeed} ⚛ (have ${Math.round(state.science||0)})`:'')));
@@ -12090,7 +12315,7 @@ function renderTechAction(){
   }
   const tag={done:'researched',active:'in progress',available:'available',locked:'locked'}[st];
   el.innerHTML=`<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 11px;border:1px solid var(--line);border-radius:6px;background:var(--panel2)">
-    <span style="font-weight:600">${r.name}</span><span class="dim" style="font-size:11px">${tag}</span>
+    <span style="font-weight:600">${r.name}</span><span class="dim" style="font-size:12px">${tag}</span>
     <span style="flex:1;min-width:8px"></span>${btn}</div>`;
 }
 function renderRnd(){
@@ -12111,20 +12336,20 @@ function renderDivisions(){
     const isActive=activeDiv===d.id;
     const mColor=s.morale>=70?'var(--ok)':s.morale>=40?'var(--warn)':'var(--bad)';
     const trackChips=d.tracks.map(t=>{const tr=TRACKS.find(x=>x.key===t)||{};return `<span class="pill" style="color:${tr.color};border-color:${tr.color}">${tr.label||t}</span>`;}).join(' ');
-    const bar=(label,val,col)=>`<div style="display:flex;align-items:center;gap:8px;margin-top:4px"><span style="font-size:11px;color:var(--dim);width:46px">${label}</span><div style="flex:1;height:5px;background:var(--panel2);border-radius:3px;overflow:hidden"><div style="height:100%;width:${Math.round(val)}%;background:${col}"></div></div><span style="font-family:var(--mono);font-size:11px;color:${col};width:30px;text-align:right">${Math.round(val)}</span></div>`;
+    const bar=(label,val,col)=>`<div style="display:flex;align-items:center;gap:8px;margin-top:4px"><span style="font-size:12px;color:var(--dim);width:46px">${label}</span><div style="flex:1;height:5px;background:var(--panel2);border-radius:3px;overflow:hidden"><div style="height:100%;width:${Math.round(val)}%;background:${col}"></div></div><span style="font-family:var(--mono);font-size:12px;color:${col};width:30px;text-align:right">${Math.round(val)}</span></div>`;
     return `<div class="card" style="background:var(--panel2);margin-bottom:10px;${isActive?'border-color:var(--ignite)':''}">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-        <div class="mission-name" style="font-size:14px;margin:0">${d.name} ${isActive?'<span class="pill active" style="font-size:10px">researching</span>':''}</div>
-        <div style="text-align:right"><div class="dim" style="font-size:10px">R&D speed</div><div style="font-family:var(--mono);color:var(--ok)">+${bonus}%/mo</div></div>
+        <div class="mission-name" style="font-size:14px;margin:0">${d.name} ${isActive?'<span class="pill active" style="font-size:11px">researching</span>':''}</div>
+        <div style="text-align:right"><div class="dim" style="font-size:11px">R&D speed</div><div style="font-family:var(--mono);color:var(--ok)">+${bonus}%/mo</div></div>
       </div>
       <div style="margin:4px 0 2px">${trackChips}</div>
-      <p class="muted" style="font-size:11px;margin:4px 0 2px">${d.blurb}</p>
+      <p class="muted" style="font-size:12px;margin:4px 0 2px">${d.blurb}</p>
       <div class="adv-only">
       ${bar('Skill', s.skill*100, 'var(--readout)')}
       ${bar('Experience', divisionExpLevel(d.id)*100, 'var(--ignite)')}
       ${bar('Morale', s.morale, mColor)}
       </div>
-      <button class="btn" style="width:100%;margin-top:8px;font-size:11px" onclick="trainDivision('${d.id}')" ${chk.ok?'':'disabled'}>${maxed?'✓ Fully trained':(chk.ok?`Train (+${Math.round(DIV_TRAIN_SKILL*100)}% skill · ${fM(cost)})`:chk.why)}</button>
+      <button class="btn" style="width:100%;margin-top:8px;font-size:12px" onclick="trainDivision('${d.id}')" ${chk.ok?'':'disabled'}>${maxed?'✓ Fully trained':(chk.ok?`Train (+${Math.round(DIV_TRAIN_SKILL*100)}% skill · ${fM(cost)})`:chk.why)}</button>
     </div>`;
   }).join('');
   box.innerHTML=`<h2>Research Divisions <span class="pill">${DIVISIONS.length} teams</span></h2>
@@ -12140,21 +12365,21 @@ function renderPartnerships(){
   const cards=PARTNERS.map(p=>{
     const on=partnerActive(p.id), chk=canFormPartnership(p.id);
     const boosting = on && activeTrack && p.tracks.indexOf(activeTrack)>=0;
-    const trackChips=p.tracks.map(t=>{const tr=TRACKS.find(x=>x.key===t)||{};return `<span class="pill" style="color:${tr.color};border-color:${tr.color};font-size:10px">${tr.label||t}</span>`;}).join(' ');
+    const trackChips=p.tracks.map(t=>{const tr=TRACKS.find(x=>x.key===t)||{};return `<span class="pill" style="color:${tr.color};border-color:${tr.color};font-size:11px">${tr.label||t}</span>`;}).join(' ');
     const btn = on
-      ? `<button class="btn ghost" style="width:100%;margin-top:8px;font-size:11px" onclick="dissolvePartnership('${p.id}')">Dissolve — ends the −${fM(p.upkeep)}/mo upkeep</button>`
-      : `<button class="btn" style="width:100%;margin-top:8px;font-size:11px" onclick="formPartnership('${p.id}')" ${chk.ok?'':'disabled'}>${chk.ok?`Partner — ${fM(p.setup)} setup · −${fM(p.upkeep)}/mo`:chk.why}</button>`;
+      ? `<button class="btn ghost" style="width:100%;margin-top:8px;font-size:12px" onclick="dissolvePartnership('${p.id}')">Dissolve — ends the −${fM(p.upkeep)}/mo upkeep</button>`
+      : `<button class="btn" style="width:100%;margin-top:8px;font-size:12px" onclick="formPartnership('${p.id}')" ${chk.ok?'':'disabled'}>${chk.ok?`Partner — ${fM(p.setup)} setup · −${fM(p.upkeep)}/mo`:chk.why}</button>`;
     return `<div class="card" style="background:var(--panel2);margin-bottom:10px;${on?'border-color:var(--dom-research)':''}">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-        <div class="mission-name" style="font-size:14px;margin:0">${p.name} ${on?'<span class="pill ok" style="font-size:10px">active</span>':''}${boosting?' <span class="pill active" style="font-size:10px">boosting now</span>':''}</div>
-        <div style="text-align:right"><div class="dim" style="font-size:10px">R&amp;D speed</div><div style="font-family:var(--mono);color:var(--dom-research)">+${Math.round(p.speed*100)}%</div></div>
+        <div class="mission-name" style="font-size:14px;margin:0">${p.name} ${on?'<span class="pill ok" style="font-size:11px">active</span>':''}${boosting?' <span class="pill active" style="font-size:11px">boosting now</span>':''}</div>
+        <div style="text-align:right"><div class="dim" style="font-size:11px">R&amp;D speed</div><div style="font-family:var(--mono);color:var(--dom-research)">+${Math.round(p.speed*100)}%</div></div>
       </div>
       <div style="margin:4px 0 2px">${trackChips}</div>
-      <p class="muted" style="font-size:11px;margin:4px 0 2px">${p.blurb}</p>
+      <p class="muted" style="font-size:12px;margin:4px 0 2px">${p.blurb}</p>
       ${btn}
     </div>`;
   }).join('');
-  box.innerHTML=`<h2><span class="dom-dot" style="background:var(--dom-research)"></span>Research Partnerships <span class="pill">${active.length}/${PARTNERSHIP_CAP} active</span>${partnershipUpkeep()>0?` <span class="pill" style="font-size:10px">−${fM(partnershipUpkeep())}/mo</span>`:''}</h2>
+  box.innerHTML=`<h2><span class="dom-dot" style="background:var(--dom-research)"></span>Research Partnerships <span class="pill">${active.length}/${PARTNERSHIP_CAP} active</span>${partnershipUpkeep()>0?` <span class="pill" style="font-size:11px">−${fM(partnershipUpkeep())}/mo</span>`:''}</h2>
     <p class="muted" style="font-size:12px;margin:-4px 0 10px">Partner with outside institutions to accelerate a research <b>track</b> — a setup fee plus ongoing upkeep buys a standing R&amp;D-speed boost on their tracks (stacks with engineers + divisions, capped at +${Math.round(PARTNER_SPEED_CAP*100)}%). Hold up to <b>${PARTNERSHIP_CAP}</b> at once: back the fronts your program needs now, and dissolve them when the work is done.</p>
     ${cards}`;
 }
