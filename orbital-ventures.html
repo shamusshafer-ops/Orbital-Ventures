@@ -2664,10 +2664,64 @@ function facilityState(id){ return (state.facilities||{})[id]; }
 function facilityBuilt(id){ const fs=facilityState(id); return !!(fs&&fs.built); }
 function missionBody(mid){ for(const b of BODIES){ if((b.missions||[]).includes(mid)) return b.id; } return null; }
 // monthly output of a built facility, scaling with its module count
+
+/* ---------- Station assembly (slice 2): typed modules on real facilities ----------
+   Every built facility carries fs.moduleList — the core Habitat plus whatever you've
+   docked since. Legacy saves migrate lazily (generic modules become Habitats).
+   Production is typed per module (scaled by the facility body's multiplier), power
+   must balance or output suffers, ports cap growth, greenhouses cut resupply. */
+function stationModuleDef(id){ return STATION_MODULES.find(m=>m.id===id); }
+function facilityModuleList(fs){
+  if(!fs.moduleList){ fs.moduleList=Array(Math.max(1,fs.modules||1)).fill('can_std'); }
+  fs.modules=fs.moduleList.length; // keep the legacy count in lockstep
+  return fs.moduleList;
+}
+function facilityPortCap(fs){
+  const nodes=facilityModuleList(fs).filter(id=>id==='node_hub').length;
+  return STATION_PORT_BASE + nodes*((stationModuleDef('node_hub').ports)||3);
+}
+function facilityPower(fs){
+  let gen=0, draw=0;
+  facilityModuleList(fs).forEach(id=>{ const d=stationModuleDef(id); if(d){ gen+=d.stats.powerGenKw||0; draw+=d.stats.powerDrawKw||0; } });
+  return {gen:Math.round(gen*10)/10, draw:Math.round(draw*10)/10, net:Math.round((gen-draw)*10)/10};
+}
+function facilityGreenhouses(fs){ return facilityModuleList(fs).filter(id=>id==='greenhouse').length; }
+// per-body production multiplier: preserves the old LEO/lunar/Mars scaling (perModule.income 0.5/1.0/1.8)
+function facilityBodyMult(def){ return Math.max(1, (def.perModule&&def.perModule.income||0.5)/0.5); }
+function stationModuleCost(def, fs, modDef){
+  // escalates with station size, scaled by how expensive this body is to build at
+  const n=facilityModuleList(fs).length;
+  return round2(modDef.cost*facilityBodyMult(def)*(1+0.25*(n-1)));
+}
+function canAddStationModule(facId, modId){
+  const def=facilityById(facId), fs=facilityState(facId), md=stationModuleDef(modId);
+  if(!def||!fs||!md) return {ok:false, why:'—'};
+  if(md.reqResearch && !state.research[md.reqResearch]) return {ok:false, why:'Needs '+((RESEARCH.find(r=>r.id===md.reqResearch)||{}).name||md.reqResearch)};
+  if(facilityModuleList(fs).length>=facilityPortCap(fs) && modId!=='node_hub') return {ok:false, why:'All ports occupied — dock a Node for growth room'};
+  const cost=stationModuleCost(def, fs, md);
+  if(state.money<cost) return {ok:false, why:'Needs '+fM(cost)};
+  return {ok:true, cost};
+}
+function addStationModule(facId, modId){
+  const chk=canAddStationModule(facId, modId); if(!chk.ok) return;
+  const def=facilityById(facId), fs=facilityState(facId), md=stationModuleDef(modId);
+  state.money-=chk.cost;
+  advance(md.buildMo||4); if(state.over){ render(); return; }
+  facilityModuleList(fs).push(modId); fs.modules=fs.moduleList.length;
+  fs.supply=FAC_SUPPLY_MONTHS; fs.starvedMonths=0; // the assembly flight ships fresh provisions
+  const pw=facilityPower(fs);
+  log('ok',`${def.name}: ${md.name} docked (${fM(chk.cost)}, ${md.buildMo} mo). ${fs.moduleList.length} modules · power ${pw.net>=0?'+':''}${pw.net} kW.`);
+  if(pw.net<0) log('note',`${def.name} is power-starved — production is running at 60%. Dock a Solar Power Truss.`);
+  render();
+}
+
 function facilityProduction(def, fs){
-  const mod=Math.max(1, fs.modules||1);
-  const add=(k)=> (def.base[k]||0) + (def.perModule[k]||0)*(mod-1);
-  return {income:add('income'), fuel:add('fuel'), rep:add('rep'), sci:add('sci'), modules:mod};
+  const list=facilityModuleList(fs), mult=facilityBodyMult(def);
+  const pw=facilityPower(fs), starve=pw.net<0?0.6:1; // power-starved stations run at 60%
+  const sum={income:0,fuel:0,rep:0,sci:0};
+  list.forEach((id,i)=>{ if(i===0) return; const d=stationModuleDef(id); if(d&&d.prod) for(const k in sum) sum[k]+=(d.prod[k]||0); });
+  const add=(k)=> ((def.base[k]||0) + sum[k]*mult)*starve;
+  return {income:round2(add('income')), fuel:round2(add('fuel')), rep:round2(add('rep')), sci:round2(add('sci')), modules:list.length, powerNet:pw.net};
 }
 // home-field bonus for missions to a body that hosts one of your bases
 function facilityBonus(body){
@@ -2703,7 +2757,7 @@ function facilitySupplyDrain(){ return 1; } // one month of provisions consumed 
 function facilityStarved(id){ return facilityBuilt(id) && facilitySupply(id)<=0; }
 function facilitySupplyFactor(id){ return facilityStarved(id)?FAC_STARVE_PROD:1; } // starved bases run at reduced output
 function facilitySupplyMonths(id){ return Math.round(facilitySupply(id)); } // months of runway remaining
-function resupplyCostFull(id){ const def=facilityById(id), fs=facilityState(id); if(!def||!fs) return 0; const mod=Math.max(1,fs.modules||1); const fission=state.research.surface_fission_power?0.75:1; /* a base that makes its own power ships fewer consumables */ return round2(FAC_RESUPPLY_PER_MODULE*mod*bodyResupplyMult(def.body)*fission); }
+function resupplyCostFull(id){ const def=facilityById(id), fs=facilityState(id); if(!def||!fs) return 0; const mod=Math.max(1,fs.modules||1); const fission=state.research.surface_fission_power?0.75:1; /* a base that makes its own power ships fewer consumables */ const grn=Math.max(0.5, 1-0.15*facilityGreenhouses(fs)); /* greenhouses grow food on-site */ const feedMod=Math.max(1, mod-facilityGreenhouses(fs)); /* a greenhouse feeds itself */ return round2(FAC_RESUPPLY_PER_MODULE*feedMod*bodyResupplyMult(def.body)*fission*grn); }
 function resupplyCost(id){ const missing=Math.max(0, FAC_SUPPLY_MONTHS-facilitySupply(id)); return round2(resupplyCostFull(id)*(missing/FAC_SUPPLY_MONTHS)); } // pay for what you actually ship up
 function canResupply(id){
   if(!facilityBuilt(id)) return {ok:false,why:'No facility.'};
@@ -2742,7 +2796,7 @@ function expandFacility(id){
   state.money-=cost;
   advance(expandMonths(def)); // construction at the current module count
   if(state.over){ render(); return; }
-  const fs=facilityState(id); fs.modules=(fs.modules||1)+1;
+  const fs=facilityState(id); facilityModuleList(fs).push('can_std'); fs.modules=fs.moduleList.length;
   fs.supply=FAC_SUPPLY_MONTHS; fs.starvedMonths=0; // CE4(b): the expansion ships up fresh provisions
   const pr=facilityProduction(def, fs);
   log('ok',`${def.name} expanded to ${fs.modules} modules — now +${fM(pr.income)}/mo${pr.fuel>0?`, +${pr.fuel.toFixed(1)} t fuel/mo`:''}.`);
@@ -11211,7 +11265,7 @@ const STN_W=760, STN_H=480;
 // extends. Coordinates are relative to the module centre.
 const STATION_MODULES = [
   { id:'can_std', name:'Pressurized Habitat', short:'HAB', len:200, dia:88, color:'#b8c0c7',
-    cost:8, buildMo:4, stats:{ mass:18.0, crew:3, powerGenKw:4.0, powerDrawKw:4.2 },
+    cost:8, buildMo:4, stats:{ mass:18.0, crew:3, powerGenKw:6.0, powerDrawKw:4.2 },
     prod:{ income:0.5, fuel:0, rep:0.5, sci:0.8 },
     blurb:'Crew quarters, galley and workstations — the living space every station grows from.',
     parts:[
@@ -11339,10 +11393,84 @@ function stationStatsHTML(mod){
 function renderStation(){
   const sv=$('stationView'); if(sv) sv.classList.toggle('expanded', stationExpanded);
   const eb=$('stationExpandBtn'); if(eb) eb.textContent = stationExpanded ? '⛶ Exit full screen' : '⛶ Expand';
-  const mod=stationActiveModule();
-  const st=$('stationStats'); if(st) st.innerHTML=stationStatsHTML(mod);
-  if(phaserOK() && startStationScene()) return;
-  const c=$('stationCanvas'); if(c) c.innerHTML=renderStationSVG(720,460,mod);
+  const built=Object.keys(state.facilities||{}).map(id=>({def:facilityById(id), fs:state.facilities[id]})).filter(x=>x.def&&facilityBuilt(x.def.id));
+  const c=$('stationCanvas'), st=$('stationStats');
+  if(!built.length){
+    // nothing built yet: show the sample core + guidance
+    if(st) st.innerHTML=`<div class="mission-tag">No facilities yet</div>
+      <p class="muted" style="font-size:12px">Found a station or base from the <b>Command Center → Infrastructure</b> panel (LEO Station unlocks after Crewed Orbit). Once it exists, this bench is where you grow it module by module.</p>`+stationStatsHTML(stationActiveModule());
+    if(c) c.innerHTML=renderStationSVG(720,460,stationActiveModule());
+    return;
+  }
+  if(!state.stationFocus || !built.some(b=>b.def.id===state.stationFocus)) state.stationFocus=built[0].def.id;
+  const cur=built.find(b=>b.def.id===state.stationFocus);
+  if(c) c.innerHTML=renderStationStackSVG(720,300,cur)+renderStationPalette(cur);
+  if(st) st.innerHTML=renderStationFacilityStats(built, cur);
+}
+// Facility tabs + aggregate stats for the focused facility
+function renderStationFacilityStats(built, cur){
+  const tabs=built.map(b=>`<button class="btn ${b.def.id===state.stationFocus?'launch':'ghost'}" style="font-size:12px" onclick="state.stationFocus='${b.def.id}';renderStation()">${b.def.icon} ${b.def.name}</button>`).join(' ');
+  const fs=cur.fs, def=cur.def, list=facilityModuleList(fs), pw=facilityPower(fs), pr=facilityProduction(def,fs);
+  const mass=list.reduce((a,id)=>a+((stationModuleDef(id)||{}).stats||{}).mass||0,0);
+  const crew=list.reduce((a,id)=>a+(((stationModuleDef(id)||{}).stats||{}).crew||0),0);
+  const cell=(k,v,sub)=>`<div class="metric"><div class="k">${k}</div><div class="v">${v}</div>${sub?`<div class="dim" style="font-size:12px">${sub}</div>`:''}</div>`;
+  return `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${tabs}</div>
+    <div class="mission-tag">${def.name} — ${list.length} module${list.length>1?'s':''} / ${facilityPortCap(fs)} ports</div>
+    <div class="metrics">
+      ${cell('Mass', mass.toFixed(1)+' t')}
+      ${cell('Crew capacity', crew)}
+      ${cell('Power', (pw.net>=0?'+':'')+pw.net+' kW', pw.gen+' gen − '+pw.draw+' draw')}
+      ${cell('Income', '+'+fM(pr.income)+'/mo')}
+      ${cell('Science', '+'+pr.sci.toFixed(1)+'/mo')}
+      ${cell('Resupply', fM(resupplyCostFull(def.id))+'/mo', facilityGreenhouses(fs)?facilityGreenhouses(fs)+' greenhouse':'')}
+    </div>
+    ${pw.net<0?`<div class="flag warn">△ Power-starved — production running at 60%. Dock a Solar Power Truss.</div>`:''}
+    ${list.length>=facilityPortCap(fs)?`<div class="flag warn">△ All ${facilityPortCap(fs)} ports occupied — a Docking Node adds 3 more.</div>`:''}`;
+}
+// The assembled stack, drawn as a side-view chain
+function renderStationStackSVG(W,H,cur){
+  const list=facilityModuleList(cur.fs);
+  const total=list.reduce((a,id)=>a+((stationModuleDef(id)||{}).len||150)*0.55+14,0);
+  const scale=Math.min(1, (W-80)/total);
+  let x=(W-total*scale)/2, cy=H*0.5, s=`<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="max-width:100%;height:auto;background:#070b11;border-radius:8px 8px 0 0">`;
+  list.forEach((id,i)=>{
+    const d=stationModuleDef(id)||stationModuleDef('can_std');
+    const L=d.len*0.55*scale, hd=d.dia*0.5*0.55*scale;
+    if(id==='power_truss'){
+      s+=`<line x1="${x}" y1="${cy}" x2="${x+L}" y2="${cy}" stroke="#6a7782" stroke-width="${4*scale}"/>`;
+      [-1,1].forEach(sgn=>{ s+=`<rect x="${x+L*0.15}" y="${sgn>0?cy+6*scale:cy-6*scale-46*scale}" width="${L*0.7}" height="${46*scale}" fill="#12243a" stroke="#2f5a8a"/>`; });
+    } else if(id==='node_hub'){
+      s+=`<circle cx="${x+L/2}" cy="${cy}" r="${hd}" fill="${d.color}" stroke="#586066" stroke-width="2"/>`;
+      [[0,-1],[0,1]].forEach(([dx,dy])=>{ s+=`<rect x="${x+L/2-7*scale}" y="${cy+dy*hd-(dy<0?12*scale:0)}" width="${14*scale}" height="${12*scale}" fill="#7e8990"/>`; });
+    } else {
+      s+=`<rect x="${x}" y="${cy-hd}" width="${L}" height="${hd*2}" rx="${8*scale}" fill="${d.color}" stroke="#586066" stroke-width="2"/>`;
+      if(id==='can_std'){ [-1,1].forEach(sgn=>{ s+=`<rect x="${x+L*0.35}" y="${sgn>0?cy+hd+4*scale:cy-hd-4*scale-34*scale}" width="${L*0.3}" height="${34*scale}" fill="#12243a" stroke="#2f5a8a"/>`; }); }
+      if(id==='greenhouse'){ s+=`<rect x="${x+4*scale}" y="${cy-hd*0.5}" width="${L-8*scale}" height="${hd}" fill="#0f2a14" stroke="#3f7a4a"/>`; }
+      if(id==='depot_mod'){ s+=`<ellipse cx="${x+L/2}" cy="${cy}" rx="${L*0.32}" ry="${hd*0.72}" fill="none" stroke="#2f6a45" stroke-width="2"/>`; }
+    }
+    s+=`<text x="${x+L/2}" y="${cy+hd+16*scale+12}" fill="#8b98a5" font-size="10" font-family="ui-monospace,monospace" text-anchor="middle">${d.short}</text>`;
+    x+=L+14*scale;
+  });
+  s+='</svg>';
+  return s;
+}
+// Palette of dockable modules with cost/gates
+function renderStationPalette(cur){
+  const cards=STATION_MODULES.map(md=>{
+    const chk=canAddStationModule(cur.def.id, md.id);
+    const cost=stationModuleCost(cur.def, cur.fs, md);
+    return `<div class="card" style="flex:1;min-width:170px">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <b style="color:${md.color};font-size:13px">${md.short}</b>
+        <span class="dim" style="font-family:var(--mono);font-size:12px">${fM(cost)} · ${md.buildMo} mo</span>
+      </div>
+      <div style="font-size:12px;color:var(--ink);margin:2px 0">${md.name}</div>
+      <div class="dim" style="font-size:12px;margin-bottom:6px">${md.blurb}</div>
+      <div class="dim" style="font-family:var(--mono);font-size:11px;margin-bottom:6px">${md.stats.powerGenKw?'+'+md.stats.powerGenKw+' kW':'−'+md.stats.powerDrawKw+' kW'}${md.stats.crew?' · '+md.stats.crew+' crew':''}${md.ports?' · +'+md.ports+' ports':''}${md.resupplyCut?' · −15% resupply':''}</div>
+      <button class="btn ${chk.ok?'launch':''}" style="width:100%;font-size:12px" onclick="addStationModule('${cur.def.id}','${md.id}')" ${chk.ok?'':'disabled'}>${chk.ok?'Dock module ▸':chk.why}</button>
+    </div>`;
+  }).join('');
+  return `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">${cards}</div>`;
 }
 // Static SVG fallback (no Phaser / headless): the same annotated module, no pan/zoom.
 function renderStationSVG(W,H,mod){
