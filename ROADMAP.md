@@ -593,3 +593,48 @@ decisions. **These intentionally break "balance exactly preserved" where it conf
 - `orbital-ventures.html` — the game
 - `orbital-ventures-design.md` — original full design doc
 - `orbital-ventures-systems-spec.md` — rocket equation + ECLSS deep dive
+
+## Session — Balance/UX audit, trap-node wiring, Station Bench slice 2 (2026-07-02)
+
+**Context.** User uploaded the live game file for a fresh audit: "improve overall cohesiveness, playability, and features... think like both a game developer and a KSP/Stellaris fan." Full playthrough simulation (headless bot, 50-trial survival tests) surfaced that idle play was earning money (government funding paid at neutral public support), making the treasury a non-issue. Fixed, then worked through the priority list the audit produced.
+
+### Balance & cohesion pass ✅ DONE (commit `f9b2ec8`)
+
+- **Economy tension:** `govMonthlyFunding()` now pays only for public support *above* neutral (50), full grant at 80; goodwill above neutral decays at half the rate bad blood heals (sticky). Windfall/grant events gated on an active program (flight in last 36 months, active research, or support > neutral+3) — an idle agency stops attracting money. Napkin difficulty keeps a small floor grant as its forgiving identity. **Idle-only play now bankrupts in ~4 years** (was: grew from $5M to $88M over 30 years, confirmed via headless sim).
+- **Runway tracking:** `runwayMonths()` + one-shot treasury warnings at 12mo/6mo remaining.
+- **Government Mandates (new system):** periodic (every ~15mo) offer to fly a specific achievable mission by a deadline for a cash bonus (0.65× payout, era-scaled) + support swing (+8 fulfilled / −10 missed). The designed replacement for the old ambient grants — earned bridge financing that makes the calendar matter. `MANDATE_COOLDOWN_MO`/`MANDATE_BONUS_MULT` are the tuning knobs if pacing needs adjustment.
+- **UX:** attention badges (`tabAlerts()`/`renderTabBadges()`) on all 5 scene tabs — treasury danger, mandate deadlines, staff morale crises, expiring passive contracts, a vehicle design that can't fly the active mission, an idle R&D lab with affordable research, an imminent committed launch window. Δv shortfall message now quantifies the exact gap instead of a vague "build more capability." Launch re-entry guard while any decision modal (`_pendingLaunch`/`_pendingLive`/`_pendingSetback`) is open. Type floor lifted ~200 instances (10px→11px, 11px→12px) for readability.
+- **Milestone celebrations:** every first-time mission completion gets a fanfare modal framed against the rival space race ("You beat Vostochny Dynamics to it by 3 years" / "Meridian got there first — but flying it yourself is what builds an agency"), historical footnote, and reward readout.
+
+### Trap-node wiring ✅ DONE (commit `f9b2ec8`)
+
+All 7 research nodes that previously had `effect:{}` (purchasable, cost real money/months, did nothing) now have real mechanics:
+- `cryo_boiloff_control` — new mechanic: LH₂ (CH₄ at half rate) in-space stages lose propellant over long coasts (1.5%/mo uncontrolled, capped 30%); node cuts rate ~4× to 0.4%/mo. Surfaced in mission readout + leg table. Validated: hypergolics immune, MISSIONS data never mutated, hydrolox Mars prop floor rises 100t→175t uncontrolled, research buys it back to 100t.
+- `gravity_assist_planning` — −8% Δv on Jupiter/Saturn/Belt transfer legs, marked on the leg row.
+- `orbital_eva` — crewed reliability penalty 0.92→0.95.
+- `surface_fission_power` — −25% facility standing resupply cost.
+- `onorbit_servicing` — unlocks the Satellite Servicing Fleet passive contract ($2.6M/mo, 150 rep).
+- `megawatt_electric` — +10% Isp on all electric drives (Hall/Ion/NEP), via `reconcileEngineMods()` against captured base values — survives save/load/newGame without double-applying.
+- `fusion_propulsion_research` — unlocks the new **Daedalus Fusion Torch** engine (Isp 6000s, real thrust 60kN) — the Speculative-era capstone drive.
+
+### Station Bench slice 2 — full module assembly ✅ DONE (commit `5c60c8c`)
+
+Previously a placeholder tab (one annotated sample module, no assembly). Now a real designer wired to actual built facilities:
+- **Module library** (`STATION_MODULES`, 6 types): Habitat (`can_std`, power-positive core), Research Lab, Solar Power Truss, Docking Node (adds +3 ports), Propellant Depot Module (needs `orbital_depot`), Greenhouse (needs `eclss_partial`, −15% resupply + self-feeding).
+- **Per-facility assembly:** `fs.moduleList[]` (legacy saves migrate lazily — old generic module counts become Habitats). `addStationModule()`: cost = module base × body multiplier × size escalation; build months advance the calendar; assembly flight refreshes supply clock.
+- **Typed production:** facility output = base + Σ(docked module `prod` × body multiplier); **power-starved stations (draw > gen) run at 60%** — labs are science engines but power-hungry, forcing a Power Truss.
+- **Port caps:** 4 base slots, +3 per Docking Node.
+- **New bench UI:** facility selector tabs (when multiple built), assembled-stack side-view SVG with per-module-type silhouettes, aggregate stats panel (mass/crew/power/income/science/resupply) with power-starve and port-cap warnings, 6-card dock palette with live cost/gate/afford state.
+- Legacy `expandFacility()` (Command Center quick-expand) now routes through the typed path, adding a Habitat.
+
+**Validated headlessly (all three):** boot, all 5 tab renders, flight resolution, save/load roundtrip, idle-bankruptcy pacing (4yr), boil-off margins, engine-stat reconciliation across save/load/newGame, full assembly flow (found→dock lab→power-starve→dock truss→recovers→port cap blocks→node raises cap→greenhouse gate+resupply cut→legacy expand→migration→render→save/load).
+
+### Recommended next steps (not yet started), in priority order
+
+1. **Mission-card net-economics line** — deep missions (Mars 520d, Jupiter 2190d) show payout but never the carrying cost (overhead+payroll+opex) burned during transit — the real margin is invisible. Add a "net after mission duration" figure to profile-mission cards.
+2. **Solar system map asset overlay** — the map (#13 planning surface) has no visual trajectory line for the planned mission, and doesn't show owned assets (depots, bases, in-flight missions) live on the map. Currently a reference chart; should become a theater view.
+3. **Engine differentiation nudges** — `kerolox_le` vs `solid_castor` are near-identical price/performance; solids should have a real no-restart constraint on multi-burn profile legs to justify their niche. NEP (`nep_snap`) needs an identity vs ion+reactor (cheaper integrated package or no separate reactor mass, since ion+reactor likely soft-dominates it everywhere power isn't solar-starved).
+4. **Cape/Earth-map status glyphs** — building-state-at-a-glance on the isometric hub (pad busy / lab idle / yard queue depth) — noted as already partially done in an earlier session; verify current state before re-scoping.
+5. **Tech-tree/mission-ladder balance pass** — payout inversions found in audit: `space_telescope`/`sample_return`/`astrobiology` cost more Δv than `first_sat` but pay a third as much (may be justified by science yield — if so, surface that on the card); `endurance` (195 rep, $75M) out-pays `luna_flyby` (210 rep, $55M) — a lunar first probably shouldn't be a pay cut.
+
+**Repo state:** all changes on `main`, pushed via Git Data API (fine-grained PAT, treated as compromised/revoked immediately after use per standing practice). Working file at `/home/claude/ov.html` in-session; `orbital-ventures.html` in repo is current as of commit `5c60c8c`.
