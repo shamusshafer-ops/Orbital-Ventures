@@ -629,12 +629,44 @@ Previously a placeholder tab (one annotated sample module, no assembly). Now a r
 
 **Validated headlessly (all three):** boot, all 5 tab renders, flight resolution, save/load roundtrip, idle-bankruptcy pacing (4yr), boil-off margins, engine-stat reconciliation across save/load/newGame, full assembly flow (found→dock lab→power-starve→dock truss→recovers→port cap blocks→node raises cap→greenhouse gate+resupply cut→legacy expand→migration→render→save/load).
 
-### Recommended next steps (not yet started), in priority order
+### Post-session corrections (2026-07-02, later same day)
 
-1. **Mission-card net-economics line** — deep missions (Mars 520d, Jupiter 2190d) show payout but never the carrying cost (overhead+payroll+opex) burned during transit — the real margin is invisible. Add a "net after mission duration" figure to profile-mission cards.
-2. **Solar system map asset overlay** — the map (#13 planning surface) has no visual trajectory line for the planned mission, and doesn't show owned assets (depots, bases, in-flight missions) live on the map. Currently a reference chart; should become a theater view.
-3. **Engine differentiation nudges** — `kerolox_le` vs `solid_castor` are near-identical price/performance; solids should have a real no-restart constraint on multi-burn profile legs to justify their niche. NEP (`nep_snap`) needs an identity vs ion+reactor (cheaper integrated package or no separate reactor mass, since ion+reactor likely soft-dominates it everywhere power isn't solar-starved).
-4. **Cape/Earth-map status glyphs** — building-state-at-a-glance on the isometric hub (pad busy / lab idle / yard queue depth) — noted as already partially done in an earlier session; verify current state before re-scoping.
-5. **Tech-tree/mission-ladder balance pass** — payout inversions found in audit: `space_telescope`/`sample_return`/`astrobiology` cost more Δv than `first_sat` but pay a third as much (may be justified by science yield — if so, surface that on the card); `endurance` (195 rep, $75M) out-pays `luna_flyby` (210 rep, $55M) — a lunar first probably shouldn't be a pay cut.
+The "recommended next steps" list below was written before several more commits landed later
+the same day (`1e9de2df`→`b7ba8fb5`). Verified directly against the live repo file — items 1,
+3, 4 were built; item 5 was addressed by design (not a bug); item 2 remains genuinely open:
 
-**Repo state:** all changes on `main`, pushed via Git Data API (fine-grained PAT, treated as compromised/revoked immediately after use per standing practice). Working file at `/home/claude/ov.html` in-session; `orbital-ventures.html` in repo is current as of commit `5c60c8c`.
+1. ✅ **DONE** (`1e9de2df`) — `missionNetEconomics()`/`missionNetHTML()` now show true margin
+   after mission-duration carrying costs, wired into both the mission list and detail readout.
+2. ⬜ **STILL OPEN** — confirmed via code read: `renderMapActivity()` is a side card (market
+   events + rival frontier), not an on-map overlay. No planned-trajectory line or live
+   depot/base/in-flight-mission markers drawn on the map scene itself yet.
+3. ✅ **DONE** (`f226159d`) — Engine differentiation: heritage system (`state.engineHeritage`,
+   flight-count-based cost/reliability bonus), solid-motor simplicity discount + insertion
+   reliability tax (`SOLID_SIMPLICITY_DISCOUNT`, `SOLID_INSERTION_REL_TAX`).
+4. ✅ **DONE** (`5b42187e`) — Cape status glyphs: `buildingGlyph()`/`GLYPH_COLOR`, live
+   attention/active/ok/idle state per building on the home screen.
+5. ✅ **ADDRESSED BY DESIGN** — the low-payout science missions (`space_telescope`,
+   `sample_return`, `astrobiology`) are explicitly commented in the source as "#3: prestige
+   science missions — pay little money, but bank a large knowledge windfall (sciYield)". Not
+   a balance bug; intentional payout/knowledge tradeoff. Not revisited.
+
+**Also shipped same session, beyond the original list:**
+- `0ea922e1` — Station Bench finished: crew requirements (`facilityCrew`), synergies
+  (`facilitySynergies`), station-wide R&D speed bonus (`stationRdSpeedBonus`).
+- `b7ba8fb5` — Tech tree interaction layer: track/status filters, prereq-chain path
+  highlighting on node focus (`techPrereqChain`, `setTechFilter`, `setTechFocus`), per-track
+  progress.
+- `aef0edd4` — Debloat pass: removed dead code, consolidated duplication (−226 lines).
+
+### Recommended next steps, in priority order (corrected)
+
+1. **Solar system map asset overlay** — the only substantive item left from the original audit.
+   Draw the planned mission's trajectory as a line on the map scene itself (SVG + Phaser paths),
+   and show owned assets — depots, bases, in-flight missions — as live markers on the map rather
+   than in the side `renderMapActivity()` card. Turns the map from a reference chart into a
+   theater view.
+2. *(No other open items from the original audit — re-audit before adding new ones.)*
+
+**Repo state:** all changes on `main` through commit `c4b88dc9` (this file). Live file is
+`orbital-ventures.html`, ~972K chars. Pushed via Git Data API (fine-grained PAT, treated as
+compromised/revoked immediately after use per standing practice).
