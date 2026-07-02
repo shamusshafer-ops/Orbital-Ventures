@@ -2276,7 +2276,7 @@ function tickContinuousDay(){
   state.money+=perDay(govMonthlyFunding()); // #8: public support buys government funding (slice 3a: accrues daily)
   if(state.activeResearch && !_pendingSetback){ // #26: R&D progresses daily; a pending setback freezes it
     const _rdNode=RESEARCH.find(r=>r.id===state.activeResearch.id);
-    const rdBonus=engRdSpeedBonus()+divisionSpeedBonus(_rdNode)+partnerSpeedBonus(_rdNode); // #6: research partnerships accelerate their track
+    const rdBonus=engRdSpeedBonus()+stationRdSpeedBonus()+divisionSpeedBonus(_rdNode)+partnerSpeedBonus(_rdNode); // #6: research partnerships accelerate their track; orbital labs add station R&D speed
     state.activeResearch.monthsLeft-=perDay(1+rdBonus); // rate reads (monthly-drifting) morale — stable within a month
     if(state.activeResearch.monthsLeft<=0) completeResearch();
   }
@@ -2695,6 +2695,35 @@ function facilityPower(fs){
   return {gen:Math.round(gen*10)/10, draw:Math.round(draw*10)/10, net:Math.round((gen-draw)*10)/10};
 }
 function facilityGreenhouses(fs){ return facilityModuleList(fs).filter(id=>id==='greenhouse').length; }
+// Crew balance: Habitats supply crew capacity; labs/depot/greenhouse demand crew to run.
+// Under-crewed stations degrade output (soft) rather than shutting modules off.
+function facilityCrew(fs){
+  let cap=0, req=0;
+  facilityModuleList(fs).forEach(id=>{ const d=stationModuleDef(id); if(!d) return;
+    cap+=d.stats.crew||0; req+=d.stats.crewReq||0; });
+  return {cap, req, factor: req<=0?1:Math.min(1, Math.max(0.4, cap/req))}; // 40% floor even fully unmanned
+}
+// Module synergies: thoughtful composition earns aggregate multipliers.
+//  - Lab + Habitat: crewed research runs hotter (+science)
+//  - Greenhouse + Habitat: closed-loop life support (+income efficiency, already cuts resupply)
+//  - Power surplus: a well-powered station (net ≥ +8kW) runs a small efficiency bonus
+//  - Depot + Power Truss: pumping propellant needs power headroom (+fuel)
+function facilitySynergies(fs){
+  const list=facilityModuleList(fs);
+  const has=id=>list.includes(id), n=id=>list.filter(x=>x===id).length;
+  const pw=facilityPower(fs);
+  const syn=[];
+  if(has('lab_mod')&&has('can_std')) syn.push({key:'crewed_research', label:'Crewed research', sci:0.20});
+  if(has('greenhouse')&&has('can_std')) syn.push({key:'closed_loop', label:'Closed-loop life support', income:0.15});
+  if(pw.net>=8) syn.push({key:'power_surplus', label:'Power surplus', income:0.10, sci:0.10});
+  if(has('depot_mod')&&n('power_truss')>=1) syn.push({key:'active_depot', label:'Active depot pumping', fuel:0.25});
+  return syn;
+}
+function facilitySynergyMult(fs){
+  const m={income:1, fuel:1, rep:1, sci:1};
+  facilitySynergies(fs).forEach(s=>{ for(const k in m) if(s[k]) m[k]+=s[k]; });
+  return m;
+}
 // per-body production multiplier: preserves the old LEO/lunar/Mars scaling (perModule.income 0.5/1.0/1.8)
 function facilityBodyMult(def){ return Math.max(1, (def.perModule&&def.perModule.income||0.5)/0.5); }
 function stationModuleCost(def, fs, modDef){
@@ -2727,10 +2756,12 @@ function addStationModule(facId, modId){
 function facilityProduction(def, fs){
   const list=facilityModuleList(fs), mult=facilityBodyMult(def);
   const pw=facilityPower(fs), starve=pw.net<0?0.6:1; // power-starved stations run at 60%
+  const crew=facilityCrew(fs), syn=facilitySynergyMult(fs);
   const sum={income:0,fuel:0,rep:0,sci:0};
   list.forEach((id,i)=>{ if(i===0) return; const d=stationModuleDef(id); if(d&&d.prod) for(const k in sum) sum[k]+=(d.prod[k]||0); });
-  const add=(k)=> ((def.base[k]||0) + sum[k]*mult)*starve;
-  return {income:round2(add('income')), fuel:round2(add('fuel')), rep:round2(add('rep')), sci:round2(add('sci')), modules:list.length, powerNet:pw.net};
+  const add=(k)=> ((def.base[k]||0) + sum[k]*mult)*starve*crew.factor*(syn[k]||1);
+  return {income:round2(add('income')), fuel:round2(add('fuel')), rep:round2(add('rep')), sci:round2(add('sci')),
+    modules:list.length, powerNet:pw.net, crew, synergies:facilitySynergies(fs)};
 }
 // home-field bonus for missions to a body that hosts one of your bases
 function facilityBonus(body){
@@ -5420,6 +5451,16 @@ function engRelBonus(){ return engScores().rel*ENG_REL_BONUS_MAX; }
 function engRdSpeedBonus(){
   // returns fractional extra R&D months per calendar month (0–ENG_RD_SPEED_MAX)
   return engScores().rd*ENG_RD_SPEED_MAX;
+}
+// Orbital research stations accelerate R&D: total station science output above a threshold
+// contributes fractional research speed. Capped so it complements (not replaces) engineers.
+const STATION_RD_SPEED_MAX=0.25;
+function stationRdSpeedBonus(){
+  let sci=0;
+  for(const fid in (state.facilities||{})){ if(!facilityBuilt(fid)) continue;
+    const pr=facilityProduction(facilityById(fid), facilityState(fid)); sci+=pr.sci*facilitySupplyFactor(fid); }
+  // 6 sci/mo of orbital research ≈ full bonus
+  return Math.min(STATION_RD_SPEED_MAX, sci/6*STATION_RD_SPEED_MAX);
 }
 
 function assignedAstroRecord(){
@@ -11476,7 +11517,7 @@ const STATION_MODULES = [
       { key:'aft',        label:'Aft node / endcap',    x:-120, y:0,   note:'Pressure dome + utility trunk' },
     ] },
   { id:'lab_mod', name:'Research Laboratory', short:'LAB', len:180, dia:84, color:'#5aa9e0',
-    cost:11, buildMo:5, stats:{ mass:16.5, crew:0, powerGenKw:0, powerDrawKw:5.5 },
+    cost:11, buildMo:5, stats:{ mass:16.5, crew:0, crewReq:2, powerGenKw:0, powerDrawKw:5.5 },
     prod:{ income:0.2, fuel:0, rep:0.3, sci:2.6 },
     blurb:'Racks of microgravity experiments — materials, biology, fluids. The station\'s science engine.' },
   { id:'power_truss', name:'Solar Power Truss', short:'PWR', len:150, dia:36, color:'#e8b64c',
@@ -11488,11 +11529,11 @@ const STATION_MODULES = [
     prod:{ income:0.1, fuel:0, rep:0.2, sci:0 }, ports:3,
     blurb:'A six-port junction sphere. Every node adds 3 berths of growth room to the station.' },
   { id:'depot_mod', name:'Propellant Depot Module', short:'FUEL', len:170, dia:96, color:'#67c587',
-    cost:12, buildMo:5, stats:{ mass:20.0, crew:0, powerGenKw:0, powerDrawKw:2.2 }, reqResearch:'orbital_depot',
+    cost:12, buildMo:5, stats:{ mass:20.0, crew:0, crewReq:1, powerGenKw:0, powerDrawKw:2.2 }, reqResearch:'orbital_depot',
     prod:{ income:0.35, fuel:0.8, rep:0.3, sci:0 },
     blurb:'Insulated tankage and transfer plumbing — the station becomes a gas station, feeding the LEO depot economy.' },
   { id:'greenhouse', name:'Greenhouse Module', short:'GRN', len:190, dia:90, color:'#7bc46a',
-    cost:10, buildMo:5, stats:{ mass:15.0, crew:0, powerGenKw:0, powerDrawKw:4.8 }, reqResearch:'eclss_partial',
+    cost:10, buildMo:5, stats:{ mass:15.0, crew:0, crewReq:1, powerGenKw:0, powerDrawKw:4.8 }, reqResearch:'eclss_partial',
     prod:{ income:0.15, fuel:0, rep:0.4, sci:0.4 }, resupplyCut:0.15,
     blurb:'Crops under grow-lights. Each greenhouse cuts this facility\'s standing resupply cost 15% — food grown on-site never needs launching.' },
 ];
@@ -11608,20 +11649,28 @@ function renderStationFacilityStats(built, cur){
   const tabs=built.map(b=>`<button class="btn ${b.def.id===state.stationFocus?'launch':'ghost'}" style="font-size:12px" onclick="state.stationFocus='${b.def.id}';renderStation()">${b.def.icon} ${b.def.name}</button>`).join(' ');
   const fs=cur.fs, def=cur.def, list=facilityModuleList(fs), pw=facilityPower(fs), pr=facilityProduction(def,fs);
   const mass=list.reduce((a,id)=>a+((stationModuleDef(id)||{}).stats||{}).mass||0,0);
-  const crew=list.reduce((a,id)=>a+(((stationModuleDef(id)||{}).stats||{}).crew||0),0);
+  const crew=facilityCrew(fs), syn=facilitySynergies(fs);
   const cell=(k,v,sub)=>`<div class="metric"><div class="k">${k}</div><div class="v">${v}</div>${sub?`<div class="dim" style="font-size:12px">${sub}</div>`:''}</div>`;
+  const crewColor = crew.factor>=1?'var(--ok)':crew.factor>=0.7?'var(--warn)':'var(--bad)';
+  const synHTML = syn.length
+    ? `<div style="margin-top:8px"><div class="mission-tag">Synergies active</div>${syn.map(s=>{
+        const bits=['income','fuel','rep','sci'].filter(k=>s[k]).map(k=>`+${Math.round(s[k]*100)}% ${k}`).join(' · ');
+        return `<div class="flag ok" style="margin:3px 0">✦ ${s.label} — ${bits}</div>`; }).join('')}</div>`
+    : `<div class="dim" style="font-size:12px;margin-top:8px">No synergies yet — pair a Lab or Greenhouse with a Habitat, keep power in surplus, or back a Depot with a Power Truss.</div>`;
   return `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${tabs}</div>
     <div class="mission-tag">${def.name} — ${list.length} module${list.length>1?'s':''} / ${facilityPortCap(fs)} ports</div>
     <div class="metrics">
       ${cell('Mass', mass.toFixed(1)+' t')}
-      ${cell('Crew capacity', crew)}
+      ${cell('Crew', `<span style="color:${crewColor}">${crew.cap}/${crew.req||0}</span>`, crew.req>0?(crew.factor>=1?'fully crewed':`${Math.round(crew.factor*100)}% output — short ${crew.req-crew.cap} crew`):'no crew needed')}
       ${cell('Power', (pw.net>=0?'+':'')+pw.net+' kW', pw.gen+' gen − '+pw.draw+' draw')}
       ${cell('Income', '+'+fM(pr.income)+'/mo')}
       ${cell('Science', '+'+pr.sci.toFixed(1)+'/mo')}
       ${cell('Resupply', fM(resupplyCostFull(def.id))+'/mo', facilityGreenhouses(fs)?facilityGreenhouses(fs)+' greenhouse':'')}
     </div>
     ${pw.net<0?`<div class="flag warn">△ Power-starved — production running at 60%. Dock a Solar Power Truss.</div>`:''}
-    ${list.length>=facilityPortCap(fs)?`<div class="flag warn">△ All ${facilityPortCap(fs)} ports occupied — a Docking Node adds 3 more.</div>`:''}`;
+    ${crew.req>crew.cap?`<div class="flag warn">△ Under-crewed (${crew.cap}/${crew.req}) — output at ${Math.round(crew.factor*100)}%. Dock a Habitat (each adds 3 crew).</div>`:''}
+    ${list.length>=facilityPortCap(fs)?`<div class="flag warn">△ All ${facilityPortCap(fs)} ports occupied — a Docking Node adds 3 more.</div>`:''}
+    ${synHTML}`;
 }
 // The assembled stack, drawn as a side-view chain
 function renderStationStackSVG(W,H,cur){
@@ -11662,7 +11711,7 @@ function renderStationPalette(cur){
       </div>
       <div style="font-size:12px;color:var(--ink);margin:2px 0">${md.name}</div>
       <div class="dim" style="font-size:12px;margin-bottom:6px">${md.blurb}</div>
-      <div class="dim" style="font-family:var(--mono);font-size:11px;margin-bottom:6px">${md.stats.powerGenKw?'+'+md.stats.powerGenKw+' kW':'−'+md.stats.powerDrawKw+' kW'}${md.stats.crew?' · '+md.stats.crew+' crew':''}${md.ports?' · +'+md.ports+' ports':''}${md.resupplyCut?' · −15% resupply':''}</div>
+      <div class="dim" style="font-family:var(--mono);font-size:11px;margin-bottom:6px">${md.stats.powerGenKw?'+'+md.stats.powerGenKw+' kW':'−'+md.stats.powerDrawKw+' kW'}${md.stats.crew?' · +'+md.stats.crew+' crew':''}${md.stats.crewReq?' · needs '+md.stats.crewReq+' crew':''}${md.ports?' · +'+md.ports+' ports':''}${md.resupplyCut?' · −15% resupply':''}</div>
       <button class="btn ${chk.ok?'launch':''}" style="width:100%;font-size:12px" onclick="addStationModule('${cur.def.id}','${md.id}')" ${chk.ok?'':'disabled'}>${chk.ok?'Dock module ▸':chk.why}</button>
     </div>`;
   }).join('');
