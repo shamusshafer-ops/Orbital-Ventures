@@ -4012,6 +4012,50 @@ function simulateMission(m){
 // #7 manufacturing-visualisation: a step-by-step waterfall of how buildCost is built up.
 // Mirrors the buildCost math in computeVehicle exactly — a validation test pins
 // breakdown.total to v.buildCost across many state shapes, so the two stay in sync.
+
+/* ---------- Mission net economics: the true margin after everything ----------
+   A mission's real profit isn't just payout − build. It ties up capital for the whole
+   build + flight campaign, during which the recurring monthly burn keeps running, and
+   the direct build/launch/test spend lands up front. This estimates the net so the
+   player can see whether a prestige mission actually pays or quietly bleeds the treasury.
+   Uses the SAME payout formula as proceedLaunch so the estimate matches the payday. */
+function estMissionPayout(m){
+  const routine=!!state.completed[m.id];
+  const wq=(m.window && state.committedWindow)?state.committedWindow.quality:1;
+  let p=(routine?m.payout*0.4:m.payout)*wq*diff().payoutMult*econPayoutMult()*doctrineMult('payout');
+  if(m.crew>0){ const ab=astroBonus?astroBonus():{payoutMult:1}; p*=ab.payoutMult||1; }
+  if(!routine && state.scooped && state.scooped[m.id]) p*=SCOOP_PAYOUT_MULT;
+  return round2(p);
+}
+function missionNetEconomics(m, v, sim){
+  v=v||computeVehicle(); if(!sim && m.profile) sim=simulateMission(m);
+  const tl=TEST_LEVELS[state.testLevel];
+  const directCost=round2(v.buildCost + v.launchCost + (tl.cost||0));
+  const campaignMo=(buildMonths(m)+1+(tl.months||0)) + Math.round((m.days||0)/30); // build+launch+test, then flight duration
+  const monthlyNet=(state.lastMonth&&state.lastMonth.net!=null)?state.lastMonth.net:0; // current recurring net (funding, payroll, upkeep…)
+  const carryCost=round2(-monthlyNet*campaignMo); // if net is negative, campaign months cost you this much
+  const payout=estMissionPayout(m);
+  const mandateBonus=(state.mandate && state.mandate.accepted && state.mandate.missionId===m.id && absMonth()<=state.mandate.deadlineAbs)?round2(state.mandate.bonus):0;
+  const net=round2(payout + mandateBonus - directCost - carryCost);
+  return {payout, mandateBonus, directCost, carryCost, campaignMo, monthlyNet, net, routine:!!state.completed[m.id]};
+}
+function missionNetHTML(m, v, sim){
+  const e=missionNetEconomics(m, v, sim);
+  const netColor=e.net>=0?'var(--ok)':'var(--bad)';
+  const carryLine = e.carryCost>0.01
+    ? `<div class="row" style="justify-content:space-between"><span class="dim">− Carry (${e.campaignMo} mo × ${fM(-e.monthlyNet)}/mo burn)</span><span style="font-family:var(--mono)">−${fM(e.carryCost)}</span></div>`
+    : `<div class="row" style="justify-content:space-between"><span class="dim">Recurring cashflow over ${e.campaignMo} mo</span><span style="font-family:var(--mono);color:var(--ok)">covered</span></div>`;
+  return `<div class="mission-tag" style="margin-top:8px">Net economics — the real margin</div>
+    <div style="font-size:12px;padding:2px 0">
+      <div class="row" style="justify-content:space-between"><span class="dim">Payout${e.routine?' (routine ×0.4)':''}</span><span style="font-family:var(--mono);color:var(--ok)">+${fM(e.payout)}</span></div>
+      ${e.mandateBonus>0?`<div class="row" style="justify-content:space-between"><span class="dim">+ Mandate bonus</span><span style="font-family:var(--mono);color:var(--ok)">+${fM(e.mandateBonus)}</span></div>`:''}
+      <div class="row" style="justify-content:space-between"><span class="dim">− Build + launch + test</span><span style="font-family:var(--mono)">−${fM(e.directCost)}</span></div>
+      ${carryLine}
+      <div class="row" style="justify-content:space-between;border-top:1px solid var(--line);margin-top:4px;padding-top:4px"><b>Estimated net</b><b style="font-family:var(--mono);color:${netColor}">${e.net>=0?'+':''}${fM(e.net)}</b></div>
+    </div>
+    ${e.net<0?`<div class="flag warn">△ This mission is projected to lose money after ${e.campaignMo} months of carrying costs. Fine for a prestige/mandate first — but routine reflights at a loss will bleed the treasury.</div>`:''}`;
+}
+
 function buildCostBreakdown(m){
   if(!m) m=curMission();
   const rows=[];
@@ -10725,6 +10769,7 @@ function renderReadout(){
     </div>
 
     <div class="adv-only">${buildCostBreakdownHTML(m)}${subsystemBreakdownHTML(m,v)}</div>
+    ${missionNetHTML(m,v,null)}
     ${massFractionHTML(v)}
 
     <div class="eq">Δv = Isp · g₀ · ln(m₀/m_f) − gravity loss<br>
@@ -10794,6 +10839,7 @@ function renderProfileReadout(m){
     </div>
 
     <div class="adv-only">${buildCostBreakdownHTML(m)}${subsystemBreakdownHTML(m,v)}</div>
+    ${missionNetHTML(m,v,sim)}
     ${massFractionHTML(v)}
 
     <div class="eq">The launch vehicle lofts the whole stack (${v.payload.toFixed(1)} t) to LEO; the transfer stage then spends one tank across ${sim.inSpaceLegs} deep-space burn${sim.inSpaceLegs>1?'s':''}, lighter after each — yet every burn still hauls everything still attached.${m.modules.includes('lander')?' The descent stage is dropped on the surface after landing; the ascent stage returns alone to meet the transfer stage.':''}${state.depotUse>0?` This run draws <b style="color:var(--readout)">${state.depotUse.toFixed(1)} t</b> from the LEO depot — propellant that never had to be launched from Earth.`:''}${ISRU_FREE_LEG[m.id]&&state.research[ISRU_FREE_LEG[m.id].research]?` <b style="color:var(--ok)">${ISRU_FREE_LEG[m.id].label}</b> is online — the ${ISRU_FREE_LEG[m.id].leg} burn is produced on-site.`:''}</div>
