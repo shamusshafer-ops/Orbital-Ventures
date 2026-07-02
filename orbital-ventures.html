@@ -11666,18 +11666,75 @@ function stationStatsHTML(mod){
     </div>
     <div class="dim" style="font-size:12px;margin-top:6px">Module library in place — six typed modules with cost, power and production stats. Assembly (adding these to your built facilities) lands in the next slice.</div>`;
 }
+
+/* ---------- Station blueprint mode (pre-facility drawing board) ----------
+   Before any facility exists, the Station Bench is a free design sandbox: assemble a
+   blueprint, watch the engineering totals react, and carry the plan (it saves) until
+   Crewed Orbit makes the real thing possible. Dreaming is free; hardware is not. */
+function stationDraftFs(){ state.stationDraft=state.stationDraft&&state.stationDraft.length?state.stationDraft:['can_std']; return {moduleList:state.stationDraft}; }
+function draftAdd(modId){
+  const fs=stationDraftFs();
+  if(fs.moduleList.length>=facilityPortCap(fs) && modId!=='node_hub'){ log('note','Blueprint: all ports occupied — add a Docking Node for growth room.'); render(); return; }
+  fs.moduleList.push(modId); state.stationDraft=fs.moduleList; render();
+}
+function draftRemove(){ const fs=stationDraftFs(); if(fs.moduleList.length>1) fs.moduleList.pop(); state.stationDraft=fs.moduleList; render(); }
+function draftClear(){ state.stationDraft=['can_std']; render(); }
+function draftCostAt(defId){
+  const def=facilityById(defId); if(!def) return 0;
+  const fs={moduleList:[]}; let cost=0;
+  stationDraftFs().moduleList.forEach((id,i)=>{ const md=stationModuleDef(id); if(!md) return;
+    if(i===0){ fs.moduleList.push(id); return; } // the core comes with founding the facility
+    cost+=stationModuleCost(def, fs, md); fs.moduleList.push(id); });
+  return round2(cost);
+}
+function renderStationDraft(){
+  const c=$('stationCanvas'), st=$('stationStats');
+  const fs=stationDraftFs(), list=fs.moduleList;
+  const pw=facilityPower(fs), crew=facilityCrew(fs), cap=facilityPortCap(fs);
+  const mass=list.reduce((a,id)=>a+(((stationModuleDef(id)||{}).stats||{}).mass||0),0);
+  const gated=[...new Set(list.filter(id=>{ const md=stationModuleDef(id); return md&&md.reqResearch&&!state.research[md.reqResearch]; })
+    .map(id=>((RESEARCH.find(r=>r.id===stationModuleDef(id).reqResearch)||{}).name)||''))].filter(Boolean);
+  if(c){
+    const cards=STATION_MODULES.map(md=>`<div class="card" style="flex:1;min-width:150px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <b style="color:${md.color};font-size:13px">${md.short}</b>
+          <span class="dim" style="font-family:var(--mono);font-size:12px">${fM(md.cost)}${md.reqResearch&&!state.research[md.reqResearch]?' 🔒':''}</span>
+        </div>
+        <div style="font-size:12px;color:var(--ink);margin:2px 0">${md.name}</div>
+        <div class="dim" style="font-family:var(--mono);font-size:11px;margin-bottom:6px">${md.stats.powerGenKw?'+'+md.stats.powerGenKw+' kW':'−'+md.stats.powerDrawKw+' kW'}${md.stats.crew?' · '+md.stats.crew+' crew':''}${md.stats.crewReq?' · needs '+md.stats.crewReq+' crew':''}${md.ports?' · +'+md.ports+' ports':''}</div>
+        <button class="btn" style="width:100%;font-size:12px" onclick="draftAdd('${md.id}')">Add to blueprint ▸</button>
+      </div>`).join('');
+    c.innerHTML=renderStationStackSVG(720,280,{fs})
+      +`<div style="display:flex;gap:6px;margin:8px 0 4px">
+          <button class="btn ghost" style="font-size:12px" onclick="draftRemove()">↶ Remove last</button>
+          <button class="btn ghost" style="font-size:12px" onclick="draftClear()">✕ Clear blueprint</button>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">${cards}</div>`;
+  }
+  if(st){
+    const cell=(k,v,sub)=>`<div class="metric"><div class="k">${k}</div><div class="v">${v}</div>${sub?`<div class="dim" style="font-size:12px">${sub}</div>`:''}</div>`;
+    st.innerHTML=`<div class="mission-tag">Blueprint — drawing board</div>
+      <p class="muted" style="font-size:12px;margin:4px 0 10px">No facilities exist yet — design freely. Found the real thing from <b>Command Center → Infrastructure</b> once <b>Crewed Orbit</b> is flown, then build it out module by module at these prices.</p>
+      <div class="metrics">
+        ${cell('Modules', list.length+' / '+cap+' ports')}
+        ${cell('Mass', mass.toFixed(1)+' t')}
+        ${cell('Power', (pw.net>=0?'+':'')+pw.net+' kW', pw.gen+' gen − '+pw.draw+' draw')}
+        ${cell('Crew', crew.cap+' berths'+(crew.req?' / '+crew.req+' needed':''))}
+        ${cell('Build-out at LEO', fM(draftCostAt('leo_station')), 'beyond the founding cost')}
+        ${cell('…on the Moon / Mars', fM(draftCostAt('lunar_base'))+' / '+fM(draftCostAt('mars_base')))}
+      </div>
+      ${pw.net<0?`<div class="flag warn">△ Power-negative — this design would run at 60% output. Add a Solar Power Truss.</div>`:''}
+      ${crew.req>crew.cap?`<div class="flag warn">△ Under-crewed — ${crew.req} crew needed, ${crew.cap} berths. Output would degrade.</div>`:''}
+      ${gated.length?`<div class="flag warn">🔒 Blueprint uses research you don't have yet: ${gated.join(', ')}.</div>`:''}`;
+  }
+}
+
 function renderStation(){
   const sv=$('stationView'); if(sv) sv.classList.toggle('expanded', stationExpanded);
   const eb=$('stationExpandBtn'); if(eb) eb.textContent = stationExpanded ? '⛶ Exit full screen' : '⛶ Expand';
   const built=Object.keys(state.facilities||{}).map(id=>({def:facilityById(id), fs:state.facilities[id]})).filter(x=>x.def&&facilityBuilt(x.def.id));
   const c=$('stationCanvas'), st=$('stationStats');
-  if(!built.length){
-    // nothing built yet: show the sample core + guidance
-    if(st) st.innerHTML=`<div class="mission-tag">No facilities yet</div>
-      <p class="muted" style="font-size:12px">Found a station or base from the <b>Command Center → Infrastructure</b> panel (LEO Station unlocks after Crewed Orbit). Once it exists, this bench is where you grow it module by module.</p>`+stationStatsHTML(stationActiveModule());
-    if(c) c.innerHTML=renderStationSVG(720,460,stationActiveModule());
-    return;
-  }
+  if(!built.length){ renderStationDraft(); return; } // pre-facility: free blueprint drawing board
   if(!state.stationFocus || !built.some(b=>b.def.id===state.stationFocus)) state.stationFocus=built[0].def.id;
   const cur=built.find(b=>b.def.id===state.stationFocus);
   if(c) c.innerHTML=renderStationStackSVG(720,300,cur)+renderStationPalette(cur);
