@@ -11549,8 +11549,10 @@ const STN_W=760, STN_H=480;
 const STATION_MODULES = [
   { id:'can_std', name:'Pressurized Habitat', short:'HAB', len:200, dia:88, color:'#b8c0c7',
     cost:8, buildMo:4, stats:{ mass:18.0, crew:3, powerGenKw:6.0, powerDrawKw:4.2 },
-    prod:{ income:0.5, fuel:0, rep:0.5, sci:0.8 },
+    prod:{ income:0.5, fuel:0, rep:0.5, sci:0.8 }, role:'Core / crew',
     blurb:'Crew quarters, galley and workstations — the living space every station grows from.',
+    hist:'Skylab (1973) gave the US its first roomy orbital home; Mir\'s core module (1986) proved a station could be permanently crewed for a decade.',
+    synHint:'Supplies the crew that Labs, Depots and Greenhouses need. Pairs with a Lab for +20% science and a Greenhouse for +15% income.',
     parts:[
       { key:'axial_dock', label:'Axial docking port',   x:120,  y:0,   note:'Forward CBM / androgynous dock' },
       { key:'port_p',     label:'Radial berthing port', x:30,   y:-48, note:'Side hatch for branch modules' },
@@ -11564,24 +11566,34 @@ const STATION_MODULES = [
     ] },
   { id:'lab_mod', name:'Research Laboratory', short:'LAB', len:180, dia:84, color:'#5aa9e0',
     cost:11, buildMo:5, stats:{ mass:16.5, crew:0, crewReq:2, powerGenKw:0, powerDrawKw:5.5 },
-    prod:{ income:0.2, fuel:0, rep:0.3, sci:2.6 },
-    blurb:'Racks of microgravity experiments — materials, biology, fluids. The station\'s science engine.' },
+    prod:{ income:0.2, fuel:0, rep:0.3, sci:2.6 }, role:'Science',
+    blurb:'Racks of microgravity experiments — materials, biology, fluids. The station\'s science engine.',
+    hist:'The ISS Destiny lab (2001) and Europe\'s Columbus (2008) turned the station into a permanent research platform, running thousands of experiments a year.',
+    synHint:'Big science, but power-hungry and needs 2 crew from a Habitat. With a Habitat aboard, crewed research runs +20% science.' },
   { id:'power_truss', name:'Solar Power Truss', short:'PWR', len:150, dia:36, color:'#e8b64c',
     cost:6, buildMo:3, stats:{ mass:12.0, crew:0, powerGenKw:16.0, powerDrawKw:0.4 },
-    prod:{ income:0.25, fuel:0, rep:0, sci:0 },
-    blurb:'Deployable photovoltaic wings and batteries. Power-hungry modules need one of these behind them.' },
+    prod:{ income:0.25, fuel:0, rep:0, sci:0 }, role:'Power',
+    blurb:'Deployable photovoltaic wings and batteries. Power-hungry modules need one of these behind them.',
+    hist:'The ISS Integrated Truss carries an acre of solar arrays generating ~120 kW — the backbone that lets every other module run at once.',
+    synHint:'+16 kW keeps Labs and Greenhouses out of the 60%-output power-starve penalty. Push the station to +8 kW net surplus for a station-wide efficiency bonus.' },
   { id:'node_hub', name:'Docking Node', short:'NODE', len:90, dia:76, color:'#8f9aa6',
     cost:5, buildMo:3, stats:{ mass:9.0, crew:0, powerGenKw:0, powerDrawKw:0.8 },
-    prod:{ income:0.1, fuel:0, rep:0.2, sci:0 }, ports:3,
-    blurb:'A six-port junction sphere. Every node adds 3 berths of growth room to the station.' },
+    prod:{ income:0.1, fuel:0, rep:0.2, sci:0 }, ports:3, role:'Structure',
+    blurb:'A six-port junction sphere. Every node adds 3 berths of growth room to the station.',
+    hist:'The ISS nodes Unity, Harmony and Tranquility are the junctions everything else bolts onto — without them the station couldn\'t branch.',
+    synHint:'Cheap and light. The only way past the 4-port base limit — dock one before the station fills up, or growth stalls.' },
   { id:'depot_mod', name:'Propellant Depot Module', short:'FUEL', len:170, dia:96, color:'#67c587',
     cost:12, buildMo:5, stats:{ mass:20.0, crew:0, crewReq:1, powerGenKw:0, powerDrawKw:2.2 }, reqResearch:'orbital_depot',
-    prod:{ income:0.35, fuel:0.8, rep:0.3, sci:0 },
-    blurb:'Insulated tankage and transfer plumbing — the station becomes a gas station, feeding the LEO depot economy.' },
+    prod:{ income:0.35, fuel:0.8, rep:0.3, sci:0 }, role:'Logistics',
+    blurb:'Insulated tankage and transfer plumbing — the station becomes a gas station, feeding the LEO depot economy.',
+    hist:'Long theorized (von Braun sketched orbital tankers in the 1950s), propellant depots are the enabling infrastructure for cheap deep-space missions that never launch full.',
+    synHint:'Produces depot propellant that cuts the launch mass of your deep missions. Add a Power Truss and the pumps run +25% fuel throughput.' },
   { id:'greenhouse', name:'Greenhouse Module', short:'GRN', len:190, dia:90, color:'#7bc46a',
     cost:10, buildMo:5, stats:{ mass:15.0, crew:0, crewReq:1, powerGenKw:0, powerDrawKw:4.8 }, reqResearch:'eclss_partial',
-    prod:{ income:0.15, fuel:0, rep:0.4, sci:0.4 }, resupplyCut:0.15,
-    blurb:'Crops under grow-lights. Each greenhouse cuts this facility\'s standing resupply cost 15% — food grown on-site never needs launching.' },
+    prod:{ income:0.15, fuel:0, rep:0.4, sci:0.4 }, resupplyCut:0.15, role:'Life support',
+    blurb:'Crops under grow-lights. Each greenhouse cuts this facility\'s standing resupply cost 15% — food grown on-site never needs launching.',
+    hist:'Salyut cosmonauts grew the first plants in orbit; the ISS Veggie system (2014) served the first space-grown salad. Closed-loop food is the key to bases far from resupply.',
+    synHint:'Each one cuts standing resupply 15% and feeds itself — decisive on the Moon/Mars where resupply is 2–4× costlier. With a Habitat, closed-loop life support adds +15% income.' },
 ];
 const STATION_PORT_BASE=4; // a core stack holds 4 modules; each Docking Node adds its ports
 function stationActiveModule(){ return STATION_MODULES[0]; }
@@ -11702,15 +11714,7 @@ function renderStationDraft(){
   const gated=[...new Set(list.filter(id=>{ const md=stationModuleDef(id); return md&&md.reqResearch&&!state.research[md.reqResearch]; })
     .map(id=>((RESEARCH.find(r=>r.id===stationModuleDef(id).reqResearch)||{}).name)||''))].filter(Boolean);
   if(c){
-    const cards=STATION_MODULES.map(md=>`<div class="card" style="flex:1;min-width:150px">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <b style="color:${md.color};font-size:13px">${md.short}</b>
-          <span class="dim" style="font-family:var(--mono);font-size:12px">${fM(md.cost)}${md.reqResearch&&!state.research[md.reqResearch]?' 🔒':''}</span>
-        </div>
-        <div style="font-size:12px;color:var(--ink);margin:2px 0">${md.name}</div>
-        <div class="dim" style="font-family:var(--mono);font-size:11px;margin-bottom:6px">${md.stats.powerGenKw?'+'+md.stats.powerGenKw+' kW':'−'+md.stats.powerDrawKw+' kW'}${md.stats.crew?' · '+md.stats.crew+' crew':''}${md.stats.crewReq?' · needs '+md.stats.crewReq+' crew':''}${md.ports?' · +'+md.ports+' ports':''}</div>
-        <button class="btn" style="width:100%;font-size:12px" onclick="draftAdd('${md.id}')">Add to blueprint ▸</button>
-      </div>`).join('');
+    const cards=STATION_MODULES.map(md=>stationModuleCard(md, {def:facilityById('leo_station')||FACILITY_DEFS[0], fs}, false)).join('');
     c.innerHTML=renderStationStackSVG(720,280,{fs})
       +`<div style="display:flex;gap:6px;margin:8px 0 4px">
           <button class="btn ghost" style="font-size:12px" onclick="draftRemove()">↶ Remove last</button>
@@ -11804,21 +11808,67 @@ function renderStationStackSVG(W,H,cur){
 }
 // Palette of dockable modules with cost/gates
 function renderStationPalette(cur){
-  const cards=STATION_MODULES.map(md=>{
-    const chk=canAddStationModule(cur.def.id, md.id);
-    const cost=stationModuleCost(cur.def, cur.fs, md);
-    return `<div class="card" style="flex:1;min-width:170px">
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <b style="color:${md.color};font-size:13px">${md.short}</b>
-        <span class="dim" style="font-family:var(--mono);font-size:12px">${fM(cost)} · ${md.buildMo} mo</span>
-      </div>
-      <div style="font-size:12px;color:var(--ink);margin:2px 0">${md.name}</div>
-      <div class="dim" style="font-size:12px;margin-bottom:6px">${md.blurb}</div>
-      <div class="dim" style="font-family:var(--mono);font-size:11px;margin-bottom:6px">${md.stats.powerGenKw?'+'+md.stats.powerGenKw+' kW':'−'+md.stats.powerDrawKw+' kW'}${md.stats.crew?' · +'+md.stats.crew+' crew':''}${md.stats.crewReq?' · needs '+md.stats.crewReq+' crew':''}${md.ports?' · +'+md.ports+' ports':''}${md.resupplyCut?' · −15% resupply':''}</div>
-      <button class="btn ${chk.ok?'launch':''}" style="width:100%;font-size:12px" onclick="addStationModule('${cur.def.id}','${md.id}')" ${chk.ok?'':'disabled'}>${chk.ok?'Dock module ▸':chk.why}</button>
-    </div>`;
-  }).join('');
-  return `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">${cards}</div>`;
+  const cards=STATION_MODULES.map(md=>stationModuleCard(md, cur, true)).join('');
+  return `<div style="margin-top:10px"><div class="mission-tag" style="margin-bottom:6px">Modules — dock to grow ${cur.def.name}</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">${cards}</div></div>`;
+}
+// One rich module spec card. mode: live docking (real facility) when addable=true; blueprint otherwise.
+function stationModuleCard(md, cur, addable){
+  const st=md.stats||{};
+  const netPower=(st.powerGenKw||0)-(st.powerDrawKw||0);
+  // production line, in the same currency the stats panel uses
+  const prod=md.prod||{};
+  const prodBits=[];
+  if(prod.income) prodBits.push(`<span style="color:var(--ok)">+${fM(prod.income)}/mo</span>`);
+  if(prod.sci)    prodBits.push(`<span style="color:#5aa9e0">+${prod.sci} sci</span>`);
+  if(prod.fuel)   prodBits.push(`<span style="color:#67c587">+${prod.fuel} t fuel</span>`);
+  if(prod.rep)    prodBits.push(`<span style="color:#c9b06b">+${prod.rep} rep</span>`);
+  const specRow=(k,v,color)=>`<div style="display:flex;justify-content:space-between;gap:8px;font-family:var(--mono);font-size:11px;padding:1px 0"><span class="dim">${k}</span><span style="color:${color||'var(--ink)'}">${v}</span></div>`;
+  // live context vs THIS station (only when docking to a real facility)
+  let context='';
+  if(cur && cur.fs){
+    const fs=cur.fs, pwNow=facilityPower(fs), crewNow=facilityCrew(fs);
+    const pwAfter=pwNow.net+netPower;
+    const bits=[];
+    if(netPower<0){ bits.push(pwAfter<0
+      ? `<span style="color:var(--warn)">⚡ would draw the station to ${pwAfter.toFixed(1)} kW — starves output unless you add power</span>`
+      : `<span class="dim">⚡ station power ${pwNow.net.toFixed(1)} → ${pwAfter.toFixed(1)} kW</span>`); }
+    else if(netPower>0){ bits.push(`<span style="color:var(--ok)">⚡ +${netPower} kW → station ${pwAfter.toFixed(1)} kW</span>`); }
+    if(st.crewReq){ const haveSpare=crewNow.cap-crewNow.req;
+      bits.push(haveSpare>=st.crewReq
+        ? `<span class="dim">👤 ${st.crewReq} crew available</span>`
+        : `<span style="color:var(--warn)">👤 needs ${st.crewReq} crew — ${haveSpare<=0?'none':haveSpare} spare aboard, add a Habitat</span>`); }
+    if(bits.length) context=`<div style="margin:6px 0;padding:5px 7px;background:var(--panel2);border-radius:5px;font-size:11px;line-height:1.5">${bits.join('<br>')}</div>`;
+  }
+  const cost = (cur&&cur.fs) ? stationModuleCost(cur.def, cur.fs, md) : md.cost;
+  const chk = addable && cur ? canAddStationModule(cur.def.id, md.id) : {ok:false};
+  const gated = md.reqResearch && !state.research[md.reqResearch];
+  const gateName = gated ? ((RESEARCH.find(r=>r.id===md.reqResearch)||{}).name||md.reqResearch) : '';
+  return `<div class="card" style="flex:1;min-width:230px;max-width:320px;display:flex;flex-direction:column;gap:2px">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px">
+      <div><b style="color:${md.color};font-size:14px">${md.name}</b> <span class="dim" style="font-size:11px;font-family:var(--mono)">${md.short}</span></div>
+      ${md.role?`<span class="pill" style="font-size:10px;border-color:${md.color};color:${md.color}">${md.role}</span>`:''}
+    </div>
+    <div class="dim" style="font-size:12px;margin:3px 0 6px;line-height:1.45">${md.blurb}</div>
+    ${prodBits.length?`<div style="font-family:var(--mono);font-size:12px;margin-bottom:5px">Output: ${prodBits.join(' · ')}</div>`:`<div class="dim" style="font-size:11px;margin-bottom:5px">No direct output — enabling infrastructure.</div>`}
+    <div style="border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:4px 0;margin-bottom:5px">
+      ${specRow('Mass', (st.mass||0).toFixed(1)+' t')}
+      ${specRow('Power', (netPower>=0?'+':'')+netPower.toFixed(1)+' kW', netPower>=0?'var(--ok)':'var(--warn)')}
+      ${st.crew?specRow('Crew berths','+'+st.crew,'var(--ok)'):''}
+      ${st.crewReq?specRow('Crew required',st.crewReq,'var(--warn)'):''}
+      ${md.ports?specRow('Docking ports','+'+md.ports+' berths','var(--ink)'):''}
+      ${md.resupplyCut?specRow('Resupply','−'+Math.round(md.resupplyCut*100)+'% (self-feeding)','var(--ok)'):''}
+      ${specRow('Build', fM(cost)+' · '+md.buildMo+' mo')}
+    </div>
+    ${md.synHint?`<div style="font-size:11px;color:#c9b8e0;line-height:1.45;margin-bottom:5px">◆ ${md.synHint}</div>`:''}
+    ${context}
+    ${md.hist?`<div class="dim" style="font-size:10.5px;font-style:italic;line-height:1.4;margin-bottom:7px;opacity:.8">${md.hist}</div>`:''}
+    <div style="margin-top:auto">
+    ${addable
+      ? `<button class="btn ${chk.ok?'launch':''}" style="width:100%;font-size:12px" onclick="addStationModule('${cur.def.id}','${md.id}')" ${chk.ok?'':'disabled'}>${chk.ok?'Dock module ▸':chk.why}</button>`
+      : `<button class="btn" style="width:100%;font-size:12px" onclick="draftAdd('${md.id}')"${gated?` title="Buildable now as a blueprint; needs ${gateName} to actually construct"`:''}>Add to blueprint ▸${gated?' 🔒':''}</button>`}
+    </div>
+  </div>`;
 }
 // Static SVG fallback (no Phaser / headless): the same annotated module, no pan/zoom.
 function renderStationSVG(W,H,mod){
