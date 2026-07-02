@@ -12491,23 +12491,64 @@ function zoomTech(factor){ setTechZoom(techZoom*factor); }
 function resetTechZoom(){ setTechZoom(1); }
 // pop the tree out to a full-screen overlay (same pane, so zoom/drag/clicks keep working)
 function toggleTechExpand(){ techExpanded=!techExpanded; renderTechTree(); const el=$('techTree'); if(el){ try{ el.focus(); }catch(e){} } }
+
+/* ---------- Tech tree interaction layer: filters, prereq-path highlight, progress ---------- */
+let techFilter=null;        // track key to solo, or null for all
+let techFocus=null;         // node id whose prereq chain is highlighted, or null
+// full transitive prerequisite set of a node (research reqs + mission-gate reqs)
+function techPrereqChain(id, seen){
+  seen=seen||new Set();
+  const r=RESEARCH.find(x=>x.id===id); if(!r) return seen;
+  const feed=[...(r.req||[])]; const gate=missionGateResearch(r); if(gate) feed.push(gate);
+  feed.forEach(q=>{ if(q && !seen.has(q)){ seen.add(q); techPrereqChain(q, seen); } });
+  return seen;
+}
+// the highlight set = the focused node + its entire prereq chain
+function techHighlightSet(){
+  if(!techFocus) return null;
+  const s=techPrereqChain(techFocus); s.add(techFocus); return s;
+}
+// per-track progress: {done, total, active}
+function trackProgress(key){
+  const list=RESEARCH.filter(r=>(r.track||'propulsion')===key);
+  const done=list.filter(r=>state.research[r.id]).length;
+  const active=state.activeResearch && trackOf(state.activeResearch.id)===key;
+  return {done, total:list.length, active, pct: list.length?Math.round(done/list.length*100):0};
+}
+function setTechFilter(key){ techFilter=(techFilter===key)?null:key; techFocus=null; renderTechTree(); }
+function setTechFocus(id){ techFocus=(techFocus===id)?null:id; renderTechTree(); }
+function clearTechFocus(){ if(techFocus){ techFocus=null; renderTechTree(); } }
+function clearTechView(){ techFocus=null; techFilter=null; renderTechTree(); }
+// how many not-yet-researched nodes are buyable right now
+function availableTechCount(){ return RESEARCH.filter(r=>researchNodeState(r)==='available').length; }
+
 function renderTechTree(){
   const el=$('techTree'); if(!el) return;
   const L=techLayout(), NW=L.NW, NH=L.NH;
   const palette={ done:{fill:'#13241b',text:'#cfe8d6'}, active:{fill:'#241a0c',text:'#f2d6a0'},
                   available:{fill:'#16222b',text:'#d0dce4'}, locked:{fill:'#0c1318',text:'#5a6a75'} };
+  const hi=techHighlightSet(); // prereq-chain highlight (null = none)
+  const inFilter=(key)=> !techFilter || key===techFilter;
+  const nodeVisible=(r)=> inFilter(r.track||'propulsion');
+  const nodeDim=(r)=> (hi && !hi.has(r.id)) || (techFilter && (r.track||'propulsion')!==techFilter);
   // faint lane bands + left-edge labels
   let bands='';
   L.lanes.forEach(ln=>{
-    bands+=`<rect x="0" y="${ln.y-4}" width="${L.W}" height="${ln.h}" fill="${ln.color}" opacity="0.05" rx="6"/>
-      <text x="10" y="${ln.y+ln.h/2+3}" fill="${ln.color}" font-size="10" font-family="ui-sans-serif,system-ui" font-weight="600" opacity="0.85">${ln.label}</text>`;
+    const dim=techFilter && ln.key!==techFilter;
+    const p=trackProgress(ln.key);
+    bands+=`<rect x="0" y="${ln.y-4}" width="${L.W}" height="${ln.h}" fill="${ln.color}" opacity="${dim?0.02:(ln.key===techFilter?0.09:0.05)}" rx="6"/>
+      <text x="10" y="${ln.y+ln.h/2+3}" fill="${ln.color}" font-size="10" font-family="ui-sans-serif,system-ui" font-weight="600" opacity="${dim?0.3:0.85}">${ln.label} ${p.done}/${p.total}</text>`;
   });
   let edges='', nodes='';
   RESEARCH.forEach(r=>{
     const p=L.nodes[r.id]; if(!p) return; const x1=p.x, y1=p.y+NH/2;
     const drawEdge=(q,dashed)=>{ const pq=L.nodes[q]; if(!pq) return; const x0=pq.x+NW, y0=pq.y+NH/2;
       const done=state.research[q], col=trackColor(trackOf(q));
-      edges+=`<path d="M ${x0} ${y0} C ${x0+38} ${y0}, ${x1-38} ${y1}, ${x1} ${y1}" fill="none" stroke="${col}" stroke-opacity="${done?0.6:0.25}" stroke-width="${done?1.7:1.1}" ${dashed?'stroke-dasharray="3,4"':''}/>`; };
+      const onChain = hi && hi.has(q) && hi.has(r.id);
+      const dimmed = (hi && !onChain) || (techFilter && ((trackOf(q)!==techFilter) && ((r.track||'propulsion')!==techFilter)));
+      const op = onChain?0.95 : dimmed?0.06 : (done?0.6:0.25);
+      const w = onChain?2.4 : (done?1.7:1.1);
+      edges+=`<path d="M ${x0} ${y0} C ${x0+38} ${y0}, ${x1-38} ${y1}, ${x1} ${y1}" fill="none" stroke="${onChain?'#ffd98a':col}" stroke-opacity="${op}" stroke-width="${w}" ${dashed?'stroke-dasharray="3,4"':''}/>`; };
     r.req.forEach(q=>drawEdge(q,false));
     const gate=missionGateResearch(r); if(gate) drawEdge(gate,true);
   });
@@ -12515,21 +12556,36 @@ function renderTechTree(){
     const p=L.nodes[r.id]; if(!p) return;
     const st=researchNodeState(r), c=palette[st], tcol=trackColor(r.track);
     const sel=state.selectedResearch===r.id, locked=st==='locked';
+    const dim=nodeDim(r), onChain=hi&&hi.has(r.id), avail=st==='available';
     const name=r.name.length>20?r.name.slice(0,19)+'…':r.name;
     const sub = st==='active' ? `${fmtTimeLeft(state.activeResearch.monthsLeft)} left` : `${fM(rdCostOf(r))}${sciGateCost(r)?` · ${sciGateCost(r)}⚛`:''} · ${r.months}mo`;
-    nodes+=`<g id="tn-${r.id}" style="cursor:pointer" onclick="selectResearch('${r.id}')" onmouseenter="showTechTip(event,'${r.id}')" onmousemove="moveTechTip(event)" onmouseleave="hideTechTip()" opacity="${locked?0.72:1}">
-      <rect x="${p.x}" y="${p.y}" width="${NW}" height="${NH}" rx="6" fill="${c.fill}" stroke="${sel?'#ffffff':tcol}" stroke-width="${sel?2.2:1.3}"/>
+    const opacity = dim?0.18 : (locked?0.72:1);
+    // available nodes you can afford right now get an amber 'ready' ring
+    const canAfford = avail && state.money>=rdCostOf(r) && (!sciGateCost(r) || (state.science||0)>=sciGateCost(r)) && !state.activeResearch;
+    const ring = canAfford && !dim ? `<rect x="${p.x-2.5}" y="${p.y-2.5}" width="${NW+5}" height="${NH+5}" rx="8" fill="none" stroke="#f5a623" stroke-width="1.6" stroke-opacity="0.9"><animate attributeName="stroke-opacity" values="0.9;0.35;0.9" dur="2s" repeatCount="indefinite"/></rect>` : '';
+    const strokeCol = sel?'#ffffff' : onChain?'#ffd98a' : tcol;
+    nodes+=`<g id="tn-${r.id}" style="cursor:pointer" onclick="selectResearch('${r.id}')" onmouseenter="showTechTip(event,'${r.id}')" onmousemove="moveTechTip(event)" onmouseleave="hideTechTip()" opacity="${opacity}">
+      ${ring}
+      <rect x="${p.x}" y="${p.y}" width="${NW}" height="${NH}" rx="6" fill="${c.fill}" stroke="${strokeCol}" stroke-width="${sel?2.2:onChain?2:1.3}"/>
       <rect x="${p.x}" y="${p.y}" width="4" height="${NH}" rx="2" fill="${tcol}"/>
       ${st==='done'?`<text x="${p.x+NW-7}" y="${p.y+13}" fill="#58c47a" font-size="11" text-anchor="end">✓</text>`:''}
+      ${avail&&!dim?`<text x="${p.x+NW-7}" y="${p.y+13}" fill="#f5a623" font-size="10" text-anchor="end">●</text>`:''}
       <text x="${p.x+11}" y="${p.y+17}" fill="${c.text}" font-size="10" font-family="ui-sans-serif,system-ui" font-weight="600">${name}</text>
       <text x="${p.x+11}" y="${p.y+32}" fill="${c.text}" font-size="9" font-family="ui-monospace,monospace" opacity="0.8">${sub}</text>
     </g>`;
   });
-  const legend=TRACKS.map(t=>`<span style="display:inline-flex;align-items:center;gap:4px;margin-right:12px;font-size:12px;color:var(--muted)"><span style="width:10px;height:10px;border-radius:2px;background:${t.color};display:inline-block"></span>${t.label}</span>`).join('');
+  // interactive track-filter chips: click to solo a track, shows per-track progress
+  const chips=TRACKS.map(t=>{ const p=trackProgress(t.key); const on=techFilter===t.key;
+    return `<button onclick="setTechFilter('${t.key}')" title="${t.label} — ${p.done}/${p.total} researched. Click to filter." style="display:inline-flex;align-items:center;gap:5px;margin:0 4px 4px 0;padding:3px 8px;border-radius:12px;cursor:pointer;font-size:12px;border:1px solid ${on?t.color:'var(--line)'};background:${on?t.color+'22':'transparent'};color:${on?t.color:'var(--muted)'}">
+      <span style="width:9px;height:9px;border-radius:50%;background:${t.color};display:inline-block"></span>${t.label} <b style="font-family:var(--mono);opacity:0.8">${p.done}/${p.total}</b></button>`; }).join('');
+  const availN=availableTechCount();
+  const legend=`<div style="display:flex;flex-wrap:wrap;align-items:center">${chips}</div>`;
   const zw=(L.W*techZoom).toFixed(0), zh=(L.H*techZoom).toFixed(0);
   el.innerHTML=`<div style="position:sticky;top:0;z-index:2;background:var(--panel);display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:0 2px 8px">
       <div style="flex:1;min-width:120px">${legend}</div>
       <div style="display:flex;align-items:center;gap:4px">
+        ${availN>0 && !state.activeResearch?`<span style="font-size:12px;color:#f5a623;font-family:var(--mono)" title="Nodes you can research right now">● ${availN} ready</span>`:''}
+        ${(techFocus||techFilter)?`<button class="btn ghost" style="padding:2px 9px;font-size:12px" onclick="clearTechView()" title="Clear highlight & filter">✕ Clear</button>`:''}
         <button class="btn ghost" style="padding:2px 9px" onclick="zoomTech(1/1.2)" title="Zoom out (−)">−</button>
         <span class="dim" style="font-size:12px;width:40px;text-align:center">${Math.round(techZoom*100)}%</span>
         <button class="btn ghost" style="padding:2px 9px" onclick="zoomTech(1.2)" title="Zoom in (+)">+</button>
@@ -12538,7 +12594,7 @@ function renderTechTree(){
         <span class="dim" style="font-size:11px;margin-left:4px">drag = pan · scroll = zoom</span>
       </div>
     </div>
-    <svg viewBox="0 0 ${L.W} ${L.H}" width="${zw}" height="${zh}" xmlns="http://www.w3.org/2000/svg" style="max-width:none;display:block">${bands}${edges}${nodes}</svg>`;
+    <svg viewBox="0 0 ${L.W} ${L.H}" width="${zw}" height="${zh}" xmlns="http://www.w3.org/2000/svg" style="max-width:none;display:block" onclick="if(event.target.tagName==='svg'||event.target.tagName==='rect'&&!event.target.closest('g'))clearTechFocus()">${bands}${edges}${nodes}</svg>`;
   el.classList.toggle('expanded', techExpanded); // pop-out full-screen state
   // #31 Slice 2: amber glow on the just-unlocked tech node
   if(_lastUnlockedTech){ const tg=el.querySelector('#tn-'+_lastUnlockedTech); if(tg){ tg.classList.add('tech-just-unlocked'); tg.addEventListener('animationend',()=>{ tg.classList.remove('tech-just-unlocked'); _lastUnlockedTech=null; },{once:true}); } else { _lastUnlockedTech=null; } }
@@ -12564,7 +12620,7 @@ function renderTechTree(){
     el.addEventListener('click', function(e){ if(moved){ e.preventDefault(); e.stopPropagation(); moved=false; } }, true);
   }
 }
-function selectResearch(id){ state.selectedResearch=id; render(); }
+function selectResearch(id){ state.selectedResearch=id; techFocus=id; render(); }
 // hover tooltip: describe a tech, its benefits/modifiers, and a real-world example
 const UNLOCK_LABELS={crew:'crewed missions',les:'launch-escape system',eclss:'advanced life support (ECLSS)',lunar:'cislunar / lunar missions',mars:'Mars missions',depot:'LEO propellant depot',lander:'two-stage lunar lander',assembly:'orbital assembly & docking',auto_dock:'automated rendezvous & docking',recovery:'first-stage recovery (reuse)',rad_shield:'deep-space radiation shielding',isru_moon:'lunar ISRU (in-situ propellant)',isru_mars:'Mars ISRU (Sabatier methalox)',isru_belt:'asteroid-belt ISRU'};
 // CE3(b): a one-line readout of the branch-affinity effect on this node's R&D price
