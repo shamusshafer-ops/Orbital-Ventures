@@ -357,6 +357,15 @@
   .ccspot .st{font-family:var(--mono);font-size:var(--fs-min);color:var(--readout);line-height:1.2;text-shadow:0 1px 3px #000,0 0 5px #000}
   .ccspot .pill{align-self:flex-start;margin-bottom:2px}
   .ccspot.planned{cursor:default}
+  /* Cape status glyphs: at-a-glance building state (red=needs you, amber=working, green=ok, grey=idle) */
+  .ccglyph{width:11px;height:11px;border-radius:50%;align-self:flex-start;margin-bottom:2px;
+    box-shadow:0 0 0 2px rgba(0,0,0,0.55),0 1px 3px #000;flex:0 0 auto}
+  .ccglyph-attention{background:#e8604c;animation:ccpulse 1.6s ease-in-out infinite}
+  .ccglyph-active{background:#e8b64c}
+  .ccglyph-ok{background:#5fae62}
+  .ccglyph-idle{background:#5a6672}
+  @keyframes ccpulse{0%,100%{box-shadow:0 0 0 2px rgba(0,0,0,0.55),0 0 0 0 rgba(232,96,76,0.55)}50%{box-shadow:0 0 0 2px rgba(0,0,0,0.55),0 0 0 6px rgba(232,96,76,0)}}
+  .ccspot.cc-attention{border-color:rgba(232,96,76,0.5)}
   .ccspot.planned:hover{border-color:rgba(125,144,155,0.4);background:rgba(125,144,155,0.06)}
   .ccspot.planned .nm{color:var(--muted)}
 
@@ -8777,6 +8786,69 @@ function ccTimeline(){
 }
 // recent newsworthy log lines for the right panel
 function ccNews(n){ return (state.log||[]).filter(l=>['rival','ok','bad','note'].includes(l.kind)).slice(0, n||7); }
+
+/* ---------- Cape building status glyphs ----------
+   Each building on the Cape shows a small state dot so the home screen reads at a glance:
+   red = needs you now · amber = working/in progress · green = healthy · grey = idle/nothing.
+   Pure functions of live state — no side effects, safe to call every render. */
+function buildingGlyph(key){
+  // returns {state:'attention'|'active'|'ok'|'idle', label:'…'}
+  const ar=state.activeResearch, m=curMission();
+  switch(key){
+    case 'pad': {
+      if(!m) return {state:'idle', label:'No mission selected'};
+      try{ const v=computeVehicle(); const chk=canLaunch(v,m,m.profile?simulateMission(m):null);
+        if(!chk.ok) return {state:'attention', label:'Design can\'t fly the selected mission'}; }catch(e){}
+      return {state:'active', label:'Mission ready to build & fly'};
+    }
+    case 'rnd':
+      if(ar) return {state:'active', label:'Researching · '+fmtTimeLeft(ar.monthsLeft)};
+      { const afford=RESEARCH.some(r=>!state.research[r.id] && reqsMet(r) && state.money>=r.cost);
+        return afford?{state:'attention', label:'Lab idle — research available'}:{state:'idle', label:'Lab idle'}; }
+    case 'mission': {
+      const n=availableContracts();
+      const md=state.mandate;
+      if(md && !md.accepted) return {state:'attention', label:'Government mandate offered'};
+      if(md && md.accepted && md.deadlineAbs-absMonth()<=6) return {state:'attention', label:'Mandate deadline near'};
+      return n>0?{state:'active', label:n+' contract'+(n===1?'':'s')+' available'}:{state:'idle', label:'No contracts'};
+    }
+    case 'prod': {
+      const load=cadenceLoad();
+      if(padSlotsLeft()<=0 && curMonthPadUsed()>0) return {state:'attention', label:'All launch pads used this month'};
+      if(load>0.85) return {state:'active', label:'Build cadence '+Math.round(load*100)+'% of sustainable'};
+      return {state:'ok', label:'Pads & foundry nominal'};
+    }
+    case 'mfg': {
+      try{ const mb=materialCostMult(); if(mb>1.15) return {state:'attention', label:'Raw-material market hot (+'+Math.round((mb-1)*100)+'%)'}; }catch(e){}
+      return {state:'ok', label:'Bays L'+prodLevel('bays')};
+    }
+    case 'personnel': {
+      const crit=(state.staff||[]).filter(s=>s.morale<30).length;
+      if(crit>0) return {state:'attention', label:crit+' staff at critical morale'};
+      return (state.staff||[]).length?{state:'ok', label:state.staff.length+' hired'}:{state:'idle', label:'Unstaffed'};
+    }
+    case 'infra': {
+      const exp=(state.passiveContracts||[]).filter(cn=>cn.monthsLeft<=3).length;
+      if(exp>0) return {state:'attention', label:exp+' contract'+(exp===1?'':'s')+' expiring'};
+      const built=Object.keys(state.facilities||{}).filter(facilityBuilt).length;
+      return built?{state:'ok', label:built+' facilit'+(built===1?'y':'ies')+' online'}:{state:'idle', label:'No facilities'};
+    }
+    case 'map': {
+      if(state.committedWindow && state.committedWindow.abs-absDay()<=45) return {state:'attention', label:'Committed launch window imminent'};
+      const infl=(state.activeFlights||[]).length; // in-flight tracking, if present
+      return infl>0?{state:'active', label:infl+' mission'+(infl===1?'':'s')+' in flight'}:{state:'idle', label:'Planning surface'};
+    }
+    case 'rivals': {
+      let top=-1; for(const id in (state.rivalThreat||{})) if(state.rivalThreat[id]>top) top=state.rivalThreat[id];
+      return top>=0.66?{state:'attention', label:'Rival threat high'}:top>=0.33?{state:'active', label:'Rivals active'}:{state:'ok', label:'Rivals quiet'};
+    }
+    case 'doctrine':
+      return state.doctrine?{state:'ok', label:DOCTRINES[state.doctrine].name}:{state:'attention', label:'No doctrine declared'};
+    default: return {state:'ok', label:''};
+  }
+}
+const GLYPH_COLOR={attention:'#e8604c', active:'#e8b64c', ok:'#5fae62', idle:'#5a6672'};
+
 function siteBuildings(){
   const builtFac=Object.keys(state.facilities||{}).filter(facilityBuilt).length;
   const ar=state.activeResearch;
@@ -9492,8 +9564,12 @@ function renderCCCenter(){
     const onclick=(!planned&&b.tab)?` onclick="${b.act||`setTab('${b.tab}')`}"`:''; // slice 5: a building may define a custom act (e.g. the Mission Control contracts drill)
     const style=`left:${b.x}%;top:${b.y}%;width:${b.w}%;height:${b.h}%`;
     const lx=b.labelDx?` style="transform:translateX(${b.labelDx}px)"`:''; // nudge a label clear of scene art (e.g. the pad rocket)
-    return `<div class="ccspot${planned?' planned':''}" style="${style}"${onclick} title="${b.name} — ${b.status}">
+    const g=planned?null:buildingGlyph(b.key); // live status dot (attention/active/ok/idle)
+    const dot=g?`<span class="ccglyph ccglyph-${g.state}"${b.labelDx?` style="transform:translateX(${b.labelDx}px)"`:''} title="${g.label}"></span>`:'';
+    const titleTxt=g?`${b.name} — ${g.label}`:`${b.name} — ${b.status}`;
+    return `<div class="ccspot${planned?' planned':''}${g&&g.state==='attention'?' cc-attention':''}" style="${style}"${onclick} title="${titleTxt}">
       ${b.planned?`<span class="pill lock"${lx}>planned</span>`:''}
+      ${dot}
       <span class="nm"${lx}>${b.name}</span>
       <span class="st"${lx}>${b.status}</span>
     </div>`;
@@ -10683,8 +10759,19 @@ function ccPopInfoHTML(){
     ${row('Science', s.science)}
     ${row('Public support', s.support+'%', s.moodColor)}
     ${row('Flights', s.flights+(s.successRate!=null?` · ${s.successRate}%`:''))}
-    <h4>Facility</h4>
-    <div class="dim" style="font-size:12px">Cape Canaveral. Click a building in the Command Center scene to drill into Manufacturing, R&amp;D, Mission Control, and more.</div>`;
+    <h4>Status board</h4>
+    ${capeStatusBoardHTML()}
+    <div class="dim" style="font-size:12px;margin-top:6px">Cape Canaveral. Click a building in the Command Center scene to drill in.</div>`;
+}
+// A compact status board mirroring the Cape glyphs — attention items first.
+function capeStatusBoardHTML(){
+  const order={attention:0, active:1, ok:2, idle:3};
+  const rows=siteBuildings().filter(b=>b.tab||b.act).map(b=>({b, g:buildingGlyph(b.key)}))
+    .sort((a,z)=>order[a.g.state]-order[z.g.state]);
+  return rows.map(({b,g})=>`<div class="vps-row" style="align-items:center">
+    <span class="lbl" style="display:flex;align-items:center;gap:6px"><span style="width:8px;height:8px;border-radius:50%;background:${GLYPH_COLOR[g.state]};flex:0 0 auto"></span>${b.name}</span>
+    <span class="val" style="font-size:11px;color:${g.state==='attention'?GLYPH_COLOR.attention:'var(--muted)'}">${g.label}</span>
+  </div>`).join('');
 }
 function ccPopLoop(){
   if(!ccPopoutOpen){ ccPopAnim=null; return; }
