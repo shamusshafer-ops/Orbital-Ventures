@@ -683,6 +683,7 @@
         <div class="card" id="mapActivityCard" style="margin-top:14px"></div>
       </div>
       <div id="railRnd" class="rail-panel hidden">
+        <div class="card" id="techFilters" style="margin-bottom:14px"></div>
         <div class="card" id="researchDetail"></div>
       </div>
       <div id="railStation" class="rail-panel hidden">
@@ -12723,6 +12724,24 @@ function trackProgress(key){
   const active=state.activeResearch && trackOf(state.activeResearch.id)===key;
   return {done, total:list.length, active, pct: list.length?Math.round(done/list.length*100):0};
 }
+// Vertical track-filter list for the R&D right rail — compact, no longer eats tree height.
+function renderTechFilters(){
+  const el=$('techFilters'); if(!el) return;
+  const availN=availableTechCount();
+  const rows=TRACKS.map(t=>{ const p=trackProgress(t.key); const on=techFilter===t.key; const complete=p.done>=p.total;
+    return `<button onclick="setTechFilter('${t.key}')" title="${t.label} — ${p.done}/${p.total} researched. Click to filter the tree." style="display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:5px 8px;margin:0 0 3px;border-radius:7px;cursor:pointer;font-size:12px;border:1px solid ${on?t.color:'transparent'};background:${on?t.color+'1e':'transparent'};color:${on?t.color:'var(--muted)'}">
+      <span style="width:9px;height:9px;border-radius:50%;background:${t.color};flex:0 0 auto;${complete?'':'opacity:.5'}"></span>
+      <span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.label}</span>
+      <b style="font-family:var(--mono);font-size:11px;opacity:${complete?1:0.75};color:${complete?t.color:'inherit'}">${p.done}/${p.total}</b>
+    </button>`; }).join('');
+  el.innerHTML=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <div class="cc-panel-h" style="margin:0">⚛ Tracks</div>
+      ${availN>0 && !state.activeResearch?`<span style="font-size:11px;color:#f5a623;font-family:var(--mono)" title="Nodes you can research right now">● ${availN} ready</span>`:''}
+    </div>
+    ${rows}
+    ${(techFocus||techFilter)?`<button class="btn ghost" style="width:100%;margin-top:8px;font-size:12px;padding:4px" onclick="clearTechView()" title="Clear highlight & filter">✕ Clear filter / highlight</button>`:''}`;
+}
+
 function setTechFilter(key){ techFilter=(techFilter===key)?null:key; techFocus=null; renderTechTree(); }
 function setTechFocus(id){ techFocus=(techFocus===id)?null:id; renderTechTree(); }
 function clearTechFocus(){ if(techFocus){ techFocus=null; renderTechTree(); } }
@@ -12782,17 +12801,20 @@ function renderTechTree(){
       <text x="${p.x+11}" y="${p.y+32}" fill="${c.text}" font-size="9" font-family="ui-monospace,monospace" opacity="0.8">${sub}</text>
     </g>`;
   });
-  // interactive track-filter chips: click to solo a track, shows per-track progress
-  const chips=TRACKS.map(t=>{ const p=trackProgress(t.key); const on=techFilter===t.key;
-    return `<button onclick="setTechFilter('${t.key}')" title="${t.label} — ${p.done}/${p.total} researched. Click to filter." style="display:inline-flex;align-items:center;gap:5px;margin:0 4px 4px 0;padding:3px 8px;border-radius:12px;cursor:pointer;font-size:12px;border:1px solid ${on?t.color:'var(--line)'};background:${on?t.color+'22':'transparent'};color:${on?t.color:'var(--muted)'}">
-      <span style="width:9px;height:9px;border-radius:50%;background:${t.color};display:inline-block"></span>${t.label} <b style="font-family:var(--mono);opacity:0.8">${p.done}/${p.total}</b></button>`; }).join('');
+  // Track filters now live in the right rail (renderTechFilters); the toolbar keeps only
+  // the active filter label + view controls, so the tree gets its full vertical height back.
   const availN=availableTechCount();
-  const legend=`<div style="display:flex;flex-wrap:wrap;align-items:center">${chips}</div>`;
+  const activeTrack = techFilter ? (TRACKS.find(t=>t.key===techFilter)||{}) : null;
+  const filterLabel = activeTrack
+    ? `<span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:${activeTrack.color}"><span style="width:9px;height:9px;border-radius:50%;background:${activeTrack.color}"></span>${activeTrack.label} only <b style="font-family:var(--mono);opacity:.8">${trackProgress(techFilter).done}/${trackProgress(techFilter).total}</b></span>`
+    : `<span class="dim" style="font-size:12px">All tracks — filter from the ⚛ Tracks panel →</span>`;
   const zw=(L.W*techZoom).toFixed(0), zh=(L.H*techZoom).toFixed(0);
   el.innerHTML=`<div style="position:sticky;top:0;z-index:2;background:var(--panel);display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:0 2px 8px">
-      <div style="flex:1;min-width:120px">${legend}</div>
-      <div style="display:flex;align-items:center;gap:4px">
+      <div style="flex:1;min-width:120px;display:flex;align-items:center;gap:10px">
+        ${filterLabel}
         ${availN>0 && !state.activeResearch?`<span style="font-size:12px;color:#f5a623;font-family:var(--mono)" title="Nodes you can research right now">● ${availN} ready</span>`:''}
+      </div>
+      <div style="display:flex;align-items:center;gap:4px">
         ${(techFocus||techFilter)?`<button class="btn ghost" style="padding:2px 9px;font-size:12px" onclick="clearTechView()" title="Clear highlight & filter">✕ Clear</button>`:''}
         <button class="btn ghost" style="padding:2px 9px" onclick="zoomTech(1/1.2)" title="Zoom out (−)">−</button>
         <span class="dim" style="font-size:12px;width:40px;text-align:center">${Math.round(techZoom*100)}%</span>
@@ -12958,6 +12980,7 @@ function renderTechAction(){
 function renderRnd(){
   renderEraCard();
   renderTechTree();
+  renderTechFilters();
   renderTechAction();
   renderResearchDetail();
   renderDivisions();
