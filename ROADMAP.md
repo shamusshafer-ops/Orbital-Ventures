@@ -660,11 +660,19 @@ the same day (`1e9de2df`→`b7ba8fb5`). Verified directly against the live repo 
 
 ### Recommended next steps, in priority order (corrected)
 
-1. **Solar system map asset overlay** — the only substantive item left from the original audit.
-   Draw the planned mission's trajectory as a line on the map scene itself (SVG + Phaser paths),
-   and show owned assets — depots, bases, in-flight missions — as live markers on the map rather
-   than in the side `renderMapActivity()` card. Turns the map from a reference chart into a
-   theater view.
+1. ✅ **DONE — Solar system map asset overlay ("Empire Layer")**. One shared model
+   (`mapAssetModel()`/`plannedRoute()`/`empireStripHTML()`) rendered with parity in both the
+   SVG map and the Phaser MapScene: player presence pennants (pulsing) on every body with
+   completed missions + firsts tooltip; facility markers with health rings (green nominal /
+   amber strained: low supply, power-starved or under-crewed / red starved, blink rate encodes
+   urgency) + module-count pips; LEO depot arc-gauge around Earth; ISRU picks on Moon/Mars/Belt;
+   Belt mining-claim pulse ring; planned-route arc for the ACTIVE mission (cyan when the design
+   closes, red with "Δv short" when it doesn't; committed windows keep the existing amber
+   animated arc); empire ledger strip above the canvas (bodies reached, facilities+modules,
+   depot tonnage, Belt claim, space income/mo). Note: true "in-flight mission" markers are not
+   representable — missions resolve with a calendar jump, no persistent in-flight entity exists;
+   planned+committed routes cover that intent. Validated headlessly across empire states
+   (fresh/flags/facility health transitions/depot/ISRU/claim/route feasibility/strip/regression).
 2. *(No other open items from the original audit — re-audit before adding new ones.)*
 
 **Repo state:** all changes on `main` through commit `c4b88dc9` (this file). Live file is

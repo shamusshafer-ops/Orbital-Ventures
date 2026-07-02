@@ -621,6 +621,7 @@
         </div>
       </div>
       <p class="muted" style="font-size:12px;margin:6px 0 10px">Orbits are spaced for legibility, not to scale. Drag to pan, scroll to zoom; click a body for its Δv profile.</p>
+      <div id="empireStripWrap"></div>
       <div id="mapHost" style="display:none;width:100%;aspect-ratio:760/480"></div>
       <div id="mapCanvas"></div>
     </div>
@@ -11437,6 +11438,18 @@ function defineMapScene(){
     // drawn as an animated dashed quadratic curve with a travelling marker.
     drawTransfer(time){
       const g=this.transfer; g.clear();
+      // Planned (not yet committed) active-mission route — the planning surface promise
+      const pr=plannedRoute();
+      if(pr && !pr.committed){ const eo=this.bodies.find(o=>o.b.id==='earth'); const to=this.bodies.find(o=>o.b.id===pr.destId);
+        if(eo&&to){ const col=pr.ok?0x5fc4d0:0xe8604c;
+          const mx=(eo.x+to.x)/2, my=(eo.y+to.y)/2, mr=Math.hypot(mx,my)||1;
+          const rT=(to.parentId?(this.bodies.find(o=>o.b.id===to.parentId)||{b:{r:eo.b.r}}).b.r:to.b.r);
+          const dir=rT>=eo.b.r?1:-1, bow=(Math.abs(rT-eo.b.r)*0.45+18)*dir;
+          const cxp=mx/mr*(mr+bow), cyp=my/mr*(mr+bow);
+          const N=40; g.lineStyle(1.1,col,0.6);
+          for(let i=0;i<N;i+=3){ const u0=i/N,u1=(i+1.4)/N;
+            const p=(u)=>{const iu=1-u;return {x:iu*iu*eo.x+2*iu*u*cxp+u*u*to.x, y:iu*iu*eo.y+2*iu*u*cyp+u*u*to.y};};
+            const q0=p(u0), q1=p(Math.min(1,u1)); g.beginPath(); g.moveTo(q0.x,q0.y); g.lineTo(q1.x,q1.y); g.strokePath(); } } }
       const cw=state.committedWindow; if(!cw) return;
       const destId=missionBody(cw.missionId); if(!destId) return;
       const eo=this.bodies.find(o=>o.b.id==='earth'); let to=this.bodies.find(o=>o.b.id===destId);
@@ -11458,9 +11471,34 @@ function defineMapScene(){
     drawRings(){ const g=this.rings; g.clear(); g.lineStyle(1,0x7d909b,0.22);
       for(const o of this.bodies){ if(o.parentId){ const p=this.bodies.find(q=>q.b.id===o.parentId); if(p) g.strokeCircle(p.x,p.y,p.rad+(o.b.moonR||10)*1.3); } else { g.strokeCircle(0,0,o.b.r); } } }
     drawMarkers(){ const g=this.markers; g.clear(); const C=h=>{ try{ return Phaser.Display.Color.HexStringToColor(h).color; }catch(e){ return 0xffffff; } };
-      for(const o of this.bodies){ const rv=rivalsAtBody(o.b.id)||[]; const seen={}; let i=0;
+      const t=(this.time&&this.time.now)||0, pulse=0.55+0.45*Math.sin(t*0.0024), fast=0.35+0.65*Math.abs(Math.sin(t*0.006));
+      const model=mapAssetModel();
+      const HEALTH_HEX={ok:0x5fae62, warn:0xe8b64c, attention:0xe8604c};
+      for(const o of this.bodies){
+        const rv=rivalsAtBody(o.b.id)||[]; const seen={}; let i=0;
         for(const h of rv){ if(seen[h.rival.id])continue; seen[h.rival.id]=1; const a=-1.57+(i-0.5)*0.5; g.fillStyle(C(h.rival.color),1); g.fillCircle(o.x+Math.cos(a)*(o.rad+6),o.y+Math.sin(a)*(o.rad+6),2); i++; }
-        const def=FACILITY_DEFS.find(f=>f.body===o.b.id); if(def&&facilityBuilt(def.id)){ g.fillStyle(C(def.color),1); g.fillRect(o.x+o.rad+3,o.y-2,4,4); } } }
+        const am=model[o.b.id]; if(!am) continue;
+        // player pennant — the empire flag, softly pulsing
+        if(am.firsts.length){ const fx=o.x-5, fy=o.y-o.rad-13;
+          g.lineStyle(1,0xf5d78a,1); g.beginPath(); g.moveTo(fx,fy+8); g.lineTo(fx,fy-2); g.strokePath();
+          g.fillStyle(0xf5a623, pulse); g.beginPath(); g.moveTo(fx,fy-2); g.lineTo(fx+8,fy+0.5); g.lineTo(fx,fy+3); g.closePath(); g.fillPath(); }
+        // facility: health ring (blinks when strained/starved) + module pips
+        if(am.facility){ const {def,health,modules}=am.facility; const fx=o.x+o.rad+8, fy=o.y+1;
+          const alpha=health==='ok'?1:(health==='warn'?pulse:fast);
+          g.fillStyle(0x060a0f,0.75); g.fillCircle(fx,fy,6.5);
+          g.lineStyle(1.4,HEALTH_HEX[health],alpha); g.strokeCircle(fx,fy,6.5);
+          g.fillStyle(C(def.color),1); g.fillRect(fx-2,fy-2,4,4);
+          const n=Math.min(8,modules); for(let k=0;k<n;k++){ g.fillStyle(HEALTH_HEX[health],1); g.fillCircle(fx-((n-1)*2.6)/2+k*2.6, fy+10, 1); } }
+        // ISRU pick
+        if(am.isru){ g.fillStyle(0x7bc46a,1); const ix=o.x-o.rad-9, iy=o.y;
+          g.fillRect(ix-2.5,iy-0.6,5,1.2); g.fillRect(ix-0.6,iy-0.6,1.2,4); }
+        // Belt claim — expanding ring
+        if(am.beltClaim){ const bx=o.x+o.rad+7, by=o.y-8, rr=3+Math.abs(Math.sin(t*0.0014))*1.4;
+          g.lineStyle(1.2,0xe8c04c,0.9); g.strokeCircle(bx,by,rr); g.fillStyle(0xe8c04c,1); g.fillCircle(bx,by,1.2); }
+        // LEO depot arc gauge
+        if(am.depotT>0){ const cap=Math.max(am.depotT,120), frac=Math.min(1,am.depotT/cap);
+          const rr=o.rad+5, a0=-Math.PI*0.75, a1=a0+frac*Math.PI*1.5;
+          g.lineStyle(2,0x5fc4d0,0.9); g.beginPath(); g.arc(o.x,o.y,rr,a0,a1,false); g.strokePath(); } } }
     drawSel(){ const g=this.selRing; g.clear(); const o=this.bodies.find(q=>q.b.id===state.selectedBody); if(o){ g.lineStyle(1.5,0xf5a623,1); g.strokeCircle(o.x,o.y,o.rad+3); } }
   };
 }
@@ -11481,6 +11519,7 @@ function resumeMapGame(){ if(mapGame){ try{ mapGame.scene.resume('solarmap'); }c
 function renderMap(){
   const mv=$('mapView'); if(mv) mv.classList.toggle('expanded', mapExpanded);
   const eb=$('mapExpandBtn'); if(eb) eb.textContent = mapExpanded ? '⛶ Exit full screen' : '⛶ Expand';
+  const es=$('empireStripWrap'); if(es) es.innerHTML=empireStripHTML(); // empire ledger — both render paths
   if(phaserOK() && startMapScene()){ renderBodyCard(); renderMapActivity(); return; }
   const W=720,H=460; let svg;
   if(!state.mapZoom){ svg=renderMapOverview(W,H); }
@@ -11768,11 +11807,55 @@ function rivalMarkersSVG(bodyId,px,py,rad){
   });
   return s;
 }
-function facilityMarkerSVG(bodyId,px,py,rad){
-  const def=FACILITY_DEFS.find(f=>f.body===bodyId);
-  if(!def || !facilityBuilt(def.id)) return '';
-  const fs=facilityState(def.id);
-  return `<text x="${(px+rad+5).toFixed(1)}" y="${(py+4).toFixed(1)}" fill="${def.color}" font-size="13" font-family="ui-monospace,monospace">${def.icon}<title>${def.name} (${fs.modules} module${fs.modules>1?'s':''})</title></text>`;
+function facilityMarkerSVG(bodyId,px,py,rad){ return assetMarkersSVG(bodyId,px,py,rad); } // legacy name kept for call sites
+const HEALTH_COLOR={ok:'#5fae62', warn:'#e8b64c', attention:'#e8604c'};
+function assetMarkersSVG(bodyId,px,py,rad,model){
+  const a=(model||mapAssetModel())[bodyId]; if(!a) return '';
+  let s='';
+  // Player presence flag — pulsing pennant above the body. Rivals get dots; YOU get a flag.
+  if(a.firsts.length){
+    const fy=py-rad-14;
+    s+=`<g><line x1="${(px-6).toFixed(1)}" y1="${(fy+7).toFixed(1)}" x2="${(px-6).toFixed(1)}" y2="${(fy-2).toFixed(1)}" stroke="#f5d78a" stroke-width="1"/>
+      <path d="M ${(px-6).toFixed(1)} ${(fy-2).toFixed(1)} L ${(px+2).toFixed(1)} ${(fy+0.5).toFixed(1)} L ${(px-6).toFixed(1)} ${(fy+3).toFixed(1)} Z" fill="#f5a623">
+        <animate attributeName="opacity" values="1;0.55;1" dur="2.6s" repeatCount="indefinite"/>
+      </path>
+      <title>Your firsts here: ${a.firsts.join(' · ')}</title></g>`;
+  }
+  // Facility icon + health ring + module pips
+  if(a.facility){
+    const {def,health,modules}=a.facility;
+    const fx=px+rad+8, fy=py+1;
+    s+=`<g><circle cx="${fx.toFixed(1)}" cy="${fy.toFixed(1)}" r="6.5" fill="rgba(6,10,15,0.75)" stroke="${HEALTH_COLOR[health]}" stroke-width="1.4">
+        ${health!=='ok'?`<animate attributeName="stroke-opacity" values="1;0.35;1" dur="${health==='attention'?'0.9':'1.8'}s" repeatCount="indefinite"/>`:''}
+      </circle>
+      <text x="${fx.toFixed(1)}" y="${(fy+3.4).toFixed(1)}" fill="${def.color}" font-size="9" text-anchor="middle" font-family="ui-monospace,monospace">${def.icon}</text>`;
+    let pips=''; for(let i=0;i<Math.min(8,modules);i++){ pips+=`<circle cx="${(fx-((Math.min(8,modules)-1)*2.6)/2+i*2.6).toFixed(1)}" cy="${(fy+10).toFixed(1)}" r="1" fill="${HEALTH_COLOR[health]}"/>`; }
+    s+=pips+`<title>${def.name} — ${modules} module${modules>1?'s':''} · ${health==='ok'?'nominal':(health==='warn'?'strained (supply/power/crew)':'STARVED — resupply now')}</title></g>`;
+  }
+  // ISRU pick
+  if(a.isru) s+=`<text x="${(px-rad-9).toFixed(1)}" y="${(py+3.5).toFixed(1)}" font-size="9" text-anchor="middle" fill="#7bc46a" font-family="ui-monospace,monospace">⛏<title>ISRU plant online — propellant produced on-site</title></text>`;
+  // Belt mining claim (distinct from ISRU: it's the money)
+  if(a.beltClaim) s+=`<g><circle cx="${(px+rad+7).toFixed(1)}" cy="${(py-8).toFixed(1)}" r="3" fill="none" stroke="#e8c04c" stroke-width="1.2"><animate attributeName="r" values="3;4;3" dur="2.2s" repeatCount="indefinite"/></circle><circle cx="${(px+rad+7).toFixed(1)}" cy="${(py-8).toFixed(1)}" r="1.2" fill="#e8c04c"/><title>Belt mining claim — ${fM(state.pgmRoyalty)}/mo royalties</title></g>`;
+  // LEO depot fill gauge — an arc around Earth
+  if(a.depotT>0){
+    const cap=Math.max(a.depotT,120), frac=Math.min(1,a.depotT/cap);
+    const rr=rad+5, a0=-Math.PI*0.75, a1=a0+frac*Math.PI*1.5;
+    const x0=px+Math.cos(a0)*rr, y0=py+Math.sin(a0)*rr, x1=px+Math.cos(a1)*rr, y1=py+Math.sin(a1)*rr;
+    const large=(a1-a0)>Math.PI?1:0;
+    s+=`<g><path d="M ${x0.toFixed(1)} ${y0.toFixed(1)} A ${rr} ${rr} 0 ${large} 1 ${x1.toFixed(1)} ${y1.toFixed(1)}" fill="none" stroke="#5fc4d0" stroke-width="2" stroke-linecap="round" opacity="0.9"/>
+      <title>LEO propellant depot — ${a.depotT} t banked</title></g>`;
+  }
+  return s;
+}
+// Planned-route arc for the ACTIVE mission (cyan = closes, red = Δv short, amber = committed window)
+function plannedRouteSVG(cx,cy){
+  const pr=plannedRoute(); if(!pr) return '';
+  if(pr.committed) return ''; // the committed arc (amber) already draws it
+  const arc=transferArc(cx,cy,pr.destId); if(!arc) return '';
+  const col=pr.ok?'#5fc4d0':'#e8604c';
+  return `<path d="M ${arc.from.x.toFixed(1)} ${arc.from.y.toFixed(1)} Q ${arc.ctrl.x.toFixed(1)} ${arc.ctrl.y.toFixed(1)} ${arc.to.x.toFixed(1)} ${arc.to.y.toFixed(1)}" fill="none" stroke="${col}" stroke-width="1.2" stroke-dasharray="2,4" opacity="0.7">
+      <title>Planned: ${pr.name} → ${arc.destName}${pr.ok?' — design closes':' — '+pr.short+' leg(s) short on Δv'}</title></path>
+    <text x="${arc.ctrl.x.toFixed(1)}" y="${(arc.ctrl.y+10).toFixed(1)}" fill="${col}" font-size="8.5" font-family="ui-monospace,monospace" text-anchor="middle" opacity="0.85">${pr.ok?'planned':'Δv short'} → ${arc.destName}</text>`;
 }
 function renderMapActivity(){
   const el=$('mapActivityCard'); if(!el) return;
@@ -11802,6 +11885,72 @@ function renderMapActivity(){
 // the SVG overview and the Phaser MapScene draw the same curve and it's headless-testable.
 // A quadratic curve bowed away from (or toward) the Sun reads as the transfer trajectory;
 // moons resolve to their parent's orbit (Earth's Moon is a short cislunar hop).
+
+/* ---------- Empire overlay model (map asset layer) ----------
+   One shared source of truth for everything the player owns or has achieved, per body —
+   consumed identically by the SVG map, the Phaser MapScene, and the empire strip. This is
+   the "look at what we built" layer: the map stops being a chart and becomes the theater. */
+function bodyFirsts(bodyId){
+  const b=BODIES.find(x=>x.id===bodyId); if(!b||!b.missions) return [];
+  return b.missions.filter(mid=>state.completed[mid]).map(mid=>(MISSIONS.find(m=>m.id===mid)||{}).name||mid);
+}
+function facilityHealth(def, fs){
+  if(!fs||!fs.built) return null;
+  if((fs.starvedMonths||0)>0 || (fs.supply!=null && fs.supply<=0)) return 'attention';
+  const pw=facilityPower(fs), cr=facilityCrew(fs);
+  if((fs.supply!=null && fs.supply<=2) || pw.net<0 || (cr && cr.factor<1)) return 'warn';
+  return 'ok';
+}
+function mapAssetModel(){
+  const perBody={};
+  const get=id=>(perBody[id]=perBody[id]||{firsts:[],facility:null,isru:false,depotT:0,beltClaim:false});
+  BODIES.forEach(b=>{
+    const f=bodyFirsts(b.id);
+    if(f.length) get(b.id).firsts=f;
+  });
+  FACILITY_DEFS.forEach(def=>{
+    if(!facilityBuilt(def.id)) return;
+    const fs=facilityState(def.id);
+    get(def.body).facility={def, fs, health:facilityHealth(def,fs), modules:facilityModuleList(fs).length};
+  });
+  // ISRU plants come online with their research after reaching the body
+  if(state.research.lunar_isru) get('moon').isru=true;
+  if(state.research.mars_isru)  get('mars').isru=true;
+  if(state.research.belt_volatiles) get('belt').isru=true;
+  if((state.depot||0)>0.05) get('earth').depotT=round2(state.depot);
+  if((state.pgmRoyalty||0)>0) get('belt').beltClaim=true;
+  return perBody;
+}
+// Planned route for the ACTIVE mission (committed or not): where it goes and whether it closes.
+function plannedRoute(){
+  const m=MISSIONS.find(x=>x.id===state.activeMission); if(!m) return null;
+  const destId=missionBody(m.id); if(!destId||destId==='earth') return null;
+  let ok=true, short=0;
+  try{
+    if(m.profile){ const sim=simulateMission(m); ok=!!sim.ok && sim.legs.every(l=>l.pass);
+      if(!ok){ const worst=sim.legs.filter(l=>!l.pass); short=worst.length; } }
+    else { const v=computeVehicle(); ok=v.totalDv>=(m.reqDv||0); if(!ok) short=1; }
+  }catch(e){}
+  const committed=!!(state.committedWindow && state.committedWindow.missionId===m.id);
+  return {destId, name:m.name, ok, short, committed};
+}
+// The one-line ledger a Stellaris player wants above the map.
+function empireStripHTML(){
+  const model=mapAssetModel();
+  const reachable=BODIES.filter(b=>b.missions&&b.missions.length&&b.id!=='earth').length;
+  const reached=BODIES.filter(b=>b.id!=='earth'&&(model[b.id]||{}).firsts&&model[b.id].firsts.length).length;
+  let facN=0, modN=0;
+  FACILITY_DEFS.forEach(def=>{ if(facilityBuilt(def.id)){ facN++; modN+=facilityModuleList(facilityState(def.id)).length; } });
+  const spaceIncome=round2(totalFacilityIncome()+(state.pgmRoyalty||0));
+  const chip=(icon,txt,title)=>`<span title="${title||''}" style="display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border:1px solid var(--line);border-radius:11px;font-family:var(--mono);font-size:12px;color:var(--muted);white-space:nowrap">${icon} ${txt}</span>`;
+  let s=chip('🏁', `${reached}/${reachable} bodies`, 'Worlds where your missions have flown');
+  if(facN) s+=' '+chip('⬢', `${facN} facilit${facN>1?'ies':'y'} · ${modN} modules`, 'Stations and bases you operate');
+  if((state.depot||0)>0.05) s+=' '+chip('⛽', `${round2(state.depot)} t depot`, 'Propellant banked in LEO');
+  if(state.pgmRoyalty>0) s+=' '+chip('⛏', 'Belt claim', 'Platinum-group mining royalties flowing');
+  if(spaceIncome>0) s+=' '+chip('💰', `${fM(spaceIncome)}/mo`, 'Monthly income from space assets (facilities + royalties)');
+  return `<div id="empireStrip" style="display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px">${s}</div>`;
+}
+
 function transferArc(cx,cy,destId){
   const dest=BODIES.find(b=>b.id===destId); if(!dest) return null;
   const earth=BODIES.find(b=>b.id==='earth'); if(!earth) return null;
@@ -11863,6 +12012,8 @@ function renderMapOverview(W,H){
       <circle cx="${arc.from.x.toFixed(1)}" cy="${arc.from.y.toFixed(1)}" r="2.5" fill="#f5a623"/>
       <text x="${arc.ctrl.x.toFixed(1)}" y="${(arc.ctrl.y-4).toFixed(1)}" fill="#f5a623" font-size="9" font-family="ui-monospace,monospace" text-anchor="middle">⊕ transfer → ${arc.destName}</text>`; }
   }
+  svg+=plannedRouteSVG(cx,cy); // empire layer: active-mission planned route
+  const _assetModel=mapAssetModel(); // computed once per render, shared by every marker below
   planets.forEach(b=>{
     const ang = ANGLES[b.id]!==undefined?ANGLES[b.id]:0;
     const px=cx+Math.cos(ang)*b.r, py=cy+Math.sin(ang)*b.r;
@@ -11878,7 +12029,7 @@ function renderMapOverview(W,H){
       ${bodyTexture(b.id,px,py,rad)}
       ${sel?`<circle cx="${px}" cy="${py}" r="${rad+1.5}" fill="none" stroke="#f5a623" stroke-width="1.5"/>`:''}
       <text x="${px}" y="${py-rad-6}" fill="${sel?'#f5a623':'#9aa7af'}" font-size="11" font-family="ui-monospace,monospace" text-anchor="middle">${b.name}</text>
-    </g>${rivalMarkersSVG(b.id,px,py,rad)}${facilityMarkerSVG(b.id,px,py,rad)}`;
+    </g>${rivalMarkersSVG(b.id,px,py,rad)}${assetMarkersSVG(b.id,px,py,rad,_assetModel)}`;
     BODIES.filter(m=>m.around===b.id).forEach(m=>{
       const mAng=(ANGLES[m.id]!==undefined?ANGLES[m.id]:0);
       const mr=rad+(m.moonR||10), mRad=m.dotR||4.5;
@@ -11890,7 +12041,7 @@ function renderMapOverview(W,H){
           ${bodyTexture(m.id,mx,my,mRad)}
           ${msel?`<circle cx="${mx}" cy="${my}" r="${mRad+2}" fill="none" stroke="#f5a623" stroke-width="1.5"/>`:''}
           <text x="${mx}" y="${my-mRad-4}" fill="${msel?'#f5a623':'#7d909b'}" font-size="9" font-family="ui-monospace,monospace" text-anchor="middle">${m.name}</text>
-        </g>${rivalMarkersSVG(m.id,mx,my,5)}${facilityMarkerSVG(m.id,mx,my,5)}`;
+        </g>${rivalMarkersSVG(m.id,mx,my,5)}${assetMarkersSVG(m.id,mx,my,5,_assetModel)}`;
     });
   });
   svg+=`<text x="14" y="20" fill="#56666f" font-size="11" font-family="ui-monospace,monospace">Click a body to zoom in</text>`;
