@@ -1782,7 +1782,7 @@ function newGame(difficulty){
     log:[], rivalFired:{}, scooped:{}, rivalThreat:{}, rivalState:{},
     staff:[], assignedAstronaut:null, persEventCooldown:5,
     econEvents:[], eventCooldown:6, pgmRoyalty:0,
-    passiveContracts:[], contractCooldown:{}, contractSignings:{}, // passive-income contracts (repeatable + cooldown + diminishing)
+    passiveContracts:[], contractCooldown:{}, contractSignings:{}, engineHeritage:{}, // passive-income contracts (repeatable + cooldown + diminishing)
     publicSupport:SUPPORT_BASE, // #8: program politics — public mood dial
     production:{bays:1,foundry:1,pads:1,qa:1}, // #7: manufacturing capacity — leveled production lines
     engineStock:{}, // #7 sub-assemblies: pre-built engines in the yard (engId -> count)
@@ -4056,18 +4056,73 @@ function missionNetHTML(m, v, sim){
     ${e.net<0?`<div class="flag warn">△ This mission is projected to lose money after ${e.campaignMo} months of carrying costs. Fine for a prestige/mandate first — but routine reflights at a loss will bleed the treasury.</div>`:''}`;
 }
 
+
+/* ---------- Engine differentiation: heritage, solid simplicity, insertion precision ----------
+   Two levers give engines distinct identities beyond raw stats:
+   1. HERITAGE — every engine accrues successful flights (state.engineHeritage[id]). A proven
+      engine earns a manufacturing discount and a small reliability edge, so old workhorses
+      (F-1, kerolox) stay relevant after newer engines unlock. Diminishing, capped.
+   2. SOLIDS — dead-simple to build (no turbopumps): a flat build-cost discount. But no
+      throttle or shutdown once lit, so using a solid as the FINAL orbital-insertion stage
+      carries a small precision reliability tax (you can't trim the burn).
+   All multipliers are pure functions of state — safe across save/load. */
+const ENG_HERITAGE_MAX_FLIGHTS=20;   // heritage saturates here
+const ENG_HERITAGE_COST_MAX=0.20;    // up to −20% build cost when fully proven
+const ENG_HERITAGE_REL_MAX=0.03;     // up to +3% reliability contribution
+const SOLID_SIMPLICITY_DISCOUNT=0.15;// −15% build cost — no turbopumps or plumbing
+const SOLID_INSERTION_REL_TAX=0.04;  // −4% reliability if a solid is the final insertion stage
+
+function engineHeritageFlights(id){ return (state.engineHeritage&&state.engineHeritage[id])||0; }
+function engineHeritageFrac(id){ return Math.min(1, engineHeritageFlights(id)/ENG_HERITAGE_MAX_FLIGHTS); }
+function engineCostMult(id){
+  const e=ENGINES[id]; if(!e) return 1;
+  let m=1;
+  m -= ENG_HERITAGE_COST_MAX*engineHeritageFrac(id); // proven hardware is cheaper to build
+  if(e.solid) m -= SOLID_SIMPLICITY_DISCOUNT;         // solids: no turbopumps, cheap to cast
+  return Math.max(0.5, m);
+}
+function engineHeritageRelBonus(id){ return ENG_HERITAGE_REL_MAX*engineHeritageFrac(id); }
+// fleet-wide heritage reliability edge: the best-proven engine on the current LV stack
+function fleetHeritageRelBonus(){
+  const ids=(state.stages||[]).map(s=>s.eng);
+  if(boostersFitted&&boostersFitted()) ids.push(state.boosters.eng);
+  if(!ids.length) return 0;
+  return Math.max(...ids.map(id=>engineHeritageRelBonus(id)));
+}
+// effective per-unit engine cost used everywhere build cost is summed
+function engCost(id){ const e=ENGINES[id]; return e?e.cost*engineCostMult(id):0; }
+// record a successful flight's engines toward heritage (called on mission success)
+function creditEngineHeritage(){
+  if(!state.engineHeritage) state.engineHeritage={};
+  const ids=new Set();
+  (state.stages||[]).forEach(s=>ids.add(s.eng));
+  if(boostersFitted&&boostersFitted()) ids.add(state.boosters.eng);
+  const m=curMission();
+  if(m&&m.profile){ if(m.modules.includes('transfer')) ids.add(state.transfer.eng);
+    if(m.modules.includes('lander')){ ids.add(state.descent.eng); ids.add(state.ascent.eng); } }
+  ids.forEach(id=>{ if(ENGINES[id]) state.engineHeritage[id]=Math.min(ENG_HERITAGE_MAX_FLIGHTS,(state.engineHeritage[id]||0)+1); });
+}
+// is a solid the final stage doing orbital insertion? (last stage, non-profile orbital-class mission)
+function solidInsertionTax(m){
+  const last=(state.stages||[])[ (state.stages||[]).length-1 ];
+  if(!last||!ENGINES[last.eng]||!ENGINES[last.eng].solid) return 0;
+  if(m&&m.profile) return 0; // deep missions insert with the transfer stage, not the LV
+  if(m&&(m.reqDv||0)<7000) return 0; // sub-orbital / low-energy: no precise insertion needed
+  return SOLID_INSERTION_REL_TAX;
+}
+
 function buildCostBreakdown(m){
   if(!m) m=curMission();
   const rows=[];
-  let cost=state.stages.reduce((a,s)=>a+ENGINES[s.eng].cost*s.count+0.02*s.prop,0.1);
+  let cost=state.stages.reduce((a,s)=>a+engCost(s.eng)*s.count+0.02*s.prop,0.1);
   const bmCost=boosterMasses();
-  if(bmCost) cost+=bmCost.eng.cost*bmCost.count + 0.02*bmCost.propTotal;
+  if(bmCost) cost+=engCost(bmCost.eng.id)*bmCost.count + 0.02*bmCost.propTotal;
   if(m && m.tanker){ cost+=0.02*state.transfer.prop; }
   else if(m && m.profile){
-    if(m.modules.includes('transfer')) cost+=(ENGINES[state.transfer.eng]||ENGINES.a4).cost+0.02*state.transfer.prop;
+    if(m.modules.includes('transfer')) cost+=engCost(state.transfer.eng)+0.02*state.transfer.prop;
     if(m.modules.includes('lander')){
-      cost+=(ENGINES[state.descent.eng]||ENGINES.a4).cost+0.02*state.descent.prop;
-      cost+=(ENGINES[state.ascent.eng]||ENGINES.a4).cost+0.02*state.ascent.prop;
+      cost+=engCost(state.descent.eng)+0.02*state.descent.prop;
+      cost+=engCost(state.ascent.eng)+0.02*state.ascent.prop;
     }
   }
   rows.push({label:'Base hardware (engines + props + modules)', kind:'base', factor:null, delta:cost, running:cost});
@@ -4157,17 +4212,17 @@ function computeVehicle(){
   const perf=stackPerformance(state.stages, payload);
   const totalEng=state.stages.reduce((a,s)=>a+s.count,0);
   let totalProp=state.stages.reduce((a,s)=>a+s.prop,0);
-  let buildCost=state.stages.reduce((a,s)=>a+ENGINES[s.eng].cost*s.count+0.02*s.prop,0.1);
+  let buildCost=state.stages.reduce((a,s)=>a+engCost(s.eng)*s.count+0.02*s.prop,0.1);
   const bmCost=boosterMasses();
-  if(bmCost){ buildCost+=bmCost.eng.cost*bmCost.count + 0.02*bmCost.propTotal; totalProp+=bmCost.propTotal; }
+  if(bmCost){ buildCost+=engCost(bmCost.eng.id)*bmCost.count + 0.02*bmCost.propTotal; totalProp+=bmCost.propTotal; }
   if(m && m.tanker){
     buildCost+=0.02*state.transfer.prop; // cost of the cargo propellant itself, no engine needed
     totalProp+=state.transfer.prop;
   } else if(m && m.profile){
-    if(m.modules.includes('transfer')){ buildCost+=(ENGINES[state.transfer.eng]||ENGINES.a4).cost+0.02*state.transfer.prop; totalProp+=state.transfer.prop; }
+    if(m.modules.includes('transfer')){ buildCost+=engCost(state.transfer.eng)+0.02*state.transfer.prop; totalProp+=state.transfer.prop; }
     if(m.modules.includes('lander')){
-      buildCost+=(ENGINES[state.descent.eng]||ENGINES.a4).cost+0.02*state.descent.prop; totalProp+=state.descent.prop;
-      buildCost+=(ENGINES[state.ascent.eng]||ENGINES.a4).cost+0.02*state.ascent.prop;   totalProp+=state.ascent.prop;
+      buildCost+=engCost(state.descent.eng)+0.02*state.descent.prop;
+      buildCost+=engCost(state.ascent.eng)+0.02*state.ascent.prop;   totalProp+=state.ascent.prop;
     }
   }
   buildCost+=partsBuildCost(crewed); // BC2: avionics + fairing hardware cost
@@ -4186,7 +4241,7 @@ function computeVehicle(){
     if(recoveryRefly(m)) buildCost*=refurbCostMult(); // refurbish a recovered booster: 45% of new, rising with wear (each refly chips +8%)
     buildCost+=RECOVERY_HARDWARE; // legs, grid fins, reserved propellant — fitted on every recovery flight
   }
-  const reliability=Math.min(diff().relCap,Math.max(diff().relFloor,(curRel()+testBonus+partsRelBonus(crewed)+geoRelBonus()+benchRelBonus(m)+doctrineRelMod())*enginePenalty*boosterRelPenalty()*(crewed?(state.research.orbital_eva?0.95:0.92):1)+productionRelMod(m))); // #7: QA bonus − bay-overstretch penalty + bench-tested sub-assembly heritage; #16: booster failure-point penalty; BC2 parts + BC3 geometry reliability; CE3(a) doctrine early-reliability delta
+  const reliability=Math.min(diff().relCap,Math.max(diff().relFloor,(curRel()+testBonus+partsRelBonus(crewed)+geoRelBonus()+benchRelBonus(m)+doctrineRelMod()+fleetHeritageRelBonus())*enginePenalty*boosterRelPenalty()*(crewed?(state.research.orbital_eva?0.95:0.92):1)*(1-solidInsertionTax(m))+productionRelMod(m))); // #7: QA bonus − bay-overstretch penalty + bench-tested sub-assembly heritage; #16: booster failure-point penalty; BC2 parts + BC3 geometry reliability; CE3(a) doctrine early-reliability delta
   const launchCost=((0.12+0.01*totalProp)*padLaunchMult()*groundLaunchMult()*doctrineMult('launch')) + assemblyFlights(m)*ASSEMBLY_LAUNCH_COST; // #7: pads + #6b: Ground/Reuse research amortize launch ops; #6: dedicated assembly flights; CE3(a) doctrine launch-cost factor
   return {payload, sm:perf.sm, stageDv:perf.stageDv, stageTwr:perf.stageTwr, stageGravLoss:perf.stageGravLoss, gravLoss:perf.gravLoss, totalDv:perf.totalDv, liftoff:perf.liftoff, twr:perf.twr,
           boostDv:perf.boostDv||0, boosters:perf.boosters||null,
@@ -4928,6 +4983,8 @@ function finalizeLaunch(ctx, ops){
   if(success){
     personnelMissionEvent(true); // M6: morale boost on success
     state.successes++;
+    creditEngineHeritage(); // engines earn flight heritage toward cost/reliability edge
+
     // M14: missions yield science — more for novel, deep, or first-time flights
     let sciGain=Math.max(1, Math.round((routine?0.3:1)*((m.rep||5)*0.12 + (m.profile?5:1))*sciYieldMult()*doctrineMult('sci'))); // #6b: Science track multiplies mission science yield; CE3(a) Science doctrine boosts it
     if(m.sciYield && !routine) sciGain += Math.round(m.sciYield*sciYieldMult()*doctrineMult('sci')); // #3: prestige science missions bank a large knowledge windfall (first flight only — not farmable on routine reflights)
@@ -5587,7 +5644,7 @@ function loadDefaults(){ return {
       depot:0, depotUse:0, tab:'command', log:[], rivalFired:{}, scooped:{}, rivalThreat:{}, rivalState:{}, bailouts:0,
       difficulty:'engineer', customDifficulty:customDefaults(),
       econEvents:[], eventCooldown:6, pgmRoyalty:0, publicSupport:SUPPORT_BASE,
-      passiveContracts:[], contractCooldown:{}, contractSignings:{},
+      passiveContracts:[], contractCooldown:{}, contractSignings:{}, engineHeritage:{},
       production:{bays:1,foundry:1,pads:1,qa:1}, lastMonth:{revenue:0,expenses:0,net:0,flights:0}, history:{},
       ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
       facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
@@ -9693,7 +9750,9 @@ function renderStages(){
     const twrCol = sTwr==null ? 'var(--muted)' : (sLoss<=0 ? 'var(--ok)' : (sLoss>250?'var(--bad)':'var(--warn)'));
     const thrSL=(eng.thrustSL||0)*st.count, thrVac=(eng.thrustVac||0)*st.count;
     const im=ispMult(), tm=thrustMult();
-    const engSpec = eng.name ? `${eng.name} · Isp ${eng.ispSL||0}/${eng.ispVac||0}s · ${fI(eng.thrustSL||0)}/${fI(eng.thrustVac||0)} kN ea${st.count>1?` · ${st.count}× = ${fI(thrVac)} kN vac`:''} · ${(eng.mass||0).toFixed(2)} t ea${(im>1||tm>1)?` · R&D +${Math.round((im-1)*100)}% Isp/+${Math.round((tm-1)*100)}% thr`:''}` : '—';
+    const _hf=engineHeritageFrac(st.eng), _hn=engineHeritageFlights(st.eng);
+    const _tags=`${eng.solid?` · <span style="color:var(--ok)">solid: −15% build, no restart</span>`:''}${_hf>0?` · <span style="color:var(--readout)">heritage ${_hn} flt: −${Math.round(ENG_HERITAGE_COST_MAX*_hf*100)}% build, +${(engineHeritageRelBonus(st.eng)*100).toFixed(1)}% rel</span>`:''}`;
+    const engSpec = eng.name ? `${eng.name} · Isp ${eng.ispSL||0}/${eng.ispVac||0}s · ${fI(eng.thrustSL||0)}/${fI(eng.thrustVac||0)} kN ea${st.count>1?` · ${st.count}× = ${fI(thrVac)} kN vac`:''} · ${(eng.mass||0).toFixed(2)} t ea${(im>1||tm>1)?` · R&D +${Math.round((im-1)*100)}% Isp/+${Math.round((tm-1)*100)}% thr`:''}${_tags}` : '—';
     const thrustPct=Math.round(thrusts[i]/maxThrust*100);
     const div=document.createElement('div'); div.className='stage stage-card'+(collapsed?' collapsed':'');
     div.setAttribute('ondragover','stageDragOver(event)');
@@ -10742,6 +10801,8 @@ function renderReadout(){
   if(v.crewed && v.twr>1.2 && meets && !state.research.launch_escape) flags+=`<div class="flag warn">△ No escape system — a failure at ${(100-(v.reliability*100|0))}% odds loses the crew.</div>`;
   if(recoveryActive(m)) flags+=`<div class="flag ok">♻ Reusable booster fitted — ${recoveryRefly(m)?`reflown on this routine mission: build ×${refurbCostMult().toFixed(2)}, turnaround −1 mo${refurbWear()>0?`, wear ${refurbWear()}/${REFLY_WEAR_MAX} (−${(refurbRelPenalty()*100).toFixed(1)}% rel)`:''}`:`first flight proves it (+${fM(RECOVERY_HARDWARE)} hardware; refly discount once routine)`}.</div>`;
   if(ispMult()>1||thrustMult()>1) flags+=`<div class="flag ok">⚙ Propulsion R&D on the launch vehicle: +${Math.round((ispMult()-1)*100)}% Isp · +${Math.round((thrustMult()-1)*100)}% thrust.</div>`;
+  { const _fh=fleetHeritageRelBonus(); if(_fh>0){ const _best=(state.stages||[]).map(s=>s.eng).concat(boostersFitted&&boostersFitted()?[state.boosters.eng]:[]).reduce((b,id)=>engineHeritageFrac(id)>engineHeritageFrac(b)?id:b); flags+=`<div class="flag ok">🏅 Flight heritage: ${ENGINES[_best].name} has ${engineHeritageFlights(_best)} proven flights — +${(_fh*100).toFixed(1)}% reliability and a cheaper build. Old workhorses stay valuable.</div>`; } }
+  { const _st=solidInsertionTax(m); if(_st>0) flags+=`<div class="flag warn">△ Solid final stage on an orbital insertion — no throttle or shutdown to trim the burn: −${(_st*100).toFixed(0)}% reliability. A restartable liquid upper stage inserts more precisely.</div>`; }
   if(boostersFitted()){ const relCost=Math.round((1-boosterRelPenalty())*100); flags+=`<div class="flag ok">⫶ ${v.boosters.count} strap-on booster${v.boosters.count>1?'s':''} (${v.boosters.eng.name}${v.boosters.eng.solid?', solid':''}) — +${fI(v.boostDv||0)} m/s boost-phase Δv, combined-thrust liftoff${relCost>0?` · −${relCost}% reliability (extra failure points)`:''}.</div>`; }
   if(mfgBuildMult()<1||groundLaunchMult()<1||buildTimeCut()>=0.5) flags+=`<div class="flag ok">🏭 Industrial R&D: −${Math.round((1-mfgBuildMult())*100)}% build cost · −${Math.round((1-groundLaunchMult())*100)}% launch-ops cost${buildTimeCut()>=0.5?` · −${Math.round(buildTimeCut())} mo build time`:''}.</div>`;
   { const _rs=radSeverity(m), _pr=(m.crew>0?powerRad(m):0); if(_rs>=0.12||_pr>0) flags+=`<div class="flag ${_rs>=0.5||_pr>=0.3?'warn':''}">☢ Radiation ${_rs>=0.7?'extreme':_rs>=0.4?'high':_rs>=0.12?'moderate':'low'} (env ${radEnvironment(m)} · ${m.days||0}d)${_pr>0?` + onboard ${selfPoweredCraft(m)?'NEP reactor':powerSourceDef(state.powerSource).name}`:''} — ${state.research.rad_shielding?'shielding fitted':'<b>no shielding</b>'}: equipment ×${radEquipMult(m).toFixed(2)} fragility${m.crew>0?` · crew ×${radCrewMult(m).toFixed(2)}`:''}.</div>`; }
@@ -10818,6 +10879,8 @@ function renderProfileReadout(m){
   if(!state.research.launch_escape) flags+=`<div class="flag warn">△ No escape system — a failure at ${(100-(rel*100|0))}% odds loses the crew.</div>`;
   if(recoveryActive(m)) flags+=`<div class="flag ok">♻ Reusable booster fitted — ${recoveryRefly(m)?`reflown on this routine mission: build ×${refurbCostMult().toFixed(2)}, turnaround −1 mo${refurbWear()>0?`, wear ${refurbWear()}/${REFLY_WEAR_MAX} (−${(refurbRelPenalty()*100).toFixed(1)}% rel)`:''}`:`first flight proves it (+${fM(RECOVERY_HARDWARE)} hardware; refly discount once routine)`}.</div>`;
   if(ispMult()>1||thrustMult()>1) flags+=`<div class="flag ok">⚙ Propulsion R&D on the launch vehicle: +${Math.round((ispMult()-1)*100)}% Isp · +${Math.round((thrustMult()-1)*100)}% thrust.</div>`;
+  { const _fh=fleetHeritageRelBonus(); if(_fh>0){ const _best=(state.stages||[]).map(s=>s.eng).concat(boostersFitted&&boostersFitted()?[state.boosters.eng]:[]).reduce((b,id)=>engineHeritageFrac(id)>engineHeritageFrac(b)?id:b); flags+=`<div class="flag ok">🏅 Flight heritage: ${ENGINES[_best].name} has ${engineHeritageFlights(_best)} proven flights — +${(_fh*100).toFixed(1)}% reliability and a cheaper build. Old workhorses stay valuable.</div>`; } }
+  { const _st=solidInsertionTax(m); if(_st>0) flags+=`<div class="flag warn">△ Solid final stage on an orbital insertion — no throttle or shutdown to trim the burn: −${(_st*100).toFixed(0)}% reliability. A restartable liquid upper stage inserts more precisely.</div>`; }
   if(boostersFitted()){ const relCost=Math.round((1-boosterRelPenalty())*100); flags+=`<div class="flag ok">⫶ ${v.boosters.count} strap-on booster${v.boosters.count>1?'s':''} (${v.boosters.eng.name}${v.boosters.eng.solid?', solid':''}) — +${fI(v.boostDv||0)} m/s boost-phase Δv, combined-thrust liftoff${relCost>0?` · −${relCost}% reliability (extra failure points)`:''}.</div>`; }
   if(mfgBuildMult()<1||groundLaunchMult()<1||buildTimeCut()>=0.5) flags+=`<div class="flag ok">🏭 Industrial R&D: −${Math.round((1-mfgBuildMult())*100)}% build cost · −${Math.round((1-groundLaunchMult())*100)}% launch-ops cost${buildTimeCut()>=0.5?` · −${Math.round(buildTimeCut())} mo build time`:''}.</div>`;
   { const _rs=radSeverity(m), _pr=(m.crew>0?powerRad(m):0); if(_rs>=0.12||_pr>0) flags+=`<div class="flag ${_rs>=0.5||_pr>=0.3?'warn':''}">☢ Radiation ${_rs>=0.7?'extreme':_rs>=0.4?'high':_rs>=0.12?'moderate':'low'} (env ${radEnvironment(m)} · ${m.days||0}d)${_pr>0?` + onboard ${selfPoweredCraft(m)?'NEP reactor':powerSourceDef(state.powerSource).name}`:''} — ${state.research.rad_shielding?'shielding fitted':'<b>no shielding</b>'}: equipment ×${radEquipMult(m).toFixed(2)} fragility${m.crew>0?` · crew ×${radCrewMult(m).toFixed(2)}`:''}.</div>`; }
