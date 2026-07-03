@@ -2374,6 +2374,7 @@ function tickMonthlyBoundary(){
     checkResearchSetback(); // #26: experimental research failures (negative sibling of breakthroughs)
     checkEvents();
     tickMandate(); // mandates: offer / deadline check (economy tension pass)
+    checkScoringDate(); // chronicle: the soft scoring date fires once
     pushMetricHistory(); // #28: snapshot this month's core metrics for the dashboard sparklines
 }
 // #28: append the current core-metric values to their trend buffers (capped at METRIC_HISTORY_LEN).
@@ -5084,6 +5085,7 @@ function finalizeLaunch(ctx, ops){
   if(success){
     personnelMissionEvent(true); // M6: morale boost on success
     state.successes++;
+    if(m.crew>0){ state.crewFlown=(state.crewFlown||0)+m.crew; } // chronicle: souls carried
     creditEngineHeritage(); // engines earn flight heritage toward cost/reliability edge
     state.staticFixBonus=0;  // the static-fire fix flies once
 
@@ -5116,6 +5118,7 @@ function finalizeLaunch(ctx, ops){
     }
     if(!routine){
       state.completed[m.id]=true;
+      (state.firstDates=state.firstDates||{})[m.id]=absMonth(); // chronicle: when each first happened
       fulfillMandateIfMatch(m.id); // mandate bonus if this was the mandated mission, in time
       denyRivalGoal(m.id); // CE1(b): beating a rival to its goal blunts that rival's momentum
       state.history=state.history||{}; state.history[m.id]=state.year; // #18: record the year for the Home timeline
@@ -5173,6 +5176,7 @@ function finalizeLaunch(ctx, ops){
       addSupport(SUPPORT_DELTA.lossCrewed); // #8: losing a crew is the worst political blow
       loseAssignedCrew();
       advance(6); // grounding + investigation
+      state.crewLost=(state.crewLost||0)+m.crew; // chronicle: the price paid
       log('bad',`${m.name}: CATASTROPHE. The ${SUBSYS_LABEL[outcome.subsystem].toLowerCase()} failed — ${outcome.story} Vehicle lost with all ${m.crew} aboard. Six-month stand-down, −${rep} rep. Fit a launch-escape system before flying crew again.`);
       applyEraStakes('loss of the crew and vehicle'); // CE4(c): era-scaled compounding setback
     }else{
@@ -8839,6 +8843,84 @@ let _objSectionOpen=false;
 /* ---------- render ---------- */
 
 
+
+/* ---------- The Agency Chronicle: your century, scored ----------
+   A timeline of every first — yours against the rivals' — plus lifetime statistics and a
+   legacy grade. Openable anytime from the Command Center; fires as "An Era Closes" at the
+   soft scoring date (Jan 1990) with the option to keep playing; and is the retirement
+   ceremony when the player chooses to step down. Open-ended play is never taken away. */
+const SCORING_YEAR=1990;
+function chronicleEntries(){
+  const out=[];
+  for(const [mid,abs] of Object.entries(state.firstDates||{})){
+    const m=MISSIONS.find(x=>x.id===mid); if(!m||(m.rep||0)<15) continue; // milestones, not routine paperwork
+    out.push({abs, who:'you', label:m.name});
+  }
+  for(const key of Object.keys(state.rivalFired||{})){
+    const [rid,fname]=key.split('|'); const r=RIVALS.find(x=>x.id===rid); if(!r) continue;
+    const f=(r.firsts||[]).find(x=>x.name===fname);
+    out.push({abs:((f&&f.year)||1957)*12-1942*12, who:r.name, color:r.color, label:fname});
+  }
+  out.sort((a,b)=>a.abs-b.abs);
+  return out;
+}
+function legacyScore(){
+  const firsts=Object.keys(state.firstDates||{}).filter(mid=>{const m=MISSIONS.find(x=>x.id===mid); return m&&(m.rep||0)>=15;}).length;
+  const scooped=Object.keys(state.scooped||{}).length;
+  const worlds=BODIES.filter(b=>b.id!=='earth'&&(b.missions||[]).some(mid=>state.completed[mid])).length;
+  const safety=state.flights?state.successes/state.flights:0;
+  let facN=0; try{ FACILITY_DEFS.forEach(d=>{ if(facilityBuilt(d.id)) facN++; }); }catch(e){}
+  const crewPenalty=(state.crewLost||0)*6;
+  const score=firsts*10 + worlds*12 + facN*8 + Math.round(safety*20) - scooped*5 - crewPenalty;
+  const grade= score>=140?'S':score>=100?'A':score>=65?'B':score>=35?'C':'D';
+  return {score,grade,firsts,scooped,worlds,facN,safety,crewLost:state.crewLost||0};
+}
+function showChronicle(mode){ // mode: 'view' | 'era' (soft date) | 'retire'
+  const L=legacyScore(); const entries=chronicleEntries();
+  const gradeCol={S:'#ffd98a',A:'#58c47a',B:'#4fd1d9',C:'#e8b64c',D:'#e0564f'}[L.grade];
+  const rows=entries.map(e=>{ const y=1942+Math.floor(e.abs/12);
+    return `<div style="display:flex;gap:10px;align-items:baseline;padding:2px 0;font-size:12px">
+      <span style="font-family:var(--mono);color:var(--dim);flex:0 0 42px">${y}</span>
+      <span style="flex:0 0 10px;color:${e.who==='you'?'var(--ignite)':(e.color||'var(--muted)')}">${e.who==='you'?'★':'●'}</span>
+      <span style="color:${e.who==='you'?'var(--ink)':'var(--muted)'}">${e.label}</span>
+      ${e.who!=='you'?`<span class="dim" style="font-size:11px">— ${e.who}</span>`:''}
+    </div>`; }).join('') || '<div class="dim" style="font-size:12px">No milestones yet — the chronicle is unwritten.</div>';
+  const stat=(k,v)=>`<div class="metric"><div class="k">${k}</div><div class="v">${v}</div></div>`;
+  const heading = mode==='retire' ? 'The Chronicle closes' : (mode==='era' ? 'An era closes — '+SCORING_YEAR : 'Agency Chronicle');
+  const sub = mode==='retire' ? 'You step down. This is what the history books will say.' :
+              mode==='era' ? 'Half a century of spaceflight, scored. The program may continue — history has simply taken its first measure.' :
+              state.company+' — the story so far.';
+  showModal(`<div>
+    <h2 style="margin-bottom:2px">${heading}</h2>
+    <p class="muted" style="font-size:12px;margin:0 0 10px">${sub}</p>
+    <div style="display:flex;gap:16px;align-items:center;margin-bottom:12px">
+      <div style="font-size:44px;font-family:var(--mono);font-weight:700;color:${gradeCol};line-height:1">${L.grade}</div>
+      <div class="metrics" style="flex:1">
+        ${stat('Firsts', L.firsts)}${stat('Worlds reached', L.worlds)}${stat('Scooped', L.scooped)}
+        ${stat('Flights', state.flights+' ('+Math.round(L.safety*100)+'% success)')}
+        ${stat('Crew flown', (state.crewFlown||0)+((state.crewLost||0)?' · '+state.crewLost+' lost':''))}
+        ${stat('Facilities', L.facN)}
+      </div>
+    </div>
+    <div style="max-height:240px;overflow:auto;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:6px 0;margin-bottom:10px">${rows}</div>
+    ${mode==='retire'
+      ? `<button class="btn launch" style="width:100%" onclick="hideModal();newGame();render()">Found a new agency ▸</button>
+         <button class="btn ghost" style="width:100%;margin-top:6px" onclick="hideModal()">…not yet — back to work</button>`
+      : mode==='era'
+      ? `<button class="btn launch" style="width:100%" onclick="hideModal()">The program continues ▸</button>
+         <button class="btn ghost" style="width:100%;margin-top:6px" onclick="showChronicle('retire')">Retire with this legacy</button>`
+      : `<button class="btn" style="width:100%" onclick="hideModal()">Close</button>
+         <button class="btn ghost" style="width:100%;margin-top:6px" onclick="showChronicle('retire')">Retire — end the campaign here</button>`}
+  </div>`, true);
+}
+function checkScoringDate(){
+  if(state.year>=SCORING_YEAR && !state.eraScored){ state.eraScored=true;
+    timeInterrupt();
+    if(animEnabled){ if(!pendingCelebration) pendingCelebration=()=>showChronicle('era'); else showChronicle('era'); }
+    log('note',`📖 ${SCORING_YEAR}: history takes its first measure of ${state.company}. Legacy grade so far: ${legacyScore().grade}.`);
+  }
+}
+
 /* ---------- THE OUTLINER: overlapping timers made visible ----------
    One compact ETA-sorted strip of everything in flight, on every scene. Research, builds,
    mandates, windows, expiring contracts, special contracts, the rivals' next predicted
@@ -10038,7 +10120,9 @@ function renderCCRight(){
     <div class="card adv-only">
       <div style="display:flex;justify-content:space-between;align-items:center">
         <div class="cc-panel-h" style="margin:0">Rivals</div>
-        <button class="btn ghost" style="font-size:11px;padding:3px 8px" onclick="showRivalsModal()">Deep view →</button>
+        <span style="display:flex;gap:5px">
+        <button class="btn ghost" style="font-size:11px;padding:3px 8px" onclick="showChronicle('view')" title="Your century, scored — the timeline of firsts and your legacy grade">📖 Chronicle</button>
+        <button class="btn ghost" style="font-size:11px;padding:3px 8px" onclick="showRivalsModal()">Deep view →</button></span>
       </div>
       ${rivalMini}
     </div>
