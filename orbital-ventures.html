@@ -858,6 +858,10 @@ const DEPT_LEAD_WEIGHT = 1.6;
 // The Astronaut Corps lead lends a small flat crewed-reliability steadiness on top of the
 // assigned astronaut's own bonus (leadership → fewer crew errors). Zero with no corps lead.
 const CORPS_LEAD_REL_BONUS_MAX = 0.03;
+// #19 slice C: workforce planning — a fully-unstaffed CORE engineering specialty is a real risk.
+// Era-scaled (0 in Pioneer, like CE4 stakes) so early game is provably unchanged.
+const DEPT_UNDERSTAFF_REL_PEN = 0.03; // reliability hit per unstaffed core department at full era scaling
+const DEPT_UNDERSTAFF_REL_CAP = 0.09; // total cap on the understaffing penalty
 function defaultDepartments(){ const o={}; for(const d of DEPARTMENTS) o[d.id]={lead:null, training:0}; return o; }
 
 const RIVALS = [
@@ -1907,6 +1911,7 @@ function curRel(){
   base+=engRelBonus(); // M6: engineer team reliability bonus
   base+=diff().relBonus; // difficulty: forgiveness bump
   base-=relDebt(); // #26: lasting penalty from research setbacks shipped with the flaw unresolved
+  base-=deptStaffingRelPenalty(); // #19 slice C: era-scaled hit for leaving a core department unstaffed (0 in Pioneer)
   return base; // note: effectiveReliability still clamps to diff().relCap, so the cap preserves balance
 }
 // #26: bounded reliability debt accumulated from "ship it degraded" research-setback calls
@@ -2386,8 +2391,8 @@ function tickMonthlyBoundary(){
         log('bad',`${p?p.name:'A staff member'} quit due to low morale.`);
         return false;
       }
-      return true;
-    });
+      return true;    });
+    reconcileDeptLeads(); // #19 slice C: a lead who quit is succeeded by the best remaining member
 
     // #4 division: morale drift toward baseline (R&D progress itself is now a continuous daily flow)
     tickDivisionMorale();
@@ -3748,6 +3753,7 @@ function checkPoaching(){
   if(Math.random()<leaveProb){
     state.staff=state.staff.filter(s=>s.id!==target.id);
     if(state.assignedAstronaut===target.id) state.assignedAstronaut=null;
+    reconcileDeptLeads(); // #19 slice C: a poached lead is succeeded by the best remaining member
     state.rivalThreat=state.rivalThreat||{}; state.rivalThreat[rival.id]=(state.rivalThreat[rival.id]||0)+1;
     const rs=rivalStateFor(rival); rs.momentum=Math.min(RIVAL_MOM_MAX, rs.momentum+RIVAL_POACH_MOM_BUMP); // they gained your talent
     log('bad',`${rival.flag} ${rival.name} poached ${p.name} (${p.specialty}) — low morale made the offer easy to take, and it feeds their momentum. Keep your people happy (or counter-poach).`);
@@ -4684,6 +4690,7 @@ function applyCrewDose(m){
   if(sr.dose>=RAD_CAREER_LIMIT){
     state.staff=(state.staff||[]).filter(s=>s.id!==sr.id);
     if(state.assignedAstronaut===sr.id) state.assignedAstronaut=null;
+    reconcileDeptLeads(); // #19 slice C: a retiring corps lead is succeeded by the best remaining astronaut
     log('bad',`${nm} has reached the career radiation limit (${Math.round(sr.dose)} units) — grounded for good. They retire from the astronaut corps.`);
   } else if(before<RAD_CAREER_WARN && sr.dose>=RAD_CAREER_WARN){
     log('note',`${nm} is nearing the career radiation limit (${Math.round(sr.dose)}/${RAD_CAREER_LIMIT}) — one more deep mission may end their flying career.`);
@@ -5645,6 +5652,52 @@ function deptLeadStrength(id){
 // Astronaut Corps lead → flat crewed reliability steadiness (0 with no corps lead)
 function corpsLeadRelBonus(){ return deptLeadStrength('astronaut')*CORPS_LEAD_REL_BONUS_MAX; }
 
+/* ---------- #19 slice C: succession & workforce planning ---------- */
+// When a lead leaves the roster (fired / quit / poached / retired), the strongest remaining
+// member of that department automatically steps up. Call at every staff-removal point.
+function bestSuccessor(deptId){
+  const members=deptMembers(deptId); if(!members.length) return null;
+  return members.slice().sort((a,b)=>(effSkill(b.id)*Math.max(0.2,(b.morale||50)/100))-(effSkill(a.id)*Math.max(0.2,(a.morale||50)/100)))[0];
+}
+function reconcileDeptLeads(){
+  if(!state.departments) return;
+  DEPARTMENTS.forEach(def=>{
+    const ds=state.departments[def.id]; if(!ds||!ds.lead) return;
+    if(deptMembers(def.id).some(m=>m.id===ds.lead)) return; // lead still present — nothing to do
+    const succ=bestSuccessor(def.id);
+    if(succ){ ds.lead=succ.id; const p=personById(succ.id); log('note', `${p?p.name:'Someone'} stepped up to lead ${def.name} after the previous lead departed.`); }
+    else ds.lead=null;
+  });
+}
+function deptStaffed(id){ return deptMembers(id).length>0; }
+function deptLed(id){ return !!deptLeadRecord(id); }
+// Which departments are critical right now: the three core engineering specialties every vehicle
+// exercises, plus the Astronaut Corps when the active mission is crewed.
+function criticalDepts(){
+  const core=['propulsion','structures','avionics'];
+  const m=(typeof MISSIONS!=='undefined')?MISSIONS.find(x=>x.id===state.activeMission):null;
+  if(m && m.crew>0) core.push('astronaut');
+  return core;
+}
+// Gaps worth surfacing: an unstaffed critical department (a real reliability risk) or a staffed-but-
+// leaderless critical department (an advisory nudge).
+function workforceGaps(){
+  const gaps=[];
+  criticalDepts().forEach(id=>{
+    if(!deptStaffed(id)) gaps.push({id, kind:'understaffed'});
+    else if(!deptLed(id)) gaps.push({id, kind:'leaderless'});
+  });
+  return gaps;
+}
+// Era-scaled reliability penalty for leaving a core engineering specialty completely unstaffed.
+// 0 in Pioneer (eraStakesFrac=0) → early game provably unchanged.
+function deptStaffingRelPenalty(){
+  const frac=eraStakesFrac(); if(frac<=0) return 0;
+  let pen=0;
+  ['propulsion','structures','avionics'].forEach(id=>{ if(!deptStaffed(id)) pen+=DEPT_UNDERSTAFF_REL_PEN; });
+  return Math.min(DEPT_UNDERSTAFF_REL_CAP, pen*frac);
+}
+
 // M9: two trait-weighted team scores — one for reliability, one for R&D speed.
 function engScores(){
   const team=engTeam(); if(!team.length) return {rel:0, rd:0, avg:0};
@@ -5708,6 +5761,7 @@ function firePersonnel(id){
   const p=personById(id);
   state.staff=state.staff.filter(s=>s.id!==id);
   if(state.assignedAstronaut===id) state.assignedAstronaut=null;
+  reconcileDeptLeads(); // #19 slice C: succession if the fired person was a department lead
   log('note',`${p?p.name:'Staff'} let go. Monthly burn reduced.`);
   render();
 }
@@ -5879,7 +5933,7 @@ function hideModal(){activeModal=null;_prodModalOpen=false;$('modal').classList.
 
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=40; // v40: #19 slice B — career progression (staff.xp accrues monthly ×morale ×dept-training, raising effSkill above hire-day base up to +0.15; dept.training level bought with capital; legacy staff default xp 0 via staffXp guard, effSkill==base at xp 0 so no balance migration); v39: #19 slice A — organizational departments (state.departments {deptId:{lead,training}}; legacy saves default via loadDefaults/defaultDepartments; membership is derived from hired staff, leads are balance-neutral when unset); v38: #6 research partnerships — bench-tested / flight-proven components (state.engineStockTested + state.partStockTested, the bench-tested subset of each yard; legacy saves default {}); a fitted bench-tested component adds +1.5% reliability (cap +6%, benchRelBonus), built at +60% cost / +50% time; v36: #7 sub-assemblies slice 2 — structures & habitats yard (state.partStock {"kind:sub":count}, e.g. "tank:steel"/"hab:closed"; legacy saves default {}); same cost-neutral cadence pattern as the Engine Yard; v35: #7 sub-assemblies — Engine Yard (state.engineStock {engId:count}; legacy saves default {}); v34: Time Granularity slice 4b — launch windows day-scheduled (window/committedWindow .abs moved from absMonth to absDay; migrateWindowsToDays ×30 on pre-v34 load + clears the regenerable windows cache); v33: Time Granularity slice 1 — day-iterating advance() funnel (state.day 0..29 + absDay(); legacy saves default day:0 via load defaults; whole-month advances stay bit-identical so no balance migration needed); v32: CE4(c) era-scaled failure stakes + bailout retune (state.loanInterest — permanent bridge-loan debt service; legacy saves default to 0 via load defaults + loanInterest() guard); v31: CE4(b) standing resupply obligations (per-facility supply/starvedMonths; legacy facilities default to fully provisioned via facilitySupply()); v30: CE3(c) lunar architecture fork (state.lunarArch, null=uncommitted; luna_landing reqResearch moved to per-arch gates); v29: CE3(a) company doctrine (state.doctrine, null=undeclared/neutral); v28: CE2(c) juggernaut capstone (state.standingProd/juggernautReached); v27: CE2(b) launch cadence (state.padMonthAbs/padMonthUsed) — load defaults seed all of these; v26: CE1 rival agents (state.rivalState), seedRivalState migrates old rivalFired
+const SAVE_VERSION=40; // v40: #19 slice B — career progression (staff.xp accrues monthly ×morale ×dept-training, raising effSkill above hire-day base up to +0.15; dept.training level bought with capital; legacy staff default xp 0 via staffXp guard, effSkill==base at xp 0 so no balance migration). #19 slice C (succession + workforce planning) adds no persisted state — reconcileDeptLeads mutates existing dept.lead, gaps + the era-scaled unstaffed-department reliability penalty (0 in Pioneer) are derived — so it needs no bump. v39: #19 slice A — organizational departments (state.departments {deptId:{lead,training}}; legacy saves default via loadDefaults/defaultDepartments; membership is derived from hired staff, leads are balance-neutral when unset); v38: #6 research partnerships — bench-tested / flight-proven components (state.engineStockTested + state.partStockTested, the bench-tested subset of each yard; legacy saves default {}); a fitted bench-tested component adds +1.5% reliability (cap +6%, benchRelBonus), built at +60% cost / +50% time; v36: #7 sub-assemblies slice 2 — structures & habitats yard (state.partStock {"kind:sub":count}, e.g. "tank:steel"/"hab:closed"; legacy saves default {}); same cost-neutral cadence pattern as the Engine Yard; v35: #7 sub-assemblies — Engine Yard (state.engineStock {engId:count}; legacy saves default {}); v34: Time Granularity slice 4b — launch windows day-scheduled (window/committedWindow .abs moved from absMonth to absDay; migrateWindowsToDays ×30 on pre-v34 load + clears the regenerable windows cache); v33: Time Granularity slice 1 — day-iterating advance() funnel (state.day 0..29 + absDay(); legacy saves default day:0 via load defaults; whole-month advances stay bit-identical so no balance migration needed); v32: CE4(c) era-scaled failure stakes + bailout retune (state.loanInterest — permanent bridge-loan debt service; legacy saves default to 0 via load defaults + loanInterest() guard); v31: CE4(b) standing resupply obligations (per-facility supply/starvedMonths; legacy facilities default to fully provisioned via facilitySupply()); v30: CE3(c) lunar architecture fork (state.lunarArch, null=uncommitted; luna_landing reqResearch moved to per-arch gates); v29: CE3(a) company doctrine (state.doctrine, null=undeclared/neutral); v28: CE2(c) juggernaut capstone (state.standingProd/juggernautReached); v27: CE2(b) launch cadence (state.padMonthAbs/padMonthUsed) — load defaults seed all of these; v26: CE1 rival agents (state.rivalState), seedRivalState migrates old rivalFired
 function saveGame(){
   try{
     const payload={v:SAVE_VERSION, ts:Date.now(), state:JSON.parse(JSON.stringify(state))};
@@ -9173,6 +9227,8 @@ function outlinerItems(){
   buildQueueList().forEach(o=>{ if(o.started) push('🏭', o.name||'Vehicle build', o.monthsLeft*30, ()=>{ setTab('command'); try{ showInfrastructureModal(); }catch(e){} }); });
   // material dip — the one live decision left in the collapsed market; surfaced at the top (eta 0)
   MATERIAL_DEFS.forEach(d=>{ if(isMaterialDip(d.key) && canBuyMaterialDip(d.key).ok) push('📦', d.name+' on sale', 0, ()=>{ setTab('command'); try{ showInfrastructureModal(); }catch(e){} }, 'var(--ok)'); });
+  // #19 slice C: an unstaffed critical department is a standing reliability risk — surface it in the flow
+  workforceGaps().filter(g=>g.kind==='understaffed').forEach(g=>push('👥', (departmentDef(g.id)||{}).name+' dept unstaffed', 0, ()=>{ try{ showPersonnelModal(); }catch(e){} }, 'var(--bad)'));
   // station... (module builds advance time inline; nothing queued) — skip
   // mandate deadline
   const md=state.mandate;
@@ -9233,6 +9289,7 @@ function tabAlerts(){
   if(md && md.accepted && md.deadlineAbs-absMonth()<=6) a.command.push('Mandate deadline near');
   if(md && !md.accepted) a.command.push('Mandate offer pending');
   (state.staff||[]).forEach(s=>{ if(s.morale<30){ const p=personById(s.id); a.command.push((p?p.name:'Staff')+' morale critical'); } });
+  workforceGaps().filter(g=>g.kind==='understaffed').forEach(g=>a.command.push((departmentDef(g.id)||{}).name+' dept unstaffed'));
   (state.passiveContracts||[]).forEach(cn=>{ if(cn.monthsLeft<=3) a.command.push(cn.name+' expiring'); });
   // Bench: active mission blocked by the current design
   const m=MISSIONS.find(x=>x.id===state.activeMission);
@@ -9561,6 +9618,10 @@ function buildingGlyph(key){
     case 'personnel': {
       const crit=(state.staff||[]).filter(s=>s.morale<30).length;
       if(crit>0) return {state:'attention', label:crit+' staff at critical morale'};
+      const gaps=workforceGaps();
+      const under=gaps.filter(g=>g.kind==='understaffed');
+      if(under.length) return {state:'attention', label:(departmentDef(under[0].id)||{}).name+' department unstaffed'};
+      if(gaps.length) return {state:'attention', label:(departmentDef(gaps[0].id)||{}).name+' has no lead'};
       return (state.staff||[]).length?{state:'ok', label:state.staff.length+' hired'}:{state:'idle', label:'Unstaffed'};
     }
     case 'infra': {
@@ -12227,6 +12288,20 @@ function renderPersonnel(){
     </div>
   </div>`;
 
+  // #19 slice C: workforce-planning banner — surfaces critical gaps (esp. unstaffed depts, which
+  // otherwise have no member cards to render). Understaffed = a real reliability risk; leaderless = a nudge.
+  const gaps=workforceGaps();
+  if(gaps.length){
+    const rows=gaps.map(g=>{
+      const def=departmentDef(g.id);
+      return g.kind==='understaffed'
+        ? `<div style="color:var(--bad);font-size:12px">⚠ <b>${def.icon} ${def.name}</b> is unstaffed — a core department with no engineers${eraStakesFrac()>0?` (reliability −${Math.round(DEPT_UNDERSTAFF_REL_PEN*eraStakesFrac()*100)}% while empty)`:''}. Hire below.</div>`
+        : `<div style="color:var(--warn);font-size:12px">○ <b>${def.icon} ${def.name}</b> has no lead — promote one to steer it.</div>`;
+    }).join('');
+    html+=`<div class="card" style="margin-bottom:10px;border-color:#5a4419;background:var(--panel2)">
+      <div style="font-weight:700;font-size:13px;margin-bottom:4px">👥 Workforce planning</div>${rows}</div>`;
+  }
+
   if(hired.length){
     html+=`<div style="margin-bottom:6px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">Departments</div>`;
     // #19: group the on-staff list by department, each with an org header (lead + headcount)
@@ -12238,12 +12313,16 @@ function renderPersonnel(){
         ? `<span style="color:var(--readout)">★ ${leadName}</span>`
         : `<span class="dim">no lead — promote one below</span>`;
       const ds=deptState(def.id);
+      const isCritical=criticalDepts().includes(def.id);
+      const health = !leadName && members.length ? {c:'var(--warn)', t:isCritical?'Critical department has no lead':'No lead assigned'}
+                   : (leadName ? {c:'var(--ok)', t:'Staffed and led'} : {c:'var(--dim)', t:'Staffed'});
+      const dot=`<span title="${health.t}" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${health.c};margin-right:2px"></span>`;
       const trainChk=canTrainDepartment(def.id);
       const trainBtn = ds.training>=TRAIN_MAX_LEVEL
         ? `<span class="pill" title="Training maxed">🎓 L${TRAIN_MAX_LEVEL} max</span>`
         : `<button class="btn ghost" style="font-size:12px;padding:3px 8px" onclick="trainDepartment('${def.id}')" ${trainChk.ok?'':'disabled'} title="${trainChk.ok?`Invest in training: accelerates this department's experience growth (${fM(trainChk.cost)})`:trainChk.why}">🎓 Train L${ds.training}→${ds.training+1} · ${fM(trainDepartmentCost(def.id))}</button>`;
       const header=`<div class="card" style="background:var(--panel2);margin-bottom:6px;padding:8px 10px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
-        <div><span style="font-weight:700">${def.icon} ${def.name}</span> <span class="pill" style="margin-left:4px">${members.length}</span>${ds.training>0?` <span class="pill" style="color:var(--ok);border-color:#2f5a2f" title="Training level accelerates experience growth">🎓 L${ds.training}</span>`:''}</div>
+        <div><span style="font-weight:700">${dot}${def.icon} ${def.name}</span> <span class="pill" style="margin-left:4px">${members.length}</span>${ds.training>0?` <span class="pill" style="color:var(--ok);border-color:#2f5a2f" title="Training level accelerates experience growth">🎓 L${ds.training}</span>`:''}</div>
         <div style="display:flex;align-items:center;gap:10px;font-size:12px">Lead: ${leadTxt} ${trainBtn}</div>
       </div>`;
       return header + members.map(sr=>renderPersonnelCard(personById(sr.id), sr)).join('');
