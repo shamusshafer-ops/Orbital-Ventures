@@ -677,6 +677,9 @@
         <button class="rail-acc-btn" id="raccObj" onclick="railAccordClick('objectives')" ondblclick="railAccordDbl('objectives')" title="Click +/− to expand or collapse · double-click to open Programs"><span>✔ Current Objectives</span><span class="rail-acc-sign"></span></button>
         <div class="rail-acc-body" id="raccObjBody"></div>
       </div>
+      <!-- The Outliner: everything in flight with its ETA, soonest first — visible on every
+           scene. This is the one-more-turn machine: the player always sees the next payoff. -->
+      <div class="card" id="outlinerCard" style="margin-bottom:14px"></div>
       <!-- slice 3: the contextual right rail. Each scene's former sidebar lives here as a
            .rail-panel; render() shows the one matching the active scene and toggles
            #appShell.has-right. Element ids are unchanged so the render fns are untouched. -->
@@ -2360,7 +2363,7 @@ function tickMonthlyBoundary(){
     state.lastMonth={revenue:mRev, expenses:mExp, net:round2(mRev-mExp), flights:0};
     // Economy tension: warn (once per threshold crossing) when the runway gets short.
     const rw=runwayMonths();
-    if(rw<=6 && state._runwayWarned!==6){ state._runwayWarned=6; log('bad',`⚠ Treasury critical — about ${Math.max(1,Math.round(rw))} months of runway at current burn. Fly something, sign a contract, or cut payroll.`); }
+    if(rw<=6 && state._runwayWarned!==6){ state._runwayWarned=6; timeInterrupt(); log('bad',`⚠ Treasury critical — about ${Math.max(1,Math.round(rw))} months of runway at current burn. Fly something, sign a contract, or cut payroll.`); }
     else if(rw<=12 && rw>6 && state._runwayWarned!==12){ state._runwayWarned=12; log('note',`Treasury warning — roughly ${Math.round(rw)} months of runway at current burn.`); }
     else if(rw>18 && state._runwayWarned){ state._runwayWarned=null; }
 
@@ -2440,6 +2443,7 @@ function offerMandate(){
   const lead=Math.max(24, Math.round(buildMonths(m)*3+18)); // generous: 3× build + margin
   const bonus=round2((m.payout||2)*MANDATE_BONUS_MULT*(1+0.15*eraIndex(currentEra())));
   state.mandate={missionId:m.id, name:m.name, bonus, deadlineAbs:absMonth()+lead, offeredAbs:absMonth()};
+  timeInterrupt(); // smart time: an offer on the table stops the clock
   log('note',`📜 Government mandate offered: fly ${m.name} within ${lead} months for a ${fM(bonus)} bonus.`);
   if(animEnabled) showMandateModal();
 }
@@ -2997,6 +3001,7 @@ function tickBuildQueue(){
       hangarList().push({id:o.id, name:o.name, missionId:o.missionId, missionName:o.missionName, spec:o.spec, units:o.units, builtMonth:absMonth()});
       log('ok',`Manufacturing — ${o.name} rolled out, ready to fly.`);
     }
+    if(done.length) timeInterrupt(); // smart time: a finished vehicle is a decision point
     state.buildQueue=q.filter(o=>o.monthsLeft>0);
   }
 }
@@ -3718,6 +3723,7 @@ function completeResearch(){
   state.research[r.id]=true; state.activeResearch=null;
   divisionGainExp(r); // #4: the covering division gains experience from completing a project
   if(isLeveledTech(r.id)){ if(!state.techLevel) state.techLevel={}; state.techLevel[r.id]=1; } // #3: leveled techs start at L1
+  timeInterrupt(); // smart time: a research completion is a decision point
   reconcileEngineMods(); // engine-stat research (e.g. Megawatt Electric) reflects immediately
   if(r.effect.engines){ r.effect.engines.forEach(id=>state.unlocked[id]=true); log('note',`R&D complete: ${r.name}. New engines available — ${r.effect.engines.map(id=>ENGINES[id].name).join(', ')}.`);}
   else if(r.effect.engine){state.unlocked[r.effect.engine]=true; log('note',`R&D complete: ${r.name}. New engine available — ${ENGINES[r.effect.engine].name}.`);}
@@ -3754,6 +3760,29 @@ function advanceMonth(){ stepTime(DAYS_PER_MONTH); } // #26: one-month step (use
 // click on the same arrow starts auto-advancing that unit at 1 step/sec; a third click (or clicking
 // it while it's running) stops. Clicking a different arrow drops back to single-step on the new unit.
 const TIME_UNIT_DAYS={day:1,week:7,month:DAYS_PER_MONTH};
+
+/* ---------- Smart time: the clock stops when the game needs you ----------
+   timeInterrupt() halts auto-run and flags any run-to-event skip. It fires from every
+   decision modal, plus non-modal completions (research done, build done, window open,
+   treasury warnings, mandate/special offers). runToNextEvent() is the Stellaris button:
+   fast-forward synchronously until the next outliner item lands or an interrupt fires. */
+let _timeInterrupted=false;
+function timeInterrupt(){ _timeInterrupted=true; try{ stopTimeAuto(); }catch(e){} }
+function runToNextEvent(){
+  if(state.over) return;
+  stopTimeAuto(); _timeInterrupted=false;
+  const items=outlinerItems();
+  const target=items.length?Math.max(1,Math.ceil(items[0].etaDays)):30;
+  const cap=Math.min(target, 365*3);
+  let d=0;
+  while(d<cap && !_timeInterrupted && !state.over && !_pendingSetback){
+    advance(1); d++;
+    if($('modal') && !$('modal').classList.contains('hidden')) break; // a decision opened
+  }
+  _timeInterrupted=false;
+  render();
+}
+
 let timeAuto={unit:null,timer:null}, timePrimed=null;
 function stopTimeAuto(){ if(timeAuto.timer) clearInterval(timeAuto.timer); timeAuto={unit:null,timer:null}; updateTimeArrows(); }
 function startTimeAuto(unit){ stopTimeAuto(); timeAuto.unit=unit;
@@ -5694,7 +5723,7 @@ function bailout(){
   hideModal(); render();
 }
 function restart(difficulty){hideModal();newGame(difficulty);render();}
-function showModal(html,view){const mb=$('modalBody');mb.className='modal'+(view?' view':'');mb.innerHTML=html;$('modal').classList.remove('hidden');mb.classList.add('modal-entering');mb.addEventListener('animationend',()=>mb.classList.remove('modal-entering'),{once:true});} // view=true → wide, left-aligned, scrollable deep-view layout
+function showModal(html,view){ try{ timeInterrupt(); }catch(e){} const mb=$('modalBody');mb.className='modal'+(view?' view':'');mb.innerHTML=html;$('modal').classList.remove('hidden');mb.classList.add('modal-entering');mb.addEventListener('animationend',()=>mb.classList.remove('modal-entering'),{once:true});} // view=true → wide, left-aligned, scrollable deep-view layout
 function hideModal(){activeModal=null;_prodModalOpen=false;$('modal').classList.add('hidden');} // slice 6: closing clears the live-modal thunk
 
 /* ---------- save / load ---------- */
@@ -8809,6 +8838,71 @@ let _objSectionOpen=false;
 
 /* ---------- render ---------- */
 
+
+/* ---------- THE OUTLINER: overlapping timers made visible ----------
+   One compact ETA-sorted strip of everything in flight, on every scene. Research, builds,
+   mandates, windows, expiring contracts, special contracts, the rivals' next predicted
+   first, and the treasury runway when it's short. Each row jumps to its home. The player
+   should never wonder "what's about to happen" — they should be racing it. */
+function outlinerItems(){
+  const items=[]; const nowD=absDay(), nowM=absMonth();
+  const push=(icon,label,etaDays,go,color)=>items.push({icon,label,etaDays,go,color});
+  const moTxt=(mo)=> mo<=0?'now' : mo<1?'<1 mo' : (Math.round(mo*10)/10)+' mo';
+  // research
+  const ar=state.activeResearch;
+  if(ar){ const r=RESEARCH.find(x=>x.id===ar.id);
+    push('⚗', (r?r.name:ar.id), ar.monthsLeft*30, ()=>setTab('rnd'), 'var(--readout)'); }
+  // production queue
+  buildQueueList().forEach(o=>{ if(o.started) push('🏭', o.name||'Vehicle build', o.monthsLeft*30, ()=>{ setTab('command'); try{ showInfrastructureModal(); }catch(e){} }); });
+  // station... (module builds advance time inline; nothing queued) — skip
+  // mandate deadline
+  const md=state.mandate;
+  if(md&&md.accepted) push('📜', 'Mandate: '+md.name, (md.deadlineAbs-nowM)*30, ()=>setTab('missions'), (md.deadlineAbs-nowM)<=6?'var(--warn)':null);
+  else if(md&&!md.accepted) push('📜', 'Mandate offer: '+md.name, 0, ()=>{ showMandateModal(); }, 'var(--ignite)');
+  // special contract (feature 4)
+  const sc=state.specialContract;
+  if(sc) push('★', sc.title+' ('+fM(sc.bonus)+')', (sc.deadlineAbs-nowM)*30, ()=>setTab('missions'), (sc.deadlineAbs-nowM)<=4?'var(--warn)':'var(--ignite)');
+  // committed launch window
+  if(state.committedWindow){ const m=MISSIONS.find(x=>x.id===state.committedWindow.missionId);
+    push('☄', 'Window: '+(m?m.name:'mission'), state.committedWindow.abs-nowD, ()=>setTab('map'), 'var(--readout)'); }
+  // expiring passive contracts (only when near)
+  (state.passiveContracts||[]).forEach(cn=>{ const d=PASSIVE_CONTRACT_DEFS.find(x=>x.id===cn.id);
+    if(cn.monthsLeft<=4) push('📄', (d?d.name:cn.id)+' expires', cn.monthsLeft*30, ()=>setTab('missions'), cn.monthsLeft<=2?'var(--warn)':null); });
+  // rivals' next scheduled first that hasn't fired and the player hasn't claimed
+  { let best=null;
+    for(const r of RIVALS){ for(const f of (r.firsts||[])){
+      if(state.rivalFired[r.id+'|'+f.name]) continue;
+      if(f.missionId && state.completed[f.missionId]) continue;
+      const eta=(f.year-1942)*12 - nowM; if(eta<=0) continue;
+      if(!best || eta<best.eta) best={eta, r, f}; } }
+    if(best && best.eta<=48) push('🏁', best.r.name+': '+best.f.name, best.eta*30, ()=>setTab('command'), best.eta<=12?'var(--warn)':'var(--dim)'); }
+  // treasury runway when short
+  const rw=runwayMonths();
+  if(rw<24) push('⚠', 'Treasury runway', rw*30, ()=>setTab('command'), rw<=8?'var(--bad)':'var(--warn)');
+  items.sort((a,b)=>a.etaDays-b.etaDays);
+  return items;
+}
+function outlinerEtaText(d){
+  if(d<=0) return 'now';
+  if(d<30) return Math.max(1,Math.round(d))+'d';
+  const mo=d/30; if(mo<12) return (Math.round(mo*10)/10)+'mo';
+  return (Math.round(mo/12*10)/10)+'y';
+}
+function renderOutliner(){
+  const el=$('outlinerCard'); if(!el) return;
+  const items=outlinerItems();
+  if(!items.length){ el.innerHTML=`<div class="cc-panel-h" style="margin:0 0 4px">◈ In flight</div><div class="dim" style="font-size:12px">Nothing on the clock — start research, queue a build, or take a contract.</div>`; return; }
+  const rows=items.slice(0,8).map((it,i)=>`<div onclick="(outlinerItems()[${i}]||{go:()=>{}}).go()" style="display:flex;align-items:center;gap:7px;padding:3px 4px;margin:0 -4px;border-radius:5px;cursor:pointer;font-size:12px" onmouseover="this.style.background='var(--panel2)'" onmouseout="this.style.background=''">
+      <span style="width:16px;text-align:center;flex:0 0 auto">${it.icon}</span>
+      <span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:${it.color||'var(--muted)'}">${it.label}</span>
+      <b style="font-family:var(--mono);font-size:11px;color:${it.color||'var(--readout)'};flex:0 0 auto">${outlinerEtaText(it.etaDays)}</b>
+    </div>`).join('');
+  el.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+      <div class="cc-panel-h" style="margin:0">◈ In flight</div>
+      <button class="btn ghost" style="font-size:11px;padding:1px 8px" onclick="runToNextEvent()" title="Fast-forward until the next item completes or a decision arrives">⏭ next event</button>
+    </div>${rows}`;
+}
+
 /* ---------- attention badges: what needs the player, per scene ----------
    Cheap checks only — this runs every render. A badge shows a count; hover text names the items. */
 function tabAlerts(){
@@ -8849,6 +8943,7 @@ function renderTabBadges(){
 function render(){
   if(RETIRED_TABS[state.tab]) state.tab=RETIRED_TABS[state.tab]; // migrate retired tabs (slice 4: planner) on every render, incl. legacy saves
   renderTabBadges(); // attention badges (UX pass)
+  renderOutliner();  // the one-more-turn strip: every timer, one place, every scene
   $('coName').textContent=state.company;
   const era=currentEra();
   $('eraBadge').innerHTML=`Era ${eraIndex(era)+1}/${ERAS.length} · ${era.name}`;
