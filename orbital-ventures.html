@@ -7107,6 +7107,11 @@ function drawScene(t){
   A.earthPhase=false; // set true by drawOrbit so the Phaser scene knows to show the native Earth FX layer
   A.ascentPhase=false; // set true by drawAscent so the native ascent FX layer (clouds/vapor) shows only during ascent
   const ascentFail = !s.success && s.failPhase==='ascent';
+  // Phase C: one continuous mission ribbon. Overall progress across ascent+cruise+reentry
+  // (weighted by duration), with tick fractions at the phase boundaries for the bar to mark.
+  { const activeDur=A.ascentDur+A.cruiseDur+A.reentryDur;
+    A.overallP=clampA(t/activeDur,0,1);
+    A.phaseTicks=[A.ascentDur/activeDur]; if(A.reentryDur>0) A.phaseTicks.push((A.ascentDur+A.cruiseDur)/activeDur); }
   const prevPhase=A.phase;
   if(t < A.ascentDur || ascentFail){ A.phase='ascent'; drawAscent(t, ascentFail); }
   else {
@@ -7552,12 +7557,15 @@ function drawPhaseBar(phase,color,progress){
   ctx.stroke();
   if(progress!==undefined){
     ctx.fillStyle='rgba(79,209,217,0.08)'; ctx.fillRect(bx,by,barW,barH);
-    const pg=clampA(progress,0,1);
+    // Phase C: the fill is the WHOLE mission (continuous across ascent/cruise/reentry),
+    // not the current scene — the flight reads as one broadcast. Text stays contextual.
+    const pg=clampA(A.overallP!=null?A.overallP:progress,0,1);
     const progGrad=ctx.createLinearGradient(bx,0,bx+barW*pg,0);
     progGrad.addColorStop(0,(color||'#4fd1d9')+'55');
     progGrad.addColorStop(1,(color||'#4fd1d9')+'22');
     ctx.fillStyle=progGrad; ctx.fillRect(bx,by,barW*pg,barH);
     ctx.fillStyle=color||'#4fd1d9'; ctx.fillRect(bx+barW*pg-1,by,2,barH);
+    (A.phaseTicks||[]).forEach(f=>{ ctx.fillStyle='rgba(208,220,228,0.4)'; ctx.fillRect(bx+barW*f-0.5,by,1,barH); });
   }
   ctx.textAlign='center'; ctx.textBaseline='middle';
   ctx.fillStyle=color||'#4fd1d9'; ctx.font='bold 13px ui-monospace,monospace';
