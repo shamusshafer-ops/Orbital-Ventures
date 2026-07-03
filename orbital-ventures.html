@@ -8327,12 +8327,51 @@ function drawOrbit(ct){
   ctx.beginPath(); ctx.arc(E.cx,E.cy,apR,a0,a1); ctx.stroke();
   ctx.setLineDash([]);
   const curP = failP!=null ? Math.min(op,failP) : op;
-  const curAng=a0+curP*(a1-a0);
+  // Reentering flights spend the last stretch of the orbit phase DEORBITING: a retrograde
+  // burn, then a trajectory that peels off the circular orbit and descends toward the limb —
+  // so the return is shown on the map, then handed to the close-up reentry scene.
+  const willReenter = A.reentryDur>0 && s.success;
+  const DEORBIT_START=0.80; // fraction of the orbit phase where the deorbit sequence begins
+  const deorbiting = willReenter && op>=DEORBIT_START && failP==null;
+  const curAng=a0+ (deorbiting?DEORBIT_START:curP) *(a1-a0);
+  // completed orbit track up to the deorbit point
   ctx.strokeStyle='#4fd1d9'; ctx.lineWidth=2.5; ctx.beginPath(); ctx.arc(E.cx,E.cy,orbitR,a0,curAng); ctx.stroke();
   ctx.strokeStyle='rgba(79,209,217,0.2)'; ctx.lineWidth=1;
   ctx.beginPath(); ctx.arc(E.cx,E.cy,orbitR,a0,curAng); ctx.stroke();
-  const cx=E.cx+Math.cos(curAng)*orbitR, cy=E.cy+Math.sin(curAng)*orbitR;
-  if(failP!=null && op>=failP){
+  let cx=E.cx+Math.cos(curAng)*orbitR, cy=E.cy+Math.sin(curAng)*orbitR;
+  let deorbitBurning=false, entryInterface=false;
+  if(deorbiting){
+    // dp: 0 at deorbit burn → 1 at entry interface (the handoff point to drawReentry)
+    const dp=clampA((op-DEORBIT_START)/(1-DEORBIT_START),0,1);
+    deorbitBurning = dp<0.22;                 // retrograde burn kicks it out of orbit
+    entryInterface = dp>0.9;
+    // descending trajectory: spiral inward from orbitR toward the atmosphere interface (limb+~10)
+    const entryR=E.r+10, endAng=curAng+0.62;  // travels ~0.6 rad downrange while dropping in
+    const dr=(u)=>orbitR+(entryR-orbitR)*(u*u); // ease-in fall (accelerating descent)
+    const da=(u)=>curAng+(endAng-curAng)*u;
+    // dashed predicted entry path (faint), then the solid flown portion
+    ctx.strokeStyle='rgba(245,166,35,0.22)'; ctx.setLineDash([4,5]); ctx.lineWidth=1; ctx.beginPath();
+    for(let i=0;i<=40;i++){ const u=i/40, rr=dr(u), aa=da(u); const x=E.cx+Math.cos(aa)*rr, y=E.cy+Math.sin(aa)*rr; i?ctx.lineTo(x,y):ctx.moveTo(x,y);} ctx.stroke(); ctx.setLineDash([]);
+    ctx.strokeStyle='#f5a623'; ctx.lineWidth=2; ctx.beginPath();
+    for(let i=0;i<=40;i++){ const u=i/40*dp, rr=dr(u), aa=da(u); const x=E.cx+Math.cos(aa)*rr, y=E.cy+Math.sin(aa)*rr; i?ctx.lineTo(x,y):ctx.moveTo(x,y);} ctx.stroke();
+    const rrNow=dr(dp), aNow=da(dp);
+    cx=E.cx+Math.cos(aNow)*rrNow; cy=E.cy+Math.sin(aNow)*rrNow;
+    // travel tangent along the descending spiral (approx by finite difference)
+    const u2=Math.min(1,dp+0.01), x2=E.cx+Math.cos(da(u2))*dr(u2), y2=E.cy+Math.sin(da(u2))*dr(u2);
+    const travelAng=Math.atan2(y2-cy, x2-cx);
+    // entry heat builds as it nears the interface
+    if(entryInterface || dp>0.75){ const hp=clampA((dp-0.75)/0.25,0,1);
+      const hg=ctx.createRadialGradient(cx,cy,2,cx,cy,16);
+      hg.addColorStop(0,`rgba(255,150,50,${hp*0.6})`); hg.addColorStop(0.5,`rgba(255,90,30,${hp*0.4})`); hg.addColorStop(1,'rgba(255,50,20,0)');
+      ctx.fillStyle=hg; ctx.beginPath(); ctx.arc(cx,cy,16,0,7); ctx.fill(); }
+    drawCraftSprite(ctx,cx,cy,travelAng, deorbitBurning);
+    // retrograde burn plume (points prograde = opposite travel) during the deorbit kick
+    if(deorbitBurning){ const bAng=travelAng+Math.PI, fl=10+Math.random()*6;
+      const fx=cx+Math.cos(bAng)*fl, fy=cy+Math.sin(bAng)*fl;
+      const bg=ctx.createRadialGradient(cx,cy,1,fx,fy,7);
+      bg.addColorStop(0,'rgba(200,220,255,0.8)'); bg.addColorStop(0.5,'rgba(255,190,90,0.45)'); bg.addColorStop(1,'rgba(255,110,30,0)');
+      ctx.fillStyle=bg; ctx.beginPath(); ctx.arc(fx,fy,7,0,7); ctx.fill(); }
+  } else if(failP!=null && op>=failP){
     drawBoom(ctx,cx,cy,ct-A.cruiseDur*failP);
   } else {
     const travelAng=curAng+Math.PI/2; // tangent of the increasing-angle arc = direction of motion
@@ -8349,6 +8388,7 @@ function drawOrbit(ct){
     ctx.fillText('PRO',px+Math.cos(proAng)*8,py+Math.sin(proAng)*8+3);
     ctx.textAlign='left';
   }
+  A._deorbitState={deorbiting, deorbitBurning, entryInterface};
   const fd=A.flightData||{};
   const alt=Math.round((180+(R.bow||0)*30)+op*15);
   const vel=Math.round(7680+op*120);
@@ -8384,9 +8424,13 @@ function drawOrbit(ct){
   if(s.crewed){ ctx.fillStyle='#f5a623'; ctx.font='10px ui-monospace,monospace'; ctx.fillText('▲ CREWED FLIGHT', W-18, rpY+38); }
   ctx.textAlign='left'; ctx.restore();
   A.flightData=Object.assign(fd,{orbAlt:alt,pe,ap,period,orbVel:vel,orbDrange:(fd.drangeKm||0)+Math.round(op*400)});
+  const ds=A._deorbitState||{};
   const phase = (failP!=null&&op>=failP) ? 'CONTACT LOST' :
-    (op>0.9 ? 'ORBIT ACHIEVED ✓' : (burning ? 'CIRCULARIZATION BURN' : 'ORBITAL FLIGHT'));
-  const phaseCol = (failP!=null&&op>=failP) ? '#e0564f' : (op>0.9 ? '#58c47a' : '#4fd1d9');
+    (ds.entryInterface ? 'ENTRY INTERFACE' :
+     (ds.deorbitBurning ? 'DEORBIT BURN · RETROGRADE' :
+      (ds.deorbiting ? 'REENTRY DESCENT' :
+       (op>0.9 ? 'ORBIT ACHIEVED ✓' : (burning ? 'CIRCULARIZATION BURN' : 'ORBITAL FLIGHT')))));
+  const phaseCol = (failP!=null&&op>=failP) ? '#e0564f' : (ds.deorbiting ? '#f5a623' : (op>0.9 ? '#58c47a' : '#4fd1d9'));
   drawPhaseBar(phase, phaseCol, op);
   const orbPitch=curAng-Math.PI/2;
 
