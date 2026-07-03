@@ -155,6 +155,10 @@
   .stage-head .label{font-family:var(--mono);font-size:12px;color:var(--ignite);letter-spacing:.06em}
   /* #27: visual draggable stage cards */
   .stage-card{transition:border-color .12s,box-shadow .12s}
+  /* Phase 1: rocket-as-bench — card flash when selected from the rocket, and selected ring */
+  @keyframes stageFlash { 0%{box-shadow:0 0 0 2px #f5a623aa, 0 0 18px #f5a62355} 100%{box-shadow:0 0 0 2px transparent} }
+  .stage-flash{ animation: stageFlash 1.1s ease-out 1 }
+  .stage-card.rocket-sel{ border-color:#f5a623 !important }
   .stage-card .stage-head{gap:8px;margin-bottom:6px}
   .stage-card.drag-over{border-color:var(--ignite);box-shadow:0 0 0 1px var(--ignite) inset}
   .grip{cursor:grab;color:var(--dim);font-size:14px;user-select:none;padding:0 2px}
@@ -3903,6 +3907,24 @@ function lvPayload(m){
 // booster-assisted liftoff TWR; upper stages off their own ignition TWR.
 const GRAV_NOM_TWR0=1.25, GRAV_NOM_TWR_UP=0.40, GRAV_LOSS_K=0.55, GRAV_LOSS_CAP=0.40;
 function gravLossFrac(twr, nom){ return clampA(GRAV_LOSS_K*Math.max(0,(nom-twr)/nom), 0, GRAV_LOSS_CAP); }
+
+/* ---------- Phase 3: pad structural limits ----------
+   The pad, hold-downs and flame handling can only take so much rocket. Ground-track research
+   raises the ceiling — Cape investment becomes the gate to Saturn-class ambition:
+     bare field 350 t → Reinforced Pads 900 t → Flame Trenches 2,000 t → Service Towers unlimited. */
+function padMassCap(){
+  if(state.research.mobile_service_tower) return Infinity;
+  if(state.research.flame_trenches) return 2000;
+  if(state.research.concrete_pads) return 900;
+  return 350;
+}
+function padCapNext(){
+  if(!state.research.concrete_pads) return 'Reinforced Launch Pads (ground R&D)';
+  if(!state.research.flame_trenches) return 'Flame Trenches & Deluge (ground R&D)';
+  if(!state.research.mobile_service_tower) return 'Mobile Service Towers (ground R&D)';
+  return null;
+}
+
 function stackPerformance(stages, payload){
   const sm=stages.map(stageMasses);
   // strap-on boosters lift the full wet stack then jettison; the liftoff TWR they add reduces the
@@ -3911,7 +3933,8 @@ function stackPerformance(stages, payload){
   const bm=boosterMasses();
   const stackWet=sm.reduce((a,b)=>a+b.wet,0);
   const liftoff=payload+stackWet+(bm?bm.wet:0);
-  const coreThrust=sm[0].eng.thrustSL*stages[0].count;
+  const engOut=!!state.engineOut && stages[0].count>=3; // Phase 3: reserve margin to survive an engine failure
+  const coreThrust=sm[0].eng.thrustSL*stages[0].count*(engOut?(stages[0].count-1)/stages[0].count:1);
   const boostThrust=bm?bm.eng.thrustSL*bm.count:0;
   const twr=((coreThrust+boostThrust)*thrustMult())/(liftoff*G0); // #2b research scales liftoff thrust
   let totalDv=0; const stageDv=[], stageTwr=[], stageGravLoss=[];
@@ -4287,7 +4310,7 @@ function computeVehicle(){
     if(recoveryRefly(m)) buildCost*=refurbCostMult(); // refurbish a recovered booster: 45% of new, rising with wear (each refly chips +8%)
     buildCost+=RECOVERY_HARDWARE; // legs, grid fins, reserved propellant — fitted on every recovery flight
   }
-  const reliability=Math.min(diff().relCap,Math.max(diff().relFloor,(curRel()+testBonus+partsRelBonus(crewed)+geoRelBonus()+benchRelBonus(m)+doctrineRelMod()+fleetHeritageRelBonus())*enginePenalty*boosterRelPenalty()*(crewed?(state.research.orbital_eva?0.95:0.92):1)*(1-solidInsertionTax(m))+productionRelMod(m))); // #7: QA bonus − bay-overstretch penalty + bench-tested sub-assembly heritage; #16: booster failure-point penalty; BC2 parts + BC3 geometry reliability; CE3(a) doctrine early-reliability delta
+  const reliability=Math.min(diff().relCap,Math.max(diff().relFloor,(curRel()+testBonus+partsRelBonus(crewed)+geoRelBonus()+benchRelBonus(m)+doctrineRelMod()+fleetHeritageRelBonus())*enginePenalty*boosterRelPenalty()*(crewed?(state.research.orbital_eva?0.95:0.92):1)*(1-solidInsertionTax(m))+productionRelMod(m)+((state.engineOut&&state.stages[0].count>=3)?0.025:0))); // Phase 3 engine-out: a stage-1 engine failure becomes survivable; #7: QA bonus − bay-overstretch penalty + bench-tested sub-assembly heritage; #16: booster failure-point penalty; BC2 parts + BC3 geometry reliability; CE3(a) doctrine early-reliability delta
   const launchCost=((0.12+0.01*totalProp)*padLaunchMult()*groundLaunchMult()*doctrineMult('launch')) + assemblyFlights(m)*ASSEMBLY_LAUNCH_COST; // #7: pads + #6b: Ground/Reuse research amortize launch ops; #6: dedicated assembly flights; CE3(a) doctrine launch-cost factor
   return {payload, sm:perf.sm, stageDv:perf.stageDv, stageTwr:perf.stageTwr, stageGravLoss:perf.stageGravLoss, gravLoss:perf.gravLoss, totalDv:perf.totalDv, liftoff:perf.liftoff, twr:perf.twr,
           boostDv:perf.boostDv||0, boosters:perf.boosters||null,
@@ -4421,6 +4444,7 @@ function effectiveReliability(m,v,sim,crewed){
   if(crewed){ const ab=astroBonus(); rel=Math.min(0.99, rel+ab.rel); }
   rel=Math.min(0.995, rel + facilityBonus(missionBody(m&&m.id)).relBump); // M17: home-field operational bonus
   rel=Math.min(0.995, rel + familyRelBonus(activeFamily())); // #3: reliability heritage of a proven lineage
+  if(state.staticFixBonus) rel=Math.min(0.995, rel + state.staticFixBonus); // Phase 2: fault found & fixed on the test stand
   if(recoveryRefly(m)) rel=Math.max(diff().relFloor, rel - refurbRelPenalty()); // #7 slice 4: refurbishment wear — each refly chips a little reliability (bounded; mitigated by retiring the airframe)
   rel*=assemblyDockPenalty(m); // #6: each orbital docking is a chance to fail (halved by auto-rendezvous)
   if(m && m._arch && m._arch.relMod) rel=clampA(rel + m._arch.relMod, 0.1, 0.995); // M12: architecture reliability modifier
@@ -4892,6 +4916,8 @@ function canLaunch(v,m,sim,prebuilt){
     if(!sim||!sim.ok) return {ok:false,why:'A mission leg falls short — size the launch vehicle and transfer stage for every burn.'};
     if((state.depotUse||0) > state.depot) return {ok:false,why:`Depot only holds ${state.depot.toFixed(1)} t — reduce the depot draw.`};
   }else{
+    { const cap=padMassCap();
+      if(v.liftoff>cap) return {ok:false,why:`Pad limit — ${v.liftoff.toFixed(0)} t on a ${cap} t pad. The ground can't take this vehicle: research ${padCapNext()} to raise the ceiling.`}; }
     if(v.totalDv < m.reqDv) return {ok:false,why:`Δv shortfall — ${Math.round(v.totalDv).toLocaleString()} of ${m.reqDv.toLocaleString()} m/s (${Math.round(m.reqDv-v.totalDv).toLocaleString()} short). Add propellant, engines, or a stage on the bench.`};
     if(v.twr<=1.0) return {ok:false,why:'Thrust-to-weight ≤ 1 — it will not leave the pad.'};
   }
@@ -5030,6 +5056,7 @@ function finalizeLaunch(ctx, ops){
     personnelMissionEvent(true); // M6: morale boost on success
     state.successes++;
     creditEngineHeritage(); // engines earn flight heritage toward cost/reliability edge
+    state.staticFixBonus=0;  // the static-fire fix flies once
 
     // M14: missions yield science — more for novel, deep, or first-time flights
     let sciGain=Math.max(1, Math.round((routine?0.3:1)*((m.rep||5)*0.12 + (m.profile?5:1))*sciYieldMult()*doctrineMult('sci'))); // #6b: Science track multiplies mission science yield; CE3(a) Science doctrine boosts it
@@ -5282,8 +5309,10 @@ function setTab(t){
   if(vp){vp.style.opacity='0';setTimeout(()=>{state.tab=t;render();vp.style.opacity='1';},150);}
   else{state.tab=t;render();}
 } // nav resets the hub drill + closes any live modal (slice 5/6)
-function addStage(){ if(state.stages.length>=3)return; state.stages.push({eng:firstUnlocked(),count:1,prop:2.0}); collapsedStages={}; render(); }
-function removeStage(i){ if(state.stages.length<=1)return; state.stages.splice(i,1); collapsedStages={}; render(); }
+function addStage(){
+  try{ sfxThunk(); }catch(e){} if(state.stages.length>=3)return; state.stages.push({eng:firstUnlocked(),count:1,prop:2.0}); collapsedStages={}; render(); }
+function removeStage(i){
+  try{ sfxThunk(); }catch(e){} if(state.stages.length<=1)return; state.stages.splice(i,1); collapsedStages={}; render(); }
 // #27: reorder the stage stack (drag-to-reorder). Indices are validated; a no-op move
 // just re-renders. Collapse flags are keyed by position, so reset them on a structural change.
 function moveStage(from,to){
@@ -5304,7 +5333,8 @@ function stageDragEnd(){ stageDrag=null; }
 function toggleStageCollapse(i){ collapsedStages[i]=!collapsedStages[i]; render(); }
 function firstUnlocked(){return Object.keys(ENGINES).find(k=>state.unlocked[k])||'a4';}
 function setEngine(i,v){state.stages[i].eng=v;render();}
-function setCount(i,d){state.stages[i].count=Math.max(1,Math.min(8,state.stages[i].count+d));render();}
+function setCount(i,d){
+  try{ sfxThunk(); }catch(e){}state.stages[i].count=Math.max(1,Math.min(8,state.stages[i].count+d));render();}
 function setProp(i,v){state.stages[i].prop=Math.max(0.1,Math.min(1000,parseFloat(v)||0.1));render();}
 function setStageDia(i,v){ if(!state.stages[i])return; state.stages[i].dia=clampA(parseFloat(v)||1,GEO_DIA_MIN,GEO_DIA_MAX); render(); } // BC3: per-stage diameter
 // Bench customization slice 1: livery controls (cosmetic only)
@@ -9877,7 +9907,7 @@ function renderStages(){
     const _tags=`${eng.solid?` · <span style="color:var(--ok)">solid: −15% build, no restart</span>`:''}${_hf>0?` · <span style="color:var(--readout)">heritage ${_hn} flt: −${Math.round(ENG_HERITAGE_COST_MAX*_hf*100)}% build, +${(engineHeritageRelBonus(st.eng)*100).toFixed(1)}% rel</span>`:''}`;
     const engSpec = eng.name ? `${eng.name} · Isp ${eng.ispSL||0}/${eng.ispVac||0}s · ${fI(eng.thrustSL||0)}/${fI(eng.thrustVac||0)} kN ea${st.count>1?` · ${st.count}× = ${fI(thrVac)} kN vac`:''} · ${(eng.mass||0).toFixed(2)} t ea${(im>1||tm>1)?` · R&D +${Math.round((im-1)*100)}% Isp/+${Math.round((tm-1)*100)}% thr`:''}${_tags}` : '—';
     const thrustPct=Math.round(thrusts[i]/maxThrust*100);
-    const div=document.createElement('div'); div.className='stage stage-card'+(collapsed?' collapsed':'');
+    const div=document.createElement('div'); div.className='stage stage-card'+(collapsed?' collapsed':'')+(benchSelStage===i?' rocket-sel':'');
     div.setAttribute('ondragover','stageDragOver(event)');
     div.setAttribute('ondragleave','stageDragLeave(event)');
     div.setAttribute('ondrop',`stageDrop(event,${i})`);
@@ -9885,7 +9915,7 @@ function renderStages(){
       <div class="stage-head">
         <span class="grip" draggable="true" ondragstart="stageDragStart(event,${i})" ondragend="stageDragEnd()" title="Drag to reorder">⠿</span>
         <button class="stage-toggle" onclick="toggleStageCollapse(${i})" title="${collapsed?'Expand':'Collapse'}">${collapsed?'▸':'▾'}</button>
-        <span class="label">STAGE ${i+1}</span>
+        <span class="label" style="cursor:pointer" onclick="benchSelectStage(${i})" title="Highlight this stage on the rocket">STAGE ${i+1}</span>
         <span class="stage-role">${stageRole(i,n)}</span>
         <span class="stage-chip" title="${eng.name||''} · ${eng.prop||''}">🚀 ${eng.prop||'—'}</span>
         <span style="flex:1"></span>
@@ -9913,6 +9943,7 @@ function renderStages(){
           <span class="ss" title="Thrust-to-weight at this stage's ignition (lifting itself + everything above). Below the nominal TWR (${nomTwr.toFixed(2)}) the stage spends longer fighting gravity and loses Δv.${i===0?' Stage 1 must also exceed 1.0 to lift off.':''}">TWR@ign <b style="color:${twrCol}">${sTwr==null?'—':sTwr.toFixed(2)}</b></span>
           ${sLoss>1?`<span class="ss" title="Δv lost to gravity because this stage's TWR is below nominal (${nomTwr.toFixed(2)})">grav <b style="color:var(--warn)">−${fI(sLoss)} m/s</b></span>`:''}
         </div>
+        ${i===0&&st.count>=3?`<div class="row" style="margin-top:4px"><label style="cursor:pointer" title="Reserve thrust margin so the vehicle can lose one first-stage engine and press on — the Saturn V and Falcon 9 both flew engine-out missions to success. Costs TWR (thrust computed at ${st.count-1}/${st.count}); +2.5% reliability."><input type="checkbox" ${state.engineOut?'checked':''} onchange="state.engineOut=this.checked;try{sfxThunk()}catch(e){};render()"> Engine-out capability</label><span class="dim" style="font-size:11px">${state.engineOut?`armed · TWR at ${st.count-1}/${st.count} thrust · +2.5% rel`:'off — full thrust, no failure margin'}</span></div>`:''}
         ${i===0?recoveryStageHTML(curM):''}
       </div>`;
     box.appendChild(div);
@@ -10348,13 +10379,31 @@ function currentVehicleSpec(){
     crewed: !!(m&&m.crew>0) };
 }
 // shared 2D draw of the bench silhouette onto any 2D context sized W×H
+// One source of truth for how the bench preview lays the rocket out — the drawing AND the
+// interactive hit zones both use this, so they can never drift apart.
+function vehPreviewLayout(spec, W, H){
+  let shape; try{ shape=buildVehicleShape(spec); }catch(e){ return null; }
+  if(!shape.segs.length) return null;
+  const scale=0.66*Math.min((H-42)/(shape.totalH+16), (W-30)/(shape.maxW*1.9));
+  const baseX=W/2, baseY=H-34;
+  // per-segment rects in scene/texture coordinates (bottom of stack at baseY, growing upward)
+  const zones=[]; let y=baseY;
+  shape.segs.forEach((s,i)=>{
+    const hh=s.h*scale, ww=Math.max(s.w*scale, 18); // min grab width so slim stages stay touchable
+    zones.push({ kind:s.kind, seg:i, x:baseX-ww/2-6, y:y-hh, w:ww+12, h:hh, cx:baseX, top:y-hh, bot:y, halfW:s.w*scale/2 });
+    y-=hh;
+  });
+  const noseH=28*scale;
+  zones.push({ kind:'nose', x:baseX-24, y:y-noseH-4, w:48, h:noseH+4, cx:baseX, top:y-noseH, bot:y });
+  if(shape.boosters){ const b=shape.boosters, s0=zones[0];
+    zones.push({ kind:'boosters', x:s0.x-b.w*scale-8, y:s0.bot-b.h*scale, w:b.w*scale+8, h:b.h*scale, cx:baseX });
+    zones.push({ kind:'boosters', x:s0.x+s0.w, y:s0.bot-b.h*scale, w:b.w*scale+8, h:b.h*scale, cx:baseX }); }
+  return {shape, scale, baseX, baseY, zones};
+}
 function drawVehiclePreviewTo(ctx, W, H, spec){
   ctx.clearRect(0,0,W,H);
-  let shape; try{ shape=buildVehicleShape(spec); }catch(e){ return; }
-  if(!shape.segs.length) return;
-  // ~0.66× the fit-to-frame size so the vehicle sits with comfortable margins
-  const scale=0.66*Math.min((H-42)/(shape.totalH+16), (W-30)/(shape.maxW*1.9));
-  ctx.save(); ctx.translate(W/2, H-34); drawVehicle(ctx, shape.segs, shape.nose, scale, 0, 0); ctx.restore();
+  const L=vehPreviewLayout(spec,W,H); if(!L) return;
+  ctx.save(); ctx.translate(L.baseX, L.baseY); drawVehicle(ctx, L.shape.segs, L.shape.nose, L.scale, 0, 0); ctx.restore();
 }
 function renderVehiclePreview(){
   const spec=currentVehicleSpec();
@@ -10367,7 +10416,155 @@ function renderVehiclePreview(){
   const cv=$('vehiclePreview'); if(!cv || !cv.getContext) return;
   const ctx=cv.getContext('2d'); if(!ctx) return;
   drawVehiclePreviewTo(ctx, cv.width, cv.height, spec);
+  // fallback canvas gets click-to-select parity (drag-stretch is Phaser-only)
+  if(!cv._benchWired){ cv._benchWired=true;
+    cv.addEventListener('click',e=>{
+      const r=cv.getBoundingClientRect();
+      const x=(e.clientX-r.left)*(cv.width/r.width), y=(e.clientY-r.top)*(cv.height/r.height);
+      const L=vehPreviewLayout(currentVehicleSpec(), cv.width, cv.height); if(!L) return;
+      const z=L.zones.find(z=>x>=z.x&&x<=z.x+z.w&&y>=z.y&&y<=z.y+z.h);
+      if(z) benchSelectStage(z.kind==='stage'?z.seg:z.kind, true);
+    }); }
 }
+
+
+
+/* ---------- Phase 2: static fire — reliability made tangible ----------
+   Bolt the first stage to the stand and light it. $0.35M, no calendar time. Two outcomes,
+   both worth having (that's real test culture — a found fault is a WIN):
+   · Clean burn  → the stage-1 engine banks a heritage flight on the ground (capped at
+     STATIC_HERITAGE_CAP static credits per engine — eventually you have to fly it).
+   · Anomaly found → engineers trace and fix it: the NEXT launch carries +2% reliability.
+   The gauge sweep + rumble make the number feel like hardware. */
+const STATIC_FIRE_COST=0.35;
+const STATIC_HERITAGE_CAP=5;       // ground testing only takes an engine so far
+const STATIC_FIX_BONUS=0.02;       // one-launch reliability bonus after a found-and-fixed fault
+function canStaticFire(){
+  if(state.money<STATIC_FIRE_COST) return {ok:false, why:'Needs '+fM(STATIC_FIRE_COST)};
+  const eng=state.stages[0]&&state.stages[0].eng; if(!eng) return {ok:false, why:'No first stage'};
+  return {ok:true, eng};
+}
+function staticFire(){
+  const chk=canStaticFire(); if(!chk.ok) return;
+  state.money-=STATIC_FIRE_COST;
+  const eng=chk.eng, def=ENGINES[eng]||{};
+  const clean=Math.random() < (0.62 + 0.3*engineHeritageFrac(eng)); // greener engines find more faults — as they should
+  state._staticFires=(state._staticFires||{}); state._staticFires[eng]=(state._staticFires[eng]||0);
+  let verdict;
+  if(clean){
+    if(state._staticFires[eng]<STATIC_HERITAGE_CAP){
+      state._staticFires[eng]++;
+      if(!state.engineHeritage) state.engineHeritage={};
+      state.engineHeritage[eng]=Math.min(ENG_HERITAGE_MAX_FLIGHTS,(state.engineHeritage[eng]||0)+1);
+      verdict={good:true, title:'CLEAN BURN', body:`${def.name||eng} ran the full duration nominally. Heritage +1 (${engineHeritageFlights(eng)}/${ENG_HERITAGE_MAX_FLIGHTS}) — ground credits ${state._staticFires[eng]}/${STATIC_HERITAGE_CAP}.`};
+    } else {
+      verdict={good:true, title:'CLEAN BURN', body:`${def.name||eng} ran nominally — but the stand has taught this engine all it can (${STATIC_HERITAGE_CAP}/${STATIC_HERITAGE_CAP} ground credits). Further heritage must be earned in flight.`};
+    }
+    log('ok',`🔥 Static fire: ${def.name||eng} — clean burn.`);
+  } else {
+    state.staticFixBonus=STATIC_FIX_BONUS; // consumed by the next launch
+    verdict={good:false, title:'ANOMALY FOUND', body:`Combustion instability traced to a fuel-rich startup transient — exactly the kind of fault that ends missions. Fixed on the stand: the next launch flies with +${Math.round(STATIC_FIX_BONUS*100)}% reliability.`};
+    log('note',`🔥 Static fire: ${def.name||eng} — anomaly found and FIXED on the ground. Next launch +${Math.round(STATIC_FIX_BONUS*100)}% reliability.`);
+  }
+  if(!animEnabled){ render(); return verdict; }
+  showStaticFireModal(def, verdict);
+  return verdict;
+}
+function showStaticFireModal(def, verdict){
+  showModal(`<div style="text-align:center">
+    <h2 style="margin-bottom:2px">🔥 Static fire — ${def.name||'first stage'}</h2>
+    <div class="dim" style="font-family:var(--mono);font-size:12px;margin-bottom:10px">${def.prop||''} · hold-down test, full duration</div>
+    <svg id="sfGauge" viewBox="0 0 220 130" width="220" height="130" style="display:block;margin:0 auto">
+      <path d="M 20 115 A 90 90 0 0 1 200 115" fill="none" stroke="#22303c" stroke-width="10" stroke-linecap="round"/>
+      <path id="sfArc" d="M 20 115 A 90 90 0 0 1 200 115" fill="none" stroke="#f5a623" stroke-width="10" stroke-linecap="round" stroke-dasharray="283" stroke-dashoffset="283"/>
+      <line id="sfNeedle" x1="110" y1="115" x2="30" y2="112" stroke="#e8e2d6" stroke-width="2.5" stroke-linecap="round"/>
+      <circle cx="110" cy="115" r="5" fill="#e8e2d6"/>
+      <text x="110" y="86" text-anchor="middle" fill="#8b98a5" font-size="11" font-family="ui-monospace,monospace">CHAMBER PRESSURE</text>
+    </svg>
+    <div id="sfVerdict" style="min-height:64px;font-size:13px;margin:8px 0"></div>
+    <button id="sfClose" class="btn launch" onclick="hideModal();render()" style="visibility:hidden">Back to the bench ▸</button>
+  </div>`);
+  sfxRumbleStart();
+  const t0=performance.now(), DUR=2300;
+  const needle=$('sfNeedle'), arc=$('sfArc');
+  (function sweep(){
+    const u=Math.min(1,(performance.now()-t0)/DUR);
+    const jitter=u>0.15&&u<0.95 ? (Math.random()-0.5)*0.06 : 0;
+    const p=Math.min(1, u*1.12)+jitter;
+    const ang=Math.PI*(1-Math.max(0,Math.min(1,p)));           // sweep left→right
+    if(needle){ needle.setAttribute('x2',110+Math.cos(ang)*80); needle.setAttribute('y2',115-Math.sin(ang)*80); }
+    if(arc) arc.setAttribute('stroke-dashoffset', 283*(1-Math.max(0,Math.min(1,p))));
+    if(u<1){ requestAnimationFrame(sweep); return; }
+    sfxRumbleStop(); sfxChime(verdict.good);
+    const v=$('sfVerdict');
+    if(v) v.innerHTML=`<div style="font-family:var(--mono);letter-spacing:.25em;font-size:13px;color:${verdict.good?'var(--ok)':'var(--warn)'};margin-bottom:5px">${verdict.title}</div><div class="muted" style="font-size:12px;line-height:1.5">${verdict.body}</div>`;
+    const b=$('sfClose'); if(b) b.style.visibility='visible';
+  })();
+}
+
+/* ---------- Phase 2: bench SFX (grafted onto the existing flight audio context) ----------
+   Small procedural UI sounds for the workshop: tick (drag detents), thunk (part add/remove),
+   chime (test verdicts), rumble (static fire). Uses the SAME AudioContext as launch audio
+   (sfxCtx via sfxInit) — no second context — but routes straight to destination because
+   sfxMaster's gain belongs to the flight mixer. state.sfxMute silences the bench layer. */
+function benchAc(){ if(state.sfxMute) return null; try{ sfxInit(); return sfxCtx; }catch(e){ return null; } }
+let _lastTick=0;
+function sfxTick(){ const ac=benchAc(); if(!ac) return; const t=ac.currentTime; if(t-_lastTick<0.045) return; _lastTick=t;
+  const o=ac.createOscillator(), g=ac.createGain();
+  o.type='square'; o.frequency.value=1800+Math.random()*300; g.gain.setValueAtTime(0.012,t); g.gain.exponentialRampToValueAtTime(0.0001,t+0.03);
+  o.connect(g).connect(ac.destination); o.start(t); o.stop(t+0.035); }
+function sfxThunk(){ const ac=benchAc(); if(!ac) return; const t=ac.currentTime;
+  const o=ac.createOscillator(), g=ac.createGain();
+  o.type='sine'; o.frequency.setValueAtTime(140,t); o.frequency.exponentialRampToValueAtTime(52,t+0.10);
+  g.gain.setValueAtTime(0.10,t); g.gain.exponentialRampToValueAtTime(0.0001,t+0.16);
+  o.connect(g).connect(ac.destination); o.start(t); o.stop(t+0.18);
+  const nb=sfxGetBuf('bench_click',0.05,(d)=>{ for(let i=0;i<d.length;i++) d[i]=(Math.random()*2-1)*(1-i/d.length); });
+  if(nb){ const n=ac.createBufferSource(); n.buffer=nb; const ng=ac.createGain(); ng.gain.value=0.04; n.connect(ng).connect(ac.destination); n.start(t); } }
+function sfxChime(good){ const ac=benchAc(); if(!ac) return; const t=ac.currentTime;
+  (good?[523,659,784]:[392,330]).forEach((f,i)=>{ const o=ac.createOscillator(), g=ac.createGain();
+    o.type='sine'; o.frequency.value=f; const at=t+i*0.09;
+    g.gain.setValueAtTime(0.0001,at); g.gain.linearRampToValueAtTime(0.05,at+0.02); g.gain.exponentialRampToValueAtTime(0.0001,at+0.5);
+    o.connect(g).connect(ac.destination); o.start(at); o.stop(at+0.55); }); }
+let _benchRumble=null;
+function sfxRumbleStart(){ const ac=benchAc(); if(!ac||_benchRumble) return;
+  const nb=sfxNoiseBuf('brown'); if(!nb) return;
+  const n=ac.createBufferSource(); n.buffer=nb; n.loop=true;
+  const f=ac.createBiquadFilter(); f.type='lowpass'; f.frequency.value=90; f.Q.value=0.8;
+  const g=ac.createGain(); g.gain.setValueAtTime(0.0001,ac.currentTime); g.gain.linearRampToValueAtTime(0.35,ac.currentTime+0.5);
+  n.connect(f).connect(g).connect(ac.destination); n.start();
+  _benchRumble={n,g}; }
+function sfxRumbleStop(){ if(!_benchRumble||!sfxCtx) return; try{ _benchRumble.g.gain.linearRampToValueAtTime(0.0001,sfxCtx.currentTime+0.45); const r=_benchRumble; setTimeout(()=>{ try{r.n.stop();}catch(e){} },600); }catch(e){} _benchRumble=null; }
+function toggleSfx(){ state.sfxMute=!state.sfxMute; if(state.sfxMute) sfxRumbleStop(); render(); }
+
+/* ---------- Phase 1: the rocket IS the bench (direct manipulation) ----------
+   Click a stage on the rocket → its card opens, scrolls into view and flashes; the segment
+   gets a selection ring. Drag a stage vertically → propellant stretches under your cursor
+   with a live floating Δv/prop readout. Click the nose → crew card; boosters → booster card;
+   transfer segment → transfer card. Selection also flows the other way from the cards. */
+let benchSelStage=-1;   // -1 none · 0..2 stage index · 'transfer' | 'nose' | 'boosters'
+function benchSelectStage(sel, fromRocket){
+  state._benchTouched=true; // affordance hint no longer needed
+  benchSelStage = (benchSelStage===sel && !fromRocket) ? -1 : sel;
+  if(typeof sel==='number' && collapsedStages[sel]){ collapsedStages[sel]=false; }
+  render();
+  // scroll + flash the matching card so the eye lands where the hand pointed
+  let el=null;
+  if(typeof sel==='number') el=document.querySelectorAll('#stages .stage-card')[sel];
+  else if(sel==='transfer') el=$('transferCard'); else if(sel==='nose') el=$('crewCard'); else if(sel==='boosters') el=$('boostersCard');
+  if(el){ try{ el.scrollIntoView({behavior:'smooth', block:'nearest'}); }catch(e){}
+    el.classList.remove('stage-flash'); void el.offsetWidth; el.classList.add('stage-flash'); }
+  if(vehScene && vehScene.redraw) vehScene.redraw();
+}
+// Light-touch prop update during a drag: state + preview only; the full bench re-render
+// happens once on pointer-up. Keeps 60fps while the tank stretches under the cursor.
+function benchDragProp(i, factor){
+  const st=state.stages[i]; if(!st) return null;
+  st.prop=Math.round(clampA(st.prop*factor, 0.1, 800)*10)/10;
+  let v=null; try{ v=computeVehicle(); }catch(e){}
+  if(vehScene){ vehPending=currentVehicleSpec(); vehScene.redraw(); }
+  return v;
+}
+
 /* ---------- Hybrid Phaser layer (Slice 2): VehiclePreviewScene ----------
    The bench silhouette in a Phaser scene: the proven 2D drawing on a CanvasTexture
    (redrawn live as you tune the vehicle) over ambient stars, with a soft engine-base
@@ -10389,8 +10586,44 @@ function defineVehScene(){
       this.tex=this.textures.exists('vehTex')?this.textures.get('vehTex'):this.textures.createCanvas('vehTex',W,H);
       this.glow=this.add.image(W/2, H-26, 'vehGlow').setTint(0xffb060).setBlendMode(Phaser.BlendModes.ADD).setScale(1.4).setAlpha(0.5);
       this.tweens.add({targets:this.glow, alpha:0.75, scale:1.7, duration:1800, yoyo:true, repeat:-1, ease:'Sine.easeInOut'});
+      // NOTE: no idle bob any more — an interactive surface must hold still under the cursor.
       this.img=this.add.image(W/2, H/2, 'vehTex').setOrigin(0.5,0.5);
-      this.tweens.add({targets:this.img, y:H/2-5, duration:2400, yoyo:true, repeat:-1, ease:'Sine.easeInOut'});
+      this.selG=this.add.graphics();           // selection ring + separation lines
+      this.ann=[];                              // per-stage Δv/TWR labels
+      this.dragLabel=this.add.text(0,0,'',{fontFamily:'ui-monospace,monospace',fontSize:'15px',color:'#ffd98a',backgroundColor:'#0a1016cc',padding:{x:6,y:3}}).setDepth(10).setVisible(false);
+      // --- direct manipulation ---
+      this._drag=null;
+      const zoneAt=(x,y)=>{ if(!this._layout) return null;
+        // prefer stage/transfer bodies, then nose, then boosters
+        const zs=this._layout.zones;
+        return zs.find(z=>z.kind==='stage'&&x>=z.x&&x<=z.x+z.w&&y>=z.y&&y<=z.y+z.h)
+            || zs.find(z=>(z.kind==='transfer'||z.kind==='nose'||z.kind==='boosters')&&x>=z.x&&x<=z.x+z.w&&y>=z.y&&y<=z.y+z.h) || null; };
+      this.input.on('pointermove',p=>{
+        if(this._drag){
+          const dy=p.y-this._drag.ly; this._drag.ly=p.y;
+          // 1px of drag ≈ 0.8% propellant; up = stretch, down = shrink
+          const v=benchDragProp(this._drag.seg, Math.pow(0.992, dy));
+          this._drag.moved=true;
+          const st=state.stages[this._drag.seg];
+          const dvTot=v?fI(v.totalDv):'—';
+          this.dragLabel.setText(`S${this._drag.seg+1} prop ${st.prop.toFixed(1)} t  ·  Δv ${dvTot} m/s`).setPosition(Math.min(p.x+14,VEH_W-190), p.y-10).setVisible(true);
+          try{ sfxTick&&sfxTick(); }catch(e){}
+          return;
+        }
+        const z=zoneAt(p.x,p.y);
+        this.game.canvas.style.cursor = z ? (z.kind==='stage'?'ns-resize':'pointer') : 'default';
+      });
+      this.input.on('pointerdown',p=>{
+        const z=zoneAt(p.x,p.y); if(!z) return;
+        if(z.kind==='stage'){ this._drag={seg:z.seg, ly:p.y, moved:false}; }
+        else { benchSelectStage(z.kind, true); }
+      });
+      const endDrag=()=>{ if(!this._drag) return;
+        const wasClick=!this._drag.moved, seg=this._drag.seg;
+        this._drag=null; this.dragLabel.setVisible(false);
+        if(wasClick) benchSelectStage(seg, true); else render(); };
+      this.input.on('pointerup',endDrag);
+      this.input.on('pointerupoutside',endDrag);
       vehScene=this;
       this.redraw();
     }
@@ -10398,6 +10631,37 @@ function defineVehScene(){
       if(vehPending) this._spec=vehPending; vehPending=null;
       if(!this._spec || !this.tex) return;
       try{ drawVehiclePreviewTo(this.tex.context, this.tex.canvas.width, this.tex.canvas.height, this._spec); this.tex.refresh(); }catch(e){}
+      try{ this._layout=vehPreviewLayout(this._spec, VEH_W, VEH_H); this.drawOverlays(); }catch(e){}
+    }
+    // Selection ring, staging separation lines, and per-stage Δv/TWR annotations ON the rocket.
+    drawOverlays(){
+      const g=this.selG; if(!g) return; g.clear();
+      this.ann.forEach(t=>t.destroy()); this.ann=[];
+      const L=this._layout; if(!L) return;
+      let cv=null; try{ cv=computeVehicle(); }catch(e){}
+      const stages=L.zones.filter(z=>z.kind==='stage');
+      stages.forEach((z,i)=>{
+        // separation line between stages: dashed, faint
+        if(i>0){ g.lineStyle(1,0x5a6a78,0.55); for(let x=z.cx-z.halfW-14;x<z.cx+z.halfW+8;x+=7){ g.beginPath(); g.moveTo(x,z.bot); g.lineTo(x+4,z.bot); g.strokePath(); } }
+        // annotation: Δv + TWR at ignition, tucked to the right of the segment
+        const dv=cv&&cv.stageDv&&cv.stageDv[i]!=null?fI(cv.stageDv[i]):'—';
+        const twr=cv&&cv.stageTwr&&cv.stageTwr[i]!=null?cv.stageTwr[i].toFixed(2):'—';
+        const loss=cv&&cv.stageGravLoss&&cv.stageGravLoss[i]||0;
+        const col=loss<=0?'#8fd08f':(loss>250?'#e88a7a':'#e8c07a');
+        const t=this.add.text(z.cx+z.halfW+10, (z.top+z.bot)/2, `S${i+1}  Δv ${dv}
+     TWR ${twr}`, {fontFamily:'ui-monospace,monospace', fontSize:'13px', color:col, lineSpacing:2}).setOrigin(0,0.5).setAlpha(0.92);
+        this.ann.push(t);
+      });
+      // selection ring
+      const sel = typeof benchSelStage==='number' && benchSelStage>=0 ? stages[benchSelStage]
+                : benchSelStage==='transfer' ? L.zones.find(z=>z.kind==='transfer')
+                : benchSelStage==='nose' ? L.zones.find(z=>z.kind==='nose') : null;
+      if(sel){ g.lineStyle(2,0xf5a623,0.95); g.strokeRoundedRect(sel.x-2, sel.y-2, sel.w+4, sel.h+4, 5); }
+      // affordance hint the first few times (until any selection has happened)
+      if(benchSelStage===-1 && !state._benchTouched && stages[0]){
+        const t=this.add.text(stages[0].cx, stages[0].bot+16, 'click a stage · drag to stretch tanks', {fontFamily:'ui-monospace,monospace', fontSize:'12px', color:'#7d8b98'}).setOrigin(0.5,0).setAlpha(0.8);
+        this.ann.push(t);
+      }
     }
   };
 }
@@ -10884,8 +11148,21 @@ function renderBenchLaunch(){
   let m,v,sim,chk;
   try{ m=curMission(); if(!m){ host.innerHTML=''; return; } v=computeVehicle(); sim=m.profile?simulateMission(m):null; chk=canLaunch(v,m,sim); }
   catch(e){ host.innerHTML=''; return; }
+  const sf=canStaticFire();
+  const fired=state._staticFires&&state._staticFires[state.stages[0]&&state.stages[0].eng]||0;
+  const cap=padMassCap(), padUse=v&&cap!==Infinity?v.liftoff/cap:0;
+  const padBar = padUse>0.6 ? `<div style="margin-top:6px" title="Pad structural limit — ground R&D raises it">
+      <div style="display:flex;justify-content:space-between;font-size:11px;font-family:var(--mono)"><span class="dim">PAD LOAD</span><span style="color:${padUse>1?'var(--bad)':padUse>0.85?'var(--warn)':'var(--muted)'}">${v.liftoff.toFixed(0)} / ${cap} t</span></div>
+      <div style="height:4px;background:var(--panel2);border-radius:2px;overflow:hidden"><div style="height:100%;width:${Math.min(100,padUse*100)}%;background:${padUse>1?'var(--bad)':padUse>0.85?'var(--warn)':'var(--readout)'}"></div></div>
+    </div>` : '';
   host.innerHTML=`<button class="launch" style="width:100%" onclick="launch()" ${chk.ok?'':'disabled'}>${chk.ok?launchButtonLabel(m,v):'Launch unavailable'}</button>
-    ${chk.ok?'<div class="dim" style="font-size:12px;text-align:center;margin-top:4px">or press <b>Space</b></div>':`<div class="flag dim" style="color:var(--dim);margin-top:4px">${chk.why}</div>`}`;
+    ${chk.ok?'<div class="dim" style="font-size:12px;text-align:center;margin-top:4px">or press <b>Space</b></div>':`<div class="flag dim" style="color:var(--dim);margin-top:4px">${chk.why}</div>`}
+    <div style="display:flex;gap:6px;margin-top:8px;align-items:center">
+      <button class="btn" style="flex:1;font-size:12px" onclick="staticFire()" ${sf.ok?'':'disabled'} title="Bolt the first stage to the stand and light it. Clean burn = heritage credit (${fired}/${STATIC_HERITAGE_CAP} ground). Anomaly = fixed, next launch +${Math.round(STATIC_FIX_BONUS*100)}% rel.">🔥 Static fire ${sf.ok?fM(STATIC_FIRE_COST):('· '+sf.why)}</button>
+      <button class="btn ghost" style="font-size:12px;padding:6px 9px" onclick="toggleSfx()" title="${state.sfxMute?'Unmute':'Mute'} workshop sounds">${state.sfxMute?'🔇':'🔊'}</button>
+    </div>
+    ${state.staticFixBonus?`<div class="flag ok" style="margin-top:5px">🔧 Test-stand fix armed: next launch +${Math.round(state.staticFixBonus*100)}% reliability.</div>`:''}
+    ${padBar}`;
 }
 // Design-bench editor tabs: consolidate the stacked editor cards under a few tabs. The cards keep
 // their ids (render functions untouched); this only builds the tab bar, hides tabs whose cards are
