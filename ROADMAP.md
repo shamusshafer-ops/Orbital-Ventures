@@ -717,3 +717,59 @@ weakest pull — recommend collapsing its surface into Manufacturing and adding 
 real decision (bulk-buy on a dip). Verify doctrines/partnerships surface in the
 advisor+outliner or they stay invisible to the flow. Nothing recommended for
 outright deletion — every system earns its keep once visible in the flow.
+
+## Materials-market collapse (2026-07-03)
+
+Picked up the flow-architecture pass's prune note directly. The Materials card
+had the mechanical depth (mean-reverting spot price, weighted-avg stock, 12-mo
+contract lock) but the weakest pull in the game — a two-commodity dashboard
+with 4 buttons each that nothing else in the flow ever pointed at.
+
+**Collapsed to one decision.** Routine per-unit buying (+1/+6) and the
+contract-lock offer are retired. In their place: a commodity crosses into a
+"dip" band at spot ≤0.88×; while it's there, one bulk-buy (`buyMaterialDip`)
+tops the yard up to 8 builds-worth (capped by remaining yard room) at a further
+5% below the already-discounted spot. Outside the dip band the row shows
+"watching for a dip" and there's nothing to click. `MATERIAL_DIP_THRESHOLD`/
+`_BONUS`/`_BATCH` are the tuning knobs if the cadence needs adjusting.
+
+**Render collapsed to match** — the Manufacturing Capacity card's raw-material
+section went from a sparkline+contract+stock+2-buttons block per commodity to
+one compact row: spot price, coverage, and the single dip action (or the
+watching state). Sparkline gained a shaded dip-band so the strip reads "on
+sale" at a glance without reading the number.
+
+**Surfaced in the flow, not just the tab** — matching the note's own standard
+("verify it surfaces in the advisor/outliner or it stays invisible"): the Cape
+`mfg` building glyph and the Outliner (`outlinerItems()`) both now flag a live,
+affordable dip, the same way research/builds/mandates/windows already do.
+
+**Untouched by design:** `consumeMaterialsForBuild()`, `materialEffectivePrice()`,
+`materialCostMult()`, and the underlying spot-price walk are all exactly as
+before — a build still prices identically whether the market surface changed
+or not. `materialPriceTick()` still resolves and expires a contract object on
+a legacy save (so an in-progress lock finishes out cleanly); nothing can newly
+sign one. No new state fields → **no SAVE_VERSION bump.**
+
+Validated headlessly: 46/46 on the collapse itself (dip-threshold gating
+exactly at the boundary, dip pricing strictly cheaper than the retired
+per-unit formula, afford/yard-cap/not-a-dip gating, buy/no-op paths, legacy
+contract resolution, save/load roundtrip with an active dip + stock, render
+with and without a dip live, outliner and Cape-glyph visibility, the full
+`computeVehicle()` build-cost pipeline, a 300-tick smoke test) + 18/18 broader
+regression (all three named difficulties boot, every scene tab renders, a
+600-tick/~50yr long smoke test with a forced mid-run dip, and a playthrough
+bot that pokes the dip mechanic every 20 ticks for 400 ticks and checks the
+materials state shape never corrupts).
+
+**Repo state:** on `main` through this commit. Live file unchanged in size
+class (~1.05M chars). Pushed via Git Data API (fine-grained PAT, treated as
+compromised/revoked immediately after use per standing practice).
+
+### Recommended next steps
+
+No open items from this pass. Per the 2026-07-02 flow-architecture note, the
+other flagged check — *verify doctrines/research partnerships actually surface
+in the advisor/outliner or they stay invisible to the flow* — is still
+unverified and is the natural next small pass if picking up loose threads
+before a bigger milestone (#19/#21/#22, Cross-Track Synergies, or #29 filters).
