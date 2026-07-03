@@ -835,6 +835,31 @@ const RAISE_MORALE_BUMP = 20;
 const COMMEND_MORALE_BUMP = 8;
 const COMMEND_COOLDOWN_MONTHS = 3;
 
+/* ===== #19 Organizational scaling — departments ============================
+   A department is an ORG LAYER over the staff you already hire, not a replacement
+   for the named individuals (which carry the #9 traits, #5 poaching, and M6 morale).
+   Membership is DERIVED: an engineering department's members are your hired engineers
+   of that specialty; the Astronaut Corps' members are your hired astronauts. Each
+   department can have one promoted LEAD, whose skill/morale/trait amplify that
+   department's contribution. Everything is balance-neutral with no leads declared
+   (the lead weight collapses to 1.0), so a fresh game plays exactly as before. */
+const DEPARTMENTS = [
+  {id:'propulsion', name:'Propulsion',      icon:'🔥', kind:'eng',   specialty:'propulsion', blurb:'Engines, combustion, Isp. Turns propellant into Δv.'},
+  {id:'structures', name:'Structures',      icon:'🏗', kind:'eng',   specialty:'structures', blurb:'Airframes, tankage, thermal protection. Keeps the stack from tearing itself apart.'},
+  {id:'avionics',   name:'Avionics',        icon:'📡', kind:'eng',   specialty:'avionics',   blurb:'Guidance, navigation, flight software. Flies the trajectory.'},
+  {id:'production', name:'Production',       icon:'⚙',  kind:'eng',   specialty:'production', blurb:'Factory floor, integration, build cadence. Gets vehicles out the door.'},
+  {id:'astronaut',  name:'Astronaut Corps', icon:'🧑‍🚀', kind:'astro', specialty:null,         blurb:'The crews who fly. Leadership here steadies every crewed mission.'},
+];
+function departmentDef(id){ return DEPARTMENTS.find(d=>d.id===id); }
+// A promoted department lead counts for LEAD_WEIGHT in its team's weighted average
+// (vs 1.0 for a rank-and-file member) — so promoting your best-trait engineer amplifies
+// that trait across the whole team score. Neutral when no leads exist (all weights 1.0).
+const DEPT_LEAD_WEIGHT = 1.6;
+// The Astronaut Corps lead lends a small flat crewed-reliability steadiness on top of the
+// assigned astronaut's own bonus (leadership → fewer crew errors). Zero with no corps lead.
+const CORPS_LEAD_REL_BONUS_MAX = 0.03;
+function defaultDepartments(){ const o={}; for(const d of DEPARTMENTS) o[d.id]={lead:null, training:0}; return o; }
+
 const RIVALS = [
   {
     id:'vostochny', name:'Vostochny Dynamics', flag:'🛰', kind:'State Agency', color:'#e0564f',
@@ -1811,6 +1836,7 @@ function newGame(difficulty){
     tab:'command', won:false, wonM2:false, wonM3a:false, wonM3aii:false, wonM3b:false, wonM3bii:false, over:false,
     log:[], rivalFired:{}, scooped:{}, rivalThreat:{}, rivalState:{},
     staff:[], assignedAstronaut:null, persEventCooldown:5,
+    departments:defaultDepartments(), // #19: org layer over hired staff (per-dept lead + training)
     econEvents:[], eventCooldown:6, pgmRoyalty:0,
     passiveContracts:[], contractCooldown:{}, contractSignings:{}, engineHeritage:{}, // passive-income contracts (repeatable + cooldown + diminishing)
     publicSupport:SUPPORT_BASE, // #8: program politics — public mood dial
@@ -4404,7 +4430,7 @@ const SUBSYS_LABEL = {propulsion:'Propulsion', boosters:'Boosters', structures:'
 // best (morale-scaled) skill among hired engineers of a given specialty, 0..~1
 function bestSpecialistSkill(spec){
   let best=0;
-  for(const s of (state.staff||[])){ const p=personById(s.id); if(p && p.specialty===spec){ const tr=traitOf(s.id); best=Math.max(best, p.skill*(0.5+0.5*((s.morale||50)/100))*(tr.rel||1)); } }
+  for(const s of (state.staff||[])){ const p=personById(s.id); if(p && p.specialty===spec){ const tr=traitOf(s.id); best=Math.max(best, effSkill(s.id)*(0.5+0.5*((s.morale||50)/100))*(tr.rel||1)); } }
   return best;
 }
 function specialistFactor(spec){ return 1 - 0.45*bestSpecialistSkill(spec); } // a strong specialist cuts that subsystem's fragility
@@ -5500,6 +5526,19 @@ function personById(id){
 function staffRecord(id){ return state.staff.find(s=>s.id===id); }
 function isHired(id){ return !!staffRecord(id); }
 
+/* #19 slice B: career progression. A hired person's EFFECTIVE skill rises above their fixed
+   hire-day base as they accrue experience (capped). xp is 0 until slice B starts accruing it,
+   so effSkill()==base for a fresh game / slice-A state (balance-neutral). */
+const XP_SKILL_SLOPE = 0.0016;  // effective-skill gain per xp point
+const XP_SKILL_MAX   = 0.15;    // most a veteran can add over their hire-day base
+const SKILL_HARD_CAP = 0.99;    // no one is perfect
+function staffXp(id){ const sr=staffRecord(id); return sr?(sr.xp||0):0; }
+function effSkill(id){
+  const p=personById(id); if(!p) return 0;
+  const bonus=Math.min(XP_SKILL_MAX, staffXp(id)*XP_SKILL_SLOPE);
+  return Math.min(SKILL_HARD_CAP, p.skill + bonus);
+}
+
 // Available to hire: not already hired, era unlocked
 function availablePool(){
   const ei=eraIndex(currentEra());
@@ -5513,19 +5552,77 @@ function availablePool(){
 // Engineer team aggregate — skill weighted by morale (low morale = skill degraded)
 function engTeam(){ return (state.staff||[]).filter(s=>ENGINEERS.find(e=>e.id===s.id)); }
 
+/* ---------- #19 departments: derived membership + promotable leads ---------- */
+function deptState(id){ const d=(state.departments&&state.departments[id])||{}; return {lead:d.lead!=null?d.lead:null, training:d.training||0}; }
+// derived membership: hired staff records belonging to this department
+function deptMembers(id){
+  const def=departmentDef(id); if(!def) return [];
+  return (state.staff||[]).filter(sr=>{
+    const p=personById(sr.id); if(!p) return false;
+    if(def.kind==='astro') return !!ASTRONAUTS.find(a=>a.id===sr.id);
+    return !!ENGINEERS.find(e=>e.id===sr.id) && p.specialty===def.specialty;
+  });
+}
+// which department a hired person belongs to
+function deptOfPerson(id){
+  const p=personById(id); if(!p) return null;
+  if(ASTRONAUTS.find(a=>a.id===id)) return 'astronaut';
+  const e=ENGINEERS.find(e=>e.id===id); return e?e.specialty:null;
+}
+// the lead's staff record for a department, or null — self-heals if the lead has left the roster
+function deptLeadRecord(id){
+  const ds=deptState(id); if(!ds.lead) return null;
+  const sr=staffRecord(ds.lead);
+  const stillMember = sr && deptMembers(id).some(m=>m.id===ds.lead);
+  if(!stillMember){ if(state.departments&&state.departments[id]) state.departments[id].lead=null; return null; }
+  return sr;
+}
+function isDeptLead(personId){ const dep=deptOfPerson(personId); return !!(dep && deptState(dep).lead===personId); }
+function canPromoteLead(personId){
+  const dep=deptOfPerson(personId); if(!dep) return {ok:false,why:'Not a hired staff member.'};
+  if(deptState(dep).lead===personId) return {ok:false,why:'Already leads this department.'};
+  return {ok:true, dep};
+}
+function promoteLead(personId){
+  const chk=canPromoteLead(personId); if(!chk.ok) return;
+  state.departments=state.departments||defaultDepartments();
+  state.departments[chk.dep]=state.departments[chk.dep]||{lead:null,training:0};
+  state.departments[chk.dep].lead=personId;
+  const p=personById(personId), def=departmentDef(chk.dep);
+  log('ok', `${p?p.name:'A lead'} promoted to head of ${def?def.name:chk.dep}.`);
+  render();
+}
+function stepDownLead(deptId){
+  if(state.departments&&state.departments[deptId]){ state.departments[deptId].lead=null; render(); }
+}
+// lead influence factor for a department: 1.0 with no lead (balance-neutral), else scaled by
+// the lead's live skill×morale. Used to weight the lead's own contribution and, for the corps,
+// to grant a small flat crewed-reliability steadiness.
+function deptLeadStrength(id){
+  const sr=deptLeadRecord(id); if(!sr) return 0;
+  const p=personById(sr.id); if(!p) return 0;
+  return effSkill(sr.id)*Math.max(0.2,(sr.morale||50)/100); // 0..~1
+}
+// Astronaut Corps lead → flat crewed reliability steadiness (0 with no corps lead)
+function corpsLeadRelBonus(){ return deptLeadStrength('astronaut')*CORPS_LEAD_REL_BONUS_MAX; }
+
 // M9: two trait-weighted team scores — one for reliability, one for R&D speed.
 function engScores(){
   const team=engTeam(); if(!team.length) return {rel:0, rd:0, avg:0};
   let mentor=0; team.forEach(s=>{ const tr=traitOf(s.id); if(tr.team) mentor+=tr.team; });
   const mult=1+Math.min(0.3, mentor); // mentors lift the whole team, capped
-  let relSum=0, rdSum=0, avgSum=0;
+  let relSum=0, rdSum=0, avgSum=0, wSum=0;
   team.forEach(s=>{
     const p=personById(s.id), tr=traitOf(s.id);
-    const mf=Math.max(0.2,(s.morale||50)/100), base=p.skill*mf;
-    relSum+=base*(tr.rel||1); rdSum+=base*(tr.rd||1); avgSum+=base;
+    const mf=Math.max(0.2,(s.morale||50)/100), base=effSkill(s.id)*mf;
+    // #19: a department lead's contribution is weighted more heavily, so promoting your
+    // strongest-trait engineer amplifies that trait across the team score. Weight is 1.0
+    // for everyone when no leads are declared → identical to the pre-#19 average.
+    const w=isDeptLead(s.id)?DEPT_LEAD_WEIGHT:1;
+    relSum+=base*(tr.rel||1)*w; rdSum+=base*(tr.rd||1)*w; avgSum+=base*w; wSum+=w;
   });
-  const n=team.length;
-  return {rel:Math.min(1,relSum/n*mult), rd:Math.min(1,rdSum/n*mult), avg:Math.min(1,avgSum/n)};
+  const denom=wSum||team.length;
+  return {rel:Math.min(1,relSum/denom*mult), rd:Math.min(1,rdSum/denom*mult), avg:Math.min(1,avgSum/denom)};
 }
 function engTeamScore(){ return engScores().avg; }
 function engRelBonus(){ return engScores().rel*ENG_REL_BONUS_MAX; }
@@ -5553,9 +5650,9 @@ function astroBonus(){
   const sr=assignedAstroRecord(); if(!sr) return {rel:0,payoutMult:1};
   const p=personById(sr.id), tr=traitOf(sr.id);
   const moraleFactor=Math.max(0.2,(sr.morale||50)/100);
-  const score=p.skill*moraleFactor;
+  const score=effSkill(sr.id)*moraleFactor;
   return {
-    rel: score*ASTRO_REL_BONUS_MAX*(tr.rel||1),
+    rel: score*ASTRO_REL_BONUS_MAX*(tr.rel||1) + corpsLeadRelBonus(), // #19: corps lead adds flat steadiness (0 with no lead)
     payoutMult: 1+score*ASTRO_PAYOUT_BONUS_MAX*(tr.pay||1),
   };
 }
@@ -5743,7 +5840,7 @@ function hideModal(){activeModal=null;_prodModalOpen=false;$('modal').classList.
 
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=38; // v38: #6 research partnerships (state.partnerships — active partner ids that accelerate a research track for setup + monthly upkeep; legacy saves default []); v37: #7 sub-assemblies slice 3 — bench-tested / flight-proven components (state.engineStockTested + state.partStockTested, the bench-tested subset of each yard; legacy saves default {}); a fitted bench-tested component adds +1.5% reliability (cap +6%, benchRelBonus), built at +60% cost / +50% time; v36: #7 sub-assemblies slice 2 — structures & habitats yard (state.partStock {"kind:sub":count}, e.g. "tank:steel"/"hab:closed"; legacy saves default {}); same cost-neutral cadence pattern as the Engine Yard; v35: #7 sub-assemblies — Engine Yard (state.engineStock {engId:count}; legacy saves default {}); v34: Time Granularity slice 4b — launch windows day-scheduled (window/committedWindow .abs moved from absMonth to absDay; migrateWindowsToDays ×30 on pre-v34 load + clears the regenerable windows cache); v33: Time Granularity slice 1 — day-iterating advance() funnel (state.day 0..29 + absDay(); legacy saves default day:0 via load defaults; whole-month advances stay bit-identical so no balance migration needed); v32: CE4(c) era-scaled failure stakes + bailout retune (state.loanInterest — permanent bridge-loan debt service; legacy saves default to 0 via load defaults + loanInterest() guard); v31: CE4(b) standing resupply obligations (per-facility supply/starvedMonths; legacy facilities default to fully provisioned via facilitySupply()); v30: CE3(c) lunar architecture fork (state.lunarArch, null=uncommitted; luna_landing reqResearch moved to per-arch gates); v29: CE3(a) company doctrine (state.doctrine, null=undeclared/neutral); v28: CE2(c) juggernaut capstone (state.standingProd/juggernautReached); v27: CE2(b) launch cadence (state.padMonthAbs/padMonthUsed) — load defaults seed all of these; v26: CE1 rival agents (state.rivalState), seedRivalState migrates old rivalFired
+const SAVE_VERSION=39; // v39: #19 slice A — organizational departments (state.departments {deptId:{lead,training}}; legacy saves default via loadDefaults/defaultDepartments; membership is derived from hired staff, leads are balance-neutral when unset); v38: #6 research partnerships — bench-tested / flight-proven components (state.engineStockTested + state.partStockTested, the bench-tested subset of each yard; legacy saves default {}); a fitted bench-tested component adds +1.5% reliability (cap +6%, benchRelBonus), built at +60% cost / +50% time; v36: #7 sub-assemblies slice 2 — structures & habitats yard (state.partStock {"kind:sub":count}, e.g. "tank:steel"/"hab:closed"; legacy saves default {}); same cost-neutral cadence pattern as the Engine Yard; v35: #7 sub-assemblies — Engine Yard (state.engineStock {engId:count}; legacy saves default {}); v34: Time Granularity slice 4b — launch windows day-scheduled (window/committedWindow .abs moved from absMonth to absDay; migrateWindowsToDays ×30 on pre-v34 load + clears the regenerable windows cache); v33: Time Granularity slice 1 — day-iterating advance() funnel (state.day 0..29 + absDay(); legacy saves default day:0 via load defaults; whole-month advances stay bit-identical so no balance migration needed); v32: CE4(c) era-scaled failure stakes + bailout retune (state.loanInterest — permanent bridge-loan debt service; legacy saves default to 0 via load defaults + loanInterest() guard); v31: CE4(b) standing resupply obligations (per-facility supply/starvedMonths; legacy facilities default to fully provisioned via facilitySupply()); v30: CE3(c) lunar architecture fork (state.lunarArch, null=uncommitted; luna_landing reqResearch moved to per-arch gates); v29: CE3(a) company doctrine (state.doctrine, null=undeclared/neutral); v28: CE2(c) juggernaut capstone (state.standingProd/juggernautReached); v27: CE2(b) launch cadence (state.padMonthAbs/padMonthUsed) — load defaults seed all of these; v26: CE1 rival agents (state.rivalState), seedRivalState migrates old rivalFired
 function saveGame(){
   try{
     const payload={v:SAVE_VERSION, ts:Date.now(), state:JSON.parse(JSON.stringify(state))};
@@ -5780,7 +5877,7 @@ function loadDefaults(){ return {
       ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
       facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
       architectures:{}, science:0, persEventCooldown:5,
-      staff:[], assignedAstronaut:null,
+      staff:[], assignedAstronaut:null, departments:defaultDepartments(),
       vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, rehearsal:false, techLevel:{}, divisions:{}, partnerships:[], breakthroughCooldown:3, relDebt:0, powerSource:'solar',
       recentBuilds:[], materials:defaultMaterialsState(),
       buildQueue:[], hangar:[], orderSeq:0, padMonthAbs:-1, padMonthUsed:0, standingProd:null, juggernautReached:false, doctrine:null, lunarArch:null, uiLayer:'advanced', loanInterest:0, metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[], day:0, engineStock:{}, engineStockTested:{}, partStock:{}, partStockTested:{}
@@ -12024,6 +12121,7 @@ function renderPersonnelCard(p, sr){
         <span style="font-size:14px;font-weight:600;color:var(--ink)">${p.name}</span>
         <span class="pill" style="margin-left:6px">${isEng?p.specialty:'astronaut'}</span>
         <span class="pill" style="margin-left:4px;color:var(--ignite);border-color:#5a4419" title="${traitOf(p.id).desc}">${traitOf(p.id).name}</span>
+        ${isDeptLead(p.id)?'<span class="pill" style="margin-left:4px;color:var(--readout);border-color:#5a4419" title="Department lead — steers this department\'s output">★ lead</span>':''}
         ${isAstro&&assigned?'<span class="pill active" style="margin-left:4px">assigned</span>':''}
       </div>
       <span style="font-family:var(--mono);font-size:12px;color:var(--muted)">${p.salary.toFixed(2)}M/mo</span>
@@ -12057,6 +12155,9 @@ function renderPersonnelCard(p, sr){
     </div>
     ${isEng?`<div class="expert-only" style="font-size:12px;color:var(--dim);margin-bottom:8px;font-family:var(--mono)">rel = skill ${p.skill.toFixed(2)} × morale ${moraleFactor.toFixed(2)} × ${ENG_REL_BONUS_MAX} = +${engBonusStr}</div>`:''}
     <div style="display:flex;gap:6px;flex-wrap:wrap">
+      ${isDeptLead(p.id)
+        ? `<button class="btn ghost" style="font-size:12px" onclick="stepDownLead('${deptOfPerson(p.id)}')" title="Remove ${p.name} as department lead">★ Step down as lead</button>`
+        : `<button class="btn ghost" style="font-size:12px" onclick="promoteLead('${p.id}')" title="Promote ${p.name} to lead ${departmentDef(deptOfPerson(p.id))?departmentDef(deptOfPerson(p.id)).name:'their department'} — their skill, morale and temperament steer the whole department">☆ Make lead</button>`}
       <button class="btn ghost" style="font-size:12px" onclick="giveRaise('${p.id}')">Raise (+${(RAISE_SALARY_BUMP*1000)|0}k/mo, +${RAISE_MORALE_BUMP} morale)</button>
       <button class="btn ghost" style="font-size:12px" onclick="commendPersonnel('${p.id}')" ${canCommend?'':'disabled'}>${sr.commendCooldown>0?`Commend (${sr.commendCooldown}mo)`:`Commend (+${COMMEND_MORALE_BUMP} morale)`}</button>
       ${isAstro?`<button class="btn ghost" style="font-size:12px" onclick="assignAstronaut('${p.id}')">${assigned?'Unassign':'Assign to crew'}</button>`:''}
@@ -12087,8 +12188,21 @@ function renderPersonnel(){
   </div>`;
 
   if(hired.length){
-    html+=`<div style="margin-bottom:6px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">On Staff</div>`;
-    html+=hired.map(({p,sr})=>renderPersonnelCard(p,sr)).join('');
+    html+=`<div style="margin-bottom:6px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">Departments</div>`;
+    // #19: group the on-staff list by department, each with an org header (lead + headcount)
+    html+=DEPARTMENTS.map(def=>{
+      const members=deptMembers(def.id); if(!members.length) return '';
+      const leadRec=deptLeadRecord(def.id);
+      const leadName=leadRec?(personById(leadRec.id)||{}).name:null;
+      const leadTxt = leadName
+        ? `<span style="color:var(--readout)">★ ${leadName}</span>`
+        : `<span class="dim">no lead — promote one below</span>`;
+      const header=`<div class="card" style="background:var(--panel2);margin-bottom:6px;padding:8px 10px;display:flex;justify-content:space-between;align-items:center;gap:10px">
+        <div><span style="font-weight:700">${def.icon} ${def.name}</span> <span class="pill" style="margin-left:4px">${members.length}</span></div>
+        <div style="font-size:12px">Lead: ${leadTxt}</div>
+      </div>`;
+      return header + members.map(sr=>renderPersonnelCard(personById(sr.id), sr)).join('');
+    }).join('');
   }
 
   if(available.length){
