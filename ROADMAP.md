@@ -678,3 +678,42 @@ the same day (`1e9de2df`→`b7ba8fb5`). Verified directly against the live repo 
 **Repo state:** all changes on `main` through commit `c4b88dc9` (this file). Live file is
 `orbital-ventures.html`, ~972K chars. Pushed via Git Data API (fine-grained PAT, treated as
 compromised/revoked immediately after use per standing practice).
+
+
+## Flow-architecture pass — the one-more-turn machine (2026-07-02)
+
+Full re-audit as a KSP/Stellaris player. Finding: the game had more simulation
+depth than most shipped tycoons but no *pull* — timers existed (research, builds,
+station modules, mandates, windows, contracts, rival firsts) but were scattered
+across five tabs and invisible from wherever the player stood, so advancing time
+felt like admin, not anticipation. Also a genuine bug: auto-run time didn't stop
+for anything but game-over. Five features, all pushed:
+
+1. THE OUTLINER (commit 6cbde36) — one ETA-sorted strip of everything in flight,
+   on every scene, above the contextual rail. Research/builds/mandates/windows/
+   expiring contracts/special contracts/next rival first/treasury runway, each
+   row clicking through to its home. Converts existing timers into anticipation.
+2. SMART TIME (commit 6cbde36) — timeInterrupt() halts auto-run + flags skips;
+   fires from every modal plus research/build completion, treasury critical,
+   mandate offers. runToNextEvent() = the Stellaris 'play until something happens'
+   button on the outliner.
+3. THE AGENCY CHRONICLE (commit 885ab9c) — state.firstDates + crewFlown/crewLost;
+   merged player-vs-rival timeline of firsts; legacyScore() -> S/A/B/C/D grade
+   (firsts, worlds, facilities, safety minus scooped + crew lost). showChronicle()
+   openable anytime (Command Center button), fires as 'an era closes' ONCE at the
+   soft scoring date (1990) with continue-or-retire, and is the retirement
+   ceremony. Open-ended play never removed.
+4. SPECIAL CONTRACTS (commit 555de83) — 5 procedural modifiers x a completed
+   mission x historical flavor; one live at a time, cooldown-gated, ~coinflip
+   arrival; fly the matching mission for a bonus + support + rep. Outliner entry,
+   Missions-tab banner, timeInterrupt on arrival. The commercial cousin of
+   mandates.
+5. SESSION BOOKENDS (this commit) — showRecap() on load: date/treasury/rep/
+   flights, top-3 outliner items, advisor recommendation. Back in the loop in
+   30 seconds instead of re-reading five tabs.
+
+Prune/alter notes for later: Materials market is the deepest system with the
+weakest pull — recommend collapsing its surface into Manufacturing and adding one
+real decision (bulk-buy on a dip). Verify doctrines/partnerships surface in the
+advisor+outliner or they stay invisible to the flow. Nothing recommended for
+outright deletion — every system earns its keep once visible in the flow.

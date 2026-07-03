@@ -5778,6 +5778,39 @@ function loadDefaults(){ return {
       recentBuilds:[], materials:defaultMaterialsState(),
       buildQueue:[], hangar:[], orderSeq:0, padMonthAbs:-1, padMonthUsed:0, standingProd:null, juggernautReached:false, doctrine:null, lunarArch:null, uiLayer:'advanced', loanInterest:0, metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[], day:0, engineStock:{}, engineStockTested:{}, partStock:{}, partStockTested:{}
 }; }
+
+/* ---------- Session bookend: "where you left off" ----------
+   On load, 30 seconds of re-orientation: date/treasury, the top of the Outliner (what's
+   about to land), and the advisor's current recommendation — so the player is back in the
+   loop instead of re-reading five tabs. */
+function showRecap(){
+  const items=outlinerItems().slice(0,3);
+  const rows=items.length?items.map(it=>`<div style="display:flex;align-items:center;gap:8px;padding:2px 0;font-size:12px">
+      <span style="width:16px;text-align:center">${it.icon}</span>
+      <span style="flex:1;color:${it.color||'var(--muted)'}">${it.label}</span>
+      <b style="font-family:var(--mono);font-size:11px;color:var(--readout)">${outlinerEtaText(it.etaDays)}</b>
+    </div>`).join('') : '<div class="dim" style="font-size:12px">Nothing on the clock yet.</div>';
+  let recHtml='';
+  try{ const rec=recommendedAction(); if(rec&&rec.title) recHtml=`<div style="margin-top:10px;padding:8px 10px;background:var(--panel2);border-radius:6px;border-left:2px solid var(--ignite)">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:2px">Advisor</div>
+      <div style="font-size:13px;color:var(--ink)">▸ ${rec.title}</div>
+      ${rec.detail?`<div class="dim" style="font-size:12px;margin-top:2px">${rec.detail}</div>`:''}</div>`; }catch(e){}
+  const grade=(()=>{ try{ return legacyScore().grade; }catch(e){ return null; } })();
+  showModal(`<div>
+    <h2 style="margin-bottom:2px">Where you left off</h2>
+    <p class="muted" style="font-size:12px;margin:0 0 10px">${dateStr()} · ${state.company}${grade?` · legacy ${grade}`:''}</p>
+    <div class="metrics" style="margin-bottom:10px">
+      <div class="metric"><div class="k">Treasury</div><div class="v">${fM(state.money)}</div></div>
+      <div class="metric"><div class="k">Reputation</div><div class="v">${Math.round(state.rep)}</div></div>
+      <div class="metric"><div class="k">Flights</div><div class="v">${state.flights}</div></div>
+    </div>
+    <div class="cc-panel-h" style="margin:0 0 4px">◈ About to land</div>
+    ${rows}
+    ${recHtml}
+    <button class="btn launch" style="width:100%;margin-top:12px" onclick="hideModal()">Back to it ▸</button>
+  </div>`, true);
+}
+
 function loadGame(){
   try{
     const raw=localStorage.getItem(SAVE_KEY);
@@ -5793,9 +5826,7 @@ function loadGame(){
     reconcileResearch(); // close any prerequisite gaps opened by tech-tree changes
     log('info','Game loaded.');
     render();
-    showModal(`<h2>Game Loaded</h2><p class="muted">${dateStr()} — ${state.company}</p>
-      <p class="dim" style="font-size:12px">${state.flights} flights, ${fM(state.money)}, ${Math.round(state.rep)} rep</p>
-      <button class="btn" onclick="hideModal()" style="margin-top:8px">OK</button>`);
+    showRecap(); // session bookend: where you left off
   }catch(e){
     showModal(`<h2>Load Failed</h2><p class="muted">${e.message}</p>
       <button class="btn" onclick="hideModal()" style="margin-top:8px">OK</button>`);
