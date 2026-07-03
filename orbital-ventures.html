@@ -707,6 +707,7 @@
           <div class="cc-panel-h" style="margin:0">📡 Mission Control</div>
           <button class="btn ghost" style="font-size:11px;padding:3px 8px" onclick="openHubPanel('alerts')" title="Back to Alerts &amp; News">← Alerts</button>
         </div>
+        <div id="specialBannerMount"></div>
         <div class="card" id="passiveCard"></div>
         <div class="card" style="margin-top:10px"><h2 style="font-size:15px">Contracts</h2><div id="missionList"></div></div>
       </div>
@@ -2375,6 +2376,7 @@ function tickMonthlyBoundary(){
     checkEvents();
     tickMandate(); // mandates: offer / deadline check (economy tension pass)
     checkScoringDate(); // chronicle: the soft scoring date fires once
+    tickSpecialContract(); // special contracts: limited-time commercial variants
     pushMetricHistory(); // #28: snapshot this month's core metrics for the dashboard sparklines
 }
 // #28: append the current core-metric values to their trend buffers (capped at METRIC_HISTORY_LEN).
@@ -5106,6 +5108,7 @@ function finalizeLaunch(ctx, ops){
       log('ok',`${m.name}: SUCCESS. Delivered ${delivered.toFixed(1)} t to the LEO depot (now ${state.depot.toFixed(1)} t). +${fM(payout)}, +${rep} rep, +${sciGain} sci.`);
     }else{
       state.money+=payout; state.rep+=rep; flightRevenue=payout;
+      fulfillSpecialIfMatch(m.id); // special contract bonus on a matching routine/repeat flight
       const qTxt = m.window?(windowQuality>1.05?' Favorable window geometry boosted the payload value.':windowQuality<0.92?' A marginal window cut into the payload value.':''):'';
       const scoopTxt = (!routine && state.scooped[m.id]) ? ' (scooped — reduced first-time payout)' : '';
       log('ok',`${m.name}: SUCCESS.${crewed?` Crew of ${m.crew} home safe.`:''} +${fM(payout)}, +${rep} rep, +${sciGain} sci. (reliability ${(rel*100|0)}%)${qTxt}${scoopTxt}`);
@@ -5119,6 +5122,7 @@ function finalizeLaunch(ctx, ops){
     if(!routine){
       state.completed[m.id]=true;
       (state.firstDates=state.firstDates||{})[m.id]=absMonth(); // chronicle: when each first happened
+      fulfillSpecialIfMatch(m.id); // special contract bonus on a matching first
       fulfillMandateIfMatch(m.id); // mandate bonus if this was the mandated mission, in time
       denyRivalGoal(m.id); // CE1(b): beating a rival to its goal blunts that rival's momentum
       state.history=state.history||{}; state.history[m.id]=state.year; // #18: record the year for the Home timeline
@@ -8843,6 +8847,63 @@ let _objSectionOpen=false;
 /* ---------- render ---------- */
 
 
+
+
+/* ---------- Special contracts: the game comes to you ----------
+   Between mission-ladder rungs, a client arrives with a limited-time variant of a mission
+   you can already fly: procedural body (mission × modifier × deadline), hand-authored
+   historical flavor. One live at a time, era-appropriate, real money for flying NOW.
+   The commercial cousin of mandates — short-horizon goals that make the calendar matter. */
+const SPECIAL_MODS=[
+  {id:'rush',   name:'Rush order',        mult:0.9,  lead:8,
+   flavors:["A customer's original launch provider blew up on the pad — they need a ride and they need it yesterday.",
+            "A treaty deadline looms; the ministry will pay handsomely for a flight before the signing."]},
+  {id:'polar',  name:'Polar insertion',   mult:1.2,  lead:12,
+   flavors:["A mapping agency wants full-globe coverage — a polar-corridor flight at premium rates.",
+            "Weather service requirement: sun-synchronous coverage, and they're paying for the plane change."]},
+  {id:'media',  name:'Broadcast charter', mult:1.0,  lead:10, reqCrew:true,
+   flavors:["A television network wants cameras on this flight — live coverage, worldwide audience, appearance fees.",
+            "A film studio has chartered seats and coverage rights. The premiere date is not negotiable."]},
+  {id:'science',name:'Instrument ride',   mult:1.1,  lead:14,
+   flavors:["A university consortium has an instrument package ready and a grant expiring — they'll pay for the manifest slot.",
+            "An observatory needs its detector above the atmosphere before the comet arrives."]},
+  {id:'prestige',name:'State showcase',   mult:1.4,  lead:10, minRep:60,
+   flavors:["A state visit is scheduled — the government wants a flawless flight to show off, and will pay like it.",
+            "An international exposition wants a launch timed to its opening ceremony. National prestige budgets are generous."]},
+];
+const SPECIAL_COOLDOWN_MO=9;
+function specialCandidateMissions(){
+  return MISSIONS.filter(m=>(m.payout||0)>0 && state.completed[m.id] && state.rep>=(m.minRep||0));
+}
+function tickSpecialContract(){
+  if(state.specialCooldown>0) state.specialCooldown--;
+  const sc=state.specialContract;
+  if(sc){
+    if(absMonth()>sc.deadlineAbs){ log('note',`★ The ${sc.title} window closed — the client went elsewhere.`);
+      state.specialContract=null; state.specialCooldown=SPECIAL_COOLDOWN_MO; }
+    return;
+  }
+  if((state.specialCooldown||0)>0) return;
+  if(Math.random()>0.5) return; // arrives within ~2 months of eligibility, not like clockwork
+  const pool=specialCandidateMissions(); if(!pool.length) return;
+  const m=pool[Math.floor(Math.random()*pool.length)];
+  const mods=SPECIAL_MODS.filter(md=>(!md.reqCrew || (m.crew||0)>0) && state.rep>=(md.minRep||0));
+  if(!mods.length) return;
+  const mod=mods[Math.floor(Math.random()*mods.length)];
+  const bonus=round2(m.payout*mod.mult);
+  state.specialContract={ missionId:m.id, modId:mod.id, bonus, deadlineAbs:absMonth()+mod.lead,
+    title:`${mod.name}: ${m.name}`, flavor:mod.flavors[Math.floor(Math.random()*mod.flavors.length)] };
+  timeInterrupt();
+  log('note',`★ Special contract: ${state.specialContract.title} — ${fM(bonus)} bonus if flown within ${mod.lead} months. ${state.specialContract.flavor}`);
+}
+function fulfillSpecialIfMatch(missionId){
+  const sc=state.specialContract; if(!sc || sc.missionId!==missionId) return;
+  if(absMonth()<=sc.deadlineAbs){
+    state.money+=sc.bonus; addSupport(3); state.rep+=2;
+    log('ok',`★ Special contract fulfilled: ${sc.title}. +${fM(sc.bonus)} bonus, +3 support, +2 rep.`);
+  }
+  state.specialContract=null; state.specialCooldown=SPECIAL_COOLDOWN_MO;
+}
 
 /* ---------- The Agency Chronicle: your century, scored ----------
    A timeline of every first — yours against the rivals' — plus lifetime statistics and a
@@ -13305,6 +13366,22 @@ function renderPrograms(){
     ${rows}`;
 }
 
+function renderSpecialBanner(){
+  const sc=state.specialContract; if(!sc) return '';
+  const left=sc.deadlineAbs-absMonth();
+  const m=MISSIONS.find(x=>x.id===sc.missionId);
+  return `<div class="card" style="border-color:var(--ignite);margin-bottom:10px">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
+      <b style="color:var(--ignite);font-size:13px">★ ${sc.title}</b>
+      <span style="font-family:var(--mono);font-size:12px;color:${left<=3?'var(--warn)':'var(--muted)'}">${left} mo left</span>
+    </div>
+    <p class="muted" style="font-size:12px;margin:4px 0">${sc.flavor}</p>
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <span style="font-family:var(--mono);font-size:13px;color:var(--ok)">+${fM(sc.bonus)} bonus on top of the normal payout</span>
+      <button class="btn" style="font-size:12px" onclick="selectMission('${sc.missionId}');setTab('bench')">Fly ${m?m.name:''} ▸</button>
+    </div>
+  </div>`;
+}
 function renderPassiveContracts(){
   const box=$('passiveCard'); if(!box) return;
   const totMo=passiveMonthlyIncome();
@@ -13347,6 +13424,7 @@ function renderPassiveContracts(){
 }
 
 function renderMissions(){
+  { const el=$('specialBannerMount'); if(el) el.innerHTML=renderSpecialBanner(); }
   renderPassiveContracts();
   const box=$('missionList'); box.innerHTML='';
   MISSIONS.forEach(m=>{
