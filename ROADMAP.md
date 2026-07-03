@@ -172,9 +172,10 @@ companion to `orbital-ventures-design.md` (original full design doc) and
       Cape scene, alerts/news) + program timeline; `state.lastMonth`/`state.history`. `SAVE_VERSION`→5. Mission
       Control deepening slices 4–6 also shipped (Advisor ✓/✗ checklist, Objectives checklist, Growing Site).
       Remaining: click-to-jump notifications, animated scene art tiers.
-- [ ] **19 · Organizational scaling (departments)** *(P2)* — Grow personnel from named individuals into
-      departments with leaders, career progression, training/specialization, succession/workforce planning.
-      Builds on M6/#9/#5.
+- [x] **19 · Organizational scaling (departments)** *(P2)* — ✅ DONE (slices A/B/C, 2026-07-03). Org layer
+      OVER the hired staff (wraps the named individuals — preserves #9 traits/#5 poaching/M6 morale — rather
+      than replacing them). A department = one of the 4 engineering specialties + the Astronaut Corps, membership
+      derived from who's hired. See § "#19 Organizational scaling" below for the full record.
 - [x] **20 · Interactive Mission Control & operations** *(P4)* — *All 4 slices shipped 2026-06-22.* (1) Launch
       weather go/no-go (`rollWeather`, 5 adverse conditions, Challenger cold+solid synergy; split `launch()`→
       `proceedLaunch`). (2) In-flight anomaly decisions (`MISSION_ANOMALIES`; `rollMissionEvents`; `finalizeLaunch`
@@ -311,7 +312,7 @@ Source: *Orbital Ventures: Strategic Development Roadmap* (.docx/.xlsx), importe
 ### New forward-arc items extracted from the strategic vision
 
 - [~] **18 · Agency Command Center & UX layer** — *See completed milestones above (3 slices + deepening slices 4–6 shipped).* Remaining: click-to-jump notifications, animated scene art tiers.
-- [ ] **19 · Organizational scaling (departments)** *(P2)* — Scale individuals→departments with leaders, career progression, training, succession. Builds on M6/#9/#5.
+- [x] **19 · Organizational scaling (departments)** *(P2)* — ✅ DONE (A/B/C, 2026-07-03). Leaders, career progression, training, succession + workforce planning. Builds on M6/#9/#5. See § below.
 - [x] **20 · Interactive Mission Control** *(P4)* — *All 4 slices shipped 2026-06-22.* See Design Brief #20 entry above.
 - [ ] **21 · Colony population & interplanetary logistics** *(P5)* — Colony population/management, typed construction, interplanetary logistics & trade routes. Extends #17.
 - [ ] **22 · Endgame: deep-space civilization** *(P8)* — Planetary economies, orbital shipyards, megaprojects, terraforming, interstellar missions.
@@ -773,3 +774,81 @@ other flagged check — *verify doctrines/research partnerships actually surface
 in the advisor/outliner or they stay invisible to the flow* — is still
 unverified and is the natural next small pass if picking up loose threads
 before a bigger milestone (#19/#21/#22, Cross-Track Synergies, or #29 filters).
+
+## #19 Organizational scaling — departments (2026-07-03, slices A/B/C)
+
+Built all three slices in one session, each headless-validated and pushed as its
+own commit. **Core design decision: departments WRAP the hired individuals, they
+don't replace them.** The named engineers/astronauts carry the #9 trait system,
+the #5 poaching mechanic, and the M6 morale loop — ripping them out for abstract
+headcount would gut all three. So a department is an org layer *over* the staff
+you already hire. Taxonomy needs no new invented structure: a department = one of
+the 4 engineering specialties (Propulsion/Structures/Avionics/Production) + the
+Astronaut Corps; **membership is derived** from who's hired, so it stays in sync
+with hiring/firing/poaching automatically. Distinct from the existing Research
+Divisions (which are R&D-track accelerators — a different axis).
+
+### Slice A — structure + leaders (commit 9845a95, SAVE_VERSION 39)
+`state.departments = {deptId:{lead,training}}`. Each department can have one promoted
+**lead** (`promoteLead`/`stepDownLead`), whose skill×morale×trait amplify that
+department's output: an engineering lead is weighted `DEPT_LEAD_WEIGHT` (1.6×) in the
+team-score average, so promoting your strongest-trait engineer amplifies that trait
+across `engScores`; the Astronaut Corps lead adds a flat crewed-reliability steadiness
+(`corpsLeadRelBonus`). `deptLeadRecord` self-heals if a lead leaves the roster.
+**Balance-neutral with no leads** — all weights collapse to 1.0, so engScores is
+identical to the pre-#19 formula (proven in-test against a reconstructed old formula).
+Introduced `effSkill()` here (reads `xp`, which is 0 until slice B, so ==base skill)
+and threaded it through engScores/bestSpecialistSkill/astroBonus. Personnel modal
+regrouped by department with lead controls + a crown pill. Legacy saves default
+`departments` via loadDefaults/defaultDepartments. **Validated 37/37.**
+
+### Slice B — career progression + training (commit 22536f9, SAVE_VERSION 40)
+Hired staff accrue `xp` each month (`accrueStaffXp` in the monthly boundary), scaled
+by morale × their department's training level, raising **effective skill** above the
+fixed hire-day base up to +0.15 (hard cap 0.99, `XP_SKILL_SLOPE`/`XP_SKILL_MAX`).
+effSkill feeds the real accumulators (engScores, specialistFactor, astroBonus) so
+**retention genuinely pays off** — a veteran you kept outperforms their hire-day
+stats. **Training investment:** `trainDepartment()` spends capital to raise a
+persistent per-dept training level (cap 4) that accelerates that dept's xp accrual
+(+50%/level, `TRAIN_ACCEL`) and grants an immediate xp + morale bump — money-now for
+compounding-skill-later. Skill bars show the veteran gain (green overlay + "+N");
+dept headers show training level + a Train button. Legacy staff default `xp` 0 via
+`staffXp` guard, so effSkill==base at xp 0 → fresh/legacy games unchanged.
+**Validated 27/27**; slice A + materials + regression suites still green.
+
+### Slice C — succession & workforce planning (commit 4a7956b, NO save bump)
+When a lead leaves the roster (fired/quit/poached/dose-retired), the strongest
+remaining member auto-succeeds — `reconcileDeptLeads()` (best effSkill×morale) wired
+into all four staff-removal points (monthly attrition, firePersonnel, checkPoaching,
+astronaut retirement). **Workforce planning:** an unstaffed CORE engineering specialty
+is a standing reliability risk — `deptStaffingRelPenalty()` subtracted in `curRel`,
+**era-scaled via `eraStakesFrac` so it's 0 in Pioneer** (early game provably unchanged)
+and only bites once you're deep enough to know better; the Astronaut Corps counts as
+critical only when the active mission is crewed (`criticalDepts`). Gaps surface in the
+flow — outliner (eta-0 item), command tab alerts, personnel Cape glyph — plus a
+workforce-planning banner + per-dept health dot in the modal (so *unstaffed* depts,
+which have no member cards, are still visible with a call to action). No new persisted
+state → no SAVE_VERSION bump (succession mutates existing `dept.lead`; gaps + penalty
+are derived). **Validated 30/30.**
+
+**Full gauntlet green at session end:** dept-A 37 + dept-B 27 + dept-C 30 + materials
+46 + regression 18 = **158/158.** Pushed via Git Data API (fine-grained PAT, treated
+as compromised/revoked immediately after use per standing practice).
+
+### ⚠ Pre-existing bug found (NOT fixed — out of scope for #19, flagged for a dedicated pass)
+`checkScoringDate()` references `pendingCelebration`, which only exists as a LOCAL
+variable inside `resolveFlight()` — at the `checkScoringDate` scope it's an undefined
+free reference. It's guarded by `if(animEnabled)`, so it throws a ReferenceError when
+the game reaches the 1990 soft-scoring date (Agency Chronicle "an era closes") in
+normal animated play. The headless harness dodges it via the documented
+`animEnabled=false` convention, but a real player would hit it at 1990. Small fix
+(hoist `pendingCelebration` to a module-level `let`, or inline the chronicle trigger
+without it) but deliberately left alone to keep the #19 session scoped. **Fix next.**
+
+### Recommended next steps (updated)
+1. **Fix the `pendingCelebration` 1990-scoring-date crash** (above) — small, and it's a
+   real player-facing bug at the Chronicle scoring moment.
+2. Still open from 2026-07-02: *verify doctrines/research partnerships surface in the
+   advisor/outliner* (same invisible-to-the-flow class the materials + #19 gap work kept
+   addressing).
+3. Bigger milestones remain: #21 colony/logistics, #22 endgame, Cross-Track Synergies, #29 log filters.
