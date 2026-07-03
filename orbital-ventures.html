@@ -2374,6 +2374,7 @@ function tickMonthlyBoundary(){
       else if(s.morale<50) s.morale=Math.min(50,s.morale+1);
       if(s.commendCooldown>0) s.commendCooldown--;
     });
+    accrueStaffXp(); // #19 slice B: career progression — banked monthly, accelerated by dept training
 
     // M6: attrition — personnel quit after sustained low morale
     state.staff=state.staff.filter(s=>{
@@ -5532,11 +5533,49 @@ function isHired(id){ return !!staffRecord(id); }
 const XP_SKILL_SLOPE = 0.0016;  // effective-skill gain per xp point
 const XP_SKILL_MAX   = 0.15;    // most a veteran can add over their hire-day base
 const SKILL_HARD_CAP = 0.99;    // no one is perfect
+const XP_PER_MONTH    = 3;      // base experience a working staff member banks each month
+const TRAIN_ACCEL     = 0.5;    // each department training level adds +50% xp accrual for its members
+const TRAIN_MAX_LEVEL = 4;      // cap on a department's training investment
+const TRAIN_COST_BASE = 1.5;    // $M for the first training level (scales with level + headcount)
+const TRAIN_XP_BUMP   = 40;     // immediate xp granted to each member when a training level is bought
+const TRAIN_MORALE_BUMP = 4;    // morale lift from a training investment
 function staffXp(id){ const sr=staffRecord(id); return sr?(sr.xp||0):0; }
 function effSkill(id){
   const p=personById(id); if(!p) return 0;
   const bonus=Math.min(XP_SKILL_MAX, staffXp(id)*XP_SKILL_SLOPE);
   return Math.min(SKILL_HARD_CAP, p.skill + bonus);
+}
+// veteran gain (effSkill above hire-day base), 0..XP_SKILL_MAX — surfaced in the UI
+function skillGain(id){ const p=personById(id); return p?Math.max(0, effSkill(id)-p.skill):0; }
+// #19 slice B: department training investment (persistent level that accelerates its xp accrual)
+function trainDepartmentCost(deptId){ const lvl=deptState(deptId).training, n=deptMembers(deptId).length; return round2(TRAIN_COST_BASE*(lvl+1)*(1+0.3*n)); }
+function canTrainDepartment(deptId){
+  const def=departmentDef(deptId); if(!def) return {ok:false,why:'Unknown department.'};
+  const ds=deptState(deptId);
+  if(deptMembers(deptId).length===0) return {ok:false,why:'No one to train — hire into this department first.'};
+  if(ds.training>=TRAIN_MAX_LEVEL) return {ok:false,why:`Training maxed (L${TRAIN_MAX_LEVEL}).`};
+  const cost=trainDepartmentCost(deptId);
+  if(state.money<cost) return {ok:false,why:'Not enough capital.'};
+  return {ok:true,cost};
+}
+function trainDepartment(deptId){
+  const chk=canTrainDepartment(deptId); if(!chk.ok) return;
+  state.departments=state.departments||defaultDepartments();
+  state.departments[deptId]=state.departments[deptId]||{lead:null,training:0};
+  state.money-=chk.cost;
+  state.departments[deptId].training++;
+  deptMembers(deptId).forEach(sr=>{ sr.xp=(sr.xp||0)+TRAIN_XP_BUMP; sr.morale=clampA((sr.morale||50)+TRAIN_MORALE_BUMP,0,100); });
+  const def=departmentDef(deptId);
+  log('ok', `${def.name} training invested — now L${state.departments[deptId].training}/${TRAIN_MAX_LEVEL} (${fM(chk.cost)}). Members gained experience and morale.`);
+  render();
+}
+// monthly experience accrual for all hired staff (scaled by morale × their department's training level)
+function accrueStaffXp(){
+  (state.staff||[]).forEach(s=>{
+    const dep=deptOfPerson(s.id); const tl=dep?deptState(dep).training:0;
+    const mf=Math.max(0.2,(s.morale||50)/100);
+    s.xp=(s.xp||0)+XP_PER_MONTH*mf*(1+tl*TRAIN_ACCEL);
+  });
 }
 
 // Available to hire: not already hired, era unlocked
@@ -5659,7 +5698,7 @@ function astroBonus(){
 
 function hirePersonnel(id){
   if(isHired(id)) return;
-  state.staff.push({id, morale:70, lowMoraleMonths:0, commendCooldown:0});
+  state.staff.push({id, morale:70, lowMoraleMonths:0, commendCooldown:0, xp:0});
   const p=personById(id);
   log('note',`Hired ${p.name} (${p.salary.toFixed(2)}M/mo salary).`);
   render();
@@ -5840,7 +5879,7 @@ function hideModal(){activeModal=null;_prodModalOpen=false;$('modal').classList.
 
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=39; // v39: #19 slice A — organizational departments (state.departments {deptId:{lead,training}}; legacy saves default via loadDefaults/defaultDepartments; membership is derived from hired staff, leads are balance-neutral when unset); v38: #6 research partnerships — bench-tested / flight-proven components (state.engineStockTested + state.partStockTested, the bench-tested subset of each yard; legacy saves default {}); a fitted bench-tested component adds +1.5% reliability (cap +6%, benchRelBonus), built at +60% cost / +50% time; v36: #7 sub-assemblies slice 2 — structures & habitats yard (state.partStock {"kind:sub":count}, e.g. "tank:steel"/"hab:closed"; legacy saves default {}); same cost-neutral cadence pattern as the Engine Yard; v35: #7 sub-assemblies — Engine Yard (state.engineStock {engId:count}; legacy saves default {}); v34: Time Granularity slice 4b — launch windows day-scheduled (window/committedWindow .abs moved from absMonth to absDay; migrateWindowsToDays ×30 on pre-v34 load + clears the regenerable windows cache); v33: Time Granularity slice 1 — day-iterating advance() funnel (state.day 0..29 + absDay(); legacy saves default day:0 via load defaults; whole-month advances stay bit-identical so no balance migration needed); v32: CE4(c) era-scaled failure stakes + bailout retune (state.loanInterest — permanent bridge-loan debt service; legacy saves default to 0 via load defaults + loanInterest() guard); v31: CE4(b) standing resupply obligations (per-facility supply/starvedMonths; legacy facilities default to fully provisioned via facilitySupply()); v30: CE3(c) lunar architecture fork (state.lunarArch, null=uncommitted; luna_landing reqResearch moved to per-arch gates); v29: CE3(a) company doctrine (state.doctrine, null=undeclared/neutral); v28: CE2(c) juggernaut capstone (state.standingProd/juggernautReached); v27: CE2(b) launch cadence (state.padMonthAbs/padMonthUsed) — load defaults seed all of these; v26: CE1 rival agents (state.rivalState), seedRivalState migrates old rivalFired
+const SAVE_VERSION=40; // v40: #19 slice B — career progression (staff.xp accrues monthly ×morale ×dept-training, raising effSkill above hire-day base up to +0.15; dept.training level bought with capital; legacy staff default xp 0 via staffXp guard, effSkill==base at xp 0 so no balance migration); v39: #19 slice A — organizational departments (state.departments {deptId:{lead,training}}; legacy saves default via loadDefaults/defaultDepartments; membership is derived from hired staff, leads are balance-neutral when unset); v38: #6 research partnerships — bench-tested / flight-proven components (state.engineStockTested + state.partStockTested, the bench-tested subset of each yard; legacy saves default {}); a fitted bench-tested component adds +1.5% reliability (cap +6%, benchRelBonus), built at +60% cost / +50% time; v36: #7 sub-assemblies slice 2 — structures & habitats yard (state.partStock {"kind:sub":count}, e.g. "tank:steel"/"hab:closed"; legacy saves default {}); same cost-neutral cadence pattern as the Engine Yard; v35: #7 sub-assemblies — Engine Yard (state.engineStock {engId:count}; legacy saves default {}); v34: Time Granularity slice 4b — launch windows day-scheduled (window/committedWindow .abs moved from absMonth to absDay; migrateWindowsToDays ×30 on pre-v34 load + clears the regenerable windows cache); v33: Time Granularity slice 1 — day-iterating advance() funnel (state.day 0..29 + absDay(); legacy saves default day:0 via load defaults; whole-month advances stay bit-identical so no balance migration needed); v32: CE4(c) era-scaled failure stakes + bailout retune (state.loanInterest — permanent bridge-loan debt service; legacy saves default to 0 via load defaults + loanInterest() guard); v31: CE4(b) standing resupply obligations (per-facility supply/starvedMonths; legacy facilities default to fully provisioned via facilitySupply()); v30: CE3(c) lunar architecture fork (state.lunarArch, null=uncommitted; luna_landing reqResearch moved to per-arch gates); v29: CE3(a) company doctrine (state.doctrine, null=undeclared/neutral); v28: CE2(c) juggernaut capstone (state.standingProd/juggernautReached); v27: CE2(b) launch cadence (state.padMonthAbs/padMonthUsed) — load defaults seed all of these; v26: CE1 rival agents (state.rivalState), seedRivalState migrates old rivalFired
 function saveGame(){
   try{
     const payload={v:SAVE_VERSION, ts:Date.now(), state:JSON.parse(JSON.stringify(state))};
@@ -12137,10 +12176,11 @@ function renderPersonnelCard(p, sr){
     </div>
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
       <span style="font-size:12px;color:var(--dim);width:50px">Skill</span>
-      <div style="flex:1;height:6px;background:var(--panel2);border-radius:3px;overflow:hidden">
+      <div style="flex:1;height:6px;background:var(--panel2);border-radius:3px;overflow:hidden;position:relative">
         <div style="height:100%;width:${(p.skill*100)|0}%;background:var(--readout)"></div>
+        ${skillGain(p.id)>0.001?`<div style="height:100%;width:${(skillGain(p.id)*100)|0}%;background:var(--ok);position:absolute;top:0;left:${(p.skill*100)|0}%"></div>`:''}
       </div>
-      <span style="font-family:var(--mono);font-size:12px;color:var(--readout)">${(p.skill*100)|0}</span>
+      <span style="font-family:var(--mono);font-size:12px;color:var(--readout)">${(effSkill(p.id)*100)|0}${skillGain(p.id)>0.001?`<span style="color:var(--ok)"> +${Math.round(skillGain(p.id)*100)}</span>`:''}</span>
     </div>
     ${isAstro?(()=>{ const dose=Math.round(sr.dose||0); const dc=dose>=RAD_CAREER_WARN?'var(--bad)':dose>=RAD_CAREER_WARN*0.6?'var(--warn)':'var(--ok)';
       return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px" title="Career radiation dose — at ${RAD_CAREER_LIMIT} the astronaut must retire">
@@ -12197,9 +12237,14 @@ function renderPersonnel(){
       const leadTxt = leadName
         ? `<span style="color:var(--readout)">★ ${leadName}</span>`
         : `<span class="dim">no lead — promote one below</span>`;
-      const header=`<div class="card" style="background:var(--panel2);margin-bottom:6px;padding:8px 10px;display:flex;justify-content:space-between;align-items:center;gap:10px">
-        <div><span style="font-weight:700">${def.icon} ${def.name}</span> <span class="pill" style="margin-left:4px">${members.length}</span></div>
-        <div style="font-size:12px">Lead: ${leadTxt}</div>
+      const ds=deptState(def.id);
+      const trainChk=canTrainDepartment(def.id);
+      const trainBtn = ds.training>=TRAIN_MAX_LEVEL
+        ? `<span class="pill" title="Training maxed">🎓 L${TRAIN_MAX_LEVEL} max</span>`
+        : `<button class="btn ghost" style="font-size:12px;padding:3px 8px" onclick="trainDepartment('${def.id}')" ${trainChk.ok?'':'disabled'} title="${trainChk.ok?`Invest in training: accelerates this department's experience growth (${fM(trainChk.cost)})`:trainChk.why}">🎓 Train L${ds.training}→${ds.training+1} · ${fM(trainDepartmentCost(def.id))}</button>`;
+      const header=`<div class="card" style="background:var(--panel2);margin-bottom:6px;padding:8px 10px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <div><span style="font-weight:700">${def.icon} ${def.name}</span> <span class="pill" style="margin-left:4px">${members.length}</span>${ds.training>0?` <span class="pill" style="color:var(--ok);border-color:#2f5a2f" title="Training level accelerates experience growth">🎓 L${ds.training}</span>`:''}</div>
+        <div style="display:flex;align-items:center;gap:10px;font-size:12px">Lead: ${leadTxt} ${trainBtn}</div>
       </div>`;
       return header + members.map(sr=>renderPersonnelCard(personById(sr.id), sr)).join('');
     }).join('');
