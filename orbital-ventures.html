@@ -5187,6 +5187,7 @@ function finalizeLaunch(ctx, ops){
     boosters: boosterSpec(),
     transferProp: (m.profile&&m.modules.includes('transfer'))?state.transfer.prop:0,
     recovering: recoveryActive(m) && state.stages.length>1 && failPhase!=='ascent', // #graphics: fly the first stage back for a landing instead of tumbling away
+    hasCapsule: !!(state.research.crew_capsule || crewed), // recovery: parachutes + heat shield + splashdown (Mercury/Vostok era)
     isCislunar: !!m.profile, isOrbital: (!m.profile && m.reqDv>=9000),
     reqDv: m.reqDv||9400,
     rng: { wind:(rnd()-0.5)*0.9, windFreq:1.4+rnd()*1.6, windPhase:rnd()*6.283,
@@ -6128,6 +6129,18 @@ function sfxBoom(){
   const g=sfxCtx.createGain(); g.gain.value=0.8;
   src.connect(lp); lp.connect(g); g.connect(sfxCtx.destination); src.start();
 }
+function sfxSplash(){
+  if(!sfxCtx) return;
+  const buf=sfxGetBuf('splash', 1.1, (d,sr)=>{ for(let i=0;i<d.length;i++){ const t=i/sr;
+    const env=t<0.01?t/0.01:Math.exp(-(t)*4.5); d[i]=(Math.random()*2-1)*env*0.8; } });
+  const src=sfxCtx.createBufferSource(); src.buffer=buf;
+  const bp=sfxCtx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=1400; bp.Q.value=0.7;
+  const g=sfxCtx.createGain(); g.gain.value=0.5;
+  src.connect(bp); bp.connect(g); g.connect(sfxCtx.destination); src.start();
+  const th=sfxCtx.createOscillator(); th.type='sine'; th.frequency.setValueAtTime(120,sfxCtx.currentTime); th.frequency.exponentialRampToValueAtTime(45,sfxCtx.currentTime+0.25);
+  const tg=sfxCtx.createGain(); tg.gain.setValueAtTime(0.4,sfxCtx.currentTime); tg.gain.exponentialRampToValueAtTime(0.001,sfxCtx.currentTime+0.3);
+  th.connect(tg); tg.connect(sfxCtx.destination); th.start(); th.stop(sfxCtx.currentTime+0.32);
+}
 function sfxBurn(intensity){
   if(!sfxCtx) return;
   const s=sfxLoopSrc(sfxNoiseBuf('brown'));
@@ -6608,7 +6621,7 @@ function setupFlightState(spec, done, ctx, cv, viewCanvas){
   else totalDur=ascentDur+cruiseDur+reentryDur+1200;
   const stars=[]; for(let i=0;i<160;i++) stars.push({x:Math.random(),y:Math.random()*0.92,b:0.3+Math.random()*0.7,s:0.8+Math.random()*1.4,twinkle:Math.random()*6.28});
   const path=spec.isCislunar?buildLunarPath(cv.width,cv.height,spec.rng):null;
-  animState={spec,done,ctx,cv,viewCanvas:viewCanvas||cv,t0:performance.now(),ascentDur,cruiseDur,reentryDur,totalDur,stars,path,raf:0,trail:[],particles:[],debris:[],rePlasma:[],reSplash:[],shakeX:0,shakeY:0,lastT:0,virtT:0,prevWall:performance.now(),sfxSepFired:{},sfxBoomFired:false,sfxEnginePhase:null,recovering:!!spec.recovering};
+  animState={spec,done,ctx,cv,viewCanvas:viewCanvas||cv,t0:performance.now(),ascentDur,cruiseDur,reentryDur,totalDur,stars,path,raf:0,trail:[],particles:[],debris:[],rePlasma:[],reSplash:[],shakeX:0,shakeY:0,lastT:0,virtT:0,prevWall:performance.now(),sfxSepFired:{},sfxBoomFired:false,sfxEnginePhase:null,recovering:!!spec.recovering,_splashed:false,_splashX:null,reRing:0};
   sfxInit();
   const totalProp=spec.stages.reduce((a,s)=>a+s.prop,0)+(spec.transferProp||0);
   const engCount=spec.stages[0]?spec.stages[0].count||1:1;
@@ -8490,6 +8503,83 @@ function drawChute(ctx,cx,cy,r,fill,edge,attachX,attachY,f){
   for(const ax of attachX){ ctx.beginPath(); ctx.moveTo(cx+(ax-cx)*0.18, cy+r*0.25); ctx.lineTo(ax,attachY); ctx.stroke(); }
   ctx.restore();
 }
+
+/* ---------- Shared splashdown / recovery ending ----------
+   Two eras, gated on the capsule (parachute + heat-shield) recovery tech:
+   · No capsule tech  → the vehicle comes down and SPLASHES into the sea, then is gone
+     (early hardware is expendable, lost at sea — no dot lying flat on the water).
+   · Capsule tech     → a blunt-body capsule descends vertically under a drogue then mains,
+     SPLASHES DOWN UPRIGHT, sheds the canopies, and BOBS in the ocean awaiting recovery.
+   Call once the descending craft nears the waterline. `dp` is 0→1 over the terminal descent.
+   Returns true while it owns the frame (caller should stop drawing the in-flight craft). */
+function drawSplashdown(ctx, W, H, waterY, cx, entryX, dp, hasCapsule, rt){
+  const A=animState;
+  // ---- expendable: no recovery capability. Arc ends, hardware hits the water, vanishes. ----
+  if(!hasCapsule){
+    if(dp<1){
+      // final plunge: the craft (already drawn by caller until here) is at the surface point;
+      // we just add the impact once it crosses.
+      return false; // let the caller keep drawing the descending craft until dp>=1
+    }
+    if(!A._splashed){ A._splashed=true; A._splashX=cx; sfxSplash&&sfxSplash();
+      for(let i=0;i<54;i++){ const a=-Math.PI/2+(Math.random()-0.5)*2.4, spd=1.8+Math.random()*5.5; A.reSplash.push({x:cx,y:waterY,vx:Math.cos(a)*spd,vy:Math.sin(a)*spd,life:1,sz:1.6+Math.random()*3}); } }
+    splashRingsAndSpray(ctx,W,H,A._splashX!=null?A._splashX:cx,waterY,rt);
+    return true; // craft is gone; caller draws nothing more
+  }
+  // ---- capsule recovery: vertical descent under canopies → upright splashdown → bob ----
+  const capR=15;
+  const DROGUE=0.30, MAIN=0.52, TOUCH=0.90; // fractions of the terminal descent dp
+  const topY=H*0.16, sitY=waterY-capR*0.35;  // where it rides at rest in the swell
+  // vertical fall, easing as the mains bite; a touch of pendulum swing under canopy
+  const fall=kfLocal(dp,[[0,0],[DROGUE,0.34],[MAIN,0.62],[TOUCH,0.985],[1,1]]);
+  const capY=topY+(sitY-topY)*fall;
+  const swing = dp>MAIN && dp<TOUCH ? Math.sin(rt*0.0022)*0.10*(1-(dp-MAIN)/(TOUCH-MAIN)) : 0;
+  const bob = dp>=TOUCH ? Math.sin(rt*0.004)*2.2 : 0;               // gentle sea bob after splashdown
+  const bobTilt = dp>=TOUCH ? Math.sin(rt*0.004+0.7)*0.06 : swing;  // rock in the swell
+  const capX = cx + (dp<MAIN ? Math.sin(rt*0.001)*W*0.015*(1-dp/MAIN) : 0); // slight cross-range early
+  const drawY = capY + bob;
+  // chutes: drogue first, then three mains; collapse just after touchdown
+  const drogueOn = dp>=DROGUE && dp<MAIN+0.05;
+  const mainOn   = dp>=MAIN && dp<TOUCH+0.05;
+  const apexX=capX-Math.sin(bobTilt)*capR*2, apexY=drawY-capR*1.4;
+  if(drogueOn){ const inf=clampA((dp-DROGUE)/0.05,0,1); drawChute(ctx,apexX,apexY-26*inf,13*inf,'#d6dde2','#9aa5ad',[apexX-6,apexX+6],drawY-capR*0.6,inf); }
+  if(mainOn){ const inf=clampA((dp-MAIN)/0.06,0,1); const collapse=dp>=TOUCH?clampA(1-(dp-TOUCH)/0.05,0,1):1; const sc=inf*collapse;
+    [-1,0,1].forEach(k=>{ const cxp=apexX+k*26*sc, cyp=apexY-44*sc-Math.abs(k)*4*sc; drawChute(ctx,cxp,cyp,22*sc,k?'#e8552f':'#f2f4f6',k?'#b53a1c':'#c6ccd2',[capX-7,capX+7],drawY-capR*0.7,sc); }); }
+  // splashdown effects once it touches
+  if(dp>=TOUCH){ if(!A._splashed){ A._splashed=true; A._splashX=capX; sfxSplash&&sfxSplash();
+      for(let i=0;i<40;i++){ const a=-Math.PI/2+(Math.random()-0.5)*2.0, spd=1.4+Math.random()*4; A.reSplash.push({x:capX,y:waterY,vx:Math.cos(a)*spd,vy:Math.sin(a)*spd,life:1,sz:1.4+Math.random()*2.4}); } }
+    splashRingsAndSpray(ctx,W,H,A._splashX!=null?A._splashX:capX,waterY,rt);
+  }
+  // the capsule itself — UPRIGHT (heat shield down), rocking gently once afloat
+  drawCapsuleBody(ctx, capX, drawY, capR, bobTilt, dp<MAIN?clampA((MAIN-dp)/MAIN,0,1)*0.5:0, dp>=TOUCH?waterY:null);
+  return true;
+}
+// Blunt-body capsule, heat-shield DOWN. heat 0..1 glows the shield; if afloatY given, draws a waterline clip.
+function drawCapsuleBody(ctx, x, y, capR, tilt, heat, afloatY){
+  ctx.save(); ctx.translate(x,y); ctx.rotate(tilt||0);
+  ctx.beginPath();
+  ctx.moveTo(-capR*0.55,-capR*0.95); ctx.lineTo(capR*0.55,-capR*0.95);
+  ctx.lineTo(capR,capR*0.45); ctx.quadraticCurveTo(capR,capR*0.95,0,capR*0.95);
+  ctx.quadraticCurveTo(-capR,capR*0.95,-capR,capR*0.45); ctx.closePath();
+  const body=ctx.createLinearGradient(-capR,0,capR,0); body.addColorStop(0,'#3a4650'); body.addColorStop(0.5,'#9aa6ae'); body.addColorStop(1,'#566069');
+  ctx.fillStyle=body; ctx.fill();
+  ctx.fillStyle = heat>0.04 ? `rgba(255,${Math.round(120+120*(1-heat))},60,1)` : '#2a2118';
+  ctx.beginPath(); ctx.moveTo(-capR,capR*0.45); ctx.quadraticCurveTo(-capR,capR*0.95,0,capR*0.95); ctx.quadraticCurveTo(capR,capR*0.95,capR,capR*0.45); ctx.lineTo(capR*0.78,capR*0.3); ctx.quadraticCurveTo(0,capR*0.7,-capR*0.78,capR*0.3); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle='rgba(20,26,32,0.6)'; ctx.lineWidth=0.8; for(let i=-1;i<=1;i++){ ctx.beginPath(); ctx.moveTo(i*capR*0.4,-capR*0.9); ctx.lineTo(i*capR*0.55,capR*0.4); ctx.stroke(); }
+  ctx.fillStyle='#1a2a36'; ctx.beginPath(); ctx.arc(capR*0.2,-capR*0.3,capR*0.16,0,7); ctx.fill();
+  ctx.restore();
+  // waterline: a soft band across the shield where it meets the sea, plus a meniscus highlight
+  if(afloatY!=null){ ctx.save(); ctx.fillStyle='rgba(10,40,58,0.45)'; ctx.beginPath(); ctx.ellipse(x,afloatY+2,capR*1.05,capR*0.28,0,0,7); ctx.fill();
+    ctx.strokeStyle='rgba(190,225,240,0.5)'; ctx.lineWidth=1; ctx.beginPath(); ctx.ellipse(x,afloatY+1,capR*0.95,capR*0.24,0,Math.PI*0.05,Math.PI*0.95); ctx.stroke(); ctx.restore(); }
+}
+// Expanding rings + settling spray at a splashdown point (shared by both endings).
+function splashRingsAndSpray(ctx,W,H,x,waterY,rt){
+  const A=animState; A.reRing=(A.reRing||0)+1;
+  for(let r=0;r<3;r++){ const rr=10+A.reRing*1.6+r*14; ctx.strokeStyle=`rgba(200,230,245,${clampA(0.4-A.reRing*0.01-r*0.1,0,0.4)})`; ctx.lineWidth=1.5; ctx.beginPath(); ctx.ellipse(x,waterY+4,rr,rr*0.34,0,0,7); ctx.stroke(); }
+}
+// local keyframe lerp (drawSplashdown is self-contained; mirrors the one inside drawReentry)
+function kfLocal(x,pts){ for(let i=0;i<pts.length-1;i++){ const a=pts[i],b=pts[i+1]; if(x<=b[0]){ const f=clampA((x-a[0])/((b[0]-a[0])||1),0,1); return a[1]+(b[1]-a[1])*f; } } return pts[pts.length-1][1]; }
+
 function drawSuborbital(ct){
   const A=animState,s=A.spec,ctx=A.ctx,W=A.cv.width,H=A.cv.height,R=s.rng||{apogee:1,bow:0};
   const time=ct+A.ascentDur;
@@ -8505,17 +8595,34 @@ function drawSuborbital(ct){
   const angAt=f=>{ const e=0.01, d=Math.atan2(yAt(Math.min(f+e,1))-yAt(f), xAt(Math.min(f+e,1))-xAt(f)); return d; };
   ctx.strokeStyle='rgba(79,209,217,0.2)'; ctx.setLineDash([4,6]); ctx.lineWidth=1; ctx.beginPath();
   for(let i=0;i<=60;i++){const f=i/60; i?ctx.lineTo(xAt(f),yAt(f)):ctx.moveTo(xAt(f),yAt(f));} ctx.stroke(); ctx.setLineDash([]);
+  // terminal-descent handoff: past DESCENT_START the trajectory ends in a splashdown
+  // (expendable = splash & vanish; capsule tech = chutes → upright splashdown → bob).
+  const DESCENT_START=0.86, waterY=base+18;
+  // ocean band beneath the arc's base so the craft comes down to real water
+  { const og=ctx.createLinearGradient(0,waterY,0,H); og.addColorStop(0,'#15455f'); og.addColorStop(1,'#08263a');
+    ctx.fillStyle=og; ctx.fillRect(0,waterY,W,H-waterY);
+    ctx.fillStyle='rgba(180,220,240,0.10)'; ctx.fillRect(0,waterY-1,W,2);
+    for(let i=0;i<10;i++){ const f=i/10, wy=waterY+4+f*(H-waterY-4); ctx.strokeStyle=`rgba(150,200,225,${0.04+0.08*(1-f)})`; ctx.lineWidth=1; ctx.beginPath(); for(let x=0;x<=W;x+=26){ const yy=wy+Math.sin((x*0.03)+(ct*0.004)+i)*1.6; x?ctx.lineTo(x,yy):ctx.moveTo(x,yy);} ctx.stroke(); } }
   ctx.strokeStyle='#4fd1d9'; ctx.lineWidth=2.5; ctx.beginPath();
-  for(let i=0;i<=60;i++){const f=i/60*op; i?ctx.lineTo(xAt(f),yAt(f)):ctx.moveTo(xAt(f),yAt(f));} ctx.stroke();
+  const drawTo=Math.min(op,DESCENT_START);
+  for(let i=0;i<=60;i++){const f=i/60*drawTo; i?ctx.lineTo(xAt(f),yAt(f)):ctx.moveTo(xAt(f),yAt(f));} ctx.stroke();
   const curX=xAt(op), curY=yAt(op);
-  drawCraftSprite(ctx,curX,curY,angAt(op), op<0.10);
-  if(op>0.7 && op<0.92){
-    const heatP=clampA((op-0.7)/0.15,0,1);
-    const heatGrad=ctx.createRadialGradient(curX,curY,2,curX,curY,14);
-    heatGrad.addColorStop(0,`rgba(255,140,40,${heatP*0.5})`);
-    heatGrad.addColorStop(0.5,`rgba(255,80,30,${heatP*0.3})`);
-    heatGrad.addColorStop(1,'rgba(255,40,20,0)');
-    ctx.fillStyle=heatGrad; ctx.beginPath(); ctx.arc(curX,curY,14,0,7); ctx.fill();
+  if(op<DESCENT_START){
+    // still on the ballistic arc — draw the vehicle as before
+    drawCraftSprite(ctx,curX,curY,angAt(op), op<0.10);
+    if(op>0.7){ const heatP=clampA((op-0.7)/0.16,0,1);
+      const heatGrad=ctx.createRadialGradient(curX,curY,2,curX,curY,14);
+      heatGrad.addColorStop(0,`rgba(255,140,40,${heatP*0.5})`); heatGrad.addColorStop(0.5,`rgba(255,80,30,${heatP*0.3})`); heatGrad.addColorStop(1,'rgba(255,40,20,0)');
+      ctx.fillStyle=heatGrad; ctx.beginPath(); ctx.arc(curX,curY,14,0,7); ctx.fill(); }
+  } else {
+    const dp=clampA((op-DESCENT_START)/(1-DESCENT_START),0,1);
+    const entryX=xAt(DESCENT_START);
+    const splashX=xAt(0.98);
+    if(!s.hasCapsule && dp<1){
+      // expendable: keep the falling vehicle visible until it meets the water, then splash & vanish
+      drawCraftSprite(ctx, xAt(op), Math.min(yAt(op),waterY), angAt(op), false);
+    }
+    drawSplashdown(ctx, W, H, waterY, s.hasCapsule?entryX:splashX, entryX, dp, s.hasCapsule, ct);
   }
   const apogeeKm=Math.round((100+ s.reqDv*0.04)*(R.apogee||1)*Math.sin(Math.max(op,0.0001)*Math.PI)+ (op>0.5? s.reqDv*0.02:0));
   const drange=Math.round((curX-x0)/(x1-x0)*600);
