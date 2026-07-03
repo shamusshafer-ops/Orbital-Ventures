@@ -7564,6 +7564,49 @@ function drawPhaseBar(phase,color,progress){
   ctx.fillText(phase,W/2,by+barH/2);
   ctx.restore();
 }
+
+/* ---------- Phase B: your craft on the cruise/orbit screens — not a dot ----------
+   The dot becomes a sprite built from the vehicle you actually designed: the remaining
+   stack (final core stage + transfer stage + your capsule/fairing, in your livery),
+   rotated to the direction of travel, with the real engine plume when burning. A faint
+   halo keeps it findable at planetary scale. Built once per flight, drawn cheap. */
+function craftSprite(){
+  const A=animState; if(A.craftSprite) return A.craftSprite;
+  let shape=null; try{ shape=buildVehicleShape(A.spec); }catch(e){ return null; }
+  if(!shape || !shape.segs.length) return null;
+  const nCore=(A.spec.stages||[]).length;
+  let segs=shape.segs.slice(Math.max(0,nCore-1));  // last core stage + transfer (boosters long gone)
+  if(!segs.length) segs=[shape.segs[shape.segs.length-1]];
+  const totalH=segs.reduce((a,s)=>a+s.h,0);
+  const scale=clampA(26/Math.max(1,totalH), 0.06, 0.5); // ~26px silhouette
+  const spent=nCore>=2 ? shape.segs[nCore-2] : null;     // the stage you just dropped, for the sep beat
+  A.craftSprite={segs, nose:shape.nose, scale, h:totalH*scale, spent};
+  return A.craftSprite;
+}
+// ang = direction of travel in canvas radians. burning draws the real vacuum plume.
+function drawCraftSprite(ctx,x,y,ang,burning){
+  const cs=craftSprite();
+  if(!cs){ drawCraftDot(ctx,x,y,true); return; }
+  // readability halo (the old dot's glow, kept faint)
+  const g=ctx.createRadialGradient(x,y,2,x,y,15);
+  g.addColorStop(0,'rgba(245,166,35,0.16)'); g.addColorStop(1,'rgba(245,166,35,0)');
+  ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x,y,15,0,7); ctx.fill();
+  ctx.save(); ctx.translate(x,y); ctx.rotate(ang+Math.PI/2); ctx.translate(0, cs.h/2);
+  try{ drawVehicle(ctx, cs.segs, cs.nose, cs.scale, burning?1:0, 1); }catch(e){ ctx.restore(); drawCraftDot(ctx,x,y,true); return; }
+  ctx.restore();
+}
+// The separation beat: for the first moments of cruise, the spent core stage tumbles away
+// retrograde-and-below — the ascent's story handing its last prop to the new scene.
+function drawSpentStageDrift(ctx,x,y,ang,ct){
+  const cs=craftSprite(); if(!cs || !cs.spent || ct>2600) return;
+  const u=ct/2600;
+  const dx=-Math.cos(ang)*(14+u*46), dy=-Math.sin(ang)*(14+u*46)+u*22;
+  ctx.save(); ctx.globalAlpha=0.85*(1-u);
+  ctx.translate(x+dx,y+dy); ctx.rotate(ang+Math.PI/2 + ct*0.0016);
+  try{ drawVehicle(ctx,[cs.spent],'none',cs.scale*0.9,0,1); }catch(e){}
+  ctx.restore();
+}
+
 function drawCraftDot(ctx,x,y,glow){
   glow=glow||false;
   ctx.fillStyle='#f5a623'; ctx.beginPath(); ctx.arc(x,y,4,0,7); ctx.fill();
@@ -8271,17 +8314,9 @@ function drawOrbit(ct){
   if(failP!=null && op>=failP){
     drawBoom(ctx,cx,cy,ct-A.cruiseDur*failP);
   } else {
-    drawCraftDot(ctx,cx,cy,true);
-    if(burning){
-      const bAng=curAng+Math.PI;
-      const flLen=12+Math.random()*6;
-      const fx=cx+Math.cos(bAng)*flLen, fy=cy+Math.sin(bAng)*flLen;
-      const burnGrad=ctx.createRadialGradient(cx,cy,2,fx,fy,8);
-      burnGrad.addColorStop(0,'rgba(200,220,255,0.8)');
-      burnGrad.addColorStop(0.5,'rgba(255,200,100,0.5)');
-      burnGrad.addColorStop(1,'rgba(255,120,30,0)');
-      ctx.fillStyle=burnGrad; ctx.beginPath(); ctx.arc(fx,fy,8,0,7); ctx.fill();
-    }
+    const travelAng=curAng+Math.PI/2; // tangent of the increasing-angle arc = direction of motion
+    drawSpentStageDrift(ctx,cx,cy,travelAng,ct);
+    drawCraftSprite(ctx,cx,cy,travelAng,burning);
     const proAng=curAng-Math.PI/2;
     const pm=14;
     const px=cx+Math.cos(proAng)*pm, py=cy+Math.sin(proAng)*pm;
@@ -8465,9 +8500,7 @@ function drawSuborbital(ct){
   ctx.strokeStyle='#4fd1d9'; ctx.lineWidth=2.5; ctx.beginPath();
   for(let i=0;i<=60;i++){const f=i/60*op; i?ctx.lineTo(xAt(f),yAt(f)):ctx.moveTo(xAt(f),yAt(f));} ctx.stroke();
   const curX=xAt(op), curY=yAt(op);
-  ctx.save(); ctx.translate(curX,curY); ctx.rotate(angAt(op));
-  drawCraftDot(ctx,0,0,true);
-  ctx.restore();
+  drawCraftSprite(ctx,curX,curY,angAt(op), op<0.10);
   if(op>0.7 && op<0.92){
     const heatP=clampA((op-0.7)/0.15,0,1);
     const heatGrad=ctx.createRadialGradient(curX,curY,2,curX,curY,14);
@@ -8556,16 +8589,10 @@ function drawCislunar(ct){
     drawBoom(ctx,cur.x,cur.y,ct-A.cruiseDur*0.34);
   } else {
     const isBurning=P.burns[curIdx];
-    drawCraftDot(ctx,cur.x,cur.y,true);
-    if(isBurning){
-      const prev=P.pts[Math.max(0,curIdx-1)];
-      const bAng=Math.atan2(prev.y-cur.y,prev.x-cur.x);
-      const fl=8+Math.random()*5;
-      const fx=cur.x+Math.cos(bAng)*fl, fy=cur.y+Math.sin(bAng)*fl;
-      const bg=ctx.createRadialGradient(cur.x,cur.y,1,fx,fy,6);
-      bg.addColorStop(0,'rgba(200,220,255,0.7)'); bg.addColorStop(0.5,'rgba(255,180,80,0.4)'); bg.addColorStop(1,'rgba(255,100,30,0)');
-      ctx.fillStyle=bg; ctx.beginPath(); ctx.arc(fx,fy,6,0,7); ctx.fill();
-    }
+    { const nxt=P.pts[Math.min(P.pts.length-1,curIdx+1)], prv=P.pts[Math.max(0,curIdx-1)];
+      const tAng=Math.atan2(nxt.y-prv.y, nxt.x-prv.x);
+      drawSpentStageDrift(ctx,cur.x,cur.y,tAng,ct);
+      drawCraftSprite(ctx,cur.x,cur.y,tAng,isBurning); }
   }
   const segName=P.seg[curIdx]||'Transit';
   const distToMoon=Math.sqrt((cur.x-P.M.x)**2+(cur.y-P.M.y)**2);
