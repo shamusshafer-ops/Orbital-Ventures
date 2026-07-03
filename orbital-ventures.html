@@ -1179,8 +1179,9 @@ const MATERIAL_PRICE_MIN = 0.7;
 const MATERIAL_PRICE_MAX = 1.4;
 const MATERIAL_PRICE_REVERT = 0.10;    // mean-revert pull toward 1.0
 const MATERIAL_PRICE_WALK = 0.05;      // ±5% random walk per month
-const MATERIAL_CONTRACT_MONTHS = 12;   // 1-year lock
-const MATERIAL_CONTRACT_PREMIUM = 0.05;// pay +5% over spot to lock the price in
+// (The 12-mo contract-lock constants were removed here — retired with the market collapse,
+// no longer referenced anywhere; materialPriceTick() still decrements/expires any contract
+// object a legacy save might carry, using the stored monthsLeft directly.)
 // #7 slice 7 — inventory & forecasting. 1 stock unit = 1 build's worth of that commodity.
 // Cost per stock unit = spot × share (so a build-worth of alloy at spot 1.0 buys for $0.50M,
 // matching alloy's 50% slice of a notional $1.0M build). Held stock is used at avg cost when
@@ -1188,6 +1189,12 @@ const MATERIAL_CONTRACT_PREMIUM = 0.05;// pay +5% over spot to lock the price in
 const MATERIAL_STOCK_UNIT_BUILD = 1.0; // calibrated against a $1M reference build (share*spot = $M/unit)
 const MATERIAL_STOCK_CAP = 24;          // can't pile more than 24 builds' worth in the yard
 const MATERIAL_HISTORY_LEN = 24;        // months of spot-price history retained for the sparkline
+// Collapsed market — the one real decision is buying a dip. Routine per-commodity buying and the
+// 12-mo contract lock were retired (weak-pull surface); the market now only asks for attention when
+// a commodity falls into the dip band, at which point one bulk-buy stocks the yard at a discount.
+const MATERIAL_DIP_THRESHOLD = 0.88;    // spot at/below this = a buying opportunity ("on sale")
+const MATERIAL_DIP_BONUS     = 0.05;    // a dip bulk-buy shaves another 5% under the already-low spot
+const MATERIAL_DIP_BATCH     = 8;       // one dip buy tops the yard up by this many builds' worth (capped)
 const METRIC_HISTORY_LEN = 24;          // #28: months of core-metric history retained for dashboard sparklines
 // #28: per-metric monthly trend buffers (capital/rep/support/success-rate/science)
 function defaultMetricHist(){ return {money:[], rep:[], support:[], success:[], science:[]}; }
@@ -3170,24 +3177,33 @@ function materialEffectivePrice(key){
   if(s.contract && s.contract.monthsLeft>0) return s.contract.lockedPrice;
   return s.spot;
 }
-// #7 slice 7: buy stock at the current spot, weighted-average into existing inventory
+// Collapsed market — the only remaining player action. A commodity dips into the buying band
+// (spot <= MATERIAL_DIP_THRESHOLD) roughly as often as the mean-reverting walk touches its floor;
+// when it does, one bulk buy tops the yard up at a further discount below the already-low spot.
+// Outside the dip band there's nothing to click — routine per-unit buying and the 12-mo lock
+// (weak-pull surfaces per the 2026-07-02 audit) were retired; consumeMaterialsForBuild/avgCost
+// pricing is unchanged so existing stock, saves, and build-cost math all still work exactly as before.
 function materialUnitBuyCost(key){ const s=materialState(key), d=materialDef(key); if(!s||!d) return 0; return round2(d.share*s.spot*MATERIAL_STOCK_UNIT_BUILD); }
-function materialBuyTotal(key, units){ return round2(materialUnitBuyCost(key)*units); }
-function canBuyMaterialStock(key, units){
-  const s=materialState(key); if(!s||units<=0) return {ok:false,why:'No units selected.'};
-  if(s.stock+units>MATERIAL_STOCK_CAP) return {ok:false,why:`Yard cap is ${MATERIAL_STOCK_CAP} builds worth.`};
-  const cost=materialBuyTotal(key,units);
+function isMaterialDip(key){ const s=materialState(key); return !!(s && s.spot<=MATERIAL_DIP_THRESHOLD); }
+function materialDipUnitCost(key){ const s=materialState(key), d=materialDef(key); if(!s||!d) return 0; return round2(d.share*s.spot*(1-MATERIAL_DIP_BONUS)*MATERIAL_STOCK_UNIT_BUILD); }
+function materialDipUnits(key){ const s=materialState(key); if(!s) return 0; return Math.max(0, Math.min(MATERIAL_DIP_BATCH, MATERIAL_STOCK_CAP-s.stock)); }
+function materialDipTotal(key){ return round2(materialDipUnitCost(key)*materialDipUnits(key)); }
+function canBuyMaterialDip(key){
+  const s=materialState(key); if(!s) return {ok:false,why:'No market data.'};
+  if(!isMaterialDip(key)) return {ok:false,why:'Not currently discounted.'};
+  const units=materialDipUnits(key); if(units<=0) return {ok:false,why:`Yard cap is ${MATERIAL_STOCK_CAP} builds worth.`};
+  const cost=materialDipTotal(key);
   if(state.money<cost) return {ok:false,why:'Not enough capital.'};
-  return {ok:true,cost};
+  return {ok:true,cost,units};
 }
-function buyMaterialStock(key, units){
-  const chk=canBuyMaterialStock(key,units); if(!chk.ok) return;
-  const s=materialState(key), d=materialDef(key);
+function buyMaterialDip(key){
+  const chk=canBuyMaterialDip(key); if(!chk.ok) return;
+  const s=materialState(key), d=materialDef(key), units=chk.units;
   state.money-=chk.cost;
   const newStock=s.stock+units;
-  s.avgCost = round2((s.stock*s.avgCost + units*s.spot)/newStock);
+  s.avgCost = round2((s.stock*s.avgCost + units*materialDipUnitCost(key))/newStock);
   s.stock=newStock;
-  log('ok', `Supply — bought ${units} build${units===1?'':'s'}-worth of ${d.name} at ${s.spot.toFixed(2)}× spot (${fM(chk.cost)}). Stock ${s.stock} · avg ${s.avgCost.toFixed(2)}×.`);
+  log('ok', `Supply — ${d.name} on sale at ${s.spot.toFixed(2)}× spot: bulk-bought ${units} builds-worth at ${materialDipUnitCost(key).toFixed(2)}× (${fM(chk.cost)}). Stock ${s.stock} · avg ${s.avgCost.toFixed(2)}×.`);
   render();
 }
 // Consumes one build's worth from each commodity's stock if available. Avg cost is unchanged
@@ -3395,19 +3411,9 @@ function materialPriceTick(){
     if(s.contract){ s.contract.monthsLeft--; if(s.contract.monthsLeft<=0){ log('note', `Supply — ${d.name} contract expired; back to spot pricing (${s.spot.toFixed(2)}×).`); s.contract=null; } }
   }
 }
-function canSignMaterialContract(key){
-  const s=materialState(key); if(!s) return {ok:false,why:'No market data.'};
-  if(s.contract) return {ok:false,why:'Already under contract.'};
-  return {ok:true};
-}
-function signMaterialContract(key){
-  const chk=canSignMaterialContract(key); if(!chk.ok) return;
-  const s=materialState(key), d=materialDef(key);
-  const locked=round2(s.spot*(1+MATERIAL_CONTRACT_PREMIUM));
-  s.contract={lockedPrice:locked, monthsLeft:MATERIAL_CONTRACT_MONTHS};
-  log('ok', `Supply — locked ${d.name} at ${locked.toFixed(2)}× for ${MATERIAL_CONTRACT_MONTHS} months (spot ${s.spot.toFixed(2)}× + ${(MATERIAL_CONTRACT_PREMIUM*100|0)}% premium).`);
-  render();
-}
+// Note: the 12-mo contract-lock offer was retired with the market collapse (weak-pull surface).
+// materialPriceTick() above still resolves/decrements any contract already on a legacy save so an
+// in-progress lock finishes out and expires cleanly; nothing can newly sign one.
 function materialSparklineSVG(key, width, height){
   width = width||120; height = height||24;
   const s = materialState(key); if(!s) return '';
@@ -3421,18 +3427,19 @@ function materialSparklineSVG(key, width, height){
   const cur = pts[pts.length-1];
   const color = cur>1.05?'var(--bad)':(cur<0.95?'var(--ok)':'var(--ink)');
   const last = pts.length ? `<circle cx="${xFor(pts.length-1).toFixed(1)}" cy="${yFor(cur)}" r="1.8" fill="${color}"/>` : '';
-  // Contract-lock band: solid gold when locked (at the actual lockedPrice),
-  // dashed gold when free (at what a lock signed now would cost: spot*(1+premium)).
+  // Legacy contract-lock band: only drawn if an old save still has one resolving out
+  // (new locks can no longer be signed — the offer was retired with the market collapse).
   const lockColor = '#e6c14a';
   let lockLine = '';
   if (s.contract && isFinite(s.contract.lockedPrice)) {
     const y = yFor(s.contract.lockedPrice).toFixed(1);
     lockLine = `<line x1="${pad}" x2="${width-pad}" y1="${y}" y2="${y}" stroke="${lockColor}" stroke-width="0.9" opacity="0.95"/>`;
-  } else {
-    const y = yFor(s.spot * (1 + MATERIAL_CONTRACT_PREMIUM)).toFixed(1);
-    lockLine = `<line x1="${pad}" x2="${width-pad}" y1="${y}" y2="${y}" stroke="${lockColor}" stroke-width="0.7" stroke-dasharray="1.5 1.5" opacity="0.65"/>`;
   }
+  // Dip-band shading: the buying threshold, so the strip reads "on sale" at a glance.
+  const dipY = yFor(MATERIAL_DIP_THRESHOLD).toFixed(1);
+  const dipBand = `<rect x="${pad}" y="${dipY}" width="${width-pad*2}" height="${(pad+h-parseFloat(dipY)).toFixed(1)}" fill="var(--ok)" opacity="0.08"/>`;
   return `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" style="display:block" aria-label="${key} spot-price history">
+    ${dipBand}
     <line x1="${pad}" x2="${width-pad}" y1="${baselineY}" y2="${baselineY}" stroke="#444" stroke-width="0.6" stroke-dasharray="2 2"/>
     ${lockLine}
     <path d="${path}" fill="none" stroke="${color}" stroke-width="1.2" stroke-linejoin="round" stroke-linecap="round"/>
@@ -9028,6 +9035,8 @@ function outlinerItems(){
     push('⚗', (r?r.name:ar.id), ar.monthsLeft*30, ()=>setTab('rnd'), 'var(--readout)'); }
   // production queue
   buildQueueList().forEach(o=>{ if(o.started) push('🏭', o.name||'Vehicle build', o.monthsLeft*30, ()=>{ setTab('command'); try{ showInfrastructureModal(); }catch(e){} }); });
+  // material dip — the one live decision left in the collapsed market; surfaced at the top (eta 0)
+  MATERIAL_DEFS.forEach(d=>{ if(isMaterialDip(d.key) && canBuyMaterialDip(d.key).ok) push('📦', d.name+' on sale', 0, ()=>{ setTab('command'); try{ showInfrastructureModal(); }catch(e){} }, 'var(--ok)'); });
   // station... (module builds advance time inline; nothing queued) — skip
   // mandate deadline
   const md=state.mandate;
@@ -9406,7 +9415,11 @@ function buildingGlyph(key){
       return {state:'ok', label:'Pads & foundry nominal'};
     }
     case 'mfg': {
-      try{ const mb=materialCostMult(); if(mb>1.15) return {state:'attention', label:'Raw-material market hot (+'+Math.round((mb-1)*100)+'%)'}; }catch(e){}
+      try{
+        const mb=materialCostMult(); if(mb>1.15) return {state:'attention', label:'Raw-material market hot (+'+Math.round((mb-1)*100)+'%)'};
+        const dipped=MATERIAL_DEFS.find(d=>isMaterialDip(d.key) && canBuyMaterialDip(d.key).ok);
+        if(dipped) return {state:'attention', label:dipped.name+' on sale — stock up'};
+      }catch(e){}
       return {state:'ok', label:'Bays L'+prodLevel('bays')};
     }
     case 'personnel': {
@@ -13187,45 +13200,32 @@ function productionPanelHTML(){
       ${btn}
     </div>`;
   }).join('');
-  // #7 slice 6: raw-material supply rows — current spot, contract status, sign button
+  // Collapsed raw-material strip (2026-07-03 prune): one compact row per commodity — price,
+  // coverage, and the single remaining decision (bulk-buy when it's on sale). Routine per-unit
+  // buying and the 12-mo contract lock were retired as low-pull surface; consumeMaterialsForBuild
+  // and the spot-price walk underneath are untouched, so builds still price exactly as before.
   const blend=materialCostMult();
   const blendColor = blend>1.10?'var(--bad)':(blend>1.03?'var(--warn)':(blend<0.97?'var(--ok)':'var(--ink)'));
   const blendDelta = ((blend-1)*100);
   const materialRows = MATERIAL_DEFS.map(d=>{
     const s=materialState(d.key);
-    const eff=materialEffectivePrice(d.key);
     const spotCol = s.spot>1.15?'var(--bad)':(s.spot>1.05?'var(--warn)':(s.spot<0.92?'var(--ok)':'var(--ink)'));
     const trend = s.spot>s.prev?'↑':(s.spot<s.prev?'↓':'·');
-    const contractTxt = s.contract
-      ? `<span class="pill ok" title="Locked at ${s.contract.lockedPrice.toFixed(2)}× for ${s.contract.monthsLeft} more month${s.contract.monthsLeft===1?'':'s'}">contract ${s.contract.lockedPrice.toFixed(2)}× · ${s.contract.monthsLeft} mo left</span>`
-      : `<button class="btn ghost" style="padding:4px 8px;font-size:12px" onclick="signMaterialContract('${d.key}')">Sign ${MATERIAL_CONTRACT_MONTHS}-mo lock @ ${round2(s.spot*(1+MATERIAL_CONTRACT_PREMIUM)).toFixed(2)}×</button>`;
-    // #7 slice 7: stock + buy + coverage
-    const fromStock = s.stock>=1;
     const cov = materialMonthsCoverage(d.key);
-    const covTxt = cov===Infinity?'∞':(cov<1?`${(cov*30|0)}d`:`${cov.toFixed(1)} mo`);
-    const stockCol = s.stock<=0?'var(--bad)':(cov!==Infinity&&cov<2?'var(--warn)':'var(--ok)');
-    const buy1=canBuyMaterialStock(d.key,1), buy6=canBuyMaterialStock(d.key,6);
-    const stockLine = `<div style="display:flex;align-items:center;gap:8px;margin-top:4px">
-      <span class="dim" style="font-size:12px">stock</span>
-      <span style="color:${stockCol};font-weight:600">${s.stock} build${s.stock===1?'':'s'}</span>
-      <span class="dim" style="font-size:12px">· avg ${s.avgCost.toFixed(2)}× · coverage ${covTxt}</span>
-      <button class="btn ghost" style="padding:3px 7px;font-size:12px" onclick="buyMaterialStock('${d.key}',1)" ${buy1.ok?'':'disabled'} title="${buy1.ok?`Buy 1 build's worth at spot ${s.spot.toFixed(2)}×`:buy1.why}">+1 · ${fM(materialUnitBuyCost(d.key))}</button>
-      <button class="btn ghost" style="padding:3px 7px;font-size:12px" onclick="buyMaterialStock('${d.key}',6)" ${buy6.ok?'':'disabled'} title="${buy6.ok?`Buy 6 builds at spot ${s.spot.toFixed(2)}×`:buy6.why}">+6 · ${fM(materialBuyTotal(d.key,6))}</button>
-    </div>`;
-    return `<div style="padding:6px 0;border-top:1px solid #2a2a2a">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
-        <div style="min-width:180px">
-          <div style="font-weight:600">${d.icon} ${d.name} <span class="dim" style="font-size:12px">· ${Math.round(d.share*100)}% of build</span></div>
-          <div class="dim" style="font-size:12px">${d.blurb}</div>
-        </div>
-        <div title="Spot-price history (last ${MATERIAL_HISTORY_LEN} months) · dashed line is baseline 1.0×" style="opacity:.95">${materialSparklineSVG(d.key, 120, 28)}</div>
-        <div style="text-align:right;min-width:140px">
-          <div style="color:${spotCol};font-weight:600">spot ${s.spot.toFixed(2)}× <span class="dim" style="font-size:12px">${trend}</span></div>
-          <div class="dim" style="font-size:12px">effective ${eff.toFixed(2)}× ${fromStock?'<span class="pill ok" style="font-size:11px">from stock</span>':''}</div>
-        </div>
-        <div>${contractTxt}</div>
+    const covTxt = cov===Infinity?'∞':(cov<1?`${(cov*30|0)}d`:`${cov.toFixed(1)}mo`);
+    const dip = isMaterialDip(d.key);
+    const buy = dip ? canBuyMaterialDip(d.key) : {ok:false};
+    const dipBtn = dip
+      ? `<button class="btn ${buy.ok?'launch':'ghost'}" style="padding:4px 9px;font-size:12px;font-weight:600" onclick="buyMaterialDip('${d.key}')" ${buy.ok?'':'disabled'} title="${buy.ok?`Bulk-buy ${buy.units} builds-worth at ${materialDipUnitCost(d.key).toFixed(2)}× (yard cap ${MATERIAL_STOCK_CAP})`:'Not enough capital, or yard is full'}">📦 On sale — buy ${buy.units||materialDipUnits(d.key)}× (${fM(materialDipTotal(d.key))})</button>`
+      : `<span class="dim" style="font-size:12px">watching for a dip ≤${MATERIAL_DIP_THRESHOLD.toFixed(2)}×</span>`;
+    return `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:5px 0;border-top:1px solid #2a2a2a">
+      <div style="min-width:150px;font-weight:600">${d.icon} ${d.name} <span class="dim" style="font-size:11px;font-weight:400">· ${Math.round(d.share*100)}%</span></div>
+      <div style="opacity:.95">${materialSparklineSVG(d.key, 84, 22)}</div>
+      <div style="min-width:120px;text-align:right">
+        <span style="color:${spotCol};font-weight:600">${s.spot.toFixed(2)}×</span> <span class="dim" style="font-size:11px">${trend}</span>
+        <span class="dim" style="font-size:11px"> · stock ${s.stock} (${covTxt})</span>
       </div>
-      ${stockLine}
+      <div style="min-width:190px;text-align:right">${dipBtn}</div>
     </div>`;
   }).join('');
   return `<div class="card" style="margin-bottom:12px;border-color:#5a4419">
@@ -13246,7 +13246,7 @@ function productionPanelHTML(){
       <div class="card adv-only dombar-economy" style="background:var(--panel2);margin-bottom:12px">
         <div style="display:flex;justify-content:space-between;align-items:baseline">
           <div class="mission-name" style="font-size:14px">📦 Raw-material supply</div>
-          <div class="dim" style="font-size:12px">spot prices wander monthly · contracts lock for ${MATERIAL_CONTRACT_MONTHS} mo at +${(MATERIAL_CONTRACT_PREMIUM*100|0)}% over spot</div>
+          <div class="dim" style="font-size:12px">spot prices wander monthly · stock up when a commodity's on sale</div>
         </div>
         ${materialRows}
       </div>
