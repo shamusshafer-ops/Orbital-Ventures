@@ -7051,6 +7051,56 @@ function drawPostFlight(){
   }
 }
 
+
+/* ---------- Phase A: seamless scene handoffs ----------
+   The ascent → orbit/cruise cut becomes a camera move: the moment a phase ends we snapshot
+   its final frame, then over HANDOFF_MS the next scene draws with its camera easing out from
+   a zoomed-in start while the snapshot crossfades away on top. The same helper runs the
+   cruise → reentry cut (zooming IN, shorter). Pure presentation — no timing/logic changes. */
+const HANDOFF_MS=1300, HANDOFF_RE_MS=850;
+function captureHandoff(kind){
+  const A=animState; if(!A||!A.cv) return;
+  try{
+    const snap=document.createElement('canvas'); snap.width=A.cv.width; snap.height=A.cv.height;
+    const sc=snap.getContext('2d'); if(!sc) return;
+    sc.drawImage(A.cv,0,0);
+    A.handoff={snap, t0:A.lastT!=null?A.lastT:0, kind};
+  }catch(e){ A.handoff=null; }
+}
+// Eases the incoming scene's camera. Call BEFORE the scene draw; returns true if a
+// transform was applied (caller's scene draws inside it; finishHandoff() restores + fades snap).
+function beginHandoff(t){
+  const A=animState; if(!A||!A.handoff||!A.ctx||A.ctx.clearFrame) return false;
+  const dur=A.handoff.kind==='reentry'?HANDOFF_RE_MS:HANDOFF_MS;
+  const u=clampA((t-A.handoff.t0)/dur,0,1);
+  if(u>=1){ A.handoff=null; return false; }
+  const e=1-Math.pow(1-u,3); // easeOutCubic
+  A.handoff.u=u; A.handoff.e=e;
+  const W=A.cv.width, H=A.cv.height, ctx=A.ctx;
+  ctx.save();
+  if(A.handoff.kind==='reentry'){
+    // zoom IN toward the entry corridor (top-left third, where drawReentry starts the streak)
+    const z=1+(1-e)*0.0; // reentry reads better without scale — the crossfade alone carries it
+  } else {
+    // zoom OUT: start framed tight on where the craft appears, ease to identity
+    const z=1+(1-e)*0.85;
+    const fx=W*0.5, fy=H*0.34; // insertion region in the orbit/cruise framings
+    ctx.translate(fx,fy); ctx.scale(z,z); ctx.translate(-fx,-fy);
+  }
+  return true;
+}
+function finishHandoff(){
+  const A=animState; if(!A||!A.handoff||!A.ctx||A.ctx.clearFrame) return;
+  const ctx=A.ctx;
+  ctx.restore(); // undo beginHandoff camera
+  const e=A.handoff.e!=null?A.handoff.e:1;
+  if(A.handoff.snap){
+    ctx.save(); ctx.globalAlpha=Math.pow(1-e,1.35); // snapshot fades out over the incoming scene
+    try{ ctx.drawImage(A.handoff.snap,0,0); }catch(err){}
+    ctx.restore();
+  }
+}
+
 function drawScene(t){
   const A=animState,s=A.spec;
   if(A.ctx&&A.ctx.clearFrame) A.ctx.clearFrame(); // GL-2D fallback clears its framebuffer each frame
@@ -7066,14 +7116,19 @@ function drawScene(t){
     // ONCE at the transition — not every frame, which churns the GPU texture (the "lazy
     // initialization" warning → renders-then-blanks). drawOrbit/etc repaint the full frame.
     if(prevPhase==='ascent' && A.ctx && !A.ctx.clearFrame){
+      captureHandoff('cruise'); // Phase A: snapshot the last ascent frame BEFORE the context reset
       try{ if(typeof A.ctx.reset==='function') A.ctx.reset();
         else { if(A.ctx.setTransform) A.ctx.setTransform(1,0,0,1,0,0); if(A.ctx.setLineDash) A.ctx.setLineDash([]); A.ctx.globalAlpha=1; if('globalCompositeOperation' in A.ctx) A.ctx.globalCompositeOperation='source-over'; } }catch(e){}
     }
     const ct=t-A.ascentDur;
-    if(A.reentryDur>0 && ct>=A.cruiseDur){ A.phase='reentry'; drawReentry(ct-A.cruiseDur); }
+    const entering = A.reentryDur>0 && ct>=A.cruiseDur;
+    if(entering && prevPhase!=='reentry' && prevPhase!=='ascent') captureHandoff('reentry'); // cruise → reentry cut
+    const ho=beginHandoff(t); // Phase A: camera ease while the previous frame crossfades away
+    if(entering){ A.phase='reentry'; drawReentry(ct-A.cruiseDur); }
     else if(s.isCislunar){ A.phase='cislunar'; drawCislunar(ct); }
     else if(s.isOrbital){ A.phase='orbit'; drawOrbit(ct); }
     else { A.phase='suborbital'; drawSuborbital(ct); }
+    if(ho) finishHandoff();
   }
   A.lastT=t;
 }
