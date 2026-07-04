@@ -785,6 +785,20 @@ const ENGINEERS = [
   {id:'e10', name:'Carlos Reyes',     specialty:'avionics',    skill:0.87, salary:0.13, era:3, bio:'Fault-tolerant flight software. His triple-redundancy architecture has never lost a mission.'},
   {id:'e11', name:'Saoirse Flynn',    specialty:'structures',  skill:0.93, salary:0.16, era:4, bio:'Composite structures. Cuts dry mass in ways that would have been impossible a decade earlier.'},
   {id:'e12', name:'Marcus Chen',      specialty:'production',  skill:0.95, salary:0.18, era:4, bio:'Star hire. Built the automated factory floor that made rapid reuse economically viable.'},
+  {id:'e13', name:'Grace Okonkwo',    specialty:'propulsion',  skill:0.84, salary:0.11, era:2, bio:'Hypergolic storable-propellant specialist. Her upper stages restart cold after a long coast.'},
+  {id:'e14', name:'Dieter Falk',      specialty:'propulsion',  skill:0.94, salary:0.17, era:4, bio:'Full-flow staged-combustion authority. Squeezes chamber pressures others call reckless.'},
+  {id:'e15', name:'Tomas Ceballos',   specialty:'structures',  skill:0.77, salary:0.08, era:1, bio:'Thin-wall balloon-tank welder from the Atlas school. Saves dry mass by the ounce.'},
+  {id:'e16', name:'Freya Lindholm',   specialty:'structures',  skill:0.89, salary:0.14, era:3, bio:'Cryogenic tank insulation lead. Kept boil-off in check long before anyone had a name for it.'},
+  {id:'e17', name:'Raj Malhotra',     specialty:'avionics',    skill:0.83, salary:0.11, era:2, bio:'Inertial-platform engineer. His drift budgets made unmanned deep-space navigation trustworthy.'},
+  {id:'e18', name:'Ingrid Sato',      specialty:'avionics',    skill:0.94, salary:0.17, era:4, bio:'Autonomous flight-management architect. Her software flies rendezvous no human could hand-fly.'},
+  {id:'e19', name:'Bram de Vries',    specialty:'production',  skill:0.76, salary:0.08, era:1, bio:'Assembly-line foreman. Turned one-off rocket craft into repeatable manufacturing.'},
+  {id:'e20', name:'Zainab Farah',     specialty:'production',  skill:0.90, salary:0.14, era:3, bio:'Integration-flow specialist. Parallelizes build campaigns to keep every pad busy.'},
+  {id:'e21', name:'Margaret Hale',    specialty:'software',    skill:0.75, salary:0.08, era:1, bio:'Wrote guidance code by hand when "software" was barely a word. Rope-core memory was her canvas.'},
+  {id:'e22', name:'Viktor Novak',     specialty:'software',    skill:0.84, salary:0.11, era:2, bio:'Real-time executive scheduler. His priority-interrupt design keeps the flight computer from ever locking up.'},
+  {id:'e23', name:'Amara Blackwood',  specialty:'software',    skill:0.93, salary:0.16, era:4, bio:'Autonomous GNC software. Her fault-detection stack reasons through failures faster than any ground loop.'},
+  {id:'e24', name:'Otto Brand',       specialty:'materials',   skill:0.74, salary:0.07, era:1, bio:'Metallurgist. Knows which alloy cracks at which temperature before the test stand does.'},
+  {id:'e25', name:'Lucia Ferrari',    specialty:'materials',   skill:0.88, salary:0.13, era:3, bio:'Composite-layup and thermal-protection expert. Her ablators come home unscorched.'},
+  {id:'e26', name:'Hiroshi Ono',      specialty:'materials',   skill:0.94, salary:0.17, era:4, bio:'Additive-manufacturing and exotic-alloy lead. Prints engine parts that used to be un-machinable.'},
 ];
 
 // Named astronaut pool. era: earliest era index when hirable.
@@ -797,6 +811,31 @@ const ASTRONAUTS = [
   {id:'a06', name:'Aisha Diallo',   skill:0.88, salary:0.10, era:3, bio:'Commander-class. Her crew management cut mission-critical errors by 40% on long-duration flights.'},
   {id:'a07', name:'Sven Lindqvist', skill:0.85, salary:0.09, era:3, bio:'Flight surgeon and pilot. Indispensable on multi-month crewed missions.'},
   {id:'a08', name:'Nora Vasquez',   skill:0.93, salary:0.13, era:4, bio:'Star astronaut. Three deep-space missions, two EVA records, zero incidents. Rivals are trying to poach her.'},
+  {id:'a09', name:'Gus Halloran',   skill:0.75, salary:0.05, era:1, bio:'X-plane test pilot. Deadstick landings are his party trick.'},
+  {id:'a10', name:'Imani Serwaa',   skill:0.83, salary:0.08, era:2, bio:'EVA and rendezvous specialist. Logged more spacewalk hours than anyone in her cohort.'},
+  {id:'a11', name:'Anton Rykov',    skill:0.87, salary:0.10, era:3, bio:'Long-duration commander. Ran a station crew for a year without a serious incident.'},
+  {id:'a12', name:'Sofia Delgado',  skill:0.92, salary:0.12, era:4, bio:'Interplanetary mission commander. Trained for Mars-transit isolation and thrives in it.'},
+];
+
+// Named scientist pool — boost science yield and R&D. era: earliest era index when hirable (≥1).
+const SCIENTISTS = [
+  {id:'s01', name:'Dr. Cecelia Vaughn', skill:0.76, salary:0.07, era:1, bio:'Astrophysicist. Turns every flight into a data harvest the rest of the field envies.'},
+  {id:'s02', name:'Dr. Kwame Asante',   skill:0.85, salary:0.10, era:2, bio:"Planetary geochemist. Reads a world's history from a single spectrometer trace."},
+  {id:'s03', name:'Dr. Yelena Mirova',  skill:0.93, salary:0.15, era:4, bio:'Exobiologist and lab director. Her instruments answer questions others cannot even pose.'},
+];
+
+// Named executive pool — lift government funding, cut overhead, sweeten mandates. era ≥1.
+const EXECUTIVES = [
+  {id:'x01', name:'Howard Blaine',   skill:0.76, salary:0.08, era:1, bio:'Ex-defense-contract negotiator. Turns a handshake into a line item on the federal budget.'},
+  {id:'x02', name:'Priyanka Rao',    skill:0.85, salary:0.11, era:2, bio:'CFO who reads a balance sheet like a trajectory. Finds the fuel margin hiding in the books.'},
+  {id:'x03', name:'Gerald Fox',      skill:0.93, salary:0.16, era:4, bio:'Rainmaker. His government relationships open funding doors that were bolted shut.'},
+];
+
+// Named mission-controller pool — prevent anomalies, steady live calls, run rescues. era ≥1.
+const CONTROLLERS = [
+  {id:'k01', name:'Gene Braddock',  skill:0.77, salary:0.08, era:1, bio:'Flight director from the first crewed programs. Calm voice, faster calls than the computers.'},
+  {id:'k02', name:'Nadia Petrov',   skill:0.86, salary:0.11, era:2, bio:'Ascent-and-entry specialist. Has talked more vehicles through anomalies than anyone on the loop.'},
+  {id:'k03', name:'Dale Okafor',    skill:0.93, salary:0.16, era:4, bio:'Lead flight director. His mission-ops discipline turns near-losses into recoveries.'},
 ];
 
 // How many months of low morale (<20) before the person quits
@@ -818,11 +857,47 @@ const ASTRO_TRAITS={
   charismatic:{name:'Charismatic',  rel:1.00, pay:1.55, desc:'A household name — sponsors love them.'},
   iron:       {name:'Iron-willed',  rel:1.45, pay:1.00, desc:'Endures the longest missions without a wobble.'},
 };
-const ENG_TRAIT_KEYS=Object.keys(ENG_TRAITS), ASTRO_TRAIT_KEYS=Object.keys(ASTRO_TRAITS);
+// Scientist temperaments — own trait table (never fold into ENG/ASTRO keys; see registry note below).
+const SCI_TRAITS={
+  theorist:   {name:'Theorist',   rd:1.30, yield:1.00, desc:'Chases the deep model — accelerates research more than raw data yield.'},
+  empiricist: {name:'Empiricist', rd:1.00, yield:1.30, desc:'Lives in the data — squeezes more knowledge out of every mission.'},
+  polymath:   {name:'Polymath',   rd:1.15, yield:1.15, desc:'Ranges across fields — lifts both research pace and science yield.'},
+};
+// Executive temperaments — own trait table (channels: gov funding / opex / mandate).
+const EXEC_TRAITS={
+  lobbyist:   {name:'Lobbyist',    gov:1.30, opex:1.00, mandate:1.10, desc:'Works the halls of power — maximizes government funding.'},
+  costcutter: {name:'Cost-cutter', gov:1.00, opex:1.35, mandate:1.00, desc:'Ruthless with overhead — trims the monthly burn hardest.'},
+  dealmaker:  {name:'Dealmaker',   gov:1.05, opex:1.00, mandate:1.40, desc:'Lives for the big contract — squeezes the most out of mandates.'},
+};
+// Mission-controller temperaments — own trait table (channels: anom prevention / live call / rescue).
+const CTRL_TRAITS={
+  coolhead:   {name:'Cool Head',   call:1.30, anom:1.00, rescue:1.10, desc:'Unflappable on the loop — gets the most out of a live call.'},
+  bythebook:  {name:'By-the-Book', call:1.00, anom:1.30, rescue:1.00, desc:'Procedure-perfect — heads off anomalies before they start.'},
+  improviser: {name:'Improviser',  call:1.10, anom:1.00, rescue:1.35, desc:'Thinks fast when it goes wrong — best at pulling off a rescue.'},
+};
+const ENG_TRAIT_KEYS=Object.keys(ENG_TRAITS), ASTRO_TRAIT_KEYS=Object.keys(ASTRO_TRAITS), SCI_TRAIT_KEYS=Object.keys(SCI_TRAITS), EXEC_TRAIT_KEYS=Object.keys(EXEC_TRAITS), CTRL_TRAIT_KEYS=Object.keys(CTRL_TRAITS);
+/* ===== Staff role registry — generalizes the old engineer/astronaut binary so new hire
+   categories (controllers, scientists, executives) slot in without a growing if/else at
+   every touchpoint. Each pool = one role with its own named list + trait table. With only
+   engineers + astronauts registered, every lookup below is identical to the old binary.
+   NOTE: never reorder or extend ENG_TRAITS / ASTRO_TRAITS keys — trait assignment is
+   hash(id) % keys.length (derived, not saved), so changing those lists silently reassigns
+   every existing character's personality mid-save. New roles get their OWN trait tables. */
+const STAFF_POOLS = [
+  {role:'eng',   list:ENGINEERS,  traits:ENG_TRAITS,   traitKeys:ENG_TRAIT_KEYS,   label:null},
+  {role:'astro', list:ASTRONAUTS, traits:ASTRO_TRAITS, traitKeys:ASTRO_TRAIT_KEYS, label:'astronaut'},
+  {role:'sci',   list:SCIENTISTS, traits:SCI_TRAITS,   traitKeys:SCI_TRAIT_KEYS,   label:'scientist'},
+  {role:'exec',  list:EXECUTIVES, traits:EXEC_TRAITS,  traitKeys:EXEC_TRAIT_KEYS,  label:'executive'},
+  {role:'controller', list:CONTROLLERS, traits:CTRL_TRAITS, traitKeys:CTRL_TRAIT_KEYS, label:'flight director'},
+];
+function poolOf(id){ for(const P of STAFF_POOLS){ if(P.list.some(p=>p.id===id)) return P; } return null; }
+function roleOf(id){ const P=poolOf(id); return P?P.role:null; }
+// Human-readable role tag: engineers show their specialty; other roles show their label.
+function roleLabel(p){ if(!p) return ''; const P=poolOf(p.id); if(!P) return ''; return P.label || p.specialty || P.role; }
 function _hashStr(s){ let h=0; for(let i=0;i<s.length;i++){ h=(h*31+s.charCodeAt(i))|0; } return Math.abs(h); }
-function isEngineerId(id){ return !!ENGINEERS.find(e=>e.id===id); }
-function traitKeyOf(id){ const keys=isEngineerId(id)?ENG_TRAIT_KEYS:ASTRO_TRAIT_KEYS; return keys[_hashStr(id)%keys.length]; }
-function traitOf(id){ return (isEngineerId(id)?ENG_TRAITS:ASTRO_TRAITS)[traitKeyOf(id)]; }
+function isEngineerId(id){ return roleOf(id)==='eng'; }
+function traitKeyOf(id){ const P=poolOf(id); const keys=P?P.traitKeys:ENG_TRAIT_KEYS; return keys[_hashStr(id)%keys.length]; }
+function traitOf(id){ const P=poolOf(id); const tbl=P?P.traits:ENG_TRAITS; return tbl[traitKeyOf(id)]; }
 // Engineer team effects on reliability and R&D speed
 const ENG_REL_BONUS_MAX  = 0.08; // max reliability boost from a fully-skilled, high-morale team
 const ENG_RD_SPEED_MAX   = 0.30; // max fraction of extra R&D progress per month (0.3 = 30% faster)
@@ -848,6 +923,11 @@ const DEPARTMENTS = [
   {id:'structures', name:'Structures',      icon:'🏗', kind:'eng',   specialty:'structures', blurb:'Airframes, tankage, thermal protection. Keeps the stack from tearing itself apart.'},
   {id:'avionics',   name:'Avionics',        icon:'📡', kind:'eng',   specialty:'avionics',   blurb:'Guidance, navigation, flight software. Flies the trajectory.'},
   {id:'production', name:'Production',       icon:'⚙',  kind:'eng',   specialty:'production', blurb:'Factory floor, integration, build cadence. Gets vehicles out the door.'},
+  {id:'sciencedept',name:'Science Division', icon:'🔬', kind:'sci',   specialty:null,         blurb:'Researchers who turn missions into knowledge and speed the R&D pipeline.'},
+  {id:'software',   name:'Flight Software',  icon:'💻', kind:'eng',   specialty:'software',   blurb:'Flight code, real-time executives, autonomy. The mind that flies the vehicle.'},
+  {id:'materials',  name:'Materials & Processes', icon:'🧪', kind:'eng', specialty:'materials', blurb:'Alloys, composites, thermal protection. The stuff everything else is made of.'},
+  {id:'frontoffice',name:'Front Office',     icon:'💼', kind:'exec',  specialty:null,         blurb:'Finance, government relations, contracts. Keeps the money flowing.'},
+  {id:'missionops', name:'Mission Control',  icon:'🎧', kind:'controller', specialty:null,     blurb:'Flight directors and controllers. Prevent anomalies, steady live calls, run rescues.'},
   {id:'astronaut',  name:'Astronaut Corps', icon:'🧑‍🚀', kind:'astro', specialty:null,         blurb:'The crews who fly. Leadership here steadies every crewed mission.'},
 ];
 function departmentDef(id){ return DEPARTMENTS.find(d=>d.id===id); }
@@ -1948,7 +2028,7 @@ function dimCurve(sum, cap, asymptote){
 }
 function mfgBuildMult(){ return 1 - dimCurve(researchEffectSum('buildCostCut'), BUILD_CUT_CAP, BUILD_CUT_ASYMP); }
 function groundLaunchMult(){ return 1 - dimCurve(researchEffectSum('launchCostCut'), LAUNCH_CUT_CAP, LAUNCH_CUT_ASYMP); }
-function sciYieldMult(){ return 1 + Math.min(SCI_YIELD_CAP, researchEffectSum('sciYield')); } // payout multiplier — stays bounded (CE4 owns reward inflation)
+function sciYieldMult(){ return (1 + Math.min(SCI_YIELD_CAP, researchEffectSum('sciYield'))) * (1 + sciStaffYieldBonus()); } // research term stays bounded (CE4 owns reward inflation); science staff add a separate staffing-derived multiplier (0 when unstaffed)
 function buildTimeCut(){ return dimCurve(researchEffectSum('buildTimeCut'), BUILD_TIME_CAP, BUILD_TIME_ASYMP); } // #6c: months shaved (Manufacturing/Ground), now uncapped-on-curve
 // ---------- CE3 slice (a): Company Doctrine — strategic identity ----------
 // A one-time, semi-irreversible identity choice. Each doctrine grants a standing BONUS *and* a
@@ -2328,7 +2408,7 @@ function tickContinuousDay(){
   state.money+=perDay(govMonthlyFunding()); // #8: public support buys government funding (slice 3a: accrues daily)
   if(state.activeResearch && !_pendingSetback){ // #26: R&D progresses daily; a pending setback freezes it
     const _rdNode=RESEARCH.find(r=>r.id===state.activeResearch.id);
-    const rdBonus=engRdSpeedBonus()+stationRdSpeedBonus()+divisionSpeedBonus(_rdNode)+partnerSpeedBonus(_rdNode); // #6: research partnerships accelerate their track; orbital labs add station R&D speed
+    const rdBonus=engRdSpeedBonus()+stationRdSpeedBonus()+divisionSpeedBonus(_rdNode)+partnerSpeedBonus(_rdNode)+sciStaffRdBonus(); // #6: research partnerships accelerate their track; orbital labs add station R&D speed; science staff add R&D speed
     state.activeResearch.monthsLeft-=perDay(1+rdBonus); // rate reads (monthly-drifting) morale — stable within a month
     if(state.activeResearch.monthsLeft<=0) completeResearch();
   }
@@ -2483,7 +2563,7 @@ function offerMandate(){
   if(state.mandate || (state.mandateCooldown||0)>0) return;
   const m=mandateCandidate(); if(!m) return;
   const lead=Math.max(24, Math.round(buildMonths(m)*3+18)); // generous: 3× build + margin
-  const bonus=round2((m.payout||2)*MANDATE_BONUS_MULT*(1+0.15*eraIndex(currentEra())));
+  const bonus=round2((m.payout||2)*MANDATE_BONUS_MULT*(1+0.15*eraIndex(currentEra()))*(1+execMandateBonus()));
   state.mandate={missionId:m.id, name:m.name, bonus, deadlineAbs:absMonth()+lead, offeredAbs:absMonth()};
   timeInterrupt(); // smart time: an offer on the table stops the clock
   log('note',`📜 Government mandate offered: fly ${m.name} within ${lead} months for a ${fM(bonus)} bonus.`);
@@ -2548,7 +2628,7 @@ function addSupport(delta){ state.publicSupport=clampA(publicSupport()+delta, SU
 // (still below its overhead, so idling stays net-negative — just slower to bite).
 function govMonthlyFunding(){
   const excess=Math.max(0, publicSupport()-SUPPORT_BASE);
-  const earned=GOV_FUNDING_BASE*Math.min(1,excess/30)*(1+0.15*eraIndex(currentEra()))*doctrineMult('gov'); // full grant at 80 support — every point above neutral pays
+  const earned=GOV_FUNDING_BASE*Math.min(1,excess/30)*(1+0.15*eraIndex(currentEra()))*doctrineMult('gov')*(1+execGovBonus()); // full grant at 80 support — every point above neutral pays; executives lift the earned grant (0 when unstaffed)
   return round2(earned + (diff().govFloor||0));
 } // CE3(a): Statecraft +, Commercial −
 // Months of cash left at the current monthly burn (Infinity when cash-positive).
@@ -3558,7 +3638,7 @@ function empireOpex(){
     const ds=state.divisions[id];
     if(ds && ((ds.skill>DIV_SKILL0+1e-9) || (ds.exp>0))) o += EMPIRE_DIV_OPEX;
   }
-  return round2(o);
+  return round2(o*(1-execOpexCut())); // executives trim monthly overhead (0 when unstaffed; opex is already $0 early)
 }
 function prodUpgradeCost(key){ const d=prodDef(key); return round2(d.baseCost*prodLevel(key)); } // escalates with level
 function canUpgradeProduction(key){
@@ -3756,7 +3836,7 @@ function checkPoaching(){
     reconcileDeptLeads(); // #19 slice C: a poached lead is succeeded by the best remaining member
     state.rivalThreat=state.rivalThreat||{}; state.rivalThreat[rival.id]=(state.rivalThreat[rival.id]||0)+1;
     const rs=rivalStateFor(rival); rs.momentum=Math.min(RIVAL_MOM_MAX, rs.momentum+RIVAL_POACH_MOM_BUMP); // they gained your talent
-    log('bad',`${rival.flag} ${rival.name} poached ${p.name} (${p.specialty}) — low morale made the offer easy to take, and it feeds their momentum. Keep your people happy (or counter-poach).`);
+    log('bad',`${rival.flag} ${rival.name} poached ${p.name} (${roleLabel(p)}) — low morale made the offer easy to take, and it feeds their momentum. Keep your people happy (or counter-poach).`);
   } else if(morale<45){
     log('rival',`${rival.flag} ${rival.name} is courting ${p.name}. Raise morale (Raise/Commend) or risk losing them.`);
   }
@@ -4434,10 +4514,16 @@ function buildMonths(m){
    propulsion or life-support faults strand a crew on the way home. */
 const PARTIAL_PAYOUT_MULT = 0.45;
 const SUBSYS_LABEL = {propulsion:'Propulsion', boosters:'Boosters', structures:'Structures', separation:'Staging', avionics:'Guidance', deep_propulsion:'Deep-space propulsion', life_support:'Life support'};
-// best (morale-scaled) skill among hired engineers of a given specialty, 0..~1
+// Which engineering specialties reduce each vehicle subsystem's fragility. New disciplines fold
+// into an existing subsystem: materials strengthens structures, software strengthens avionics.
+// A subsystem with only its original specialty behaves exactly as before (byte-identical when the
+// new disciplines aren't hired).
+const SUBSYS_SPECIALISTS = {propulsion:['propulsion'], structures:['structures','materials'], avionics:['avionics','software']};
+// best (morale-scaled) skill among hired engineers who cover a given subsystem, 0..~1
 function bestSpecialistSkill(spec){
+  const specs=SUBSYS_SPECIALISTS[spec]||[spec];
   let best=0;
-  for(const s of (state.staff||[])){ const p=personById(s.id); if(p && p.specialty===spec){ const tr=traitOf(s.id); best=Math.max(best, effSkill(s.id)*(0.5+0.5*((s.morale||50)/100))*(tr.rel||1)); } }
+  for(const s of (state.staff||[])){ const p=personById(s.id); if(p && specs.includes(p.specialty)){ const tr=traitOf(s.id); best=Math.max(best, effSkill(s.id)*(0.5+0.5*((s.morale||50)/100))*(tr.rel||1)); } }
   return best;
 }
 function specialistFactor(spec){ return 1 - 0.45*bestSpecialistSkill(spec); } // a strong specialist cuts that subsystem's fragility
@@ -4774,10 +4860,10 @@ const MISSION_ANOMALIES=[
     when:c=> (c.m.profile || (!c.m.tanker && (c.m.reqDv||0)>=9000)),
     detail:'One solar wing is stuck half-latched and the power margin is falling — the payload can’t run every system.',
     options:c=>{ const o=[];
-      if(c.crewed) o.push({id:'eva', label:'Send the crew on an EVA to free it', resolve:rng=> rng()<0.82
+      if(c.crewed) o.push({id:'eva', label:'Send the crew on an EVA to free it', resolve:rng=> rng()<opsLuck(0.82)
         ? {repDelta:2, log:'a spacewalk freed the stuck wing — full power restored, mission nominal.'}
         : {payoutMult:0.8, outcomeOverride:'partial', log:'the EVA couldn’t free the array and burned consumables — the mission limps on at reduced output.'} });
-      o.push({id:'reboot', label:'Command a deploy-motor reboot', resolve:rng=> rng()<0.55
+      o.push({id:'reboot', label:'Command a deploy-motor reboot', resolve:rng=> rng()<opsLuck(0.55)
         ? {log:'the reboot cycled the motor and the wing latched — power restored.'}
         : {payoutMult:0.8, outcomeOverride:'partial', log:'the motor wouldn’t cycle; the array stays half-deployed and the payload runs degraded.'} });
       o.push({id:'degraded', label:'Accept it and run on reduced power', resolve:()=>
@@ -4787,10 +4873,10 @@ const MISSION_ANOMALIES=[
     when:c=> c.crewed && (c.m.days||0)>=10,
     detail:'A slow cabin leak is bleeding atmosphere. At this rate the margins won’t last the whole flight.',
     options:c=>[
-      {id:'reserves', label:'Tap emergency reserves and patch it', resolve:rng=> rng()<0.9
+      {id:'reserves', label:'Tap emergency reserves and patch it', resolve:rng=> rng()<opsLuck(0.9)
         ? {repDelta:1, log:'the crew patched the leak and rode the reserves home — shaken but safe.'}
         : {payoutMult:0.7, outcomeOverride:'partial', log:'the patch held but reserves ran thin; the crew cut the mission short.'} },
-      {id:'press_on', label:'Press on and hope it holds', resolve:rng=> rng()<0.6
+      {id:'press_on', label:'Press on and hope it holds', resolve:rng=> rng()<opsLuck(0.6)
         ? {log:'the leak stabilized on its own — a lucky break, mission complete.'}
         : {outcomeOverride:'strand', log:'the leak worsened catastrophically far from home — the crew was lost.'} },
       {id:'abort', label:'Abort and bring the crew home now', resolve:()=>
@@ -4800,10 +4886,10 @@ const MISSION_ANOMALIES=[
     when:c=> !!c.m.profile,
     detail:'The terminal guidance radar is dropping out at the worst possible moment.',
     options:c=>{ const o=[];
-      if(c.crewed) o.push({id:'manual', label:'Crew takes manual control', resolve:rng=> rng()<0.75
+      if(c.crewed) o.push({id:'manual', label:'Crew takes manual control', resolve:rng=> rng()<opsLuck(0.75)
         ? {repDelta:3, log:'steady hands flew it in by hand — a textbook result.'}
         : {payoutMult:0.8, outcomeOverride:'partial', log:'the manual approach drifted off-target — a partial result.'} });
-      o.push({id:'retry', label:'Cycle the radar and retry the automated sequence', resolve:rng=> rng()<0.6
+      o.push({id:'retry', label:'Cycle the radar and retry the automated sequence', resolve:rng=> rng()<opsLuck(0.6)
         ? {log:'the radar recovered on the retry — nominal.'}
         : {payoutMult:0.82, outcomeOverride:'partial', log:'the automated system settled for a safe but off-target result.'} });
       return o; } },
@@ -4814,6 +4900,7 @@ function rollMissionEvents(ctx, rng){
   if(!eligible.length) return null;
   let chance=ANOMALY_CHANCE_BASE + (ctx.crewed?0.06:0) + (ctx.m.profile?0.06:0);
   if(ctx.rehearsed) chance*=REHEARSAL_ANOMALY_MULT; // #20 slice 4: rehearsal buys down ops risk
+  chance*=(1-ctrlAnomScore()*CTRL_ANOMALY_CUT_MAX); // mission controllers prevent anomalies (0 when unstaffed → identical)
   if(rng()>=chance) return null;
   return eligible[Math.min(eligible.length-1, Math.floor(rng()*eligible.length))];
 }
@@ -4909,6 +4996,7 @@ function rescueChance(m){
   if(state.research&&state.research.auto_rendezvous) c+=0.10;  // rapid automated rendezvous
   if(state.research&&state.research.nuclear_thermal) c+=0.10;  // fast-transit rescue craft
   if((state.facilities||[]).length>0) c+=0.08;                 // standing infrastructure = contingency capability
+  c += ctrlRescueScore()*CTRL_RESCUE_BONUS_MAX;                // mission controllers run a tighter rescue (0 when unstaffed)
   return Math.max(0.10, Math.min(0.90, c));
 }
 function rescueCost(m){ return Math.max(3, Math.round((m.payout||10)*0.6)); }
@@ -4960,7 +5048,7 @@ function flightReadiness(m){
   const goPct=Math.round((WEATHER_CONDITIONS.find(c=>c.id==='go').weight/wTotal)*100);
   const crewed=m.crew>0, ctx={m,crewed};
   const eligible=MISSION_ANOMALIES.some(a=>{ try{ return a.when(ctx)&&a.options(ctx).length>0; }catch(e){ return false; } });
-  const anomaly=eligible?Math.min(0.99, ANOMALY_CHANCE_BASE+(crewed?0.06:0)+(m.profile?0.06:0)):0;
+  const anomaly=eligible?Math.min(0.99, (ANOMALY_CHANCE_BASE+(crewed?0.06:0)+(m.profile?0.06:0))*(1-ctrlAnomScore()*CTRL_ANOMALY_CUT_MAX)):0;
   return {goPct, anomaly, anomalyRehearsed:Math.min(0.99, anomaly*REHEARSAL_ANOMALY_MULT),
           crewed, rescue:crewed?rescueChance(m):null};
 }
@@ -5529,7 +5617,8 @@ function applyScience(){
 
 /* ---------- M6: personnel helpers ---------- */
 function personById(id){
-  return [...ENGINEERS,...ASTRONAUTS].find(p=>p.id===id);
+  for(const P of STAFF_POOLS){ const p=P.list.find(x=>x.id===id); if(p) return p; }
+  return undefined;
 }
 function staffRecord(id){ return state.staff.find(s=>s.id===id); }
 function isHired(id){ return !!staffRecord(id); }
@@ -5588,7 +5677,7 @@ function accrueStaffXp(){
 // Available to hire: not already hired, era unlocked
 function availablePool(){
   const ei=eraIndex(currentEra());
-  return [...ENGINEERS,...ASTRONAUTS].filter(p=>{
+  return STAFF_POOLS.flatMap(P=>P.list).filter(p=>{
     if(isHired(p.id)) return false;
     if(p.era>ei) return false;
     return true;
@@ -5605,15 +5694,18 @@ function deptMembers(id){
   const def=departmentDef(id); if(!def) return [];
   return (state.staff||[]).filter(sr=>{
     const p=personById(sr.id); if(!p) return false;
-    if(def.kind==='astro') return !!ASTRONAUTS.find(a=>a.id===sr.id);
-    return !!ENGINEERS.find(e=>e.id===sr.id) && p.specialty===def.specialty;
+    // engineering departments match by specialty; every other department maps 1:1 to a role.
+    if(def.kind==='eng') return roleOf(sr.id)==='eng' && p.specialty===def.specialty;
+    return roleOf(sr.id)===def.kind;
   });
 }
 // which department a hired person belongs to
 function deptOfPerson(id){
   const p=personById(id); if(!p) return null;
-  if(ASTRONAUTS.find(a=>a.id===id)) return 'astronaut';
-  const e=ENGINEERS.find(e=>e.id===id); return e?e.specialty:null;
+  const role=roleOf(id);
+  if(role==='eng') return p.specialty;
+  const def=DEPARTMENTS.find(d=>d.kind===role); // non-eng roles map 1:1 to their department
+  return def?def.id:null;
 }
 // the lead's staff record for a department, or null — self-heals if the lead has left the roster
 function deptLeadRecord(id){
@@ -5721,6 +5813,45 @@ function engRelBonus(){ return engScores().rel*ENG_REL_BONUS_MAX; }
 function engRdSpeedBonus(){
   // returns fractional extra R&D months per calendar month (0–ENG_RD_SPEED_MAX)
   return engScores().rd*ENG_RD_SPEED_MAX;
+}
+/* ===== Generic role team score (scientists / executives / controllers) — mirrors the #19
+   engineer scoring: a lead-weighted average of effSkill×morale, optionally multiplied by a
+   role-specific trait channel (e.g. 'yield'). Returns 0 when nobody of that role is hired, so
+   every effect built on it is balance-neutral until the role is staffed. */
+function roleTeamScore(role, chan){
+  const members=(state.staff||[]).filter(s=>roleOf(s.id)===role);
+  if(!members.length) return 0;
+  let sum=0, w=0;
+  for(const s of members){ const tr=traitOf(s.id); const mf=Math.max(0.2,(s.morale||50)/100); const base=effSkill(s.id)*mf; const ww=isDeptLead(s.id)?DEPT_LEAD_WEIGHT:1; sum+=base*(chan&&tr[chan]?tr[chan]:1)*ww; w+=ww; }
+  return Math.min(1, sum/(w||members.length));
+}
+// Scientists: lift science yield and (modestly) R&D speed. Both 0 when none are hired.
+const SCI_STAFF_YIELD_MAX=0.25, SCI_STAFF_RD_MAX=0.10;
+function sciStaffYieldBonus(){ return roleTeamScore('sci','yield')*SCI_STAFF_YIELD_MAX; }
+function sciStaffRdBonus(){ return roleTeamScore('sci','rd')*SCI_STAFF_RD_MAX; }
+// Executives: lift the earned government grant, cut monthly opex, sweeten mandate bonuses. All 0 when none hired.
+const EXEC_GOV_FUNDING_MAX=0.20, EXEC_OPEX_CUT_MAX=0.15, EXEC_MANDATE_BONUS_MAX=0.15;
+function execGovBonus(){ return roleTeamScore('exec','gov')*EXEC_GOV_FUNDING_MAX; }
+function execOpexCut(){ return roleTeamScore('exec','opex')*EXEC_OPEX_CUT_MAX; }
+function execMandateBonus(){ return roleTeamScore('exec','mandate')*EXEC_MANDATE_BONUS_MAX; }
+// Mission Controllers: prevent anomalies, improve live-call odds, and boost rescue chances. All 0
+// when none are hired, so the launch flow is byte-identical unstaffed — and the CE5 invariant holds:
+// controllers only shift CHANCE (anomaly rate / call threshold / rescue odds), never how a call resolves.
+const CTRL_ANOMALY_CUT_MAX=0.35, CTRL_CALL_BONUS_MAX=0.10, CTRL_RESCUE_BONUS_MAX=0.08;
+function ctrlAnomScore(){ return roleTeamScore('controller','anom'); }
+function ctrlCallScore(){ return roleTeamScore('controller','call'); }
+function ctrlRescueScore(){ return roleTeamScore('controller','rescue'); }
+// improves a live-call success threshold; identical to p when no controllers are on the loop
+function opsLuck(p){ return Math.min(0.98, p + ctrlCallScore()*CTRL_CALL_BONUS_MAX); }
+// Aggregate active specialist-staff effects, for the exec-overview dashboard (empty when none are staffed).
+function staffEffectsHTML(){
+  const b=[];
+  if(sciStaffYieldBonus()>0) b.push('sci yield +'+((sciStaffYieldBonus()*100)|0)+'%');
+  if(sciStaffRdBonus()>0) b.push('R&D +'+((sciStaffRdBonus()*100)|0)+'%');
+  if(execGovBonus()>0) b.push('funding +'+((execGovBonus()*100)|0)+'%');
+  if(execOpexCut()>0) b.push('opex −'+((execOpexCut()*100)|0)+'%');
+  if(ctrlAnomScore()>0) b.push('anomaly −'+((ctrlAnomScore()*CTRL_ANOMALY_CUT_MAX*100)|0)+'%');
+  return b.length?'<div><span class="dim">Staff bonuses:</span> <b style="color:var(--ok)">'+b.join(' · ')+'</b></div>':'';
 }
 // Orbital research stations accelerate R&D: total station science output above a threshold
 // contributes fractional research speed. Capped so it complements (not replaces) engineers.
@@ -9205,7 +9336,7 @@ function showChronicle(mode){ // mode: 'view' | 'era' (soft date) | 'retire'
 function checkScoringDate(){
   if(state.year>=SCORING_YEAR && !state.eraScored){ state.eraScored=true;
     timeInterrupt();
-    if(animEnabled){ if(!pendingCelebration) pendingCelebration=()=>showChronicle('era'); else showChronicle('era'); }
+    if(animEnabled){ showChronicle('era'); }
     log('note',`📖 ${SCORING_YEAR}: history takes its first measure of ${state.company}. Legacy grade so far: ${legacyScore().grade}.`);
   }
 }
@@ -9525,6 +9656,11 @@ function objectivesList(){
   } else groups.push({title:'Main objective', items:[{label:'All objectives complete', done:true}]});
   const rec=[];
   if(!(state.staff||[]).some(s=>ENGINEERS.find(e=>e.id===s.id))) rec.push({label:'Hire an engineer', done:false, tab:'personnel'});
+  // contextual nudges for the specialist hire categories — only when the role would help and one is hirable
+  const _hasRole=r=>(state.staff||[]).some(s=>roleOf(s.id)===r), _canHire=r=>availablePool().some(p=>roleOf(p.id)===r);
+  if(!_hasRole('sci') && _canHire('sci') && (state.activeResearch||RESEARCH.some(r=>!state.research[r.id]&&reqsMet(r)))) rec.push({label:'Hire a scientist', done:false, tab:'personnel'});
+  if(!_hasRole('controller') && _canHire('controller') && no && no.mission && (no.mission.crew||0)>0) rec.push({label:'Hire a flight director', done:false, tab:'personnel'});
+  if(!_hasRole('exec') && _canHire('exec') && typeof runwayMonths==='function' && runwayMonths()<18) rec.push({label:'Hire an executive', done:false, tab:'personnel'});
   if(!state.activeResearch && RESEARCH.some(r=>!state.research[r.id]&&reqsMet(r))) rec.push({label:'Start a research project', done:false, tab:'rnd'});
   for(const def of FACILITY_DEFS){ if(!facilityBuilt(def.id) && canFound(def.id).ok){ rec.push({label:`Found ${def.name}`, done:false, tab:'infra'}); break; } }
   if(rec.length) groups.push({title:'Recommended', items:rec.slice(0,3)});
@@ -10246,6 +10382,7 @@ function renderExecOverview(){
       <div><span class="dim">Active R&amp;D:</span> ${ar?`<b>${ar.name}</b> <span class="dim">(${fmtTimeLeft(ar.monthsLeft)} left)</span>`:'<span class="dim">none — start a project</span>'}</div>
       <div><span class="dim">Gov funding:</span> <b style="color:${s.govFunding>0?'var(--ok)':'var(--dim)'}">+${fM(s.govFunding)}/mo</b></div>
       <div><span class="dim">Current vehicle:</span> <b>${vehName}</b></div>
+      ${staffEffectsHTML()}
     </div>`;
 }
 // LEFT — "what should I do next?"
@@ -12219,7 +12356,7 @@ function renderPersonnelCard(p, sr){
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
       <div>
         <span style="font-size:14px;font-weight:600;color:var(--ink)">${p.name}</span>
-        <span class="pill" style="margin-left:6px">${isEng?p.specialty:'astronaut'}</span>
+        <span class="pill" style="margin-left:6px">${roleLabel(p)}</span>
         <span class="pill" style="margin-left:4px;color:var(--ignite);border-color:#5a4419" title="${traitOf(p.id).desc}">${traitOf(p.id).name}</span>
         ${isDeptLead(p.id)?'<span class="pill" style="margin-left:4px;color:var(--readout);border-color:#5a4419" title="Department lead — steers this department\'s output">★ lead</span>':''}
         ${isAstro&&assigned?'<span class="pill active" style="margin-left:4px">assigned</span>':''}
@@ -12253,6 +12390,9 @@ function renderPersonnelCard(p, sr){
       ${isEng?`Reliability contribution: <span style="color:var(--ok)">+${engBonusStr}</span> (factors into team average)`:''}
       ${isAstro&&assigned&&ab?`<span style="color:var(--ok)">Crewed rel +${(ab.rel*100).toFixed(1)}% · Payout x${ab.payoutMult.toFixed(2)}</span>`:''}
       ${isAstro&&!assigned?`<span class="dim">Not assigned to crewed missions</span>`:''}
+      ${roleOf(p.id)==='sci'?`<span style="color:var(--ok)">Science division: yield +${(sciStaffYieldBonus()*100)|0}% · R&D +${(sciStaffRdBonus()*100)|0}%</span>`:''}
+      ${roleOf(p.id)==='exec'?`<span style="color:var(--ok)">Front office: funding +${(execGovBonus()*100)|0}% · opex −${(execOpexCut()*100)|0}% · mandate +${(execMandateBonus()*100)|0}%</span>`:''}
+      ${roleOf(p.id)==='controller'?`<span style="color:var(--ok)">Mission control: anomaly −${(ctrlAnomScore()*CTRL_ANOMALY_CUT_MAX*100)|0}% · call +${(ctrlCallScore()*CTRL_CALL_BONUS_MAX*100)|0}% · rescue +${(ctrlRescueScore()*CTRL_RESCUE_BONUS_MAX*100)|0}%</span>`:''}
     </div>
     ${isEng?`<div class="expert-only" style="font-size:12px;color:var(--dim);margin-bottom:8px;font-family:var(--mono)">rel = skill ${p.skill.toFixed(2)} × morale ${moraleFactor.toFixed(2)} × ${ENG_REL_BONUS_MAX} = +${engBonusStr}</div>`:''}
     <div style="display:flex;gap:6px;flex-wrap:wrap">
@@ -12337,7 +12477,7 @@ function renderPersonnel(){
         ${personPortrait(p,48)}
         <div style="flex:1">
           <span style="font-size:13px;font-weight:600;color:var(--ink)">${p.name}</span>
-          <span class="pill" style="margin-left:6px">${isEng?p.specialty:'astronaut'}</span>
+          <span class="pill" style="margin-left:6px">${roleLabel(p)}</span>
           <p class="muted" style="font-size:12px;margin:2px 0 0">${p.bio}</p>
         </div>
         <div style="text-align:right;flex-shrink:0">

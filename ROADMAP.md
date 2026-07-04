@@ -835,20 +835,84 @@ are derived). **Validated 30/30.**
 46 + regression 18 = **158/158.** Pushed via Git Data API (fine-grained PAT, treated
 as compromised/revoked immediately after use per standing practice).
 
-### ⚠ Pre-existing bug found (NOT fixed — out of scope for #19, flagged for a dedicated pass)
-`checkScoringDate()` references `pendingCelebration`, which only exists as a LOCAL
-variable inside `resolveFlight()` — at the `checkScoringDate` scope it's an undefined
-free reference. It's guarded by `if(animEnabled)`, so it throws a ReferenceError when
-the game reaches the 1990 soft-scoring date (Agency Chronicle "an era closes") in
-normal animated play. The headless harness dodges it via the documented
-`animEnabled=false` convention, but a real player would hit it at 1990. Small fix
-(hoist `pendingCelebration` to a module-level `let`, or inline the chronicle trigger
-without it) but deliberately left alone to keep the #19 session scoped. **Fix next.**
+### ✅ Pre-existing bug found & FIXED (2026-07-04)
+`checkScoringDate()` referenced `pendingCelebration`, which only exists as a LOCAL
+variable inside `resolveFlight()` — at the `checkScoringDate` scope it was an undefined
+free reference. Guarded by `if(animEnabled)`, so it threw a ReferenceError when the game
+reached the 1990 soft-scoring date (Agency Chronicle "an era closes") in normal animated
+play. **Fixed** by inlining the chronicle trigger — `checkScoringDate()` runs from the
+monthly-boundary tick, not the flight path, so there is no in-flight celebration to defer
+to; the buggy defer-behind line became `if(animEnabled){ showChronicle('era'); }`. Verified
+in isolation: no ReferenceError, `timeInterrupt()` fires, the chronicle shows once, and the
+`eraScored` guard prevents a re-fire.
 
 ### Recommended next steps (updated)
-1. **Fix the `pendingCelebration` 1990-scoring-date crash** (above) — small, and it's a
-   real player-facing bug at the Chronicle scoring moment.
+1. ✅ **DONE (2026-07-04)** — `pendingCelebration` 1990-scoring-date crash fixed (see § above).
 2. Still open from 2026-07-02: *verify doctrines/research partnerships surface in the
    advisor/outliner* (same invisible-to-the-flow class the materials + #19 gap work kept
    addressing).
 3. Bigger milestones remain: #21 colony/logistics, #22 endgame, Cross-Track Synergies, #29 log filters.
+
+## Session — Personnel expansion: deeper roster + four new hire categories (2026-07-04)
+
+**Context.** Expand *who* can be hired beyond the 4 engineering specialties + Astronaut Corps —
+more named people in every pool, plus four genuinely new hire categories, each on a new effect
+axis staffing didn't previously touch. Designed via a plan pass (verdict: generalize the pool
+model first, then ship categories as independent, balance-neutral slices; **no SAVE_VERSION bump**
+— every effect derives from who's hired, and departments already lazy-default). Also fixed the
+`pendingCelebration` 1990 crash first (§ above, now ✅).
+
+**Core design decision — role registry, not a bolt-on.** A binary engineer/astronaut split lived
+in ~10 call sites; with 5 roles a per-site if/else is untenable. Introduced `STAFF_POOLS` +
+`poolOf`/`roleOf`/`roleLabel`; the named `ENGINEERS`/`ASTRONAUTS` arrays and all hire/fire/
+morale/XP/poaching machinery are already role-agnostic, so new roles plug in without touching them.
+
+- **Slice 1 — Roster expansion.** +8 engineers (e13–e20; each of the 4 specialties now has 5,
+  filling era gaps) + 4 astronauts (a09–a12). New per-id hash-assigned traits; existing
+  personalities unchanged (hash is per-id).
+- **Slice 2 — Role-registry refactor.** `STAFF_POOLS`/`roleOf` replace the binary across
+  `personById`, `availablePool`, `deptMembers`, `deptOfPerson`, `traitOf`/`traitKeyOf`, UI labels.
+  Froze `ENG_TRAITS`/`ASTRO_TRAITS` key order with a warning comment (trait = `hash(id)%keys.length`
+  — derived, not saved; reordering would silently reassign every character's personality). **Fixed**
+  the pre-existing poach-log bug printing `(undefined)` for non-engineers (now `roleLabel`). Proven
+  byte-identical via a parity harness (318/318) over every id, all 5 eras, 4 seeded rosters.
+- **Slice 3 — New engineering specialties.** `software` (Flight Software 💻) + `materials`
+  (Materials & Processes 🧪), 3 hires + 1 dept each. Feed `engScores` rel/R&D automatically
+  (specialty-agnostic). Niche via `SUBSYS_SPECIALISTS`: materials strengthens the structures
+  subsystem, software strengthens avionics (`bestSpecialistSkill`) — byte-identical unstaffed. NOT
+  added to `criticalDepts`/`deptStaffingRelPenalty` (would penalize existing saves).
+- **Slice 4 — Scientists 🔬.** `SCIENTISTS` pool + `SCI_TRAITS` + Science Division. Generic
+  `roleTeamScore(role,chan)` helper (lead-weighted, mirrors #19; 0 unstaffed). Hooks: `sciYieldMult`
+  ×(1+yield, cap 25%); R&D-speed sum += rd (cap 10%, kept small — sum already stacks 4 uncapped
+  sources).
+- **Slice 5 — Executives 💼.** `EXECUTIVES` + `EXEC_TRAITS` + Front Office. Hooks: `govMonthlyFunding`
+  earned term ×(1+gov, cap 20%); `empireOpex` ×(1−opex, cap 15%); mandate offer ×(1+mandate, cap 15%).
+  Does NOT touch contract payouts (CE4 owns reward inflation). Era-scaled by nature.
+- **Slice 6 — Mission Controllers 🎧 (launch flow).** `CONTROLLERS` + `CTRL_TRAITS`
+  (anom/call/rescue channels) + Mission Control dept. All hooks are CHANCE-only (**CE5 invariant**:
+  staffing never changes how a call *resolves*): `rollMissionEvents` chance ×(1−anom, cap 35%);
+  anomaly thresholds wrapped in `opsLuck(p)` (=p unstaffed, +call ≤10% staffed); `rescueChance` +=
+  rescue (cap 8%, inside clamp); `flightReadiness` mirrors the cut. CE5 flags untouched. Proven
+  byte-identical launch flow with no controllers (40 seeds × 4 contexts) + a 20k-trial Monte Carlo
+  confirming the anomaly rate drops when staffed.
+- **Slice 7 — Polish.** Contextual advisor nudges ("Hire a scientist/flight director/executive" only
+  when the role would help and one is hirable); `staffEffectsHTML()` aggregate line on the exec
+  overview; balance sweep on the 8 new constants (all bounded, neutral-when-unstaffed, gated by
+  salary 0.05–0.18M/mo).
+
+**Validation.** Whole-script syntax + a comprehensive headless staff suite: registry parity, roster
+(26 eng / 12 astro / 3 sci / 3 exec / 3 controllers, ids unique), 10 departments, specialist niche,
+every effect hook (neutral unstaffed → active-within-cap staffed), the CE5 launch-flow invariant,
+and the Monte Carlo. **223/223 green.** No SAVE_VERSION bump.
+
+**Repo state:** all changes in the local working copy `orbital-ventures.html`; **not yet pushed**
+(user pushes via Git Data API). New save fields: none.
+
+### Recommended next steps
+1. Browser-test the expanded Personnel view (deeper roster; Science Division / Front Office /
+   Mission Control departments; per-hire contribution lines; exec-overview staff-bonuses line), then
+   push.
+2. Optional follow-ups deferred from the plan: role-flavored personnel events (`checkPersonnelEvents`
+   currently routes new-role traits to the neutral else-branch); an aggregate R&D-speed clamp (the
+   sum stacks eng+station+division+partner+sci uncapped — a latent pre-existing issue, now nudged);
+   the CE5 live-call band-widening stretch (deliberately skipped to keep the invariant airtight).
