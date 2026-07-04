@@ -2403,7 +2403,7 @@ function advanceDays(days){
     if(monthEnd) tickMonthlyBoundary(); // discrete monthly subsystems — same order as the old tick
   }
   if(state.money<0 && !state.over){ gameOver(); }
-  if(!state.over) pumpFlightArrivals(); // P1 1.2a: resolve any deferred flight that reached arrival during this advance
+  if(!state.over){ pumpFlightArrivals(); autosave(); } // P1 1.2a: resolve arrivals; S1: autosave the turn (throttled, skips mid-resolution)
 }
 // the smooth daily flows — inputs are stable within a month, so 30 days sum to the monthly total.
 function tickContinuousDay(){
@@ -5201,6 +5201,7 @@ function pumpFlightArrivals(){
   try{ if($('modal') && !$('modal').classList.contains('hidden')) return; }catch(e){} // a modal is on screen — wait
   const rec=(state.activeFlights||[]).find(f=>f&&f.deferred&&absDay()>=f.arriveAbs);
   if(!rec) return;
+  if(!rec.ctx){ completeFlight(rec); return pumpFlightArrivals(); } // S1: a corrupt/re-hydrated record without a ctx — drop it, don't crash the arrival
   _flightResolving=true;
   completeFlight(rec);
   beginResolve(rec.ctx);
@@ -5228,8 +5229,8 @@ function proceedLaunch(m,v,sim,windowQuality,weatherPenalty,prebuilt){
   // time commitments (overhead, R&D, rivals, facilities all advance during the mission). Intentional
   // payoff of daily time. If the long cruise bankrupts the company, the gameOver modal is already up.
   const missionDays=Math.round(m.days||0);
-  const ctx={m,v,sim,windowQuality,flightExpense,routine,crewed,outcome,rehearsed:!!state.rehearsal, fam:activeFamily(),
-             crewId:crewed?state.assignedAstronaut:null, ab:crewed?astroBonus():{rel:0,payoutMult:1}}; // 1.2b: snapshot the crew + their bonus at launch (slot set), before it's freed for concurrency
+  const ctx={m,v,sim,windowQuality,flightExpense,routine,crewed,outcome,rehearsed:!!state.rehearsal, famId:(activeFamily()||{}).id||null,
+             crewId:crewed?state.assignedAstronaut:null, ab:crewed?astroBonus():{rel:0,payoutMult:1}}; // 1.2b/S1: snapshot crew + bonus at launch; store famId (not the object) so a mid-cruise save round-trips cleanly
   // P1 1.2a/1.2b: a long interplanetary cruise (crewed or not) becomes a live flight. The outcome is already
   // locked (resolved above at launch-time tech); it is APPLIED on arrival as the player runs the clock, via
   // pumpFlightArrivals() — instead of one fast-forward. Short flights stay fully synchronous (byte-identical).
@@ -5394,7 +5395,7 @@ function finalizeLaunch(ctx, ops){
   }
   if(crewed && (outcome.kind==='success'||outcome.kind==='partial')) applyCrewDose(m, ctx.crewId); // surviving crew take a radiation dose
   // #3: attribute this flight to the active vehicle family and accrue/dent its heritage
-  const fam=ctx.fam||activeFamily(); // 1.2a: the launched vehicle's family, snapshotted at launch (a deferred arrival must not credit whatever's on the bench now)
+  const fam=ctx.famId?familyById(ctx.famId):activeFamily(); // 1.2a/S1: resolve the launched family by id at finalize (save-safe — a deferred flight stores famId, not a detachable object ref, and finalize mutates the live family)
   if(fam){
     fam.flights=(fam.flights||0)+1;
     if(success){
@@ -6138,11 +6139,39 @@ function hideModal(){activeModal=null;_prodModalOpen=false;$('modal').classList.
 
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=40; // v40: #19 slice B — career progression (staff.xp accrues monthly ×morale ×dept-training, raising effSkill above hire-day base up to +0.15; dept.training level bought with capital; legacy staff default xp 0 via staffXp guard, effSkill==base at xp 0 so no balance migration). #19 slice C (succession + workforce planning) adds no persisted state — reconcileDeptLeads mutates existing dept.lead, gaps + the era-scaled unstaffed-department reliability penalty (0 in Pioneer) are derived — so it needs no bump. v39: #19 slice A — organizational departments (state.departments {deptId:{lead,training}}; legacy saves default via loadDefaults/defaultDepartments; membership is derived from hired staff, leads are balance-neutral when unset); v38: #6 research partnerships — bench-tested / flight-proven components (state.engineStockTested + state.partStockTested, the bench-tested subset of each yard; legacy saves default {}); a fitted bench-tested component adds +1.5% reliability (cap +6%, benchRelBonus), built at +60% cost / +50% time; v36: #7 sub-assemblies slice 2 — structures & habitats yard (state.partStock {"kind:sub":count}, e.g. "tank:steel"/"hab:closed"; legacy saves default {}); same cost-neutral cadence pattern as the Engine Yard; v35: #7 sub-assemblies — Engine Yard (state.engineStock {engId:count}; legacy saves default {}); v34: Time Granularity slice 4b — launch windows day-scheduled (window/committedWindow .abs moved from absMonth to absDay; migrateWindowsToDays ×30 on pre-v34 load + clears the regenerable windows cache); v33: Time Granularity slice 1 — day-iterating advance() funnel (state.day 0..29 + absDay(); legacy saves default day:0 via load defaults; whole-month advances stay bit-identical so no balance migration needed); v32: CE4(c) era-scaled failure stakes + bailout retune (state.loanInterest — permanent bridge-loan debt service; legacy saves default to 0 via load defaults + loanInterest() guard); v31: CE4(b) standing resupply obligations (per-facility supply/starvedMonths; legacy facilities default to fully provisioned via facilitySupply()); v30: CE3(c) lunar architecture fork (state.lunarArch, null=uncommitted; luna_landing reqResearch moved to per-arch gates); v29: CE3(a) company doctrine (state.doctrine, null=undeclared/neutral); v28: CE2(c) juggernaut capstone (state.standingProd/juggernautReached); v27: CE2(b) launch cadence (state.padMonthAbs/padMonthUsed) — load defaults seed all of these; v26: CE1 rival agents (state.rivalState), seedRivalState migrates old rivalFired
+const SAVE_VERSION=41; // v41: P1 persistent in-flight missions — state.activeFlights[] (deferred interplanetary flights carry a resolved-at-launch ctx applied on arrival; ctx stores famId + crewId, not object refs, so a mid-cruise save round-trips; legacy saves default [] via loadDefaults; rehydrateFlights() re-links ctx.m + restores _flightSeq on load). v40: #19 slice B — career progression (staff.xp accrues monthly ×morale ×dept-training, raising effSkill above hire-day base up to +0.15; dept.training level bought with capital; legacy staff default xp 0 via staffXp guard, effSkill==base at xp 0 so no balance migration). #19 slice C (succession + workforce planning) adds no persisted state — reconcileDeptLeads mutates existing dept.lead, gaps + the era-scaled unstaffed-department reliability penalty (0 in Pioneer) are derived — so it needs no bump. v39: #19 slice A — organizational departments (state.departments {deptId:{lead,training}}; legacy saves default via loadDefaults/defaultDepartments; membership is derived from hired staff, leads are balance-neutral when unset); v38: #6 research partnerships — bench-tested / flight-proven components (state.engineStockTested + state.partStockTested, the bench-tested subset of each yard; legacy saves default {}); a fitted bench-tested component adds +1.5% reliability (cap +6%, benchRelBonus), built at +60% cost / +50% time; v36: #7 sub-assemblies slice 2 — structures & habitats yard (state.partStock {"kind:sub":count}, e.g. "tank:steel"/"hab:closed"; legacy saves default {}); same cost-neutral cadence pattern as the Engine Yard; v35: #7 sub-assemblies — Engine Yard (state.engineStock {engId:count}; legacy saves default {}); v34: Time Granularity slice 4b — launch windows day-scheduled (window/committedWindow .abs moved from absMonth to absDay; migrateWindowsToDays ×30 on pre-v34 load + clears the regenerable windows cache); v33: Time Granularity slice 1 — day-iterating advance() funnel (state.day 0..29 + absDay(); legacy saves default day:0 via load defaults; whole-month advances stay bit-identical so no balance migration needed); v32: CE4(c) era-scaled failure stakes + bailout retune (state.loanInterest — permanent bridge-loan debt service; legacy saves default to 0 via load defaults + loanInterest() guard); v31: CE4(b) standing resupply obligations (per-facility supply/starvedMonths; legacy facilities default to fully provisioned via facilitySupply()); v30: CE3(c) lunar architecture fork (state.lunarArch, null=uncommitted; luna_landing reqResearch moved to per-arch gates); v29: CE3(a) company doctrine (state.doctrine, null=undeclared/neutral); v28: CE2(c) juggernaut capstone (state.standingProd/juggernautReached); v27: CE2(b) launch cadence (state.padMonthAbs/padMonthUsed) — load defaults seed all of these; v26: CE1 rival agents (state.rivalState), seedRivalState migrates old rivalFired
+function writeSave(){ localStorage.setItem(SAVE_KEY, JSON.stringify({v:SAVE_VERSION, ts:Date.now(), state:JSON.parse(JSON.stringify(state))})); }
+// S1: silent throttled autosave so "Continue last game" always resumes the most recent session.
+// Skips a transient mid-flight-resolution snapshot; forced on page close.
+let _lastAutosaveT=0, _gameStarted=false; const AUTOSAVE_MIN_MS=4000;
+function autosave(force){
+  try{
+    if(!_gameStarted) return; // S2: never autosave the boot placeholder before the player picks Continue/Open/New (would clobber the real save)
+    if(!state||!state.company||state.over) return;
+    if(_flightResolving && !force) return;
+    const now=Date.now();
+    if(!force && now-_lastAutosaveT<AUTOSAVE_MIN_MS) return;
+    _lastAutosaveT=now; writeSave();
+  }catch(e){}
+}
+try{ window.addEventListener('beforeunload', ()=>autosave(true)); }catch(e){}
+// S1: on load, re-link in-flight records to canonical mission defs, restore the flight-id counter, and
+// drop any corrupt/incomplete in-flight record so an arrival can't crash.
+function rehydrateFlights(){
+  if(!Array.isArray(state.activeFlights)){ state.activeFlights=[]; return; }
+  let maxSeq=0;
+  state.activeFlights=state.activeFlights.filter(rec=>{
+    if(!rec||!rec.deferred||!rec.ctx) return false;
+    if(rec.ctx.m && rec.ctx.m.id){ const cm=MISSIONS.find(x=>x.id===rec.ctx.m.id); if(cm) rec.ctx.m=cm; }
+    const n=parseInt(String(rec.id||'').replace(/\D/g,''),10); if(!isNaN(n)&&n>maxSeq) maxSeq=n;
+    return true;
+  });
+  if(_flightSeq<maxSeq) _flightSeq=maxSeq;
+}
 function saveGame(){
   try{
-    const payload={v:SAVE_VERSION, ts:Date.now(), state:JSON.parse(JSON.stringify(state))};
-    localStorage.setItem(SAVE_KEY, JSON.stringify(payload));
+    _gameStarted=true;
+    writeSave();
     log('info','Game saved.');
     render();
     showModal(`<h2>Game Saved</h2><p class="muted">${dateStr()} — ${state.company}</p>
@@ -6213,26 +6242,86 @@ function showRecap(){
   </div>`, true);
 }
 
-function loadGame(){
+function loadSaveFromText(raw, srcLabel){
   try{
-    const raw=localStorage.getItem(SAVE_KEY);
-    if(!raw){ showModal(`<h2>No Save Found</h2><p class="muted">No saved game in this browser.</p>
-      <button class="btn" onclick="hideModal()" style="margin-top:8px">OK</button>`); return; }
     const payload=JSON.parse(raw);
     const saved=payload.state||payload;
-    if(!saved.year||!saved.company){ throw new Error('Save data is corrupted.'); }
+    if(!saved.year||!saved.company){ throw new Error('Not a valid Orbital Ventures save (missing company/year).'); }
     migrateWindowsToDays(saved, payload.v); // 4b: month→day window abs
     const defaults=loadDefaults();
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
     reconcileResearch(); // close any prerequisite gaps opened by tech-tree changes
-    log('info','Game loaded.');
+    rehydrateFlights(); // S1: re-link in-flight records after load
+    _gameStarted=true;
+    log('info', srcLabel||'Game loaded.');
     render();
     showRecap(); // session bookend: where you left off
   }catch(e){
     showModal(`<h2>Load Failed</h2><p class="muted">${e.message}</p>
       <button class="btn" onclick="hideModal()" style="margin-top:8px">OK</button>`);
   }
+}
+function loadGame(){
+  const raw=localStorage.getItem(SAVE_KEY);
+  if(!raw){ showModal(`<h2>No Save Found</h2><p class="muted">No saved game in this browser.</p>
+    <button class="btn" onclick="hideModal()" style="margin-top:8px">OK</button>`); return; }
+  loadSaveFromText(raw, 'Game loaded.');
+}
+// S2: startup screen — the game ALWAYS asks on launch (Continue last game / Open a save file / New game).
+function savedGameMeta(){
+  try{ const raw=localStorage.getItem(SAVE_KEY); if(!raw) return null; const p=JSON.parse(raw); const s=p.state||p;
+    if(!s.year||!s.company) return null; return {company:s.company, ts:p.ts||0, year:s.year}; }catch(e){ return null; }
+}
+function showStartup(){
+  const meta=savedGameMeta();
+  const when=meta&&meta.ts?new Date(meta.ts).toLocaleString():'';
+  const cont = meta ? `<button class="btn launch" style="width:100%;margin-bottom:8px" onclick="startupContinue()">▸ Continue last game<br><span class="dim" style="font-size:11px">${meta.company} · year ${meta.year}${when?` · saved ${when}`:''}</span></button>` : '';
+  showModal(`<div style="text-align:center">
+    <h2 style="margin-bottom:2px">Orbital Ventures</h2>
+    <p class="muted" style="font-size:12px;margin:0 0 14px">Found a space agency and reach the planets before your rivals.</p>
+    ${cont}
+    <button class="btn ghost" style="width:100%;margin-bottom:8px" onclick="importSave()">📂 Open a save file…</button>
+    <button class="btn ghost" style="width:100%" onclick="startupNew()">✦ New game</button>
+    ${meta?'':'<p class="dim" style="font-size:11px;margin-top:12px">No saved game found in this browser yet.</p>'}
+  </div>`);
+}
+function startupContinue(){ if(autoLoad()){ _gameStarted=true; hideModal(); render(); showRecap(); } else { showStartup(); } }
+function startupNew(){
+  showModal(`<h2>New Game</h2>
+    <p class="muted" style="font-size:12px">Start a fresh company from 1942. Choose a difficulty (changeable later in Settings):</p>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button class="btn ghost" onclick="startupBegin('napkin')" style="flex:1">Napkin<br><span class="dim" style="font-size:11px">forgiving · ${fM(DIFFICULTY.napkin.startMoney)} start</span></button>
+      <button class="btn" onclick="startupBegin('engineer')" style="flex:1">Engineer<br><span class="dim" style="font-size:11px">realistic · ${fM(DIFFICULTY.engineer.startMoney)} start</span></button>
+      <button class="btn ghost" onclick="startupBegin('custom')" style="flex:1">Custom<br><span class="dim" style="font-size:11px">your rules · tune in Settings</span></button>
+    </div>
+    <button class="btn ghost" onclick="showStartup()" style="width:100%;margin-top:10px">← Back</button>`);
+}
+function startupBegin(diff){ hideModal(); newGame(diff); _gameStarted=true; render(); showInfrastructureModal(); }
+function exportSave(){
+  try{
+    const payload=JSON.stringify({v:SAVE_VERSION, ts:Date.now(), state:JSON.parse(JSON.stringify(state))});
+    const blob=new Blob([payload], {type:'application/json'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    const stamp=(state.company||'orbital').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');
+    a.href=url; a.download=`orbital-ventures-${stamp}-y${state.year||''}.json`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url), 1500);
+    log('info','Save exported to a file.');
+  }catch(e){ showModal(`<h2>Export Failed</h2><p class="muted">${e.message}</p><button class="btn" onclick="hideModal()" style="margin-top:8px">OK</button>`); }
+}
+function importSave(){
+  try{
+    const inp=document.createElement('input'); inp.type='file'; inp.accept='application/json,.json';
+    inp.onchange=()=>{ const file=inp.files&&inp.files[0]; if(!file) return;
+      const reader=new FileReader();
+      reader.onload=()=>loadSaveFromText(String(reader.result), 'Save loaded from file.');
+      reader.onerror=()=>showModal('<h2>Import Failed</h2><p class="muted">Could not read that file.</p><button class="btn" onclick="hideModal()" style="margin-top:8px">OK</button>');
+      reader.readAsText(file);
+    };
+    inp.click();
+  }catch(e){ showModal(`<h2>Import Failed</h2><p class="muted">${e.message}</p><button class="btn" onclick="hideModal()" style="margin-top:8px">OK</button>`); }
 }
 function confirmNew(){
   const hasSave=!!localStorage.getItem(SAVE_KEY);
@@ -6260,6 +6349,7 @@ function autoLoad(){
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
     reconcileResearch(); // close any prerequisite gaps opened by tech-tree changes
+    rehydrateFlights(); // S1: re-link in-flight records after load
     return true;
   }catch(e){ return false; }
 }
@@ -10833,9 +10923,11 @@ function renderSettings(){
     ${layerCard}
     <p class="muted" style="font-size:12px;margin:-4px 0 6px">The rocket equation is identical in every mode — difficulty only scales the economy, how forgiving hardware reliability is, and how much of the underlying math is exposed. Switching mid-game applies from the next action onward; starting capital only applies to a new game.</p>
     <div class="diffgrid">${cards}</div>
-    <div style="display:flex;gap:8px;margin-top:6px">
+    <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
       <button class="btn ghost" onclick="saveGame()">💾 Save</button>
       <button class="btn ghost" onclick="loadGame()">📂 Load</button>
+      <button class="btn ghost" onclick="exportSave()">⬇ Export file</button>
+      <button class="btn ghost" onclick="importSave()">⬆ Import file</button>
       <button class="btn ghost" onclick="confirmNew()">New Game</button>
     </div>`;
 }
@@ -14452,13 +14544,14 @@ function renderLog(){
     if(nav) c.onclick=()=>timelineGo(nav); box.appendChild(c); });
 }
 
-// Always start a fresh company on page load. A saved game is only restored when the
-// player explicitly clicks Load (loadGame()) — autoLoad() is kept for that path's reuse.
+// S2: establish a baseline state so the UI renders, then ALWAYS ask on launch how to begin —
+// Continue last game / Open a save file / New game (showStartup). The boot placeholder is never
+// autosaved (guarded by _gameStarted) so it can't clobber the real save if the tab is just closed.
 newGame();
 render();
 applyWide(); // restore the saved Wide-mode preference + sync the toolbar buttons
 applyTheme(currentTheme); // restore the saved theme variant (Mission Dark / Control Room Green / Apollo Beige)
-showInfrastructureModal(); // open the Production drill as the first viewable layer — Esc or Enter minimizes it
+showStartup(); // the startup screen — the Production drill (new game) or the recap (continue/open) opens after the player chooses
 </script>
 </body>
 </html>

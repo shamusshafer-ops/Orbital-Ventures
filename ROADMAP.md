@@ -1021,5 +1021,28 @@ and can be interleaved earlier if immersion payoff is wanted sooner. Sequence ch
   never clobbers a concurrent crew. `isCrewDeployed()` blocks double-booking in `assignAstronaut` + a 🚀 in-flight
   roster pill. Synchronous crewed flights byte-identical. Harness: crew 12/12 + regressions (17/17, 42/42, 3/3).
   Known edge: a deployed astronaut who quits/is poached mid-cruise resolves as a graceful no-op (harden in 1.2c).
-- **1.2c ⏳** — SAVE_VERSION 40→41 + re-hydration; Outliner day-by-day progress rows. (Until then a mid-cruise
-  save is not hardened.)
+- **1.2c (persistence ✅ / Outliner ⏳, 2026-07-04)** — SAVE_VERSION 40→41 + `rehydrateFlights()` shipped as part
+  of the Save-management & startup feature (session below): in-flight missions now survive save/reload (ctx stores
+  `famId`/`crewId` not object refs; `ctx.m` re-linked to canonical MISSIONS on load; `_flightSeq` restored; corrupt
+  in-flight records dropped). Remaining: Outliner day-by-day progress rows for live flights.
+
+## Session — Save management & startup screen (2026-07-04)
+
+Player request: "make sure the game always starts by asking to continue the last game, open a save, or start new."
+The boot previously called `newGame()` unconditionally (the localStorage save was only restored via a manual Load).
+Decisions (user): add real save files (export/import) + autosave.
+
+- **Startup screen (`showStartup`).** Boot now establishes a baseline state to render, then ALWAYS shows a
+  Continue last game / Open a save file / New game modal. Continue → `autoLoad` + recap; New → difficulty picker →
+  `newGame` + the Production intro; Open → file import. `savedGameMeta()` labels Continue with company/year/save-time.
+- **Autosave.** Silent throttled `autosave()` (≥4 s apart) on each turn (end of `advanceDays`) + a forced save on
+  `beforeunload`, so Continue always resumes the latest session. Skips mid-flight-resolution snapshots.
+- **Export / Import save files.** `exportSave()` downloads a `.json`; `importSave()` file-picks → `loadSaveFromText`
+  (shared with localStorage load). Wired into the startup screen + Settings (alongside Save/Load).
+- **Data-safety guard.** `_gameStarted` gates autosave so the boot placeholder game can NEVER overwrite the real
+  save if the tab is closed at the startup screen; import validates and shows a clean error on a bad file.
+- Forced SAVE_VERSION 40→41 (autosave now persists `activeFlights`) — completing 1.2c's persistence half.
+
+**Validation.** Whole-script syntax OK; new headless suites — save/load round-trip + autosave guards (ov-persist
+13/13), startup/import/meta + `_gameStarted` guard (ov-save 11/11); regressions crew 12/12, arrival 17/17, flight
+42/42, beginResolve 3/3.
