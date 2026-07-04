@@ -1143,3 +1143,16 @@ disabled Phaser flight setup) are unaffected — `seedP` defaults to 0, today's 
 **Validation.** `node --check` OK on every pass. Seed math verified numerically (default→0, full liftoff→0.12,
 proportional on skip). Motion feel and cut-continuity are inherently visual — manual browser pass, user-approved
 after one tuning round. Not headlessly fakeable and not faked.
+
+**Pop-out parity fix (same session, 2026-07-04).** The CC pop-out (`openCCPopout`, ~:12370) already showed the
+rocket rise/plume — it renders through the same `drawCape()` — but the zoom-chase drove only the normal view's
+`capeZoom`/`capePanX`/`capePanY`, and click-to-skip was only wired to the normal view's DOM node. Fixed in
+priority order (skip listener first, per user request): (1) a pointerdown/up skip handler on `#ccPopStage` with
+a <6px movement threshold so a pan-drag release doesn't falsely skip, attached/detached live each tick as the
+pop-out opens/closes (`syncPopSkip()`); (2) the camera drive now branches on `ccPopoutOpen` each tick, targeting
+`ccPop.{z,x,y}` with the pop-out's own fit/scale math (mirrors `ccPopLoop`'s blit) instead of the normal view's
+camera when the pop-out is active, snapshotting/restoring only whichever surface was actually driven — handles
+toggling the pop-out mid-liftoff without corrupting either camera. Headless: `node --check` OK; a stubbed-DOM
+run of the real `playLiftoff` confirmed both branches (pop-out open vs. closed) touch only their own camera
+object and restore correctly. Pop-out chase feel is visual, unverified by the agent — user directed commit
+without a manual pass this round.
