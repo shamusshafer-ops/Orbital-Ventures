@@ -5287,6 +5287,7 @@ function abortFlight(id){
   finalizeLaunch(rec.ctx, {outcomeOverride:'scrub', log:'mission recalled in cruise — crew and vehicle recovered; the objective is forfeit.'});
 }
 function proceedLaunch(m,v,sim,windowQuality,weatherPenalty,prebuilt){
+  _liftoffArmed=animEnabled; // arm the iso-view liftoff lead-in for this interactive launch (headless never arms)
   const tl=TEST_LEVELS[state.testLevel];
   state.flights++;
   state.lastFlightAbs=absMonth(); // economy tension: windfall events require recent activity
@@ -5320,6 +5321,7 @@ function proceedLaunch(m,v,sim,windowQuality,weatherPenalty,prebuilt){
     rec.marginSnapshot={ rel:(outcome&&outcome.rel!=null)?outcome.rel:null, tightDv:(sim&&sim.legs)?(()=>{let mn=Infinity;for(const l of sim.legs){if(l&&l.cap!=null&&l.dv!=null){const s=l.cap-l.dv;if(s<mn)mn=s;}}return isFinite(mn)?Math.round(mn):null;})():null }; // 1.4: cruise telemetry — reliability + tightest Δv margin, snapshotted at launch
     state.testLevel=0; state.rehearsal=false; state.depotUse=0; state.assembleOrbit=false;
     if(ctx.crewId) state.assignedAstronaut=null; // 1.2b: crew is committed to this flight — free the live slot so another concurrent mission can crew up
+    _liftoffArmed=false; // a deferred cruise resolves on arrival (turns later) — no liftoff lead-in when it lands
     log('note',`${m.name}: departed — arrival in ~${Math.round(missionDays/30)} mo (${missionDays} d).${ctx.crewId?` Crew of ${m.crew} aboard.`:''} The cruise plays out as you run the clock; the outcome lands on arrival.`);
     _flightResolving=false; render(); pumpFlightArrivals(); return; // release the launch lock; catch anything that came due during lead time
   }
@@ -5515,7 +5517,10 @@ function finalizeLaunch(ctx, ops){
            pitchJitter:(rnd()-0.5)*0.16, sep:state.stages.map(()=>(rnd()-0.5)*0.06),
            apogee:0.86+rnd()*0.28, bow:(rnd()-0.5)*0.9 } };
   const finish=()=>{ if(state.money<0){ gameOver(); } else { _missionPulse=success?'ok':(outcome.kind==='loss'||outcome.kind==='strand')?'bad':null; render(); if(pendingCelebration) pendingCelebration(); } _flightResolving=false; if(!state.over) pumpFlightArrivals(); }; // 1.2a: flight fully done — release the lock, then resolve the next arrival if any
-  if(animEnabled) playMission(spec, finish); else finish();
+  if(animEnabled){
+    if(_liftoffArmed){ _liftoffArmed=false; playLiftoff(spec, (seedP)=>playMission(spec, finish, seedP)); } // iso-view liftoff + zoom-chase, then the ascent overlay seeded at the handoff altitude
+    else playMission(spec, finish);
+  } else finish();
 }
 function autoAdvanceMission(){
   // nudge player toward the next available, uncompleted mission they can actually fly
@@ -6439,6 +6444,10 @@ function autoLoad(){
 
 /* ---------- flight animation (canvas) ---------- */
 let animEnabled=true, animState=null;
+// Liftoff lead-in (iso-view rocket rise + camera zoom-chase, handed off into playMission).
+// _liftoffArmed is set per interactive launch and consumed once at the ascent handoff; deferred
+// arrivals never arm it (they resolve turns later, when a different vehicle may sit on the pad).
+let _liftoffArmed=false, _liftoff=null, _liftoffRAF=0;
 const ANIM_SPEEDS=[{label:'½×  Slow',mult:0.5},{label:'1×  Normal',mult:1},{label:'2×  Fast',mult:2}];
 let animSpeedIdx=0;
 function toggleAnim(){ animEnabled=!animEnabled; const b=$('animToggle'); if(b) b.textContent='Animation: '+(animEnabled?'On':'Off'); }
@@ -7245,7 +7254,7 @@ function createGL2D(gl,textCtx,W,H){
 function flightHasReentry(s){ return !!(s && s.success && s.isOrbital && s.crewed); }
 // Shared flight setup — builds animState for either the Phaser host (CanvasTexture
 // 2D context) or the legacy WebGL/2D canvas. drawScene drives everything from t.
-function setupFlightState(spec, done, ctx, cv, viewCanvas){
+function setupFlightState(spec, done, ctx, cv, viewCanvas, seedP){
   // The Phaser path reuses ONE CanvasTexture 2D context across launches. Any residual
   // state from the previous flight (a leftover clip region, transform, alpha, or line
   // dash) would otherwise confine/blank the next flight's drawing — the "black square
@@ -7264,14 +7273,18 @@ function setupFlightState(spec, done, ctx, cv, viewCanvas){
   else totalDur=ascentDur+cruiseDur+reentryDur+1200;
   const stars=[]; for(let i=0;i<160;i++) stars.push({x:Math.random(),y:Math.random()*0.92,b:0.3+Math.random()*0.7,s:0.8+Math.random()*1.4,twinkle:Math.random()*6.28});
   const path=spec.isCislunar?buildLunarPath(cv.width,cv.height,spec.rng):null;
-  animState={spec,done,ctx,cv,viewCanvas:viewCanvas||cv,t0:performance.now(),ascentDur,cruiseDur,reentryDur,totalDur,stars,path,raf:0,trail:[],particles:[],debris:[],rePlasma:[],reSplash:[],shakeX:0,shakeY:0,lastT:0,virtT:0,prevWall:performance.now(),sfxSepFired:{},sfxBoomFired:false,sfxEnginePhase:null,recovering:!!spec.recovering,_splashed:false,_splashX:null,reRing:0};
+  // Optional seed: begin the ascent already this fraction of the way up (the altitude the pad-liftoff
+  // lead-in had reached at handoff), so the cut from the command-center scene reads as continuous rather
+  // than resetting the rocket to the ground. Defaults to 0 (today's ground-level start) for every other caller.
+  const seedT=clampA(seedP||0,0,0.85)*ascentDur;
+  animState={spec,done,ctx,cv,viewCanvas:viewCanvas||cv,t0:performance.now(),ascentDur,cruiseDur,reentryDur,totalDur,stars,path,raf:0,trail:[],particles:[],debris:[],rePlasma:[],reSplash:[],shakeX:0,shakeY:0,lastT:0,virtT:seedT,prevWall:performance.now(),sfxSepFired:{},sfxBoomFired:false,sfxEnginePhase:null,recovering:!!spec.recovering,_splashed:false,_splashX:null,reRing:0};
   sfxInit();
   const totalProp=spec.stages.reduce((a,s)=>a+s.prop,0)+(spec.transferProp||0);
   const engCount=spec.stages[0]?spec.stages[0].count||1:1;
   sfxStartEngine(engCount, totalProp);
   animState.sfxEnginePhase='ascent';
 }
-function playMission(spec, done){
+function playMission(spec, done, seedP){
   $('animTitle').textContent=spec.title+(spec.crewed?'  ·  crewed':'');
   $('animOverlay').classList.remove('hidden');
   // The Phaser-hosted FlightScene (graphics Slices 1–3) rendered the ascent richly but its
@@ -7292,7 +7305,7 @@ function playMission(spec, done){
     ctx=cv&&cv.getContext('2d');
   }
   if(!ctx){ if(done) done(); return; }
-  setupFlightState(spec, done, ctx, cv, cv);
+  setupFlightState(spec, done, ctx, cv, cv, seedP);
   animLoop();
 }
 function animLoop(){
@@ -10277,6 +10290,22 @@ function drawIsoPad(ctx,sx,sy,b,t,rival){
   ctx.strokeStyle='rgba(175,185,195,0.4)'; ctx.lineWidth=0.9;
   [tA,tB].forEach(tk=>{ ctx.beginPath(); ctx.moveTo(tk.x, tk.baseY-1); ctx.lineTo((tk.x+gx)/2, tk.baseY+1); ctx.lineTo(gx, sy-1); ctx.stroke(); });
   ctx.lineCap='butt';
+  // liftoff lead-in: during the transient sequence the rocket rises off the pad with a bright
+  // ground plume + exhaust column (reusing drawIsoSmoke). rise is driven by playLiftoff's clock.
+  const rise=_liftoff?_liftoff.rise:0, loInt=_liftoff?_liftoff.intensity:0;
+  if(_liftoff){
+    const baseX=sx-ex*0.35, baseY=sy+2, rocketY=baseY-rise;
+    ctx.save();
+    // billowing ground cloud spreading from the pad base
+    for(let i=0;i<5;i++){ drawIsoSmoke(ctx, baseX+(i-2)*11, baseY, t, i*1.7+0.3, 1.7+loInt*1.3, '244,238,228', 0.5*loInt); }
+    // exhaust column trailing up from the pad to the rising rocket
+    for(let i=0;i<4;i++){ const p=i/4; drawIsoSmoke(ctx, baseX+Math.sin(t*3+i)*3, baseY-rise*p, t, 4+i, 1.0+loInt*0.8, '228,222,212', 0.4*loInt*(1-p*0.6)); }
+    // engine flame just below the rising rocket's tail
+    if(rise>2){ const fy=rocketY+8, g=ctx.createRadialGradient(baseX,fy,1,baseX,fy,14);
+      g.addColorStop(0,`rgba(255,242,205,${0.9*loInt})`); g.addColorStop(0.4,`rgba(255,150,60,${0.7*loInt})`); g.addColorStop(1,'rgba(255,90,30,0)');
+      ctx.fillStyle=g; ctx.beginPath(); ctx.ellipse(baseX,fy+4,5,11,0,0,7); ctx.fill(); }
+    ctx.restore();
+  }
   // the player's current vehicle, standing upright on the pad
   let spec=null; try{ const m=curMission(); spec={ stages: state.stages.map(s=>({prop:s.prop,count:s.count,dia:s.dia})), boosters: boosterSpec(), transferProp:(m&&m.profile&&m.modules&&m.modules.includes('transfer'))?state.transfer.prop:0, crewed:!!(m&&m.crew>0) }; }catch(e){}
   if(spec){ let shape=null; try{ shape=buildVehicleShape(spec); }catch(e){}
@@ -10288,7 +10317,7 @@ function drawIsoPad(ctx,sx,sy,b,t,rival){
       if(shape.totalH*scale>maxDrawH) scale=maxDrawH/shape.totalH; // a giant booster towers but won't overflow the scene
       if(shape.maxW*scale>maxDrawW) scale=maxDrawW/shape.maxW;     // keep it on the pad footprint
       if(shape.totalH*scale<minDrawH) scale=minDrawH/shape.totalH; // a sounding rocket stays a readable speck
-      ctx.save(); ctx.translate(sx-ex*0.35, sy+2); drawVehicle(ctx, shape.segs, shape.nose, scale, 0, 0); ctx.restore(); } }
+      ctx.save(); ctx.translate(sx-ex*0.35, sy+2-rise); drawVehicle(ctx, shape.segs, shape.nose, scale, 0, 0); ctx.restore(); } }
 }
 function drawIsoDishes(ctx,sx,sy,b,t){
   isoBox(ctx,sx,sy,b.fw,b.fd,b.h,'#1f2933');
@@ -10635,6 +10664,56 @@ function initCapeZoom(){
   wrap.addEventListener('pointerup',()=>{ drag=false; });
   wrap.addEventListener('click',e=>{ if(moved>6){ e.stopPropagation(); e.preventDefault(); moved=0; } }, true); // swallow click-through after a drag
   wrap.addEventListener('dblclick',()=>{ capeZoom=1; capePanX=0; capePanY=0; applyCapeZoom(); });
+}
+// Transient liftoff lead-in on the iso Cape view: the pad rocket rises with a plume while the
+// camera zooms in and pans to chase it, then we hand off into the unchanged playMission overlay.
+// Click anywhere on the scene to skip straight to the ascent. The player's manual capeZoom/pan is
+// saved on entry and restored on exit so their camera control is never left clobbered.
+const LIFTOFF_DUR=2400; // ms — a short transition, not a cutscene
+const LIFTOFF_SEED_P=0.12; // at full lift-off, hand the ascent renderer this fraction of the climb already done (see finishSeq)
+function playLiftoff(spec, next){
+  if(!animEnabled){ next(); return; }
+  if(state.tab!=='command'){ state.tab='command'; render(); } // auto-switch so the liftoff is actually on screen
+  let pad=null; try{ pad=isoLayout().pad; }catch(e){}
+  const wrap=(typeof document!=='undefined')?document.getElementById('ccSceneWrap'):null; // Phaser path only (fallback has no zoom wrapper)
+  const clickTarget=wrap||(typeof document!=='undefined'?document.getElementById('ccCenter'):null);
+  if(!pad){ next(); return; } // no iso scene to animate on — go straight to the ascent
+  const sv={z:capeZoom,px:capePanX,py:capePanY}; // preserve the player's manual camera
+  const rx=pad.sx-ISO_TW*0.35, ry0=pad.sy+2;
+  const RISE=Math.max(150, ry0*0.85); // rise far enough that the rocket clears most of the frame
+  _liftoff={start:ccNow(), dur:LIFTOFF_DUR, rise:0, intensity:0};
+  let done=false;
+  const finishSeq=()=>{
+    if(done) return; done=true;
+    // Seed the ascent at the altitude the pad rise had actually reached (eased progress, same curve as the
+    // rise below) so a natural handoff OR a mid-animation skip both cut in with the rocket already airborne.
+    const u=_liftoff?Math.min(1,(ccNow()-_liftoff.start)/_liftoff.dur):0;
+    const seedP=(u*u)*LIFTOFF_SEED_P;
+    if(_liftoffRAF){ cancelAnimationFrame(_liftoffRAF); _liftoffRAF=0; }
+    _liftoff=null;
+    capeZoom=sv.z; capePanX=sv.px; capePanY=sv.py; applyCapeZoom(); // restore the manual camera (hidden under the ascent overlay)
+    if(clickTarget) clickTarget.removeEventListener('click', onSkip, true);
+    next(seedP);
+  };
+  const onSkip=(e)=>{ if(e){ e.stopPropagation(); e.preventDefault(); } finishSeq(); };
+  if(clickTarget) clickTarget.addEventListener('click', onSkip, true);
+  const step=()=>{
+    if(done) return;
+    const u=Math.min(1,(ccNow()-_liftoff.start)/_liftoff.dur);
+    const e=u*u;                                    // easeInQuad — slow start, then accelerating (a rocket lifts from near-zero velocity)
+    _liftoff.rise=e*RISE; _liftoff.intensity=Math.min(1,u*3);
+    if(wrap){ const r=wrap.getBoundingClientRect();
+      if(r.width>0&&r.height>0){
+        const Z=1+e*1.15;                            // zoom 1 → ~2.15, ramping into the chase on the same accelerating curve
+        const fx=rx/CAPE_W, fy=(ry0-_liftoff.rise)/CAPE_H; // rocket's current fraction of the canvas
+        capeZoom=Z; capePanX=r.width*(0.5-fx*Z); capePanY=r.height*(0.42-fy*Z); // keep the rocket centred-ish as it climbs
+        applyCapeZoom();
+      }
+    }
+    if(u>=1){ finishSeq(); return; }
+    _liftoffRAF=requestAnimationFrame(step);
+  };
+  _liftoffRAF=requestAnimationFrame(step);
 }
 function pauseCapeGame(){ if(capeGame){ try{ if(capeGame.scene.isActive('cape')) capeGame.scene.pause('cape'); }catch(e){} } }
 function resumeCapeGame(){ if(capeGame){ try{ capeGame.scene.resume('cape'); }catch(e){} } }

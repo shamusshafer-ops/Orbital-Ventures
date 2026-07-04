@@ -1104,3 +1104,25 @@ assertions for subjective layout quality — that was a manual visual pass, user
 launch-pad liftoff animation (rocket leaves the pad on the isometric view) with a camera zoom-chase, then
 handoff into the existing full-screen ascent/flight overlay; auto-switches to the Command tab if Launch is
 triggered from the mission panel.
+
+### Slice B — launch-pad liftoff, zoom-chase, ascent handoff ✅ (2026-07-04)
+
+New `playLiftoff(spec, next)` (~2.4s, `LIFTOFF_DUR`): on launch (animated + non-deferred flights only), the pad
+rocket rises (`drawIsoPad` offsets the sprite + draws a plume via the existing smoke emitter) while the camera
+zooms to ~2.15× and pans to track it; auto-switches to the Command tab first if Launch was triggered from the
+mission panel; click-to-skip cuts straight through. Manual `capeZoom`/pan state is snapshotted and restored
+after, so the player's view isn't left stuck zoomed in. Hands off into the existing `playMission`/`#animOverlay`
+ascent renderer completely unchanged. `animEnabled=false` (headless) path is fully bypassed — byte-identical.
+
+**Playtest fixes (same session):** the rise/camera motion was on an ease-in-out curve (reads as fast-then-slow —
+wrong for a rocket); switched to `easeInQuad` (near-zero initial velocity, then accelerating; chosen over cubic,
+which stalls too long in a 2.4s window). The ascent scene previously always opened at `virtT=0` (rocket on the
+pad, tower attached) — added an optional `seedP` threaded `playLiftoff→next(seedP)→playMission→setupFlightState`,
+computed from the eased liftoff progress at handoff (~0.12 of ascent duration on a natural completion,
+proportionally less on an early skip) via new `LIFTOFF_SEED_P=0.12` — so the cut lands mid-climb (tower
+retracted, ground receding) instead of resetting to the pad. Default/no-seed callers (deferred-arrival path,
+disabled Phaser flight setup) are unaffected — `seedP` defaults to 0, today's exact behavior.
+
+**Validation.** `node --check` OK on every pass. Seed math verified numerically (default→0, full liftoff→0.12,
+proportional on skip). Motion feel and cut-continuity are inherently visual — manual browser pass, user-approved
+after one tuning round. Not headlessly fakeable and not faked.
