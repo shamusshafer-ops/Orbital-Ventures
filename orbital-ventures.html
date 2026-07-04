@@ -9535,6 +9535,14 @@ function outlinerItems(){
   // committed launch window
   if(state.committedWindow){ const m=MISSIONS.find(x=>x.id===state.committedWindow.missionId);
     push('☄', 'Window: '+(m?m.name:'mission'), state.committedWindow.abs-nowD, ()=>setTab('map'), 'var(--readout)'); }
+  // P1 1.2c: live in-flight missions — day-by-day cruise progress (% climbs, ETA counts down); the
+  // outcome lands on arrival. Being outliner items, arrivals also become "next event" stop points.
+  (state.activeFlights||[]).forEach(fl=>{ if(!fl||!fl.deferred) return;
+    const eta=(fl.arriveAbs||0)-nowD;
+    const total=(fl.arriveAbs||0)-(fl.launchAbs||0);
+    const pct=total>0?Math.min(100,Math.max(0,Math.round((nowD-(fl.launchAbs||0))/total*100))):0;
+    const crewTxt=fl.crew>0?` · crew ${fl.crew}`:'';
+    push('🚀', `${fl.name||'Mission'} en route${crewTxt} · ${pct}%`, eta, ()=>setTab('map'), eta<=30?'var(--warn)':'var(--ignite)'); });
   // expiring passive contracts (only when near)
   (state.passiveContracts||[]).forEach(cn=>{ const d=PASSIVE_CONTRACT_DEFS.find(x=>x.id===cn.id);
     if(cn.monthsLeft<=4) push('📄', (d?d.name:cn.id)+' expires', cn.monthsLeft*30, ()=>setTab('missions'), cn.monthsLeft<=2?'var(--warn)':null); });

@@ -1021,10 +1021,13 @@ and can be interleaved earlier if immersion payoff is wanted sooner. Sequence ch
   never clobbers a concurrent crew. `isCrewDeployed()` blocks double-booking in `assignAstronaut` + a 🚀 in-flight
   roster pill. Synchronous crewed flights byte-identical. Harness: crew 12/12 + regressions (17/17, 42/42, 3/3).
   Known edge: a deployed astronaut who quits/is poached mid-cruise resolves as a graceful no-op (harden in 1.2c).
-- **1.2c (persistence ✅ / Outliner ⏳, 2026-07-04)** — SAVE_VERSION 40→41 + `rehydrateFlights()` shipped as part
-  of the Save-management & startup feature (session below): in-flight missions now survive save/reload (ctx stores
-  `famId`/`crewId` not object refs; `ctx.m` re-linked to canonical MISSIONS on load; `_flightSeq` restored; corrupt
-  in-flight records dropped). Remaining: Outliner day-by-day progress rows for live flights.
+- **1.2c ✅ (2026-07-04)** — Persistence: SAVE_VERSION 40→41 + `rehydrateFlights()` (shipped with the Save-management
+  & startup feature, session below): in-flight missions survive save/reload (ctx stores `famId`/`crewId` not object
+  refs; `ctx.m` re-linked to canonical MISSIONS on load; `_flightSeq` restored; corrupt in-flight records dropped).
+  Outliner: live flights now render in the ◈ In flight panel with a climbing progress % + counting-down ETA
+  (`outlinerItems()` pushes a 🚀 row per deferred flight, warn-colored inside 30 d); because they're outliner items,
+  `runToNextEvent()` (⏭ next event) now stops at flight arrivals. Harness ov-outliner 9/9 (row math, crew tag,
+  non-deferred skip, ETA sort). **Slice 1.2 complete.** Next: 1.4 polish (cruise telemetry panel + abort/redirect).
 
 ## Session — Save management & startup screen (2026-07-04)
 
