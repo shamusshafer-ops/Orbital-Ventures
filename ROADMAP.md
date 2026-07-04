@@ -1027,7 +1027,14 @@ and can be interleaved earlier if immersion payoff is wanted sooner. Sequence ch
   Outliner: live flights now render in the ◈ In flight panel with a climbing progress % + counting-down ETA
   (`outlinerItems()` pushes a 🚀 row per deferred flight, warn-colored inside 30 d); because they're outliner items,
   `runToNextEvent()` (⏭ next event) now stops at flight arrivals. Harness ov-outliner 9/9 (row math, crew tag,
-  non-deferred skip, ETA sort). **Slice 1.2 complete.** Next: 1.4 polish (cruise telemetry panel + abort/redirect).
+  non-deferred skip, ETA sort). **Slice 1.2 complete.**
+- **1.4 ✅ (2026-07-04)** — Polish. `rec.marginSnapshot` populated at launch (reliability = `outcome.rel`; tightest
+  Δv margin = min `cap−dv` over sim legs). Cruise-telemetry modal (`showFlightsModal`/`flightsPanelHTML`): per-flight
+  progress bar, ETA, reliability, Δv margin; opened from the Outliner 🚀 row. Abort verb (`confirmAbortFlight`/
+  `abortFlight`) reuses the `scrub` outcome — crew + vehicle recovered, objective forfeit, costs sunk, small rep dent,
+  no family/heritage hit; the freed astronaut becomes assignable again. Redirect (destination change mid-cruise)
+  deliberately deferred — needs trajectory rework. Harness ov-telemetry 14/14. **P1 (persistent in-flight missions)
+  complete.** Next initiative item: **P2 — living logistics** (builds on this flight-entity model).
 
 ## Session — Save management & startup screen (2026-07-04)
 

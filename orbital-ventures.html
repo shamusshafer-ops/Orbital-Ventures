@@ -5206,6 +5206,45 @@ function pumpFlightArrivals(){
   completeFlight(rec);
   beginResolve(rec.ctx);
 }
+// P1 1.4: cruise telemetry panel — a live read-out of every mission in flight, with an abort verb.
+function flightsPanelHTML(){
+  const list=(state.activeFlights||[]).filter(f=>f&&f.deferred).sort((a,b)=>(a.arriveAbs||0)-(b.arriveAbs||0));
+  if(!list.length) return '<p class="muted" style="font-size:13px">No missions in flight. Long interplanetary cruises appear here while they travel.</p>';
+  const now=absDay();
+  return list.map(fl=>{
+    const eta=(fl.arriveAbs||0)-now, total=(fl.arriveAbs||0)-(fl.launchAbs||0);
+    const pct=total>0?Math.min(100,Math.max(0,Math.round((now-(fl.launchAbs||0))/total*100))):0;
+    const ms=fl.marginSnapshot||{};
+    const relTxt=ms.rel!=null?`${Math.round(ms.rel*100)}%`:'—';
+    const dvTxt=ms.tightDv!=null?`${ms.tightDv} m/s`:'—';
+    return `<div class="card" style="margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <b style="font-size:14px">🚀 ${fl.name||'Mission'}</b>
+        <span class="pill">${fl.crew>0?`crew ${fl.crew}`:'uncrewed'}</span>
+      </div>
+      <div class="dim" style="font-size:12px;margin:5px 0">Progress ${pct}% · arrival in ${outlinerEtaText(eta)} · reliability ${relTxt} · tightest Δv margin ${dvTxt}</div>
+      <div style="height:6px;background:var(--panel2);border-radius:3px;overflow:hidden;margin:5px 0"><div style="height:100%;width:${pct}%;background:var(--ignite)"></div></div>
+      <button class="btn ghost" style="font-size:12px;margin-top:2px" onclick="confirmAbortFlight('${fl.id}')">⦻ Recall / abort mission</button>
+    </div>`;
+  }).join('');
+}
+function showFlightsModal(){ showModal(`<h2>🛰 Missions in flight</h2>${flightsPanelHTML()}<div style="text-align:right;margin-top:10px"><button class="btn ghost" onclick="hideModal()">Close</button></div>`, true); }
+function confirmAbortFlight(id){
+  const rec=(state.activeFlights||[]).find(f=>f&&f.id===id); if(!rec) return;
+  showModal(`<h2>Recall ${rec.name||'the mission'}?</h2>
+    <p class="muted" style="font-size:13px">Abort the mission in cruise. The ${rec.crew>0?'crew and vehicle are':'vehicle is'} recovered safely, but the objective is forfeit and the flight's costs are sunk — a small reputation dent applies.</p>
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button class="btn" onclick="abortFlight('${id}')" style="flex:1">Recall the mission</button>
+      <button class="btn ghost" onclick="showFlightsModal()" style="flex:1">Keep flying</button>
+    </div>`);
+}
+function abortFlight(id){
+  const rec=(state.activeFlights||[]).find(f=>f&&f.id===id); if(!rec||!rec.ctx){ hideModal(); return; }
+  hideModal();
+  completeFlight(rec);
+  _flightResolving=true; // hold the pump; finalize's finish() releases it and resolves the next arrival
+  finalizeLaunch(rec.ctx, {outcomeOverride:'scrub', log:'mission recalled in cruise — crew and vehicle recovered; the objective is forfeit.'});
+}
 function proceedLaunch(m,v,sim,windowQuality,weatherPenalty,prebuilt){
   const tl=TEST_LEVELS[state.testLevel];
   state.flights++;
@@ -5237,6 +5276,7 @@ function proceedLaunch(m,v,sim,windowQuality,weatherPenalty,prebuilt){
   // One-flight bench settings are consumed here at launch, since finalize (which normally resets them) is deferred.
   if(missionDays>=DEFER_CRUISE_DAYS){
     const rec=registerFlight(m,crewed,missionDays); rec.deferred=true; rec.ctx=ctx; rec.crewId=ctx.crewId||null;
+    rec.marginSnapshot={ rel:(outcome&&outcome.rel!=null)?outcome.rel:null, tightDv:(sim&&sim.legs)?(()=>{let mn=Infinity;for(const l of sim.legs){if(l&&l.cap!=null&&l.dv!=null){const s=l.cap-l.dv;if(s<mn)mn=s;}}return isFinite(mn)?Math.round(mn):null;})():null }; // 1.4: cruise telemetry — reliability + tightest Δv margin, snapshotted at launch
     state.testLevel=0; state.rehearsal=false; state.depotUse=0; state.assembleOrbit=false;
     if(ctx.crewId) state.assignedAstronaut=null; // 1.2b: crew is committed to this flight — free the live slot so another concurrent mission can crew up
     log('note',`${m.name}: departed — arrival in ~${Math.round(missionDays/30)} mo (${missionDays} d).${ctx.crewId?` Crew of ${m.crew} aboard.`:''} The cruise plays out as you run the clock; the outcome lands on arrival.`);
@@ -9542,7 +9582,7 @@ function outlinerItems(){
     const total=(fl.arriveAbs||0)-(fl.launchAbs||0);
     const pct=total>0?Math.min(100,Math.max(0,Math.round((nowD-(fl.launchAbs||0))/total*100))):0;
     const crewTxt=fl.crew>0?` · crew ${fl.crew}`:'';
-    push('🚀', `${fl.name||'Mission'} en route${crewTxt} · ${pct}%`, eta, ()=>setTab('map'), eta<=30?'var(--warn)':'var(--ignite)'); });
+    push('🚀', `${fl.name||'Mission'} en route${crewTxt} · ${pct}%`, eta, ()=>{ try{ showFlightsModal(); }catch(e){ setTab('map'); } }, eta<=30?'var(--warn)':'var(--ignite)'); });
   // expiring passive contracts (only when near)
   (state.passiveContracts||[]).forEach(cn=>{ const d=PASSIVE_CONTRACT_DEFS.find(x=>x.id===cn.id);
     if(cn.monthsLeft<=4) push('📄', (d?d.name:cn.id)+' expires', cn.monthsLeft*30, ()=>setTab('missions'), cn.monthsLeft<=2?'var(--warn)':null); });
