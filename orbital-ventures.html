@@ -4761,18 +4761,20 @@ function deepCallFlag(outcome, sim){
   return worst;
 }
 function reserveKindWord(key){ return key==='life_support' ? 'consumables and power' : 'propellant'; }
-function loseAssignedCrew(){
-  if(!state.assignedAstronaut) return;
-  const p=personById(state.assignedAstronaut);
-  state.staff=(state.staff||[]).filter(s=>s.id!==state.assignedAstronaut);
+function loseAssignedCrew(crewId){
+  crewId = crewId || state.assignedAstronaut; // 1.2b: an arriving deferred flight passes its own snapshotted crew
+  if(!crewId) return;
+  const p=personById(crewId);
+  state.staff=(state.staff||[]).filter(s=>s.id!==crewId);
   if(p) log('bad',`Astronaut ${p.name} was lost with the vehicle.`);
-  state.assignedAstronaut=null;
+  if(state.assignedAstronaut===crewId) state.assignedAstronaut=null; // only clear the live slot if it's this crew (don't clobber a concurrent flight)
 }
 // the assigned astronaut accumulates radiation dose across their career; reaching the
 // limit forces retirement (deep, long, unshielded missions cost the most).
-function applyCrewDose(m){
-  if(!(m && m.crew>0) || !state.assignedAstronaut) return;
-  const sr=staffRecord(state.assignedAstronaut); if(!sr) return;
+function applyCrewDose(m, crewId){
+  crewId = crewId || state.assignedAstronaut; // 1.2b: deferred arrival supplies the crew that actually flew
+  if(!(m && m.crew>0) || !crewId) return;
+  const sr=staffRecord(crewId); if(!sr) return;
   const days=Math.max(0,(m.days||0));
   const ambient=radEnvironment(m)*days/DOSE_EXPO_DIVISOR;
   const reactor=powerRad(m)*days*REACTOR_DOSE_K; // proximity dose from the onboard reactor/RTG
@@ -5177,6 +5179,7 @@ function completeFlight(rec){
   const i=state.activeFlights.indexOf(rec);
   if(i>=0) state.activeFlights.splice(i,1);
 }
+function isCrewDeployed(id){ return !!id && (state.activeFlights||[]).some(f=>f&&f.crewId===id); } // 1.2b: astronaut is aboard an in-flight deferred mission
 // P1 1.2a: deferred-arrival plumbing. A long uncrewed cruise resolves on ARRIVAL, not at launch.
 const DEFER_CRUISE_DAYS=60; // ≥ this many cruise days ⇒ the flight goes "live" (interplanetary); shorter stays synchronous
 let _flightResolving=false;  // true while a launch OR an arrival resolution is mid-flight — blocks the pump from stacking modals
@@ -5225,16 +5228,17 @@ function proceedLaunch(m,v,sim,windowQuality,weatherPenalty,prebuilt){
   // time commitments (overhead, R&D, rivals, facilities all advance during the mission). Intentional
   // payoff of daily time. If the long cruise bankrupts the company, the gameOver modal is already up.
   const missionDays=Math.round(m.days||0);
-  const ctx={m,v,sim,windowQuality,flightExpense,routine,crewed,outcome,rehearsed:!!state.rehearsal, fam:activeFamily()};
-  // P1 1.2a: a long UNCREWED interplanetary cruise becomes a live flight. The outcome is already locked
-  // (resolved above at launch-time tech); it is APPLIED on arrival as the player runs the clock, via
-  // pumpFlightArrivals() — instead of one fast-forward. Short flights and ALL crewed flights stay fully
-  // synchronous (byte-identical; crewed deferral + crew-slot handling land in 1.2b). One-flight bench
-  // settings are consumed here at launch, since finalize (which normally resets them) is deferred.
-  if(missionDays>=DEFER_CRUISE_DAYS && !crewed){
-    const rec=registerFlight(m,crewed,missionDays); rec.deferred=true; rec.ctx=ctx;
+  const ctx={m,v,sim,windowQuality,flightExpense,routine,crewed,outcome,rehearsed:!!state.rehearsal, fam:activeFamily(),
+             crewId:crewed?state.assignedAstronaut:null, ab:crewed?astroBonus():{rel:0,payoutMult:1}}; // 1.2b: snapshot the crew + their bonus at launch (slot set), before it's freed for concurrency
+  // P1 1.2a/1.2b: a long interplanetary cruise (crewed or not) becomes a live flight. The outcome is already
+  // locked (resolved above at launch-time tech); it is APPLIED on arrival as the player runs the clock, via
+  // pumpFlightArrivals() — instead of one fast-forward. Short flights stay fully synchronous (byte-identical).
+  // One-flight bench settings are consumed here at launch, since finalize (which normally resets them) is deferred.
+  if(missionDays>=DEFER_CRUISE_DAYS){
+    const rec=registerFlight(m,crewed,missionDays); rec.deferred=true; rec.ctx=ctx; rec.crewId=ctx.crewId||null;
     state.testLevel=0; state.rehearsal=false; state.depotUse=0; state.assembleOrbit=false;
-    log('note',`${m.name}: departed — arrival in ~${Math.round(missionDays/30)} mo (${missionDays} d). The cruise plays out as you run the clock; the outcome lands on arrival.`);
+    if(ctx.crewId) state.assignedAstronaut=null; // 1.2b: crew is committed to this flight — free the live slot so another concurrent mission can crew up
+    log('note',`${m.name}: departed — arrival in ~${Math.round(missionDays/30)} mo (${missionDays} d).${ctx.crewId?` Crew of ${m.crew} aboard.`:''} The cruise plays out as you run the clock; the outcome lands on arrival.`);
     _flightResolving=false; render(); pumpFlightArrivals(); return; // release the launch lock; catch anything that came due during lead time
   }
   // synchronous path — today's behavior, provably byte-identical
@@ -5271,13 +5275,13 @@ function finalizeLaunch(ctx, ops){
   if(ops.outcomeOverride && ops.outcomeOverride!==outcome.kind)
     outcome=Object.assign({},outcome,{kind:ops.outcomeOverride, story:(ops.story||ops.log||outcome.story)});
   // #20 slice 3: a strand becomes a rescue decision — the crew is alive but can't get home
-  if(outcome.kind==='strand' && crewed && state.assignedAstronaut && animEnabled && !ops.rescueResolved){
+  if(outcome.kind==='strand' && crewed && ctx.crewId && animEnabled && !ops.rescueResolved){
     _pendingRescue={ctx, ops, outcome}; showRescueModal(ctx, outcome); return;
   }
   if(ops.log) log(/strand|loss|abort/.test(ops.outcomeOverride||'')?'bad':'note', `${m.name}: ${ops.log}`);
   const opsPayoutMult=(ops.payoutMult==null?1:ops.payoutMult);
   const opsRep=ops.repDelta||0;
-  const ab=crewed?astroBonus():{rel:0,payoutMult:1};
+  const ab=ctx.ab||(crewed?astroBonus():{rel:0,payoutMult:1}); // 1.2b: astronaut bonus snapshotted at launch (deferred crewed flights free the live slot)
   let flightRevenue=0;
   const success=outcome.kind==='success';
   const rel=outcome.rel;
@@ -5361,7 +5365,7 @@ function finalizeLaunch(ctx, ops){
     personnelMissionEvent(false);
     const rep=Math.min(state.rep,40); state.rep-=rep;
     addSupport(SUPPORT_DELTA.strand); // #8: a crew stranded in deep space is a national shock
-    loseAssignedCrew();
+    loseAssignedCrew(ctx.crewId);
     advance(6); // grounding + investigation
     log('bad',`${m.name}: LOST IN DEEP SPACE — ${outcome.story} A long inquiry follows, −${rep} rep.`);
     applyEraStakes('loss of the crew'); // CE4(c): era-scaled compounding setback
@@ -5376,7 +5380,7 @@ function finalizeLaunch(ctx, ops){
     if(crewed){
       const rep=Math.min(state.rep,40); state.rep-=rep;
       addSupport(SUPPORT_DELTA.lossCrewed); // #8: losing a crew is the worst political blow
-      loseAssignedCrew();
+      loseAssignedCrew(ctx.crewId);
       advance(6); // grounding + investigation
       state.crewLost=(state.crewLost||0)+m.crew; // chronicle: the price paid
       log('bad',`${m.name}: CATASTROPHE. The ${SUBSYS_LABEL[outcome.subsystem].toLowerCase()} failed — ${outcome.story} Vehicle lost with all ${m.crew} aboard. Six-month stand-down, −${rep} rep. Fit a launch-escape system before flying crew again.`);
@@ -5388,7 +5392,7 @@ function finalizeLaunch(ctx, ops){
       if(m.profile) applyEraStakes('loss of a flagship mission'); // CE4(c): a deep-space robotic flagship is a real setback late
     }
   }
-  if(crewed && (outcome.kind==='success'||outcome.kind==='partial')) applyCrewDose(m); // surviving crew take a radiation dose
+  if(crewed && (outcome.kind==='success'||outcome.kind==='partial')) applyCrewDose(m, ctx.crewId); // surviving crew take a radiation dose
   // #3: attribute this flight to the active vehicle family and accrue/dent its heritage
   const fam=ctx.fam||activeFamily(); // 1.2a: the launched vehicle's family, snapshotted at launch (a deferred arrival must not credit whatever's on the bench now)
   if(fam){
@@ -5986,6 +5990,7 @@ function commendPersonnel(id){
 
 function assignAstronaut(id){
   if(!isHired(id)) return;
+  if(isCrewDeployed(id)){ const dp=personById(id); log('note',`${dp?dp.name:'That astronaut'} is on a mission — they can be assigned again once the flight returns.`); return; } // 1.2b: no double-booking a deployed astronaut
   state.assignedAstronaut=(state.assignedAstronaut===id)?null:id;
   const p=personById(id);
   log('note', state.assignedAstronaut
@@ -12479,6 +12484,7 @@ function renderPersonnelCard(p, sr){
         <span class="pill" style="margin-left:4px;color:var(--ignite);border-color:#5a4419" title="${traitOf(p.id).desc}">${traitOf(p.id).name}</span>
         ${isDeptLead(p.id)?'<span class="pill" style="margin-left:4px;color:var(--readout);border-color:#5a4419" title="Department lead — steers this department\'s output">★ lead</span>':''}
         ${isAstro&&assigned?'<span class="pill active" style="margin-left:4px">assigned</span>':''}
+        ${isAstro&&isCrewDeployed(p.id)?'<span class="pill" style="margin-left:4px;color:var(--readout);border-color:#5a4419">🚀 in flight</span>':''}
       </div>
       <span style="font-family:var(--mono);font-size:12px;color:var(--muted)">${p.salary.toFixed(2)}M/mo</span>
     </div>

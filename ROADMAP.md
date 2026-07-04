@@ -1014,5 +1014,12 @@ and can be interleaved earlier if immersion payoff is wanted sooner. Sequence ch
   deferred arrival can't misattribute heritage. Concurrent uncrewed interplanetary flights now supported. Short
   + all crewed flights stay synchronous → byte-identical. Design decisions (user): defer interplanetary-only
   (≥60d); allow concurrent flights. Harnesses: pump 17/17, beginResolve 3/3, 1.1 regression 42/42. No bump yet.
-- **1.2b ⏳** — crewed deferral + crew-slot snapshot. **1.2c ⏳** — SAVE_VERSION 40→41 + re-hydration; Outliner
-  progress rows. (Until 1.2c a mid-cruise save is not hardened.)
+- **1.2b ✅ (2026-07-04)** — Crewed deferral + crew-slot snapshot. Crewed interplanetary flights (≥60d) now defer
+  too → concurrent crewed + uncrewed flights. `ctx.crewId`/`ctx.ab` snapshot the crew + astronaut bonus at launch;
+  the single `assignedAstronaut` slot is freed at launch so another mission can crew up. `loseAssignedCrew`/
+  `applyCrewDose` take an explicit crew id (default = live slot) so arrival acts on the flight's own astronaut and
+  never clobbers a concurrent crew. `isCrewDeployed()` blocks double-booking in `assignAstronaut` + a 🚀 in-flight
+  roster pill. Synchronous crewed flights byte-identical. Harness: crew 12/12 + regressions (17/17, 42/42, 3/3).
+  Known edge: a deployed astronaut who quits/is poached mid-cruise resolves as a graceful no-op (harden in 1.2c).
+- **1.2c ⏳** — SAVE_VERSION 40→41 + re-hydration; Outliner day-by-day progress rows. (Until then a mid-cruise
+  save is not hardened.)
