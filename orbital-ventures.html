@@ -10127,16 +10127,20 @@ function siteScale(){
 }
 /* ===================== Isometric Cape scene (Part 2) ===================== */
 const ISO_TW=120, ISO_TH=60; // tile screen size
+// #18 slice A: grid coords laid out so all 9 buildings PLUS max-growth items (4 extra pads, 3 ops
+// facilities) have non-overlapping footprints AND non-overlapping clickable hotspot rects. Grouped:
+// assembly/industrial back row (rnd·mfg·prod), admin/command mid (personnel·mission·infra),
+// dome + launch pad front, rivals isolated far-right. (fw/fd/h/type/tint unchanged — coords only.)
 const ISO_BUILDINGS=[
-  {key:'rivals',    gx:7, gy:1, fw:1.0, fd:1.0, h:52, type:'rivalpad'},
-  {key:'mfg',       gx:3, gy:0, fw:1.9, fd:1.5, h:142, type:'vab',     tint:'#b9c0c6'},
-  {key:'rnd',       gx:1, gy:0, fw:1.2, fd:0.9, h:54, type:'lab',      tint:'#3a4650'},
-  {key:'prod',      gx:4, gy:1, fw:1.6, fd:1.0, h:36, type:'prod',     tint:'#5a626a'},
-  {key:'personnel', gx:0, gy:1, fw:1.0, fd:1.3, h:46, type:'admin',    tint:'#aab2b8'},
-  {key:'mission',   gx:2, gy:2, fw:1.1, fd:1.1, h:70, type:'control',  tint:'#2c3640'},
-  {key:'infra',     gx:5, gy:2, fw:1.2, fd:1.2, h:24, type:'dishes'},
-  {key:'map',       gx:3, gy:3, fw:1.0, fd:1.0, h:48, type:'dome'},
-  {key:'pad',       gx:6, gy:4, fw:1.3, fd:1.3, h:155, type:'pad'},
+  {key:'rivals',    gx:6.7, gy:0.4, fw:1.0, fd:1.0, h:52, type:'rivalpad'},
+  {key:'mfg',       gx:3.2, gy:0.6, fw:1.9, fd:1.5, h:142, type:'vab',     tint:'#b9c0c6'},
+  {key:'rnd',       gx:0.9, gy:0.2, fw:1.2, fd:0.9, h:54, type:'lab',      tint:'#3a4650'},
+  {key:'prod',      gx:5.15, gy:0.55, fw:1.6, fd:1.0, h:36, type:'prod',     tint:'#5a626a'},
+  {key:'personnel', gx:0.4, gy:1.9, fw:1.0, fd:1.3, h:46, type:'admin',    tint:'#aab2b8'},
+  {key:'mission',   gx:2.4, gy:2.4, fw:1.1, fd:1.1, h:70, type:'control',  tint:'#2c3640'},
+  {key:'infra',     gx:4.1, gy:3.1, fw:1.2, fd:1.2, h:24, type:'dishes'},
+  {key:'map',       gx:1.6, gy:3.7, fw:1.0, fd:1.0, h:48, type:'dome'},
+  {key:'pad',       gx:6.2, gy:3.4, fw:1.3, fd:1.3, h:155, type:'pad'},
 ];
 const ISO_SPREAD=1.7; // gap multiplier between cells (buildings keep their size, just spread apart)
 function isoOrigin(){ return {ox:CAPE_W*0.36, oy:CAPE_H*0.13}; }
@@ -10511,14 +10515,14 @@ function drawIsoGround(ctx,W,H,t){
 // Depth-sortable growth items (extra pads, ops buildings) so they occlude/are-occluded correctly with traffic.
 function isoGrowthItems(ctx,t,L){
   const items=[]; let sc; try{ sc=siteScale(); }catch(e){ return items; }
-  // extra launch pads behind the main pad along gx
+  // extra launch pads: a coastal launch row alongside the main pad (same gx, spaced fore/aft in gy)
   const pad=ISO_BUILDINGS.find(x=>x.key==='pad');
-  for(let i=1;i<sc.pads;i++){ const gx=pad.gx-1-i*0.9, gy=pad.gy-0.6; if(gx<2) break; const sx=isoX(gx,gy), sy=isoY(gx,gy);
+  for(let i=1;i<sc.pads;i++){ const off=[-2,-1,1,2][i-1]; if(off===undefined) break; const gx=pad.gx, gy=pad.gy+off; const sx=isoX(gx,gy), sy=isoY(gx,gy);
     items.push({d:gx+gy, draw:()=>{ ctx.strokeStyle='#7a5532'; ctx.lineWidth=1.6; ctx.strokeRect(sx-5, sy-70, 10, 70);
       ctx.strokeStyle='rgba(170,115,65,0.4)'; ctx.lineWidth=0.8; for(let yy=sy-70;yy<sy;yy+=10){ ctx.beginPath(); ctx.moveTo(sx-5,yy); ctx.lineTo(sx+5,yy+10); ctx.stroke(); } }}); }
-  // ops buildings in the front-left as facilities come online
+  // ops buildings: a neat front-centre diagonal row as facilities come online
   const ops=[]; if(sc.leoOps) ops.push(['LEO','#5aa9e0']); if(sc.lunarOps) ops.push(['LUNAR','#b9c0c7']); if(sc.marsOps) ops.push(['MARS','#c1532b']);
-  ops.forEach((o,i)=>{ const gx=0.5+i*0.1, gy=4+i*0.9; const sx=isoX(gx,gy), sy=isoY(gx,gy);
+  ops.forEach((o,i)=>{ const gx=2.8+i*1.1, gy=4.5+i*0.5; const sx=isoX(gx,gy), sy=isoY(gx,gy);
     items.push({d:gx+gy, draw:()=>{ const box=isoBox(ctx,sx,sy,1,1,42,'#1a232a');
       ctx.fillStyle=o[1]; ctx.beginPath(); ctx.arc(box.up([sx,sy])[0],box.up([sx,sy])[1]-3,2.4,0,7); ctx.fill();
       ctx.fillStyle=o[1]; ctx.font='8px ui-monospace,monospace'; ctx.textAlign='center'; ctx.fillText(o[0], sx, sy+14); ctx.textAlign='left'; }}); });

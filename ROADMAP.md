@@ -1077,3 +1077,30 @@ Decisions (user): add real save files (export/import) + autosave.
   **Known cosmetic gap:** the Outliner in-flight row still shows 🚀 instead of 📦 for logistics shipments
   (function-correct, cosmetic only — left alone per the 2.1 scope). Next: **2.2** — plug the fuel market and
   cryo boil-off into transit cost/risk.
+
+## Session — Isometric command-center layout redistribution (2026-07-04)
+
+Player request (not part of the P-list initiative): the isometric Command/Cape view's buildings were unevenly
+spaced and overlapping/blocking each other visually. Slice A of two: layout only, no animation yet.
+
+- **Growth ceiling grounded, not guessed.** `PROD_MAX_LEVEL=5` (`:1273`) caps `prodLevel('pads')` at 5 → max
+  4 extra pads; ops facilities are 3 boolean flags (`leoOps/lunarOps/marsOps`) → max 3 ops buildings. Designed
+  the full 9-base + 4-pads + 3-ops = 16-footprint max-growth state, not just the default view.
+- **`ISO_BUILDINGS` (`:10134-10143`)** recoordinated into a logical campus: industrial back row (R&D · mfg ·
+  prod), admin/command mid row (personnel · mission · infra), dome + main pad front, rivals isolated far-right.
+  Only `gx,gy` changed — footprint/height/type/tint untouched.
+- **Extra-pad formula (`:10520`)** was marching left into other buildings' footprints as pad count grew — the
+  core overlap bug. Now a coastal launch row alongside the main pad, with an undefined-guard replacing the old
+  `gx<2` break.
+- **Ops formula (`:10525`)** was self-overlapping at its old `0.1/0.9` spacing; now a clean front-centre diagonal.
+- `ISO_SPREAD` (1.7), `ISO_AV` (2.85), and shoreline/water/decor literals left untouched — new layout still fits
+  inside the existing gx≤7.5 grass boundary, nothing stranded or underwater.
+- Hotspot-derivation math (`isoLayout()`, `:10155`) and the depth-sort z-order (`:10546`) are byte-for-byte
+  unchanged — this was a coordinates-only change.
+
+**Validation.** `node --check` OK. Headless geometry check against the actual edited table + formulas at max
+growth: **0 footprint overlaps, 0 hotspot overlaps, 0 off-canvas** (baseline was 8 overlaps + 4). No fake
+assertions for subjective layout quality — that was a manual visual pass, user-approved. Next: **Slice B** —
+launch-pad liftoff animation (rocket leaves the pad on the isometric view) with a camera zoom-chase, then
+handoff into the existing full-screen ascent/flight overlay; auto-switches to the Command tab if Launch is
+triggered from the mission panel.
