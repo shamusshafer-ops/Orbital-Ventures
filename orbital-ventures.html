@@ -676,6 +676,8 @@
         <div class="rail-acc-body" id="raccFlightBody"></div>
         <button class="rail-acc-btn" id="raccObj" onclick="railAccordClick('objectives')" ondblclick="railAccordDbl('objectives')" title="Click +/− to expand or collapse · double-click to open Programs"><span>✔ Current Objectives</span><span class="rail-acc-sign"></span></button>
         <div class="rail-acc-body" id="raccObjBody"></div>
+        <button class="rail-acc-btn" id="raccContracts" onclick="railAccordClick('contracts')" ondblclick="railAccordDbl('contracts')" title="Click +/− to preview signable contracts · double-click to open the full Contracts drill"><span>📡 Contracts <span class="tabbadge hidden" id="badgeContracts"></span></span><span class="rail-acc-sign"></span></button>
+        <div class="rail-acc-body" id="raccContractsBody"></div>
       </div>
       <!-- The Outliner: everything in flight with its ETA, soonest first — visible on every
            scene. This is the one-more-turn machine: the player always sees the next payoff. -->
@@ -704,12 +706,16 @@
            Command Center scene when the player drills into the Mission Control building. -->
       <div id="railContracts" class="rail-panel hidden">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px">
-          <div class="cc-panel-h" style="margin:0">📡 Mission Control</div>
+          <div class="cc-panel-h" style="margin:0">📡 Contracts</div>
           <button class="btn ghost" style="font-size:11px;padding:3px 8px" onclick="openHubPanel('alerts')" title="Back to Alerts &amp; News">← Alerts</button>
         </div>
         <div id="specialBannerMount"></div>
-        <div class="card" id="passiveCard"></div>
-        <div class="card" style="margin-top:10px"><h2 style="font-size:15px">Contracts</h2><div id="missionList"></div></div>
+        <div class="bench-tabs" id="contractSubtabs">
+          <button class="bench-tab active" id="ctTabMissions" onclick="setContractsSubTab('missions')">🚀 Flight Contracts</button>
+          <button class="bench-tab" id="ctTabPassive" onclick="setContractsSubTab('passive')">📶 Passive Income</button>
+        </div>
+        <div class="card" id="missionsPane"><h2 style="font-size:15px">Flight Contracts</h2><div id="missionList"></div></div>
+        <div class="card" id="passiveCard" style="display:none"></div>
       </div>
     </aside>
   </div>
@@ -9527,7 +9533,7 @@ function render(){
   if(state.tab!=='map') pauseMapGame();
   if(state.tab!=='station') pauseStationGame();
   if(state.tab==='bench'){renderVehicleFamilies();renderBlueprints();renderLivery();renderParts();renderArchitecture();renderStages();renderBoosters();renderTransfer();renderLander();renderCrew();renderPower();renderWindowPlanner();renderRoutes();renderReadout();renderVehiclePreview();renderBenchLaunch();renderBenchTabs();}
-  if(state.tab==='command' && hubPanel==='contracts') renderMissions(); // slice 5: contracts drill content (passiveCard + missionList)
+  if(state.tab==='command' && hubPanel==='contracts'){ renderMissions(); renderContractsSubtabs(); } // slice 5: contracts drill content (passiveCard + missionList), split into sub-tabs
   renderNextObjective();
   if(state.tab==='rnd')renderRnd();
   if(state.tab==='map')renderMap();
@@ -9546,6 +9552,51 @@ function render(){
 function monthlyPayroll(){ return round2((state.staff||[]).reduce((a,s)=>{const p=personById(s.id);return a+(p?p.salary:0);},0)); }
 function availableContracts(){
   return MISSIONS.filter(m=> state.rep>=m.minRep && missionTechMet(m) && !state.completed[m.id]).length;
+}
+// Pure summary for the persistent-rail Contracts section + header badge. Derived only — no new state.
+function contractsRailSummary(){
+  const openMissions=availableContracts();
+  const signable=PASSIVE_CONTRACT_DEFS.filter(d=>passiveStatus(d.id)==='available');
+  const signableMo=round2(signable.reduce((a,d)=>a+passiveIncomeNow(d.id),0));
+  return {openMissions, signable, signableMo, activeMo:passiveMonthlyIncome(), count:openMissions+signable.length};
+}
+// Preview body for the persistent-rail Contracts accordion section: standing income, the top
+// signable passive contracts (Sign in place, no scene change), a mission-contract count, and a
+// footer into the full drill. Reuses signPassiveContract/openHubPanel — no #passiveCard/#missionList
+// ids, so it never double-renders with the full drill.
+function railContractsHTML(){
+  const s=contractsRailSummary();
+  let html=`<div class="muted" style="font-size:12px;margin:0 0 8px">Standing income: <b style="color:${s.activeMo>0?'var(--ok)':'var(--dim)'}">+${fM(s.activeMo)}/mo</b>${s.signableMo>0?` · <span style="color:var(--ignite)">+${fM(s.signableMo)}/mo signable now</span>`:''}</div>`;
+  const top=s.signable.slice(0,3);
+  if(top.length){
+    html+=top.map(d=>{
+      const inc=passiveIncomeNow(d.id);
+      return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px;font-size:12px">
+        <div style="min-width:0"><div style="color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${d.name}</div><div class="dim">+${fM(inc)}/mo · ${fM(d.setup)} setup</div></div>
+        <button class="btn" style="font-size:11px;padding:3px 8px;flex-shrink:0" onclick="signPassiveContract('${d.id}')">Sign</button>
+      </div>`;
+    }).join('');
+  } else {
+    html+=`<div class="dim" style="font-size:12px;margin-bottom:6px">No passive contracts signable right now.</div>`;
+  }
+  if(s.openMissions>0) html+=`<div class="muted" style="font-size:12px;margin:6px 0 0">📄 <b style="color:var(--ink)">${s.openMissions}</b> mission contract${s.openMissions===1?'':'s'} available to fly.</div>`;
+  html+=`<button class="btn ghost" style="width:100%;margin-top:8px;font-size:12px" onclick="openHubPanel('contracts')">Open full Contracts →</button>`;
+  return html;
+}
+// Contracts drill sub-tabs — Flight Contracts vs Passive Income, so passive income isn't buried below a
+// long mission list. Transient UI state; both panes render, this toggles which is visible + tab counts.
+let contractsSubTab='missions';
+function setContractsSubTab(t){ contractsSubTab=t; renderContractsSubtabs(); }
+function renderContractsSubtabs(){
+  const showP=contractsSubTab==='passive';
+  const mp=$('missionsPane'), pc=$('passiveCard'), tm=$('ctTabMissions'), tp=$('ctTabPassive');
+  if(mp) mp.style.display=showP?'none':'';
+  if(pc) pc.style.display=showP?'':'none';
+  if(tm) tm.classList.toggle('active', !showP);
+  if(tp) tp.classList.toggle('active', showP);
+  const cs=contractsRailSummary();
+  if(tm) tm.innerHTML=`🚀 Flight Contracts${cs.openMissions>0?` <span class="pill">${cs.openMissions}</span>`:''}`;
+  if(tp) tp.innerHTML=`📶 Passive Income${cs.activeMo>0?` <span class="pill ok">+${fM(cs.activeMo)}/mo</span>`:(cs.signable.length>0?` <span class="pill">${cs.signable.length}</span>`:'')}`;
 }
 function commandSummary(){
   const era=currentEra();
@@ -10429,7 +10480,6 @@ function railObjectivesHTML(){
       <div style="display:flex;justify-content:space-between;font-size:12px"><span class="dim">ambition ${prog.done}/${prog.total}</span><span class="num">${prog.pct}%</span></div>
       ${objHTML}
       <div style="display:flex;gap:6px;margin-top:10px">
-        <button class="btn ghost" style="flex:1;font-size:12px" onclick="openHubPanel('contracts')">Contracts →</button>
         <button class="btn ghost" style="flex:1;font-size:12px" onclick="showProgramsModal()">Programs →</button>
       </div>`;
 }
@@ -10458,6 +10508,7 @@ const RAIL_ACC=[
   {key:'mission',    label:'Mission Control',    btn:'raccMission', body:'raccMissionBody', html:railMissionHTML,    nav:()=>setTab('command')},
   {key:'flight',     label:'Design Bench',       btn:'raccFlight',  body:'raccFlightBody',  html:railFlightPlanHTML, nav:()=>setTab('bench')},
   {key:'objectives', label:'Programs',           btn:'raccObj',     body:'raccObjBody',     html:railObjectivesHTML, nav:()=>showProgramsModal()},
+  {key:'contracts',  label:'Contracts',          btn:'raccContracts', body:'raccContractsBody', html:railContractsHTML, nav:()=>openHubPanel('contracts')},
 ];
 let railClickTimer=null;
 // Single click toggles a section open/closed (the +/− sign). We delay it briefly so a double-click can
@@ -10481,6 +10532,11 @@ function renderRailPersistent(){
       if(s.key==='objectives'&&open){ _applyObjSparkle(body); }
     }
   }
+  // live Contracts badge on the persistent header — "N·+$X/mo" of signable opportunity, hidden at zero
+  const _cs=contractsRailSummary(), _cb=$('badgeContracts');
+  if(_cb){ const show=_cs.count>0; _cb.classList.toggle('hidden', !show);
+    if(show){ _cb.textContent=_cs.signableMo>0 ? _cs.count+'·+'+fM(_cs.signableMo) : String(_cs.count);
+      const _bb=$('raccContracts'); if(_bb) _bb.title=`${_cs.openMissions} mission contract(s) to fly · ${_cs.signable.length} passive contract(s) signable (+${fM(_cs.signableMo)}/mo). Double-click to open the full drill.`; } }
 }
 function _applyObjSparkle(body){
   const allItems=objectivesList().flatMap(g=>g.items);

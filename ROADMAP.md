@@ -916,3 +916,25 @@ and the Monte Carlo. **223/223 green.** No SAVE_VERSION bump.
    currently routes new-role traits to the neutral else-branch); an aggregate R&D-speed clamp (the
    sum stacks eng+station+division+partner+sci uncapped — a latent pre-existing issue, now nudged);
    the CE5 live-call band-widening stretch (deliberately skipped to keep the invariant airtight).
+
+## Session — Contracts accessibility: rail accordion section + Flight/Passive sub-tabs (2026-07-04)
+
+**Context.** Contracts are the main money source outside regular missions but felt buried — passive
+contracts in particular sat at the bottom of the drill behind a long scroll. Two UX changes, both
+pure presentation (no economy/state changes, no SAVE_VERSION bump):
+
+- **Persistent rail Contracts section.** New `railPersistent` accordion entry (`raccContracts`) —
+  click to preview signable contracts inline, double-click to open the full drill. `contractsRailSummary()`
+  aggregates open mission contracts + available passive contracts + standing/available $/mo;
+  `railContractsHTML()` renders standing-income line, top-3 signable passive rows with inline Sign
+  buttons, mission count, and an "Open full Contracts →" footer. Badge (`#badgeContracts`) shows
+  `count·+$X/mo`, refreshed every render inside `renderRailPersistent()`. Removed the now-redundant
+  `Contracts →` button from the Objectives rail; retitled the drill header `📡 Mission Control` → `📡 Contracts`.
+- **Flight / Passive sub-tabs.** Split the full Contracts drill into 🚀 Flight Contracts / 📶 Passive
+  Income sub-tabs (`contractsSubTab` state, `setContractsSubTab`, `renderContractsSubtabs`) so passive
+  income is one click away instead of a full scroll. Tab labels carry live pills (open-mission count;
+  active +$/mo or signable count).
+
+**Validation.** Whole-script syntax OK; `contractsRailSummary` harness 18/18; staff regression 223/223.
+
+**Repo state:** pushed to `shamusshafer-ops/Orbital-Ventures` main. New save fields: none.
