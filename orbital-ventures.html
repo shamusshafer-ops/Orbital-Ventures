@@ -2403,6 +2403,7 @@ function advanceDays(days){
     if(monthEnd) tickMonthlyBoundary(); // discrete monthly subsystems — same order as the old tick
   }
   if(state.money<0 && !state.over){ gameOver(); }
+  if(!state.over) pumpFlightArrivals(); // P1 1.2a: resolve any deferred flight that reached arrival during this advance
 }
 // the smooth daily flows — inputs are stable within a month, so 30 days sum to the monthly total.
 function tickContinuousDay(){
@@ -5111,6 +5112,7 @@ function launch(prebuilt){
   const v=computeVehicle();
   const sim=m.profile?simulateMission(m):null;
   const chk=canLaunch(v,m,sim,prebuilt); if(!chk.ok){return;}
+  _flightResolving=true; // P1 1.2a: hold the arrival pump until this launch fully resolves (released in finish()/on defer)
   const tl=TEST_LEVELS[state.testLevel];
   const rehMo=state.rehearsal?REHEARSAL_MONTHS:0; // #20 slice 4: rehearsal adds cost + a month of prep
   const buildMo=prebuilt?0:buildMonths(m); // #7 final: a hangar vehicle is already built & paid for
@@ -5146,6 +5148,60 @@ function launch(prebuilt){
   }
   proceedLaunch(m,v,sim,windowQuality,0,prebuilt);
 }
+// P1 slice 1.1: persistent in-flight mission entity model (groundwork).
+// A flight is registered for the duration of its cruise. In 1.1 this lifecycle is
+// SYNCHRONOUS — registered right before the cruise fast-forward and completed right
+// after, within proceedLaunch, never spanning a modal or a save — so activeFlights is
+// always empty between turns. That adds no persisted state and is provably byte-identical
+// (nothing reads the record yet). Slice 1.2 defers arrival across turns and surfaces
+// day-by-day progress (and is where the SAVE_VERSION bump + lazy migration land).
+let _flightSeq=0;
+function registerFlight(m,crewed,missionDays){
+  state.activeFlights=state.activeFlights||[];
+  const launchAbs=absDay();
+  const rec={
+    id:'flt'+(++_flightSeq),
+    mission:m.id,
+    name:m.name,
+    launchAbs,
+    arriveAbs:launchAbs+Math.max(0,missionDays),
+    phase:'cruise',
+    crew:crewed?(m.crew||0):0,
+    marginSnapshot:null // populated in slice 1.4 (cruise telemetry)
+  };
+  state.activeFlights.push(rec);
+  return rec;
+}
+function completeFlight(rec){
+  if(!rec||!state.activeFlights) return;
+  const i=state.activeFlights.indexOf(rec);
+  if(i>=0) state.activeFlights.splice(i,1);
+}
+// P1 1.2a: deferred-arrival plumbing. A long uncrewed cruise resolves on ARRIVAL, not at launch.
+const DEFER_CRUISE_DAYS=60; // ≥ this many cruise days ⇒ the flight goes "live" (interplanetary); shorter stays synchronous
+let _flightResolving=false;  // true while a launch OR an arrival resolution is mid-flight — blocks the pump from stacking modals
+// The resolution chain from a built ctx onward (live-call → reserve → anomaly → finalize). Shared by the
+// synchronous launch path and deferred arrivals so both reproduce the exact same outcome flow.
+function beginResolve(ctx){
+  if(animEnabled && (ctx.crewed || !ctx.routine)){
+    const flag=liveCallFlag(ctx.outcome);
+    if(flag){ _pendingLive=ctx; ctx.liveFlag=flag; showLiveCallModal(ctx, flag); return; }
+  }
+  postResolve(ctx);
+}
+// Resolve one deferred flight that has reached its arrival day. A resolution may open a modal / animation
+// (animEnabled) and pause; the chain re-pumps from finish() when it completes, so arrivals sequence one at
+// a time. Guards prevent reentrancy (a strand/loss calls advance() → advanceDays → here) and modal stacking.
+function pumpFlightArrivals(){
+  if(_flightResolving) return;
+  if(_pendingLive||_pendingReserve||_pendingOps||_pendingRescue||_pendingSetback||_pendingLaunch) return;
+  try{ if($('modal') && !$('modal').classList.contains('hidden')) return; }catch(e){} // a modal is on screen — wait
+  const rec=(state.activeFlights||[]).find(f=>f&&f.deferred&&absDay()>=f.arriveAbs);
+  if(!rec) return;
+  _flightResolving=true;
+  completeFlight(rec);
+  beginResolve(rec.ctx);
+}
 function proceedLaunch(m,v,sim,windowQuality,weatherPenalty,prebuilt){
   const tl=TEST_LEVELS[state.testLevel];
   state.flights++;
@@ -5169,16 +5225,23 @@ function proceedLaunch(m,v,sim,windowQuality,weatherPenalty,prebuilt){
   // time commitments (overhead, R&D, rivals, facilities all advance during the mission). Intentional
   // payoff of daily time. If the long cruise bankrupts the company, the gameOver modal is already up.
   const missionDays=Math.round(m.days||0);
-  if(missionDays>=1){ advanceDays(missionDays); if(state.over){ render(); return; } }
-  const ctx={m,v,sim,windowQuality,flightExpense,routine,crewed,outcome,rehearsed:!!state.rehearsal};
-  // CE5(b): a marginal early-phase subsystem surfaces a live abort / press-on call before the
-  // outcome is revealed. Skipped on routine uncrewed re-flights (low-stakes spam) and never in
-  // the headless / animations-off path — which presses on, reproducing today's outcome exactly.
-  if(animEnabled && (crewed || !routine)){
-    const flag=liveCallFlag(outcome);
-    if(flag){ _pendingLive=ctx; ctx.liveFlag=flag; showLiveCallModal(ctx, flag); return; }
+  const ctx={m,v,sim,windowQuality,flightExpense,routine,crewed,outcome,rehearsed:!!state.rehearsal, fam:activeFamily()};
+  // P1 1.2a: a long UNCREWED interplanetary cruise becomes a live flight. The outcome is already locked
+  // (resolved above at launch-time tech); it is APPLIED on arrival as the player runs the clock, via
+  // pumpFlightArrivals() — instead of one fast-forward. Short flights and ALL crewed flights stay fully
+  // synchronous (byte-identical; crewed deferral + crew-slot handling land in 1.2b). One-flight bench
+  // settings are consumed here at launch, since finalize (which normally resets them) is deferred.
+  if(missionDays>=DEFER_CRUISE_DAYS && !crewed){
+    const rec=registerFlight(m,crewed,missionDays); rec.deferred=true; rec.ctx=ctx;
+    state.testLevel=0; state.rehearsal=false; state.depotUse=0; state.assembleOrbit=false;
+    log('note',`${m.name}: departed — arrival in ~${Math.round(missionDays/30)} mo (${missionDays} d). The cruise plays out as you run the clock; the outcome lands on arrival.`);
+    _flightResolving=false; render(); pumpFlightArrivals(); return; // release the launch lock; catch anything that came due during lead time
   }
-  postResolve(ctx);
+  // synchronous path — today's behavior, provably byte-identical
+  const _flight=registerFlight(m,crewed,missionDays); // the flight is "in cruise" for this span
+  if(missionDays>=1){ advanceDays(missionDays); if(state.over){ completeFlight(_flight); _flightResolving=false; render(); return; } }
+  completeFlight(_flight);
+  beginResolve(ctx);
 }
 // the post-resolve flow shared by the headless path and the live-call's "press on".
 function postResolve(ctx){
@@ -5327,7 +5390,7 @@ function finalizeLaunch(ctx, ops){
   }
   if(crewed && (outcome.kind==='success'||outcome.kind==='partial')) applyCrewDose(m); // surviving crew take a radiation dose
   // #3: attribute this flight to the active vehicle family and accrue/dent its heritage
-  const fam=activeFamily();
+  const fam=ctx.fam||activeFamily(); // 1.2a: the launched vehicle's family, snapshotted at launch (a deferred arrival must not credit whatever's on the bench now)
   if(fam){
     fam.flights=(fam.flights||0)+1;
     if(success){
@@ -5365,7 +5428,7 @@ function finalizeLaunch(ctx, ops){
     rng: { wind:(rnd()-0.5)*0.9, windFreq:1.4+rnd()*1.6, windPhase:rnd()*6.283,
            pitchJitter:(rnd()-0.5)*0.16, sep:state.stages.map(()=>(rnd()-0.5)*0.06),
            apogee:0.86+rnd()*0.28, bow:(rnd()-0.5)*0.9 } };
-  const finish=()=>{ if(state.money<0){ gameOver(); } else { _missionPulse=success?'ok':(outcome.kind==='loss'||outcome.kind==='strand')?'bad':null; render(); if(pendingCelebration) pendingCelebration(); } };
+  const finish=()=>{ if(state.money<0){ gameOver(); } else { _missionPulse=success?'ok':(outcome.kind==='loss'||outcome.kind==='strand')?'bad':null; render(); if(pendingCelebration) pendingCelebration(); } _flightResolving=false; if(!state.over) pumpFlightArrivals(); }; // 1.2a: flight fully done — release the lock, then resolve the next arrival if any
   if(animEnabled) playMission(spec, finish); else finish();
 }
 function autoAdvanceMission(){
@@ -6110,7 +6173,7 @@ function loadDefaults(){ return {
       staff:[], assignedAstronaut:null, departments:defaultDepartments(),
       vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, rehearsal:false, techLevel:{}, divisions:{}, partnerships:[], breakthroughCooldown:3, relDebt:0, powerSource:'solar',
       recentBuilds:[], materials:defaultMaterialsState(),
-      buildQueue:[], hangar:[], orderSeq:0, padMonthAbs:-1, padMonthUsed:0, standingProd:null, juggernautReached:false, doctrine:null, lunarArch:null, uiLayer:'advanced', loanInterest:0, metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[], day:0, engineStock:{}, engineStockTested:{}, partStock:{}, partStockTested:{}
+      buildQueue:[], hangar:[], orderSeq:0, padMonthAbs:-1, padMonthUsed:0, standingProd:null, juggernautReached:false, doctrine:null, lunarArch:null, uiLayer:'advanced', loanInterest:0, metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[], day:0, engineStock:{}, engineStockTested:{}, partStock:{}, partStockTested:{}, activeFlights:[]
 }; }
 
 /* ---------- Session bookend: "where you left off" ----------

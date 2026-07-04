@@ -938,3 +938,81 @@ pure presentation (no economy/state changes, no SAVE_VERSION bump):
 **Validation.** Whole-script syntax OK; `contractsRailSummary` harness 18/18; staff regression 223/223.
 
 **Repo state:** pushed to `shamusshafer-ops/Orbital-Ventures` main. New save fields: none.
+
+## Planned — Design-evaluation initiative: hardcore-sim depth pass (2026-07-04)
+
+Source: seasoned-dev evaluation (systems depth · immersion · fun/reward lenses; KSP / Stellaris /
+Civ 5 / Juno references). Implemented in ranked order (P1→P11), one vertical slice at a time, **each
+slice gated on user approval** per "How we work." Every slice is balance-neutral by default (collapses
+to today's behavior when inactive/legacy) unless noted; SAVE_VERSION bumps only where new persisted
+state is added.
+
+**Through-line:** P1, P2, P11 are one thesis — *put the universe in motion*. **P1 is the keystone
+entity model** P2 and P11 build on. The quick wins (P3–P5, P7–P10) are independent of the entity model
+and can be interleaved earlier if immersion payoff is wanted sooner. Sequence chosen: strict down-the-list.
+
+**P1 — Persistent in-flight missions** `[Big swing · keystone]`
+- 1.1 In-flight entity model: `activeFlights[]` (mission ref, launch/arrival dates, phase, crew, margins
+  snapshot). *SAVE_VERSION bump + lazy migration.* Parity: an instant-resolved flight yields byte-identical
+  outcome to today.
+- 1.2 Outliner surfacing + day-by-day cruise progress; smart-time stops at flight checkpoints. No new outcomes.
+- 1.3 Mid-cruise checkpoint events reusing CE5 bank/burn/opsLuck plumbing. Neutral when disabled/unstaffed.
+- 1.4 Polish: cruise telemetry panel, per-flight margins, abort/redirect verbs where physically legal.
+
+**P2 — Living logistics (#21)** `[Big swing · depends on P1]`
+- 2.1 Route model: scheduled tanker/resupply flights as P1 entities; replace instant `resupplyFacility()`
+  (collapses to instant at zero distance/legacy).
+- 2.2 Economics plug-in: fuel-market draw, transit boil-off, per-route opex.
+- 2.3 Interruptions: routes can be disrupted (scrub/rival/event) → shortfalls to manage.
+- 2.4 Logistics overlay on the solar-system scene.
+
+**P3 — Failure investigation loop** `[Quick win · reuses #16 breakdown + setback modal]`
+- 3.1 Post-loss "fund inquiry" action (time+money) → science / targeted subsystem reliability credit /
+  related R&D discount. Declining = today's behavior exactly.
+- 3.2 Investment tiers, partial findings, heritage credit on the failed family.
+
+**P4 — Rival voice** `[Quick win · strings off tickRivals]`
+- 4.1 Per-profile communiqué table + triggers (scoop / your firsts / rival panic). Zero balance impact.
+
+**P5 — Rival disasters + rescue-their-crew** `[Quick win · reuses #20 rescue]`
+- 5.1 Surface rival public failures (momentum dip / market event).
+- 5.2 Stranded rival crew → #20 rescue pipeline → rep/support windfall.
+
+**P6 — Era texture pass** `[Big swing · content-spread]`
+- 6.1 Per-era event-pool weighting hook.
+- 6.2 Contract/flavor reskins + public-mood modifier per era.
+- 6.3 Era-transition interstitial (Civ-style splash + Chronicle snapshot).
+
+**P7 — Newspaper front page** `[Quick win]`
+- 7.1 Front-page artifact extending the celebration modal (firsts/disasters/scoops); Chronicle scrapbook.
+
+**P8 — Cross-track synergies as verbs** `[Quick win · SYNERGIES config ready]`
+- 8.1 Ship the 4 existing SYNERGIES seeds.
+- 8.2 Upgrade ≥2 from % folds to unlocks (e.g. Autonomous Landing ⇒ uncrewed precision-cargo mission type).
+
+**P9 — Doctrine content drip** `[Quick win]`
+- 9.1 Advisor/outliner surfacing of active doctrine (flagged-open item).
+- 9.2 1–2 doctrine-exclusive contracts/events/hires per doctrine.
+
+**P10 — Reward for flying risky** `[Quick win]`
+- 10.1 Schedule-pressure payout multipliers on contracts/mandates.
+- 10.2 First-flight-of-design prestige bonus + insurance-premium contract type.
+
+**P11 — One late-game crisis** `[Big swing · leverages P1 + CE4 stakes]`
+- 11.1 Crisis framework: era-gated trigger, escalation phases, resolution states.
+- 11.2 First concrete crisis (e.g. debris cascade closing LEO) using P1 flights + existing systems.
+- 11.3 Legacy integration: surviving a crisis marks `legacyScore`.
+
+### Progress log — P1 (persistent in-flight missions)
+- **1.1 ✅ (2026-07-04)** — In-flight entity model. `state.activeFlights` + `registerFlight`/`completeFlight`;
+  the cruise fast-forward in `proceedLaunch` is wrapped by a synchronous flight lifecycle. No SAVE_VERSION
+  bump (activeFlights always empty between turns). Proven byte-identical (lifecycle harness 42/42).
+- **1.2a ✅ (2026-07-04)** — Deferred arrival for long **uncrewed** cruises (≥`DEFER_CRUISE_DAYS`=60d). Outcome
+  still locked at launch; **applied on arrival** via a reentrancy-guarded `pumpFlightArrivals()` (guards: a
+  `_flightResolving` launch-lock, the flight-modal globals, and an on-screen-modal check). `beginResolve(ctx)`
+  extracted so the synchronous and deferred paths share one chain; `ctx.fam` snapshots the launched family so a
+  deferred arrival can't misattribute heritage. Concurrent uncrewed interplanetary flights now supported. Short
+  + all crewed flights stay synchronous → byte-identical. Design decisions (user): defer interplanetary-only
+  (≥60d); allow concurrent flights. Harnesses: pump 17/17, beginResolve 3/3, 1.1 regression 42/42. No bump yet.
+- **1.2b ⏳** — crewed deferral + crew-slot snapshot. **1.2c ⏳** — SAVE_VERSION 40→41 + re-hydration; Outliner
+  progress rows. (Until 1.2c a mid-cruise save is not hardened.)
