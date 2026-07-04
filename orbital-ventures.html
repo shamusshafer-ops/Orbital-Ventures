@@ -2935,6 +2935,11 @@ const FAC_STARVE_SUPPORT=1.5;        // public support lost per starved month
 const FAC_STARVE_ABANDON_MONTHS=6;   // consecutive starved months before crew evacuate a module
 const BODY_RESUPPLY_MULT={earth:1.0, moon:2.2, mars:4.2}; // launch-logistics multiplier by destination
 function bodyResupplyMult(body){ return BODY_RESUPPLY_MULT[body]||1; }
+// Slice 2.1: resupply cruise time by destination body. Earth/Moon top up instantly (< DEFER_CRUISE_DAYS);
+// Mars ships across a Hohmann-class transit and arrives ~210 d later as a live logistics flight. No existing
+// one-way Earth→Mars constant to reuse (mars_flyby.days:420 is a round trip), so 210 d is a fresh figure.
+const LOGI_TRANSIT_DAYS={earth:0, moon:4, mars:210};
+function logiTransitDays(body){ return LOGI_TRANSIT_DAYS[body]||0; }
 function facilitySupply(id){ const fs=facilityState(id); if(!fs) return 0; return fs.supply!=null?fs.supply:FAC_SUPPLY_MONTHS; } // legacy facilities default to fully provisioned
 function facilitySupplyDrain(){ return 1; } // one month of provisions consumed per calendar month
 function facilityStarved(id){ return facilityBuilt(id) && facilitySupply(id)<=0; }
@@ -2942,8 +2947,11 @@ function facilitySupplyFactor(id){ return facilityStarved(id)?FAC_STARVE_PROD:1;
 function facilitySupplyMonths(id){ return Math.round(facilitySupply(id)); } // months of runway remaining
 function resupplyCostFull(id){ const def=facilityById(id), fs=facilityState(id); if(!def||!fs) return 0; const mod=Math.max(1,fs.modules||1); const fission=state.research.surface_fission_power?0.75:1; /* a base that makes its own power ships fewer consumables */ const grn=Math.max(0.5, 1-0.15*facilityGreenhouses(fs)); /* greenhouses grow food on-site */ const feedMod=Math.max(1, mod-facilityGreenhouses(fs)); /* a greenhouse feeds itself */ return round2(FAC_RESUPPLY_PER_MODULE*feedMod*bodyResupplyMult(def.body)*fission*grn); }
 function resupplyCost(id){ const missing=Math.max(0, FAC_SUPPLY_MONTHS-facilitySupply(id)); return round2(resupplyCostFull(id)*(missing/FAC_SUPPLY_MONTHS)); } // pay for what you actually ship up
+// Slice 2.1: a resupply shipment already in cruise toward this facility (Mars only, in practice)
+function resupplyInTransit(id){ return (state.activeFlights||[]).find(f=>f&&f.kind==='logistics'&&f.facId===id)||null; }
 function canResupply(id){
   if(!facilityBuilt(id)) return {ok:false,why:'No facility.'};
+  if(resupplyInTransit(id)) return {ok:false,why:'Resupply en route.'}; // 2.1: one shipment in flight at a time
   if(facilitySupply(id)>=FAC_SUPPLY_MONTHS) return {ok:false,why:'Fully provisioned.'};
   if(state.money<resupplyCost(id)) return {ok:false,why:'Not enough capital.'};
   return {ok:true};
@@ -2951,8 +2959,22 @@ function canResupply(id){
 function resupplyFacility(id){
   const chk=canResupply(id); if(!chk.ok) return;
   const cost=resupplyCost(id), def=facilityById(id), fs=facilityState(id);
-  state.money-=cost; fs.supply=FAC_SUPPLY_MONTHS; fs.starvedMonths=0;
-  log('ok',`${def.icon} ${def.name} resupplied — ${FAC_SUPPLY_MONTHS} months of provisions aboard (−${fM(cost)}).`);
+  const missing=Math.max(0, FAC_SUPPLY_MONTHS-facilitySupply(id)); // months actually shipped (matches the cost basis)
+  const transit=logiTransitDays(def.body);
+  state.money-=cost; // 2.1: pay on order, regardless of whether the run is instant or a live cruise
+  if(transit<DEFER_CRUISE_DAYS){ // Earth/Moon: resolves instantly, byte-identical to pre-2.1 behavior
+    fs.supply=FAC_SUPPLY_MONTHS; fs.starvedMonths=0;
+    log('ok',`${def.icon} ${def.name} resupplied — ${FAC_SUPPLY_MONTHS} months of provisions aboard (−${fM(cost)}).`);
+    render();
+    return;
+  }
+  // Mars: the shipment becomes a live logistics flight, applied on arrival by pumpFlightArrivals()
+  state.activeFlights=state.activeFlights||[];
+  const launchAbs=absDay();
+  state.activeFlights.push({ id:'flt'+(++_flightSeq), kind:'logistics', deferred:true, facId:id,
+    monthsShipped:missing, launchAbs, arriveAbs:launchAbs+transit,
+    name:`Resupply — ${def.name}`, crew:0 });
+  log('note',`${def.icon} ${def.name}: resupply shipment launched — arrival in ~${Math.round(transit/30)} mo (${transit} d), ${missing.toFixed(1)} mo of provisions aboard (−${fM(cost)}). The base draws down its reserves until it lands.`);
   render();
 }
 function canFound(id){
@@ -5201,6 +5223,15 @@ function pumpFlightArrivals(){
   try{ if($('modal') && !$('modal').classList.contains('hidden')) return; }catch(e){} // a modal is on screen — wait
   const rec=(state.activeFlights||[]).find(f=>f&&f.deferred&&absDay()>=f.arriveAbs);
   if(!rec) return;
+  if(rec.kind==='logistics'){ // 2.1: a resupply shipment reaching its destination — top up provisions, no ctx/modal
+    const fs=facilityState(rec.facId), def=facilityById(rec.facId);
+    if(fs){
+      fs.supply=Math.min(FAC_SUPPLY_MONTHS, (fs.supply!=null?fs.supply:FAC_SUPPLY_MONTHS)+(rec.monthsShipped||0));
+      fs.starvedMonths=0;
+      log('ok',`${def?def.icon+' '+def.name:'Facility'} resupply shipment arrived — ${facilitySupplyMonths(rec.facId)} months of provisions aboard.`);
+    }
+    completeFlight(rec); render(); return pumpFlightArrivals();
+  }
   if(!rec.ctx){ completeFlight(rec); return pumpFlightArrivals(); } // S1: a corrupt/re-hydrated record without a ctx — drop it, don't crash the arrival
   _flightResolving=true;
   completeFlight(rec);
@@ -5214,6 +5245,16 @@ function flightsPanelHTML(){
   return list.map(fl=>{
     const eta=(fl.arriveAbs||0)-now, total=(fl.arriveAbs||0)-(fl.launchAbs||0);
     const pct=total>0?Math.min(100,Math.max(0,Math.round((now-(fl.launchAbs||0))/total*100))):0;
+    if(fl.kind==='logistics'){ // 2.1: an uncrewed resupply shipment — no crew/Δv telemetry, no recall (a future slice)
+      return `<div class="card" style="margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+          <b style="font-size:14px">📦 ${fl.name||'Resupply'}</b>
+          <span class="pill">cargo</span>
+        </div>
+        <div class="dim" style="font-size:12px;margin:5px 0">Progress ${pct}% · arrival in ${outlinerEtaText(eta)} · ${(fl.monthsShipped||0).toFixed(1)} mo of provisions aboard</div>
+        <div style="height:6px;background:var(--panel2);border-radius:3px;overflow:hidden;margin:5px 0"><div style="height:100%;width:${pct}%;background:var(--ignite)"></div></div>
+      </div>`;
+    }
     const ms=fl.marginSnapshot||{};
     const relTxt=ms.rel!=null?`${Math.round(ms.rel*100)}%`:'—';
     const dvTxt=ms.tightDv!=null?`${ms.tightDv} m/s`:'—';
@@ -6201,8 +6242,10 @@ function rehydrateFlights(){
   if(!Array.isArray(state.activeFlights)){ state.activeFlights=[]; return; }
   let maxSeq=0;
   state.activeFlights=state.activeFlights.filter(rec=>{
-    if(!rec||!rec.deferred||!rec.ctx) return false;
-    if(rec.ctx.m && rec.ctx.m.id){ const cm=MISSIONS.find(x=>x.id===rec.ctx.m.id); if(cm) rec.ctx.m=cm; }
+    if(!rec||!rec.deferred) return false;
+    if(rec.kind==='logistics'){ if(!facilityById(rec.facId)) return false; } // 2.1: keep resupply shipments; drop ones whose facility no longer exists
+    else if(!rec.ctx) return false; // a crewed/uncrewed mission must carry its resolved ctx
+    else if(rec.ctx.m && rec.ctx.m.id){ const cm=MISSIONS.find(x=>x.id===rec.ctx.m.id); if(cm) rec.ctx.m=cm; }
     const n=parseInt(String(rec.id||'').replace(/\D/g,''),10); if(!isNaN(n)&&n>maxSeq) maxSeq=n;
     return true;
   });
@@ -13931,7 +13974,7 @@ function renderInfrastructure(){
           <div class="metric"><div class="k">Home-field bonus</div><div class="v">−${Math.round(bonus.buildDiscount*100)}% build · +${(bonus.relBump*100).toFixed(1)}% rel</div></div>
         </div>
         <div style="display:flex;gap:8px;margin-top:10px">
-          <button class="btn" style="flex:1" onclick="resupplyFacility('${def.id}')" ${canRs?'':'disabled'}>${facilitySupply(def.id)>=FAC_SUPPLY_MONTHS?'Fully provisioned':`Resupply · ${fM(rsC)}`}</button>
+          <button class="btn" style="flex:1" onclick="resupplyFacility('${def.id}')" ${canRs?'':'disabled'}>${resupplyInTransit(def.id)?'📦 Resupply en route':(facilitySupply(def.id)>=FAC_SUPPLY_MONTHS?'Fully provisioned':`Resupply · ${fM(rsC)}`)}</button>
           <button class="btn" style="flex:1" onclick="expandFacility('${def.id}')" ${canEx?'':'disabled'}>Expand → ${fs.modules+1} · ${fM(ec)} · ${em} mo</button>
         </div>
       </div>`;

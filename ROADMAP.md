@@ -1056,3 +1056,24 @@ Decisions (user): add real save files (export/import) + autosave.
 **Validation.** Whole-script syntax OK; new headless suites — save/load round-trip + autosave guards (ov-persist
 13/13), startup/import/meta + `_gameStarted` guard (ov-save 11/11); regressions crew 12/12, arrival 17/17, flight
 42/42, beginResolve 3/3.
+
+### Progress log — P2 (living logistics)
+- **2.1 ✅ (2026-07-04)** — Resupply becomes a live logistics flight, Mars only. New `LOGI_TRANSIT_DAYS`
+  table (`earth:0, moon:4, mars:210`, a fresh Hohmann-class figure — no existing one-way Earth↔Mars constant to
+  reuse; `mars_flyby.days:420` is round-trip) + `logiTransitDays()`. `resupplyFacility()` still pays cost
+  immediately; transit `< DEFER_CRUISE_DAYS` (LEO, Moon) resolves exactly as before — byte-identical; Mars
+  pushes a `{kind:'logistics', deferred:true, facId, monthsShipped, launchAbs, arriveAbs, name, crew:0}` record
+  onto `state.activeFlights` (no ctx/mission) and logs "shipment launched" instead of "resupplied".
+  `pumpFlightArrivals()` gets a logistics branch ahead of the no-ctx corrupt-record drop: on arrival, tops up
+  `supply = min(FAC_SUPPLY_MONTHS, supply+monthsShipped)`, resets `starvedMonths`, logs arrival, removes the
+  record. New `canResupply()`/`resupplyInTransit()` gate blocks a second order ("Resupply en route.") and the
+  button reflects it. `rehydrateFlights()` now keeps `kind:'logistics'` records (validates `facId`) instead of
+  dropping them as corrupt. `flightsPanelHTML()` renders a 📦 row for logistics flights with no abort/recall verb
+  (cancellation is a future slice). No SAVE_VERSION bump (`activeFlights` already persisted since 1.2c/41).
+  **Design note:** `monthsShipped` is the shortfall at launch time (not a flat refill), and the base keeps
+  draining during the ~7-month Mars transit — a late order now carries real starvation risk. Pioneer era (no
+  facilities) and LEO/Moon are provably unchanged. Harness ov-logistics 37/37 (parity, lifecycle, round-trip,
+  double-order block, corrupt-facId safety, Pioneer no-op, panel rendering, ctx-mission regressions).
+  **Known cosmetic gap:** the Outliner in-flight row still shows 🚀 instead of 📦 for logistics shipments
+  (function-correct, cosmetic only — left alone per the 2.1 scope). Next: **2.2** — plug the fuel market and
+  cryo boil-off into transit cost/risk.
