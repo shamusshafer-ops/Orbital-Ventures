@@ -1077,6 +1077,23 @@ Decisions (user): add real save files (export/import) + autosave.
   **Known cosmetic gap:** the Outliner in-flight row still shows 🚀 instead of 📦 for logistics shipments
   (function-correct, cosmetic only — left alone per the 2.1 scope). Next: **2.2** — plug the fuel market and
   cryo boil-off into transit cost/risk.
+- **2.2 ✅ (2026-07-04)** — Resupply cost now floats with the live fuel market and cryo boil-off instead of a flat
+  number. New `LOGI_FUEL_FRAC=0.45` (propellant share of resupply cost); `resupplyCostFull` becomes
+  `base × (1 − LOGI_FUEL_FRAC + LOGI_FUEL_FRAC × marketRatio × boiloffRatio)` where `marketRatio =
+  fuelBuyPrice()/FUEL_BUY_BASE` and `boiloffRatio` is a boil-off margin over the facility's transit duration,
+  normalized to exactly 1.0 at baseline (no cryo research) for every body. Boil-off rates
+  (`BOILOFF_RATE_BASE=0.015`, `BOILOFF_RATE_CONTROLLED=0.004`, `BOILOFF_CAP=0.30`) were extracted from the
+  mission simulator into shared constants and reused here — mission-sim output is unchanged (regression-checked
+  across 16 stack/day/control combos). Applies to **all bodies** (not just Mars) per user sign-off; effect is
+  ~0% on LEO/Moon (near-zero transit) and material on Mars. `cryo_boiloff_control` research now also discounts
+  Mars resupply (~3.6% total, since it's `LOGI_FUEL_FRAC`-weighted — the ~8% quoted during planning was the
+  propellant-only figure). Fuel-market surcharge ranges ~+34% at normal high prices (~0.70) up to ~+62% at the
+  rare event-shock ceiling (0.95) — higher than the "~+30% typical" planning estimate; user reviewed and
+  accepted both actual numbers. Small dim-text hint added near the resupply button ("incl. propellant at market
+  rate."). No SAVE_VERSION bump (no new persisted state).
+  **Validation.** `node --check` OK. Baseline parity 48/48 byte-identical (LEO/Moon/Mars × modules × greenhouse
+  × fission) vs. reconstructed old formula. Monotonic vs. fuel price and cryo research confirmed. Mission-sim
+  regression clean. Lifecycle (charge==display, money-gate, prorate, Pioneer no-op) 11/11.
 
 ## Session — Isometric command-center layout redistribution (2026-07-04)
 

@@ -2945,7 +2945,27 @@ function facilitySupplyDrain(){ return 1; } // one month of provisions consumed 
 function facilityStarved(id){ return facilityBuilt(id) && facilitySupply(id)<=0; }
 function facilitySupplyFactor(id){ return facilityStarved(id)?FAC_STARVE_PROD:1; } // starved bases run at reduced output
 function facilitySupplyMonths(id){ return Math.round(facilitySupply(id)); } // months of runway remaining
-function resupplyCostFull(id){ const def=facilityById(id), fs=facilityState(id); if(!def||!fs) return 0; const mod=Math.max(1,fs.modules||1); const fission=state.research.surface_fission_power?0.75:1; /* a base that makes its own power ships fewer consumables */ const grn=Math.max(0.5, 1-0.15*facilityGreenhouses(fs)); /* greenhouses grow food on-site */ const feedMod=Math.max(1, mod-facilityGreenhouses(fs)); /* a greenhouse feeds itself */ return round2(FAC_RESUPPLY_PER_MODULE*feedMod*bodyResupplyMult(def.body)*fission*grn); }
+// Slice 2.2: resupply cost now floats with the live propellant market and cryo boil-off.
+const LOGI_FUEL_FRAC=0.45;           // fraction of a resupply's cost that is propellant (rest: food/spares/crew consumables)
+// Shared cryogenic boil-off rates — used by BOTH the mission simulator (computeMissionOutcome) and the resupply cost model.
+const BOILOFF_RATE_BASE=0.015;       // per month, uncontrolled LH₂ (CH₄ at half); the flat resupply cost implicitly assumes this rate
+const BOILOFF_RATE_CONTROLLED=0.004; // per month, with cryo_boiloff_control research (~4× cut)
+const BOILOFF_CAP=0.30;              // max fractional propellant loss over a cruise
+function boiloffMargin(months, controlled){ // extra-propellant factor needed to still arrive full after boil-off
+  const rate=controlled?BOILOFF_RATE_CONTROLLED:BOILOFF_RATE_BASE;
+  const frac=Math.min(BOILOFF_CAP, rate*months); // linear accrual + cap, identical to the sim's loss model
+  return 1/(1-frac);
+}
+const FUEL_BUY_BASE=round2(FUEL_BASE*(1+FUEL_SPREAD)); // baseline buy price the flat resupply cost implicitly assumed
+function resupplyCostFull(id){ const def=facilityById(id), fs=facilityState(id); if(!def||!fs) return 0; const mod=Math.max(1,fs.modules||1); const fission=state.research.surface_fission_power?0.75:1; /* a base that makes its own power ships fewer consumables */ const grn=Math.max(0.5, 1-0.15*facilityGreenhouses(fs)); /* greenhouses grow food on-site */ const feedMod=Math.max(1, mod-facilityGreenhouses(fs)); /* a greenhouse feeds itself */
+  const base=FAC_RESUPPLY_PER_MODULE*feedMod*bodyResupplyMult(def.body)*fission*grn; // pre-2.2 flat cost
+  // 2.2: fold in the live fuel market (marketRatio) and cryo boil-off margin (boiloffRatio) on the propellant fraction only.
+  const marketRatio=fuelBuyPrice()/FUEL_BUY_BASE;                         // 1.0 at baseline fuel price → neutral
+  const months=logiTransitDays(def.body)/30;                             // cruise duration; ~0 for LEO/Moon → neutral
+  const controlled=!!state.research.cryo_boiloff_control;
+  const boiloffRatio=boiloffMargin(months, controlled)/boiloffMargin(months, false); // 1.0 without cryo (base assumes uncontrolled); <1 with cryo → discount
+  return round2(base*(1-LOGI_FUEL_FRAC + LOGI_FUEL_FRAC*marketRatio*boiloffRatio));
+}
 function resupplyCost(id){ const missing=Math.max(0, FAC_SUPPLY_MONTHS-facilitySupply(id)); return round2(resupplyCostFull(id)*(missing/FAC_SUPPLY_MONTHS)); } // pay for what you actually ship up
 // Slice 2.1: a resupply shipment already in cruise toward this facility (Mars only, in practice)
 function resupplyInTransit(id){ return (state.activeFlights||[]).find(f=>f&&f.kind==='logistics'&&f.facId===id)||null; }
@@ -4203,13 +4223,13 @@ function simulateMission(m){
   { const mo=(m.days||0)/30;
     if(mo>0.5){
       const controlled=!!state.research.cryo_boiloff_control;
-      const rate=controlled?0.004:0.015; // per month, LH₂; CH₄ at half
+      const rate=controlled?BOILOFF_RATE_CONTROLLED:BOILOFF_RATE_BASE; // per month, LH₂; CH₄ at half
       let lost=0;
       for(const k in present){
         const prop=(ENGINES[present[k].eng]||{}).prop||'';
         const cryo=/LH₂/.test(prop)?1:(/CH₄|methal/i.test(prop)?0.5:0);
         if(!cryo) continue;
-        const frac=Math.min(0.30, rate*cryo*mo);
+        const frac=Math.min(BOILOFF_CAP, rate*cryo*mo);
         const dl=present[k].propLeft*frac;
         present[k].propLeft-=dl; lost+=dl;
       }
@@ -14060,6 +14080,7 @@ function renderInfrastructure(){
           <button class="btn" style="flex:1" onclick="resupplyFacility('${def.id}')" ${canRs?'':'disabled'}>${resupplyInTransit(def.id)?'📦 Resupply en route':(facilitySupply(def.id)>=FAC_SUPPLY_MONTHS?'Fully provisioned':`Resupply · ${fM(rsC)}`)}</button>
           <button class="btn" style="flex:1" onclick="expandFacility('${def.id}')" ${canEx?'':'disabled'}>Expand → ${fs.modules+1} · ${fM(ec)} · ${em} mo</button>
         </div>
+        ${facilitySupply(def.id)>=FAC_SUPPLY_MONTHS?'':'<div class="dim" style="font-size:11px;margin-top:4px">Resupply cost incl. propellant at market rate.</div>'}
       </div>`;
     }
     const chk=canFound(def.id), reqDone=!def.reqMission||state.completed[def.reqMission];
