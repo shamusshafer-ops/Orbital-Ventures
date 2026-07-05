@@ -1189,13 +1189,30 @@ const PASSIVE_CONTRACT_DEFS=[
     reqResearch:'mars_isru', minRep:220, blurb:'License in-situ propellant production to the wider industry.'},
   // military & defense — pay more, shorter terms (more churn), and lift public support
   {id:'mil_launch', cat:'mil', name:'Defense Launch Services', income:2.2, term:24, setup:5.0, cooldown:10, support:3,
-    reqMission:'first_sat', minRep:90, blurb:'Assured-access launch for military payloads on a standing contract.'},
+    reqMission:'first_sat', minRep:90, blurb:'Assured-access launch for military payloads on a standing contract.',
+    eraVariants:[{maxEra:3, name:'Strategic Launch Mandate', blurb:'Guarantee the government assured access to space for military payloads by direct mandate — no interruption tolerated for national security.'}]}, // P6 6.3: Cold War strategic mandate (eras 0-3) → standing commercial defense contract (era 4+)
   {id:'mil_recon', cat:'mil', name:'Reconnaissance Satellite Program', income:3.2, term:24, setup:8.0, cooldown:10, support:4,
-    reqMission:'first_sat', minRep:160, blurb:'Build and operate classified imaging satellites for the defense ministry.'},
+    reqMission:'first_sat', minRep:160, blurb:'Build and operate classified imaging satellites for the defense ministry.',
+    eraVariants:[{minEra:4, name:'Commercial Reconnaissance Partnership', blurb:'License classified-grade imaging capacity to the intelligence community under a commercial remote-sensing partnership.'}]}, // P6 6.3: classic state recon program (eras 0-3) → commercial-partnership imagery (era 4+)
   {id:'mil_warning', cat:'mil', name:'Missile-Warning Constellation', income:4.0, term:30, setup:11.0, cooldown:12, support:5,
-    reqMission:'crew_orbit', minRep:220, blurb:'Early-warning infrared sentinels in high orbit — a national-security backbone.'},
+    reqMission:'crew_orbit', minRep:220, blurb:'Early-warning infrared sentinels in high orbit — a national-security backbone.',
+    eraVariants:[{maxEra:3, name:'Strategic Early-Warning Network', blurb:'Field infrared missile-warning sentinels in high orbit for the national defense command — the backbone of nuclear deterrence.'}]}, // P6 6.3: Cold War deterrence network (eras 0-3) → national-security backbone (era 4+)
 ];
 const PASSIVE_CATS={sat:'Satellite Services', tour:'Human Spaceflight', lic:'Technology Licensing', mil:'Military & Defense'};
+// P6 6.3: resolve a passive contract's era-appropriate name/blurb. eraVariants entries are checked in
+// order (first bound match wins); a variant may override just name, just blurb, or both — anything it
+// doesn't set falls through to the base def. No eraVariants / no match → base def, unchanged.
+function passiveContractDisplay(d){
+  if(d.eraVariants){
+    const era=eraIndex(currentEra());
+    for(const v of d.eraVariants){
+      if(v.minEra!=null && era<v.minEra) continue;
+      if(v.maxEra!=null && era>v.maxEra) continue;
+      return {name:v.name||d.name, blurb:v.blurb||d.blurb};
+    }
+  }
+  return {name:d.name, blurb:d.blurb};
+}
 
 // #8 Program politics (first slice): public support drives government funding.
 // Support is a 0–100 mood dial; missions move it, the rivalry erodes it (national
@@ -2898,7 +2915,7 @@ function signPassiveContract(id){
   state.contractSignings=state.contractSignings||{};
   const n=(state.contractSignings[id]=passiveSignings(id)+1);
   if(d.support) addSupport(d.support);
-  log('ok',`Signed ${d.name} — +${fM(income)}/mo for ${d.term} months${n>1?` (renewal #${n-1}, ${Math.round(mult*100)}% of base)`:''}.`);
+  log('ok',`Signed ${passiveContractDisplay(d).name} — +${fM(income)}/mo for ${d.term} months${n>1?` (renewal #${n-1}, ${Math.round(mult*100)}% of base)`:''}.`);
   render();
   return true;
 }
@@ -2914,7 +2931,7 @@ function tickPassiveContracts(){
       state.contractCooldown=state.contractCooldown||{};
       const cd=(d&&d.cooldown)||PASSIVE_COOLDOWN;
       state.contractCooldown[c.id]=cd;
-      if(d) log('note',`${d.name} contract has run its term — renewable in ${cd} months.`);
+      if(d) log('note',`${passiveContractDisplay(d).name} contract has run its term — renewable in ${cd} months.`);
     } else still.push(c);
   });
   state.passiveContracts=still;
@@ -10163,7 +10180,7 @@ function outlinerItems(){
     push('🚀', `${fl.name||'Mission'} en route${crewTxt} · ${pct}%`, eta, ()=>{ try{ showFlightsModal(); }catch(e){ setTab('map'); } }, eta<=30?'var(--warn)':'var(--ignite)'); });
   // expiring passive contracts (only when near)
   (state.passiveContracts||[]).forEach(cn=>{ const d=PASSIVE_CONTRACT_DEFS.find(x=>x.id===cn.id);
-    if(cn.monthsLeft<=4) push('📄', (d?d.name:cn.id)+' expires', cn.monthsLeft*30, ()=>setTab('missions'), cn.monthsLeft<=2?'var(--warn)':null); });
+    if(cn.monthsLeft<=4) push('📄', (d?passiveContractDisplay(d).name:cn.id)+' expires', cn.monthsLeft*30, ()=>setTab('missions'), cn.monthsLeft<=2?'var(--warn)':null); });
   // rivals' next scheduled first that hasn't fired and the player hasn't claimed
   { let best=null;
     for(const r of RIVALS){ for(const f of (r.firsts||[])){
@@ -10211,7 +10228,7 @@ function tabAlerts(){
   if(md && !md.accepted) a.command.push('Mandate offer pending');
   (state.staff||[]).forEach(s=>{ if(s.morale<30){ const p=personById(s.id); a.command.push((p?p.name:'Staff')+' morale critical'); } });
   workforceGaps().filter(g=>g.kind==='understaffed').forEach(g=>a.command.push((departmentDef(g.id)||{}).name+' dept unstaffed'));
-  (state.passiveContracts||[]).forEach(cn=>{ if(cn.monthsLeft<=3) a.command.push(cn.name+' expiring'); });
+  (state.passiveContracts||[]).forEach(cn=>{ if(cn.monthsLeft<=3){ const d=passiveDef(cn.id); a.command.push((d?passiveContractDisplay(d).name:cn.id)+' expiring'); } });
   // Bench: active mission blocked by the current design
   const m=MISSIONS.find(x=>x.id===state.activeMission);
   if(m){ try{ const v=computeVehicle(); const chk=canLaunch(v,m,m.profile?simulateMission(m):null);
@@ -10356,7 +10373,7 @@ function railContractsHTML(){
     html+=top.map(d=>{
       const inc=passiveIncomeNow(d.id);
       return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px;font-size:12px">
-        <div style="min-width:0"><div style="color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${d.name}</div><div class="dim">+${fM(inc)}/mo · ${fM(d.setup)} setup</div></div>
+        <div style="min-width:0"><div style="color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${passiveContractDisplay(d).name}</div><div class="dim">+${fM(inc)}/mo · ${fM(d.setup)} setup</div></div>
         <button class="btn" style="font-size:11px;padding:3px 8px;flex-shrink:0" onclick="signPassiveContract('${d.id}')">Sign</button>
       </div>`;
     }).join('');
@@ -14828,8 +14845,9 @@ function renderPassiveContracts(){
         btn=`<button class="btn" onclick="signPassiveContract('${d.id}')" ${afford?'':'disabled'}>Sign · ${fM(d.setup)}</button>`;
       }
       const meta=`base +${fM(d.income)}/mo · setup ${fM(d.setup)} · ${(d.cooldown||PASSIVE_COOLDOWN)} mo cooldown${d.support?` · +${d.support} public support`:''}${dimNote}`;
-      return `<div class="item"><div class="body"><div class="title">${d.name}${pill}</div>
-        <div class="sub">${d.blurb}</div>
+      const disp=passiveContractDisplay(d);
+      return `<div class="item"><div class="body"><div class="title">${disp.name}${pill}</div>
+        <div class="sub">${disp.blurb}</div>
         <div class="sub num" style="margin-top:4px;color:var(--readout)">${meta}</div></div>${right}${btn}</div>`;
     }).filter(Boolean);
     if(!rows.length) continue;

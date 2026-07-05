@@ -1221,6 +1221,35 @@ pools, 6.3 passive-contract reskins, 6.4 era-sensitive public mood (reweight onl
   this slice:** Pioneer era (1942-44) has zero eligible events until `gov_grant` unlocks at 1945 (a `minYear`
   effect predating this work) — an acceptable thin-start gap. Next: **6.3** — passive-contract reskins
   (including 1-2 new contract types per user decision).
+- **6.3 ✅ (2026-07-05)** — Passive-contract reskins, scoped to **reskin only, no new contract types** (user
+  decision — the prior "1-2 new contract types" note was an open flag, not a locked decision). **Found first:**
+  `PASSIVE_CONTRACT_DEFS`'s `sat_weather`/`sat_comms`/`sat_imaging` already had an `eraVariants` field stubbed
+  from an earlier, unfinished pass — tagged `// P6 6.3` in comments but never read anywhere, i.e. dead data.
+  Also found in passing: `tabAlerts()`'s expiring-contract badge referenced `cn.name`, which is never set on a
+  signed contract record (`state.passiveContracts` entries only carry `id`/`monthsLeft`/`income`) — a
+  pre-existing `undefined` display bug, fixed alongside this slice since it's the same "contract shows the
+  wrong text" class of problem the user flagged earlier this session (see the suborbital-narration fix above).
+  Added `passiveContractDisplay(d)` — resolves a contract's live name/blurb against `d.eraVariants` (checked
+  in order, first `minEra`/`maxEra` bound match wins, unset fields fall through to the base def) using
+  `eraIndex(currentEra())`, same gating idiom as 6.2's `ECONOMY_EVENTS`. Resolution is **live**, not
+  snapshotted at signing — a contract signed pre-Commercial-era that's still running when the era turns
+  updates its displayed flavor text (deliberate, matches 6.2's "computed live" precedent; no gameplay/number
+  effect either way, text only). Wired into all 6 display sites: the sign-up list (`renderPassiveContracts`),
+  the persistent-rail top-3 preview (`railContractsHTML`), the Outliner's expiring-soon row, the Command-tab
+  alert badge (fixing the `cn.name` bug in the same edit), and both the sign/expire log lines. **Extended the
+  reskin to `mil_launch`/`mil_warning`/`mil_recon`** (same `first_sat`/`crew_orbit` reachability window as the
+  sat_* contracts, so the variant is actually visitable in a normal playthrough) — Cold War strategic-mandate/
+  deterrence-network flavor pre-Commercial era for the first two, a modern commercial-recon-partnership variant
+  post-Commercial era for the third (its base text already reads as the classic-state flavor, so the variant
+  runs the other direction — deliberate, not a mistake). **Deliberately skipped `lic_*`:** their `reqResearch`
+  (propulsive_landing/nuclear_thermal/mars_isru) generally isn't reachable until well past the era-4 boundary
+  in a normal game, so an "older-era" variant would rarely or never actually be seen — not worth the dead
+  weight. Every base string left **byte-identical** for any def with no `eraVariants` (`svc_orbit`, `tour_*`,
+  `lic_*`) — purely additive. Headless: `node --check` OK; standalone resolver harness (45 assertions) — all
+  3 unaffected contract types return base text unchanged across all 8 eras; all 5 `maxEra:3` variants resolve
+  to the old flavor from era 0 through the 1999/era-3 boundary and flip to base/modern exactly at the
+  2000/era-4 boundary; `mil_recon`'s `minEra:4` variant mirrors that boundary in the other direction. **This
+  closes out 6.3.** Next: **6.4** — era-sensitive public mood (reweight `SUPPORT_DELTA` only, no new mechanic).
 
 ## Session — Isometric command-center layout redistribution (2026-07-04)
 
