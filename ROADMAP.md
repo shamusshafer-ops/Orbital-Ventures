@@ -1381,3 +1381,35 @@ stay surgical to this slice's scope. Headless: `node --check` OK; confirmed exac
 function used by both views (no duplicated building list); simulated click trace confirms close-then-act
 ordering, drag-swallow, and planned-spot no-op. Visual placement/tracking/tooltip readability needs a manual
 browser pass. **This closes out the CC pop-out functional-parity initiative.**
+
+## Session — Suborbital/orbital failure-narration mismatch (2026-07-05)
+
+Prompted by a user report that mission failure text could reference orbit/deep-space framing on flights that
+never get there. Two bugs found in `resolveFlight`/`subsystemFragilities`, both from the same root cause: a
+few pieces of the #16 failure model applied orbit- or deep-space-flavored outcomes unconditionally, without
+checking whether the mission actually reaches orbital velocity.
+
+**Bug 1 — wrong-orbit story on suborbital flights.** The avionics `partial`-severity failure always narrated
+"the payload reached space but in the wrong orbit," even for Sounding Rocket / Reach Space / High-Altitude
+Science / Reentry Test / First Astronaut — none of which reach orbital velocity (reqDv well under ~9,400 m/s).
+**Fixed** with a new `missionReachesOrbit(m)` helper (`!!m.profile || (m.reqDv||0)>=9000`, matching the
+existing `isOrbital` convention) — suborbital flights now get "...well off the planned trajectory" instead.
+
+**Bug 2 — deep-space strand on a 15-minute hop.** `life_support`'s fragility weight carried a floor
+(`Math.max(0.3,stress)`) regardless of mission duration and was hardcoded to `phase:'deep'`/`severity:'deep'`,
+so **First Astronaut** (crew:1, days:0.2, no profile) could roll a life-support failure that resolved as a
+`strand` — "a life-support failure on the long coast home," full rescue-mission mechanic — on a suborbital
+ballistic arc lasting minutes. **Fixed**: for missions where `missionReachesOrbit(m)` is false, the floor is
+dropped (risk now scales purely with actual `m.days`) and the entry is pushed as an ordinary `phase:'ascent'`,
+`severity:'loss'` fragility instead, with a new `storyMap.life_support` line ("a cabin environmental-control
+fault surfaced during the brief flight."). Checked every `MISSIONS` entry: First Astronaut is the *only*
+crewed, non-profile mission with `reqDv<9000`, so this is provably balance-neutral for every other
+crewed mission (crew_orbit/multi_day/endurance/luna_*/mars_*/jupiter_*/belt_mining/astrobiology all still
+hit the pre-existing floor/deep/strand path unchanged).
+
+**Known residual, left alone deliberately:** the pre-flight phase-breakdown UI (`SUBSYS_PHASE` static
+key→phase map used by `flightPhaseBreakdown`/live-call eligibility) still buckets `life_support` under
+"Deep space" regardless of mission, since that map is keyed by subsystem only, not by mission — a cosmetic
+label mismatch only, not reachable by First Astronaut's actual failure resolution or by the reserve-margin/
+10-day-leak mechanics (neither applies to it). Headless: `node --check` OK; traced `missionReachesOrbit`
+against every mission definition by hand to confirm the isolation claim above.
