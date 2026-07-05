@@ -1187,6 +1187,22 @@ const PASSIVE_CONTRACT_DEFS=[
     reqResearch:'nuclear_thermal', minRep:200, blurb:'Space agencies and defense pay to use your NTR designs.'},
   {id:'lic_isru', cat:'lic', name:'Sabatier ISRU Licensing', income:2.8, term:36, setup:7.0,
     reqResearch:'mars_isru', minRep:220, blurb:'License in-situ propellant production to the wider industry.'},
+  // P8: Rapid Refurbishment synergy unlock (rapid_inspection + qa_program)
+  {id:'lic_refurb', cat:'lic', name:'Fleet Refurbishment Licensing', income:2.4, term:36, setup:6.0,
+    reqSynergy:'rapid_refurb', minRep:150, blurb:'License your rapid-turnaround inspection and refurbishment process to other operators running reusable fleets.'},
+  // P9: one doctrine-exclusive standing contract per doctrine — only signable while that doctrine
+  // is declared (reqDoctrine). An already-signed one keeps running if you later switch doctrine
+  // (same as any other req-gated contract whose gate later stops holding) — just not renewable.
+  {id:'doct_reuse', cat:'doct', name:'Turnaround Advisory Retainer', income:1.8, term:30, setup:3.0,
+    reqDoctrine:'reuse', minRep:60, blurb:'Other operators pay a standing retainer for your rapid-refly turnaround expertise.'},
+  {id:'doct_heavy', cat:'doct', name:'Heavy-Cargo Charter', income:2.2, term:30, setup:4.0,
+    reqDoctrine:'heavy', minRep:60, blurb:'A standing charter for oversized payloads only your throw-weight can lift.'},
+  {id:'doct_commercial', cat:'doct', name:'Manifest Brokerage', income:2.0, term:30, setup:3.5,
+    reqDoctrine:'commercial', minRep:60, blurb:'Broker spare manifest capacity to other payload customers on a standing commission.'},
+  {id:'doct_statecraft', cat:'doct', name:'National Prestige Program', income:1.6, term:30, setup:3.0, support:2,
+    reqDoctrine:'statecraft', minRep:60, blurb:'A standing state retainer to keep the flag-planting program visible.'},
+  {id:'doct_science', cat:'doct', name:'Research Consortium Grant', income:1.6, term:30, setup:3.0,
+    reqDoctrine:'science', minRep:60, blurb:'A standing multi-university grant funding your ongoing science manifest.'},
   // military & defense — pay more, shorter terms (more churn), and lift public support
   {id:'mil_launch', cat:'mil', name:'Defense Launch Services', income:2.2, term:24, setup:5.0, cooldown:10, support:3,
     reqMission:'first_sat', minRep:90, blurb:'Assured-access launch for military payloads on a standing contract.',
@@ -1198,7 +1214,7 @@ const PASSIVE_CONTRACT_DEFS=[
     reqMission:'crew_orbit', minRep:220, blurb:'Early-warning infrared sentinels in high orbit — a national-security backbone.',
     eraVariants:[{maxEra:3, name:'Strategic Early-Warning Network', blurb:'Field infrared missile-warning sentinels in high orbit for the national defense command — the backbone of nuclear deterrence.'}]}, // P6 6.3: Cold War deterrence network (eras 0-3) → national-security backbone (era 4+)
 ];
-const PASSIVE_CATS={sat:'Satellite Services', tour:'Human Spaceflight', lic:'Technology Licensing', mil:'Military & Defense'};
+const PASSIVE_CATS={sat:'Satellite Services', tour:'Human Spaceflight', lic:'Technology Licensing', mil:'Military & Defense', doct:'Doctrine'};
 // P6 6.3: resolve a passive contract's era-appropriate name/blurb. eraVariants entries are checked in
 // order (first bound match wins); a variant may override just name, just blurb, or both — anything it
 // doesn't set falls through to the base def. No eraVariants / no match → base def, unchanged.
@@ -1327,6 +1343,11 @@ const MISSIONS = [
   {id:'tanker_leo',   name:'Tanker Run (LEO Depot)', crew:0, days:0, payout:0, rep:6, minRep:38, reqResearch:'orbital_depot', reqDv:9400,
     payload:0, tanker:true,
     blurb:'No crew, no science — just propellant. Deliver a tank of fuel to the LEO depot for future missions to draw from.<span class="hist">↳ Propellant depots were proposed for Apollo-era architectures and became central to post-2010 reusable-launch economics.</span>'},
+  // P8: Autonomous Landing synergy unlock (propulsive_landing + autonomous_navigation) — an uncrewed
+  // mission type that couldn't exist on either tech alone: precision propulsive landing needs precise
+  // autonomous guidance to place a high-value payload exactly, not just get it to orbit.
+  {id:'precision_cargo', name:'Precision Cargo Delivery', reqDv:9400, payload:0.30, crew:0, days:0, payout:22.0, rep:55, minRep:180, reqSynergy:'autonomous_landing',
+    blurb:'Autonomous guidance flies the final approach and a propulsive landing sets a high-value, fragile payload down exactly on target — no crew, no margin for drift.<span class="hist">↳ Precision propulsive landing under full autonomy is the capability that makes uncrewed point-delivery viable.</span>'},
   // #3: prestige science missions — pay little money, but bank a large knowledge windfall (sciYield)
   // that funds the science-gated deep-tech nodes (#1). The reason to collect science.
   {id:'space_telescope', name:'Orbital Observatory',  reqDv:9700, payload:0.12, crew:0, days:0, payout:6.0,  rep:24, minRep:70,  sciMission:true, sciYield:22, blurb:'Loft a long-baseline space telescope above the atmosphere — little commercial return, but years of discovery and prestige. A pure science play that banks the knowledge to unlock deep tech.<span class="hist">↳ The Hubble Space Telescope reshaped astronomy from low Earth orbit after its 1990 launch.</span>'},
@@ -1583,6 +1604,7 @@ function commitLunarArch(id){
 function missionTechMet(m){
   if(!m) return false;
   if(m.reqResearch && !(state.research && state.research[m.reqResearch])) return false;
+  if(m.reqSynergy && !synergyUnlocked(m.reqSynergy)) return false; // P8: cross-track synergy unlock
   if(m.id==='luna_landing') return anyLunarArchUnlocked();
   return true;
 }
@@ -1847,6 +1869,35 @@ const RESEARCH = [
   {id:'automated_factory', track:'manufacturing', name:'Fully Automated Factory', cost:12.0, months:10, req:['additive_manufacturing'], effect:{buildCostCut:0.05,buildTimeCut:1.0}, desc:'A lights-out plant where robots build vehicles end to end, around the clock. <b>−5% build cost · −1 mo build.</b><span class="hist">↳ Full factory automation is the endgame of manufacturing — the line that builds itself.</span>'},
   {id:'megastructure_construction', track:'assembly', name:'Megastructure Construction', cost:18.0, months:18, req:['orbital_shipyards'], reqMissionDone:'jupiter_orbit', effect:{}, desc:'Kilometer-scale orbital construction — solar collectors, rotating colonies, the bones of a spacefaring civilization. The capstone of everything the company has learned.<span class="hist">↳ Megastructures are where an aerospace company becomes a civilization-scale enterprise.</span>'},
 ];
+// P8: Cross-Track Synergies. Thoughtful composition across ≥2 research tracks earns a bonus no
+// single node grants alone. Fully derived from the researched set — no new state. The two
+// numeric-fold seeds fold into the SAME reliability accumulator as familyRelBonus/doctrineRelMod/
+// inquiryRelBonus (existing 0.995 cap still bounds everything); the other two are upgraded to
+// real unlocks (a new mission type, a new passive contract) per the plan, gated via reqSynergy.
+const SYNERGIES=[
+  {id:'lightweight_cryo', name:'Lightweight Cryotanks', requires:['balloon_tanks','cryo_upper'],
+    effect:{reliability:0.01}, blurb:'Thin-wall balloon-tank construction and cryogenic upper-stage propulsion compound into a more mature, better-integrated stage.'},
+  {id:'autonomous_landing', name:'Autonomous Landing', requires:['propulsive_landing','autonomous_navigation'],
+    blurb:'Precision propulsive landing plus autonomous guidance is precise enough to unlock uncrewed Precision Cargo Delivery contracts.'},
+  {id:'rad_hardening', name:'Radiation Hardening', requires:['rad_shielding','redundant_avionics','radiation_countermeasures'],
+    effect:{reliability:0.015}, blurb:'Shielding, fault-tolerant avionics and crew countermeasures compound into a further reliability trim on deep missions.'},
+  {id:'rapid_refurb', name:'Rapid Refurbishment', requires:['rapid_inspection','qa_program'],
+    blurb:'Fast-turnaround inspection plus a mature QA line is process know-how other operators will pay to license.'},
+];
+function synergyActive(s){ return s.requires.every(id=>!!(state.research&&state.research[id])); }
+function activeSynergies(){ return SYNERGIES.filter(synergyActive); }
+// reqSynergy on a mission/contract references a SYNERGY's own id directly (not a separate unlock key)
+function synergyUnlocked(id){ const s=SYNERGIES.find(x=>x.id===id); return !!s && synergyActive(s); }
+function synergyRelBonus(){ return activeSynergies().reduce((a,s)=>a+((s.effect&&s.effect.reliability)||0),0); }
+function synergiesStripHTML(){
+  const chips=SYNERGIES.map(s=>{
+    const active=synergyActive(s);
+    const missing=s.requires.filter(id=>!(state.research&&state.research[id])).map(id=>(RESEARCH.find(r=>r.id===id)||{}).name||id);
+    const title=(active?s.blurb:`${s.blurb} Needs: ${missing.join(', ')}.`).replace(/"/g,'&quot;');
+    return `<span class="pill ${active?'ok':'lock'}" title="${title}" style="margin:0 6px 6px 0;display:inline-block">${active?'✓':'○'} ${s.name}</span>`;
+  }).join('');
+  return `<div style="margin-bottom:10px"><div class="cc-panel-h" style="margin:0 0 4px">⚗ Cross-Track Synergies</div><div>${chips}</div></div>`;
+}
 
 // #6: research tracks — divergent branches, used by the swimlane tech-tree layout.
 // R&D epic slice 1: the old combined 'structures' track is split into
@@ -2076,6 +2127,7 @@ function newGame(difficulty){
     livery:defaultLivery(), // bench customization: cosmetic vehicle livery
     parts:defaultParts(), // BC2: performance parts (tank material / avionics / fairing)
     blueprints:[], // saved full ship designs (reloadable blueprints)
+    frontPages:[], // P7: The Agency Wire — headline records for the Chronicle scrapbook
     ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
     facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
     architectures:{}, science:0,
@@ -2778,6 +2830,7 @@ function rivalRaceLine(missionId){
 function showMilestoneModal(m, payout, rep){
   const race=rivalRaceLine(m.id);
   const hist=(m.blurb||'').match(/<span class="hist">([\s\S]*?)<\/span>/);
+  pushFrontPage('milestone', '✦', m.name, race.replace(/<[^>]+>/g,''));
   showModal(`<div style="text-align:center">
     <div style="font-size:12px;letter-spacing:.35em;color:var(--ignite);text-transform:uppercase;margin-bottom:6px">✦ Milestone ✦</div>
     <h2 style="margin:0 0 2px">${m.name}</h2>
@@ -2800,6 +2853,15 @@ const MANDATE_COOLDOWN_MO=15;     // months between offers (after resolve/declin
 const MANDATE_BONUS_MULT=0.65;    // bonus = mission payout × this (+ era scaling)
 const MANDATE_SUPPORT_WIN=8;      // support gained on fulfilment
 const MANDATE_SUPPORT_MISS=-10;   // support lost on a missed deadline
+// P10: schedule-pressure premium — flying a mandate close to its deadline (instead of comfortably
+// early, fully de-risked) pays up to this much more on top of the base bonus. 0 at the moment you
+// accept it, ramping to +SCHEDULE_PRESSURE_MAX right at the wire.
+const SCHEDULE_PRESSURE_MAX=0.5;
+// P10: first-flight-of-design prestige — flying a vehicle configuration that has never flown before
+// (vs. re-flying the same proven design) pays a small premium, restoring a real choice once
+// reliability alone is ground down to ~97%+ and stops being an interesting decision on its own.
+const FIRST_DESIGN_PAYOUT_BONUS=0.10;
+const FIRST_DESIGN_REP_BONUS=2;
 function mandateCandidate(){
   // a mission the player hasn't flown, whose research gate is already met (or nearly-met via
   // an affordable node), and whose rep gate is within reach — i.e. plausibly achievable
@@ -2848,8 +2910,13 @@ function tickMandate(){
 function fulfillMandateIfMatch(missionId){
   const md=state.mandate; if(!md || !md.accepted || md.missionId!==missionId) return;
   if(absMonth()<=md.deadlineAbs){
-    state.money+=md.bonus; addSupport(MANDATE_SUPPORT_WIN);
-    log('ok',`📜 Mandate fulfilled: ${md.name}. +${fM(md.bonus)} bonus, +${MANDATE_SUPPORT_WIN} public support.`);
+    const lead=Math.max(1, md.deadlineAbs-md.offeredAbs);
+    const pressure=clampA((md.deadlineAbs-absMonth())/lead, 0, 1); // 1 = flown right at offer, 0 = flown right at the deadline
+    const scheduleMult=1+SCHEDULE_PRESSURE_MAX*(1-pressure); // P10: the closer to the wire, the bigger the premium
+    const bonus=round2(md.bonus*scheduleMult);
+    state.money+=bonus; addSupport(MANDATE_SUPPORT_WIN);
+    const pressureTxt=scheduleMult>1.01?` (schedule-pressure premium ×${scheduleMult.toFixed(2)} — cut it close)`:'';
+    log('ok',`📜 Mandate fulfilled: ${md.name}. +${fM(bonus)} bonus${pressureTxt}, +${MANDATE_SUPPORT_WIN} public support.`);
   }
   state.mandate=null; state.mandateCooldown=MANDATE_COOLDOWN_MO;
 }
@@ -2901,6 +2968,8 @@ function passiveReqMet(d){
   if(!d) return false;
   if(d.reqMission && !state.completed[d.reqMission]) return false;
   if(d.reqResearch && !state.research[d.reqResearch]) return false;
+  if(d.reqSynergy && !synergyUnlocked(d.reqSynergy)) return false; // P8: cross-track synergy unlock
+  if(d.reqDoctrine && state.doctrine!==d.reqDoctrine) return false; // P9: doctrine-exclusive contract
   if(d.minRep && state.rep<d.minRep) return false;
   return true;
 }
@@ -4011,7 +4080,8 @@ function fireRivalFirst(r, f){
     state.scooped[f.missionId]=true;
     const mm=MISSIONS.find(x=>x.id===f.missionId);
     log('bad', `Scooped: ${r.name} beat you to "${mm.name}" — its first-time payout is cut to ${Math.round(SCOOP_PAYOUT_MULT*100)}% (rep reward unaffected).`);
-  }
+    pushFrontPage('scoop', '📰', `Scooped: ${r.name} claims ${mm.name}`, `Their first-time payout on it is cut to ${Math.round(SCOOP_PAYOUT_MULT*100)}%.`);
+  } else pushFrontPage('rival', r.flag, `${r.name} claims: ${f.name}`, `${state.year} — ${r.name} reaches a milestone your own program hasn't.`);
   if(f.marketImpact){ // M5: a rival's cost/reuse breakthrough triggers an industry price war
     state.rivalThreat[r.id]+=1;
     state.econEvents.push({id:'pricewar_'+r.id, label:`${r.name} price pressure`, kind:'bad', payoutMult:f.marketImpact.payoutMult, monthsLeft:f.marketImpact.months});
@@ -4143,6 +4213,7 @@ function maybeRivalDisaster(r, rs){
   }
   log('bad', `${r.flag} ${r.name} DISASTER — a crewed vehicle is stranded in deep space. A decision is needed.`);
   if(distress) log('rival', `${r.flag} ${r.name}: “${distress}”`);
+  pushFrontPage('disaster', r.flag, `${r.name} crew stranded in deep space`, 'The world is watching to see if anyone will help.');
   _pendingRivalDisaster={ rivalId:r.id }; // surfaced by maybeShowRivalDisaster() after the advance settles
 }
 function maybeShowRivalDisaster(){ if(_pendingRivalDisaster && !_pendingSetback && !_pendingLogiMishap && !_pendingInquiry) showRivalDisasterModal(); } // setback/mishap/inquiry take priority
@@ -4719,7 +4790,10 @@ function missionNetEconomics(m, v, sim){
   const monthlyNet=(state.lastMonth&&state.lastMonth.net!=null)?state.lastMonth.net:0; // current recurring net (funding, payroll, upkeep…)
   const carryCost=round2(-monthlyNet*campaignMo); // if net is negative, campaign months cost you this much
   const payout=estMissionPayout(m);
-  const mandateBonus=(state.mandate && state.mandate.accepted && state.mandate.missionId===m.id && absMonth()<=state.mandate.deadlineAbs)?round2(state.mandate.bonus):0;
+  const md=state.mandate;
+  const mandateBonus=(md && md.accepted && md.missionId===m.id && absMonth()<=md.deadlineAbs)
+    ? round2(md.bonus*(1+SCHEDULE_PRESSURE_MAX*(1-clampA((md.deadlineAbs-absMonth())/Math.max(1,md.deadlineAbs-md.offeredAbs),0,1)))) // P10: match fulfillMandateIfMatch's schedule-pressure premium
+    : 0;
   const net=round2(payout + mandateBonus - directCost - carryCost);
   return {payout, mandateBonus, directCost, carryCost, campaignMo, monthlyNet, net, routine:!!state.completed[m.id]};
 }
@@ -5065,6 +5139,7 @@ function effectiveReliability(m,v,sim,crewed){
   if(crewed){ const ab=astroBonus(); rel=Math.min(0.99, rel+ab.rel); }
   rel=Math.min(0.995, rel + facilityBonus(missionBody(m&&m.id)).relBump); // M17: home-field operational bonus
   rel=Math.min(0.995, rel + familyRelBonus(activeFamily())); // #3: reliability heritage of a proven lineage
+  rel=Math.min(0.995, rel + synergyRelBonus()); // P8: cross-track research synergies (0 unless both/all requires are researched)
   rel=Math.min(0.995, rel + inquiryRelBonus(m,v,sim,crewed)); // P3: a funded failure inquiry's reliability credit, only while its subsystem is in play
   if(state.staticFixBonus) rel=Math.min(0.995, rel + state.staticFixBonus); // Phase 2: fault found & fixed on the test stand
   if(recoveryRefly(m)) rel=Math.max(diff().relFloor, rel - refurbRelPenalty()); // #7 slice 4: refurbishment wear — each refly chips a little reliability (bounded; mitigated by retiring the airframe)
@@ -5845,7 +5920,13 @@ function finalizeLaunch(ctx, ops){
     let payout=(routine?m.payout*0.4:m.payout)*windowQuality*diff().payoutMult*econPayoutMult()*opsPayoutMult*doctrineMult('payout'); // CE3(a): Commercial +, Statecraft/Science −
     if(crewed) payout*=ab.payoutMult; // M6: astronaut payout bonus
     if(!routine && state.scooped[m.id]) payout*=SCOOP_PAYOUT_MULT;
-    const rep=Math.max(0,Math.round(((routine?2:m.rep)+opsRep)*doctrineMult('rep'))); // CE3(a): Statecraft lifts reputation gain
+    // P10: first-flight-of-design prestige — fam.flights is still pre-increment here (bumped later
+    // at creditFamilySuccess), so ===0 means this vehicle configuration has never flown before. Flying
+    // something new (vs. re-flying the same proven design forever) earns a premium — this is the
+    // "reward for risk" lever once reliability alone stops being the interesting choice.
+    const firstOfDesign=(()=>{ const f=activeFamily(); return !!f && (f.flights||0)===0; })();
+    if(firstOfDesign) payout*=(1+FIRST_DESIGN_PAYOUT_BONUS);
+    const rep=Math.max(0,Math.round(((routine?2:m.rep)+opsRep+(firstOfDesign?FIRST_DESIGN_REP_BONUS:0))*doctrineMult('rep'))); // CE3(a): Statecraft lifts reputation gain
     addSupport(routine?supportDelta('routineSuccess'):clampA(2+(m.rep||5)*0.05,2,10)); // #8: a win lifts public mood, scaled by how big a win
     if(m.tanker){
       const delivered=tankerDelivery();
@@ -5858,7 +5939,8 @@ function finalizeLaunch(ctx, ops){
       fulfillSpecialIfMatch(m.id); // special contract bonus on a matching routine/repeat flight
       const qTxt = m.window?(windowQuality>1.05?' Favorable window geometry boosted the payload value.':windowQuality<0.92?' A marginal window cut into the payload value.':''):'';
       const scoopTxt = (!routine && state.scooped[m.id]) ? ' (scooped — reduced first-time payout)' : '';
-      log('ok',`${m.name}: SUCCESS.${crewed?` Crew of ${m.crew} home safe.`:''} +${fM(payout)}, +${rep} rep, +${sciGain} sci. (reliability ${(rel*100|0)}%)${qTxt}${scoopTxt}`);
+      const firstTxt = firstOfDesign ? ` This vehicle's maiden flight — a +${Math.round(FIRST_DESIGN_PAYOUT_BONUS*100)}% prestige premium and +${FIRST_DESIGN_REP_BONUS} rep for flying it new.` : '';
+      log('ok',`${m.name}: SUCCESS.${crewed?` Crew of ${m.crew} home safe.`:''} +${fM(payout)}, +${rep} rep, +${sciGain} sci. (reliability ${(rel*100|0)}%)${qTxt}${scoopTxt}${firstTxt}`);
     }
     if(m.profile && state.depotUse>0){ state.depot=Math.max(0,state.depot-state.depotUse);
       if(!state.wonM3bii && !pendingCelebration){ state.wonM3bii=true; pendingCelebration=()=>victoryM3bii('depot'); } }
@@ -5929,6 +6011,7 @@ function finalizeLaunch(ctx, ops){
       advance(6); // grounding + investigation
       state.crewLost=(state.crewLost||0)+m.crew; // chronicle: the price paid
       log('bad',`${m.name}: CATASTROPHE. The ${SUBSYS_LABEL[outcome.subsystem].toLowerCase()} failed — ${outcome.story} Vehicle lost with all ${m.crew} aboard. Six-month stand-down, −${rep} rep. Fit a launch-escape system before flying crew again.`);
+      pushFrontPage('disaster', '⚠', `${m.name}: crew lost`, outcome.story);
       applyEraStakes('loss of the crew and vehicle'); // CE4(c): era-scaled compounding setback
     }else{
       const rep=Math.min(state.rep, routine?3:8); state.rep-=rep;
@@ -6777,7 +6860,7 @@ function loadDefaults(){ return {
       staff:[], assignedAstronaut:null, departments:defaultDepartments(),
       vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, rehearsal:false, techLevel:{}, divisions:{}, partnerships:[], breakthroughCooldown:3, relDebt:0, powerSource:'solar',
       recentBuilds:[], materials:defaultMaterialsState(),
-      buildQueue:[], hangar:[], orderSeq:0, padMonthAbs:-1, padMonthUsed:0, standingProd:null, juggernautReached:false, doctrine:null, lunarArch:null, uiLayer:'advanced', loanInterest:0, metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[], day:0, engineStock:{}, engineStockTested:{}, partStock:{}, partStockTested:{}, activeFlights:[], inquiryCredit:null
+      buildQueue:[], hangar:[], orderSeq:0, padMonthAbs:-1, padMonthUsed:0, standingProd:null, juggernautReached:false, doctrine:null, lunarArch:null, uiLayer:'advanced', loanInterest:0, metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[], frontPages:[], day:0, engineStock:{}, engineStockTested:{}, partStock:{}, partStockTested:{}, activeFlights:[], inquiryCredit:null
 }; }
 
 /* ---------- Session bookend: "where you left off" ----------
@@ -10036,6 +10119,13 @@ const SPECIAL_MODS=[
   {id:'prestige',name:'State showcase',   mult:1.4,  lead:10, minRep:60,
    flavors:["A state visit is scheduled — the government wants a flawless flight to show off, and will pay like it.",
             "An international exposition wants a launch timed to its opening ceremony. National prestige budgets are generous."]},
+  // P10: insurance underwriters pay the biggest premium of any special contract precisely because
+  // they're pricing in the risk, not despite it — the "reward for flying risky" lever alongside the
+  // first-of-design bonus and the mandate schedule-pressure premium. Flavor-only like every other
+  // mod here (no mechanical risk check) — a deliberate scope boundary, not an oversight.
+  {id:'insurance',name:'High-risk underwriting', mult:1.6, lead:8, minRep:80,
+   flavors:["A reinsurer is pricing next year's launch-liability book off this flight — they'll cover the premium if you fly it now, margins as they stand.",
+            "An underwriting syndicate wants the loss data before a competitor's; they'll pay top rate for a flight on your current, unproven margins."]},
 ];
 const SPECIAL_COOLDOWN_MO=9;
 function specialCandidateMissions(){
@@ -10069,6 +10159,40 @@ function fulfillSpecialIfMatch(missionId){
     log('ok',`★ Special contract fulfilled: ${sc.title}. +${fM(sc.bonus)} bonus, +3 support, +2 rep.`);
   }
   state.specialContract=null; state.specialCooldown=SPECIAL_COOLDOWN_MO;
+}
+
+/* ---------- P7: The Agency Wire — front-page artifacts + Chronicle scrapbook ----------
+   Firsts, disasters and scoops already fire their own modal/log at the moment they happen
+   (showMilestoneModal, fireRivalFirst, maybeRivalDisaster, the crewed-catastrophe branch) —
+   this doesn't touch any of that. It just also files a short "front page" record of the same
+   moment, browsable later from the Chronicle. Same lazy-default pattern as blueprints() —
+   no SAVE_VERSION bump; a legacy save simply starts with an empty wire. */
+const FRONT_PAGE_CAP=24;
+function frontPages(){ return state.frontPages=state.frontPages||[]; }
+function pushFrontPage(kind, icon, headline, dek){
+  frontPages().unshift({abs:absMonth(), kind, icon, headline, dek});
+  if(frontPages().length>FRONT_PAGE_CAP) frontPages().pop();
+}
+const FRONT_PAGE_KIND_LABEL={milestone:'MILESTONE', scoop:'SCOOPED', disaster:'DISASTER', rival:'RIVAL WIRE'};
+function frontPageHTML(e){
+  return `<div style="text-align:center;font-family:Georgia,'Times New Roman',serif">
+    <div style="font-size:11px;letter-spacing:.3em;color:var(--dim);text-transform:uppercase;border-top:2px solid var(--ink);border-bottom:2px solid var(--ink);padding:5px 0;margin-bottom:10px">The Agency Wire · ${dateOfAbs(e.abs)}</div>
+    <div style="font-size:11px;letter-spacing:.2em;color:var(--warn);text-transform:uppercase;margin-bottom:4px">${FRONT_PAGE_KIND_LABEL[e.kind]||''}</div>
+    <h2 style="margin:0 0 8px;font-size:22px">${e.icon} ${e.headline}</h2>
+    ${e.dek?`<p class="muted" style="font-size:13px">${e.dek}</p>`:''}
+  </div>`;
+}
+function showFrontPage(idx){
+  const e=frontPages()[idx]; if(!e) return;
+  showModal(`${frontPageHTML(e)}<button class="btn" style="width:100%;margin-top:10px" onclick="showChronicle('view')">← Back to the Chronicle</button>`, true);
+}
+function frontPagesHTML(){
+  if(!frontPages().length) return '<div class="dim" style="font-size:12px">No wire copy yet — a first, a disaster or a scoop will file the opening edition.</div>';
+  return frontPages().map((e,i)=>`<div onclick="showFrontPage(${i})" style="display:flex;gap:8px;align-items:baseline;padding:3px 0;font-size:12px;cursor:pointer" onmouseover="this.style.background='var(--panel2)'" onmouseout="this.style.background=''">
+    <span style="flex:0 0 16px">${e.icon}</span>
+    <span style="color:var(--ink);flex:1">${e.headline}</span>
+    <span class="dim" style="font-size:11px">${dateOfAbs(e.abs)}</span>
+  </div>`).join('');
 }
 
 /* ---------- The Agency Chronicle: your century, scored ----------
@@ -10130,6 +10254,8 @@ function showChronicle(mode){ // mode: 'view' | 'era' (soft date) | 'retire'
       </div>
     </div>
     <div style="max-height:240px;overflow:auto;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:6px 0;margin-bottom:10px">${rows}</div>
+    ${mode==='view'?`<div class="cc-panel-h" style="margin:0 0 4px">📰 The Agency Wire</div>
+    <div style="max-height:160px;overflow:auto;border-bottom:1px solid var(--line);padding:2px 0 6px;margin-bottom:10px">${frontPagesHTML()}</div>`:''}
     ${mode==='retire'
       ? `<button class="btn launch" style="width:100%" onclick="hideModal();newGame();render()">Found a new agency ▸</button>
          <button class="btn ghost" style="width:100%;margin-top:6px" onclick="hideModal()">…not yet — back to work</button>`
@@ -10237,6 +10363,9 @@ function tabAlerts(){
   (state.staff||[]).forEach(s=>{ if(s.morale<30){ const p=personById(s.id); a.command.push((p?p.name:'Staff')+' morale critical'); } });
   workforceGaps().filter(g=>g.kind==='understaffed').forEach(g=>a.command.push((departmentDef(g.id)||{}).name+' dept unstaffed'));
   (state.passiveContracts||[]).forEach(cn=>{ if(cn.monthsLeft<=3){ const d=passiveDef(cn.id); a.command.push((d?passiveContractDisplay(d).name:cn.id)+' expiring'); } });
+  // P9: surface an unsigned doctrine-exclusive contract once it's actually signable
+  if(state.doctrine){ const dd=PASSIVE_CONTRACT_DEFS.find(x=>x.cat==='doct'&&x.reqDoctrine===state.doctrine);
+    if(dd && passiveStatus(dd.id)==='available') a.command.push(dd.name+' signable'); }
   // Bench: active mission blocked by the current design
   const m=MISSIONS.find(x=>x.id===state.activeMission);
   if(m){ try{ const v=computeVehicle(); const chk=canLaunch(v,m,m.profile?simulateMission(m):null);
@@ -15285,7 +15414,7 @@ function renderDivisions(){
       <button class="btn" style="width:100%;margin-top:8px;font-size:12px" onclick="trainDivision('${d.id}')" ${chk.ok?'':'disabled'}>${maxed?'✓ Fully trained':(chk.ok?`Train (+${Math.round(DIV_TRAIN_SKILL*100)}% skill · ${fM(cost)})`:chk.why)}</button>
     </div>`;
   }).join('');
-  box.innerHTML=`<h2>Research Divisions <span class="pill">${DIVISIONS.length} teams</span></h2>
+  box.innerHTML=`${synergiesStripHTML()}<h2>Research Divisions <span class="pill">${DIVISIONS.length} teams</span></h2>
     <p class="muted" style="font-size:12px;margin:-4px 0 10px">Each division researches its own tracks. A division's <b>quality</b> — skill + accumulated experience + morale — accelerates projects in those tracks (stacks with your engineers) and makes <b>⚡ breakthroughs</b> (months shaved off the active project) more frequent. Invest capital to train them; experience grows as they ship; morale follows the company's finances.</p>
     ${cards}`;
 }

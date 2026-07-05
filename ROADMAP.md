@@ -1273,6 +1273,74 @@ pools, 6.3 passive-contract reskins, 6.4 era-sensitive public mood (reweight onl
   Speculative era (year 9998). **This closes out P6 (era texture pass) — all four slices shipped.** Next:
   quick wins **P7-P10** (P6/P11 were the two remaining big swings; P11 is the last item on the ranked list).
 
+## Session — P7-P10 quick wins (2026-07-05)
+
+User green-lit all four remaining quick wins in one pass; asked for token frugality, so this ran as one
+sitting with the coordinator making the content/design calls directly (as with P6's reskins) rather than
+a round of upfront questions — each design decision is called out below. All four ship with **no new
+persisted state and no SAVE_VERSION bump** (frontPages uses the same lazy-guard pattern as `blueprints()`;
+everything else is fully derived or reuses existing fields). `node --check` OK after every slice;
+standalone logic harnesses per slice (counts below) — no in-browser pass yet, flagged like other
+UI-heavy work this session.
+
+**P7 — Newspaper front page + Chronicle scrapbook.** New `frontPages()`/`pushFrontPage()` (cap 24, same
+lazy-default idiom as `blueprints()`) files a headline record at 4 existing trigger points — untouched
+otherwise — a player milestone (`showMilestoneModal`), a rival claiming any first incl. a scoop
+(`fireRivalFirst`), a rival's crewed disaster (`maybeRivalDisaster`), and a player crewed catastrophe
+(the CATASTROPHE branch). Deliberately did **not** touch any existing modal's trigger/timing logic (the
+`pendingCelebration` chain is fragile) — purely additive data capture. New `frontPageHTML()` renders a
+newspaper-styled artifact (masthead, kind label, headline, dek — serif/letter-spacing via existing CSS
+vars, no new assets); the existing "📖 Chronicle" view gained a new "📰 The Agency Wire" scrollable section
+(`frontPagesHTML()`) listing headlines, each opening its styled rendering. 4/4 harness assertions (cap +
+ordering).
+
+**P8 — Cross-track synergies as verbs.** The `SYNERGIES` config described in the 2026-06-26 review was
+**never actually built** (confirmed: zero hits for `SYNERGIES` in the live file before this slice — the
+"config ready" note in the plan meant the design was spec'd, not the code). Built it fresh: `SYNERGIES[]`,
+`synergyActive(s)` (all `requires` researched), fully derived, no new state. Mapped the 4 seed concepts
+onto real current research ids (the plan's old "T-number" placeholders don't correspond to anything in the
+live tree): **Lightweight Cryotanks** (`balloon_tanks`+`cryo_upper`, +1% rel), **Radiation Hardening**
+(`rad_shielding`+`redundant_avionics`+`radiation_countermeasures`, +1.5% rel) fold into the *same*
+reliability accumulator as `familyRelBonus`/`doctrineRelMod` (existing 0.995 cap still bounds it — verified
+both stack correctly). **Autonomous Landing** (`propulsive_landing`+`autonomous_navigation`) and **Rapid
+Refurbishment** (`rapid_inspection`+`qa_program`) are the ≥2 real unlocks the plan called for: a new
+uncrewed `precision_cargo` mission (Precision Cargo Delivery, reqDv 9400, payout 22, gated via new
+`reqSynergy` field checked in `missionTechMet`) and a new `lic_refurb` passive contract (Fleet
+Refurbishment Licensing, same gate in `passiveReqMet`). New Synergies strip (chips, active=✓/locked=○ with
+a "needs: …" tooltip) prepended to the Research Divisions card. **Bug caught by the harness before ship:**
+first draft had synergies carry a separate `unlock:` string compared against `reqSynergy` by *value*
+inequality — `reqSynergy:'autonomous_landing'` (the synergy's own id) never matched `s.unlock ===
+'precision_cargo'`, so both new unlocks would have been permanently unreachable. Fixed by having
+`synergyUnlocked(id)` look up the synergy by its own `id` directly; dropped the redundant `unlock` field.
+14/14 harness assertions after the fix (partial-requires stay inactive, multi-synergy stacking, the
+gate-unlock progression, the caught bug's exact repro).
+
+**P9 — Doctrine content drip.** One exclusive standing contract per doctrine (5 total, reusing
+`PASSIVE_CONTRACT_DEFS` with a new `reqDoctrine` field checked in `passiveReqMet` — only signable while
+that doctrine is declared; an already-signed one keeps running if you later switch, same as any other
+req-gated contract, just not renewable) — scoped to *one* content type across all 5 doctrines rather than
+"1-2 contracts/events/hires" mixed, to stay a true quick win. New `doct` category. Advisor surfacing: a
+Command-tab alert badge fires once the active doctrine's exclusive contract is actually signable and not
+yet signed. 5/5 harness assertions (locked when undeclared/mismatched, unlocks on match, re-locks on
+switching away).
+
+**P10 — Reward for flying risky.** All three sub-mechanics reuse existing state — no new persistence.
+(1) **Schedule-pressure mandate premium**: `fulfillMandateIfMatch` now scales the bonus by urgency —
+`1×` if flown the moment a mandate is accepted, ramping to `1+SCHEDULE_PRESSURE_MAX` (1.5×) flown right at
+the deadline (`missionNetEconomics`'s preview updated to match). (2) **First-flight-of-design prestige**:
+reuses the existing vehicle-family heritage tracking (`activeFamily().flights`, already `0` pre-increment
+at the payout point) — a design's maiden flight pays `+10%` and `+2` rep, on top of (not instead of) the
+existing routine/non-routine split; scoped to the clean-success branch only (tanker/partial branches
+deliberately left alone). (3) **Insurance-premium contract**: new `SPECIAL_MODS` entry (`insurance`,
+mult 1.6× — the highest of any special-contract mod) reusing the existing special-contract system
+untouched; risk is flavor framing only, like every other mod in that pool — no mechanical risk
+verification, a deliberate scope boundary flagged rather than half-built. 17/17 harness assertions
+(schedule-pressure boundary math + monotonicity + zero-lead guard; first-of-design gating).
+
+**No duplicate ids** verified across `MISSIONS`/`PASSIVE_CONTRACT_DEFS`/`SPECIAL_MODS`/`SYNERGIES` after
+all four slices. **This closes out the entire P1-P10 ranked list bar P11** (the one remaining big swing —
+a late-game crisis arc).
+
 ## Session — Isometric command-center layout redistribution (2026-07-04)
 
 Player request (not part of the P-list initiative): the isometric Command/Cape view's buildings were unevenly
