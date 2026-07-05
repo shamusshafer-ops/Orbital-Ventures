@@ -1181,3 +1181,17 @@ heavy 4-stage vehicle correctly clamps to the ascent's 190px max rather than mat
 gantry-clamped size. Next: **slice 2** — orbit/trajectory `craftSprite` (currently a fixed ~26px silhouette),
 scale up toward the shared base with its own cap (per user decision), then wheel-zoom for ascent/trajectory/
 orbit (new scope, approved).
+
+**Vehicle-size unification, slice 2 — orbit/trajectory `craftSprite` (2026-07-05).** Replaced the flat
+`clampA(26/totalH, 0.06, 0.5)` silhouette with `clampA(shape.totalH*VEH_BASE_PX_PER_UNIT, CRAFT_SPRITE_MIN_PX,
+CRAFT_SPRITE_MAX_PX)` — same shared-base source as the pad/ascent, capped separately for orbit-view readability.
+New tunable constants (flagged like `LIFTOFF_SEED_P`): `CRAFT_SPRITE_MAX_PX=46`, `CRAFT_SPRITE_MIN_PX=18`. Cap
+chosen from real on-screen reference sizes: Earth disc 60px, Moon disc 26px, orbit corridor 68px — 46px keeps
+heavy vehicles clearly bigger than the old flat 26px without dominating planets/orbits. Size driver is the
+vehicle's **full** `totalH` (all stages), not just the small upper-stage/transfer silhouette actually drawn in
+this scene — otherwise heavier rockets wouldn't read as bigger at all; the drawn silhouette scales up
+proportionally as a result (a deliberate "sprite size = vehicle class" choice). Zero diff to the pad or ascent
+formulas. Headless: `node --check` OK; small/mid/heavy test vehicles render 18/35.7/46px vs. the old flat 26px
+for all three — floor, ramp, and cap all confirmed. Cap value is a manual in-browser judgment call, easy to
+retune. Next: **slice 3** — wheel-zoom on the ascent/trajectory/orbit scenes (new capability, none exists there
+today).

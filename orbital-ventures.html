@@ -8274,6 +8274,17 @@ function drawPhaseBar(phase,color,progress){
    stack (final core stage + transfer stage + your capsule/fairing, in your livery),
    rotated to the direction of travel, with the real engine plume when burning. A faint
    halo keeps it findable at planetary scale. Built once per flight, drawn cheap. */
+// TUNABLE KNOBS (like LIFTOFF_SEED_P): the orbit/cruise sprite's on-screen height bounds. The size
+// itself is now driven off the FULL vehicle at the shared pad px/unit (VEH_BASE_PX_PER_UNIT === 0.40,
+// same as the pad + ascent scene) so a heavier rocket reads bigger — but capped FAR below the ascent
+// scene's 190px. At orbit/cislunar zoom the Earth disc is only ~60px across and the Moon ~26px
+// (buildLunarPath E.r=30, M.r=13), and the orbit-to-limb clearance is ~68px (drawOrbit orbitR=E.r+68) —
+// a 190px rocket would swamp the planets/orbit paths and break the "findable ship" readability the old
+// flat ~26px silhouette protected. 46px keeps a heavy stack clearly bigger than the old 26px yet still
+// under Earth's disc and inside the orbit corridor; the 18px floor keeps tiny early rockets legible.
+// Retune in-browser if the ship looks off against the planets.
+const CRAFT_SPRITE_MAX_PX = 46; // orbit/cruise sprite height cap (well below ascent's 190px)
+const CRAFT_SPRITE_MIN_PX = 18; // readability floor so tiny early-game rockets aren't invisible specks
 function craftSprite(){
   const A=animState; if(A.craftSprite) return A.craftSprite;
   let shape=null; try{ shape=buildVehicleShape(A.spec); }catch(e){ return null; }
@@ -8281,8 +8292,12 @@ function craftSprite(){
   const nCore=(A.spec.stages||[]).length;
   let segs=shape.segs.slice(Math.max(0,nCore-1));  // last core stage + transfer (boosters long gone)
   if(!segs.length) segs=[shape.segs[shape.segs.length-1]];
-  const totalH=segs.reduce((a,s)=>a+s.h,0);
-  const scale=clampA(26/Math.max(1,totalH), 0.06, 0.5); // ~26px silhouette
+  const totalH=segs.reduce((a,s)=>a+s.h,0);              // height of the silhouette actually drawn (last core stage + transfer)
+  // Size off the FULL vehicle at the shared pad px/unit (matches slice 1's ascent formula: shape.totalH *
+  // VEH_BASE_PX_PER_UNIT), but with craftSprite's OWN cap (see CRAFT_SPRITE_* above) instead of 190px, then
+  // scale the drawn (sliced) silhouette so it fills that height. Replaces the old flat ~26px (no size variation).
+  const drawnPx=clampA(shape.totalH*VEH_BASE_PX_PER_UNIT, CRAFT_SPRITE_MIN_PX, CRAFT_SPRITE_MAX_PX);
+  const scale=drawnPx/Math.max(1,totalH);
   const spent=nCore>=2 ? shape.segs[nCore-2] : null;     // the stage you just dropped, for the sep beat
   A.craftSprite={segs, nose:shape.nose, scale, h:totalH*scale, spent};
   return A.craftSprite;
