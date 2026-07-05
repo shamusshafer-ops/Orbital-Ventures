@@ -10698,6 +10698,7 @@ function playLiftoff(spec, next){
   const wrap=(typeof document!=='undefined')?document.getElementById('ccSceneWrap'):null; // Phaser path only (fallback has no zoom wrapper)
   const clickTarget=wrap||(typeof document!=='undefined'?document.getElementById('ccCenter'):null);
   if(!pad){ next(); return; } // no iso scene to animate on — go straight to the ascent
+  openCCPopout(); // every animated launch shows the liftoff via the pop-out view (idempotent: no-ops if already open)
   let svNormal=null, svPop=null; // lazily snapshot only the surface we actually drive, so the idle camera is never touched
   const rx=pad.sx-ISO_TW*0.35, ry0=pad.sy+2;
   const RISE=Math.max(150, ry0*0.85); // rise far enough that the rocket clears most of the frame
@@ -10713,6 +10714,7 @@ function playLiftoff(spec, next){
     _liftoff=null;
     if(svNormal){ capeZoom=svNormal.z; capePanX=svNormal.px; capePanY=svNormal.py; applyCapeZoom(); } // restore whichever manual camera we drove (hidden under the ascent overlay)
     if(svPop){ ccPop.z=svPop.z; ccPop.x=svPop.x; ccPop.y=svPop.y; }
+    closeCCPopout(); // hand off to the ascent overlay — instant close is fine, the overlay covers the whole screen
     if(clickTarget) clickTarget.removeEventListener('click', onSkip, true);
     detachPopSkip();
     next(seedP);

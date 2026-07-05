@@ -1156,3 +1156,14 @@ toggling the pop-out mid-liftoff without corrupting either camera. Headless: `no
 run of the real `playLiftoff` confirmed both branches (pop-out open vs. closed) touch only their own camera
 object and restore correctly. Pop-out chase feel is visual, unverified by the agent — user directed commit
 without a manual pass this round.
+
+**Pop-out as launch default (2026-07-05).** Every animated launch now opens the CC pop-out automatically —
+`openCCPopout()` called at the top of `playLiftoff` (after the no-pad early-out), `closeCCPopout()` called in
+`finishSeq()` right after the camera-state restore, before handoff to the ascent overlay. The existing
+`state.tab='command'` switch is untouched, so closing the pop-out later still lands on the Command tab.
+Idempotency (`openCCPopout`/`closeCCPopout` both early-return if already in the target state) and the
+`animEnabled=false` headless path are both unaffected. Headless: `node --check` OK; stubbed-DOM run of the real
+`playLiftoff` — 10/10 assertions pass (pop-out opens exactly once regardless of launch origin tab, closes
+exactly once at handoff, headless path untouched). First slice of a broader ask: also unify the vehicle's
+rendered size across the Cape pad, ascent, and orbit/trajectory scenes (next), and add wheel-zoom to the
+ascent/trajectory/orbit scenes, which currently have none.
