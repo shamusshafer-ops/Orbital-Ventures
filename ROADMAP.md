@@ -1003,6 +1003,114 @@ and can be interleaved earlier if immersion payoff is wanted sooner. Sequence ch
 - 11.2 First concrete crisis (e.g. debris cascade closing LEO) using P1 flights + existing systems.
 - 11.3 Legacy integration: surviving a crisis marks `legacyScore`.
 
+**P1–P11 status: ✅ ALL SHIPPED (2026-07-05).** See the per-P progress logs below and the P7-P11/P6-reskin/
+Launch-rearchitecture/#29 session entries further down for what actually landed (real research ids instead
+of the plan's stale T-number placeholders, several scope decisions made live, a couple of real bugs caught
+by the harnesses before ship). Not yet browser-tested as a whole — see "Playtest Zero" in the next section.
+
+## Planned — Second design pass: improvement / pruning / flow polish (2026-07-05)
+
+Source: fresh outside review (tech-lead/Fable agent, no prior session bias), same KSP/Civ5/Stellaris/
+dev-health lenses as the first pass, explicitly asked to also hunt for **pruning** candidates now that the
+codebase has grown enormous across dozens of sessions and two full review passes. Read ROADMAP.md in full
+first, then did targeted code exploration (not a full linear read of the ~15,700-line file). **Not yet
+scoped into ranked P-slices or started — this is the raw findings, for the user to pick from.**
+
+### Improvements
+- **I1 — The content horizon.** `[Big swing, mostly data]` Missions stop at `jupiter_orbit`; **no crewed Mars
+  landing exists at all** despite the Apollo-style lander architecture being flyable since M3a-ii. `BODIES`
+  defines Saturn/Titan/Rhea/Uranus/Titania/Oberon/Neptune/Triton/Pluto with full Δv legs and the endgame tech
+  tree (fusion torch, NEP, automated factories, closed ecology, juggernaut) — none of it has a mission to
+  fly. Add a Mars Landing, a Saturn/Titan pair, and an interstellar-precursor capstone (+ matching programs)
+  so ~30 existing late-tree nodes pay off. Distinct from the already-open #21/#22 colony/civilization work —
+  this is flyable missions using systems that already exist today.
+- **I2 — Second scoring bookend.** `[Medium]` Chronicle only ceremonializes once, at the 1990 soft-scoring
+  date; eras run to 2100+ with no second arc. Pair with I1: an Expansion→Speculative-boundary ceremony
+  scored on deep-space dimensions (bodies settled, crises survived, fusion flown).
+- **I3 — Generalize P11's crisis into a 2–3 crisis roster.** `[Medium, framework already exists]` One
+  one-time crisis is a demo, not a system. The escalate/fund/resolve skeleton (`state.crisis`/`crisisDone`,
+  `eraStakesFrac()`-scaled cost) is directly reusable: a solar-storm season (deep-space reliability tax), a
+  funding-collapse/political crisis (support+funding tax, mandate flurry to buy down).
+- **I4 — Full-game metric history for the Chronicle.** `[Quick win]` `state.metricHist` is a 24-month ring
+  buffer; add a decimated (e.g. quarterly) unbounded series and render treasury/rep/support/firsts-vs-rivals
+  replay graphs inside `showChronicle()`. *(Partially addressed 2026-07-05 by the Finances pop-out's 3 new
+  metricHist series, but those are still the same 24-month cap — a genuinely full-run series is still open.)*
+- **I5 — Research queue.** `[Quick win]` One active project; the lab idles silently (alert badge only) when
+  a project completes mid-skip. A 1–2 deep queue (auto-start if affordable, log line on autostart) removes
+  pure admin.
+- **I6 — Aerocapture as a real mechanic.** `[Medium]` The map already teases it ("the atmosphere does most
+  of the braking" at Titan) but no research node or Δv effect delivers it. A node cutting capture-leg Δv at
+  Mars/Titan (reliability tax uncontrolled, bought down by testing) is exactly the propulsive-vs-aerocapture
+  tradeoff the bench is built to showcase — pairs naturally with I1's new destinations.
+
+### Pruning candidates
+- **P-1 — Merge "Build & Launch" and "Queue this build."** `[Quick win]` Confirmed in code: since the
+  2026-07-05 Launch rearchitecture, `launch()` routes every fresh commit into `queueBuild(true)` — the
+  `committed` flag changes only the log string. Both paths end in the hangar awaiting a manual Fly click,
+  but the Bench still shows both as separate buttons (`benchQueueHTML()`). Kill the redundant Bench "⊕ Queue
+  this build" row; keep queueing inside the Manufacturing drill for its real identity (build-ahead-of-stock).
+- **P-2 — Delete the dormant Phaser FlightScene.** `[Quick win]` ~254 lines plus reverted realism-overhaul
+  code, dead behind a commented-out call since 2026-06-25. The 2D renderer won six weeks ago; excise it
+  (lives in git history if ever wanted).
+- **P-3 — Retire or repurpose the Basic/Advanced/Expert `uiLayer` system.** `[Medium]` 46 touchpoints built
+  for the old 11-tab UI (#23, 2026-06-22); superseded since by the Shell consolidation, hub modals, outliner,
+  and attention badges, which rebuilt disclosure around *navigation* rather than CSS-hiding. A second,
+  competing disclosure system is a tax on every future feature (which layer does it belong to?).
+- **P-4 — Gate the Station Bench tab behind relevance.** `[Quick win]` Visible as a permanent 5th scene tab
+  since 1942, decades before a facility can exist. Hide until the first facility/`orbital_assembly`, with a
+  one-time "new capability" reveal (a reward beat, not just a hide).
+- **P-5 — Collapse the fuel market's 4-button spot-trading UI.** `[Quick win]` `buyFuel(10)/buyFuel(25)/
+  sellFuel(10)/sellFuel(all)` is exactly the shape the 2026-07-03 materials-collapse pass already identified
+  as weak-pull depth, and fuel price already flows into resupply cost automatically (P2 2.2). Same pattern:
+  one dip-buy decision, one sell-on-spike decision, sparkline with shaded band.
+- **P-6 — Consolidate the research-acceleration stack.** `[Medium]` Line ~2720 sums 5 additive speed sources
+  with no aggregate clamp (already flagged open 2026-07-04) on top of Rush/Apply Science/breakthroughs/
+  setbacks/science gates/doctrine/affinity multipliers — ~9 systems modulating one progress bar with no
+  attribution. Add the clamp, and a "R&D throughput" breakdown line in the R&D panel (that second half is
+  actually an *addition* — it's what makes the existing depth legible/pay rent).
+- **P-7 — Code-health housekeeping batch.** `[Quick win]` The `SAVE_VERSION` comment carries a ~6,000-word
+  single-line changelog (ROADMAP.md is the changelog; keep one line per live migration). Headless harnesses
+  live in `/tmp/ov-*.js` and are re-derived every session — worth a permanent `tests/` directory. Legacy
+  materials contract-lock resolution can sunset past a save-version horizon.
+
+### Flow polish
+- **F1 — Playtest Zero.** `[Non-negotiable, do first]` The entire P1–P11 initiative, the tracked-launch
+  rework, the isometric CC rework, and #29 are headless-validated but essentially un-eyeballed (ROADMAP
+  flags "needs a manual browser pass" 10+ times in the last 3 days). One structured 2-hour playthrough
+  (fresh start → first satellite → first crewed → one deferred Mars flight, plus a doctored Commercial-era
+  save for the crisis) surfaces more than further review would.
+- **F2 — "Fly when ready" adds a mandatory extra trip to every mission.** `[Quick win]` The tracked-launch
+  loop is now: commit → advance time → notice rollout → find the Fly button (3 possible homes: bench,
+  `#ccProgress` card, infra modal) → weather modal → outcome. An "auto-fly on rollout" checkbox at commit
+  (default on for routine/uncrewed, off for crewed/first flights) removes the chore on repeat launches while
+  keeping manual Fly available. Also close the flagged crew-reservation gap while here: soft-reserve the
+  astronaut on a committed crewed build, warn on reassignment.
+- **F3 — Decision-inbox: audit the interruption budget.** `[Medium]` 9 distinct `_pending*` modal channels +
+  44 `showModal` sites. After a long time-skip the precedence chain can queue 4+ modals back to back. Split
+  into **blocking** (crew at risk, a decision with a deadline this tick) vs. **non-blocking** (inquiry
+  offers, special contracts, rival disasters you could decline, era retrospectives) — the second tier moves
+  to a Stellaris-style situation-log in the outliner, opened at the player's own pace.
+- **F4 — One canonical "what's happening now" surface.** `[Quick win]` Active research/builds currently
+  render in 4 places (`#opsTimeline` UPCOMING chips, the Outliner, `#ccProgress`, the execOverview stat
+  line — the last two shipped 2026-07-05 and already admit "harmless duplication"). Make the Outliner the
+  single source of truth (it already has ETA-sort, click-through, and `runToNextEvent`); render `#ccProgress`
+  as a view of outliner items rather than a parallel list; delete the execOverview line + UPCOMING chips
+  (keep the timeline strip for the *log*, its real #29 job).
+- **F5 — Fix the new-game first beat.** `[Quick–medium]` `startupBegin()`→`newGame()` opens the manufacturing
+  drill modal first — the least relevant system in 1946, a relic predating the startup screen. Zero tutorial
+  exists anywhere. Replace with a 3-beat welcome (framing + first objective → land on the Bench with the
+  advisor flight-plan panel highlighted → let the existing milestone celebration pay it off).
+- **F6 — Close the doctrine/partnership surfacing loop.** `[Quick win]` Flagged open three sessions running.
+  Doctrine only surfaces as a Cape attention-glyph + the P9 contract badge; the undeclared-state/declare
+  decision never reaches the advisor or outliner. One advisor nudge once rep/era crosses a threshold, plus a
+  partnerships line in P-6's R&D throughput breakdown, closes it.
+
+**If only three:** (1) F1 + P-1 + F2 as one "settle the launch flow" pass — the most-used loop in the game
+changed 3 days ago and nobody's flown it. (2) I1 (+ I2) — the content horizon; makes the last two eras and
+half the tech tree into a game instead of an inventory. (3) F3 — the decision-inbox split, protects
+everything the last month added (living universe, rival voice, crises) from curdling into interruption
+fatigue before it ever gets appreciated.
+
 ### Progress log — P1 (persistent in-flight missions)
 - **1.1 ✅ (2026-07-04)** — In-flight entity model. `state.activeFlights` + `registerFlight`/`completeFlight`;
   the cruise fast-forward in `proceedLaunch` is wrapped by a synchronous flight lifecycle. No SAVE_VERSION
