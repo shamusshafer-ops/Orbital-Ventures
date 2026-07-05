@@ -2128,6 +2128,7 @@ function newGame(difficulty){
     parts:defaultParts(), // BC2: performance parts (tank material / avionics / fairing)
     blueprints:[], // saved full ship designs (reloadable blueprints)
     frontPages:[], // P7: The Agency Wire — headline records for the Chronicle scrapbook
+    crisis:null, crisisDone:null, leoFlights:0, // P11: the one late-game debris-cascade crisis
     ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
     facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
     architectures:{}, science:0,
@@ -2797,6 +2798,7 @@ function tickMonthlyBoundary(){
     tickMandate(); // mandates: offer / deadline check (economy tension pass)
     checkScoringDate(); // chronicle: the soft scoring date fires once
     tickSpecialContract(); // special contracts: limited-time commercial variants
+    tickCrisis(); // P11: the one late-game crisis — trigger check, then escalate/remediate if active
     pushMetricHistory(); // #28: snapshot this month's core metrics for the dashboard sparklines
 }
 // #28: append the current core-metric values to their trend buffers (capped at METRIC_HISTORY_LEN).
@@ -5136,6 +5138,7 @@ function effectiveReliability(m,v,sim,crewed){
   let rel=v.reliability;
   if(sim) rel=Math.max(0.30, rel*Math.pow(0.985, sim.inSpaceLegs));
   rel*=radRelPenalty(m,crewed); // radiation degrades reliability on long deep missions (bought down by shielding)
+  rel*=(1-crisisRelPenalty(m)); // P11: the LEO debris-cascade crisis tax (0 unless it's active AND this is a LEO-class flight)
   if(crewed){ const ab=astroBonus(); rel=Math.min(0.99, rel+ab.rel); }
   rel=Math.min(0.995, rel + facilityBonus(missionBody(m&&m.id)).relBump); // M17: home-field operational bonus
   rel=Math.min(0.995, rel + familyRelBonus(activeFamily())); // #3: reliability heritage of a proven lineage
@@ -5910,6 +5913,7 @@ function finalizeLaunch(ctx, ops){
     personnelMissionEvent(true); // M6: morale boost on success
     state.successes++;
     if(m.crew>0){ state.crewFlown=(state.crewFlown||0)+m.crew; } // chronicle: souls carried
+    if(isLeoClassMission(m)) state.leoFlights=(state.leoFlights||0)+1; // P11: the crisis trigger's own counter — the empire's launch history creating its own hazard
     creditEngineHeritage(); // engines earn flight heritage toward cost/reliability edge
     state.staticFixBonus=0;  // the static-fire fix flies once
 
@@ -6745,6 +6749,79 @@ function bailoutTerms(){
   const era=eraIndex(currentEra()), uses=state.bailouts||0;
   return { amount:round2(BAILOUT_BASE*(1+era*0.6)), repCost:Math.round(BAILOUT_REP_BASE*(1+era*0.5)*(1+uses*0.5)), interest:round2(BAILOUT_BASE*(1+era*0.6)*BAILOUT_INTEREST) };
 }
+
+// ── P11: one late-game crisis — a Kessler debris cascade in LEO ────────────────────────
+// The keystone P1 entity model + CE4's era-scaled stakes make this possible: an established
+// empire's OWN launch history (state.leoFlights) creates a systemic hazard that then leans on
+// eraStakesFrac() for its funding cost, exactly like the bailout mechanic. This is a ONE-TIME
+// arc (state.crisis while active, state.crisisDone once resolved) — not a recurring event.
+// Two ways through, both "survived" (this is a stakes-raiser, not a game-over): fully fund
+// remediation to zero the severity (bigger legacy bonus), or just keep flying through it until
+// CRISIS_ENDURE_MONTHS passes and it settles into a permanent-but-survivable cost of doing
+// business (smaller bonus). An unmitigated crisis never locks anything out — only a rising
+// reliability tax on LEO-class missions specifically (isLeoClassMission: no profile, reqDv≥9000,
+// same threshold the isOrbital flag already uses elsewhere).
+const CRISIS_ERA_MIN=4;             // eligible from the Commercial era on
+const CRISIS_LEO_THRESHOLD=40;      // cumulative successful LEO-class flights before it's even possible
+const CRISIS_TRIGGER_CHANCE=0.02;   // monthly chance once eligible (unpredictable, not the instant you cross the threshold)
+const CRISIS_SEVERITY_RISE=0.05;    // per month while unfunded
+const CRISIS_SEVERITY_FALL=0.12;    // per month while a remediation program is funded and active
+const CRISIS_MAX_REL_PENALTY=0.12;  // at severity 1.0, LEO-class missions fly at ×(1-0.12) reliability
+const CRISIS_FUND_MONTHS=6;         // one funding term's duration
+const CRISIS_ENDURE_MONTHS=36;      // resolves as "endured" after this long if never fully mitigated
+function isLeoClassMission(m){ return !!(m && !m.profile && (m.reqDv||0)>=9000); }
+function crisisFundCost(){ return round2(6.0*(1+eraStakesFrac()*1.2)); } // scales with era like bailoutTerms
+function crisisEligible(){ return !state.crisis && !state.crisisDone && eraIndex(currentEra())>=CRISIS_ERA_MIN && (state.leoFlights||0)>=CRISIS_LEO_THRESHOLD; }
+function crisisRelPenalty(m){ const c=state.crisis; return (c && isLeoClassMission(m)) ? CRISIS_MAX_REL_PENALTY*c.severity : 0; }
+function tickCrisisTrigger(){
+  if(!crisisEligible() || Math.random()>=CRISIS_TRIGGER_CHANCE) return;
+  state.crisis={phase:'building', startAbs:absMonth(), severity:0.15, peakSeverity:0.15, fundedUntilAbs:null};
+  timeInterrupt();
+  log('bad','⚠ Tracking stations report a debris cascade forming in LEO — decades of launch traffic catching up with the industry. Left unfunded, low orbit gets steadily less safe to operate in.');
+  if(animEnabled) showCrisisModal();
+}
+function resolveCrisis(outcome){
+  const c=state.crisis; if(!c) return;
+  state.crisisDone={outcome, peakSeverity:c.peakSeverity||0, months:absMonth()-c.startAbs};
+  state.crisis=null;
+  if(outcome==='mitigated'){ addSupport(6); state.rep+=8;
+    log('ok','✅ The debris field has been cleared — LEO operations are back to full safety margins. A defining moment for the agency.'); }
+  else { addSupport(2);
+    log('note','The debris field has settled into a permanent, manageable hazard — the agency adapted and operations continue.'); }
+}
+function tickCrisis(){
+  tickCrisisTrigger();
+  const c=state.crisis; if(!c) return;
+  if(c.fundedUntilAbs!=null && absMonth()<c.fundedUntilAbs) c.severity=clampA(c.severity-CRISIS_SEVERITY_FALL,0,1);
+  else { c.fundedUntilAbs=null; c.severity=clampA(c.severity+CRISIS_SEVERITY_RISE,0,1); }
+  c.peakSeverity=Math.max(c.peakSeverity||0, c.severity);
+  if(c.severity<=0){ resolveCrisis('mitigated'); return; }
+  if(absMonth()-c.startAbs>=CRISIS_ENDURE_MONTHS){ resolveCrisis('endured'); return; }
+}
+function canFundCrisisRemediation(){ return !!state.crisis && state.money>=crisisFundCost(); }
+function fundCrisisRemediation(){
+  if(!canFundCrisisRemediation()) return;
+  const cost=crisisFundCost();
+  state.money=round2(state.money-cost);
+  state.crisis.fundedUntilAbs=absMonth()+CRISIS_FUND_MONTHS;
+  log('note',`Debris Remediation Program funded — ${fM(cost)}, active for ${CRISIS_FUND_MONTHS} months.`);
+  render();
+}
+function showCrisisModal(){
+  const c=state.crisis; if(!c) return;
+  const pct=Math.round(c.severity*100);
+  const funded=c.fundedUntilAbs!=null && absMonth()<c.fundedUntilAbs;
+  const cost=crisisFundCost(), afford=state.money>=cost;
+  showModal(`<h2 style="color:var(--warn)">⚠ Debris Cascade — LEO</h2>
+    <p class="muted">A cascading debris field is fouling low Earth orbit. Every LEO-class mission flies at reduced reliability while it's active — the fallout of a mature launch industry catching up with itself.</p>
+    <div class="metrics" style="margin:10px 0">
+      <div class="metric"><div class="k">Severity</div><div class="v" style="color:var(--bad)">${pct}%</div></div>
+      <div class="metric"><div class="k">LEO reliability tax</div><div class="v">−${Math.round(CRISIS_MAX_REL_PENALTY*c.severity*100)}%</div></div>
+    </div>
+    ${funded?`<div class="dim" style="font-size:12px;margin-bottom:8px">Remediation program active — severity falling, funded through month ${c.fundedUntilAbs}.</div>`
+      :`<button class="btn" onclick="fundCrisisRemediation();showCrisisModal()" ${afford?'':'disabled'}>Fund Debris Remediation Program (${fM(cost)}, ${CRISIS_FUND_MONTHS} mo)</button>`}
+    <button class="btn ghost" style="width:100%;margin-top:8px" onclick="hideModal()">Close — keep flying through it</button>`);
+}
 function gameOver(){
   state.over=true;
   const usesLeft=2-(state.bailouts||0);
@@ -6772,7 +6849,7 @@ function hideModal(){activeModal=null;_prodModalOpen=false;$('modal').classList.
 
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=44; // v44: P6 6.1 era-transition interstitial — state.eraSeen (index of the last era acknowledged via the full-screen card) + state.eraStartSnapshot ({flights,playerFirsts,rivalFirsts,money,rep} baseline captured when that era began, diffed for the retrospective). Both persisted. Trigger is DERIVED (eraIndex(currentEra())>state.eraSeen), gated behind the setback>mishap>inquiry>rival-disaster _pending chain (era is lowest priority; deferred to a later settle-point if any decision is pending, never lost since the condition is stateful). eraSeen advances only on Continue; balance-neutral (pure notification). Lazy migration: pre-v44 saves lack both — migrateEraSeen() backfills eraSeen to the save's CURRENT era index (from its own year, NOT 0, so a late-game load fires ZERO stale interstitials) and seeds eraStartSnapshot from current metrics; newGame seeds eraSeen:0 + a Pioneer baseline. v43: P3 failure investigation loop — state.inquiryCredit ({subsystem,rel,flights} or null): a funded uncrewed-loss inquiry into an ascent/staging subsystem grants a +2% additive-R credit (like familyRelBonus) gated to that subsystem, consumed over 3 flights at launch; a deep-phase failure grants a flat +10⚛ science instead (no persisted credit). Transient _pendingInquiry (fund/decline modal, precedence setback>mishap>inquiry) is NOT persisted. Lazy migration: pre-v43 saves lack inquiryCredit — loadDefaults() seeds it null on both load paths (undefined is already falsy, so behavior is unchanged either way). v42: P2 slice 2.4 — per-facility auto-resupply toggle (fs.autoResupply boolean; opt-in per facility). On the monthly tick a facility with the toggle ON auto-fires resupplyFacility() once supply falls to/below AUTO_RESUPPLY_THRESHOLD(6) and canResupply().ok — same cost/gate/lifecycle as a manual order (the resupplyInTransit + money gates prevent double-ordering and unaffordable fires). Pure automation, balance-neutral otherwise; each auto-order logs a 'note' line. Lazy migration: pre-v42 facilities carry no autoResupply — migrateFacilityAutoResupply() defaults it false on load (undefined is already falsy, so behavior is unchanged either way); foundFacility seeds autoResupply:false on fresh bases. v41: P1 persistent in-flight missions — state.activeFlights[] (deferred interplanetary flights carry a resolved-at-launch ctx applied on arrival; ctx stores famId + crewId, not object refs, so a mid-cruise save round-trips; legacy saves default [] via loadDefaults; rehydrateFlights() re-links ctx.m + restores _flightSeq on load). v40: #19 slice B — career progression (staff.xp accrues monthly ×morale ×dept-training, raising effSkill above hire-day base up to +0.15; dept.training level bought with capital; legacy staff default xp 0 via staffXp guard, effSkill==base at xp 0 so no balance migration). #19 slice C (succession + workforce planning) adds no persisted state — reconcileDeptLeads mutates existing dept.lead, gaps + the era-scaled unstaffed-department reliability penalty (0 in Pioneer) are derived — so it needs no bump. v39: #19 slice A — organizational departments (state.departments {deptId:{lead,training}}; legacy saves default via loadDefaults/defaultDepartments; membership is derived from hired staff, leads are balance-neutral when unset); v38: #6 research partnerships — bench-tested / flight-proven components (state.engineStockTested + state.partStockTested, the bench-tested subset of each yard; legacy saves default {}); a fitted bench-tested component adds +1.5% reliability (cap +6%, benchRelBonus), built at +60% cost / +50% time; v36: #7 sub-assemblies slice 2 — structures & habitats yard (state.partStock {"kind:sub":count}, e.g. "tank:steel"/"hab:closed"; legacy saves default {}); same cost-neutral cadence pattern as the Engine Yard; v35: #7 sub-assemblies — Engine Yard (state.engineStock {engId:count}; legacy saves default {}); v34: Time Granularity slice 4b — launch windows day-scheduled (window/committedWindow .abs moved from absMonth to absDay; migrateWindowsToDays ×30 on pre-v34 load + clears the regenerable windows cache); v33: Time Granularity slice 1 — day-iterating advance() funnel (state.day 0..29 + absDay(); legacy saves default day:0 via load defaults; whole-month advances stay bit-identical so no balance migration needed); v32: CE4(c) era-scaled failure stakes + bailout retune (state.loanInterest — permanent bridge-loan debt service; legacy saves default to 0 via load defaults + loanInterest() guard); v31: CE4(b) standing resupply obligations (per-facility supply/starvedMonths; legacy facilities default to fully provisioned via facilitySupply()); v30: CE3(c) lunar architecture fork (state.lunarArch, null=uncommitted; luna_landing reqResearch moved to per-arch gates); v29: CE3(a) company doctrine (state.doctrine, null=undeclared/neutral); v28: CE2(c) juggernaut capstone (state.standingProd/juggernautReached); v27: CE2(b) launch cadence (state.padMonthAbs/padMonthUsed) — load defaults seed all of these; v26: CE1 rival agents (state.rivalState), seedRivalState migrates old rivalFired
+const SAVE_VERSION=45; // v45: P11 — one late-game crisis (Kessler debris cascade). state.crisis ({phase,startAbs,severity,peakSeverity,fundedUntilAbs} or null), state.crisisDone ({outcome:'mitigated'|'endured',peakSeverity,months} or null once resolved — a ONE-TIME arc, not recurring), state.leoFlights (cumulative successful LEO-class flights, the trigger's own counter). Eligible from Commercial era (index 4) + leoFlights≥40; a small monthly chance then starts it. Active: LEO-class missions (isLeoClassMission — no profile, reqDv≥9000) fly at up to −12% reliability, scaling with severity; funding a Debris Remediation Program (cost scales with eraStakesFrac(), like the bailout mechanic) brings severity down, letting it go unfunded lets it rise. Resolves 'mitigated' (severity hits 0, bigger legacyScore bonus) or 'endured' (36 months elapse regardless, smaller bonus) — never a hard lockout, just a rising tax. No explicit migrate function needed: all three fields are read through `||`/falsy guards everywhere (state.crisis falsy on a legacy load = inactive; leoFlights||0 = 0), so behavior is unchanged until a save's own play crosses the era+flight-count threshold. v44: P6 6.1 era-transition interstitial — state.eraSeen (index of the last era acknowledged via the full-screen card) + state.eraStartSnapshot ({flights,playerFirsts,rivalFirsts,money,rep} baseline captured when that era began, diffed for the retrospective). Both persisted. Trigger is DERIVED (eraIndex(currentEra())>state.eraSeen), gated behind the setback>mishap>inquiry>rival-disaster _pending chain (era is lowest priority; deferred to a later settle-point if any decision is pending, never lost since the condition is stateful). eraSeen advances only on Continue; balance-neutral (pure notification). Lazy migration: pre-v44 saves lack both — migrateEraSeen() backfills eraSeen to the save's CURRENT era index (from its own year, NOT 0, so a late-game load fires ZERO stale interstitials) and seeds eraStartSnapshot from current metrics; newGame seeds eraSeen:0 + a Pioneer baseline. v43: P3 failure investigation loop — state.inquiryCredit ({subsystem,rel,flights} or null): a funded uncrewed-loss inquiry into an ascent/staging subsystem grants a +2% additive-R credit (like familyRelBonus) gated to that subsystem, consumed over 3 flights at launch; a deep-phase failure grants a flat +10⚛ science instead (no persisted credit). Transient _pendingInquiry (fund/decline modal, precedence setback>mishap>inquiry) is NOT persisted. Lazy migration: pre-v43 saves lack inquiryCredit — loadDefaults() seeds it null on both load paths (undefined is already falsy, so behavior is unchanged either way). v42: P2 slice 2.4 — per-facility auto-resupply toggle (fs.autoResupply boolean; opt-in per facility). On the monthly tick a facility with the toggle ON auto-fires resupplyFacility() once supply falls to/below AUTO_RESUPPLY_THRESHOLD(6) and canResupply().ok — same cost/gate/lifecycle as a manual order (the resupplyInTransit + money gates prevent double-ordering and unaffordable fires). Pure automation, balance-neutral otherwise; each auto-order logs a 'note' line. Lazy migration: pre-v42 facilities carry no autoResupply — migrateFacilityAutoResupply() defaults it false on load (undefined is already falsy, so behavior is unchanged either way); foundFacility seeds autoResupply:false on fresh bases. v41: P1 persistent in-flight missions — state.activeFlights[] (deferred interplanetary flights carry a resolved-at-launch ctx applied on arrival; ctx stores famId + crewId, not object refs, so a mid-cruise save round-trips; legacy saves default [] via loadDefaults; rehydrateFlights() re-links ctx.m + restores _flightSeq on load). v40: #19 slice B — career progression (staff.xp accrues monthly ×morale ×dept-training, raising effSkill above hire-day base up to +0.15; dept.training level bought with capital; legacy staff default xp 0 via staffXp guard, effSkill==base at xp 0 so no balance migration). #19 slice C (succession + workforce planning) adds no persisted state — reconcileDeptLeads mutates existing dept.lead, gaps + the era-scaled unstaffed-department reliability penalty (0 in Pioneer) are derived — so it needs no bump. v39: #19 slice A — organizational departments (state.departments {deptId:{lead,training}}; legacy saves default via loadDefaults/defaultDepartments; membership is derived from hired staff, leads are balance-neutral when unset); v38: #6 research partnerships — bench-tested / flight-proven components (state.engineStockTested + state.partStockTested, the bench-tested subset of each yard; legacy saves default {}); a fitted bench-tested component adds +1.5% reliability (cap +6%, benchRelBonus), built at +60% cost / +50% time; v36: #7 sub-assemblies slice 2 — structures & habitats yard (state.partStock {"kind:sub":count}, e.g. "tank:steel"/"hab:closed"; legacy saves default {}); same cost-neutral cadence pattern as the Engine Yard; v35: #7 sub-assemblies — Engine Yard (state.engineStock {engId:count}; legacy saves default {}); v34: Time Granularity slice 4b — launch windows day-scheduled (window/committedWindow .abs moved from absMonth to absDay; migrateWindowsToDays ×30 on pre-v34 load + clears the regenerable windows cache); v33: Time Granularity slice 1 — day-iterating advance() funnel (state.day 0..29 + absDay(); legacy saves default day:0 via load defaults; whole-month advances stay bit-identical so no balance migration needed); v32: CE4(c) era-scaled failure stakes + bailout retune (state.loanInterest — permanent bridge-loan debt service; legacy saves default to 0 via load defaults + loanInterest() guard); v31: CE4(b) standing resupply obligations (per-facility supply/starvedMonths; legacy facilities default to fully provisioned via facilitySupply()); v30: CE3(c) lunar architecture fork (state.lunarArch, null=uncommitted; luna_landing reqResearch moved to per-arch gates); v29: CE3(a) company doctrine (state.doctrine, null=undeclared/neutral); v28: CE2(c) juggernaut capstone (state.standingProd/juggernautReached); v27: CE2(b) launch cadence (state.padMonthAbs/padMonthUsed) — load defaults seed all of these; v26: CE1 rival agents (state.rivalState), seedRivalState migrates old rivalFired
 function writeSave(){ localStorage.setItem(SAVE_KEY, JSON.stringify({v:SAVE_VERSION, ts:Date.now(), state:JSON.parse(JSON.stringify(state))})); }
 // S1: silent throttled autosave so "Continue last game" always resumes the most recent session.
 // Skips a transient mid-flight-resolution snapshot; forced on page close.
@@ -6860,7 +6937,7 @@ function loadDefaults(){ return {
       staff:[], assignedAstronaut:null, departments:defaultDepartments(),
       vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, rehearsal:false, techLevel:{}, divisions:{}, partnerships:[], breakthroughCooldown:3, relDebt:0, powerSource:'solar',
       recentBuilds:[], materials:defaultMaterialsState(),
-      buildQueue:[], hangar:[], orderSeq:0, padMonthAbs:-1, padMonthUsed:0, standingProd:null, juggernautReached:false, doctrine:null, lunarArch:null, uiLayer:'advanced', loanInterest:0, metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[], frontPages:[], day:0, engineStock:{}, engineStockTested:{}, partStock:{}, partStockTested:{}, activeFlights:[], inquiryCredit:null
+      buildQueue:[], hangar:[], orderSeq:0, padMonthAbs:-1, padMonthUsed:0, standingProd:null, juggernautReached:false, doctrine:null, lunarArch:null, uiLayer:'advanced', loanInterest:0, metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[], frontPages:[], crisis:null, crisisDone:null, leoFlights:0, day:0, engineStock:{}, engineStockTested:{}, partStock:{}, partStockTested:{}, activeFlights:[], inquiryCredit:null
 }; }
 
 /* ---------- Session bookend: "where you left off" ----------
@@ -10222,9 +10299,10 @@ function legacyScore(){
   const safety=state.flights?state.successes/state.flights:0;
   let facN=0; try{ FACILITY_DEFS.forEach(d=>{ if(facilityBuilt(d.id)) facN++; }); }catch(e){}
   const crewPenalty=(state.crewLost||0)*6;
-  const score=firsts*10 + worlds*12 + facN*8 + Math.round(safety*20) - scooped*5 - crewPenalty;
+  const crisisBonus=state.crisisDone ? (state.crisisDone.outcome==='mitigated'?18:8) : 0; // P11: surviving the one late-game crisis
+  const score=firsts*10 + worlds*12 + facN*8 + Math.round(safety*20) - scooped*5 - crewPenalty + crisisBonus;
   const grade= score>=140?'S':score>=100?'A':score>=65?'B':score>=35?'C':'D';
-  return {score,grade,firsts,scooped,worlds,facN,safety,crewLost:state.crewLost||0};
+  return {score,grade,firsts,scooped,worlds,facN,safety,crewLost:state.crewLost||0,crisisDone:state.crisisDone||null};
 }
 function showChronicle(mode){ // mode: 'view' | 'era' (soft date) | 'retire'
   const L=legacyScore(); const entries=chronicleEntries();
@@ -10251,6 +10329,7 @@ function showChronicle(mode){ // mode: 'view' | 'era' (soft date) | 'retire'
         ${stat('Flights', state.flights+' ('+Math.round(L.safety*100)+'% success)')}
         ${stat('Crew flown', (state.crewFlown||0)+((state.crewLost||0)?' · '+state.crewLost+' lost':''))}
         ${stat('Facilities', L.facN)}
+        ${L.crisisDone?stat('Debris crisis', L.crisisDone.outcome==='mitigated'?'Cleared':'Endured'):''}
       </div>
     </div>
     <div style="max-height:240px;overflow:auto;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:6px 0;margin-bottom:10px">${rows}</div>
@@ -10301,6 +10380,8 @@ function outlinerItems(){
   // special contract (feature 4)
   const sc=state.specialContract;
   if(sc) push('★', sc.title+' ('+fM(sc.bonus)+')', (sc.deadlineAbs-nowM)*30, ()=>setTab('missions'), (sc.deadlineAbs-nowM)<=4?'var(--warn)':'var(--ignite)');
+  // P11: the debris-cascade crisis, while active, always at the top (eta 0) — a standing decision, not a countdown
+  if(state.crisis) push('⚠', `Debris crisis — ${Math.round(state.crisis.severity*100)}% severity`, 0, ()=>showCrisisModal(), 'var(--bad)');
   // committed launch window
   if(state.committedWindow){ const m=MISSIONS.find(x=>x.id===state.committedWindow.missionId);
     push('☄', 'Window: '+(m?m.name:'mission'), state.committedWindow.abs-nowD, ()=>setTab('map'), 'var(--readout)'); }
@@ -10366,6 +10447,8 @@ function tabAlerts(){
   // P9: surface an unsigned doctrine-exclusive contract once it's actually signable
   if(state.doctrine){ const dd=PASSIVE_CONTRACT_DEFS.find(x=>x.cat==='doct'&&x.reqDoctrine===state.doctrine);
     if(dd && passiveStatus(dd.id)==='available') a.command.push(dd.name+' signable'); }
+  // P11: the debris-cascade crisis, while active, is always worth a Command-tab flag
+  if(state.crisis) a.command.push(`Debris crisis — ${Math.round(state.crisis.severity*100)}% severity`);
   // Bench: active mission blocked by the current design
   const m=MISSIONS.find(x=>x.id===state.activeMission);
   if(m){ try{ const v=computeVehicle(); const chk=canLaunch(v,m,m.profile?simulateMission(m):null);

@@ -1341,6 +1341,43 @@ verification, a deliberate scope boundary flagged rather than half-built. 17/17 
 all four slices. **This closes out the entire P1-P10 ranked list bar P11** (the one remaining big swing —
 a late-game crisis arc).
 
+## Session — P11: one late-game crisis (2026-07-05)
+
+The last item on the ranked list, and the only remaining "big swing." Confirmed the core shape with the
+user before building (unlike the P7-P10 quick wins) since it's new persisted state + a real stakes
+mechanic, not just a reskin/reweight — got a straight "build it as described."
+
+**The crisis: a Kessler debris cascade in LEO.** Leverages exactly what the plan called for — P1's flight
+model (missions already resolve through a real pipeline) and CE4's `eraStakesFrac()` (the same era-scaling
+idiom as the bridge-loan mechanic). New `state.crisis` (active: `{phase,startAbs,severity,peakSeverity,
+fundedUntilAbs}`), `state.crisisDone` (`{outcome,peakSeverity,months}` once resolved — this is a **one-time
+arc**, not recurring), `state.leoFlights` (a new cumulative counter — the empire's own launch history is
+what creates the hazard). **SAVE_VERSION 44→45**, but no explicit migrate function needed: all three fields
+are read through `||`/falsy guards everywhere, so a legacy save is simply inactive/eligible-from-scratch.
+
+**Trigger** (`crisisEligible`/`tickCrisisTrigger`, checked on the monthly tick): era ≥ Commercial (index 4)
+AND `leoFlights` ≥ 40 (new `isLeoClassMission`: no profile, reqDv≥9000 — the same threshold the existing
+`isOrbital` flag already uses), then a small monthly chance (2%) so it doesn't fire the instant you cross
+the threshold. **Stakes**: while active, `isLeoClassMission` flights take a reliability penalty scaling
+linearly with severity (0→12% at severity 1), folded into `effectiveReliability` alongside
+`radRelPenalty`/`synergyRelBonus` — never a hard lockout, just a rising tax, as agreed. **Mitigation**:
+`fundCrisisRemediation()` — a Debris Remediation Program, cost scaling with `eraStakesFrac()` like
+`bailoutTerms()`, funds a 6-month term during which severity falls instead of rises. **Resolution**: two
+paths, both "survived" per the confirmed design — `mitigated` (severity reaches 0, +8 rep/+6 support,
+legacyScore +18) or `endured` (36 months elapse regardless of severity, +2 support, legacyScore +8) — never
+a game-over. New `showCrisisModal()` (severity/tax readout + fund button), surfaced via a Command-tab
+badge, a standing (eta-0) Outliner row while active, and a Chronicle stat line once resolved.
+
+**Validation.** `node --check` OK. 21/21 headless assertions against the exact production functions (not a
+reimplementation — copy-verified line-for-line against the live file): eligibility gating (era boundary,
+exact-threshold and one-short cases), reliability penalty (zero when inactive, linear scaling, correctly
+zero for both a `profile` mission and a sub-9000-reqDv mission even though the code checks two different
+fields), the full escalate→fund→fall arithmetic, both resolution paths (mitigated via full remediation,
+endured via the 36-month floor with zero funding), the legacyScore bonus split (18 vs 8), and fund-cost
+scaling with era (never free, rises with `eraStakesFrac()`). Not yet browser-tested — this needs a save
+artificially advanced to Commercial-era-plus-40-LEO-flights to see live, flagged for a manual pass like the
+rest of this session's work. **This closes out the entire P1-P11 ranked improvement initiative.**
+
 ## Session — Isometric command-center layout redistribution (2026-07-04)
 
 Player request (not part of the P-list initiative): the isometric Command/Cape view's buildings were unevenly
