@@ -1116,7 +1116,7 @@ const RIVAL_COUNTERPOACH_MORALE=4; // morale lift to your staff when you win a t
 // or apply a temporary market modifier. Gated by year/rep/flights so the early game
 // stays quiet. money/dur are [min,max] ranges rolled at fire time.
 const ECONOMY_EVENTS=[
-  {id:'gov_grant', kind:'good', weight:3, minYear:1945, label:'Government research grant', money:[1.5,4.0], blurb:'A national science directorate underwrites part of your program.'},
+  {id:'gov_grant', kind:'good', weight:3, minYear:1945, maxEra:3, label:'Government research grant', money:[1.5,4.0], blurb:'A national science directorate underwrites part of your program.'}, // P6 6.2: agency-underwriting flavor; retired once the Commercial era (idx 4) arrives.
   {id:'investor',  kind:'good', weight:2, minYear:1950, minRep:40, label:'Investor windfall', money:[2.0,5.0], blurb:'A backer buys into your rising reputation.'},
   {id:'patent',    kind:'good', weight:2, minYear:1955, reqFlights:5, label:'Patent licensing payout', money:[1.0,3.0], blurb:'Rivals quietly license your hard-won engineering.'},
   {id:'insurance', kind:'good', weight:1, minYear:1948, reqFlights:1, label:'Insurance settlement', money:[0.8,2.0], blurb:'A claim from an earlier loss finally pays out.'},
@@ -1125,7 +1125,7 @@ const ECONOMY_EVENTS=[
   {id:'supply',    kind:'bad',  weight:2, minYear:1955, label:'Propellant price spike', money:[-2.0,-0.6], blurb:'Commodity markets move against you.'},
   {id:'boom',      kind:'good', weight:3, minYear:1957, label:'Launch market boom', dur:[5,9], payoutMult:1.15, blurb:'Demand for launch surges — contracts pay more.'},
   {id:'downturn',  kind:'bad',  weight:3, minYear:1957, label:'Launch market downturn', dur:[5,9], payoutMult:0.85, blurb:'A glut of capacity drives contract prices down.'},
-  {id:'subsidy',   kind:'good', weight:2, minYear:1960, label:'Operations subsidy', dur:[4,8], overheadAdd:-0.05, blurb:'A standing grant offsets your monthly overhead.'},
+  {id:'subsidy',   kind:'good', weight:2, minYear:1960, maxEra:4, label:'Operations subsidy', dur:[4,8], overheadAdd:-0.05, blurb:'A standing grant offsets your monthly overhead.'}, // P6 6.2: standing government subsidy; persists through Commercial (commercial-crew subsidies) then retires at Expansion (idx 5).
   {id:'austerity', kind:'bad',  weight:2, minYear:1960, label:'Austerity audit', dur:[4,8], overheadAdd:0.06, blurb:'Compliance overhead raises your monthly burn.'},
   // M2: fuel-market events (only once a LEO depot exists to trade through)
   {id:'fuel_shortage', kind:'bad',  weight:2, minYear:1965, reqDepot:true, label:'Propellant shortage', fuelShock:1.45, blurb:'A supply crunch spikes orbital propellant prices.'},
@@ -1133,6 +1133,18 @@ const ECONOMY_EVENTS=[
   {id:'fuel_buyer',    kind:'good', weight:2, minYear:1965, reqDepot:true, label:'Rival propellant buy order', buyer:true, blurb:'A rival needs fuel fast and is paying a premium at your depot.'},
   // 2.3: route interruption — only eligible while a logistics shipment is actually in cruise (reqLogi gate)
   {id:'logi_mishap',   kind:'bad',  weight:2, minYear:1965, reqLogi:true, label:'Resupply route interruption', logiMishap:true, blurb:'A cruise anomaly threatens to set a resupply shipment back.'},
+  // ── P6 6.2: per-era event pools. minEra/maxEra are ERA INDEX bounds, inclusive (see ERAS ~:751).
+  //   Effect kinds/magnitudes mirror the era-agnostic entries above (money windfalls sized to gov_grant/
+  //   investor scale, hits to budget_cut/liability scale). No new persisted state; no SAVE_VERSION bump.
+  // Cold War prestige band — eras 1–2 (Early Orbital 1957 → Crewed & Lunar, ~1974): space-race politics.
+  {id:'cw_prestige',      kind:'good', weight:2, minEra:1, maxEra:2, label:'Prestige funding surge', money:[2.0,5.0], blurb:'A rival\'s headline sparks a prestige panic — emergency program funds are rushed through.'},
+  {id:'cw_audit',         kind:'bad',  weight:2, minEra:1, maxEra:2, label:'Prestige program audit', money:[-2.5,-1.0], blurb:'A legislative prestige audit freezes discretionary funds pending review.'},
+  // Commercial investor-mania band — eras 4–5 (Commercial 2000 → Expansion): speculative launch-stock capital.
+  {id:'investor_mania',   kind:'good', weight:2, minEra:4, maxEra:5, minRep:60, label:'Investor mania', money:[2.5,5.5], blurb:'Retail money floods launch stocks — a secondary offering clears at a frothy valuation.'},
+  {id:'market_correction',kind:'bad',  weight:2, minEra:4, maxEra:6, label:'Market correction', money:[-4.0,-1.5], blurb:'The launch-stock bubble corrects; a down round wipes value off your balance sheet.'},
+  // Expansion / ISRU band — eras 5–7 (Expansion 2030 → Speculative): off-world resource economics.
+  {id:'isru_windfall',    kind:'good', weight:2, minEra:5, maxEra:7, label:'ISRU surplus sale', money:[2.5,5.5], blurb:'In-situ propellant output exceeds your own needs — the surplus sells at a premium off-world.'},
+  {id:'offworld_dispute', kind:'bad',  weight:2, minEra:5, maxEra:7, label:'Off-world claims dispute', money:[-3.5,-1.0], blurb:'A resource-rights dispute over your off-world claims ties up assets in arbitration.'},
 ];
 const EVENT_CHANCE=0.14;   // monthly probability of a new event (when off cooldown)
 const EVENT_MIN_GAP=5;     // months of quiet enforced after each event
@@ -2910,7 +2922,10 @@ function rollEconEvent(){
   // Economy tension: positive windfalls require a recently ACTIVE program (a flight in the
   // last 24 months or support above neutral). Nobody grants money to an agency going nowhere.
   const activeProgram = (absMonth()-(state.lastFlightAbs??-999))<=36 || !!state.activeResearch || publicSupport()>SUPPORT_BASE+3;
-  const elig=ECONOMY_EVENTS.filter(e=> state.year>=(e.minYear||0) && state.rep>=(e.minRep||0) && state.flights>=(e.reqFlights||0) && (!e.reqDepot || state.research.orbital_depot) && (!e.reqLogi || logiFlightsInTransit().length>0) && !(e.kind==='good' && e.money && !activeProgram));
+  // P6 6.2: per-era gating — optional minEra/maxEra are ERA INDEX bounds (inclusive). Absent ⇒ no era
+  // restriction (backward compatible: every pre-6.2 entry has neither, so its eligibility is unchanged).
+  const eraIdx=eraIndexForYear(state.year);
+  const elig=ECONOMY_EVENTS.filter(e=> state.year>=(e.minYear||0) && state.rep>=(e.minRep||0) && state.flights>=(e.reqFlights||0) && (!e.reqDepot || state.research.orbital_depot) && (!e.reqLogi || logiFlightsInTransit().length>0) && eraIdx>=(e.minEra||0) && eraIdx<=(e.maxEra??(ERAS.length-1)) && !(e.kind==='good' && e.money && !activeProgram));
   if(!elig.length) return null;
   const tot=elig.reduce((a,e)=>a+e.weight,0);
   let r=Math.random()*tot, pick=elig[0];

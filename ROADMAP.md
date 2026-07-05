@@ -1203,6 +1203,24 @@ pools, 6.3 passive-contract reskins, 6.4 era-sensitive public mood (reweight onl
   deltas), multi-era-jump chaining. Visual card layout/copy tone needs a manual browser pass. Next: **6.2** —
   per-era event pools (`minEra`/`maxEra` gating on `ECONOMY_EVENTS`, old events retired as eras advance per
   user decision).
+- **6.2 ✅ (2026-07-05)** — Per-era event pools. Added optional `minEra`/`maxEra` (era-index bounds) to the
+  central `ECONOMY_EVENTS` eligibility filter — absent on an entry means no era restriction (all 13 pre-existing
+  unbounded entries fully backward-compatible). **Retired** two government-funding events by era: `gov_grant`
+  (`maxEra:3`, fades as Commercial arrives) and `subsidy` (`maxEra:4`, fades at Expansion) — their bad-half
+  counterparts (`austerity`, compliance audits) intentionally stay era-agnostic. **Added 6 new entries** across
+  three thematic bands, one good/bad pair each, magnitudes matched to existing entries of similar severity:
+  Cold War prestige panic/audit (eras 1-2), commercial investor mania/correction (eras 4-6), expansion-era ISRU
+  windfall/off-world dispute (eras 5-7). Voice modeled on existing dry economic-event blurbs with era inflection
+  (legislative/prestige politics → market/stock language → resource-rights language). No new persisted state —
+  era gating computed live from `state.year`, no SAVE_VERSION bump.
+  **Validation.** `node --check` OK. Off-by-one boundary check 8/8 (every era-bounded entry eligible exactly at
+  its bounds, not one era outside). Parity: all 13 unbounded entries unaffected in every era. Per-era pool
+  weight checked structurally across all 8 eras — no era left thin or overloaded (e.g. mature-player weight
+  went 3→3 / 20→24 / 24→28 / 32→32 / 32→33 / 32→35 / 32→33 / 32→31 across eras 0-7). Monte Carlo (1000 sim-yr,
+  4 sampled eras): fire rate stable ~10.6-11/decade regardless of era. **Known pre-existing gap, unchanged by
+  this slice:** Pioneer era (1942-44) has zero eligible events until `gov_grant` unlocks at 1945 (a `minYear`
+  effect predating this work) — an acceptable thin-start gap. Next: **6.3** — passive-contract reskins
+  (including 1-2 new contract types per user decision).
 
 ## Session — Isometric command-center layout redistribution (2026-07-04)
 
