@@ -1129,6 +1129,25 @@ Decisions (user): add real save files (export/import) + autosave.
   placement needs a manual browser pass. **This closes out P2 (living logistics, slices 2.1-2.4) — one of the
   P1/P2/P11 "put the universe in motion" through-line initiatives, alongside P1 (done) and P11 (not yet started).**
 
+### Progress log — P3 (failure investigation loop)
+- **3.1 ✅ (2026-07-05)** — After an uncrewed loss/abort/strand, a fund/decline modal (mirrors `_pendingSetback`/
+  P2's `_pendingLogiMishap` exactly, slotting into the same precedence chain: setback > mishap > inquiry) offers
+  an inquiry costing `max(0.6, 0.3×flightExpense)` (the lost flight's own build+launch+etc. cost). Reward is
+  determined by what failed, via existing `SUBSYS_PHASE`: ascent/staging subsystems → a flat +0.02 reliability
+  credit (`state.inquiryCredit={subsystem,rel:0.02,flights:3}`, additive to `effectiveReliability` like
+  `familyRelBonus`, consumed one flight at a time, only when that subsystem is actually relevant — zero overhead/
+  drift when unfunded); deep-phase subsystems → a flat `INQUIRY_SCI_BONUS=10`⚛ science grant (~1.5× a base deep
+  mission's yield). No cooldown/stacking — a new inquiry replaces any unused prior credit. Crewed catastrophes
+  are completely untouched (they keep their existing implied 6-month grounding narration; this is uncrewed-only
+  by design). Decline path is byte-identical to today. New persisted state → **SAVE_VERSION 42→43** + migration
+  (old saves → `inquiryCredit:null`).
+  **Validation.** `node --check` OK. 43/43 headless: cost math, reward-selection-by-subsystem, credit lifecycle
+  (3→2→1→null via real launches, irrelevant credit never consumed, no-stacking replace), decline no-op, trigger
+  scope (uncrewed loss only — never success/rescued/crewed), save/load round-trip of a partially-consumed
+  credit, v42→v43 migration. **Monte Carlo (N=300, paired RNG):** reliability delta lands at exactly the
+  intended +0.02×relevance-fraction, zero drift when never funded. Modal wording/layout needs a manual browser
+  pass. Quick wins **P4/P5/P7-P10** remain independent of the entity model and can be tackled in any order.
+
 ## Session — Isometric command-center layout redistribution (2026-07-04)
 
 Player request (not part of the P-list initiative): the isometric Command/Cape view's buildings were unevenly

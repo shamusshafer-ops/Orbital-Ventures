@@ -1965,6 +1965,7 @@ function newGame(difficulty){
     lunarArch:null, // CE3(c): committed lunar architecture (LOR/Direct/EOR) — null = uncommitted
     uiLayer:'advanced', // #23: progressive UI complexity (basic/advanced/expert), independent of difficulty
     loanInterest:0, // CE4(c): permanent monthly bridge-loan debt service
+    inquiryCredit:null, // P3: unused funded-inquiry reliability credit {subsystem,rel,flights} or null
   };
   log('info','Company founded. The pad is yours — go make some noise.');
   reconcileEngineMods(); // reset engine stats to base for a fresh company
@@ -2370,6 +2371,7 @@ function resolveSetback(choice){
   _pendingSetback=null; hideModal();
   if(state.money<0) gameOver(); else render();
   maybeShowMishap(); // if a logistics mishap also came due this tick, surface it now that the setback is cleared
+  maybeShowInquiry(); // then a pending failure inquiry (lowest precedence of the three)
 }
 /* ---------- 2.3: logistics route interruptions ----------
    A negative economy event (logi_mishap in ECONOMY_EVENTS, reqLogi-gated so it can only roll while
@@ -2416,6 +2418,57 @@ function resolveMishap(choice){
     log('bad',`${def?def.icon+' '+def.name:'Facility'} resupply delayed +${s.delay} d — arrival pushed back; the base draws down further before it lands.`);
   }
   _pendingLogiMishap=null; hideModal();
+  if(state.money<0) gameOver(); else render();
+  maybeShowInquiry(); // if a failure inquiry is also pending, surface it now that the mishap is cleared
+}
+/* ---------- P3: failure investigation loop ----------
+   After an UNCREWED loss/abort/strand finalizes, offer a funded inquiry that converts the failure
+   into a reward keyed on WHAT failed. Reuses the _pendingSetback / _pendingLogiMishap transient
+   pending-state + fund/decline modal shape. Precedence: setback > mishap > inquiry (this is the
+   third pending-decision type; maybeShowInquiry defers to the other two, and both resolve* paths
+   chain into it). state.inquiryCredit is the ONE persisted addition (SAVE_VERSION 42→43). */
+const INQUIRY_COST_FRAC=0.3, INQUIRY_COST_FLOOR=0.6; // fund cost = max(FLOOR, FRAC × the lost flight's outlay) — mirrors the setback's max(0.6, 0.4×rdCostOf)
+const INQUIRY_REL=0.02, INQUIRY_FLIGHTS=3;           // ascent/staging reward: +2% additive R (like familyRelBonus), gated to the failed subsystem, over 3 flights
+const INQUIRY_SCI_BONUS=10;                           // deep-phase reward: flat science windfall (~1.5× a base deep mission's ~5-7⚛ yield, above SCI_RUSH_BASE=6)
+let _pendingInquiry=null;                             // an uncrewed loss awaiting a fund/decline inquiry decision (transient, like _pendingSetback)
+// ascent/staging subsystems → reliability credit; deep-phase (deep_propulsion / life_support) → science grant
+function inquiryRewardKind(subKey){ return SUBSYS_PHASE[subKey]==='deep' ? 'science' : 'reliability'; }
+function triggerInquiry(ctx, outcome){
+  if(_pendingInquiry) return;                         // one inquiry decision at a time
+  const sub=outcome&&outcome.subsystem; if(!sub) return; // no subsystem attribution → nothing to investigate
+  const cost=round2(Math.max(INQUIRY_COST_FLOOR, INQUIRY_COST_FRAC*(ctx.flightExpense||0)));
+  _pendingInquiry={ mName:ctx.m.name, subsystem:sub, subLabel:SUBSYS_LABEL[sub]||'systems', reward:inquiryRewardKind(sub), cost };
+  log('bad',`⚠ FAILURE INQUIRY — ${ctx.m.name}: the ${(SUBSYS_LABEL[sub]||'systems').toLowerCase()} loss can be formally investigated. A decision is needed.`);
+}
+function maybeShowInquiry(){ if(_pendingInquiry && !_pendingSetback && !_pendingLogiMishap) showInquiryModal(); } // setback + mishap take priority if any coexist
+function showInquiryModal(){
+  const s=_pendingInquiry; if(!s) return;
+  const fundOk=state.money>=s.cost;
+  const rewardTxt = s.reward==='science'
+    ? `+${INQUIRY_SCI_BONUS}⚛ science`
+    : `+${Math.round(INQUIRY_REL*100)}% ${s.subLabel.toLowerCase()} reliability · next ${INQUIRY_FLIGHTS} flights`;
+  showModal(`<h2 style="color:var(--bad)">⚠ Failure inquiry</h2>
+    <p><b>${s.mName}</b> — the loss traced to the ${s.subLabel.toLowerCase()}.</p>
+    <p class="muted">A funded inquiry turns this failure into hard data.</p>
+    <button class="btn" onclick="resolveInquiry('fund')" ${fundOk?'':'disabled'} title="${fundOk?'':'Not enough capital'}">Fund the inquiry — ${fM(s.cost)} <span class="dim">· ${rewardTxt}</span></button>
+    <button class="btn ghost" style="margin-top:8px" onclick="resolveInquiry('decline')">Move on <span class="dim">· free, no findings</span></button>`);
+}
+function resolveInquiry(choice){
+  const s=_pendingInquiry; if(!s) return;
+  if(choice==='fund'){
+    if(state.money<s.cost) return; // guarded; the button is disabled when unaffordable
+    state.money-=s.cost;
+    if(s.reward==='science'){
+      state.science=round2((state.science||0)+INQUIRY_SCI_BONUS);
+      log('ok',`Inquiry into the ${s.subLabel.toLowerCase()} failure banked +${INQUIRY_SCI_BONUS}⚛ of deep-space engineering data.`);
+    } else {
+      state.inquiryCredit={ subsystem:s.subsystem, rel:INQUIRY_REL, flights:INQUIRY_FLIGHTS }; // REPLACES any prior unused credit — no stacking
+      log('ok',`Inquiry into the ${s.subLabel.toLowerCase()} failure yields a fix — +${Math.round(INQUIRY_REL*100)}% ${s.subLabel.toLowerCase()} reliability on the next ${INQUIRY_FLIGHTS} flights that fly it.`);
+    }
+  } else {
+    log('note',`No inquiry funded — the ${s.mName} loss goes on the books without a formal review.`);
+  }
+  _pendingInquiry=null; hideModal();
   if(state.money<0) gameOver(); else render();
 }
 // Time Granularity epic — the simulation funnel iterates DAYS, not months. Each day runs the
@@ -4014,7 +4067,7 @@ function runToNextEvent(){
   const target=items.length?Math.max(1,Math.ceil(items[0].etaDays)):30;
   const cap=Math.min(target, 365*3);
   let d=0;
-  while(d<cap && !_timeInterrupted && !state.over && !_pendingSetback && !_pendingLogiMishap){
+  while(d<cap && !_timeInterrupted && !state.over && !_pendingSetback && !_pendingLogiMishap && !_pendingInquiry){
     advance(1); d++;
     if($('modal') && !$('modal').classList.contains('hidden')) break; // a decision opened
   }
@@ -4037,7 +4090,7 @@ function clickTimeArrow(unit){
 function updateTimeArrows(){ for(const u in TIME_UNIT_DAYS){ const b=$('tArrow'+u[0].toUpperCase()+u.slice(1)); if(b) b.classList.toggle('running', timeAuto.unit===u); } }
 function skipResearch(){ if(!state.activeResearch) return;
   let n=state.activeResearch.monthsLeft+1; // each month removes ≥1; +1 guarantees completion absent a setback
-  while(n-->0 && state.activeResearch && !_pendingSetback && !_pendingLogiMishap && !state.over) advance(1); // #26: stop the skip at a setback (or 2.3 mishap) decision
+  while(n-->0 && state.activeResearch && !_pendingSetback && !_pendingLogiMishap && !_pendingInquiry && !state.over) advance(1); // #26: stop the skip at a setback (or 2.3 mishap) decision
   if(!state.over){ render(); maybeShowSetback(); maybeShowMishap(); }
 }
 
@@ -4718,6 +4771,7 @@ function effectiveReliability(m,v,sim,crewed){
   if(crewed){ const ab=astroBonus(); rel=Math.min(0.99, rel+ab.rel); }
   rel=Math.min(0.995, rel + facilityBonus(missionBody(m&&m.id)).relBump); // M17: home-field operational bonus
   rel=Math.min(0.995, rel + familyRelBonus(activeFamily())); // #3: reliability heritage of a proven lineage
+  rel=Math.min(0.995, rel + inquiryRelBonus(m,v,sim,crewed)); // P3: a funded failure inquiry's reliability credit, only while its subsystem is in play
   if(state.staticFixBonus) rel=Math.min(0.995, rel + state.staticFixBonus); // Phase 2: fault found & fixed on the test stand
   if(recoveryRefly(m)) rel=Math.max(diff().relFloor, rel - refurbRelPenalty()); // #7 slice 4: refurbishment wear — each refly chips a little reliability (bounded; mitigated by retiring the airframe)
   rel*=assemblyDockPenalty(m); // #6: each orbital docking is a chance to fail (halved by auto-rendezvous)
@@ -4764,6 +4818,14 @@ function subsystemFragilities(m,v,sim,crewed){
   if(qm<1) for(const e of list) if(QA_MFG_SUBSYS.has(e.key)) e.weight*=qm;
   return list;
 }
+// P3: is a funded failure-inquiry reliability credit in play on THIS flight? (its subsystem is present)
+// Short-circuits before touching subsystemFragilities when no credit is active — zero overhead / drift when unfunded.
+function inquiryCreditRelevant(m,v,sim,crewed){
+  const c=state.inquiryCredit;
+  if(!c || !(c.flights>0) || !c.rel) return false;
+  return subsystemFragilities(m,v,sim,crewed).some(s=>s.key===c.subsystem);
+}
+function inquiryRelBonus(m,v,sim,crewed){ return inquiryCreditRelevant(m,v,sim,crewed) ? state.inquiryCredit.rel : 0; }
 // distribute the mission failure probability across subsystems so the product of
 // their reliabilities equals the overall R (rel_i = R^(weight_i / sum_weights))
 function subsystemReport(m,v,sim,crewed,relMult=1){
@@ -5306,7 +5368,7 @@ function beginResolve(ctx){
 // a time. Guards prevent reentrancy (a strand/loss calls advance() → advanceDays → here) and modal stacking.
 function pumpFlightArrivals(){
   if(_flightResolving) return;
-  if(_pendingLive||_pendingReserve||_pendingOps||_pendingRescue||_pendingSetback||_pendingLogiMishap||_pendingLaunch) return;
+  if(_pendingLive||_pendingReserve||_pendingOps||_pendingRescue||_pendingSetback||_pendingLogiMishap||_pendingInquiry||_pendingLaunch) return;
   try{ if($('modal') && !$('modal').classList.contains('hidden')) return; }catch(e){} // a modal is on screen — wait
   const rec=(state.activeFlights||[]).find(f=>f&&f.deferred&&absDay()>=f.arriveAbs);
   if(!rec) return;
@@ -5392,6 +5454,13 @@ function proceedLaunch(m,v,sim,windowQuality,weatherPenalty,prebuilt){
   const crewed=m.crew>0;
   // M16: subsystem-based reliability — which subsystem (if any) fails decides the story
   const outcome=resolveFlight(m,v,sim,crewed,weatherPenalty); // outcome locks at launch-time tech (resolve BEFORE the cruise advances time)
+  // P3: this real flight commits the funded-inquiry reliability credit if its subsystem is in play — consume one flight here
+  // (the single point where the +R bonus is baked into a genuine outcome; preview/sim calls never reach this line).
+  if(state.inquiryCredit && state.inquiryCredit.flights>0 && inquiryCreditRelevant(m,v,sim,crewed)){
+    const c=state.inquiryCredit; c.flights--;
+    if(c.flights<=0){ state.inquiryCredit=null; log('note',`${SUBSYS_LABEL[c.subsystem]||'Subsystem'} inquiry reliability credit applied — now fully spent.`); }
+    else log('note',`${SUBSYS_LABEL[c.subsystem]||'Subsystem'} inquiry reliability credit applied — ${c.flights} flight${c.flights===1?'':'s'} remaining.`);
+  }
   // Time Granularity slice 4: the flight now occupies its REAL calendar duration — the cruise/ops days.
   // Early/suborbital missions are days:0 (early game provably unchanged); deep missions become major
   // time commitments (overhead, R&D, rivals, facilities all advance during the mission). Intentional
@@ -5586,6 +5655,9 @@ function finalizeLaunch(ctx, ops){
       }
     }
   }
+  // P3: after an UNCREWED loss/abort/strand, offer a funded failure inquiry (crewed catastrophes keep their
+  // existing grounding narration untouched; abort/strand are crewed-only in practice, guarded here for safety).
+  if(!crewed && (outcome.kind==='loss'||outcome.kind==='abort'||outcome.kind==='strand') && outcome.subsystem) triggerInquiry(ctx, outcome);
   recordFlightLedger(flightRevenue, flightExpense); // #18: attribute this flight to the current month's ops summary
   state.testLevel=0; // campaign applies to one flight
   state.rehearsal=false; // #20 slice 4: rehearsal applies to one flight
@@ -5603,7 +5675,7 @@ function finalizeLaunch(ctx, ops){
     rng: { wind:(rnd()-0.5)*0.9, windFreq:1.4+rnd()*1.6, windPhase:rnd()*6.283,
            pitchJitter:(rnd()-0.5)*0.16, sep:state.stages.map(()=>(rnd()-0.5)*0.06),
            apogee:0.86+rnd()*0.28, bow:(rnd()-0.5)*0.9 } };
-  const finish=()=>{ if(state.money<0){ gameOver(); } else { _missionPulse=success?'ok':(outcome.kind==='loss'||outcome.kind==='strand')?'bad':null; render(); if(pendingCelebration) pendingCelebration(); } _flightResolving=false; if(!state.over) pumpFlightArrivals(); }; // 1.2a: flight fully done — release the lock, then resolve the next arrival if any
+  const finish=()=>{ if(state.money<0){ gameOver(); } else { _missionPulse=success?'ok':(outcome.kind==='loss'||outcome.kind==='strand')?'bad':null; render(); if(pendingCelebration) pendingCelebration(); maybeShowInquiry(); } _flightResolving=false; if(!state.over) pumpFlightArrivals(); }; // 1.2a: flight fully done — release the lock, surface a pending failure inquiry, then resolve the next arrival if any
   if(animEnabled){
     if(_liftoffArmed){ _liftoffArmed=false; playLiftoff(spec, (seedP)=>playMission(spec, finish, seedP)); } // iso-view liftoff + zoom-chase, then the ascent overlay seeded at the handoff altitude
     else playMission(spec, finish);
@@ -6312,7 +6384,7 @@ function hideModal(){activeModal=null;_prodModalOpen=false;$('modal').classList.
 
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=42; // v42: P2 slice 2.4 — per-facility auto-resupply toggle (fs.autoResupply boolean; opt-in per facility). On the monthly tick a facility with the toggle ON auto-fires resupplyFacility() once supply falls to/below AUTO_RESUPPLY_THRESHOLD(6) and canResupply().ok — same cost/gate/lifecycle as a manual order (the resupplyInTransit + money gates prevent double-ordering and unaffordable fires). Pure automation, balance-neutral otherwise; each auto-order logs a 'note' line. Lazy migration: pre-v42 facilities carry no autoResupply — migrateFacilityAutoResupply() defaults it false on load (undefined is already falsy, so behavior is unchanged either way); foundFacility seeds autoResupply:false on fresh bases. v41: P1 persistent in-flight missions — state.activeFlights[] (deferred interplanetary flights carry a resolved-at-launch ctx applied on arrival; ctx stores famId + crewId, not object refs, so a mid-cruise save round-trips; legacy saves default [] via loadDefaults; rehydrateFlights() re-links ctx.m + restores _flightSeq on load). v40: #19 slice B — career progression (staff.xp accrues monthly ×morale ×dept-training, raising effSkill above hire-day base up to +0.15; dept.training level bought with capital; legacy staff default xp 0 via staffXp guard, effSkill==base at xp 0 so no balance migration). #19 slice C (succession + workforce planning) adds no persisted state — reconcileDeptLeads mutates existing dept.lead, gaps + the era-scaled unstaffed-department reliability penalty (0 in Pioneer) are derived — so it needs no bump. v39: #19 slice A — organizational departments (state.departments {deptId:{lead,training}}; legacy saves default via loadDefaults/defaultDepartments; membership is derived from hired staff, leads are balance-neutral when unset); v38: #6 research partnerships — bench-tested / flight-proven components (state.engineStockTested + state.partStockTested, the bench-tested subset of each yard; legacy saves default {}); a fitted bench-tested component adds +1.5% reliability (cap +6%, benchRelBonus), built at +60% cost / +50% time; v36: #7 sub-assemblies slice 2 — structures & habitats yard (state.partStock {"kind:sub":count}, e.g. "tank:steel"/"hab:closed"; legacy saves default {}); same cost-neutral cadence pattern as the Engine Yard; v35: #7 sub-assemblies — Engine Yard (state.engineStock {engId:count}; legacy saves default {}); v34: Time Granularity slice 4b — launch windows day-scheduled (window/committedWindow .abs moved from absMonth to absDay; migrateWindowsToDays ×30 on pre-v34 load + clears the regenerable windows cache); v33: Time Granularity slice 1 — day-iterating advance() funnel (state.day 0..29 + absDay(); legacy saves default day:0 via load defaults; whole-month advances stay bit-identical so no balance migration needed); v32: CE4(c) era-scaled failure stakes + bailout retune (state.loanInterest — permanent bridge-loan debt service; legacy saves default to 0 via load defaults + loanInterest() guard); v31: CE4(b) standing resupply obligations (per-facility supply/starvedMonths; legacy facilities default to fully provisioned via facilitySupply()); v30: CE3(c) lunar architecture fork (state.lunarArch, null=uncommitted; luna_landing reqResearch moved to per-arch gates); v29: CE3(a) company doctrine (state.doctrine, null=undeclared/neutral); v28: CE2(c) juggernaut capstone (state.standingProd/juggernautReached); v27: CE2(b) launch cadence (state.padMonthAbs/padMonthUsed) — load defaults seed all of these; v26: CE1 rival agents (state.rivalState), seedRivalState migrates old rivalFired
+const SAVE_VERSION=43; // v43: P3 failure investigation loop — state.inquiryCredit ({subsystem,rel,flights} or null): a funded uncrewed-loss inquiry into an ascent/staging subsystem grants a +2% additive-R credit (like familyRelBonus) gated to that subsystem, consumed over 3 flights at launch; a deep-phase failure grants a flat +10⚛ science instead (no persisted credit). Transient _pendingInquiry (fund/decline modal, precedence setback>mishap>inquiry) is NOT persisted. Lazy migration: pre-v43 saves lack inquiryCredit — loadDefaults() seeds it null on both load paths (undefined is already falsy, so behavior is unchanged either way). v42: P2 slice 2.4 — per-facility auto-resupply toggle (fs.autoResupply boolean; opt-in per facility). On the monthly tick a facility with the toggle ON auto-fires resupplyFacility() once supply falls to/below AUTO_RESUPPLY_THRESHOLD(6) and canResupply().ok — same cost/gate/lifecycle as a manual order (the resupplyInTransit + money gates prevent double-ordering and unaffordable fires). Pure automation, balance-neutral otherwise; each auto-order logs a 'note' line. Lazy migration: pre-v42 facilities carry no autoResupply — migrateFacilityAutoResupply() defaults it false on load (undefined is already falsy, so behavior is unchanged either way); foundFacility seeds autoResupply:false on fresh bases. v41: P1 persistent in-flight missions — state.activeFlights[] (deferred interplanetary flights carry a resolved-at-launch ctx applied on arrival; ctx stores famId + crewId, not object refs, so a mid-cruise save round-trips; legacy saves default [] via loadDefaults; rehydrateFlights() re-links ctx.m + restores _flightSeq on load). v40: #19 slice B — career progression (staff.xp accrues monthly ×morale ×dept-training, raising effSkill above hire-day base up to +0.15; dept.training level bought with capital; legacy staff default xp 0 via staffXp guard, effSkill==base at xp 0 so no balance migration). #19 slice C (succession + workforce planning) adds no persisted state — reconcileDeptLeads mutates existing dept.lead, gaps + the era-scaled unstaffed-department reliability penalty (0 in Pioneer) are derived — so it needs no bump. v39: #19 slice A — organizational departments (state.departments {deptId:{lead,training}}; legacy saves default via loadDefaults/defaultDepartments; membership is derived from hired staff, leads are balance-neutral when unset); v38: #6 research partnerships — bench-tested / flight-proven components (state.engineStockTested + state.partStockTested, the bench-tested subset of each yard; legacy saves default {}); a fitted bench-tested component adds +1.5% reliability (cap +6%, benchRelBonus), built at +60% cost / +50% time; v36: #7 sub-assemblies slice 2 — structures & habitats yard (state.partStock {"kind:sub":count}, e.g. "tank:steel"/"hab:closed"; legacy saves default {}); same cost-neutral cadence pattern as the Engine Yard; v35: #7 sub-assemblies — Engine Yard (state.engineStock {engId:count}; legacy saves default {}); v34: Time Granularity slice 4b — launch windows day-scheduled (window/committedWindow .abs moved from absMonth to absDay; migrateWindowsToDays ×30 on pre-v34 load + clears the regenerable windows cache); v33: Time Granularity slice 1 — day-iterating advance() funnel (state.day 0..29 + absDay(); legacy saves default day:0 via load defaults; whole-month advances stay bit-identical so no balance migration needed); v32: CE4(c) era-scaled failure stakes + bailout retune (state.loanInterest — permanent bridge-loan debt service; legacy saves default to 0 via load defaults + loanInterest() guard); v31: CE4(b) standing resupply obligations (per-facility supply/starvedMonths; legacy facilities default to fully provisioned via facilitySupply()); v30: CE3(c) lunar architecture fork (state.lunarArch, null=uncommitted; luna_landing reqResearch moved to per-arch gates); v29: CE3(a) company doctrine (state.doctrine, null=undeclared/neutral); v28: CE2(c) juggernaut capstone (state.standingProd/juggernautReached); v27: CE2(b) launch cadence (state.padMonthAbs/padMonthUsed) — load defaults seed all of these; v26: CE1 rival agents (state.rivalState), seedRivalState migrates old rivalFired
 function writeSave(){ localStorage.setItem(SAVE_KEY, JSON.stringify({v:SAVE_VERSION, ts:Date.now(), state:JSON.parse(JSON.stringify(state))})); }
 // S1: silent throttled autosave so "Continue last game" always resumes the most recent session.
 // Skips a transient mid-flight-resolution snapshot; forced on page close.
@@ -6386,7 +6458,7 @@ function loadDefaults(){ return {
       staff:[], assignedAstronaut:null, departments:defaultDepartments(),
       vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, rehearsal:false, techLevel:{}, divisions:{}, partnerships:[], breakthroughCooldown:3, relDebt:0, powerSource:'solar',
       recentBuilds:[], materials:defaultMaterialsState(),
-      buildQueue:[], hangar:[], orderSeq:0, padMonthAbs:-1, padMonthUsed:0, standingProd:null, juggernautReached:false, doctrine:null, lunarArch:null, uiLayer:'advanced', loanInterest:0, metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[], day:0, engineStock:{}, engineStockTested:{}, partStock:{}, partStockTested:{}, activeFlights:[]
+      buildQueue:[], hangar:[], orderSeq:0, padMonthAbs:-1, padMonthUsed:0, standingProd:null, juggernautReached:false, doctrine:null, lunarArch:null, uiLayer:'advanced', loanInterest:0, metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[], day:0, engineStock:{}, engineStockTested:{}, partStock:{}, partStockTested:{}, activeFlights:[], inquiryCredit:null
 }; }
 
 /* ---------- Session bookend: "where you left off" ----------
