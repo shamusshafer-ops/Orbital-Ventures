@@ -1195,3 +1195,44 @@ formulas. Headless: `node --check` OK; small/mid/heavy test vehicles render 18/3
 for all three — floor, ramp, and cap all confirmed. Cap value is a manual in-browser judgment call, easy to
 retune. Next: **slice 3** — wheel-zoom on the ascent/trajectory/orbit scenes (new capability, none exists there
 today).
+
+**Vehicle-size unification, slice 3 — flight-overlay wheel-zoom (2026-07-05).** Added manual pan/zoom to the
+full-screen flight overlay (`#animOverlay`, ascent → trajectory → orbit phases), which had none before. Couldn't
+reuse the pop-out's blit-based `initCanvasPopZoom` (the overlay draws straight to an on-screen canvas, no
+offscreen source to blit) — instead mirrored the Cape view's CSS-transform pattern: canvases wrapped in a new
+`#flightZoom` div, `flightCam` state (`initFlightZoom`/`applyFlightZoom`/`resetFlightZoom`/`flightClampPan`),
+drag-pan + wheel-zoom-toward-cursor + dblclick-reset, 1–3× range. Camera state persists across phase
+transitions (the canvas is continuously redrawn, never torn down) and resets only when a fresh flight opens
+(`playMission`). A capture-phase click-swallow (after a >6px pan) prevents panning from firing the overlay's
+existing post-flight "Continue ▸" click handler; the liftoff's own skip-listener lives on a separate element,
+no conflict. `animEnabled=false` path fully bypasses `playMission`, unaffected. Headless: `node --check` OK;
+zoom-toward-cursor math, pan clamping, range bounds, cross-phase persistence, and fresh-open reset all verified
+by simulation. Feel of zooming mid-animation is inherently visual — not machine-checked. **This closes out the
+vehicle-size-unification initiative** (shared base scale across pad/ascent/orbit + zoom everywhere).
+
+## Session — CC pop-out functional parity with the normal Command Center view (2026-07-05)
+
+Player request: the CC pop-out (`⤢ Pop out` on Command Center) showed the Cape scene visually but had none of
+the normal view's clickable building hotspots (live status glyphs, labels, click-to-drill-in) — its info panel
+even claimed "click a building… to drill in," which didn't actually work. Two-slice plan (tech-lead): refactor
+the pop-out's zoom architecture first, then add the real hotspot layer, closing the pop-out before any
+drill-in action (matching the existing `earthGoToCape()` precedent) since drill-in modals render at a lower
+z-index than the pop-out's scrim and would otherwise open invisibly behind it.
+
+### Slice 1 — pop-out transform-wrapper refactor ✅ (2026-07-05)
+
+Replaced the pop-out's manual offscreen-canvas-blit-with-JS-math zoom (`fit`/`dw`/`dh`/`ctx.drawImage`) with the
+same CSS-transform-wrapper pattern used by the Cape view and the just-shipped flight-overlay zoom: `drawCape()`
+now renders straight onto the visible `#ccPopCanvas` at native `CAPE_W×CAPE_H`; new DOM nesting `#ccPopFit`
+(letterbox-fit reference box, resized each frame) → `#ccPopZoom` (the `translate/scale` transform target,
+where hotspots will live as % children in slice 2) → `#ccPopCanvas`. New `applyCcPopZoom`/`ccPopClampPan`/
+`ccPopFitBox`/`initCcPopZoom` replace the old blit loop and `initCanvasPopZoom` wiring. The launch-liftoff
+camera-chase math targeting `ccPop.{z,x,y}` was re-derived for the new semantics and **simplified** to the
+byte-for-byte same form as the normal view's equivalent branch, once the letterbox fit is baked into the
+reference box. Two small deliberate deviations: zoom-out floor raised 0.5×→1× (avoids a corner-shrink artifact
+with `transform-origin:0 0`); liftoff's vertical framing reference shifted by a sub-percent amount in
+letterboxed cases only (imperceptible). Headless: `node --check` OK; numeric parity — pop-out and normal-view
+liftoff targets place the rocket at the identical screen fraction (0.500, 0.420) at multiple zoom levels;
+wheel-zoom cursor-anchoring, range clamp, and pan clamp all verified. Skip-listener unaffected. Zoom *feel*
+needs a manual browser pass. Next: **slice 2** — the actual `ccSpotsHTML()` shared hotspot layer + close-then-
+act clicks + live glyph refresh.

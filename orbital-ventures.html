@@ -728,7 +728,7 @@
 
 <div id="animOverlay" class="animwrap hidden">
   <div id="animTitle">—</div>
-  <div id="flightCanvasWrap" style="position:relative;display:inline-block"><div id="flightHost" style="display:none"></div><canvas id="flightCanvas" width="900" height="520"></canvas><canvas id="flightTextCanvas" width="900" height="520" style="position:absolute;left:0;top:0;pointer-events:none"></canvas></div>
+  <div id="flightCanvasWrap" style="position:relative;display:inline-block"><div id="flightHost" style="display:none"></div><div id="flightZoom" style="position:relative;transform-origin:0 0"><canvas id="flightCanvas" width="900" height="520"></canvas><canvas id="flightTextCanvas" width="900" height="520" style="position:absolute;left:0;top:0;pointer-events:none"></canvas></div></div>
   <div class="animbar">
     <span class="dim" style="font-size:12px">Mission playback</span>
     <button class="btn ghost" id="animSpeedBtn" onclick="cycleAnimSpeed()" style="min-width:90px;font-size:12px">1×  Slow</button>
@@ -7307,6 +7307,7 @@ function setupFlightState(spec, done, ctx, cv, viewCanvas, seedP){
 function playMission(spec, done, seedP){
   $('animTitle').textContent=spec.title+(spec.crewed?'  ·  crewed':'');
   $('animOverlay').classList.remove('hidden');
+  initFlightZoom(); resetFlightZoom(); // attach camera listeners once; reset the view for this fresh flight (persists across its own phase transitions)
   // The Phaser-hosted FlightScene (graphics Slices 1–3) rendered the ascent richly but its
   // reused CanvasTexture blanked the post-ascent phases (orbit / suborbital / cislunar) in
   // this WebGL setup — a GPU-texture issue we couldn't resolve from outside the browser.
@@ -7350,6 +7351,41 @@ function endAnim(hold){
     return;
   }
   animState=null; $('animOverlay').classList.add('hidden'); if(A.done) A.done();
+}
+/* ---------- Flight-overlay manual camera (wheel-zoom + drag-pan) ----------
+   New this slice: the full-screen flight overlay (ascent → trajectory → orbit, all
+   drawn straight into #flightCanvas by drawScene/createGL2D) had no manual camera.
+   We mirror the Cape's capeZoom model (a CSS transform on an inner element wrapping
+   the fitted scene) rather than reusing initCanvasPopZoom: that helper drives a
+   fit+drawImage BLIT from an off-screen source canvas, but the flight scene is drawn
+   directly into the on-screen canvas, so the blit interface doesn't apply. Interaction
+   model is identical to the pop-outs / Cape (drag-pan, wheel-zoom-toward-cursor,
+   dblclick-reset). The transform magnifies the whole camera view ON TOP of the slice
+   1-2 vehicle-size formulas (VEH_BASE_PX_PER_UNIT / craftSprite caps / ascent clamp) —
+   exactly as capeZoom multiplies over the pad's PAD_ROCKET_K sizing — so it never
+   touches those base-size calcs. One camera per overlay session: it persists across
+   phase transitions (the same canvas is redrawn every frame; drawScene never touches
+   the element transform) and is reset only when a fresh flight opens in playMission. */
+let flightCam={z:1,x:0,y:0};
+function applyFlightZoom(){ const z=$('flightZoom'); if(z) z.style.transform=`translate(${flightCam.x}px,${flightCam.y}px) scale(${flightCam.z})`; }
+function flightClampPan(w,h){ flightCam.x=Math.min(0,Math.max(w*(1-flightCam.z),flightCam.x)); flightCam.y=Math.min(0,Math.max(h*(1-flightCam.z),flightCam.y)); }
+function resetFlightZoom(){ flightCam={z:1,x:0,y:0}; applyFlightZoom(); }
+function initFlightZoom(){
+  const wrap=$('flightCanvasWrap'); if(!wrap||wrap._zoomInit) return; wrap._zoomInit=true;
+  let drag=false, lx=0, ly=0, moved=0;
+  wrap.addEventListener('wheel',e=>{ e.preventDefault(); const r=wrap.getBoundingClientRect(); const cx=e.clientX-r.left, cy=e.clientY-r.top, z0=flightCam.z;
+    flightCam.z=Math.min(3,Math.max(1, flightCam.z*(e.deltaY<0?1.12:0.89)));
+    flightCam.x=cx-(cx-flightCam.x)*(flightCam.z/z0); flightCam.y=cy-(cy-flightCam.y)*(flightCam.z/z0);
+    flightClampPan(r.width,r.height); applyFlightZoom(); },{passive:false});
+  wrap.addEventListener('pointerdown',e=>{ if(flightCam.z<=1) return; drag=true; moved=0; lx=e.clientX; ly=e.clientY; try{wrap.setPointerCapture(e.pointerId);}catch(_){}});
+  wrap.addEventListener('pointermove',e=>{ if(!drag) return; const dx=e.clientX-lx, dy=e.clientY-ly; lx=e.clientX; ly=e.clientY; moved+=Math.abs(dx)+Math.abs(dy); const r=wrap.getBoundingClientRect(); flightCam.x+=dx; flightCam.y+=dy; flightClampPan(r.width,r.height); applyFlightZoom(); });
+  wrap.addEventListener('pointerup',()=>{ drag=false; });
+  wrap.addEventListener('pointercancel',()=>{ drag=false; });
+  // Swallow the click that follows a real pan (>6px, same threshold as the Cape/pop-out skip
+  // guards) in capture phase so it never reaches the canvas' post-flight "Continue ▸" click
+  // handler; a genuine tap (no drag) passes through untouched.
+  wrap.addEventListener('click',e=>{ if(moved>6){ e.stopPropagation(); e.preventDefault(); moved=0; } }, true);
+  wrap.addEventListener('dblclick',()=>{ resetFlightZoom(); });
 }
 /* ---------- Hybrid Phaser layer (Slice 1): FlightScene ----------
    Hosts the mission flight playback in Phaser. The proven drawScene renderer (its
@@ -10770,15 +10806,15 @@ function playLiftoff(spec, next){
     const Z=1+e*1.15;                              // zoom 1 → ~2.15, ramping into the chase on the same accelerating curve
     const fx=rx/CAPE_W, fy=(ry0-_liftoff.rise)/CAPE_H; // rocket's current fraction of the canvas
     if(ccPopoutOpen){
-      // Drive the pop-out's independent camera. Its base scale is `fit` (letterbox to #ccPopCanvas), so ccPop.z=Z
-      // gives the same relative zoom-in as the normal view; the pan places the rocket at the same screen
-      // fraction (0.5w, 0.42h). Solved against ccPopLoop's blit: x=(w-dw)/2+ccPop.x+fx*dw, y=(h-dh)/2+ccPop.y+fy*dh.
-      const st=(typeof document!=='undefined')?document.getElementById('ccPopStage'):null;
-      const w=st?st.clientWidth:0, h=st?st.clientHeight:0;
-      if(w>1&&h>1){
+      // Drive the pop-out's CSS-transform camera. Now that #ccPopZoom's transform is measured against the
+      // fitted art box (#ccPopFit, size = box), the target math is structurally identical to the normal-view
+      // branch below: ccPop.z=Z and pan places the rocket at (0.5, 0.42) of the art box — the letterbox fit is
+      // baked into the box size, so no per-blit fit/dw/dh terms survive.
+      const box=(typeof document!=='undefined')?ccPopFitBox():null;
+      if(box){
         if(!svPop) svPop={z:ccPop.z,x:ccPop.x,y:ccPop.y};
-        const s=Math.min(w/CAPE_W,h/CAPE_H)*Z, dw=CAPE_W*s, dh=CAPE_H*s;
-        ccPop.z=Z; ccPop.x=dw*0.5-s*rx; ccPop.y=(-0.08*h)+dh*0.5-s*(ry0-_liftoff.rise); // rocket → (0.5w, 0.42h)
+        ccPop.z=Z; ccPop.x=box.w*(0.5-fx*Z); ccPop.y=box.h*(0.42-fy*Z); // rocket → (0.5, 0.42) of the fitted scene
+        applyCcPopZoom();
       }
     } else if(wrap){ const r=wrap.getBoundingClientRect();
       if(r.width>0&&r.height>0){
@@ -12379,7 +12415,7 @@ function initEarthPopZoom(){
 /* ---------- Command Center pop-out ----------
    The animated Cape Canaveral scene blown up to full screen (drawn off-screen at native res, then
    blitted with grab-pan/wheel-zoom), with the agency summary on the right — same chrome as the others. */
-let ccPopoutOpen=false, ccPopAnim=null, ccPopT0=0, ccPop={z:1,x:0,y:0}, _ccOff=null;
+let ccPopoutOpen=false, ccPopAnim=null, ccPopT0=0, ccPop={z:1,x:0,y:0};
 function ccPopInfoHTML(){
   let s; try{ s=commandSummary(); }catch(e){ return ''; }
   const row=(l,v,c)=>`<div class="vps-row"><span class="lbl">${l}</span><span class="val"${c?` style="color:${c}"`:''}>${v}</span></div>`;
@@ -12410,18 +12446,44 @@ function capeStatusBoardHTML(){
     <span class="val" style="font-size:11px;color:${g.state==='attention'?GLYPH_COLOR.attention:'var(--muted)'}">${g.label}</span>
   </div>`).join('');
 }
+// CSS-transform camera for the pop-out — same model as capeZoom / flightCam (a translate+scale on an
+// inner wrapper, transform-origin 0 0). #ccPopZoom holds the art (and, in a later slice, DOM hotspots);
+// #ccPopFit is the non-transformed letterbox-fitted art box that the transform is measured against.
+function applyCcPopZoom(){ const z=$('ccPopZoom'); if(z) z.style.transform=`translate(${ccPop.x}px,${ccPop.y}px) scale(${ccPop.z})`; }
+function ccPopClampPan(w,h){ ccPop.x=Math.min(0,Math.max(w*(1-ccPop.z),ccPop.x)); ccPop.y=Math.min(0,Math.max(h*(1-ccPop.z),ccPop.y)); }
+// Size #ccPopFit to the letterbox-fit of CAPE_W×CAPE_H inside the stage (centered by its own CSS), so the
+// art box is exactly the fitted scene. Returns {w,h} of that box (the transform's reference rect), or null.
+function ccPopFitBox(){
+  const stage=$('ccPopStage'), fit=$('ccPopFit'); if(!stage||!fit) return null;
+  const w=stage.clientWidth, h=stage.clientHeight; if(w<1||h<1) return null;
+  const k=Math.min(w/CAPE_W,h/CAPE_H), fw=CAPE_W*k, fh=CAPE_H*k;
+  if(fit.style.width!==fw+'px') fit.style.width=fw+'px';
+  if(fit.style.height!==fh+'px') fit.style.height=fh+'px';
+  return {w:fw,h:fh};
+}
+// Interaction: drag-pan, wheel-zoom-toward-cursor, dblclick-reset — mirrors initFlightZoom/initCapeZoom but
+// drives ccPop and measures the fitted art box (#ccPopFit). Listeners live on the whole stage so the letterbox
+// margins stay interactive, matching the old blit-model pop-out. Range kept wide ([1,8]) for a detail view.
+function initCcPopZoom(){
+  const stage=$('ccPopStage'); if(!stage||stage._zoomInit) return; stage._zoomInit=true;
+  let drag=false, lx=0, ly=0, moved=0;
+  const ref=()=>{ const f=$('ccPopFit'); return f?f.getBoundingClientRect():stage.getBoundingClientRect(); };
+  stage.addEventListener('wheel',e=>{ e.preventDefault(); const r=ref(); const cx=e.clientX-r.left, cy=e.clientY-r.top, z0=ccPop.z;
+    ccPop.z=Math.min(8,Math.max(1, ccPop.z*(e.deltaY<0?1.12:0.89)));
+    ccPop.x=cx-(cx-ccPop.x)*(ccPop.z/z0); ccPop.y=cy-(cy-ccPop.y)*(ccPop.z/z0);
+    ccPopClampPan(r.width,r.height); applyCcPopZoom(); },{passive:false});
+  stage.addEventListener('pointerdown',e=>{ if(ccPop.z<=1) return; drag=true; moved=0; lx=e.clientX; ly=e.clientY; try{stage.setPointerCapture(e.pointerId);}catch(_){}});
+  stage.addEventListener('pointermove',e=>{ if(!drag) return; const dx=e.clientX-lx, dy=e.clientY-ly; lx=e.clientX; ly=e.clientY; moved+=Math.abs(dx)+Math.abs(dy); const r=ref(); ccPop.x+=dx; ccPop.y+=dy; ccPopClampPan(r.width,r.height); applyCcPopZoom(); });
+  stage.addEventListener('pointerup',()=>{ drag=false; });
+  stage.addEventListener('pointercancel',()=>{ drag=false; });
+  stage.addEventListener('dblclick',()=>{ ccPop={z:1,x:0,y:0}; applyCcPopZoom(); });
+}
 function ccPopLoop(){
   if(!ccPopoutOpen){ ccPopAnim=null; return; }
-  const cv=$('ccPopCanvas'), stage=$('ccPopStage');
-  if(cv&&stage){ const w=stage.clientWidth, h=stage.clientHeight;
-    if(w>1&&h>1){ if(cv.width!==w||cv.height!==h){ cv.width=w; cv.height=h; }
-      if(!_ccOff){ _ccOff=document.createElement('canvas'); _ccOff.width=CAPE_W; _ccOff.height=CAPE_H; }
-      try{ drawCape(_ccOff,(ccNow()-ccPopT0)/1000); }catch(e){}
-      const ctx=cv.getContext('2d');
-      if(ctx){ ctx.setTransform(1,0,0,1,0,0); ctx.fillStyle='#05070d'; ctx.fillRect(0,0,w,h);
-        const fit=Math.min(w/CAPE_W,h/CAPE_H), s=fit*ccPop.z, dw=CAPE_W*s, dh=CAPE_H*s;
-        try{ ctx.drawImage(_ccOff, (w-dw)/2+ccPop.x, (h-dh)/2+ccPop.y, dw, dh); }catch(e){}
-      } } }
+  const cv=$('ccPopCanvas');
+  ccPopFitBox(); // keep the fitted art box in sync with the stage (handles resize)
+  if(cv){ if(cv.width!==CAPE_W) cv.width=CAPE_W; if(cv.height!==CAPE_H) cv.height=CAPE_H;
+    try{ drawCape(cv,(ccNow()-ccPopT0)/1000); }catch(e){} } // draw straight onto the visible canvas at native res; CSS scales it, the wrapper transform pans/zooms
   ccPopAnim=requestAnimationFrame(ccPopLoop);
 }
 function openCCPopout(){
@@ -12435,12 +12497,12 @@ function openCCPopout(){
       <button class="vehpop-x" onclick="closeCCPopout()">✕ Close</button>
     </div>
     <div class="vehpop-body">
-      <div class="vehpop-stage" id="ccPopStage"><canvas id="ccPopCanvas"></canvas></div>
+      <div class="vehpop-stage" id="ccPopStage"><div id="ccPopFit" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)"><div id="ccPopZoom" style="position:absolute;inset:0;transform-origin:0 0"><canvas id="ccPopCanvas" width="${CAPE_W}" height="${CAPE_H}"></canvas></div></div></div>
       <aside class="vehpop-stats" id="ccPopInfo"></aside>
     </div>`;
   document.body.appendChild(ov); fadeInScrim(ov);
   const inf=$('ccPopInfo'); if(inf) inf.innerHTML=ccPopInfoHTML();
-  initCanvasPopZoom('ccPopStage', ccPop);
+  initCcPopZoom(); ccPopFitBox(); applyCcPopZoom();
   ccPopAnim=requestAnimationFrame(ccPopLoop);
 }
 function closeCCPopout(){ if(!ccPopoutOpen) return; ccPopoutOpen=false; if(ccPopAnim){ cancelAnimationFrame(ccPopAnim); ccPopAnim=null; } removeScrim('ccPopout'); }
