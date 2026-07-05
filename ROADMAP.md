@@ -1148,6 +1148,19 @@ Decisions (user): add real save files (export/import) + autosave.
   intended +0.02×relevance-fraction, zero drift when never funded. Modal wording/layout needs a manual browser
   pass. Quick wins **P4/P5/P7-P10** remain independent of the entity model and can be tackled in any order.
 
+### Progress log — P4 (rival voice)
+- **✅ (2026-07-05)** — Per-profile rival communiqués/taunts, strings only. Distinct rival archetypes already
+  existed (`RIVALS`, Vostochny/state agency, Meridian/legacy contractor, Halcyon/scrappy newcomer) — no new
+  personality system needed. New `RIVAL_VOICE` (per-id `taunt`/`defiant` line pools) + `rivalVoiceLine(r,kind)`
+  helper wired into the two existing user-facing rival events: `fireRivalFirst()` (a rival claims a "first" —
+  logs a boastful taunt) and `denyRivalGoal()` (you beat them to a goal — logs a defiant reply). Voice modeled
+  on the game's existing dry, em-dash log register. Purely flavor: no state mutation beyond the existing
+  append-only log, no persisted state, no SAVE_VERSION bump.
+  **Validation.** `node --check` OK. Distribution check (4000 picks/pool) confirms every line in every pool is
+  reachable; unknown rival/kind returns a safe no-op. Tone/quality is a human judgment call, not machine-checked.
+  **Flagged, not built:** a deeper reactive rival mood/relationship system — today's archetypes are static, this
+  slice didn't add dynamic personality state, which would be a larger follow-up if wanted.
+
 ## Session — Isometric command-center layout redistribution (2026-07-04)
 
 Player request (not part of the P-list initiative): the isometric Command/Cape view's buildings were unevenly

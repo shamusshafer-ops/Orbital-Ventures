@@ -1003,6 +1003,56 @@ const RIVAL_PROFILES = {
   meridian: {income:1.2}, // deep-budgeted legacy contractor
   halcyon:  {income:1.5}, // disruptive commercial newcomer (late but accelerating)
 };
+// P4 [QW] · Rival voice — short flavor communiqués attributed to each rival, keyed by its
+// existing archetype (state agency / legacy contractor / commercial newcomer). STRINGS ONLY:
+// no gameplay effect, no persisted state. A line is picked at random when a rival event fires
+// (`taunt` when a rival claims a first from tickRivals(); `defiant` when you beat it to a goal).
+const RIVAL_VOICE = {
+  vostochny:{ // Vostochny Dynamics — state directorate, prestige-driven, dry propaganda
+    taunt:[
+      'The State salutes another first. History will note who came second.',
+      'The directorate does not race. It arrives — on schedule, ahead of you.',
+      'A first for the program, a lesson for the competition.',
+      'Another milestone for the motherland. We trust you took notes.',
+    ],
+    defiant:[
+      'A setback is a rounding error in a five-year plan.',
+      'Enjoy the lead. The State is patient.',
+      'You claimed one milestone. The directorate keeps a longer list.',
+    ],
+  },
+  meridian:{ // Meridian Aerospace — legacy contractor, corporate, methodical
+    taunt:[
+      "Decades of engineering depth, delivered on budget. Nothing personal.",
+      "Meridian doesn't gamble on firsts. We schedule them.",
+      'Another line item closed. Our shareholders send their regards.',
+      'This is what a mature program looks like. Study it.',
+    ],
+    defiant:[
+      'One quarter’s miss. Meridian plans in decades.',
+      'A minor variance. The program remains fully funded.',
+      "You moved fast. We move deliberately — and we don't stop.",
+    ],
+  },
+  halcyon:{ // Halcyon Systems — scrappy commercial newcomer, brash, cheap and fast
+    taunt:[
+      'Late to the party, first out the door. Move fast, remember?',
+      "We did it cheaper and we did it first. You're welcome, industry.",
+      'Turns out the upstarts fly too. Keep up.',
+      'Iterate, launch, repeat. The old guard never saw us coming.',
+    ],
+    defiant:[
+      "Cute. We'll ship the next one before you finish the paperwork.",
+      "One loss won't slow the burn rate. Back to the pad.",
+      'You want a race? Halcyon lives for this.',
+    ],
+  },
+};
+// P4 [QW] · pick a random voice line for a rival event; returns null if none defined (safe no-op).
+function rivalVoiceLine(r, kind){
+  const v=RIVAL_VOICE[r.id]; if(!v||!v[kind]||!v[kind].length) return null;
+  return v[kind][Math.floor(Math.random()*v[kind].length)];
+}
 const RIVAL_FIRST_RUNWAY=6;  // years a rival "saves" before its debut goal's nominal year
 const RIVAL_MAX_PULL_IN=4;   // a goal can fire at most this many years before its nominal year
 const RIVAL_MIN_WINDOW=2;    // floor on a goal's saving window (years) so cost stays sane
@@ -3865,6 +3915,8 @@ function fireRivalFirst(r, f){
   state.rivalFired[key]=true;
   state.rivalThreat=state.rivalThreat||{}; state.rivalThreat[r.id]=(state.rivalThreat[r.id]||0)+1;
   log('rival', `${r.flag} ${r.name} claims: ${f.name} (${state.year})`);
+  const _taunt=rivalVoiceLine(r,'taunt'); // P4: per-profile communiqué (flavor only)
+  if(_taunt) log('rival', `${r.flag} ${r.name}: “${_taunt}”`);
   // #8: national prestige — a rival's first stings the home crowd, but far less if you'd already done it
   addSupport((f.missionId && state.completed[f.missionId]) ? SUPPORT_DELTA.rivalFirstDone : SUPPORT_DELTA.rivalFirst);
   if(f.missionId && !state.completed[f.missionId] && !state.scooped[f.missionId]){
@@ -3942,6 +3994,8 @@ function denyRivalGoal(missionId){
     rs.momentum=Math.max(RIVAL_MOM_MIN, rs.momentum-(pending?RIVAL_DENY_MOM:RIVAL_DENY_MOM*0.5));
     if(pending) rs.capital*=RIVAL_DENY_DRAIN;
     log('rival', `${r.flag} ${r.name} loses ground — you reached ${MISSIONS.find(x=>x.id===missionId)?.name||missionId} first, blunting a goal they were chasing.`);
+    const _def=rivalVoiceLine(r,'defiant'); // P4: per-profile defiant reply (flavor only)
+    if(_def) log('rival', `${r.flag} ${r.name}: “${_def}”`);
   }
 }
 // CE1(b) · Counter-poach — spend capital to hire away a rival's engineers: knocks the rival's
