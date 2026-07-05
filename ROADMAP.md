@@ -1236,3 +1236,21 @@ liftoff targets place the rocket at the identical screen fraction (0.500, 0.420)
 wheel-zoom cursor-anchoring, range clamp, and pan clamp all verified. Skip-listener unaffected. Zoom *feel*
 needs a manual browser pass. Next: **slice 2** — the actual `ccSpotsHTML()` shared hotspot layer + close-then-
 act clicks + live glyph refresh.
+
+### Slice 2 — shared hotspot layer + close-then-act clicks ✅ (2026-07-05)
+
+Extracted `ccSpotsHTML()` from `renderCCCenter()`'s inline hotspot-building logic — now the single source for
+both views (`renderCCCenter()` calls it for `#ccSpots`; the pop-out calls it for `#ccPopSpots`, a new sibling of
+`#ccPopCanvas` inside `#ccPopZoom` from slice 1, so hotspots inherit the transform for free). Pop-out clicks are
+handled via **one capture-phase delegated listener** on `#ccPopSpots` — resolves the clicked `.ccspot`, and if
+it has a compiled `onclick`, stops propagation, calls `closeCCPopout()`, then invokes the original action —
+rather than a second HTML variant; the normal view's inline `onclick`s are completely untouched. Live status
+glyphs refresh every 30 frames (~2×/sec) inside the existing `ccPopLoop`, since glyphs only change on
+game-turn boundaries, not every animation frame. A capture-phase drag-swallow click listener (mirroring
+`initCapeZoom`'s `moved>6` pattern) keeps panning-that-starts-on-a-hotspot from misfiring its click.
+**Known pre-existing gap, left alone deliberately:** the pop-out's side status board (`ccPopInfo`) still shows
+its open-time snapshot rather than refreshing live like the new hotspot glyphs now do — flagged, not fixed, to
+stay surgical to this slice's scope. Headless: `node --check` OK; confirmed exactly one hotspot-HTML-building
+function used by both views (no duplicated building list); simulated click trace confirms close-then-act
+ordering, drag-swallow, and planned-spot no-op. Visual placement/tracking/tooltip readability needs a manual
+browser pass. **This closes out the CC pop-out functional-parity initiative.**

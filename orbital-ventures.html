@@ -10993,8 +10993,12 @@ function _applyObjSparkle(body){
     if(el){ el.classList.add('obj-just-done'); el.addEventListener('animationend',()=>el.classList.remove('obj-just-done'),{once:true}); } });
 }
 // CENTER — the animated Space Center (scene + clickable hotspots, reused verbatim)
-function renderCCCenter(){
-  const spots=ccHotspots().map(b=>{
+// Single source of the Cape hotspot-overlay HTML, shared by the in-page Command Center
+// (renderCCCenter) and the pop-out (openCCPopout / ccPopLoop) so the building list can never
+// drift between the two views. Reuses ccHotspots()/buildingGlyph() exactly as before; the
+// pop-out re-sequences the click (close-then-act) via event delegation, not by altering this HTML.
+function ccSpotsHTML(){
+  return ccHotspots().map(b=>{
     const planned=b.planned||!b.tab;
     const onclick=(!planned&&b.tab)?` onclick="${b.act||`setTab('${b.tab}')`}"`:''; // slice 5: a building may define a custom act (e.g. the Mission Control contracts drill)
     const style=`left:${b.x}%;top:${b.y}%;width:${b.w}%;height:${b.h}%`;
@@ -11009,6 +11013,9 @@ function renderCCCenter(){
       <span class="st"${lx}>${b.status}</span>
     </div>`;
   }).join('');
+}
+function renderCCCenter(){
+  const spots=ccSpotsHTML();
   if(phaserOK()){
     // persistent Phaser host: build the scaffold once, then only refresh the overlay
     if(!$('ccSceneHost')){
@@ -12415,7 +12422,7 @@ function initEarthPopZoom(){
 /* ---------- Command Center pop-out ----------
    The animated Cape Canaveral scene blown up to full screen (drawn off-screen at native res, then
    blitted with grab-pan/wheel-zoom), with the agency summary on the right — same chrome as the others. */
-let ccPopoutOpen=false, ccPopAnim=null, ccPopT0=0, ccPop={z:1,x:0,y:0};
+let ccPopoutOpen=false, ccPopAnim=null, ccPopT0=0, ccPop={z:1,x:0,y:0}, ccPopFrame=0;
 function ccPopInfoHTML(){
   let s; try{ s=commandSummary(); }catch(e){ return ''; }
   const row=(l,v,c)=>`<div class="vps-row"><span class="lbl">${l}</span><span class="val"${c?` style="color:${c}"`:''}>${v}</span></div>`;
@@ -12476,6 +12483,9 @@ function initCcPopZoom(){
   stage.addEventListener('pointermove',e=>{ if(!drag) return; const dx=e.clientX-lx, dy=e.clientY-ly; lx=e.clientX; ly=e.clientY; moved+=Math.abs(dx)+Math.abs(dy); const r=ref(); ccPop.x+=dx; ccPop.y+=dy; ccPopClampPan(r.width,r.height); applyCcPopZoom(); });
   stage.addEventListener('pointerup',()=>{ drag=false; });
   stage.addEventListener('pointercancel',()=>{ drag=false; });
+  // Swallow the click-through after a drag-to-pan so panning that starts/ends on a hotspot div doesn't fire
+  // its click (mirrors initCapeZoom). Capture-phase on the stage runs before #ccPopSpots' own capture handler.
+  stage.addEventListener('click',e=>{ if(moved>6){ e.stopPropagation(); e.preventDefault(); moved=0; } }, true);
   stage.addEventListener('dblclick',()=>{ ccPop={z:1,x:0,y:0}; applyCcPopZoom(); });
 }
 function ccPopLoop(){
@@ -12484,6 +12494,10 @@ function ccPopLoop(){
   ccPopFitBox(); // keep the fitted art box in sync with the stage (handles resize)
   if(cv){ if(cv.width!==CAPE_W) cv.width=CAPE_W; if(cv.height!==CAPE_H) cv.height=CAPE_H;
     try{ drawCape(cv,(ccNow()-ccPopT0)/1000); }catch(e){} } // draw straight onto the visible canvas at native res; CSS scales it, the wrapper transform pans/zooms
+  // Refresh the hotspot glyphs ~2x/sec (every 30 frames): the canvas redraws every frame, but the status
+  // glyphs only change on game-turn boundaries, so per-frame innerHTML churn would be wasteful. The delegated
+  // click listener lives on the persistent #ccPopSpots container, so rebuilding its children here is safe.
+  if((++ccPopFrame%30)===0){ const sp=$('ccPopSpots'); if(sp) sp.innerHTML=ccSpotsHTML(); }
   ccPopAnim=requestAnimationFrame(ccPopLoop);
 }
 function openCCPopout(){
@@ -12497,12 +12511,29 @@ function openCCPopout(){
       <button class="vehpop-x" onclick="closeCCPopout()">✕ Close</button>
     </div>
     <div class="vehpop-body">
-      <div class="vehpop-stage" id="ccPopStage"><div id="ccPopFit" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)"><div id="ccPopZoom" style="position:absolute;inset:0;transform-origin:0 0"><canvas id="ccPopCanvas" width="${CAPE_W}" height="${CAPE_H}"></canvas></div></div></div>
+      <div class="vehpop-stage" id="ccPopStage"><div id="ccPopFit" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)"><div id="ccPopZoom" style="position:absolute;inset:0;transform-origin:0 0"><canvas id="ccPopCanvas" width="${CAPE_W}" height="${CAPE_H}"></canvas><div id="ccPopSpots"></div></div></div></div>
       <aside class="vehpop-stats" id="ccPopInfo"></aside>
     </div>`;
   document.body.appendChild(ov); fadeInScrim(ov);
   const inf=$('ccPopInfo'); if(inf) inf.innerHTML=ccPopInfoHTML();
+  const sp=$('ccPopSpots');
+  if(sp){
+    sp.innerHTML=ccSpotsHTML(); // same hotspots as the in-page view; ccPopLoop keeps the glyphs live
+    // Close-then-act: the drill-in modals render below the pop-out scrim (z-index), so we must close the
+    // pop-out BEFORE the building's action runs — mirroring earthGoToCape()'s close-then-navigate pattern.
+    // Done via one delegated CAPTURE-phase listener on the container (which survives the periodic innerHTML
+    // refresh) so the shared ccSpotsHTML() output is reused verbatim: the normal view's inline onclick stays
+    // untouched, while here we intercept before it, closeCCPopout(), then invoke the original action ourselves.
+    sp.addEventListener('click',e=>{
+      const el=e.target&&e.target.closest?e.target.closest('.ccspot'):null;
+      if(!el||!sp.contains(el)||typeof el.onclick!=='function') return; // planned/non-actionable spots have no onclick
+      e.preventDefault(); e.stopPropagation();
+      closeCCPopout();
+      try{ el.onclick.call(el,e); }catch(_){}
+    },true);
+  }
   initCcPopZoom(); ccPopFitBox(); applyCcPopZoom();
+  ccPopFrame=0;
   ccPopAnim=requestAnimationFrame(ccPopLoop);
 }
 function closeCCPopout(){ if(!ccPopoutOpen) return; ccPopoutOpen=false; if(ccPopAnim){ cancelAnimationFrame(ccPopAnim); ccPopAnim=null; } removeScrim('ccPopout'); }
