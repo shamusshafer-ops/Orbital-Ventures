@@ -534,6 +534,7 @@
 
   <div id="commandView">
     <div class="card" id="execOverview"></div>
+    <div class="card" id="ccProgress"></div>
     <!-- ccLeft (advisor/objectives) promoted to the left rail in slice 4;
          ccRight (Alerts/News) relocated to the right rail in slice 3 -->
     <div id="ccCenter"></div>
@@ -3434,10 +3435,15 @@ function buildSlots(){ return prodLevel('bays'); }   // parallel build capacity 
 function buildQueueList(){ return Array.isArray(state.buildQueue)?state.buildQueue:(state.buildQueue=[]); }
 function hangarList(){ return Array.isArray(state.hangar)?state.hangar:(state.hangar=[]); }
 // snapshot the full bench design (incl. boosters/recovery/family) so a queued order builds
-// the design as it was when ordered, even if the bench changes afterward
+// the design as it was when ordered, even if the bench changes afterward. Also carries
+// testLevel/rehearsal — irrelevant to the original build-ahead-of-time use, but load-bearing
+// now that a committed Launch (see queueBuild's `committed` flag) routes through this same
+// snapshot: the test campaign/rehearsal choice made at commit time must survive to the later
+// Fly click even if the player changes the Bench's live toggles for a different design meanwhile.
 function queueSpecSnapshot(){
   return JSON.parse(JSON.stringify({stages:state.stages, transfer:state.transfer, descent:state.descent,
-    ascent:state.ascent, eclss:state.eclss, boosters:state.boosters, recovery:!!state.recovery, activeVehicle:state.activeVehicle}));
+    ascent:state.ascent, eclss:state.eclss, boosters:state.boosters, recovery:!!state.recovery, activeVehicle:state.activeVehicle,
+    testLevel:state.testLevel, rehearsal:!!state.rehearsal}));
 }
 function loadOrderSpec(s){
   if(!s) return;
@@ -3449,6 +3455,8 @@ function loadOrderSpec(s){
   if(s.boosters) state.boosters=JSON.parse(JSON.stringify(s.boosters));
   if(typeof s.recovery==='boolean') state.recovery=s.recovery;
   if('activeVehicle' in s) state.activeVehicle=s.activeVehicle;
+  if(s.testLevel!=null) state.testLevel=s.testLevel;
+  if(typeof s.rehearsal==='boolean') state.rehearsal=s.rehearsal;
 }
 // feasibility to queue: the design must be able to do the mission (same core checks as
 // canLaunch, minus window/test/weather, which are resolved at launch), plus pay the build now.
@@ -3468,7 +3476,11 @@ function canQueue(m,v,sim){
   if(state.money < v.buildCost) return {ok:false,why:'can’t afford the build'};
   return {ok:true};
 }
-function queueBuild(){
+// `committed` (new): true when this build was started by a "Launch" commit rather than the
+// build-ahead-of-time "Queue this build" button — same machinery either way, just a clearer
+// log line and an order flag the Command Center progress card can use if it ever wants to
+// distinguish them (it currently doesn't need to).
+function queueBuild(committed){
   const m=curMission(); const v=computeVehicle(); const sim=m&&m.profile?simulateMission(m):null;
   const chk=canQueue(m,v,sim); if(!chk.ok){ return; }
   state.money-=v.buildCost;                       // build cost committed up front
@@ -3481,9 +3493,11 @@ function queueBuild(){
   const fam=activeFamily();
   const order={ id:'ord'+(state.orderSeq=(state.orderSeq||0)+1),
     name:(fam?fam.name:'Vehicle')+' — '+m.name, missionId:m.id, missionName:m.name,
-    spec:queueSpecSnapshot(), units:vehicleUnits(m), monthsTotal:mo, monthsLeft:mo, cost:v.buildCost, started:false };
+    spec:queueSpecSnapshot(), units:vehicleUnits(m), monthsTotal:mo, monthsLeft:mo, cost:v.buildCost, started:false, committed:!!committed };
   state.buildQueue.push(order);
-  log('note',`Manufacturing — queued ${order.name} (${mo} mo, ${fM(order.cost)}). It builds while you work.`);
+  log('note', committed
+    ? `Launch committed: ${order.name} — building now (${mo>0?mo+' mo':'<1 mo'}, ${fM(order.cost)}). Fly it from the hangar once it rolls out.`
+    : `Manufacturing — queued ${order.name} (${mo} mo, ${fM(order.cost)}). It builds while you work.`);
   render();
 }
 // runs each month in advance(): fill bay slots FIFO, progress active orders, retire finished ones to the hangar
@@ -5668,6 +5682,19 @@ function launch(prebuilt){
   const v=computeVehicle();
   const sim=m.profile?simulateMission(m):null;
   const chk=canLaunch(v,m,sim,prebuilt); if(!chk.ok){return;}
+  // User request: a fresh (non-prebuilt) commit now builds as a tracked, real-time campaign instead
+  // of resolving the whole build+test+launch span in one instant jump — reuses the exact same
+  // queue/hangar machinery "Queue this build" already has (progress bar, per-day ticking, hangar
+  // landing), just flagged `committed` for clearer log text. Flying from the hangar (prebuilt=true,
+  // below) is untouched — that's still a deliberate, separate manual click once it's ready.
+  // Window missions (m.window) are excluded on purpose: their build/test timing has to land exactly
+  // on the committed transfer-window date (see canLaunch's window checks above), which the generic
+  // queue has no notion of — those keep today's exact single-jump behavior.
+  if(!prebuilt && !m.window){
+    if(buildQueueList().length>=QUEUE_MAX){ log('note','Manufacturing queue is full — cancel or wait for a build to finish before committing another launch.'); return; }
+    queueBuild(true);
+    return;
+  }
   _flightResolving=true; // P1 1.2a: hold the arrival pump until this launch fully resolves (released in finish()/on defer)
   const tl=TEST_LEVELS[state.testLevel];
   const rehMo=state.rehearsal?REHEARSAL_MONTHS:0; // #20 slice 4: rehearsal adds cost + a month of prep
@@ -7232,6 +7259,20 @@ document.addEventListener('keydown',function(e){
   if(typing || modalOpen()) return; // don't grab TAB/numbers while typing or in a modal
   if(e.key==='Tab'){ nextScene(e.shiftKey?-1:1); e.preventDefault(); return; }
   if(e.key>='1' && e.key<='5'){ const idx=+e.key-1; if(idx<SCENE_TABS.length){ setTab(SCENE_TABS[idx]); e.preventDefault(); } }
+});
+// F1/F2/F3 mirror the ▸/▸▸/▸▸▸ day/week/month time-advance buttons — same clickTimeArrow() as a
+// mouse click, so the existing "press once = single step, press again = auto-run 1/sec" behavior
+// and the running-arrow highlight both come along for free. Guarded like the scene-nav keys above
+// (no modal open, not typing, not mid-animation) so it can never fire a launch's outcome early or
+// steal a keystroke from a text field.
+document.addEventListener('keydown',function(e){
+  if(!state || animState || modalOpen()) return;
+  if(e.ctrlKey||e.metaKey||e.altKey||e.shiftKey) return;
+  const tag=(e.target&&e.target.tagName)||'';
+  if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT') return;
+  if(e.key==='F1'){ clickTimeArrow('day'); e.preventDefault(); }
+  else if(e.key==='F2'){ clickTimeArrow('week'); e.preventDefault(); }
+  else if(e.key==='F3'){ clickTimeArrow('month'); e.preventDefault(); }
 });
 // fire a launch from the keyboard, only when one is actually available (mirrors the Launch button gate)
 function tryLaunchHotkey(){
@@ -11511,11 +11552,43 @@ function resumeCapeGame(){ if(capeGame){ try{ capeGame.scene.resume('cape'); }ca
 function renderCommandCenter(){
   if(!$('execOverview')) return;
   renderExecOverview();
+  renderCCProgress(); // user request: active research + build/launch progress, featured on their own instead of buried in a stat line
   // renderCCLeft() now runs unconditionally from render() (slice 4: persistent left rail)
   renderCCCenter();
   renderCCRight();
   renderCCTimeline();
   // renderCCCenter starts the correct renderer (Phaser CapeScene, or the fallback RAF loop)
+}
+// Featured, always-visible progress card: active research (name + bar + time left) and any
+// build/launch campaigns in progress (bar + ETA) or sitting finished in the hangar (Fly button).
+// Pulled out of execOverview's cramped one-line "Active R&D: …" mention so both are easy to
+// track without opening the R&D tab or the Infrastructure drill-down.
+function renderCCProgress(){
+  const el=$('ccProgress'); if(!el) return;
+  const ar=state.activeResearch;
+  const rNode=ar && RESEARCH.find(r=>r.id===ar.id);
+  const rPct=(ar && rNode) ? clampA(Math.round(100*(rNode.months-ar.monthsLeft)/Math.max(1,rNode.months)),0,100) : 0;
+  const researchHTML = (ar && rNode)
+    ? `<div style="display:flex;justify-content:space-between;font-size:13px"><b>${rNode.name}</b><span class="dim">${fmtTimeLeft(ar.monthsLeft)} left</span></div>
+       <div class="bar" style="margin:4px 0 0;height:6px"><div class="fill" style="width:${rPct}%;background:var(--dom-research)"></div></div>`
+    : `<div class="dim" style="font-size:12px">No active project — <span style="text-decoration:underline;cursor:pointer" onclick="setTab('rnd')">start one on the R&amp;D tab</span>.</div>`;
+  const orders=buildQueueList().filter(o=>o.started);
+  const hangar=hangarList();
+  const orderRows=orders.map(o=>{
+    const pct=clampA(Math.round(100*(o.monthsTotal-o.monthsLeft)/Math.max(1,o.monthsTotal)),0,100);
+    return `<div style="margin-top:8px"><div style="display:flex;justify-content:space-between;font-size:13px"><b>${o.name}</b><span class="dim">${fmtTimeLeft(o.monthsLeft)} left</span></div>
+      <div class="bar" style="margin:4px 0 0;height:6px"><div class="fill" style="width:${pct}%;background:var(--dom-engineering)"></div></div></div>`;
+  }).join('');
+  const hangarRows=hangar.map(h=>`<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;font-size:13px">
+      <span>✓ <b>${h.name}</b> — ready to fly</span>
+      <button class="btn ghost" style="padding:2px 8px;font-size:12px" onclick="launchFromHangar('${h.id}')">Fly ▸</button>
+    </div>`).join('');
+  const buildHTML = (orders.length||hangar.length) ? orderRows+hangarRows
+    : `<div class="dim" style="font-size:12px">Nothing building — commit a launch from the Bench.</div>`;
+  el.innerHTML = `<div style="display:flex;gap:24px;flex-wrap:wrap">
+      <div style="flex:1;min-width:220px"><div class="cc-panel-h" style="margin:0 0 4px">⚗ Active Research</div>${researchHTML}</div>
+      <div style="flex:1;min-width:220px"><div class="cc-panel-h" style="margin:0 0 4px">🏗 Build &amp; Launch</div>${buildHTML}</div>
+    </div>`;
 }
 // top executive overview — "how is my company doing?"
 function renderExecOverview(){
@@ -13237,8 +13310,12 @@ document.addEventListener('keydown',function(e){
 // label logic as the readout used to carry.
 function launchButtonLabel(m,v){
   if(!m) return '■ Build & Launch';
-  if(!m.profile) return m.tanker?'■ Launch Tanker':(v.crewed?'■ Build & Launch (crewed)':'■ Build & Launch');
-  return '■ Build & Launch mission';
+  // window missions still resolve in one instant jump (their build/test time must land exactly on
+  // the committed transfer-window date) — everything else now commits to a tracked build, so the
+  // label says so up front rather than implying an immediate flight.
+  const trackedNote = (!m.window && buildMonths(m)>0) ? ` — builds ${buildMonths(m)} mo, fly from hangar when ready` : '';
+  if(!m.profile) return (m.tanker?'■ Launch Tanker':(v.crewed?'■ Build & Launch (crewed)':'■ Build & Launch'))+trackedNote;
+  return '■ Build & Launch mission'+trackedNote;
 }
 function renderBenchLaunch(){
   const host=$('benchLaunch'); if(!host) return;

@@ -1569,3 +1569,64 @@ key→phase map used by `flightPhaseBreakdown`/live-call eligibility) still buck
 label mismatch only, not reachable by First Astronaut's actual failure resolution or by the reserve-margin/
 10-day-leak mechanics (neither applies to it). Headless: `node --check` OK; traced `missionReachesOrbit`
 against every mission definition by hand to confirm the isolation claim above.
+
+## Session — Time hotkeys, featured research/build progress, tracked Launch (2026-07-05)
+
+Three player requests. First two are additive/cosmetic; the third is a genuine behavior change to the
+single most central function in the game (`launch()`), confirmed with the user in two rounds before
+touching it (which flow, then the exact commit/concurrency semantics) since it isn't balance-neutral like
+almost everything else this session.
+
+**F1/F2/F3 time hotkeys.** New keydown listener calls the same `clickTimeArrow('day'|'week'|'month')` the
+▸/▸▸/▸▸▸ buttons already use — so double-tapping F2 auto-runs at 1/week/sec exactly like double-clicking
+does, and the running-arrow highlight comes along for free. Guarded like the existing scene-nav listener
+(no modal open, not typing, not mid-animation). Caveat: some browsers/OSes reserve F1 for their own help
+system and never deliver the keydown to the page — F2/F3 should be reliable, F1 is best-effort.
+
+**Featured Active Research + Build/Launch progress.** New always-visible `#ccProgress` card on the Command
+Center (`renderCCProgress()`, called from `renderCommandCenter()`), pulled out of `execOverview`'s cramped
+one-line "Active R&D: …" mention (left untouched, harmless duplication). Shows the active research
+project's own name + progress bar + time left, and — the more interesting half, see below — every
+build/launch campaign in progress with its own bar + ETA, plus any hangar-ready vehicle with a one-click
+Fly button.
+
+**Direct Launch now builds as a tracked, real-time campaign instead of one instant jump.** Investigation
+found the game already had a second build path — "Queue this build" (Assembly Bays) — that already ticks
+down over real turns with a progress bar, landing in a hangar for a manual Fly click; it just wasn't what
+the *primary* Launch button did. Rather than build a parallel tracking system, `launch(prebuilt)` now
+routes a fresh (non-prebuilt) commit on a non-`window` mission straight into `queueBuild(true)` — the exact
+same machinery "Queue this build" already used and this project already trusted. Confirmed with the user:
+manual Fly click when the build completes (not auto-fly), and concurrent builds allowed (already inherent
+to the queue's existing Assembly-Bays FIFO slotting — no extra work needed there).
+- **`queueBuild(committed)`** gained a flag purely for clearer log text (`"Launch committed: …"` vs
+  `"Manufacturing — queued …"`) — mechanically identical either way.
+- **`queueSpecSnapshot()`/`loadOrderSpec()`** extended to carry `testLevel`/`rehearsal` — load-bearing now
+  that Launch goes through this snapshot: the test-campaign/rehearsal choice made at commit time must
+  survive to the later Fly click even if the player changes the Bench's live toggles for a different
+  design while this one is mid-build. A legacy queued order (pre-this-session, missing these fields)
+  degrades safely — falsy-guarded, doesn't stomp the live value.
+- **Window missions excluded on purpose** (`mars_flyby`/`mars_orbit`/`astrobiology`): their build/test
+  time must land exactly on the committed transfer-window date, which the generic queue has no notion of
+  — confirmed this was the *original* design intent too (`canQueue`'s own comment already said "minus
+  window/test/weather, which are resolved at launch"). They keep today's exact single-jump behavior,
+  unchanged.
+- **Queue-full guard added**: committing a launch when the manufacturing queue is already at `QUEUE_MAX`
+  now logs a clear message instead of silently no-op-ing (a real edge case `canLaunch` can't see, since it
+  has no queue-capacity awareness — `canQueue` does).
+- **Scope boundaries, left alone deliberately (matches pre-existing behavior of "Queue this build",
+  not a new gap this session introduced):** crew assignment isn't reserved for a build in progress — the
+  player could reassign the same astronaut elsewhere mid-build, same as today's plain queue path; the
+  post-build test-campaign/rehearsal/weather step (usually ≤3 months) still resolves in one instant jump
+  the moment "Fly" is clicked, same as today's hangar flow — only the (usually larger) build-months
+  portion is now trackable.
+- **No SAVE_VERSION bump**: no old-save migration needed — the new `committed`/`testLevel`/`rehearsal`
+  order fields are all read through falsy/existence guards, so a pre-existing queued order or a legacy
+  save simply behaves as it always has.
+
+**Validation.** `node --check` OK. 10/10 headless assertions against the exact production branch logic
+(copy-verified, not reimplemented): non-window direct launch commits via `queueBuild(true)`; a window
+mission and a `prebuilt=true` hangar-Fly call both still take the untouched old path; the queue-full guard
+logs instead of silently failing; the testLevel/rehearsal snapshot round-trip survives an intervening live
+Bench change; a legacy snapshot missing the new fields doesn't corrupt live state. Not yet browser-tested —
+this is the biggest-risk change of the day (core launch flow) and needs a real playthrough before trusting
+it fully, flagged same as the rest of this session's UI-heavy work.
