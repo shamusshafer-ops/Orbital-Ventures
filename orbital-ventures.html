@@ -1479,7 +1479,10 @@ const MATERIAL_DIP_BONUS     = 0.05;    // a dip bulk-buy shaves another 5% unde
 const MATERIAL_DIP_BATCH     = 8;       // one dip buy tops the yard up by this many builds' worth (capped)
 const METRIC_HISTORY_LEN = 24;          // #28: months of core-metric history retained for dashboard sparklines
 // #28: per-metric monthly trend buffers (capital/rep/support/success-rate/science)
-function defaultMetricHist(){ return {money:[], rep:[], support:[], success:[], science:[]}; }
+// Finances tab: revenue/expenses/net added — money[] is the capital LEVEL each month (a running
+// balance), these three are the recurring FLOW for that month (state.lastMonth, snapshotted here
+// rather than derived by diffing money[], since one-time windfalls would otherwise pollute the diff).
+function defaultMetricHist(){ return {money:[], rep:[], support:[], success:[], science:[], revenue:[], expenses:[], net:[]}; }
 // Bench customization slice 1: cosmetic livery (body + accent color, nose style, name).
 // Pure visual — read by drawVehicle, so it shows on the bench preview AND in flight.
 const DEFAULT_LIVERY={ body:'#d4dee4', accent:'#e0564f', nose:'auto', name:'' };
@@ -2820,6 +2823,8 @@ function pushMetricHistory(){
   push('money', state.money);
   push('rep', state.rep);
   push('support', publicSupport());
+  const lm=state.lastMonth||{revenue:0,expenses:0,net:0}; // Finances tab: recurring monthly flow history
+  push('revenue', lm.revenue||0); push('expenses', lm.expenses||0); push('net', lm.net||0);
   push('success', state.flights>0 ? 100*state.successes/state.flights : 0);
   push('science', state.science||0);
 }
@@ -3982,6 +3987,29 @@ function sparklineSVG(points, opts){
   const area=`<path d="${path} L ${xFor(pts.length-1).toFixed(1)} ${(height-pad).toFixed(1)} L ${xFor(0).toFixed(1)} ${(height-pad).toFixed(1)} Z" fill="${color}" opacity="0.10"/>`;
   const dot=`<circle cx="${xFor(pts.length-1).toFixed(1)}" cy="${yFor(cur).toFixed(1)}" r="1.9" fill="${color}"/>`;
   return `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" style="display:block;width:100%" preserveAspectRatio="none" aria-label="${opts.label||'trend'}">${area}<path d="${path}" fill="none" stroke="${color}" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/>${dot}</svg>`;
+}
+// Finances tab: a diverging bar chart around a zero baseline — unlike sparklineSVG (one line,
+// one trend color), monthly net can cross zero month to month, so each bar gets its own
+// green/red rather than the series as a whole reading as one color.
+function netFlowBarsSVG(points, opts){
+  opts=opts||{};
+  const width=opts.width||520, height=opts.height||70, pad=4;
+  const pts=(points&&points.length)?points.slice():[0];
+  const lo=Math.min(0,...pts), hi=Math.max(0,...pts);
+  const range=(hi-lo)||1;
+  const w=width-pad*2, h=height-pad*2;
+  const zeroY=pad+h-((0-lo)/range)*h;
+  const bw=Math.max(1.5, (w/pts.length)*0.7);
+  const bars=pts.map((v,i)=>{
+    const cx=pad+(i+0.5)*(w/pts.length);
+    const vy=pad+h-((v-lo)/range)*h;
+    const y=Math.min(vy,zeroY), bh=Math.max(0.6,Math.abs(vy-zeroY));
+    const col=v>=0?'var(--ok)':'var(--bad)';
+    return `<rect x="${(cx-bw/2).toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${bh.toFixed(1)}" fill="${col}" opacity="0.85"/>`;
+  }).join('');
+  return `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" style="display:block;width:100%" preserveAspectRatio="none" aria-label="${opts.label||'monthly net cash flow'}">
+    <line x1="${pad}" y1="${zeroY.toFixed(1)}" x2="${width-pad}" y2="${zeroY.toFixed(1)}" stroke="var(--line)" stroke-width="1"/>
+    ${bars}</svg>`;
 }
 // #28: one labelled sparkline cell for the dashboard trend strip.
 function metricSpark(label, arr, opts){
@@ -10823,6 +10851,103 @@ function ccOpsSummary(){
   return {revenue:lm.revenue||0, expenses:lm.expenses||0, net:lm.net||0, flights:lm.flights||0,
           lifetimeFlights:state.flights, successRate:s.successRate, monthlyNet:s.net};
 }
+
+/* ---------- Finances: detailed current/past/future cash-flow pop-out ----------
+   Reuses the exact same recurring-flow functions commandSummary()/state.lastMonth already call
+   (totalFacilityIncome/govMonthlyFunding/passiveMonthlyIncome/diff().overhead/econOverheadAdd/
+   productionUpkeep/empireOpex/loanInterest/partnershipUpkeep/monthlyPayroll) — just itemized
+   instead of pre-summed, so nothing here can drift out of sync with the numbers shown elsewhere. */
+function financesBreakdown(){
+  const revenueItems=[
+    {label:'Facility income', amount:totalFacilityIncome()},
+    {label:'Belt royalty', amount:state.pgmRoyalty>0?state.pgmRoyalty:0},
+    {label:'Government funding', amount:govMonthlyFunding()},
+    {label:'Passive contracts', amount:passiveMonthlyIncome()},
+  ].filter(x=>x.amount>0.001);
+  const expenseItems=[
+    {label:'Base overhead', amount:diff().overhead},
+    {label:'Market/event surcharge', amount:Math.max(0,econOverheadAdd())},
+    {label:'Production upkeep', amount:productionUpkeep()},
+    {label:'Empire operating cost', amount:empireOpex()},
+    {label:'Bridge-loan interest', amount:loanInterest()},
+    {label:'Research partnerships', amount:partnershipUpkeep()},
+    {label:'Payroll', amount:monthlyPayroll()},
+  ].filter(x=>x.amount>0.001);
+  const revenue=round2(revenueItems.reduce((a,x)=>a+x.amount,0));
+  const expenses=round2(expenseItems.reduce((a,x)=>a+x.amount,0));
+  return {revenueItems, expenseItems, revenue, expenses, net:round2(revenue-expenses)};
+}
+// Best-effort $ amount pulled from a log line's own already-formatted fM() text (e.g. "+$12.00M",
+// "−$2.50M") — same heuristic-text-sniffing spirit as logCategory(), not a formal transaction ledger
+// (that would mean instrumenting every one of the ~47 state.money call sites across the file).
+function tlMoneyAmount(msg){
+  const s=tlStrip(msg);
+  const m=s.match(/([+−-])\s*\$([\d,]+\.?\d*)M/);
+  if(!m) return null;
+  const val=parseFloat(m[2].replace(/,/g,''));
+  if(!isFinite(val)) return null;
+  return (m[1]==='+'?1:-1)*val;
+}
+function recentCashEvents(n){
+  const out=[];
+  for(const l of state.log){
+    const amt=tlMoneyAmount(l.msg); if(amt==null) continue;
+    out.push({when:l.when, msg:tlStrip(l.msg), amount:amt});
+    if(out.length>=(n||12)) break;
+  }
+  return out;
+}
+// Linear projection at the current recurring net rate, plus the known upcoming one-time deltas
+// already sitting in state (a mandate bonus on the way, a passive contract about to lapse, a
+// special contract still open) — not a full future simulator, just what's already knowable.
+function financeProjections(){
+  const net=commandSummary().net;
+  const horizon = net>=0
+    ? [6,12].map(mo=>({label:`In ${mo} months at this rate`, amount:round2(state.money+net*mo)}))
+    : (()=>{ const rw=runwayMonths(); return [{label:'Runway at current burn', text: isFinite(rw)?`~${Math.max(1,Math.round(rw))} mo`:'—'}]; })();
+  const upcoming=[];
+  const md=state.mandate;
+  if(md && md.accepted) upcoming.push(`+${fM(md.bonus)} mandate bonus due by ${dateOfAbs(md.deadlineAbs)}`);
+  (state.passiveContracts||[]).forEach(cn=>{ if(cn.monthsLeft<=3){ const d=passiveDef(cn.id);
+    upcoming.push(`−${fM(cn.income)}/mo lapses in ${fmtTimeLeft(cn.monthsLeft)} — ${d?passiveContractDisplay(d).name:cn.id} expires`); } });
+  const sc=state.specialContract;
+  if(sc) upcoming.push(`+${fM(sc.bonus)} special contract if flown within ${fmtTimeLeft(sc.deadlineAbs-absMonth())}`);
+  return {net, horizon, upcoming};
+}
+function showFinancesModal(){
+  const b=financesBreakdown();
+  const row=(x)=>`<div style="display:flex;justify-content:space-between;font-size:13px;padding:2px 0"><span class="dim">${x.label}</span><span style="color:var(--ok)">+${fM(x.amount)}</span></div>`;
+  const erow=(x)=>`<div style="display:flex;justify-content:space-between;font-size:13px;padding:2px 0"><span class="dim">${x.label}</span><span style="color:var(--bad)">−${fM(x.amount)}</span></div>`;
+  const revHTML=b.revenueItems.length?b.revenueItems.map(row).join(''):'<div class="dim" style="font-size:12px">No standing income yet.</div>';
+  const expHTML=b.expenseItems.length?b.expenseItems.map(erow).join(''):'<div class="dim" style="font-size:12px">No standing expenses.</div>';
+  const events=recentCashEvents(12);
+  const evHTML=events.length?events.map(e=>`<div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;padding:2px 0">
+      <span class="dim" style="flex:0 0 auto">${e.when}</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${tlAttr(e.msg)}">${e.msg}</span>
+      <span style="flex:0 0 auto;color:${e.amount>=0?'var(--ok)':'var(--bad)'}">${e.amount>=0?'+':'−'}${fM(Math.abs(e.amount))}</span>
+    </div>`).join('') : '<div class="dim" style="font-size:12px">No recent transactions logged.</div>';
+  const hist=state.metricHist||defaultMetricHist();
+  const netChart=netFlowBarsSVG(hist.net||[], {label:'monthly net, last '+METRIC_HISTORY_LEN+' months'});
+  const proj=financeProjections();
+  const horizonHTML=proj.horizon.map(h=>`<div class="metric"><div class="k">${h.label}</div><div class="v" style="color:${h.amount!=null?(h.amount>=0?'var(--ok)':'var(--bad)'):'var(--warn)'}">${h.amount!=null?fM(h.amount):h.text}</div></div>`).join('');
+  const upcomingHTML=proj.upcoming.length?proj.upcoming.map(u=>`<div class="dim" style="font-size:12px;padding:2px 0">• ${u}</div>`).join('') : '<div class="dim" style="font-size:12px">Nothing specific on the horizon — just the recurring flow above.</div>';
+  showModal(`<h2 style="margin-bottom:2px">💰 Finances</h2>
+    <p class="muted" style="font-size:12px;margin:0 0 10px">${state.company} — current standing, recent activity, and where the treasury is headed.</p>
+    <div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:12px">
+      <div style="flex:1;min-width:220px"><div class="cc-panel-h" style="margin:0 0 4px">Revenue — ${fM(b.revenue)}/mo</div>${revHTML}</div>
+      <div style="flex:1;min-width:220px"><div class="cc-panel-h" style="margin:0 0 4px">Expenses — ${fM(b.expenses)}/mo</div>${expHTML}</div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:6px 0;margin-bottom:12px">
+      <b>Net</b><b style="font-size:16px;color:${b.net>=0?'var(--ok)':'var(--bad)'}">${b.net>=0?'+':''}${fM(b.net)}/mo</b>
+    </div>
+    <div class="cc-panel-h" style="margin:0 0 4px">Recent transactions</div>
+    <div style="max-height:150px;overflow:auto;margin-bottom:12px">${evHTML}</div>
+    <div class="cc-panel-h" style="margin:0 0 4px">Past — monthly net, last ${METRIC_HISTORY_LEN} months</div>
+    <div style="margin-bottom:12px">${netChart}</div>
+    <div class="cc-panel-h" style="margin:0 0 4px">Future — projection</div>
+    <div class="metrics" style="margin-bottom:6px">${horizonHTML}</div>
+    ${upcomingHTML}
+    <button class="btn" style="width:100%;margin-top:12px" onclick="hideModal()">Close</button>`, true);
+}
 // era band + claimed-first markers for the bottom timeline
 function ccTimeline(){
   const minYear=ERAS[0].from;
@@ -11843,7 +11968,10 @@ function renderCCRight(){
       ${rivalMini}
     </div>
     <div class="card">
-      <div class="cc-panel-h">This month</div>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div class="cc-panel-h" style="margin:0">This month</div>
+        <button class="btn ghost" style="font-size:11px;padding:3px 8px" onclick="showFinancesModal()" title="Detailed current/past/future cash flow">💰 Finances</button>
+      </div>
       <div class="row-item"><span class="dim">Flights</span><span class="num">${o.flights}</span></div>
       <div class="row-item"><span class="dim">Revenue</span><span class="num" style="color:var(--ok)">+${fM(o.revenue)}</span></div>
       <div class="row-item"><span class="dim">Expenses</span><span class="num" style="color:var(--bad)">−${fM(o.expenses)}</span></div>

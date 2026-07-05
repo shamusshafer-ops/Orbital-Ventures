@@ -1666,3 +1666,49 @@ verified against null/valid/garbage inputs (falls back to `all` safely in every 
 browser-tested — filter-pill layout/spacing in the topbar and the categorization's real-world accuracy
 against actual gameplay logs both need a look, flagged like the rest of this session's UI-heavy work.
 **Closes out #29.**
+
+## Session — Finances pop-out: detailed current/past/future cash flow (2026-07-05)
+
+User request: a "💰 Finances" entry point (added to the "This month" card on the Command Center's right
+rail, next to the existing 📖 Chronicle button) opening a detailed pop-out — current breakdown, recent
+transactions, a past trend, and a future projection, green for positive/red for negative throughout.
+
+**Current.** `financesBreakdown()` itemizes revenue (facility income, Belt royalty, gov funding, passive
+contracts) and expenses (base overhead, market/event surcharge, production upkeep, empire opex, bridge-loan
+interest, partnership upkeep, payroll) — reusing the exact same functions `commandSummary()`/
+`state.lastMonth` already call, just un-summed, so nothing here can drift out of sync with numbers shown
+elsewhere. Near-zero items (<$1k/mo) are filtered so an inactive line (e.g. no royalty yet) doesn't clutter
+the list.
+
+**Recent transactions.** No formal transaction ledger exists in this codebase (~47 separate `state.money`
+call sites — instrumenting all of them for a proper ledger was judged too invasive for this pass). Instead,
+new `tlMoneyAmount()` pulls the dollar amount straight out of a log line's own already-`fM()`-formatted text
+(e.g. "+$12.00M") — same heuristic-text-sniffing spirit as #29's `logCategory()`. `recentCashEvents()` scans
+`state.log` (already newest-first, capped at 40 total entries across all categories) for the first parseable
+$ amount per line. Best-effort, not a formal ledger — flagged as such in the code comment.
+
+**Past.** `defaultMetricHist()`/`pushMetricHistory()` gained three new series (`revenue`/`expenses`/`net`,
+alongside the existing money/rep/support/success/science), snapshotting `state.lastMonth` each month at the
+same 24-month cap. New `netFlowBarsSVG()` — a genuine diverging bar chart around a zero baseline (green
+bars above, red below), distinct from the existing `sparklineSVG` (a single line, one trend color for the
+whole series) since monthly net can cross zero month to month. No SAVE_VERSION bump: `pushMetricHistory`'s
+existing `push()` helper already guards `if(!Array.isArray(h[key]))`, so a legacy save's `metricHist` missing
+these three keys just starts tracking them from the next tick — no migration needed.
+
+**Future.** `financeProjections()` — a linear projection at the current recurring net rate (money now + net
+× 6/12 months) when net is non-negative, or the existing `runwayMonths()` figure when it's burning down;
+plus a short "known upcoming" list derived from state already present (an accepted mandate's bonus + due
+date, any passive contract expiring within 3 months and the income that lapses with it, an open special
+contract's bonus + deadline). Not a full future simulator — deliberately scoped to what's already knowable
+from existing state, not a probabilistic forecast of research/mission outcomes.
+
+**Validation.** `node --check` OK. 22/22 headless assertions run the actual `financesBreakdown`/
+`tlMoneyAmount`/`recentCashEvents`/`financeProjections`/`netFlowBarsSVG` functions **extracted directly from
+the live file** (not reimplementations) against stubbed inputs: revenue/expense sums match exactly and
+near-zero items are filtered; dollar-amount parsing handles +/−/unicode-minus and correctly returns `null`
+on non-financial log lines (including a deliberate false-positive check against "40%" in a scoop message);
+recent-events ordering; both projection branches (positive-net horizon math vs. negative-net runway text);
+all three upcoming-deltas sources (mandate/expiring contract/special contract) surface with correct
+amounts; the bar chart never throws on an empty series and always draws its zero line. Not yet
+browser-tested — the two-column layout, chart legibility, and log-mining accuracy against a real
+multi-hour save all need a look, flagged like the rest of this session's UI-heavy work.
