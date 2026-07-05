@@ -443,7 +443,7 @@ Source: review 2026-06-25 (UI 7.5 · Presentation 7 · Info-architecture 8 · Lo
 
 - [x] **27 · Visual stage-stack Design Bench** *(review #6, 2026-06-25)* — Rocket preview as centerpiece sticky column in `.bench-stage` grid. `renderStages` rebuilt as `.stage-card`s: drag-handle (HTML5 DnD → `moveStage(from,to)`), collapse toggle, thrust bar, engine/propellant chip, role label, Δv badge. Build & Launch CTA moved under the rocket in `#benchLaunch`. No new save field. Validated (bench-nav 28/28 + launch 13/13).
 - [x] **28 · Sparkline dashboards** *(review #8, 2026-06-25)* — `sparklineSVG(points,opts)` (auto-scaling, green-up/red-down). `state.metricHist` ({money,rep,support,success,science}, 24-month buffer). `pushMetricHistory()` in `advance()`. `adv-only` `.exec-sparks` strip on exec overview. SAVE_VERSION→22. Validated (40).
-- [ ] **29 · Filtered Flight & Ops log timeline** *(review #12)* — Category filters (All/Launches/Research/Economy/Rivals/Crew/Infrastructure) + per-entry icons + collapsible timeline. *Log timeline strip shipped in top bar (see § Always-visible Ops Timeline); filters + collapse still open.*
+- [x] **29 · Filtered Flight & Ops log timeline** *(review #12)* — ✅ DONE (2026-07-05). Category filters (All/Launches/Research/Economy/Rivals/Crew/Infrastructure) + per-entry icons + collapsible timeline — see the #29 session log for the implementation.
 - [x] **30 · Domain color-coding language** *(review #7, 2026-06-27 — 4 slices)* — 7 `--dom-*` CSS custom properties (economy/engineering/research/military/exploration/crew/warn). Utilities: `.dom-<domain>` (tints metric label), `.dombar-<domain>` (panel left-accent), `.dom-dot` (chip). `DOMAINS{}`/`domColor(d)`/`domDot(d)`. Applied: Slice 1 top status bar + manufacturing panels; Slice 2 scene accents (R&D/map/bench/personnel/rivals); Slice 3 exec-overview headline metrics; Slice 4 Design Bench readout metrics (cost=economy, reliability=engineering, crew module=crew; pure-perf lines neutral). Validated (/tmp/ov-dom.js 23→29→36→41/41). **#30 DONE.**
 - [x] **31 · UI microanimations pass** *(review #11/#4, 2026-06-29)* — `_statBump()` flashes HUD stats green/amber on change; `_lastUnlockedTech` + `.tech-just-unlocked` amber-glows newly researched R&D node; `_missionPulse` pulses rep stat green/red after flight outcome; `.modal-entering` slide-in on every `showModal()`; `_prevLogLength` guards `.tl-chip-new` slide on newest ops-timeline chip; `_applyObjSparkle()` + `data-obj-id` + `.obj-just-done` sparkles objectives that complete while the panel is open. Validated 45/45.
 - [x] **32 · Keyboard navigation** *(review #9, 2026-06-25)* — Tech-tree zoom (0.5–2.4×, wheel/toolbar/arrows/0-reset) + scene keyboard nav: ESC = close modal / back from contracts drill / return to Command; TAB/Shift+TAB = cycle scenes; 1–4 = jump to scene. Never hijacks INPUT/TEXTAREA/SELECT; ignores modifiers + flight-playback. Validated (bench-nav 28/28).
@@ -1630,3 +1630,39 @@ logs instead of silently failing; the testLevel/rehearsal snapshot round-trip su
 Bench change; a legacy snapshot missing the new fields doesn't corrupt live state. Not yet browser-tested —
 this is the biggest-risk change of the day (core launch flow) and needs a real playthrough before trusting
 it fully, flagged same as the rest of this session's UI-heavy work.
+
+## Session — #29: Filtered Flight & Ops log timeline (2026-07-05)
+
+The always-visible `#opsTimeline` strip (shipped 2026-06-27) already had the date chip + UPCOMING items +
+reverse-chron log; this closes the two things left open under #29: category filters and a collapse toggle.
+Per-entry icons were the third ask — added as a side effect of building the filter (an entry needs a
+category to filter by; showing that category's icon on the chip itself was free once computed).
+
+- **New `logCategory(e)`** — coarse topic bucket (`launch`/`research`/`economy`/`rivals`/`crew`/`infra`/
+  `other`) from `e.kind` + text-sniffing, same precision/spirit as the existing `logNav()` (which already
+  infers a *navigation target* from log text) — not exhaustive, good enough for a filter. Checked
+  most-specific-first so overlapping substrings land right (e.g. a `SUCCESS` line that also says "Crew of
+  2 home safe" is `launch`, not `crew` — personnel-specific terms like *hired/quit/commended/poached* are
+  what actually mean `crew`).
+- **`TL_CATEGORIES`/`TL_CAT_ICON`** — the exact 6 named in the plan (All/Launches/Research/Economy/Rivals/
+  Crew/Infrastructure) plus an `other` icon for whatever a filter can't place.
+- **New `#tlControls` row** above the timeline strip: a filter pill per category (click to select, `All` is
+  default) + a collapse toggle (`▾ Hide log` / `▸ Show log`) that hides just the scrolling chip strip, not
+  the whole top bar (that's the separate, pre-existing `toggleTopbar()`). Both the selected filter and the
+  collapsed state persist in `localStorage` (`ov_tlFilter`/`ov_tlCollapsed`), same pattern as the existing
+  theme/wide-mode prefs — not part of `state`, so it isn't saved into/loaded from a game save, and a
+  corrupted/unknown stored value falls back safely to `All`/expanded.
+- `upcomingEvents()`'s three synthetic entries (active R&D, in-progress build, committed window) got a
+  `cat` field too, so switching to "Research" also shows the live R&D countdown, not just past log lines.
+- The existing "slide in the newest chip" animation now also checks the entry is literally
+  `state.log[0]` (not just "first in the filtered list") — otherwise switching to a filter that excludes
+  the actual newest entry would incorrectly animate an old one that happens to be first under that filter.
+
+**Validation.** `node --check` OK. 21/21 headless assertions running `logCategory` **extracted directly
+from the live file** (not a reimplementation) against 18 real message strings sampled from actual `log()`
+call sites across the codebase (placeholders resolved to plausible values), one full pass per category
+plus a deliberate `other` fallback case — all landed correctly. localStorage restore logic separately
+verified against null/valid/garbage inputs (falls back to `all` safely in every non-valid case). Not yet
+browser-tested — filter-pill layout/spacing in the topbar and the categorization's real-world accuracy
+against actual gameplay logs both need a look, flagged like the rest of this session's UI-heavy work.
+**Closes out #29.**

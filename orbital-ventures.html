@@ -430,6 +430,14 @@
   .tl-chip.ok .tl-msg{color:var(--ok)} .tl-chip.bad .tl-msg{color:var(--bad)} .tl-chip.info .tl-msg{color:var(--ink)} .tl-chip.note .tl-msg{color:var(--readout)} .tl-chip.rival .tl-msg{color:var(--ignite)}
   .tl-empty{align-self:center;color:var(--dim);font-size:12px;padding:4px 8px}
   .tl-sep{flex:0 0 auto;align-self:center;color:var(--dim);font-size:var(--fs-min);letter-spacing:1px;padding:0 1px}
+  /* #29: category filters + collapse toggle for the ops timeline */
+  .tl-controls{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:4px}
+  .tl-filter{flex:0 0 auto;font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-radius:12px;padding:2px 9px;background:var(--panel);color:var(--dim);cursor:pointer;white-space:nowrap}
+  .tl-filter:hover{border-color:var(--readout)}
+  .tl-filter.active{border-color:var(--readout);color:var(--ink);background:var(--panel2)}
+  .tl-collapse{flex:0 0 auto;margin-left:auto;font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-radius:6px;padding:2px 8px;background:var(--panel);color:var(--dim);cursor:pointer}
+  .tl-collapse:hover{border-color:var(--readout);color:var(--ink)}
+  .timeline.collapsed{display:none}
   .log .rival{color:var(--ignite)}
 
   /* Modal */
@@ -505,6 +513,8 @@
   <!-- The R&D status row (rndStatus / next-objective hint / Skip) moved into the R&D scene; the
        flight-log timeline stays pinned here as the only row under the header. Time controls + the
        ⚙ Menu (with the interface detail-level "View" option folded in) now live in the header. -->
+  <!-- #29: category filters + collapse toggle for the timeline strip below -->
+  <div class="tl-controls" id="tlControls"></div>
   <div class="timeline" id="opsTimeline"></div>
   </div><!-- /topbar -->
   <button class="btn ghost hidden" id="topbarShow" onclick="toggleTopbar()" title="Show the top bar (h)">▾ Show bar</button>
@@ -10207,6 +10217,14 @@ let _lastUnlockedTech=null; // set by completeResearch(), consumed by renderTech
 let _missionPulse=null;     // 'ok'|'bad', set by finalizeLaunch(), consumed by render()
 // Slice 3: log chip tracking
 let _prevLogLength=0;
+// #29: timeline category filter + collapse state — persisted like the theme/wide-mode prefs
+// (localStorage, not part of state, so it isn't saved into/loaded from a game save).
+let _tlFilter='all';
+let _tlCollapsed=false;
+try{ const f=localStorage.getItem('ov_tlFilter'); if(f==='all' || TL_CAT_ICON[f]!==undefined) _tlFilter=f; }catch(e){}
+try{ _tlCollapsed=localStorage.getItem('ov_tlCollapsed')==='1'; }catch(e){}
+function setTlFilter(id){ _tlFilter=id; try{ localStorage.setItem('ov_tlFilter', id); }catch(e){} renderLog(); }
+function toggleTlCollapse(){ _tlCollapsed=!_tlCollapsed; try{ localStorage.setItem('ov_tlCollapsed', _tlCollapsed?'1':'0'); }catch(e){} renderLog(); }
 // Slice 3: objective sparkle tracking
 const _prevObjDoneSet=new Set();
 let _objSectionOpen=false;
@@ -15612,11 +15630,35 @@ function tlAttr(s){ return tlStrip(s).replace(/"/g,'&quot;'); }
 function upcomingEvents(){
   const out=[];
   const ar=state.activeResearch;
-  if(ar){ const r=RESEARCH.find(x=>x.id===ar.id); if(r) out.push({icon:'⚛', msg:`R&D: ${r.name} · ${fmtTimeLeft(ar.monthsLeft)} left`, nav:'rnd'}); }
-  (state.buildQueue||[]).forEach(o=>{ out.push({icon:'🔧', msg:(o.started?`Build: ${o.missionName||o.name} · ${fmtTimeLeft(o.monthsLeft)} left`:`Queued: ${o.missionName||o.name}`), nav:'command'}); });
+  if(ar){ const r=RESEARCH.find(x=>x.id===ar.id); if(r) out.push({icon:'⚛', msg:`R&D: ${r.name} · ${fmtTimeLeft(ar.monthsLeft)} left`, nav:'rnd', cat:'research'}); }
+  (state.buildQueue||[]).forEach(o=>{ out.push({icon:'🔧', msg:(o.started?`Build: ${o.missionName||o.name} · ${fmtTimeLeft(o.monthsLeft)} left`:`Queued: ${o.missionName||o.name}`), nav:'command', cat:'launch'}); });
   const cw=state.committedWindow;
-  if(cw){ const m=MISSIONS.find(x=>x.id===cw.missionId); out.push({icon:'🪟', msg:`Window: ${m?m.name:cw.missionId} opens ${dayToDate(cw.abs)}`, nav:'map'}); }
+  if(cw){ const m=MISSIONS.find(x=>x.id===cw.missionId); out.push({icon:'🪟', msg:`Window: ${m?m.name:cw.missionId} opens ${dayToDate(cw.abs)}`, nav:'map', cat:'launch'}); }
   return out;
+}
+// #29: coarse topic buckets for the timeline's category filter + per-entry icon. Heuristic
+// text-sniffing, same spirit/precision as logNav below (not meant to be perfectly exhaustive —
+// good enough for a filter). Checked most-specific-first so overlapping substrings (e.g. a
+// mission "SUCCESS" line that also happens to mention "crew") land in the right bucket.
+const TL_CATEGORIES=[
+  {id:'all',      label:'All'},
+  {id:'launch',   label:'Launches',       icon:'🚀'},
+  {id:'research', label:'Research',       icon:'⚛'},
+  {id:'economy',  label:'Economy',        icon:'$'},
+  {id:'rivals',   label:'Rivals',         icon:'🏴'},
+  {id:'crew',     label:'Crew',           icon:'👥'},
+  {id:'infra',    label:'Infrastructure', icon:'🏗'},
+];
+const TL_CAT_ICON={launch:'🚀', research:'⚛', economy:'$', rivals:'🏴', crew:'👥', infra:'🏗', other:'•'};
+function logCategory(e){
+  if(e.kind==='rival') return 'rivals';
+  const s=tlStrip(e.msg);
+  if(/R&D (complete|started|rush|SETBACK)|BREAKTHROUGH|breakthrough|Applied .* science to|Inquiry into|inquiry reliability credit/i.test(s)) return 'research';
+  if(/\bhired\b|\bcommended\b|training invested|promoted to head of|quit due to low morale|\bpoached\b|Raise (given|invested)|angling for a raise|let go\. Monthly burn|radiation limit|absorbed .* radiation|is on a mission — they can be assigned|costly mistake.*morale|Astronaut .*(lost|retired)/i.test(s)) return 'crew';
+  if(/yard — (manufacturing|fabricating)|expanded to (level|\d+ modules)|resupplied|resupply (shipment|delayed|expedited)|auto-resupply|: \w.* docked|established — your first permanent presence|abandoned — the outpost|evacuated and mothballed|power-starved|Standing production|Blueprint: all ports/i.test(s)) return 'infra';
+  if(/SUCCESS|FAILURE|CATASTROPHE|ABORTED IN FLIGHT|LOST IN DEEP SPACE|RESCUED|Scooped|Rescue (launched|fell)|Mandate (accepted|declined|fulfilled|FAILED|offered)|Special contract|Launch committed|Manufacturing — (queued|cancelled|scrapped|rolled out)|static fire|Committed to the .* window|setback|reworked properly|flaw unresolved/i.test(s)) return 'launch';
+  if(/Signed |Partnership (formed|dissolved|with)|contract (expired|has run)|royalt|Market —|Supply —|Sold .* propellant|Bought .* propellant|doctrine declared|Doctrine drift|bridge loan|Treasury (critical|warning)/i.test(s)) return 'economy';
+  return 'other';
 }
 // Where clicking a past log entry should jump: explicit entry.nav wins, else infer from the text.
 function logNav(e){
@@ -15629,23 +15671,36 @@ function logNav(e){
   return null;
 }
 function timelineGo(nav){ if(nav) setTab(nav); }
+// #29: category-filter pills + collapse toggle, rendered above the timeline strip itself.
+function renderTlControls(){
+  const box=$('tlControls'); if(!box) return;
+  const filters=TL_CATEGORIES.map(c=>`<span class="tl-filter${_tlFilter===c.id?' active':''}" onclick="setTlFilter('${c.id}')" title="Show only ${c.label.toLowerCase()} entries">${c.icon?c.icon+' ':''}${c.label}</span>`).join('');
+  box.innerHTML=`${filters}<span class="tl-collapse" onclick="toggleTlCollapse()" title="${_tlCollapsed?'Expand':'Collapse'} the timeline strip">${_tlCollapsed?'▸ Show log':'▾ Hide log'}</span>`;
+}
 // Always-visible flight & ops timeline: leading date, then UPCOMING items, then the recent log
 // (newest first). Each chip jumps to a relevant screen when it has a navigation target.
 function renderLog(){
-  const box=$('opsTimeline'); if(!box) return; box.innerHTML='';
+  renderTlControls();
+  const box=$('opsTimeline'); if(!box) return;
+  box.classList.toggle('collapsed', _tlCollapsed);
+  box.innerHTML='';
   // #31 Slice 3: slide in the newest chip when a new entry is added
   const hasNew=state.log.length>_prevLogLength; _prevLogLength=state.log.length;
+  if(_tlCollapsed) return; // controls stay interactive; the strip itself is display:none
   const d=document.createElement('div'); d.className='tl-date'; d.innerHTML=`<small>DATE</small>${dateStr()}`; box.appendChild(d);
-  const up=upcomingEvents();
+  const up=upcomingEvents().filter(u=>_tlFilter==='all'||u.cat===_tlFilter);
   up.forEach(u=>{ const c=document.createElement('div'); c.className='tl-chip next'+(u.nav?' clk':'');
     c.innerHTML=`<span class="tl-when">UPCOMING</span><span class="tl-msg" title="${tlAttr(u.msg)}">${u.icon} ${tlStrip(u.msg)}</span>`;
     if(u.nav) c.onclick=()=>timelineGo(u.nav); box.appendChild(c); });
   if(up.length){ const sep=document.createElement('div'); sep.className='tl-sep'; sep.textContent='◂ NOW'; box.appendChild(sep); }
-  if(!state.log.length){ const e=document.createElement('div'); e.className='tl-empty'; e.textContent='No flights or events yet — advance time or fly a mission.'; box.appendChild(e); return; }
+  const entries=state.log.filter(l=>_tlFilter==='all'||logCategory(l)===_tlFilter);
+  if(!entries.length){ const e=document.createElement('div'); e.className='tl-empty';
+    e.textContent=state.log.length?'No entries in this category yet.':'No flights or events yet — advance time or fly a mission.'; box.appendChild(e); return; }
   let firstLogChip=true;
-  state.log.forEach(l=>{ const nav=logNav(l); const c=document.createElement('div'); c.className='tl-chip '+(l.kind||'note')+(nav?' clk':'')+(hasNew&&firstLogChip?' tl-chip-new':'');
+  entries.forEach(l=>{ const nav=logNav(l); const icon=TL_CAT_ICON[logCategory(l)]||TL_CAT_ICON.other;
+    const c=document.createElement('div'); c.className='tl-chip '+(l.kind||'note')+(nav?' clk':'')+(hasNew&&firstLogChip&&l===state.log[0]?' tl-chip-new':'');
     firstLogChip=false;
-    c.innerHTML=`<span class="tl-when">${l.when}</span><span class="tl-msg" title="${tlAttr(l.msg)}">${tlStrip(l.msg)}</span>`;
+    c.innerHTML=`<span class="tl-when">${l.when}</span><span class="tl-msg" title="${tlAttr(l.msg)}">${icon} ${tlStrip(l.msg)}</span>`;
     if(nav) c.onclick=()=>timelineGo(nav); box.appendChild(c); });
 }
 
