@@ -1161,6 +1161,27 @@ Decisions (user): add real save files (export/import) + autosave.
   **Flagged, not built:** a deeper reactive rival mood/relationship system — today's archetypes are static, this
   slice didn't add dynamic personality state, which would be a larger follow-up if wanted.
 
+### Progress log — P5 (rival disasters + rescue)
+- **✅ (2026-07-05)** — Rivals can now fail publicly. New monthly `tickRivals()` disaster roll
+  (`RIVAL_DISASTER_BASE_P=0.0055`/mo, Monte Carlo-tuned to a ~15yr mean interval at baseline) times a
+  per-archetype multiplier (Vostochny ×1.0, Meridian ×0.6, Halcyon ×1.5 — empirically ~15/25/10yr). Two kinds:
+  **uncrewed** (flavor + `RIVAL_DENY_MOM×0.5` momentum knock + a new `distress` `RIVAL_VOICE` line) and
+  **crewed** (only once that rival has claimed a crewed first; full momentum knock; surfaces a rescue-offer
+  decision modal) — a coin-flip between the two when crewed-eligible (not specified by the sign-off, flagged).
+  The rescue offer is a **lightweight simulated decision**, not the real player rescue-mission pipeline (that
+  would need a fake mission ctx) — cost/chance mirror the real `rescueCost`/`rescueChance` formula shape with a
+  fixed synthetic strand difficulty (cost 15; chance uses the same rep/rendezvous/nuclear-thermal/facilities/
+  `ctrlRescueScore` levers, capped ~0.78, floored 0.10). **Mount+succeed:** +6 rep, +5 support (2×
+  `SUPPORT_DELTA.rivalFirst`), new `humbled` voice line. **Mount+fail:** cost sunk, no windfall, rival's
+  momentum hit stands regardless. **Decline:** −2 rep, −1.5 support (a real but minor cost, ~1/3 the windfall
+  size) + the rival's momentum hit stands. Modal is deferred (not shown this tick) if a setback/mishap/inquiry
+  is already pending, matching the existing precedence chain. No persisted state (`_pendingRivalDisaster` is
+  module-scope, never serialized) — no SAVE_VERSION bump.
+  **Validation.** `node --check` OK. 30/30 headless: crewed-first gating per rival, cost/chance formula, both
+  disaster-kind deltas, modal deferral under the existing chain, mount-succeed/mount-fail/decline exact deltas,
+  no save-state leakage. Flavor tone and modal wording need a manual browser pass. **Closes P5.** Remaining
+  quick wins: **P7-P10** (P6/P11 are the two remaining big swings).
+
 ## Session — Isometric command-center layout redistribution (2026-07-04)
 
 Player request (not part of the P-list initiative): the isometric Command/Cape view's buildings were unevenly

@@ -1020,6 +1020,16 @@ const RIVAL_VOICE = {
       'Enjoy the lead. The State is patient.',
       'You claimed one milestone. The directorate keeps a longer list.',
     ],
+    distress:[ // P5: said when the rival suffers a disaster (crewed or uncrewed)
+      'A regrettable anomaly. The commission will convene. The program continues.',
+      'The State mourns, and the State perseveres. There will be no pause.',
+      'An engineering variance, nothing the directorate cannot absorb.',
+    ],
+    humbled:[ // P5: said when the PLAYER successfully rescues the rival's crew
+      'The directorate acknowledges your assistance. This will be noted in the record.',
+      'Our crew is home. The State does not forget a debt — however unwelcome.',
+      'A gesture. The competition remains. But — thank you.',
+    ],
   },
   meridian:{ // Meridian Aerospace — legacy contractor, corporate, methodical
     taunt:[
@@ -1033,6 +1043,16 @@ const RIVAL_VOICE = {
       'A minor variance. The program remains fully funded.',
       "You moved fast. We move deliberately — and we don't stop.",
     ],
+    distress:[ // P5: said when the rival suffers a disaster (crewed or uncrewed)
+      'A loss. Our review board will be thorough, as always. The contract holds.',
+      'Setbacks are priced into a mature program. We proceed on schedule.',
+      'The shareholders have been briefed. Meridian will recover, deliberately.',
+    ],
+    humbled:[ // P5: said when the PLAYER successfully rescues the rival's crew
+      'Meridian records its gratitude, formally, for the assistance rendered.',
+      'A competitor today, a colleague in a crisis. Our crew thanks you.',
+      "We'll return the professional courtesy. Off the record: well flown.",
+    ],
   },
   halcyon:{ // Halcyon Systems — scrappy commercial newcomer, brash, cheap and fast
     taunt:[
@@ -1045,6 +1065,16 @@ const RIVAL_VOICE = {
       "Cute. We'll ship the next one before you finish the paperwork.",
       "One loss won't slow the burn rate. Back to the pad.",
       'You want a race? Halcyon lives for this.',
+    ],
+    distress:[ // P5: said when the rival suffers a disaster (crewed or uncrewed)
+      "Okay, that one hurt. Root-cause it, patch it, fly again. That's the model.",
+      'We move fast; sometimes we break things. Back to the pad, wiser.',
+      'Rough day at Halcyon. The burn rate does not care. Neither do we.',
+    ],
+    humbled:[ // P5: said when the PLAYER successfully rescues the rival's crew
+      "You saved our people. We won't forget that — even if we still beat you.",
+      'No swagger today. Just thanks. Our crew is alive because of you.',
+      "That's the real win, and it's yours. Halcyon owes you one.",
     ],
   },
 };
@@ -3623,7 +3653,7 @@ function buildEngineStock(engId, count, tested){
   const proven=engineStockTestedCount(engId);
   log('ok', `Engine yard — manufacturing ${count}× ${engineIcon(engId)} ${ENGINES[engId].name}${tested?' (bench-tested)':''} (${fM(chk.cost)}, ${chk.days} d). Stock now ${engineStockCount(engId)}${proven>0?` · ${proven} proven`:''}.`);
   advanceDays(chk.days); // the engines take calendar time to build (do it during downtime)
-  if(!state.over){ render(); maybeShowSetback(); maybeShowMishap(); }
+  if(!state.over){ render(); maybeShowSetback(); maybeShowMishap(); maybeShowRivalDisaster(); }
 }
 // reliability bump from bench-tested engines + structural components fitted to the current build (heritage you banked)
 function benchRelBonus(m){
@@ -3715,7 +3745,7 @@ function buildPartStock(key, count, tested){
   const proven=partStockTestedCount(key);
   log('ok', `Structures yard — fabricating ${count}× ${partCompIcon(key)} ${partCompName(key)}${tested?' (bench-tested)':''} (${fM(chk.cost)}, ${chk.days} d). Stock now ${partStockCount(key)}${proven>0?` · ${proven} proven`:''}.`);
   advanceDays(chk.days); // structural components take calendar time to fabricate (do it during downtime)
-  if(!state.over){ render(); maybeShowSetback(); maybeShowMishap(); }
+  if(!state.over){ render(); maybeShowSetback(); maybeShowMishap(); maybeShowRivalDisaster(); }
 }
 // Forecast: months of coverage at the recent build cadence.
 function materialMonthsCoverage(key){
@@ -3964,6 +3994,7 @@ function tickRivals(){
     const f=r.firsts[rs.idx];
     if(rs.prevYear==null) rs.prevYear=f.year-RIVAL_FIRST_RUNWAY; // debut saving window opens here
     if(state.year<rs.prevYear) continue; // saving window not open yet (keeps early game quiet)
+    maybeRivalDisaster(r, rs); // P5: monthly disaster roll — only while actively saving toward a goal (not done, window open)
     const window=Math.max(RIVAL_MIN_WINDOW, f.year-rs.prevYear);
     const cost=prof.income*12*window;
     rs.capital+=prof.income*rs.momentum*crowd; // monthly accrual, sped/slowed by momentum & market crowding
@@ -3997,6 +4028,103 @@ function denyRivalGoal(missionId){
     const _def=rivalVoiceLine(r,'defiant'); // P4: per-profile defiant reply (flavor only)
     if(_def) log('rival', `${r.flag} ${r.name}: “${_def}”`);
   }
+}
+/* ---------- P5 · Rival disasters + rescue-their-crew ----------
+   A rival can now fail publicly while actively saving toward a goal. Two kinds:
+   UNCREWED loss (flavor + a small momentum knock) and, once a rival has claimed a
+   CREWED first, a CREWED strand — a lightweight rescue-offer decision that resolves
+   INSTANTLY on click (mirrors the #20 rescue pipeline's levers/formula shape, but does
+   NOT reuse its mission-context machinery). Cadence tuned by Monte Carlo (see below).
+   No persisted state: _pendingRivalDisaster is transient like _pendingRescue; the
+   momentum/rep/support deltas resolve within the tick. Modal-priority: deferred if a
+   setback / mishap / inquiry is already pending (rolled again a later month). */
+const RIVAL_DISASTER_BASE_P=0.0055;   // base monthly disaster prob while actively saving — MC-tuned: ~1 per 15.1 active-saving yr at ×1.0 (band 12-18)
+const RIVAL_DISASTER_MULT={vostochny:1.0, meridian:0.6, halcyon:1.5}; // per-archetype rate multiplier (→ ~15 / ~25 / ~10 yr mean intervals)
+const RIVAL_DISASTER_CREWED_FRAC=0.5; // when a rival has claimed a crewed first, this share of its disasters are crewed strands (else uncrewed)
+const RIVAL_DISASTER_MOM_UNCREWED=RIVAL_DENY_MOM*0.5; // 0.15 momentum knock for an uncrewed loss (half a firsts-denial)
+const RIVAL_DISASTER_MOM_CREWED=RIVAL_DENY_MOM;       // 0.30 full momentum knock for a crewed loss — applied regardless of any rescue outcome
+const RIVAL_STRAND_PAYOUT=25;         // synthetic mission scale for a rival strand (feeds rescueCost's payout·0.6 shape → 15 cost)
+const RIVAL_STRAND_DIFFICULTY=0.20;   // fixed synthetic distance/difficulty penalty on rescueChance's 0.55 base (a rival strand is a hard, less-prepared reach)
+const RIVAL_RESCUE_REP=6;             // player rep windfall on a successful rival-crew rescue
+const RIVAL_RESCUE_SUPPORT=-SUPPORT_DELTA.rivalFirst*2; // +5.0 support windfall = 2× |SUPPORT_DELTA.rivalFirst| (2.5)
+const RIVAL_DECLINE_REP=2;            // callousness: rep hit for declining ≈ 1/3 of the +6 windfall
+const RIVAL_DECLINE_SUPPORT=1.5;      // callousness: support hit for declining ≈ 1/3 of the +5 windfall
+let _pendingRivalDisaster=null;       // a crewed rival strand paused at the rescue-offer decision (transient, NOT persisted — like _pendingRescue)
+// Has this rival already claimed a crewed first? (gates crewed strands.) Checks FIRED firsts only.
+function rivalHasCrewedFirst(r, rs){
+  for(let i=0;i<rs.idx;i++){ const f=r.firsts[i];
+    if(/crew/i.test(f.name)) return true;                                   // name flags the crewed milestones ("crewed orbital flight", etc.)
+    if(f.missionId){ const mm=MISSIONS.find(x=>x.id===f.missionId); if(mm && (mm.crew||0)>0) return true; } // and the mission's own crew field, belt-and-braces
+  }
+  return false;
+}
+// Synthetic rescue cost/chance — mirror the #20 rescueCost/rescueChance formula SHAPE with a fixed
+// rival-strand difficulty (no mission object to key off), reusing the same real levers.
+function rivalRescueCost(){ return Math.max(3, Math.round(RIVAL_STRAND_PAYOUT*0.6)); }
+function rivalRescueChance(){
+  let c=0.55 - RIVAL_STRAND_DIFFICULTY;                        // mirror rescueChance's 0.55 base, minus the fixed synthetic strand difficulty
+  c += Math.min(0.15, (state.rep||0)/600);                     // a well-funded agency mounts a better effort
+  if(state.research&&state.research.auto_rendezvous) c+=0.10;  // rapid automated rendezvous
+  if(state.research&&state.research.nuclear_thermal) c+=0.10;  // fast-transit rescue craft
+  if((state.facilities||[]).length>0) c+=0.08;                 // standing infrastructure = contingency capability
+  c += ctrlRescueScore()*CTRL_RESCUE_BONUS_MAX;                // mission controllers run a tighter rescue (0 when unstaffed)
+  return Math.max(0.10, Math.min(0.90, c));
+}
+// Monthly disaster roll for one rival (called from tickRivals while it is actively saving).
+function maybeRivalDisaster(r, rs){
+  if(_pendingSetback||_pendingLogiMishap||_pendingInquiry||_pendingRivalDisaster) return; // modal-priority: defer if a decision is already pending (roll again later)
+  const mult=RIVAL_DISASTER_MULT[r.id]||1.0;
+  if(Math.random() >= RIVAL_DISASTER_BASE_P*mult) return;                  // no disaster this month
+  const crewed=rivalHasCrewedFirst(r, rs) && Math.random()<RIVAL_DISASTER_CREWED_FRAC;
+  rs.momentum=Math.max(RIVAL_MOM_MIN, rs.momentum-(crewed?RIVAL_DISASTER_MOM_CREWED:RIVAL_DISASTER_MOM_UNCREWED)); // the disaster's own consequence — happens regardless of any rescue
+  const distress=rivalVoiceLine(r,'distress'); // P5: per-profile distress line (flavor only)
+  if(!crewed){
+    log('rival', `${r.flag} ${r.name} suffers a public failure — an uncrewed vehicle is lost, denting its program.`);
+    if(distress) log('rival', `${r.flag} ${r.name}: “${distress}”`);
+    return;
+  }
+  log('bad', `${r.flag} ${r.name} DISASTER — a crewed vehicle is stranded in deep space. A decision is needed.`);
+  if(distress) log('rival', `${r.flag} ${r.name}: “${distress}”`);
+  _pendingRivalDisaster={ rivalId:r.id }; // surfaced by maybeShowRivalDisaster() after the advance settles
+}
+function maybeShowRivalDisaster(){ if(_pendingRivalDisaster && !_pendingSetback && !_pendingLogiMishap && !_pendingInquiry) showRivalDisasterModal(); } // setback/mishap/inquiry take priority
+function showRivalDisasterModal(){
+  const s=_pendingRivalDisaster; if(!s) return;
+  const r=RIVALS.find(x=>x.id===s.rivalId); if(!r){ _pendingRivalDisaster=null; return; }
+  const cost=rivalRescueCost(), chance=Math.round(rivalRescueChance()*100), afford=state.money>=cost;
+  const mountBtn=afford
+    ? `<button class="btn" onclick="mountRivalRescue()">Mount a rescue (${fM(cost)}, ${chance}% chance)</button>`
+    : `<div class="dim" style="font-size:12px;margin:8px 0">A rescue would cost ${fM(cost)} — you can't afford one.</div>`;
+  showModal(`<h2 style="color:var(--bad)">${r.flag} ${r.name} crew stranded</h2>
+    <p><b>${r.name}</b> has lost a crewed vehicle in deep space — their astronauts are stranded but alive. The world is watching to see if anyone will help.</p>
+    <p class="muted">You could divert your own contingency assets to reach them. A successful rescue is a global goodwill coup; declining reads as cold. The rival's program already carries the loss either way.</p>
+    ${mountBtn}
+    <button class="btn ghost" onclick="declineRivalRescue()" style="margin-top:8px">Stand down (not our fight)</button>`);
+}
+function mountRivalRescue(){
+  const s=_pendingRivalDisaster; if(!s) return;
+  const r=RIVALS.find(x=>x.id===s.rivalId);
+  const cost=rivalRescueCost(), chance=rivalRescueChance();
+  if(state.money<cost) return;                     // guarded; the button is hidden when unaffordable
+  _pendingRivalDisaster=null; hideModal();
+  state.money-=cost;                               // cost is committed whether or not the rescue succeeds
+  log('note', `Rescue launched toward ${r?r.name:'the stranded crew'} — ${fM(cost)} committed; your contingency teams scramble.`);
+  if(Math.random()<chance){
+    state.rep+=RIVAL_RESCUE_REP; addSupport(RIVAL_RESCUE_SUPPORT);
+    log('ok', `Your crews reached ${r?r.name+"'s":'the stranded'} astronauts and brought them home alive — a global goodwill coup (+${RIVAL_RESCUE_REP} rep).`);
+    const humbled=r&&rivalVoiceLine(r,'humbled'); if(humbled) log('rival', `${r.flag} ${r.name}: “${humbled}”`);
+  } else {
+    log('bad', `The rescue fell short — ${r?r.name+"'s":'the'} crew could not be reached in time. The cost is sunk; the rival's loss stands.`);
+  }
+  if(state.money<0) gameOver(); else { render(); if(!state.over) pumpFlightArrivals(); }
+}
+function declineRivalRescue(){
+  const s=_pendingRivalDisaster; if(!s) return;
+  const r=RIVALS.find(x=>x.id===s.rivalId);
+  _pendingRivalDisaster=null; hideModal();
+  state.rep=Math.max(0, state.rep-RIVAL_DECLINE_REP); addSupport(-RIVAL_DECLINE_SUPPORT); // small callousness hit (≈1/3 of the windfall)
+  log('note', `You stood down from ${r?r.name+"'s":'the'} crew emergency — commentators call it cold (−${RIVAL_DECLINE_REP} rep).`);
+  render(); if(!state.over) pumpFlightArrivals();
 }
 // CE1(b) · Counter-poach — spend capital to hire away a rival's engineers: knocks the rival's
 // momentum, lifts your own staff's morale (you fight for talent), and earns a little rep.
@@ -4100,7 +4228,7 @@ function reconcileResearch(){
 // Time Granularity slice 2: the player's time control. Advance N days, then render + surface any
 // pending R&D setback (the one decision the monthly tick can raise). Overhead accrues per day, so
 // short steps cost proportionally — there is no free time.
-function stepTime(days){ advanceDays(days); if(!state.over){ render(); maybeShowSetback(); maybeShowMishap(); } }
+function stepTime(days){ advanceDays(days); if(!state.over){ render(); maybeShowSetback(); maybeShowMishap(); maybeShowRivalDisaster(); } }
 function advanceMonth(){ stepTime(DAYS_PER_MONTH); } // #26: one-month step (used by the advisor nudge)
 // Header time arrows: ▸ day / ▸▸ week / ▸▸▸ month. First click on an arrow steps once; a second
 // click on the same arrow starts auto-advancing that unit at 1 step/sec; a third click (or clicking
@@ -4121,7 +4249,7 @@ function runToNextEvent(){
   const target=items.length?Math.max(1,Math.ceil(items[0].etaDays)):30;
   const cap=Math.min(target, 365*3);
   let d=0;
-  while(d<cap && !_timeInterrupted && !state.over && !_pendingSetback && !_pendingLogiMishap && !_pendingInquiry){
+  while(d<cap && !_timeInterrupted && !state.over && !_pendingSetback && !_pendingLogiMishap && !_pendingInquiry && !_pendingRivalDisaster){
     advance(1); d++;
     if($('modal') && !$('modal').classList.contains('hidden')) break; // a decision opened
   }
@@ -4144,8 +4272,8 @@ function clickTimeArrow(unit){
 function updateTimeArrows(){ for(const u in TIME_UNIT_DAYS){ const b=$('tArrow'+u[0].toUpperCase()+u.slice(1)); if(b) b.classList.toggle('running', timeAuto.unit===u); } }
 function skipResearch(){ if(!state.activeResearch) return;
   let n=state.activeResearch.monthsLeft+1; // each month removes ≥1; +1 guarantees completion absent a setback
-  while(n-->0 && state.activeResearch && !_pendingSetback && !_pendingLogiMishap && !_pendingInquiry && !state.over) advance(1); // #26: stop the skip at a setback (or 2.3 mishap) decision
-  if(!state.over){ render(); maybeShowSetback(); maybeShowMishap(); }
+  while(n-->0 && state.activeResearch && !_pendingSetback && !_pendingLogiMishap && !_pendingInquiry && !_pendingRivalDisaster && !state.over) advance(1); // #26: stop the skip at a setback (or 2.3 mishap) decision
+  if(!state.over){ render(); maybeShowSetback(); maybeShowMishap(); maybeShowRivalDisaster(); }
 }
 
 /* ---------- M3b: launch windows ---------- */
@@ -5333,7 +5461,7 @@ function tankerDelivery(){
   return state.transfer.prop;
 }
 function launch(prebuilt){
-  if(_pendingLaunch||_pendingLive||_pendingSetback) return; // a decision modal owns the flow — no re-entry
+  if(_pendingLaunch||_pendingLive||_pendingSetback||_pendingRivalDisaster) return; // a decision modal owns the flow — no re-entry
   if(vehPopoutOpen) closeVehPopout(); // launching from the pop-out returns to the normal flight flow
   const m=curMission();
   const v=computeVehicle();
@@ -5422,7 +5550,7 @@ function beginResolve(ctx){
 // a time. Guards prevent reentrancy (a strand/loss calls advance() → advanceDays → here) and modal stacking.
 function pumpFlightArrivals(){
   if(_flightResolving) return;
-  if(_pendingLive||_pendingReserve||_pendingOps||_pendingRescue||_pendingSetback||_pendingLogiMishap||_pendingInquiry||_pendingLaunch) return;
+  if(_pendingLive||_pendingReserve||_pendingOps||_pendingRescue||_pendingSetback||_pendingLogiMishap||_pendingInquiry||_pendingLaunch||_pendingRivalDisaster) return;
   try{ if($('modal') && !$('modal').classList.contains('hidden')) return; }catch(e){} // a modal is on screen — wait
   const rec=(state.activeFlights||[]).find(f=>f&&f.deferred&&absDay()>=f.arriveAbs);
   if(!rec) return;
