@@ -1094,6 +1094,25 @@ Decisions (user): add real save files (export/import) + autosave.
   **Validation.** `node --check` OK. Baseline parity 48/48 byte-identical (LEO/Moon/Mars × modules × greenhouse
   × fission) vs. reconstructed old formula. Monotonic vs. fuel price and cryo research confirmed. Mission-sim
   regression clean. Lifecycle (charge==display, money-gate, prorate, Pioneer no-op) 11/11.
+- **2.3 ✅ (2026-07-05)** — Route interruptions. New weighted `logi_mishap` entry in the existing `ECONOMY_EVENTS`
+  pool (same `EVENT_CHANCE=0.14`/5-mo-cooldown machinery already used for fuel shocks), gated via a new
+  `logiFlightsInTransit()` helper so it can only roll while a logistics flight is genuinely mid-cruise (mirrors
+  the existing `reqDepot` gating idiom). On fire: picks one random in-transit shipment, computes a 20-45 day
+  slip (`LOGI_MISHAP_DELAY_MIN/MAX`), and surfaces a decision modal reusing the existing research-setback
+  pattern (`_pendingLogiMishap`, transient/unpersisted like `_pendingSetback` — no SAVE_VERSION bump): **expedite**
+  (pay to fully hold the original `arriveAbs`) or **accept** (free, full delay applied). Expedite cost =
+  `max(0.4, resupplyCostFull(facId) × 0.6 × delay/30)` — scaled off the shipment's own market-aware cost
+  (already includes 2.2's fuel/boil-off terms) by delay fraction, not a flat number; unaffordable → accept-only.
+  Delay is applied directly to the existing `activeFlights` record's `arriveAbs`, so the 📦 telemetry panel and
+  Outliner row both reflect the new ETA automatically (both already compute ETA live from `arriveAbs`, verified,
+  no separate field needed). Per-flight targeting confirmed even (33/33/33 split across 3 simultaneous test
+  flights, arrived flights never targeted).
+  **Validation.** `node --check` OK. Monte Carlo 200k rolls: fire rate 0.1253 vs expected 0.1250. **Critical
+  parity guard: zero mishap fires across 300k+ rolls / 40k simulated months with no logistics flight in
+  transit** (including a present-but-already-arrived flight) — airtight. Lifecycle: delayed record still tops
+  up supply correctly at its new `arriveAbs`; survives save/load round-trip with the delay intact. Modal
+  accept/expedite/unaffordable paths all verified. 21/21 assertions. Modal wording/readability needs a manual
+  browser pass. Next: **2.4** — per-facility auto-reorder toggle (new persisted state → SAVE_VERSION bump).
 
 ## Session — Isometric command-center layout redistribution (2026-07-04)
 

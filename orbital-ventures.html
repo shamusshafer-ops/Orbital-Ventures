@@ -1038,6 +1038,8 @@ const ECONOMY_EVENTS=[
   {id:'fuel_shortage', kind:'bad',  weight:2, minYear:1965, reqDepot:true, label:'Propellant shortage', fuelShock:1.45, blurb:'A supply crunch spikes orbital propellant prices.'},
   {id:'fuel_glut',     kind:'good', weight:2, minYear:1965, reqDepot:true, label:'Propellant glut', fuelShock:0.7, blurb:'Oversupply drives propellant prices down — a buyer\'s market.'},
   {id:'fuel_buyer',    kind:'good', weight:2, minYear:1965, reqDepot:true, label:'Rival propellant buy order', buyer:true, blurb:'A rival needs fuel fast and is paying a premium at your depot.'},
+  // 2.3: route interruption — only eligible while a logistics shipment is actually in cruise (reqLogi gate)
+  {id:'logi_mishap',   kind:'bad',  weight:2, minYear:1965, reqLogi:true, label:'Resupply route interruption', logiMishap:true, blurb:'A cruise anomaly threatens to set a resupply shipment back.'},
 ];
 const EVENT_CHANCE=0.14;   // monthly probability of a new event (when off cooldown)
 const EVENT_MIN_GAP=5;     // months of quiet enforced after each event
@@ -2367,6 +2369,54 @@ function resolveSetback(choice){
   }
   _pendingSetback=null; hideModal();
   if(state.money<0) gameOver(); else render();
+  maybeShowMishap(); // if a logistics mishap also came due this tick, surface it now that the setback is cleared
+}
+/* ---------- 2.3: logistics route interruptions ----------
+   A negative economy event (logi_mishap in ECONOMY_EVENTS, reqLogi-gated so it can only roll while
+   a resupply shipment is actually in cruise) that threatens one randomly chosen in-transit shipment
+   with a 20–45 day slip. The player decides: expedite (pay to hold the original arrival) or accept
+   the delay for free. Mirrors _pendingSetback's transient pending-state + modal + resolve pattern;
+   the slip is applied to the record's existing (persisted) arriveAbs only on 'accept', so no new
+   persisted state and no SAVE_VERSION bump. */
+const LOGI_MISHAP_DELAY_MIN=20, LOGI_MISHAP_DELAY_MAX=45;   // days added to the shipment's arrival on 'accept'
+const LOGI_EXPEDITE_PER_MONTH=0.6;                          // expedite = fraction of a full month's resupply cost per 30 slip-days bought back
+let _pendingLogiMishap=null;                                // a resupply shipment awaiting an expedite/accept decision (transient, like _pendingSetback)
+// cost to hold the original schedule: scaled off the shipment's full (market-aware) resupply cost and the delay erased
+function logiExpediteCost(facId, delay){ return round2(Math.max(0.4, resupplyCostFull(facId)*LOGI_EXPEDITE_PER_MONTH*(delay/30))); }
+function triggerLogiMishap(inst){
+  const flights=logiFlightsInTransit(); if(!flights.length) return; // reqLogi gate should guarantee ≥1; defensive
+  const fl=flights[Math.floor(Math.random()*flights.length)];       // 2.3: exactly one shipment, picked at random
+  const delay=LOGI_MISHAP_DELAY_MIN+Math.floor(Math.random()*(LOGI_MISHAP_DELAY_MAX-LOGI_MISHAP_DELAY_MIN+1));
+  const def=facilityById(fl.facId);
+  _pendingLogiMishap={ fltId:fl.id, facId:fl.facId, facName:def?def.name:'a facility', facIcon:def?def.icon:'📦',
+    delay, expediteCost:logiExpediteCost(fl.facId, delay), blurb:inst.blurb };
+  log('bad',`⚠ LOGISTICS MISHAP — ${_pendingLogiMishap.facIcon} ${_pendingLogiMishap.facName} resupply: ${inst.blurb} A decision is needed.`);
+}
+function maybeShowMishap(){ if(_pendingLogiMishap && !_pendingSetback) showMishapModal(); } // setback modal takes priority if both are pending
+function showMishapModal(){
+  const s=_pendingLogiMishap; if(!s) return;
+  const payOk=state.money>=s.expediteCost;
+  showModal(`<h2 style="color:var(--bad)">⚠ Resupply route interruption</h2>
+    <p><b>${s.facIcon} ${s.facName}</b> — ${s.blurb}</p>
+    <p class="muted">Its resupply shipment will arrive +${s.delay} days late unless you expedite it.</p>
+    <button class="btn" onclick="resolveMishap('expedite')" ${payOk?'':'disabled'} title="${payOk?'':'Not enough capital'}">Expedite the shipment — ${fM(s.expediteCost)} <span class="dim">· holds its original arrival</span></button>
+    <button class="btn ghost" style="margin-top:8px" onclick="resolveMishap('accept')">Accept the delay — +${s.delay} d <span class="dim">· free</span></button>`);
+}
+function resolveMishap(choice){
+  const s=_pendingLogiMishap; if(!s) return;
+  const fl=(state.activeFlights||[]).find(f=>f&&f.id===s.fltId);
+  if(!fl){ _pendingLogiMishap=null; hideModal(); render(); return; } // shipment arrived/removed underneath us — nothing to delay
+  const def=facilityById(s.facId);
+  if(choice==='expedite'){
+    if(state.money<s.expediteCost) return; // guarded; the button is disabled when unaffordable
+    state.money-=s.expediteCost;
+    log('note',`${def?def.icon+' '+def.name:'Facility'} resupply expedited — the shipment holds its original arrival (−${fM(s.expediteCost)}).`);
+  } else { // accept the delay
+    fl.arriveAbs=(fl.arriveAbs||0)+s.delay;
+    log('bad',`${def?def.icon+' '+def.name:'Facility'} resupply delayed +${s.delay} d — arrival pushed back; the base draws down further before it lands.`);
+  }
+  _pendingLogiMishap=null; hideModal();
+  if(state.money<0) gameOver(); else render();
 }
 // Time Granularity epic — the simulation funnel iterates DAYS, not months. Each day runs the
 // CONTINUOUS flows in `tickContinuousDay()` (slice 2: overhead, payroll, Belt royalty; slice 3a:
@@ -2708,7 +2758,7 @@ function rollEconEvent(){
   // Economy tension: positive windfalls require a recently ACTIVE program (a flight in the
   // last 24 months or support above neutral). Nobody grants money to an agency going nowhere.
   const activeProgram = (absMonth()-(state.lastFlightAbs??-999))<=36 || !!state.activeResearch || publicSupport()>SUPPORT_BASE+3;
-  const elig=ECONOMY_EVENTS.filter(e=> state.year>=(e.minYear||0) && state.rep>=(e.minRep||0) && state.flights>=(e.reqFlights||0) && (!e.reqDepot || state.research.orbital_depot) && !(e.kind==='good' && e.money && !activeProgram));
+  const elig=ECONOMY_EVENTS.filter(e=> state.year>=(e.minYear||0) && state.rep>=(e.minRep||0) && state.flights>=(e.reqFlights||0) && (!e.reqDepot || state.research.orbital_depot) && (!e.reqLogi || logiFlightsInTransit().length>0) && !(e.kind==='good' && e.money && !activeProgram));
   if(!elig.length) return null;
   const tot=elig.reduce((a,e)=>a+e.weight,0);
   let r=Math.random()*tot, pick=elig[0];
@@ -2720,6 +2770,7 @@ function rollEconEvent(){
   if(pick.overheadAdd!=null) inst.overheadAdd=pick.overheadAdd;
   if(pick.fuelShock!=null) inst.fuelShock=pick.fuelShock;
   if(pick.buyer) inst.buyer=true;
+  if(pick.logiMishap) inst.logiMishap=true;
   return inst;
 }
 function applyEconEvent(inst){
@@ -2732,6 +2783,8 @@ function applyEconEvent(inst){
     const months=4+Math.floor(Math.random()*4);
     state.fuelBuyer={name:r.name, color:r.color, price:premium, monthsLeft:months, cap:round2(20+Math.random()*40)};
     log('ok', `Market — ${r.name} is buying propellant at ${fM(premium)}/t for ${months} mo (up to ${state.fuelBuyer.cap} t). ${inst.blurb}`);
+  } else if(inst.logiMishap){ // 2.3: raise a route-interruption decision (applied/logged in triggerLogiMishap; modal shown post-tick)
+    triggerLogiMishap(inst);
   } else if(inst.money!=null){
     state.money+=inst.money;
     log(inst.kind==='good'?'ok':'bad', `Market — ${inst.label}: ${inst.money>=0?'+':'−'}${fM(Math.abs(inst.money))}. ${inst.blurb}`);
@@ -2969,6 +3022,8 @@ function resupplyCostFull(id){ const def=facilityById(id), fs=facilityState(id);
 function resupplyCost(id){ const missing=Math.max(0, FAC_SUPPLY_MONTHS-facilitySupply(id)); return round2(resupplyCostFull(id)*(missing/FAC_SUPPLY_MONTHS)); } // pay for what you actually ship up
 // Slice 2.1: a resupply shipment already in cruise toward this facility (Mars only, in practice)
 function resupplyInTransit(id){ return (state.activeFlights||[]).find(f=>f&&f.kind==='logistics'&&f.facId===id)||null; }
+// 2.3: every resupply shipment still genuinely in cruise (not yet at its arrival) — the reqLogi gate + mishap target pool
+function logiFlightsInTransit(){ return (state.activeFlights||[]).filter(f=>f&&f.kind==='logistics'&&f.deferred&&absDay()<(f.arriveAbs||0)); }
 function canResupply(id){
   if(!facilityBuilt(id)) return {ok:false,why:'No facility.'};
   if(resupplyInTransit(id)) return {ok:false,why:'Resupply en route.'}; // 2.1: one shipment in flight at a time
@@ -3453,7 +3508,7 @@ function buildEngineStock(engId, count, tested){
   const proven=engineStockTestedCount(engId);
   log('ok', `Engine yard — manufacturing ${count}× ${engineIcon(engId)} ${ENGINES[engId].name}${tested?' (bench-tested)':''} (${fM(chk.cost)}, ${chk.days} d). Stock now ${engineStockCount(engId)}${proven>0?` · ${proven} proven`:''}.`);
   advanceDays(chk.days); // the engines take calendar time to build (do it during downtime)
-  if(!state.over){ render(); maybeShowSetback(); }
+  if(!state.over){ render(); maybeShowSetback(); maybeShowMishap(); }
 }
 // reliability bump from bench-tested engines + structural components fitted to the current build (heritage you banked)
 function benchRelBonus(m){
@@ -3545,7 +3600,7 @@ function buildPartStock(key, count, tested){
   const proven=partStockTestedCount(key);
   log('ok', `Structures yard — fabricating ${count}× ${partCompIcon(key)} ${partCompName(key)}${tested?' (bench-tested)':''} (${fM(chk.cost)}, ${chk.days} d). Stock now ${partStockCount(key)}${proven>0?` · ${proven} proven`:''}.`);
   advanceDays(chk.days); // structural components take calendar time to fabricate (do it during downtime)
-  if(!state.over){ render(); maybeShowSetback(); }
+  if(!state.over){ render(); maybeShowSetback(); maybeShowMishap(); }
 }
 // Forecast: months of coverage at the recent build cadence.
 function materialMonthsCoverage(key){
@@ -3926,7 +3981,7 @@ function reconcileResearch(){
 // Time Granularity slice 2: the player's time control. Advance N days, then render + surface any
 // pending R&D setback (the one decision the monthly tick can raise). Overhead accrues per day, so
 // short steps cost proportionally — there is no free time.
-function stepTime(days){ advanceDays(days); if(!state.over){ render(); maybeShowSetback(); } }
+function stepTime(days){ advanceDays(days); if(!state.over){ render(); maybeShowSetback(); maybeShowMishap(); } }
 function advanceMonth(){ stepTime(DAYS_PER_MONTH); } // #26: one-month step (used by the advisor nudge)
 // Header time arrows: ▸ day / ▸▸ week / ▸▸▸ month. First click on an arrow steps once; a second
 // click on the same arrow starts auto-advancing that unit at 1 step/sec; a third click (or clicking
@@ -3947,7 +4002,7 @@ function runToNextEvent(){
   const target=items.length?Math.max(1,Math.ceil(items[0].etaDays)):30;
   const cap=Math.min(target, 365*3);
   let d=0;
-  while(d<cap && !_timeInterrupted && !state.over && !_pendingSetback){
+  while(d<cap && !_timeInterrupted && !state.over && !_pendingSetback && !_pendingLogiMishap){
     advance(1); d++;
     if($('modal') && !$('modal').classList.contains('hidden')) break; // a decision opened
   }
@@ -3970,8 +4025,8 @@ function clickTimeArrow(unit){
 function updateTimeArrows(){ for(const u in TIME_UNIT_DAYS){ const b=$('tArrow'+u[0].toUpperCase()+u.slice(1)); if(b) b.classList.toggle('running', timeAuto.unit===u); } }
 function skipResearch(){ if(!state.activeResearch) return;
   let n=state.activeResearch.monthsLeft+1; // each month removes ≥1; +1 guarantees completion absent a setback
-  while(n-->0 && state.activeResearch && !_pendingSetback && !state.over) advance(1); // #26: stop the skip at a setback decision
-  if(!state.over){ render(); maybeShowSetback(); }
+  while(n-->0 && state.activeResearch && !_pendingSetback && !_pendingLogiMishap && !state.over) advance(1); // #26: stop the skip at a setback (or 2.3 mishap) decision
+  if(!state.over){ render(); maybeShowSetback(); maybeShowMishap(); }
 }
 
 /* ---------- M3b: launch windows ---------- */
@@ -5239,7 +5294,7 @@ function beginResolve(ctx){
 // a time. Guards prevent reentrancy (a strand/loss calls advance() → advanceDays → here) and modal stacking.
 function pumpFlightArrivals(){
   if(_flightResolving) return;
-  if(_pendingLive||_pendingReserve||_pendingOps||_pendingRescue||_pendingSetback||_pendingLaunch) return;
+  if(_pendingLive||_pendingReserve||_pendingOps||_pendingRescue||_pendingSetback||_pendingLogiMishap||_pendingLaunch) return;
   try{ if($('modal') && !$('modal').classList.contains('hidden')) return; }catch(e){} // a modal is on screen — wait
   const rec=(state.activeFlights||[]).find(f=>f&&f.deferred&&absDay()>=f.arriveAbs);
   if(!rec) return;
