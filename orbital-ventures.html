@@ -7852,6 +7852,13 @@ function buildVehicleShape(spec){
   }
   return {segs, nose, totalH, maxW, boosters};
 }
+// Shared physical render scale: px per shape-unit of vehicle height. Literally equal to
+// drawIsoPad's PAD_ROCKET_K (0.40) — the Cape pad is the reference/source of truth for vehicle
+// sizing. The ascent scene multiplies shape.totalH (same unit buildVehicleShape produces for both
+// scenes, so no conversion factor is needed) by this so a vehicle renders at the same physical
+// size it does on the pad, instead of an independent fit-to-frame heuristic. Kept as its own
+// named constant (not a reference into drawIsoPad) so the pad's reference code stays untouched.
+const VEH_BASE_PX_PER_UNIT = 0.40;
 // #graphics: a recovered first stage flies itself back — settle from the sep kick to
 // engine-down, deploy grid fins, light a landing burn, drop legs — instead of tumbling
 // away as spent debris. Makes the M5 reuse mechanic (recoveryActive) visible.
@@ -8616,7 +8623,10 @@ function drawAscent(t,canFail){
   A.shakeX = (Math.random()-0.5)*shakeAmt;
   A.shakeY = (Math.random()-0.5)*shakeAmt;
   if(!A.shape) A.shape=buildVehicleShape(s);
-  const shape=A.shape, drawnPx=clampA(25+shape.totalH*0.95,50,190), scale=drawnPx/shape.totalH;
+  // Match the Cape pad's physical scale (VEH_BASE_PX_PER_UNIT === pad's PAD_ROCKET_K) instead of the
+  // old independent fit-to-frame heuristic, then keep the existing 50..190px heavy-vehicle safety clamp
+  // as an outer bound so oversized rockets still can't overflow the ascent frame.
+  const shape=A.shape, drawnPx=clampA(shape.totalH*VEH_BASE_PX_PER_UNIT,50,190), scale=drawnPx/shape.totalH;
   const baseY=(H-28)-altFrac*(H-66);
   const finalPitch=(orb?1.12:0.55)+R.pitchJitter;
   const pp=clampA((p-0.06)/0.94,0,1), pitch=Math.pow(pp,1.8)*finalPitch;

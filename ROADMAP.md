@@ -1167,3 +1167,17 @@ Idempotency (`openCCPopout`/`closeCCPopout` both early-return if already in the 
 exactly once at handoff, headless path untouched). First slice of a broader ask: also unify the vehicle's
 rendered size across the Cape pad, ascent, and orbit/trajectory scenes (next), and add wheel-zoom to the
 ascent/trajectory/orbit scenes, which currently have none.
+
+**Vehicle-size unification, slice 1 — ascent scene (2026-07-05).** New shared constant `VEH_BASE_PX_PER_UNIT =
+0.40` (module scope, right after `buildVehicleShape`) — literally equal to the pad's existing `PAD_ROCKET_K`.
+Ascent scene's vehicle-size formula changed from an independent `25+totalH*0.95` fit-to-frame heuristic to
+`clampA(shape.totalH*VEH_BASE_PX_PER_UNIT, 50, 190)`. No conversion factor was needed: pad and ascent both
+already read the same `shape.totalH` from `buildVehicleShape()`. The `50/190` safety clamp is unchanged (50 =
+readability floor for tiny early rockets, 190 = anti-overflow cap for heavy multi-stage vehicles) per user
+decision to keep per-scene clamps rather than rework camera framing. `drawIsoPad`'s own sizing code is
+byte-identical/untouched — it remains the reference. Headless: `node --check` OK; numeric check — a mid-size
+vehicle renders at the exact same pixel height on both pad and ascent (86.88px, 0 diff, unclamped regime); a
+heavy 4-stage vehicle correctly clamps to the ascent's 190px max rather than matching the pad's larger
+gantry-clamped size. Next: **slice 2** — orbit/trajectory `craftSprite` (currently a fixed ~26px silhouette),
+scale up toward the shared base with its own cap (per user decision), then wheel-zoom for ascent/trajectory/
+orbit (new scope, approved).
