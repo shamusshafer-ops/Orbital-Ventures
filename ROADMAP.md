@@ -255,7 +255,7 @@ backfills prerequisites on load.
 - **Research Divisions** — 5 teams covering all 14 tracks; `divisionSpeedBonus` per-track accelerator; `state.divisions`. SAVE_VERSION→8. Shipped.
 - **Breakthrough Events** — division-quality-driven, shaves 1–2 months; `state.breakthroughCooldown`. SAVE_VERSION→9. Shipped.
 
-### Cross-Track Synergies (planned, not yet built)
+### Cross-Track Synergies — ✅ shipped as P6/P8 slice (2026-07-05, commit `9e290f9`); see the P7-P10 session log below for the actual implementation (mapped onto real research ids, not the T-numbers below, which were stale placeholders)
 
 A `SYNERGIES` config array: each entry has `requires:[nodeId,…]` spanning ≥2 tracks. `synergyActive(s)` = all reqs researched. Effects fold into the same accumulators as per-node effects (so existing caps still bound everything). No new state — derived from the researched set. **4 seed synergies:** Lightweight Cryotanks (T2+T1), Autonomous Landing (T11+T3), Radiation Hardening (T4+T9+T2), Rapid Refurbishment (T5+T11). Surface a Synergies strip in R&D tab + tooltip note. **No SAVE_VERSION bump.**
 
@@ -277,7 +277,7 @@ A `SYNERGIES` config array: each entry has `requires:[nodeId,…]` spanning ≥2
 - ✅ **Radiation — equipment + personnel + career dose** *(2026-06-21)* — `RAD_ENV` per destination (LEO 1→Jupiter 9); `radEquipMult` × avionics fragility (bought down by `rad_shielding`+`redundant_avionics`); `radCrewMult` × life-support fragility; career dose per astronaut with force-retirement at `RAD_CAREER_LIMIT`. ☢ dose bar + bench flag. Validated (26).
 - ✅ **Power — Phase 1 + Phase 2** *(2026-06-21)* — `powerDemand(m)` (comms + ECLSS + electric drive). `state.powerSource` (Solar/RTG/Fission; SAVE_VERSION→10); `powerSystemMass` added to `lvPayload`. Solar blocked below 20% sunlight at outer system. NEP self-powers. Power bench card. Validated (27).
 - ✅ **Reactor → radiation link** *(2026-06-21)* — `powerRad(m)` (solar 0, RTG 0.15, reactor/NEP 0.4) feeds `radCrewMult` + career dose (mitigated by shielding). Validated (13).
-- 🔲 **Cross-Track Synergies** *(from the 2026-06-26 review, Rec #5 — not yet built)* — add the `SYNERGIES` config + `synergyActive()`, fold effects into existing accumulators (caps still bound everything), ship 4 seed synergies. Surface Synergies strip in R&D tab + tooltip. No SAVE_VERSION bump. *Validation to author: each synergy activates only when all cross-track reqs met; effects fold into correct accumulators; caps still clamp with everything researched; no double-count.*
+- ✅ **Cross-Track Synergies** *(from the 2026-06-26 review, Rec #5)* — shipped 2026-07-05 as part of P8; see the P7-P10 session log for the real implementation.
 
 *(Research partnerships shipped as #6 item above; TRL remains deferred — overlaps heritage.)*
 
