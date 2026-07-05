@@ -766,6 +766,19 @@ function currentEra(){
   return cur;
 }
 function eraIndex(e){ return ERAS.indexOf(e); }
+// P6 6.1: pure era-index-from-year (currentEra reads global state.year; this takes an explicit
+// year so it can run at load/migration time before `state` is assigned). Same "last era whose
+// start has been reached" rule — ERAS.from is strictly increasing, so break-on-first-greater holds.
+function eraIndexForYear(year){ let idx=0; for(let i=0;i<ERAS.length;i++){ if((year||1942)>=ERAS[i].from) idx=i; else break; } return idx; }
+// P6 6.1: baseline metrics for the era-retrospective diff — flights flown, firsts claimed by the
+// player (completed missions) vs. scooped by rivals, treasury, reputation. Read from global state.
+function eraSnapshot(){ return {
+  flights: state.flights||0,
+  playerFirsts: Object.keys(state.completed||{}).length,
+  rivalFirsts: Object.keys(state.scooped||{}).length,
+  money: state.money||0,
+  rep: state.rep||0
+}; }
 
 // M4b: Rival agencies/firms — each pursues its own "firsts" on a calendar
 // roughly anchored to ERAS, independent of player progress. Surfaced as
@@ -2046,7 +2059,9 @@ function newGame(difficulty){
     uiLayer:'advanced', // #23: progressive UI complexity (basic/advanced/expert), independent of difficulty
     loanInterest:0, // CE4(c): permanent monthly bridge-loan debt service
     inquiryCredit:null, // P3: unused funded-inquiry reliability credit {subsystem,rel,flights} or null
+    eraSeen:0, eraStartSnapshot:null, // P6 6.1: last era acknowledged via the interstitial + its start-of-era baseline (set just below)
   };
+  state.eraStartSnapshot=eraSnapshot(); // P6 6.1: Pioneer-era baseline (flights 0, no firsts, start money, rep 0)
   log('info','Company founded. The pad is yours — go make some noise.');
   reconcileEngineMods(); // reset engine stats to base for a fresh company
 }
@@ -3653,7 +3668,7 @@ function buildEngineStock(engId, count, tested){
   const proven=engineStockTestedCount(engId);
   log('ok', `Engine yard — manufacturing ${count}× ${engineIcon(engId)} ${ENGINES[engId].name}${tested?' (bench-tested)':''} (${fM(chk.cost)}, ${chk.days} d). Stock now ${engineStockCount(engId)}${proven>0?` · ${proven} proven`:''}.`);
   advanceDays(chk.days); // the engines take calendar time to build (do it during downtime)
-  if(!state.over){ render(); maybeShowSetback(); maybeShowMishap(); maybeShowRivalDisaster(); }
+  if(!state.over){ render(); maybeShowSetback(); maybeShowMishap(); maybeShowRivalDisaster(); maybeShowEraInterstitial(); }
 }
 // reliability bump from bench-tested engines + structural components fitted to the current build (heritage you banked)
 function benchRelBonus(m){
@@ -3745,7 +3760,7 @@ function buildPartStock(key, count, tested){
   const proven=partStockTestedCount(key);
   log('ok', `Structures yard — fabricating ${count}× ${partCompIcon(key)} ${partCompName(key)}${tested?' (bench-tested)':''} (${fM(chk.cost)}, ${chk.days} d). Stock now ${partStockCount(key)}${proven>0?` · ${proven} proven`:''}.`);
   advanceDays(chk.days); // structural components take calendar time to fabricate (do it during downtime)
-  if(!state.over){ render(); maybeShowSetback(); maybeShowMishap(); maybeShowRivalDisaster(); }
+  if(!state.over){ render(); maybeShowSetback(); maybeShowMishap(); maybeShowRivalDisaster(); maybeShowEraInterstitial(); }
 }
 // Forecast: months of coverage at the recent build cadence.
 function materialMonthsCoverage(key){
@@ -4126,6 +4141,60 @@ function declineRivalRescue(){
   log('note', `You stood down from ${r?r.name+"'s":'the'} crew emergency — commentators call it cold (−${RIVAL_DECLINE_REP} rep).`);
   render(); if(!state.over) pumpFlightArrivals();
 }
+/* ---------- P6 6.1: era-transition interstitial ----------
+   A full-screen retrospective/preview card when the calendar carries the company into a new era.
+   No persisted transient (the trigger is derived: currentEra index > state.eraSeen), so it can
+   never be "lost" — if a higher-priority decision (setback > mishap > inquiry > rival-disaster)
+   is pending, maybeShowEraInterstitial() defers and a later settle-point surfaces it. Balance-neutral:
+   purely a notification; state.eraSeen only advances when the player clicks Continue. */
+function maybeShowEraInterstitial(){
+  if(_pendingSetback||_pendingLogiMishap||_pendingInquiry||_pendingRivalDisaster) return; // lowest priority — any pending decision wins this tick
+  if(state.over) return;
+  const cur=eraIndex(currentEra());
+  const seen=(state.eraSeen==null?0:state.eraSeen);
+  if(cur<=seen) return;            // nothing new to acknowledge
+  showEraInterstitial(seen+1);     // one boundary at a time (chained on dismiss if several were crossed at once)
+}
+function eraDelta(v, kind){
+  const s=v>=0?'+':'−', a=Math.abs(v);
+  if(kind==='money') return `${s}$${a.toFixed(2)}M`;
+  if(kind==='rep') return `${s}${Math.round(a)}`;
+  return `${s}${a}`;
+}
+function showEraInterstitial(toIdx){
+  const to=ERAS[toIdx], from=ERAS[toIdx-1];
+  const snap=state.eraStartSnapshot||eraSnapshot();
+  const dF=(state.flights||0)-(snap.flights||0);
+  const dPF=Object.keys(state.completed||{}).length-(snap.playerFirsts||0);
+  const dRF=Object.keys(state.scooped||{}).length-(snap.rivalFirsts||0);
+  const dMoney=round2((state.money||0)-(snap.money||0));
+  const dRep=(state.rep||0)-(snap.rep||0);
+  const yr=(e)=>`${e.from}–${e.to>=9999?'…':e.to}`;
+  const retro=`
+    <div style="display:flex;flex-direction:column;gap:4px;font-size:13px">
+      <div><span style="color:var(--muted)">Flights flown</span> · <b>${dF}</b></div>
+      <div><span style="color:var(--muted)">Firsts claimed</span> · <b>${dPF}</b>${dRF>0?` <span class="dim">(rivals scooped ${dRF})</span>`:''}</div>
+      <div><span style="color:var(--muted)">Treasury</span> · <b>${eraDelta(dMoney,'money')}</b></div>
+      <div><span style="color:var(--muted)">Reputation</span> · <b>${eraDelta(dRep,'rep')}</b></div>
+    </div>`;
+  showModal(`<div style="text-align:center">
+    <div class="dim" style="font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.15em;margin-bottom:4px">A new era · ${to.from}</div>
+    <h2 style="margin:0 0 2px;font-size:26px">${to.name}</h2>
+    <p class="muted" style="font-size:12px;margin:0 0 14px">${yr(to)}</p>
+    <p style="font-size:14px;line-height:1.5;margin:0 0 16px">${to.blurb}</p>
+    <div style="text-align:left;background:var(--panel2);border-radius:8px;padding:12px 14px;margin-bottom:16px">
+      <div class="cc-panel-h" style="margin:0 0 8px">◈ The ${from.name} era, in review</div>
+      ${retro}
+    </div>
+    <button class="btn launch" style="width:100%" onclick="dismissEraInterstitial(${toIdx})">Continue ▸</button>
+  </div>`, true);
+}
+function dismissEraInterstitial(toIdx){
+  state.eraSeen=toIdx;                     // acknowledged
+  state.eraStartSnapshot=eraSnapshot();    // baseline for the era just entered → scopes the NEXT retrospective
+  hideModal(); render();
+  maybeShowEraInterstitial();              // chain: surface the next boundary if the clock jumped several eras at once
+}
 // CE1(b) · Counter-poach — spend capital to hire away a rival's engineers: knocks the rival's
 // momentum, lifts your own staff's morale (you fight for talent), and earns a little rep.
 // Logic lives here; the trigger button arrives with the slice (c) Standings panel.
@@ -4228,7 +4297,7 @@ function reconcileResearch(){
 // Time Granularity slice 2: the player's time control. Advance N days, then render + surface any
 // pending R&D setback (the one decision the monthly tick can raise). Overhead accrues per day, so
 // short steps cost proportionally — there is no free time.
-function stepTime(days){ advanceDays(days); if(!state.over){ render(); maybeShowSetback(); maybeShowMishap(); maybeShowRivalDisaster(); } }
+function stepTime(days){ advanceDays(days); if(!state.over){ render(); maybeShowSetback(); maybeShowMishap(); maybeShowRivalDisaster(); maybeShowEraInterstitial(); } }
 function advanceMonth(){ stepTime(DAYS_PER_MONTH); } // #26: one-month step (used by the advisor nudge)
 // Header time arrows: ▸ day / ▸▸ week / ▸▸▸ month. First click on an arrow steps once; a second
 // click on the same arrow starts auto-advancing that unit at 1 step/sec; a third click (or clicking
@@ -4273,7 +4342,7 @@ function updateTimeArrows(){ for(const u in TIME_UNIT_DAYS){ const b=$('tArrow'+
 function skipResearch(){ if(!state.activeResearch) return;
   let n=state.activeResearch.monthsLeft+1; // each month removes ≥1; +1 guarantees completion absent a setback
   while(n-->0 && state.activeResearch && !_pendingSetback && !_pendingLogiMishap && !_pendingInquiry && !_pendingRivalDisaster && !state.over) advance(1); // #26: stop the skip at a setback (or 2.3 mishap) decision
-  if(!state.over){ render(); maybeShowSetback(); maybeShowMishap(); maybeShowRivalDisaster(); }
+  if(!state.over){ render(); maybeShowSetback(); maybeShowMishap(); maybeShowRivalDisaster(); maybeShowEraInterstitial(); }
 }
 
 /* ---------- M3b: launch windows ---------- */
@@ -6566,7 +6635,7 @@ function hideModal(){activeModal=null;_prodModalOpen=false;$('modal').classList.
 
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=43; // v43: P3 failure investigation loop — state.inquiryCredit ({subsystem,rel,flights} or null): a funded uncrewed-loss inquiry into an ascent/staging subsystem grants a +2% additive-R credit (like familyRelBonus) gated to that subsystem, consumed over 3 flights at launch; a deep-phase failure grants a flat +10⚛ science instead (no persisted credit). Transient _pendingInquiry (fund/decline modal, precedence setback>mishap>inquiry) is NOT persisted. Lazy migration: pre-v43 saves lack inquiryCredit — loadDefaults() seeds it null on both load paths (undefined is already falsy, so behavior is unchanged either way). v42: P2 slice 2.4 — per-facility auto-resupply toggle (fs.autoResupply boolean; opt-in per facility). On the monthly tick a facility with the toggle ON auto-fires resupplyFacility() once supply falls to/below AUTO_RESUPPLY_THRESHOLD(6) and canResupply().ok — same cost/gate/lifecycle as a manual order (the resupplyInTransit + money gates prevent double-ordering and unaffordable fires). Pure automation, balance-neutral otherwise; each auto-order logs a 'note' line. Lazy migration: pre-v42 facilities carry no autoResupply — migrateFacilityAutoResupply() defaults it false on load (undefined is already falsy, so behavior is unchanged either way); foundFacility seeds autoResupply:false on fresh bases. v41: P1 persistent in-flight missions — state.activeFlights[] (deferred interplanetary flights carry a resolved-at-launch ctx applied on arrival; ctx stores famId + crewId, not object refs, so a mid-cruise save round-trips; legacy saves default [] via loadDefaults; rehydrateFlights() re-links ctx.m + restores _flightSeq on load). v40: #19 slice B — career progression (staff.xp accrues monthly ×morale ×dept-training, raising effSkill above hire-day base up to +0.15; dept.training level bought with capital; legacy staff default xp 0 via staffXp guard, effSkill==base at xp 0 so no balance migration). #19 slice C (succession + workforce planning) adds no persisted state — reconcileDeptLeads mutates existing dept.lead, gaps + the era-scaled unstaffed-department reliability penalty (0 in Pioneer) are derived — so it needs no bump. v39: #19 slice A — organizational departments (state.departments {deptId:{lead,training}}; legacy saves default via loadDefaults/defaultDepartments; membership is derived from hired staff, leads are balance-neutral when unset); v38: #6 research partnerships — bench-tested / flight-proven components (state.engineStockTested + state.partStockTested, the bench-tested subset of each yard; legacy saves default {}); a fitted bench-tested component adds +1.5% reliability (cap +6%, benchRelBonus), built at +60% cost / +50% time; v36: #7 sub-assemblies slice 2 — structures & habitats yard (state.partStock {"kind:sub":count}, e.g. "tank:steel"/"hab:closed"; legacy saves default {}); same cost-neutral cadence pattern as the Engine Yard; v35: #7 sub-assemblies — Engine Yard (state.engineStock {engId:count}; legacy saves default {}); v34: Time Granularity slice 4b — launch windows day-scheduled (window/committedWindow .abs moved from absMonth to absDay; migrateWindowsToDays ×30 on pre-v34 load + clears the regenerable windows cache); v33: Time Granularity slice 1 — day-iterating advance() funnel (state.day 0..29 + absDay(); legacy saves default day:0 via load defaults; whole-month advances stay bit-identical so no balance migration needed); v32: CE4(c) era-scaled failure stakes + bailout retune (state.loanInterest — permanent bridge-loan debt service; legacy saves default to 0 via load defaults + loanInterest() guard); v31: CE4(b) standing resupply obligations (per-facility supply/starvedMonths; legacy facilities default to fully provisioned via facilitySupply()); v30: CE3(c) lunar architecture fork (state.lunarArch, null=uncommitted; luna_landing reqResearch moved to per-arch gates); v29: CE3(a) company doctrine (state.doctrine, null=undeclared/neutral); v28: CE2(c) juggernaut capstone (state.standingProd/juggernautReached); v27: CE2(b) launch cadence (state.padMonthAbs/padMonthUsed) — load defaults seed all of these; v26: CE1 rival agents (state.rivalState), seedRivalState migrates old rivalFired
+const SAVE_VERSION=44; // v44: P6 6.1 era-transition interstitial — state.eraSeen (index of the last era acknowledged via the full-screen card) + state.eraStartSnapshot ({flights,playerFirsts,rivalFirsts,money,rep} baseline captured when that era began, diffed for the retrospective). Both persisted. Trigger is DERIVED (eraIndex(currentEra())>state.eraSeen), gated behind the setback>mishap>inquiry>rival-disaster _pending chain (era is lowest priority; deferred to a later settle-point if any decision is pending, never lost since the condition is stateful). eraSeen advances only on Continue; balance-neutral (pure notification). Lazy migration: pre-v44 saves lack both — migrateEraSeen() backfills eraSeen to the save's CURRENT era index (from its own year, NOT 0, so a late-game load fires ZERO stale interstitials) and seeds eraStartSnapshot from current metrics; newGame seeds eraSeen:0 + a Pioneer baseline. v43: P3 failure investigation loop — state.inquiryCredit ({subsystem,rel,flights} or null): a funded uncrewed-loss inquiry into an ascent/staging subsystem grants a +2% additive-R credit (like familyRelBonus) gated to that subsystem, consumed over 3 flights at launch; a deep-phase failure grants a flat +10⚛ science instead (no persisted credit). Transient _pendingInquiry (fund/decline modal, precedence setback>mishap>inquiry) is NOT persisted. Lazy migration: pre-v43 saves lack inquiryCredit — loadDefaults() seeds it null on both load paths (undefined is already falsy, so behavior is unchanged either way). v42: P2 slice 2.4 — per-facility auto-resupply toggle (fs.autoResupply boolean; opt-in per facility). On the monthly tick a facility with the toggle ON auto-fires resupplyFacility() once supply falls to/below AUTO_RESUPPLY_THRESHOLD(6) and canResupply().ok — same cost/gate/lifecycle as a manual order (the resupplyInTransit + money gates prevent double-ordering and unaffordable fires). Pure automation, balance-neutral otherwise; each auto-order logs a 'note' line. Lazy migration: pre-v42 facilities carry no autoResupply — migrateFacilityAutoResupply() defaults it false on load (undefined is already falsy, so behavior is unchanged either way); foundFacility seeds autoResupply:false on fresh bases. v41: P1 persistent in-flight missions — state.activeFlights[] (deferred interplanetary flights carry a resolved-at-launch ctx applied on arrival; ctx stores famId + crewId, not object refs, so a mid-cruise save round-trips; legacy saves default [] via loadDefaults; rehydrateFlights() re-links ctx.m + restores _flightSeq on load). v40: #19 slice B — career progression (staff.xp accrues monthly ×morale ×dept-training, raising effSkill above hire-day base up to +0.15; dept.training level bought with capital; legacy staff default xp 0 via staffXp guard, effSkill==base at xp 0 so no balance migration). #19 slice C (succession + workforce planning) adds no persisted state — reconcileDeptLeads mutates existing dept.lead, gaps + the era-scaled unstaffed-department reliability penalty (0 in Pioneer) are derived — so it needs no bump. v39: #19 slice A — organizational departments (state.departments {deptId:{lead,training}}; legacy saves default via loadDefaults/defaultDepartments; membership is derived from hired staff, leads are balance-neutral when unset); v38: #6 research partnerships — bench-tested / flight-proven components (state.engineStockTested + state.partStockTested, the bench-tested subset of each yard; legacy saves default {}); a fitted bench-tested component adds +1.5% reliability (cap +6%, benchRelBonus), built at +60% cost / +50% time; v36: #7 sub-assemblies slice 2 — structures & habitats yard (state.partStock {"kind:sub":count}, e.g. "tank:steel"/"hab:closed"; legacy saves default {}); same cost-neutral cadence pattern as the Engine Yard; v35: #7 sub-assemblies — Engine Yard (state.engineStock {engId:count}; legacy saves default {}); v34: Time Granularity slice 4b — launch windows day-scheduled (window/committedWindow .abs moved from absMonth to absDay; migrateWindowsToDays ×30 on pre-v34 load + clears the regenerable windows cache); v33: Time Granularity slice 1 — day-iterating advance() funnel (state.day 0..29 + absDay(); legacy saves default day:0 via load defaults; whole-month advances stay bit-identical so no balance migration needed); v32: CE4(c) era-scaled failure stakes + bailout retune (state.loanInterest — permanent bridge-loan debt service; legacy saves default to 0 via load defaults + loanInterest() guard); v31: CE4(b) standing resupply obligations (per-facility supply/starvedMonths; legacy facilities default to fully provisioned via facilitySupply()); v30: CE3(c) lunar architecture fork (state.lunarArch, null=uncommitted; luna_landing reqResearch moved to per-arch gates); v29: CE3(a) company doctrine (state.doctrine, null=undeclared/neutral); v28: CE2(c) juggernaut capstone (state.standingProd/juggernautReached); v27: CE2(b) launch cadence (state.padMonthAbs/padMonthUsed) — load defaults seed all of these; v26: CE1 rival agents (state.rivalState), seedRivalState migrates old rivalFired
 function writeSave(){ localStorage.setItem(SAVE_KEY, JSON.stringify({v:SAVE_VERSION, ts:Date.now(), state:JSON.parse(JSON.stringify(state))})); }
 // S1: silent throttled autosave so "Continue last game" always resumes the most recent session.
 // Skips a transient mid-flight-resolution snapshot; forced on page close.
@@ -6622,6 +6691,20 @@ function migrateWindowsToDays(saved, ver){
 // pre-v42 facility carries no autoResupply — default it OFF (undefined is already falsy, this just
 // makes it an explicit boolean so the toggle/UI reads cleanly). Idempotent; no-op on newer saves.
 function migrateFacilityAutoResupply(saved){ const f=saved.facilities; if(!f) return; for(const id in f){ if(f[id] && f[id].autoResupply===undefined) f[id].autoResupply=false; } }
+// P6 6.1 (v44): era-transition interstitial. Pre-v44 saves lack eraSeen/eraStartSnapshot. CRITICAL:
+// backfill eraSeen to the save's CURRENT era index (from its own year), NOT 0 — otherwise loading a
+// late-game save fires a backlog of stale interstitials for eras already lived through. Seed the
+// snapshot from the save's current metrics as this era's baseline (historical values are unrecoverable).
+function migrateEraSeen(saved){
+  if(saved.eraSeen===undefined) saved.eraSeen=eraIndexForYear(saved.year);
+  if(saved.eraStartSnapshot===undefined) saved.eraStartSnapshot={
+    flights: saved.flights||0,
+    playerFirsts: Object.keys(saved.completed||{}).length,
+    rivalFirsts: Object.keys(saved.scooped||{}).length,
+    money: saved.money||0,
+    rep: saved.rep||0
+  };
+}
 // forward-compat load defaults: applied to any save missing newer fields (shared by loadGame + autoLoad)
 function loadDefaults(){ return {
       research:{}, unlocked:{a4:true}, completed:{}, stages:[{eng:'a4',count:1,prop:2.0}],
@@ -6682,6 +6765,7 @@ function loadSaveFromText(raw, srcLabel){
     if(!saved.year||!saved.company){ throw new Error('Not a valid Orbital Ventures save (missing company/year).'); }
     migrateWindowsToDays(saved, payload.v); // 4b: month→day window abs
     migrateFacilityAutoResupply(saved); // 2.4 (v42): default per-facility autoResupply OFF on pre-v42 saves
+    migrateEraSeen(saved); // P6 6.1 (v44): backfill eraSeen to the save's CURRENT era + seed era baseline snapshot
     const defaults=loadDefaults();
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -6780,6 +6864,7 @@ function autoLoad(){
     if(!saved.year||!saved.company) return false;
     migrateWindowsToDays(saved, payload.v); // 4b: month→day window abs
     migrateFacilityAutoResupply(saved); // 2.4 (v42): default per-facility autoResupply OFF on pre-v42 saves
+    migrateEraSeen(saved); // P6 6.1 (v44): backfill eraSeen to the save's CURRENT era + seed era baseline snapshot
     const defaults=loadDefaults();
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;

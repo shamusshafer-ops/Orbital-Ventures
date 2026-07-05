@@ -1182,6 +1182,28 @@ Decisions (user): add real save files (export/import) + autosave.
   no save-state leakage. Flavor tone and modal wording need a manual browser pass. **Closes P5.** Remaining
   quick wins: **P7-P10** (P6/P11 are the two remaining big swings).
 
+### Progress log — P6 (era texture pass)
+
+Scoped as 4 slices: 6.1 era-transition interstitial (most visible/self-contained, first), 6.2 per-era event
+pools, 6.3 passive-contract reskins, 6.4 era-sensitive public mood (reweight only, smallest, last).
+
+- **6.1 ✅ (2026-07-05)** — Era-transition interstitial. Trigger is derived (`eraIndex(currentEra()) >
+  state.eraSeen`), not a transient flag, so it can never be lost — checked at all four post-advance settle
+  points, deferred behind the full existing `_pendingSetback/_pendingLogiMishap/_pendingInquiry/
+  _pendingRivalDisaster` chain as lowest priority. On trigger: single click-through full-screen card showing
+  the new era's name/years/`blurb` plus a retrospective (flights flown, firsts claimed vs. rivals scooped,
+  treasury/rep change) diffed against `state.eraStartSnapshot`, taken at the start of the era just finished;
+  snapshot resets on dismiss. Multi-era jumps (e.g. a big time-skip) chain one card per boundary. New persisted
+  state (`state.eraSeen`, `state.eraStartSnapshot`) → **SAVE_VERSION 43→44**. **Critical migration behavior:**
+  loading an old save backfills `eraSeen` to that save's OWN current era (via `eraIndexForYear`), not to 0 —
+  so an old save resumes cleanly with zero stale interstitials for eras already played through.
+  **Validation.** `node --check` OK. 25/25 headless: one card per transition, no fire mid-era/after dismiss,
+  **old-save backfill confirmed zero stale cards** (year-2015 save → backfills to Commercial era index, not
+  Pioneer), modal-priority deferral under all four existing blockers, retrospective diff math (incl. negative
+  deltas), multi-era-jump chaining. Visual card layout/copy tone needs a manual browser pass. Next: **6.2** —
+  per-era event pools (`minEra`/`maxEra` gating on `ECONOMY_EVENTS`, old events retired as eras advance per
+  user decision).
+
 ## Session — Isometric command-center layout redistribution (2026-07-04)
 
 Player request (not part of the P-list initiative): the isometric Command/Cape view's buildings were unevenly
