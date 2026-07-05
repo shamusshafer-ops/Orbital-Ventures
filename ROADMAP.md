@@ -1251,6 +1251,28 @@ pools, 6.3 passive-contract reskins, 6.4 era-sensitive public mood (reweight onl
   2000/era-4 boundary; `mil_recon`'s `minEra:4` variant mirrors that boundary in the other direction. **This
   closes out 6.3.** Next: **6.4** — era-sensitive public mood (reweight `SUPPORT_DELTA` only, no new mechanic).
 
+- **6.4 ✅ (2026-07-05)** — Era-sensitive public mood. New `SUPPORT_ERA_MULT=[1,1,1,1,0.85,0.7,0.55,0.45]`
+  (indexed Pioneer..Speculative) and `supportDelta(key)` (`SUPPORT_DELTA[key]*supportEraMult()`) — same
+  "old era is the untouched reference, later eras change" idiom as 6.3's contract reskins and 6.2's
+  gov-funding retirement. **Eras 0-3 (Pioneer through Station & Shuttle) are exactly 1× — every
+  `SUPPORT_DELTA` outcome swing is byte-identical to today**, since the space race is still front-page news
+  through the Shuttle era; from Commercial era on, a single mission's outcome moves public opinion
+  progressively less (spaceflight normalizing), bottoming out at 0.45× in the Speculative era. Replaced
+  every `addSupport(SUPPORT_DELTA.x)` call site (7 of them, across mission outcomes + the rival-firsts-denial
+  path) with `addSupport(supportDelta('x'))`; sign is always preserved (multiplier is a plain positive
+  scalar). **Deliberate scope boundary:** left two things outside the `SUPPORT_DELTA` table untouched — the
+  non-routine "big win" success formula (`clampA(2+(m.rep||5)*0.05,2,10)`, a custom expression, not a table
+  lookup) and P5's `RIVAL_RESCUE_SUPPORT`/`RIVAL_DECLINE_SUPPORT` constants (a separate rival-rescue system
+  that only happens to reference `SUPPORT_DELTA.rivalFirst` once, at parse time, to derive its own value) —
+  both are outside the literal "reweight `SUPPORT_DELTA`" mandate for this slice; flag if revisiting. No new
+  persisted state, no SAVE_VERSION bump — era gating computed live from `state.year` exactly like 6.2/6.3.
+  Headless: `node --check` OK; standalone resolver harness (108 assertions) — every `SUPPORT_DELTA` key is
+  byte-identical to its raw value across the full eras-0-3 year range (1942-1999); every key scales to
+  exactly 0.85× at the 2000/era-4 boundary; monotonic non-increasing multiplier confirmed across eras 4-7;
+  sign preservation confirmed for every key at three sampled eras; no NaN/undefined arbitrarily far into the
+  Speculative era (year 9998). **This closes out P6 (era texture pass) — all four slices shipped.** Next:
+  quick wins **P7-P10** (P6/P11 were the two remaining big swings; P11 is the last item on the ranked list).
+
 ## Session — Isometric command-center layout redistribution (2026-07-04)
 
 Player request (not part of the P-list initiative): the isometric Command/Cape view's buildings were unevenly

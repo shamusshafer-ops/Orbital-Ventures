@@ -1232,6 +1232,14 @@ const SUPPORT_DELTA={             // outcome-driven support swings
   routineSuccess:0.5, partial:1.0, abort:-3, lossUncrewed:-2,
   lossCrewed:-12, strand:-14, rivalFirst:-2.5, rivalFirstDone:-0.5,
 };
+// P6 6.4: era-sensitive public mood. Pioneer through Station & Shuttle (eras 0-3) — the space race is
+// still front-page news — keep every SUPPORT_DELTA value exactly as tuned (mult 1, byte-identical).
+// From Commercial era on, spaceflight is progressively more routine and a single mission's outcome
+// swings public opinion less; same idiom as the sat_*/mil_* era reskins and gov_grant/subsidy retirement
+// elsewhere in P6 (old-era behavior is the untouched reference, later eras are the ones that change).
+const SUPPORT_ERA_MULT=[1,1,1,1, 0.85,0.7,0.55,0.45]; // indexed by era (Pioneer..Speculative)
+function supportEraMult(){ return SUPPORT_ERA_MULT[eraIndex(currentEra())] ?? 1; }
+function supportDelta(key){ return (SUPPORT_DELTA[key]||0)*supportEraMult(); }
 
 const ENGINES = {
   a4:          {id:'a4',          name:'V-2 (A-4) Powerplant',            prop:'Alcohol/LOX', ispSL:203, ispVac:215, thrustSL:245, thrustVac:265, mass:0.95, cost:0.30, rel:0.96, base:true},
@@ -3998,7 +4006,7 @@ function fireRivalFirst(r, f){
   const _taunt=rivalVoiceLine(r,'taunt'); // P4: per-profile communiqué (flavor only)
   if(_taunt) log('rival', `${r.flag} ${r.name}: “${_taunt}”`);
   // #8: national prestige — a rival's first stings the home crowd, but far less if you'd already done it
-  addSupport((f.missionId && state.completed[f.missionId]) ? SUPPORT_DELTA.rivalFirstDone : SUPPORT_DELTA.rivalFirst);
+  addSupport((f.missionId && state.completed[f.missionId]) ? supportDelta('rivalFirstDone') : supportDelta('rivalFirst'));
   if(f.missionId && !state.completed[f.missionId] && !state.scooped[f.missionId]){
     state.scooped[f.missionId]=true;
     const mm=MISSIONS.find(x=>x.id===f.missionId);
@@ -5838,7 +5846,7 @@ function finalizeLaunch(ctx, ops){
     if(crewed) payout*=ab.payoutMult; // M6: astronaut payout bonus
     if(!routine && state.scooped[m.id]) payout*=SCOOP_PAYOUT_MULT;
     const rep=Math.max(0,Math.round(((routine?2:m.rep)+opsRep)*doctrineMult('rep'))); // CE3(a): Statecraft lifts reputation gain
-    addSupport(routine?SUPPORT_DELTA.routineSuccess:clampA(2+(m.rep||5)*0.05,2,10)); // #8: a win lifts public mood, scaled by how big a win
+    addSupport(routine?supportDelta('routineSuccess'):clampA(2+(m.rep||5)*0.05,2,10)); // #8: a win lifts public mood, scaled by how big a win
     if(m.tanker){
       const delivered=tankerDelivery();
       state.depot+=delivered;
@@ -5883,7 +5891,7 @@ function finalizeLaunch(ctx, ops){
     state.money+=payout; flightRevenue=payout;
     const rep=Math.max(0,Math.round((routine?2:m.rep)*0.25)+opsRep);
     state.rep+=rep;
-    addSupport(SUPPORT_DELTA.partial); // #8: a salvaged flight still reads as progress
+    addSupport(supportDelta('partial')); // #8: a salvaged flight still reads as progress
     log('note',`${m.name}: PARTIAL SUCCESS — ${outcome.story} Salvaged value +${fM(payout)}, +${rep} rep, but the objective is not complete.`);
   }else if(outcome.kind==='scrub'){
     // CE5(b): the player called a precautionary in-flight abort — vehicle & crew recovered, mission
@@ -5891,17 +5899,17 @@ function finalizeLaunch(ctx, ops){
     // loss. The flight outlay is still sunk; the payoff is avoiding the worse outcome you gambled on.
     personnelMissionEvent(false);
     const rep=Math.min(state.rep, crewed?8:5); state.rep-=rep;
-    addSupport(SUPPORT_DELTA.abort); // a scrubbed flight dents mood, but a saved vehicle limits it
+    addSupport(supportDelta('abort')); // a scrubbed flight dents mood, but a saved vehicle limits it
     log('note',`${m.name}: ABORTED IN FLIGHT — ${outcome.story} Crew and vehicle safe; the mission is forfeit, −${rep} rep.`);
   }else if(outcome.kind==='abort'){
     personnelMissionEvent(false);
     const rep=Math.min(state.rep,12); state.rep-=rep;
-    addSupport(SUPPORT_DELTA.abort); // #8: a failure dents mood, but a safe crew limits the damage
+    addSupport(supportDelta('abort')); // #8: a failure dents mood, but a safe crew limits the damage
     log('bad',`${m.name}: MISSION FAILURE — crew safe. The ${SUBSYS_LABEL[outcome.subsystem].toLowerCase()} gave out — ${outcome.story} Vehicle and mission lost, −${rep} rep.`);
   }else if(outcome.kind==='strand'){
     personnelMissionEvent(false);
     const rep=Math.min(state.rep,40); state.rep-=rep;
-    addSupport(SUPPORT_DELTA.strand); // #8: a crew stranded in deep space is a national shock
+    addSupport(supportDelta('strand')); // #8: a crew stranded in deep space is a national shock
     loseAssignedCrew(ctx.crewId);
     advance(6); // grounding + investigation
     log('bad',`${m.name}: LOST IN DEEP SPACE — ${outcome.story} A long inquiry follows, −${rep} rep.`);
@@ -5910,13 +5918,13 @@ function finalizeLaunch(ctx, ops){
     // #20 slice 3: a deep-space rescue brought the crew home — mission & vehicle lost, crew safe
     personnelMissionEvent(false);
     const rep=Math.min(state.rep,10); state.rep-=rep;
-    addSupport(SUPPORT_DELTA.abort); // relief tempered by a lost mission
+    addSupport(supportDelta('abort')); // relief tempered by a lost mission
     log('ok',`${m.name}: CREW RESCUED — ${outcome.story} The mission and vehicle are lost, but the crew is home. −${rep} rep.`);
   }else{ // loss of vehicle on ascent
     personnelMissionEvent(false);
     if(crewed){
       const rep=Math.min(state.rep,40); state.rep-=rep;
-      addSupport(SUPPORT_DELTA.lossCrewed); // #8: losing a crew is the worst political blow
+      addSupport(supportDelta('lossCrewed')); // #8: losing a crew is the worst political blow
       loseAssignedCrew(ctx.crewId);
       advance(6); // grounding + investigation
       state.crewLost=(state.crewLost||0)+m.crew; // chronicle: the price paid
@@ -5924,7 +5932,7 @@ function finalizeLaunch(ctx, ops){
       applyEraStakes('loss of the crew and vehicle'); // CE4(c): era-scaled compounding setback
     }else{
       const rep=Math.min(state.rep, routine?3:8); state.rep-=rep;
-      addSupport(SUPPORT_DELTA.lossUncrewed); // #8: an uncrewed loss costs some goodwill
+      addSupport(supportDelta('lossUncrewed')); // #8: an uncrewed loss costs some goodwill
       log('bad',`${m.name}: FAILURE. The ${SUBSYS_LABEL[outcome.subsystem].toLowerCase()} failed — ${outcome.story} Vehicle cost forfeit, −${rep} rep.`);
       if(m.profile) applyEraStakes('loss of a flagship mission'); // CE4(c): a deep-space robotic flagship is a real setback late
     }
