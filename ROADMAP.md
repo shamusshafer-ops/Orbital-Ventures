@@ -1113,6 +1113,21 @@ Decisions (user): add real save files (export/import) + autosave.
   up supply correctly at its new `arriveAbs`; survives save/load round-trip with the delay intact. Modal
   accept/expedite/unaffordable paths all verified. 21/21 assertions. Modal wording/readability needs a manual
   browser pass. Next: **2.4** — per-facility auto-reorder toggle (new persisted state → SAVE_VERSION bump).
+- **2.4 ✅ (2026-07-05)** — Per-facility auto-resupply toggle (`fs.autoResupply`, default off). Monthly-tick hook
+  (right after the supply drain, before the starvation check): if the toggle is on, supply ≤
+  `AUTO_RESUPPLY_THRESHOLD=6` (of `FAC_SUPPLY_MONTHS=8`), and `canResupply(id).ok`, calls `resupplyFacility(id)`
+  automatically — same cost/gate/lifecycle as a manual click, just triggered by the toggle. Threshold reasoned
+  from drain rate: gives a ~2-month reaction buffer without log-spam; on Mars a base ordering at 6 still arrives
+  ~1 month into starvation given the ~7-month transit, but that's inherent to 2.1's one-shipment-at-a-time model
+  and matches a manual player's own experience — flagged as an easy-retune constant. Every auto-order logs
+  clearly so a fuel-price-spike auto-charge (per 2.2) is never a silent surprise. **SAVE_VERSION 41→42** +
+  `migrateFacilityAutoResupply()` lazily defaults the field to `false` on old saves (both load paths). UI: a
+  small on/off toggle in the infra panel mirroring the existing `setAssembleOrbit` button pattern.
+  **Validation.** `node --check` OK. 20/20 headless: migration default+idempotency, threshold boundary (no fire
+  at 7, fires at 6), money gate respected, toggle-off never fires even while starving, **fires exactly once
+  across 6 in-transit months on Mars** (no spam), log line present, Pioneer/no-facility no-op. UI wording/
+  placement needs a manual browser pass. **This closes out P2 (living logistics, slices 2.1-2.4) — one of the
+  P1/P2/P11 "put the universe in motion" through-line initiatives, alongside P1 (done) and P11 (not yet started).**
 
 ## Session — Isometric command-center layout redistribution (2026-07-04)
 

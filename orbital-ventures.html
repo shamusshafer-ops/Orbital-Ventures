@@ -2489,6 +2489,10 @@ function tickMonthlyBoundary(){
       if(!facilityBuilt(fid)) continue;
       const fdef=facilityById(fid), fst=facilityState(fid);
       fst.supply=Math.max(0,(fst.supply!=null?fst.supply:FAC_SUPPLY_MONTHS)-facilitySupplyDrain(fid)); // CE4(b): consume a month of provisions
+      if(fst.autoResupply && facilitySupply(fid)<=AUTO_RESUPPLY_THRESHOLD && canResupply(fid).ok){ // 2.4: auto-reorder — same gate/cost/lifecycle as a manual click; canResupply blocks a second order in transit + the money-gate
+        log('note',`${fdef.icon} ${fdef.name}: auto-resupply triggered — supply at ${facilitySupplyMonths(fid)} mo of provisions.`);
+        resupplyFacility(fid); // instant (LEO/Moon) tops fst.supply back to full before the starvation check below; Mars launches a shipment and keeps draining
+      }
       if(fst.supply<=0){ // CE4(b): an unsupplied crewed outpost decays — rep/politics bleed, then crew evacuate a module
         fst.starvedMonths=(fst.starvedMonths||0)+1;
         state.rep=Math.max(0, state.rep-FAC_STARVE_REP);
@@ -3052,6 +3056,14 @@ function resupplyFacility(id){
   log('note',`${def.icon} ${def.name}: resupply shipment launched — arrival in ~${Math.round(transit/30)} mo (${transit} d), ${missing.toFixed(1)} mo of provisions aboard (−${fM(cost)}). The base draws down its reserves until it lands.`);
   render();
 }
+// Slice 2.4: per-facility auto-reorder. When fs.autoResupply is ON, the monthly tick auto-fires
+// resupplyFacility() the moment supply falls to/below this many months — identical cost/gate/lifecycle
+// to a manual order (respects canResupply, so it never double-orders while a shipment is in transit and
+// never fires if the base can't afford it). Easy to retune: 6 (of FAC_SUPPLY_MONTHS=8) leaves a ~2-month
+// reaction buffer on instant LEO/Moon bodies and fires as early as the shortfall-shipped model usefully
+// can for Mars (a single in-flight shipment carries only the shortfall, so Mars stays marginal by design).
+const AUTO_RESUPPLY_THRESHOLD=6;
+function toggleAutoResupply(id){ const fs=facilityState(id); if(!fs) return; fs.autoResupply=!fs.autoResupply; const def=facilityById(id); log('info',`${def.icon} ${def.name}: auto-resupply ${fs.autoResupply?'enabled':'disabled'}.`); render(); }
 function canFound(id){
   const def=facilityById(id); if(!def) return {ok:false,why:'Unknown facility.'};
   if(facilityBuilt(id)) return {ok:false,why:'Already established.'};
@@ -3065,7 +3077,7 @@ function foundFacility(id){
   state.money-=def.foundCost;
   advance(def.foundMonths); // construction — facility is not yet producing
   if(state.over){ render(); return; }
-  state.facilities[id]={built:true, modules:1, since:state.year, supply:FAC_SUPPLY_MONTHS, starvedMonths:0}; // CE4(b): founded fully provisioned
+  state.facilities[id]={built:true, modules:1, since:state.year, supply:FAC_SUPPLY_MONTHS, starvedMonths:0, autoResupply:false}; // CE4(b): founded fully provisioned; 2.4: auto-resupply opt-in, off by default
   log('ok',`★ ${def.name} established — your first permanent presence at ${BODIES.find(b=>b.id===def.body).name}. It will grow and produce for decades.`);
   render();
 }
@@ -6300,7 +6312,7 @@ function hideModal(){activeModal=null;_prodModalOpen=false;$('modal').classList.
 
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=41; // v41: P1 persistent in-flight missions — state.activeFlights[] (deferred interplanetary flights carry a resolved-at-launch ctx applied on arrival; ctx stores famId + crewId, not object refs, so a mid-cruise save round-trips; legacy saves default [] via loadDefaults; rehydrateFlights() re-links ctx.m + restores _flightSeq on load). v40: #19 slice B — career progression (staff.xp accrues monthly ×morale ×dept-training, raising effSkill above hire-day base up to +0.15; dept.training level bought with capital; legacy staff default xp 0 via staffXp guard, effSkill==base at xp 0 so no balance migration). #19 slice C (succession + workforce planning) adds no persisted state — reconcileDeptLeads mutates existing dept.lead, gaps + the era-scaled unstaffed-department reliability penalty (0 in Pioneer) are derived — so it needs no bump. v39: #19 slice A — organizational departments (state.departments {deptId:{lead,training}}; legacy saves default via loadDefaults/defaultDepartments; membership is derived from hired staff, leads are balance-neutral when unset); v38: #6 research partnerships — bench-tested / flight-proven components (state.engineStockTested + state.partStockTested, the bench-tested subset of each yard; legacy saves default {}); a fitted bench-tested component adds +1.5% reliability (cap +6%, benchRelBonus), built at +60% cost / +50% time; v36: #7 sub-assemblies slice 2 — structures & habitats yard (state.partStock {"kind:sub":count}, e.g. "tank:steel"/"hab:closed"; legacy saves default {}); same cost-neutral cadence pattern as the Engine Yard; v35: #7 sub-assemblies — Engine Yard (state.engineStock {engId:count}; legacy saves default {}); v34: Time Granularity slice 4b — launch windows day-scheduled (window/committedWindow .abs moved from absMonth to absDay; migrateWindowsToDays ×30 on pre-v34 load + clears the regenerable windows cache); v33: Time Granularity slice 1 — day-iterating advance() funnel (state.day 0..29 + absDay(); legacy saves default day:0 via load defaults; whole-month advances stay bit-identical so no balance migration needed); v32: CE4(c) era-scaled failure stakes + bailout retune (state.loanInterest — permanent bridge-loan debt service; legacy saves default to 0 via load defaults + loanInterest() guard); v31: CE4(b) standing resupply obligations (per-facility supply/starvedMonths; legacy facilities default to fully provisioned via facilitySupply()); v30: CE3(c) lunar architecture fork (state.lunarArch, null=uncommitted; luna_landing reqResearch moved to per-arch gates); v29: CE3(a) company doctrine (state.doctrine, null=undeclared/neutral); v28: CE2(c) juggernaut capstone (state.standingProd/juggernautReached); v27: CE2(b) launch cadence (state.padMonthAbs/padMonthUsed) — load defaults seed all of these; v26: CE1 rival agents (state.rivalState), seedRivalState migrates old rivalFired
+const SAVE_VERSION=42; // v42: P2 slice 2.4 — per-facility auto-resupply toggle (fs.autoResupply boolean; opt-in per facility). On the monthly tick a facility with the toggle ON auto-fires resupplyFacility() once supply falls to/below AUTO_RESUPPLY_THRESHOLD(6) and canResupply().ok — same cost/gate/lifecycle as a manual order (the resupplyInTransit + money gates prevent double-ordering and unaffordable fires). Pure automation, balance-neutral otherwise; each auto-order logs a 'note' line. Lazy migration: pre-v42 facilities carry no autoResupply — migrateFacilityAutoResupply() defaults it false on load (undefined is already falsy, so behavior is unchanged either way); foundFacility seeds autoResupply:false on fresh bases. v41: P1 persistent in-flight missions — state.activeFlights[] (deferred interplanetary flights carry a resolved-at-launch ctx applied on arrival; ctx stores famId + crewId, not object refs, so a mid-cruise save round-trips; legacy saves default [] via loadDefaults; rehydrateFlights() re-links ctx.m + restores _flightSeq on load). v40: #19 slice B — career progression (staff.xp accrues monthly ×morale ×dept-training, raising effSkill above hire-day base up to +0.15; dept.training level bought with capital; legacy staff default xp 0 via staffXp guard, effSkill==base at xp 0 so no balance migration). #19 slice C (succession + workforce planning) adds no persisted state — reconcileDeptLeads mutates existing dept.lead, gaps + the era-scaled unstaffed-department reliability penalty (0 in Pioneer) are derived — so it needs no bump. v39: #19 slice A — organizational departments (state.departments {deptId:{lead,training}}; legacy saves default via loadDefaults/defaultDepartments; membership is derived from hired staff, leads are balance-neutral when unset); v38: #6 research partnerships — bench-tested / flight-proven components (state.engineStockTested + state.partStockTested, the bench-tested subset of each yard; legacy saves default {}); a fitted bench-tested component adds +1.5% reliability (cap +6%, benchRelBonus), built at +60% cost / +50% time; v36: #7 sub-assemblies slice 2 — structures & habitats yard (state.partStock {"kind:sub":count}, e.g. "tank:steel"/"hab:closed"; legacy saves default {}); same cost-neutral cadence pattern as the Engine Yard; v35: #7 sub-assemblies — Engine Yard (state.engineStock {engId:count}; legacy saves default {}); v34: Time Granularity slice 4b — launch windows day-scheduled (window/committedWindow .abs moved from absMonth to absDay; migrateWindowsToDays ×30 on pre-v34 load + clears the regenerable windows cache); v33: Time Granularity slice 1 — day-iterating advance() funnel (state.day 0..29 + absDay(); legacy saves default day:0 via load defaults; whole-month advances stay bit-identical so no balance migration needed); v32: CE4(c) era-scaled failure stakes + bailout retune (state.loanInterest — permanent bridge-loan debt service; legacy saves default to 0 via load defaults + loanInterest() guard); v31: CE4(b) standing resupply obligations (per-facility supply/starvedMonths; legacy facilities default to fully provisioned via facilitySupply()); v30: CE3(c) lunar architecture fork (state.lunarArch, null=uncommitted; luna_landing reqResearch moved to per-arch gates); v29: CE3(a) company doctrine (state.doctrine, null=undeclared/neutral); v28: CE2(c) juggernaut capstone (state.standingProd/juggernautReached); v27: CE2(b) launch cadence (state.padMonthAbs/padMonthUsed) — load defaults seed all of these; v26: CE1 rival agents (state.rivalState), seedRivalState migrates old rivalFired
 function writeSave(){ localStorage.setItem(SAVE_KEY, JSON.stringify({v:SAVE_VERSION, ts:Date.now(), state:JSON.parse(JSON.stringify(state))})); }
 // S1: silent throttled autosave so "Continue last game" always resumes the most recent session.
 // Skips a transient mid-flight-resolution snapshot; forced on page close.
@@ -6352,6 +6364,10 @@ function migrateWindowsToDays(saved, ver){
   if(saved.committedWindow && saved.committedWindow.abs!=null) saved.committedWindow.abs*=DAYS_PER_MONTH;
   saved.windows={};
 }
+// 2.4 (v42): lazy per-facility field default. loadDefaults only seeds top-level state keys, so a
+// pre-v42 facility carries no autoResupply — default it OFF (undefined is already falsy, this just
+// makes it an explicit boolean so the toggle/UI reads cleanly). Idempotent; no-op on newer saves.
+function migrateFacilityAutoResupply(saved){ const f=saved.facilities; if(!f) return; for(const id in f){ if(f[id] && f[id].autoResupply===undefined) f[id].autoResupply=false; } }
 // forward-compat load defaults: applied to any save missing newer fields (shared by loadGame + autoLoad)
 function loadDefaults(){ return {
       research:{}, unlocked:{a4:true}, completed:{}, stages:[{eng:'a4',count:1,prop:2.0}],
@@ -6411,6 +6427,7 @@ function loadSaveFromText(raw, srcLabel){
     const saved=payload.state||payload;
     if(!saved.year||!saved.company){ throw new Error('Not a valid Orbital Ventures save (missing company/year).'); }
     migrateWindowsToDays(saved, payload.v); // 4b: month→day window abs
+    migrateFacilityAutoResupply(saved); // 2.4 (v42): default per-facility autoResupply OFF on pre-v42 saves
     const defaults=loadDefaults();
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -6508,6 +6525,7 @@ function autoLoad(){
     const saved=payload.state||payload;
     if(!saved.year||!saved.company) return false;
     migrateWindowsToDays(saved, payload.v); // 4b: month→day window abs
+    migrateFacilityAutoResupply(saved); // 2.4 (v42): default per-facility autoResupply OFF on pre-v42 saves
     const defaults=loadDefaults();
     for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
     state=saved;
@@ -14284,6 +14302,10 @@ function renderInfrastructure(){
         <div style="display:flex;gap:8px;margin-top:10px">
           <button class="btn" style="flex:1" onclick="resupplyFacility('${def.id}')" ${canRs?'':'disabled'}>${resupplyInTransit(def.id)?'📦 Resupply en route':(facilitySupply(def.id)>=FAC_SUPPLY_MONTHS?'Fully provisioned':`Resupply · ${fM(rsC)}`)}</button>
           <button class="btn" style="flex:1" onclick="expandFacility('${def.id}')" ${canEx?'':'disabled'}>Expand → ${fs.modules+1} · ${fM(ec)} · ${em} mo</button>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px;font-size:12px">
+          <span class="dim" title="When on, this base automatically reorders resupply the moment its provisions fall to ${AUTO_RESUPPLY_THRESHOLD} months or below — same cost, market price and en-route gate as clicking Resupply yourself. It can spend during a fuel-price spike, so watch the log.">Auto-resupply</span>
+          <button class="btn ghost" style="font-size:12px;padding:4px 10px;${fs.autoResupply?'border-color:var(--ignite);color:var(--ignite)':''}" onclick="toggleAutoResupply('${def.id}')">${fs.autoResupply?'On ✓':'Off'}</button>
         </div>
         ${facilitySupply(def.id)>=FAC_SUPPLY_MONTHS?'':'<div class="dim" style="font-size:11px;margin-top:4px">Resupply cost incl. propellant at market rate.</div>'}
       </div>`;
