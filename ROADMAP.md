@@ -1035,9 +1035,9 @@ scoped into ranked P-slices or started — this is the raw findings, for the use
   buffer; add a decimated (e.g. quarterly) unbounded series and render treasury/rep/support/firsts-vs-rivals
   replay graphs inside `showChronicle()`. *(Partially addressed 2026-07-05 by the Finances pop-out's 3 new
   metricHist series, but those are still the same 24-month cap — a genuinely full-run series is still open.)*
-- **I5 — Research queue.** `[Quick win]` One active project; the lab idles silently (alert badge only) when
-  a project completes mid-skip. A 1–2 deep queue (auto-start if affordable, log line on autostart) removes
-  pure admin.
+- **I5 — Research queue.** ✅ **DONE (2026-07-05).** `[Quick win]` One active project; the lab idled
+  silently (alert badge only) when a project completed mid-skip. Shipped as a depth-1 queue (`state.researchNext`,
+  `queueResearchNext`/`tryStartQueuedResearch`) — see the I5 session log below for the implementation.
 - **I6 — Aerocapture as a real mechanic.** `[Medium]` The map already teases it ("the atmosphere does most
   of the braking" at Titan) but no research node or Δv effect delivers it. A node cutting capture-leg Δv at
   Mars/Titan (reliability tax uncontrolled, bought down by testing) is exactly the propulsive-vs-aerocapture
@@ -1820,3 +1820,41 @@ all three upcoming-deltas sources (mandate/expiring contract/special contract) s
 amounts; the bar chart never throws on an empty series and always draws its zero line. Not yet
 browser-tested — the two-column layout, chart legibility, and log-mining accuracy against a real
 multi-hour save all need a look, flagged like the rest of this session's UI-heavy work.
+
+## Session — I5: research queue, depth 1 (2026-07-05)
+
+First item picked off the second design-pass backlog. Scoped to Fable's "90% win": a single "next" slot,
+not a multi-item reorderable queue — avoids the lab idling silently when a project completes mid-skip,
+without the UI complexity of managing an ordered list.
+
+New `state.researchNext` (nullable id). **Queueing a currently-*locked* node is allowed on purpose** — the
+common case is mid-project, already knowing the next step in a prereq chain that isn't unlocked yet; real
+eligibility is checked for real at start time, not at queue time, so this can't soft-lock anything.
+`queueResearchNext(id)`/`clearResearchNext()` just set/clear the pick (no cost, no gate check — it's a
+bookmark). `tryStartQueuedResearch()` is the one function that actually starts it: no-ops while a project
+is still active; if the queued node no longer resolves (id vanished) or is already researched (e.g.
+backfilled by `reconcileResearch()`), it's dropped silently; otherwise it stays queued — untouched — until
+prereqs + science gate + affordability are *all* met, at which point it deducts cost exactly like a manual
+`buyResearch()` (refactored the shared "actually start it" mutation into `startResearchProject(r, viaQueue)`
+so the two paths can never drift apart) and clears the queue. Called from two places: right after
+`completeResearch()` (the immediate happy path — already affordable the moment the prior project finishes)
+and once every monthly tick (the deferred path — becomes affordable/unlocked later, without the player
+needing to babysit it).
+
+**UI:** `renderTechAction()` — when a project is already active and the selected tree node isn't done/active,
+the disabled "Another project in progress" button is replaced with "📋 Queue next" (or "📋 Queued next",
+disabled, if this node is already the pick). A dashed "Next up: X — auto-starts once..." row appears
+whenever a pick exists, with its own ✕ Clear, regardless of which node is currently selected in the tree.
+The `#ccProgress` Command Center card (shipped earlier today) also gets a small "📋 Next: X" line under the
+active-research bar. No SAVE_VERSION bump — `researchNext` is a plain nullable scalar, safe under any
+falsy-check, so a legacy save simply starts with no pick queued.
+
+**Validation.** `node --check` OK. 17/17 headless assertions run the actual `queueResearchNext`/
+`clearResearchNext`/`tryStartQueuedResearch`/`startResearchProject`/`buyResearch` functions **extracted
+directly from the live file**: queueing guards (can't queue the active node or an already-researched one);
+the three "stays queued, doesn't clear" cases (insufficient money, prereqs not met, science gate not met);
+the three "clears without starting" cases (a stale/vanished id, an already-researched pick); the happy path
+(cost + science both deducted correctly, log line distinguishes auto-start from manual buy); and a
+regression check that `buyResearch()` itself is byte-identical in behavior after the shared-mutation
+refactor. Not yet browser-tested — the new UI row's layout/wording needs a look, same as the rest of this
+session's work.

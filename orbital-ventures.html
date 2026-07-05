@@ -2143,6 +2143,7 @@ function newGame(difficulty){
     blueprints:[], // saved full ship designs (reloadable blueprints)
     frontPages:[], // P7: The Agency Wire — headline records for the Chronicle scrapbook
     crisis:null, crisisDone:null, leoFlights:0, // P11: the one late-game debris-cascade crisis
+    researchNext:null, // I5: queued "start next" research pick — auto-starts once the active project finishes and it's affordable/eligible
     ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
     facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
     architectures:{}, science:0,
@@ -2813,6 +2814,7 @@ function tickMonthlyBoundary(){
     checkScoringDate(); // chronicle: the soft scoring date fires once
     tickSpecialContract(); // special contracts: limited-time commercial variants
     tickCrisis(); // P11: the one late-game crisis — trigger check, then escalate/remediate if active
+    tryStartQueuedResearch(); // I5: retry monthly in case the queued pick just became affordable/unlocked (the immediate try lives in completeResearch)
     pushMetricHistory(); // #28: snapshot this month's core metrics for the dashboard sparklines
 }
 // #28: append the current core-metric values to their trend buffers (capped at METRIC_HISTORY_LEN).
@@ -4443,6 +4445,7 @@ function completeResearch(){
   else if(r.effect.isp||r.effect.thrust){log('note',`R&D complete: ${r.name}. Engine performance improved${r.effect.isp?` (+${Math.round(r.effect.isp*100)}% Isp)`:''}${r.effect.thrust?`${r.effect.isp?',':''} (+${Math.round(r.effect.thrust*100)}% thrust)`:''}.`);}
   else { log('note',`R&D complete: ${r.name}.`); }
   _lastUnlockedTech=r.id; // #31 Slice 2: flag for tech-tree glow on next renderTechTree()
+  tryStartQueuedResearch(); // I5: auto-start the queued "next" pick if it's already affordable/eligible right now
 }
 // R&D epic slice 2: when the tech tree is re-shaped (nodes added / re-parented),
 // an existing save can hold a completed node whose NEW prerequisites it never
@@ -6344,19 +6347,43 @@ function selectMission(id){const m=MISSIONS.find(x=>x.id===id); if(state.rep<m.m
 function reqsMet(r){
   return r.req.every(q=>state.research[q]) && (!r.reqMissionDone || state.completed[r.reqMissionDone]);
 }
+// I5: shared "actually start it" mutation for both the manual buy and the queued auto-start.
+function startResearchProject(r, viaQueue){
+  const sciNeed=sciGateCost(r);
+  state.money=round2(state.money-rdCostOf(r));
+  if(sciNeed) state.science=round2((state.science||0)-sciNeed);
+  state.activeResearch={id:r.id, monthsLeft:r.months, rushed:0};
+  log('note',`R&D started: ${r.name} (${r.months} mo)${sciNeed?` · ${sciNeed} ⚛ science invested`:''}.${viaQueue?' Auto-started from the queue.':' It advances while you build and fly.'}`);
+}
 function buyResearch(id){
   const r=RESEARCH.find(x=>x.id===id);
   if(state.research[id]||state.activeResearch) return; // one project at a time
   if(!reqsMet(r)) return;
-  const rc=rdCostOf(r); // CE3(a): doctrine-adjusted R&D price
-  if(state.money < rc) return;
-  const sciNeed=sciGateCost(r); // #1: flagship deep-tech also costs banked science to start
-  if(!sciGateMet(r)) return;
-  state.money-=rc;
-  if(sciNeed) state.science=round2((state.science||0)-sciNeed);
-  state.activeResearch={id:r.id, monthsLeft:r.months, rushed:0};
-  log('note',`R&D started: ${r.name} (${r.months} mo)${sciNeed?` · ${sciNeed} ⚛ science invested`:''}. It advances while you build and fly.`);
+  if(state.money < rdCostOf(r)) return; // CE3(a): doctrine-adjusted R&D price
+  if(!sciGateMet(r)) return; // #1: flagship deep-tech also costs banked science to start
+  startResearchProject(r, false);
   if(state.money<0) gameOver(); else render();
+}
+// I5: research queue (depth 1) — "queue this as next" works even on a currently-locked node
+// (the common case: you're mid-project and already know the next step in the chain), since the
+// real eligibility/affordability check happens for real at start time, not at queue time.
+function queueResearchNext(id){
+  if(state.research[id] || (state.activeResearch && state.activeResearch.id===id)) return;
+  state.researchNext=id; render();
+}
+function clearResearchNext(){ state.researchNext=null; render(); }
+// Tried right after a project completes (the common case) AND every monthly tick (the "became
+// affordable/unlocked later" case) — idempotent either way since it no-ops once activeResearch
+// is set. Leaves the pick queued (retried later) rather than clearing it if reqs/cost aren't met
+// yet; only clears it if the node turns out to already be researched (stale pick).
+function tryStartQueuedResearch(){
+  if(state.activeResearch || !state.researchNext) return;
+  const r=RESEARCH.find(x=>x.id===state.researchNext);
+  if(!r || state.research[r.id]){ state.researchNext=null; return; }
+  if(!reqsMet(r) || !sciGateMet(r) || state.money<rdCostOf(r)) return;
+  state.researchNext=null;
+  startResearchProject(r, true);
+  if(state.money<0) gameOver();
 }
 
 // M-Rush: pour extra capital into the active R&D project to shave a month off
@@ -7002,7 +7029,7 @@ function loadDefaults(){ return {
       staff:[], assignedAstronaut:null, departments:defaultDepartments(),
       vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, rehearsal:false, techLevel:{}, divisions:{}, partnerships:[], breakthroughCooldown:3, relDebt:0, powerSource:'solar',
       recentBuilds:[], materials:defaultMaterialsState(),
-      buildQueue:[], hangar:[], orderSeq:0, padMonthAbs:-1, padMonthUsed:0, standingProd:null, juggernautReached:false, doctrine:null, lunarArch:null, uiLayer:'advanced', loanInterest:0, metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[], frontPages:[], crisis:null, crisisDone:null, leoFlights:0, day:0, engineStock:{}, engineStockTested:{}, partStock:{}, partStockTested:{}, activeFlights:[], inquiryCredit:null
+      buildQueue:[], hangar:[], orderSeq:0, padMonthAbs:-1, padMonthUsed:0, standingProd:null, juggernautReached:false, doctrine:null, lunarArch:null, uiLayer:'advanced', loanInterest:0, metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[], frontPages:[], crisis:null, crisisDone:null, leoFlights:0, researchNext:null, day:0, engineStock:{}, engineStockTested:{}, partStock:{}, partStockTested:{}, activeFlights:[], inquiryCredit:null
 }; }
 
 /* ---------- Session bookend: "where you left off" ----------
@@ -11711,10 +11738,12 @@ function renderCCProgress(){
   const ar=state.activeResearch;
   const rNode=ar && RESEARCH.find(r=>r.id===ar.id);
   const rPct=(ar && rNode) ? clampA(Math.round(100*(rNode.months-ar.monthsLeft)/Math.max(1,rNode.months)),0,100) : 0;
+  const nextR=state.researchNext?RESEARCH.find(x=>x.id===state.researchNext):null;
+  const nextLine=nextR?`<div class="dim" style="font-size:11px;margin-top:3px">📋 Next: ${nextR.name}</div>`:'';
   const researchHTML = (ar && rNode)
     ? `<div style="display:flex;justify-content:space-between;font-size:13px"><b>${rNode.name}</b><span class="dim">${fmtTimeLeft(ar.monthsLeft)} left</span></div>
-       <div class="bar" style="margin:4px 0 0;height:6px"><div class="fill" style="width:${rPct}%;background:var(--dom-research)"></div></div>`
-    : `<div class="dim" style="font-size:12px">No active project — <span style="text-decoration:underline;cursor:pointer" onclick="setTab('rnd')">start one on the R&amp;D tab</span>.</div>`;
+       <div class="bar" style="margin:4px 0 0;height:6px"><div class="fill" style="width:${rPct}%;background:var(--dom-research)"></div></div>${nextLine}`
+    : `<div class="dim" style="font-size:12px">No active project — <span style="text-decoration:underline;cursor:pointer" onclick="setTab('rnd')">start one on the R&amp;D tab</span>.</div>${nextLine}`;
   const orders=buildQueueList().filter(o=>o.started);
   const hangar=hangarList();
   const orderRows=orders.map(o=>{
@@ -15668,22 +15697,34 @@ function renderResearchDetail(){
 // same area as the tree (not only in the right-hand detail panel)
 function renderTechAction(){
   const el=$('techAction'); if(!el) return;
+  const nextR=state.researchNext?RESEARCH.find(x=>x.id===state.researchNext):null;
+  if(state.researchNext && !nextR) state.researchNext=null; // stale id (tech-tree changed under it) — drop silently
+  const nextRow=nextR?`<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:5px 11px;margin-top:6px;border:1px dashed var(--line);border-radius:6px;font-size:12px">
+      <span class="dim">Next up:</span><span style="font-weight:600">${nextR.name}</span><span class="dim">— auto-starts once ${state.activeResearch?'this project finishes and it\'s':'it\'s'} affordable/unlocked</span>
+      <span style="flex:1;min-width:8px"></span><button class="btn ghost" style="font-size:11px;padding:2px 8px" onclick="clearResearchNext()">✕ Clear</button>
+    </div>`:'';
   const r=RESEARCH.find(x=>x.id===state.selectedResearch);
-  if(!r){ el.innerHTML=''; return; }
+  if(!r){ el.innerHTML=nextRow; return; }
   const st=researchNodeState(r), busy=!!state.activeResearch;
+  const isQueued=state.researchNext===r.id;
   let btn;
   if(st==='done') btn=`<button class="btn" disabled>✓ Researched</button>`;
   else if(st==='active') btn=`<button class="btn" disabled>${fmtTimeLeft(state.activeResearch.monthsLeft)} left</button>`;
-  else{
-    const afford=state.money>=rdCostOf(r), sciNeed=sciGateCost(r), sciOk=sciGateMet(r), ok=st==='available'&&afford&&sciOk&&!busy;
-    const why=busy?'Another project in progress':(st!=='available'?'Prerequisites not met':(!afford?'Not enough capital':(!sciOk?`Needs ${sciNeed} ⚛ (have ${Math.round(state.science||0)})`:'')));
+  else if(busy){
+    // I5: a project's already running — offer to queue this one as next instead of a disabled Research button.
+    btn=isQueued
+      ? `<button class="btn ghost" disabled>📋 Queued next</button>`
+      : `<button class="btn ghost" onclick="queueResearchNext('${r.id}')">📋 Queue next</button>`;
+  } else{
+    const afford=state.money>=rdCostOf(r), sciNeed=sciGateCost(r), sciOk=sciGateMet(r), ok=st==='available'&&afford&&sciOk;
+    const why=st!=='available'?'Prerequisites not met':(!afford?'Not enough capital':(!sciOk?`Needs ${sciNeed} ⚛ (have ${Math.round(state.science||0)})`:''));
     const sciTag=sciNeed?` · ${sciNeed} ⚛`:'';
     btn=`<button class="launch" onclick="buyResearch('${r.id}')" ${ok?'':'disabled'}>${ok?`Research · ${fM(rdCostOf(r))}${sciTag} · ${r.months} mo`:why}</button>`;
   }
   const tag={done:'researched',active:'in progress',available:'available',locked:'locked'}[st];
   el.innerHTML=`<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 11px;border:1px solid var(--line);border-radius:6px;background:var(--panel2)">
     <span style="font-weight:600">${r.name}</span><span class="dim" style="font-size:12px">${tag}</span>
-    <span style="flex:1;min-width:8px"></span>${btn}</div>`;
+    <span style="flex:1;min-width:8px"></span>${btn}</div>${nextRow}`;
 }
 function renderRnd(){
   renderEraCard();
