@@ -1334,6 +1334,21 @@ const MISSIONS = [
     modules:['lv','transfer','crew'],
     profile:[{name:'Ascent to LEO', dv:9400, by:'lv'},{name:'Trans-Mars Injection', dv:3600, by:'transfer'},{name:'Mars Orbit Insertion', dv:1400, by:'transfer'},{name:'Trans-Earth Injection', dv:1400, by:'transfer'}],
     blurb:'Capture into Mars orbit, wait out the return window, then burn home — a year and a half away from Earth on one tank.<span class="hist">↳ Mars mission architectures from the 1980s onward converge on long-stay, opposition-class profiles like this one.</span>'},
+  // I1: the Ares Program's missing capstone — precision_edl already existed as a research node
+  // ("Curiosity and Perseverance landed with guided entry and skycrane precision") with nothing to
+  // unlock. Ascent (4100 dv) deliberately dwarfs the Moon's (1730): Mars's thin atmosphere still
+  // cushions descent (reused at 1000, same as mars_orbit's implied surface leg) but gives no lift
+  // on the way back up, unlike the Moon's symmetric descent/ascent. window:true like every other
+  // Mars mission — it launches on the same 26-month synodic cadence.
+  {id:'mars_landing', name:'Mars Landing',          crew:2, days:650, payout:560.0, rep:460, minRep:820, reqResearch:'precision_edl', window:true,
+    modules:['lv','transfer','lander','crew'],
+    profile:[{name:'Ascent to LEO', dv:9400, by:'lv'},
+             {name:'Trans-Mars Injection', dv:3600, by:'transfer'},
+             {name:'Mars Orbit Insertion', dv:1400, by:'transfer'},
+             {name:'Powered Descent', dv:1000, by:'descent', dropAfter:['descent']},
+             {name:'Ascent to Mars Orbit', dv:4100, by:'ascent', dropAfter:['ascent']},
+             {name:'Trans-Earth Injection', dv:1400, by:'transfer'}],
+    blurb:'Two crew descend to the surface and lift off again to rejoin the transfer stage for the trip home — Mars\'s thin atmosphere cushions the way down, but there\'s no help getting back up. The ascent stage alone is a harder burn than the entire trip to Earth orbit.<span class="hist">↳ Every serious Mars architecture since the 1990s (Mars Direct, NASA\'s Design Reference Architecture) treats the ascent vehicle as the single hardest problem in the mission.</span>'},
   {id:'belt_survey',  name:'Belt Survey',           crew:0, days:780, payout:280.0, rep:220, minRep:620, reqResearch:'nuclear_thermal',
     modules:['lv','transfer'],
     profile:[{name:'Ascent to LEO', dv:9400, by:'lv'},{name:'Trans-Belt Injection', dv:8000, by:'transfer'},{name:'Ceres Orbit Insertion', dv:500, by:'transfer'}],
@@ -1350,7 +1365,23 @@ const MISSIONS = [
   {id:'jupiter_orbit',name:'Jupiter Orbital Mission',crew:3, days:2190, payout:680.0, rep:480, minRep:1100, reqResearch:'rad_shielding',
     modules:['lv','transfer','crew'],
     profile:[{name:'Ascent to LEO', dv:9400, by:'lv'},{name:'Trans-Jupiter Injection', dv:6300, by:'transfer'},{name:'Jovian Orbit Insertion', dv:1000, by:'transfer'},{name:'Trans-Earth Injection', dv:6300, by:'transfer'}],
-    blurb:'Capture three crew into the Jovian system, survey the Galilean moons, and burn home — six years on one transfer stage. The capstone of the interplanetary era; only nuclear-electric makes the mass ratio close.<span class="hist">↳ Galileo orbited Jupiter for eight years; a crewed equivalent is the defining goal of the outer-system era.</span>'},
+    blurb:'Capture three crew into the Jovian system, survey the Galilean moons, and burn home — six years on one transfer stage. The far edge of the inner giants; only nuclear-electric makes the mass ratio close.<span class="hist">↳ Galileo orbited Jupiter for eight years; a crewed equivalent is the defining goal of the outer-system era.</span>'}, // I1: "capstone" wording retired — Saturn/Titan now sit beyond it
+  // I1: the Saturn/Titan pair — BODIES already fully defined the ring system + Titan's aerobrake
+  // capture with nothing to fly. nuclear_electric ("makes the deep outer system reachable") is the
+  // gate, a sibling of Jupiter's rad_shielding off the same nuclear_thermal prereq — no soft-lock.
+  {id:'saturn_orbit', name:'Saturn Orbital Survey', crew:3, days:2900, payout:950.0, rep:620, minRep:1400, reqResearch:'nuclear_electric',
+    modules:['lv','transfer','crew'],
+    profile:[{name:'Ascent to LEO', dv:9400, by:'lv'},{name:'Trans-Saturn Injection', dv:7000, by:'transfer'},{name:'Saturn System Capture', dv:1100, by:'transfer'}],
+    blurb:'Survey the rings and the largest moons from orbit — eight years aloft on a single nuclear-electric tank, four times the burn of the whole trip to Jupiter and back.<span class="hist">↳ Cassini orbited Saturn for 13 years before its final plunge into the planet in 2017.</span>'},
+  {id:'titan_landing', name:'Titan Landing',         crew:2, days:3100, payout:1300.0, rep:780, minRep:1650, reqResearch:'nuclear_electric',
+    modules:['lv','transfer','lander','crew'],
+    profile:[{name:'Ascent to LEO', dv:9400, by:'lv'},
+             {name:'Trans-Saturn Injection', dv:7000, by:'transfer'},
+             {name:'Saturn System Capture', dv:1100, by:'transfer'},
+             {name:'Titan Descent (aerobrake)', dv:400, by:'descent', dropAfter:['descent']},
+             {name:'Ascent from Titan', dv:1500, by:'ascent', dropAfter:['ascent']},
+             {name:'Trans-Earth Injection', dv:1100, by:'transfer'}],
+    blurb:'A thick nitrogen atmosphere and a seventh of Earth\'s gravity make Titan the gentlest landing — and the gentlest departure — of any world beyond the Moon. Descend through orange haze onto a methane shoreline, then leave it again on a fraction of what Mars demands.<span class="hist">↳ Huygens returned the only images ever taken from Titan\'s surface, in January 2005 — a 2.5-hour parachute descent through a genuine atmosphere.</span>'},
   {id:'tanker_leo',   name:'Tanker Run (LEO Depot)', crew:0, days:0, payout:0, rep:6, minRep:38, reqResearch:'orbital_depot', reqDv:9400,
     payload:0, tanker:true,
     blurb:'No crew, no science — just propellant. Deliver a tank of fuel to the LEO depot for future missions to draw from.<span class="hist">↳ Propellant depots were proposed for Apollo-era architectures and became central to post-2010 reusable-launch economics.</span>'},
@@ -1370,6 +1401,15 @@ const MISSIONS = [
     modules:['lv','transfer','crew'],
     profile:[{name:'Ascent to LEO', dv:9400, by:'lv'},{name:'Trans-Mars Injection', dv:3600, by:'transfer'},{name:'Mars Orbit Insertion', dv:1400, by:'transfer'},{name:'Trans-Earth Injection', dv:1400, by:'transfer'}],
     blurb:'A dedicated search for life in the Martian subsurface — the science payoff dwarfs the contract fee, and only flights like this bank enough knowledge for the deepest tech.<span class="hist">↳ Viking\'s 1976 biology experiments remain the only direct astrobiology tests run on another planet.</span>'},
+  // I1: the true endgame capstone. fusion_propulsion_research's own description already called this
+  // out — "the drive every other transfer stage has been building toward" / "the most-studied path to
+  // true interstellar precursor missions" — a research node with nothing to unlock until now.
+  // Uncrewed (Voyager precedent, no return — the point is the burn, not the destination) and priced
+  // as the biggest single payday in the game, matching its status as the last program on the list.
+  {id:'oort_precursor', name:'Oort Cloud Precursor', crew:0, days:5500, payout:1800.0, rep:900, minRep:1900, reqResearch:'fusion_propulsion_research', sciMission:true, sciYield:120,
+    modules:['lv','transfer'],
+    profile:[{name:'Ascent to LEO', dv:9400, by:'lv'},{name:'Solar System Escape Injection', dv:8500, by:'transfer'}],
+    blurb:'An uncrewed probe rides the fusion torch past the ice giants and out through the Oort Cloud, crossing into interstellar space at a fraction of the speed true interstellar flight will eventually need — the first real proof the drive works. No return; the point is the burn, not the destination.<span class="hist">↳ Voyager 1 crossed the heliopause into interstellar space in 2012 — the only human-made object ever to do so; Daedalus-class fusion drives were designed to make that crossing in years, not decades.</span>'},
 ];
 
 /* ---------- Programs & long-term ambition (the "dream" layer) ----------
@@ -1383,14 +1423,18 @@ const PROGRAMS = [
   {id:'mercury',  name:'Mercury Program',     blurb:'Put a human in space and bring them home.',                  missions:['first_astro','crew_orbit'],                        reward:{money:10, rep:35}},
   {id:'gemini',   name:'Gemini Program',      blurb:'Endurance and operations — the skills the Moon demands.',    missions:['multi_day','endurance'],                           reward:{money:16, rep:45}},
   {id:'apollo',   name:'Apollo Program',      blurb:'Fly to the Moon, orbit it, and land.',                       missions:['luna_flyby','luna_orbit','luna_landing'],          reward:{money:35, rep:90}},
-  {id:'ares',     name:'Ares Program',        blurb:'Carry a crew to Mars and bring them home.',                  missions:['mars_flyby','mars_orbit'],                         reward:{money:60, rep:130}},
+  {id:'ares',     name:'Ares Program',        blurb:'Carry a crew to Mars, land, and bring them home.',           missions:['mars_flyby','mars_orbit','mars_landing'],          reward:{money:100, rep:190}}, // I1: capstone extended to the landing; reward bumped for the 3rd, much harder objective
   {id:'outer',    name:'Outer Worlds Program',blurb:'The Belt and the Jovian system — the deep frontier.',        missions:['belt_survey','belt_mining','jupiter_flyby','jupiter_orbit'], reward:{money:110, rep:220}},
+  {id:'cronus',   name:'Cronian Frontier',    blurb:'Saturn\'s rings, then Titan itself — the furthest a crew has ever gone.', missions:['saturn_orbit','titan_landing'],                    reward:{money:180, rep:340}}, // I1: the program beyond Outer Worlds — Saturn/Titan
+  {id:'daedalus', name:'Daedalus Program',    blurb:'Prove fusion propulsion works — send a probe out past the Oort Cloud and into true interstellar space.', missions:['oort_precursor'],                                  reward:{money:250, rep:450}}, // I1: the last program on the list — the interstellar-precursor capstone
 ];
 const AMBITIONS = [
   {id:'flag',       name:'Plant the Flag',     blurb:'Put boots on another world. The Moon is the prize — and the proof your company can do the impossible.', capstone:'luna_landing'},
-  {id:'red_planet', name:'The Red Planet',     blurb:'Reach Mars with a crew and bring them home. The hardest thing anyone has ever attempted.',            capstone:'mars_orbit'},
+  {id:'red_planet', name:'The Red Planet',     blurb:'Land a crew on Mars and bring them home. The hardest thing anyone has ever attempted.',                capstone:'mars_landing'}, // I1: capstone raised from mars_orbit — a landing, not just an orbit, is the actual hardest-thing-attempted
   {id:'belt_baron', name:'Baron of the Belt',  blurb:'Build a mining fortune in the Asteroid Belt — turn platinum-group metals into a launch empire.',       capstone:'belt_mining'},
-  {id:'jovian',     name:'The Jovian Frontier',blurb:'Carry a crew to Jupiter and back. The deep frontier; the furthest humans have ever gone.',             capstone:'jupiter_orbit'},
+  {id:'jovian',     name:'The Jovian Frontier',blurb:'Carry a crew to Jupiter and back — once the deep frontier, now the doorway to it.',                    capstone:'jupiter_orbit'}, // I1: "furthest humans have ever gone" retired — Titan now sits beyond it
+  {id:'titan_bound',name:'The Methane Shore',  blurb:'Land a crew on Titan, past Saturn\'s rings — the furthest anyone has ever set foot.',                  capstone:'titan_landing'}, // I1: the new furthest-out ambition
+  {id:'interstellar',name:'First Light, First Star', blurb:'Send a probe past the Oort Cloud and into interstellar space — proof a Daedalus-class drive can one day carry a crew to another star.', capstone:'oort_precursor'}, // I1: the true endgame ambition
 ];
 
 /* ---------- Persistent infrastructure (stations & bases that remain and grow) ----------
@@ -1960,12 +2004,12 @@ const BODIES = [
       {label:'Lunar Orbit → Surface (descent)', dv:1730, note:'Ascent back to orbit costs roughly the same.'},
     ]},
   {id:'mars', name:'Mars', kind:'planet', r:104, dotR:6, color:'#c1532b', note:'The long-term goal. CO₂ + water ice enables Sabatier-process methalox — propellant made on-site.',
-    missions:['mars_flyby','mars_orbit'],
+    missions:['mars_flyby','mars_orbit','mars_landing'],
     legs:[
       {label:'Surface → LEO', dv:9400},
       {label:'LEO → Trans-Mars Injection', dv:3600, note:'Window-dependent — opens roughly every 26 months.'},
       {label:'TMI → Mars Orbit (MOI)', dv:1400, note:'Less with aerobraking.'},
-      {label:'Mars Orbit → Surface', dv:1000, note:'Mostly aerodynamic; powered terminal descent.'},
+      {label:'Mars Orbit → Surface', dv:1000, note:'Mostly aerodynamic; powered terminal descent — but ascent back to orbit costs far more. No atmosphere left to push against on the way up.'},
     ]},
   {id:'phobos', name:'Phobos', kind:'moon', around:'mars', moonR:11, dotR:3, color:'#8a8378', note:'Tiny, low-gravity Mars moon — a candidate staging point that barely costs anything to land on.',
     legs:[
@@ -1996,8 +2040,10 @@ const BODIES = [
   {id:'callisto', name:'Callisto', kind:'moon', around:'jupiter', moonR:39, dotR:5, color:'#6f6a63', note:'The most heavily cratered body known — outside the worst radiation, the safest Jovian base site.',
     legs:[{label:'Surface → LEO', dv:9400},{label:'LEO → Jupiter transfer', dv:6300},{label:'Capture → Callisto orbit', dv:900}]},
   {id:'saturn', name:'Saturn System', kind:'planet', r:188, dotR:12, color:'#e3c68a', note:'The ringed jewel — Titan and Enceladus make it a premier outer-system destination.',
+    missions:['saturn_orbit'],
     legs:[{label:'Surface → LEO', dv:9400},{label:'LEO → Saturn transfer', dv:7000, note:'Gravity assists strongly recommended.'},{label:'Transfer → Saturn system capture', dv:1100}]},
   {id:'titan', name:'Titan', kind:'moon', around:'saturn', moonR:18, dotR:5, color:'#d98a3a', note:'A thick nitrogen atmosphere and methane lakes — you can aerobrake here, and almost fly.',
+    missions:['titan_landing'],
     legs:[{label:'Surface → LEO', dv:9400},{label:'LEO → Saturn transfer', dv:7000},{label:'Capture → Titan (aerobrake)', dv:700, note:'The atmosphere does most of the braking.'}]},
   {id:'rhea', name:'Rhea', kind:'moon', around:'saturn', moonR:26, dotR:4, color:'#c8ccd0', note:'Saturn\'s second-largest moon — a cratered iceball.',
     legs:[{label:'Surface → LEO', dv:9400},{label:'LEO → Saturn transfer', dv:7000},{label:'Capture → Rhea orbit', dv:900}]},
@@ -2014,7 +2060,8 @@ const BODIES = [
   {id:'pluto', name:'Pluto', kind:'dwarf', r:272, dotR:4, color:'#caa884', note:'The classic ninth — a nitrogen-ice dwarf with a heart-shaped plain, far out in the Kuiper Belt.',
     legs:[{label:'Surface → LEO', dv:9400},{label:'LEO → Pluto transfer', dv:8800, note:'A decade-plus cruise even with assists.'},{label:'Transfer → Pluto orbit', dv:1300, note:'No atmosphere — all propulsive capture.'}]},
   {id:'oort', name:'Oort Cloud', kind:'cloud', r:320, color:'#8fb3c8', note:'A vast spherical shell of icy planetesimals at the edge of the Sun\'s gravity — the source of long-period comets, light-months away. Schematic ring only.',
-    legs:[]},
+    missions:['oort_precursor'], // I1: the interstellar-precursor capstone
+    legs:[{label:'Surface → LEO', dv:9400},{label:'LEO → Solar System Escape', dv:8500, note:'A fusion-torch precursor burn — no other propulsion in reach has a realistic exhaust velocity for this.'}]},
 ];
 // fixed display angles (radians) so bodies aren't collinear — purely cosmetic. Moons use the angle about their planet.
 const ANGLES = {mercury:2.6, venus:2.1, earth:-0.7, moon:0.9, mars:-1.6, phobos:0.3, belt:-0.2,
@@ -4713,6 +4760,7 @@ function stackPerformance(stages, payload){
 const ISRU_FREE_LEG = {
   luna_landing: {leg:'Ascent to Lunar Orbit', research:'lunar_isru', label:'Lunar ISRU'},
   mars_orbit:   {leg:'Trans-Earth Injection', research:'mars_isru',  label:'Mars ISRU'},
+  mars_landing: {leg:'Ascent to Mars Orbit', research:'mars_isru',  label:'Mars ISRU'}, // I1: ISRU fuels the ascent vehicle, not just TEI — the classic Mars-architecture application
   belt_mining:  {leg:'Trans-Earth Injection', research:'belt_volatiles', label:'Belt Volatiles ISRU'},
 };
 // walk a mission profile leg by leg; in-space stages spend propellant while carrying the surviving stack

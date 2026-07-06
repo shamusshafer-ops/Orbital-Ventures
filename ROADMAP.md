@@ -1017,13 +1017,11 @@ first, then did targeted code exploration (not a full linear read of the ~15,700
 scoped into ranked P-slices or started — this is the raw findings, for the user to pick from.**
 
 ### Improvements
-- **I1 — The content horizon.** `[Big swing, mostly data]` Missions stop at `jupiter_orbit`; **no crewed Mars
-  landing exists at all** despite the Apollo-style lander architecture being flyable since M3a-ii. `BODIES`
-  defines Saturn/Titan/Rhea/Uranus/Titania/Oberon/Neptune/Triton/Pluto with full Δv legs and the endgame tech
-  tree (fusion torch, NEP, automated factories, closed ecology, juggernaut) — none of it has a mission to
-  fly. Add a Mars Landing, a Saturn/Titan pair, and an interstellar-precursor capstone (+ matching programs)
-  so ~30 existing late-tree nodes pay off. Distinct from the already-open #21/#22 colony/civilization work —
-  this is flyable missions using systems that already exist today.
+- **I1 — The content horizon.** ✅ **DONE (2026-07-05).** `[Big swing, mostly data]` Missions stopped at
+  `jupiter_orbit`; no crewed Mars landing existed at all despite the lander architecture being flyable since
+  M3a-ii. Shipped `mars_landing`/`saturn_orbit`/`titan_landing`/`oort_precursor` + 2 new/1 extended programs
+  + 2 new/1 raised ambitions — see the I1 session log for the implementation. (I2, the second scoring
+  bookend, is a separate still-open backlog item.)
 - **I2 — Second scoring bookend.** `[Medium]` Chronicle only ceremonializes once, at the 1990 soft-scoring
   date; eras run to 2100+ with no second arc. Pair with I1: an Expansion→Speculative-boundary ceremony
   scored on deep-space dimensions (bodies settled, crises survived, fusion flown).
@@ -1858,3 +1856,57 @@ the three "clears without starting" cases (a stale/vanished id, an already-resea
 regression check that `buyResearch()` itself is byte-identical in behavior after the shared-mutation
 refactor. Not yet browser-tested — the new UI row's layout/wording needs a look, same as the rest of this
 session's work.
+
+## Session — I1: the content horizon (2026-07-05)
+
+The big one off the second-pass backlog. Confirmed the finding first (missions really do stop at
+`jupiter_orbit`; `BODIES` really does define Saturn through the Oort Cloud with nothing flyable) before
+building — most of what was needed turned out to already be half-authored: `precision_edl` and
+`fusion_propulsion_research` were research nodes whose own descriptions ("the drive every other transfer
+stage has been building toward," "the most-studied path to true interstellar precursor missions") were
+explicitly foreshadowing missions that were never built. This landed almost entirely as data — no new
+architecture, no new subsystem, reusing the generic `profile`/lander/ISRU-free-leg machinery every existing
+deep-space mission already runs on.
+
+**Mars Landing** (`mars_landing`) — gated on `precision_edl` (already existed, `reqMissionDone:'mars_flyby'`,
+zero mechanical effect until now). Descent reuses `mars_orbit`'s implied 1000 dv surface leg (mostly
+aerodynamic); **ascent is 4100 dv — more than double the Moon's 1730** — Mars's thin atmosphere still
+cushions the way down but gives no lift on the way back up, unlike the Moon's roughly-symmetric profile.
+Added an `ISRU_FREE_LEG` entry pointing `mars_isru` at the *ascent* leg rather than TEI (mars_orbit's
+mapping) — Sabatier ISRU's classic real-world application is fueling the ascent vehicle, not the return
+cruise. Ares Program extended to include it (reward bumped 60/130→100/190 for the 3rd, much harder
+objective); the Red Planet ambition's capstone raised from `mars_orbit` to `mars_landing` — landing, not
+just orbiting, is the actual "hardest thing anyone has ever attempted."
+
+**Saturn/Titan pair** (`saturn_orbit`, `titan_landing`) — `BODIES.saturn`/`titan` had full Δv legs and rich
+flavor text ("you can aerobrake here, and almost fly") but no `missions` array at all. Gated on
+`nuclear_electric` (a sibling of Jupiter's `rad_shielding` off the same `nuclear_thermal` prereq — no
+soft-lock, and its own description already says it "makes the deep outer system reachable"). Titan's ascent
+(1500 dv) is deliberately far cheaper than Mars's (4100) — thick atmosphere + a seventh of Earth's gravity
+make it the gentlest departure of any landing in the game, a direct contrast the flavor text leans into.
+New **Cronian Frontier** program (`saturn_orbit`+`titan_landing`) and **The Methane Shore** ambition
+(capstone `titan_landing`). Retired stale "capstone"/"furthest humans have ever gone" wording from
+`jupiter_orbit`'s and the Jovian Frontier ambition's blurbs now that something sits beyond them.
+
+**Interstellar precursor** (`oort_precursor`) — the true endgame capstone, gated on
+`fusion_propulsion_research` (itself gated behind `jupiter_orbit` completion). Uncrewed, one-way, science-
+flagged (Voyager precedent: "the point is the burn, not the destination"). `BODIES.oort` went from `legs:[]`
+("schematic ring only") to a real illustrative leg. New **Daedalus Program** and **First Light, First Star**
+ambition — the last program/ambition on their respective lists.
+
+**Second scoring bookend (I2) not attempted this round** — scoped as its own backlog item, left for later.
+
+**Validation.** `node --check` OK. 137/137 headless assertions against the actual `MISSIONS`/`PROGRAMS`/
+`AMBITIONS`/`BODIES`/`RESEARCH`/`ISRU_FREE_LEG` data **extracted directly from the live file**: no duplicate
+ids anywhere; every new mission has a valid reqResearch gate resolving to a real node, a non-empty profile
+with valid `by`/positive `dv` on every leg; both lander missions correctly declare `dropAfter` on their
+descent/ascent legs; the Mars-vs-Titan ascent asymmetry holds (Mars >2× Titan); `oort_precursor` is
+uncrewed/one-way/science-flagged; every `PROGRAMS`/`AMBITIONS`/`BODIES.missions` reference resolves to a
+real mission id (including the 3 new/updated programs and 2 new ambitions); every ambition's capstone is
+reachable by `ambitionProgress()`'s own PROGRAMS-walk; the `mars_landing` ISRU leg-name mapping matches its
+own profile exactly; and the three new/reused research gates (`precision_edl`, `nuclear_electric`,
+`fusion_propulsion_research`) have fully-resolving, non-circular prereq chains. Balance (payout/rep/minRep/
+days scaling, whether the new late-game missions feel appropriately hard vs. rewarding) is inherently a
+playtest call, not something a headless check can validate — flagged for Playtest Zero same as everything
+else. No SAVE_VERSION bump (pure data — no new state shape, `programsAwarded`/`ambitionFulfilled` already
+handle new ids generically).
