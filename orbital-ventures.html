@@ -1917,7 +1917,7 @@ const RESEARCH = [
   {id:'artificial_gravity', track:'crew', name:'Artificial Gravity', cost:9.0, months:9, req:['radiation_countermeasures'], reqMissionDone:'mars_orbit', effect:{reliability:0.02}, desc:'Rotating habitats that spin up a fraction of a gee, holding off the bone and muscle loss of years in freefall. <b>+2% crewed reliability.</b><span class="hist">↳ Tethered or rotating habitats are the leading answer to long-duration deconditioning.</span>'},
   {id:'closed_ecology', track:'crew', name:'Closed Ecological Life Support', cost:9.0, months:9, req:['long_duration_hab'], reqMissionDone:'endurance', sciCost:36, effect:{reliability:0.02,lsRecovery:0.07}, desc:'A bioregenerative loop — plants, algae and microbes — that grows food and recycles air and water indefinitely. The biology a self-sufficient colony runs on. <b>+2% crewed reliability.</b><span class="hist">↳ BIOS-3 and MELiSSA pioneered the closed ecologies a Mars colony will need.</span>'},
   {id:'gravity_assist_planning', track:'deepspace', name:'Gravity-Assist Trajectory Design', cost:6.0, months:6, req:['high_gain_antenna'], effect:{}, desc:'Multi-body trajectory optimization that steals momentum from planets. <b>Jupiter, Saturn and Belt transfer burns cost 8% less Δv.</b> The math that opened the outer system.<span class="hist">↳ Voyager toured four planets on a single gravity-assist chain discovered by a grad student.</span>'},
-  {id:'aerocapture', track:'deepspace', name:'Aerocapture', cost:7.5, months:7, req:['precision_edl'], effect:{}, desc:'Skim a planetary atmosphere once to shed orbital velocity, capturing into orbit with almost no propellant. The trick that makes heavy outer-planet orbiters affordable.<span class="hist">↳ Aerocapture has been studied for every ice-giant mission as the enabling technology.</span>'},
+  {id:'aerocapture', track:'deepspace', name:'Aerocapture', cost:7.5, months:7, req:['precision_edl'], effect:{}, desc:'Skim a planetary atmosphere once to shed orbital velocity, capturing into orbit with almost no propellant. <b>−70% Δv on Mars, Jovian and Saturn orbital-capture burns.</b> The trick that makes heavy outer-planet orbiters affordable.<span class="hist">↳ Aerocapture has been studied for every ice-giant mission as the enabling technology.</span>'},
   {id:'atmospheric_isru', track:'refueling', name:'Atmospheric ISRU', cost:10.0, months:10, req:['electrolysis_scaleup'], reqMissionDone:'jupiter_orbit', effect:{}, desc:'Scoop and process the atmospheres of the gas giants and their moons for hydrogen, helium-3 and volatiles — refueling at the edge of the Solar System.<span class="hist">↳ Gas-giant atmospheres are the largest propellant and helium-3 reservoirs in the system.</span>'},
   {id:'orbital_shipyards', track:'assembly', name:'Orbital Shipyards', cost:13.0, months:12, req:['large_space_stations'], reqMissionDone:'mars_orbit', effect:{buildCostCut:0.05}, desc:'Build spacecraft in orbit that never have to survive a launch — larger, lighter, and assembled from delivered parts. <b>−5% build cost.</b><span class="hist">↳ A true orbital shipyard is the point where spacecraft stop being launched and start being built in space.</span>'},
   {id:'heavy_lift_infrastructure', track:'ground', name:'Heavy-Lift Infrastructure', cost:8.0, months:8, req:['cryo_ground_systems'], effect:{launchCostCut:0.04,buildTimeCut:0.5}, desc:'The largest pads, transporters and integration buildings — the ground footprint a super-heavy launch program needs. <b>−4% launch-ops cost · −0.5 mo build.</b><span class="hist">↳ The biggest rockets demand the biggest ground infrastructure ever built.</span>'},
@@ -4763,6 +4763,11 @@ const ISRU_FREE_LEG = {
   mars_landing: {leg:'Ascent to Mars Orbit', research:'mars_isru',  label:'Mars ISRU'}, // I1: ISRU fuels the ascent vehicle, not just TEI — the classic Mars-architecture application
   belt_mining:  {leg:'Trans-Earth Injection', research:'belt_volatiles', label:'Belt Volatiles ISRU'},
 };
+// I6: orbital-capture legs at atmosphere-bearing bodies — Mars, Jupiter, Saturn — that Aerocapture
+// research cuts by 70% once researched (see legDv() inside simulateMission). Airless-body captures
+// (Ceres, the Moon, etc.) are correctly untouched — there's no atmosphere there to skim.
+const AEROCAPTURE_LEG_RE=/Mars Orbit Insertion|Jovian Orbit Insertion|Saturn System Capture/;
+function missionAerocaptureLeg(m){ const l=(m&&m.profile||[]).find(x=>AEROCAPTURE_LEG_RE.test(x.name||'')); return l?l.name:null; }
 // walk a mission profile leg by leg; in-space stages spend propellant while carrying the surviving stack
 // #6: orbital-assembly route — pre-position the heavy in-space modules on separate
 // launches and dock them in LEO, so the main launch never has to loft them. Trades
@@ -4830,7 +4835,13 @@ function simulateMission(m){
   const asmSet = assemblyOn(m) ? new Set(assemblyModules(m)) : null;
   const legs=[]; let ok=true, inSpaceLegs=0;
   const gaMult=state.research.gravity_assist_planning?0.92:1; // gravity-assist chains shave the big injection burns
-  const legDv=(leg)=> (gaMult<1 && leg.by!=='lv' && /Jupiter|Belt Transfer|Saturn/i.test(leg.name||'')) ? Math.round(leg.dv*gaMult) : leg.dv;
+  const aeroMult=state.research.aerocapture?0.3:1; // I6: atmosphere does almost all the braking on a real capture burn — a much steeper cut than gravity-assist's trajectory shave, and a DIFFERENT leg (the insertion/capture itself, not the interplanetary injection), so the two can legitimately stack
+  const legDv=(leg)=>{
+    let dv=leg.dv;
+    if(gaMult<1 && leg.by!=='lv' && /Jupiter|Belt Transfer|Saturn/i.test(leg.name||'')) dv=Math.round(dv*gaMult);
+    if(aeroMult<1 && AEROCAPTURE_LEG_RE.test(leg.name||'')) dv=Math.round(dv*aeroMult);
+    return dv;
+  };
   for(const leg of m.profile){
     if(leg.by==='lv'){
       let upper=stackMass();
@@ -13787,7 +13798,7 @@ function renderProfileReadout(m){
     ${missionNetHTML(m,v,sim)}
     ${massFractionHTML(v)}
 
-    <div class="eq">The launch vehicle lofts the whole stack (${v.payload.toFixed(1)} t) to LEO; the transfer stage then spends one tank across ${sim.inSpaceLegs} deep-space burn${sim.inSpaceLegs>1?'s':''}, lighter after each — yet every burn still hauls everything still attached.${m.modules.includes('lander')?' The descent stage is dropped on the surface after landing; the ascent stage returns alone to meet the transfer stage.':''}${state.depotUse>0?` This run draws <b style="color:var(--readout)">${state.depotUse.toFixed(1)} t</b> from the LEO depot — propellant that never had to be launched from Earth.`:''}${ISRU_FREE_LEG[m.id]&&state.research[ISRU_FREE_LEG[m.id].research]?` <b style="color:var(--ok)">${ISRU_FREE_LEG[m.id].label}</b> is online — the ${ISRU_FREE_LEG[m.id].leg} burn is produced on-site.`:''}</div>
+    <div class="eq">The launch vehicle lofts the whole stack (${v.payload.toFixed(1)} t) to LEO; the transfer stage then spends one tank across ${sim.inSpaceLegs} deep-space burn${sim.inSpaceLegs>1?'s':''}, lighter after each — yet every burn still hauls everything still attached.${m.modules.includes('lander')?' The descent stage is dropped on the surface after landing; the ascent stage returns alone to meet the transfer stage.':''}${state.depotUse>0?` This run draws <b style="color:var(--readout)">${state.depotUse.toFixed(1)} t</b> from the LEO depot — propellant that never had to be launched from Earth.`:''}${ISRU_FREE_LEG[m.id]&&state.research[ISRU_FREE_LEG[m.id].research]?` <b style="color:var(--ok)">${ISRU_FREE_LEG[m.id].label}</b> is online — the ${ISRU_FREE_LEG[m.id].leg} burn is produced on-site.`:''}${missionAerocaptureLeg(m)&&state.research.aerocapture?` <b style="color:var(--ok)">Aerocapture</b> is online — the ${missionAerocaptureLeg(m)} burn costs 70% less, the atmosphere doing the rest.`:''}</div>
 
     <div class="mission-tag" style="margin-top:6px">Test campaign — buy down risk before you fly</div>
     <div class="row" style="gap:6px;align-items:stretch;margin:6px 0 4px">${testBtns}</div>

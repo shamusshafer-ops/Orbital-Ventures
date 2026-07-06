@@ -1036,10 +1036,10 @@ scoped into ranked P-slices or started — this is the raw findings, for the use
 - **I5 — Research queue.** ✅ **DONE (2026-07-05).** `[Quick win]` One active project; the lab idled
   silently (alert badge only) when a project completed mid-skip. Shipped as a depth-1 queue (`state.researchNext`,
   `queueResearchNext`/`tryStartQueuedResearch`) — see the I5 session log below for the implementation.
-- **I6 — Aerocapture as a real mechanic.** `[Medium]` The map already teases it ("the atmosphere does most
-  of the braking" at Titan) but no research node or Δv effect delivers it. A node cutting capture-leg Δv at
-  Mars/Titan (reliability tax uncontrolled, bought down by testing) is exactly the propulsive-vs-aerocapture
-  tradeoff the bench is built to showcase — pairs naturally with I1's new destinations.
+- **I6 — Aerocapture as a real mechanic.** ✅ **DONE (2026-07-05).** `[Medium]` The `aerocapture` research
+  node already existed with `effect:{}` — a pure no-op. Shipped a 70% Δv cut on the Mars/Jovian/Saturn
+  orbital-capture legs via `simulateMission`'s existing `legDv()` hook — see the I6 session log for the
+  implementation.
 
 ### Pruning candidates
 - **P-1 — Merge "Build & Launch" and "Queue this build."** `[Quick win]` Confirmed in code: since the
@@ -1963,3 +1963,45 @@ active crisis); the full escalate→fund→fall→resolve lifecycle generically 
 types (mitigated via `debris_cascade`, endured via `solar_storm`); and `showCrisisModal`/
 `canFundCrisisRemediation` rendering/gating correctly for all 3 types without throwing. No SAVE_VERSION
 bump for either slice.
+
+## Session — I6: aerocapture as a real mechanic (2026-07-05)
+
+Last open Improvement on the second-pass backlog. The `aerocapture` research node already existed (req
+`precision_edl`) with `effect:{}` — a pure no-op, exactly like Fable found. Its sibling `gravity_assist_planning`
+turned out to have the identical shape (`effect:{}`, mechanical effect hardcoded ad-hoc in `simulateMission`
+instead of the generic effect-object system) — so this landed as a direct extension of an already-proven
+pattern, not a new mechanism.
+
+`simulateMission`'s `legDv(leg)` closure (the single point every leg's effective Δv already flows through,
+for both the displayed capability numbers and the actual propellant-burn math) gained a second multiplier
+alongside the existing `gaMult`: `aeroMult=state.research.aerocapture?0.3:1`, applied to any leg whose name
+matches a new `AEROCAPTURE_LEG_RE` — `Mars Orbit Insertion`/`Jovian Orbit Insertion`/`Saturn System Capture`,
+the three existing orbital-*capture* legs at genuinely atmosphere-bearing bodies (Mars, Jupiter, Saturn).
+Deliberately excludes Ceres/Lunar insertions (airless — no atmosphere to skim) and the interplanetary
+*injection* legs (gravity-assist's own job, a different real technique). **The two can legitimately stack**
+— `Saturn System Capture` contains "Saturn" and is `by:'transfer'`, so it already matched
+`gravity_assist_planning`'s own pre-existing regex too; a well-planned gravity-assisted approach genuinely
+can also set up a cheaper aerocapture in reality, so this wasn't corrected, just confirmed intentional-enough
+to leave alone. 70% cut chosen deliberately steeper than gravity-assist's 8% shave — aerocapture skips the
+propulsive burn almost entirely, not just a trajectory optimization.
+
+Added a `missionAerocaptureLeg(m)` helper (finds the matching leg in a given mission's own profile, or
+`null`) and wired an "Aerocapture is online" mention into the mission-economics `.eq` info text, right
+alongside the existing ISRU-online callout — same convention, same spot. Research node's own `desc` text
+gained a concrete `<b>−70% Δv on Mars, Jovian and Saturn orbital-capture burns.</b>` callout (previously just
+narrative, no number, matching what every OTHER research node with a real effect already states).
+
+**Validation.** `node --check` OK. 18/18 headless assertions against `legDv`'s exact logic (copy-verified
+line-for-line against the live file — extracting the whole `simulateMission` function wasn't practical
+given how much game state it closes over) plus the real, directly-extracted `missionAerocaptureLeg`: no
+discount with neither tech researched; aerocapture alone cuts exactly the 3 targeted legs by 70% and
+nothing else (confirmed airless captures, transfer-injection legs, and the launch-vehicle leg all stay
+untouched); gravity-assist alone only touches its own regex's legs; both researched stack correctly and
+sequentially on `Saturn System Capture` while `Mars Orbit Insertion` (never in gravity-assist's own regex)
+only gets aerocapture's cut; the helper correctly finds/misses the leg in realistic mission-shaped profiles
+and doesn't throw on `null`/profile-less input. No SAVE_VERSION bump (no new state; `effect:{}` stays empty,
+matching `gravity_assist_planning`'s own precedent for this exact class of ad-hoc research effect).
+
+**This closes out every Improvement (I1–I6) on the second-pass backlog.** Remaining: the 7 Pruning
+candidates and 6 Flow-polish items, including Fable's own top pick (Playtest Zero + merging the duplicate
+Launch/Queue buttons + an auto-fly option).
