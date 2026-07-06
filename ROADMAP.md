@@ -1022,13 +1022,13 @@ scoped into ranked P-slices or started — this is the raw findings, for the use
   M3a-ii. Shipped `mars_landing`/`saturn_orbit`/`titan_landing`/`oort_precursor` + 2 new/1 extended programs
   + 2 new/1 raised ambitions — see the I1 session log for the implementation. (I2, the second scoring
   bookend, is a separate still-open backlog item.)
-- **I2 — Second scoring bookend.** `[Medium]` Chronicle only ceremonializes once, at the 1990 soft-scoring
-  date; eras run to 2100+ with no second arc. Pair with I1: an Expansion→Speculative-boundary ceremony
-  scored on deep-space dimensions (bodies settled, crises survived, fusion flown).
-- **I3 — Generalize P11's crisis into a 2–3 crisis roster.** `[Medium, framework already exists]` One
-  one-time crisis is a demo, not a system. The escalate/fund/resolve skeleton (`state.crisis`/`crisisDone`,
-  `eraStakesFrac()`-scaled cost) is directly reusable: a solar-storm season (deep-space reliability tax), a
-  funding-collapse/political crisis (support+funding tax, mandate flurry to buy down).
+- **I2 — Second scoring bookend.** ✅ **DONE (2026-07-05).** `[Medium]` Chronicle only ceremonialized once, at
+  the 1990 soft-scoring date. Shipped `SCORING_YEAR_2=2100` + `state.eraScored2`, a `showChronicle('era2')`
+  mode, and a `fusionFlown` legacy bonus — see the I2/I3 session log for the implementation.
+- **I3 — Generalize P11's crisis into a 2–3 crisis roster.** ✅ **DONE (2026-07-05).** `[Medium, framework
+  already existed]` One one-time crisis was a demo, not a system. Shipped a `CRISES` config (3 entries:
+  Debris Cascade unchanged, new Solar Storm Season, new Funding Collapse), `state.crisisHistory[]` (lazily
+  backfilled from the old singular `crisisDone`) — see the I2/I3 session log for the implementation.
 - **I4 — Full-game metric history for the Chronicle.** `[Quick win]` `state.metricHist` is a 24-month ring
   buffer; add a decimated (e.g. quarterly) unbounded series and render treasury/rep/support/firsts-vs-rivals
   replay graphs inside `showChronicle()`. *(Partially addressed 2026-07-05 by the Finances pop-out's 3 new
@@ -1910,3 +1910,56 @@ days scaling, whether the new late-game missions feel appropriately hard vs. rew
 playtest call, not something a headless check can validate — flagged for Playtest Zero same as everything
 else. No SAVE_VERSION bump (pure data — no new state shape, `programsAwarded`/`ambitionFulfilled` already
 handle new ids generically).
+
+## Session — I2 + I3: second scoring bookend, generalized crisis roster (2026-07-05)
+
+**I2 — second scoring bookend.** New `SCORING_YEAR_2=2100` (the Speculative era opens), a fully independent
+flag (`state.eraScored2`) alongside the original `state.eraScored` — both checked every `checkScoringDate()`
+call, both can fire in the same call if a save somehow starts past both thresholds at once (currently
+unreachable in normal play, but the harness covers it since it's cheap to). New `showChronicle('era2')`
+mode: its own heading ("A new age dawns — 2100") and sub-text, shares the `'era'` mode's Continue/Retire
+button branch rather than the plain-Close one. `legacyScore()` gained `fusionFlown` (has `oort_precursor`
+been completed?) and a flat +20 bonus for it — the "deep-space dimensions" framing Fable asked for turned
+out to already be covered by existing stats (worlds reached, facilities, the P11 crisis) once `fusionFlown`
+filled the one actual gap. No new migration needed — `state.eraScored`'s own convention was already "no
+explicit default anywhere, just read via a falsy check," so `eraScored2` follows the identical pattern.
+
+**I3 — generalized crisis roster.** P11 shipped exactly one crisis (a debris cascade), explicitly a
+one-time arc. This generalizes the same escalate/fund/resolve skeleton across a new `CRISES` config (3
+entries, matching Fable's suggestion) instead of hardcoded debris-only logic:
+- **Debris Cascade** (unchanged from P11) — LEO-reliability tax, gated on `leoFlights≥40` + Commercial era.
+- **Solar Storm Season** (new) — deep-space-reliability tax (any `profile` mission), gated on a new
+  `deepFlights≥15` counter (incremented alongside `leoFlights` at mission-success) + Expansion era.
+- **Funding Collapse** (new) — a political/economic crisis with *no* mission-reliability effect at all;
+  instead cuts `govMonthlyFunding()`'s earned grant by up to 50% (the difficulty-based funding floor is
+  untouched — a funding cut hits discretionary support-based income, not the baseline safety net). Gated on
+  era alone (Station & Shuttle+, no flight-count threshold) — the earliest-reachable, most political of the
+  three.
+
+Only one crisis is ever active at a time (unchanged from P11); after one resolves, the *same* type can't
+immediately roll again next time (variety over a full game), but the game is no longer a one-shot — new
+`state.crisisHistory[]` records every resolution. **Lazily backfilled from P11's original singular
+`state.crisisDone`** the first time `crisisHistory()` is called (an old save's one already-resolved crisis
+just becomes history entry #1) — no explicit migration function, no SAVE_VERSION bump. `legacyScore()`'s
+crisis bonus now sums across the whole history instead of reading a single object. Effect dispatch is
+data-driven: `crisisRelPenalty(m)` checks the active crisis's `effectKey` (`'leoRel'`/`'deepRel'`) against
+the mission; `crisisGovFundingMult()` is 1 (no-op) unless the active crisis's `effectKey` is `'govFunding'`.
+Fund cost, modal copy (title/description/effect label), and all three log lines (trigger/mitigated/endured)
+are now per-crisis-type data rather than hardcoded strings — the 3 UI touchpoints that previously said
+"Debris crisis" unconditionally (outliner row, Command-tab badge, `showCrisisModal`) now read the active
+crisis's own name/icon.
+
+**Validation.** `node --check` OK. I2: 26/26 headless assertions (fusion bonus math, both scoring-date
+flags firing independently/together/in-sequence, `showChronicle`'s per-mode heading/button/stat-row
+branching, the interstellar stat row appearing only once flown) — re-run and confirmed unaffected after I3
+landed on top of it (since `legacyScore` now calls the new `crisisHistory()`). I3: 44/44 headless assertions
+against the actual production functions **extracted directly from the live file**: era/threshold gating per
+crisis type (including the flight-count-free `funding_collapse` case); only one crisis eligible at a time;
+same-type-can't-immediately-repeat; the singular-to-array lazy backfill (and its idempotency); effect
+dispatch correctly isolated per type (a LEO tax never leaks onto a deep mission and vice versa;
+`funding_collapse` has zero mission-reliability effect; only `funding_collapse` ever touches the gov-funding
+multiplier); per-crisis fund-cost scaling (different base cost per type, rising with era, `Infinity` with no
+active crisis); the full escalate→fund→fall→resolve lifecycle generically across two different crisis
+types (mitigated via `debris_cascade`, endured via `solar_storm`); and `showCrisisModal`/
+`canFundCrisisRemediation` rendering/gating correctly for all 3 types without throwing. No SAVE_VERSION
+bump for either slice.

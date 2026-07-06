@@ -2189,7 +2189,7 @@ function newGame(difficulty){
     parts:defaultParts(), // BC2: performance parts (tank material / avionics / fairing)
     blueprints:[], // saved full ship designs (reloadable blueprints)
     frontPages:[], // P7: The Agency Wire — headline records for the Chronicle scrapbook
-    crisis:null, crisisDone:null, leoFlights:0, // P11: the one late-game debris-cascade crisis
+    crisis:null, crisisDone:null, leoFlights:0, deepFlights:0, crisisHistory:[], // P11/I3: the crisis roster (leoFlights/deepFlights are trigger counters; crisisHistory is every resolved crisis)
     researchNext:null, // I5: queued "start next" research pick — auto-starts once the active project finishes and it's affordable/eligible
     ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
     facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
@@ -3011,7 +3011,7 @@ function addSupport(delta){ state.publicSupport=clampA(publicSupport()+delta, SU
 // (still below its overhead, so idling stays net-negative — just slower to bite).
 function govMonthlyFunding(){
   const excess=Math.max(0, publicSupport()-SUPPORT_BASE);
-  const earned=GOV_FUNDING_BASE*Math.min(1,excess/30)*(1+0.15*eraIndex(currentEra()))*doctrineMult('gov')*(1+execGovBonus()); // full grant at 80 support — every point above neutral pays; executives lift the earned grant (0 when unstaffed)
+  const earned=GOV_FUNDING_BASE*Math.min(1,excess/30)*(1+0.15*eraIndex(currentEra()))*doctrineMult('gov')*(1+execGovBonus())*crisisGovFundingMult(); // full grant at 80 support — every point above neutral pays; executives lift the earned grant (0 when unstaffed); I3: a Funding Collapse crisis cuts the earned grant, not the difficulty floor below
   return round2(earned + (diff().govFloor||0));
 } // CE3(a): Statecraft +, Commercial −
 // Months of cash left at the current monthly burn (Infinity when cash-positive).
@@ -5241,7 +5241,7 @@ function effectiveReliability(m,v,sim,crewed){
   let rel=v.reliability;
   if(sim) rel=Math.max(0.30, rel*Math.pow(0.985, sim.inSpaceLegs));
   rel*=radRelPenalty(m,crewed); // radiation degrades reliability on long deep missions (bought down by shielding)
-  rel*=(1-crisisRelPenalty(m)); // P11: the LEO debris-cascade crisis tax (0 unless it's active AND this is a LEO-class flight)
+  rel*=(1-crisisRelPenalty(m)); // P11/I3: whichever crisis is active taxes reliability (0 unless it's active AND this mission matches its effect — LEO-class or deep-space)
   if(crewed){ const ab=astroBonus(); rel=Math.min(0.99, rel+ab.rel); }
   rel=Math.min(0.995, rel + facilityBonus(missionBody(m&&m.id)).relBump); // M17: home-field operational bonus
   rel=Math.min(0.995, rel + familyRelBonus(activeFamily())); // #3: reliability heritage of a proven lineage
@@ -6030,6 +6030,7 @@ function finalizeLaunch(ctx, ops){
     state.successes++;
     if(m.crew>0){ state.crewFlown=(state.crewFlown||0)+m.crew; } // chronicle: souls carried
     if(isLeoClassMission(m)) state.leoFlights=(state.leoFlights||0)+1; // P11: the crisis trigger's own counter — the empire's launch history creating its own hazard
+    if(m.profile) state.deepFlights=(state.deepFlights||0)+1; // I3: solar-storm crisis's own trigger counter
     creditEngineHeritage(); // engines earn flight heritage toward cost/reliability edge
     state.staticFixBonus=0;  // the static-fire fix flies once
 
@@ -6890,44 +6891,95 @@ function bailoutTerms(){
   return { amount:round2(BAILOUT_BASE*(1+era*0.6)), repCost:Math.round(BAILOUT_REP_BASE*(1+era*0.5)*(1+uses*0.5)), interest:round2(BAILOUT_BASE*(1+era*0.6)*BAILOUT_INTEREST) };
 }
 
-// ── P11: one late-game crisis — a Kessler debris cascade in LEO ────────────────────────
-// The keystone P1 entity model + CE4's era-scaled stakes make this possible: an established
-// empire's OWN launch history (state.leoFlights) creates a systemic hazard that then leans on
-// eraStakesFrac() for its funding cost, exactly like the bailout mechanic. This is a ONE-TIME
-// arc (state.crisis while active, state.crisisDone once resolved) — not a recurring event.
-// Two ways through, both "survived" (this is a stakes-raiser, not a game-over): fully fund
-// remediation to zero the severity (bigger legacy bonus), or just keep flying through it until
-// CRISIS_ENDURE_MONTHS passes and it settles into a permanent-but-survivable cost of doing
-// business (smaller bonus). An unmitigated crisis never locks anything out — only a rising
-// reliability tax on LEO-class missions specifically (isLeoClassMission: no profile, reqDv≥9000,
-// same threshold the isOrbital flag already uses elsewhere).
-const CRISIS_ERA_MIN=4;             // eligible from the Commercial era on
-const CRISIS_LEO_THRESHOLD=40;      // cumulative successful LEO-class flights before it's even possible
+// ── P11/I3: a generalized late-game crisis roster (P11 shipped one one-time debris crisis; this
+// makes crises a recurring feature of a mature empire, drawn from a small rotating set instead of a
+// single demo event). Same skeleton throughout — era+threshold-gated trigger, a severity that rises
+// unfunded/falls funded, resolves 'mitigated' or 'endured' after CRISIS_ENDURE_MONTHS, never a hard
+// lockout — now data-driven across 3 distinct effects instead of one hardcoded LEO-reliability tax.
+// Only one crisis is ever active at a time; the SAME crisis type won't immediately repeat itself.
 const CRISIS_TRIGGER_CHANCE=0.02;   // monthly chance once eligible (unpredictable, not the instant you cross the threshold)
 const CRISIS_SEVERITY_RISE=0.05;    // per month while unfunded
 const CRISIS_SEVERITY_FALL=0.12;    // per month while a remediation program is funded and active
-const CRISIS_MAX_REL_PENALTY=0.12;  // at severity 1.0, LEO-class missions fly at ×(1-0.12) reliability
 const CRISIS_FUND_MONTHS=6;         // one funding term's duration
 const CRISIS_ENDURE_MONTHS=36;      // resolves as "endured" after this long if never fully mitigated
+const CRISES=[
+  { id:'debris_cascade', name:'Debris Cascade', icon:'⚠',
+    eraMin:4, thresholdStat:'leoFlights', threshold:40, fundCostBase:6.0, maxPenalty:0.12, effectKey:'leoRel',
+    remedyName:'Debris Remediation Program', effectLabel:'LEO reliability tax',
+    modalTitle:'Debris Cascade — LEO',
+    modalDesc:'A cascading debris field is fouling low Earth orbit. Every LEO-class mission flies at reduced reliability while it\'s active — the fallout of a mature launch industry catching up with itself.',
+    triggerMsg:'⚠ Tracking stations report a debris cascade forming in LEO — decades of launch traffic catching up with the industry. Left unfunded, low orbit gets steadily less safe to operate in.',
+    mitigatedMsg:'✅ The debris field has been cleared — LEO operations are back to full safety margins. A defining moment for the agency.',
+    enduredMsg:'The debris field has settled into a permanent, manageable hazard — the agency adapted and operations continue.' },
+  { id:'solar_storm', name:'Solar Storm Season', icon:'☀',
+    eraMin:5, thresholdStat:'deepFlights', threshold:15, fundCostBase:7.0, maxPenalty:0.15, effectKey:'deepRel',
+    remedyName:'Shielding Surge Program', effectLabel:'Deep-space reliability tax',
+    modalTitle:'Solar Storm Season',
+    modalDesc:'An extended run of severe space weather is battering every deep-space mission with radiation and charged-particle upsets while it lasts.',
+    triggerMsg:'☀ Solar physicists warn of an extended run of severe space weather — years of radiation storms and charged-particle upsets bearing down on every deep-space mission in flight.',
+    mitigatedMsg:'✅ The storm season has passed its peak — deep-space operations are back to full safety margins.',
+    enduredMsg:'The storm season has become a fact of deep-space life — crews and hardware have adapted, at a permanent cost.' },
+  { id:'funding_collapse', name:'Funding Collapse', icon:'📉',
+    eraMin:3, thresholdStat:null, threshold:0, fundCostBase:5.0, maxPenalty:0.5, effectKey:'govFunding',
+    remedyName:'Emergency Outreach Campaign', effectLabel:'Government funding cut',
+    modalTitle:'Funding Collapse',
+    modalDesc:'A hostile political shift is squeezing government funding — the earned grant is cut while this lasts.',
+    triggerMsg:'📉 A change in government has put your public funding on notice — a hostile legislature is threatening to slash the program\'s budget.',
+    mitigatedMsg:'✅ Public confidence has been rebuilt — government funding is restored to its normal level.',
+    enduredMsg:'The funding cut has become permanent political reality — the agency has learned to operate leaner.' },
+];
 function isLeoClassMission(m){ return !!(m && !m.profile && (m.reqDv||0)>=9000); }
-function crisisFundCost(){ return round2(6.0*(1+eraStakesFrac()*1.2)); } // scales with era like bailoutTerms
-function crisisEligible(){ return !state.crisis && !state.crisisDone && eraIndex(currentEra())>=CRISIS_ERA_MIN && (state.leoFlights||0)>=CRISIS_LEO_THRESHOLD; }
-function crisisRelPenalty(m){ const c=state.crisis; return (c && isLeoClassMission(m)) ? CRISIS_MAX_REL_PENALTY*c.severity : 0; }
+function crisisDef(id){ return CRISES.find(c=>c.id===id); }
+function activeCrisisDef(){ return state.crisis ? crisisDef(state.crisis.id) : null; }
+// The resolved-crisis log. Lazily backfilled from P11's original singular state.crisisDone the first
+// time it's touched, so an old save's one already-resolved crisis just becomes history entry #1 —
+// no explicit migration function, no SAVE_VERSION bump.
+function crisisHistory(){
+  const h=state.crisisHistory=state.crisisHistory||[];
+  if(state.crisisDone && !h.length){ h.push(state.crisisDone); }
+  return h;
+}
+function crisisFundCost(def){ def=def||activeCrisisDef(); if(!def) return Infinity; return round2(def.fundCostBase*(1+eraStakesFrac()*1.2)); } // scales with era like bailoutTerms
+// eligible candidates right now: era-gated, threshold-gated (if any), and not an immediate repeat
+// of whichever crisis type just resolved (variety over a full game, not the same one on loop)
+function crisisCandidates(){
+  if(state.crisis) return [];
+  const era=eraIndex(currentEra());
+  const hist=crisisHistory(), lastId=hist.length?hist[hist.length-1].id:null;
+  return CRISES.filter(c=>{
+    if(era<c.eraMin) return false;
+    if(c.thresholdStat && (state[c.thresholdStat]||0)<c.threshold) return false;
+    if(c.id===lastId) return false;
+    return true;
+  });
+}
+function crisisRelPenalty(m){
+  const def=activeCrisisDef(); if(!def) return 0;
+  if(def.effectKey==='leoRel' && isLeoClassMission(m)) return def.maxPenalty*state.crisis.severity;
+  if(def.effectKey==='deepRel' && !!m.profile) return def.maxPenalty*state.crisis.severity;
+  return 0;
+}
+function crisisGovFundingMult(){
+  const def=activeCrisisDef(); if(!def || def.effectKey!=='govFunding') return 1;
+  return 1-(def.maxPenalty*state.crisis.severity);
+}
 function tickCrisisTrigger(){
-  if(!crisisEligible() || Math.random()>=CRISIS_TRIGGER_CHANCE) return;
-  state.crisis={phase:'building', startAbs:absMonth(), severity:0.15, peakSeverity:0.15, fundedUntilAbs:null};
+  const cands=crisisCandidates(); if(!cands.length || Math.random()>=CRISIS_TRIGGER_CHANCE) return;
+  const def=cands[Math.floor(Math.random()*cands.length)];
+  state.crisis={id:def.id, phase:'building', startAbs:absMonth(), severity:0.15, peakSeverity:0.15, fundedUntilAbs:null};
   timeInterrupt();
-  log('bad','⚠ Tracking stations report a debris cascade forming in LEO — decades of launch traffic catching up with the industry. Left unfunded, low orbit gets steadily less safe to operate in.');
+  log('bad', def.triggerMsg);
   if(animEnabled) showCrisisModal();
 }
 function resolveCrisis(outcome){
   const c=state.crisis; if(!c) return;
-  state.crisisDone={outcome, peakSeverity:c.peakSeverity||0, months:absMonth()-c.startAbs};
+  const def=crisisDef(c.id);
+  const record={id:c.id, outcome, peakSeverity:c.peakSeverity||0, months:absMonth()-c.startAbs};
+  crisisHistory().push(record);
+  state.crisisDone=record; // kept in sync for anything still reading the old singular field
   state.crisis=null;
-  if(outcome==='mitigated'){ addSupport(6); state.rep+=8;
-    log('ok','✅ The debris field has been cleared — LEO operations are back to full safety margins. A defining moment for the agency.'); }
-  else { addSupport(2);
-    log('note','The debris field has settled into a permanent, manageable hazard — the agency adapted and operations continue.'); }
+  if(outcome==='mitigated'){ addSupport(6); state.rep+=8; log('ok', def?def.mitigatedMsg:'Crisis resolved.'); }
+  else { addSupport(2); log('note', def?def.enduredMsg:'Crisis endured.'); }
 }
 function tickCrisis(){
   tickCrisisTrigger();
@@ -6938,28 +6990,29 @@ function tickCrisis(){
   if(c.severity<=0){ resolveCrisis('mitigated'); return; }
   if(absMonth()-c.startAbs>=CRISIS_ENDURE_MONTHS){ resolveCrisis('endured'); return; }
 }
-function canFundCrisisRemediation(){ return !!state.crisis && state.money>=crisisFundCost(); }
+function canFundCrisisRemediation(){ const def=activeCrisisDef(); return !!def && state.money>=crisisFundCost(def); }
 function fundCrisisRemediation(){
-  if(!canFundCrisisRemediation()) return;
-  const cost=crisisFundCost();
+  const def=activeCrisisDef(); if(!def || !canFundCrisisRemediation()) return;
+  const cost=crisisFundCost(def);
   state.money=round2(state.money-cost);
   state.crisis.fundedUntilAbs=absMonth()+CRISIS_FUND_MONTHS;
-  log('note',`Debris Remediation Program funded — ${fM(cost)}, active for ${CRISIS_FUND_MONTHS} months.`);
+  log('note',`${def.remedyName} funded — ${fM(cost)}, active for ${CRISIS_FUND_MONTHS} months.`);
   render();
 }
 function showCrisisModal(){
   const c=state.crisis; if(!c) return;
+  const def=crisisDef(c.id); if(!def) return;
   const pct=Math.round(c.severity*100);
   const funded=c.fundedUntilAbs!=null && absMonth()<c.fundedUntilAbs;
-  const cost=crisisFundCost(), afford=state.money>=cost;
-  showModal(`<h2 style="color:var(--warn)">⚠ Debris Cascade — LEO</h2>
-    <p class="muted">A cascading debris field is fouling low Earth orbit. Every LEO-class mission flies at reduced reliability while it's active — the fallout of a mature launch industry catching up with itself.</p>
+  const cost=crisisFundCost(def), afford=state.money>=cost;
+  showModal(`<h2 style="color:var(--warn)">${def.icon} ${def.modalTitle}</h2>
+    <p class="muted">${def.modalDesc}</p>
     <div class="metrics" style="margin:10px 0">
       <div class="metric"><div class="k">Severity</div><div class="v" style="color:var(--bad)">${pct}%</div></div>
-      <div class="metric"><div class="k">LEO reliability tax</div><div class="v">−${Math.round(CRISIS_MAX_REL_PENALTY*c.severity*100)}%</div></div>
+      <div class="metric"><div class="k">${def.effectLabel}</div><div class="v">−${Math.round(def.maxPenalty*c.severity*100)}%</div></div>
     </div>
-    ${funded?`<div class="dim" style="font-size:12px;margin-bottom:8px">Remediation program active — severity falling, funded through month ${c.fundedUntilAbs}.</div>`
-      :`<button class="btn" onclick="fundCrisisRemediation();showCrisisModal()" ${afford?'':'disabled'}>Fund Debris Remediation Program (${fM(cost)}, ${CRISIS_FUND_MONTHS} mo)</button>`}
+    ${funded?`<div class="dim" style="font-size:12px;margin-bottom:8px">${def.remedyName} active — severity falling, funded through month ${c.fundedUntilAbs}.</div>`
+      :`<button class="btn" onclick="fundCrisisRemediation();showCrisisModal()" ${afford?'':'disabled'}>Fund ${def.remedyName} (${fM(cost)}, ${CRISIS_FUND_MONTHS} mo)</button>`}
     <button class="btn ghost" style="width:100%;margin-top:8px" onclick="hideModal()">Close — keep flying through it</button>`);
 }
 function gameOver(){
@@ -7077,7 +7130,7 @@ function loadDefaults(){ return {
       staff:[], assignedAstronaut:null, departments:defaultDepartments(),
       vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, rehearsal:false, techLevel:{}, divisions:{}, partnerships:[], breakthroughCooldown:3, relDebt:0, powerSource:'solar',
       recentBuilds:[], materials:defaultMaterialsState(),
-      buildQueue:[], hangar:[], orderSeq:0, padMonthAbs:-1, padMonthUsed:0, standingProd:null, juggernautReached:false, doctrine:null, lunarArch:null, uiLayer:'advanced', loanInterest:0, metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[], frontPages:[], crisis:null, crisisDone:null, leoFlights:0, researchNext:null, day:0, engineStock:{}, engineStockTested:{}, partStock:{}, partStockTested:{}, activeFlights:[], inquiryCredit:null
+      buildQueue:[], hangar:[], orderSeq:0, padMonthAbs:-1, padMonthUsed:0, standingProd:null, juggernautReached:false, doctrine:null, lunarArch:null, uiLayer:'advanced', loanInterest:0, metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[], frontPages:[], crisis:null, crisisDone:null, leoFlights:0, deepFlights:0, crisisHistory:[], researchNext:null, day:0, engineStock:{}, engineStockTested:{}, partStock:{}, partStockTested:{}, activeFlights:[], inquiryCredit:null
 }; }
 
 /* ---------- Session bookend: "where you left off" ----------
@@ -10440,6 +10493,7 @@ function frontPagesHTML(){
    soft scoring date (Jan 1990) with the option to keep playing; and is the retirement
    ceremony when the player chooses to step down. Open-ended play is never taken away. */
 const SCORING_YEAR=1990;
+const SCORING_YEAR_2=2100; // I2: second scoring bookend — the Speculative era opens; the post-2000 game gets its own arc instead of coasting on the first ceremony
 function chronicleEntries(){
   const out=[];
   for(const [mid,abs] of Object.entries(state.firstDates||{})){
@@ -10461,12 +10515,18 @@ function legacyScore(){
   const safety=state.flights?state.successes/state.flights:0;
   let facN=0; try{ FACILITY_DEFS.forEach(d=>{ if(facilityBuilt(d.id)) facN++; }); }catch(e){}
   const crewPenalty=(state.crewLost||0)*6;
-  const crisisBonus=state.crisisDone ? (state.crisisDone.outcome==='mitigated'?18:8) : 0; // P11: surviving the one late-game crisis
-  const score=firsts*10 + worlds*12 + facN*8 + Math.round(safety*20) - scooped*5 - crewPenalty + crisisBonus;
+  // I3: sum across every crisis this game has survived (P11's original one-time crisisDone still
+  // reads correctly — crisisHistory() lazily seeds itself from it — but a longer game can now
+  // survive more than one, and each one should count).
+  const cHist=crisisHistory();
+  const crisisBonus=cHist.reduce((a,c)=>a+(c.outcome==='mitigated'?18:8),0);
+  const fusionFlown=!!state.completed['oort_precursor']; // I1/I2: the interstellar-precursor capstone
+  const fusionBonus=fusionFlown?20:0;
+  const score=firsts*10 + worlds*12 + facN*8 + Math.round(safety*20) - scooped*5 - crewPenalty + crisisBonus + fusionBonus;
   const grade= score>=140?'S':score>=100?'A':score>=65?'B':score>=35?'C':'D';
-  return {score,grade,firsts,scooped,worlds,facN,safety,crewLost:state.crewLost||0,crisisDone:state.crisisDone||null};
+  return {score,grade,firsts,scooped,worlds,facN,safety,crewLost:state.crewLost||0,crisesResolved:cHist,fusionFlown};
 }
-function showChronicle(mode){ // mode: 'view' | 'era' (soft date) | 'retire'
+function showChronicle(mode){ // mode: 'view' | 'era' (1990) | 'era2' (2100) | 'retire'
   const L=legacyScore(); const entries=chronicleEntries();
   const gradeCol={S:'#ffd98a',A:'#58c47a',B:'#4fd1d9',C:'#e8b64c',D:'#e0564f'}[L.grade];
   const rows=entries.map(e=>{ const y=1942+Math.floor(e.abs/12);
@@ -10477,8 +10537,12 @@ function showChronicle(mode){ // mode: 'view' | 'era' (soft date) | 'retire'
       ${e.who!=='you'?`<span class="dim" style="font-size:11px">— ${e.who}</span>`:''}
     </div>`; }).join('') || '<div class="dim" style="font-size:12px">No milestones yet — the chronicle is unwritten.</div>';
   const stat=(k,v)=>`<div class="metric"><div class="k">${k}</div><div class="v">${v}</div></div>`;
-  const heading = mode==='retire' ? 'The Chronicle closes' : (mode==='era' ? 'An era closes — '+SCORING_YEAR : 'Agency Chronicle');
+  // I2: a second bookend at SCORING_YEAR_2 so the post-2000 game gets its own ceremony instead of
+  // coasting on the 1990 one — framed around the "deep-space dimensions" the first ceremony predates
+  // (worlds reached, crises survived, whether the fusion-precursor capstone has flown).
+  const heading = mode==='retire' ? 'The Chronicle closes' : mode==='era2' ? 'A new age dawns — '+SCORING_YEAR_2 : (mode==='era' ? 'An era closes — '+SCORING_YEAR : 'Agency Chronicle');
   const sub = mode==='retire' ? 'You step down. This is what the history books will say.' :
+              mode==='era2' ? 'A century and a half of spaceflight — the deep frontier now within reach. The program may continue; history has taken its second measure.' :
               mode==='era' ? 'Half a century of spaceflight, scored. The program may continue — history has simply taken its first measure.' :
               state.company+' — the story so far.';
   showModal(`<div>
@@ -10491,7 +10555,8 @@ function showChronicle(mode){ // mode: 'view' | 'era' (soft date) | 'retire'
         ${stat('Flights', state.flights+' ('+Math.round(L.safety*100)+'% success)')}
         ${stat('Crew flown', (state.crewFlown||0)+((state.crewLost||0)?' · '+state.crewLost+' lost':''))}
         ${stat('Facilities', L.facN)}
-        ${L.crisisDone?stat('Debris crisis', L.crisisDone.outcome==='mitigated'?'Cleared':'Endured'):''}
+        ${L.crisesResolved.length?stat('Crises survived', L.crisesResolved.length+(L.crisesResolved.some(c=>c.outcome==='mitigated')?' · '+L.crisesResolved.filter(c=>c.outcome==='mitigated').length+' cleared':'')):''}
+        ${L.fusionFlown?stat('Interstellar precursor','Flown ✓'):''}
       </div>
     </div>
     <div style="max-height:240px;overflow:auto;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:6px 0;margin-bottom:10px">${rows}</div>
@@ -10500,7 +10565,7 @@ function showChronicle(mode){ // mode: 'view' | 'era' (soft date) | 'retire'
     ${mode==='retire'
       ? `<button class="btn launch" style="width:100%" onclick="hideModal();newGame();render()">Found a new agency ▸</button>
          <button class="btn ghost" style="width:100%;margin-top:6px" onclick="hideModal()">…not yet — back to work</button>`
-      : mode==='era'
+      : (mode==='era'||mode==='era2')
       ? `<button class="btn launch" style="width:100%" onclick="hideModal()">The program continues ▸</button>
          <button class="btn ghost" style="width:100%;margin-top:6px" onclick="showChronicle('retire')">Retire with this legacy</button>`
       : `<button class="btn" style="width:100%" onclick="hideModal()">Close</button>
@@ -10512,6 +10577,13 @@ function checkScoringDate(){
     timeInterrupt();
     if(animEnabled){ showChronicle('era'); }
     log('note',`📖 ${SCORING_YEAR}: history takes its first measure of ${state.company}. Legacy grade so far: ${legacyScore().grade}.`);
+  }
+  // I2: second bookend — independent flag, fires once state.year reaches SCORING_YEAR_2 regardless
+  // of whether the first one already fired (it always will have, by definition, since YEAR_2>YEAR).
+  if(state.year>=SCORING_YEAR_2 && !state.eraScored2){ state.eraScored2=true;
+    timeInterrupt();
+    if(animEnabled){ showChronicle('era2'); }
+    log('note',`📖 ${SCORING_YEAR_2}: history takes its second measure of ${state.company}. Legacy grade now: ${legacyScore().grade}.`);
   }
 }
 
@@ -10542,8 +10614,8 @@ function outlinerItems(){
   // special contract (feature 4)
   const sc=state.specialContract;
   if(sc) push('★', sc.title+' ('+fM(sc.bonus)+')', (sc.deadlineAbs-nowM)*30, ()=>setTab('missions'), (sc.deadlineAbs-nowM)<=4?'var(--warn)':'var(--ignite)');
-  // P11: the debris-cascade crisis, while active, always at the top (eta 0) — a standing decision, not a countdown
-  if(state.crisis) push('⚠', `Debris crisis — ${Math.round(state.crisis.severity*100)}% severity`, 0, ()=>showCrisisModal(), 'var(--bad)');
+  // P11/I3: whichever crisis is active, always at the top (eta 0) — a standing decision, not a countdown
+  if(state.crisis){ const cd=activeCrisisDef(); if(cd) push(cd.icon, `${cd.name} — ${Math.round(state.crisis.severity*100)}% severity`, 0, ()=>showCrisisModal(), 'var(--bad)'); }
   // committed launch window
   if(state.committedWindow){ const m=MISSIONS.find(x=>x.id===state.committedWindow.missionId);
     push('☄', 'Window: '+(m?m.name:'mission'), state.committedWindow.abs-nowD, ()=>setTab('map'), 'var(--readout)'); }
@@ -10609,8 +10681,8 @@ function tabAlerts(){
   // P9: surface an unsigned doctrine-exclusive contract once it's actually signable
   if(state.doctrine){ const dd=PASSIVE_CONTRACT_DEFS.find(x=>x.cat==='doct'&&x.reqDoctrine===state.doctrine);
     if(dd && passiveStatus(dd.id)==='available') a.command.push(dd.name+' signable'); }
-  // P11: the debris-cascade crisis, while active, is always worth a Command-tab flag
-  if(state.crisis) a.command.push(`Debris crisis — ${Math.round(state.crisis.severity*100)}% severity`);
+  // P11/I3: whichever crisis is active is always worth a Command-tab flag
+  if(state.crisis){ const cd=activeCrisisDef(); if(cd) a.command.push(`${cd.name} — ${Math.round(state.crisis.severity*100)}% severity`); }
   // Bench: active mission blocked by the current design
   const m=MISSIONS.find(x=>x.id===state.activeMission);
   if(m){ try{ const v=computeVehicle(); const chk=canLaunch(v,m,m.profile?simulateMission(m):null);
