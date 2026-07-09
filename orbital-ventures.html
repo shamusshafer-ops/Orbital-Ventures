@@ -6197,8 +6197,8 @@ function finalizeLaunch(ctx, ops){
            apogee:0.86+rnd()*0.28, bow:(rnd()-0.5)*0.9 } };
   const finish=()=>{ if(state.money<0){ gameOver(); } else { _missionPulse=success?'ok':(outcome.kind==='loss'||outcome.kind==='strand')?'bad':null; render(); if(pendingCelebration) pendingCelebration(); maybeShowInquiry(); } _flightResolving=false; if(!state.over) pumpFlightArrivals(); }; // 1.2a: flight fully done — release the lock, surface a pending failure inquiry, then resolve the next arrival if any
   if(animEnabled){
-    if(_liftoffArmed){ _liftoffArmed=false; playLiftoff(spec, (seedP)=>playMission(spec, finish, seedP)); } // iso-view liftoff + zoom-chase, then the ascent overlay seeded at the handoff altitude
-    else playMission(spec, finish);
+    _liftoffArmed=false; // Slice A: the pad phase now lives inside the overlay itself (setupFlightState's padDur) —
+    playMission(spec, finish); // the old iso-view CC-popout liftoff (playLiftoff) is retired for launches, left defined-but-unused
   } else finish();
 }
 function autoAdvanceMission(){
@@ -8131,21 +8131,30 @@ function setupFlightState(spec, done, ctx, cv, viewCanvas, seedP){
   }catch(e){}
   const ascentDur=7200, cruiseDur=spec.isCislunar?9000:4800;
   const reentryDur=flightHasReentry(spec)?6400:0; // appended after the orbit phase for a returning capsule
+  // Slice A: a pad phase (countdown → ignition → hold-down) plays on THIS canvas, ahead of the
+  // ascent, so the launch and the climb are one continuous shot instead of two containers. Only
+  // full launches get it; an arrival-only replay (mode 'arrive', Slice B) starts in cruise (padDur 0).
+  const launchMode = spec.mode!=='arrive';
+  const padDur = launchMode ? PAD_PHASE_MS : 0;
   let totalDur;
   if(!spec.success && spec.failPhase==='ascent') totalDur=ascentDur*0.55+2000;
   else if(!spec.success && spec.failPhase==='deep') totalDur=ascentDur+cruiseDur*0.42+2000;
   else totalDur=ascentDur+cruiseDur+reentryDur+1200;
+  totalDur+=padDur; // the loop must run through the pad pre-roll too
   const stars=[]; for(let i=0;i<160;i++) stars.push({x:Math.random(),y:Math.random()*0.92,b:0.3+Math.random()*0.7,s:0.8+Math.random()*1.4,twinkle:Math.random()*6.28});
   const path=spec.isCislunar?buildLunarPath(cv.width,cv.height,spec.rng):null;
   // Optional seed: begin the ascent already this fraction of the way up (the altitude the pad-liftoff
   // lead-in had reached at handoff), so the cut from the command-center scene reads as continuous rather
   // than resetting the rocket to the ground. Defaults to 0 (today's ground-level start) for every other caller.
   const seedT=clampA(seedP||0,0,0.85)*ascentDur;
-  animState={spec,done,ctx,cv,viewCanvas:viewCanvas||cv,t0:performance.now(),ascentDur,cruiseDur,reentryDur,totalDur,stars,path,raf:0,trail:[],particles:[],debris:[],rePlasma:[],reSplash:[],shakeX:0,shakeY:0,lastT:0,virtT:seedT,prevWall:performance.now(),sfxSepFired:{},sfxBoomFired:false,sfxEnginePhase:null,recovering:!!spec.recovering,_splashed:false,_splashX:null,reRing:0};
+  animState={spec,done,ctx,cv,viewCanvas:viewCanvas||cv,t0:performance.now(),padDur,ascentDur,cruiseDur,reentryDur,totalDur,stars,path,raf:0,trail:[],particles:[],debris:[],rePlasma:[],reSplash:[],shakeX:0,shakeY:0,lastT:0,virtT:seedT,prevWall:performance.now(),sfxSepFired:{},sfxBoomFired:false,sfxEnginePhase:null,recovering:!!spec.recovering,_splashed:false,_splashX:null,reRing:0,ignite:1,_engineStarted:false};
   sfxInit();
   const totalProp=spec.stages.reduce((a,s)=>a+s.prop,0)+(spec.transferProp||0);
   const engCount=spec.stages[0]?spec.stages[0].count||1:1;
-  sfxStartEngine(engCount, totalProp);
+  animState._engSpec={engCount,totalProp};
+  // With a pad phase, the engines light at ignition (drawn in drawAscent's pad branch); without one,
+  // start immediately as before so the arrival-replay / seeded paths are unchanged.
+  if(padDur<=0){ sfxStartEngine(engCount, totalProp); animState._engineStarted=true; }
   animState.sfxEnginePhase='ascent';
 }
 function playMission(spec, done, seedP){
@@ -8670,19 +8679,48 @@ function finishHandoff(){
   }
 }
 
+// Slice A: the pad phase — reuses drawAscent's own p=0 frame (pad/tower/rocket at rest) so the
+// handoff into ascent is a truly identical frame, not a crossfade. Only A.ignite (0→1 through the
+// countdown hold + ignition ramp) changes what's drawn; ascent itself always sees ignite=1.
+function drawPad(t){
+  const A=animState;
+  const padU=clampA((A.padDur>0?t/A.padDur:1),0,1);
+  A.ignite = padU<PAD_HOLD_FRAC ? 0 : smooth(clampA((padU-PAD_HOLD_FRAC)/(1-PAD_HOLD_FRAC),0,1));
+  if(!A._engineStarted && padU>=PAD_HOLD_FRAC){
+    const es=A._engSpec||{engCount:1,totalProp:0};
+    sfxStartEngine(es.engCount, es.totalProp); A._engineStarted=true;
+  }
+  drawAscent(0, false); // the exact ground-rest frame; A.ignite (read inside) scales only the flame/exhaust
+  const ctx=A.ctx, W=A.cv.width, H=A.cv.height;
+  ctx.save();
+  ctx.textAlign='center'; ctx.font='bold 14px ui-monospace,monospace';
+  let label, color;
+  if(padU<PAD_HOLD_FRAC){ const secs=Math.max(1,Math.ceil((PAD_HOLD_FRAC-padU)/PAD_HOLD_FRAC*4)); label='T-'+secs; color='rgba(210,224,255,0.85)'; }
+  else if(padU<0.96){ label='IGNITION'; color='rgba(255,196,110,0.92)'; }
+  else { label='LIFTOFF'; color='rgba(255,236,190,0.96)'; }
+  ctx.fillStyle=color; ctx.fillText(label, W/2, H*0.13);
+  ctx.restore();
+}
 function drawScene(t){
   const A=animState,s=A.spec;
   if(A.ctx&&A.ctx.clearFrame) A.ctx.clearFrame(); // GL-2D fallback clears its framebuffer each frame
   A.earthPhase=false; // set true by drawOrbit so the Phaser scene knows to show the native Earth FX layer
   A.ascentPhase=false; // set true by drawAscent so the native ascent FX layer (clouds/vapor) shows only during ascent
   const ascentFail = !s.success && s.failPhase==='ascent';
-  // Phase C: one continuous mission ribbon. Overall progress across ascent+cruise+reentry
+  // Slice A: everything after the pad runs on an "at" (ascent-local) clock shifted by padDur, so the
+  // ascent/cruise/reentry math below is byte-identical to before — only the pad phase is new.
+  const at = t - (A.padDur||0);
+  // Phase C: one continuous mission ribbon. Overall progress across pad+ascent+cruise+reentry
   // (weighted by duration), with tick fractions at the phase boundaries for the bar to mark.
-  { const activeDur=A.ascentDur+A.cruiseDur+A.reentryDur;
+  { const activeDur=(A.padDur||0)+A.ascentDur+A.cruiseDur+A.reentryDur;
     A.overallP=clampA(t/activeDur,0,1);
-    A.phaseTicks=[A.ascentDur/activeDur]; if(A.reentryDur>0) A.phaseTicks.push((A.ascentDur+A.cruiseDur)/activeDur); }
+    A.phaseTicks=[]; if(A.padDur>0) A.phaseTicks.push(A.padDur/activeDur);
+    A.phaseTicks.push(((A.padDur||0)+A.ascentDur)/activeDur);
+    if(A.reentryDur>0) A.phaseTicks.push(((A.padDur||0)+A.ascentDur+A.cruiseDur)/activeDur); }
   const prevPhase=A.phase;
-  if(t < A.ascentDur || ascentFail){ A.phase='ascent'; drawAscent(t, ascentFail); }
+  if(A.padDur>0 && t < A.padDur){ A.phase='pad'; drawPad(t); A.lastT=t; return; }
+  A.ignite=1; // Slice A: full flame for the rest of the flight — don't inherit the pad's near-1 ramp tail
+  if(at < A.ascentDur || ascentFail){ A.phase='ascent'; drawAscent(at, ascentFail); }
   else {
     // One-time context reset when first leaving the ascent phase. The Phaser path reuses ONE
     // CanvasTexture 2D context; ascent's last frame can leave residual state (clip/transform/
@@ -8694,7 +8732,7 @@ function drawScene(t){
       try{ if(typeof A.ctx.reset==='function') A.ctx.reset();
         else { if(A.ctx.setTransform) A.ctx.setTransform(1,0,0,1,0,0); if(A.ctx.setLineDash) A.ctx.setLineDash([]); A.ctx.globalAlpha=1; if('globalCompositeOperation' in A.ctx) A.ctx.globalCompositeOperation='source-over'; } }catch(e){}
     }
-    const ct=t-A.ascentDur;
+    const ct=at-A.ascentDur;
     const entering = A.reentryDur>0 && ct>=A.cruiseDur;
     if(entering && prevPhase!=='reentry' && prevPhase!=='ascent') captureHandoff('reentry'); // cruise → reentry cut
     const ho=beginHandoff(t); // Phase A: camera ease while the previous frame crossfades away
@@ -9556,7 +9594,7 @@ function drawAscent(t,canFail){
       ctx.fillStyle=`rgba(${tr.c},${(tr.life*0.35).toFixed(2)})`;
       ctx.beginPath(); ctx.arc(tr.x,tr.y,tr.r,0,7); ctx.fill();
     }
-    if(!exploding && t-A.lastT>15){
+    if(!exploding && t-A.lastT>15 && (A.ignite==null || A.ignite>0.05)){
       const trX=x+Math.sin(pitch)*5, trY=baseY+Math.cos(pitch)*5;
       for(let j=0;j<2;j++){
         A.trail.push({
@@ -9644,7 +9682,7 @@ function drawAscent(t,canFail){
   }
   if(!exploding){
     ctx.save(); ctx.translate(x,baseY); ctx.rotate(pitch);
-    const flameSize=A.fxNative?0:(10+Math.random()*8)*throttle*(1+p*0.5); // native Phaser plume replaces the 2D flame
+    const flameSize=A.fxNative?0:(10+Math.random()*8)*throttle*(1+p*0.5)*(A.ignite==null?1:A.ignite); // Slice A: ignite ramps 0→1 through the pad phase; always 1 once ascent is underway
     const noseType = (fairingGone && shape.nose==='fairing') ? 'none' : shape.nose;
     drawVehicle(ctx, remaining.length?remaining:[shape.segs[shape.segs.length-1]], noseType, scale, flameSize, altFrac, (A.fxNative && p>0.04)); // hide engine bells once lifted off (native plume covers the base)
     ctx.restore();
@@ -11770,8 +11808,13 @@ function initCapeZoom(){
 // camera zooms in and pans to chase it, then we hand off into the unchanged playMission overlay.
 // Click anywhere on the scene to skip straight to the ascent. The player's manual capeZoom/pan is
 // saved on entry and restored on exit so their camera control is never left clobbered.
-const LIFTOFF_DUR=2400; // ms — a short transition, not a cutscene
-const LIFTOFF_SEED_P=0.12; // at full lift-off, hand the ascent renderer this fraction of the climb already done (see finishSeq)
+const LIFTOFF_DUR=2400; // ms — a short transition, not a cutscene (iso CC-scene liftoff — retired for launches, Slice A; kept defined for potential reuse)
+const LIFTOFF_SEED_P=0.12; // (unused by launches as of Slice A — see PAD_PHASE_MS)
+// Slice A: the pad phase now plays INSIDE the flight overlay, ahead of the ascent — one continuous
+// container instead of a cut from the Cape popout into the overlay. HOLD_FRAC is the fraction of
+// PAD_PHASE_MS spent on a silent countdown hold before the ignition ramp begins.
+const PAD_PHASE_MS=3200;
+const PAD_HOLD_FRAC=0.55;
 function playLiftoff(spec, next){
   if(!animEnabled){ next(); return; }
   if(state.tab!=='command'){ state.tab='command'; render(); } // auto-switch so the liftoff is actually on screen
@@ -16012,6 +16055,7 @@ render();
 applyWide(); // restore the saved Wide-mode preference + sync the toolbar buttons
 applyTheme(currentTheme); // restore the saved theme variant (Mission Dark / Control Room Green / Apollo Beige)
 showStartup(); // the startup screen — the Production drill (new game) or the recap (continue/open) opens after the player chooses
+
 </script>
 </body>
 </html>
