@@ -2005,3 +2005,83 @@ matching `gravity_assist_planning`'s own precedent for this exact class of ad-ho
 **This closes out every Improvement (I1–I6) on the second-pass backlog.** Remaining: the 7 Pruning
 candidates and 6 Flow-polish items, including Fable's own top pick (Playtest Zero + merging the duplicate
 Launch/Queue buttons + an auto-fly option).
+
+## User-directed: unified flight pop-out overlay (2026-07-09, Slice A)
+
+New top-level ask (not from the second-pass backlog above): launch → ascent → orbit → reentry should
+play as **one continuous pop-out** instead of separate containers/modals. Plan agreed with the user,
+sliced A–D; **A shipped this session**, B/C/D not started.
+
+**Why this supersedes (for launches) the 2026-07-04/07-05 `playLiftoff`/pop-out-as-launch-default work
+above, deliberately, not by accident:** that work made every animated launch open the CC pop-out, rise
+the rocket on the isometric Cape view with a camera zoom-chase, then cut into the full-screen ascent
+overlay. It was well-crafted (playtest-tuned easing, seed-continuity math so the cut lands mid-climb,
+pop-out camera parity, skip-listener threshold tuning) — but it's still fundamentally **two containers
+with a cut between them**, which is exactly what this new ask is against. User was shown both options —
+(a) retire the iso liftoff and build a real pad phase inside the overlay itself, or (b) keep the iso
+liftoff and make the cut a tuned crossfade — and chose **(a)**, explicitly, after the tradeoff was laid
+out. `playLiftoff` and its supporting code (`_liftoff`/`_liftoffArmed`/`LIFTOFF_SEED_P`/the pop-out
+camera-parity branch) are **left fully defined and working, just not called during a launch anymore** —
+by explicit user instruction, in case it's wanted again later. The Cape pop-out itself is untouched as a
+manual feature (the "⤢ Pop out" button still works anytime); only its automatic-open-on-launch behavior
+is gone, because there's no longer a launch-time cut for it to smooth over.
+
+**What Slice A actually built.** A real pad phase (`drawPad`, `PAD_PHASE_MS=3200`, `PAD_HOLD_FRAC=0.55`)
+now plays first, on the flight overlay's own canvas — silent countdown hold, then an ignition ramp
+(`A.ignite` 0→1, read by `drawAscent`'s flame/exhaust calc) with an engine-audio start timed to the
+ramp's onset. `drawPad` calls `drawAscent(0, false)` directly — the pad IS ascent's own p=0 frame, not a
+separate art asset — so the handoff at padDur is the literal same draw call on both sides, proven in test
+(rocket X, altitude fraction, and ignite are frame-continuous across the seam; no crossfade needed there).
+`drawScene` now runs the pad phase first, then shifts an `at = t - padDur` clock into the existing
+ascent/cruise/reentry math unchanged. `finalizeLaunch`'s dispatch simplified to always `playMission(spec,
+finish)` for animated launches (no more `_liftoffArmed` branch). A `spec.mode:'arrive'` flag skips the pad
+entirely (`padDur=0`) — groundwork for Slice B's deferred-arrival replays, which never had a "launch" to
+show in the first place.
+
+**Free wins from landing after the 2026-07-05 work, not before:** the pad phase inherits the *shared*
+`VEH_BASE_PX_PER_UNIT` vehicle scale (pad/ascent/orbit already render vehicles at one consistent pixel
+size, per that session's unification work) and the overlay's own wheel-zoom/pan camera
+(`initFlightZoom`/`resetFlightZoom`, called once per `playMission()`) — both automatically, since the pad
+phase is just another phase on the same canvas with the same camera. No extra work needed to keep it
+visually consistent with ascent/orbit.
+
+**Validation.** `node --check` OK. New headless suite (34/34) — first suite in the project to actually
+drive `animEnabled=true` rendering rather than staying on the headless fast path; required adding a
+permissive fake canvas-2D-context + a fuller Web Audio API stub to the shared test harness (`prelude.js`),
+now reusable for Slices B–D. Covers: pad phase is the entry state with `ignite=0`/engines cold; ignite
+stays exactly 0 through the countdown hold, ramps 0→1 after it, engine-start SFX fires exactly once at
+the ramp's onset; the pad→ascent seam is frame-continuous (rocket X/altFrac/ignite match on both sides);
+a full pump-driven flight (real `animLoop`/`endAnim`, controlled virtual clock, not reimplemented phase
+math) visits pad→ascent→orbit and ends correctly held on a successful orbital flight; `mode:'arrive'`
+skips the pad and starts hot (`ignite=1`, engine already running); an ascent-phase failure still starts on
+the pad and still fails correctly; a cislunar/deep flight reaches the cislunar phase without throwing;
+`finalizeLaunch` never calls `playLiftoff` anymore and `_liftoffArmed` ends false; the headless
+(`animEnabled=false`) dispatch path is confirmed to never create `animState` at all — genuinely
+untouched, not just re-tested. Full gauntlet at pause: pad-A 34 + dept-A 42 + dept-B 27 + dept-C 30 +
+materials 46 + regression 18 = **197/197.**
+
+**One bug found and fixed during this slice** (not pre-existing, introduced then caught in-session):
+without an explicit reset, `A.ignite` would drift to a near-but-not-exactly-1 value at the end of the pad
+ramp (an easing-curve tail) and then sit there for the *entire rest of the flight*, permanently shaving a
+fraction off the ascent flame size. Fixed with an explicit `A.ignite=1` the instant the pad phase ends —
+caught by the handoff-continuity test, not by inspection.
+
+**Aside, logged for hygiene:** an earlier attempt this session at fixing the unrelated
+`pendingCelebration`/1990-scoring-date crash (see the "#19 Organizational scaling" session's flagged bug)
+built a `pendingChronicle`/`drainPendingChronicle` deferral system, then discovered upstream had already
+landed a simpler inline fix (`showChronicle('era')` directly in `checkScoringDate`, from the "I2: second
+scoring bookend" work) in the same window. Discarded, never pushed. `test-chronicle.js` (which validated
+the discarded version) is retired — renamed `.OBSOLETE` rather than deleted, in case its patterns are
+useful reference, but it is **not** part of the active suite set and will fail if run (it references
+functions that don't exist in this file, on purpose).
+
+### Remaining — Slices B, C, D (not started)
+- **Slice B** — a "cruise begins / ETA" outro card for deferred (≥60-day) interplanetary missions,
+  played in the overlay's own visual language, so the launch-day session (which currently just cuts) ends
+  cleanly instead. Ties into the `spec.mode:'depart'` flag (mirror of this slice's `'arrive'`).
+- **Slice C** — bring the live-flight decision modals (abort/press-on, reserve, anomaly, rescue) into
+  in-overlay mission-control panels instead of separate `showModal` calls; weather go/no-go becomes an
+  overlay panel too (user confirmed) rather than staying a pre-flight modal. Existing `_pending*` guard
+  state and `pumpFlightArrivals` gating stay exactly as-is — presentation-only change.
+- **Slice D** — unified chrome/transition-timing polish pass across all phases (pad/ascent/cruise/
+  reentry/decision panels), once B and C exist to polish.
