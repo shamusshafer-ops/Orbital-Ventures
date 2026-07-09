@@ -2075,10 +2075,56 @@ the discarded version) is retired — renamed `.OBSOLETE` rather than deleted, i
 useful reference, but it is **not** part of the active suite set and will fail if run (it references
 functions that don't exist in this file, on purpose).
 
-### Remaining — Slices B, C, D (not started)
-- **Slice B** — a "cruise begins / ETA" outro card for deferred (≥60-day) interplanetary missions,
-  played in the overlay's own visual language, so the launch-day session (which currently just cuts) ends
-  cleanly instead. Ties into the `spec.mode:'depart'` flag (mirror of this slice's `'arrive'`).
+## User-directed: unified flight pop-out overlay (2026-07-09, Slice B)
+
+**B shipped this session** (A shipped earlier the same day; C/D still not started). Slice B is the mirror of
+Slice A's launch-time pad phase, at the other end of a deferred flight's launch-day session.
+
+**The problem it fixes.** A deferred (≥`DEFER_CRUISE_DAYS`=60-day) interplanetary launch — `proceedLaunch`'s
+`missionDays>=DEFER_CRUISE_DAYS` branch — registered the live flight, logged "departed — arrival in ~N mo",
+and **returned with no animation at all**. The launch-day session for the biggest, most expensive flights in
+the game just *cut to nothing*. (The mission's real, resolved-at-launch outcome still lands on ARRIVAL turns
+later via `pumpFlightArrivals` — that's unchanged and out of scope here.)
+
+**What Slice B actually built.** A "cruise begins / ETA" outro card, played on the flight overlay's own canvas
+via a new `spec.mode:'depart'` flag — the deliberate mirror of Slice A's `'arrive'`. Where `'arrive'` *drops
+the pad* (an arrival never had a launch), `'depart'` *keeps the pad but drops the orbit/cruise/reentry tail*
+(a departure has a launch to show, but its outcome is a spoiler that belongs to the arrival). So a deferred
+departure now plays **pad → ascent → cruise-begins card**, then holds for the player to dismiss. Threading:
+`setupFlightState` gives depart mode its own `totalDur = padDur + ascentDur + DEPART_CARD_MS` (new const,
+4200 ms) with no cruise/reentry; `drawScene`'s post-ascent `else` branch, right after the same one-time
+context-reset + `captureHandoff('cruise')` the normal path uses, routes depart flights into the card with the
+existing `beginHandoff`/`finishHandoff` crossfade (so the ascent→card seam eases exactly like ascent→orbit)
+instead of `drawOrbit`/`drawCislunar`/`drawReentry`. `endAnim` holds a depart flight on the card (not on
+`drawPostFlight`'s "ORBIT ACHIEVED" stats, which would be wrong for an unresolved departure). New
+`drawDepartCard(ct, held)` renders it in the overlay's own language: deep-space `spaceBg`, a receding Earth
+lower-left, the real `drawCraftSprite` coasting toward a destination pip along a dashed transfer line, and a
+fade-in panel with DESTINATION / TRANSIT (days + ~months) / ARRIVAL (`dayToDate(arriveAbs)`) / CREW. Dispatch:
+`proceedLaunch`'s deferred branch now builds a `buildDepartSpec(m,crewed,missionDays,rec.arriveAbs)` (mirrors
+the `finalizeLaunch` flight spec — same vehicle geometry/livery/rng shape so pad+ascent render identically —
+but always `success:true`/`failPhase:null`) and, **only when `animEnabled`**, plays it with the settle
+(`_flightResolving=false; render(); pumpFlightArrivals()`) moved into the `done` callback; animation-off /
+headless takes that settle synchronously — byte-identical to the old return. The held card reuses Slice A's
+"Continue ▸" button + dismissal wiring, extracted from `drawPostFlight` into a shared `drawFlightContinueBtn`.
+
+**Balance-neutral.** Purely presentational: no `SAVE_VERSION` touch (no new persisted state — the card exists
+only during an active overlay session), no mechanics change. Short/non-deferred missions never reach
+`buildDepartSpec` (guarded by `missionDays>=DEFER_CRUISE_DAYS`); animation-off is proven byte-identical.
+
+**Validation.** `node --check` OK. New headless suite **`test-depart-b.js` (39/39)** — reuses Slice A's
+`pumpFlight()` (real `animLoop`/`endAnim` on a controlled virtual clock) + the shared `harness.js` canvas/audio
+stubs, no new harness needed. Covers: `buildDepartSpec` is always a clean success carrying transitDays/etaAbs/
+destName/crew (uncrewed *and* crewed); a depart flight keeps the full pad (unlike `'arrive'`) and gets the
+launch+card-only `totalDur`; a pump-driven departure visits pad→ascent→**depart** and provably **never** enters
+orbit/cislunar/reentry/suborbital, ending *held* (not an abrupt cut, not auto-closed), `done()` withheld until
+dismiss; dismiss settles + tears down; the hold draws the card, never `drawPostFlight`; the real `proceedLaunch`
+dispatch on `belt_survey` (uncrewed, 780 d) builds the card + registers the deferred flight with anim ON, and
+with anim OFF builds **no** card / creates **no** `animState` while still registering the flight; a short
+(`first_sat`, 0 d) mission never builds a depart card. Full gauntlet at pause: regression 18 + materials 46 +
+dept-a 42 + dept-b 27 + dept-c 30 + pad-a 34 + **depart-b 39** = **236/236.** No bugs surfaced this slice (the
+`'arrive'` groundwork Slice A left in `setupFlightState` made the `'depart'` mirror land cleanly first try).
+
+### Remaining — Slices C, D (not started)
 - **Slice C** — bring the live-flight decision modals (abort/press-on, reserve, anomaly, rescue) into
   in-overlay mission-control panels instead of separate `showModal` calls; weather go/no-go becomes an
   overlay panel too (user confirmed) rather than staying a pre-flight modal. Existing `_pending*` guard

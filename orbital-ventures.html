@@ -5989,7 +5989,12 @@ function proceedLaunch(m,v,sim,windowQuality,weatherPenalty,prebuilt){
     if(ctx.crewId) state.assignedAstronaut=null; // 1.2b: crew is committed to this flight — free the live slot so another concurrent mission can crew up
     _liftoffArmed=false; // a deferred cruise resolves on arrival (turns later) — no liftoff lead-in when it lands
     log('note',`${m.name}: departed — arrival in ~${Math.round(missionDays/30)} mo (${missionDays} d).${ctx.crewId?` Crew of ${m.crew} aboard.`:''} The cruise plays out as you run the clock; the outcome lands on arrival.`);
-    _flightResolving=false; render(); pumpFlightArrivals(); return; // release the launch lock; catch anything that came due during lead time
+    // Slice B: end the launch-day session with a "cruise begins / ETA" outro card in the overlay, then
+    // settle. Animation-off / headless takes the byte-identical synchronous settle below (balance-neutral).
+    const settle=()=>{ _flightResolving=false; render(); pumpFlightArrivals(); }; // release the launch lock; catch anything that came due during lead time
+    if(animEnabled) playMission(buildDepartSpec(m, crewed, missionDays, rec.arriveAbs), settle);
+    else settle();
+    return;
   }
   // synchronous path — today's behavior, provably byte-identical
   const _flight=registerFlight(m,crewed,missionDays); // the flight is "in cruise" for this span
@@ -6016,6 +6021,25 @@ function maybeAnomaly(ctx){
     if(ev){ _pendingOps=ctx; showAnomalyModal(ev,ctx); return; }
   }
   finalizeLaunch(ctx,null);
+}
+// Slice B: build the purely-visual spec for a deferred departure's "cruise begins" outro card. Mirrors the
+// finalizeLaunch flight spec (same vehicle geometry / livery / rng shape, so the pad + ascent render exactly
+// as a normal launch does) but is ALWAYS shown as a clean successful launch — the real, resolved-at-launch
+// outcome is a spoiler that lands on arrival, not here. Carries mode:'depart' + the ETA fields the card reads.
+function buildDepartSpec(m, crewed, transitDays, etaAbs){
+  const rnd=()=>Math.random();
+  return { title:m.name, crewed, crew:crewed?(m.crew||0):0, success:true, failPhase:null,
+    mode:'depart', transitDays, etaAbs, destName:m.name,
+    stages: state.stages.map(s=>({prop:s.prop,count:s.count,dia:s.dia})),
+    boosters: boosterSpec(),
+    transferProp: (m.profile&&m.modules&&m.modules.includes('transfer'))?state.transfer.prop:0,
+    recovering: recoveryActive(m) && state.stages.length>1,
+    hasCapsule: !!(state.research.crew_capsule || crewed),
+    isCislunar: !!m.profile, isOrbital: (!m.profile && m.reqDv>=9000),
+    reqDv: m.reqDv||9400,
+    rng: { wind:(rnd()-0.5)*0.9, windFreq:1.4+rnd()*1.6, windPhase:rnd()*6.283,
+           pitchJitter:(rnd()-0.5)*0.16, sep:state.stages.map(()=>(rnd()-0.5)*0.06),
+           apogee:0.86+rnd()*0.28, bow:(rnd()-0.5)*0.9 } };
 }
 // applies the (possibly anomaly-modified) outcome: money/rep/science, logs, family heritage,
 // the ops ledger, and the flight animation. `ops` carries the in-flight decision's effect.
@@ -8136,8 +8160,13 @@ function setupFlightState(spec, done, ctx, cv, viewCanvas, seedP){
   // full launches get it; an arrival-only replay (mode 'arrive', Slice B) starts in cruise (padDur 0).
   const launchMode = spec.mode!=='arrive';
   const padDur = launchMode ? PAD_PHASE_MS : 0;
+  // Slice B: a deferred departure plays pad → ascent → a "cruise begins" outro card, then holds; it never
+  // shows orbit/cruise/reentry (the real outcome is deferred to arrival), so its own totalDur is just the
+  // launch plus the card. Mirror of 'arrive' (which drops the pad); 'depart' keeps the pad but drops the tail.
+  const departMode = spec.mode==='depart';
   let totalDur;
-  if(!spec.success && spec.failPhase==='ascent') totalDur=ascentDur*0.55+2000;
+  if(departMode) totalDur=ascentDur+DEPART_CARD_MS;
+  else if(!spec.success && spec.failPhase==='ascent') totalDur=ascentDur*0.55+2000;
   else if(!spec.success && spec.failPhase==='deep') totalDur=ascentDur+cruiseDur*0.42+2000;
   else totalDur=ascentDur+cruiseDur+reentryDur+1200;
   totalDur+=padDur; // the loop must run through the pad pre-roll too
@@ -8197,6 +8226,12 @@ function endAnim(hold){
   const A=animState; if(!A) return;
   cancelAnimationFrame(A.raf);
   sfxStop();
+  if(hold && A.spec.mode==='depart'){ // Slice B: hold on the cruise-begins card until the player dismisses it
+    A.held=true;
+    drawDepartCard(DEPART_CARD_MS, true); // settled final frame + a Continue affordance
+    flightRefresh();
+    return;
+  }
   if(hold && A.spec.success && (A.spec.isOrbital||A.spec.isCislunar)){
     A.held=true;
     drawPostFlight();
@@ -8599,6 +8634,14 @@ function drawPostFlight(){
   }
   ctx.restore();
   ctx.textAlign='left';
+  drawFlightContinueBtn(ctx,W,H);
+}
+// The shared "Continue ▸" affordance for a held flight overlay: the rounded button, the [Enter]
+// hint, the hit-box on animState, and the one-shot canvas click handler that dismisses the overlay.
+// Extracted from drawPostFlight (Slice A's orbit/mission-complete card) so Slice B's cruise-begins
+// card reuses the identical button + dismissal wiring instead of duplicating it.
+function drawFlightContinueBtn(ctx,W,H){
+  const A=animState; if(!A) return;
   const btnW=140, btnH=34, btnX=(W-btnW)/2, btnY=H-52;
   const br=6;
   ctx.beginPath(); ctx.moveTo(btnX+br,btnY); ctx.lineTo(btnX+btnW-br,btnY);
@@ -8627,6 +8670,56 @@ function drawPostFlight(){
     };
     vc.addEventListener('click',A.clickHandler);
   }
+}
+// Slice B: the "cruise begins / ETA" outro card. Played on the flight overlay's own canvas after a
+// deferred interplanetary departure's ascent (spec.mode:'depart'), it reads as the launch-day session's
+// natural conclusion: the craft coasting away from a receding Earth toward its destination, with the
+// transit duration and arrival date. Purely presentational — the mission outcome still lands on arrival.
+function drawDepartCard(ct, held){
+  const A=animState, s=A.spec, ctx=A.ctx, W=A.cv.width, H=A.cv.height;
+  const time=(A.padDur||0)+A.ascentDur+ct;
+  const cp=clampA(ct/DEPART_CARD_MS,0,1);
+  spaceBg(ctx,W,H,time,A.nativeStars); // deep-space backdrop + parallax stars (native layer when Phaser-hosted)
+  // Earth receding at lower-left — the world left behind at the start of the long cruise.
+  const eR=Math.max(34,H*0.17), eCx=W*0.15, eCy=H*0.98;
+  const eg=ctx.createRadialGradient(eCx-eR*0.32,eCy-eR*0.34,eR*0.2,eCx,eCy,eR);
+  eg.addColorStop(0,'#3a8cc7'); eg.addColorStop(0.55,'#245f96'); eg.addColorStop(0.85,'#14406e'); eg.addColorStop(1,'#0a2340');
+  ctx.fillStyle=eg; ctx.beginPath(); ctx.arc(eCx,eCy,eR,0,7); ctx.fill();
+  ctx.save(); ctx.beginPath(); ctx.arc(eCx,eCy,eR,0,7); ctx.clip(); // night-side shadow
+  ctx.fillStyle='rgba(2,5,15,0.4)'; ctx.beginPath(); ctx.arc(eCx+eR*0.5,eCy-eR*0.15,eR*1.02,0,7); ctx.fill(); ctx.restore();
+  ctx.strokeStyle='rgba(120,190,255,0.28)'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(eCx,eCy,eR+2,0,7); ctx.stroke();
+  // The craft coasts up-range toward a destination marker; a faint dashed transfer line connects them.
+  const destX=W*0.85, destY=H*0.18;
+  const cx=W*0.30+cp*W*0.20, cy=H*0.64-cp*H*0.12;
+  const ang=Math.atan2(destY-cy, destX-cx);
+  ctx.strokeStyle='rgba(245,166,35,0.22)'; ctx.setLineDash([4,6]); ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(destX,destY); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle='rgba(245,205,130,0.9)'; ctx.beginPath(); ctx.arc(destX,destY,3,0,7); ctx.fill();
+  ctx.strokeStyle='rgba(245,205,130,0.35)'; ctx.lineWidth=1; ctx.beginPath(); ctx.arc(destX,destY,7+Math.sin(time*0.004),0,7); ctx.stroke();
+  drawCraftSprite(ctx,cx,cy,ang,cp<0.3); // a short trans-injection burn as the coast begins
+  // The information panel fades in over the first part of the card.
+  const pa=clampA(ct/(DEPART_CARD_MS*0.4),0,1);
+  if(pa>0){
+    ctx.save(); ctx.globalAlpha=pa;
+    const transitDays=Math.max(0,Math.round(s.transitDays||0));
+    const months=Math.max(1,Math.round(transitDays/30));
+    const eta=s.etaAbs!=null?dayToDate(s.etaAbs):null;
+    const rows=[['DESTINATION', s.destName||s.title], ['TRANSIT', transitDays+' days (~'+months+' mo)']];
+    if(eta) rows.push(['ARRIVAL', eta]);
+    if(s.crewed && s.crew>0) rows.push(['CREW', s.crew+' aboard']);
+    const panelW=250, panelH=46+rows.length*16, panelX=(W-panelW)/2, panelY=Math.round(H*0.30);
+    ctx.fillStyle='rgba(4,7,12,0.82)'; ctx.fillRect(panelX,panelY,panelW,panelH);
+    ctx.strokeStyle='rgba(79,209,217,0.3)'; ctx.lineWidth=0.5; ctx.strokeRect(panelX,panelY,panelW,panelH);
+    ctx.textAlign='center'; ctx.textBaseline='top';
+    ctx.fillStyle='#4fd1d9'; ctx.font='bold 15px ui-monospace,monospace';
+    ctx.fillText('CRUISE BEGINS', W/2, panelY+10);
+    ctx.font='10px ui-monospace,monospace'; ctx.textBaseline='alphabetic';
+    rows.forEach((r,i)=>{ const ry=panelY+42+i*16;
+      ctx.textAlign='left'; ctx.fillStyle='#5a6a75'; ctx.fillText(r[0],panelX+14,ry);
+      ctx.textAlign='right'; ctx.fillStyle='#d0dce4'; ctx.fillText(String(r[1]),panelX+panelW-14,ry); });
+    ctx.textAlign='left'; ctx.restore();
+  }
+  if(held) drawFlightContinueBtn(ctx,W,H);
 }
 
 
@@ -8712,11 +8805,12 @@ function drawScene(t){
   const at = t - (A.padDur||0);
   // Phase C: one continuous mission ribbon. Overall progress across pad+ascent+cruise+reentry
   // (weighted by duration), with tick fractions at the phase boundaries for the bar to mark.
-  { const activeDur=(A.padDur||0)+A.ascentDur+A.cruiseDur+A.reentryDur;
+  const departMode = s.mode==='depart'; // Slice B: launch → climb → "cruise begins" card, no orbit/reentry tail
+  { const activeDur=(A.padDur||0)+A.ascentDur+(departMode?DEPART_CARD_MS:A.cruiseDur+A.reentryDur);
     A.overallP=clampA(t/activeDur,0,1);
     A.phaseTicks=[]; if(A.padDur>0) A.phaseTicks.push(A.padDur/activeDur);
     A.phaseTicks.push(((A.padDur||0)+A.ascentDur)/activeDur);
-    if(A.reentryDur>0) A.phaseTicks.push(((A.padDur||0)+A.ascentDur+A.cruiseDur)/activeDur); }
+    if(!departMode && A.reentryDur>0) A.phaseTicks.push(((A.padDur||0)+A.ascentDur+A.cruiseDur)/activeDur); }
   const prevPhase=A.phase;
   if(A.padDur>0 && t < A.padDur){ A.phase='pad'; drawPad(t); A.lastT=t; return; }
   A.ignite=1; // Slice A: full flame for the rest of the flight — don't inherit the pad's near-1 ramp tail
@@ -8731,6 +8825,13 @@ function drawScene(t){
       captureHandoff('cruise'); // Phase A: snapshot the last ascent frame BEFORE the context reset
       try{ if(typeof A.ctx.reset==='function') A.ctx.reset();
         else { if(A.ctx.setTransform) A.ctx.setTransform(1,0,0,1,0,0); if(A.ctx.setLineDash) A.ctx.setLineDash([]); A.ctx.globalAlpha=1; if('globalCompositeOperation' in A.ctx) A.ctx.globalCompositeOperation='source-over'; } }catch(e){}
+    }
+    // Slice B: a deferred departure ends here — the ascent hands off (crossfade) into the cruise-begins
+    // outro card instead of the orbit/reentry phases, which belong to the arrival that lands turns later.
+    if(departMode){
+      if(A.sfxEnginePhase==='ascent'){ sfxStop(); A.sfxEnginePhase='coast'; } // engines cut as the launch ends
+      const ho=beginHandoff(t); A.phase='depart'; drawDepartCard(at-A.ascentDur, false); if(ho) finishHandoff();
+      A.lastT=t; return;
     }
     const ct=at-A.ascentDur;
     const entering = A.reentryDur>0 && ct>=A.cruiseDur;
@@ -11815,6 +11916,10 @@ const LIFTOFF_SEED_P=0.12; // (unused by launches as of Slice A — see PAD_PHAS
 // PAD_PHASE_MS spent on a silent countdown hold before the ignition ramp begins.
 const PAD_PHASE_MS=3200;
 const PAD_HOLD_FRAC=0.55;
+// Slice B: a deferred (≥DEFER_CRUISE_DAYS) interplanetary departure ends the launch-day session with a
+// "cruise begins / ETA" outro card played on the overlay's own canvas (spec.mode:'depart', the mirror of
+// 'arrive'). This is how long that card plays before it settles and holds for the player to dismiss.
+const DEPART_CARD_MS=4200;
 function playLiftoff(spec, next){
   if(!animEnabled){ next(); return; }
   if(state.tab!=='command'){ state.tab='command'; render(); } // auto-switch so the liftoff is actually on screen
