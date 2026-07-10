@@ -5448,7 +5448,6 @@ const TL_CATEGORIES=[
   {id:'crew',     label:'Crew',           icon:'👥'},
   {id:'infra',    label:'Infrastructure', icon:'🏗'},
 ];
-const TL_CAT_ICON={launch:'🚀', research:'⚛', economy:'$', rivals:'🏴', crew:'👥', infra:'🏗', other:'•'};
 function logCategory(e){
   if(e.kind==='rival') return 'rivals';
   const s=tlStrip(e.msg);

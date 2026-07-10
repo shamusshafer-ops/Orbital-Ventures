@@ -3,6 +3,7 @@
    Core loop: design (rocket equation) → launch → economy → research
    ============================================================ */
 const G0 = 9.81;
+const TL_CAT_ICON={launch:'🚀', research:'⚛', economy:'$', rivals:'🏴', crew:'👥', infra:'🏗', other:'•'};
 
 const ERAS = [
   {id:'pioneer',      name:'Pioneer',           from:1942, to:1957, blurb:'Liquid/solid sounding rockets, captured/derived V-2-class tech. Sub-orbital, upper atmosphere.'},

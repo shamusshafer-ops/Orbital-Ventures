@@ -2217,7 +2217,45 @@ context (identical to the concatenated path).
 **236/236**, unchanged at every checkpoint (baseline → awk-rebuilt → build/game.js → multi-script
 sim). `test-progress-unify.js` is a separate WIP suite that was **already 23/35 at baseline** (12
 checks fail on unfinished F4 behavior) — **not** part of the 236, and it stayed **23/35** through the
-split (behavior preserved, as required). No `git commit`/`push` performed — local only, for review.
+split (behavior preserved, as required). Real-browser check of `index.html` done after this session by
+the user ("everything looks exactly as before") — slice (a) fully validated. Committed + pushed as
+`963d86f`.
+
+## Session — E0.1 slice (b): trimmed backwards-dependency cleanup + TL_CAT_ICON fix (2026-07-10)
+
+**Scoped by a tech-lead pass first** (real risk here, unlike slice (a): moving code changes its
+position in the concatenated build, reopening the cross-script load-order question slice (a) sidestepped
+by never moving anything). Verified against the actual post-split `src/` files, not the pre-split
+scoping guesses. Most originally-flagged "misplaced" code turned out fine on inspection (`poolOf`,
+`currentEra`, the data.js family/blueprint region, the sim.js UI-builder functions) — moving those would
+have been taxonomy churn with no payoff, explicitly declined. Only 3 real issues existed, all the same
+shape: `sim.js` calling backwards into `render.js` for economy logic and station data.
+
+**Moved (all three, ordering-safe — each moves a declaration to an *earlier*-loading file, which can
+never break a later reference):**
+- Special-contracts cluster (`SPECIAL_MODS`, `SPECIAL_COOLDOWN_MO`, `specialCandidateMissions`,
+  `tickSpecialContract`, `fulfillSpecialIfMatch`): `render.js` → `sim.js`, placed after
+  `tickPassiveContracts`.
+- `monthlyPayroll`: `render.js` → `sim.js`, same neighborhood.
+- `STATION_MODULES` + `STATION_PORT_BASE` (plus its "side-view module spec" doc comment):
+  `render.js` → `data.js`, placed right after `FACILITY_DEFS`. `stationActiveModule`,
+  `stationExpanded`, `toggleStationExpand` (UI state) stayed in `render.js`.
+
+**Verification (no longer byte-identical, since content genuinely moved — a new invariant was needed):**
+sorted-line diff of `build/game.js` before vs. after is **identical** (same multiset of 15,408 lines —
+proves pure relocation, nothing edited/dropped/duplicated, confirmed against a fresh clone of the
+pre-slice-(b) commit `963d86f`). `node --check` clean on every touched module. Full suite **236/236**
+after the move. `awk`-extraction-vs-`build/game.js` cross-check still identical. Byte size of the built
+HTML unchanged (1,246,630 bytes) — expected, since total content didn't change, only position.
+
+**Separate bug-fix commit (not bundled with the moves above — this one is a real, if tiny, behavior
+change):** the pre-existing `TL_CAT_ICON` issue noted in slice (a) — a top-level statement in
+`flight.js` referenced `TL_CAT_ICON`, a `const` declared ~5,600 lines later in `render.js`, silently
+swallowed by a `try/catch`, so the timeline category-filter preference never actually restored on
+reload. Fixed by moving just the `TL_CAT_ICON` declaration (one line) to the top of `data.js`, which
+loads before everything else. Verified the fix landed: in the rebuilt bundle the declaration is now at
+line 6, its use in `flight.js` is at line ~9893 — declared well before used. Full suite still 236/236
+after this change too.
 
 ## Planned — External evaluation intake (2026-07-10)
 
@@ -2238,8 +2276,9 @@ duplicating.
 
 ### Workstream E0 — Critical fixes (do before new features)
 
-- [~] **E0.1 File split + concat build** — **slice (a) SHIPPED 2026-07-10** (see session
-      log below); slice (b) opportunistic hygiene not started. (user-approved 2026-07-10). Break
+- [x] **E0.1 File split + concat build** — **DONE 2026-07-10** (see session logs above): slice (a)
+      shipped, browser-verified, committed (`963d86f`); slice (b) trimmed cleanup + a bonus
+      `TL_CAT_ICON` bug fix also shipped. (user-approved 2026-07-10). Break
       `orbital-ventures.html` into dev modules — proposed: `data.js` (MISSIONS/RESEARCH/
       BODIES/ENGINES/RIVALS/…), `sim.js` (pure state transforms — the harness surface),
       `render.js`, `flight.js` (overlay + drawScene), `phaser.js` (guarded scene hosts),
