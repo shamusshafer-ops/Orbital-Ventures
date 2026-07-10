@@ -2134,6 +2134,11 @@ dept-a 42 + dept-b 27 + dept-c 30 + pad-a 34 + **depart-b 39** = **236/236.** No
 
 ## Planned — External evaluation intake (2026-07-10)
 
+**Full backlog:** all 105 feature ideas from the evaluation, individually mapped to a
+workstream item or `Backlog`, live in `BACKLOG.md`. The sections below are the
+priority filter; `BACKLOG.md` is the thorough companion — nothing from the evaluation
+was dropped, 55/105 items are simply untriaged pending future slice selection.
+
 A full-project evaluation (code, performance, gameplay, sim fidelity, tech tree, economy,
 UI/UX, visuals, feel, AI, comparative analysis, 105 feature ideas, Steam-readiness verdict)
 now lives in the repo as **`EVALUATION-2026-07.md`**. Verdict in one line: sim core is real
