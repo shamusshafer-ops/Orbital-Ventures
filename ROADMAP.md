@@ -6,9 +6,22 @@ companion to `orbital-ventures-design.md` (original full design doc) and
 
 ## How we work
 
-- **Single file**: `orbital-ventures.html` — vanilla HTML/CSS/JS, no build step.
+- **Source is `src/` + a trivial build** *(since E0.1, 2026-07-10)*: the game is
+  authored as seven plain classic-script modules — `src/data.js`, `sim.js`,
+  `save.js`, `shell.js`, `flight.js`, `render.js`, `main.js` — loaded in that
+  order into one shared global scope (no ES modules, no `defer`/`type=module`;
+  the 241 string `onclick=` handlers need global functions and the current
+  scope semantics). `node build.js` concatenates them into three outputs from
+  one `src/shell.html` template: the release **`orbital-ventures.html`** (one
+  inline `<script>` — still "open the file and play", and still exactly what
+  ships), a dev **`index.html`** (`<script src="src/X.js">` tags, so dev and
+  release can't drift structurally), and **`build/game.js`** (the bare script
+  body the harness consumes). **`orbital-ventures.html` is now a generated
+  artifact — edit `src/`, never the HTML.** Vanilla HTML/CSS/JS otherwise; the
+  "build" is a zero-dependency string concat, not a bundler/transpiler.
 - **Vertical slices**: each milestone is a small, playable increment, validated
-  with a headless Node harness (extract `<script>`, syntax-check, exercise the
+  with a headless Node harness (`node build.js` then concat `harness.js` +
+  `build/game.js` + a test file, run as one script; syntax-check; exercise the
   physics/state functions) before being marked done.
 - **Physics first**: every new mechanic is checked against the rocket equation
   (`Δv = Isp · g₀ · ln(m₀/m_f)`) with real numbers before UI is built around it.
@@ -2132,6 +2145,80 @@ dept-a 42 + dept-b 27 + dept-c 30 + pad-a 34 + **depart-b 39** = **236/236.** No
 - **Slice D** — unified chrome/transition-timing polish pass across all phases (pad/ascent/cruise/
   reentry/decision panels), once B and C exist to polish.
 
+## Session — E0.1 file split + concat build, slice (a) (2026-07-10)
+
+**Slice (a) shipped: the mechanical split + build script + harness parity, zero behavior change.**
+Slice (b) (hygiene the split makes cheap) deliberately untouched. `orbital-ventures.html` is no
+longer hand-edited — it is now a **generated build artifact**; source lives in `src/`.
+
+**What shipped.** The single 15,408-line inline `<script>` is now seven plain classic-script modules
+in `src/`, loaded in order into one shared global scope: `data.js` (1–1396: ERAS/staff/DEPARTMENTS/
+RIVALS/ENGINES/MISSIONS/RESEARCH/BODIES/DIFFICULTY + small helpers), `sim.js` (1397–6322: `state`,
+`newGame`, `advance`, contracts/rivals/facilities/build-queue/materials, `simulateMission`,
+`resolveFlight`), `save.js` (6323–6563: save/load/export-import/recap/startup), `shell.js` (6564–6939:
+anim flags, wide mode, THEMES, fullscreen, keyboard listeners, WebAudio sfx), `flight.js` (6940–9776:
+WebGL-2D compat layer + flight overlay + FlightScene + drawScene/reentry), `render.js` (9777–15399:
+`render()`, iso Cape/Veh/Map/Station Phaser scenes, STATION_MODULES, popouts, tech tree, timeline),
+`main.js` (15400–15408: the `newGame(); render(); applyWide(); applyTheme(); showStartup();`
+bootstrap). Line numbers are extracted-script-local (HTML line = +755).
+
+**Build.** `build.js` (repo root, plain Node, zero deps): a single `MODULES` array is the order source
+of truth; `src/shell.html` is the page template with the whole `<script>` block replaced by an
+`<!-- OV:SCRIPTS -->` placeholder. One `node build.js` emits **(a)** `orbital-ventures.html` — placeholder
+→ `<script>`\n + modules joined + \n`</script>`, each tag on its own line so the harness's `awk`
+extraction is unaffected; **(b)** `build/game.js` — the bare concatenated body for the harness; **(c)**
+`index.html` — the same template with `<script src="src/X.js">` tags, so dev and release can't drift
+structurally. **Loading is plain ordered `<script src>` tags, NOT ES modules** — required to preserve
+global-scope semantics for the 241 string `onclick=` handlers. No banner/"generated" comments in the
+module files, so the first build is **byte-identical** to the pre-split HTML.
+
+**Deviations from the original E0.1 wording (both user-approved up front).** No separate `phaser.js`:
+the four non-flight Phaser scenes (Cape/Veh/Map/Station) are interleaved with render code and aren't
+cleanly separable, so they stay in `render.js` — a 7th file, `shell.js`, took `phaser.js`'s slot.
+`render.js` is **deliberately not** split further into render+scenes despite its size (5.6k lines) —
+user's call, same interleaving reason. Two cosmetic seam nudges off the approximate line numbers so a
+section/descriptive comment travels with the code it heads: the `/* flight animation (canvas) */`
+header opens `shell.js` (6564, not 6565); the bootstrap's explanatory comment opens `main.js`
+(15400, not 15403). Every seam falls on a top-level-statement boundary — confirmed by `node --check`
+passing on each module standalone.
+
+**Behavior-preservation audit (the real risk: cross-script hoisting).** In one script, a top-level
+statement can reference a function/const declared later (hoisting/TDZ); across ordered `<script>`s it
+can't. Audited **every** top-level executable statement (not function bodies — those run after all
+scripts load): all load-time references resolve within their own module or an earlier one. The
+shell.js listener registrations (`applyWide`/`syncTopbarH`/`_firstGestureFs` as args to
+`addEventListener`, plus `wideOn`/`THEMES`/`currentTheme`) all resolve inside `shell.js` itself
+(functions hoist within the file; the lets/consts physically precede their use). The `main.js`
+bootstrap only calls into earlier modules. **One known pre-existing bug left exactly as-is** (noted,
+NOT fixed — out of scope): the top-level `try{ …TL_CAT_ICON[f]… }catch(e){}` at extracted line 9775
+(now in `flight.js`) references `TL_CAT_ICON`, a `const` declared ~5,600 lines later (line 15345, now
+in `render.js`). It was a swallowed TDZ `ReferenceError` when everything was one script; split across
+ordered scripts it's a swallowed "not defined" `ReferenceError` — same net effect (`_tlFilter` stays
+`'all'`, error caught), behavior preserved. If anyone ever "fixes" this, do it as its own change with
+its own validation.
+
+**Validation.** (1) Baseline before touching anything: 236/236. (2) Scripted byte-exact split
+(line-offset slicing, not copy-paste), then `node build.js`, then `cmp` of rebuilt vs pristine
+`orbital-ventures.html` → **byte-identical** (same md5). (3) Full suite against the rebuilt HTML via the
+existing `awk` path → 236/236. (4) Harness recipe repointed to `build/game.js` (`node build.js && cat
+harness.js build/game.js test-X.js | node`); added the build-parity cross-check `awk(orbital-ventures.html)
+== build/game.js` → identical; full suite → 236/236. Updated the recipe in `tests/harness.js` +
+`tests/README.md`. (5) Dev `index.html` verification: no browser/puppeteer/jsdom is available in this
+environment, so **no real-browser render smoke test was run** — flagged for the user to do once. Instead,
+static audit (above) **plus** a faithful ordered-multi-`<script>` simulation: Node v22 `vm.runInContext`
+shares top-level `let`/`const`/`function` across separate script runs while preserving per-script
+hoisting + ordering (verified) — i.e. exactly browser classic-`<script>` semantics for the one thing
+that could differ. Ran all seven modules as separate ordered scripts under the harness stubs; the game
+booted with **zero** thrown load errors and the full suite passed **236/236** in that multi-script
+context (identical to the concatenated path).
+
+**Test counts:** the official suite is the seven files `test-regression`(18) + `test-materials`(46) +
+`test-dept-a`(42) + `test-dept-b`(27) + `test-dept-c`(30) + `test-pad-a`(34) + `test-depart-b`(39) =
+**236/236**, unchanged at every checkpoint (baseline → awk-rebuilt → build/game.js → multi-script
+sim). `test-progress-unify.js` is a separate WIP suite that was **already 23/35 at baseline** (12
+checks fail on unfinished F4 behavior) — **not** part of the 236, and it stayed **23/35** through the
+split (behavior preserved, as required). No `git commit`/`push` performed — local only, for review.
+
 ## Planned — External evaluation intake (2026-07-10)
 
 **Full backlog:** all 105 feature ideas from the evaluation, individually mapped to a
@@ -2151,7 +2238,8 @@ duplicating.
 
 ### Workstream E0 — Critical fixes (do before new features)
 
-- [ ] **E0.1 File split + concat build** (user-approved 2026-07-10). Break
+- [~] **E0.1 File split + concat build** — **slice (a) SHIPPED 2026-07-10** (see session
+      log below); slice (b) opportunistic hygiene not started. (user-approved 2026-07-10). Break
       `orbital-ventures.html` into dev modules — proposed: `data.js` (MISSIONS/RESEARCH/
       BODIES/ENGINES/RIVALS/…), `sim.js` (pure state transforms — the harness surface),
       `render.js`, `flight.js` (overlay + drawScene), `phaser.js` (guarded scene hosts),

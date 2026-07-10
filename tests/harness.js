@@ -7,16 +7,23 @@
 // render path (drawScene/drawAscent/animLoop), not just the headless
 // (animEnabled=false) fast path.
 //
-// Usage: the game's own <script>...</script> body must be extracted first,
-// then concatenated AFTER this file, then (optionally) a test file AFTER
-// that — all three run as one Node script, not required as modules. This
-// matters because the game declares its state with top-level `let`/`const`;
-// only true script-scope concatenation (not `require()`) makes those visible
-// to appended test code in the same scope.
+// Usage: the game's script body (build/game.js, emitted by `node build.js`
+// from the src/*.js modules) is concatenated AFTER this file, then
+// (optionally) a test file AFTER that — all three run as one Node script, not
+// required as modules. This matters because the game declares its state with
+// top-level `let`/`const`; only true script-scope concatenation (not
+// `require()`) makes those visible to appended test code in the same scope.
 //
-//   awk '/^<script>$/{f=1;next} /^<\/script>$/{f=0} f' orbital-ventures.html > extracted-script.js
-//   cat harness.js extracted-script.js your-test.js > bundle.js
+//   node build.js                                       # (from repo root) regenerates build/game.js
+//   cat harness.js ../build/game.js your-test.js > bundle.js
 //   node bundle.js
+//
+// build/game.js IS the release inline script, byte-for-byte: build.js writes
+// both from the same concatenated module body, so `awk '/^<script>$/{f=1;next}
+// /^<\/script>$/{f=0} f' orbital-ventures.html` equals build/game.js exactly
+// (a build-parity cross-check worth running if a build.js emission bug is
+// suspected). Sourcing build/game.js — not an awk extraction of the HTML —
+// keeps the tests one hop from the src/ modules that are actually edited.
 //
 // A test file typically does: `newGame('engineer');` then calls game
 // functions/asserts directly, ending with `console.log(pass+'/'+(pass+fail))`
