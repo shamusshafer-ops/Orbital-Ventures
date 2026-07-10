@@ -2257,6 +2257,44 @@ loads before everything else. Verified the fix landed: in the rebuilt bundle the
 line 6, its use in `flight.js` is at line ~9893 — declared well before used. Full suite still 236/236
 after this change too.
 
+## Session — E0.2 slice (a): save serialization fix + load-path unification (2026-07-10)
+
+**Scoped by tech-lead first.** Found export/import (backlog #6) and autosave (backlog #8) already mostly
+shipped in `src/save.js` — real remaining E0.2 scope smaller than the roadmap bullet implied. **Key
+architecture call (user-approved):** localStorage stays the canonical live-game save; IndexedDB (slices
+B/C) will be purely additive for manual slots + an autosave ring — rejected making IDB primary because
+`beforeunload`'s synchronous-write guarantee (tab-close protection) matters more than storage-layer
+cleanliness, and an IDB-primary design would need a one-time migration copy on first boot (a real
+data-loss window for zero benefit). Ring cadence agreed for slice B: game-month-change AND ≥3 real
+minutes (both conditions — time-warp can't spam it, idling can't duplicate it). Import/restore will get
+an auto-backup safety net in slice B (closes a real footgun: importing a file today silently clobbers
+your live save within ~4s via the next autosave). Manual-check target platform: Firefox via `file://`.
+
+**Slice (a) shipped — pure refactor, zero user-visible behavior change:**
+- Fixed the double-serialize (`JSON.stringify({...state:JSON.parse(JSON.stringify(state))})`) in
+  **both** `writeSave` *and* `exportSave` — the roadmap bullet only named `writeSave`; `exportSave` had
+  the identical waste, found during implementation. Confirmed **empirically** (not just reasoned) that
+  old double-serialize and new single-pass output are byte-identical, against a played-forward state
+  with an in-progress interplanetary flight (exercises nested `activeFlights`/`ctx.m`/research/staff
+  structures) — `JSON.stringify` applies the same undefined/NaN/toJSON normalizations whether it sees
+  the original object or a round-tripped clone of it, so the inner clone really was pure waste.
+- Unified the two duplicated load paths (`loadSaveFromText`, `autoLoad`) into one `applyLoadedSave()`
+  (migrate → defaults → `reconcileResearch` → `rehydrateFlights`). The two original blocks were
+  confirmed **character-identical** before merging — they diverged only in per-call-site invalid-save
+  handling (throw vs. return false) and post-load UI work, which correctly stayed at the call sites.
+  This closes a latent corruption risk: a future migration added to one path but not the other would
+  previously have silently produced two classes of save behavior.
+- New `tests/test-save.js`, **34/34**, deliberately proven non-vacuous by sabotage-testing scratch
+  copies: neutering each migration (window scaling, facility autoResupply default, eraSeen backfill) one
+  at a time turns the corresponding test red; deliberately diverging the two load paths (recreating the
+  exact bug this slice eliminates) turns the both-paths-identical guard test red specifically.
+- No `SAVE_VERSION` bump (still 45), no new `state` fields — plumbing only.
+- **Suite total: 270/270** (236 + 34), unchanged at every checkpoint. `test-progress-unify.js` (separate
+  WIP, 23/35 baseline) untouched.
+
+**Not started:** slice (b) IndexedDB adapter + autosave ring + restore UI + import-safety-net; slice (c)
+manual save-slot picker UI.
+
 ## Planned — External evaluation intake (2026-07-10)
 
 **Full backlog:** all 105 feature ideas from the evaluation, individually mapped to a
@@ -2291,7 +2329,10 @@ duplicating.
       Contents-API limitation stops applying to the source files. Slice it: (a) mechanical
       split + build script + harness parity at 236/236, zero behavior change; (b) only
       then any hygiene that the split makes cheap.
-- [ ] **E0.2 Save robustness** — save slots (IndexedDB, localStorage stays as slot-0
+- [~] **E0.2 Save robustness** — **slice (a) SHIPPED 2026-07-10** (see session log above):
+      single-pass serialization (both `writeSave` and `exportSave`) + load-path unification, 270/270.
+      Slices (b) IndexedDB ring/adapter + import safety net and (c) manual save-slot UI not started.
+      save slots (IndexedDB, localStorage stays as slot-0
       compat), first-class export/import UI, autosave ring (last 3), single-pass
       serialization (drop the `JSON.parse(JSON.stringify(state))` inner clone in
       `writeSave` — the outer stringify already snapshots), autosave via

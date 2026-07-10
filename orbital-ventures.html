@@ -7197,7 +7197,7 @@ function hideModal(){activeModal=null;_prodModalOpen=false;$('modal').classList.
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
 const SAVE_VERSION=45; // v45: P11 — one late-game crisis (Kessler debris cascade). state.crisis ({phase,startAbs,severity,peakSeverity,fundedUntilAbs} or null), state.crisisDone ({outcome:'mitigated'|'endured',peakSeverity,months} or null once resolved — a ONE-TIME arc, not recurring), state.leoFlights (cumulative successful LEO-class flights, the trigger's own counter). Eligible from Commercial era (index 4) + leoFlights≥40; a small monthly chance then starts it. Active: LEO-class missions (isLeoClassMission — no profile, reqDv≥9000) fly at up to −12% reliability, scaling with severity; funding a Debris Remediation Program (cost scales with eraStakesFrac(), like the bailout mechanic) brings severity down, letting it go unfunded lets it rise. Resolves 'mitigated' (severity hits 0, bigger legacyScore bonus) or 'endured' (36 months elapse regardless, smaller bonus) — never a hard lockout, just a rising tax. No explicit migrate function needed: all three fields are read through `||`/falsy guards everywhere (state.crisis falsy on a legacy load = inactive; leoFlights||0 = 0), so behavior is unchanged until a save's own play crosses the era+flight-count threshold. v44: P6 6.1 era-transition interstitial — state.eraSeen (index of the last era acknowledged via the full-screen card) + state.eraStartSnapshot ({flights,playerFirsts,rivalFirsts,money,rep} baseline captured when that era began, diffed for the retrospective). Both persisted. Trigger is DERIVED (eraIndex(currentEra())>state.eraSeen), gated behind the setback>mishap>inquiry>rival-disaster _pending chain (era is lowest priority; deferred to a later settle-point if any decision is pending, never lost since the condition is stateful). eraSeen advances only on Continue; balance-neutral (pure notification). Lazy migration: pre-v44 saves lack both — migrateEraSeen() backfills eraSeen to the save's CURRENT era index (from its own year, NOT 0, so a late-game load fires ZERO stale interstitials) and seeds eraStartSnapshot from current metrics; newGame seeds eraSeen:0 + a Pioneer baseline. v43: P3 failure investigation loop — state.inquiryCredit ({subsystem,rel,flights} or null): a funded uncrewed-loss inquiry into an ascent/staging subsystem grants a +2% additive-R credit (like familyRelBonus) gated to that subsystem, consumed over 3 flights at launch; a deep-phase failure grants a flat +10⚛ science instead (no persisted credit). Transient _pendingInquiry (fund/decline modal, precedence setback>mishap>inquiry) is NOT persisted. Lazy migration: pre-v43 saves lack inquiryCredit — loadDefaults() seeds it null on both load paths (undefined is already falsy, so behavior is unchanged either way). v42: P2 slice 2.4 — per-facility auto-resupply toggle (fs.autoResupply boolean; opt-in per facility). On the monthly tick a facility with the toggle ON auto-fires resupplyFacility() once supply falls to/below AUTO_RESUPPLY_THRESHOLD(6) and canResupply().ok — same cost/gate/lifecycle as a manual order (the resupplyInTransit + money gates prevent double-ordering and unaffordable fires). Pure automation, balance-neutral otherwise; each auto-order logs a 'note' line. Lazy migration: pre-v42 facilities carry no autoResupply — migrateFacilityAutoResupply() defaults it false on load (undefined is already falsy, so behavior is unchanged either way); foundFacility seeds autoResupply:false on fresh bases. v41: P1 persistent in-flight missions — state.activeFlights[] (deferred interplanetary flights carry a resolved-at-launch ctx applied on arrival; ctx stores famId + crewId, not object refs, so a mid-cruise save round-trips; legacy saves default [] via loadDefaults; rehydrateFlights() re-links ctx.m + restores _flightSeq on load). v40: #19 slice B — career progression (staff.xp accrues monthly ×morale ×dept-training, raising effSkill above hire-day base up to +0.15; dept.training level bought with capital; legacy staff default xp 0 via staffXp guard, effSkill==base at xp 0 so no balance migration). #19 slice C (succession + workforce planning) adds no persisted state — reconcileDeptLeads mutates existing dept.lead, gaps + the era-scaled unstaffed-department reliability penalty (0 in Pioneer) are derived — so it needs no bump. v39: #19 slice A — organizational departments (state.departments {deptId:{lead,training}}; legacy saves default via loadDefaults/defaultDepartments; membership is derived from hired staff, leads are balance-neutral when unset); v38: #6 research partnerships — bench-tested / flight-proven components (state.engineStockTested + state.partStockTested, the bench-tested subset of each yard; legacy saves default {}); a fitted bench-tested component adds +1.5% reliability (cap +6%, benchRelBonus), built at +60% cost / +50% time; v36: #7 sub-assemblies slice 2 — structures & habitats yard (state.partStock {"kind:sub":count}, e.g. "tank:steel"/"hab:closed"; legacy saves default {}); same cost-neutral cadence pattern as the Engine Yard; v35: #7 sub-assemblies — Engine Yard (state.engineStock {engId:count}; legacy saves default {}); v34: Time Granularity slice 4b — launch windows day-scheduled (window/committedWindow .abs moved from absMonth to absDay; migrateWindowsToDays ×30 on pre-v34 load + clears the regenerable windows cache); v33: Time Granularity slice 1 — day-iterating advance() funnel (state.day 0..29 + absDay(); legacy saves default day:0 via load defaults; whole-month advances stay bit-identical so no balance migration needed); v32: CE4(c) era-scaled failure stakes + bailout retune (state.loanInterest — permanent bridge-loan debt service; legacy saves default to 0 via load defaults + loanInterest() guard); v31: CE4(b) standing resupply obligations (per-facility supply/starvedMonths; legacy facilities default to fully provisioned via facilitySupply()); v30: CE3(c) lunar architecture fork (state.lunarArch, null=uncommitted; luna_landing reqResearch moved to per-arch gates); v29: CE3(a) company doctrine (state.doctrine, null=undeclared/neutral); v28: CE2(c) juggernaut capstone (state.standingProd/juggernautReached); v27: CE2(b) launch cadence (state.padMonthAbs/padMonthUsed) — load defaults seed all of these; v26: CE1 rival agents (state.rivalState), seedRivalState migrates old rivalFired
-function writeSave(){ localStorage.setItem(SAVE_KEY, JSON.stringify({v:SAVE_VERSION, ts:Date.now(), state:JSON.parse(JSON.stringify(state))})); }
+function writeSave(){ localStorage.setItem(SAVE_KEY, JSON.stringify({v:SAVE_VERSION, ts:Date.now(), state})); } // state is JSON-safe by design (stores ids, not object refs); the outer stringify snapshots the whole graph, so no inner clone is needed
 // S1: silent throttled autosave so "Continue last game" always resumes the most recent session.
 // Skips a transient mid-flight-resolution snapshot; forced on page close.
 let _lastAutosaveT=0, _gameStarted=false; const AUTOSAVE_MIN_MS=4000;
@@ -7319,19 +7319,30 @@ function showRecap(){
   </div>`, true);
 }
 
+// Single load pipeline shared by every entry point (loadSaveFromText + autoLoad): migrate → apply
+// forward-compat defaults → install as state → reconcile → rehydrate. Keeping this in ONE place means a
+// future migration/default step can never be added to one load path but forgotten on the other (which
+// would silently produce two classes of loaded-save behavior). Accepts either a {v,ts,state} wrapper or a
+// bare state object (payload.state||payload). Callers own their OWN validity handling (throw vs. return
+// false) and post-load UI — this is only the shared transform. Returns the installed state.
+function applyLoadedSave(payload){
+  const saved=payload.state||payload;
+  migrateWindowsToDays(saved, payload.v); // 4b: month→day window abs
+  migrateFacilityAutoResupply(saved); // 2.4 (v42): default per-facility autoResupply OFF on pre-v42 saves
+  migrateEraSeen(saved); // P6 6.1 (v44): backfill eraSeen to the save's CURRENT era + seed era baseline snapshot
+  const defaults=loadDefaults();
+  for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
+  state=saved;
+  reconcileResearch(); // close any prerequisite gaps opened by tech-tree changes
+  rehydrateFlights(); // S1: re-link in-flight records after load
+  return saved;
+}
 function loadSaveFromText(raw, srcLabel){
   try{
     const payload=JSON.parse(raw);
     const saved=payload.state||payload;
     if(!saved.year||!saved.company){ throw new Error('Not a valid Orbital Ventures save (missing company/year).'); }
-    migrateWindowsToDays(saved, payload.v); // 4b: month→day window abs
-    migrateFacilityAutoResupply(saved); // 2.4 (v42): default per-facility autoResupply OFF on pre-v42 saves
-    migrateEraSeen(saved); // P6 6.1 (v44): backfill eraSeen to the save's CURRENT era + seed era baseline snapshot
-    const defaults=loadDefaults();
-    for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
-    state=saved;
-    reconcileResearch(); // close any prerequisite gaps opened by tech-tree changes
-    rehydrateFlights(); // S1: re-link in-flight records after load
+    applyLoadedSave(payload);
     _gameStarted=true;
     log('info', srcLabel||'Game loaded.');
     render();
@@ -7379,7 +7390,7 @@ function startupNew(){
 function startupBegin(diff){ hideModal(); newGame(diff); _gameStarted=true; render(); showInfrastructureModal(); }
 function exportSave(){
   try{
-    const payload=JSON.stringify({v:SAVE_VERSION, ts:Date.now(), state:JSON.parse(JSON.stringify(state))});
+    const payload=JSON.stringify({v:SAVE_VERSION, ts:Date.now(), state}); // single-pass; state is JSON-safe (see writeSave) so the inner clone was pure waste
     const blob=new Blob([payload], {type:'application/json'});
     const url=URL.createObjectURL(blob);
     const a=document.createElement('a');
@@ -7423,14 +7434,7 @@ function autoLoad(){
     const payload=JSON.parse(raw);
     const saved=payload.state||payload;
     if(!saved.year||!saved.company) return false;
-    migrateWindowsToDays(saved, payload.v); // 4b: month→day window abs
-    migrateFacilityAutoResupply(saved); // 2.4 (v42): default per-facility autoResupply OFF on pre-v42 saves
-    migrateEraSeen(saved); // P6 6.1 (v44): backfill eraSeen to the save's CURRENT era + seed era baseline snapshot
-    const defaults=loadDefaults();
-    for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
-    state=saved;
-    reconcileResearch(); // close any prerequisite gaps opened by tech-tree changes
-    rehydrateFlights(); // S1: re-link in-flight records after load
+    applyLoadedSave(payload);
     return true;
   }catch(e){ return false; }
 }
