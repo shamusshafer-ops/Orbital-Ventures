@@ -2131,3 +2131,98 @@ dept-a 42 + dept-b 27 + dept-c 30 + pad-a 34 + **depart-b 39** = **236/236.** No
   state and `pumpFlightArrivals` gating stay exactly as-is — presentation-only change.
 - **Slice D** — unified chrome/transition-timing polish pass across all phases (pad/ascent/cruise/
   reentry/decision panels), once B and C exist to polish.
+
+## Planned — External evaluation intake (2026-07-10)
+
+A full-project evaluation (code, performance, gameplay, sim fidelity, tech tree, economy,
+UI/UX, visuals, feel, AI, comparative analysis, 105 feature ideas, Steam-readiness verdict)
+now lives in the repo as **`EVALUATION-2026-07.md`**. Verdict in one line: sim core is real
+(7/10 overall), product layer isn't — EA-viable in roughly Phase 0 + Phase 1 of the plan
+below. This section maps the evaluation into this roadmap's terms; the evaluation doc is
+the *argument*, this section is the *authoritative work list*. Where an eval item overlaps
+existing planned work (flight overlay C/D, #7 manufacturing seam, station assembly seam),
+the existing entry stays authoritative and the eval item folds into it rather than
+duplicating.
+
+### Workstream E0 — Critical fixes (do before new features)
+
+- [ ] **E0.1 File split + concat build** (user-approved 2026-07-10). Break
+      `orbital-ventures.html` into dev modules — proposed: `data.js` (MISSIONS/RESEARCH/
+      BODIES/ENGINES/RIVALS/…), `sim.js` (pure state transforms — the harness surface),
+      `render.js`, `flight.js` (overlay + drawScene), `phaser.js` (guarded scene hosts),
+      `save.js`, `main.js` — loaded in order by a dev `index.html`; a small `build.js`
+      concatenates back into the single-file release artifact so "open the file and play"
+      distribution is preserved. **Consequences to absorb:** the "How we work → Single
+      file" bullet at the top of this doc changes; the harness's `<script>`-extraction
+      step points at the concat artifact (or module list) instead; Git Data API commits
+      become multi-blob trees (already how we commit — no workflow change); the >1MB
+      Contents-API limitation stops applying to the source files. Slice it: (a) mechanical
+      split + build script + harness parity at 236/236, zero behavior change; (b) only
+      then any hygiene that the split makes cheap.
+- [ ] **E0.2 Save robustness** — save slots (IndexedDB, localStorage stays as slot-0
+      compat), first-class export/import UI, autosave ring (last 3), single-pass
+      serialization (drop the `JSON.parse(JSON.stringify(state))` inner clone in
+      `writeSave` — the outer stringify already snapshots), autosave via
+      `requestIdleCallback`.
+- [ ] **E0.3 Dirty-flag rendering** — `render()` currently rebuilds all regions from ~136
+      call sites; move to `invalidate(region)` + per-region rebuild with a `renderAll()`
+      escape hatch. Fixes focus/scroll loss in re-rendered panels, cuts time-warp GC
+      churn, and is the prerequisite for simultaneous-mission ops density. Validate by
+      diffing harness snapshots region-by-region.
+- [ ] **E0.4 Keyboard + accessibility baseline** — tab hotkeys, space pause, +/- warp
+      (extends the existing time-hotkeys session), Esc closes modals + focus trap,
+      `prefers-reduced-motion` gating on pulses/bumps, icon-beside-color redundancy for
+      money/support states, UI-scale CSS var in settings.
+- [ ] **E0.5 Unbounded-array audit** — cap rendered log entries (windowed + "show
+      older"), decimate metric histories monthly→quarterly after N years, cap/archive
+      chronicle. Verify `document.hidden` pauses every RAF loop and sleeps Phaser scenes
+      (bloom postFX must not run on hidden canvases).
+- [ ] **E0.6 `esc()` all dynamic text in innerHTML template strings** (company/family
+      names today; mandatory before sharecodes or content packs ever exist).
+
+### Workstream E1 — High-value gameplay (the "is this a product" tier)
+
+- [ ] **E1.1 Reactive rival race.** Rivals already scoop firsts on calendar timelines
+      with a 60% payout cut (M4b/c) and have voice/disasters/rescue (P4/P5). Upgrade the
+      *decision* layer: schedule variance ± reacting to player progress, contract
+      snatching, staff poaching after player failures, intel purchases, budget hearings
+      after fatal failures. Weighted event scheduler, deterministic + harness-testable —
+      no LLM in the loop.
+- [ ] **E1.2 Flight overlay Slices C + D** — already scoped above (in-overlay decision
+      panels; chrome/transition polish). The eval independently ranks these top-tier;
+      add an ascent abort/press-on window and a small telemetry strip (alt/vel/Q) as
+      part of C's panel work.
+- [ ] **E1.3 Procedural contract generator** — era + demonstrated-capability keyed
+      (comsat block buys, crew rotation, sample-return variants) to fill the troughs
+      between authored milestones.
+- [ ] **E1.4 Astronaut identity** — names/traits/flight logs (traits and "souls carried"
+      tracking already exist — surface them), crew assignment tradeoffs, memorial wall
+      on losses.
+- [ ] **E1.5 Ops friction + trust** — pad turnaround per pad, "why can't I fly this?"
+      explainer on disabled launch, post-flight failure report naming the causal chain
+      (the ∏ phaseRel decomposition already computes it — show it), hover math
+      breakdowns on derived numbers.
+- [ ] **E1.6 Milestone spectacle** — newspaper front pages on firsts; sound pass
+      (ambient bed, UI ticks, countdown voice, milestone stingers — WebAudio synthesis
+      or small OGG set post-split).
+
+### Workstream E2 — Medium (post-EA-gate)
+
+Station assembly + resupply loop (hangs on the existing STATION_MODULES seam) · 3–4 more
+committed program forks on the lunar-arch pattern (Mars architecture, crew vehicle
+philosophy, propulsion doctrine) · era research-capacity limits · political/media layer
+extending mandates · SVG icon set replacing emoji · synergy-prospecting UI ("2 of 3") ·
+Steam integration (achievements, cloud) if that route is taken.
+
+### Deferred / noted, not committed
+
+Manufacturing lines (#7 seam — eval agrees it's the right shape, XL cost) · second launch
+site · training pipeline · scenarios/ironman · chronicle export · encyclopedia ·
+localization scaffold (needs E0.1 first) · mod-lite content packs (needs E0.1 + E0.6) ·
+mobile (explicitly out for 1.0; desktop-only, test Steam Deck only).
+
+### EA gate checklist (from the evaluation, verbatim intent)
+
+Reactive rival race live · overlay C/D shipped · procedural contracts · save slots +
+export · keyboard + reduced-motion · newspaper milestones · sound pass · SVG icons ·
+trailer cut entirely from in-game flight footage.
