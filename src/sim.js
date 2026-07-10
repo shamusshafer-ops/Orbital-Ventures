@@ -931,6 +931,69 @@ function tickPassiveContracts(){
   const cool=state.contractCooldown||{};
   for(const k in cool){ if(cool[k]>0) cool[k]--; }
 }
+function monthlyPayroll(){ return round2((state.staff||[]).reduce((a,s)=>{const p=personById(s.id);return a+(p?p.salary:0);},0)); }
+/* ---------- Special contracts: the game comes to you ----------
+   Between mission-ladder rungs, a client arrives with a limited-time variant of a mission
+   you can already fly: procedural body (mission × modifier × deadline), hand-authored
+   historical flavor. One live at a time, era-appropriate, real money for flying NOW.
+   The commercial cousin of mandates — short-horizon goals that make the calendar matter. */
+const SPECIAL_MODS=[
+  {id:'rush',   name:'Rush order',        mult:0.9,  lead:8,
+   flavors:["A customer's original launch provider blew up on the pad — they need a ride and they need it yesterday.",
+            "A treaty deadline looms; the ministry will pay handsomely for a flight before the signing."]},
+  {id:'polar',  name:'Polar insertion',   mult:1.2,  lead:12,
+   flavors:["A mapping agency wants full-globe coverage — a polar-corridor flight at premium rates.",
+            "Weather service requirement: sun-synchronous coverage, and they're paying for the plane change."]},
+  {id:'media',  name:'Broadcast charter', mult:1.0,  lead:10, reqCrew:true,
+   flavors:["A television network wants cameras on this flight — live coverage, worldwide audience, appearance fees.",
+            "A film studio has chartered seats and coverage rights. The premiere date is not negotiable."]},
+  {id:'science',name:'Instrument ride',   mult:1.1,  lead:14,
+   flavors:["A university consortium has an instrument package ready and a grant expiring — they'll pay for the manifest slot.",
+            "An observatory needs its detector above the atmosphere before the comet arrives."]},
+  {id:'prestige',name:'State showcase',   mult:1.4,  lead:10, minRep:60,
+   flavors:["A state visit is scheduled — the government wants a flawless flight to show off, and will pay like it.",
+            "An international exposition wants a launch timed to its opening ceremony. National prestige budgets are generous."]},
+  // P10: insurance underwriters pay the biggest premium of any special contract precisely because
+  // they're pricing in the risk, not despite it — the "reward for flying risky" lever alongside the
+  // first-of-design bonus and the mandate schedule-pressure premium. Flavor-only like every other
+  // mod here (no mechanical risk check) — a deliberate scope boundary, not an oversight.
+  {id:'insurance',name:'High-risk underwriting', mult:1.6, lead:8, minRep:80,
+   flavors:["A reinsurer is pricing next year's launch-liability book off this flight — they'll cover the premium if you fly it now, margins as they stand.",
+            "An underwriting syndicate wants the loss data before a competitor's; they'll pay top rate for a flight on your current, unproven margins."]},
+];
+const SPECIAL_COOLDOWN_MO=9;
+function specialCandidateMissions(){
+  return MISSIONS.filter(m=>(m.payout||0)>0 && state.completed[m.id] && state.rep>=(m.minRep||0));
+}
+function tickSpecialContract(){
+  if(state.specialCooldown>0) state.specialCooldown--;
+  const sc=state.specialContract;
+  if(sc){
+    if(absMonth()>sc.deadlineAbs){ log('note',`★ The ${sc.title} window closed — the client went elsewhere.`);
+      state.specialContract=null; state.specialCooldown=SPECIAL_COOLDOWN_MO; }
+    return;
+  }
+  if((state.specialCooldown||0)>0) return;
+  if(Math.random()>0.5) return; // arrives within ~2 months of eligibility, not like clockwork
+  const pool=specialCandidateMissions(); if(!pool.length) return;
+  const m=pool[Math.floor(Math.random()*pool.length)];
+  const mods=SPECIAL_MODS.filter(md=>(!md.reqCrew || (m.crew||0)>0) && state.rep>=(md.minRep||0));
+  if(!mods.length) return;
+  const mod=mods[Math.floor(Math.random()*mods.length)];
+  const bonus=round2(m.payout*mod.mult);
+  state.specialContract={ missionId:m.id, modId:mod.id, bonus, deadlineAbs:absMonth()+mod.lead,
+    title:`${mod.name}: ${m.name}`, flavor:mod.flavors[Math.floor(Math.random()*mod.flavors.length)] };
+  timeInterrupt();
+  log('note',`★ Special contract: ${state.specialContract.title} — ${fM(bonus)} bonus if flown within ${mod.lead} months. ${state.specialContract.flavor}`);
+}
+function fulfillSpecialIfMatch(missionId){
+  const sc=state.specialContract; if(!sc || sc.missionId!==missionId) return;
+  if(absMonth()<=sc.deadlineAbs){
+    state.money+=sc.bonus; addSupport(3); state.rep+=2;
+    log('ok',`★ Special contract fulfilled: ${sc.title}. +${fM(sc.bonus)} bonus, +3 support, +2 rep.`);
+  }
+  state.specialContract=null; state.specialCooldown=SPECIAL_COOLDOWN_MO;
+}
 function rollEconEvent(){
   // Economy tension: positive windfalls require a recently ACTIVE program (a flight in the
   // last 24 months or support above neutral). Nobody grants money to an agency going nowhere.

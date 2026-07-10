@@ -703,6 +703,61 @@ const FACILITY_DEFS = [
    base:{income:2.6, fuel:0.6, rep:3, sci:4}, perModule:{income:1.8, fuel:0.8, rep:1.5, sci:3}},
 ];
 
+// Side-view module spec (model space, +x downstream): a pressurized can with an axial docking
+// node, radial berthing ports, dish + whip antennas, solar wings and a radiator. Each `parts`
+// entry is a labelled detail the bench annotates with a leader line — the hook future content
+// extends. Coordinates are relative to the module centre.
+const STATION_MODULES = [
+  { id:'can_std', name:'Pressurized Habitat', short:'HAB', len:200, dia:88, color:'#b8c0c7',
+    cost:8, buildMo:4, stats:{ mass:18.0, crew:3, powerGenKw:6.0, powerDrawKw:4.2 },
+    prod:{ income:0.5, fuel:0, rep:0.5, sci:0.8 }, role:'Core / crew',
+    blurb:'Crew quarters, galley and workstations — the living space every station grows from.',
+    hist:'Skylab (1973) gave the US its first roomy orbital home; Mir\'s core module (1986) proved a station could be permanently crewed for a decade.',
+    synHint:'Supplies the crew that Labs, Depots and Greenhouses need. Pairs with a Lab for +20% science and a Greenhouse for +15% income.',
+    parts:[
+      { key:'axial_dock', label:'Axial docking port',   x:120,  y:0,   note:'Forward CBM / androgynous dock' },
+      { key:'port_p',     label:'Radial berthing port', x:30,   y:-48, note:'Side hatch for branch modules' },
+      { key:'port_s',     label:'Radial berthing port', x:-30,  y:48,  note:'Side hatch (opposite face)' },
+      { key:'dish',       label:'High-gain antenna',    x:-70,  y:-78, note:'Steerable comms dish' },
+      { key:'whip',       label:'Omni antenna',         x:70,   y:-72, note:'Low-gain whip' },
+      { key:'solar_p',    label:'Solar array wing',     x:0,    y:-150,note:'Photovoltaic wing (port)' },
+      { key:'solar_s',    label:'Solar array wing',     x:0,    y:150, note:'Photovoltaic wing (starboard)' },
+      { key:'radiator',   label:'Thermal radiator',     x:-95,  y:60,  note:'Heat-rejection panel' },
+      { key:'aft',        label:'Aft node / endcap',    x:-120, y:0,   note:'Pressure dome + utility trunk' },
+    ] },
+  { id:'lab_mod', name:'Research Laboratory', short:'LAB', len:180, dia:84, color:'#5aa9e0',
+    cost:11, buildMo:5, stats:{ mass:16.5, crew:0, crewReq:2, powerGenKw:0, powerDrawKw:5.5 },
+    prod:{ income:0.2, fuel:0, rep:0.3, sci:2.6 }, role:'Science',
+    blurb:'Racks of microgravity experiments — materials, biology, fluids. The station\'s science engine.',
+    hist:'The ISS Destiny lab (2001) and Europe\'s Columbus (2008) turned the station into a permanent research platform, running thousands of experiments a year.',
+    synHint:'Big science, but power-hungry and needs 2 crew from a Habitat. With a Habitat aboard, crewed research runs +20% science.' },
+  { id:'power_truss', name:'Solar Power Truss', short:'PWR', len:150, dia:36, color:'#e8b64c',
+    cost:6, buildMo:3, stats:{ mass:12.0, crew:0, powerGenKw:16.0, powerDrawKw:0.4 },
+    prod:{ income:0.25, fuel:0, rep:0, sci:0 }, role:'Power',
+    blurb:'Deployable photovoltaic wings and batteries. Power-hungry modules need one of these behind them.',
+    hist:'The ISS Integrated Truss carries an acre of solar arrays generating ~120 kW — the backbone that lets every other module run at once.',
+    synHint:'+16 kW keeps Labs and Greenhouses out of the 60%-output power-starve penalty. Push the station to +8 kW net surplus for a station-wide efficiency bonus.' },
+  { id:'node_hub', name:'Docking Node', short:'NODE', len:90, dia:76, color:'#8f9aa6',
+    cost:5, buildMo:3, stats:{ mass:9.0, crew:0, powerGenKw:0, powerDrawKw:0.8 },
+    prod:{ income:0.1, fuel:0, rep:0.2, sci:0 }, ports:3, role:'Structure',
+    blurb:'A six-port junction sphere. Every node adds 3 berths of growth room to the station.',
+    hist:'The ISS nodes Unity, Harmony and Tranquility are the junctions everything else bolts onto — without them the station couldn\'t branch.',
+    synHint:'Cheap and light. The only way past the 4-port base limit — dock one before the station fills up, or growth stalls.' },
+  { id:'depot_mod', name:'Propellant Depot Module', short:'FUEL', len:170, dia:96, color:'#67c587',
+    cost:12, buildMo:5, stats:{ mass:20.0, crew:0, crewReq:1, powerGenKw:0, powerDrawKw:2.2 }, reqResearch:'orbital_depot',
+    prod:{ income:0.35, fuel:0.8, rep:0.3, sci:0 }, role:'Logistics',
+    blurb:'Insulated tankage and transfer plumbing — the station becomes a gas station, feeding the LEO depot economy.',
+    hist:'Long theorized (von Braun sketched orbital tankers in the 1950s), propellant depots are the enabling infrastructure for cheap deep-space missions that never launch full.',
+    synHint:'Produces depot propellant that cuts the launch mass of your deep missions. Add a Power Truss and the pumps run +25% fuel throughput.' },
+  { id:'greenhouse', name:'Greenhouse Module', short:'GRN', len:190, dia:90, color:'#7bc46a',
+    cost:10, buildMo:5, stats:{ mass:15.0, crew:0, crewReq:1, powerGenKw:0, powerDrawKw:4.8 }, reqResearch:'eclss_partial',
+    prod:{ income:0.15, fuel:0, rep:0.4, sci:0.4 }, resupplyCut:0.15, role:'Life support',
+    blurb:'Crops under grow-lights. Each greenhouse cuts this facility\'s standing resupply cost 15% — food grown on-site never needs launching.',
+    hist:'Salyut cosmonauts grew the first plants in orbit; the ISS Veggie system (2014) served the first space-grown salad. Closed-loop food is the key to bases far from resupply.',
+    synHint:'Each one cuts standing resupply 15% and feeds itself — decisive on the Moon/Mars where resupply is 2–4× costlier. With a Habitat, closed-loop life support adds +15% income.' },
+];
+const STATION_PORT_BASE=4; // a core stack holds 4 modules; each Docking Node adds its ports
+
 /* ---------- #7: Manufacturing capacity (first slice) ----------
    Money was nearly the only resource. This adds an industrial layer: three
    leveled production lines you fund with capital AND ongoing monthly upkeep, so
