@@ -2295,6 +2295,42 @@ your live save within ~4s via the next autosave). Manual-check target platform: 
 **Not started:** slice (b) IndexedDB adapter + autosave ring + restore UI + import-safety-net; slice (c)
 manual save-slot picker UI.
 
+## Session — E0.2 slice (b): IndexedDB autosave ring + import-safety net (2026-07-10)
+
+**Shipped, user-verified in Firefox via `file://`, committed.** Builds on slice (a)'s
+`applyLoadedSave()` unified load path — no changes to slice (a)'s serialization/migration logic.
+
+- **New IndexedDB adapter** in `src/save.js` (`idbPut`/`idbGet`/`idbGetAll`/`idbDelete`, ~4 small
+  Promise-returning functions, no external library). **Falls back to an in-memory `Map`** whenever
+  `indexedDB` is undefined (the harness' testability seam — this is what makes the ring headlessly
+  testable in Node) or on any open/transaction error in a real browser (one-time `console.warn`, then
+  silent degrade — never throws, never breaks the game loop).
+- **localStorage remains fully canonical and untouched** — the fast synchronous `autosave()` path and
+  `beforeunload` force-save are exactly as they were. The ring is a purely additive second write path.
+- `pickRingSlot` (pure, overwrite-oldest-of-3) + `ringCadenceDue` (pure, game-month-changed AND
+  ≥3-real-minutes-elapsed, both required) + `ringAutosave`, hooked in right after the existing
+  `autosave()` call at `sim.js:608`.
+- Ring writes deferred via `requestIdleCallback` (with a `setTimeout` shim for browsers without it) —
+  but the save payload is built **synchronously at the trigger moment**, so a ring entry always reflects
+  state as of when it was triggered regardless of when the deferred write actually lands.
+- **Import-safety net**: `snapshotLiveToRing` fires unconditionally (bypasses the cadence gate)
+  immediately before `loadSaveFromText` overwrites live state — closes a real footgun where importing a
+  file "just to look" could silently destroy the real save via the next fast autosave a few seconds
+  later.
+- New "↻ Restore autosave…" button next to the existing Settings save/export/import controls
+  (`render.js:1834`); restoring an entry routes through slice (a)'s `applyLoadedSave`.
+- New `tests/test-save-ring.js`, **42/42** — slot selection (empty/partial/full/tied), cadence gate (all
+  combinations), eviction in practice (4 writes → oldest evicted), restore round-trip, and the
+  import-safety-net ordering (pre-import snapshot proven to carry the *old* company's data, not the
+  imported one) — all via the in-memory adapter fallback. **Suite total: 312/312** (270 + 42), the other
+  270 unaffected.
+- **User manually verified in Firefox via `file://` (2026-07-10), all four checks passed:** IDB entries
+  persist across a real tab close/reopen; no perceptible hitch from ring writes during turn advances; the
+  restore modal renders and an actual restore rolls the game back correctly; a private/incognito window
+  still plays fine with the ring silently no-op'd.
+
+**Not started:** slice (c) manual save-slot picker UI.
+
 ## Planned — External evaluation intake (2026-07-10)
 
 **Full backlog:** all 105 feature ideas from the evaluation, individually mapped to a
@@ -2329,9 +2365,9 @@ duplicating.
       Contents-API limitation stops applying to the source files. Slice it: (a) mechanical
       split + build script + harness parity at 236/236, zero behavior change; (b) only
       then any hygiene that the split makes cheap.
-- [~] **E0.2 Save robustness** — **slice (a) SHIPPED 2026-07-10** (see session log above):
-      single-pass serialization (both `writeSave` and `exportSave`) + load-path unification, 270/270.
-      Slices (b) IndexedDB ring/adapter + import safety net and (c) manual save-slot UI not started.
+- [~] **E0.2 Save robustness** — **slices (a) + (b) SHIPPED 2026-07-10** (see session logs above):
+      single-pass serialization + load-path unification (a); IndexedDB autosave ring + restore UI +
+      import-safety net (b), user-verified in Firefox. 312/312. Slice (c) manual save-slot UI not started.
       save slots (IndexedDB, localStorage stays as slot-0
       compat), first-class export/import UI, autosave ring (last 3), single-pass
       serialization (drop the `JSON.parse(JSON.stringify(state))` inner clone in

@@ -2812,7 +2812,7 @@ function advanceDays(days){
     if(monthEnd) tickMonthlyBoundary(); // discrete monthly subsystems — same order as the old tick
   }
   if(state.money<0 && !state.over){ gameOver(); }
-  if(!state.over){ pumpFlightArrivals(); autosave(); } // P1 1.2a: resolve arrivals; S1: autosave the turn (throttled, skips mid-resolution)
+  if(!state.over){ pumpFlightArrivals(); autosave(); ringAutosave(); } // P1 1.2a: resolve arrivals; S1: fast localStorage autosave (throttled); E0.2 Slice B: coarse IndexedDB autosave ring (month+3min cadence, idle-deferred)
 }
 // the smooth daily flows — inputs are stable within a month, so 30 days sum to the monthly total.
 function tickContinuousDay(){
@@ -7342,6 +7342,7 @@ function loadSaveFromText(raw, srcLabel){
     const payload=JSON.parse(raw);
     const saved=payload.state||payload;
     if(!saved.year||!saved.company){ throw new Error('Not a valid Orbital Ventures save (missing company/year).'); }
+    snapshotLiveToRing(); // E0.2 Slice B import-safety net: preserve the current live game in the ring before this overwrite (payload captured synchronously, so it lands the pre-import state)
     applyLoadedSave(payload);
     _gameStarted=true;
     log('info', srcLabel||'Game loaded.');
@@ -7437,6 +7438,197 @@ function autoLoad(){
     applyLoadedSave(payload);
     return true;
   }catch(e){ return false; }
+}
+
+/* ============================================================================
+   E0.2 Slice B — IndexedDB autosave ring + import-safety net.
+
+   localStorage stays the CANONICAL live save (writeSave/autosave/beforeunload —
+   all untouched, all synchronous). The ring below is a SECOND, coarser, purely
+   additive durability layer in IndexedDB: 3 rolling slots (auto:0/1/2), written
+   at most once per in-game month AND once per 3 real minutes, on idle time so it
+   never competes with the turn advance. Every path degrades to an in-memory Map
+   (and never throws) when indexedDB is absent or errors, so the whole feature is
+   testable headlessly and can never break the game loop.
+   ============================================================================ */
+const IDB_DB='orbital_ventures', IDB_STORE='saves', IDB_VER=1;
+const RING_SLOTS=['auto:0','auto:1','auto:2'];
+const RING_MIN_REAL_MS=3*60*1000; // second gate: ≥3 real minutes between ring writes
+// In-memory fallback store — exposes the SAME shape the object store does, so the promise API on top
+// is identical in Node/private-browsing and in a real browser. Session-only (fine: the ring's real
+// durability comes from IDB; mem is just the graceful-degradation path).
+const _idbMem=new Map();
+let _idbMemMode=(typeof indexedDB==='undefined'); // no IDB at all (harness / older engines) → mem from the start
+let _idbWarned=false, _idbOpenPromise=null;
+// P: surface any IDB trouble ONCE, then degrade silently — never spam the console or the in-game log.
+function _idbWarnOnce(e){ if(_idbWarned) return; _idbWarned=true; try{ console.warn('Orbital Ventures: IndexedDB autosave unavailable — using in-memory fallback.', (e&&e.message)||e||''); }catch(_){} }
+// Lazily open the DB once; resolve to the db handle, or to null (⇒ callers use the mem fallback). Any
+// failure flips _idbMemMode so we stop retrying. Never rejects.
+function _idbConn(){
+  if(_idbMemMode) return Promise.resolve(null);
+  if(_idbOpenPromise) return _idbOpenPromise;
+  _idbOpenPromise=new Promise((resolve)=>{
+    try{
+      const req=indexedDB.open(IDB_DB, IDB_VER);
+      req.onupgradeneeded=()=>{ try{ const db=req.result; if(!db.objectStoreNames.contains(IDB_STORE)) db.createObjectStore(IDB_STORE,{keyPath:'id'}); }catch(_){} };
+      req.onsuccess=()=>resolve(req.result);
+      req.onerror=()=>{ _idbMemMode=true; _idbWarnOnce(req.error); resolve(null); };
+      req.onblocked=()=>{ _idbMemMode=true; _idbWarnOnce('open blocked'); resolve(null); };
+    }catch(e){ _idbMemMode=true; _idbWarnOnce(e); resolve(null); }
+  });
+  return _idbOpenPromise;
+}
+// The 4 adapter primitives. Each returns a Promise, never throws, and transparently falls back to _idbMem
+// on absence or any IDB error (so anything built on top is naturally testable without IDB scaffolding).
+function idbPut(record){
+  return _idbConn().then(db=>{
+    if(!db){ _idbMem.set(record.id, record); return record.id; }
+    return new Promise((resolve)=>{
+      try{
+        const tx=db.transaction(IDB_STORE,'readwrite'); tx.objectStore(IDB_STORE).put(record);
+        tx.oncomplete=()=>resolve(record.id);
+        tx.onerror=()=>{ _idbWarnOnce(tx.error); _idbMem.set(record.id, record); resolve(record.id); };
+        tx.onabort=()=>{ _idbWarnOnce(tx.error); _idbMem.set(record.id, record); resolve(record.id); };
+      }catch(e){ _idbWarnOnce(e); _idbMem.set(record.id, record); resolve(record.id); }
+    });
+  }).catch(e=>{ _idbWarnOnce(e); _idbMem.set(record.id, record); return record.id; });
+}
+function idbGet(id){
+  return _idbConn().then(db=>{
+    if(!db){ return _idbMem.get(id)||null; }
+    return new Promise((resolve)=>{
+      try{
+        const req=db.transaction(IDB_STORE,'readonly').objectStore(IDB_STORE).get(id);
+        req.onsuccess=()=>resolve(req.result||null);
+        req.onerror=()=>{ _idbWarnOnce(req.error); resolve(_idbMem.get(id)||null); };
+      }catch(e){ _idbWarnOnce(e); resolve(_idbMem.get(id)||null); }
+    });
+  }).catch(e=>{ _idbWarnOnce(e); return _idbMem.get(id)||null; });
+}
+function idbGetAll(){
+  return _idbConn().then(db=>{
+    if(!db){ return Array.from(_idbMem.values()); }
+    return new Promise((resolve)=>{
+      try{
+        const req=db.transaction(IDB_STORE,'readonly').objectStore(IDB_STORE).getAll();
+        req.onsuccess=()=>resolve(req.result||[]);
+        req.onerror=()=>{ _idbWarnOnce(req.error); resolve(Array.from(_idbMem.values())); };
+      }catch(e){ _idbWarnOnce(e); resolve(Array.from(_idbMem.values())); }
+    });
+  }).catch(e=>{ _idbWarnOnce(e); return Array.from(_idbMem.values()); });
+}
+function idbDelete(id){
+  return _idbConn().then(db=>{
+    if(!db){ _idbMem.delete(id); return; }
+    return new Promise((resolve)=>{
+      try{
+        const tx=db.transaction(IDB_STORE,'readwrite'); tx.objectStore(IDB_STORE).delete(id);
+        tx.oncomplete=()=>resolve();
+        tx.onerror=()=>{ _idbWarnOnce(tx.error); _idbMem.delete(id); resolve(); };
+      }catch(e){ _idbWarnOnce(e); _idbMem.delete(id); resolve(); }
+    });
+  }).catch(e=>{ _idbWarnOnce(e); _idbMem.delete(id); });
+}
+
+// PURE eviction policy — overwrite-oldest. Given the current ring entries (0–3, each {id,ts}), return
+// the slot id to write next: first free slot if any, else the slot with the oldest ts (ties resolve to
+// the lowest slot index, deterministically). No IDB calls — directly unit-testable.
+function pickRingSlot(entries){
+  entries=entries||[];
+  const byId={}; for(const e of entries){ if(e&&e.id) byId[e.id]=e; }
+  for(const id of RING_SLOTS){ if(!byId[id]) return id; } // a free slot
+  let oldest=RING_SLOTS[0], oldestTs=byId[RING_SLOTS[0]].ts||0; // all full → oldest ts
+  for(const id of RING_SLOTS){ const ts=byId[id].ts||0; if(ts<oldestTs){ oldestTs=ts; oldest=id; } }
+  return oldest;
+}
+// PURE cadence gate — write a ring entry only when the in-game month has advanced AND ≥3 real minutes
+// have elapsed since the last ring write. `last` is {absMonth,wallMs} or null (never written this
+// session). Directly testable with synthetic last/now, no wall-clock dependency.
+function ringCadenceDue(last, nowAbsMonth, nowWallMs){
+  if(!last) return true; // first eligible advance of the session writes one
+  if(nowAbsMonth===last.absMonth) return false; // same in-game month → too soon
+  return (nowWallMs-last.wallMs)>=RING_MIN_REAL_MS;
+}
+let _lastRingWrite=null; // {absMonth,wallMs} — session-only module state (not persisted; ring is the durability)
+
+// Compact metadata written ALONGSIDE the payload so the restore list renders without parsing full saves.
+function ringMeta(){
+  let era=null; try{ era=currentEra().name; }catch(e){}
+  return { company:state.company, year:state.year, era:era, money:state.money, flights:state.flights, difficulty:state.difficulty };
+}
+// Perform ONE ring write now (bypasses the cadence gate — the caller decides when). Reuses the exact
+// {v,ts,state} wrapper writeSave/exportSave produce as the payload. The payload + meta are snapshotted
+// SYNCHRONOUSLY here, so even when the actual idbPut is deferred (idle) or the live state is about to be
+// overwritten (import-safety net), the record still captures state AS OF this call. Never throws.
+function writeRingEntry(){
+  try{
+    if(!state||!state.company) return Promise.resolve(null);
+    const payload=JSON.stringify({v:SAVE_VERSION, ts:Date.now(), state}); // state is JSON-safe (see writeSave)
+    const meta=ringMeta(), name=(state.company||'save')+' · y'+(state.year||'');
+    return idbGetAll().then(entries=>{
+      const rec={ id:pickRingSlot(entries), kind:'auto', name, ts:Date.now(), meta, payload };
+      return idbPut(rec).then(()=>rec);
+    }).catch(e=>{ _idbWarnOnce(e); return null; });
+  }catch(e){ _idbWarnOnce(e); return Promise.resolve(null); }
+}
+// requestIdleCallback shim — run fn when idle, else a short timeout. Never lets a missing API throw.
+function _ringIdle(fn){
+  try{ if(typeof requestIdleCallback==='function'){ requestIdleCallback(fn); return; } }catch(e){}
+  try{ setTimeout(fn, 200); }catch(e){}
+}
+// Cadence-driven ring write, called from the same post-turn hook as autosave() (sim.js advanceDays).
+// Layered ON TOP of the fast synchronous localStorage autosave — this one is coarse and idle-deferred,
+// and must never touch or delay the fast path. Never throws.
+function ringAutosave(){
+  try{
+    if(!_gameStarted || !state || !state.company || state.over) return;
+    const nowMonth=absMonth(), nowMs=Date.now();
+    if(!ringCadenceDue(_lastRingWrite, nowMonth, nowMs)) return;
+    _lastRingWrite={ absMonth:nowMonth, wallMs:nowMs }; // set synchronously so a burst of advances can't re-trigger
+    _ringIdle(()=>{ try{ writeRingEntry(); }catch(e){ _idbWarnOnce(e); } });
+  }catch(e){}
+}
+// Import-safety net: UNCONDITIONALLY (bypassing the cadence gate) snapshot the CURRENT live save into
+// the ring right before anything overwrites live state — a file import or a restore-from-ring. Closes
+// the footgun where importing a file "just to look" silently destroys the real save on the next fast
+// autosave. Guarded so a fresh boot / game-over never snapshots a placeholder. Payload is captured
+// synchronously inside writeRingEntry, so the async put lands the PRE-overwrite state. Never throws.
+function snapshotLiveToRing(){
+  try{ if(_gameStarted && state && state.company && !state.over) return writeRingEntry(); }catch(e){ _idbWarnOnce(e); }
+  return Promise.resolve(null);
+}
+// Restore UI — a small modal listing the ring's meta (newest first) with a per-entry restore. Async
+// because idbGetAll is; shows a sensible empty state when the ring hasn't filled yet.
+function showRestoreRing(){
+  idbGetAll().then(entries=>{
+    entries=(entries||[]).filter(e=>e&&e.kind==='auto').sort((a,b)=>(b.ts||0)-(a.ts||0));
+    let body;
+    if(!entries.length){
+      body=`<p class="muted" style="font-size:12px">No autosaves yet. The game keeps a rolling set of automatic checkpoints as you play — check back after a few in-game months.</p>`;
+    } else {
+      body=entries.map(e=>{ const m=e.meta||{}; const when=e.ts?new Date(e.ts).toLocaleString():'';
+        return `<div class="card" style="background:var(--panel2);margin-bottom:6px;display:flex;align-items:center;gap:8px">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;color:var(--ink)">${m.company||'—'} · year ${m.year||'—'}${m.era?` · ${m.era}`:''}</div>
+            <div class="dim" style="font-size:11px">${fM(m.money||0)} · ${m.flights||0} flights${m.difficulty?` · ${m.difficulty}`:''}${when?` · ${when}`:''}</div>
+          </div>
+          <button class="btn" style="font-size:12px" onclick="restoreRingEntry('${e.id}')">↻ Restore</button>
+        </div>`; }).join('');
+    }
+    showModal(`<h2>Restore an autosave</h2>
+      <p class="muted" style="font-size:12px;margin:2px 0 10px">Roll back to an earlier automatic checkpoint. Your current game is snapshotted into the ring first, so restoring won't lose your live progress.</p>
+      ${body}
+      <button class="btn ghost" style="width:100%;margin-top:8px" onclick="hideModal()">Close</button>`);
+  }).catch(e=>{ try{ showModal(`<h2>Restore</h2><p class="muted">Autosaves are unavailable in this browser.</p><button class="btn" onclick="hideModal()" style="margin-top:8px">OK</button>`); }catch(_){} });
+}
+// Restore one ring entry through the UNIFIED load path (loadSaveFromText → applyLoadedSave). We read the
+// entry into memory first, so the import-safety snapshot inside loadSaveFromText can freely overwrite any
+// slot without harming the restore. Never throws.
+function restoreRingEntry(id){
+  idbGet(id).then(rec=>{
+    if(!rec||!rec.payload){ try{ showModal(`<h2>Restore Failed</h2><p class="muted">That autosave could not be read.</p><button class="btn" onclick="hideModal()" style="margin-top:8px">OK</button>`); }catch(_){} return; }
+    loadSaveFromText(rec.payload, 'Autosave restored.'); // unified load path + import-safety net snapshot of the current game
+  }).catch(e=>{ try{ showModal(`<h2>Restore Failed</h2><p class="muted">${(e&&e.message)||'Unknown error'}</p><button class="btn" onclick="hideModal()" style="margin-top:8px">OK</button>`); }catch(_){} });
 }
 
 /* ---------- flight animation (canvas) ---------- */
@@ -12486,6 +12678,7 @@ function renderSettings(){
       <button class="btn ghost" onclick="loadGame()">📂 Load</button>
       <button class="btn ghost" onclick="exportSave()">⬇ Export file</button>
       <button class="btn ghost" onclick="importSave()">⬆ Import file</button>
+      <button class="btn ghost" onclick="showRestoreRing()">↻ Restore autosave…</button>
       <button class="btn ghost" onclick="confirmNew()">New Game</button>
     </div>`;
 }

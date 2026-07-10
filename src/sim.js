@@ -605,7 +605,7 @@ function advanceDays(days){
     if(monthEnd) tickMonthlyBoundary(); // discrete monthly subsystems — same order as the old tick
   }
   if(state.money<0 && !state.over){ gameOver(); }
-  if(!state.over){ pumpFlightArrivals(); autosave(); } // P1 1.2a: resolve arrivals; S1: autosave the turn (throttled, skips mid-resolution)
+  if(!state.over){ pumpFlightArrivals(); autosave(); ringAutosave(); } // P1 1.2a: resolve arrivals; S1: fast localStorage autosave (throttled); E0.2 Slice B: coarse IndexedDB autosave ring (month+3min cadence, idle-deferred)
 }
 // the smooth daily flows — inputs are stable within a month, so 30 days sum to the monthly total.
 function tickContinuousDay(){
