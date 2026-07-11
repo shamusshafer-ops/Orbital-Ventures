@@ -336,7 +336,16 @@
   .bench-stage{display:grid;grid-template-columns:300px minmax(0,1fr);gap:16px;align-items:start}
   /* rocket stays pinned & wholly in view while the editor scrolls; if it would exceed the
      viewport it scrolls within itself so the Build & Launch CTA (now at the top) never leaves. */
-  .bench-rocket{position:sticky;top:calc(var(--topbar-h) + 8px);max-height:calc(100vh - var(--topbar-h) - 20px);overflow:auto}
+  /* Very faint blueprint-paper grid behind the vehicle card — a fine 10px grid plus a coarser 50px
+     grid, both tinted with the theme's own --readout (the game's existing "technical/telemetry" cyan
+     accent), so it re-tints automatically across every theme and era with zero extra per-theme CSS. */
+  .bench-rocket{position:sticky;top:calc(var(--topbar-h) + 8px);max-height:calc(100vh - var(--topbar-h) - 20px);overflow:auto;
+    background-image:
+      linear-gradient(color-mix(in srgb, var(--readout) 6%, transparent) 1px, transparent 1px),
+      linear-gradient(90deg, color-mix(in srgb, var(--readout) 6%, transparent) 1px, transparent 1px),
+      linear-gradient(color-mix(in srgb, var(--readout) 11%, transparent) 1px, transparent 1px),
+      linear-gradient(90deg, color-mix(in srgb, var(--readout) 11%, transparent) 1px, transparent 1px);
+    background-size:10px 10px,10px 10px,50px 50px,50px 50px;}
   .bench-rocket #vehiclePreview,.bench-rocket #vehHost{max-height:calc(100vh - var(--topbar-h) - 150px)}
   @media(max-width:900px){ .bench-stage{grid-template-columns:1fr} .bench-rocket{position:static;max-height:none;overflow:visible} }
   /* Vehicle pop-out viewer — takes over the screen for a large pan/zoom look at the rocket, above every layer */

@@ -2836,6 +2836,20 @@ so a squeezed pop-out drops the editor first and still shows rocket + readout. N
 the DOM target ids — `closeVehPopout()`'s restore-by-id-and-remembered-home code was already agnostic to
 which aside currently holds the nodes. Suite unchanged at 837/849 (same pre-existing unrelated failure).
 
+## Session — Vehicle bench: faint blueprint-paper background (2026-07-11)
+
+**Implemented, tests passing, not yet committed/pushed.** User asked for the vehicle bench's background
+to look like a very faint blueprint. Scoped to `.bench-rocket` (`#vehicleCard`, the card the rocket sits
+in) rather than the whole `#benchView` — every other card in the bench (editor tabs, readout) is opaque
+(`.card{background:var(--panel)}`), so a background on the outer view would only be visible in the ~16px
+gutters; the rocket card is where the negative space actually reads. New CSS-only `background-image`: a
+fine 10px grid + a coarser 50px grid, both using `color-mix(in srgb, var(--readout) N%, transparent)`
+rather than hardcoded blueprint-blue — reuses the game's own existing "technical/telemetry" cyan accent,
+so it re-tints automatically across every theme (default/green/beige) and all 4 visual eras with zero
+extra per-theme CSS. Pure CSS, no JS/build-output-size(script) change. Suite unchanged 837/849 (same
+pre-existing unrelated failure). Not extended to the vehicle pop-out's rocket stage — easy follow-up if
+wanted, deliberately left out since the ask was specifically "the vehicle bench."
+
 ## Planned — External evaluation intake (2026-07-10)
 
 **Full backlog:** all 105 feature ideas from the evaluation, individually mapped to a
