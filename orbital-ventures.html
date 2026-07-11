@@ -728,6 +728,7 @@
           <button class="btn ghost" style="font-size:11px;padding:3px 8px" onclick="openHubPanel('alerts')" title="Back to Alerts &amp; News">← Alerts</button>
         </div>
         <div id="specialBannerMount"></div>
+        <div id="contractOffersMount"></div>
         <div class="bench-tabs" id="contractSubtabs">
           <button class="bench-tab active" id="ctTabMissions" onclick="setContractsSubTab('missions')">🚀 Flight Contracts</button>
           <button class="bench-tab" id="ctTabPassive" onclick="setContractsSubTab('passive')">📶 Passive Income</button>
@@ -766,6 +767,7 @@
    ============================================================ */
 const G0 = 9.81;
 const TL_CAT_ICON={launch:'🚀', research:'⚛', economy:'$', rivals:'🏴', crew:'👥', infra:'🏗', other:'•'};
+const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 
 const ERAS = [
   {id:'pioneer',      name:'Pioneer',           from:1942, to:1957, blurb:'Liquid/solid sounding rockets, captured/derived V-2-class tech. Sub-orbital, upper atmosphere.'},
@@ -1419,6 +1421,46 @@ const MISSIONS = [
     profile:[{name:'Ascent to LEO', dv:9400, by:'lv'},{name:'Solar System Escape Injection', dv:8500, by:'transfer'}],
     blurb:'An uncrewed probe rides the fusion torch past the ice giants and out through the Oort Cloud, crossing into interstellar space at a fraction of the speed true interstellar flight will eventually need — the first real proof the drive works. No return; the point is the burn, not the destination.<span class="hist">↳ Voyager 1 crossed the heliopause into interstellar space in 2012 — the only human-made object ever to do so; Daedalus-class fusion drives were designed to make that crossing in years, not decades.</span>'},
 ];
+// resolves EITHER an authored mission or a live procedural contract offer by id — the only
+// lookup any "what mission is this id" call site needs once procedural ids exist (E1.3)
+function missionById(id){ return MISSIONS.find(x=>x.id===id) || (state.contractOffers||[]).find(x=>x.id===id); }
+
+/* ---------- E1.3: procedural contract generator ----------
+   Fills the troughs between authored missions with repeatable, era + capability-gated filler
+   contracts. Deliberately NOT authored milestones: proc:true opts them out of the firsts/completed
+   tracking (finalizeLaunch), so they never trigger a milestone modal, rival-goal denial, or
+   first-of-design prestige — see the proc gate at finalizeLaunch's success branch. Priced below the
+   comparable authored mission (see each archetype's payout) so routine reflying of an authored
+   mission stays the better long-run play; these are the "no station in range" filler, not the goal. */
+const CONTRACT_ARCHETYPES=[
+  { kind:'comsat', label:'Comsat Block Buy', minEra:1,
+    req:st=>(st.leoFlights||0)>=3,
+    weight:st=>1+Math.min(3,(st.leoFlights||0)/10),
+    build:eraIdx=>{ const payload=round2(0.3+0.05*eraIdx);
+      return { name:'Comsat Block Buy', reqDv:9400, payload, crew:0, days:0, minRep:0,
+        payout:round2((10+2*eraIdx)*0.6), rep:6,
+        blurb:'A commercial operator wants a standing block of comsats launched — routine manifest, real money, no headlines.' }; } },
+  { kind:'crew_rotation', label:'Crew Rotation', minEra:2, reqResearch:'crew_capsule',
+    req:st=>!!(st.research&&st.research.crew_capsule) && (st.crewFlown||0)>=1,
+    weight:st=>1+Math.min(3,(st.crewFlown||0)/6),
+    build:eraIdx=>{ const days=3+Math.floor(Math.random()*10);
+      return { name:'Crew Rotation', reqDv:9400, payload:0, crew:1, days, minRep:0, reqResearch:'crew_capsule',
+        payout:round2((6+1.2*days)*(1+0.1*eraIdx)*0.6), rep:8,
+        blurb:'A standing crew slot needs rotating out — no new ground broken, but the manifest has to fly.' }; } },
+  // Slice B: profile-shaped (short cruise, stays under DEFER_CRUISE_DAYS so it resolves synchronously
+  // like the authored Lunar Sample Return — no deferred/activeFlights interaction to worry about).
+  // Deliberately NO sciYield (unlike the authored mission it echoes) — that bonus is explicitly
+  // first-flight-only (see finalizeLaunch), and a regenerating procedural offer would farm it forever.
+  { kind:'sample_return', label:'Deep-Space Sample Return', minEra:2, reqResearch:'deep_space',
+    req:st=>!!(st.research&&st.research.deep_space) && (st.deepFlights||0)>=1,
+    weight:st=>1+Math.min(3,(st.deepFlights||0)/4),
+    build:eraIdx=>{ const days=10+Math.floor(Math.random()*8);
+      return { name:'Deep-Space Sample Return', reqDv:9400, payload:0, crew:0, days, minRep:0, reqResearch:'deep_space',
+        modules:['lv','transfer'],
+        profile:[{name:'Ascent to LEO', dv:9400, by:'lv'},{name:'Trans-Lunar Injection', dv:3120, by:'transfer'},{name:'Lunar Orbit Insertion', dv:900, by:'transfer'},{name:'Trans-Earth Injection', dv:900, by:'transfer'}],
+        payout:round2((14+1.5*eraIdx)*0.55), rep:12,
+        blurb:'A commercial lab wants another regolith sample — a proven profile, a standing customer, no new ground broken.' }; } },
+];
 
 /* ---------- Programs & long-term ambition (the "dream" layer) ----------
    Programs group the existing missions into named campaigns with objectives and a
@@ -1737,7 +1779,7 @@ function activeArchId(id){
 function missionArchOf(id){ const list=missionArchList(id); if(!list) return null; const aid=activeArchId(id); return list.find(a=>a.id===aid)||list[0]; }
 // the active mission as the player will actually fly it (base merged with the chosen architecture)
 function curMission(){
-  const base=MISSIONS.find(x=>x.id===state.activeMission);
+  const base=missionById(state.activeMission);
   if(!base) return base;
   const arch=missionArchOf(base.id);
   if(!arch) return base;
@@ -2923,6 +2965,7 @@ function tickMonthlyBoundary(){
     tickMandate(); // mandates: offer / deadline check (economy tension pass)
     checkScoringDate(); // chronicle: the soft scoring date fires once
     tickSpecialContract(); // special contracts: limited-time commercial variants
+    tickContractOffers(); // E1.3: procedural filler contracts — era + capability keyed
     tickCrisis(); // P11: the one late-game crisis — trigger check, then escalate/remediate if active
     tryStartQueuedResearch(); // I5: retry monthly in case the queued pick just became affordable/unlocked (the immediate try lives in completeResearch)
     pushMetricHistory(); // #28: snapshot this month's core metrics for the dashboard sparklines
@@ -3207,6 +3250,39 @@ function fulfillSpecialIfMatch(missionId){
     log('ok',`★ Special contract fulfilled: ${sc.title}. +${fM(sc.bonus)} bonus, +3 support, +2 rep.`);
   }
   state.specialContract=null; state.specialCooldown=SPECIAL_COOLDOWN_MO;
+}
+
+/* ---------- E1.3: procedural filler contracts ----------
+   A rotating board of era + capability-gated repeatable contracts (see CONTRACT_ARCHETYPES,
+   data.js) — the "no station in range" filler between authored missions. Deliberately simpler
+   than special contracts: no modifier layer, no deadline-vs-existing-mission bonus — each offer
+   IS the flyable mission, priced below its authored counterpart, expiring and rotating on its own. */
+const CONTRACT_OFFER_LEAD=6; // months an offer stays open before the client goes elsewhere
+function contractOfferCap(){ return eraIndex(currentEra())>=4 ? 3 : 2; } // Slice B balance pass: a 3rd concurrent slot opens Commercial era onward, once there's enough mission variety to fill it
+function contractOfferReferenced(id){
+  return state.activeMission===id
+    || (state.buildQueue||[]).some(o=>o.missionId===id)
+    || (state.hangar||[]).some(h=>h.missionId===id);
+}
+function tickContractOffers(){
+  state.contractOffers=(state.contractOffers||[]).filter(o=>{
+    if(absMonth()<=o.expiresAbs || contractOfferReferenced(o.id)) return true; // still open, or committed to (build queue/hangar/selected) — don't yank it out from under a build
+    log('note',`${o.name}: contract window closed — the client went elsewhere.`);
+    return false;
+  });
+  if(state.contractOffers.length>=contractOfferCap()) return;
+  if(Math.random()>0.4) return; // arrives every few months, not like clockwork
+  const eraIdx=eraIndex(currentEra());
+  const pool=CONTRACT_ARCHETYPES.filter(a=>eraIdx>=a.minEra && a.req(state));
+  if(!pool.length) return;
+  const totalW=pool.reduce((s,a)=>s+a.weight(state),0);
+  let r=Math.random()*totalW, pick=pool[pool.length-1];
+  for(const a of pool){ r-=a.weight(state); if(r<=0){ pick=a; break; } }
+  state.procSeq=(state.procSeq||0)+1;
+  const built=pick.build(eraIdx);
+  const offer=Object.assign({id:'pc_'+state.procSeq, proc:true, expiresAbs:absMonth()+CONTRACT_OFFER_LEAD}, built);
+  (state.contractOffers=state.contractOffers||[]).push(offer);
+  log('note',`New contract offer: ${offer.name} — ${fM(offer.payout)}, open ${CONTRACT_OFFER_LEAD} months.`);
 }
 function rollEconEvent(){
   // Economy tension: positive windfalls require a recently ACTIVE program (a flight in the
@@ -3752,7 +3828,7 @@ function standingHangarCount(){ const sp=state.standingProd; if(!sp) return 0; r
 // snapshot the CURRENT bench design as the standing line (must be a juggernaut + a flyable design)
 function setStandingProduction(missionId){
   if(!isJuggernaut()) return;
-  const m = (missionId && MISSIONS.find(x=>x.id===missionId)) || curMission(); if(!m) return;
+  const m = (missionId && missionById(missionId)) || curMission(); if(!m || m.proc) return; // E1.3: procedural contracts expire/rotate — not a fit for a standing repeat-build line
   const v = computeVehicle(); const sim=m.profile?simulateMission(m):null;
   const chk=canQueue(m,v,sim); if(!chk.ok && chk.why!=='can’t afford the build' && chk.why!=='queue full'){ log('note',`Can’t set standing production: ${chk.why}`); return; }
   const fam = activeFamily();
@@ -5159,7 +5235,7 @@ function buildCostBreakdown(m){
   const facDisc=facilityBonus(missionBody(m&&m.id)).buildDiscount;
   if(facDisc>0) mult(`Home-field facility (−${(facDisc*100).toFixed(0)}%)`, 1-facDisc);
   const fam=activeFamily(), famMult=familyBuildMult(fam);
-  if(famMult<1) mult(`Family heritage${fam?` "${fam.name}"`:''} (×${famMult.toFixed(2)})`, famMult);
+  if(famMult<1) mult(`Family heritage${fam?` "${esc(fam.name)}"`:''} (×${famMult.toFixed(2)})`, famMult);
   const foundry=foundryCostMult();
   if(foundry<1) mult(`Foundry L${prodLevel('foundry')} (×${foundry.toFixed(2)})`, foundry);
   const cad=cadenceSurcharge();
@@ -5572,14 +5648,27 @@ function deepCallFlag(outcome, sim){
   return worst;
 }
 function reserveKindWord(key){ return key==='life_support' ? 'consumables and power' : 'propellant'; }
-function loseAssignedCrew(crewId){
+function loseAssignedCrew(crewId, mission, story){
   crewId = crewId || state.assignedAstronaut; // 1.2b: an arriving deferred flight passes its own snapshotted crew
   if(!crewId) return;
   const p=personById(crewId);
   state.staff=(state.staff||[]).filter(s=>s.id!==crewId);
-  if(p) log('bad',`Astronaut ${p.name} was lost with the vehicle.`);
+  if(p){ log('bad',`Astronaut ${p.name} was lost with the vehicle.`); addMemorial(crewId, p.name, mission, story); } // E1.4: memorial wall
   if(state.assignedAstronaut===crewId) state.assignedAstronaut=null; // only clear the live slot if it's this crew (don't clobber a concurrent flight)
 }
+// E1.4: memorial wall — name snapshotted at death (independent of the static pool, matching how
+// front-page headlines snapshot their text) so it displays even if pool data ever changes.
+function addMemorial(id, name, mission, story){
+  (state.memorial=state.memorial||[]);
+  state.memorial.push({id, name, when:dateStr(), mission:mission||'', story:story||''});
+}
+function memorialRoll(){ return state.memorial||[]; }
+// E1.4: per-astronaut flight log — keyed by id so it survives the person leaving state.staff (death/fire/quit)
+function logAstronautFlight(id,mission,outcome){
+  (state.astronautLog=state.astronautLog||{});
+  (state.astronautLog[id]=state.astronautLog[id]||[]).push({when:dateStr(),mission,outcome});
+}
+function astronautFlights(id){ return (state.astronautLog&&state.astronautLog[id])||[]; }
 // the assigned astronaut accumulates radiation dose across their career; reaching the
 // limit forces retirement (deep, long, unshielded missions cost the most).
 function applyCrewDose(m, crewId){
@@ -5615,7 +5704,7 @@ function subsystemBreakdownHTML(m,v){
     return `<div class="leg"><span class="legname">${s.label}${chip}</span><span class="legdv" style="color:${col}">${pc}%</span><span class="legdetail">fault → ${sev}</span></div>`;
   }).join('');
   const fam=activeFamily();
-  const famNote=fam&&familyRelBonus(fam)>0?` <span style="color:var(--ok)">${fam.name} heritage adds +${(familyRelBonus(fam)*100).toFixed(1)}% from ${fam.successes} proven flight${fam.successes===1?'':'s'}.</span>`:'';
+  const famNote=fam&&familyRelBonus(fam)>0?` <span style="color:var(--ok)">${esc(fam.name)} heritage adds +${(familyRelBonus(fam)*100).toFixed(1)}% from ${fam.successes} proven flight${fam.successes===1?'':'s'}.</span>`:'';
   return `<div class="mission-tag" style="margin-top:12px">Subsystem reliability — the weakest link is where it breaks</div>
     <div class="legs" style="margin-top:6px">${rows}</div>
     <div class="dim" style="font-size:12px;margin-top:6px">Overall ${(rep.R*100)|0}% = the product of all subsystems. Test campaigns, tank/guidance research, and matching engineer specialists each harden a specific link.${famNote}</div>`;
@@ -6213,8 +6302,8 @@ function finalizeLaunch(ctx, ops){
     state.staticFixBonus=0;  // the static-fire fix flies once
 
     // M14: missions yield science — more for novel, deep, or first-time flights
-    let sciGain=Math.max(1, Math.round((routine?0.3:1)*((m.rep||5)*0.12 + (m.profile?5:1))*sciYieldMult()*doctrineMult('sci'))); // #6b: Science track multiplies mission science yield; CE3(a) Science doctrine boosts it
-    if(m.sciYield && !routine) sciGain += Math.round(m.sciYield*sciYieldMult()*doctrineMult('sci')); // #3: prestige science missions bank a large knowledge windfall (first flight only — not farmable on routine reflights)
+    let sciGain=Math.max(1, Math.round(((routine||m.proc)?0.3:1)*((m.rep||5)*0.12 + (m.profile?5:1))*sciYieldMult()*doctrineMult('sci'))); // #6b: Science track multiplies mission science yield; CE3(a) Science doctrine boosts it — E1.3: procedural contracts are perpetual filler, not a first, so they get the routine-tier rate too
+    if(m.sciYield && !routine && !m.proc) sciGain += Math.round(m.sciYield*sciYieldMult()*doctrineMult('sci')); // #3: prestige science missions bank a large knowledge windfall (first flight only — not farmable on routine reflights, and not on a regenerating procedural offer either)
     state.science=round2((state.science||0)+sciGain);
     let payout=(routine?m.payout*0.4:m.payout)*windowQuality*diff().payoutMult*econPayoutMult()*opsPayoutMult*doctrineMult('payout'); // CE3(a): Commercial +, Statecraft/Science −
     if(crewed) payout*=ab.payoutMult; // M6: astronaut payout bonus
@@ -6247,7 +6336,7 @@ function finalizeLaunch(ctx, ops){
       const isru=ISRU_FREE_LEG[m.id];
       if(isru && state.research[isru.research] && !state.wonM3bii && !pendingCelebration){ state.wonM3bii=true; pendingCelebration=()=>victoryM3bii('isru'); }
     }
-    if(!routine){
+    if(!routine && !m.proc){ // E1.3: a procedural contract is neither an authored "first" nor a routine reflight — no firsts/milestone tracking, see below
       state.completed[m.id]=true;
       (state.firstDates=state.firstDates||{})[m.id]=absMonth(); // chronicle: when each first happened
       fulfillSpecialIfMatch(m.id); // special contract bonus on a matching first
@@ -6265,6 +6354,7 @@ function finalizeLaunch(ctx, ops){
       const ambCeleb=checkPrograms(); // program bonuses + ambition capstone + next-objective nudge
       if(ambCeleb && !pendingCelebration) pendingCelebration=ambCeleb;
     }
+    if(m.proc) state.contractOffers=(state.contractOffers||[]).filter(o=>o.id!==m.id); // E1.3: one-shot — consumed on success, not reflown
     autoAdvanceMission();
   }else if(outcome.kind==='partial'){
     // reached space but off-target — salvage some value, but the objective is not complete
@@ -6291,7 +6381,7 @@ function finalizeLaunch(ctx, ops){
     personnelMissionEvent(false);
     const rep=Math.min(state.rep,40); state.rep-=rep;
     addSupport(supportDelta('strand')); // #8: a crew stranded in deep space is a national shock
-    loseAssignedCrew(ctx.crewId);
+    loseAssignedCrew(ctx.crewId, m.name, outcome.story);
     advance(6); // grounding + investigation
     log('bad',`${m.name}: LOST IN DEEP SPACE — ${outcome.story} A long inquiry follows, −${rep} rep.`);
     applyEraStakes('loss of the crew'); // CE4(c): era-scaled compounding setback
@@ -6306,7 +6396,7 @@ function finalizeLaunch(ctx, ops){
     if(crewed){
       const rep=Math.min(state.rep,40); state.rep-=rep;
       addSupport(supportDelta('lossCrewed')); // #8: losing a crew is the worst political blow
-      loseAssignedCrew(ctx.crewId);
+      loseAssignedCrew(ctx.crewId, m.name, outcome.story);
       advance(6); // grounding + investigation
       state.crewLost=(state.crewLost||0)+m.crew; // chronicle: the price paid
       log('bad',`${m.name}: CATASTROPHE. The ${SUBSYS_LABEL[outcome.subsystem].toLowerCase()} failed — ${outcome.story} Vehicle lost with all ${m.crew} aboard. Six-month stand-down, −${rep} rep. Fit a launch-escape system before flying crew again.`);
@@ -6320,6 +6410,7 @@ function finalizeLaunch(ctx, ops){
     }
   }
   if(crewed && (outcome.kind==='success'||outcome.kind==='partial')) applyCrewDose(m, ctx.crewId); // surviving crew take a radiation dose
+  if(crewed && ctx.crewId) logAstronautFlight(ctx.crewId, m.name, outcome.kind); // E1.4: per-astronaut flight log, survives the person leaving state.staff
   // #3: attribute this flight to the active vehicle family and accrue/dent its heritage
   const fam=ctx.famId?familyById(ctx.famId):activeFamily(); // 1.2a/S1: resolve the launched family by id at finalize (save-safe — a deferred flight stores famId, not a detachable object ref, and finalize mutates the live family)
   if(fam){
@@ -6521,7 +6612,7 @@ function renderBlueprints(){
   const el=$('blueprintsCard'); if(!el) return;
   const list=blueprints();
   const rows=list.map(b=>`<div style="display:flex;align-items:center;gap:8px;justify-content:space-between;padding:6px 0;border-top:1px solid var(--line)">
-      <span style="min-width:0"><b>${b.name}</b> <span class="dim" style="font-size:12px">${b.summary||''} · ${b.born||''}</span></span>
+      <span style="min-width:0"><b>${esc(b.name)}</b> <span class="dim" style="font-size:12px">${b.summary||''} · ${b.born||''}</span></span>
       <span style="display:flex;gap:5px;flex-shrink:0">
         <button class="btn" style="font-size:12px;padding:3px 9px" onclick="loadBlueprint('${b.id}')">Load</button>
         <button class="btn ghost danger" style="font-size:12px;padding:3px 8px" onclick="deleteBlueprint('${b.id}')" title="Delete">✕</button>
@@ -6553,7 +6644,7 @@ function renderLivery(){
   const l=curLivery();
   const noseBtn=(id,label)=>`<button class="btn ${l.nose===id?'':'ghost'}" style="font-size:12px;padding:4px 9px" onclick="setLiveryNose('${id}')">${label}</button>`;
   el.innerHTML=`<h2>🎨 Livery</h2>
-    <div class="row"><label>Name</label><input type="text" maxlength="24" value="${(l.name||'').replace(/"/g,'&quot;')}" placeholder="e.g. Vanguard" onchange="setLiveryName(this.value)" style="flex:1"></div>
+    <div class="row"><label>Name</label><input type="text" maxlength="24" value="${esc(l.name||'')}" placeholder="e.g. Vanguard" onchange="setLiveryName(this.value)" style="flex:1"></div>
     <div class="row"><label>Body</label><input type="color" value="${l.body}" onchange="setLiveryBody(this.value)" style="width:46px;padding:2px"><span class="dim" style="font-size:12px">hull color</span></div>
     <div class="row"><label>Accent</label><input type="color" value="${l.accent}" onchange="setLiveryAccent(this.value)" style="width:46px;padding:2px"><span class="dim" style="font-size:12px">stripe + roundel</span></div>
     <div class="row"><label>Nose</label><div style="display:flex;gap:5px;flex-wrap:wrap">${noseBtn('auto','Ogive')}${noseBtn('cone','Cone')}${noseBtn('blunt','Blunt')}</div></div>
@@ -6570,7 +6661,7 @@ function setAscentEng(v){state.ascent.eng=v;render();}
 function setAscentProp(v){state.ascent.prop=Math.max(0.1,Math.min(40,parseFloat(v)||0.1));render();}
 function setEclss(id){ const t=ECLSS[id]; if(t.research && !state.research[t.research]) return; state.eclss=id; render(); }
 function setTestLevel(n){ state.testLevel=n; render(); }
-function selectMission(id){const m=MISSIONS.find(x=>x.id===id); if(state.rep<m.minRep)return; if(!missionTechMet(m))return; state.activeMission=id; closeLiveModal(); state.tab='bench'; render();}
+function selectMission(id){const m=missionById(id); if(!m||state.rep<m.minRep)return; if(!missionTechMet(m))return; state.activeMission=id; closeLiveModal(); state.tab='bench'; render();}
 function reqsMet(r){
   return r.req.every(q=>state.research[q]) && (!r.reqMissionDone || state.completed[r.reqMissionDone]);
 }
@@ -6797,7 +6888,7 @@ function deptLed(id){ return !!deptLeadRecord(id); }
 // exercises, plus the Astronaut Corps when the active mission is crewed.
 function criticalDepts(){
   const core=['propulsion','structures','avionics'];
-  const m=(typeof MISSIONS!=='undefined')?MISSIONS.find(x=>x.id===state.activeMission):null;
+  const m=(typeof MISSIONS!=='undefined')?missionById(state.activeMission):null;
   if(m && m.crew>0) core.push('astronaut');
   return core;
 }
@@ -7247,7 +7338,7 @@ function hideModal(){activeModal=null;_prodModalOpen=false;$('modal').classList.
 
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=45; // v45: P11 — one late-game crisis (Kessler debris cascade). state.crisis ({phase,startAbs,severity,peakSeverity,fundedUntilAbs} or null), state.crisisDone ({outcome:'mitigated'|'endured',peakSeverity,months} or null once resolved — a ONE-TIME arc, not recurring), state.leoFlights (cumulative successful LEO-class flights, the trigger's own counter). Eligible from Commercial era (index 4) + leoFlights≥40; a small monthly chance then starts it. Active: LEO-class missions (isLeoClassMission — no profile, reqDv≥9000) fly at up to −12% reliability, scaling with severity; funding a Debris Remediation Program (cost scales with eraStakesFrac(), like the bailout mechanic) brings severity down, letting it go unfunded lets it rise. Resolves 'mitigated' (severity hits 0, bigger legacyScore bonus) or 'endured' (36 months elapse regardless, smaller bonus) — never a hard lockout, just a rising tax. No explicit migrate function needed: all three fields are read through `||`/falsy guards everywhere (state.crisis falsy on a legacy load = inactive; leoFlights||0 = 0), so behavior is unchanged until a save's own play crosses the era+flight-count threshold. v44: P6 6.1 era-transition interstitial — state.eraSeen (index of the last era acknowledged via the full-screen card) + state.eraStartSnapshot ({flights,playerFirsts,rivalFirsts,money,rep} baseline captured when that era began, diffed for the retrospective). Both persisted. Trigger is DERIVED (eraIndex(currentEra())>state.eraSeen), gated behind the setback>mishap>inquiry>rival-disaster _pending chain (era is lowest priority; deferred to a later settle-point if any decision is pending, never lost since the condition is stateful). eraSeen advances only on Continue; balance-neutral (pure notification). Lazy migration: pre-v44 saves lack both — migrateEraSeen() backfills eraSeen to the save's CURRENT era index (from its own year, NOT 0, so a late-game load fires ZERO stale interstitials) and seeds eraStartSnapshot from current metrics; newGame seeds eraSeen:0 + a Pioneer baseline. v43: P3 failure investigation loop — state.inquiryCredit ({subsystem,rel,flights} or null): a funded uncrewed-loss inquiry into an ascent/staging subsystem grants a +2% additive-R credit (like familyRelBonus) gated to that subsystem, consumed over 3 flights at launch; a deep-phase failure grants a flat +10⚛ science instead (no persisted credit). Transient _pendingInquiry (fund/decline modal, precedence setback>mishap>inquiry) is NOT persisted. Lazy migration: pre-v43 saves lack inquiryCredit — loadDefaults() seeds it null on both load paths (undefined is already falsy, so behavior is unchanged either way). v42: P2 slice 2.4 — per-facility auto-resupply toggle (fs.autoResupply boolean; opt-in per facility). On the monthly tick a facility with the toggle ON auto-fires resupplyFacility() once supply falls to/below AUTO_RESUPPLY_THRESHOLD(6) and canResupply().ok — same cost/gate/lifecycle as a manual order (the resupplyInTransit + money gates prevent double-ordering and unaffordable fires). Pure automation, balance-neutral otherwise; each auto-order logs a 'note' line. Lazy migration: pre-v42 facilities carry no autoResupply — migrateFacilityAutoResupply() defaults it false on load (undefined is already falsy, so behavior is unchanged either way); foundFacility seeds autoResupply:false on fresh bases. v41: P1 persistent in-flight missions — state.activeFlights[] (deferred interplanetary flights carry a resolved-at-launch ctx applied on arrival; ctx stores famId + crewId, not object refs, so a mid-cruise save round-trips; legacy saves default [] via loadDefaults; rehydrateFlights() re-links ctx.m + restores _flightSeq on load). v40: #19 slice B — career progression (staff.xp accrues monthly ×morale ×dept-training, raising effSkill above hire-day base up to +0.15; dept.training level bought with capital; legacy staff default xp 0 via staffXp guard, effSkill==base at xp 0 so no balance migration). #19 slice C (succession + workforce planning) adds no persisted state — reconcileDeptLeads mutates existing dept.lead, gaps + the era-scaled unstaffed-department reliability penalty (0 in Pioneer) are derived — so it needs no bump. v39: #19 slice A — organizational departments (state.departments {deptId:{lead,training}}; legacy saves default via loadDefaults/defaultDepartments; membership is derived from hired staff, leads are balance-neutral when unset); v38: #6 research partnerships — bench-tested / flight-proven components (state.engineStockTested + state.partStockTested, the bench-tested subset of each yard; legacy saves default {}); a fitted bench-tested component adds +1.5% reliability (cap +6%, benchRelBonus), built at +60% cost / +50% time; v36: #7 sub-assemblies slice 2 — structures & habitats yard (state.partStock {"kind:sub":count}, e.g. "tank:steel"/"hab:closed"; legacy saves default {}); same cost-neutral cadence pattern as the Engine Yard; v35: #7 sub-assemblies — Engine Yard (state.engineStock {engId:count}; legacy saves default {}); v34: Time Granularity slice 4b — launch windows day-scheduled (window/committedWindow .abs moved from absMonth to absDay; migrateWindowsToDays ×30 on pre-v34 load + clears the regenerable windows cache); v33: Time Granularity slice 1 — day-iterating advance() funnel (state.day 0..29 + absDay(); legacy saves default day:0 via load defaults; whole-month advances stay bit-identical so no balance migration needed); v32: CE4(c) era-scaled failure stakes + bailout retune (state.loanInterest — permanent bridge-loan debt service; legacy saves default to 0 via load defaults + loanInterest() guard); v31: CE4(b) standing resupply obligations (per-facility supply/starvedMonths; legacy facilities default to fully provisioned via facilitySupply()); v30: CE3(c) lunar architecture fork (state.lunarArch, null=uncommitted; luna_landing reqResearch moved to per-arch gates); v29: CE3(a) company doctrine (state.doctrine, null=undeclared/neutral); v28: CE2(c) juggernaut capstone (state.standingProd/juggernautReached); v27: CE2(b) launch cadence (state.padMonthAbs/padMonthUsed) — load defaults seed all of these; v26: CE1 rival agents (state.rivalState), seedRivalState migrates old rivalFired
+const SAVE_VERSION=48; // v48: E1.3 — procedural filler contracts. state.contractOffers ([{id:'pc_N',proc:true,name,reqDv,payload,crew,days,payout,rep,minRep,reqResearch?,blurb,expiresAbs}]) + state.procSeq, generated monthly by tickContractOffers() (era + capability-gated via CONTRACT_ARCHETYPES, data.js) up to CONTRACT_OFFER_CAP concurrent, expiring after CONTRACT_OFFER_LEAD months unless referenced by activeMission/buildQueue/hangar. Resolved via the new missionById(id) (checks MISSIONS then contractOffers) at the handful of call sites that resolve state.activeMission by id; deferred-flight/history/program lookups stay MISSIONS-only by design (procedural archetypes are immediate, non-deferred, and deliberately never write state.completed/firstDates/history — finalizeLaunch's success branch gates the whole firsts/milestone block on `!m.proc`, and sciGain uses the routine-tier rate for proc flights too, so a contract offer pays full money once at a discounted rate and is removed on success — never a repeatable science/firsts farm). No explicit migrate function needed: both fields read only through missionById/tickContractOffers, which fall back to []/0 — pre-v48 saves just start with an empty board. Purely additive, no balance impact on existing saves. v47: E1.4 — memorial wall. state.memorial ([{id,name,when,mission,story}]), appended in loseAssignedCrew at the moment a crewed flight kills its astronaut (name snapshotted, so it survives the id leaving state.staff and any future pool edits), rendered in the Personnel tab when non-empty. Read only through memorialRoll(), which falls back to [] — pre-v47 saves just start with an empty wall. Purely additive, no balance impact. v46: E1.4 — per-astronaut flight log. state.astronautLog ({astronautId:[{when,mission,outcome}]}), appended once per crewed flight resolution in finalizeLaunch, keyed by id so it survives the astronaut leaving state.staff (death/fire/quit). No explicit migrate function needed: read only through astronautFlights(id), which falls back to [] when the field or the id's entry is missing — pre-v46 saves just start every astronaut with an empty log. Purely additive, no balance impact. v45: P11 — one late-game crisis (Kessler debris cascade). state.crisis ({phase,startAbs,severity,peakSeverity,fundedUntilAbs} or null), state.crisisDone ({outcome:'mitigated'|'endured',peakSeverity,months} or null once resolved — a ONE-TIME arc, not recurring), state.leoFlights (cumulative successful LEO-class flights, the trigger's own counter). Eligible from Commercial era (index 4) + leoFlights≥40; a small monthly chance then starts it. Active: LEO-class missions (isLeoClassMission — no profile, reqDv≥9000) fly at up to −12% reliability, scaling with severity; funding a Debris Remediation Program (cost scales with eraStakesFrac(), like the bailout mechanic) brings severity down, letting it go unfunded lets it rise. Resolves 'mitigated' (severity hits 0, bigger legacyScore bonus) or 'endured' (36 months elapse regardless, smaller bonus) — never a hard lockout, just a rising tax. No explicit migrate function needed: all three fields are read through `||`/falsy guards everywhere (state.crisis falsy on a legacy load = inactive; leoFlights||0 = 0), so behavior is unchanged until a save's own play crosses the era+flight-count threshold. v44: P6 6.1 era-transition interstitial — state.eraSeen (index of the last era acknowledged via the full-screen card) + state.eraStartSnapshot ({flights,playerFirsts,rivalFirsts,money,rep} baseline captured when that era began, diffed for the retrospective). Both persisted. Trigger is DERIVED (eraIndex(currentEra())>state.eraSeen), gated behind the setback>mishap>inquiry>rival-disaster _pending chain (era is lowest priority; deferred to a later settle-point if any decision is pending, never lost since the condition is stateful). eraSeen advances only on Continue; balance-neutral (pure notification). Lazy migration: pre-v44 saves lack both — migrateEraSeen() backfills eraSeen to the save's CURRENT era index (from its own year, NOT 0, so a late-game load fires ZERO stale interstitials) and seeds eraStartSnapshot from current metrics; newGame seeds eraSeen:0 + a Pioneer baseline. v43: P3 failure investigation loop — state.inquiryCredit ({subsystem,rel,flights} or null): a funded uncrewed-loss inquiry into an ascent/staging subsystem grants a +2% additive-R credit (like familyRelBonus) gated to that subsystem, consumed over 3 flights at launch; a deep-phase failure grants a flat +10⚛ science instead (no persisted credit). Transient _pendingInquiry (fund/decline modal, precedence setback>mishap>inquiry) is NOT persisted. Lazy migration: pre-v43 saves lack inquiryCredit — loadDefaults() seeds it null on both load paths (undefined is already falsy, so behavior is unchanged either way). v42: P2 slice 2.4 — per-facility auto-resupply toggle (fs.autoResupply boolean; opt-in per facility). On the monthly tick a facility with the toggle ON auto-fires resupplyFacility() once supply falls to/below AUTO_RESUPPLY_THRESHOLD(6) and canResupply().ok — same cost/gate/lifecycle as a manual order (the resupplyInTransit + money gates prevent double-ordering and unaffordable fires). Pure automation, balance-neutral otherwise; each auto-order logs a 'note' line. Lazy migration: pre-v42 facilities carry no autoResupply — migrateFacilityAutoResupply() defaults it false on load (undefined is already falsy, so behavior is unchanged either way); foundFacility seeds autoResupply:false on fresh bases. v41: P1 persistent in-flight missions — state.activeFlights[] (deferred interplanetary flights carry a resolved-at-launch ctx applied on arrival; ctx stores famId + crewId, not object refs, so a mid-cruise save round-trips; legacy saves default [] via loadDefaults; rehydrateFlights() re-links ctx.m + restores _flightSeq on load). v40: #19 slice B — career progression (staff.xp accrues monthly ×morale ×dept-training, raising effSkill above hire-day base up to +0.15; dept.training level bought with capital; legacy staff default xp 0 via staffXp guard, effSkill==base at xp 0 so no balance migration). #19 slice C (succession + workforce planning) adds no persisted state — reconcileDeptLeads mutates existing dept.lead, gaps + the era-scaled unstaffed-department reliability penalty (0 in Pioneer) are derived — so it needs no bump. v39: #19 slice A — organizational departments (state.departments {deptId:{lead,training}}; legacy saves default via loadDefaults/defaultDepartments; membership is derived from hired staff, leads are balance-neutral when unset); v38: #6 research partnerships — bench-tested / flight-proven components (state.engineStockTested + state.partStockTested, the bench-tested subset of each yard; legacy saves default {}); a fitted bench-tested component adds +1.5% reliability (cap +6%, benchRelBonus), built at +60% cost / +50% time; v36: #7 sub-assemblies slice 2 — structures & habitats yard (state.partStock {"kind:sub":count}, e.g. "tank:steel"/"hab:closed"; legacy saves default {}); same cost-neutral cadence pattern as the Engine Yard; v35: #7 sub-assemblies — Engine Yard (state.engineStock {engId:count}; legacy saves default {}); v34: Time Granularity slice 4b — launch windows day-scheduled (window/committedWindow .abs moved from absMonth to absDay; migrateWindowsToDays ×30 on pre-v34 load + clears the regenerable windows cache); v33: Time Granularity slice 1 — day-iterating advance() funnel (state.day 0..29 + absDay(); legacy saves default day:0 via load defaults; whole-month advances stay bit-identical so no balance migration needed); v32: CE4(c) era-scaled failure stakes + bailout retune (state.loanInterest — permanent bridge-loan debt service; legacy saves default to 0 via load defaults + loanInterest() guard); v31: CE4(b) standing resupply obligations (per-facility supply/starvedMonths; legacy facilities default to fully provisioned via facilitySupply()); v30: CE3(c) lunar architecture fork (state.lunarArch, null=uncommitted; luna_landing reqResearch moved to per-arch gates); v29: CE3(a) company doctrine (state.doctrine, null=undeclared/neutral); v28: CE2(c) juggernaut capstone (state.standingProd/juggernautReached); v27: CE2(b) launch cadence (state.padMonthAbs/padMonthUsed) — load defaults seed all of these; v26: CE1 rival agents (state.rivalState), seedRivalState migrates old rivalFired
 function writeSave(){ localStorage.setItem(SAVE_KEY, JSON.stringify({v:SAVE_VERSION, ts:Date.now(), state})); } // state is JSON-safe by design (stores ids, not object refs); the outer stringify snapshots the whole graph, so no inner clone is needed
 // S1: silent throttled autosave so "Continue last game" always resumes the most recent session.
 // Skips a transient mid-flight-resolution snapshot; forced on page close.
@@ -7284,7 +7375,7 @@ function saveGame(){
     writeSave();
     log('info','Game saved.');
     render();
-    showModal(`<h2>Game Saved</h2><p class="muted">${dateStr()} — ${state.company}</p>
+    showModal(`<h2>Game Saved</h2><p class="muted">${dateStr()} — ${esc(state.company)}</p>
       <p class="dim" style="font-size:12px">Saved to browser local storage. Clearing browser data will erase it.</p>
       <button class="btn" onclick="hideModal()" style="margin-top:8px">OK</button>`);
   }catch(e){
@@ -7357,7 +7448,7 @@ function showRecap(){
   const grade=(()=>{ try{ return legacyScore().grade; }catch(e){ return null; } })();
   showModal(`<div>
     <h2 style="margin-bottom:2px">Where you left off</h2>
-    <p class="muted" style="font-size:12px;margin:0 0 10px">${dateStr()} · ${state.company}${grade?` · legacy ${grade}`:''}</p>
+    <p class="muted" style="font-size:12px;margin:0 0 10px">${dateStr()} · ${esc(state.company)}${grade?` · legacy ${grade}`:''}</p>
     <div class="metrics" style="margin-bottom:10px">
       <div class="metric"><div class="k">Treasury</div><div class="v">${fM(state.money)}</div></div>
       <div class="metric"><div class="k">Reputation</div><div class="v">${Math.round(state.rep)}</div></div>
@@ -7418,7 +7509,7 @@ function savedGameMeta(){
 function showStartup(){
   const meta=savedGameMeta();
   const when=meta&&meta.ts?new Date(meta.ts).toLocaleString():'';
-  const cont = meta ? `<button class="btn launch" style="width:100%;margin-bottom:8px" onclick="startupContinue()">▸ Continue last game<br><span class="dim" style="font-size:11px">${meta.company} · year ${meta.year}${when?` · saved ${when}`:''}</span></button>` : '';
+  const cont = meta ? `<button class="btn launch" style="width:100%;margin-bottom:8px" onclick="startupContinue()">▸ Continue last game<br><span class="dim" style="font-size:11px">${esc(meta.company)} · year ${meta.year}${when?` · saved ${when}`:''}</span></button>` : '';
   showModal(`<div style="text-align:center">
     <h2 style="margin-bottom:2px">Orbital Ventures</h2>
     <p class="muted" style="font-size:12px;margin:0 0 14px">Found a space agency and reach the planets before your rivals.</p>
@@ -7661,7 +7752,7 @@ function showRestoreRing(){
       body=entries.map(e=>{ const m=e.meta||{}; const when=e.ts?new Date(e.ts).toLocaleString():'';
         return `<div class="card" style="background:var(--panel2);margin-bottom:6px;display:flex;align-items:center;gap:8px">
           <div style="flex:1;min-width:0">
-            <div style="font-size:13px;color:var(--ink)">${m.company||'—'} · year ${m.year||'—'}${m.era?` · ${m.era}`:''}</div>
+            <div style="font-size:13px;color:var(--ink)">${esc(m.company||'—')} · year ${m.year||'—'}${m.era?` · ${m.era}`:''}</div>
             <div class="dim" style="font-size:11px">${fM(m.money||0)} · ${m.flights||0} flights${m.difficulty?` · ${m.difficulty}`:''}${when?` · ${when}`:''}</div>
           </div>
           <button class="btn" style="font-size:12px" onclick="restoreRingEntry('${e.id}')">↻ Restore</button>
@@ -7728,7 +7819,7 @@ function showManageSaves(){
         return `<div class="card" style="background:var(--panel2);margin-bottom:6px">
           <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:2px">
             <b style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Slot ${n}</b>
-            <span style="font-size:13px;color:var(--ink)">${m.company||'—'} · year ${m.year||'—'}${m.era?` · ${m.era}`:''}</span>
+            <span style="font-size:13px;color:var(--ink)">${esc(m.company||'—')} · year ${m.year||'—'}${m.era?` · ${m.era}`:''}</span>
           </div>
           <div class="dim" style="font-size:11px;margin-bottom:6px">${fM(m.money||0)} · ${m.flights||0} flights${m.difficulty?` · ${m.difficulty}`:''}${when?` · ${when}`:''}</div>
           <div style="display:flex;gap:6px;flex-wrap:wrap">
@@ -11204,8 +11295,8 @@ function frontPageHTML(e){
   return `<div style="text-align:center;font-family:Georgia,'Times New Roman',serif">
     <div style="font-size:11px;letter-spacing:.3em;color:var(--dim);text-transform:uppercase;border-top:2px solid var(--ink);border-bottom:2px solid var(--ink);padding:5px 0;margin-bottom:10px">The Agency Wire · ${dateOfAbs(e.abs)}</div>
     <div style="font-size:11px;letter-spacing:.2em;color:var(--warn);text-transform:uppercase;margin-bottom:4px">${FRONT_PAGE_KIND_LABEL[e.kind]||''}</div>
-    <h2 style="margin:0 0 8px;font-size:22px">${e.icon} ${e.headline}</h2>
-    ${e.dek?`<p class="muted" style="font-size:13px">${e.dek}</p>`:''}
+    <h2 style="margin:0 0 8px;font-size:22px">${e.icon} ${esc(e.headline)}</h2>
+    ${e.dek?`<p class="muted" style="font-size:13px">${esc(e.dek)}</p>`:''}
   </div>`;
 }
 function showFrontPage(idx){
@@ -11216,7 +11307,7 @@ function frontPagesHTML(){
   if(!frontPages().length) return '<div class="dim" style="font-size:12px">No wire copy yet — a first, a disaster or a scoop will file the opening edition.</div>';
   return frontPages().map((e,i)=>`<div onclick="showFrontPage(${i})" style="display:flex;gap:8px;align-items:baseline;padding:3px 0;font-size:12px;cursor:pointer" onmouseover="this.style.background='var(--panel2)'" onmouseout="this.style.background=''">
     <span style="flex:0 0 16px">${e.icon}</span>
-    <span style="color:var(--ink);flex:1">${e.headline}</span>
+    <span style="color:var(--ink);flex:1">${esc(e.headline)}</span>
     <span class="dim" style="font-size:11px">${dateOfAbs(e.abs)}</span>
   </div>`).join('');
 }
@@ -11278,7 +11369,7 @@ function showChronicle(mode){ // mode: 'view' | 'era' (1990) | 'era2' (2100) | '
   const sub = mode==='retire' ? 'You step down. This is what the history books will say.' :
               mode==='era2' ? 'A century and a half of spaceflight — the deep frontier now within reach. The program may continue; history has taken its second measure.' :
               mode==='era' ? 'Half a century of spaceflight, scored. The program may continue — history has simply taken its first measure.' :
-              state.company+' — the story so far.';
+              esc(state.company)+' — the story so far.';
   showModal(`<div>
     <h2 style="margin-bottom:2px">${heading}</h2>
     <p class="muted" style="font-size:12px;margin:0 0 10px">${sub}</p>
@@ -11418,7 +11509,7 @@ function tabAlerts(){
   // P11/I3: whichever crisis is active is always worth a Command-tab flag
   if(state.crisis){ const cd=activeCrisisDef(); if(cd) a.command.push(`${cd.name} — ${Math.round(state.crisis.severity*100)}% severity`); }
   // Bench: active mission blocked by the current design
-  const m=MISSIONS.find(x=>x.id===state.activeMission);
+  const m=missionById(state.activeMission);
   if(m){ try{ const v=computeVehicle(); const chk=canLaunch(v,m,m.profile?simulateMission(m):null);
     if(!chk.ok && /shortfall|TWR|thrust/i.test(chk.why||'')) a.bench.push('Design can\'t fly '+m.name); }catch(e){} }
   // R&D: idle lab with an affordable node
@@ -11761,7 +11852,7 @@ function financesBreakdown(){
 // "−$2.50M") — same heuristic-text-sniffing spirit as logCategory(), not a formal transaction ledger
 // (that would mean instrumenting every one of the ~47 state.money call sites across the file).
 function tlMoneyAmount(msg){
-  const s=tlStrip(msg);
+  const s=tlStripPlain(msg);
   const m=s.match(/([+−-])\s*\$([\d,]+\.?\d*)M/);
   if(!m) return null;
   const val=parseFloat(m[2].replace(/,/g,''));
@@ -11802,7 +11893,7 @@ function showFinancesModal(){
   const expHTML=b.expenseItems.length?b.expenseItems.map(erow).join(''):'<div class="dim" style="font-size:12px">No standing expenses.</div>';
   const events=recentCashEvents(12);
   const evHTML=events.length?events.map(e=>`<div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;padding:2px 0">
-      <span class="dim" style="flex:0 0 auto">${e.when}</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${tlAttr(e.msg)}">${e.msg}</span>
+      <span class="dim" style="flex:0 0 auto">${e.when}</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${e.msg}">${e.msg}</span>
       <span style="flex:0 0 auto;color:${e.amount>=0?'var(--ok)':'var(--bad)'}">${e.amount>=0?'+':'−'}${fM(Math.abs(e.amount))}</span>
     </div>`).join('') : '<div class="dim" style="font-size:12px">No recent transactions logged.</div>';
   const hist=state.metricHist||defaultMetricHist();
@@ -11811,7 +11902,7 @@ function showFinancesModal(){
   const horizonHTML=proj.horizon.map(h=>`<div class="metric"><div class="k">${h.label}</div><div class="v" style="color:${h.amount!=null?(h.amount>=0?'var(--ok)':'var(--bad)'):'var(--warn)'}">${h.amount!=null?fM(h.amount):h.text}</div></div>`).join('');
   const upcomingHTML=proj.upcoming.length?proj.upcoming.map(u=>`<div class="dim" style="font-size:12px;padding:2px 0">• ${u}</div>`).join('') : '<div class="dim" style="font-size:12px">Nothing specific on the horizon — just the recurring flow above.</div>';
   showModal(`<h2 style="margin-bottom:2px">💰 Finances</h2>
-    <p class="muted" style="font-size:12px;margin:0 0 10px">${state.company} — current standing, recent activity, and where the treasury is headed.</p>
+    <p class="muted" style="font-size:12px;margin:0 0 10px">${esc(state.company)} — current standing, recent activity, and where the treasury is headed.</p>
     <div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:12px">
       <div style="flex:1;min-width:220px"><div class="cc-panel-h" style="margin:0 0 4px">Revenue — ${fM(b.revenue)}/mo</div>${revHTML}</div>
       <div style="flex:1;min-width:220px"><div class="cc-panel-h" style="margin:0 0 4px">Expenses — ${fM(b.expenses)}/mo</div>${expHTML}</div>
@@ -12638,7 +12729,7 @@ function renderExecOverview(){
   $('execOverview').innerHTML=`
     <div class="cc-hero">
       <div>
-        <h2 style="margin:0 0 2px">${state.company}</h2>
+        <h2 style="margin:0 0 2px">${esc(state.company)}</h2>
         <div class="muted" style="font-size:12px">${dateStr()} · Era ${s.eraIdx}/${s.eraTotal} · ${s.era}</div>
       </div>
       <div class="cc-net" style="text-align:right">
@@ -12665,7 +12756,7 @@ function renderExecOverview(){
     <div style="display:flex;gap:22px;flex-wrap:wrap;margin-top:10px;font-size:12px;border-top:1px solid var(--line);padding-top:8px">
       <div><span class="dim">Active R&amp;D:</span> ${ar?`<b>${ar.name}</b> <span class="dim">(${fmtTimeLeft(ar.monthsLeft)} left)</span>`:'<span class="dim">none — start a project</span>'}</div>
       <div><span class="dim">Gov funding:</span> <b style="color:${s.govFunding>0?'var(--ok)':'var(--dim)'}">+${fM(s.govFunding)}/mo</b></div>
-      <div><span class="dim">Current vehicle:</span> <b>${vehName}</b></div>
+      <div><span class="dim">Current vehicle:</span> <b>${esc(vehName)}</b></div>
       ${staffEffectsHTML()}
     </div>`;
 }
@@ -12846,7 +12937,7 @@ function renderCCRight(){
   // Alerts box removed from the right rail per request — agencyAlerts() still drives advisor/log signals.
   const o=ccOpsSummary();
   const news=ccNews(7);
-  const nRows=news.map(l=>`<div class="news-line"><span class="dim">${l.when}</span> <span class="${l.kind}">${l.msg.replace(/<[^>]*>/g,'')}</span></div>`).join('') || '<div class="dim" style="font-size:12px">No news yet.</div>';
+  const nRows=news.map(l=>`<div class="news-line"><span class="dim">${l.when}</span> <span class="${l.kind}">${tlStrip(l.msg)}</span></div>`).join('') || '<div class="dim" style="font-size:12px">No news yet.</div>';
   // slice 6: rivals mini-leaderboard (top threats) + deep-view modal — the Rivals tab's hub home
   const rivalMini=RIVALS.map(r=>({r,score:(state.rivalThreat&&state.rivalThreat[r.id])||0}))
     .sort((a,b)=>b.score-a.score).slice(0,3)
@@ -13357,7 +13448,7 @@ function renderWindowPlanner(){
    is pure so it can be exercised headlessly. */
 let plannerShowMissions=false;
 function plannerChoose(){ plannerShowMissions=true; render(); }
-function plannerSetMission(id){ const m=MISSIONS.find(x=>x.id===id); if(!m||!missionFlyable(m)) return; state.activeMission=id; plannerShowMissions=false; render(); }
+function plannerSetMission(id){ const m=missionById(id); if(!m||!missionFlyable(m)) return; state.activeMission=id; plannerShowMissions=false; render(); }
 function plannerSteps(){
   const m=curMission();
   if(!m) return [{key:'mission',n:1,title:'Choose a mission',done:false,detail:'Pick your objective to begin.',focus:'mission',actLabel:'Choose'}];
@@ -13422,7 +13513,7 @@ function vehicleCompareHTML(){
   const ids=opts.map(o=>o.id);
   let a=ids.includes(cmpA)?cmpA:opts[0].id;
   let b=ids.includes(cmpB)?cmpB:(opts.find(o=>o.id!==a)||opts[0]).id;
-  const sel=(side,cur)=>`<select onchange="setCompare('${side}',this.value)" style="width:100%;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:5px;padding:4px 6px;font-size:12px">${opts.map(o=>`<option value="${o.id}" ${o.id===cur?'selected':''}>${o.name}</option>`).join('')}</select>`;
+  const sel=(side,cur)=>`<select onchange="setCompare('${side}',this.value)" style="width:100%;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:5px;padding:4px 6px;font-size:12px">${opts.map(o=>`<option value="${o.id}" ${o.id===cur?'selected':''}>${esc(o.name)}</option>`).join('')}</select>`;
   const A=compareMetrics(a), B=compareMetrics(b);
   if(!A||!B) return '';
   const row=(label,av,bv,fmt,better)=>{
@@ -13461,8 +13552,8 @@ function renderVehicleFamilies(){
     const parent=active.parentId?familyById(active.parentId):null;
     activeHtml=`<div class="card" style="background:var(--panel2);border-color:var(--ignite);margin-bottom:10px">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-        <div class="mission-name" style="margin:0;font-size:15px"><span style="color:var(--ignite)">▲ ${active.name}</span> <span class="pill active">flying</span></div>
-        <div class="dim" style="font-size:12px">since ${active.born}${parent?` · from ${parent.name}`:''}</div>
+        <div class="mission-name" style="margin:0;font-size:15px"><span style="color:var(--ignite)">▲ ${esc(active.name)}</span> <span class="pill active">flying</span></div>
+        <div class="dim" style="font-size:12px">since ${active.born}${parent?` · from ${esc(parent.name)}`:''}</div>
       </div>
       <div class="metrics" style="margin:8px 0 0">
         <div class="metric"><div class="k">Flights</div><div class="v">${active.flights||0}${sr!=null?` · ${sr}%`:''}</div></div>
@@ -13480,7 +13571,7 @@ function renderVehicleFamilies(){
     const sr=familySuccessRate(f);
     return `<div class="item" style="margin-top:8px">
       <div class="body">
-        <div class="title" style="font-size:13px">${f.name} ${f.parentId&&familyById(f.parentId)?`<span class="pill">↳ ${familyById(f.parentId).name}</span>`:''}</div>
+        <div class="title" style="font-size:13px">${esc(f.name)} ${f.parentId&&familyById(f.parentId)?`<span class="pill">↳ ${esc(familyById(f.parentId).name)}</span>`:''}</div>
         <div class="sub">${f.flights||0} flights${sr!=null?` · ${sr}% success`:''}${f.losses?` · ${f.losses} lost`:''} · +${(familyRelBonus(f)*100).toFixed(1)}% rel</div>
       </div>
       <div style="display:flex;flex-direction:column;gap:4px">
@@ -13491,7 +13582,7 @@ function renderVehicleFamilies(){
   }).join(''):'';
   card.innerHTML=`<h2>Vehicle Family</h2>
     ${activeHtml}
-    <button class="btn" style="width:100%" onclick="saveAsFamily()">+ Register current design${active?` as a new family (derives from ${active.name})`:' as a family'}</button>
+    <button class="btn" style="width:100%" onclick="saveAsFamily()">+ Register current design${active?` as a new family (derives from ${esc(active.name)})`:' as a family'}</button>
     ${list}
     ${vehicleCompareHTML()}`;
 }
@@ -13583,7 +13674,7 @@ function renderVehiclePreview(){
   const eng=state.stages.reduce((a,s)=>a+s.count,0);
   const el=$('vehicleLabel');
   const nm=(curLivery().name||'').trim();
-  if(el) el.innerHTML=`${nm?`<div style="font-weight:600;color:var(--ink);font-size:13px;margin-bottom:2px">${nm}</div>`:''}${state.stages.length} stage${state.stages.length>1?'s':''} · ${eng} engine${eng>1?'s':''}${boostersFitted()?` · ${state.boosters.count} booster${state.boosters.count>1?'s':''}`:''}${spec.transferProp>0?' · transfer stage':''} · ${spec.crewed?'crew capsule':'payload fairing'}`;
+  if(el) el.innerHTML=`${nm?`<div style="font-weight:600;color:var(--ink);font-size:13px;margin-bottom:2px">${esc(nm)}</div>`:''}${state.stages.length} stage${state.stages.length>1?'s':''} · ${eng} engine${eng>1?'s':''}${boostersFitted()?` · ${state.boosters.count} booster${state.boosters.count>1?'s':''}`:''}${spec.transferProp>0?' · transfer stage':''} · ${spec.crewed?'crew capsule':'payload fairing'}`;
   // Slice 2: prefer the Phaser-hosted preview scene; fall back to the plain 2D canvas.
   if(phaserOK() && startVehPreview(spec)) return;
   const cv=$('vehiclePreview'); if(!cv || !cv.getContext) return;
@@ -14230,7 +14321,7 @@ let ccPopoutOpen=false, ccPopAnim=null, ccPopT0=0, ccPop={z:1,x:0,y:0}, ccPopFra
 function ccPopInfoHTML(){
   let s; try{ s=commandSummary(); }catch(e){ return ''; }
   const row=(l,v,c)=>`<div class="vps-row"><span class="lbl">${l}</span><span class="val"${c?` style="color:${c}"`:''}>${v}</span></div>`;
-  return `<h4>${state.company}</h4>
+  return `<h4>${esc(state.company)}</h4>
     <div class="dim" style="font-size:12px;margin-bottom:6px">${dateStr()} · Era ${s.eraIdx}/${s.eraTotal} · ${s.era}</div>
     <h4>Finance</h4>
     ${row('Capital', fM(s.capital))}
@@ -14759,6 +14850,7 @@ function renderPersonnelCard(p, sr){
       ${isEng?`Reliability contribution: <span style="color:var(--ok)">+${engBonusStr}</span> (factors into team average)`:''}
       ${isAstro&&assigned&&ab?`<span style="color:var(--ok)">Crewed rel +${(ab.rel*100).toFixed(1)}% · Payout x${ab.payoutMult.toFixed(2)}</span>`:''}
       ${isAstro&&!assigned?`<span class="dim">Not assigned to crewed missions</span>`:''}
+      ${isAstro&&astronautFlights(p.id).length?` · <span class="dim">${astronautFlights(p.id).length} flight${astronautFlights(p.id).length===1?'':'s'} flown</span>`:''}
       ${roleOf(p.id)==='sci'?`<span style="color:var(--ok)">Science division: yield +${(sciStaffYieldBonus()*100)|0}% · R&D +${(sciStaffRdBonus()*100)|0}%</span>`:''}
       ${roleOf(p.id)==='exec'?`<span style="color:var(--ok)">Front office: funding +${(execGovBonus()*100)|0}% · opex −${(execOpexCut()*100)|0}% · mandate +${(execMandateBonus()*100)|0}%</span>`:''}
       ${roleOf(p.id)==='controller'?`<span style="color:var(--ok)">Mission control: anomaly −${(ctrlAnomScore()*CTRL_ANOMALY_CUT_MAX*100)|0}% · call +${(ctrlCallScore()*CTRL_CALL_BONUS_MAX*100)|0}% · rescue +${(ctrlRescueScore()*CTRL_RESCUE_BONUS_MAX*100)|0}%</span>`:''}
@@ -14777,6 +14869,8 @@ function renderPersonnelCard(p, sr){
   </div>`;
 }
 
+const ASTRO_OUTCOME_LABEL={success:'✓ Success', partial:'◐ Partial', abort:'✗ Aborted', loss:'☠ Lost', strand:'☠ Lost', rescued:'⚑ Rescued', scrub:'⊘ Scrubbed'};
+const ASTRO_OUTCOME_COLOR={success:'var(--ok)', partial:'var(--warn)', abort:'var(--bad)', loss:'var(--bad)', strand:'var(--bad)', rescued:'var(--warn)', scrub:'var(--dim)'};
 function renderPersonnel(){
   const box=$('personnelCard');
   const hired=state.staff.map(sr=>({p:personById(sr.id),sr})).filter(x=>x.p);
@@ -14858,6 +14952,40 @@ function renderPersonnel(){
     }).join('');
   } else if(!hired.length){
     html+=`<p class="dim" style="font-size:12px;margin-top:8px">No personnel available yet — build reputation and advance through eras to unlock the talent pool.</p>`;
+  }
+
+  const rosterIds=Object.keys(state.astronautLog||{}).sort((a,b)=>astronautFlights(b).length-astronautFlights(a).length);
+  if(rosterIds.length){
+    const lostIds=new Set(memorialRoll().map(f=>f.id));
+    html+=`<div class="card" style="margin-top:12px">
+      <h2>🚀 Astronaut Roster</h2>
+      <p class="muted" style="font-size:12px;margin:-2px 0 8px">Every astronaut who has flown for this agency, most-flown first.</p>
+      ${rosterIds.map(id=>{
+        const p=personById(id); if(!p) return '';
+        const flights=astronautFlights(id);
+        const status=lostIds.has(id)?`<span style="color:var(--bad)">🕊 Lost</span>`:state.staff.some(s=>s.id===id)?`<span style="color:var(--ok)">Active</span>`:`<span class="dim">Off roster</span>`;
+        return `<div style="padding:8px 0;border-top:1px solid var(--line);display:flex;gap:10px">
+          ${personPortrait(p,40)}
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px"><b>${esc(p.name)}</b> ${status} <span class="pill" style="margin-left:4px" title="${esc(traitOf(id).desc)}">${esc(traitOf(id).name)}</span></div>
+            <div class="dim" style="font-size:12px;margin:2px 0 4px">${flights.length} flight${flights.length===1?'':'s'} flown</div>
+            ${flights.map(f=>`<div style="font-size:12px"><span class="dim">${f.when}</span> ${esc(f.mission)} <span style="color:${ASTRO_OUTCOME_COLOR[f.outcome]||'var(--dim)'}">${ASTRO_OUTCOME_LABEL[f.outcome]||f.outcome}</span></div>`).join('')}
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }
+
+  const fallen=memorialRoll();
+  if(fallen.length){
+    html+=`<div class="card" style="margin-top:12px;background:var(--panel2);border-color:#5a2f2f">
+      <h2 style="margin-bottom:2px">🕊 Memorial Wall</h2>
+      <p class="muted" style="font-size:12px;margin:-2px 0 8px">Every astronaut lost flying for this agency.</p>
+      ${fallen.map(f=>`<div style="padding:6px 0;border-top:1px solid var(--line)">
+        <div style="font-size:13px;color:var(--ink)"><b>${esc(f.name)}</b> <span class="dim">— ${f.when}</span></div>
+        <div class="dim" style="font-size:12px">${esc(f.mission)}${f.story?`: ${esc(f.story)}`:''}</div>
+      </div>`).join('')}
+    </div>`;
   }
 
   box.innerHTML=html;
@@ -15532,7 +15660,7 @@ function mapAssetModel(){
 }
 // Planned route for the ACTIVE mission (committed or not): where it goes and whether it closes.
 function plannedRoute(){
-  const m=MISSIONS.find(x=>x.id===state.activeMission); if(!m) return null;
+  const m=missionById(state.activeMission); if(!m) return null;
   const destId=missionBody(m.id); if(!destId||destId==='earth') return null;
   let ok=true, short=0;
   try{
@@ -16111,6 +16239,25 @@ function renderSpecialBanner(){
     </div>
   </div>`;
 }
+// E1.3: procedural filler contracts — a small rotating board of era + capability-gated offers,
+// same mount pattern as renderSpecialBanner but for 0-CONTRACT_OFFER_CAP live offers at once.
+function renderContractOffers(){
+  const offers=state.contractOffers||[]; if(!offers.length) return '';
+  return offers.map(o=>{
+    const left=o.expiresAbs-absMonth();
+    return `<div class="card" style="border-color:var(--readout);margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
+        <b style="color:var(--readout);font-size:13px">📋 ${esc(o.name)}</b>
+        <span style="font-family:var(--mono);font-size:12px;color:${left<=2?'var(--warn)':'var(--muted)'}">${left} mo left</span>
+      </div>
+      <p class="muted" style="font-size:12px;margin:4px 0">${esc(o.blurb)}</p>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span style="font-family:var(--mono);font-size:13px;color:var(--ok)">+${fM(o.payout)}, +${o.rep} rep</span>
+        <button class="btn" style="font-size:12px" onclick="selectMission('${o.id}');setTab('bench')">Fly ▸</button>
+      </div>
+    </div>`;
+  }).join('');
+}
 function renderPassiveContracts(){
   const box=$('passiveCard'); if(!box) return;
   const totMo=passiveMonthlyIncome();
@@ -16155,6 +16302,7 @@ function renderPassiveContracts(){
 
 function renderMissions(){
   { const el=$('specialBannerMount'); if(el) el.innerHTML=renderSpecialBanner(); }
+  { const el=$('contractOffersMount'); if(el) el.innerHTML=renderContractOffers(); }
   renderPassiveContracts();
   const box=$('missionList'); box.innerHTML='';
   MISSIONS.forEach(m=>{
@@ -16616,8 +16764,9 @@ function renderPartnerships(){
     <p class="muted" style="font-size:12px;margin:-4px 0 10px">Partner with outside institutions to accelerate a research <b>track</b> — a setup fee plus ongoing upkeep buys a standing R&amp;D-speed boost on their tracks (stacks with engineers + divisions, capped at +${Math.round(PARTNER_SPEED_CAP*100)}%). Hold up to <b>${PARTNERSHIP_CAP}</b> at once: back the fronts your program needs now, and dissolve them when the work is done.</p>
     ${cards}`;
 }
-function tlStrip(s){ return (s||'').replace(/<[^>]*>/g,''); }
-function tlAttr(s){ return tlStrip(s).replace(/"/g,'&quot;'); }
+function tlStripPlain(s){ return (s||'').replace(/<[^>]*>/g,''); }
+function tlStrip(s){ return esc(tlStripPlain(s)); }
+function tlAttr(s){ return tlStrip(s); }
 // Forward-looking items derived from state (not stored in state.log): active R&D, in-progress
 // builds, and a committed launch window. These ride at the front of the timeline as "UPCOMING".
 function upcomingEvents(){
@@ -16644,7 +16793,7 @@ const TL_CATEGORIES=[
 ];
 function logCategory(e){
   if(e.kind==='rival') return 'rivals';
-  const s=tlStrip(e.msg);
+  const s=tlStripPlain(e.msg);
   if(/R&D (complete|started|rush|SETBACK)|BREAKTHROUGH|breakthrough|Applied .* science to|Inquiry into|inquiry reliability credit/i.test(s)) return 'research';
   if(/\bhired\b|\bcommended\b|training invested|promoted to head of|quit due to low morale|\bpoached\b|Raise (given|invested)|angling for a raise|let go\. Monthly burn|radiation limit|absorbed .* radiation|is on a mission — they can be assigned|costly mistake.*morale|Astronaut .*(lost|retired)/i.test(s)) return 'crew';
   if(/yard — (manufacturing|fabricating)|expanded to (level|\d+ modules)|resupplied|resupply (shipment|delayed|expedited)|auto-resupply|: \w.* docked|established — your first permanent presence|abandoned — the outpost|evacuated and mothballed|power-starved|Standing production|Blueprint: all ports/i.test(s)) return 'infra';
@@ -16655,7 +16804,7 @@ function logCategory(e){
 // Where clicking a past log entry should jump: explicit entry.nav wins, else infer from the text.
 function logNav(e){
   if(e.nav) return e.nav;
-  const s=tlStrip(e.msg);
+  const s=tlStripPlain(e.msg);
   if(/R&D|research|breakthrough|σ|Isp|thrust/i.test(s)) return 'rnd';
   if(e.kind==='rival') return 'command';
   if(/SUCCESS|FAILURE|LOST|RESCUED|CATASTROPHE|reached|achieved|delivered|rolled out|crew/i.test(s)) return 'command';

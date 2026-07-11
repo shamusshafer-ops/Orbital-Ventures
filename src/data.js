@@ -4,6 +4,7 @@
    ============================================================ */
 const G0 = 9.81;
 const TL_CAT_ICON={launch:'🚀', research:'⚛', economy:'$', rivals:'🏴', crew:'👥', infra:'🏗', other:'•'};
+const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 
 const ERAS = [
   {id:'pioneer',      name:'Pioneer',           from:1942, to:1957, blurb:'Liquid/solid sounding rockets, captured/derived V-2-class tech. Sub-orbital, upper atmosphere.'},
@@ -657,6 +658,46 @@ const MISSIONS = [
     profile:[{name:'Ascent to LEO', dv:9400, by:'lv'},{name:'Solar System Escape Injection', dv:8500, by:'transfer'}],
     blurb:'An uncrewed probe rides the fusion torch past the ice giants and out through the Oort Cloud, crossing into interstellar space at a fraction of the speed true interstellar flight will eventually need — the first real proof the drive works. No return; the point is the burn, not the destination.<span class="hist">↳ Voyager 1 crossed the heliopause into interstellar space in 2012 — the only human-made object ever to do so; Daedalus-class fusion drives were designed to make that crossing in years, not decades.</span>'},
 ];
+// resolves EITHER an authored mission or a live procedural contract offer by id — the only
+// lookup any "what mission is this id" call site needs once procedural ids exist (E1.3)
+function missionById(id){ return MISSIONS.find(x=>x.id===id) || (state.contractOffers||[]).find(x=>x.id===id); }
+
+/* ---------- E1.3: procedural contract generator ----------
+   Fills the troughs between authored missions with repeatable, era + capability-gated filler
+   contracts. Deliberately NOT authored milestones: proc:true opts them out of the firsts/completed
+   tracking (finalizeLaunch), so they never trigger a milestone modal, rival-goal denial, or
+   first-of-design prestige — see the proc gate at finalizeLaunch's success branch. Priced below the
+   comparable authored mission (see each archetype's payout) so routine reflying of an authored
+   mission stays the better long-run play; these are the "no station in range" filler, not the goal. */
+const CONTRACT_ARCHETYPES=[
+  { kind:'comsat', label:'Comsat Block Buy', minEra:1,
+    req:st=>(st.leoFlights||0)>=3,
+    weight:st=>1+Math.min(3,(st.leoFlights||0)/10),
+    build:eraIdx=>{ const payload=round2(0.3+0.05*eraIdx);
+      return { name:'Comsat Block Buy', reqDv:9400, payload, crew:0, days:0, minRep:0,
+        payout:round2((10+2*eraIdx)*0.6), rep:6,
+        blurb:'A commercial operator wants a standing block of comsats launched — routine manifest, real money, no headlines.' }; } },
+  { kind:'crew_rotation', label:'Crew Rotation', minEra:2, reqResearch:'crew_capsule',
+    req:st=>!!(st.research&&st.research.crew_capsule) && (st.crewFlown||0)>=1,
+    weight:st=>1+Math.min(3,(st.crewFlown||0)/6),
+    build:eraIdx=>{ const days=3+Math.floor(Math.random()*10);
+      return { name:'Crew Rotation', reqDv:9400, payload:0, crew:1, days, minRep:0, reqResearch:'crew_capsule',
+        payout:round2((6+1.2*days)*(1+0.1*eraIdx)*0.6), rep:8,
+        blurb:'A standing crew slot needs rotating out — no new ground broken, but the manifest has to fly.' }; } },
+  // Slice B: profile-shaped (short cruise, stays under DEFER_CRUISE_DAYS so it resolves synchronously
+  // like the authored Lunar Sample Return — no deferred/activeFlights interaction to worry about).
+  // Deliberately NO sciYield (unlike the authored mission it echoes) — that bonus is explicitly
+  // first-flight-only (see finalizeLaunch), and a regenerating procedural offer would farm it forever.
+  { kind:'sample_return', label:'Deep-Space Sample Return', minEra:2, reqResearch:'deep_space',
+    req:st=>!!(st.research&&st.research.deep_space) && (st.deepFlights||0)>=1,
+    weight:st=>1+Math.min(3,(st.deepFlights||0)/4),
+    build:eraIdx=>{ const days=10+Math.floor(Math.random()*8);
+      return { name:'Deep-Space Sample Return', reqDv:9400, payload:0, crew:0, days, minRep:0, reqResearch:'deep_space',
+        modules:['lv','transfer'],
+        profile:[{name:'Ascent to LEO', dv:9400, by:'lv'},{name:'Trans-Lunar Injection', dv:3120, by:'transfer'},{name:'Lunar Orbit Insertion', dv:900, by:'transfer'},{name:'Trans-Earth Injection', dv:900, by:'transfer'}],
+        payout:round2((14+1.5*eraIdx)*0.55), rep:12,
+        blurb:'A commercial lab wants another regolith sample — a proven profile, a standing customer, no new ground broken.' }; } },
+];
 
 /* ---------- Programs & long-term ambition (the "dream" layer) ----------
    Programs group the existing missions into named campaigns with objectives and a
@@ -975,7 +1016,7 @@ function activeArchId(id){
 function missionArchOf(id){ const list=missionArchList(id); if(!list) return null; const aid=activeArchId(id); return list.find(a=>a.id===aid)||list[0]; }
 // the active mission as the player will actually fly it (base merged with the chosen architecture)
 function curMission(){
-  const base=MISSIONS.find(x=>x.id===state.activeMission);
+  const base=missionById(state.activeMission);
   if(!base) return base;
   const arch=missionArchOf(base.id);
   if(!arch) return base;

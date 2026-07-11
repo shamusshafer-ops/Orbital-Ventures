@@ -709,6 +709,7 @@ function tickMonthlyBoundary(){
     tickMandate(); // mandates: offer / deadline check (economy tension pass)
     checkScoringDate(); // chronicle: the soft scoring date fires once
     tickSpecialContract(); // special contracts: limited-time commercial variants
+    tickContractOffers(); // E1.3: procedural filler contracts — era + capability keyed
     tickCrisis(); // P11: the one late-game crisis — trigger check, then escalate/remediate if active
     tryStartQueuedResearch(); // I5: retry monthly in case the queued pick just became affordable/unlocked (the immediate try lives in completeResearch)
     pushMetricHistory(); // #28: snapshot this month's core metrics for the dashboard sparklines
@@ -993,6 +994,39 @@ function fulfillSpecialIfMatch(missionId){
     log('ok',`★ Special contract fulfilled: ${sc.title}. +${fM(sc.bonus)} bonus, +3 support, +2 rep.`);
   }
   state.specialContract=null; state.specialCooldown=SPECIAL_COOLDOWN_MO;
+}
+
+/* ---------- E1.3: procedural filler contracts ----------
+   A rotating board of era + capability-gated repeatable contracts (see CONTRACT_ARCHETYPES,
+   data.js) — the "no station in range" filler between authored missions. Deliberately simpler
+   than special contracts: no modifier layer, no deadline-vs-existing-mission bonus — each offer
+   IS the flyable mission, priced below its authored counterpart, expiring and rotating on its own. */
+const CONTRACT_OFFER_LEAD=6; // months an offer stays open before the client goes elsewhere
+function contractOfferCap(){ return eraIndex(currentEra())>=4 ? 3 : 2; } // Slice B balance pass: a 3rd concurrent slot opens Commercial era onward, once there's enough mission variety to fill it
+function contractOfferReferenced(id){
+  return state.activeMission===id
+    || (state.buildQueue||[]).some(o=>o.missionId===id)
+    || (state.hangar||[]).some(h=>h.missionId===id);
+}
+function tickContractOffers(){
+  state.contractOffers=(state.contractOffers||[]).filter(o=>{
+    if(absMonth()<=o.expiresAbs || contractOfferReferenced(o.id)) return true; // still open, or committed to (build queue/hangar/selected) — don't yank it out from under a build
+    log('note',`${o.name}: contract window closed — the client went elsewhere.`);
+    return false;
+  });
+  if(state.contractOffers.length>=contractOfferCap()) return;
+  if(Math.random()>0.4) return; // arrives every few months, not like clockwork
+  const eraIdx=eraIndex(currentEra());
+  const pool=CONTRACT_ARCHETYPES.filter(a=>eraIdx>=a.minEra && a.req(state));
+  if(!pool.length) return;
+  const totalW=pool.reduce((s,a)=>s+a.weight(state),0);
+  let r=Math.random()*totalW, pick=pool[pool.length-1];
+  for(const a of pool){ r-=a.weight(state); if(r<=0){ pick=a; break; } }
+  state.procSeq=(state.procSeq||0)+1;
+  const built=pick.build(eraIdx);
+  const offer=Object.assign({id:'pc_'+state.procSeq, proc:true, expiresAbs:absMonth()+CONTRACT_OFFER_LEAD}, built);
+  (state.contractOffers=state.contractOffers||[]).push(offer);
+  log('note',`New contract offer: ${offer.name} — ${fM(offer.payout)}, open ${CONTRACT_OFFER_LEAD} months.`);
 }
 function rollEconEvent(){
   // Economy tension: positive windfalls require a recently ACTIVE program (a flight in the
@@ -1538,7 +1572,7 @@ function standingHangarCount(){ const sp=state.standingProd; if(!sp) return 0; r
 // snapshot the CURRENT bench design as the standing line (must be a juggernaut + a flyable design)
 function setStandingProduction(missionId){
   if(!isJuggernaut()) return;
-  const m = (missionId && MISSIONS.find(x=>x.id===missionId)) || curMission(); if(!m) return;
+  const m = (missionId && missionById(missionId)) || curMission(); if(!m || m.proc) return; // E1.3: procedural contracts expire/rotate — not a fit for a standing repeat-build line
   const v = computeVehicle(); const sim=m.profile?simulateMission(m):null;
   const chk=canQueue(m,v,sim); if(!chk.ok && chk.why!=='can’t afford the build' && chk.why!=='queue full'){ log('note',`Can’t set standing production: ${chk.why}`); return; }
   const fam = activeFamily();
@@ -2945,7 +2979,7 @@ function buildCostBreakdown(m){
   const facDisc=facilityBonus(missionBody(m&&m.id)).buildDiscount;
   if(facDisc>0) mult(`Home-field facility (−${(facDisc*100).toFixed(0)}%)`, 1-facDisc);
   const fam=activeFamily(), famMult=familyBuildMult(fam);
-  if(famMult<1) mult(`Family heritage${fam?` "${fam.name}"`:''} (×${famMult.toFixed(2)})`, famMult);
+  if(famMult<1) mult(`Family heritage${fam?` "${esc(fam.name)}"`:''} (×${famMult.toFixed(2)})`, famMult);
   const foundry=foundryCostMult();
   if(foundry<1) mult(`Foundry L${prodLevel('foundry')} (×${foundry.toFixed(2)})`, foundry);
   const cad=cadenceSurcharge();
@@ -3358,14 +3392,27 @@ function deepCallFlag(outcome, sim){
   return worst;
 }
 function reserveKindWord(key){ return key==='life_support' ? 'consumables and power' : 'propellant'; }
-function loseAssignedCrew(crewId){
+function loseAssignedCrew(crewId, mission, story){
   crewId = crewId || state.assignedAstronaut; // 1.2b: an arriving deferred flight passes its own snapshotted crew
   if(!crewId) return;
   const p=personById(crewId);
   state.staff=(state.staff||[]).filter(s=>s.id!==crewId);
-  if(p) log('bad',`Astronaut ${p.name} was lost with the vehicle.`);
+  if(p){ log('bad',`Astronaut ${p.name} was lost with the vehicle.`); addMemorial(crewId, p.name, mission, story); } // E1.4: memorial wall
   if(state.assignedAstronaut===crewId) state.assignedAstronaut=null; // only clear the live slot if it's this crew (don't clobber a concurrent flight)
 }
+// E1.4: memorial wall — name snapshotted at death (independent of the static pool, matching how
+// front-page headlines snapshot their text) so it displays even if pool data ever changes.
+function addMemorial(id, name, mission, story){
+  (state.memorial=state.memorial||[]);
+  state.memorial.push({id, name, when:dateStr(), mission:mission||'', story:story||''});
+}
+function memorialRoll(){ return state.memorial||[]; }
+// E1.4: per-astronaut flight log — keyed by id so it survives the person leaving state.staff (death/fire/quit)
+function logAstronautFlight(id,mission,outcome){
+  (state.astronautLog=state.astronautLog||{});
+  (state.astronautLog[id]=state.astronautLog[id]||[]).push({when:dateStr(),mission,outcome});
+}
+function astronautFlights(id){ return (state.astronautLog&&state.astronautLog[id])||[]; }
 // the assigned astronaut accumulates radiation dose across their career; reaching the
 // limit forces retirement (deep, long, unshielded missions cost the most).
 function applyCrewDose(m, crewId){
@@ -3401,7 +3448,7 @@ function subsystemBreakdownHTML(m,v){
     return `<div class="leg"><span class="legname">${s.label}${chip}</span><span class="legdv" style="color:${col}">${pc}%</span><span class="legdetail">fault → ${sev}</span></div>`;
   }).join('');
   const fam=activeFamily();
-  const famNote=fam&&familyRelBonus(fam)>0?` <span style="color:var(--ok)">${fam.name} heritage adds +${(familyRelBonus(fam)*100).toFixed(1)}% from ${fam.successes} proven flight${fam.successes===1?'':'s'}.</span>`:'';
+  const famNote=fam&&familyRelBonus(fam)>0?` <span style="color:var(--ok)">${esc(fam.name)} heritage adds +${(familyRelBonus(fam)*100).toFixed(1)}% from ${fam.successes} proven flight${fam.successes===1?'':'s'}.</span>`:'';
   return `<div class="mission-tag" style="margin-top:12px">Subsystem reliability — the weakest link is where it breaks</div>
     <div class="legs" style="margin-top:6px">${rows}</div>
     <div class="dim" style="font-size:12px;margin-top:6px">Overall ${(rep.R*100)|0}% = the product of all subsystems. Test campaigns, tank/guidance research, and matching engineer specialists each harden a specific link.${famNote}</div>`;
@@ -3999,8 +4046,8 @@ function finalizeLaunch(ctx, ops){
     state.staticFixBonus=0;  // the static-fire fix flies once
 
     // M14: missions yield science — more for novel, deep, or first-time flights
-    let sciGain=Math.max(1, Math.round((routine?0.3:1)*((m.rep||5)*0.12 + (m.profile?5:1))*sciYieldMult()*doctrineMult('sci'))); // #6b: Science track multiplies mission science yield; CE3(a) Science doctrine boosts it
-    if(m.sciYield && !routine) sciGain += Math.round(m.sciYield*sciYieldMult()*doctrineMult('sci')); // #3: prestige science missions bank a large knowledge windfall (first flight only — not farmable on routine reflights)
+    let sciGain=Math.max(1, Math.round(((routine||m.proc)?0.3:1)*((m.rep||5)*0.12 + (m.profile?5:1))*sciYieldMult()*doctrineMult('sci'))); // #6b: Science track multiplies mission science yield; CE3(a) Science doctrine boosts it — E1.3: procedural contracts are perpetual filler, not a first, so they get the routine-tier rate too
+    if(m.sciYield && !routine && !m.proc) sciGain += Math.round(m.sciYield*sciYieldMult()*doctrineMult('sci')); // #3: prestige science missions bank a large knowledge windfall (first flight only — not farmable on routine reflights, and not on a regenerating procedural offer either)
     state.science=round2((state.science||0)+sciGain);
     let payout=(routine?m.payout*0.4:m.payout)*windowQuality*diff().payoutMult*econPayoutMult()*opsPayoutMult*doctrineMult('payout'); // CE3(a): Commercial +, Statecraft/Science −
     if(crewed) payout*=ab.payoutMult; // M6: astronaut payout bonus
@@ -4033,7 +4080,7 @@ function finalizeLaunch(ctx, ops){
       const isru=ISRU_FREE_LEG[m.id];
       if(isru && state.research[isru.research] && !state.wonM3bii && !pendingCelebration){ state.wonM3bii=true; pendingCelebration=()=>victoryM3bii('isru'); }
     }
-    if(!routine){
+    if(!routine && !m.proc){ // E1.3: a procedural contract is neither an authored "first" nor a routine reflight — no firsts/milestone tracking, see below
       state.completed[m.id]=true;
       (state.firstDates=state.firstDates||{})[m.id]=absMonth(); // chronicle: when each first happened
       fulfillSpecialIfMatch(m.id); // special contract bonus on a matching first
@@ -4051,6 +4098,7 @@ function finalizeLaunch(ctx, ops){
       const ambCeleb=checkPrograms(); // program bonuses + ambition capstone + next-objective nudge
       if(ambCeleb && !pendingCelebration) pendingCelebration=ambCeleb;
     }
+    if(m.proc) state.contractOffers=(state.contractOffers||[]).filter(o=>o.id!==m.id); // E1.3: one-shot — consumed on success, not reflown
     autoAdvanceMission();
   }else if(outcome.kind==='partial'){
     // reached space but off-target — salvage some value, but the objective is not complete
@@ -4077,7 +4125,7 @@ function finalizeLaunch(ctx, ops){
     personnelMissionEvent(false);
     const rep=Math.min(state.rep,40); state.rep-=rep;
     addSupport(supportDelta('strand')); // #8: a crew stranded in deep space is a national shock
-    loseAssignedCrew(ctx.crewId);
+    loseAssignedCrew(ctx.crewId, m.name, outcome.story);
     advance(6); // grounding + investigation
     log('bad',`${m.name}: LOST IN DEEP SPACE — ${outcome.story} A long inquiry follows, −${rep} rep.`);
     applyEraStakes('loss of the crew'); // CE4(c): era-scaled compounding setback
@@ -4092,7 +4140,7 @@ function finalizeLaunch(ctx, ops){
     if(crewed){
       const rep=Math.min(state.rep,40); state.rep-=rep;
       addSupport(supportDelta('lossCrewed')); // #8: losing a crew is the worst political blow
-      loseAssignedCrew(ctx.crewId);
+      loseAssignedCrew(ctx.crewId, m.name, outcome.story);
       advance(6); // grounding + investigation
       state.crewLost=(state.crewLost||0)+m.crew; // chronicle: the price paid
       log('bad',`${m.name}: CATASTROPHE. The ${SUBSYS_LABEL[outcome.subsystem].toLowerCase()} failed — ${outcome.story} Vehicle lost with all ${m.crew} aboard. Six-month stand-down, −${rep} rep. Fit a launch-escape system before flying crew again.`);
@@ -4106,6 +4154,7 @@ function finalizeLaunch(ctx, ops){
     }
   }
   if(crewed && (outcome.kind==='success'||outcome.kind==='partial')) applyCrewDose(m, ctx.crewId); // surviving crew take a radiation dose
+  if(crewed && ctx.crewId) logAstronautFlight(ctx.crewId, m.name, outcome.kind); // E1.4: per-astronaut flight log, survives the person leaving state.staff
   // #3: attribute this flight to the active vehicle family and accrue/dent its heritage
   const fam=ctx.famId?familyById(ctx.famId):activeFamily(); // 1.2a/S1: resolve the launched family by id at finalize (save-safe — a deferred flight stores famId, not a detachable object ref, and finalize mutates the live family)
   if(fam){
@@ -4307,7 +4356,7 @@ function renderBlueprints(){
   const el=$('blueprintsCard'); if(!el) return;
   const list=blueprints();
   const rows=list.map(b=>`<div style="display:flex;align-items:center;gap:8px;justify-content:space-between;padding:6px 0;border-top:1px solid var(--line)">
-      <span style="min-width:0"><b>${b.name}</b> <span class="dim" style="font-size:12px">${b.summary||''} · ${b.born||''}</span></span>
+      <span style="min-width:0"><b>${esc(b.name)}</b> <span class="dim" style="font-size:12px">${b.summary||''} · ${b.born||''}</span></span>
       <span style="display:flex;gap:5px;flex-shrink:0">
         <button class="btn" style="font-size:12px;padding:3px 9px" onclick="loadBlueprint('${b.id}')">Load</button>
         <button class="btn ghost danger" style="font-size:12px;padding:3px 8px" onclick="deleteBlueprint('${b.id}')" title="Delete">✕</button>
@@ -4339,7 +4388,7 @@ function renderLivery(){
   const l=curLivery();
   const noseBtn=(id,label)=>`<button class="btn ${l.nose===id?'':'ghost'}" style="font-size:12px;padding:4px 9px" onclick="setLiveryNose('${id}')">${label}</button>`;
   el.innerHTML=`<h2>🎨 Livery</h2>
-    <div class="row"><label>Name</label><input type="text" maxlength="24" value="${(l.name||'').replace(/"/g,'&quot;')}" placeholder="e.g. Vanguard" onchange="setLiveryName(this.value)" style="flex:1"></div>
+    <div class="row"><label>Name</label><input type="text" maxlength="24" value="${esc(l.name||'')}" placeholder="e.g. Vanguard" onchange="setLiveryName(this.value)" style="flex:1"></div>
     <div class="row"><label>Body</label><input type="color" value="${l.body}" onchange="setLiveryBody(this.value)" style="width:46px;padding:2px"><span class="dim" style="font-size:12px">hull color</span></div>
     <div class="row"><label>Accent</label><input type="color" value="${l.accent}" onchange="setLiveryAccent(this.value)" style="width:46px;padding:2px"><span class="dim" style="font-size:12px">stripe + roundel</span></div>
     <div class="row"><label>Nose</label><div style="display:flex;gap:5px;flex-wrap:wrap">${noseBtn('auto','Ogive')}${noseBtn('cone','Cone')}${noseBtn('blunt','Blunt')}</div></div>
@@ -4356,7 +4405,7 @@ function setAscentEng(v){state.ascent.eng=v;render();}
 function setAscentProp(v){state.ascent.prop=Math.max(0.1,Math.min(40,parseFloat(v)||0.1));render();}
 function setEclss(id){ const t=ECLSS[id]; if(t.research && !state.research[t.research]) return; state.eclss=id; render(); }
 function setTestLevel(n){ state.testLevel=n; render(); }
-function selectMission(id){const m=MISSIONS.find(x=>x.id===id); if(state.rep<m.minRep)return; if(!missionTechMet(m))return; state.activeMission=id; closeLiveModal(); state.tab='bench'; render();}
+function selectMission(id){const m=missionById(id); if(!m||state.rep<m.minRep)return; if(!missionTechMet(m))return; state.activeMission=id; closeLiveModal(); state.tab='bench'; render();}
 function reqsMet(r){
   return r.req.every(q=>state.research[q]) && (!r.reqMissionDone || state.completed[r.reqMissionDone]);
 }
@@ -4583,7 +4632,7 @@ function deptLed(id){ return !!deptLeadRecord(id); }
 // exercises, plus the Astronaut Corps when the active mission is crewed.
 function criticalDepts(){
   const core=['propulsion','structures','avionics'];
-  const m=(typeof MISSIONS!=='undefined')?MISSIONS.find(x=>x.id===state.activeMission):null;
+  const m=(typeof MISSIONS!=='undefined')?missionById(state.activeMission):null;
   if(m && m.crew>0) core.push('astronaut');
   return core;
 }

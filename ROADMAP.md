@@ -2404,6 +2404,80 @@ harness's DOM stubs don't implement `closest()`, crashing 3 test files — fixed
 `typeof`-guarded fallback + try/catch, headless-safe by construction now. **Suite total: still 525/525**
 (pure addition, no new test file — cosmetic UI feature, real verification is visual).
 
+## Session — E1.3: procedural filler contracts (2026-07-11)
+
+**Implemented, tests passing, not yet committed/pushed — needs a real-browser check.** Tech-lead scoped
+first: existing "special contract" system is a bonus ticket on an authored mission, not a new flyable
+object, so this is genuinely new. `state.contractOffers` (era + capability-gated via `CONTRACT_ARCHETYPES`
+in data.js — comsat block buy, crew rotation; `tickContractOffers()` generates/expires them, cap 2
+concurrent, priced ~0.6x a comparable authored mission). New `missionById(id)` resolves authored or
+procedural ids at the ~6 call sites that resolve `state.activeMission`. The one real risk: `finalizeLaunch`
+gates the whole firsts/milestone block on `!m.proc` so a procedural flight never writes
+`state.completed`/`firstDates`/`history` or pops the milestone modal — full payout, no farming (sciGain
+also uses the routine-tier rate for proc flights). An offer is consumed on success, survives its own
+expiry if referenced by `activeMission`/build queue/hangar, otherwise expires and rotates. New
+`renderContractOffers()` section (Flight Contracts tab, same mount pattern as the special-contract
+banner). SAVE_VERSION 47→48. New `test-contracts.js` (25/25). **Suite total 629/629**, build parity clean.
+
+**Slice B done same session**: Deep-Space Sample Return archetype (`modules:['lv','transfer']`, the same
+profile shape as authored Lunar Sample Return), gated on `deep_space` research + `deepFlights≥1`. Kept
+its cruise under `DEFER_CRUISE_DAYS` (60) so it resolves synchronously like its authored counterpart —
+sidesteps the deferred/`activeFlights`/rehydration edge case entirely rather than taking it on. Deliberately
+**no `sciYield`** on the archetype (that bonus is explicitly first-flight-only and would be an infinite
+farm on a regenerating offer); also hardened the underlying `finalizeLaunch` line itself
+(`m.sciYield && !routine && !m.proc`) so a future careless archetype can't reopen that hole. Balance pass:
+concurrent-offer cap now 2 early-game, 3 from the Commercial era onward (`contractOfferCap()`, era-derived,
+replacing the flat `CONTRACT_OFFER_CAP` constant). New assertions folded into `test-contracts.js` (33/33).
+**E1.3 complete (both slices). Suite total 637/637**, build parity clean.
+
+## Session — E1.4: astronaut flight log + memorial wall (2026-07-11)
+
+**Implemented, tests passing, not yet committed/pushed — needs a real-browser check.** Names/traits
+were already built; added the two missing pieces. `state.astronautLog` ({id:[{when,mission,outcome}]}),
+appended once per crewed flight in `finalizeLaunch`, keyed by id so it outlives the astronaut leaving
+`state.staff`; surfaced as a "N flights flown" line on the astronaut's Personnel card. `state.memorial`
+([{id,name,when,mission,story}]), appended in `loseAssignedCrew` at the exact death moment (name
+snapshotted there); renders as a "🕊 Memorial Wall" section in the Personnel tab, only when non-empty.
+SAVE_VERSION 45→47 (one bump per field, both lazy-default `[]`/`{}` via accessor functions, no migrate
+needed). New `test-astronaut-log.js` (9/9) + `test-memorial.js` (13/13).
+
+Also added the roster view: a "🚀 Astronaut Roster" section in the Personnel tab, appears once anyone's
+flown, lists every astronaut who has (portrait, trait, Active/Lost status, full flight-by-flight list),
+sorted most-flown first. Reuses the existing `personPortrait()`/`traitOf()` — no new data. New
+`test-roster.js` (12/12). **E1.4 complete. Suite total 604/604**, build parity clean.
+
+## Session — E0.6: esc() all dynamic text in innerHTML templates (2026-07-11)
+
+**Implemented, tests passing, not yet committed/pushed — needs a real-browser check before push.**
+Scoped by tech-lead first: the roadmap line's premise was half-stale (no company-name *input* exists —
+`state.company` is hardcoded, family names auto-generate as `OV-n`), so the real user-typed surface is
+blueprint/livery names, and the real threat channel is **imported save files** — every persisted string
+in a shared save is attacker-controlled once sharecodes exist, which is what this item is actually
+guarding against. New `esc()` one-liner in `data.js` (first module in build order, global scope).
+Wrapped ~20 call sites: blueprint names, livery name, `state.company` (4 render.js + 5 save.js sites,
+including saved-slot/ring metadata), vehicle family names (active/list/parent-pill/register-button in
+`renderVehicleFamilies`, plus the build-cost-multiplier log line and reliability note in `sim.js`),
+front-page headline/dek (both the modal and list-row renderers). **Real bug fixed**: the pre-existing
+`tlStrip()` tag-stripper (used across the flight/ops log timeline) was bypassable via an *unclosed* tag
+(`<img src=x onerror=...` with no closing `>` survives its `/<[^>]*>/g` regex untouched) — split into
+`tlStripPlain()` (strip-only, kept for `logCategory`/`logNav`'s plaintext regex matching, where escaping
+`&` to `&amp;` would silently break patterns like `/R&D /`) and `tlStrip()` (strip-then-escape, for
+actual rendering); `tlAttr()` now just aliases `tlStrip()` since full escaping already covers
+double-quoted-attribute safety. Caught and fixed a **double-escaping trap**: `recentCashEvents()`
+pre-escapes `l.msg` via `tlStrip` before storing it, but the Finances modal was re-running `tlAttr` on
+that already-escaped value for the tooltip — fixed to use the pre-escaped string directly. New
+`test-esc.js` (36/36) also **caught a real gap the tech-lead audit missed**: `vehicleCompareHTML()`'s
+`<option>` labels (the A/B compare-designs dropdowns, embedded in the same family card) interpolated
+family names unescaped — found by the test asserting the whole rendered card, not just the primary
+family-name spans; fixed alongside. **Suite total now 561/561** (525 + 36), all pre-existing suites
+unaffected, build-parity (`orbital-ventures.html` inline script ≡ `build/game.js`) reconfirmed.
+**Honest scope note for the eventual commit message**: this secures every user-typed/import-controlled
+name field found in this pass, but true sharecode-era safety still needs an import-time sanitize/
+whitelist pass over arbitrary save-file strings beyond the named fields (e.g. JS-in-attribute contexts
+like `onclick="loadBlueprint('${b.id}')"` — `esc()` can't protect those since entities decode before the
+attribute's JS parses; ids are program-generated so safe today, but a hostile save with a crafted id is a
+separate, not-yet-addressed vector). That's future scope, not claimed as done here.
+
 ## Planned — External evaluation intake (2026-07-10)
 
 **Full backlog:** all 105 feature ideas from the evaluation, individually mapped to a
@@ -2454,8 +2528,11 @@ duplicating.
       older"), decimate metric histories monthly→quarterly after N years, cap/archive
       chronicle. Verify `document.hidden` pauses every RAF loop and sleeps Phaser scenes
       (bloom postFX must not run on hidden canvases).
-- [ ] **E0.6 `esc()` all dynamic text in innerHTML template strings** (company/family
-      names today; mandatory before sharecodes or content packs ever exist).
+- [x] **E0.6 `esc()` all dynamic text in innerHTML template strings** — SHIPPED 2026-07-11 (see
+      session log above), tests 561/561, **not yet committed/pushed, needs a real-browser check**.
+      Real user-typed surface was blueprint/livery names + import-controlled save fields (company/
+      family names, front-page headlines), not a company-name input (none exists). Also fixed a
+      genuine `tlStrip()` tag-strip bypass (unclosed tags) along the way.
 
 ### Workstream E1 — High-value gameplay (the "is this a product" tier)
 
@@ -2469,12 +2546,12 @@ duplicating.
       panels; chrome/transition polish). The eval independently ranks these top-tier;
       add an ascent abort/press-on window and a small telemetry strip (alt/vel/Q) as
       part of C's panel work.
-- [ ] **E1.3 Procedural contract generator** — era + demonstrated-capability keyed
-      (comsat block buys, crew rotation, sample-return variants) to fill the troughs
-      between authored milestones.
-- [ ] **E1.4 Astronaut identity** — names/traits/flight logs (traits and "souls carried"
-      tracking already exist — surface them), crew assignment tradeoffs, memorial wall
-      on losses.
+- [x] **E1.3 Procedural contract generator** — SHIPPED (both slices) 2026-07-11 (see session log
+      above), 637/637, **not yet committed/pushed, needs a real-browser check**. Comsat block buy,
+      crew rotation, deep-space sample return; era-scaled concurrent-offer cap.
+- [x] **E1.4 Astronaut identity** — SHIPPED 2026-07-11 (see session log above), 604/604,
+      **not yet committed/pushed, needs a real-browser check**. Flight log, memorial wall,
+      roster view. Crew assignment tradeoffs were already covered by the trait system.
 - [ ] **E1.5 Ops friction + trust** — pad turnaround per pad, "why can't I fly this?"
       explainer on disabled launch, post-flight failure report naming the causal chain
       (the ∏ phaseRel decomposition already computes it — show it), hover math

@@ -26,8 +26,8 @@ function frontPageHTML(e){
   return `<div style="text-align:center;font-family:Georgia,'Times New Roman',serif">
     <div style="font-size:11px;letter-spacing:.3em;color:var(--dim);text-transform:uppercase;border-top:2px solid var(--ink);border-bottom:2px solid var(--ink);padding:5px 0;margin-bottom:10px">The Agency Wire · ${dateOfAbs(e.abs)}</div>
     <div style="font-size:11px;letter-spacing:.2em;color:var(--warn);text-transform:uppercase;margin-bottom:4px">${FRONT_PAGE_KIND_LABEL[e.kind]||''}</div>
-    <h2 style="margin:0 0 8px;font-size:22px">${e.icon} ${e.headline}</h2>
-    ${e.dek?`<p class="muted" style="font-size:13px">${e.dek}</p>`:''}
+    <h2 style="margin:0 0 8px;font-size:22px">${e.icon} ${esc(e.headline)}</h2>
+    ${e.dek?`<p class="muted" style="font-size:13px">${esc(e.dek)}</p>`:''}
   </div>`;
 }
 function showFrontPage(idx){
@@ -38,7 +38,7 @@ function frontPagesHTML(){
   if(!frontPages().length) return '<div class="dim" style="font-size:12px">No wire copy yet — a first, a disaster or a scoop will file the opening edition.</div>';
   return frontPages().map((e,i)=>`<div onclick="showFrontPage(${i})" style="display:flex;gap:8px;align-items:baseline;padding:3px 0;font-size:12px;cursor:pointer" onmouseover="this.style.background='var(--panel2)'" onmouseout="this.style.background=''">
     <span style="flex:0 0 16px">${e.icon}</span>
-    <span style="color:var(--ink);flex:1">${e.headline}</span>
+    <span style="color:var(--ink);flex:1">${esc(e.headline)}</span>
     <span class="dim" style="font-size:11px">${dateOfAbs(e.abs)}</span>
   </div>`).join('');
 }
@@ -100,7 +100,7 @@ function showChronicle(mode){ // mode: 'view' | 'era' (1990) | 'era2' (2100) | '
   const sub = mode==='retire' ? 'You step down. This is what the history books will say.' :
               mode==='era2' ? 'A century and a half of spaceflight — the deep frontier now within reach. The program may continue; history has taken its second measure.' :
               mode==='era' ? 'Half a century of spaceflight, scored. The program may continue — history has simply taken its first measure.' :
-              state.company+' — the story so far.';
+              esc(state.company)+' — the story so far.';
   showModal(`<div>
     <h2 style="margin-bottom:2px">${heading}</h2>
     <p class="muted" style="font-size:12px;margin:0 0 10px">${sub}</p>
@@ -240,7 +240,7 @@ function tabAlerts(){
   // P11/I3: whichever crisis is active is always worth a Command-tab flag
   if(state.crisis){ const cd=activeCrisisDef(); if(cd) a.command.push(`${cd.name} — ${Math.round(state.crisis.severity*100)}% severity`); }
   // Bench: active mission blocked by the current design
-  const m=MISSIONS.find(x=>x.id===state.activeMission);
+  const m=missionById(state.activeMission);
   if(m){ try{ const v=computeVehicle(); const chk=canLaunch(v,m,m.profile?simulateMission(m):null);
     if(!chk.ok && /shortfall|TWR|thrust/i.test(chk.why||'')) a.bench.push('Design can\'t fly '+m.name); }catch(e){} }
   // R&D: idle lab with an affordable node
@@ -583,7 +583,7 @@ function financesBreakdown(){
 // "−$2.50M") — same heuristic-text-sniffing spirit as logCategory(), not a formal transaction ledger
 // (that would mean instrumenting every one of the ~47 state.money call sites across the file).
 function tlMoneyAmount(msg){
-  const s=tlStrip(msg);
+  const s=tlStripPlain(msg);
   const m=s.match(/([+−-])\s*\$([\d,]+\.?\d*)M/);
   if(!m) return null;
   const val=parseFloat(m[2].replace(/,/g,''));
@@ -624,7 +624,7 @@ function showFinancesModal(){
   const expHTML=b.expenseItems.length?b.expenseItems.map(erow).join(''):'<div class="dim" style="font-size:12px">No standing expenses.</div>';
   const events=recentCashEvents(12);
   const evHTML=events.length?events.map(e=>`<div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;padding:2px 0">
-      <span class="dim" style="flex:0 0 auto">${e.when}</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${tlAttr(e.msg)}">${e.msg}</span>
+      <span class="dim" style="flex:0 0 auto">${e.when}</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${e.msg}">${e.msg}</span>
       <span style="flex:0 0 auto;color:${e.amount>=0?'var(--ok)':'var(--bad)'}">${e.amount>=0?'+':'−'}${fM(Math.abs(e.amount))}</span>
     </div>`).join('') : '<div class="dim" style="font-size:12px">No recent transactions logged.</div>';
   const hist=state.metricHist||defaultMetricHist();
@@ -633,7 +633,7 @@ function showFinancesModal(){
   const horizonHTML=proj.horizon.map(h=>`<div class="metric"><div class="k">${h.label}</div><div class="v" style="color:${h.amount!=null?(h.amount>=0?'var(--ok)':'var(--bad)'):'var(--warn)'}">${h.amount!=null?fM(h.amount):h.text}</div></div>`).join('');
   const upcomingHTML=proj.upcoming.length?proj.upcoming.map(u=>`<div class="dim" style="font-size:12px;padding:2px 0">• ${u}</div>`).join('') : '<div class="dim" style="font-size:12px">Nothing specific on the horizon — just the recurring flow above.</div>';
   showModal(`<h2 style="margin-bottom:2px">💰 Finances</h2>
-    <p class="muted" style="font-size:12px;margin:0 0 10px">${state.company} — current standing, recent activity, and where the treasury is headed.</p>
+    <p class="muted" style="font-size:12px;margin:0 0 10px">${esc(state.company)} — current standing, recent activity, and where the treasury is headed.</p>
     <div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:12px">
       <div style="flex:1;min-width:220px"><div class="cc-panel-h" style="margin:0 0 4px">Revenue — ${fM(b.revenue)}/mo</div>${revHTML}</div>
       <div style="flex:1;min-width:220px"><div class="cc-panel-h" style="margin:0 0 4px">Expenses — ${fM(b.expenses)}/mo</div>${expHTML}</div>
@@ -1460,7 +1460,7 @@ function renderExecOverview(){
   $('execOverview').innerHTML=`
     <div class="cc-hero">
       <div>
-        <h2 style="margin:0 0 2px">${state.company}</h2>
+        <h2 style="margin:0 0 2px">${esc(state.company)}</h2>
         <div class="muted" style="font-size:12px">${dateStr()} · Era ${s.eraIdx}/${s.eraTotal} · ${s.era}</div>
       </div>
       <div class="cc-net" style="text-align:right">
@@ -1487,7 +1487,7 @@ function renderExecOverview(){
     <div style="display:flex;gap:22px;flex-wrap:wrap;margin-top:10px;font-size:12px;border-top:1px solid var(--line);padding-top:8px">
       <div><span class="dim">Active R&amp;D:</span> ${ar?`<b>${ar.name}</b> <span class="dim">(${fmtTimeLeft(ar.monthsLeft)} left)</span>`:'<span class="dim">none — start a project</span>'}</div>
       <div><span class="dim">Gov funding:</span> <b style="color:${s.govFunding>0?'var(--ok)':'var(--dim)'}">+${fM(s.govFunding)}/mo</b></div>
-      <div><span class="dim">Current vehicle:</span> <b>${vehName}</b></div>
+      <div><span class="dim">Current vehicle:</span> <b>${esc(vehName)}</b></div>
       ${staffEffectsHTML()}
     </div>`;
 }
@@ -1668,7 +1668,7 @@ function renderCCRight(){
   // Alerts box removed from the right rail per request — agencyAlerts() still drives advisor/log signals.
   const o=ccOpsSummary();
   const news=ccNews(7);
-  const nRows=news.map(l=>`<div class="news-line"><span class="dim">${l.when}</span> <span class="${l.kind}">${l.msg.replace(/<[^>]*>/g,'')}</span></div>`).join('') || '<div class="dim" style="font-size:12px">No news yet.</div>';
+  const nRows=news.map(l=>`<div class="news-line"><span class="dim">${l.when}</span> <span class="${l.kind}">${tlStrip(l.msg)}</span></div>`).join('') || '<div class="dim" style="font-size:12px">No news yet.</div>';
   // slice 6: rivals mini-leaderboard (top threats) + deep-view modal — the Rivals tab's hub home
   const rivalMini=RIVALS.map(r=>({r,score:(state.rivalThreat&&state.rivalThreat[r.id])||0}))
     .sort((a,b)=>b.score-a.score).slice(0,3)
@@ -2179,7 +2179,7 @@ function renderWindowPlanner(){
    is pure so it can be exercised headlessly. */
 let plannerShowMissions=false;
 function plannerChoose(){ plannerShowMissions=true; render(); }
-function plannerSetMission(id){ const m=MISSIONS.find(x=>x.id===id); if(!m||!missionFlyable(m)) return; state.activeMission=id; plannerShowMissions=false; render(); }
+function plannerSetMission(id){ const m=missionById(id); if(!m||!missionFlyable(m)) return; state.activeMission=id; plannerShowMissions=false; render(); }
 function plannerSteps(){
   const m=curMission();
   if(!m) return [{key:'mission',n:1,title:'Choose a mission',done:false,detail:'Pick your objective to begin.',focus:'mission',actLabel:'Choose'}];
@@ -2244,7 +2244,7 @@ function vehicleCompareHTML(){
   const ids=opts.map(o=>o.id);
   let a=ids.includes(cmpA)?cmpA:opts[0].id;
   let b=ids.includes(cmpB)?cmpB:(opts.find(o=>o.id!==a)||opts[0]).id;
-  const sel=(side,cur)=>`<select onchange="setCompare('${side}',this.value)" style="width:100%;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:5px;padding:4px 6px;font-size:12px">${opts.map(o=>`<option value="${o.id}" ${o.id===cur?'selected':''}>${o.name}</option>`).join('')}</select>`;
+  const sel=(side,cur)=>`<select onchange="setCompare('${side}',this.value)" style="width:100%;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:5px;padding:4px 6px;font-size:12px">${opts.map(o=>`<option value="${o.id}" ${o.id===cur?'selected':''}>${esc(o.name)}</option>`).join('')}</select>`;
   const A=compareMetrics(a), B=compareMetrics(b);
   if(!A||!B) return '';
   const row=(label,av,bv,fmt,better)=>{
@@ -2283,8 +2283,8 @@ function renderVehicleFamilies(){
     const parent=active.parentId?familyById(active.parentId):null;
     activeHtml=`<div class="card" style="background:var(--panel2);border-color:var(--ignite);margin-bottom:10px">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-        <div class="mission-name" style="margin:0;font-size:15px"><span style="color:var(--ignite)">▲ ${active.name}</span> <span class="pill active">flying</span></div>
-        <div class="dim" style="font-size:12px">since ${active.born}${parent?` · from ${parent.name}`:''}</div>
+        <div class="mission-name" style="margin:0;font-size:15px"><span style="color:var(--ignite)">▲ ${esc(active.name)}</span> <span class="pill active">flying</span></div>
+        <div class="dim" style="font-size:12px">since ${active.born}${parent?` · from ${esc(parent.name)}`:''}</div>
       </div>
       <div class="metrics" style="margin:8px 0 0">
         <div class="metric"><div class="k">Flights</div><div class="v">${active.flights||0}${sr!=null?` · ${sr}%`:''}</div></div>
@@ -2302,7 +2302,7 @@ function renderVehicleFamilies(){
     const sr=familySuccessRate(f);
     return `<div class="item" style="margin-top:8px">
       <div class="body">
-        <div class="title" style="font-size:13px">${f.name} ${f.parentId&&familyById(f.parentId)?`<span class="pill">↳ ${familyById(f.parentId).name}</span>`:''}</div>
+        <div class="title" style="font-size:13px">${esc(f.name)} ${f.parentId&&familyById(f.parentId)?`<span class="pill">↳ ${esc(familyById(f.parentId).name)}</span>`:''}</div>
         <div class="sub">${f.flights||0} flights${sr!=null?` · ${sr}% success`:''}${f.losses?` · ${f.losses} lost`:''} · +${(familyRelBonus(f)*100).toFixed(1)}% rel</div>
       </div>
       <div style="display:flex;flex-direction:column;gap:4px">
@@ -2313,7 +2313,7 @@ function renderVehicleFamilies(){
   }).join(''):'';
   card.innerHTML=`<h2>Vehicle Family</h2>
     ${activeHtml}
-    <button class="btn" style="width:100%" onclick="saveAsFamily()">+ Register current design${active?` as a new family (derives from ${active.name})`:' as a family'}</button>
+    <button class="btn" style="width:100%" onclick="saveAsFamily()">+ Register current design${active?` as a new family (derives from ${esc(active.name)})`:' as a family'}</button>
     ${list}
     ${vehicleCompareHTML()}`;
 }
@@ -2405,7 +2405,7 @@ function renderVehiclePreview(){
   const eng=state.stages.reduce((a,s)=>a+s.count,0);
   const el=$('vehicleLabel');
   const nm=(curLivery().name||'').trim();
-  if(el) el.innerHTML=`${nm?`<div style="font-weight:600;color:var(--ink);font-size:13px;margin-bottom:2px">${nm}</div>`:''}${state.stages.length} stage${state.stages.length>1?'s':''} · ${eng} engine${eng>1?'s':''}${boostersFitted()?` · ${state.boosters.count} booster${state.boosters.count>1?'s':''}`:''}${spec.transferProp>0?' · transfer stage':''} · ${spec.crewed?'crew capsule':'payload fairing'}`;
+  if(el) el.innerHTML=`${nm?`<div style="font-weight:600;color:var(--ink);font-size:13px;margin-bottom:2px">${esc(nm)}</div>`:''}${state.stages.length} stage${state.stages.length>1?'s':''} · ${eng} engine${eng>1?'s':''}${boostersFitted()?` · ${state.boosters.count} booster${state.boosters.count>1?'s':''}`:''}${spec.transferProp>0?' · transfer stage':''} · ${spec.crewed?'crew capsule':'payload fairing'}`;
   // Slice 2: prefer the Phaser-hosted preview scene; fall back to the plain 2D canvas.
   if(phaserOK() && startVehPreview(spec)) return;
   const cv=$('vehiclePreview'); if(!cv || !cv.getContext) return;
@@ -3052,7 +3052,7 @@ let ccPopoutOpen=false, ccPopAnim=null, ccPopT0=0, ccPop={z:1,x:0,y:0}, ccPopFra
 function ccPopInfoHTML(){
   let s; try{ s=commandSummary(); }catch(e){ return ''; }
   const row=(l,v,c)=>`<div class="vps-row"><span class="lbl">${l}</span><span class="val"${c?` style="color:${c}"`:''}>${v}</span></div>`;
-  return `<h4>${state.company}</h4>
+  return `<h4>${esc(state.company)}</h4>
     <div class="dim" style="font-size:12px;margin-bottom:6px">${dateStr()} · Era ${s.eraIdx}/${s.eraTotal} · ${s.era}</div>
     <h4>Finance</h4>
     ${row('Capital', fM(s.capital))}
@@ -3581,6 +3581,7 @@ function renderPersonnelCard(p, sr){
       ${isEng?`Reliability contribution: <span style="color:var(--ok)">+${engBonusStr}</span> (factors into team average)`:''}
       ${isAstro&&assigned&&ab?`<span style="color:var(--ok)">Crewed rel +${(ab.rel*100).toFixed(1)}% · Payout x${ab.payoutMult.toFixed(2)}</span>`:''}
       ${isAstro&&!assigned?`<span class="dim">Not assigned to crewed missions</span>`:''}
+      ${isAstro&&astronautFlights(p.id).length?` · <span class="dim">${astronautFlights(p.id).length} flight${astronautFlights(p.id).length===1?'':'s'} flown</span>`:''}
       ${roleOf(p.id)==='sci'?`<span style="color:var(--ok)">Science division: yield +${(sciStaffYieldBonus()*100)|0}% · R&D +${(sciStaffRdBonus()*100)|0}%</span>`:''}
       ${roleOf(p.id)==='exec'?`<span style="color:var(--ok)">Front office: funding +${(execGovBonus()*100)|0}% · opex −${(execOpexCut()*100)|0}% · mandate +${(execMandateBonus()*100)|0}%</span>`:''}
       ${roleOf(p.id)==='controller'?`<span style="color:var(--ok)">Mission control: anomaly −${(ctrlAnomScore()*CTRL_ANOMALY_CUT_MAX*100)|0}% · call +${(ctrlCallScore()*CTRL_CALL_BONUS_MAX*100)|0}% · rescue +${(ctrlRescueScore()*CTRL_RESCUE_BONUS_MAX*100)|0}%</span>`:''}
@@ -3599,6 +3600,8 @@ function renderPersonnelCard(p, sr){
   </div>`;
 }
 
+const ASTRO_OUTCOME_LABEL={success:'✓ Success', partial:'◐ Partial', abort:'✗ Aborted', loss:'☠ Lost', strand:'☠ Lost', rescued:'⚑ Rescued', scrub:'⊘ Scrubbed'};
+const ASTRO_OUTCOME_COLOR={success:'var(--ok)', partial:'var(--warn)', abort:'var(--bad)', loss:'var(--bad)', strand:'var(--bad)', rescued:'var(--warn)', scrub:'var(--dim)'};
 function renderPersonnel(){
   const box=$('personnelCard');
   const hired=state.staff.map(sr=>({p:personById(sr.id),sr})).filter(x=>x.p);
@@ -3680,6 +3683,40 @@ function renderPersonnel(){
     }).join('');
   } else if(!hired.length){
     html+=`<p class="dim" style="font-size:12px;margin-top:8px">No personnel available yet — build reputation and advance through eras to unlock the talent pool.</p>`;
+  }
+
+  const rosterIds=Object.keys(state.astronautLog||{}).sort((a,b)=>astronautFlights(b).length-astronautFlights(a).length);
+  if(rosterIds.length){
+    const lostIds=new Set(memorialRoll().map(f=>f.id));
+    html+=`<div class="card" style="margin-top:12px">
+      <h2>🚀 Astronaut Roster</h2>
+      <p class="muted" style="font-size:12px;margin:-2px 0 8px">Every astronaut who has flown for this agency, most-flown first.</p>
+      ${rosterIds.map(id=>{
+        const p=personById(id); if(!p) return '';
+        const flights=astronautFlights(id);
+        const status=lostIds.has(id)?`<span style="color:var(--bad)">🕊 Lost</span>`:state.staff.some(s=>s.id===id)?`<span style="color:var(--ok)">Active</span>`:`<span class="dim">Off roster</span>`;
+        return `<div style="padding:8px 0;border-top:1px solid var(--line);display:flex;gap:10px">
+          ${personPortrait(p,40)}
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px"><b>${esc(p.name)}</b> ${status} <span class="pill" style="margin-left:4px" title="${esc(traitOf(id).desc)}">${esc(traitOf(id).name)}</span></div>
+            <div class="dim" style="font-size:12px;margin:2px 0 4px">${flights.length} flight${flights.length===1?'':'s'} flown</div>
+            ${flights.map(f=>`<div style="font-size:12px"><span class="dim">${f.when}</span> ${esc(f.mission)} <span style="color:${ASTRO_OUTCOME_COLOR[f.outcome]||'var(--dim)'}">${ASTRO_OUTCOME_LABEL[f.outcome]||f.outcome}</span></div>`).join('')}
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }
+
+  const fallen=memorialRoll();
+  if(fallen.length){
+    html+=`<div class="card" style="margin-top:12px;background:var(--panel2);border-color:#5a2f2f">
+      <h2 style="margin-bottom:2px">🕊 Memorial Wall</h2>
+      <p class="muted" style="font-size:12px;margin:-2px 0 8px">Every astronaut lost flying for this agency.</p>
+      ${fallen.map(f=>`<div style="padding:6px 0;border-top:1px solid var(--line)">
+        <div style="font-size:13px;color:var(--ink)"><b>${esc(f.name)}</b> <span class="dim">— ${f.when}</span></div>
+        <div class="dim" style="font-size:12px">${esc(f.mission)}${f.story?`: ${esc(f.story)}`:''}</div>
+      </div>`).join('')}
+    </div>`;
   }
 
   box.innerHTML=html;
@@ -4354,7 +4391,7 @@ function mapAssetModel(){
 }
 // Planned route for the ACTIVE mission (committed or not): where it goes and whether it closes.
 function plannedRoute(){
-  const m=MISSIONS.find(x=>x.id===state.activeMission); if(!m) return null;
+  const m=missionById(state.activeMission); if(!m) return null;
   const destId=missionBody(m.id); if(!destId||destId==='earth') return null;
   let ok=true, short=0;
   try{
@@ -4933,6 +4970,25 @@ function renderSpecialBanner(){
     </div>
   </div>`;
 }
+// E1.3: procedural filler contracts — a small rotating board of era + capability-gated offers,
+// same mount pattern as renderSpecialBanner but for 0-CONTRACT_OFFER_CAP live offers at once.
+function renderContractOffers(){
+  const offers=state.contractOffers||[]; if(!offers.length) return '';
+  return offers.map(o=>{
+    const left=o.expiresAbs-absMonth();
+    return `<div class="card" style="border-color:var(--readout);margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
+        <b style="color:var(--readout);font-size:13px">📋 ${esc(o.name)}</b>
+        <span style="font-family:var(--mono);font-size:12px;color:${left<=2?'var(--warn)':'var(--muted)'}">${left} mo left</span>
+      </div>
+      <p class="muted" style="font-size:12px;margin:4px 0">${esc(o.blurb)}</p>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span style="font-family:var(--mono);font-size:13px;color:var(--ok)">+${fM(o.payout)}, +${o.rep} rep</span>
+        <button class="btn" style="font-size:12px" onclick="selectMission('${o.id}');setTab('bench')">Fly ▸</button>
+      </div>
+    </div>`;
+  }).join('');
+}
 function renderPassiveContracts(){
   const box=$('passiveCard'); if(!box) return;
   const totMo=passiveMonthlyIncome();
@@ -4977,6 +5033,7 @@ function renderPassiveContracts(){
 
 function renderMissions(){
   { const el=$('specialBannerMount'); if(el) el.innerHTML=renderSpecialBanner(); }
+  { const el=$('contractOffersMount'); if(el) el.innerHTML=renderContractOffers(); }
   renderPassiveContracts();
   const box=$('missionList'); box.innerHTML='';
   MISSIONS.forEach(m=>{
@@ -5438,8 +5495,9 @@ function renderPartnerships(){
     <p class="muted" style="font-size:12px;margin:-4px 0 10px">Partner with outside institutions to accelerate a research <b>track</b> — a setup fee plus ongoing upkeep buys a standing R&amp;D-speed boost on their tracks (stacks with engineers + divisions, capped at +${Math.round(PARTNER_SPEED_CAP*100)}%). Hold up to <b>${PARTNERSHIP_CAP}</b> at once: back the fronts your program needs now, and dissolve them when the work is done.</p>
     ${cards}`;
 }
-function tlStrip(s){ return (s||'').replace(/<[^>]*>/g,''); }
-function tlAttr(s){ return tlStrip(s).replace(/"/g,'&quot;'); }
+function tlStripPlain(s){ return (s||'').replace(/<[^>]*>/g,''); }
+function tlStrip(s){ return esc(tlStripPlain(s)); }
+function tlAttr(s){ return tlStrip(s); }
 // Forward-looking items derived from state (not stored in state.log): active R&D, in-progress
 // builds, and a committed launch window. These ride at the front of the timeline as "UPCOMING".
 function upcomingEvents(){
@@ -5466,7 +5524,7 @@ const TL_CATEGORIES=[
 ];
 function logCategory(e){
   if(e.kind==='rival') return 'rivals';
-  const s=tlStrip(e.msg);
+  const s=tlStripPlain(e.msg);
   if(/R&D (complete|started|rush|SETBACK)|BREAKTHROUGH|breakthrough|Applied .* science to|Inquiry into|inquiry reliability credit/i.test(s)) return 'research';
   if(/\bhired\b|\bcommended\b|training invested|promoted to head of|quit due to low morale|\bpoached\b|Raise (given|invested)|angling for a raise|let go\. Monthly burn|radiation limit|absorbed .* radiation|is on a mission — they can be assigned|costly mistake.*morale|Astronaut .*(lost|retired)/i.test(s)) return 'crew';
   if(/yard — (manufacturing|fabricating)|expanded to (level|\d+ modules)|resupplied|resupply (shipment|delayed|expedited)|auto-resupply|: \w.* docked|established — your first permanent presence|abandoned — the outpost|evacuated and mothballed|power-starved|Standing production|Blueprint: all ports/i.test(s)) return 'infra';
@@ -5477,7 +5535,7 @@ function logCategory(e){
 // Where clicking a past log entry should jump: explicit entry.nav wins, else infer from the text.
 function logNav(e){
   if(e.nav) return e.nav;
-  const s=tlStrip(e.msg);
+  const s=tlStripPlain(e.msg);
   if(/R&D|research|breakthrough|σ|Isp|thrust/i.test(s)) return 'rnd';
   if(e.kind==='rival') return 'command';
   if(/SUCCESS|FAILURE|LOST|RESCUED|CATASTROPHE|reached|achieved|delivered|rolled out|crew/i.test(s)) return 'command';
