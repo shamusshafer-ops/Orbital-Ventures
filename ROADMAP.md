@@ -2758,6 +2758,26 @@ Center code). Deferred/next: atmosphere-realism pass (sky/lighting/time-of-day) 
 direction but not yet greenlit; extending era-tied variety to roads/vehicles/gantry-beam geometry if
 wanted later.
 
+## Session — Command Center scene: atmosphere/realism, slice 2 (2026-07-11)
+
+**Implemented, tests passing, not yet committed/pushed.** Fast-follow to the era-tied variety pass —
+the Command Center's sky was a permanently fixed dusk gradient with a sun stuck at a fixed high-right
+position regardless of how long the scene had been open. New ambient day/night cycle: `SKY_KEYFRAMES` +
+`skyAtmosphere(t)` (render.js), a pure function of the scene's own elapsed-seconds clock `t` (same idiom
+as the existing blink-light/idle animations — no new persisted game state). Cycles dawn → day → dusk →
+night → dawn over `SKY_CYCLE_SEC` (240s/4min) real time: sky gradient color, sun position/color/opacity,
+and star visibility all interpolate smoothly between keyframes. The dusk keyframe (p=0.50) is an EXACT
+reproduction of the scene's original fixed values, so a mid-cycle glance looks identical to before this
+pass — the cycle just breathes around that anchor, zero regression risk at that point. Scoped to sky/sun/
+stars only; ground/water/terrain colors deliberately left fixed (isometric strategy scenes commonly keep
+ground readable/consistent regardless of time-of-day — a deliberate boundary, not an oversight). New
+`test-cc-atmosphere.js` (14/14): exact-dusk-match anchor, clean cycle wrap (incl. negative-t safety), day
+brightness/starlessness vs night darkness/starriness, smooth (non-cut) interpolation, and an end-to-end
+`drawCape` smoke test across the full cycle using the harness's `makeCanvasStub`. Suite: 818/830 (same
+pre-existing unrelated `test-progress-unify.js` failure, confirmed isolated in the prior slice's entry).
+This closes out both proposed Command Center directions (era-tied variety + atmosphere/realism) from the
+2026-07-11 "increase realism and variety" ask.
+
 ## Planned — External evaluation intake (2026-07-10)
 
 **Full backlog:** all 105 feature ideas from the evaluation, individually mapped to a

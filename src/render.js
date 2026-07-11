@@ -1234,14 +1234,41 @@ function isoGrowthItems(ctx,t,L){
       ctx.fillStyle=o[1]; ctx.font='8px ui-monospace,monospace'; ctx.textAlign='center'; ctx.fillText(o[0], sx, sy+14); ctx.textAlign='left'; }}); });
   return items;
 }
+// Ambient day/night cycle for the Command Center scene (2026-07-11, "atmosphere/realism" follow-up to
+// the era-tied variety pass). Purely a function of the scene's own elapsed-seconds clock `t`, same idiom
+// as the existing blink-light/idle animations — no new game state. The p=0.50 (dusk) keyframe is an
+// EXACT reproduction of the scene's original fixed sky/sun values, so a mid-cycle glance looks identical
+// to before this pass; the cycle just breathes around that anchor.
+const SKY_CYCLE_SEC=240; // one full day/night lap, real seconds
+const SKY_KEYFRAMES=[
+  {p:0.00, top:'10,20,40',  mid:'90,55,70',  bot:'201,122,74', sunX:0.15, sunY:0.55, sunA:0.5, sunC:'255,190,120', starMul:0.3}, // dawn
+  {p:0.25, top:'58,106,154',mid:'106,160,192',bot:'168,207,224',sunX:0.55, sunY:0.07, sunA:1.0, sunC:'255,217,160', starMul:0},   // day
+  {p:0.50, top:'10,20,40',  mid:'29,52,80',  bot:'58,85,112',  sunX:0.92, sunY:0.07, sunA:1.0, sunC:'255,217,160', starMul:1.0}, // dusk (== original)
+  {p:0.75, top:'3,6,14',    mid:'6,10,22',   bot:'12,18,34',   sunX:0.50, sunY:0.90, sunA:0.0, sunC:'255,217,160', starMul:1.1}, // night
+  {p:1.00, top:'10,20,40',  mid:'90,55,70',  bot:'201,122,74', sunX:0.15, sunY:0.55, sunA:0.5, sunC:'255,190,120', starMul:0.3}, // wrap to dawn
+];
+function lerpRGB(a,b,f){ const pa=a.split(',').map(Number), pb=b.split(',').map(Number); return pa.map((v,i)=>Math.round(v+(pb[i]-v)*f)).join(','); }
+function skyAtmosphere(t){
+  const cyc=((t%SKY_CYCLE_SEC)+SKY_CYCLE_SEC)%SKY_CYCLE_SEC/SKY_CYCLE_SEC; // 0..1, safe for negative t
+  let a=SKY_KEYFRAMES[0], b=SKY_KEYFRAMES[1];
+  for(let i=0;i<SKY_KEYFRAMES.length-1;i++){ if(cyc>=SKY_KEYFRAMES[i].p && cyc<=SKY_KEYFRAMES[i+1].p){ a=SKY_KEYFRAMES[i]; b=SKY_KEYFRAMES[i+1]; break; } }
+  const span=b.p-a.p, f=span>0?(cyc-a.p)/span:0;
+  return { top:lerpRGB(a.top,b.top,f), mid:lerpRGB(a.mid,b.mid,f), bot:lerpRGB(a.bot,b.bot,f),
+    sunX:a.sunX+(b.sunX-a.sunX)*f, sunY:a.sunY+(b.sunY-a.sunY)*f, sunA:a.sunA+(b.sunA-a.sunA)*f,
+    sunC:lerpRGB(a.sunC,b.sunC,f), starMul:a.starMul+(b.starMul-a.starMul)*f };
+}
 function drawCape(cv, t){
   const ctx=cv && cv.getContext && cv.getContext('2d'); if(!ctx) return;
   const W=cv.width, H=cv.height;
-  const sky=ctx.createLinearGradient(0,0,0,H*0.7); sky.addColorStop(0,'#0a1428'); sky.addColorStop(0.5,'#1d3450'); sky.addColorStop(1,'#3a5570');
+  const atmo=skyAtmosphere(t);
+  const sky=ctx.createLinearGradient(0,0,0,H*0.7); sky.addColorStop(0,`rgb(${atmo.top})`); sky.addColorStop(0.5,`rgb(${atmo.mid})`); sky.addColorStop(1,`rgb(${atmo.bot})`);
   ctx.fillStyle=sky; ctx.fillRect(0,0,W,H);
-  for(let i=0;i<70;i++){ const sx=(i*137.5)%W, sy=(i*61.7)%(H*0.4); const tw=Math.abs(Math.sin(t*1.3+i)); ctx.fillStyle=`rgba(220,230,255,${0.1+0.22*tw})`; ctx.fillRect(sx,sy,1.2,1.2); }
-  const sunX=W*0.92, sunY=H*0.07; const sg=ctx.createRadialGradient(sunX,sunY,2,sunX,sunY,70); sg.addColorStop(0,'rgba(255,230,180,0.7)'); sg.addColorStop(0.4,'rgba(255,180,90,0.32)'); sg.addColorStop(1,'rgba(255,150,60,0)'); ctx.fillStyle=sg; ctx.beginPath(); ctx.arc(sunX,sunY,70,0,7); ctx.fill();
-  ctx.fillStyle='#ffd9a0'; ctx.beginPath(); ctx.arc(sunX,sunY,12,0,7); ctx.fill();
+  if(atmo.starMul>0.01){ for(let i=0;i<70;i++){ const sx=(i*137.5)%W, sy=(i*61.7)%(H*0.4); const tw=Math.abs(Math.sin(t*1.3+i)); ctx.fillStyle=`rgba(220,230,255,${(0.1+0.22*tw)*atmo.starMul})`; ctx.fillRect(sx,sy,1.2,1.2); } }
+  if(atmo.sunA>0.02){
+    const sunX=W*atmo.sunX, sunY=H*atmo.sunY;
+    const sg=ctx.createRadialGradient(sunX,sunY,2,sunX,sunY,70); sg.addColorStop(0,`rgba(${atmo.sunC},${0.7*atmo.sunA})`); sg.addColorStop(0.4,`rgba(${atmo.sunC},${0.32*atmo.sunA})`); sg.addColorStop(1,`rgba(${atmo.sunC},0)`); ctx.fillStyle=sg; ctx.beginPath(); ctx.arc(sunX,sunY,70,0,7); ctx.fill();
+    ctx.fillStyle=`rgba(${atmo.sunC},${atmo.sunA})`; ctx.beginPath(); ctx.arc(sunX,sunY,12,0,7); ctx.fill();
+  }
   drawIsoClouds(ctx,W,H,t);
   drawIsoGround(ctx,W,H,t);
   const L=isoLayout();
