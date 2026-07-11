@@ -2749,7 +2749,7 @@ function resumeVehGame(){ if(vehGame){ try{ vehGame.scene.wake('vehprev'); }catc
    every layer, with grab-to-pan + wheel-to-zoom for a big look at the design. The rocket is
    redrawn vector-crisp at any zoom (canvas transform, not a stretched bitmap). Enter/Esc closes
    it and returns the button to its place on the bench card. */
-let vehPopoutOpen=false, vpZoom=1, vpPanX=0, vpPanY=0, _vpLaunchHome=null;
+let vehPopoutOpen=false, vpZoom=1, vpPanX=0, vpPanY=0, _vpLaunchHome=null, _vpEditorHome=null, _vpReadoutHome=null;
 function drawVehPopout(){
   const stage=$('vehPopStage'), cv=$('vehPopCanvas'); if(!stage||!cv) return;
   const w=stage.clientWidth, h=stage.clientHeight; if(w<2||h<2) return;
@@ -2761,44 +2761,13 @@ function drawVehPopout(){
   try{ drawVehiclePreviewTo(ctx, w, h, spec); }catch(e){}
   ctx.restore();
 }
-// The vehicle's characteristics for the pop-out's right rail — reuses computeVehicle()/curMission()
-// so the numbers match the bench readout exactly (TWR, Δv, reliability, mass, costs, per-stage).
-function vehPopStatsHTML(){
-  let m,v; try{ m=curMission(); v=computeVehicle(); }catch(e){ v=null; }
-  if(!v) return '<div class="dim" style="font-size:12px">Select a mission and a vehicle to see its characteristics.</div>';
-  const row=(lbl,val,col)=>`<div class="vps-row"><span class="lbl">${lbl}</span><span class="val"${col?` style="color:${col}"`:''}>${val}</span></div>`;
-  const twrCol=v.twr>1.2?'var(--ink)':(v.twr>1?'var(--warn)':'var(--bad)');
-  const reqTxt=(m&&m.reqDv)?` <span class="dim" style="font-weight:400">/ req ${fI(m.reqDv)}</span>`:'';
-  const dvCol=(m&&m.reqDv)?(v.totalDv>=m.reqDv?'var(--ok)':'var(--warn)'):'var(--ink)';
-  const gravCol=v.gravLoss>800?'var(--bad)':(v.gravLoss>200?'var(--warn)':null);
-  let stageRows='';
-  for(let i=0;i<state.stages.length;i++){
-    const sd=(v.stageDv&&v.stageDv[i]!=null)?fI(v.stageDv[i]):'—';
-    const st=(v.stageTwr&&v.stageTwr[i]!=null)?v.stageTwr[i].toFixed(2):'—';
-    stageRows+=row(`Stage ${i+1}`, `${sd} m/s · TWR ${st}`);
-  }
-  const buildT=m?(buildMonths(m)+1+TEST_LEVELS[state.testLevel].months):null;
-  return `<h4>Performance</h4>
-    ${row('Δv total', `${fI(v.totalDv)} m/s${reqTxt}`, dvCol)}
-    ${row('Liftoff TWR', v.twr.toFixed(2), twrCol)}
-    ${row('Gravity loss', v.gravLoss>1?`−${fI(v.gravLoss)} m/s`:'—', gravCol)}
-    ${row('Reliability', `${(v.reliability*100|0)}%`)}
-    <h4>Mass</h4>
-    ${row('Liftoff mass', `${v.liftoff.toFixed(1)} t`)}
-    ${row('Dry mass', `${v.dryTotal.toFixed(1)} t`)}
-    ${row('Propellant', `${v.totalProp.toFixed(1)} t`)}
-    ${row('Payload', v.payload>=1?`${v.payload.toFixed(2)} t`:`${(v.payload*1000).toFixed(0)} kg`)}
-    <h4>Configuration</h4>
-    ${row('Stages', state.stages.length)}
-    ${row('Engines', v.totalEng)}
-    ${(boostersFitted()&&v.boosters)?row('Boosters', `${v.boosters.count}×${v.boosters.eng.solid?' solid':''} ${v.boosters.eng.name||''}`.trim()):''}
-    ${v.crewed?row('Crew', (m&&m.crew)||0):''}
-    ${stageRows?`<h4>Per stage</h4>${stageRows}`:''}
-    <h4>Economics</h4>
-    ${row('Build cost', fM(v.buildCost))}
-    ${row('Launch cost', fM(v.launchCost))}
-    ${buildT!=null?row('Build time', `${buildT} mo`):''}`;
-}
+// User-directed pop-out sizing pass (2026-07-11): every pop-out's default view now fills ~10% more of
+// the screen than before. Each pop-out's zoom transform is anchored at its content box's top-left (CSS
+// transform-origin, or the canvas-translate order for the canvas-drawn ones) — a naive z>1 default would
+// visually drift the content toward the bottom-right corner, so callers pair this with a compensating
+// pan offset that keeps the (now-larger) content centered in the same box it used to exactly fill at z=1.
+const POPOUT_ZOOM_BOOST=1.1;
+function centeredZoomOffset(w,h,z){ return {x:-w*(z-1)/2, y:-h*(z-1)/2}; }
 // Shared pop-out fade: every overlay fades in on open and out on close (150ms, matching scene transitions).
 function fadeInScrim(ov){ if(!ov) return; ov.style.opacity='0'; requestAnimationFrame(()=>{ if(ov) ov.style.opacity='1'; }); }
 function removeScrim(id){ const ov=$(id); if(!ov||!ov.parentNode) return; ov.id=''; ov.style.opacity='0'; setTimeout(()=>{ if(ov.parentNode) ov.parentNode.removeChild(ov); },170); }
@@ -2811,7 +2780,7 @@ function closeOtherPopouts(keep){
   if(keep!=='cc' && ccPopoutOpen) closeCCPopout();
 }
 function openVehPopout(){
-  if(vehPopoutOpen) return; vehPopoutOpen=true; closeOtherPopouts('veh'); vpZoom=1; vpPanX=0; vpPanY=0;
+  if(vehPopoutOpen) return; vehPopoutOpen=true; closeOtherPopouts('veh'); vpZoom=POPOUT_ZOOM_BOOST; vpPanX=0; vpPanY=0;
   let title='Vehicle'; try{ title=(curLivery().name||'').trim() || (curMission()?curMission().name:'Vehicle'); }catch(e){}
   const ov=document.createElement('div'); ov.className='vehpop-scrim'; ov.id='vehPopout';
   ov.innerHTML=`<div class="vehpop-bar">
@@ -2822,13 +2791,22 @@ function openVehPopout(){
     </div>
     <div class="vehpop-body">
       <div class="vehpop-stage" id="vehPopStage"><canvas id="vehPopCanvas"></canvas></div>
-      <aside class="vehpop-stats" id="vehPopStats"></aside>
+      <aside class="vehpop-stats wide" id="vehPopStats"></aside>
     </div>`;
   document.body.appendChild(ov); fadeInScrim(ov);
   // move the LIVE Build/Launch node into the bar, remembering its home so we can restore it exactly
   const host=$('benchLaunch');
   if(host){ _vpLaunchHome={parent:host.parentNode, next:host.nextSibling}; $('vehPopLaunchHost').appendChild(host); }
-  const sp=$('vehPopStats'); if(sp) sp.innerHTML=vehPopStatsHTML(); // characteristics on the right
+  // User-directed (2026-07-11): the pop-out hosts the FULL live Design Bench editor, not a read-only
+  // stats summary — move the real readout card + the real editor-tabs subtree in (same ids/handlers,
+  // render() keeps populating them wherever they live), remembering homes to restore on close.
+  const sp=$('vehPopStats');
+  if(sp){
+    sp.innerHTML='';
+    const rc=$('readoutCard'); if(rc){ _vpReadoutHome={parent:rc.parentNode, next:rc.nextSibling}; sp.appendChild(rc); }
+    const divider=document.createElement('h4'); divider.textContent='Full Vehicle Editor'; divider.style.marginTop='18px'; sp.appendChild(divider);
+    const ep=$('benchEditorPanel'); if(ep){ _vpEditorHome={parent:ep.parentNode, next:ep.nextSibling}; sp.appendChild(ep); }
+  }
   initVehPopZoom();
   drawVehPopout();
   window.addEventListener('resize', drawVehPopout);
@@ -2839,6 +2817,12 @@ function closeVehPopout(){
   const host=$('benchLaunch');
   if(host && _vpLaunchHome && _vpLaunchHome.parent){ _vpLaunchHome.parent.insertBefore(host, _vpLaunchHome.next); } // back to its bench spot
   _vpLaunchHome=null;
+  const rc=$('readoutCard');
+  if(rc && _vpReadoutHome && _vpReadoutHome.parent){ _vpReadoutHome.parent.insertBefore(rc, _vpReadoutHome.next); }
+  _vpReadoutHome=null;
+  const ep=$('benchEditorPanel');
+  if(ep && _vpEditorHome && _vpEditorHome.parent){ _vpEditorHome.parent.insertBefore(ep, _vpEditorHome.next); }
+  _vpEditorHome=null;
   removeScrim('vehPopout');
 }
 function initVehPopZoom(){
@@ -2851,7 +2835,9 @@ function initVehPopZoom(){
   stage.addEventListener('pointermove',e=>{ if(!drag) return; vpPanX+=e.clientX-lx; vpPanY+=e.clientY-ly; lx=e.clientX; ly=e.clientY; drawVehPopout(); });
   const end=()=>{ drag=false; stage.classList.remove('grabbing'); };
   stage.addEventListener('pointerup',end); stage.addEventListener('pointercancel',end);
-  stage.addEventListener('dblclick',()=>{ vpZoom=1; vpPanX=0; vpPanY=0; drawVehPopout(); });
+  const resetCentered=()=>{ vpZoom=POPOUT_ZOOM_BOOST; const r=stage.getBoundingClientRect(), off=centeredZoomOffset(r.width,r.height,vpZoom); vpPanX=off.x; vpPanY=off.y; drawVehPopout(); };
+  stage.addEventListener('dblclick', resetCentered);
+  resetCentered(); // establishes the boosted, centered default view (called once at open, mirrors initSvgPopZoom)
 }
 /* ---------- Station pop-out viewer ----------
    Same overlay chrome (reuses the .vehpop-* styles) for the Station Bench: the annotated module
@@ -2874,8 +2860,9 @@ function initSvgPopZoom(stageId, zoomId, st){
     st.x+=e.clientX-lx; st.y+=e.clientY-ly; lx=e.clientX; ly=e.clientY; apply(); });
   const end=()=>{ down=false; drag=false; stage.classList.remove('grabbing'); };
   stage.addEventListener('pointerup',end); stage.addEventListener('pointercancel',end);
-  stage.addEventListener('dblclick',()=>{ st.z=1; st.x=0; st.y=0; apply(); });
-  apply();
+  const resetCentered=()=>{ const r=stage.getBoundingClientRect(); st.z=POPOUT_ZOOM_BOOST; const off=centeredZoomOffset(r.width,r.height,st.z); st.x=off.x; st.y=off.y; apply(); };
+  stage.addEventListener('dblclick', resetCentered);
+  resetCentered(); // establishes the boosted, centered default view (was a bare apply() at z:1)
 }
 let stnPopoutOpen=false, stnPop={z:1,x:0,y:0};
 function openStationPopout(){
@@ -3050,7 +3037,7 @@ function earthLoop(){
 function openEarthPopout(){
   if(earthPopoutOpen) return;
   closeOtherPopouts('earth');
-  earthPopoutOpen=true; earthPop={z:1,x:0,y:0}; earthView={lon:-80,auto:true}; earthLastT=0; earthT0=ccNow(); state.selectedBody='earth';
+  earthPopoutOpen=true; earthPop={z:POPOUT_ZOOM_BOOST,x:0,y:0}; earthView={lon:-80,auto:true}; earthLastT=0; earthT0=ccNow(); state.selectedBody='earth';
   const ov=document.createElement('div'); ov.className='vehpop-scrim'; ov.id='earthPopout';
   ov.innerHTML=`<div class="vehpop-bar">
       <span class="vehpop-title">🌍 Earth</span>
@@ -3102,7 +3089,7 @@ function initEarthPopZoom(){
     earthView.lon += (e.clientX-lx)*0.4; lx=e.clientX; });
   const end=e=>{ if(down && !drag && earthOverCape(e)){ earthGoToCape(); } down=false; drag=false; stage.classList.remove('grabbing'); };
   stage.addEventListener('pointerup',end); stage.addEventListener('pointercancel',()=>{down=false;drag=false;stage.classList.remove('grabbing');});
-  stage.addEventListener('dblclick',()=>{ earthPop.z=1; earthPop.x=0; earthPop.y=0; });
+  stage.addEventListener('dblclick',()=>{ earthPop.z=POPOUT_ZOOM_BOOST; earthPop.x=0; earthPop.y=0; }); // already centered — draw loop translates to canvas-center first, then scales
 }
 /* ---------- Command Center pop-out ----------
    The animated Cape Canaveral scene blown up to full screen (drawn off-screen at native res, then
@@ -3171,7 +3158,7 @@ function initCcPopZoom(){
   // Swallow the click-through after a drag-to-pan so panning that starts/ends on a hotspot div doesn't fire
   // its click (mirrors initCapeZoom). Capture-phase on the stage runs before #ccPopSpots' own capture handler.
   stage.addEventListener('click',e=>{ if(moved>6){ e.stopPropagation(); e.preventDefault(); moved=0; } }, true);
-  stage.addEventListener('dblclick',()=>{ ccPop={z:1,x:0,y:0}; applyCcPopZoom(); });
+  stage.addEventListener('dblclick',()=>{ ccPop.z=POPOUT_ZOOM_BOOST; const fit=ccPopFitBox(), off=centeredZoomOffset(fit?fit.w:0, fit?fit.h:0, ccPop.z); ccPop.x=off.x; ccPop.y=off.y; applyCcPopZoom(); });
 }
 function ccPopLoop(){
   if(!ccPopoutOpen){ ccPopAnim=null; return; }
@@ -3188,7 +3175,7 @@ function ccPopLoop(){
 function openCCPopout(){
   if(ccPopoutOpen) return;
   closeOtherPopouts('cc');
-  ccPopoutOpen=true; ccPop={z:1,x:0,y:0}; ccPopT0=ccNow();
+  ccPopoutOpen=true; ccPop={z:POPOUT_ZOOM_BOOST,x:0,y:0}; ccPopT0=ccNow();
   const ov=document.createElement('div'); ov.className='vehpop-scrim'; ov.id='ccPopout';
   ov.innerHTML=`<div class="vehpop-bar">
       <span class="vehpop-title">⌂ Command Center</span>
@@ -3217,7 +3204,9 @@ function openCCPopout(){
       try{ el.onclick.call(el,e); }catch(_){}
     },true);
   }
-  initCcPopZoom(); ccPopFitBox(); applyCcPopZoom();
+  initCcPopZoom();
+  const fit=ccPopFitBox(); if(fit){ const off=centeredZoomOffset(fit.w,fit.h,ccPop.z); ccPop.x=off.x; ccPop.y=off.y; }
+  applyCcPopZoom();
   ccPopFrame=0;
   ccPopAnim=requestAnimationFrame(ccPopLoop);
 }

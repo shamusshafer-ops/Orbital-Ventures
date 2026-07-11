@@ -2778,6 +2778,54 @@ pre-existing unrelated `test-progress-unify.js` failure, confirmed isolated in t
 This closes out both proposed Command Center directions (era-tied variety + atmosphere/realism) from the
 2026-07-11 "increase realism and variety" ask.
 
+## Session — Vehicle pop-out: full workbench editor + pop-out sizing pass (2026-07-11)
+
+**Implemented, tests passing, not yet committed/pushed — needs a real-browser check (see below).** Two
+asks: (1) bring all the normal Design Bench editing functionality into the vehicle pop-out (previously
+just a read-only pan/zoom viewer + a hand-written stats summary), and (2) make every pop-out's default
+view fill ~10% more of the screen. Clarified #2 with the user first since every pop-out overlay is
+already `position:fixed;inset:0` (literally the full viewport) — answer was "both": bump default content
+zoom AND trim chrome padding.
+
+**#1 — full editor, via the existing "move the live node" trick.** The vehicle pop-out already moved the
+live Build/Launch button into its bar on open and back on close; generalized this to the whole editor.
+New `id="benchEditorPanel"` on the `.bench-editor` div (shell.html) — the tabs bar + all 6 bench-panel
+tabs (Vehicle/Modules/Customize/Saved Designs/Families/Mission: stages, boosters, transfer, lander, crew,
+power, livery, parts, blueprints, families, architecture, window planner, routes). `openVehPopout()` now
+moves `#readoutCard` (the REAL Δv/TWR/mass/economics/test-campaign readout — replaces the old hand-rolled
+`vehPopStatsHTML()`, deleted as dead code) and `#benchEditorPanel` into the pop-out's aside, remembering
+homes exactly like the launch button; `closeVehPopout()` restores both before the scrim is removed. No
+render-function changes needed — `render()`'s bench block already writes into these ids by `$('id')`
+regardless of DOM location, so every existing edit interaction (stage add/remove, parts swap, tab
+switching, etc.) keeps working untouched. Widened the aside for this: new `.vehpop-stats.wide` CSS
+(`flex:0 0 46vw;max-width:760px;min-width:420px`, only applied to the vehicle pop-out — station/map/cc
+pop-outs keep the narrow 300px stats rail).
+
+**#2 — pop-out sizing.** New shared `POPOUT_ZOOM_BOOST=1.1` + `centeredZoomOffset(w,h,z)` (render.js).
+Every pop-out's default/reset zoom bumped from 1.0 → 1.1, paired with a compensating pan offset so the
+content stays visually centered (each pop-out's zoom transform is anchored at its content box's top-left,
+so a naive zoom bump alone would drift the view toward the bottom-right corner) — worked out the geometry
+per pop-out type: vehicle + earth (canvas-drawn, translate-then-scale) vs. station + map (CSS transform on
+a full-stage wrapper, shared `initSvgPopZoom` helper) vs. command center (CSS transform on a letterbox-
+fit box, `ccPopFitBox()`). Earth needed no offset — its draw loop already translates to canvas-center
+before scaling. Double-click "reset" on every pop-out now resets to this boosted+centered default, not
+the old smaller one. Chrome trim: `.vehpop-bar`/`.vehpop-stats` padding trimmed ~10-15%.
+
+**Tests**: `test-popout-sizing.js` (19/19) — pure-logic coverage only (`centeredZoomOffset` exact math,
+every pop-out opens at the boosted zoom default without throwing, vehicle pop-out open/close/open/close
+repeatability). Extended `harness.js`'s canvas-id allowlist (`vehPopCanvas`/`earthPopCanvas`/
+`ccPopCanvas`) so `drawVehPopout()`/earth/CC draw loops don't crash under test — this was a **pre-existing
+gap**, not a regression (pop-outs had zero test coverage before this pass; the harness's `getElementById`
+returns a fresh stub per call with no real DOM tree, so the actual node-relocation and visual-centering
+behavior is fundamentally a real-browser-only concern, same limitation as the pre-existing launch-button
+move). Suite: 837/849 (same pre-existing unrelated `test-progress-unify.js` failure).
+
+**Needs a real-browser check**: does the moved-in editor render/behave identically to the normal bench
+(tab switching, stage/parts editing, blueprints save/load) inside the pop-out's wider aside; does closing
+and reopening the pop-out correctly restore the editor to its normal bench-view spot with no duplication
+or loss; does each pop-out's default zoom look centered (not cropped to one side) on typical viewport
+sizes; readability of the ~46vw editor column on smaller/laptop screens.
+
 ## Planned — External evaluation intake (2026-07-10)
 
 **Full backlog:** all 105 feature ideas from the evaluation, individually mapped to a

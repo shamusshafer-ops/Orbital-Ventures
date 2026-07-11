@@ -109,7 +109,7 @@ global.document = {
   documentElement: makeStubEl(),
   fullscreenElement: null,
   webkitFullscreenElement: null,
-  getElementById(id){ if(id==='flightCanvas'||id==='flightTextCanvas') return makeCanvasStub(960,540); return makeStubEl(); },
+  getElementById(id){ if(id==='flightCanvas'||id==='flightTextCanvas'||id==='vehPopCanvas'||id==='earthPopCanvas'||id==='ccPopCanvas') return makeCanvasStub(960,540); return makeStubEl(); },
   createElement(){ return makeStubEl(); },
   querySelector(){ return makeStubEl(); },
   querySelectorAll(){ return []; },
