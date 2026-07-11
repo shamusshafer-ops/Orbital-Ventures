@@ -4277,12 +4277,13 @@ function stationModuleCard(md, cur, addable){
   const chk = addable && cur ? canAddStationModule(cur.def.id, md.id) : {ok:false};
   const gated = md.reqResearch && !state.research[md.reqResearch];
   const gateName = gated ? ((RESEARCH.find(r=>r.id===md.reqResearch)||{}).name||md.reqResearch) : '';
-  // #73 Slice 1 (2026-07-11): LEO-only for now (Slice 2 extends this to Moon/Mars). The first module
-  // of a given type on a facility is a real "launch modules, dock" choice — fly it yourself (real
-  // vehicle/launch, base cost, no premium) or pay a contracted-delivery premium for the instant dock
-  // this whole card offered before. Repeats of an already-proven type stay exactly as before: one
-  // click, instant, base cost — see stationCurrentView()/#73 scoping notes for why (pacing).
-  const first = addable && cur && cur.fs && cur.def.body==='earth' && !facilityModuleList(cur.fs).includes(md.id);
+  // #73 (2026-07-11): the first module of a given type on a facility is a real "launch modules, dock"
+  // choice — fly it yourself (real vehicle/launch, base cost, no premium — a simple synchronous
+  // mission at LEO, Slice 1; a real profile-based cargo cruise at Moon/Mars, Slice 2) or pay a
+  // contracted-delivery premium for the instant dock this whole card offered before. Repeats of an
+  // already-proven type stay exactly as before: one click, instant, base cost — see
+  // stationCurrentView()/#73 scoping notes for why (pacing).
+  const first = addable && cur && cur.fs && !facilityModuleList(cur.fs).includes(md.id);
   const pending = first && cur ? pendingModuleDelivery(cur.def.id, md.id) : null;
   return `<div class="card" style="flex:1;min-width:230px;max-width:320px;display:flex;flex-direction:column;gap:2px">
     <div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px">
@@ -4311,7 +4312,7 @@ function stationModuleCard(md, cur, addable){
         : first
           ? (()=>{ const flyChk=canFlyModuleDelivery(cur.def.id, md.id), conChk=canContractStationModule(cur.def.id, md.id);
               return `<div style="display:flex;gap:6px">
-                <button class="btn ${flyChk.ok?'launch':''}" style="flex:1;font-size:11px" onclick="flyModuleDelivery('${cur.def.id}','${md.id}')" ${flyChk.ok?'':'disabled'} title="Design and launch a real delivery flight — pays only the base module cost on success, no premium">🚀 Fly it · ${fM(cost)}${flyChk.ok?'':' — '+flyChk.why}</button>
+                <button class="btn ${flyChk.ok?'launch':''}" style="flex:1;font-size:11px" onclick="flyModuleDelivery('${cur.def.id}','${md.id}')" ${flyChk.ok?'':'disabled'} title="Design and launch a real delivery flight — pays only the base module cost on success, no premium">🚀 Fly it · ${fM(flyChk.cost||flyModuleCost(cur.def,cur.fs,md))}${flyChk.ok?'':' — '+flyChk.why}</button>
                 <button class="btn ${conChk.ok?'':'ghost'}" style="flex:1;font-size:11px" onclick="contractStationModule('${cur.def.id}','${md.id}')" ${conChk.ok?'':'disabled'} title="Instant delivery, no flight — costs a premium over flying it yourself">📦 Contract · ${fM(conChk.cost||contractedModuleCost(cur.def,cur.fs,md))}</button>
               </div>`; })()
           : `<button class="btn ${chk.ok?'launch':''}" style="width:100%;font-size:12px" onclick="addStationModule('${cur.def.id}','${md.id}')" ${chk.ok?'':'disabled'}>${chk.ok?'Dock module ▸':chk.why}</button>`}

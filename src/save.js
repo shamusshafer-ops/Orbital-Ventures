@@ -1,6 +1,15 @@
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=50; // v50: #73 Slice 1 — module delivery is a real launch (LEO only). state.mdSeq
+const SAVE_VERSION=51; // v51: #73 Slice 2 — Moon/Mars module delivery is a real profile-based cargo
+// cruise. New optional `cargo` field on any mission/contractOffer object (uncrewed payload mass carried
+// through every leg of a `.profile` mission — read only by lvPayload()'s profile branch and
+// simulateMission()'s stackMass(), both via `m.cargo||0`; a mission with no cargo field behaves exactly
+// as before). No new top-level state — Moon deliveries resolve synchronously (days:8, same turn) exactly
+// like Slice 1's LEO deliveries; Mars deliveries (days:210) ride the EXISTING state.activeFlights
+// deferred-flight mechanism unchanged (a normal ctx-bearing record, not a new record shape) — so a
+// mid-cruise Mars delivery save round-trips through the same rehydrateFlights() path any other deferred
+// mission already uses. No explicit migrate function needed. Purely additive, no balance impact on
+// existing saves or any mission that doesn't set m.cargo. v50: #73 Slice 1 — module delivery is a real launch (LEO only). state.mdSeq
 // (module-delivery id counter, lazily defaulted via `(state.mdSeq||0)+1`, mirrors state.procSeq's
 // pattern) + two new optional fields on state.contractOffers[] items: deliverModule ({facId,modId})
 // and moduleCost (the base price, locked in at generation so a later balance change can't retroactively

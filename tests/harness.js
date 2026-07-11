@@ -109,7 +109,17 @@ global.document = {
   documentElement: makeStubEl(),
   fullscreenElement: null,
   webkitFullscreenElement: null,
-  getElementById(id){ if(id==='flightCanvas'||id==='flightTextCanvas'||id==='vehPopCanvas'||id==='earthPopCanvas'||id==='ccPopCanvas') return makeCanvasStub(960,540); return makeStubEl(); },
+  getElementById(id){
+    if(id==='flightCanvas'||id==='flightTextCanvas'||id==='vehPopCanvas'||id==='earthPopCanvas'||id==='ccPopCanvas') return makeCanvasStub(960,540);
+    // #73 Slice 2: pumpFlightArrivals() (and anything else checking "is a modal open?") reads
+    // $('modal').classList.contains('hidden') as its neutral/no-modal-shown state — every other id
+    // returns a fresh, memory-less stub each call, so without this #modal would look permanently
+    // "open" (empty classList never contains 'hidden'), silently blocking deferred-flight arrival
+    // resolution in every headless test, forever. Default to hidden (no modal shown), matching what
+    // every existing test file already implicitly assumes.
+    if(id==='modal'){ const el=makeStubEl(); el.classList.add('hidden'); return el; }
+    return makeStubEl();
+  },
   createElement(){ return makeStubEl(); },
   querySelector(){ return makeStubEl(); },
   querySelectorAll(){ return []; },

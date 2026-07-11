@@ -83,12 +83,15 @@ check('repeat module: no premium in the quoted price (unlike the contracted-deli
 addStationModule('leo_station','can_std');
 check('repeat module: addStationModule still works exactly as before (instant, one click)', facilityModuleList(facilityState('leo_station')).filter(id=>id==='can_std').length===2);
 
-// ---------- Moon/Mars facilities are untouched — LEO-only scope for this slice ----------
+// ---------- Moon/Mars facilities: the fly/contract fork now applies there too (#73 Slice 2) ----------
 foundLeo();
-const marsCur={def:facilityById('mars_base'), fs:{moduleList:['can_std']}}; // first-of-type lab_mod, but not LEO
+const marsCur={def:facilityById('mars_base'), fs:{moduleList:['can_std']}}; // first-of-type lab_mod
 const marsCard=stationModuleCard(stationModuleDef('lab_mod'), marsCur, true);
-check('Moon/Mars: no fly/contract fork even for a first-of-type module', !/Fly it/.test(marsCard) && !/Contract ·/.test(marsCard));
-check('Moon/Mars: still routes through the plain instant addStationModule path', /onclick="addStationModule\(/.test(marsCard));
+check('Moon/Mars: first-of-type modules get the fly/contract fork too (Slice 2)', /Fly it/.test(marsCard) && /Contract ·/.test(marsCard));
+// repeats-of-type stay untouched on Moon/Mars too, same as LEO
+const marsCurRepeat={def:facilityById('mars_base'), fs:{moduleList:['can_std','can_std']}};
+const marsRepeatCard=stationModuleCard(stationModuleDef('can_std'), marsCurRepeat, true);
+check('Moon/Mars: repeat-of-type still routes through the plain instant addStationModule path', /onclick="addStationModule\(/.test(marsRepeatCard));
 
 // ---------- render smoke: the new first-of-type / pending palette branches don't throw ----------
 foundLeo(); // fresh facility — first-of-type state for every module except can_std

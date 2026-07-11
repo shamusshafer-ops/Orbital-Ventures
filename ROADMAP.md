@@ -3068,9 +3068,70 @@ mission machinery end to end (no new mission/flight pipeline needed):
   palette card, the pending-delivery message, and actually flying a delivery mission end to end
   (select → design/build a capable vehicle → launch → module appears docked).
 
-**Slice 2 (Moon/Mars delivery) is next** — needs the cost-double-counting design decision above
-resolved first (rebalance body-multiplier-inclusive costs, or have "fly yourself" bypass the multiplier
-entirely, or accept the double-charge as the fiction that flying yourself to Mars is simply expensive).
+**Slice 2 (Moon/Mars delivery) DONE 2026-07-11, tests passing, not yet committed/pushed. SAVE_VERSION 51.**
+Investigation found every existing Moon/Mars mission in this game is a real multi-leg "profile" mission
+(payload comes from designed crew/lander stages, not a flat number) — there was no existing way to carry
+a fixed cargo mass through one. Asked the user: cheap simple-mission reskin (like LEO) vs. a genuine new
+"cargo mass through a real profile" mechanic. **User chose the real mechanic** — bumped this from M to L
+but produces something reusable beyond this one feature.
+
+- **New mechanic: `m.cargo`** — an uncrewed payload mass carried through every leg of a `.profile`
+  mission. Two touch points: `lvPayload()`'s profile branch (`p+=(m.cargo||0)`, so the bench readout's
+  Δv/TWR reflects it) and `simulateMission()`'s `stackMass()` closure (so EVERY in-space leg, not just
+  the LV liftoff, correctly carries the extra mass through the whole cruise's Δv accounting) — verified
+  both independently (an in-space transfer leg's `mass` figure grows with cargo, not just the LV leg's).
+- **Lunar delivery** (`days:8`, matching `luna_orbit`): Ascent→TLI→Lunar Orbit Insertion, one-way (no
+  Trans-Earth leg — nothing needs to come home). Stays under `DEFER_CRUISE_DAYS`(60), resolves
+  synchronously the same turn, exactly like Slice 1's LEO delivery.
+- **Mars delivery** (`days:210`, reusing `LOGI_TRANSIT_DAYS.mars`'s existing one-way figure for
+  consistency with the abstracted resupply system): Ascent→TMI→Mars Orbit Insertion, one-way. Crosses
+  `DEFER_CRUISE_DAYS` — `proceedLaunch`'s EXISTING `missionDays>=DEFER_CRUISE_DAYS` branch automatically
+  defers it into `state.activeFlights` with full cruise telemetry / abort-in-cruise / mishap-pool
+  eligibility, **with zero new deferred-flight code** — it's a normal ctx-bearing record, resolved on
+  arrival via the exact same `pumpFlightArrivals()→beginResolve()→finalizeLaunch()` chain any other
+  deferred mission already uses. Slice 1's `m.deliverModule` dock-on-success hook fires identically
+  whether the flight resolved synchronously or was deferred and resolved turns later.
+- **Deliberate scope boundary**: neither delivery models an actual surface *landing* — both end at orbit
+  insertion around the body. This game has no landing/descent simulation anywhere yet (even the
+  abstracted Mars resupply system stops at "shipment arrives"), so inventing one just for this would be
+  its own separate mechanic; "docking" at a surface base's orbit is the same abstraction boundary the
+  existing logistics system already draws. Also deliberately NOT window-gated (unlike the authored Mars
+  missions) — payout is 0 either way, so synodic timing has no economic stake here. Both documented as
+  simplifications, not oversights.
+- **Cost double-counting, resolved cleanly**: new `flyModuleCost(def,fs,md)` strips the body/distance
+  multiplier entirely (raw materials + size-escalation only) — the multiplier represents "the cost of
+  getting it there," and flying it yourself pays for that trip via a real Δv/cruise-time cost instead, so
+  charging the dollar multiplier again would double-count. `contractedModuleCost` (unchanged) still
+  includes the multiplier, which now correctly reads as "pay extra for someone else to make that same
+  trip" — appropriately pricier for Mars contracted delivery than LEO. Confirmed `flyModuleCost ===
+  stationModuleCost` at LEO specifically (body multiplier there is exactly 1), so this is a pure
+  generalization — Slice 1's LEO pricing behavior is provably unchanged.
+- Extended the `first`-of-type choice (Slice 1's fly/contract fork) from LEO-only to all three facility
+  bodies — one condition removed, no other change needed.
+- **Found and fixed a real, general test-harness gap while building this**: `pumpFlightArrivals()`'s "is
+  a modal open?" guard reads `$('modal').classList.contains('hidden')`, but the harness's
+  `getElementById` returns a fresh, memory-less stub per call whose classList is always empty — so
+  `#modal` looked permanently "open," silently blocking ANY headless test of deferred-flight arrival
+  resolution in this codebase until now (confirmed: no existing test exercised it, only flight
+  *registration*). Fixed by special-casing `'modal'` to default to hidden, matching what every existing
+  test file already implicitly assumed. This unblocks real arrival-resolution testing for future
+  deferred-flight work too, not just this feature.
+- New `test-station-slice2.js` (28/28): pricing (fly strictly cheaper than contract at Mars, exact
+  multiplier-free formula), offer generation for both bodies (profile-shaped, one-way, correct
+  cargo/days), the cargo mechanic proven on both `lvPayload` and every leg of `simulateMission`
+  (not just the LV leg), `proceedLaunch`'s defer/no-defer split falling out purely from `days` with zero
+  special-casing, and a full end-to-end deferred Mars delivery — register → advance the clock → resolve
+  via the REAL production `pumpFlightArrivals()` chain → module docks → offer consumed. Updated
+  `test-station-slice1.js`'s now-stale LEO-only assertions (2 checks) to reflect Slice 2's extension.
+  Suite 915/927 (same pre-existing unrelated `test-progress-unify.js` failure).
+- **Needs a real-browser check**: fly a Lunar delivery end to end (same-turn resolution) and a Mars
+  delivery end to end (departs, appears in the cruise telemetry panel, resolves on arrival turns later);
+  confirm the bench readout's Δv/TWR genuinely reflects the extra cargo mass while one of these missions
+  is active.
+
+**Slice 3 (docking as spectacle/decision) is next** — a real rendezvous+dock phase in the flight overlay,
+still deliberately sequenced after E1.2 slice C/D to avoid racing that in-flight work. Slice 4
+(manufacturing tie-in) is optional/last.
 
 ### Workstream E2 — Medium (post-EA-gate)
 

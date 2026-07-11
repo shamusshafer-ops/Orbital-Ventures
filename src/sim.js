@@ -1315,12 +1315,11 @@ function addStationModule(facId, modId){
 }
 
 /* ---------- #73 Slice 1 (2026-07-11): module delivery is a real launch, player's choice ----------
-   Docking the FIRST module of a given type on a LEO facility is now a genuine "launch modules, dock"
+   Docking the FIRST module of a given type on a facility is now a genuine "launch modules, dock"
    choice: fly it yourself (design/launch a real delivery mission — base module cost, no premium, but
    you pay for the vehicle+launch) or contract it (pay a premium, instant, no flight — the old
    one-click behavior). Repeats of an already-proven type on that facility skip this fork entirely and
-   keep using addStationModule() unchanged, above — see stationModuleCard()'s `first` gate. Moon/Mars
-   facilities are out of scope for this slice (Slice 2). */
+   keep using addStationModule() unchanged, above — see stationModuleCard()'s `first` gate. */
 const MODULE_CONTRACT_PREMIUM=0.35; // pay 35% over base to skip a real delivery flight
 function contractedModuleCost(def, fs, md){ return round2(stationModuleCost(def, fs, md)*(1+MODULE_CONTRACT_PREMIUM)); }
 function canContractStationModule(facId, modId){
@@ -1340,6 +1339,13 @@ function contractStationModule(facId, modId){
   dockModuleNow(facId, modId, `${fM(chk.cost)} contracted delivery, ${md.buildMo} mo`);
   render();
 }
+// Raw materials + size-escalation only — no body/distance multiplier. The multiplier represents the
+// cost of getting the module THERE; flying it yourself pays for that trip via a real launch instead (a
+// real Δv/cruise-time cost, not a dollar one), so charging the multiplier again here would double-count
+// delivery. stationModuleCost (with the multiplier) is unchanged for repeat-of-type instant dockings,
+// and is still what contractedModuleCost is built from — the multiplier there correctly represents
+// "someone else makes that same trip for you," which IS worth paying extra for.
+function flyModuleCost(def, fs, md){ const n=facilityModuleList(fs).length; return round2(md.cost*(1+0.25*(n-1))); }
 // Structural-only check for "fly it yourself" — no money changes hands until the delivery actually
 // lands (finalizeLaunch), so this doesn't gate on current affordability the way the instant paths do.
 function canFlyModuleDelivery(facId, modId){
@@ -1347,11 +1353,29 @@ function canFlyModuleDelivery(facId, modId){
   if(!def||!fs||!md) return {ok:false, why:'—'};
   if(md.reqResearch && !state.research[md.reqResearch]) return {ok:false, why:'Needs '+((RESEARCH.find(r=>r.id===md.reqResearch)||{}).name||md.reqResearch)};
   if(facilityModuleList(fs).length>=facilityPortCap(fs) && modId!=='node_hub') return {ok:false, why:'All ports occupied — dock a Node for growth room'};
-  return {ok:true, cost:stationModuleCost(def, fs, md)};
+  return {ok:true, cost:flyModuleCost(def, fs, md)};
 }
 function pendingModuleDelivery(facId, modId){
   return (state.contractOffers||[]).find(o=>o.deliverModule && o.deliverModule.facId===facId && o.deliverModule.modId===modId);
 }
+/* ---------- #73 Slice 2 (2026-07-11): Moon/Mars delivery is a real profile-based cargo cruise ----------
+   User chose the mechanically-consistent option over a cheap simple-mission reskin: Moon/Mars delivery
+   flies leg-by-leg exactly like every authored Moon/Mars mission (Ascent→TLI/TMI→Orbit Insertion), via
+   a genuinely new, reusable mechanic — m.cargo, an uncrewed payload mass carried through every leg of a
+   profile mission (see lvPayload()/simulateMission()'s stackMass()). One-way: no Trans-Earth/Earth
+   return leg, since nothing/no one needs to come home. Ends at ORBIT INSERTION, not a surface landing —
+   this game has no landing/descent simulation anywhere yet (even the abstracted Mars resupply system
+   stops at "shipment arrives"), so inventing one just for this would be its own separate mechanic;
+   "docking" at a surface base's orbit is the same abstraction boundary the existing logistics system
+   already draws. Lunar days (8, matching luna_orbit) stay under DEFER_CRUISE_DAYS(60) — resolves
+   synchronously, same turn, like LEO. Mars days (210, reusing LOGI_TRANSIT_DAYS.mars's existing one-way
+   figure) crosses that threshold — proceedLaunch's EXISTING missionDays>=DEFER_CRUISE_DAYS branch
+   automatically defers it into state.activeFlights with full cruise telemetry / abort-in-cruise /
+   mishap-pool eligibility, with ZERO new deferred-flight code: it's a normal ctx-bearing flight record,
+   resolved on arrival via the same pumpFlightArrivals()→beginResolve()→finalizeLaunch() chain any other
+   deferred mission uses — m.deliverModule's dock-on-success hook (Slice 1) fires identically either way.
+   Deliberately NOT window-gated (unlike the authored Mars missions) — payout is 0 either way, so synodic
+   timing has no economic stake here; a documented simplification, not an oversight. */
 // Generates a real, flyable delivery mission (reuses the E1.3 procedural-contract machinery: proc:true,
 // lives in state.contractOffers, resolved via missionById/finalizeLaunch's m.proc consumption) and takes
 // the player straight to the bench with it active. Re-selecting an already-pending delivery (rather than
@@ -1363,10 +1387,22 @@ function flyModuleDelivery(facId, modId){
   const def=facilityById(facId), md=stationModuleDef(modId);
   state.mdSeq=(state.mdSeq||0)+1;
   const id='md_'+state.mdSeq;
-  const offer={ id, proc:true, deliverModule:{facId, modId}, moduleCost:chk.cost,
-    name:`Deliver ${md.name} — ${def.name}`, reqDv:9400, payload:md.stats.mass, crew:0, days:0,
-    payout:0, rep:0, minRep:0,
-    blurb:`A real delivery flight: loft the ${md.name.toLowerCase()} (${md.stats.mass.toFixed(1)} t) to ${def.name} and dock it on arrival. Pays only the module's base cost (${fM(chk.cost)}) on success — no contracted-delivery premium, but you're footing the launch.` };
+  const cargoTxt=`${md.name.toLowerCase()} (${md.stats.mass.toFixed(1)} t)`, payTxt=`Pays only the module's base cost (${fM(chk.cost)}) on success — no contracted-delivery premium, but you're footing the launch.`;
+  const base={ id, proc:true, deliverModule:{facId, modId}, moduleCost:chk.cost, crew:0, minRep:0, payout:0, rep:0,
+    name:`Deliver ${md.name} — ${def.name}` };
+  let offer;
+  if(def.body==='moon'){
+    offer=Object.assign(base, { days:8, modules:['lv','transfer'], cargo:md.stats.mass,
+      profile:[{name:'Ascent to LEO', dv:9400, by:'lv'},{name:'Trans-Lunar Injection', dv:3120, by:'transfer'},{name:'Lunar Orbit Insertion', dv:900, by:'transfer'}],
+      blurb:`A real cargo cruise: loft the ${cargoTxt} to lunar orbit and dock it at ${def.name} on arrival — one-way, no return burn needed. ${payTxt}` });
+  }else if(def.body==='mars'){
+    offer=Object.assign(base, { days:210, modules:['lv','transfer'], cargo:md.stats.mass,
+      profile:[{name:'Ascent to LEO', dv:9400, by:'lv'},{name:'Trans-Mars Injection', dv:3600, by:'transfer'},{name:'Mars Orbit Insertion', dv:1400, by:'transfer'}],
+      blurb:`A real cargo cruise: loft the ${cargoTxt} toward Mars and dock it at ${def.name} on arrival — a ~210-day one-way cruise (the flight departs and resolves on arrival; you'll see it in the cruise telemetry panel). ${payTxt}` });
+  }else{ // earth/LEO — Slice 1's simple synchronous mission, unchanged
+    offer=Object.assign(base, { days:0, reqDv:9400, payload:md.stats.mass,
+      blurb:`A real delivery flight: loft the ${cargoTxt} to ${def.name} and dock it on arrival. ${payTxt}` });
+  }
   (state.contractOffers=state.contractOffers||[]).push(offer);
   selectMission(id);
 }
@@ -2795,6 +2831,7 @@ function lvPayload(m){
   else if(m && m.profile){
     p=lifeSupport(m,state.eclss).total; // crew module
     p+=powerSystemMass(m); // Phase 2: power plant (solar/RTG/reactor) is mass you must lift
+    p+=(m.cargo||0); // #73 Slice 2: uncrewed cargo (e.g. a station module) carried through the whole profile
     if(m.modules.includes('transfer')) p+=inSpaceWet(state.transfer);
     if(m.modules.includes('lander')){ p+=inSpaceWet(state.descent)+inSpaceWet(state.ascent); }
   }
@@ -2942,7 +2979,8 @@ function simulateMission(m){
       }
       if(lost>0.01) boiloff={lost:Math.round(lost*100)/100, controlled};
     } }
-  const stackMass=()=>{let s=crewMass; for(const k in present) s+=present[k].dry+present[k].propLeft; return s;};
+  const cargoMass=m.cargo||0; // #73 Slice 2: uncrewed cargo carried through every leg, same as crew life support
+  const stackMass=()=>{let s=crewMass+cargoMass; for(const k in present) s+=present[k].dry+present[k].propLeft; return s;};
   // #6: orbital assembly — these modules are pre-positioned in LEO, so the main launch doesn't lift them
   const asmSet = assemblyOn(m) ? new Set(assemblyModules(m)) : null;
   const legs=[]; let ok=true, inSpaceLegs=0;
