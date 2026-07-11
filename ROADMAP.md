@@ -2341,6 +2341,18 @@ B's pre-load ring-snapshot safety net. Save/Overwrite hidden on the startup scre
 `autosave`) so a fresh placeholder game can't get saved into a slot. New `test-save-slots.js`, 69/69.
 **Suite total: 381/381.**
 
+## Session — E0.4 slice (a): pause/warp hotkeys + help overlay (2026-07-10)
+
+**Shipped, user-verified in Firefox, committed.** Scoped by tech-lead first — found "tab hotkeys" and
+"Esc closes modals" already shipped, so E0.4's real scope is smaller than the roadmap bullet implies.
+4-slice plan: A (this one) hotkeys; B focus trap; C reduced-motion + colorblind icons; D UI-scale slider.
+
+Slice A, all in `src/shell.js`: shared `isTyping()` guard (replaced 5 duplicated checks); `Space` pauses
+during auto-run, launches otherwise (unchanged when not auto-running); `p` unconditional pause toggle on
+any scene; `+`/`-` warp the day→week→month ladder, except on the R&D scene where they keep zooming the
+tech tree; `?` opens a hotkey-help modal. New `test-hotkeys.js`, 31/31, pure-function coverage
+(`warpStep`, `spaceAction`, `isTyping`, `warpKeysActive`). **Suite total: 412/412.**
+
 ## Planned — External evaluation intake (2026-07-10)
 
 **Full backlog:** all 105 feature ideas from the evaluation, individually mapped to a

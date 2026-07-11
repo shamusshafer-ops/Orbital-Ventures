@@ -7086,13 +7086,32 @@ function cycleAnimSpeed(){
   const b=$('animSpeedBtn'); if(b) b.textContent=ANIM_SPEEDS[animSpeedIdx].label;
 }
 function animSpeed(){ return ANIM_SPEEDS[animSpeedIdx].mult; }
+// ── E0.4 Slice A: shared keyboard helpers ──
+// One typing guard for every keydown handler (was repeated inline at each call site): never
+// hijack a keystroke aimed at a text field / dropdown.
+function isTyping(e){ const tag=(e&&e.target&&e.target.tagName)||''; return tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT'; }
+// Space's pause/launch split as a pure, headless-testable decision: while the clock is auto-running
+// Space stops it (pause); otherwise Space keeps its original "launch the current mission" behavior.
+function spaceAction(timeAutoRunning){ return timeAutoRunning ? 'pause' : 'launch'; }
+// Warp ladder (the +/- time-warp keys) as a pure step function over the day→week→month units.
+// dir>0 steps up (a stopped clock starts at day; day→week→month, clamped at month);
+// dir<0 steps down (month→week→day, then day→stop, signalled by null). Not running + step-down → null.
+function warpStep(unit, dir){
+  const ORDER=['day','week','month'], i=ORDER.indexOf(unit);
+  if(dir>0) return i<0 ? 'day' : ORDER[Math.min(i+1, ORDER.length-1)];
+  return i<=0 ? null : ORDER[i-1];
+}
+// The warp keys share +/=/-/arrows with the R&D tech-tree pan/zoom, which owns them on that scene;
+// everywhere else the warp keys are live. (Pure predicate so the gating is unit-testable.)
+function warpKeysActive(scene){ return scene!=='rnd'; }
 document.addEventListener('keydown',function(e){
-  // Space: launch the current mission (or skip/continue the playback if one is running)
+  // Space: pause the clock if auto-running, else launch the current mission
+  // (or skip/continue the playback if one is running).
   if(e.key===' '||e.code==='Space'){
-    const tag=(e.target&&e.target.tagName)||'';
-    if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT') return; // never hijack typing
+    if(isTyping(e)) return; // never hijack typing
     e.preventDefault();
     if(animState){ if(animState.held) dismissAnim(); else skipAnim(); return; }
+    if(spaceAction(!!timeAuto.unit)==='pause'){ stopTimeAuto(); return; } // auto-run active → pause, don't launch
     tryLaunchHotkey();
     return;
   }
@@ -7102,16 +7121,14 @@ document.addEventListener('keydown',function(e){
 // 'h' toggles the top bar (collapse to free the top of the screen / restore it)
 document.addEventListener('keydown',function(e){
   if((e.key!=='h'&&e.key!=='H') || e.metaKey || e.ctrlKey || e.altKey || animState) return;
-  const tag=(e.target&&e.target.tagName)||'';
-  if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT') return;
+  if(isTyping(e)) return;
   toggleTopbar(); e.preventDefault();
 });
 // Presentation pass: tech-tree keyboard navigation — only on the R&D scene, never while typing.
 // Arrow keys pan the scroll pane; +/-/0 zoom.
 document.addEventListener('keydown',function(e){
   if(!state || state.tab!=='rnd' || animState) return;
-  const tag=(e.target&&e.target.tagName)||'';
-  if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT') return;
+  if(isTyping(e)) return;
   const el=$('techTree'); if(!el) return;
   if(techExpanded && (e.key==='Escape'||e.key==='Enter')){ toggleTechExpand(); e.preventDefault(); return; } // close the pop-out
   const STEP=64;
@@ -7137,8 +7154,7 @@ function nextScene(dir){
 document.addEventListener('keydown',function(e){
   if(!state || animState) return;
   if(e.ctrlKey||e.metaKey||e.altKey) return;
-  const tag=(e.target&&e.target.tagName)||'';
-  const typing=(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT');
+  const typing=isTyping(e);
   // ESC works even from a focused control: close an open modal/drill, else step back.
   if(e.key==='Escape'){
     if(modalOpen()){ hideModal(); e.preventDefault(); return; }
@@ -7160,12 +7176,63 @@ document.addEventListener('keydown',function(e){
 document.addEventListener('keydown',function(e){
   if(!state || animState || modalOpen()) return;
   if(e.ctrlKey||e.metaKey||e.altKey||e.shiftKey) return;
-  const tag=(e.target&&e.target.tagName)||'';
-  if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT') return;
+  if(isTyping(e)) return;
   if(e.key==='F1'){ clickTimeArrow('day'); e.preventDefault(); }
   else if(e.key==='F2'){ clickTimeArrow('week'); e.preventDefault(); }
   else if(e.key==='F3'){ clickTimeArrow('month'); e.preventDefault(); }
 });
+// E0.4 Slice A: 'p' is an unconditional pause/resume toggle for the clock — works on every scene
+// (unlike the +/- warp keys), guarded like F1-F3 (no modal, no anim, not typing). Running → stop;
+// stopped → resume auto-run (defaults to day steps, the finest unit) via the same startTimeAuto machinery.
+document.addEventListener('keydown',function(e){
+  if(e.key!=='p'&&e.key!=='P') return;
+  if(!state || animState || modalOpen()) return;
+  if(e.ctrlKey||e.metaKey||e.altKey) return;
+  if(isTyping(e)) return;
+  if(timeAuto.unit){ stopTimeAuto(); } else { startTimeAuto('day'); }
+  e.preventDefault();
+});
+// E0.4 Slice A: +/= step the time-warp up, - steps it down (day→week→month ladder), on every scene
+// EXCEPT R&D (where those keys pan/zoom the tech tree). Same modal/anim/typing gates as F1-F3.
+// Shift is allowed here because '+' is Shift+'='; ctrl/meta/alt are still excluded (browser zoom, etc).
+document.addEventListener('keydown',function(e){
+  if(e.key!=='+'&&e.key!=='='&&e.key!=='-'&&e.key!=='_') return;
+  if(!state || animState || modalOpen()) return;
+  if(e.ctrlKey||e.metaKey||e.altKey) return;
+  if(isTyping(e)) return;
+  if(!warpKeysActive(state.tab)) return; // R&D owns +/=/- for the tech tree
+  const up=(e.key==='+'||e.key==='=');
+  const u=warpStep(timeAuto.unit, up?1:-1);
+  if(u){ startTimeAuto(u); } else { stopTimeAuto(); } // step down past 'day' → stop the clock
+  e.preventDefault();
+});
+// E0.4 Slice A: '?' (Shift+/) opens the keyboard-shortcut help overlay. Not while typing / in a modal.
+document.addEventListener('keydown',function(e){
+  if(e.key!=='?') return;
+  if(!state || modalOpen()) return;
+  if(e.ctrlKey||e.metaKey||e.altKey) return;
+  if(isTyping(e)) return;
+  showHotkeyHelp(); e.preventDefault();
+});
+// Static, self-contained shortcut reference (uses the shared showModal chrome — no new CSS).
+function showHotkeyHelp(){
+  const row=(k,d)=>`<tr><td style="white-space:nowrap;padding:2px 14px 2px 0;font-family:var(--mono);color:var(--ignite)">${k}</td><td style="padding:2px 0">${d}</td></tr>`;
+  showModal(`<h2 style="margin-bottom:2px">⌨ Keyboard Shortcuts</h2>
+    <p class="muted" style="font-size:12px;margin:0 0 10px">Most keys are ignored while you're typing in a field.</p>
+    <table style="font-size:13px;border-collapse:collapse"><tbody>
+      ${row('1 – 5','Jump to a scene (Vehicle · Station · Solar System · Command · R&amp;D)')}
+      ${row('Tab / Shift+Tab','Next / previous scene')}
+      ${row('Esc','Close a dialog, or step back to Command Center')}
+      ${row('Space','Launch the ready mission — or pause the clock when it is auto-running (or skip/continue a playback)')}
+      ${row('p','Pause / resume the clock (any scene)')}
+      ${row('+ / −','Time-warp up / down (day → week → month), except on R&amp;D')}
+      ${row('F1 / F2 / F3','Advance a day / week / month (press again to auto-run)')}
+      ${row('h','Show / hide the top bar')}
+      ${row('Arrows, + / −, 0','Pan / zoom the tech tree (R&amp;D scene only)')}
+      ${row('?','Show this help')}
+    </tbody></table>
+    <button class="btn" onclick="hideModal()" style="margin-top:12px">OK</button>`);
+}
 // fire a launch from the keyboard, only when one is actually available (mirrors the Launch button gate)
 function tryLaunchHotkey(){
   if(!state || state.over || animState) return;
