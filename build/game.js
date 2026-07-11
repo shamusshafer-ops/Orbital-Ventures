@@ -7060,6 +7060,32 @@ function applyTheme(name){
   const b=document.body; if(b){ b.classList.remove('theme-green','theme-beige'); if(name!=='dark') b.classList.add('theme-'+name); }
 }
 function pickTheme(name){ applyTheme(name); if(typeof activeModal==='function') activeModal(); } // re-render the menu so the active chip updates
+// UI scale (E0.4 slice D) — a display-only whole-page zoom, persisted like theme/wide (localStorage,
+// NOT the save), so it survives new games and save-slot switches and needs no SAVE_VERSION bump.
+// Valid values: 80–130% in 10% steps (80,90,100,110,120,130); default 100%.
+const UI_SCALE_MIN=80, UI_SCALE_MAX=130, UI_SCALE_STEP=10, UI_SCALE_DEFAULT=100;
+// Snap/clamp an arbitrary input (slider value or a hand-edited/corrupt localStorage string) into the
+// valid set; anything non-numeric falls back to the default. Used for both slider input and boot sanitize.
+function clampUiScale(v){
+  v=parseFloat(v);
+  if(isNaN(v)) return UI_SCALE_DEFAULT;
+  v=Math.round(v/UI_SCALE_STEP)*UI_SCALE_STEP; // snap to the nearest 10% step
+  if(v<UI_SCALE_MIN) v=UI_SCALE_MIN;
+  if(v>UI_SCALE_MAX) v=UI_SCALE_MAX;
+  return v;
+}
+// Boot-time decision: absent key -> default; present -> sanitize through clampUiScale (self-heals corruption).
+function bootUiScale(raw){ return (raw===null||raw===undefined) ? UI_SCALE_DEFAULT : clampUiScale(raw); }
+let uiScale=UI_SCALE_DEFAULT;
+try{ uiScale=bootUiScale(localStorage.getItem('ov_uiscale')); }catch(e){}
+function applyUiScale(v){
+  uiScale=clampUiScale(v);
+  try{ localStorage.setItem('ov_uiscale', String(uiScale)); }catch(e){}
+  try{ document.documentElement.style.setProperty('--ui-scale', String(uiScale/100)); }catch(e){}
+}
+// Live-apply from the settings slider: set the zoom + persist, re-sync the sticky-panel offsets against
+// the topbar's new rendered height, then re-render the open menu so the % readout tracks the drag.
+function setUiScale(v){ applyUiScale(v); syncTopbarH(); if(typeof activeModal==='function') activeModal(); }
 let _prevFs=false;
 function inFullscreen(){ return !!(document.fullscreenElement||document.webkitFullscreenElement); }
 function fsOptedOut(){ try{ return localStorage.getItem('ov_fs_optout')==='1'; }catch(e){ return false; } }
@@ -12166,8 +12192,19 @@ function renderSettings(){
     <div style="display:flex;gap:8px">${layerBtns}</div>
     <div class="dim" style="font-size:12px;margin-top:8px">${layerInfo[L]}</div>
   </div>`;
+  const scaleCard=`<div class="card" style="background:var(--panel2);margin-bottom:12px">
+    <div class="mission-name" style="font-size:15px">🔍 UI scale</div>
+    <p class="muted" style="font-size:12px;margin:2px 0 8px">Zoom the whole interface (${UI_SCALE_MIN}–${UI_SCALE_MAX}% in ${UI_SCALE_STEP}% steps). Applies instantly; persists on this device, like the theme.</p>
+    <label class="customrow">
+      <span class="cl">UI scale</span>
+      <input type="range" min="${UI_SCALE_MIN}" max="${UI_SCALE_MAX}" step="${UI_SCALE_STEP}" value="${uiScale}"
+             oninput="setUiScale(this.value)">
+      <span class="cv">${uiScale}%</span>
+    </label>
+  </div>`;
   $('settingsCard').innerHTML=`<h2>Settings — difficulty &amp; presentation</h2>
     ${layerCard}
+    ${scaleCard}
     <p class="muted" style="font-size:12px;margin:-4px 0 6px">The rocket equation is identical in every mode — difficulty only scales the economy, how forgiving hardware reliability is, and how much of the underlying math is exposed. Switching mid-game applies from the next action onward; starting capital only applies to a new game.</p>
     <div class="diffgrid">${cards}</div>
     <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
@@ -15854,5 +15891,6 @@ newGame();
 render();
 applyWide(); // restore the saved Wide-mode preference + sync the toolbar buttons
 applyTheme(currentTheme); // restore the saved theme variant (Mission Dark / Control Room Green / Apollo Beige)
+applyUiScale(uiScale); // restore the saved UI-scale zoom (E0.4 slice D; localStorage 'ov_uiscale', default 100%)
 showStartup(); // the startup screen — the Production drill (new game) or the recap (continue/open) opens after the player chooses
 

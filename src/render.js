@@ -1823,8 +1823,19 @@ function renderSettings(){
     <div style="display:flex;gap:8px">${layerBtns}</div>
     <div class="dim" style="font-size:12px;margin-top:8px">${layerInfo[L]}</div>
   </div>`;
+  const scaleCard=`<div class="card" style="background:var(--panel2);margin-bottom:12px">
+    <div class="mission-name" style="font-size:15px">🔍 UI scale</div>
+    <p class="muted" style="font-size:12px;margin:2px 0 8px">Zoom the whole interface (${UI_SCALE_MIN}–${UI_SCALE_MAX}% in ${UI_SCALE_STEP}% steps). Applies instantly; persists on this device, like the theme.</p>
+    <label class="customrow">
+      <span class="cl">UI scale</span>
+      <input type="range" min="${UI_SCALE_MIN}" max="${UI_SCALE_MAX}" step="${UI_SCALE_STEP}" value="${uiScale}"
+             oninput="setUiScale(this.value)">
+      <span class="cv">${uiScale}%</span>
+    </label>
+  </div>`;
   $('settingsCard').innerHTML=`<h2>Settings — difficulty &amp; presentation</h2>
     ${layerCard}
+    ${scaleCard}
     <p class="muted" style="font-size:12px;margin:-4px 0 6px">The rocket equation is identical in every mode — difficulty only scales the economy, how forgiving hardware reliability is, and how much of the underlying math is exposed. Switching mid-game applies from the next action onward; starting capital only applies to a new game.</p>
     <div class="diffgrid">${cards}</div>
     <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">

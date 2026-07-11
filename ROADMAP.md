@@ -2366,6 +2366,18 @@ New `test-focus-trap.js`, 31/31, on the two extracted pure functions (`nextTrapF
 `resolveReturnFocus`) — real focus/DOM behavior isn't testable in the Node harness, tested live instead.
 **Suite total: 443/443.**
 
+## Session — E0.4 slice (d): UI-scale slider (2026-07-10)
+
+**Shipped, user-verified in Firefox (incl. Phaser click-accuracy at 80%/130%), committed. Slice (c)
+(reduced-motion + colorblind icons) deliberately deferred, not started.**
+
+CSS `zoom` mechanism (`--ui-scale` var on `:root`, `zoom:var(--ui-scale)` on `body`), 80–130% in 10%
+steps, localStorage-only (`ov_uiscale`, same pattern as `ov_theme`/`ov_wide` — no `SAVE_VERSION` bump,
+survives new games/slot switches). Slider added to Settings (`renderSettings`, matches the existing
+custom-difficulty slider style), applies live, re-runs `syncTopbarH()` on change. Default (100%) is a
+provable no-op. New `test-ui-scale.js`, 48/48 (clamp/sanitize/boot-decision logic only — real CSS zoom
+isn't testable in the harness). **Suite total: 491/491.**
+
 ## Planned — External evaluation intake (2026-07-10)
 
 **Full backlog:** all 105 feature ideas from the evaluation, individually mapped to a
@@ -2409,10 +2421,9 @@ duplicating.
       escape hatch. Fixes focus/scroll loss in re-rendered panels, cuts time-warp GC
       churn, and is the prerequisite for simultaneous-mission ops density. Validate by
       diffing harness snapshots region-by-region.
-- [ ] **E0.4 Keyboard + accessibility baseline** — tab hotkeys, space pause, +/- warp
-      (extends the existing time-hotkeys session), Esc closes modals + focus trap,
-      `prefers-reduced-motion` gating on pulses/bumps, icon-beside-color redundancy for
-      money/support states, UI-scale CSS var in settings.
+- [~] **E0.4 Keyboard + accessibility baseline** — slices (a) hotkeys, (b) focus trap, (d) UI-scale
+      SHIPPED 2026-07-10 (see session logs above), 491/491. **Slice (c) (reduced-motion +
+      colorblind icons) deliberately deferred, not started.**
 - [ ] **E0.5 Unbounded-array audit** — cap rendered log entries (windowed + "show
       older"), decimate metric histories monthly→quarterly after N years, cap/archive
       chronicle. Verify `document.hidden` pauses every RAF loop and sleeps Phaser scenes
