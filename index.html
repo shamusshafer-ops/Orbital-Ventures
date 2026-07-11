@@ -363,6 +363,17 @@
   .vehpop-x:hover{border-color:var(--ignite);color:var(--ignite)}
   .vehpop-body{flex:1;display:flex;min-height:0}
   .vehpop-stage{flex:1;position:relative;overflow:hidden;cursor:grab;touch-action:none}
+  /* Vehicle pop-out only (#vehPopStage is unique to it — station/map/earth/cc share .vehpop-stage
+     too but don't get this): same authentic blueprint navy + white grid as the bench card. The
+     pop-out canvas (drawVehPopout → drawVehiclePreviewTo) clearRects to transparent every frame,
+     so this shows through directly behind the vehicle, matching the bench's Phaser-scene treatment. */
+  #vehPopStage{background-color:#0b2545;
+    background-image:
+      linear-gradient(rgba(255,255,255,.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.05) 1px, transparent 1px),
+      linear-gradient(rgba(255,255,255,.11) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.11) 1px, transparent 1px);
+    background-size:10px 10px,10px 10px,50px 50px,50px 50px;}
   .vehpop-stage.grabbing{cursor:grabbing}
   .vehpop-stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
   .vehpop-stage .mapsvg,.vehpop-stage .stationsvg{width:100%;height:100%;max-width:none;margin:0;border:none}

@@ -2872,6 +2872,13 @@ the drag-readout label's background chip from near-black to the matching navy fo
 regression — pop-out unaffected (it uses the plain 2D-canvas path, not this Phaser scene). Suite unchanged
 837/849 (same pre-existing failure).
 
+**Fast-follow same session**: extended to the vehicle pop-out too, on request. `#vehPopStage` (unique id,
+so this doesn't leak onto the station/map/earth/cc pop-outs which share the same `.vehpop-stage` class)
+gets the identical navy+grid CSS. Simpler than the bench fix — the pop-out's canvas (`drawVehPopout` →
+`drawVehiclePreviewTo`) is a plain 2D canvas that already `clearRect`s to transparent every frame (it
+never had the Phaser-opaque-background problem), so plain CSS was sufficient, no JS changes needed. Suite
+unchanged 837/849 (same pre-existing failure).
+
 ## Planned — External evaluation intake (2026-07-10)
 
 **Full backlog:** all 105 feature ideas from the evaluation, individually mapped to a
