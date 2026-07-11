@@ -5517,12 +5517,12 @@ function upcomingEvents(){
 // mission "SUCCESS" line that also happens to mention "crew") land in the right bucket.
 const TL_CATEGORIES=[
   {id:'all',      label:'All'},
-  {id:'launch',   label:'Launches',       icon:'🚀'},
-  {id:'research', label:'Research',       icon:'⚛'},
+  {id:'launch',   label:'Launches',       icon:svgIcon('launch')},
+  {id:'research', label:'Research',       icon:svgIcon('research')},
   {id:'economy',  label:'Economy',        icon:'$'},
-  {id:'rivals',   label:'Rivals',         icon:'🏴'},
-  {id:'crew',     label:'Crew',           icon:'👥'},
-  {id:'infra',    label:'Infrastructure', icon:'🏗'},
+  {id:'rivals',   label:'Rivals',         icon:svgIcon('rivals')},
+  {id:'crew',     label:'Crew',           icon:svgIcon('crew')},
+  {id:'infra',    label:'Infrastructure', icon:svgIcon('infra')},
 ];
 function logCategory(e){
   if(e.kind==='rival') return 'rivals';

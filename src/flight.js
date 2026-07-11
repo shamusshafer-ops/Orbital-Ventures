@@ -1,3 +1,21 @@
+/* E1.2 slice C (visual overhaul): theme-synced HUD chrome for the flight overlay's canvas rendering.
+   CSS custom properties (shell.html's body.theme-* classes) can't be read from canvas/Phaser draw
+   calls, so this mirrors the same 3 palettes as a JS table — keep both in sync by hand if a theme
+   color ever changes. Applies to HUD/instrument-panel CHROME only (telemetry box, decision panels,
+   phase bar, buttons) — deliberately NOT the "physical world" being rendered (Earth's blue, rocket
+   flame, plasma, stars, ocean splashdown stay their real colors regardless of console theme, the
+   same way a mission-control room's console color doesn't repaint the sky outside the window). */
+const THEME_COLORS = {
+  dark:  {bg:'#0e1418', panel:'#151d23', panel2:'#1b252c', line:'#2a3a44', ink:'#d8e2e7', muted:'#7d909b', dim:'#56666f', ignite:'#f5a623', readout:'#4fd1d9', ok:'#58c47a', bad:'#e0564f', warn:'#e8b341'},
+  green: {bg:'#0a1410', panel:'#0e1c14', panel2:'#163024', line:'#26442f', ink:'#9affb4', muted:'#5a9a6e', dim:'#3d6e4d', ignite:'#d7b32a', readout:'#5fe0a0', ok:'#4fe26e', bad:'#e0564f', warn:'#e8c341'},
+  beige: {bg:'#1b1610', panel:'#2a2218', panel2:'#342a1c', line:'#4a3c28', ink:'#ecdfc4', muted:'#b09a72', dim:'#7d6a4c', ignite:'#e08a3c', readout:'#5bb9c4', ok:'#6db86a', bad:'#d2542b', warn:'#e8b341'},
+};
+function themeColor(key){ const t=THEME_COLORS[typeof currentTheme!=='undefined'?currentTheme:'dark']||THEME_COLORS.dark; return t[key]||THEME_COLORS.dark[key]; }
+function themeRgba(key, alpha){
+  const hex=themeColor(key).replace('#','');
+  const r=parseInt(hex.substring(0,2),16), g=parseInt(hex.substring(2,4),16), b=parseInt(hex.substring(4,6),16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
 /* ===== WebGL 2D compatibility layer ===== */
 const _glShaders={
 flatV:`attribute vec2 aPos;uniform mat3 uProj;uniform mat3 uTransform;void main(){vec3 p=uProj*uTransform*vec3(aPos,1.0);gl_Position=vec4(p.xy,0.0,1.0);}`,
@@ -482,7 +500,7 @@ function setupFlightState(spec, done, ctx, cv, viewCanvas, seedP){
   // lead-in had reached at handoff), so the cut from the command-center scene reads as continuous rather
   // than resetting the rocket to the ground. Defaults to 0 (today's ground-level start) for every other caller.
   const seedT=clampA(seedP||0,0,0.85)*ascentDur;
-  animState={spec,done,ctx,cv,viewCanvas:viewCanvas||cv,t0:performance.now(),padDur,ascentDur,cruiseDur,reentryDur,totalDur,stars,path,raf:0,trail:[],particles:[],debris:[],rePlasma:[],reSplash:[],shakeX:0,shakeY:0,lastT:0,virtT:seedT,prevWall:performance.now(),sfxSepFired:{},sfxBoomFired:false,sfxEnginePhase:null,recovering:!!spec.recovering,_splashed:false,_splashX:null,reRing:0,ignite:1,_engineStarted:false};
+  animState={spec,done,ctx,cv,viewCanvas:viewCanvas||cv,t0:performance.now(),padDur,ascentDur,cruiseDur,reentryDur,totalDur,stars,path,raf:0,trail:[],particles:[],debris:[],rePlasma:[],reSplash:[],shakeX:0,shakeY:0,lastT:0,virtT:seedT,prevWall:performance.now(),sfxSepFired:{},sfxBoomFired:false,sfxEnginePhase:null,recovering:!!spec.recovering,_splashed:false,_splashX:null,reRing:0,ignite:1,_engineStarted:false,pendingDecision:spec._pendingDecisionSeed||null}; // E1.2 slice C: seeded from spec (not set after playMission returns) so the FIRST synchronous animLoop frame already sees it
   sfxInit();
   const totalProp=spec.stages.reduce((a,s)=>a+s.prop,0)+(spec.transferProp||0);
   const engCount=spec.stages[0]?spec.stages[0].count||1:1;
@@ -855,29 +873,29 @@ function drawPostFlight(){
   const pe=fd.pe||172, ap=fd.ap||192, orbAlt=fd.orbAlt||180;
   const orbR=eR+55;
   const peR=orbR-4, apR=orbR+4;
-  ctx.strokeStyle='rgba(79,209,217,0.12)'; ctx.setLineDash([3,5]); ctx.lineWidth=0.5;
+  ctx.strokeStyle=themeRgba('readout',0.12); ctx.setLineDash([3,5]); ctx.lineWidth=0.5;
   ctx.beginPath(); ctx.arc(eCx,eCy,peR,Math.PI*1.05,Math.PI*1.95); ctx.stroke();
   ctx.beginPath(); ctx.arc(eCx,eCy,apR,Math.PI*1.05,Math.PI*1.95); ctx.stroke();
   ctx.setLineDash([]);
-  ctx.strokeStyle='rgba(79,209,217,0.25)'; ctx.setLineDash([4,6]); ctx.lineWidth=1;
+  ctx.strokeStyle=themeRgba('readout',0.25); ctx.setLineDash([4,6]); ctx.lineWidth=1;
   ctx.beginPath(); ctx.arc(eCx,eCy,orbR,Math.PI*1.05,Math.PI*1.95); ctx.stroke(); ctx.setLineDash([]);
-  ctx.strokeStyle='#4fd1d9'; ctx.lineWidth=2;
+  ctx.strokeStyle=themeColor('readout'); ctx.lineWidth=2;
   ctx.beginPath(); ctx.arc(eCx,eCy,orbR,Math.PI*1.05,Math.PI*1.95); ctx.stroke();
   const craftA=Math.PI*1.55;
   const craftPx=eCx+Math.cos(craftA)*orbR, craftPy=eCy+Math.sin(craftA)*orbR;
-  ctx.fillStyle='#f5a623'; ctx.beginPath(); ctx.arc(craftPx,craftPy,5,0,7); ctx.fill();
+  ctx.fillStyle=themeColor('ignite'); ctx.beginPath(); ctx.arc(craftPx,craftPy,5,0,7); ctx.fill();
   ctx.strokeStyle='rgba(245,166,35,0.4)'; ctx.lineWidth=1; ctx.beginPath(); ctx.arc(craftPx,craftPy,10,0,7); ctx.stroke();
   const proA=craftA-Math.PI/2;
   ctx.save(); ctx.translate(craftPx+Math.cos(proA)*14,craftPy+Math.sin(proA)*14); ctx.rotate(proA-Math.PI/2);
-  ctx.fillStyle='rgba(79,209,217,0.7)'; ctx.beginPath(); ctx.moveTo(0,-4); ctx.lineTo(3,3); ctx.lineTo(-3,3); ctx.closePath(); ctx.fill();
+  ctx.fillStyle=themeRgba('readout',0.7); ctx.beginPath(); ctx.moveTo(0,-4); ctx.lineTo(3,3); ctx.lineTo(-3,3); ctx.closePath(); ctx.fill();
   ctx.restore();
   const peA=Math.PI*1.12, apA=Math.PI*1.88;
   const peX=eCx+Math.cos(peA)*(peR-3), peY=eCy+Math.sin(peA)*(peR-3);
   const apX=eCx+Math.cos(apA)*(apR+3), apY=eCy+Math.sin(apA)*(apR+3);
-  ctx.font='9px ui-monospace,monospace'; ctx.fillStyle='rgba(79,209,217,0.6)'; ctx.textAlign='center';
+  ctx.font='9px ui-monospace,monospace'; ctx.fillStyle=themeRgba('readout',0.6); ctx.textAlign='center';
   ctx.fillText('PE '+pe+' km',peX,peY-12);
   ctx.fillText('AP '+ap+' km',apX,apY-12);
-  ctx.fillStyle='rgba(79,209,217,0.5)'; ctx.beginPath(); ctx.arc(peX,peY,2.5,0,7); ctx.fill();
+  ctx.fillStyle=themeRgba('readout',0.5); ctx.beginPath(); ctx.arc(peX,peY,2.5,0,7); ctx.fill();
   ctx.beginPath(); ctx.arc(apX,apY,2.5,0,7); ctx.fill();
   const launchA=Math.PI*1.08;
   const lx=eCx+Math.cos(launchA)*(eR+2), ly=eCy+Math.sin(launchA)*(eR+2);
@@ -886,14 +904,14 @@ function drawPostFlight(){
   ctx.fillText('LAUNCH',lx+6,ly-3);
   ctx.save();
   const panelW=220, panelH=s.crewed?190:170, panelX=14, panelY=14;
-  ctx.fillStyle='rgba(4,7,12,0.85)'; ctx.fillRect(panelX,panelY,panelW,panelH);
-  ctx.strokeStyle='rgba(79,209,217,0.3)'; ctx.lineWidth=0.5; ctx.strokeRect(panelX,panelY,panelW,panelH);
+  ctx.fillStyle=themeRgba('bg',0.85); ctx.fillRect(panelX,panelY,panelW,panelH);
+  ctx.strokeStyle=themeRgba('readout',0.3); ctx.lineWidth=0.5; ctx.strokeRect(panelX,panelY,panelW,panelH);
   ctx.textAlign='left'; ctx.textBaseline='top';
-  ctx.fillStyle='#58c47a'; ctx.font='bold 14px ui-monospace,monospace';
+  ctx.fillStyle=themeColor('ok'); ctx.font='bold 14px ui-monospace,monospace';
   ctx.fillText(s.isCislunar?'MISSION COMPLETE':'ORBIT ACHIEVED',panelX+12,panelY+10);
-  ctx.fillStyle='#d0dce4'; ctx.font='12px ui-monospace,monospace';
+  ctx.fillStyle=themeColor('ink'); ctx.font='12px ui-monospace,monospace';
   ctx.fillText(s.title,panelX+12,panelY+30);
-  if(s.crewed){ ctx.fillStyle='#f5a623'; ctx.font='10px ui-monospace,monospace'; ctx.fillText('▲ CREWED FLIGHT',panelX+12,panelY+48); }
+  if(s.crewed){ ctx.fillStyle=themeColor('ignite'); ctx.font='10px ui-monospace,monospace'; ctx.fillText('▲ CREWED FLIGHT',panelX+12,panelY+48); }
   const dataY=panelY+(s.crewed?66:50);
   ctx.font='10px ui-monospace,monospace';
   const rows=[
@@ -907,15 +925,15 @@ function drawPostFlight(){
   if(fd.maxQ) rows.push(['MAX-Q', fd.maxQ+' kPa']);
   rows.forEach((r,i)=>{
     const ry=dataY+i*16;
-    ctx.fillStyle='#5a6a75'; ctx.fillText(r[0],panelX+12,ry);
-    ctx.fillStyle='#d0dce4'; ctx.textAlign='right'; ctx.fillText(r[1],panelX+panelW-12,ry);
+    ctx.fillStyle=themeColor('dim'); ctx.fillText(r[0],panelX+12,ry);
+    ctx.fillStyle=themeColor('ink'); ctx.textAlign='right'; ctx.fillText(r[1],panelX+panelW-12,ry);
     ctx.textAlign='left';
   });
   ctx.restore();
   const mmX=W-170, mmY=14, mmW=155, mmH=160;
   ctx.save();
-  ctx.fillStyle='rgba(4,7,12,0.85)'; ctx.fillRect(mmX-4,mmY-4,mmW+8,mmH+8);
-  ctx.strokeStyle='rgba(79,209,217,0.2)'; ctx.lineWidth=0.5; ctx.strokeRect(mmX-4,mmY-4,mmW+8,mmH+8);
+  ctx.fillStyle=themeRgba('bg',0.85); ctx.fillRect(mmX-4,mmY-4,mmW+8,mmH+8);
+  ctx.strokeStyle=themeRgba('readout',0.2); ctx.lineWidth=0.5; ctx.strokeRect(mmX-4,mmY-4,mmW+8,mmH+8);
   ctx.beginPath(); ctx.rect(mmX,mmY,mmW,mmH); ctx.clip();
   const meR=40, meCx=mmX+mmW*0.4, meCy=mmY+mmH*0.5;
   const meGrad=ctx.createRadialGradient(meCx-5,meCy-5,5,meCx,meCy,meR);
@@ -924,19 +942,19 @@ function drawPostFlight(){
   ctx.strokeStyle='rgba(100,180,255,0.2)'; ctx.lineWidth=0.8;
   ctx.beginPath(); ctx.arc(meCx,meCy,meR+2,0,7); ctx.stroke();
   const moR=meR+14;
-  ctx.strokeStyle='#4fd1d9'; ctx.lineWidth=1.2;
+  ctx.strokeStyle=themeColor('readout'); ctx.lineWidth=1.2;
   ctx.beginPath(); ctx.arc(meCx,meCy,moR,0,7); ctx.stroke();
   const mCraftA=-Math.PI*0.35;
   const mcx=meCx+Math.cos(mCraftA)*moR, mcy=meCy+Math.sin(mCraftA)*moR;
-  ctx.fillStyle='#f5a623'; ctx.beginPath(); ctx.arc(mcx,mcy,3,0,7); ctx.fill();
+  ctx.fillStyle=themeColor('ignite'); ctx.beginPath(); ctx.arc(mcx,mcy,3,0,7); ctx.fill();
   ctx.strokeStyle='rgba(245,166,35,0.3)'; ctx.lineWidth=0.5; ctx.beginPath(); ctx.arc(mcx,mcy,6,0,7); ctx.stroke();
   const mPeA=Math.PI*0.5, mApA=-Math.PI*0.5;
   const mpx=meCx+Math.cos(mPeA)*(moR-3), mpy=meCy+Math.sin(mPeA)*(moR-3);
   const max2=meCx+Math.cos(mApA)*(moR+3), may=meCy+Math.sin(mApA)*(moR+3);
-  ctx.fillStyle='rgba(79,209,217,0.5)'; ctx.beginPath(); ctx.arc(mpx,mpy,1.5,0,7); ctx.fill();
+  ctx.fillStyle=themeRgba('readout',0.5); ctx.beginPath(); ctx.arc(mpx,mpy,1.5,0,7); ctx.fill();
   ctx.beginPath(); ctx.arc(max2,may,1.5,0,7); ctx.fill();
   ctx.font='7px ui-monospace,monospace'; ctx.textAlign='center';
-  ctx.fillStyle='rgba(79,209,217,0.5)';
+  ctx.fillStyle=themeRgba('readout',0.5);
   ctx.fillText('PE',mpx,mpy+8); ctx.fillText('AP',max2,may-5);
   const mlA=Math.PI*0.6;
   const mlx=meCx+Math.cos(mlA)*(meR+1), mly=meCy+Math.sin(mlA)*(meR+1);
@@ -970,11 +988,11 @@ function drawFlightContinueBtn(ctx,W,H){
   ctx.quadraticCurveTo(btnX+btnW,btnY+btnH,btnX+btnW-br,btnY+btnH); ctx.lineTo(btnX+br,btnY+btnH);
   ctx.quadraticCurveTo(btnX,btnY+btnH,btnX,btnY+btnH-br); ctx.lineTo(btnX,btnY+br);
   ctx.quadraticCurveTo(btnX,btnY,btnX+br,btnY); ctx.closePath();
-  ctx.fillStyle='rgba(79,209,217,0.12)'; ctx.fill();
-  ctx.strokeStyle='#4fd1d9'; ctx.lineWidth=1; ctx.stroke();
-  ctx.fillStyle='#4fd1d9'; ctx.font='bold 13px ui-monospace,monospace'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillStyle=themeRgba('readout',0.12); ctx.fill();
+  ctx.strokeStyle=themeColor('readout'); ctx.lineWidth=1; ctx.stroke();
+  ctx.fillStyle=themeColor('readout'); ctx.font='bold 13px ui-monospace,monospace'; ctx.textAlign='center'; ctx.textBaseline='middle';
   ctx.fillText('Continue ▸',W/2,btnY+btnH/2);
-  ctx.font='9px ui-monospace,monospace'; ctx.fillStyle='rgba(200,210,220,0.4)';
+  ctx.font='9px ui-monospace,monospace'; ctx.fillStyle=themeRgba('ink',0.4);
   ctx.fillText('[Enter]',W/2,btnY+btnH+14);
   ctx.textAlign='left';
   A.continueBtn={x:btnX,y:btnY,w:btnW,h:btnH};
@@ -991,6 +1009,133 @@ function drawFlightContinueBtn(ctx,W,H){
     };
     vc.addEventListener('click',A.clickHandler);
   }
+}
+// E1.2 slice C: a generic in-overlay decision panel — dims the frozen backdrop frame and draws a
+// mission-control console box (title + body lines + 1-3 stacked buttons), reusing
+// drawFlightContinueBtn's rounded-rect + hit-test + one-shot click-handler idiom, generalized to N
+// buttons. Callers (showLiveCallModal etc.) build a {title,color,lines,buttons:[{label,action,ghost}]}
+// spec; this only draws + wires clicks, it doesn't know what any button means.
+function drawDecisionPanel(spec){
+  const A=animState; if(!A) return;
+  const ctx=A.ctx, W=A.cv.width, H=A.cv.height;
+  ctx.fillStyle=themeRgba('bg',0.55); ctx.fillRect(0,0,W,H);
+  const lineH=15, btnH=30, btnGap=8;
+  const boxW=Math.min(420,W*0.86);
+  const boxH=64+spec.lines.length*lineH+spec.buttons.length*(btnH+btnGap);
+  const boxX=(W-boxW)/2, boxY=Math.max(10,(H-boxH)/2), br=8;
+  ctx.beginPath(); ctx.moveTo(boxX+br,boxY); ctx.lineTo(boxX+boxW-br,boxY);
+  ctx.quadraticCurveTo(boxX+boxW,boxY,boxX+boxW,boxY+br); ctx.lineTo(boxX+boxW,boxY+boxH-br);
+  ctx.quadraticCurveTo(boxX+boxW,boxY+boxH,boxX+boxW-br,boxY+boxH); ctx.lineTo(boxX+br,boxY+boxH);
+  ctx.quadraticCurveTo(boxX,boxY+boxH,boxX,boxY+boxH-br); ctx.lineTo(boxX,boxY+br);
+  ctx.quadraticCurveTo(boxX,boxY,boxX+br,boxY); ctx.closePath();
+  ctx.fillStyle=themeRgba('panel2',0.97); ctx.fill();
+  ctx.strokeStyle=spec.color||themeColor('warn'); ctx.lineWidth=1.5; ctx.stroke();
+  ctx.textAlign='center';
+  let ty=boxY+24;
+  ctx.fillStyle=spec.color||themeColor('warn'); ctx.font='bold 13px ui-monospace,monospace';
+  ctx.fillText(spec.title, W/2, ty);
+  ctx.font='11px ui-monospace,monospace'; ctx.fillStyle=themeRgba('ink',0.85);
+  for(const line of spec.lines){ ty+=lineH; ctx.fillText(line, W/2, ty); }
+  ty+=btnGap+6;
+  const btnW=Math.min(340,boxW-40), btnX=(W-btnW)/2;
+  A.decisionButtons=[];
+  for(const b of spec.buttons){
+    const bx=btnX, by=ty, br2=6;
+    ctx.beginPath(); ctx.moveTo(bx+br2,by); ctx.lineTo(bx+btnW-br2,by);
+    ctx.quadraticCurveTo(bx+btnW,by,bx+btnW,by+br2); ctx.lineTo(bx+btnW,by+btnH-br2);
+    ctx.quadraticCurveTo(bx+btnW,by+btnH,bx+btnW-br2,by+btnH); ctx.lineTo(bx+br2,by+btnH);
+    ctx.quadraticCurveTo(bx,by+btnH,bx,by+btnH-br2); ctx.lineTo(bx,by+br2);
+    ctx.quadraticCurveTo(bx,by,bx+br2,by); ctx.closePath();
+    ctx.fillStyle=b.ghost?'rgba(255,255,255,0.04)':themeRgba('readout',0.14); ctx.fill();
+    ctx.strokeStyle=b.ghost?themeRgba('ink',0.35):themeColor('readout'); ctx.lineWidth=1; ctx.stroke();
+    ctx.fillStyle=b.ghost?themeRgba('ink',0.8):themeColor('readout'); ctx.font='bold 12px ui-monospace,monospace';
+    ctx.fillText(b.label, W/2, by+btnH/2+4);
+    A.decisionButtons.push({x:bx,y:by,w:btnW,h:btnH,action:b.action});
+    ty+=btnH+btnGap;
+  }
+  ctx.textAlign='left';
+  wireDecisionClicks();
+}
+function wireDecisionClicks(){
+  const A=animState; if(!A) return;
+  const vc=A.viewCanvas||A.cv;
+  if(A.decisionClickHandler) vc.removeEventListener('click',A.decisionClickHandler);
+  A.decisionClickHandler=function(ev){
+    const rect=vc.getBoundingClientRect();
+    const sx=(ev.clientX-rect.left)*(vc.width/rect.width);
+    const sy=(ev.clientY-rect.top)*(vc.height/rect.height);
+    for(const b of (A.decisionButtons||[])){
+      if(sx>=b.x && sx<=b.x+b.w && sy>=b.y && sy<=b.y+b.h){
+        vc.removeEventListener('click',A.decisionClickHandler);
+        A.decisionClickHandler=null; A.decisionButtons=null;
+        b.action();
+        return;
+      }
+    }
+  };
+  vc.addEventListener('click',A.decisionClickHandler);
+}
+// E1.2 slice C: opens the flight overlay EARLY (before the outcome is even resolved into a final
+// spec) so a pending live-flight decision (live call, reserve call, weather go/no-go, rescue) can be
+// shown IN the scene at its own natural moment, instead of a page-level modal appearing before the
+// overlay opens at all. Builds a placeholder spec (everything the pad phase actually draws —
+// stages/boosters/rng — none of which depend on the outcome); `resumeFlightForDecision` patches in
+// the real outcome once every decision on this flight has resolved. `decision` is
+// `{holdAt:'pad-start'|'pad-end'|'cislunar-start', buildPanel(){ return {title,color,lines,buttons}; }}`
+// (holdAt defaults to 'pad-end' if omitted — see drawScene's checks).
+// REUSE: a flight can hit more than one decision (e.g. weather, then a live call once outcome is
+// known) — if the overlay is already open for this same flight attempt, just arm the new decision
+// and let the animation play forward to ITS own hold point (drawScene re-checks every frame).
+function openFlightForDecision(ctx, decision){
+  if(animState){
+    animState.pendingDecision=decision;
+    animState.held=false; animState.prevWall=performance.now();
+    animLoop();
+    return;
+  }
+  const m=ctx.m, rnd=()=>Math.random();
+  const spec={ title:m.name, crewed:ctx.crewed, success:true, failPhase:null,
+    stages: state.stages.map(s=>({prop:s.prop,count:s.count,dia:s.dia})),
+    boosters: boosterSpec(),
+    transferProp: (m.profile&&m.modules&&m.modules.includes('transfer'))?state.transfer.prop:0,
+    recovering:false, hasCapsule: !!(state.research.crew_capsule || ctx.crewed),
+    isCislunar: !!m.profile, isOrbital: (!m.profile && m.reqDv>=9000), reqDv: m.reqDv||9400,
+    rng: { wind:(rnd()-0.5)*0.9, windFreq:1.4+rnd()*1.6, windPhase:rnd()*6.283,
+           pitchJitter:(rnd()-0.5)*0.16, sep:state.stages.map(()=>(rnd()-0.5)*0.06),
+           apogee:0.86+rnd()*0.28, bow:(rnd()-0.5)*0.9 } };
+  // Threaded through spec (not set on animState after the fact) because playMission calls animLoop
+  // SYNCHRONOUSLY once — setting pendingDecision afterward would miss the very first frame's hold
+  // check. setupFlightState copies this onto the animState it builds, before that first frame runs.
+  spec._pendingDecisionSeed=decision;
+  _liftoffArmed=false;
+  playMission(spec, ()=>{}); // no-op done — the real finish() is wired in by resumeFlightForDecision
+  if(animState) animState._openedForDecision=true;
+}
+// The other half of openFlightForDecision: called from finalizeLaunch once every decision on this
+// flight has resolved and the real outcome-dependent spec fields are known. Patches them into the
+// SAME spec object (keeps stages/boosters/rng/title intact — the visual trajectory already rolled
+// stays continuous), recomputes the outcome-dependent derived animState fields (reentryDur/totalDur)
+// exactly as setupFlightState does — they were placeholder values built for a fake success — then
+// un-holds and resumes the SAME animation loop. Guards on `_openedForDecision` (set once at first
+// open, NOT `pendingDecision`, which is null here — every decision already resolved is exactly the
+// case this function handles). Returns false (caller should fall back to a fresh playMission) if
+// there's no such animState to resume, e.g. the overlay was somehow closed underneath it.
+function resumeFlightForDecision(finalSpec, finish){
+  const A=animState; if(!A || !A._openedForDecision) return false;
+  Object.assign(A.spec, finalSpec);
+  const reentryDur=flightHasReentry(A.spec)?6400:0;
+  const departMode=A.spec.mode==='depart';
+  let totalDur;
+  if(departMode) totalDur=A.ascentDur+DEPART_CARD_MS;
+  else if(!A.spec.success && A.spec.failPhase==='ascent') totalDur=A.ascentDur*0.55+2000;
+  else if(!A.spec.success && A.spec.failPhase==='deep') totalDur=A.ascentDur+A.cruiseDur*0.42+2000;
+  else totalDur=A.ascentDur+A.cruiseDur+reentryDur+1200;
+  totalDur+=A.padDur;
+  A.reentryDur=reentryDur; A.totalDur=totalDur; A.recovering=!!A.spec.recovering;
+  A.done=finish; A.pendingDecision=null; A._openedForDecision=false;
+  A.held=false; A.prevWall=performance.now();
+  animLoop();
+  return true;
 }
 // Slice B: the "cruise begins / ETA" outro card. Played on the flight overlay's own canvas after a
 // deferred interplanetary departure's ascent (spec.mode:'depart'), it reads as the launch-day session's
@@ -1029,15 +1174,15 @@ function drawDepartCard(ct, held){
     if(eta) rows.push(['ARRIVAL', eta]);
     if(s.crewed && s.crew>0) rows.push(['CREW', s.crew+' aboard']);
     const panelW=250, panelH=46+rows.length*16, panelX=(W-panelW)/2, panelY=Math.round(H*0.30);
-    ctx.fillStyle='rgba(4,7,12,0.82)'; ctx.fillRect(panelX,panelY,panelW,panelH);
-    ctx.strokeStyle='rgba(79,209,217,0.3)'; ctx.lineWidth=0.5; ctx.strokeRect(panelX,panelY,panelW,panelH);
+    ctx.fillStyle=themeRgba('bg',0.82); ctx.fillRect(panelX,panelY,panelW,panelH);
+    ctx.strokeStyle=themeRgba('readout',0.3); ctx.lineWidth=0.5; ctx.strokeRect(panelX,panelY,panelW,panelH);
     ctx.textAlign='center'; ctx.textBaseline='top';
-    ctx.fillStyle='#4fd1d9'; ctx.font='bold 15px ui-monospace,monospace';
+    ctx.fillStyle=themeColor('readout'); ctx.font='bold 15px ui-monospace,monospace';
     ctx.fillText('CRUISE BEGINS', W/2, panelY+10);
     ctx.font='10px ui-monospace,monospace'; ctx.textBaseline='alphabetic';
     rows.forEach((r,i)=>{ const ry=panelY+42+i*16;
-      ctx.textAlign='left'; ctx.fillStyle='#5a6a75'; ctx.fillText(r[0],panelX+14,ry);
-      ctx.textAlign='right'; ctx.fillStyle='#d0dce4'; ctx.fillText(String(r[1]),panelX+panelW-14,ry); });
+      ctx.textAlign='left'; ctx.fillStyle=themeColor('dim'); ctx.fillText(r[0],panelX+14,ry);
+      ctx.textAlign='right'; ctx.fillStyle=themeColor('ink'); ctx.fillText(String(r[1]),panelX+panelW-14,ry); });
     ctx.textAlign='left'; ctx.restore();
   }
   if(held) drawFlightContinueBtn(ctx,W,H);
@@ -1133,7 +1278,18 @@ function drawScene(t){
     A.phaseTicks.push(((A.padDur||0)+A.ascentDur)/activeDur);
     if(!departMode && A.reentryDur>0) A.phaseTicks.push(((A.padDur||0)+A.ascentDur+A.cruiseDur)/activeDur); }
   const prevPhase=A.phase;
-  if(A.padDur>0 && t < A.padDur){ A.phase='pad'; drawPad(t); A.lastT=t; return; }
+  if(A.padDur>0 && t < A.padDur){
+    A.phase='pad';
+    // E1.2 slice C: weather go/no-go holds right at pad open, before the countdown even ramps —
+    // the range-weather call comes before anything else about the flight is known.
+    if(A.pendingDecision && A.pendingDecision.holdAt==='pad-start'){ A.held=true; drawPad(0); drawDecisionPanel(A.pendingDecision.buildPanel()); A.lastT=t; return; }
+    drawPad(t); A.lastT=t; return;
+  }
+  // E1.2 slice C: the live-call decision holds RIGHT here, at the pad→ascent handoff — the
+  // ignition/liftoff moment — instead of letting the outcome (already resolved before this
+  // animation even opened) play out before the player has chosen press-on/abort. Default hold
+  // point when a decision doesn't specify one (matches the original live-call-only behavior).
+  if(A.pendingDecision && (A.pendingDecision.holdAt==='pad-end' || !A.pendingDecision.holdAt)){ A.phase='pad'; A.held=true; drawPad(A.padDur); drawDecisionPanel(A.pendingDecision.buildPanel()); A.lastT=t; return; }
   A.ignite=1; // Slice A: full flame for the rest of the flight — don't inherit the pad's near-1 ramp tail
   if(at < A.ascentDur || ascentFail){ A.phase='ascent'; drawAscent(at, ascentFail); }
   else {
@@ -1159,7 +1315,13 @@ function drawScene(t){
     if(entering && prevPhase!=='reentry' && prevPhase!=='ascent') captureHandoff('reentry'); // cruise → reentry cut
     const ho=beginHandoff(t); // Phase A: camera ease while the previous frame crossfades away
     if(entering){ A.phase='reentry'; drawReentry(ct-A.cruiseDur); }
-    else if(s.isCislunar){ A.phase='cislunar'; drawCislunar(ct); }
+    else if(s.isCislunar){
+      // E1.2 slice C: the reserve call (a drifting deep-phase subsystem) and rescue (a stranded
+      // crew) both only ever apply to cislunar/deep missions — this is their natural "far from
+      // home" moment, right on entering the cruise, rather than the pad→ascent handoff.
+      if(A.pendingDecision && A.pendingDecision.holdAt==='cislunar-start'){ A.phase='cislunar'; A.held=true; drawCislunar(0); drawDecisionPanel(A.pendingDecision.buildPanel()); if(ho) finishHandoff(); A.lastT=t; return; }
+      A.phase='cislunar'; drawCislunar(ct);
+    }
     else if(s.isOrbital){ A.phase='orbit'; drawOrbit(ct); }
     else { A.phase='suborbital'; drawSuborbital(ct); }
     if(ho) finishHandoff();
@@ -1554,30 +1716,41 @@ function drawBoom(ctx,x,y,dt){
     }
   }
 }
+// User-directed relayout (2026-07-11): was a vertical list pinned top-left, then a horizontal strip
+// stacked ABOVE the phase bar; now the BOTTOM-most HUD element (below the phase bar, hugging the
+// canvas edge) so it sits clear under the rocket sprite instead of competing with it for the same
+// vertical band during ascent. Stores its own top edge on animState (_telemetryTopY) so
+// drawPhaseBar can stack itself just above, whatever the current data's row count is.
+const HUD_BOTTOM_MARGIN=6; // gap from the telemetry strip's bottom edge to the true canvas bottom
 function drawTelemetry(data){
   const A=animState,ctx=A.ctx,W=A.cv.width,H=A.cv.height;
   ctx.save();
-  const rowH=19, padX=12, padY=10;
-  const panelW=174, panelH=data.length*rowH+padY*2;
-  ctx.fillStyle='rgba(4,7,12,0.82)'; ctx.fillRect(8,6,panelW,panelH);
-  ctx.strokeStyle='rgba(79,209,217,0.25)'; ctx.lineWidth=0.5; ctx.strokeRect(8,6,panelW,panelH);
-  ctx.strokeStyle='rgba(79,209,217,0.15)'; ctx.beginPath(); ctx.moveTo(8,6+rowH+padY-2); ctx.lineTo(8+panelW,6+rowH+padY-2); ctx.stroke();
-  ctx.font='11px ui-monospace,monospace'; ctx.textBaseline='top'; ctx.textAlign='left';
+  const cols=Math.min(data.length,5), rows=Math.ceil(data.length/cols);
+  const cellW=128, rowH=28, pad=7;
+  const stripW=Math.min(W-20, cols*cellW), stripH=rows*rowH+pad*2;
+  const stripX=(W-stripW)/2, stripY=H-HUD_BOTTOM_MARGIN-stripH;
+  A._telemetryTopY=stripY; // drawPhaseBar reads this to stack just above, whatever this frame's row count is
+  ctx.fillStyle=themeRgba('bg',0.82); ctx.fillRect(stripX,stripY,stripW,stripH);
+  ctx.strokeStyle=themeRgba('readout',0.25); ctx.lineWidth=0.5; ctx.strokeRect(stripX,stripY,stripW,stripH);
+  ctx.textBaseline='top'; ctx.textAlign='center';
   data.forEach((row,i)=>{
-    const ry=6+padY+i*rowH;
-    if(i>0 && i%4===0){ ctx.strokeStyle='rgba(79,209,217,0.08)'; ctx.beginPath(); ctx.moveTo(padX,ry-2); ctx.lineTo(8+panelW-padX,ry-2); ctx.stroke(); }
-    ctx.fillStyle='#5a6a75'; ctx.font='10px ui-monospace,monospace'; ctx.fillText(row.label,padX+4,ry+1);
-    ctx.fillStyle=row.color||'#d0dce4'; ctx.font='bold 12px ui-monospace,monospace';
-    ctx.textAlign='right'; ctx.fillText(row.value,8+panelW-padX,ry);
-    ctx.textAlign='left';
+    const c=i%cols, r=Math.floor(i/cols);
+    const cellX=stripX+c*(stripW/cols), cellCx=cellX+stripW/cols/2, cellY=stripY+pad+r*rowH;
+    if(c>0){ ctx.strokeStyle=themeRgba('readout',0.12); ctx.beginPath(); ctx.moveTo(cellX,stripY+4); ctx.lineTo(cellX,stripY+stripH-4); ctx.stroke(); }
+    ctx.fillStyle=themeColor('dim'); ctx.font='9px ui-monospace,monospace'; ctx.fillText(row.label,cellCx,cellY);
+    ctx.fillStyle=row.color||themeColor('ink'); ctx.font='bold 12px ui-monospace,monospace'; ctx.fillText(row.value,cellCx,cellY+12);
   });
+  ctx.textAlign='left';
   ctx.restore();
 }
 function drawPhaseBar(phase,color,progress){
   const A=animState,ctx=A.ctx,W=A.cv.width,H=A.cv.height;
   ctx.save();
-  const barW=320, barH=28, bx=(W-barW)/2, by=H-38;
-  ctx.fillStyle='rgba(4,7,12,0.82)';
+  const barW=320, barH=28, bx=(W-barW)/2;
+  // Stacks just above the telemetry strip (drawTelemetry always runs first in every caller and
+  // records its own top edge) — an 8px gap, then this bar's box extends 5px above `by`, hence -41.
+  const by=(A._telemetryTopY!=null?A._telemetryTopY:H-38)-41;
+  ctx.fillStyle=themeRgba('bg',0.82);
   ctx.beginPath();
   const br=6;
   ctx.moveTo(bx-6+br,by-5); ctx.lineTo(bx+barW+6-br,by-5);
@@ -1589,22 +1762,23 @@ function drawPhaseBar(phase,color,progress){
   ctx.lineTo(bx-6,by-5+br);
   ctx.quadraticCurveTo(bx-6,by-5,bx-6+br,by-5);
   ctx.closePath(); ctx.fill();
-  ctx.strokeStyle='rgba(79,209,217,0.2)'; ctx.lineWidth=0.5;
+  ctx.strokeStyle=themeRgba('readout',0.2); ctx.lineWidth=0.5;
   ctx.stroke();
   if(progress!==undefined){
-    ctx.fillStyle='rgba(79,209,217,0.08)'; ctx.fillRect(bx,by,barW,barH);
+    ctx.fillStyle=themeRgba('readout',0.08); ctx.fillRect(bx,by,barW,barH);
     // Phase C: the fill is the WHOLE mission (continuous across ascent/cruise/reentry),
     // not the current scene — the flight reads as one broadcast. Text stays contextual.
     const pg=clampA(A.overallP!=null?A.overallP:progress,0,1);
+    const barColor=color||themeColor('readout');
     const progGrad=ctx.createLinearGradient(bx,0,bx+barW*pg,0);
-    progGrad.addColorStop(0,(color||'#4fd1d9')+'55');
-    progGrad.addColorStop(1,(color||'#4fd1d9')+'22');
+    progGrad.addColorStop(0,barColor+'55');
+    progGrad.addColorStop(1,barColor+'22');
     ctx.fillStyle=progGrad; ctx.fillRect(bx,by,barW*pg,barH);
-    ctx.fillStyle=color||'#4fd1d9'; ctx.fillRect(bx+barW*pg-1,by,2,barH);
-    (A.phaseTicks||[]).forEach(f=>{ ctx.fillStyle='rgba(208,220,228,0.4)'; ctx.fillRect(bx+barW*f-0.5,by,1,barH); });
+    ctx.fillStyle=barColor; ctx.fillRect(bx+barW*pg-1,by,2,barH);
+    (A.phaseTicks||[]).forEach(f=>{ ctx.fillStyle=themeRgba('ink',0.4); ctx.fillRect(bx+barW*f-0.5,by,1,barH); });
   }
   ctx.textAlign='center'; ctx.textBaseline='middle';
-  ctx.fillStyle=color||'#4fd1d9'; ctx.font='bold 13px ui-monospace,monospace';
+  ctx.fillStyle=color||themeColor('readout'); ctx.font='bold 13px ui-monospace,monospace';
   ctx.fillText(phase,W/2,by+barH/2);
   ctx.restore();
 }
@@ -1668,7 +1842,7 @@ function drawSpentStageDrift(ctx,x,y,ang,ct){
 
 function drawCraftDot(ctx,x,y,glow){
   glow=glow||false;
-  ctx.fillStyle='#f5a623'; ctx.beginPath(); ctx.arc(x,y,4,0,7); ctx.fill();
+  ctx.fillStyle=themeColor('ignite'); ctx.beginPath(); ctx.arc(x,y,4,0,7); ctx.fill();
   ctx.strokeStyle='rgba(245,166,35,0.5)'; ctx.lineWidth=1; ctx.beginPath(); ctx.arc(x,y,8,0,7); ctx.stroke();
   if(glow){
     const g=ctx.createRadialGradient(x,y,2,x,y,16);
@@ -1679,8 +1853,8 @@ function drawCraftDot(ctx,x,y,glow){
 function drawMiniMap(ctx,W,H,p,orb,maxAlt,drangeKm,pitch){
   const mx=W-172, my=58, mw=155, mh=105;
   ctx.save();
-  ctx.fillStyle='rgba(4,7,12,0.82)'; ctx.fillRect(mx-4,my-4,mw+8,mh+8);
-  ctx.strokeStyle='rgba(79,209,217,0.2)'; ctx.lineWidth=0.5; ctx.strokeRect(mx-4,my-4,mw+8,mh+8);
+  ctx.fillStyle=themeRgba('bg',0.82); ctx.fillRect(mx-4,my-4,mw+8,mh+8);
+  ctx.strokeStyle=themeRgba('readout',0.2); ctx.lineWidth=0.5; ctx.strokeRect(mx-4,my-4,mw+8,mh+8);
   ctx.beginPath(); ctx.rect(mx,my,mw,mh); ctx.clip();
   const eR=320, eCx=mx+mw*0.15, eCy=my+mh+eR-12;
   const atmGrad=ctx.createRadialGradient(eCx,eCy,eR,eCx,eCy,eR+8);
@@ -1697,16 +1871,16 @@ function drawMiniMap(ctx,W,H,p,orb,maxAlt,drangeKm,pitch){
   if(orb){
     const orbAlt=maxAlt*0.95;
     const orbY=launchY-orbAlt*altScale;
-    ctx.strokeStyle='rgba(79,209,217,0.2)'; ctx.setLineDash([2,3]); ctx.lineWidth=0.5;
+    ctx.strokeStyle=themeRgba('readout',0.2); ctx.setLineDash([2,3]); ctx.lineWidth=0.5;
     ctx.beginPath(); ctx.moveTo(mx,orbY); ctx.lineTo(mx+mw,orbY); ctx.stroke();
     ctx.setLineDash([]);
-    ctx.font='7px ui-monospace,monospace'; ctx.fillStyle='rgba(79,209,217,0.4)'; ctx.textAlign='right';
+    ctx.font='7px ui-monospace,monospace'; ctx.fillStyle=themeRgba('readout',0.4); ctx.textAlign='right';
     ctx.fillText(Math.round(orbAlt)+' km',mx+mw-2,orbY-3);
     ctx.textAlign='left';
   }
   const curAlt=p*p*maxAlt;
   const curDrange=drangeKm*Math.pow(p,1.8);
-  ctx.strokeStyle='rgba(79,209,217,0.35)'; ctx.setLineDash([3,4]); ctx.lineWidth=0.8; ctx.beginPath();
+  ctx.strokeStyle=themeRgba('readout',0.35); ctx.setLineDash([3,4]); ctx.lineWidth=0.8; ctx.beginPath();
   const steps=40;
   for(let i=0;i<=steps;i++){
     const f=i/steps;
@@ -1717,7 +1891,7 @@ function drawMiniMap(ctx,W,H,p,orb,maxAlt,drangeKm,pitch){
   }
   ctx.stroke(); ctx.setLineDash([]);
   const curPx=launchX+curDrange*dScale, curPy=launchY-curAlt*altScale;
-  ctx.strokeStyle='#4fd1d9'; ctx.lineWidth=1.5; ctx.beginPath();
+  ctx.strokeStyle=themeColor('readout'); ctx.lineWidth=1.5; ctx.beginPath();
   for(let i=0;i<=steps;i++){
     const f=i/steps*p;
     const fa=f*f*maxAlt;
@@ -1726,18 +1900,18 @@ function drawMiniMap(ctx,W,H,p,orb,maxAlt,drangeKm,pitch){
     i===0?ctx.moveTo(px,py):ctx.lineTo(px,py);
   }
   ctx.stroke();
-  ctx.fillStyle='#f5a623'; ctx.beginPath(); ctx.arc(curPx,curPy,3,0,7); ctx.fill();
+  ctx.fillStyle=themeColor('ignite'); ctx.beginPath(); ctx.arc(curPx,curPy,3,0,7); ctx.fill();
   ctx.strokeStyle='rgba(245,166,35,0.4)'; ctx.lineWidth=0.8; ctx.beginPath(); ctx.arc(curPx,curPy,6,0,7); ctx.stroke();
-  ctx.fillStyle='rgba(79,209,217,0.5)'; ctx.beginPath(); ctx.arc(launchX,launchY,2,0,7); ctx.fill();
+  ctx.fillStyle=themeRgba('readout',0.5); ctx.beginPath(); ctx.arc(launchX,launchY,2,0,7); ctx.fill();
   ctx.font='7px ui-monospace,monospace'; ctx.fillStyle='rgba(200,210,220,0.5)'; ctx.textAlign='left';
   ctx.fillText('PAD',launchX+5,launchY-2);
   if(!orb){
     const apeF=0.7, apeAlt=apeF*apeF*maxAlt;
     const apeDrange=drangeKm*Math.pow(apeF,1.8);
     const apeX=launchX+apeDrange*dScale, apeY=launchY-apeAlt*altScale;
-    ctx.strokeStyle='rgba(79,209,217,0.3)'; ctx.setLineDash([1,2]); ctx.lineWidth=0.5;
+    ctx.strokeStyle=themeRgba('readout',0.3); ctx.setLineDash([1,2]); ctx.lineWidth=0.5;
     ctx.beginPath(); ctx.moveTo(apeX,apeY); ctx.lineTo(apeX,launchY); ctx.stroke(); ctx.setLineDash([]);
-    ctx.fillStyle='rgba(79,209,217,0.4)'; ctx.font='7px ui-monospace,monospace';
+    ctx.fillStyle=themeRgba('readout',0.4); ctx.font='7px ui-monospace,monospace';
     ctx.fillText('APO',apeX+3,apeY-3);
     const splashX=launchX+drangeKm*dScale;
     ctx.fillStyle='rgba(88,196,122,0.5)'; ctx.beginPath(); ctx.arc(splashX,launchY,2,0,7); ctx.fill();
@@ -1753,8 +1927,8 @@ function drawMiniMap(ctx,W,H,p,orb,maxAlt,drangeKm,pitch){
 function drawOrbitalMiniMap(ctx,W,H,op,alt,pe,ap,fd){
   const mx=W-172, my=58, mw=155, mh=105;
   ctx.save();
-  ctx.fillStyle='rgba(4,7,12,0.82)'; ctx.fillRect(mx-4,my-4,mw+8,mh+8);
-  ctx.strokeStyle='rgba(79,209,217,0.2)'; ctx.lineWidth=0.5; ctx.strokeRect(mx-4,my-4,mw+8,mh+8);
+  ctx.fillStyle=themeRgba('bg',0.82); ctx.fillRect(mx-4,my-4,mw+8,mh+8);
+  ctx.strokeStyle=themeRgba('readout',0.2); ctx.lineWidth=0.5; ctx.strokeRect(mx-4,my-4,mw+8,mh+8);
   ctx.beginPath(); ctx.rect(mx,my,mw,mh); ctx.clip();
   const eCx=mx+mw*0.4, eCy=my+mh*0.5, eR=28;
   const eGrad=ctx.createRadialGradient(eCx-4,eCy-4,4,eCx,eCy,eR);
@@ -1765,22 +1939,22 @@ function drawOrbitalMiniMap(ctx,W,H,op,alt,pe,ap,fd){
   const orbScale=eR/6371;
   const peRpx=eR+pe*orbScale*8, apRpx=eR+ap*orbScale*8;
   const orbRpx=(peRpx+apRpx)/2;
-  ctx.strokeStyle='rgba(79,209,217,0.2)'; ctx.setLineDash([2,3]); ctx.lineWidth=0.5;
+  ctx.strokeStyle=themeRgba('readout',0.2); ctx.setLineDash([2,3]); ctx.lineWidth=0.5;
   ctx.beginPath(); ctx.arc(eCx,eCy,orbRpx,0,7); ctx.stroke(); ctx.setLineDash([]);
-  ctx.strokeStyle='#4fd1d9'; ctx.lineWidth=1.5;
+  ctx.strokeStyle=themeColor('readout'); ctx.lineWidth=1.5;
   const orbArc=op*Math.PI*1.8;
   ctx.beginPath(); ctx.arc(eCx,eCy,orbRpx,-Math.PI/2,-Math.PI/2+orbArc); ctx.stroke();
   const craftAng=-Math.PI/2+orbArc;
   const craftX=eCx+Math.cos(craftAng)*orbRpx, craftY=eCy+Math.sin(craftAng)*orbRpx;
-  ctx.fillStyle='#f5a623'; ctx.beginPath(); ctx.arc(craftX,craftY,2.5,0,7); ctx.fill();
+  ctx.fillStyle=themeColor('ignite'); ctx.beginPath(); ctx.arc(craftX,craftY,2.5,0,7); ctx.fill();
   ctx.strokeStyle='rgba(245,166,35,0.4)'; ctx.lineWidth=0.5; ctx.beginPath(); ctx.arc(craftX,craftY,5,0,7); ctx.stroke();
   const peAng=-Math.PI/2, apAng=Math.PI/2;
   const pePx=eCx+Math.cos(peAng)*peRpx, pePy=eCy+Math.sin(peAng)*peRpx;
   const apPx=eCx+Math.cos(apAng)*apRpx, apPy=eCy+Math.sin(apAng)*apRpx;
-  ctx.fillStyle='rgba(79,209,217,0.5)'; ctx.beginPath(); ctx.arc(pePx,pePy,1.5,0,7); ctx.fill();
+  ctx.fillStyle=themeRgba('readout',0.5); ctx.beginPath(); ctx.arc(pePx,pePy,1.5,0,7); ctx.fill();
   ctx.beginPath(); ctx.arc(apPx,apPy,1.5,0,7); ctx.fill();
   ctx.font='7px ui-monospace,monospace'; ctx.textAlign='center';
-  ctx.fillStyle='rgba(79,209,217,0.5)'; ctx.fillText('PE '+pe+'km',pePx,pePy-6);
+  ctx.fillStyle=themeRgba('readout',0.5); ctx.fillText('PE '+pe+'km',pePx,pePy-6);
   ctx.fillText('AP '+ap+'km',apPx,apPy+10);
   if(fd && fd.drangeKm){
     const launchAng=-Math.PI/2-0.05;
@@ -2128,7 +2302,7 @@ function drawAscent(t,canFail){
   }
   if(p>0.55 && orb && !exploding){
     const burnA=clampA((p-0.55)/0.1,0,0.5);
-    ctx.fillStyle=`rgba(79,209,217,${burnA*0.3})`;
+    ctx.fillStyle=themeRgba('readout',burnA*0.3);
     ctx.beginPath(); ctx.arc(x,baseY,3,0,7); ctx.fill();
   }
   const tPlus=Math.round(p*(orb?520:180));
@@ -2138,28 +2312,28 @@ function drawAscent(t,canFail){
   const vHoriz=Math.round(curVel*Math.sin(Math.min(pitch,1.2)));
   const drangeKm=Math.round(downrange/W*800);
   const telData=[
-    {label:'T+', value:`${tMin}:${tSec}`, color:'#4fd1d9'},
+    {label:'T+', value:`${tMin}:${tSec}`, color:themeColor('readout')},
     {label:'ALT', value:Math.round(curAlt)+' km'},
     {label:'SPEED', value:Math.round(curVel).toLocaleString()+' m/s'},
-    {label:'Vx', value:vHoriz.toLocaleString()+' m/s', color:'#8ac4e8'},
-    {label:'Vy', value:vVert.toLocaleString()+' m/s', color:'#8ac4e8'},
+    {label:'Vx', value:vHoriz.toLocaleString()+' m/s', color:themeColor('readout')},
+    {label:'Vy', value:vVert.toLocaleString()+' m/s', color:themeColor('readout')},
     {label:'ACC', value:accel.toFixed(1)+' g'},
-    {label:'Q', value:Math.round(qNorm*maxQ)+' kPa', color:qNorm>0.8?'#e0564f':(qNorm>0.5?'#f5a623':'#d0dce4')},
+    {label:'Q', value:Math.round(qNorm*maxQ)+' kPa', color:qNorm>0.8?themeColor('bad'):(qNorm>0.5?themeColor('ignite'):themeColor('ink'))},
     {label:'DRANGE', value:drangeKm+' km'},
-    {label:'THROT', value:Math.round(throttle*100)+'%', color:throttle<0.9?'#f5a623':'#d0dce4'},
+    {label:'THROT', value:Math.round(throttle*100)+'%', color:throttle<0.9?themeColor('ignite'):themeColor('ink')},
     {label:'STAGE', value:(Math.min(dropped+1,n))+'/'+n}
   ];
   drawTelemetry(telData);
   drawMiniMap(ctx,W,H,p,orb,maxA,orb?2000:Math.max(300,drangeKm*1.2),pitch);
   ctx.save();
   const rpW=155, rpH=s.crewed?58:42, rpX=W-rpW-10, rpY=8;
-  ctx.fillStyle='rgba(4,7,12,0.82)'; ctx.fillRect(rpX,rpY,rpW,rpH);
-  ctx.strokeStyle='rgba(79,209,217,0.25)'; ctx.lineWidth=0.5; ctx.strokeRect(rpX,rpY,rpW,rpH);
+  ctx.fillStyle=themeRgba('bg',0.82); ctx.fillRect(rpX,rpY,rpW,rpH);
+  ctx.strokeStyle=themeRgba('readout',0.25); ctx.lineWidth=0.5; ctx.strokeRect(rpX,rpY,rpW,rpH);
   ctx.font='9px ui-monospace,monospace'; ctx.textBaseline='top'; ctx.textAlign='right';
-  ctx.fillStyle='#5a6a75'; ctx.fillText('MISSION', W-18, rpY+6);
-  ctx.fillStyle='#d0dce4'; ctx.font='bold 12px ui-monospace,monospace';
+  ctx.fillStyle=themeColor('dim'); ctx.fillText('MISSION', W-18, rpY+6);
+  ctx.fillStyle=themeColor('ink'); ctx.font='bold 12px ui-monospace,monospace';
   ctx.fillText(s.title, W-18, rpY+20);
-  if(s.crewed){ ctx.fillStyle='#f5a623'; ctx.font='10px ui-monospace,monospace'; ctx.fillText('▲ CREWED FLIGHT', W-18, rpY+38); }
+  if(s.crewed){ ctx.fillStyle=themeColor('ignite'); ctx.font='10px ui-monospace,monospace'; ctx.fillText('▲ CREWED FLIGHT', W-18, rpY+38); }
   ctx.textAlign='left';
   ctx.restore();
   const phaseTxt = exploding ? 'VEHICLE LOST' :
@@ -2170,7 +2344,7 @@ function drawAscent(t,canFail){
         (dropped>0 && (p-seps[dropped-1])*A.ascentDur<800 ? 'STAGE SEPARATION' :
          (p>0.92 ? (orb?'ORBITAL INSERTION':'BURNOUT') :
           'ASCENT · STAGE '+(Math.min(dropped+1,n))))))));
-  const phaseColor = exploding ? '#e0564f' : (qNorm>0.7 ? '#f5a623' : (p>0.92 ? '#58c47a' : '#4fd1d9'));
+  const phaseColor = exploding ? themeColor('bad') : (qNorm>0.7 ? themeColor('ignite') : (p>0.92 ? themeColor('ok') : themeColor('readout')));
   drawPhaseBar(phaseTxt, phaseColor, p);
 
   A.flightData={
@@ -2361,9 +2535,9 @@ function drawOrbit(ct){
   if(burning&&A.sfxEnginePhase!=='burn'){ A.sfxEnginePhase='burn'; sfxBurn(0.6); }
   else if(!burning&&A.sfxEnginePhase==='burn'){ sfxStop(); A.sfxEnginePhase='coast'; }
   if(failP!=null&&op>=failP&&!A.sfxBoomFired){ A.sfxBoomFired=true; sfxStop(); sfxBoom(); }
-  ctx.strokeStyle='rgba(79,209,217,0.15)'; ctx.setLineDash([3,6]); ctx.lineWidth=1;
+  ctx.strokeStyle=themeRgba('readout',0.15); ctx.setLineDash([3,6]); ctx.lineWidth=1;
   ctx.beginPath(); ctx.arc(E.cx,E.cy,orbitR,a0-0.3,a1+0.5); ctx.stroke(); ctx.setLineDash([]);
-  ctx.strokeStyle='rgba(79,209,217,0.08)'; ctx.lineWidth=1; ctx.setLineDash([2,4]);
+  ctx.strokeStyle=themeRgba('readout',0.08); ctx.lineWidth=1; ctx.setLineDash([2,4]);
   ctx.beginPath(); ctx.arc(E.cx,E.cy,peR,a0,a1); ctx.stroke();
   ctx.beginPath(); ctx.arc(E.cx,E.cy,apR,a0,a1); ctx.stroke();
   ctx.setLineDash([]);
@@ -2376,8 +2550,8 @@ function drawOrbit(ct){
   const deorbiting = willReenter && op>=DEORBIT_START && failP==null;
   const curAng=a0+ (deorbiting?DEORBIT_START:curP) *(a1-a0);
   // completed orbit track up to the deorbit point
-  ctx.strokeStyle='#4fd1d9'; ctx.lineWidth=2.5; ctx.beginPath(); ctx.arc(E.cx,E.cy,orbitR,a0,curAng); ctx.stroke();
-  ctx.strokeStyle='rgba(79,209,217,0.2)'; ctx.lineWidth=1;
+  ctx.strokeStyle=themeColor('readout'); ctx.lineWidth=2.5; ctx.beginPath(); ctx.arc(E.cx,E.cy,orbitR,a0,curAng); ctx.stroke();
+  ctx.strokeStyle=themeRgba('readout',0.2); ctx.lineWidth=1;
   ctx.beginPath(); ctx.arc(E.cx,E.cy,orbitR,a0,curAng); ctx.stroke();
   let cx=E.cx+Math.cos(curAng)*orbitR, cy=E.cy+Math.sin(curAng)*orbitR;
   let deorbitBurning=false, entryInterface=false;
@@ -2393,7 +2567,7 @@ function drawOrbit(ct){
     // dashed predicted entry path (faint), then the solid flown portion
     ctx.strokeStyle='rgba(245,166,35,0.22)'; ctx.setLineDash([4,5]); ctx.lineWidth=1; ctx.beginPath();
     for(let i=0;i<=40;i++){ const u=i/40, rr=dr(u), aa=da(u); const x=E.cx+Math.cos(aa)*rr, y=E.cy+Math.sin(aa)*rr; i?ctx.lineTo(x,y):ctx.moveTo(x,y);} ctx.stroke(); ctx.setLineDash([]);
-    ctx.strokeStyle='#f5a623'; ctx.lineWidth=2; ctx.beginPath();
+    ctx.strokeStyle=themeColor('ignite'); ctx.lineWidth=2; ctx.beginPath();
     for(let i=0;i<=40;i++){ const u=i/40*dp, rr=dr(u), aa=da(u); const x=E.cx+Math.cos(aa)*rr, y=E.cy+Math.sin(aa)*rr; i?ctx.lineTo(x,y):ctx.moveTo(x,y);} ctx.stroke();
     const rrNow=dr(dp), aNow=da(dp);
     cx=E.cx+Math.cos(aNow)*rrNow; cy=E.cy+Math.sin(aNow)*rrNow;
@@ -2422,10 +2596,10 @@ function drawOrbit(ct){
     const pm=14;
     const px=cx+Math.cos(proAng)*pm, py=cy+Math.sin(proAng)*pm;
     ctx.save(); ctx.translate(px,py); ctx.rotate(proAng-Math.PI/2);
-    ctx.fillStyle='rgba(79,209,217,0.7)';
+    ctx.fillStyle=themeRgba('readout',0.7);
     ctx.beginPath(); ctx.moveTo(0,-5); ctx.lineTo(3,3); ctx.lineTo(-3,3); ctx.closePath(); ctx.fill();
     ctx.restore();
-    ctx.font='8px ui-monospace,monospace'; ctx.fillStyle='rgba(79,209,217,0.5)'; ctx.textAlign='center';
+    ctx.font='8px ui-monospace,monospace'; ctx.fillStyle=themeRgba('readout',0.5); ctx.textAlign='center';
     ctx.fillText('PRO',px+Math.cos(proAng)*8,py+Math.sin(proAng)*8+3);
     ctx.textAlign='left';
   }
@@ -2441,11 +2615,11 @@ function drawOrbit(ct){
   const orbVx=Math.round(vel*0.998);
   const orbVy=Math.round(vel*Math.sin((curAng-a0)/(a1-a0)*0.04));
   const telData=[
-    {label:'T+', value:`${tMin}:${tSec}`, color:'#4fd1d9'},
+    {label:'T+', value:`${tMin}:${tSec}`, color:themeColor('readout')},
     {label:'ALT', value:alt+' km'},
     {label:'SPEED', value:vel.toLocaleString()+' m/s'},
-    {label:'Vx', value:orbVx.toLocaleString()+' m/s', color:'#8ac4e8'},
-    {label:'Vy', value:(orbVy>=0?'+':'')+orbVy+' m/s', color:'#8ac4e8'},
+    {label:'Vx', value:orbVx.toLocaleString()+' m/s', color:themeColor('readout')},
+    {label:'Vy', value:(orbVy>=0?'+':'')+orbVy+' m/s', color:themeColor('readout')},
     {label:'PE', value:pe+' km'},
     {label:'AP', value:ap+' km'},
     {label:'PERIOD', value:period+' min'},
@@ -2456,13 +2630,13 @@ function drawOrbit(ct){
   drawOrbitalMiniMap(ctx,W,H,op,alt,pe,ap,fd);
   ctx.save();
   const rpW=155, rpH=s.crewed?58:42, rpX=W-rpW-10, rpY=8;
-  ctx.fillStyle='rgba(4,7,12,0.82)'; ctx.fillRect(rpX,rpY,rpW,rpH);
-  ctx.strokeStyle='rgba(79,209,217,0.25)'; ctx.lineWidth=0.5; ctx.strokeRect(rpX,rpY,rpW,rpH);
+  ctx.fillStyle=themeRgba('bg',0.82); ctx.fillRect(rpX,rpY,rpW,rpH);
+  ctx.strokeStyle=themeRgba('readout',0.25); ctx.lineWidth=0.5; ctx.strokeRect(rpX,rpY,rpW,rpH);
   ctx.font='9px ui-monospace,monospace'; ctx.textBaseline='top'; ctx.textAlign='right';
-  ctx.fillStyle='#5a6a75'; ctx.fillText('MISSION', W-18, rpY+6);
-  ctx.fillStyle='#d0dce4'; ctx.font='bold 12px ui-monospace,monospace';
+  ctx.fillStyle=themeColor('dim'); ctx.fillText('MISSION', W-18, rpY+6);
+  ctx.fillStyle=themeColor('ink'); ctx.font='bold 12px ui-monospace,monospace';
   ctx.fillText(s.title, W-18, rpY+20);
-  if(s.crewed){ ctx.fillStyle='#f5a623'; ctx.font='10px ui-monospace,monospace'; ctx.fillText('▲ CREWED FLIGHT', W-18, rpY+38); }
+  if(s.crewed){ ctx.fillStyle=themeColor('ignite'); ctx.font='10px ui-monospace,monospace'; ctx.fillText('▲ CREWED FLIGHT', W-18, rpY+38); }
   ctx.textAlign='left'; ctx.restore();
   A.flightData=Object.assign(fd,{orbAlt:alt,pe,ap,period,orbVel:vel,orbDrange:(fd.drangeKm||0)+Math.round(op*400)});
   const ds=A._deorbitState||{};
@@ -2471,7 +2645,7 @@ function drawOrbit(ct){
      (ds.deorbitBurning ? 'DEORBIT BURN · RETROGRADE' :
       (ds.deorbiting ? 'REENTRY DESCENT' :
        (op>0.9 ? 'ORBIT ACHIEVED ✓' : (burning ? 'CIRCULARIZATION BURN' : 'ORBITAL FLIGHT')))));
-  const phaseCol = (failP!=null&&op>=failP) ? '#e0564f' : (ds.deorbiting ? '#f5a623' : (op>0.9 ? '#58c47a' : '#4fd1d9'));
+  const phaseCol = (failP!=null&&op>=failP) ? themeColor('bad') : (ds.deorbiting ? themeColor('ignite') : (op>0.9 ? themeColor('ok') : themeColor('readout')));
   drawPhaseBar(phase, phaseCol, op);
   const orbPitch=curAng-Math.PI/2;
 
@@ -2559,20 +2733,20 @@ function drawReentry(rt){
   const gLoad=(plasma>0.04?(1.2+plasma*5.6):(p<MAIN?2.0:1.0)).toFixed(1);
   const skinT=Math.round(kf(p,[[0,420],[0.10,1620],[PLASMA_END,540],[1,35]]));
   drawTelemetry([
-    {label:'PHASE', value:'REENTRY', color:'#f5a623'},
+    {label:'PHASE', value:'REENTRY', color:themeColor('ignite')},
     {label:'ALT', value:alt+' km'},
     {label:'VEL', value:vel.toLocaleString()+' m/s'},
-    {label:'G-LOAD', value:gLoad+' g', color:(+gLoad>4?'#e0564f':'#d0dce4')},
-    {label:'SKIN', value:skinT+' °C', color:(skinT>900?'#ff7a30':'#d0dce4')},
-    {label:'CHUTES', value:mainOn?'MAIN ✓':(drogueOn?'DROGUE':'STOWED'), color:mainOn?'#58c47a':'#c0ccd4'}
+    {label:'G-LOAD', value:gLoad+' g', color:(+gLoad>4?themeColor('bad'):themeColor('ink'))},
+    {label:'SKIN', value:skinT+' °C', color:(skinT>900?themeColor('bad'):themeColor('ink'))},
+    {label:'CHUTES', value:mainOn?'MAIN ✓':(drogueOn?'DROGUE':'STOWED'), color:mainOn?themeColor('ok'):themeColor('ink')}
   ]);
   const phase = p>=SPLASH?'SPLASHDOWN ✓' : (mainOn?'MAINS · DESCENT' : (drogueOn?'DROGUE OUT' : (plasma>0.15?'PLASMA BLACKOUT':'REENTRY INTERFACE')));
-  const phaseCol = p>=SPLASH?'#58c47a' : (plasma>0.15?'#ff7a30':'#f5a623');
+  const phaseCol = p>=SPLASH?themeColor('ok') : (plasma>0.15?themeColor('bad'):themeColor('ignite'));
   drawPhaseBar(phase,phaseCol,p);
   ctx.save();
   ctx.font='bold 12px ui-monospace,monospace'; ctx.textAlign='right'; ctx.textBaseline='top';
-  ctx.fillStyle='#5a6a75'; ctx.fillText('RECOVERY', W-18, 12); ctx.fillStyle='#d0dce4'; ctx.fillText(s.title, W-18, 28);
-  ctx.fillStyle='#f5a623'; ctx.font='10px ui-monospace,monospace'; ctx.fillText('▲ CREW ABOARD', W-18, 46);
+  ctx.fillStyle=themeColor('dim'); ctx.fillText('RECOVERY', W-18, 12); ctx.fillStyle=themeColor('ink'); ctx.fillText(s.title, W-18, 28);
+  ctx.fillStyle=themeColor('ignite'); ctx.font='10px ui-monospace,monospace'; ctx.fillText('▲ CREW ABOARD', W-18, 46);
   ctx.restore();
 }
 // a single parachute canopy + risers, drawn at (cx,cy) with the given radius, inflating with f∈[0,1]
@@ -2678,7 +2852,7 @@ function drawSuborbital(ct){
   const xAt=f=> (1-f)*(1-f)*x0 + 2*(1-f)*f*apexX + f*f*x1 + (R.bow||0)*30*Math.sin(f*Math.PI);
   const yAt=f=> base-Math.sin(f*Math.PI)*(base-apexY);
   const angAt=f=>{ const e=0.01, d=Math.atan2(yAt(Math.min(f+e,1))-yAt(f), xAt(Math.min(f+e,1))-xAt(f)); return d; };
-  ctx.strokeStyle='rgba(79,209,217,0.2)'; ctx.setLineDash([4,6]); ctx.lineWidth=1; ctx.beginPath();
+  ctx.strokeStyle=themeRgba('readout',0.2); ctx.setLineDash([4,6]); ctx.lineWidth=1; ctx.beginPath();
   for(let i=0;i<=60;i++){const f=i/60; i?ctx.lineTo(xAt(f),yAt(f)):ctx.moveTo(xAt(f),yAt(f));} ctx.stroke(); ctx.setLineDash([]);
   // terminal-descent handoff: past DESCENT_START the trajectory ends in a splashdown
   // (expendable = splash & vanish; capsule tech = chutes → upright splashdown → bob).
@@ -2688,7 +2862,7 @@ function drawSuborbital(ct){
     ctx.fillStyle=og; ctx.fillRect(0,waterY,W,H-waterY);
     ctx.fillStyle='rgba(180,220,240,0.10)'; ctx.fillRect(0,waterY-1,W,2);
     for(let i=0;i<10;i++){ const f=i/10, wy=waterY+4+f*(H-waterY-4); ctx.strokeStyle=`rgba(150,200,225,${0.04+0.08*(1-f)})`; ctx.lineWidth=1; ctx.beginPath(); for(let x=0;x<=W;x+=26){ const yy=wy+Math.sin((x*0.03)+(ct*0.004)+i)*1.6; x?ctx.lineTo(x,yy):ctx.moveTo(x,yy);} ctx.stroke(); } }
-  ctx.strokeStyle='#4fd1d9'; ctx.lineWidth=2.5; ctx.beginPath();
+  ctx.strokeStyle=themeColor('readout'); ctx.lineWidth=2.5; ctx.beginPath();
   const drawTo=Math.min(op,DESCENT_START);
   for(let i=0;i<=60;i++){const f=i/60*drawTo; i?ctx.lineTo(xAt(f),yAt(f)):ctx.moveTo(xAt(f),yAt(f));} ctx.stroke();
   const curX=xAt(op), curY=yAt(op);
@@ -2713,15 +2887,15 @@ function drawSuborbital(ct){
   const drange=Math.round((curX-x0)/(x1-x0)*600);
   const vel=Math.round(Math.max(0, s.reqDv*0.8*(1-Math.abs(op-0.5)*1.5)));
   const telData=[
-    {label:'T+', value:Math.floor(op*300/60)+'m '+Math.round(op*300%60)+'s', color:'#4fd1d9'},
+    {label:'T+', value:Math.floor(op*300/60)+'m '+Math.round(op*300%60)+'s', color:themeColor('readout')},
     {label:'ALT', value:Math.max(0,apogeeKm)+' km'},
     {label:'VEL', value:vel.toLocaleString()+' m/s'},
     {label:'DRANGE', value:drange+' km'},
-    {label:'STATUS', value:op<0.45?'COAST':op<0.5?'APOGEE':op<0.85?'DESCENT':'RECOVERY', color:op>0.85?'#58c47a':'#c0ccd4'}
+    {label:'STATUS', value:op<0.45?'COAST':op<0.5?'APOGEE':op<0.85?'DESCENT':'RECOVERY', color:op>0.85?themeColor('ok'):themeColor('ink')}
   ];
   drawTelemetry(telData);
   const phase=op<0.45?'COAST TO APOGEE':(op<0.52?'APOGEE · WEIGHTLESSNESS':(op<0.85?'REENTRY':(op<0.95?'CHUTE DEPLOY':'RECOVERED ✓')));
-  const phaseCol=op>0.95?'#58c47a':(op>0.7&&op<0.9?'#f5a623':'#4fd1d9');
+  const phaseCol=op>0.95?themeColor('ok'):(op>0.7&&op<0.9?themeColor('ignite'):themeColor('readout'));
   drawPhaseBar(phase,phaseCol,op);
   const subPitch=angAt(op);
 
@@ -2759,7 +2933,7 @@ function drawCislunar(ct){
     ctx.strokeStyle=`rgba(100,180,255,${0.2-i*0.07})`; ctx.lineWidth=2-i*0.5;
     ctx.beginPath(); ctx.arc(P.E.x,P.E.y,P.E.r+3+i*4,0,7); ctx.stroke();
   }
-  ctx.strokeStyle='rgba(79,209,217,0.2)'; ctx.setLineDash([3,4]); ctx.lineWidth=0.8;
+  ctx.strokeStyle=themeRgba('readout',0.2); ctx.setLineDash([3,4]); ctx.lineWidth=0.8;
   ctx.beginPath(); ctx.arc(P.E.x,P.E.y,P.leoR,0,7); ctx.stroke(); ctx.setLineDash([]);
   const mg=ctx.createRadialGradient(P.M.x-4,P.M.y-4,2,P.M.x,P.M.y,P.M.r);
   mg.addColorStop(0,'#dde0e4'); mg.addColorStop(0.4,'#b0b6bc'); mg.addColorStop(1,'#6b7178');
@@ -2780,9 +2954,9 @@ function drawCislunar(ct){
   if(failIdx!=null&&curIdx>=failIdx&&!A.sfxBoomFired){ A.sfxBoomFired=true; sfxStop(); sfxBoom(); }
   ctx.strokeStyle='rgba(125,144,155,0.18)'; ctx.lineWidth=1; ctx.setLineDash([4,6]); ctx.beginPath();
   P.pts.forEach((p,i)=> i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)); ctx.stroke(); ctx.setLineDash([]);
-  ctx.strokeStyle='#4fd1d9'; ctx.lineWidth=2.5; ctx.beginPath();
+  ctx.strokeStyle=themeColor('readout'); ctx.lineWidth=2.5; ctx.beginPath();
   for(let i=0;i<=curIdx;i++){const p=P.pts[i]; i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y);} ctx.stroke();
-  ctx.strokeStyle='rgba(79,209,217,0.15)'; ctx.lineWidth=5; ctx.beginPath();
+  ctx.strokeStyle=themeRgba('readout',0.15); ctx.lineWidth=5; ctx.beginPath();
   for(let i=Math.max(0,curIdx-8);i<=curIdx;i++){const p=P.pts[i]; i===Math.max(0,curIdx-8)?ctx.moveTo(p.x,p.y):ctx.lineTo(p.x,p.y);} ctx.stroke();
   const cur=P.pts[curIdx];
   if(failIdx!=null && curIdx>=failIdx){
@@ -2802,7 +2976,7 @@ function drawCislunar(ct){
   const missionDayTotal=s.crewed?Math.round(8+(s.reqDv/1000)):6;
   const missionDay=Math.round(op*missionDayTotal);
   const telData=[
-    {label:'MET', value:'Day '+missionDay, color:'#4fd1d9'},
+    {label:'MET', value:'Day '+missionDay, color:themeColor('readout')},
     {label:'PHASE', value:segName.toUpperCase().substring(0,16)},
     {label:'→MOON', value:lunarDist<50?lunarDist+'k km':'—'},
     {label:'→EARTH', value:earthDist>P.E.r*1.5?earthDist+'k km':'—'},
@@ -2810,13 +2984,13 @@ function drawCislunar(ct){
   ];
   drawTelemetry(telData);
   ctx.save(); ctx.font='10px ui-monospace,monospace'; ctx.textBaseline='top'; ctx.textAlign='right';
-  ctx.fillStyle='#56666f'; ctx.fillText('MISSION', W-14, 8);
-  ctx.fillStyle='#c0ccd4'; ctx.fillText(s.title, W-14, 22);
-  if(s.crewed){ ctx.fillStyle='#f5a623'; ctx.fillText('CREWED', W-14, 36); }
+  ctx.fillStyle=themeColor('dim'); ctx.fillText('MISSION', W-14, 8);
+  ctx.fillStyle=themeColor('ink'); ctx.fillText(s.title, W-14, 22);
+  if(s.crewed){ ctx.fillStyle=themeColor('ignite'); ctx.fillText('CREWED', W-14, 36); }
   ctx.textAlign='left'; ctx.restore();
   const phase = (failIdx!=null&&curIdx>=failIdx) ? 'CONTACT LOST' :
     (op>0.96 ? 'RETURNED ✓' : segName.toUpperCase());
-  const phaseCol = (failIdx!=null&&curIdx>=failIdx) ? '#e0564f' : (op>0.96 ? '#58c47a' : '#4fd1d9');
+  const phaseCol = (failIdx!=null&&curIdx>=failIdx) ? themeColor('bad') : (op>0.96 ? themeColor('ok') : themeColor('readout'));
   drawPhaseBar(phase, phaseCol, op);
   if(!(failIdx!=null&&curIdx>=failIdx)){
     const prev=P.pts[Math.max(0,curIdx-1)];

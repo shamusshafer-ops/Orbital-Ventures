@@ -3430,17 +3430,23 @@ function resolveFlight(m,v,sim,crewed,relPenalty=0){
 // sim provably balance-neutral; the abort is new AGENCY (trade the mission for the hardware/crew),
 // available only as a live decision, with a real opportunity cost (amber ≠ doomed — it might hold).
 const LIVE_CALL_SUB_HI=0.94;  // a loss-severity early subsystem at/under this reads as "amber"
+// E1.2 slice A: routine reflights get a WIDER amber band, not the same one — a proven design
+// isn't immune to a bad day, and this is the one lever that fixes decision frequency trending to
+// zero as the player's engineering (and habit of reflying the same proven design) matures. Doesn't
+// touch the underlying reliability roll at all, only how forgivingly it's read on a reflight.
+const LIVE_CALL_SUB_HI_ROUTINE=0.97;
 const LIVE_CALL_R_FLOOR=0.40; // ...but only fire when the flight overall is still a real gamble
 const LIVE_CALL_PHASES={pad:1, ascent:1, staging:1}; // early phases where an abort can still save the vehicle
-function liveCallFlag(outcome){
+function liveCallFlag(outcome, routine){
   // the weakest loss-severity early-phase subsystem in the amber band, or null
   if(!outcome || !outcome.phases || (outcome.rel||0)<LIVE_CALL_R_FLOOR) return null;
+  const subHi=routine?LIVE_CALL_SUB_HI_ROUTINE:LIVE_CALL_SUB_HI;
   let worst=null;
   for(const ph of outcome.phases){
     if(!LIVE_CALL_PHASES[ph.phase]) continue;
     for(const s of ph.subsystems){
       if(s.severity==='partial') continue;          // a partial-severity flag can't lose the vehicle — nothing to abort for
-      if(s.rel>LIVE_CALL_SUB_HI) continue;           // green enough — no call
+      if(s.rel>subHi) continue;                      // green enough — no call
       if(!worst || s.rel<worst.sub.rel) worst={sub:s, phase:ph};
     }
   }
@@ -3461,14 +3467,15 @@ function deepReserveMargin(sim){
   return worst===Infinity ? 0 : Math.max(0, worst);
 }
 // the weakest drifting deep-phase subsystem on a flight that carries reserve margin, or null
-function deepCallFlag(outcome, sim){
+function deepCallFlag(outcome, sim, routine){
   if(!outcome || !outcome.phases || (outcome.rel||0)<LIVE_CALL_R_FLOOR) return null;
   if(deepReserveMargin(sim) < RESERVE_MARGIN_MIN) return null; // no reserve to burn → no call
+  const subHi=routine?LIVE_CALL_SUB_HI_ROUTINE:LIVE_CALL_SUB_HI; // E1.2 slice A: same wider-net-on-a-reflight idiom as liveCallFlag
   let worst=null;
   for(const ph of outcome.phases){
     if(ph.phase!=='deep') continue;
     for(const s of ph.subsystems){
-      if(s.rel>LIVE_CALL_SUB_HI) continue;               // not drifting — holding fine
+      if(s.rel>subHi) continue;                           // not drifting — holding fine
       if(!worst || s.rel<worst.sub.rel) worst={sub:s, phase:ph};
     }
   }
@@ -3561,14 +3568,19 @@ function rollWeather(m){
   if(pick.id==='cold' && solidBoost){ penalty+=0.06; detail+=' The solid boosters’ field-joint O-rings stiffen dangerously in the cold (the Challenger lesson, 1986).'; }
   return {id:pick.id, label:pick.label, adverse:pick.id!=='go', penalty, clear:pick.clear||1, detail};
 }
+// E1.2 slice C: holds at pad-start (before the countdown even ramps) instead of a page modal
+// before the overlay opens at all — the range-weather call is the very first thing about a launch.
 function showWeatherModal(m,wx){
-  const pen=Math.round(wx.penalty*100);
-  showModal(`<h2>Launch weather — go / no-go</h2>
-    <p><b>${m.name}</b> is built and on the pad. Range weather: <b style="color:var(--warn)">${wx.label}</b>.</p>
-    <p class="muted">${wx.detail}</p>
-    <p>Scrubbing waits about <b>${wx.clear} month${wx.clear>1?'s':''}</b> for conditions to clear. Flying through it carries a <b style="color:var(--bad)">−${pen}% reliability</b> hit on this flight only.</p>
-    <button class="btn" onclick="scrubLaunch()">Scrub &amp; wait (${wx.clear} mo)</button>
-    <button class="btn ghost" onclick="launchAnyway()" style="margin-top:8px">Launch anyway (−${pen}% reliability)</button>`);
+  openFlightForDecision({m, crewed:(m.crew||0)>0}, { holdAt:'pad-start', buildPanel:()=>{
+    const pen=Math.round(wx.penalty*100);
+    return { title:'LAUNCH WEATHER — GO / NO-GO', color:themeColor('warn'),
+      lines:[ `Range weather: ${wx.label}.`, wx.detail,
+              `Scrubbing waits ~${wx.clear} month${wx.clear>1?'s':''}. Flying through it costs −${pen}% reliability, this flight only.` ],
+      buttons:[
+        {label:`Scrub & wait (${wx.clear} mo)`, ghost:true, action:scrubLaunch},
+        {label:`Launch anyway (−${pen}% reliability)`, action:launchAnyway},
+      ] };
+  }});
 }
 function launchAnyway(){
   if(!_pendingLaunch) return; const p=_pendingLaunch; _pendingLaunch=null; hideModal();
@@ -3577,6 +3589,7 @@ function launchAnyway(){
 }
 function scrubLaunch(){
   if(!_pendingLaunch) return; const p=_pendingLaunch; _pendingLaunch=null; hideModal();
+  dismissAnim(); // E1.2 slice C: scrubbing skips months ahead to retry — that's a new attempt later, not a continuation of this held pad frame, so don't try to resume it across the time-skip
   advance(p.wx.clear);
   log('note',`${p.m.name}: scrubbed for weather (${p.wx.label}). Waited ${p.wx.clear} mo; the front passed.`);
   if(state.money<0){ gameOver(); return; }
@@ -3665,15 +3678,24 @@ function resolveAnomaly(i){
 // that saves the vehicle and crew but forfeits the mission. Amber ≠ doomed, so the abort trades
 // a possibly-successful mission for certainty — genuine agency with a real opportunity cost.
 let _pendingLive=null; // a flight paused at the live abort / press-on call
+// E1.2 slice C: lives IN the flight overlay (opened early by openFlightForDecision, held at the
+// pad→ascent handoff by drawScene) instead of a page-level showModal popping up before the overlay
+// even opens. buildPanel() is called once, at hold-time, by drawDecisionPanel — canvas fillText, not
+// innerHTML, so no esc() needed (there's no markup parsing to inject into either way).
 function showLiveCallModal(ctx, flag){
-  const m=ctx.m, sub=flag.sub, ph=flag.phase, pc=Math.round(sub.rel*100);
-  const subName=SUBSYS_LABEL[sub.key]||sub.label;
-  const crewLine=ctx.crewed?' The crew is strapped in and awaiting your call.':'';
-  showModal(`<h2 style="color:var(--warn)">⚠ Marginal subsystem — live call</h2>
-    <p><b>${m.name}</b> — the <b>${subName.toLowerCase()}</b> is flagging amber on ${ph.label.toLowerCase()}, holding at just <b>${pc}%</b>.${crewLine}</p>
-    <p class="muted">It may hold all the way — or let go and take the vehicle with it. Abort now and you bring the hardware${ctx.crewed?' and crew':''} home safe but forfeit the mission and its payout. Press on and you fly it exactly as built.</p>
-    <button class="btn" onclick="resolveLiveCall(true)">Press on — fly it</button>
-    <button class="btn ghost" onclick="resolveLiveCall(false)" style="margin-top:8px">Abort now — save the vehicle${ctx.crewed?' & crew':''}, forfeit the mission</button>`);
+  openFlightForDecision(ctx, { buildPanel:()=>{
+    const m=ctx.m, sub=flag.sub, ph=flag.phase, pc=Math.round(sub.rel*100);
+    const subName=SUBSYS_LABEL[sub.key]||sub.label;
+    const crewLine=ctx.crewed?' Crew strapped in, awaiting your call.':'';
+    const routineLine=ctx.routine?' A proven design isn\'t immune to a bad day.':'';
+    return { title:'⚠ MARGINAL SUBSYSTEM — LIVE CALL', color:themeColor('warn'),
+      lines:[ `${subName} flagging amber on ${ph.label.toLowerCase()}, holding at just ${pc}%.`,
+              `It may hold — or let go and take the vehicle with it.${crewLine}${routineLine}` ],
+      buttons:[
+        {label:'Press on — fly it', action:()=>resolveLiveCall(true)},
+        {label:`Abort now — save the vehicle${ctx.crewed?' & crew':''}`, ghost:true, action:()=>resolveLiveCall(false)},
+      ] };
+  }});
 }
 function resolveLiveCall(pressOn){
   const ctx=_pendingLive; if(!ctx) return;
@@ -3696,16 +3718,21 @@ function resolveLiveCall(pressOn){
 // margin for a degraded result; bank and it lets go, you eat the loss. Carrying reserves (extra
 // propellant = more mass, a rocket-equation cost paid at build time) is what buys this option.
 let _pendingReserve=null; // a flight paused at the deep-leg reserve call
+// E1.2 slice C: holds at cislunar-start (entering the deep cruise) — its own "far from home" moment.
 function showReserveModal(ctx, flag){
-  const m=ctx.m, sub=flag.sub, ph=flag.phase, pc=Math.round(sub.rel*100);
-  const subName=SUBSYS_LABEL[sub.key]||sub.label;
-  const word=reserveKindWord(sub.key);
-  const marginPct=Math.round(deepReserveMargin(ctx.sim)*100);
-  showModal(`<h2 style="color:var(--warn)">⚠ Deep-space drift — reserve call</h2>
-    <p><b>${m.name}</b> — far from home, the <b>${subName.toLowerCase()}</b> is drifting (holding at <b>${pc}%</b>). You carry roughly <b>${marginPct}%</b> reserve margin on this leg.</p>
-    <p class="muted">Burn the reserve ${word} to nurse it through and you salvage a degraded result for certain. Bank the reserve and you fly it as-is — it may come home clean, or let go this far out.</p>
-    <button class="btn" onclick="resolveReserveCall(true)">Burn the reserve — salvage a partial result</button>
-    <button class="btn ghost" onclick="resolveReserveCall(false)" style="margin-top:8px">Bank the reserve — fly it as built</button>`);
+  openFlightForDecision(ctx, { holdAt:'cislunar-start', buildPanel:()=>{
+    const m=ctx.m, sub=flag.sub, ph=flag.phase, pc=Math.round(sub.rel*100);
+    const subName=SUBSYS_LABEL[sub.key]||sub.label;
+    const word=reserveKindWord(sub.key);
+    const marginPct=Math.round(deepReserveMargin(ctx.sim)*100);
+    return { title:'⚠ DEEP-SPACE DRIFT — RESERVE CALL', color:themeColor('warn'),
+      lines:[ `${subName} drifting far from home, holding at ${pc}%. ~${marginPct}% reserve margin aboard.`,
+              `Burn the reserve ${word} to nurse it through for certain, or bank it and fly as built.` ],
+      buttons:[
+        {label:'Burn the reserve — salvage a partial', action:()=>resolveReserveCall(true)},
+        {label:'Bank the reserve — fly it as built', ghost:true, action:()=>resolveReserveCall(false)},
+      ] };
+  }});
 }
 function resolveReserveCall(spend){
   const ctx=_pendingReserve; if(!ctx) return;
@@ -3737,18 +3764,21 @@ function rescueChance(m){
 }
 function rescueCost(m){ return Math.max(3, Math.round((m.payout||10)*0.6)); }
 function rescueMonths(m){ return m.profile?6:3; }
+// E1.2 slice C: holds at cislunar-start — same "far from home" moment as the reserve call.
 function showRescueModal(ctx, outcome){
-  const m=ctx.m, cost=rescueCost(m), months=rescueMonths(m), chance=Math.round(rescueChance(m)*100);
-  const afford=state.money>=cost;
-  const sub=outcome.subsystem?(SUBSYS_LABEL[outcome.subsystem]||'systems').toLowerCase():'systems';
-  const mountBtn=afford
-    ? `<button class="btn" onclick="mountRescue()">Mount a rescue (${fM(cost)}, ~${months} mo, ${chance}% chance)</button>`
-    : `<div class="dim" style="font-size:12px;margin:8px 0">A rescue would cost ${fM(cost)} — you can't afford one.</div>`;
-  showModal(`<h2 style="color:var(--bad)">Crew stranded in deep space</h2>
-    <p><b>${m.name}</b>: a ${sub} failure has left the crew stranded but alive — they can't get home on their own.</p>
-    <p class="muted">A rescue is a long shot: a fast-tracked launch, a hard rendezvous, and the clock against you. Odds rise with rendezvous/propulsion tech, standing infrastructure, and reputation.</p>
-    ${mountBtn}
-    <button class="btn ghost" onclick="abandonRescue()" style="margin-top:8px">Abandon the mission (crew lost)</button>`);
+  openFlightForDecision(ctx, { holdAt:'cislunar-start', buildPanel:()=>{
+    const m=ctx.m, cost=rescueCost(m), months=rescueMonths(m), chance=Math.round(rescueChance(m)*100);
+    const afford=state.money>=cost;
+    const sub=outcome.subsystem?(SUBSYS_LABEL[outcome.subsystem]||'systems').toLowerCase():'systems';
+    const buttons=[];
+    if(afford) buttons.push({label:`Mount a rescue (${fM(cost)}, ~${months} mo, ${chance}%)`, action:mountRescue});
+    buttons.push({label:'Abandon the mission (crew lost)', ghost:true, action:abandonRescue});
+    return { title:'CREW STRANDED IN DEEP SPACE', color:themeColor('bad'),
+      lines:[ `A ${sub} failure left the crew stranded but alive — they can't get home alone.`,
+              afford ? 'A rescue is a long shot: a fast-tracked launch, a hard rendezvous, the clock against you.'
+                     : `A rescue would cost ${fM(cost)} — not affordable right now.` ],
+      buttons };
+  }});
 }
 function mountRescue(){
   if(!_pendingRescue) return;
@@ -3926,8 +3956,10 @@ let _flightResolving=false;  // true while a launch OR an arrival resolution is 
 // The resolution chain from a built ctx onward (live-call → reserve → anomaly → finalize). Shared by the
 // synchronous launch path and deferred arrivals so both reproduce the exact same outcome flow.
 function beginResolve(ctx){
-  if(animEnabled && (ctx.crewed || !ctx.routine)){
-    const flag=liveCallFlag(ctx.outcome);
+  // E1.2 slice A: routine uncrewed reflights are now eligible too (previously the only excluded
+  // case) — liveCallFlag's routine-aware threshold is what actually controls how often it fires.
+  if(animEnabled){
+    const flag=liveCallFlag(ctx.outcome, ctx.routine);
     if(flag){ _pendingLive=ctx; ctx.liveFlag=flag; showLiveCallModal(ctx, flag); return; }
   }
   postResolve(ctx);
@@ -4064,9 +4096,10 @@ function proceedLaunch(m,v,sim,windowQuality,weatherPenalty,prebuilt){
 // the post-resolve flow shared by the headless path and the live-call's "press on".
 function postResolve(ctx){
   // CE5(c): a drifting deep-phase subsystem on a flight carrying reserve margin → a bank/spend call.
-  // Skipped on routine uncrewed re-flights and never headless (which banks → today's exact outcome).
-  if(animEnabled && (ctx.crewed || !ctx.routine)){
-    const dflag=deepCallFlag(ctx.outcome, ctx.sim);
+  // E1.2 slice A: routine reflights are now eligible too (see deepCallFlag's routine-aware threshold);
+  // never fires headless (animEnabled=false always banks → today's exact rolled outcome).
+  if(animEnabled){
+    const dflag=deepCallFlag(ctx.outcome, ctx.sim, ctx.routine);
     if(dflag){ _pendingReserve=ctx; ctx.deepFlag=dflag; showReserveModal(ctx, dflag); return; }
   }
   maybeAnomaly(ctx);
@@ -4286,8 +4319,13 @@ function finalizeLaunch(ctx, ops){
            apogee:0.86+rnd()*0.28, bow:(rnd()-0.5)*0.9 } };
   const finish=()=>{ if(state.money<0){ gameOver(); } else { _missionPulse=success?'ok':(outcome.kind==='loss'||outcome.kind==='strand')?'bad':null; render(); if(pendingCelebration) pendingCelebration(); maybeShowInquiry(); maybeShowHearing(); } _flightResolving=false; if(!state.over) pumpFlightArrivals(); }; // 1.2a: flight fully done — release the lock, surface a pending failure inquiry or budget hearing, then resolve the next arrival if any
   if(animEnabled){
-    _liftoffArmed=false; // Slice A: the pad phase now lives inside the overlay itself (setupFlightState's padDur) —
-    playMission(spec, finish); // the old iso-view CC-popout liftoff (playLiftoff) is retired for launches, left defined-but-unused
+    // E1.2 slice C: if a live-flight decision (live call/reserve/weather/rescue) opened this overlay
+    // early (openFlightForDecision), resume that SAME animation in place with the now-known outcome
+    // instead of opening a second, fresh one. resumeFlightForDecision itself checks _openedForDecision.
+    if(!resumeFlightForDecision(spec, finish)){
+      _liftoffArmed=false; // Slice A: the pad phase now lives inside the overlay itself (setupFlightState's padDur) —
+      playMission(spec, finish); // the old iso-view CC-popout liftoff (playLiftoff) is retired for launches, left defined-but-unused
+    }
   } else finish();
 }
 function autoAdvanceMission(){

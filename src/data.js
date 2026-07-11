@@ -3,7 +3,24 @@
    Core loop: design (rocket equation) → launch → economy → research
    ============================================================ */
 const G0 = 9.81;
-const TL_CAT_ICON={launch:'🚀', research:'⚛', economy:'$', rivals:'🏴', crew:'👥', infra:'🏗', other:'•'};
+// User-directed icon set (2026-07-11): the timeline-category icons were emoji, which render
+// differently per OS/browser and can't pick up the theme's ink color. Small inline SVG line icons,
+// 16x16, stroke=currentColor so they theme-sync for free (no JS color table needed, unlike the
+// canvas HUD chrome — these are plain DOM/innerHTML, currentColor just works). ~1em sizing so they
+// sit inline with surrounding text exactly like the emoji they replace.
+const ICON_PATHS={
+  launch:  '<path d="M8 2 L12 12 L8 10 L4 12 Z" fill="currentColor" stroke="none"/>',
+  research:'<g fill="none" stroke="currentColor" stroke-width="1.3"><ellipse cx="8" cy="8" rx="6.2" ry="2.3"/><ellipse cx="8" cy="8" rx="6.2" ry="2.3" transform="rotate(60 8 8)"/><ellipse cx="8" cy="8" rx="6.2" ry="2.3" transform="rotate(120 8 8)"/></g><circle cx="8" cy="8" r="1.3" fill="currentColor" stroke="none"/>',
+  rivals:  '<path d="M4 2 L4 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M4.5 2.5 L11.5 3.8 L9 6 L11.5 8.2 L4.5 9.2 Z" fill="currentColor" stroke="none"/>',
+  crew:    '<g fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="5.3" cy="5.8" r="2.1"/><circle cx="10.7" cy="5.8" r="2.1"/><path d="M1.5 14 C1.5 10.6 3.3 9.2 5.3 9.2 C6.3 9.2 7.1 9.5 7.8 10"/><path d="M14.5 14 C14.5 10.6 12.7 9.2 10.7 9.2 C9.7 9.2 8.9 9.5 8.2 10"/></g>',
+  infra:   '<g fill="currentColor" stroke="none"><rect x="1.5" y="9" width="3" height="5"/><rect x="6.5" y="5.5" width="3" height="8.5"/><rect x="11.5" y="2.5" width="3" height="11.5"/></g>',
+  other:   '<circle cx="8" cy="8" r="2.4" fill="currentColor" stroke="none"/>',
+};
+function svgIcon(name, size){
+  const p=ICON_PATHS[name]; if(!p) return '';
+  return `<svg width="${size||'1em'}" height="${size||'1em'}" viewBox="0 0 16 16" style="display:inline-block;vertical-align:-0.15em" aria-hidden="true">${p}</svg>`;
+}
+const TL_CAT_ICON={launch:svgIcon('launch'), research:svgIcon('research'), economy:'$', rivals:svgIcon('rivals'), crew:svgIcon('crew'), infra:svgIcon('infra'), other:svgIcon('other')};
 const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 
 const ERAS = [

@@ -2404,6 +2404,142 @@ harness's DOM stubs don't implement `closest()`, crashing 3 test files — fixed
 `typeof`-guarded fallback + try/catch, headless-safe by construction now. **Suite total: still 525/525**
 (pure addition, no new test file — cosmetic UI feature, real verification is visual).
 
+## Session — visual/UI overhaul kickoff + E1.2 slice A: decision-frequency widening (2026-07-11)
+
+**User-directed visual overhaul, scope agreed (not yet built beyond this piece):** era-evolving visual
+identity (Apollo era → 80s NASA → 90s/2000s → SpaceX-modern, as the game's own era system advances;
+Battlestar Galactica/retro-sci-fi as a mood reference), Phaser scenes synced to the existing DOM theme
+system (currently 69 hardcoded hex colors don't react to theme at all), commit to a custom SVG icon set
+(replacing emoji), sound in scope. Sequencing: flight-scene slice first, then icon set. Corrected an
+earlier assumption before starting: camera shake/particles/bloom postFX/debris already exist in
+`flight.js` (native Phaser particle system) — NOT the actual gap. Real diagnosis: the live abort/press-on
+decision only fires in a narrow amber reliability band, so it structurally trends toward *zero* as the
+player's engineering matures and as routine reflights (the bulk of a long campaign) dominate. User
+confirmed: widen frequency, tied specifically to routine reflights.
+
+**Shipped this session: the frequency-widening piece.** `liveCallFlag`/`deepCallFlag` (sim.js) now take a
+`routine` flag and use a wider amber band on a reflight (0.97 vs 0.94) — doesn't touch the underlying
+reliability roll, only how forgivingly it's read. `beginResolve`/`postResolve` no longer exclude uncrewed
+routine flights outright (previously the only excluded combination). New `test-live-call-freq.js` (10/10).
+**Suite total 671/671**, build parity clean, not yet committed/pushed.
+
+**Also shipped this session: the live-call decision now genuinely plays inside the flight overlay**, not
+as a page modal before it opens. User chose the architectural option over a cheaper reskin. Real
+finding first: the decision resolves BEFORE `playMission` is ever called — the whole flight sequence is
+a replay of an already-locked outcome, so "in-scene" requires the overlay to open EARLY and hold.
+New `openFlightForDecision(ctx,decision)` (flight.js) opens the overlay with a placeholder (pad-safe)
+spec and arms `animState.pendingDecision`; `drawScene`'s pad→ascent boundary now checks it and holds
+there (reusing the existing held/dismiss idiom from the post-flight card) instead of continuing into
+ascent, drawing a new generic `drawDecisionPanel()` (title/lines/N buttons, canvas hit-tested, same
+rounded-rect idiom as `drawFlightContinueBtn`). `resumeFlightForDecision(finalSpec,finish)` patches the
+real outcome into the SAME spec object once resolved (keeps stages/boosters/rng continuous), recomputes
+`totalDur`/`reentryDur` (they depend on success/failPhase, computed only now), and resumes the SAME
+animLoop — `finalizeLaunch` tries this before ever falling back to a fresh `playMission`. Only the live
+call is wired this way so far; `showLiveCallModal` rewritten, `resolveLiveCall` untouched (already
+routes through the same chain). New `test-decision-panel.js` (15/15) drives the real animLoop/click
+handler on a virtual clock, not a reimplementation. **Suite total 686/686**, build parity clean.
+
+**User-verified in browser 2026-07-11 — the live-call in-scene panel works.** Confirmed real, not just
+headlessly plausible.
+
+**Same session, following the browser confirmation: the other 3 decision types wired onto the same
+primitive.** Reserve call and rescue both hold at a NEW `'cislunar-start'` point (entering the deep
+cruise — their own "far from home" moment, distinct from the live call's pad→ascent point; both only
+ever apply to cislunar/profile missions, confirmed via `deepReserveMargin`'s leg-filter and `resolveFlight`'s
+`strand` kind both being deep-phase-only). Weather go/no-go holds at a NEW `'pad-start'` point (before the
+countdown even ramps — it's decided before anything else about the flight is known, architecturally
+earlier than the others: `resolveFlight` hasn't even run yet when weather fires).
+
+Generalized `openFlightForDecision`/`resumeFlightForDecision` to support **chaining multiple decisions on
+the same flight attempt** (e.g. weather → then a live call once the outcome is known) — reuses the
+already-open overlay instead of opening a second one, replacing the earlier ctx-identity check
+(`_decisionCtx===ctx`, which broke chaining since each stage builds its own ctx object) with a simpler
+`_openedForDecision` boolean, safe because only one flight can ever be resolving at a time (`_flightResolving`
+lock). `scrubLaunch()` (weather) explicitly `dismissAnim()`s before its multi-month `advance()` — scrubbing
+is a genuinely new future attempt, not a continuation of the held pad frame, unlike the other three where
+resuming in place is correct. Caught and fixed a **real ordering bug** during testing: `pendingDecision` was
+being set on `animState` *after* `playMission()`'s first synchronous `animLoop()` frame already ran, so
+the very first frame always missed the hold check — fixed by threading it through `spec._pendingDecisionSeed`
+so `setupFlightState` seeds it into `animState` before that first frame, not after.
+
+New assertions folded into `test-decision-panel.js` (28/28 total). **Suite total 699/699**, build parity
+clean. **Not yet committed/pushed — needs a real browser check** for these three specifically (the live
+call was already verified; reserve/weather/rescue are new code on the same proven mechanism, but still
+unverified visually): trigger weather adverse conditions, a reserve-margin drift on a lunar mission, and
+a deep-space strand, confirm each panel appears at its own correct moment and reads/clicks correctly, and
+confirm chaining (e.g. weather → live call on the same launch) transitions smoothly with no flash/restart.
+
+**Telemetry strip: already existed, no work needed.** Checked before building anything — `drawAscent`
+already runs a full live per-frame HUD (`drawTelemetry`: T+/ALT/SPEED/Vx/Vy/ACC/Q/DRANGE/THROT/STAGE),
+same pattern as the earlier camera-shake/particles/debris/plasma/chutes discovery — another eval claim
+that was stale against current code.
+
+**Phaser/canvas theme-sync — infrastructure built, first bounded slice done.** New `THEME_COLORS` (JS
+table mirroring the 3 `body.theme-*` CSS palettes — Phaser/canvas draw calls can't read CSS custom
+properties) + `themeColor(key)`/`themeRgba(key,alpha)` helpers (flight.js, top of file). Deliberately
+scoped to HUD **chrome only** (telemetry panel, phase bar, continue button, decision panels, mission-info
+box) — NOT the "physical world" (Earth's blue, rocket flame, plasma, stars, splashdown stay their real
+colors regardless of console theme, same as a mission-control room's console color not repainting the
+sky outside the window). Also found: the elaborate Phaser-native particle/camera-shake/postFX/mach-diamond
+code in `flight.js` (`defineFlightScene`/`startFlightScene`, ~230 lines) is **100% dead code** — the
+flight scene's `startFlightScene` call is commented out in `playMission` (disabled 2026-06-25), so none
+of it renders; correctly excluded from theme-sync scope. New `test-theme-sync.js` (31/31) covers the
+color-table infrastructure itself. **Suite total 730/730**, build parity clean.
+
+**flight.js chrome theme-sync: finished** (same session, continued after the checkpoint above). Converted
+all remaining chrome/status colors — telemetry panel, phase bar, decision panels, mission-info box, plus
+every status-semantic color (phase-progress colors, G-load/skin-temp/chute-state warnings, orbit/trajectory
+overlay lines) across `drawPad`/`drawAscent`/`drawOrbit`/`drawSuborbital`/`drawReentry`/`drawCislunar`/
+`drawMiniMap`/`drawOrbitalMiniMap`/`drawPostFlight`/`drawDepartCard` — roughly 90 occurrences total,
+via `themeColor`/`themeRgba`. Deliberately left alone: ~176 remaining hex literals that are genuinely
+"physical world" colors (Earth-blue gradients, vehicle structural greys, flame/plasma/atmosphere) — sampled
+broadly to confirm none of them are chrome hiding in plain sight before stopping.
+
+**User-directed layout change, same pass: the telemetry HUD moved from a vertical list pinned top-left to
+a horizontal strip along the bottom**, stacked just above the existing phase bar (new shared `PHASE_BAR_Y`
+constant keeps the two in sync). Auto-wraps to multiple rows of up to 5 columns for the richer telemetry
+sets (ascent/orbit run 10 items) — label-over-value per cell, divider lines between columns. Frees the
+entire left side of the canvas (minimap + mission-info box were already top-right, unaffected).
+
+**render.js's Cape/vehicle-preview/map/station Phaser scenes — deliberately deferred, not started.**
+These are still genuinely active (unlike the dead flight scene) and mostly use the same canvas-2D
+mechanism (`themeColor`/`themeRgba` would work directly), but a few spots are true Phaser GameObjects
+(`.setTint()`) needing a different approach — a real, uninventoried scope of its own. Stopped here to
+move to the icon set per the agreed sequencing rather than let theme-sync run indefinitely.
+
+**Suite total 730/730**, build parity clean, not yet committed/pushed. **Needs a real browser check**:
+the bottom-strip HUD reposition is a real layout change (confirm it doesn't overlap the phase bar or
+run off-canvas at different vehicle/mission telemetry-row-counts), and confirm the theme actually
+recolors the flight overlay chrome when switching Mission Dark / Control Room Green / Apollo Beige.
+
+**Icon set — first bounded slice done, same session.** New `svgIcon(name,size)` (data.js) — inline
+16x16 line icons, `stroke/fill="currentColor"` so they theme-sync for free via plain CSS (unlike the
+canvas HUD chrome above, these are DOM/innerHTML — no JS color table needed). Scoped to the 7 TL_CAT
+timeline categories (launch/research/rivals/crew/infra/other — `economy` stays the plain `$` glyph,
+it was never an emoji-consistency problem), replacing `TL_CAT_ICON`'s emoji and the matching
+`TL_CATEGORIES` filter-pill icons. `economy`'s `$`, `upcomingEvents()`'s own icon literals (⚛🔧🪟),
+the main tab bar (already plain Unicode dingbats ⌂✎⚛☉⬡, not full-color emoji — lower priority), and
+every other emoji sprinkled through card headers/buttons are **not** touched — this was a bounded
+slice matching the eval's specific "TL_CAT icons... tab badges" framing, not an exhaustive
+emoji-to-SVG sweep of the whole UI. New `test-icon-set.js` (27/27) — including a real render check
+(not just unit-testing the generator) that the rendered timeline strip actually contains `<svg>`, not
+emoji. **Suite total 757/757**, build parity clean, not yet committed/pushed.
+
+**User feedback after browser-testing the bottom HUD**: reposition it below the rocket, everything
+else fine. The telemetry strip and phase bar were stacked telemetry-above-phase-bar; swapped so
+**telemetry is now the bottom-most HUD element** (hugs the canvas edge, `HUD_BOTTOM_MARGIN=6`), phase
+bar stacks just above it. `drawTelemetry` records its own top edge on `animState._telemetryTopY` each
+frame (row count varies 5-10 depending on flight phase) so `drawPhaseBar` always stacks correctly
+above whatever height that frame's telemetry strip actually is — no hardcoded shared offset to keep
+in sync anymore. Didn't touch the rocket-position math (`baseY` in `drawAscent`) at all — lower risk,
+and matches the literal ask (move the HUD, not the rocket). **Suite total still 757/757**, build
+parity clean, not yet committed/pushed — **this specific change needs a browser recheck** (the
+previous rounds were tested before this swap).
+
+**Not yet started**: render.js Phaser-scene theme-sync, the rest of the emoji inventory (if wanted),
+sound, era-evolving visual pass. Treat this ROADMAP entry + the memory note as the record if the
+session ends before those land.
+
 ## Session — E1.1: reactive rival race, slice A (2026-07-11)
 
 **Implemented, tests passing, not yet committed/pushed — needs a real-browser check.** Tech-lead scoped
