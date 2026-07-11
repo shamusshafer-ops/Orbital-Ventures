@@ -2737,6 +2737,27 @@ like `onclick="loadBlueprint('${b.id}')"` — `esc()` can't protect those since 
 attribute's JS parses; ids are program-generated so safe today, but a hostile save with a crafted id is a
 separate, not-yet-addressed vector). That's future scope, not claimed as done here.
 
+## Session — Command Center scene: era-tied variety, slice 1 (2026-07-11)
+
+**Implemented, tests passing, not yet committed/pushed.** User asked for another pass on the isometric
+Command Center scene to "increase realism and variety"; two directions proposed (era-tied variety vs.
+atmosphere/realism), user picked era-tied variety first. Investigation found the existing "Phase B
+realism" prop system (roads, crawler, gantry blink light, greebles, etc.) is rich but has zero variation
+by era or game state — only VAB height (bay count) and dish count actually scale. New `ERA_BUILDING_TINT`
++ `eraBuildingTint(type)` and `ERA_PAD_STYLE` + `eraPadStyle()` (render.js), both keyed by the same
+`eraVisualKey()` the DOM-chrome era system already uses, so the two visual identities age up together.
+Apollo gets warm weathered beige/gray buildings + a white-steel umbilical-tower gantry (matching the
+Saturn V reference); 80s gets cooler grays; 90s2000s gets brighter blue-tinted corporate grays + a
+cleaner light-gray tower. `spacex` deliberately has no entries in either table — today's existing colors
+already read as the modern baseline, so that era falls through to the unchanged defaults for free
+(zero risk, mirrors how the DOM-chrome era pass treated the newest era). Scoped to palette only this
+pass — no geometry/shape changes to buildings, roads, or vehicles. `test-era-visual.js` extended to
+24/24 (was 16/16). Full suite: 796/808 (the 12 failures are in `test-progress-unify.js`, a pre-existing
+unrelated failure predating this session — confirmed by isolating the file, unrelated to any Command
+Center code). Deferred/next: atmosphere-realism pass (sky/lighting/time-of-day) proposed as the second
+direction but not yet greenlit; extending era-tied variety to roads/vehicles/gantry-beam geometry if
+wanted later.
+
 ## Planned — External evaluation intake (2026-07-10)
 
 **Full backlog:** all 105 feature ideas from the evaluation, individually mapped to a

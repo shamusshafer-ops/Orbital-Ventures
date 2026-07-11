@@ -12474,6 +12474,25 @@ const ISO_BUILDINGS=[
   {key:'map',       gx:1.6, gy:3.7, fw:1.0, fd:1.0, h:48, type:'dome'},
   {key:'pad',       gx:6.2, gy:3.4, fw:1.3, fd:1.3, h:155, type:'pad'},
 ];
+// User-directed era-tied variety (2026-07-11): the Command Center space-center scene reused the
+// same building colors/pad materials/gantry every game, every era. Reuses eraVisualKey() (the same
+// grouping the DOM-chrome era pass uses) so the two visual identities age up together. 'spacex' has
+// no entry here deliberately — the EXISTING colors already read as the modern default, so that era
+// is zero-risk (falls through to the unchanged values via the || chains below).
+const ERA_BUILDING_TINT={
+  apollo:    {vab:'#c9c2b0', lab:'#4a4438', admin:'#d6cdb8', prod:'#8a8272', control:'#3a3428'},
+  '80s':     {vab:'#a8b0b8', lab:'#2e3a44', admin:'#9aa4ac', prod:'#4a545c', control:'#22303a'},
+  '90s2000s':{vab:'#c4d0dc', lab:'#3a4a5c', admin:'#b8c4d0', prod:'#5a6a7c', control:'#2a3a4c'},
+};
+function eraBuildingTint(type){ const t=ERA_BUILDING_TINT[eraVisualKey()]; return t&&t[type]; }
+// Pad concrete + gantry lattice: Apollo's white-steel umbilical tower, the Shuttle era's signature
+// rust-orange Fixed Service Structure (todays's default gantry color, unchanged for 80s/spacex), a
+// cleaner light-gray 90s/2000s tower.
+const ERA_PAD_STYLE={
+  apollo:    {concrete:'#3a3a38', gantry:'#c8c8c0', gantryBeam:'rgba(200,200,190,0.4)'},
+  '90s2000s':{concrete:'#2e3238', gantry:'#a8b0b8', gantryBeam:'rgba(180,190,200,0.4)'},
+};
+function eraPadStyle(){ return ERA_PAD_STYLE[eraVisualKey()]||null; }
 const ISO_SPREAD=1.7; // gap multiplier between cells (buildings keep their size, just spread apart)
 function isoOrigin(){ return {ox:CAPE_W*0.36, oy:CAPE_H*0.13}; }
 function isoX(gx,gy){ const o=isoOrigin(); return o.ox+(gx-gy)*ISO_TW/2*ISO_SPREAD; }
@@ -12542,7 +12561,7 @@ function drawIsoBuilding(ctx,L,t){
   if(b.type==='dishes'){ drawIsoDishes(ctx,sx,sy,b,t); return; }
   if(b.type==='dome'){ drawIsoDome(ctx,sx,sy,b,t); return; }
   if(b.type==='rivalpad'){ ctx.globalAlpha=0.7; drawIsoPad(ctx,sx,sy,b,t,true); ctx.globalAlpha=1; return; }
-  const palette=b.tint||{vab:'#2b3a44', lab:'#26323a', admin:'#2a3540', prod:'#222e36', control:'#243038'}[b.type]||'#283139';
+  const palette=eraBuildingTint(b.type)||b.tint||{vab:'#2b3a44', lab:'#26323a', admin:'#2a3540', prod:'#222e36', control:'#243038'}[b.type]||'#283139';
   const box=isoBox(ctx,sx,sy,b.fw,b.fd,h,palette);
   // windows on the two visible faces
   isoWindows(ctx,box.Cl,box.Cf,h, Math.max(2,Math.round(h/22)), 3, b.type==='control'?'88,196,122':(b.type==='lab'?'79,209,217':'245,166,35'));
@@ -12590,12 +12609,13 @@ function isoCryoTank(ctx,x,baseY,r,col,frost,t){
 }
 function drawIsoPad(ctx,sx,sy,b,t,rival){
   const ex=ISO_TW/2, ey=ISO_TH/2, a=b.fw/2, bb=b.fd/2;
+  const padStyle=rival?null:eraPadStyle();
   // concrete pad diamond
-  isoQuad(ctx,[[sx-a*ex+bb*ex,sy-a*ey-bb*ey],[sx+a*ex+bb*ex,sy+a*ey-bb*ey],[sx+a*ex-bb*ex,sy+a*ey+bb*ey],[sx-a*ex-bb*ex,sy-a*ey+bb*ey]], rival?'#2a2622':'#2a2e33', 'rgba(0,0,0,0.4)');
+  isoQuad(ctx,[[sx-a*ex+bb*ex,sy-a*ey-bb*ey],[sx+a*ex+bb*ex,sy+a*ey-bb*ey],[sx+a*ex-bb*ex,sy+a*ey+bb*ey],[sx-a*ex-bb*ex,sy-a*ey+bb*ey]], rival?'#2a2622':(padStyle?padStyle.concrete:'#2a2e33'), 'rgba(0,0,0,0.4)');
   // lattice gantry (vertical) to one side
   const gx=sx+ex*0.5, gTop=sy-(rival?b.h:b.h), gBot=sy;
-  ctx.strokeStyle=rival?'#5a4a44':'#8a6038'; ctx.lineWidth=2; ctx.strokeRect(gx-6, gTop, 12, gBot-gTop);
-  ctx.strokeStyle='rgba(180,120,70,0.4)'; ctx.lineWidth=1; for(let yy=gTop;yy<gBot;yy+=12){ ctx.beginPath(); ctx.moveTo(gx-6,yy); ctx.lineTo(gx+6,yy+12); ctx.moveTo(gx+6,yy); ctx.lineTo(gx-6,yy+12); ctx.stroke(); }
+  ctx.strokeStyle=rival?'#5a4a44':(padStyle?padStyle.gantry:'#8a6038'); ctx.lineWidth=2; ctx.strokeRect(gx-6, gTop, 12, gBot-gTop);
+  ctx.strokeStyle=padStyle&&!rival?padStyle.gantryBeam:'rgba(180,120,70,0.4)'; ctx.lineWidth=1; for(let yy=gTop;yy<gBot;yy+=12){ ctx.beginPath(); ctx.moveTo(gx-6,yy); ctx.lineTo(gx+6,yy+12); ctx.moveTo(gx+6,yy); ctx.lineTo(gx-6,yy+12); ctx.stroke(); }
   const bl=(Math.sin(t*4)>0)?1:0.2; ctx.fillStyle=`rgba(255,60,40,${0.4+0.6*bl})`; ctx.beginPath(); ctx.arc(gx+6,gTop,3,0,7); ctx.fill();
   if(rival){ ctx.fillStyle='#c2b8b2'; ctx.fillRect(sx-1.5,sy-b.h*0.7,3,b.h*0.7); return; }
   // Propellant farm: spherical LOX (oxygen) + RP-1 (fuel) tanks on the open grass to the screen-LEFT of

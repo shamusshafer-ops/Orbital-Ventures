@@ -47,5 +47,19 @@ try{
   }
 }catch(e){ console.log('(skipped built-HTML check — orbital-ventures.html not found relative to tests/:', e.message, ')'); }
 
+// ---------- Command Center scene: era-tied building/pad tinting (2026-07-11) ----------
+state.year=1945; // apollo
+check('eraBuildingTint: apollo vab distinct from default', eraBuildingTint('vab')==='#c9c2b0');
+check('eraPadStyle: apollo pad style present', eraPadStyle() && eraPadStyle().concrete==='#3a3a38');
+state.year=1980; // 80s
+check('eraBuildingTint: 80s vab distinct from apollo', eraBuildingTint('vab')==='#a8b0b8');
+check('eraPadStyle: 80s has no override (falls through to default)', eraPadStyle()===null);
+state.year=2010; // 90s2000s
+check('eraBuildingTint: 90s2000s vab distinct', eraBuildingTint('vab')==='#c4d0dc');
+check('eraPadStyle: 90s2000s pad style present', eraPadStyle() && eraPadStyle().gantry==='#a8b0b8');
+state.year=2040; // spacex — deliberately no override, falls through to caller's default
+check('eraBuildingTint: spacex has no override (falls through)', eraBuildingTint('vab')===undefined);
+check('eraPadStyle: spacex has no override (falls through)', eraPadStyle()===null);
+
 console.log(pass+'/'+(pass+fail)+' checks passed');
 process.exit(fail>0 ? 1 : 0);
