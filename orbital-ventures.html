@@ -14314,7 +14314,21 @@ function defineVehScene(){
       const mk=(key,draw,w,h)=>{ if(!this.textures.exists(key)){ const g=this.make.graphics({x:0,y:0,add:false}); draw(g); g.generateTexture(key,w,h); g.destroy(); } };
       mk('vehStar',g=>{ g.fillStyle(0xffffff,1); g.fillCircle(2,2,2); },4,4);
       mk('vehGlow',g=>{ for(let i=10;i>=1;i--){ g.fillStyle(0xffffff,0.05); g.fillCircle(32,32,i*3); } },64,64);
-      this.cameras.main.setBackgroundColor('#0a1016');
+      // Blueprint background: the Phaser canvas is opaque (transparent:false, below), so it paints
+      // over the CSS .bench-rocket blueprint background entirely — draw the same navy + faint white
+      // grid IN the scene itself so the "actual background behind the vehicle" matches, not just the
+      // card's margins around the canvas. Internal res is 2× display size, so grid spacing is doubled
+      // (20px/100px here → 10px/50px once the canvas is CSS-scaled down to its displayed size).
+      this.cameras.main.setBackgroundColor('#0b2545');
+      const grid=this.add.graphics();
+      grid.lineStyle(1, 0xffffff, 0.05); grid.beginPath();
+      for(let x=0;x<=VEH_W;x+=20){ grid.moveTo(x,0); grid.lineTo(x,VEH_H); }
+      for(let y=0;y<=VEH_H;y+=20){ grid.moveTo(0,y); grid.lineTo(VEH_W,y); }
+      grid.strokePath();
+      grid.lineStyle(1, 0xffffff, 0.11); grid.beginPath();
+      for(let x=0;x<=VEH_W;x+=100){ grid.moveTo(x,0); grid.lineTo(x,VEH_H); }
+      for(let y=0;y<=VEH_H;y+=100){ grid.moveTo(0,y); grid.lineTo(VEH_W,y); }
+      grid.strokePath();
       for(let i=0;i<46;i++){ const s=this.add.image(Math.random()*W, Math.random()*H, 'vehStar').setAlpha(0.12+Math.random()*0.5).setScale(0.4+Math.random()*0.9);
         this.tweens.add({targets:s, alpha:Math.random()*0.2, duration:900+Math.random()*2200, yoyo:true, repeat:-1, ease:'Sine.easeInOut'}); }
       this.tex=this.textures.exists('vehTex')?this.textures.get('vehTex'):this.textures.createCanvas('vehTex',W,H);
@@ -14324,7 +14338,7 @@ function defineVehScene(){
       this.img=this.add.image(W/2, H/2, 'vehTex').setOrigin(0.5,0.5);
       this.selG=this.add.graphics();           // selection ring + separation lines
       this.ann=[];                              // per-stage Δv/TWR labels
-      this.dragLabel=this.add.text(0,0,'',{fontFamily:'ui-monospace,monospace',fontSize:'15px',color:themeColor('ignite'),backgroundColor:'#0a1016cc',padding:{x:6,y:3}}).setDepth(10).setVisible(false);
+      this.dragLabel=this.add.text(0,0,'',{fontFamily:'ui-monospace,monospace',fontSize:'15px',color:themeColor('ignite'),backgroundColor:'#0b2545cc',padding:{x:6,y:3}}).setDepth(10).setVisible(false);
       // --- direct manipulation ---
       this._drag=null;
       const zoneAt=(x,y)=>{ if(!this._layout) return null;

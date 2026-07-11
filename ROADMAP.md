@@ -2857,6 +2857,21 @@ always this color) + `rgba(255,255,255,...)` white gridlines. Confirmed safe: ev
 uses light ink text on dark panels (no light-background themes exist), so white-on-navy stays legible
 everywhere without a per-theme contrast check. Suite unchanged 837/849 (same pre-existing failure).
 
+**Root-cause fix same session**: user reported only seeing a border effect, not the background behind the
+vehicle itself. Real cause — the bench's rocket preview actually renders via a **Phaser scene**
+(`VehScene`, hosted in `#vehHost`) whenever Phaser is available (`startVehPreview`/`phaserOK()`), which
+is the case in virtually every real browser; the plain `#vehiclePreview` 2D-canvas path (which already
+correctly `clearRect`s to transparent, showing CSS through fine) is only a fallback that real users rarely
+see. Phaser's canvas is `transparent:false` with its own `setBackgroundColor('#0a1016')` — fully opaque,
+painting over the CSS blueprint background everywhere except the card's own margins outside the canvas
+(which is what read as "just a border"). Fixed by drawing the SAME navy + white grid inside the Phaser
+scene itself (`this.cameras.main.setBackgroundColor('#0b2545')` + a Graphics-drawn 20px/100px grid at
+2× internal resolution, matching the CSS's 10px/50px visual spacing once scaled down for display),
+added once in `create()` before the stars/rocket layers so it sits as a static backdrop. Also recolored
+the drag-readout label's background chip from near-black to the matching navy for consistency. Not a
+regression — pop-out unaffected (it uses the plain 2D-canvas path, not this Phaser scene). Suite unchanged
+837/849 (same pre-existing failure).
+
 ## Planned — External evaluation intake (2026-07-10)
 
 **Full backlog:** all 105 feature ideas from the evaluation, individually mapped to a
