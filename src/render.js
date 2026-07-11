@@ -4982,6 +4982,8 @@ function renderContractOffers(){
         <span style="font-family:var(--mono);font-size:12px;color:${left<=2?'var(--warn)':'var(--muted)'}">${left} mo left</span>
       </div>
       <p class="muted" style="font-size:12px;margin:4px 0">${esc(o.blurb)}</p>
+      ${o.rivalBid?(()=>{ const r=RIVALS.find(x=>x.id===o.rivalBid.rivalId); const left2=o.rivalBid.snatchAbs-absMonth();
+        return `<p style="font-size:12px;color:var(--warn);margin:0 0 4px">${r?r.flag:''} ${r?esc(r.name):'A rival'} is bidding on this — commit within ${Math.max(0,left2)} mo or lose it.</p>`; })():''}
       <div style="display:flex;justify-content:space-between;align-items:center">
         <span style="font-family:var(--mono);font-size:13px;color:var(--ok)">+${fM(o.payout)}, +${o.rep} rep</span>
         <button class="btn" style="font-size:12px" onclick="selectMission('${o.id}');setTab('bench')">Fly ▸</button>

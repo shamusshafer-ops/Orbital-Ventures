@@ -471,6 +471,7 @@ function resolveSetback(choice){
   if(state.money<0) gameOver(); else render();
   maybeShowMishap(); // if a logistics mishap also came due this tick, surface it now that the setback is cleared
   maybeShowInquiry(); // then a pending failure inquiry (lowest precedence of the three)
+  maybeShowHearing(); // then a pending budget hearing (E1.1, mutually exclusive with inquiry in practice)
 }
 /* ---------- 2.3: logistics route interruptions ----------
    A negative economy event (logi_mishap in ECONOMY_EVENTS, reqLogi-gated so it can only roll while
@@ -519,6 +520,7 @@ function resolveMishap(choice){
   _pendingLogiMishap=null; hideModal();
   if(state.money<0) gameOver(); else render();
   maybeShowInquiry(); // if a failure inquiry is also pending, surface it now that the mishap is cleared
+  maybeShowHearing(); // then a pending budget hearing (E1.1)
 }
 /* ---------- P3: failure investigation loop ----------
    After an UNCREWED loss/abort/strand finalizes, offer a funded inquiry that converts the failure
@@ -568,6 +570,50 @@ function resolveInquiry(choice){
     log('note',`No inquiry funded — the ${s.mName} loss goes on the books without a formal review.`);
   }
   _pendingInquiry=null; hideModal();
+  if(state.money<0) gameOver(); else render();
+}
+/* ---------- E1.1: budget hearing after a fatal crewed loss ----------
+   The inquiry above is the ENGINEERING response to an uncrewed failure; this is the POLITICAL
+   response to a crewed one (catastrophe or strand) — the case P3's own comment explicitly left
+   untouched ("crewed catastrophes keep their existing grounding narration"). Same transient
+   pending-decision shape as _pendingSetback/_pendingInquiry; mutually exclusive with inquiry in
+   practice (a flight is either crewed or not), but gated behind the same higher-priority pendings
+   for consistency. No persisted state beyond the transient. */
+const HEARING_FUND_COST=2.0, HEARING_SUPPORT_FUND=6, HEARING_SUPPORT_DEFEND=3, HEARING_SUPPORT_BLAME=4;
+const HEARING_REP_COST_DEFEND=3, HEARING_MORALE_HIT_BLAME=8, HEARING_POACH_HEAT_BLAME=9;
+let _pendingHearing=null; // a fatal crewed loss awaiting a fund/defend/blame decision (transient, like _pendingInquiry)
+function hearingFundCost(){ return round2(HEARING_FUND_COST*(1+eraStakesFrac())); } // later eras draw bigger scrutiny, same spirit as applyEraStakes
+function triggerHearing(ctx){
+  if(_pendingHearing) return; // one at a time
+  _pendingHearing={ mName:ctx.m.name };
+  log('bad',`⚠ BUDGET HEARING — ${ctx.m.name}: the fatal loss draws government scrutiny. A decision is needed.`);
+}
+function maybeShowHearing(){ if(_pendingHearing && !_pendingSetback && !_pendingLogiMishap && !_pendingInquiry) showHearingModal(); } // setback/mishap/inquiry take priority
+function showHearingModal(){
+  const s=_pendingHearing; if(!s) return;
+  const cost=hearingFundCost(), fundOk=state.money>=cost;
+  showModal(`<h2 style="color:var(--bad)">⚠ Budget hearing</h2>
+    <p><b>${esc(s.mName)}</b> — a fatal loss draws a program review. How do you play it?</p>
+    <button class="btn" onclick="resolveHearing('fund')" ${fundOk?'':'disabled'} title="${fundOk?'':'Not enough capital'}">Fund a safety program — ${fM(cost)} <span class="dim">· +${HEARING_SUPPORT_FUND} support</span></button>
+    <button class="btn ghost" style="margin-top:8px" onclick="resolveHearing('defend')">Defend the program's record <span class="dim">· free, −${HEARING_REP_COST_DEFEND} rep, +${HEARING_SUPPORT_DEFEND} support</span></button>
+    <button class="btn ghost" style="margin-top:8px" onclick="resolveHearing('blame')">Blame the vendor <span class="dim">· free, +${HEARING_SUPPORT_BLAME} support, staff morale hit</span></button>`);
+}
+function resolveHearing(choice){
+  const s=_pendingHearing; if(!s) return;
+  if(choice==='fund'){
+    const cost=hearingFundCost(); if(state.money<cost) return; // guarded; button disabled when unaffordable
+    state.money-=cost; addSupport(HEARING_SUPPORT_FUND);
+    log('ok',`Budget hearing: funded a safety program after the ${s.mName} loss. −${fM(cost)}, +${HEARING_SUPPORT_FUND} support.`);
+  } else if(choice==='defend'){
+    state.rep=Math.max(0,state.rep-HEARING_REP_COST_DEFEND); addSupport(HEARING_SUPPORT_DEFEND);
+    log('note',`Budget hearing: you defended the program's record. −${HEARING_REP_COST_DEFEND} rep, +${HEARING_SUPPORT_DEFEND} support.`);
+  } else { // blame
+    addSupport(HEARING_SUPPORT_BLAME);
+    (state.staff||[]).forEach(st=>{ st.morale=clampA((st.morale||50)-HEARING_MORALE_HIT_BLAME,0,100); });
+    state.poachHeat=Math.max(state.poachHeat||0, HEARING_POACH_HEAT_BLAME); // spin over substance leaves staff rattled — rivals notice more than usual
+    log('bad',`Budget hearing: you blamed the vendor. +${HEARING_SUPPORT_BLAME} support, but staff morale takes a hit — and it shows.`);
+  }
+  _pendingHearing=null; hideModal();
   if(state.money<0) gameOver(); else render();
 }
 // Time Granularity epic — the simulation funnel iterates DAYS, not months. Each day runs the
@@ -701,6 +747,7 @@ function tickMonthlyBoundary(){
     else if(rw>18 && state._runwayWarned){ state._runwayWarned=null; }
 
     tickRivals(); // CE1: rival agents (budget + reactive momentum) — replaces calendar-only firing
+    tickPoachHeat(); // E1.1: decay the post-fatal-loss poach-heat window
     checkPoaching();
     checkPersonnelEvents();
     checkDivisionBreakthroughs(); // #5: division-driven R&D breakthroughs (sibling of #9)
@@ -710,6 +757,7 @@ function tickMonthlyBoundary(){
     checkScoringDate(); // chronicle: the soft scoring date fires once
     tickSpecialContract(); // special contracts: limited-time commercial variants
     tickContractOffers(); // E1.3: procedural filler contracts — era + capability keyed
+    tickRivalSnatch(); // E1.1: a surging rival may bid on an uncommitted procedural contract offer
     tickCrisis(); // P11: the one late-game crisis — trigger check, then escalate/remediate if active
     tryStartQueuedResearch(); // I5: retry monthly in case the queued pick just became affordable/unlocked (the immediate try lives in completeResearch)
     pushMetricHistory(); // #28: snapshot this month's core metrics for the dashboard sparklines
@@ -1027,6 +1075,37 @@ function tickContractOffers(){
   const offer=Object.assign({id:'pc_'+state.procSeq, proc:true, expiresAbs:absMonth()+CONTRACT_OFFER_LEAD}, built);
   (state.contractOffers=state.contractOffers||[]).push(offer);
   log('note',`New contract offer: ${offer.name} — ${fM(offer.payout)}, open ${CONTRACT_OFFER_LEAD} months.`);
+}
+/* ---------- E1.1: rivals bid on your procedural contract offers ----------
+   A surging rival can snatch an open, uncommitted contract offer out from under you — a two-beat
+   warning (bid placed) then take (offer lost) unless you commit to it first. Committing is the whole
+   counter: contractOfferReferenced() (the same guard tickContractOffers uses to protect a build in
+   progress) makes a bid-on offer immune the instant you select/queue/hangar it. Reward is a small
+   rival CAPITAL bump, not momentum — momentum drives the MC-tuned firsts-claiming pace (data.js),
+   and a snatch shouldn't touch that. Never touches authored missions, the special contract, or
+   mandates — only state.contractOffers. */
+const RIVAL_SNATCH_MOM_THRESHOLD=1.1, RIVAL_SNATCH_WARN_MONTHS=2, RIVAL_SNATCH_CAPITAL_BUMP=1.0;
+function tickRivalSnatch(){
+  for(const o of (state.contractOffers||[]).slice()){
+    if(!o.rivalBid) continue;
+    if(contractOfferReferenced(o.id)){ o.rivalBid=null; continue; } // committed in time — bid falls through
+    if(absMonth()<o.rivalBid.snatchAbs) continue;
+    const r=RIVALS.find(x=>x.id===o.rivalBid.rivalId);
+    state.contractOffers=(state.contractOffers||[]).filter(x=>x.id!==o.id);
+    if(r){ const rs=rivalStateFor(r); rs.capital=(rs.capital||0)+RIVAL_SNATCH_CAPITAL_BUMP;
+      log('bad',`${r.flag} ${r.name} snatched the ${o.name} contract out from under you.`);
+      pushFrontPage('rival', r.flag, `${r.name} wins ${o.name}`, 'A contract you left on the table.');
+    }
+  }
+  if(Math.random()>0.5) return; // loose cadence, matching the other monthly rolls in this block
+  const candidates=(state.contractOffers||[]).filter(o=>!o.rivalBid && !contractOfferReferenced(o.id));
+  if(!candidates.length) return;
+  const surging=RIVALS.filter(r=>rivalMomentumOf(r)>=RIVAL_SNATCH_MOM_THRESHOLD);
+  if(!surging.length) return;
+  const rival=surging[Math.floor(Math.random()*surging.length)];
+  const target=candidates[Math.floor(Math.random()*candidates.length)];
+  target.rivalBid={rivalId:rival.id, snatchAbs:absMonth()+RIVAL_SNATCH_WARN_MONTHS};
+  log('note',`${rival.flag} ${rival.name} is bidding on your ${target.name} contract — commit within ${RIVAL_SNATCH_WARN_MONTHS} months or lose it.`);
 }
 function rollEconEvent(){
   // Economy tension: positive windfalls require a recently ACTIVE program (a flight in the
@@ -2395,6 +2474,9 @@ function rivalProjectedYear(r){
 // defence. The talent war is now reactive: a high-MOMENTUM rival (well-funded, on a roll)
 // courts harder, and a successful poach feeds its momentum (it got your people).
 const POACH_CHANCE = 0.10; // monthly chance a rival looks at your bench
+// E1.1: a fatal crewed loss opens a "poach heat" window — instability rivals notice and press harder on.
+const POACH_HEAT_ON_FATAL=6, POACH_HEAT_MULT=2.5;
+function tickPoachHeat(){ if((state.poachHeat||0)>0) state.poachHeat--; }
 function rivalMomentumOf(r){ return ((state.rivalState||{})[r.id]||{}).momentum||1.0; }
 // pick a rival weighted by momentum — the company that's surging is the one knocking on your door
 function poachingRival(){
@@ -2405,7 +2487,8 @@ function poachingRival(){
 }
 function checkPoaching(){
   if(!state.staff || !state.staff.length) return;
-  if(Math.random()>POACH_CHANCE) return;
+  const chance=POACH_CHANCE*((state.poachHeat||0)>0?POACH_HEAT_MULT:1); // E1.1: hotter right after a fatal loss
+  if(Math.random()>chance) return;
   const target=state.staff.slice().sort((a,b)=>(a.morale||50)-(b.morale||50))[0];
   const p=personById(target.id); if(!p) return;
   const morale=target.morale||50;
@@ -4129,6 +4212,8 @@ function finalizeLaunch(ctx, ops){
     advance(6); // grounding + investigation
     log('bad',`${m.name}: LOST IN DEEP SPACE — ${outcome.story} A long inquiry follows, −${rep} rep.`);
     applyEraStakes('loss of the crew'); // CE4(c): era-scaled compounding setback
+    state.poachHeat=Math.max(state.poachHeat||0, POACH_HEAT_ON_FATAL); // E1.1: instability rivals press on
+    triggerHearing(ctx); // E1.1: the political response to a fatal crewed loss (inquiry above is the engineering one, uncrewed-only)
   }else if(outcome.kind==='rescued'){
     // #20 slice 3: a deep-space rescue brought the crew home — mission & vehicle lost, crew safe
     personnelMissionEvent(false);
@@ -4146,6 +4231,8 @@ function finalizeLaunch(ctx, ops){
       log('bad',`${m.name}: CATASTROPHE. The ${SUBSYS_LABEL[outcome.subsystem].toLowerCase()} failed — ${outcome.story} Vehicle lost with all ${m.crew} aboard. Six-month stand-down, −${rep} rep. Fit a launch-escape system before flying crew again.`);
       pushFrontPage('disaster', '⚠', `${m.name}: crew lost`, outcome.story);
       applyEraStakes('loss of the crew and vehicle'); // CE4(c): era-scaled compounding setback
+      state.poachHeat=Math.max(state.poachHeat||0, POACH_HEAT_ON_FATAL); // E1.1: instability rivals press on
+      triggerHearing(ctx); // E1.1: the political response to a fatal crewed loss
     }else{
       const rep=Math.min(state.rep, routine?3:8); state.rep-=rep;
       addSupport(supportDelta('lossUncrewed')); // #8: an uncrewed loss costs some goodwill
@@ -4197,7 +4284,7 @@ function finalizeLaunch(ctx, ops){
     rng: { wind:(rnd()-0.5)*0.9, windFreq:1.4+rnd()*1.6, windPhase:rnd()*6.283,
            pitchJitter:(rnd()-0.5)*0.16, sep:state.stages.map(()=>(rnd()-0.5)*0.06),
            apogee:0.86+rnd()*0.28, bow:(rnd()-0.5)*0.9 } };
-  const finish=()=>{ if(state.money<0){ gameOver(); } else { _missionPulse=success?'ok':(outcome.kind==='loss'||outcome.kind==='strand')?'bad':null; render(); if(pendingCelebration) pendingCelebration(); maybeShowInquiry(); } _flightResolving=false; if(!state.over) pumpFlightArrivals(); }; // 1.2a: flight fully done — release the lock, surface a pending failure inquiry, then resolve the next arrival if any
+  const finish=()=>{ if(state.money<0){ gameOver(); } else { _missionPulse=success?'ok':(outcome.kind==='loss'||outcome.kind==='strand')?'bad':null; render(); if(pendingCelebration) pendingCelebration(); maybeShowInquiry(); maybeShowHearing(); } _flightResolving=false; if(!state.over) pumpFlightArrivals(); }; // 1.2a: flight fully done — release the lock, surface a pending failure inquiry or budget hearing, then resolve the next arrival if any
   if(animEnabled){
     _liftoffArmed=false; // Slice A: the pad phase now lives inside the overlay itself (setupFlightState's padDur) —
     playMission(spec, finish); // the old iso-view CC-popout liftoff (playLiftoff) is retired for launches, left defined-but-unused

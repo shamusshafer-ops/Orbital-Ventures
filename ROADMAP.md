@@ -2404,6 +2404,37 @@ harness's DOM stubs don't implement `closest()`, crashing 3 test files — fixed
 `typeof`-guarded fallback + try/catch, headless-safe by construction now. **Suite total: still 525/525**
 (pure addition, no new test file — cosmetic UI feature, real verification is visual).
 
+## Session — E1.1: reactive rival race, slice A (2026-07-11)
+
+**Implemented, tests passing, not yet committed/pushed — needs a real-browser check.** Tech-lead scoped
+first: **most of the roadmap bullet was already shipped** by CE1(a/b/c) — momentum already reacts to
+player firsts (schedule variance), `denyRivalGoal()` already damages a rival's schedule, staff poaching
+already exists and is momentum-weighted. The eval's "rivals are scheduled, not adaptive" framing was
+stale. Real gap was three pieces: contract snatching, budget hearings after a *fatal* crewed loss (the
+existing failure inquiry is explicitly uncrewed-only — the crewed branch's own comment said so), and a
+literal failure→poaching link.
+
+**Contract snatching** (`tickRivalSnatch()`, sim.js) — a surging rival (momentum ≥1.1) bids on an open,
+uncommitted procedural offer; two-beat warning (2 mo) then taken if you don't commit. Committing
+(select/queue/hangar) is the whole counter — reuses E1.3's `contractOfferReferenced()` guard, so a bid
+on a build in progress just falls through. Reward is rival **capital**, not momentum (momentum drives
+the Monte-Carlo-tuned firsts-pacing; a snatch shouldn't touch that). Never touches authored missions,
+the special contract, or mandates — only `state.contractOffers`.
+
+**Budget hearing** (`triggerHearing`/`showHearingModal`/`resolveHearing`, sim.js) — the political sibling
+of the engineering-only failure inquiry, fired from the same two branches in `finalizeLaunch` that E1.4's
+memorial/flight-log already hook. Three choices: fund a safety program (costs $, +support), defend the
+record (free, −rep, +support), blame the vendor (free, +support, staff morale hit + extends poach heat).
+Same transient `_pendingX` + priority-chain shape as `_pendingSetback`/`_pendingInquiry`.
+
+**Poach heat** (`state.poachHeat`, `tickPoachHeat()`) — any fatal crewed loss opens a 6-month window
+that multiplies `checkPoaching()`'s roll ×2.5; decays monthly. Closes the "poaching after player
+failures" ask literally, on top of the momentum-weighting that already existed.
+
+SAVE_VERSION 48→49. New `test-rivals-e11.js` (24/24). **Suite total 661/661**, build parity clean.
+Slice B (intel dossier purchase) — tech-lead's own recommendation was to consider cutting it, since the
+rival projection is already free in the Standings panel; not started, low priority.
+
 ## Session — E1.3: procedural filler contracts (2026-07-11)
 
 **Implemented, tests passing, not yet committed/pushed — needs a real-browser check.** Tech-lead scoped
@@ -2536,12 +2567,10 @@ duplicating.
 
 ### Workstream E1 — High-value gameplay (the "is this a product" tier)
 
-- [ ] **E1.1 Reactive rival race.** Rivals already scoop firsts on calendar timelines
-      with a 60% payout cut (M4b/c) and have voice/disasters/rescue (P4/P5). Upgrade the
-      *decision* layer: schedule variance ± reacting to player progress, contract
-      snatching, staff poaching after player failures, intel purchases, budget hearings
-      after fatal failures. Weighted event scheduler, deterministic + harness-testable —
-      no LLM in the loop.
+- [~] **E1.1 Reactive rival race** — SHIPPED slice A 2026-07-11 (see session log above), 661/661,
+      **not yet committed/pushed, needs a real-browser check**. Schedule variance + poaching were
+      already live pre-session (CE1); slice A added contract snatching, budget hearings, and a
+      failure→poach-heat link. Slice B (intel purchases) not started, low priority.
 - [ ] **E1.2 Flight overlay Slices C + D** — already scoped above (in-overlay decision
       panels; chrome/transition polish). The eval independently ranks these top-tier;
       add an ascent abort/press-on window and a small telemetry strip (alt/vel/Q) as
