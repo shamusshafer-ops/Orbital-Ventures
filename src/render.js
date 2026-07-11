@@ -2790,23 +2790,23 @@ function openVehPopout(){
       <button class="vehpop-x" onclick="closeVehPopout()">✕ Close</button>
     </div>
     <div class="vehpop-body">
+      <aside class="vehpop-stats wide left" id="vehPopEditor"></aside>
       <div class="vehpop-stage" id="vehPopStage"><canvas id="vehPopCanvas"></canvas></div>
-      <aside class="vehpop-stats wide" id="vehPopStats"></aside>
+      <aside class="vehpop-stats" id="vehPopStats"></aside>
     </div>`;
   document.body.appendChild(ov); fadeInScrim(ov);
   // move the LIVE Build/Launch node into the bar, remembering its home so we can restore it exactly
   const host=$('benchLaunch');
   if(host){ _vpLaunchHome={parent:host.parentNode, next:host.nextSibling}; $('vehPopLaunchHost').appendChild(host); }
   // User-directed (2026-07-11): the pop-out hosts the FULL live Design Bench editor, not a read-only
-  // stats summary — move the real readout card + the real editor-tabs subtree in (same ids/handlers,
-  // render() keeps populating them wherever they live), remembering homes to restore on close.
-  const sp=$('vehPopStats');
-  if(sp){
-    sp.innerHTML='';
-    const rc=$('readoutCard'); if(rc){ _vpReadoutHome={parent:rc.parentNode, next:rc.nextSibling}; sp.appendChild(rc); }
-    const divider=document.createElement('h4'); divider.textContent='Full Vehicle Editor'; divider.style.marginTop='18px'; sp.appendChild(divider);
-    const ep=$('benchEditorPanel'); if(ep){ _vpEditorHome={parent:ep.parentNode, next:ep.nextSibling}; sp.appendChild(ep); }
-  }
+  // stats summary — move the real editor-tabs subtree LEFT of the rocket and the real readout card
+  // RIGHT of it (same ids/handlers, render() keeps populating them wherever they live), so you can
+  // manipulate the vehicle on the left and read the mission-fit results on the right while the rocket
+  // itself stays visible in the middle. Homes remembered to restore exactly on close.
+  const ep=$('benchEditorPanel'); const epHost=$('vehPopEditor');
+  if(ep && epHost){ _vpEditorHome={parent:ep.parentNode, next:ep.nextSibling}; epHost.appendChild(ep); }
+  const rc=$('readoutCard'); const rcHost=$('vehPopStats');
+  if(rc && rcHost){ _vpReadoutHome={parent:rc.parentNode, next:rc.nextSibling}; rcHost.appendChild(rc); }
   initVehPopZoom();
   drawVehPopout();
   window.addEventListener('resize', drawVehPopout);

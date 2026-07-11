@@ -2826,6 +2826,16 @@ and reopening the pop-out correctly restore the editor to its normal bench-view 
 or loss; does each pop-out's default zoom look centered (not cropped to one side) on typical viewport
 sizes; readability of the ~46vw editor column on smaller/laptop screens.
 
+**Fast-follow same session**: user asked for a 3-column layout — editor tabs/sliders on the LEFT of the
+rocket, mission-fit readout on the RIGHT, rocket still visible in the middle (manipulate left, read
+results right). Split the single wide aside into `#vehPopEditor` (left, `.vehpop-stats.wide.left` — same
+46vw sizing, border flipped to the right edge) and `#vehPopStats` (right, back to the original narrow
+300px rail, since the readout no longer shares space with the editor). New progressive-degradation step:
+the editor rail alone hides under 900px width (before the existing 760px cutoff that hides both asides),
+so a squeezed pop-out drops the editor first and still shows rocket + readout. No JS logic changes beyond
+the DOM target ids — `closeVehPopout()`'s restore-by-id-and-remembered-home code was already agnostic to
+which aside currently holds the nodes. Suite unchanged at 837/849 (same pre-existing unrelated failure).
+
 ## Planned — External evaluation intake (2026-07-10)
 
 **Full backlog:** all 105 feature ideas from the evaluation, individually mapped to a
