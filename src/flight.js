@@ -2828,16 +2828,31 @@ function drawCislunar(ct){
 /* ---------- #31 microanimation helpers ---------- */
 // Slice 1: HUD stat bump — flash the value element when it changes
 const _prevStats={};
-function _statBump(id,numVal){
+function _statBump(id,numVal,fmtDelta){
   const el=$(id); if(!el) return;
   const prev=_prevStats[id];
   _prevStats[id]=numVal;
   if(prev===undefined||prev===numVal) return;
-  const cls=numVal>prev?'stat-bump-up':'stat-bump-down';
+  const up=numVal>prev;
+  const cls=up?'stat-bump-up':'stat-bump-down';
   el.classList.remove('stat-bump-up','stat-bump-down');
   void el.offsetWidth; // reflow to restart animation
   el.classList.add(cls);
   el.addEventListener('animationend',()=>el.classList.remove(cls),{once:true});
+  // #9: floating delta chip — one at a time per stat, replace rather than stack
+  if(fmtDelta){
+    try{
+      const wrap=(typeof el.closest==='function'?el.closest('.stat'):null)||el.parentElement;
+      if(wrap&&typeof wrap.querySelector==='function'){
+        const old=wrap.querySelector('.stat-delta'); if(old) old.remove();
+        const chip=document.createElement('span');
+        chip.className='stat-delta '+(up?'stat-delta-up':'stat-delta-down');
+        chip.textContent=fmtDelta(numVal-prev);
+        wrap.appendChild(chip);
+        chip.addEventListener('animationend',()=>chip.remove(),{once:true});
+      }
+    }catch(e){}
+  }
 }
 // Slice 2: ephemeral flags consumed once per render
 let _lastUnlockedTech=null; // set by completeResearch(), consumed by renderTechTree()

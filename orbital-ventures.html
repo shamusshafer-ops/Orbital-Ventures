@@ -67,7 +67,7 @@
   .brand .co{font-size:16px;font-weight:700;letter-spacing:.04em}
   .brand .tag{font-size:12px;text-transform:uppercase;letter-spacing:.18em;color:var(--ignite)}
   .stats{margin-left:auto;display:flex;gap:22px}
-  .stat{display:flex;flex-direction:column;align-items:flex-end}
+  .stat{display:flex;flex-direction:column;align-items:flex-end;position:relative}
   .stat .k{font-size:var(--fs-sm);text-transform:uppercase;letter-spacing:.14em;color:var(--muted);opacity:var(--op-sm)}
   .stat .v{font-family:var(--mono);font-size:18px;font-weight:600}
   /* Header time-advance arrows (▸ day / ▸▸ week / ▸▸▸ month); .running = auto-advancing 1 step/sec */
@@ -464,6 +464,11 @@
   @keyframes statBumpDown{0%,40%{text-shadow:0 0 10px var(--ignite),0 0 3px var(--ignite)}100%{text-shadow:none}}
   .stat-bump-up{animation:statBumpUp .55s ease-out}
   .stat-bump-down{animation:statBumpDown .55s ease-out}
+  /* #9: floating money/rep delta chip */
+  @keyframes statDeltaRise{0%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-15px)}}
+  .stat-delta{position:absolute;top:-14px;right:0;font-family:var(--mono);font-size:12px;font-weight:700;pointer-events:none;white-space:nowrap;animation:statDeltaRise 1s ease-out forwards}
+  .stat-delta-up{color:var(--ok)}
+  .stat-delta-down{color:var(--ignite)}
   /* Slice 2: Tech-unlock amber glow + mission rep pulse */
   @keyframes techUnlockGlow{0%{filter:drop-shadow(0 0 6px #ffb840)}40%{filter:drop-shadow(0 0 16px #ffb840) drop-shadow(0 0 5px #fff0c0)}100%{filter:none}}
   .tech-just-unlocked{animation:techUnlockGlow 1.5s ease-out forwards}
@@ -11134,16 +11139,31 @@ function drawCislunar(ct){
 /* ---------- #31 microanimation helpers ---------- */
 // Slice 1: HUD stat bump — flash the value element when it changes
 const _prevStats={};
-function _statBump(id,numVal){
+function _statBump(id,numVal,fmtDelta){
   const el=$(id); if(!el) return;
   const prev=_prevStats[id];
   _prevStats[id]=numVal;
   if(prev===undefined||prev===numVal) return;
-  const cls=numVal>prev?'stat-bump-up':'stat-bump-down';
+  const up=numVal>prev;
+  const cls=up?'stat-bump-up':'stat-bump-down';
   el.classList.remove('stat-bump-up','stat-bump-down');
   void el.offsetWidth; // reflow to restart animation
   el.classList.add(cls);
   el.addEventListener('animationend',()=>el.classList.remove(cls),{once:true});
+  // #9: floating delta chip — one at a time per stat, replace rather than stack
+  if(fmtDelta){
+    try{
+      const wrap=(typeof el.closest==='function'?el.closest('.stat'):null)||el.parentElement;
+      if(wrap&&typeof wrap.querySelector==='function'){
+        const old=wrap.querySelector('.stat-delta'); if(old) old.remove();
+        const chip=document.createElement('span');
+        chip.className='stat-delta '+(up?'stat-delta-up':'stat-delta-down');
+        chip.textContent=fmtDelta(numVal-prev);
+        wrap.appendChild(chip);
+        chip.addEventListener('animationend',()=>chip.remove(),{once:true});
+      }
+    }catch(e){}
+  }
 }
 // Slice 2: ephemeral flags consumed once per render
 let _lastUnlockedTech=null; // set by completeResearch(), consumed by renderTechTree()
@@ -11432,9 +11452,9 @@ function render(){
   $('stDate').textContent=dateStr();
   $('stMoney').textContent=fM(state.money);
   $('stMoney').style.color = state.money<1.5?'var(--bad)':'var(--ink)';
-  _statBump('stMoney', state.money);
+  _statBump('stMoney', state.money, d=>(d>=0?'+':'−')+fM(Math.abs(d)));
   $('stRep').textContent=fI(state.rep);
-  _statBump('stRep', state.rep);
+  _statBump('stRep', state.rep, d=>(d>=0?'+':'−')+fI(Math.abs(d)));
   // #31 Slice 2: consume mission pulse (set by finalizeLaunch finish callback)
   if(_missionPulse){ const el=$('stRep'); if(el){ el.classList.remove('pulse-ok','pulse-bad'); void el.offsetWidth; el.classList.add(_missionPulse==='ok'?'pulse-ok':'pulse-bad'); el.addEventListener('animationend',()=>el.classList.remove('pulse-ok','pulse-bad'),{once:true}); } _missionPulse=null; }
   $('stFlights').textContent=state.flights;

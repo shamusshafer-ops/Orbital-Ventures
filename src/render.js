@@ -274,9 +274,9 @@ function render(){
   $('stDate').textContent=dateStr();
   $('stMoney').textContent=fM(state.money);
   $('stMoney').style.color = state.money<1.5?'var(--bad)':'var(--ink)';
-  _statBump('stMoney', state.money);
+  _statBump('stMoney', state.money, d=>(d>=0?'+':'−')+fM(Math.abs(d)));
   $('stRep').textContent=fI(state.rep);
-  _statBump('stRep', state.rep);
+  _statBump('stRep', state.rep, d=>(d>=0?'+':'−')+fI(Math.abs(d)));
   // #31 Slice 2: consume mission pulse (set by finalizeLaunch finish callback)
   if(_missionPulse){ const el=$('stRep'); if(el){ el.classList.remove('pulse-ok','pulse-bad'); void el.offsetWidth; el.classList.add(_missionPulse==='ok'?'pulse-ok':'pulse-bad'); el.addEventListener('animationend',()=>el.classList.remove('pulse-ok','pulse-bad'),{once:true}); } _missionPulse=null; }
   $('stFlights').textContent=state.flights;

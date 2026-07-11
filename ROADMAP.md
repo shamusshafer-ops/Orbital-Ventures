@@ -2392,6 +2392,18 @@ manual pause stays paused). `FRONT_PAGE_CAP` raised 24→100 (folded in, trivial
 `test-hidden-tab.js`, 34/34. **Suite total: 525/525.** Slice (b) log retention/windowing and metric
 archive (deferred per user) not started.
 
+## Session — BACKLOG.md #9: floating money/rep deltas (2026-07-10)
+
+**Shipped, out-of-band from the E0.x sequence** (user-requested, first still-untriaged `Backlog`-status
+item). Extended the existing `_statBump` HUD-flash helper (`flight.js`) with an optional `fmtDelta`
+formatter: when given, spawns a small `.stat-delta` chip ("+$1.23M"/"−45") that rises and fades over 1s
+near the stat, replacing any in-flight chip for that stat rather than stacking (spam control during
+time-warp). Wired for money and rep only, matching the backlog title; other stats' bump-glow is
+unchanged. `.stat` given `position:relative` as the anchor. One bug caught by the test suite itself: the
+harness's DOM stubs don't implement `closest()`, crashing 3 test files — fixed with a defensive
+`typeof`-guarded fallback + try/catch, headless-safe by construction now. **Suite total: still 525/525**
+(pure addition, no new test file — cosmetic UI feature, real verification is visual).
+
 ## Planned — External evaluation intake (2026-07-10)
 
 **Full backlog:** all 105 feature ideas from the evaluation, individually mapped to a
