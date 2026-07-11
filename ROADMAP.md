@@ -2959,9 +2959,75 @@ duplicating.
       (ambient bed, UI ticks, countdown voice, milestone stingers — WebAudio synthesis
       or small OGG set post-split).
 
+### #73 — Station assembly loop, scoped (2026-07-11)
+
+Tech-lead pass (not implemented yet) found BACKLOG.md's "XL / Deferred seam exists" framing stale: the
+economy + UI (STATION_MODULES 6 types, `addStationModule()`, per-facility `fs.moduleList[]`, typed
+production, power-starve, port caps, full Station Bench UI incl. dock palette) is real and current,
+shipped 2026-07-02 (`5c60c8c`+`0ea922e1`). The one genuine gap: `addStationModule()` is a pure instant
+purchase (pay money → module appears, `fs.supply` reset is the only "flight" fiction) — no vehicle
+design, launch, reliability roll, or dock event. That's the actual remaining "launch modules, dock" work,
+and it's **L, not XL** — it can ride the same synthetic-mission pipeline E1.3's procedural contracts
+already proved works (`missionById`, one-shot `m.proc` consumption).
+
+**Design decisions locked in (user, 2026-07-11):**
+- **Delivery model = player's choice.** Fly a module yourself (uses your designed vehicle + pad, cheaper)
+  OR pay a premium for a "contracted" instant delivery (mirrors the existing resupply fiction) — not an
+  all-or-nothing switch.
+- **Flight frequency = first-of-type only.** The first Habitat, first Lab, etc. on a given facility flies
+  for real; repeat copies of an already-proven module type stay abstracted. Keeps the spectacle without
+  turning a 7-module late-game build-out into a chore.
+
+**Slice plan:**
+- **Slice 0 — Truth pass (S).** render.js's stale "assembly is deferred" header comment (still says
+  STATION_MODULES is an unbuilt seam); the station **pop-out** (`stationStatsHTML`/`stationActiveModule`)
+  still renders the old single-sample-module framework view instead of the player's real assembled
+  facility — fix to show the actual stack. No SAVE bump.
+- **Slice 1 — LEO module delivery is a launch (M).** First-of-type + LEO: "Order module" pays cost, then
+  (player's choice) either generates a real delivery mission through the existing bench/launch/overlay
+  pipeline, or an instant contracted-delivery upcharge. SAVE bump for pending-delivery state.
+- **Slice 2 — Moon/Mars delivery (M).** Deferred `kind:'module'` flight docks on arrival, cloning the
+  existing Mars-resupply arrival-pump branch; joins the logistics mishap pool. Note: these are landings on
+  a surface base, not orbital rendezvous — may want different framing/art than LEO docking.
+- **Slice 3 — Docking as spectacle/decision (M–L).** A real rendezvous+dock phase in the flight overlay.
+  **Sequence after E1.2 slice C/D lands** — flight.js is under active churn there, don't race it.
+- **Slice 4 — Manufacturing tie-in (S–M, optional).** Module builds occupy assembly-bay units.
+
+**Still open (implementation-time, not blocking further scoping):** launch-failure semantics for a module
+aboard (destroyed/insured/retry-launch-only) · real vs. rescaled module payload mass (9–20t modules would
+gate stations behind heavy lift — a real balance shift) · module cost rebalancing (current cost already
+implicitly bakes in delivery via the body multiplier — stacking a real launch cost on top double-charges
+unless base costs drop) · whether #74/#76/#77's "depends on #73" should re-point at "Slice 1 done."
+
+**Risks:** cost double-counting (see above) · pacing if flights feel mandatory rather than optional ·
+progression shift from real payload masses · flight.js churn colliding with the visual-overhaul work.
+
+**Slice 0 (truth pass) DONE 2026-07-11, tests passing, not yet committed/pushed.** New
+`stationCurrentView()` (render.js) is the single source of truth for "focused real facility, or the
+pre-facility blueprint draft" — `renderStation()` and the station pop-out both read from it now, closing
+the actual root cause of the staleness (two independent implementations that drifted apart). The pop-out
+(`openStationPopout`) now renders the real assembled stack (`renderStationStackSVG`) + real facility
+stats (`renderStationFacilityStats`)/draft stats (new `stationDraftStatsHTML`, extracted from
+`renderStationDraft` so it isn't duplicated a third time) instead of a hardcoded sample module. New
+`setStationFocus(id)` + `refreshStationPopout()` fix a bug the naive rewire would've had: the facility-
+switcher tabs (shared markup between main view and pop-out) used to call `renderStation()` only, so
+switching facilities while the pop-out was open would've left it showing the stale one — now it refreshes
+both. Corrected the stale `render.js` header comment claiming assembly/economy are still deferred (it
+shipped 2026-07-02); flagged (not touched) the fully-dead Phaser `StationScene` class underneath it —
+`startStationScene()` is never called, `renderStation()` always takes the SVG path — as a candidate for a
+future debloat pass, out of scope for a truth-pass slice. Removed `renderStationSVG()`/`stationStatsHTML()`
+since the rewire orphaned them directly (not pre-existing dead code — cleaning up after my own edit, not a
+broader sweep). New `test-station-popout.js` (19/19): draft-mode and built-facility-mode pop-out open/
+close, focus-switching with the pop-out open doesn't throw and correctly refreshes both views, confirms
+the two removed functions are actually gone. Suite 856/868 (same pre-existing unrelated
+`test-progress-unify.js` failure). No SAVE_VERSION bump (pure render-layer refactor, no new persisted
+state). **Needs a real-browser check**: the pop-out's stack SVG/stats render correctly for both an
+existing station and the pre-facility blueprint, and that switching facility tabs while popped out keeps
+the pop-out in sync.
+
 ### Workstream E2 — Medium (post-EA-gate)
 
-Station assembly + resupply loop (hangs on the existing STATION_MODULES seam) · 3–4 more
+Station assembly + resupply loop (hangs on the existing STATION_MODULES seam — see #73 scoping above) · 3–4 more
 committed program forks on the lunar-arch pattern (Mars architecture, crew vehicle
 philosophy, propulsion doctrine) · era research-capacity limits · political/media layer
 extending mandates · SVG icon set replacing emoji · synergy-prospecting UI ("2 of 3") ·

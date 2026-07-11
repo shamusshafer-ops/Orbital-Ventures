@@ -105,7 +105,7 @@ Complexity: S = <1 day, M = 1–5 days, L = 1–3 weeks, XL = 1+ month. Impact: 
 |72| Named test pilots for static-fire/atmospheric era | Pre-1957 texture | S | ★ | 61 | L |Backlog|
 
 ### Stations, logistics, late game (73–85)
-|73| Station assembly loop (launch modules, dock) | Deferred seam exists | XL | ★★★ | — | H |E2|
+|73| Station assembly loop (launch modules, dock) | Economy/UI done 2026-07-02 (`5c60c8c`); remaining = real launch/dock interactivity | L | ★★★ | — | H |E2 (scoped 2026-07-11)|
 |74| Station resupply contracts (recurring ops) | Late-game loop | L | ★★★ | 73 | H |E2|
 |75| Crew rotation cadence requirements | Standing obligation | M | ★★ | 73,61 | M |Backlog|
 |76| Module degradation/maintenance | Sink + tension | M | ★★ | 73 | M |Backlog|

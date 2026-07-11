@@ -2879,24 +2879,36 @@ function initSvgPopZoom(stageId, zoomId, st){
   resetCentered(); // establishes the boosted, centered default view (was a bare apply() at z:1)
 }
 let stnPopoutOpen=false, stnPop={z:1,x:0,y:0};
+function stnPopStatsHTML(v){ return v.isDraft ? stationDraftStatsHTML(stationDraftFs()) : renderStationFacilityStats(v.built, v.cur); }
 function openStationPopout(){
   if(stnPopoutOpen) return; stnPopoutOpen=true; closeOtherPopouts('stn'); stnPop={z:1,x:0,y:0};
-  let mod; try{ mod=stationActiveModule(); }catch(e){ stnPopoutOpen=false; return; }
+  const v=stationCurrentView();
+  const title = v.isDraft ? 'Station — Blueprint' : v.cur.def.name;
   const ov=document.createElement('div'); ov.className='vehpop-scrim'; ov.id='stnPopout';
   ov.innerHTML=`<div class="vehpop-bar">
-      <span class="vehpop-title">⬡ ${mod.name}</span>
+      <span class="vehpop-title" id="stnPopTitle">⬡ ${esc(title)}</span>
       <span class="vehpop-hint">drag to pan · scroll to zoom · double-click reset · Esc/Enter to close</span>
       <button class="vehpop-x" onclick="closeStationPopout()">✕ Close</button>
     </div>
     <div class="vehpop-body">
-      <div class="vehpop-stage" id="stnPopStage"><div id="stnPopZoom" style="position:absolute;inset:0;transform-origin:0 0;display:flex;align-items:center;justify-content:center">${renderStationSVG(900,560,mod)}</div></div>
+      <div class="vehpop-stage" id="stnPopStage"><div id="stnPopZoom" style="position:absolute;inset:0;transform-origin:0 0;display:flex;align-items:center;justify-content:center">${renderStationStackSVG(900,560,v.cur)}</div></div>
       <aside class="vehpop-stats" id="stnPopStats"></aside>
     </div>`;
   document.body.appendChild(ov); fadeInScrim(ov);
-  const sp=$('stnPopStats'); if(sp) sp.innerHTML=stationStatsHTML(mod);
+  const sp=$('stnPopStats'); if(sp) sp.innerHTML=stnPopStatsHTML(v);
   initSvgPopZoom('stnPopStage','stnPopZoom',stnPop);
 }
 function closeStationPopout(){ if(!stnPopoutOpen) return; stnPopoutOpen=false; removeScrim('stnPopout'); }
+// Keeps the pop-out in sync when the focused facility changes elsewhere (setStationFocus) — a no-op
+// if the pop-out isn't open. The stack SVG lives inside #stnPopZoom (the pan/zoom transform target),
+// not #stnPopStage itself, so this only replaces the art, never disturbing the current pan/zoom state.
+function refreshStationPopout(){
+  if(!stnPopoutOpen) return;
+  const v=stationCurrentView();
+  const t=$('stnPopTitle'); if(t) t.textContent='⬡ '+(v.isDraft?'Station — Blueprint':v.cur.def.name);
+  const z=$('stnPopZoom'); if(z) z.innerHTML=renderStationStackSVG(900,560,v.cur);
+  const sp=$('stnPopStats'); if(sp) sp.innerHTML=stnPopStatsHTML(v);
+}
 /* ---------- Solar System pop-out viewer ----------
    Same overlay chrome: the interactive system map (clickable bodies, vector-crisp) on the left with
    grab-to-pan + wheel-to-zoom, and the selected body's Δv profile + mission planning on the right.
@@ -4005,14 +4017,20 @@ function renderMap(){
   renderBodyCard();
   renderMapActivity();
 }
-/* ---------- Station Bench (framework) ----------
-   A pan/zoom/pop-out 2D side-view module canvas, built on the same Phaser-camera pattern as
-   the Solar System scene. For now it renders ONE annotated "can"-type module so the framework
-   (scene + controls + pop-out + SVG fallback) is in place; the module library, multi-module
-   assembly, docking logic and economy are deferred. STATION_MODULES is the seam those will hang
-   off. Pure-data + a render smoke keep it headless-safe. */
+/* ---------- Station Bench ----------
+   STALE COMMENT CORRECTED (#73 Slice 0, 2026-07-11): this used to describe a framework stub — it
+   isn't one. Real assembly (module library, per-facility fs.moduleList[], typed production,
+   power-starve, port caps, dock palette) shipped 2026-07-02 (commit 5c60c8c) and lives in
+   renderStation()/renderStationStackSVG()/renderStationFacilityStats() + sim.js's facility* functions,
+   all pure-SVG. What's still genuinely missing (see #73 in ROADMAP.md/BACKLOG.md): docking a module is
+   an instant purchase today, not a real launch — that's the actual remaining "launch modules, dock"
+   scope, sliced separately.
+   The StationScene class below (Phaser pan/zoom of a single sample module) predates that real
+   assembly work and is now DEAD CODE — startStationScene() is never called; renderStation() always
+   takes the SVG path. Left in place rather than deleted here (Slice 0 is a truth-pass, not a debloat
+   pass) — a real candidate for a future cleanup commit. */
 const STN_W=760, STN_H=480;
-function stationActiveModule(){ return STATION_MODULES[0]; }
+function stationActiveModule(){ return STATION_MODULES[0]; } // only the (dead) StationScene below still calls this
 let stationExpanded=false;
 function toggleStationExpand(){ stationExpanded=!stationExpanded; renderStation(); }
 let StationScene=null, stationGame=null, stationScene=null;
@@ -4085,23 +4103,6 @@ function startStationScene(){
 }
 function pauseStationGame(){ if(stationGame){ try{ if(stationGame.scene.isActive('station')) stationGame.scene.sleep('station'); }catch(e){} } } // E0.5-A: sleep, not pause (stop render)
 function resumeStationGame(){ if(stationGame){ try{ stationGame.scene.wake('station'); }catch(e){} } }
-// Module engineering stats below the bench. Pure data → string, so it renders identically on
-// the Phaser and SVG-fallback paths and is headless-safe.
-function stationStatsHTML(mod){
-  const s=mod&&mod.stats; if(!s) return '';
-  const netP=(s.powerGenKw-s.powerDrawKw);
-  const cell=(k,v,sub)=>`<div class="metric"><div class="k">${k}</div><div class="v">${v}</div>${sub?`<div class="dim" style="font-size:11px">${sub}</div>`:''}</div>`;
-  return `<div class="mission-tag">${mod.name} — engineering stats</div>
-    <div class="metrics">
-      ${cell('Crew capacity', s.crew, 'nominal')}
-      ${cell('Module mass', s.mass.toFixed(1)+' t')}
-      ${cell('Power', (netP>=0?'+':'')+netP.toFixed(1)+' kW', `${s.powerGenKw} gen − ${s.powerDrawKw} draw`)}
-      ${cell('Build cost', fM(mod.cost), (mod.buildMo||0)+' mo')}
-      ${cell('Docking ports', mod.ports||3, mod.ports?'junction hub':'1 axial · 2 radial')}
-    </div>
-    <div class="dim" style="font-size:12px;margin-top:6px">Module library in place — six typed modules with cost, power and production stats. Assembly (adding these to your built facilities) lands in the next slice.</div>`;
-}
-
 /* ---------- Station blueprint mode (pre-facility drawing board) ----------
    Before any facility exists, the Station Bench is a free design sandbox: assemble a
    blueprint, watch the engineering totals react, and carry the plan (it saves) until
@@ -4122,25 +4123,16 @@ function draftCostAt(defId){
     cost+=stationModuleCost(def, fs, md); fs.moduleList.push(id); });
   return round2(cost);
 }
-function renderStationDraft(){
-  const c=$('stationCanvas'), st=$('stationStats');
-  const fs=stationDraftFs(), list=fs.moduleList;
+// Draft-mode stats panel, extracted so the station pop-out can show the identical blueprint stats
+// (Slice 0) instead of duplicating this markup a second time.
+function stationDraftStatsHTML(fs){
+  const list=fs.moduleList;
   const pw=facilityPower(fs), crew=facilityCrew(fs), cap=facilityPortCap(fs);
   const mass=list.reduce((a,id)=>a+(((stationModuleDef(id)||{}).stats||{}).mass||0),0);
   const gated=[...new Set(list.filter(id=>{ const md=stationModuleDef(id); return md&&md.reqResearch&&!state.research[md.reqResearch]; })
     .map(id=>((RESEARCH.find(r=>r.id===stationModuleDef(id).reqResearch)||{}).name)||''))].filter(Boolean);
-  if(c){
-    const cards=STATION_MODULES.map(md=>stationModuleCard(md, {def:facilityById('leo_station')||FACILITY_DEFS[0], fs}, false)).join('');
-    c.innerHTML=renderStationStackSVG(720,280,{fs})
-      +`<div style="display:flex;gap:6px;margin:8px 0 4px">
-          <button class="btn ghost" style="font-size:12px" onclick="draftRemove()">↶ Remove last</button>
-          <button class="btn ghost" style="font-size:12px" onclick="draftClear()">✕ Clear blueprint</button>
-        </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">${cards}</div>`;
-  }
-  if(st){
-    const cell=(k,v,sub)=>`<div class="metric"><div class="k">${k}</div><div class="v">${v}</div>${sub?`<div class="dim" style="font-size:12px">${sub}</div>`:''}</div>`;
-    st.innerHTML=`<div class="mission-tag">Blueprint — drawing board</div>
+  const cell=(k,v,sub)=>`<div class="metric"><div class="k">${k}</div><div class="v">${v}</div>${sub?`<div class="dim" style="font-size:12px">${sub}</div>`:''}</div>`;
+  return `<div class="mission-tag">Blueprint — drawing board</div>
       <p class="muted" style="font-size:12px;margin:4px 0 10px">No facilities exist yet — design freely. Found the real thing from <b>Command Center → Infrastructure</b> once <b>Crewed Orbit</b> is flown, then build it out module by module at these prices.</p>
       <div class="metrics">
         ${cell('Modules', list.length+' / '+cap+' ports')}
@@ -4153,23 +4145,48 @@ function renderStationDraft(){
       ${pw.net<0?`<div class="flag warn">△ Power-negative — this design would run at 60% output. Add a Solar Power Truss.</div>`:''}
       ${crew.req>crew.cap?`<div class="flag warn">△ Under-crewed — ${crew.req} crew needed, ${crew.cap} berths. Output would degrade.</div>`:''}
       ${gated.length?`<div class="flag warn">🔒 Blueprint uses research you don't have yet: ${gated.join(', ')}.</div>`:''}`;
+}
+function renderStationDraft(){
+  const c=$('stationCanvas'), st=$('stationStats');
+  const fs=stationDraftFs();
+  if(c){
+    const cards=STATION_MODULES.map(md=>stationModuleCard(md, {def:facilityById('leo_station')||FACILITY_DEFS[0], fs}, false)).join('');
+    c.innerHTML=renderStationStackSVG(720,280,{fs})
+      +`<div style="display:flex;gap:6px;margin:8px 0 4px">
+          <button class="btn ghost" style="font-size:12px" onclick="draftRemove()">↶ Remove last</button>
+          <button class="btn ghost" style="font-size:12px" onclick="draftClear()">✕ Clear blueprint</button>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">${cards}</div>`;
   }
+  if(st) st.innerHTML=stationDraftStatsHTML(fs);
 }
 
+// #73 Slice 0 (2026-07-11): single source of truth for "what should the Station Bench show right
+// now" — the focused real facility, or the pre-facility blueprint draft. Both renderStation() (main
+// view) and the station pop-out read from this, so they can no longer independently drift out of sync
+// the way the pop-out did (it was stuck on a hardcoded sample module while the real bench moved on).
+function stationCurrentView(){
+  const built=Object.keys(state.facilities||{}).map(id=>({def:facilityById(id), fs:state.facilities[id]})).filter(x=>x.def&&facilityBuilt(x.def.id));
+  if(!built.length) return {built:null, cur:{fs:stationDraftFs()}, isDraft:true};
+  if(!state.stationFocus || !built.some(b=>b.def.id===state.stationFocus)) state.stationFocus=built[0].def.id;
+  return {built, cur:built.find(b=>b.def.id===state.stationFocus), isDraft:false};
+}
+// Facility-tab click handler shared by the main view and the pop-out (renderStationFacilityStats'
+// tabs call this) — refreshes whichever is currently showing, so switching facilities never leaves
+// one of the two views stale.
+function setStationFocus(id){ state.stationFocus=id; renderStation(); refreshStationPopout(); }
 function renderStation(){
   const sv=$('stationView'); if(sv) sv.classList.toggle('expanded', stationExpanded);
   const eb=$('stationExpandBtn'); if(eb) eb.textContent = stationExpanded ? '⛶ Exit full screen' : '⛶ Expand';
-  const built=Object.keys(state.facilities||{}).map(id=>({def:facilityById(id), fs:state.facilities[id]})).filter(x=>x.def&&facilityBuilt(x.def.id));
-  const c=$('stationCanvas'), st=$('stationStats');
-  if(!built.length){ renderStationDraft(); return; } // pre-facility: free blueprint drawing board
-  if(!state.stationFocus || !built.some(b=>b.def.id===state.stationFocus)) state.stationFocus=built[0].def.id;
-  const cur=built.find(b=>b.def.id===state.stationFocus);
+  const v=stationCurrentView();
+  if(v.isDraft){ renderStationDraft(); return; } // pre-facility: free blueprint drawing board
+  const c=$('stationCanvas'), st=$('stationStats'), cur=v.cur;
   if(c) c.innerHTML=renderStationStackSVG(720,300,cur)+renderStationPalette(cur);
-  if(st) st.innerHTML=renderStationFacilityStats(built, cur);
+  if(st) st.innerHTML=renderStationFacilityStats(v.built, cur);
 }
 // Facility tabs + aggregate stats for the focused facility
 function renderStationFacilityStats(built, cur){
-  const tabs=built.map(b=>`<button class="btn ${b.def.id===state.stationFocus?'launch':'ghost'}" style="font-size:12px" onclick="state.stationFocus='${b.def.id}';renderStation()">${b.def.icon} ${b.def.name}</button>`).join(' ');
+  const tabs=built.map(b=>`<button class="btn ${b.def.id===state.stationFocus?'launch':'ghost'}" style="font-size:12px" onclick="setStationFocus('${b.def.id}')">${b.def.icon} ${b.def.name}</button>`).join(' ');
   const fs=cur.fs, def=cur.def, list=facilityModuleList(fs), pw=facilityPower(fs), pr=facilityProduction(def,fs);
   const mass=list.reduce((a,id)=>a+((stationModuleDef(id)||{}).stats||{}).mass||0,0);
   const crew=facilityCrew(fs), syn=facilitySynergies(fs);
@@ -4285,30 +4302,6 @@ function stationModuleCard(md, cur, addable){
       : `<button class="btn" style="width:100%;font-size:12px" onclick="draftAdd('${md.id}')"${gated?` title="Buildable now as a blueprint; needs ${gateName} to actually construct"`:''}>Add to blueprint ▸${gated?' 🔒':''}</button>`}
     </div>
   </div>`;
-}
-// Static SVG fallback (no Phaser / headless): the same annotated module, no pan/zoom.
-function renderStationSVG(W,H,mod){
-  const cx=W*0.46, cy=H*0.5, L=mod.len, hd=mod.dia/2;
-  const x=v=>cx+v, y=v=>cy+v;
-  let s=`<svg class="stationsvg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="max-width:100%;height:auto;background:#070b11;border-radius:8px">`;
-  // solar wings + radiator
-  [-1,1].forEach(sgn=>{ const wy=sgn>0?hd+24:-(hd+24)-110; s+=`<rect x="${x(-75)}" y="${y(wy)}" width="150" height="110" fill="#12243a" stroke="#2f5a8a"/>`; s+=`<line x1="${x(0)}" y1="${y(sgn*hd)}" x2="${x(0)}" y2="${y(sgn*(hd+24))}" stroke="#6a7782" stroke-width="2"/>`; });
-  s+=`<rect x="${x(-95-46)}" y="${y(hd+8)}" width="92" height="54" fill="#20262c" stroke="#3a444d"/>`;
-  // hull
-  s+=`<rect x="${x(-L/2)}" y="${y(-hd)}" width="${L}" height="${mod.dia}" fill="#b8c0c7" stroke="#6c757d" stroke-width="2"/>`;
-  s+=`<ellipse cx="${x(L/2)}" cy="${y(0)}" rx="17" ry="${hd}" fill="#9aa3ab"/><ellipse cx="${x(-L/2)}" cy="${y(0)}" rx="17" ry="${hd}" fill="#9aa3ab"/>`;
-  // axial dock + radial ports + antennas
-  s+=`<rect x="${x(L/2+22)}" y="${y(-16)}" width="26" height="32" fill="#7e8990" stroke="#586066"/><circle cx="${x(L/2+48)}" cy="${y(0)}" r="11" fill="#2a333a"/>`;
-  [-1,1].forEach(sgn=>{ s+=`<rect x="${x(-16)}" y="${y(sgn>0?hd:-hd-18)}" width="32" height="18" fill="#7e8990"/>`; });
-  s+=`<path d="M ${x(-85)} ${y(-hd-30)} A 15 15 0 0 1 ${x(-55)} ${y(-hd-30)}" fill="none" stroke="#cdd3d8" stroke-width="2"/><line x1="${x(-70)}" y1="${y(-hd)}" x2="${x(-70)}" y2="${y(-hd-30)}" stroke="#9aa3ab" stroke-width="2"/>`;
-  s+=`<line x1="${x(70)}" y1="${y(-hd)}" x2="${x(70)}" y2="${y(-hd-34)}" stroke="#bfc7cf" stroke-width="1.5"/>`;
-  // annotations
-  for(const pr of mod.parts){ const lx=pr.x+(pr.x>=0?60:-60), ly=pr.y+(pr.y>=0?40:-40);
-    s+=`<line x1="${x(pr.x)}" y1="${y(pr.y)}" x2="${x(lx)}" y2="${y(ly)}" stroke="#4fd1d9" stroke-opacity="0.55"/><circle cx="${x(pr.x)}" cy="${y(pr.y)}" r="2.4" fill="#4fd1d9"/>`;
-    s+=`<text x="${x(lx+(pr.x>=0?4:-4))}" y="${y(ly)+3}" fill="#cfe6ff" font-family="ui-monospace,monospace" font-size="11" text-anchor="${pr.x>=0?'start':'end'}">${pr.label}</text>`; }
-  s+=`<text x="${W/2}" y="22" fill="#9aa7af" font-family="ui-monospace,monospace" font-size="13" text-anchor="middle">${mod.name}</text>`;
-  s+=`</svg>`;
-  return s;
 }
 function renderMarketStat(){
   const wrap=$('stMarketWrap'), el=$('stMarket'); if(!wrap||!el) return;
