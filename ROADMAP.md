@@ -2850,6 +2850,13 @@ extra per-theme CSS. Pure CSS, no JS/build-output-size(script) change. Suite unc
 pre-existing unrelated failure). Not extended to the vehicle pop-out's rocket stage — easy follow-up if
 wanted, deliberately left out since the ask was specifically "the vehicle bench."
 
+**Fast-follow same session**: user wanted the AUTHENTIC blueprint look — dark navy, not a theme-tinted
+accent, with white (not cyan) gridlines. Swapped the `color-mix(var(--readout)...)` approach for a fixed
+`background-color:#0b2545` (blueprint navy, deliberately NOT theme/era-reactive — real blueprints are
+always this color) + `rgba(255,255,255,...)` white gridlines. Confirmed safe: every theme/era in this game
+uses light ink text on dark panels (no light-background themes exist), so white-on-navy stays legible
+everywhere without a per-theme contrast check. Suite unchanged 837/849 (same pre-existing failure).
+
 ## Planned — External evaluation intake (2026-07-10)
 
 **Full backlog:** all 105 feature ideas from the evaluation, individually mapped to a
