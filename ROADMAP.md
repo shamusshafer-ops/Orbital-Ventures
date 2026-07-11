@@ -2353,6 +2353,19 @@ any scene; `+`/`-` warp the day→week→month ladder, except on the R&D scene w
 tech tree; `?` opens a hotkey-help modal. New `test-hotkeys.js`, 31/31, pure-function coverage
 (`warpStep`, `spaceAction`, `isTyping`, `warpKeysActive`). **Suite total: 412/412.**
 
+## Session — E0.4 slice (b): modal focus trap (2026-07-10)
+
+**Shipped, user-verified in Firefox, committed.** Single shared wrapper fix in `showModal`/`hideModal`
+(`src/sim.js`) — no per-call-site changes, all ~114 existing call sites unaffected. On open: captures the
+triggering element (+ its id as a stale-reference fallback, since `render()` frequently rebuilds DOM),
+focuses the first focusable descendant or `#modalBody`. Tab/Shift+Tab cycle only within the modal
+(`trapModalTab` in `src/shell.js`, wired into the existing Esc-close keydown handler); list is recomputed
+live each press since deep-view modals (Personnel, Programs) re-render their content every tick while
+open. On close: restores focus to the trigger if still connected, else by id, else `document.body`.
+New `test-focus-trap.js`, 31/31, on the two extracted pure functions (`nextTrapFocus`,
+`resolveReturnFocus`) — real focus/DOM behavior isn't testable in the Node harness, tested live instead.
+**Suite total: 443/443.**
+
 ## Planned — External evaluation intake (2026-07-10)
 
 **Full backlog:** all 105 feature ideas from the evaluation, individually mapped to a

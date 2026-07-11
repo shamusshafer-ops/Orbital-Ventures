@@ -95,6 +95,30 @@ function warpStep(unit, dir){
 // The warp keys share +/=/-/arrows with the R&D tech-tree pan/zoom, which owns them on that scene;
 // everywhere else the warp keys are live. (Pure predicate so the gating is unit-testable.)
 function warpKeysActive(scene){ return scene!=='rnd'; }
+// E0.4 Slice B: focus-trap cycling as a pure, headless-testable step. Given the live focusable list,
+// the index currently focused (or -1 if focus is elsewhere), and whether Shift is held, return the
+// index that should receive focus next — wrapping at both ends. Empty list → -1 (caller no-ops).
+function nextTrapFocus(focusableEls, currentIndex, shiftKey){
+  const n=(focusableEls && focusableEls.length)||0;
+  if(n===0) return -1;
+  if(currentIndex<0 || currentIndex>=n) return shiftKey ? n-1 : 0; // focus outside the trap → jump to an end
+  if(shiftKey) return currentIndex===0 ? n-1 : currentIndex-1;     // Shift+Tab: back, wrapping first→last
+  return currentIndex===n-1 ? 0 : currentIndex+1;                  // Tab: forward, wrapping last→first
+}
+// While a modal is open, keep Tab focus inside it: recompute the focusable list fresh each press (the
+// live activeModal re-render can change modal content), find where focus is, and move by nextTrapFocus.
+function trapModalTab(e){
+  try{
+    const mb=$('modalBody'); if(!mb) return;
+    const list=mb.querySelectorAll(MODAL_FOCUSABLE_SEL);
+    const n=(list && list.length)||0;
+    if(n===0){ e.preventDefault(); try{ mb.focus(); }catch(_){} return; } // nothing to land on → keep focus on the body
+    let cur=-1; const active=document.activeElement;
+    for(let i=0;i<n;i++){ if(list[i]===active){ cur=i; break; } }
+    const ni=nextTrapFocus(list, cur, e.shiftKey);
+    if(ni>=0 && list[ni]){ e.preventDefault(); list[ni].focus(); }
+  }catch(_){}
+}
 document.addEventListener('keydown',function(e){
   // Space: pause the clock if auto-running, else launch the current mission
   // (or skip/continue the playback if one is running).
@@ -155,6 +179,9 @@ document.addEventListener('keydown',function(e){
   }
   // Enter also minimizes the Production drill (the boot-time top layer) — but never while typing in a field.
   if(e.key==='Enter' && _prodModalOpen && modalOpen() && !typing){ hideModal(); e.preventDefault(); return; }
+  // E0.4 Slice B: while a modal is open, Tab/Shift+Tab cycle focus WITHIN it (even from a focused field)
+  // instead of escaping to background page controls. Runs before the "return on modalOpen" guard below.
+  if(e.key==='Tab' && modalOpen()){ trapModalTab(e); return; }
   if(typing || modalOpen()) return; // don't grab TAB/numbers while typing or in a modal
   if(e.key==='Tab'){ nextScene(e.shiftKey?-1:1); e.preventDefault(); return; }
   if(e.key>='1' && e.key<='5'){ const idx=+e.key-1; if(idx<SCENE_TABS.length){ setTab(SCENE_TABS[idx]); e.preventDefault(); } }

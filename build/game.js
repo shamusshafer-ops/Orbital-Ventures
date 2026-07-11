@@ -6436,8 +6436,35 @@ function bailout(){
   hideModal(); render();
 }
 function restart(difficulty){hideModal();newGame(difficulty);render();}
-function showModal(html,view){ try{ timeInterrupt(); }catch(e){} const mb=$('modalBody');mb.className='modal'+(view?' view':'');mb.innerHTML=html;$('modal').classList.remove('hidden');mb.classList.add('modal-entering');mb.addEventListener('animationend',()=>mb.classList.remove('modal-entering'),{once:true});} // view=true → wide, left-aligned, scrollable deep-view layout
-function hideModal(){activeModal=null;_prodModalOpen=false;$('modal').classList.add('hidden');} // slice 6: closing clears the live-modal thunk
+// ── E0.4 Slice B: focus trap for the shared modal system ──
+// Standard focus-trap selector (buttons, links, form fields, and anything explicitly tab-stoppable).
+const MODAL_FOCUSABLE_SEL='button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+// The control that had focus before the modal opened, so hideModal can hand focus back. We keep both
+// the element reference AND (if it has one) its id: render() frequently rebuilds DOM regions, so the
+// original reference can go stale/disconnected before the modal closes — the id is a re-lookup fallback.
+let _modalReturnFocus=null, _modalReturnFocusId=null;
+// Pure, headless-testable: given the saved element + id fallback, pick where hideModal should return
+// focus. Prefer the still-connected original element; else re-resolve by id; else the body fallback.
+function resolveReturnFocus(savedEl, savedId, getById, body){
+  if(savedEl && savedEl.isConnected) return savedEl;
+  if(savedId){ const byId=getById && getById(savedId); if(byId && byId.isConnected) return byId; }
+  return body||null;
+}
+function showModal(html,view){ try{ timeInterrupt(); }catch(e){}
+  const modalEl=$('modal');
+  // Only treat a closed→open transition as "opening": while a deep-view modal is open, render() re-invokes
+  // activeModal() (which calls showModal again) on every tick — we must NOT re-capture the trigger (it'd now
+  // be an in-modal element) nor yank focus back to the first control on each live re-render.
+  const wasOpen=!!(modalEl && modalEl.classList && !modalEl.classList.contains('hidden'));
+  if(!wasOpen){ try{ const prev=document.activeElement; _modalReturnFocus=prev||null; _modalReturnFocusId=(prev&&prev.id)?prev.id:null; }catch(e){ _modalReturnFocus=null; _modalReturnFocusId=null; } }
+  const mb=$('modalBody');mb.className='modal'+(view?' view':'');mb.innerHTML=html;modalEl.classList.remove('hidden');mb.classList.add('modal-entering');mb.addEventListener('animationend',()=>mb.classList.remove('modal-entering'),{once:true});
+  try{ if(!mb.getAttribute('tabindex')) mb.setAttribute('tabindex','-1'); }catch(e){}
+  if(!wasOpen){ try{ const f=mb.querySelectorAll(MODAL_FOCUSABLE_SEL); if(f && f.length){ f[0].focus(); } else { mb.focus(); } }catch(e){} }
+} // view=true → wide, left-aligned, scrollable deep-view layout
+function hideModal(){activeModal=null;_prodModalOpen=false;$('modal').classList.add('hidden');
+  try{ const el=resolveReturnFocus(_modalReturnFocus,_modalReturnFocusId,id=>document.getElementById(id),document.body); if(el && typeof el.focus==='function') el.focus(); }catch(e){}
+  _modalReturnFocus=null; _modalReturnFocusId=null;
+} // slice 6: closing clears the live-modal thunk; slice B: also returns focus to the modal's trigger
 
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
@@ -7104,6 +7131,30 @@ function warpStep(unit, dir){
 // The warp keys share +/=/-/arrows with the R&D tech-tree pan/zoom, which owns them on that scene;
 // everywhere else the warp keys are live. (Pure predicate so the gating is unit-testable.)
 function warpKeysActive(scene){ return scene!=='rnd'; }
+// E0.4 Slice B: focus-trap cycling as a pure, headless-testable step. Given the live focusable list,
+// the index currently focused (or -1 if focus is elsewhere), and whether Shift is held, return the
+// index that should receive focus next — wrapping at both ends. Empty list → -1 (caller no-ops).
+function nextTrapFocus(focusableEls, currentIndex, shiftKey){
+  const n=(focusableEls && focusableEls.length)||0;
+  if(n===0) return -1;
+  if(currentIndex<0 || currentIndex>=n) return shiftKey ? n-1 : 0; // focus outside the trap → jump to an end
+  if(shiftKey) return currentIndex===0 ? n-1 : currentIndex-1;     // Shift+Tab: back, wrapping first→last
+  return currentIndex===n-1 ? 0 : currentIndex+1;                  // Tab: forward, wrapping last→first
+}
+// While a modal is open, keep Tab focus inside it: recompute the focusable list fresh each press (the
+// live activeModal re-render can change modal content), find where focus is, and move by nextTrapFocus.
+function trapModalTab(e){
+  try{
+    const mb=$('modalBody'); if(!mb) return;
+    const list=mb.querySelectorAll(MODAL_FOCUSABLE_SEL);
+    const n=(list && list.length)||0;
+    if(n===0){ e.preventDefault(); try{ mb.focus(); }catch(_){} return; } // nothing to land on → keep focus on the body
+    let cur=-1; const active=document.activeElement;
+    for(let i=0;i<n;i++){ if(list[i]===active){ cur=i; break; } }
+    const ni=nextTrapFocus(list, cur, e.shiftKey);
+    if(ni>=0 && list[ni]){ e.preventDefault(); list[ni].focus(); }
+  }catch(_){}
+}
 document.addEventListener('keydown',function(e){
   // Space: pause the clock if auto-running, else launch the current mission
   // (or skip/continue the playback if one is running).
@@ -7164,6 +7215,9 @@ document.addEventListener('keydown',function(e){
   }
   // Enter also minimizes the Production drill (the boot-time top layer) — but never while typing in a field.
   if(e.key==='Enter' && _prodModalOpen && modalOpen() && !typing){ hideModal(); e.preventDefault(); return; }
+  // E0.4 Slice B: while a modal is open, Tab/Shift+Tab cycle focus WITHIN it (even from a focused field)
+  // instead of escaping to background page controls. Runs before the "return on modalOpen" guard below.
+  if(e.key==='Tab' && modalOpen()){ trapModalTab(e); return; }
   if(typing || modalOpen()) return; // don't grab TAB/numbers while typing or in a modal
   if(e.key==='Tab'){ nextScene(e.shiftKey?-1:1); e.preventDefault(); return; }
   if(e.key>='1' && e.key<='5'){ const idx=+e.key-1; if(idx<SCENE_TABS.length){ setTab(SCENE_TABS[idx]); e.preventDefault(); } }
