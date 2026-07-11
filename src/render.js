@@ -15,7 +15,7 @@ let _objSectionOpen=false;
    this doesn't touch any of that. It just also files a short "front page" record of the same
    moment, browsable later from the Chronicle. Same lazy-default pattern as blueprints() —
    no SAVE_VERSION bump; a legacy save simply starts with an empty wire. */
-const FRONT_PAGE_CAP=24;
+const FRONT_PAGE_CAP=100; // E0.5-A fold-in: raised 24→100 so the Chronicle retains a fuller history
 function frontPages(){ return state.frontPages=state.frontPages||[]; }
 function pushFrontPage(kind, icon, headline, dek){
   frontPages().unshift({abs:absMonth(), kind, icon, headline, dek});
@@ -1401,8 +1401,11 @@ function playLiftoff(spec, next){
   };
   _liftoffRAF=requestAnimationFrame(step);
 }
-function pauseCapeGame(){ if(capeGame){ try{ if(capeGame.scene.isActive('cape')) capeGame.scene.pause('cape'); }catch(e){} } }
-function resumeCapeGame(){ if(capeGame){ try{ capeGame.scene.resume('cape'); }catch(e){} } }
+// E0.5-A: sleep()/wake() (not pause()/resume()) so hidden Phaser scenes stop RENDERING, not
+// just updating — pause() leaves the GPU redrawing every frame. isActive() only matches a
+// RUNNING scene, so a slept scene is never re-slept; wake() on a running scene is a harmless no-op.
+function pauseCapeGame(){ if(capeGame){ try{ if(capeGame.scene.isActive('cape')) capeGame.scene.sleep('cape'); }catch(e){} } }
+function resumeCapeGame(){ if(capeGame){ try{ capeGame.scene.wake('cape'); }catch(e){} } }
 function renderCommandCenter(){
   if(!$('execOverview')) return;
   renderExecOverview();
@@ -2680,8 +2683,8 @@ function startVehPreview(spec){
     return false;
   }
 }
-function pauseVehGame(){ if(vehGame){ try{ if(vehGame.scene.isActive('vehprev')) vehGame.scene.pause('vehprev'); }catch(e){} } }
-function resumeVehGame(){ if(vehGame){ try{ vehGame.scene.resume('vehprev'); }catch(e){} } }
+function pauseVehGame(){ if(vehGame){ try{ if(vehGame.scene.isActive('vehprev')) vehGame.scene.sleep('vehprev'); }catch(e){} } } // E0.5-A: sleep, not pause (stop render)
+function resumeVehGame(){ if(vehGame){ try{ vehGame.scene.wake('vehprev'); }catch(e){} } }
 /* ---------- Vehicle pop-out viewer ----------
    Lifts the bench rocket — and its live Build/Launch button — into a full-screen overlay above
    every layer, with grab-to-pan + wheel-to-zoom for a big look at the design. The rocket is
@@ -3889,8 +3892,8 @@ function startMapScene(){
     return true;
   }catch(e){ console.warn('map scene failed, using SVG:',e); const h=$('mapHost'); if(h) h.style.display='none'; const c=$('mapCanvas'); if(c) c.style.display='block'; return false; }
 }
-function pauseMapGame(){ if(mapGame){ try{ if(mapGame.scene.isActive('solarmap')) mapGame.scene.pause('solarmap'); }catch(e){} } }
-function resumeMapGame(){ if(mapGame){ try{ mapGame.scene.resume('solarmap'); }catch(e){} } }
+function pauseMapGame(){ if(mapGame){ try{ if(mapGame.scene.isActive('solarmap')) mapGame.scene.sleep('solarmap'); }catch(e){} } } // E0.5-A: sleep, not pause (stop render)
+function resumeMapGame(){ if(mapGame){ try{ mapGame.scene.wake('solarmap'); }catch(e){} } }
 function renderMap(){
   const mv=$('mapView'); if(mv) mv.classList.toggle('expanded', mapExpanded);
   const eb=$('mapExpandBtn'); if(eb) eb.textContent = mapExpanded ? '⛶ Exit full screen' : '⛶ Expand';
@@ -3981,8 +3984,8 @@ function startStationScene(){
     return true;
   }catch(e){ console.warn('station scene failed, using SVG:',e); const h=$('stationHost'); if(h) h.style.display='none'; const c=$('stationCanvas'); if(c) c.style.display='block'; return false; }
 }
-function pauseStationGame(){ if(stationGame){ try{ if(stationGame.scene.isActive('station')) stationGame.scene.pause('station'); }catch(e){} } }
-function resumeStationGame(){ if(stationGame){ try{ stationGame.scene.resume('station'); }catch(e){} } }
+function pauseStationGame(){ if(stationGame){ try{ if(stationGame.scene.isActive('station')) stationGame.scene.sleep('station'); }catch(e){} } } // E0.5-A: sleep, not pause (stop render)
+function resumeStationGame(){ if(stationGame){ try{ stationGame.scene.wake('station'); }catch(e){} } }
 // Module engineering stats below the bench. Pure data → string, so it renders identically on
 // the Phaser and SVG-fallback paths and is headless-safe.
 function stationStatsHTML(mod){

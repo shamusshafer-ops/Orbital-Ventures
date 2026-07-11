@@ -2378,6 +2378,20 @@ custom-difficulty slider style), applies live, re-runs `syncTopbarH()` on change
 provable no-op. New `test-ui-scale.js`, 48/48 (clamp/sanitize/boot-decision logic only — real CSS zoom
 isn't testable in the harness). **Suite total: 491/491.**
 
+## Session — E0.5 slice (a): Phaser sleep + hidden-tab fixes (2026-07-10)
+
+**Shipped, user-verified in Firefox, committed.** Scoped by tech-lead first — found the log/metric/
+chronicle caps already in place from earlier work, so the roadmap's real value was the RAF/Phaser audit.
+Confirmed real bug: 4 popout scenes (Cape/Vehicle/Map/Station) called `pause()` on tab-leave, which stops
+`update()` but **not rendering** in Phaser 3 — fixed to `sleep()`/`wake()`. The flight scene was never
+paused after a mission ended, rendering its postFX indefinitely behind the hidden overlay — now sleeps on
+dismiss/skip, wakes before restart. Canvas-fallback `animLoop`'s wall-clock delta is now clamped (~50ms)
+so a hidden-tab return resumes smoothly instead of jump-cutting. New `visibilitychange` handler pauses
+`timeAuto` when the tab hides and resumes it (same unit) on return, only if hidden-pause caused it (a
+manual pause stays paused). `FRONT_PAGE_CAP` raised 24→100 (folded in, trivial). New
+`test-hidden-tab.js`, 34/34. **Suite total: 525/525.** Slice (b) log retention/windowing and metric
+archive (deferred per user) not started.
+
 ## Planned — External evaluation intake (2026-07-10)
 
 **Full backlog:** all 105 feature ideas from the evaluation, individually mapped to a

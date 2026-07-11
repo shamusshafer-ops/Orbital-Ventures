@@ -2469,6 +2469,23 @@ function clickTimeArrow(unit){
   stepTime(TIME_UNIT_DAYS[unit]); timePrimed=unit;                       // 1st press → step once + prime
 }
 function updateTimeArrows(){ for(const u in TIME_UNIT_DAYS){ const b=$('tArrow'+u[0].toUpperCase()+u.slice(1)); if(b) b.classList.toggle('running', timeAuto.unit===u); } }
+// E0.5-A: pause game-time auto-advance while the tab is hidden. timeAuto's 1s setInterval (each
+// tick runs a full render() into the hidden DOM) is the ONLY thing that keeps burning CPU in a
+// backgrounded tab — RAF-driven rendering (all Phaser scenes + the flight canvas loop) is already
+// throttled to a stop by the browser when the tab is hidden. We record the running unit ONLY when
+// hidden-pause itself stops it, so a run the player had already manually paused stays paused on
+// return, and we never auto-start time the player didn't have running.
+let _timeAutoHiddenUnit=null;
+function handleVisibilityChange(){
+  if(document.hidden){
+    if(timeAuto.unit){ _timeAutoHiddenUnit=timeAuto.unit; stopTimeAuto(); } // was auto-running → remember + stop
+    // (timeAuto.unit falsy → nothing was auto-running; leave state untouched, no-op)
+  } else if(_timeAutoHiddenUnit){
+    const u=_timeAutoHiddenUnit; _timeAutoHiddenUnit=null;                  // resume ONLY what hidden-pause stopped
+    if(!state.over) startTimeAuto(u);
+  }
+}
+try{ document.addEventListener('visibilitychange', handleVisibilityChange); }catch(e){}
 function skipResearch(){ if(!state.activeResearch) return;
   let n=state.activeResearch.monthsLeft+1; // each month removes ≥1; +1 guarantees completion absent a setback
   while(n-->0 && state.activeResearch && !_pendingSetback && !_pendingLogiMishap && !_pendingInquiry && !_pendingRivalDisaster && !state.over) advance(1); // #26: stop the skip at a setback (or 2.3 mishap) decision

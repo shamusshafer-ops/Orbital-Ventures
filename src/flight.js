@@ -517,10 +517,15 @@ function playMission(spec, done, seedP){
   setupFlightState(spec, done, ctx, cv, cv, seedP);
   animLoop();
 }
+// E0.5-A: cap one frame's wall-clock advance at ~one 20fps frame. RAF halts in a hidden tab, so
+// the FIRST frame after returning can carry a multi-second delta that would fast-forward the
+// canvas-fallback animation straight to the end. Clamping resumes it smoothly instead of jump-cutting.
+const ANIM_MAX_WALL_DT=50;
+function clampWallDt(dt){ return dt>ANIM_MAX_WALL_DT ? ANIM_MAX_WALL_DT : dt; }
 function animLoop(){
   const A=animState; if(!A||A.held) return;
   const now=performance.now();
-  const wallDt=now-A.prevWall;
+  const wallDt=clampWallDt(now-A.prevWall);
   A.prevWall=now;
   A.virtT+=wallDt*animSpeed();
   const t=A.virtT;
@@ -528,6 +533,12 @@ function animLoop(){
   if(t>=A.totalDur){ endAnim(true); return; }
   A.raf=requestAnimationFrame(animLoop);
 }
+// E0.5-A: put the Phaser flight scene to sleep once the overlay is hidden. FlightScene.update
+// early-outs when playing=false, but Phaser keeps RENDERING the scene — its camera ColorMatrix
+// postFX plus the plume/atmosphere/city glow FX — every frame behind the hidden overlay until it
+// is slept. The next launch wakes it before scene.restart() (see startFlightScene). No-op in the
+// canvas fallback (flightScene is null) and while the overlay is still on-screen (hold frames).
+function sleepFlightScene(){ try{ if(flightScene && flightScene.scene && !flightScene.scene.isSleeping()) flightScene.scene.sleep(); }catch(e){} }
 function endAnim(hold){
   const A=animState; if(!A) return;
   cancelAnimationFrame(A.raf);
@@ -544,7 +555,7 @@ function endAnim(hold){
     flightRefresh(); // push the post-flight frame to the Phaser texture (no-op in fallback)
     return;
   }
-  animState=null; $('animOverlay').classList.add('hidden'); if(A.done) A.done();
+  animState=null; $('animOverlay').classList.add('hidden'); sleepFlightScene(); if(A.done) A.done();
 }
 /* ---------- Flight-overlay manual camera (wheel-zoom + drag-pan) ----------
    New this slice: the full-screen flight overlay (ascent → trajectory → orbit, all
@@ -733,7 +744,7 @@ function defineFlightScene(){
       animState.fxNative=!!this.np; // suppress the 2D plume/trail/flame only if native particles are live
       animState.nativeStars=!!this.efxBuilt; // native parallax starfield replaces the canvas stars in the orbit phase
       this.didBoomShake=false; this._lastDropped=0; this._didDebris=false;
-      try{ if(this.scene && !this.scene.isActive()) this.scene.resume(); }catch(e){} // defensive: a paused flight scene won't drive particles
+      try{ if(this.scene && !this.scene.isActive()) this.scene.wake(); }catch(e){} // E0.5-A: defensive — an inactive (now slept, not paused) flight scene won't drive particles; wake() un-sleeps AND un-pauses
       // reset the exhaust emitters to a known-stopped state each flight so the plume reliably
       // re-emits on repeat launches (a prior failure/explosion can leave .emitting stale)
       this._plumeOn=false; this._smokeOn=false;
@@ -802,6 +813,10 @@ function startFlightScene(spec, done){
       // them in a dead state after a prior flight/explosion (no plume + no atmosphere on
       // the 2nd launch). Generated textures are cached (exists() guards), so this is cheap.
       // create()'s tail calls beginFlight() since flightPending is set.
+      // E0.5-A: a prior flight now leaves this scene SLEEPING (sleepFlightScene). Wake it first so
+      // restart() operates on a RUNNING scene — the known-good path this rebuild has always used —
+      // rather than relying on restart's stop/start handling a sleeping scene. No-op if awake.
+      try{ if(flightScene.scene.isSleeping()) flightScene.scene.wake(); }catch(e){}
       flightScene.scene.restart();
     }
     // (game exists but scene not yet booted → create() will pick up flightPending)
@@ -814,8 +829,8 @@ function startFlightScene(spec, done){
   }
 }
 function sfxCleanupClickHandler(A){ if(A&&A.clickHandler){ const vc=A.viewCanvas||A.cv; if(vc) vc.removeEventListener('click',A.clickHandler); A.clickHandler=null; } }
-function dismissAnim(){ const A=animState; if(!A) return; sfxStop(); sfxCleanupClickHandler(A); const done=A.done; animState=null; $('animOverlay').classList.add('hidden'); if(done) done(); }
-function skipAnim(){ const A=animState; if(A&&A.held){ dismissAnim(); return; } if(!A) return; cancelAnimationFrame(A.raf); sfxStop(); sfxCleanupClickHandler(A); animState=null; $('animOverlay').classList.add('hidden'); if(A.done) A.done(); }
+function dismissAnim(){ const A=animState; if(!A) return; sfxStop(); sfxCleanupClickHandler(A); const done=A.done; animState=null; $('animOverlay').classList.add('hidden'); sleepFlightScene(); if(done) done(); }
+function skipAnim(){ const A=animState; if(A&&A.held){ dismissAnim(); return; } if(!A) return; cancelAnimationFrame(A.raf); sfxStop(); sfxCleanupClickHandler(A); animState=null; $('animOverlay').classList.add('hidden'); sleepFlightScene(); if(A.done) A.done(); }
 function drawPostFlight(){
   const A=animState; if(!A) return;
   const ctx=A.ctx,W=A.cv.width,H=A.cv.height,s=A.spec;
