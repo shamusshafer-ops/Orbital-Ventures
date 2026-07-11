@@ -16,6 +16,13 @@ function themeRgba(key, alpha){
   const r=parseInt(hex.substring(0,2),16), g=parseInt(hex.substring(2,4),16), b=parseInt(hex.substring(4,6),16);
   return `rgba(${r},${g},${b},${alpha})`;
 }
+// Numeric 0xRRGGBB form for true Phaser GameObjects (render.js's Cape/vehicle-preview/map/station
+// scenes) — .setTint()/lineStyle()/fillStyle() all take a number, not a CSS string. NOTE: unlike the
+// canvas-2D chrome above (redrawn every frame, so a theme switch takes effect on the next frame for
+// free), Phaser GameObjects only read this at the moment they're created — switching theme while a
+// scene is already open does NOT live-retint it. Matches Phaser's natural object lifecycle; a real
+// live-refresh would need each scene to track its own tintable objects and re-apply on theme change.
+function themeColorNum(key){ return parseInt(themeColor(key).replace('#',''),16); }
 /* ===== WebGL 2D compatibility layer ===== */
 const _glShaders={
 flatV:`attribute vec2 aPos;uniform mat3 uProj;uniform mat3 uTransform;void main(){vec3 p=uProj*uTransform*vec3(aPos,1.0);gl_Position=vec4(p.xy,0.0,1.0);}`,

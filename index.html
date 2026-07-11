@@ -39,6 +39,66 @@
     --ignite:#e08a3c; --readout:#5bb9c4; --ok:#6db86a; --bad:#d2542b; --warn:#e8b341;
     --dom-economy:#6db86a; --dom-engineering:#5bb9c4; --dom-research:#c9a86a;
     --dom-military:#d2542b; --dom-exploration:#e08a3c; --dom-crew:#5bb9c4; --dom-warn:#e8b341; }
+  /* ---- Era-evolving visual identity (user-directed, 2026-07-11): the console ages up
+     automatically with state.year (applyEraVisual() in render.js), independent of the manual
+     theme picker above. All 4 visual eras (apollo/80s/90s2000s/spacex) have real distinct CSS.
+     Palette only takes over on the DEFAULT theme (:not(.theme-green):not(.theme-beige)) — an
+     explicit manual theme pick still wins; shape/font (corner radius, border weight, header
+     letter-spacing/case) apply per era regardless of theme, since those aren't really a "color
+     scheme" choice the way the theme picker is. Progression: Apollo (sharp corners, thick borders,
+     uppercase labels — physical switch panel) → 80s (moderate rounding, CRT-terminal feel, reuses
+     Control Room Green's palette) → 90s2000s (bubbly rounded, glossy gradient buttons, a fresh
+     Y2K-web palette) → SpaceX-modern (thin/near-borderless, fully pill-shaped, condensed headers —
+     the destination the whole progression ages TOWARD, meaningfully past today's default). ---- */
+  body.era-apollo:not(.theme-green):not(.theme-beige){
+    --bg:#1b1610; --panel:#2a2218; --panel2:#342a1c; --line:#4a3c28;
+    --ink:#ecdfc4; --muted:#b09a72; --dim:#7d6a4c;
+    --ignite:#e08a3c; --readout:#5bb9c4; --ok:#6db86a; --bad:#d2542b; --warn:#e8b341;
+    --dom-economy:#6db86a; --dom-engineering:#5bb9c4; --dom-research:#c9a86a;
+    --dom-military:#d2542b; --dom-exploration:#e08a3c; --dom-crew:#5bb9c4; --dom-warn:#e8b341;
+    background-image:linear-gradient(rgba(90,72,46,.18) 1px,transparent 1px),linear-gradient(90deg,rgba(90,72,46,.18) 1px,transparent 1px); }
+  body.era-apollo .card{ border-radius:2px; border-width:2px; }
+  body.era-apollo .btn{ border-radius:1px; border-width:2px; font-weight:600; letter-spacing:.02em; }
+  body.era-apollo h1,body.era-apollo h2,body.era-apollo h3{ letter-spacing:.06em; text-transform:uppercase; }
+  body.era-apollo .tabbadge,body.era-apollo .pill{ border-radius:1px; }
+  /* 80s — Station & Shuttle (1975-2000): phosphor-CRT mission control, reuses Control Room Green's
+     exact palette (that theme's own comment already calls it that) — same manual-override gate.
+     Shape: moderate rounding (tube-shaped CRT bezels, not Apollo's hard corners), medium borders,
+     a little letter-spacing (monospace-terminal read) short of Apollo's full uppercase. */
+  body.era-80s:not(.theme-green):not(.theme-beige){
+    --bg:#0a1410; --panel:#0e1c14; --panel2:#163024; --line:#26442f;
+    --ink:#9affb4; --muted:#5a9a6e; --dim:#3d6e4d;
+    --ignite:#d7b32a; --readout:#5fe0a0; --ok:#4fe26e; --bad:#e0564f; --warn:#e8c341;
+    --dom-economy:#5fe0a0; --dom-engineering:#5bb0a0; --dom-research:#a9d68b;
+    --dom-military:#e0564f; --dom-exploration:#d7b32a; --dom-crew:#5fe0a0; --dom-warn:#e8c341;
+    background-image:linear-gradient(rgba(40,90,55,.16) 1px,transparent 1px),linear-gradient(90deg,rgba(40,90,55,.16) 1px,transparent 1px); }
+  body.era-80s .card{ border-radius:4px; border-width:1.5px; }
+  body.era-80s .btn{ border-radius:3px; border-width:1.5px; letter-spacing:.02em; }
+  body.era-80s h1,body.era-80s h2,body.era-80s h3{ letter-spacing:.03em; }
+  /* 90s/2000s — Commercial (2000-2030): Y2K/early-broadband web look — glossy gradient buttons,
+     bubbly rounded corners, a cooler brighter blue-gray palette than either retro era. No existing
+     theme to reuse (neither Green nor Beige fits this), so this is a fresh palette. */
+  body.era-90s2000s:not(.theme-green):not(.theme-beige){
+    --bg:#10161f; --panel:#1a2432; --panel2:#212e3f; --line:#34495e;
+    --ink:#e8eef4; --muted:#8a9bb0; --dim:#5a6b80;
+    --ignite:#ff8c3c; --readout:#3ec6e0; --ok:#4ecb71; --bad:#ef5350; --warn:#ffca28;
+    --dom-economy:#4ecb71; --dom-engineering:#3ec6e0; --dom-research:#b088e0;
+    --dom-military:#ef5350; --dom-exploration:#ff8c3c; --dom-crew:#3ec6e0; --dom-warn:#ffca28; }
+  body.era-90s2000s .card{ border-radius:10px; }
+  body.era-90s2000s .btn{ border-radius:16px; background-image:linear-gradient(rgba(255,255,255,.08),transparent); }
+  /* SpaceX-modern — Expansion onward (2030+): clean, minimal, high-contrast, borderless-leaning —
+     the destination the whole progression is aging TOWARD. Meaningfully more minimal than today's
+     default (thinner borders, fully pill-shaped buttons, tighter/condensed headers), not just a
+     restatement of the current look. */
+  body.era-spacex:not(.theme-green):not(.theme-beige){
+    --bg:#060809; --panel:#0d1114; --panel2:#14181c; --line:#262b30;
+    --ink:#f2f4f6; --muted:#8a9199; --dim:#565c62;
+    --ignite:#ff6b1a; --readout:#3ec6ff; --ok:#4ade80; --bad:#f85149; --warn:#fbbf24;
+    --dom-economy:#4ade80; --dom-engineering:#3ec6ff; --dom-research:#c084fc;
+    --dom-military:#f85149; --dom-exploration:#ff6b1a; --dom-crew:#3ec6ff; --dom-warn:#fbbf24; }
+  body.era-spacex .card{ border-radius:14px; border-width:0.5px; }
+  body.era-spacex .btn{ border-radius:20px; border-width:0.5px; }
+  body.era-spacex h1,body.era-spacex h2,body.era-spacex h3{ letter-spacing:-0.01em; }
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
     zoom:var(--ui-scale); /* scales all px-based layout, sticky offsets and hit-testing together (Firefox ≥126) */

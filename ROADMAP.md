@@ -2536,9 +2536,101 @@ and matches the literal ask (move the HUD, not the rocket). **Suite total still 
 parity clean, not yet committed/pushed — **this specific change needs a browser recheck** (the
 previous rounds were tested before this swap).
 
-**Not yet started**: render.js Phaser-scene theme-sync, the rest of the emoji inventory (if wanted),
-sound, era-evolving visual pass. Treat this ROADMAP entry + the memory note as the record if the
-session ends before those land.
+**render.js Phaser-scene theme-sync — bounded first slice done, same session.** New `themeColorNum(key)`
+(flight.js, alongside `themeColor`/`themeRgba`) returns the numeric `0xRRGGBB` form true Phaser
+GameObjects need (`.setTint()`/`lineStyle()`/`fillStyle()` take numbers, not CSS strings — Phaser
+`add.text()` configs take CSS strings though, so those use `themeColor()` directly). Scoped to
+**exact matches** — hex values already numerically identical to an existing theme color, found by
+grepping for the literal theme hex/rgb values across the file: MapScene's `HEALTH_HEX` status colors
+(ok/warn/attention → theme ok/warn/bad, a clean semantic map), selection rings and orbit-guide lines
+in VehScene/MapScene (already used ignite-orange/muted-gray, now via the theme table), text labels
+across VehScene/MapScene/StationScene (drag label, hint text, body/module name labels — Oort Cloud
+label existed in both a Phaser-text and an SVG-string render path, both converted), and 2
+canvas-2D/inline-style rgba(ignite,...) occurrences. This is a **narrower, higher-confidence slice**
+than a full chrome-vs-world audit of all 4 scenes — deliberately so, since Phaser GameObjects don't
+live-retint on a theme switch the way canvas-2D redraws do (a scene only picks up the theme active
+when it was created/entered — a real, documented limitation, not a bug). New assertions in
+`test-theme-sync.js` (40/40 total). **Suite total 766/766**, build parity clean, not yet
+committed/pushed.
+
+**Full chrome-vs-world judgment pass: done, same session.** Corrected a boundary mistake from the
+earlier exact-match pass first — `defineVehScene()` actually ends at line 2662, not ~3799 as
+originally assumed (grabbed a bunch of unrelated popout/portrait functions into the earlier scan).
+Redid the inventory with correct scene boundaries and read each of the 4 scenes in full:
+
+- **CapeScene** (~30 lines) — genuinely almost no inline chrome; the pad's visual richness lives in
+  `drawIsoPad()` (a canvas-2D texture-builder, read in full — confirmed its whole palette is
+  legitimate physical pad/sky/flame art, nothing chrome-shaped in it).
+- **VehScene** — 2 more found by reading closely: the stage-separation dashed guide line (→`dim`)
+  and the three-tier Δv-loss annotation color (`loss<=0` good / `>250` bad / else warn → `ok`/`bad`/
+  `warn`, a clean status semantic that wasn't an exact hex match to catch by grep).
+- **MapScene** — 7 more: planned-route line (ok/bad by `pr.ok`), transfer-path traveling marker,
+  player-pennant flagpole (now matches its already-converted flag fill), facility health-badge
+  backdrop (→`bg`), ISRU pick indicator (→`ok`), Belt-claim ring (→`ignite`), LEO depot arc gauge
+  (→`readout`). Left alone: star field, sun corona/glow/core (all genuinely physical), Oort cloud
+  particles, and the `hx()`/`C()` helpers that convert *data-driven* categorical colors (planet
+  color, rival faction color, facility-type color) — those are intentional per-entity color coding,
+  not theme chrome, same category as the procedural-portrait palette left untouched in flight.js.
+- **StationScene** — 1 more (an annotation label's text color, pairing it with its already-converted
+  leader-line color). Everything else here is the station module's own hardware rendering (solar
+  wings, radiator, hull, docking ports, antennas, handrails) — confirmed genuinely physical, same
+  category as the rocket/vehicle rendering left alone in flight.js.
+
+**Suite still 766/766** (pure color-constant swaps, no new test file — the underlying `themeColor`/
+`themeColorNum` functions were already covered by `test-theme-sync.js`; the actual Phaser rendering
+can't be verified headlessly regardless), build parity clean, not yet committed/pushed. **This is now
+believed complete** for the "exact-match + close-reading" scope — a genuinely exhaustive re-audit of
+every remaining hex literal in all 4 scenes was not attempted (would mean re-litigating already-
+confirmed "world" colors with no new information).
+
+## Session — era-evolving visual identity, slice 1: Apollo (2026-07-11)
+
+User asked to see the 80s era in-browser; clarified nothing existed yet (only the manual Mission
+Dark/Green/Beige theme picker) — I can't launch a browser myself either, so redirected to building a
+real first slice. User picked: automatic (tied to `state.year`, not a manual picker) and Apollo era
+first (the anchor of the whole progression).
+
+New `ERA_VISUAL_MAP` (data.js) groups the 8 `ERAS` entries into 4 visual eras — apollo (Pioneer/Early
+Orbital/Crewed Lunar, up to 1975), 80s (Station & Shuttle, 1975-2000), 90s2000s (Commercial,
+2000-2030), spacex (Expansion/Interplanetary/Speculative, 2030+) — coarser than gameplay-era
+granularity on purpose. `eraVisualKey()` reads it; `applyEraVisual()` (render.js, hooked into the top
+of `render()`, cached against the last-applied key so it's a no-op most renders) swaps a
+`body.era-*` class.
+
+**Only Apollo has real CSS so far** (shell.html) — per the user's own scope call (palette + chrome
+shapes/fonts, not just palette): reuses the existing Apollo Beige theme's exact color values
+(warm 1960s console), gated `:not(.theme-green):not(.theme-beige)` so an explicit manual theme pick
+still wins over the era default — only the color precedence is conditional; sharp/minimal
+border-radius, thicker 2px borders, uppercase+letter-spaced headers apply in Apollo era
+unconditionally (shape isn't really a "color scheme" choice the way the theme picker is). A fresh
+new game starts in 1942 (Pioneer), so **it shows the Apollo look immediately with zero setup** — no
+need to advance time to see it.
+
+80s/90s2000s/spacex classes are correctly detected and applied but have no CSS yet — falls through
+to today's default look, not a bug. New `test-era-visual.js` (12/12). **Suite total 778/778**, build
+parity clean, not yet committed/pushed. **Needs a real browser look** — this is the first genuinely
+new visual identity shipped this session (not just a recolor of what already existed), open
+`orbital-ventures.html` fresh (default Mission Dark theme, don't pick Green/Beige) and it should read
+noticeably different: warm amber/beige, boxier cards and buttons, uppercase label-plate headers.
+
+**All 4 eras done, same session.** 80s (Station & Shuttle, 1975-2000) reuses Control Room Green's
+exact palette — that theme's own comment already called it "phosphor-CRT mission control," a clean
+match for the era — plus moderate rounding/medium borders, short of Apollo's hard corners. 90s2000s
+(Commercial, 2000-2030) is a fresh Y2K/early-broadband-web palette (brighter cooler blue-gray, no
+existing theme fit) with bubbly rounded corners and a glossy gradient highlight on buttons. SpaceX-
+modern (Expansion onward, 2030+) is also a fresh palette, pushed meaningfully past today's default —
+near-black background, thin/near-borderless cards, fully pill-shaped buttons, condensed headers — the
+actual destination the whole progression ages toward, not just a restatement of the current look.
+Updated the now-stale "only Apollo has styling" comments in data.js/render.js/shell.html to match.
+`test-era-visual.js` extended to 16/16, including a check that the built HTML actually contains real
+CSS rules for all 4 era classes (not just detection logic). **Suite total 782/782**, build parity
+clean, not yet committed/pushed. **Needs a real browser look at all 4** — advance a save through
+each era (or just start fresh games and manually bump `state.year` via the console) and confirm each
+one reads as genuinely distinct, and that switching a manual theme (Green/Beige) still correctly
+overrides the era palette in every era, not just Apollo.
+
+Rest of the emoji inventory (if wanted) and sound not started. Treat this ROADMAP entry + the memory
+note as the record if the session ends before those land.
 
 ## Session — E1.1: reactive rival race, slice A (2026-07-11)
 

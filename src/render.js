@@ -264,8 +264,20 @@ function renderTabBadges(){
   }
 }
 
+// User-directed era-evolving visual identity — swaps a body.era-* class as the campaign advances,
+// automatically (eraVisualKey() reads state.year, not a manual pick). Cheap no-op most renders
+// (cached against the last-applied key); only touches the DOM on an actual era-visual change.
+let _lastEraVisual=null;
+function applyEraVisual(){
+  const key=eraVisualKey(); if(key===_lastEraVisual) return;
+  _lastEraVisual=key;
+  const b=document.body; if(!b) return;
+  b.classList.remove('era-apollo','era-80s','era-90s2000s','era-spacex');
+  b.classList.add('era-'+key);
+}
 function render(){
   if(RETIRED_TABS[state.tab]) state.tab=RETIRED_TABS[state.tab]; // migrate retired tabs (slice 4: planner) on every render, incl. legacy saves
+  applyEraVisual();
   renderTabBadges(); // attention badges (UX pass)
   renderOutliner();  // the one-more-turn strip: every timer, one place, every scene
   $('coName').textContent=state.company;
@@ -876,7 +888,7 @@ function drawIsoBuilding(ctx,L,t){
   isoGreebles(ctx,box,h,b.key);
   const top=box.up([sx,sy]);
   if(b.type==='vab'){ // VAB: tall bay doors on the front-right face + roof ridge + beacon
-    for(let d=-1;d<=1;d++){ const fx=0.5+d*0.27; const px=box.Cf[0]+(box.Cr[0]-box.Cf[0])*fx, py=box.Cf[1]+(box.Cr[1]-box.Cf[1])*fx, dh=h*0.55; ctx.fillStyle='#0e151b'; ctx.fillRect(px-4,py-dh,8,dh); ctx.strokeStyle='rgba(245,166,35,0.35)'; ctx.lineWidth=0.6; ctx.strokeRect(px-4,py-dh,8,dh); }
+    for(let d=-1;d<=1;d++){ const fx=0.5+d*0.27; const px=box.Cf[0]+(box.Cr[0]-box.Cf[0])*fx, py=box.Cf[1]+(box.Cr[1]-box.Cf[1])*fx, dh=h*0.55; ctx.fillStyle='#0e151b'; ctx.fillRect(px-4,py-dh,8,dh); ctx.strokeStyle=themeRgba('ignite',0.35); ctx.lineWidth=0.6; ctx.strokeRect(px-4,py-dh,8,dh); }
     isoQuad(ctx,[box.up(box.Cb),box.up(box.Cr),box.up(box.Cf),box.up(box.Cl)], shade('#2b3a44',0.30), 'rgba(255,255,255,0.1)'); // bright roof ridge
     ctx.fillStyle=`rgba(255,70,50,${0.4+0.6*(Math.sin(t*3)>0?1:0.3)})`; ctx.beginPath(); ctx.arc(top[0],top[1]-4,3,0,7); ctx.fill();
     // manufacturing exhaust stack + darker, sootier smoke (reads heavier than the light pad smoke)
@@ -2585,7 +2597,7 @@ function defineVehScene(){
       this.img=this.add.image(W/2, H/2, 'vehTex').setOrigin(0.5,0.5);
       this.selG=this.add.graphics();           // selection ring + separation lines
       this.ann=[];                              // per-stage Δv/TWR labels
-      this.dragLabel=this.add.text(0,0,'',{fontFamily:'ui-monospace,monospace',fontSize:'15px',color:'#ffd98a',backgroundColor:'#0a1016cc',padding:{x:6,y:3}}).setDepth(10).setVisible(false);
+      this.dragLabel=this.add.text(0,0,'',{fontFamily:'ui-monospace,monospace',fontSize:'15px',color:themeColor('ignite'),backgroundColor:'#0a1016cc',padding:{x:6,y:3}}).setDepth(10).setVisible(false);
       // --- direct manipulation ---
       this._drag=null;
       const zoneAt=(x,y)=>{ if(!this._layout) return null;
@@ -2637,12 +2649,12 @@ function defineVehScene(){
       const stages=L.zones.filter(z=>z.kind==='stage');
       stages.forEach((z,i)=>{
         // separation line between stages: dashed, faint
-        if(i>0){ g.lineStyle(1,0x5a6a78,0.55); for(let x=z.cx-z.halfW-14;x<z.cx+z.halfW+8;x+=7){ g.beginPath(); g.moveTo(x,z.bot); g.lineTo(x+4,z.bot); g.strokePath(); } }
+        if(i>0){ g.lineStyle(1,themeColorNum('dim'),0.55); for(let x=z.cx-z.halfW-14;x<z.cx+z.halfW+8;x+=7){ g.beginPath(); g.moveTo(x,z.bot); g.lineTo(x+4,z.bot); g.strokePath(); } }
         // annotation: Δv + TWR at ignition, tucked to the right of the segment
         const dv=cv&&cv.stageDv&&cv.stageDv[i]!=null?fI(cv.stageDv[i]):'—';
         const twr=cv&&cv.stageTwr&&cv.stageTwr[i]!=null?cv.stageTwr[i].toFixed(2):'—';
         const loss=cv&&cv.stageGravLoss&&cv.stageGravLoss[i]||0;
-        const col=loss<=0?'#8fd08f':(loss>250?'#e88a7a':'#e8c07a');
+        const col=loss<=0?themeColor('ok'):(loss>250?themeColor('bad'):themeColor('warn'));
         const t=this.add.text(z.cx+z.halfW+10, (z.top+z.bot)/2, `S${i+1}  Δv ${dv}
      TWR ${twr}`, {fontFamily:'ui-monospace,monospace', fontSize:'13px', color:col, lineSpacing:2}).setOrigin(0,0.5).setAlpha(0.92);
         this.ann.push(t);
@@ -2651,10 +2663,10 @@ function defineVehScene(){
       const sel = typeof benchSelStage==='number' && benchSelStage>=0 ? stages[benchSelStage]
                 : benchSelStage==='transfer' ? L.zones.find(z=>z.kind==='transfer')
                 : benchSelStage==='nose' ? L.zones.find(z=>z.kind==='nose') : null;
-      if(sel){ g.lineStyle(2,0xf5a623,0.95); g.strokeRoundedRect(sel.x-2, sel.y-2, sel.w+4, sel.h+4, 5); }
+      if(sel){ g.lineStyle(2,themeColorNum('ignite'),0.95); g.strokeRoundedRect(sel.x-2, sel.y-2, sel.w+4, sel.h+4, 5); }
       // affordance hint the first few times (until any selection has happened)
       if(benchSelStage===-1 && !state._benchTouched && stages[0]){
-        const t=this.add.text(stages[0].cx, stages[0].bot+16, 'click a stage · drag to stretch tanks', {fontFamily:'ui-monospace,monospace', fontSize:'12px', color:'#7d8b98'}).setOrigin(0.5,0).setAlpha(0.8);
+        const t=this.add.text(stages[0].cx, stages[0].bot+16, 'click a stage · drag to stretch tanks', {fontFamily:'ui-monospace,monospace', fontSize:'12px', color:themeColor('muted')}).setOrigin(0.5,0).setAlpha(0.8);
         this.ann.push(t);
       }
     }
@@ -3823,7 +3835,7 @@ function defineMapScene(){
       const oc=BODIES.find(b=>b.id==='oort');
       if(oc){ const og=this.add.graphics(); const orn=mulberry(9001);
         for(let i=0;i<260;i++){ const a=orn()*6.2832, rr=oc.r+(orn()-0.5)*58; og.fillStyle(0xbcd4e0, 0.2+orn()*0.4); og.fillCircle(Math.cos(a)*rr, Math.sin(a)*rr, 0.6+orn()*1.0); }
-        const ot=this.add.text(0,-oc.r-8,'Oort Cloud',{fontFamily:'ui-monospace,monospace',fontSize:'12px',color:'#8fb3c8'}).setOrigin(0.5,1);
+        const ot=this.add.text(0,-oc.r-8,'Oort Cloud',{fontFamily:'ui-monospace,monospace',fontSize:'12px',color:themeColor('muted')}).setOrigin(0.5,1);
         ot.setInteractive({useHandCursor:true}); ot.on('pointerdown',()=>selectBody('oort')); }
       const maxR=Math.max.apply(null, planets.filter(b=>b.kind!=='cloud').map(p=>p.r));
       this.fitZoom=Math.min(MAP_W,MAP_H)/(2*(maxR+60));
@@ -3839,7 +3851,7 @@ function defineMapScene(){
       else { c=this.add.image(0,0,'planet_'+b.id); const frac=ringed?RINGED_TEX_R:PLANET_TEX_R; c.setDisplaySize(rad/frac, rad/frac); isImg=true; }
       c.setInteractive({useHandCursor:true});
       c.on('pointerdown',()=>selectBody(b.id));
-      const t=this.add.text(0,0,b.name,{fontFamily:'ui-monospace,monospace',fontSize:parent?'9px':'11px',color:'#9aa7af'}).setOrigin(0.5,1);
+      const t=this.add.text(0,0,b.name,{fontFamily:'ui-monospace,monospace',fontSize:parent?'9px':'11px',color:themeColor('muted')}).setOrigin(0.5,1);
       this.bodies.push({b,parentId:parent?parent.id:null,ang:(ANGLES[b.id]!==undefined?ANGLES[b.id]:0),speed:(parent?0.12:0.05)/Math.sqrt(Math.max(10,b.r)),c,t,rad,x:0,y:0,ringed,isImg});
     }
     faceSun(o){ if(o.isImg && !o.ringed) o.c.rotation = Math.atan2(-o.y,-o.x) - BAKED_LIT_ANGLE; } // lit side toward the Sun (map centre)
@@ -3856,7 +3868,7 @@ function defineMapScene(){
       // Planned (not yet committed) active-mission route — the planning surface promise
       const pr=plannedRoute();
       if(pr && !pr.committed){ const eo=this.bodies.find(o=>o.b.id==='earth'); const to=this.bodies.find(o=>o.b.id===pr.destId);
-        if(eo&&to){ const col=pr.ok?0x5fc4d0:0xe8604c;
+        if(eo&&to){ const col=pr.ok?themeColorNum('ok'):themeColorNum('bad');
           const mx=(eo.x+to.x)/2, my=(eo.y+to.y)/2, mr=Math.hypot(mx,my)||1;
           const rT=(to.parentId?(this.bodies.find(o=>o.b.id===to.parentId)||{b:{r:eo.b.r}}).b.r:to.b.r);
           const dir=rT>=eo.b.r?1:-1, bow=(Math.abs(rT-eo.b.r)*0.45+18)*dir;
@@ -3876,45 +3888,45 @@ function defineMapScene(){
       const cxp=mx/mr*(mr+bow), cyp=my/mr*(mr+bow);
       const N=48, pts=[];
       for(let i=0;i<=N;i++){ const u=i/N, iu=1-u; pts.push({x:iu*iu*fx+2*iu*u*cxp+u*u*tx, y:iu*iu*fy+2*iu*u*cyp+u*u*ty}); }
-      g.lineStyle(1.4,0xf5a623,0.85);
+      g.lineStyle(1.4,themeColorNum('ignite'),0.85);
       const ph=Math.floor((time*0.004))%2;
       for(let i=0;i<N;i++){ if(((i+ph)%2)===0) continue; g.beginPath(); g.moveTo(pts[i].x,pts[i].y); g.lineTo(pts[i+1].x,pts[i+1].y); g.strokePath(); }
       const idx=Math.floor(((time*0.00012)%1)*N); const pp=pts[Math.min(N,Math.max(0,idx))];
-      g.fillStyle(0xffe08a,1); g.fillCircle(pp.x,pp.y,2.2);
-      g.fillStyle(0xf5a623,1); g.fillCircle(fx,fy,2.2);
+      g.fillStyle(themeColorNum('warn'),1); g.fillCircle(pp.x,pp.y,2.2);
+      g.fillStyle(themeColorNum('ignite'),1); g.fillCircle(fx,fy,2.2);
     }
-    drawRings(){ const g=this.rings; g.clear(); g.lineStyle(1,0x7d909b,0.22);
+    drawRings(){ const g=this.rings; g.clear(); g.lineStyle(1,themeColorNum('muted'),0.22);
       for(const o of this.bodies){ if(o.parentId){ const p=this.bodies.find(q=>q.b.id===o.parentId); if(p) g.strokeCircle(p.x,p.y,p.rad+(o.b.moonR||10)*1.3); } else { g.strokeCircle(0,0,o.b.r); } } }
     drawMarkers(){ const g=this.markers; g.clear(); const C=h=>{ try{ return Phaser.Display.Color.HexStringToColor(h).color; }catch(e){ return 0xffffff; } };
       const t=(this.time&&this.time.now)||0, pulse=0.55+0.45*Math.sin(t*0.0024), fast=0.35+0.65*Math.abs(Math.sin(t*0.006));
       const model=mapAssetModel();
-      const HEALTH_HEX={ok:0x5fae62, warn:0xe8b64c, attention:0xe8604c};
+      const HEALTH_HEX={ok:themeColorNum('ok'), warn:themeColorNum('warn'), attention:themeColorNum('bad')};
       for(const o of this.bodies){
         const rv=rivalsAtBody(o.b.id)||[]; const seen={}; let i=0;
         for(const h of rv){ if(seen[h.rival.id])continue; seen[h.rival.id]=1; const a=-1.57+(i-0.5)*0.5; g.fillStyle(C(h.rival.color),1); g.fillCircle(o.x+Math.cos(a)*(o.rad+6),o.y+Math.sin(a)*(o.rad+6),2); i++; }
         const am=model[o.b.id]; if(!am) continue;
         // player pennant — the empire flag, softly pulsing
         if(am.firsts.length){ const fx=o.x-5, fy=o.y-o.rad-13;
-          g.lineStyle(1,0xf5d78a,1); g.beginPath(); g.moveTo(fx,fy+8); g.lineTo(fx,fy-2); g.strokePath();
-          g.fillStyle(0xf5a623, pulse); g.beginPath(); g.moveTo(fx,fy-2); g.lineTo(fx+8,fy+0.5); g.lineTo(fx,fy+3); g.closePath(); g.fillPath(); }
+          g.lineStyle(1,themeColorNum('ignite'),1); g.beginPath(); g.moveTo(fx,fy+8); g.lineTo(fx,fy-2); g.strokePath();
+          g.fillStyle(themeColorNum('ignite'), pulse); g.beginPath(); g.moveTo(fx,fy-2); g.lineTo(fx+8,fy+0.5); g.lineTo(fx,fy+3); g.closePath(); g.fillPath(); }
         // facility: health ring (blinks when strained/starved) + module pips
         if(am.facility){ const {def,health,modules}=am.facility; const fx=o.x+o.rad+8, fy=o.y+1;
           const alpha=health==='ok'?1:(health==='warn'?pulse:fast);
-          g.fillStyle(0x060a0f,0.75); g.fillCircle(fx,fy,6.5);
+          g.fillStyle(themeColorNum('bg'),0.75); g.fillCircle(fx,fy,6.5);
           g.lineStyle(1.4,HEALTH_HEX[health],alpha); g.strokeCircle(fx,fy,6.5);
           g.fillStyle(C(def.color),1); g.fillRect(fx-2,fy-2,4,4);
           const n=Math.min(8,modules); for(let k=0;k<n;k++){ g.fillStyle(HEALTH_HEX[health],1); g.fillCircle(fx-((n-1)*2.6)/2+k*2.6, fy+10, 1); } }
         // ISRU pick
-        if(am.isru){ g.fillStyle(0x7bc46a,1); const ix=o.x-o.rad-9, iy=o.y;
+        if(am.isru){ g.fillStyle(themeColorNum('ok'),1); const ix=o.x-o.rad-9, iy=o.y;
           g.fillRect(ix-2.5,iy-0.6,5,1.2); g.fillRect(ix-0.6,iy-0.6,1.2,4); }
         // Belt claim — expanding ring
         if(am.beltClaim){ const bx=o.x+o.rad+7, by=o.y-8, rr=3+Math.abs(Math.sin(t*0.0014))*1.4;
-          g.lineStyle(1.2,0xe8c04c,0.9); g.strokeCircle(bx,by,rr); g.fillStyle(0xe8c04c,1); g.fillCircle(bx,by,1.2); }
+          g.lineStyle(1.2,themeColorNum('ignite'),0.9); g.strokeCircle(bx,by,rr); g.fillStyle(themeColorNum('ignite'),1); g.fillCircle(bx,by,1.2); }
         // LEO depot arc gauge
         if(am.depotT>0){ const cap=Math.max(am.depotT,120), frac=Math.min(1,am.depotT/cap);
           const rr=o.rad+5, a0=-Math.PI*0.75, a1=a0+frac*Math.PI*1.5;
-          g.lineStyle(2,0x5fc4d0,0.9); g.beginPath(); g.arc(o.x,o.y,rr,a0,a1,false); g.strokePath(); } } }
-    drawSel(){ const g=this.selRing; g.clear(); const o=this.bodies.find(q=>q.b.id===state.selectedBody); if(o){ g.lineStyle(1.5,0xf5a623,1); g.strokeCircle(o.x,o.y,o.rad+3); } }
+          g.lineStyle(2,themeColorNum('readout'),0.9); g.beginPath(); g.arc(o.x,o.y,rr,a0,a1,false); g.strokePath(); } } }
+    drawSel(){ const g=this.selRing; g.clear(); const o=this.bodies.find(q=>q.b.id===state.selectedBody); if(o){ g.lineStyle(1.5,themeColorNum('ignite'),1); g.strokeCircle(o.x,o.y,o.rad+3); } }
   };
 }
 function ensureMapHost(){ const host=$('mapHost'); if(!host) return false; host.style.display='block'; const c=$('mapCanvas'); if(c) c.style.display='none'; return true; }
@@ -4001,11 +4013,11 @@ function defineStationScene(){
       // handrails along the hull
       g.lineStyle(1.4,0xf5c84a,0.85); g.beginPath(); g.moveTo(-L/2+20,-hd+10); g.lineTo(L/2-20,-hd+10); g.strokePath();
       // annotation leader lines + labels
-      for(const pr of mod.parts){ g.lineStyle(1,0x4fd1d9,0.55); g.beginPath(); g.moveTo(pr.x,pr.y); const lx=pr.x+(pr.x>=0?60:-60), ly=pr.y+(pr.y>=0?40:-40); g.lineTo(lx,ly); g.strokePath();
-        g.fillStyle(0x4fd1d9,1); g.fillCircle(pr.x,pr.y,2.4);
-        const t=this.add.text(lx+(pr.x>=0?4:-4), ly, pr.label, {fontFamily:'ui-monospace,monospace',fontSize:'11px',color:'#cfe6ff'}).setOrigin(pr.x>=0?0:1,0.5);
+      for(const pr of mod.parts){ g.lineStyle(1,themeColorNum('readout'),0.55); g.beginPath(); g.moveTo(pr.x,pr.y); const lx=pr.x+(pr.x>=0?60:-60), ly=pr.y+(pr.y>=0?40:-40); g.lineTo(lx,ly); g.strokePath();
+        g.fillStyle(themeColorNum('readout'),1); g.fillCircle(pr.x,pr.y,2.4);
+        const t=this.add.text(lx+(pr.x>=0?4:-4), ly, pr.label, {fontFamily:'ui-monospace,monospace',fontSize:'11px',color:themeColor('readout')}).setOrigin(pr.x>=0?0:1,0.5);
         this.labels.push(t); }
-      const title=this.add.text(0,-STN_H*0.5+10, mod.name, {fontFamily:'ui-monospace,monospace',fontSize:'13px',color:'#9aa7af'}).setOrigin(0.5,0); this.labels.push(title);
+      const title=this.add.text(0,-STN_H*0.5+10, mod.name, {fontFamily:'ui-monospace,monospace',fontSize:'13px',color:themeColor('muted')}).setOrigin(0.5,0); this.labels.push(title);
     }
   };
 }
@@ -4459,7 +4471,7 @@ function renderMapOverview(W,H){
       let dots=''; for(let i=0;i<240;i++){ const a=rnd()*6.2832, rr=oc.r+(rnd()-0.5)*pad*0.85, dx=cx+Math.cos(a)*rr, dy=cy+Math.sin(a)*rr; dots+=`<circle cx="${dx.toFixed(1)}" cy="${dy.toFixed(1)}" r="${(0.5+rnd()*1.1).toFixed(2)}" fill="#bcd4e0" opacity="${(0.2+rnd()*0.5).toFixed(2)}"/>`; }
       svg+=dots;
       const osel=state.selectedBody==='oort';
-      svg+=`<g style="cursor:pointer" onclick="selectBody('oort')"><circle cx="${cx}" cy="${(cy-oc.r).toFixed(1)}" r="16" fill="transparent"/><text x="${cx}" y="${(cy-oc.r-6).toFixed(1)}" fill="${osel?'#f5a623':'#8fb3c8'}" font-size="12" font-family="ui-monospace,monospace" text-anchor="middle">Oort Cloud</text></g>`;
+      svg+=`<g style="cursor:pointer" onclick="selectBody('oort')"><circle cx="${cx}" cy="${(cy-oc.r).toFixed(1)}" r="16" fill="transparent"/><text x="${cx}" y="${(cy-oc.r-6).toFixed(1)}" fill="${osel?themeColor('ignite'):themeColor('muted')}" font-size="12" font-family="ui-monospace,monospace" text-anchor="middle">Oort Cloud</text></g>`;
   } }
   // Epic Sun: outer corona glow + radiating flares + granulated photosphere
   { const sid='sun'+(_texSeq++);
@@ -4496,7 +4508,7 @@ function renderMapOverview(W,H){
       <circle cx="${px}" cy="${py}" r="${rad+8}" fill="transparent"/>
       ${bodyTexture(b.id,px,py,rad)}
       ${sel?`<circle cx="${px}" cy="${py}" r="${rad+1.5}" fill="none" stroke="#f5a623" stroke-width="1.5"/>`:''}
-      <text x="${px}" y="${py-rad-6}" fill="${sel?'#f5a623':'#9aa7af'}" font-size="11" font-family="ui-monospace,monospace" text-anchor="middle">${b.name}</text>
+      <text x="${px}" y="${py-rad-6}" fill="${sel?themeColor('ignite'):themeColor('muted')}" font-size="11" font-family="ui-monospace,monospace" text-anchor="middle">${b.name}</text>
     </g>${rivalMarkersSVG(b.id,px,py,rad)}${assetMarkersSVG(b.id,px,py,rad,_assetModel)}`;
     BODIES.filter(m=>m.around===b.id).forEach(m=>{
       const mAng=(ANGLES[m.id]!==undefined?ANGLES[m.id]:0);
@@ -4508,7 +4520,7 @@ function renderMapOverview(W,H){
           <circle cx="${mx}" cy="${my}" r="${mRad+6}" fill="transparent"/>
           ${bodyTexture(m.id,mx,my,mRad)}
           ${msel?`<circle cx="${mx}" cy="${my}" r="${mRad+2}" fill="none" stroke="#f5a623" stroke-width="1.5"/>`:''}
-          <text x="${mx}" y="${my-mRad-4}" fill="${msel?'#f5a623':'#7d909b'}" font-size="9" font-family="ui-monospace,monospace" text-anchor="middle">${m.name}</text>
+          <text x="${mx}" y="${my-mRad-4}" fill="${msel?themeColor('ignite'):themeColor('muted')}" font-size="9" font-family="ui-monospace,monospace" text-anchor="middle">${m.name}</text>
         </g>${rivalMarkersSVG(m.id,mx,my,5)}${assetMarkersSVG(m.id,mx,my,5,_assetModel)}`;
     });
   });
@@ -4561,7 +4573,7 @@ function renderMapZoom(W,H,id){
         <g style="cursor:pointer" onclick="selectBody('${m.id}')">
           ${bodyTexture(m.id,mx,my,mRad)}
           ${msel?`<circle cx="${mx}" cy="${my}" r="${mRad+1.5}" fill="none" stroke="#f5a623" stroke-width="2"/>`:''}
-          <text x="${mx}" y="${my-mRad-8}" fill="${msel?'#f5a623':'#9aa7af'}" font-size="11" font-family="ui-monospace,monospace" text-anchor="middle">${m.name}</text>
+          <text x="${mx}" y="${my-mRad-8}" fill="${msel?themeColor('ignite'):themeColor('muted')}" font-size="11" font-family="ui-monospace,monospace" text-anchor="middle">${m.name}</text>
         </g>`;
     });
   }
@@ -4933,7 +4945,7 @@ function renderPrograms(){
                 : (repOk&&resOk)?'<span class="pill">available</span>'
                 : `<span class="pill lock">locked</span>`;
       const btn=(!isDone&&repOk&&resOk)?`<button class="btn" onclick="flyTo('${mid}')">Fly this</button>`:'';
-      return `<div class="leg" style="${isNext?'background:rgba(245,166,35,.08)':''}">
+      return `<div class="leg" style="${isNext?`background:${themeRgba('ignite',0.08)}`:''}">
         <span class="legname">${isNext?'▶ ':''}${m.name} ${pill}</span>
         <span class="legdv">${m.crew?`${m.crew} crew`:'robotic'}</span>
         <span class="legdetail" style="display:flex;justify-content:space-between;align-items:center"><span>${m.days?`${m.days<1?(m.days*24).toFixed(0)+'h':m.days+'d'}`:'suborbital'}</span>${btn}</span>

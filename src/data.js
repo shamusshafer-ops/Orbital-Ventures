@@ -45,6 +45,16 @@ function eraIndex(e){ return ERAS.indexOf(e); }
 // year so it can run at load/migration time before `state` is assigned). Same "last era whose
 // start has been reached" rule — ERAS.from is strictly increasing, so break-on-first-greater holds.
 function eraIndexForYear(year){ let idx=0; for(let i=0;i<ERAS.length;i++){ if((year||1942)>=ERAS[i].from) idx=i; else break; } return idx; }
+// User-directed era-evolving visual identity (2026-07-11): the console itself ages up as the
+// campaign advances, automatically (tied to state.year via eraIndex/currentEra — not a manual
+// picker like THEMES). Groups the 8 ERAS entries into 4 visual eras matching the ask (Apollo →
+// 80s NASA/Shuttle → 90s/2000s Commercial → SpaceX-modern) — coarser than the gameplay era
+// granularity on purpose, so the console doesn't visually reskin every few gameplay years.
+// Applied in render.js's applyEraVisual() as a body.era-* class (see shell.html for the CSS).
+// All 4 keys have real distinct CSS (shell.html): apollo reuses Apollo Beige's palette, 80s reuses
+// Control Room Green's, 90s2000s and spacex are new palettes with no existing theme to reuse.
+const ERA_VISUAL_MAP=['apollo','apollo','apollo','80s','90s2000s','spacex','spacex','spacex']; // indexed by eraIndex(currentEra())
+function eraVisualKey(){ return ERA_VISUAL_MAP[eraIndex(currentEra())]||ERA_VISUAL_MAP[ERA_VISUAL_MAP.length-1]; }
 // P6 6.1: baseline metrics for the era-retrospective diff — flights flown, firsts claimed by the
 // player (completed missions) vs. scooped by rivals, treasury, reputation. Read from global state.
 function eraSnapshot(){ return {
