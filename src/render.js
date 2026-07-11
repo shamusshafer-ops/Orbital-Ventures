@@ -4277,6 +4277,13 @@ function stationModuleCard(md, cur, addable){
   const chk = addable && cur ? canAddStationModule(cur.def.id, md.id) : {ok:false};
   const gated = md.reqResearch && !state.research[md.reqResearch];
   const gateName = gated ? ((RESEARCH.find(r=>r.id===md.reqResearch)||{}).name||md.reqResearch) : '';
+  // #73 Slice 1 (2026-07-11): LEO-only for now (Slice 2 extends this to Moon/Mars). The first module
+  // of a given type on a facility is a real "launch modules, dock" choice — fly it yourself (real
+  // vehicle/launch, base cost, no premium) or pay a contracted-delivery premium for the instant dock
+  // this whole card offered before. Repeats of an already-proven type stay exactly as before: one
+  // click, instant, base cost — see stationCurrentView()/#73 scoping notes for why (pacing).
+  const first = addable && cur && cur.fs && cur.def.body==='earth' && !facilityModuleList(cur.fs).includes(md.id);
+  const pending = first && cur ? pendingModuleDelivery(cur.def.id, md.id) : null;
   return `<div class="card" style="flex:1;min-width:230px;max-width:320px;display:flex;flex-direction:column;gap:2px">
     <div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px">
       <div><b style="color:${md.color};font-size:14px">${md.name}</b> <span class="dim" style="font-size:11px;font-family:var(--mono)">${md.short}</span></div>
@@ -4297,9 +4304,17 @@ function stationModuleCard(md, cur, addable){
     ${context}
     ${md.hist?`<div class="dim" style="font-size:10.5px;font-style:italic;line-height:1.4;margin-bottom:7px;opacity:.8">${md.hist}</div>`:''}
     <div style="margin-top:auto">
-    ${addable
-      ? `<button class="btn ${chk.ok?'launch':''}" style="width:100%;font-size:12px" onclick="addStationModule('${cur.def.id}','${md.id}')" ${chk.ok?'':'disabled'}>${chk.ok?'Dock module ▸':chk.why}</button>`
-      : `<button class="btn" style="width:100%;font-size:12px" onclick="draftAdd('${md.id}')"${gated?` title="Buildable now as a blueprint; needs ${gateName} to actually construct"`:''}>Add to blueprint ▸${gated?' 🔒':''}</button>`}
+    ${!addable
+      ? `<button class="btn" style="width:100%;font-size:12px" onclick="draftAdd('${md.id}')"${gated?` title="Buildable now as a blueprint; needs ${gateName} to actually construct"`:''}>Add to blueprint ▸${gated?' 🔒':''}</button>`
+      : pending
+        ? `<div class="dim" style="font-size:12px;text-align:center;padding:6px 0">🚀 Delivery flight committed — build &amp; launch it from the bench.</div>`
+        : first
+          ? (()=>{ const flyChk=canFlyModuleDelivery(cur.def.id, md.id), conChk=canContractStationModule(cur.def.id, md.id);
+              return `<div style="display:flex;gap:6px">
+                <button class="btn ${flyChk.ok?'launch':''}" style="flex:1;font-size:11px" onclick="flyModuleDelivery('${cur.def.id}','${md.id}')" ${flyChk.ok?'':'disabled'} title="Design and launch a real delivery flight — pays only the base module cost on success, no premium">🚀 Fly it · ${fM(cost)}${flyChk.ok?'':' — '+flyChk.why}</button>
+                <button class="btn ${conChk.ok?'':'ghost'}" style="flex:1;font-size:11px" onclick="contractStationModule('${cur.def.id}','${md.id}')" ${conChk.ok?'':'disabled'} title="Instant delivery, no flight — costs a premium over flying it yourself">📦 Contract · ${fM(conChk.cost||contractedModuleCost(cur.def,cur.fs,md))}</button>
+              </div>`; })()
+          : `<button class="btn ${chk.ok?'launch':''}" style="width:100%;font-size:12px" onclick="addStationModule('${cur.def.id}','${md.id}')" ${chk.ok?'':'disabled'}>${chk.ok?'Dock module ▸':chk.why}</button>`}
     </div>
   </div>`;
 }

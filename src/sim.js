@@ -1058,6 +1058,7 @@ function contractOfferReferenced(id){
 }
 function tickContractOffers(){
   state.contractOffers=(state.contractOffers||[]).filter(o=>{
+    if(o.deliverModule) return true; // #73 Slice 1: a module delivery is a player-committed infra project, not a rotating commercial contract — never expires on its own, only consumed by finalizeLaunch
     if(absMonth()<=o.expiresAbs || contractOfferReferenced(o.id)) return true; // still open, or committed to (build queue/hangar/selected) — don't yank it out from under a build
     log('note',`${o.name}: contract window closed — the client went elsewhere.`);
     return false;
@@ -1292,17 +1293,82 @@ function canAddStationModule(facId, modId){
   if(state.money<cost) return {ok:false, why:'Needs '+fM(cost)};
   return {ok:true, cost};
 }
+// Docks a module onto a built facility RIGHT NOW — shared by the instant "dock"/"contract" purchases
+// and by a successful "fly it yourself" delivery mission (#73 Slice 1, finalizeLaunch). Caller has
+// already charged (or, for a flown delivery, is about to charge) money; this only handles the
+// module-list/supply/logging side, so the three callers can't drift out of sync with each other.
+function dockModuleNow(facId, modId, note){
+  const def=facilityById(facId), fs=facilityState(facId), md=stationModuleDef(modId);
+  facilityModuleList(fs).push(modId); fs.modules=fs.moduleList.length;
+  fs.supply=FAC_SUPPLY_MONTHS; fs.starvedMonths=0; // fresh provisions ride along with any delivery
+  const pw=facilityPower(fs);
+  log('ok',`${def.name}: ${md.name} docked${note?` (${note})`:''}. ${fs.moduleList.length} modules · power ${pw.net>=0?'+':''}${pw.net} kW.`);
+  if(pw.net<0) log('note',`${def.name} is power-starved — production is running at 60%. Dock a Solar Power Truss.`);
+}
 function addStationModule(facId, modId){
   const chk=canAddStationModule(facId, modId); if(!chk.ok) return;
-  const def=facilityById(facId), fs=facilityState(facId), md=stationModuleDef(modId);
+  const md=stationModuleDef(modId);
   state.money-=chk.cost;
   advance(md.buildMo||4); if(state.over){ render(); return; }
-  facilityModuleList(fs).push(modId); fs.modules=fs.moduleList.length;
-  fs.supply=FAC_SUPPLY_MONTHS; fs.starvedMonths=0; // the assembly flight ships fresh provisions
-  const pw=facilityPower(fs);
-  log('ok',`${def.name}: ${md.name} docked (${fM(chk.cost)}, ${md.buildMo} mo). ${fs.moduleList.length} modules · power ${pw.net>=0?'+':''}${pw.net} kW.`);
-  if(pw.net<0) log('note',`${def.name} is power-starved — production is running at 60%. Dock a Solar Power Truss.`);
+  dockModuleNow(facId, modId, `${fM(chk.cost)}, ${md.buildMo} mo`);
   render();
+}
+
+/* ---------- #73 Slice 1 (2026-07-11): module delivery is a real launch, player's choice ----------
+   Docking the FIRST module of a given type on a LEO facility is now a genuine "launch modules, dock"
+   choice: fly it yourself (design/launch a real delivery mission — base module cost, no premium, but
+   you pay for the vehicle+launch) or contract it (pay a premium, instant, no flight — the old
+   one-click behavior). Repeats of an already-proven type on that facility skip this fork entirely and
+   keep using addStationModule() unchanged, above — see stationModuleCard()'s `first` gate. Moon/Mars
+   facilities are out of scope for this slice (Slice 2). */
+const MODULE_CONTRACT_PREMIUM=0.35; // pay 35% over base to skip a real delivery flight
+function contractedModuleCost(def, fs, md){ return round2(stationModuleCost(def, fs, md)*(1+MODULE_CONTRACT_PREMIUM)); }
+function canContractStationModule(facId, modId){
+  const def=facilityById(facId), fs=facilityState(facId), md=stationModuleDef(modId);
+  if(!def||!fs||!md) return {ok:false, why:'—'};
+  if(md.reqResearch && !state.research[md.reqResearch]) return {ok:false, why:'Needs '+((RESEARCH.find(r=>r.id===md.reqResearch)||{}).name||md.reqResearch)};
+  if(facilityModuleList(fs).length>=facilityPortCap(fs) && modId!=='node_hub') return {ok:false, why:'All ports occupied — dock a Node for growth room'};
+  const cost=contractedModuleCost(def, fs, md);
+  if(state.money<cost) return {ok:false, why:'Needs '+fM(cost)};
+  return {ok:true, cost};
+}
+function contractStationModule(facId, modId){
+  const chk=canContractStationModule(facId, modId); if(!chk.ok) return;
+  const md=stationModuleDef(modId);
+  state.money-=chk.cost;
+  advance(md.buildMo||4); if(state.over){ render(); return; }
+  dockModuleNow(facId, modId, `${fM(chk.cost)} contracted delivery, ${md.buildMo} mo`);
+  render();
+}
+// Structural-only check for "fly it yourself" — no money changes hands until the delivery actually
+// lands (finalizeLaunch), so this doesn't gate on current affordability the way the instant paths do.
+function canFlyModuleDelivery(facId, modId){
+  const def=facilityById(facId), fs=facilityState(facId), md=stationModuleDef(modId);
+  if(!def||!fs||!md) return {ok:false, why:'—'};
+  if(md.reqResearch && !state.research[md.reqResearch]) return {ok:false, why:'Needs '+((RESEARCH.find(r=>r.id===md.reqResearch)||{}).name||md.reqResearch)};
+  if(facilityModuleList(fs).length>=facilityPortCap(fs) && modId!=='node_hub') return {ok:false, why:'All ports occupied — dock a Node for growth room'};
+  return {ok:true, cost:stationModuleCost(def, fs, md)};
+}
+function pendingModuleDelivery(facId, modId){
+  return (state.contractOffers||[]).find(o=>o.deliverModule && o.deliverModule.facId===facId && o.deliverModule.modId===modId);
+}
+// Generates a real, flyable delivery mission (reuses the E1.3 procedural-contract machinery: proc:true,
+// lives in state.contractOffers, resolved via missionById/finalizeLaunch's m.proc consumption) and takes
+// the player straight to the bench with it active. Re-selecting an already-pending delivery (rather than
+// creating a duplicate) if they navigate away and click again.
+function flyModuleDelivery(facId, modId){
+  const existing=pendingModuleDelivery(facId, modId);
+  if(existing){ selectMission(existing.id); return; }
+  const chk=canFlyModuleDelivery(facId, modId); if(!chk.ok) return;
+  const def=facilityById(facId), md=stationModuleDef(modId);
+  state.mdSeq=(state.mdSeq||0)+1;
+  const id='md_'+state.mdSeq;
+  const offer={ id, proc:true, deliverModule:{facId, modId}, moduleCost:chk.cost,
+    name:`Deliver ${md.name} — ${def.name}`, reqDv:9400, payload:md.stats.mass, crew:0, days:0,
+    payout:0, rep:0, minRep:0,
+    blurb:`A real delivery flight: loft the ${md.name.toLowerCase()} (${md.stats.mass.toFixed(1)} t) to ${def.name} and dock it on arrival. Pays only the module's base cost (${fM(chk.cost)}) on success — no contracted-delivery premium, but you're footing the launch.` };
+  (state.contractOffers=state.contractOffers||[]).push(offer);
+  selectMission(id);
 }
 
 function facilityProduction(def, fs){
@@ -4215,6 +4281,10 @@ function finalizeLaunch(ctx, ops){
       if(ambCeleb && !pendingCelebration) pendingCelebration=ambCeleb;
     }
     if(m.proc) state.contractOffers=(state.contractOffers||[]).filter(o=>o.id!==m.id); // E1.3: one-shot — consumed on success, not reflown
+    if(m.deliverModule){ // #73 Slice 1: a "fly it yourself" module delivery docks on successful arrival
+      state.money-=m.moduleCost;
+      dockModuleNow(m.deliverModule.facId, m.deliverModule.modId, `${fM(m.moduleCost)}, flown`);
+    }
     autoAdvanceMission();
   }else if(outcome.kind==='partial'){
     // reached space but off-target — salvage some value, but the objective is not complete

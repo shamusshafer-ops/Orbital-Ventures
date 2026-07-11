@@ -3430,6 +3430,7 @@ function contractOfferReferenced(id){
 }
 function tickContractOffers(){
   state.contractOffers=(state.contractOffers||[]).filter(o=>{
+    if(o.deliverModule) return true; // #73 Slice 1: a module delivery is a player-committed infra project, not a rotating commercial contract — never expires on its own, only consumed by finalizeLaunch
     if(absMonth()<=o.expiresAbs || contractOfferReferenced(o.id)) return true; // still open, or committed to (build queue/hangar/selected) — don't yank it out from under a build
     log('note',`${o.name}: contract window closed — the client went elsewhere.`);
     return false;
@@ -3664,17 +3665,82 @@ function canAddStationModule(facId, modId){
   if(state.money<cost) return {ok:false, why:'Needs '+fM(cost)};
   return {ok:true, cost};
 }
+// Docks a module onto a built facility RIGHT NOW — shared by the instant "dock"/"contract" purchases
+// and by a successful "fly it yourself" delivery mission (#73 Slice 1, finalizeLaunch). Caller has
+// already charged (or, for a flown delivery, is about to charge) money; this only handles the
+// module-list/supply/logging side, so the three callers can't drift out of sync with each other.
+function dockModuleNow(facId, modId, note){
+  const def=facilityById(facId), fs=facilityState(facId), md=stationModuleDef(modId);
+  facilityModuleList(fs).push(modId); fs.modules=fs.moduleList.length;
+  fs.supply=FAC_SUPPLY_MONTHS; fs.starvedMonths=0; // fresh provisions ride along with any delivery
+  const pw=facilityPower(fs);
+  log('ok',`${def.name}: ${md.name} docked${note?` (${note})`:''}. ${fs.moduleList.length} modules · power ${pw.net>=0?'+':''}${pw.net} kW.`);
+  if(pw.net<0) log('note',`${def.name} is power-starved — production is running at 60%. Dock a Solar Power Truss.`);
+}
 function addStationModule(facId, modId){
   const chk=canAddStationModule(facId, modId); if(!chk.ok) return;
-  const def=facilityById(facId), fs=facilityState(facId), md=stationModuleDef(modId);
+  const md=stationModuleDef(modId);
   state.money-=chk.cost;
   advance(md.buildMo||4); if(state.over){ render(); return; }
-  facilityModuleList(fs).push(modId); fs.modules=fs.moduleList.length;
-  fs.supply=FAC_SUPPLY_MONTHS; fs.starvedMonths=0; // the assembly flight ships fresh provisions
-  const pw=facilityPower(fs);
-  log('ok',`${def.name}: ${md.name} docked (${fM(chk.cost)}, ${md.buildMo} mo). ${fs.moduleList.length} modules · power ${pw.net>=0?'+':''}${pw.net} kW.`);
-  if(pw.net<0) log('note',`${def.name} is power-starved — production is running at 60%. Dock a Solar Power Truss.`);
+  dockModuleNow(facId, modId, `${fM(chk.cost)}, ${md.buildMo} mo`);
   render();
+}
+
+/* ---------- #73 Slice 1 (2026-07-11): module delivery is a real launch, player's choice ----------
+   Docking the FIRST module of a given type on a LEO facility is now a genuine "launch modules, dock"
+   choice: fly it yourself (design/launch a real delivery mission — base module cost, no premium, but
+   you pay for the vehicle+launch) or contract it (pay a premium, instant, no flight — the old
+   one-click behavior). Repeats of an already-proven type on that facility skip this fork entirely and
+   keep using addStationModule() unchanged, above — see stationModuleCard()'s `first` gate. Moon/Mars
+   facilities are out of scope for this slice (Slice 2). */
+const MODULE_CONTRACT_PREMIUM=0.35; // pay 35% over base to skip a real delivery flight
+function contractedModuleCost(def, fs, md){ return round2(stationModuleCost(def, fs, md)*(1+MODULE_CONTRACT_PREMIUM)); }
+function canContractStationModule(facId, modId){
+  const def=facilityById(facId), fs=facilityState(facId), md=stationModuleDef(modId);
+  if(!def||!fs||!md) return {ok:false, why:'—'};
+  if(md.reqResearch && !state.research[md.reqResearch]) return {ok:false, why:'Needs '+((RESEARCH.find(r=>r.id===md.reqResearch)||{}).name||md.reqResearch)};
+  if(facilityModuleList(fs).length>=facilityPortCap(fs) && modId!=='node_hub') return {ok:false, why:'All ports occupied — dock a Node for growth room'};
+  const cost=contractedModuleCost(def, fs, md);
+  if(state.money<cost) return {ok:false, why:'Needs '+fM(cost)};
+  return {ok:true, cost};
+}
+function contractStationModule(facId, modId){
+  const chk=canContractStationModule(facId, modId); if(!chk.ok) return;
+  const md=stationModuleDef(modId);
+  state.money-=chk.cost;
+  advance(md.buildMo||4); if(state.over){ render(); return; }
+  dockModuleNow(facId, modId, `${fM(chk.cost)} contracted delivery, ${md.buildMo} mo`);
+  render();
+}
+// Structural-only check for "fly it yourself" — no money changes hands until the delivery actually
+// lands (finalizeLaunch), so this doesn't gate on current affordability the way the instant paths do.
+function canFlyModuleDelivery(facId, modId){
+  const def=facilityById(facId), fs=facilityState(facId), md=stationModuleDef(modId);
+  if(!def||!fs||!md) return {ok:false, why:'—'};
+  if(md.reqResearch && !state.research[md.reqResearch]) return {ok:false, why:'Needs '+((RESEARCH.find(r=>r.id===md.reqResearch)||{}).name||md.reqResearch)};
+  if(facilityModuleList(fs).length>=facilityPortCap(fs) && modId!=='node_hub') return {ok:false, why:'All ports occupied — dock a Node for growth room'};
+  return {ok:true, cost:stationModuleCost(def, fs, md)};
+}
+function pendingModuleDelivery(facId, modId){
+  return (state.contractOffers||[]).find(o=>o.deliverModule && o.deliverModule.facId===facId && o.deliverModule.modId===modId);
+}
+// Generates a real, flyable delivery mission (reuses the E1.3 procedural-contract machinery: proc:true,
+// lives in state.contractOffers, resolved via missionById/finalizeLaunch's m.proc consumption) and takes
+// the player straight to the bench with it active. Re-selecting an already-pending delivery (rather than
+// creating a duplicate) if they navigate away and click again.
+function flyModuleDelivery(facId, modId){
+  const existing=pendingModuleDelivery(facId, modId);
+  if(existing){ selectMission(existing.id); return; }
+  const chk=canFlyModuleDelivery(facId, modId); if(!chk.ok) return;
+  const def=facilityById(facId), md=stationModuleDef(modId);
+  state.mdSeq=(state.mdSeq||0)+1;
+  const id='md_'+state.mdSeq;
+  const offer={ id, proc:true, deliverModule:{facId, modId}, moduleCost:chk.cost,
+    name:`Deliver ${md.name} — ${def.name}`, reqDv:9400, payload:md.stats.mass, crew:0, days:0,
+    payout:0, rep:0, minRep:0,
+    blurb:`A real delivery flight: loft the ${md.name.toLowerCase()} (${md.stats.mass.toFixed(1)} t) to ${def.name} and dock it on arrival. Pays only the module's base cost (${fM(chk.cost)}) on success — no contracted-delivery premium, but you're footing the launch.` };
+  (state.contractOffers=state.contractOffers||[]).push(offer);
+  selectMission(id);
 }
 
 function facilityProduction(def, fs){
@@ -6587,6 +6653,10 @@ function finalizeLaunch(ctx, ops){
       if(ambCeleb && !pendingCelebration) pendingCelebration=ambCeleb;
     }
     if(m.proc) state.contractOffers=(state.contractOffers||[]).filter(o=>o.id!==m.id); // E1.3: one-shot — consumed on success, not reflown
+    if(m.deliverModule){ // #73 Slice 1: a "fly it yourself" module delivery docks on successful arrival
+      state.money-=m.moduleCost;
+      dockModuleNow(m.deliverModule.facId, m.deliverModule.modId, `${fM(m.moduleCost)}, flown`);
+    }
     autoAdvanceMission();
   }else if(outcome.kind==='partial'){
     // reached space but off-target — salvage some value, but the objective is not complete
@@ -7579,7 +7649,15 @@ function hideModal(){activeModal=null;_prodModalOpen=false;$('modal').classList.
 
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=49; // v49: E1.1 slice A — reactive rival race. state.poachHeat (months remaining in a post-fatal-loss window; set by triggerHearing's siblings in finalizeLaunch's two crewed-loss branches and by the hearing's "blame" choice, decremented monthly by tickPoachHeat(), multiplies checkPoaching's roll ×POACH_HEAT_MULT while >0). Per-offer state.contractOffers[].rivalBid ({rivalId,snatchAbs} or absent) set by tickRivalSnatch() when a surging rival bids on an uncommitted procedural offer — forward-compatible by construction (an existing offer object just gains an optional key; old offers read as unbid, exactly the lazy-default convention every other proc-offer field already uses). No persisted state for the budget-hearing decision itself (_pendingHearing is transient, like _pendingInquiry/_pendingSetback). No explicit migrate function needed: poachHeat reads through `||0` everywhere, rivalBid reads through truthy checks — pre-v49 saves just start cold on both. Purely additive, no balance impact. v48: E1.3 — procedural filler contracts. state.contractOffers ([{id:'pc_N',proc:true,name,reqDv,payload,crew,days,payout,rep,minRep,reqResearch?,blurb,expiresAbs}]) + state.procSeq, generated monthly by tickContractOffers() (era + capability-gated via CONTRACT_ARCHETYPES, data.js) up to CONTRACT_OFFER_CAP concurrent, expiring after CONTRACT_OFFER_LEAD months unless referenced by activeMission/buildQueue/hangar. Resolved via the new missionById(id) (checks MISSIONS then contractOffers) at the handful of call sites that resolve state.activeMission by id; deferred-flight/history/program lookups stay MISSIONS-only by design (procedural archetypes are immediate, non-deferred, and deliberately never write state.completed/firstDates/history — finalizeLaunch's success branch gates the whole firsts/milestone block on `!m.proc`, and sciGain uses the routine-tier rate for proc flights too, so a contract offer pays full money once at a discounted rate and is removed on success — never a repeatable science/firsts farm). No explicit migrate function needed: both fields read only through missionById/tickContractOffers, which fall back to []/0 — pre-v48 saves just start with an empty board. Purely additive, no balance impact on existing saves. v47: E1.4 — memorial wall. state.memorial ([{id,name,when,mission,story}]), appended in loseAssignedCrew at the moment a crewed flight kills its astronaut (name snapshotted, so it survives the id leaving state.staff and any future pool edits), rendered in the Personnel tab when non-empty. Read only through memorialRoll(), which falls back to [] — pre-v47 saves just start with an empty wall. Purely additive, no balance impact. v46: E1.4 — per-astronaut flight log. state.astronautLog ({astronautId:[{when,mission,outcome}]}), appended once per crewed flight resolution in finalizeLaunch, keyed by id so it survives the astronaut leaving state.staff (death/fire/quit). No explicit migrate function needed: read only through astronautFlights(id), which falls back to [] when the field or the id's entry is missing — pre-v46 saves just start every astronaut with an empty log. Purely additive, no balance impact. v45: P11 — one late-game crisis (Kessler debris cascade). state.crisis ({phase,startAbs,severity,peakSeverity,fundedUntilAbs} or null), state.crisisDone ({outcome:'mitigated'|'endured',peakSeverity,months} or null once resolved — a ONE-TIME arc, not recurring), state.leoFlights (cumulative successful LEO-class flights, the trigger's own counter). Eligible from Commercial era (index 4) + leoFlights≥40; a small monthly chance then starts it. Active: LEO-class missions (isLeoClassMission — no profile, reqDv≥9000) fly at up to −12% reliability, scaling with severity; funding a Debris Remediation Program (cost scales with eraStakesFrac(), like the bailout mechanic) brings severity down, letting it go unfunded lets it rise. Resolves 'mitigated' (severity hits 0, bigger legacyScore bonus) or 'endured' (36 months elapse regardless, smaller bonus) — never a hard lockout, just a rising tax. No explicit migrate function needed: all three fields are read through `||`/falsy guards everywhere (state.crisis falsy on a legacy load = inactive; leoFlights||0 = 0), so behavior is unchanged until a save's own play crosses the era+flight-count threshold. v44: P6 6.1 era-transition interstitial — state.eraSeen (index of the last era acknowledged via the full-screen card) + state.eraStartSnapshot ({flights,playerFirsts,rivalFirsts,money,rep} baseline captured when that era began, diffed for the retrospective). Both persisted. Trigger is DERIVED (eraIndex(currentEra())>state.eraSeen), gated behind the setback>mishap>inquiry>rival-disaster _pending chain (era is lowest priority; deferred to a later settle-point if any decision is pending, never lost since the condition is stateful). eraSeen advances only on Continue; balance-neutral (pure notification). Lazy migration: pre-v44 saves lack both — migrateEraSeen() backfills eraSeen to the save's CURRENT era index (from its own year, NOT 0, so a late-game load fires ZERO stale interstitials) and seeds eraStartSnapshot from current metrics; newGame seeds eraSeen:0 + a Pioneer baseline. v43: P3 failure investigation loop — state.inquiryCredit ({subsystem,rel,flights} or null): a funded uncrewed-loss inquiry into an ascent/staging subsystem grants a +2% additive-R credit (like familyRelBonus) gated to that subsystem, consumed over 3 flights at launch; a deep-phase failure grants a flat +10⚛ science instead (no persisted credit). Transient _pendingInquiry (fund/decline modal, precedence setback>mishap>inquiry) is NOT persisted. Lazy migration: pre-v43 saves lack inquiryCredit — loadDefaults() seeds it null on both load paths (undefined is already falsy, so behavior is unchanged either way). v42: P2 slice 2.4 — per-facility auto-resupply toggle (fs.autoResupply boolean; opt-in per facility). On the monthly tick a facility with the toggle ON auto-fires resupplyFacility() once supply falls to/below AUTO_RESUPPLY_THRESHOLD(6) and canResupply().ok — same cost/gate/lifecycle as a manual order (the resupplyInTransit + money gates prevent double-ordering and unaffordable fires). Pure automation, balance-neutral otherwise; each auto-order logs a 'note' line. Lazy migration: pre-v42 facilities carry no autoResupply — migrateFacilityAutoResupply() defaults it false on load (undefined is already falsy, so behavior is unchanged either way); foundFacility seeds autoResupply:false on fresh bases. v41: P1 persistent in-flight missions — state.activeFlights[] (deferred interplanetary flights carry a resolved-at-launch ctx applied on arrival; ctx stores famId + crewId, not object refs, so a mid-cruise save round-trips; legacy saves default [] via loadDefaults; rehydrateFlights() re-links ctx.m + restores _flightSeq on load). v40: #19 slice B — career progression (staff.xp accrues monthly ×morale ×dept-training, raising effSkill above hire-day base up to +0.15; dept.training level bought with capital; legacy staff default xp 0 via staffXp guard, effSkill==base at xp 0 so no balance migration). #19 slice C (succession + workforce planning) adds no persisted state — reconcileDeptLeads mutates existing dept.lead, gaps + the era-scaled unstaffed-department reliability penalty (0 in Pioneer) are derived — so it needs no bump. v39: #19 slice A — organizational departments (state.departments {deptId:{lead,training}}; legacy saves default via loadDefaults/defaultDepartments; membership is derived from hired staff, leads are balance-neutral when unset); v38: #6 research partnerships — bench-tested / flight-proven components (state.engineStockTested + state.partStockTested, the bench-tested subset of each yard; legacy saves default {}); a fitted bench-tested component adds +1.5% reliability (cap +6%, benchRelBonus), built at +60% cost / +50% time; v36: #7 sub-assemblies slice 2 — structures & habitats yard (state.partStock {"kind:sub":count}, e.g. "tank:steel"/"hab:closed"; legacy saves default {}); same cost-neutral cadence pattern as the Engine Yard; v35: #7 sub-assemblies — Engine Yard (state.engineStock {engId:count}; legacy saves default {}); v34: Time Granularity slice 4b — launch windows day-scheduled (window/committedWindow .abs moved from absMonth to absDay; migrateWindowsToDays ×30 on pre-v34 load + clears the regenerable windows cache); v33: Time Granularity slice 1 — day-iterating advance() funnel (state.day 0..29 + absDay(); legacy saves default day:0 via load defaults; whole-month advances stay bit-identical so no balance migration needed); v32: CE4(c) era-scaled failure stakes + bailout retune (state.loanInterest — permanent bridge-loan debt service; legacy saves default to 0 via load defaults + loanInterest() guard); v31: CE4(b) standing resupply obligations (per-facility supply/starvedMonths; legacy facilities default to fully provisioned via facilitySupply()); v30: CE3(c) lunar architecture fork (state.lunarArch, null=uncommitted; luna_landing reqResearch moved to per-arch gates); v29: CE3(a) company doctrine (state.doctrine, null=undeclared/neutral); v28: CE2(c) juggernaut capstone (state.standingProd/juggernautReached); v27: CE2(b) launch cadence (state.padMonthAbs/padMonthUsed) — load defaults seed all of these; v26: CE1 rival agents (state.rivalState), seedRivalState migrates old rivalFired
+const SAVE_VERSION=50; // v50: #73 Slice 1 — module delivery is a real launch (LEO only). state.mdSeq
+// (module-delivery id counter, lazily defaulted via `(state.mdSeq||0)+1`, mirrors state.procSeq's
+// pattern) + two new optional fields on state.contractOffers[] items: deliverModule ({facId,modId})
+// and moduleCost (the base price, locked in at generation so a later balance change can't retroactively
+// over/undercharge an in-flight delivery). Both fields are read only through m.deliverModule truthy
+// checks in finalizeLaunch's success branch and pendingModuleDelivery()'s .find() — old offers (which
+// never have deliverModule) just read as "not a module delivery," exactly the lazy-default convention
+// every other proc-offer field already uses. No explicit migrate function needed. Purely additive, no
+// balance impact on existing saves or existing (repeat-of-type) module purchases. v49: E1.1 slice A — reactive rival race. state.poachHeat (months remaining in a post-fatal-loss window; set by triggerHearing's siblings in finalizeLaunch's two crewed-loss branches and by the hearing's "blame" choice, decremented monthly by tickPoachHeat(), multiplies checkPoaching's roll ×POACH_HEAT_MULT while >0). Per-offer state.contractOffers[].rivalBid ({rivalId,snatchAbs} or absent) set by tickRivalSnatch() when a surging rival bids on an uncommitted procedural offer — forward-compatible by construction (an existing offer object just gains an optional key; old offers read as unbid, exactly the lazy-default convention every other proc-offer field already uses). No persisted state for the budget-hearing decision itself (_pendingHearing is transient, like _pendingInquiry/_pendingSetback). No explicit migrate function needed: poachHeat reads through `||0` everywhere, rivalBid reads through truthy checks — pre-v49 saves just start cold on both. Purely additive, no balance impact. v48: E1.3 — procedural filler contracts. state.contractOffers ([{id:'pc_N',proc:true,name,reqDv,payload,crew,days,payout,rep,minRep,reqResearch?,blurb,expiresAbs}]) + state.procSeq, generated monthly by tickContractOffers() (era + capability-gated via CONTRACT_ARCHETYPES, data.js) up to CONTRACT_OFFER_CAP concurrent, expiring after CONTRACT_OFFER_LEAD months unless referenced by activeMission/buildQueue/hangar. Resolved via the new missionById(id) (checks MISSIONS then contractOffers) at the handful of call sites that resolve state.activeMission by id; deferred-flight/history/program lookups stay MISSIONS-only by design (procedural archetypes are immediate, non-deferred, and deliberately never write state.completed/firstDates/history — finalizeLaunch's success branch gates the whole firsts/milestone block on `!m.proc`, and sciGain uses the routine-tier rate for proc flights too, so a contract offer pays full money once at a discounted rate and is removed on success — never a repeatable science/firsts farm). No explicit migrate function needed: both fields read only through missionById/tickContractOffers, which fall back to []/0 — pre-v48 saves just start with an empty board. Purely additive, no balance impact on existing saves. v47: E1.4 — memorial wall. state.memorial ([{id,name,when,mission,story}]), appended in loseAssignedCrew at the moment a crewed flight kills its astronaut (name snapshotted, so it survives the id leaving state.staff and any future pool edits), rendered in the Personnel tab when non-empty. Read only through memorialRoll(), which falls back to [] — pre-v47 saves just start with an empty wall. Purely additive, no balance impact. v46: E1.4 — per-astronaut flight log. state.astronautLog ({astronautId:[{when,mission,outcome}]}), appended once per crewed flight resolution in finalizeLaunch, keyed by id so it survives the astronaut leaving state.staff (death/fire/quit). No explicit migrate function needed: read only through astronautFlights(id), which falls back to [] when the field or the id's entry is missing — pre-v46 saves just start every astronaut with an empty log. Purely additive, no balance impact. v45: P11 — one late-game crisis (Kessler debris cascade). state.crisis ({phase,startAbs,severity,peakSeverity,fundedUntilAbs} or null), state.crisisDone ({outcome:'mitigated'|'endured',peakSeverity,months} or null once resolved — a ONE-TIME arc, not recurring), state.leoFlights (cumulative successful LEO-class flights, the trigger's own counter). Eligible from Commercial era (index 4) + leoFlights≥40; a small monthly chance then starts it. Active: LEO-class missions (isLeoClassMission — no profile, reqDv≥9000) fly at up to −12% reliability, scaling with severity; funding a Debris Remediation Program (cost scales with eraStakesFrac(), like the bailout mechanic) brings severity down, letting it go unfunded lets it rise. Resolves 'mitigated' (severity hits 0, bigger legacyScore bonus) or 'endured' (36 months elapse regardless, smaller bonus) — never a hard lockout, just a rising tax. No explicit migrate function needed: all three fields are read through `||`/falsy guards everywhere (state.crisis falsy on a legacy load = inactive; leoFlights||0 = 0), so behavior is unchanged until a save's own play crosses the era+flight-count threshold. v44: P6 6.1 era-transition interstitial — state.eraSeen (index of the last era acknowledged via the full-screen card) + state.eraStartSnapshot ({flights,playerFirsts,rivalFirsts,money,rep} baseline captured when that era began, diffed for the retrospective). Both persisted. Trigger is DERIVED (eraIndex(currentEra())>state.eraSeen), gated behind the setback>mishap>inquiry>rival-disaster _pending chain (era is lowest priority; deferred to a later settle-point if any decision is pending, never lost since the condition is stateful). eraSeen advances only on Continue; balance-neutral (pure notification). Lazy migration: pre-v44 saves lack both — migrateEraSeen() backfills eraSeen to the save's CURRENT era index (from its own year, NOT 0, so a late-game load fires ZERO stale interstitials) and seeds eraStartSnapshot from current metrics; newGame seeds eraSeen:0 + a Pioneer baseline. v43: P3 failure investigation loop — state.inquiryCredit ({subsystem,rel,flights} or null): a funded uncrewed-loss inquiry into an ascent/staging subsystem grants a +2% additive-R credit (like familyRelBonus) gated to that subsystem, consumed over 3 flights at launch; a deep-phase failure grants a flat +10⚛ science instead (no persisted credit). Transient _pendingInquiry (fund/decline modal, precedence setback>mishap>inquiry) is NOT persisted. Lazy migration: pre-v43 saves lack inquiryCredit — loadDefaults() seeds it null on both load paths (undefined is already falsy, so behavior is unchanged either way). v42: P2 slice 2.4 — per-facility auto-resupply toggle (fs.autoResupply boolean; opt-in per facility). On the monthly tick a facility with the toggle ON auto-fires resupplyFacility() once supply falls to/below AUTO_RESUPPLY_THRESHOLD(6) and canResupply().ok — same cost/gate/lifecycle as a manual order (the resupplyInTransit + money gates prevent double-ordering and unaffordable fires). Pure automation, balance-neutral otherwise; each auto-order logs a 'note' line. Lazy migration: pre-v42 facilities carry no autoResupply — migrateFacilityAutoResupply() defaults it false on load (undefined is already falsy, so behavior is unchanged either way); foundFacility seeds autoResupply:false on fresh bases. v41: P1 persistent in-flight missions — state.activeFlights[] (deferred interplanetary flights carry a resolved-at-launch ctx applied on arrival; ctx stores famId + crewId, not object refs, so a mid-cruise save round-trips; legacy saves default [] via loadDefaults; rehydrateFlights() re-links ctx.m + restores _flightSeq on load). v40: #19 slice B — career progression (staff.xp accrues monthly ×morale ×dept-training, raising effSkill above hire-day base up to +0.15; dept.training level bought with capital; legacy staff default xp 0 via staffXp guard, effSkill==base at xp 0 so no balance migration). #19 slice C (succession + workforce planning) adds no persisted state — reconcileDeptLeads mutates existing dept.lead, gaps + the era-scaled unstaffed-department reliability penalty (0 in Pioneer) are derived — so it needs no bump. v39: #19 slice A — organizational departments (state.departments {deptId:{lead,training}}; legacy saves default via loadDefaults/defaultDepartments; membership is derived from hired staff, leads are balance-neutral when unset); v38: #6 research partnerships — bench-tested / flight-proven components (state.engineStockTested + state.partStockTested, the bench-tested subset of each yard; legacy saves default {}); a fitted bench-tested component adds +1.5% reliability (cap +6%, benchRelBonus), built at +60% cost / +50% time; v36: #7 sub-assemblies slice 2 — structures & habitats yard (state.partStock {"kind:sub":count}, e.g. "tank:steel"/"hab:closed"; legacy saves default {}); same cost-neutral cadence pattern as the Engine Yard; v35: #7 sub-assemblies — Engine Yard (state.engineStock {engId:count}; legacy saves default {}); v34: Time Granularity slice 4b — launch windows day-scheduled (window/committedWindow .abs moved from absMonth to absDay; migrateWindowsToDays ×30 on pre-v34 load + clears the regenerable windows cache); v33: Time Granularity slice 1 — day-iterating advance() funnel (state.day 0..29 + absDay(); legacy saves default day:0 via load defaults; whole-month advances stay bit-identical so no balance migration needed); v32: CE4(c) era-scaled failure stakes + bailout retune (state.loanInterest — permanent bridge-loan debt service; legacy saves default to 0 via load defaults + loanInterest() guard); v31: CE4(b) standing resupply obligations (per-facility supply/starvedMonths; legacy facilities default to fully provisioned via facilitySupply()); v30: CE3(c) lunar architecture fork (state.lunarArch, null=uncommitted; luna_landing reqResearch moved to per-arch gates); v29: CE3(a) company doctrine (state.doctrine, null=undeclared/neutral); v28: CE2(c) juggernaut capstone (state.standingProd/juggernautReached); v27: CE2(b) launch cadence (state.padMonthAbs/padMonthUsed) — load defaults seed all of these; v26: CE1 rival agents (state.rivalState), seedRivalState migrates old rivalFired
 function writeSave(){ localStorage.setItem(SAVE_KEY, JSON.stringify({v:SAVE_VERSION, ts:Date.now(), state})); } // state is JSON-safe by design (stores ids, not object refs); the outer stringify snapshots the whole graph, so no inner clone is needed
 // S1: silent throttled autosave so "Continue last game" always resumes the most recent session.
 // Skips a transient mid-flight-resolution snapshot; forced on page close.
@@ -15968,6 +16046,13 @@ function stationModuleCard(md, cur, addable){
   const chk = addable && cur ? canAddStationModule(cur.def.id, md.id) : {ok:false};
   const gated = md.reqResearch && !state.research[md.reqResearch];
   const gateName = gated ? ((RESEARCH.find(r=>r.id===md.reqResearch)||{}).name||md.reqResearch) : '';
+  // #73 Slice 1 (2026-07-11): LEO-only for now (Slice 2 extends this to Moon/Mars). The first module
+  // of a given type on a facility is a real "launch modules, dock" choice — fly it yourself (real
+  // vehicle/launch, base cost, no premium) or pay a contracted-delivery premium for the instant dock
+  // this whole card offered before. Repeats of an already-proven type stay exactly as before: one
+  // click, instant, base cost — see stationCurrentView()/#73 scoping notes for why (pacing).
+  const first = addable && cur && cur.fs && cur.def.body==='earth' && !facilityModuleList(cur.fs).includes(md.id);
+  const pending = first && cur ? pendingModuleDelivery(cur.def.id, md.id) : null;
   return `<div class="card" style="flex:1;min-width:230px;max-width:320px;display:flex;flex-direction:column;gap:2px">
     <div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px">
       <div><b style="color:${md.color};font-size:14px">${md.name}</b> <span class="dim" style="font-size:11px;font-family:var(--mono)">${md.short}</span></div>
@@ -15988,9 +16073,17 @@ function stationModuleCard(md, cur, addable){
     ${context}
     ${md.hist?`<div class="dim" style="font-size:10.5px;font-style:italic;line-height:1.4;margin-bottom:7px;opacity:.8">${md.hist}</div>`:''}
     <div style="margin-top:auto">
-    ${addable
-      ? `<button class="btn ${chk.ok?'launch':''}" style="width:100%;font-size:12px" onclick="addStationModule('${cur.def.id}','${md.id}')" ${chk.ok?'':'disabled'}>${chk.ok?'Dock module ▸':chk.why}</button>`
-      : `<button class="btn" style="width:100%;font-size:12px" onclick="draftAdd('${md.id}')"${gated?` title="Buildable now as a blueprint; needs ${gateName} to actually construct"`:''}>Add to blueprint ▸${gated?' 🔒':''}</button>`}
+    ${!addable
+      ? `<button class="btn" style="width:100%;font-size:12px" onclick="draftAdd('${md.id}')"${gated?` title="Buildable now as a blueprint; needs ${gateName} to actually construct"`:''}>Add to blueprint ▸${gated?' 🔒':''}</button>`
+      : pending
+        ? `<div class="dim" style="font-size:12px;text-align:center;padding:6px 0">🚀 Delivery flight committed — build &amp; launch it from the bench.</div>`
+        : first
+          ? (()=>{ const flyChk=canFlyModuleDelivery(cur.def.id, md.id), conChk=canContractStationModule(cur.def.id, md.id);
+              return `<div style="display:flex;gap:6px">
+                <button class="btn ${flyChk.ok?'launch':''}" style="flex:1;font-size:11px" onclick="flyModuleDelivery('${cur.def.id}','${md.id}')" ${flyChk.ok?'':'disabled'} title="Design and launch a real delivery flight — pays only the base module cost on success, no premium">🚀 Fly it · ${fM(cost)}${flyChk.ok?'':' — '+flyChk.why}</button>
+                <button class="btn ${conChk.ok?'':'ghost'}" style="flex:1;font-size:11px" onclick="contractStationModule('${cur.def.id}','${md.id}')" ${conChk.ok?'':'disabled'} title="Instant delivery, no flight — costs a premium over flying it yourself">📦 Contract · ${fM(conChk.cost||contractedModuleCost(cur.def,cur.fs,md))}</button>
+              </div>`; })()
+          : `<button class="btn ${chk.ok?'launch':''}" style="width:100%;font-size:12px" onclick="addStationModule('${cur.def.id}','${md.id}')" ${chk.ok?'':'disabled'}>${chk.ok?'Dock module ▸':chk.why}</button>`}
     </div>
   </div>`;
 }

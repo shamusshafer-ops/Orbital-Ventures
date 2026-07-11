@@ -3025,6 +3025,53 @@ state). **Needs a real-browser check**: the pop-out's stack SVG/stats render cor
 existing station and the pre-facility blueprint, and that switching facility tabs while popped out keeps
 the pop-out in sync.
 
+**Slice 1 (LEO delivery-as-launch) DONE 2026-07-11, tests passing, not yet committed/pushed. SAVE_VERSION
+50.** The first module of a given type on a LEO facility is now a real choice, reusing E1.3's proc-
+mission machinery end to end (no new mission/flight pipeline needed):
+- **Fly it yourself** (`flyModuleDelivery`) generates a real mission (`proc:true, deliverModule:{facId,
+  modId}, reqDv:9400, payload:<real module mass>`), pushed into `state.contractOffers` and auto-selected
+  (`selectMission`) — takes the player straight to the bench with it active. Pays only the **base**
+  module cost (`stationModuleCost`, unchanged formula) on successful delivery — hooked into
+  `finalizeLaunch`'s existing success branch right next to the `m.proc` one-shot-consumption line. No
+  money changes hands at commit time (so `canFlyModuleDelivery` doesn't gate on current affordability,
+  only research/port-cap — the real cost check happens for real at generation, stored as `m.moduleCost`
+  so a later balance patch can't retroactively over/undercharge an in-flight delivery). A failed delivery
+  loses the module cost's worth of nothing extra — same as any other failed mission, no bespoke
+  destroyed/insured logic needed (this was one of the "open questions" from scoping; resolved by just
+  reusing the existing failure convention rather than inventing a new one).
+- **Contract delivery** (`contractStationModule`) is the old one-click instant-dock behavior, now priced
+  at a `MODULE_CONTRACT_PREMIUM` (35%) markup over base — the "pay to skip the flight" option.
+- **Repeats of an already-proven module type are completely untouched** — `addStationModule` (unchanged)
+  still fires on one click at the plain base price, no fork. The choice only ever appears for `first`
+  (facility body === earth, module type not yet in `fs.moduleList`) modules — verified LEO-only scope
+  with a test that a Moon/Mars-body facility's card still shows nothing but the single "Dock module"
+  button for every module, first-of-type or not.
+- Double-clicking "Fly it yourself" while a delivery is already pending re-selects the existing offer
+  (`pendingModuleDelivery`) instead of creating a duplicate. `tickContractOffers` now exempts
+  `deliverModule` offers from its normal expiry sweep entirely — a module delivery is the player's own
+  committed infrastructure project, not a rotating commercial contract that a client walks away from.
+- New shared `dockModuleNow(facId,modId,note)` (sim.js) — the module-list-push/supply-reset/log logic,
+  now used by all three docking paths (`addStationModule`, `contractStationModule`, and the
+  `finalizeLaunch` success hook) so they can't drift apart from each other.
+- Cost-double-counting risk flagged during scoping turned out to be a non-issue for LEO specifically:
+  `facilityBodyMult(leo_station)` is exactly 1 (no baked-in delivery premium at the cheapest body), so
+  there was nothing to avoid double-charging against — this risk is real for Slice 2 (Moon/Mars, where
+  the body multiplier IS an implicit delivery cost) and needs a real design decision there.
+- New `test-station-slice1.js` (29/29): pricing (contracted = base × 1.35, fly = base), research/port-cap
+  gates match on both paths, offer generation (proc:true, real payload mass, real reqDv, no up-front
+  charge, auto-select, no duplicate on re-click), `tickContractOffers` never expires a pending delivery
+  even decades past the normal window, a full successful-delivery flow via `finalizeLaunch` (module
+  docks, exact base cost charged, offer consumed, no double calendar delay), repeat-of-type dockings
+  fully unchanged, and a render smoke-check that the new palette branches (first-of-type choice,
+  pending-delivery state) don't throw. Suite 885/897 (same pre-existing unrelated
+  `test-progress-unify.js` failure). **Needs a real-browser check**: the two-button first-of-type
+  palette card, the pending-delivery message, and actually flying a delivery mission end to end
+  (select → design/build a capable vehicle → launch → module appears docked).
+
+**Slice 2 (Moon/Mars delivery) is next** — needs the cost-double-counting design decision above
+resolved first (rebalance body-multiplier-inclusive costs, or have "fly yourself" bypass the multiplier
+entirely, or accept the double-charge as the fiction that flying yourself to Mars is simply expensive).
+
 ### Workstream E2 — Medium (post-EA-gate)
 
 Station assembly + resupply loop (hangs on the existing STATION_MODULES seam — see #73 scoping above) · 3–4 more
