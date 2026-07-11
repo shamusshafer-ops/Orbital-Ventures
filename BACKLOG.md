@@ -70,7 +70,7 @@ Complexity: S = <1 day, M = 1–5 days, L = 1–3 weeks, XL = 1+ month. Impact: 
 |41| Debris/range-safety consequences on populated tracks | Site choice matters | M | ★ | 30 | L |Backlog|
 |42| Mission patches (procedural SVG) per flight | Attachment/collection | M | ★★ | — | M |Backlog|
 |43| Photo mode / GIF export of flights | Marketing engine | L | ★★ | — | M |Backlog|
-|44| Simultaneous missions in flight (overlapping ops) | Late-game ops density | L | ★★★ | Outliner | H |Backlog|
+|44| Simultaneous missions in flight (overlapping ops) | Late-game ops density | L | ★★★ | Outliner | H |Closed 2026-07-11 — already fully covered (engine+hangar+Outliner), see ROADMAP.md|
 |45| Ground track visualization on map | Sim texture | M | ★ | — | L |Backlog|
 
 ### Rivals, politics, world (46–60)
@@ -154,7 +154,7 @@ Complexity: S = <1 day, M = 1–5 days, L = 1–3 weeks, XL = 1+ month. Impact: 
 | E1.x | 20 | Folded into a named high-value item |
 | E2 | 10 | Folded into medium-priority grouped item |
 | Deferred | 12 | Named in ROADMAP.md's deferred list |
-| **Backlog** | **55** | Not yet on ROADMAP.md in any form |
+| **Backlog** | **54** | Not yet on ROADMAP.md in any form |
 
 Over half the list (55/105) hasn't been triaged onto ROADMAP.md yet — mostly small
 QoL items (#9, 11–17, 19–25), flight/ops texture (#31, 33–34, 37–45), rival/world

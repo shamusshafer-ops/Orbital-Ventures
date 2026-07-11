@@ -397,6 +397,7 @@ const RIVAL_POACH_MOM_BUMP=0.08; // a successful poach feeds the rival's momentu
 const RIVAL_COUNTERPOACH_COST=2.5; // $M to counter-poach a rival's engineers
 const RIVAL_COUNTERPOACH_MOM=0.25; // momentum knocked off the rival you counter-poach
 const RIVAL_COUNTERPOACH_MORALE=4; // morale lift to your staff when you win a talent fight
+const RIVAL_INTEL_COST=1.5; // $M, one-time per rival, unlocks the full remaining-firsts projected timeline (cheaper than the momentum-affecting counter-poach — pure information)
 // Ambient economy events — fire on the monthly tick (rate-limited), adjust capital
 // or apply a temporary market modifier. Gated by year/rep/flights so the early game
 // stays quiet. money/dur are [min,max] ranges rolled at fire time.

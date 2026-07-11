@@ -1,6 +1,6 @@
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=51; // v51: #73 Slice 2 — Moon/Mars module delivery is a real profile-based cargo
+const SAVE_VERSION=52; // v52: E1.1 slice B — rival intel dossier (state.rivalIntel, lazy-defaulted, no migrate needed)
 // cruise. New optional `cargo` field on any mission/contractOffer object (uncrewed payload mass carried
 // through every leg of a `.profile` mission — read only by lvPayload()'s profile branch and
 // simulateMission()'s stackMass(), both via `m.cargo||0`; a mission with no cargo field behaves exactly

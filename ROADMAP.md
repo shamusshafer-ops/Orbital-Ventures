@@ -2632,6 +2632,56 @@ overrides the era palette in every era, not just Apollo.
 Rest of the emoji inventory (if wanted) and sound not started. Treat this ROADMAP entry + the memory
 note as the record if the session ends before those land.
 
+## Session — E1.1: reactive rival race, slice B — rival intel dossier (2026-07-11)
+
+**Implemented, tests passing, not yet committed/pushed — needs a real-browser check.** Slice B was
+originally scoped as "intel purchases — pay to see rival progress", but reading the code showed the
+*free* Standings panel already surfaces momentum, threat, price-war status, and a live momentum-projected
+ETA — for the rival's NEXT goal only. The real gap: `rivalProjectedYear(r)` projects one pending goal;
+the per-goal firsts list below it shows every *other* remaining goal at its flat static `f.year`, not
+momentum-adjusted. So a naive "pay to see the same thing" would be pure duplication — instead slice B
+sells the momentum-adjusted projection of the rival's *whole remaining roadmap*.
+
+**Generalized projection** (`rivalFullProjection(r)`, sim.js) — returns an array of `{goal,year,nominal}`
+for every remaining goal from `rs.idx` to the end of `r.firsts`. Goal 0 uses the exact formula
+`rivalProjectedYear` used before; each subsequent goal treats the previous goal's *projected* year as its
+`prevYear` (its saving window opens where the last one lands) and reuses the same `window`/`cost`/`rate`
+shape, with momentum/crowd held at today's live snapshot for the whole chain (a projection, not a
+re-sim — same simplifying assumption the single-goal version already made). `rivalProjectedYear(r)` is
+now a thin wrapper — `return rivalFullProjection(r)[0]||null` — a pure refactor of the first entry.
+
+**Parity-regression guarantee** — a test asserts `rivalProjectedYear(r)` is byte-identical (goal/year/
+nominal) to `rivalFullProjection(r)[0]` for ≥2 rivals after 24 rival ticks (so momentum/capital have
+drifted off seed), proving the refactor didn't move the free number every player already sees.
+
+**Paid unlock** — `buyRivalIntel(rivalId)` (sim.js, next to `counterPoach`): checks money + not-already-
+owned (early-return + `log('note',…)` on either, matching `counterPoach`), deducts `RIVAL_INTEL_COST`
+(`RIVAL_INTEL_COST=1.5` $M, data.js — cheaper than the momentum-affecting `RIVAL_COUNTERPOACH_COST=2.5`
+because it's pure information), sets `state.rivalIntel[rivalId]=true` (permanent, non-expiring). Lazy-
+defaulted via `rivalIntelOwned(id)` — no migration, matches E1.4's accessor pattern. `SAVE_VERSION`
+51→52.
+
+**UI** (`renderRivals()`, render.js) — a second button beside counter-poach: `🕵 Buy intel dossier −$1.5M`,
+which flips to a disabled `🕵 Dossier owned` once bought. When owned, a visually distinct
+`🕵 Full program projection` block renders `rivalFullProjection(r)` — every remaining goal, projected
+year, and the same "Ny ahead of history / Ny behind — you're slowing them" framing the free next-goal
+line uses (reused verbatim). Sits above the existing static firsts list so the paid momentum-adjusted
+timeline and the free nominal one compare side by side; the free list is untouched.
+
+**Tests** — new `tests/test-rival-intel.js`, 29/29: parity regression (×3 rivals + non-vacuous guard),
+length/order/monotonic-year of the full projection, `buyRivalIntel` affordability/deduction/idempotence,
+and a render smoke check (no throw before/after; dossier block present for exactly the one bought rival,
+its button reads "owned", others still offer "Buy"). Full suite green — 974 checks excl. the known
+pre-existing `test-progress-unify.js` shortfall (23/35); `test-station-slice2.js` clean this run (its
+RNG flakiness is unrelated). `test-rivals-e11.js` unchanged at 24/24.
+
+**Real-browser checklist:** open the Standings/Rivals panel → each rival shows a `🕵 Buy intel dossier
+−$1.5M` button → click it for ONE rival → treasury drops $1.5M, that rival's button now reads
+`🕵 Dossier owned` (disabled), and a `🕵 Full program projection` block appears listing every remaining
+goal with a projected year → confirm the block appears ONLY for that rival, the others still show the
+buy button and no projection block → reload the page (save round-trip) and confirm the dossier is still
+owned.
+
 ## Session — E1.1: reactive rival race, slice A (2026-07-11)
 
 **Implemented, tests passing, not yet committed/pushed — needs a real-browser check.** Tech-lead scoped
@@ -2937,10 +2987,11 @@ duplicating.
 
 ### Workstream E1 — High-value gameplay (the "is this a product" tier)
 
-- [~] **E1.1 Reactive rival race** — SHIPPED slice A 2026-07-11 (see session log above), 661/661,
+- [x] **E1.1 Reactive rival race** — SHIPPED (both slices) 2026-07-11 (see session logs above),
       **not yet committed/pushed, needs a real-browser check**. Schedule variance + poaching were
       already live pre-session (CE1); slice A added contract snatching, budget hearings, and a
-      failure→poach-heat link. Slice B (intel purchases) not started, low priority.
+      failure→poach-heat link; slice B (rival intel dossier) added a paid one-time unlock that
+      projects a rival's *full* remaining-firsts timeline (not just the next goal).
 - [ ] **E1.2 Flight overlay Slices C + D** — already scoped above (in-overlay decision
       panels; chrome/transition polish). The eval independently ranks these top-tier;
       add an ascent abort/press-on window and a small telemetry strip (alt/vel/Q) as
@@ -3273,3 +3324,33 @@ time button and watch the header year/date advance; click an era button; Add/Set
 the readout update; Unlock all research → R&D tree fully unlocked; Force an outcome then launch a mission and
 confirm the forced result; run both presets; `Esc` or ✕ closes it; confirm **nothing** about the panel
 appears anywhere in the normal game UI (topbar, scenes, modals).
+
+### Backlog #44 (simultaneous missions) — truth-pass 2026-07-11, no code changed
+
+Eval tagged #44 "Simultaneous missions in flight" as `Backlog`/L-effort. Before building anything, ran a
+headless truth-pass (same instinct as #73's Slice 0): launched two DIFFERENT deep-space missions back to
+back — a 210-day crewed mission (astronaut a01) immediately followed by a 90-day crewed mission (a02) —
+through the REAL `proceedLaunch`→`resolveFlight`→`pumpFlightArrivals` chain, no faked outcomes. **It
+already works end to end, 23/23 checks:** both coexist in `state.activeFlights` simultaneously and both
+show in the flights panel by name; crew deployment is tracked per-flight via `isCrewDeployed()`, not a
+global lock — a01 stays deployed the whole time A is flying while a02 frees the instant B resolves;
+arrivals resolve independently in the correct order (B at ~120d, A at ~240d) with no stuck
+`_flightResolving` lock, no NaN money, no leftover one-shot contract offers. This was almost certainly
+already true since the P1 deferred-flight slices (`state.activeFlights` as an array, `pumpFlightArrivals`
+queuing, the crew-slot-freeing comment at `sim.js:3642`) — the eval's tag predates that architecture or
+was never re-checked after it landed. Script not added to `tests/` (pure investigative scoping, not a
+regression guard on new product code) — worth promoting to a real test file if #44 gets picked up for
+real UX work rather than re-verified from scratch.
+
+**Follow-up UX scoping same day, then CLOSED — no build planned.** Checked whether "ops density" UX
+(surfacing/managing several concurrent missions) was still a gap on top of the verified engine plumbing.
+It isn't: the manufacturing build queue + hangar (`queueBuild`/`tickBuildQueue`/`hangarList`/
+`launchFromHangar`, parallel build slots = Assembly Bays level) already let you build and fly multiple
+vehicles independent of one being mid-cruise; the Outliner (`renderOutliner`) already merges build-queue
+progress and every in-flight mission into one strip; the Command Center "◈ In flight" card and the
+`🛰 Missions in flight` modal (`flightsPanelHTML`) already list every concurrent flight by name with its
+own recall button. **#44 is closed as fully covered by existing systems — not an L-effort item, not
+worth new work.** One narrow, deliberately-unscheduled watch-item: the Outliner/CC card cap themselves
+(`slice(0,8)`/`slice(0,3)`) so at very high late-game concurrency some items could silently fall off the
+visible list with no "+N more" affordance — noted here, not built, revisit only if actually observed in
+play (now directly testable via the dev menu's late-game preset).

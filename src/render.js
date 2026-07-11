@@ -3836,11 +3836,35 @@ function renderRivals(){
         const crowd=rivalCrowdFactor();
         const crowdTxt = crowd<1 ? ` <span class="dim expert-only">· market crowding ×${crowd.toFixed(2)}</span>` : '';
         const canCP=state.money>=RIVAL_COUNTERPOACH_COST;
+        const ownIntel=rivalIntelOwned(r.id), canIntel=state.money>=RIVAL_INTEL_COST;
+        const intelBtn = ownIntel
+          ? `<button class="btn ghost" style="font-size:12px;white-space:nowrap" disabled title="You hold a full intel dossier on this rival — their remaining program timeline is projected below">🕵 Dossier owned</button>`
+          : `<button class="btn ghost" style="font-size:12px;white-space:nowrap" ${canIntel?'':'disabled'} onclick="buyRivalIntel('${r.id}')" title="Buy a one-time intel dossier: projects every remaining goal on their roadmap (not just the next), momentum-adjusted">🕵 Buy intel dossier −${fM(RIVAL_INTEL_COST)}</button>`;
         return `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;font-size:12px">
           <span>Momentum ${arrow} <span class="dim expert-only" style="font-family:var(--mono)">${mom.toFixed(2)}×</span> · ${projTxt}${crowdTxt}</span>
-          <button class="btn ghost" style="font-size:12px;white-space:nowrap" ${canCP?'':'disabled'} onclick="counterPoach('${r.id}')" title="Hire away their engineers: knocks their momentum (−${RIVAL_COUNTERPOACH_MOM}), lifts your staff morale (+${RIVAL_COUNTERPOACH_MORALE}), +2 rep">Counter-poach −${fM(RIVAL_COUNTERPOACH_COST)}</button>
+          <span style="display:flex;gap:6px;flex-wrap:wrap">
+            <button class="btn ghost" style="font-size:12px;white-space:nowrap" ${canCP?'':'disabled'} onclick="counterPoach('${r.id}')" title="Hire away their engineers: knocks their momentum (−${RIVAL_COUNTERPOACH_MOM}), lifts your staff morale (+${RIVAL_COUNTERPOACH_MORALE}), +2 rep">Counter-poach −${fM(RIVAL_COUNTERPOACH_COST)}</button>
+            ${intelBtn}
+          </span>
         </div>`;
       })()}
+      ${rivalIntelOwned(r.id)?(()=>{ // E1.1 slice B: paid intel dossier — the full remaining roadmap, momentum-adjusted (the paid twin of the static firsts list below)
+        const proj=rivalFullProjection(r);
+        if(!proj.length) return '';
+        let rows='';
+        for(const pj of proj){
+          const frame = pj.year<pj.nominal?` <span style="color:var(--bad)">(${pj.nominal-pj.year}y ahead of history)</span>`
+             : pj.year>pj.nominal?` <span style="color:var(--ok)">(${pj.year-pj.nominal}y behind — you're slowing them)</span>`:'';
+          rows+=`<div style="display:flex;justify-content:space-between;gap:10px;padding:2px 0">
+            <span>${pj.goal.name}</span>
+            <span><b>${pj.year}</b>${frame}</span>
+          </div>`;
+        }
+        return `<div style="background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:8px 10px;margin-bottom:8px;font-size:12px">
+          <div class="dim" style="font-family:var(--mono);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">🕵 Full program projection</div>
+          ${rows}
+        </div>`;
+      })():''}
       <div class="expert-only dim" style="font-size:12px;margin-bottom:6px;font-family:var(--mono)">threat score ${score.toFixed(1)}${priceWar?` · price-war payout ×${priceWar.payoutMult}`:''}</div>
       <div class="adv-only" style="display:flex;flex-direction:column;gap:4px">`;
     for(const f of r.firsts){

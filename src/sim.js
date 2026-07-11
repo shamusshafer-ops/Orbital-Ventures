@@ -2558,19 +2558,50 @@ function counterPoach(rivalId){
 // CE1(c) — snapshot projection of WHEN a rival will claim its pending goal, from its current
 // capital, momentum and the market crowding you're applying. Shifts live as those change;
 // the historical floor still applies. Returns null once a rival has claimed everything.
-function rivalProjectedYear(r){
+// E1.1 slice B: thin wrapper over rivalFullProjection — the first entry is byte-identical to
+// the number this used to compute (guarded by a parity test), so every free player sees the same.
+function rivalProjectedYear(r){ return rivalFullProjection(r)[0]||null; }
+// E1.1 slice B — the full remaining-firsts timeline, each goal momentum-adjusted the same way
+// rivalProjectedYear projects the pending one. The chain reuses today's live momentum/crowd
+// snapshot for every future goal (a projection, not a re-simulation), and each subsequent goal
+// saves toward its cost from the PREVIOUS goal's projected year (its window opens where the last
+// one lands). Powers the paid intel dossier; the pending goal (index 0) is what the free line uses.
+function rivalFullProjection(r){
   const rs=rivalStateFor(r);
-  if(rs.idx>=r.firsts.length) return null;
-  const f=r.firsts[rs.idx];
   const prof=RIVAL_PROFILES[r.id]||{income:1.0};
-  const prevYear=(rs.prevYear==null)?f.year-RIVAL_FIRST_RUNWAY:rs.prevYear;
-  const window=Math.max(RIVAL_MIN_WINDOW, f.year-prevYear);
-  const cost=prof.income*12*window;
-  const rate=prof.income*Math.max(0.01,rs.momentum)*rivalCrowdFactor(); // capital/month at the current snapshot
-  const capNow=(state.year>=prevYear)?(rs.capital||0):0; // accrual hasn't started before the window opens
-  const monthsLeft=Math.max(0,(cost-capNow)/rate);
-  const proj=Math.max(state.year, prevYear)+monthsLeft/12;
-  return {goal:f, year:Math.round(Math.max(proj, f.year-RIVAL_MAX_PULL_IN)), nominal:f.year};
+  const rate=prof.income*Math.max(0.01,rs.momentum)*rivalCrowdFactor(); // capital/month at the current snapshot, held for the whole chain
+  const out=[];
+  let prevYear=null;
+  for(let i=rs.idx;i<r.firsts.length;i++){
+    const f=r.firsts[i];
+    const first=(i===rs.idx);
+    if(first) prevYear=(rs.prevYear==null)?f.year-RIVAL_FIRST_RUNWAY:rs.prevYear;
+    const window=Math.max(RIVAL_MIN_WINDOW, f.year-prevYear);
+    const cost=prof.income*12*window;
+    const capNow=first?((state.year>=prevYear)?(rs.capital||0):0):0; // only the pending goal has capital already saved; future goals start fresh
+    const monthsLeft=Math.max(0,(cost-capNow)/rate);
+    const proj=Math.max(state.year, prevYear)+monthsLeft/12;
+    const year=Math.round(Math.max(proj, f.year-RIVAL_MAX_PULL_IN));
+    out.push({goal:f, year:year, nominal:f.year});
+    prevYear=year; // next goal's saving window opens where this one is projected to land
+  }
+  return out;
+}
+// E1.1 slice B — has the player bought the intel dossier for this rival? (lazy-default, no migrate)
+function rivalIntelOwned(id){ return !!(state.rivalIntel && state.rivalIntel[id]); }
+// E1.1 slice B — buy the one-time intel dossier: unlocks the full projected remaining-firsts
+// timeline (rivalFullProjection) for this rival, permanent for the rest of the playthrough.
+function buyRivalIntel(rivalId){
+  const r=RIVALS.find(x=>x.id===rivalId); if(!r) return false;
+  if(rivalIntelOwned(rivalId)){ log('note',`You already hold an intel dossier on ${r.name}.`); return false; }
+  if(state.money<RIVAL_INTEL_COST){ log('note','Not enough capital to buy an intel dossier right now.'); return false; }
+  state.money=round2(state.money-RIVAL_INTEL_COST);
+  state.rivalIntel=state.rivalIntel||{};
+  state.rivalIntel[rivalId]=true;
+  log('ok', `${r.flag} Intel dossier acquired on ${r.name} — their full remaining program timeline is now projected. −${fM(RIVAL_INTEL_COST)}.`);
+  render();
+  if(typeof $==='function' && $('rivalsCard')) renderRivals(); // refresh the open Standings panel
+  return true;
 }
 // M5 + CE1(b): rivals poach your most vulnerable (lowest-morale) staff — morale is your
 // defence. The talent war is now reactive: a high-MOMENTUM rival (well-funded, on a roll)
