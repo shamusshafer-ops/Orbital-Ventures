@@ -1833,6 +1833,7 @@ function renderSettings(){
       <button class="btn ghost" onclick="exportSave()">⬇ Export file</button>
       <button class="btn ghost" onclick="importSave()">⬆ Import file</button>
       <button class="btn ghost" onclick="showRestoreRing()">↻ Restore autosave…</button>
+      <button class="btn ghost" onclick="showManageSaves()">🗂 Manage saves…</button>
       <button class="btn ghost" onclick="confirmNew()">New Game</button>
     </div>`;
 }

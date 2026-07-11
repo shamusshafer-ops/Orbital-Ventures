@@ -2329,7 +2329,17 @@ manual save-slot picker UI.
   restore modal renders and an actual restore rolls the game back correctly; a private/incognito window
   still plays fine with the ring silently no-op'd.
 
-**Not started:** slice (c) manual save-slot picker UI.
+## Session — E0.2 slice (c): manual save slots, E0.2 complete (2026-07-10)
+
+**Shipped, user-verified in Firefox via `file://`, committed. E0.2 (all 3 slices) is now done.**
+
+5 manual slots (`slot:1`..`slot:5`) behind a "🗂 Manage saves…" button in Settings + startup screen
+(user-approved: 5 slots, behind-a-button). Reuses slice B's adapter/record shape (`kind:'slot'` sharing
+one IDB store with the ring's `kind:'auto'`) and slice A's `applyLoadedSave`. Overwrite/delete use the
+codebase's existing two-button `showModal` confirm pattern; load doesn't confirm since it inherits slice
+B's pre-load ring-snapshot safety net. Save/Overwrite hidden on the startup screen (same guard as
+`autosave`) so a fresh placeholder game can't get saved into a slot. New `test-save-slots.js`, 69/69.
+**Suite total: 381/381.**
 
 ## Planned — External evaluation intake (2026-07-10)
 
@@ -2365,14 +2375,10 @@ duplicating.
       Contents-API limitation stops applying to the source files. Slice it: (a) mechanical
       split + build script + harness parity at 236/236, zero behavior change; (b) only
       then any hygiene that the split makes cheap.
-- [~] **E0.2 Save robustness** — **slices (a) + (b) SHIPPED 2026-07-10** (see session logs above):
-      single-pass serialization + load-path unification (a); IndexedDB autosave ring + restore UI +
-      import-safety net (b), user-verified in Firefox. 312/312. Slice (c) manual save-slot UI not started.
-      save slots (IndexedDB, localStorage stays as slot-0
-      compat), first-class export/import UI, autosave ring (last 3), single-pass
-      serialization (drop the `JSON.parse(JSON.stringify(state))` inner clone in
-      `writeSave` — the outer stringify already snapshots), autosave via
-      `requestIdleCallback`.
+- [x] **E0.2 Save robustness** — **DONE 2026-07-10** (see session logs above): single-pass
+      serialization + load-path unification (a); IndexedDB autosave ring + restore UI + import-safety
+      net (b); 5 manual save slots behind "Manage saves…" (c). User-verified in Firefox at each
+      slice. 381/381.
 - [ ] **E0.3 Dirty-flag rendering** — `render()` currently rebuilds all regions from ~136
       call sites; move to `invalidate(region)` + per-region rebuild with a `renderAll()`
       escape hatch. Fixes focus/scroll loss in re-rendered panels, cuts time-warp GC

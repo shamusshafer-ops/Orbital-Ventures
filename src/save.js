@@ -177,6 +177,7 @@ function showStartup(){
     <p class="muted" style="font-size:12px;margin:0 0 14px">Found a space agency and reach the planets before your rivals.</p>
     ${cont}
     <button class="btn ghost" style="width:100%;margin-bottom:8px" onclick="importSave()">📂 Open a save file…</button>
+    <button class="btn ghost" style="width:100%;margin-bottom:8px" onclick="showManageSaves()">🗂 Manage saves…</button>
     <button class="btn ghost" style="width:100%" onclick="startupNew()">✦ New game</button>
     ${meta?'':'<p class="dim" style="font-size:11px;margin-top:12px">No saved game found in this browser yet.</p>'}
   </div>`);
@@ -433,5 +434,135 @@ function restoreRingEntry(id){
     if(!rec||!rec.payload){ try{ showModal(`<h2>Restore Failed</h2><p class="muted">That autosave could not be read.</p><button class="btn" onclick="hideModal()" style="margin-top:8px">OK</button>`); }catch(_){} return; }
     loadSaveFromText(rec.payload, 'Autosave restored.'); // unified load path + import-safety net snapshot of the current game
   }).catch(e=>{ try{ showModal(`<h2>Restore Failed</h2><p class="muted">${(e&&e.message)||'Unknown error'}</p><button class="btn" onclick="hideModal()" style="margin-top:8px">OK</button>`); }catch(_){} });
+}
+
+/* ============================================================================
+   E0.2 Slice C — 5 manual save slots (slot:1..slot:5).
+
+   Reuses Slice B's exact IndexedDB adapter + record shape ({id,kind,name,ts,
+   meta,payload}) in the SAME object store as the autosave ring — the two are
+   distinguished ONLY by kind:'slot' vs kind:'auto', so every listing filters by
+   kind (a slot picker must never show ring entries, and vice versa). The payload
+   is the same already-stringified {v,ts,state} wrapper writeSave/writeRingEntry
+   produce, so save/export/load all share one serialization + one load pipeline:
+     - save   → writeSlotEntry() (a synchronous snapshot, like writeRingEntry)
+     - load   → loadSaveFromText() (the unified path, which ALSO fires the
+                import-safety snapshotLiveToRing() before overwriting live state)
+     - export → the same file-download mechanics as exportSave, but sourced from
+                the chosen slot's payload rather than live state.
+   Every path degrades through the adapter's in-memory fallback and never throws,
+   so a slot op can never break the game loop. Destructive actions (overwrite an
+   occupied slot, delete a slot) route through an explicit confirm modal — the
+   same two-button showModal pattern confirmNew() already uses for New Game.
+   ============================================================================ */
+const SLOT_IDS=['slot:1','slot:2','slot:3','slot:4','slot:5'];
+function slotNum(id){ return String(id||'').replace('slot:',''); }
+// Snapshot the CURRENT live state into one slot, overwriting whatever was there. Mirrors
+// writeRingEntry (synchronous {v,ts,state} + compact meta) but with kind:'slot' and the caller's id.
+// Reuses ringMeta() for the dashboard fields. Never throws; resolves to the record (or null).
+function writeSlotEntry(id){
+  try{
+    if(!state||!state.company) return Promise.resolve(null);
+    const payload=JSON.stringify({v:SAVE_VERSION, ts:Date.now(), state}); // state is JSON-safe (see writeSave)
+    const rec={ id, kind:'slot', name:(state.company||'save')+' · y'+(state.year||''), ts:Date.now(), meta:ringMeta(), payload };
+    return idbPut(rec).then(()=>rec).catch(e=>{ _idbWarnOnce(e); return null; });
+  }catch(e){ _idbWarnOnce(e); return Promise.resolve(null); }
+}
+// Slot-picker modal. Lists all 5 slots (empty ones as a clear empty state, occupied ones with the same
+// meta-card style the ring's restore UI uses). Save actions are only offered when there's a real live
+// game to capture — from the startup screen (before Continue/New) there's nothing worth saving, so those
+// buttons are withheld; Load/Export/Delete stay available so a player can jump straight into a slot.
+function showManageSaves(){
+  const canSave=!!(_gameStarted && state && state.company && !state.over);
+  idbGetAll().then(entries=>{
+    const byId={}; for(const e of (entries||[])){ if(e && e.kind==='slot' && e.id) byId[e.id]=e; } // kind filter: ring entries never leak in
+    const rows=SLOT_IDS.map((id,i)=>{ const n=i+1, e=byId[id];
+      if(e){ const m=e.meta||{}; const when=e.ts?new Date(e.ts).toLocaleString():'';
+        return `<div class="card" style="background:var(--panel2);margin-bottom:6px">
+          <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:2px">
+            <b style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Slot ${n}</b>
+            <span style="font-size:13px;color:var(--ink)">${m.company||'—'} · year ${m.year||'—'}${m.era?` · ${m.era}`:''}</span>
+          </div>
+          <div class="dim" style="font-size:11px;margin-bottom:6px">${fM(m.money||0)} · ${m.flights||0} flights${m.difficulty?` · ${m.difficulty}`:''}${when?` · ${when}`:''}</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <button class="btn" style="font-size:12px" onclick="slotLoad('${id}')">▸ Load</button>
+            ${canSave?`<button class="btn ghost" style="font-size:12px" onclick="slotSaveConfirm('${id}')">💾 Overwrite</button>`:''}
+            <button class="btn ghost" style="font-size:12px" onclick="slotExport('${id}')">⬇ Export</button>
+            <button class="btn ghost danger" style="font-size:12px" onclick="slotDeleteConfirm('${id}')">🗑 Delete</button>
+          </div>
+        </div>`;
+      }
+      return `<div class="card" style="background:var(--panel2);margin-bottom:6px;display:flex;align-items:center;gap:8px">
+        <div style="flex:1;min-width:0">
+          <b style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Slot ${n}</b>
+          <span class="dim" style="font-size:12px;margin-left:8px">empty — no save here yet</span>
+        </div>
+        ${canSave?`<button class="btn" style="font-size:12px" onclick="slotSave('${id}')">💾 Save here</button>`:''}
+      </div>`;
+    }).join('');
+    showModal(`<h2>Manage saves</h2>
+      <p class="muted" style="font-size:12px;margin:2px 0 10px">Five manual save slots, kept in this browser (separate from the automatic checkpoints).${canSave?' Saving into a slot overwrites whatever is there.':' Continue or start a game to save into a slot.'}</p>
+      ${rows}
+      <button class="btn ghost" style="width:100%;margin-top:8px" onclick="hideModal()">Close</button>`);
+  }).catch(e=>{ try{ showModal(`<h2>Manage saves</h2><p class="muted">Save slots are unavailable in this browser.</p><button class="btn" onclick="hideModal()" style="margin-top:8px">OK</button>`); }catch(_){} });
+}
+// Save into a slot (direct — used for an empty slot and as the confirmed action for an overwrite), then
+// re-render the picker so the new meta shows immediately. Never throws.
+function slotSave(id){
+  return writeSlotEntry(id).then(rec=>{ try{ if(rec) log('info','Saved to slot '+slotNum(id)+'.'); }catch(_){} showManageSaves(); return rec; })
+    .catch(e=>{ _idbWarnOnce(e); showManageSaves(); return null; });
+}
+// Overwriting an OCCUPIED slot destroys a save with no undo — gate it behind the same two-button confirm
+// modal confirmNew() uses. Cancel returns to the picker (no data touched).
+function slotSaveConfirm(id){ const n=slotNum(id);
+  showModal(`<h2>Overwrite slot ${n}?</h2>
+    <p class="muted" style="font-size:12px">The save currently in slot ${n} will be replaced with your current game. This can't be undone.</p>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button class="btn danger" style="flex:1" onclick="slotSave('${id}')">Overwrite slot ${n}</button>
+      <button class="btn ghost" style="flex:1" onclick="showManageSaves()">Cancel</button>
+    </div>`);
+}
+// Load a slot through the UNIFIED load path (loadSaveFromText → snapshotLiveToRing + applyLoadedSave), so
+// the current live game is snapshotted into the autosave ring BEFORE this overwrite — identical
+// import-safety behaviour to a file import or a ring restore. Read into memory first (mirrors
+// restoreRingEntry) so that pre-load snapshot can freely write without harming the read. Never throws.
+function slotLoad(id){
+  return idbGet(id).then(rec=>{
+    if(!rec||!rec.payload){ try{ showModal(`<h2>Load Failed</h2><p class="muted">That slot could not be read.</p><button class="btn" onclick="hideModal()" style="margin-top:8px">OK</button>`); }catch(_){} return; }
+    loadSaveFromText(rec.payload, 'Loaded from slot '+slotNum(id)+'.'); // unified path + pre-load ring snapshot of the current game
+  }).catch(e=>{ try{ showModal(`<h2>Load Failed</h2><p class="muted">${(e&&e.message)||'Unknown error'}</p><button class="btn" onclick="hideModal()" style="margin-top:8px">OK</button>`); }catch(_){} });
+}
+// Delete is destructive with no undo — confirm first (same pattern as overwrite). slotDelete clears ONLY
+// the targeted slot (idbDelete by exact id) and leaves the other slots and the ring entries untouched.
+function slotDeleteConfirm(id){ const n=slotNum(id);
+  showModal(`<h2>Delete slot ${n}?</h2>
+    <p class="muted" style="font-size:12px">This permanently removes the save in slot ${n}. This can't be undone.</p>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button class="btn danger" style="flex:1" onclick="slotDelete('${id}')">Delete slot ${n}</button>
+      <button class="btn ghost" style="flex:1" onclick="showManageSaves()">Cancel</button>
+    </div>`);
+}
+function slotDelete(id){
+  return idbDelete(id).then(()=>{ try{ log('info','Deleted slot '+slotNum(id)+'.'); }catch(_){} showManageSaves(); })
+    .catch(e=>{ _idbWarnOnce(e); showManageSaves(); });
+}
+// Export one slot's save to a file. Reuses exportSave's download mechanics + filename convention
+// (orbital-ventures-<company>-y<year>.json) but sources the payload from the slot record rather than live
+// state — rec.payload is ALREADY the {v,ts,state} wrapper, so no re-serialization is needed. Never throws.
+function slotExport(id){
+  return idbGet(id).then(rec=>{
+    if(!rec||!rec.payload){ try{ showModal(`<h2>Export Failed</h2><p class="muted">That slot could not be read.</p><button class="btn" onclick="hideModal()" style="margin-top:8px">OK</button>`); }catch(_){} return; }
+    try{
+      const m=rec.meta||{};
+      const blob=new Blob([rec.payload], {type:'application/json'});
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement('a');
+      const stamp=(m.company||'orbital').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');
+      a.href=url; a.download=`orbital-ventures-${stamp}-y${m.year||''}.json`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(()=>URL.revokeObjectURL(url), 1500);
+      try{ log('info','Slot '+slotNum(id)+' exported to a file.'); }catch(_){}
+    }catch(e){ try{ showModal(`<h2>Export Failed</h2><p class="muted">${e.message}</p><button class="btn" onclick="hideModal()" style="margin-top:8px">OK</button>`); }catch(_){} }
+  }).catch(e=>{ try{ showModal(`<h2>Export Failed</h2><p class="muted">${(e&&e.message)||'Unknown error'}</p><button class="btn" onclick="hideModal()" style="margin-top:8px">OK</button>`); }catch(_){} });
 }
 
