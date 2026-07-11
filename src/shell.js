@@ -198,6 +198,7 @@ document.addEventListener('keydown',function(e){
   const typing=isTyping(e);
   // ESC works even from a focused control: close an open modal/drill, else step back.
   if(e.key==='Escape'){
+    if(devPanelOpen){ closeDevPanel(); e.preventDefault(); return; } // dev menu closes first (its own overlay, layered ahead of the modal/scene-back checks)
     if(modalOpen()){ hideModal(); e.preventDefault(); return; }
     if(hubPanel==='contracts'){ openHubPanel('alerts'); e.preventDefault(); return; }
     if(state.tab!=='command'){ setTab('command'); e.preventDefault(); return; }
@@ -286,6 +287,138 @@ function tryLaunchHotkey(){
     if(canLaunch(v,m,sim).ok){ if(state.tab!=='bench'){ state.tab='bench'; render(); } launch(); }
   }catch(err){}
 }
+/* ============================================================================
+   DEV / CHEAT MENU (Ctrl+Shift+D) — dev-only manual-testing tool. NEVER shown to
+   real players. Fast-forwards time and manipulates state so late-timeline features
+   (station docking, Mars ops, late-era content) can be tested without a real grind.
+   Open state is a plain module-level bool (like techExpanded/hubPanel) — NOT in
+   `state`, so it never lands in a save. Every mutation drives the REAL sim functions
+   (advance/advanceDays/foundFacility/addStationModule/…) so all side effects fire.
+   ========================================================================== */
+let devPanelOpen=false;
+function toggleDevPanel(){ devPanelOpen?closeDevPanel():openDevPanel(); }
+function openDevPanel(){ const p=$('devPanel'); if(!p) return; devPanelOpen=true; p.innerHTML=devPanelHtml(); p.classList.remove('hidden'); }
+function closeDevPanel(){ const p=$('devPanel'); if(p) p.classList.add('hidden'); devPanelOpen=false; }
+// re-render the whole page (so mutations show) AND refresh the panel's own live readouts. The panel is
+// a fixed element OUTSIDE #app, so render() never wipes it — we just re-fill its innerHTML for the readout.
+function devRefresh(){ try{ render(); }catch(e){} if(devPanelOpen){ const p=$('devPanel'); if(p) p.innerHTML=devPanelHtml(); } }
+function devReadInput(id){ const el=$(id); if(!el) return NaN; return parseFloat(el.value); }
+// ---- time: always through the REAL tick functions, never a raw state.year write ----
+function devAdvanceDays(d){ if(!state||state.over) return; advanceDays(d); devRefresh(); }
+function devAdvanceMonths(mo){ if(!state||state.over) return; advance(mo); devRefresh(); }
+// Advance in 12-month batches until state.year >= targetYear (per-batch so a long jump — pioneer→
+// speculative is ~160 yr — isn't a single 57k-day tight loop, and side effects settle periodically).
+// A pure time-skip earns no income, so decades of overhead would bankrupt an early company and trip
+// gameOver mid-jump — defeating the whole point (reliably reaching later content). We top the treasury
+// back to a floor before each batch so the skip always completes; the real tick path is otherwise
+// untouched. (Documented state side effect: an era/late-game jump leaves the company solvent.)
+function devAdvanceToYear(targetYear){
+  let guard=0;
+  while(state.year<targetYear && !state.over && guard++<5000){
+    if(state.money<DEV_SKIP_MONEY_FLOOR) state.money=DEV_SKIP_MONEY_FLOOR; // keep solvent through the skip
+    const monthsLeft=(targetYear-state.year)*12 - (state.month||0);
+    advance(Math.min(Math.max(1,monthsLeft), 12));
+  }
+}
+const DEV_SKIP_MONEY_FLOOR=1000; // $1B floor kept during a time-skip so overhead can't bankrupt the jump
+function devJumpEra(eraId){ const era=ERAS.find(e=>e.id===eraId); if(!era||!state||state.over) return; if(state.year<era.from) devAdvanceToYear(era.from); devRefresh(); }
+// ---- money / rep / science: number-input Add / Set-to ----
+function devAddMoney(){ const v=devReadInput('devMoneyInput'); if(!isNaN(v)){ state.money+=v; devRefresh(); } }
+function devSetMoney(){ const v=devReadInput('devMoneyInput'); if(!isNaN(v)){ state.money=v; devRefresh(); } }
+function devAddRep(){ const v=devReadInput('devRepInput'); if(!isNaN(v)){ state.rep=Math.max(0,(state.rep||0)+v); devRefresh(); } } // floor at 0, matching the codebase convention (no ceiling)
+function devSetRep(){ const v=devReadInput('devRepInput'); if(!isNaN(v)){ state.rep=Math.max(0,v); devRefresh(); } }
+function devAddScience(){ const v=devReadInput('devSciInput'); if(!isNaN(v)){ state.science=(state.science||0)+v; devRefresh(); } }
+function devSetScience(){ const v=devReadInput('devSciInput'); if(!isNaN(v)){ state.science=v; devRefresh(); } }
+// ---- unlock everything: removes GATES only (research/tech-level/rep). It does NOT found facilities,
+// design vehicles, or complete missions — "unlock" opens doors, it doesn't play the game for you. ----
+function devUnlockAllResearch(){
+  state.research=state.research||{};
+  for(const r of RESEARCH) state.research[r.id]=true;
+  state.techLevel=state.techLevel||{};
+  for(const id in TECH_LEVELS) state.techLevel[id]=TECH_LEVELS[id].max; // max the leveled techs too (real cap read from TECH_LEVELS)
+  try{ reconcileResearch(); }catch(e){} // re-apply engine/capability unlocks the boolean flags imply
+}
+function devUnlockAll(){ devUnlockAllResearch(); devRefresh(); }
+function devMaxRep(){ state.rep=100; devRefresh(); } // 100 clears every partnerUnlocked() rep gate; no hard ceiling exists so we don't invent one
+// ---- force flight outcome / decision event (single-shot; the sim vars self-clear on first use) ----
+function devForceOutcome(kind){ _devForceOutcome=kind; devToast('Next launch outcome forced: '+kind); }
+function devForceLiveCall(){ _devForceLiveCall=true; devToast('Next launch will fire a live-call decision.'); }
+function devForceReserve(){ _devForceReserve=true; devToast('Next launch will fire a reserve-call decision.'); }
+function devForceWeather(){ _devForceWeather=true; devToast('Next launch will hit an adverse-weather scrub.'); }
+function devToast(msg){ try{ log('note','DEV: '+msg); }catch(e){} if(devPanelOpen){ const el=$('devStatus'); if(el) el.textContent=msg; } }
+// ---- presets ----
+// "Fast-forward to late game": advance to the Expansion era (2030) via the REAL advance(), then unlock
+// all research, grant a large treasury, and max rep. (money is in $M — 2000 renders as $2,000.00M ≈ $2B.)
+function devPresetLateGame(){
+  if(!state||state.over) return;
+  if(state.year<2030) devAdvanceToYear(2030);
+  devUnlockAllResearch();
+  state.money=2000; // $2B in the game's $M units
+  state.rep=100;
+  devToast('Fast-forwarded to late game (≥2030), all research unlocked, treasury + rep maxed.');
+  devRefresh();
+}
+// "LEO station, pre-stocked": ensure a real LEO facility exists (foundFacility) and dock 3 distinct
+// module types onto it via the REAL docking path (addStationModule → dockModuleNow). Grants money and
+// removes the founding gate (the reqMission) up front — gate removal, same spirit as "unlock all".
+function devPresetStation(){
+  if(!state||state.over) return;
+  const def=facilityById('leo_station');
+  if(def.reqMission && !state.completed[def.reqMission]) state.completed[def.reqMission]=true; // remove the founding gate (can't "fly" crew_orbit from here)
+  if(state.money<600) state.money=600; // ensure founding + modules are affordable (real functions charge real cost)
+  if(!facilityBuilt('leo_station')) foundFacility('leo_station'); // real founding: charges cost, advances construction months
+  if(!state.over){
+    for(const mid of ['lab_mod','power_truss','node_hub']){ // 3 distinct types (none gated by research); core is already a Habitat
+      const fs=facilityState('leo_station');
+      if(fs && facilityModuleList(fs).includes(mid)) continue;
+      if(state.money<200) state.money=200;
+      addStationModule('leo_station', mid); // real dock: charges cost, advances build months, calls dockModuleNow
+    }
+  }
+  devToast('LEO Station founded and pre-stocked with Lab, Power Truss, and Docking Node modules.');
+  devRefresh();
+}
+// ---- panel markup (built fresh on open / after each mutation for live readouts) ----
+function devPanelHtml(){
+  const btn=(label,onclick,extra)=>`<button onclick="${onclick}" style="cursor:pointer;background:#2a2013;color:#ffd9a8;border:1px solid #6b4a1e;border-radius:4px;padding:4px 7px;font:inherit;margin:2px 3px 2px 0;${extra||''}">${label}</button>`;
+  const num=(id,val,ph)=>`<input id="${id}" type="number" value="${val}" placeholder="${ph||''}" style="width:88px;background:#0d0a05;color:#ffe9c8;border:1px solid #6b4a1e;border-radius:4px;padding:3px 5px;font:inherit">`;
+  const sect=(title,body)=>`<div style="border-top:1px solid #3a2c16;padding:9px 12px">
+    <div style="color:#ff8c1a;font-weight:bold;letter-spacing:0.5px;font-size:11px;margin-bottom:5px">${title}</div>${body}</div>`;
+  const eraBtns=ERAS.map(e=>btn(e.name+' <span style="opacity:0.6">'+e.from+'</span>',`devJumpEra('${e.id}')`)).join('');
+  const yr=state?`${(['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][state.month]||'')} ${state.year}`:'—';
+  const readout=state?`money <b style="color:#7fe3a0">$${(state.money||0).toFixed(1)}M</b> · rep <b style="color:#8fc4ff">${Math.round(state.rep||0)}</b> · sci <b style="color:#c9a8ff">${Math.round(state.science||0)}</b>`:'';
+  return `<div style="position:sticky;top:0;background:#1c1509;border-bottom:2px solid #ff8c1a;padding:9px 12px;display:flex;align-items:center;justify-content:space-between">
+      <div><span style="color:#ff8c1a;font-weight:bold;letter-spacing:1px">⚠ DEV MODE</span>
+        <div style="opacity:0.6;font-size:10px;margin-top:2px">manual testing · not shown to players</div></div>
+      <button onclick="closeDevPanel()" title="Close (Esc)" style="cursor:pointer;background:transparent;color:#ffb066;border:1px solid #6b4a1e;border-radius:4px;padding:2px 8px;font:inherit;font-size:14px">✕</button>
+    </div>
+    <div style="padding:7px 12px;background:#0f0b05;color:#cdbfa8;font-size:11px">${yr} · ${readout}</div>
+    ${sect('TIME  (real tick path)',
+      btn('+1 day',"devAdvanceDays(1)")+btn('+1 week',"devAdvanceDays(7)")+btn('+1 month',"devAdvanceMonths(1)")+btn('+1 year',"devAdvanceMonths(12)")+btn('+5 years',"devAdvanceMonths(60)")+
+      `<div style="margin-top:6px;opacity:0.7;font-size:10px">Jump to era (no-op if already past):</div>`+eraBtns)}
+    ${sect('MONEY / REP / SCIENCE',
+      `<div style="margin-bottom:4px">Money ($M): ${num('devMoneyInput',100)} ${btn('Add',"devAddMoney()")}${btn('Set to',"devSetMoney()")}</div>
+       <div style="margin-bottom:4px">Rep: ${num('devRepInput',10)} ${btn('Add',"devAddRep()")}${btn('Set to',"devSetRep()")}</div>
+       <div>Science: ${num('devSciInput',10)} ${btn('Add',"devAddScience()")}${btn('Set to',"devSetScience()")}</div>`)}
+    ${sect('UNLOCKS  (gates only)',
+      btn('Unlock all research',"devUnlockAll()")+btn('Max reputation',"devMaxRep()"))}
+    ${sect('FORCE OUTCOME  (single-shot, next launch)',
+      btn('Success',"devForceOutcome('success')")+btn('Partial',"devForceOutcome('partial')")+btn('Fail (loss)',"devForceOutcome('loss')")+btn('Strand',"devForceOutcome('strand')")+
+      `<div style="margin-top:5px">`+btn('Live call',"devForceLiveCall()")+btn('Reserve call',"devForceReserve()")+btn('Weather scrub',"devForceWeather()")+`</div>`)}
+    ${sect('PRESETS',
+      btn('⏩ Fast-forward to late game',"devPresetLateGame()",'display:block;width:100%;text-align:left')+
+      btn('🛰 LEO station, pre-stocked',"devPresetStation()",'display:block;width:100%;text-align:left'))}
+    <div id="devStatus" style="padding:8px 12px;border-top:1px solid #3a2c16;color:#9fd8a0;font-size:10px;min-height:14px"></div>`;
+}
+// Ctrl+Shift+D toggles the dev panel. Guarded exactly like the 'p' / F1-F3 handlers (no modal open, no
+// mid-animation, not typing). This combo is otherwise unbound (audited: nothing uses ctrl/meta/shift today).
+document.addEventListener('keydown',function(e){
+  if(!(e.ctrlKey && e.shiftKey && (e.key==='D'||e.key==='d'))) return;
+  if(e.altKey||e.metaKey) return;
+  if(!state || animState || modalOpen()) return;
+  if(isTyping(e)) return;
+  toggleDevPanel(); e.preventDefault();
+});
 function clampA(v,a,b){return Math.max(a,Math.min(b,v));}
 function smooth(t){return t*t*(3-2*t);}
 function hx(h){return [parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];}

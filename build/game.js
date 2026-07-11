@@ -3,7 +3,25 @@
    Core loop: design (rocket equation) → launch → economy → research
    ============================================================ */
 const G0 = 9.81;
-const TL_CAT_ICON={launch:'🚀', research:'⚛', economy:'$', rivals:'🏴', crew:'👥', infra:'🏗', other:'•'};
+// User-directed icon set (2026-07-11): the timeline-category icons were emoji, which render
+// differently per OS/browser and can't pick up the theme's ink color. Small inline SVG line icons,
+// 16x16, stroke=currentColor so they theme-sync for free (no JS color table needed, unlike the
+// canvas HUD chrome — these are plain DOM/innerHTML, currentColor just works). ~1em sizing so they
+// sit inline with surrounding text exactly like the emoji they replace.
+const ICON_PATHS={
+  launch:  '<path d="M8 2 L12 12 L8 10 L4 12 Z" fill="currentColor" stroke="none"/>',
+  research:'<g fill="none" stroke="currentColor" stroke-width="1.3"><ellipse cx="8" cy="8" rx="6.2" ry="2.3"/><ellipse cx="8" cy="8" rx="6.2" ry="2.3" transform="rotate(60 8 8)"/><ellipse cx="8" cy="8" rx="6.2" ry="2.3" transform="rotate(120 8 8)"/></g><circle cx="8" cy="8" r="1.3" fill="currentColor" stroke="none"/>',
+  rivals:  '<path d="M4 2 L4 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M4.5 2.5 L11.5 3.8 L9 6 L11.5 8.2 L4.5 9.2 Z" fill="currentColor" stroke="none"/>',
+  crew:    '<g fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="5.3" cy="5.8" r="2.1"/><circle cx="10.7" cy="5.8" r="2.1"/><path d="M1.5 14 C1.5 10.6 3.3 9.2 5.3 9.2 C6.3 9.2 7.1 9.5 7.8 10"/><path d="M14.5 14 C14.5 10.6 12.7 9.2 10.7 9.2 C9.7 9.2 8.9 9.5 8.2 10"/></g>',
+  infra:   '<g fill="currentColor" stroke="none"><rect x="1.5" y="9" width="3" height="5"/><rect x="6.5" y="5.5" width="3" height="8.5"/><rect x="11.5" y="2.5" width="3" height="11.5"/></g>',
+  other:   '<circle cx="8" cy="8" r="2.4" fill="currentColor" stroke="none"/>',
+};
+function svgIcon(name, size){
+  const p=ICON_PATHS[name]; if(!p) return '';
+  return `<svg width="${size||'1em'}" height="${size||'1em'}" viewBox="0 0 16 16" style="display:inline-block;vertical-align:-0.15em" aria-hidden="true">${p}</svg>`;
+}
+const TL_CAT_ICON={launch:svgIcon('launch'), research:svgIcon('research'), economy:'$', rivals:svgIcon('rivals'), crew:svgIcon('crew'), infra:svgIcon('infra'), other:svgIcon('other')};
+const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 
 const ERAS = [
   {id:'pioneer',      name:'Pioneer',           from:1942, to:1957, blurb:'Liquid/solid sounding rockets, captured/derived V-2-class tech. Sub-orbital, upper atmosphere.'},
@@ -27,6 +45,16 @@ function eraIndex(e){ return ERAS.indexOf(e); }
 // year so it can run at load/migration time before `state` is assigned). Same "last era whose
 // start has been reached" rule — ERAS.from is strictly increasing, so break-on-first-greater holds.
 function eraIndexForYear(year){ let idx=0; for(let i=0;i<ERAS.length;i++){ if((year||1942)>=ERAS[i].from) idx=i; else break; } return idx; }
+// User-directed era-evolving visual identity (2026-07-11): the console itself ages up as the
+// campaign advances, automatically (tied to state.year via eraIndex/currentEra — not a manual
+// picker like THEMES). Groups the 8 ERAS entries into 4 visual eras matching the ask (Apollo →
+// 80s NASA/Shuttle → 90s/2000s Commercial → SpaceX-modern) — coarser than the gameplay era
+// granularity on purpose, so the console doesn't visually reskin every few gameplay years.
+// Applied in render.js's applyEraVisual() as a body.era-* class (see shell.html for the CSS).
+// All 4 keys have real distinct CSS (shell.html): apollo reuses Apollo Beige's palette, 80s reuses
+// Control Room Green's, 90s2000s and spacex are new palettes with no existing theme to reuse.
+const ERA_VISUAL_MAP=['apollo','apollo','apollo','80s','90s2000s','spacex','spacex','spacex']; // indexed by eraIndex(currentEra())
+function eraVisualKey(){ return ERA_VISUAL_MAP[eraIndex(currentEra())]||ERA_VISUAL_MAP[ERA_VISUAL_MAP.length-1]; }
 // P6 6.1: baseline metrics for the era-retrospective diff — flights flown, firsts claimed by the
 // player (completed missions) vs. scooped by rivals, treasury, reputation. Read from global state.
 function eraSnapshot(){ return {
@@ -657,6 +685,46 @@ const MISSIONS = [
     profile:[{name:'Ascent to LEO', dv:9400, by:'lv'},{name:'Solar System Escape Injection', dv:8500, by:'transfer'}],
     blurb:'An uncrewed probe rides the fusion torch past the ice giants and out through the Oort Cloud, crossing into interstellar space at a fraction of the speed true interstellar flight will eventually need — the first real proof the drive works. No return; the point is the burn, not the destination.<span class="hist">↳ Voyager 1 crossed the heliopause into interstellar space in 2012 — the only human-made object ever to do so; Daedalus-class fusion drives were designed to make that crossing in years, not decades.</span>'},
 ];
+// resolves EITHER an authored mission or a live procedural contract offer by id — the only
+// lookup any "what mission is this id" call site needs once procedural ids exist (E1.3)
+function missionById(id){ return MISSIONS.find(x=>x.id===id) || (state.contractOffers||[]).find(x=>x.id===id); }
+
+/* ---------- E1.3: procedural contract generator ----------
+   Fills the troughs between authored missions with repeatable, era + capability-gated filler
+   contracts. Deliberately NOT authored milestones: proc:true opts them out of the firsts/completed
+   tracking (finalizeLaunch), so they never trigger a milestone modal, rival-goal denial, or
+   first-of-design prestige — see the proc gate at finalizeLaunch's success branch. Priced below the
+   comparable authored mission (see each archetype's payout) so routine reflying of an authored
+   mission stays the better long-run play; these are the "no station in range" filler, not the goal. */
+const CONTRACT_ARCHETYPES=[
+  { kind:'comsat', label:'Comsat Block Buy', minEra:1,
+    req:st=>(st.leoFlights||0)>=3,
+    weight:st=>1+Math.min(3,(st.leoFlights||0)/10),
+    build:eraIdx=>{ const payload=round2(0.3+0.05*eraIdx);
+      return { name:'Comsat Block Buy', reqDv:9400, payload, crew:0, days:0, minRep:0,
+        payout:round2((10+2*eraIdx)*0.6), rep:6,
+        blurb:'A commercial operator wants a standing block of comsats launched — routine manifest, real money, no headlines.' }; } },
+  { kind:'crew_rotation', label:'Crew Rotation', minEra:2, reqResearch:'crew_capsule',
+    req:st=>!!(st.research&&st.research.crew_capsule) && (st.crewFlown||0)>=1,
+    weight:st=>1+Math.min(3,(st.crewFlown||0)/6),
+    build:eraIdx=>{ const days=3+Math.floor(Math.random()*10);
+      return { name:'Crew Rotation', reqDv:9400, payload:0, crew:1, days, minRep:0, reqResearch:'crew_capsule',
+        payout:round2((6+1.2*days)*(1+0.1*eraIdx)*0.6), rep:8,
+        blurb:'A standing crew slot needs rotating out — no new ground broken, but the manifest has to fly.' }; } },
+  // Slice B: profile-shaped (short cruise, stays under DEFER_CRUISE_DAYS so it resolves synchronously
+  // like the authored Lunar Sample Return — no deferred/activeFlights interaction to worry about).
+  // Deliberately NO sciYield (unlike the authored mission it echoes) — that bonus is explicitly
+  // first-flight-only (see finalizeLaunch), and a regenerating procedural offer would farm it forever.
+  { kind:'sample_return', label:'Deep-Space Sample Return', minEra:2, reqResearch:'deep_space',
+    req:st=>!!(st.research&&st.research.deep_space) && (st.deepFlights||0)>=1,
+    weight:st=>1+Math.min(3,(st.deepFlights||0)/4),
+    build:eraIdx=>{ const days=10+Math.floor(Math.random()*8);
+      return { name:'Deep-Space Sample Return', reqDv:9400, payload:0, crew:0, days, minRep:0, reqResearch:'deep_space',
+        modules:['lv','transfer'],
+        profile:[{name:'Ascent to LEO', dv:9400, by:'lv'},{name:'Trans-Lunar Injection', dv:3120, by:'transfer'},{name:'Lunar Orbit Insertion', dv:900, by:'transfer'},{name:'Trans-Earth Injection', dv:900, by:'transfer'}],
+        payout:round2((14+1.5*eraIdx)*0.55), rep:12,
+        blurb:'A commercial lab wants another regolith sample — a proven profile, a standing customer, no new ground broken.' }; } },
+];
 
 /* ---------- Programs & long-term ambition (the "dream" layer) ----------
    Programs group the existing missions into named campaigns with objectives and a
@@ -975,7 +1043,7 @@ function activeArchId(id){
 function missionArchOf(id){ const list=missionArchList(id); if(!list) return null; const aid=activeArchId(id); return list.find(a=>a.id===aid)||list[0]; }
 // the active mission as the player will actually fly it (base merged with the chosen architecture)
 function curMission(){
-  const base=MISSIONS.find(x=>x.id===state.activeMission);
+  const base=missionById(state.activeMission);
   if(!base) return base;
   const arch=missionArchOf(base.id);
   if(!arch) return base;
@@ -1923,6 +1991,7 @@ function resolveSetback(choice){
   if(state.money<0) gameOver(); else render();
   maybeShowMishap(); // if a logistics mishap also came due this tick, surface it now that the setback is cleared
   maybeShowInquiry(); // then a pending failure inquiry (lowest precedence of the three)
+  maybeShowHearing(); // then a pending budget hearing (E1.1, mutually exclusive with inquiry in practice)
 }
 /* ---------- 2.3: logistics route interruptions ----------
    A negative economy event (logi_mishap in ECONOMY_EVENTS, reqLogi-gated so it can only roll while
@@ -1971,6 +2040,7 @@ function resolveMishap(choice){
   _pendingLogiMishap=null; hideModal();
   if(state.money<0) gameOver(); else render();
   maybeShowInquiry(); // if a failure inquiry is also pending, surface it now that the mishap is cleared
+  maybeShowHearing(); // then a pending budget hearing (E1.1)
 }
 /* ---------- P3: failure investigation loop ----------
    After an UNCREWED loss/abort/strand finalizes, offer a funded inquiry that converts the failure
@@ -2020,6 +2090,50 @@ function resolveInquiry(choice){
     log('note',`No inquiry funded — the ${s.mName} loss goes on the books without a formal review.`);
   }
   _pendingInquiry=null; hideModal();
+  if(state.money<0) gameOver(); else render();
+}
+/* ---------- E1.1: budget hearing after a fatal crewed loss ----------
+   The inquiry above is the ENGINEERING response to an uncrewed failure; this is the POLITICAL
+   response to a crewed one (catastrophe or strand) — the case P3's own comment explicitly left
+   untouched ("crewed catastrophes keep their existing grounding narration"). Same transient
+   pending-decision shape as _pendingSetback/_pendingInquiry; mutually exclusive with inquiry in
+   practice (a flight is either crewed or not), but gated behind the same higher-priority pendings
+   for consistency. No persisted state beyond the transient. */
+const HEARING_FUND_COST=2.0, HEARING_SUPPORT_FUND=6, HEARING_SUPPORT_DEFEND=3, HEARING_SUPPORT_BLAME=4;
+const HEARING_REP_COST_DEFEND=3, HEARING_MORALE_HIT_BLAME=8, HEARING_POACH_HEAT_BLAME=9;
+let _pendingHearing=null; // a fatal crewed loss awaiting a fund/defend/blame decision (transient, like _pendingInquiry)
+function hearingFundCost(){ return round2(HEARING_FUND_COST*(1+eraStakesFrac())); } // later eras draw bigger scrutiny, same spirit as applyEraStakes
+function triggerHearing(ctx){
+  if(_pendingHearing) return; // one at a time
+  _pendingHearing={ mName:ctx.m.name };
+  log('bad',`⚠ BUDGET HEARING — ${ctx.m.name}: the fatal loss draws government scrutiny. A decision is needed.`);
+}
+function maybeShowHearing(){ if(_pendingHearing && !_pendingSetback && !_pendingLogiMishap && !_pendingInquiry) showHearingModal(); } // setback/mishap/inquiry take priority
+function showHearingModal(){
+  const s=_pendingHearing; if(!s) return;
+  const cost=hearingFundCost(), fundOk=state.money>=cost;
+  showModal(`<h2 style="color:var(--bad)">⚠ Budget hearing</h2>
+    <p><b>${esc(s.mName)}</b> — a fatal loss draws a program review. How do you play it?</p>
+    <button class="btn" onclick="resolveHearing('fund')" ${fundOk?'':'disabled'} title="${fundOk?'':'Not enough capital'}">Fund a safety program — ${fM(cost)} <span class="dim">· +${HEARING_SUPPORT_FUND} support</span></button>
+    <button class="btn ghost" style="margin-top:8px" onclick="resolveHearing('defend')">Defend the program's record <span class="dim">· free, −${HEARING_REP_COST_DEFEND} rep, +${HEARING_SUPPORT_DEFEND} support</span></button>
+    <button class="btn ghost" style="margin-top:8px" onclick="resolveHearing('blame')">Blame the vendor <span class="dim">· free, +${HEARING_SUPPORT_BLAME} support, staff morale hit</span></button>`);
+}
+function resolveHearing(choice){
+  const s=_pendingHearing; if(!s) return;
+  if(choice==='fund'){
+    const cost=hearingFundCost(); if(state.money<cost) return; // guarded; button disabled when unaffordable
+    state.money-=cost; addSupport(HEARING_SUPPORT_FUND);
+    log('ok',`Budget hearing: funded a safety program after the ${s.mName} loss. −${fM(cost)}, +${HEARING_SUPPORT_FUND} support.`);
+  } else if(choice==='defend'){
+    state.rep=Math.max(0,state.rep-HEARING_REP_COST_DEFEND); addSupport(HEARING_SUPPORT_DEFEND);
+    log('note',`Budget hearing: you defended the program's record. −${HEARING_REP_COST_DEFEND} rep, +${HEARING_SUPPORT_DEFEND} support.`);
+  } else { // blame
+    addSupport(HEARING_SUPPORT_BLAME);
+    (state.staff||[]).forEach(st=>{ st.morale=clampA((st.morale||50)-HEARING_MORALE_HIT_BLAME,0,100); });
+    state.poachHeat=Math.max(state.poachHeat||0, HEARING_POACH_HEAT_BLAME); // spin over substance leaves staff rattled — rivals notice more than usual
+    log('bad',`Budget hearing: you blamed the vendor. +${HEARING_SUPPORT_BLAME} support, but staff morale takes a hit — and it shows.`);
+  }
+  _pendingHearing=null; hideModal();
   if(state.money<0) gameOver(); else render();
 }
 // Time Granularity epic — the simulation funnel iterates DAYS, not months. Each day runs the
@@ -2153,6 +2267,7 @@ function tickMonthlyBoundary(){
     else if(rw>18 && state._runwayWarned){ state._runwayWarned=null; }
 
     tickRivals(); // CE1: rival agents (budget + reactive momentum) — replaces calendar-only firing
+    tickPoachHeat(); // E1.1: decay the post-fatal-loss poach-heat window
     checkPoaching();
     checkPersonnelEvents();
     checkDivisionBreakthroughs(); // #5: division-driven R&D breakthroughs (sibling of #9)
@@ -2161,6 +2276,8 @@ function tickMonthlyBoundary(){
     tickMandate(); // mandates: offer / deadline check (economy tension pass)
     checkScoringDate(); // chronicle: the soft scoring date fires once
     tickSpecialContract(); // special contracts: limited-time commercial variants
+    tickContractOffers(); // E1.3: procedural filler contracts — era + capability keyed
+    tickRivalSnatch(); // E1.1: a surging rival may bid on an uncommitted procedural contract offer
     tickCrisis(); // P11: the one late-game crisis — trigger check, then escalate/remediate if active
     tryStartQueuedResearch(); // I5: retry monthly in case the queued pick just became affordable/unlocked (the immediate try lives in completeResearch)
     pushMetricHistory(); // #28: snapshot this month's core metrics for the dashboard sparklines
@@ -2446,6 +2563,71 @@ function fulfillSpecialIfMatch(missionId){
   }
   state.specialContract=null; state.specialCooldown=SPECIAL_COOLDOWN_MO;
 }
+
+/* ---------- E1.3: procedural filler contracts ----------
+   A rotating board of era + capability-gated repeatable contracts (see CONTRACT_ARCHETYPES,
+   data.js) — the "no station in range" filler between authored missions. Deliberately simpler
+   than special contracts: no modifier layer, no deadline-vs-existing-mission bonus — each offer
+   IS the flyable mission, priced below its authored counterpart, expiring and rotating on its own. */
+const CONTRACT_OFFER_LEAD=6; // months an offer stays open before the client goes elsewhere
+function contractOfferCap(){ return eraIndex(currentEra())>=4 ? 3 : 2; } // Slice B balance pass: a 3rd concurrent slot opens Commercial era onward, once there's enough mission variety to fill it
+function contractOfferReferenced(id){
+  return state.activeMission===id
+    || (state.buildQueue||[]).some(o=>o.missionId===id)
+    || (state.hangar||[]).some(h=>h.missionId===id);
+}
+function tickContractOffers(){
+  state.contractOffers=(state.contractOffers||[]).filter(o=>{
+    if(o.deliverModule) return true; // #73 Slice 1: a module delivery is a player-committed infra project, not a rotating commercial contract — never expires on its own, only consumed by finalizeLaunch
+    if(absMonth()<=o.expiresAbs || contractOfferReferenced(o.id)) return true; // still open, or committed to (build queue/hangar/selected) — don't yank it out from under a build
+    log('note',`${o.name}: contract window closed — the client went elsewhere.`);
+    return false;
+  });
+  if(state.contractOffers.length>=contractOfferCap()) return;
+  if(Math.random()>0.4) return; // arrives every few months, not like clockwork
+  const eraIdx=eraIndex(currentEra());
+  const pool=CONTRACT_ARCHETYPES.filter(a=>eraIdx>=a.minEra && a.req(state));
+  if(!pool.length) return;
+  const totalW=pool.reduce((s,a)=>s+a.weight(state),0);
+  let r=Math.random()*totalW, pick=pool[pool.length-1];
+  for(const a of pool){ r-=a.weight(state); if(r<=0){ pick=a; break; } }
+  state.procSeq=(state.procSeq||0)+1;
+  const built=pick.build(eraIdx);
+  const offer=Object.assign({id:'pc_'+state.procSeq, proc:true, expiresAbs:absMonth()+CONTRACT_OFFER_LEAD}, built);
+  (state.contractOffers=state.contractOffers||[]).push(offer);
+  log('note',`New contract offer: ${offer.name} — ${fM(offer.payout)}, open ${CONTRACT_OFFER_LEAD} months.`);
+}
+/* ---------- E1.1: rivals bid on your procedural contract offers ----------
+   A surging rival can snatch an open, uncommitted contract offer out from under you — a two-beat
+   warning (bid placed) then take (offer lost) unless you commit to it first. Committing is the whole
+   counter: contractOfferReferenced() (the same guard tickContractOffers uses to protect a build in
+   progress) makes a bid-on offer immune the instant you select/queue/hangar it. Reward is a small
+   rival CAPITAL bump, not momentum — momentum drives the MC-tuned firsts-claiming pace (data.js),
+   and a snatch shouldn't touch that. Never touches authored missions, the special contract, or
+   mandates — only state.contractOffers. */
+const RIVAL_SNATCH_MOM_THRESHOLD=1.1, RIVAL_SNATCH_WARN_MONTHS=2, RIVAL_SNATCH_CAPITAL_BUMP=1.0;
+function tickRivalSnatch(){
+  for(const o of (state.contractOffers||[]).slice()){
+    if(!o.rivalBid) continue;
+    if(contractOfferReferenced(o.id)){ o.rivalBid=null; continue; } // committed in time — bid falls through
+    if(absMonth()<o.rivalBid.snatchAbs) continue;
+    const r=RIVALS.find(x=>x.id===o.rivalBid.rivalId);
+    state.contractOffers=(state.contractOffers||[]).filter(x=>x.id!==o.id);
+    if(r){ const rs=rivalStateFor(r); rs.capital=(rs.capital||0)+RIVAL_SNATCH_CAPITAL_BUMP;
+      log('bad',`${r.flag} ${r.name} snatched the ${o.name} contract out from under you.`);
+      pushFrontPage('rival', r.flag, `${r.name} wins ${o.name}`, 'A contract you left on the table.');
+    }
+  }
+  if(Math.random()>0.5) return; // loose cadence, matching the other monthly rolls in this block
+  const candidates=(state.contractOffers||[]).filter(o=>!o.rivalBid && !contractOfferReferenced(o.id));
+  if(!candidates.length) return;
+  const surging=RIVALS.filter(r=>rivalMomentumOf(r)>=RIVAL_SNATCH_MOM_THRESHOLD);
+  if(!surging.length) return;
+  const rival=surging[Math.floor(Math.random()*surging.length)];
+  const target=candidates[Math.floor(Math.random()*candidates.length)];
+  target.rivalBid={rivalId:rival.id, snatchAbs:absMonth()+RIVAL_SNATCH_WARN_MONTHS};
+  log('note',`${rival.flag} ${rival.name} is bidding on your ${target.name} contract — commit within ${RIVAL_SNATCH_WARN_MONTHS} months or lose it.`);
+}
 function rollEconEvent(){
   // Economy tension: positive windfalls require a recently ACTIVE program (a flight in the
   // last 24 months or support above neutral). Nobody grants money to an agency going nowhere.
@@ -2631,17 +2813,118 @@ function canAddStationModule(facId, modId){
   if(state.money<cost) return {ok:false, why:'Needs '+fM(cost)};
   return {ok:true, cost};
 }
+// Docks a module onto a built facility RIGHT NOW — shared by the instant "dock"/"contract" purchases
+// and by a successful "fly it yourself" delivery mission (#73 Slice 1, finalizeLaunch). Caller has
+// already charged (or, for a flown delivery, is about to charge) money; this only handles the
+// module-list/supply/logging side, so the three callers can't drift out of sync with each other.
+function dockModuleNow(facId, modId, note){
+  const def=facilityById(facId), fs=facilityState(facId), md=stationModuleDef(modId);
+  facilityModuleList(fs).push(modId); fs.modules=fs.moduleList.length;
+  fs.supply=FAC_SUPPLY_MONTHS; fs.starvedMonths=0; // fresh provisions ride along with any delivery
+  const pw=facilityPower(fs);
+  log('ok',`${def.name}: ${md.name} docked${note?` (${note})`:''}. ${fs.moduleList.length} modules · power ${pw.net>=0?'+':''}${pw.net} kW.`);
+  if(pw.net<0) log('note',`${def.name} is power-starved — production is running at 60%. Dock a Solar Power Truss.`);
+}
 function addStationModule(facId, modId){
   const chk=canAddStationModule(facId, modId); if(!chk.ok) return;
-  const def=facilityById(facId), fs=facilityState(facId), md=stationModuleDef(modId);
+  const md=stationModuleDef(modId);
   state.money-=chk.cost;
   advance(md.buildMo||4); if(state.over){ render(); return; }
-  facilityModuleList(fs).push(modId); fs.modules=fs.moduleList.length;
-  fs.supply=FAC_SUPPLY_MONTHS; fs.starvedMonths=0; // the assembly flight ships fresh provisions
-  const pw=facilityPower(fs);
-  log('ok',`${def.name}: ${md.name} docked (${fM(chk.cost)}, ${md.buildMo} mo). ${fs.moduleList.length} modules · power ${pw.net>=0?'+':''}${pw.net} kW.`);
-  if(pw.net<0) log('note',`${def.name} is power-starved — production is running at 60%. Dock a Solar Power Truss.`);
+  dockModuleNow(facId, modId, `${fM(chk.cost)}, ${md.buildMo} mo`);
   render();
+}
+
+/* ---------- #73 Slice 1 (2026-07-11): module delivery is a real launch, player's choice ----------
+   Docking the FIRST module of a given type on a facility is now a genuine "launch modules, dock"
+   choice: fly it yourself (design/launch a real delivery mission — base module cost, no premium, but
+   you pay for the vehicle+launch) or contract it (pay a premium, instant, no flight — the old
+   one-click behavior). Repeats of an already-proven type on that facility skip this fork entirely and
+   keep using addStationModule() unchanged, above — see stationModuleCard()'s `first` gate. */
+const MODULE_CONTRACT_PREMIUM=0.35; // pay 35% over base to skip a real delivery flight
+function contractedModuleCost(def, fs, md){ return round2(stationModuleCost(def, fs, md)*(1+MODULE_CONTRACT_PREMIUM)); }
+function canContractStationModule(facId, modId){
+  const def=facilityById(facId), fs=facilityState(facId), md=stationModuleDef(modId);
+  if(!def||!fs||!md) return {ok:false, why:'—'};
+  if(md.reqResearch && !state.research[md.reqResearch]) return {ok:false, why:'Needs '+((RESEARCH.find(r=>r.id===md.reqResearch)||{}).name||md.reqResearch)};
+  if(facilityModuleList(fs).length>=facilityPortCap(fs) && modId!=='node_hub') return {ok:false, why:'All ports occupied — dock a Node for growth room'};
+  const cost=contractedModuleCost(def, fs, md);
+  if(state.money<cost) return {ok:false, why:'Needs '+fM(cost)};
+  return {ok:true, cost};
+}
+function contractStationModule(facId, modId){
+  const chk=canContractStationModule(facId, modId); if(!chk.ok) return;
+  const md=stationModuleDef(modId);
+  state.money-=chk.cost;
+  advance(md.buildMo||4); if(state.over){ render(); return; }
+  dockModuleNow(facId, modId, `${fM(chk.cost)} contracted delivery, ${md.buildMo} mo`);
+  render();
+}
+// Raw materials + size-escalation only — no body/distance multiplier. The multiplier represents the
+// cost of getting the module THERE; flying it yourself pays for that trip via a real launch instead (a
+// real Δv/cruise-time cost, not a dollar one), so charging the multiplier again here would double-count
+// delivery. stationModuleCost (with the multiplier) is unchanged for repeat-of-type instant dockings,
+// and is still what contractedModuleCost is built from — the multiplier there correctly represents
+// "someone else makes that same trip for you," which IS worth paying extra for.
+function flyModuleCost(def, fs, md){ const n=facilityModuleList(fs).length; return round2(md.cost*(1+0.25*(n-1))); }
+// Structural-only check for "fly it yourself" — no money changes hands until the delivery actually
+// lands (finalizeLaunch), so this doesn't gate on current affordability the way the instant paths do.
+function canFlyModuleDelivery(facId, modId){
+  const def=facilityById(facId), fs=facilityState(facId), md=stationModuleDef(modId);
+  if(!def||!fs||!md) return {ok:false, why:'—'};
+  if(md.reqResearch && !state.research[md.reqResearch]) return {ok:false, why:'Needs '+((RESEARCH.find(r=>r.id===md.reqResearch)||{}).name||md.reqResearch)};
+  if(facilityModuleList(fs).length>=facilityPortCap(fs) && modId!=='node_hub') return {ok:false, why:'All ports occupied — dock a Node for growth room'};
+  return {ok:true, cost:flyModuleCost(def, fs, md)};
+}
+function pendingModuleDelivery(facId, modId){
+  return (state.contractOffers||[]).find(o=>o.deliverModule && o.deliverModule.facId===facId && o.deliverModule.modId===modId);
+}
+/* ---------- #73 Slice 2 (2026-07-11): Moon/Mars delivery is a real profile-based cargo cruise ----------
+   User chose the mechanically-consistent option over a cheap simple-mission reskin: Moon/Mars delivery
+   flies leg-by-leg exactly like every authored Moon/Mars mission (Ascent→TLI/TMI→Orbit Insertion), via
+   a genuinely new, reusable mechanic — m.cargo, an uncrewed payload mass carried through every leg of a
+   profile mission (see lvPayload()/simulateMission()'s stackMass()). One-way: no Trans-Earth/Earth
+   return leg, since nothing/no one needs to come home. Ends at ORBIT INSERTION, not a surface landing —
+   this game has no landing/descent simulation anywhere yet (even the abstracted Mars resupply system
+   stops at "shipment arrives"), so inventing one just for this would be its own separate mechanic;
+   "docking" at a surface base's orbit is the same abstraction boundary the existing logistics system
+   already draws. Lunar days (8, matching luna_orbit) stay under DEFER_CRUISE_DAYS(60) — resolves
+   synchronously, same turn, like LEO. Mars days (210, reusing LOGI_TRANSIT_DAYS.mars's existing one-way
+   figure) crosses that threshold — proceedLaunch's EXISTING missionDays>=DEFER_CRUISE_DAYS branch
+   automatically defers it into state.activeFlights with full cruise telemetry / abort-in-cruise /
+   mishap-pool eligibility, with ZERO new deferred-flight code: it's a normal ctx-bearing flight record,
+   resolved on arrival via the same pumpFlightArrivals()→beginResolve()→finalizeLaunch() chain any other
+   deferred mission uses — m.deliverModule's dock-on-success hook (Slice 1) fires identically either way.
+   Deliberately NOT window-gated (unlike the authored Mars missions) — payout is 0 either way, so synodic
+   timing has no economic stake here; a documented simplification, not an oversight. */
+// Generates a real, flyable delivery mission (reuses the E1.3 procedural-contract machinery: proc:true,
+// lives in state.contractOffers, resolved via missionById/finalizeLaunch's m.proc consumption) and takes
+// the player straight to the bench with it active. Re-selecting an already-pending delivery (rather than
+// creating a duplicate) if they navigate away and click again.
+function flyModuleDelivery(facId, modId){
+  const existing=pendingModuleDelivery(facId, modId);
+  if(existing){ selectMission(existing.id); return; }
+  const chk=canFlyModuleDelivery(facId, modId); if(!chk.ok) return;
+  const def=facilityById(facId), md=stationModuleDef(modId);
+  state.mdSeq=(state.mdSeq||0)+1;
+  const id='md_'+state.mdSeq;
+  const cargoTxt=`${md.name.toLowerCase()} (${md.stats.mass.toFixed(1)} t)`, payTxt=`Pays only the module's base cost (${fM(chk.cost)}) on success — no contracted-delivery premium, but you're footing the launch.`;
+  const base={ id, proc:true, deliverModule:{facId, modId}, moduleCost:chk.cost, crew:0, minRep:0, payout:0, rep:0,
+    name:`Deliver ${md.name} — ${def.name}` };
+  let offer;
+  if(def.body==='moon'){
+    offer=Object.assign(base, { days:8, modules:['lv','transfer'], cargo:md.stats.mass,
+      profile:[{name:'Ascent to LEO', dv:9400, by:'lv'},{name:'Trans-Lunar Injection', dv:3120, by:'transfer'},{name:'Lunar Orbit Insertion', dv:900, by:'transfer'}],
+      blurb:`A real cargo cruise: loft the ${cargoTxt} to lunar orbit and dock it at ${def.name} on arrival — one-way, no return burn needed. ${payTxt}` });
+  }else if(def.body==='mars'){
+    offer=Object.assign(base, { days:210, modules:['lv','transfer'], cargo:md.stats.mass,
+      profile:[{name:'Ascent to LEO', dv:9400, by:'lv'},{name:'Trans-Mars Injection', dv:3600, by:'transfer'},{name:'Mars Orbit Insertion', dv:1400, by:'transfer'}],
+      blurb:`A real cargo cruise: loft the ${cargoTxt} toward Mars and dock it at ${def.name} on arrival — a ~210-day one-way cruise (the flight departs and resolves on arrival; you'll see it in the cruise telemetry panel). ${payTxt}` });
+  }else{ // earth/LEO — Slice 1's simple synchronous mission, unchanged
+    offer=Object.assign(base, { days:0, reqDv:9400, payload:md.stats.mass,
+      blurb:`A real delivery flight: loft the ${cargoTxt} to ${def.name} and dock it on arrival. ${payTxt}` });
+  }
+  (state.contractOffers=state.contractOffers||[]).push(offer);
+  selectMission(id);
 }
 
 function facilityProduction(def, fs){
@@ -2990,7 +3273,7 @@ function standingHangarCount(){ const sp=state.standingProd; if(!sp) return 0; r
 // snapshot the CURRENT bench design as the standing line (must be a juggernaut + a flyable design)
 function setStandingProduction(missionId){
   if(!isJuggernaut()) return;
-  const m = (missionId && MISSIONS.find(x=>x.id===missionId)) || curMission(); if(!m) return;
+  const m = (missionId && missionById(missionId)) || curMission(); if(!m || m.proc) return; // E1.3: procedural contracts expire/rotate — not a fit for a standing repeat-build line
   const v = computeVehicle(); const sim=m.profile?simulateMission(m):null;
   const chk=canQueue(m,v,sim); if(!chk.ok && chk.why!=='can’t afford the build' && chk.why!=='queue full'){ log('note',`Can’t set standing production: ${chk.why}`); return; }
   const fam = activeFamily();
@@ -3813,6 +4096,9 @@ function rivalProjectedYear(r){
 // defence. The talent war is now reactive: a high-MOMENTUM rival (well-funded, on a roll)
 // courts harder, and a successful poach feeds its momentum (it got your people).
 const POACH_CHANCE = 0.10; // monthly chance a rival looks at your bench
+// E1.1: a fatal crewed loss opens a "poach heat" window — instability rivals notice and press harder on.
+const POACH_HEAT_ON_FATAL=6, POACH_HEAT_MULT=2.5;
+function tickPoachHeat(){ if((state.poachHeat||0)>0) state.poachHeat--; }
 function rivalMomentumOf(r){ return ((state.rivalState||{})[r.id]||{}).momentum||1.0; }
 // pick a rival weighted by momentum — the company that's surging is the one knocking on your door
 function poachingRival(){
@@ -3823,7 +4109,8 @@ function poachingRival(){
 }
 function checkPoaching(){
   if(!state.staff || !state.staff.length) return;
-  if(Math.random()>POACH_CHANCE) return;
+  const chance=POACH_CHANCE*((state.poachHeat||0)>0?POACH_HEAT_MULT:1); // E1.1: hotter right after a fatal loss
+  if(Math.random()>chance) return;
   const target=state.staff.slice().sort((a,b)=>(a.morale||50)-(b.morale||50))[0];
   const p=personById(target.id); if(!p) return;
   const morale=target.morale||50;
@@ -4064,6 +4351,7 @@ function lvPayload(m){
   else if(m && m.profile){
     p=lifeSupport(m,state.eclss).total; // crew module
     p+=powerSystemMass(m); // Phase 2: power plant (solar/RTG/reactor) is mass you must lift
+    p+=(m.cargo||0); // #73 Slice 2: uncrewed cargo (e.g. a station module) carried through the whole profile
     if(m.modules.includes('transfer')) p+=inSpaceWet(state.transfer);
     if(m.modules.includes('lander')){ p+=inSpaceWet(state.descent)+inSpaceWet(state.ascent); }
   }
@@ -4211,7 +4499,8 @@ function simulateMission(m){
       }
       if(lost>0.01) boiloff={lost:Math.round(lost*100)/100, controlled};
     } }
-  const stackMass=()=>{let s=crewMass; for(const k in present) s+=present[k].dry+present[k].propLeft; return s;};
+  const cargoMass=m.cargo||0; // #73 Slice 2: uncrewed cargo carried through every leg, same as crew life support
+  const stackMass=()=>{let s=crewMass+cargoMass; for(const k in present) s+=present[k].dry+present[k].propLeft; return s;};
   // #6: orbital assembly — these modules are pre-positioned in LEO, so the main launch doesn't lift them
   const asmSet = assemblyOn(m) ? new Set(assemblyModules(m)) : null;
   const legs=[]; let ok=true, inSpaceLegs=0;
@@ -4397,7 +4686,7 @@ function buildCostBreakdown(m){
   const facDisc=facilityBonus(missionBody(m&&m.id)).buildDiscount;
   if(facDisc>0) mult(`Home-field facility (−${(facDisc*100).toFixed(0)}%)`, 1-facDisc);
   const fam=activeFamily(), famMult=familyBuildMult(fam);
-  if(famMult<1) mult(`Family heritage${fam?` "${fam.name}"`:''} (×${famMult.toFixed(2)})`, famMult);
+  if(famMult<1) mult(`Family heritage${fam?` "${esc(fam.name)}"`:''} (×${famMult.toFixed(2)})`, famMult);
   const foundry=foundryCostMult();
   if(foundry<1) mult(`Foundry L${prodLevel('foundry')} (×${foundry.toFixed(2)})`, foundry);
   const cad=cadenceSurcharge();
@@ -4728,7 +5017,35 @@ function flightPhaseBreakdown(rep){
     phases.push({phase:ph, label:FLIGHT_PHASE_LABEL[ph], rel, p:1-rel, subsystems:subs}); }
   return phases;
 }
+// ── DEV/CHEAT hooks (2026-07-11) — single-shot force flags for the dev menu (Ctrl+Shift+D). ──
+// All are plain module-level vars (NOT state.*), consumed & reset the moment they're read, so they
+// never touch the save file. resolveFlight/liveCallFlag/deepCallFlag/rollWeather each check "their"
+// flag at the top; the dev panel (shell.js) sets one and fires a single launch to exercise the flow.
+let _devForceOutcome=null; // 'success' | 'partial' | 'loss' | 'strand' — forces the next resolveFlight
+let _devForceLiveCall=false;   // forces the next liveCallFlag() to fire (marginal-subsystem live call)
+let _devForceReserve=false;    // forces the next deepCallFlag() to fire (deep-space reserve call)
+let _devForceWeather=false;    // forces the next rollWeather() to return an adverse (scrub) condition
+// Synthesize an outcome of the requested kind, matching resolveFlight's real return shape/fields so
+// the whole downstream chain (live/reserve/anomaly hooks, finalizeLaunch, rescue) reads it correctly.
+// Reuses the REAL per-phase machinery (subsystemReport/flightPhaseBreakdown) for `phases` so nothing
+// that iterates outcome.phases chokes. 'strand' is crewed-deep-failure-shaped, so a forced strand on
+// a crewed flight reaches finalizeLaunch's _pendingRescue branch exactly like a natural one.
+function devSynthOutcome(kind, m, v, sim, crewed, relPenalty){
+  const rep=subsystemReport(m,v,sim,crewed,1-(relPenalty||0));
+  const phases=flightPhaseBreakdown(rep);
+  let out;
+  if(kind==='success') out={kind:'success', rel:Math.max(rep.R,0.98), failPhase:null, subsystem:null};
+  else if(kind==='partial') out={kind:'partial', subsystem:'avionics', failPhase:null, rel:rep.R,
+      story:'(dev) forced partial — guidance drifted; the payload reached space but off the planned trajectory.'};
+  else if(kind==='strand') out={kind:'strand', subsystem:'life_support', failPhase:'deep', rel:rep.R,
+      story:'(dev) forced strand — a life-support failure on the long coast home left the crew stranded but alive.'};
+  else out={kind:'loss', subsystem:'propulsion', failPhase:'ascent', rel:rep.R,
+      story:'(dev) forced loss — an engine failed during powered ascent.'};
+  out.phases=phases; out.govPhase=out.subsystem?livePhaseOf(out.subsystem):null;
+  return out;
+}
 function resolveFlight(m,v,sim,crewed,relPenalty=0){
+  if(_devForceOutcome){ const k=_devForceOutcome; _devForceOutcome=null; return devSynthOutcome(k,m,v,sim,crewed,relPenalty); } // dev menu: single-shot forced outcome
   const rep=subsystemReport(m,v,sim,crewed,1-(relPenalty||0));
   const phases=flightPhaseBreakdown(rep); // CE5(a): per-phase decomposition (outcome unchanged)
   const failed={};
@@ -4765,17 +5082,34 @@ function resolveFlight(m,v,sim,crewed,relPenalty=0){
 // sim provably balance-neutral; the abort is new AGENCY (trade the mission for the hardware/crew),
 // available only as a live decision, with a real opportunity cost (amber ≠ doomed — it might hold).
 const LIVE_CALL_SUB_HI=0.94;  // a loss-severity early subsystem at/under this reads as "amber"
+// E1.2 slice A: routine reflights get a WIDER amber band, not the same one — a proven design
+// isn't immune to a bad day, and this is the one lever that fixes decision frequency trending to
+// zero as the player's engineering (and habit of reflying the same proven design) matures. Doesn't
+// touch the underlying reliability roll at all, only how forgivingly it's read on a reflight.
+const LIVE_CALL_SUB_HI_ROUTINE=0.97;
 const LIVE_CALL_R_FLOOR=0.40; // ...but only fire when the flight overall is still a real gamble
 const LIVE_CALL_PHASES={pad:1, ascent:1, staging:1}; // early phases where an abort can still save the vehicle
-function liveCallFlag(outcome){
+// dev menu: synthesize a live-call flag from an early-phase subsystem (or a last-resort fake), so
+// "force live call" fires even when nothing is naturally amber. Matches the real {sub, phase} shape.
+function devSynthLiveFlag(outcome){
+  if(outcome && outcome.phases){
+    for(const ph of outcome.phases){ if(!LIVE_CALL_PHASES[ph.phase]) continue;
+      for(const s of ph.subsystems){ if(s.severity==='partial') continue; return {sub:s, phase:ph}; } }
+    for(const ph of outcome.phases){ if(LIVE_CALL_PHASES[ph.phase] && ph.subsystems[0]) return {sub:ph.subsystems[0], phase:ph}; }
+  }
+  return {sub:{key:'propulsion', rel:0.9, label:'Propulsion', severity:'loss'}, phase:{phase:'ascent', label:'Ascent'}};
+}
+function liveCallFlag(outcome, routine){
+  if(_devForceLiveCall){ _devForceLiveCall=false; return devSynthLiveFlag(outcome); } // dev menu: single-shot forced live call
   // the weakest loss-severity early-phase subsystem in the amber band, or null
   if(!outcome || !outcome.phases || (outcome.rel||0)<LIVE_CALL_R_FLOOR) return null;
+  const subHi=routine?LIVE_CALL_SUB_HI_ROUTINE:LIVE_CALL_SUB_HI;
   let worst=null;
   for(const ph of outcome.phases){
     if(!LIVE_CALL_PHASES[ph.phase]) continue;
     for(const s of ph.subsystems){
       if(s.severity==='partial') continue;          // a partial-severity flag can't lose the vehicle — nothing to abort for
-      if(s.rel>LIVE_CALL_SUB_HI) continue;           // green enough — no call
+      if(s.rel>subHi) continue;                      // green enough — no call
       if(!worst || s.rel<worst.sub.rel) worst={sub:s, phase:ph};
     }
   }
@@ -4796,28 +5130,50 @@ function deepReserveMargin(sim){
   return worst===Infinity ? 0 : Math.max(0, worst);
 }
 // the weakest drifting deep-phase subsystem on a flight that carries reserve margin, or null
-function deepCallFlag(outcome, sim){
+// dev menu: synthesize a deep-phase reserve-call flag (or a last-resort fake), for "force reserve call".
+function devSynthDeepFlag(outcome){
+  if(outcome && outcome.phases){
+    for(const ph of outcome.phases){ if(ph.phase!=='deep') continue; if(ph.subsystems[0]) return {sub:ph.subsystems[0], phase:ph}; }
+  }
+  return {sub:{key:'life_support', rel:0.9, label:'Life support', severity:'loss'}, phase:{phase:'deep', label:'Deep space'}};
+}
+function deepCallFlag(outcome, sim, routine){
+  if(_devForceReserve){ _devForceReserve=false; return devSynthDeepFlag(outcome); } // dev menu: single-shot forced reserve call
   if(!outcome || !outcome.phases || (outcome.rel||0)<LIVE_CALL_R_FLOOR) return null;
   if(deepReserveMargin(sim) < RESERVE_MARGIN_MIN) return null; // no reserve to burn → no call
+  const subHi=routine?LIVE_CALL_SUB_HI_ROUTINE:LIVE_CALL_SUB_HI; // E1.2 slice A: same wider-net-on-a-reflight idiom as liveCallFlag
   let worst=null;
   for(const ph of outcome.phases){
     if(ph.phase!=='deep') continue;
     for(const s of ph.subsystems){
-      if(s.rel>LIVE_CALL_SUB_HI) continue;               // not drifting — holding fine
+      if(s.rel>subHi) continue;                           // not drifting — holding fine
       if(!worst || s.rel<worst.sub.rel) worst={sub:s, phase:ph};
     }
   }
   return worst;
 }
 function reserveKindWord(key){ return key==='life_support' ? 'consumables and power' : 'propellant'; }
-function loseAssignedCrew(crewId){
+function loseAssignedCrew(crewId, mission, story){
   crewId = crewId || state.assignedAstronaut; // 1.2b: an arriving deferred flight passes its own snapshotted crew
   if(!crewId) return;
   const p=personById(crewId);
   state.staff=(state.staff||[]).filter(s=>s.id!==crewId);
-  if(p) log('bad',`Astronaut ${p.name} was lost with the vehicle.`);
+  if(p){ log('bad',`Astronaut ${p.name} was lost with the vehicle.`); addMemorial(crewId, p.name, mission, story); } // E1.4: memorial wall
   if(state.assignedAstronaut===crewId) state.assignedAstronaut=null; // only clear the live slot if it's this crew (don't clobber a concurrent flight)
 }
+// E1.4: memorial wall — name snapshotted at death (independent of the static pool, matching how
+// front-page headlines snapshot their text) so it displays even if pool data ever changes.
+function addMemorial(id, name, mission, story){
+  (state.memorial=state.memorial||[]);
+  state.memorial.push({id, name, when:dateStr(), mission:mission||'', story:story||''});
+}
+function memorialRoll(){ return state.memorial||[]; }
+// E1.4: per-astronaut flight log — keyed by id so it survives the person leaving state.staff (death/fire/quit)
+function logAstronautFlight(id,mission,outcome){
+  (state.astronautLog=state.astronautLog||{});
+  (state.astronautLog[id]=state.astronautLog[id]||[]).push({when:dateStr(),mission,outcome});
+}
+function astronautFlights(id){ return (state.astronautLog&&state.astronautLog[id])||[]; }
 // the assigned astronaut accumulates radiation dose across their career; reaching the
 // limit forces retirement (deep, long, unshielded missions cost the most).
 function applyCrewDose(m, crewId){
@@ -4853,7 +5209,7 @@ function subsystemBreakdownHTML(m,v){
     return `<div class="leg"><span class="legname">${s.label}${chip}</span><span class="legdv" style="color:${col}">${pc}%</span><span class="legdetail">fault → ${sev}</span></div>`;
   }).join('');
   const fam=activeFamily();
-  const famNote=fam&&familyRelBonus(fam)>0?` <span style="color:var(--ok)">${fam.name} heritage adds +${(familyRelBonus(fam)*100).toFixed(1)}% from ${fam.successes} proven flight${fam.successes===1?'':'s'}.</span>`:'';
+  const famNote=fam&&familyRelBonus(fam)>0?` <span style="color:var(--ok)">${esc(fam.name)} heritage adds +${(familyRelBonus(fam)*100).toFixed(1)}% from ${fam.successes} proven flight${fam.successes===1?'':'s'}.</span>`:'';
   return `<div class="mission-tag" style="margin-top:12px">Subsystem reliability — the weakest link is where it breaks</div>
     <div class="legs" style="margin-top:6px">${rows}</div>
     <div class="dim" style="font-size:12px;margin-top:6px">Overall ${(rep.R*100)|0}% = the product of all subsystems. Test campaigns, tank/guidance research, and matching engineer specialists each harden a specific link.${famNote}</div>`;
@@ -4874,6 +5230,10 @@ const WEATHER_CONDITIONS=[
   {id:'cold',  weight:6, penalty:0.07,  clear:1, label:'Sub-limit low temperatures',detail:'Temperatures are below qualification — seals and joints stiffen in the cold.'},
 ];
 function rollWeather(m){
+  if(_devForceWeather){ _devForceWeather=false; // dev menu: single-shot forced adverse weather (a real WEATHER_CONDITIONS entry)
+    const adv=WEATHER_CONDITIONS.find(c=>c.id!=='go')||WEATHER_CONDITIONS[0];
+    return {id:adv.id, label:adv.label, adverse:true, penalty:adv.penalty||0.1, clear:adv.clear||1, detail:(adv.detail||'')+' (dev-forced scrub)'};
+  }
   const total=WEATHER_CONDITIONS.reduce((a,c)=>a+c.weight,0);
   let r=Math.random()*total, pick=WEATHER_CONDITIONS[0];
   for(const c of WEATHER_CONDITIONS){ r-=c.weight; if(r<0){ pick=c; break; } }
@@ -4883,14 +5243,19 @@ function rollWeather(m){
   if(pick.id==='cold' && solidBoost){ penalty+=0.06; detail+=' The solid boosters’ field-joint O-rings stiffen dangerously in the cold (the Challenger lesson, 1986).'; }
   return {id:pick.id, label:pick.label, adverse:pick.id!=='go', penalty, clear:pick.clear||1, detail};
 }
+// E1.2 slice C: holds at pad-start (before the countdown even ramps) instead of a page modal
+// before the overlay opens at all — the range-weather call is the very first thing about a launch.
 function showWeatherModal(m,wx){
-  const pen=Math.round(wx.penalty*100);
-  showModal(`<h2>Launch weather — go / no-go</h2>
-    <p><b>${m.name}</b> is built and on the pad. Range weather: <b style="color:var(--warn)">${wx.label}</b>.</p>
-    <p class="muted">${wx.detail}</p>
-    <p>Scrubbing waits about <b>${wx.clear} month${wx.clear>1?'s':''}</b> for conditions to clear. Flying through it carries a <b style="color:var(--bad)">−${pen}% reliability</b> hit on this flight only.</p>
-    <button class="btn" onclick="scrubLaunch()">Scrub &amp; wait (${wx.clear} mo)</button>
-    <button class="btn ghost" onclick="launchAnyway()" style="margin-top:8px">Launch anyway (−${pen}% reliability)</button>`);
+  openFlightForDecision({m, crewed:(m.crew||0)>0}, { holdAt:'pad-start', buildPanel:()=>{
+    const pen=Math.round(wx.penalty*100);
+    return { title:'LAUNCH WEATHER — GO / NO-GO', color:themeColor('warn'),
+      lines:[ `Range weather: ${wx.label}.`, wx.detail,
+              `Scrubbing waits ~${wx.clear} month${wx.clear>1?'s':''}. Flying through it costs −${pen}% reliability, this flight only.` ],
+      buttons:[
+        {label:`Scrub & wait (${wx.clear} mo)`, ghost:true, action:scrubLaunch},
+        {label:`Launch anyway (−${pen}% reliability)`, action:launchAnyway},
+      ] };
+  }});
 }
 function launchAnyway(){
   if(!_pendingLaunch) return; const p=_pendingLaunch; _pendingLaunch=null; hideModal();
@@ -4899,6 +5264,7 @@ function launchAnyway(){
 }
 function scrubLaunch(){
   if(!_pendingLaunch) return; const p=_pendingLaunch; _pendingLaunch=null; hideModal();
+  dismissAnim(); // E1.2 slice C: scrubbing skips months ahead to retry — that's a new attempt later, not a continuation of this held pad frame, so don't try to resume it across the time-skip
   advance(p.wx.clear);
   log('note',`${p.m.name}: scrubbed for weather (${p.wx.label}). Waited ${p.wx.clear} mo; the front passed.`);
   if(state.money<0){ gameOver(); return; }
@@ -4987,15 +5353,24 @@ function resolveAnomaly(i){
 // that saves the vehicle and crew but forfeits the mission. Amber ≠ doomed, so the abort trades
 // a possibly-successful mission for certainty — genuine agency with a real opportunity cost.
 let _pendingLive=null; // a flight paused at the live abort / press-on call
+// E1.2 slice C: lives IN the flight overlay (opened early by openFlightForDecision, held at the
+// pad→ascent handoff by drawScene) instead of a page-level showModal popping up before the overlay
+// even opens. buildPanel() is called once, at hold-time, by drawDecisionPanel — canvas fillText, not
+// innerHTML, so no esc() needed (there's no markup parsing to inject into either way).
 function showLiveCallModal(ctx, flag){
-  const m=ctx.m, sub=flag.sub, ph=flag.phase, pc=Math.round(sub.rel*100);
-  const subName=SUBSYS_LABEL[sub.key]||sub.label;
-  const crewLine=ctx.crewed?' The crew is strapped in and awaiting your call.':'';
-  showModal(`<h2 style="color:var(--warn)">⚠ Marginal subsystem — live call</h2>
-    <p><b>${m.name}</b> — the <b>${subName.toLowerCase()}</b> is flagging amber on ${ph.label.toLowerCase()}, holding at just <b>${pc}%</b>.${crewLine}</p>
-    <p class="muted">It may hold all the way — or let go and take the vehicle with it. Abort now and you bring the hardware${ctx.crewed?' and crew':''} home safe but forfeit the mission and its payout. Press on and you fly it exactly as built.</p>
-    <button class="btn" onclick="resolveLiveCall(true)">Press on — fly it</button>
-    <button class="btn ghost" onclick="resolveLiveCall(false)" style="margin-top:8px">Abort now — save the vehicle${ctx.crewed?' & crew':''}, forfeit the mission</button>`);
+  openFlightForDecision(ctx, { buildPanel:()=>{
+    const m=ctx.m, sub=flag.sub, ph=flag.phase, pc=Math.round(sub.rel*100);
+    const subName=SUBSYS_LABEL[sub.key]||sub.label;
+    const crewLine=ctx.crewed?' Crew strapped in, awaiting your call.':'';
+    const routineLine=ctx.routine?' A proven design isn\'t immune to a bad day.':'';
+    return { title:'⚠ MARGINAL SUBSYSTEM — LIVE CALL', color:themeColor('warn'),
+      lines:[ `${subName} flagging amber on ${ph.label.toLowerCase()}, holding at just ${pc}%.`,
+              `It may hold — or let go and take the vehicle with it.${crewLine}${routineLine}` ],
+      buttons:[
+        {label:'Press on — fly it', action:()=>resolveLiveCall(true)},
+        {label:`Abort now — save the vehicle${ctx.crewed?' & crew':''}`, ghost:true, action:()=>resolveLiveCall(false)},
+      ] };
+  }});
 }
 function resolveLiveCall(pressOn){
   const ctx=_pendingLive; if(!ctx) return;
@@ -5018,16 +5393,21 @@ function resolveLiveCall(pressOn){
 // margin for a degraded result; bank and it lets go, you eat the loss. Carrying reserves (extra
 // propellant = more mass, a rocket-equation cost paid at build time) is what buys this option.
 let _pendingReserve=null; // a flight paused at the deep-leg reserve call
+// E1.2 slice C: holds at cislunar-start (entering the deep cruise) — its own "far from home" moment.
 function showReserveModal(ctx, flag){
-  const m=ctx.m, sub=flag.sub, ph=flag.phase, pc=Math.round(sub.rel*100);
-  const subName=SUBSYS_LABEL[sub.key]||sub.label;
-  const word=reserveKindWord(sub.key);
-  const marginPct=Math.round(deepReserveMargin(ctx.sim)*100);
-  showModal(`<h2 style="color:var(--warn)">⚠ Deep-space drift — reserve call</h2>
-    <p><b>${m.name}</b> — far from home, the <b>${subName.toLowerCase()}</b> is drifting (holding at <b>${pc}%</b>). You carry roughly <b>${marginPct}%</b> reserve margin on this leg.</p>
-    <p class="muted">Burn the reserve ${word} to nurse it through and you salvage a degraded result for certain. Bank the reserve and you fly it as-is — it may come home clean, or let go this far out.</p>
-    <button class="btn" onclick="resolveReserveCall(true)">Burn the reserve — salvage a partial result</button>
-    <button class="btn ghost" onclick="resolveReserveCall(false)" style="margin-top:8px">Bank the reserve — fly it as built</button>`);
+  openFlightForDecision(ctx, { holdAt:'cislunar-start', buildPanel:()=>{
+    const m=ctx.m, sub=flag.sub, ph=flag.phase, pc=Math.round(sub.rel*100);
+    const subName=SUBSYS_LABEL[sub.key]||sub.label;
+    const word=reserveKindWord(sub.key);
+    const marginPct=Math.round(deepReserveMargin(ctx.sim)*100);
+    return { title:'⚠ DEEP-SPACE DRIFT — RESERVE CALL', color:themeColor('warn'),
+      lines:[ `${subName} drifting far from home, holding at ${pc}%. ~${marginPct}% reserve margin aboard.`,
+              `Burn the reserve ${word} to nurse it through for certain, or bank it and fly as built.` ],
+      buttons:[
+        {label:'Burn the reserve — salvage a partial', action:()=>resolveReserveCall(true)},
+        {label:'Bank the reserve — fly it as built', ghost:true, action:()=>resolveReserveCall(false)},
+      ] };
+  }});
 }
 function resolveReserveCall(spend){
   const ctx=_pendingReserve; if(!ctx) return;
@@ -5059,18 +5439,21 @@ function rescueChance(m){
 }
 function rescueCost(m){ return Math.max(3, Math.round((m.payout||10)*0.6)); }
 function rescueMonths(m){ return m.profile?6:3; }
+// E1.2 slice C: holds at cislunar-start — same "far from home" moment as the reserve call.
 function showRescueModal(ctx, outcome){
-  const m=ctx.m, cost=rescueCost(m), months=rescueMonths(m), chance=Math.round(rescueChance(m)*100);
-  const afford=state.money>=cost;
-  const sub=outcome.subsystem?(SUBSYS_LABEL[outcome.subsystem]||'systems').toLowerCase():'systems';
-  const mountBtn=afford
-    ? `<button class="btn" onclick="mountRescue()">Mount a rescue (${fM(cost)}, ~${months} mo, ${chance}% chance)</button>`
-    : `<div class="dim" style="font-size:12px;margin:8px 0">A rescue would cost ${fM(cost)} — you can't afford one.</div>`;
-  showModal(`<h2 style="color:var(--bad)">Crew stranded in deep space</h2>
-    <p><b>${m.name}</b>: a ${sub} failure has left the crew stranded but alive — they can't get home on their own.</p>
-    <p class="muted">A rescue is a long shot: a fast-tracked launch, a hard rendezvous, and the clock against you. Odds rise with rendezvous/propulsion tech, standing infrastructure, and reputation.</p>
-    ${mountBtn}
-    <button class="btn ghost" onclick="abandonRescue()" style="margin-top:8px">Abandon the mission (crew lost)</button>`);
+  openFlightForDecision(ctx, { holdAt:'cislunar-start', buildPanel:()=>{
+    const m=ctx.m, cost=rescueCost(m), months=rescueMonths(m), chance=Math.round(rescueChance(m)*100);
+    const afford=state.money>=cost;
+    const sub=outcome.subsystem?(SUBSYS_LABEL[outcome.subsystem]||'systems').toLowerCase():'systems';
+    const buttons=[];
+    if(afford) buttons.push({label:`Mount a rescue (${fM(cost)}, ~${months} mo, ${chance}%)`, action:mountRescue});
+    buttons.push({label:'Abandon the mission (crew lost)', ghost:true, action:abandonRescue});
+    return { title:'CREW STRANDED IN DEEP SPACE', color:themeColor('bad'),
+      lines:[ `A ${sub} failure left the crew stranded but alive — they can't get home alone.`,
+              afford ? 'A rescue is a long shot: a fast-tracked launch, a hard rendezvous, the clock against you.'
+                     : `A rescue would cost ${fM(cost)} — not affordable right now.` ],
+      buttons };
+  }});
 }
 function mountRescue(){
   if(!_pendingRescue) return;
@@ -5248,8 +5631,10 @@ let _flightResolving=false;  // true while a launch OR an arrival resolution is 
 // The resolution chain from a built ctx onward (live-call → reserve → anomaly → finalize). Shared by the
 // synchronous launch path and deferred arrivals so both reproduce the exact same outcome flow.
 function beginResolve(ctx){
-  if(animEnabled && (ctx.crewed || !ctx.routine)){
-    const flag=liveCallFlag(ctx.outcome);
+  // E1.2 slice A: routine uncrewed reflights are now eligible too (previously the only excluded
+  // case) — liveCallFlag's routine-aware threshold is what actually controls how often it fires.
+  if(animEnabled){
+    const flag=liveCallFlag(ctx.outcome, ctx.routine);
     if(flag){ _pendingLive=ctx; ctx.liveFlag=flag; showLiveCallModal(ctx, flag); return; }
   }
   postResolve(ctx);
@@ -5386,9 +5771,10 @@ function proceedLaunch(m,v,sim,windowQuality,weatherPenalty,prebuilt){
 // the post-resolve flow shared by the headless path and the live-call's "press on".
 function postResolve(ctx){
   // CE5(c): a drifting deep-phase subsystem on a flight carrying reserve margin → a bank/spend call.
-  // Skipped on routine uncrewed re-flights and never headless (which banks → today's exact outcome).
-  if(animEnabled && (ctx.crewed || !ctx.routine)){
-    const dflag=deepCallFlag(ctx.outcome, ctx.sim);
+  // E1.2 slice A: routine reflights are now eligible too (see deepCallFlag's routine-aware threshold);
+  // never fires headless (animEnabled=false always banks → today's exact rolled outcome).
+  if(animEnabled){
+    const dflag=deepCallFlag(ctx.outcome, ctx.sim, ctx.routine);
     if(dflag){ _pendingReserve=ctx; ctx.deepFlag=dflag; showReserveModal(ctx, dflag); return; }
   }
   maybeAnomaly(ctx);
@@ -5451,8 +5837,8 @@ function finalizeLaunch(ctx, ops){
     state.staticFixBonus=0;  // the static-fire fix flies once
 
     // M14: missions yield science — more for novel, deep, or first-time flights
-    let sciGain=Math.max(1, Math.round((routine?0.3:1)*((m.rep||5)*0.12 + (m.profile?5:1))*sciYieldMult()*doctrineMult('sci'))); // #6b: Science track multiplies mission science yield; CE3(a) Science doctrine boosts it
-    if(m.sciYield && !routine) sciGain += Math.round(m.sciYield*sciYieldMult()*doctrineMult('sci')); // #3: prestige science missions bank a large knowledge windfall (first flight only — not farmable on routine reflights)
+    let sciGain=Math.max(1, Math.round(((routine||m.proc)?0.3:1)*((m.rep||5)*0.12 + (m.profile?5:1))*sciYieldMult()*doctrineMult('sci'))); // #6b: Science track multiplies mission science yield; CE3(a) Science doctrine boosts it — E1.3: procedural contracts are perpetual filler, not a first, so they get the routine-tier rate too
+    if(m.sciYield && !routine && !m.proc) sciGain += Math.round(m.sciYield*sciYieldMult()*doctrineMult('sci')); // #3: prestige science missions bank a large knowledge windfall (first flight only — not farmable on routine reflights, and not on a regenerating procedural offer either)
     state.science=round2((state.science||0)+sciGain);
     let payout=(routine?m.payout*0.4:m.payout)*windowQuality*diff().payoutMult*econPayoutMult()*opsPayoutMult*doctrineMult('payout'); // CE3(a): Commercial +, Statecraft/Science −
     if(crewed) payout*=ab.payoutMult; // M6: astronaut payout bonus
@@ -5485,7 +5871,7 @@ function finalizeLaunch(ctx, ops){
       const isru=ISRU_FREE_LEG[m.id];
       if(isru && state.research[isru.research] && !state.wonM3bii && !pendingCelebration){ state.wonM3bii=true; pendingCelebration=()=>victoryM3bii('isru'); }
     }
-    if(!routine){
+    if(!routine && !m.proc){ // E1.3: a procedural contract is neither an authored "first" nor a routine reflight — no firsts/milestone tracking, see below
       state.completed[m.id]=true;
       (state.firstDates=state.firstDates||{})[m.id]=absMonth(); // chronicle: when each first happened
       fulfillSpecialIfMatch(m.id); // special contract bonus on a matching first
@@ -5502,6 +5888,11 @@ function finalizeLaunch(ctx, ops){
       if(m.id==='mars_orbit' && !state.wonM3b){ state.wonM3b=true; pendingCelebration=victoryM3b; }
       const ambCeleb=checkPrograms(); // program bonuses + ambition capstone + next-objective nudge
       if(ambCeleb && !pendingCelebration) pendingCelebration=ambCeleb;
+    }
+    if(m.proc) state.contractOffers=(state.contractOffers||[]).filter(o=>o.id!==m.id); // E1.3: one-shot — consumed on success, not reflown
+    if(m.deliverModule){ // #73 Slice 1: a "fly it yourself" module delivery docks on successful arrival
+      state.money-=m.moduleCost;
+      dockModuleNow(m.deliverModule.facId, m.deliverModule.modId, `${fM(m.moduleCost)}, flown`);
     }
     autoAdvanceMission();
   }else if(outcome.kind==='partial'){
@@ -5529,10 +5920,12 @@ function finalizeLaunch(ctx, ops){
     personnelMissionEvent(false);
     const rep=Math.min(state.rep,40); state.rep-=rep;
     addSupport(supportDelta('strand')); // #8: a crew stranded in deep space is a national shock
-    loseAssignedCrew(ctx.crewId);
+    loseAssignedCrew(ctx.crewId, m.name, outcome.story);
     advance(6); // grounding + investigation
     log('bad',`${m.name}: LOST IN DEEP SPACE — ${outcome.story} A long inquiry follows, −${rep} rep.`);
     applyEraStakes('loss of the crew'); // CE4(c): era-scaled compounding setback
+    state.poachHeat=Math.max(state.poachHeat||0, POACH_HEAT_ON_FATAL); // E1.1: instability rivals press on
+    triggerHearing(ctx); // E1.1: the political response to a fatal crewed loss (inquiry above is the engineering one, uncrewed-only)
   }else if(outcome.kind==='rescued'){
     // #20 slice 3: a deep-space rescue brought the crew home — mission & vehicle lost, crew safe
     personnelMissionEvent(false);
@@ -5544,12 +5937,14 @@ function finalizeLaunch(ctx, ops){
     if(crewed){
       const rep=Math.min(state.rep,40); state.rep-=rep;
       addSupport(supportDelta('lossCrewed')); // #8: losing a crew is the worst political blow
-      loseAssignedCrew(ctx.crewId);
+      loseAssignedCrew(ctx.crewId, m.name, outcome.story);
       advance(6); // grounding + investigation
       state.crewLost=(state.crewLost||0)+m.crew; // chronicle: the price paid
       log('bad',`${m.name}: CATASTROPHE. The ${SUBSYS_LABEL[outcome.subsystem].toLowerCase()} failed — ${outcome.story} Vehicle lost with all ${m.crew} aboard. Six-month stand-down, −${rep} rep. Fit a launch-escape system before flying crew again.`);
       pushFrontPage('disaster', '⚠', `${m.name}: crew lost`, outcome.story);
       applyEraStakes('loss of the crew and vehicle'); // CE4(c): era-scaled compounding setback
+      state.poachHeat=Math.max(state.poachHeat||0, POACH_HEAT_ON_FATAL); // E1.1: instability rivals press on
+      triggerHearing(ctx); // E1.1: the political response to a fatal crewed loss
     }else{
       const rep=Math.min(state.rep, routine?3:8); state.rep-=rep;
       addSupport(supportDelta('lossUncrewed')); // #8: an uncrewed loss costs some goodwill
@@ -5558,6 +5953,7 @@ function finalizeLaunch(ctx, ops){
     }
   }
   if(crewed && (outcome.kind==='success'||outcome.kind==='partial')) applyCrewDose(m, ctx.crewId); // surviving crew take a radiation dose
+  if(crewed && ctx.crewId) logAstronautFlight(ctx.crewId, m.name, outcome.kind); // E1.4: per-astronaut flight log, survives the person leaving state.staff
   // #3: attribute this flight to the active vehicle family and accrue/dent its heritage
   const fam=ctx.famId?familyById(ctx.famId):activeFamily(); // 1.2a/S1: resolve the launched family by id at finalize (save-safe — a deferred flight stores famId, not a detachable object ref, and finalize mutates the live family)
   if(fam){
@@ -5600,10 +5996,25 @@ function finalizeLaunch(ctx, ops){
     rng: { wind:(rnd()-0.5)*0.9, windFreq:1.4+rnd()*1.6, windPhase:rnd()*6.283,
            pitchJitter:(rnd()-0.5)*0.16, sep:state.stages.map(()=>(rnd()-0.5)*0.06),
            apogee:0.86+rnd()*0.28, bow:(rnd()-0.5)*0.9 } };
-  const finish=()=>{ if(state.money<0){ gameOver(); } else { _missionPulse=success?'ok':(outcome.kind==='loss'||outcome.kind==='strand')?'bad':null; render(); if(pendingCelebration) pendingCelebration(); maybeShowInquiry(); } _flightResolving=false; if(!state.over) pumpFlightArrivals(); }; // 1.2a: flight fully done — release the lock, surface a pending failure inquiry, then resolve the next arrival if any
+  // #73 Slice 3: a successful module delivery gets a terminal rendezvous+dock beat in the overlay. The
+  // module already docked in state above (dockModuleNow, in the success branch) — this only carries the
+  // display info the drawDockCard spectacle reads. One abstraction for LEO/Moon/Mars (backdrop tinted per
+  // body); docking doesn't get its own roll — a resolved-success flight simply docks (Slice 2's precedent).
+  if(m.deliverModule && success){
+    const _fd=facilityById(m.deliverModule.facId), _fs=facilityState(m.deliverModule.facId), _md=stationModuleDef(m.deliverModule.modId);
+    spec.dock={ facName:_fd?_fd.name:'Station', facColor:(_fd&&_fd.color)||'#aeb6bd', body:(_fd&&_fd.body)||'earth',
+      modName:_md?_md.name:'Module', modShort:(_md&&_md.short)||'MOD', modColor:(_md&&_md.color)||'#b8c0c7',
+      moduleCount:_fs?facilityModuleList(_fs).length:1 }; // post-dock count (dockModuleNow already pushed it)
+  }
+  const finish=()=>{ if(state.money<0){ gameOver(); } else { _missionPulse=success?'ok':(outcome.kind==='loss'||outcome.kind==='strand')?'bad':null; render(); if(pendingCelebration) pendingCelebration(); maybeShowInquiry(); maybeShowHearing(); } _flightResolving=false; if(!state.over) pumpFlightArrivals(); }; // 1.2a: flight fully done — release the lock, surface a pending failure inquiry or budget hearing, then resolve the next arrival if any
   if(animEnabled){
-    _liftoffArmed=false; // Slice A: the pad phase now lives inside the overlay itself (setupFlightState's padDur) —
-    playMission(spec, finish); // the old iso-view CC-popout liftoff (playLiftoff) is retired for launches, left defined-but-unused
+    // E1.2 slice C: if a live-flight decision (live call/reserve/weather/rescue) opened this overlay
+    // early (openFlightForDecision), resume that SAME animation in place with the now-known outcome
+    // instead of opening a second, fresh one. resumeFlightForDecision itself checks _openedForDecision.
+    if(!resumeFlightForDecision(spec, finish)){
+      _liftoffArmed=false; // Slice A: the pad phase now lives inside the overlay itself (setupFlightState's padDur) —
+      playMission(spec, finish); // the old iso-view CC-popout liftoff (playLiftoff) is retired for launches, left defined-but-unused
+    }
   } else finish();
 }
 function autoAdvanceMission(){
@@ -5759,7 +6170,7 @@ function renderBlueprints(){
   const el=$('blueprintsCard'); if(!el) return;
   const list=blueprints();
   const rows=list.map(b=>`<div style="display:flex;align-items:center;gap:8px;justify-content:space-between;padding:6px 0;border-top:1px solid var(--line)">
-      <span style="min-width:0"><b>${b.name}</b> <span class="dim" style="font-size:12px">${b.summary||''} · ${b.born||''}</span></span>
+      <span style="min-width:0"><b>${esc(b.name)}</b> <span class="dim" style="font-size:12px">${b.summary||''} · ${b.born||''}</span></span>
       <span style="display:flex;gap:5px;flex-shrink:0">
         <button class="btn" style="font-size:12px;padding:3px 9px" onclick="loadBlueprint('${b.id}')">Load</button>
         <button class="btn ghost danger" style="font-size:12px;padding:3px 8px" onclick="deleteBlueprint('${b.id}')" title="Delete">✕</button>
@@ -5791,7 +6202,7 @@ function renderLivery(){
   const l=curLivery();
   const noseBtn=(id,label)=>`<button class="btn ${l.nose===id?'':'ghost'}" style="font-size:12px;padding:4px 9px" onclick="setLiveryNose('${id}')">${label}</button>`;
   el.innerHTML=`<h2>🎨 Livery</h2>
-    <div class="row"><label>Name</label><input type="text" maxlength="24" value="${(l.name||'').replace(/"/g,'&quot;')}" placeholder="e.g. Vanguard" onchange="setLiveryName(this.value)" style="flex:1"></div>
+    <div class="row"><label>Name</label><input type="text" maxlength="24" value="${esc(l.name||'')}" placeholder="e.g. Vanguard" onchange="setLiveryName(this.value)" style="flex:1"></div>
     <div class="row"><label>Body</label><input type="color" value="${l.body}" onchange="setLiveryBody(this.value)" style="width:46px;padding:2px"><span class="dim" style="font-size:12px">hull color</span></div>
     <div class="row"><label>Accent</label><input type="color" value="${l.accent}" onchange="setLiveryAccent(this.value)" style="width:46px;padding:2px"><span class="dim" style="font-size:12px">stripe + roundel</span></div>
     <div class="row"><label>Nose</label><div style="display:flex;gap:5px;flex-wrap:wrap">${noseBtn('auto','Ogive')}${noseBtn('cone','Cone')}${noseBtn('blunt','Blunt')}</div></div>
@@ -5808,7 +6219,7 @@ function setAscentEng(v){state.ascent.eng=v;render();}
 function setAscentProp(v){state.ascent.prop=Math.max(0.1,Math.min(40,parseFloat(v)||0.1));render();}
 function setEclss(id){ const t=ECLSS[id]; if(t.research && !state.research[t.research]) return; state.eclss=id; render(); }
 function setTestLevel(n){ state.testLevel=n; render(); }
-function selectMission(id){const m=MISSIONS.find(x=>x.id===id); if(state.rep<m.minRep)return; if(!missionTechMet(m))return; state.activeMission=id; closeLiveModal(); state.tab='bench'; render();}
+function selectMission(id){const m=missionById(id); if(!m||state.rep<m.minRep)return; if(!missionTechMet(m))return; state.activeMission=id; closeLiveModal(); state.tab='bench'; render();}
 function reqsMet(r){
   return r.req.every(q=>state.research[q]) && (!r.reqMissionDone || state.completed[r.reqMissionDone]);
 }
@@ -6035,7 +6446,7 @@ function deptLed(id){ return !!deptLeadRecord(id); }
 // exercises, plus the Astronaut Corps when the active mission is crewed.
 function criticalDepts(){
   const core=['propulsion','structures','avionics'];
-  const m=(typeof MISSIONS!=='undefined')?MISSIONS.find(x=>x.id===state.activeMission):null;
+  const m=(typeof MISSIONS!=='undefined')?missionById(state.activeMission):null;
   if(m && m.crew>0) core.push('astronaut');
   return core;
 }
@@ -6485,7 +6896,24 @@ function hideModal(){activeModal=null;_prodModalOpen=false;$('modal').classList.
 
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=45; // v45: P11 — one late-game crisis (Kessler debris cascade). state.crisis ({phase,startAbs,severity,peakSeverity,fundedUntilAbs} or null), state.crisisDone ({outcome:'mitigated'|'endured',peakSeverity,months} or null once resolved — a ONE-TIME arc, not recurring), state.leoFlights (cumulative successful LEO-class flights, the trigger's own counter). Eligible from Commercial era (index 4) + leoFlights≥40; a small monthly chance then starts it. Active: LEO-class missions (isLeoClassMission — no profile, reqDv≥9000) fly at up to −12% reliability, scaling with severity; funding a Debris Remediation Program (cost scales with eraStakesFrac(), like the bailout mechanic) brings severity down, letting it go unfunded lets it rise. Resolves 'mitigated' (severity hits 0, bigger legacyScore bonus) or 'endured' (36 months elapse regardless, smaller bonus) — never a hard lockout, just a rising tax. No explicit migrate function needed: all three fields are read through `||`/falsy guards everywhere (state.crisis falsy on a legacy load = inactive; leoFlights||0 = 0), so behavior is unchanged until a save's own play crosses the era+flight-count threshold. v44: P6 6.1 era-transition interstitial — state.eraSeen (index of the last era acknowledged via the full-screen card) + state.eraStartSnapshot ({flights,playerFirsts,rivalFirsts,money,rep} baseline captured when that era began, diffed for the retrospective). Both persisted. Trigger is DERIVED (eraIndex(currentEra())>state.eraSeen), gated behind the setback>mishap>inquiry>rival-disaster _pending chain (era is lowest priority; deferred to a later settle-point if any decision is pending, never lost since the condition is stateful). eraSeen advances only on Continue; balance-neutral (pure notification). Lazy migration: pre-v44 saves lack both — migrateEraSeen() backfills eraSeen to the save's CURRENT era index (from its own year, NOT 0, so a late-game load fires ZERO stale interstitials) and seeds eraStartSnapshot from current metrics; newGame seeds eraSeen:0 + a Pioneer baseline. v43: P3 failure investigation loop — state.inquiryCredit ({subsystem,rel,flights} or null): a funded uncrewed-loss inquiry into an ascent/staging subsystem grants a +2% additive-R credit (like familyRelBonus) gated to that subsystem, consumed over 3 flights at launch; a deep-phase failure grants a flat +10⚛ science instead (no persisted credit). Transient _pendingInquiry (fund/decline modal, precedence setback>mishap>inquiry) is NOT persisted. Lazy migration: pre-v43 saves lack inquiryCredit — loadDefaults() seeds it null on both load paths (undefined is already falsy, so behavior is unchanged either way). v42: P2 slice 2.4 — per-facility auto-resupply toggle (fs.autoResupply boolean; opt-in per facility). On the monthly tick a facility with the toggle ON auto-fires resupplyFacility() once supply falls to/below AUTO_RESUPPLY_THRESHOLD(6) and canResupply().ok — same cost/gate/lifecycle as a manual order (the resupplyInTransit + money gates prevent double-ordering and unaffordable fires). Pure automation, balance-neutral otherwise; each auto-order logs a 'note' line. Lazy migration: pre-v42 facilities carry no autoResupply — migrateFacilityAutoResupply() defaults it false on load (undefined is already falsy, so behavior is unchanged either way); foundFacility seeds autoResupply:false on fresh bases. v41: P1 persistent in-flight missions — state.activeFlights[] (deferred interplanetary flights carry a resolved-at-launch ctx applied on arrival; ctx stores famId + crewId, not object refs, so a mid-cruise save round-trips; legacy saves default [] via loadDefaults; rehydrateFlights() re-links ctx.m + restores _flightSeq on load). v40: #19 slice B — career progression (staff.xp accrues monthly ×morale ×dept-training, raising effSkill above hire-day base up to +0.15; dept.training level bought with capital; legacy staff default xp 0 via staffXp guard, effSkill==base at xp 0 so no balance migration). #19 slice C (succession + workforce planning) adds no persisted state — reconcileDeptLeads mutates existing dept.lead, gaps + the era-scaled unstaffed-department reliability penalty (0 in Pioneer) are derived — so it needs no bump. v39: #19 slice A — organizational departments (state.departments {deptId:{lead,training}}; legacy saves default via loadDefaults/defaultDepartments; membership is derived from hired staff, leads are balance-neutral when unset); v38: #6 research partnerships — bench-tested / flight-proven components (state.engineStockTested + state.partStockTested, the bench-tested subset of each yard; legacy saves default {}); a fitted bench-tested component adds +1.5% reliability (cap +6%, benchRelBonus), built at +60% cost / +50% time; v36: #7 sub-assemblies slice 2 — structures & habitats yard (state.partStock {"kind:sub":count}, e.g. "tank:steel"/"hab:closed"; legacy saves default {}); same cost-neutral cadence pattern as the Engine Yard; v35: #7 sub-assemblies — Engine Yard (state.engineStock {engId:count}; legacy saves default {}); v34: Time Granularity slice 4b — launch windows day-scheduled (window/committedWindow .abs moved from absMonth to absDay; migrateWindowsToDays ×30 on pre-v34 load + clears the regenerable windows cache); v33: Time Granularity slice 1 — day-iterating advance() funnel (state.day 0..29 + absDay(); legacy saves default day:0 via load defaults; whole-month advances stay bit-identical so no balance migration needed); v32: CE4(c) era-scaled failure stakes + bailout retune (state.loanInterest — permanent bridge-loan debt service; legacy saves default to 0 via load defaults + loanInterest() guard); v31: CE4(b) standing resupply obligations (per-facility supply/starvedMonths; legacy facilities default to fully provisioned via facilitySupply()); v30: CE3(c) lunar architecture fork (state.lunarArch, null=uncommitted; luna_landing reqResearch moved to per-arch gates); v29: CE3(a) company doctrine (state.doctrine, null=undeclared/neutral); v28: CE2(c) juggernaut capstone (state.standingProd/juggernautReached); v27: CE2(b) launch cadence (state.padMonthAbs/padMonthUsed) — load defaults seed all of these; v26: CE1 rival agents (state.rivalState), seedRivalState migrates old rivalFired
+const SAVE_VERSION=51; // v51: #73 Slice 2 — Moon/Mars module delivery is a real profile-based cargo
+// cruise. New optional `cargo` field on any mission/contractOffer object (uncrewed payload mass carried
+// through every leg of a `.profile` mission — read only by lvPayload()'s profile branch and
+// simulateMission()'s stackMass(), both via `m.cargo||0`; a mission with no cargo field behaves exactly
+// as before). No new top-level state — Moon deliveries resolve synchronously (days:8, same turn) exactly
+// like Slice 1's LEO deliveries; Mars deliveries (days:210) ride the EXISTING state.activeFlights
+// deferred-flight mechanism unchanged (a normal ctx-bearing record, not a new record shape) — so a
+// mid-cruise Mars delivery save round-trips through the same rehydrateFlights() path any other deferred
+// mission already uses. No explicit migrate function needed. Purely additive, no balance impact on
+// existing saves or any mission that doesn't set m.cargo. v50: #73 Slice 1 — module delivery is a real launch (LEO only). state.mdSeq
+// (module-delivery id counter, lazily defaulted via `(state.mdSeq||0)+1`, mirrors state.procSeq's
+// pattern) + two new optional fields on state.contractOffers[] items: deliverModule ({facId,modId})
+// and moduleCost (the base price, locked in at generation so a later balance change can't retroactively
+// over/undercharge an in-flight delivery). Both fields are read only through m.deliverModule truthy
+// checks in finalizeLaunch's success branch and pendingModuleDelivery()'s .find() — old offers (which
+// never have deliverModule) just read as "not a module delivery," exactly the lazy-default convention
+// every other proc-offer field already uses. No explicit migrate function needed. Purely additive, no
+// balance impact on existing saves or existing (repeat-of-type) module purchases. v49: E1.1 slice A — reactive rival race. state.poachHeat (months remaining in a post-fatal-loss window; set by triggerHearing's siblings in finalizeLaunch's two crewed-loss branches and by the hearing's "blame" choice, decremented monthly by tickPoachHeat(), multiplies checkPoaching's roll ×POACH_HEAT_MULT while >0). Per-offer state.contractOffers[].rivalBid ({rivalId,snatchAbs} or absent) set by tickRivalSnatch() when a surging rival bids on an uncommitted procedural offer — forward-compatible by construction (an existing offer object just gains an optional key; old offers read as unbid, exactly the lazy-default convention every other proc-offer field already uses). No persisted state for the budget-hearing decision itself (_pendingHearing is transient, like _pendingInquiry/_pendingSetback). No explicit migrate function needed: poachHeat reads through `||0` everywhere, rivalBid reads through truthy checks — pre-v49 saves just start cold on both. Purely additive, no balance impact. v48: E1.3 — procedural filler contracts. state.contractOffers ([{id:'pc_N',proc:true,name,reqDv,payload,crew,days,payout,rep,minRep,reqResearch?,blurb,expiresAbs}]) + state.procSeq, generated monthly by tickContractOffers() (era + capability-gated via CONTRACT_ARCHETYPES, data.js) up to CONTRACT_OFFER_CAP concurrent, expiring after CONTRACT_OFFER_LEAD months unless referenced by activeMission/buildQueue/hangar. Resolved via the new missionById(id) (checks MISSIONS then contractOffers) at the handful of call sites that resolve state.activeMission by id; deferred-flight/history/program lookups stay MISSIONS-only by design (procedural archetypes are immediate, non-deferred, and deliberately never write state.completed/firstDates/history — finalizeLaunch's success branch gates the whole firsts/milestone block on `!m.proc`, and sciGain uses the routine-tier rate for proc flights too, so a contract offer pays full money once at a discounted rate and is removed on success — never a repeatable science/firsts farm). No explicit migrate function needed: both fields read only through missionById/tickContractOffers, which fall back to []/0 — pre-v48 saves just start with an empty board. Purely additive, no balance impact on existing saves. v47: E1.4 — memorial wall. state.memorial ([{id,name,when,mission,story}]), appended in loseAssignedCrew at the moment a crewed flight kills its astronaut (name snapshotted, so it survives the id leaving state.staff and any future pool edits), rendered in the Personnel tab when non-empty. Read only through memorialRoll(), which falls back to [] — pre-v47 saves just start with an empty wall. Purely additive, no balance impact. v46: E1.4 — per-astronaut flight log. state.astronautLog ({astronautId:[{when,mission,outcome}]}), appended once per crewed flight resolution in finalizeLaunch, keyed by id so it survives the astronaut leaving state.staff (death/fire/quit). No explicit migrate function needed: read only through astronautFlights(id), which falls back to [] when the field or the id's entry is missing — pre-v46 saves just start every astronaut with an empty log. Purely additive, no balance impact. v45: P11 — one late-game crisis (Kessler debris cascade). state.crisis ({phase,startAbs,severity,peakSeverity,fundedUntilAbs} or null), state.crisisDone ({outcome:'mitigated'|'endured',peakSeverity,months} or null once resolved — a ONE-TIME arc, not recurring), state.leoFlights (cumulative successful LEO-class flights, the trigger's own counter). Eligible from Commercial era (index 4) + leoFlights≥40; a small monthly chance then starts it. Active: LEO-class missions (isLeoClassMission — no profile, reqDv≥9000) fly at up to −12% reliability, scaling with severity; funding a Debris Remediation Program (cost scales with eraStakesFrac(), like the bailout mechanic) brings severity down, letting it go unfunded lets it rise. Resolves 'mitigated' (severity hits 0, bigger legacyScore bonus) or 'endured' (36 months elapse regardless, smaller bonus) — never a hard lockout, just a rising tax. No explicit migrate function needed: all three fields are read through `||`/falsy guards everywhere (state.crisis falsy on a legacy load = inactive; leoFlights||0 = 0), so behavior is unchanged until a save's own play crosses the era+flight-count threshold. v44: P6 6.1 era-transition interstitial — state.eraSeen (index of the last era acknowledged via the full-screen card) + state.eraStartSnapshot ({flights,playerFirsts,rivalFirsts,money,rep} baseline captured when that era began, diffed for the retrospective). Both persisted. Trigger is DERIVED (eraIndex(currentEra())>state.eraSeen), gated behind the setback>mishap>inquiry>rival-disaster _pending chain (era is lowest priority; deferred to a later settle-point if any decision is pending, never lost since the condition is stateful). eraSeen advances only on Continue; balance-neutral (pure notification). Lazy migration: pre-v44 saves lack both — migrateEraSeen() backfills eraSeen to the save's CURRENT era index (from its own year, NOT 0, so a late-game load fires ZERO stale interstitials) and seeds eraStartSnapshot from current metrics; newGame seeds eraSeen:0 + a Pioneer baseline. v43: P3 failure investigation loop — state.inquiryCredit ({subsystem,rel,flights} or null): a funded uncrewed-loss inquiry into an ascent/staging subsystem grants a +2% additive-R credit (like familyRelBonus) gated to that subsystem, consumed over 3 flights at launch; a deep-phase failure grants a flat +10⚛ science instead (no persisted credit). Transient _pendingInquiry (fund/decline modal, precedence setback>mishap>inquiry) is NOT persisted. Lazy migration: pre-v43 saves lack inquiryCredit — loadDefaults() seeds it null on both load paths (undefined is already falsy, so behavior is unchanged either way). v42: P2 slice 2.4 — per-facility auto-resupply toggle (fs.autoResupply boolean; opt-in per facility). On the monthly tick a facility with the toggle ON auto-fires resupplyFacility() once supply falls to/below AUTO_RESUPPLY_THRESHOLD(6) and canResupply().ok — same cost/gate/lifecycle as a manual order (the resupplyInTransit + money gates prevent double-ordering and unaffordable fires). Pure automation, balance-neutral otherwise; each auto-order logs a 'note' line. Lazy migration: pre-v42 facilities carry no autoResupply — migrateFacilityAutoResupply() defaults it false on load (undefined is already falsy, so behavior is unchanged either way); foundFacility seeds autoResupply:false on fresh bases. v41: P1 persistent in-flight missions — state.activeFlights[] (deferred interplanetary flights carry a resolved-at-launch ctx applied on arrival; ctx stores famId + crewId, not object refs, so a mid-cruise save round-trips; legacy saves default [] via loadDefaults; rehydrateFlights() re-links ctx.m + restores _flightSeq on load). v40: #19 slice B — career progression (staff.xp accrues monthly ×morale ×dept-training, raising effSkill above hire-day base up to +0.15; dept.training level bought with capital; legacy staff default xp 0 via staffXp guard, effSkill==base at xp 0 so no balance migration). #19 slice C (succession + workforce planning) adds no persisted state — reconcileDeptLeads mutates existing dept.lead, gaps + the era-scaled unstaffed-department reliability penalty (0 in Pioneer) are derived — so it needs no bump. v39: #19 slice A — organizational departments (state.departments {deptId:{lead,training}}; legacy saves default via loadDefaults/defaultDepartments; membership is derived from hired staff, leads are balance-neutral when unset); v38: #6 research partnerships — bench-tested / flight-proven components (state.engineStockTested + state.partStockTested, the bench-tested subset of each yard; legacy saves default {}); a fitted bench-tested component adds +1.5% reliability (cap +6%, benchRelBonus), built at +60% cost / +50% time; v36: #7 sub-assemblies slice 2 — structures & habitats yard (state.partStock {"kind:sub":count}, e.g. "tank:steel"/"hab:closed"; legacy saves default {}); same cost-neutral cadence pattern as the Engine Yard; v35: #7 sub-assemblies — Engine Yard (state.engineStock {engId:count}; legacy saves default {}); v34: Time Granularity slice 4b — launch windows day-scheduled (window/committedWindow .abs moved from absMonth to absDay; migrateWindowsToDays ×30 on pre-v34 load + clears the regenerable windows cache); v33: Time Granularity slice 1 — day-iterating advance() funnel (state.day 0..29 + absDay(); legacy saves default day:0 via load defaults; whole-month advances stay bit-identical so no balance migration needed); v32: CE4(c) era-scaled failure stakes + bailout retune (state.loanInterest — permanent bridge-loan debt service; legacy saves default to 0 via load defaults + loanInterest() guard); v31: CE4(b) standing resupply obligations (per-facility supply/starvedMonths; legacy facilities default to fully provisioned via facilitySupply()); v30: CE3(c) lunar architecture fork (state.lunarArch, null=uncommitted; luna_landing reqResearch moved to per-arch gates); v29: CE3(a) company doctrine (state.doctrine, null=undeclared/neutral); v28: CE2(c) juggernaut capstone (state.standingProd/juggernautReached); v27: CE2(b) launch cadence (state.padMonthAbs/padMonthUsed) — load defaults seed all of these; v26: CE1 rival agents (state.rivalState), seedRivalState migrates old rivalFired
 function writeSave(){ localStorage.setItem(SAVE_KEY, JSON.stringify({v:SAVE_VERSION, ts:Date.now(), state})); } // state is JSON-safe by design (stores ids, not object refs); the outer stringify snapshots the whole graph, so no inner clone is needed
 // S1: silent throttled autosave so "Continue last game" always resumes the most recent session.
 // Skips a transient mid-flight-resolution snapshot; forced on page close.
@@ -6522,7 +6950,7 @@ function saveGame(){
     writeSave();
     log('info','Game saved.');
     render();
-    showModal(`<h2>Game Saved</h2><p class="muted">${dateStr()} — ${state.company}</p>
+    showModal(`<h2>Game Saved</h2><p class="muted">${dateStr()} — ${esc(state.company)}</p>
       <p class="dim" style="font-size:12px">Saved to browser local storage. Clearing browser data will erase it.</p>
       <button class="btn" onclick="hideModal()" style="margin-top:8px">OK</button>`);
   }catch(e){
@@ -6595,7 +7023,7 @@ function showRecap(){
   const grade=(()=>{ try{ return legacyScore().grade; }catch(e){ return null; } })();
   showModal(`<div>
     <h2 style="margin-bottom:2px">Where you left off</h2>
-    <p class="muted" style="font-size:12px;margin:0 0 10px">${dateStr()} · ${state.company}${grade?` · legacy ${grade}`:''}</p>
+    <p class="muted" style="font-size:12px;margin:0 0 10px">${dateStr()} · ${esc(state.company)}${grade?` · legacy ${grade}`:''}</p>
     <div class="metrics" style="margin-bottom:10px">
       <div class="metric"><div class="k">Treasury</div><div class="v">${fM(state.money)}</div></div>
       <div class="metric"><div class="k">Reputation</div><div class="v">${Math.round(state.rep)}</div></div>
@@ -6656,7 +7084,7 @@ function savedGameMeta(){
 function showStartup(){
   const meta=savedGameMeta();
   const when=meta&&meta.ts?new Date(meta.ts).toLocaleString():'';
-  const cont = meta ? `<button class="btn launch" style="width:100%;margin-bottom:8px" onclick="startupContinue()">▸ Continue last game<br><span class="dim" style="font-size:11px">${meta.company} · year ${meta.year}${when?` · saved ${when}`:''}</span></button>` : '';
+  const cont = meta ? `<button class="btn launch" style="width:100%;margin-bottom:8px" onclick="startupContinue()">▸ Continue last game<br><span class="dim" style="font-size:11px">${esc(meta.company)} · year ${meta.year}${when?` · saved ${when}`:''}</span></button>` : '';
   showModal(`<div style="text-align:center">
     <h2 style="margin-bottom:2px">Orbital Ventures</h2>
     <p class="muted" style="font-size:12px;margin:0 0 14px">Found a space agency and reach the planets before your rivals.</p>
@@ -6899,7 +7327,7 @@ function showRestoreRing(){
       body=entries.map(e=>{ const m=e.meta||{}; const when=e.ts?new Date(e.ts).toLocaleString():'';
         return `<div class="card" style="background:var(--panel2);margin-bottom:6px;display:flex;align-items:center;gap:8px">
           <div style="flex:1;min-width:0">
-            <div style="font-size:13px;color:var(--ink)">${m.company||'—'} · year ${m.year||'—'}${m.era?` · ${m.era}`:''}</div>
+            <div style="font-size:13px;color:var(--ink)">${esc(m.company||'—')} · year ${m.year||'—'}${m.era?` · ${m.era}`:''}</div>
             <div class="dim" style="font-size:11px">${fM(m.money||0)} · ${m.flights||0} flights${m.difficulty?` · ${m.difficulty}`:''}${when?` · ${when}`:''}</div>
           </div>
           <button class="btn" style="font-size:12px" onclick="restoreRingEntry('${e.id}')">↻ Restore</button>
@@ -6966,7 +7394,7 @@ function showManageSaves(){
         return `<div class="card" style="background:var(--panel2);margin-bottom:6px">
           <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:2px">
             <b style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Slot ${n}</b>
-            <span style="font-size:13px;color:var(--ink)">${m.company||'—'} · year ${m.year||'—'}${m.era?` · ${m.era}`:''}</span>
+            <span style="font-size:13px;color:var(--ink)">${esc(m.company||'—')} · year ${m.year||'—'}${m.era?` · ${m.era}`:''}</span>
           </div>
           <div class="dim" style="font-size:11px;margin-bottom:6px">${fM(m.money||0)} · ${m.flights||0} flights${m.difficulty?` · ${m.difficulty}`:''}${when?` · ${when}`:''}</div>
           <div style="display:flex;gap:6px;flex-wrap:wrap">
@@ -7251,6 +7679,7 @@ document.addEventListener('keydown',function(e){
   const typing=isTyping(e);
   // ESC works even from a focused control: close an open modal/drill, else step back.
   if(e.key==='Escape'){
+    if(devPanelOpen){ closeDevPanel(); e.preventDefault(); return; } // dev menu closes first (its own overlay, layered ahead of the modal/scene-back checks)
     if(modalOpen()){ hideModal(); e.preventDefault(); return; }
     if(hubPanel==='contracts'){ openHubPanel('alerts'); e.preventDefault(); return; }
     if(state.tab!=='command'){ setTab('command'); e.preventDefault(); return; }
@@ -7339,6 +7768,138 @@ function tryLaunchHotkey(){
     if(canLaunch(v,m,sim).ok){ if(state.tab!=='bench'){ state.tab='bench'; render(); } launch(); }
   }catch(err){}
 }
+/* ============================================================================
+   DEV / CHEAT MENU (Ctrl+Shift+D) — dev-only manual-testing tool. NEVER shown to
+   real players. Fast-forwards time and manipulates state so late-timeline features
+   (station docking, Mars ops, late-era content) can be tested without a real grind.
+   Open state is a plain module-level bool (like techExpanded/hubPanel) — NOT in
+   `state`, so it never lands in a save. Every mutation drives the REAL sim functions
+   (advance/advanceDays/foundFacility/addStationModule/…) so all side effects fire.
+   ========================================================================== */
+let devPanelOpen=false;
+function toggleDevPanel(){ devPanelOpen?closeDevPanel():openDevPanel(); }
+function openDevPanel(){ const p=$('devPanel'); if(!p) return; devPanelOpen=true; p.innerHTML=devPanelHtml(); p.classList.remove('hidden'); }
+function closeDevPanel(){ const p=$('devPanel'); if(p) p.classList.add('hidden'); devPanelOpen=false; }
+// re-render the whole page (so mutations show) AND refresh the panel's own live readouts. The panel is
+// a fixed element OUTSIDE #app, so render() never wipes it — we just re-fill its innerHTML for the readout.
+function devRefresh(){ try{ render(); }catch(e){} if(devPanelOpen){ const p=$('devPanel'); if(p) p.innerHTML=devPanelHtml(); } }
+function devReadInput(id){ const el=$(id); if(!el) return NaN; return parseFloat(el.value); }
+// ---- time: always through the REAL tick functions, never a raw state.year write ----
+function devAdvanceDays(d){ if(!state||state.over) return; advanceDays(d); devRefresh(); }
+function devAdvanceMonths(mo){ if(!state||state.over) return; advance(mo); devRefresh(); }
+// Advance in 12-month batches until state.year >= targetYear (per-batch so a long jump — pioneer→
+// speculative is ~160 yr — isn't a single 57k-day tight loop, and side effects settle periodically).
+// A pure time-skip earns no income, so decades of overhead would bankrupt an early company and trip
+// gameOver mid-jump — defeating the whole point (reliably reaching later content). We top the treasury
+// back to a floor before each batch so the skip always completes; the real tick path is otherwise
+// untouched. (Documented state side effect: an era/late-game jump leaves the company solvent.)
+function devAdvanceToYear(targetYear){
+  let guard=0;
+  while(state.year<targetYear && !state.over && guard++<5000){
+    if(state.money<DEV_SKIP_MONEY_FLOOR) state.money=DEV_SKIP_MONEY_FLOOR; // keep solvent through the skip
+    const monthsLeft=(targetYear-state.year)*12 - (state.month||0);
+    advance(Math.min(Math.max(1,monthsLeft), 12));
+  }
+}
+const DEV_SKIP_MONEY_FLOOR=1000; // $1B floor kept during a time-skip so overhead can't bankrupt the jump
+function devJumpEra(eraId){ const era=ERAS.find(e=>e.id===eraId); if(!era||!state||state.over) return; if(state.year<era.from) devAdvanceToYear(era.from); devRefresh(); }
+// ---- money / rep / science: number-input Add / Set-to ----
+function devAddMoney(){ const v=devReadInput('devMoneyInput'); if(!isNaN(v)){ state.money+=v; devRefresh(); } }
+function devSetMoney(){ const v=devReadInput('devMoneyInput'); if(!isNaN(v)){ state.money=v; devRefresh(); } }
+function devAddRep(){ const v=devReadInput('devRepInput'); if(!isNaN(v)){ state.rep=Math.max(0,(state.rep||0)+v); devRefresh(); } } // floor at 0, matching the codebase convention (no ceiling)
+function devSetRep(){ const v=devReadInput('devRepInput'); if(!isNaN(v)){ state.rep=Math.max(0,v); devRefresh(); } }
+function devAddScience(){ const v=devReadInput('devSciInput'); if(!isNaN(v)){ state.science=(state.science||0)+v; devRefresh(); } }
+function devSetScience(){ const v=devReadInput('devSciInput'); if(!isNaN(v)){ state.science=v; devRefresh(); } }
+// ---- unlock everything: removes GATES only (research/tech-level/rep). It does NOT found facilities,
+// design vehicles, or complete missions — "unlock" opens doors, it doesn't play the game for you. ----
+function devUnlockAllResearch(){
+  state.research=state.research||{};
+  for(const r of RESEARCH) state.research[r.id]=true;
+  state.techLevel=state.techLevel||{};
+  for(const id in TECH_LEVELS) state.techLevel[id]=TECH_LEVELS[id].max; // max the leveled techs too (real cap read from TECH_LEVELS)
+  try{ reconcileResearch(); }catch(e){} // re-apply engine/capability unlocks the boolean flags imply
+}
+function devUnlockAll(){ devUnlockAllResearch(); devRefresh(); }
+function devMaxRep(){ state.rep=100; devRefresh(); } // 100 clears every partnerUnlocked() rep gate; no hard ceiling exists so we don't invent one
+// ---- force flight outcome / decision event (single-shot; the sim vars self-clear on first use) ----
+function devForceOutcome(kind){ _devForceOutcome=kind; devToast('Next launch outcome forced: '+kind); }
+function devForceLiveCall(){ _devForceLiveCall=true; devToast('Next launch will fire a live-call decision.'); }
+function devForceReserve(){ _devForceReserve=true; devToast('Next launch will fire a reserve-call decision.'); }
+function devForceWeather(){ _devForceWeather=true; devToast('Next launch will hit an adverse-weather scrub.'); }
+function devToast(msg){ try{ log('note','DEV: '+msg); }catch(e){} if(devPanelOpen){ const el=$('devStatus'); if(el) el.textContent=msg; } }
+// ---- presets ----
+// "Fast-forward to late game": advance to the Expansion era (2030) via the REAL advance(), then unlock
+// all research, grant a large treasury, and max rep. (money is in $M — 2000 renders as $2,000.00M ≈ $2B.)
+function devPresetLateGame(){
+  if(!state||state.over) return;
+  if(state.year<2030) devAdvanceToYear(2030);
+  devUnlockAllResearch();
+  state.money=2000; // $2B in the game's $M units
+  state.rep=100;
+  devToast('Fast-forwarded to late game (≥2030), all research unlocked, treasury + rep maxed.');
+  devRefresh();
+}
+// "LEO station, pre-stocked": ensure a real LEO facility exists (foundFacility) and dock 3 distinct
+// module types onto it via the REAL docking path (addStationModule → dockModuleNow). Grants money and
+// removes the founding gate (the reqMission) up front — gate removal, same spirit as "unlock all".
+function devPresetStation(){
+  if(!state||state.over) return;
+  const def=facilityById('leo_station');
+  if(def.reqMission && !state.completed[def.reqMission]) state.completed[def.reqMission]=true; // remove the founding gate (can't "fly" crew_orbit from here)
+  if(state.money<600) state.money=600; // ensure founding + modules are affordable (real functions charge real cost)
+  if(!facilityBuilt('leo_station')) foundFacility('leo_station'); // real founding: charges cost, advances construction months
+  if(!state.over){
+    for(const mid of ['lab_mod','power_truss','node_hub']){ // 3 distinct types (none gated by research); core is already a Habitat
+      const fs=facilityState('leo_station');
+      if(fs && facilityModuleList(fs).includes(mid)) continue;
+      if(state.money<200) state.money=200;
+      addStationModule('leo_station', mid); // real dock: charges cost, advances build months, calls dockModuleNow
+    }
+  }
+  devToast('LEO Station founded and pre-stocked with Lab, Power Truss, and Docking Node modules.');
+  devRefresh();
+}
+// ---- panel markup (built fresh on open / after each mutation for live readouts) ----
+function devPanelHtml(){
+  const btn=(label,onclick,extra)=>`<button onclick="${onclick}" style="cursor:pointer;background:#2a2013;color:#ffd9a8;border:1px solid #6b4a1e;border-radius:4px;padding:4px 7px;font:inherit;margin:2px 3px 2px 0;${extra||''}">${label}</button>`;
+  const num=(id,val,ph)=>`<input id="${id}" type="number" value="${val}" placeholder="${ph||''}" style="width:88px;background:#0d0a05;color:#ffe9c8;border:1px solid #6b4a1e;border-radius:4px;padding:3px 5px;font:inherit">`;
+  const sect=(title,body)=>`<div style="border-top:1px solid #3a2c16;padding:9px 12px">
+    <div style="color:#ff8c1a;font-weight:bold;letter-spacing:0.5px;font-size:11px;margin-bottom:5px">${title}</div>${body}</div>`;
+  const eraBtns=ERAS.map(e=>btn(e.name+' <span style="opacity:0.6">'+e.from+'</span>',`devJumpEra('${e.id}')`)).join('');
+  const yr=state?`${(['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][state.month]||'')} ${state.year}`:'—';
+  const readout=state?`money <b style="color:#7fe3a0">$${(state.money||0).toFixed(1)}M</b> · rep <b style="color:#8fc4ff">${Math.round(state.rep||0)}</b> · sci <b style="color:#c9a8ff">${Math.round(state.science||0)}</b>`:'';
+  return `<div style="position:sticky;top:0;background:#1c1509;border-bottom:2px solid #ff8c1a;padding:9px 12px;display:flex;align-items:center;justify-content:space-between">
+      <div><span style="color:#ff8c1a;font-weight:bold;letter-spacing:1px">⚠ DEV MODE</span>
+        <div style="opacity:0.6;font-size:10px;margin-top:2px">manual testing · not shown to players</div></div>
+      <button onclick="closeDevPanel()" title="Close (Esc)" style="cursor:pointer;background:transparent;color:#ffb066;border:1px solid #6b4a1e;border-radius:4px;padding:2px 8px;font:inherit;font-size:14px">✕</button>
+    </div>
+    <div style="padding:7px 12px;background:#0f0b05;color:#cdbfa8;font-size:11px">${yr} · ${readout}</div>
+    ${sect('TIME  (real tick path)',
+      btn('+1 day',"devAdvanceDays(1)")+btn('+1 week',"devAdvanceDays(7)")+btn('+1 month',"devAdvanceMonths(1)")+btn('+1 year',"devAdvanceMonths(12)")+btn('+5 years',"devAdvanceMonths(60)")+
+      `<div style="margin-top:6px;opacity:0.7;font-size:10px">Jump to era (no-op if already past):</div>`+eraBtns)}
+    ${sect('MONEY / REP / SCIENCE',
+      `<div style="margin-bottom:4px">Money ($M): ${num('devMoneyInput',100)} ${btn('Add',"devAddMoney()")}${btn('Set to',"devSetMoney()")}</div>
+       <div style="margin-bottom:4px">Rep: ${num('devRepInput',10)} ${btn('Add',"devAddRep()")}${btn('Set to',"devSetRep()")}</div>
+       <div>Science: ${num('devSciInput',10)} ${btn('Add',"devAddScience()")}${btn('Set to',"devSetScience()")}</div>`)}
+    ${sect('UNLOCKS  (gates only)',
+      btn('Unlock all research',"devUnlockAll()")+btn('Max reputation',"devMaxRep()"))}
+    ${sect('FORCE OUTCOME  (single-shot, next launch)',
+      btn('Success',"devForceOutcome('success')")+btn('Partial',"devForceOutcome('partial')")+btn('Fail (loss)',"devForceOutcome('loss')")+btn('Strand',"devForceOutcome('strand')")+
+      `<div style="margin-top:5px">`+btn('Live call',"devForceLiveCall()")+btn('Reserve call',"devForceReserve()")+btn('Weather scrub',"devForceWeather()")+`</div>`)}
+    ${sect('PRESETS',
+      btn('⏩ Fast-forward to late game',"devPresetLateGame()",'display:block;width:100%;text-align:left')+
+      btn('🛰 LEO station, pre-stocked',"devPresetStation()",'display:block;width:100%;text-align:left'))}
+    <div id="devStatus" style="padding:8px 12px;border-top:1px solid #3a2c16;color:#9fd8a0;font-size:10px;min-height:14px"></div>`;
+}
+// Ctrl+Shift+D toggles the dev panel. Guarded exactly like the 'p' / F1-F3 handlers (no modal open, no
+// mid-animation, not typing). This combo is otherwise unbound (audited: nothing uses ctrl/meta/shift today).
+document.addEventListener('keydown',function(e){
+  if(!(e.ctrlKey && e.shiftKey && (e.key==='D'||e.key==='d'))) return;
+  if(e.altKey||e.metaKey) return;
+  if(!state || animState || modalOpen()) return;
+  if(isTyping(e)) return;
+  toggleDevPanel(); e.preventDefault();
+});
 function clampA(v,a,b){return Math.max(a,Math.min(b,v));}
 function smooth(t){return t*t*(3-2*t);}
 function hx(h){return [parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];}
@@ -7547,6 +8108,31 @@ function sfxBurn(intensity){
   sub.connect(sg); sg.connect(sfxCtx.destination); sub.start(); sfxEngNodes.push(sub);
 }
 
+/* E1.2 slice C (visual overhaul): theme-synced HUD chrome for the flight overlay's canvas rendering.
+   CSS custom properties (shell.html's body.theme-* classes) can't be read from canvas/Phaser draw
+   calls, so this mirrors the same 3 palettes as a JS table — keep both in sync by hand if a theme
+   color ever changes. Applies to HUD/instrument-panel CHROME only (telemetry box, decision panels,
+   phase bar, buttons) — deliberately NOT the "physical world" being rendered (Earth's blue, rocket
+   flame, plasma, stars, ocean splashdown stay their real colors regardless of console theme, the
+   same way a mission-control room's console color doesn't repaint the sky outside the window). */
+const THEME_COLORS = {
+  dark:  {bg:'#0e1418', panel:'#151d23', panel2:'#1b252c', line:'#2a3a44', ink:'#d8e2e7', muted:'#7d909b', dim:'#56666f', ignite:'#f5a623', readout:'#4fd1d9', ok:'#58c47a', bad:'#e0564f', warn:'#e8b341'},
+  green: {bg:'#0a1410', panel:'#0e1c14', panel2:'#163024', line:'#26442f', ink:'#9affb4', muted:'#5a9a6e', dim:'#3d6e4d', ignite:'#d7b32a', readout:'#5fe0a0', ok:'#4fe26e', bad:'#e0564f', warn:'#e8c341'},
+  beige: {bg:'#1b1610', panel:'#2a2218', panel2:'#342a1c', line:'#4a3c28', ink:'#ecdfc4', muted:'#b09a72', dim:'#7d6a4c', ignite:'#e08a3c', readout:'#5bb9c4', ok:'#6db86a', bad:'#d2542b', warn:'#e8b341'},
+};
+function themeColor(key){ const t=THEME_COLORS[typeof currentTheme!=='undefined'?currentTheme:'dark']||THEME_COLORS.dark; return t[key]||THEME_COLORS.dark[key]; }
+function themeRgba(key, alpha){
+  const hex=themeColor(key).replace('#','');
+  const r=parseInt(hex.substring(0,2),16), g=parseInt(hex.substring(2,4),16), b=parseInt(hex.substring(4,6),16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+// Numeric 0xRRGGBB form for true Phaser GameObjects (render.js's Cape/vehicle-preview/map/station
+// scenes) — .setTint()/lineStyle()/fillStyle() all take a number, not a CSS string. NOTE: unlike the
+// canvas-2D chrome above (redrawn every frame, so a theme switch takes effect on the next frame for
+// free), Phaser GameObjects only read this at the moment they're created — switching theme while a
+// scene is already open does NOT live-retint it. Matches Phaser's natural object lifecycle; a real
+// live-refresh would need each scene to track its own tintable objects and re-apply on theme change.
+function themeColorNum(key){ return parseInt(themeColor(key).replace('#',''),16); }
 /* ===== WebGL 2D compatibility layer ===== */
 const _glShaders={
 flatV:`attribute vec2 aPos;uniform mat3 uProj;uniform mat3 uTransform;void main(){vec3 p=uProj*uTransform*vec3(aPos,1.0);gl_Position=vec4(p.xy,0.0,1.0);}`,
@@ -8023,7 +8609,9 @@ function setupFlightState(spec, done, ctx, cv, viewCanvas, seedP){
   if(departMode) totalDur=ascentDur+DEPART_CARD_MS;
   else if(!spec.success && spec.failPhase==='ascent') totalDur=ascentDur*0.55+2000;
   else if(!spec.success && spec.failPhase==='deep') totalDur=ascentDur+cruiseDur*0.42+2000;
-  else totalDur=ascentDur+cruiseDur+reentryDur+1200;
+  // #73 Slice 3: a successful module delivery (spec.dock) appends a rendezvous+dock card after the cruise,
+  // in place of the usual 1200ms settle tail (reentryDur is 0 here — module deliveries are uncrewed).
+  else totalDur=ascentDur+cruiseDur+reentryDur+(spec.dock?DOCK_CARD_MS:1200);
   totalDur+=padDur; // the loop must run through the pad pre-roll too
   const stars=[]; for(let i=0;i<160;i++) stars.push({x:Math.random(),y:Math.random()*0.92,b:0.3+Math.random()*0.7,s:0.8+Math.random()*1.4,twinkle:Math.random()*6.28});
   const path=spec.isCislunar?buildLunarPath(cv.width,cv.height,spec.rng):null;
@@ -8031,7 +8619,7 @@ function setupFlightState(spec, done, ctx, cv, viewCanvas, seedP){
   // lead-in had reached at handoff), so the cut from the command-center scene reads as continuous rather
   // than resetting the rocket to the ground. Defaults to 0 (today's ground-level start) for every other caller.
   const seedT=clampA(seedP||0,0,0.85)*ascentDur;
-  animState={spec,done,ctx,cv,viewCanvas:viewCanvas||cv,t0:performance.now(),padDur,ascentDur,cruiseDur,reentryDur,totalDur,stars,path,raf:0,trail:[],particles:[],debris:[],rePlasma:[],reSplash:[],shakeX:0,shakeY:0,lastT:0,virtT:seedT,prevWall:performance.now(),sfxSepFired:{},sfxBoomFired:false,sfxEnginePhase:null,recovering:!!spec.recovering,_splashed:false,_splashX:null,reRing:0,ignite:1,_engineStarted:false};
+  animState={spec,done,ctx,cv,viewCanvas:viewCanvas||cv,t0:performance.now(),padDur,ascentDur,cruiseDur,reentryDur,totalDur,stars,path,raf:0,trail:[],particles:[],debris:[],rePlasma:[],reSplash:[],shakeX:0,shakeY:0,lastT:0,virtT:seedT,prevWall:performance.now(),sfxSepFired:{},sfxBoomFired:false,sfxEnginePhase:null,recovering:!!spec.recovering,_splashed:false,_splashX:null,reRing:0,ignite:1,_engineStarted:false,pendingDecision:spec._pendingDecisionSeed||null}; // E1.2 slice C: seeded from spec (not set after playMission returns) so the FIRST synchronous animLoop frame already sees it
   sfxInit();
   const totalProp=spec.stages.reduce((a,s)=>a+s.prop,0)+(spec.transferProp||0);
   const engCount=spec.stages[0]?spec.stages[0].count||1:1;
@@ -8095,6 +8683,12 @@ function endAnim(hold){
   if(hold && A.spec.mode==='depart'){ // Slice B: hold on the cruise-begins card until the player dismisses it
     A.held=true;
     drawDepartCard(DEPART_CARD_MS, true); // settled final frame + a Continue affordance
+    flightRefresh();
+    return;
+  }
+  if(hold && A.spec.dock){ // #73 Slice 3: hold on the module-docked spectacle (checked before the generic post-flight card, which a delivery would otherwise match)
+    A.held=true;
+    drawDockCard(DOCK_CARD_MS, true); // settled soft-dock frame + a Continue affordance
     flightRefresh();
     return;
   }
@@ -8404,29 +8998,29 @@ function drawPostFlight(){
   const pe=fd.pe||172, ap=fd.ap||192, orbAlt=fd.orbAlt||180;
   const orbR=eR+55;
   const peR=orbR-4, apR=orbR+4;
-  ctx.strokeStyle='rgba(79,209,217,0.12)'; ctx.setLineDash([3,5]); ctx.lineWidth=0.5;
+  ctx.strokeStyle=themeRgba('readout',0.12); ctx.setLineDash([3,5]); ctx.lineWidth=0.5;
   ctx.beginPath(); ctx.arc(eCx,eCy,peR,Math.PI*1.05,Math.PI*1.95); ctx.stroke();
   ctx.beginPath(); ctx.arc(eCx,eCy,apR,Math.PI*1.05,Math.PI*1.95); ctx.stroke();
   ctx.setLineDash([]);
-  ctx.strokeStyle='rgba(79,209,217,0.25)'; ctx.setLineDash([4,6]); ctx.lineWidth=1;
+  ctx.strokeStyle=themeRgba('readout',0.25); ctx.setLineDash([4,6]); ctx.lineWidth=1;
   ctx.beginPath(); ctx.arc(eCx,eCy,orbR,Math.PI*1.05,Math.PI*1.95); ctx.stroke(); ctx.setLineDash([]);
-  ctx.strokeStyle='#4fd1d9'; ctx.lineWidth=2;
+  ctx.strokeStyle=themeColor('readout'); ctx.lineWidth=2;
   ctx.beginPath(); ctx.arc(eCx,eCy,orbR,Math.PI*1.05,Math.PI*1.95); ctx.stroke();
   const craftA=Math.PI*1.55;
   const craftPx=eCx+Math.cos(craftA)*orbR, craftPy=eCy+Math.sin(craftA)*orbR;
-  ctx.fillStyle='#f5a623'; ctx.beginPath(); ctx.arc(craftPx,craftPy,5,0,7); ctx.fill();
+  ctx.fillStyle=themeColor('ignite'); ctx.beginPath(); ctx.arc(craftPx,craftPy,5,0,7); ctx.fill();
   ctx.strokeStyle='rgba(245,166,35,0.4)'; ctx.lineWidth=1; ctx.beginPath(); ctx.arc(craftPx,craftPy,10,0,7); ctx.stroke();
   const proA=craftA-Math.PI/2;
   ctx.save(); ctx.translate(craftPx+Math.cos(proA)*14,craftPy+Math.sin(proA)*14); ctx.rotate(proA-Math.PI/2);
-  ctx.fillStyle='rgba(79,209,217,0.7)'; ctx.beginPath(); ctx.moveTo(0,-4); ctx.lineTo(3,3); ctx.lineTo(-3,3); ctx.closePath(); ctx.fill();
+  ctx.fillStyle=themeRgba('readout',0.7); ctx.beginPath(); ctx.moveTo(0,-4); ctx.lineTo(3,3); ctx.lineTo(-3,3); ctx.closePath(); ctx.fill();
   ctx.restore();
   const peA=Math.PI*1.12, apA=Math.PI*1.88;
   const peX=eCx+Math.cos(peA)*(peR-3), peY=eCy+Math.sin(peA)*(peR-3);
   const apX=eCx+Math.cos(apA)*(apR+3), apY=eCy+Math.sin(apA)*(apR+3);
-  ctx.font='9px ui-monospace,monospace'; ctx.fillStyle='rgba(79,209,217,0.6)'; ctx.textAlign='center';
+  ctx.font='9px ui-monospace,monospace'; ctx.fillStyle=themeRgba('readout',0.6); ctx.textAlign='center';
   ctx.fillText('PE '+pe+' km',peX,peY-12);
   ctx.fillText('AP '+ap+' km',apX,apY-12);
-  ctx.fillStyle='rgba(79,209,217,0.5)'; ctx.beginPath(); ctx.arc(peX,peY,2.5,0,7); ctx.fill();
+  ctx.fillStyle=themeRgba('readout',0.5); ctx.beginPath(); ctx.arc(peX,peY,2.5,0,7); ctx.fill();
   ctx.beginPath(); ctx.arc(apX,apY,2.5,0,7); ctx.fill();
   const launchA=Math.PI*1.08;
   const lx=eCx+Math.cos(launchA)*(eR+2), ly=eCy+Math.sin(launchA)*(eR+2);
@@ -8435,14 +9029,14 @@ function drawPostFlight(){
   ctx.fillText('LAUNCH',lx+6,ly-3);
   ctx.save();
   const panelW=220, panelH=s.crewed?190:170, panelX=14, panelY=14;
-  ctx.fillStyle='rgba(4,7,12,0.85)'; ctx.fillRect(panelX,panelY,panelW,panelH);
-  ctx.strokeStyle='rgba(79,209,217,0.3)'; ctx.lineWidth=0.5; ctx.strokeRect(panelX,panelY,panelW,panelH);
+  ctx.fillStyle=themeRgba('bg',0.85); ctx.fillRect(panelX,panelY,panelW,panelH);
+  ctx.strokeStyle=themeRgba('readout',0.3); ctx.lineWidth=0.5; ctx.strokeRect(panelX,panelY,panelW,panelH);
   ctx.textAlign='left'; ctx.textBaseline='top';
-  ctx.fillStyle='#58c47a'; ctx.font='bold 14px ui-monospace,monospace';
+  ctx.fillStyle=themeColor('ok'); ctx.font='bold 14px ui-monospace,monospace';
   ctx.fillText(s.isCislunar?'MISSION COMPLETE':'ORBIT ACHIEVED',panelX+12,panelY+10);
-  ctx.fillStyle='#d0dce4'; ctx.font='12px ui-monospace,monospace';
+  ctx.fillStyle=themeColor('ink'); ctx.font='12px ui-monospace,monospace';
   ctx.fillText(s.title,panelX+12,panelY+30);
-  if(s.crewed){ ctx.fillStyle='#f5a623'; ctx.font='10px ui-monospace,monospace'; ctx.fillText('▲ CREWED FLIGHT',panelX+12,panelY+48); }
+  if(s.crewed){ ctx.fillStyle=themeColor('ignite'); ctx.font='10px ui-monospace,monospace'; ctx.fillText('▲ CREWED FLIGHT',panelX+12,panelY+48); }
   const dataY=panelY+(s.crewed?66:50);
   ctx.font='10px ui-monospace,monospace';
   const rows=[
@@ -8456,15 +9050,15 @@ function drawPostFlight(){
   if(fd.maxQ) rows.push(['MAX-Q', fd.maxQ+' kPa']);
   rows.forEach((r,i)=>{
     const ry=dataY+i*16;
-    ctx.fillStyle='#5a6a75'; ctx.fillText(r[0],panelX+12,ry);
-    ctx.fillStyle='#d0dce4'; ctx.textAlign='right'; ctx.fillText(r[1],panelX+panelW-12,ry);
+    ctx.fillStyle=themeColor('dim'); ctx.fillText(r[0],panelX+12,ry);
+    ctx.fillStyle=themeColor('ink'); ctx.textAlign='right'; ctx.fillText(r[1],panelX+panelW-12,ry);
     ctx.textAlign='left';
   });
   ctx.restore();
   const mmX=W-170, mmY=14, mmW=155, mmH=160;
   ctx.save();
-  ctx.fillStyle='rgba(4,7,12,0.85)'; ctx.fillRect(mmX-4,mmY-4,mmW+8,mmH+8);
-  ctx.strokeStyle='rgba(79,209,217,0.2)'; ctx.lineWidth=0.5; ctx.strokeRect(mmX-4,mmY-4,mmW+8,mmH+8);
+  ctx.fillStyle=themeRgba('bg',0.85); ctx.fillRect(mmX-4,mmY-4,mmW+8,mmH+8);
+  ctx.strokeStyle=themeRgba('readout',0.2); ctx.lineWidth=0.5; ctx.strokeRect(mmX-4,mmY-4,mmW+8,mmH+8);
   ctx.beginPath(); ctx.rect(mmX,mmY,mmW,mmH); ctx.clip();
   const meR=40, meCx=mmX+mmW*0.4, meCy=mmY+mmH*0.5;
   const meGrad=ctx.createRadialGradient(meCx-5,meCy-5,5,meCx,meCy,meR);
@@ -8473,19 +9067,19 @@ function drawPostFlight(){
   ctx.strokeStyle='rgba(100,180,255,0.2)'; ctx.lineWidth=0.8;
   ctx.beginPath(); ctx.arc(meCx,meCy,meR+2,0,7); ctx.stroke();
   const moR=meR+14;
-  ctx.strokeStyle='#4fd1d9'; ctx.lineWidth=1.2;
+  ctx.strokeStyle=themeColor('readout'); ctx.lineWidth=1.2;
   ctx.beginPath(); ctx.arc(meCx,meCy,moR,0,7); ctx.stroke();
   const mCraftA=-Math.PI*0.35;
   const mcx=meCx+Math.cos(mCraftA)*moR, mcy=meCy+Math.sin(mCraftA)*moR;
-  ctx.fillStyle='#f5a623'; ctx.beginPath(); ctx.arc(mcx,mcy,3,0,7); ctx.fill();
+  ctx.fillStyle=themeColor('ignite'); ctx.beginPath(); ctx.arc(mcx,mcy,3,0,7); ctx.fill();
   ctx.strokeStyle='rgba(245,166,35,0.3)'; ctx.lineWidth=0.5; ctx.beginPath(); ctx.arc(mcx,mcy,6,0,7); ctx.stroke();
   const mPeA=Math.PI*0.5, mApA=-Math.PI*0.5;
   const mpx=meCx+Math.cos(mPeA)*(moR-3), mpy=meCy+Math.sin(mPeA)*(moR-3);
   const max2=meCx+Math.cos(mApA)*(moR+3), may=meCy+Math.sin(mApA)*(moR+3);
-  ctx.fillStyle='rgba(79,209,217,0.5)'; ctx.beginPath(); ctx.arc(mpx,mpy,1.5,0,7); ctx.fill();
+  ctx.fillStyle=themeRgba('readout',0.5); ctx.beginPath(); ctx.arc(mpx,mpy,1.5,0,7); ctx.fill();
   ctx.beginPath(); ctx.arc(max2,may,1.5,0,7); ctx.fill();
   ctx.font='7px ui-monospace,monospace'; ctx.textAlign='center';
-  ctx.fillStyle='rgba(79,209,217,0.5)';
+  ctx.fillStyle=themeRgba('readout',0.5);
   ctx.fillText('PE',mpx,mpy+8); ctx.fillText('AP',max2,may-5);
   const mlA=Math.PI*0.6;
   const mlx=meCx+Math.cos(mlA)*(meR+1), mly=meCy+Math.sin(mlA)*(meR+1);
@@ -8519,11 +9113,11 @@ function drawFlightContinueBtn(ctx,W,H){
   ctx.quadraticCurveTo(btnX+btnW,btnY+btnH,btnX+btnW-br,btnY+btnH); ctx.lineTo(btnX+br,btnY+btnH);
   ctx.quadraticCurveTo(btnX,btnY+btnH,btnX,btnY+btnH-br); ctx.lineTo(btnX,btnY+br);
   ctx.quadraticCurveTo(btnX,btnY,btnX+br,btnY); ctx.closePath();
-  ctx.fillStyle='rgba(79,209,217,0.12)'; ctx.fill();
-  ctx.strokeStyle='#4fd1d9'; ctx.lineWidth=1; ctx.stroke();
-  ctx.fillStyle='#4fd1d9'; ctx.font='bold 13px ui-monospace,monospace'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillStyle=themeRgba('readout',0.12); ctx.fill();
+  ctx.strokeStyle=themeColor('readout'); ctx.lineWidth=1; ctx.stroke();
+  ctx.fillStyle=themeColor('readout'); ctx.font='bold 13px ui-monospace,monospace'; ctx.textAlign='center'; ctx.textBaseline='middle';
   ctx.fillText('Continue ▸',W/2,btnY+btnH/2);
-  ctx.font='9px ui-monospace,monospace'; ctx.fillStyle='rgba(200,210,220,0.4)';
+  ctx.font='9px ui-monospace,monospace'; ctx.fillStyle=themeRgba('ink',0.4);
   ctx.fillText('[Enter]',W/2,btnY+btnH+14);
   ctx.textAlign='left';
   A.continueBtn={x:btnX,y:btnY,w:btnW,h:btnH};
@@ -8540,6 +9134,135 @@ function drawFlightContinueBtn(ctx,W,H){
     };
     vc.addEventListener('click',A.clickHandler);
   }
+}
+// E1.2 slice C: a generic in-overlay decision panel — dims the frozen backdrop frame and draws a
+// mission-control console box (title + body lines + 1-3 stacked buttons), reusing
+// drawFlightContinueBtn's rounded-rect + hit-test + one-shot click-handler idiom, generalized to N
+// buttons. Callers (showLiveCallModal etc.) build a {title,color,lines,buttons:[{label,action,ghost}]}
+// spec; this only draws + wires clicks, it doesn't know what any button means.
+function drawDecisionPanel(spec){
+  const A=animState; if(!A) return;
+  const ctx=A.ctx, W=A.cv.width, H=A.cv.height;
+  ctx.fillStyle=themeRgba('bg',0.55); ctx.fillRect(0,0,W,H);
+  const lineH=15, btnH=30, btnGap=8;
+  const boxW=Math.min(420,W*0.86);
+  const boxH=64+spec.lines.length*lineH+spec.buttons.length*(btnH+btnGap);
+  const boxX=(W-boxW)/2, boxY=Math.max(10,(H-boxH)/2), br=8;
+  ctx.beginPath(); ctx.moveTo(boxX+br,boxY); ctx.lineTo(boxX+boxW-br,boxY);
+  ctx.quadraticCurveTo(boxX+boxW,boxY,boxX+boxW,boxY+br); ctx.lineTo(boxX+boxW,boxY+boxH-br);
+  ctx.quadraticCurveTo(boxX+boxW,boxY+boxH,boxX+boxW-br,boxY+boxH); ctx.lineTo(boxX+br,boxY+boxH);
+  ctx.quadraticCurveTo(boxX,boxY+boxH,boxX,boxY+boxH-br); ctx.lineTo(boxX,boxY+br);
+  ctx.quadraticCurveTo(boxX,boxY,boxX+br,boxY); ctx.closePath();
+  ctx.fillStyle=themeRgba('panel2',0.97); ctx.fill();
+  ctx.strokeStyle=spec.color||themeColor('warn'); ctx.lineWidth=1.5; ctx.stroke();
+  ctx.textAlign='center';
+  let ty=boxY+24;
+  ctx.fillStyle=spec.color||themeColor('warn'); ctx.font='bold 13px ui-monospace,monospace';
+  ctx.fillText(spec.title, W/2, ty);
+  ctx.font='11px ui-monospace,monospace'; ctx.fillStyle=themeRgba('ink',0.85);
+  for(const line of spec.lines){ ty+=lineH; ctx.fillText(line, W/2, ty); }
+  ty+=btnGap+6;
+  const btnW=Math.min(340,boxW-40), btnX=(W-btnW)/2;
+  A.decisionButtons=[];
+  for(const b of spec.buttons){
+    const bx=btnX, by=ty, br2=6;
+    ctx.beginPath(); ctx.moveTo(bx+br2,by); ctx.lineTo(bx+btnW-br2,by);
+    ctx.quadraticCurveTo(bx+btnW,by,bx+btnW,by+br2); ctx.lineTo(bx+btnW,by+btnH-br2);
+    ctx.quadraticCurveTo(bx+btnW,by+btnH,bx+btnW-br2,by+btnH); ctx.lineTo(bx+br2,by+btnH);
+    ctx.quadraticCurveTo(bx,by+btnH,bx,by+btnH-br2); ctx.lineTo(bx,by+br2);
+    ctx.quadraticCurveTo(bx,by,bx+br2,by); ctx.closePath();
+    ctx.fillStyle=b.ghost?'rgba(255,255,255,0.04)':themeRgba('readout',0.14); ctx.fill();
+    ctx.strokeStyle=b.ghost?themeRgba('ink',0.35):themeColor('readout'); ctx.lineWidth=1; ctx.stroke();
+    ctx.fillStyle=b.ghost?themeRgba('ink',0.8):themeColor('readout'); ctx.font='bold 12px ui-monospace,monospace';
+    ctx.fillText(b.label, W/2, by+btnH/2+4);
+    A.decisionButtons.push({x:bx,y:by,w:btnW,h:btnH,action:b.action});
+    ty+=btnH+btnGap;
+  }
+  ctx.textAlign='left';
+  wireDecisionClicks();
+}
+function wireDecisionClicks(){
+  const A=animState; if(!A) return;
+  const vc=A.viewCanvas||A.cv;
+  if(A.decisionClickHandler) vc.removeEventListener('click',A.decisionClickHandler);
+  A.decisionClickHandler=function(ev){
+    const rect=vc.getBoundingClientRect();
+    const sx=(ev.clientX-rect.left)*(vc.width/rect.width);
+    const sy=(ev.clientY-rect.top)*(vc.height/rect.height);
+    for(const b of (A.decisionButtons||[])){
+      if(sx>=b.x && sx<=b.x+b.w && sy>=b.y && sy<=b.y+b.h){
+        vc.removeEventListener('click',A.decisionClickHandler);
+        A.decisionClickHandler=null; A.decisionButtons=null;
+        b.action();
+        return;
+      }
+    }
+  };
+  vc.addEventListener('click',A.decisionClickHandler);
+}
+// E1.2 slice C: opens the flight overlay EARLY (before the outcome is even resolved into a final
+// spec) so a pending live-flight decision (live call, reserve call, weather go/no-go, rescue) can be
+// shown IN the scene at its own natural moment, instead of a page-level modal appearing before the
+// overlay opens at all. Builds a placeholder spec (everything the pad phase actually draws —
+// stages/boosters/rng — none of which depend on the outcome); `resumeFlightForDecision` patches in
+// the real outcome once every decision on this flight has resolved. `decision` is
+// `{holdAt:'pad-start'|'pad-end'|'cislunar-start', buildPanel(){ return {title,color,lines,buttons}; }}`
+// (holdAt defaults to 'pad-end' if omitted — see drawScene's checks).
+// REUSE: a flight can hit more than one decision (e.g. weather, then a live call once outcome is
+// known) — if the overlay is already open for this same flight attempt, just arm the new decision
+// and let the animation play forward to ITS own hold point (drawScene re-checks every frame).
+function openFlightForDecision(ctx, decision){
+  if(animState){
+    animState.pendingDecision=decision;
+    animState.held=false; animState.prevWall=performance.now();
+    animLoop();
+    return;
+  }
+  const m=ctx.m, rnd=()=>Math.random();
+  const spec={ title:m.name, crewed:ctx.crewed, success:true, failPhase:null,
+    stages: state.stages.map(s=>({prop:s.prop,count:s.count,dia:s.dia})),
+    boosters: boosterSpec(),
+    transferProp: (m.profile&&m.modules&&m.modules.includes('transfer'))?state.transfer.prop:0,
+    recovering:false, hasCapsule: !!(state.research.crew_capsule || ctx.crewed),
+    isCislunar: !!m.profile, isOrbital: (!m.profile && m.reqDv>=9000), reqDv: m.reqDv||9400,
+    rng: { wind:(rnd()-0.5)*0.9, windFreq:1.4+rnd()*1.6, windPhase:rnd()*6.283,
+           pitchJitter:(rnd()-0.5)*0.16, sep:state.stages.map(()=>(rnd()-0.5)*0.06),
+           apogee:0.86+rnd()*0.28, bow:(rnd()-0.5)*0.9 } };
+  // Threaded through spec (not set on animState after the fact) because playMission calls animLoop
+  // SYNCHRONOUSLY once — setting pendingDecision afterward would miss the very first frame's hold
+  // check. setupFlightState copies this onto the animState it builds, before that first frame runs.
+  spec._pendingDecisionSeed=decision;
+  _liftoffArmed=false;
+  playMission(spec, ()=>{}); // no-op done — the real finish() is wired in by resumeFlightForDecision
+  if(animState) animState._openedForDecision=true;
+}
+// The other half of openFlightForDecision: called from finalizeLaunch once every decision on this
+// flight has resolved and the real outcome-dependent spec fields are known. Patches them into the
+// SAME spec object (keeps stages/boosters/rng/title intact — the visual trajectory already rolled
+// stays continuous), recomputes the outcome-dependent derived animState fields (reentryDur/totalDur)
+// exactly as setupFlightState does — they were placeholder values built for a fake success — then
+// un-holds and resumes the SAME animation loop. Guards on `_openedForDecision` (set once at first
+// open, NOT `pendingDecision`, which is null here — every decision already resolved is exactly the
+// case this function handles). Returns false (caller should fall back to a fresh playMission) if
+// there's no such animState to resume, e.g. the overlay was somehow closed underneath it.
+function resumeFlightForDecision(finalSpec, finish){
+  const A=animState; if(!A || !A._openedForDecision) return false;
+  Object.assign(A.spec, finalSpec);
+  const reentryDur=flightHasReentry(A.spec)?6400:0;
+  const departMode=A.spec.mode==='depart';
+  let totalDur;
+  if(departMode) totalDur=A.ascentDur+DEPART_CARD_MS;
+  else if(!A.spec.success && A.spec.failPhase==='ascent') totalDur=A.ascentDur*0.55+2000;
+  else if(!A.spec.success && A.spec.failPhase==='deep') totalDur=A.ascentDur+A.cruiseDur*0.42+2000;
+  // #73 Slice 3: keep the dock-card tail when a delivery hit an in-flight decision (reserve/rescue) and is
+  // resumed here — spec.dock rode in via the Object.assign above, so totalDur must include it as setupFlightState does.
+  else totalDur=A.ascentDur+A.cruiseDur+reentryDur+(A.spec.dock?DOCK_CARD_MS:1200);
+  totalDur+=A.padDur;
+  A.reentryDur=reentryDur; A.totalDur=totalDur; A.recovering=!!A.spec.recovering;
+  A.done=finish; A.pendingDecision=null; A._openedForDecision=false;
+  A.held=false; A.prevWall=performance.now();
+  animLoop();
+  return true;
 }
 // Slice B: the "cruise begins / ETA" outro card. Played on the flight overlay's own canvas after a
 // deferred interplanetary departure's ascent (spec.mode:'depart'), it reads as the launch-day session's
@@ -8578,15 +9301,134 @@ function drawDepartCard(ct, held){
     if(eta) rows.push(['ARRIVAL', eta]);
     if(s.crewed && s.crew>0) rows.push(['CREW', s.crew+' aboard']);
     const panelW=250, panelH=46+rows.length*16, panelX=(W-panelW)/2, panelY=Math.round(H*0.30);
-    ctx.fillStyle='rgba(4,7,12,0.82)'; ctx.fillRect(panelX,panelY,panelW,panelH);
-    ctx.strokeStyle='rgba(79,209,217,0.3)'; ctx.lineWidth=0.5; ctx.strokeRect(panelX,panelY,panelW,panelH);
+    ctx.fillStyle=themeRgba('bg',0.82); ctx.fillRect(panelX,panelY,panelW,panelH);
+    ctx.strokeStyle=themeRgba('readout',0.3); ctx.lineWidth=0.5; ctx.strokeRect(panelX,panelY,panelW,panelH);
     ctx.textAlign='center'; ctx.textBaseline='top';
-    ctx.fillStyle='#4fd1d9'; ctx.font='bold 15px ui-monospace,monospace';
+    ctx.fillStyle=themeColor('readout'); ctx.font='bold 15px ui-monospace,monospace';
     ctx.fillText('CRUISE BEGINS', W/2, panelY+10);
     ctx.font='10px ui-monospace,monospace'; ctx.textBaseline='alphabetic';
     rows.forEach((r,i)=>{ const ry=panelY+42+i*16;
-      ctx.textAlign='left'; ctx.fillStyle='#5a6a75'; ctx.fillText(r[0],panelX+14,ry);
-      ctx.textAlign='right'; ctx.fillStyle='#d0dce4'; ctx.fillText(String(r[1]),panelX+panelW-14,ry); });
+      ctx.textAlign='left'; ctx.fillStyle=themeColor('dim'); ctx.fillText(r[0],panelX+14,ry);
+      ctx.textAlign='right'; ctx.fillStyle=themeColor('ink'); ctx.fillText(String(r[1]),panelX+panelW-14,ry); });
+    ctx.textAlign='left'; ctx.restore();
+  }
+  if(held) drawFlightContinueBtn(ctx,W,H);
+}
+
+// #73 Slice 3 (2026-07-11): the module rendezvous + soft-dock spectacle. Played on the flight overlay's
+// own canvas as the TERMINAL beat of a successful "fly it yourself" module delivery (spec.dock, set in
+// finalizeLaunch) — after the ascent + orbit/cislunar cruise, in place of the generic post-flight card.
+// Purely presentational: the module already docked in state (dockModuleNow, at resolution); this is the
+// visual payoff, NOT a separate success/fail roll — a resolved-success delivery simply docks (mirrors
+// Slice 2's precedent of not modeling a separate landing mechanic). One abstraction across LEO/Moon/Mars:
+// the backdrop body is tinted per spec.dock.body, everything else is identical. Structured after
+// drawDepartCard (backdrop + a moving craft + a fading info panel + a held Continue affordance), but the
+// beat is an APPROACH — the module closes on the station's berthing port and captures.
+function drawDockCard(ct, held){
+  const A=animState, s=A.spec, ctx=A.ctx, W=A.cv.width, H=A.cv.height;
+  const d=s.dock||{};
+  const time=(A.padDur||0)+A.ascentDur+A.cruiseDur+ct;
+  const cp=clampA(ct/DOCK_CARD_MS,0,1);
+  spaceBg(ctx,W,H,time,A.nativeStars); // deep-space backdrop + parallax stars (native layer when Phaser-hosted)
+  // Destination body limb at lower-left, tinted per body — Earth blue / Moon grey / Mars rust. The one
+  // per-body branch in the whole beat; the station + docking geometry is shared across all three.
+  const BODY_PAL={ earth:['#3a8cc7','#245f96','#14406e','#0a2340'], moon:['#c9cdd2','#9aa0a7','#6c727a','#3c4046'],
+                   mars:['#d9764a','#b4542b','#7e381b','#4a2011'] };
+  const pal=BODY_PAL[d.body]||BODY_PAL.earth;
+  const bR=Math.max(60,H*0.44), bCx=W*0.15, bCy=H*1.30;
+  const bg=ctx.createRadialGradient(bCx-bR*0.30,bCy-bR*0.34,bR*0.2,bCx,bCy,bR);
+  bg.addColorStop(0,pal[0]); bg.addColorStop(0.55,pal[1]); bg.addColorStop(0.85,pal[2]); bg.addColorStop(1,pal[3]);
+  ctx.fillStyle=bg; ctx.beginPath(); ctx.arc(bCx,bCy,bR,0,7); ctx.fill();
+  ctx.save(); ctx.beginPath(); ctx.arc(bCx,bCy,bR,0,7); ctx.clip(); // night-side terminator shadow
+  ctx.fillStyle='rgba(2,5,15,0.42)'; ctx.beginPath(); ctx.arc(bCx+bR*0.5,bCy-bR*0.15,bR*1.02,0,7); ctx.fill(); ctx.restore();
+  ctx.strokeStyle='rgba(150,180,220,0.22)'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(bCx,bCy,bR+2,0,7); ctx.stroke();
+
+  // Station right-of-centre; the incoming module closes from the left onto the open berthing port.
+  const stX=W*0.66, stY=H*0.44;
+  const portX=stX-52, portY=stY;           // the open port the module approaches (left face of the node)
+  const contact=0.82;                       // capture happens here; the tail is the settled soft-dock
+  const ap=clampA(cp/contact,0,1), ae=1-Math.pow(1-ap,2); // easeOut approach
+  const startX=portX-152, seatX=portX-22;   // module right end (modX+halfLen, halfLen≈22) meets the port at capture
+  const settle=cp>=contact ? Math.sin((cp-contact)*40)*Math.max(0,1-(cp-contact)/(1-contact))*0.8 : 0; // tiny post-capture damped nudge
+  const modX=startX+(seatX-startX)*ae+settle;
+  const docked=cp>=contact;
+
+  // A capsule (horizontal cylinder w/ ellipse endcaps) — used for both the station core and the module.
+  function can(cx,cy,hl,r,col){
+    ctx.save();
+    ctx.fillStyle=col;
+    ctx.beginPath();
+    ctx.moveTo(cx-hl,cy-r); ctx.lineTo(cx+hl,cy-r);
+    ctx.ellipse(cx+hl,cy,r*0.55,r,0,-Math.PI/2,Math.PI/2);
+    ctx.lineTo(cx-hl,cy+r);
+    ctx.ellipse(cx-hl,cy,r*0.55,r,0,Math.PI/2,Math.PI*1.5);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,0.12)'; ctx.fillRect(cx-hl,cy-r,hl*2,r*0.4);   // top highlight
+    ctx.fillStyle='rgba(0,0,0,0.22)'; ctx.fillRect(cx-hl,cy+r*0.55,hl*2,r*0.45);   // underside shade
+    ctx.strokeStyle='rgba(0,0,0,0.28)'; ctx.lineWidth=0.6;
+    for(let gx=cx-hl+8; gx<cx+hl; gx+=12){ ctx.beginPath(); ctx.moveTo(gx,cy-r); ctx.lineTo(gx,cy+r); ctx.stroke(); } // ring frames
+    ctx.restore();
+  }
+
+  // approach corridor guide + range crosshair on the port
+  ctx.strokeStyle=themeRgba('readout',0.18); ctx.setLineDash([4,6]); ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(seatX-118,portY); ctx.lineTo(portX,portY); ctx.stroke(); ctx.setLineDash([]);
+
+  // --- station: solar wings, core, berthing node with the open port ---
+  ctx.save();
+  for(const sgn of [-1,1]){
+    const wy=stY+sgn*52;
+    ctx.strokeStyle='rgba(70,100,150,0.6)'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(stX,stY+sgn*16); ctx.lineTo(stX,wy); ctx.stroke(); // truss to the wing
+    ctx.fillStyle='rgba(38,66,116,0.55)'; ctx.fillRect(stX-34,wy-9,68,18);
+    ctx.strokeStyle='rgba(96,146,206,0.5)';
+    for(let i=0;i<=4;i++){ ctx.beginPath(); ctx.moveTo(stX-34+i*17,wy-9); ctx.lineTo(stX-34+i*17,wy+9); ctx.stroke(); }
+    ctx.strokeStyle='rgba(70,100,150,0.6)'; ctx.strokeRect(stX-34,wy-9,68,18);
+  }
+  can(stX+6,stY,30,16,d.facColor||'#aeb6bd');                     // core
+  ctx.fillStyle='#8f9aa6'; ctx.beginPath(); ctx.arc(stX-34,stY,13,0,7); ctx.fill(); // berthing node sphere
+  ctx.strokeStyle='rgba(0,0,0,0.3)'; ctx.lineWidth=0.8; ctx.beginPath(); ctx.arc(stX-34,stY,13,0,7); ctx.stroke();
+  // open port mouth (a shallow ring facing the incoming module)
+  ctx.strokeStyle=docked?themeColor('ok'):themeRgba('readout',0.85); ctx.lineWidth=2;
+  ctx.beginPath(); ctx.ellipse(portX,portY,4,9,0,0,7); ctx.stroke();
+  ctx.restore();
+
+  // --- the incoming module + its docking probe + approach RCS puffs ---
+  ctx.save();
+  can(modX,portY,20,13,d.modColor||'#b8c0c7');
+  ctx.strokeStyle='rgba(60,66,72,0.9)'; ctx.lineWidth=1.4;
+  ctx.beginPath(); ctx.moveTo(modX+20,portY); ctx.lineTo(modX+27,portY); ctx.stroke(); // capture probe
+  if(d.modShort){ ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.font='bold 8px ui-monospace,monospace'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(d.modShort,modX,portY); }
+  if(!docked){ // translation thruster puffs firing aft as it brakes into the port
+    const puff=0.4+0.6*Math.abs(Math.sin(time*0.02));
+    ctx.fillStyle=`rgba(210,225,255,${0.18*puff})`;
+    for(const sgn of [-1,1]){ ctx.beginPath(); ctx.arc(modX-20-6, portY+sgn*9, 3+2*puff, 0,7); ctx.fill(); }
+  }
+  ctx.restore();
+
+  if(docked){ // soft-dock capture: an expanding ring flash + a steady green contact light
+    const dg=clampA((cp-contact)/0.12,0,1);
+    ctx.strokeStyle=themeRgba('ok',0.6*(1-dg)); ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(portX,portY,4+dg*22,0,7); ctx.stroke();
+    ctx.fillStyle=themeColor('ok'); ctx.beginPath(); ctx.arc(portX,portY,2.2,0,7); ctx.fill();
+  }
+
+  // Info panel fades in over the first part of the card (mirrors drawDepartCard's panel).
+  const pa=clampA(ct/(DOCK_CARD_MS*0.4),0,1);
+  if(pa>0){
+    ctx.save(); ctx.globalAlpha=pa;
+    const rows=[['STATION', d.facName||s.title], ['MODULE', d.modName||'Module']];
+    if(d.moduleCount) rows.push(['ASSEMBLY', d.moduleCount+' module'+(d.moduleCount===1?'':'s')]);
+    const panelW=250, panelH=46+rows.length*16, panelX=(W-panelW)/2, panelY=Math.round(H*0.09);
+    ctx.fillStyle=themeRgba('bg',0.82); ctx.fillRect(panelX,panelY,panelW,panelH);
+    ctx.strokeStyle=themeRgba('readout',0.3); ctx.lineWidth=0.5; ctx.strokeRect(panelX,panelY,panelW,panelH);
+    ctx.textAlign='center'; ctx.textBaseline='top';
+    ctx.fillStyle=docked?themeColor('ok'):themeColor('readout'); ctx.font='bold 15px ui-monospace,monospace';
+    ctx.fillText(docked?'MODULE DOCKED':'RENDEZVOUS', W/2, panelY+10);
+    ctx.font='10px ui-monospace,monospace'; ctx.textBaseline='alphabetic';
+    rows.forEach((r,i)=>{ const ry=panelY+42+i*16;
+      ctx.textAlign='left'; ctx.fillStyle=themeColor('dim'); ctx.fillText(r[0],panelX+14,ry);
+      ctx.textAlign='right'; ctx.fillStyle=themeColor('ink'); ctx.fillText(String(r[1]),panelX+panelW-14,ry); });
     ctx.textAlign='left'; ctx.restore();
   }
   if(held) drawFlightContinueBtn(ctx,W,H);
@@ -8622,6 +9464,9 @@ function beginHandoff(t){
   if(A.handoff.kind==='reentry'){
     // zoom IN toward the entry corridor (top-left third, where drawReentry starts the streak)
     const z=1+(1-e)*0.0; // reentry reads better without scale — the crossfade alone carries it
+  } else if(A.handoff.kind==='dock'){
+    // #73 Slice 3: cruise → dock is a pure crossfade (no camera move) — the dock scene reveals its own
+    // framing (station + approaching module), so a zoom would fight it. ctx.save() above still balances finishHandoff's restore.
   } else {
     // zoom OUT: start framed tight on where the craft appears, ease to identity
     const z=1+(1-e)*0.85;
@@ -8682,7 +9527,18 @@ function drawScene(t){
     A.phaseTicks.push(((A.padDur||0)+A.ascentDur)/activeDur);
     if(!departMode && A.reentryDur>0) A.phaseTicks.push(((A.padDur||0)+A.ascentDur+A.cruiseDur)/activeDur); }
   const prevPhase=A.phase;
-  if(A.padDur>0 && t < A.padDur){ A.phase='pad'; drawPad(t); A.lastT=t; return; }
+  if(A.padDur>0 && t < A.padDur){
+    A.phase='pad';
+    // E1.2 slice C: weather go/no-go holds right at pad open, before the countdown even ramps —
+    // the range-weather call comes before anything else about the flight is known.
+    if(A.pendingDecision && A.pendingDecision.holdAt==='pad-start'){ A.held=true; drawPad(0); drawDecisionPanel(A.pendingDecision.buildPanel()); A.lastT=t; return; }
+    drawPad(t); A.lastT=t; return;
+  }
+  // E1.2 slice C: the live-call decision holds RIGHT here, at the pad→ascent handoff — the
+  // ignition/liftoff moment — instead of letting the outcome (already resolved before this
+  // animation even opened) play out before the player has chosen press-on/abort. Default hold
+  // point when a decision doesn't specify one (matches the original live-call-only behavior).
+  if(A.pendingDecision && (A.pendingDecision.holdAt==='pad-end' || !A.pendingDecision.holdAt)){ A.phase='pad'; A.held=true; drawPad(A.padDur); drawDecisionPanel(A.pendingDecision.buildPanel()); A.lastT=t; return; }
   A.ignite=1; // Slice A: full flame for the rest of the flight — don't inherit the pad's near-1 ramp tail
   if(at < A.ascentDur || ascentFail){ A.phase='ascent'; drawAscent(at, ascentFail); }
   else {
@@ -8704,11 +9560,23 @@ function drawScene(t){
       A.lastT=t; return;
     }
     const ct=at-A.ascentDur;
+    // #73 Slice 3: a successful module delivery ends with a rendezvous+dock beat once the cruise completes,
+    // in place of the orbit/cislunar tail's post-flight card — an additional terminal phase for deliveries
+    // only (reentryDur is 0 for these uncrewed flights, so `entering` never competes for this same instant).
+    const docking = !!s.dock && ct>=A.cruiseDur;
     const entering = A.reentryDur>0 && ct>=A.cruiseDur;
+    if(docking && prevPhase!=='dock' && prevPhase!=='ascent') captureHandoff('dock'); // cruise → dock crossfade
     if(entering && prevPhase!=='reentry' && prevPhase!=='ascent') captureHandoff('reentry'); // cruise → reentry cut
     const ho=beginHandoff(t); // Phase A: camera ease while the previous frame crossfades away
-    if(entering){ A.phase='reentry'; drawReentry(ct-A.cruiseDur); }
-    else if(s.isCislunar){ A.phase='cislunar'; drawCislunar(ct); }
+    if(docking){ A.phase='dock'; drawDockCard(ct-A.cruiseDur, false); }
+    else if(entering){ A.phase='reentry'; drawReentry(ct-A.cruiseDur); }
+    else if(s.isCislunar){
+      // E1.2 slice C: the reserve call (a drifting deep-phase subsystem) and rescue (a stranded
+      // crew) both only ever apply to cislunar/deep missions — this is their natural "far from
+      // home" moment, right on entering the cruise, rather than the pad→ascent handoff.
+      if(A.pendingDecision && A.pendingDecision.holdAt==='cislunar-start'){ A.phase='cislunar'; A.held=true; drawCislunar(0); drawDecisionPanel(A.pendingDecision.buildPanel()); if(ho) finishHandoff(); A.lastT=t; return; }
+      A.phase='cislunar'; drawCislunar(ct);
+    }
     else if(s.isOrbital){ A.phase='orbit'; drawOrbit(ct); }
     else { A.phase='suborbital'; drawSuborbital(ct); }
     if(ho) finishHandoff();
@@ -9103,30 +9971,41 @@ function drawBoom(ctx,x,y,dt){
     }
   }
 }
+// User-directed relayout (2026-07-11): was a vertical list pinned top-left, then a horizontal strip
+// stacked ABOVE the phase bar; now the BOTTOM-most HUD element (below the phase bar, hugging the
+// canvas edge) so it sits clear under the rocket sprite instead of competing with it for the same
+// vertical band during ascent. Stores its own top edge on animState (_telemetryTopY) so
+// drawPhaseBar can stack itself just above, whatever the current data's row count is.
+const HUD_BOTTOM_MARGIN=6; // gap from the telemetry strip's bottom edge to the true canvas bottom
 function drawTelemetry(data){
   const A=animState,ctx=A.ctx,W=A.cv.width,H=A.cv.height;
   ctx.save();
-  const rowH=19, padX=12, padY=10;
-  const panelW=174, panelH=data.length*rowH+padY*2;
-  ctx.fillStyle='rgba(4,7,12,0.82)'; ctx.fillRect(8,6,panelW,panelH);
-  ctx.strokeStyle='rgba(79,209,217,0.25)'; ctx.lineWidth=0.5; ctx.strokeRect(8,6,panelW,panelH);
-  ctx.strokeStyle='rgba(79,209,217,0.15)'; ctx.beginPath(); ctx.moveTo(8,6+rowH+padY-2); ctx.lineTo(8+panelW,6+rowH+padY-2); ctx.stroke();
-  ctx.font='11px ui-monospace,monospace'; ctx.textBaseline='top'; ctx.textAlign='left';
+  const cols=Math.min(data.length,5), rows=Math.ceil(data.length/cols);
+  const cellW=128, rowH=28, pad=7;
+  const stripW=Math.min(W-20, cols*cellW), stripH=rows*rowH+pad*2;
+  const stripX=(W-stripW)/2, stripY=H-HUD_BOTTOM_MARGIN-stripH;
+  A._telemetryTopY=stripY; // drawPhaseBar reads this to stack just above, whatever this frame's row count is
+  ctx.fillStyle=themeRgba('bg',0.82); ctx.fillRect(stripX,stripY,stripW,stripH);
+  ctx.strokeStyle=themeRgba('readout',0.25); ctx.lineWidth=0.5; ctx.strokeRect(stripX,stripY,stripW,stripH);
+  ctx.textBaseline='top'; ctx.textAlign='center';
   data.forEach((row,i)=>{
-    const ry=6+padY+i*rowH;
-    if(i>0 && i%4===0){ ctx.strokeStyle='rgba(79,209,217,0.08)'; ctx.beginPath(); ctx.moveTo(padX,ry-2); ctx.lineTo(8+panelW-padX,ry-2); ctx.stroke(); }
-    ctx.fillStyle='#5a6a75'; ctx.font='10px ui-monospace,monospace'; ctx.fillText(row.label,padX+4,ry+1);
-    ctx.fillStyle=row.color||'#d0dce4'; ctx.font='bold 12px ui-monospace,monospace';
-    ctx.textAlign='right'; ctx.fillText(row.value,8+panelW-padX,ry);
-    ctx.textAlign='left';
+    const c=i%cols, r=Math.floor(i/cols);
+    const cellX=stripX+c*(stripW/cols), cellCx=cellX+stripW/cols/2, cellY=stripY+pad+r*rowH;
+    if(c>0){ ctx.strokeStyle=themeRgba('readout',0.12); ctx.beginPath(); ctx.moveTo(cellX,stripY+4); ctx.lineTo(cellX,stripY+stripH-4); ctx.stroke(); }
+    ctx.fillStyle=themeColor('dim'); ctx.font='9px ui-monospace,monospace'; ctx.fillText(row.label,cellCx,cellY);
+    ctx.fillStyle=row.color||themeColor('ink'); ctx.font='bold 12px ui-monospace,monospace'; ctx.fillText(row.value,cellCx,cellY+12);
   });
+  ctx.textAlign='left';
   ctx.restore();
 }
 function drawPhaseBar(phase,color,progress){
   const A=animState,ctx=A.ctx,W=A.cv.width,H=A.cv.height;
   ctx.save();
-  const barW=320, barH=28, bx=(W-barW)/2, by=H-38;
-  ctx.fillStyle='rgba(4,7,12,0.82)';
+  const barW=320, barH=28, bx=(W-barW)/2;
+  // Stacks just above the telemetry strip (drawTelemetry always runs first in every caller and
+  // records its own top edge) — an 8px gap, then this bar's box extends 5px above `by`, hence -41.
+  const by=(A._telemetryTopY!=null?A._telemetryTopY:H-38)-41;
+  ctx.fillStyle=themeRgba('bg',0.82);
   ctx.beginPath();
   const br=6;
   ctx.moveTo(bx-6+br,by-5); ctx.lineTo(bx+barW+6-br,by-5);
@@ -9138,22 +10017,23 @@ function drawPhaseBar(phase,color,progress){
   ctx.lineTo(bx-6,by-5+br);
   ctx.quadraticCurveTo(bx-6,by-5,bx-6+br,by-5);
   ctx.closePath(); ctx.fill();
-  ctx.strokeStyle='rgba(79,209,217,0.2)'; ctx.lineWidth=0.5;
+  ctx.strokeStyle=themeRgba('readout',0.2); ctx.lineWidth=0.5;
   ctx.stroke();
   if(progress!==undefined){
-    ctx.fillStyle='rgba(79,209,217,0.08)'; ctx.fillRect(bx,by,barW,barH);
+    ctx.fillStyle=themeRgba('readout',0.08); ctx.fillRect(bx,by,barW,barH);
     // Phase C: the fill is the WHOLE mission (continuous across ascent/cruise/reentry),
     // not the current scene — the flight reads as one broadcast. Text stays contextual.
     const pg=clampA(A.overallP!=null?A.overallP:progress,0,1);
+    const barColor=color||themeColor('readout');
     const progGrad=ctx.createLinearGradient(bx,0,bx+barW*pg,0);
-    progGrad.addColorStop(0,(color||'#4fd1d9')+'55');
-    progGrad.addColorStop(1,(color||'#4fd1d9')+'22');
+    progGrad.addColorStop(0,barColor+'55');
+    progGrad.addColorStop(1,barColor+'22');
     ctx.fillStyle=progGrad; ctx.fillRect(bx,by,barW*pg,barH);
-    ctx.fillStyle=color||'#4fd1d9'; ctx.fillRect(bx+barW*pg-1,by,2,barH);
-    (A.phaseTicks||[]).forEach(f=>{ ctx.fillStyle='rgba(208,220,228,0.4)'; ctx.fillRect(bx+barW*f-0.5,by,1,barH); });
+    ctx.fillStyle=barColor; ctx.fillRect(bx+barW*pg-1,by,2,barH);
+    (A.phaseTicks||[]).forEach(f=>{ ctx.fillStyle=themeRgba('ink',0.4); ctx.fillRect(bx+barW*f-0.5,by,1,barH); });
   }
   ctx.textAlign='center'; ctx.textBaseline='middle';
-  ctx.fillStyle=color||'#4fd1d9'; ctx.font='bold 13px ui-monospace,monospace';
+  ctx.fillStyle=color||themeColor('readout'); ctx.font='bold 13px ui-monospace,monospace';
   ctx.fillText(phase,W/2,by+barH/2);
   ctx.restore();
 }
@@ -9217,7 +10097,7 @@ function drawSpentStageDrift(ctx,x,y,ang,ct){
 
 function drawCraftDot(ctx,x,y,glow){
   glow=glow||false;
-  ctx.fillStyle='#f5a623'; ctx.beginPath(); ctx.arc(x,y,4,0,7); ctx.fill();
+  ctx.fillStyle=themeColor('ignite'); ctx.beginPath(); ctx.arc(x,y,4,0,7); ctx.fill();
   ctx.strokeStyle='rgba(245,166,35,0.5)'; ctx.lineWidth=1; ctx.beginPath(); ctx.arc(x,y,8,0,7); ctx.stroke();
   if(glow){
     const g=ctx.createRadialGradient(x,y,2,x,y,16);
@@ -9228,8 +10108,8 @@ function drawCraftDot(ctx,x,y,glow){
 function drawMiniMap(ctx,W,H,p,orb,maxAlt,drangeKm,pitch){
   const mx=W-172, my=58, mw=155, mh=105;
   ctx.save();
-  ctx.fillStyle='rgba(4,7,12,0.82)'; ctx.fillRect(mx-4,my-4,mw+8,mh+8);
-  ctx.strokeStyle='rgba(79,209,217,0.2)'; ctx.lineWidth=0.5; ctx.strokeRect(mx-4,my-4,mw+8,mh+8);
+  ctx.fillStyle=themeRgba('bg',0.82); ctx.fillRect(mx-4,my-4,mw+8,mh+8);
+  ctx.strokeStyle=themeRgba('readout',0.2); ctx.lineWidth=0.5; ctx.strokeRect(mx-4,my-4,mw+8,mh+8);
   ctx.beginPath(); ctx.rect(mx,my,mw,mh); ctx.clip();
   const eR=320, eCx=mx+mw*0.15, eCy=my+mh+eR-12;
   const atmGrad=ctx.createRadialGradient(eCx,eCy,eR,eCx,eCy,eR+8);
@@ -9246,16 +10126,16 @@ function drawMiniMap(ctx,W,H,p,orb,maxAlt,drangeKm,pitch){
   if(orb){
     const orbAlt=maxAlt*0.95;
     const orbY=launchY-orbAlt*altScale;
-    ctx.strokeStyle='rgba(79,209,217,0.2)'; ctx.setLineDash([2,3]); ctx.lineWidth=0.5;
+    ctx.strokeStyle=themeRgba('readout',0.2); ctx.setLineDash([2,3]); ctx.lineWidth=0.5;
     ctx.beginPath(); ctx.moveTo(mx,orbY); ctx.lineTo(mx+mw,orbY); ctx.stroke();
     ctx.setLineDash([]);
-    ctx.font='7px ui-monospace,monospace'; ctx.fillStyle='rgba(79,209,217,0.4)'; ctx.textAlign='right';
+    ctx.font='7px ui-monospace,monospace'; ctx.fillStyle=themeRgba('readout',0.4); ctx.textAlign='right';
     ctx.fillText(Math.round(orbAlt)+' km',mx+mw-2,orbY-3);
     ctx.textAlign='left';
   }
   const curAlt=p*p*maxAlt;
   const curDrange=drangeKm*Math.pow(p,1.8);
-  ctx.strokeStyle='rgba(79,209,217,0.35)'; ctx.setLineDash([3,4]); ctx.lineWidth=0.8; ctx.beginPath();
+  ctx.strokeStyle=themeRgba('readout',0.35); ctx.setLineDash([3,4]); ctx.lineWidth=0.8; ctx.beginPath();
   const steps=40;
   for(let i=0;i<=steps;i++){
     const f=i/steps;
@@ -9266,7 +10146,7 @@ function drawMiniMap(ctx,W,H,p,orb,maxAlt,drangeKm,pitch){
   }
   ctx.stroke(); ctx.setLineDash([]);
   const curPx=launchX+curDrange*dScale, curPy=launchY-curAlt*altScale;
-  ctx.strokeStyle='#4fd1d9'; ctx.lineWidth=1.5; ctx.beginPath();
+  ctx.strokeStyle=themeColor('readout'); ctx.lineWidth=1.5; ctx.beginPath();
   for(let i=0;i<=steps;i++){
     const f=i/steps*p;
     const fa=f*f*maxAlt;
@@ -9275,18 +10155,18 @@ function drawMiniMap(ctx,W,H,p,orb,maxAlt,drangeKm,pitch){
     i===0?ctx.moveTo(px,py):ctx.lineTo(px,py);
   }
   ctx.stroke();
-  ctx.fillStyle='#f5a623'; ctx.beginPath(); ctx.arc(curPx,curPy,3,0,7); ctx.fill();
+  ctx.fillStyle=themeColor('ignite'); ctx.beginPath(); ctx.arc(curPx,curPy,3,0,7); ctx.fill();
   ctx.strokeStyle='rgba(245,166,35,0.4)'; ctx.lineWidth=0.8; ctx.beginPath(); ctx.arc(curPx,curPy,6,0,7); ctx.stroke();
-  ctx.fillStyle='rgba(79,209,217,0.5)'; ctx.beginPath(); ctx.arc(launchX,launchY,2,0,7); ctx.fill();
+  ctx.fillStyle=themeRgba('readout',0.5); ctx.beginPath(); ctx.arc(launchX,launchY,2,0,7); ctx.fill();
   ctx.font='7px ui-monospace,monospace'; ctx.fillStyle='rgba(200,210,220,0.5)'; ctx.textAlign='left';
   ctx.fillText('PAD',launchX+5,launchY-2);
   if(!orb){
     const apeF=0.7, apeAlt=apeF*apeF*maxAlt;
     const apeDrange=drangeKm*Math.pow(apeF,1.8);
     const apeX=launchX+apeDrange*dScale, apeY=launchY-apeAlt*altScale;
-    ctx.strokeStyle='rgba(79,209,217,0.3)'; ctx.setLineDash([1,2]); ctx.lineWidth=0.5;
+    ctx.strokeStyle=themeRgba('readout',0.3); ctx.setLineDash([1,2]); ctx.lineWidth=0.5;
     ctx.beginPath(); ctx.moveTo(apeX,apeY); ctx.lineTo(apeX,launchY); ctx.stroke(); ctx.setLineDash([]);
-    ctx.fillStyle='rgba(79,209,217,0.4)'; ctx.font='7px ui-monospace,monospace';
+    ctx.fillStyle=themeRgba('readout',0.4); ctx.font='7px ui-monospace,monospace';
     ctx.fillText('APO',apeX+3,apeY-3);
     const splashX=launchX+drangeKm*dScale;
     ctx.fillStyle='rgba(88,196,122,0.5)'; ctx.beginPath(); ctx.arc(splashX,launchY,2,0,7); ctx.fill();
@@ -9302,8 +10182,8 @@ function drawMiniMap(ctx,W,H,p,orb,maxAlt,drangeKm,pitch){
 function drawOrbitalMiniMap(ctx,W,H,op,alt,pe,ap,fd){
   const mx=W-172, my=58, mw=155, mh=105;
   ctx.save();
-  ctx.fillStyle='rgba(4,7,12,0.82)'; ctx.fillRect(mx-4,my-4,mw+8,mh+8);
-  ctx.strokeStyle='rgba(79,209,217,0.2)'; ctx.lineWidth=0.5; ctx.strokeRect(mx-4,my-4,mw+8,mh+8);
+  ctx.fillStyle=themeRgba('bg',0.82); ctx.fillRect(mx-4,my-4,mw+8,mh+8);
+  ctx.strokeStyle=themeRgba('readout',0.2); ctx.lineWidth=0.5; ctx.strokeRect(mx-4,my-4,mw+8,mh+8);
   ctx.beginPath(); ctx.rect(mx,my,mw,mh); ctx.clip();
   const eCx=mx+mw*0.4, eCy=my+mh*0.5, eR=28;
   const eGrad=ctx.createRadialGradient(eCx-4,eCy-4,4,eCx,eCy,eR);
@@ -9314,22 +10194,22 @@ function drawOrbitalMiniMap(ctx,W,H,op,alt,pe,ap,fd){
   const orbScale=eR/6371;
   const peRpx=eR+pe*orbScale*8, apRpx=eR+ap*orbScale*8;
   const orbRpx=(peRpx+apRpx)/2;
-  ctx.strokeStyle='rgba(79,209,217,0.2)'; ctx.setLineDash([2,3]); ctx.lineWidth=0.5;
+  ctx.strokeStyle=themeRgba('readout',0.2); ctx.setLineDash([2,3]); ctx.lineWidth=0.5;
   ctx.beginPath(); ctx.arc(eCx,eCy,orbRpx,0,7); ctx.stroke(); ctx.setLineDash([]);
-  ctx.strokeStyle='#4fd1d9'; ctx.lineWidth=1.5;
+  ctx.strokeStyle=themeColor('readout'); ctx.lineWidth=1.5;
   const orbArc=op*Math.PI*1.8;
   ctx.beginPath(); ctx.arc(eCx,eCy,orbRpx,-Math.PI/2,-Math.PI/2+orbArc); ctx.stroke();
   const craftAng=-Math.PI/2+orbArc;
   const craftX=eCx+Math.cos(craftAng)*orbRpx, craftY=eCy+Math.sin(craftAng)*orbRpx;
-  ctx.fillStyle='#f5a623'; ctx.beginPath(); ctx.arc(craftX,craftY,2.5,0,7); ctx.fill();
+  ctx.fillStyle=themeColor('ignite'); ctx.beginPath(); ctx.arc(craftX,craftY,2.5,0,7); ctx.fill();
   ctx.strokeStyle='rgba(245,166,35,0.4)'; ctx.lineWidth=0.5; ctx.beginPath(); ctx.arc(craftX,craftY,5,0,7); ctx.stroke();
   const peAng=-Math.PI/2, apAng=Math.PI/2;
   const pePx=eCx+Math.cos(peAng)*peRpx, pePy=eCy+Math.sin(peAng)*peRpx;
   const apPx=eCx+Math.cos(apAng)*apRpx, apPy=eCy+Math.sin(apAng)*apRpx;
-  ctx.fillStyle='rgba(79,209,217,0.5)'; ctx.beginPath(); ctx.arc(pePx,pePy,1.5,0,7); ctx.fill();
+  ctx.fillStyle=themeRgba('readout',0.5); ctx.beginPath(); ctx.arc(pePx,pePy,1.5,0,7); ctx.fill();
   ctx.beginPath(); ctx.arc(apPx,apPy,1.5,0,7); ctx.fill();
   ctx.font='7px ui-monospace,monospace'; ctx.textAlign='center';
-  ctx.fillStyle='rgba(79,209,217,0.5)'; ctx.fillText('PE '+pe+'km',pePx,pePy-6);
+  ctx.fillStyle=themeRgba('readout',0.5); ctx.fillText('PE '+pe+'km',pePx,pePy-6);
   ctx.fillText('AP '+ap+'km',apPx,apPy+10);
   if(fd && fd.drangeKm){
     const launchAng=-Math.PI/2-0.05;
@@ -9677,7 +10557,7 @@ function drawAscent(t,canFail){
   }
   if(p>0.55 && orb && !exploding){
     const burnA=clampA((p-0.55)/0.1,0,0.5);
-    ctx.fillStyle=`rgba(79,209,217,${burnA*0.3})`;
+    ctx.fillStyle=themeRgba('readout',burnA*0.3);
     ctx.beginPath(); ctx.arc(x,baseY,3,0,7); ctx.fill();
   }
   const tPlus=Math.round(p*(orb?520:180));
@@ -9687,28 +10567,28 @@ function drawAscent(t,canFail){
   const vHoriz=Math.round(curVel*Math.sin(Math.min(pitch,1.2)));
   const drangeKm=Math.round(downrange/W*800);
   const telData=[
-    {label:'T+', value:`${tMin}:${tSec}`, color:'#4fd1d9'},
+    {label:'T+', value:`${tMin}:${tSec}`, color:themeColor('readout')},
     {label:'ALT', value:Math.round(curAlt)+' km'},
     {label:'SPEED', value:Math.round(curVel).toLocaleString()+' m/s'},
-    {label:'Vx', value:vHoriz.toLocaleString()+' m/s', color:'#8ac4e8'},
-    {label:'Vy', value:vVert.toLocaleString()+' m/s', color:'#8ac4e8'},
+    {label:'Vx', value:vHoriz.toLocaleString()+' m/s', color:themeColor('readout')},
+    {label:'Vy', value:vVert.toLocaleString()+' m/s', color:themeColor('readout')},
     {label:'ACC', value:accel.toFixed(1)+' g'},
-    {label:'Q', value:Math.round(qNorm*maxQ)+' kPa', color:qNorm>0.8?'#e0564f':(qNorm>0.5?'#f5a623':'#d0dce4')},
+    {label:'Q', value:Math.round(qNorm*maxQ)+' kPa', color:qNorm>0.8?themeColor('bad'):(qNorm>0.5?themeColor('ignite'):themeColor('ink'))},
     {label:'DRANGE', value:drangeKm+' km'},
-    {label:'THROT', value:Math.round(throttle*100)+'%', color:throttle<0.9?'#f5a623':'#d0dce4'},
+    {label:'THROT', value:Math.round(throttle*100)+'%', color:throttle<0.9?themeColor('ignite'):themeColor('ink')},
     {label:'STAGE', value:(Math.min(dropped+1,n))+'/'+n}
   ];
   drawTelemetry(telData);
   drawMiniMap(ctx,W,H,p,orb,maxA,orb?2000:Math.max(300,drangeKm*1.2),pitch);
   ctx.save();
   const rpW=155, rpH=s.crewed?58:42, rpX=W-rpW-10, rpY=8;
-  ctx.fillStyle='rgba(4,7,12,0.82)'; ctx.fillRect(rpX,rpY,rpW,rpH);
-  ctx.strokeStyle='rgba(79,209,217,0.25)'; ctx.lineWidth=0.5; ctx.strokeRect(rpX,rpY,rpW,rpH);
+  ctx.fillStyle=themeRgba('bg',0.82); ctx.fillRect(rpX,rpY,rpW,rpH);
+  ctx.strokeStyle=themeRgba('readout',0.25); ctx.lineWidth=0.5; ctx.strokeRect(rpX,rpY,rpW,rpH);
   ctx.font='9px ui-monospace,monospace'; ctx.textBaseline='top'; ctx.textAlign='right';
-  ctx.fillStyle='#5a6a75'; ctx.fillText('MISSION', W-18, rpY+6);
-  ctx.fillStyle='#d0dce4'; ctx.font='bold 12px ui-monospace,monospace';
+  ctx.fillStyle=themeColor('dim'); ctx.fillText('MISSION', W-18, rpY+6);
+  ctx.fillStyle=themeColor('ink'); ctx.font='bold 12px ui-monospace,monospace';
   ctx.fillText(s.title, W-18, rpY+20);
-  if(s.crewed){ ctx.fillStyle='#f5a623'; ctx.font='10px ui-monospace,monospace'; ctx.fillText('▲ CREWED FLIGHT', W-18, rpY+38); }
+  if(s.crewed){ ctx.fillStyle=themeColor('ignite'); ctx.font='10px ui-monospace,monospace'; ctx.fillText('▲ CREWED FLIGHT', W-18, rpY+38); }
   ctx.textAlign='left';
   ctx.restore();
   const phaseTxt = exploding ? 'VEHICLE LOST' :
@@ -9719,7 +10599,7 @@ function drawAscent(t,canFail){
         (dropped>0 && (p-seps[dropped-1])*A.ascentDur<800 ? 'STAGE SEPARATION' :
          (p>0.92 ? (orb?'ORBITAL INSERTION':'BURNOUT') :
           'ASCENT · STAGE '+(Math.min(dropped+1,n))))))));
-  const phaseColor = exploding ? '#e0564f' : (qNorm>0.7 ? '#f5a623' : (p>0.92 ? '#58c47a' : '#4fd1d9'));
+  const phaseColor = exploding ? themeColor('bad') : (qNorm>0.7 ? themeColor('ignite') : (p>0.92 ? themeColor('ok') : themeColor('readout')));
   drawPhaseBar(phaseTxt, phaseColor, p);
 
   A.flightData={
@@ -9910,9 +10790,9 @@ function drawOrbit(ct){
   if(burning&&A.sfxEnginePhase!=='burn'){ A.sfxEnginePhase='burn'; sfxBurn(0.6); }
   else if(!burning&&A.sfxEnginePhase==='burn'){ sfxStop(); A.sfxEnginePhase='coast'; }
   if(failP!=null&&op>=failP&&!A.sfxBoomFired){ A.sfxBoomFired=true; sfxStop(); sfxBoom(); }
-  ctx.strokeStyle='rgba(79,209,217,0.15)'; ctx.setLineDash([3,6]); ctx.lineWidth=1;
+  ctx.strokeStyle=themeRgba('readout',0.15); ctx.setLineDash([3,6]); ctx.lineWidth=1;
   ctx.beginPath(); ctx.arc(E.cx,E.cy,orbitR,a0-0.3,a1+0.5); ctx.stroke(); ctx.setLineDash([]);
-  ctx.strokeStyle='rgba(79,209,217,0.08)'; ctx.lineWidth=1; ctx.setLineDash([2,4]);
+  ctx.strokeStyle=themeRgba('readout',0.08); ctx.lineWidth=1; ctx.setLineDash([2,4]);
   ctx.beginPath(); ctx.arc(E.cx,E.cy,peR,a0,a1); ctx.stroke();
   ctx.beginPath(); ctx.arc(E.cx,E.cy,apR,a0,a1); ctx.stroke();
   ctx.setLineDash([]);
@@ -9925,8 +10805,8 @@ function drawOrbit(ct){
   const deorbiting = willReenter && op>=DEORBIT_START && failP==null;
   const curAng=a0+ (deorbiting?DEORBIT_START:curP) *(a1-a0);
   // completed orbit track up to the deorbit point
-  ctx.strokeStyle='#4fd1d9'; ctx.lineWidth=2.5; ctx.beginPath(); ctx.arc(E.cx,E.cy,orbitR,a0,curAng); ctx.stroke();
-  ctx.strokeStyle='rgba(79,209,217,0.2)'; ctx.lineWidth=1;
+  ctx.strokeStyle=themeColor('readout'); ctx.lineWidth=2.5; ctx.beginPath(); ctx.arc(E.cx,E.cy,orbitR,a0,curAng); ctx.stroke();
+  ctx.strokeStyle=themeRgba('readout',0.2); ctx.lineWidth=1;
   ctx.beginPath(); ctx.arc(E.cx,E.cy,orbitR,a0,curAng); ctx.stroke();
   let cx=E.cx+Math.cos(curAng)*orbitR, cy=E.cy+Math.sin(curAng)*orbitR;
   let deorbitBurning=false, entryInterface=false;
@@ -9942,7 +10822,7 @@ function drawOrbit(ct){
     // dashed predicted entry path (faint), then the solid flown portion
     ctx.strokeStyle='rgba(245,166,35,0.22)'; ctx.setLineDash([4,5]); ctx.lineWidth=1; ctx.beginPath();
     for(let i=0;i<=40;i++){ const u=i/40, rr=dr(u), aa=da(u); const x=E.cx+Math.cos(aa)*rr, y=E.cy+Math.sin(aa)*rr; i?ctx.lineTo(x,y):ctx.moveTo(x,y);} ctx.stroke(); ctx.setLineDash([]);
-    ctx.strokeStyle='#f5a623'; ctx.lineWidth=2; ctx.beginPath();
+    ctx.strokeStyle=themeColor('ignite'); ctx.lineWidth=2; ctx.beginPath();
     for(let i=0;i<=40;i++){ const u=i/40*dp, rr=dr(u), aa=da(u); const x=E.cx+Math.cos(aa)*rr, y=E.cy+Math.sin(aa)*rr; i?ctx.lineTo(x,y):ctx.moveTo(x,y);} ctx.stroke();
     const rrNow=dr(dp), aNow=da(dp);
     cx=E.cx+Math.cos(aNow)*rrNow; cy=E.cy+Math.sin(aNow)*rrNow;
@@ -9971,10 +10851,10 @@ function drawOrbit(ct){
     const pm=14;
     const px=cx+Math.cos(proAng)*pm, py=cy+Math.sin(proAng)*pm;
     ctx.save(); ctx.translate(px,py); ctx.rotate(proAng-Math.PI/2);
-    ctx.fillStyle='rgba(79,209,217,0.7)';
+    ctx.fillStyle=themeRgba('readout',0.7);
     ctx.beginPath(); ctx.moveTo(0,-5); ctx.lineTo(3,3); ctx.lineTo(-3,3); ctx.closePath(); ctx.fill();
     ctx.restore();
-    ctx.font='8px ui-monospace,monospace'; ctx.fillStyle='rgba(79,209,217,0.5)'; ctx.textAlign='center';
+    ctx.font='8px ui-monospace,monospace'; ctx.fillStyle=themeRgba('readout',0.5); ctx.textAlign='center';
     ctx.fillText('PRO',px+Math.cos(proAng)*8,py+Math.sin(proAng)*8+3);
     ctx.textAlign='left';
   }
@@ -9990,11 +10870,11 @@ function drawOrbit(ct){
   const orbVx=Math.round(vel*0.998);
   const orbVy=Math.round(vel*Math.sin((curAng-a0)/(a1-a0)*0.04));
   const telData=[
-    {label:'T+', value:`${tMin}:${tSec}`, color:'#4fd1d9'},
+    {label:'T+', value:`${tMin}:${tSec}`, color:themeColor('readout')},
     {label:'ALT', value:alt+' km'},
     {label:'SPEED', value:vel.toLocaleString()+' m/s'},
-    {label:'Vx', value:orbVx.toLocaleString()+' m/s', color:'#8ac4e8'},
-    {label:'Vy', value:(orbVy>=0?'+':'')+orbVy+' m/s', color:'#8ac4e8'},
+    {label:'Vx', value:orbVx.toLocaleString()+' m/s', color:themeColor('readout')},
+    {label:'Vy', value:(orbVy>=0?'+':'')+orbVy+' m/s', color:themeColor('readout')},
     {label:'PE', value:pe+' km'},
     {label:'AP', value:ap+' km'},
     {label:'PERIOD', value:period+' min'},
@@ -10005,13 +10885,13 @@ function drawOrbit(ct){
   drawOrbitalMiniMap(ctx,W,H,op,alt,pe,ap,fd);
   ctx.save();
   const rpW=155, rpH=s.crewed?58:42, rpX=W-rpW-10, rpY=8;
-  ctx.fillStyle='rgba(4,7,12,0.82)'; ctx.fillRect(rpX,rpY,rpW,rpH);
-  ctx.strokeStyle='rgba(79,209,217,0.25)'; ctx.lineWidth=0.5; ctx.strokeRect(rpX,rpY,rpW,rpH);
+  ctx.fillStyle=themeRgba('bg',0.82); ctx.fillRect(rpX,rpY,rpW,rpH);
+  ctx.strokeStyle=themeRgba('readout',0.25); ctx.lineWidth=0.5; ctx.strokeRect(rpX,rpY,rpW,rpH);
   ctx.font='9px ui-monospace,monospace'; ctx.textBaseline='top'; ctx.textAlign='right';
-  ctx.fillStyle='#5a6a75'; ctx.fillText('MISSION', W-18, rpY+6);
-  ctx.fillStyle='#d0dce4'; ctx.font='bold 12px ui-monospace,monospace';
+  ctx.fillStyle=themeColor('dim'); ctx.fillText('MISSION', W-18, rpY+6);
+  ctx.fillStyle=themeColor('ink'); ctx.font='bold 12px ui-monospace,monospace';
   ctx.fillText(s.title, W-18, rpY+20);
-  if(s.crewed){ ctx.fillStyle='#f5a623'; ctx.font='10px ui-monospace,monospace'; ctx.fillText('▲ CREWED FLIGHT', W-18, rpY+38); }
+  if(s.crewed){ ctx.fillStyle=themeColor('ignite'); ctx.font='10px ui-monospace,monospace'; ctx.fillText('▲ CREWED FLIGHT', W-18, rpY+38); }
   ctx.textAlign='left'; ctx.restore();
   A.flightData=Object.assign(fd,{orbAlt:alt,pe,ap,period,orbVel:vel,orbDrange:(fd.drangeKm||0)+Math.round(op*400)});
   const ds=A._deorbitState||{};
@@ -10020,7 +10900,7 @@ function drawOrbit(ct){
      (ds.deorbitBurning ? 'DEORBIT BURN · RETROGRADE' :
       (ds.deorbiting ? 'REENTRY DESCENT' :
        (op>0.9 ? 'ORBIT ACHIEVED ✓' : (burning ? 'CIRCULARIZATION BURN' : 'ORBITAL FLIGHT')))));
-  const phaseCol = (failP!=null&&op>=failP) ? '#e0564f' : (ds.deorbiting ? '#f5a623' : (op>0.9 ? '#58c47a' : '#4fd1d9'));
+  const phaseCol = (failP!=null&&op>=failP) ? themeColor('bad') : (ds.deorbiting ? themeColor('ignite') : (op>0.9 ? themeColor('ok') : themeColor('readout')));
   drawPhaseBar(phase, phaseCol, op);
   const orbPitch=curAng-Math.PI/2;
 
@@ -10108,20 +10988,20 @@ function drawReentry(rt){
   const gLoad=(plasma>0.04?(1.2+plasma*5.6):(p<MAIN?2.0:1.0)).toFixed(1);
   const skinT=Math.round(kf(p,[[0,420],[0.10,1620],[PLASMA_END,540],[1,35]]));
   drawTelemetry([
-    {label:'PHASE', value:'REENTRY', color:'#f5a623'},
+    {label:'PHASE', value:'REENTRY', color:themeColor('ignite')},
     {label:'ALT', value:alt+' km'},
     {label:'VEL', value:vel.toLocaleString()+' m/s'},
-    {label:'G-LOAD', value:gLoad+' g', color:(+gLoad>4?'#e0564f':'#d0dce4')},
-    {label:'SKIN', value:skinT+' °C', color:(skinT>900?'#ff7a30':'#d0dce4')},
-    {label:'CHUTES', value:mainOn?'MAIN ✓':(drogueOn?'DROGUE':'STOWED'), color:mainOn?'#58c47a':'#c0ccd4'}
+    {label:'G-LOAD', value:gLoad+' g', color:(+gLoad>4?themeColor('bad'):themeColor('ink'))},
+    {label:'SKIN', value:skinT+' °C', color:(skinT>900?themeColor('bad'):themeColor('ink'))},
+    {label:'CHUTES', value:mainOn?'MAIN ✓':(drogueOn?'DROGUE':'STOWED'), color:mainOn?themeColor('ok'):themeColor('ink')}
   ]);
   const phase = p>=SPLASH?'SPLASHDOWN ✓' : (mainOn?'MAINS · DESCENT' : (drogueOn?'DROGUE OUT' : (plasma>0.15?'PLASMA BLACKOUT':'REENTRY INTERFACE')));
-  const phaseCol = p>=SPLASH?'#58c47a' : (plasma>0.15?'#ff7a30':'#f5a623');
+  const phaseCol = p>=SPLASH?themeColor('ok') : (plasma>0.15?themeColor('bad'):themeColor('ignite'));
   drawPhaseBar(phase,phaseCol,p);
   ctx.save();
   ctx.font='bold 12px ui-monospace,monospace'; ctx.textAlign='right'; ctx.textBaseline='top';
-  ctx.fillStyle='#5a6a75'; ctx.fillText('RECOVERY', W-18, 12); ctx.fillStyle='#d0dce4'; ctx.fillText(s.title, W-18, 28);
-  ctx.fillStyle='#f5a623'; ctx.font='10px ui-monospace,monospace'; ctx.fillText('▲ CREW ABOARD', W-18, 46);
+  ctx.fillStyle=themeColor('dim'); ctx.fillText('RECOVERY', W-18, 12); ctx.fillStyle=themeColor('ink'); ctx.fillText(s.title, W-18, 28);
+  ctx.fillStyle=themeColor('ignite'); ctx.font='10px ui-monospace,monospace'; ctx.fillText('▲ CREW ABOARD', W-18, 46);
   ctx.restore();
 }
 // a single parachute canopy + risers, drawn at (cx,cy) with the given radius, inflating with f∈[0,1]
@@ -10227,7 +11107,7 @@ function drawSuborbital(ct){
   const xAt=f=> (1-f)*(1-f)*x0 + 2*(1-f)*f*apexX + f*f*x1 + (R.bow||0)*30*Math.sin(f*Math.PI);
   const yAt=f=> base-Math.sin(f*Math.PI)*(base-apexY);
   const angAt=f=>{ const e=0.01, d=Math.atan2(yAt(Math.min(f+e,1))-yAt(f), xAt(Math.min(f+e,1))-xAt(f)); return d; };
-  ctx.strokeStyle='rgba(79,209,217,0.2)'; ctx.setLineDash([4,6]); ctx.lineWidth=1; ctx.beginPath();
+  ctx.strokeStyle=themeRgba('readout',0.2); ctx.setLineDash([4,6]); ctx.lineWidth=1; ctx.beginPath();
   for(let i=0;i<=60;i++){const f=i/60; i?ctx.lineTo(xAt(f),yAt(f)):ctx.moveTo(xAt(f),yAt(f));} ctx.stroke(); ctx.setLineDash([]);
   // terminal-descent handoff: past DESCENT_START the trajectory ends in a splashdown
   // (expendable = splash & vanish; capsule tech = chutes → upright splashdown → bob).
@@ -10237,7 +11117,7 @@ function drawSuborbital(ct){
     ctx.fillStyle=og; ctx.fillRect(0,waterY,W,H-waterY);
     ctx.fillStyle='rgba(180,220,240,0.10)'; ctx.fillRect(0,waterY-1,W,2);
     for(let i=0;i<10;i++){ const f=i/10, wy=waterY+4+f*(H-waterY-4); ctx.strokeStyle=`rgba(150,200,225,${0.04+0.08*(1-f)})`; ctx.lineWidth=1; ctx.beginPath(); for(let x=0;x<=W;x+=26){ const yy=wy+Math.sin((x*0.03)+(ct*0.004)+i)*1.6; x?ctx.lineTo(x,yy):ctx.moveTo(x,yy);} ctx.stroke(); } }
-  ctx.strokeStyle='#4fd1d9'; ctx.lineWidth=2.5; ctx.beginPath();
+  ctx.strokeStyle=themeColor('readout'); ctx.lineWidth=2.5; ctx.beginPath();
   const drawTo=Math.min(op,DESCENT_START);
   for(let i=0;i<=60;i++){const f=i/60*drawTo; i?ctx.lineTo(xAt(f),yAt(f)):ctx.moveTo(xAt(f),yAt(f));} ctx.stroke();
   const curX=xAt(op), curY=yAt(op);
@@ -10262,15 +11142,15 @@ function drawSuborbital(ct){
   const drange=Math.round((curX-x0)/(x1-x0)*600);
   const vel=Math.round(Math.max(0, s.reqDv*0.8*(1-Math.abs(op-0.5)*1.5)));
   const telData=[
-    {label:'T+', value:Math.floor(op*300/60)+'m '+Math.round(op*300%60)+'s', color:'#4fd1d9'},
+    {label:'T+', value:Math.floor(op*300/60)+'m '+Math.round(op*300%60)+'s', color:themeColor('readout')},
     {label:'ALT', value:Math.max(0,apogeeKm)+' km'},
     {label:'VEL', value:vel.toLocaleString()+' m/s'},
     {label:'DRANGE', value:drange+' km'},
-    {label:'STATUS', value:op<0.45?'COAST':op<0.5?'APOGEE':op<0.85?'DESCENT':'RECOVERY', color:op>0.85?'#58c47a':'#c0ccd4'}
+    {label:'STATUS', value:op<0.45?'COAST':op<0.5?'APOGEE':op<0.85?'DESCENT':'RECOVERY', color:op>0.85?themeColor('ok'):themeColor('ink')}
   ];
   drawTelemetry(telData);
   const phase=op<0.45?'COAST TO APOGEE':(op<0.52?'APOGEE · WEIGHTLESSNESS':(op<0.85?'REENTRY':(op<0.95?'CHUTE DEPLOY':'RECOVERED ✓')));
-  const phaseCol=op>0.95?'#58c47a':(op>0.7&&op<0.9?'#f5a623':'#4fd1d9');
+  const phaseCol=op>0.95?themeColor('ok'):(op>0.7&&op<0.9?themeColor('ignite'):themeColor('readout'));
   drawPhaseBar(phase,phaseCol,op);
   const subPitch=angAt(op);
 
@@ -10308,7 +11188,7 @@ function drawCislunar(ct){
     ctx.strokeStyle=`rgba(100,180,255,${0.2-i*0.07})`; ctx.lineWidth=2-i*0.5;
     ctx.beginPath(); ctx.arc(P.E.x,P.E.y,P.E.r+3+i*4,0,7); ctx.stroke();
   }
-  ctx.strokeStyle='rgba(79,209,217,0.2)'; ctx.setLineDash([3,4]); ctx.lineWidth=0.8;
+  ctx.strokeStyle=themeRgba('readout',0.2); ctx.setLineDash([3,4]); ctx.lineWidth=0.8;
   ctx.beginPath(); ctx.arc(P.E.x,P.E.y,P.leoR,0,7); ctx.stroke(); ctx.setLineDash([]);
   const mg=ctx.createRadialGradient(P.M.x-4,P.M.y-4,2,P.M.x,P.M.y,P.M.r);
   mg.addColorStop(0,'#dde0e4'); mg.addColorStop(0.4,'#b0b6bc'); mg.addColorStop(1,'#6b7178');
@@ -10329,9 +11209,9 @@ function drawCislunar(ct){
   if(failIdx!=null&&curIdx>=failIdx&&!A.sfxBoomFired){ A.sfxBoomFired=true; sfxStop(); sfxBoom(); }
   ctx.strokeStyle='rgba(125,144,155,0.18)'; ctx.lineWidth=1; ctx.setLineDash([4,6]); ctx.beginPath();
   P.pts.forEach((p,i)=> i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)); ctx.stroke(); ctx.setLineDash([]);
-  ctx.strokeStyle='#4fd1d9'; ctx.lineWidth=2.5; ctx.beginPath();
+  ctx.strokeStyle=themeColor('readout'); ctx.lineWidth=2.5; ctx.beginPath();
   for(let i=0;i<=curIdx;i++){const p=P.pts[i]; i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y);} ctx.stroke();
-  ctx.strokeStyle='rgba(79,209,217,0.15)'; ctx.lineWidth=5; ctx.beginPath();
+  ctx.strokeStyle=themeRgba('readout',0.15); ctx.lineWidth=5; ctx.beginPath();
   for(let i=Math.max(0,curIdx-8);i<=curIdx;i++){const p=P.pts[i]; i===Math.max(0,curIdx-8)?ctx.moveTo(p.x,p.y):ctx.lineTo(p.x,p.y);} ctx.stroke();
   const cur=P.pts[curIdx];
   if(failIdx!=null && curIdx>=failIdx){
@@ -10351,7 +11231,7 @@ function drawCislunar(ct){
   const missionDayTotal=s.crewed?Math.round(8+(s.reqDv/1000)):6;
   const missionDay=Math.round(op*missionDayTotal);
   const telData=[
-    {label:'MET', value:'Day '+missionDay, color:'#4fd1d9'},
+    {label:'MET', value:'Day '+missionDay, color:themeColor('readout')},
     {label:'PHASE', value:segName.toUpperCase().substring(0,16)},
     {label:'→MOON', value:lunarDist<50?lunarDist+'k km':'—'},
     {label:'→EARTH', value:earthDist>P.E.r*1.5?earthDist+'k km':'—'},
@@ -10359,13 +11239,13 @@ function drawCislunar(ct){
   ];
   drawTelemetry(telData);
   ctx.save(); ctx.font='10px ui-monospace,monospace'; ctx.textBaseline='top'; ctx.textAlign='right';
-  ctx.fillStyle='#56666f'; ctx.fillText('MISSION', W-14, 8);
-  ctx.fillStyle='#c0ccd4'; ctx.fillText(s.title, W-14, 22);
-  if(s.crewed){ ctx.fillStyle='#f5a623'; ctx.fillText('CREWED', W-14, 36); }
+  ctx.fillStyle=themeColor('dim'); ctx.fillText('MISSION', W-14, 8);
+  ctx.fillStyle=themeColor('ink'); ctx.fillText(s.title, W-14, 22);
+  if(s.crewed){ ctx.fillStyle=themeColor('ignite'); ctx.fillText('CREWED', W-14, 36); }
   ctx.textAlign='left'; ctx.restore();
   const phase = (failIdx!=null&&curIdx>=failIdx) ? 'CONTACT LOST' :
     (op>0.96 ? 'RETURNED ✓' : segName.toUpperCase());
-  const phaseCol = (failIdx!=null&&curIdx>=failIdx) ? '#e0564f' : (op>0.96 ? '#58c47a' : '#4fd1d9');
+  const phaseCol = (failIdx!=null&&curIdx>=failIdx) ? themeColor('bad') : (op>0.96 ? themeColor('ok') : themeColor('readout'));
   drawPhaseBar(phase, phaseCol, op);
   if(!(failIdx!=null&&curIdx>=failIdx)){
     const prev=P.pts[Math.max(0,curIdx-1)];
@@ -10442,8 +11322,8 @@ function frontPageHTML(e){
   return `<div style="text-align:center;font-family:Georgia,'Times New Roman',serif">
     <div style="font-size:11px;letter-spacing:.3em;color:var(--dim);text-transform:uppercase;border-top:2px solid var(--ink);border-bottom:2px solid var(--ink);padding:5px 0;margin-bottom:10px">The Agency Wire · ${dateOfAbs(e.abs)}</div>
     <div style="font-size:11px;letter-spacing:.2em;color:var(--warn);text-transform:uppercase;margin-bottom:4px">${FRONT_PAGE_KIND_LABEL[e.kind]||''}</div>
-    <h2 style="margin:0 0 8px;font-size:22px">${e.icon} ${e.headline}</h2>
-    ${e.dek?`<p class="muted" style="font-size:13px">${e.dek}</p>`:''}
+    <h2 style="margin:0 0 8px;font-size:22px">${e.icon} ${esc(e.headline)}</h2>
+    ${e.dek?`<p class="muted" style="font-size:13px">${esc(e.dek)}</p>`:''}
   </div>`;
 }
 function showFrontPage(idx){
@@ -10454,7 +11334,7 @@ function frontPagesHTML(){
   if(!frontPages().length) return '<div class="dim" style="font-size:12px">No wire copy yet — a first, a disaster or a scoop will file the opening edition.</div>';
   return frontPages().map((e,i)=>`<div onclick="showFrontPage(${i})" style="display:flex;gap:8px;align-items:baseline;padding:3px 0;font-size:12px;cursor:pointer" onmouseover="this.style.background='var(--panel2)'" onmouseout="this.style.background=''">
     <span style="flex:0 0 16px">${e.icon}</span>
-    <span style="color:var(--ink);flex:1">${e.headline}</span>
+    <span style="color:var(--ink);flex:1">${esc(e.headline)}</span>
     <span class="dim" style="font-size:11px">${dateOfAbs(e.abs)}</span>
   </div>`).join('');
 }
@@ -10516,7 +11396,7 @@ function showChronicle(mode){ // mode: 'view' | 'era' (1990) | 'era2' (2100) | '
   const sub = mode==='retire' ? 'You step down. This is what the history books will say.' :
               mode==='era2' ? 'A century and a half of spaceflight — the deep frontier now within reach. The program may continue; history has taken its second measure.' :
               mode==='era' ? 'Half a century of spaceflight, scored. The program may continue — history has simply taken its first measure.' :
-              state.company+' — the story so far.';
+              esc(state.company)+' — the story so far.';
   showModal(`<div>
     <h2 style="margin-bottom:2px">${heading}</h2>
     <p class="muted" style="font-size:12px;margin:0 0 10px">${sub}</p>
@@ -10656,7 +11536,7 @@ function tabAlerts(){
   // P11/I3: whichever crisis is active is always worth a Command-tab flag
   if(state.crisis){ const cd=activeCrisisDef(); if(cd) a.command.push(`${cd.name} — ${Math.round(state.crisis.severity*100)}% severity`); }
   // Bench: active mission blocked by the current design
-  const m=MISSIONS.find(x=>x.id===state.activeMission);
+  const m=missionById(state.activeMission);
   if(m){ try{ const v=computeVehicle(); const chk=canLaunch(v,m,m.profile?simulateMission(m):null);
     if(!chk.ok && /shortfall|TWR|thrust/i.test(chk.why||'')) a.bench.push('Design can\'t fly '+m.name); }catch(e){} }
   // R&D: idle lab with an affordable node
@@ -10680,8 +11560,20 @@ function renderTabBadges(){
   }
 }
 
+// User-directed era-evolving visual identity — swaps a body.era-* class as the campaign advances,
+// automatically (eraVisualKey() reads state.year, not a manual pick). Cheap no-op most renders
+// (cached against the last-applied key); only touches the DOM on an actual era-visual change.
+let _lastEraVisual=null;
+function applyEraVisual(){
+  const key=eraVisualKey(); if(key===_lastEraVisual) return;
+  _lastEraVisual=key;
+  const b=document.body; if(!b) return;
+  b.classList.remove('era-apollo','era-80s','era-90s2000s','era-spacex');
+  b.classList.add('era-'+key);
+}
 function render(){
   if(RETIRED_TABS[state.tab]) state.tab=RETIRED_TABS[state.tab]; // migrate retired tabs (slice 4: planner) on every render, incl. legacy saves
+  applyEraVisual();
   renderTabBadges(); // attention badges (UX pass)
   renderOutliner();  // the one-more-turn strip: every timer, one place, every scene
   $('coName').textContent=state.company;
@@ -10999,7 +11891,7 @@ function financesBreakdown(){
 // "−$2.50M") — same heuristic-text-sniffing spirit as logCategory(), not a formal transaction ledger
 // (that would mean instrumenting every one of the ~47 state.money call sites across the file).
 function tlMoneyAmount(msg){
-  const s=tlStrip(msg);
+  const s=tlStripPlain(msg);
   const m=s.match(/([+−-])\s*\$([\d,]+\.?\d*)M/);
   if(!m) return null;
   const val=parseFloat(m[2].replace(/,/g,''));
@@ -11040,7 +11932,7 @@ function showFinancesModal(){
   const expHTML=b.expenseItems.length?b.expenseItems.map(erow).join(''):'<div class="dim" style="font-size:12px">No standing expenses.</div>';
   const events=recentCashEvents(12);
   const evHTML=events.length?events.map(e=>`<div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;padding:2px 0">
-      <span class="dim" style="flex:0 0 auto">${e.when}</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${tlAttr(e.msg)}">${e.msg}</span>
+      <span class="dim" style="flex:0 0 auto">${e.when}</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${e.msg}">${e.msg}</span>
       <span style="flex:0 0 auto;color:${e.amount>=0?'var(--ok)':'var(--bad)'}">${e.amount>=0?'+':'−'}${fM(Math.abs(e.amount))}</span>
     </div>`).join('') : '<div class="dim" style="font-size:12px">No recent transactions logged.</div>';
   const hist=state.metricHist||defaultMetricHist();
@@ -11049,7 +11941,7 @@ function showFinancesModal(){
   const horizonHTML=proj.horizon.map(h=>`<div class="metric"><div class="k">${h.label}</div><div class="v" style="color:${h.amount!=null?(h.amount>=0?'var(--ok)':'var(--bad)'):'var(--warn)'}">${h.amount!=null?fM(h.amount):h.text}</div></div>`).join('');
   const upcomingHTML=proj.upcoming.length?proj.upcoming.map(u=>`<div class="dim" style="font-size:12px;padding:2px 0">• ${u}</div>`).join('') : '<div class="dim" style="font-size:12px">Nothing specific on the horizon — just the recurring flow above.</div>';
   showModal(`<h2 style="margin-bottom:2px">💰 Finances</h2>
-    <p class="muted" style="font-size:12px;margin:0 0 10px">${state.company} — current standing, recent activity, and where the treasury is headed.</p>
+    <p class="muted" style="font-size:12px;margin:0 0 10px">${esc(state.company)} — current standing, recent activity, and where the treasury is headed.</p>
     <div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:12px">
       <div style="flex:1;min-width:220px"><div class="cc-panel-h" style="margin:0 0 4px">Revenue — ${fM(b.revenue)}/mo</div>${revHTML}</div>
       <div style="flex:1;min-width:220px"><div class="cc-panel-h" style="margin:0 0 4px">Expenses — ${fM(b.expenses)}/mo</div>${expHTML}</div>
@@ -11216,6 +12108,25 @@ const ISO_BUILDINGS=[
   {key:'map',       gx:1.6, gy:3.7, fw:1.0, fd:1.0, h:48, type:'dome'},
   {key:'pad',       gx:6.2, gy:3.4, fw:1.3, fd:1.3, h:155, type:'pad'},
 ];
+// User-directed era-tied variety (2026-07-11): the Command Center space-center scene reused the
+// same building colors/pad materials/gantry every game, every era. Reuses eraVisualKey() (the same
+// grouping the DOM-chrome era pass uses) so the two visual identities age up together. 'spacex' has
+// no entry here deliberately — the EXISTING colors already read as the modern default, so that era
+// is zero-risk (falls through to the unchanged values via the || chains below).
+const ERA_BUILDING_TINT={
+  apollo:    {vab:'#c9c2b0', lab:'#4a4438', admin:'#d6cdb8', prod:'#8a8272', control:'#3a3428'},
+  '80s':     {vab:'#a8b0b8', lab:'#2e3a44', admin:'#9aa4ac', prod:'#4a545c', control:'#22303a'},
+  '90s2000s':{vab:'#c4d0dc', lab:'#3a4a5c', admin:'#b8c4d0', prod:'#5a6a7c', control:'#2a3a4c'},
+};
+function eraBuildingTint(type){ const t=ERA_BUILDING_TINT[eraVisualKey()]; return t&&t[type]; }
+// Pad concrete + gantry lattice: Apollo's white-steel umbilical tower, the Shuttle era's signature
+// rust-orange Fixed Service Structure (todays's default gantry color, unchanged for 80s/spacex), a
+// cleaner light-gray 90s/2000s tower.
+const ERA_PAD_STYLE={
+  apollo:    {concrete:'#3a3a38', gantry:'#c8c8c0', gantryBeam:'rgba(200,200,190,0.4)'},
+  '90s2000s':{concrete:'#2e3238', gantry:'#a8b0b8', gantryBeam:'rgba(180,190,200,0.4)'},
+};
+function eraPadStyle(){ return ERA_PAD_STYLE[eraVisualKey()]||null; }
 const ISO_SPREAD=1.7; // gap multiplier between cells (buildings keep their size, just spread apart)
 function isoOrigin(){ return {ox:CAPE_W*0.36, oy:CAPE_H*0.13}; }
 function isoX(gx,gy){ const o=isoOrigin(); return o.ox+(gx-gy)*ISO_TW/2*ISO_SPREAD; }
@@ -11284,7 +12195,7 @@ function drawIsoBuilding(ctx,L,t){
   if(b.type==='dishes'){ drawIsoDishes(ctx,sx,sy,b,t); return; }
   if(b.type==='dome'){ drawIsoDome(ctx,sx,sy,b,t); return; }
   if(b.type==='rivalpad'){ ctx.globalAlpha=0.7; drawIsoPad(ctx,sx,sy,b,t,true); ctx.globalAlpha=1; return; }
-  const palette=b.tint||{vab:'#2b3a44', lab:'#26323a', admin:'#2a3540', prod:'#222e36', control:'#243038'}[b.type]||'#283139';
+  const palette=eraBuildingTint(b.type)||b.tint||{vab:'#2b3a44', lab:'#26323a', admin:'#2a3540', prod:'#222e36', control:'#243038'}[b.type]||'#283139';
   const box=isoBox(ctx,sx,sy,b.fw,b.fd,h,palette);
   // windows on the two visible faces
   isoWindows(ctx,box.Cl,box.Cf,h, Math.max(2,Math.round(h/22)), 3, b.type==='control'?'88,196,122':(b.type==='lab'?'79,209,217':'245,166,35'));
@@ -11292,7 +12203,7 @@ function drawIsoBuilding(ctx,L,t){
   isoGreebles(ctx,box,h,b.key);
   const top=box.up([sx,sy]);
   if(b.type==='vab'){ // VAB: tall bay doors on the front-right face + roof ridge + beacon
-    for(let d=-1;d<=1;d++){ const fx=0.5+d*0.27; const px=box.Cf[0]+(box.Cr[0]-box.Cf[0])*fx, py=box.Cf[1]+(box.Cr[1]-box.Cf[1])*fx, dh=h*0.55; ctx.fillStyle='#0e151b'; ctx.fillRect(px-4,py-dh,8,dh); ctx.strokeStyle='rgba(245,166,35,0.35)'; ctx.lineWidth=0.6; ctx.strokeRect(px-4,py-dh,8,dh); }
+    for(let d=-1;d<=1;d++){ const fx=0.5+d*0.27; const px=box.Cf[0]+(box.Cr[0]-box.Cf[0])*fx, py=box.Cf[1]+(box.Cr[1]-box.Cf[1])*fx, dh=h*0.55; ctx.fillStyle='#0e151b'; ctx.fillRect(px-4,py-dh,8,dh); ctx.strokeStyle=themeRgba('ignite',0.35); ctx.lineWidth=0.6; ctx.strokeRect(px-4,py-dh,8,dh); }
     isoQuad(ctx,[box.up(box.Cb),box.up(box.Cr),box.up(box.Cf),box.up(box.Cl)], shade('#2b3a44',0.30), 'rgba(255,255,255,0.1)'); // bright roof ridge
     ctx.fillStyle=`rgba(255,70,50,${0.4+0.6*(Math.sin(t*3)>0?1:0.3)})`; ctx.beginPath(); ctx.arc(top[0],top[1]-4,3,0,7); ctx.fill();
     // manufacturing exhaust stack + darker, sootier smoke (reads heavier than the light pad smoke)
@@ -11332,12 +12243,13 @@ function isoCryoTank(ctx,x,baseY,r,col,frost,t){
 }
 function drawIsoPad(ctx,sx,sy,b,t,rival){
   const ex=ISO_TW/2, ey=ISO_TH/2, a=b.fw/2, bb=b.fd/2;
+  const padStyle=rival?null:eraPadStyle();
   // concrete pad diamond
-  isoQuad(ctx,[[sx-a*ex+bb*ex,sy-a*ey-bb*ey],[sx+a*ex+bb*ex,sy+a*ey-bb*ey],[sx+a*ex-bb*ex,sy+a*ey+bb*ey],[sx-a*ex-bb*ex,sy-a*ey+bb*ey]], rival?'#2a2622':'#2a2e33', 'rgba(0,0,0,0.4)');
+  isoQuad(ctx,[[sx-a*ex+bb*ex,sy-a*ey-bb*ey],[sx+a*ex+bb*ex,sy+a*ey-bb*ey],[sx+a*ex-bb*ex,sy+a*ey+bb*ey],[sx-a*ex-bb*ex,sy-a*ey+bb*ey]], rival?'#2a2622':(padStyle?padStyle.concrete:'#2a2e33'), 'rgba(0,0,0,0.4)');
   // lattice gantry (vertical) to one side
   const gx=sx+ex*0.5, gTop=sy-(rival?b.h:b.h), gBot=sy;
-  ctx.strokeStyle=rival?'#5a4a44':'#8a6038'; ctx.lineWidth=2; ctx.strokeRect(gx-6, gTop, 12, gBot-gTop);
-  ctx.strokeStyle='rgba(180,120,70,0.4)'; ctx.lineWidth=1; for(let yy=gTop;yy<gBot;yy+=12){ ctx.beginPath(); ctx.moveTo(gx-6,yy); ctx.lineTo(gx+6,yy+12); ctx.moveTo(gx+6,yy); ctx.lineTo(gx-6,yy+12); ctx.stroke(); }
+  ctx.strokeStyle=rival?'#5a4a44':(padStyle?padStyle.gantry:'#8a6038'); ctx.lineWidth=2; ctx.strokeRect(gx-6, gTop, 12, gBot-gTop);
+  ctx.strokeStyle=padStyle&&!rival?padStyle.gantryBeam:'rgba(180,120,70,0.4)'; ctx.lineWidth=1; for(let yy=gTop;yy<gBot;yy+=12){ ctx.beginPath(); ctx.moveTo(gx-6,yy); ctx.lineTo(gx+6,yy+12); ctx.moveTo(gx+6,yy); ctx.lineTo(gx-6,yy+12); ctx.stroke(); }
   const bl=(Math.sin(t*4)>0)?1:0.2; ctx.fillStyle=`rgba(255,60,40,${0.4+0.6*bl})`; ctx.beginPath(); ctx.arc(gx+6,gTop,3,0,7); ctx.fill();
   if(rival){ ctx.fillStyle='#c2b8b2'; ctx.fillRect(sx-1.5,sy-b.h*0.7,3,b.h*0.7); return; }
   // Propellant farm: spherical LOX (oxygen) + RP-1 (fuel) tanks on the open grass to the screen-LEFT of
@@ -11618,14 +12530,41 @@ function isoGrowthItems(ctx,t,L){
       ctx.fillStyle=o[1]; ctx.font='8px ui-monospace,monospace'; ctx.textAlign='center'; ctx.fillText(o[0], sx, sy+14); ctx.textAlign='left'; }}); });
   return items;
 }
+// Ambient day/night cycle for the Command Center scene (2026-07-11, "atmosphere/realism" follow-up to
+// the era-tied variety pass). Purely a function of the scene's own elapsed-seconds clock `t`, same idiom
+// as the existing blink-light/idle animations — no new game state. The p=0.50 (dusk) keyframe is an
+// EXACT reproduction of the scene's original fixed sky/sun values, so a mid-cycle glance looks identical
+// to before this pass; the cycle just breathes around that anchor.
+const SKY_CYCLE_SEC=240; // one full day/night lap, real seconds
+const SKY_KEYFRAMES=[
+  {p:0.00, top:'10,20,40',  mid:'90,55,70',  bot:'201,122,74', sunX:0.15, sunY:0.55, sunA:0.5, sunC:'255,190,120', starMul:0.3}, // dawn
+  {p:0.25, top:'58,106,154',mid:'106,160,192',bot:'168,207,224',sunX:0.55, sunY:0.07, sunA:1.0, sunC:'255,217,160', starMul:0},   // day
+  {p:0.50, top:'10,20,40',  mid:'29,52,80',  bot:'58,85,112',  sunX:0.92, sunY:0.07, sunA:1.0, sunC:'255,217,160', starMul:1.0}, // dusk (== original)
+  {p:0.75, top:'3,6,14',    mid:'6,10,22',   bot:'12,18,34',   sunX:0.50, sunY:0.90, sunA:0.0, sunC:'255,217,160', starMul:1.1}, // night
+  {p:1.00, top:'10,20,40',  mid:'90,55,70',  bot:'201,122,74', sunX:0.15, sunY:0.55, sunA:0.5, sunC:'255,190,120', starMul:0.3}, // wrap to dawn
+];
+function lerpRGB(a,b,f){ const pa=a.split(',').map(Number), pb=b.split(',').map(Number); return pa.map((v,i)=>Math.round(v+(pb[i]-v)*f)).join(','); }
+function skyAtmosphere(t){
+  const cyc=((t%SKY_CYCLE_SEC)+SKY_CYCLE_SEC)%SKY_CYCLE_SEC/SKY_CYCLE_SEC; // 0..1, safe for negative t
+  let a=SKY_KEYFRAMES[0], b=SKY_KEYFRAMES[1];
+  for(let i=0;i<SKY_KEYFRAMES.length-1;i++){ if(cyc>=SKY_KEYFRAMES[i].p && cyc<=SKY_KEYFRAMES[i+1].p){ a=SKY_KEYFRAMES[i]; b=SKY_KEYFRAMES[i+1]; break; } }
+  const span=b.p-a.p, f=span>0?(cyc-a.p)/span:0;
+  return { top:lerpRGB(a.top,b.top,f), mid:lerpRGB(a.mid,b.mid,f), bot:lerpRGB(a.bot,b.bot,f),
+    sunX:a.sunX+(b.sunX-a.sunX)*f, sunY:a.sunY+(b.sunY-a.sunY)*f, sunA:a.sunA+(b.sunA-a.sunA)*f,
+    sunC:lerpRGB(a.sunC,b.sunC,f), starMul:a.starMul+(b.starMul-a.starMul)*f };
+}
 function drawCape(cv, t){
   const ctx=cv && cv.getContext && cv.getContext('2d'); if(!ctx) return;
   const W=cv.width, H=cv.height;
-  const sky=ctx.createLinearGradient(0,0,0,H*0.7); sky.addColorStop(0,'#0a1428'); sky.addColorStop(0.5,'#1d3450'); sky.addColorStop(1,'#3a5570');
+  const atmo=skyAtmosphere(t);
+  const sky=ctx.createLinearGradient(0,0,0,H*0.7); sky.addColorStop(0,`rgb(${atmo.top})`); sky.addColorStop(0.5,`rgb(${atmo.mid})`); sky.addColorStop(1,`rgb(${atmo.bot})`);
   ctx.fillStyle=sky; ctx.fillRect(0,0,W,H);
-  for(let i=0;i<70;i++){ const sx=(i*137.5)%W, sy=(i*61.7)%(H*0.4); const tw=Math.abs(Math.sin(t*1.3+i)); ctx.fillStyle=`rgba(220,230,255,${0.1+0.22*tw})`; ctx.fillRect(sx,sy,1.2,1.2); }
-  const sunX=W*0.92, sunY=H*0.07; const sg=ctx.createRadialGradient(sunX,sunY,2,sunX,sunY,70); sg.addColorStop(0,'rgba(255,230,180,0.7)'); sg.addColorStop(0.4,'rgba(255,180,90,0.32)'); sg.addColorStop(1,'rgba(255,150,60,0)'); ctx.fillStyle=sg; ctx.beginPath(); ctx.arc(sunX,sunY,70,0,7); ctx.fill();
-  ctx.fillStyle='#ffd9a0'; ctx.beginPath(); ctx.arc(sunX,sunY,12,0,7); ctx.fill();
+  if(atmo.starMul>0.01){ for(let i=0;i<70;i++){ const sx=(i*137.5)%W, sy=(i*61.7)%(H*0.4); const tw=Math.abs(Math.sin(t*1.3+i)); ctx.fillStyle=`rgba(220,230,255,${(0.1+0.22*tw)*atmo.starMul})`; ctx.fillRect(sx,sy,1.2,1.2); } }
+  if(atmo.sunA>0.02){
+    const sunX=W*atmo.sunX, sunY=H*atmo.sunY;
+    const sg=ctx.createRadialGradient(sunX,sunY,2,sunX,sunY,70); sg.addColorStop(0,`rgba(${atmo.sunC},${0.7*atmo.sunA})`); sg.addColorStop(0.4,`rgba(${atmo.sunC},${0.32*atmo.sunA})`); sg.addColorStop(1,`rgba(${atmo.sunC},0)`); ctx.fillStyle=sg; ctx.beginPath(); ctx.arc(sunX,sunY,70,0,7); ctx.fill();
+    ctx.fillStyle=`rgba(${atmo.sunC},${atmo.sunA})`; ctx.beginPath(); ctx.arc(sunX,sunY,12,0,7); ctx.fill();
+  }
   drawIsoClouds(ctx,W,H,t);
   drawIsoGround(ctx,W,H,t);
   const L=isoLayout();
@@ -11741,6 +12680,10 @@ const PAD_HOLD_FRAC=0.55;
 // "cruise begins / ETA" outro card played on the overlay's own canvas (spec.mode:'depart', the mirror of
 // 'arrive'). This is how long that card plays before it settles and holds for the player to dismiss.
 const DEPART_CARD_MS=4200;
+// #73 Slice 3: a successful "fly it yourself" module delivery (spec.dock) ends its flight overlay with a
+// rendezvous + soft-dock spectacle card — the terminal beat after the ascent + orbit/cislunar cruise. This
+// is how long the module's approach-and-dock plays before it settles and holds for the player to dismiss.
+const DOCK_CARD_MS=4600;
 function playLiftoff(spec, next){
   if(!animEnabled){ next(); return; }
   if(state.tab!=='command'){ state.tab='command'; render(); } // auto-switch so the liftoff is actually on screen
@@ -11876,7 +12819,7 @@ function renderExecOverview(){
   $('execOverview').innerHTML=`
     <div class="cc-hero">
       <div>
-        <h2 style="margin:0 0 2px">${state.company}</h2>
+        <h2 style="margin:0 0 2px">${esc(state.company)}</h2>
         <div class="muted" style="font-size:12px">${dateStr()} · Era ${s.eraIdx}/${s.eraTotal} · ${s.era}</div>
       </div>
       <div class="cc-net" style="text-align:right">
@@ -11903,7 +12846,7 @@ function renderExecOverview(){
     <div style="display:flex;gap:22px;flex-wrap:wrap;margin-top:10px;font-size:12px;border-top:1px solid var(--line);padding-top:8px">
       <div><span class="dim">Active R&amp;D:</span> ${ar?`<b>${ar.name}</b> <span class="dim">(${fmtTimeLeft(ar.monthsLeft)} left)</span>`:'<span class="dim">none — start a project</span>'}</div>
       <div><span class="dim">Gov funding:</span> <b style="color:${s.govFunding>0?'var(--ok)':'var(--dim)'}">+${fM(s.govFunding)}/mo</b></div>
-      <div><span class="dim">Current vehicle:</span> <b>${vehName}</b></div>
+      <div><span class="dim">Current vehicle:</span> <b>${esc(vehName)}</b></div>
       ${staffEffectsHTML()}
     </div>`;
 }
@@ -12084,7 +13027,7 @@ function renderCCRight(){
   // Alerts box removed from the right rail per request — agencyAlerts() still drives advisor/log signals.
   const o=ccOpsSummary();
   const news=ccNews(7);
-  const nRows=news.map(l=>`<div class="news-line"><span class="dim">${l.when}</span> <span class="${l.kind}">${l.msg.replace(/<[^>]*>/g,'')}</span></div>`).join('') || '<div class="dim" style="font-size:12px">No news yet.</div>';
+  const nRows=news.map(l=>`<div class="news-line"><span class="dim">${l.when}</span> <span class="${l.kind}">${tlStrip(l.msg)}</span></div>`).join('') || '<div class="dim" style="font-size:12px">No news yet.</div>';
   // slice 6: rivals mini-leaderboard (top threats) + deep-view modal — the Rivals tab's hub home
   const rivalMini=RIVALS.map(r=>({r,score:(state.rivalThreat&&state.rivalThreat[r.id])||0}))
     .sort((a,b)=>b.score-a.score).slice(0,3)
@@ -12595,7 +13538,7 @@ function renderWindowPlanner(){
    is pure so it can be exercised headlessly. */
 let plannerShowMissions=false;
 function plannerChoose(){ plannerShowMissions=true; render(); }
-function plannerSetMission(id){ const m=MISSIONS.find(x=>x.id===id); if(!m||!missionFlyable(m)) return; state.activeMission=id; plannerShowMissions=false; render(); }
+function plannerSetMission(id){ const m=missionById(id); if(!m||!missionFlyable(m)) return; state.activeMission=id; plannerShowMissions=false; render(); }
 function plannerSteps(){
   const m=curMission();
   if(!m) return [{key:'mission',n:1,title:'Choose a mission',done:false,detail:'Pick your objective to begin.',focus:'mission',actLabel:'Choose'}];
@@ -12660,7 +13603,7 @@ function vehicleCompareHTML(){
   const ids=opts.map(o=>o.id);
   let a=ids.includes(cmpA)?cmpA:opts[0].id;
   let b=ids.includes(cmpB)?cmpB:(opts.find(o=>o.id!==a)||opts[0]).id;
-  const sel=(side,cur)=>`<select onchange="setCompare('${side}',this.value)" style="width:100%;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:5px;padding:4px 6px;font-size:12px">${opts.map(o=>`<option value="${o.id}" ${o.id===cur?'selected':''}>${o.name}</option>`).join('')}</select>`;
+  const sel=(side,cur)=>`<select onchange="setCompare('${side}',this.value)" style="width:100%;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:5px;padding:4px 6px;font-size:12px">${opts.map(o=>`<option value="${o.id}" ${o.id===cur?'selected':''}>${esc(o.name)}</option>`).join('')}</select>`;
   const A=compareMetrics(a), B=compareMetrics(b);
   if(!A||!B) return '';
   const row=(label,av,bv,fmt,better)=>{
@@ -12699,8 +13642,8 @@ function renderVehicleFamilies(){
     const parent=active.parentId?familyById(active.parentId):null;
     activeHtml=`<div class="card" style="background:var(--panel2);border-color:var(--ignite);margin-bottom:10px">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-        <div class="mission-name" style="margin:0;font-size:15px"><span style="color:var(--ignite)">▲ ${active.name}</span> <span class="pill active">flying</span></div>
-        <div class="dim" style="font-size:12px">since ${active.born}${parent?` · from ${parent.name}`:''}</div>
+        <div class="mission-name" style="margin:0;font-size:15px"><span style="color:var(--ignite)">▲ ${esc(active.name)}</span> <span class="pill active">flying</span></div>
+        <div class="dim" style="font-size:12px">since ${active.born}${parent?` · from ${esc(parent.name)}`:''}</div>
       </div>
       <div class="metrics" style="margin:8px 0 0">
         <div class="metric"><div class="k">Flights</div><div class="v">${active.flights||0}${sr!=null?` · ${sr}%`:''}</div></div>
@@ -12718,7 +13661,7 @@ function renderVehicleFamilies(){
     const sr=familySuccessRate(f);
     return `<div class="item" style="margin-top:8px">
       <div class="body">
-        <div class="title" style="font-size:13px">${f.name} ${f.parentId&&familyById(f.parentId)?`<span class="pill">↳ ${familyById(f.parentId).name}</span>`:''}</div>
+        <div class="title" style="font-size:13px">${esc(f.name)} ${f.parentId&&familyById(f.parentId)?`<span class="pill">↳ ${esc(familyById(f.parentId).name)}</span>`:''}</div>
         <div class="sub">${f.flights||0} flights${sr!=null?` · ${sr}% success`:''}${f.losses?` · ${f.losses} lost`:''} · +${(familyRelBonus(f)*100).toFixed(1)}% rel</div>
       </div>
       <div style="display:flex;flex-direction:column;gap:4px">
@@ -12729,7 +13672,7 @@ function renderVehicleFamilies(){
   }).join(''):'';
   card.innerHTML=`<h2>Vehicle Family</h2>
     ${activeHtml}
-    <button class="btn" style="width:100%" onclick="saveAsFamily()">+ Register current design${active?` as a new family (derives from ${active.name})`:' as a family'}</button>
+    <button class="btn" style="width:100%" onclick="saveAsFamily()">+ Register current design${active?` as a new family (derives from ${esc(active.name)})`:' as a family'}</button>
     ${list}
     ${vehicleCompareHTML()}`;
 }
@@ -12821,7 +13764,7 @@ function renderVehiclePreview(){
   const eng=state.stages.reduce((a,s)=>a+s.count,0);
   const el=$('vehicleLabel');
   const nm=(curLivery().name||'').trim();
-  if(el) el.innerHTML=`${nm?`<div style="font-weight:600;color:var(--ink);font-size:13px;margin-bottom:2px">${nm}</div>`:''}${state.stages.length} stage${state.stages.length>1?'s':''} · ${eng} engine${eng>1?'s':''}${boostersFitted()?` · ${state.boosters.count} booster${state.boosters.count>1?'s':''}`:''}${spec.transferProp>0?' · transfer stage':''} · ${spec.crewed?'crew capsule':'payload fairing'}`;
+  if(el) el.innerHTML=`${nm?`<div style="font-weight:600;color:var(--ink);font-size:13px;margin-bottom:2px">${esc(nm)}</div>`:''}${state.stages.length} stage${state.stages.length>1?'s':''} · ${eng} engine${eng>1?'s':''}${boostersFitted()?` · ${state.boosters.count} booster${state.boosters.count>1?'s':''}`:''}${spec.transferProp>0?' · transfer stage':''} · ${spec.crewed?'crew capsule':'payload fairing'}`;
   // Slice 2: prefer the Phaser-hosted preview scene; fall back to the plain 2D canvas.
   if(phaserOK() && startVehPreview(spec)) return;
   const cv=$('vehiclePreview'); if(!cv || !cv.getContext) return;
@@ -12991,7 +13934,21 @@ function defineVehScene(){
       const mk=(key,draw,w,h)=>{ if(!this.textures.exists(key)){ const g=this.make.graphics({x:0,y:0,add:false}); draw(g); g.generateTexture(key,w,h); g.destroy(); } };
       mk('vehStar',g=>{ g.fillStyle(0xffffff,1); g.fillCircle(2,2,2); },4,4);
       mk('vehGlow',g=>{ for(let i=10;i>=1;i--){ g.fillStyle(0xffffff,0.05); g.fillCircle(32,32,i*3); } },64,64);
-      this.cameras.main.setBackgroundColor('#0a1016');
+      // Blueprint background: the Phaser canvas is opaque (transparent:false, below), so it paints
+      // over the CSS .bench-rocket blueprint background entirely — draw the same navy + faint white
+      // grid IN the scene itself so the "actual background behind the vehicle" matches, not just the
+      // card's margins around the canvas. Internal res is 2× display size, so grid spacing is doubled
+      // (20px/100px here → 10px/50px once the canvas is CSS-scaled down to its displayed size).
+      this.cameras.main.setBackgroundColor('#0b2545');
+      const grid=this.add.graphics();
+      grid.lineStyle(1, 0xffffff, 0.05); grid.beginPath();
+      for(let x=0;x<=VEH_W;x+=20){ grid.moveTo(x,0); grid.lineTo(x,VEH_H); }
+      for(let y=0;y<=VEH_H;y+=20){ grid.moveTo(0,y); grid.lineTo(VEH_W,y); }
+      grid.strokePath();
+      grid.lineStyle(1, 0xffffff, 0.11); grid.beginPath();
+      for(let x=0;x<=VEH_W;x+=100){ grid.moveTo(x,0); grid.lineTo(x,VEH_H); }
+      for(let y=0;y<=VEH_H;y+=100){ grid.moveTo(0,y); grid.lineTo(VEH_W,y); }
+      grid.strokePath();
       for(let i=0;i<46;i++){ const s=this.add.image(Math.random()*W, Math.random()*H, 'vehStar').setAlpha(0.12+Math.random()*0.5).setScale(0.4+Math.random()*0.9);
         this.tweens.add({targets:s, alpha:Math.random()*0.2, duration:900+Math.random()*2200, yoyo:true, repeat:-1, ease:'Sine.easeInOut'}); }
       this.tex=this.textures.exists('vehTex')?this.textures.get('vehTex'):this.textures.createCanvas('vehTex',W,H);
@@ -13001,7 +13958,7 @@ function defineVehScene(){
       this.img=this.add.image(W/2, H/2, 'vehTex').setOrigin(0.5,0.5);
       this.selG=this.add.graphics();           // selection ring + separation lines
       this.ann=[];                              // per-stage Δv/TWR labels
-      this.dragLabel=this.add.text(0,0,'',{fontFamily:'ui-monospace,monospace',fontSize:'15px',color:'#ffd98a',backgroundColor:'#0a1016cc',padding:{x:6,y:3}}).setDepth(10).setVisible(false);
+      this.dragLabel=this.add.text(0,0,'',{fontFamily:'ui-monospace,monospace',fontSize:'15px',color:themeColor('ignite'),backgroundColor:'#0b2545cc',padding:{x:6,y:3}}).setDepth(10).setVisible(false);
       // --- direct manipulation ---
       this._drag=null;
       const zoneAt=(x,y)=>{ if(!this._layout) return null;
@@ -13053,12 +14010,12 @@ function defineVehScene(){
       const stages=L.zones.filter(z=>z.kind==='stage');
       stages.forEach((z,i)=>{
         // separation line between stages: dashed, faint
-        if(i>0){ g.lineStyle(1,0x5a6a78,0.55); for(let x=z.cx-z.halfW-14;x<z.cx+z.halfW+8;x+=7){ g.beginPath(); g.moveTo(x,z.bot); g.lineTo(x+4,z.bot); g.strokePath(); } }
+        if(i>0){ g.lineStyle(1,themeColorNum('dim'),0.55); for(let x=z.cx-z.halfW-14;x<z.cx+z.halfW+8;x+=7){ g.beginPath(); g.moveTo(x,z.bot); g.lineTo(x+4,z.bot); g.strokePath(); } }
         // annotation: Δv + TWR at ignition, tucked to the right of the segment
         const dv=cv&&cv.stageDv&&cv.stageDv[i]!=null?fI(cv.stageDv[i]):'—';
         const twr=cv&&cv.stageTwr&&cv.stageTwr[i]!=null?cv.stageTwr[i].toFixed(2):'—';
         const loss=cv&&cv.stageGravLoss&&cv.stageGravLoss[i]||0;
-        const col=loss<=0?'#8fd08f':(loss>250?'#e88a7a':'#e8c07a');
+        const col=loss<=0?themeColor('ok'):(loss>250?themeColor('bad'):themeColor('warn'));
         const t=this.add.text(z.cx+z.halfW+10, (z.top+z.bot)/2, `S${i+1}  Δv ${dv}
      TWR ${twr}`, {fontFamily:'ui-monospace,monospace', fontSize:'13px', color:col, lineSpacing:2}).setOrigin(0,0.5).setAlpha(0.92);
         this.ann.push(t);
@@ -13067,10 +14024,10 @@ function defineVehScene(){
       const sel = typeof benchSelStage==='number' && benchSelStage>=0 ? stages[benchSelStage]
                 : benchSelStage==='transfer' ? L.zones.find(z=>z.kind==='transfer')
                 : benchSelStage==='nose' ? L.zones.find(z=>z.kind==='nose') : null;
-      if(sel){ g.lineStyle(2,0xf5a623,0.95); g.strokeRoundedRect(sel.x-2, sel.y-2, sel.w+4, sel.h+4, 5); }
+      if(sel){ g.lineStyle(2,themeColorNum('ignite'),0.95); g.strokeRoundedRect(sel.x-2, sel.y-2, sel.w+4, sel.h+4, 5); }
       // affordance hint the first few times (until any selection has happened)
       if(benchSelStage===-1 && !state._benchTouched && stages[0]){
-        const t=this.add.text(stages[0].cx, stages[0].bot+16, 'click a stage · drag to stretch tanks', {fontFamily:'ui-monospace,monospace', fontSize:'12px', color:'#7d8b98'}).setOrigin(0.5,0).setAlpha(0.8);
+        const t=this.add.text(stages[0].cx, stages[0].bot+16, 'click a stage · drag to stretch tanks', {fontFamily:'ui-monospace,monospace', fontSize:'12px', color:themeColor('muted')}).setOrigin(0.5,0).setAlpha(0.8);
         this.ann.push(t);
       }
     }
@@ -13106,7 +14063,7 @@ function resumeVehGame(){ if(vehGame){ try{ vehGame.scene.wake('vehprev'); }catc
    every layer, with grab-to-pan + wheel-to-zoom for a big look at the design. The rocket is
    redrawn vector-crisp at any zoom (canvas transform, not a stretched bitmap). Enter/Esc closes
    it and returns the button to its place on the bench card. */
-let vehPopoutOpen=false, vpZoom=1, vpPanX=0, vpPanY=0, _vpLaunchHome=null;
+let vehPopoutOpen=false, vpZoom=1, vpPanX=0, vpPanY=0, _vpLaunchHome=null, _vpEditorHome=null, _vpReadoutHome=null;
 function drawVehPopout(){
   const stage=$('vehPopStage'), cv=$('vehPopCanvas'); if(!stage||!cv) return;
   const w=stage.clientWidth, h=stage.clientHeight; if(w<2||h<2) return;
@@ -13118,44 +14075,13 @@ function drawVehPopout(){
   try{ drawVehiclePreviewTo(ctx, w, h, spec); }catch(e){}
   ctx.restore();
 }
-// The vehicle's characteristics for the pop-out's right rail — reuses computeVehicle()/curMission()
-// so the numbers match the bench readout exactly (TWR, Δv, reliability, mass, costs, per-stage).
-function vehPopStatsHTML(){
-  let m,v; try{ m=curMission(); v=computeVehicle(); }catch(e){ v=null; }
-  if(!v) return '<div class="dim" style="font-size:12px">Select a mission and a vehicle to see its characteristics.</div>';
-  const row=(lbl,val,col)=>`<div class="vps-row"><span class="lbl">${lbl}</span><span class="val"${col?` style="color:${col}"`:''}>${val}</span></div>`;
-  const twrCol=v.twr>1.2?'var(--ink)':(v.twr>1?'var(--warn)':'var(--bad)');
-  const reqTxt=(m&&m.reqDv)?` <span class="dim" style="font-weight:400">/ req ${fI(m.reqDv)}</span>`:'';
-  const dvCol=(m&&m.reqDv)?(v.totalDv>=m.reqDv?'var(--ok)':'var(--warn)'):'var(--ink)';
-  const gravCol=v.gravLoss>800?'var(--bad)':(v.gravLoss>200?'var(--warn)':null);
-  let stageRows='';
-  for(let i=0;i<state.stages.length;i++){
-    const sd=(v.stageDv&&v.stageDv[i]!=null)?fI(v.stageDv[i]):'—';
-    const st=(v.stageTwr&&v.stageTwr[i]!=null)?v.stageTwr[i].toFixed(2):'—';
-    stageRows+=row(`Stage ${i+1}`, `${sd} m/s · TWR ${st}`);
-  }
-  const buildT=m?(buildMonths(m)+1+TEST_LEVELS[state.testLevel].months):null;
-  return `<h4>Performance</h4>
-    ${row('Δv total', `${fI(v.totalDv)} m/s${reqTxt}`, dvCol)}
-    ${row('Liftoff TWR', v.twr.toFixed(2), twrCol)}
-    ${row('Gravity loss', v.gravLoss>1?`−${fI(v.gravLoss)} m/s`:'—', gravCol)}
-    ${row('Reliability', `${(v.reliability*100|0)}%`)}
-    <h4>Mass</h4>
-    ${row('Liftoff mass', `${v.liftoff.toFixed(1)} t`)}
-    ${row('Dry mass', `${v.dryTotal.toFixed(1)} t`)}
-    ${row('Propellant', `${v.totalProp.toFixed(1)} t`)}
-    ${row('Payload', v.payload>=1?`${v.payload.toFixed(2)} t`:`${(v.payload*1000).toFixed(0)} kg`)}
-    <h4>Configuration</h4>
-    ${row('Stages', state.stages.length)}
-    ${row('Engines', v.totalEng)}
-    ${(boostersFitted()&&v.boosters)?row('Boosters', `${v.boosters.count}×${v.boosters.eng.solid?' solid':''} ${v.boosters.eng.name||''}`.trim()):''}
-    ${v.crewed?row('Crew', (m&&m.crew)||0):''}
-    ${stageRows?`<h4>Per stage</h4>${stageRows}`:''}
-    <h4>Economics</h4>
-    ${row('Build cost', fM(v.buildCost))}
-    ${row('Launch cost', fM(v.launchCost))}
-    ${buildT!=null?row('Build time', `${buildT} mo`):''}`;
-}
+// User-directed pop-out sizing pass (2026-07-11): every pop-out's default view now fills ~10% more of
+// the screen than before. Each pop-out's zoom transform is anchored at its content box's top-left (CSS
+// transform-origin, or the canvas-translate order for the canvas-drawn ones) — a naive z>1 default would
+// visually drift the content toward the bottom-right corner, so callers pair this with a compensating
+// pan offset that keeps the (now-larger) content centered in the same box it used to exactly fill at z=1.
+const POPOUT_ZOOM_BOOST=1.1;
+function centeredZoomOffset(w,h,z){ return {x:-w*(z-1)/2, y:-h*(z-1)/2}; }
 // Shared pop-out fade: every overlay fades in on open and out on close (150ms, matching scene transitions).
 function fadeInScrim(ov){ if(!ov) return; ov.style.opacity='0'; requestAnimationFrame(()=>{ if(ov) ov.style.opacity='1'; }); }
 function removeScrim(id){ const ov=$(id); if(!ov||!ov.parentNode) return; ov.id=''; ov.style.opacity='0'; setTimeout(()=>{ if(ov.parentNode) ov.parentNode.removeChild(ov); },170); }
@@ -13168,7 +14094,7 @@ function closeOtherPopouts(keep){
   if(keep!=='cc' && ccPopoutOpen) closeCCPopout();
 }
 function openVehPopout(){
-  if(vehPopoutOpen) return; vehPopoutOpen=true; closeOtherPopouts('veh'); vpZoom=1; vpPanX=0; vpPanY=0;
+  if(vehPopoutOpen) return; vehPopoutOpen=true; closeOtherPopouts('veh'); vpZoom=POPOUT_ZOOM_BOOST; vpPanX=0; vpPanY=0;
   let title='Vehicle'; try{ title=(curLivery().name||'').trim() || (curMission()?curMission().name:'Vehicle'); }catch(e){}
   const ov=document.createElement('div'); ov.className='vehpop-scrim'; ov.id='vehPopout';
   ov.innerHTML=`<div class="vehpop-bar">
@@ -13178,6 +14104,7 @@ function openVehPopout(){
       <button class="vehpop-x" onclick="closeVehPopout()">✕ Close</button>
     </div>
     <div class="vehpop-body">
+      <aside class="vehpop-stats wide left" id="vehPopEditor"></aside>
       <div class="vehpop-stage" id="vehPopStage"><canvas id="vehPopCanvas"></canvas></div>
       <aside class="vehpop-stats" id="vehPopStats"></aside>
     </div>`;
@@ -13185,7 +14112,15 @@ function openVehPopout(){
   // move the LIVE Build/Launch node into the bar, remembering its home so we can restore it exactly
   const host=$('benchLaunch');
   if(host){ _vpLaunchHome={parent:host.parentNode, next:host.nextSibling}; $('vehPopLaunchHost').appendChild(host); }
-  const sp=$('vehPopStats'); if(sp) sp.innerHTML=vehPopStatsHTML(); // characteristics on the right
+  // User-directed (2026-07-11): the pop-out hosts the FULL live Design Bench editor, not a read-only
+  // stats summary — move the real editor-tabs subtree LEFT of the rocket and the real readout card
+  // RIGHT of it (same ids/handlers, render() keeps populating them wherever they live), so you can
+  // manipulate the vehicle on the left and read the mission-fit results on the right while the rocket
+  // itself stays visible in the middle. Homes remembered to restore exactly on close.
+  const ep=$('benchEditorPanel'); const epHost=$('vehPopEditor');
+  if(ep && epHost){ _vpEditorHome={parent:ep.parentNode, next:ep.nextSibling}; epHost.appendChild(ep); }
+  const rc=$('readoutCard'); const rcHost=$('vehPopStats');
+  if(rc && rcHost){ _vpReadoutHome={parent:rc.parentNode, next:rc.nextSibling}; rcHost.appendChild(rc); }
   initVehPopZoom();
   drawVehPopout();
   window.addEventListener('resize', drawVehPopout);
@@ -13196,6 +14131,12 @@ function closeVehPopout(){
   const host=$('benchLaunch');
   if(host && _vpLaunchHome && _vpLaunchHome.parent){ _vpLaunchHome.parent.insertBefore(host, _vpLaunchHome.next); } // back to its bench spot
   _vpLaunchHome=null;
+  const rc=$('readoutCard');
+  if(rc && _vpReadoutHome && _vpReadoutHome.parent){ _vpReadoutHome.parent.insertBefore(rc, _vpReadoutHome.next); }
+  _vpReadoutHome=null;
+  const ep=$('benchEditorPanel');
+  if(ep && _vpEditorHome && _vpEditorHome.parent){ _vpEditorHome.parent.insertBefore(ep, _vpEditorHome.next); }
+  _vpEditorHome=null;
   removeScrim('vehPopout');
 }
 function initVehPopZoom(){
@@ -13208,7 +14149,9 @@ function initVehPopZoom(){
   stage.addEventListener('pointermove',e=>{ if(!drag) return; vpPanX+=e.clientX-lx; vpPanY+=e.clientY-ly; lx=e.clientX; ly=e.clientY; drawVehPopout(); });
   const end=()=>{ drag=false; stage.classList.remove('grabbing'); };
   stage.addEventListener('pointerup',end); stage.addEventListener('pointercancel',end);
-  stage.addEventListener('dblclick',()=>{ vpZoom=1; vpPanX=0; vpPanY=0; drawVehPopout(); });
+  const resetCentered=()=>{ vpZoom=POPOUT_ZOOM_BOOST; const r=stage.getBoundingClientRect(), off=centeredZoomOffset(r.width,r.height,vpZoom); vpPanX=off.x; vpPanY=off.y; drawVehPopout(); };
+  stage.addEventListener('dblclick', resetCentered);
+  resetCentered(); // establishes the boosted, centered default view (called once at open, mirrors initSvgPopZoom)
 }
 /* ---------- Station pop-out viewer ----------
    Same overlay chrome (reuses the .vehpop-* styles) for the Station Bench: the annotated module
@@ -13231,28 +14174,41 @@ function initSvgPopZoom(stageId, zoomId, st){
     st.x+=e.clientX-lx; st.y+=e.clientY-ly; lx=e.clientX; ly=e.clientY; apply(); });
   const end=()=>{ down=false; drag=false; stage.classList.remove('grabbing'); };
   stage.addEventListener('pointerup',end); stage.addEventListener('pointercancel',end);
-  stage.addEventListener('dblclick',()=>{ st.z=1; st.x=0; st.y=0; apply(); });
-  apply();
+  const resetCentered=()=>{ const r=stage.getBoundingClientRect(); st.z=POPOUT_ZOOM_BOOST; const off=centeredZoomOffset(r.width,r.height,st.z); st.x=off.x; st.y=off.y; apply(); };
+  stage.addEventListener('dblclick', resetCentered);
+  resetCentered(); // establishes the boosted, centered default view (was a bare apply() at z:1)
 }
 let stnPopoutOpen=false, stnPop={z:1,x:0,y:0};
+function stnPopStatsHTML(v){ return v.isDraft ? stationDraftStatsHTML(stationDraftFs()) : renderStationFacilityStats(v.built, v.cur); }
 function openStationPopout(){
   if(stnPopoutOpen) return; stnPopoutOpen=true; closeOtherPopouts('stn'); stnPop={z:1,x:0,y:0};
-  let mod; try{ mod=stationActiveModule(); }catch(e){ stnPopoutOpen=false; return; }
+  const v=stationCurrentView();
+  const title = v.isDraft ? 'Station — Blueprint' : v.cur.def.name;
   const ov=document.createElement('div'); ov.className='vehpop-scrim'; ov.id='stnPopout';
   ov.innerHTML=`<div class="vehpop-bar">
-      <span class="vehpop-title">⬡ ${mod.name}</span>
+      <span class="vehpop-title" id="stnPopTitle">⬡ ${esc(title)}</span>
       <span class="vehpop-hint">drag to pan · scroll to zoom · double-click reset · Esc/Enter to close</span>
       <button class="vehpop-x" onclick="closeStationPopout()">✕ Close</button>
     </div>
     <div class="vehpop-body">
-      <div class="vehpop-stage" id="stnPopStage"><div id="stnPopZoom" style="position:absolute;inset:0;transform-origin:0 0;display:flex;align-items:center;justify-content:center">${renderStationSVG(900,560,mod)}</div></div>
+      <div class="vehpop-stage" id="stnPopStage"><div id="stnPopZoom" style="position:absolute;inset:0;transform-origin:0 0;display:flex;align-items:center;justify-content:center">${renderStationStackSVG(900,560,v.cur)}</div></div>
       <aside class="vehpop-stats" id="stnPopStats"></aside>
     </div>`;
   document.body.appendChild(ov); fadeInScrim(ov);
-  const sp=$('stnPopStats'); if(sp) sp.innerHTML=stationStatsHTML(mod);
+  const sp=$('stnPopStats'); if(sp) sp.innerHTML=stnPopStatsHTML(v);
   initSvgPopZoom('stnPopStage','stnPopZoom',stnPop);
 }
 function closeStationPopout(){ if(!stnPopoutOpen) return; stnPopoutOpen=false; removeScrim('stnPopout'); }
+// Keeps the pop-out in sync when the focused facility changes elsewhere (setStationFocus) — a no-op
+// if the pop-out isn't open. The stack SVG lives inside #stnPopZoom (the pan/zoom transform target),
+// not #stnPopStage itself, so this only replaces the art, never disturbing the current pan/zoom state.
+function refreshStationPopout(){
+  if(!stnPopoutOpen) return;
+  const v=stationCurrentView();
+  const t=$('stnPopTitle'); if(t) t.textContent='⬡ '+(v.isDraft?'Station — Blueprint':v.cur.def.name);
+  const z=$('stnPopZoom'); if(z) z.innerHTML=renderStationStackSVG(900,560,v.cur);
+  const sp=$('stnPopStats'); if(sp) sp.innerHTML=stnPopStatsHTML(v);
+}
 /* ---------- Solar System pop-out viewer ----------
    Same overlay chrome: the interactive system map (clickable bodies, vector-crisp) on the left with
    grab-to-pan + wheel-to-zoom, and the selected body's Δv profile + mission planning on the right.
@@ -13407,7 +14363,7 @@ function earthLoop(){
 function openEarthPopout(){
   if(earthPopoutOpen) return;
   closeOtherPopouts('earth');
-  earthPopoutOpen=true; earthPop={z:1,x:0,y:0}; earthView={lon:-80,auto:true}; earthLastT=0; earthT0=ccNow(); state.selectedBody='earth';
+  earthPopoutOpen=true; earthPop={z:POPOUT_ZOOM_BOOST,x:0,y:0}; earthView={lon:-80,auto:true}; earthLastT=0; earthT0=ccNow(); state.selectedBody='earth';
   const ov=document.createElement('div'); ov.className='vehpop-scrim'; ov.id='earthPopout';
   ov.innerHTML=`<div class="vehpop-bar">
       <span class="vehpop-title">🌍 Earth</span>
@@ -13459,7 +14415,7 @@ function initEarthPopZoom(){
     earthView.lon += (e.clientX-lx)*0.4; lx=e.clientX; });
   const end=e=>{ if(down && !drag && earthOverCape(e)){ earthGoToCape(); } down=false; drag=false; stage.classList.remove('grabbing'); };
   stage.addEventListener('pointerup',end); stage.addEventListener('pointercancel',()=>{down=false;drag=false;stage.classList.remove('grabbing');});
-  stage.addEventListener('dblclick',()=>{ earthPop.z=1; earthPop.x=0; earthPop.y=0; });
+  stage.addEventListener('dblclick',()=>{ earthPop.z=POPOUT_ZOOM_BOOST; earthPop.x=0; earthPop.y=0; }); // already centered — draw loop translates to canvas-center first, then scales
 }
 /* ---------- Command Center pop-out ----------
    The animated Cape Canaveral scene blown up to full screen (drawn off-screen at native res, then
@@ -13468,7 +14424,7 @@ let ccPopoutOpen=false, ccPopAnim=null, ccPopT0=0, ccPop={z:1,x:0,y:0}, ccPopFra
 function ccPopInfoHTML(){
   let s; try{ s=commandSummary(); }catch(e){ return ''; }
   const row=(l,v,c)=>`<div class="vps-row"><span class="lbl">${l}</span><span class="val"${c?` style="color:${c}"`:''}>${v}</span></div>`;
-  return `<h4>${state.company}</h4>
+  return `<h4>${esc(state.company)}</h4>
     <div class="dim" style="font-size:12px;margin-bottom:6px">${dateStr()} · Era ${s.eraIdx}/${s.eraTotal} · ${s.era}</div>
     <h4>Finance</h4>
     ${row('Capital', fM(s.capital))}
@@ -13528,7 +14484,7 @@ function initCcPopZoom(){
   // Swallow the click-through after a drag-to-pan so panning that starts/ends on a hotspot div doesn't fire
   // its click (mirrors initCapeZoom). Capture-phase on the stage runs before #ccPopSpots' own capture handler.
   stage.addEventListener('click',e=>{ if(moved>6){ e.stopPropagation(); e.preventDefault(); moved=0; } }, true);
-  stage.addEventListener('dblclick',()=>{ ccPop={z:1,x:0,y:0}; applyCcPopZoom(); });
+  stage.addEventListener('dblclick',()=>{ ccPop.z=POPOUT_ZOOM_BOOST; const fit=ccPopFitBox(), off=centeredZoomOffset(fit?fit.w:0, fit?fit.h:0, ccPop.z); ccPop.x=off.x; ccPop.y=off.y; applyCcPopZoom(); });
 }
 function ccPopLoop(){
   if(!ccPopoutOpen){ ccPopAnim=null; return; }
@@ -13545,7 +14501,7 @@ function ccPopLoop(){
 function openCCPopout(){
   if(ccPopoutOpen) return;
   closeOtherPopouts('cc');
-  ccPopoutOpen=true; ccPop={z:1,x:0,y:0}; ccPopT0=ccNow();
+  ccPopoutOpen=true; ccPop={z:POPOUT_ZOOM_BOOST,x:0,y:0}; ccPopT0=ccNow();
   const ov=document.createElement('div'); ov.className='vehpop-scrim'; ov.id='ccPopout';
   ov.innerHTML=`<div class="vehpop-bar">
       <span class="vehpop-title">⌂ Command Center</span>
@@ -13574,7 +14530,9 @@ function openCCPopout(){
       try{ el.onclick.call(el,e); }catch(_){}
     },true);
   }
-  initCcPopZoom(); ccPopFitBox(); applyCcPopZoom();
+  initCcPopZoom();
+  const fit=ccPopFitBox(); if(fit){ const off=centeredZoomOffset(fit.w,fit.h,ccPop.z); ccPop.x=off.x; ccPop.y=off.y; }
+  applyCcPopZoom();
   ccPopFrame=0;
   ccPopAnim=requestAnimationFrame(ccPopLoop);
 }
@@ -13997,6 +14955,7 @@ function renderPersonnelCard(p, sr){
       ${isEng?`Reliability contribution: <span style="color:var(--ok)">+${engBonusStr}</span> (factors into team average)`:''}
       ${isAstro&&assigned&&ab?`<span style="color:var(--ok)">Crewed rel +${(ab.rel*100).toFixed(1)}% · Payout x${ab.payoutMult.toFixed(2)}</span>`:''}
       ${isAstro&&!assigned?`<span class="dim">Not assigned to crewed missions</span>`:''}
+      ${isAstro&&astronautFlights(p.id).length?` · <span class="dim">${astronautFlights(p.id).length} flight${astronautFlights(p.id).length===1?'':'s'} flown</span>`:''}
       ${roleOf(p.id)==='sci'?`<span style="color:var(--ok)">Science division: yield +${(sciStaffYieldBonus()*100)|0}% · R&D +${(sciStaffRdBonus()*100)|0}%</span>`:''}
       ${roleOf(p.id)==='exec'?`<span style="color:var(--ok)">Front office: funding +${(execGovBonus()*100)|0}% · opex −${(execOpexCut()*100)|0}% · mandate +${(execMandateBonus()*100)|0}%</span>`:''}
       ${roleOf(p.id)==='controller'?`<span style="color:var(--ok)">Mission control: anomaly −${(ctrlAnomScore()*CTRL_ANOMALY_CUT_MAX*100)|0}% · call +${(ctrlCallScore()*CTRL_CALL_BONUS_MAX*100)|0}% · rescue +${(ctrlRescueScore()*CTRL_RESCUE_BONUS_MAX*100)|0}%</span>`:''}
@@ -14015,6 +14974,8 @@ function renderPersonnelCard(p, sr){
   </div>`;
 }
 
+const ASTRO_OUTCOME_LABEL={success:'✓ Success', partial:'◐ Partial', abort:'✗ Aborted', loss:'☠ Lost', strand:'☠ Lost', rescued:'⚑ Rescued', scrub:'⊘ Scrubbed'};
+const ASTRO_OUTCOME_COLOR={success:'var(--ok)', partial:'var(--warn)', abort:'var(--bad)', loss:'var(--bad)', strand:'var(--bad)', rescued:'var(--warn)', scrub:'var(--dim)'};
 function renderPersonnel(){
   const box=$('personnelCard');
   const hired=state.staff.map(sr=>({p:personById(sr.id),sr})).filter(x=>x.p);
@@ -14096,6 +15057,40 @@ function renderPersonnel(){
     }).join('');
   } else if(!hired.length){
     html+=`<p class="dim" style="font-size:12px;margin-top:8px">No personnel available yet — build reputation and advance through eras to unlock the talent pool.</p>`;
+  }
+
+  const rosterIds=Object.keys(state.astronautLog||{}).sort((a,b)=>astronautFlights(b).length-astronautFlights(a).length);
+  if(rosterIds.length){
+    const lostIds=new Set(memorialRoll().map(f=>f.id));
+    html+=`<div class="card" style="margin-top:12px">
+      <h2>🚀 Astronaut Roster</h2>
+      <p class="muted" style="font-size:12px;margin:-2px 0 8px">Every astronaut who has flown for this agency, most-flown first.</p>
+      ${rosterIds.map(id=>{
+        const p=personById(id); if(!p) return '';
+        const flights=astronautFlights(id);
+        const status=lostIds.has(id)?`<span style="color:var(--bad)">🕊 Lost</span>`:state.staff.some(s=>s.id===id)?`<span style="color:var(--ok)">Active</span>`:`<span class="dim">Off roster</span>`;
+        return `<div style="padding:8px 0;border-top:1px solid var(--line);display:flex;gap:10px">
+          ${personPortrait(p,40)}
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px"><b>${esc(p.name)}</b> ${status} <span class="pill" style="margin-left:4px" title="${esc(traitOf(id).desc)}">${esc(traitOf(id).name)}</span></div>
+            <div class="dim" style="font-size:12px;margin:2px 0 4px">${flights.length} flight${flights.length===1?'':'s'} flown</div>
+            ${flights.map(f=>`<div style="font-size:12px"><span class="dim">${f.when}</span> ${esc(f.mission)} <span style="color:${ASTRO_OUTCOME_COLOR[f.outcome]||'var(--dim)'}">${ASTRO_OUTCOME_LABEL[f.outcome]||f.outcome}</span></div>`).join('')}
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }
+
+  const fallen=memorialRoll();
+  if(fallen.length){
+    html+=`<div class="card" style="margin-top:12px;background:var(--panel2);border-color:#5a2f2f">
+      <h2 style="margin-bottom:2px">🕊 Memorial Wall</h2>
+      <p class="muted" style="font-size:12px;margin:-2px 0 8px">Every astronaut lost flying for this agency.</p>
+      ${fallen.map(f=>`<div style="padding:6px 0;border-top:1px solid var(--line)">
+        <div style="font-size:13px;color:var(--ink)"><b>${esc(f.name)}</b> <span class="dim">— ${f.when}</span></div>
+        <div class="dim" style="font-size:12px">${esc(f.mission)}${f.story?`: ${esc(f.story)}`:''}</div>
+      </div>`).join('')}
+    </div>`;
   }
 
   box.innerHTML=html;
@@ -14202,7 +15197,7 @@ function defineMapScene(){
       const oc=BODIES.find(b=>b.id==='oort');
       if(oc){ const og=this.add.graphics(); const orn=mulberry(9001);
         for(let i=0;i<260;i++){ const a=orn()*6.2832, rr=oc.r+(orn()-0.5)*58; og.fillStyle(0xbcd4e0, 0.2+orn()*0.4); og.fillCircle(Math.cos(a)*rr, Math.sin(a)*rr, 0.6+orn()*1.0); }
-        const ot=this.add.text(0,-oc.r-8,'Oort Cloud',{fontFamily:'ui-monospace,monospace',fontSize:'12px',color:'#8fb3c8'}).setOrigin(0.5,1);
+        const ot=this.add.text(0,-oc.r-8,'Oort Cloud',{fontFamily:'ui-monospace,monospace',fontSize:'12px',color:themeColor('muted')}).setOrigin(0.5,1);
         ot.setInteractive({useHandCursor:true}); ot.on('pointerdown',()=>selectBody('oort')); }
       const maxR=Math.max.apply(null, planets.filter(b=>b.kind!=='cloud').map(p=>p.r));
       this.fitZoom=Math.min(MAP_W,MAP_H)/(2*(maxR+60));
@@ -14218,7 +15213,7 @@ function defineMapScene(){
       else { c=this.add.image(0,0,'planet_'+b.id); const frac=ringed?RINGED_TEX_R:PLANET_TEX_R; c.setDisplaySize(rad/frac, rad/frac); isImg=true; }
       c.setInteractive({useHandCursor:true});
       c.on('pointerdown',()=>selectBody(b.id));
-      const t=this.add.text(0,0,b.name,{fontFamily:'ui-monospace,monospace',fontSize:parent?'9px':'11px',color:'#9aa7af'}).setOrigin(0.5,1);
+      const t=this.add.text(0,0,b.name,{fontFamily:'ui-monospace,monospace',fontSize:parent?'9px':'11px',color:themeColor('muted')}).setOrigin(0.5,1);
       this.bodies.push({b,parentId:parent?parent.id:null,ang:(ANGLES[b.id]!==undefined?ANGLES[b.id]:0),speed:(parent?0.12:0.05)/Math.sqrt(Math.max(10,b.r)),c,t,rad,x:0,y:0,ringed,isImg});
     }
     faceSun(o){ if(o.isImg && !o.ringed) o.c.rotation = Math.atan2(-o.y,-o.x) - BAKED_LIT_ANGLE; } // lit side toward the Sun (map centre)
@@ -14235,7 +15230,7 @@ function defineMapScene(){
       // Planned (not yet committed) active-mission route — the planning surface promise
       const pr=plannedRoute();
       if(pr && !pr.committed){ const eo=this.bodies.find(o=>o.b.id==='earth'); const to=this.bodies.find(o=>o.b.id===pr.destId);
-        if(eo&&to){ const col=pr.ok?0x5fc4d0:0xe8604c;
+        if(eo&&to){ const col=pr.ok?themeColorNum('ok'):themeColorNum('bad');
           const mx=(eo.x+to.x)/2, my=(eo.y+to.y)/2, mr=Math.hypot(mx,my)||1;
           const rT=(to.parentId?(this.bodies.find(o=>o.b.id===to.parentId)||{b:{r:eo.b.r}}).b.r:to.b.r);
           const dir=rT>=eo.b.r?1:-1, bow=(Math.abs(rT-eo.b.r)*0.45+18)*dir;
@@ -14255,45 +15250,45 @@ function defineMapScene(){
       const cxp=mx/mr*(mr+bow), cyp=my/mr*(mr+bow);
       const N=48, pts=[];
       for(let i=0;i<=N;i++){ const u=i/N, iu=1-u; pts.push({x:iu*iu*fx+2*iu*u*cxp+u*u*tx, y:iu*iu*fy+2*iu*u*cyp+u*u*ty}); }
-      g.lineStyle(1.4,0xf5a623,0.85);
+      g.lineStyle(1.4,themeColorNum('ignite'),0.85);
       const ph=Math.floor((time*0.004))%2;
       for(let i=0;i<N;i++){ if(((i+ph)%2)===0) continue; g.beginPath(); g.moveTo(pts[i].x,pts[i].y); g.lineTo(pts[i+1].x,pts[i+1].y); g.strokePath(); }
       const idx=Math.floor(((time*0.00012)%1)*N); const pp=pts[Math.min(N,Math.max(0,idx))];
-      g.fillStyle(0xffe08a,1); g.fillCircle(pp.x,pp.y,2.2);
-      g.fillStyle(0xf5a623,1); g.fillCircle(fx,fy,2.2);
+      g.fillStyle(themeColorNum('warn'),1); g.fillCircle(pp.x,pp.y,2.2);
+      g.fillStyle(themeColorNum('ignite'),1); g.fillCircle(fx,fy,2.2);
     }
-    drawRings(){ const g=this.rings; g.clear(); g.lineStyle(1,0x7d909b,0.22);
+    drawRings(){ const g=this.rings; g.clear(); g.lineStyle(1,themeColorNum('muted'),0.22);
       for(const o of this.bodies){ if(o.parentId){ const p=this.bodies.find(q=>q.b.id===o.parentId); if(p) g.strokeCircle(p.x,p.y,p.rad+(o.b.moonR||10)*1.3); } else { g.strokeCircle(0,0,o.b.r); } } }
     drawMarkers(){ const g=this.markers; g.clear(); const C=h=>{ try{ return Phaser.Display.Color.HexStringToColor(h).color; }catch(e){ return 0xffffff; } };
       const t=(this.time&&this.time.now)||0, pulse=0.55+0.45*Math.sin(t*0.0024), fast=0.35+0.65*Math.abs(Math.sin(t*0.006));
       const model=mapAssetModel();
-      const HEALTH_HEX={ok:0x5fae62, warn:0xe8b64c, attention:0xe8604c};
+      const HEALTH_HEX={ok:themeColorNum('ok'), warn:themeColorNum('warn'), attention:themeColorNum('bad')};
       for(const o of this.bodies){
         const rv=rivalsAtBody(o.b.id)||[]; const seen={}; let i=0;
         for(const h of rv){ if(seen[h.rival.id])continue; seen[h.rival.id]=1; const a=-1.57+(i-0.5)*0.5; g.fillStyle(C(h.rival.color),1); g.fillCircle(o.x+Math.cos(a)*(o.rad+6),o.y+Math.sin(a)*(o.rad+6),2); i++; }
         const am=model[o.b.id]; if(!am) continue;
         // player pennant — the empire flag, softly pulsing
         if(am.firsts.length){ const fx=o.x-5, fy=o.y-o.rad-13;
-          g.lineStyle(1,0xf5d78a,1); g.beginPath(); g.moveTo(fx,fy+8); g.lineTo(fx,fy-2); g.strokePath();
-          g.fillStyle(0xf5a623, pulse); g.beginPath(); g.moveTo(fx,fy-2); g.lineTo(fx+8,fy+0.5); g.lineTo(fx,fy+3); g.closePath(); g.fillPath(); }
+          g.lineStyle(1,themeColorNum('ignite'),1); g.beginPath(); g.moveTo(fx,fy+8); g.lineTo(fx,fy-2); g.strokePath();
+          g.fillStyle(themeColorNum('ignite'), pulse); g.beginPath(); g.moveTo(fx,fy-2); g.lineTo(fx+8,fy+0.5); g.lineTo(fx,fy+3); g.closePath(); g.fillPath(); }
         // facility: health ring (blinks when strained/starved) + module pips
         if(am.facility){ const {def,health,modules}=am.facility; const fx=o.x+o.rad+8, fy=o.y+1;
           const alpha=health==='ok'?1:(health==='warn'?pulse:fast);
-          g.fillStyle(0x060a0f,0.75); g.fillCircle(fx,fy,6.5);
+          g.fillStyle(themeColorNum('bg'),0.75); g.fillCircle(fx,fy,6.5);
           g.lineStyle(1.4,HEALTH_HEX[health],alpha); g.strokeCircle(fx,fy,6.5);
           g.fillStyle(C(def.color),1); g.fillRect(fx-2,fy-2,4,4);
           const n=Math.min(8,modules); for(let k=0;k<n;k++){ g.fillStyle(HEALTH_HEX[health],1); g.fillCircle(fx-((n-1)*2.6)/2+k*2.6, fy+10, 1); } }
         // ISRU pick
-        if(am.isru){ g.fillStyle(0x7bc46a,1); const ix=o.x-o.rad-9, iy=o.y;
+        if(am.isru){ g.fillStyle(themeColorNum('ok'),1); const ix=o.x-o.rad-9, iy=o.y;
           g.fillRect(ix-2.5,iy-0.6,5,1.2); g.fillRect(ix-0.6,iy-0.6,1.2,4); }
         // Belt claim — expanding ring
         if(am.beltClaim){ const bx=o.x+o.rad+7, by=o.y-8, rr=3+Math.abs(Math.sin(t*0.0014))*1.4;
-          g.lineStyle(1.2,0xe8c04c,0.9); g.strokeCircle(bx,by,rr); g.fillStyle(0xe8c04c,1); g.fillCircle(bx,by,1.2); }
+          g.lineStyle(1.2,themeColorNum('ignite'),0.9); g.strokeCircle(bx,by,rr); g.fillStyle(themeColorNum('ignite'),1); g.fillCircle(bx,by,1.2); }
         // LEO depot arc gauge
         if(am.depotT>0){ const cap=Math.max(am.depotT,120), frac=Math.min(1,am.depotT/cap);
           const rr=o.rad+5, a0=-Math.PI*0.75, a1=a0+frac*Math.PI*1.5;
-          g.lineStyle(2,0x5fc4d0,0.9); g.beginPath(); g.arc(o.x,o.y,rr,a0,a1,false); g.strokePath(); } } }
-    drawSel(){ const g=this.selRing; g.clear(); const o=this.bodies.find(q=>q.b.id===state.selectedBody); if(o){ g.lineStyle(1.5,0xf5a623,1); g.strokeCircle(o.x,o.y,o.rad+3); } }
+          g.lineStyle(2,themeColorNum('readout'),0.9); g.beginPath(); g.arc(o.x,o.y,rr,a0,a1,false); g.strokePath(); } } }
+    drawSel(){ const g=this.selRing; g.clear(); const o=this.bodies.find(q=>q.b.id===state.selectedBody); if(o){ g.lineStyle(1.5,themeColorNum('ignite'),1); g.strokeCircle(o.x,o.y,o.rad+3); } }
   };
 }
 function ensureMapHost(){ const host=$('mapHost'); if(!host) return false; host.style.display='block'; const c=$('mapCanvas'); if(c) c.style.display='none'; return true; }
@@ -14322,14 +15317,20 @@ function renderMap(){
   renderBodyCard();
   renderMapActivity();
 }
-/* ---------- Station Bench (framework) ----------
-   A pan/zoom/pop-out 2D side-view module canvas, built on the same Phaser-camera pattern as
-   the Solar System scene. For now it renders ONE annotated "can"-type module so the framework
-   (scene + controls + pop-out + SVG fallback) is in place; the module library, multi-module
-   assembly, docking logic and economy are deferred. STATION_MODULES is the seam those will hang
-   off. Pure-data + a render smoke keep it headless-safe. */
+/* ---------- Station Bench ----------
+   STALE COMMENT CORRECTED (#73 Slice 0, 2026-07-11): this used to describe a framework stub — it
+   isn't one. Real assembly (module library, per-facility fs.moduleList[], typed production,
+   power-starve, port caps, dock palette) shipped 2026-07-02 (commit 5c60c8c) and lives in
+   renderStation()/renderStationStackSVG()/renderStationFacilityStats() + sim.js's facility* functions,
+   all pure-SVG. What's still genuinely missing (see #73 in ROADMAP.md/BACKLOG.md): docking a module is
+   an instant purchase today, not a real launch — that's the actual remaining "launch modules, dock"
+   scope, sliced separately.
+   The StationScene class below (Phaser pan/zoom of a single sample module) predates that real
+   assembly work and is now DEAD CODE — startStationScene() is never called; renderStation() always
+   takes the SVG path. Left in place rather than deleted here (Slice 0 is a truth-pass, not a debloat
+   pass) — a real candidate for a future cleanup commit. */
 const STN_W=760, STN_H=480;
-function stationActiveModule(){ return STATION_MODULES[0]; }
+function stationActiveModule(){ return STATION_MODULES[0]; } // only the (dead) StationScene below still calls this
 let stationExpanded=false;
 function toggleStationExpand(){ stationExpanded=!stationExpanded; renderStation(); }
 let StationScene=null, stationGame=null, stationScene=null;
@@ -14380,11 +15381,11 @@ function defineStationScene(){
       // handrails along the hull
       g.lineStyle(1.4,0xf5c84a,0.85); g.beginPath(); g.moveTo(-L/2+20,-hd+10); g.lineTo(L/2-20,-hd+10); g.strokePath();
       // annotation leader lines + labels
-      for(const pr of mod.parts){ g.lineStyle(1,0x4fd1d9,0.55); g.beginPath(); g.moveTo(pr.x,pr.y); const lx=pr.x+(pr.x>=0?60:-60), ly=pr.y+(pr.y>=0?40:-40); g.lineTo(lx,ly); g.strokePath();
-        g.fillStyle(0x4fd1d9,1); g.fillCircle(pr.x,pr.y,2.4);
-        const t=this.add.text(lx+(pr.x>=0?4:-4), ly, pr.label, {fontFamily:'ui-monospace,monospace',fontSize:'11px',color:'#cfe6ff'}).setOrigin(pr.x>=0?0:1,0.5);
+      for(const pr of mod.parts){ g.lineStyle(1,themeColorNum('readout'),0.55); g.beginPath(); g.moveTo(pr.x,pr.y); const lx=pr.x+(pr.x>=0?60:-60), ly=pr.y+(pr.y>=0?40:-40); g.lineTo(lx,ly); g.strokePath();
+        g.fillStyle(themeColorNum('readout'),1); g.fillCircle(pr.x,pr.y,2.4);
+        const t=this.add.text(lx+(pr.x>=0?4:-4), ly, pr.label, {fontFamily:'ui-monospace,monospace',fontSize:'11px',color:themeColor('readout')}).setOrigin(pr.x>=0?0:1,0.5);
         this.labels.push(t); }
-      const title=this.add.text(0,-STN_H*0.5+10, mod.name, {fontFamily:'ui-monospace,monospace',fontSize:'13px',color:'#9aa7af'}).setOrigin(0.5,0); this.labels.push(title);
+      const title=this.add.text(0,-STN_H*0.5+10, mod.name, {fontFamily:'ui-monospace,monospace',fontSize:'13px',color:themeColor('muted')}).setOrigin(0.5,0); this.labels.push(title);
     }
   };
 }
@@ -14402,23 +15403,6 @@ function startStationScene(){
 }
 function pauseStationGame(){ if(stationGame){ try{ if(stationGame.scene.isActive('station')) stationGame.scene.sleep('station'); }catch(e){} } } // E0.5-A: sleep, not pause (stop render)
 function resumeStationGame(){ if(stationGame){ try{ stationGame.scene.wake('station'); }catch(e){} } }
-// Module engineering stats below the bench. Pure data → string, so it renders identically on
-// the Phaser and SVG-fallback paths and is headless-safe.
-function stationStatsHTML(mod){
-  const s=mod&&mod.stats; if(!s) return '';
-  const netP=(s.powerGenKw-s.powerDrawKw);
-  const cell=(k,v,sub)=>`<div class="metric"><div class="k">${k}</div><div class="v">${v}</div>${sub?`<div class="dim" style="font-size:11px">${sub}</div>`:''}</div>`;
-  return `<div class="mission-tag">${mod.name} — engineering stats</div>
-    <div class="metrics">
-      ${cell('Crew capacity', s.crew, 'nominal')}
-      ${cell('Module mass', s.mass.toFixed(1)+' t')}
-      ${cell('Power', (netP>=0?'+':'')+netP.toFixed(1)+' kW', `${s.powerGenKw} gen − ${s.powerDrawKw} draw`)}
-      ${cell('Build cost', fM(mod.cost), (mod.buildMo||0)+' mo')}
-      ${cell('Docking ports', mod.ports||3, mod.ports?'junction hub':'1 axial · 2 radial')}
-    </div>
-    <div class="dim" style="font-size:12px;margin-top:6px">Module library in place — six typed modules with cost, power and production stats. Assembly (adding these to your built facilities) lands in the next slice.</div>`;
-}
-
 /* ---------- Station blueprint mode (pre-facility drawing board) ----------
    Before any facility exists, the Station Bench is a free design sandbox: assemble a
    blueprint, watch the engineering totals react, and carry the plan (it saves) until
@@ -14439,25 +15423,16 @@ function draftCostAt(defId){
     cost+=stationModuleCost(def, fs, md); fs.moduleList.push(id); });
   return round2(cost);
 }
-function renderStationDraft(){
-  const c=$('stationCanvas'), st=$('stationStats');
-  const fs=stationDraftFs(), list=fs.moduleList;
+// Draft-mode stats panel, extracted so the station pop-out can show the identical blueprint stats
+// (Slice 0) instead of duplicating this markup a second time.
+function stationDraftStatsHTML(fs){
+  const list=fs.moduleList;
   const pw=facilityPower(fs), crew=facilityCrew(fs), cap=facilityPortCap(fs);
   const mass=list.reduce((a,id)=>a+(((stationModuleDef(id)||{}).stats||{}).mass||0),0);
   const gated=[...new Set(list.filter(id=>{ const md=stationModuleDef(id); return md&&md.reqResearch&&!state.research[md.reqResearch]; })
     .map(id=>((RESEARCH.find(r=>r.id===stationModuleDef(id).reqResearch)||{}).name)||''))].filter(Boolean);
-  if(c){
-    const cards=STATION_MODULES.map(md=>stationModuleCard(md, {def:facilityById('leo_station')||FACILITY_DEFS[0], fs}, false)).join('');
-    c.innerHTML=renderStationStackSVG(720,280,{fs})
-      +`<div style="display:flex;gap:6px;margin:8px 0 4px">
-          <button class="btn ghost" style="font-size:12px" onclick="draftRemove()">↶ Remove last</button>
-          <button class="btn ghost" style="font-size:12px" onclick="draftClear()">✕ Clear blueprint</button>
-        </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">${cards}</div>`;
-  }
-  if(st){
-    const cell=(k,v,sub)=>`<div class="metric"><div class="k">${k}</div><div class="v">${v}</div>${sub?`<div class="dim" style="font-size:12px">${sub}</div>`:''}</div>`;
-    st.innerHTML=`<div class="mission-tag">Blueprint — drawing board</div>
+  const cell=(k,v,sub)=>`<div class="metric"><div class="k">${k}</div><div class="v">${v}</div>${sub?`<div class="dim" style="font-size:12px">${sub}</div>`:''}</div>`;
+  return `<div class="mission-tag">Blueprint — drawing board</div>
       <p class="muted" style="font-size:12px;margin:4px 0 10px">No facilities exist yet — design freely. Found the real thing from <b>Command Center → Infrastructure</b> once <b>Crewed Orbit</b> is flown, then build it out module by module at these prices.</p>
       <div class="metrics">
         ${cell('Modules', list.length+' / '+cap+' ports')}
@@ -14470,23 +15445,48 @@ function renderStationDraft(){
       ${pw.net<0?`<div class="flag warn">△ Power-negative — this design would run at 60% output. Add a Solar Power Truss.</div>`:''}
       ${crew.req>crew.cap?`<div class="flag warn">△ Under-crewed — ${crew.req} crew needed, ${crew.cap} berths. Output would degrade.</div>`:''}
       ${gated.length?`<div class="flag warn">🔒 Blueprint uses research you don't have yet: ${gated.join(', ')}.</div>`:''}`;
+}
+function renderStationDraft(){
+  const c=$('stationCanvas'), st=$('stationStats');
+  const fs=stationDraftFs();
+  if(c){
+    const cards=STATION_MODULES.map(md=>stationModuleCard(md, {def:facilityById('leo_station')||FACILITY_DEFS[0], fs}, false)).join('');
+    c.innerHTML=renderStationStackSVG(720,280,{fs})
+      +`<div style="display:flex;gap:6px;margin:8px 0 4px">
+          <button class="btn ghost" style="font-size:12px" onclick="draftRemove()">↶ Remove last</button>
+          <button class="btn ghost" style="font-size:12px" onclick="draftClear()">✕ Clear blueprint</button>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">${cards}</div>`;
   }
+  if(st) st.innerHTML=stationDraftStatsHTML(fs);
 }
 
+// #73 Slice 0 (2026-07-11): single source of truth for "what should the Station Bench show right
+// now" — the focused real facility, or the pre-facility blueprint draft. Both renderStation() (main
+// view) and the station pop-out read from this, so they can no longer independently drift out of sync
+// the way the pop-out did (it was stuck on a hardcoded sample module while the real bench moved on).
+function stationCurrentView(){
+  const built=Object.keys(state.facilities||{}).map(id=>({def:facilityById(id), fs:state.facilities[id]})).filter(x=>x.def&&facilityBuilt(x.def.id));
+  if(!built.length) return {built:null, cur:{fs:stationDraftFs()}, isDraft:true};
+  if(!state.stationFocus || !built.some(b=>b.def.id===state.stationFocus)) state.stationFocus=built[0].def.id;
+  return {built, cur:built.find(b=>b.def.id===state.stationFocus), isDraft:false};
+}
+// Facility-tab click handler shared by the main view and the pop-out (renderStationFacilityStats'
+// tabs call this) — refreshes whichever is currently showing, so switching facilities never leaves
+// one of the two views stale.
+function setStationFocus(id){ state.stationFocus=id; renderStation(); refreshStationPopout(); }
 function renderStation(){
   const sv=$('stationView'); if(sv) sv.classList.toggle('expanded', stationExpanded);
   const eb=$('stationExpandBtn'); if(eb) eb.textContent = stationExpanded ? '⛶ Exit full screen' : '⛶ Expand';
-  const built=Object.keys(state.facilities||{}).map(id=>({def:facilityById(id), fs:state.facilities[id]})).filter(x=>x.def&&facilityBuilt(x.def.id));
-  const c=$('stationCanvas'), st=$('stationStats');
-  if(!built.length){ renderStationDraft(); return; } // pre-facility: free blueprint drawing board
-  if(!state.stationFocus || !built.some(b=>b.def.id===state.stationFocus)) state.stationFocus=built[0].def.id;
-  const cur=built.find(b=>b.def.id===state.stationFocus);
+  const v=stationCurrentView();
+  if(v.isDraft){ renderStationDraft(); return; } // pre-facility: free blueprint drawing board
+  const c=$('stationCanvas'), st=$('stationStats'), cur=v.cur;
   if(c) c.innerHTML=renderStationStackSVG(720,300,cur)+renderStationPalette(cur);
-  if(st) st.innerHTML=renderStationFacilityStats(built, cur);
+  if(st) st.innerHTML=renderStationFacilityStats(v.built, cur);
 }
 // Facility tabs + aggregate stats for the focused facility
 function renderStationFacilityStats(built, cur){
-  const tabs=built.map(b=>`<button class="btn ${b.def.id===state.stationFocus?'launch':'ghost'}" style="font-size:12px" onclick="state.stationFocus='${b.def.id}';renderStation()">${b.def.icon} ${b.def.name}</button>`).join(' ');
+  const tabs=built.map(b=>`<button class="btn ${b.def.id===state.stationFocus?'launch':'ghost'}" style="font-size:12px" onclick="setStationFocus('${b.def.id}')">${b.def.icon} ${b.def.name}</button>`).join(' ');
   const fs=cur.fs, def=cur.def, list=facilityModuleList(fs), pw=facilityPower(fs), pr=facilityProduction(def,fs);
   const mass=list.reduce((a,id)=>a+((stationModuleDef(id)||{}).stats||{}).mass||0,0);
   const crew=facilityCrew(fs), syn=facilitySynergies(fs);
@@ -14577,6 +15577,14 @@ function stationModuleCard(md, cur, addable){
   const chk = addable && cur ? canAddStationModule(cur.def.id, md.id) : {ok:false};
   const gated = md.reqResearch && !state.research[md.reqResearch];
   const gateName = gated ? ((RESEARCH.find(r=>r.id===md.reqResearch)||{}).name||md.reqResearch) : '';
+  // #73 (2026-07-11): the first module of a given type on a facility is a real "launch modules, dock"
+  // choice — fly it yourself (real vehicle/launch, base cost, no premium — a simple synchronous
+  // mission at LEO, Slice 1; a real profile-based cargo cruise at Moon/Mars, Slice 2) or pay a
+  // contracted-delivery premium for the instant dock this whole card offered before. Repeats of an
+  // already-proven type stay exactly as before: one click, instant, base cost — see
+  // stationCurrentView()/#73 scoping notes for why (pacing).
+  const first = addable && cur && cur.fs && !facilityModuleList(cur.fs).includes(md.id);
+  const pending = first && cur ? pendingModuleDelivery(cur.def.id, md.id) : null;
   return `<div class="card" style="flex:1;min-width:230px;max-width:320px;display:flex;flex-direction:column;gap:2px">
     <div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px">
       <div><b style="color:${md.color};font-size:14px">${md.name}</b> <span class="dim" style="font-size:11px;font-family:var(--mono)">${md.short}</span></div>
@@ -14597,35 +15605,19 @@ function stationModuleCard(md, cur, addable){
     ${context}
     ${md.hist?`<div class="dim" style="font-size:10.5px;font-style:italic;line-height:1.4;margin-bottom:7px;opacity:.8">${md.hist}</div>`:''}
     <div style="margin-top:auto">
-    ${addable
-      ? `<button class="btn ${chk.ok?'launch':''}" style="width:100%;font-size:12px" onclick="addStationModule('${cur.def.id}','${md.id}')" ${chk.ok?'':'disabled'}>${chk.ok?'Dock module ▸':chk.why}</button>`
-      : `<button class="btn" style="width:100%;font-size:12px" onclick="draftAdd('${md.id}')"${gated?` title="Buildable now as a blueprint; needs ${gateName} to actually construct"`:''}>Add to blueprint ▸${gated?' 🔒':''}</button>`}
+    ${!addable
+      ? `<button class="btn" style="width:100%;font-size:12px" onclick="draftAdd('${md.id}')"${gated?` title="Buildable now as a blueprint; needs ${gateName} to actually construct"`:''}>Add to blueprint ▸${gated?' 🔒':''}</button>`
+      : pending
+        ? `<div class="dim" style="font-size:12px;text-align:center;padding:6px 0">🚀 Delivery flight committed — build &amp; launch it from the bench.</div>`
+        : first
+          ? (()=>{ const flyChk=canFlyModuleDelivery(cur.def.id, md.id), conChk=canContractStationModule(cur.def.id, md.id);
+              return `<div style="display:flex;gap:6px">
+                <button class="btn ${flyChk.ok?'launch':''}" style="flex:1;font-size:11px" onclick="flyModuleDelivery('${cur.def.id}','${md.id}')" ${flyChk.ok?'':'disabled'} title="Design and launch a real delivery flight — pays only the base module cost on success, no premium">🚀 Fly it · ${fM(flyChk.cost||flyModuleCost(cur.def,cur.fs,md))}${flyChk.ok?'':' — '+flyChk.why}</button>
+                <button class="btn ${conChk.ok?'':'ghost'}" style="flex:1;font-size:11px" onclick="contractStationModule('${cur.def.id}','${md.id}')" ${conChk.ok?'':'disabled'} title="Instant delivery, no flight — costs a premium over flying it yourself">📦 Contract · ${fM(conChk.cost||contractedModuleCost(cur.def,cur.fs,md))}</button>
+              </div>`; })()
+          : `<button class="btn ${chk.ok?'launch':''}" style="width:100%;font-size:12px" onclick="addStationModule('${cur.def.id}','${md.id}')" ${chk.ok?'':'disabled'}>${chk.ok?'Dock module ▸':chk.why}</button>`}
     </div>
   </div>`;
-}
-// Static SVG fallback (no Phaser / headless): the same annotated module, no pan/zoom.
-function renderStationSVG(W,H,mod){
-  const cx=W*0.46, cy=H*0.5, L=mod.len, hd=mod.dia/2;
-  const x=v=>cx+v, y=v=>cy+v;
-  let s=`<svg class="stationsvg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="max-width:100%;height:auto;background:#070b11;border-radius:8px">`;
-  // solar wings + radiator
-  [-1,1].forEach(sgn=>{ const wy=sgn>0?hd+24:-(hd+24)-110; s+=`<rect x="${x(-75)}" y="${y(wy)}" width="150" height="110" fill="#12243a" stroke="#2f5a8a"/>`; s+=`<line x1="${x(0)}" y1="${y(sgn*hd)}" x2="${x(0)}" y2="${y(sgn*(hd+24))}" stroke="#6a7782" stroke-width="2"/>`; });
-  s+=`<rect x="${x(-95-46)}" y="${y(hd+8)}" width="92" height="54" fill="#20262c" stroke="#3a444d"/>`;
-  // hull
-  s+=`<rect x="${x(-L/2)}" y="${y(-hd)}" width="${L}" height="${mod.dia}" fill="#b8c0c7" stroke="#6c757d" stroke-width="2"/>`;
-  s+=`<ellipse cx="${x(L/2)}" cy="${y(0)}" rx="17" ry="${hd}" fill="#9aa3ab"/><ellipse cx="${x(-L/2)}" cy="${y(0)}" rx="17" ry="${hd}" fill="#9aa3ab"/>`;
-  // axial dock + radial ports + antennas
-  s+=`<rect x="${x(L/2+22)}" y="${y(-16)}" width="26" height="32" fill="#7e8990" stroke="#586066"/><circle cx="${x(L/2+48)}" cy="${y(0)}" r="11" fill="#2a333a"/>`;
-  [-1,1].forEach(sgn=>{ s+=`<rect x="${x(-16)}" y="${y(sgn>0?hd:-hd-18)}" width="32" height="18" fill="#7e8990"/>`; });
-  s+=`<path d="M ${x(-85)} ${y(-hd-30)} A 15 15 0 0 1 ${x(-55)} ${y(-hd-30)}" fill="none" stroke="#cdd3d8" stroke-width="2"/><line x1="${x(-70)}" y1="${y(-hd)}" x2="${x(-70)}" y2="${y(-hd-30)}" stroke="#9aa3ab" stroke-width="2"/>`;
-  s+=`<line x1="${x(70)}" y1="${y(-hd)}" x2="${x(70)}" y2="${y(-hd-34)}" stroke="#bfc7cf" stroke-width="1.5"/>`;
-  // annotations
-  for(const pr of mod.parts){ const lx=pr.x+(pr.x>=0?60:-60), ly=pr.y+(pr.y>=0?40:-40);
-    s+=`<line x1="${x(pr.x)}" y1="${y(pr.y)}" x2="${x(lx)}" y2="${y(ly)}" stroke="#4fd1d9" stroke-opacity="0.55"/><circle cx="${x(pr.x)}" cy="${y(pr.y)}" r="2.4" fill="#4fd1d9"/>`;
-    s+=`<text x="${x(lx+(pr.x>=0?4:-4))}" y="${y(ly)+3}" fill="#cfe6ff" font-family="ui-monospace,monospace" font-size="11" text-anchor="${pr.x>=0?'start':'end'}">${pr.label}</text>`; }
-  s+=`<text x="${W/2}" y="22" fill="#9aa7af" font-family="ui-monospace,monospace" font-size="13" text-anchor="middle">${mod.name}</text>`;
-  s+=`</svg>`;
-  return s;
 }
 function renderMarketStat(){
   const wrap=$('stMarketWrap'), el=$('stMarket'); if(!wrap||!el) return;
@@ -14770,7 +15762,7 @@ function mapAssetModel(){
 }
 // Planned route for the ACTIVE mission (committed or not): where it goes and whether it closes.
 function plannedRoute(){
-  const m=MISSIONS.find(x=>x.id===state.activeMission); if(!m) return null;
+  const m=missionById(state.activeMission); if(!m) return null;
   const destId=missionBody(m.id); if(!destId||destId==='earth') return null;
   let ok=true, short=0;
   try{
@@ -14838,7 +15830,7 @@ function renderMapOverview(W,H){
       let dots=''; for(let i=0;i<240;i++){ const a=rnd()*6.2832, rr=oc.r+(rnd()-0.5)*pad*0.85, dx=cx+Math.cos(a)*rr, dy=cy+Math.sin(a)*rr; dots+=`<circle cx="${dx.toFixed(1)}" cy="${dy.toFixed(1)}" r="${(0.5+rnd()*1.1).toFixed(2)}" fill="#bcd4e0" opacity="${(0.2+rnd()*0.5).toFixed(2)}"/>`; }
       svg+=dots;
       const osel=state.selectedBody==='oort';
-      svg+=`<g style="cursor:pointer" onclick="selectBody('oort')"><circle cx="${cx}" cy="${(cy-oc.r).toFixed(1)}" r="16" fill="transparent"/><text x="${cx}" y="${(cy-oc.r-6).toFixed(1)}" fill="${osel?'#f5a623':'#8fb3c8'}" font-size="12" font-family="ui-monospace,monospace" text-anchor="middle">Oort Cloud</text></g>`;
+      svg+=`<g style="cursor:pointer" onclick="selectBody('oort')"><circle cx="${cx}" cy="${(cy-oc.r).toFixed(1)}" r="16" fill="transparent"/><text x="${cx}" y="${(cy-oc.r-6).toFixed(1)}" fill="${osel?themeColor('ignite'):themeColor('muted')}" font-size="12" font-family="ui-monospace,monospace" text-anchor="middle">Oort Cloud</text></g>`;
   } }
   // Epic Sun: outer corona glow + radiating flares + granulated photosphere
   { const sid='sun'+(_texSeq++);
@@ -14875,7 +15867,7 @@ function renderMapOverview(W,H){
       <circle cx="${px}" cy="${py}" r="${rad+8}" fill="transparent"/>
       ${bodyTexture(b.id,px,py,rad)}
       ${sel?`<circle cx="${px}" cy="${py}" r="${rad+1.5}" fill="none" stroke="#f5a623" stroke-width="1.5"/>`:''}
-      <text x="${px}" y="${py-rad-6}" fill="${sel?'#f5a623':'#9aa7af'}" font-size="11" font-family="ui-monospace,monospace" text-anchor="middle">${b.name}</text>
+      <text x="${px}" y="${py-rad-6}" fill="${sel?themeColor('ignite'):themeColor('muted')}" font-size="11" font-family="ui-monospace,monospace" text-anchor="middle">${b.name}</text>
     </g>${rivalMarkersSVG(b.id,px,py,rad)}${assetMarkersSVG(b.id,px,py,rad,_assetModel)}`;
     BODIES.filter(m=>m.around===b.id).forEach(m=>{
       const mAng=(ANGLES[m.id]!==undefined?ANGLES[m.id]:0);
@@ -14887,7 +15879,7 @@ function renderMapOverview(W,H){
           <circle cx="${mx}" cy="${my}" r="${mRad+6}" fill="transparent"/>
           ${bodyTexture(m.id,mx,my,mRad)}
           ${msel?`<circle cx="${mx}" cy="${my}" r="${mRad+2}" fill="none" stroke="#f5a623" stroke-width="1.5"/>`:''}
-          <text x="${mx}" y="${my-mRad-4}" fill="${msel?'#f5a623':'#7d909b'}" font-size="9" font-family="ui-monospace,monospace" text-anchor="middle">${m.name}</text>
+          <text x="${mx}" y="${my-mRad-4}" fill="${msel?themeColor('ignite'):themeColor('muted')}" font-size="9" font-family="ui-monospace,monospace" text-anchor="middle">${m.name}</text>
         </g>${rivalMarkersSVG(m.id,mx,my,5)}${assetMarkersSVG(m.id,mx,my,5,_assetModel)}`;
     });
   });
@@ -14940,7 +15932,7 @@ function renderMapZoom(W,H,id){
         <g style="cursor:pointer" onclick="selectBody('${m.id}')">
           ${bodyTexture(m.id,mx,my,mRad)}
           ${msel?`<circle cx="${mx}" cy="${my}" r="${mRad+1.5}" fill="none" stroke="#f5a623" stroke-width="2"/>`:''}
-          <text x="${mx}" y="${my-mRad-8}" fill="${msel?'#f5a623':'#9aa7af'}" font-size="11" font-family="ui-monospace,monospace" text-anchor="middle">${m.name}</text>
+          <text x="${mx}" y="${my-mRad-8}" fill="${msel?themeColor('ignite'):themeColor('muted')}" font-size="11" font-family="ui-monospace,monospace" text-anchor="middle">${m.name}</text>
         </g>`;
     });
   }
@@ -15312,7 +16304,7 @@ function renderPrograms(){
                 : (repOk&&resOk)?'<span class="pill">available</span>'
                 : `<span class="pill lock">locked</span>`;
       const btn=(!isDone&&repOk&&resOk)?`<button class="btn" onclick="flyTo('${mid}')">Fly this</button>`:'';
-      return `<div class="leg" style="${isNext?'background:rgba(245,166,35,.08)':''}">
+      return `<div class="leg" style="${isNext?`background:${themeRgba('ignite',0.08)}`:''}">
         <span class="legname">${isNext?'▶ ':''}${m.name} ${pill}</span>
         <span class="legdv">${m.crew?`${m.crew} crew`:'robotic'}</span>
         <span class="legdetail" style="display:flex;justify-content:space-between;align-items:center"><span>${m.days?`${m.days<1?(m.days*24).toFixed(0)+'h':m.days+'d'}`:'suborbital'}</span>${btn}</span>
@@ -15348,6 +16340,27 @@ function renderSpecialBanner(){
       <button class="btn" style="font-size:12px" onclick="selectMission('${sc.missionId}');setTab('bench')">Fly ${m?m.name:''} ▸</button>
     </div>
   </div>`;
+}
+// E1.3: procedural filler contracts — a small rotating board of era + capability-gated offers,
+// same mount pattern as renderSpecialBanner but for 0-CONTRACT_OFFER_CAP live offers at once.
+function renderContractOffers(){
+  const offers=state.contractOffers||[]; if(!offers.length) return '';
+  return offers.map(o=>{
+    const left=o.expiresAbs-absMonth();
+    return `<div class="card" style="border-color:var(--readout);margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
+        <b style="color:var(--readout);font-size:13px">📋 ${esc(o.name)}</b>
+        <span style="font-family:var(--mono);font-size:12px;color:${left<=2?'var(--warn)':'var(--muted)'}">${left} mo left</span>
+      </div>
+      <p class="muted" style="font-size:12px;margin:4px 0">${esc(o.blurb)}</p>
+      ${o.rivalBid?(()=>{ const r=RIVALS.find(x=>x.id===o.rivalBid.rivalId); const left2=o.rivalBid.snatchAbs-absMonth();
+        return `<p style="font-size:12px;color:var(--warn);margin:0 0 4px">${r?r.flag:''} ${r?esc(r.name):'A rival'} is bidding on this — commit within ${Math.max(0,left2)} mo or lose it.</p>`; })():''}
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span style="font-family:var(--mono);font-size:13px;color:var(--ok)">+${fM(o.payout)}, +${o.rep} rep</span>
+        <button class="btn" style="font-size:12px" onclick="selectMission('${o.id}');setTab('bench')">Fly ▸</button>
+      </div>
+    </div>`;
+  }).join('');
 }
 function renderPassiveContracts(){
   const box=$('passiveCard'); if(!box) return;
@@ -15393,6 +16406,7 @@ function renderPassiveContracts(){
 
 function renderMissions(){
   { const el=$('specialBannerMount'); if(el) el.innerHTML=renderSpecialBanner(); }
+  { const el=$('contractOffersMount'); if(el) el.innerHTML=renderContractOffers(); }
   renderPassiveContracts();
   const box=$('missionList'); box.innerHTML='';
   MISSIONS.forEach(m=>{
@@ -15854,8 +16868,9 @@ function renderPartnerships(){
     <p class="muted" style="font-size:12px;margin:-4px 0 10px">Partner with outside institutions to accelerate a research <b>track</b> — a setup fee plus ongoing upkeep buys a standing R&amp;D-speed boost on their tracks (stacks with engineers + divisions, capped at +${Math.round(PARTNER_SPEED_CAP*100)}%). Hold up to <b>${PARTNERSHIP_CAP}</b> at once: back the fronts your program needs now, and dissolve them when the work is done.</p>
     ${cards}`;
 }
-function tlStrip(s){ return (s||'').replace(/<[^>]*>/g,''); }
-function tlAttr(s){ return tlStrip(s).replace(/"/g,'&quot;'); }
+function tlStripPlain(s){ return (s||'').replace(/<[^>]*>/g,''); }
+function tlStrip(s){ return esc(tlStripPlain(s)); }
+function tlAttr(s){ return tlStrip(s); }
 // Forward-looking items derived from state (not stored in state.log): active R&D, in-progress
 // builds, and a committed launch window. These ride at the front of the timeline as "UPCOMING".
 function upcomingEvents(){
@@ -15873,16 +16888,16 @@ function upcomingEvents(){
 // mission "SUCCESS" line that also happens to mention "crew") land in the right bucket.
 const TL_CATEGORIES=[
   {id:'all',      label:'All'},
-  {id:'launch',   label:'Launches',       icon:'🚀'},
-  {id:'research', label:'Research',       icon:'⚛'},
+  {id:'launch',   label:'Launches',       icon:svgIcon('launch')},
+  {id:'research', label:'Research',       icon:svgIcon('research')},
   {id:'economy',  label:'Economy',        icon:'$'},
-  {id:'rivals',   label:'Rivals',         icon:'🏴'},
-  {id:'crew',     label:'Crew',           icon:'👥'},
-  {id:'infra',    label:'Infrastructure', icon:'🏗'},
+  {id:'rivals',   label:'Rivals',         icon:svgIcon('rivals')},
+  {id:'crew',     label:'Crew',           icon:svgIcon('crew')},
+  {id:'infra',    label:'Infrastructure', icon:svgIcon('infra')},
 ];
 function logCategory(e){
   if(e.kind==='rival') return 'rivals';
-  const s=tlStrip(e.msg);
+  const s=tlStripPlain(e.msg);
   if(/R&D (complete|started|rush|SETBACK)|BREAKTHROUGH|breakthrough|Applied .* science to|Inquiry into|inquiry reliability credit/i.test(s)) return 'research';
   if(/\bhired\b|\bcommended\b|training invested|promoted to head of|quit due to low morale|\bpoached\b|Raise (given|invested)|angling for a raise|let go\. Monthly burn|radiation limit|absorbed .* radiation|is on a mission — they can be assigned|costly mistake.*morale|Astronaut .*(lost|retired)/i.test(s)) return 'crew';
   if(/yard — (manufacturing|fabricating)|expanded to (level|\d+ modules)|resupplied|resupply (shipment|delayed|expedited)|auto-resupply|: \w.* docked|established — your first permanent presence|abandoned — the outpost|evacuated and mothballed|power-starved|Standing production|Blueprint: all ports/i.test(s)) return 'infra';
@@ -15893,7 +16908,7 @@ function logCategory(e){
 // Where clicking a past log entry should jump: explicit entry.nav wins, else infer from the text.
 function logNav(e){
   if(e.nav) return e.nav;
-  const s=tlStrip(e.msg);
+  const s=tlStripPlain(e.msg);
   if(/R&D|research|breakthrough|σ|Isp|thrust/i.test(s)) return 'rnd';
   if(e.kind==='rival') return 'command';
   if(/SUCCESS|FAILURE|LOST|RESCUED|CATASTROPHE|reached|achieved|delivered|rolled out|crew/i.test(s)) return 'command';

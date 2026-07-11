@@ -1384,6 +1384,10 @@ const PAD_HOLD_FRAC=0.55;
 // "cruise begins / ETA" outro card played on the overlay's own canvas (spec.mode:'depart', the mirror of
 // 'arrive'). This is how long that card plays before it settles and holds for the player to dismiss.
 const DEPART_CARD_MS=4200;
+// #73 Slice 3: a successful "fly it yourself" module delivery (spec.dock) ends its flight overlay with a
+// rendezvous + soft-dock spectacle card — the terminal beat after the ascent + orbit/cislunar cruise. This
+// is how long the module's approach-and-dock plays before it settles and holds for the player to dismiss.
+const DOCK_CARD_MS=4600;
 function playLiftoff(spec, next){
   if(!animEnabled){ next(); return; }
   if(state.tab!=='command'){ state.tab='command'; render(); } // auto-switch so the liftoff is actually on screen

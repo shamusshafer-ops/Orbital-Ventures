@@ -845,6 +845,14 @@
   </div>
 </div>
 
+<!-- DEV / CHEAT MENU (Ctrl+Shift+D) — dev-only manual-testing overlay, NEVER shown to real players.
+     Deliberately utilitarian + unmistakably "DEV" (orange border, dark chrome, fixed non-themed colors)
+     so it can't be confused for real UI. Its own element (not #modal) so it never gates pumpFlightArrivals().
+     Content is built in JS (devPanelHtml() in shell.js); open state is a module-level bool, never in state. -->
+<div id="devPanel" class="hidden" style="position:fixed;top:0;right:0;bottom:0;width:340px;max-width:92vw;z-index:9000;
+     background:#14100a;color:#f2e8d8;border-left:3px solid #ff8c1a;box-shadow:-6px 0 24px rgba(0,0,0,0.55);
+     overflow-y:auto;font-family:var(--mono,monospace);font-size:12px;padding:0"></div>
+
 <!-- Phaser 3 (hybrid conversion): powers the animated visual scenes only. Loaded
      from CDN so the file stays single-file/no-build. ALL Phaser use is guarded so
      the game still runs (DOM UI + missions via fallback canvas) if it fails to load. -->

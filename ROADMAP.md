@@ -3129,9 +3129,69 @@ but produces something reusable beyond this one feature.
   confirm the bench readout's Δv/TWR genuinely reflects the extra cargo mass while one of these missions
   is active.
 
-**Slice 3 (docking as spectacle/decision) is next** — a real rendezvous+dock phase in the flight overlay,
-still deliberately sequenced after E1.2 slice C/D to avoid racing that in-flight work. Slice 4
-(manufacturing tie-in) is optional/last.
+**Slice 3 (docking as spectacle) DONE 2026-07-11, tests passing, not yet committed/pushed. No SAVE_VERSION
+bump — pure presentation, no new persisted state.** A successful "fly it yourself" module delivery now ends
+its flight overlay with a rendezvous + soft-dock beat instead of the generic "ORBIT ACHIEVED" post-flight
+card. Deliberately built as a spectacle, NOT a new branch: docking gets no separate success/fail roll — a
+flight that already resolved SUCCESS simply docks (the module is already in state via `dockModuleNow` at
+resolution; this is the visual payoff of that, not a second gamble). This mirrors Slice 2's own precedent
+of not modeling a separate landing/failure mechanic, and keeps the whole feature one abstraction across
+LEO/Moon/Mars — the ONLY per-body branch in the entire beat is the backdrop planet's tint (Earth blue /
+Moon grey / Mars rust); the station, the approaching module, the berthing geometry and the info panel are
+identical for all three. Same generalization move Slice 2 made extending Slice 1's LEO-only fork to all
+bodies.
+
+- **`drawDockCard(ct, held)` (flight.js)** — modelled on `drawDepartCard`'s structure (deep-space
+  backdrop + a moving craft + a fading info panel + a held Continue affordance), but the beat is an
+  APPROACH: the module eases in from the left along a dashed approach corridor, brakes with RCS puffs, and
+  captures at cp≈0.82 with an expanding soft-dock ring flash + a steady green contact light, then a tiny
+  damped settle. Station drawn from a shared local `can()` capsule helper (horizontal cylinder w/ ellipse
+  endcaps, ring frames, top-highlight/underside-shade) reused for both the core and the module; solar wings
+  + a berthing node with an open port. Info panel: title flips `RENDEZVOUS`→`MODULE DOCKED` (readout→ok
+  colour) at capture; rows STATION / MODULE / ASSEMBLY (post-dock module count).
+- **Design call — one Continue button, not `drawDecisionPanel`.** Prior art gave two legitimate idioms
+  (the dialog-box decision panel vs. an outro card). This is a spectacle, not a dialog, so it takes the
+  outro-card idiom — reusing `drawFlightContinueBtn`'s exact rounded-button + `[Enter]` hint + one-shot
+  canvas-click dismissal wiring (the same affordance the depart card and post-flight card already share),
+  NOT the console-box framing, which would have boxed the station art behind a dimmed panel.
+- **Terminal phase, appended — not a replacement.** New `spec.dock` (built in `finalizeLaunch`'s success
+  branch, right where `m.deliverModule` docks) carries the display info. `setupFlightState` (and
+  `resumeFlightForDecision`, for the reserve/rescue-mid-cruise case where the spec rides in via its
+  `Object.assign`) reserve a `DOCK_CARD_MS`(4600) tail in place of the usual 1200 ms post-flight settle;
+  `drawScene` runs the full ascent + orbit/cislunar cruise unchanged, then switches to an `A.phase='dock'`
+  beat once `ct>=cruiseDur` — gated strictly on `s.dock`, so no other mission type's ending changes.
+  `reentryDur` is always 0 here (deliveries are uncrewed), so the dock beat never competes with the reentry
+  cut for that same instant. `endAnim`'s hold check gains a `spec.dock` branch BEFORE the generic
+  orbital/cislunar post-flight card (which a delivery would otherwise match), holding on the settled
+  soft-dock frame. `beginHandoff` gains a `'dock'` kind: a pure cruise→dock crossfade with no camera zoom
+  (a zoom would fight the dock scene's own framing).
+- **Uniform across the deferred Mars arrival path with zero extra code.** A deferred Mars delivery resolves
+  on arrival through the exact same `pumpFlightArrivals()→beginResolve()→finalizeLaunch()→playMission(spec)`
+  chain any deferred flight uses; because `spec.dock` is built in `finalizeLaunch` regardless of sync-vs-
+  deferred, the on-arrival overlay plays the same launch→cruise→dock and ends on the dock card — no arrival-
+  specific branch needed. (Confirmed in test as a direct `finalizeLaunch` call on a 210-day Mars delivery
+  ctx, which is precisely what the arrival pump invokes.)
+- New `test-station-slice3.js` (27/27): drives the REAL `animLoop`/`drawScene` on a virtual clock (the
+  test-decision-panel pattern), so it's a genuine render-path check, not just spec-builder unit tests —
+  proves the `dock` phase is actually entered mid-flight (drawDockCard drew without throwing) and the
+  overlay holds on the dock card with a Continue affordance, for LEO (orbital), Moon (cislunar) and Mars
+  (the deferred-arrival resolution) deliveries; that `spec.dock` carries the real facility/body/module
+  fields; that `totalDur` reserves the `DOCK_CARD_MS` tail; that the module actually docked in state and the
+  post-dock count matches; and — the untouched-behaviour guardrails — that a regular non-delivery orbital
+  flight gets NO `spec.dock`, keeps its 1200 ms tail, never enters a dock phase and ends on the ordinary
+  post-flight card, and that a FAILED delivery neither docks nor gets a dock beat (docking rides on success
+  only). Full suite 938/950 — every file passes except the same known, still-deferred
+  `test-progress-unify.js` shortfall (unrelated, expected). No SAVE bump.
+- **Needs a real-browser check** (headless can't verify the actual pixels): (1) fly a first-of-type LEO
+  module delivery (design/build a capable vehicle → launch) and watch the flight end with the module
+  closing on the station and soft-docking, Continue button, Earth-blue backdrop; (2) fly a first-of-type
+  LUNAR module delivery (same-turn resolution) and confirm the identical dock beat plays over a grey Moon
+  backdrop after the cislunar cruise; (3) fly a first-of-type MARS module delivery, let it depart (cruise-
+  begins card), run the clock ~7 months, and confirm that when it resolves on arrival the overlay reopens
+  and plays through to the dock beat over a rust-red Mars backdrop; (4) confirm a regular ordinary orbital
+  mission still ends on the unchanged "ORBIT ACHIEVED" post-flight card (no dock beat leaked in).
+
+**Slice 4 (manufacturing tie-in) is optional/last** and remains unstarted.
 
 ### Workstream E2 — Medium (post-EA-gate)
 
@@ -3153,3 +3213,63 @@ mobile (explicitly out for 1.0; desktop-only, test Steam Deck only).
 Reactive rival race live · overlay C/D shipped · procedural contracts · save slots +
 export · keyboard + reduced-motion · newspaper milestones · sound pass · SVG icons ·
 trailer cut entirely from in-game flight footage.
+
+### Dev/cheat menu for manual testing (2026-07-11)
+
+A dev-only cheat panel so I can fast-forward and manipulate state to test deep-timeline content (station
+docking, Mars ops, late-era) without grinding a real playthrough. **Never shown to players** — orange
+DEV-styled fixed overlay, unmistakable. **Not yet committed/pushed.**
+
+**Access:** `Ctrl+Shift+D` toggles `#devPanel`. New keydown handler in `shell.js`, guarded exactly like the
+`p`/F1–F3 handlers (bails on `!state`, `animState`, `modalOpen()`, `isTyping(e)`). Combo audited unused —
+nothing binds ctrl/meta/shift today. `Escape` closes it via a check layered as the FIRST branch of the
+existing Escape handler (ahead of modal-close / scene-back, so it can't interfere). `#devPanel` is its own
+element in `shell.html` (next to `#animOverlay`/`#modal`), **not** `showModal()` — reusing `#modal` would
+make `pumpFlightArrivals()`'s `$('modal')…contains('hidden')` gate think a game modal was open and silently
+stall normal flow. Open state is a plain module-level bool `devPanelOpen` (like `techExpanded`/`hubPanel`),
+never in `state` — so it can't reach the save.
+
+**Capabilities (all in `shell.js`):** time buttons +1 day/week/month/year/5yr drive the REAL
+`advanceDays()`/`advance()` (never a raw `state.year` write); "jump to era" one button per `ERAS` entry via
+`devAdvanceToYear()` (12-month batches through `advance()`, no-op if already past); money/rep/science
+Add + Set-to (rep floored at 0, no ceiling); `devUnlockAllResearch()` sets every `RESEARCH` id true and
+maxes every `TECH_LEVELS[id]` to its real `.max`, then `reconcileResearch()`; `devMaxRep()`=100 (clears
+`partnerUnlocked()` gates). Force next launch: `_devForceOutcome` success/partial/loss/strand consumed at
+the top of `resolveFlight()` (synthesized via `devSynthOutcome()`, reusing the real
+`subsystemReport`/`flightPhaseBreakdown` for `.phases` so the live/reserve/anomaly/rescue chain doesn't
+choke; strand is crewed-deep-shaped so `finalizeLaunch`'s `_pendingRescue` branch fires). Force decision
+events: `_devForceLiveCall`/`_devForceReserve`/`_devForceWeather` short-circuit `liveCallFlag`/
+`deepCallFlag`/`rollWeather` respectively (single-shot). Two presets: **⏩ Fast-forward to late game**
+(advance to 2030 via real `advance()`, unlock all, money=2000 ($2B in $M units), rep=100) and **🛰 LEO
+station, pre-stocked** (real `foundFacility('leo_station')` + `addStationModule()` docking Lab, Power Truss,
+Docking Node). Scope boundary: "unlock everything" removes GATES only — it does NOT found facilities,
+design vehicles, or complete missions.
+
+**State-hygiene compromises (called out per the brief):**
+- The four force flags are plain module-level vars in `sim.js` (`_devForceOutcome` etc.), NOT `state.*`,
+  consumed and reset on first read — same-turn synchronous, never persisted. No `state.*` field was needed
+  for any force capability.
+- The **LEO-station preset sets `state.completed.crew_orbit=true`** — `canFound('leo_station')` gates on
+  that mission being flown, and there's no cheap "real function" to mark it complete without flying, so
+  removing the gate is unavoidable to use the real `foundFacility()`. Same spirit as "unlock all removes
+  gates." It also tops money to ≥$600M so the real founding/docking charges are affordable.
+- **Era/late-game time-skips keep the company solvent** (`devAdvanceToYear()` tops the treasury back to a
+  $1B floor before each batch). A pure time-skip earns no income, so decades of overhead would bankrupt an
+  early company and trip `gameOver()` mid-jump — defeating the whole point. This mutates `state.money`
+  during a jump (a visible, documented side effect). The bare +N time buttons are left pure (no top-up).
+
+**Tests:** new `tests/test-dev-menu.js`, 30/30 — unlock-all (research + leveled tech maxed); forced outcome
+changes `resolveFlight`'s kind and is consumed (not sticky); success/partial/strand shapes; forced live/
+reserve/weather flags fire + consume; a 12-month jump advances the year AND drains a founded facility's
+provisions (proves the real monthly tick ran, not a raw year overwrite); late-game + LEO presets produce a
+real facility with real docked modules; open/close/toggle never throws and doesn't mutate `state`. Full
+suite: **31/33 test files pass.** The two failures are BOTH pre-existing and unrelated to this work:
+`test-progress-unify.js` (known shortfall) and `test-station-slice2.js` (RNG-flaky — its Mars delivery
+flight sometimes fails its reliability roll; runs 28/28 or 24/28 across repeats; my force code is inert
+unless a dev flag is set, which no other test does).
+
+**Real-browser checklist:** open with `Ctrl+Shift+D` → orange DEV panel slides in from the right; click each
+time button and watch the header year/date advance; click an era button; Add/Set money·rep·science and see
+the readout update; Unlock all research → R&D tree fully unlocked; Force an outcome then launch a mission and
+confirm the forced result; run both presets; `Esc` or ✕ closes it; confirm **nothing** about the panel
+appears anywhere in the normal game UI (topbar, scenes, modals).

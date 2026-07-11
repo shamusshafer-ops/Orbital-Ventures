@@ -3497,7 +3497,35 @@ function flightPhaseBreakdown(rep){
     phases.push({phase:ph, label:FLIGHT_PHASE_LABEL[ph], rel, p:1-rel, subsystems:subs}); }
   return phases;
 }
+// ── DEV/CHEAT hooks (2026-07-11) — single-shot force flags for the dev menu (Ctrl+Shift+D). ──
+// All are plain module-level vars (NOT state.*), consumed & reset the moment they're read, so they
+// never touch the save file. resolveFlight/liveCallFlag/deepCallFlag/rollWeather each check "their"
+// flag at the top; the dev panel (shell.js) sets one and fires a single launch to exercise the flow.
+let _devForceOutcome=null; // 'success' | 'partial' | 'loss' | 'strand' — forces the next resolveFlight
+let _devForceLiveCall=false;   // forces the next liveCallFlag() to fire (marginal-subsystem live call)
+let _devForceReserve=false;    // forces the next deepCallFlag() to fire (deep-space reserve call)
+let _devForceWeather=false;    // forces the next rollWeather() to return an adverse (scrub) condition
+// Synthesize an outcome of the requested kind, matching resolveFlight's real return shape/fields so
+// the whole downstream chain (live/reserve/anomaly hooks, finalizeLaunch, rescue) reads it correctly.
+// Reuses the REAL per-phase machinery (subsystemReport/flightPhaseBreakdown) for `phases` so nothing
+// that iterates outcome.phases chokes. 'strand' is crewed-deep-failure-shaped, so a forced strand on
+// a crewed flight reaches finalizeLaunch's _pendingRescue branch exactly like a natural one.
+function devSynthOutcome(kind, m, v, sim, crewed, relPenalty){
+  const rep=subsystemReport(m,v,sim,crewed,1-(relPenalty||0));
+  const phases=flightPhaseBreakdown(rep);
+  let out;
+  if(kind==='success') out={kind:'success', rel:Math.max(rep.R,0.98), failPhase:null, subsystem:null};
+  else if(kind==='partial') out={kind:'partial', subsystem:'avionics', failPhase:null, rel:rep.R,
+      story:'(dev) forced partial — guidance drifted; the payload reached space but off the planned trajectory.'};
+  else if(kind==='strand') out={kind:'strand', subsystem:'life_support', failPhase:'deep', rel:rep.R,
+      story:'(dev) forced strand — a life-support failure on the long coast home left the crew stranded but alive.'};
+  else out={kind:'loss', subsystem:'propulsion', failPhase:'ascent', rel:rep.R,
+      story:'(dev) forced loss — an engine failed during powered ascent.'};
+  out.phases=phases; out.govPhase=out.subsystem?livePhaseOf(out.subsystem):null;
+  return out;
+}
 function resolveFlight(m,v,sim,crewed,relPenalty=0){
+  if(_devForceOutcome){ const k=_devForceOutcome; _devForceOutcome=null; return devSynthOutcome(k,m,v,sim,crewed,relPenalty); } // dev menu: single-shot forced outcome
   const rep=subsystemReport(m,v,sim,crewed,1-(relPenalty||0));
   const phases=flightPhaseBreakdown(rep); // CE5(a): per-phase decomposition (outcome unchanged)
   const failed={};
@@ -3541,7 +3569,18 @@ const LIVE_CALL_SUB_HI=0.94;  // a loss-severity early subsystem at/under this r
 const LIVE_CALL_SUB_HI_ROUTINE=0.97;
 const LIVE_CALL_R_FLOOR=0.40; // ...but only fire when the flight overall is still a real gamble
 const LIVE_CALL_PHASES={pad:1, ascent:1, staging:1}; // early phases where an abort can still save the vehicle
+// dev menu: synthesize a live-call flag from an early-phase subsystem (or a last-resort fake), so
+// "force live call" fires even when nothing is naturally amber. Matches the real {sub, phase} shape.
+function devSynthLiveFlag(outcome){
+  if(outcome && outcome.phases){
+    for(const ph of outcome.phases){ if(!LIVE_CALL_PHASES[ph.phase]) continue;
+      for(const s of ph.subsystems){ if(s.severity==='partial') continue; return {sub:s, phase:ph}; } }
+    for(const ph of outcome.phases){ if(LIVE_CALL_PHASES[ph.phase] && ph.subsystems[0]) return {sub:ph.subsystems[0], phase:ph}; }
+  }
+  return {sub:{key:'propulsion', rel:0.9, label:'Propulsion', severity:'loss'}, phase:{phase:'ascent', label:'Ascent'}};
+}
 function liveCallFlag(outcome, routine){
+  if(_devForceLiveCall){ _devForceLiveCall=false; return devSynthLiveFlag(outcome); } // dev menu: single-shot forced live call
   // the weakest loss-severity early-phase subsystem in the amber band, or null
   if(!outcome || !outcome.phases || (outcome.rel||0)<LIVE_CALL_R_FLOOR) return null;
   const subHi=routine?LIVE_CALL_SUB_HI_ROUTINE:LIVE_CALL_SUB_HI;
@@ -3571,7 +3610,15 @@ function deepReserveMargin(sim){
   return worst===Infinity ? 0 : Math.max(0, worst);
 }
 // the weakest drifting deep-phase subsystem on a flight that carries reserve margin, or null
+// dev menu: synthesize a deep-phase reserve-call flag (or a last-resort fake), for "force reserve call".
+function devSynthDeepFlag(outcome){
+  if(outcome && outcome.phases){
+    for(const ph of outcome.phases){ if(ph.phase!=='deep') continue; if(ph.subsystems[0]) return {sub:ph.subsystems[0], phase:ph}; }
+  }
+  return {sub:{key:'life_support', rel:0.9, label:'Life support', severity:'loss'}, phase:{phase:'deep', label:'Deep space'}};
+}
 function deepCallFlag(outcome, sim, routine){
+  if(_devForceReserve){ _devForceReserve=false; return devSynthDeepFlag(outcome); } // dev menu: single-shot forced reserve call
   if(!outcome || !outcome.phases || (outcome.rel||0)<LIVE_CALL_R_FLOOR) return null;
   if(deepReserveMargin(sim) < RESERVE_MARGIN_MIN) return null; // no reserve to burn → no call
   const subHi=routine?LIVE_CALL_SUB_HI_ROUTINE:LIVE_CALL_SUB_HI; // E1.2 slice A: same wider-net-on-a-reflight idiom as liveCallFlag
@@ -3663,6 +3710,10 @@ const WEATHER_CONDITIONS=[
   {id:'cold',  weight:6, penalty:0.07,  clear:1, label:'Sub-limit low temperatures',detail:'Temperatures are below qualification — seals and joints stiffen in the cold.'},
 ];
 function rollWeather(m){
+  if(_devForceWeather){ _devForceWeather=false; // dev menu: single-shot forced adverse weather (a real WEATHER_CONDITIONS entry)
+    const adv=WEATHER_CONDITIONS.find(c=>c.id!=='go')||WEATHER_CONDITIONS[0];
+    return {id:adv.id, label:adv.label, adverse:true, penalty:adv.penalty||0.1, clear:adv.clear||1, detail:(adv.detail||'')+' (dev-forced scrub)'};
+  }
   const total=WEATHER_CONDITIONS.reduce((a,c)=>a+c.weight,0);
   let r=Math.random()*total, pick=WEATHER_CONDITIONS[0];
   for(const c of WEATHER_CONDITIONS){ r-=c.weight; if(r<0){ pick=c; break; } }
@@ -4425,6 +4476,16 @@ function finalizeLaunch(ctx, ops){
     rng: { wind:(rnd()-0.5)*0.9, windFreq:1.4+rnd()*1.6, windPhase:rnd()*6.283,
            pitchJitter:(rnd()-0.5)*0.16, sep:state.stages.map(()=>(rnd()-0.5)*0.06),
            apogee:0.86+rnd()*0.28, bow:(rnd()-0.5)*0.9 } };
+  // #73 Slice 3: a successful module delivery gets a terminal rendezvous+dock beat in the overlay. The
+  // module already docked in state above (dockModuleNow, in the success branch) — this only carries the
+  // display info the drawDockCard spectacle reads. One abstraction for LEO/Moon/Mars (backdrop tinted per
+  // body); docking doesn't get its own roll — a resolved-success flight simply docks (Slice 2's precedent).
+  if(m.deliverModule && success){
+    const _fd=facilityById(m.deliverModule.facId), _fs=facilityState(m.deliverModule.facId), _md=stationModuleDef(m.deliverModule.modId);
+    spec.dock={ facName:_fd?_fd.name:'Station', facColor:(_fd&&_fd.color)||'#aeb6bd', body:(_fd&&_fd.body)||'earth',
+      modName:_md?_md.name:'Module', modShort:(_md&&_md.short)||'MOD', modColor:(_md&&_md.color)||'#b8c0c7',
+      moduleCount:_fs?facilityModuleList(_fs).length:1 }; // post-dock count (dockModuleNow already pushed it)
+  }
   const finish=()=>{ if(state.money<0){ gameOver(); } else { _missionPulse=success?'ok':(outcome.kind==='loss'||outcome.kind==='strand')?'bad':null; render(); if(pendingCelebration) pendingCelebration(); maybeShowInquiry(); maybeShowHearing(); } _flightResolving=false; if(!state.over) pumpFlightArrivals(); }; // 1.2a: flight fully done — release the lock, surface a pending failure inquiry or budget hearing, then resolve the next arrival if any
   if(animEnabled){
     // E1.2 slice C: if a live-flight decision (live call/reserve/weather/rescue) opened this overlay
