@@ -3015,11 +3015,17 @@ duplicating.
       serialization + load-path unification (a); IndexedDB autosave ring + restore UI + import-safety
       net (b); 5 manual save slots behind "Manage saves…" (c). User-verified in Firefox at each
       slice. 381/381.
-- [ ] **E0.3 Dirty-flag rendering** — `render()` currently rebuilds all regions from ~136
-      call sites; move to `invalidate(region)` + per-region rebuild with a `renderAll()`
-      escape hatch. Fixes focus/scroll loss in re-rendered panels, cuts time-warp GC
-      churn, and is the prerequisite for simultaneous-mission ops density. Validate by
-      diffing harness snapshots region-by-region.
+- [~] **E0.3 Dirty-flag rendering** — **Slice 0 DONE 2026-07-12** (see session log below): a
+      tech-lead planning pass revised the roadmap's original framing (below) — migrating all
+      ~158 `render()` call sites to `invalidate(region)` was rejected as over-scoped; see the
+      session log for the actual slice plan (0: snapshot harness ✅; 1: region extraction +
+      `renderAll()`/`invalidate()` shim; 2: `setHTML()` memoize + focus/scroll fix — the slice
+      that actually fixes the named bugs; 3: hot-path-only migration, optional; 4: deferred).
+      Original framing, superseded: `render()` currently rebuilds all regions from ~136 call
+      sites; move to `invalidate(region)` + per-region rebuild with a `renderAll()` escape
+      hatch. Fixes focus/scroll loss in re-rendered panels, cuts time-warp GC churn, and is the
+      prerequisite for simultaneous-mission ops density. Validate by diffing harness snapshots
+      region-by-region.
 - [~] **E0.4 Keyboard + accessibility baseline** — slices (a) hotkeys, (b) focus trap, (d) UI-scale
       SHIPPED 2026-07-10 (see session logs above), 491/491. **Slice (c) (reduced-motion +
       colorblind icons) deliberately deferred, not started.**
@@ -3484,3 +3490,58 @@ Countdown voice (backlog #35) is therefore back to tones-only end-to-end: Slice 
 tone) + Slice B (T-31 hold reskin), no external-asset dependency. `test-sound.js`/`test-decision-panel.js`
 updated to match (no clip-specific assertions remain). If real audio is revisited later, don't just re-add
 the Apollo/Shuttle clips — source something the user is comfortable with first.
+
+## Session — E0.3 Slice 0: dirty-flag rendering snapshot harness (2026-07-12)
+
+**Planning pass (tech-lead) revised the roadmap's original E0.3 framing.** The two named bugs (focus/scroll
+loss in re-rendered panels, time-warp GC churn) don't need a full per-region dirty-flag architecture — both
+are fixed by one `setHTML()` helper (skip the DOM write when the string is unchanged; capture/restore focus
++ scroll on a real write). Migrating all ~158 `render()` call sites to `invalidate(region)` was rejected as
+over-scoped: nearly all of those sites are cold (once-per-click), safe, and correct to leave calling
+`render()` forever — only the 1Hz warp tick is actually hot. A thin region layer is still worth building,
+but only so the *future* ops-density feature (simultaneous-mission widgets) has somewhere to register named
+subregions later; it doesn't need to be exhaustive now. Revised slice plan: **0** snapshot test harness
+(this session) · **1** extract `render()`'s body into ~9 named regions + `renderAll()`/`invalidate()`, with
+`render()` staying a permanent alias for `renderAll()` so all existing call sites keep working untouched ·
+**2** `setHTML()` memoize + focus/scroll fix — the slice that actually fixes the bugs · **3** (optional,
+small) migrate just the warp-tick hot path + a few exemplar cold sites · **4** deferred until ops-density
+is a real feature. Roadmap's real deliverable is Slices 0–2; 3–4 are discretionary.
+
+**Slice 0 (snapshot harness) DONE, tests passing, not yet committed/pushed.** New
+`tests/test-render-regions.js`: defines the region→container-id map Slice 1 will extract `render()`'s body
+into (topbar/badges/railLeft/railRight/objective/log/scene×5-tabs/modal, representative ids not exhaustive
+— written down once in the file as the authoritative reference for Slice 1), scripts a playthrough (boot,
+all 5 tabs, 3 years of time advance, an infra-modal open/close), and asserts `render()` is idempotent —
+calling it twice back-to-back with no state change in between produces byte-identical output for every
+inspected id. 21/21 checks.
+
+**Found and worked around three real gaps in the existing harness/suite while building this — all fixed
+locally in the new test file, nothing shared touched:**
+- `document.getElementById` (harness.js) returns a fresh, memory-less stub every call by design (production
+  code only ever writes to the DOM, never reads back) — so no prior test could actually inspect rendered
+  content. Added a scoped memoizing cache in the new test file for just the ids it inspects; every other id
+  keeps the harness's original behavior.
+- The stub's `.innerHTML=''` never clears `.children` — an `appendChild`-based renderer (`renderLog` does
+  `box.innerHTML=''` then appends real row nodes) accumulated children forever across repeated `render()`
+  calls once an element was memoized. Patched the memoized instances' `innerHTML` setter to also clear
+  `.children`, matching real DOM semantics.
+- **`setTab()` defers the actual `state.tab=t; render()` behind a 150ms `setTimeout`, gated on finding a
+  `.viewport` element** (for the tab-fade transition) — the harness's `document.querySelector` always
+  returns a truthy stub, so `setTab()` **always** takes that async branch under the harness, and a
+  synchronous `render()` called right after is still rendering the OLD tab. This means every existing
+  test's `setTab(t); render();` pattern (e.g. `test-regression.js`'s per-scene loop) has never actually
+  rendered the target tab — `test-regression.js`'s check there is `check('render scene '+t, true)`, a
+  trivial always-pass, so this was never caught. Worked around locally with a `gotoTab()` helper that goes
+  straight to `state.tab=t; render()` (the same synchronous path `setTab()` itself takes when `.viewport`
+  is absent). Not fixed in `test-regression.js` or `harness.js` — out of this slice's scope — but worth
+  knowing before trusting any existing "renders every tab" test as real coverage.
+- Also discovered (and correctly treated as intentional, not a bug): render.js's module-level `_texSeq`
+  counter mints a fresh numeric suffix on every call for SVG gradient/texture ids (`sun0`, `sun0h`,
+  `texmars3`, ...) specifically so a live browser never reuses a stale cached gradient across a re-render —
+  expected to differ between any two `render()` calls. Normalized these out (regex strip) before comparing
+  rather than treating the diff as a failure.
+
+Full suite re-run after this slice: 21/21 new, all 37 other test files unaffected, same single
+pre-existing unrelated `test-progress-unify.js` shortfall as before this session. No SAVE_VERSION bump
+(pure test code, zero product-code changes). **Next: Slice 1** (extract `render()`'s body into the named
+regions as pure code motion, validated against this suite's snapshots).
