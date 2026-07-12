@@ -100,6 +100,16 @@ check('weather: holds right away (pad-start), no pumpFlight needed', animState.h
 check('weather: two buttons (scrub / launch anyway)', (animState.decisionButtons||[]).length===2);
 check('weather: panel holdAt is pad-start', animState.pendingDecision.holdAt==='pad-start');
 
+// ---------- Slice B: the pad-start weather hold is reskinned as the built-in T-31s hold ----------
+{
+  const panel=animState.pendingDecision.buildPanel();
+  check('T-31 hold: title reads as the built-in T-31s hold', /T-31s/.test(panel.title));
+  check('T-31 hold: still frames the go / no-go weather decision', /GO \/ NO-GO/.test(panel.title));
+  check('T-31 hold: weather content preserved (a line names the range weather)', panel.lines.some(l=>/range/i.test(l)));
+  check('T-31 hold: decision unchanged (scrub + launch-anyway)', panel.buttons.length===2);
+  check('T-31 hold: one-shot hold tone fired on the held frame', animState._holdTone===true);
+}
+
 // ---------- 6. "Launch anyway" resumes the SAME overlay and carries it forward into the real launch ----------
 const weatherAnim=animState;
 clickButton(1); // "Launch anyway" → launchAnyway() → proceedLaunch(...) → beginResolve chain

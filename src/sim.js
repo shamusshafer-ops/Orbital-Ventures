@@ -585,18 +585,24 @@ let _pendingHearing=null; // a fatal crewed loss awaiting a fund/defend/blame de
 function hearingFundCost(){ return round2(HEARING_FUND_COST*(1+eraStakesFrac())); } // later eras draw bigger scrutiny, same spirit as applyEraStakes
 function triggerHearing(ctx){
   if(_pendingHearing) return; // one at a time
-  _pendingHearing={ mName:ctx.m.name };
+  // Slice B: an ascent crewed loss files a 'disaster' front page immediately before this call
+  // (the strand branch does not) — capture that exact entry so the hearing modal can lead with the
+  // Agency Wire disaster edition. Match kind+headline+month so a strand hearing (or a stale wire top)
+  // never surfaces an unrelated front page.
+  const fp=frontPages()[0];
+  const disasterFP=(fp && fp.kind==='disaster' && fp.abs===absMonth() && fp.headline===ctx.m.name+': crew lost') ? fp : null;
+  _pendingHearing={ mName:ctx.m.name, frontPage:disasterFP };
   log('bad',`⚠ BUDGET HEARING — ${ctx.m.name}: the fatal loss draws government scrutiny. A decision is needed.`);
 }
 function maybeShowHearing(){ if(_pendingHearing && !_pendingSetback && !_pendingLogiMishap && !_pendingInquiry) showHearingModal(); } // setback/mishap/inquiry take priority
 function showHearingModal(){
   const s=_pendingHearing; if(!s) return;
   const cost=hearingFundCost(), fundOk=state.money>=cost;
-  showModal(`<h2 style="color:var(--bad)">⚠ Budget hearing</h2>
+  showModal(`${s.frontPage?frontPageHTML(s.frontPage, true)+'<div style="height:14px"></div>':''}<h2 style="color:var(--bad)">⚠ Budget hearing</h2>
     <p><b>${esc(s.mName)}</b> — a fatal loss draws a program review. How do you play it?</p>
     <button class="btn" onclick="resolveHearing('fund')" ${fundOk?'':'disabled'} title="${fundOk?'':'Not enough capital'}">Fund a safety program — ${fM(cost)} <span class="dim">· +${HEARING_SUPPORT_FUND} support</span></button>
     <button class="btn ghost" style="margin-top:8px" onclick="resolveHearing('defend')">Defend the program's record <span class="dim">· free, −${HEARING_REP_COST_DEFEND} rep, +${HEARING_SUPPORT_DEFEND} support</span></button>
-    <button class="btn ghost" style="margin-top:8px" onclick="resolveHearing('blame')">Blame the vendor <span class="dim">· free, +${HEARING_SUPPORT_BLAME} support, staff morale hit</span></button>`);
+    <button class="btn ghost" style="margin-top:8px" onclick="resolveHearing('blame')">Blame the vendor <span class="dim">· free, +${HEARING_SUPPORT_BLAME} support, staff morale hit</span></button>`, s.frontPage?'newspaper':undefined);
 }
 function resolveHearing(choice){
   const s=_pendingHearing; if(!s) return;
@@ -796,15 +802,27 @@ function showMilestoneModal(m, payout, rep){
   const race=rivalRaceLine(m.id);
   const hist=(m.blurb||'').match(/<span class="hist">([\s\S]*?)<\/span>/);
   pushFrontPage('milestone', '✦', m.name, race.replace(/<[^>]+>/g,''));
+  // shared payout/rep summary strip (identical in both the compact and front-page layouts)
+  const strip=`<div style="display:flex;gap:14px;justify-content:center;font-family:var(--mono);font-size:13px;margin:12px 0">
+      <span style="color:var(--ok)">+${fM(payout)}</span><span style="color:var(--readout)">+${rep} rep</span>
+    </div>`;
+  // Slice A: significant firsts (same rep≥15 bar the Chronicle uses) get the full "Agency Wire"
+  // front page, reusing the entry we just filed above so the modal and the Chronicle scoop match.
+  if((m.rep||0)>=15){
+    const e=frontPages()[0];
+    showModal(`${frontPageHTML(e, true)}
+    ${hist?`<p class="muted" style="font-family:Georgia,'Times New Roman',serif;font-size:13px;text-align:center;margin:8px 0">${hist[1]}</p>`:''}
+    ${strip}
+    <button class="btn launch" style="width:100%" onclick="hideModal()">Onward ▸</button>`, 'newspaper');
+    return;
+  }
   showModal(`<div style="text-align:center">
     <div style="font-size:12px;letter-spacing:.35em;color:var(--ignite);text-transform:uppercase;margin-bottom:6px">✦ Milestone ✦</div>
     <h2 style="margin:0 0 2px">${m.name}</h2>
     <div class="dim" style="font-family:var(--mono);font-size:12px;margin-bottom:10px">${dateStr()} · Era ${eraIndex(currentEra())+1}: ${currentEra().name}</div>
     ${race?`<p style="font-size:13px;margin:8px 0">${race}</p>`:''}
     ${hist?`<p class="muted" style="font-size:12px;margin:8px 0">${hist[1]}</p>`:''}
-    <div style="display:flex;gap:14px;justify-content:center;font-family:var(--mono);font-size:13px;margin:12px 0">
-      <span style="color:var(--ok)">+${fM(payout)}</span><span style="color:var(--readout)">+${rep} rep</span>
-    </div>
+    ${strip}
     <button class="btn launch" onclick="hideModal()">Onward ▸</button>
   </div>`);
 }
@@ -2654,6 +2672,7 @@ function completeResearch(){
   else if(r.effect.isp||r.effect.thrust){log('note',`R&D complete: ${r.name}. Engine performance improved${r.effect.isp?` (+${Math.round(r.effect.isp*100)}% Isp)`:''}${r.effect.thrust?`${r.effect.isp?',':''} (+${Math.round(r.effect.thrust*100)}% thrust)`:''}.`);}
   else { log('note',`R&D complete: ${r.name}.`); }
   _lastUnlockedTech=r.id; // #31 Slice 2: flag for tech-tree glow on next renderTechTree()
+  queueResearchNotice(r.id); // additive: queue a small completion pop-up (surfaced from stepTime; log above is unchanged)
   tryStartQueuedResearch(); // I5: auto-start the queued "next" pick if it's already affordable/eligible right now
 }
 // R&D epic slice 2: when the tech tree is re-shaped (nodes added / re-parented),
@@ -2674,10 +2693,42 @@ function reconcileResearch(){
   }
   for(const r of RESEARCH){ if(state.research[r.id] && r.effect){ if(r.effect.engine) state.unlocked[r.effect.engine]=true; if(r.effect.engines) r.effect.engines.forEach(id=>state.unlocked[id]=true); } }
 }
+// R&D completion notice — a small, dismiss-only pop-up so a finished tech node isn't missed in the ops
+// log (the log line below in completeResearch is kept exactly as-is; this is additive). Transient (not
+// persisted). It's an ARRAY so a batch of completions inside one time-step collapses to ONE modal
+// instead of stacking N. Lowest priority: surfaced from stepTime AFTER every decision modal, and only
+// when no decision is pending and nothing is already on screen — so it never stacks on the flight
+// overlay, a pending setback/mishap/inquiry/hearing, or a celebration. Reuses the plain compact .modal
+// (no 'newspaper'/frontPageHTML), and rides the global ESC handler for free like every other modal.
+let _pendingResearchDone=[];
+function queueResearchNotice(id){ if(id) _pendingResearchDone.push(id); }
+function maybeShowResearchNotice(){
+  if(!_pendingResearchDone.length) return;
+  if(_pendingSetback||_pendingLogiMishap||_pendingInquiry||_pendingHearing) return; // real decisions come first
+  const me=$('modal'); if(me&&me.classList&&!me.classList.contains('hidden')) return; // never clobber an open modal
+  const ids=_pendingResearchDone.slice(); _pendingResearchDone.length=0;
+  showResearchNoticeModal(ids);
+}
+function showResearchNoticeModal(ids){
+  const nodes=(ids||[]).map(id=>RESEARCH.find(r=>r.id===id)).filter(Boolean);
+  if(!nodes.length) return;
+  // 🔬 emoji stands in for a per-node icon (RESEARCH nodes have none); r.name/r.desc are injected raw
+  // to match renderTechTree exactly — the names/descs already carry HTML entities & the .hist span.
+  const eyebrow=`<div style="font-size:12px;letter-spacing:.35em;color:var(--readout);text-transform:uppercase;margin-bottom:6px">🔬 R&amp;D Complete 🔬</div>`;
+  const body = nodes.length===1
+    ? `<h2 style="margin:0 0 8px">${nodes[0].name}</h2>
+       <div class="sub" style="text-align:left;font-size:13px;margin:8px 0 4px">${nodes[0].desc}</div>`
+    : `<h2 style="margin:0 0 8px">${nodes.length} technologies completed</h2>
+       <div style="text-align:left;font-size:13px;margin:8px 0 4px">${nodes.map(r=>`<div style="margin:9px 0"><b>${r.name}</b><div class="dim" style="font-size:12px">${r.desc}</div></div>`).join('')}</div>`;
+  showModal(`<div style="text-align:center">${eyebrow}${body}
+    <button class="btn launch" onclick="hideModal()" style="margin-top:6px">Onward ▸</button>
+  </div>`);
+}
+
 // Time Granularity slice 2: the player's time control. Advance N days, then render + surface any
 // pending R&D setback (the one decision the monthly tick can raise). Overhead accrues per day, so
 // short steps cost proportionally — there is no free time.
-function stepTime(days){ advanceDays(days); if(!state.over){ render(); maybeShowSetback(); maybeShowMishap(); maybeShowRivalDisaster(); maybeShowEraInterstitial(); } }
+function stepTime(days){ advanceDays(days); if(!state.over){ render(); maybeShowSetback(); maybeShowMishap(); maybeShowRivalDisaster(); maybeShowEraInterstitial(); maybeShowResearchNotice(); } }
 function advanceMonth(){ stepTime(DAYS_PER_MONTH); } // #26: one-month step (used by the advisor nudge)
 // Header time arrows: ▸ day / ▸▸ week / ▸▸▸ month. First click on an arrow steps once; a second
 // click on the same arrow starts auto-advancing that unit at 1 step/sec; a third click (or clicking
@@ -3776,8 +3827,11 @@ function rollWeather(m){
 function showWeatherModal(m,wx){
   openFlightForDecision({m, crewed:(m.crew||0)>0}, { holdAt:'pad-start', buildPanel:()=>{
     const pen=Math.round(wx.penalty*100);
-    return { title:'LAUNCH WEATHER — GO / NO-GO', color:themeColor('warn'),
-      lines:[ `Range weather: ${wx.label}.`, wx.detail,
+    // Slice B reskin: frame the existing pad-start weather hold as the built-in T-31s hold (the last
+    // hold before terminal count). Additive flavor only — the go/no-go decision + buttons are unchanged.
+    return { title:'HOLD AT T-31s — WEATHER GO / NO-GO', color:themeColor('warn'),
+      lines:[ `Countdown holding at the built-in T-31s hold for the range poll.`,
+              `Range weather: ${wx.label}.`, wx.detail,
               `Scrubbing waits ~${wx.clear} month${wx.clear>1?'s':''}. Flying through it costs −${pen}% reliability, this flight only.` ],
       buttons:[
         {label:`Scrub & wait (${wx.clear} mo)`, ghost:true, action:scrubLaunch},
@@ -4636,6 +4690,7 @@ function showSettingsMenu(){
     showModal(`<h2 style="text-align:left">⚙ Menu</h2>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:4px">
         <button class="btn ghost" onclick="toggleAnim();render()">Animation: ${animEnabled?'On':'Off'}</button>
+        <button class="btn ghost" onclick="toggleSound();render()">🔊 Sound: ${soundOn?'On':'Off'}</button>
         <button class="btn ghost" onclick="toggleWide();render()">↔ Wide: ${wideOn?'On':'Off'}</button>
         <button class="btn ghost" onclick="toggleFullscreen();render()">${fs?'⛶ Exit full screen':'⛶ Full screen'}</button>
         <button class="btn ghost" onclick="hideModal();saveGame()">💾 Save</button>
@@ -5180,35 +5235,56 @@ function checkPersonnelEvents(){
 
 
 /* ---------- modals ---------- */
+// ── Slice B: epoch victories also file an Agency Wire front page and expose a "Read the front page ▸"
+// link that renders it through the SAME shared frontPageHTML path Slice A used for milestones and the
+// Chronicle browser. The victory modal keeps its existing copy/behavior — this only adds the link.
+// (Epoch victories previously filed NO wire entry at all — they short-circuit showMilestoneModal via
+// pendingCelebration — so this also finally records these landmark firsts in the Chronicle wire.)
+let _victoryWire=null; // transient: the front-page entry the currently-open victory modal links to
+function victoryWireBtn(icon, headline, dek){
+  const existing=frontPages().find(x=>x.kind==='milestone' && x.headline===headline); // guard: re-showing a victory must not duplicate its wire entry
+  if(existing){ _victoryWire=existing; }
+  else { pushFrontPage('milestone', icon, headline, dek); _victoryWire=frontPages()[0]; }
+  return `<button class="btn ghost" style="margin-top:8px" onclick="showVictoryWire()">Read the front page ▸</button>`;
+}
+function showVictoryWire(){
+  if(!_victoryWire) return;
+  showModal(`${frontPageHTML(_victoryWire, true)}<button class="btn launch" style="width:100%;margin-top:10px" onclick="hideModal()">Keep flying ▸</button>`, 'newspaper');
+}
 function victory(){
   showModal(`<h2>Orbit achieved.</h2>
     <p>You've flown a payload to orbital velocity — the summit of the Pioneer era. The core loop is proven: the rocket equation, staging, materials, and reliability all bent to your will.</p>
     <p class="muted">Next milestone (M2): <b>crew &amp; life support</b> — keeping people alive becomes a mass &amp; power budget that rides the same rocket equation.</p>
-    <button class="btn" onclick="hideModal()">Keep flying</button>`);
+    <button class="btn" onclick="hideModal()">Keep flying</button>
+    ${victoryWireBtn('🛰','First payload reaches orbit','Orbital velocity achieved — the summit of the Pioneer era.')}`);
 }
 function victoryM2(){
   showModal(`<h2>Endurance achieved.</h2>
     <p>Three crew, four months, home alive. You've felt the full weight of the rocket equation: life support is payload, payload is propellant, and closing the loop is the lever that bends the curve back.</p>
     <p class="muted">Next milestone (M3): the <b>Solar System opens</b> — real Δv budgets to the Moon and beyond, in-space refueling, and ISRU to break the tyranny for good.</p>
-    <button class="btn" onclick="hideModal()">Keep flying</button>`);
+    <button class="btn" onclick="hideModal()">Keep flying</button>
+    ${victoryWireBtn('👩‍🚀','Crew endures the long flight','Three crew, four months, home alive — closed-loop life support proven.')}`);
 }
 function victoryM3a(){
   showModal(`<h2>The Moon, captured and left.</h2>
     <p>You flew a crew to lunar orbit and brought them home — a journey of stacked burns where the transfer stage spent one tank across three deep-space maneuvers while hauling everything above it. The mass compounded at every leg, and you beat it.</p>
     <p class="muted">Coming next (M3a-ii): the <b>Lunar Lander</b> — a separate vehicle for descent and ascent — then M3b opens Mars, refueling depots, and ISRU.</p>
-    <button class="btn" onclick="hideModal()">Keep flying</button>`);
+    <button class="btn" onclick="hideModal()">Keep flying</button>
+    ${victoryWireBtn('🌙','Crew rounds the Moon and returns','A journey of stacked burns to lunar orbit and home again.')}`);
 }
 function victoryM3aii(){
   showModal(`<h2>Boots on the Moon.</h2>
     <p>Two crew rode the descent stage down, walked on another world, and lit the ascent engine to chase the transfer stage back into orbit — leaving the descent stage behind as a monument. Seven legs, three separate vehicles, one rocket equation, compounded all the way from the pad.</p>
     <p class="muted">Next (M3b): <b>Mars</b> — launch windows, in-space refueling depots, and ISRU propellant that finally breaks the tyranny of the equation.</p>
-    <button class="btn" onclick="hideModal()">Keep flying</button>`);
+    <button class="btn" onclick="hideModal()">Keep flying</button>
+    ${victoryWireBtn('🌙','Boots on the Moon','Two crew walk on another world and fly the ascent stage home.')}`);
 }
 function victoryM3b(){
   showModal(`<h2>Mars, and back.</h2>
     <p>Three crew spent five hundred and twenty days away from Earth — captured into Mars orbit, held through the long wait for the return window, then burned for home. Closed-loop life support, which never paid for itself on shorter flights, finally did its job: every kilogram it saved was a kilogram of propellant you didn't have to carry across two planets.</p>
     <p class="muted">Next (M3b-ii): <b>refueling depots and ISRU</b> — pre-position propellant in orbit so the next mission doesn't have to launch with a full tank from Earth.</p>
-    <button class="btn" onclick="hideModal()">Keep flying</button>`);
+    <button class="btn" onclick="hideModal()">Keep flying</button>
+    ${victoryWireBtn('🔴','Mars, reached and returned','Three crew, five hundred and twenty days away, home again.')}`);
 }
 function victoryM3bii(reason){
   const body = reason==='depot'
@@ -5217,7 +5293,8 @@ function victoryM3bii(reason){
   showModal(`<h2>The tyranny, broken.</h2>
     ${body}
     <p class="muted">This is the lever the whole rocket equation has been pointing at: every kilogram you don't have to launch from Earth's surface is a kilogram you never have to multiply through every leg that follows.</p>
-    <button class="btn" onclick="hideModal()">Keep flying</button>`);
+    <button class="btn" onclick="hideModal()">Keep flying</button>
+    ${victoryWireBtn('⛽','The tyranny of the rocket equation, broken','Propellant staged or made off-Earth — the equation finally bends.')}`);
 }
 // ── CE4(c): era-scaled failure stakes + bailout retune ────────────────────────────────
 // "Stakes rise, they don't shift earlier": every term is keyed to eraStakesFrac(), which is 0 in
@@ -5410,6 +5487,10 @@ function resolveReturnFocus(savedEl, savedId, getById, body){
   if(savedId){ const byId=getById && getById(savedId); if(byId && byId.isConnected) return byId; }
   return body||null;
 }
+// view: true → the wide, left-aligned, scrollable deep-view layout (.modal.view); a non-empty string →
+// that literal modal modifier class (e.g. 'newspaper' → .modal.newspaper, the large era-evolving front
+// page); anything falsy → the plain centered .modal. Pure + headless-testable (see test-era-visual).
+function modalClassName(view){ return 'modal'+(view===true?' view':view?(' '+view):''); }
 function showModal(html,view){ try{ timeInterrupt(); }catch(e){}
   const modalEl=$('modal');
   // Only treat a closed→open transition as "opening": while a deep-view modal is open, render() re-invokes
@@ -5417,7 +5498,7 @@ function showModal(html,view){ try{ timeInterrupt(); }catch(e){}
   // be an in-modal element) nor yank focus back to the first control on each live re-render.
   const wasOpen=!!(modalEl && modalEl.classList && !modalEl.classList.contains('hidden'));
   if(!wasOpen){ try{ const prev=document.activeElement; _modalReturnFocus=prev||null; _modalReturnFocusId=(prev&&prev.id)?prev.id:null; }catch(e){ _modalReturnFocus=null; _modalReturnFocusId=null; } }
-  const mb=$('modalBody');mb.className='modal'+(view?' view':'');mb.innerHTML=html;modalEl.classList.remove('hidden');mb.classList.add('modal-entering');mb.addEventListener('animationend',()=>mb.classList.remove('modal-entering'),{once:true});
+  const mb=$('modalBody');mb.className=modalClassName(view);mb.innerHTML=html;modalEl.classList.remove('hidden');mb.classList.add('modal-entering');mb.addEventListener('animationend',()=>mb.classList.remove('modal-entering'),{once:true});
   try{ if(!mb.getAttribute('tabindex')) mb.setAttribute('tabindex','-1'); }catch(e){}
   if(!wasOpen){ try{ const f=mb.querySelectorAll(MODAL_FOCUSABLE_SEL); if(f && f.length){ f[0].focus(); } else { mb.focus(); } }catch(e){} }
 } // view=true → wide, left-aligned, scrollable deep-view layout

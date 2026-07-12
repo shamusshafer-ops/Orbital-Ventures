@@ -727,6 +727,54 @@ const CONTRACT_ARCHETYPES=[
         blurb:'A commercial lab wants another regolith sample — a proven profile, a standing customer, no new ground broken.' }; } },
 ];
 
+/* ---------- Newspaper "below the fold" filler briefs (Slice C, 2026-07-12) ----------
+   Disposable procedural texture that rides UNDER the main story whenever a real Agency Wire edition
+   fires (milestone / disaster hearing / victory). Shaped like CONTRACT_ARCHETYPES above — {kind,
+   minEra, req(st), weight(st), build(st,eraIdx)} — but build() returns a {headline, blurb} text pair
+   instead of a mission. State-derived so the briefs read as current; req() gates out ones with nothing
+   to draw from (no named staff, no built facility) so a brief is never empty or nonsensical. NOTHING
+   here is persisted — it is picked fresh at render time and is not part of the Chronicle record (the
+   main headline/dek is). Voice: the dry, faintly wry in-world trade-press register of the archetype
+   blurbs and RIVAL_VOICE lines above — reporting, not joking. */
+const NEWS_FILLER=[
+  // A live rival's public posture, coloured by how many firsts it has actually claimed so far.
+  { kind:'rival', minEra:1, req:st=>RIVALS.length>0, weight:st=>1.4,
+    build:(st,eraIdx)=>{ const r=RIVALS[Math.floor(Math.random()*RIVALS.length)];
+      const claims=Object.keys(st.rivalFired||{}).filter(k=>k.indexOf(r.id+'|')===0).length;
+      const tail=claims>=3?`already sitting on ${claims} claimed firsts`
+        :claims>0?`${claims} claimed first${claims===1?'':'s'} to its name`
+        :'still hunting its first headline';
+      return { headline:`${r.name} briefs on the decade ahead`,
+        blurb:`The ${String(r.kind).toLowerCase()} talked reporters through an ambitious roadmap — ${tail}, and no shortage of confidence.` }; } },
+  // A named hire gets the weekend-feature treatment. Gated on having actually hired someone.
+  { kind:'staff', minEra:0, req:st=>Array.isArray(st.staff)&&st.staff.some(s=>personById(s.id)),
+    weight:st=>1+Math.min(2,((st.staff||[]).length)/4),
+    build:(st,eraIdx)=>{ const hired=(st.staff||[]).map(s=>personById(s.id)).filter(Boolean);
+      const p=hired[Math.floor(Math.random()*hired.length)]; const role=(roleLabel(p)||'staff').toLowerCase();
+      return { headline:`Trade press profiles ${p.name}, ${role}`,
+        blurb:`A weekend feature on the agency's newest name to know — long on temperament and short on anything the competition didn't already know.` }; } },
+  // A standing facility's "nothing to report" quarter. Gated on owning a built facility.
+  { kind:'facility', minEra:2, req:st=>{ for(const id in (st.facilities||{})) if(facilityBuilt(id)) return true; return false; },
+    weight:st=>1.2,
+    build:(st,eraIdx)=>{ const built=Object.keys(st.facilities||{}).filter(id=>facilityBuilt(id));
+      const id=built[Math.floor(Math.random()*built.length)]; const def=facilityById(id); const fs=facilityState(id);
+      const mods=(fs&&fs.modules)||1;
+      return { headline:`${def.name} logs another quiet quarter`,
+        blurb:`The ${mods}-module outpost keeps ticking over with no incidents to report — which, in this line of work, passes for good news.` }; } },
+  // The launch market, era-scaled: easy money early, crowded and margin-thin once the field fills in.
+  { kind:'market', minEra:1, req:st=>true, weight:st=>1,
+    build:(st,eraIdx)=>{ const crowded=eraIdx>=4;
+      return { headline:crowded?'Launch market crowds further':'Launch market holds steady',
+        blurb:crowded
+          ? 'Brokers report margins thinning as more operators chase the same manifests — the era of an easy contract is well behind everyone.'
+          : 'A stable quarter for launch pricing, with steady demand and few surprises on the manifest.' }; } },
+  // Current public sentiment, phrased off the live support tier.
+  { kind:'morale', minEra:0, req:st=>true, weight:st=>1,
+    build:(st,eraIdx)=>{ const tier=publicMood().label.toLowerCase();
+      return { headline:`Polling: the public turns ${tier}`,
+        blurb:`This month's numbers put public sentiment toward the agency in ${tier} territory — the sort of figure that funds a program, or quietly fails to.` }; } },
+];
+
 /* ---------- Programs & long-term ambition (the "dream" layer) ----------
    Programs group the existing missions into named campaigns with objectives and a
    one-time completion bonus. Ambitions are the player's chosen long-term goal; the

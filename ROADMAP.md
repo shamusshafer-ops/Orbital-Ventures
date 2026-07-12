@@ -3404,3 +3404,70 @@ worth new work.** One narrow, deliberately-unscheduled watch-item: the Outliner/
 (`slice(0,8)`/`slice(0,3)`) so at very high late-game concurrency some items could silently fall off the
 visible list with no "+N more" affordance — noted here, not built, revisit only if actually observed in
 play (now directly testable via the dev menu's late-game preset).
+
+## Session — newspaper front pages, research-completion notice, countdown voice, external audio (2026-07-12)
+
+**Newspaper pop-out (backlog #97/E1.6), Slices A–C, all shipped.** `showMilestoneModal` (sim.js) re-skins
+into a full "Agency Wire" front page (`frontPageHTML`, render.js) for any authored first with `m.rep>=15`
+(the Chronicle's existing significance bar) — rep<15 firsts keep the original compact modal, byte-identical.
+Slice A reused the front-page entry `showMilestoneModal` already files via `pushFrontPage`, no duplicate
+copy. **Slice B**: the crewed-catastrophe budget-hearing modal now leads with a DISASTER front page (merged
+into the existing hearing modal rather than a second pop, since a standalone modal would've collided with
+the always-fired hearing without touching `finalizeLaunch`/`finish()` control flow); epoch `victory*` modals
+gained a "Read the front page ▸" link (these previously filed no Chronicle entry at all — now they do, so
+landmark firsts are browsable in the Chronicle for the first time); the Chronicle's own browser
+(`showFrontPage`) now shares the same renderer instead of a fourth parallel path. **Slice C-visual**: the
+newspaper modal got its own much larger size class (`max-width:960px;width:95vw`, vs the standard 440px/
+680px modals) plus 4 distinct era-reactive looks reusing the existing `body.era-*` visual system — heavy
+sepia halftone (Apollo), lighter grain + one green spot-color kicker (80s), glossy full-color magazine
+(90s/2000s), clean sans-serif card with a fake browser-chrome bar + mock URL (spacex/modern). Early-era
+paper colors are hardcoded light/cream regardless of the era's dark console palette (deliberate — a
+newspaper is a physical light object). **Slice C (filler)**: `NEWS_FILLER[]` (data.js, mirrors
+`CONTRACT_ARCHETYPES`' shape) — 5 state-derived archetypes (rival claim count, staff callout, facility
+note, market sentiment, public mood) render as 1-2 below-the-fold briefs on real editions only (milestone/
+disaster/victory, NOT Chronicle replays — replays stay static since re-rolling live state onto a historical
+entry would be anachronistic). Filler is never persisted. All wired through `showModal`'s existing ESC
+path, zero new interrupts anywhere in the chain. Suite: era-visual 56/56, regression 18/18, esc 36/36,
+save 34/34, plus dedicated smoke suites per slice.
+
+**Research-completion notice.** `completeResearch` (sim.js) previously only logged to the ops timeline —
+now also queues a compact (non-newspaper) modal via `queueResearchNotice`/`maybeShowResearchNotice`,
+draining `_pendingResearchDone` at the end of `stepTime` so a multi-node batch (e.g. a fast-forward) yields
+one notice listing all completed nodes, not one popup per node. Gated behind the existing `_pending*`
+decision chain and any open modal — never stacks. Reuses the tech tree's own node `desc` copy verbatim, no
+new content written. Shows regardless of `animEnabled` (the point was visibility). `test-research-notice.js`
+14/14.
+
+**Countdown voice (backlog #35/E1.6), Slices A–B.** User chose tones-only over `speechSynthesis` (the pad
+phase is only 1.76s of countdown — real spoken numbers would've required extending `PAD_PHASE_MS`, rippling
+into `test-pad-a.js`'s pins). **Slice A**: new global sound toggle (`ov_sound`, Settings menu — first mute
+control the game has ever had) + a real top-level `sfxBus` master gain all SFX route through (fixed a bug
+where `sfxSep`/`sfxBoom`/`sfxSplash`/`sfxBurn` bypassed the mixer straight to `destination`); countdown
+blips (988Hz) on each T-4→T-1 label change plus a liftoff confirm tone (1319Hz), via new `sfxBlip()`.
+**Slice B**: the existing weather go/no-go pad-start hold reskinned as "HOLD AT T-31s — WEATHER GO/NO-GO"
+(mechanics untouched) with a distinct low hold tone (392Hz), fired once per hold via a guard flag. Zero
+pad-phase timing changes either slice — `test-pad-a.js` 34/34 both times. `test-sound.js` 12/12 (Slice A).
+
+**External audio asset pipeline, Slices 1–2 (first binary assets this project has ever shipped).** A
+tech-lead scoping pass + a real Firefox `file://` test (this session's first use of the new "launch real
+firefox.exe via WSL interop" convention, not headless Playwright) settled the mechanism: `fetch()`/
+`decodeAudioData` is blocked on `file://`, and — confirmed by ear, not just by absence of errors —
+`createMediaElementSource` is silently muted on `file://` too. Real clips play via a bare `<audio>` element
+`.play()` **outside** the Web Audio graph, so `assets/` lives alongside `orbital-ventures.html`/`index.html`
+in the repo root with no build-time path rewriting, and mute is a second parallel path (`el.muted =
+!soundOn`) rather than routing through `sfxBus`. **Slice 1**: plumbing only — `AUDIO_CLIPS` manifest,
+`playClip(key, fallback)` (lazy per-key `<audio>` cache, falls back to the procedural equivalent on missing
+file/load/play failure, headless-safe via an `Audio!==undefined` guard), proven with a synthetic
+placeholder tone (never a copied system sound — clean licensing) wired to the T-31 hold. **Slice 2**: two
+real NASA clips (public domain, official nasa.gov hosting) — Apollo 11 "We have a lift-off" (~25s) for the
+Apollo visual era, STS-135 "Countdown to Launch" (~20s) for 80s/90s2000s/spacex. Both clips are 10-25x
+longer than the pad phase, so playback is deliberately decoupled from the pad-phase timer — the clip runs
+its natural length as an audio bed under ascent/coast, never gated at `padU>=0.96`/liftoff. New `stopClips()`
+added to every overlay-close path (`dismissAnim`/`skipAnim`/`scrubLaunch`/`endAnim`'s non-hold close) so a
+skip/dismiss doesn't leave a 20+ second clip playing — this wasn't needed for Slice 1's 350ms placeholder.
+`assets/CREDITS.md` tracks source/license/date per file. **Known gap, not blocking**: STS-135's 2011 audio
+is a weak thematic fit for the `spacex`/modern era (apollo/80s/90s2000s are well-matched) — a 3rd clip for
+the modern era is the natural next step. `test-sound.js` 19/19, pad/decision-panel suites unaffected.
+
+**No SAVE_VERSION bump anywhere in this session** — everything above is presentation, transient
+notification state, or `localStorage` preferences, no new persisted save-game fields.

@@ -494,16 +494,6 @@
   .pill.lock{color:var(--dim)}
   .pill.active{color:var(--ignite);border-color:#5a4419}
 
-  /* Era strip (M4a) */
-  .era-strip{display:flex;gap:4px;flex-wrap:wrap;margin:10px 0 4px}
-  .era-chip{flex:1;min-width:78px;border:1px solid var(--line);border-radius:6px;padding:6px 8px;
-    background:var(--panel2);text-align:center}
-  .era-chip .name{font-size:var(--fs-min);text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
-  .era-chip .yrs{font-family:var(--mono);font-size:var(--fs-min);color:var(--dim);margin-top:2px}
-  .era-chip.now{border-color:var(--ignite);background:#241a0c}
-  .era-chip.now .name{color:var(--ignite)}
-  .era-chip.past{opacity:.55}
-  .pill.era{color:var(--readout);border-color:#1f4248}
   .reward{font-family:var(--mono);font-size:12px;text-align:right;min-width:96px}
   .reward .p{color:var(--ok)} .reward .r{color:var(--readout)}
 
@@ -535,6 +525,70 @@
   .scrim{position:fixed;inset:0;background:rgba(6,10,12,.78);display:flex;align-items:center;justify-content:center;z-index:80} /* above the pinned topbar (40), show-bar btn (50), expanded views (60) and launch scene (70) — a modal backdrop must cover everything */
   .modal{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:26px;max-width:440px;text-align:center;max-height:88vh;overflow-y:auto}
   .modal.view{max-width:680px;width:92vw;text-align:left}   /* slice 6 deep-view modals (Programs/Rivals/Personnel): wide, left-aligned, scrollable */
+
+  /* ---- Newspaper front page — "The Agency Wire" (Slice C, 2026-07-12) ----
+     The shared frontPageHTML() content (milestone modal, disaster hearing, victory wire, Chronicle
+     browser) rendered large and evolving across the 4 visual eras. SIZE lives on the .modal.newspaper
+     container; the PAPER LOOK lives on the inner .frontpage card so it applies wherever frontPageHTML
+     is used. Per-era rules follow the same body.era-X{...} selector convention as the palette blocks
+     near the top of this stylesheet (grouped here so the whole feature reviews in one place). A
+     newspaper is a light physical artifact, so the early eras deliberately override to paper colors
+     rather than inheriting the console's dark era palette. Responsive: width:95vw + max-height + the
+     inherited .modal overflow-y keep it sane on narrow/short viewports. */
+  .modal.newspaper{max-width:960px;width:95vw;max-height:92vh;padding:20px}
+  @media (max-width:560px){ .modal.newspaper{padding:12px} }
+  .frontpage{font-family:Georgia,'Times New Roman',serif;text-align:center;position:relative;border-radius:6px;overflow:hidden;background:var(--panel2);border:1px solid var(--line)}
+  .frontpage .fp-body{padding:26px 30px}
+  .frontpage .fp-chrome{display:none}
+  .frontpage .fp-masthead{font-size:34px;font-weight:700;letter-spacing:.02em;line-height:1;color:var(--ink)}
+  .frontpage .fp-dateline{font-size:11px;letter-spacing:.3em;text-transform:uppercase;color:var(--dim);border-top:2px solid var(--ink);border-bottom:2px solid var(--ink);padding:5px 0;margin:10px 0 16px}
+  .frontpage .fp-kind{font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:var(--warn);margin-bottom:8px}
+  .frontpage .fp-headline{font-size:34px;line-height:1.12;margin:0 0 14px;color:var(--ink);text-transform:none;letter-spacing:0}
+  .frontpage .fp-dek{font-size:15px;line-height:1.5;color:var(--muted);margin:0 auto;max-width:48ch}
+  /* below-the-fold procedural filler briefs — visually secondary, separated by a rule; inherits the
+     era's ink colour/font (border-color defaults to currentColor) so it picks up each era's paper look */
+  .frontpage .fp-fold{margin-top:20px;padding-top:14px;border-top:1px solid;display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px 24px;text-align:left}
+  .frontpage .fp-brief-h{font-size:12.5px;font-weight:700;letter-spacing:.01em;margin-bottom:3px}
+  .frontpage .fp-brief-b{font-size:11.5px;line-height:1.45;opacity:.78}
+  body.era-spacex .frontpage .fp-fold{border-top-color:#262b30}
+  /* Apollo — sepia ink on cream newsprint, heavy halftone grain, thick double-rule masthead */
+  body.era-apollo .frontpage{background-color:#e6dcc4;color:#241f16;border:3px double #241f16;
+    background-image:radial-gradient(rgba(60,50,34,.20) 0.9px,transparent 1px),radial-gradient(rgba(60,50,34,.13) 0.9px,transparent 1px);
+    background-size:4px 4px,4px 4px;background-position:0 0,2px 2px}
+  body.era-apollo .frontpage .fp-masthead{color:#1c1810}
+  body.era-apollo .frontpage .fp-dateline{color:#5a4d34;border-color:#241f16;border-top-width:3px;border-bottom-width:3px}
+  body.era-apollo .frontpage .fp-kind{color:#7d2016;font-weight:700}
+  body.era-apollo .frontpage .fp-headline{color:#171309}
+  body.era-apollo .frontpage .fp-dek{color:#463c28}
+  /* 80s — lighter grayscale newsprint, ONE spot color (phosphor-green banner kicker), lighter grain */
+  body.era-80s .frontpage{background-color:#e4e5df;color:#22251d;border:2px solid #22251d;
+    background-image:radial-gradient(rgba(40,50,40,.12) 0.8px,transparent 1px);background-size:5px 5px}
+  body.era-80s .frontpage .fp-masthead{color:#181b13}
+  body.era-80s .frontpage .fp-dateline{color:#4a4d43;border-color:#22251d}
+  body.era-80s .frontpage .fp-kind{display:inline-block;background:#1e7d4a;color:#eafff0;padding:2px 12px;border-radius:2px;letter-spacing:.16em}
+  body.era-80s .frontpage .fp-headline{color:#14170f}
+  body.era-80s .frontpage .fp-dek{color:#40453a}
+  /* 90s2000s — glossy magazine: full color, no grain, saturated Y2K accents, pill kicker */
+  body.era-90s2000s .frontpage{background:linear-gradient(180deg,#ffffff,#eaeff5);color:#141a22;border:1px solid #ccd6e0;border-radius:12px;box-shadow:inset 0 1px 0 rgba(255,255,255,.9)}
+  body.era-90s2000s .frontpage .fp-masthead{color:#0f306a}
+  body.era-90s2000s .frontpage .fp-dateline{color:#5a6b80;border-color:#3ec6e0}
+  body.era-90s2000s .frontpage .fp-kind{display:inline-block;background:#ff8c3c;color:#fff;padding:3px 14px;border-radius:14px;letter-spacing:.14em}
+  body.era-90s2000s .frontpage .fp-headline{color:#0f1620}
+  body.era-90s2000s .frontpage .fp-dek{color:#3a4656}
+  /* SpaceX-modern — clean web/blog card: sans-serif, browser-chrome bar, no texture, near-black minimal */
+  body.era-spacex .frontpage{font-family:var(--sans);background:#0d1114;color:#f2f4f6;border:0.5px solid #262b30;border-radius:16px;text-align:left}
+  body.era-spacex .frontpage .fp-chrome{display:flex;align-items:center;gap:7px;padding:10px 15px;background:#14181c;border-bottom:0.5px solid #262b30}
+  body.era-spacex .frontpage .fp-dot{width:10px;height:10px;border-radius:50%;background:#3a4149}
+  body.era-spacex .frontpage .fp-dot:nth-child(1){background:#f85149}
+  body.era-spacex .frontpage .fp-dot:nth-child(2){background:#fbbf24}
+  body.era-spacex .frontpage .fp-dot:nth-child(3){background:#4ade80}
+  body.era-spacex .frontpage .fp-url{margin-left:10px;font-family:var(--mono);font-size:11px;color:#8a9199;letter-spacing:.02em}
+  body.era-spacex .frontpage .fp-body{padding:22px 26px 26px}
+  body.era-spacex .frontpage .fp-masthead{font-size:15px;font-weight:600;letter-spacing:-.01em;color:#8a9199;text-transform:uppercase}
+  body.era-spacex .frontpage .fp-dateline{border:0;padding:0;margin:2px 0 16px;color:#565c62;letter-spacing:.04em}
+  body.era-spacex .frontpage .fp-kind{display:inline-block;background:#14181c;border:0.5px solid #262b30;color:#3ec6ff;padding:3px 12px;border-radius:20px;margin-bottom:12px}
+  body.era-spacex .frontpage .fp-headline{font-size:30px;font-weight:700;letter-spacing:-.02em;color:#f2f4f6}
+  body.era-spacex .frontpage .fp-dek{margin:0;max-width:none;color:#b6bcc2;font-size:15px}
   .modal h2{font-size:18px;color:var(--ignite);margin-bottom:10px;text-transform:none;letter-spacing:0}
   .modal p{color:var(--muted);margin:10px 0}
   .modal .btn{margin-top:14px}
@@ -597,7 +651,7 @@
       <div class="stat hidden adv-only dom-economy" id="stRoyaltyWrap"><span class="k">PGM Royalties</span><span class="v" id="stRoyalty">—</span></div>
       <div class="stat hidden adv-only dom-economy" id="stPassiveWrap"><span class="k">Passive Income</span><span class="v" id="stPassive">—</span></div>
       <div class="stat hidden adv-only dom-economy" id="stInfraWrap"><span class="k">Facilities</span><span class="v" id="stInfra">—</span></div>
-      <div class="stat hidden adv-only dom-research" id="stSciWrap"><span class="k">Science</span><span class="v" id="stSci">—</span></div>
+      <div class="stat hidden dom-research" id="stSciWrap"><span class="k">Science</span><span class="v" id="stSci">—</span></div>
       <div class="stat hidden adv-only dom-economy" id="stDepotWrap"><span class="k">LEO Depot</span><span class="v" id="stDepot">—</span></div>
     </div>
     <div style="display:flex;align-items:center;gap:8px;margin-left:14px;align-self:center">
@@ -714,7 +768,6 @@
       <span style="flex:1"></span>
       <button class="btn ghost" id="skipBtn" onclick="skipResearch()">Skip to R&amp;D done</button>
     </div>
-    <div class="card" id="eraCard"></div>
     <div class="card dombar-research">
       <h2><span class="dom-dot" style="background:var(--dom-research)"></span>Technology Tree — capital + time into capability</h2>
       <p class="muted" style="font-size:12px;margin:-4px 0 10px">Each node unlocks an engine, material, or capability. Lines show prerequisites; dashed lines need a mission flown. Click a node to inspect it.</p>

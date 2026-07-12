@@ -588,7 +588,7 @@ function endAnim(hold){
     flightRefresh(); // push the post-flight frame to the Phaser texture (no-op in fallback)
     return;
   }
-  animState=null; $('animOverlay').classList.add('hidden'); sleepFlightScene(); if(A.done) A.done();
+  stopClips(); animState=null; $('animOverlay').classList.add('hidden'); sleepFlightScene(); if(A.done) A.done();
 }
 /* ---------- Flight-overlay manual camera (wheel-zoom + drag-pan) ----------
    New this slice: the full-screen flight overlay (ascent → trajectory → orbit, all
@@ -862,8 +862,8 @@ function startFlightScene(spec, done){
   }
 }
 function sfxCleanupClickHandler(A){ if(A&&A.clickHandler){ const vc=A.viewCanvas||A.cv; if(vc) vc.removeEventListener('click',A.clickHandler); A.clickHandler=null; } }
-function dismissAnim(){ const A=animState; if(!A) return; sfxStop(); sfxCleanupClickHandler(A); const done=A.done; animState=null; $('animOverlay').classList.add('hidden'); sleepFlightScene(); if(done) done(); }
-function skipAnim(){ const A=animState; if(A&&A.held){ dismissAnim(); return; } if(!A) return; cancelAnimationFrame(A.raf); sfxStop(); sfxCleanupClickHandler(A); animState=null; $('animOverlay').classList.add('hidden'); sleepFlightScene(); if(A.done) A.done(); }
+function dismissAnim(){ const A=animState; if(!A) return; sfxStop(); stopClips(); sfxCleanupClickHandler(A); const done=A.done; animState=null; $('animOverlay').classList.add('hidden'); sleepFlightScene(); if(done) done(); }
+function skipAnim(){ const A=animState; if(A&&A.held){ dismissAnim(); return; } if(!A) return; cancelAnimationFrame(A.raf); sfxStop(); stopClips(); sfxCleanupClickHandler(A); animState=null; $('animOverlay').classList.add('hidden'); sleepFlightScene(); if(A.done) A.done(); }
 function drawPostFlight(){
   const A=animState; if(!A) return;
   const ctx=A.ctx,W=A.cv.width,H=A.cv.height,s=A.spec;
@@ -1393,9 +1393,13 @@ function drawPad(t){
   ctx.save();
   ctx.textAlign='center'; ctx.font='bold 14px ui-monospace,monospace';
   let label, color;
-  if(padU<PAD_HOLD_FRAC){ const secs=Math.max(1,Math.ceil((PAD_HOLD_FRAC-padU)/PAD_HOLD_FRAC*4)); label='T-'+secs; color='rgba(210,224,255,0.85)'; }
-  else if(padU<0.96){ label='IGNITION'; color='rgba(255,196,110,0.92)'; }
-  else { label='LIFTOFF'; color='rgba(255,236,190,0.96)'; }
+  if(padU<PAD_HOLD_FRAC){ const secs=Math.max(1,Math.ceil((PAD_HOLD_FRAC-padU)/PAD_HOLD_FRAC*4)); label='T-'+secs; color='rgba(210,224,255,0.85)';
+    // countdown voice (tones only): one short quindar-flavor beep at each count change (T-4→T-1).
+    // Purely additive — no pad-phase timing math touched; reads the label the frame already computed.
+    if(A._lastCount!==secs){ A._lastCount=secs; sfxBlip(988, 0.11, 0.16); } }
+  else if(padU<0.96){ label='IGNITION'; color='rgba(255,196,110,0.92)'; } // ignition already marked audibly by sfxStartEngine above
+  else { label='LIFTOFF'; color='rgba(255,236,190,0.96)';
+    if(!A._liftoffBlip){ A._liftoffBlip=true; sfxBlip(1319, 0.2, 0.17); } } // distinct confirm tone — nothing else marks this instant (engine already running)
   ctx.fillStyle=color; ctx.fillText(label, W/2, H*0.13);
   ctx.restore();
 }
@@ -1421,7 +1425,16 @@ function drawScene(t){
     A.phase='pad';
     // E1.2 slice C: weather go/no-go holds right at pad open, before the countdown even ramps —
     // the range-weather call comes before anything else about the flight is known.
-    if(A.pendingDecision && A.pendingDecision.holdAt==='pad-start'){ A.held=true; drawPad(0); drawDecisionPanel(A.pendingDecision.buildPanel()); A.lastT=t; return; }
+    if(A.pendingDecision && A.pendingDecision.holdAt==='pad-start'){ A.held=true;
+      // Slice B: one low sustained "hold" note when the T-31s hold first appears — distinct from the
+      // T-4→T-1 countdown blips (988) and the liftoff confirm (1319); gated by soundOn via sfxBus.
+      // Slice 2: era-matched real NASA countdown audio at the T-31 hold. Apollo era → Apollo 11 clip;
+      // 80s/90s2000s/spacex → STS-135 clip (coarse — one Shuttle clip stands in for three visual eras).
+      // Plays to its natural ~20-25s length independent of the 3.2s pad visual (which is NOT extended);
+      // stopClips() on overlay close prevents a dangling clip. Falls back to the procedural hold tone
+      // (sfxBlip) if Audio is unavailable or the file fails to load/play.
+      if(!A._holdTone){ A._holdTone=true; playClip(eraVisualKey()==='apollo'?'apollo11':'sts135', ()=>sfxBlip(392, 0.55, 0.13)); }
+      drawPad(0); drawDecisionPanel(A.pendingDecision.buildPanel()); A.lastT=t; return; }
     drawPad(t); A.lastT=t; return;
   }
   // E1.2 slice C: the live-call decision holds RIGHT here, at the pad→ascent handoff — the

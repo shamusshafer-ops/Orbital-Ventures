@@ -22,17 +22,53 @@ function pushFrontPage(kind, icon, headline, dek){
   if(frontPages().length>FRONT_PAGE_CAP) frontPages().pop();
 }
 const FRONT_PAGE_KIND_LABEL={milestone:'MILESTONE', scoop:'SCOOPED', disaster:'DISASTER', rival:'RIVAL WIRE'};
-function frontPageHTML(e){
-  return `<div style="text-align:center;font-family:Georgia,'Times New Roman',serif">
-    <div style="font-size:11px;letter-spacing:.3em;color:var(--dim);text-transform:uppercase;border-top:2px solid var(--ink);border-bottom:2px solid var(--ink);padding:5px 0;margin-bottom:10px">The Agency Wire · ${dateOfAbs(e.abs)}</div>
-    <div style="font-size:11px;letter-spacing:.2em;color:var(--warn);text-transform:uppercase;margin-bottom:4px">${FRONT_PAGE_KIND_LABEL[e.kind]||''}</div>
-    <h2 style="margin:0 0 8px;font-size:22px">${e.icon} ${esc(e.headline)}</h2>
-    ${e.dek?`<p class="muted" style="font-size:13px">${esc(e.dek)}</p>`:''}
+// Slice C (2026-07-12): the shared newspaper renderer — now a class-driven .frontpage card so its
+// size (.modal.newspaper) and era-evolving look (body.era-X .frontpage {...} in shell.html) live in
+// CSS. Structure is intentionally era-agnostic: the fp-chrome bar is hidden except in the spacex era,
+// where CSS reveals it as a browser-chrome flourish. All four callers (milestone/hearing/victory/
+// Chronicle) render through this one function, so they inherit the treatment for free.
+// Slice C-filler (2026-07-12): pick 1-2 eligible NEWS_FILLER archetypes by weight (no repeats within
+// one edition), state-derived so they read as current. Each build() is guarded so a bad archetype can
+// never break the real edition it rides inside. Not persisted — re-picked fresh every render.
+function pickNewsFiller(n){
+  n=n||1; const st=state, eraIdx=eraIndex(currentEra());
+  const avail=(typeof NEWS_FILLER!=='undefined'?NEWS_FILLER:[]).filter(a=>eraIdx>=(a.minEra||0) && (!a.req||a.req(st)));
+  const out=[];
+  while(out.length<n && avail.length){
+    const total=avail.reduce((s,a)=>s+Math.max(0,a.weight?a.weight(st):1),0);
+    if(total<=0) break;
+    let r=Math.random()*total, idx=0;
+    for(;idx<avail.length-1;idx++){ r-=Math.max(0,avail[idx].weight?avail[idx].weight(st):1); if(r<=0) break; }
+    const arch=avail.splice(idx,1)[0]; // consume so an edition never repeats an archetype
+    try{ const b=arch.build(st, eraIdx); if(b && b.headline && b.blurb) out.push(b); }catch(err){}
+  }
+  return out;
+}
+function newsFillerHTML(briefs){
+  if(!briefs || !briefs.length) return '';
+  return `<div class="fp-fold">${briefs.map(b=>`<div class="fp-brief"><div class="fp-brief-h">${esc(b.headline)}</div><div class="fp-brief-b">${esc(b.blurb)}</div></div>`).join('')}</div>`;
+}
+// withFiller: the 3 live edition triggers (milestone/hearing/victory) pass true → 1-2 fresh below-the-
+// fold briefs are appended. The Chronicle replay (showFrontPage) passes nothing → no filler: a browsed
+// archive edition is history, so re-rolling current staff/rivals/mood onto it would be anachronistic.
+function frontPageHTML(e, withFiller){
+  const kind=FRONT_PAGE_KIND_LABEL[e.kind]||'';
+  const filler=withFiller ? newsFillerHTML(pickNewsFiller(1 + (Math.random()<0.5?1:0))) : '';
+  return `<div class="frontpage">
+    <div class="fp-chrome"><span class="fp-dot"></span><span class="fp-dot"></span><span class="fp-dot"></span><span class="fp-url">agencywire.news/${esc((kind||'wire').toLowerCase())}</span></div>
+    <div class="fp-body">
+      <div class="fp-masthead">The Agency Wire</div>
+      <div class="fp-dateline">${dateOfAbs(e.abs)}</div>
+      <div class="fp-kind">${kind}</div>
+      <h2 class="fp-headline">${e.icon} ${esc(e.headline)}</h2>
+      ${e.dek?`<p class="fp-dek">${esc(e.dek)}</p>`:''}
+      ${filler}
+    </div>
   </div>`;
 }
 function showFrontPage(idx){
   const e=frontPages()[idx]; if(!e) return;
-  showModal(`${frontPageHTML(e)}<button class="btn" style="width:100%;margin-top:10px" onclick="showChronicle('view')">← Back to the Chronicle</button>`, true);
+  showModal(`${frontPageHTML(e)}<button class="btn" style="width:100%;margin-top:10px" onclick="showChronicle('view')">← Back to the Chronicle</button>`, 'newspaper');
 }
 function frontPagesHTML(){
   if(!frontPages().length) return '<div class="dim" style="font-size:12px">No wire copy yet — a first, a disaster or a scoop will file the opening edition.</div>';
@@ -5181,23 +5217,6 @@ function renderMissions(){
   });
 }
 
-function renderEraCard(){
-  const box=$('eraCard'); const era=currentEra(); const idx=eraIndex(era);
-  const nextEra=ERAS[idx+1];
-  const stripHtml=ERAS.map((e,i)=>{
-    const cls = i===idx?'now':(i<idx?'past':'');
-    return `<div class="era-chip ${cls}"><div class="name">${e.name}</div><div class="yrs">${e.from}${e.to<9999?'–'+e.to:'+'}</div></div>`;
-  }).join('');
-  const nextNote = nextEra
-    ? `<span class="dim"> · ${nextEra.name} era opens ${nextEra.from}</span>`
-    : `<span class="dim"> · final era</span>`;
-  box.innerHTML=`
-    <h2>Era ${idx+1} of ${ERAS.length} — ${era.name}<span class="pill era">${era.from}${era.to<9999?'–'+era.to:'+'}</span>${nextNote}</h2>
-    <p class="muted" style="font-size:12px;margin:-4px 0 8px">${era.blurb}</p>
-    <div class="era-strip">${stripHtml}</div>
-    <p class="dim" style="font-size:12px;margin:8px 0 0">Eras are soft — calendar-driven context, not a hard lock on research below.</p>`;
-}
-
 /* ---------- tech tree (Civ/KSP-style horizontal flow) ---------- */
 function missionGateResearch(r){ return r.reqMissionDone ? (MISSIONS.find(m=>m.id===r.reqMissionDone)||{}).reqResearch : null; }
 let _tierCache=null;
@@ -5539,7 +5558,6 @@ function renderTechAction(){
     <span style="flex:1;min-width:8px"></span>${btn}</div>${nextRow}`;
 }
 function renderRnd(){
-  renderEraCard();
   renderTechTree();
   renderTechFilters();
   renderTechAction();

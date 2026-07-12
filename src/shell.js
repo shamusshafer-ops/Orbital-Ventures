@@ -63,6 +63,13 @@ function applyWide(){
   const fb=$('fullscreenBtn'); if(fb){ fb.textContent=fs?'⛶ Exit full screen':'⛶ Full screen'; fb.style.borderColor=fs?'var(--ignite)':''; fb.style.color=fs?'var(--ignite)':''; }
 }
 function toggleWide(){ wideOn=!wideOn; try{ localStorage.setItem('ov_wide', wideOn?'1':'0'); }catch(e){} applyWide(); syncTopbarH(); }
+// Sound on/off — a display-like preference persisted in localStorage (NOT the save), mirroring
+// ov_theme/ov_wide; default ON. Gates the single top-level SFX master bus (sfxBus) so one toggle
+// silences ALL audio — engine rumble, staging/explosion/splashdown one-shots, and countdown tones.
+let soundOn=true;
+try{ const v=localStorage.getItem('ov_sound'); if(v!==null) soundOn=(v==='1'); }catch(e){}
+function applySoundSetting(){ if(sfxBus&&sfxCtx){ try{ sfxBus.gain.setValueAtTime(soundOn?1:0, sfxCtx.currentTime); }catch(e){} } }
+function toggleSound(){ soundOn=!soundOn; try{ localStorage.setItem('ov_sound', soundOn?'1':'0'); }catch(e){} applySoundSetting(); }
 // keep --topbar-h in sync with the pinned header+opsbar so sticky panels always clear it
 function syncTopbarH(){ const tb=$('topbar'); if(!tb) return; const h=topbarHidden?0:tb.offsetHeight; if(h>0||topbarHidden){ try{ document.documentElement.style.setProperty('--topbar-h', h+'px'); }catch(e){} } }
 // Collapse/restore the whole top bar (stats banner + ops controls) so the top of the screen can be
@@ -499,15 +506,75 @@ function drawPlanetTex(ctx,S,b){
 }
 
 /* ── Procedural Audio (Web Audio API) ── */
-let sfxCtx=null, sfxMaster=null, sfxEngNodes=[], sfxBufCache={};
+let sfxCtx=null, sfxBus=null, sfxMaster=null, sfxEngNodes=[], sfxBufCache={};
 function sfxInit(){
   if(!sfxCtx){
     try{ sfxCtx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ return; }
   }
   if(sfxCtx.state==='suspended') sfxCtx.resume();
+  // sfxBus is the ONE real top-level master everything routes through (engine envelope + one-shots +
+  // countdown tones), gated by the ov_sound preference so a single toggle silences all audio. Created
+  // once; sfxMaster below is only the engine-rumble volume envelope and now feeds the bus, not destination.
+  if(!sfxBus){ sfxBus=sfxCtx.createGain(); sfxBus.connect(sfxCtx.destination); }
+  sfxBus.gain.value=(typeof soundOn==='undefined'||soundOn)?1:0; // reflect the persisted mute on every (re)init
   if(sfxMaster) sfxMaster.disconnect();
-  sfxMaster=sfxCtx.createGain(); sfxMaster.gain.value=0; sfxMaster.connect(sfxCtx.destination);
+  sfxMaster=sfxCtx.createGain(); sfxMaster.gain.value=0; sfxMaster.connect(sfxBus);
   sfxMaster._baseVol=0;
+}
+// Countdown/liftoff tone — a clean short beep (quindar-flavor). Procedural oscillator like the rest of
+// the system; routed through the master bus (mute silences it) and tracked in sfxEngNodes so a skip/
+// dismiss sfxStop() cancels any still-scheduled blip (no dangling tones). Connects to the bus, not the
+// engine envelope, so it isn't scaled by throttle/altitude fades.
+function sfxBlip(freq, dur, vol){
+  if(!sfxCtx||!sfxBus) return;
+  const t=sfxCtx.currentTime; dur=dur||0.12; vol=vol||0.16;
+  const o=sfxCtx.createOscillator(); o.type='sine'; o.frequency.value=freq;
+  const g=sfxCtx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.linearRampToValueAtTime(vol, t+0.008);
+  g.gain.setValueAtTime(vol, t+Math.max(0.02,dur-0.03));
+  g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+  o.connect(g); g.connect(sfxBus); o.start(t); o.stop(t+dur+0.02);
+  sfxEngNodes.push(o);
+}
+
+// ── External audio clips (Slice 1: plumbing only — no real sourced content yet) ──
+// Real sound files CANNOT route through the Web Audio graph on a file:// page: createMediaElementSource
+// is silently muted there (confirmed by a listening test), and fetch()/decodeAudioData is blocked for
+// file:// URLs. So clips play through a plain <audio> element via a bare el.play() — a SEPARATE mute path
+// from the procedural sfxBus. Both are gated by the same `soundOn` preference (via el.muted), so the one
+// Settings toggle controls all audio from the player's view. Every clip has a procedural FALLBACK: if the
+// file is missing / blocked / fails to play (or we're headless with no Audio), we invoke the existing sfx*
+// synthesis instead, so the game — and the standalone .html with no assets folder — stays fully playable.
+// Slice 2 adds real key→path entries to AUDIO_CLIPS; that manifest is the single place paths live.
+const AUDIO_CLIPS = {
+  apollo11: 'assets/audio/apollo11_countdown.mp3', // Apollo era
+  sts135:   'assets/audio/sts135_countdown.mp3',   // Shuttle era onward (80s / 90s2000s / spacex)
+};
+let clipCache = {};
+function playClip(key, fallback){
+  const fb = (typeof fallback==='function') ? fallback : function(){};
+  const path = AUDIO_CLIPS[key];
+  if(!path || typeof Audio==='undefined'){ fb(); return; } // unknown key / headless / no <audio> support → procedural
+  try{
+    let el = clipCache[key];
+    if(!el){ el = clipCache[key] = new Audio(path); el._ovFailed=false;
+      el.addEventListener('error', ()=>{ el._ovFailed=true; }, {once:true}); } // a load error marks the element dead
+    if(el._ovFailed){ fb(); return; }          // prior failure → don't retry the element, go straight to procedural
+    el.muted = !soundOn;                        // live mute, same preference the procedural path reads
+    try{ el.currentTime = 0; }catch(e){}        // allow re-trigger of an already-played clip
+    const p = el.play();
+    if(p && typeof p.catch==='function') p.catch(()=>{ fb(); }); // autoplay/decode/missing-file rejection → procedural
+  }catch(e){ fb(); }
+}
+// Stop + reset any playing clip(s). The real NASA countdowns run ~20-25s — far past the 3.2s pad visual
+// (which we deliberately do NOT extend) — so a clip is left to play on independently, like a broadcast
+// audio bed under the footage. But it must be cut the moment the flight overlay actually CLOSES, or a
+// 20s clip would keep playing after a skip/dismiss. Called from every overlay-close path; a no-op headless
+// (clipCache is empty when Audio is unavailable). Held post-flight cards keep the overlay open, so the
+// bed runs on under them until dismiss.
+function stopClips(){
+  for(const k in clipCache){ const el=clipCache[k]; if(el){ try{ el.pause(); el.currentTime=0; }catch(e){} } }
 }
 function sfxGetBuf(key,dur,fill){
   if(sfxBufCache[key]) return sfxBufCache[key];
@@ -584,7 +651,7 @@ function sfxSep(){
   const src=sfxCtx.createBufferSource(); src.buffer=buf;
   const lp=sfxCtx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=7000; lp.Q.value=0.5;
   const g=sfxCtx.createGain(); g.gain.value=0.5;
-  src.connect(lp); lp.connect(g); g.connect(sfxCtx.destination); src.start();
+  src.connect(lp); lp.connect(g); g.connect(sfxBus||sfxCtx.destination); src.start();
 }
 function sfxBoom(){
   if(!sfxCtx) return;
@@ -602,7 +669,7 @@ function sfxBoom(){
   const src=sfxCtx.createBufferSource(); src.buffer=buf;
   const lp=sfxCtx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=400; lp.Q.value=0.8;
   const g=sfxCtx.createGain(); g.gain.value=0.8;
-  src.connect(lp); lp.connect(g); g.connect(sfxCtx.destination); src.start();
+  src.connect(lp); lp.connect(g); g.connect(sfxBus||sfxCtx.destination); src.start();
 }
 function sfxSplash(){
   if(!sfxCtx) return;
@@ -611,19 +678,19 @@ function sfxSplash(){
   const src=sfxCtx.createBufferSource(); src.buffer=buf;
   const bp=sfxCtx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=1400; bp.Q.value=0.7;
   const g=sfxCtx.createGain(); g.gain.value=0.5;
-  src.connect(bp); bp.connect(g); g.connect(sfxCtx.destination); src.start();
+  src.connect(bp); bp.connect(g); g.connect(sfxBus||sfxCtx.destination); src.start();
   const th=sfxCtx.createOscillator(); th.type='sine'; th.frequency.setValueAtTime(120,sfxCtx.currentTime); th.frequency.exponentialRampToValueAtTime(45,sfxCtx.currentTime+0.25);
   const tg=sfxCtx.createGain(); tg.gain.setValueAtTime(0.4,sfxCtx.currentTime); tg.gain.exponentialRampToValueAtTime(0.001,sfxCtx.currentTime+0.3);
-  th.connect(tg); tg.connect(sfxCtx.destination); th.start(); th.stop(sfxCtx.currentTime+0.32);
+  th.connect(tg); tg.connect(sfxBus||sfxCtx.destination); th.start(); th.stop(sfxCtx.currentTime+0.32);
 }
 function sfxBurn(intensity){
   if(!sfxCtx) return;
   const s=sfxLoopSrc(sfxNoiseBuf('brown'));
   const lp=sfxCtx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=100; lp.Q.value=0.8;
   const g=sfxCtx.createGain(); g.gain.value=clampA(intensity*0.14,0.03,0.18);
-  s.connect(lp); lp.connect(g); g.connect(sfxCtx.destination); s.start(); sfxEngNodes.push(s);
+  s.connect(lp); lp.connect(g); g.connect(sfxBus||sfxCtx.destination); s.start(); sfxEngNodes.push(s);
   const sub=sfxCtx.createOscillator(); sub.type='sine'; sub.frequency.value=22;
   const sg=sfxCtx.createGain(); sg.gain.value=intensity*0.06;
-  sub.connect(sg); sg.connect(sfxCtx.destination); sub.start(); sfxEngNodes.push(sub);
+  sub.connect(sg); sg.connect(sfxBus||sfxCtx.destination); sub.start(); sfxEngNodes.push(sub);
 }
 
