@@ -3015,12 +3015,12 @@ duplicating.
       serialization + load-path unification (a); IndexedDB autosave ring + restore UI + import-safety
       net (b); 5 manual save slots behind "Manage saves…" (c). User-verified in Firefox at each
       slice. 381/381.
-- [~] **E0.3 Dirty-flag rendering** — **Slice 0 DONE 2026-07-12** (see session log below): a
+- [~] **E0.3 Dirty-flag rendering** — **Slices 0-1 DONE 2026-07-12** (see session logs below): a
       tech-lead planning pass revised the roadmap's original framing (below) — migrating all
       ~158 `render()` call sites to `invalidate(region)` was rejected as over-scoped; see the
       session log for the actual slice plan (0: snapshot harness ✅; 1: region extraction +
-      `renderAll()`/`invalidate()` shim; 2: `setHTML()` memoize + focus/scroll fix — the slice
-      that actually fixes the named bugs; 3: hot-path-only migration, optional; 4: deferred).
+      `renderAll()`/`invalidate()` shim ✅; 2: `setHTML()` memoize + focus/scroll fix — the slice
+      that actually fixes the named bugs, next up; 3: hot-path-only migration, optional; 4: deferred).
       Original framing, superseded: `render()` currently rebuilds all regions from ~136 call
       sites; move to `invalidate(region)` + per-region rebuild with a `renderAll()` escape
       hatch. Fixes focus/scroll loss in re-rendered panels, cuts time-warp GC churn, and is the
@@ -3545,3 +3545,36 @@ Full suite re-run after this slice: 21/21 new, all 37 other test files unaffecte
 pre-existing unrelated `test-progress-unify.js` shortfall as before this session. No SAVE_VERSION bump
 (pure test code, zero product-code changes). **Next: Slice 1** (extract `render()`'s body into the named
 regions as pure code motion, validated against this suite's snapshots).
+
+## Session — E0.3 Slice 1: render() → named regions, pure code motion (2026-07-12)
+
+**DONE, tests passing, not yet committed/pushed.** `render()`'s ~90-line body (render.js) is now 12 small
+functions, each tagged with one of the 8 region names from Slice 0's snapshot map (`chrome`, `badges`,
+`topbar`, `railLeft`, `railRight`, `scene`, `objective`, `log`, `modal`) in a `RENDER_REGIONS` array, run in
+**exactly the original statement order** — zero reordering. Some region names tag two non-adjacent
+functions (`chrome` and `topbar` each appear at two points in the original flow, `scene` splits into a
+command/bench/contracts dispatch and a later rnd/map/station dispatch, because `renderNextObjective()`
+originally sits between them) rather than force a single contiguous block per name — preserving today's
+exact execution order took priority over tidy grouping, since `syncTopbarH()`/`updateTimeArrows()`
+(`renderTopbarLayout`, kept last) depend on every other region having already written its content, per the
+Slice 0 planning pass's explicit warning about layout-order dependencies.
+
+New `renderAll()` runs every function in `RENDER_REGIONS` in order (identical to the old `render()` body,
+plus the same `RETIRED_TABS` migration preamble). New `invalidate(...names)` runs only the functions whose
+tag matches, in the same relative order — a strict subset of `renderAll()`'s work, so the two mechanisms
+can never disagree or drift apart. **`render()` itself is now a one-line permanent alias for `renderAll()`**
+— every one of the ~158 existing call sites across the codebase needed zero changes and keeps working
+forever; nothing calls `invalidate()` yet (that starts in a later slice, scoped to the warp-tick hot path
+per the Slice 0 plan). No new dead code either: `renderCCLeft`/`renderRailPersistent`/`renderNextObjective`/
+`renderLog` are pre-existing standalone functions, just registered directly as region entries rather than
+wrapped.
+
+**Validation:** Slice 0's `test-render-regions.js` — 21/21, byte-identical to pre-refactor (the actual
+region-by-region diffing the roadmap item asked for). Full suite: same single pre-existing unrelated
+`test-progress-unify.js` shortfall (24/34, unchanged pass count from before this slice), all other 36 files
+green. No SAVE_VERSION bump (pure render-layer code motion, no persisted-state change). **Needs a real-
+browser check**: general smoke pass across all 5 tabs, time-warp, and an open modal — this slice should be
+indistinguishable from before by design, so "nothing looks different" *is* the pass condition.
+
+**Next: Slice 2** — `setHTML(el, html)` with memoized last-written-string skip + focus/scroll capture-
+restore, the slice that actually fixes E0.3's two named bugs (focus/scroll loss, warp-tick DOM churn).

@@ -12838,11 +12838,23 @@ function applyEraVisual(){
   b.classList.remove('era-apollo','era-80s','era-90s2000s','era-spacex');
   b.classList.add('era-'+key);
 }
-function render(){
-  if(RETIRED_TABS[state.tab]) state.tab=RETIRED_TABS[state.tab]; // migrate retired tabs (slice 4: planner) on every render, incl. legacy saves
+// ---------- E0.3 Slice 1: named render regions ----------
+// Pure code motion — render()'s old body, split into these functions with zero statement
+// reordering (RENDER_REGIONS below runs them in the exact original top-to-bottom sequence).
+// A region name can tag more than one function (e.g. 'chrome', 'topbar', 'scene' each appear at
+// two non-adjacent points in the original flow) — invalidate(name) runs every function tagged
+// with that name, in original relative order, so a partial re-render can never observe a
+// different execution order than renderAll() would have produced for those same functions.
+// syncTopbarH()/updateTimeArrows() (renderTopbarLayout) must stay LAST — they read layout state
+// that has to reflect every other region's writes first.
+function renderChromeEra(){
   applyEraVisual();
+}
+function renderBadgesAndOutliner(){
   renderTabBadges(); // attention badges (UX pass)
   renderOutliner();  // the one-more-turn strip: every timer, one place, every scene
+}
+function renderTopbarStats(){
   $('coName').textContent=state.company;
   const era=currentEra();
   $('eraBadge').innerHTML=`Era ${eraIndex(era)+1}/${ERAS.length} · ${era.name}`;
@@ -12875,7 +12887,8 @@ function render(){
   if(sci>0){ $('stSci').textContent=Math.round(sci)+' ⚛'; $('stSci').style.color='var(--readout)'; }
   _statBump('stSci', sci);
   renderMarketStat();
-
+}
+function renderChromeShellRail(){
   // slice 2: tag the shell with the active view's kind (scene vs panel) so CSS / later
   // slices (right rail, center takeover) can react without re-deriving it.
   const shell=$('appShell');
@@ -12892,6 +12905,8 @@ function render(){
     for(const id of ['railCommand','railBench','railMap','railRnd','railStation','railContracts']){ const p=$(id); if(p) p.classList.toggle('hidden', id!==activePanel); }
     shell.classList.add('has-right'); // the persistent accordion always occupies the right rail, so keep it shown on every scene
   }
+}
+function renderChromeTabsViews(){
   $('tabCommand').classList.toggle('active',state.tab==='command');
   $('tabBench').classList.toggle('active',state.tab==='bench');
   $('tabRnd').classList.toggle('active',state.tab==='rnd');
@@ -12904,31 +12919,64 @@ function render(){
   $('stationView').classList.toggle('hidden',state.tab!=='station');
   placeOpsbar(); // on the Map view, the ops controls (row 2) ride across the top of the map card; elsewhere they stay pinned in the topbar
   applyDifficultyUI();
-
+}
+function renderTopbarStatus(){
   const ar=state.activeResearch;
   const rbar=$('rndStatusBar'); if(rbar) rbar.classList.toggle('hidden', !ar); // only show the bar while R&D is running
   $('rndStatus').innerHTML = ar
     ? `<span style="color:var(--readout)">R&D in progress:</span> ${RESEARCH.find(r=>r.id===ar.id).name} — <span class="num">${fmtTimeLeft(ar.monthsLeft)}</span> left`
     : '';
   $('skipBtn').disabled=!ar;
-
-  renderCCLeft(); // slice 4: the Basic-only focal guide lives in the left rail — rebuild on every scene
-  renderRailPersistent(); // persistent right-rail accordion (Mission Control / Flight Plan / Objectives)
+}
+function renderSceneMain(){
   if(state.tab==='command')renderCommandCenter(); else { stopCCScene(); pauseCapeGame(); }
   if(state.tab!=='bench') pauseVehGame();
   if(state.tab!=='map') pauseMapGame();
   if(state.tab!=='station') pauseStationGame();
   if(state.tab==='bench'){renderVehicleFamilies();renderBlueprints();renderLivery();renderParts();renderArchitecture();renderStages();renderBoosters();renderTransfer();renderLander();renderCrew();renderPower();renderWindowPlanner();renderRoutes();renderReadout();renderVehiclePreview();renderBenchLaunch();renderBenchTabs();}
   if(state.tab==='command' && hubPanel==='contracts'){ renderMissions(); renderContractsSubtabs(); } // slice 5: contracts drill content (passiveCard + missionList), split into sub-tabs
-  renderNextObjective();
+}
+function renderSceneRndMapStation(){
   if(state.tab==='rnd')renderRnd();
   if(state.tab==='map')renderMap();
   if(state.tab==='station')renderStation();
-  renderLog();
+}
+function renderModalRegion(){
   if(activeModal) activeModal(); // slice 6: keep an open deep-view modal (Programs/Rivals/Personnel) in sync with state
+}
+function renderTopbarLayout(){
   updateTimeArrows(); // keep the header time-arrow auto-run highlight in sync after a re-render
   syncTopbarH(); // keep sticky-panel offsets matched to the pinned topbar's actual height
 }
+const RENDER_REGIONS=[
+  {name:'chrome', fn:renderChromeEra},
+  {name:'badges', fn:renderBadgesAndOutliner},
+  {name:'topbar', fn:renderTopbarStats},
+  {name:'chrome', fn:renderChromeShellRail},
+  {name:'chrome', fn:renderChromeTabsViews},
+  {name:'topbar', fn:renderTopbarStatus},
+  {name:'railLeft', fn:renderCCLeft}, // slice 4: the Basic-only focal guide lives in the left rail — rebuild on every scene
+  {name:'railRight', fn:renderRailPersistent}, // persistent right-rail accordion (Mission Control / Flight Plan / Objectives)
+  {name:'scene', fn:renderSceneMain},
+  {name:'objective', fn:renderNextObjective},
+  {name:'scene', fn:renderSceneRndMapStation},
+  {name:'log', fn:renderLog},
+  {name:'modal', fn:renderModalRegion},
+  {name:'topbar', fn:renderTopbarLayout},
+];
+// render() stays a permanent alias for renderAll() — every existing call site (158 across the
+// codebase as of this slice) keeps working untouched, forever if need be. invalidate(...names) is
+// a strict subset of what renderAll() does (same functions, filtered by region name and run in
+// the same relative order), so the two mechanisms can't drift out of sync or conflict mid-
+// migration. No call site outside this file uses invalidate() yet — that starts in a later slice.
+function renderAll(){
+  if(RETIRED_TABS[state.tab]) state.tab=RETIRED_TABS[state.tab]; // migrate retired tabs (slice 4: planner) on every render, incl. legacy saves
+  for(const r of RENDER_REGIONS) r.fn();
+}
+function invalidate(...names){
+  for(const r of RENDER_REGIONS){ if(names.indexOf(r.name)!==-1) r.fn(); }
+}
+function render(){ renderAll(); }
 /* ---------- #18: Agency Command Center (home screen + ground site map) ----------
    The new default landing screen: an at-a-glance dashboard plus a drill-down "site
    map" of the ground facilities that routes into the existing tabs. The data layer
