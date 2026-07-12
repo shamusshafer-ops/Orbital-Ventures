@@ -727,6 +727,54 @@ const CONTRACT_ARCHETYPES=[
         blurb:'A commercial lab wants another regolith sample — a proven profile, a standing customer, no new ground broken.' }; } },
 ];
 
+/* ---------- Newspaper "below the fold" filler briefs (Slice C, 2026-07-12) ----------
+   Disposable procedural texture that rides UNDER the main story whenever a real Agency Wire edition
+   fires (milestone / disaster hearing / victory). Shaped like CONTRACT_ARCHETYPES above — {kind,
+   minEra, req(st), weight(st), build(st,eraIdx)} — but build() returns a {headline, blurb} text pair
+   instead of a mission. State-derived so the briefs read as current; req() gates out ones with nothing
+   to draw from (no named staff, no built facility) so a brief is never empty or nonsensical. NOTHING
+   here is persisted — it is picked fresh at render time and is not part of the Chronicle record (the
+   main headline/dek is). Voice: the dry, faintly wry in-world trade-press register of the archetype
+   blurbs and RIVAL_VOICE lines above — reporting, not joking. */
+const NEWS_FILLER=[
+  // A live rival's public posture, coloured by how many firsts it has actually claimed so far.
+  { kind:'rival', minEra:1, req:st=>RIVALS.length>0, weight:st=>1.4,
+    build:(st,eraIdx)=>{ const r=RIVALS[Math.floor(Math.random()*RIVALS.length)];
+      const claims=Object.keys(st.rivalFired||{}).filter(k=>k.indexOf(r.id+'|')===0).length;
+      const tail=claims>=3?`already sitting on ${claims} claimed firsts`
+        :claims>0?`${claims} claimed first${claims===1?'':'s'} to its name`
+        :'still hunting its first headline';
+      return { headline:`${r.name} briefs on the decade ahead`,
+        blurb:`The ${String(r.kind).toLowerCase()} talked reporters through an ambitious roadmap — ${tail}, and no shortage of confidence.` }; } },
+  // A named hire gets the weekend-feature treatment. Gated on having actually hired someone.
+  { kind:'staff', minEra:0, req:st=>Array.isArray(st.staff)&&st.staff.some(s=>personById(s.id)),
+    weight:st=>1+Math.min(2,((st.staff||[]).length)/4),
+    build:(st,eraIdx)=>{ const hired=(st.staff||[]).map(s=>personById(s.id)).filter(Boolean);
+      const p=hired[Math.floor(Math.random()*hired.length)]; const role=(roleLabel(p)||'staff').toLowerCase();
+      return { headline:`Trade press profiles ${p.name}, ${role}`,
+        blurb:`A weekend feature on the agency's newest name to know — long on temperament and short on anything the competition didn't already know.` }; } },
+  // A standing facility's "nothing to report" quarter. Gated on owning a built facility.
+  { kind:'facility', minEra:2, req:st=>{ for(const id in (st.facilities||{})) if(facilityBuilt(id)) return true; return false; },
+    weight:st=>1.2,
+    build:(st,eraIdx)=>{ const built=Object.keys(st.facilities||{}).filter(id=>facilityBuilt(id));
+      const id=built[Math.floor(Math.random()*built.length)]; const def=facilityById(id); const fs=facilityState(id);
+      const mods=(fs&&fs.modules)||1;
+      return { headline:`${def.name} logs another quiet quarter`,
+        blurb:`The ${mods}-module outpost keeps ticking over with no incidents to report — which, in this line of work, passes for good news.` }; } },
+  // The launch market, era-scaled: easy money early, crowded and margin-thin once the field fills in.
+  { kind:'market', minEra:1, req:st=>true, weight:st=>1,
+    build:(st,eraIdx)=>{ const crowded=eraIdx>=4;
+      return { headline:crowded?'Launch market crowds further':'Launch market holds steady',
+        blurb:crowded
+          ? 'Brokers report margins thinning as more operators chase the same manifests — the era of an easy contract is well behind everyone.'
+          : 'A stable quarter for launch pricing, with steady demand and few surprises on the manifest.' }; } },
+  // Current public sentiment, phrased off the live support tier.
+  { kind:'morale', minEra:0, req:st=>true, weight:st=>1,
+    build:(st,eraIdx)=>{ const tier=publicMood().label.toLowerCase();
+      return { headline:`Polling: the public turns ${tier}`,
+        blurb:`This month's numbers put public sentiment toward the agency in ${tier} territory — the sort of figure that funds a program, or quietly fails to.` }; } },
+];
+
 /* ---------- Programs & long-term ambition (the "dream" layer) ----------
    Programs group the existing missions into named campaigns with objectives and a
    one-time completion bonus. Ambitions are the player's chosen long-term goal; the
@@ -2106,18 +2154,24 @@ let _pendingHearing=null; // a fatal crewed loss awaiting a fund/defend/blame de
 function hearingFundCost(){ return round2(HEARING_FUND_COST*(1+eraStakesFrac())); } // later eras draw bigger scrutiny, same spirit as applyEraStakes
 function triggerHearing(ctx){
   if(_pendingHearing) return; // one at a time
-  _pendingHearing={ mName:ctx.m.name };
+  // Slice B: an ascent crewed loss files a 'disaster' front page immediately before this call
+  // (the strand branch does not) — capture that exact entry so the hearing modal can lead with the
+  // Agency Wire disaster edition. Match kind+headline+month so a strand hearing (or a stale wire top)
+  // never surfaces an unrelated front page.
+  const fp=frontPages()[0];
+  const disasterFP=(fp && fp.kind==='disaster' && fp.abs===absMonth() && fp.headline===ctx.m.name+': crew lost') ? fp : null;
+  _pendingHearing={ mName:ctx.m.name, frontPage:disasterFP };
   log('bad',`⚠ BUDGET HEARING — ${ctx.m.name}: the fatal loss draws government scrutiny. A decision is needed.`);
 }
 function maybeShowHearing(){ if(_pendingHearing && !_pendingSetback && !_pendingLogiMishap && !_pendingInquiry) showHearingModal(); } // setback/mishap/inquiry take priority
 function showHearingModal(){
   const s=_pendingHearing; if(!s) return;
   const cost=hearingFundCost(), fundOk=state.money>=cost;
-  showModal(`<h2 style="color:var(--bad)">⚠ Budget hearing</h2>
+  showModal(`${s.frontPage?frontPageHTML(s.frontPage, true)+'<div style="height:14px"></div>':''}<h2 style="color:var(--bad)">⚠ Budget hearing</h2>
     <p><b>${esc(s.mName)}</b> — a fatal loss draws a program review. How do you play it?</p>
     <button class="btn" onclick="resolveHearing('fund')" ${fundOk?'':'disabled'} title="${fundOk?'':'Not enough capital'}">Fund a safety program — ${fM(cost)} <span class="dim">· +${HEARING_SUPPORT_FUND} support</span></button>
     <button class="btn ghost" style="margin-top:8px" onclick="resolveHearing('defend')">Defend the program's record <span class="dim">· free, −${HEARING_REP_COST_DEFEND} rep, +${HEARING_SUPPORT_DEFEND} support</span></button>
-    <button class="btn ghost" style="margin-top:8px" onclick="resolveHearing('blame')">Blame the vendor <span class="dim">· free, +${HEARING_SUPPORT_BLAME} support, staff morale hit</span></button>`);
+    <button class="btn ghost" style="margin-top:8px" onclick="resolveHearing('blame')">Blame the vendor <span class="dim">· free, +${HEARING_SUPPORT_BLAME} support, staff morale hit</span></button>`, s.frontPage?'newspaper':undefined);
 }
 function resolveHearing(choice){
   const s=_pendingHearing; if(!s) return;
@@ -2317,15 +2371,27 @@ function showMilestoneModal(m, payout, rep){
   const race=rivalRaceLine(m.id);
   const hist=(m.blurb||'').match(/<span class="hist">([\s\S]*?)<\/span>/);
   pushFrontPage('milestone', '✦', m.name, race.replace(/<[^>]+>/g,''));
+  // shared payout/rep summary strip (identical in both the compact and front-page layouts)
+  const strip=`<div style="display:flex;gap:14px;justify-content:center;font-family:var(--mono);font-size:13px;margin:12px 0">
+      <span style="color:var(--ok)">+${fM(payout)}</span><span style="color:var(--readout)">+${rep} rep</span>
+    </div>`;
+  // Slice A: significant firsts (same rep≥15 bar the Chronicle uses) get the full "Agency Wire"
+  // front page, reusing the entry we just filed above so the modal and the Chronicle scoop match.
+  if((m.rep||0)>=15){
+    const e=frontPages()[0];
+    showModal(`${frontPageHTML(e, true)}
+    ${hist?`<p class="muted" style="font-family:Georgia,'Times New Roman',serif;font-size:13px;text-align:center;margin:8px 0">${hist[1]}</p>`:''}
+    ${strip}
+    <button class="btn launch" style="width:100%" onclick="hideModal()">Onward ▸</button>`, 'newspaper');
+    return;
+  }
   showModal(`<div style="text-align:center">
     <div style="font-size:12px;letter-spacing:.35em;color:var(--ignite);text-transform:uppercase;margin-bottom:6px">✦ Milestone ✦</div>
     <h2 style="margin:0 0 2px">${m.name}</h2>
     <div class="dim" style="font-family:var(--mono);font-size:12px;margin-bottom:10px">${dateStr()} · Era ${eraIndex(currentEra())+1}: ${currentEra().name}</div>
     ${race?`<p style="font-size:13px;margin:8px 0">${race}</p>`:''}
     ${hist?`<p class="muted" style="font-size:12px;margin:8px 0">${hist[1]}</p>`:''}
-    <div style="display:flex;gap:14px;justify-content:center;font-family:var(--mono);font-size:13px;margin:12px 0">
-      <span style="color:var(--ok)">+${fM(payout)}</span><span style="color:var(--readout)">+${rep} rep</span>
-    </div>
+    ${strip}
     <button class="btn launch" onclick="hideModal()">Onward ▸</button>
   </div>`);
 }
@@ -4175,6 +4241,7 @@ function completeResearch(){
   else if(r.effect.isp||r.effect.thrust){log('note',`R&D complete: ${r.name}. Engine performance improved${r.effect.isp?` (+${Math.round(r.effect.isp*100)}% Isp)`:''}${r.effect.thrust?`${r.effect.isp?',':''} (+${Math.round(r.effect.thrust*100)}% thrust)`:''}.`);}
   else { log('note',`R&D complete: ${r.name}.`); }
   _lastUnlockedTech=r.id; // #31 Slice 2: flag for tech-tree glow on next renderTechTree()
+  queueResearchNotice(r.id); // additive: queue a small completion pop-up (surfaced from stepTime; log above is unchanged)
   tryStartQueuedResearch(); // I5: auto-start the queued "next" pick if it's already affordable/eligible right now
 }
 // R&D epic slice 2: when the tech tree is re-shaped (nodes added / re-parented),
@@ -4195,10 +4262,42 @@ function reconcileResearch(){
   }
   for(const r of RESEARCH){ if(state.research[r.id] && r.effect){ if(r.effect.engine) state.unlocked[r.effect.engine]=true; if(r.effect.engines) r.effect.engines.forEach(id=>state.unlocked[id]=true); } }
 }
+// R&D completion notice — a small, dismiss-only pop-up so a finished tech node isn't missed in the ops
+// log (the log line below in completeResearch is kept exactly as-is; this is additive). Transient (not
+// persisted). It's an ARRAY so a batch of completions inside one time-step collapses to ONE modal
+// instead of stacking N. Lowest priority: surfaced from stepTime AFTER every decision modal, and only
+// when no decision is pending and nothing is already on screen — so it never stacks on the flight
+// overlay, a pending setback/mishap/inquiry/hearing, or a celebration. Reuses the plain compact .modal
+// (no 'newspaper'/frontPageHTML), and rides the global ESC handler for free like every other modal.
+let _pendingResearchDone=[];
+function queueResearchNotice(id){ if(id) _pendingResearchDone.push(id); }
+function maybeShowResearchNotice(){
+  if(!_pendingResearchDone.length) return;
+  if(_pendingSetback||_pendingLogiMishap||_pendingInquiry||_pendingHearing) return; // real decisions come first
+  const me=$('modal'); if(me&&me.classList&&!me.classList.contains('hidden')) return; // never clobber an open modal
+  const ids=_pendingResearchDone.slice(); _pendingResearchDone.length=0;
+  showResearchNoticeModal(ids);
+}
+function showResearchNoticeModal(ids){
+  const nodes=(ids||[]).map(id=>RESEARCH.find(r=>r.id===id)).filter(Boolean);
+  if(!nodes.length) return;
+  // 🔬 emoji stands in for a per-node icon (RESEARCH nodes have none); r.name/r.desc are injected raw
+  // to match renderTechTree exactly — the names/descs already carry HTML entities & the .hist span.
+  const eyebrow=`<div style="font-size:12px;letter-spacing:.35em;color:var(--readout);text-transform:uppercase;margin-bottom:6px">🔬 R&amp;D Complete 🔬</div>`;
+  const body = nodes.length===1
+    ? `<h2 style="margin:0 0 8px">${nodes[0].name}</h2>
+       <div class="sub" style="text-align:left;font-size:13px;margin:8px 0 4px">${nodes[0].desc}</div>`
+    : `<h2 style="margin:0 0 8px">${nodes.length} technologies completed</h2>
+       <div style="text-align:left;font-size:13px;margin:8px 0 4px">${nodes.map(r=>`<div style="margin:9px 0"><b>${r.name}</b><div class="dim" style="font-size:12px">${r.desc}</div></div>`).join('')}</div>`;
+  showModal(`<div style="text-align:center">${eyebrow}${body}
+    <button class="btn launch" onclick="hideModal()" style="margin-top:6px">Onward ▸</button>
+  </div>`);
+}
+
 // Time Granularity slice 2: the player's time control. Advance N days, then render + surface any
 // pending R&D setback (the one decision the monthly tick can raise). Overhead accrues per day, so
 // short steps cost proportionally — there is no free time.
-function stepTime(days){ advanceDays(days); if(!state.over){ render(); maybeShowSetback(); maybeShowMishap(); maybeShowRivalDisaster(); maybeShowEraInterstitial(); } }
+function stepTime(days){ advanceDays(days); if(!state.over){ render(); maybeShowSetback(); maybeShowMishap(); maybeShowRivalDisaster(); maybeShowEraInterstitial(); maybeShowResearchNotice(); } }
 function advanceMonth(){ stepTime(DAYS_PER_MONTH); } // #26: one-month step (used by the advisor nudge)
 // Header time arrows: ▸ day / ▸▸ week / ▸▸▸ month. First click on an arrow steps once; a second
 // click on the same arrow starts auto-advancing that unit at 1 step/sec; a third click (or clicking
@@ -5297,8 +5396,11 @@ function rollWeather(m){
 function showWeatherModal(m,wx){
   openFlightForDecision({m, crewed:(m.crew||0)>0}, { holdAt:'pad-start', buildPanel:()=>{
     const pen=Math.round(wx.penalty*100);
-    return { title:'LAUNCH WEATHER — GO / NO-GO', color:themeColor('warn'),
-      lines:[ `Range weather: ${wx.label}.`, wx.detail,
+    // Slice B reskin: frame the existing pad-start weather hold as the built-in T-31s hold (the last
+    // hold before terminal count). Additive flavor only — the go/no-go decision + buttons are unchanged.
+    return { title:'HOLD AT T-31s — WEATHER GO / NO-GO', color:themeColor('warn'),
+      lines:[ `Countdown holding at the built-in T-31s hold for the range poll.`,
+              `Range weather: ${wx.label}.`, wx.detail,
               `Scrubbing waits ~${wx.clear} month${wx.clear>1?'s':''}. Flying through it costs −${pen}% reliability, this flight only.` ],
       buttons:[
         {label:`Scrub & wait (${wx.clear} mo)`, ghost:true, action:scrubLaunch},
@@ -6157,6 +6259,7 @@ function showSettingsMenu(){
     showModal(`<h2 style="text-align:left">⚙ Menu</h2>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:4px">
         <button class="btn ghost" onclick="toggleAnim();render()">Animation: ${animEnabled?'On':'Off'}</button>
+        <button class="btn ghost" onclick="toggleSound();render()">🔊 Sound: ${soundOn?'On':'Off'}</button>
         <button class="btn ghost" onclick="toggleWide();render()">↔ Wide: ${wideOn?'On':'Off'}</button>
         <button class="btn ghost" onclick="toggleFullscreen();render()">${fs?'⛶ Exit full screen':'⛶ Full screen'}</button>
         <button class="btn ghost" onclick="hideModal();saveGame()">💾 Save</button>
@@ -6701,35 +6804,56 @@ function checkPersonnelEvents(){
 
 
 /* ---------- modals ---------- */
+// ── Slice B: epoch victories also file an Agency Wire front page and expose a "Read the front page ▸"
+// link that renders it through the SAME shared frontPageHTML path Slice A used for milestones and the
+// Chronicle browser. The victory modal keeps its existing copy/behavior — this only adds the link.
+// (Epoch victories previously filed NO wire entry at all — they short-circuit showMilestoneModal via
+// pendingCelebration — so this also finally records these landmark firsts in the Chronicle wire.)
+let _victoryWire=null; // transient: the front-page entry the currently-open victory modal links to
+function victoryWireBtn(icon, headline, dek){
+  const existing=frontPages().find(x=>x.kind==='milestone' && x.headline===headline); // guard: re-showing a victory must not duplicate its wire entry
+  if(existing){ _victoryWire=existing; }
+  else { pushFrontPage('milestone', icon, headline, dek); _victoryWire=frontPages()[0]; }
+  return `<button class="btn ghost" style="margin-top:8px" onclick="showVictoryWire()">Read the front page ▸</button>`;
+}
+function showVictoryWire(){
+  if(!_victoryWire) return;
+  showModal(`${frontPageHTML(_victoryWire, true)}<button class="btn launch" style="width:100%;margin-top:10px" onclick="hideModal()">Keep flying ▸</button>`, 'newspaper');
+}
 function victory(){
   showModal(`<h2>Orbit achieved.</h2>
     <p>You've flown a payload to orbital velocity — the summit of the Pioneer era. The core loop is proven: the rocket equation, staging, materials, and reliability all bent to your will.</p>
     <p class="muted">Next milestone (M2): <b>crew &amp; life support</b> — keeping people alive becomes a mass &amp; power budget that rides the same rocket equation.</p>
-    <button class="btn" onclick="hideModal()">Keep flying</button>`);
+    <button class="btn" onclick="hideModal()">Keep flying</button>
+    ${victoryWireBtn('🛰','First payload reaches orbit','Orbital velocity achieved — the summit of the Pioneer era.')}`);
 }
 function victoryM2(){
   showModal(`<h2>Endurance achieved.</h2>
     <p>Three crew, four months, home alive. You've felt the full weight of the rocket equation: life support is payload, payload is propellant, and closing the loop is the lever that bends the curve back.</p>
     <p class="muted">Next milestone (M3): the <b>Solar System opens</b> — real Δv budgets to the Moon and beyond, in-space refueling, and ISRU to break the tyranny for good.</p>
-    <button class="btn" onclick="hideModal()">Keep flying</button>`);
+    <button class="btn" onclick="hideModal()">Keep flying</button>
+    ${victoryWireBtn('👩‍🚀','Crew endures the long flight','Three crew, four months, home alive — closed-loop life support proven.')}`);
 }
 function victoryM3a(){
   showModal(`<h2>The Moon, captured and left.</h2>
     <p>You flew a crew to lunar orbit and brought them home — a journey of stacked burns where the transfer stage spent one tank across three deep-space maneuvers while hauling everything above it. The mass compounded at every leg, and you beat it.</p>
     <p class="muted">Coming next (M3a-ii): the <b>Lunar Lander</b> — a separate vehicle for descent and ascent — then M3b opens Mars, refueling depots, and ISRU.</p>
-    <button class="btn" onclick="hideModal()">Keep flying</button>`);
+    <button class="btn" onclick="hideModal()">Keep flying</button>
+    ${victoryWireBtn('🌙','Crew rounds the Moon and returns','A journey of stacked burns to lunar orbit and home again.')}`);
 }
 function victoryM3aii(){
   showModal(`<h2>Boots on the Moon.</h2>
     <p>Two crew rode the descent stage down, walked on another world, and lit the ascent engine to chase the transfer stage back into orbit — leaving the descent stage behind as a monument. Seven legs, three separate vehicles, one rocket equation, compounded all the way from the pad.</p>
     <p class="muted">Next (M3b): <b>Mars</b> — launch windows, in-space refueling depots, and ISRU propellant that finally breaks the tyranny of the equation.</p>
-    <button class="btn" onclick="hideModal()">Keep flying</button>`);
+    <button class="btn" onclick="hideModal()">Keep flying</button>
+    ${victoryWireBtn('🌙','Boots on the Moon','Two crew walk on another world and fly the ascent stage home.')}`);
 }
 function victoryM3b(){
   showModal(`<h2>Mars, and back.</h2>
     <p>Three crew spent five hundred and twenty days away from Earth — captured into Mars orbit, held through the long wait for the return window, then burned for home. Closed-loop life support, which never paid for itself on shorter flights, finally did its job: every kilogram it saved was a kilogram of propellant you didn't have to carry across two planets.</p>
     <p class="muted">Next (M3b-ii): <b>refueling depots and ISRU</b> — pre-position propellant in orbit so the next mission doesn't have to launch with a full tank from Earth.</p>
-    <button class="btn" onclick="hideModal()">Keep flying</button>`);
+    <button class="btn" onclick="hideModal()">Keep flying</button>
+    ${victoryWireBtn('🔴','Mars, reached and returned','Three crew, five hundred and twenty days away, home again.')}`);
 }
 function victoryM3bii(reason){
   const body = reason==='depot'
@@ -6738,7 +6862,8 @@ function victoryM3bii(reason){
   showModal(`<h2>The tyranny, broken.</h2>
     ${body}
     <p class="muted">This is the lever the whole rocket equation has been pointing at: every kilogram you don't have to launch from Earth's surface is a kilogram you never have to multiply through every leg that follows.</p>
-    <button class="btn" onclick="hideModal()">Keep flying</button>`);
+    <button class="btn" onclick="hideModal()">Keep flying</button>
+    ${victoryWireBtn('⛽','The tyranny of the rocket equation, broken','Propellant staged or made off-Earth — the equation finally bends.')}`);
 }
 // ── CE4(c): era-scaled failure stakes + bailout retune ────────────────────────────────
 // "Stakes rise, they don't shift earlier": every term is keyed to eraStakesFrac(), which is 0 in
@@ -6931,6 +7056,10 @@ function resolveReturnFocus(savedEl, savedId, getById, body){
   if(savedId){ const byId=getById && getById(savedId); if(byId && byId.isConnected) return byId; }
   return body||null;
 }
+// view: true → the wide, left-aligned, scrollable deep-view layout (.modal.view); a non-empty string →
+// that literal modal modifier class (e.g. 'newspaper' → .modal.newspaper, the large era-evolving front
+// page); anything falsy → the plain centered .modal. Pure + headless-testable (see test-era-visual).
+function modalClassName(view){ return 'modal'+(view===true?' view':view?(' '+view):''); }
 function showModal(html,view){ try{ timeInterrupt(); }catch(e){}
   const modalEl=$('modal');
   // Only treat a closed→open transition as "opening": while a deep-view modal is open, render() re-invokes
@@ -6938,7 +7067,7 @@ function showModal(html,view){ try{ timeInterrupt(); }catch(e){}
   // be an in-modal element) nor yank focus back to the first control on each live re-render.
   const wasOpen=!!(modalEl && modalEl.classList && !modalEl.classList.contains('hidden'));
   if(!wasOpen){ try{ const prev=document.activeElement; _modalReturnFocus=prev||null; _modalReturnFocusId=(prev&&prev.id)?prev.id:null; }catch(e){ _modalReturnFocus=null; _modalReturnFocusId=null; } }
-  const mb=$('modalBody');mb.className='modal'+(view?' view':'');mb.innerHTML=html;modalEl.classList.remove('hidden');mb.classList.add('modal-entering');mb.addEventListener('animationend',()=>mb.classList.remove('modal-entering'),{once:true});
+  const mb=$('modalBody');mb.className=modalClassName(view);mb.innerHTML=html;modalEl.classList.remove('hidden');mb.classList.add('modal-entering');mb.addEventListener('animationend',()=>mb.classList.remove('modal-entering'),{once:true});
   try{ if(!mb.getAttribute('tabindex')) mb.setAttribute('tabindex','-1'); }catch(e){}
   if(!wasOpen){ try{ const f=mb.querySelectorAll(MODAL_FOCUSABLE_SEL); if(f && f.length){ f[0].focus(); } else { mb.focus(); } }catch(e){} }
 } // view=true → wide, left-aligned, scrollable deep-view layout
@@ -7597,6 +7726,13 @@ function applyWide(){
   const fb=$('fullscreenBtn'); if(fb){ fb.textContent=fs?'⛶ Exit full screen':'⛶ Full screen'; fb.style.borderColor=fs?'var(--ignite)':''; fb.style.color=fs?'var(--ignite)':''; }
 }
 function toggleWide(){ wideOn=!wideOn; try{ localStorage.setItem('ov_wide', wideOn?'1':'0'); }catch(e){} applyWide(); syncTopbarH(); }
+// Sound on/off — a display-like preference persisted in localStorage (NOT the save), mirroring
+// ov_theme/ov_wide; default ON. Gates the single top-level SFX master bus (sfxBus) so one toggle
+// silences ALL audio — engine rumble, staging/explosion/splashdown one-shots, and countdown tones.
+let soundOn=true;
+try{ const v=localStorage.getItem('ov_sound'); if(v!==null) soundOn=(v==='1'); }catch(e){}
+function applySoundSetting(){ if(sfxBus&&sfxCtx){ try{ sfxBus.gain.setValueAtTime(soundOn?1:0, sfxCtx.currentTime); }catch(e){} } }
+function toggleSound(){ soundOn=!soundOn; try{ localStorage.setItem('ov_sound', soundOn?'1':'0'); }catch(e){} applySoundSetting(); }
 // keep --topbar-h in sync with the pinned header+opsbar so sticky panels always clear it
 function syncTopbarH(){ const tb=$('topbar'); if(!tb) return; const h=topbarHidden?0:tb.offsetHeight; if(h>0||topbarHidden){ try{ document.documentElement.style.setProperty('--topbar-h', h+'px'); }catch(e){} } }
 // Collapse/restore the whole top bar (stats banner + ops controls) so the top of the screen can be
@@ -8033,15 +8169,75 @@ function drawPlanetTex(ctx,S,b){
 }
 
 /* ── Procedural Audio (Web Audio API) ── */
-let sfxCtx=null, sfxMaster=null, sfxEngNodes=[], sfxBufCache={};
+let sfxCtx=null, sfxBus=null, sfxMaster=null, sfxEngNodes=[], sfxBufCache={};
 function sfxInit(){
   if(!sfxCtx){
     try{ sfxCtx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ return; }
   }
   if(sfxCtx.state==='suspended') sfxCtx.resume();
+  // sfxBus is the ONE real top-level master everything routes through (engine envelope + one-shots +
+  // countdown tones), gated by the ov_sound preference so a single toggle silences all audio. Created
+  // once; sfxMaster below is only the engine-rumble volume envelope and now feeds the bus, not destination.
+  if(!sfxBus){ sfxBus=sfxCtx.createGain(); sfxBus.connect(sfxCtx.destination); }
+  sfxBus.gain.value=(typeof soundOn==='undefined'||soundOn)?1:0; // reflect the persisted mute on every (re)init
   if(sfxMaster) sfxMaster.disconnect();
-  sfxMaster=sfxCtx.createGain(); sfxMaster.gain.value=0; sfxMaster.connect(sfxCtx.destination);
+  sfxMaster=sfxCtx.createGain(); sfxMaster.gain.value=0; sfxMaster.connect(sfxBus);
   sfxMaster._baseVol=0;
+}
+// Countdown/liftoff tone — a clean short beep (quindar-flavor). Procedural oscillator like the rest of
+// the system; routed through the master bus (mute silences it) and tracked in sfxEngNodes so a skip/
+// dismiss sfxStop() cancels any still-scheduled blip (no dangling tones). Connects to the bus, not the
+// engine envelope, so it isn't scaled by throttle/altitude fades.
+function sfxBlip(freq, dur, vol){
+  if(!sfxCtx||!sfxBus) return;
+  const t=sfxCtx.currentTime; dur=dur||0.12; vol=vol||0.16;
+  const o=sfxCtx.createOscillator(); o.type='sine'; o.frequency.value=freq;
+  const g=sfxCtx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.linearRampToValueAtTime(vol, t+0.008);
+  g.gain.setValueAtTime(vol, t+Math.max(0.02,dur-0.03));
+  g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+  o.connect(g); g.connect(sfxBus); o.start(t); o.stop(t+dur+0.02);
+  sfxEngNodes.push(o);
+}
+
+// ── External audio clips (Slice 1: plumbing only — no real sourced content yet) ──
+// Real sound files CANNOT route through the Web Audio graph on a file:// page: createMediaElementSource
+// is silently muted there (confirmed by a listening test), and fetch()/decodeAudioData is blocked for
+// file:// URLs. So clips play through a plain <audio> element via a bare el.play() — a SEPARATE mute path
+// from the procedural sfxBus. Both are gated by the same `soundOn` preference (via el.muted), so the one
+// Settings toggle controls all audio from the player's view. Every clip has a procedural FALLBACK: if the
+// file is missing / blocked / fails to play (or we're headless with no Audio), we invoke the existing sfx*
+// synthesis instead, so the game — and the standalone .html with no assets folder — stays fully playable.
+// Slice 2 adds real key→path entries to AUDIO_CLIPS; that manifest is the single place paths live.
+const AUDIO_CLIPS = {
+  apollo11: 'assets/audio/apollo11_countdown.mp3', // Apollo era
+  sts135:   'assets/audio/sts135_countdown.mp3',   // Shuttle era onward (80s / 90s2000s / spacex)
+};
+let clipCache = {};
+function playClip(key, fallback){
+  const fb = (typeof fallback==='function') ? fallback : function(){};
+  const path = AUDIO_CLIPS[key];
+  if(!path || typeof Audio==='undefined'){ fb(); return; } // unknown key / headless / no <audio> support → procedural
+  try{
+    let el = clipCache[key];
+    if(!el){ el = clipCache[key] = new Audio(path); el._ovFailed=false;
+      el.addEventListener('error', ()=>{ el._ovFailed=true; }, {once:true}); } // a load error marks the element dead
+    if(el._ovFailed){ fb(); return; }          // prior failure → don't retry the element, go straight to procedural
+    el.muted = !soundOn;                        // live mute, same preference the procedural path reads
+    try{ el.currentTime = 0; }catch(e){}        // allow re-trigger of an already-played clip
+    const p = el.play();
+    if(p && typeof p.catch==='function') p.catch(()=>{ fb(); }); // autoplay/decode/missing-file rejection → procedural
+  }catch(e){ fb(); }
+}
+// Stop + reset any playing clip(s). The real NASA countdowns run ~20-25s — far past the 3.2s pad visual
+// (which we deliberately do NOT extend) — so a clip is left to play on independently, like a broadcast
+// audio bed under the footage. But it must be cut the moment the flight overlay actually CLOSES, or a
+// 20s clip would keep playing after a skip/dismiss. Called from every overlay-close path; a no-op headless
+// (clipCache is empty when Audio is unavailable). Held post-flight cards keep the overlay open, so the
+// bed runs on under them until dismiss.
+function stopClips(){
+  for(const k in clipCache){ const el=clipCache[k]; if(el){ try{ el.pause(); el.currentTime=0; }catch(e){} } }
 }
 function sfxGetBuf(key,dur,fill){
   if(sfxBufCache[key]) return sfxBufCache[key];
@@ -8118,7 +8314,7 @@ function sfxSep(){
   const src=sfxCtx.createBufferSource(); src.buffer=buf;
   const lp=sfxCtx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=7000; lp.Q.value=0.5;
   const g=sfxCtx.createGain(); g.gain.value=0.5;
-  src.connect(lp); lp.connect(g); g.connect(sfxCtx.destination); src.start();
+  src.connect(lp); lp.connect(g); g.connect(sfxBus||sfxCtx.destination); src.start();
 }
 function sfxBoom(){
   if(!sfxCtx) return;
@@ -8136,7 +8332,7 @@ function sfxBoom(){
   const src=sfxCtx.createBufferSource(); src.buffer=buf;
   const lp=sfxCtx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=400; lp.Q.value=0.8;
   const g=sfxCtx.createGain(); g.gain.value=0.8;
-  src.connect(lp); lp.connect(g); g.connect(sfxCtx.destination); src.start();
+  src.connect(lp); lp.connect(g); g.connect(sfxBus||sfxCtx.destination); src.start();
 }
 function sfxSplash(){
   if(!sfxCtx) return;
@@ -8145,20 +8341,20 @@ function sfxSplash(){
   const src=sfxCtx.createBufferSource(); src.buffer=buf;
   const bp=sfxCtx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=1400; bp.Q.value=0.7;
   const g=sfxCtx.createGain(); g.gain.value=0.5;
-  src.connect(bp); bp.connect(g); g.connect(sfxCtx.destination); src.start();
+  src.connect(bp); bp.connect(g); g.connect(sfxBus||sfxCtx.destination); src.start();
   const th=sfxCtx.createOscillator(); th.type='sine'; th.frequency.setValueAtTime(120,sfxCtx.currentTime); th.frequency.exponentialRampToValueAtTime(45,sfxCtx.currentTime+0.25);
   const tg=sfxCtx.createGain(); tg.gain.setValueAtTime(0.4,sfxCtx.currentTime); tg.gain.exponentialRampToValueAtTime(0.001,sfxCtx.currentTime+0.3);
-  th.connect(tg); tg.connect(sfxCtx.destination); th.start(); th.stop(sfxCtx.currentTime+0.32);
+  th.connect(tg); tg.connect(sfxBus||sfxCtx.destination); th.start(); th.stop(sfxCtx.currentTime+0.32);
 }
 function sfxBurn(intensity){
   if(!sfxCtx) return;
   const s=sfxLoopSrc(sfxNoiseBuf('brown'));
   const lp=sfxCtx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=100; lp.Q.value=0.8;
   const g=sfxCtx.createGain(); g.gain.value=clampA(intensity*0.14,0.03,0.18);
-  s.connect(lp); lp.connect(g); g.connect(sfxCtx.destination); s.start(); sfxEngNodes.push(s);
+  s.connect(lp); lp.connect(g); g.connect(sfxBus||sfxCtx.destination); s.start(); sfxEngNodes.push(s);
   const sub=sfxCtx.createOscillator(); sub.type='sine'; sub.frequency.value=22;
   const sg=sfxCtx.createGain(); sg.gain.value=intensity*0.06;
-  sub.connect(sg); sg.connect(sfxCtx.destination); sub.start(); sfxEngNodes.push(sub);
+  sub.connect(sg); sg.connect(sfxBus||sfxCtx.destination); sub.start(); sfxEngNodes.push(sub);
 }
 
 /* E1.2 slice C (visual overhaul): theme-synced HUD chrome for the flight overlay's canvas rendering.
@@ -8751,7 +8947,7 @@ function endAnim(hold){
     flightRefresh(); // push the post-flight frame to the Phaser texture (no-op in fallback)
     return;
   }
-  animState=null; $('animOverlay').classList.add('hidden'); sleepFlightScene(); if(A.done) A.done();
+  stopClips(); animState=null; $('animOverlay').classList.add('hidden'); sleepFlightScene(); if(A.done) A.done();
 }
 /* ---------- Flight-overlay manual camera (wheel-zoom + drag-pan) ----------
    New this slice: the full-screen flight overlay (ascent → trajectory → orbit, all
@@ -9025,8 +9221,8 @@ function startFlightScene(spec, done){
   }
 }
 function sfxCleanupClickHandler(A){ if(A&&A.clickHandler){ const vc=A.viewCanvas||A.cv; if(vc) vc.removeEventListener('click',A.clickHandler); A.clickHandler=null; } }
-function dismissAnim(){ const A=animState; if(!A) return; sfxStop(); sfxCleanupClickHandler(A); const done=A.done; animState=null; $('animOverlay').classList.add('hidden'); sleepFlightScene(); if(done) done(); }
-function skipAnim(){ const A=animState; if(A&&A.held){ dismissAnim(); return; } if(!A) return; cancelAnimationFrame(A.raf); sfxStop(); sfxCleanupClickHandler(A); animState=null; $('animOverlay').classList.add('hidden'); sleepFlightScene(); if(A.done) A.done(); }
+function dismissAnim(){ const A=animState; if(!A) return; sfxStop(); stopClips(); sfxCleanupClickHandler(A); const done=A.done; animState=null; $('animOverlay').classList.add('hidden'); sleepFlightScene(); if(done) done(); }
+function skipAnim(){ const A=animState; if(A&&A.held){ dismissAnim(); return; } if(!A) return; cancelAnimationFrame(A.raf); sfxStop(); stopClips(); sfxCleanupClickHandler(A); animState=null; $('animOverlay').classList.add('hidden'); sleepFlightScene(); if(A.done) A.done(); }
 function drawPostFlight(){
   const A=animState; if(!A) return;
   const ctx=A.ctx,W=A.cv.width,H=A.cv.height,s=A.spec;
@@ -9545,6 +9741,14 @@ function finishHandoff(){
 // countdown hold + ignition ramp) changes what's drawn; ascent itself always sees ignite=1.
 function drawPad(t){
   const A=animState;
+  // Slice 2 (relocated): the era-matched real NASA countdown clip plays on EVERY launch, fired once at
+  // the start of the pad phase. drawPad is the unconditional pad-phase entry for every launch (padDur>0)
+  // — it's called each normal pad frame AND as drawPad(0) inside the weather-hold branch — so this guard
+  // fires the clip exactly once per flight regardless of whether a weather hold appears. The 392Hz sfxBlip
+  // is now purely the procedural FALLBACK, used only when Audio is unavailable or the file fails to play.
+  // Runs to its natural ~20-25s length independent of the 3.2s pad visual (timing untouched); stopClips()
+  // on any overlay close (dismiss/skip/scrub/end) cuts it.
+  if(!A._countdownClipPlayed){ A._countdownClipPlayed=true; playClip(eraVisualKey()==='apollo'?'apollo11':'sts135', ()=>sfxBlip(392, 0.55, 0.13)); }
   const padU=clampA((A.padDur>0?t/A.padDur:1),0,1);
   A.ignite = padU<PAD_HOLD_FRAC ? 0 : smooth(clampA((padU-PAD_HOLD_FRAC)/(1-PAD_HOLD_FRAC),0,1));
   if(!A._engineStarted && padU>=PAD_HOLD_FRAC){
@@ -9556,9 +9760,13 @@ function drawPad(t){
   ctx.save();
   ctx.textAlign='center'; ctx.font='bold 14px ui-monospace,monospace';
   let label, color;
-  if(padU<PAD_HOLD_FRAC){ const secs=Math.max(1,Math.ceil((PAD_HOLD_FRAC-padU)/PAD_HOLD_FRAC*4)); label='T-'+secs; color='rgba(210,224,255,0.85)'; }
-  else if(padU<0.96){ label='IGNITION'; color='rgba(255,196,110,0.92)'; }
-  else { label='LIFTOFF'; color='rgba(255,236,190,0.96)'; }
+  if(padU<PAD_HOLD_FRAC){ const secs=Math.max(1,Math.ceil((PAD_HOLD_FRAC-padU)/PAD_HOLD_FRAC*4)); label='T-'+secs; color='rgba(210,224,255,0.85)';
+    // countdown voice (tones only): one short quindar-flavor beep at each count change (T-4→T-1).
+    // Purely additive — no pad-phase timing math touched; reads the label the frame already computed.
+    if(A._lastCount!==secs){ A._lastCount=secs; sfxBlip(988, 0.11, 0.16); } }
+  else if(padU<0.96){ label='IGNITION'; color='rgba(255,196,110,0.92)'; } // ignition already marked audibly by sfxStartEngine above
+  else { label='LIFTOFF'; color='rgba(255,236,190,0.96)';
+    if(!A._liftoffBlip){ A._liftoffBlip=true; sfxBlip(1319, 0.2, 0.17); } } // distinct confirm tone — nothing else marks this instant (engine already running)
   ctx.fillStyle=color; ctx.fillText(label, W/2, H*0.13);
   ctx.restore();
 }
@@ -9584,7 +9792,11 @@ function drawScene(t){
     A.phase='pad';
     // E1.2 slice C: weather go/no-go holds right at pad open, before the countdown even ramps —
     // the range-weather call comes before anything else about the flight is known.
-    if(A.pendingDecision && A.pendingDecision.holdAt==='pad-start'){ A.held=true; drawPad(0); drawDecisionPanel(A.pendingDecision.buildPanel()); A.lastT=t; return; }
+    if(A.pendingDecision && A.pendingDecision.holdAt==='pad-start'){ A.held=true;
+      // The countdown clip (or its 392Hz procedural fallback) is fired at the top of drawPad below — now
+      // on every launch, not just weather holds — so the hold no longer plays a separate tone of its own;
+      // it's already playing/underneath by the time this hold frame renders. drawPad(0) triggers it here.
+      drawPad(0); drawDecisionPanel(A.pendingDecision.buildPanel()); A.lastT=t; return; }
     drawPad(t); A.lastT=t; return;
   }
   // E1.2 slice C: the live-call decision holds RIGHT here, at the pad→ascent handoff — the
@@ -11371,17 +11583,53 @@ function pushFrontPage(kind, icon, headline, dek){
   if(frontPages().length>FRONT_PAGE_CAP) frontPages().pop();
 }
 const FRONT_PAGE_KIND_LABEL={milestone:'MILESTONE', scoop:'SCOOPED', disaster:'DISASTER', rival:'RIVAL WIRE'};
-function frontPageHTML(e){
-  return `<div style="text-align:center;font-family:Georgia,'Times New Roman',serif">
-    <div style="font-size:11px;letter-spacing:.3em;color:var(--dim);text-transform:uppercase;border-top:2px solid var(--ink);border-bottom:2px solid var(--ink);padding:5px 0;margin-bottom:10px">The Agency Wire · ${dateOfAbs(e.abs)}</div>
-    <div style="font-size:11px;letter-spacing:.2em;color:var(--warn);text-transform:uppercase;margin-bottom:4px">${FRONT_PAGE_KIND_LABEL[e.kind]||''}</div>
-    <h2 style="margin:0 0 8px;font-size:22px">${e.icon} ${esc(e.headline)}</h2>
-    ${e.dek?`<p class="muted" style="font-size:13px">${esc(e.dek)}</p>`:''}
+// Slice C (2026-07-12): the shared newspaper renderer — now a class-driven .frontpage card so its
+// size (.modal.newspaper) and era-evolving look (body.era-X .frontpage {...} in shell.html) live in
+// CSS. Structure is intentionally era-agnostic: the fp-chrome bar is hidden except in the spacex era,
+// where CSS reveals it as a browser-chrome flourish. All four callers (milestone/hearing/victory/
+// Chronicle) render through this one function, so they inherit the treatment for free.
+// Slice C-filler (2026-07-12): pick 1-2 eligible NEWS_FILLER archetypes by weight (no repeats within
+// one edition), state-derived so they read as current. Each build() is guarded so a bad archetype can
+// never break the real edition it rides inside. Not persisted — re-picked fresh every render.
+function pickNewsFiller(n){
+  n=n||1; const st=state, eraIdx=eraIndex(currentEra());
+  const avail=(typeof NEWS_FILLER!=='undefined'?NEWS_FILLER:[]).filter(a=>eraIdx>=(a.minEra||0) && (!a.req||a.req(st)));
+  const out=[];
+  while(out.length<n && avail.length){
+    const total=avail.reduce((s,a)=>s+Math.max(0,a.weight?a.weight(st):1),0);
+    if(total<=0) break;
+    let r=Math.random()*total, idx=0;
+    for(;idx<avail.length-1;idx++){ r-=Math.max(0,avail[idx].weight?avail[idx].weight(st):1); if(r<=0) break; }
+    const arch=avail.splice(idx,1)[0]; // consume so an edition never repeats an archetype
+    try{ const b=arch.build(st, eraIdx); if(b && b.headline && b.blurb) out.push(b); }catch(err){}
+  }
+  return out;
+}
+function newsFillerHTML(briefs){
+  if(!briefs || !briefs.length) return '';
+  return `<div class="fp-fold">${briefs.map(b=>`<div class="fp-brief"><div class="fp-brief-h">${esc(b.headline)}</div><div class="fp-brief-b">${esc(b.blurb)}</div></div>`).join('')}</div>`;
+}
+// withFiller: the 3 live edition triggers (milestone/hearing/victory) pass true → 1-2 fresh below-the-
+// fold briefs are appended. The Chronicle replay (showFrontPage) passes nothing → no filler: a browsed
+// archive edition is history, so re-rolling current staff/rivals/mood onto it would be anachronistic.
+function frontPageHTML(e, withFiller){
+  const kind=FRONT_PAGE_KIND_LABEL[e.kind]||'';
+  const filler=withFiller ? newsFillerHTML(pickNewsFiller(1 + (Math.random()<0.5?1:0))) : '';
+  return `<div class="frontpage">
+    <div class="fp-chrome"><span class="fp-dot"></span><span class="fp-dot"></span><span class="fp-dot"></span><span class="fp-url">agencywire.news/${esc((kind||'wire').toLowerCase())}</span></div>
+    <div class="fp-body">
+      <div class="fp-masthead">The Agency Wire</div>
+      <div class="fp-dateline">${dateOfAbs(e.abs)}</div>
+      <div class="fp-kind">${kind}</div>
+      <h2 class="fp-headline">${e.icon} ${esc(e.headline)}</h2>
+      ${e.dek?`<p class="fp-dek">${esc(e.dek)}</p>`:''}
+      ${filler}
+    </div>
   </div>`;
 }
 function showFrontPage(idx){
   const e=frontPages()[idx]; if(!e) return;
-  showModal(`${frontPageHTML(e)}<button class="btn" style="width:100%;margin-top:10px" onclick="showChronicle('view')">← Back to the Chronicle</button>`, true);
+  showModal(`${frontPageHTML(e)}<button class="btn" style="width:100%;margin-top:10px" onclick="showChronicle('view')">← Back to the Chronicle</button>`, 'newspaper');
 }
 function frontPagesHTML(){
   if(!frontPages().length) return '<div class="dim" style="font-size:12px">No wire copy yet — a first, a disaster or a scoop will file the opening edition.</div>';
@@ -16530,23 +16778,6 @@ function renderMissions(){
   });
 }
 
-function renderEraCard(){
-  const box=$('eraCard'); const era=currentEra(); const idx=eraIndex(era);
-  const nextEra=ERAS[idx+1];
-  const stripHtml=ERAS.map((e,i)=>{
-    const cls = i===idx?'now':(i<idx?'past':'');
-    return `<div class="era-chip ${cls}"><div class="name">${e.name}</div><div class="yrs">${e.from}${e.to<9999?'–'+e.to:'+'}</div></div>`;
-  }).join('');
-  const nextNote = nextEra
-    ? `<span class="dim"> · ${nextEra.name} era opens ${nextEra.from}</span>`
-    : `<span class="dim"> · final era</span>`;
-  box.innerHTML=`
-    <h2>Era ${idx+1} of ${ERAS.length} — ${era.name}<span class="pill era">${era.from}${era.to<9999?'–'+era.to:'+'}</span>${nextNote}</h2>
-    <p class="muted" style="font-size:12px;margin:-4px 0 8px">${era.blurb}</p>
-    <div class="era-strip">${stripHtml}</div>
-    <p class="dim" style="font-size:12px;margin:8px 0 0">Eras are soft — calendar-driven context, not a hard lock on research below.</p>`;
-}
-
 /* ---------- tech tree (Civ/KSP-style horizontal flow) ---------- */
 function missionGateResearch(r){ return r.reqMissionDone ? (MISSIONS.find(m=>m.id===r.reqMissionDone)||{}).reqResearch : null; }
 let _tierCache=null;
@@ -16888,7 +17119,6 @@ function renderTechAction(){
     <span style="flex:1;min-width:8px"></span>${btn}</div>${nextRow}`;
 }
 function renderRnd(){
-  renderEraCard();
   renderTechTree();
   renderTechFilters();
   renderTechAction();
