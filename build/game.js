@@ -8170,6 +8170,10 @@ function drawPlanetTex(ctx,S,b){
 
 /* ── Procedural Audio (Web Audio API) ── */
 let sfxCtx=null, sfxBus=null, sfxMaster=null, sfxEngNodes=[], sfxBufCache={};
+// Engine-sound redesign (2026-07-12): per-layer gain nodes kept here so sfxUpdateEngine can crossfade the
+// MIX (not just overall volume) across flight phases; the quiet pre-ignition countdown bed; and the next
+// scheduled crackle-burst time. All transient (nulled by sfxStop), never persisted.
+let sfxEngLayers=null, sfxCountdown=null, sfxCrackleNext=0;
 function sfxInit(){
   if(!sfxCtx){
     try{ sfxCtx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ return; }
@@ -8222,63 +8226,128 @@ function sfxNoiseBuf(type){
 function sfxStop(){
   sfxEngNodes.forEach(n=>{ try{n.stop();}catch(e){} });
   sfxEngNodes=[];
+  sfxEngLayers=null; sfxCountdown=null; // drop per-layer/countdown refs so a stale flight's nodes aren't touched
   if(sfxMaster){ sfxMaster.gain.cancelScheduledValues(sfxCtx.currentTime); sfxMaster.gain.value=0; sfxMaster._baseVol=0; }
 }
 function sfxLoopSrc(buf){ const s=sfxCtx.createBufferSource(); s.buffer=buf; s.loop=true; return s; }
+// Engine-sound redesign (2026-07-12, user's 5-layer procedural spec). Each layer has its OWN fixed
+// mix-ratio gain node (0-1); the overall vol/throttle/altitude scaling lives ONLY in sfxMaster's envelope
+// (set per frame by sfxUpdateEngine) so nothing is scaled by vol twice (the vol² near-silence trap fixed
+// earlier today). sfxUpdateEngine crossfades those per-layer ratios across flight phases via qNorm/altFrac.
+// Frequencies stay above the ~30-35Hz floor most laptop speakers can't reproduce; noise layers meant as
+// "rumble" (brown, sawtooth) are lowpassed so their raw grain reads as smooth rumble, not buzz.
 function sfxStartEngine(engineCount, totalProp){
   if(!sfxCtx) return;
   sfxStop();
-  // vol also drives sfxMaster's own throttle-envelope gain (via _baseVol, applied every frame in
-  // sfxUpdateEngine) — that's the ONE place vol should apply. Confirmed via a live analyser trace
-  // (2026-07-12) that each layer's own gain node was ALSO being set to vol*ratio at creation, so the
-  // signal was effectively scaled by vol TWICE (vol² instead of vol) — squaring an already-modest value
-  // for small early vehicles (0.29² ≈ 0.08), which read as "basically silent" even though every part of
-  // the graph was technically wired correctly. Layer gains below are now fixed mix ratios, scaled by
-  // sfxMaster's envelope exactly once. Frequencies were also raised out of the sub-80Hz range most
-  // laptop/PC speakers can't reproduce at all (separate, earlier fix, confirmed audible but faint).
   const vol=Math.min(1.0, 0.22+0.14*Math.sqrt(engineCount)+0.07*Math.log10(Math.max(1,totalProp)));
-  // Retuned 2026-07-12 after user feedback ("buzzing mosquito, too rapid and too high pitched") on the
-  // first pass, which pushed everything up to 55-178Hz to fix inaudibility — overshot into whiny
-  // territory, and raising the brown-noise lowpass cutoff let its raw graininess through as buzz instead
-  // of a smooth rumble. Pulled back into a felt-bass range (35-95Hz) and added a lowpass after the
-  // sawtooth (its harmonics are the main source of "buzzy" harshness) to tame it into a rumble rather
-  // than a whine, while staying above the ~20-30Hz hard floor most speakers can't reproduce at all.
+  const ec=engineCount||1, tp=Math.max(1,totalProp||0);
+  // Layer 1 — brown noise, lowpass ~200Hz: the deep rumble bed.
   const s1=sfxLoopSrc(sfxNoiseBuf('brown'));
-  const lp=sfxCtx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=100+engineCount*10; lp.Q.value=0.9;
-  const s1G=sfxCtx.createGain(); s1G.gain.value=0.6;
-  s1.connect(lp); lp.connect(s1G); s1G.connect(sfxMaster); s1.start(); sfxEngNodes.push(s1);
-  const sub=sfxCtx.createOscillator(); sub.type='sine'; sub.frequency.value=35+engineCount*3;
-  const subG=sfxCtx.createGain(); subG.gain.value=0.40;
-  sub.connect(subG); subG.connect(sfxMaster); sub.start(); sfxEngNodes.push(sub);
-  const rumble=sfxCtx.createOscillator(); rumble.type='sawtooth';
-  rumble.frequency.value=45+engineCount*3+Math.cbrt(totalProp)*0.8;
-  const rLp=sfxCtx.createBiquadFilter(); rLp.type='lowpass'; rLp.frequency.value=180; rLp.Q.value=0.7;
-  const rG=sfxCtx.createGain(); rG.gain.value=0.34;
-  rumble.connect(rLp); rLp.connect(rG); rG.connect(sfxMaster); rumble.start(); sfxEngNodes.push(rumble);
-  const mid=sfxCtx.createOscillator(); mid.type='triangle'; mid.frequency.value=65+engineCount*5;
-  const mG=sfxCtx.createGain(); mG.gain.value=0.20;
-  mid.connect(mG); mG.connect(sfxMaster); mid.start(); sfxEngNodes.push(mid);
-  const s2=sfxLoopSrc(sfxNoiseBuf('white'));
-  const bp=sfxCtx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=500+engineCount*30; bp.Q.value=1.0;
-  const cG=sfxCtx.createGain(); cG.gain.value=0.08;
-  s2.connect(bp); bp.connect(cG); cG.connect(sfxMaster); s2.start(); sfxEngNodes.push(s2);
-  // No scheduled ramp here — sfxUpdateEngine's per-frame setTargetAtTime (called the same/next frame via
-  // drawPad's drawAscent(0,false)) owns the ramp-up; a competing linearRampToValueAtTime here would race
-  // it on the same AudioParam with no cancelScheduledValues between them.
+  const s1lp=sfxCtx.createBiquadFilter(); s1lp.type='lowpass'; s1lp.frequency.value=190+ec*6; s1lp.Q.value=0.7;
+  const brownG=sfxCtx.createGain(); brownG.gain.value=0.42;
+  s1.connect(s1lp); s1lp.connect(brownG); brownG.connect(sfxMaster); s1.start(); sfxEngNodes.push(s1);
+  // Layer 2 — pink noise, bandpass ~100-500Hz: the engine roar. (sfxNoiseBuf('pink') already existed, unused.)
+  const s2=sfxLoopSrc(sfxNoiseBuf('pink'));
+  const s2bp=sfxCtx.createBiquadFilter(); s2bp.type='bandpass'; s2bp.frequency.value=250; s2bp.Q.value=0.55;
+  const pinkG=sfxCtx.createGain(); pinkG.gain.value=0.35;
+  s2.connect(s2bp); s2bp.connect(pinkG); pinkG.connect(sfxMaster); s2.start(); sfxEngNodes.push(s2);
+  // Layer 3 — sawtooth ~55-70Hz ("shifted up for laptops"), lowpassed to tame harmonic buzz: fake bass.
+  const saw=sfxCtx.createOscillator(); saw.type='sawtooth'; saw.frequency.value=55+ec*2+Math.cbrt(tp)*0.7;
+  const sawLp=sfxCtx.createBiquadFilter(); sawLp.type='lowpass'; sawLp.frequency.value=140; sawLp.Q.value=0.7;
+  const sawG=sfxCtx.createGain(); sawG.gain.value=0.30;
+  saw.connect(sawLp); sawLp.connect(sawG); sawG.connect(sfxMaster); saw.start(); sfxEngNodes.push(saw);
+  // Layer 4 — white noise, bandpass ~500-3000Hz: combustion hiss. Near-silent floor; qNorm drives it up.
+  const s4=sfxLoopSrc(sfxNoiseBuf('white'));
+  const s4bp=sfxCtx.createBiquadFilter(); s4bp.type='bandpass'; s4bp.frequency.value=1200; s4bp.Q.value=0.5;
+  const whiteG=sfxCtx.createGain(); whiteG.gain.value=0.05;
+  s4.connect(s4bp); s4bp.connect(whiteG); whiteG.connect(sfxMaster); s4.start(); sfxEngNodes.push(s4);
+  // Layer 5 (crackle, 3-8kHz shock-diamond/instability transients) is NOT a sustained source — it's
+  // scheduled as short bursts in sfxUpdateEngine, its rate rising with qNorm.
+  sfxEngLayers={ brown:{g:brownG,base:0.42}, pink:{g:pinkG,base:0.35}, saw:{g:sawG,base:0.30}, white:{g:whiteG,base:0.14} };
+  sfxCrackleNext=0;
+  sfxIgnitionBurst(vol); // sharp ignition transient layered under the sustained loop just starting
+  // sfxUpdateEngine's per-frame setTargetAtTime (called the same/next frame via drawPad's drawAscent(0,false))
+  // owns the ramp-up; a competing linearRampToValueAtTime here would race it with no cancelScheduledValues.
   sfxMaster.gain.cancelScheduledValues(sfxCtx.currentTime);
   sfxMaster.gain.value=0;
   sfxMaster._baseVol=vol;
 }
-function sfxUpdateEngine(throttle, altFrac){
+// Per-frame engine mix. sfxMaster's gain = overall vol×throttle×altitude (unchanged idiom). On top of that,
+// crossfade the per-layer RATIOS by phase: deep/low-biased at rest (hold-down: q=0,af=0), high-end (white +
+// scheduled crackle) up during Max-Q for turbulence/buffeting, and leaner/more-tonal at altitude (thinner
+// air): brown recedes, saw is boosted, white/crackle fall away. qNorm defaults to 0 (pad hold-down / any
+// caller that doesn't pass it) — the deep baseline voice.
+function sfxUpdateEngine(throttle, altFrac, qNorm){
   if(!sfxMaster||!sfxCtx) return;
-  const atmoFade=1-Math.pow(clampA(altFrac,0,1),1.8)*0.7;
-  const baseVol=(sfxMaster._baseVol!=null)?sfxMaster._baseVol:0.3; // was `||0.3` — 0 is a valid pre-ignition value, not "unset"
+  const t=sfxCtx.currentTime, af=clampA(altFrac,0,1), q=clampA(qNorm||0,0,1);
+  const atmoFade=1-Math.pow(af,1.8)*0.7;
+  const baseVol=(sfxMaster._baseVol!=null)?sfxMaster._baseVol:0.3; // 0 is a valid pre-ignition value, not "unset"
   const vol=baseVol*throttle*atmoFade;
-  sfxMaster.gain.setTargetAtTime(clampA(vol,0,1), sfxCtx.currentTime, 0.05);
+  sfxMaster.gain.setTargetAtTime(clampA(vol,0,1), t, 0.05);
+  const L=sfxEngLayers; if(!L) return;
+  const buffet=1 + q*0.28*(Math.random()*2-1); // fast per-frame gain jitter during Max-Q reads as buffeting
+  L.brown.g.gain.setTargetAtTime(L.brown.base*(1-0.35*af), t, 0.08);          // deep bed recedes a little at altitude
+  L.pink.g.gain.setTargetAtTime(clampA(L.pink.base*(1-0.15*af)*buffet,0,1), t, 0.06); // roar mostly persists
+  L.saw.g.gain.setTargetAtTime(L.saw.base*(1+0.30*af), t, 0.08);              // tonal focus grows at altitude
+  L.white.g.gain.setTargetAtTime(clampA(L.white.base*(0.35+q*1.25)*(1-0.55*af)*buffet,0,1), t, q>0.3?0.02:0.06); // hiss up at Max-Q, gone at altitude
+  // Crackle bursts — scheduled on the audio clock (frame-rate independent); silent in the deep hold-down
+  // (q≈0), faster during Max-Q. Routed through sfxMaster (so vol/throttle/altitude apply once, no double-scale).
+  if(t>=sfxCrackleNext && q>0.04){
+    sfxCrackle(0.3+q*0.8);
+    sfxCrackleNext = t + 0.05 + Math.random()*(0.45 - q*0.35);
+  }
 }
 function sfxEngineOff(){
   if(!sfxMaster||!sfxCtx) return;
   sfxMaster.gain.setTargetAtTime(0, sfxCtx.currentTime, 0.4);
+}
+// Countdown presence + pre-swell. A subtle low filtered-noise bed under the T-4→T-1 blips (not a literal
+// hydraulics sim), routed straight to the bus (NOT sfxMaster, whose envelope is still 0 pre-ignition), with
+// a slow ~0.8Hz LFO wobble = "spooling up" anticipation. `frac` is countdown progress 0→1 (padU/PAD_HOLD_FRAC);
+// the bed swells toward ignition. sfxStop (called by sfxStartEngine at ignition, and on skip/dismiss) cuts it.
+function sfxCountdownBed(frac){
+  if(!sfxCtx||!sfxBus) return;
+  if(sfxMaster && sfxMaster._baseVol>0) return; // engine already ignited — no countdown bed
+  if(!sfxCountdown){
+    const s=sfxLoopSrc(sfxNoiseBuf('brown'));
+    const lp=sfxCtx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=130; lp.Q.value=0.7;
+    const g=sfxCtx.createGain(); g.gain.value=0.0001;
+    s.connect(lp); lp.connect(g); g.connect(sfxBus); s.start();
+    const lfo=sfxCtx.createOscillator(); lfo.type='sine'; lfo.frequency.value=0.8; // slow spool wobble
+    const lfoG=sfxCtx.createGain(); lfoG.gain.value=0.010;
+    lfo.connect(lfoG); lfoG.connect(g.gain); lfo.start(); // LFO ADDS to g.gain's intrinsic (set below) — no ramp/setTarget race
+    sfxCountdown={g}; sfxEngNodes.push(s, lfo);
+  }
+  const u=clampA(frac,0,1);
+  sfxCountdown.g.gain.setTargetAtTime(0.012 + 0.05*u*u, sfxCtx.currentTime, 0.1); // quiet → pre-swell toward ignition
+}
+// Ignition transient — one sharp, short burst layered UNDER the sustained loop. Adapted from the sfxBoom
+// noise-burst shape (shorter/punchier) plus a quick low thump. Routed straight to the bus so it hits at full
+// punch, independent of sfxMaster's envelope (which starts at 0 and ramps up across the hold-down).
+function sfxIgnitionBurst(vol){
+  if(!sfxCtx||!sfxBus) return;
+  const t=sfxCtx.currentTime;
+  const buf=sfxGetBuf('ign', 0.55, (d,sr)=>{ let v=0; for(let i=0;i<d.length;i++){ const tt=i/sr;
+    const env=tt<0.006?tt/0.006:Math.exp(-(tt-0.006)*7);
+    v=(v+0.05*(Math.random()*2-1))/1.05; d[i]=(v*4+(Math.random()*2-1)*0.5)*env; } });
+  const src=sfxCtx.createBufferSource(); src.buffer=buf;
+  const lp=sfxCtx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=900; lp.Q.value=0.7;
+  const g=sfxCtx.createGain(); g.gain.value=clampA(0.45+vol*0.5,0,1);
+  src.connect(lp); lp.connect(g); g.connect(sfxBus); src.start(t); src.stop(t+0.58); sfxEngNodes.push(src);
+  const o=sfxCtx.createOscillator(); o.type='sine'; o.frequency.setValueAtTime(120,t); o.frequency.exponentialRampToValueAtTime(55,t+0.22);
+  const og=sfxCtx.createGain(); og.gain.setValueAtTime(0.0001,t); og.gain.linearRampToValueAtTime(clampA(0.4+vol*0.4,0,1),t+0.01); og.gain.exponentialRampToValueAtTime(0.0001,t+0.3);
+  o.connect(og); og.connect(sfxBus); o.start(t); o.stop(t+0.32); sfxEngNodes.push(o);
+}
+// Crackle burst — a short 3-8kHz noise transient (shock diamonds / combustion instability). Routed through
+// sfxMaster so overall vol/throttle/altitude apply once (no pre-scaling by vol → no double-scale). Self-stops.
+function sfxCrackle(level){
+  if(!sfxCtx||!sfxMaster||level<=0.001) return;
+  const t=sfxCtx.currentTime, dur=0.03+Math.random()*0.05;
+  const buf=sfxGetBuf('crackle', 0.1, (d,sr)=>{ for(let i=0;i<d.length;i++){ d[i]=(Math.random()*2-1)*Math.exp(-(i/sr)*40); } });
+  const src=sfxCtx.createBufferSource(); src.buffer=buf;
+  const bp=sfxCtx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=3000+Math.random()*4500; bp.Q.value=0.8;
+  const g=sfxCtx.createGain(); g.gain.value=clampA(level*0.5,0,0.6);
+  src.connect(bp); bp.connect(g); g.connect(sfxMaster); src.start(t); src.stop(t+dur+0.02);
 }
 function sfxSep(){
   if(!sfxCtx) return;
@@ -9733,6 +9802,9 @@ function drawPad(t){
     const es=A._engSpec||{engCount:1,totalProp:0};
     sfxStartEngine(es.engCount, es.totalProp); A._engineStarted=true;
   }
+  // Pre-ignition: a subtle low filtered-noise "presence" that swells (with a slow LFO wobble) toward
+  // ignition, under the countdown blips. Self-guards once engine ignites; sfxStop cuts it at ignition.
+  if(padU<PAD_HOLD_FRAC) sfxCountdownBed(padU/PAD_HOLD_FRAC);
   drawAscent(0, false); // the exact ground-rest frame; A.ignite (read inside) scales only the flame/exhaust
   const ctx=A.ctx, W=A.cv.width, H=A.cv.height;
   ctx.save();
@@ -10670,7 +10742,7 @@ function drawAscent(t,canFail){
   const fairingSep = orb && p>0.45 && !A.fairingSep;
   if(fairingSep){ A.fairingSep=t; sfxSep(); }
   const fairingGone = A.fairingSep && (t-A.fairingSep)>0;
-  sfxUpdateEngine(throttle, altFrac);
+  sfxUpdateEngine(throttle, altFrac, qNorm); // qNorm (same Max-Q signal that drives camera shake) crossfades the audio mix
   for(let d=0;d<dropped;d++){
     if(!A.sfxSepFired[d]){ A.sfxSepFired[d]=true; sfxSep(); }
   }

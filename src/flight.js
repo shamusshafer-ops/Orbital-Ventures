@@ -1393,6 +1393,9 @@ function drawPad(t){
     const es=A._engSpec||{engCount:1,totalProp:0};
     sfxStartEngine(es.engCount, es.totalProp); A._engineStarted=true;
   }
+  // Pre-ignition: a subtle low filtered-noise "presence" that swells (with a slow LFO wobble) toward
+  // ignition, under the countdown blips. Self-guards once engine ignites; sfxStop cuts it at ignition.
+  if(padU<PAD_HOLD_FRAC) sfxCountdownBed(padU/PAD_HOLD_FRAC);
   drawAscent(0, false); // the exact ground-rest frame; A.ignite (read inside) scales only the flame/exhaust
   const ctx=A.ctx, W=A.cv.width, H=A.cv.height;
   ctx.save();
@@ -2330,7 +2333,7 @@ function drawAscent(t,canFail){
   const fairingSep = orb && p>0.45 && !A.fairingSep;
   if(fairingSep){ A.fairingSep=t; sfxSep(); }
   const fairingGone = A.fairingSep && (t-A.fairingSep)>0;
-  sfxUpdateEngine(throttle, altFrac);
+  sfxUpdateEngine(throttle, altFrac, qNorm); // qNorm (same Max-Q signal that drives camera shake) crossfades the audio mix
   for(let d=0;d<dropped;d++){
     if(!A.sfxSepFired[d]){ A.sfxSepFired[d]=true; sfxSep(); }
   }
