@@ -2470,7 +2470,7 @@ const DOMAINS={
 function domColor(d){ return (DOMAINS[d]||{}).color || 'var(--ink)'; }
 function domDot(d){ return `<span class="dom-dot" style="background:${domColor(d)}"></span>`; } // a small colored chip prefix
 function dateStr(){return ((state.day||0)+1)+' '+MONTHS[state.month]+' '+state.year;} // "14 Mar 1962" — day-of-month is 1-based (Time Granularity)
-function log(kind,msg,nav){state.log.unshift({when:dateStr(),kind,msg,nav}); if(state.log.length>40)state.log.pop();}
+function log(kind,msg,nav,detail){state.log.unshift({when:dateStr(),kind,msg,nav,detail}); if(state.log.length>40)state.log.pop();} // E1.5: optional 4th `detail` (plain text) — transient UI-only causal chain for failure entries, never persisted (JSON drops undefined)
 function curSigma(){return clampA(state.sigma * tankMaterial().sigmaMult, 0.02, 0.9);} // BC2: tank material scales structural coefficient
 function curRel(){
   let base=0.65+0.025*Math.min(state.successes,12); // heritage: green company is genuinely unreliable
@@ -5909,6 +5909,23 @@ function flightPhaseBreakdown(rep){
     phases.push({phase:ph, label:FLIGHT_PHASE_LABEL[ph], rel, p:1-rel, subsystems:subs}); }
   return phases;
 }
+// E1.5: render a flightPhaseBreakdown as plain-text lines (one per phase) — e.g.
+//   "Ascent 91% — Propulsion 94%, Structures 97%, Separation 99%"
+// Plain text only (no HTML): this feeds native title= tooltips and the log's detail field, neither
+// of which renders markup. If govKey (the governing/failed subsystem) is supplied and present in a
+// phase, that phase and that subsystem are marked unambiguously so a failure reads as a causal chain:
+//   "✕ Ascent 91% — Propulsion 94% ✕FAILED, Structures 97%, Separation 99%"
+function phaseBreakdownLines(phases, govKey){
+  if(!phases || !phases.length) return [];
+  return phases.map(ph=>{
+    const failedHere = !!govKey && ph.subsystems.some(s=>s.key===govKey);
+    const subs = ph.subsystems.map(s=>{
+      const pc=Math.round(s.rel*100);
+      return s.key===govKey ? `${s.label} ${pc}% ✕FAILED` : `${s.label} ${pc}%`;
+    }).join(', ');
+    return `${failedHere?'✕ ':''}${ph.label} ${Math.round(ph.rel*100)}% — ${subs}`;
+  });
+}
 // ── DEV/CHEAT hooks (2026-07-11) — single-shot force flags for the dev menu (Ctrl+Shift+D). ──
 // All are plain module-level vars (NOT state.*), consumed & reset the moment they're read, so they
 // never touch the save file. resolveFlight/liveCallFlag/deepCallFlag/rollWeather each check "their"
@@ -6719,6 +6736,10 @@ function finalizeLaunch(ctx, ops){
   const success=outcome.kind==='success';
   const rel=outcome.rel;
   let pendingCelebration=null, failPhase=outcome.failPhase;
+  // E1.5: the per-phase / per-subsystem causal chain for a failed flight, threaded into the failure
+  // log lines below as the 4th (detail) arg so hovering the log entry reveals WHY it failed (not just
+  // the flavor story). Guarded on .phases — every real resolveFlight AND the dev-forced outcomes carry it.
+  const failDetail = outcome.phases ? phaseBreakdownLines(outcome.phases, outcome.subsystem).join('\n') : null;
   if(success){
     personnelMissionEvent(true); // M6: morale boost on success
     state.successes++;
@@ -6794,7 +6815,7 @@ function finalizeLaunch(ctx, ops){
     const rep=Math.max(0,Math.round((routine?2:m.rep)*0.25)+opsRep);
     state.rep+=rep;
     addSupport(supportDelta('partial')); // #8: a salvaged flight still reads as progress
-    log('note',`${m.name}: PARTIAL SUCCESS — ${outcome.story} Salvaged value +${fM(payout)}, +${rep} rep, but the objective is not complete.`);
+    log('note',`${m.name}: PARTIAL SUCCESS — ${outcome.story} Salvaged value +${fM(payout)}, +${rep} rep, but the objective is not complete.`, null, failDetail);
   }else if(outcome.kind==='scrub'){
     // CE5(b): the player called a precautionary in-flight abort — vehicle & crew recovered, mission
     // forfeit. No catastrophe: no crew loss, no stand-down/investigation, a lighter rep dent than a
@@ -6807,14 +6828,14 @@ function finalizeLaunch(ctx, ops){
     personnelMissionEvent(false);
     const rep=Math.min(state.rep,12); state.rep-=rep;
     addSupport(supportDelta('abort')); // #8: a failure dents mood, but a safe crew limits the damage
-    log('bad',`${m.name}: MISSION FAILURE — crew safe. The ${SUBSYS_LABEL[outcome.subsystem].toLowerCase()} gave out — ${outcome.story} Vehicle and mission lost, −${rep} rep.`);
+    log('bad',`${m.name}: MISSION FAILURE — crew safe. The ${SUBSYS_LABEL[outcome.subsystem].toLowerCase()} gave out — ${outcome.story} Vehicle and mission lost, −${rep} rep.`, null, failDetail);
   }else if(outcome.kind==='strand'){
     personnelMissionEvent(false);
     const rep=Math.min(state.rep,40); state.rep-=rep;
     addSupport(supportDelta('strand')); // #8: a crew stranded in deep space is a national shock
     loseAssignedCrew(ctx.crewId, m.name, outcome.story);
     advance(6); // grounding + investigation
-    log('bad',`${m.name}: LOST IN DEEP SPACE — ${outcome.story} A long inquiry follows, −${rep} rep.`);
+    log('bad',`${m.name}: LOST IN DEEP SPACE — ${outcome.story} A long inquiry follows, −${rep} rep.`, null, failDetail);
     applyEraStakes('loss of the crew'); // CE4(c): era-scaled compounding setback
     state.poachHeat=Math.max(state.poachHeat||0, POACH_HEAT_ON_FATAL); // E1.1: instability rivals press on
     triggerHearing(ctx); // E1.1: the political response to a fatal crewed loss (inquiry above is the engineering one, uncrewed-only)
@@ -6832,7 +6853,7 @@ function finalizeLaunch(ctx, ops){
       loseAssignedCrew(ctx.crewId, m.name, outcome.story);
       advance(6); // grounding + investigation
       state.crewLost=(state.crewLost||0)+m.crew; // chronicle: the price paid
-      log('bad',`${m.name}: CATASTROPHE. The ${SUBSYS_LABEL[outcome.subsystem].toLowerCase()} failed — ${outcome.story} Vehicle lost with all ${m.crew} aboard. Six-month stand-down, −${rep} rep. Fit a launch-escape system before flying crew again.`);
+      log('bad',`${m.name}: CATASTROPHE. The ${SUBSYS_LABEL[outcome.subsystem].toLowerCase()} failed — ${outcome.story} Vehicle lost with all ${m.crew} aboard. Six-month stand-down, −${rep} rep. Fit a launch-escape system before flying crew again.`, null, failDetail);
       pushFrontPage('disaster', '⚠', `${m.name}: crew lost`, outcome.story);
       applyEraStakes('loss of the crew and vehicle'); // CE4(c): era-scaled compounding setback
       state.poachHeat=Math.max(state.poachHeat||0, POACH_HEAT_ON_FATAL); // E1.1: instability rivals press on
@@ -6840,7 +6861,7 @@ function finalizeLaunch(ctx, ops){
     }else{
       const rep=Math.min(state.rep, routine?3:8); state.rep-=rep;
       addSupport(supportDelta('lossUncrewed')); // #8: an uncrewed loss costs some goodwill
-      log('bad',`${m.name}: FAILURE. The ${SUBSYS_LABEL[outcome.subsystem].toLowerCase()} failed — ${outcome.story} Vehicle cost forfeit, −${rep} rep.`);
+      log('bad',`${m.name}: FAILURE. The ${SUBSYS_LABEL[outcome.subsystem].toLowerCase()} failed — ${outcome.story} Vehicle cost forfeit, −${rep} rep.`, null, failDetail);
       if(m.profile) applyEraStakes('loss of a flagship mission'); // CE4(c): a deep-space robotic flagship is a real setback late
     }
   }
@@ -15472,6 +15493,7 @@ function renderBenchLaunch(){
     </div>` : '';
   host.innerHTML=`<button class="launch" style="width:100%" onclick="launch()" ${chk.ok?'':'disabled'}>${chk.ok?launchButtonLabel(m,v):'Launch unavailable'}</button>
     ${chk.ok?'<div class="dim" style="font-size:12px;text-align:center;margin-top:4px">or press <b>Space</b></div>':`<div class="flag dim" style="color:var(--dim);margin-top:4px">${chk.why}</div>`}
+    ${launchPadCap()>1?`<div class="dim" style="font-size:11px;text-align:center;margin-top:2px">Pads: ${padSlotsLeft()}/${launchPadCap()} free this month</div>`:''}
     <div style="display:flex;gap:6px;margin-top:8px;align-items:center">
       <button class="btn" style="flex:1;font-size:12px" onclick="staticFire()" ${sf.ok?'':'disabled'} title="Bolt the first stage to the stand and light it. Clean burn = heritage credit (${fired}/${STATIC_HERITAGE_CAP} ground). Anomaly = fixed, next launch +${Math.round(STATIC_FIX_BONUS*100)}% rel.">🔥 Static fire ${sf.ok?fM(STATIC_FIRE_COST):('· '+sf.why)}</button>
       <button class="btn ghost" style="font-size:12px;padding:6px 9px" onclick="toggleSfx()" title="${state.sfxMute?'Unmute':'Mute'} workshop sounds">${state.sfxMute?'🔇':'🔊'}</button>
@@ -15535,6 +15557,9 @@ function renderReadout(){
   if(mfgBuildMult()<1||groundLaunchMult()<1||buildTimeCut()>=0.5) flags+=`<div class="flag ok">🏭 Industrial R&D: −${Math.round((1-mfgBuildMult())*100)}% build cost · −${Math.round((1-groundLaunchMult())*100)}% launch-ops cost${buildTimeCut()>=0.5?` · −${Math.round(buildTimeCut())} mo build time`:''}.</div>`;
   { const _rs=radSeverity(m), _pr=(m.crew>0?powerRad(m):0); if(_rs>=0.12||_pr>0) flags+=`<div class="flag ${_rs>=0.5||_pr>=0.3?'warn':''}">☢ Radiation ${_rs>=0.7?'extreme':_rs>=0.4?'high':_rs>=0.12?'moderate':'low'} (env ${radEnvironment(m)} · ${m.days||0}d)${_pr>0?` + onboard ${selfPoweredCraft(m)?'NEP reactor':powerSourceDef(state.powerSource).name}`:''} — ${state.research.rad_shielding?'shielding fitted':'<b>no shielding</b>'}: equipment ×${radEquipMult(m).toFixed(2)} fragility${m.crew>0?` · crew ×${radCrewMult(m).toFixed(2)}`:''}.</div>`; }
   const testBtns=TEST_LEVELS.map((t,i)=>`<button class="btn" style="flex:1;font-size:12px;${state.testLevel===i?'border-color:var(--readout);color:var(--readout)':''}" onclick="setTestLevel(${i})">${t.name}${t.rel>0?` +${(t.rel*100)|0}%`:''}${t.cost>0?`<br><span class="dim" style="font-size:11px">${fM(t.cost)} · ${t.months} mo</span>`:''}</button>`).join('');
+  // E1.5: pre-flight phase-by-phase reliability decomposition for the hover tooltip (informational —
+  // no governing subsystem yet, nothing has failed). Reuses the same machinery resolveFlight rolls on.
+  const relTip=esc(phaseBreakdownLines(flightPhaseBreakdown(subsystemReport(m,v,null,v.crewed)),null).join('\n'));
 
   $('readoutCard').innerHTML=`
     <div class="mission-tag">Flying against</div>
@@ -15549,7 +15574,7 @@ function renderReadout(){
     <div class="metrics">
       <div class="metric"><div class="k">Liftoff TWR</div><div class="v" style="color:${v.twr>1.2?'var(--ink)':(v.twr>1?'var(--warn)':'var(--bad)')}">${v.twr.toFixed(2)}</div></div>
       <div class="metric" title="Δv bled by stages whose TWR is below nominal — raise thrust to recover it"><div class="k">Gravity loss</div><div class="v" style="color:${v.gravLoss>800?'var(--bad)':(v.gravLoss>200?'var(--warn)':'var(--ink)')}">${v.gravLoss>1?'−'+fI(v.gravLoss)+' m/s':'—'}</div></div>
-      <div class="metric"><div class="k">${domDot('engineering')}Reliability</div><div class="v">${(v.reliability*100|0)}%</div></div>
+      <div class="metric" title="${relTip}"><div class="k">${domDot('engineering')}Reliability</div><div class="v">${(v.reliability*100|0)}%</div></div>
       <div class="metric"><div class="k">Liftoff mass</div><div class="v">${v.liftoff.toFixed(1)} t</div></div>
       <div class="metric"><div class="k">Payload</div><div class="v">${v.payload>=1?v.payload.toFixed(2)+' t':(v.payload*1000).toFixed(0)+' kg'}</div></div>
       <div class="metric"><div class="k">${domDot('economy')}Build cost</div><div class="v">${fM(v.buildCost)}</div></div>
@@ -15613,6 +15638,10 @@ function renderProfileReadout(m){
   if(mfgBuildMult()<1||groundLaunchMult()<1||buildTimeCut()>=0.5) flags+=`<div class="flag ok">🏭 Industrial R&D: −${Math.round((1-mfgBuildMult())*100)}% build cost · −${Math.round((1-groundLaunchMult())*100)}% launch-ops cost${buildTimeCut()>=0.5?` · −${Math.round(buildTimeCut())} mo build time`:''}.</div>`;
   { const _rs=radSeverity(m), _pr=(m.crew>0?powerRad(m):0); if(_rs>=0.12||_pr>0) flags+=`<div class="flag ${_rs>=0.5||_pr>=0.3?'warn':''}">☢ Radiation ${_rs>=0.7?'extreme':_rs>=0.4?'high':_rs>=0.12?'moderate':'low'} (env ${radEnvironment(m)} · ${m.days||0}d)${_pr>0?` + onboard ${selfPoweredCraft(m)?'NEP reactor':powerSourceDef(state.powerSource).name}`:''} — ${state.research.rad_shielding?'shielding fitted':'<b>no shielding</b>'}: equipment ×${radEquipMult(m).toFixed(2)} fragility${m.crew>0?` · crew ×${radCrewMult(m).toFixed(2)}`:''}.</div>`; }
 
+  // E1.5: pre-flight phase-by-phase reliability decomposition for the hover tooltip (informational —
+  // no governing subsystem yet). sim is already computed above; crewed follows v.crewed as elsewhere.
+  const relTip=esc(phaseBreakdownLines(flightPhaseBreakdown(subsystemReport(m,v,sim,v.crewed)),null).join('\n'));
+
   $('readoutCard').innerHTML=`
     <div class="mission-tag">Mission profile — every leg must pass</div>
     <div class="mission-name">${m.name} <span class="pill" style="color:var(--ignite);border-color:#5a4419">${m.crew} crew · ${m.days}d</span> ${state.completed[m.id]?'<span class="pill ok">routine</span>':''}</div>
@@ -15620,7 +15649,7 @@ function renderProfileReadout(m){
     <div class="legs">${legRows}</div>
 
     <div class="metrics">
-      <div class="metric"><div class="k">${domDot('engineering')}Mission reliability</div><div class="v">${(rel*100|0)}%</div></div>
+      <div class="metric" title="${relTip}"><div class="k">${domDot('engineering')}Mission reliability</div><div class="v">${(rel*100|0)}%</div></div>
       <div class="metric"><div class="k">${domDot('crew')}Crew module</div><div class="v">${sim.crewMass.toFixed(2)} t</div></div>
       <div class="metric"><div class="k">LV liftoff mass</div><div class="v">${v.liftoff.toFixed(1)} t</div></div>
       <div class="metric"><div class="k">To LEO</div><div class="v">${v.payload.toFixed(2)} t</div></div>
@@ -17861,7 +17890,7 @@ function renderLog(){
   entries.forEach(l=>{ const nav=logNav(l); const icon=TL_CAT_ICON[logCategory(l)]||TL_CAT_ICON.other;
     const c=document.createElement('div'); c.className='tl-chip '+(l.kind||'note')+(nav?' clk':'')+(hasNew&&firstLogChip&&l===state.log[0]?' tl-chip-new':'');
     firstLogChip=false;
-    c.innerHTML=`<span class="tl-when">${l.when}</span><span class="tl-msg" title="${tlAttr(l.msg)}">${icon} ${tlStrip(l.msg)}</span>`;
+    c.innerHTML=`<span class="tl-when">${l.when}</span><span class="tl-msg" title="${l.detail?tlAttr(l.msg)+'\n\n'+esc(l.detail):tlAttr(l.msg)}">${icon} ${tlStrip(l.msg)}</span>`; // E1.5: append the failure causal chain (if any) to the existing message tooltip
     if(nav) c.onclick=()=>timelineGo(nav); box.appendChild(c); });
 }
 

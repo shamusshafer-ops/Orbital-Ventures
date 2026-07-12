@@ -2755,6 +2755,54 @@ flown, lists every astronaut who has (portrait, trait, Active/Lost status, full 
 sorted most-flown first. Reuses the existing `personPortrait()`/`traitOf()` — no new data. New
 `test-roster.js` (12/12). **E1.4 complete. Suite total 604/604**, build parity clean.
 
+## Session — E1.5: ops friction + trust (2026-07-11)
+
+**Implemented, tests passing, not yet committed/pushed — needs a real-browser check.** Read the code
+first: 3 of the 4 backlog sub-items were **already fully built** (verified against the source, deliberately
+NOT rebuilt): **#18** "why can't I fly this?" — `canLaunch()` already returns `{ok,why}` and every disabled
+launch button (Bench + ~8 others) already renders `chk.why`; locked program-ladder missions already show
+`needs N rep`. **#29** pad turnaround — the whole `launchPadCap()`/`padSlotsLeft()`/`curMonthPadUsed()`
+launches-per-month mechanic (CE2 slice b) already exists and is surfaced in the Infrastructure card +
+attention flags. **#10 econ half** — `missionNetEconomics()`/`missionNetHTML()` already renders the full
+per-line payout/cost/carry/net breakdown inline on the Bench.
+
+**The real gap** (the reliability half of #10 + all of #32): `flightPhaseBreakdown()` already decomposes
+every flight into per-phase, per-subsystem reliabilities (∏ phaseRel = R) and every resolved `outcome`
+already carries `.phases`/`.subsystem` — but a grep proved that data was computed and thrown away (zero
+readers in render.js/flight.js). Newly built, all pure display/derived-data plumbing:
+
+- **`phaseBreakdownLines(phases, govKey)`** (sim.js, beside `flightPhaseBreakdown`) — turns the breakdown
+  into plain-text lines, one per phase (`"Ascent 91% — Propulsion 94%, Structures 97%, …"`); when `govKey`
+  (the failing subsystem) is passed, that phase gets a leading `✕ ` and the subsystem is tagged `✕FAILED`.
+  Plain text on purpose — it feeds native `title=` tooltips (no markup) and the log detail field.
+- **Bench reliability hover** — both readout sites (`renderReadout` non-profile + `renderProfileReadout`)
+  now put `esc(phaseBreakdownLines(flightPhaseBreakdown(subsystemReport(m,v,sim,v.crewed)),null).join('\n'))`
+  on the reliability `.metric` as `title=`. Pre-flight/informational, so `govKey` is null. Reuses the exact
+  `subsystemReport(m,v,sim,v.crewed)` pattern already in `subsystemBreakdownHTML`.
+- **Failure causal chain in the log** — `log(kind,msg,nav,detail)` gains an OPTIONAL trailing `detail`
+  param (fully backward-compatible; every existing 3-arg call is unchanged and stores `detail:undefined`,
+  which JSON drops). `finalizeLaunch` computes `failDetail = phaseBreakdownLines(outcome.phases,
+  outcome.subsystem).join('\n')` once (guarded on `.phases`; dev-forced outcomes carry it too) and threads
+  it into the 5 failure/partial/abort/strand/loss log lines. `renderLog()` appends `l.detail` to the
+  existing `title=` on the log chip (concatenated with `tlAttr(l.msg)`, both `esc`'d — not replaced).
+  The `upcomingEvents()` chip loop was left alone: its objects carry no `.detail` field.
+- **Pad-slot line on the Bench** — `renderBenchLaunch` now renders `Pads: {free}/{cap} free this month`
+  under the launch button, but ONLY when `launchPadCap()>1` (a one-pad startup has nothing to see, no noise).
+
+No `SAVE_VERSION` bump — `log.detail` is transient UI-only, never read back from a save; no new persisted
+state. New `test-ops-friction.js` (36/36): `phaseBreakdownLines` shape + gov-marking, `log()` 3-arg vs
+4-arg backward compat, a forced-loss flight driven through `resolveFlight`+`finalizeLaunch` producing a
+log entry whose `.detail` names the failed subsystem, `renderLog()` not throwing on mixed detailed/plain
+entries (title carries both message + breakdown), Bench reliability title present/non-empty, and the
+pad-slot line absent at L1 / present + correct at raised `prodLevel('pads')`. **Suite total 640/640** of
+the always-green files (pre-existing `test-progress-unify.js` 23/35 shortfall and the RNG-flaky
+`test-station-slice2.js` are expected and untouched), build parity clean.
+
+**Real-browser check:** (1) hover the Bench reliability number and confirm a multi-line phase-by-phase
+breakdown tooltip appears; (2) force a launch failure via the dev menu (Ctrl+Shift+D → force loss) and
+hover its Flight & Ops log entry to see the causal chain with the failed subsystem tagged; (3) research a
+second Launch Pad level and confirm the "Pads: N/M free this month" line appears under the launch button.
+
 ## Session — E0.6: esc() all dynamic text in innerHTML templates (2026-07-11)
 
 **Implemented, tests passing, not yet committed/pushed — needs a real-browser check before push.**
@@ -3002,10 +3050,12 @@ duplicating.
 - [x] **E1.4 Astronaut identity** — SHIPPED 2026-07-11 (see session log above), 604/604,
       **not yet committed/pushed, needs a real-browser check**. Flight log, memorial wall,
       roster view. Crew assignment tradeoffs were already covered by the trait system.
-- [ ] **E1.5 Ops friction + trust** — pad turnaround per pad, "why can't I fly this?"
-      explainer on disabled launch, post-flight failure report naming the causal chain
-      (the ∏ phaseRel decomposition already computes it — show it), hover math
-      breakdowns on derived numbers.
+- [x] **E1.5 Ops friction + trust** — SHIPPED 2026-07-11 (see session log below), 640/640,
+      **not yet committed/pushed, needs a real-browser check**. 3 of the 4 sub-items were already
+      done (verified, not rebuilt): "why can't I fly this?" explainer (`canLaunch().why`), pad
+      turnaround mechanic (`launchPadCap`/`padSlotsLeft`), and the mission econ breakdown
+      (`missionNetHTML`). Newly built: the ∏ phaseRel causal chain, now surfaced — Bench reliability
+      hover + failure-log detail — plus a pad-slot line on the Bench.
 - [ ] **E1.6 Milestone spectacle** — newspaper front pages on firsts; sound pass
       (ambient bed, UI ticks, countdown voice, milestone stingers — WebAudio synthesis
       or small OGG set post-split).

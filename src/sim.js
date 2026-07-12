@@ -89,7 +89,7 @@ const DOMAINS={
 function domColor(d){ return (DOMAINS[d]||{}).color || 'var(--ink)'; }
 function domDot(d){ return `<span class="dom-dot" style="background:${domColor(d)}"></span>`; } // a small colored chip prefix
 function dateStr(){return ((state.day||0)+1)+' '+MONTHS[state.month]+' '+state.year;} // "14 Mar 1962" — day-of-month is 1-based (Time Granularity)
-function log(kind,msg,nav){state.log.unshift({when:dateStr(),kind,msg,nav}); if(state.log.length>40)state.log.pop();}
+function log(kind,msg,nav,detail){state.log.unshift({when:dateStr(),kind,msg,nav,detail}); if(state.log.length>40)state.log.pop();} // E1.5: optional 4th `detail` (plain text) — transient UI-only causal chain for failure entries, never persisted (JSON drops undefined)
 function curSigma(){return clampA(state.sigma * tankMaterial().sigmaMult, 0.02, 0.9);} // BC2: tank material scales structural coefficient
 function curRel(){
   let base=0.65+0.025*Math.min(state.successes,12); // heritage: green company is genuinely unreliable
@@ -3528,6 +3528,23 @@ function flightPhaseBreakdown(rep){
     phases.push({phase:ph, label:FLIGHT_PHASE_LABEL[ph], rel, p:1-rel, subsystems:subs}); }
   return phases;
 }
+// E1.5: render a flightPhaseBreakdown as plain-text lines (one per phase) — e.g.
+//   "Ascent 91% — Propulsion 94%, Structures 97%, Separation 99%"
+// Plain text only (no HTML): this feeds native title= tooltips and the log's detail field, neither
+// of which renders markup. If govKey (the governing/failed subsystem) is supplied and present in a
+// phase, that phase and that subsystem are marked unambiguously so a failure reads as a causal chain:
+//   "✕ Ascent 91% — Propulsion 94% ✕FAILED, Structures 97%, Separation 99%"
+function phaseBreakdownLines(phases, govKey){
+  if(!phases || !phases.length) return [];
+  return phases.map(ph=>{
+    const failedHere = !!govKey && ph.subsystems.some(s=>s.key===govKey);
+    const subs = ph.subsystems.map(s=>{
+      const pc=Math.round(s.rel*100);
+      return s.key===govKey ? `${s.label} ${pc}% ✕FAILED` : `${s.label} ${pc}%`;
+    }).join(', ');
+    return `${failedHere?'✕ ':''}${ph.label} ${Math.round(ph.rel*100)}% — ${subs}`;
+  });
+}
 // ── DEV/CHEAT hooks (2026-07-11) — single-shot force flags for the dev menu (Ctrl+Shift+D). ──
 // All are plain module-level vars (NOT state.*), consumed & reset the moment they're read, so they
 // never touch the save file. resolveFlight/liveCallFlag/deepCallFlag/rollWeather each check "their"
@@ -4338,6 +4355,10 @@ function finalizeLaunch(ctx, ops){
   const success=outcome.kind==='success';
   const rel=outcome.rel;
   let pendingCelebration=null, failPhase=outcome.failPhase;
+  // E1.5: the per-phase / per-subsystem causal chain for a failed flight, threaded into the failure
+  // log lines below as the 4th (detail) arg so hovering the log entry reveals WHY it failed (not just
+  // the flavor story). Guarded on .phases — every real resolveFlight AND the dev-forced outcomes carry it.
+  const failDetail = outcome.phases ? phaseBreakdownLines(outcome.phases, outcome.subsystem).join('\n') : null;
   if(success){
     personnelMissionEvent(true); // M6: morale boost on success
     state.successes++;
@@ -4413,7 +4434,7 @@ function finalizeLaunch(ctx, ops){
     const rep=Math.max(0,Math.round((routine?2:m.rep)*0.25)+opsRep);
     state.rep+=rep;
     addSupport(supportDelta('partial')); // #8: a salvaged flight still reads as progress
-    log('note',`${m.name}: PARTIAL SUCCESS — ${outcome.story} Salvaged value +${fM(payout)}, +${rep} rep, but the objective is not complete.`);
+    log('note',`${m.name}: PARTIAL SUCCESS — ${outcome.story} Salvaged value +${fM(payout)}, +${rep} rep, but the objective is not complete.`, null, failDetail);
   }else if(outcome.kind==='scrub'){
     // CE5(b): the player called a precautionary in-flight abort — vehicle & crew recovered, mission
     // forfeit. No catastrophe: no crew loss, no stand-down/investigation, a lighter rep dent than a
@@ -4426,14 +4447,14 @@ function finalizeLaunch(ctx, ops){
     personnelMissionEvent(false);
     const rep=Math.min(state.rep,12); state.rep-=rep;
     addSupport(supportDelta('abort')); // #8: a failure dents mood, but a safe crew limits the damage
-    log('bad',`${m.name}: MISSION FAILURE — crew safe. The ${SUBSYS_LABEL[outcome.subsystem].toLowerCase()} gave out — ${outcome.story} Vehicle and mission lost, −${rep} rep.`);
+    log('bad',`${m.name}: MISSION FAILURE — crew safe. The ${SUBSYS_LABEL[outcome.subsystem].toLowerCase()} gave out — ${outcome.story} Vehicle and mission lost, −${rep} rep.`, null, failDetail);
   }else if(outcome.kind==='strand'){
     personnelMissionEvent(false);
     const rep=Math.min(state.rep,40); state.rep-=rep;
     addSupport(supportDelta('strand')); // #8: a crew stranded in deep space is a national shock
     loseAssignedCrew(ctx.crewId, m.name, outcome.story);
     advance(6); // grounding + investigation
-    log('bad',`${m.name}: LOST IN DEEP SPACE — ${outcome.story} A long inquiry follows, −${rep} rep.`);
+    log('bad',`${m.name}: LOST IN DEEP SPACE — ${outcome.story} A long inquiry follows, −${rep} rep.`, null, failDetail);
     applyEraStakes('loss of the crew'); // CE4(c): era-scaled compounding setback
     state.poachHeat=Math.max(state.poachHeat||0, POACH_HEAT_ON_FATAL); // E1.1: instability rivals press on
     triggerHearing(ctx); // E1.1: the political response to a fatal crewed loss (inquiry above is the engineering one, uncrewed-only)
@@ -4451,7 +4472,7 @@ function finalizeLaunch(ctx, ops){
       loseAssignedCrew(ctx.crewId, m.name, outcome.story);
       advance(6); // grounding + investigation
       state.crewLost=(state.crewLost||0)+m.crew; // chronicle: the price paid
-      log('bad',`${m.name}: CATASTROPHE. The ${SUBSYS_LABEL[outcome.subsystem].toLowerCase()} failed — ${outcome.story} Vehicle lost with all ${m.crew} aboard. Six-month stand-down, −${rep} rep. Fit a launch-escape system before flying crew again.`);
+      log('bad',`${m.name}: CATASTROPHE. The ${SUBSYS_LABEL[outcome.subsystem].toLowerCase()} failed — ${outcome.story} Vehicle lost with all ${m.crew} aboard. Six-month stand-down, −${rep} rep. Fit a launch-escape system before flying crew again.`, null, failDetail);
       pushFrontPage('disaster', '⚠', `${m.name}: crew lost`, outcome.story);
       applyEraStakes('loss of the crew and vehicle'); // CE4(c): era-scaled compounding setback
       state.poachHeat=Math.max(state.poachHeat||0, POACH_HEAT_ON_FATAL); // E1.1: instability rivals press on
@@ -4459,7 +4480,7 @@ function finalizeLaunch(ctx, ops){
     }else{
       const rep=Math.min(state.rep, routine?3:8); state.rep-=rep;
       addSupport(supportDelta('lossUncrewed')); // #8: an uncrewed loss costs some goodwill
-      log('bad',`${m.name}: FAILURE. The ${SUBSYS_LABEL[outcome.subsystem].toLowerCase()} failed — ${outcome.story} Vehicle cost forfeit, −${rep} rep.`);
+      log('bad',`${m.name}: FAILURE. The ${SUBSYS_LABEL[outcome.subsystem].toLowerCase()} failed — ${outcome.story} Vehicle cost forfeit, −${rep} rep.`, null, failDetail);
       if(m.profile) applyEraStakes('loss of a flagship mission'); // CE4(c): a deep-space robotic flagship is a real setback late
     }
   }
