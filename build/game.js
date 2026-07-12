@@ -8237,23 +8237,30 @@ function sfxStartEngine(engineCount, totalProp){
   // sfxMaster's envelope exactly once. Frequencies were also raised out of the sub-80Hz range most
   // laptop/PC speakers can't reproduce at all (separate, earlier fix, confirmed audible but faint).
   const vol=Math.min(1.0, 0.22+0.14*Math.sqrt(engineCount)+0.07*Math.log10(Math.max(1,totalProp)));
+  // Retuned 2026-07-12 after user feedback ("buzzing mosquito, too rapid and too high pitched") on the
+  // first pass, which pushed everything up to 55-178Hz to fix inaudibility — overshot into whiny
+  // territory, and raising the brown-noise lowpass cutoff let its raw graininess through as buzz instead
+  // of a smooth rumble. Pulled back into a felt-bass range (35-95Hz) and added a lowpass after the
+  // sawtooth (its harmonics are the main source of "buzzy" harshness) to tame it into a rumble rather
+  // than a whine, while staying above the ~20-30Hz hard floor most speakers can't reproduce at all.
   const s1=sfxLoopSrc(sfxNoiseBuf('brown'));
-  const lp=sfxCtx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=160+engineCount*18; lp.Q.value=1.2;
+  const lp=sfxCtx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=100+engineCount*10; lp.Q.value=0.9;
   const s1G=sfxCtx.createGain(); s1G.gain.value=0.6;
   s1.connect(lp); lp.connect(s1G); s1G.connect(sfxMaster); s1.start(); sfxEngNodes.push(s1);
-  const sub=sfxCtx.createOscillator(); sub.type='sine'; sub.frequency.value=55+engineCount*4;
+  const sub=sfxCtx.createOscillator(); sub.type='sine'; sub.frequency.value=35+engineCount*3;
   const subG=sfxCtx.createGain(); subG.gain.value=0.40;
   sub.connect(subG); subG.connect(sfxMaster); sub.start(); sfxEngNodes.push(sub);
   const rumble=sfxCtx.createOscillator(); rumble.type='sawtooth';
-  rumble.frequency.value=70+engineCount*5+Math.cbrt(totalProp)*1.2;
-  const rG=sfxCtx.createGain(); rG.gain.value=0.36;
-  rumble.connect(rG); rG.connect(sfxMaster); rumble.start(); sfxEngNodes.push(rumble);
-  const mid=sfxCtx.createOscillator(); mid.type='triangle'; mid.frequency.value=110+engineCount*8;
-  const mG=sfxCtx.createGain(); mG.gain.value=0.24;
+  rumble.frequency.value=45+engineCount*3+Math.cbrt(totalProp)*0.8;
+  const rLp=sfxCtx.createBiquadFilter(); rLp.type='lowpass'; rLp.frequency.value=180; rLp.Q.value=0.7;
+  const rG=sfxCtx.createGain(); rG.gain.value=0.34;
+  rumble.connect(rLp); rLp.connect(rG); rG.connect(sfxMaster); rumble.start(); sfxEngNodes.push(rumble);
+  const mid=sfxCtx.createOscillator(); mid.type='triangle'; mid.frequency.value=65+engineCount*5;
+  const mG=sfxCtx.createGain(); mG.gain.value=0.20;
   mid.connect(mG); mG.connect(sfxMaster); mid.start(); sfxEngNodes.push(mid);
   const s2=sfxLoopSrc(sfxNoiseBuf('white'));
-  const bp=sfxCtx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=600+engineCount*40; bp.Q.value=1.0;
-  const cG=sfxCtx.createGain(); cG.gain.value=0.14;
+  const bp=sfxCtx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=500+engineCount*30; bp.Q.value=1.0;
+  const cG=sfxCtx.createGain(); cG.gain.value=0.08;
   s2.connect(bp); bp.connect(cG); cG.connect(sfxMaster); s2.start(); sfxEngNodes.push(s2);
   // No scheduled ramp here — sfxUpdateEngine's per-frame setTargetAtTime (called the same/next frame via
   // drawPad's drawAscent(0,false)) owns the ramp-up; a competing linearRampToValueAtTime here would race
