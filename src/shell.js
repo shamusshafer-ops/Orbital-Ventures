@@ -566,30 +566,38 @@ function sfxStartEngine(engineCount, totalProp){
   if(!sfxCtx) return;
   sfxStop();
   const vol=Math.min(1.0, 0.15+0.12*Math.sqrt(engineCount)+0.06*Math.log10(Math.max(1,totalProp)));
+  // Confirmed via live gain-automation trace (2026-07-12): the gain envelope itself ramps correctly to
+  // a healthy ~0.29 — the bug was never gain automation. It was frequency content: sub/rumble/brown-noise
+  // (the loudest 3 layers) all sat at 18-98Hz, below what most laptop/PC speakers can physically
+  // reproduce, while the one layer with real mid/high presence (the white-noise crackle) was at only 3%
+  // gain. Shifted the low layers up into a range typical speakers can actually output, and rebalanced
+  // gain toward the audible-on-anything crackle layer, without losing the low-end "rumble" character for
+  // listeners who DO have the range to hear it (values below are still felt/heard as bass on real
+  // speakers/headphones, just no longer purely infrasonic).
   const s1=sfxLoopSrc(sfxNoiseBuf('brown'));
-  const lp=sfxCtx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=80+engineCount*18; lp.Q.value=1.2;
+  const lp=sfxCtx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=160+engineCount*18; lp.Q.value=1.2;
   s1.connect(lp); lp.connect(sfxMaster); s1.start(); sfxEngNodes.push(s1);
-  const sub=sfxCtx.createOscillator(); sub.type='sine'; sub.frequency.value=18+engineCount*2;
-  const subG=sfxCtx.createGain(); subG.gain.value=vol*0.25;
+  const sub=sfxCtx.createOscillator(); sub.type='sine'; sub.frequency.value=55+engineCount*4;
+  const subG=sfxCtx.createGain(); subG.gain.value=vol*0.22;
   sub.connect(subG); subG.connect(sfxMaster); sub.start(); sfxEngNodes.push(sub);
   const rumble=sfxCtx.createOscillator(); rumble.type='sawtooth';
-  rumble.frequency.value=22+engineCount*3+Math.cbrt(totalProp)*0.5;
-  const rG=sfxCtx.createGain(); rG.gain.value=vol*0.22;
+  rumble.frequency.value=70+engineCount*5+Math.cbrt(totalProp)*1.2;
+  const rG=sfxCtx.createGain(); rG.gain.value=vol*0.20;
   rumble.connect(rG); rG.connect(sfxMaster); rumble.start(); sfxEngNodes.push(rumble);
-  const mid=sfxCtx.createOscillator(); mid.type='triangle'; mid.frequency.value=40+engineCount*5;
-  const mG=sfxCtx.createGain(); mG.gain.value=vol*0.10;
+  const mid=sfxCtx.createOscillator(); mid.type='triangle'; mid.frequency.value=110+engineCount*8;
+  const mG=sfxCtx.createGain(); mG.gain.value=vol*0.14;
   mid.connect(mG); mG.connect(sfxMaster); mid.start(); sfxEngNodes.push(mid);
   const s2=sfxLoopSrc(sfxNoiseBuf('white'));
   const bp=sfxCtx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=600+engineCount*40; bp.Q.value=1.0;
-  const cG=sfxCtx.createGain(); cG.gain.value=vol*0.03;
+  const cG=sfxCtx.createGain(); cG.gain.value=vol*0.09;
   s2.connect(bp); bp.connect(cG); cG.connect(sfxMaster); s2.start(); sfxEngNodes.push(s2);
   // No scheduled ramp here (was linearRampToValueAtTime) — that left a pending automation event on
   // sfxMaster.gain that the very next frame's sfxUpdateEngine (called from drawAscent, fired on the
   // same/next tick via drawPad's drawAscent(0,false)) would immediately fight with its own
   // setTargetAtTime call on the SAME AudioParam, with no cancelScheduledValues between them — two
-  // competing automation curves on one param is undefined/inconsistent across browsers and could
-  // render as near-silent. sfxUpdateEngine's own setTargetAtTime (already called every frame) now owns
-  // 100% of the ramp-up, starting cleanly from 0.
+  // competing automation curves on one param is undefined/inconsistent across browsers. Confirmed
+  // harmless via live trace (gain ramps cleanly either way) but kept as correct practice.
+  // sfxUpdateEngine's own setTargetAtTime (already called every frame) now owns 100% of the ramp-up.
   sfxMaster.gain.cancelScheduledValues(sfxCtx.currentTime);
   sfxMaster.gain.value=0;
   sfxMaster._baseVol=vol;
