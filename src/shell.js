@@ -537,45 +537,6 @@ function sfxBlip(freq, dur, vol){
   o.connect(g); g.connect(sfxBus); o.start(t); o.stop(t+dur+0.02);
   sfxEngNodes.push(o);
 }
-
-// ── External audio clips (Slice 1: plumbing only — no real sourced content yet) ──
-// Real sound files CANNOT route through the Web Audio graph on a file:// page: createMediaElementSource
-// is silently muted there (confirmed by a listening test), and fetch()/decodeAudioData is blocked for
-// file:// URLs. So clips play through a plain <audio> element via a bare el.play() — a SEPARATE mute path
-// from the procedural sfxBus. Both are gated by the same `soundOn` preference (via el.muted), so the one
-// Settings toggle controls all audio from the player's view. Every clip has a procedural FALLBACK: if the
-// file is missing / blocked / fails to play (or we're headless with no Audio), we invoke the existing sfx*
-// synthesis instead, so the game — and the standalone .html with no assets folder — stays fully playable.
-// Slice 2 adds real key→path entries to AUDIO_CLIPS; that manifest is the single place paths live.
-const AUDIO_CLIPS = {
-  apollo11: 'assets/audio/apollo11_countdown.mp3', // Apollo era
-  sts135:   'assets/audio/sts135_countdown.mp3',   // Shuttle era onward (80s / 90s2000s / spacex)
-};
-let clipCache = {};
-function playClip(key, fallback){
-  const fb = (typeof fallback==='function') ? fallback : function(){};
-  const path = AUDIO_CLIPS[key];
-  if(!path || typeof Audio==='undefined'){ fb(); return; } // unknown key / headless / no <audio> support → procedural
-  try{
-    let el = clipCache[key];
-    if(!el){ el = clipCache[key] = new Audio(path); el._ovFailed=false;
-      el.addEventListener('error', ()=>{ el._ovFailed=true; }, {once:true}); } // a load error marks the element dead
-    if(el._ovFailed){ fb(); return; }          // prior failure → don't retry the element, go straight to procedural
-    el.muted = !soundOn;                        // live mute, same preference the procedural path reads
-    try{ el.currentTime = 0; }catch(e){}        // allow re-trigger of an already-played clip
-    const p = el.play();
-    if(p && typeof p.catch==='function') p.catch(()=>{ fb(); }); // autoplay/decode/missing-file rejection → procedural
-  }catch(e){ fb(); }
-}
-// Stop + reset any playing clip(s). The real NASA countdowns run ~20-25s — far past the 3.2s pad visual
-// (which we deliberately do NOT extend) — so a clip is left to play on independently, like a broadcast
-// audio bed under the footage. But it must be cut the moment the flight overlay actually CLOSES, or a
-// 20s clip would keep playing after a skip/dismiss. Called from every overlay-close path; a no-op headless
-// (clipCache is empty when Audio is unavailable). Held post-flight cards keep the overlay open, so the
-// bed runs on under them until dismiss.
-function stopClips(){
-  for(const k in clipCache){ const el=clipCache[k]; if(el){ try{ el.pause(); el.currentTime=0; }catch(e){} } }
-}
 function sfxGetBuf(key,dur,fill){
   if(sfxBufCache[key]) return sfxBufCache[key];
   if(!sfxCtx) return null;

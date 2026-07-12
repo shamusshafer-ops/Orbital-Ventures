@@ -107,7 +107,7 @@ check('weather: panel holdAt is pad-start', animState.pendingDecision.holdAt==='
   check('T-31 hold: still frames the go / no-go weather decision', /GO \/ NO-GO/.test(panel.title));
   check('T-31 hold: weather content preserved (a line names the range weather)', panel.lines.some(l=>/range/i.test(l)));
   check('T-31 hold: decision unchanged (scrub + launch-anyway)', panel.buttons.length===2);
-  check('T-31 hold: countdown clip/tone fired once on the held frame (via drawPad)', animState._countdownClipPlayed===true);
+  check('T-31 hold: procedural pad-start cue fired once on the held frame (via drawPad)', animState._padStartCue===true);
 }
 
 // ---------- 6. "Launch anyway" resumes the SAME overlay and carries it forward into the real launch ----------

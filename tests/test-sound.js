@@ -44,23 +44,5 @@ let threw2=false; try{ sfxBlip(988,0.11,0.16); }catch(e){ threw2=true; }
 check('sfxBlip is a safe no-op when there is no audio context', !threw2);
 sfxCtx=savedCtx; sfxBus=savedBus;
 
-// ---- external audio clips (Slice 1 plumbing): manifest + graceful procedural fallback ----
-// Node has no `Audio`, so playClip exercises exactly the assets-missing / unsupported path: it must
-// invoke the procedural fallback, never throw. (Same code path a browser hits when the file is absent.)
-check('AUDIO_CLIPS manifest exposes the two real era clips', typeof AUDIO_CLIPS==='object'
-  && /apollo11_countdown\.mp3$/.test(AUDIO_CLIPS.apollo11||'') && /sts135_countdown\.mp3$/.test(AUDIO_CLIPS.sts135||''));
-check('AUDIO_CLIPS no longer carries the Slice-1 placeholder key', !('placeholder' in AUDIO_CLIPS));
-let fbCalls=0;
-playClip('apollo11', ()=>{ fbCalls++; });
-check('playClip falls back to procedural when Audio is unavailable', fbCalls===1);
-playClip('sts135', ()=>{ fbCalls++; });
-check('playClip falls back for the other real clip too (headless)', fbCalls===2);
-playClip('no_such_key', ()=>{ fbCalls++; });
-check('playClip falls back for an unknown clip key', fbCalls===3);
-let clipThrew=false; try{ playClip('apollo11'); }catch(e){ clipThrew=true; }
-check('playClip never throws even with no fallback supplied', !clipThrew);
-let stopThrew=false; try{ stopClips(); }catch(e){ stopThrew=true; }
-check('stopClips is a safe no-op headless (used on every overlay-close path)', !stopThrew);
-
 console.log(pass+'/'+(pass+fail)+' checks passed');
 process.exit(fail>0 ? 1 : 0);

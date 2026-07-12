@@ -3471,3 +3471,16 @@ the modern era is the natural next step. `test-sound.js` 19/19, pad/decision-pan
 
 **No SAVE_VERSION bump anywhere in this session** — everything above is presentation, transient
 notification state, or `localStorage` preferences, no new persisted save-game fields.
+
+**Correction, same day:** the external audio pipeline above (Slices 1-2 + the "every launch" trigger fix)
+was **fully reverted** at user request — they didn't want the specific Apollo-11-named real clip in the
+game. `AUDIO_CLIPS`/`playClip`/`clipCache`/`stopClips` (shell.js) and the entire `assets/` folder (both
+mp3s + CREDITS.md) were deleted; confirmed by grep, zero references remain anywhere including the built
+output. The pad-phase-start audio cue is back to purely procedural: `sfxBlip(392,0.55,0.13)` fires once per
+launch via a `_padStartCue` guard (renamed from `_countdownClipPlayed`), same trigger point (top of
+`drawPad`, every launch) the "every launch" fix had just established — so the *behavior* the user asked for
+last (a cue on every launch) is preserved, only the *content* is synthesized again instead of real audio.
+Countdown voice (backlog #35) is therefore back to tones-only end-to-end: Slice A (toggle + blips + liftoff
+tone) + Slice B (T-31 hold reskin), no external-asset dependency. `test-sound.js`/`test-decision-panel.js`
+updated to match (no clip-specific assertions remain). If real audio is revisited later, don't just re-add
+the Apollo/Shuttle clips — source something the user is comfortable with first.

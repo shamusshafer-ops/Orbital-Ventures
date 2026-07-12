@@ -588,7 +588,7 @@ function endAnim(hold){
     flightRefresh(); // push the post-flight frame to the Phaser texture (no-op in fallback)
     return;
   }
-  stopClips(); animState=null; $('animOverlay').classList.add('hidden'); sleepFlightScene(); if(A.done) A.done();
+  animState=null; $('animOverlay').classList.add('hidden'); sleepFlightScene(); if(A.done) A.done();
 }
 /* ---------- Flight-overlay manual camera (wheel-zoom + drag-pan) ----------
    New this slice: the full-screen flight overlay (ascent → trajectory → orbit, all
@@ -862,8 +862,8 @@ function startFlightScene(spec, done){
   }
 }
 function sfxCleanupClickHandler(A){ if(A&&A.clickHandler){ const vc=A.viewCanvas||A.cv; if(vc) vc.removeEventListener('click',A.clickHandler); A.clickHandler=null; } }
-function dismissAnim(){ const A=animState; if(!A) return; sfxStop(); stopClips(); sfxCleanupClickHandler(A); const done=A.done; animState=null; $('animOverlay').classList.add('hidden'); sleepFlightScene(); if(done) done(); }
-function skipAnim(){ const A=animState; if(A&&A.held){ dismissAnim(); return; } if(!A) return; cancelAnimationFrame(A.raf); sfxStop(); stopClips(); sfxCleanupClickHandler(A); animState=null; $('animOverlay').classList.add('hidden'); sleepFlightScene(); if(A.done) A.done(); }
+function dismissAnim(){ const A=animState; if(!A) return; sfxStop(); sfxCleanupClickHandler(A); const done=A.done; animState=null; $('animOverlay').classList.add('hidden'); sleepFlightScene(); if(done) done(); }
+function skipAnim(){ const A=animState; if(A&&A.held){ dismissAnim(); return; } if(!A) return; cancelAnimationFrame(A.raf); sfxStop(); sfxCleanupClickHandler(A); animState=null; $('animOverlay').classList.add('hidden'); sleepFlightScene(); if(A.done) A.done(); }
 function drawPostFlight(){
   const A=animState; if(!A) return;
   const ctx=A.ctx,W=A.cv.width,H=A.cv.height,s=A.spec;
@@ -1382,14 +1382,11 @@ function finishHandoff(){
 // countdown hold + ignition ramp) changes what's drawn; ascent itself always sees ignite=1.
 function drawPad(t){
   const A=animState;
-  // Slice 2 (relocated): the era-matched real NASA countdown clip plays on EVERY launch, fired once at
-  // the start of the pad phase. drawPad is the unconditional pad-phase entry for every launch (padDur>0)
-  // — it's called each normal pad frame AND as drawPad(0) inside the weather-hold branch — so this guard
-  // fires the clip exactly once per flight regardless of whether a weather hold appears. The 392Hz sfxBlip
-  // is now purely the procedural FALLBACK, used only when Audio is unavailable or the file fails to play.
-  // Runs to its natural ~20-25s length independent of the 3.2s pad visual (timing untouched); stopClips()
-  // on any overlay close (dismiss/skip/scrub/end) cuts it.
-  if(!A._countdownClipPlayed){ A._countdownClipPlayed=true; playClip(eraVisualKey()==='apollo'?'apollo11':'sts135', ()=>sfxBlip(392, 0.55, 0.13)); }
+  // One low sustained procedural cue at the start of the pad phase on every launch — distinct from the
+  // T-4→T-1 countdown blips (988) and the liftoff confirm (1319); gated by soundOn via sfxBus. drawPad is
+  // the unconditional pad-phase entry for every launch (padDur>0) — called each normal pad frame and as
+  // drawPad(0) inside the weather-hold branch — so this per-flight guard fires it exactly once.
+  if(!A._padStartCue){ A._padStartCue=true; sfxBlip(392, 0.55, 0.13); }
   const padU=clampA((A.padDur>0?t/A.padDur:1),0,1);
   A.ignite = padU<PAD_HOLD_FRAC ? 0 : smooth(clampA((padU-PAD_HOLD_FRAC)/(1-PAD_HOLD_FRAC),0,1));
   if(!A._engineStarted && padU>=PAD_HOLD_FRAC){
@@ -1434,9 +1431,8 @@ function drawScene(t){
     // E1.2 slice C: weather go/no-go holds right at pad open, before the countdown even ramps —
     // the range-weather call comes before anything else about the flight is known.
     if(A.pendingDecision && A.pendingDecision.holdAt==='pad-start'){ A.held=true;
-      // The countdown clip (or its 392Hz procedural fallback) is fired at the top of drawPad below — now
-      // on every launch, not just weather holds — so the hold no longer plays a separate tone of its own;
-      // it's already playing/underneath by the time this hold frame renders. drawPad(0) triggers it here.
+      // The pad-start procedural cue is fired at the top of drawPad below (via this drawPad(0) call), so
+      // the hold doesn't play a separate tone of its own — it's already sounding as the hold frame renders.
       drawPad(0); drawDecisionPanel(A.pendingDecision.buildPanel()); A.lastT=t; return; }
     drawPad(t); A.lastT=t; return;
   }
