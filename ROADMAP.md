@@ -3015,12 +3015,13 @@ duplicating.
       serialization + load-path unification (a); IndexedDB autosave ring + restore UI + import-safety
       net (b); 5 manual save slots behind "Manage saves…" (c). User-verified in Firefox at each
       slice. 381/381.
-- [~] **E0.3 Dirty-flag rendering** — **Slices 0-1 DONE 2026-07-12** (see session logs below): a
+- [~] **E0.3 Dirty-flag rendering** — **Slices 0-2 DONE 2026-07-12** (see session logs below): a
       tech-lead planning pass revised the roadmap's original framing (below) — migrating all
       ~158 `render()` call sites to `invalidate(region)` was rejected as over-scoped; see the
       session log for the actual slice plan (0: snapshot harness ✅; 1: region extraction +
       `renderAll()`/`invalidate()` shim ✅; 2: `setHTML()` memoize + focus/scroll fix — the slice
-      that actually fixes the named bugs, next up; 3: hot-path-only migration, optional; 4: deferred).
+      that actually fixes the named bugs ✅, needs a real-browser check; 3: hot-path-only
+      migration, optional, next up; 4: deferred).
       Original framing, superseded: `render()` currently rebuilds all regions from ~136 call
       sites; move to `invalidate(region)` + per-region rebuild with a `renderAll()` escape
       hatch. Fixes focus/scroll loss in re-rendered panels, cuts time-warp GC churn, and is the
@@ -3578,3 +3579,75 @@ indistinguishable from before by design, so "nothing looks different" *is* the p
 
 **Next: Slice 2** — `setHTML(el, html)` with memoized last-written-string skip + focus/scroll capture-
 restore, the slice that actually fixes E0.3's two named bugs (focus/scroll loss, warp-tick DOM churn).
+
+## Session — E0.3 Slice 2: setHTML() memoize + focus/scroll fix (2026-07-12)
+
+**DONE, tests passing, not yet committed/pushed. No SAVE_VERSION bump** (pure render-layer behavior,
+no persisted state). This is the slice that actually fixes E0.3's two named bugs.
+
+**New `setHTML(el, html)` (render.js)**: skips the `.innerHTML` write entirely when `html` is byte-
+identical to what that exact element was last written with (cached in a `Map<element,string>` — never
+reads `el.innerHTML` back, per the planning pass's warning that re-serialization doesn't round-trip
+byte-identically). On a real write, captures `document.activeElement` (+ its selection range, if it's
+inside `el` and has an id) and the scrollTop of `el` itself plus any id-bearing scrollable descendant,
+restoring both after the rewrite. **Cache-clear-on-load guard**: `newGame()`/`applyLoadedSave()` both
+reassign the top-level `state` variable to a fresh object (confirmed by reading both — `state = {...}`
+in sim.js, `state=saved` in save.js), so `setHTML` compares `state`'s identity against the state it
+last saw and wipes its cache on any mismatch — zero changes needed in sim.js/save.js, no risk of a
+stale string from a previous game silently surviving a new game or a load.
+
+**Routed through `setHTML` this slice** (the always-on regions + one bench panel, per the Slice 0
+plan's "sweep incrementally" instruction — not all ~97 innerHTML sites):
+- `renderNextObjective` (`nextObjStatus`), `renderOutliner` (`outlinerCard`, both its empty- and
+  populated-state writes), `renderRailPersistent`'s per-section accordion body write (covers all 4
+  rail sections — Mission Control/Design Bench/Programs/Contracts — through the one shared line).
+- `readoutCard`, the bench mission-fit card — both its non-profile (`renderReadout`) and profile-
+  mission (`renderProfileReadout`) writers.
+- `showModal` (sim.js): this is where the actual "modal jitter" bug lived — `render()` re-invokes
+  `activeModal()` (→ `showModal` again) on **every single tick** while a deep-view modal is open, so
+  the body was being fully rebuilt and the entrance animation (`.modal-entering`) was replaying on
+  every re-render, not just the genuine open. Routed the body write through `setHTML`, and moved the
+  entrance-class-add + initial-focus-grab to fire only on the closed→open transition (`!wasOpen`) —
+  consistent with the trigger-focus capture immediately above it, which already made that exact
+  distinction for a different reason. This was speculated as a real bug when Slice 0's snapshot test
+  was being written and is now confirmed and fixed.
+
+**`renderLog` (`opsTimeline`) is a scroll-only fix, not routed through `setHTML`.** It builds real DOM
+nodes via `document.createElement`+`appendChild` with actual JS-closure `onclick` handlers (not the
+rest of the codebase's `onclick="fn('id')"` attribute-string convention), so there's no single html
+string to memoize against. Wrapped the whole function body in a capture-before / restore-in-`finally`
+of `opsTimeline.scrollTop` instead — covers both early-return paths (collapsed, empty-after-filter)
+and the normal fall-through. This directly fixes the "scroll the log during warp" bug without touching
+the function's internals or risking the closure-based nav handlers.
+
+**Known, deliberate non-fix: range-slider drag continuity on the bench.** Investigated whether the
+bench's `type="range"` sliders (`oninput="setProp(...);render()"`, fires continuously while dragging)
+suffer DOM-node replacement mid-drag, which can drop the browser's native mouse-capture on the slider.
+Confirmed this is a *different* bug than what `setHTML` fixes — the html content genuinely changes on
+every drag tick (the displayed value differs), so the memoize-skip can't help here by construction. Not
+in scope for this slice; would need a lower-level fix (e.g. patching just the `value` attribute instead
+of replacing the containing card) if it's ever a real complaint.
+
+**Validation:** new `tests/test-sethtml.js` (9/9) — direct unit tests of the memoize-skip decision
+(identical writes skipped, different writes go through, two elements don't share a cache slot) and the
+newGame cache-clear trap specifically (writes the same string before/after `newGame()` and confirms the
+second write is NOT skipped despite being identical, proving the state-identity guard actually fires).
+Focus/scroll capture-restore itself isn't asserted here — the harness doesn't model
+`document.activeElement` or a real browser's "`innerHTML=''` resets `scrollTop`" behavior, so that half
+needs the real-browser checklist below. Slice 0's `test-render-regions.js`: 21/21, byte-identical to
+pre-Slice-2 output (confirms none of the above changed *what* gets rendered, only *when*). Full suite:
+39 files, same single pre-existing `test-progress-unify.js` shortfall (24/34, unchanged) and one
+already-documented RNG-flaky file (`test-station-slice2.js`, 3/4 clean re-runs — unrelated to this
+slice, its Mars delivery reliability roll).
+
+**Needs a real-browser check**: (1) open a deep-view modal (Programs/Rivals/Personnel/Infrastructure),
+let time run/warp with it open, and confirm the entrance animation no longer replays on every tick;
+(2) scroll the ops-timeline log up while advancing time and confirm it stays put instead of snapping to
+top; (3) type into the livery/blueprint name field and confirm nothing about typing feels different
+(this was already probably fine per the `onchange`-not-`oninput` analysis above, but worth a real look);
+(4) general smoke pass across all 5 tabs — this slice should be behaviorally invisible except for the
+two fixes above.
+
+**Next: Slice 3** (optional, small) — migrate the warp-tick hot path to `invalidate(...)` plus a
+couple of trivially-scoped cold sites as pattern exemplars; explicitly not the remaining ~140 sites.
+Roadmap's real E0.3 deliverable (Slices 0-2) is now complete — Slice 3/4 are discretionary polish.

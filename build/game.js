@@ -7067,7 +7067,17 @@ function showModal(html,view){ try{ timeInterrupt(); }catch(e){}
   // be an in-modal element) nor yank focus back to the first control on each live re-render.
   const wasOpen=!!(modalEl && modalEl.classList && !modalEl.classList.contains('hidden'));
   if(!wasOpen){ try{ const prev=document.activeElement; _modalReturnFocus=prev||null; _modalReturnFocusId=(prev&&prev.id)?prev.id:null; }catch(e){ _modalReturnFocus=null; _modalReturnFocusId=null; } }
-  const mb=$('modalBody');mb.className=modalClassName(view);mb.innerHTML=html;modalEl.classList.remove('hidden');mb.classList.add('modal-entering');mb.addEventListener('animationend',()=>mb.classList.remove('modal-entering'),{once:true});
+  const mb=$('modalBody');mb.className=modalClassName(view);
+  // E0.3 Slice 2: while a deep-view modal is open, render() re-invokes activeModal() (→ showModal
+  // again) on every tick, so this used to unconditionally rebuild the body AND replay the entrance
+  // animation on every single re-render, even when nothing in the modal actually changed (the
+  // literal bug this slice targets). setHTML() skips the DOM write when the html is byte-identical
+  // to last time, preserving any in-modal focus/scroll; the entrance class + initial-focus grab
+  // are now gated on a genuine closed→open transition only, matching the trigger-focus capture
+  // above which already made that same distinction.
+  setHTML(mb, html);
+  modalEl.classList.remove('hidden');
+  if(!wasOpen){ mb.classList.add('modal-entering'); mb.addEventListener('animationend',()=>mb.classList.remove('modal-entering'),{once:true}); }
   try{ if(!mb.getAttribute('tabindex')) mb.setAttribute('tabindex','-1'); }catch(e){}
   if(!wasOpen){ try{ const f=mb.querySelectorAll(MODAL_FOCUSABLE_SEL); if(f && f.length){ f[0].focus(); } else { mb.focus(); } }catch(e){} }
 } // view=true → wide, left-aligned, scrollable deep-view layout
@@ -11855,16 +11865,16 @@ function outlinerEtaText(d){
 function renderOutliner(){
   const el=$('outlinerCard'); if(!el) return;
   const items=outlinerItems();
-  if(!items.length){ el.innerHTML=`<div class="cc-panel-h" style="margin:0 0 4px">◈ In flight</div><div class="dim" style="font-size:12px">Nothing on the clock — start research, queue a build, or take a contract.</div>`; return; }
+  if(!items.length){ setHTML(el, `<div class="cc-panel-h" style="margin:0 0 4px">◈ In flight</div><div class="dim" style="font-size:12px">Nothing on the clock — start research, queue a build, or take a contract.</div>`); return; }
   const rows=items.slice(0,8).map((it,i)=>`<div onclick="(outlinerItems()[${i}]||{go:()=>{}}).go()" style="display:flex;align-items:center;gap:7px;padding:3px 4px;margin:0 -4px;border-radius:5px;cursor:pointer;font-size:12px" onmouseover="this.style.background='var(--panel2)'" onmouseout="this.style.background=''">
       <span style="width:16px;text-align:center;flex:0 0 auto">${it.icon}</span>
       <span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:${it.color||'var(--muted)'}">${it.label}</span>
       <b style="font-family:var(--mono);font-size:11px;color:${it.color||'var(--readout)'};flex:0 0 auto">${outlinerEtaText(it.etaDays)}</b>
     </div>`).join('');
-  el.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+  setHTML(el, `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
       <div class="cc-panel-h" style="margin:0">◈ In flight</div>
       <button class="btn ghost" style="font-size:11px;padding:1px 8px" onclick="runToNextEvent()" title="Fast-forward until the next item completes or a decision arrives">⏭ next event</button>
-    </div>${rows}`;
+    </div>${rows}`);
 }
 
 /* ---------- attention badges: what needs the player, per scene ----------
@@ -11920,6 +11930,70 @@ function applyEraVisual(){
   const b=document.body; if(!b) return;
   b.classList.remove('era-apollo','era-80s','era-90s2000s','era-spacex');
   b.classList.add('era-'+key);
+}
+// ---------- E0.3 Slice 2: setHTML() — memoized writes + focus/scroll preservation ----------
+// The actual fix for E0.3's two named bugs (focus/scroll loss in re-rendered panels, time-warp DOM
+// churn): skip the .innerHTML write entirely when the string is byte-identical to what this exact
+// element was last written with, and when a real write does happen, capture/restore whatever had
+// focus (+ its text selection) and whatever scrolled inside the element, so a content refresh that
+// happens to land on a focused/scrolled panel doesn't yank the user's place. Deliberately not
+// applied to every innerHTML site yet — Slice 0's plan calls for an incremental sweep starting with
+// always-on regions (log, rail, outliner, objective, modal) plus the bench readout; most of the
+// ~97 other sites still write directly and are unaffected by this slice.
+let _htmlCache=new Map();
+let _htmlCacheStateRef=null; // newGame()/applyLoadedSave() both reassign the top-level `state` var
+// to a fresh object; comparing identity here is a free, zero-touch signal that state was replaced
+// wholesale (a new game or a load), so stale cached strings from the PREVIOUS game can't cause a
+// render to wrongly skip a write just because the new state happens to produce the same string.
+function _captureFocusState(el){
+  if(!el) return null;
+  const active=(typeof document!=='undefined')?document.activeElement:null;
+  if(!active || !active.id) return null;
+  if(!(typeof el.contains==='function' && el.contains(active))) return null;
+  const info={id:active.id};
+  if(typeof active.selectionStart==='number'){ info.selStart=active.selectionStart; info.selEnd=active.selectionEnd; }
+  return info;
+}
+function _restoreFocusState(info){
+  if(!info) return;
+  const el=document.getElementById(info.id);
+  if(!el || typeof el.focus!=='function') return;
+  el.focus();
+  if(info.selStart!=null && typeof el.setSelectionRange==='function'){
+    try{ el.setSelectionRange(info.selStart, info.selEnd); }catch(e){}
+  }
+}
+// Captures the container's own scrollTop plus any id-bearing descendant's scrollTop (an existing
+// id is already a stable handle to "the same logical element" across a rebuild — no new markup
+// convention needed). Restoration looks descendants up by that same id post-rewrite.
+function _captureScrollState(el){
+  if(!el) return null;
+  const map={};
+  if(el.scrollTop) map['']=el.scrollTop;
+  (function walk(node){
+    (node.children||[]).forEach(c=>{ if(c.id && c.scrollTop) map[c.id]=c.scrollTop; walk(c); });
+  })(el);
+  return map;
+}
+function _restoreScrollState(el, map){
+  if(!el || !map) return;
+  if(map['']!=null) el.scrollTop=map[''];
+  for(const id in map){
+    if(id==='') continue;
+    const c=document.getElementById(id);
+    if(c) c.scrollTop=map[id];
+  }
+}
+function setHTML(el, html){
+  if(!el) return;
+  if(state!==_htmlCacheStateRef){ _htmlCache=new Map(); _htmlCacheStateRef=state; } // new game / load — don't trust any cached string from the previous game
+  if(_htmlCache.get(el)===html) return; // unchanged since last write — no DOM touch, nothing to preserve
+  _htmlCache.set(el, html);
+  const focusInfo=_captureFocusState(el);
+  const scrollInfo=_captureScrollState(el);
+  el.innerHTML=html;
+  _restoreFocusState(focusInfo);
+  _restoreScrollState(el, scrollInfo);
 }
 // ---------- E0.3 Slice 1: named render regions ----------
 // Pure code motion — render()'s old body, split into these functions with zero statement
@@ -13305,7 +13379,7 @@ function renderRailPersistent(){
     if(body){ body.classList.toggle('open', open);
       // #31 Slice 3: close objectives section → reset sparkle state
       if(s.key==='objectives'&&!open&&_objSectionOpen){ _prevObjDoneSet.clear(); _objSectionOpen=false; }
-      body.innerHTML = open ? s.html()+`<div class="dim rail-acc-hint">⇲ Double-click the header to open ${s.label} →</div>` : '';
+      setHTML(body, open ? s.html()+`<div class="dim rail-acc-hint">⇲ Double-click the header to open ${s.label} →</div>` : '');
       // #31 Slice 3: objective sparkle — seed on first open, diff on subsequent renders
       if(s.key==='objectives'&&open){ _applyObjSparkle(body); }
     }
@@ -15012,7 +15086,7 @@ function renderReadout(){
   // no governing subsystem yet, nothing has failed). Reuses the same machinery resolveFlight rolls on.
   const relTip=esc(phaseBreakdownLines(flightPhaseBreakdown(subsystemReport(m,v,null,v.crewed)),null).join('\n'));
 
-  $('readoutCard').innerHTML=`
+  setHTML($('readoutCard'), `
     <div class="mission-tag">Flying against</div>
     <div class="mission-name">${m.name} ${m.crew?`<span class="pill" style="color:var(--ignite);border-color:#5a4419">${m.crew} crew · ${m.days<1?(m.days*24).toFixed(0)+'h':m.days+'d'}</span>`:''} ${state.completed[m.id]?'<span class="pill ok">routine</span>':''}</div>
 
@@ -15047,7 +15121,7 @@ function renderReadout(){
 
     ${flags}
     ${benchQueueHTML(m)}
-    <div class="dim" style="font-size:12px;text-align:center;margin-top:6px">▸ Build &amp; Launch is under the rocket</div>`;
+    <div class="dim" style="font-size:12px;text-align:center;margin-top:6px">▸ Build &amp; Launch is under the rocket</div>`);
 }
 
 function renderProfileReadout(m){
@@ -15093,7 +15167,7 @@ function renderProfileReadout(m){
   // no governing subsystem yet). sim is already computed above; crewed follows v.crewed as elsewhere.
   const relTip=esc(phaseBreakdownLines(flightPhaseBreakdown(subsystemReport(m,v,sim,v.crewed)),null).join('\n'));
 
-  $('readoutCard').innerHTML=`
+  setHTML($('readoutCard'), `
     <div class="mission-tag">Mission profile — every leg must pass</div>
     <div class="mission-name">${m.name} <span class="pill" style="color:var(--ignite);border-color:#5a4419">${m.crew} crew · ${m.days}d</span> ${state.completed[m.id]?'<span class="pill ok">routine</span>':''}</div>
 
@@ -15121,7 +15195,7 @@ function renderProfileReadout(m){
 
     ${flags}
     ${benchQueueHTML(m)}
-    <div class="dim" style="font-size:12px;text-align:center;margin-top:6px">▸ Build &amp; Launch is under the rocket</div>`;
+    <div class="dim" style="font-size:12px;text-align:center;margin-top:6px">▸ Build &amp; Launch is under the rocket</div>`);
 }
 
 /* ---------- Solar System map ---------- */
@@ -16663,9 +16737,9 @@ function renderInfrastructure(){
 function renderNextObjective(){
   const el=$('nextObjStatus'); if(!el) return;
   const nx=nextObjective();
-  el.innerHTML = nx
+  setHTML(el, nx
     ? `<span style="color:var(--readout)">▶ Next:</span> ${nx.mission.name} <span class="dim">· ${nx.program.name}</span>`
-    : `<span style="color:var(--ok)">All programs complete — the frontier is yours.</span>`;
+    : `<span style="color:var(--ok)">All programs complete — the frontier is yours.</span>`);
 }
 function renderPrograms(){
   // ---- ambition card ----
@@ -17305,26 +17379,37 @@ function renderTlControls(){
 function renderLog(){
   renderTlControls();
   const box=$('opsTimeline'); if(!box) return;
-  box.classList.toggle('collapsed', _tlCollapsed);
-  box.innerHTML='';
-  // #31 Slice 3: slide in the newest chip when a new entry is added
-  const hasNew=state.log.length>_prevLogLength; _prevLogLength=state.log.length;
-  if(_tlCollapsed) return; // controls stay interactive; the strip itself is display:none
-  const d=document.createElement('div'); d.className='tl-date'; d.innerHTML=`<small>DATE</small>${dateStr()}`; box.appendChild(d);
-  const up=upcomingEvents().filter(u=>_tlFilter==='all'||u.cat===_tlFilter);
-  up.forEach(u=>{ const c=document.createElement('div'); c.className='tl-chip next'+(u.nav?' clk':'');
-    c.innerHTML=`<span class="tl-when">UPCOMING</span><span class="tl-msg" title="${tlAttr(u.msg)}">${u.icon} ${tlStrip(u.msg)}</span>`;
-    if(u.nav) c.onclick=()=>timelineGo(u.nav); box.appendChild(c); });
-  if(up.length){ const sep=document.createElement('div'); sep.className='tl-sep'; sep.textContent='◂ NOW'; box.appendChild(sep); }
-  const entries=state.log.filter(l=>_tlFilter==='all'||logCategory(l)===_tlFilter);
-  if(!entries.length){ const e=document.createElement('div'); e.className='tl-empty';
-    e.textContent=state.log.length?'No entries in this category yet.':'No flights or events yet — advance time or fly a mission.'; box.appendChild(e); return; }
-  let firstLogChip=true;
-  entries.forEach(l=>{ const nav=logNav(l); const icon=TL_CAT_ICON[logCategory(l)]||TL_CAT_ICON.other;
-    const c=document.createElement('div'); c.className='tl-chip '+(l.kind||'note')+(nav?' clk':'')+(hasNew&&firstLogChip&&l===state.log[0]?' tl-chip-new':'');
-    firstLogChip=false;
-    c.innerHTML=`<span class="tl-when">${l.when}</span><span class="tl-msg" title="${l.detail?tlAttr(l.msg)+'\n\n'+esc(l.detail):tlAttr(l.msg)}">${icon} ${tlStrip(l.msg)}</span>`; // E1.5: append the failure causal chain (if any) to the existing message tooltip
-    if(nav) c.onclick=()=>timelineGo(nav); box.appendChild(c); });
+  // E0.3 Slice 2: box.innerHTML='' below resets scrollTop to 0 in a real browser even when the
+  // rebuilt content is identical to what was there — capture/restore across every exit path (both
+  // early returns below and the normal fall-through) so scrolling the log during a time-warp tick
+  // doesn't get yanked back to the top on the next render. This function builds real DOM nodes via
+  // appendChild rather than a single html string, so it can't route through setHTML()'s
+  // string-memoize path — this is a scroll-only fix, not a churn-reduction one.
+  const _scrollTop=box.scrollTop;
+  try{
+    box.classList.toggle('collapsed', _tlCollapsed);
+    box.innerHTML='';
+    // #31 Slice 3: slide in the newest chip when a new entry is added
+    const hasNew=state.log.length>_prevLogLength; _prevLogLength=state.log.length;
+    if(_tlCollapsed) return; // controls stay interactive; the strip itself is display:none
+    const d=document.createElement('div'); d.className='tl-date'; d.innerHTML=`<small>DATE</small>${dateStr()}`; box.appendChild(d);
+    const up=upcomingEvents().filter(u=>_tlFilter==='all'||u.cat===_tlFilter);
+    up.forEach(u=>{ const c=document.createElement('div'); c.className='tl-chip next'+(u.nav?' clk':'');
+      c.innerHTML=`<span class="tl-when">UPCOMING</span><span class="tl-msg" title="${tlAttr(u.msg)}">${u.icon} ${tlStrip(u.msg)}</span>`;
+      if(u.nav) c.onclick=()=>timelineGo(u.nav); box.appendChild(c); });
+    if(up.length){ const sep=document.createElement('div'); sep.className='tl-sep'; sep.textContent='◂ NOW'; box.appendChild(sep); }
+    const entries=state.log.filter(l=>_tlFilter==='all'||logCategory(l)===_tlFilter);
+    if(!entries.length){ const e=document.createElement('div'); e.className='tl-empty';
+      e.textContent=state.log.length?'No entries in this category yet.':'No flights or events yet — advance time or fly a mission.'; box.appendChild(e); return; }
+    let firstLogChip=true;
+    entries.forEach(l=>{ const nav=logNav(l); const icon=TL_CAT_ICON[logCategory(l)]||TL_CAT_ICON.other;
+      const c=document.createElement('div'); c.className='tl-chip '+(l.kind||'note')+(nav?' clk':'')+(hasNew&&firstLogChip&&l===state.log[0]?' tl-chip-new':'');
+      firstLogChip=false;
+      c.innerHTML=`<span class="tl-when">${l.when}</span><span class="tl-msg" title="${l.detail?tlAttr(l.msg)+'\n\n'+esc(l.detail):tlAttr(l.msg)}">${icon} ${tlStrip(l.msg)}</span>`; // E1.5: append the failure causal chain (if any) to the existing message tooltip
+      if(nav) c.onclick=()=>timelineGo(nav); box.appendChild(c); });
+  } finally {
+    box.scrollTop=_scrollTop;
+  }
 }
 
 // S2: establish a baseline state so the UI renders, then ALWAYS ask on launch how to begin —

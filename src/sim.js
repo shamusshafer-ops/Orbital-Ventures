@@ -5498,7 +5498,17 @@ function showModal(html,view){ try{ timeInterrupt(); }catch(e){}
   // be an in-modal element) nor yank focus back to the first control on each live re-render.
   const wasOpen=!!(modalEl && modalEl.classList && !modalEl.classList.contains('hidden'));
   if(!wasOpen){ try{ const prev=document.activeElement; _modalReturnFocus=prev||null; _modalReturnFocusId=(prev&&prev.id)?prev.id:null; }catch(e){ _modalReturnFocus=null; _modalReturnFocusId=null; } }
-  const mb=$('modalBody');mb.className=modalClassName(view);mb.innerHTML=html;modalEl.classList.remove('hidden');mb.classList.add('modal-entering');mb.addEventListener('animationend',()=>mb.classList.remove('modal-entering'),{once:true});
+  const mb=$('modalBody');mb.className=modalClassName(view);
+  // E0.3 Slice 2: while a deep-view modal is open, render() re-invokes activeModal() (→ showModal
+  // again) on every tick, so this used to unconditionally rebuild the body AND replay the entrance
+  // animation on every single re-render, even when nothing in the modal actually changed (the
+  // literal bug this slice targets). setHTML() skips the DOM write when the html is byte-identical
+  // to last time, preserving any in-modal focus/scroll; the entrance class + initial-focus grab
+  // are now gated on a genuine closed→open transition only, matching the trigger-focus capture
+  // above which already made that same distinction.
+  setHTML(mb, html);
+  modalEl.classList.remove('hidden');
+  if(!wasOpen){ mb.classList.add('modal-entering'); mb.addEventListener('animationend',()=>mb.classList.remove('modal-entering'),{once:true}); }
   try{ if(!mb.getAttribute('tabindex')) mb.setAttribute('tabindex','-1'); }catch(e){}
   if(!wasOpen){ try{ const f=mb.querySelectorAll(MODAL_FOCUSABLE_SEL); if(f && f.length){ f[0].focus(); } else { mb.focus(); } }catch(e){} }
 } // view=true → wide, left-aligned, scrollable deep-view layout
