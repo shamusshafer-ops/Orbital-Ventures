@@ -1,7 +1,7 @@
-// F4 — "One canonical 'what's happening now' surface." Validates that #ccProgress is now a *view
-// of the Outliner's items* (outlinerItems() = single source of truth), that the deleted UPCOMING
-// chips + execOverview "Active R&D" stat line are actually gone, and that nothing regressed
-// (outliner click-through .go handlers + runToNextEvent still intact).
+// F4 — "One canonical 'what's happening now' surface." Validates that #ccStrip (the compact info strip
+// above the Cape scene, which replaced the stacked execOverview + ccProgress cards) shows the active
+// R&D / build / hangar work-items with their Fly button intact, that the deleted UPCOMING chips are
+// gone, and that nothing regressed (outliner click-through .go handlers + runToNextEvent still intact).
 //
 // Appended after harness.js + extracted-script.js in one script scope (see tests/README.md), so it
 // sees `state` and every game function directly. Game auto-boots before this runs.
@@ -20,7 +20,7 @@ newGame('engineer');
 // ---------- 1. Boot sanity ----------
 check('boot: state exists', !!state);
 check('boot: outlinerItems is a function', typeof outlinerItems==='function');
-check('boot: renderCCProgress is a function', typeof renderCCProgress==='function');
+check('boot: renderCCStrip is a function', typeof renderCCStrip==='function');
 
 // ---------- 2. Set up one active research + one started build + one hangar-ready vehicle ----------
 // kerosene: months=3. monthsLeft=1.5 => pct = round(100*(3-1.5)/3) = 50
@@ -43,38 +43,37 @@ check('outliner: hangar item present, action-ready (eta 0)', !!hItem && hItem.et
 check('outliner: hangar carries id + vehName for the Fly button', hItem && hItem.hangarId==='hx' && hItem.vehName==='Falcon Test');
 check('outliner: every item has a .go click-through handler', items.every(it=>typeof it.go==='function'));
 
-// ---------- 4. #ccProgress is a faithful VIEW of those same outliner items (parity) ----------
-renderCCProgress();
-let cc = htmlOf('ccProgress');
-check('ccProgress: renders research from the outliner item', /Kerosene Propulsion/.test(cc));
-check('ccProgress: renders build from the outliner item', /Test LV/.test(cc));
-check('ccProgress: renders hangar vehicle from the outliner item', /Falcon Test/.test(cc));
-check('ccProgress: hangar Fly button preserved', /launchFromHangar\('hx'\)/.test(cc) && /Fly ▸/.test(cc));
-check('ccProgress: research bar width mirrors outliner pct (50%)', /width:50%/.test(cc));
-check('ccProgress: build bar width mirrors outliner pct (67%)', /width:67%/.test(cc));
-// Parity both directions: exactly one bar per research+build outliner item, no invented rows.
+// ---------- 4. #ccStrip (the compact strip) shows the same active R&D / build / hangar work-items ----------
+renderCCStrip();
+let cc = htmlOf('ccStrip');
+check('ccStrip: renders research', /Kerosene Propulsion/.test(cc));
+check('ccStrip: renders build', /Test LV/.test(cc));
+check('ccStrip: renders hangar vehicle', /Falcon Test/.test(cc));
+check('ccStrip: hangar Fly button preserved (still actionable)', /launchFromHangar\('hx'\)/.test(cc) && /Fly ▸/.test(cc));
+check('ccStrip: research bar width mirrors pct (50%)', /width:50%/.test(cc));
+check('ccStrip: build bar width mirrors pct (67%)', /width:67%/.test(cc));
+// Exactly one progress bar per active research + started build (hangar rows are a Fly button, no bar).
 const bars = (cc.match(/class="fill"/g)||[]).length;
-check('ccProgress: one progress bar per research+build outliner item', bars === (items.filter(it=>it.kind==='research'||it.kind==='build').length));
-// Every research/build label + hangar vehName the outliner would show appears in the card.
+const expectBars = (state.activeResearch?1:0) + buildQueueList().filter(o=>o.started).length;
+check('ccStrip: one progress bar per research+build item', bars === expectBars);
 const wantLabels = items.filter(it=>it.kind==='research'||it.kind==='build').map(it=>it.label)
   .concat(items.filter(it=>it.kind==='hangar').map(it=>it.vehName));
-check('ccProgress: every outliner work-item is present in the card (no missing info)', wantLabels.every(l=>cc.indexOf(l)>=0));
+check('ccStrip: every work-item is present in the strip (no missing info)', wantLabels.every(l=>cc.indexOf(l)>=0));
 
 // ---------- 5. Empty states preserved when nothing is on the clock ----------
 state.activeResearch = null; state.buildQueue = []; state.hangar = [];
-renderCCProgress();
-cc = htmlOf('ccProgress');
-check('ccProgress: empty research state', /No active project/.test(cc));
-check('ccProgress: empty build state', /Nothing building/.test(cc));
+renderCCStrip();
+cc = htmlOf('ccStrip');
+check('ccStrip: empty research state', /No active project/.test(cc));
+check('ccStrip: empty build state', /Nothing building/.test(cc));
 
-// ---------- 6. execOverview no longer duplicates the "Active R&D" progress line, keeps its own stats ----------
+// ---------- 6. The strip carries the folded stat/context and doesn't duplicate the R&D line ----------
 state.activeResearch = {id:'kerosene', monthsLeft:2};
-renderExecOverview();
-const eo = htmlOf('execOverview');
-check('execOverview: renders (non-empty)', eo.length>0);
-check('execOverview: the duplicated "Active R&D" stat line is gone', !/Active R&amp;D|Active R&D/.test(eo));
-check('execOverview: unique stats preserved — Gov funding', /Gov funding/.test(eo));
-check('execOverview: unique stats preserved — Current vehicle', /Current vehicle/.test(eo));
+renderCCStrip();
+const eo = htmlOf('ccStrip');
+check('ccStrip: renders (non-empty)', eo.length>0);
+check('ccStrip: folds in gov funding', /Gov \+/.test(eo));
+check('ccStrip: active research appears once (no duplicated stat line)', (eo.match(/Kerosene Propulsion/g)||[]).length===1);
 
 // ---------- 7. The #opsTimeline UPCOMING chips are gone; the strip is purely the log now ----------
 check('upcoming: upcomingEvents() function was deleted', typeof upcomingEvents==='undefined');

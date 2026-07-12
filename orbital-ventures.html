@@ -313,9 +313,20 @@
   .flag{font-size:12px;margin-top:8px;display:flex;gap:6px;align-items:flex-start}
   .flag.bad{color:var(--bad)} .flag.warn{color:var(--warn)} .flag.ok{color:var(--ok)}
 
-  /* Command Center (#18) */
-  .cc-hero{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:6px}
-  .cc-net{font-family:var(--mono);font-size:13px}
+  /* Command Center (#18) — compact info strip above the Cape scene. Replaced the two stacked
+     execOverview + ccProgress cards (~250-350px) with one slim full-width row to give #ccCenter
+     more room; reuses the topbar .stat chip pattern for visual consistency. */
+  .cc-strip{display:flex;flex-wrap:wrap;align-items:center;gap:8px 20px;padding:8px 14px}
+  .cc-strip-id{display:flex;flex-direction:column;gap:1px;min-width:150px}
+  .cc-strip-id b{font-size:14px}
+  .cc-strip-id .dim{font-size:11px}
+  .cc-strip-stats{display:flex;flex-wrap:wrap;gap:8px 16px}
+  .cc-strip .stat{align-items:flex-start}
+  .cc-strip .stat .v{font-size:15px}
+  .cc-strip-prog{display:flex;flex-direction:column;gap:2px;flex:1;min-width:240px}
+  .cc-strip-prow{display:flex;align-items:center;gap:8px;font-size:12px}
+  .cc-strip-pname{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:190px}
+  .cc-strip-prow .bar{flex:1;max-width:160px;height:5px;margin:0}
 
   /* Home dashboard — 3-column layout */
   .cc-cols{display:grid;grid-template-columns:224px 1fr;gap:14px;align-items:start;margin-bottom:14px}  /* ccRight moved to the right rail (slice 3) */
@@ -323,13 +334,7 @@
   .cc-cols > div > .card{margin-top:0}
   .cc-cols > div > .card + .card{margin-top:14px}
   .cc-panel-h{font-size:var(--fs-sm);text-transform:uppercase;letter-spacing:.14em;color:var(--muted);opacity:var(--op-sm);margin-bottom:8px}
-  /* exec overview */
-  .exec-grid{display:flex;gap:22px;flex-wrap:wrap}
-  .exec-stat{display:flex;flex-direction:column}
-  .exec-stat .k{font-size:var(--fs-sm);text-transform:uppercase;letter-spacing:.12em;color:var(--muted);opacity:var(--op-sm)}
-  .exec-stat .v{font-family:var(--mono);font-size:20px;font-weight:700}
-  /* #28: dashboard trend sparklines */
-  .exec-sparks{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:12px;margin-top:10px;border-top:1px solid var(--line);padding-top:10px}
+  /* #28: dashboard trend sparkline cell (metricSpark helper; retained for reuse) */
   .spark-cell{min-width:0}
   .spark-k{font-size:var(--fs-min);text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:3px}
   /* Presentation pass: Design Bench centerpiece — rocket preview beside the editor */
@@ -693,8 +698,7 @@
     <main class="viewport">
 
   <div id="commandView">
-    <div class="card" id="execOverview"></div>
-    <div class="card" id="ccProgress"></div>
+    <div class="card cc-strip" id="ccStrip"></div>
     <!-- ccLeft (advisor/objectives) promoted to the left rail in slice 4;
          ccRight (Alerts/News) relocated to the right rail in slice 3 -->
     <div id="ccCenter"></div>
@@ -14029,89 +14033,55 @@ function playLiftoff(spec, next){
 function pauseCapeGame(){ if(capeGame){ try{ if(capeGame.scene.isActive('cape')) capeGame.scene.sleep('cape'); }catch(e){} } }
 function resumeCapeGame(){ if(capeGame){ try{ capeGame.scene.wake('cape'); }catch(e){} } }
 function renderCommandCenter(){
-  if(!$('execOverview')) return;
-  renderExecOverview();
-  renderCCProgress(); // user request: active research + build/launch progress, featured on their own instead of buried in a stat line
+  if(!$('ccStrip')) return;
+  renderCCStrip(); // compact one-row strip: company/stats + active R&D/build/hangar progress, above the Cape scene
   // renderCCLeft() now runs unconditionally from render() (slice 4: persistent left rail)
   renderCCCenter();
   renderCCRight();
   renderCCTimeline();
   // renderCCCenter starts the correct renderer (Phaser CapeScene, or the fallback RAF loop)
 }
-// Featured, always-visible progress card: active research (name + bar + time left) and any
-// build/launch campaigns in progress (bar + ETA) or sitting finished in the hangar (Fly button).
-// Pulled out of execOverview's cramped one-line "Active R&D: …" mention so both are easy to
-// track without opening the R&D tab or the Infrastructure drill-down.
-function renderCCProgress(){
-  const el=$('ccProgress'); if(!el) return;
-  const ar=state.activeResearch;
-  const rNode=ar && RESEARCH.find(r=>r.id===ar.id);
-  const rPct=(ar && rNode) ? clampA(Math.round(100*(rNode.months-ar.monthsLeft)/Math.max(1,rNode.months)),0,100) : 0;
-  const nextR=state.researchNext?RESEARCH.find(x=>x.id===state.researchNext):null;
-  const nextLine=nextR?`<div class="dim" style="font-size:11px;margin-top:3px">📋 Next: ${nextR.name}</div>`:'';
-  const researchHTML = (ar && rNode)
-    ? `<div style="display:flex;justify-content:space-between;font-size:13px"><b>${rNode.name}</b><span class="dim">${fmtTimeLeft(ar.monthsLeft)} left</span></div>
-       <div class="bar" style="margin:4px 0 0;height:6px"><div class="fill" style="width:${rPct}%;background:var(--dom-research)"></div></div>${nextLine}`
-    : `<div class="dim" style="font-size:12px">No active project — <span style="text-decoration:underline;cursor:pointer" onclick="setTab('rnd')">start one on the R&amp;D tab</span>.</div>${nextLine}`;
-  const orders=buildQueueList().filter(o=>o.started);
-  const hangar=hangarList();
-  const orderRows=orders.map(o=>{
-    const pct=clampA(Math.round(100*(o.monthsTotal-o.monthsLeft)/Math.max(1,o.monthsTotal)),0,100);
-    return `<div style="margin-top:8px"><div style="display:flex;justify-content:space-between;font-size:13px"><b>${o.name}</b><span class="dim">${fmtTimeLeft(o.monthsLeft)} left</span></div>
-      <div class="bar" style="margin:4px 0 0;height:6px"><div class="fill" style="width:${pct}%;background:var(--dom-engineering)"></div></div></div>`;
-  }).join('');
-  const hangarRows=hangar.map(h=>`<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;font-size:13px">
-      <span>✓ <b>${h.name}</b> — ready to fly</span>
-      <button class="btn ghost" style="padding:2px 8px;font-size:12px" onclick="launchFromHangar('${h.id}')">Fly ▸</button>
-    </div>`).join('');
-  const buildHTML = (orders.length||hangar.length) ? orderRows+hangarRows
-    : `<div class="dim" style="font-size:12px">Nothing building — commit a launch from the Bench.</div>`;
-  el.innerHTML = `<div style="display:flex;gap:24px;flex-wrap:wrap">
-      <div style="flex:1;min-width:220px"><div class="cc-panel-h" style="margin:0 0 4px">⚗ Active Research</div>${researchHTML}</div>
-      <div style="flex:1;min-width:220px"><div class="cc-panel-h" style="margin:0 0 4px">🏗 Build &amp; Launch</div>${buildHTML}</div>
-    </div>`;
-}
-// top executive overview — "how is my company doing?"
-function renderExecOverview(){
+// Compact info strip above the Cape scene — replaced the two stacked execOverview + ccProgress cards
+// (~250-350px) with one slim full-width row to reclaim vertical space for #ccCenter. Content: identity
+// (company/date/era + folded gov-funding & current-vehicle), key stat chips (reusing the topbar .stat
+// pattern), and inline mini progress bars for active R&D / builds / hangar-ready (Fly button preserved).
+function renderCCStrip(){
+  const el=$('ccStrip'); if(!el) return;
   const s=commandSummary();
   const netCol=s.net>=0?'var(--ok)':'var(--bad)';
   const fam=activeFamily();
-  const vehName = (fam&&fam.name) ? fam.name : (curMission()?curMission().name:'—');
-  const ar=s.research;
-  const mh=state.metricHist||{}; // #28: dashboard trend buffers
-  $('execOverview').innerHTML=`
-    <div class="cc-hero">
-      <div>
-        <h2 style="margin:0 0 2px">${esc(state.company)}</h2>
-        <div class="muted" style="font-size:12px">${dateStr()} · Era ${s.eraIdx}/${s.eraTotal} · ${s.era}</div>
-      </div>
-      <div class="cc-net" style="text-align:right">
-        <div class="dim" style="font-size:11px;text-transform:uppercase;letter-spacing:.12em">${domDot('economy')}Monthly net</div>
-        <div style="color:${netCol};font-size:18px;font-weight:700">${s.net>=0?'+':''}${fM(s.net)}/mo</div>
-        <div class="dim" style="font-size:11px">+${fM(s.income)} in · −${fM(s.overhead)} ovh${(s.empireOpex>0||s.loanInterest>0)?` <span style="color:var(--bad)">(incl.${s.empireOpex>0?` −${fM(s.empireOpex)} empire`:''}${s.loanInterest>0?` −${fM(s.loanInterest)} loan`:''})</span>`:''} · −${fM(s.payroll)} pay</div>
-      </div>
+  const vehName=(fam&&fam.name)?fam.name:(curMission()?curMission().name:'—');
+  const netTitle=`+${fM(s.income)} in · −${fM(s.overhead)} ovh · −${fM(s.payroll)} pay`;
+  const chips=`
+    <div class="stat" title="${netTitle}"><span class="k">${domDot('economy')}Net</span><span class="v" style="color:${netCol}">${s.net>=0?'+':''}${fM(s.net)}/mo</span></div>
+    <div class="stat"><span class="k">${domDot('economy')}Capital</span><span class="v" style="color:${state.money<1.5?'var(--bad)':'var(--ink)'}">${fM(s.capital)}</span></div>
+    <div class="stat"><span class="k">${domDot('exploration')}Rep</span><span class="v">${fI(s.rep)}</span></div>
+    <div class="stat"><span class="k">${domDot('research')}Science</span><span class="v" style="color:var(--dom-research)">${s.science}</span></div>
+    <div class="stat"><span class="k">${domDot('crew')}Staff</span><span class="v">${(state.staff||[]).length}</span></div>
+    <div class="stat"><span class="k">${domDot('engineering')}Flights</span><span class="v">${s.flights}${s.successRate!=null?` · ${s.successRate}%`:''}</span></div>
+    <div class="stat"><span class="k">${domDot('warn')}Support</span><span class="v" style="color:${s.moodColor}">${s.support}%</span></div>`;
+  const ar=state.activeResearch, rNode=ar&&RESEARCH.find(r=>r.id===ar.id);
+  const rPct=(ar&&rNode)?clampA(Math.round(100*(rNode.months-ar.monthsLeft)/Math.max(1,rNode.months)),0,100):0;
+  const rRow=(ar&&rNode)
+    ? ccStripProg('⚗', rNode.name, fmtTimeLeft(ar.monthsLeft)+' left', rPct, 'var(--dom-research)')
+    : `<div class="cc-strip-prow dim">⚗ No active project — <span onclick="setTab('rnd')" style="text-decoration:underline;cursor:pointer">start on the R&amp;D tab</span></div>`;
+  const orders=buildQueueList().filter(o=>o.started);
+  const orderRows=orders.map(o=>ccStripProg('🏗', o.name, fmtTimeLeft(o.monthsLeft)+' left',
+     clampA(Math.round(100*(o.monthsTotal-o.monthsLeft)/Math.max(1,o.monthsTotal)),0,100), 'var(--dom-engineering)')).join('');
+  const hangar=hangarList();
+  const hangarRows=hangar.map(h=>`<div class="cc-strip-prow"><span class="cc-strip-pname">✓ <b>${h.name}</b> ready</span><button class="btn ghost" style="padding:1px 8px;font-size:12px;margin-left:auto" onclick="launchFromHangar('${h.id}')">Fly ▸</button></div>`).join('');
+  const buildEmpty=(!orders.length&&!hangar.length)?`<div class="cc-strip-prow dim">🏗 Nothing building — commit a launch from the Bench.</div>`:'';
+  el.innerHTML=`
+    <div class="cc-strip-id">
+      <b>${esc(state.company)}</b>
+      <span class="dim">${dateStr()} · Era ${s.eraIdx}/${s.eraTotal} · ${s.era}</span>
+      <span class="dim" style="font-size:10px">Gov +${fM(s.govFunding)}/mo · ${esc(vehName)}</span>
     </div>
-    <div class="exec-grid" style="margin-top:8px">
-      <div class="exec-stat"><span class="k">${domDot('economy')}Capital</span><span class="v" style="color:${state.money<1.5?'var(--bad)':'var(--ink)'}">${fM(s.capital)}</span></div>
-      <div class="exec-stat"><span class="k">${domDot('exploration')}Reputation</span><span class="v">${fI(s.rep)}</span></div>
-      <div class="exec-stat"><span class="k">${domDot('research')}Science</span><span class="v" style="color:var(--dom-research)">${s.science}</span></div>
-      <div class="exec-stat"><span class="k">${domDot('crew')}Staff</span><span class="v">${(state.staff||[]).length}</span></div>
-      <div class="exec-stat"><span class="k">${domDot('engineering')}Flights</span><span class="v">${s.flights}${s.successRate!=null?` · ${s.successRate}%`:''}</span></div>
-      <div class="exec-stat"><span class="k">${domDot('warn')}Public Support</span><span class="v" style="color:${s.moodColor}">${s.support}% <span style="font-size:12px;font-weight:400">${s.mood}</span></span></div>
-    </div>
-    <div class="exec-sparks adv-only">
-      ${metricSpark('Capital', mh.money, {color:'var(--ignite)', label:'capital trend'})}
-      ${metricSpark('Reputation', mh.rep, {color:'#6db3ff', label:'reputation trend'})}
-      ${metricSpark('Public Support', mh.support, {min:0, max:100, color:'#caa3ff', label:'public support trend'})}
-      ${metricSpark('Launch Success', mh.success, {min:0, max:100, color:'var(--ok)', label:'launch success-rate trend'})}
-      ${metricSpark('Science', mh.science, {color:'var(--readout)', label:'science trend'})}
-    </div>
-    <div style="display:flex;gap:22px;flex-wrap:wrap;margin-top:10px;font-size:12px;border-top:1px solid var(--line);padding-top:8px">
-      <div><span class="dim">Active R&amp;D:</span> ${ar?`<b>${ar.name}</b> <span class="dim">(${fmtTimeLeft(ar.monthsLeft)} left)</span>`:'<span class="dim">none — start a project</span>'}</div>
-      <div><span class="dim">Gov funding:</span> <b style="color:${s.govFunding>0?'var(--ok)':'var(--dim)'}">+${fM(s.govFunding)}/mo</b></div>
-      <div><span class="dim">Current vehicle:</span> <b>${esc(vehName)}</b></div>
-      ${staffEffectsHTML()}
-    </div>`;
+    <div class="cc-strip-stats">${chips}</div>
+    <div class="cc-strip-prog">${rRow}${orderRows}${hangarRows}${buildEmpty}</div>`;
+}
+function ccStripProg(icon,name,eta,pct,col){
+  return `<div class="cc-strip-prow"><span class="cc-strip-pname">${icon} <b>${name}</b></span><div class="bar"><div class="fill" style="width:${pct}%;background:${col}"></div></div><span class="dim">${eta}</span></div>`;
 }
 // LEFT — "what should I do next?"
 // ---- Mission Control Advisor body (slice 4) — reused by the persistent right-rail accordion ----
