@@ -57,7 +57,7 @@
     --dom-economy:#6db86a; --dom-engineering:#5bb9c4; --dom-research:#c9a86a;
     --dom-military:#d2542b; --dom-exploration:#e08a3c; --dom-crew:#5bb9c4; --dom-warn:#e8b341;
     background-image:linear-gradient(rgba(90,72,46,.18) 1px,transparent 1px),linear-gradient(90deg,rgba(90,72,46,.18) 1px,transparent 1px); }
-  body.era-apollo .card{ border-radius:2px; border-width:2px; }
+  body.era-apollo .card,body.era-apollo header{ border-radius:2px; border-width:2px; }
   body.era-apollo .btn{ border-radius:1px; border-width:2px; font-weight:600; letter-spacing:.02em; }
   body.era-apollo h1,body.era-apollo h2,body.era-apollo h3{ letter-spacing:.06em; text-transform:uppercase; }
   body.era-apollo .tabbadge,body.era-apollo .pill{ border-radius:1px; }
@@ -72,7 +72,7 @@
     --dom-economy:#5fe0a0; --dom-engineering:#5bb0a0; --dom-research:#a9d68b;
     --dom-military:#e0564f; --dom-exploration:#d7b32a; --dom-crew:#5fe0a0; --dom-warn:#e8c341;
     background-image:linear-gradient(rgba(40,90,55,.16) 1px,transparent 1px),linear-gradient(90deg,rgba(40,90,55,.16) 1px,transparent 1px); }
-  body.era-80s .card{ border-radius:4px; border-width:1.5px; }
+  body.era-80s .card,body.era-80s header{ border-radius:4px; border-width:1.5px; }
   body.era-80s .btn{ border-radius:3px; border-width:1.5px; letter-spacing:.02em; }
   body.era-80s h1,body.era-80s h2,body.era-80s h3{ letter-spacing:.03em; }
   /* 90s/2000s — Commercial (2000-2030): Y2K/early-broadband web look — glossy gradient buttons,
@@ -84,7 +84,7 @@
     --ignite:#ff8c3c; --readout:#3ec6e0; --ok:#4ecb71; --bad:#ef5350; --warn:#ffca28;
     --dom-economy:#4ecb71; --dom-engineering:#3ec6e0; --dom-research:#b088e0;
     --dom-military:#ef5350; --dom-exploration:#ff8c3c; --dom-crew:#3ec6e0; --dom-warn:#ffca28; }
-  body.era-90s2000s .card{ border-radius:10px; }
+  body.era-90s2000s .card,body.era-90s2000s header{ border-radius:10px; }
   body.era-90s2000s .btn{ border-radius:16px; background-image:linear-gradient(rgba(255,255,255,.08),transparent); }
   /* SpaceX-modern — Expansion onward (2030+): clean, minimal, high-contrast, borderless-leaning —
      the destination the whole progression is aging TOWARD. Meaningfully more minimal than today's
@@ -96,7 +96,7 @@
     --ignite:#ff6b1a; --readout:#3ec6ff; --ok:#4ade80; --bad:#f85149; --warn:#fbbf24;
     --dom-economy:#4ade80; --dom-engineering:#3ec6ff; --dom-research:#c084fc;
     --dom-military:#f85149; --dom-exploration:#ff6b1a; --dom-crew:#3ec6ff; --dom-warn:#fbbf24; }
-  body.era-spacex .card{ border-radius:14px; border-width:0.5px; }
+  body.era-spacex .card,body.era-spacex header{ border-radius:14px; border-width:0.5px; }
   body.era-spacex .btn{ border-radius:20px; border-width:0.5px; }
   body.era-spacex h1,body.era-spacex h2,body.era-spacex h3{ letter-spacing:-0.01em; }
   *{box-sizing:border-box}
@@ -121,7 +121,7 @@
   .topbar.collapsed{display:none}
   #topbarShow{position:fixed;top:6px;right:12px;z-index:50;padding:3px 11px;font-size:12px;box-shadow:0 4px 14px rgba(0,0,0,.5)}
   header{display:flex;align-items:center;gap:18px;flex-wrap:wrap;
-    border:1px solid var(--line);background:linear-gradient(180deg,#18222a,#131b21);
+    border:1px solid var(--line);background:linear-gradient(180deg,var(--panel2),var(--panel));
     padding:12px 16px;border-radius:8px;margin-bottom:10px}
   .brand{display:flex;flex-direction:column}
   .brand .co{font-size:16px;font-weight:700;letter-spacing:.04em}
