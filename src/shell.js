@@ -583,14 +583,22 @@ function sfxStartEngine(engineCount, totalProp){
   const bp=sfxCtx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=600+engineCount*40; bp.Q.value=1.0;
   const cG=sfxCtx.createGain(); cG.gain.value=vol*0.03;
   s2.connect(bp); bp.connect(cG); cG.connect(sfxMaster); s2.start(); sfxEngNodes.push(s2);
-  sfxMaster.gain.setValueAtTime(0, sfxCtx.currentTime);
-  sfxMaster.gain.linearRampToValueAtTime(vol, sfxCtx.currentTime+0.3);
+  // No scheduled ramp here (was linearRampToValueAtTime) — that left a pending automation event on
+  // sfxMaster.gain that the very next frame's sfxUpdateEngine (called from drawAscent, fired on the
+  // same/next tick via drawPad's drawAscent(0,false)) would immediately fight with its own
+  // setTargetAtTime call on the SAME AudioParam, with no cancelScheduledValues between them — two
+  // competing automation curves on one param is undefined/inconsistent across browsers and could
+  // render as near-silent. sfxUpdateEngine's own setTargetAtTime (already called every frame) now owns
+  // 100% of the ramp-up, starting cleanly from 0.
+  sfxMaster.gain.cancelScheduledValues(sfxCtx.currentTime);
+  sfxMaster.gain.value=0;
   sfxMaster._baseVol=vol;
 }
 function sfxUpdateEngine(throttle, altFrac){
   if(!sfxMaster||!sfxCtx) return;
   const atmoFade=1-Math.pow(clampA(altFrac,0,1),1.8)*0.7;
-  const vol=(sfxMaster._baseVol||0.3)*throttle*atmoFade;
+  const baseVol=(sfxMaster._baseVol!=null)?sfxMaster._baseVol:0.3; // was `||0.3` — 0 is a valid pre-ignition value, not "unset"
+  const vol=baseVol*throttle*atmoFade;
   sfxMaster.gain.setTargetAtTime(clampA(vol,0,1), sfxCtx.currentTime, 0.05);
 }
 function sfxEngineOff(){
