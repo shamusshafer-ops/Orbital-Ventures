@@ -1321,18 +1321,50 @@ function isoVehicleItems(ctx,t,L){
     items.push({d:b.gx+b.gy+0.06, draw:()=>pts.forEach(o=>isoPerson(ctx,e.sx+o[0],e.sy+o[1],'rgba(208,218,225,0.85)'))}); });
   return items;
 }
-function drawIsoClouds(ctx,W,H,t){
-  const rnd=mulberry(334455);
-  ctx.save(); ctx.globalCompositeOperation='screen';
-  for(let i=0;i<6;i++){
-    const baseX=rnd()*W*1.1-W*0.05, cy=(rnd()*0.22+0.03)*H;
-    const x=((baseX+t*(8+rnd()*6))%(W*1.15))-W*0.07;
-    const r=28+rnd()*44, alpha=0.055+rnd()*0.055;
-    ctx.fillStyle=`rgba(180,210,230,${alpha})`;
-    ctx.beginPath(); ctx.ellipse(x,cy,r,r*0.32,0,0,7); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(x-r*0.35,cy-r*0.08,r*0.65,r*0.24,0,0,7); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(x+r*0.38,cy-r*0.06,r*0.55,r*0.20,0,0,7); ctx.fill();
+function drawCapeStars(ctx,W,H,t,atmo){
+  if(atmo.starMul<=0.01) return;
+  const rnd=mulberry(715221);
+  ctx.save();
+  for(let i=0;i<112;i++){
+    const x=rnd()*W, y=(0.018+rnd()*0.43)*H, size=rnd()>0.91?1.8:0.72+rnd()*0.55;
+    const twinkle=0.68+0.32*Math.sin(t*0.32+i*1.71);
+    const alpha=(0.10+rnd()*0.30)*atmo.starMul*twinkle;
+    ctx.fillStyle=`rgba(${rnd()>0.84?'180,222,255':'231,239,255'},${alpha.toFixed(3)})`;
+    ctx.fillRect(x,y,size,size);
   }
+  ctx.restore();
+}
+function drawCapeHorizon(ctx,W,H,atmo){
+  // A broad atmospheric band separates the distant waterline from the sky without adding new scene state.
+  const hY=H*0.43, glow=0.12+0.18*atmo.sunA+0.13*atmo.starMul;
+  const haze=ctx.createLinearGradient(0,hY-H*0.12,0,hY+H*0.16);
+  haze.addColorStop(0,'rgba(170,209,231,0)'); haze.addColorStop(0.52,`rgba(198,222,226,${glow.toFixed(3)})`); haze.addColorStop(1,'rgba(84,126,142,0)');
+  ctx.fillStyle=haze; ctx.fillRect(0,hY-H*0.12,W,H*0.28);
+  ctx.save(); ctx.globalCompositeOperation='screen';
+  const rnd=mulberry(851602);
+  for(let i=0;i<9;i++){
+    const x=(rnd()*1.12-0.06)*W, y=hY+(rnd()-0.5)*H*0.055, r=W*(0.045+rnd()*0.065);
+    ctx.fillStyle=`rgba(244,196,137,${(0.018+0.040*atmo.sunA).toFixed(3)})`;
+    ctx.beginPath(); ctx.ellipse(x,y,r,r*0.12,0,0,7); ctx.fill();
+  }
+  ctx.restore();
+}
+function drawIsoClouds(ctx,W,H,t,atmo){
+  const decks=[{seed:334455,n:5,y:0.10,drift:2.4,alpha:0.035,colour:'170,207,228',flat:0.19},
+    {seed:334456,n:6,y:0.23,drift:4.1,alpha:0.050,colour:'130,167,191',flat:0.27},
+    {seed:334457,n:5,y:0.40,drift:1.7,alpha:0.030,colour:'246,187,132',flat:0.13}];
+  ctx.save(); ctx.globalCompositeOperation='screen';
+  decks.forEach(deck=>{ const rnd=mulberry(deck.seed);
+    for(let i=0;i<deck.n;i++){
+      const baseX=rnd()*W*1.16-W*0.08, cy=(deck.y+(rnd()-0.5)*0.11)*H;
+      const x=((baseX+t*(deck.drift+rnd()*1.2))%(W*1.2))-W*0.10;
+      const r=34+rnd()*58, alpha=deck.alpha*(0.48+0.52*atmo.sunA)+deck.alpha*0.30;
+      ctx.fillStyle=`rgba(${deck.colour},${alpha.toFixed(3)})`;
+      ctx.beginPath(); ctx.ellipse(x,cy,r,r*deck.flat,0,0,7); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(x-r*0.34,cy-r*0.07,r*0.62,r*deck.flat*0.78,0,0,7); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(x+r*0.39,cy-r*0.05,r*0.54,r*deck.flat*0.68,0,0,7); ctx.fill();
+    }
+  });
   ctx.restore();
 }
 function drawIsoBoat(ctx,t){ const p=(t*0.025)%1, x=isoX(8.6+p*1.6,1+p*3), y=isoY(8.6+p*1.6,1+p*3);
@@ -1367,12 +1399,12 @@ function drawIsoDecor(ctx,t){
 }
 function drawIsoGround(ctx,W,H,t){
   // water on the far side of the coastline — shares the land's gy range so the shore matches
-  const wg=ctx.createLinearGradient(isoX(7.5,-2),isoY(7.5,-2),isoX(11,6.5),isoY(11,6.5)); wg.addColorStop(0,'#103248'); wg.addColorStop(1,'#0a2236');
+  const wg=ctx.createLinearGradient(isoX(7.5,-2),isoY(7.5,-2),isoX(11,6.5),isoY(11,6.5)); wg.addColorStop(0,'#16435a'); wg.addColorStop(0.48,'#0c3047'); wg.addColorStop(1,'#071a2d');
   ctx.fillStyle=wg; isoDiamond(ctx,7.5,-2,11,6.5); ctx.fill();
   for(let i=0;i<18;i++){ const f=i/18; const x=isoX(7.5+f*3.5,2.25), y=isoY(7.5+f*3.5,2.25)+Math.sin(t*1.2+i)*2; ctx.strokeStyle=`rgba(255,210,150,${0.12*(1-f)})`; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(x-10,y); ctx.lineTo(x+10,y); ctx.stroke(); }
   // grass landmass — diagonal gradient + mottled terrain + sandy shore
   const gg=ctx.createLinearGradient(isoX(-2,6.5),isoY(-2,6.5),isoX(7.5,-2),isoY(7.5,-2));
-  gg.addColorStop(0,'#19231a'); gg.addColorStop(0.45,'#2a382b'); gg.addColorStop(0.8,'#36482f'); gg.addColorStop(1,'#3e4f32');
+  gg.addColorStop(0,'#101b18'); gg.addColorStop(0.42,'#203326'); gg.addColorStop(0.78,'#35462c'); gg.addColorStop(1,'#51603a');
   ctx.fillStyle=gg; isoDiamond(ctx,-2,-2,7.5,6.5); ctx.fill();
   ctx.save(); isoDiamond(ctx,-2,-2,7.5,6.5); ctx.clip();
   const rnd=mulberry(424242);
@@ -1382,6 +1414,34 @@ function drawIsoGround(ctx,W,H,t){
   ctx.strokeStyle='rgba(120,140,110,0.08)'; ctx.lineWidth=1;
   for(let gx=-1;gx<=8;gx++){ ctx.beginPath(); ctx.moveTo(isoX(gx,-2),isoY(gx,-2)); ctx.lineTo(isoX(gx,6.5),isoY(gx,6.5)); ctx.stroke(); }
   for(let gy=-1;gy<=6;gy++){ ctx.beginPath(); ctx.moveTo(isoX(-2,gy),isoY(-2,gy)); ctx.lineTo(isoX(7.5,gy),isoY(7.5,gy)); ctx.stroke(); }
+}
+function capeLighting(t){
+  const atmo=skyAtmosphere(t);
+  // Practicals stay subtle through the day, then become the scene's secondary read at dusk and night.
+  return Math.max(0.18,Math.min(1,0.16+atmo.starMul*0.62+(1-atmo.sunA)*0.32));
+}
+function capeLightPalette(){
+  const era=eraVisualKey();
+  if(era==='apollo') return {cyan:'132,205,218', amber:'255,193,108'};
+  if(era==='80s') return {cyan:'104,185,218', amber:'248,161,76'};
+  if(era==='90s2000s') return {cyan:'119,216,238', amber:'255,190,104'};
+  return {cyan:'92,221,244', amber:'255,178,78'};
+}
+function drawCapePracticalLights(ctx,L,t){
+  const level=capeLighting(t), col=capeLightPalette(), flicker=0.90+0.10*Math.sin(t*0.7);
+  const pool=(x,y,r,rgb,a)=>{ const g=ctx.createRadialGradient(x,y,1,x,y,r); g.addColorStop(0,`rgba(${rgb},${a.toFixed(3)})`); g.addColorStop(0.28,`rgba(${rgb},${(a*0.40).toFixed(3)})`); g.addColorStop(1,`rgba(${rgb},0)`); ctx.fillStyle=g; ctx.beginPath(); ctx.ellipse(x,y,r,r*0.42,0,0,7); ctx.fill(); };
+  ctx.save(); ctx.globalCompositeOperation='screen';
+  const pad=L.pad, vab=L.mfg, mission=L.mission, prod=L.prod;
+  if(pad){ pool(pad.sx-26,pad.sy+8,82,col.amber,0.18*level*flicker); pool(pad.sx+25,pad.sy+3,60,col.cyan,0.12*level); for(let i=0;i<5;i++){ const x=pad.sx-48+i*21, y=pad.sy+13-i*3; ctx.fillStyle=`rgba(${i%2?col.cyan:col.amber},${(0.45*level).toFixed(3)})`; ctx.fillRect(x-1,y-1,2,2); } }
+  if(vab) pool(vab.sx+6,vab.sy+5,68,col.amber,0.10*level);
+  if(mission) pool(mission.sx-9,mission.sy+5,44,col.cyan,0.11*level);
+  if(prod) pool(prod.sx+5,prod.sy+5,38,col.amber,0.08*level);
+  ctx.restore();
+}
+function drawCapeVignette(ctx,W,H){
+  const v=ctx.createRadialGradient(W*0.52,H*0.45,Math.min(W,H)*0.18,W*0.52,H*0.45,Math.max(W,H)*0.76);
+  v.addColorStop(0,'rgba(0,0,0,0)'); v.addColorStop(0.66,'rgba(0,5,10,0.02)'); v.addColorStop(1,'rgba(0,4,10,0.38)');
+  ctx.fillStyle=v; ctx.fillRect(0,0,W,H);
 }
 // Depth-sortable growth items (extra pads, ops buildings) so they occlude/are-occluded correctly with traffic.
 function isoGrowthItems(ctx,t,L){
@@ -1428,19 +1488,21 @@ function drawCape(cv, t){
   const atmo=skyAtmosphere(t);
   const sky=ctx.createLinearGradient(0,0,0,H*0.7); sky.addColorStop(0,`rgb(${atmo.top})`); sky.addColorStop(0.5,`rgb(${atmo.mid})`); sky.addColorStop(1,`rgb(${atmo.bot})`);
   ctx.fillStyle=sky; ctx.fillRect(0,0,W,H);
-  if(atmo.starMul>0.01){ for(let i=0;i<70;i++){ const sx=(i*137.5)%W, sy=(i*61.7)%(H*0.4); const tw=Math.abs(Math.sin(t*1.3+i)); ctx.fillStyle=`rgba(220,230,255,${(0.1+0.22*tw)*atmo.starMul})`; ctx.fillRect(sx,sy,1.2,1.2); } }
+  drawCapeStars(ctx,W,H,t,atmo);
   if(atmo.sunA>0.02){
     const sunX=W*atmo.sunX, sunY=H*atmo.sunY;
     const sg=ctx.createRadialGradient(sunX,sunY,2,sunX,sunY,70); sg.addColorStop(0,`rgba(${atmo.sunC},${0.7*atmo.sunA})`); sg.addColorStop(0.4,`rgba(${atmo.sunC},${0.32*atmo.sunA})`); sg.addColorStop(1,`rgba(${atmo.sunC},0)`); ctx.fillStyle=sg; ctx.beginPath(); ctx.arc(sunX,sunY,70,0,7); ctx.fill();
     ctx.fillStyle=`rgba(${atmo.sunC},${atmo.sunA})`; ctx.beginPath(); ctx.arc(sunX,sunY,12,0,7); ctx.fill();
   }
-  drawIsoClouds(ctx,W,H,t);
+  drawCapeHorizon(ctx,W,H,atmo);
+  drawIsoClouds(ctx,W,H,t,atmo);
   drawIsoGround(ctx,W,H,t);
   const L=isoLayout();
   drawIsoBoat(ctx,t);
   drawIsoProps(ctx,t);
   drawIsoRoads(ctx,L);
   drawIsoDecor(ctx,t);
+  drawCapePracticalLights(ctx,L,t);
   const list=ISO_BUILDINGS.slice().sort((a,b)=>(a.gx+a.gy)-(b.gx+b.gy));
   // shadows are flat on the ground — draw them all first, beneath every standing object
   for(const b of list){ const e=L[b.key]; if(e) isoShadow(ctx,e.sx,e.sy,b.fw,b.fd); }
@@ -1452,6 +1514,7 @@ function drawCape(cv, t){
   isoVehicleItems(ctx,t,L).forEach(it=>items.push(it));
   items.sort((a,b)=>a.d-b.d);
   items.forEach(it=>it.draw());
+  drawCapeVignette(ctx,W,H);
 }
 let ccAnim=null, ccT0=0, ccPhaserSmoke=false, ccPhaserDetail=false;
 function ccNow(){ return (typeof performance!=='undefined'&&performance.now)?performance.now():Date.now(); }
