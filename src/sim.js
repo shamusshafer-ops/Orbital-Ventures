@@ -4386,6 +4386,7 @@ function buildDepartSpec(m, crewed, transitDays, etaAbs){
     hasCapsule: !!(state.research.crew_capsule || crewed),
     isCislunar: !!m.profile, isOrbital: (!m.profile && m.reqDv>=9000),
     reqDv: m.reqDv||9400,
+    night: rnd()<nightLaunchChance(), // #38: era-scaled chance of a night launch (visuals only)
     rng: { wind:(rnd()-0.5)*0.9, windFreq:1.4+rnd()*1.6, windPhase:rnd()*6.283,
            pitchJitter:(rnd()-0.5)*0.16, sep:state.stages.map(()=>(rnd()-0.5)*0.06),
            apogee:0.86+rnd()*0.28, bow:(rnd()-0.5)*0.9 } };
@@ -4579,6 +4580,10 @@ function finalizeLaunch(ctx, ops){
     hasCapsule: !!(state.research.crew_capsule || crewed), // recovery: parachutes + heat shield + splashdown (Mercury/Vostok era)
     isCislunar: !!m.profile, isOrbital: (!m.profile && m.reqDv>=9000),
     reqDv: m.reqDv||9400,
+    // #38: reuse the earlier roll if a live decision (weather/live-call/rescue) already opened this
+    // overlay — resumeFlightForDecision's Object.assign would otherwise clobber A.spec.night mid-flight,
+    // flipping the sky partway through a launch already being watched.
+    night: (typeof animState!=='undefined' && animState && animState._openedForDecision && animState.spec) ? animState.spec.night : rnd()<nightLaunchChance(),
     rng: { wind:(rnd()-0.5)*0.9, windFreq:1.4+rnd()*1.6, windPhase:rnd()*6.283,
            pitchJitter:(rnd()-0.5)*0.16, sep:state.stages.map(()=>(rnd()-0.5)*0.06),
            apogee:0.86+rnd()*0.28, bow:(rnd()-0.5)*0.9 } };

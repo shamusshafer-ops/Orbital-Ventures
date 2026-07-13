@@ -41,6 +41,10 @@ function currentEra(){
   return cur;
 }
 function eraIndex(e){ return ERAS.indexOf(e); }
+// #38 backlog: night launches, era-dependent. Early Pioneer-era ranges rarely worked night ops
+// (visual tracking, no radar-independent range safety); night launches became routine as the
+// program matured. Scales 8% (Pioneer) to 32% (Commercial+), plateauing at the last couple eras.
+function nightLaunchChance(){ return Math.min(0.32, 0.08+eraIndex(currentEra())*0.035); }
 // P6 6.1: pure era-index-from-year (currentEra reads global state.year; this takes an explicit
 // year so it can run at load/migration time before `state` is assigned). Same "last era whose
 // start has been reached" rule — ERAS.from is strictly increasing, so break-on-first-greater holds.
@@ -5955,6 +5959,7 @@ function buildDepartSpec(m, crewed, transitDays, etaAbs){
     hasCapsule: !!(state.research.crew_capsule || crewed),
     isCislunar: !!m.profile, isOrbital: (!m.profile && m.reqDv>=9000),
     reqDv: m.reqDv||9400,
+    night: rnd()<nightLaunchChance(), // #38: era-scaled chance of a night launch (visuals only)
     rng: { wind:(rnd()-0.5)*0.9, windFreq:1.4+rnd()*1.6, windPhase:rnd()*6.283,
            pitchJitter:(rnd()-0.5)*0.16, sep:state.stages.map(()=>(rnd()-0.5)*0.06),
            apogee:0.86+rnd()*0.28, bow:(rnd()-0.5)*0.9 } };
@@ -6148,6 +6153,10 @@ function finalizeLaunch(ctx, ops){
     hasCapsule: !!(state.research.crew_capsule || crewed), // recovery: parachutes + heat shield + splashdown (Mercury/Vostok era)
     isCislunar: !!m.profile, isOrbital: (!m.profile && m.reqDv>=9000),
     reqDv: m.reqDv||9400,
+    // #38: reuse the earlier roll if a live decision (weather/live-call/rescue) already opened this
+    // overlay — resumeFlightForDecision's Object.assign would otherwise clobber A.spec.night mid-flight,
+    // flipping the sky partway through a launch already being watched.
+    night: (typeof animState!=='undefined' && animState && animState._openedForDecision && animState.spec) ? animState.spec.night : rnd()<nightLaunchChance(),
     rng: { wind:(rnd()-0.5)*0.9, windFreq:1.4+rnd()*1.6, windPhase:rnd()*6.283,
            pitchJitter:(rnd()-0.5)*0.16, sep:state.stages.map(()=>(rnd()-0.5)*0.06),
            apogee:0.86+rnd()*0.28, bow:(rnd()-0.5)*0.9 } };
@@ -9581,6 +9590,7 @@ function openFlightForDecision(ctx, decision){
     transferProp: (m.profile&&m.modules&&m.modules.includes('transfer'))?state.transfer.prop:0,
     recovering:false, hasCapsule: !!(state.research.crew_capsule || ctx.crewed),
     isCislunar: !!m.profile, isOrbital: (!m.profile && m.reqDv>=9000), reqDv: m.reqDv||9400,
+    night: rnd()<nightLaunchChance(), // #38: rolled here (not in finalizeLaunch) when a decision opens the overlay early — see finalizeLaunch's reuse via _openedForDecision, so the sky can't flip mid-launch on resume
     rng: { wind:(rnd()-0.5)*0.9, windFreq:1.4+rnd()*1.6, windPhase:rnd()*6.283,
            pitchJitter:(rnd()-0.5)*0.16, sep:state.stages.map(()=>(rnd()-0.5)*0.06),
            apogee:0.86+rnd()*0.28, bow:(rnd()-0.5)*0.9 } };
@@ -10657,7 +10667,14 @@ function drawAscent(t,canFail){
   const accel = (1 + p*2.5) * throttle;
   const g=ctx.createLinearGradient(0,0,0,H);
   const skyP=smooth(clampA(p/0.7,0,1));
-  if(skyP<0.3){
+  if(s.night){
+    // #38: night launch — already near-black with the same three-stop structure the day gradient
+    // uses (so downstream code that reads no sky state stays untouched), just without the dusk-blue
+    // opening act; a faint blue-black is kept (not pure black) so the horizon glow below still reads.
+    g.addColorStop(0,mix('#060e18','#04060a',skyP));
+    g.addColorStop(0.5,mix('#0a1420','#05070c',skyP));
+    g.addColorStop(1,mix('#0e1a2c','#060a10',skyP));
+  } else if(skyP<0.3){
     g.addColorStop(0,mix('#1a3a5e','#0e2040',skyP/0.3));
     g.addColorStop(0.5,mix('#2a5580','#142a48',skyP/0.3));
     g.addColorStop(1,mix('#3a6a9e','#1a3858',skyP/0.3));
@@ -10672,7 +10689,9 @@ function drawAscent(t,canFail){
     g.addColorStop(1,mix('#0a1420','#04060a',sp));
   }
   ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
-  if(p>0.15){
+  if(s.night){
+    ctx.globalAlpha=clampA(0.55+p*0.3,0,0.9); drawStars(ctx,W,H,t); ctx.globalAlpha=1;
+  } else if(p>0.15){
     const starAlpha=clampA((p-0.15)/0.4,0,0.85);
     ctx.globalAlpha=starAlpha; drawStars(ctx,W,H,t); ctx.globalAlpha=1;
   }
@@ -10766,6 +10785,24 @@ function drawAscent(t,canFail){
     const padLeft=W*0.27-30, padRight=W*0.27+30;
     ctx.fillStyle='#2a2a2e'; ctx.fillRect(padLeft,padGroundY-3,padRight-padLeft,5);
     ctx.fillStyle='#1a1a1e'; ctx.fillRect(padLeft+8,padGroundY+2,padRight-padLeft-16,12);
+    // #38: night launch — xenon floodlights lighting the tower/vehicle from ground level, the classic
+    // night-pad signature. Same fade-with-altitude envelope as the pad structure they're mounted on.
+    if(s.night){
+      const flA=clampA(1-altN*1.4,0,1);
+      if(flA>0.02){
+        const rigX=[padLeft-6, padRight+6, W*0.27];
+        for(let fi=0;fi<rigX.length;fi++){
+          const fx=rigX[fi], fy=padGroundY-2, aimY=towerTop+towerH*0.4;
+          const beam=ctx.createLinearGradient(fx,fy,W*0.27,aimY);
+          beam.addColorStop(0,`rgba(220,235,255,${(0.22*flA).toFixed(3)})`);
+          beam.addColorStop(1,'rgba(220,235,255,0)');
+          ctx.strokeStyle=beam; ctx.lineWidth=14; ctx.lineCap='round';
+          ctx.beginPath(); ctx.moveTo(fx,fy); ctx.lineTo(W*0.27,aimY); ctx.stroke();
+          ctx.fillStyle=`rgba(255,255,240,${(0.85*flA).toFixed(3)})`;
+          ctx.beginPath(); ctx.arc(fx,fy,1.6,0,7); ctx.fill();
+        }
+      }
+    }
     ctx.fillStyle='rgba(255,80,20,'+clampA(0.25-p*2,0,0.25)+')';
     ctx.beginPath(); ctx.arc(W*0.27,padGroundY+8,6+p*30,0,7); ctx.fill();
     ctx.fillStyle='rgba(180,180,190,'+clampA(0.4-p*3,0,0.4)+')';

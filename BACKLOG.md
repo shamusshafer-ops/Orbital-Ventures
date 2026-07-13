@@ -64,7 +64,7 @@ Complexity: S = <1 day, M = 1–5 days, L = 1–3 weeks, XL = 1+ month. Impact: 
 |35| Countdown voice + hold at T-31s events | Drama | M | ★★ | — | M |E1.6|
 |36| Telemetry strip during ascent (alt/vel/Q) | Sim credibility | S | ★★ | 26 | H |E1.2|
 |37| Max-Q structural check vs. fairing choice | Part relevance | M | ★★ | — | M |Backlog|
-|38| Night launches (era/window dependent) w/ visuals | Spectacle | S | ★ | — | L |Backlog|
+|38| Night launches (era/window dependent) w/ visuals | Spectacle | S | ★ | — | L |Shipped 2026-07-13|
 |39| Pad aborts that damage pad (repair time) | Risk depth | S | ★★ | 29 | M |Backlog|
 |40| Crew survival mini-arc on failures (escape tower) | Emotional stakes | M | ★★★ | — | H |Backlog|
 |41| Debris/range-safety consequences on populated tracks | Site choice matters | M | ★ | 30 | L |Backlog|
@@ -154,7 +154,7 @@ Complexity: S = <1 day, M = 1–5 days, L = 1–3 weeks, XL = 1+ month. Impact: 
 | E1.x | 20 | Folded into a named high-value item |
 | E2 | 10 | Folded into medium-priority grouped item |
 | Deferred | 12 | Named in ROADMAP.md's deferred list |
-| **Backlog** | **54** | Not yet on ROADMAP.md in any form |
+| **Backlog** | **53** | Not yet on ROADMAP.md in any form |
 
 Over half the list (55/105) hasn't been triaged onto ROADMAP.md yet — mostly small
 QoL items (#9, 11–17, 19–25), flight/ops texture (#31, 33–34, 37–45), rival/world

@@ -3697,3 +3697,33 @@ transform, not a schema change).
 27 expected guarded-Phaser refs (the `resupplyShortfall` no-undef is gone). **40/40 suites pass**
 (39 real + the F4 skip). New livery-esc suite 10/10. M1 probe 3/3. Not yet browser-tested: the M3
 newer-version modal's layout and the M2 warning line deserve one real-browser look.
+
+## Session — #38 Night launches, era-scaled (2026-07-13)
+
+Backlog #38 (S/★, ungrouped) implemented: launches now roll a `night` flag (era-scaled chance,
+`nightLaunchChance()` in data.js — 8% Pioneer era rising to a 32% cap by Commercial+, reflecting
+early-program range/tracking limits vs. later routine night ops). Purely visual — no mechanical
+effect on reliability, cost, or outcome.
+
+- **Where it's rolled**: both real pad→ascent spec-build sites (`finalizeLaunch`, `buildDepartSpec`
+  in sim.js) roll independently via the existing per-flight `rnd()` (same pattern as `rng.wind` etc).
+  `openFlightForDecision` (flight.js) also rolls its own, for the case where a live-call/weather/
+  rescue decision opens the overlay *before* the outcome is known — `finalizeLaunch`'s later spec
+  then **reuses** that earlier roll (via `animState._openedForDecision`) rather than re-rolling,
+  so `resumeFlightForDecision`'s `Object.assign` merge can't flip the sky mid-launch on a flight
+  the player is already watching.
+- **Visuals** (`drawAscent`, flight.js): night launches start the sky near-black with stars visible
+  from t=0 (day launches still fade in stars after climbing past the dusk band) — same 3-stop
+  gradient structure, no downstream code touched. Added ground-level xenon floodlight cones on the
+  tower/pad apron, fading out on the same altitude envelope the pad structure itself already used,
+  keyed off the existing `padGroundY`/`towerTop` geometry — no new layout math.
+- **No SAVE_VERSION bump** — `night` lives only on the transient flight spec, never persisted.
+
+**Validation.** `node --check` OK, lint clean (same 27 guarded-Phaser refs as baseline, no new
+no-undef). New `tests/test-night-launch.js` (9/9): era-scaling bounds + monotonicity, sampled-rate
+sanity check against the stated chance, both spec-build sites produce a strict boolean and can be
+forced either way via rng, `drawAscent` renders without throwing at four altitudes with
+`night:true` (using the harness's real canvas-stub, not a hand-rolled one), and the resume-reuse
+guard. **41/41 suites** (40 real + the F4 skip). **Needs a real-browser check**: the floodlight
+cones' angle/brightness read correctly against the dark sky, and a live-call decision mid-launch
+genuinely doesn't flip day↔night on resume.

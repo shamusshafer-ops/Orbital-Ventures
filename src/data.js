@@ -41,6 +41,10 @@ function currentEra(){
   return cur;
 }
 function eraIndex(e){ return ERAS.indexOf(e); }
+// #38 backlog: night launches, era-dependent. Early Pioneer-era ranges rarely worked night ops
+// (visual tracking, no radar-independent range safety); night launches became routine as the
+// program matured. Scales 8% (Pioneer) to 32% (Commercial+), plateauing at the last couple eras.
+function nightLaunchChance(){ return Math.min(0.32, 0.08+eraIndex(currentEra())*0.035); }
 // P6 6.1: pure era-index-from-year (currentEra reads global state.year; this takes an explicit
 // year so it can run at load/migration time before `state` is assigned). Same "last era whose
 // start has been reached" rule — ERAS.from is strictly increasing, so break-on-first-greater holds.
