@@ -330,6 +330,26 @@
   .cc-strip-prow{display:flex;align-items:center;gap:8px;font-size:12px}
   .cc-strip-pname{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:190px}
   .cc-strip-prow .bar{flex:1;max-width:160px;height:5px;margin:0}
+  /* Phase 4 Command Center summary decks use the existing HUD surface tokens so they
+     remain compact and legible over the live Cape scene in every era/theme. */
+  .cc-strip,.cc-summary-right{display:flex;flex-direction:column;gap:10px}
+  .cc-deck-card{padding:11px 12px;border:1px solid var(--hud-line);border-radius:7px;
+    background:linear-gradient(150deg,rgba(7,24,37,.91),rgba(5,14,24,.81));
+    box-shadow:inset 0 1px 0 var(--hud-line-soft),var(--hud-shadow)}
+  .cc-deck-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:7px}
+  .cc-deck-head .cc-panel-h{margin:0}
+  .cc-deck-link{padding:2px 7px;font-size:10px;white-space:nowrap}
+  .cc-deck-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 12px}
+  .cc-deck-metric{min-width:0}.cc-deck-metric .k{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
+  .cc-deck-metric .v{display:block;font-family:var(--mono);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .cc-deck-title{font-size:13px;font-weight:600;line-height:1.2}
+  .cc-deck-sub{font-size:11px;color:var(--muted);margin-top:2px}
+  .cc-deck-progress{height:5px;margin:7px 0 4px;border-radius:4px;overflow:hidden;background:rgba(4,12,20,.72)}
+  .cc-deck-progress > span{display:block;height:100%;background:var(--readout)}
+  .cc-deck-row{display:flex;align-items:center;gap:7px;padding:4px 0;font-size:12px;border-top:1px solid var(--hud-line-soft)}
+  .cc-deck-row:first-of-type{border-top:0}
+  .cc-deck-row .cc-deck-label{min-width:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .cc-deck-row .num{font-size:11px;white-space:nowrap}
 
   /* Home dashboard — 3-column layout */
   .cc-cols{display:grid;grid-template-columns:224px 1fr;gap:14px;align-items:start;margin-bottom:14px}  /* ccRight moved to the right rail (slice 3) */
@@ -669,7 +689,9 @@
     .command-hero .viewport{width:100%}
     .command-hero .rail-left,.command-hero .rail-right{position:absolute;z-index:8;pointer-events:none}
     .command-hero .rail-left{left:16px;top:372px;width:300px}
-    .command-hero .rail-right{right:16px;top:16px;width:min(300px,25vw);max-height:calc(100vh - var(--topbar-h) - 34px);overflow-y:auto}
+    /* The summary deck owns the upper-right corner; the persistent accordion, Rivals,
+       News and Finance remain intact directly beneath it. */
+    .command-hero .rail-right{right:16px;top:372px;width:min(300px,25vw);max-height:calc(100vh - var(--topbar-h) - 390px);overflow-y:auto}
     .command-hero .rail-left > *,.command-hero .rail-right > *{pointer-events:auto}
     .command-hero #railNavHome{display:none}
     .command-hero #commandView{position:relative;height:calc(100vh - var(--topbar-h) - 18px);min-height:700px}
@@ -680,12 +702,9 @@
     .command-hero .ccscene-wrap{height:100%;margin:0;border-radius:0}
     .command-hero .ccscene{border:0;border-radius:0}
     .command-hero .cc-zoomhint{left:auto;right:14px;bottom:90px;padding:4px 6px;border:1px solid var(--hud-line-soft);border-radius:4px;background:rgba(4,12,20,.66)}
-    .command-hero .cc-strip{position:absolute;z-index:7;top:16px;left:16px;width:min(340px,calc(100% - 372px));max-height:340px;overflow:auto;display:block;padding:12px;background:linear-gradient(150deg,rgba(7,24,37,.94),rgba(5,14,24,.84));border-color:var(--hud-line);box-shadow:var(--hud-shadow)}
-    .command-hero .cc-strip-id{margin-bottom:9px}
-    .command-hero .cc-strip-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px 13px}
-    .command-hero .cc-strip .stat{align-items:flex-start}
-    .command-hero .cc-strip .stat .v{font-size:14px}
-    .command-hero .cc-strip-prog{min-width:0;margin-top:10px;padding-top:8px;border-top:1px solid var(--hud-line-soft)}
+    .command-hero .cc-strip,.command-hero .cc-summary-right{position:absolute;z-index:7;top:16px;width:min(340px,calc(100% - 372px));max-height:340px;overflow:auto}
+    .command-hero .cc-strip{left:16px;padding:0;background:transparent;border:0;box-shadow:none}
+    .command-hero .cc-summary-right{right:16px;width:min(320px,25vw)}
     .command-hero #ccTimeline{position:absolute;z-index:7;left:16px;bottom:82px;width:min(340px,calc(100% - 372px));margin:0;padding:10px;background:rgba(5,17,27,.88);border-color:var(--hud-line-soft)}
     .command-hero #ccTimeline .cc-panel-h{font-size:10px;margin-bottom:5px}
     .command-hero #ccTimeline .tl-track{height:32px;margin:5px 0 3px}
@@ -711,7 +730,7 @@
     .command-hero .rail-left,.command-hero .rail-right{position:static;max-height:none;width:auto;overflow:visible}
     .command-hero #railNavHome{display:none}
     .command-hero #commandView{display:flex;flex-direction:column;gap:14px}
-    .command-hero #ccCenter{order:1}.command-hero #ccStrip{order:2}.command-hero #ccTimeline{order:3}.command-hero #ccTicker{order:4}.command-hero #ccDock{order:5}
+    .command-hero #ccCenter{order:1}.command-hero #ccStrip{order:2}.command-hero #ccSummaryRight{order:3}.command-hero #ccTimeline{order:4}.command-hero #ccTicker{order:5}.command-hero #ccDock{order:6}
     .command-hero .cc-hero-card{padding:0;overflow:hidden}
     .command-hero .cc-hero-head{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--hud-line-soft)}
     .command-hero .ccscene-wrap{margin:0}
@@ -823,6 +842,7 @@
          normal reading order. -->
     <div id="ccCenter"></div>
     <div class="card cc-strip" id="ccStrip"></div>
+    <div class="cc-summary-right" id="ccSummaryRight"></div>
     <div class="card adv-only" id="ccTimeline"></div>
     <div class="cc-ticker" id="ccTicker"></div>
     <div class="cc-dock" id="ccDock"></div>
@@ -14380,7 +14400,8 @@ function pauseCapeGame(){ if(capeGame){ try{ if(capeGame.scene.isActive('cape'))
 function resumeCapeGame(){ if(capeGame){ try{ capeGame.scene.wake('cape'); }catch(e){} } }
 function renderCommandCenter(){
   if(!$('ccStrip')) return;
-  renderCCStrip(); // compact one-row strip: company/stats + active R&D/build/hangar progress, above the Cape scene
+  renderCCStrip(); // Phase 4 left summary deck: agency, programs and research
+  renderCCSummaryRight(); // Phase 4 right deck: objective, launch readiness and live missions
   // renderCCLeft() now runs unconditionally from render() (slice 4: persistent left rail)
   renderCCCenter();
   renderCCRight();
@@ -14391,7 +14412,7 @@ function renderCommandCenter(){
 // (~250-350px) with one slim full-width row to reclaim vertical space for #ccCenter. Content: identity
 // (company/date/era + folded gov-funding & current-vehicle), key stat chips (reusing the topbar .stat
 // pattern), and inline mini progress bars for active R&D / builds / hangar-ready (Fly button preserved).
-function renderCCStrip(){
+function renderCCLegacyStrip(){
   const el=$('ccStrip'); if(!el) return;
   const s=commandSummary();
   const netCol=s.net>=0?'var(--ok)':'var(--bad)';
@@ -14425,6 +14446,73 @@ function renderCCStrip(){
     </div>
     <div class="cc-strip-stats">${chips}</div>
     <div class="cc-strip-prog">${rRow}${orderRows}${hangarRows}${buildEmpty}</div>`;
+}
+// Phase 4 left deck. Derived only: the cards reuse commandSummary(), the ambition
+// builders and research state, then route to the established Finance, Programs and R&D drills.
+function renderCCStrip(){
+  const el=$('ccStrip'); if(!el) return;
+  const s=commandSummary(), amb=currentAmbition(), prog=ambitionProgress();
+  const netCol=s.net>=0?'var(--ok)':'var(--bad)';
+  const ar=state.activeResearch, node=ar&&RESEARCH.find(r=>r.id===ar.id);
+  const pct=(ar&&node)?clampA(Math.round(100*(node.months-ar.monthsLeft)/Math.max(1,node.months)),0,100):0;
+  el.innerHTML=`
+    <section class="cc-deck-card dombar-economy">
+      <div class="cc-deck-head"><div class="cc-panel-h">Agency overview</div><button class="btn ghost cc-deck-link" onclick="showFinancesModal()">Finances &rarr;</button></div>
+      <div class="cc-deck-metrics">
+        ${ccDeckMetric('Capital',fM(s.capital),state.money<1.5?'var(--bad)':'var(--ink)')}
+        ${ccDeckMetric('Net',`${s.net>=0?'+':''}${fM(s.net)}/mo`,netCol)}
+        ${ccDeckMetric('Support',`${s.support}%`,s.moodColor)}
+        ${ccDeckMetric('Reputation',fI(s.rep),'var(--dom-exploration)')}
+      </div>
+    </section>
+    <section class="cc-deck-card dombar-exploration">
+      <div class="cc-deck-head"><div class="cc-panel-h">Programs</div><button class="btn ghost cc-deck-link" onclick="showProgramsModal()">Programs &rarr;</button></div>
+      <div class="cc-deck-title">${esc(amb.name)}</div>
+      <div class="cc-deck-progress"><span style="width:${prog.pct}%;background:var(--ignite)"></span></div>
+      <div class="cc-deck-sub">${prog.done}/${prog.total} ambition milestones &middot; ${prog.pct}% complete</div>
+    </section>
+    <section class="cc-deck-card dombar-research">
+      <div class="cc-deck-head"><div class="cc-panel-h">Tech progress</div><button class="btn ghost cc-deck-link" onclick="setTab('rnd')">R&amp;D &rarr;</button></div>
+      ${node?`<div class="cc-deck-title">${esc(node.name)}</div><div class="cc-deck-progress"><span style="width:${pct}%;background:var(--dom-research)"></span></div><div class="cc-deck-sub">Active research &middot; ${fmtTimeLeft(ar.monthsLeft)} remaining</div>`:`<div class="cc-deck-title">No active research</div><div class="cc-deck-sub">Choose the next capability for the program.</div>`}
+    </section>`;
+}
+function ccDeckMetric(label,value,color){
+  return `<div class="cc-deck-metric"><span class="k">${label}</span><span class="v" style="color:${color||'var(--ink)'}">${value}</span></div>`;
+}
+function ccMissionDeckItems(){ return outlinerItems().filter(it=>it.label.indexOf(' en route')!==-1); }
+function ccMissionDeckGo(i){ const it=ccMissionDeckItems()[i]; if(it) it.go(); }
+// Phase 4 right deck. The objective/readiness display reuses missionAdvisor(), while active
+// flights come from the ETA-sorted unified outliner rather than a parallel mission list.
+function renderCCSummaryRight(){
+  const el=$('ccSummaryRight'); if(!el) return;
+  const adv=missionAdvisor(), amb=currentAmbition(), prog=ambitionProgress();
+  const hangar=hangarList(), orders=buildQueueList().filter(o=>o.started).sort((a,b)=>a.monthsLeft-b.monthsLeft);
+  const launch=hangar[0]
+    ? {title:hangar[0].missionName||hangar[0].name, sub:'Ready in hangar', action:`launchFromHangar('${hangar[0].id}')`, label:'Fly'}
+    : orders[0]
+      ? {title:orders[0].name||'Vehicle build', sub:`In build - ${fmtTimeLeft(orders[0].monthsLeft)} remaining`, action:'showInfrastructureModal()', label:'Build status'}
+      : {title:adv.goal||'No launch queued', sub:adv.ready?'Vehicle can be prepared on the Bench.':(adv.summary||'Choose the next launch objective.'), action:adv.actions[0]?advisorClick(adv.actions[0]):"setTab('bench')", label:adv.actions[0]?adv.actions[0].label:'Design vehicle'};
+  const flights=ccMissionDeckItems().slice(0,4);
+  const missionRows=flights.length ? flights.map((it,i)=>`<div class="cc-deck-row" onclick="ccMissionDeckGo(${i})" style="cursor:pointer"><span>${it.icon}</span><span class="cc-deck-label">${esc(it.label)}</span><span class="num" style="color:${it.color||'var(--readout)'}">${outlinerEtaText(it.etaDays)}</span></div>`).join('')
+    : `<div class="cc-deck-sub">No missions en route.</div>`;
+  el.innerHTML=`
+    <section class="cc-deck-card dombar-exploration">
+      <div class="cc-deck-head"><div class="cc-panel-h">Next milestone</div><button class="btn ghost cc-deck-link" onclick="showProgramsModal()">Objectives &rarr;</button></div>
+      <div class="cc-deck-title">${esc(adv.goal||amb.name)}</div>
+      <div class="cc-deck-sub">${esc(adv.program||amb.name)}</div>
+      <div class="cc-deck-progress"><span style="width:${prog.pct}%;background:var(--ignite)"></span></div>
+      <div class="cc-deck-sub">${prog.done}/${prog.total} objectives complete &middot; ${prog.pct}%</div>
+    </section>
+    <section class="cc-deck-card dombar-engineering">
+      <div class="cc-deck-head"><div class="cc-panel-h">Next launch</div><button class="btn ghost cc-deck-link" onclick="${launch.action}">${esc(launch.label)}</button></div>
+      <div class="cc-deck-title">${esc(launch.title)}</div>
+      <div class="cc-deck-sub">${esc(launch.sub)}</div>
+      ${adv.reqs.length?`<div class="cc-deck-sub" style="margin-top:6px">${adv.reqs.filter(r=>!r.ok).slice(0,1).map(r=>'Pending: '+esc(r.label)).join('')||'Readiness checks clear'}</div>`:''}
+    </section>
+    <section class="cc-deck-card dombar-crew">
+      <div class="cc-deck-head"><div class="cc-panel-h">Active missions</div><button class="btn ghost cc-deck-link" onclick="showFlightsModal()">Flight log &rarr;</button></div>
+      ${missionRows}
+    </section>`;
 }
 function ccStripProg(icon,name,eta,pct,col){
   return `<div class="cc-strip-prow"><span class="cc-strip-pname">${icon} <b>${name}</b></span><div class="bar"><div class="fill" style="width:${pct}%;background:${col}"></div></div><span class="dim">${eta}</span></div>`;

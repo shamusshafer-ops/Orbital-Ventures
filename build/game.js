@@ -13340,7 +13340,8 @@ function pauseCapeGame(){ if(capeGame){ try{ if(capeGame.scene.isActive('cape'))
 function resumeCapeGame(){ if(capeGame){ try{ capeGame.scene.wake('cape'); }catch(e){} } }
 function renderCommandCenter(){
   if(!$('ccStrip')) return;
-  renderCCStrip(); // compact one-row strip: company/stats + active R&D/build/hangar progress, above the Cape scene
+  renderCCStrip(); // Phase 4 left summary deck: agency, programs and research
+  renderCCSummaryRight(); // Phase 4 right deck: objective, launch readiness and live missions
   // renderCCLeft() now runs unconditionally from render() (slice 4: persistent left rail)
   renderCCCenter();
   renderCCRight();
@@ -13351,7 +13352,7 @@ function renderCommandCenter(){
 // (~250-350px) with one slim full-width row to reclaim vertical space for #ccCenter. Content: identity
 // (company/date/era + folded gov-funding & current-vehicle), key stat chips (reusing the topbar .stat
 // pattern), and inline mini progress bars for active R&D / builds / hangar-ready (Fly button preserved).
-function renderCCStrip(){
+function renderCCLegacyStrip(){
   const el=$('ccStrip'); if(!el) return;
   const s=commandSummary();
   const netCol=s.net>=0?'var(--ok)':'var(--bad)';
@@ -13385,6 +13386,73 @@ function renderCCStrip(){
     </div>
     <div class="cc-strip-stats">${chips}</div>
     <div class="cc-strip-prog">${rRow}${orderRows}${hangarRows}${buildEmpty}</div>`;
+}
+// Phase 4 left deck. Derived only: the cards reuse commandSummary(), the ambition
+// builders and research state, then route to the established Finance, Programs and R&D drills.
+function renderCCStrip(){
+  const el=$('ccStrip'); if(!el) return;
+  const s=commandSummary(), amb=currentAmbition(), prog=ambitionProgress();
+  const netCol=s.net>=0?'var(--ok)':'var(--bad)';
+  const ar=state.activeResearch, node=ar&&RESEARCH.find(r=>r.id===ar.id);
+  const pct=(ar&&node)?clampA(Math.round(100*(node.months-ar.monthsLeft)/Math.max(1,node.months)),0,100):0;
+  el.innerHTML=`
+    <section class="cc-deck-card dombar-economy">
+      <div class="cc-deck-head"><div class="cc-panel-h">Agency overview</div><button class="btn ghost cc-deck-link" onclick="showFinancesModal()">Finances &rarr;</button></div>
+      <div class="cc-deck-metrics">
+        ${ccDeckMetric('Capital',fM(s.capital),state.money<1.5?'var(--bad)':'var(--ink)')}
+        ${ccDeckMetric('Net',`${s.net>=0?'+':''}${fM(s.net)}/mo`,netCol)}
+        ${ccDeckMetric('Support',`${s.support}%`,s.moodColor)}
+        ${ccDeckMetric('Reputation',fI(s.rep),'var(--dom-exploration)')}
+      </div>
+    </section>
+    <section class="cc-deck-card dombar-exploration">
+      <div class="cc-deck-head"><div class="cc-panel-h">Programs</div><button class="btn ghost cc-deck-link" onclick="showProgramsModal()">Programs &rarr;</button></div>
+      <div class="cc-deck-title">${esc(amb.name)}</div>
+      <div class="cc-deck-progress"><span style="width:${prog.pct}%;background:var(--ignite)"></span></div>
+      <div class="cc-deck-sub">${prog.done}/${prog.total} ambition milestones &middot; ${prog.pct}% complete</div>
+    </section>
+    <section class="cc-deck-card dombar-research">
+      <div class="cc-deck-head"><div class="cc-panel-h">Tech progress</div><button class="btn ghost cc-deck-link" onclick="setTab('rnd')">R&amp;D &rarr;</button></div>
+      ${node?`<div class="cc-deck-title">${esc(node.name)}</div><div class="cc-deck-progress"><span style="width:${pct}%;background:var(--dom-research)"></span></div><div class="cc-deck-sub">Active research &middot; ${fmtTimeLeft(ar.monthsLeft)} remaining</div>`:`<div class="cc-deck-title">No active research</div><div class="cc-deck-sub">Choose the next capability for the program.</div>`}
+    </section>`;
+}
+function ccDeckMetric(label,value,color){
+  return `<div class="cc-deck-metric"><span class="k">${label}</span><span class="v" style="color:${color||'var(--ink)'}">${value}</span></div>`;
+}
+function ccMissionDeckItems(){ return outlinerItems().filter(it=>it.label.indexOf(' en route')!==-1); }
+function ccMissionDeckGo(i){ const it=ccMissionDeckItems()[i]; if(it) it.go(); }
+// Phase 4 right deck. The objective/readiness display reuses missionAdvisor(), while active
+// flights come from the ETA-sorted unified outliner rather than a parallel mission list.
+function renderCCSummaryRight(){
+  const el=$('ccSummaryRight'); if(!el) return;
+  const adv=missionAdvisor(), amb=currentAmbition(), prog=ambitionProgress();
+  const hangar=hangarList(), orders=buildQueueList().filter(o=>o.started).sort((a,b)=>a.monthsLeft-b.monthsLeft);
+  const launch=hangar[0]
+    ? {title:hangar[0].missionName||hangar[0].name, sub:'Ready in hangar', action:`launchFromHangar('${hangar[0].id}')`, label:'Fly'}
+    : orders[0]
+      ? {title:orders[0].name||'Vehicle build', sub:`In build - ${fmtTimeLeft(orders[0].monthsLeft)} remaining`, action:'showInfrastructureModal()', label:'Build status'}
+      : {title:adv.goal||'No launch queued', sub:adv.ready?'Vehicle can be prepared on the Bench.':(adv.summary||'Choose the next launch objective.'), action:adv.actions[0]?advisorClick(adv.actions[0]):"setTab('bench')", label:adv.actions[0]?adv.actions[0].label:'Design vehicle'};
+  const flights=ccMissionDeckItems().slice(0,4);
+  const missionRows=flights.length ? flights.map((it,i)=>`<div class="cc-deck-row" onclick="ccMissionDeckGo(${i})" style="cursor:pointer"><span>${it.icon}</span><span class="cc-deck-label">${esc(it.label)}</span><span class="num" style="color:${it.color||'var(--readout)'}">${outlinerEtaText(it.etaDays)}</span></div>`).join('')
+    : `<div class="cc-deck-sub">No missions en route.</div>`;
+  el.innerHTML=`
+    <section class="cc-deck-card dombar-exploration">
+      <div class="cc-deck-head"><div class="cc-panel-h">Next milestone</div><button class="btn ghost cc-deck-link" onclick="showProgramsModal()">Objectives &rarr;</button></div>
+      <div class="cc-deck-title">${esc(adv.goal||amb.name)}</div>
+      <div class="cc-deck-sub">${esc(adv.program||amb.name)}</div>
+      <div class="cc-deck-progress"><span style="width:${prog.pct}%;background:var(--ignite)"></span></div>
+      <div class="cc-deck-sub">${prog.done}/${prog.total} objectives complete &middot; ${prog.pct}%</div>
+    </section>
+    <section class="cc-deck-card dombar-engineering">
+      <div class="cc-deck-head"><div class="cc-panel-h">Next launch</div><button class="btn ghost cc-deck-link" onclick="${launch.action}">${esc(launch.label)}</button></div>
+      <div class="cc-deck-title">${esc(launch.title)}</div>
+      <div class="cc-deck-sub">${esc(launch.sub)}</div>
+      ${adv.reqs.length?`<div class="cc-deck-sub" style="margin-top:6px">${adv.reqs.filter(r=>!r.ok).slice(0,1).map(r=>'Pending: '+esc(r.label)).join('')||'Readiness checks clear'}</div>`:''}
+    </section>
+    <section class="cc-deck-card dombar-crew">
+      <div class="cc-deck-head"><div class="cc-panel-h">Active missions</div><button class="btn ghost cc-deck-link" onclick="showFlightsModal()">Flight log &rarr;</button></div>
+      ${missionRows}
+    </section>`;
 }
 function ccStripProg(icon,name,eta,pct,col){
   return `<div class="cc-strip-prow"><span class="cc-strip-pname">${icon} <b>${name}</b></span><div class="bar"><div class="fill" style="width:${pct}%;background:${col}"></div></div><span class="dim">${eta}</span></div>`;
