@@ -8,7 +8,7 @@
   :root{
     --topbar-h:120px; /* height of the pinned header+opsbar; updated live in JS so sticky panels clear it */
     --ui-scale:1; /* whole-UI zoom (E0.4 slice D); set live from JS (uiScale/100), persisted in localStorage 'ov_uiscale', NOT the save */
-    --bg:#0e1418; --panel:#151d23; --panel2:#1b252c; --line:#2a3a44;
+    --bg:#050b12; --panel:#0b1621; --panel2:#102231; --line:#24465a;
     --ink:#d8e2e7; --muted:#7d909b; --dim:#56666f;
     --ignite:#f5a623; --readout:#4fd1d9; --ok:#58c47a; --bad:#e0564f; --warn:#e8b341;
     /* #30 domain color-coding language — one hue per domain, so every metric/panel reads
@@ -17,7 +17,10 @@
     --dom-economy:#5ec27a; --dom-engineering:#5b9bd5; --dom-research:#a98bd6;
     --dom-military:#e0564f; --dom-exploration:#f5a623; --dom-crew:#4fd1d9; --dom-warn:#e8b341;
     --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
-    --sans:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    --sans:"Arial Narrow","Roboto Condensed","Segoe UI",system-ui,sans-serif;
+    --hud-surface:rgba(7,20,32,.90); --hud-raised:rgba(12,34,50,.92);
+    --hud-line:rgba(88,204,255,.36); --hud-line-soft:rgba(88,204,255,.18);
+    --hud-glow:rgba(45,190,255,.16); --hud-shadow:0 12px 28px rgba(0,4,10,.28);
     /* Typography scale */
     --fs-h1:28px; --fw-h1:700;
     --fs-h2:18px; --fw-h2:600;
@@ -597,6 +600,59 @@
   .modal h2{font-size:18px;color:var(--ignite);margin-bottom:10px;text-transform:none;letter-spacing:0}
   .modal p{color:var(--muted);margin:10px 0}
   .modal .btn{margin-top:14px}
+  /* ---- Phase 2: cinematic mission-control foundation ----
+     A surface-only pass: this deliberately reuses the existing shell, IDs and state classes.
+     Translucency is supplied by layered alpha backgrounds, never backdrop-filter, so HUD text
+     remains stable over animated scenes and low-power browsers. */
+  body.theme-green,body.era-80s:not(.theme-beige){
+    --hud-surface:rgba(7,25,17,.91);--hud-raised:rgba(12,43,29,.93);
+    --hud-line:rgba(95,224,160,.34);--hud-line-soft:rgba(95,224,160,.17);--hud-glow:rgba(95,224,160,.13);
+  }
+  body.theme-beige,body.era-apollo:not(.theme-green){
+    --hud-surface:rgba(35,28,19,.92);--hud-raised:rgba(51,40,26,.94);
+    --hud-line:rgba(205,165,103,.35);--hud-line-soft:rgba(205,165,103,.18);--hud-glow:rgba(224,138,60,.12);
+  }
+  body.era-90s2000s:not(.theme-green):not(.theme-beige){
+    --hud-surface:rgba(15,27,42,.91);--hud-raised:rgba(25,43,63,.93);
+    --hud-line:rgba(91,184,226,.35);--hud-line-soft:rgba(91,184,226,.18);--hud-glow:rgba(62,198,224,.14);
+  }
+  body.era-spacex:not(.theme-green):not(.theme-beige){
+    --hud-surface:rgba(8,13,18,.92);--hud-raised:rgba(16,24,32,.94);
+    --hud-line:rgba(62,198,255,.31);--hud-line-soft:rgba(62,198,255,.15);--hud-glow:rgba(62,198,255,.12);
+  }
+  body{background-image:linear-gradient(rgba(42,126,164,.11) 1px,transparent 1px),linear-gradient(90deg,rgba(42,126,164,.11) 1px,transparent 1px);}
+  h1,h2,h3,.brand .co,.mission-tag,.cc-panel-h,.rail-group{font-family:var(--sans);font-stretch:condensed;}
+  h1,h2,h3,.brand .co{letter-spacing:.055em;}
+  .num,.stat .v,.metric .v,.gauge .achieved,.gauge .req,.tl-date,.tl-chip{font-variant-numeric:tabular-nums slashed-zero;}
+  header,.opsbar,.card,.stage,.item,.rail-acc-btn,nav.rail-nav button,.bench-tab,.tl-chip,.tl-filter,.tl-collapse{
+    border-color:var(--hud-line);box-shadow:var(--hud-shadow);
+  }
+  header{background:linear-gradient(180deg,var(--hud-raised),var(--hud-surface));padding:13px 17px;box-shadow:inset 0 1px 0 var(--hud-line-soft),var(--hud-shadow);}
+  .topbar{background:linear-gradient(180deg,var(--bg) 72%,transparent);}
+  .card,.rail-acc-btn,nav.rail-nav button,.tl-chip,.tl-filter,.tl-collapse{background:var(--hud-surface);}
+  .opsbar,.stage,.item,.bench-tab{background:var(--hud-raised);}
+  .card{border-radius:7px;padding:15px;box-shadow:inset 0 1px 0 var(--hud-line-soft),var(--hud-shadow);}
+  .card h2,.cc-panel-h{color:var(--ink);opacity:.88;letter-spacing:.13em;}
+  .stats{gap:18px}.stat .k,.metric .k{letter-spacing:.12em;opacity:.82}.stat .v{letter-spacing:-.025em;}
+  .rail-acc-btn,nav.rail-nav button{border-radius:5px;letter-spacing:.1em;transition:color .14s ease,border-color .14s ease,background .14s ease,box-shadow .14s ease;}
+  nav.rail-nav button.active,.rail-acc-btn.open{background:linear-gradient(90deg,var(--hud-glow),var(--hud-raised));border-color:var(--hud-line);box-shadow:inset 2px 0 0 var(--readout),inset 0 1px 0 var(--hud-line-soft);}
+  nav.rail-nav button:hover,.rail-acc-btn:hover,.bench-tab:hover,.tl-chip.clk:hover,.tl-filter:hover,.tl-collapse:hover{border-color:var(--readout);box-shadow:inset 0 0 0 1px var(--hud-glow);}
+  .btn,.launch,.stepper button,.vehpop-btn,.vehpop-x{font-family:var(--sans);letter-spacing:.07em;border-color:var(--hud-line);transition:color .14s ease,border-color .14s ease,background .14s ease,box-shadow .14s ease;}
+  .btn{background:var(--hud-raised);border-radius:5px;}.btn.ghost{background:rgba(5,13,21,.38)}
+  .btn:hover:not(:disabled),.vehpop-btn:hover,.vehpop-x:hover{border-color:var(--readout);color:var(--ink);box-shadow:0 0 0 1px var(--hud-glow),0 0 14px var(--hud-glow);}
+  .launch{background:linear-gradient(180deg,rgba(34,119,148,.30),rgba(8,24,35,.95));border-color:var(--readout);box-shadow:inset 0 1px 0 var(--hud-line-soft),0 0 14px var(--hud-glow);}
+  .launch:hover{background:linear-gradient(180deg,rgba(49,151,186,.38),rgba(8,24,35,.96));}
+  select,input[type=number],input[type=text],.stepper button{background:rgba(3,12,20,.76);border-color:var(--hud-line-soft);}
+  select:hover,input[type=number]:hover,input[type=text]:hover{border-color:var(--hud-line);}
+  :where(button,a,select,input,textarea,[tabindex]):focus-visible{outline:2px solid var(--readout);outline-offset:2px;box-shadow:0 0 0 4px var(--hud-glow);}
+  .stage,.item,.metrics,.bar,.eq{border-color:var(--hud-line-soft);}.metrics{background:var(--hud-line-soft)}
+  .mission-tag,.stage-role,.row label{letter-spacing:.13em;}.stage-chip,.pill{border-color:var(--hud-line-soft);}
+  .bldg{background:var(--hud-raised);border-color:var(--hud-line-soft);}.bldg:hover{border-color:var(--readout);box-shadow:0 0 16px var(--hud-glow);}
+  .bldg .ic{font-size:18px;filter:saturate(.72);opacity:.86;}
+  .rail-acc-btn span:first-child,.bench-tab{font-size:11px;}.tabbadge{box-shadow:0 0 8px rgba(245,166,35,.22);}
+  .timeline{border-top-color:var(--hud-line-soft);}.tl-date{border-color:var(--hud-line);background:var(--hud-raised);}
+  .scrim{background:rgba(2,7,13,.82)}.modal{background:var(--hud-surface);border-color:var(--hud-line);box-shadow:0 24px 60px rgba(0,0,0,.55),inset 0 1px 0 var(--hud-line-soft);}
+  @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;}}
   .hidden{display:none!important}
   /* z-index 70: the active launch scene sits above the pinned top bar (40), the "show bar" button
      (50) and the expanded full-screen views (60) so it's the foremost screen while it plays. */
