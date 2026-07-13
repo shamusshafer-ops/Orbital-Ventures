@@ -22,6 +22,11 @@ function writeSave(){ localStorage.setItem(SAVE_KEY, JSON.stringify({v:SAVE_VERS
 // S1: silent throttled autosave so "Continue last game" always resumes the most recent session.
 // Skips a transient mid-flight-resolution snapshot; forced on page close.
 let _lastAutosaveT=0, _gameStarted=false; const AUTOSAVE_MIN_MS=4000;
+// M2 (audit 2026-07-13): autosave used to swallow write failures forever. Track consecutive failures
+// and surface ONE in-game warning at the 3rd (quota/private-mode/eviction — real, persistent trouble,
+// not a transient blip), then stay quiet. Counter resets on any successful write, so a recovered
+// browser re-arms the warning for a future failure streak.
+let _autosaveFails=0, _autosaveWarned=false;
 function autosave(force){
   try{
     if(!_gameStarted) return; // S2: never autosave the boot placeholder before the player picks Continue/Open/New (would clobber the real save)
@@ -30,9 +35,22 @@ function autosave(force){
     const now=Date.now();
     if(!force && now-_lastAutosaveT<AUTOSAVE_MIN_MS) return;
     _lastAutosaveT=now; writeSave();
-  }catch(e){}
+    _autosaveFails=0; _autosaveWarned=false; // a good write re-arms the failure warning
+  }catch(e){
+    _autosaveFails++;
+    if(_autosaveFails>=3 && !_autosaveWarned){
+      _autosaveWarned=true;
+      try{ log('bad','⚠ Autosave is failing (browser storage full or restricted). Your progress since the last successful save is at risk — use Menu → Export save to a file.'); }catch(_){}
+    }
+  }
 }
 try{ window.addEventListener('beforeunload', ()=>autosave(true)); }catch(e){}
+// M4 (audit 2026-07-13): iOS Safari / Android tab-discard frequently never fire beforeunload, and
+// everything done since the last time-advance (bench edits, purchases, hires) rides only on it.
+// pagehide + visibility→hidden are the lifecycle events those platforms DO fire — flush on both.
+// autosave(true) is idempotent-cheap, so overlapping events are harmless.
+try{ window.addEventListener('pagehide', ()=>autosave(true)); }catch(e){}
+try{ document.addEventListener('visibilitychange', ()=>{ if(document.hidden) autosave(true); }); }catch(e){}
 // S1: on load, re-link in-flight records to canonical mission defs, restore the flight-id counter, and
 // drop any corrupt/incomplete in-flight record so an arrival can't crash.
 function rehydrateFlights(){
@@ -153,22 +171,48 @@ function applyLoadedSave(payload){
   migrateEraSeen(saved); // P6 6.1 (v44): backfill eraSeen to the save's CURRENT era + seed era baseline snapshot
   const defaults=loadDefaults();
   for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
+  // H1 hardening: user-typed strings are length-clamped at input (setLiveryName slices to 24), but an
+  // imported save file bypasses that — re-clamp here so no sink ever sees an unbounded user string.
+  // (Sinks still esc() — this is defense in depth, not the primary fix.)
+  if(saved.livery && typeof saved.livery.name==='string') saved.livery.name=saved.livery.name.slice(0,24);
+  if(typeof saved.company==='string') saved.company=saved.company.slice(0,48);
   state=saved;
   reconcileResearch(); // close any prerequisite gaps opened by tech-tree changes
   rehydrateFlights(); // S1: re-link in-flight records after load
   return saved;
+}
+// M3 (audit 2026-07-13): a save written by a NEWER build may carry semantics this build can't
+// migrate (the v34 months→days kind of change would be silently misread, then corrupted on the
+// next write). Warn + require explicit confirmation instead of applying silently. The pending
+// payload is stashed here between the warning modal and the player's choice.
+let _pendingNewerLoad=null;
+function confirmNewerLoad(){ const p=_pendingNewerLoad; _pendingNewerLoad=null; hideModal(); if(p) _applySaveFromPayload(p.payload, p.srcLabel); }
+function cancelNewerLoad(){ _pendingNewerLoad=null; hideModal(); }
+function _applySaveFromPayload(payload, srcLabel){
+  snapshotLiveToRing(); // E0.2 Slice B import-safety net: preserve the current live game in the ring before this overwrite (payload captured synchronously, so it lands the pre-import state)
+  applyLoadedSave(payload);
+  _gameStarted=true;
+  log('info', srcLabel||'Game loaded.');
+  render();
+  showRecap(); // session bookend: where you left off
 }
 function loadSaveFromText(raw, srcLabel){
   try{
     const payload=JSON.parse(raw);
     const saved=payload.state||payload;
     if(!saved.year||!saved.company){ throw new Error('Not a valid Orbital Ventures save (missing company/year).'); }
-    snapshotLiveToRing(); // E0.2 Slice B import-safety net: preserve the current live game in the ring before this overwrite (payload captured synchronously, so it lands the pre-import state)
-    applyLoadedSave(payload);
-    _gameStarted=true;
-    log('info', srcLabel||'Game loaded.');
-    render();
-    showRecap(); // session bookend: where you left off
+    if((payload.v||0)>SAVE_VERSION){
+      _pendingNewerLoad={payload, srcLabel};
+      showModal(`<h2>Save From a Newer Version</h2>
+        <p class="muted">This save was written by a newer build (v${payload.v}) than this one (v${SAVE_VERSION}). Loading it here may misread newer fields and could corrupt the save on the next write.</p>
+        <p class="dim" style="font-size:12px">Safest: open it in the build that wrote it. If you continue, export a backup copy first.</p>
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <button class="btn ghost" onclick="cancelNewerLoad()" style="flex:1">Cancel</button>
+          <button class="btn" onclick="confirmNewerLoad()" style="flex:1">Load anyway</button>
+        </div>`);
+      return;
+    }
+    _applySaveFromPayload(payload, srcLabel);
   }catch(e){
     showModal(`<h2>Load Failed</h2><p class="muted">${e.message}</p>
       <button class="btn" onclick="hideModal()" style="margin-top:8px">OK</button>`);
@@ -258,6 +302,9 @@ function autoLoad(){
     const saved=payload.state||payload;
     if(!saved.year||!saved.company) return false;
     applyLoadedSave(payload);
+    // M3: Continue-flow can't sensibly run the interactive newer-version confirm (it IS this
+    // browser's canonical slot), so apply — but say so out loud instead of staying silent.
+    if((payload.v||0)>SAVE_VERSION) try{ log('bad',`⚠ This save was written by a newer build (v${payload.v} > v${SAVE_VERSION}). Export a backup before playing on — newer fields may be misread here.`); }catch(_){}
     return true;
   }catch(e){ return false; }
 }

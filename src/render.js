@@ -286,8 +286,10 @@ function tabAlerts(){
   }
   // Map: committed launch window approaching
   if(state.committedWindow && state.committedWindow.abs-absDay()<=45) a.map.push('Committed window imminent');
-  // Station: standing resupply shortfall
-  try{ if(typeof resupplyShortfall==='function' && resupplyShortfall()>0) a.station.push('Resupply shortfall'); }catch(e){}
+  // Station: standing resupply shortfall — any built facility starved or ≤2 months of provisions with
+  // no shipment already en route. (Replaces a call to resupplyShortfall(), a function that never
+  // existed — the typeof guard meant this badge silently never fired. Audit 2026-07-13, M1.)
+  try{ if(FACILITY_DEFS.some(d=>facilityBuilt(d.id) && !resupplyInTransit(d.id) && (facilityStarved(d.id) || facilitySupply(d.id)<=2))) a.station.push('Resupply shortfall'); }catch(e){}
   return a;
 }
 function renderTabBadges(){
@@ -2916,7 +2918,7 @@ function openVehPopout(){
   let title='Vehicle'; try{ title=(curLivery().name||'').trim() || (curMission()?curMission().name:'Vehicle'); }catch(e){}
   const ov=document.createElement('div'); ov.className='vehpop-scrim'; ov.id='vehPopout';
   ov.innerHTML=`<div class="vehpop-bar">
-      <span class="vehpop-title">🚀 ${title}</span>
+      <span class="vehpop-title">🚀 ${esc(title)}</span>
       <div class="vehpop-launchhost" id="vehPopLaunchHost"></div>
       <span class="vehpop-hint">drag to pan · scroll to zoom · double-click reset · Esc/Enter to close</span>
       <button class="vehpop-x" onclick="closeVehPopout()">✕ Close</button>

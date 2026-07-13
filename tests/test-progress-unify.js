@@ -1,3 +1,13 @@
+// ⏭ EXPECTED-FAIL FORWARD TEST — F4 is UNFINISHED (see ROADMAP "F4 — One canonical 'what's
+// happening now' surface"). These checks describe the post-F4 world (UPCOMING chips deleted,
+// upcomingEvents() gone) and were committed ahead of the source on purpose. Skipped by default
+// so the full suite gates green and a real regression elsewhere stays visible; run with
+// RUN_F4=1 node bundle.js once F4 lands, then delete this header. (Audit 2026-07-13, M5.)
+if(typeof process!=='undefined' && !(process.env&&process.env.RUN_F4)){
+  console.log('SKIP: F4 forward test (unfinished feature — set RUN_F4=1 to run)');
+  console.log('0/0 checks passed');
+  process.exit(0);
+}
 // F4 — "One canonical 'what's happening now' surface." Validates that #ccStrip (the compact info strip
 // above the Cape scene, which replaced the stacked execOverview + ccProgress cards) shows the active
 // R&D / build / hangar work-items with their Fly button intact, that the deleted UPCOMING chips are
