@@ -12057,7 +12057,7 @@ function _captureScrollState(el){
   const map={};
   if(el.scrollTop) map['']=el.scrollTop;
   (function walk(node){
-    (node.children||[]).forEach(c=>{ if(c.id && c.scrollTop) map[c.id]=c.scrollTop; walk(c); });
+    Array.from(node.children||[]).forEach(c=>{ if(c.id && c.scrollTop) map[c.id]=c.scrollTop; walk(c); });
   })(el);
   return map;
 }

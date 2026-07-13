@@ -32,7 +32,9 @@ const MODULES = [
   'main.js',
 ];
 
-const PLACEHOLDER = '<!-- OV:SCRIPTS -->\n';
+// Match the marker independently of the checkout's line-ending style. Git may
+// materialize shell.html with CRLF on Windows, while release builds use LF.
+const PLACEHOLDER = '<!-- OV:SCRIPTS -->';
 
 function read(p) { return fs.readFileSync(p); }
 
@@ -44,7 +46,10 @@ const shell = read(path.join(SRC, 'shell.html'));
 const idx = shell.indexOf(PLACEHOLDER);
 if (idx === -1) throw new Error('placeholder not found in src/shell.html');
 const before = shell.slice(0, idx);
-const after = shell.slice(idx + PLACEHOLDER.length);
+let afterIdx = idx + Buffer.byteLength(PLACEHOLDER);
+if (shell[afterIdx] === 13) afterIdx++; // CR in CRLF
+if (shell[afterIdx] === 10) afterIdx++; // LF
+const after = shell.slice(afterIdx);
 
 // --- release: orbital-ventures.html ---
 const scriptBlock = Buffer.concat([
