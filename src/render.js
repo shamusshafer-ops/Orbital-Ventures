@@ -1580,22 +1580,46 @@ function startCapeGame(){
   return true;
 }
 // CSS-transform zoom/pan over the Cape scene — moves the canvas AND the hotspot overlay
-// together (so labels stay aligned), like the solar map's camera.
-let capeZoom=1, capePanX=0, capePanY=0;
+// together (so labels stay aligned), like the solar map's camera. Start slightly wider than
+// native scale so the command center reads as a whole place rather than a close-up.
+const CAPE_DEFAULT_ZOOM=0.86, CAPE_MIN_ZOOM=0.72, CAPE_MAX_ZOOM=3;
+let capeZoom=CAPE_DEFAULT_ZOOM, capePanX=0, capePanY=0;
 function applyCapeZoom(){ const z=$('ccZoom'); if(z) z.style.transform=`translate(${capePanX}px,${capePanY}px) scale(${capeZoom})`; }
-function capeClampPan(w,h){ capePanX=Math.min(0,Math.max(w*(1-capeZoom),capePanX)); capePanY=Math.min(0,Math.max(h*(1-capeZoom),capePanY)); }
+function capeClampPan(w,h){
+  // At zoom-out scales the spare space is on the right/bottom rather than the left/top.
+  // Keeping both cases bounded makes dragging useful at the overview default as well as
+  // during a close inspection, without ever exposing more than the available margin.
+  const clamp=(p,size)=>{ const edge=size*(1-capeZoom); return edge<0?Math.min(0,Math.max(edge,p)):Math.min(edge,Math.max(0,p)); };
+  capePanX=clamp(capePanX,w); capePanY=clamp(capePanY,h);
+}
+function resetCapeZoom(w,h){
+  capeZoom=CAPE_DEFAULT_ZOOM;
+  // Centre a zoomed-out view; at 1× this naturally produces the old (0,0) reset.
+  capePanX=w*(1-capeZoom)/2; capePanY=h*(1-capeZoom)/2;
+  capeClampPan(w,h); applyCapeZoom();
+}
 function initCapeZoom(){
-  const wrap=$('ccSceneWrap'); if(!wrap||wrap._zoomInit) return; wrap._zoomInit=true;
-  let drag=false, lx=0, ly=0, moved=0;
+  const wrap=$('ccSceneWrap'); if(!wrap||wrap._zoomInit) return; wrap._zoomInit=true; wrap.style.touchAction='none'; wrap.style.cursor='grab';
+  const rect=()=>wrap.getBoundingClientRect();
+  let down=false, drag=false, pointerId=null, lx=0, ly=0, sx=0, sy=0, moved=0;
   wrap.addEventListener('wheel',e=>{ e.preventDefault(); const r=wrap.getBoundingClientRect(); const cx=e.clientX-r.left, cy=e.clientY-r.top, z0=capeZoom;
-    capeZoom=Math.min(3,Math.max(1, capeZoom*(e.deltaY<0?1.12:0.89)));
+    capeZoom=Math.min(CAPE_MAX_ZOOM,Math.max(CAPE_MIN_ZOOM, capeZoom*(e.deltaY<0?1.12:0.89)));
     capePanX=cx-(cx-capePanX)*(capeZoom/z0); capePanY=cy-(cy-capePanY)*(capeZoom/z0);
     capeClampPan(r.width,r.height); applyCapeZoom(); },{passive:false});
-  wrap.addEventListener('pointerdown',e=>{ if(capeZoom<=1) return; drag=true; moved=0; lx=e.clientX; ly=e.clientY; try{wrap.setPointerCapture(e.pointerId);}catch(_){}});
-  wrap.addEventListener('pointermove',e=>{ if(!drag) return; const dx=e.clientX-lx, dy=e.clientY-ly; lx=e.clientX; ly=e.clientY; moved+=Math.abs(dx)+Math.abs(dy); const r=wrap.getBoundingClientRect(); capePanX+=dx; capePanY+=dy; capeClampPan(r.width,r.height); applyCapeZoom(); });
-  wrap.addEventListener('pointerup',()=>{ drag=false; });
-  wrap.addEventListener('click',e=>{ if(moved>6){ e.stopPropagation(); e.preventDefault(); moved=0; } }, true); // swallow click-through after a drag
-  wrap.addEventListener('dblclick',()=>{ capeZoom=1; capePanX=0; capePanY=0; applyCapeZoom(); });
+  // Begin tracking every primary pointer, including at the overview zoom. Pointer capture only
+  // begins after the motion threshold, preserving normal clicks on launch/building hotspots.
+  wrap.addEventListener('pointerdown',e=>{ if(e.button!==undefined&&e.button!==0) return;
+    down=true; drag=false; pointerId=e.pointerId; moved=0; lx=sx=e.clientX; ly=sy=e.clientY; });
+  wrap.addEventListener('pointermove',e=>{ if(!down||e.pointerId!==pointerId) return;
+    const dx=e.clientX-lx, dy=e.clientY-ly; lx=e.clientX; ly=e.clientY;
+    moved=Math.abs(e.clientX-sx)+Math.abs(e.clientY-sy);
+    if(!drag){ if(moved<5) return; drag=true; wrap.style.cursor='grabbing'; try{wrap.setPointerCapture(pointerId);}catch(_){} }
+    const r=rect(); capePanX+=dx; capePanY+=dy; capeClampPan(r.width,r.height); applyCapeZoom(); });
+  const end=e=>{ if(!down||(e&&e.pointerId!==pointerId)) return; try{wrap.releasePointerCapture(pointerId);}catch(_){} down=false; drag=false; pointerId=null; wrap.style.cursor='grab'; };
+  wrap.addEventListener('pointerup',end); wrap.addEventListener('pointercancel',end);
+  wrap.addEventListener('click',e=>{ if(moved>=5){ e.stopPropagation(); e.preventDefault(); moved=0; } }, true); // swallow click-through after a drag
+  wrap.addEventListener('dblclick',()=>{ const r=rect(); resetCapeZoom(r.width,r.height); });
+  const r=rect(); resetCapeZoom(r.width,r.height);
 }
 // Transient liftoff lead-in on the iso Cape view: the pad rocket rises with a plume while the
 // camera zooms in and pans to chase it, then we hand off into the unchanged playMission overlay.
