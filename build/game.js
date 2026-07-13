@@ -12138,6 +12138,7 @@ function renderChromeShellRail(){
   if(shell){
     shell.classList.toggle('viewing-scene', isSceneTab(state.tab));
     shell.classList.toggle('viewing-panel', !isSceneTab(state.tab));
+    shell.classList.toggle('command-hero', state.tab==='command');
     // slice 3: show the active scene's contextual right-rail panel; collapse the rail on panels.
     const RAIL={command:'railCommand',bench:'railBench',map:'railMap',rnd:'railRnd',station:'railStation'};
     let activePanel=RAIL[state.tab]||null;
@@ -12148,6 +12149,20 @@ function renderChromeShellRail(){
     for(const id of ['railCommand','railBench','railMap','railRnd','railStation','railContracts']){ const p=$(id); if(p) p.classList.toggle('hidden', id!==activePanel); }
     shell.classList.add('has-right'); // the persistent accordion always occupies the right rail, so keep it shown on every scene
   }
+  placeCommandCenterChrome();
+}
+// Phase 3A: there is still only one scene nav and one operations ticker. On Command Center they
+// are moved into the Cape hero; on every other scene they return to their established rail/topbar
+// homes. Moving the existing nodes preserves all ids, badges, handlers, focus behavior and filters.
+function placeCommandCenterChrome(){
+  const command=state.tab==='command';
+  const move=(id,targetId)=>{
+    const node=$(id), target=$(targetId);
+    if(node&&target&&node.parentNode!==target) target.appendChild(node);
+  };
+  move('sceneNav', command?'ccDock':'railNavHome');
+  move('tlControls', command?'ccTicker':'opsTickerHome');
+  move('opsTimeline', command?'ccTicker':'opsTickerHome');
 }
 function renderChromeTabsViews(){
   $('tabCommand').classList.toggle('active',state.tab==='command');
@@ -13512,8 +13527,8 @@ function renderCCCenter(){
   if(phaserOK()){
     // persistent Phaser host: build the scaffold once, then only refresh the overlay
     if(!$('ccSceneHost')){
-      $('ccCenter').innerHTML=`<div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+      $('ccCenter').innerHTML=`<div class="card cc-hero-card">
+        <div class="cc-hero-head">
           <div class="cc-panel-h" style="margin:0">Cape Canaveral — click a building to drill in</div>
           <button class="btn ghost" onclick="openCCPopout()" title="Pop out — large pan/zoom view + agency summary (Esc/Enter to close)" style="font-size:12px;padding:3px 9px">⤢ Pop out</button>
         </div>
@@ -13534,8 +13549,8 @@ function renderCCCenter(){
     return;
   }
   // fallback (no Phaser): the original 2D canvas + RAF loop
-  $('ccCenter').innerHTML=`<div class="card">
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+  $('ccCenter').innerHTML=`<div class="card cc-hero-card">
+    <div class="cc-hero-head">
       <div class="cc-panel-h" style="margin:0">Cape Canaveral — click a building to drill in</div>
       <button class="btn ghost" onclick="openCCPopout()" title="Pop out — large pan/zoom view + agency summary (Esc/Enter to close)" style="font-size:12px;padding:3px 9px">⤢ Pop out</button>
     </div>
