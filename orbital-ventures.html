@@ -670,9 +670,35 @@
   .mission-tag,.stage-role,.row label{letter-spacing:.13em;}.stage-chip,.pill{border-color:var(--hud-line-soft);}
   .bldg{background:var(--hud-raised);border-color:var(--hud-line-soft);}.bldg:hover{border-color:var(--readout);box-shadow:0 0 16px var(--hud-glow);}
   .bldg .ic{font-size:18px;filter:saturate(.72);opacity:.86;}
-  .rail-acc-btn span:first-child,.bench-tab{font-size:11px;}.tabbadge{box-shadow:0 0 8px rgba(245,166,35,.22);}
+  .rail-acc-btn .cc-nav-label,.bench-tab{font-size:11px;}.tabbadge{box-shadow:0 0 8px rgba(245,166,35,.22);}
   .timeline{border-top-color:var(--hud-line-soft);}.tl-date{border-color:var(--hud-line);background:var(--hud-raised);}
   .scrim{background:rgba(2,7,13,.82)}.modal{background:var(--hud-surface);border-color:var(--hud-line);box-shadow:0 24px 60px rgba(0,0,0,.55),inset 0 1px 0 var(--hud-line-soft);}
+  /* Phase 5: lightweight command-center chrome. These details deliberately reuse the HUD
+     palette and text glyphs, so panels feel like one instrumented console in every theme. */
+  .brand{display:grid;grid-template-columns:26px auto;grid-template-rows:auto auto;column-gap:9px;align-items:center}
+  .brand .cc-brand-mark{grid-column:1;grid-row:1 / span 2}
+  .brand .co{grid-column:2;grid-row:1}
+  .brand .tag{grid-column:2;grid-row:2}
+  .cc-brand-mark,.cc-icon{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;
+    font-family:var(--mono);font-weight:600;line-height:1;color:var(--readout);text-shadow:0 0 9px var(--hud-glow);}
+  .cc-brand-mark{width:26px;height:26px;border:1px solid var(--hud-line);border-radius:50%;font-size:17px;
+    background:radial-gradient(circle,rgba(88,204,255,.13) 0 28%,transparent 30%);box-shadow:inset 0 0 0 3px rgba(88,204,255,.05);}
+  .cc-icon{width:19px;height:19px;margin-right:8px;border:1px solid var(--hud-line-soft);border-radius:3px;font-size:12px;
+    background:linear-gradient(135deg,rgba(88,204,255,.11),transparent 65%);}
+  .cc-nav-label{min-width:0;overflow:hidden;text-overflow:ellipsis}
+  nav.rail-nav button,.rail-acc-btn{display:flex;align-items:center}
+  nav.rail-nav button .tabbadge{margin-left:auto}
+  .rail-acc-btn .cc-nav-label{flex:1}
+  .rail-acc-btn .cc-icon{margin-right:7px}
+  header,.opsbar,.card,.stage,.rail-acc-btn,nav.rail-nav button,.bench-tab,.tl-chip,.tl-filter,.tl-collapse{position:relative}
+  header::before,.opsbar::before,.card::before,.stage::before{content:"";position:absolute;top:-1px;left:13px;width:30px;height:3px;
+    background:var(--readout);opacity:.62;box-shadow:38px 0 0 -1px var(--hud-line);pointer-events:none}
+  header::after,.opsbar::after,.card::after,.stage::after{content:"";position:absolute;right:8px;bottom:8px;width:4px;height:4px;
+    border-right:1px solid var(--hud-line);border-bottom:1px solid var(--hud-line);opacity:.85;pointer-events:none}
+  .cc-deck-card::before,.command-hero .cc-strip::before,.command-hero #ccTimeline::before,.command-hero .cc-ticker::before,.command-hero .cc-dock::before{opacity:.82}
+  nav.rail-nav button::before,.rail-acc-btn::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:1px;background:var(--hud-line-soft);}
+  nav.rail-nav button.active::before,.rail-acc-btn.open::before{background:var(--readout);box-shadow:0 0 8px var(--hud-glow)}
+  @media(max-width:880px){.cc-icon{margin-right:6px}.cc-brand-mark{width:23px;height:23px}}
   @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;}}
   .hidden{display:none!important}
   /* z-index 70: the active launch scene sits above the pinned top bar (40), the "show bar" button
@@ -776,6 +802,7 @@
   <div class="topbar" id="topbar">
   <header>
     <div class="brand">
+      <span class="cc-brand-mark" aria-hidden="true">⌾</span>
       <div class="co" id="coName">ORBITAL VENTURES</div>
       <div class="tag" id="eraBadge">—</div>
     </div>
@@ -820,11 +847,11 @@
              (own the center viewport) and the "operations" panels (destined for the rails /
              modals in later slices). Same button ids + setTab handlers — nothing removed. -->
         <div class="rail-group">Mission Control</div>
-        <button id="tabCommand" class="scene active" onclick="setTab('command')">⌂ Command Center<span class="tabbadge hidden" id="badgeCommand"></span></button>
-        <button id="tabBench" class="scene" onclick="setTab('bench')">✎ Design Bench<span class="tabbadge hidden" id="badgeBench"></span></button>
-        <button id="tabRnd" class="scene" onclick="setTab('rnd')">⚛ R&amp;D<span class="tabbadge hidden" id="badgeRnd"></span></button>
-        <button id="tabMap" class="scene" onclick="setTab('map')">☉ Solar System<span class="tabbadge hidden" id="badgeMap"></span></button>
-        <button id="tabStation" class="scene" onclick="setTab('station')">⬡ Station Bench<span class="tabbadge hidden" id="badgeStation"></span></button>
+        <button id="tabCommand" class="scene active" onclick="setTab('command')"><span class="cc-icon" aria-hidden="true">⌂</span><span class="cc-nav-label">Command Center</span><span class="tabbadge hidden" id="badgeCommand"></span></button>
+        <button id="tabBench" class="scene" onclick="setTab('bench')"><span class="cc-icon" aria-hidden="true">✎</span><span class="cc-nav-label">Design Bench</span><span class="tabbadge hidden" id="badgeBench"></span></button>
+        <button id="tabRnd" class="scene" onclick="setTab('rnd')"><span class="cc-icon" aria-hidden="true">⚛</span><span class="cc-nav-label">R&amp;D</span><span class="tabbadge hidden" id="badgeRnd"></span></button>
+        <button id="tabMap" class="scene" onclick="setTab('map')"><span class="cc-icon" aria-hidden="true">☉</span><span class="cc-nav-label">Solar System</span><span class="tabbadge hidden" id="badgeMap"></span></button>
+        <button id="tabStation" class="scene" onclick="setTab('station')"><span class="cc-icon" aria-hidden="true">⬡</span><span class="cc-nav-label">Station Bench</span><span class="tabbadge hidden" id="badgeStation"></span></button>
         <!-- slice 8: the Operations group is gone — Settings → the HUD ⚙ menu; Programs/
              Rivals/Personnel/Infrastructure → modals + hub drills. The rail is now purely
              the four scene selectors. -->
@@ -978,13 +1005,13 @@
       <!-- Persistent accordion (shown on every scene): one click drops a section down to preview it,
            a second click on an open section jumps to its page. renderRailPersistent() fills the bodies. -->
       <div id="railPersistent" class="rail-accordion">
-        <button class="rail-acc-btn" id="raccMission" onclick="railAccordClick('mission')" ondblclick="railAccordDbl('mission')" title="Click +/− to expand or collapse · double-click to open Mission Control"><span>🎛 Mission Control</span><span class="rail-acc-sign"></span></button>
+        <button class="rail-acc-btn" id="raccMission" onclick="railAccordClick('mission')" ondblclick="railAccordDbl('mission')" title="Click +/− to expand or collapse · double-click to open Mission Control"><span class="cc-icon" aria-hidden="true">⌘</span><span class="cc-nav-label">Mission Control</span><span class="rail-acc-sign"></span></button>
         <div class="rail-acc-body" id="raccMissionBody"></div>
-        <button class="rail-acc-btn" id="raccFlight" onclick="railAccordClick('flight')" ondblclick="railAccordDbl('flight')" title="Click +/− to expand or collapse · double-click to open the Design Bench"><span>🧭 Flight Plan</span><span class="rail-acc-sign"></span></button>
+        <button class="rail-acc-btn" id="raccFlight" onclick="railAccordClick('flight')" ondblclick="railAccordDbl('flight')" title="Click +/− to expand or collapse · double-click to open the Design Bench"><span class="cc-icon" aria-hidden="true">⌁</span><span class="cc-nav-label">Flight Plan</span><span class="rail-acc-sign"></span></button>
         <div class="rail-acc-body" id="raccFlightBody"></div>
-        <button class="rail-acc-btn" id="raccObj" onclick="railAccordClick('objectives')" ondblclick="railAccordDbl('objectives')" title="Click +/− to expand or collapse · double-click to open Programs"><span>✔ Current Objectives</span><span class="rail-acc-sign"></span></button>
+        <button class="rail-acc-btn" id="raccObj" onclick="railAccordClick('objectives')" ondblclick="railAccordDbl('objectives')" title="Click +/− to expand or collapse · double-click to open Programs"><span class="cc-icon" aria-hidden="true">✓</span><span class="cc-nav-label">Current Objectives</span><span class="rail-acc-sign"></span></button>
         <div class="rail-acc-body" id="raccObjBody"></div>
-        <button class="rail-acc-btn" id="raccContracts" onclick="railAccordClick('contracts')" ondblclick="railAccordDbl('contracts')" title="Click +/− to preview signable contracts · double-click to open the full Contracts drill"><span>📡 Contracts <span class="tabbadge hidden" id="badgeContracts"></span></span><span class="rail-acc-sign"></span></button>
+        <button class="rail-acc-btn" id="raccContracts" onclick="railAccordClick('contracts')" ondblclick="railAccordDbl('contracts')" title="Click +/− to preview signable contracts · double-click to open the full Contracts drill"><span class="cc-icon" aria-hidden="true">⌁</span><span class="cc-nav-label">Contracts <span class="tabbadge hidden" id="badgeContracts"></span></span><span class="rail-acc-sign"></span></button>
         <div class="rail-acc-body" id="raccContractsBody"></div>
       </div>
       <!-- The Outliner: everything in flight with its ETA, soonest first — visible on every
