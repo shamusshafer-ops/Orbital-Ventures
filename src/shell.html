@@ -703,6 +703,15 @@
   @media(max-width:880px){.cc-icon{margin-right:6px}.cc-brand-mark{width:23px;height:23px}}
   @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;}}
   .hidden{display:none!important}
+
+  /* Command Center is an instrument surface from header through scene. This is deliberately
+     body-scoped: eras and user themes return untouched as soon as another tab is selected. */
+  body.command-mode{--cc-hero-navy:#06121e;--cc-hero-navy-raised:#0a1d2d;--cc-hero-cyan:#67d5ff;
+    --cc-hero-surface:rgba(6,18,30,.91);--cc-hero-raised:rgba(10,29,45,.93);--cc-hero-line:rgba(103,213,255,.36);--cc-hero-line-soft:rgba(103,213,255,.18);--cc-hero-glow:rgba(76,198,255,.16)}
+  body.command-mode .topbar{background:linear-gradient(180deg,var(--cc-hero-navy) 72%,transparent)}
+  body.command-mode header,body.command-mode .opsbar{border-color:var(--cc-hero-line);background:linear-gradient(180deg,var(--cc-hero-raised),var(--cc-hero-surface));box-shadow:inset 0 1px 0 var(--cc-hero-line-soft),var(--hud-shadow)}
+  body.command-mode header::before,body.command-mode .opsbar::before{background:var(--cc-hero-cyan);box-shadow:38px 0 0 -1px var(--cc-hero-line)}
+  body.command-mode header::after,body.command-mode .opsbar::after{border-color:var(--cc-hero-line)}
   /* z-index 70: the active launch scene sits above the pinned top bar (40), the "show bar" button
      (50) and the expanded full-screen views (60) so it's the foremost screen while it plays. */
   .animwrap{position:fixed;inset:0;background:rgba(4,7,10,.94);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;z-index:70}
@@ -714,7 +723,8 @@
   /* ---- Phase 3A: Command Center hero composition ----
      Scoped to .command-hero so the bench, R&D, map and station keep the established shell. */
   @media(min-width:1101px){
-    .shell.command-hero{display:block;position:relative;isolation:isolate;min-height:calc(100vh - var(--topbar-h) - 18px)}
+    .shell.command-hero{--hud-surface:var(--cc-hero-surface);--hud-raised:var(--cc-hero-raised);--hud-line:var(--cc-hero-line);--hud-line-soft:var(--cc-hero-line-soft);--hud-glow:var(--cc-hero-glow);
+      display:block;position:relative;isolation:isolate;min-height:calc(100vh - var(--topbar-h) - 18px)}
     .command-hero .viewport{width:100%}
     .command-hero .rail-left,.command-hero .rail-right{position:absolute;z-index:8;pointer-events:none}
     .command-hero .rail-left{left:16px;top:372px;width:300px}
@@ -745,7 +755,7 @@
     .command-hero .ccspot:hover .st,.command-hero .ccspot:focus-visible .st,.command-hero .ccspot.cc-attention .st{max-height:2.6em;margin-top:1px;opacity:1;transform:none}
     .command-hero .ccspot:focus-visible{outline:2px solid var(--readout);outline-offset:2px}
     .command-hero .cc-zoomhint{left:auto;right:14px;bottom:90px;padding:4px 6px;border:1px solid var(--hud-line-soft);border-radius:4px;background:rgba(4,12,20,.66)}
-    .command-hero .cc-strip,.command-hero .cc-summary-right{position:absolute;z-index:7;top:16px;width:min(340px,calc(100% - 372px));max-height:340px;overflow:auto}
+    .command-hero .cc-strip,.command-hero .cc-summary-right{position:absolute;z-index:7;top:16px;width:min(340px,calc(100% - 372px));overflow:visible}
     .command-hero .cc-strip{left:16px;padding:0;background:linear-gradient(135deg,rgba(3,13,22,.91),rgba(5,18,27,.70));border:1px solid var(--hud-line-soft);box-shadow:inset 0 1px 0 rgba(190,235,255,.08),var(--hud-shadow)}
     .command-hero .cc-summary-right{right:16px;width:min(320px,25vw)}
     .command-hero #ccTimeline{position:absolute;z-index:7;left:16px;bottom:82px;width:min(340px,calc(100% - 372px));margin:0;padding:10px;background:rgba(5,17,27,.88);border-color:var(--hud-line-soft)}
@@ -773,7 +783,15 @@
      distinct deck, rail, and timeline lanes. The rail contents retain their own scrollbar;
      no game information is removed or allowed to cover the lower timeline/ticker controls. */
   @media(min-width:1101px) and (max-height:820px){
-    .command-hero .cc-strip,.command-hero .cc-summary-right{max-height:200px;flex-wrap:nowrap;overflow-x:hidden;overflow-y:auto}
+    .command-hero .cc-strip,.command-hero .cc-summary-right{gap:5px;overflow:visible}
+    .command-hero .cc-strip .cc-deck-card,.command-hero .cc-summary-right .cc-deck-card{padding:6px 8px}
+    .command-hero .cc-strip .cc-deck-head,.command-hero .cc-summary-right .cc-deck-head{margin-bottom:3px}
+    .command-hero .cc-strip .cc-deck-title,.command-hero .cc-summary-right .cc-deck-title{font-size:12px;line-height:1.15}
+    .command-hero .cc-strip .cc-deck-sub,.command-hero .cc-summary-right .cc-deck-sub,.command-hero .cc-summary-right .cc-deck-row{font-size:10px;line-height:1.15}
+    .command-hero .cc-strip .cc-deck-progress,.command-hero .cc-summary-right .cc-deck-progress{height:4px;margin:4px 0 2px}
+    .command-hero .cc-strip .cc-deck-metrics{gap:3px}
+    .command-hero .cc-strip .cc-deck-metric .k,.command-hero .cc-strip .cc-deck-metric .v{font-size:10px}
+    .command-hero .cc-summary-right .cc-active-missions .cc-deck-row:nth-of-type(n+3){display:none}
     .command-hero .rail-left,.command-hero .rail-right{top:232px;max-height:calc(100% - 416px)}
     .command-hero #ccTimeline{height:86px;overflow:auto}
   }

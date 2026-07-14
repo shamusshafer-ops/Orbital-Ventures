@@ -12149,6 +12149,9 @@ function renderChromeShellRail(){
     for(const id of ['railCommand','railBench','railMap','railRnd','railStation','railContracts']){ const p=$(id); if(p) p.classList.toggle('hidden', id!==activePanel); }
     shell.classList.add('has-right'); // the persistent accordion always occupies the right rail, so keep it shown on every scene
   }
+  // The header is outside #appShell, so its Command Center grading needs the same
+  // tab-derived class rather than inheriting the hero's scoped surface variables.
+  if(typeof document!=='undefined' && document.body) document.body.classList.toggle('command-mode', state.tab==='command');
   placeCommandCenterChrome();
 }
 // Phase 3A: there is still only one scene nav and one operations ticker. On Command Center they
@@ -13543,7 +13546,7 @@ function renderCCSummaryRight(){
       <div class="cc-deck-sub">${esc(launch.sub)}</div>
       ${adv.reqs.length?`<div class="cc-deck-sub" style="margin-top:6px">${adv.reqs.filter(r=>!r.ok).slice(0,1).map(r=>'Pending: '+esc(r.label)).join('')||'Readiness checks clear'}</div>`:''}
     </section>
-    <section class="cc-deck-card dombar-crew">
+    <section class="cc-deck-card cc-active-missions dombar-crew">
       <div class="cc-deck-head"><div class="cc-panel-h">Active missions</div><button class="btn ghost cc-deck-link" onclick="showFlightsModal()">Flight log &rarr;</button></div>
       ${missionRows}
     </section>`;
