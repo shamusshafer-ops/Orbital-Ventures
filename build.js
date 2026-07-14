@@ -19,59 +19,81 @@ const fs = require('fs');
 const path = require('path');
 
 const ROOT = __dirname;
-const SRC = path.join(ROOT, 'src');
-const BUILD = path.join(ROOT, 'build');
-
 const MODULES = [
-  'data.js',
-  'sim.js',
-  'save.js',
-  'shell.js',
-  'flight.js',
-  'render.js',
-  'main.js',
+  'data.js', 'sim.js', 'save.js', 'shell.js', 'flight.js', 'render.js', 'main.js',
 ];
 
 // Match the marker independently of the checkout's line-ending style. Git may
-// materialize shell.html with CRLF on Windows, while release builds use LF.
+// materialize shell.html with CRLF on Windows; generated script/tag lines use LF.
 const PLACEHOLDER = '<!-- OV:SCRIPTS -->';
 
 function read(p) { return fs.readFileSync(p); }
 
-// Concatenated script body (no separator — modules are exact line-range slices
-// whose concatenation reproduces the original inline script byte-for-byte).
-const body = Buffer.concat(MODULES.map((m) => read(path.join(SRC, m))));
+// Compute every generated artifact without changing the filesystem.
+function createBuildArtifacts(root = ROOT) {
+  const src = path.join(root, 'src');
+  // No separator: modules are exact line-range slices whose concatenation
+  // reproduces the original inline script byte-for-byte.
+  const body = Buffer.concat(MODULES.map((m) => read(path.join(src, m))));
+  const shell = read(path.join(src, 'shell.html'));
+  const idx = shell.indexOf(PLACEHOLDER);
+  if (idx === -1) throw new Error('placeholder not found in src/shell.html');
+  const before = shell.slice(0, idx);
+  let afterIdx = idx + Buffer.byteLength(PLACEHOLDER);
+  if (shell[afterIdx] === 13) afterIdx++; // CR in CRLF
+  if (shell[afterIdx] === 10) afterIdx++; // LF
+  const after = shell.slice(afterIdx);
+  const scriptBlock = Buffer.concat([Buffer.from('<script>\n'), body, Buffer.from('</script>\n')]);
+  const releaseHtml = Buffer.concat([before, scriptBlock, after]);
+  const devTags = Buffer.from(MODULES.map((m) => `<script src="src/${m}"></script>`).join('\n') + '\n');
+  const devHtml = Buffer.concat([before, devTags, after]);
 
-const shell = read(path.join(SRC, 'shell.html'));
-const idx = shell.indexOf(PLACEHOLDER);
-if (idx === -1) throw new Error('placeholder not found in src/shell.html');
-const before = shell.slice(0, idx);
-let afterIdx = idx + Buffer.byteLength(PLACEHOLDER);
-if (shell[afterIdx] === 13) afterIdx++; // CR in CRLF
-if (shell[afterIdx] === 10) afterIdx++; // LF
-const after = shell.slice(afterIdx);
+  return [
+    { name: 'orbital-ventures.html', path: path.join(root, 'orbital-ventures.html'), contents: releaseHtml },
+    { name: 'build/game.js', path: path.join(root, 'build', 'game.js'), contents: body },
+    { name: 'index.html', path: path.join(root, 'index.html'), contents: devHtml },
+  ];
+}
 
-// --- release: orbital-ventures.html ---
-const scriptBlock = Buffer.concat([
-  Buffer.from('<script>\n'),
-  body,
-  Buffer.from('</script>\n'),
-]);
-const releaseHtml = Buffer.concat([before, scriptBlock, after]);
-fs.writeFileSync(path.join(ROOT, 'orbital-ventures.html'), releaseHtml);
+function findStaleArtifacts(artifacts) {
+  return artifacts.filter((artifact) => {
+    try {
+      return !read(artifact.path).equals(artifact.contents);
+    } catch (error) {
+      if (error.code === 'ENOENT') return true;
+      throw error;
+    }
+  });
+}
 
-// --- harness body: build/game.js ---
-fs.mkdirSync(BUILD, { recursive: true });
-fs.writeFileSync(path.join(BUILD, 'game.js'), body);
+function writeBuildArtifacts(artifacts) {
+  for (const artifact of artifacts) {
+    fs.mkdirSync(path.dirname(artifact.path), { recursive: true });
+    fs.writeFileSync(artifact.path, artifact.contents);
+  }
+}
 
-// --- dev: index.html ---
-const devTags = Buffer.from(
-  MODULES.map((m) => `<script src="src/${m}"></script>`).join('\n') + '\n'
-);
-const devHtml = Buffer.concat([before, devTags, after]);
-fs.writeFileSync(path.join(ROOT, 'index.html'), devHtml);
+function main() {
+  const artifacts = createBuildArtifacts();
+  if (process.argv.includes('--check')) {
+    const stale = findStaleArtifacts(artifacts);
+    if (stale.length) {
+      console.error('generated artifacts are stale or missing:');
+      stale.forEach((artifact) => console.error(`  ${artifact.name}`));
+      process.exitCode = 1;
+      return;
+    }
+    console.log('build parity ok');
+    return;
+  }
 
-console.log('build ok:');
-console.log('  orbital-ventures.html', releaseHtml.length, 'bytes');
-console.log('  build/game.js        ', body.length, 'bytes');
-console.log('  index.html           ', devHtml.length, 'bytes');
+  writeBuildArtifacts(artifacts);
+  console.log('build ok:');
+  console.log('  orbital-ventures.html', artifacts[0].contents.length, 'bytes');
+  console.log('  build/game.js        ', artifacts[1].contents.length, 'bytes');
+  console.log('  index.html           ', artifacts[2].contents.length, 'bytes');
+}
+
+if (require.main === module) main();
+
+module.exports = { MODULES, createBuildArtifacts, findStaleArtifacts, writeBuildArtifacts };

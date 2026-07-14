@@ -12,15 +12,22 @@ These tests run that script body under plain Node — no browser — by stubbing
 the DOM, canvas 2D context, Web Audio API, and localStorage well enough for the
 game to boot, play, and render exactly as it does in a real browser.
 
+`node build.js --check` is the read-only parity gate: it regenerates all three
+outputs in memory and reports every stale or missing artifact without writing
+files.
+
 ## Running a suite
 
-Rebuild, then concatenate `build/game.js` **after** `harness.js` and **before**
+Run the parity check first; rebuild only when it reports drift. Then concatenate
+`build/game.js` **after** `harness.js` and **before**
 the test file, and run the whole thing as one script (not `require()`d — the
 game declares state with top-level `let`/`const`, which only true script-scope
 concatenation exposes to the appended test code):
 
 ```bash
-node build.js                                        # regenerate build/game.js from src/
+node build.js --check                                # read-only: ensure all generated outputs are current
+node build.js                                        # regenerate outputs only when parity check reports drift
+node tests/test-build-parity.js                       # isolated clean/stale/missing parity coverage
 cat harness.js ../build/game.js test-regression.js > bundle.js
 node bundle.js
 ```
@@ -45,7 +52,7 @@ process exit code (0 = all passed).
 | `test-dept-c.js` | Succession + workforce planning — auto-succession on lead departure, unstaffed-department risk, era-scaled reliability penalty. |
 | `test-pad-a.js` | Flight pop-out overlay, Slice A — the in-overlay pad phase (countdown/ignition ramp), the pad→ascent seam being frame-continuous, the retired two-container iso-liftoff. First suite to drive `animEnabled=true` rendering rather than the headless fast path. |
 | `test-depart-b.js` | Flight pop-out overlay, Slice B — the deferred-departure "cruise begins / ETA" outro card (`spec.mode:'depart'`), driving the real `playMission`/`animLoop`/`endAnim` + `proceedLaunch` dispatch; the actual mission outcome still resolves on arrival, turns later. |
-| `test-progress-unify.js` | F4 — the unified "what's happening now" surface (`#ccProgress` as a view of `outlinerItems()`, the retired UPCOMING chips / "Active R&D" stat line). **Work-in-progress: currently 23/35 — 12 checks fail on unfinished F4 behavior, a pre-existing state, not part of the 236-assertion baseline.** |
+| `test-progress-unify.js` | F4 — the unified "what's happening now" surface (`#ccProgress` as a view of `outlinerItems()`, the retired UPCOMING chips / "Active R&D" stat line). **Work-in-progress: currently 16/34 — 18 checks fail on unfinished F4 behavior, a pre-existing state, not part of the 236-assertion baseline.** |
 
 ## Adding a new suite
 
