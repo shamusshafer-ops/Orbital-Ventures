@@ -13303,9 +13303,10 @@ function resetCapeZoom(w,h){
   capeClampPan(w,h); applyCapeZoom();
 }
 function initCapeZoom(){
-  const wrap=$('ccSceneWrap'); if(!wrap||wrap._zoomInit) return; wrap._zoomInit=true; wrap.style.touchAction='none'; wrap.style.cursor='grab';
+  const wrap=$('ccSceneWrap'); if(!wrap||wrap._zoomInit) return; wrap._zoomInit=true; wrap.style.cursor='grab';
   const rect=()=>wrap.getBoundingClientRect();
-  let down=false, drag=false, pointerId=null, lx=0, ly=0, sx=0, sy=0, moved=0;
+  const compactTouch=()=>typeof window!=='undefined'&&typeof window.matchMedia==='function'&&window.matchMedia('(max-width: 1100px)').matches;
+  let down=false, drag=false, pointerId=null, pointerIsCompactTouch=false, lx=0, ly=0, sx=0, sy=0, moved=0;
   wrap.addEventListener('wheel',e=>{ e.preventDefault(); const r=wrap.getBoundingClientRect(); const cx=e.clientX-r.left, cy=e.clientY-r.top, z0=capeZoom;
     capeZoom=Math.min(CAPE_MAX_ZOOM,Math.max(CAPE_MIN_ZOOM, capeZoom*(e.deltaY<0?1.12:0.89)));
     capePanX=cx-(cx-capePanX)*(capeZoom/z0); capePanY=cy-(cy-capePanY)*(capeZoom/z0);
@@ -13313,13 +13314,19 @@ function initCapeZoom(){
   // Begin tracking every primary pointer, including at the overview zoom. Pointer capture only
   // begins after the motion threshold, preserving normal clicks on launch/building hotspots.
   wrap.addEventListener('pointerdown',e=>{ if(e.button!==undefined&&e.button!==0) return;
-    down=true; drag=false; pointerId=e.pointerId; moved=0; lx=sx=e.clientX; ly=sy=e.clientY; });
+    down=true; drag=false; pointerId=e.pointerId; pointerIsCompactTouch=e.pointerType==='touch'&&compactTouch(); moved=0; lx=sx=e.clientX; ly=sy=e.clientY; });
   wrap.addEventListener('pointermove',e=>{ if(!down||e.pointerId!==pointerId) return;
     const dx=e.clientX-lx, dy=e.clientY-ly; lx=e.clientX; ly=e.clientY;
     moved=Math.abs(e.clientX-sx)+Math.abs(e.clientY-sy);
-    if(!drag){ if(moved<5) return; drag=true; wrap.style.cursor='grabbing'; try{wrap.setPointerCapture(pointerId);}catch(_){} }
+    if(!drag){
+      if(moved<5) return;
+      // On the stacked/touch layout, let vertical swipes remain page scrolls. A clear
+      // horizontal intent still starts the Cape pan, while desktop keeps free 2-D drag.
+      if(pointerIsCompactTouch&&Math.abs(e.clientY-sy)>=Math.abs(e.clientX-sx)) return;
+      drag=true; wrap.style.cursor='grabbing'; try{wrap.setPointerCapture(pointerId);}catch(_){}
+    }
     const r=rect(); capePanX+=dx; capePanY+=dy; capeClampPan(r.width,r.height); applyCapeZoom(); });
-  const end=e=>{ if(!down||(e&&e.pointerId!==pointerId)) return; try{wrap.releasePointerCapture(pointerId);}catch(_){} down=false; drag=false; pointerId=null; wrap.style.cursor='grab'; };
+  const end=e=>{ if(!down||(e&&e.pointerId!==pointerId)) return; try{wrap.releasePointerCapture(pointerId);}catch(_){} down=false; drag=false; pointerId=null; pointerIsCompactTouch=false; wrap.style.cursor='grab'; };
   wrap.addEventListener('pointerup',end); wrap.addEventListener('pointercancel',end);
   wrap.addEventListener('click',e=>{ if(moved>=5){ e.stopPropagation(); e.preventDefault(); moved=0; } }, true); // swallow click-through after a drag
   wrap.addEventListener('dblclick',()=>{ const r=rect(); resetCapeZoom(r.width,r.height); });
@@ -13520,7 +13527,7 @@ function renderCCSummaryRight(){
       ? {title:orders[0].name||'Vehicle build', sub:`In build - ${fmtTimeLeft(orders[0].monthsLeft)} remaining`, action:'showInfrastructureModal()', label:'Build status'}
       : {title:adv.goal||'No launch queued', sub:adv.ready?'Vehicle can be prepared on the Bench.':(adv.summary||'Choose the next launch objective.'), action:adv.actions[0]?advisorClick(adv.actions[0]):"setTab('bench')", label:adv.actions[0]?adv.actions[0].label:'Design vehicle'};
   const flights=ccMissionDeckItems().slice(0,4);
-  const missionRows=flights.length ? flights.map((it,i)=>`<div class="cc-deck-row" onclick="ccMissionDeckGo(${i})" style="cursor:pointer"><span>${it.icon}</span><span class="cc-deck-label">${esc(it.label)}</span><span class="num" style="color:${it.color||'var(--readout)'}">${outlinerEtaText(it.etaDays)}</span></div>`).join('')
+  const missionRows=flights.length ? flights.map((it,i)=>`<button type="button" class="cc-deck-row" onclick="ccMissionDeckGo(${i})" aria-label="Open active mission: ${esc(it.label)}. ${esc(outlinerEtaText(it.etaDays))} remaining."><span aria-hidden="true">${it.icon}</span><span class="cc-deck-label">${esc(it.label)}</span><span class="num" style="color:${it.color||'var(--readout)'}">${outlinerEtaText(it.etaDays)}</span></button>`).join('')
     : `<div class="cc-deck-sub">No missions en route.</div>`;
   el.innerHTML=`
     <section class="cc-deck-card dombar-exploration">
@@ -13669,12 +13676,15 @@ function ccSpotsHTML(){
     const g=planned?null:buildingGlyph(b.key); // live status dot (attention/active/ok/idle)
     const dot=g?`<span class="ccglyph ccglyph-${g.state}"${b.labelDx?` style="transform:translateX(${b.labelDx}px)"`:''} title="${g.label}"></span>`:'';
     const titleTxt=g?`${b.name} — ${g.label}`:`${b.name} — ${b.status}`;
-    return `<div class="ccspot${planned?' planned':''}${g&&g.state==='attention'?' cc-attention':''}" style="${style}"${onclick} title="${titleTxt}">
+    const label=esc(`${b.name}. ${g?g.label+'. ':''}${b.status}.`);
+    const tag=planned?'div':'button';
+    const buttonAttrs=planned?'':` type="button" aria-label="${label}"`;
+    return `<${tag} class="ccspot${planned?' planned':''}${g&&g.state==='attention'?' cc-attention':''}" style="${style}"${buttonAttrs}${onclick} title="${esc(titleTxt)}">
       ${b.planned?`<span class="pill lock"${lx}>planned</span>`:''}
       ${dot}
-      <span class="nm"${lx}>${b.name}</span>
-      <span class="st"${lx}>${b.status}</span>
-    </div>`;
+      <span class="nm"${lx}>${esc(b.name)}</span>
+      <span class="st"${lx}>${esc(b.status)}</span>
+    </${tag}>`;
   }).join('');
 }
 function renderCCCenter(){

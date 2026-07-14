@@ -31,7 +31,7 @@ const REGION_IDS = {
   objective: ['nextObjStatus'],
   log: ['opsTimeline'],
   scene: {
-    command: ['ccStrip','ccRight','ccTimeline'],
+    command: ['ccCenter','ccStrip','ccSummaryRight','ccRight','ccTimeline'],
     bench: ['vehicleFamilyCard','readoutCard'],
     rnd: ['techTree'],
     map: ['mapCanvas','empireStripWrap'],
@@ -140,6 +140,24 @@ newGame('engineer');
 const snapBoot=renderTwiceAndCompare('boot (command tab)', 'command', false);
 check('boot: topbar money field actually has content', !!snapBoot.topbar.stMoney);
 check('boot: command scene strip actually has content', !!snapBoot.scene.ccStrip);
+
+// Cape controls are rendered markup: actionable hotspots and in-flight rows must be native buttons,
+// while a planned hotspot remains non-focusable markup with no onclick handler.
+const _oldHotspots=ccHotspots;
+ccHotspots=()=>[
+  {key:'pad',name:'Launch Pad',status:'ready to fly',tab:'bench',x:1,y:2,w:3,h:4},
+  {key:'future',name:'Future Site',status:'not built',planned:true,x:5,y:6,w:3,h:4},
+];
+const capeMarkup=ccSpotsHTML();
+ccHotspots=_oldHotspots;
+check('Cape action hotspot is a named native button', /<button class="ccspot[^>]*type="button"[^>]*aria-label="Launch Pad\. [^"]+"[^>]*onclick=/.test(capeMarkup));
+check('Cape planned hotspot stays out of tab order', /<div class="ccspot planned"[^>]*>/.test(capeMarkup) && !/Future Site[^]*onclick=/.test(capeMarkup));
+const _oldMissionItems=ccMissionDeckItems;
+ccMissionDeckItems=()=>[{icon:'✈',label:'Surveyor en route',etaDays:12,color:'var(--readout)',go:()=>{}}];
+renderCCSummaryRight();
+const activeMissionMarkup=serializeEl($('ccSummaryRight'));
+ccMissionDeckItems=_oldMissionItems;
+check('active mission row is a named native button', /<button type="button" class="cc-deck-row"[^>]*aria-label="Open active mission: Surveyor en route\. 12d remaining\."/.test(activeMissionMarkup));
 
 ['command','bench','rnd','map','station'].forEach(t=>{
   gotoTab(t);
