@@ -1,6 +1,6 @@
 // User-directed era-evolving visual identity (2026-07-11) — the console ages up automatically with
-// state.year via eraVisualKey()/applyEraVisual(), independent of the manual theme picker. All 4
-// visual eras (apollo/80s/90s2000s/spacex) have real distinct CSS in shell.html.
+// state.year via eraVisualKey()/applyEraVisual(), independent of the manual theme picker. Era
+// classes still control layout and archival content while the active Command Center palette stays blue.
 let pass=0, fail=0;
 function check(name, cond){ if(cond){ pass++; } else { fail++; console.log('FAIL:', name); } }
 
@@ -129,19 +129,19 @@ check("modalClassName('newspaper') → newspaper size class", modalClassName('ne
   } finally { showModal=_orig; }
 }
 
-// ---------- Command Center scene: era-tied building/pad tinting (2026-07-11) ----------
-state.year=1945; // apollo
-check('eraBuildingTint: apollo vab distinct from default', eraBuildingTint('vab')==='#c9c2b0');
-check('eraPadStyle: apollo pad style present', eraPadStyle() && eraPadStyle().concrete==='#3a3a38');
-state.year=1980; // 80s
-check('eraBuildingTint: 80s vab distinct from apollo', eraBuildingTint('vab')==='#a8b0b8');
-check('eraPadStyle: 80s has no override (falls through to default)', eraPadStyle()===null);
-state.year=2010; // 90s2000s
-check('eraBuildingTint: 90s2000s vab distinct', eraBuildingTint('vab')==='#c4d0dc');
-check('eraPadStyle: 90s2000s pad style present', eraPadStyle() && eraPadStyle().gantry==='#a8b0b8');
-state.year=2040; // spacex — deliberately no override, falls through to caller's default
-check('eraBuildingTint: spacex has no override (falls through)', eraBuildingTint('vab')===undefined);
-check('eraPadStyle: spacex has no override (falls through)', eraPadStyle()===null);
+// ---------- Command Center scene: fixed blue palette while theme selection is paused ----------
+state.year=1945;
+check('eraBuildingTint: apollo uses Command Center blue', eraBuildingTint('vab')==='#315b7c');
+check('eraPadStyle: apollo uses blue pad styling', eraPadStyle() && eraPadStyle().concrete==='#1b4668');
+state.year=1980;
+check('eraBuildingTint: 80s uses the same blue palette', eraBuildingTint('vab')==='#315b7c');
+check('eraPadStyle: 80s uses the same blue pad styling', eraPadStyle() && eraPadStyle().gantry==='#79b8dc');
+state.year=2010;
+check('eraBuildingTint: 90s2000s uses the same blue palette', eraBuildingTint('vab')==='#315b7c');
+check('eraPadStyle: 90s2000s uses the same blue pad styling', eraPadStyle() && eraPadStyle().gantry==='#79b8dc');
+state.year=2040;
+check('eraBuildingTint: spacex uses the same blue palette', eraBuildingTint('vab')==='#315b7c');
+check('eraPadStyle: spacex uses the same blue pad styling', eraPadStyle() && eraPadStyle().gantry==='#79b8dc');
 
 console.log(pass+'/'+(pass+fail)+' checks passed');
 process.exit(fail>0 ? 1 : 0);

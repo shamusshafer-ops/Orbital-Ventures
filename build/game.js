@@ -2282,6 +2282,7 @@ function tickMonthlyBoundary(){
         }
       } else if(fst.starvedMonths){ fst.starvedMonths=0; }
     }
+    tickStationOperations();
     state.depot=round2(state.depot); state.science=round2(state.science||0); state.rep=round2(state.rep); // tidy the daily facility accruals (depot/science/rep) once a month
     // M2: LEO propellant price — mean-reverting random walk, plus buyer-order countdown
     state.fuelPrevPrice=state.fuelPrice;
@@ -2829,6 +2830,96 @@ function facilityModuleList(fs){
   fs.modules=fs.moduleList.length; // keep the legacy count in lockstep
   return fs.moduleList;
 }
+// Station operations are lazy so existing facilities keep their established output until the
+// player explicitly assigns crew or signs a resupply contract. New facilities opt into condition
+// tracking immediately; new fields are persisted with the facility and remain harmless to older saves.
+const STATION_MAINT_MAX=100, STATION_MAINT_DECAY_BASE=0.55, STATION_MAINT_DECAY_PER_MODULE=0.12;
+const STATION_REPAIR_COST_PER_MODULE=0.10, STATION_ROTATION_MONTHS=12;
+const STATION_RESUPPLY_CONTRACT_TERM=24, STATION_RESUPPLY_CONTRACT_SETUP=0.45;
+const STATION_RESUPPLY_CONTRACT_PREMIUM=0.12;
+function stationOps(fs){
+  if(!fs) return {condition:STATION_MAINT_MAX, crewIds:[], crewManaged:false, rotationDueAbs:absMonth()+STATION_ROTATION_MONTHS, resupplyContract:null};
+  if(fs.condition==null) fs.condition=STATION_MAINT_MAX;
+  if(!Array.isArray(fs.crewIds)) fs.crewIds=[];
+  if(fs.crewManaged==null) fs.crewManaged=false;
+  if(fs.maintenanceEnabled==null) fs.maintenanceEnabled=false;
+  if(fs.rotationDueAbs==null) fs.rotationDueAbs=absMonth()+STATION_ROTATION_MONTHS;
+  if(fs.rotationNotifiedAbs==null) fs.rotationNotifiedAbs=-1;
+  if(fs.resupplyContract===undefined) fs.resupplyContract=null;
+  return fs;
+}
+function stationCondition(fs){ return Math.max(0,Math.min(STATION_MAINT_MAX, stationOps(fs).condition)); }
+function stationMaintenanceFactor(fs){
+  if(!stationOps(fs).maintenanceEnabled) return 1;
+  const c=stationCondition(fs);
+  return c>=70?1:Math.max(0.65,0.65+(c/70)*0.35);
+}
+function stationMaintenanceCost(facId){
+  const fs=facilityState(facId); if(!fs) return 0;
+  return round2(Math.max(0,100-stationCondition(fs))/100*STATION_REPAIR_COST_PER_MODULE*Math.max(1,facilityModuleList(fs).length));
+}
+function repairStation(facId){
+  const fs=facilityState(facId), def=facilityById(facId), cost=stationMaintenanceCost(facId);
+  if(!fs||!def||cost<=0||state.money<cost) return;
+  state.money-=cost; stationOps(fs).maintenanceEnabled=true; stationOps(fs).condition=STATION_MAINT_MAX;
+  log('ok',`${def.icon} ${def.name}: maintenance campaign complete — condition restored to 100% (−${fM(cost)}).`);
+  render();
+}
+function stationCrewIds(fs){
+  const ops=stationOps(fs);
+  ops.crewIds=ops.crewIds.filter(id=>staffRecord(id)&&!isCrewDeployed(id));
+  return ops.crewIds;
+}
+function stationCrewCount(fs){ return stationOps(fs).crewManaged?stationCrewIds(fs).length:0; }
+function stationCrewAssigned(id){
+  return Object.keys(state.facilities||{}).some(fid=>stationCrewIds(facilityState(fid)).includes(id));
+}
+function stationCrewCandidates(){
+  return (state.staff||[]).filter(s=>roleOf(s.id)==='astro' && !isCrewDeployed(s.id) && !stationCrewAssigned(s.id));
+}
+function stationRotationDue(fs){ return stationOps(fs).crewManaged && absMonth()>=stationOps(fs).rotationDueAbs; }
+function rotateStationCrew(facId){
+  const fs=facilityState(facId), def=facilityById(facId); if(!fs||!def) return;
+  const ops=stationOps(fs), ids=stationCrewIds(fs), candidates=stationCrewCandidates();
+  if(!ops.crewManaged||!ids.length||!candidates.length){
+    ops.rotationDueAbs=absMonth()+STATION_ROTATION_MONTHS;
+    log('note',`${def.icon} ${def.name}: rotation cycle logged; no replacement was available.`);
+    render(); return;
+  }
+  const outgoing=ids[0], incoming=candidates.sort((a,b)=>effSkill(b.id)-effSkill(a.id))[0].id;
+  ops.crewIds=[...ids.slice(1),incoming]; ops.rotationDueAbs=absMonth()+STATION_ROTATION_MONTHS; ops.rotationNotifiedAbs=-1;
+  log('ok',`${def.icon} ${def.name}: crew rotation complete — ${personById(outgoing)?.name||outgoing} relieved, ${personById(incoming)?.name||incoming} aboard.`);
+  render();
+}
+function assignStationCrew(facId, id){
+  const fs=facilityState(facId), def=facilityById(facId), p=personById(id);
+  if(!fs||!def||!p||roleOf(id)!=='astro'||!isHired(id)||isCrewDeployed(id)||stationCrewAssigned(id)) return;
+  const ops=stationOps(fs), cap=facilityModuleList(fs).reduce((n,mid)=>n+((stationModuleDef(mid)?.stats?.crew)||0),0);
+  if(ops.crewIds.length>=cap) return;
+  ops.crewManaged=true; ops.maintenanceEnabled=true; ops.crewIds.push(id); ops.rotationDueAbs=absMonth()+STATION_ROTATION_MONTHS;
+  log('note',`${def.icon} ${def.name}: ${p.name} assigned to station duty.`); render();
+}
+function removeStationCrew(facId, id){
+  const fs=facilityState(facId), def=facilityById(facId); if(!fs||!def) return;
+  const ops=stationOps(fs); ops.crewIds=ops.crewIds.filter(x=>x!==id);
+  log('note',`${def.icon} ${def.name}: ${personById(id)?.name||id} rotated off station duty.`); render();
+}
+function resupplyContractCost(facId){
+  const fs=facilityState(facId); return fs?round2(STATION_RESUPPLY_CONTRACT_SETUP*Math.max(1,facilityModuleList(fs).length)):0;
+}
+function stationContractActive(fs){ const c=stationOps(fs).resupplyContract; return !!(c&&absMonth()<c.untilAbs); }
+function signResupplyContract(facId){
+  const fs=facilityState(facId), def=facilityById(facId), cost=resupplyContractCost(facId); if(!fs||!def||stationContractActive(fs)||state.money<cost) return;
+  stationOps(fs).maintenanceEnabled=true;
+  stationOps(fs).resupplyContract={untilAbs:absMonth()+STATION_RESUPPLY_CONTRACT_TERM, premium:STATION_RESUPPLY_CONTRACT_PREMIUM};
+  state.money-=cost;
+  log('ok',`${def.icon} ${def.name}: signed a ${STATION_RESUPPLY_CONTRACT_TERM}-month resupply contract (−${fM(cost)} setup). It will reorder at ${AUTO_RESUPPLY_THRESHOLD} months.`);
+  render();
+}
+function cancelResupplyContract(facId){
+  const fs=facilityState(facId), def=facilityById(facId); if(!fs||!def) return;
+  stationOps(fs).resupplyContract=null; log('note',`${def.icon} ${def.name}: resupply contract cancelled.`); render();
+}
 function facilityPortCap(fs){
   const nodes=facilityModuleList(fs).filter(id=>id==='node_hub').length;
   return STATION_PORT_BASE + nodes*((stationModuleDef('node_hub').ports)||3);
@@ -2845,7 +2936,8 @@ function facilityCrew(fs){
   let cap=0, req=0;
   facilityModuleList(fs).forEach(id=>{ const d=stationModuleDef(id); if(!d) return;
     cap+=d.stats.crew||0; req+=d.stats.crewReq||0; });
-  return {cap, req, factor: req<=0?1:Math.min(1, Math.max(0.4, cap/req))}; // 40% floor even fully unmanned
+  const ops=stationOps(fs), actual=ops.crewManaged?stationCrewCount(fs):cap;
+  return {cap:actual, req, factor: req<=0?1:Math.min(1, Math.max(0.4, actual/req))}; // legacy facilities use module capacity until crew management is enabled
 }
 // Module synergies: thoughtful composition earns aggregate multipliers.
 //  - Lab + Habitat: crewed research runs hotter (+science)
@@ -2890,7 +2982,7 @@ function canAddStationModule(facId, modId){
 // module-list/supply/logging side, so the three callers can't drift out of sync with each other.
 function dockModuleNow(facId, modId, note){
   const def=facilityById(facId), fs=facilityState(facId), md=stationModuleDef(modId);
-  facilityModuleList(fs).push(modId); fs.modules=fs.moduleList.length;
+  facilityModuleList(fs).push(modId); fs.modules=fs.moduleList.length; stationOps(fs).maintenanceEnabled=true;
   fs.supply=FAC_SUPPLY_MONTHS; fs.starvedMonths=0; // fresh provisions ride along with any delivery
   const pw=facilityPower(fs);
   log('ok',`${def.name}: ${md.name} docked${note?` (${note})`:''}. ${fs.moduleList.length} modules · power ${pw.net>=0?'+':''}${pw.net} kW.`);
@@ -3004,7 +3096,8 @@ function facilityProduction(def, fs){
   const crew=facilityCrew(fs), syn=facilitySynergyMult(fs);
   const sum={income:0,fuel:0,rep:0,sci:0};
   list.forEach((id,i)=>{ if(i===0) return; const d=stationModuleDef(id); if(d&&d.prod) for(const k in sum) sum[k]+=(d.prod[k]||0); });
-  const add=(k)=> ((def.base[k]||0) + sum[k]*mult)*starve*crew.factor*(syn[k]||1);
+  const maint=stationMaintenanceFactor(fs);
+  const add=(k)=> ((def.base[k]||0) + sum[k]*mult)*starve*crew.factor*maint*(syn[k]||1);
   return {income:round2(add('income')), fuel:round2(add('fuel')), rep:round2(add('rep')), sci:round2(add('sci')),
     modules:list.length, powerNet:pw.net, crew, synergies:facilitySynergies(fs)};
 }
@@ -3080,9 +3173,12 @@ function canResupply(id){
   if(state.money<resupplyCost(id)) return {ok:false,why:'Not enough capital.'};
   return {ok:true};
 }
-function resupplyFacility(id){
+function resupplyFacility(id, source){
   const chk=canResupply(id); if(!chk.ok) return;
-  const cost=resupplyCost(id), def=facilityById(id), fs=facilityState(id);
+  const def=facilityById(id), fs=facilityState(id);
+  const premium=source==='contract' ? (stationOps(fs).resupplyContract?.premium||STATION_RESUPPLY_CONTRACT_PREMIUM) : 0;
+  const cost=round2(resupplyCost(id)*(1+premium));
+  if(state.money<cost) return;
   const missing=Math.max(0, FAC_SUPPLY_MONTHS-facilitySupply(id)); // months actually shipped (matches the cost basis)
   const transit=logiTransitDays(def.body);
   state.money-=cost; // 2.1: pay on order, regardless of whether the run is instant or a live cruise
@@ -3098,8 +3194,26 @@ function resupplyFacility(id){
   state.activeFlights.push({ id:'flt'+(++_flightSeq), kind:'logistics', deferred:true, facId:id,
     monthsShipped:missing, launchAbs, arriveAbs:launchAbs+transit,
     name:`Resupply — ${def.name}`, crew:0 });
-  log('note',`${def.icon} ${def.name}: resupply shipment launched — arrival in ~${Math.round(transit/30)} mo (${transit} d), ${missing.toFixed(1)} mo of provisions aboard (−${fM(cost)}). The base draws down its reserves until it lands.`);
+  log('note',`${def.icon} ${def.name}: resupply shipment launched${source==='contract'?' under contract':''} — arrival in ~${Math.round(transit/30)} mo (${transit} d), ${missing.toFixed(1)} mo of provisions aboard (−${fM(cost)}). The base draws down its reserves until it lands.`);
   render();
+}
+function tickStationOperations(){
+  for(const fid in (state.facilities||{})){
+    if(!facilityBuilt(fid)) continue;
+    const fs=facilityState(fid), def=facilityById(fid), ops=stationOps(fs), modules=facilityModuleList(fs).length;
+    if(ops.maintenanceEnabled) ops.condition=Math.max(0,stationCondition(fs)-(STATION_MAINT_DECAY_BASE+modules*STATION_MAINT_DECAY_PER_MODULE));
+    if(ops.crewManaged && stationRotationDue(fs) && ops.rotationNotifiedAbs!==absMonth()){
+      const names=stationCrewIds(fs).map(id=>personById(id)?.name||id).join(', ')||'station crew';
+      log('note',`${def.icon} ${def.name}: crew rotation due for ${names}.`);
+      ops.rotationNotifiedAbs=absMonth();
+    }
+    const c=ops.resupplyContract;
+    if(c && absMonth()>=c.untilAbs){ ops.resupplyContract=null; log('note',`${def.icon} ${def.name}: resupply contract expired.`); }
+    const contractCost=round2(resupplyCost(fid)*(1+(ops.resupplyContract?.premium||STATION_RESUPPLY_CONTRACT_PREMIUM)));
+    if(stationContractActive(fs) && facilitySupply(fid)<=AUTO_RESUPPLY_THRESHOLD && canResupply(fid).ok && state.money>=contractCost){
+      resupplyFacility(fid, 'contract');
+    }
+  }
 }
 // Slice 2.4: per-facility auto-reorder. When fs.autoResupply is ON, the monthly tick auto-fires
 // resupplyFacility() the moment supply falls to/below this many months — identical cost/gate/lifecycle
@@ -3122,7 +3236,7 @@ function foundFacility(id){
   state.money-=def.foundCost;
   advance(def.foundMonths); // construction — facility is not yet producing
   if(state.over){ render(); return; }
-  state.facilities[id]={built:true, modules:1, since:state.year, supply:FAC_SUPPLY_MONTHS, starvedMonths:0, autoResupply:false}; // CE4(b): founded fully provisioned; 2.4: auto-resupply opt-in, off by default
+  state.facilities[id]={built:true, modules:1, since:state.year, supply:FAC_SUPPLY_MONTHS, starvedMonths:0, autoResupply:false, maintenanceEnabled:true, condition:STATION_MAINT_MAX, crewIds:[], crewManaged:false, rotationDueAbs:absMonth()+STATION_ROTATION_MONTHS}; // CE4(b): founded fully provisioned; 2.4: auto-resupply opt-in, off by default
   log('ok',`★ ${def.name} established — your first permanent presence at ${BODIES.find(b=>b.id===def.body).name}. It will grow and produce for decades.`);
   render();
 }
@@ -7094,10 +7208,9 @@ function hideModal(){activeModal=null;_prodModalOpen=false;$('modal').classList.
   try{ const el=resolveReturnFocus(_modalReturnFocus,_modalReturnFocusId,id=>document.getElementById(id),document.body); if(el && typeof el.focus==='function') el.focus(); }catch(e){}
   _modalReturnFocus=null; _modalReturnFocusId=null;
 } // slice 6: closing clears the live-modal thunk; slice B: also returns focus to the modal's trigger
-
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=52; // v52: E1.1 slice B — rival intel dossier (state.rivalIntel, lazy-defaulted, no migrate needed)
+const SAVE_VERSION=53; // v53: station operations — lazy facility ops fields (crew roster, condition, resupply contract)
 // cruise. New optional `cargo` field on any mission/contractOffer object (uncrewed payload mass carried
 // through every leg of a `.profile` mission — read only by lvPayload()'s profile branch and
 // simulateMission()'s stackMass(), both via `m.cargo||0`; a mission with no cargo field behaves exactly
@@ -7726,7 +7839,6 @@ function slotExport(id){
     }catch(e){ try{ showModal(`<h2>Export Failed</h2><p class="muted">${e.message}</p><button class="btn" onclick="hideModal()" style="margin-top:8px">OK</button>`); }catch(_){} }
   }).catch(e=>{ try{ showModal(`<h2>Export Failed</h2><p class="muted">${(e&&e.message)||'Unknown error'}</p><button class="btn" onclick="hideModal()" style="margin-top:8px">OK</button>`); }catch(_){} });
 }
-
 /* ---------- flight animation (canvas) ---------- */
 let animEnabled=true, animState=null;
 // Liftoff lead-in (iso-view rocket rise + camera zoom-chase, handed off into playMission).
@@ -7748,8 +7860,10 @@ const THEMES={ dark:'Mission Dark', green:'Control Room Green', beige:'Apollo Be
 let currentTheme='dark';
 try{ const v=localStorage.getItem('ov_theme'); if(v && THEMES[v]) currentTheme=v; }catch(e){}
 function applyTheme(name){
-  if(!THEMES[name]) name='dark'; currentTheme=name;
-  try{ localStorage.setItem('ov_theme', name); }catch(e){}
+  // The Command Center blue HUD is the current product baseline. Keep the picker API
+  // intact for the later theme pass, but do not let persisted theme choices recolor the UI.
+  name='dark'; currentTheme=name;
+  try{ localStorage.setItem('ov_theme', 'dark'); }catch(e){}
   const b=document.body; if(b){ b.classList.remove('theme-green','theme-beige'); if(name!=='dark') b.classList.add('theme-'+name); }
 }
 function pickTheme(name){ applyTheme(name); if(typeof activeModal==='function') activeModal(); } // re-render the menu so the active chip updates
@@ -8116,19 +8230,19 @@ function devPresetStation(){
 }
 // ---- panel markup (built fresh on open / after each mutation for live readouts) ----
 function devPanelHtml(){
-  const btn=(label,onclick,extra)=>`<button onclick="${onclick}" style="cursor:pointer;background:#2a2013;color:#ffd9a8;border:1px solid #6b4a1e;border-radius:4px;padding:4px 7px;font:inherit;margin:2px 3px 2px 0;${extra||''}">${label}</button>`;
-  const num=(id,val,ph)=>`<input id="${id}" type="number" value="${val}" placeholder="${ph||''}" style="width:88px;background:#0d0a05;color:#ffe9c8;border:1px solid #6b4a1e;border-radius:4px;padding:3px 5px;font:inherit">`;
-  const sect=(title,body)=>`<div style="border-top:1px solid #3a2c16;padding:9px 12px">
-    <div style="color:#ff8c1a;font-weight:bold;letter-spacing:0.5px;font-size:11px;margin-bottom:5px">${title}</div>${body}</div>`;
+  const btn=(label,onclick,extra)=>`<button onclick="${onclick}" style="cursor:pointer;background:#102c43;color:#bde8ff;border:1px solid #2d5c7a;border-radius:4px;padding:4px 7px;font:inherit;margin:2px 3px 2px 0;${extra||''}">${label}</button>`;
+  const num=(id,val,ph)=>`<input id="${id}" type="number" value="${val}" placeholder="${ph||''}" style="width:88px;background:#071523;color:#d9efff;border:1px solid #2d5c7a;border-radius:4px;padding:3px 5px;font:inherit">`;
+  const sect=(title,body)=>`<div style="border-top:1px solid #2d5c7a;padding:9px 12px">
+    <div style="color:#58c7ff;font-weight:bold;letter-spacing:0.5px;font-size:11px;margin-bottom:5px">${title}</div>${body}</div>`;
   const eraBtns=ERAS.map(e=>btn(e.name+' <span style="opacity:0.6">'+e.from+'</span>',`devJumpEra('${e.id}')`)).join('');
   const yr=state?`${(['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][state.month]||'')} ${state.year}`:'—';
   const readout=state?`money <b style="color:#7fe3a0">$${(state.money||0).toFixed(1)}M</b> · rep <b style="color:#8fc4ff">${Math.round(state.rep||0)}</b> · sci <b style="color:#c9a8ff">${Math.round(state.science||0)}</b>`:'';
-  return `<div style="position:sticky;top:0;background:#1c1509;border-bottom:2px solid #ff8c1a;padding:9px 12px;display:flex;align-items:center;justify-content:space-between">
-      <div><span style="color:#ff8c1a;font-weight:bold;letter-spacing:1px">⚠ DEV MODE</span>
+  return `<div style="position:sticky;top:0;background:#0b2033;border-bottom:2px solid #58c7ff;padding:9px 12px;display:flex;align-items:center;justify-content:space-between">
+      <div><span style="color:#58c7ff;font-weight:bold;letter-spacing:1px">⚠ DEV MODE</span>
         <div style="opacity:0.6;font-size:10px;margin-top:2px">manual testing · not shown to players</div></div>
-      <button onclick="closeDevPanel()" title="Close (Esc)" style="cursor:pointer;background:transparent;color:#ffb066;border:1px solid #6b4a1e;border-radius:4px;padding:2px 8px;font:inherit;font-size:14px">✕</button>
+      <button onclick="closeDevPanel()" title="Close (Esc)" style="cursor:pointer;background:transparent;color:#8de5ff;border:1px solid #2d5c7a;border-radius:4px;padding:2px 8px;font:inherit;font-size:14px">✕</button>
     </div>
-    <div style="padding:7px 12px;background:#0f0b05;color:#cdbfa8;font-size:11px">${yr} · ${readout}</div>
+    <div style="padding:7px 12px;background:#071523;color:#bde8ff;font-size:11px">${yr} · ${readout}</div>
     ${sect('TIME  (real tick path)',
       btn('+1 day',"devAdvanceDays(1)")+btn('+1 week',"devAdvanceDays(7)")+btn('+1 month',"devAdvanceMonths(1)")+btn('+1 year',"devAdvanceMonths(12)")+btn('+5 years',"devAdvanceMonths(60)")+
       `<div style="margin-top:6px;opacity:0.7;font-size:10px">Jump to era (no-op if already past):</div>`+eraBtns)}
@@ -8144,7 +8258,7 @@ function devPanelHtml(){
     ${sect('PRESETS',
       btn('⏩ Fast-forward to late game',"devPresetLateGame()",'display:block;width:100%;text-align:left')+
       btn('🛰 LEO station, pre-stocked',"devPresetStation()",'display:block;width:100%;text-align:left'))}
-    <div id="devStatus" style="padding:8px 12px;border-top:1px solid #3a2c16;color:#9fd8a0;font-size:10px;min-height:14px"></div>`;
+    <div id="devStatus" style="padding:8px 12px;border-top:1px solid #2d5c7a;color:#9fd8a0;font-size:10px;min-height:14px"></div>`;
 }
 // Ctrl+Shift+D toggles the dev panel. Guarded exactly like the 'p' / F1-F3 handlers (no modal open, no
 // mid-animation, not typing). This combo is otherwise unbound (audited: nothing uses ctrl/meta/shift today).
@@ -8472,7 +8586,6 @@ function sfxBurn(intensity){
   const sg=sfxCtx.createGain(); sg.gain.value=intensity*0.06;
   sub.connect(sg); sg.connect(sfxBus||sfxCtx.destination); sub.start(); sfxEngNodes.push(sub);
 }
-
 /* E1.2 slice C (visual overhaul): theme-synced HUD chrome for the flight overlay's canvas rendering.
    CSS custom properties (shell.html's body.theme-* classes) can't be read from canvas/Phaser draw
    calls, so this mirrors the same 3 palettes as a JS table — keep both in sync by hand if a theme
@@ -8481,11 +8594,11 @@ function sfxBurn(intensity){
    flame, plasma, stars, ocean splashdown stay their real colors regardless of console theme, the
    same way a mission-control room's console color doesn't repaint the sky outside the window). */
 const THEME_COLORS = {
-  dark:  {bg:'#0e1418', panel:'#151d23', panel2:'#1b252c', line:'#2a3a44', ink:'#d8e2e7', muted:'#7d909b', dim:'#56666f', ignite:'#f5a623', readout:'#4fd1d9', ok:'#58c47a', bad:'#e0564f', warn:'#e8b341'},
+  dark:  {bg:'#071523', panel:'#0b2033', panel2:'#102c43', line:'#2d5c7a', ink:'#d9efff', muted:'#7fa8bf', dim:'#55758b', ignite:'#58c7ff', readout:'#8de5ff', ok:'#65d39a', bad:'#ef6a73', warn:'#f3c56b'},
   green: {bg:'#0a1410', panel:'#0e1c14', panel2:'#163024', line:'#26442f', ink:'#9affb4', muted:'#5a9a6e', dim:'#3d6e4d', ignite:'#d7b32a', readout:'#5fe0a0', ok:'#4fe26e', bad:'#e0564f', warn:'#e8c341'},
   beige: {bg:'#1b1610', panel:'#2a2218', panel2:'#342a1c', line:'#4a3c28', ink:'#ecdfc4', muted:'#b09a72', dim:'#7d6a4c', ignite:'#e08a3c', readout:'#5bb9c4', ok:'#6db86a', bad:'#d2542b', warn:'#e8b341'},
 };
-function themeColor(key){ const t=THEME_COLORS[typeof currentTheme!=='undefined'?currentTheme:'dark']||THEME_COLORS.dark; return t[key]||THEME_COLORS.dark[key]; }
+function themeColor(key){ const t=THEME_COLORS.dark; return t[key]||THEME_COLORS.dark[key]; }
 function themeRgba(key, alpha){
   const hex=themeColor(key).replace('#','');
   const r=parseInt(hex.substring(0,2),16), g=parseInt(hex.substring(2,4),16), b=parseInt(hex.substring(4,6),16);
@@ -12274,13 +12387,19 @@ function railContractsHTML(){
     html+=`<div class="dim" style="font-size:12px;margin-bottom:6px">No passive contracts signable right now.</div>`;
   }
   if(s.openMissions>0) html+=`<div class="muted" style="font-size:12px;margin:6px 0 0">📄 <b style="color:var(--ink)">${s.openMissions}</b> mission contract${s.openMissions===1?'':'s'} available to fly.</div>`;
-  html+=`<button class="btn ghost" style="width:100%;margin-top:8px;font-size:12px" onclick="openHubPanel('contracts')">Open full Contracts →</button>`;
+  html+=`<button class="btn ghost" style="width:100%;margin-top:8px;font-size:12px" onclick="openContractsPopout()">⤢ Open Contracts panel</button>`;
   return html;
 }
 // Contracts drill sub-tabs — Flight Contracts vs Passive Income, so passive income isn't buried below a
 // long mission list. Transient UI state; both panes render, this toggles which is visible + tab counts.
 let contractsSubTab='missions';
+const contractAccordion={flight:true,sat:true,tour:true,lic:true,mil:true,doct:true};
 function setContractsSubTab(t){ contractsSubTab=t; renderContractsSubtabs(); }
+function toggleContractAccordion(cat){
+  contractAccordion[cat]=contractAccordion[cat]===false;
+  const f=$('contractsPopFlight'); if(f) f.innerHTML=renderFlightContractsPopout();
+  renderPassiveContracts('contractsPopPassive'); renderPassiveContracts();
+}
 function renderContractsSubtabs(){
   const showP=contractsSubTab==='passive';
   const mp=$('missionsPane'), pc=$('passiveCard'), tm=$('ctTabMissions'), tp=$('ctTabPassive');
@@ -12694,7 +12813,11 @@ const ERA_BUILDING_TINT={
   '80s':     {vab:'#a8b0b8', lab:'#2e3a44', admin:'#9aa4ac', prod:'#4a545c', control:'#22303a'},
   '90s2000s':{vab:'#c4d0dc', lab:'#3a4a5c', admin:'#b8c4d0', prod:'#5a6a7c', control:'#2a3a4c'},
 };
-function eraBuildingTint(type){ const t=ERA_BUILDING_TINT[eraVisualKey()]; return t&&t[type]; }
+function eraBuildingTint(type){
+  // Command Center blue is the shared visual language across every campaign era.
+  const blue={vab:'#315b7c',lab:'#183b59',admin:'#477898',prod:'#244a68',control:'#0f304d'};
+  return blue[type];
+}
 // Pad concrete + gantry lattice: Apollo's white-steel umbilical tower, the Shuttle era's signature
 // rust-orange Fixed Service Structure (todays's default gantry color, unchanged for 80s/spacex), a
 // cleaner light-gray 90s/2000s tower.
@@ -12702,7 +12825,7 @@ const ERA_PAD_STYLE={
   apollo:    {concrete:'#3a3a38', gantry:'#c8c8c0', gantryBeam:'rgba(200,200,190,0.4)'},
   '90s2000s':{concrete:'#2e3238', gantry:'#a8b0b8', gantryBeam:'rgba(180,190,200,0.4)'},
 };
-function eraPadStyle(){ return ERA_PAD_STYLE[eraVisualKey()]||null; }
+function eraPadStyle(){ return {concrete:'#1b4668', gantry:'#79b8dc', gantryBeam:'rgba(121,184,220,0.42)'}; }
 const ISO_SPREAD=1.7; // gap multiplier between cells (buildings keep their size, just spread apart)
 function isoOrigin(){ return {ox:CAPE_W*0.36, oy:CAPE_H*0.13}; }
 function isoX(gx,gy){ const o=isoOrigin(); return o.ox+(gx-gy)*ISO_TW/2*ISO_SPREAD; }
@@ -13511,17 +13634,18 @@ function renderCCStrip(){
     <section class="cc-deck-card dombar-research">
       <div class="cc-deck-head"><div class="cc-panel-h">Tech progress</div><button class="btn ghost cc-deck-link" onclick="setTab('rnd')">R&amp;D &rarr;</button></div>
       ${node?`<div class="cc-deck-title">${esc(node.name)}</div><div class="cc-deck-progress"><span style="width:${pct}%;background:var(--dom-research)"></span></div><div class="cc-deck-sub">Active research &middot; ${fmtTimeLeft(ar.monthsLeft)} remaining</div>`:`<div class="cc-deck-title">No active research</div><div class="cc-deck-sub">Choose the next capability for the program.</div>`}
-    </section>`;
+    </section>
+    ${ccSummaryDeckHTML()}`;
 }
 function ccDeckMetric(label,value,color){
   return `<div class="cc-deck-metric"><span class="k">${label}</span><span class="v" style="color:${color||'var(--ink)'}">${value}</span></div>`;
 }
 function ccMissionDeckItems(){ return outlinerItems().filter(it=>it.label.indexOf(' en route')!==-1); }
 function ccMissionDeckGo(i){ const it=ccMissionDeckItems()[i]; if(it) it.go(); }
-// Phase 4 right deck. The objective/readiness display reuses missionAdvisor(), while active
-// flights come from the ETA-sorted unified outliner rather than a parallel mission list.
-function renderCCSummaryRight(){
-  const el=$('ccSummaryRight'); if(!el) return;
+// Phase 4 summary deck. The objective/readiness display reuses missionAdvisor(), while active
+// flights come from the ETA-sorted unified outliner rather than a parallel mission list. These
+// cards live with the agency overview so the Command Center's left deck is one aligned column.
+function ccSummaryDeckHTML(){
   const adv=missionAdvisor(), amb=currentAmbition(), prog=ambitionProgress();
   const hangar=hangarList(), orders=buildQueueList().filter(o=>o.started).sort((a,b)=>a.monthsLeft-b.monthsLeft);
   const launch=hangar[0]
@@ -13532,7 +13656,7 @@ function renderCCSummaryRight(){
   const flights=ccMissionDeckItems().slice(0,4);
   const missionRows=flights.length ? flights.map((it,i)=>`<button type="button" class="cc-deck-row" onclick="ccMissionDeckGo(${i})" aria-label="Open active mission: ${esc(it.label)}. ${esc(outlinerEtaText(it.etaDays))} remaining."><span aria-hidden="true">${it.icon}</span><span class="cc-deck-label">${esc(it.label)}</span><span class="num" style="color:${it.color||'var(--readout)'}">${outlinerEtaText(it.etaDays)}</span></button>`).join('')
     : `<div class="cc-deck-sub">No missions en route.</div>`;
-  el.innerHTML=`
+  return `
     <section class="cc-deck-card dombar-exploration">
       <div class="cc-deck-head"><div class="cc-panel-h">Next milestone</div><button class="btn ghost cc-deck-link" onclick="showProgramsModal()">Objectives &rarr;</button></div>
       <div class="cc-deck-title">${esc(adv.goal||amb.name)}</div>
@@ -13550,6 +13674,9 @@ function renderCCSummaryRight(){
       <div class="cc-deck-head"><div class="cc-panel-h">Active missions</div><button class="btn ghost cc-deck-link" onclick="showFlightsModal()">Flight log &rarr;</button></div>
       ${missionRows}
     </section>`;
+}
+function renderCCSummaryRight(){
+  const el=$('ccSummaryRight'); if(el) el.innerHTML='';
 }
 function ccStripProg(icon,name,eta,pct,col){
   return `<div class="cc-strip-prow"><span class="cc-strip-pname">${icon} <b>${name}</b></span><div class="bar"><div class="fill" style="width:${pct}%;background:${col}"></div></div><span class="dim">${eta}</span></div>`;
@@ -14537,7 +14664,7 @@ function showStaticFireModal(def, verdict){
     <div class="dim" style="font-family:var(--mono);font-size:12px;margin-bottom:10px">${def.prop||''} · hold-down test, full duration</div>
     <svg id="sfGauge" viewBox="0 0 220 130" width="220" height="130" style="display:block;margin:0 auto">
       <path d="M 20 115 A 90 90 0 0 1 200 115" fill="none" stroke="#22303c" stroke-width="10" stroke-linecap="round"/>
-      <path id="sfArc" d="M 20 115 A 90 90 0 0 1 200 115" fill="none" stroke="#f5a623" stroke-width="10" stroke-linecap="round" stroke-dasharray="283" stroke-dashoffset="283"/>
+      <path id="sfArc" d="M 20 115 A 90 90 0 0 1 200 115" fill="none" stroke="var(--ignite)" stroke-width="10" stroke-linecap="round" stroke-dasharray="283" stroke-dashoffset="283"/>
       <line id="sfNeedle" x1="110" y1="115" x2="30" y2="112" stroke="#e8e2d6" stroke-width="2.5" stroke-linecap="round"/>
       <circle cx="110" cy="115" r="5" fill="#e8e2d6"/>
       <text x="110" y="86" text-anchor="middle" fill="#8b98a5" font-size="11" font-family="ui-monospace,monospace">CHAMBER PRESSURE</text>
@@ -14799,6 +14926,7 @@ function closeOtherPopouts(keep){
   if(keep!=='map' && mapPopoutOpen) closeMapPopout();
   if(keep!=='earth' && earthPopoutOpen) closeEarthPopout();
   if(keep!=='cc' && ccPopoutOpen) closeCCPopout();
+  if(keep!=='contracts' && contractsPopoutOpen) closeContractsPopout();
 }
 function openVehPopout(){
   if(vehPopoutOpen) return; vehPopoutOpen=true; closeOtherPopouts('veh'); vpZoom=POPOUT_ZOOM_BOOST; vpPanX=0; vpPanY=0;
@@ -15257,7 +15385,7 @@ function tabPopout(dir){ const cur=currentPopoutSceneKey(); let i=POPOUT_ORDER.i
 document.addEventListener('keydown',function(e){
   if(!anyPopoutOpen()) return;
   if(e.key==='Escape'||e.key==='Enter'){ e.preventDefault(); e.stopPropagation();
-    if(earthPopoutOpen) closeEarthPopout(); if(vehPopoutOpen) closeVehPopout(); if(stnPopoutOpen) closeStationPopout(); if(mapPopoutOpen) closeMapPopout(); if(ccPopoutOpen) closeCCPopout(); return; }
+    if(earthPopoutOpen) closeEarthPopout(); if(vehPopoutOpen) closeVehPopout(); if(stnPopoutOpen) closeStationPopout(); if(mapPopoutOpen) closeMapPopout(); if(ccPopoutOpen) closeCCPopout(); if(contractsPopoutOpen) closeContractsPopout(); return; }
   if(e.key==='Tab'){ e.preventDefault(); e.stopPropagation(); tabPopout(e.shiftKey?-1:1); return; }
   if(e.key>='1' && e.key<='4'){ const k=POPOUT_ORDER[+e.key-1]; if(k){ e.preventDefault(); e.stopPropagation(); switchPopoutTo(k); } }
 },true);
@@ -15357,7 +15485,7 @@ function renderReadout(){
 
   setHTML($('readoutCard'), `
     <div class="mission-tag">Flying against</div>
-    <div class="mission-name">${m.name} ${m.crew?`<span class="pill" style="color:var(--ignite);border-color:#5a4419">${m.crew} crew · ${m.days<1?(m.days*24).toFixed(0)+'h':m.days+'d'}</span>`:''} ${state.completed[m.id]?'<span class="pill ok">routine</span>':''}</div>
+    <div class="mission-name">${m.name} ${m.crew?`<span class="pill" style="color:var(--ignite);border-color:var(--hud-line)">${m.crew} crew · ${m.days<1?(m.days*24).toFixed(0)+'h':m.days+'d'}</span>`:''} ${state.completed[m.id]?'<span class="pill ok">routine</span>':''}</div>
 
     <div class="gauge">
       <div class="nums"><span class="achieved" style="color:${meets?'var(--ok)':'var(--ink)'}">${fI(v.totalDv)}<span style="font-size:12px;color:var(--muted)"> m/s Δv</span></span>
@@ -15438,7 +15566,7 @@ function renderProfileReadout(m){
 
   setHTML($('readoutCard'), `
     <div class="mission-tag">Mission profile — every leg must pass</div>
-    <div class="mission-name">${m.name} <span class="pill" style="color:var(--ignite);border-color:#5a4419">${m.crew} crew · ${m.days}d</span> ${state.completed[m.id]?'<span class="pill ok">routine</span>':''}</div>
+    <div class="mission-name">${m.name} <span class="pill" style="color:var(--ignite);border-color:var(--hud-line)">${m.crew} crew · ${m.days}d</span> ${state.completed[m.id]?'<span class="pill ok">routine</span>':''}</div>
 
     <div class="legs">${legRows}</div>
 
@@ -15599,7 +15727,7 @@ function personPortrait(p, size){
   if(hairStyle===3) hair+=`<ellipse cx="30" cy="45" rx="6" ry="12" fill="${hairc}"/><ellipse cx="70" cy="45" rx="6" ry="12" fill="${hairc}"/>`;
   const gl=glasses?`<g fill="none" stroke="#1c1c1c" stroke-width="1.6"><circle cx="${50-eyeDx}" cy="${eyeY}" r="5"/><circle cx="${50+eyeDx}" cy="${eyeY}" r="5"/><line x1="${50-eyeDx+5}" y1="${eyeY}" x2="${50+eyeDx-5}" y2="${eyeY}"/></g>`:'';
   const fh=beard?`<path d="M34 49 Q34 67 50 69 Q66 67 66 49 Q60 59 50 59 Q40 59 34 49 Z" fill="${hairc}" opacity="0.92"/>`:(mustache?`<path d="M42 55 Q50 59 58 55 Q50 57 42 55 Z" fill="${hairc}"/>`:'');
-  const patch=isAstro?(()=>{ const pc=pick(['#e0564f','#4fd1d9','#58c47a','#f5a623']); return `<rect x="59" y="85" width="12" height="9" rx="1.5" fill="${pc}" stroke="#0007"/><circle cx="65" cy="89.5" r="2" fill="#ffffffaa"/>`; })():'';
+  const patch=isAstro?(()=>{ const pc=pick(['#ef6a73','#8de5ff','#65d39a','#58c7ff']); return `<rect x="59" y="85" width="12" height="9" rx="1.5" fill="${pc}" stroke="#0007"/><circle cx="65" cy="89.5" r="2" fill="#ffffffaa"/>`; })():'';
   return `<svg width="${size}" height="${size}" viewBox="0 0 100 100" style="display:block;border-radius:8px;flex-shrink:0;background:#0c1318" xmlns="http://www.w3.org/2000/svg">
     <defs><linearGradient id="${uid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${bgA}"/><stop offset="1" stop-color="#0c1318"/></linearGradient></defs>
     <rect width="100" height="100" rx="10" fill="url(#${uid})"/>
@@ -15636,10 +15764,10 @@ function renderPersonnelCard(p, sr){
       <div>
         <span style="font-size:14px;font-weight:600;color:var(--ink)">${p.name}</span>
         <span class="pill" style="margin-left:6px">${roleLabel(p)}</span>
-        <span class="pill" style="margin-left:4px;color:var(--ignite);border-color:#5a4419" title="${traitOf(p.id).desc}">${traitOf(p.id).name}</span>
-        ${isDeptLead(p.id)?'<span class="pill" style="margin-left:4px;color:var(--readout);border-color:#5a4419" title="Department lead — steers this department\'s output">★ lead</span>':''}
+        <span class="pill" style="margin-left:4px;color:var(--ignite);border-color:var(--hud-line)" title="${traitOf(p.id).desc}">${traitOf(p.id).name}</span>
+        ${isDeptLead(p.id)?'<span class="pill" style="margin-left:4px;color:var(--readout);border-color:var(--hud-line)" title="Department lead — steers this department\'s output">★ lead</span>':''}
         ${isAstro&&assigned?'<span class="pill active" style="margin-left:4px">assigned</span>':''}
-        ${isAstro&&isCrewDeployed(p.id)?'<span class="pill" style="margin-left:4px;color:var(--readout);border-color:#5a4419">🚀 in flight</span>':''}
+        ${isAstro&&isCrewDeployed(p.id)?'<span class="pill" style="margin-left:4px;color:var(--readout);border-color:var(--hud-line)">🚀 in flight</span>':''}
       </div>
       <span style="font-family:var(--mono);font-size:12px;color:var(--muted)">${p.salary.toFixed(2)}M/mo</span>
     </div>
@@ -15721,7 +15849,7 @@ function renderPersonnel(){
         ? `<div style="color:var(--bad);font-size:12px">⚠ <b>${def.icon} ${def.name}</b> is unstaffed — a core department with no engineers${eraStakesFrac()>0?` (reliability −${Math.round(DEPT_UNDERSTAFF_REL_PEN*eraStakesFrac()*100)}% while empty)`:''}. Hire below.</div>`
         : `<div style="color:var(--warn);font-size:12px">○ <b>${def.icon} ${def.name}</b> has no lead — promote one to steer it.</div>`;
     }).join('');
-    html+=`<div class="card" style="margin-bottom:10px;border-color:#5a4419;background:var(--panel2)">
+    html+=`<div class="card" style="margin-bottom:10px;border-color:var(--hud-line);background:var(--panel2)">
       <div style="font-weight:700;font-size:13px;margin-bottom:4px">👥 Workforce planning</div>${rows}</div>`;
   }
 
@@ -16226,9 +16354,9 @@ function renderStation(){
 // Facility tabs + aggregate stats for the focused facility
 function renderStationFacilityStats(built, cur){
   const tabs=built.map(b=>`<button class="btn ${b.def.id===state.stationFocus?'launch':'ghost'}" style="font-size:12px" onclick="setStationFocus('${b.def.id}')">${b.def.icon} ${b.def.name}</button>`).join(' ');
-  const fs=cur.fs, def=cur.def, list=facilityModuleList(fs), pw=facilityPower(fs), pr=facilityProduction(def,fs);
+  const fs=cur.fs, def=cur.def, list=facilityModuleList(fs), pw=facilityPower(fs), pr=facilityProduction(def,fs), ops=stationOps(fs);
   const mass=list.reduce((a,id)=>a+((stationModuleDef(id)||{}).stats||{}).mass||0,0);
-  const crew=facilityCrew(fs), syn=facilitySynergies(fs);
+  const crew=facilityCrew(fs), crewSlots=list.reduce((n,id)=>n+((stationModuleDef(id)?.stats?.crew)||0),0), syn=facilitySynergies(fs);
   const cell=(k,v,sub)=>`<div class="metric"><div class="k">${k}</div><div class="v">${v}</div>${sub?`<div class="dim" style="font-size:12px">${sub}</div>`:''}</div>`;
   const crewColor = crew.factor>=1?'var(--ok)':crew.factor>=0.7?'var(--warn)':'var(--bad)';
   const synHTML = syn.length
@@ -16236,6 +16364,21 @@ function renderStationFacilityStats(built, cur){
         const bits=['income','fuel','rep','sci'].filter(k=>s[k]).map(k=>`+${Math.round(s[k]*100)}% ${k}`).join(' · ');
         return `<div class="flag ok" style="margin:3px 0">✦ ${s.label} — ${bits}</div>`; }).join('')}</div>`
     : `<div class="dim" style="font-size:12px;margin-top:8px">No synergies yet — pair a Lab or Greenhouse with a Habitat, keep power in surplus, or back a Depot with a Power Truss.</div>`;
+  const condition=Math.round(stationCondition(fs)), maintCost=stationMaintenanceCost(def.id), maintColor=condition>=70?'var(--ok)':condition>=35?'var(--warn)':'var(--bad)';
+  const crewNames=stationCrewIds(fs).map(id=>personById(id)?.name||id);
+  const candidates=stationCrewCandidates();
+  const crewHTML=ops.crewManaged
+    ? `<div class="dim" style="font-size:12px;margin-top:8px">Station crew: ${crewNames.length?crewNames.join(', '):'none assigned'} · rotation ${stationRotationDue(fs)?'<span style="color:var(--warn)">due now</span>':`due in ${Math.max(0,ops.rotationDueAbs-absMonth())} mo`}</div>
+       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:5px">
+         ${candidates.length&&crewNames.length<crewSlots?`<select class="btn ghost" style="font-size:11px" onchange="assignStationCrew('${def.id}',this.value);this.value=''" aria-label="Assign astronaut"><option value="">Assign astronaut…</option>${candidates.map(s=>`<option value="${s.id}">${esc(personById(s.id).name)}</option>`).join('')}</select>`:''}
+         ${crewNames.length&&stationRotationDue(fs)?`<button class="btn ghost" style="font-size:11px" onclick="rotateStationCrew('${def.id}')">↻ Rotate crew</button>`:''}
+         ${crewNames.map(id=>`<button class="btn ghost" style="font-size:11px" onclick="removeStationCrew('${def.id}','${id}')">Relieve ${esc(personById(id)?.name||id)}</button>`).join('')}
+       </div>`
+    : `<div class="dim" style="font-size:12px;margin-top:8px">Crew management is off — modules provide legacy crew capacity. Assign an astronaut to begin station rotations.</div>
+       ${candidates.length?`<select class="btn ghost" style="font-size:11px;margin-top:5px" onchange="assignStationCrew('${def.id}',this.value);this.value=''" aria-label="Assign astronaut"><option value="">Assign astronaut…</option>${candidates.map(s=>`<option value="${s.id}">${esc(personById(s.id).name)}</option>`).join('')}</select>`:''}`;
+  const contract=stationContractActive(fs), contractCost=resupplyContractCost(def.id);
+  const contractHTML=`<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:9px;font-size:12px"><span class="dim">Resupply contract</span><span>${contract?`active · ${Math.max(0,ops.resupplyContract.untilAbs-absMonth())} mo left`:'none'}</span></div>
+    <div style="display:flex;gap:6px;margin-top:5px">${contract?`<button class="btn ghost" style="font-size:11px" onclick="cancelResupplyContract('${def.id}')">Cancel contract</button>`:`<button class="btn ghost" style="font-size:11px" onclick="signResupplyContract('${def.id}')" ${state.money>=contractCost?'':'disabled'}>Sign · ${fM(contractCost)} setup</button>`}<button class="btn ghost" style="font-size:11px" onclick="repairStation('${def.id}')" ${maintCost>0&&state.money>=maintCost?'':'disabled'}>Repair · ${fM(maintCost)}</button></div>`;
   return `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${tabs}</div>
     <div class="mission-tag">${def.name} — ${list.length} module${list.length>1?'s':''} / ${facilityPortCap(fs)} ports</div>
     <div class="metrics">
@@ -16245,11 +16388,12 @@ function renderStationFacilityStats(built, cur){
       ${cell('Income', '+'+fM(pr.income)+'/mo')}
       ${cell('Science', '+'+pr.sci.toFixed(1)+'/mo')}
       ${cell('Resupply', fM(resupplyCostFull(def.id))+'/mo', facilityGreenhouses(fs)?facilityGreenhouses(fs)+' greenhouse':'')}
+      ${cell('Condition', `<span style="color:${maintColor}">${condition}%</span>`, `${Math.round(stationMaintenanceFactor(fs)*100)}% output factor`)}
     </div>
     ${pw.net<0?`<div class="flag warn">△ Power-starved — production running at 60%. Dock a Solar Power Truss.</div>`:''}
     ${crew.req>crew.cap?`<div class="flag warn">△ Under-crewed (${crew.cap}/${crew.req}) — output at ${Math.round(crew.factor*100)}%. Dock a Habitat (each adds 3 crew).</div>`:''}
     ${list.length>=facilityPortCap(fs)?`<div class="flag warn">△ All ${facilityPortCap(fs)} ports occupied — a Docking Node adds 3 more.</div>`:''}
-    ${synHTML}`;
+    ${synHTML}${crewHTML}${contractHTML}`;
 }
 // The assembled stack, drawn as a side-view chain
 function renderStationStackSVG(W,H,cur){
@@ -16394,7 +16538,7 @@ function assetMarkersSVG(bodyId,px,py,rad,model){
   if(a.firsts.length){
     const fy=py-rad-14;
     s+=`<g><line x1="${(px-6).toFixed(1)}" y1="${(fy+7).toFixed(1)}" x2="${(px-6).toFixed(1)}" y2="${(fy-2).toFixed(1)}" stroke="#f5d78a" stroke-width="1"/>
-      <path d="M ${(px-6).toFixed(1)} ${(fy-2).toFixed(1)} L ${(px+2).toFixed(1)} ${(fy+0.5).toFixed(1)} L ${(px-6).toFixed(1)} ${(fy+3).toFixed(1)} Z" fill="#f5a623">
+      <path d="M ${(px-6).toFixed(1)} ${(fy-2).toFixed(1)} L ${(px+2).toFixed(1)} ${(fy+0.5).toFixed(1)} L ${(px-6).toFixed(1)} ${(fy+3).toFixed(1)} Z" fill="var(--ignite)">
         <animate attributeName="opacity" values="1;0.55;1" dur="2.6s" repeatCount="indefinite"/>
       </path>
       <title>Your firsts here: ${a.firsts.join(' · ')}</title></g>`;
@@ -16586,9 +16730,9 @@ function renderMapOverview(W,H){
   // #graphics: committed-window transfer trajectory, drawn under the bodies
   const cw=state.committedWindow;
   if(cw){ const arc=transferArc(cx,cy,missionBody(cw.missionId));
-    if(arc){ svg+=`<path d="M ${arc.from.x.toFixed(1)} ${arc.from.y.toFixed(1)} Q ${arc.ctrl.x.toFixed(1)} ${arc.ctrl.y.toFixed(1)} ${arc.to.x.toFixed(1)} ${arc.to.y.toFixed(1)}" fill="none" stroke="#f5a623" stroke-width="1.6" stroke-dasharray="5,5" opacity="0.85"><title>Committed transfer to ${arc.destName}</title></path>
-      <circle cx="${arc.from.x.toFixed(1)}" cy="${arc.from.y.toFixed(1)}" r="2.5" fill="#f5a623"/>
-      <text x="${arc.ctrl.x.toFixed(1)}" y="${(arc.ctrl.y-4).toFixed(1)}" fill="#f5a623" font-size="9" font-family="ui-monospace,monospace" text-anchor="middle">⊕ transfer → ${arc.destName}</text>`; }
+    if(arc){ svg+=`<path d="M ${arc.from.x.toFixed(1)} ${arc.from.y.toFixed(1)} Q ${arc.ctrl.x.toFixed(1)} ${arc.ctrl.y.toFixed(1)} ${arc.to.x.toFixed(1)} ${arc.to.y.toFixed(1)}" fill="none" stroke="var(--ignite)" stroke-width="1.6" stroke-dasharray="5,5" opacity="0.85"><title>Committed transfer to ${arc.destName}</title></path>
+      <circle cx="${arc.from.x.toFixed(1)}" cy="${arc.from.y.toFixed(1)}" r="2.5" fill="var(--ignite)"/>
+      <text x="${arc.ctrl.x.toFixed(1)}" y="${(arc.ctrl.y-4).toFixed(1)}" fill="var(--ignite)" font-size="9" font-family="ui-monospace,monospace" text-anchor="middle">⊕ transfer → ${arc.destName}</text>`; }
   }
   svg+=plannedRouteSVG(cx,cy); // empire layer: active-mission planned route
   const _assetModel=mapAssetModel(); // computed once per render, shared by every marker below
@@ -16605,7 +16749,7 @@ function renderMapOverview(W,H){
     svg+=`<g style="cursor:pointer" onclick="selectBody('${b.id}')">
       <circle cx="${px}" cy="${py}" r="${rad+8}" fill="transparent"/>
       ${bodyTexture(b.id,px,py,rad)}
-      ${sel?`<circle cx="${px}" cy="${py}" r="${rad+1.5}" fill="none" stroke="#f5a623" stroke-width="1.5"/>`:''}
+      ${sel?`<circle cx="${px}" cy="${py}" r="${rad+1.5}" fill="none" stroke="var(--ignite)" stroke-width="1.5"/>`:''}
       <text x="${px}" y="${py-rad-6}" fill="${sel?themeColor('ignite'):themeColor('muted')}" font-size="11" font-family="ui-monospace,monospace" text-anchor="middle">${b.name}</text>
     </g>${rivalMarkersSVG(b.id,px,py,rad)}${assetMarkersSVG(b.id,px,py,rad,_assetModel)}`;
     BODIES.filter(m=>m.around===b.id).forEach(m=>{
@@ -16617,7 +16761,7 @@ function renderMapOverview(W,H){
         <g style="cursor:pointer" onclick="selectBody('${m.id}')">
           <circle cx="${mx}" cy="${my}" r="${mRad+6}" fill="transparent"/>
           ${bodyTexture(m.id,mx,my,mRad)}
-          ${msel?`<circle cx="${mx}" cy="${my}" r="${mRad+2}" fill="none" stroke="#f5a623" stroke-width="1.5"/>`:''}
+          ${msel?`<circle cx="${mx}" cy="${my}" r="${mRad+2}" fill="none" stroke="var(--ignite)" stroke-width="1.5"/>`:''}
           <text x="${mx}" y="${my-mRad-4}" fill="${msel?themeColor('ignite'):themeColor('muted')}" font-size="9" font-family="ui-monospace,monospace" text-anchor="middle">${m.name}</text>
         </g>${rivalMarkersSVG(m.id,mx,my,5)}${assetMarkersSVG(m.id,mx,my,5,_assetModel)}`;
     });
@@ -16647,8 +16791,8 @@ function renderMapZoom(W,H,id){
     </g>`;
     svg+=`<g onclick="selectBody('${b.id}')" style="cursor:pointer">
       ${bodyTexture(b.id,mX,mY,mRad)}
-      <circle cx="${mX}" cy="${mY}" r="${mRad+1.5}" fill="none" stroke="#f5a623" stroke-width="2"/>
-      <text x="${mX}" y="${mY-mRad-10}" fill="#f5a623" font-size="13" font-family="ui-monospace,monospace" text-anchor="middle">${b.name}</text>
+      <circle cx="${mX}" cy="${mY}" r="${mRad+1.5}" fill="none" stroke="var(--ignite)" stroke-width="2"/>
+      <text x="${mX}" y="${mY-mRad-10}" fill="var(--ignite)" font-size="13" font-family="ui-monospace,monospace" text-anchor="middle">${b.name}</text>
     </g>`;
   } else {
     // zoomed on a planet/belt: show it large and centered, plus any moons around it
@@ -16656,11 +16800,11 @@ function renderMapZoom(W,H,id){
     if(b.kind==='belt'){
       for(let i=0;i<22;i++){ const a=i*0.29, rr=rad+ (i%3)*10, bx=cx+Math.cos(a)*rr, by=cy+Math.sin(a)*rr;
         svg+=`<circle cx="${bx}" cy="${by}" r="2.4" fill="${b.color}" opacity="0.6"/>`; }
-      svg+=`<text x="${cx}" y="${cy-rad-26}" fill="#f5a623" font-size="14" font-family="ui-monospace,monospace" text-anchor="middle">${b.name}</text>`;
+      svg+=`<text x="${cx}" y="${cy-rad-26}" fill="var(--ignite)" font-size="14" font-family="ui-monospace,monospace" text-anchor="middle">${b.name}</text>`;
     } else {
       svg+=`${bodyTexture(b.id,cx,cy,rad)}
-        <circle cx="${cx}" cy="${cy}" r="${rad+1.5}" fill="none" stroke="#f5a623" stroke-width="2.5"/>
-        <text x="${cx}" y="${cy-rad-14}" fill="#f5a623" font-size="14" font-family="ui-monospace,monospace" text-anchor="middle">${b.name}</text>`;
+        <circle cx="${cx}" cy="${cy}" r="${rad+1.5}" fill="none" stroke="var(--ignite)" stroke-width="2.5"/>
+        <text x="${cx}" y="${cy-rad-14}" fill="var(--ignite)" font-size="14" font-family="ui-monospace,monospace" text-anchor="middle">${b.name}</text>`;
     }
     const moons=BODIES.filter(m=>m.around===b.id);
     moons.forEach((m,i)=>{
@@ -16670,7 +16814,7 @@ function renderMapZoom(W,H,id){
       svg+=`<circle cx="${cx}" cy="${cy}" r="${mOrbit}" fill="none" stroke="rgba(125,144,155,0.2)" stroke-width="1" stroke-dasharray="3,4"/>
         <g style="cursor:pointer" onclick="selectBody('${m.id}')">
           ${bodyTexture(m.id,mx,my,mRad)}
-          ${msel?`<circle cx="${mx}" cy="${my}" r="${mRad+1.5}" fill="none" stroke="#f5a623" stroke-width="2"/>`:''}
+          ${msel?`<circle cx="${mx}" cy="${my}" r="${mRad+1.5}" fill="none" stroke="var(--ignite)" stroke-width="2"/>`:''}
           <text x="${mx}" y="${my-mRad-8}" fill="${msel?themeColor('ignite'):themeColor('muted')}" font-size="11" font-family="ui-monospace,monospace" text-anchor="middle">${m.name}</text>
         </g>`;
     });
@@ -16890,7 +17034,7 @@ function productionPanelHTML(){
       <div style="min-width:190px;text-align:right">${dipBtn}</div>
     </div>`;
   }).join('');
-  return `<div class="card" style="margin-bottom:12px;border-color:#5a4419">
+  return `<div class="card" style="margin-bottom:12px;border-color:var(--hud-line)">
       <h2 style="margin-bottom:6px">🏭 Manufacturing Capacity</h2>
       <p class="muted" style="font-size:12px;margin:-2px 0 8px">Industry is a resource of its own. Each production line costs capital to expand and adds monthly upkeep — so growing your factory competes with R&amp;D and missions for the budget. ${capNote}.</p>
       ${banner}
@@ -17101,8 +17245,8 @@ function renderContractOffers(){
     </div>`;
   }).join('');
 }
-function renderPassiveContracts(){
-  const box=$('passiveCard'); if(!box) return;
+function renderPassiveContracts(targetId){
+  const box=$(targetId||'passiveCard'); if(!box) return;
   const totMo=passiveMonthlyIncome();
   let html=`<h2>Passive Income${totMo>0?` <span class="pill ok">+${fM(totMo)}/mo</span>`:''}</h2>
     <p class="muted" style="font-size:12px;margin:-4px 0 10px">Standing contracts pay a fixed monthly income for a fixed term, then expire onto a cooldown. Each renewal of the same contract pays a little less.</p>`;
@@ -17137,11 +17281,28 @@ function renderPassiveContracts(){
         <div class="sub num" style="margin-top:4px;color:var(--readout)">${meta}</div></div>${right}${btn}</div>`;
     }).filter(Boolean);
     if(!rows.length) continue;
-    html+=`<div class="dim" style="font-size:12px;text-transform:uppercase;letter-spacing:.5px;margin:12px 0 4px">${PASSIVE_CATS[cat]}</div>${rows.join('')}`;
+    const open=contractAccordion[cat]!==false;
+    html+=`<button class="rail-acc-btn ${open?'open':''}" style="margin-top:8px" onclick="toggleContractAccordion('${cat}')"><span>${PASSIVE_CATS[cat]}</span><span class="rail-acc-sign"></span></button><div class="rail-acc-body ${open?'open':''}">${rows.join('')}</div>`;
   }
   if(!any) html+=`<p class="dim" style="font-size:12px">No standing contracts available yet — reach orbit, fly crews and license technology to open them up.</p>`;
   box.innerHTML=html;
 }
+
+function renderFlightContractsPopout(){
+  const rows=MISSIONS.filter(m=>!state.completed[m.id] && state.rep>=m.minRep && missionTechMet(m)).map(m=>`<div class="item"><div class="body"><div class="title">${esc(m.name)}</div><div class="sub">${esc(m.blurb||'')}</div><div class="sub num" style="margin-top:4px;color:var(--readout)">+${fM(m.payout)} · +${m.rep} rep</div></div><button class="btn" onclick="selectMission('${m.id}');closeContractsPopout();setTab('bench')">Fly ▸</button></div>`).join('');
+  const offers=renderContractOffers();
+  return `<button class="rail-acc-btn ${contractAccordion.flight?'open':''}" onclick="toggleContractAccordion('flight')"><span>Flight Contracts</span><span class="rail-acc-sign"></span></button><div class="rail-acc-body ${contractAccordion.flight?'open':''}">${offers}${rows||'<p class="dim" style="font-size:12px">No flyable contracts available right now.</p>'}</div>`;
+}
+let contractsPopoutOpen=false;
+function openContractsPopout(){
+  if(contractsPopoutOpen) return; contractsPopoutOpen=true; closeOtherPopouts('contracts');
+  const ov=document.createElement('div'); ov.className='vehpop-scrim'; ov.id='contractsPopout';
+  ov.innerHTML=`<div class="vehpop-bar"><span class="vehpop-title">⌁ Contracts</span><span class="vehpop-hint">expand categories · Esc/Enter to close</span><button class="vehpop-x" onclick="closeContractsPopout()">✕ Close</button></div><div class="vehpop-body"><main class="vehpop-stats wide" style="flex:1;max-width:none;border-left:0;padding:18px 22px"><div style="max-width:1100px;margin:0 auto"><div class="metrics"><div class="metric"><div class="k">Standing income</div><div class="v" style="color:var(--ok)">+${fM(passiveMonthlyIncome())}/mo</div></div><div class="metric"><div class="k">Mission contracts</div><div class="v">${availableContracts()}</div></div></div><div id="contractsPopFlight" style="margin-top:12px"></div><div id="contractsPopPassive" style="margin-top:12px"></div></div></main></div>`;
+  document.body.appendChild(ov); fadeInScrim(ov);
+  const flight=$('contractsPopFlight'); if(flight) flight.innerHTML=renderFlightContractsPopout();
+  renderPassiveContracts('contractsPopPassive');
+}
+function closeContractsPopout(){ if(!contractsPopoutOpen) return; contractsPopoutOpen=false; removeScrim('contractsPopout'); }
 
 function renderMissions(){
   { const el=$('specialBannerMount'); if(el) el.innerHTML=renderSpecialBanner(); }
@@ -17271,7 +17432,7 @@ function renderTechFilters(){
     </button>`; }).join('');
   el.innerHTML=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
       <div class="cc-panel-h" style="margin:0">⚛ Tracks</div>
-      ${availN>0 && !state.activeResearch?`<span style="font-size:11px;color:#f5a623;font-family:var(--mono)" title="Nodes you can research right now">● ${availN} ready</span>`:''}
+      ${availN>0 && !state.activeResearch?`<span style="font-size:11px;color:var(--ignite);font-family:var(--mono)" title="Nodes you can research right now">● ${availN} ready</span>`:''}
     </div>
     ${rows}
     ${(techFocus||techFilter)?`<button class="btn ghost" style="width:100%;margin-top:8px;font-size:12px;padding:4px" onclick="clearTechView()" title="Clear highlight & filter">✕ Clear filter / highlight</button>`:''}`;
@@ -17287,7 +17448,7 @@ function availableTechCount(){ return RESEARCH.filter(r=>researchNodeState(r)===
 function renderTechTree(){
   const el=$('techTree'); if(!el) return;
   const L=techLayout(), NW=L.NW, NH=L.NH;
-  const palette={ done:{fill:'#13241b',text:'#cfe8d6'}, active:{fill:'#241a0c',text:'#f2d6a0'},
+  const palette={ done:{fill:'#13241b',text:'#cfe8d6'}, active:{fill:'#123653',text:'#bde8ff'},
                   available:{fill:'#16222b',text:'#d0dce4'}, locked:{fill:'#0c1318',text:'#5a6a75'} };
   const hi=techHighlightSet(); // prereq-chain highlight (null = none)
   const inFilter=(key)=> !techFilter || key===techFilter;
@@ -17324,14 +17485,14 @@ function renderTechTree(){
     const opacity = dim?0.18 : (locked?0.72:1);
     // available nodes you can afford right now get an amber 'ready' ring
     const canAfford = avail && state.money>=rdCostOf(r) && (!sciGateCost(r) || (state.science||0)>=sciGateCost(r)) && !state.activeResearch;
-    const ring = canAfford && !dim ? `<rect x="${p.x-2.5}" y="${p.y-2.5}" width="${NW+5}" height="${NH+5}" rx="8" fill="none" stroke="#f5a623" stroke-width="1.6" stroke-opacity="0.9"><animate attributeName="stroke-opacity" values="0.9;0.35;0.9" dur="2s" repeatCount="indefinite"/></rect>` : '';
+    const ring = canAfford && !dim ? `<rect x="${p.x-2.5}" y="${p.y-2.5}" width="${NW+5}" height="${NH+5}" rx="8" fill="none" stroke="var(--ignite)" stroke-width="1.6" stroke-opacity="0.9"><animate attributeName="stroke-opacity" values="0.9;0.35;0.9" dur="2s" repeatCount="indefinite"/></rect>` : '';
     const strokeCol = sel?'#ffffff' : onChain?'#ffd98a' : tcol;
     nodes+=`<g id="tn-${r.id}" style="cursor:pointer" onclick="selectResearch('${r.id}')" onmouseenter="showTechTip(event,'${r.id}')" onmousemove="moveTechTip(event)" onmouseleave="hideTechTip()" opacity="${opacity}">
       ${ring}
       <rect x="${p.x}" y="${p.y}" width="${NW}" height="${NH}" rx="6" fill="${c.fill}" stroke="${strokeCol}" stroke-width="${sel?2.2:onChain?2:1.3}"/>
       <rect x="${p.x}" y="${p.y}" width="4" height="${NH}" rx="2" fill="${tcol}"/>
       ${st==='done'?`<text x="${p.x+NW-7}" y="${p.y+13}" fill="#58c47a" font-size="11" text-anchor="end">✓</text>`:''}
-      ${avail&&!dim?`<text x="${p.x+NW-7}" y="${p.y+13}" fill="#f5a623" font-size="10" text-anchor="end">●</text>`:''}
+      ${avail&&!dim?`<text x="${p.x+NW-7}" y="${p.y+13}" fill="var(--ignite)" font-size="10" text-anchor="end">●</text>`:''}
       <text x="${p.x+11}" y="${p.y+17}" fill="${c.text}" font-size="10" font-family="ui-sans-serif,system-ui" font-weight="600">${name}</text>
       <text x="${p.x+11}" y="${p.y+32}" fill="${c.text}" font-size="9" font-family="ui-monospace,monospace" opacity="0.8">${sub}</text>
     </g>`;
@@ -17347,7 +17508,7 @@ function renderTechTree(){
   el.innerHTML=`<div style="position:sticky;top:0;z-index:2;background:var(--panel);display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:0 2px 8px">
       <div style="flex:1;min-width:120px;display:flex;align-items:center;gap:10px">
         ${filterLabel}
-        ${availN>0 && !state.activeResearch?`<span style="font-size:12px;color:#f5a623;font-family:var(--mono)" title="Nodes you can research right now">● ${availN} ready</span>`:''}
+        ${availN>0 && !state.activeResearch?`<span style="font-size:12px;color:var(--ignite);font-family:var(--mono)" title="Nodes you can research right now">● ${availN} ready</span>`:''}
       </div>
       <div style="display:flex;align-items:center;gap:4px">
         ${(techFocus||techFilter)?`<button class="btn ghost" style="padding:2px 9px;font-size:12px" onclick="clearTechView()" title="Clear highlight & filter">✕ Clear</button>`:''}
@@ -17680,7 +17841,6 @@ function renderLog(){
     box.scrollTop=_scrollTop;
   }
 }
-
 // S2: establish a baseline state so the UI renders, then ALWAYS ask on launch how to begin —
 // Continue last game / Open a save file / New game (showStartup). The boot placeholder is never
 // autosaved (guarded by _gameStarted) so it can't clobber the real save if the tab is just closed.

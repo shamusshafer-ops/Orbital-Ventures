@@ -19,10 +19,10 @@ try{
   check('desktop hero no longer contains the 700px overflow floor', !/#commandView\{[^}]*min-height:700px/.test(desktop));
   check('short desktop treatment covers 768px-tall windows', /@media\(min-width:1101px\) and \(max-height:820px\)\{/.test(shell));
   check('desktop card stacks avoid scrollbars while retaining their overlay lanes', /cc-strip,.command-hero \.cc-summary-right\{position:absolute;[^}]*overflow:visible\}/.test(desktop) && /cc-strip,.command-hero \.cc-summary-right\{gap:5px;overflow:visible\}/.test(compact));
-  check('compact deck lane uses compact cards and ends before the compact rail lane begins', /cc-deck-card\{padding:6px 8px\}/.test(compact) && /rail-left,.command-hero \.rail-right\{top:232px;max-height:calc\(100% - 416px\)\}/.test(compact));
+  check('compact deck lane uses compact cards while Mission Control stays under the hero control', /cc-deck-card\{padding:6px 8px\}/.test(compact) && /rail-right\{top:58px;max-height:calc\(100% - 78px\)\}/.test(compact));
   check('short desktop summaries show at most two active mission rows while Flight log remains available', /cc-active-missions \.cc-deck-row:nth-of-type\(n\+3\)\{display:none\}/.test(compact) && /Flight log/.test(render));
   check('compact timeline has its own fixed lower lane instead of colliding with the rail', /#ccTimeline\{height:86px;overflow:auto\}/.test(compact));
-  check('dock contains its own narrow-width overflow rather than widening the page', /\.cc-dock\{[^}]*max-width:calc\(100% - 760px\);overflow-x:auto;overflow-y:hidden/.test(desktop));
+  check('dock sizes to the complete readable button row instead of clipping labels', /\.cc-dock\{[^}]*width:max-content;max-width:none;overflow:visible/.test(desktop) && /cc-dock nav\.rail-nav button\{width:170px;min-width:170px;flex:0 0 170px/.test(desktop));
   check('desktop Cape grading is a non-interactive zoom-layer overlay', /#ccZoom::before,.command-hero #ccZoom::after\{content:"";position:absolute;inset:0;z-index:1;pointer-events:none\}/.test(desktop));
   check('Cape grading reuses HUD surface, line, and glow variables', /#ccZoom::before\{[^}]*var\(--hud-surface\)/.test(desktop) && /#ccZoom::after\{[^}]*var\(--hud-line-soft\)[^}]*var\(--hud-glow\)/.test(desktop));
   check('Cape hotspots stay above grading and keep their own interactive layer', /#ccSpots\{position:absolute;inset:0;z-index:2\}/.test(desktop));
@@ -37,8 +37,8 @@ try{
   // desktop geometry before its live measurement can only make the hero taller.
   const hero768=768-120-18, compactRailBottom=232+(hero768-416), compactTimelineTop=hero768-82-86;
   check('768px compact lanes leave a 16px rail-to-timeline gap', hero768===630 && compactRailBottom+16===compactTimelineTop);
-  check('1101px dock cap starts 24px clear of the 340px left timeline lane', ((1101-(1101-760))/2)-(16+340)===24);
-  check('1366x768 hero keeps the centered dock 24px clear of the timeline lane', ((1366-(1366-760))/2)-(16+340)===24 && compactRailBottom+16===compactTimelineTop);
+  check('desktop dock reserves the five-button readable row', 5*170+18+4*5===888);
+  check('1366x768 compact lanes remain non-overlapping', compactRailBottom+16===compactTimelineTop);
 }catch(e){
   check('Command Center layout source is readable', false);
   console.log(e.stack);

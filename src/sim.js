@@ -709,6 +709,7 @@ function tickMonthlyBoundary(){
         }
       } else if(fst.starvedMonths){ fst.starvedMonths=0; }
     }
+    tickStationOperations();
     state.depot=round2(state.depot); state.science=round2(state.science||0); state.rep=round2(state.rep); // tidy the daily facility accruals (depot/science/rep) once a month
     // M2: LEO propellant price — mean-reverting random walk, plus buyer-order countdown
     state.fuelPrevPrice=state.fuelPrice;
@@ -1256,6 +1257,96 @@ function facilityModuleList(fs){
   fs.modules=fs.moduleList.length; // keep the legacy count in lockstep
   return fs.moduleList;
 }
+// Station operations are lazy so existing facilities keep their established output until the
+// player explicitly assigns crew or signs a resupply contract. New facilities opt into condition
+// tracking immediately; new fields are persisted with the facility and remain harmless to older saves.
+const STATION_MAINT_MAX=100, STATION_MAINT_DECAY_BASE=0.55, STATION_MAINT_DECAY_PER_MODULE=0.12;
+const STATION_REPAIR_COST_PER_MODULE=0.10, STATION_ROTATION_MONTHS=12;
+const STATION_RESUPPLY_CONTRACT_TERM=24, STATION_RESUPPLY_CONTRACT_SETUP=0.45;
+const STATION_RESUPPLY_CONTRACT_PREMIUM=0.12;
+function stationOps(fs){
+  if(!fs) return {condition:STATION_MAINT_MAX, crewIds:[], crewManaged:false, rotationDueAbs:absMonth()+STATION_ROTATION_MONTHS, resupplyContract:null};
+  if(fs.condition==null) fs.condition=STATION_MAINT_MAX;
+  if(!Array.isArray(fs.crewIds)) fs.crewIds=[];
+  if(fs.crewManaged==null) fs.crewManaged=false;
+  if(fs.maintenanceEnabled==null) fs.maintenanceEnabled=false;
+  if(fs.rotationDueAbs==null) fs.rotationDueAbs=absMonth()+STATION_ROTATION_MONTHS;
+  if(fs.rotationNotifiedAbs==null) fs.rotationNotifiedAbs=-1;
+  if(fs.resupplyContract===undefined) fs.resupplyContract=null;
+  return fs;
+}
+function stationCondition(fs){ return Math.max(0,Math.min(STATION_MAINT_MAX, stationOps(fs).condition)); }
+function stationMaintenanceFactor(fs){
+  if(!stationOps(fs).maintenanceEnabled) return 1;
+  const c=stationCondition(fs);
+  return c>=70?1:Math.max(0.65,0.65+(c/70)*0.35);
+}
+function stationMaintenanceCost(facId){
+  const fs=facilityState(facId); if(!fs) return 0;
+  return round2(Math.max(0,100-stationCondition(fs))/100*STATION_REPAIR_COST_PER_MODULE*Math.max(1,facilityModuleList(fs).length));
+}
+function repairStation(facId){
+  const fs=facilityState(facId), def=facilityById(facId), cost=stationMaintenanceCost(facId);
+  if(!fs||!def||cost<=0||state.money<cost) return;
+  state.money-=cost; stationOps(fs).maintenanceEnabled=true; stationOps(fs).condition=STATION_MAINT_MAX;
+  log('ok',`${def.icon} ${def.name}: maintenance campaign complete — condition restored to 100% (−${fM(cost)}).`);
+  render();
+}
+function stationCrewIds(fs){
+  const ops=stationOps(fs);
+  ops.crewIds=ops.crewIds.filter(id=>staffRecord(id)&&!isCrewDeployed(id));
+  return ops.crewIds;
+}
+function stationCrewCount(fs){ return stationOps(fs).crewManaged?stationCrewIds(fs).length:0; }
+function stationCrewAssigned(id){
+  return Object.keys(state.facilities||{}).some(fid=>stationCrewIds(facilityState(fid)).includes(id));
+}
+function stationCrewCandidates(){
+  return (state.staff||[]).filter(s=>roleOf(s.id)==='astro' && !isCrewDeployed(s.id) && !stationCrewAssigned(s.id));
+}
+function stationRotationDue(fs){ return stationOps(fs).crewManaged && absMonth()>=stationOps(fs).rotationDueAbs; }
+function rotateStationCrew(facId){
+  const fs=facilityState(facId), def=facilityById(facId); if(!fs||!def) return;
+  const ops=stationOps(fs), ids=stationCrewIds(fs), candidates=stationCrewCandidates();
+  if(!ops.crewManaged||!ids.length||!candidates.length){
+    ops.rotationDueAbs=absMonth()+STATION_ROTATION_MONTHS;
+    log('note',`${def.icon} ${def.name}: rotation cycle logged; no replacement was available.`);
+    render(); return;
+  }
+  const outgoing=ids[0], incoming=candidates.sort((a,b)=>effSkill(b.id)-effSkill(a.id))[0].id;
+  ops.crewIds=[...ids.slice(1),incoming]; ops.rotationDueAbs=absMonth()+STATION_ROTATION_MONTHS; ops.rotationNotifiedAbs=-1;
+  log('ok',`${def.icon} ${def.name}: crew rotation complete — ${personById(outgoing)?.name||outgoing} relieved, ${personById(incoming)?.name||incoming} aboard.`);
+  render();
+}
+function assignStationCrew(facId, id){
+  const fs=facilityState(facId), def=facilityById(facId), p=personById(id);
+  if(!fs||!def||!p||roleOf(id)!=='astro'||!isHired(id)||isCrewDeployed(id)||stationCrewAssigned(id)) return;
+  const ops=stationOps(fs), cap=facilityModuleList(fs).reduce((n,mid)=>n+((stationModuleDef(mid)?.stats?.crew)||0),0);
+  if(ops.crewIds.length>=cap) return;
+  ops.crewManaged=true; ops.maintenanceEnabled=true; ops.crewIds.push(id); ops.rotationDueAbs=absMonth()+STATION_ROTATION_MONTHS;
+  log('note',`${def.icon} ${def.name}: ${p.name} assigned to station duty.`); render();
+}
+function removeStationCrew(facId, id){
+  const fs=facilityState(facId), def=facilityById(facId); if(!fs||!def) return;
+  const ops=stationOps(fs); ops.crewIds=ops.crewIds.filter(x=>x!==id);
+  log('note',`${def.icon} ${def.name}: ${personById(id)?.name||id} rotated off station duty.`); render();
+}
+function resupplyContractCost(facId){
+  const fs=facilityState(facId); return fs?round2(STATION_RESUPPLY_CONTRACT_SETUP*Math.max(1,facilityModuleList(fs).length)):0;
+}
+function stationContractActive(fs){ const c=stationOps(fs).resupplyContract; return !!(c&&absMonth()<c.untilAbs); }
+function signResupplyContract(facId){
+  const fs=facilityState(facId), def=facilityById(facId), cost=resupplyContractCost(facId); if(!fs||!def||stationContractActive(fs)||state.money<cost) return;
+  stationOps(fs).maintenanceEnabled=true;
+  stationOps(fs).resupplyContract={untilAbs:absMonth()+STATION_RESUPPLY_CONTRACT_TERM, premium:STATION_RESUPPLY_CONTRACT_PREMIUM};
+  state.money-=cost;
+  log('ok',`${def.icon} ${def.name}: signed a ${STATION_RESUPPLY_CONTRACT_TERM}-month resupply contract (−${fM(cost)} setup). It will reorder at ${AUTO_RESUPPLY_THRESHOLD} months.`);
+  render();
+}
+function cancelResupplyContract(facId){
+  const fs=facilityState(facId), def=facilityById(facId); if(!fs||!def) return;
+  stationOps(fs).resupplyContract=null; log('note',`${def.icon} ${def.name}: resupply contract cancelled.`); render();
+}
 function facilityPortCap(fs){
   const nodes=facilityModuleList(fs).filter(id=>id==='node_hub').length;
   return STATION_PORT_BASE + nodes*((stationModuleDef('node_hub').ports)||3);
@@ -1272,7 +1363,8 @@ function facilityCrew(fs){
   let cap=0, req=0;
   facilityModuleList(fs).forEach(id=>{ const d=stationModuleDef(id); if(!d) return;
     cap+=d.stats.crew||0; req+=d.stats.crewReq||0; });
-  return {cap, req, factor: req<=0?1:Math.min(1, Math.max(0.4, cap/req))}; // 40% floor even fully unmanned
+  const ops=stationOps(fs), actual=ops.crewManaged?stationCrewCount(fs):cap;
+  return {cap:actual, req, factor: req<=0?1:Math.min(1, Math.max(0.4, actual/req))}; // legacy facilities use module capacity until crew management is enabled
 }
 // Module synergies: thoughtful composition earns aggregate multipliers.
 //  - Lab + Habitat: crewed research runs hotter (+science)
@@ -1317,7 +1409,7 @@ function canAddStationModule(facId, modId){
 // module-list/supply/logging side, so the three callers can't drift out of sync with each other.
 function dockModuleNow(facId, modId, note){
   const def=facilityById(facId), fs=facilityState(facId), md=stationModuleDef(modId);
-  facilityModuleList(fs).push(modId); fs.modules=fs.moduleList.length;
+  facilityModuleList(fs).push(modId); fs.modules=fs.moduleList.length; stationOps(fs).maintenanceEnabled=true;
   fs.supply=FAC_SUPPLY_MONTHS; fs.starvedMonths=0; // fresh provisions ride along with any delivery
   const pw=facilityPower(fs);
   log('ok',`${def.name}: ${md.name} docked${note?` (${note})`:''}. ${fs.moduleList.length} modules · power ${pw.net>=0?'+':''}${pw.net} kW.`);
@@ -1431,7 +1523,8 @@ function facilityProduction(def, fs){
   const crew=facilityCrew(fs), syn=facilitySynergyMult(fs);
   const sum={income:0,fuel:0,rep:0,sci:0};
   list.forEach((id,i)=>{ if(i===0) return; const d=stationModuleDef(id); if(d&&d.prod) for(const k in sum) sum[k]+=(d.prod[k]||0); });
-  const add=(k)=> ((def.base[k]||0) + sum[k]*mult)*starve*crew.factor*(syn[k]||1);
+  const maint=stationMaintenanceFactor(fs);
+  const add=(k)=> ((def.base[k]||0) + sum[k]*mult)*starve*crew.factor*maint*(syn[k]||1);
   return {income:round2(add('income')), fuel:round2(add('fuel')), rep:round2(add('rep')), sci:round2(add('sci')),
     modules:list.length, powerNet:pw.net, crew, synergies:facilitySynergies(fs)};
 }
@@ -1507,9 +1600,12 @@ function canResupply(id){
   if(state.money<resupplyCost(id)) return {ok:false,why:'Not enough capital.'};
   return {ok:true};
 }
-function resupplyFacility(id){
+function resupplyFacility(id, source){
   const chk=canResupply(id); if(!chk.ok) return;
-  const cost=resupplyCost(id), def=facilityById(id), fs=facilityState(id);
+  const def=facilityById(id), fs=facilityState(id);
+  const premium=source==='contract' ? (stationOps(fs).resupplyContract?.premium||STATION_RESUPPLY_CONTRACT_PREMIUM) : 0;
+  const cost=round2(resupplyCost(id)*(1+premium));
+  if(state.money<cost) return;
   const missing=Math.max(0, FAC_SUPPLY_MONTHS-facilitySupply(id)); // months actually shipped (matches the cost basis)
   const transit=logiTransitDays(def.body);
   state.money-=cost; // 2.1: pay on order, regardless of whether the run is instant or a live cruise
@@ -1525,8 +1621,26 @@ function resupplyFacility(id){
   state.activeFlights.push({ id:'flt'+(++_flightSeq), kind:'logistics', deferred:true, facId:id,
     monthsShipped:missing, launchAbs, arriveAbs:launchAbs+transit,
     name:`Resupply — ${def.name}`, crew:0 });
-  log('note',`${def.icon} ${def.name}: resupply shipment launched — arrival in ~${Math.round(transit/30)} mo (${transit} d), ${missing.toFixed(1)} mo of provisions aboard (−${fM(cost)}). The base draws down its reserves until it lands.`);
+  log('note',`${def.icon} ${def.name}: resupply shipment launched${source==='contract'?' under contract':''} — arrival in ~${Math.round(transit/30)} mo (${transit} d), ${missing.toFixed(1)} mo of provisions aboard (−${fM(cost)}). The base draws down its reserves until it lands.`);
   render();
+}
+function tickStationOperations(){
+  for(const fid in (state.facilities||{})){
+    if(!facilityBuilt(fid)) continue;
+    const fs=facilityState(fid), def=facilityById(fid), ops=stationOps(fs), modules=facilityModuleList(fs).length;
+    if(ops.maintenanceEnabled) ops.condition=Math.max(0,stationCondition(fs)-(STATION_MAINT_DECAY_BASE+modules*STATION_MAINT_DECAY_PER_MODULE));
+    if(ops.crewManaged && stationRotationDue(fs) && ops.rotationNotifiedAbs!==absMonth()){
+      const names=stationCrewIds(fs).map(id=>personById(id)?.name||id).join(', ')||'station crew';
+      log('note',`${def.icon} ${def.name}: crew rotation due for ${names}.`);
+      ops.rotationNotifiedAbs=absMonth();
+    }
+    const c=ops.resupplyContract;
+    if(c && absMonth()>=c.untilAbs){ ops.resupplyContract=null; log('note',`${def.icon} ${def.name}: resupply contract expired.`); }
+    const contractCost=round2(resupplyCost(fid)*(1+(ops.resupplyContract?.premium||STATION_RESUPPLY_CONTRACT_PREMIUM)));
+    if(stationContractActive(fs) && facilitySupply(fid)<=AUTO_RESUPPLY_THRESHOLD && canResupply(fid).ok && state.money>=contractCost){
+      resupplyFacility(fid, 'contract');
+    }
+  }
 }
 // Slice 2.4: per-facility auto-reorder. When fs.autoResupply is ON, the monthly tick auto-fires
 // resupplyFacility() the moment supply falls to/below this many months — identical cost/gate/lifecycle
@@ -1549,7 +1663,7 @@ function foundFacility(id){
   state.money-=def.foundCost;
   advance(def.foundMonths); // construction — facility is not yet producing
   if(state.over){ render(); return; }
-  state.facilities[id]={built:true, modules:1, since:state.year, supply:FAC_SUPPLY_MONTHS, starvedMonths:0, autoResupply:false}; // CE4(b): founded fully provisioned; 2.4: auto-resupply opt-in, off by default
+  state.facilities[id]={built:true, modules:1, since:state.year, supply:FAC_SUPPLY_MONTHS, starvedMonths:0, autoResupply:false, maintenanceEnabled:true, condition:STATION_MAINT_MAX, crewIds:[], crewManaged:false, rotationDueAbs:absMonth()+STATION_ROTATION_MONTHS}; // CE4(b): founded fully provisioned; 2.4: auto-resupply opt-in, off by default
   log('ok',`★ ${def.name} established — your first permanent presence at ${BODIES.find(b=>b.id===def.body).name}. It will grow and produce for decades.`);
   render();
 }
@@ -5521,4 +5635,3 @@ function hideModal(){activeModal=null;_prodModalOpen=false;$('modal').classList.
   try{ const el=resolveReturnFocus(_modalReturnFocus,_modalReturnFocusId,id=>document.getElementById(id),document.body); if(el && typeof el.focus==='function') el.focus(); }catch(e){}
   _modalReturnFocus=null; _modalReturnFocusId=null;
 } // slice 6: closing clears the live-modal thunk; slice B: also returns focus to the modal's trigger
-

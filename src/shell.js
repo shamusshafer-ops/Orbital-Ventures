@@ -19,8 +19,10 @@ const THEMES={ dark:'Mission Dark', green:'Control Room Green', beige:'Apollo Be
 let currentTheme='dark';
 try{ const v=localStorage.getItem('ov_theme'); if(v && THEMES[v]) currentTheme=v; }catch(e){}
 function applyTheme(name){
-  if(!THEMES[name]) name='dark'; currentTheme=name;
-  try{ localStorage.setItem('ov_theme', name); }catch(e){}
+  // The Command Center blue HUD is the current product baseline. Keep the picker API
+  // intact for the later theme pass, but do not let persisted theme choices recolor the UI.
+  name='dark'; currentTheme=name;
+  try{ localStorage.setItem('ov_theme', 'dark'); }catch(e){}
   const b=document.body; if(b){ b.classList.remove('theme-green','theme-beige'); if(name!=='dark') b.classList.add('theme-'+name); }
 }
 function pickTheme(name){ applyTheme(name); if(typeof activeModal==='function') activeModal(); } // re-render the menu so the active chip updates
@@ -387,19 +389,19 @@ function devPresetStation(){
 }
 // ---- panel markup (built fresh on open / after each mutation for live readouts) ----
 function devPanelHtml(){
-  const btn=(label,onclick,extra)=>`<button onclick="${onclick}" style="cursor:pointer;background:#2a2013;color:#ffd9a8;border:1px solid #6b4a1e;border-radius:4px;padding:4px 7px;font:inherit;margin:2px 3px 2px 0;${extra||''}">${label}</button>`;
-  const num=(id,val,ph)=>`<input id="${id}" type="number" value="${val}" placeholder="${ph||''}" style="width:88px;background:#0d0a05;color:#ffe9c8;border:1px solid #6b4a1e;border-radius:4px;padding:3px 5px;font:inherit">`;
-  const sect=(title,body)=>`<div style="border-top:1px solid #3a2c16;padding:9px 12px">
-    <div style="color:#ff8c1a;font-weight:bold;letter-spacing:0.5px;font-size:11px;margin-bottom:5px">${title}</div>${body}</div>`;
+  const btn=(label,onclick,extra)=>`<button onclick="${onclick}" style="cursor:pointer;background:#102c43;color:#bde8ff;border:1px solid #2d5c7a;border-radius:4px;padding:4px 7px;font:inherit;margin:2px 3px 2px 0;${extra||''}">${label}</button>`;
+  const num=(id,val,ph)=>`<input id="${id}" type="number" value="${val}" placeholder="${ph||''}" style="width:88px;background:#071523;color:#d9efff;border:1px solid #2d5c7a;border-radius:4px;padding:3px 5px;font:inherit">`;
+  const sect=(title,body)=>`<div style="border-top:1px solid #2d5c7a;padding:9px 12px">
+    <div style="color:#58c7ff;font-weight:bold;letter-spacing:0.5px;font-size:11px;margin-bottom:5px">${title}</div>${body}</div>`;
   const eraBtns=ERAS.map(e=>btn(e.name+' <span style="opacity:0.6">'+e.from+'</span>',`devJumpEra('${e.id}')`)).join('');
   const yr=state?`${(['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][state.month]||'')} ${state.year}`:'—';
   const readout=state?`money <b style="color:#7fe3a0">$${(state.money||0).toFixed(1)}M</b> · rep <b style="color:#8fc4ff">${Math.round(state.rep||0)}</b> · sci <b style="color:#c9a8ff">${Math.round(state.science||0)}</b>`:'';
-  return `<div style="position:sticky;top:0;background:#1c1509;border-bottom:2px solid #ff8c1a;padding:9px 12px;display:flex;align-items:center;justify-content:space-between">
-      <div><span style="color:#ff8c1a;font-weight:bold;letter-spacing:1px">⚠ DEV MODE</span>
+  return `<div style="position:sticky;top:0;background:#0b2033;border-bottom:2px solid #58c7ff;padding:9px 12px;display:flex;align-items:center;justify-content:space-between">
+      <div><span style="color:#58c7ff;font-weight:bold;letter-spacing:1px">⚠ DEV MODE</span>
         <div style="opacity:0.6;font-size:10px;margin-top:2px">manual testing · not shown to players</div></div>
-      <button onclick="closeDevPanel()" title="Close (Esc)" style="cursor:pointer;background:transparent;color:#ffb066;border:1px solid #6b4a1e;border-radius:4px;padding:2px 8px;font:inherit;font-size:14px">✕</button>
+      <button onclick="closeDevPanel()" title="Close (Esc)" style="cursor:pointer;background:transparent;color:#8de5ff;border:1px solid #2d5c7a;border-radius:4px;padding:2px 8px;font:inherit;font-size:14px">✕</button>
     </div>
-    <div style="padding:7px 12px;background:#0f0b05;color:#cdbfa8;font-size:11px">${yr} · ${readout}</div>
+    <div style="padding:7px 12px;background:#071523;color:#bde8ff;font-size:11px">${yr} · ${readout}</div>
     ${sect('TIME  (real tick path)',
       btn('+1 day',"devAdvanceDays(1)")+btn('+1 week',"devAdvanceDays(7)")+btn('+1 month',"devAdvanceMonths(1)")+btn('+1 year',"devAdvanceMonths(12)")+btn('+5 years',"devAdvanceMonths(60)")+
       `<div style="margin-top:6px;opacity:0.7;font-size:10px">Jump to era (no-op if already past):</div>`+eraBtns)}
@@ -415,7 +417,7 @@ function devPanelHtml(){
     ${sect('PRESETS',
       btn('⏩ Fast-forward to late game',"devPresetLateGame()",'display:block;width:100%;text-align:left')+
       btn('🛰 LEO station, pre-stocked',"devPresetStation()",'display:block;width:100%;text-align:left'))}
-    <div id="devStatus" style="padding:8px 12px;border-top:1px solid #3a2c16;color:#9fd8a0;font-size:10px;min-height:14px"></div>`;
+    <div id="devStatus" style="padding:8px 12px;border-top:1px solid #2d5c7a;color:#9fd8a0;font-size:10px;min-height:14px"></div>`;
 }
 // Ctrl+Shift+D toggles the dev panel. Guarded exactly like the 'p' / F1-F3 handlers (no modal open, no
 // mid-animation, not typing). This combo is otherwise unbound (audited: nothing uses ctrl/meta/shift today).
@@ -743,4 +745,3 @@ function sfxBurn(intensity){
   const sg=sfxCtx.createGain(); sg.gain.value=intensity*0.06;
   sub.connect(sg); sg.connect(sfxBus||sfxCtx.destination); sub.start(); sfxEngNodes.push(sub);
 }
-

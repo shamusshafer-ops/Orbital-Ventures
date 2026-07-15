@@ -9,11 +9,11 @@ check('THEME_COLORS has exactly the 3 palettes THEMES defines', Object.keys(THEM
 
 // ---------- themeColor tracks currentTheme ----------
 currentTheme='dark';
-check('themeColor: dark readout matches the CSS value', themeColor('readout')==='#4fd1d9');
+check('themeColor: dark readout matches the Command Center blue value', themeColor('readout')==='#8de5ff');
 currentTheme='green';
-check('themeColor: switching theme actually changes the color', themeColor('readout')==='#5fe0a0');
+check('themeColor: paused theme selection keeps the Command Center blue value', themeColor('readout')==='#8de5ff');
 currentTheme='beige';
-check('themeColor: beige readout matches the CSS value', themeColor('readout')==='#5bb9c4');
+check('themeColor: paused theme selection remains blue', themeColor('readout')==='#8de5ff');
 currentTheme='dark';
 
 // ---------- themeColor falls back sanely for a bogus theme name ----------
@@ -24,7 +24,7 @@ currentTheme='dark';
 // ---------- themeRgba produces a well-formed rgba() string at the requested alpha ----------
 const rgba=themeRgba('readout',0.25);
 check('themeRgba: well-formed rgba() string', /^rgba\(\d+,\d+,\d+,0\.25\)$/.test(rgba));
-check('themeRgba: RGB channels match the hex color (#4fd1d9 = 79,209,217)', rgba==='rgba(79,209,217,0.25)');
+check('themeRgba: RGB channels match the blue hex color (#8de5ff = 141,229,255)', rgba==='rgba(141,229,255,0.25)');
 
 // ---------- every key drawDecisionPanel/drawTelemetry/drawFlightContinueBtn actually reads exists in every palette ----------
 const usedKeys=['bg','panel2','readout','warn','bad','ink','dim','ignite','muted','ok'];
@@ -33,10 +33,10 @@ for(const theme of Object.keys(THEME_COLORS)){
 }
 
 // ---------- themeColorNum(): the numeric 0xRRGGBB form render.js's true Phaser GameObjects need ----------
-check('themeColorNum: matches the hex string numerically (#4fd1d9 = 0x4fd1d9)', themeColorNum('readout')===0x4fd1d9);
+check('themeColorNum: matches the blue hex string numerically (#8de5ff = 0x8de5ff)', themeColorNum('readout')===0x8de5ff);
 check('themeColorNum: returns a number, not a string (Phaser .setTint()/lineStyle() require a number)', typeof themeColorNum('ignite')==='number');
 currentTheme='green';
-check('themeColorNum: tracks currentTheme like themeColor does', themeColorNum('readout')===0x5fe0a0);
+check('themeColorNum: paused theme selection remains blue', themeColorNum('readout')===0x8de5ff);
 currentTheme='dark';
 
 console.log(pass+'/'+(pass+fail)+' checks passed');

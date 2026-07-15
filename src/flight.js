@@ -6,11 +6,11 @@
    flame, plasma, stars, ocean splashdown stay their real colors regardless of console theme, the
    same way a mission-control room's console color doesn't repaint the sky outside the window). */
 const THEME_COLORS = {
-  dark:  {bg:'#0e1418', panel:'#151d23', panel2:'#1b252c', line:'#2a3a44', ink:'#d8e2e7', muted:'#7d909b', dim:'#56666f', ignite:'#f5a623', readout:'#4fd1d9', ok:'#58c47a', bad:'#e0564f', warn:'#e8b341'},
+  dark:  {bg:'#071523', panel:'#0b2033', panel2:'#102c43', line:'#2d5c7a', ink:'#d9efff', muted:'#7fa8bf', dim:'#55758b', ignite:'#58c7ff', readout:'#8de5ff', ok:'#65d39a', bad:'#ef6a73', warn:'#f3c56b'},
   green: {bg:'#0a1410', panel:'#0e1c14', panel2:'#163024', line:'#26442f', ink:'#9affb4', muted:'#5a9a6e', dim:'#3d6e4d', ignite:'#d7b32a', readout:'#5fe0a0', ok:'#4fe26e', bad:'#e0564f', warn:'#e8c341'},
   beige: {bg:'#1b1610', panel:'#2a2218', panel2:'#342a1c', line:'#4a3c28', ink:'#ecdfc4', muted:'#b09a72', dim:'#7d6a4c', ignite:'#e08a3c', readout:'#5bb9c4', ok:'#6db86a', bad:'#d2542b', warn:'#e8b341'},
 };
-function themeColor(key){ const t=THEME_COLORS[typeof currentTheme!=='undefined'?currentTheme:'dark']||THEME_COLORS.dark; return t[key]||THEME_COLORS.dark[key]; }
+function themeColor(key){ const t=THEME_COLORS.dark; return t[key]||THEME_COLORS.dark[key]; }
 function themeRgba(key, alpha){
   const hex=themeColor(key).replace('#','');
   const r=parseInt(hex.substring(0,2),16), g=parseInt(hex.substring(2,4),16), b=parseInt(hex.substring(4,6),16);

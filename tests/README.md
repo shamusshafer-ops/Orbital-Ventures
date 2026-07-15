@@ -47,6 +47,8 @@ process exit code (0 = all passed).
 | `test-livery-esc.js` | H1 stored-XSS regression: esc() fundamentals, hostile livery.name renders inert at the vehicle pop-out title sink, import path re-clamps user-string lengths. |
 | `test-regression.js` | General smoke test: all difficulties boot, every scene tab renders, a long time-skip, a playthrough bot. Run this against *any* change as a baseline. |
 | `test-materials.js` | The collapsed raw-materials market — dip-threshold gating, dip pricing, buy/no-op paths, save/load, render, outliner/glyph surfacing. |
+| `test-station-operations.js` | Station operations — resupply contracts, crew assignment/rotation, maintenance condition, repair, and science output. |
+| `test-contract-popout.js` | Contracts pop-out overlay and collapsible passive-contract categories. |
 | `test-dept-a.js` | Org departments — structure + promotable leads, derived membership, balance-neutrality with no leads declared. |
 | `test-dept-b.js` | Career progression — staff XP accrual, effective skill above hire-day base, department training investment. |
 | `test-dept-c.js` | Succession + workforce planning — auto-succession on lead departure, unstaffed-department risk, era-scaled reliability penalty. |

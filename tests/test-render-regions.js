@@ -154,8 +154,8 @@ check('Cape action hotspot is a named native button', /<button class="ccspot[^>]
 check('Cape planned hotspot stays out of tab order', /<div class="ccspot planned"[^>]*>/.test(capeMarkup) && !/Future Site[^]*onclick=/.test(capeMarkup));
 const _oldMissionItems=ccMissionDeckItems;
 ccMissionDeckItems=()=>[{icon:'✈',label:'Surveyor en route',etaDays:12,color:'var(--readout)',go:()=>{}}];
-renderCCSummaryRight();
-const activeMissionMarkup=serializeEl($('ccSummaryRight'));
+renderCCStrip();
+const activeMissionMarkup=serializeEl($('ccStrip'));
 ccMissionDeckItems=_oldMissionItems;
 check('active mission row is a named native button', /<button type="button" class="cc-deck-row"[^>]*aria-label="Open active mission: Surveyor en route\. 12d remaining\."/.test(activeMissionMarkup));
 

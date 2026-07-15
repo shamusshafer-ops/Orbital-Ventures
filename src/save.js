@@ -1,6 +1,6 @@
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=52; // v52: E1.1 slice B — rival intel dossier (state.rivalIntel, lazy-defaulted, no migrate needed)
+const SAVE_VERSION=53; // v53: station operations — lazy facility ops fields (crew roster, condition, resupply contract)
 // cruise. New optional `cargo` field on any mission/contractOffer object (uncrewed payload mass carried
 // through every leg of a `.profile` mission — read only by lvPayload()'s profile branch and
 // simulateMission()'s stackMass(), both via `m.cargo||0`; a mission with no cargo field behaves exactly
@@ -629,4 +629,3 @@ function slotExport(id){
     }catch(e){ try{ showModal(`<h2>Export Failed</h2><p class="muted">${e.message}</p><button class="btn" onclick="hideModal()" style="margin-top:8px">OK</button>`); }catch(_){} }
   }).catch(e=>{ try{ showModal(`<h2>Export Failed</h2><p class="muted">${(e&&e.message)||'Unknown error'}</p><button class="btn" onclick="hideModal()" style="margin-top:8px">OK</button>`); }catch(_){} });
 }
-
