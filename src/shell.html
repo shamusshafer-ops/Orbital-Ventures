@@ -1053,18 +1053,17 @@
     <!-- bodyCard + mapActivityCard relocated to the persistent right rail in slice 3 -->
   </div>
 
-  <!-- Station Bench (framework only): a pan/zoom/pop-out 2D side-view module canvas, mirroring
-       the Solar System scene's controls. Real station assembly/economy is fleshed out later. -->
+  <!-- Station Bench: radial multi-axis assembly board with typed module details. -->
   <div id="stationView" class="hidden">
     <div class="card" id="stationCard">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
-        <h2 style="margin:0">Station Bench — module assembly (preview)</h2>
+        <h2 style="margin:0">Station Bench — orbital assembly board</h2>
         <div style="display:flex;gap:6px">
           <button class="btn ghost" onclick="openStationPopout()" title="Pop out — large pan/zoom view + stats (Esc/Enter to close)">⤢ Pop out</button>
           <button class="btn ghost" id="stationExpandBtn" onclick="toggleStationExpand()">⛶ Expand</button>
         </div>
       </div>
-      <p class="muted" style="font-size:12px;margin:6px 0 10px">A 2D side view of an orbital module. Drag to pan, scroll to zoom. This is an early framework — module library, docking and assembly come later.</p>
+      <p class="muted" style="font-size:12px;margin:6px 0 10px">Build outward in four directions from the core. Modules use detailed hulls, ports, windows, tanks, crops, trusses and power hardware.</p>
       <div id="stationHost" style="display:none;width:100%;aspect-ratio:760/480"></div>
       <div id="stationCanvas"></div>
     </div>

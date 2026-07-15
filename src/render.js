@@ -4382,6 +4382,7 @@ function renderMap(){
 const STN_W=760, STN_H=480;
 function stationActiveModule(){ return STATION_MODULES[0]; } // only the (dead) StationScene below still calls this
 let stationExpanded=false;
+let stationPanX=0, stationPanY=0;
 function toggleStationExpand(){ stationExpanded=!stationExpanded; renderStation(); }
 let StationScene=null, stationGame=null, stationScene=null;
 function defineStationScene(){
@@ -4501,14 +4502,33 @@ function renderStationDraft(){
   const fs=stationDraftFs();
   if(c){
     const cards=STATION_MODULES.map(md=>stationModuleCard(md, {def:facilityById('leo_station')||FACILITY_DEFS[0], fs}, false)).join('');
-    c.innerHTML=renderStationStackSVG(720,280,{fs})
+    c.innerHTML=renderStationStackSVG(720,280,{fs},true)
       +`<div style="display:flex;gap:6px;margin:8px 0 4px">
           <button class="btn ghost" style="font-size:12px" onclick="draftRemove()">↶ Remove last</button>
           <button class="btn ghost" style="font-size:12px" onclick="draftClear()">✕ Clear blueprint</button>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">${cards}</div>`;
   }
+  wireStationPan(c);
   if(st) st.innerHTML=stationDraftStatsHTML(fs);
+}
+
+function wireStationPan(el){
+  if(!el || el._stationPanWired) return;
+  el._stationPanWired=true;
+  let dragging=false,lastX=0,lastY=0;
+  el.addEventListener('pointerdown',e=>{
+    if(!e.target.closest('#stationSvg')) return;
+    dragging=true; lastX=e.clientX; lastY=e.clientY; el.setPointerCapture?.(e.pointerId);
+    const svg=$('stationSvg'); if(svg) svg.style.cursor='grabbing';
+  });
+  el.addEventListener('pointermove',e=>{
+    if(!dragging) return;
+    stationPanX-=e.clientX-lastX; stationPanY-=e.clientY-lastY; lastX=e.clientX; lastY=e.clientY;
+    const svg=$('stationSvg'); if(svg) svg.setAttribute('viewBox',`${stationPanX} ${stationPanY} ${svg.dataset.vw} ${svg.dataset.vh}`);
+  });
+  const stop=e=>{ if(!dragging) return; dragging=false; try{ el.releasePointerCapture?.(e.pointerId); }catch(err){} const svg=$('stationSvg'); if(svg) svg.style.cursor='grab'; };
+  el.addEventListener('pointerup',stop); el.addEventListener('pointercancel',stop);
 }
 
 // #73 Slice 0 (2026-07-11): single source of truth for "what should the Station Bench show right
@@ -4531,7 +4551,8 @@ function renderStation(){
   const v=stationCurrentView();
   if(v.isDraft){ renderStationDraft(); return; } // pre-facility: free blueprint drawing board
   const c=$('stationCanvas'), st=$('stationStats'), cur=v.cur;
-  if(c) c.innerHTML=renderStationStackSVG(720,300,cur)+renderStationPalette(cur);
+  if(c) c.innerHTML=renderStationStackSVG(720,300,cur,true)+renderStationPalette(cur);
+  wireStationPan(c);
   if(st) st.innerHTML=renderStationFacilityStats(v.built, cur);
 }
 // Facility tabs + aggregate stats for the focused facility
@@ -4578,31 +4599,46 @@ function renderStationFacilityStats(built, cur){
     ${list.length>=facilityPortCap(fs)?`<div class="flag warn">△ All ${facilityPortCap(fs)} ports occupied — a Docking Node adds 3 more.</div>`:''}
     ${synHTML}${crewHTML}${contractHTML}`;
 }
-// The assembled stack, drawn as a side-view chain
-function renderStationStackSVG(W,H,cur){
-  const list=facilityModuleList(cur.fs);
-  const total=list.reduce((a,id)=>a+((stationModuleDef(id)||{}).len||150)*0.55+14,0);
-  const scale=Math.min(1, (W-80)/total);
-  let x=(W-total*scale)/2, cy=H*0.5, s=`<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="max-width:100%;height:auto;background:#070b11;border-radius:8px 8px 0 0">`;
-  list.forEach((id,i)=>{
-    const d=stationModuleDef(id)||stationModuleDef('can_std');
-    const L=d.len*0.55*scale, hd=d.dia*0.5*0.55*scale;
-    if(id==='power_truss'){
-      s+=`<line x1="${x}" y1="${cy}" x2="${x+L}" y2="${cy}" stroke="#6a7782" stroke-width="${4*scale}"/>`;
-      [-1,1].forEach(sgn=>{ s+=`<rect x="${x+L*0.15}" y="${sgn>0?cy+6*scale:cy-6*scale-46*scale}" width="${L*0.7}" height="${46*scale}" fill="#12243a" stroke="#2f5a8a"/>`; });
-    } else if(id==='node_hub'){
-      s+=`<circle cx="${x+L/2}" cy="${cy}" r="${hd}" fill="${d.color}" stroke="#586066" stroke-width="2"/>`;
-      [[0,-1],[0,1]].forEach(([dx,dy])=>{ s+=`<rect x="${x+L/2-7*scale}" y="${cy+dy*hd-(dy<0?12*scale:0)}" width="${14*scale}" height="${12*scale}" fill="#7e8990"/>`; });
-    } else {
-      s+=`<rect x="${x}" y="${cy-hd}" width="${L}" height="${hd*2}" rx="${8*scale}" fill="${d.color}" stroke="#586066" stroke-width="2"/>`;
-      if(id==='can_std'){ [-1,1].forEach(sgn=>{ s+=`<rect x="${x+L*0.35}" y="${sgn>0?cy+hd+4*scale:cy-hd-4*scale-34*scale}" width="${L*0.3}" height="${34*scale}" fill="#12243a" stroke="#2f5a8a"/>`; }); }
-      if(id==='greenhouse'){ s+=`<rect x="${x+4*scale}" y="${cy-hd*0.5}" width="${L-8*scale}" height="${hd}" fill="#0f2a14" stroke="#3f7a4a"/>`; }
-      if(id==='depot_mod'){ s+=`<ellipse cx="${x+L/2}" cy="${cy}" rx="${L*0.32}" ry="${hd*0.72}" fill="none" stroke="#2f6a45" stroke-width="2"/>`; }
-    }
-    s+=`<text x="${x+L/2}" y="${cy+hd+16*scale+12}" fill="#8b98a5" font-size="10" font-family="ui-monospace,monospace" text-anchor="middle">${d.short}</text>`;
-    x+=L+14*scale;
-  });
-  s+='</svg>';
+// Radial station renderer: the save model remains an ordered module list, but the bench now
+// lays modules out across a docking grid instead of flattening them into a left/right chain.
+const STATION_LAYOUT_SLOTS=[[0,0],[1,0],[-1,0],[0,-1],[0,1],[2,0],[-2,0],[0,-2],[0,2],[1,-1],[-1,-1],[1,1],[-1,1],[3,0],[-3,0],[0,-3],[0,3]];
+function stationModuleSVG(id,d,x,y,scale){
+  const L=Math.max(92,(d.len||150)*0.48)*scale, hd=Math.max(18,(d.dia||80)*0.30)*scale, c=d.color||'#b8c0c7';
+  const stroke='#81909b', dark='#0a1520', glow=`filter="url(#stnGlow)"`;
+  const hull=`<rect x="${-L/2}" y="${-hd}" width="${L}" height="${hd*2}" rx="${Math.min(14,hd*.28)}" fill="url(#g-${id})" stroke="${stroke}" stroke-width="1.5"/>`;
+  let g=`<g transform="translate(${x} ${y})">`;
+  if(id==='power_truss'){
+    g+=`<g ${glow}><path d="M ${-L/2} 0 H ${L/2}" stroke="#bac6d0" stroke-width="6"/><path d="M ${-L/2} -9 L ${L/2} 9 M ${-L/2} 9 L ${L/2} -9" stroke="#e8b64c" stroke-width="1.5"/>`;
+    for(const sy of [-1,1]){ const py=sy*(hd+32*scale), ph=34*scale; g+=`<rect x="${-L*.42}" y="${py-(sy<0?ph:0)}" width="${L*.84}" height="${ph}" rx="2" fill="#132d4a" stroke="#4f87b7"/><path d="M ${-L*.42} ${py-(sy<0?ph:0)+ph/2} H ${L*.42}" stroke="#78b9e8" stroke-width=".8"/>`; for(let i=-3;i<=3;i++) g+=`<path d="M ${i*L*.12} ${py-(sy<0?ph:0)} V ${py-(sy<0?ph:0)+ph}" stroke="#3b6790" stroke-width=".7"/>`; } g+=`</g>`;
+  } else if(id==='node_hub'){
+    const r=Math.max(28,hd*1.25); g+=`<g ${glow}><circle r="${r}" fill="url(#g-node_hub)" stroke="${stroke}" stroke-width="2"/><circle r="${r*.55}" fill="none" stroke="#d3dbe2" stroke-opacity=".45"/>`;
+    for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]) g+=`<g transform="translate(${dx*r} ${dy*r}) rotate(${dx?90:0})"><rect x="-8" y="-14" width="16" height="28" rx="3" fill="#778793" stroke="#c4d0d8"/><circle cy="-7" r="3" fill="#263743"/><circle cy="7" r="3" fill="#263743"/></g>`; g+=`</g>`;
+  } else if(id==='depot_mod'){
+    g+=`<g ${glow}>${hull}<ellipse rx="${L*.26}" ry="${hd*.72}" fill="none" stroke="#2d714a" stroke-width="3"/><ellipse rx="${L*.17}" ry="${hd*.52}" fill="none" stroke="#8bd69b" stroke-width="1.3"/><path d="M ${-L*.38} 0 H ${L*.38} M 0 ${-hd*.7} V ${hd*.7}" stroke="#69bd82" stroke-width="1.2"/><circle cx="${L*.4}" r="5" fill="#f0c66a"/><path d="M ${L*.4} 6 v 18 h 18" stroke="#8bd69b" fill="none" stroke-width="2"/></g>`;
+  } else if(id==='greenhouse'){
+    g+=`<g ${glow}><path d="M ${-L/2} ${hd} V ${-hd*.25} Q 0 ${-hd*1.35} ${L/2} ${-hd*.25} V ${hd} Z" fill="#173a27" fill-opacity=".85" stroke="#8fd27a" stroke-width="1.6"/>`;
+    for(let i=-2;i<=2;i++) g+=`<path d="M ${i*L*.15} ${hd*.88} V ${-hd*.18} Q ${i*L*.15} ${-hd*.78} ${i*L*.15} ${-hd*.18}" stroke="#5ba967" stroke-width="1"/><path d="M ${i*L*.15-9} ${hd*.82} q 5 -9 10 0 q -5 7 -10 0 M ${i*L*.15-8} ${hd*.55} q 5 -9 10 0 q -5 7 -10 0" fill="#8ed477"/>`; g+=`<path d="M ${-L*.42} ${hd*.55} H ${L*.42} M ${-L*.42} ${hd*.78} H ${L*.42}" stroke="#c3e98f" stroke-width="1" opacity=".7"/></g>`;
+  } else if(id==='lab_mod'){
+    g+=`<g ${glow}>${hull}<rect x="${-L*.32}" y="${-hd*.72}" width="${L*.64}" height="${hd*1.44}" rx="4" fill="#183c59" stroke="#8bd3f4"/><path d="M ${-L*.25} ${-hd*.58} H ${L*.25} M ${-L*.25} 0 H ${L*.25} M ${-L*.25} ${hd*.58} H ${L*.25}" stroke="#65b9df"/>`; for(let i=-2;i<=2;i++) g+=`<circle cx="${i*L*.11}" cy="${-hd*.25}" r="3" fill="#d7f2ff"/><circle cx="${i*L*.11}" cy="${hd*.3}" r="3" fill="#f0c66a"/>`; g+=`<path d="M ${-L*.42} ${-hd*.84} h ${L*.84}" stroke="#f2cf72" stroke-width="2"/><circle cx="${L*.38}" cy="${-hd*1.15}" r="7" fill="#bce9ff" stroke="#6aa6c7"/></g>`;
+  } else {
+    g+=`<g ${glow}>${hull}<path d="M ${-L*.38} ${-hd} V ${hd} M ${-L*.12} ${-hd} V ${hd} M ${L*.14} ${-hd} V ${hd}" stroke="#ffffff" stroke-opacity=".3"/>`;
+    for(let i=-2;i<=2;i++) g+=`<circle cx="${i*L*.13}" cy="${-hd*.25}" r="${Math.max(2,3*scale)}" fill="#d7f2ff" stroke="#587789"/>`;
+    g+=`<path d="M ${-L*.38} ${hd*.55} H ${L*.38}" stroke="#f0c66a" stroke-width="2"/><path d="M ${-L*.2} ${-hd*.65} H ${L*.2}" stroke="#dbe4ea" stroke-width="1"/></g>`;
+  }
+  g+=`<circle cx="${L/2+8}" r="6" fill="#293b47" stroke="#b9c8d2"/><circle cx="${-L/2-8}" r="6" fill="#293b47" stroke="#b9c8d2"/><text y="${hd+18}" fill="#c1cfda" font-size="10" font-family="ui-monospace,monospace" text-anchor="middle" letter-spacing="1">${esc(d.short||id)}</text></g>`;
+  return g;
+}
+function renderStationStackSVG(W,H,cur,interactive){
+  const list=facilityModuleList(cur.fs), cell=112, slots=list.map((id,i)=>STATION_LAYOUT_SLOTS[i]||[i%5-2,Math.floor(i/5)+1]);
+  const minX=Math.min(...slots.map(p=>p[0]))-1,maxX=Math.max(...slots.map(p=>p[0]))+1,minY=Math.min(...slots.map(p=>p[1]))-1,maxY=Math.max(...slots.map(p=>p[1]))+1;
+  const scale=Math.min(1.25,(W-28)/((maxX-minX)*cell),(H-28)/((maxY-minY)*cell));
+  const ox=W/2-(minX+maxX)*cell*scale/2, oy=H/2-(minY+maxY)*cell*scale/2;
+  const vx=interactive?stationPanX:0, vy=interactive?stationPanY:0;
+  let s=`<svg id="${interactive?'stationSvg':''}" data-vw="${W}" data-vh="${H}" viewBox="${vx} ${vy} ${W} ${H}" width="${W}" height="${H}" style="max-width:100%;height:auto;background:#060d16;border-radius:8px 8px 0 0;cursor:${interactive?'grab':'default'};touch-action:none"><defs><filter id="stnGlow"><feGaussianBlur stdDeviation="1.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter><pattern id="stnGrid" width="24" height="24" patternUnits="userSpaceOnUse"><path d="M24 0H0V24" fill="none" stroke="#6a9ab8" stroke-opacity=".08"/></pattern>${STATION_MODULES.map(d=>`<linearGradient id="g-${d.id}" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="${d.color}" stop-opacity=".95"/><stop offset=".48" stop-color="${d.color}"/><stop offset="1" stop-color="#293743"/></linearGradient>`).join('')}</defs><rect x="${-W*2}" y="${-H*2}" width="${W*5}" height="${H*5}" fill="#060d16"/><rect width="100%" height="100%" fill="url(#stnGrid)"/><text x="14" y="20" fill="#9bb6c8" font-size="10" font-family="ui-monospace,monospace" letter-spacing="1.5">ORBITAL ASSEMBLY PLAN · RADIAL DOCKING GRID</text>`;
+  const pts=slots.map(([gx,gy])=>[ox+gx*cell*scale,oy+gy*cell*scale]);
+  for(let i=1;i<pts.length;i++){ const parent=i<=4?0:Math.max(0,Math.floor((i-1)/4)); const [x1,y1]=pts[parent],[x2,y2]=pts[i]; s+=`<path d="M ${x1} ${y1} L ${x2} ${y2}" stroke="#6e8999" stroke-opacity=".5" stroke-width="3" stroke-dasharray="5 4"/><circle cx="${x2}" cy="${y2}" r="4" fill="#d4b35e"/>`; }
+  list.forEach((id,i)=>{ const d=stationModuleDef(id)||stationModuleDef('can_std'),[x,y]=pts[i]; s+=stationModuleSVG(id,d,x,y,scale); });
+  s+=`<text x="${W-14}" y="${H-12}" fill="#718898" font-size="9" font-family="ui-monospace,monospace" text-anchor="end">${list.length} MODULE${list.length===1?'':'S'} · ${facilityPortCap(cur.fs)} BERTHS</text></svg>`;
   return s;
 }
 // Palette of dockable modules with cost/gates
@@ -5583,6 +5619,7 @@ function toggleTechExpand(){ techExpanded=!techExpanded; renderTechTree(); const
 /* ---------- Tech tree interaction layer: filters, prereq-path highlight, progress ---------- */
 let techFilter=null;        // track key to solo, or null for all
 let techFocus=null;         // node id whose prereq chain is highlighted, or null
+let techQuery='';           // searchable tech-tree text
 // full transitive prerequisite set of a node (research reqs + mission-gate reqs)
 function techPrereqChain(id, seen){
   seen=seen||new Set();
@@ -5625,6 +5662,18 @@ function setTechFilter(key){ techFilter=(techFilter===key)?null:key; techFocus=n
 function setTechFocus(id){ techFocus=(techFocus===id)?null:id; renderTechTree(); }
 function clearTechFocus(){ if(techFocus){ techFocus=null; renderTechTree(); } }
 function clearTechView(){ techFocus=null; techFilter=null; renderTechTree(); }
+function setTechSearch(value){
+  techQuery=String(value||'').trim().toLowerCase();
+  renderTechTree();
+  const input=$('techSearch');
+  if(input){ input.focus(); input.setSelectionRange(input.value.length,input.value.length); }
+}
+function techSearchMatch(r){
+  if(!r) return false;
+  if(!techQuery) return true;
+  const track=(TRACKS.find(t=>t.key===r.track)||{}).label||r.track||'';
+  return [r.id,r.name,r.desc,r.track,track].some(v=>String(v||'').toLowerCase().includes(techQuery));
+}
 // how many not-yet-researched nodes are buyable right now
 function availableTechCount(){ return RESEARCH.filter(r=>researchNodeState(r)==='available').length; }
 
@@ -5636,7 +5685,7 @@ function renderTechTree(){
   const hi=techHighlightSet(); // prereq-chain highlight (null = none)
   const inFilter=(key)=> !techFilter || key===techFilter;
   const nodeVisible=(r)=> inFilter(r.track||'propulsion');
-  const nodeDim=(r)=> (hi && !hi.has(r.id)) || (techFilter && (r.track||'propulsion')!==techFilter);
+  const nodeDim=(r)=> (hi && !hi.has(r.id)) || (techFilter && (r.track||'propulsion')!==techFilter) || !techSearchMatch(r);
   // faint lane bands + left-edge labels
   let bands='';
   L.lanes.forEach(ln=>{
@@ -5651,7 +5700,7 @@ function renderTechTree(){
     const drawEdge=(q,dashed)=>{ const pq=L.nodes[q]; if(!pq) return; const x0=pq.x+NW, y0=pq.y+NH/2;
       const done=state.research[q], col=trackColor(trackOf(q));
       const onChain = hi && hi.has(q) && hi.has(r.id);
-      const dimmed = (hi && !onChain) || (techFilter && ((trackOf(q)!==techFilter) && ((r.track||'propulsion')!==techFilter)));
+      const dimmed = (hi && !onChain) || (techFilter && ((trackOf(q)!==techFilter) && ((r.track||'propulsion')!==techFilter))) || !techSearchMatch(RESEARCH.find(x=>x.id===q));
       const op = onChain?0.95 : dimmed?0.06 : (done?0.6:0.25);
       const w = onChain?2.4 : (done?1.7:1.1);
       edges+=`<path d="M ${x0} ${y0} C ${x0+38} ${y0}, ${x1-38} ${y1}, ${x1} ${y1}" fill="none" stroke="${onChain?'#ffd98a':col}" stroke-opacity="${op}" stroke-width="${w}" ${dashed?'stroke-dasharray="3,4"':''}/>`; };
@@ -5684,17 +5733,20 @@ function renderTechTree(){
   // the active filter label + view controls, so the tree gets its full vertical height back.
   const availN=availableTechCount();
   const activeTrack = techFilter ? (TRACKS.find(t=>t.key===techFilter)||{}) : null;
+  const searchCount = techQuery ? RESEARCH.filter(techSearchMatch).length : RESEARCH.length;
   const filterLabel = activeTrack
     ? `<span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:${activeTrack.color}"><span style="width:9px;height:9px;border-radius:50%;background:${activeTrack.color}"></span>${activeTrack.label} only <b style="font-family:var(--mono);opacity:.8">${trackProgress(techFilter).done}/${trackProgress(techFilter).total}</b></span>`
     : `<span class="dim" style="font-size:12px">All tracks — filter from the ⚛ Tracks panel →</span>`;
   const zw=(L.W*techZoom).toFixed(0), zh=(L.H*techZoom).toFixed(0);
   el.innerHTML=`<div style="position:sticky;top:0;z-index:2;background:var(--panel);display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:0 2px 8px">
+      <label style="display:flex;align-items:center;gap:6px;flex:1 1 220px;min-width:180px"><span class="dim" style="font-size:12px">⌕</span><input id="techSearch" type="search" value="${esc(techQuery)}" placeholder="Search technology…" aria-label="Search technology tree" oninput="setTechSearch(this.value)" style="width:100%;padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:var(--panel2);color:var(--ink)"></label>
+      ${techQuery?`<span class="dim" style="font-size:11px;white-space:nowrap">${searchCount} match${searchCount===1?'':'es'}</span>`:''}
       <div style="flex:1;min-width:120px;display:flex;align-items:center;gap:10px">
         ${filterLabel}
         ${availN>0 && !state.activeResearch?`<span style="font-size:12px;color:var(--ignite);font-family:var(--mono)" title="Nodes you can research right now">● ${availN} ready</span>`:''}
       </div>
       <div style="display:flex;align-items:center;gap:4px">
-        ${(techFocus||techFilter)?`<button class="btn ghost" style="padding:2px 9px;font-size:12px" onclick="clearTechView()" title="Clear highlight & filter">✕ Clear</button>`:''}
+        ${(techFocus||techFilter||techQuery)?`<button class="btn ghost" style="padding:2px 9px;font-size:12px" onclick="techQuery='';clearTechView()" title="Clear search, highlight & filter">✕ Clear</button>`:''}
         <button class="btn ghost" style="padding:2px 9px" onclick="zoomTech(1/1.2)" title="Zoom out (−)">−</button>
         <span class="dim" style="font-size:12px;width:40px;text-align:center">${Math.round(techZoom*100)}%</span>
         <button class="btn ghost" style="padding:2px 9px" onclick="zoomTech(1.2)" title="Zoom in (+)">+</button>
