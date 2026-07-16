@@ -140,6 +140,11 @@ Complexity: S = <1 day, M = 1–5 days, L = 1–3 weeks, XL = 1+ month. Impact: 
 |103| Mod-lite: external JSON content packs (missions/contracts) | Longevity | L | ★★ | File split | L |Deferred|
 |104| Statistics screen (charts exist — add records/superlatives) | Reflection | S | ★ | — | L |Backlog|
 |105| Soundtrack: 4–6 era-shifting ambient tracks | Identity | M | ★★★ | — | H |E1.6|
+|106| Guided first launch (5-step interactive tutorial — none exists; #24 presumed one) | Onboarding | M | ★★★ | — | H |Backlog|
+|107| First-session tooltips on header stats (Δv, rep, ⚛ jargon-cold to new players) | Onboarding | S | ★★ | 106 | M |Backlog|
+|108| Desktop breakpoint ~1280px (zero @media rules; CC deck overflows laptops) | Accessibility | S | ★★ | — | M |Backlog|
+|109| Font-scale setting | Accessibility | S | ★ | — | L |Backlog|
+|110| Progressive CC deck (hide advanced cards until after first launch) | Onboarding | S | ★ | 106 | L |Backlog|
 
 ---
 
@@ -154,9 +159,9 @@ Complexity: S = <1 day, M = 1–5 days, L = 1–3 weeks, XL = 1+ month. Impact: 
 | E1.x | 20 | Folded into a named high-value item |
 | E2 | 10 | Folded into medium-priority grouped item |
 | Deferred | 12 | Named in ROADMAP.md's deferred list |
-| **Backlog** | **49** | Not yet on ROADMAP.md in any form |
+| **Backlog** | **54** | Not yet on ROADMAP.md in any form |
 
-Over half the list (55/105) hasn't been triaged onto ROADMAP.md yet — mostly small
+Over half the list (60/110) hasn't been triaged onto ROADMAP.md yet — mostly small
 QoL items (#9, 11–17, 19–25), flight/ops texture (#31, 33–34, 37–45), rival/world
 flavor beyond the reactive-race core (#50, 53, 56–60), and personnel/station depth
 beyond the named E1.4/E2 items (#64, 66–72, 75–79, 81–82, 84–85, 89–90, 100, 104).

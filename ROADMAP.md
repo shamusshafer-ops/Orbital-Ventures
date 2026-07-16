@@ -3801,3 +3801,13 @@ nothing E1.7 touches) — flagged, not fixed here.
 
 **Needs a real-browser check**: the fault-decision modal styling, and that the Outliner row's icon/
 color read correctly against the other rows.
+
+## Session — Fable-framework evaluation + backlog additions (2026-07-16)
+
+Code-grounded re-evaluation (UI/UX 6.5, Gameplay 8, Fun 7.5 → **7.3 weighted**, up from July's 7.0
+on the flow-architecture/economy passes). One material gap surfaced: **no tutorial exists** — #24
+("tutorial replay") presumed one that was never built; onboarding is only the advisor card +
+drawing-board + detail toggle. Five new backlog items added (#106–#110): guided first launch (H),
+header-stat tooltips, ~1280px desktop breakpoint (zero @media rules today), font-scale setting,
+progressive CC deck. Path to 8+: #106, overlay C/D, sound pass, keyboard/reduced-motion — consistent
+with the existing EA gate plus the tutorial gap.
