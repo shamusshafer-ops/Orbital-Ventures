@@ -42,12 +42,16 @@ newGame('engineer');
 {
   const stages=[{eng:'kerolox_mk3',count:2,prop:30,dia:1},{eng:'hyper_storable',count:1,prop:5,dia:1}];
   const build=sliderDesignToBuild(stages,{crewed:false});
-  const ir=buildToStageIR(build);
-  const perf=stackPerformance(ir.stages, ir.payload);
+  // E3.4: the render overlay uses stackPerformanceForBuild (booster + aero-drag aware), not raw
+  // stackPerformance — a part-built vehicle pays a small stage-1 drag loss the slider path never
+  // modeled. Assert against the SAME path the overlay uses, and separately that drag is why they differ.
+  const perf=stackPerformanceForBuild(build);
+  const raw=stackPerformance(buildToStageIR(build).stages, buildToStageIR(build).payload);
   const r=renderBuildSVG(build, 260, 420);
   const s1dv=Math.round(perf.stageDv[0]), s2dv=Math.round(perf.stageDv[1]);
-  check('overlay: stage 1 Δv label matches real physics', r.svg.includes('S1 · '+s1dv+' m/s'));
+  check('overlay: stage 1 Δv label matches the drag-adjusted physics', r.svg.includes('S1 · '+s1dv+' m/s'));
   check('overlay: stage 2 Δv label matches real physics', r.svg.includes('S2 · '+s2dv+' m/s'));
+  check('overlay: stage 1 Δv is drag-reduced vs raw stackPerformance', perf.stageDv[0] <= raw.stageDv[0]);
   const s1twr=perf.stageTwr[0].toFixed(2);
   check('overlay: stage 1 TWR label matches real physics', r.svg.includes('TWR '+s1twr));
 }

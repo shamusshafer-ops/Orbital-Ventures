@@ -4186,3 +4186,52 @@ shipped behavior), E3.6 (polish, optional).
 **Next boundary:** E3.4 mixes real design judgment (how much of "deep physics" is worth modeling vs.
 diminishing returns) with mechanical wiring. Worth a design pass on paper before coding — heavier
 model for the scoping half, lighter fine for implementation once decided.
+
+## Session — E3.4 shipped: per-part physics depth (2026-07-16)
+
+The phys stats in PART_DEFS finally do something. **Hard constraint respected**: `stackPerformance()`
+is the shared core the E3.0 equivalence harness locks against the slider bench — it MUST NOT change or
+equivalence breaks. So every E3.4 effect is a pure, PART-BENCH-ONLY adjustment layered on top of
+`stackPerformanceForBuild`, never touching `stackPerformance` or the slider path (test-parts-physics
+section 3 asserts this isolation directly: raw stackPerformance is byte-identical before/after the
+E3.4 path runs, and never gains a dragLoss field).
+
+**Scope decided on paper first** (the design question this slice carried): of the four candidate stats,
+two feed real physics, one is a warning, one is deferred with a reason —
+- **drag (worth it)**: genuinely NEW physics — the existing model has gravity loss but never modeled
+  aero. `buildAeroProfile` computes a bounded stage-1 Δv drag loss (≤6%) from the stack's largest
+  cross-section × the top part's drag coeff + radial boosters in the freestream; a nosecone halves it.
+  Rewards good aero design, which the drawing already shows.
+- **control (worth it)**: E3.2 already WARNED on no-avionics; E3.4 makes it BITE — `buildControlProfile`
+  returns a reliability multiplier (0.85 open-loop). The warning now names the penalty.
+- **power (warning only)**: `buildPowerBalance` — avionics draw power; the probe core has a real draw,
+  the crew capsule carries its own generation (fuel cells), so uncrewed-vs-crewed is a genuine power
+  distinction and a deficit surfaces as a "systems run down" caution, never a Δv effect. Batteries as a
+  real system is a future part, not this slice.
+- **thermal (deferred, with reason)**: reentry survival is scripted per-mission-profile, deeply wired;
+  retrofitting heat-shield parts into it is its own epic, not a slice. Explicitly out of E3.4.
+
+**Small data additions**: probe_core gains powerDraw 0.3; capsule_mk1 gains powerGen 0.5 / powerDraw
+0.3 (power-neutral). These are warning-inputs only — they do NOT feed the mass model, so the E3.0
+equivalence harness is untouched (verified: bridge still 31/31).
+
+Stats panel now shows drag loss (with nosecone hint) and the open-loop reliability note; buildWarnings
+surfaces the power deficit and the sharpened no-avionics penalty.
+
+**No SAVE_VERSION bump, no shipped-behaviour change** (still BENCH_V2-gated).
+
+**Validation.** New `tests/test-parts-physics.js` (21/21). Two prior-suite checks correctly updated for
+the intended divergence (render overlay + booster equivalence now expect the drag-adjusted numbers, and
+separately assert drag is the ONLY difference from raw physics) — these were tests asserting the old
+"part numbers == raw stackPerformance" identity that E3.4 deliberately breaks for part-built vehicles.
+All 7 E3 suites green: **161 checks** (bridge 31, render 26, attach 29, ui 23, staging 31, physics 21).
+**48/51** overall, same 3 pre-existing failures.
+
+**Epic status: E3.0-E3.4 complete.** Remaining: **E3.5 (save migration + cutover)** — the ONLY slice
+that touches shipped behavior: migrate every saved state.stages design + vehicle family to a build
+graph, point the flight animation at the graph, retire the slider bench, flip BENCH_V2 on, SAVE_VERSION
+bump. This is the high-risk slice (touches real player saves) and wants its own careful session. E3.6
+(polish) optional after.
+
+**Next boundary:** E3.5 is high-stakes migration work — heavier model strongly recommended, and worth
+treating as its own focused session rather than a quick continue.

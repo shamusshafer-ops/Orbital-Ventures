@@ -1704,14 +1704,14 @@ const PART_DEFS = {
     id:'capsule_mk1', cat:'payload', name:'Crew Capsule', short:'CAP',
     era:0, dia:1.0, px:{len:90, dia:88},
     nodes:[ {id:'bot', at:'bottom', class:'small'} ],
-    phys:{ dryMass:1.2, crew:1, dragCoeff:0.4, crossSection:1.0, isPayload:true, hasAvionics:true },
+    phys:{ dryMass:1.2, crew:1, dragCoeff:0.4, crossSection:1.0, isPayload:true, hasAvionics:true, powerGen:0.5, powerDraw:0.3 },
     blurb:'A one-seat crew capsule. Its avionics fly the rocket.',
   },
   probe_core: {
     id:'probe_core', cat:'avionics', name:'Probe Guidance Core', short:'GNC',
     era:0, dia:1.0, px:{len:44, dia:70},
     nodes:[ {id:'top', at:'top', class:'small'}, {id:'bot', at:'bottom', class:'small'} ],
-    phys:{ dryMass:0.15, dragCoeff:0.1, crossSection:1.0, hasAvionics:true, isPayload:true },
+    phys:{ dryMass:0.15, dragCoeff:0.1, crossSection:1.0, hasAvionics:true, isPayload:true, powerDraw:0.3 },
     blurb:'Uncrewed guidance core. Flies the trajectory without a pilot aboard.',
   },
 };
@@ -1884,10 +1884,13 @@ function buildWarnings(build){
   const ir=buildToStageIR(build);
   if(ir.error){ w.push(ir.error); return w; }
   if(ir.warnings) w.push(...ir.warnings);
-  // top-heavy check: a stage carrying much more mass above than its own thrust base is a soft warn
   const spine=stackSpine(build);
-  const hasControl=spine.some(p=>{ const d=partDef(p.defId); return d && d.phys.hasAvionics; });
-  if(!hasControl) w.push('No avionics — this vehicle has nothing to steer it. Add a capsule or a guidance core.');
+  const hasControl=spine.some(p=>{ const d=partDef(p.defId); return d && d.phys.hasAvionics; })
+    || build.parts.some(p=>{ const d=partDef(p.defId); return d && d.phys.hasAvionics; });
+  if(!hasControl) w.push('No avionics — this vehicle flies open-loop. Nothing steers it, and reliability takes a hit (−15%). Add a capsule or a guidance core.'); // E3.4: now a real reliability penalty, not just a nag
+  // E3.4: power deficit — avionics draw power nothing on board generates yet
+  const power=buildPowerBalance(build);
+  if(power.deficit>0) w.push(`Power deficit: ${power.draw} kW drawn, ${power.gen} kW generated. Onboard systems would run down (no generation part fitted yet).`);
   return w;
 }
 
@@ -1990,6 +1993,67 @@ function buildToStageIR(build){
 // bridge that touches global state — deliberately isolated here (buildToStageIR itself stays
 // pure) and always restores the prior value, even on error, so it's safe to call from a live
 // bench mid-render without corrupting the player's actual slider-bench booster fit.
+/* ============================================================================
+   E3.4 — per-part physics depth. The phys stats in PART_DEFS (drag, power,
+   control) finally do something. CRITICAL constraint: stackPerformance() is the
+   shared core the E3.0 equivalence harness locks against the slider bench — it
+   MUST NOT change, or slider-vs-graph equivalence breaks. So every E3.4 effect
+   is a PURE, PART-BENCH-ONLY adjustment layered on top of stackPerformanceForBuild,
+   never touching stackPerformance or the slider path. The slider bench has never
+   modeled drag; part-built vehicles get to, as a reward for good aero design.
+   ============================================================================ */
+
+// Aero drag loss on the first-stage ascent. The existing physics has gravity
+// loss but NO aero loss — this is genuinely new, and symmetric with gravLossFrac:
+// a small Δv penalty scaling with frontal drag, mitigated by a nosecone. Bounded
+// so it's a design nudge, never a cliff. Returns {dragArea, hasNose, lossFrac}.
+const AERO_LOSS_K = 0.02;        // max ~ a few % of stage-1 Δv at the worst geometry
+const AERO_LOSS_CAP = 0.06;
+const AERO_NOSE_RELIEF = 0.5;    // a nosecone halves drag loss
+function buildAeroProfile(build){
+  const spine=stackSpine(build);
+  if(!spine.length) return {dragArea:0, hasNose:false, lossFrac:0};
+  // frontal drag ≈ the largest cross-section in the stack × the top part's drag
+  // coefficient (the top part meets the airstream first). Radial boosters add
+  // their cross-section (they sit in the freestream).
+  let maxCross=0, topDrag=0.3;
+  spine.forEach((p,i)=>{ const d=partDef(p.defId); if(!d) return;
+    const cs=(d.phys.crossSection!=null?d.phys.crossSection:1)*(d.px?d.px.dia/90:1);
+    if(cs>maxCross) maxCross=cs;
+    if(i===0) topDrag=(d.phys.dragCoeff!=null?d.phys.dragCoeff:0.3);
+  });
+  for(const {part} of radialParts(build)){ const d=partDef(part.defId); if(d&&d.phys.crossSection) maxCross+=d.phys.crossSection*(part.sym||1)*0.5; }
+  const hasNose = spine.length>0 && partDef(spine[0].defId) && partDef(spine[0].defId).id==='nosecone';
+  const dragArea = maxCross*topDrag;
+  let lossFrac = Math.min(AERO_LOSS_CAP, AERO_LOSS_K*dragArea);
+  if(hasNose) lossFrac*=AERO_NOSE_RELIEF;
+  return {dragArea:round2(dragArea), hasNose, lossFrac};
+}
+
+// Power balance: avionics/probe cores DRAW power; nothing in the viable set
+// GENERATES it yet (batteries are a future part). This is a warning-level check,
+// never a Δv effect — an unpowered guidance core is a "your probe goes dark"
+// caution, not a physics penalty. Returns {gen, draw, deficit}.
+function buildPowerBalance(build){
+  let gen=0, draw=0;
+  for(const p of build.parts){ const d=partDef(p.defId); if(!d) continue;
+    gen+=(d.phys.powerGen||0)*(p.sym||1); draw+=(d.phys.powerDraw||0)*(p.sym||1); }
+  return {gen:round2(gen), draw:round2(draw), deficit:round2(Math.max(0,draw-gen))};
+}
+
+// Control/reliability: E3.2 already WARNS when there's no avionics; E3.4 makes
+// it bite. A vehicle with no guidance flies open-loop — a real reliability hit,
+// returned as a multiplier the bench applies to displayed reliability (and, at
+// cutover, the live flight). Bounded and simple: has avionics → 1.0, none → a
+// fixed penalty (open-loop rockets historically failed far more often).
+const NO_AVIONICS_REL_MULT = 0.85;
+function buildControlProfile(build){
+  const spine=stackSpine(build);
+  const hasAvionics = spine.some(p=>{ const d=partDef(p.defId); return d && d.phys.hasAvionics; })
+    || build.parts.some(p=>{ const d=partDef(p.defId); return d && d.phys.hasAvionics; });
+  return {hasAvionics, relMult: hasAvionics?1:NO_AVIONICS_REL_MULT};
+}
+
 function stackPerformanceForBuild(build){
   const ir=buildToStageIR(build);
   if(ir.error) return ir;
@@ -1997,7 +2061,20 @@ function stackPerformanceForBuild(build){
   try{
     state.boosters = ir.boosters || {eng:null, count:0, prop:0};
     const perf=stackPerformance(ir.stages, ir.payload);
-    return Object.assign({}, ir, perf);
+    // E3.4 adjustments — layered ON TOP, never inside stackPerformance.
+    const aero=buildAeroProfile(build);
+    const power=buildPowerBalance(build);
+    const control=buildControlProfile(build);
+    // apply aero drag loss to stage-1 Δv and the total (stage 1 is the atmospheric one)
+    const adj=Object.assign({}, ir, perf);
+    if(aero.lossFrac>0 && adj.stageDv && adj.stageDv.length){
+      const dragDv = adj.stageDv[0]*aero.lossFrac;
+      adj.stageDv=adj.stageDv.slice(); adj.stageDv[0]=Math.max(0, adj.stageDv[0]-dragDv);
+      adj.totalDv=Math.max(0, adj.totalDv-dragDv);
+      adj.dragLoss=round2(dragDv);
+    } else { adj.dragLoss=0; }
+    adj.aero=aero; adj.power=power; adj.control=control;
+    return adj;
   } finally {
     state.boosters=prevBoosters;
   }
@@ -2330,6 +2407,8 @@ function renderPartsBench(msg){
         <div class="metric"><div class="k">Stages</div><div class="v">${ir.stages.length}</div></div>
         <div class="metric"><div class="k">Liftoff</div><div class="v">${perf.liftoff.toFixed(1)} t</div></div>
         <div class="metric"><div class="k">Liftoff TWR</div><div class="v">${perf.twr.toFixed(2)}</div></div></div>`;
+      if(perf.dragLoss>0) html+=`<div class="dim" style="font-size:11px;margin-top:4px">Aero drag costs ${Math.round(perf.dragLoss)} m/s off stage 1${perf.aero&&perf.aero.hasNose?' (nosecone helping)':' — a nosecone would cut this'}.</div>`;
+      if(perf.control && !perf.control.hasAvionics) html+=`<div class="dim" style="font-size:11px;margin-top:2px;color:var(--warn)">Open-loop: reliability ×${perf.control.relMult} (no guidance aboard).</div>`;
       if(ir.boosters) html+=`<div class="dim" style="font-size:11px;margin-top:4px">${ir.boosters.count}× booster — boosts liftoff TWR and total Δv above (not shown per-stage, same as the classic bench).</div>`;
       // E3.3: auto-inferred visible stage stack. Firing order is the only physically valid order
       // for a single linear spine — see the E3.3 ROADMAP note on why this is a readout, not a

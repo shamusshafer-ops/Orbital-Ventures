@@ -108,7 +108,10 @@ newGame('engineer');
   applySymmetry(build, boosterUid, 2);
   const graph=stackPerformanceForBuild(build);
 
-  check('equivalence: total Δv matches (booster-augmented)', near(graph.totalDv, direct.totalDv, 1.0));
+  // E3.4: graph.totalDv now includes a part-bench-only aero drag loss the slider path never had,
+  // so it won't equal direct.totalDv outright — add the reported dragLoss back to compare the
+  // booster physics cleanly (and prove drag is the ONLY difference).
+  check('equivalence: total Δv matches once drag is added back (booster-augmented)', near(graph.totalDv + (graph.dragLoss||0), direct.totalDv, 1.0));
   check('equivalence: liftoff mass matches', near(graph.liftoff, direct.liftoff, 0.1));
   check('equivalence: liftoff TWR matches (this IS where boosters show up)', near(graph.twr, direct.twr, 0.01));
   check('equivalence: boostDv matches', near(graph.boostDv, direct.boostDv, 0.5));
