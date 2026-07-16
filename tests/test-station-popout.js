@@ -37,12 +37,16 @@ catch(e){ check('built: openStationPopout does not throw ('+e.message+')', false
 // dock a second module, then switch focus via the same handler the pop-out tabs use — must not throw
 // even with the pop-out open (this is exactly the staleness bug: switching facilities used to only
 // refresh the main view, leaving the pop-out showing the old one)
+// E1.8: surface facilities moved to the Base Bench — the station bench now filters to earth-body
+// facilities, so focus-switching is exercised with a second ORBITAL facility, and the split itself
+// is asserted (mars excluded here; test-base-bench.js owns the surface side).
 state.facilities.mars_base={built:true, modules:1, since:state.year, supply:FAC_SUPPLY_MONTHS, starvedMonths:0, autoResupply:false, moduleList:['can_std']};
-try{ setStationFocus('mars_base'); check('setStationFocus with pop-out open does not throw', true); }
+try{ setStationFocus('leo_station'); check('setStationFocus with pop-out open does not throw', true); }
 catch(e){ check('setStationFocus with pop-out open does not throw ('+e.message+')', false); }
-check('setStationFocus updates state.stationFocus', state.stationFocus==='mars_base');
+check('setStationFocus updates state.stationFocus', state.stationFocus==='leo_station');
 v=stationCurrentView();
-check('stationCurrentView reflects the switched focus', v.cur.def.id==='mars_base');
+check('stationCurrentView reflects the switched focus', v.cur.def.id==='leo_station');
+check('E1.8 split: station bench excludes surface facilities', !v.built.some(b=>b.def.id==='mars_base'));
 
 try{ closeStationPopout(); check('built: closeStationPopout does not throw', true); }
 catch(e){ check('built: closeStationPopout does not throw ('+e.message+')', false); }

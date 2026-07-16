@@ -3838,3 +3838,32 @@ visualization/UX build, not a new simulation system.
 
 **Not in scope:** colony population (long-horizon ROADMAP #21), new production mechanics.
 **No SAVE_VERSION bump** — per-facility moduleLists already persist.
+
+## Session — E1.8 slices A+B shipped: Base Bench (2026-07-16)
+
+#111 implemented per scoping. New `⛰ Base Bench` rail scene + `baseView`/`railBase` panels; surface
+facilities (body≠earth) now render on a horizontal ground-line SVG — modules side by side on the
+regolith joined by pressurized corridors, body-tinted sky (LUNA: airless black + seeded starfield;
+MARS: butterscotch), landing-shadow grounding, reusing `stationModuleSVG` art and the station
+gradient defs verbatim. Own pan/zoom/expand state (`basePanX/Y/Zoom`, `wireBasePan`), locked/empty
+state lists founding gates per facility. **The split**: `stationCurrentView` now filters to
+`body==='earth'` — surface bases no longer appear as station-bench tabs; `baseCurrentView` owns
+them. Stats panel reused via new optional `(focusId, focusFn)` params on
+`renderStationFacilityStats` (station callers unchanged). Palette/spec-cards/docking reused
+verbatim (already facility-generic). Slice C (surface-specific modules, #112) and D (blueprint
+board) not started.
+
+**No SAVE_VERSION bump** — only `state.baseFocus` added, lazily defaulted.
+
+**Validation.** New `tests/test-base-bench.js` (22/22): facility split both directions, focus
+fallback, locked-state gates, both body palettes render (stars/corridors/gradient reuse asserted),
+stats-panel reuse routes to `setBaseFocus` with correct highlight, zoom clamp + state independence,
+end-to-end renderBase locked+active. `test-station-popout.js` updated to the split semantics (focus
+exercise via a second orbital facility + explicit split assertion; surface side owned by the new
+suite). **41/43** — the 2 pre-existing failures (era-visual, theme-sync) remain untouched.
+**Flakiness found (not fixed, out of scope)**: `test-station-slice2.js` Mars-e2e fails ~2/6 runs on
+unseeded rng (advance-month event rolls occasionally interfere with the arrival pump) — predates
+this slice; worth a seeded-rng harness pass someday.
+
+**Needs a real-browser check**: ground-line composition/colors on both bodies, corridor joints at
+odd zoom levels, rail button icon rendering.

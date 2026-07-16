@@ -934,6 +934,7 @@
         <button id="tabRnd" class="scene" onclick="setTab('rnd')"><span class="cc-icon" aria-hidden="true">⚛</span><span class="cc-nav-label">R&amp;D</span><span class="tabbadge hidden" id="badgeRnd"></span></button>
         <button id="tabMap" class="scene" onclick="setTab('map')"><span class="cc-icon" aria-hidden="true">☉</span><span class="cc-nav-label">Solar System</span><span class="tabbadge hidden" id="badgeMap"></span></button>
         <button id="tabStation" class="scene" onclick="setTab('station')"><span class="cc-icon" aria-hidden="true">⬡</span><span class="cc-nav-label">Station Bench</span><span class="tabbadge hidden" id="badgeStation"></span></button>
+        <button id="tabBase" class="scene" onclick="setTab('base')"><span class="cc-icon" aria-hidden="true">⛰</span><span class="cc-nav-label">Base Bench</span><span class="tabbadge hidden" id="badgeBase"></span></button>
         <!-- slice 8: the Operations group is gone — Settings → the HUD ⚙ menu; Programs/
              Rivals/Personnel/Infrastructure → modals + hub drills. The rail is now purely
              the four scene selectors. -->
@@ -1073,6 +1074,26 @@
     </div>
   </div>
 
+  <!-- E1.8 slice A/B: Base Bench — surface-base sibling of the Station Bench. Lunar/Mars bases
+       already run the full station machinery (moduleList/power/crew/synergies); this tab gives
+       them a surface-appropriate ground-line view instead of an orbital stack. -->
+  <div id="baseView" class="hidden">
+    <div class="card" id="baseCard">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+        <h2 style="margin:0">Base Bench — surface assembly board</h2>
+        <div style="display:flex;gap:6px">
+          <button class="btn ghost" id="baseExpandBtn" onclick="toggleBaseExpand()">⛶ Expand</button>
+          <button class="btn ghost" onclick="zoomBase(1/1.25)" title="Zoom out">−</button>
+          <span id="baseZoomLabel" class="dim" style="min-width:38px;text-align:center;align-self:center;font:11px var(--mono)">100%</span>
+          <button class="btn ghost" onclick="zoomBase(1.25)" title="Zoom in">+</button>
+          <button class="btn ghost" onclick="resetBaseView()" title="Reset pan and zoom">Reset</button>
+        </div>
+      </div>
+      <p class="muted" style="font-size:12px;margin:6px 0 10px">Lay out habitats and hardware along the surface — modules joined by pressurized corridors on the regolith.</p>
+      <div id="baseCanvas"></div>
+    </div>
+  </div>
+
   <!-- Rivals retired in slice 6 → hub right-rail mini-leaderboard + the deep-view modal
        (showRivalsModal builds #rivalsCard on demand). -->
 
@@ -1121,6 +1142,9 @@
       </div>
       <div id="railStation" class="rail-panel hidden">
         <div class="card" id="stationStats"></div>
+      </div>
+      <div id="railBase" class="rail-panel hidden">
+        <div class="card" id="baseStats"></div>
       </div>
       <!-- slice 5: the Mission Control hub drill — Contracts + passive income, shown on the
            Command Center scene when the player drills into the Mission Control building. -->
@@ -13510,13 +13534,13 @@ function renderChromeShellRail(){
     shell.classList.toggle('viewing-panel', !isSceneTab(state.tab));
     shell.classList.toggle('command-hero', state.tab==='command');
     // slice 3: show the active scene's contextual right-rail panel; collapse the rail on panels.
-    const RAIL={command:'railCommand',bench:'railBench',map:'railMap',rnd:'railRnd',station:'railStation'};
+    const RAIL={command:'railCommand',bench:'railBench',map:'railMap',rnd:'railRnd',station:'railStation',base:'railBase'};
     let activePanel=RAIL[state.tab]||null;
     // command's alerts panel (ccRight) is adv-only, so the rail is empty in Basic → don't reserve it.
     let railAdvOnly=(state.tab==='command');
     // slice 5: on the hub, the Mission Control drill swaps Alerts for the Contracts panel (shown in all layers).
     if(state.tab==='command' && hubPanel==='contracts'){ activePanel='railContracts'; railAdvOnly=false; }
-    for(const id of ['railCommand','railBench','railMap','railRnd','railStation','railContracts']){ const p=$(id); if(p) p.classList.toggle('hidden', id!==activePanel); }
+    for(const id of ['railCommand','railBench','railMap','railRnd','railStation','railBase','railContracts']){ const p=$(id); if(p) p.classList.toggle('hidden', id!==activePanel); }
     shell.classList.add('has-right'); // the persistent accordion always occupies the right rail, so keep it shown on every scene
   }
   // The header is outside #appShell, so its Command Center grading needs the same
@@ -13543,11 +13567,13 @@ function renderChromeTabsViews(){
   $('tabRnd').classList.toggle('active',state.tab==='rnd');
   $('tabMap').classList.toggle('active',state.tab==='map');
   $('tabStation').classList.toggle('active',state.tab==='station');
+  { const tb=$('tabBase'); if(tb) tb.classList.toggle('active',state.tab==='base'); }
   $('commandView').classList.toggle('hidden',state.tab!=='command');
   $('benchView').classList.toggle('hidden',state.tab!=='bench');
   $('rndView').classList.toggle('hidden',state.tab!=='rnd');
   $('mapView').classList.toggle('hidden',state.tab!=='map');
   $('stationView').classList.toggle('hidden',state.tab!=='station');
+  { const bv=$('baseView'); if(bv) bv.classList.toggle('hidden',state.tab!=='base'); }
   placeOpsbar(); // on the Map view, the ops controls (row 2) ride across the top of the map card; elsewhere they stay pinned in the topbar
   applyDifficultyUI();
 }
@@ -13571,6 +13597,7 @@ function renderSceneRndMapStation(){
   if(state.tab==='rnd')renderRnd();
   if(state.tab==='map')renderMap();
   if(state.tab==='station')renderStation();
+  if(state.tab==='base')renderBase(); // E1.8
 }
 function renderModalRegion(){
   if(activeModal) activeModal(); // slice 6: keep an open deep-view modal (Programs/Rivals/Personnel) in sync with state
@@ -17624,7 +17651,7 @@ function wireStationPan(el){
 // view) and the station pop-out read from this, so they can no longer independently drift out of sync
 // the way the pop-out did (it was stuck on a hardcoded sample module while the real bench moved on).
 function stationCurrentView(){
-  const built=Object.keys(state.facilities||{}).map(id=>({def:facilityById(id), fs:state.facilities[id]})).filter(x=>x.def&&facilityBuilt(x.def.id));
+  const built=Object.keys(state.facilities||{}).map(id=>({def:facilityById(id), fs:state.facilities[id]})).filter(x=>x.def&&facilityBuilt(x.def.id)&&x.def.body==='earth'); // E1.8: surface bases (moon/mars) live on the Base Bench now
   if(!built.length) return {built:null, cur:{fs:stationDraftFs()}, isDraft:true};
   if(!state.stationFocus || !built.some(b=>b.def.id===state.stationFocus)) state.stationFocus=built[0].def.id;
   return {built, cur:built.find(b=>b.def.id===state.stationFocus), isDraft:false};
@@ -17645,8 +17672,9 @@ function renderStation(){
   if(st) st.innerHTML=renderStationFacilityStats(v.built, cur);
 }
 // Facility tabs + aggregate stats for the focused facility
-function renderStationFacilityStats(built, cur){
-  const tabs=built.map(b=>`<button class="btn ${b.def.id===state.stationFocus?'launch':'ghost'}" style="font-size:12px" onclick="setStationFocus('${b.def.id}')">${b.def.icon} ${b.def.name}</button>`).join(' ');
+function renderStationFacilityStats(built, cur, focusId, focusFn){ // E1.8: base bench reuses this panel with its own focus state
+  focusId=focusId||state.stationFocus; focusFn=focusFn||'setStationFocus';
+  const tabs=built.map(b=>`<button class="btn ${b.def.id===focusId?'launch':'ghost'}" style="font-size:12px" onclick="${focusFn}('${b.def.id}')">${b.def.icon} ${b.def.name}</button>`).join(' ');
   const fs=cur.fs, def=cur.def, list=facilityModuleList(fs), pw=facilityPower(fs), pr=facilityProduction(def,fs), ops=stationOps(fs);
   const mass=list.reduce((a,id)=>a+((stationModuleDef(id)||{}).stats||{}).mass||0,0);
   const crew=facilityCrew(fs), crewSlots=list.reduce((n,id)=>n+((stationModuleDef(id)?.stats?.crew)||0),0), syn=facilitySynergies(fs);
@@ -17737,6 +17765,120 @@ function renderStationPalette(cur){
   const cards=STATION_MODULES.map(md=>stationModuleCard(md, cur, true)).join('');
   return `<div style="margin-top:10px"><div class="mission-tag" style="margin-bottom:6px">Modules — dock to grow ${cur.def.name}</div>
     <div style="display:flex;gap:10px;flex-wrap:wrap">${cards}</div></div>`;
+}
+/* ---------- E1.8 slices A/B: Base Bench — surface-base sibling of the Station Bench ----------
+   Lunar/Mars bases are full FACILITY_DEFS already running the complete station machinery
+   (moduleList, power, crew, synergies, facilityProduction) — the Station Bench was merely
+   hardwired to orbital facilities. This tab gives surface bases a ground-line layout: modules
+   side by side on the regolith, joined by pressurized corridors, under a body-tinted sky.
+   Module art, spec cards, docking, and the stats panel are all reused verbatim from the
+   station bench — only the scene composition differs. Surface-specific modules are slice C
+   (#112, follow-up); until then surface bases build from the shared pool, exactly as they
+   already did via the facility modal. */
+let baseExpanded=false;
+let basePanX=0, basePanY=0, baseZoom=1;
+function baseViewBox(W,H,zoom){
+  const vw=W/zoom, vh=H/zoom;
+  return `${basePanX+(W-vw)/2} ${basePanY+(H-vh)/2} ${vw} ${vh}`;
+}
+function setBaseZoom(z){ baseZoom=clampA(z,0.5,3); renderBase(); }
+function zoomBase(f){ setBaseZoom(baseZoom*f); }
+function resetBaseView(){ basePanX=0; basePanY=0; baseZoom=1; renderBase(); }
+function toggleBaseExpand(){ baseExpanded=!baseExpanded; renderBase(); }
+function setBaseFocus(id){ state.baseFocus=id; renderBase(); }
+function baseCurrentView(){
+  const built=Object.keys(state.facilities||{}).map(id=>({def:facilityById(id), fs:state.facilities[id]})).filter(x=>x.def&&facilityBuilt(x.def.id)&&x.def.body!=='earth');
+  if(!built.length) return {built:null, cur:null};
+  if(!state.baseFocus || !built.some(b=>b.def.id===state.baseFocus)) state.baseFocus=built[0].def.id;
+  return {built, cur:built.find(b=>b.def.id===state.baseFocus)};
+}
+// Body palettes: sky gradient stops + regolith tones. Luna: airless black over gray dust;
+// Mars: butterscotch daylight over rust.
+const BASE_BODY_LOOK={
+  moon:{skyTop:'#03060b', skyBot:'#0a0f16', ground:'#3c4045', groundDark:'#26292d', label:'LUNA', stars:true},
+  mars:{skyTop:'#8a5a35', skyBot:'#c98a52', ground:'#7a3f24', groundDark:'#5a2e19', label:'MARS', stars:false},
+};
+function renderBaseSurfaceSVG(W,H,cur,interactive){
+  const list=facilityModuleList(cur.fs);
+  const look=BASE_BODY_LOOK[cur.def.body]||BASE_BODY_LOOK.moon;
+  const cell=128, groundY=H*0.72;
+  const totalW=list.length*cell;
+  const scale=Math.min(1.1,(W-40)/Math.max(totalW,cell));
+  const ox=W/2-totalW*scale/2+cell*scale/2;
+  const viewBox=interactive?baseViewBox(W,H,baseZoom):`0 0 ${W} ${H}`;
+  let stars='';
+  if(look.stars){ let sr=9973; const rnd=()=>((sr=(sr*1103515245+12345)&0x7fffffff)/0x7fffffff);
+    for(let i=0;i<40;i++){ stars+=`<circle cx="${(rnd()*W).toFixed(1)}" cy="${(rnd()*groundY*0.9).toFixed(1)}" r="${(0.5+rnd()*0.9).toFixed(2)}" fill="#cfe0ee" opacity="${(0.3+rnd()*0.6).toFixed(2)}"/>`; } }
+  let s=`<svg id="${interactive?'baseSvg':''}" data-bw="${W}" data-bh="${H}" data-zoom="${interactive?baseZoom:1}" viewBox="${viewBox}" width="${W}" height="${H}" style="max-width:100%;height:auto;border-radius:8px 8px 0 0;cursor:${interactive?'grab':'default'};touch-action:none">`
+    +`<defs><linearGradient id="baseSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${look.skyTop}"/><stop offset="1" stop-color="${look.skyBot}"/></linearGradient>`
+    +`<linearGradient id="baseGround" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${look.ground}"/><stop offset="1" stop-color="${look.groundDark}"/></linearGradient>`
+    +`<filter id="stnGlowB"><feGaussianBlur stdDeviation="1.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>`
+    +STATION_MODULES.map(d=>`<linearGradient id="g-${d.id}" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="${d.color}" stop-opacity=".95"/><stop offset=".48" stop-color="${d.color}"/><stop offset="1" stop-color="#293743"/></linearGradient>`).join('')
+    +`</defs>`
+    +`<rect x="${-W*2}" y="${-H*2}" width="${W*5}" height="${H*5}" fill="url(#baseSky)"/>`
+    +stars
+    +`<rect x="${-W*2}" y="${groundY}" width="${W*5}" height="${H*3}" fill="url(#baseGround)"/>`
+    +`<line x1="${-W*2}" x2="${W*3}" y1="${groundY}" y2="${groundY}" stroke="#000" stroke-opacity=".35" stroke-width="1.5"/>`
+    +`<text x="14" y="20" fill="${look.stars?'#9bb6c8':'#3d2413'}" font-size="10" font-family="ui-monospace,monospace" letter-spacing="1.5">SURFACE BASE PLAN · ${look.label}</text>`;
+  // modules sit ON the ground line, side by side; corridors join adjacent hull edges
+  const modY=groundY, halfGap=cell*scale*0.5;
+  const xs=list.map((_,i)=>ox+i*cell*scale);
+  for(let i=1;i<xs.length;i++){ // pressurized corridor: short tube at ground level between neighbors
+    const x1=xs[i-1]+halfGap*0.62, x2=xs[i]-halfGap*0.62, cy=modY-10*scale;
+    s+=`<rect x="${x1}" y="${cy-6*scale}" width="${x2-x1}" height="${12*scale}" rx="${5*scale}" fill="#5b6b78" stroke="#81909b" stroke-width="1"/>`;
+  }
+  list.forEach((id,i)=>{
+    const d=stationModuleDef(id)||stationModuleDef('can_std');
+    const hd=Math.max(18,(d.dia||80)*0.30)*scale; // stationModuleSVG draws hull centered at (x,y) with half-height hd
+    s+=`<g>${stationModuleSVG(id,d,xs[i],modY-hd,scale).split('url(#stnGlow)').join('url(#stnGlowB)')}</g>`;
+    // landing pad shadow under each module grounds it visually
+    s+=`<ellipse cx="${xs[i]}" cy="${modY+3*scale}" rx="${52*scale}" ry="${6*scale}" fill="#000" opacity="0.28"/>`;
+  });
+  s+=`<text x="${W-14}" y="${H-12}" fill="${look.stars?'#718898':'#3d2413'}" font-size="9" font-family="ui-monospace,monospace" text-anchor="end">${list.length} MODULE${list.length===1?'':'S'} · SURFACE GRID</text></svg>`;
+  return s;
+}
+function wireBasePan(el){
+  if(!el || el._basePanWired) return;
+  el._basePanWired=true;
+  let dragging=false,lastX=0,lastY=0;
+  el.addEventListener('pointerdown',e=>{
+    if(!e.target.closest('#baseSvg')) return;
+    dragging=true; lastX=e.clientX; lastY=e.clientY; el.setPointerCapture?.(e.pointerId);
+    const svg=$('baseSvg'); if(svg) svg.style.cursor='grabbing';
+  });
+  el.addEventListener('pointermove',e=>{
+    if(!dragging) return;
+    const svg=$('baseSvg'); const z=Number(svg?.dataset.zoom||1);
+    basePanX-=(e.clientX-lastX)/z; basePanY-=(e.clientY-lastY)/z; lastX=e.clientX; lastY=e.clientY;
+    if(svg) svg.setAttribute('viewBox',baseViewBox(Number(svg.dataset.bw),Number(svg.dataset.bh),z));
+  });
+  const end=()=>{ dragging=false; const svg=$('baseSvg'); if(svg) svg.style.cursor='grab'; };
+  el.addEventListener('pointerup',end); el.addEventListener('pointercancel',end);
+}
+// Founding gates shown before any surface base exists — the empty state teaches the path in.
+function baseLockedHTML(){
+  const rows=FACILITY_DEFS.filter(d=>d.body!=='earth').map(d=>{
+    const m=MISSIONS.find(x=>x.id===d.reqMission);
+    const flown=!!state.completed[d.reqMission];
+    return `<div class="flag ${flown?'ok':''}" style="margin:4px 0">${d.icon} <b>${d.name}</b> — ${flown
+      ? `founding available from the Solar System map (${fM(d.foundCost)} · ${d.foundMonths} mo)`
+      : `requires <b>${m?m.name:d.reqMission}</b> flown first`}</div>`;
+  }).join('');
+  return `<div style="padding:14px"><div class="mission-tag">No surface bases yet</div>
+    <p class="muted" style="font-size:12px">Found a base from the Solar System map once its gate mission has flown. Built bases assemble here.</p>${rows}</div>`;
+}
+function renderBase(){
+  const bv=$('baseView'); if(!bv) return;
+  bv.classList.toggle('expanded', baseExpanded);
+  const eb=$('baseExpandBtn'); if(eb) eb.textContent = baseExpanded ? '⛶ Exit full screen' : '⛶ Expand';
+  const c=$('baseCanvas'), st=$('baseStats');
+  const v=baseCurrentView();
+  if(!v.cur){ if(c) c.innerHTML=baseLockedHTML(); if(st) st.innerHTML=''; return; }
+  if(c) c.innerHTML=renderBaseSurfaceSVG(720,300,v.cur,true)+renderStationPalette(v.cur);
+  const zl=$('baseZoomLabel'); if(zl) zl.textContent=Math.round(baseZoom*100)+'%';
+  wireBasePan(c);
+  // stats panel: the station one is already facility-generic; only the focus-tab handler differs
+  if(st) st.innerHTML=renderStationFacilityStats(v.built, v.cur, state.baseFocus, 'setBaseFocus');
 }
 // One rich module spec card. mode: live docking (real facility) when addable=true; blueprint otherwise.
 function stationModuleCard(md, cur, addable){

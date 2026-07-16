@@ -934,6 +934,7 @@
         <button id="tabRnd" class="scene" onclick="setTab('rnd')"><span class="cc-icon" aria-hidden="true">⚛</span><span class="cc-nav-label">R&amp;D</span><span class="tabbadge hidden" id="badgeRnd"></span></button>
         <button id="tabMap" class="scene" onclick="setTab('map')"><span class="cc-icon" aria-hidden="true">☉</span><span class="cc-nav-label">Solar System</span><span class="tabbadge hidden" id="badgeMap"></span></button>
         <button id="tabStation" class="scene" onclick="setTab('station')"><span class="cc-icon" aria-hidden="true">⬡</span><span class="cc-nav-label">Station Bench</span><span class="tabbadge hidden" id="badgeStation"></span></button>
+        <button id="tabBase" class="scene" onclick="setTab('base')"><span class="cc-icon" aria-hidden="true">⛰</span><span class="cc-nav-label">Base Bench</span><span class="tabbadge hidden" id="badgeBase"></span></button>
         <!-- slice 8: the Operations group is gone — Settings → the HUD ⚙ menu; Programs/
              Rivals/Personnel/Infrastructure → modals + hub drills. The rail is now purely
              the four scene selectors. -->
@@ -1073,6 +1074,26 @@
     </div>
   </div>
 
+  <!-- E1.8 slice A/B: Base Bench — surface-base sibling of the Station Bench. Lunar/Mars bases
+       already run the full station machinery (moduleList/power/crew/synergies); this tab gives
+       them a surface-appropriate ground-line view instead of an orbital stack. -->
+  <div id="baseView" class="hidden">
+    <div class="card" id="baseCard">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+        <h2 style="margin:0">Base Bench — surface assembly board</h2>
+        <div style="display:flex;gap:6px">
+          <button class="btn ghost" id="baseExpandBtn" onclick="toggleBaseExpand()">⛶ Expand</button>
+          <button class="btn ghost" onclick="zoomBase(1/1.25)" title="Zoom out">−</button>
+          <span id="baseZoomLabel" class="dim" style="min-width:38px;text-align:center;align-self:center;font:11px var(--mono)">100%</span>
+          <button class="btn ghost" onclick="zoomBase(1.25)" title="Zoom in">+</button>
+          <button class="btn ghost" onclick="resetBaseView()" title="Reset pan and zoom">Reset</button>
+        </div>
+      </div>
+      <p class="muted" style="font-size:12px;margin:6px 0 10px">Lay out habitats and hardware along the surface — modules joined by pressurized corridors on the regolith.</p>
+      <div id="baseCanvas"></div>
+    </div>
+  </div>
+
   <!-- Rivals retired in slice 6 → hub right-rail mini-leaderboard + the deep-view modal
        (showRivalsModal builds #rivalsCard on demand). -->
 
@@ -1121,6 +1142,9 @@
       </div>
       <div id="railStation" class="rail-panel hidden">
         <div class="card" id="stationStats"></div>
+      </div>
+      <div id="railBase" class="rail-panel hidden">
+        <div class="card" id="baseStats"></div>
       </div>
       <!-- slice 5: the Mission Control hub drill — Contracts + passive income, shown on the
            Command Center scene when the player drills into the Mission Control building. -->
