@@ -2104,6 +2104,18 @@ function resolveMishap(choice){
 const INQUIRY_COST_FRAC=0.3, INQUIRY_COST_FLOOR=0.6; // fund cost = max(FLOOR, FRAC × the lost flight's outlay) — mirrors the setback's max(0.6, 0.4×rdCostOf)
 const INQUIRY_REL=0.02, INQUIRY_FLIGHTS=3;           // ascent/staging reward: +2% additive R (like familyRelBonus), gated to the failed subsystem, over 3 flights
 const INQUIRY_SCI_BONUS=10;                           // deep-phase reward: flat science windfall (~1.5× a base deep mission's ~5-7⚛ yield, above SCI_RUSH_BASE=6)
+// E1.7: space telescope standing program — term length, base monthly yield, and instrument-aging
+// parameters. Base yield is deliberately modest (a fraction of INQUIRY_SCI_BONUS per month) since
+// it compounds over the whole term rather than paying out once.
+const TELESCOPE_TERM=60;          // months (5 years) before the program needs re-flying
+const TELESCOPE_SCI_BASE=2;       // ⚛/month baseline drip
+const TELESCOPE_HEALTH_DRAIN=1.2; // instrument wear per month absent a fault (slow — faults are the real driver)
+const TELESCOPE_DISCOVERY_CHANCE=0.06; // per-month roll while the program is active
+const TELESCOPE_FAULT_SHARE=0.35; // of discovery rolls, the fraction that are a fault (rest are windfalls)
+const TELESCOPE_WINDFALL_SCI=8;   // flat bonus on a windfall roll
+const TELESCOPE_FAULT_HEALTH=25;  // health lost if a fault is declined
+const TELESCOPE_REPAIR_COST_FRAC=0.02; // fraction of current capital, floor below
+const TELESCOPE_REPAIR_COST_FLOOR=0.4; // $M — mirrors INQUIRY_COST_FLOOR's max(floor, frac×basis) shape
 let _pendingInquiry=null;                             // an uncrewed loss awaiting a fund/decline inquiry decision (transient, like _pendingSetback)
 // ascent/staging subsystems → reliability credit; deep-phase (deep_propulsion / life_support) → science grant
 function inquiryRewardKind(subKey){ return SUBSYS_PHASE[subKey]==='deep' ? 'science' : 'reliability'; }
@@ -2143,6 +2155,62 @@ function resolveInquiry(choice){
     log('note',`No inquiry funded — the ${s.mName} loss goes on the books without a formal review.`);
   }
   _pendingInquiry=null; hideModal();
+  if(state.money<0) gameOver(); else render();
+}
+/* ---------- E1.7: space telescope standing program ----------
+   Reuses two proven shapes rather than inventing new ones: the passive-contract tick/expiry loop
+   (steady monthly drip, ages out) for the routine case, and the inquiry fund/decline decision for
+   the occasional-event case (an instrument fault, needing a call). One program slot — seeded on a
+   successful Orbital Observatory flight (see finish() above). */
+let _pendingDiscovery=null; // an instrument fault awaiting a fund/decline repair decision (transient, like _pendingInquiry)
+function tickScienceProgram(){
+  const sp=state.scienceProgram; if(!sp) return;
+  state.science=round2((state.science||0)+sp.sciPerMonth);
+  sp.monthsLeft--; sp.health=Math.max(0,sp.health-TELESCOPE_HEALTH_DRAIN);
+  if(Math.random()<TELESCOPE_DISCOVERY_CHANCE) triggerDiscovery();
+  if(sp.monthsLeft<=0){
+    log('note','🔭 The Orbital Observatory has completed its program term — re-fly the mission to stand up a new one.');
+    state.scienceProgram=null;
+  } else if(sp.health<=0){
+    log('bad','🔭 The Orbital Observatory has failed beyond repair — the program ends.');
+    state.scienceProgram=null;
+  }
+}
+function triggerDiscovery(){
+  if(_pendingDiscovery || !state.scienceProgram) return; // one discovery decision at a time
+  const isFault=Math.random()<TELESCOPE_FAULT_SHARE;
+  if(isFault){
+    const cost=round2(Math.max(TELESCOPE_REPAIR_COST_FLOOR, TELESCOPE_REPAIR_COST_FRAC*state.money));
+    _pendingDiscovery={kind:'fault', cost};
+    log('bad','⚠ Orbital Observatory: an instrument fault needs a decision.');
+  } else {
+    // windfalls pay out immediately — no decision needed, just the good news
+    state.science=round2((state.science||0)+TELESCOPE_WINDFALL_SCI);
+    log('ok',`🔭 Orbital Observatory discovery — an unplanned windfall banks +${TELESCOPE_WINDFALL_SCI}⚛ science.`);
+  }
+}
+function maybeShowDiscovery(){ if(_pendingDiscovery && !_pendingSetback && !_pendingLogiMishap && !_pendingInquiry && !_pendingHearing && !_pendingRivalDisaster) showDiscoveryModal(); } // lowest precedence — the others are time-critical crises, this is routine upkeep
+function showDiscoveryModal(){
+  const s=_pendingDiscovery; if(!s) return;
+  const fundOk=state.money>=s.cost;
+  showModal(`<h2 style="color:var(--warn)">🔭 Instrument fault</h2>
+    <p>The Orbital Observatory has developed a fault. Left unrepaired, the instrument keeps degrading.</p>
+    <button class="btn" onclick="resolveDiscovery('fund')" ${fundOk?'':'disabled'} title="${fundOk?'':'Not enough capital'}">Fund the repair — ${fM(s.cost)} <span class="dim">· health restored</span></button>
+    <button class="btn ghost" style="margin-top:8px" onclick="resolveDiscovery('decline')">Leave it <span class="dim">· −${TELESCOPE_FAULT_HEALTH} health</span></button>`);
+}
+function resolveDiscovery(choice){
+  const s=_pendingDiscovery; if(!s) return;
+  const sp=state.scienceProgram;
+  if(choice==='fund' && sp){
+    if(state.money<s.cost) return; // guarded; button disabled when unaffordable
+    state.money-=s.cost; sp.health=100;
+    log('ok','Orbital Observatory fault repaired — the instrument is back to full health.');
+  } else if(sp){
+    sp.health=Math.max(0,sp.health-TELESCOPE_FAULT_HEALTH);
+    log('note',`No repair funded — Orbital Observatory health down to ${Math.round(sp.health)}%.`);
+    if(sp.health<=0){ log('bad','🔭 The Orbital Observatory has failed beyond repair — the program ends.'); state.scienceProgram=null; }
+  }
+  _pendingDiscovery=null; hideModal();
   if(state.money<0) gameOver(); else render();
 }
 /* ---------- E1.1: budget hearing after a fatal crewed loss ----------
@@ -2262,6 +2330,7 @@ function tickContinuousDay(){
 // subsystems), fired once per completed month instead of per loop iteration.
 function tickMonthlyBoundary(){
     tickPassiveContracts(); // passive-income contracts pay monthly, then age toward expiry/cooldown
+    tickScienceProgram(); // E1.7: space telescope standing program — monthly drip + discovery-event roll
     for(const fid in (state.facilities||{})){ // M17: facility bookkeeping — supply drain + starvation/abandon (production payout is now the daily flow in tickContinuousDay)
       if(!facilityBuilt(fid)) continue;
       const fdef=facilityById(fid), fst=facilityState(fid);
@@ -3692,7 +3761,7 @@ function buildEngineStock(engId, count, tested){
   const proven=engineStockTestedCount(engId);
   log('ok', `Engine yard — manufacturing ${count}× ${engineIcon(engId)} ${ENGINES[engId].name}${tested?' (bench-tested)':''} (${fM(chk.cost)}, ${chk.days} d). Stock now ${engineStockCount(engId)}${proven>0?` · ${proven} proven`:''}.`);
   advanceDays(chk.days); // the engines take calendar time to build (do it during downtime)
-  if(!state.over){ render(); maybeShowSetback(); maybeShowMishap(); maybeShowRivalDisaster(); maybeShowEraInterstitial(); }
+  if(!state.over){ render(); maybeShowSetback(); maybeShowMishap(); maybeShowRivalDisaster(); maybeShowEraInterstitial(); maybeShowDiscovery(); }
 }
 // reliability bump from bench-tested engines + structural components fitted to the current build (heritage you banked)
 function benchRelBonus(m){
@@ -3784,7 +3853,7 @@ function buildPartStock(key, count, tested){
   const proven=partStockTestedCount(key);
   log('ok', `Structures yard — fabricating ${count}× ${partCompIcon(key)} ${partCompName(key)}${tested?' (bench-tested)':''} (${fM(chk.cost)}, ${chk.days} d). Stock now ${partStockCount(key)}${proven>0?` · ${proven} proven`:''}.`);
   advanceDays(chk.days); // structural components take calendar time to fabricate (do it during downtime)
-  if(!state.over){ render(); maybeShowSetback(); maybeShowMishap(); maybeShowRivalDisaster(); maybeShowEraInterstitial(); }
+  if(!state.over){ render(); maybeShowSetback(); maybeShowMishap(); maybeShowRivalDisaster(); maybeShowEraInterstitial(); maybeShowDiscovery(); }
 }
 // Forecast: months of coverage at the recent build cadence.
 function materialMonthsCoverage(key){
@@ -4415,7 +4484,7 @@ function showResearchNoticeModal(ids){
 // Time Granularity slice 2: the player's time control. Advance N days, then render + surface any
 // pending R&D setback (the one decision the monthly tick can raise). Overhead accrues per day, so
 // short steps cost proportionally — there is no free time.
-function stepTime(days){ advanceDays(days); if(!state.over){ render(); maybeShowSetback(); maybeShowMishap(); maybeShowRivalDisaster(); maybeShowEraInterstitial(); maybeShowResearchNotice(); } }
+function stepTime(days){ advanceDays(days); if(!state.over){ render(); maybeShowSetback(); maybeShowMishap(); maybeShowRivalDisaster(); maybeShowEraInterstitial(); maybeShowResearchNotice(); maybeShowDiscovery(); } }
 function advanceMonth(){ stepTime(DAYS_PER_MONTH); } // #26: one-month step (used by the advisor nudge)
 // Header time arrows: ▸ day / ▸▸ week / ▸▸▸ month. First click on an arrow steps once; a second
 // click on the same arrow starts auto-advancing that unit at 1 step/sec; a third click (or clicking
@@ -4477,7 +4546,7 @@ try{ document.addEventListener('visibilitychange', handleVisibilityChange); }cat
 function skipResearch(){ if(!state.activeResearch) return;
   let n=state.activeResearch.monthsLeft+1; // each month removes ≥1; +1 guarantees completion absent a setback
   while(n-->0 && state.activeResearch && !_pendingSetback && !_pendingLogiMishap && !_pendingInquiry && !_pendingRivalDisaster && !state.over) advance(1); // #26: stop the skip at a setback (or 2.3 mishap) decision
-  if(!state.over){ render(); maybeShowSetback(); maybeShowMishap(); maybeShowRivalDisaster(); maybeShowEraInterstitial(); }
+  if(!state.over){ render(); maybeShowSetback(); maybeShowMishap(); maybeShowRivalDisaster(); maybeShowEraInterstitial(); maybeShowDiscovery(); }
 }
 
 /* ---------- M3b: launch windows ---------- */
@@ -6114,6 +6183,13 @@ function finalizeLaunch(ctx, ops){
     let sciGain=Math.max(1, Math.round(((routine||m.proc)?0.3:1)*((m.rep||5)*0.12 + (m.profile?5:1))*sciYieldMult()*doctrineMult('sci'))); // #6b: Science track multiplies mission science yield; CE3(a) Science doctrine boosts it — E1.3: procedural contracts are perpetual filler, not a first, so they get the routine-tier rate too
     if(m.sciYield && !routine && !m.proc) sciGain += Math.round(m.sciYield*sciYieldMult()*doctrineMult('sci')); // #3: prestige science missions bank a large knowledge windfall (first flight only — not farmable on routine reflights, and not on a regenerating procedural offer either)
     state.science=round2((state.science||0)+sciGain);
+    // E1.7: flying the Orbital Observatory also stands up a passive science program (steady monthly
+    // drip + occasional discovery events) — one slot; re-flying it while one's already running just
+    // banks the normal sciGain above, no stacking a second instrument.
+    if(m.id==='space_telescope' && !state.scienceProgram){
+      state.scienceProgram={monthsLeft:TELESCOPE_TERM, sciPerMonth:TELESCOPE_SCI_BASE, health:100};
+      log('ok','🔭 The Orbital Observatory is operational — a standing science program, returning data every month.');
+    }
     let payout=(routine?m.payout*0.4:m.payout)*windowQuality*diff().payoutMult*econPayoutMult()*opsPayoutMult*doctrineMult('payout'); // CE3(a): Commercial +, Statecraft/Science −
     if(crewed) payout*=ab.payoutMult; // M6: astronaut payout bonus
     if(!routine && state.scooped[m.id]) payout*=SCOOP_PAYOUT_MULT;
@@ -12039,6 +12115,14 @@ function outlinerItems(){
   // expiring passive contracts (only when near)
   (state.passiveContracts||[]).forEach(cn=>{ const d=PASSIVE_CONTRACT_DEFS.find(x=>x.id===cn.id);
     if(cn.monthsLeft<=4) push('📄', (d?passiveContractDisplay(d).name:cn.id)+' expires', cn.monthsLeft*30, ()=>setTab('missions'), cn.monthsLeft<=2?'var(--warn)':null); });
+  // E1.7: the space telescope program — surface when its term is running out or the instrument
+  // is degraded enough to need a decision soon (mirrors the passive-contract "only when near" rule)
+  { const sp=state.scienceProgram;
+    if(sp && (sp.monthsLeft<=4 || sp.health<=40)){
+      const label=sp.health<=40 ? 'Orbital Observatory degrading' : 'Orbital Observatory term ending';
+      push('🔭', label, sp.monthsLeft*30, ()=>setTab('missions'), (sp.health<=25||sp.monthsLeft<=2)?'var(--warn)':null);
+    }
+  }
   // rivals' next scheduled first that hasn't fired and the player hasn't claimed
   { let best=null;
     for(const r of RIVALS){ for(const f of (r.firsts||[])){
@@ -12432,6 +12516,7 @@ function commandSummary(){
     research: ar?{name:(RESEARCH.find(r=>r.id===ar.id)||{}).name||ar.id, monthsLeft:ar.monthsLeft}:null,
     nextObjective: no?no.mission.name:null,
     activeMission: m?{name:m.name, buildMo:buildMonths(m)+1+TEST_LEVELS[state.testLevel].months}:null,
+    scienceProgram: state.scienceProgram ? {monthsLeft:state.scienceProgram.monthsLeft, health:Math.round(state.scienceProgram.health), sciPerMonth:state.scienceProgram.sciPerMonth} : null, // E1.7
   };
 }
 /* ---------- #18 (Home redesign): pure builders for the dashboard panels ----------

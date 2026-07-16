@@ -114,7 +114,7 @@ Complexity: S = <1 day, M = 1–5 days, L = 1–3 weeks, XL = 1+ month. Impact: 
 |79| Cargo manifest choices on resupply (pick 3 of 5) | Small decisions | S | ★★ | 74 | M |Backlog|
 |80| Surface base tier after ISRU (Moon/Mars) | Colonization-lite | XL | ★★ | — | L |Deferred|
 |81| Sample return market (sell/keep for science) | Economy branch | M | ★ | — | L |Backlog|
-|82| Space telescope program (standing science + events) | Passive with events | M | ★★ | — | M |Scoped — ROADMAP E1.7|
+|82| Space telescope program (standing science + events) | Passive with events | M | ★★ | — | M |Shipped 2026-07-16 (E1.7)|
 |83| Satellite constellation management (aging, replacement) | Passive contracts deepen | L | ★★ | — | M |Deferred|
 |84| Orbital debris accumulation from failures | Long-arc consequence | M | ★ | — | L |Backlog|
 |85| Tourism vertical: flights with famous-passenger events | Commercial era color | M | ★★ | — | M |Backlog|

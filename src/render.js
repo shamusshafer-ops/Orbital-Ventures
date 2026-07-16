@@ -222,6 +222,14 @@ function outlinerItems(){
   // expiring passive contracts (only when near)
   (state.passiveContracts||[]).forEach(cn=>{ const d=PASSIVE_CONTRACT_DEFS.find(x=>x.id===cn.id);
     if(cn.monthsLeft<=4) push('📄', (d?passiveContractDisplay(d).name:cn.id)+' expires', cn.monthsLeft*30, ()=>setTab('missions'), cn.monthsLeft<=2?'var(--warn)':null); });
+  // E1.7: the space telescope program — surface when its term is running out or the instrument
+  // is degraded enough to need a decision soon (mirrors the passive-contract "only when near" rule)
+  { const sp=state.scienceProgram;
+    if(sp && (sp.monthsLeft<=4 || sp.health<=40)){
+      const label=sp.health<=40 ? 'Orbital Observatory degrading' : 'Orbital Observatory term ending';
+      push('🔭', label, sp.monthsLeft*30, ()=>setTab('missions'), (sp.health<=25||sp.monthsLeft<=2)?'var(--warn)':null);
+    }
+  }
   // rivals' next scheduled first that hasn't fired and the player hasn't claimed
   { let best=null;
     for(const r of RIVALS){ for(const f of (r.firsts||[])){
@@ -615,6 +623,7 @@ function commandSummary(){
     research: ar?{name:(RESEARCH.find(r=>r.id===ar.id)||{}).name||ar.id, monthsLeft:ar.monthsLeft}:null,
     nextObjective: no?no.mission.name:null,
     activeMission: m?{name:m.name, buildMo:buildMonths(m)+1+TEST_LEVELS[state.testLevel].months}:null,
+    scienceProgram: state.scienceProgram ? {monthsLeft:state.scienceProgram.monthsLeft, health:Math.round(state.scienceProgram.health), sciPerMonth:state.scienceProgram.sciPerMonth} : null, // E1.7
   };
 }
 /* ---------- #18 (Home redesign): pure builders for the dashboard panels ----------

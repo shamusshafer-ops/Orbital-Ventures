@@ -3765,3 +3765,39 @@ mechanics. No SAVE_VERSION bump needed if `state.scienceProgram` defaults to `nu
 lazily on load (same convention every other optional-state field uses).
 
 **Not yet scheduled** — sits after E1.2/E1.6 in the current queue; pull forward on request.
+
+## Session — E1.7 shipped: space telescope standing program (2026-07-16)
+
+Backlog #82 implemented per the E1.7 scoping entry above. Reused two existing patterns rather than
+new mechanics: the passive-contract tick/expiry shape for the steady drip, the inquiry fund/decline
+shape for fault events.
+
+- **Seed**: a successful `space_telescope` (Orbital Observatory) flight sets `state.scienceProgram=
+  {monthsLeft:TELESCOPE_TERM(60), sciPerMonth:TELESCOPE_SCI_BASE(2), health:100}` — one slot; a
+  re-flight while one's already running just banks the normal one-time sciYield, no stacking.
+- **`tickScienceProgram()`** (called from `tickMonthlyBoundary` alongside `tickPassiveContracts`):
+  pays `sciPerMonth` into `state.science`, decrements `monthsLeft`, decays `health` by
+  `TELESCOPE_HEALTH_DRAIN` (1.2/mo), rolls a 6%/mo discovery chance, clears the program at
+  `monthsLeft<=0` (term complete, re-flyable) or `health<=0` (failed, re-flyable).
+- **Discovery events**: 65% windfall (instant +8⚛, no decision — the steady-drip case stays a case
+  needing a call, kept it a genuine decision), rest fault (`_pendingDiscovery`, fund/decline —
+  `resolveDiscovery()` mirrors `resolveInquiry()` exactly). Wired into all four `maybeShowSetback`-
+  style decision-priority chains as `maybeShowDiscovery()`, lowest precedence (the others are
+  time-critical crises; this is routine upkeep).
+- **Surfacing**: `commandSummary().scienceProgram` (data hook, no new UI yet — deliberately deferred,
+  per the scoping note); Outliner row appears only when near-expiry (≤4mo) or degraded (health≤40),
+  matching the existing passive-contract "only when it's actionable" convention.
+
+**No SAVE_VERSION bump** — `state.scienceProgram` defaults to `null` lazily, same convention every
+other optional field uses.
+
+**Validation.** `node --check` OK, lint clean (27 guarded-Phaser refs, unchanged). New
+`tests/test-science-program.js` (22/22): seeding shape, drip/decay math, both expiry paths, both
+discovery-roll branches (rng forced via call-counted `Math.random` stub), both `resolveDiscovery`
+branches, one-slot guard, and commandSummary/Outliner surfacing with and without an active program.
+**40/42 suites** — 2 pre-existing failures (`test-era-visual.js`, `test-theme-sync.js`) unrelated to
+this slice, inherited from work pushed since the last session (era pad-style/theme-color checks,
+nothing E1.7 touches) — flagged, not fixed here.
+
+**Needs a real-browser check**: the fault-decision modal styling, and that the Outliner row's icon/
+color read correctly against the other rows.
