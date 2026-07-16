@@ -145,6 +145,8 @@ Complexity: S = <1 day, M = 1–5 days, L = 1–3 weeks, XL = 1+ month. Impact: 
 |108| Desktop breakpoint ~1280px (zero @media rules; CC deck overflows laptops) | Accessibility | S | ★★ | — | M |Backlog|
 |109| Font-scale setting | Accessibility | S | ★ | — | L |Backlog|
 |110| Progressive CC deck (hide advanced cards until after first launch) | Onboarding | S | ★ | 106 | L |Backlog|
+|111| Base Bench: third bench tab for lunar/Mars surface bases (horizontal ground-line SVG; facilities already run full station machinery) | Empire visualization | M | ★★★ | — | H |Scoped — ROADMAP E1.8|
+|112| Surface-specific base modules (ISRU plant, greenhouse, reactor pad, rover garage; surface:true flag filtering) | Base depth | M | ★★ | 111 | M |Scoped — ROADMAP E1.8 slice C (follow-up)|
 
 ---
 
@@ -161,7 +163,7 @@ Complexity: S = <1 day, M = 1–5 days, L = 1–3 weeks, XL = 1+ month. Impact: 
 | Deferred | 12 | Named in ROADMAP.md's deferred list |
 | **Backlog** | **54** | Not yet on ROADMAP.md in any form |
 
-Over half the list (60/110) hasn't been triaged onto ROADMAP.md yet — mostly small
+Over half the list (60/112) hasn't been triaged onto ROADMAP.md yet — mostly small
 QoL items (#9, 11–17, 19–25), flight/ops texture (#31, 33–34, 37–45), rival/world
 flavor beyond the reactive-race core (#50, 53, 56–60), and personnel/station depth
 beyond the named E1.4/E2 items (#64, 66–72, 75–79, 81–82, 84–85, 89–90, 100, 104).

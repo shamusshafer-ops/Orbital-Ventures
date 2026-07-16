@@ -3811,3 +3811,30 @@ drawing-board + detail toggle. Five new backlog items added (#106–#110): guide
 header-stat tooltips, ~1280px desktop breakpoint (zero @media rules today), font-scale setting,
 progressive CC deck. Path to 8+: #106, overlay C/D, sound pass, keyboard/reduced-motion — consistent
 with the existing EA gate plus the tutorial gap.
+
+## E1.8 — Base Bench (2026-07-16, scoped; #111/#112)
+
+A third bench tab for surface bases (Lunar/Mars), sibling to the Station Bench. Key architectural
+fact making this cheap: `lunar_base`/`mars_base` are already full `FACILITY_DEFS` running the
+complete station machinery — `moduleList`, power, crew, synergies, `facilityProduction` — the
+Station Bench is merely hardwired to `leo_station` (render.js `renderStationDraft`). This is a
+visualization/UX build, not a new simulation system.
+
+**Slices (Option B — true third tab, confirmed):**
+- **A — plumbing**: `baseView` div + rail scene button + `setTab('base')` wiring, mirroring
+  stationView exactly; facility selector (Luna/Mars), each locked until its `reqMission` is flown
+  (same gate the facility founding already uses); reuse module cards + power/crew/synergy stats
+  readouts verbatim (already facility-generic).
+- **B — surface rendering**: horizontal ground-line SVG replacing the vertical orbital stack —
+  modules side-by-side joined by connective corridors, regolith horizon, body-tinted sky
+  (gray/black for Luna, butterscotch for Mars); reuse the pan/zoom/popout/expand chrome
+  (`wireStationPan` pattern, own zoom state).
+- **C — surface modules (FOLLOW-UP, #112, not first pass)**: new `STATION_MODULES` entries with
+  `surface:true` (ISRU plant, greenhouse, reactor pad — ties to `surface_fission_power` research —
+  rover garage); filter surface-only modules off the orbital bench and orbital-only (radiators,
+  docking nodes) off surface benches. Until C lands, surface bases build from the shared pool,
+  exactly as they already do via the facility modal today.
+- **D (optional)**: drawing-board blueprint mode parity.
+
+**Not in scope:** colony population (long-horizon ROADMAP #21), new production mechanics.
+**No SAVE_VERSION bump** — per-facility moduleLists already persist.
