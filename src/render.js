@@ -4672,7 +4672,12 @@ function renderStationStackSVG(W,H,cur,interactive){
 }
 // Palette of dockable modules with cost/gates
 function renderStationPalette(cur){
-  const cards=STATION_MODULES.map(md=>stationModuleCard(md, cur, true)).join('');
+  const surface = cur && cur.def && cur.def.body!=='earth';
+  const ORBITAL_ONLY=['node_hub']; // radial berth-sphere is an orbital-assembly concept — no place on a surface base
+  // E1.8 C: orbital bench shows all non-surface modules; surface bench shows surface modules plus the
+  // shared ones (Habitat, Lab, Power Truss, Depot, Greenhouse) minus the orbital-only structure.
+  const cards=STATION_MODULES.filter(md=> surface ? !ORBITAL_ONLY.includes(md.id) : !md.surface)
+    .map(md=>stationModuleCard(md, cur, true)).join('');
   return `<div style="margin-top:10px"><div class="mission-tag" style="margin-bottom:6px">Modules — dock to grow ${cur.def.name}</div>
     <div style="display:flex;gap:10px;flex-wrap:wrap">${cards}</div></div>`;
 }

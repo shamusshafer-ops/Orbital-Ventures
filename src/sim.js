@@ -1463,9 +1463,20 @@ function stationModuleCost(def, fs, modDef){
   const n=facilityModuleList(fs).length;
   return round2(modDef.cost*facilityBodyMult(def)*(1+0.25*(n-1)));
 }
+// E1.8 C: surface/orbital module compatibility — shared by all three module-acquire gates
+// (canAddStationModule / canContractStationModule / canFlyModuleDelivery) so they can't drift.
+// Surface modules only mount on a Moon/Mars base; the orbital berth-sphere Node has no place on a
+// surface base. Guards save-edits and stale delivery offers, not just the (already-filtered) palette.
+function moduleFacilityCompatible(def, md){
+  const onSurface = def && def.body!=='earth';
+  if(md.surface && !onSurface) return {ok:false, why:'Surface module — only builds on a Moon/Mars base'};
+  if(!md.surface && onSurface && md.id==='node_hub') return {ok:false, why:'Orbital structure — no place on a surface base'};
+  return {ok:true};
+}
 function canAddStationModule(facId, modId){
   const def=facilityById(facId), fs=facilityState(facId), md=stationModuleDef(modId);
   if(!def||!fs||!md) return {ok:false, why:'—'};
+  { const compat=moduleFacilityCompatible(def, md); if(!compat.ok) return compat; } // E1.8 C
   if(md.reqResearch && !state.research[md.reqResearch]) return {ok:false, why:'Needs '+((RESEARCH.find(r=>r.id===md.reqResearch)||{}).name||md.reqResearch)};
   if(facilityModuleList(fs).length>=facilityPortCap(fs) && modId!=='node_hub') return {ok:false, why:'All ports occupied — dock a Node for growth room'};
   const cost=stationModuleCost(def, fs, md);
@@ -1504,6 +1515,7 @@ function contractedModuleCost(def, fs, md){ return round2(stationModuleCost(def,
 function canContractStationModule(facId, modId){
   const def=facilityById(facId), fs=facilityState(facId), md=stationModuleDef(modId);
   if(!def||!fs||!md) return {ok:false, why:'—'};
+  { const compat=moduleFacilityCompatible(def, md); if(!compat.ok) return compat; } // E1.8 C
   if(md.reqResearch && !state.research[md.reqResearch]) return {ok:false, why:'Needs '+((RESEARCH.find(r=>r.id===md.reqResearch)||{}).name||md.reqResearch)};
   if(facilityModuleList(fs).length>=facilityPortCap(fs) && modId!=='node_hub') return {ok:false, why:'All ports occupied — dock a Node for growth room'};
   const cost=contractedModuleCost(def, fs, md);
@@ -1530,6 +1542,7 @@ function flyModuleCost(def, fs, md){ const n=facilityModuleList(fs).length; retu
 function canFlyModuleDelivery(facId, modId){
   const def=facilityById(facId), fs=facilityState(facId), md=stationModuleDef(modId);
   if(!def||!fs||!md) return {ok:false, why:'—'};
+  { const compat=moduleFacilityCompatible(def, md); if(!compat.ok) return compat; } // E1.8 C
   if(md.reqResearch && !state.research[md.reqResearch]) return {ok:false, why:'Needs '+((RESEARCH.find(r=>r.id===md.reqResearch)||{}).name||md.reqResearch)};
   if(facilityModuleList(fs).length>=facilityPortCap(fs) && modId!=='node_hub') return {ok:false, why:'All ports occupied — dock a Node for growth room'};
   return {ok:true, cost:flyModuleCost(def, fs, md)};

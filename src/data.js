@@ -877,6 +877,33 @@ const STATION_MODULES = [
     blurb:'Crops under grow-lights. Each greenhouse cuts this facility\'s standing resupply cost 15% — food grown on-site never needs launching.',
     hist:'Salyut cosmonauts grew the first plants in orbit; the ISS Veggie system (2014) served the first space-grown salad. Closed-loop food is the key to bases far from resupply.',
     synHint:'Each one cuts standing resupply 15% and feeds itself — decisive on the Moon/Mars where resupply is 2–4× costlier. With a Habitat, closed-loop life support adds +15% income.' },
+  // ---- E1.8 slice C: surface-only base modules (surface:true). Excluded from the orbital station
+  // bench; surface benches exclude the orbital-only modules (Docking Node's berth-sphere, the
+  // radiator-heavy structure) in turn. Wider/shorter hulls read as ground hardware, not cans. ----
+  { id:'isru_plant', name:'ISRU Plant', short:'ISRU', len:210, dia:104, color:'#c88a4a', surface:true,
+    cost:14, buildMo:6, stats:{ mass:22.0, crew:0, crewReq:1, powerGenKw:0, powerDrawKw:7.5 }, reqResearch:'lunar_isru',
+    prod:{ income:0.4, fuel:1.4, rep:0.5, sci:0.3 }, role:'Surface / propellant',
+    blurb:'Cracks local ice or atmosphere into propellant on the surface — the reason a base pays for itself. Feeds the depot economy from the Moon or Mars instead of from Earth.',
+    hist:'Every serious lunar or Mars architecture since Apollo has turned on ISRU — making the return propellant on-site instead of hauling it across the Solar System.',
+    synHint:'Big surface fuel output, power-hungry. Back it with a Reactor Pad or Power Truss; each Greenhouse-cut on resupply keeps it running cheaper.' },
+  { id:'reactor_pad', name:'Surface Reactor', short:'RTG', len:160, dia:80, color:'#d0563a', surface:true,
+    cost:13, buildMo:6, stats:{ mass:14.0, crew:0, powerGenKw:24.0, powerDrawKw:0.6 }, reqResearch:'surface_fission_power',
+    prod:{ income:0.15, fuel:0, rep:0.2, sci:0 }, resupplyCut:0.1, role:'Surface / power',
+    blurb:'A compact fission reactor that powers the base through the long lunar night or a Martian winter — the surface answer to arrays that go dark.',
+    hist:'NASA\'s Kilopower / Fission Surface Power work targets tens of kilowatts on another world — steady power regardless of sun angle or dust.',
+    synHint:'+24 kW day or night, unlike solar. The power backbone every crewed surface base wants; also trims standing resupply 10%.' },
+  { id:'hab_dome', name:'Habitat Dome', short:'DOME', len:220, dia:120, color:'#c3cad1', surface:true,
+    cost:12, buildMo:5, stats:{ mass:20.0, crew:4, powerGenKw:5.0, powerDrawKw:5.0 },
+    prod:{ income:0.6, fuel:0, rep:0.8, sci:0.9 }, role:'Surface / crew',
+    blurb:'A regolith-shielded pressurized dome — more crew capacity than an orbital can, and the social heart of a surface settlement.',
+    hist:'Buried or regolith-piled habitats are the standard concept for shielding a surface crew from radiation and micrometeorites over long stays.',
+    synHint:'The surface Habitat: crew for ISRU plants and Labs, plus a rep/income lift from a growing settlement. Pairs with a Lab and a Greenhouse just like the orbital Habitat.' },
+  { id:'rover_garage', name:'Rover Garage', short:'ROV', len:190, dia:98, color:'#9aa6b0', surface:true,
+    cost:9, buildMo:4, stats:{ mass:13.0, crew:0, crewReq:1, powerGenKw:0, powerDrawKw:3.0 },
+    prod:{ income:0.3, fuel:0, rep:0.5, sci:1.4 }, role:'Surface / mobility',
+    blurb:'Pressurized rovers and an airlock bay — extends the base\'s reach for field science and prospecting far beyond the habitat.',
+    hist:'Apollo\'s Lunar Roving Vehicle tripled crew traverse range; pressurized rovers are the concept for multi-week surface expeditions on the Moon and Mars.',
+    synHint:'Steady field science that grows with the base. Needs a crew slot from a Habitat Dome — mobility is people-driven.' },
 ];
 const STATION_PORT_BASE=4; // a core stack holds 4 modules; each Docking Node adds its ports
 

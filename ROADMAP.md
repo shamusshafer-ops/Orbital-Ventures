@@ -3867,3 +3867,29 @@ this slice; worth a seeded-rng harness pass someday.
 
 **Needs a real-browser check**: ground-line composition/colors on both bodies, corridor joints at
 odd zoom levels, rail button icon rendering.
+
+## Session — E1.8 slice C shipped: surface base modules (2026-07-16)
+
+#112 implemented. Four surface-only modules added to STATION_MODULES with `surface:true`: ISRU Plant
+(fuel, `lunar_isru`-gated), Surface Reactor (24 kW day/night, `surface_fission_power`-gated,
+resupply-cut 10%), Habitat Dome (4 crew, the surface Habitat), Rover Garage (field science). Wider/
+shorter hulls than orbital cans. Existing modules are implicitly orbital (no flag).
+
+**Filtering**: `renderStationPalette` now branches on `cur.def.body` — orbital benches hide
+`surface:true` modules; surface benches hide the orbital-only berth-sphere Node (`node_hub`) but keep
+the shared five (Habitat, Lab, Power Truss, Depot, Greenhouse). **Gate enforcement**: new shared
+`moduleFacilityCompatible(def, md)` predicate called by all three acquire-gates
+(`canAddStationModule` / `canContractStationModule` / `canFlyModuleDelivery`) so a save-edit or stale
+delivery offer can't mount an incompatible module — the palette filter alone isn't a security
+boundary.
+
+**No SAVE_VERSION bump** — modules are content, moduleLists already persist.
+
+**Validation.** New `tests/test-surface-modules.js` (34/34): definitions + surface flag, the compat
+predicate matrix (surface↔orbital both directions, shared modules on both), palette filtering both
+benches, all three gates rejecting incompatible pairs + accepting valid ones, and the surface SVG
+rendering a base full of the new wide modules. **42/44** — same 2 pre-existing failures untouched.
+Slice D (blueprint board for surface bases) remains optional/unstarted; E1.8 is otherwise complete.
+
+**Needs a real-browser check**: the wider surface-module hulls' proportions on the ground line, and
+that ISRU/Reactor read as distinct silhouettes from the orbital cans.
