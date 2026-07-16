@@ -4281,3 +4281,34 @@ blueprint view, undo/redo, the deferred cursor-follow drag ghost + touch-drag fr
 **This is a natural stopping point for the epic** — everything shipped is safe and dormant. Enabling
 BENCH_V2 as the default is a deliberate future decision that should follow real playtesting, not ride in
 on a code session.
+
+## Session — E3.6 shipped: bench polish (2026-07-16) — EPIC E3 COMPLETE
+
+Optional polish slice. Undo/redo (deep-clone snapshots via `benchPushUndo`, capped at 40, redo stack
+cleared on any fresh mutation), part deletion (`benchDeletePart` — removes a part + its whole subtree,
+undoable, root-protected; the bench could add but not remove a specific part before), a blueprint/
+schematic view toggle (cyan-on-navy CSS filter tint), and palette tooltips that carry each part's blurb
++ historical flavor (engines pull their heritage line from ENGINES, reusing the established voice). A
+toolbar (undo/redo/blueprint) sits above the canvas. All routed through the single `benchPushUndo`
+choke point so every edit is undoable without per-callsite bookkeeping.
+
+**No SAVE_VERSION bump, no shipped-behaviour change** (still BENCH_V2-gated).
+
+**Validation.** New `tests/test-parts-polish.js` (18/18): undo restores exactly, redo re-applies,
+new-mutation-clears-redo, undo cap, delete+subtree+undo+root-protection, blueprint toggle, tooltip
+flavor content, and deep-clone integrity (later edits don't corrupt history snapshots). All 8 prior E3
+suites green. **51/53** overall, same 2 pre-existing failures (era-visual, theme-sync). 
+
+**EPIC E3 (Part-Based Vehicle Bench) COMPLETE — all 7 slices E3.0–E3.6, 9 test suites, 207 checks.**
+The part bench is fully built: parts-as-truth graph model with a physics bridge proven numerically
+equivalent to the slider core, drag-drop editing with snap-to-node, boosters + symmetry, per-part
+physics depth (drag/power/control), save-safe non-destructive migration, and polish (undo/redo/delete/
+blueprint/tooltips). **BENCH_V2 remains OFF by default** — everything is built, tested, and migration-
+safe, but enabling it as the shipped default is a deliberate decision that should follow real-browser
+playtesting, not a code session. Backlog #113 (the epic) is done as scoped; flipping the flag is the
+one remaining step and belongs to a human playtest pass.
+
+**Recommended real-browser playtest checklist before enabling BENCH_V2** (the whole epic never ran in a
+browser — headless-tested only): drag-drop snap feel, node marker tap sizes, undo/redo responsiveness,
+blueprint view legibility, tooltip readability, and a full build→launch cycle confirming the derived
+graph flies identically to the slider design it replaces.

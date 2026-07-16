@@ -685,6 +685,27 @@ function renderBuildSVG(build, W, H, interactive){
 let _benchBuild = null;          // the live editing graph (mirrors state.build once wired at E3.5)
 let _benchSelNode = null;        // "uid:nodeId" currently selected as the click-attach target
 let _benchDrag = null;           // {defId} while dragging a palette part
+// E3.6: undo/redo. Snapshots are deep clones of the build graph, taken BEFORE each mutation.
+let _benchUndo = [];             // past states (most recent last)
+let _benchRedo = [];             // undone states (for redo)
+let _benchBlueprint = false;     // schematic/blueprint view toggle
+const BENCH_UNDO_CAP = 40;
+function benchClone(b){ return b ? JSON.parse(JSON.stringify(b)) : b; }
+function benchUndo(){
+  if(!_benchUndo.length) return;
+  _benchRedo.push(benchClone(benchBuild()));
+  _benchBuild=_benchUndo.pop(); _benchSelNode=null;
+  renderPartsBench();
+}
+function benchRedo(){
+  if(!_benchRedo.length) return;
+  _benchUndo.push(benchClone(benchBuild()));
+  _benchBuild=_benchRedo.pop(); _benchSelNode=null;
+  renderPartsBench();
+}
+function benchToggleBlueprint(){ _benchBlueprint=!_benchBlueprint; renderPartsBench(); }
+// snapshot current build for undo + clear redo — the single line every mutator calls first
+function benchPushUndo(){ _benchUndo.push(benchClone(benchBuild())); if(_benchUndo.length>BENCH_UNDO_CAP)_benchUndo.shift(); _benchRedo.length=0; }
 
 function benchBuild(){
   if(!_benchBuild){
@@ -693,7 +714,7 @@ function benchBuild(){
   }
   return _benchBuild;
 }
-function benchReset(){ _benchBuild = emptyBuild('capsule_mk1'); _benchSelNode=null; renderPartsBench(); }
+function benchReset(){ benchPushUndo(); _benchBuild = emptyBuild('capsule_mk1'); _benchSelNode=null; renderPartsBench(); }
 
 // palette card for one part def
 function partPaletteCard(def){
@@ -702,7 +723,10 @@ function partPaletteCard(def){
     : def.phys.propMass ? `${def.phys.propMass} t prop`
     : def.phys.crew ? `${def.phys.crew} crew`
     : def.phys.dryMass ? `${def.phys.dryMass} t` : '';
-  return `<div class="part-card" draggable="true" data-partid="${def.id}"
+  // E3.6 tooltip: blurb + historical flavor (engines pull their heritage line from ENGINES).
+  const engHist = def.engId && eng && eng.name ? `\n\nEngine: ${eng.name}` : '';
+  const tip = `${def.name}\n${def.blurb||''}${def.hist?'\n\n'+def.hist:''}${engHist}`.replace(/"/g,'&quot;');
+  return `<div class="part-card" draggable="true" data-partid="${def.id}" title="${tip}"
       onclick="benchPaletteClick('${def.id}')"
       ondragstart="benchDragStart(event,'${def.id}')" ondragend="benchDragEnd()"
       style="border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:grab;background:var(--panel2);min-width:120px">
@@ -743,8 +767,17 @@ function benchPaletteClick(defId){
   const [uid,nodeId]=target.split(':');
   const chk=canAttach(b, uid, nodeId, defId);
   if(!chk.ok){ renderPartsBench('Can\'t attach there: '+chk.why); return; }
+  benchPushUndo();
   attachPart(b, uid, nodeId, defId);
   _benchSelNode=null;
+  renderPartsBench();
+}
+// E3.6: delete a part (and its subtree) — the bench could add but not remove a specific part before.
+function benchDeletePart(uid){
+  const b=benchBuild();
+  if(uid===b.root){ renderPartsBench('Can\'t delete the root part — clear the build to start over.'); return; }
+  benchPushUndo();
+  detachPart(b, uid); _benchSelNode=null;
   renderPartsBench();
 }
 
@@ -765,6 +798,7 @@ function benchCanvasDrop(e){
   const map=host._nodePos||{};
   const snap=findSnapTarget(b, defId, sx, sy, (uid,nid)=>map[uid+':'+nid], 44);
   if(!snap){ renderPartsBench('No compatible attach point near the drop — try nearer an open ○ node.'); return; }
+  benchPushUndo();
   attachPart(b, snap.parentUid, snap.parentNode, defId);
   _benchDrag=null;
   renderPartsBench();
@@ -774,13 +808,22 @@ function benchCanvasDragOver(e){ e.preventDefault(); try{ e.dataTransfer.dropEff
 // click an open-node marker in the SVG to select it as the click-attach target
 function benchNodeClick(key){ _benchSelNode = (_benchSelNode===key)?null:key; renderPartsBench(); }
 
+function benchSetSymmetry(uid, n){ benchPushUndo(); applySymmetry(benchBuild(), uid, n); renderPartsBench(); }
 function renderPartsBench(msg){
   const host=document.getElementById('benchCanvas'); if(!host) return;
   const b=benchBuild();
   const r=renderBuildSVG(b, 260, 420, true);
-  if(r.error){ host.innerHTML=`<div class="flag warn">${r.error}</div>`; }
+  // E3.6 toolbar: undo / redo / blueprint toggle
+  const toolbar=`<div style="display:flex;gap:6px;margin-bottom:6px;align-items:center">
+    <button class="btn ghost" style="font-size:12px;padding:2px 8px" onclick="benchUndo()" ${_benchUndo.length?'':'disabled'} title="Undo">↶</button>
+    <button class="btn ghost" style="font-size:12px;padding:2px 8px" onclick="benchRedo()" ${_benchRedo.length?'':'disabled'} title="Redo">↷</button>
+    <button class="btn ghost" style="font-size:11px;padding:2px 8px;margin-left:auto" onclick="benchToggleBlueprint()" title="Toggle schematic view">${_benchBlueprint?'◑ Rendered':'◈ Blueprint'}</button>
+  </div>`;
+  if(r.error){ host.innerHTML=toolbar+`<div class="flag warn">${r.error}</div>`; }
   else {
-    host.innerHTML=r.svg;
+    // blueprint view: cyan-on-navy schematic tint via a wrapper class (CSS filter), rendered art otherwise
+    const wrapStyle=_benchBlueprint?'filter:hue-rotate(150deg) saturate(1.6) brightness(1.1);border:1px solid #2a5a7a;border-radius:8px':'';
+    host.innerHTML=toolbar+`<div id="benchCanvasInner" style="${wrapStyle}">${r.svg}</div>`;
     host._nodePos=r.nodePos;
     // overlay clickable hit-targets on open nodes (bigger than the visual dot, for touch)
     const svg=host.querySelector('svg');
@@ -834,9 +877,9 @@ function renderPartsBench(msg){
         const def=partDef(part.defId), sym=part.sym||1;
         return `<div style="display:flex;align-items:center;gap:6px;margin:4px 0">
           <span style="font-size:12px;flex:1">${def.name}</span>
-          <button class="btn ghost" style="font-size:11px;padding:2px 8px" onclick="applySymmetry(benchBuild(),'${part.uid}',${Math.max(1,sym-1)});renderPartsBench()" ${sym<=1?'disabled':''}>−</button>
+          <button class="btn ghost" style="font-size:11px;padding:2px 8px" onclick="benchSetSymmetry('${part.uid}',${Math.max(1,sym-1)})" ${sym<=1?'disabled':''}>−</button>
           <span style="font-family:var(--mono);font-size:12px;min-width:16px;text-align:center">×${sym}</span>
-          <button class="btn ghost" style="font-size:11px;padding:2px 8px" onclick="applySymmetry(benchBuild(),'${part.uid}',${Math.min(SYMMETRY_MAX,sym+1)});renderPartsBench()" ${sym>=SYMMETRY_MAX?'disabled':''}>+</button>
+          <button class="btn ghost" style="font-size:11px;padding:2px 8px" onclick="benchSetSymmetry('${part.uid}',${Math.min(SYMMETRY_MAX,sym+1)})" ${sym>=SYMMETRY_MAX?'disabled':''}>+</button>
         </div>`;
       }).join('');
     }
