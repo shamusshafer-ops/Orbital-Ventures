@@ -47,6 +47,8 @@ process exit code (0 = all passed).
 | `test-livery-esc.js` | H1 stored-XSS regression: esc() fundamentals, hostile livery.name renders inert at the vehicle pop-out title sink, import path re-clamps user-string lengths. |
 | `test-parts-bridge.js` | E3.0 make-or-break: part graph → stage-IR bridge reduces to the same stages the slider bench produces; Δv/TWR/liftoff/per-stage numerical equivalence + graph integrity + malformed-build handling. |
 | `test-parts-render.js` | E3.1 read-only bench renderer: every part shape draws without throwing, stage-Δv/TWR overlay matches real physics (no drift from the E3.0-proven bridge), stage-label count is correct, malformed builds handled, geometry sanity, symmetry tolerance. |
+| `test-parts-attach.js` | E3.2 model layer: open-node discovery, node compatibility (class+facing), attach/detach-takes-subtree, snap-target finding, soft warnings. |
+| `test-parts-ui.js` | E3.2 interaction logic: palette rendering, click-attach auto-targeting + explicit select, drop→snap→attach path, interactive-render nodePos/markers. |
 | `test-regression.js` | General smoke test: all difficulties boot, every scene tab renders, a long time-skip, a playthrough bot. Run this against *any* change as a baseline. |
 | `test-materials.js` | The collapsed raw-materials market — dip-threshold gating, dip pricing, buy/no-op paths, save/load, render, outliner/glyph surfacing. |
 | `test-station-operations.js` | Station operations — resupply contracts, crew assignment/rotation, maintenance condition, repair, and science output. |

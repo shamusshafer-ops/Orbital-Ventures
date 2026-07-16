@@ -960,6 +960,19 @@
   </div>
 
   <div id="benchView" class="hidden">
+    <!-- E3.2: part-based bench (BENCH_V2). Hidden until the flag flips at E3.5 cutover; the old
+         slider bench below stays the shipped default. Populated by renderPartsBench(). -->
+    <div id="benchV2" class="hidden" style="display:flex;gap:12px;flex-wrap:wrap">
+      <div class="card" style="flex:0 0 280px">
+        <div class="mission-tag">Vehicle assembly</div>
+        <div id="benchCanvas" style="margin-top:8px"></div>
+        <div id="benchPartStats" style="margin-top:10px"></div>
+      </div>
+      <div class="card" style="flex:1 1 320px;min-width:280px">
+        <div class="mission-tag">Parts — drag onto the rocket, or tap an ○ node then tap a part</div>
+        <div id="benchPalette" style="margin-top:8px"></div>
+      </div>
+    </div>
     <div class="bench-stage">
       <!-- #27/Presentation: the rocket is the bench centerpiece — moved out of the cramped
            right rail into a prominent sticky column at the center of the build stage. -->

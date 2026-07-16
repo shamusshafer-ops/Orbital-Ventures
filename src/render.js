@@ -500,7 +500,11 @@ function renderSceneMain(){
   if(state.tab!=='bench') pauseVehGame();
   if(state.tab!=='map') pauseMapGame();
   if(state.tab!=='station') pauseStationGame();
-  if(state.tab==='bench'){renderVehicleFamilies();renderBlueprints();renderLivery();renderParts();renderArchitecture();renderStages();renderBoosters();renderTransfer();renderLander();renderCrew();renderPower();renderWindowPlanner();renderRoutes();renderReadout();renderVehiclePreview();renderBenchLaunch();renderBenchTabs();}
+  if(state.tab==='bench'){
+    const v2=$('benchV2'); if(v2) v2.classList.toggle('hidden', !BENCH_V2);
+    if(BENCH_V2){ renderPartsBench(); }
+    renderVehicleFamilies();renderBlueprints();renderLivery();renderParts();renderArchitecture();renderStages();renderBoosters();renderTransfer();renderLander();renderCrew();renderPower();renderWindowPlanner();renderRoutes();renderReadout();renderVehiclePreview();renderBenchLaunch();renderBenchTabs();
+  }
   if(state.tab==='command' && hubPanel==='contracts'){ renderMissions(); renderContractsSubtabs(); } // slice 5: contracts drill content (passiveCard + missionList), split into sub-tabs
 }
 function renderSceneRndMapStation(){

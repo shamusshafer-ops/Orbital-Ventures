@@ -4084,3 +4084,47 @@ failures (era-visual, theme-sync, rng-flaky station-slice2), none related.
 **Next:** E3.2 (drag-drop editing — palette, snap-to-node, ghost preview) is the first slice where
 live UI wiring actually earns its keep. Large (L); design/interaction work — heavier model likely
 worth it for the snap/validation logic, though the palette-card rendering itself is mechanical.
+
+## Session — E3.2 shipped: drag-drop part editing (2026-07-16)
+
+The first live-reachable slice of the part bench (still `BENCH_V2`-gated). Built in two layers:
+
+**Model layer (pure, headless-tested — the risk).** Added to `src/parts.js`: `openNodes` (occupancy-
+aware), `nodesCompatible` (diameter-class match + opposite-facing rule — hard block on mismatches),
+`canAttach` (with reasons), `attachPart`/`detachPart` (detach takes the whole subtree, KSP-style,
+never the root), `findSnapTarget` (nearest open compatible node, taking a node-position lookup as a
+callback so it stays pure), and `buildWarnings` (soft, non-blocking — e.g. no-avionics). All 29 checks
+in `tests/test-parts-attach.js` green before any DOM existed.
+
+**UI layer (DOM controller).** Palette (`renderPartsPalette` — 4 category groups, draggable cards with
+real stats pulled from ENGINES for engines), and two placement paths both routed through `attachPart`:
+click a part → attaches to the selected open node, or auto-targets when exactly one node is open (the
+touch-friendly baseline that always works); or drag → drop snaps to the nearest compatible node via
+`findSnapTarget` over the rendered `nodePos` map. `renderBuildSVG` gained an `interactive` mode that
+emits open-node markers + a `nodePos` map for the snap layer. The SVG hit-target overlay is defensive
+(wrapped so headless/partial-DOM can't throw — it's pure decoration).
+
+**Wiring.** `benchView` gained a hidden `#benchV2` assembly UI (canvas + palette + live stats); the
+bench render path shows it and calls `renderPartsBench()` only when `BENCH_V2` is on, else the old
+slider bench is untouched and default. First slice where live wiring earned its keep (there's finally
+something interactive to see when a dev flips the flag).
+
+**No SAVE_VERSION bump, no shipped-behaviour change** (flag still false).
+
+**Validation.** `test-parts-attach.js` (29/29 model) + `test-parts-ui.js` (23/23 interaction logic —
+palette, auto-target, explicit-select, drop-snap commit, interactive-render markers). Re-ran the E3.0
+bridge (31/31) and E3.1 renderer (24/24) — no regression. **47/49** — the 2 failures are the
+pre-existing era-visual/theme-sync (station-slice2 passed this run, being the known flaky one).
+
+**Deliberately deferred to polish/E3.6, not silently dropped:** pointer-drag ghost that follows the
+cursor before drop (current drag uses native HTML5 dragstart/drop, which works but shows no live
+snapping preview mid-drag); touch-drag (native dnd is mouse-only — the click-attach path is the touch
+story for now). Both are feel-refinements on a working core, not blockers.
+
+**Needs a real-browser check** (the reason this slice most wants human eyes — it's the first
+interactive one): drag-drop actually snapping, node markers being tappable at real sizes, palette-card
+drag ergonomics.
+
+**Next:** E3.3 (auto-inferred + editable staging stack, symmetry tool). Mechanical-ish given the model
+layer exists — symmetry is a `sym` field the bridge already multiplies; the editable fire-order stack
+is new UI. Lighter model likely fine.
