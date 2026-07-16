@@ -37,11 +37,11 @@ Complexity: S = <1 day, M = 1–5 days, L = 1–3 weeks, XL = 1+ month. Impact: 
 |10| Hover math breakdowns (reliability ∏, net econ) | Auditability = trust | M | ★★★ | — | H |E1.5|
 |11| Confirm-with-preview on all destructive actions | Prevent rage-quits | S | ★★ | — | H |Backlog|
 |12| Undo last build-change on bench | Design iteration comfort | M | ★★ | — | M |Backlog|
-|13| Searchable tech tree | 110 nodes needs it | S | ★★ | — | M |Backlog|
+|13| Searchable tech tree | 110 nodes needs it | S | ★★ | — | M |Already shipped — techSearchMatch()/#techSearch input in R&D render|
 |14| Pin a research node as "goal" → path highlight | Planning aid | M | ★★ | — | M |Backlog|
 |15| Notification center (missed events while warping) | Smart-time complement | M | ★★ | — | M |Backlog|
 |16| Log filters already exist → add text search | Late-game archaeology | S | ★ | — | L |Backlog|
-|17| Compare two vehicle families side-by-side | Decision support | M | ★★ | — | M |Backlog|
+|17| Compare two vehicle families side-by-side | Decision support | M | ★★ | — | M |Already shipped — vehicleCompareHTML() in render.js|
 |18| "Why can't I fly this?" explainer on disabled launch | Removes guesswork | S | ★★★ | — | H |E1.5|
 |19| Time-to-affordability estimates on purchases | Planning | S | ★★ | — | M |Backlog|
 |20| Clock/date always visible during flight overlay | Orientation | S | ★ | Overlay | M |Backlog|
@@ -154,7 +154,7 @@ Complexity: S = <1 day, M = 1–5 days, L = 1–3 weeks, XL = 1+ month. Impact: 
 | E1.x | 20 | Folded into a named high-value item |
 | E2 | 10 | Folded into medium-priority grouped item |
 | Deferred | 12 | Named in ROADMAP.md's deferred list |
-| **Backlog** | **51** | Not yet on ROADMAP.md in any form |
+| **Backlog** | **49** | Not yet on ROADMAP.md in any form |
 
 Over half the list (55/105) hasn't been triaged onto ROADMAP.md yet — mostly small
 QoL items (#9, 11–17, 19–25), flight/ops texture (#31, 33–34, 37–45), rival/world
