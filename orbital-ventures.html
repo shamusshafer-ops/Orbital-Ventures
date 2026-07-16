@@ -2866,7 +2866,7 @@ const PART_DEFS = {
   tank_std: {
     id:'tank_std', cat:'structural', name:'Propellant Tank', short:'TNK',
     era:0, dia:1.0, px:{len:140, dia:90},
-    nodes:[ {id:'top', at:'top', class:'small'}, {id:'bot', at:'bottom', class:'small'} ],
+    nodes:[ {id:'top', at:'top', class:'small'}, {id:'bot', at:'bottom', class:'small'}, {id:'rad', at:'radial', class:'small'} ], // E3.3: radial node for strap-on boosters
     // propMass is the *nominal full* load; the bench lets the player stretch it
     // (E3.2). Dry structural mass is computed via the existing tankStruct() at
     // bridge time, NOT stored here — so tank material σ keeps applying.
@@ -2896,6 +2896,18 @@ const PART_DEFS = {
     nodes:[ {id:'top', at:'top', class:'small'} ], // engine hangs off the bottom of a tank
     phys:{ dragCoeff:0.3, crossSection:1.0 },
     blurb:'The engine that started it all. Mounts to the base of a stage.',
+  },
+  // E3.3: strap-on booster — radial-only (no axial nodes, it can't sit IN the spine, only beside
+  // it), self-contained (carries its own propellant, unlike engine_a4 which needs a tank). Folds
+  // into the existing state.boosters side-channel at bridge time (see buildToStageIR) rather than
+  // becoming its own IR stage — the physics core has never modeled parallel/independently-timed
+  // staging, and reusing the proven booster math is the honest scope here (see E3.3 ROADMAP note).
+  booster_solid: {
+    id:'booster_solid', cat:'propulsion', name:'Strap-on Booster', short:'SRB',
+    era:0, dia:1.0, px:{len:100, dia:40}, engId:'solid_castor',
+    nodes:[ {id:'r', at:'radial', class:'small'} ],
+    phys:{ propMass:5.0, dragCoeff:0.5, crossSection:0.3 },
+    blurb:'Self-contained solid booster. Straps to the side of a tank for extra liftoff thrust. Use symmetry to add a matched pair.',
   },
   // — payload —
   capsule_mk1: {
@@ -2956,8 +2968,15 @@ function stackSpine(build){
   return spine;
 }
 function radialParts(build){
-  // parts attached at a radial node — boosters etc. (none in the E3.0 viable set)
-  const radialLinks=build.links.filter(l=>l.parentNode==='radial');
+  // parts attached at a radial node — boosters etc. `parentNode` is a NODE ID (e.g. 'rad'), not a
+  // facing type — must look up the parent's actual node definition and check its `.at`, not
+  // compare the id string to the literal word 'radial'. (Bug from E3.0, uncaught until E3.3 gave
+  // this function something real to filter — nothing radial existed to test it against before.)
+  const radialLinks=build.links.filter(l=>{
+    const parent=buildPart(build, l.parent); const pdef=parent&&partDef(parent.defId);
+    const pnode=pdef&&pdef.nodes.find(n=>n.id===l.parentNode);
+    return pnode && pnode.at==='radial';
+  });
   return radialLinks.map(l=>({link:l, part:buildPart(build,l.child)}));
 }
 
@@ -3032,7 +3051,23 @@ function detachPart(build, uid){
   return removed;
 }
 
-// Snap-target finder: given a floating candidate part and a drop point, find the
+// E3.3: symmetry. Only meaningful for radially-attached parts (boosters, RCS later) — a spine
+// part is by definition singular, there's nothing to mirror. Clamped 1-4 (a reasonable KSP-style
+// ceiling; nothing in the physics or rendering assumes more). The bridge already multiplies by
+// `.sym` wherever it reads count/prop/mass (established in E3.0/E3.1), so this is purely "let the
+// player set the field through a real control" — no new bridge logic needed.
+const SYMMETRY_MAX=4;
+function applySymmetry(build, uid, n){
+  const part=buildPart(build, uid); if(!part) return false;
+  const def=partDef(part.defId); if(!def) return false;
+  const link=build.links.find(l=>l.child===uid);
+  if(!link) return false;
+  const parentDef=partDef(buildPart(build,link.parent).defId);
+  const pnode=parentDef && parentDef.nodes.find(n=>n.id===link.parentNode);
+  if(!pnode || pnode.at!=='radial') return false; // symmetry only applies to radial attachments
+  part.sym=Math.max(1, Math.min(SYMMETRY_MAX, Math.round(n)));
+  return true;
+}
 // nearest OPEN, COMPATIBLE node across the whole build. The DOM layer supplies
 // node screen-positions via `nodeXY(uid, nodeId) -> {x,y}`; this stays pure by
 // taking that lookup as a callback. Returns the best {parentUid, parentNode,
@@ -3104,7 +3139,7 @@ function buildToStageIR(build){
   const groups=g.groups.slice().reverse(); // firing order: bottom-of-stack fires first
 
   let payload=0, crew=0; const warnings=[];
-  const stages=[];
+  const stages=[]; const stageSourceGroup=[]; // parallel array: which top-down group produced stages[i]
   // Any group with no engine is payload (capsule/nosecone/avionics on top). The
   // TOPMOST groups are typically payload; a group with an engine is a real stage.
   for(const group of groups){
@@ -3122,6 +3157,7 @@ function buildToStageIR(build){
     }
     if(engId && stageProp>0){
       stages.push({ eng:engId, count:engCount||1, prop:round2(stageProp), dia: stageDiaN?round2(stageDiaSum/stageDiaN):1 });
+      stageSourceGroup.push(group);
       if(nonPropDry>0) payload+=nonPropDry; // dead structure in a live stage still rides as mass; fold to payload (conservative, matches old "extras are payload" treatment)
     } else {
       // no engine or no propellant → this is payload/structure the stack lofts
@@ -3131,7 +3167,50 @@ function buildToStageIR(build){
   }
 
   if(!stages.length) return {error:'no propulsive stage — add a tank and an engine'};
-  return { stages, payload:round2(payload), crew, warnings };
+
+  // E3.3: radial-attached boosters. The physics core has no concept of parallel/independently-
+  // timed staging (boosterMasses() reads a single state.boosters bundle that augments stage-0's
+  // thrust for stage-0's whole burn) — so boosters ONLY take effect when attached to whatever
+  // group became stages[0] (the first-firing stage). A booster elsewhere is a real, honest
+  // no-op: warn rather than silently drop or silently pretend it did something.
+  const stage0Group=stageSourceGroup[0]||[];
+  const stage0Uids=new Set(stage0Group.map(p=>p.uid));
+  let boosters=null;
+  const boosterHits=[]; const offStageHits=[];
+  for(const {link, part} of radialParts(build)){
+    const def=partDef(part.defId); if(!def) continue;
+    const isBoosterPart = def.nodes.every(n=>n.at==='radial') && def.engId && def.phys.propMass; // radial-only + self-propelled
+    if(!isBoosterPart) continue;
+    if(stage0Uids.has(link.parent)) boosterHits.push(part); else offStageHits.push(part);
+  }
+  if(offStageHits.length) warnings.push('Boosters only take effect on the first stage to fire — one or more placements elsewhere are decorative only.');
+  if(boosterHits.length){
+    const byDef={}; for(const p of boosterHits){ byDef[p.defId]=(byDef[p.defId]||0)+(p.sym||1); }
+    const defIds=Object.keys(byDef);
+    if(defIds.length>1) warnings.push('Mixed booster types aren\'t supported yet — only the first type placed is modeled.');
+    const chosen=defIds[0], count=byDef[chosen], bdef=partDef(chosen);
+    boosters={ eng: bdef.engId, count, prop: bdef.phys.propMass };
+  }
+
+  return { stages, payload:round2(payload), crew, warnings, boosters };
+}
+
+// E3.3: run stackPerformance for a build INCLUDING its boosters. boosterMasses() (sim.js) reads
+// state.boosters as a global rather than taking a parameter, so this is the one function in the
+// bridge that touches global state — deliberately isolated here (buildToStageIR itself stays
+// pure) and always restores the prior value, even on error, so it's safe to call from a live
+// bench mid-render without corrupting the player's actual slider-bench booster fit.
+function stackPerformanceForBuild(build){
+  const ir=buildToStageIR(build);
+  if(ir.error) return ir;
+  const prevBoosters=state.boosters;
+  try{
+    state.boosters = ir.boosters || {eng:null, count:0, prop:0};
+    const perf=stackPerformance(ir.stages, ir.payload);
+    return Object.assign({}, ir, perf);
+  } finally {
+    state.boosters=prevBoosters;
+  }
 }
 
 /* ---------- Reverse map: old slider design → build graph ----------
@@ -3252,6 +3331,29 @@ function renderBuildSVG(build, W, H, interactive){
     y+=len;
   }
 
+  // E3.3: radial boosters — mirrored left/right silhouettes (a 2D side elevation can only ever
+  // show two sides regardless of how many copies exist around a real 3D ring, which is the
+  // correct KSP convention for this kind of view). sym>1 draws one extra offset pair + a ×N
+  // label rather than N literal silhouettes, so the drawing stays legible at sym=4.
+  let boosterArt='';
+  for(const {link, part} of radialParts(build)){
+    const bdef=partDef(part.defId); if(!bdef) continue;
+    const parentPos=partYRanges.find(r=>r.uid===link.parent); if(!parentPos) continue;
+    const parentDef=defs[spine.findIndex(p=>p.uid===link.parent)]; if(!parentDef) continue;
+    const bw=bdef.px.dia*scale*0.7, blen=bdef.px.len*scale;
+    const spineHalf=(parentDef.px.dia*scale)/2;
+    const midY=(parentPos.top+parentPos.bottom)/2, byTop=midY-blen/2;
+    const sym=Math.min(4, Math.max(1, part.sym||1));
+    const gap=6*scale;
+    for(const side of [-1,1]){
+      const bx=cx+side*(spineHalf+gap)-bw/2;
+      boosterArt+=`<rect x="${bx}" y="${byTop}" width="${bw}" height="${blen}" rx="${bw*0.15}" fill="${PART_CAT_COLOR.propulsion}" stroke="#293743" stroke-width="1" opacity="0.92"/>`;
+      // small fin
+      boosterArt+=`<path d="M ${bx+(side<0?bw:0)} ${byTop+blen*0.7} L ${bx+(side<0?bw:0)+side*bw*0.6} ${byTop+blen} L ${bx+(side<0?bw:0)} ${byTop+blen} Z" fill="#8a3020"/>`;
+    }
+    if(sym>1) boosterArt+=`<text x="${cx+spineHalf+gap+bw+4}" y="${midY+3}" fill="#d0563a" font-size="9" font-family="ui-monospace,monospace">×${sym}</text>`;
+  }
+
   // Interactive: draw a small marker on each OPEN node so the player sees valid attach points.
   let nodeMarkers='';
   if(interactive){
@@ -3263,11 +3365,13 @@ function renderBuildSVG(build, W, H, interactive){
     }
   }
 
-  // Per-stage Δv/TWR overlay — real physics, not decoration.
+  // Per-stage Δv/TWR overlay — real physics, not decoration. Booster-aware (E3.3): boosters
+  // augment liftoff TWR and total Δv, not individual stage numbers — same convention
+  // stackPerformance has always used for the slider bench; see stackPerformanceForBuild.
   const ir=buildToStageIR(build);
   let overlay='';
   if(!ir.error){
-    const perf=stackPerformance(ir.stages, ir.payload);
+    const perf=stackPerformanceForBuild(build);
     // g.groups is top→bottom; firing order (ir.stages) is bottom→top, so stage k in firing
     // order corresponds to group (groups.length-1-k) in the top→bottom list — mirrors the
     // same reversal buildToStageIR applies, keeping label placement in lockstep with the IR.
@@ -3291,7 +3395,7 @@ function renderBuildSVG(build, W, H, interactive){
   const svg=`<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="max-width:100%;height:auto;background:#060d16;border-radius:8px">`
     +`<defs><linearGradient id="partBell" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="#3a444b"/><stop offset="0.5" stop-color="#5a666e"/><stop offset="1" stop-color="#3a444b"/></linearGradient>`
     +Object.values(PART_DEFS).map(d=>`<linearGradient id="g-${d.id}" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="${(PART_CAT_COLOR[d.cat]||'#8a97a3')}" stop-opacity=".95"/><stop offset=".5" stop-color="${(PART_CAT_COLOR[d.cat]||'#8a97a3')}"/><stop offset="1" stop-color="#293743"/></linearGradient>`).join('')
-    +`</defs>${body}${nodeMarkers}${overlay}</svg>`;
+    +`</defs>${boosterArt}${body}${nodeMarkers}${overlay}</svg>`;
   return {svg, totalLen, maxDia, nodePos, error:null};
 }
 
@@ -3353,8 +3457,12 @@ function benchPaletteClick(defId){
   const b=benchBuild();
   let target=_benchSelNode;
   if(!target){
-    // auto-target: if exactly one open node across the build, use it
-    const open=[]; for(const p of b.parts) for(const n of openNodes(b,p.uid)) open.push(p.uid+':'+n.id);
+    // auto-target: if exactly one open node ACROSS THE BUILD is compatible with this specific
+    // part, use it. Counting ALL open nodes (not just compatible ones) breaks as soon as a part
+    // has more than one node type open at once (e.g. a tank's axial + radial nodes) — an engine
+    // auto-targeting a tank's radial slot would be a silent, confusing misfire.
+    const open=[];
+    for(const p of b.parts) for(const n of openNodes(b,p.uid)){ if(canAttach(b,p.uid,n.id,defId).ok) open.push(p.uid+':'+n.id); }
     if(open.length===1) target=open[0];
   }
   if(!target){ renderPartsBench('Pick an attach point on the rocket first (tap an open ○ node).'); return; }
@@ -3426,10 +3534,35 @@ function renderPartsBench(msg){
     const ir=buildToStageIR(b);
     let html='';
     if(msg) html+=`<div class="flag">${msg}</div>`;
-    if(!ir.error){ const perf=stackPerformance(ir.stages, ir.payload);
+    if(!ir.error){
+      const perf=stackPerformanceForBuild(b); // E3.3: booster-aware
       html+=`<div class="metrics"><div class="metric"><div class="k">Δv total</div><div class="v">${Math.round(perf.totalDv)} m/s</div></div>
         <div class="metric"><div class="k">Stages</div><div class="v">${ir.stages.length}</div></div>
-        <div class="metric"><div class="k">Liftoff</div><div class="v">${perf.liftoff.toFixed(1)} t</div></div></div>`;
+        <div class="metric"><div class="k">Liftoff</div><div class="v">${perf.liftoff.toFixed(1)} t</div></div>
+        <div class="metric"><div class="k">Liftoff TWR</div><div class="v">${perf.twr.toFixed(2)}</div></div></div>`;
+      if(ir.boosters) html+=`<div class="dim" style="font-size:11px;margin-top:4px">${ir.boosters.count}× booster — boosts liftoff TWR and total Δv above (not shown per-stage, same as the classic bench).</div>`;
+      // E3.3: auto-inferred visible stage stack. Firing order is the only physically valid order
+      // for a single linear spine — see the E3.3 ROADMAP note on why this is a readout, not a
+      // free-reorder control, until the physics core supports non-adjacent staging (it doesn't).
+      html+=`<div class="mission-tag" style="margin-top:10px">Stage stack — auto-inferred fire order</div>`;
+      html+=`<div class="legs">`+ir.stages.map((s,i)=>{
+        const eng=ENGINES[s.eng];
+        return `<div class="leg"><span class="legname">Stage ${i+1}${i===0&&ir.boosters?' (+ boosters)':''}</span><span class="legdv">${Math.round(perf.stageDv[i])} m/s</span><span class="legdetail">${eng?eng.name:s.eng} ×${s.count} · TWR ${perf.stageTwr[i].toFixed(2)}</span></div>`;
+      }).join('')+`</div>`;
+    }
+    // placed radial (booster) parts get a symmetry stepper — the only parts symmetry applies to
+    const radials=radialParts(b);
+    if(radials.length){
+      html+=`<div class="mission-tag" style="margin-top:10px">Symmetry</div>`;
+      html+=radials.map(({part})=>{
+        const def=partDef(part.defId), sym=part.sym||1;
+        return `<div style="display:flex;align-items:center;gap:6px;margin:4px 0">
+          <span style="font-size:12px;flex:1">${def.name}</span>
+          <button class="btn ghost" style="font-size:11px;padding:2px 8px" onclick="applySymmetry(benchBuild(),'${part.uid}',${Math.max(1,sym-1)});renderPartsBench()" ${sym<=1?'disabled':''}>−</button>
+          <span style="font-family:var(--mono);font-size:12px;min-width:16px;text-align:center">×${sym}</span>
+          <button class="btn ghost" style="font-size:11px;padding:2px 8px" onclick="applySymmetry(benchBuild(),'${part.uid}',${Math.min(SYMMETRY_MAX,sym+1)});renderPartsBench()" ${sym>=SYMMETRY_MAX?'disabled':''}>+</button>
+        </div>`;
+      }).join('');
     }
     html+=warns.map(w=>`<div class="flag warn">△ ${w}</div>`).join('');
     html+=`<button class="btn ghost" style="font-size:12px;margin-top:8px" onclick="benchReset()">✕ Clear build</button>`;

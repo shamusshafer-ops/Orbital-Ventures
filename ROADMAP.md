@@ -4128,3 +4128,61 @@ drag ergonomics.
 **Next:** E3.3 (auto-inferred + editable staging stack, symmetry tool). Mechanical-ish given the model
 layer exists — symmetry is a `sym` field the bridge already multiplies; the editable fire-order stack
 is new UI. Lighter model likely fine.
+
+## Session — E3.3 shipped: booster folding + symmetry tool (2026-07-16)
+
+**Scope narrowed honestly from the epic's original phrasing** — worth stating plainly. "Auto-infer
+stage order from decouplers with an editable stack" turns out to have no legitimate free-reorder
+interpretation for a single linear spine: `stackPerformance`'s mass-shedding model requires
+bottom-fires-first order, so the auto-inferred order IS the only physically valid one. What shipped
+instead: a **visible** auto-inferred stage list (engine/Δv/TWR per stage, in the stats panel) rather
+than a fake reorder control that would produce nonsense physics. If the physics core ever grows
+non-adjacent staging support, revisit — not expected to be worth it.
+
+**What's real and useful: strap-on boosters + symmetry.** New `booster_solid` part (radial-only, uses
+`ENGINES.solid_castor` — already documented in data.js as booster-usable), `tank_std` gained a radial
+attach node. The bridge folds stage-0 radial boosters into the **existing** `state.boosters` side-
+channel (`{eng,count,prop}`) rather than inventing parallel-timed staging the physics core has never
+supported — `boosterMasses()` (sim.js) has always read a single global booster bundle that augments
+stage-0's whole burn, so that's the honest integration point. `applySymmetry(build, uid, n)` sets a
+clamped (1-4) `sym` field, rejected on non-radial parts (a spine part is singular, nothing to mirror).
+New `stackPerformanceForBuild(build)` — the one function that touches `state.boosters` as a global,
+always restored via try/finally even on error, isolated from the otherwise-pure bridge.
+
+**Honest edge-case handling, not silent wrongness**: a booster attached to a non-first-firing stage
+doesn't get silently dropped or misapplied — `buildToStageIR` warns explicitly ("Boosters only take
+effect on the first stage to fire..."). Mixed booster types (not yet reachable with only one radial
+node per tank, but the logic is in place) warn rather than averaging into physical nonsense.
+
+**Two real bugs found and fixed while building this** (both the same mistake, in two places): a node's
+*id* (e.g. `'rad'`) was being compared against the literal string `'radial'` instead of looking up the
+node definition's `.at` field. Caught first in `applySymmetry` (never shipped), then discovered via a
+failing test that `radialParts()` — defined in E3.0, unexercised until now — had the identical bug,
+silently returning empty for every build regardless of radial attachments. Fixed both at the source.
+Also fixed the E3.2 click-attach auto-target heuristic: it counted *all* open nodes rather than nodes
+*compatible with the specific part being placed*, which broke the moment a part (the now-radial-
+capable tank) had more than one open node type at once.
+
+**Rendering**: booster silhouettes draw mirrored left/right of the spine (correct 2D-side-elevation
+convention — a real N-way ring can only ever show two sides in profile), with a ×N label for sym>1.
+Stats panel gained Liftoff TWR (where boosters actually show up — same convention the classic bench
+has always used; per-stage Δv/TWR numbers don't reflect boosters, only liftoff TWR and total Δv do)
+and a symmetry stepper UI on any placed radial part.
+
+**No SAVE_VERSION bump, no shipped-behaviour change** (still `BENCH_V2`-gated).
+
+**Validation.** New `tests/test-parts-staging.js` (31/31): booster def shape, folding into `ir.boosters`,
+symmetry multiplying count, symmetry rejected on axial parts, off-stage-0 warning, mixed-type warning
+logic, full numerical equivalence vs. directly setting `state.boosters` and calling `stackPerformance`
+(proves the graph path produces identical Δv/liftoff/TWR/boostDv to the classic path), and global-state
+restoration on both success and error paths. Re-ran all 4 prior E3 suites (110/110, zero regression) —
+the auto-target fix and both radial-bug fixes are covered there and here. **47/50** overall, same 3
+pre-existing failures.
+
+**Epic status: 139 checks green across 6 suites (E3.0-E3.3).** Remaining: E3.4 (deeper physics — drag/
+thermal/power from real per-part stats), E3.5 (save migration + cutover — the only slice that touches
+shipped behavior), E3.6 (polish, optional).
+
+**Next boundary:** E3.4 mixes real design judgment (how much of "deep physics" is worth modeling vs.
+diminishing returns) with mechanical wiring. Worth a design pass on paper before coding — heavier
+model for the scoping half, lighter fine for implementation once decided.

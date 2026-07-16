@@ -49,6 +49,7 @@ process exit code (0 = all passed).
 | `test-parts-render.js` | E3.1 read-only bench renderer: every part shape draws without throwing, stage-Δv/TWR overlay matches real physics (no drift from the E3.0-proven bridge), stage-label count is correct, malformed builds handled, geometry sanity, symmetry tolerance. |
 | `test-parts-attach.js` | E3.2 model layer: open-node discovery, node compatibility (class+facing), attach/detach-takes-subtree, snap-target finding, soft warnings. |
 | `test-parts-ui.js` | E3.2 interaction logic: palette rendering, click-attach auto-targeting + explicit select, drop→snap→attach path, interactive-render nodePos/markers. |
+| `test-parts-staging.js` | E3.3 booster/symmetry: booster part folds into the state.boosters side-channel (not a fake IR stage), off-stage-0 placements warn honestly, symmetry clamped + radial-only, equivalence vs the direct slider-booster path, global state.boosters always restored (success + error paths). |
 | `test-regression.js` | General smoke test: all difficulties boot, every scene tab renders, a long time-skip, a playthrough bot. Run this against *any* change as a baseline. |
 | `test-materials.js` | The collapsed raw-materials market — dip-threshold gating, dip pricing, buy/no-op paths, save/load, render, outliner/glyph surfacing. |
 | `test-station-operations.js` | Station operations — resupply contracts, crew assignment/rotation, maintenance condition, repair, and science output. |
