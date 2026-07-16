@@ -145,7 +145,7 @@ Complexity: S = <1 day, M = 1–5 days, L = 1–3 weeks, XL = 1+ month. Impact: 
 |108| Desktop breakpoint ~1280px (zero @media rules; CC deck overflows laptops) | Accessibility | S | ★★ | — | M |Backlog|
 |109| Font-scale setting | Accessibility | S | ★ | — | L |Backlog|
 |110| Progressive CC deck (hide advanced cards until after first launch) | Onboarding | S | ★ | 106 | L |Backlog|
-|111| Base Bench: third bench tab for lunar/Mars surface bases (horizontal ground-line SVG; facilities already run full station machinery) | Empire visualization | M | ★★★ | — | H |Shipped 2026-07-16 (E1.8 A+B+C; D optional)|
+|111| Base Bench: third bench tab for lunar/Mars surface bases (horizontal ground-line SVG; facilities already run full station machinery) | Empire visualization | M | ★★★ | — | H |Shipped 2026-07-16 (E1.8 A+B+C+D complete)|
 |112| Surface-specific base modules (ISRU plant, greenhouse, reactor pad, rover garage; surface:true flag filtering) | Base depth | M | ★★ | 111 | M |Shipped 2026-07-16 (E1.8 C)|
 
 ---

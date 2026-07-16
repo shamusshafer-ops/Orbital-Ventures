@@ -14,10 +14,11 @@ newGame('engineer');
 // ---------- 1. Empty state ----------
 {
   const v=baseCurrentView();
-  check('empty: no surface bases -> cur null', v.cur===null && v.built===null);
-  const html=baseLockedHTML();
-  check('empty: locked HTML lists lunar + mars founding gates', html.includes('Lunar Base') && html.includes('Mars Base'));
-  check('empty: gate mission named', html.includes('requires'));
+  check('empty: no surface bases -> isDraft', v.isDraft===true && v.cur===null);
+  // E1.8 D: baseLockedHTML() is gone — the empty state is now the draft drawing board itself.
+  const html=baseDraftStatsHTML();
+  check('empty: draft stats name the reqMission gate', html.includes('Luna Landing')||html.includes('flown'));
+  check('empty: draft stats mention unlimited surface modules', html.includes('unlimited on the surface'));
 }
 
 // ---------- 2. Facility split ----------
@@ -85,7 +86,7 @@ newGame('engineer');
   let threw=false;
   try{
     renderBase();                       // active (mars focused)
-    state.facilities={};                // locked path
+    state.facilities={};                // E1.8 D: now the draft path, not a locked path
     state.baseFocus=null;
     renderBase();
   }catch(e){ threw=true; console.log('  threw:', e.message); }

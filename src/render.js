@@ -4479,12 +4479,13 @@ function resumeStationGame(){ if(stationGame){ try{ stationGame.scene.wake('stat
    Crewed Orbit makes the real thing possible. Dreaming is free; hardware is not. */
 function stationDraftFs(){ state.stationDraft=state.stationDraft&&state.stationDraft.length?state.stationDraft:['can_std']; return {moduleList:state.stationDraft}; }
 function draftAdd(modId){
+  if(state.tab==='base') return draftAddBase(modId); // E1.8 D
   const fs=stationDraftFs();
-  if(fs.moduleList.length>=facilityPortCap(fs) && modId!=='node_hub'){ log('note','Blueprint: all ports occupied — add a Docking Node for growth room.'); render(); return; }
+  if(fs.moduleList.length>=facilityPortCap(fs,undefined) && modId!=='node_hub'){ log('note','Blueprint: all ports occupied — add a Docking Node for growth room.'); render(); return; }
   fs.moduleList.push(modId); state.stationDraft=fs.moduleList; render();
 }
-function draftRemove(){ const fs=stationDraftFs(); if(fs.moduleList.length>1) fs.moduleList.pop(); state.stationDraft=fs.moduleList; render(); }
-function draftClear(){ state.stationDraft=['can_std']; render(); }
+function draftRemove(){ if(state.tab==='base') return draftRemoveBase(); const fs=stationDraftFs(); if(fs.moduleList.length>1) fs.moduleList.pop(); state.stationDraft=fs.moduleList; render(); }
+function draftClear(){ if(state.tab==='base') return draftClearBase(); state.stationDraft=['can_std']; render(); }
 function draftCostAt(defId){
   const def=facilityById(defId); if(!def) return 0;
   const fs={moduleList:[]}; let cost=0;
@@ -4497,7 +4498,7 @@ function draftCostAt(defId){
 // (Slice 0) instead of duplicating this markup a second time.
 function stationDraftStatsHTML(fs){
   const list=fs.moduleList;
-  const pw=facilityPower(fs), crew=facilityCrew(fs), cap=facilityPortCap(fs);
+  const pw=facilityPower(fs), crew=facilityCrew(fs), cap=facilityPortCap(fs,undefined);
   const mass=list.reduce((a,id)=>a+(((stationModuleDef(id)||{}).stats||{}).mass||0),0);
   const gated=[...new Set(list.filter(id=>{ const md=stationModuleDef(id); return md&&md.reqResearch&&!state.research[md.reqResearch]; })
     .map(id=>((RESEARCH.find(r=>r.id===stationModuleDef(id).reqResearch)||{}).name)||''))].filter(Boolean);
@@ -4611,7 +4612,7 @@ function renderStationFacilityStats(built, cur, focusId, focusFn){ // E1.8: base
   const contractHTML=`<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:9px;font-size:12px"><span class="dim">Resupply contract</span><span>${contract?`active · ${Math.max(0,ops.resupplyContract.untilAbs-absMonth())} mo left`:'none'}</span></div>
     <div style="display:flex;gap:6px;margin-top:5px">${contract?`<button class="btn ghost" style="font-size:11px" onclick="cancelResupplyContract('${def.id}')">Cancel contract</button>`:`<button class="btn ghost" style="font-size:11px" onclick="signResupplyContract('${def.id}')" ${state.money>=contractCost?'':'disabled'}>Sign · ${fM(contractCost)} setup</button>`}<button class="btn ghost" style="font-size:11px" onclick="repairStation('${def.id}')" ${maintCost>0&&state.money>=maintCost?'':'disabled'}>Repair · ${fM(maintCost)}</button></div>`;
   return `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${tabs}</div>
-    <div class="mission-tag">${def.name} — ${list.length} module${list.length>1?'s':''} / ${facilityPortCap(fs)} ports</div>
+    <div class="mission-tag">${def.name} — ${list.length} module${list.length>1?'s':''} / ${facilityPortCap(fs,def)} ports</div>
     <div class="metrics">
       ${cell('Mass', mass.toFixed(1)+' t')}
       ${cell('Crew', `<span style="color:${crewColor}">${crew.cap}/${crew.req||0}</span>`, crew.req>0?(crew.factor>=1?'fully crewed':`${Math.round(crew.factor*100)}% output — short ${crew.req-crew.cap} crew`):'no crew needed')}
@@ -4623,7 +4624,7 @@ function renderStationFacilityStats(built, cur, focusId, focusFn){ // E1.8: base
     </div>
     ${pw.net<0?`<div class="flag warn">△ Power-starved — production running at 60%. Dock a Solar Power Truss.</div>`:''}
     ${crew.req>crew.cap?`<div class="flag warn">△ Under-crewed (${crew.cap}/${crew.req}) — output at ${Math.round(crew.factor*100)}%. Dock a Habitat (each adds 3 crew).</div>`:''}
-    ${list.length>=facilityPortCap(fs)?`<div class="flag warn">△ All ${facilityPortCap(fs)} ports occupied — a Docking Node adds 3 more.</div>`:''}
+    ${list.length>=facilityPortCap(fs,def)?`<div class="flag warn">△ All ${facilityPortCap(fs,def)} ports occupied — a Docking Node adds 3 more.</div>`:''}
     ${synHTML}${crewHTML}${contractHTML}`;
 }
 // Radial station renderer: the save model remains an ordered module list, but the bench now
@@ -4667,7 +4668,7 @@ function renderStationStackSVG(W,H,cur,interactive){
   const pts=slots.map(([gx,gy])=>[ox+gx*cell*scale,oy+gy*cell*scale]);
   for(let i=1;i<pts.length;i++){ const parent=i<=4?0:Math.max(0,Math.floor((i-1)/4)); const [x1,y1]=pts[parent],[x2,y2]=pts[i]; s+=`<path d="M ${x1} ${y1} L ${x2} ${y2}" stroke="#6e8999" stroke-opacity=".5" stroke-width="3" stroke-dasharray="5 4"/><circle cx="${x2}" cy="${y2}" r="4" fill="#d4b35e"/>`; }
   list.forEach((id,i)=>{ const d=stationModuleDef(id)||stationModuleDef('can_std'),[x,y]=pts[i]; s+=stationModuleSVG(id,d,x,y,scale); });
-  s+=`<text x="${W-14}" y="${H-12}" fill="#718898" font-size="9" font-family="ui-monospace,monospace" text-anchor="end">${list.length} MODULE${list.length===1?'':'S'} · ${facilityPortCap(cur.fs)} BERTHS</text></svg>`;
+  s+=`<text x="${W-14}" y="${H-12}" fill="#718898" font-size="9" font-family="ui-monospace,monospace" text-anchor="end">${list.length} MODULE${list.length===1?'':'S'} · ${facilityPortCap(cur.fs,cur.def)} BERTHS</text></svg>`;
   return s;
 }
 // Palette of dockable modules with cost/gates
@@ -4703,9 +4704,87 @@ function toggleBaseExpand(){ baseExpanded=!baseExpanded; renderBase(); }
 function setBaseFocus(id){ state.baseFocus=id; renderBase(); }
 function baseCurrentView(){
   const built=Object.keys(state.facilities||{}).map(id=>({def:facilityById(id), fs:state.facilities[id]})).filter(x=>x.def&&facilityBuilt(x.def.id)&&x.def.body!=='earth');
-  if(!built.length) return {built:null, cur:null};
+  if(!built.length) return {built:null, cur:null, isDraft:true};
   if(!state.baseFocus || !built.some(b=>b.def.id===state.baseFocus)) state.baseFocus=built[0].def.id;
   return {built, cur:built.find(b=>b.def.id===state.baseFocus)};
+}
+/* ---------- E1.8 slice D: Base Bench blueprint drawing board ----------
+   Parity with the Station Bench's pre-facility draft mode ("dreaming is free"). One blueprint per
+   surface body (Luna/Mars — a lunar outpost and a Mars settlement are different designs, unlike the
+   Station Bench where only one orbital facility type exists), toggled in-view, carried in
+   state.baseDraftByBody until each body's founding mission is flown. Reuses stationModuleCard,
+   renderStationPalette (already body-filtered since slice C), and renderBaseSurfaceSVG verbatim —
+   only the draft plumbing (add/remove/clear/cost/stats) is new, and even that is thin: draftAdd/
+   draftRemove/draftClear now dispatch on state.tab so stationModuleCard's hardcoded onclick names
+   need no changes at all. */
+const BASE_DRAFT_FACID={moon:'lunar_base', mars:'mars_base'};
+function baseDraftFs(body){
+  state.baseDraftByBody=state.baseDraftByBody||{};
+  const cur=state.baseDraftByBody[body];
+  state.baseDraftByBody[body]=(cur&&cur.length)?cur:['can_std'];
+  return {moduleList:state.baseDraftByBody[body]};
+}
+function baseDraftBody(){ return state.baseDraftBody==='mars'?'mars':'moon'; } // default Luna
+function setBaseDraftBody(body){ state.baseDraftBody=(body==='mars')?'mars':'moon'; render(); }
+function draftAddBase(modId){
+  const body=baseDraftBody(), def=facilityById(BASE_DRAFT_FACID[body]), fs=baseDraftFs(body);
+  fs.moduleList.push(modId); state.baseDraftByBody[body]=fs.moduleList; render();
+}
+function draftRemoveBase(){
+  const body=baseDraftBody(), fs=baseDraftFs(body);
+  if(fs.moduleList.length>1) fs.moduleList.pop(); state.baseDraftByBody[body]=fs.moduleList; render();
+}
+function draftClearBase(){ const body=baseDraftBody(); state.baseDraftByBody=state.baseDraftByBody||{}; state.baseDraftByBody[body]=['can_std']; render(); }
+function baseDraftCostAt(body){
+  const def=facilityById(BASE_DRAFT_FACID[body]); if(!def) return 0;
+  const fs={moduleList:[]}; let cost=0;
+  baseDraftFs(body).moduleList.forEach((id,i)=>{ const md=stationModuleDef(id); if(!md) return;
+    if(i===0){ fs.moduleList.push(id); return; } // the core comes with founding the facility
+    cost+=stationModuleCost(def, fs, md); fs.moduleList.push(id); });
+  return round2(cost);
+}
+function baseDraftStatsHTML(){
+  const body=baseDraftBody(), def=facilityById(BASE_DRAFT_FACID[body]), fs=baseDraftFs(body), list=fs.moduleList;
+  const m=MISSIONS.find(x=>x.id===def.reqMission), flown=!!state.completed[def.reqMission];
+  const pw=facilityPower(fs), crew=facilityCrew(fs);
+  const mass=list.reduce((a,id)=>a+(((stationModuleDef(id)||{}).stats||{}).mass||0),0);
+  const gated=[...new Set(list.filter(id=>{ const md=stationModuleDef(id); return md&&md.reqResearch&&!state.research[md.reqResearch]; })
+    .map(id=>((RESEARCH.find(r=>r.id===stationModuleDef(id).reqResearch)||{}).name)||''))].filter(Boolean);
+  const cell=(k,v,sub)=>`<div class="metric"><div class="k">${k}</div><div class="v">${v}</div>${sub?`<div class="dim" style="font-size:12px">${sub}</div>`:''}</div>`;
+  return `<div class="mission-tag">Blueprint — ${def.name} drawing board</div>
+      <p class="muted" style="font-size:12px;margin:4px 0 10px">${flown
+        ? `Design freely, then found the real thing from the <b>Solar System map</b> and build it out module by module at these prices.`
+        : `Design freely now — found the real thing once <b>${m?m.name:def.reqMission}</b> is flown.`}</p>
+      <div class="metrics">
+        ${cell('Modules', list.length+' — unlimited on the surface')}
+        ${cell('Mass', mass.toFixed(1)+' t')}
+        ${cell('Power', (pw.net>=0?'+':'')+pw.net+' kW', pw.gen+' gen − '+pw.draw+' draw')}
+        ${cell('Crew', crew.cap+' berths'+(crew.req?' / '+crew.req+' needed':''))}
+        ${cell('Build-out cost', fM(baseDraftCostAt(body)), 'beyond the founding cost')}
+      </div>
+      ${pw.net<0?`<div class="flag warn">△ Power-negative — this design would run at 60% output. Add a Surface Reactor or Power Truss.</div>`:''}
+      ${crew.req>crew.cap?`<div class="flag warn">△ Under-crewed — ${crew.req} crew needed, ${crew.cap} berths. Output would degrade.</div>`:''}
+      ${gated.length?`<div class="flag warn">🔒 Blueprint uses research you don't have yet: ${gated.join(', ')}.</div>`:''}`;
+}
+function renderBaseDraft(){
+  const c=$('baseCanvas'), st=$('baseStats');
+  const body=baseDraftBody(), def=facilityById(BASE_DRAFT_FACID[body]), fs=baseDraftFs(body);
+  const cur={def, fs};
+  const tabBtn=(b,label)=>`<button class="btn ${baseDraftBody()===b?'launch':'ghost'}" style="font-size:12px" onclick="setBaseDraftBody('${b}')">${label}</button>`;
+  if(c){
+    const cards=STATION_MODULES.filter(md=>md.id!=='node_hub') // orbital-only structure — same exclusion renderStationPalette applies to surface benches
+      .map(md=>stationModuleCard(md, cur, false)).join('');
+    c.innerHTML=`<div style="display:flex;gap:6px;margin-bottom:8px">${tabBtn('moon','◆ Luna')}${tabBtn('mars','★ Mars')}</div>`
+      +renderBaseSurfaceSVG(720,280,cur,true)
+      +`<div style="display:flex;gap:6px;margin:8px 0 4px">
+          <button class="btn ghost" style="font-size:12px" onclick="draftRemove()">↶ Remove last</button>
+          <button class="btn ghost" style="font-size:12px" onclick="draftClear()">✕ Clear blueprint</button>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">${cards}</div>`;
+  }
+  wireBasePan(c);
+  const zl=$('baseZoomLabel'); if(zl) zl.textContent=Math.round(baseZoom*100)+'%';
+  if(st) st.innerHTML=baseDraftStatsHTML();
 }
 // Body palettes: sky gradient stops + regolith tones. Luna: airless black over gray dust;
 // Mars: butterscotch daylight over rust.
@@ -4770,25 +4849,16 @@ function wireBasePan(el){
   const end=()=>{ dragging=false; const svg=$('baseSvg'); if(svg) svg.style.cursor='grab'; };
   el.addEventListener('pointerup',end); el.addEventListener('pointercancel',end);
 }
-// Founding gates shown before any surface base exists — the empty state teaches the path in.
-function baseLockedHTML(){
-  const rows=FACILITY_DEFS.filter(d=>d.body!=='earth').map(d=>{
-    const m=MISSIONS.find(x=>x.id===d.reqMission);
-    const flown=!!state.completed[d.reqMission];
-    return `<div class="flag ${flown?'ok':''}" style="margin:4px 0">${d.icon} <b>${d.name}</b> — ${flown
-      ? `founding available from the Solar System map (${fM(d.foundCost)} · ${d.foundMonths} mo)`
-      : `requires <b>${m?m.name:d.reqMission}</b> flown first`}</div>`;
-  }).join('');
-  return `<div style="padding:14px"><div class="mission-tag">No surface bases yet</div>
-    <p class="muted" style="font-size:12px">Found a base from the Solar System map once its gate mission has flown. Built bases assemble here.</p>${rows}</div>`;
-}
+// (E1.8 D: the old empty-state baseLockedHTML() is superseded by renderBaseDraft() — the drawing
+// board itself now carries the per-body founding-gate messaging, in baseDraftStatsHTML().)
+
 function renderBase(){
   const bv=$('baseView'); if(!bv) return;
   bv.classList.toggle('expanded', baseExpanded);
   const eb=$('baseExpandBtn'); if(eb) eb.textContent = baseExpanded ? '⛶ Exit full screen' : '⛶ Expand';
   const c=$('baseCanvas'), st=$('baseStats');
   const v=baseCurrentView();
-  if(!v.cur){ if(c) c.innerHTML=baseLockedHTML(); if(st) st.innerHTML=''; return; }
+  if(v.isDraft){ renderBaseDraft(); return; } // E1.8 D: pre-facility free blueprint drawing board
   if(c) c.innerHTML=renderBaseSurfaceSVG(720,300,v.cur,true)+renderStationPalette(v.cur);
   const zl=$('baseZoomLabel'); if(zl) zl.textContent=Math.round(baseZoom*100)+'%';
   wireBasePan(c);

@@ -3893,3 +3893,41 @@ Slice D (blueprint board for surface bases) remains optional/unstarted; E1.8 is 
 
 **Needs a real-browser check**: the wider surface-module hulls' proportions on the ground line, and
 that ISRU/Reactor read as distinct silhouettes from the orbital cans.
+
+## Session — E1.8 slice D shipped: Base Bench blueprint drawing board (2026-07-16)
+
+Final slice of #111. Pre-facility drawing board, parity with the Station Bench's ("dreaming is free")
+draft mode — one blueprint per surface body (`state.baseDraftByBody.moon`/`.mars`, independent lists,
+toggled in-view via Luna/Mars tabs) since a lunar outpost and a Mars settlement are different designs,
+unlike the Station Bench's single orbital facility type. `baseCurrentView()` now returns
+`{isDraft:true}` before any surface base is founded; `renderBase()` routes to the new
+`renderBaseDraft()` in that case.
+
+**Reuse, not duplication**: `draftAdd`/`draftRemove`/`draftClear` now dispatch on `state.tab==='base'`
+to `draftAddBase`/etc — `stationModuleCard`'s hardcoded `onclick="draftAdd(...)"` needed zero changes,
+so both benches' draft modes share one card-rendering codepath. `renderStationPalette`'s slice-C body
+filtering applies automatically. `renderBaseSurfaceSVG` reused verbatim for the draft preview.
+
+**Bug found and fixed while wiring this**: slice C's exclusion of `node_hub` (the orbital berth-sphere,
+the only port-expanding module) from surface benches left surface bases hard-capped at
+`STATION_PORT_BASE` (4) forever, with no reachable growth module — would have made slice D's draft
+mode unusable past 4 modules. Fixed at the source: `facilityPortCap(fs, def)` now takes the facility
+def and returns `Infinity` for any `body!=='earth'` facility — ports are an orbital-assembly metaphor
+(finite berths on a stack) that doesn't apply to a ground base spreading out. Threaded `def` through
+all 7 call sites (3 in sim.js's gate functions, 4 in render.js); caught and fixed two `ReferenceError`s
+(`def` not in scope) the mechanical thread-through introduced in `draftAdd`/`stationDraftStatsHTML` —
+station draft is always orbital, so both now pass `undefined` explicitly, unchanged behavior.
+
+**No SAVE_VERSION bump** — `state.baseDraftByBody`/`state.baseDraftBody` lazily default.
+
+**Validation.** New `tests/test-base-draft.js` (23/23): the port-cap fix directly, per-body draft
+independence, dispatch routing both directions (base tab doesn't touch station draft and vice versa,
+regression-guarded), the station-draft 4-cap still enforced without a Node, cost preview, stats
+messaging, `renderBaseDraft` end-to-end for both bodies, and the draft→founded lifecycle transition.
+`test-base-bench.js` updated for the empty-state change (draft mode replaces the old locked view).
+**43/45** — same 2 pre-existing failures (era-visual, theme-sync) untouched. **E1.8 is now complete**
+(#111 all four slices, #112 slice C content).
+
+**Needs a real-browser check**: Luna/Mars tab toggle interaction, draft SVG at zoom, and the
+unlimited-module claim rendering sensibly at high module counts (ground-line width/scroll behavior
+untested past ~6 modules).
