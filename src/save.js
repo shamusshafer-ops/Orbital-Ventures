@@ -1,6 +1,6 @@
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=53; // v53: station operations — lazy facility ops fields (crew roster, condition, resupply contract)
+const SAVE_VERSION=54; // v54: E3.5 — derived state.build part graph (additive; state.stages remains source of truth, graph regenerated on load, safe to drop)
 // cruise. New optional `cargo` field on any mission/contractOffer object (uncrewed payload mass carried
 // through every leg of a `.profile` mission — read only by lvPayload()'s profile branch and
 // simulateMission()'s stackMass(), both via `m.cargo||0`; a mission with no cargo field behaves exactly
@@ -177,6 +177,7 @@ function applyLoadedSave(payload){
   if(saved.livery && typeof saved.livery.name==='string') saved.livery.name=saved.livery.name.slice(0,24);
   if(typeof saved.company==='string') saved.company=saved.company.slice(0,48);
   state=saved;
+  migrateStateToBuild(state); // E3.5: derive state.build from state.stages (additive, never throws, stages stays source of truth)
   reconcileResearch(); // close any prerequisite gaps opened by tech-tree changes
   rehydrateFlights(); // S1: re-link in-flight records after load
   return saved;

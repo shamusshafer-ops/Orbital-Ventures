@@ -3192,7 +3192,11 @@ function buildToStageIR(build){
     const defIds=Object.keys(byDef);
     if(defIds.length>1) warnings.push('Mixed booster types aren\'t supported yet — only the first type placed is modeled.');
     const chosen=defIds[0], count=byDef[chosen], bdef=partDef(chosen);
-    boosters={ eng: bdef.engId, count, prop: bdef.phys.propMass };
+    // honour per-instance overrides (migration + the equivalence harness stamp exact eng/prop onto
+    // the booster instance) — reading only the part-def default silently drifts a migrated design
+    // whose slider boosters carried a non-default prop.
+    const sample=boosterHits.find(p=>p.defId===chosen);
+    boosters={ eng: (sample&&sample._engOverride)||bdef.engId, count, prop: (sample&&sample._propOverride!=null)?sample._propOverride:bdef.phys.propMass };
   }
 
   return { stages, payload:round2(payload), crew, warnings, boosters };
@@ -3493,7 +3497,10 @@ let _benchSelNode = null;        // "uid:nodeId" currently selected as the click
 let _benchDrag = null;           // {defId} while dragging a palette part
 
 function benchBuild(){
-  if(!_benchBuild) _benchBuild = (state.build && state.build.parts) ? state.build : emptyBuild('capsule_mk1');
+  if(!_benchBuild){
+    if(state.build && state.build.parts) _benchBuild=state.build;
+    else { const derived=stateDesignToBuild(state); _benchBuild = derived || emptyBuild('capsule_mk1'); } // E3.5: derive from the live slider design if no graph yet (fresh game)
+  }
   return _benchBuild;
 }
 function benchReset(){ _benchBuild = emptyBuild('capsule_mk1'); _benchSelNode=null; renderPartsBench(); }
@@ -3647,6 +3654,80 @@ function renderPartsBench(msg){
     html+=`<button class="btn ghost" style="font-size:12px;margin-top:8px" onclick="benchReset()">✕ Clear build</button>`;
     st.innerHTML=html;
   }
+}
+
+/* ============================================================================
+   E3.5 — save migration + cutover (SAVE-SAFE, REVERSIBLE design).
+
+   DESIGN DECISION, given this is the only slice that touches real player saves:
+   state.stages stays the SOURCE OF TRUTH. state.build is a DERIVED, additive
+   companion generated FROM state.stages on load. This means:
+     • no destructive migration — the slider bench keeps working unchanged;
+     • saves stay backward-readable by older builds (state.stages untouched);
+     • migration is one-way stages→build and NEVER throws into the load path
+       (any failure leaves state.build null and the game runs exactly as before);
+     • flipping BENCH_V2 is a VIEW choice, not a data cutover — the graph is
+       always regenerable from stages, so there is no irreversible commit.
+   A true destructive cutover (retire state.stages entirely) is deliberately NOT
+   done here — it would make saves one-way and a migration bug unrecoverable.
+   That can happen later once the part bench has shipped and proven itself.
+   ============================================================================ */
+
+// Build a graph from a live state.stages design (+ boosters). Defensive: returns
+// null on any problem rather than throwing, so migrateStateToBuild can call it
+// from the load path safely. Mirrors the real slider shape, not the test one.
+function stateDesignToBuild(st){
+  try{
+    if(!st || !Array.isArray(st.stages) || !st.stages.length) return null;
+    const crewed = (st.eclss && st.eclss!=='none') || (st.crew|0)>0 || !!st.hasCapsule;
+    const build={ parts:[], links:[], root:null };
+    const add=(defId)=>{ const uid=newPartUid(); build.parts.push({uid, defId, x:0,y:0,rot:0,sym:1}); return uid; };
+    const rootUid = add(crewed ? 'capsule_mk1' : 'probe_core');
+    build.root=rootUid;
+    let prevBottom=rootUid;
+    // physical stack is top→bottom = reverse of firing order (stages[0] fires first)
+    const topToBottom = st.stages.slice().reverse();
+    let firstTankUid=null;
+    topToBottom.forEach((stage, idx)=>{
+      if(idx>0){
+        const dec=add('decoupler');
+        build.links.push({parent:prevBottom, parentNode:'bot', child:dec, childNode:'top'});
+        prevBottom=dec;
+      }
+      const tank=add('tank_std');
+      const tp=buildPart(build,tank); tp._propOverride = (stage.prop!=null?stage.prop:0);
+      build.links.push({parent:prevBottom, parentNode:'bot', child:tank, childNode:'top'});
+      const eng=add('engine_a4');
+      const ep=buildPart(build,eng); ep._engOverride = stage.eng||'a4'; ep._countOverride = stage.count||1;
+      build.links.push({parent:tank, parentNode:'bot', child:eng, childNode:'top'});
+      prevBottom=eng;
+      // the LAST physical tank (bottom of stack = stage 0 = first to fire) carries any boosters
+      firstTankUid=tank;
+    });
+    // fold the slider boosters onto the first-firing (bottom) tank's radial node
+    if(firstTankUid && st.boosters && st.boosters.count>0 && st.boosters.eng){
+      const n=Math.min(4, Math.max(1, st.boosters.count|0));
+      const b=add('booster_solid');
+      const bp=buildPart(build,b);
+      bp.sym=n; bp._engOverride=st.boosters.eng; bp._propOverride=st.boosters.prop||0;
+      build.links.push({parent:firstTankUid, parentNode:'rad', child:b, childNode:'r'});
+    }
+    // sanity: the graph must reduce back to the same stage count, else discard it
+    const ir=buildToStageIR(build);
+    if(ir.error || !ir.stages || ir.stages.length!==st.stages.length) return null;
+    return build;
+  }catch(e){ return null; }
+}
+
+// Called from applyLoadedSave AFTER state is set. Purely additive: sets
+// state.build (derived) without ever touching state.stages. Never throws.
+function migrateStateToBuild(saved){
+  try{
+    if(!saved) return;
+    if(saved.build && saved.build.parts && saved.build.parts.length) return; // already has one (future-proof)
+    const b=stateDesignToBuild(saved);
+    if(b) saved.build=b; // additive only; leave stages as the source of truth
+  }catch(e){/* migration is best-effort — a failure just means no graph, game runs as before */}
 }
 let state;
 function newGame(difficulty){
@@ -9381,7 +9462,7 @@ function hideModal(){activeModal=null;_prodModalOpen=false;$('modal').classList.
 } // slice 6: closing clears the live-modal thunk; slice B: also returns focus to the modal's trigger
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=53; // v53: station operations — lazy facility ops fields (crew roster, condition, resupply contract)
+const SAVE_VERSION=54; // v54: E3.5 — derived state.build part graph (additive; state.stages remains source of truth, graph regenerated on load, safe to drop)
 // cruise. New optional `cargo` field on any mission/contractOffer object (uncrewed payload mass carried
 // through every leg of a `.profile` mission — read only by lvPayload()'s profile branch and
 // simulateMission()'s stackMass(), both via `m.cargo||0`; a mission with no cargo field behaves exactly
@@ -9558,6 +9639,7 @@ function applyLoadedSave(payload){
   if(saved.livery && typeof saved.livery.name==='string') saved.livery.name=saved.livery.name.slice(0,24);
   if(typeof saved.company==='string') saved.company=saved.company.slice(0,48);
   state=saved;
+  migrateStateToBuild(state); // E3.5: derive state.build from state.stages (additive, never throws, stages stays source of truth)
   reconcileResearch(); // close any prerequisite gaps opened by tech-tree changes
   rehydrateFlights(); // S1: re-link in-flight records after load
   return saved;

@@ -4235,3 +4235,49 @@ bump. This is the high-risk slice (touches real player saves) and wants its own 
 
 **Next boundary:** E3.5 is high-stakes migration work — heavier model strongly recommended, and worth
 treating as its own focused session rather than a quick continue.
+
+## Session — E3.5 shipped: save-safe migration (2026-07-16)
+
+The one slice that touches real player saves. **Built deliberately NON-destructively** — the responsible
+version of "cutover", chosen because a migration bug here corrupts real games irreversibly.
+
+**Design: state.stages stays the source of truth; state.build is a DERIVED, additive companion.**
+`stateDesignToBuild(st)` generates a part graph FROM the live slider design (defensive — returns null on
+any problem, never throws); `migrateStateToBuild(saved)` calls it from `applyLoadedSave` AFTER state is
+set, purely additively (never mutates state.stages). Consequences: the slider bench keeps working
+unchanged; saves stay backward-readable by older builds; the graph is always regenerable so there's no
+irreversible commit; flipping BENCH_V2 is a VIEW choice, not a data cutover. A true destructive cutover
+(retiring state.stages) is explicitly NOT done — it would make saves one-way and a migration bug
+unrecoverable. That waits until the part bench has shipped and proven itself in the wild.
+
+`SAVE_VERSION` → 54 (additive: the derived build graph; safe to drop, regenerated on load). `benchBuild()`
+derives from the live slider design on demand when no graph exists yet (fresh game), so the part bench
+always reflects the current design.
+
+**A real bug the parity check caught — the reason this slice earned its careful treatment.** The
+end-to-end save→load→verify test flagged a Δv gap between a migrated graph and its slider source. Isolated
+it to booster propellant: `buildToStageIR`'s booster-folding read `bdef.phys.propMass` (the part-def
+default, 5) instead of the per-instance `_propOverride` (6) that migration stamps — so a migrated design
+with non-default booster prop would have silently flown with wrong Δv. Fixed booster folding to honour
+`_engOverride`/`_propOverride`. A physics-parity assertion (derived graph must fly the same Δv as its
+slider source, at matched payload with drag added back) is now permanently in the migration suite across
+four cases including the exact bug case.
+
+**Save integrity proven end-to-end**: a real save→serialize→load cycle leaves state.stages byte-identical,
+derives a correct 7-part graph, carries boosters, and the derived graph's physics matches the slider's
+exactly (7064 = 7064 m/s at matched payload).
+
+**Validation.** New `tests/test-parts-migration.js` (28/28): round-trip fidelity across real-shaped
+designs, additive-only proof, never-throws on garbage, crewed/uncrewed roots, booster carry, idempotency,
+version-bump backward compat, and the 4-case physics-parity guard. All 6 prior E3 suites green after the
+booster-fold fix (161 checks). **50/52** overall, same 2 pre-existing failures. Epic total: **189 checks
+across 8 suites.**
+
+**Epic E3.0–E3.5 complete and save-safe.** BENCH_V2 remains OFF by default: the part bench is fully built,
+tested, migration-safe, and dev-flippable, but not yet the shipped default — the honest state is "ready to
+enable once it's had real-browser playtesting", not "silently switched on". E3.6 (polish — part tooltips,
+blueprint view, undo/redo, the deferred cursor-follow drag ghost + touch-drag from E3.2) is optional.
+
+**This is a natural stopping point for the epic** — everything shipped is safe and dormant. Enabling
+BENCH_V2 as the default is a deliberate future decision that should follow real playtesting, not ride in
+on a code session.
