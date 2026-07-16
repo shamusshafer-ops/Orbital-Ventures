@@ -109,12 +109,12 @@ Complexity: S = <1 day, M = 1–5 days, L = 1–3 weeks, XL = 1+ month. Impact: 
 |74| Station resupply contracts (recurring ops) | Late-game loop | L | ★★★ | 73 | H |E2|
 |75| Crew rotation cadence requirements | Standing obligation | M | ★★ | 73,61 | M |Backlog|
 |76| Module degradation/maintenance | Sink + tension | M | ★★ | 73 | M |Backlog|
-|77| Science-over-time from staffed station | Passive→active R&D | M | ★★ | 73 | M |Backlog|
+|77| Science-over-time from staffed station | Passive→active R&D | M | ★★ | 73 | M |Already shipped (M17 facilities pass) — facilityProduction().sci feeds the daily tick|
 |78| Depot network view (already have depots) | Logistics legibility | M | ★ | — | L |Backlog|
 |79| Cargo manifest choices on resupply (pick 3 of 5) | Small decisions | S | ★★ | 74 | M |Backlog|
 |80| Surface base tier after ISRU (Moon/Mars) | Colonization-lite | XL | ★★ | — | L |Deferred|
 |81| Sample return market (sell/keep for science) | Economy branch | M | ★ | — | L |Backlog|
-|82| Space telescope program (standing science + events) | Passive with events | M | ★★ | — | M |Backlog|
+|82| Space telescope program (standing science + events) | Passive with events | M | ★★ | — | M |Scoped — ROADMAP E1.7|
 |83| Satellite constellation management (aging, replacement) | Passive contracts deepen | L | ★★ | — | M |Deferred|
 |84| Orbital debris accumulation from failures | Long-arc consequence | M | ★ | — | L |Backlog|
 |85| Tourism vertical: flights with famous-passenger events | Commercial era color | M | ★★ | — | M |Backlog|
@@ -154,7 +154,7 @@ Complexity: S = <1 day, M = 1–5 days, L = 1–3 weeks, XL = 1+ month. Impact: 
 | E1.x | 20 | Folded into a named high-value item |
 | E2 | 10 | Folded into medium-priority grouped item |
 | Deferred | 12 | Named in ROADMAP.md's deferred list |
-| **Backlog** | **53** | Not yet on ROADMAP.md in any form |
+| **Backlog** | **51** | Not yet on ROADMAP.md in any form |
 
 Over half the list (55/105) hasn't been triaged onto ROADMAP.md yet — mostly small
 QoL items (#9, 11–17, 19–25), flight/ops texture (#31, 33–34, 37–45), rival/world

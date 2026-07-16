@@ -3727,3 +3727,41 @@ forced either way via rng, `drawAscent` renders without throwing at four altitud
 guard. **41/41 suites** (40 real + the F4 skip). **Needs a real-browser check**: the floodlight
 cones' angle/brightness read correctly against the dark sky, and a live-call decision mid-launch
 genuinely doesn't flip day↔night on resume.
+
+## E1.7 — Space Telescope standing program (2026-07-16, scoped)
+
+Backlog #82. Flying the existing `space_telescope` mission ("Orbital Observatory") currently just
+banks a one-time sciYield windfall. This slice turns it into a standing program by reusing the
+passive-contracts pattern (`state.passiveContracts`/`tickPassiveContracts` — same shape signPassive-
+Contract already uses for economy contracts) instead of inventing a new subsystem.
+
+**Design**
+- On a successful `space_telescope` flight, seed `state.scienceProgram` (singular — one telescope
+  program active at a time, same one-at-a-time constraint passive contracts don't have but this
+  should, since it represents one physical instrument): `{monthsLeft: TELESCOPE_TERM, sciPerMonth:
+  TELESCOPE_SCI_BASE, health: 100}`.
+- New tick fn `tickScienceProgram()`, called from `tickMonthlyBoundary()` alongside
+  `tickPassiveContracts()`: pays `sciPerMonth` into `state.science` monthly, decrements `monthsLeft`,
+  decays `health` slowly (instrument aging — mirrors `facilitySupplyDrain`'s shape, not a copy).
+  At `monthsLeft<=0` or `health<=0`, program lapses — log line, `state.scienceProgram=null`, flight
+  becomes re-signable (same `passiveStatus`-style gate).
+- **Events**, reusing the `_pendingInquiry`-style transient-decision shape (not the object itself —
+  a new `_pendingDiscovery`): a small monthly roll while the program is active can surface a discovery
+  event — flavor log line + either a science windfall (rare, big) or an instrument-fault decision
+  (fund a repair to restore `health`, or let it degrade — same fund/decline shape as
+  `resolveInquiry`). Keeps the "occasional events" half of #82 distinct from the steady drip, so the
+  program isn't just a flat passive-income clone.
+- Right-rail surface: one line in the existing Outliner (program has an implicit ETA — `monthsLeft`)
+  and one line in `commandSummary()`'s data (`scienceProgram: {monthsLeft, health}` or `null`) so the
+  advisor/CC can show it without new UI plumbing.
+
+**Explicitly not doing:** a telescope *facility* (station real estate) — this stays a "sign once,
+runs itself" program like other passive contracts, not a buildable module. Multiple simultaneous
+telescopes — one program slot, consistent with it being framed as an actual instrument.
+
+**Size:** M, per backlog estimate — mostly wiring three already-proven patterns (passive-contract
+tick/expiry, inquiry-style fund/decline decision, Outliner/commandSummary surfacing) rather than new
+mechanics. No SAVE_VERSION bump needed if `state.scienceProgram` defaults to `null`/undefined
+lazily on load (same convention every other optional-state field uses).
+
+**Not yet scheduled** — sits after E1.2/E1.6 in the current queue; pull forward on request.
