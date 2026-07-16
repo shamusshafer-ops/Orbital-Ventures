@@ -4044,3 +4044,43 @@ confirmed flaky this run: FAIL/FAIL/PASS across 3 runs).
 **Next:** E3.1 (read-only 2D bench render of `state.build`) is mechanical once the model exists —
 lighter model fits. The remaining physics-depth wiring (E3.4) and save migration (E3.5) are the other
 substantial pieces.
+
+## Session — E3.1 shipped: read-only part-graph renderer (2026-07-16)
+
+Pure `renderBuildSVG(build, W, H)` added to `src/parts.js`: static SVG rocket drawn from `state.build`
+— tapered nosecone, engine bell trapezoid, tank/generic cylinder with the same gradient-hull idiom
+E1.8's `renderStationStackSVG`/`renderBaseSurfaceSVG` established, category-colored (structural/
+propulsion/avionics/payload), plus a real per-stage Δv/TWR text overlay computed from
+`buildToStageIR` → `stackPerformance` — the same numbers the E3.0 harness already proved equivalent
+to the slider bench, not decoration.
+
+**Refactor while wiring this**: extracted `spineGroups(build)` (split the spine at decoupler
+boundaries) out of `buildToStageIR` so the physics bridge and the renderer share one source of truth
+for "what counts as a stage" — `buildToStageIR` reverses it to firing order, the renderer walks it
+top-down for label placement. Prevents the two from silently drifting on stage boundaries as parts are
+added in later slices.
+
+**Deliberate design choice, not deferred scope**: the renderer's error surface is intentionally
+narrower than the bridge's — it draws any structurally valid spine (including a lone decoupler or an
+engine with no tank) because a player needs to *see* a non-flying rocket to fix it; only unknown-part/
+empty/no-spine are render errors, while "no propulsive stage" is bridge-only and just yields an empty
+stage-label overlay. Test suite documents this explicitly rather than assuming parity.
+
+**Still behind `BENCH_V2=false`, still zero live UI wiring** — this slice is a proven, tested pure
+function, not a reachable view. Live wiring (a dev-flippable read-only tab) is deferred to E3.2, where
+there's something interactive to actually look at; wiring dead markup into `shell.html` for a
+permanently-invisible feature isn't worth the surface area yet.
+
+**No SAVE_VERSION bump, no behaviour change.**
+
+**Validation.** New `tests/test-parts-render.js` (24/24): every viable-set part renders standalone,
+full 2-stage crewed build renders correct part shapes + stage-label count, overlay Δv/TWR numbers
+verified against real `stackPerformance` output (not just "doesn't throw"), single-stage label count,
+malformed-build handling (with the narrower-contract distinction explicit), geometry sanity (no NaN/
+negative dimensions), and symmetry (`sym>1`) tolerance ahead of E3.3. Re-ran `test-parts-bridge.js`
+after the `spineGroups` refactor — still 31/31, no regression. **44/47** — same 3 pre-existing
+failures (era-visual, theme-sync, rng-flaky station-slice2), none related.
+
+**Next:** E3.2 (drag-drop editing — palette, snap-to-node, ghost preview) is the first slice where
+live UI wiring actually earns its keep. Large (L); design/interaction work — heavier model likely
+worth it for the snap/validation logic, though the palette-card rendering itself is mechanical.

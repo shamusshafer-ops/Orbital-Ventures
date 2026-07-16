@@ -2852,7 +2852,7 @@ const PART_DEFS = {
   // — structural —
   tank_std: {
     id:'tank_std', cat:'structural', name:'Propellant Tank', short:'TNK',
-    era:0, dia:1.0,
+    era:0, dia:1.0, px:{len:140, dia:90},
     nodes:[ {id:'top', at:'top', class:'small'}, {id:'bot', at:'bottom', class:'small'} ],
     // propMass is the *nominal full* load; the bench lets the player stretch it
     // (E3.2). Dry structural mass is computed via the existing tankStruct() at
@@ -2862,7 +2862,7 @@ const PART_DEFS = {
   },
   decoupler: {
     id:'decoupler', cat:'structural', name:'Stage Decoupler', short:'DEC',
-    era:0, dia:1.0,
+    era:0, dia:1.0, px:{len:18, dia:96},
     nodes:[ {id:'top', at:'top', class:'small'}, {id:'bot', at:'bottom', class:'small'} ],
     // A decoupler is the staging boundary: everything below it separates as a
     // spent stage. Small real mass; carries no propellant.
@@ -2871,7 +2871,7 @@ const PART_DEFS = {
   },
   nosecone: {
     id:'nosecone', cat:'structural', name:'Aerodynamic Nosecone', short:'NOS',
-    era:0, dia:1.0,
+    era:0, dia:1.0, px:{len:70, dia:90},
     nodes:[ {id:'bot', at:'bottom', class:'small'} ], // caps a stack — bottom node only
     phys:{ dryMass:0.12, dragCoeff:0.05, crossSection:1.0 }, // low drag is the point
     blurb:'Caps the stack and cuts drag. The pointy end goes up.',
@@ -2879,7 +2879,7 @@ const PART_DEFS = {
   // — propulsion —
   engine_a4: {
     id:'engine_a4', cat:'propulsion', name:'V-2 (A-4) Powerplant', short:'ENG',
-    era:0, dia:1.0, engId:'a4', // pulls thrust/isp/mass/cost/rel from ENGINES.a4
+    era:0, dia:1.0, px:{len:56, dia:80}, engId:'a4', // pulls thrust/isp/mass/cost/rel from ENGINES.a4
     nodes:[ {id:'top', at:'top', class:'small'} ], // engine hangs off the bottom of a tank
     phys:{ dragCoeff:0.3, crossSection:1.0 },
     blurb:'The engine that started it all. Mounts to the base of a stage.',
@@ -2887,14 +2887,14 @@ const PART_DEFS = {
   // — payload —
   capsule_mk1: {
     id:'capsule_mk1', cat:'payload', name:'Crew Capsule', short:'CAP',
-    era:0, dia:1.0,
+    era:0, dia:1.0, px:{len:90, dia:88},
     nodes:[ {id:'bot', at:'bottom', class:'small'} ],
     phys:{ dryMass:1.2, crew:1, dragCoeff:0.4, crossSection:1.0, isPayload:true, hasAvionics:true },
     blurb:'A one-seat crew capsule. Its avionics fly the rocket.',
   },
   probe_core: {
     id:'probe_core', cat:'avionics', name:'Probe Guidance Core', short:'GNC',
-    era:0, dia:1.0,
+    era:0, dia:1.0, px:{len:44, dia:70},
     nodes:[ {id:'top', at:'top', class:'small'}, {id:'bot', at:'bottom', class:'small'} ],
     phys:{ dryMass:0.15, dragCoeff:0.1, crossSection:1.0, hasAvionics:true, isPayload:true },
     blurb:'Uncrewed guidance core. Flies the trajectory without a pilot aboard.',
@@ -2961,22 +2961,29 @@ function radialParts(build){
    the caller can feed it to stackPerformance(stages, payload).
 
    Returns { stages, payload, crew, warnings } or { error } if unbuildable. */
-function buildToStageIR(build){
-  if(!build || !build.parts || !build.parts.length) return {error:'empty build'};
+/* Shared grouping: split the spine (top→bottom) into part-arrays at decoupler
+   boundaries. A decoupler ends the group ABOVE it and is dropped (negligible
+   structure) rather than starting the next group with it. Used by BOTH the
+   physics bridge (which reverses to firing order) and the renderer (which
+   draws top→bottom as-is) — one source of truth for "what is a stage". */
+function spineGroups(build){
   const spine=stackSpine(build);
-  if(!spine.length) return {error:'no spine'};
-
-  // Group spine parts into stages at decoupler boundaries. Spine is top→bottom;
-  // a decoupler ends the stage that sits ABOVE it (that hardware separates).
   const groups=[]; let cur=[];
   for(const part of spine){
-    const def=partDef(part.defId); if(!def) return {error:'unknown part '+part.defId};
-    if(def.phys.isDecoupler){ groups.push(cur); cur=[]; continue; } // boundary — decoupler itself is negligible structure
+    const def=partDef(part.defId); if(!def) return {error:'unknown part '+part.defId, spine};
+    if(def.phys.isDecoupler){ groups.push(cur); cur=[]; continue; }
     cur.push(part);
   }
   groups.push(cur);
-  // groups are top→bottom; firing order is bottom→top, so reverse.
-  groups.reverse();
+  return {groups, spine}; // top→bottom order
+}
+
+function buildToStageIR(build){
+  if(!build || !build.parts || !build.parts.length) return {error:'empty build'};
+  const g=spineGroups(build);
+  if(g.error) return {error:g.error};
+  if(!g.spine.length) return {error:'no spine'};
+  const groups=g.groups.slice().reverse(); // firing order: bottom-of-stack fires first
 
   let payload=0, crew=0; const warnings=[];
   const stages=[];
@@ -3051,6 +3058,106 @@ function sliderDesignToBuild(stages, opts){
 /* Overrides let the harness stamp exact prop/engine/count onto the generic
    parts so the equivalence test isolates the GRAPH→STAGE logic from the (later)
    part-stat catalogue. buildToStageIR honours them when present. */
+
+/* ============================================================================
+   E3.1 — Read-only 2D bench render.
+
+   Pure function: state.build -> SVG string. Static (no drag, no animation) —
+   the flight-anim's drawVehicle() is a moving-scene imperative Canvas drawer
+   built for flame/plume/altitude concerns that don't apply to a parked bench
+   preview, so this borrows its VISUAL LANGUAGE (tapered hulls, engine bells,
+   dark instrument palette) but is written fresh as an SVG string-builder,
+   matching the idiom E1.8's renderBaseSurfaceSVG/renderStationStackSVG already
+   established for static part-stack previews.
+
+   Per-stage Δv/TWR labels come from the REAL physics (buildToStageIR ->
+   stackPerformance), not decoration — same numbers the old bench would show
+   for an equivalent slider design.
+   ============================================================================ */
+const PART_CAT_COLOR={ structural:'#8a97a3', propulsion:'#d0563a', avionics:'#5aa9e0', payload:'#c9b06b' };
+
+function renderPartSVG(def, x, yTop, scale){
+  // x,yTop = top-left of this part's bounding box in SVG units; scale applies uniformly.
+  const w=(def.px.dia)*scale, len=(def.px.len)*scale, cx=x+w/2;
+  const color=PART_CAT_COLOR[def.cat]||'#8a97a3';
+  let s='';
+  if(def.phys.isDecoupler){
+    s+=`<rect x="${x}" y="${yTop}" width="${w}" height="${len}" fill="#c9a83a" stroke="#8a7420" stroke-width="1"/>`;
+    s+=`<line x1="${x}" x2="${x+w}" y1="${yTop+len/2}" y2="${yTop+len/2}" stroke="#4a3f14" stroke-width="1" stroke-dasharray="3 2"/>`;
+  } else if(def.id==='nosecone'){
+    s+=`<path d="M ${cx} ${yTop} L ${x+w} ${yTop+len} L ${x} ${yTop+len} Z" fill="${color}" stroke="#293743" stroke-width="1"/>`;
+  } else if(def.engId){
+    // engine: a bell trapezoid (narrow at top where it meets the tank, wide at the base) + dark mount
+    s+=`<rect x="${x+w*0.15}" y="${yTop}" width="${w*0.7}" height="${len*0.25}" fill="#22292e" stroke="#3a444b" stroke-width="1"/>`;
+    s+=`<path d="M ${x+w*0.2} ${yTop+len*0.25} L ${x+w} ${yTop+len} L ${x} ${yTop+len} L ${x+w*0.8} ${yTop+len*0.25} Z" fill="url(#partBell)" stroke="#3a444b" stroke-width="1"/>`;
+  } else if(def.phys.crew){
+    s+=`<rect x="${x}" y="${yTop}" width="${w}" height="${len}" rx="${w*0.28}" fill="${color}" stroke="#293743" stroke-width="1"/>`;
+    s+=`<circle cx="${cx}" cy="${yTop+len*0.4}" r="${w*0.18}" fill="#1a2530" stroke="#5aa9e0" stroke-width="1"/>`; // window
+  } else if(def.phys.hasAvionics && !def.phys.crew){
+    s+=`<rect x="${x}" y="${yTop}" width="${w}" height="${len}" rx="4" fill="${color}" stroke="#293743" stroke-width="1"/>`;
+    s+=`<circle cx="${cx}" cy="${yTop+len/2}" r="${w*0.12}" fill="#0a1420" stroke="#8fd0ff" stroke-width="0.8"/>`; // sensor eye
+  } else { // tank / generic structural cylinder
+    s+=`<rect x="${x}" y="${yTop}" width="${w}" height="${len}" fill="url(#g-${def.id})" stroke="#293743" stroke-width="1"/>`;
+  }
+  return s;
+}
+
+// Returns {svg, error} — error means the build couldn't be laid out (mirrors buildToStageIR's contract).
+function renderBuildSVG(build, W, H){
+  H=H||420; W=W||260;
+  const g=spineGroups(build);
+  if(g.error) return {error:g.error};
+  const spine=g.spine;
+  if(!spine.length) return {error:'no spine'};
+  const defs=spine.map(p=>partDef(p.defId));
+  if(defs.some(d=>!d)) return {error:'unknown part in spine'};
+
+  const totalLen=defs.reduce((a,d)=>a+d.px.len,0);
+  const maxDia=Math.max(...defs.map(d=>d.px.dia));
+  const scale=Math.min((W-24)/maxDia, (H-40)/Math.max(totalLen,1));
+  const cx=W/2;
+  let y=20; // top margin
+  let body='';
+  const partYRanges=[]; // {uid, top, bottom} in SVG px, for stage-label placement below
+  for(let i=0;i<spine.length;i++){
+    const def=defs[i], w=def.px.dia*scale, len=def.px.len*scale;
+    const x=cx-w/2, yTop=y;
+    body+=renderPartSVG(def, x, yTop, scale);
+    partYRanges.push({uid:spine[i].uid, top:yTop, bottom:yTop+len});
+    y+=len;
+  }
+
+  // Per-stage Δv/TWR overlay — real physics, not decoration.
+  const ir=buildToStageIR(build);
+  let overlay='';
+  if(!ir.error){
+    const perf=stackPerformance(ir.stages, ir.payload);
+    // g.groups is top→bottom; firing order (ir.stages) is bottom→top, so stage k in firing
+    // order corresponds to group (groups.length-1-k) in the top→bottom list — mirrors the
+    // same reversal buildToStageIR applies, keeping label placement in lockstep with the IR.
+    const groupsTopDown=g.groups;
+    let stageFireIdx=0;
+    for(let gi=groupsTopDown.length-1; gi>=0; gi--){
+      const grp=groupsTopDown[gi]; if(!grp.length) continue;
+      const hasEngine=grp.some(p=>partDef(p.defId).engId);
+      if(!hasEngine) continue; // payload/structure-only groups carry no stage label
+      const first=partYRanges.find(r=>r.uid===grp[0].uid), last=partYRanges.find(r=>r.uid===grp[grp.length-1].uid);
+      const midY=(first.top+last.bottom)/2;
+      const dv=ir.stages[stageFireIdx] ? Math.round(perf.stageDv[stageFireIdx]) : null;
+      const twr=ir.stages[stageFireIdx] ? perf.stageTwr[stageFireIdx].toFixed(2) : null;
+      if(dv!=null){
+        overlay+=`<text x="${W-8}" y="${midY+3}" fill="#9bb6c8" font-size="9" font-family="ui-monospace,monospace" text-anchor="end">S${stageFireIdx+1} · ${dv} m/s · TWR ${twr}</text>`;
+      }
+      stageFireIdx++;
+    }
+  }
+
+  const svg=`<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="max-width:100%;height:auto;background:#060d16;border-radius:8px">`
+    +`<defs><linearGradient id="partBell" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="#3a444b"/><stop offset="0.5" stop-color="#5a666e"/><stop offset="1" stop-color="#3a444b"/></linearGradient>`
+    +Object.values(PART_DEFS).map(d=>`<linearGradient id="g-${d.id}" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="${(PART_CAT_COLOR[d.cat]||'#8a97a3')}" stop-opacity=".95"/><stop offset=".5" stop-color="${(PART_CAT_COLOR[d.cat]||'#8a97a3')}"/><stop offset="1" stop-color="#293743"/></linearGradient>`).join('')
+    +`</defs>${body}${overlay}</svg>`;
+  return {svg, totalLen, maxDia, error:null};
+}
 let state;
 function newGame(difficulty){
   const mode=DIFFICULTY[difficulty]?difficulty:'engineer';
