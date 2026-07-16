@@ -3931,3 +3931,83 @@ messaging, `renderBaseDraft` end-to-end for both bodies, and the draft→founded
 **Needs a real-browser check**: Luna/Mars tab toggle interaction, draft SVG at zoom, and the
 unlimited-module claim rendering sensibly at high module counts (ground-line width/scroll behavior
 untested past ~6 modules).
+
+## E3 — Part-Based Vehicle Bench (2026-07-16, scoped) — EPIC
+
+**Vision.** Replace the slider-driven stage bench with a KSP-VAB-style 2D part builder: drag parts
+from a categorized palette onto a rocket, parts have real attach nodes and physical footprints,
+stages are *inferred* from decoupler placement, and every part carries real mass/drag/thermal/power
+stats that feed the existing Δv/TWR/reliability physics. Parts-as-truth; the old `state.stages`
+slider skeleton is retired.
+
+**User-confirmed direction (all maximalist):** drag-and-drop free placement · deep per-part physics ·
+all four categories (structural, propulsion, avionics, payload) · parts are the source of truth
+(decoupler defines a stage) · physical 2D with real nodes (you can build something that won't fly) ·
+full replacement of the old bench · symmetry tool + live per-stage Δv + snap-to-node ghost preview as
+must-have UX · auto-inferred staging with an editable stack.
+
+### Sequencing — DISAGREEMENT FLAGGED
+The user chose "everything at once, cut over when complete." **I've scoped it as parallel-behind-a-flag
+instead**, and recommend that override for one concrete reason: `computeVehicle()` (sim.js:3515) is a
+30+-line physics contract that multiplies in tank materials, doctrines, fleet heritage, recovery
+refurb, families, foundry/cadence/material-market factors, difficulty, and home-field discounts. The
+flight animation renders from `state.stages`. Every saved design + vehicle family serializes
+`state.stages`. A big-bang cutover means all four (physics, save, flight anim, UI) are broken
+simultaneously with no green state for weeks — the textbook rewrite-that-rots. Parallel-flag reaches
+the identical end state, always shippable, and lets us diff new-vs-old physics numerically before
+retiring the old path. **If the user reaffirms big-bang after reading this, slices still apply — only
+the flag + coexistence window drop.**
+
+### Data model (foundation, slice 0)
+- `PART_DEFS`: id, category, name, era/research gate, footprint (w×h in bench units), attach nodes
+  (top/bottom/radial with sizes — a node has a diameter class, parts only connect same-class), and a
+  `phys` block: dryMass, propMass (tanks), thrust/isp (engines), dragCoeff+crossSection, thermal
+  (ablator/heat tolerance), powerGen/powerDraw, crew, controlAuthority (avionics/RCS), science.
+- `state.build`: a part graph — `{parts:[{id, partDefId, x, y, rot, symMirror}], links:[{parent,
+  child, node}], root}`. Replaces `state.stages`/`boosters`/`transfer`/`descent`/`ascent`.
+- Stage inference: walk the graph from root; each decoupler boundary starts a new stage; produce the
+  same `{stages:[{prop,engines,dryMass,...}]}` shape `stackPerformance()` already consumes, so the
+  **physics core is reused, not rewritten** — the part graph is a new front-end that emits the old
+  intermediate representation.
+
+### Slices
+- **E3.0 — Part data + graph model + stage inference** (M/L). `PART_DEFS` for a minimal viable set
+  (1 tank, 1 engine, 1 decoupler, 1 capsule, 1 nosecone); `state.build` graph; the
+  graph→stage-IR→`stackPerformance` bridge. Headless-testable with zero UI: assert a hand-built graph
+  produces Δv within tolerance of the equivalent old slider design. **This slice is the whole risk** —
+  if the bridge reproduces old physics, everything else is UI.
+- **E3.1 — Read-only bench render** (M). Draw `state.build` as a 2D SVG rocket (reuse the flight-anim
+  vehicle-drawing vocabulary); no editing yet. Per-stage Δv/TWR readout overlaid on the rocket.
+  Behind `BENCH_V2` flag; old bench still default.
+- **E3.2 — Drag-drop editing** (L). Palette (4 category tabs, search); drag part → snap-to-nearest
+  valid node with ghost preview; attach/detach; delete. Node-class validation (hard block on
+  mismatched diameters; soft warn on questionable structures like too-heavy-on-top). Physical
+  footprint collision.
+- **E3.3 — Staging + symmetry** (M). Auto-infer stage order from decouplers; editable stage stack
+  (drag to reorder fire sequence, both auto+manual per user). Symmetry tool (2×/3×/4× radial mirror
+  for boosters/RCS).
+- **E3.4 — Physics depth wiring** (M). Feed the new per-part stats the old model didn't have —
+  aggregate drag from actual cross-section/part drag, thermal from ablator coverage, power balance,
+  control authority vs. gimbal/RCS — into reliability/flight. This is where "deep physics" earns out.
+- **E3.5 — Save migration + cutover** (M). `SAVE_VERSION` bump: migrate every saved `state.stages`
+  design + vehicle family to an equivalent `state.build` graph (auto-generate a linear stack from the
+  old stage list). Flight animation reads the new graph. Retire the old bench + slider code. Flip
+  `BENCH_V2` on by default. **Only after E3.0–E3.4 are green and physics diffs match.**
+- **E3.6 — Polish** (M/S, optional). Part tooltips w/ historical flavor (reuse the engine-heritage
+  voice), blueprint/schematic view toggle, part-count/mass budget readouts, undo/redo.
+
+### Non-negotiables carried from the existing design
+- Validated physics: E3.0's bridge must pass a numerical-equivalence harness vs. old designs before
+  any cutover. Headless Node validation before "done", as always.
+- Historical flavor per part (engines already have heritage voice; extend to tanks/avionics).
+- Dark engineering-instrument theme; 2D is fine and wanted here.
+- Save-forward: the migration is one-way (old→graph) and gated behind the version bump.
+
+### Open questions for build time (not blocking scoping)
+- Radial vs. purely stacked attach in v1 of E3.2 (radial is needed for boosters but adds real
+  collision complexity — may push full radial to E3.3 with symmetry).
+- Whether descent/ascent lander stages become just "more parts" or keep a guided sub-flow (the
+  multi-leg lunar/Mars profiles depend on them).
+
+**Size:** epic (6–7 slices, several L). Biggest single item in the backlog. **No work started.** E3.0
+is the make-or-break; recommend building that as a standalone proof before committing to the rest.
