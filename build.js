@@ -20,7 +20,7 @@ const path = require('path');
 
 const ROOT = __dirname;
 const MODULES = [
-  'data.js', 'sim.js', 'save.js', 'shell.js', 'flight.js', 'render.js', 'main.js',
+  'data.js', 'parts.js', 'sim.js', 'save.js', 'shell.js', 'flight.js', 'render.js', 'main.js',
 ];
 
 // Match the marker independently of the checkout's line-ending style. Git may

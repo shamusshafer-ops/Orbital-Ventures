@@ -4011,3 +4011,36 @@ the flag + coexistence window drop.**
 
 **Size:** epic (6–7 slices, several L). Biggest single item in the backlog. **No work started.** E3.0
 is the make-or-break; recommend building that as a standalone proof before committing to the rest.
+
+## Session — E3.0 shipped: part-graph model + physics bridge (2026-07-16)
+
+The make-or-break slice of the E3 epic, and it **passes**. New `src/parts.js` (loaded after data.js,
+before sim.js, in the build order) holds: `PART_DEFS` (viable set — tank, decoupler, engine, capsule,
+nosecone, probe core — with attach-node classes, footprints, and a real `phys` block), the
+`state.build` part-graph model (`{parts, links, root}`), spine/tree traversal, and **the bridge**:
+`buildToStageIR(build)` walks the spine top→bottom, splits into stages at decoupler boundaries, and
+emits the exact `{eng, count, prop, dia}` stage array + payload that the existing
+`stackPerformance`/`stageMasses` physics core already consumes — so `computeVehicle()`'s deep contract
+(materials, doctrines, heritage, recovery, families, difficulty) is **reused, not rewritten**.
+`sliderDesignToBuild()` is the reverse map (used by the E3.5 save migration and, now, the equivalence
+harness). Everything is behind `BENCH_V2=false` and reachable only from tests — zero live-game wiring
+this slice, exactly the parallel-flag plan.
+
+**The proof.** `tests/test-parts-bridge.js` (31/31): builds slider designs, converts to graphs,
+reduces graphs back to stages, and asserts Δv / liftoff mass / stage-1 TWR / every per-stage Δv match
+the direct slider path within tolerance — across single-stage uncrewed, two-stage crewed, and
+three-stage clustered designs. Plus graph-integrity (spine length, decoupler count = stages−1, firing
+order preserved), malformed-build handling (empty / payload-only / tank-without-engine all error
+cleanly), and IR determinism. Sabotage-verified out-of-band: doubling a stage's prop in the graph is
+caught, so the harness genuinely discriminates.
+
+**No SAVE_VERSION bump** — nothing persisted yet; `state.build` doesn't exist in live saves until
+E3.5. **No behaviour change** — the old bench is untouched and still default.
+
+**Validation.** `node --check` OK, lint clean (same 27 guarded-Phaser refs). **43/46** — the 3 failures
+are all pre-existing and unrelated (era-visual, theme-sync, and the known rng-flaky station-slice2,
+confirmed flaky this run: FAIL/FAIL/PASS across 3 runs).
+
+**Next:** E3.1 (read-only 2D bench render of `state.build`) is mechanical once the model exists —
+lighter model fits. The remaining physics-depth wiring (E3.4) and save migration (E3.5) are the other
+substantial pieces.
