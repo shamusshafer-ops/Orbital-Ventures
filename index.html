@@ -1061,6 +1061,10 @@
         <div style="display:flex;gap:6px">
           <button class="btn ghost" onclick="openStationPopout()" title="Pop out — large pan/zoom view + stats (Esc/Enter to close)">⤢ Pop out</button>
           <button class="btn ghost" id="stationExpandBtn" onclick="toggleStationExpand()">⛶ Expand</button>
+          <button class="btn ghost" onclick="zoomStation(1/1.25)" title="Zoom out">−</button>
+          <span id="stationZoomLabel" class="dim" style="min-width:38px;text-align:center;align-self:center;font:11px var(--mono)">100%</span>
+          <button class="btn ghost" onclick="zoomStation(1.25)" title="Zoom in">+</button>
+          <button class="btn ghost" onclick="resetStationView()" title="Reset pan and zoom">Reset</button>
         </div>
       </div>
       <p class="muted" style="font-size:12px;margin:6px 0 10px">Build outward in four directions from the core. Modules use detailed hulls, ports, windows, tanks, crops, trusses and power hardware.</p>

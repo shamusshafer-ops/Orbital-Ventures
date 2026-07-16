@@ -16199,7 +16199,14 @@ function renderMap(){
 const STN_W=760, STN_H=480;
 function stationActiveModule(){ return STATION_MODULES[0]; } // only the (dead) StationScene below still calls this
 let stationExpanded=false;
-let stationPanX=0, stationPanY=0;
+let stationPanX=0, stationPanY=0, stationZoom=1;
+function stationViewBox(W,H,zoom){
+  const vw=W/zoom, vh=H/zoom;
+  return `${stationPanX+(W-vw)/2} ${stationPanY+(H-vh)/2} ${vw} ${vh}`;
+}
+function setStationZoom(z){ stationZoom=Math.max(.65,Math.min(3,Number(z)||1)); renderStation(); }
+function zoomStation(f){ setStationZoom(stationZoom*f); }
+function resetStationView(){ stationPanX=0; stationPanY=0; stationZoom=1; renderStation(); }
 function toggleStationExpand(){ stationExpanded=!stationExpanded; renderStation(); }
 let StationScene=null, stationGame=null, stationScene=null;
 function defineStationScene(){
@@ -16327,6 +16334,7 @@ function renderStationDraft(){
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">${cards}</div>`;
   }
   wireStationPan(c);
+  const zl=$('stationZoomLabel'); if(zl) zl.textContent=Math.round(stationZoom*100)+'%';
   if(st) st.innerHTML=stationDraftStatsHTML(fs);
 }
 
@@ -16341,9 +16349,14 @@ function wireStationPan(el){
   });
   el.addEventListener('pointermove',e=>{
     if(!dragging) return;
-    stationPanX-=e.clientX-lastX; stationPanY-=e.clientY-lastY; lastX=e.clientX; lastY=e.clientY;
-    const svg=$('stationSvg'); if(svg) svg.setAttribute('viewBox',`${stationPanX} ${stationPanY} ${svg.dataset.vw} ${svg.dataset.vh}`);
+    const svg=$('stationSvg'); const z=Number(svg?.dataset.zoom||1);
+    stationPanX-=(e.clientX-lastX)/z; stationPanY-=(e.clientY-lastY)/z; lastX=e.clientX; lastY=e.clientY;
+    if(svg) svg.setAttribute('viewBox',stationViewBox(Number(svg.dataset.bw),Number(svg.dataset.bh),z));
   });
+  el.addEventListener('wheel',e=>{
+    if(!e.target.closest('#stationSvg')) return;
+    e.preventDefault(); zoomStation(e.deltaY<0?1.12:1/1.12);
+  },{passive:false});
   const stop=e=>{ if(!dragging) return; dragging=false; try{ el.releasePointerCapture?.(e.pointerId); }catch(err){} const svg=$('stationSvg'); if(svg) svg.style.cursor='grab'; };
   el.addEventListener('pointerup',stop); el.addEventListener('pointercancel',stop);
 }
@@ -16369,6 +16382,7 @@ function renderStation(){
   if(v.isDraft){ renderStationDraft(); return; } // pre-facility: free blueprint drawing board
   const c=$('stationCanvas'), st=$('stationStats'), cur=v.cur;
   if(c) c.innerHTML=renderStationStackSVG(720,300,cur,true)+renderStationPalette(cur);
+  const zl=$('stationZoomLabel'); if(zl) zl.textContent=Math.round(stationZoom*100)+'%';
   wireStationPan(c);
   if(st) st.innerHTML=renderStationFacilityStats(v.built, cur);
 }
@@ -16442,7 +16456,9 @@ function stationModuleSVG(id,d,x,y,scale){
     for(let i=-2;i<=2;i++) g+=`<circle cx="${i*L*.13}" cy="${-hd*.25}" r="${Math.max(2,3*scale)}" fill="#d7f2ff" stroke="#587789"/>`;
     g+=`<path d="M ${-L*.38} ${hd*.55} H ${L*.38}" stroke="#f0c66a" stroke-width="2"/><path d="M ${-L*.2} ${-hd*.65} H ${L*.2}" stroke="#dbe4ea" stroke-width="1"/></g>`;
   }
-  g+=`<circle cx="${L/2+8}" r="6" fill="#293b47" stroke="#b9c8d2"/><circle cx="${-L/2-8}" r="6" fill="#293b47" stroke="#b9c8d2"/><text y="${hd+18}" fill="#c1cfda" font-size="10" font-family="ui-monospace,monospace" text-anchor="middle" letter-spacing="1">${esc(d.short||id)}</text></g>`;
+  // Common small-scale orbital hardware: CBM rings, handrails, cable runs, antenna booms,
+  // radiator fins and external equipment boxes keep the silhouettes from reading as flat cans.
+  g+=`<path d="M ${-L*.36} ${-hd*.72} H ${L*.36} M ${-L*.36} ${hd*.72} H ${L*.36}" stroke="#f1c95f" stroke-width="1.4" stroke-dasharray="5 3"/><path d="M ${-L*.22} ${-hd*.98} V ${-hd*.72} M ${L*.22} ${hd*.98} V ${hd*.72}" stroke="#d9e3e9" stroke-width="1"/><rect x="${-L*.28}" y="${hd*.72}" width="${L*.14}" height="${hd*.22}" rx="2" fill="#354955" stroke="#b0c0c9"/><rect x="${L*.12}" y="${-hd*.94}" width="${L*.16}" height="${hd*.2}" rx="2" fill="#354955" stroke="#b0c0c9"/><path d="M ${L*.28} ${-hd} q ${L*.14} -${hd*.8} ${L*.28} -${hd*1.12}" fill="none" stroke="#b9c8d2" stroke-width="1"/><circle cx="${L*.56}" cy="-${hd*1.12}" r="3" fill="#f0c66a"/><path d="M ${-L*.5} ${hd*1.05} h ${L*.18} l 5 6 h ${L*.22}" fill="none" stroke="#9eb1bc" stroke-width="1"/><circle cx="${L/2+8}" r="6" fill="#293b47" stroke="#b9c8d2"/><circle cx="${-L/2-8}" r="6" fill="#293b47" stroke="#b9c8d2"/><circle cx="${L/2+8}" r="3" fill="#dce8ef" opacity=".7"/><circle cx="${-L/2-8}" r="3" fill="#dce8ef" opacity=".7"/><text y="${hd+18}" fill="#c1cfda" font-size="10" font-family="ui-monospace,monospace" text-anchor="middle" letter-spacing="1">${esc(d.short||id)}</text></g>`;
   return g;
 }
 function renderStationStackSVG(W,H,cur,interactive){
@@ -16450,8 +16466,8 @@ function renderStationStackSVG(W,H,cur,interactive){
   const minX=Math.min(...slots.map(p=>p[0]))-1,maxX=Math.max(...slots.map(p=>p[0]))+1,minY=Math.min(...slots.map(p=>p[1]))-1,maxY=Math.max(...slots.map(p=>p[1]))+1;
   const scale=Math.min(1.25,(W-28)/((maxX-minX)*cell),(H-28)/((maxY-minY)*cell));
   const ox=W/2-(minX+maxX)*cell*scale/2, oy=H/2-(minY+maxY)*cell*scale/2;
-  const vx=interactive?stationPanX:0, vy=interactive?stationPanY:0;
-  let s=`<svg id="${interactive?'stationSvg':''}" data-vw="${W}" data-vh="${H}" viewBox="${vx} ${vy} ${W} ${H}" width="${W}" height="${H}" style="max-width:100%;height:auto;background:#060d16;border-radius:8px 8px 0 0;cursor:${interactive?'grab':'default'};touch-action:none"><defs><filter id="stnGlow"><feGaussianBlur stdDeviation="1.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter><pattern id="stnGrid" width="24" height="24" patternUnits="userSpaceOnUse"><path d="M24 0H0V24" fill="none" stroke="#6a9ab8" stroke-opacity=".08"/></pattern>${STATION_MODULES.map(d=>`<linearGradient id="g-${d.id}" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="${d.color}" stop-opacity=".95"/><stop offset=".48" stop-color="${d.color}"/><stop offset="1" stop-color="#293743"/></linearGradient>`).join('')}</defs><rect x="${-W*2}" y="${-H*2}" width="${W*5}" height="${H*5}" fill="#060d16"/><rect width="100%" height="100%" fill="url(#stnGrid)"/><text x="14" y="20" fill="#9bb6c8" font-size="10" font-family="ui-monospace,monospace" letter-spacing="1.5">ORBITAL ASSEMBLY PLAN · RADIAL DOCKING GRID</text>`;
+  const viewBox=interactive?stationViewBox(W,H,stationZoom):`0 0 ${W} ${H}`;
+  let s=`<svg id="${interactive?'stationSvg':''}" data-bw="${W}" data-bh="${H}" data-zoom="${interactive?stationZoom:1}" viewBox="${viewBox}" width="${W}" height="${H}" style="max-width:100%;height:auto;background:#060d16;border-radius:8px 8px 0 0;cursor:${interactive?'grab':'default'};touch-action:none"><defs><filter id="stnGlow"><feGaussianBlur stdDeviation="1.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter><pattern id="stnGrid" width="24" height="24" patternUnits="userSpaceOnUse"><path d="M24 0H0V24" fill="none" stroke="#6a9ab8" stroke-opacity=".08"/></pattern>${STATION_MODULES.map(d=>`<linearGradient id="g-${d.id}" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="${d.color}" stop-opacity=".95"/><stop offset=".48" stop-color="${d.color}"/><stop offset="1" stop-color="#293743"/></linearGradient>`).join('')}</defs><rect x="${-W*2}" y="${-H*2}" width="${W*5}" height="${H*5}" fill="#060d16"/><rect width="100%" height="100%" fill="url(#stnGrid)"/><text x="14" y="20" fill="#9bb6c8" font-size="10" font-family="ui-monospace,monospace" letter-spacing="1.5">ORBITAL ASSEMBLY PLAN · RADIAL DOCKING GRID</text>`;
   const pts=slots.map(([gx,gy])=>[ox+gx*cell*scale,oy+gy*cell*scale]);
   for(let i=1;i<pts.length;i++){ const parent=i<=4?0:Math.max(0,Math.floor((i-1)/4)); const [x1,y1]=pts[parent],[x2,y2]=pts[i]; s+=`<path d="M ${x1} ${y1} L ${x2} ${y2}" stroke="#6e8999" stroke-opacity=".5" stroke-width="3" stroke-dasharray="5 4"/><circle cx="${x2}" cy="${y2}" r="4" fill="#d4b35e"/>`; }
   list.forEach((id,i)=>{ const d=stationModuleDef(id)||stationModuleDef('can_std'),[x,y]=pts[i]; s+=stationModuleSVG(id,d,x,y,scale); });
