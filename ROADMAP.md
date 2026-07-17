@@ -4508,16 +4508,31 @@ sitting on top of a real orthographic lat/lon projection (`P(lon,lat)`, same one
 can draw an actual sinusoidal ground track for the active/last mission's inclination. That becomes a
 small follow-on slice, no longer blocked on inventing physics.
 
-**Rough slice plan for the build session:** (1) `inclinationDv`/`effectiveReqDv`/`LAUNCH_SITE_LAT` +
-route the ~8 gates and display sites through the accessor, headless-testable with zero missions changed
-(prove the identity: no `.inclination` ⇒ `effectiveReqDv===reqDv` everywhere, no number moves); (2) the
-two mission retrofits + a mission-detail line explaining the inclination and any surcharge; (3) tests —
-the free-direction case (65° costs 0), the paid case (0° levies ~2·v·sin(14.2°)≈1800 m/s), the accessor
-identity for untouched missions, the classification-checks-don't-shift guard, and a Comsat
-before/after-payout sanity check. Ground track (#45) is a SEPARATE later slice, explicitly not in this
-scope.
+**Slice 1 — SHIPPED 2026-07-17 (mechanism only, zero missions changed).** `inclinationDv(m)` +
+`effectiveReqDv(m)` + `LAUNCH_SITE_LAT=28.4` in sim.js. Every budget gate/display routed through the
+accessor (canQueue, canLaunch + its shortfall message, missionAdvisor, launch checklist, the Δv readout
+bar + a new inclination explainer flag, plannedRoute, mission-list detail strings). Classification checks
+(`reqDv>=9000`) deliberately left on raw `m.reqDv`. `test-inclination.js` 16/16, including the identity
+guarantee (effectiveReqDv===reqDv for every mission + procedural archetype — no number moves) and the
+classification-not-reclassified guard. **Corrected magnitude:** the scoping estimate of "~1800 m/s for 0°
+from the Cape" was miscalculated — the real figure is `2·7800·sin(28.4°/2) ≈ 3827 m/s`, a ~40% surcharge
+on a 9400 baseline. That's physically correct (plane changes are brutal) but it's a strong balance signal
+for slice 2: a full-equatorial Comsat from the Cape may be near-unflyable rather than merely taxed — the
+retrofit should probably pick a less extreme target inclination (or the payout must rise a lot), a call to
+make with real numbers at build time.
 
-**Model-tier note for the build session:** slice 1 touches the shared Δv accessor that every mission gate
-reads — core-physics-adjacent, heavier model warranted (a wrong accessor silently misprices every
-mission). Slice 2 (the two retrofits + copy) is lighter. The balance call on Comsat's payout wants
-judgment — heavier model or a real playtest read.
+**Slice 2 — NOT STARTED.** The two retrofits (Crewed Orbit `inclination:65` free-direction teaching case;
+Comsat equatorial — but reconsider how equatorial given the 3827 m/s reality above) + mission-detail copy.
+
+**Two findings surfaced during slice 1 (logged, not fixed — out of scope):**
+  1. **Latent `dockModuleNow` crash.** A module-delivery flight that resolves *after* its target facility
+     has been decommissioned mid-cruise (the standing-resupply mechanic can remove an un-resupplied base
+     over a long Mars cruise) throws `Cannot read properties of undefined (reading 'moduleList')` —
+     `dockModuleNow`/`facilityModuleList` don't guard against the facility having vanished. Pre-existing;
+     slice 1's RNG-timing shift just made `test-station-slice2`'s unseeded Mars e2e trip it more often.
+     Fix candidate: `dockModuleNow` should no-op (and probably log/refund) if the target facility is gone.
+  2. **Unseeded-RNG test fragility.** `test-station-slice2`'s Mars e2e advances 8 real months through
+     random econ/logistics events with no seeded RNG, so its pass/fail depends on the global `Math.random`
+     stream — any code change that shifts draw counts can flake it (pre-edit 5/5 pass, post-edit 4/5).
+     The harness has no RNG seeding at all. Worth a small harness addition (seedable RNG) so time-advancing
+     e2e tests are deterministic — would also have made finding #1 reproducible instead of intermittent.

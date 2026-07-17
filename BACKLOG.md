@@ -148,7 +148,7 @@ Complexity: S = <1 day, M = 1–5 days, L = 1–3 weeks, XL = 1+ month. Impact: 
 |111| Base Bench: third bench tab for lunar/Mars surface bases (horizontal ground-line SVG; facilities already run full station machinery) | Empire visualization | M | ★★★ | — | H |Shipped 2026-07-16 (E1.8 A+B+C+D complete)|
 |112| Surface-specific base modules (ISRU plant, greenhouse, reactor pad, rover garage; surface:true flag filtering) | Base depth | M | ★★ | 111 | M |Shipped 2026-07-16 (E1.8 C)|
 |113| Part-based vehicle bench — KSP-VAB 2D drag-drop builder, parts-as-truth, deep per-part physics, all 4 categories | Core loop overhaul | XL | ★★★ | — | H |Built 2026-07-16 (E3.0-E3.6, BENCH_V2 flag off pending playtest)|
-|114| Orbital inclination as a physics dimension (plane-change Δv from launch-site latitude; effectiveReqDv accessor; retrofit Crewed Orbit + Comsat) | Sim depth · unblocks #45 & #30 | M | ★★ | — | M |Scoped 2026-07-17, not built — see ROADMAP.md|
+|114| Orbital inclination as a physics dimension (plane-change Δv from launch-site latitude; effectiveReqDv accessor; retrofit Crewed Orbit + Comsat) | Sim depth · unblocks #45 & #30 | M | ★★ | — | M |Slice 1 shipped 2026-07-17 (mechanism, no missions changed) — Slice 2 (retrofits) pending, see ROADMAP.md|
 
 ---
 
