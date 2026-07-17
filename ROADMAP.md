@@ -4561,3 +4561,26 @@ harness's fake canvas context. Full 64-suite regression + `build.js --check` cle
 **Not done:** this is a real-browser-owed item like the last few visual slices — verified headlessly
 (math + no-throw), not eyeballed for legibility/aesthetics at actual popout size.
 
+## Session — Launch azimuth ceiling / dogleg tax (2026-07-17)
+
+Symmetric extension of #114, prompted by a "what else is missing for realism" survey. `inclinationDv`
+generalized from a one-sided floor (≥28.4° free) to a band: `[LAUNCH_SITE_LAT=28.4°,
+LAUNCH_SITE_MAX_DIRECT_INCL=57°]` is free; outside either edge costs the same `2·v·sin(Δi/2)`
+formula, measured from whichever edge was crossed. Real physics: a coastal site's launch azimuth is
+range-safety-limited (can't send an ascent trajectory over populated land), which is exactly why real
+polar/sun-synchronous missions fly from Vandenberg AFB, not the Cape.
+
+**Correction to previously-shipped content.** crew_orbit's 65° (Vostok 1's real inclination) exceeds the
+new 57° ceiling, so it's no longer free — it now pays a ~1088 m/s dogleg tax. This is actually *more*
+accurate: Vostok flew from Baikonur, a higher-latitude site with a far more permissive over-land range
+than a Florida-analog coast, so 65° was never realistically "free from the Cape" in the first place —
+the earlier slice's teaching-case framing was a simplification this closes. Payout raised 30.0→35.0 to
+compensate; blurb updated to state the dogleg honestly. Comsat (0°, well below the floor) is unaffected.
+
+Test suites updated in place rather than left stale: the now-false "65° is free" assertions replaced with
+a genuinely-free 45° case, new symmetric ceiling/dogleg tests added (polar 90°, monotonicity, floor/ceiling
+formula symmetry), and the MISSIONS identity loop now excludes intentional inclination opt-ins — same
+treatment already used for procedural archetypes. Full regression clean; `test-station-slice2`'s known
+pre-existing RNG flake (logged in the #114 slice-1 entry above) reconfirmed via 5 extra runs, not a new
+regression.
+
