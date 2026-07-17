@@ -56,7 +56,7 @@ Complexity: S = <1 day, M = 1–5 days, L = 1–3 weeks, XL = 1+ month. Impact: 
 |27| Ascent abort decision window | Watching→playing | M | ★★★ | 26 | H |E1.2|
 |28| Launch weather + scrub/hold system | Cadence texture | M | ★★ | — | M |E1.2|
 |29| Pad turnaround time per pad | Ops as resource | M | ★★★ | — | H |E1.5|
-|30| Second launch site (inclination economics) | Strategic geography | L | ★★ | 29 | M |Deferred|
+|30| Second launch site (inclination economics) | Strategic geography | L | ★★ | 29 | M |Deferred — de-risked by #114 (inclination physics scoped 2026-07-17); LAUNCH_SITE_LAT const is the per-site seam|
 |31| Range scheduling conflicts with rivals | Rival friction | M | ★★ | Rival AI | M |Backlog|
 |32| Post-flight failure report naming causal chain | Failure as content | M | ★★★ | — | H |E1.5|
 |33| Part-level fatigue on reused hardware | Reuse tradeoff | L | ★★ | — | M |Backlog|
@@ -71,7 +71,7 @@ Complexity: S = <1 day, M = 1–5 days, L = 1–3 weeks, XL = 1+ month. Impact: 
 |42| Mission patches (procedural SVG) per flight | Attachment/collection | M | ★★ | — | M |Backlog|
 |43| Photo mode / GIF export of flights | Marketing engine | L | ★★ | — | M |Backlog|
 |44| Simultaneous missions in flight (overlapping ops) | Late-game ops density | L | ★★★ | Outliner | H |Closed 2026-07-11 — already fully covered (engine+hangar+Outliner), see ROADMAP.md|
-|45| Ground track visualization on map | Sim texture | M | ★ | — | L |Backlog|
+|45| Ground track visualization on map | Sim texture | M | ★ | — | L |Backlog — needs inclination physics first (#114, scoped 2026-07-17); then a small draw slice on the Earth-globe SEAM|
 
 ### Rivals, politics, world (46–60)
 |46| Rival milestone race schedules ± variance | Core dread | L | ★★★ | — | H |E1.1|
@@ -148,6 +148,7 @@ Complexity: S = <1 day, M = 1–5 days, L = 1–3 weeks, XL = 1+ month. Impact: 
 |111| Base Bench: third bench tab for lunar/Mars surface bases (horizontal ground-line SVG; facilities already run full station machinery) | Empire visualization | M | ★★★ | — | H |Shipped 2026-07-16 (E1.8 A+B+C+D complete)|
 |112| Surface-specific base modules (ISRU plant, greenhouse, reactor pad, rover garage; surface:true flag filtering) | Base depth | M | ★★ | 111 | M |Shipped 2026-07-16 (E1.8 C)|
 |113| Part-based vehicle bench — KSP-VAB 2D drag-drop builder, parts-as-truth, deep per-part physics, all 4 categories | Core loop overhaul | XL | ★★★ | — | H |Built 2026-07-16 (E3.0-E3.6, BENCH_V2 flag off pending playtest)|
+|114| Orbital inclination as a physics dimension (plane-change Δv from launch-site latitude; effectiveReqDv accessor; retrofit Crewed Orbit + Comsat) | Sim depth · unblocks #45 & #30 | M | ★★ | — | M |Scoped 2026-07-17, not built — see ROADMAP.md|
 
 ---
 

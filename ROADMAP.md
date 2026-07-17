@@ -4451,3 +4451,73 @@ correctly placed below Earth at map zoom (both Phaser and SVG paths), the build 
 body card, and — most importantly — that an existing save whose *next* objective is an ungated deep-space
 first surfaces the "build a station" step cleanly via the missionAdvisor rather than feeling like a dead
 end. If any of that is off, the kill-switch (flag → false) is the immediate mitigation.
+
+## Planned — Orbital inclination as a physics dimension (scoped 2026-07-17, not built)
+
+Grew out of a scoping question on #45 (ground-track visualization). A real ground track needs orbital
+**inclination**, which this game doesn't model — the physics layer is pure Tsiolkovsky (Δv / mass-ratio /
+per-leg budgets), no orbital elements. Rather than fake an inclination just to draw a pretty curve, this
+scopes adding inclination as a *real, decision-bearing* Δv cost — which also directly de-risks the
+Deferred **#30 (Second launch site — inclination economics)**: build this right and #30 later becomes "add
+a launch-site latitude picker," not "invent the physics." User chose the **bigger slice**: ship the
+mechanism AND retrofit two real missions (Crewed Orbit + Comsat Block Buy), not mechanism-only.
+
+**The real mechanic (genuine orbital mechanics, not hand-waved).** A launch reaches, for free, an orbit
+inclined at ≈ the launch site's latitude; you can steer to any *higher* inclination for free (just change
+launch azimuth) but reaching a *lower* one costs a plane-change burn: Δv ≈ 2·v·sin(Δi/2), with v ≈ 7800
+m/s at LEO. Cape Canaveral is 28.4°N — already hardcoded in render.js as the Earth-globe marker (the only
+place a launch-site latitude currently exists). So equatorial (GEO-class, ~0°) targets from the Cape pay a
+real, historically-correct tax; this is *why* GEO comsats stage plane changes and why Europe launches from
+equatorial French Guiana.
+
+**Architecture — the key finding from scoping.** Crewed Orbit and Comsat are **`reqDv`-shaped, not
+`profile`-shaped** — they're gated by a single scalar (`v.totalDv >= m.reqDv`), never simulated leg-by-leg,
+so "inject a Plane Change leg into m.profile" does NOT work for them (no profile array exists). The design
+that works for BOTH shapes:
+  - New optional field `m.inclination` (degrees). Missions that don't set it are completely untouched —
+    same opt-in discipline as the tracking-station and sample-return work; zero rebalancing of the other
+    ~37 missions.
+  - One shared helper `inclinationDv(m)` = the plane-change Δv for `LAUNCH_SITE_LAT − m.inclination` when
+    the target is below site latitude, else 0. `LAUNCH_SITE_LAT` is a const (28.4) now, the exact seam
+    #30 later swaps for a per-site value.
+  - New accessor `effectiveReqDv(m)` = `(m.reqDv||0) + inclinationDv(m)`. Every **budget gate** and
+    **display** that currently reads `m.reqDv` routes through it instead (~8 real gate comparisons like
+    `v.totalDv < m.reqDv` in sim.js:1958/1964/4380/4389 + render.js:702/2598/3662-3699/5123, plus the
+    3 mission-description strings at render.js:5828-5833). **Leave raw `m.reqDv` alone** in the
+    *classification* checks (`reqDv>=9000` → isOrbital / sepEvents / isLeoClassMission / recovery-when):
+    those ask "is this an orbital-class mission," not "what's the budget," and must not shift when a
+    surcharge is added.
+  - For `profile`-shaped missions (if any ever set `.inclination`): synthesize a distinct "Plane Change"
+    leg right after "Ascent to LEO", mirroring the existing surgical leg handling in simulateMission
+    (the gravity-assist / aerocapture multipliers already special-case named legs there) — but ADDITIVE
+    (a new leg the player must budget a stage for), not a multiplier. Not needed for the two launch
+    targets (both reqDv-shaped) but keep the helper shape-agnostic so it's ready.
+
+**The two retrofits (real content, prove it's fun).**
+  - **Crewed Orbit** → `inclination: 65` (Vostok 1 actually flew ~65°). 65 > 28.4, so this is the FREE
+    direction — costs nothing, but it's the teaching case: the mission detail can note "65° — reachable
+    directly from the Cape" so the first time a player meets inclination it's a gentle, no-penalty intro.
+  - **Comsat Block Buy** (the procedural contract whose name has meant nothing) → `inclination: 0`
+    (equatorial GEO belt). 0 < 28.4, so it levies a real ~1800 m/s plane-change surcharge — the contract
+    finally *earns its name*, and its payout may want a small bump to stay worth flying (balance call at
+    build time, not now).
+
+**Ground track (#45) after this lands.** With a real `m.inclination` in hand, the Earth-globe popout's
+`drawEarthOrbits()` — already a tagged `// SEAM — orbital infrastructure will render here` placeholder,
+sitting on top of a real orthographic lat/lon projection (`P(lon,lat)`, same one that plots the Cape) —
+can draw an actual sinusoidal ground track for the active/last mission's inclination. That becomes a
+small follow-on slice, no longer blocked on inventing physics.
+
+**Rough slice plan for the build session:** (1) `inclinationDv`/`effectiveReqDv`/`LAUNCH_SITE_LAT` +
+route the ~8 gates and display sites through the accessor, headless-testable with zero missions changed
+(prove the identity: no `.inclination` ⇒ `effectiveReqDv===reqDv` everywhere, no number moves); (2) the
+two mission retrofits + a mission-detail line explaining the inclination and any surcharge; (3) tests —
+the free-direction case (65° costs 0), the paid case (0° levies ~2·v·sin(14.2°)≈1800 m/s), the accessor
+identity for untouched missions, the classification-checks-don't-shift guard, and a Comsat
+before/after-payout sanity check. Ground track (#45) is a SEPARATE later slice, explicitly not in this
+scope.
+
+**Model-tier note for the build session:** slice 1 touches the shared Δv accessor that every mission gate
+reads — core-physics-adjacent, heavier model warranted (a wrong accessor silently misprices every
+mission). Slice 2 (the two retrofits + copy) is lighter. The balance call on Comsat's payout wants
+judgment — heavier model or a real playtest read.
