@@ -4596,3 +4596,20 @@ on the body card (Map tab, via `lightLagHTML`/`fmtLag`), present for every body 
 Sets up #3 (solar conjunction blackout) well — the same BODY_AU table is the natural source for "this
 body just passed behind the Sun" logic.
 
+## Session — Physics realism #3: solar conjunction blackout (2026-07-17)
+
+`synodicDays(bodyId)` in sim.js: orbital period via Kepler's third law (reusing the BODY_AU table from
+light-lag), synodic period from that. Cross-checked against reality twice: Mars comes out to 783 days,
+matching the game's own pre-existing `SYNODIC_MONTHS=26` constant almost exactly; Jupiter ~399 days
+matches the real ~13-month figure. `nextConjunction(bodyId)` anchors conjunctions to the synodic-period
+midpoint from a fixed epoch (a flavor simplification, not synchronized ephemeris) with a flat ~20-day
+blackout window (Mars' real ballpark) applied to every body.
+
+Body card: a warning flag during an active blackout, a "next conjunction" metric otherwise. Display-only.
+`tests/test-solar-conjunction.js` 19/19, using a monkey-patched `absDay` for deterministic day-of-cycle
+testing rather than real time. Full regression clean.
+
+Physics-realism survey (from the #45 ground-track conversation) is now 3/3 tractable items done:
+azimuth ceiling, light-lag, solar conjunction. Remaining: orbital decay/station-keeping (not started),
+Lagrange-point missions (recommended to stay flavor-only).
+
