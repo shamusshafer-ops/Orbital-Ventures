@@ -3369,11 +3369,39 @@ function drawEarthGlobe(ctx,cx,cy,R,center,sunLon,tilt){
     ctx.restore();
     _capeLocal={x:mx,y:my,r:mr,visible:true};
   } else _capeLocal={visible:false};
+  // #45: ground track for the mission currently selected on the bench, if it specifies an inclination.
+  // Pass 0 (solid) is anchored at the Cape; later passes (dashed, fading) drift west — a flavor
+  // preview of the next couple orbits, not a precise prediction (see groundTrackPasses, sim.js).
+  const gtM=(typeof missionById==='function')&&missionById(state.activeMission);
+  if(gtM && gtM.inclination!=null){
+    const passes=groundTrackPasses(gtM.inclination, -80.6, 3);
+    passes.forEach((seg,pi)=>{
+      ctx.save();
+      ctx.lineWidth=Math.max(1.1,R*0.009);
+      ctx.strokeStyle=`rgba(255,120,90,${pi===0?0.95:0.5-pi*0.12})`;
+      if(pi>0) ctx.setLineDash([Math.max(2,R*0.02),Math.max(2,R*0.02)]);
+      ctx.beginPath();
+      let drawing=false;
+      seg.forEach(({lon,lat})=>{
+        const p=P(lon,lat);
+        if(p.z<0){ drawing=false; return; }
+        const sx=cx+p.x*R, sy=cy-p.y*R;
+        if(!drawing){ ctx.moveTo(sx,sy); drawing=true; } else ctx.lineTo(sx,sy);
+      });
+      ctx.stroke();
+      ctx.restore();
+    });
+  }
   drawEarthOrbits(ctx,cx,cy,R,center*_DEG);
 }
 let _capeLocal={visible:false};
 function earthPopInfoHTML(){
+  const gtM=missionById(state.activeMission);
+  const gtCaption = (gtM && gtM.inclination!=null)
+    ? `<div class="dim" style="font-size:12px;margin-bottom:6px">🛰 Ground track shown for <b>${esc(gtM.name)}</b> (${gtM.inclination}° inclination) — solid = current pass, dashed = next two, drifting west as Earth turns beneath the orbit.</div>`
+    : '';
   return `<h4>Home World</h4>
+    ${gtCaption}
     <div class="dim" style="font-size:12px;margin-bottom:6px">Live globe — <b>drag to spin</b> it east/west; <b>Auto-spin</b> toggles the idle rotation. The 🟡 marker is <b>Cape Canaveral</b> — click it to jump to Mission Control. Orbital infrastructure (stations, LEO satellites, fuel depots) will be represented in orbit here as it's built. <b>(Preview)</b></div>
     <button class="btn" style="width:100%;margin-bottom:8px" onclick="earthGoToCape()">🟡 Go to Cape Canaveral — Mission Control</button>
     ${bodyCardHTML()}`;

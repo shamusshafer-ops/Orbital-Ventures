@@ -3252,6 +3252,28 @@ function inclinationDv(m){
 // the Δv a design must actually beat for mission m: its base reqDv plus any plane-change surcharge.
 // Every BUDGET gate/display reads through this; classification (reqDv>=9000) still reads raw m.reqDv.
 function effectiveReqDv(m){ return (m&&m.reqDv||0) + inclinationDv(m); }
+// #45: ground-track math for a mission with a known .inclination — the classic sinusoidal lat/lon path
+// a satellite traces under it, for a circular orbit (standard argument-of-latitude parametrization).
+// LEO_PERIOD_MIN is a flavor approximation for the per-orbit westward drift (Earth rotating under the
+// orbit plane) — the game doesn't model altitude/period, so this is illustrative, not precision orbit
+// prediction. Returns `passes` arrays of {lon,lat} points; pass 0's ascending node is at ascNodeLon,
+// later passes drift west (successive orbits, Earth having rotated further beneath them).
+const LEO_PERIOD_MIN=90;
+function groundTrackPasses(inclDeg, ascNodeLon, passes){
+  const incl=inclDeg*Math.PI/180, driftPerPass=360*(LEO_PERIOD_MIN/1440), out=[];
+  for(let p=0;p<passes;p++){
+    const nodeLon=ascNodeLon - p*driftPerPass, seg=[];
+    for(let u=0;u<=360;u+=4){
+      const ur=u*Math.PI/180;
+      const lat=Math.asin(Math.sin(incl)*Math.sin(ur))*180/Math.PI;
+      let lon=nodeLon + Math.atan2(Math.cos(incl)*Math.sin(ur), Math.cos(ur))*180/Math.PI;
+      lon=((lon+180)%360+360)%360-180;
+      seg.push({lon,lat});
+    }
+    out.push(seg);
+  }
+  return out;
+}
 
 function stackPerformance(stages, payload){
   const sm=stages.map(stageMasses);
