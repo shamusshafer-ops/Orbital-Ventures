@@ -5340,6 +5340,18 @@ function lightLagHTML(bodyId){
   const val = bodyId==='moon' ? fmtLag(near) : `${fmtLag(near)} – ${fmtLag(lightLagMinutes(bodyId,true))}`;
   return `<div class="metric"><div class="k">Signal delay (one-way)</div><div class="v">${val}</div></div>`;
 }
+// #3 (physics realism): solar conjunction blackout — a flag when active, a metric otherwise.
+function conjunctionHTML(bodyId){
+  const c=nextConjunction(bodyId); if(!c) return '';
+  const name=(BODIES.find(b=>b.id===bodyId)||{}).name||bodyId;
+  if(c.inBlackout) return `<div class="flag warn">🌞 Solar conjunction — ${esc(name)} is passing behind the Sun as seen from Earth. Comms degraded/blacked out, ~${c.daysRemaining}d remaining.</div>`;
+  return '';
+}
+function conjunctionMetric(bodyId){
+  const c=nextConjunction(bodyId); if(!c || c.inBlackout) return '';
+  const mo=Math.max(1,Math.round(c.daysToNext/30));
+  return `<div class="metric"><div class="k">Next solar conjunction</div><div class="v">~${mo} mo</div></div>`;
+}
 function bodyCardHTML(){
   const b=BODIES.find(x=>x.id===state.selectedBody)||BODIES[0];
   let cum=0;
@@ -5407,11 +5419,13 @@ function bodyCardHTML(){
     <div class="mission-tag adv-only">Δv profile from Earth's surface</div>
     <div class="mission-name">${b.name}</div>
     <div class="sub" style="margin:6px 0 12px">${b.note}</div>
+    ${conjunctionHTML(b.id)}
     <div class="legs adv-only">${rows}</div>
     <div class="metrics adv-only" style="margin-top:10px">
       <div class="metric"><div class="k">Cumulative to final leg</div><div class="v" style="color:var(--ignite)">${fI(cum)} m/s</div></div>
       <div class="metric"><div class="k">Legs</div><div class="v">${b.legs.length}</div></div>
       ${lightLagHTML(b.id)}
+      ${conjunctionMetric(b.id)}
     </div>
     <div class="eq">Each leg is a separate burn — a separate mass ratio. The cumulative figure is <em>not</em> a single Δv requirement; it's the sum of every burn a full round-trip architecture must budget for, in sequence, exactly like the mission profiles on the bench.</div>
     ${missionsBlock}

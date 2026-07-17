@@ -5895,6 +5895,35 @@ function lightLagMinutes(bodyId, farthest){
   const distAU = bodyId==='moon' ? au : (farthest ? au+1 : Math.abs(au-1));
   return round2(distAU*149597870.7/C_KM_S/60);
 }
+/* ---------- Physics realism #3: solar conjunction blackout ----------
+   When a body passes near-directly behind the Sun as seen from Earth, radio comms degrade or black out
+   entirely — real and well-documented (NASA suspends commanding Mars rovers for ~2-3 weeks roughly every
+   26 months, at each conjunction). Orbital period derived from BODY_AU via Kepler's third law
+   (T_years ≈ AU^1.5 — a flavor approximation, not a precision ephemeris, same spirit as lightLagMinutes);
+   synodic period (time between successive conjunctions) follows from that. Anchored to a fixed epoch
+   (absDay 0 = opposition/best-geometry for every body — a simplification, not synchronized real
+   astronomy) with conjunctions falling at the midpoint of each synodic cycle. Excludes Earth (trivial)
+   and the Moon (its BODY_AU entry is an Earth-distance, not a Sun-distance — Kepler doesn't apply, and
+   the Moon doesn't have a meaningful solar-conjunction blackout regardless of Earth's position).
+   CONJUNCTION_BLACKOUT_HALFDAYS is a flat representative half-window (~Mars' real ballpark), used for
+   every body rather than deriving each one's true angular-sweep rate. Display-only, like light-lag. */
+const CONJUNCTION_BLACKOUT_HALFDAYS=10; // ±10 days around exact conjunction ≈ 20-day blackout window
+function synodicDays(bodyId){
+  const au=BODY_AU[bodyId]; if(au==null || bodyId==='moon') return null;
+  const tYears=Math.pow(au,1.5);
+  const sYears=1/Math.abs(1-1/tYears);
+  return Math.round(sYears*365.25);
+}
+function nextConjunction(bodyId){
+  const syn=synodicDays(bodyId); if(syn==null) return null;
+  const half=syn/2;
+  const phase=((absDay()-half)%syn+syn)%syn; // days since the most recent conjunction epoch, in [0,syn)
+  const distToNearest=Math.min(phase, syn-phase);
+  const inBlackout=distToNearest<=CONJUNCTION_BLACKOUT_HALFDAYS;
+  return { syn, inBlackout,
+    daysRemaining: inBlackout ? Math.round(CONJUNCTION_BLACKOUT_HALFDAYS-distToNearest) : 0,
+    daysToNext: Math.round(syn-phase) };
+}
 
 function stackPerformance(stages, payload){
   const sm=stages.map(stageMasses);
@@ -18445,6 +18474,18 @@ function lightLagHTML(bodyId){
   const val = bodyId==='moon' ? fmtLag(near) : `${fmtLag(near)} – ${fmtLag(lightLagMinutes(bodyId,true))}`;
   return `<div class="metric"><div class="k">Signal delay (one-way)</div><div class="v">${val}</div></div>`;
 }
+// #3 (physics realism): solar conjunction blackout — a flag when active, a metric otherwise.
+function conjunctionHTML(bodyId){
+  const c=nextConjunction(bodyId); if(!c) return '';
+  const name=(BODIES.find(b=>b.id===bodyId)||{}).name||bodyId;
+  if(c.inBlackout) return `<div class="flag warn">🌞 Solar conjunction — ${esc(name)} is passing behind the Sun as seen from Earth. Comms degraded/blacked out, ~${c.daysRemaining}d remaining.</div>`;
+  return '';
+}
+function conjunctionMetric(bodyId){
+  const c=nextConjunction(bodyId); if(!c || c.inBlackout) return '';
+  const mo=Math.max(1,Math.round(c.daysToNext/30));
+  return `<div class="metric"><div class="k">Next solar conjunction</div><div class="v">~${mo} mo</div></div>`;
+}
 function bodyCardHTML(){
   const b=BODIES.find(x=>x.id===state.selectedBody)||BODIES[0];
   let cum=0;
@@ -18512,11 +18553,13 @@ function bodyCardHTML(){
     <div class="mission-tag adv-only">Δv profile from Earth's surface</div>
     <div class="mission-name">${b.name}</div>
     <div class="sub" style="margin:6px 0 12px">${b.note}</div>
+    ${conjunctionHTML(b.id)}
     <div class="legs adv-only">${rows}</div>
     <div class="metrics adv-only" style="margin-top:10px">
       <div class="metric"><div class="k">Cumulative to final leg</div><div class="v" style="color:var(--ignite)">${fI(cum)} m/s</div></div>
       <div class="metric"><div class="k">Legs</div><div class="v">${b.legs.length}</div></div>
       ${lightLagHTML(b.id)}
+      ${conjunctionMetric(b.id)}
     </div>
     <div class="eq">Each leg is a separate burn — a separate mass ratio. The cumulative figure is <em>not</em> a single Δv requirement; it's the sum of every burn a full round-trip architecture must budget for, in sequence, exactly like the mission profiles on the bench.</div>
     ${missionsBlock}

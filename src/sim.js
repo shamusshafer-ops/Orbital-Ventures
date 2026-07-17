@@ -3302,6 +3302,35 @@ function lightLagMinutes(bodyId, farthest){
   const distAU = bodyId==='moon' ? au : (farthest ? au+1 : Math.abs(au-1));
   return round2(distAU*149597870.7/C_KM_S/60);
 }
+/* ---------- Physics realism #3: solar conjunction blackout ----------
+   When a body passes near-directly behind the Sun as seen from Earth, radio comms degrade or black out
+   entirely — real and well-documented (NASA suspends commanding Mars rovers for ~2-3 weeks roughly every
+   26 months, at each conjunction). Orbital period derived from BODY_AU via Kepler's third law
+   (T_years ≈ AU^1.5 — a flavor approximation, not a precision ephemeris, same spirit as lightLagMinutes);
+   synodic period (time between successive conjunctions) follows from that. Anchored to a fixed epoch
+   (absDay 0 = opposition/best-geometry for every body — a simplification, not synchronized real
+   astronomy) with conjunctions falling at the midpoint of each synodic cycle. Excludes Earth (trivial)
+   and the Moon (its BODY_AU entry is an Earth-distance, not a Sun-distance — Kepler doesn't apply, and
+   the Moon doesn't have a meaningful solar-conjunction blackout regardless of Earth's position).
+   CONJUNCTION_BLACKOUT_HALFDAYS is a flat representative half-window (~Mars' real ballpark), used for
+   every body rather than deriving each one's true angular-sweep rate. Display-only, like light-lag. */
+const CONJUNCTION_BLACKOUT_HALFDAYS=10; // ±10 days around exact conjunction ≈ 20-day blackout window
+function synodicDays(bodyId){
+  const au=BODY_AU[bodyId]; if(au==null || bodyId==='moon') return null;
+  const tYears=Math.pow(au,1.5);
+  const sYears=1/Math.abs(1-1/tYears);
+  return Math.round(sYears*365.25);
+}
+function nextConjunction(bodyId){
+  const syn=synodicDays(bodyId); if(syn==null) return null;
+  const half=syn/2;
+  const phase=((absDay()-half)%syn+syn)%syn; // days since the most recent conjunction epoch, in [0,syn)
+  const distToNearest=Math.min(phase, syn-phase);
+  const inBlackout=distToNearest<=CONJUNCTION_BLACKOUT_HALFDAYS;
+  return { syn, inBlackout,
+    daysRemaining: inBlackout ? Math.round(CONJUNCTION_BLACKOUT_HALFDAYS-distToNearest) : 0,
+    daysToNext: Math.round(syn-phase) };
+}
 
 function stackPerformance(stages, payload){
   const sm=stages.map(stageMasses);
