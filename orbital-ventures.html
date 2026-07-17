@@ -2035,6 +2035,24 @@ const FACILITY_DEFS = [
    base:{income:2.6, fuel:0.6, rep:3, sci:4}, perModule:{income:1.8, fuel:0.8, rep:1.5, sci:3}},
 ];
 
+// #89: three real Deep Space Network analogs — the actual historical siting (~120° apart in
+// longitude) for genuine round-the-clock coverage of a probe as Earth turns. `body:'earth'` matches
+// the FACILITY_DEFS convention (unused this slice; groundwork for slice 2's map marker). Setup/upkeep
+// costs are a first pass, sized similarly to Research Partnerships (sim.js PARTNERS) — not a final
+// balance call. Lifecycle functions (trackingStationCount/canBuildStation/buildTrackingStation) live in
+// sim.js, same FACILITY_DEFS(data.js)/facility-functions(sim.js) split already used for facilities.
+const TRACKING_STATIONS = [
+  {id:'goldstone', name:'Goldstone Deep Space Complex', place:'Mojave Desert, California', body:'earth', icon:'▲', color:'#8fc4ff',
+   reqResearch:'deep_space', setup:3.0, upkeep:0.10,
+   blurb:'The original Deep Space Network site — dishes in the Mojave that have tracked everything from Mariner to Voyager.'},
+  {id:'madrid', name:'Madrid Deep Space Complex', place:'Robledo de Chavela, Spain', body:'earth', icon:'▲', color:'#8fc4ff',
+   reqResearch:'deep_space', setup:3.5, upkeep:0.12,
+   blurb:'The European leg of the network — closes the gap as Earth turns Goldstone away from a distant probe.'},
+  {id:'canberra', name:'Canberra Deep Space Complex', place:'Tidbinbilla, Australia', body:'earth', icon:'▲', color:'#8fc4ff',
+   reqResearch:'deep_space', setup:4.0, upkeep:0.14,
+   blurb:'The southern-hemisphere anchor — with Goldstone and Madrid, closes full round-the-clock coverage.'},
+];
+
 // Side-view module spec (model space, +x downstream): a pressurized can with an axial docking
 // node, radial berthing ports, dish + whip antennas, solar wings and a radiator. Each `parts`
 // entry is a labelled detail the bench annotates with a leader line — the hook future content
@@ -2317,11 +2335,21 @@ function commitLunarArch(id){
   }
   render();
 }
+// #89: does mission m need the tracking network at all, right now? Shared by missionTechMet (the
+// real gate) and missionAdvisor (the explainer, render.js) so the two can never drift out of sync.
+// Gated behind TRACKING_NETWORK_LIVE (sim.js) — OFF until slice 2 ships an actual way to build a
+// station; flying the gate live with no build UI yet would hard-lock every unflown deep-space first
+// with no in-game escape hatch. Already-completed missions (and their routine reflights) are exempt
+// forever, regardless of the flag — nothing already earned gets taken away.
+function needsTrackingNetwork(m){ return TRACKING_NETWORK_LIVE && !!(m && m.profile) && !state.completed[m.id]; }
 // the gate a player actually flies through: normal reqResearch, plus the luna_landing arch fork
 function missionTechMet(m){
   if(!m) return false;
   if(m.reqResearch && !(state.research && state.research[m.reqResearch])) return false;
   if(m.reqSynergy && !synergyUnlocked(m.reqSynergy)) return false; // P8: cross-track synergy unlock
+  // #89: MUST come before the luna_landing branch below — that branch returns early, and
+  // luna_landing is itself a .profile mission, so inserting this after would silently bypass it.
+  if(needsTrackingNetwork(m) && trackingStationCount()<1) return false;
   if(m.id==='luna_landing') return anyLunarArchUnlocked();
   return true;
 }
@@ -3815,6 +3843,7 @@ function newGame(difficulty){
     crisis:null, crisisDone:null, leoFlights:0, deepFlights:0, crisisHistory:[], // P11/I3: the crisis roster (leoFlights/deepFlights are trigger counters; crisisHistory is every resolved crisis)
     researchNext:null, // I5: queued "start next" research pick — auto-starts once the active project finishes and it's affordable/eligible
     researchGoal:null, // #14: pinned research goal — the tech tree persistently highlights this node's full prereq chain (and the R&D rail shows steps remaining) until it's researched or unpinned
+    trackingStations:[], // #89: built tracking-station ids (see TRACKING_STATIONS, data.js). Gate itself is OFF (TRACKING_NETWORK_LIVE=false) until slice 2 ships a build UI.
     ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
     facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
     architectures:{}, science:0,
@@ -4098,6 +4127,38 @@ function partnerSpeedBonus(r){ if(!r || !state.partnerships) return 0; const tra
   for(const id of state.partnerships){ const p=partnerDef(id); if(p && p.tracks.indexOf(track)>=0) b+=p.speed; }
   return Math.min(PARTNER_SPEED_CAP, b); }
 function partnershipUpkeep(){ if(!state.partnerships) return 0; return round2(state.partnerships.reduce((a,id)=>{ const p=partnerDef(id); return a+(p?p.upkeep:0); },0)); }
+
+/* ===== #89 — Tracking-station network (data model in data.js's TRACKING_STATIONS) ====================
+   A hard requirement for new deep-space firsts (see needsTrackingNetwork/missionTechMet, data.js):
+   build at least one of the three real DSN-analog sites to unlock them. Modeled directly on Research
+   Partnerships just above (setup fee + ongoing upkeep, gated behind prerequisite research) but simpler:
+   build-only for V1, no dissolve — decommissioning your only station would re-lock content that was
+   flyable a moment ago, and there's no player-facing reason to want that yet.
+   TRACKING_NETWORK_LIVE: the flag that actually turns the gate on. Stays false until slice 2 ships a
+   real way to build a station (Map tab, per scoping) — flipping the gate live before that exists would
+   hard-lock every unflown deep-space first with no in-game escape hatch, same reasoning as BENCH_V2.
+   Declared `let`, not `const` like BENCH_V2 — this flag is inlined directly into needsTrackingNetwork's
+   condition (not just gating UI reachability), so tests need to flip it on to exercise the real
+   missionTechMet/missionAdvisor branches, then restore it (see tests/test-tracking-stations.js). */
+let TRACKING_NETWORK_LIVE=false;
+function stationDef(id){ return TRACKING_STATIONS.find(s=>s.id===id); }
+function stationBuilt(id){ return !!(state.trackingStations && state.trackingStations.indexOf(id)>=0); }
+function trackingStationCount(){ return (state.trackingStations||[]).length; }
+function canBuildStation(id){
+  const s=stationDef(id); if(!s) return {ok:false, why:'Unknown station.'};
+  if(stationBuilt(id)) return {ok:false, why:'Already built.'};
+  if(s.reqResearch && !(state.research && state.research[s.reqResearch])) return {ok:false, why:'Needs prerequisite research.'};
+  if(state.money<s.setup) return {ok:false, why:'Not enough capital for the setup fee.'};
+  return {ok:true, cost:s.setup};
+}
+function buildTrackingStation(id){
+  const chk=canBuildStation(id); if(!chk.ok) return;
+  const s=stationDef(id);
+  state.money-=s.setup; state.trackingStations=state.trackingStations||[]; state.trackingStations.push(id);
+  log('ok', `Tracking station built — ${s.name} (${fM(s.setup)} setup · −${fM(s.upkeep)}/mo). Deep-space missions are online.`);
+  render();
+}
+function trackingUpkeep(){ return round2((state.trackingStations||[]).reduce((a,id)=>{ const s=stationDef(id); return a+(s?s.upkeep:0); },0)); }
 function canFormPartnership(id){
   const p=partnerDef(id); if(!p) return {ok:false, why:'Unknown partner.'};
   if(partnerActive(id)) return {ok:false, why:'Already partnered.'};
@@ -4550,7 +4611,7 @@ function advanceDays(days){
 }
 // the smooth daily flows — inputs are stable within a month, so 30 days sum to the monthly total.
 function tickContinuousDay(){
-  state.money-=perDay(Math.max(0,diff().overhead+econOverheadAdd()+productionUpkeep()+empireOpex()+loanInterest()+partnershipUpkeep())); // overhead (difficulty + market events + #7 production upkeep + CE4(a) empire carrying cost + CE4(c) bridge-loan interest + #6 research-partnership upkeep)
+  state.money-=perDay(Math.max(0,diff().overhead+econOverheadAdd()+productionUpkeep()+empireOpex()+loanInterest()+partnershipUpkeep()+trackingUpkeep())); // overhead (difficulty + market events + #7 production upkeep + CE4(a) empire carrying cost + CE4(c) bridge-loan interest + #6 research-partnership upkeep + #89 tracking-station upkeep)
   if(state.pgmRoyalty>0) state.money+=perDay(state.pgmRoyalty); // M7: platinum-group royalties from an established Belt claim
   state.staff.forEach(s=>{ const p=personById(s.id); if(p) state.money-=perDay(p.salary); }); // M6: personnel salary
   { const rate=publicSupport()>SUPPORT_BASE ? SUPPORT_REVERT_DAY*0.5 : SUPPORT_REVERT_DAY; // earned goodwill fades half as fast as bad blood heals
@@ -4635,7 +4696,7 @@ function tickMonthlyBoundary(){
 
     // #18 (Home): snapshot this month's recurring cashflow for the ops-summary panel
     const mRev=round2(totalFacilityIncome()+(state.pgmRoyalty>0?state.pgmRoyalty:0)+govMonthlyFunding()+passiveMonthlyIncome());
-    const mExp=round2(Math.max(0,diff().overhead+econOverheadAdd()+productionUpkeep()+empireOpex()+loanInterest()+partnershipUpkeep())+monthlyPayroll());
+    const mExp=round2(Math.max(0,diff().overhead+econOverheadAdd()+productionUpkeep()+empireOpex()+loanInterest()+partnershipUpkeep()+trackingUpkeep())+monthlyPayroll());
     state.lastMonth={revenue:mRev, expenses:mExp, net:round2(mRev-mExp), flights:0};
     // Economy tension: warn (once per threshold crossing) when the runway gets short.
     const rw=runwayMonths();
@@ -9561,7 +9622,12 @@ function hideModal(){activeModal=null;_prodModalOpen=false;$('modal').classList.
 } // slice 6: closing clears the live-modal thunk; slice B: also returns focus to the modal's trigger
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=55; // v55: #14 — pinned research goal. state.researchGoal (a RESEARCH id or null, settable on
+const SAVE_VERSION=56; // v56: #89 slice 1 — tracking-station network backend. state.trackingStations
+// (built station ids, TRACKING_STATIONS in data.js). Purely additive: reads through
+// trackingStationCount()/trackingUpkeep(), both `||[]`-guarded. The gate itself (missionTechMet) is
+// inert — TRACKING_NETWORK_LIVE=false until slice 2 ships a build UI — so this version bump changes
+// NOTHING about what any existing save can fly; it only adds a (currently unreachable) empty array.
+// No migrate function needed. v55: #14 — pinned research goal. state.researchGoal (a RESEARCH id or null, settable on
 // locked nodes too — it's a highlight/tracking pin, not a purchase). Purely additive: read only through
 // researchGoalProgress()/techHighlightSet(), both of which treat undefined exactly like null (no highlight,
 // no band). No migrate function needed — pre-v55 saves simply load with no goal pinned. v54: E3.5 — derived state.build part graph (additive; state.stages remains source of truth, graph regenerated on load, safe to drop)
@@ -14784,7 +14850,7 @@ function renderContractsSubtabs(){
 function commandSummary(){
   const era=currentEra();
   const eOpex=empireOpex(); // CE4(a): empire carrying cost
-  const overhead=Math.max(0, diff().overhead+econOverheadAdd()+productionUpkeep()+eOpex+loanInterest()+partnershipUpkeep()); // includes #7 production upkeep + CE4(a) empire opex + CE4(c) bridge-loan interest + #6 research-partnership upkeep
+  const overhead=Math.max(0, diff().overhead+econOverheadAdd()+productionUpkeep()+eOpex+loanInterest()+partnershipUpkeep()+trackingUpkeep()); // includes #7 production upkeep + CE4(a) empire opex + CE4(c) bridge-loan interest + #6 research-partnership upkeep + #89 tracking-station upkeep
   const govFunding=govMonthlyFunding(); // #8: political funding from public support
   const income=round2(totalFacilityIncome()+(state.pgmRoyalty||0)+govFunding+passiveMonthlyIncome());
   const payroll=monthlyPayroll();
@@ -14860,6 +14926,13 @@ function missionAdvisor(){
   const repOk=state.rep>=mm.minRep;
   reqs.push({ok:repOk, label:`Reputation ≥ ${mm.minRep} (have ${Math.round(state.rep)})`});
   if(!repOk){ const avail=MISSIONS.find(x=>!state.completed[x.id]&&missionFlyable(x)&&x.id!==mm.id); if(avail) actions.push({label:`Fly ${avail.name} to build rep`,tab:'bench',missionId:avail.id}); }
+  // #89: tracking-network requirement — mirrors missionTechMet's needsTrackingNetwork exactly (shared
+  // helper, data.js) so this checklist can never claim something the real gate doesn't also enforce.
+  if(needsTrackingNetwork(mm)){
+    const stationsOk=trackingStationCount()>=1;
+    reqs.push({ok:stationsOk, label: stationsOk?`Tracking coverage: ${trackingStationCount()}/${TRACKING_STATIONS.length} stations`:'Tracking network — build at least 1 ground station'});
+    if(!stationsOk) actions.push({label:'Build a tracking station', tab:'map'});
+  }
   // vehicle feasibility — only meaningful when this mission is the one on the bench
   if(state.activeMission===mm.id){
     const v=computeVehicle(), sim=mm.profile?simulateMission(mm):null;
@@ -14947,6 +15020,7 @@ function financesBreakdown(){
     {label:'Empire operating cost', amount:empireOpex()},
     {label:'Bridge-loan interest', amount:loanInterest()},
     {label:'Research partnerships', amount:partnershipUpkeep()},
+    {label:'Tracking stations', amount:trackingUpkeep()},
     {label:'Payroll', amount:monthlyPayroll()},
   ].filter(x=>x.amount>0.001);
   const revenue=round2(revenueItems.reduce((a,x)=>a+x.amount,0));

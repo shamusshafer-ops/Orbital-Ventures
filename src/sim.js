@@ -41,6 +41,7 @@ function newGame(difficulty){
     crisis:null, crisisDone:null, leoFlights:0, deepFlights:0, crisisHistory:[], // P11/I3: the crisis roster (leoFlights/deepFlights are trigger counters; crisisHistory is every resolved crisis)
     researchNext:null, // I5: queued "start next" research pick — auto-starts once the active project finishes and it's affordable/eligible
     researchGoal:null, // #14: pinned research goal — the tech tree persistently highlights this node's full prereq chain (and the R&D rail shows steps remaining) until it's researched or unpinned
+    trackingStations:[], // #89: built tracking-station ids (see TRACKING_STATIONS, data.js). Gate itself is OFF (TRACKING_NETWORK_LIVE=false) until slice 2 ships a build UI.
     ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
     facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
     architectures:{}, science:0,
@@ -324,6 +325,38 @@ function partnerSpeedBonus(r){ if(!r || !state.partnerships) return 0; const tra
   for(const id of state.partnerships){ const p=partnerDef(id); if(p && p.tracks.indexOf(track)>=0) b+=p.speed; }
   return Math.min(PARTNER_SPEED_CAP, b); }
 function partnershipUpkeep(){ if(!state.partnerships) return 0; return round2(state.partnerships.reduce((a,id)=>{ const p=partnerDef(id); return a+(p?p.upkeep:0); },0)); }
+
+/* ===== #89 — Tracking-station network (data model in data.js's TRACKING_STATIONS) ====================
+   A hard requirement for new deep-space firsts (see needsTrackingNetwork/missionTechMet, data.js):
+   build at least one of the three real DSN-analog sites to unlock them. Modeled directly on Research
+   Partnerships just above (setup fee + ongoing upkeep, gated behind prerequisite research) but simpler:
+   build-only for V1, no dissolve — decommissioning your only station would re-lock content that was
+   flyable a moment ago, and there's no player-facing reason to want that yet.
+   TRACKING_NETWORK_LIVE: the flag that actually turns the gate on. Stays false until slice 2 ships a
+   real way to build a station (Map tab, per scoping) — flipping the gate live before that exists would
+   hard-lock every unflown deep-space first with no in-game escape hatch, same reasoning as BENCH_V2.
+   Declared `let`, not `const` like BENCH_V2 — this flag is inlined directly into needsTrackingNetwork's
+   condition (not just gating UI reachability), so tests need to flip it on to exercise the real
+   missionTechMet/missionAdvisor branches, then restore it (see tests/test-tracking-stations.js). */
+let TRACKING_NETWORK_LIVE=false;
+function stationDef(id){ return TRACKING_STATIONS.find(s=>s.id===id); }
+function stationBuilt(id){ return !!(state.trackingStations && state.trackingStations.indexOf(id)>=0); }
+function trackingStationCount(){ return (state.trackingStations||[]).length; }
+function canBuildStation(id){
+  const s=stationDef(id); if(!s) return {ok:false, why:'Unknown station.'};
+  if(stationBuilt(id)) return {ok:false, why:'Already built.'};
+  if(s.reqResearch && !(state.research && state.research[s.reqResearch])) return {ok:false, why:'Needs prerequisite research.'};
+  if(state.money<s.setup) return {ok:false, why:'Not enough capital for the setup fee.'};
+  return {ok:true, cost:s.setup};
+}
+function buildTrackingStation(id){
+  const chk=canBuildStation(id); if(!chk.ok) return;
+  const s=stationDef(id);
+  state.money-=s.setup; state.trackingStations=state.trackingStations||[]; state.trackingStations.push(id);
+  log('ok', `Tracking station built — ${s.name} (${fM(s.setup)} setup · −${fM(s.upkeep)}/mo). Deep-space missions are online.`);
+  render();
+}
+function trackingUpkeep(){ return round2((state.trackingStations||[]).reduce((a,id)=>{ const s=stationDef(id); return a+(s?s.upkeep:0); },0)); }
 function canFormPartnership(id){
   const p=partnerDef(id); if(!p) return {ok:false, why:'Unknown partner.'};
   if(partnerActive(id)) return {ok:false, why:'Already partnered.'};
@@ -776,7 +809,7 @@ function advanceDays(days){
 }
 // the smooth daily flows — inputs are stable within a month, so 30 days sum to the monthly total.
 function tickContinuousDay(){
-  state.money-=perDay(Math.max(0,diff().overhead+econOverheadAdd()+productionUpkeep()+empireOpex()+loanInterest()+partnershipUpkeep())); // overhead (difficulty + market events + #7 production upkeep + CE4(a) empire carrying cost + CE4(c) bridge-loan interest + #6 research-partnership upkeep)
+  state.money-=perDay(Math.max(0,diff().overhead+econOverheadAdd()+productionUpkeep()+empireOpex()+loanInterest()+partnershipUpkeep()+trackingUpkeep())); // overhead (difficulty + market events + #7 production upkeep + CE4(a) empire carrying cost + CE4(c) bridge-loan interest + #6 research-partnership upkeep + #89 tracking-station upkeep)
   if(state.pgmRoyalty>0) state.money+=perDay(state.pgmRoyalty); // M7: platinum-group royalties from an established Belt claim
   state.staff.forEach(s=>{ const p=personById(s.id); if(p) state.money-=perDay(p.salary); }); // M6: personnel salary
   { const rate=publicSupport()>SUPPORT_BASE ? SUPPORT_REVERT_DAY*0.5 : SUPPORT_REVERT_DAY; // earned goodwill fades half as fast as bad blood heals
@@ -861,7 +894,7 @@ function tickMonthlyBoundary(){
 
     // #18 (Home): snapshot this month's recurring cashflow for the ops-summary panel
     const mRev=round2(totalFacilityIncome()+(state.pgmRoyalty>0?state.pgmRoyalty:0)+govMonthlyFunding()+passiveMonthlyIncome());
-    const mExp=round2(Math.max(0,diff().overhead+econOverheadAdd()+productionUpkeep()+empireOpex()+loanInterest()+partnershipUpkeep())+monthlyPayroll());
+    const mExp=round2(Math.max(0,diff().overhead+econOverheadAdd()+productionUpkeep()+empireOpex()+loanInterest()+partnershipUpkeep()+trackingUpkeep())+monthlyPayroll());
     state.lastMonth={revenue:mRev, expenses:mExp, net:round2(mRev-mExp), flights:0};
     // Economy tension: warn (once per threshold crossing) when the runway gets short.
     const rw=runwayMonths();

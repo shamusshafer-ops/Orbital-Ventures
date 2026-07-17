@@ -1,6 +1,11 @@
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=55; // v55: #14 — pinned research goal. state.researchGoal (a RESEARCH id or null, settable on
+const SAVE_VERSION=56; // v56: #89 slice 1 — tracking-station network backend. state.trackingStations
+// (built station ids, TRACKING_STATIONS in data.js). Purely additive: reads through
+// trackingStationCount()/trackingUpkeep(), both `||[]`-guarded. The gate itself (missionTechMet) is
+// inert — TRACKING_NETWORK_LIVE=false until slice 2 ships a build UI — so this version bump changes
+// NOTHING about what any existing save can fly; it only adds a (currently unreachable) empty array.
+// No migrate function needed. v55: #14 — pinned research goal. state.researchGoal (a RESEARCH id or null, settable on
 // locked nodes too — it's a highlight/tracking pin, not a purchase). Purely additive: read only through
 // researchGoalProgress()/techHighlightSet(), both of which treat undefined exactly like null (no highlight,
 // no band). No migrate function needed — pre-v55 saves simply load with no goal pinned. v54: E3.5 — derived state.build part graph (additive; state.stages remains source of truth, graph regenerated on load, safe to drop)

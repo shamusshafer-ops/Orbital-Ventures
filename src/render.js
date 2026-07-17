@@ -612,7 +612,7 @@ function renderContractsSubtabs(){
 function commandSummary(){
   const era=currentEra();
   const eOpex=empireOpex(); // CE4(a): empire carrying cost
-  const overhead=Math.max(0, diff().overhead+econOverheadAdd()+productionUpkeep()+eOpex+loanInterest()+partnershipUpkeep()); // includes #7 production upkeep + CE4(a) empire opex + CE4(c) bridge-loan interest + #6 research-partnership upkeep
+  const overhead=Math.max(0, diff().overhead+econOverheadAdd()+productionUpkeep()+eOpex+loanInterest()+partnershipUpkeep()+trackingUpkeep()); // includes #7 production upkeep + CE4(a) empire opex + CE4(c) bridge-loan interest + #6 research-partnership upkeep + #89 tracking-station upkeep
   const govFunding=govMonthlyFunding(); // #8: political funding from public support
   const income=round2(totalFacilityIncome()+(state.pgmRoyalty||0)+govFunding+passiveMonthlyIncome());
   const payroll=monthlyPayroll();
@@ -688,6 +688,13 @@ function missionAdvisor(){
   const repOk=state.rep>=mm.minRep;
   reqs.push({ok:repOk, label:`Reputation ≥ ${mm.minRep} (have ${Math.round(state.rep)})`});
   if(!repOk){ const avail=MISSIONS.find(x=>!state.completed[x.id]&&missionFlyable(x)&&x.id!==mm.id); if(avail) actions.push({label:`Fly ${avail.name} to build rep`,tab:'bench',missionId:avail.id}); }
+  // #89: tracking-network requirement — mirrors missionTechMet's needsTrackingNetwork exactly (shared
+  // helper, data.js) so this checklist can never claim something the real gate doesn't also enforce.
+  if(needsTrackingNetwork(mm)){
+    const stationsOk=trackingStationCount()>=1;
+    reqs.push({ok:stationsOk, label: stationsOk?`Tracking coverage: ${trackingStationCount()}/${TRACKING_STATIONS.length} stations`:'Tracking network — build at least 1 ground station'});
+    if(!stationsOk) actions.push({label:'Build a tracking station', tab:'map'});
+  }
   // vehicle feasibility — only meaningful when this mission is the one on the bench
   if(state.activeMission===mm.id){
     const v=computeVehicle(), sim=mm.profile?simulateMission(mm):null;
@@ -775,6 +782,7 @@ function financesBreakdown(){
     {label:'Empire operating cost', amount:empireOpex()},
     {label:'Bridge-loan interest', amount:loanInterest()},
     {label:'Research partnerships', amount:partnershipUpkeep()},
+    {label:'Tracking stations', amount:trackingUpkeep()},
     {label:'Payroll', amount:monthlyPayroll()},
   ].filter(x=>x.amount>0.001);
   const revenue=round2(revenueItems.reduce((a,x)=>a+x.amount,0));

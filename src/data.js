@@ -825,6 +825,24 @@ const FACILITY_DEFS = [
    base:{income:2.6, fuel:0.6, rep:3, sci:4}, perModule:{income:1.8, fuel:0.8, rep:1.5, sci:3}},
 ];
 
+// #89: three real Deep Space Network analogs — the actual historical siting (~120° apart in
+// longitude) for genuine round-the-clock coverage of a probe as Earth turns. `body:'earth'` matches
+// the FACILITY_DEFS convention (unused this slice; groundwork for slice 2's map marker). Setup/upkeep
+// costs are a first pass, sized similarly to Research Partnerships (sim.js PARTNERS) — not a final
+// balance call. Lifecycle functions (trackingStationCount/canBuildStation/buildTrackingStation) live in
+// sim.js, same FACILITY_DEFS(data.js)/facility-functions(sim.js) split already used for facilities.
+const TRACKING_STATIONS = [
+  {id:'goldstone', name:'Goldstone Deep Space Complex', place:'Mojave Desert, California', body:'earth', icon:'▲', color:'#8fc4ff',
+   reqResearch:'deep_space', setup:3.0, upkeep:0.10,
+   blurb:'The original Deep Space Network site — dishes in the Mojave that have tracked everything from Mariner to Voyager.'},
+  {id:'madrid', name:'Madrid Deep Space Complex', place:'Robledo de Chavela, Spain', body:'earth', icon:'▲', color:'#8fc4ff',
+   reqResearch:'deep_space', setup:3.5, upkeep:0.12,
+   blurb:'The European leg of the network — closes the gap as Earth turns Goldstone away from a distant probe.'},
+  {id:'canberra', name:'Canberra Deep Space Complex', place:'Tidbinbilla, Australia', body:'earth', icon:'▲', color:'#8fc4ff',
+   reqResearch:'deep_space', setup:4.0, upkeep:0.14,
+   blurb:'The southern-hemisphere anchor — with Goldstone and Madrid, closes full round-the-clock coverage.'},
+];
+
 // Side-view module spec (model space, +x downstream): a pressurized can with an axial docking
 // node, radial berthing ports, dish + whip antennas, solar wings and a radiator. Each `parts`
 // entry is a labelled detail the bench annotates with a leader line — the hook future content
@@ -1107,11 +1125,21 @@ function commitLunarArch(id){
   }
   render();
 }
+// #89: does mission m need the tracking network at all, right now? Shared by missionTechMet (the
+// real gate) and missionAdvisor (the explainer, render.js) so the two can never drift out of sync.
+// Gated behind TRACKING_NETWORK_LIVE (sim.js) — OFF until slice 2 ships an actual way to build a
+// station; flying the gate live with no build UI yet would hard-lock every unflown deep-space first
+// with no in-game escape hatch. Already-completed missions (and their routine reflights) are exempt
+// forever, regardless of the flag — nothing already earned gets taken away.
+function needsTrackingNetwork(m){ return TRACKING_NETWORK_LIVE && !!(m && m.profile) && !state.completed[m.id]; }
 // the gate a player actually flies through: normal reqResearch, plus the luna_landing arch fork
 function missionTechMet(m){
   if(!m) return false;
   if(m.reqResearch && !(state.research && state.research[m.reqResearch])) return false;
   if(m.reqSynergy && !synergyUnlocked(m.reqSynergy)) return false; // P8: cross-track synergy unlock
+  // #89: MUST come before the luna_landing branch below — that branch returns early, and
+  // luna_landing is itself a .profile mission, so inserting this after would silently bypass it.
+  if(needsTrackingNetwork(m) && trackingStationCount()<1) return false;
   if(m.id==='luna_landing') return anyLunarArchUnlocked();
   return true;
 }
