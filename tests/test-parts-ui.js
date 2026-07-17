@@ -100,5 +100,28 @@ newGame('engineer');
   check('interactive: static render has no node markers', !renderBuildSVG(b,260,420,false).svg.includes('Open '));
 }
 
+// ---------- 8. Starter templates and context-aware suggestions ----------
+{
+  benchApplyPreset('orbital');
+  check('preset: orbital launcher creates a crewed two-stage graph', benchBuild().parts.filter(p=>p.defId==='decoupler').length===1 && buildToStageIR(benchBuild()).stages.length===2);
+  check('preset: orbital launcher has a valid bridge', !buildToStageIR(benchBuild()).error);
+  benchReset();
+  const b=benchBuild();
+  _benchSelNode=b.root+':bot';
+  const compatible=Object.values(PART_DEFS).filter(d=>canAttach(b,b.root,'bot',d.id).ok).map(d=>d.id);
+  check('suggestions: capsule target offers a tank', compatible.includes('tank_std'));
+  check('suggestions: capsule target rejects an engine', !compatible.includes('engine_a4'));
+}
+
+// ---------- 9. Palette filtering and part hit-target metadata ----------
+{
+  benchSetPaletteFilter('engine');
+  const filtered=renderPartsPalette();
+  check('palette: search keeps the engine and hides unrelated parts', filtered.includes('engine_a4') && !filtered.includes('tank_std'));
+  benchSetPaletteFilter('');
+  const r=renderBuildSVG(benchBuild(),260,420,true);
+  check('interactive: renderer exposes selectable part ranges', Array.isArray(r.partPos) && r.partPos.length===1);
+}
+
 console.log(`${pass}/${pass+fail} checks passed`);
 if(typeof process!=='undefined') process.exit(fail?1:0);

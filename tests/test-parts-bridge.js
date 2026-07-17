@@ -14,7 +14,7 @@ function near(a,b,tol){ return Math.abs(a-b) <= (tol!=null?tol:0.5); } // 0.5 m/
 newGame('engineer');
 
 // ---------- 0. Model sanity ----------
-check('flag: BENCH_V2 is off (dark until E3.5)', BENCH_V2===false);
+check('flag: BENCH_V2 is enabled for the live vehicle bench', BENCH_V2===true);
 check('parts: PART_DEFS has the viable set', ['tank_std','decoupler','engine_a4','capsule_mk1','nosecone','probe_core'].every(id=>!!partDef(id)));
 check('parts: categories resolve', partsInCategory('structural').length>=3 && partsInCategory('propulsion').length>=1);
 

@@ -32,6 +32,7 @@ newGame('engineer');
 {
   const b=emptyBuild('capsule_mk1');
   check('canAttach: tank onto capsule bottom ok', canAttach(b, b.root, 'bot', 'tank_std').ok);
+  check('canAttach: engine cannot mount directly to capsule', !canAttach(b, b.root, 'bot', 'engine_a4').ok);
   check('canAttach: unknown part rejected', !canAttach(b, b.root, 'bot', 'no_such_part').ok);
   check('canAttach: unknown node rejected', !canAttach(b, b.root, 'nope', 'tank_std').ok);
   attachPart(b, b.root, 'bot', 'tank_std');

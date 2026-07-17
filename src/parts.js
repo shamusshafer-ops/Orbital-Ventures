@@ -15,7 +15,7 @@
    ============================================================================ */
 
 // Feature flag — the whole part bench stays dark until E3.5 flips this.
-const BENCH_V2 = false;
+const BENCH_V2 = true;
 
 /* ---------- Attach-node diameter classes ----------
    Parts connect only at matching node sizes (KSP-style). A class maps to a
@@ -207,6 +207,11 @@ function canAttach(build, parentUid, parentNodeId, childDefId){
   const pnode=pdef.nodes.find(n=>n.id===parentNodeId); if(!pnode) return {ok:false, why:'no such node'};
   if(!openNodes(build, parentUid).some(n=>n.id===parentNodeId)) return {ok:false, why:'node occupied'};
   const cdef=partDef(childDefId); if(!cdef) return {ok:false, why:'unknown part'};
+  // Engines are bottom-mounted propulsion units, not payload attachments. The node geometry
+  // alone would allow an engine directly under a capsule or avionics core, which is technically
+  // symmetric but a terrible first-time-building experience. Keep the rule in the model so the
+  // palette suggestions, click attach, and drag snap all teach the same construction logic.
+  if(cdef.engId && !(pdef.phys.propMass || pdef.phys.isDecoupler)) return {ok:false, why:'engines mount beneath a tank or stage separator'};
   // gate: research/era (parts carry an era index today; research gating arrives with the full catalogue)
   const cnode=cdef.nodes.find(n=>nodesCompatible(pnode, n));
   if(!cnode) return {ok:false, why: pnode.class!=='small' ? 'no matching '+NODE_CLASS[pnode.class].label+' node on this part' : 'these parts don\'t connect here'};
@@ -586,13 +591,17 @@ function renderBuildSVG(build, W, H, interactive){
   const cx=W/2;
   let y=20; // top margin
   let body='';
-  const partYRanges=[]; // {uid, top, bottom} in SVG px, for stage-label placement below
+  const partYRanges=[]; // {uid, top, bottom, x, width} in SVG px, for stage-label placement and hit targets
   const nodePos={}; // "uid:nodeId" -> {x,y}, exposed when interactive for the snap layer
   for(let i=0;i<spine.length;i++){
     const def=defs[i], w=def.px.dia*scale, len=def.px.len*scale;
     const x=cx-w/2, yTop=y;
     body+=renderPartSVG(def, x, yTop, scale);
-    partYRanges.push({uid:spine[i].uid, top:yTop, bottom:yTop+len});
+    // A compact part label makes the 2D schematic readable at a glance, especially when
+    // several tanks look similar. Keep it inside the silhouette so the board remains clean.
+    const labelY=yTop+Math.max(11,Math.min(len-5, len/2+3));
+    body+=`<text x="${cx}" y="${labelY}" fill="rgba(5,11,18,.78)" font-size="${Math.max(8,Math.min(11,scale*0.16))}" font-family="ui-monospace,monospace" text-anchor="middle" font-weight="700">${def.short}</text>`;
+    partYRanges.push({uid:spine[i].uid, top:yTop, bottom:yTop+len, x, width:w});
     // record every node's screen position (top-center / bottom-center; radial at side-center)
     for(const n of def.nodes){
       const nx = n.at==='radial' ? x+w : cx;
@@ -667,7 +676,7 @@ function renderBuildSVG(build, W, H, interactive){
     +`<defs><linearGradient id="partBell" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="#3a444b"/><stop offset="0.5" stop-color="#5a666e"/><stop offset="1" stop-color="#3a444b"/></linearGradient>`
     +Object.values(PART_DEFS).map(d=>`<linearGradient id="g-${d.id}" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="${(PART_CAT_COLOR[d.cat]||'#8a97a3')}" stop-opacity=".95"/><stop offset=".5" stop-color="${(PART_CAT_COLOR[d.cat]||'#8a97a3')}"/><stop offset="1" stop-color="#293743"/></linearGradient>`).join('')
     +`</defs>${boosterArt}${body}${nodeMarkers}${overlay}</svg>`;
-  return {svg, totalLen, maxDia, nodePos, error:null};
+  return {svg, totalLen, maxDia, nodePos, partPos:partYRanges, error:null};
 }
 
 /* ============================================================================
@@ -684,7 +693,9 @@ function renderBuildSVG(build, W, H, interactive){
    ============================================================================ */
 let _benchBuild = null;          // the live editing graph (mirrors state.build once wired at E3.5)
 let _benchSelNode = null;        // "uid:nodeId" currently selected as the click-attach target
+let _benchSelPart = null;        // selected part instance for inspection and delete
 let _benchDrag = null;           // {defId} while dragging a palette part
+let _benchPaletteFilter = '';
 // E3.6: undo/redo. Snapshots are deep clones of the build graph, taken BEFORE each mutation.
 let _benchUndo = [];             // past states (most recent last)
 let _benchRedo = [];             // undone states (for redo)
@@ -714,7 +725,17 @@ function benchBuild(){
   }
   return _benchBuild;
 }
-function benchReset(){ benchPushUndo(); _benchBuild = emptyBuild('capsule_mk1'); _benchSelNode=null; renderPartsBench(); }
+function benchReset(){ benchPushUndo(); _benchBuild = emptyBuild('capsule_mk1'); _benchSelNode=null; _benchSelPart=null; renderPartsBench(); }
+function benchApplyPreset(kind){
+  const presets={
+    orbital:{crewed:true, stages:[{eng:'a4',count:1,prop:8},{eng:'a4',count:1,prop:6}]},
+    probe:{crewed:false, stages:[{eng:'a4',count:1,prop:8}]},
+  };
+  const p=presets[kind]||presets.orbital;
+  benchPushUndo(); _benchBuild=sliderDesignToBuild(p.stages,{crewed:p.crewed}); _benchSelNode=null; _benchSelPart=null; renderPartsBench();
+}
+function benchSetPaletteFilter(value){ _benchPaletteFilter=String(value||'').trim().toLowerCase(); const pal=document.getElementById('benchPalette'); if(pal) pal.innerHTML=renderPartsPalette(); }
+function benchSelectPart(uid){ _benchSelPart=(_benchSelPart===uid)?null:uid; _benchSelNode=null; renderPartsBench(); }
 
 // palette card for one part def
 function partPaletteCard(def){
@@ -726,7 +747,7 @@ function partPaletteCard(def){
   // E3.6 tooltip: blurb + historical flavor (engines pull their heritage line from ENGINES).
   const engHist = def.engId && eng && eng.name ? `\n\nEngine: ${eng.name}` : '';
   const tip = `${def.name}\n${def.blurb||''}${def.hist?'\n\n'+def.hist:''}${engHist}`.replace(/"/g,'&quot;');
-  return `<div class="part-card" draggable="true" data-partid="${def.id}" title="${tip}"
+  return `<div class="part-card bench-part-card" draggable="true" data-partid="${def.id}" title="${tip}"
       onclick="benchPaletteClick('${def.id}')"
       ondragstart="benchDragStart(event,'${def.id}')" ondragend="benchDragEnd()"
       style="border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:grab;background:var(--panel2);min-width:120px">
@@ -741,12 +762,12 @@ function partPaletteCard(def){
 function renderPartsPalette(){
   const cats = Object.values(PART_CATEGORIES);
   return cats.map(c=>{
-    const parts=partsInCategory(c.id); if(!parts.length) return '';
+    const parts=partsInCategory(c.id).filter(p=>!_benchPaletteFilter || (p.name+' '+p.short+' '+(p.blurb||'')).toLowerCase().includes(_benchPaletteFilter)); if(!parts.length) return '';
     return `<div style="margin-bottom:8px">
-      <div class="dim" style="font-size:11px;letter-spacing:1px;margin-bottom:4px">${c.icon} ${c.name.toUpperCase()}</div>
+      <div class="bench-category">${c.icon} ${c.name.toUpperCase()} <span style="float:right">${parts.length}</span></div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">${parts.map(partPaletteCard).join('')}</div>
     </div>`;
-  }).join('');
+  }).join('') || `<div class="bench-empty">No parts match “${_benchPaletteFilter}”. Try “tank”, “engine”, or “capsule”.</div>`;
 }
 
 // click a palette part: attach to the selected open node, or to the single open
@@ -808,6 +829,43 @@ function benchCanvasDragOver(e){ e.preventDefault(); try{ e.dataTransfer.dropEff
 // click an open-node marker in the SVG to select it as the click-attach target
 function benchNodeClick(key){ _benchSelNode = (_benchSelNode===key)?null:key; renderPartsBench(); }
 
+function benchInspectorHTML(b){
+  const selected=buildPart(b,_benchSelPart);
+  const host=document.getElementById('benchInspector');
+  if(!host) return;
+  const target=_benchSelNode ? _benchSelNode.split(':') : null;
+  const targetPart=target ? buildPart(b,target[0]) : null;
+  let html='';
+  if(targetPart){
+    const td=partDef(targetPart.defId), tn=td&&td.nodes.find(n=>n.id===target[1]);
+    const compatible=Object.values(PART_DEFS).filter(d=>canAttach(b,target[0],target[1],d.id).ok);
+    html+=`<div class="bench-guide"><b>Attach target selected</b><br>${td.name} · ${tn?tn.at:'node'} · ${tn?NODE_CLASS[tn.class].label:''}<br><span class="dim">Choose a compatible part below, or use the library.</span><div class="bench-suggest">${compatible.map(d=>`<button class="btn ghost" onclick="benchPaletteClick('${d.id}')">+ ${d.short}</button>`).join('')}</div></div>`;
+  } else {
+    html+=`<div class="bench-guide"><b>Build tip</b><br>Start at the top with a capsule or probe core, then add tanks and an engine below it. Decouplers separate stages; boosters attach to the tank’s side node.</div>`;
+  }
+  if(selected){
+    const d=partDef(selected.defId), eng=d.engId&&ENGINES[d.engId];
+    const links=b.links.filter(l=>l.parent===selected.uid||l.child===selected.uid);
+    const opens=openNodes(b,selected.uid);
+    const isRoot=selected.uid===b.root;
+    html+=`<div class="bench-inspector-part">
+      <h3>${d.name}</h3><div class="bench-inspector-meta">${d.cat.toUpperCase()} · ${d.short} · part ${selected.uid}</div>
+      <div class="dim" style="font-size:11px;line-height:1.4">${d.blurb||''}</div>
+      <div class="bench-stat-grid">
+        <div class="bench-stat"><div class="k">Diameter</div><div class="v">${d.px.dia/90} m-class</div></div>
+        <div class="bench-stat"><div class="k">Connections</div><div class="v">${links.length}</div></div>
+        ${eng?`<div class="bench-stat"><div class="k">Thrust</div><div class="v">${Math.round(eng.thrustVac)} kN</div></div><div class="bench-stat"><div class="k">Vac Isp</div><div class="v">${eng.ispVac} s</div></div>`:''}
+        ${d.phys.propMass?`<div class="bench-stat"><div class="k">Propellant</div><div class="v">${d.phys.propMass} t</div></div>`:''}
+      </div>
+      ${opens.length?`<div class="mission-tag" style="margin-top:7px">Open connections</div>${opens.map(n=>`<div class="bench-open-node"><span>${n.at.toUpperCase()} · ${NODE_CLASS[n.class].label}</span><button class="btn ghost" style="font-size:10px;padding:2px 5px" onclick="benchNodeClick('${selected.uid}:${n.id}')">Select</button></div>`).join('')}`:'<div class="dim" style="font-size:11px;margin:7px 0">All connection points are occupied.</div>'}
+      <button class="btn ghost" style="font-size:11px;width:100%" onclick="benchDeletePart('${selected.uid}')" ${isRoot?'disabled':''}>${isRoot?'Root part cannot be removed':'Remove part and everything below it'}</button>
+    </div>`;
+  } else {
+    html+=`<div class="bench-inspector-empty">Click a part on the vehicle to inspect it.<br><br>Click a blue ○ connection point to choose where the next part goes.</div>`;
+  }
+  host.innerHTML=html;
+}
+
 function benchSetSymmetry(uid, n){ benchPushUndo(); applySymmetry(benchBuild(), uid, n); renderPartsBench(); }
 function renderPartsBench(msg){
   const host=document.getElementById('benchCanvas'); if(!host) return;
@@ -829,6 +887,15 @@ function renderPartsBench(msg){
     const svg=host.querySelector('svg');
     if(svg && typeof document.createElementNS==='function' && typeof svg.appendChild==='function'){
       try{
+        // Part-sized hit areas make the board feel like an assembly surface instead of a
+        // passive illustration. Node hit areas are appended afterward so they win on overlap.
+        for(const range of (r.partPos||[])){
+          const hit=document.createElementNS('http://www.w3.org/2000/svg','rect');
+          hit.setAttribute('x',range.x); hit.setAttribute('y',range.top); hit.setAttribute('width',range.width); hit.setAttribute('height',range.bottom-range.top);
+          hit.setAttribute('fill',_benchSelPart===range.uid?'rgba(79,209,217,0.18)':'transparent');
+          hit.setAttribute('stroke',_benchSelPart===range.uid?'#4fd1d9':'transparent'); hit.setAttribute('stroke-width','2');
+          hit.style.cursor='pointer'; hit.addEventListener('click',()=>benchSelectPart(range.uid)); svg.appendChild(hit);
+        }
         for(const p of b.parts) for(const n of openNodes(b,p.uid)){
           const key=p.uid+':'+n.id, pos=r.nodePos[key]; if(!pos) continue;
           const hit=document.createElementNS('http://www.w3.org/2000/svg','circle');
@@ -843,6 +910,11 @@ function renderPartsBench(msg){
         svg.addEventListener('drop', benchCanvasDrop);
       }catch(_){/* headless / partial DOM — the interactive overlay is pure decoration */}
     }
+  }
+  const targetReadout=document.getElementById('benchTargetReadout');
+  if(targetReadout){
+    const t=_benchSelNode&&_benchSelNode.split(':'); const tp=t&&buildPart(b,t[0]); const td=tp&&partDef(tp.defId);
+    targetReadout.textContent=td ? `ATTACH TO · ${td.short} / ${t[1].toUpperCase()}` : 'SELECT AN OPEN NODE';
   }
   const pal=document.getElementById('benchPalette'); if(pal) pal.innerHTML=renderPartsPalette();
   const st=document.getElementById('benchPartStats');
@@ -887,6 +959,7 @@ function renderPartsBench(msg){
     html+=`<button class="btn ghost" style="font-size:12px;margin-top:8px" onclick="benchReset()">✕ Clear build</button>`;
     st.innerHTML=html;
   }
+  benchInspectorHTML(b);
 }
 
 /* ============================================================================

@@ -454,6 +454,39 @@
   .bench-tab.active{border-color:var(--readout);color:var(--readout);background:var(--panel2)}
   .bench-panel{display:none;flex-direction:column;gap:14px}
   .bench-panel.active{display:flex}
+  /* E3.7 Vehicle assembly board — the build is a 2D engineering board, not a fake 3D VAB. */
+  .bench-board{display:block;margin-bottom:16px}
+  .bench-board-head{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;margin-bottom:12px;padding:14px 16px;border:1px solid var(--line);border-radius:9px;background:linear-gradient(120deg,rgba(30,92,130,.28),rgba(10,24,38,.94))}
+  .bench-board-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;flex-shrink:0}
+  .bench-board-grid{display:grid;grid-template-columns:minmax(190px,230px) minmax(360px,1fr) minmax(245px,300px);gap:12px;align-items:start}
+  .bench-board-grid > .card{min-width:0;margin:0}
+  .bench-section-head{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px}
+  .bench-section-head h2{margin:2px 0 0;font-size:16px}
+  .bench-kbd{font:10px var(--mono);color:var(--muted);border:1px solid var(--line);border-radius:4px;padding:3px 5px;white-space:nowrap}
+  .bench-search{box-sizing:border-box;width:100%;padding:8px 9px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);font:12px var(--sans)}
+  .bench-search:focus{outline:1px solid var(--readout);border-color:var(--readout)}
+  .bench-presets{margin:10px 0 4px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+  .bench-preset{display:flex;align-items:center;gap:8px;width:100%;padding:7px 6px;margin:4px 0;text-align:left;border:1px solid transparent;border-radius:6px;background:rgba(79,209,217,.05);color:var(--ink);cursor:pointer;font:12px var(--sans)}
+  .bench-preset:hover{border-color:var(--readout);background:rgba(79,209,217,.12)}.bench-preset span:first-child{font-size:18px;width:22px;text-align:center}.bench-preset small{display:block;color:var(--muted);font-size:10px;margin-top:1px}
+  .bench-palette-panel{position:sticky;top:calc(var(--topbar-h) + 8px);max-height:calc(100vh - var(--topbar-h) - 20px);overflow:auto}
+  .bench-canvas-panel{background:linear-gradient(180deg,rgba(8,27,47,.96),rgba(7,17,28,.98));border-color:#2c6684}
+  .bench-canvas{min-height:480px;display:flex;justify-content:center;align-items:flex-start;padding:8px;border:1px solid rgba(100,190,230,.2);border-radius:8px;background:radial-gradient(ellipse at center,rgba(26,70,99,.28),transparent 68%)}
+  .bench-canvas svg{width:100%;max-width:520px;height:auto;min-height:470px}
+  .bench-target-readout{font:11px var(--mono);color:var(--readout);text-align:right;max-width:145px}
+  .bench-inspector-panel{position:sticky;top:calc(var(--topbar-h) + 8px);max-height:calc(100vh - var(--topbar-h) - 20px);overflow:auto}
+  .bench-inspector-empty{padding:18px 10px;text-align:center;border:1px dashed var(--line);border-radius:7px;color:var(--muted);font-size:12px;line-height:1.5}
+  .bench-inspector-part{padding:10px;border:1px solid var(--line);border-left:3px solid var(--readout);border-radius:7px;background:var(--panel2);margin-bottom:10px}
+  .bench-inspector-part h3{margin:0 0 3px;font-size:15px}
+  .bench-inspector-meta{font:11px var(--mono);color:var(--muted);margin-bottom:8px}
+  .bench-stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin:8px 0}
+  .bench-stat{padding:6px;background:rgba(0,0,0,.16);border-radius:4px}.bench-stat .k{font-size:10px;color:var(--muted);text-transform:uppercase}.bench-stat .v{font:12px var(--mono);color:var(--ink);margin-top:2px}
+  .bench-guide{padding:8px 9px;border-radius:6px;background:rgba(79,209,217,.07);border:1px solid rgba(79,209,217,.25);font-size:11px;line-height:1.45;color:var(--ink);margin-bottom:10px}
+  .bench-suggest{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}.bench-suggest button{font-size:10px;padding:4px 6px}.bench-open-node{display:flex;justify-content:space-between;align-items:center;gap:5px;padding:5px 0;border-bottom:1px solid rgba(36,70,90,.55);font-size:11px}.bench-open-node:last-child{border-bottom:0}
+  .bench-part-card{position:relative;transition:border-color .12s,transform .12s,background .12s}.bench-part-card:hover{border-color:var(--readout)!important;transform:translateY(-1px);background:var(--panel)!important}.bench-part-card:active{transform:translateY(0)}
+  .bench-category{font-size:10px;letter-spacing:.12em;color:var(--muted);padding:8px 0 4px;border-bottom:1px solid var(--line);margin-bottom:5px}
+  .bench-empty{font-size:11px;color:var(--muted);padding:12px 2px}
+  @media(max-width:1100px){.bench-board-grid{grid-template-columns:190px minmax(320px,1fr)}.bench-inspector-panel{grid-column:1/-1;position:static;max-height:none}.bench-inspector-panel #benchInspector{display:grid;grid-template-columns:1fr 1fr;gap:12px}.bench-inspector-panel #benchInspector > *{margin:0}}
+  @media(max-width:700px){.bench-board-head{display:block}.bench-board-actions{justify-content:flex-start;margin-top:10px}.bench-board-grid{grid-template-columns:1fr}.bench-palette-panel,.bench-inspector-panel{position:static;max-height:none}.bench-canvas{min-height:360px}.bench-canvas svg{min-height:350px}.bench-inspector-panel #benchInspector{display:block}}
   /* recommended-action hero card */
   .rec-card{border:1px solid var(--ignite);border-radius:8px;padding:12px;background:linear-gradient(180deg,rgba(245,166,35,.10),rgba(245,166,35,.02))}
   .rec-card .lbl{font-size:var(--fs-min);text-transform:uppercase;letter-spacing:.16em;color:var(--ignite)}
@@ -960,17 +993,42 @@
   </div>
 
   <div id="benchView" class="hidden">
-    <!-- E3.2: part-based bench (BENCH_V2). Hidden until the flag flips at E3.5 cutover; the old
-         slider bench below stays the shipped default. Populated by renderPartsBench(). -->
-    <div id="benchV2" class="hidden" style="display:flex;gap:12px;flex-wrap:wrap">
-      <div class="card" style="flex:0 0 280px">
-        <div class="mission-tag">Vehicle assembly</div>
-        <div id="benchCanvas" style="margin-top:8px"></div>
-        <div id="benchPartStats" style="margin-top:10px"></div>
+    <!-- E3.2/E3.7: part-based vehicle assembly board. The old slider editor remains below as
+         the supporting vehicle configuration surface; this board is the physical build view. -->
+    <div id="benchV2" class="bench-board hidden">
+      <div class="bench-board-head">
+        <div>
+          <div class="mission-tag">Vehicle assembly board</div>
+          <h1 style="margin:3px 0 2px;font-size:22px">Build the vehicle, one connection at a time</h1>
+          <div class="dim" style="font-size:12px">Select a blue node, then click a part. You can also drag a part onto an open node. The right panel explains what is selected and what still needs fixing.</div>
+        </div>
+        <div class="bench-board-actions">
+          <button class="btn ghost" onclick="benchUndo()" title="Undo last build change">↶ Undo</button>
+          <button class="btn ghost" onclick="benchRedo()" title="Redo last build change">↷ Redo</button>
+          <button class="btn ghost" onclick="benchToggleBlueprint()" title="Toggle blueprint display">◈ Blueprint</button>
+          <button class="btn ghost" onclick="benchReset()">Clear build</button>
+        </div>
       </div>
-      <div class="card" style="flex:1 1 320px;min-width:280px">
-        <div class="mission-tag">Parts — drag onto the rocket, or tap an ○ node then tap a part</div>
-        <div id="benchPalette" style="margin-top:8px"></div>
+      <div class="bench-board-grid">
+        <section class="card bench-palette-panel">
+          <div class="bench-section-head"><div><div class="mission-tag">1 · Choose a part</div><h2>Parts library</h2></div><span class="bench-kbd">CLICK / DRAG</span></div>
+          <input id="benchPartSearch" class="bench-search" type="search" placeholder="Search parts…" oninput="benchSetPaletteFilter(this.value)">
+          <div class="bench-presets">
+            <div class="bench-category">STARTER CONFIGURATIONS</div>
+            <button class="bench-preset" onclick="benchApplyPreset('orbital')"><span>🚀</span><span><b>Orbital launcher</b><small>Two-stage crewed stack</small></span></button>
+            <button class="bench-preset" onclick="benchApplyPreset('probe')"><span>◉</span><span><b>Probe launcher</b><small>Uncrewed science stack</small></span></button>
+          </div>
+          <div id="benchPalette" style="margin-top:10px"></div>
+        </section>
+        <section class="card bench-canvas-panel">
+          <div class="bench-section-head"><div><div class="mission-tag">2 · Assemble the stack</div><h2>Vehicle layout</h2></div><div id="benchTargetReadout" class="bench-target-readout">Select an open node</div></div>
+          <div id="benchCanvas" class="bench-canvas" style="margin-top:8px"></div>
+          <div id="benchPartStats" style="margin-top:10px"></div>
+        </section>
+        <aside class="card bench-inspector-panel">
+          <div class="bench-section-head"><div><div class="mission-tag">3 · Check the design</div><h2>Engineer’s readout</h2></div></div>
+          <div id="benchInspector"></div>
+        </aside>
       </div>
     </div>
     <div class="bench-stage">
