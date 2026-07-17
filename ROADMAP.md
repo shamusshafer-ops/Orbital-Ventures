@@ -4521,8 +4521,9 @@ for slice 2: a full-equatorial Comsat from the Cape may be near-unflyable rather
 retrofit should probably pick a less extreme target inclination (or the payout must rise a lot), a call to
 make with real numbers at build time.
 
-**Slice 2 — NOT STARTED.** The two retrofits (Crewed Orbit `inclination:65` free-direction teaching case;
-Comsat equatorial — but reconsider how equatorial given the 3827 m/s reality above) + mission-detail copy.
+**Slice 2 — SHIPPED 2026-07-17.** crew_orbit `inclination:65` (free — teaching case). comsat
+`inclination:0` equatorial (full ~3827 m/s tax; payout 8.4→14.9, ~77%, to offset). Both blurbs explain
+the tradeoff. `test-inclination-missions.js` 8/8. Ground track (#45) now unblocked — separate slice.
 
 **Two findings surfaced during slice 1 (logged, not fixed — out of scope):**
   1. **Latent `dockModuleNow` crash.** A module-delivery flight that resolves *after* its target facility
