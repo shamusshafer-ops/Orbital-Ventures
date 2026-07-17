@@ -4353,3 +4353,46 @@ priority-gate chain. Full existing suite (59 files) + `test-build-parity.js` (ru
 **Not done / next:** BACKLOG.md #81 marked shipped. The `SCI_SELL_RATE=0.5` conversion rate is a first
 pass — worth a real balance look once there's playtest signal on whether players actually sell early-game
 prestige missions or always bank them out of habit.
+
+## Session — #14 Pinned research goal: persistent path highlight (2026-07-17)
+
+Backlog #14 ("Pin a research node as 'goal' → path highlight"). The tech tree already had transient
+click-to-highlight (`techFocus`/`techPrereqChain`/`techHighlightSet`, from the 2026-07-02 tech-tree
+interaction layer) — this makes it a standing pin instead of something that resets on every click
+elsewhere, and adds real planning value on top (remaining-steps count, next-buyable-step callout).
+
+**Design.** New persisted `state.researchGoal` (a RESEARCH id or null). `pinResearchGoal(id)` deliberately
+works on **locked** nodes — pinning something several prereqs away and seeing the whole chain light up is
+the entire point — and only refuses an already-researched node (nothing to plan toward) or an unknown id.
+`techHighlightSet()` now falls back to the goal's chain when `techFocus` is null, so the tree opens with
+the goal's path lit by default; any click still transiently overrides to that node's own chain (existing
+behavior, unchanged), reverting to the goal view once focus clears. `researchGoalProgress()` walks
+`techPrereqChain` to report `{goal, remaining, nextSteps}` — `nextSteps` is filtered to nodes whose state
+is `'available'` right now, so the R&D rail can tell the player exactly what's buyable toward the goal
+today, not just how far off it is. Surfacing: a 📌-marked band under the track-filter list in the R&D
+right rail (`researchGoalBandHTML`, always visible regardless of what's selected — the "planning aid"
+part), a 📌 marker on the goal's node in the tree itself, and a pin/unpin button in the research detail
+panel (hidden once a node is done).
+
+**Auto-clear.** `completeResearch()` checks the finishing node against `state.researchGoal` and, on a
+match, logs `🎯 Goal reached: <name>!` and clears the pin — no stale pins sitting on already-done nodes
+under normal play. `researchGoalProgress()` also self-heals defensively (clears + returns null) if a goal
+somehow points at an already-researched node by the time it's read — covers `reconcileResearch()`
+backfilling a node transitively (tech-tree reshape migration) without going through `completeResearch()`.
+
+**Save.** SAVE_VERSION → 55. Purely additive: `state.researchGoal` reads through `researchGoalProgress()`/
+`techHighlightSet()`, both of which treat `undefined` exactly like `null`. No migrate function — pre-v55
+saves just load with nothing pinned.
+
+**Files.** `src/sim.js` (state field, `pinResearchGoal`/`clearResearchGoal`, the `completeResearch` hook),
+`src/render.js` (`techHighlightSet` fallback, `researchGoalProgress`/`researchGoalBandHTML`, the tree
+marker, the detail-panel button), `src/save.js` (SAVE_VERSION). Rebuilt via `node build.js`;
+`node build.js --check` confirms parity.
+
+**Validation.** New `tests/test-research-goal.js` (27/27), built on the real `earth_observation` →
+`planetary_science` pair (a clean 2-hop chain with no mission gate) rather than fixture nodes: pin/unpin/
+toggle/guard-against-done, `techHighlightSet`'s fallback-vs-override behavior, `researchGoalProgress`'s
+remaining-count and next-step math across both prereq states, the stale-pin self-heal, `completeResearch`'s
+auto-clear-and-log on the goal vs. leaving it alone on an unrelated completion, and a surfacing no-throw
+check across the band/tree/detail-panel render paths. Full 60-suite regression + `test-build-parity.js` +
+`build.js --check` all green — no regressions.

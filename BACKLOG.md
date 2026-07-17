@@ -38,7 +38,7 @@ Complexity: S = <1 day, M = 1–5 days, L = 1–3 weeks, XL = 1+ month. Impact: 
 |11| Confirm-with-preview on all destructive actions | Prevent rage-quits | S | ★★ | — | H |Backlog|
 |12| Undo last build-change on bench | Design iteration comfort | M | ★★ | — | M |Backlog|
 |13| Searchable tech tree | 110 nodes needs it | S | ★★ | — | M |Already shipped — techSearchMatch()/#techSearch input in R&D render|
-|14| Pin a research node as "goal" → path highlight | Planning aid | M | ★★ | — | M |Backlog|
+|14| Pin a research node as "goal" → path highlight | Planning aid | M | ★★ | — | M |Shipped 2026-07-17 — persistent prereq-chain highlight + rail progress band|
 |15| Notification center (missed events while warping) | Smart-time complement | M | ★★ | — | M |Backlog|
 |16| Log filters already exist → add text search | Late-game archaeology | S | ★ | — | L |Backlog|
 |17| Compare two vehicle families side-by-side | Decision support | M | ★★ | — | M |Already shipped — vehicleCompareHTML() in render.js|
@@ -162,10 +162,10 @@ Complexity: S = <1 day, M = 1–5 days, L = 1–3 weeks, XL = 1+ month. Impact: 
 | E1.x | 20 | Folded into a named high-value item |
 | E2 | 10 | Folded into medium-priority grouped item |
 | Deferred | 12 | Named in ROADMAP.md's deferred list |
-| **Backlog** | **53** | Not yet on ROADMAP.md in any form |
+| **Backlog** | **52** | Not yet on ROADMAP.md in any form |
 
-Over half the list (59/112) hasn't been triaged onto ROADMAP.md yet — mostly small
-QoL items (#9, 11–17, 19–25), flight/ops texture (#31, 33–34, 37–45), rival/world
+Over half the list (58/112) hasn't been triaged onto ROADMAP.md yet — mostly small
+QoL items (#9, 11–12, 15–16, 19–25), flight/ops texture (#31, 33–34, 37–45), rival/world
 flavor beyond the reactive-race core (#50, 53, 56–60), and personnel/station depth
 beyond the named E1.4/E2 items (#64, 66–72, 75–79, 82, 84–85, 89–90, 100, 104).
 None of these are blocking — they're candidates for future slice selection once E0/E1
