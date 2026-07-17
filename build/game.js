@@ -5876,6 +5876,25 @@ function groundTrackPasses(inclDeg, ascNodeLon, passes){
   }
   return out;
 }
+/* ---------- Physics-realism #2: one-way communication light-lag ----------
+   Distance-from-Sun (AU) is a static per-body constant — real orbital position/ephemeris isn't modeled
+   anywhere else in this game (see #114's own note that altitude/period aren't tracked either), so
+   Earth-to-body distance is approximated as a min/max RANGE (closest opposition vs. farthest
+   conjunction: |bodyAU−1| and bodyAU+1) rather than a single live-simulated figure — same
+   "representative, not simulated" spirit as reqDv's flat Δv numbers. Moons share their parent planet's
+   AU (the moon-to-planet leg is negligible at interplanetary scale); Earth's own Moon is the one
+   exception — its table entry IS already an Earth-distance, not a Sun-distance, handled specially below.
+   Feeds display only (mission control flavor) — no gameplay number reads this. */
+const BODY_AU={mercury:0.39, venus:0.72, moon:0.00257, mars:1.52, phobos:1.52, belt:2.77,
+  jupiter:5.20, io:5.20, europa:5.20, ganymede:5.20, callisto:5.20,
+  saturn:9.58, titan:9.58, rhea:9.58, uranus:19.2, titania:19.2, oberon:19.2,
+  neptune:30.1, triton:30.1, pluto:39.5, oort:2000};
+const C_KM_S=299792.458; // speed of light, km/s
+function lightLagMinutes(bodyId, farthest){
+  const au=BODY_AU[bodyId]; if(au==null) return null;
+  const distAU = bodyId==='moon' ? au : (farthest ? au+1 : Math.abs(au-1));
+  return round2(distAU*149597870.7/C_KM_S/60);
+}
 
 function stackPerformance(stages, payload){
   const sm=stages.map(stageMasses);
@@ -18412,6 +18431,20 @@ function renderMapZoom(W,H,id){
   svg+=`</svg>`;
   return svg;
 }
+// #2 (physics realism): format + render the one-way signal-delay metric for a body card.
+// Moon gets a single fixed figure (its Earth-distance barely varies); everything else gets a
+// closest/farthest range (opposition vs. conjunction) — see lightLagMinutes, sim.js.
+function fmtLag(min){
+  if(min<1) return `${Math.round(min*60)} s`;
+  if(min<90) return `${min.toFixed(1)} min`;
+  return `${(min/60).toFixed(1)} hr`;
+}
+function lightLagHTML(bodyId){
+  if(bodyId==='earth') return '';
+  const near=lightLagMinutes(bodyId,false); if(near==null) return '';
+  const val = bodyId==='moon' ? fmtLag(near) : `${fmtLag(near)} – ${fmtLag(lightLagMinutes(bodyId,true))}`;
+  return `<div class="metric"><div class="k">Signal delay (one-way)</div><div class="v">${val}</div></div>`;
+}
 function bodyCardHTML(){
   const b=BODIES.find(x=>x.id===state.selectedBody)||BODIES[0];
   let cum=0;
@@ -18483,6 +18516,7 @@ function bodyCardHTML(){
     <div class="metrics adv-only" style="margin-top:10px">
       <div class="metric"><div class="k">Cumulative to final leg</div><div class="v" style="color:var(--ignite)">${fI(cum)} m/s</div></div>
       <div class="metric"><div class="k">Legs</div><div class="v">${b.legs.length}</div></div>
+      ${lightLagHTML(b.id)}
     </div>
     <div class="eq">Each leg is a separate burn — a separate mass ratio. The cumulative figure is <em>not</em> a single Δv requirement; it's the sum of every burn a full round-trip architecture must budget for, in sequence, exactly like the mission profiles on the bench.</div>
     ${missionsBlock}

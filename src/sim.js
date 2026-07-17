@@ -3283,6 +3283,25 @@ function groundTrackPasses(inclDeg, ascNodeLon, passes){
   }
   return out;
 }
+/* ---------- Physics-realism #2: one-way communication light-lag ----------
+   Distance-from-Sun (AU) is a static per-body constant — real orbital position/ephemeris isn't modeled
+   anywhere else in this game (see #114's own note that altitude/period aren't tracked either), so
+   Earth-to-body distance is approximated as a min/max RANGE (closest opposition vs. farthest
+   conjunction: |bodyAU−1| and bodyAU+1) rather than a single live-simulated figure — same
+   "representative, not simulated" spirit as reqDv's flat Δv numbers. Moons share their parent planet's
+   AU (the moon-to-planet leg is negligible at interplanetary scale); Earth's own Moon is the one
+   exception — its table entry IS already an Earth-distance, not a Sun-distance, handled specially below.
+   Feeds display only (mission control flavor) — no gameplay number reads this. */
+const BODY_AU={mercury:0.39, venus:0.72, moon:0.00257, mars:1.52, phobos:1.52, belt:2.77,
+  jupiter:5.20, io:5.20, europa:5.20, ganymede:5.20, callisto:5.20,
+  saturn:9.58, titan:9.58, rhea:9.58, uranus:19.2, titania:19.2, oberon:19.2,
+  neptune:30.1, triton:30.1, pluto:39.5, oort:2000};
+const C_KM_S=299792.458; // speed of light, km/s
+function lightLagMinutes(bodyId, farthest){
+  const au=BODY_AU[bodyId]; if(au==null) return null;
+  const distAU = bodyId==='moon' ? au : (farthest ? au+1 : Math.abs(au-1));
+  return round2(distAU*149597870.7/C_KM_S/60);
+}
 
 function stackPerformance(stages, payload){
   const sm=stages.map(stageMasses);
