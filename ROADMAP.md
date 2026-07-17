@@ -4630,3 +4630,87 @@ Physics-realism survey closed out: azimuth ceiling, light-lag, solar conjunction
 mechanics; orbital decay turned out to be a documentation fix, not new work. Lagrange-point missions
 remain recommended flavor-only (not pursued).
 
+## Planned — Fleet Registry: unified all-asset status board (scoped 2026-07-17, not built)
+
+User request: one place showing the current status of every ship, satellite, base and station — location,
+Δv, time-to-destination, consumables, as much detail as possible — with each object expandable so the
+top level stays scannable and detail is on demand. New backlog item (#115).
+
+### What already exists (this is a consolidation, not a green field)
+The game already has THREE partial asset surfaces, none complete, none unified:
+- **Outliner** (render.js `outlinerItems`/`renderOutliner`): a top-8 ETA-sorted strip mixing in-flight
+  missions, research, builds, deadlines, crises. Flow-oriented (what needs attention soonest), not a
+  roster. Truncates at 8. Already surfaces in-flight cruise %, ETA, crew count.
+- **Flights modal** (`flightsPanelHTML`/`showFlightsModal`): in-flight missions + logistics only, with
+  progress %, ETA, reliability, tightest Δv margin, provisions-aboard (logistics), and a recall/abort
+  button. This is the closest existing precedent and the richest per-object detail today.
+- **Empire strip** (`empireStripHTML`) + **map asset model** (`mapAssetModel`): chips/markers for depot
+  tonnage, belt claim, tracking stations, facilities — a glanceable summary, no detail, no per-object drill.
+
+The registry is essentially: **take the union of these, make every row expandable, and add the asset
+classes none of them currently list as first-class objects.**
+
+### The honest data-availability finding (shapes the whole feature)
+The request lists "satellites" as a tracked object class. **They are not tracked as discrete objects.**
+Satellite work exists only as (a) one-shot missions that complete into `state.completed`, and (b) standing
+passive contracts (`svc_orbit`, `sat_weather`, `mil_recon` — `state.passiveContracts`) modeled as monthly
+income streams with a term, NOT as orbital objects with a location or consumables. So a satellite row can
+honestly show: contract name, monthly income, months remaining, era. It CANNOT honestly show location /
+Δv / consumables — there is no such state, and fabricating it would be fake telemetry, the opposite of what
+this feature is for. Two options for the build decision, flagged not resolved:
+  - **(A) Represent what exists** — satellites appear as "standing operations" with contract/income/term
+    detail, explicitly a different card type from vehicles. Honest, smaller, ships now.
+  - **(B) Promote satellites to real persistent objects first** — a genuine new mechanic (deployed-sat
+    state with orbit params, degradation, maybe servicing tie-in to `onorbit_servicing`). Much larger,
+    arguably its own epic; the registry would then get real per-sat telemetry. Recommend (A) for the
+    registry itself and filing (B) as a separate future item, so the registry isn't blocked on an epic.
+
+### Asset classes the registry CAN surface truthfully (with real state behind each)
+1. **In-flight vehicles** (`state.activeFlights`, deferred): name, phase (cruise), progress %, ETA (days
+   → `outlinerEtaText`), crew count, reliability + tightest Δv margin (`marginSnapshot`), and for deep
+   flights the reserve margin (`deepReserveMargin`) — that's the closest thing to a live "consumables"
+   readout the sim has. Expand → full leg-by-leg profile, abort/recall action (already exists), light-lag
+   to its destination body (from the just-shipped `lightLagMinutes`), conjunction-blackout status.
+2. **In-flight logistics/resupply** (`state.activeFlights`, `kind:'logistics'`): destination facility,
+   progress %, ETA, months-of-provisions aboard. Expand → which facility it's replenishing + that
+   facility's current supply state.
+3. **Bases & stations** (`state.facilities`): body, module count, condition % + decay reason (both just
+   shipped), income/fuel/sci output, crew assigned vs required, supply-months remaining, resupply-contract
+   status, power balance. This is the RICHEST existing per-object data — the station detail panel
+   (`renderStationFacilityStats`) already computes all of it; the registry row's expand can reuse it.
+4. **LEO propellant depot** (`state.depot`): tonnage held, monthly holding cost, boil-off note.
+5. **Science program / space telescope** (`state.scienceProgram`): health %, months remaining, monthly
+   science drip. Already a tracked object with a health stat.
+6. **Standing operations / passive contracts** (`state.passiveContracts`) — the "satellites" per option (A):
+   name, income, term remaining.
+7. (Consider) **Astronaut roster** (`state.people`) — who is where: aboard which in-flight mission
+   (`isCrewDeployed`), assigned to which station, or available. Arguably belongs; could bloat the board.
+   Flag as an optional expand-section or a separate tab within the registry.
+
+### Structure recommendation
+A full-screen/modal board (like the vehicle bench pop-outs), NOT a cramped sidebar — the ask is explicitly
+"too much for one place, so make it expandable." Group by asset class with a section header + count badge
+per group (In flight · Facilities · Depot · Programs · Standing ops). Each row: icon, name, one-line
+status (the single most decision-relevant stat for that class), and a chevron. Expand-in-place (accordion)
+— not a nested modal — so multiple can be open and it stays one scannable surface. Reuse existing detail
+renderers wherever they exist (`flightsPanelHTML` per-row body, `renderStationFacilityStats`) rather than
+re-deriving. A single `assetRegistry()` collector in sim.js returns a normalized list
+`[{class, id, icon, name, statusLine, detail()}]`; render.js just lays it out — keeps it testable headless
+(collector correctness) independent of the DOM.
+
+### Rough slice plan
+- **Slice 1:** `assetRegistry()` collector + the accordion shell, covering the classes with existing rich
+  state (in-flight vehicles, logistics, facilities, depot, telescope). Headless-testable: assert the
+  collector returns the right objects with the right status lines across a seeded game state. No new
+  mechanics.
+- **Slice 2:** standing-ops/satellites (option A) + optional astronaut-roster section; polish (sorting,
+  empty states, a launch-point from the Outliner's existing "in flight" header).
+- **Later / separate:** option (B) persistent satellite objects, if wanted — not part of this feature.
+
+### Model-tier notes
+Slice 1 collector is mostly mechanical aggregation of existing state (lighter model fine), BUT the
+information-architecture call — which single stat is the "status line" per class, what's top-level vs
+expand — is real design judgment; worth a heavier model or a review pass on that specific decision. Slice 2
+is lighter. The (A)-vs-(B) satellite call is a genuine design decision to settle with the user before
+slice 2.
+
