@@ -4312,3 +4312,44 @@ one remaining step and belongs to a human playtest pass.
 browser — headless-tested only): drag-drop snap feel, node marker tap sizes, undo/redo responsiveness,
 blueprint view legibility, tooltip readability, and a full build→launch cycle confirming the derived
 graph flies identically to the slider design it replaces.
+
+## Session — #81 Sample-return market: bank vs sell decision (2026-07-17)
+
+Backlog #81 ("Sample return market — sell/keep for science"), scoped to all 4 sciMission missions
+(`space_telescope`, `sample_return`, `astrobiology`, `oort_precursor`), not just literal sample-return
+flights. Prior state: each banked a fixed `sciYield` windfall automatically on its first flight (per the
+explicit 2026-07-02 design note — "not a balance bug; intentional payout/knowledge tradeoff. Not
+revisited."). This session doesn't touch that tradeoff's numbers; it adds a genuine choice on top of it.
+
+**Design.** Reuses the inquiry fund/decline pending-decision shape (`_pendingInquiry` family) rather than
+the in-flight-overlay decision panels (unified flight overlay Slice C — still not started, so nothing new
+depends on it). `triggerSampleDecision(m, sciAmount)` fires in `finalizeLaunch` at the exact point the old
+automatic `sciGain +=` line used to run — same gating (first flight only, not routine, not procedural),
+same `sciYieldMult()`/`doctrineMult('sci')` multipliers, so the *computed* amount is unchanged from before.
+The baseline per-flight `sciGain` (present on every successful flight regardless of `sciYield`) is
+untouched. `maybeShowSampleDecision()` surfaces the modal from the same `finish()` choke point as
+`maybeShowInquiry`/`maybeShowHearing`, gated behind setback/mishap/inquiry/hearing/rivalDisaster (lowest
+precedence — good news, not a crisis). A same-tick double-trigger (two prestige flights resolving in one
+batch of deferred arrivals) auto-banks the second windfall rather than clobbering the pending one or
+losing it silently.
+
+**Sell conversion.** New constant `SCI_SELL_RATE=0.5` ($M per ⚛ if sold). First-pass number, not a final
+balance call: for `sample_return` (42⚛/$14M payout) selling roughly triples the flight's take; for
+`oort_precursor` (120⚛/$1800M payout) the $60M sell value barely registers — selling is tempting early
+when money is tight, banking wins naturally once it isn't. No SAVE_VERSION bump — `_pendingSampleDecision`
+is transient, same as `_pendingInquiry`/`_pendingDiscovery`/`_pendingRescue`.
+
+**Files.** `src/sim.js` only (mission data in `data.js` untouched — no new missions, just a decision layer
+on the existing four). Rebuilt `orbital-ventures.html`/`build/game.js`/`index.html` via `node build.js`;
+`node build.js --check` confirms parity.
+
+**Validation.** New `tests/test-sample-decision.js` (29/29): mission-data dependency check (all 4
+sciMission missions still carry `sciYield`; the procedural Deep-Space Sample Return contract still
+carries none, by design), `triggerSampleDecision` open + amount math, double-trigger auto-bank,
+`resolveSampleDecision` both branches + stale-pending no-op, and `maybeShowSampleDecision`'s full
+priority-gate chain. Full existing suite (59 files) + `test-build-parity.js` (run standalone per its own
+`require('../build.js')` design, not harness-concatenated) all green — no regressions.
+
+**Not done / next:** BACKLOG.md #81 marked shipped. The `SCI_SELL_RATE=0.5` conversion rate is a first
+pass — worth a real balance look once there's playtest signal on whether players actually sell early-game
+prestige missions or always bank them out of habit.

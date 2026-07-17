@@ -113,7 +113,7 @@ Complexity: S = <1 day, M = 1–5 days, L = 1–3 weeks, XL = 1+ month. Impact: 
 |78| Depot network view (already have depots) | Logistics legibility | M | ★ | — | L |Backlog|
 |79| Cargo manifest choices on resupply (pick 3 of 5) | Small decisions | S | ★★ | 74 | M |Backlog|
 |80| Surface base tier after ISRU (Moon/Mars) | Colonization-lite | XL | ★★ | — | L |Deferred|
-|81| Sample return market (sell/keep for science) | Economy branch | M | ★ | — | L |Backlog|
+|81| Sample return market (sell/keep for science) | Economy branch | M | ★ | — | L |Shipped 2026-07-17 — bank/sell decision on all 4 sciMission completions|
 |82| Space telescope program (standing science + events) | Passive with events | M | ★★ | — | M |Shipped 2026-07-16 (E1.7)|
 |83| Satellite constellation management (aging, replacement) | Passive contracts deepen | L | ★★ | — | M |Deferred|
 |84| Orbital debris accumulation from failures | Long-arc consequence | M | ★ | — | L |Backlog|
@@ -162,11 +162,11 @@ Complexity: S = <1 day, M = 1–5 days, L = 1–3 weeks, XL = 1+ month. Impact: 
 | E1.x | 20 | Folded into a named high-value item |
 | E2 | 10 | Folded into medium-priority grouped item |
 | Deferred | 12 | Named in ROADMAP.md's deferred list |
-| **Backlog** | **54** | Not yet on ROADMAP.md in any form |
+| **Backlog** | **53** | Not yet on ROADMAP.md in any form |
 
-Over half the list (60/112) hasn't been triaged onto ROADMAP.md yet — mostly small
+Over half the list (59/112) hasn't been triaged onto ROADMAP.md yet — mostly small
 QoL items (#9, 11–17, 19–25), flight/ops texture (#31, 33–34, 37–45), rival/world
 flavor beyond the reactive-race core (#50, 53, 56–60), and personnel/station depth
-beyond the named E1.4/E2 items (#64, 66–72, 75–79, 81–82, 84–85, 89–90, 100, 104).
+beyond the named E1.4/E2 items (#64, 66–72, 75–79, 82, 84–85, 89–90, 100, 104).
 None of these are blocking — they're candidates for future slice selection once E0/E1
 land. Revisit this tally each time ROADMAP.md workstreams close out.
