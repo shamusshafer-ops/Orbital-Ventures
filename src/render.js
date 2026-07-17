@@ -4671,7 +4671,7 @@ function renderStationFacilityStats(built, cur, focusId, focusFn){ // E1.8: base
       ${cell('Income', '+'+fM(pr.income)+'/mo')}
       ${cell('Science', '+'+pr.sci.toFixed(1)+'/mo')}
       ${cell('Resupply', fM(resupplyCostFull(def.id))+'/mo', facilityGreenhouses(fs)?facilityGreenhouses(fs)+' greenhouse':'')}
-      ${cell('Condition', `<span style="color:${maintColor}">${condition}%</span>`, `${Math.round(stationMaintenanceFactor(fs)*100)}% output factor`)}
+      ${cell('Condition', `<span style="color:${maintColor}">${condition}%</span>`, `${Math.round(stationMaintenanceFactor(fs)*100)}% output · ${def.decayReason||'wear over time'}`)}
     </div>
     ${pw.net<0?`<div class="flag warn">△ Power-starved — production running at 60%. Dock a Solar Power Truss.</div>`:''}
     ${crew.req>crew.cap?`<div class="flag warn">△ Under-crewed (${crew.cap}/${crew.req}) — output at ${Math.round(crew.factor*100)}%. Dock a Habitat (each adds 3 crew).</div>`:''}

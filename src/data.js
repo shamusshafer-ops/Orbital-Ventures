@@ -814,14 +814,17 @@ const FACILITY_DEFS = [
   {id:'leo_station', name:'LEO Station', body:'earth', icon:'▣', color:'#5aa9e0',
    reqMission:'crew_orbit', foundCost:18, foundMonths:6,
    blurb:'A crewed outpost in low Earth orbit — laboratory, fuel node, and a permanent foothold above the atmosphere.',
+   decayReason:'atmospheric drag — real orbital decay, same reason the ISS needs periodic reboosts',
    base:{income:0.7, fuel:0, rep:1, sci:1.5}, perModule:{income:0.5, fuel:0, rep:0.5, sci:1.2}},
   {id:'lunar_base', name:'Lunar Base', body:'moon', icon:'◆', color:'#b9c0c7',
    reqMission:'luna_landing', foundCost:55, foundMonths:12,
    blurb:'A permanent settlement on the Moon. Habitats, an ISRU plant cracking polar ice into propellant, and the first town beyond Earth.',
+   decayReason:'thermal cycling and abrasive dust — no atmosphere to erode it, but no orbit to decay either',
    base:{income:1.4, fuel:0.4, rep:2, sci:2.5}, perModule:{income:1.0, fuel:0.5, rep:1, sci:2}},
   {id:'mars_base', name:'Mars Base', body:'mars', icon:'★', color:'#c1532b',
    reqMission:'mars_orbit', foundCost:130, foundMonths:18,
    blurb:'A foothold on Mars. Sabatier methalox production, greenhouses, and the seed of a self-sustaining second home for humanity.',
+   decayReason:'dust storms and thin-CO₂ weathering on exposed seals and panels',
    base:{income:2.6, fuel:0.6, rep:3, sci:4}, perModule:{income:1.8, fuel:0.8, rep:1.5, sci:3}},
 ];
 
