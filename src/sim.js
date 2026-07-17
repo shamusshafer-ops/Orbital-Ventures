@@ -3232,22 +3232,31 @@ function padCapNext(){
 
 /* ---------- #114: orbital inclination as a Δv cost ----------
    A launch reaches, for free, an orbit inclined at ≈ the launch site's latitude, and can steer to any
-   HIGHER inclination for free (change azimuth). Reaching a LOWER inclination costs a plane-change burn:
-   Δv ≈ 2·v·sin(Δi/2), v≈LEO orbital velocity. Cape Canaveral is 28.4°N (the value already hardcoded as
-   the Earth-globe marker in render.js). LAUNCH_SITE_LAT is a const now; it's the exact seam #30 (second
-   launch site) later swaps for a per-site value.
+   HIGHER inclination for free by changing azimuth — UP TO a range-safety ceiling: the ascent ground
+   track can't overfly populated areas, so a real coastal site (Cape Canaveral: azimuth ~35°-120°) can
+   only reach inclinations of about latitude..~57° directly. This is exactly why real polar/sun-sync
+   missions fly from Vandenberg (ocean to the south), not the Cape. Target inclinations on EITHER side
+   of that [floor, ceiling] band cost a burn: below the floor, a plane change; above the ceiling, a
+   dogleg (an inefficient ascent-trajectory kink to dodge land) — approximated with the same
+   Δv ≈ 2·v·sin(Δi/2) formula on the assumption a dogleg costs roughly what a partial plane change would.
+   LAUNCH_SITE_LAT/LAUNCH_SITE_MAX_DIRECT_INCL are consts now; #30 (second launch site) later swaps both
+   for per-site values.
    Missions opt in with an optional m.inclination (degrees). Missions without it are completely untouched:
    inclinationDv returns 0, so effectiveReqDv === m.reqDv — an identity the tests pin across every mission.
    IMPORTANT: this feeds the *budget* (effectiveReqDv), NOT the *classification* checks. The reqDv>=9000
    "is this an orbital-class mission" tests (isOrbital / sepEvents / isLeoClassMission / recovery-when)
-   must keep reading raw m.reqDv, or a plane-change surcharge would spuriously reclassify a mission. */
+   must keep reading raw m.reqDv, or a surcharge would spuriously reclassify a mission. */
 const LAUNCH_SITE_LAT=28.4;              // Cape Canaveral, °N — #30 seam (per-site latitude later)
-const INCLINATION_LEO_V=7800;            // m/s, orbital velocity the plane-change is priced against
+const LAUNCH_SITE_MAX_DIRECT_INCL=57;    // range-safety azimuth ceiling — beyond this, a dogleg is needed
+const INCLINATION_LEO_V=7800;            // m/s, orbital velocity the plane-change/dogleg is priced against
 function inclinationDv(m){
   if(!m || m.inclination==null) return 0;
-  const dLat=LAUNCH_SITE_LAT - m.inclination; // only a target BELOW site latitude costs anything
-  if(dLat<=0) return 0;                        // at or above site latitude → free (just change azimuth)
-  return Math.round(2*INCLINATION_LEO_V*Math.sin((dLat*Math.PI/180)/2));
+  const incl=m.inclination;
+  let dOff=0;
+  if(incl < LAUNCH_SITE_LAT) dOff=LAUNCH_SITE_LAT-incl;              // below the floor → plane change
+  else if(incl > LAUNCH_SITE_MAX_DIRECT_INCL) dOff=incl-LAUNCH_SITE_MAX_DIRECT_INCL; // above the ceiling → dogleg
+  if(dOff<=0) return 0;                    // inside [floor, ceiling] → free (just change azimuth)
+  return Math.round(2*INCLINATION_LEO_V*Math.sin((dOff*Math.PI/180)/2));
 }
 // the Δv a design must actually beat for mission m: its base reqDv plus any plane-change surcharge.
 // Every BUDGET gate/display reads through this; classification (reqDv>=9000) still reads raw m.reqDv.

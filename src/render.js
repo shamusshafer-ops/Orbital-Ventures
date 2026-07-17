@@ -3697,7 +3697,11 @@ function renderReadout(){
   const ispEff=(((e0.ispSL+e0.ispVac)/2)*ispMult()).toFixed(0); // #2b: reflect research Isp bonus in the shown equation
 
   let flags='';
-  { const _inc=inclinationDv(m); if(_inc>0) flags+=`<div class="flag">🛰 Target inclination ${m.inclination}° is below the Cape's ${LAUNCH_SITE_LAT}° — a plane change adds +${fI(_inc)} m/s to the ${fI(m.reqDv)} m/s baseline (${fI(need)} m/s total).</div>`; }
+  { const _inc=inclinationDv(m); if(_inc>0){
+      const below=m.inclination<LAUNCH_SITE_LAT;
+      const why=below ? `below the Cape's ${LAUNCH_SITE_LAT}° — a plane change` : `above the Cape's ~${LAUNCH_SITE_MAX_DIRECT_INCL}° range-safety ceiling — a dogleg`;
+      flags+=`<div class="flag">🛰 Target inclination ${m.inclination}° is ${why} adds +${fI(_inc)} m/s to the ${fI(m.reqDv)} m/s baseline (${fI(need)} m/s total).</div>`;
+    } }
   if(!meets) flags+=`<div class="flag bad">▲ Δv short by ${fI(need-v.totalDv)} m/s.</div>`;
   if(v.twr<=1.0) flags+=`<div class="flag bad">▲ Liftoff TWR ${v.twr.toFixed(2)} ≤ 1 — won't leave the pad (add engines or cut mass).</div>`;
   else if(v.twr<1.2) flags+=`<div class="flag warn">△ Liftoff TWR ${v.twr.toFixed(2)} is marginal — leaves the pad sluggishly. (Upper-stage TWR is shown per stage but is advisory: Δv here is the ideal rocket equation, with no gravity-loss penalty.)</div>`;

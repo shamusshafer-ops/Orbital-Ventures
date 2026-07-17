@@ -585,7 +585,7 @@ const MISSIONS = [
   {id:'reentry_test', name:'Reentry Test Vehicle',  reqDv:6000, payload:0.10, crew:0, days:0, payout:8.5,  rep:38, minRep:26, blurb:'Loft a scaled nose cone on a high-energy ballistic arc far downrange — a staging and booster-clustering trial just short of orbital speed.<span class="hist">↳ Jupiter-C, 1956: a Redstone with clustered solid upper stages flew 1,094 km high and 5,300 km downrange — it would have orbited but for an inert final stage, a year before Sputnik.</span>'},
   {id:'first_sat',    name:'First Satellite',       reqDv:9400, payload:0.05, crew:0, days:0, payout:18.0, rep:60, minRep:38, blurb:'Reach orbital velocity (~9,400 m/s incl. losses). The Pioneer-era summit.<span class="hist">↳ Sputnik 1, October 1957: an 84 kg sphere whose radio beep opened the Space Age.</span>'},
   {id:'first_astro',  name:'First Astronaut',       reqDv:2900, payload:0.0, crew:1, days:0.2, payout:16.0, rep:50,  minRep:80,  reqResearch:'crew_capsule', blurb:'Put a person on a suborbital arc and bring them home alive. Man-rating begins here.<span class="hist">↳ Alan Shepard\'s 15-minute suborbital hop aboard Freedom 7, May 1961.</span>'},
-  {id:'crew_orbit',   name:'Crewed Orbit',          reqDv:9400, payload:0.0, crew:1, days:1,   inclination:65, payout:30.0, rep:70,  minRep:105, reqResearch:'crew_capsule', blurb:'One astronaut, a day in orbit, a safe reentry. The defining flight of the era.<span class="hist">↳ Yuri Gagarin circled the Earth once aboard Vostok 1 on 12 April 1961, in a 65° orbit — steeper than the Cape\'s latitude, so reachable directly with no plane-change cost.</span>'},
+  {id:'crew_orbit',   name:'Crewed Orbit',          reqDv:9400, payload:0.0, crew:1, days:1,   inclination:65, payout:35.0, rep:70,  minRep:105, reqResearch:'crew_capsule', blurb:'One astronaut, a day in orbit, a safe reentry. The defining flight of the era.<span class="hist">↳ Yuri Gagarin circled the Earth once aboard Vostok 1 on 12 April 1961, in a 65° orbit — easy from Baikonur\'s high-latitude, over-land range, but steeper than the Cape\'s ~57° direct-azimuth ceiling, so it costs a small dogleg here.</span>'},
   {id:'multi_day',    name:'Multi-Day Mission',     reqDv:9400, payload:0.0, crew:2, days:7,   payout:38.0, rep:65,  minRep:145, reqResearch:'crew_capsule', blurb:'Two crew, a week in orbit. Consumable mass starts to matter.<span class="hist">↳ Project Gemini stretched two-crew flights from days to two weeks through 1965.</span>'},
   {id:'endurance',    name:'Endurance Flight',      reqDv:9400, payload:0.0, crew:3, days:120, payout:75.0, rep:140, minRep:195, reqResearch:'crew_capsule', blurb:'Three crew, four months. Open-loop life support gets heavy — recovery tech pays for itself.<span class="hist">↳ Skylab\'s last crew logged 84 days in 1973–74; Salyut soon pushed past 120 by recycling air and water.</span>'},
   {id:'luna_flyby',   name:'Lunar Flyby',           crew:1, days:6, payout:55.0, rep:110, minRep:210, reqResearch:'deep_space',
@@ -5825,22 +5825,31 @@ function padCapNext(){
 
 /* ---------- #114: orbital inclination as a Δv cost ----------
    A launch reaches, for free, an orbit inclined at ≈ the launch site's latitude, and can steer to any
-   HIGHER inclination for free (change azimuth). Reaching a LOWER inclination costs a plane-change burn:
-   Δv ≈ 2·v·sin(Δi/2), v≈LEO orbital velocity. Cape Canaveral is 28.4°N (the value already hardcoded as
-   the Earth-globe marker in render.js). LAUNCH_SITE_LAT is a const now; it's the exact seam #30 (second
-   launch site) later swaps for a per-site value.
+   HIGHER inclination for free by changing azimuth — UP TO a range-safety ceiling: the ascent ground
+   track can't overfly populated areas, so a real coastal site (Cape Canaveral: azimuth ~35°-120°) can
+   only reach inclinations of about latitude..~57° directly. This is exactly why real polar/sun-sync
+   missions fly from Vandenberg (ocean to the south), not the Cape. Target inclinations on EITHER side
+   of that [floor, ceiling] band cost a burn: below the floor, a plane change; above the ceiling, a
+   dogleg (an inefficient ascent-trajectory kink to dodge land) — approximated with the same
+   Δv ≈ 2·v·sin(Δi/2) formula on the assumption a dogleg costs roughly what a partial plane change would.
+   LAUNCH_SITE_LAT/LAUNCH_SITE_MAX_DIRECT_INCL are consts now; #30 (second launch site) later swaps both
+   for per-site values.
    Missions opt in with an optional m.inclination (degrees). Missions without it are completely untouched:
    inclinationDv returns 0, so effectiveReqDv === m.reqDv — an identity the tests pin across every mission.
    IMPORTANT: this feeds the *budget* (effectiveReqDv), NOT the *classification* checks. The reqDv>=9000
    "is this an orbital-class mission" tests (isOrbital / sepEvents / isLeoClassMission / recovery-when)
-   must keep reading raw m.reqDv, or a plane-change surcharge would spuriously reclassify a mission. */
+   must keep reading raw m.reqDv, or a surcharge would spuriously reclassify a mission. */
 const LAUNCH_SITE_LAT=28.4;              // Cape Canaveral, °N — #30 seam (per-site latitude later)
-const INCLINATION_LEO_V=7800;            // m/s, orbital velocity the plane-change is priced against
+const LAUNCH_SITE_MAX_DIRECT_INCL=57;    // range-safety azimuth ceiling — beyond this, a dogleg is needed
+const INCLINATION_LEO_V=7800;            // m/s, orbital velocity the plane-change/dogleg is priced against
 function inclinationDv(m){
   if(!m || m.inclination==null) return 0;
-  const dLat=LAUNCH_SITE_LAT - m.inclination; // only a target BELOW site latitude costs anything
-  if(dLat<=0) return 0;                        // at or above site latitude → free (just change azimuth)
-  return Math.round(2*INCLINATION_LEO_V*Math.sin((dLat*Math.PI/180)/2));
+  const incl=m.inclination;
+  let dOff=0;
+  if(incl < LAUNCH_SITE_LAT) dOff=LAUNCH_SITE_LAT-incl;              // below the floor → plane change
+  else if(incl > LAUNCH_SITE_MAX_DIRECT_INCL) dOff=incl-LAUNCH_SITE_MAX_DIRECT_INCL; // above the ceiling → dogleg
+  if(dOff<=0) return 0;                    // inside [floor, ceiling] → free (just change azimuth)
+  return Math.round(2*INCLINATION_LEO_V*Math.sin((dOff*Math.PI/180)/2));
 }
 // the Δv a design must actually beat for mission m: its base reqDv plus any plane-change surcharge.
 // Every BUDGET gate/display reads through this; classification (reqDv>=9000) still reads raw m.reqDv.
@@ -16774,7 +16783,11 @@ function renderReadout(){
   const ispEff=(((e0.ispSL+e0.ispVac)/2)*ispMult()).toFixed(0); // #2b: reflect research Isp bonus in the shown equation
 
   let flags='';
-  { const _inc=inclinationDv(m); if(_inc>0) flags+=`<div class="flag">🛰 Target inclination ${m.inclination}° is below the Cape's ${LAUNCH_SITE_LAT}° — a plane change adds +${fI(_inc)} m/s to the ${fI(m.reqDv)} m/s baseline (${fI(need)} m/s total).</div>`; }
+  { const _inc=inclinationDv(m); if(_inc>0){
+      const below=m.inclination<LAUNCH_SITE_LAT;
+      const why=below ? `below the Cape's ${LAUNCH_SITE_LAT}° — a plane change` : `above the Cape's ~${LAUNCH_SITE_MAX_DIRECT_INCL}° range-safety ceiling — a dogleg`;
+      flags+=`<div class="flag">🛰 Target inclination ${m.inclination}° is ${why} adds +${fI(_inc)} m/s to the ${fI(m.reqDv)} m/s baseline (${fI(need)} m/s total).</div>`;
+    } }
   if(!meets) flags+=`<div class="flag bad">▲ Δv short by ${fI(need-v.totalDv)} m/s.</div>`;
   if(v.twr<=1.0) flags+=`<div class="flag bad">▲ Liftoff TWR ${v.twr.toFixed(2)} ≤ 1 — won't leave the pad (add engines or cut mass).</div>`;
   else if(v.twr<1.2) flags+=`<div class="flag warn">△ Liftoff TWR ${v.twr.toFixed(2)} is marginal — leaves the pad sluggishly. (Upper-stage TWR is shown per stage but is advisory: Δv here is the ideal rocket equation, with no gravity-loss penalty.)</div>`;
