@@ -8470,6 +8470,121 @@ function flightsPanelHTML(){
   }).join('');
 }
 function showFlightsModal(){ showModal(`<h2>🛰 Missions in flight</h2>${flightsPanelHTML()}<div style="text-align:right;margin-top:10px"><button class="btn ghost" onclick="hideModal()">Close</button></div>`, true); }
+
+/* ---------- #115 Fleet Registry: unified asset collector ----------
+   Returns a normalized list of every trackable asset, grouped by class, each with a one-line status and
+   a rich detail payload. Pure data — no DOM — so it's headless-testable independent of rendering. The
+   detail objects are plain field maps; render.js turns them into the accordion. Slice 1 covers the
+   classes with real existing state: in-flight vehicles, in-flight logistics, facilities, depot, and the
+   space-telescope program. (Standing-ops/"satellites" and the crew roster are slice 2.)
+   Status-line design: each class shows its single most decision-relevant stat — the thing that, left
+   unattended, ends the asset. Flights: ETA. Facilities: whichever of condition/supply/crew is most at
+   risk. Depot: tonnage. Telescope: health or term, whichever is closer to failing. */
+function assetRegistryGroups(){
+  const now=absDay(), groups=[];
+  const flights=(state.activeFlights||[]).filter(f=>f&&f.deferred);
+
+  // --- In flight: crewed/uncrewed missions ---
+  const missionFlights=flights.filter(f=>f.kind!=='logistics').sort((a,b)=>(a.arriveAbs||0)-(b.arriveAbs||0));
+  if(missionFlights.length){
+    groups.push({ key:'flights', label:'In flight', icon:'🚀', items:missionFlights.map(fl=>{
+      const eta=(fl.arriveAbs||0)-now, total=(fl.arriveAbs||0)-(fl.launchAbs||0);
+      const pct=total>0?Math.min(100,Math.max(0,Math.round((now-(fl.launchAbs||0))/total*100))):0;
+      const ms=fl.marginSnapshot||{};
+      const bodyId=missionBody(fl.mission);
+      const detail={
+        'Progress': pct+'%',
+        'Arrival': outlinerEtaText(eta),
+        'Crew': fl.crew>0?String(fl.crew):'uncrewed',
+        'Reliability (at launch)': ms.rel!=null?Math.round(ms.rel*100)+'%':'—',
+        'Tightest Δv margin': ms.tightDv!=null?ms.tightDv+' m/s':'—',
+      };
+      if(bodyId && bodyId!=='earth'){
+        const lag=lightLagMinutes(bodyId,false);
+        if(lag!=null) detail['Signal delay (one-way, closest)']=lag<1?Math.round(lag*60)+' s':(lag<90?lag.toFixed(1)+' min':(lag/60).toFixed(1)+' hr');
+        const cj=nextConjunction(bodyId);
+        if(cj&&cj.inBlackout) detail['Comms']=`solar conjunction blackout · ~${cj.daysRemaining}d`;
+      }
+      return { id:fl.id, icon:'🚀', name:fl.name||'Mission',
+        status:`${pct}% · ETA ${outlinerEtaText(eta)}${fl.crew>0?` · crew ${fl.crew}`:''}`,
+        pct, detail, action:{label:'⦻ Recall / abort', fn:`confirmAbortFlight('${fl.id}')`} };
+    })});
+  }
+
+  // --- In flight: logistics/resupply ---
+  const logi=flights.filter(f=>f.kind==='logistics').sort((a,b)=>(a.arriveAbs||0)-(b.arriveAbs||0));
+  if(logi.length){
+    groups.push({ key:'logistics', label:'Resupply in transit', icon:'📦', items:logi.map(fl=>{
+      const eta=(fl.arriveAbs||0)-now, total=(fl.arriveAbs||0)-(fl.launchAbs||0);
+      const pct=total>0?Math.min(100,Math.max(0,Math.round((now-(fl.launchAbs||0))/total*100))):0;
+      const destDef=fl.facId?facilityById(fl.facId):null;
+      return { id:fl.id, icon:'📦', name:fl.name||'Resupply',
+        status:`${pct}% · ETA ${outlinerEtaText(eta)}`,
+        pct, detail:{
+          'Progress': pct+'%',
+          'Arrival': outlinerEtaText(eta),
+          'Destination': destDef?destDef.name:(fl.facId||'—'),
+          'Provisions aboard': (fl.monthsShipped||0).toFixed(1)+' mo',
+        } };
+    })});
+  }
+
+  // --- Bases & stations ---
+  const facIds=Object.keys(state.facilities||{}).filter(id=>facilityBuilt(id));
+  if(facIds.length){
+    groups.push({ key:'facilities', label:'Bases & stations', icon:'🏗', items:facIds.map(id=>{
+      const def=facilityById(id), fs=facilityState(id);
+      const pr=facilityProduction(def, fs);
+      const cond=Math.round(stationCondition(fs));
+      const supply=facilitySupplyMonths(id);
+      const crew=pr.crew||{cap:0,req:0};
+      const bodyName=(BODIES.find(b=>b.id===def.body)||{}).name||def.body;
+      // status line = the most at-risk of the three failure modes, else healthy output
+      let status;
+      if(supply<=2) status=`⚠ supply ${supply} mo`;
+      else if(cond<35) status=`⚠ condition ${cond}%`;
+      else if(crew.req>crew.cap) status=`⚠ under-crewed ${crew.cap}/${crew.req}`;
+      else status=`${def.modules||fs.modules||1} mod · ${cond}% · +${fM(pr.income)}/mo`;
+      return { id, icon:def.icon||'🏗', name:def.name,
+        status, detail:{
+          'Location': bodyName,
+          'Modules': String(pr.modules),
+          'Condition': cond+'% ('+(def.decayReason||'wear')+')',
+          'Supply remaining': supply+' mo',
+          'Crew': crew.req>0?`${crew.cap}/${crew.req}`:'none needed',
+          'Income': '+'+fM(pr.income)+'/mo',
+          'Fuel': pr.fuel>0?'+'+pr.fuel.toFixed(1)+' t/mo':'—',
+          'Science': pr.sci>0?'+'+pr.sci.toFixed(1)+'/mo':'—',
+          'Power balance': (pr.powerNet>=0?'+':'')+pr.powerNet+' kW',
+        } };
+    })});
+  }
+
+  // --- LEO propellant depot ---
+  if((state.depot||0)>0.05){
+    const t=round2(state.depot);
+    groups.push({ key:'depot', label:'Propellant depot', icon:'⛽', items:[{
+      id:'depot', icon:'⛽', name:'LEO Propellant Depot',
+      status:`${t.toFixed(1)} t held`,
+      detail:{ 'Location':'Low Earth orbit', 'Propellant held':t.toFixed(1)+' t',
+        'Holding cost':fM(round2(EMPIRE_DEPOT_OPEX*t))+'/mo', 'Note':'Boil-off + station-keeping priced into the holding cost.' } }] });
+  }
+
+  // --- Science program / space telescope ---
+  const sp=state.scienceProgram;
+  if(sp){
+    const h=Math.round(sp.health);
+    groups.push({ key:'programs', label:'Standing programs', icon:'🔭', items:[{
+      id:'telescope', icon:'🔭', name:'Orbital Observatory',
+      status:`${h}% health · ${sp.monthsLeft} mo left`,
+      detail:{ 'Instrument health':h+'%', 'Term remaining':sp.monthsLeft+' mo',
+        'Science output':'+'+sp.sciPerMonth+'/mo' } }] });
+  }
+
+  return groups;
+}
+function assetRegistryCount(){ return assetRegistryGroups().reduce((a,g)=>a+g.items.length,0); }
+
 function confirmAbortFlight(id){
   const rec=(state.activeFlights||[]).find(f=>f&&f.id===id); if(!rec) return;
   showModal(`<h2>Recall ${rec.name||'the mission'}?</h2>
@@ -14608,8 +14723,46 @@ function renderOutliner(){
     </div>`).join('');
   setHTML(el, `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
       <div class="cc-panel-h" style="margin:0">◈ In flight</div>
-      <button class="btn ghost" style="font-size:11px;padding:1px 8px" onclick="runToNextEvent()" title="Fast-forward until the next item completes or a decision arrives">⏭ next event</button>
+      <div style="display:flex;gap:4px">
+        <button class="btn ghost" style="font-size:11px;padding:1px 8px" onclick="showFleetRegistry()" title="Full status board for every asset — ships, bases, depot, programs">▤ registry</button>
+        <button class="btn ghost" style="font-size:11px;padding:1px 8px" onclick="runToNextEvent()" title="Fast-forward until the next item completes or a decision arrives">⏭ next event</button>
+      </div>
     </div>${rows}`);
+}
+// #115 Fleet Registry — the full expandable status board. Accordion: one section per asset class, each
+// row expandable in-place (multiple can be open; it stays one scannable surface). Reads the normalized
+// assetRegistryGroups() collector from sim.js; this function is layout only.
+let _registryOpen={}; // id -> bool, which rows are expanded (persists across re-renders while modal is open)
+function toggleRegistryRow(id){ _registryOpen[id]=!_registryOpen[id]; renderFleetRegistryBody(); }
+function fleetRegistryBodyHTML(){
+  const groups=assetRegistryGroups();
+  const total=groups.reduce((a,g)=>a+g.items.length,0);
+  if(!total) return `<p class="muted" style="font-size:13px">No active assets yet. Ships in flight, bases, your propellant depot, and standing programs will appear here as you build them.</p>`;
+  return groups.map(g=>{
+    const rows=g.items.map(it=>{
+      const open=!!_registryOpen[it.id];
+      const bar=(it.pct!=null)?`<div style="height:4px;background:var(--panel2);border-radius:2px;overflow:hidden;margin-top:5px"><div style="height:100%;width:${it.pct}%;background:var(--ignite)"></div></div>`:'';
+      const detailRows=open?`<div style="margin-top:7px;display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:12px">${
+        Object.entries(it.detail||{}).map(([k,v])=>`<span class="dim">${esc(k)}</span><span style="text-align:right;font-family:var(--mono)">${v}</span>`).join('')
+      }</div>${it.action?`<button class="btn ghost" style="font-size:11px;margin-top:7px" onclick="${it.action.fn}">${it.action.label}</button>`:''}`:'';
+      return `<div class="card" style="margin-bottom:6px;cursor:pointer" onclick="toggleRegistryRow('${it.id}')">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="flex:0 0 auto">${it.icon}</span>
+          <b style="flex:1;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(it.name)}</b>
+          <span class="dim" style="font-size:12px;flex:0 0 auto">${it.status}</span>
+          <span class="dim" style="flex:0 0 auto;font-size:11px">${open?'▾':'▸'}</span>
+        </div>${bar}${detailRows}
+      </div>`;
+    }).join('');
+    return `<div style="margin-bottom:10px"><div class="mission-tag" style="margin-bottom:5px">${g.icon} ${g.label} <span class="pill">${g.items.length}</span></div>${rows}</div>`;
+  }).join('');
+}
+function renderFleetRegistryBody(){ const el=$('fleetRegistryBody'); if(el) el.innerHTML=fleetRegistryBodyHTML(); }
+function showFleetRegistry(){
+  showModal(`<h2>▤ Fleet Registry</h2>
+    <div class="dim" style="font-size:12px;margin-bottom:8px">Every active asset. Tap any row to expand its full status.</div>
+    <div id="fleetRegistryBody">${fleetRegistryBodyHTML()}</div>
+    <div style="text-align:right;margin-top:10px"><button class="btn ghost" onclick="hideModal()">Close</button></div>`, true);
 }
 
 /* ---------- attention badges: what needs the player, per scene ----------

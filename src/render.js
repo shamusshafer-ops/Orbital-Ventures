@@ -261,8 +261,46 @@ function renderOutliner(){
     </div>`).join('');
   setHTML(el, `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
       <div class="cc-panel-h" style="margin:0">◈ In flight</div>
-      <button class="btn ghost" style="font-size:11px;padding:1px 8px" onclick="runToNextEvent()" title="Fast-forward until the next item completes or a decision arrives">⏭ next event</button>
+      <div style="display:flex;gap:4px">
+        <button class="btn ghost" style="font-size:11px;padding:1px 8px" onclick="showFleetRegistry()" title="Full status board for every asset — ships, bases, depot, programs">▤ registry</button>
+        <button class="btn ghost" style="font-size:11px;padding:1px 8px" onclick="runToNextEvent()" title="Fast-forward until the next item completes or a decision arrives">⏭ next event</button>
+      </div>
     </div>${rows}`);
+}
+// #115 Fleet Registry — the full expandable status board. Accordion: one section per asset class, each
+// row expandable in-place (multiple can be open; it stays one scannable surface). Reads the normalized
+// assetRegistryGroups() collector from sim.js; this function is layout only.
+let _registryOpen={}; // id -> bool, which rows are expanded (persists across re-renders while modal is open)
+function toggleRegistryRow(id){ _registryOpen[id]=!_registryOpen[id]; renderFleetRegistryBody(); }
+function fleetRegistryBodyHTML(){
+  const groups=assetRegistryGroups();
+  const total=groups.reduce((a,g)=>a+g.items.length,0);
+  if(!total) return `<p class="muted" style="font-size:13px">No active assets yet. Ships in flight, bases, your propellant depot, and standing programs will appear here as you build them.</p>`;
+  return groups.map(g=>{
+    const rows=g.items.map(it=>{
+      const open=!!_registryOpen[it.id];
+      const bar=(it.pct!=null)?`<div style="height:4px;background:var(--panel2);border-radius:2px;overflow:hidden;margin-top:5px"><div style="height:100%;width:${it.pct}%;background:var(--ignite)"></div></div>`:'';
+      const detailRows=open?`<div style="margin-top:7px;display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:12px">${
+        Object.entries(it.detail||{}).map(([k,v])=>`<span class="dim">${esc(k)}</span><span style="text-align:right;font-family:var(--mono)">${v}</span>`).join('')
+      }</div>${it.action?`<button class="btn ghost" style="font-size:11px;margin-top:7px" onclick="${it.action.fn}">${it.action.label}</button>`:''}`:'';
+      return `<div class="card" style="margin-bottom:6px;cursor:pointer" onclick="toggleRegistryRow('${it.id}')">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="flex:0 0 auto">${it.icon}</span>
+          <b style="flex:1;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(it.name)}</b>
+          <span class="dim" style="font-size:12px;flex:0 0 auto">${it.status}</span>
+          <span class="dim" style="flex:0 0 auto;font-size:11px">${open?'▾':'▸'}</span>
+        </div>${bar}${detailRows}
+      </div>`;
+    }).join('');
+    return `<div style="margin-bottom:10px"><div class="mission-tag" style="margin-bottom:5px">${g.icon} ${g.label} <span class="pill">${g.items.length}</span></div>${rows}</div>`;
+  }).join('');
+}
+function renderFleetRegistryBody(){ const el=$('fleetRegistryBody'); if(el) el.innerHTML=fleetRegistryBodyHTML(); }
+function showFleetRegistry(){
+  showModal(`<h2>▤ Fleet Registry</h2>
+    <div class="dim" style="font-size:12px;margin-bottom:8px">Every active asset. Tap any row to expand its full status.</div>
+    <div id="fleetRegistryBody">${fleetRegistryBodyHTML()}</div>
+    <div style="text-align:right;margin-top:10px"><button class="btn ghost" onclick="hideModal()">Close</button></div>`, true);
 }
 
 /* ---------- attention badges: what needs the player, per scene ----------
