@@ -7261,6 +7261,8 @@ function flightsPanelHTML(){
 }
 function showFlightsModal(){ showModal(`<h2>🛰 Missions in flight</h2>${flightsPanelHTML()}<div style="text-align:right;margin-top:10px"><button class="btn ghost" onclick="hideModal()">Close</button></div>`, true); }
 
+// #115: icon per passive-contract category (satellites, tourism, licensing, military, doctrine)
+function catIcon(cat){ return {sat:'🛰', tour:'👨‍🚀', lic:'📜', mil:'🎖', doct:'⚖'}[cat] || '📡'; }
 /* ---------- #115 Fleet Registry: unified asset collector ----------
    Returns a normalized list of every trackable asset, grouped by class, each with a one-line status and
    a rich detail payload. Pure data — no DOM — so it's headless-testable independent of rendering. The
@@ -7369,6 +7371,42 @@ function assetRegistryGroups(){
       status:`${h}% health · ${sp.monthsLeft} mo left`,
       detail:{ 'Instrument health':h+'%', 'Term remaining':sp.monthsLeft+' mo',
         'Science output':'+'+sp.sciPerMonth+'/mo' } }] });
+  }
+
+  // --- Standing operations (passive contracts — "satellites" & other retainers, option A) ---
+  const pcs=(state.passiveContracts||[]);
+  if(pcs.length){
+    groups.push({ key:'standing', label:'Standing operations', icon:'📡', items:pcs.map((cn,i)=>{
+      const d=passiveDef(cn.id);
+      const disp=d?passiveContractDisplay(d):null;
+      const catName=(d&&PASSIVE_CATS[d.cat])||'Operations';
+      const near=cn.monthsLeft<=3;
+      return { id:'standing_'+cn.id+'_'+i, icon:d?catIcon(d.cat):'📡', name:disp?disp.name:cn.id,
+        status:`+${fM(cn.income)}/mo · ${cn.monthsLeft} mo left${near?' ⚠':''}`,
+        detail:{ 'Category':catName, 'Income':'+'+fM(cn.income)+'/mo', 'Term remaining':cn.monthsLeft+' mo',
+          'Note': (disp&&disp.blurb)? disp.blurb : 'A standing retainer — recurring revenue, no per-object telemetry tracked.' } };
+    })});
+  }
+
+  // --- Astronaut roster (who is where) ---
+  const astros=(state.staff||[]).filter(s=>roleOf(s.id)==='astro');
+  if(astros.length){
+    groups.push({ key:'crew', label:'Astronaut corps', icon:'🧑‍🚀', items:astros.map(s=>{
+      const p=personById(s.id); const nm=(p&&p.name)||s.id;
+      let where='available', whereDetail='On the ground, available for assignment.';
+      if(isCrewDeployed(s.id)){
+        const fl=(state.activeFlights||[]).find(f=>f&&f.crewId===s.id);
+        where='in flight'; whereDetail=fl?`Aboard ${fl.name||'a mission'} in cruise.`:'Aboard an active mission.';
+      } else {
+        const facId=Object.keys(state.facilities||{}).find(fid=>stationCrewIds(facilityState(fid)).includes(s.id));
+        if(facId){ const def=facilityById(facId); where='on station'; whereDetail=`Stationed at ${def?def.name:facId}.`; }
+      }
+      const dose=s.dose;
+      const detail={ 'Status':whereDetail, 'Flights flown':String(astronautFlights(s.id).length) };
+      if(dose!=null) detail['Career radiation dose']=Math.round(dose)+' units';
+      return { id:'crew_'+s.id, icon:'🧑‍🚀', name:nm,
+        status:where, detail };
+    })});
   }
 
   return groups;

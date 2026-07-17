@@ -110,5 +110,51 @@ newGame('engineer');
   check('render: fleetRegistryBodyHTML never throws', !threw);
 }
 
+// ---------- 9. Slice 2: standing operations (passive contracts / satellites, option A) ----------
+{
+  state.facilities={}; state.activeFlights=[]; state.depot=0; state.scienceProgram=null;
+  state.passiveContracts=[{id:'sat_weather', monthsLeft:12, income:0.9}];
+  const g=assetRegistryGroups();
+  const st=g.find(x=>x.key==='standing');
+  check('standing: group present when a passive contract is held', !!st && st.items.length===1);
+  check('standing: names the contract (era-aware display)', /Satellite|Weather/.test(st.items[0].name));
+  check('standing: status shows income + term', /\/mo/.test(st.items[0].status) && /mo left/.test(st.items[0].status));
+  check('standing: a satellite contract gets the 🛰 icon', st.items[0].icon==='🛰');
+  check('standing: detail carries income + term (no fake location/consumables)', 'Income' in st.items[0].detail && 'Term remaining' in st.items[0].detail && !('Location' in st.items[0].detail));
+
+  // near-expiry warning marker
+  state.passiveContracts=[{id:'sat_weather', monthsLeft:2, income:0.9}];
+  check('standing: near-expiry adds a ⚠ marker', /⚠/.test(assetRegistryGroups().find(x=>x.key==='standing').items[0].status));
+  state.passiveContracts=[];
+}
+
+// ---------- 10. Slice 2: astronaut roster — where each crew member is ----------
+{
+  const astroPool=STAFF_POOLS.find(P=>P.role==='astro');
+  const a=astroPool.list[0], b=astroPool.list[1], c=astroPool.list[2];
+  state.staff=[{id:a.id,morale:70,xp:0,dose:5},{id:b.id,morale:70,xp:0},{id:c.id,morale:70,xp:0}];
+  state.activeFlights=[{id:'fltZ', deferred:true, mission:'mars_orbit', name:'Mars Orbit', crew:1, crewId:a.id, launchAbs:absDay()-10, arriveAbs:absDay()+90, marginSnapshot:{}}];
+  state.facilities={leo_station:{built:true,modules:2,condition:80,supply:6,crewIds:[b.id],crewManaged:true,rotationDueAbs:absMonth()+12,maintenanceEnabled:true,starvedMonths:0}};
+
+  const crew=assetRegistryGroups().find(g=>g.key==='crew');
+  check('crew: group present with all three astronauts', !!crew && crew.items.length===3);
+  const byId=id=>crew.items.find(it=>it.id==='crew_'+id);
+  check('crew: deployed astronaut reads "in flight"', byId(a.id).status==='in flight');
+  check('crew: deployed detail names the mission', /Mars Orbit/.test(byId(a.id).detail.Status));
+  check('crew: stationed astronaut reads "on station"', byId(b.id).status==='on station');
+  check('crew: stationed detail names the station', /LEO Station/.test(byId(b.id).detail.Status));
+  check('crew: unassigned astronaut reads "available"', byId(c.id).status==='available');
+  check('crew: dose shown when present', byId(a.id).detail['Career radiation dose']==='5 units');
+  check('crew: dose omitted when absent', !('Career radiation dose' in byId(c.id).detail));
+}
+
+// ---------- 11. Render still safe with the new groups ----------
+{
+  let threw=false;
+  try{ fleetRegistryBodyHTML(); }catch(e){ threw=true; console.log('  threw:', e.message); }
+  check('render: no throw with standing-ops + crew groups present', !threw);
+  state.staff=[]; state.activeFlights=[]; state.facilities={}; state.passiveContracts=[];
+}
+
 console.log(`${pass}/${pass+fail} checks passed`);
 if(typeof process!=='undefined') process.exit(fail?1:0);
