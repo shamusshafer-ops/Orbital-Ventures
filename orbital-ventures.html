@@ -3814,6 +3814,7 @@ function newGame(difficulty){
     frontPages:[], // P7: The Agency Wire — headline records for the Chronicle scrapbook
     crisis:null, crisisDone:null, leoFlights:0, deepFlights:0, crisisHistory:[], // P11/I3: the crisis roster (leoFlights/deepFlights are trigger counters; crisisHistory is every resolved crisis)
     researchNext:null, // I5: queued "start next" research pick — auto-starts once the active project finishes and it's affordable/eligible
+    researchGoal:null, // #14: pinned research goal — the tech tree persistently highlights this node's full prereq chain (and the R&D rail shows steps remaining) until it's researched or unpinned
     ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
     facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
     architectures:{}, science:0,
@@ -6682,6 +6683,7 @@ function checkPoaching(){
 function completeResearch(){
   const r=RESEARCH.find(x=>x.id===state.activeResearch.id);
   state.research[r.id]=true; state.activeResearch=null;
+  if(state.researchGoal===r.id){ log('ok',`🎯 Goal reached: ${r.name}!`); state.researchGoal=null; } // #14: pinned goal achieved — auto-unpin
   divisionGainExp(r); // #4: the covering division gains experience from completing a project
   if(isLeveledTech(r.id)){ if(!state.techLevel) state.techLevel={}; state.techLevel[r.id]=1; } // #3: leveled techs start at L1
   timeInterrupt(); // smart time: a research completion is a decision point
@@ -8868,6 +8870,14 @@ function queueResearchNext(id){
   state.researchNext=id; render();
 }
 function clearResearchNext(){ state.researchNext=null; render(); }
+// #14: pin/unpin a (possibly still-locked) node as the standing planning goal. Unlike researchNext
+// (a depth-1 auto-start queue), this doesn't buy anything — it's purely a highlight/tracking aid over
+// the node's full prereq chain, so it's fine to pin something many steps away that isn't reqsMet yet.
+function pinResearchGoal(id){
+  const r=RESEARCH.find(x=>x.id===id); if(!r || state.research[id]) return; // no such node, or already researched — nothing to plan toward
+  state.researchGoal=(state.researchGoal===id)?null:id; render();
+}
+function clearResearchGoal(){ if(state.researchGoal){ state.researchGoal=null; render(); } }
 // Tried right after a project completes (the common case) AND every monthly tick (the "became
 // affordable/unlocked later" case) — idempotent either way since it no-ops once activeResearch
 // is set. Leaves the pick queued (retried later) rather than clearing it if reqs/cost aren't met
@@ -9551,7 +9561,10 @@ function hideModal(){activeModal=null;_prodModalOpen=false;$('modal').classList.
 } // slice 6: closing clears the live-modal thunk; slice B: also returns focus to the modal's trigger
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=54; // v54: E3.5 — derived state.build part graph (additive; state.stages remains source of truth, graph regenerated on load, safe to drop)
+const SAVE_VERSION=55; // v55: #14 — pinned research goal. state.researchGoal (a RESEARCH id or null, settable on
+// locked nodes too — it's a highlight/tracking pin, not a purchase). Purely additive: read only through
+// researchGoalProgress()/techHighlightSet(), both of which treat undefined exactly like null (no highlight,
+// no band). No migrate function needed — pre-v55 saves simply load with no goal pinned. v54: E3.5 — derived state.build part graph (additive; state.stages remains source of truth, graph regenerated on load, safe to drop)
 // cruise. New optional `cargo` field on any mission/contractOffer object (uncrewed payload mass carried
 // through every leg of a `.profile` mission — read only by lvPayload()'s profile branch and
 // simulateMission()'s stackMass(), both via `m.cargo||0`; a mission with no cargo field behaves exactly
@@ -20009,10 +20022,13 @@ function techPrereqChain(id, seen){
   feed.forEach(q=>{ if(q && !seen.has(q)){ seen.add(q); techPrereqChain(q, seen); } });
   return seen;
 }
-// the highlight set = the focused node + its entire prereq chain
+// the highlight set = the focused node + its entire prereq chain. Falls back to the pinned
+// #14 research goal's chain when nothing is transiently click-focused, so the goal's path stays
+// visible by default; clicking any node temporarily overrides it to show that node's chain instead.
 function techHighlightSet(){
-  if(!techFocus) return null;
-  const s=techPrereqChain(techFocus); s.add(techFocus); return s;
+  const id=techFocus||state.researchGoal;
+  if(!id) return null;
+  const s=techPrereqChain(id); s.add(id); return s;
 }
 // per-track progress: {done, total, active}
 function trackProgress(key){
@@ -20020,6 +20036,29 @@ function trackProgress(key){
   const done=list.filter(r=>state.research[r.id]).length;
   const active=state.activeResearch && trackOf(state.activeResearch.id)===key;
   return {done, total:list.length, active, pct: list.length?Math.round(done/list.length*100):0};
+}
+// #14: how far off is the pinned goal, and what can you buy right now that moves toward it?
+// Returns null if nothing's pinned (or the pin turned out stale — already researched, or the tech
+// tree reshaped it away; both self-heal here rather than needing a separate migration).
+function researchGoalProgress(){
+  const gid=state.researchGoal; if(!gid) return null;
+  const g=RESEARCH.find(x=>x.id===gid);
+  if(!g || state.research[gid]){ state.researchGoal=null; return null; }
+  const chain=techPrereqChain(gid); chain.add(gid);
+  const remaining=[...chain].filter(id=>!state.research[id]);
+  const nextSteps=remaining.map(id=>RESEARCH.find(x=>x.id===id)).filter(r=>r && researchNodeState(r)==='available');
+  return { goal:g, remaining:remaining.length, nextSteps };
+}
+function researchGoalBandHTML(){
+  const p=researchGoalProgress(); if(!p) return '';
+  const nextTxt = p.nextSteps.length ? ` · next: ${p.nextSteps.map(r=>r.name).join(', ')}` : '';
+  return `<div style="margin-top:8px;padding:7px 9px;border:1px solid var(--ignite);border-radius:7px;background:${themeColor('ignite')}1e">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <div style="font-size:12px;font-weight:600;color:var(--ignite);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📌 ${esc(p.goal.name)}</div>
+      <button class="btn ghost" style="padding:1px 7px;font-size:11px;flex:0 0 auto" onclick="clearResearchGoal()" title="Unpin goal">✕</button>
+    </div>
+    <div class="dim" style="font-size:11px;margin-top:3px">${p.remaining} step${p.remaining===1?'':'s'} to go${nextTxt}</div>
+  </div>`;
 }
 // Vertical track-filter list for the R&D right rail — compact, no longer eats tree height.
 function renderTechFilters(){
@@ -20036,6 +20075,7 @@ function renderTechFilters(){
       ${availN>0 && !state.activeResearch?`<span style="font-size:11px;color:var(--ignite);font-family:var(--mono)" title="Nodes you can research right now">● ${availN} ready</span>`:''}
     </div>
     ${rows}
+    ${researchGoalBandHTML()}
     ${(techFocus||techFilter)?`<button class="btn ghost" style="width:100%;margin-top:8px;font-size:12px;padding:4px" onclick="clearTechView()" title="Clear highlight & filter">✕ Clear filter / highlight</button>`:''}`;
 }
 
@@ -20106,6 +20146,7 @@ function renderTechTree(){
       <rect x="${p.x}" y="${p.y}" width="4" height="${NH}" rx="2" fill="${tcol}"/>
       ${st==='done'?`<text x="${p.x+NW-7}" y="${p.y+13}" fill="#58c47a" font-size="11" text-anchor="end">✓</text>`:''}
       ${avail&&!dim?`<text x="${p.x+NW-7}" y="${p.y+13}" fill="var(--ignite)" font-size="10" text-anchor="end">●</text>`:''}
+      ${state.researchGoal===r.id?`<text x="${p.x+7}" y="${p.y+13}" font-size="11">📌</text>`:''}
       <text x="${p.x+11}" y="${p.y+17}" fill="${c.text}" font-size="10" font-family="ui-sans-serif,system-ui" font-weight="600">${name}</text>
       <text x="${p.x+11}" y="${p.y+32}" fill="${c.text}" font-size="9" font-family="ui-monospace,monospace" opacity="0.8">${sub}</text>
     </g>`;
@@ -20255,6 +20296,10 @@ function renderResearchDetail(){
   }
   const stateTag={done:'<span class="pill ok">researched</span>',active:'<span class="pill active">in progress</span>',available:'<span class="pill">available</span>',locked:'<span class="pill lock">locked</span>'}[st];
   const debtBanner = relDebt()>0 ? `<div class="flag bad" style="margin-bottom:8px">⚠ Cut-corner penalty: −${Math.round(relDebt()*100)}% reliability on every vehicle, from pushing a flawed project through a past setback. It's permanent — weigh the schedule against the risk next time.</div>` : '';
+  // #14: pin/unpin this node as the standing planning goal — works on locked nodes too (that's the
+  // point: plan toward something several prereqs away and see the whole path highlighted).
+  const isGoal=state.researchGoal===r.id;
+  const goalBtn = st==='done' ? '' : `<button class="btn ghost" style="width:100%;margin-top:8px;font-size:12px" onclick="pinResearchGoal('${r.id}')">${isGoal?'📌 Pinned as goal — unpin':'📌 Pin as goal'}</button>`;
   el.innerHTML=`${debtBanner}<div class="mission-tag">Technology</div>
     <div class="mission-name" style="font-size:16px">${r.name} ${stateTag}</div>
     <div class="tt-mods adv-only" style="margin:8px 0 10px">${techModifierText(r).map(m=>`<div class="tt-mod">▸ ${m}</div>`).join('')}</div>
@@ -20266,7 +20311,8 @@ function renderResearchDetail(){
     </div>
     ${branchAffinityNote(r)}
     ${(reqNames||gateName)?`<div class="dim" style="font-size:12px;margin-bottom:10px">Requires: ${[reqNames, gateName?`fly <b>${gateName}</b>`:null].filter(Boolean).join(' · ')}</div>`:''}
-    ${action}`;
+    ${action}
+    ${goalBtn}`;
 }
 // confirm/Research action bar shown inside the tech-tree card, so it's always in the
 // same area as the tree (not only in the right-hand detail panel)

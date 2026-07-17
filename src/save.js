@@ -1,6 +1,9 @@
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=54; // v54: E3.5 — derived state.build part graph (additive; state.stages remains source of truth, graph regenerated on load, safe to drop)
+const SAVE_VERSION=55; // v55: #14 — pinned research goal. state.researchGoal (a RESEARCH id or null, settable on
+// locked nodes too — it's a highlight/tracking pin, not a purchase). Purely additive: read only through
+// researchGoalProgress()/techHighlightSet(), both of which treat undefined exactly like null (no highlight,
+// no band). No migrate function needed — pre-v55 saves simply load with no goal pinned. v54: E3.5 — derived state.build part graph (additive; state.stages remains source of truth, graph regenerated on load, safe to drop)
 // cruise. New optional `cargo` field on any mission/contractOffer object (uncrewed payload mass carried
 // through every leg of a `.profile` mission — read only by lvPayload()'s profile branch and
 // simulateMission()'s stackMass(), both via `m.cargo||0`; a mission with no cargo field behaves exactly

@@ -40,6 +40,7 @@ function newGame(difficulty){
     frontPages:[], // P7: The Agency Wire — headline records for the Chronicle scrapbook
     crisis:null, crisisDone:null, leoFlights:0, deepFlights:0, crisisHistory:[], // P11/I3: the crisis roster (leoFlights/deepFlights are trigger counters; crisisHistory is every resolved crisis)
     researchNext:null, // I5: queued "start next" research pick — auto-starts once the active project finishes and it's affordable/eligible
+    researchGoal:null, // #14: pinned research goal — the tech tree persistently highlights this node's full prereq chain (and the R&D rail shows steps remaining) until it's researched or unpinned
     ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
     facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
     architectures:{}, science:0,
@@ -2908,6 +2909,7 @@ function checkPoaching(){
 function completeResearch(){
   const r=RESEARCH.find(x=>x.id===state.activeResearch.id);
   state.research[r.id]=true; state.activeResearch=null;
+  if(state.researchGoal===r.id){ log('ok',`🎯 Goal reached: ${r.name}!`); state.researchGoal=null; } // #14: pinned goal achieved — auto-unpin
   divisionGainExp(r); // #4: the covering division gains experience from completing a project
   if(isLeveledTech(r.id)){ if(!state.techLevel) state.techLevel={}; state.techLevel[r.id]=1; } // #3: leveled techs start at L1
   timeInterrupt(); // smart time: a research completion is a decision point
@@ -5094,6 +5096,14 @@ function queueResearchNext(id){
   state.researchNext=id; render();
 }
 function clearResearchNext(){ state.researchNext=null; render(); }
+// #14: pin/unpin a (possibly still-locked) node as the standing planning goal. Unlike researchNext
+// (a depth-1 auto-start queue), this doesn't buy anything — it's purely a highlight/tracking aid over
+// the node's full prereq chain, so it's fine to pin something many steps away that isn't reqsMet yet.
+function pinResearchGoal(id){
+  const r=RESEARCH.find(x=>x.id===id); if(!r || state.research[id]) return; // no such node, or already researched — nothing to plan toward
+  state.researchGoal=(state.researchGoal===id)?null:id; render();
+}
+function clearResearchGoal(){ if(state.researchGoal){ state.researchGoal=null; render(); } }
 // Tried right after a project completes (the common case) AND every monthly tick (the "became
 // affordable/unlocked later" case) — idempotent either way since it no-ops once activeResearch
 // is set. Leaves the pick queued (retried later) rather than clearing it if reqs/cost aren't met

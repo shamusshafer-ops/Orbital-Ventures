@@ -5850,10 +5850,13 @@ function techPrereqChain(id, seen){
   feed.forEach(q=>{ if(q && !seen.has(q)){ seen.add(q); techPrereqChain(q, seen); } });
   return seen;
 }
-// the highlight set = the focused node + its entire prereq chain
+// the highlight set = the focused node + its entire prereq chain. Falls back to the pinned
+// #14 research goal's chain when nothing is transiently click-focused, so the goal's path stays
+// visible by default; clicking any node temporarily overrides it to show that node's chain instead.
 function techHighlightSet(){
-  if(!techFocus) return null;
-  const s=techPrereqChain(techFocus); s.add(techFocus); return s;
+  const id=techFocus||state.researchGoal;
+  if(!id) return null;
+  const s=techPrereqChain(id); s.add(id); return s;
 }
 // per-track progress: {done, total, active}
 function trackProgress(key){
@@ -5861,6 +5864,29 @@ function trackProgress(key){
   const done=list.filter(r=>state.research[r.id]).length;
   const active=state.activeResearch && trackOf(state.activeResearch.id)===key;
   return {done, total:list.length, active, pct: list.length?Math.round(done/list.length*100):0};
+}
+// #14: how far off is the pinned goal, and what can you buy right now that moves toward it?
+// Returns null if nothing's pinned (or the pin turned out stale — already researched, or the tech
+// tree reshaped it away; both self-heal here rather than needing a separate migration).
+function researchGoalProgress(){
+  const gid=state.researchGoal; if(!gid) return null;
+  const g=RESEARCH.find(x=>x.id===gid);
+  if(!g || state.research[gid]){ state.researchGoal=null; return null; }
+  const chain=techPrereqChain(gid); chain.add(gid);
+  const remaining=[...chain].filter(id=>!state.research[id]);
+  const nextSteps=remaining.map(id=>RESEARCH.find(x=>x.id===id)).filter(r=>r && researchNodeState(r)==='available');
+  return { goal:g, remaining:remaining.length, nextSteps };
+}
+function researchGoalBandHTML(){
+  const p=researchGoalProgress(); if(!p) return '';
+  const nextTxt = p.nextSteps.length ? ` · next: ${p.nextSteps.map(r=>r.name).join(', ')}` : '';
+  return `<div style="margin-top:8px;padding:7px 9px;border:1px solid var(--ignite);border-radius:7px;background:${themeColor('ignite')}1e">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <div style="font-size:12px;font-weight:600;color:var(--ignite);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📌 ${esc(p.goal.name)}</div>
+      <button class="btn ghost" style="padding:1px 7px;font-size:11px;flex:0 0 auto" onclick="clearResearchGoal()" title="Unpin goal">✕</button>
+    </div>
+    <div class="dim" style="font-size:11px;margin-top:3px">${p.remaining} step${p.remaining===1?'':'s'} to go${nextTxt}</div>
+  </div>`;
 }
 // Vertical track-filter list for the R&D right rail — compact, no longer eats tree height.
 function renderTechFilters(){
@@ -5877,6 +5903,7 @@ function renderTechFilters(){
       ${availN>0 && !state.activeResearch?`<span style="font-size:11px;color:var(--ignite);font-family:var(--mono)" title="Nodes you can research right now">● ${availN} ready</span>`:''}
     </div>
     ${rows}
+    ${researchGoalBandHTML()}
     ${(techFocus||techFilter)?`<button class="btn ghost" style="width:100%;margin-top:8px;font-size:12px;padding:4px" onclick="clearTechView()" title="Clear highlight & filter">✕ Clear filter / highlight</button>`:''}`;
 }
 
@@ -5947,6 +5974,7 @@ function renderTechTree(){
       <rect x="${p.x}" y="${p.y}" width="4" height="${NH}" rx="2" fill="${tcol}"/>
       ${st==='done'?`<text x="${p.x+NW-7}" y="${p.y+13}" fill="#58c47a" font-size="11" text-anchor="end">✓</text>`:''}
       ${avail&&!dim?`<text x="${p.x+NW-7}" y="${p.y+13}" fill="var(--ignite)" font-size="10" text-anchor="end">●</text>`:''}
+      ${state.researchGoal===r.id?`<text x="${p.x+7}" y="${p.y+13}" font-size="11">📌</text>`:''}
       <text x="${p.x+11}" y="${p.y+17}" fill="${c.text}" font-size="10" font-family="ui-sans-serif,system-ui" font-weight="600">${name}</text>
       <text x="${p.x+11}" y="${p.y+32}" fill="${c.text}" font-size="9" font-family="ui-monospace,monospace" opacity="0.8">${sub}</text>
     </g>`;
@@ -6096,6 +6124,10 @@ function renderResearchDetail(){
   }
   const stateTag={done:'<span class="pill ok">researched</span>',active:'<span class="pill active">in progress</span>',available:'<span class="pill">available</span>',locked:'<span class="pill lock">locked</span>'}[st];
   const debtBanner = relDebt()>0 ? `<div class="flag bad" style="margin-bottom:8px">⚠ Cut-corner penalty: −${Math.round(relDebt()*100)}% reliability on every vehicle, from pushing a flawed project through a past setback. It's permanent — weigh the schedule against the risk next time.</div>` : '';
+  // #14: pin/unpin this node as the standing planning goal — works on locked nodes too (that's the
+  // point: plan toward something several prereqs away and see the whole path highlighted).
+  const isGoal=state.researchGoal===r.id;
+  const goalBtn = st==='done' ? '' : `<button class="btn ghost" style="width:100%;margin-top:8px;font-size:12px" onclick="pinResearchGoal('${r.id}')">${isGoal?'📌 Pinned as goal — unpin':'📌 Pin as goal'}</button>`;
   el.innerHTML=`${debtBanner}<div class="mission-tag">Technology</div>
     <div class="mission-name" style="font-size:16px">${r.name} ${stateTag}</div>
     <div class="tt-mods adv-only" style="margin:8px 0 10px">${techModifierText(r).map(m=>`<div class="tt-mod">▸ ${m}</div>`).join('')}</div>
@@ -6107,7 +6139,8 @@ function renderResearchDetail(){
     </div>
     ${branchAffinityNote(r)}
     ${(reqNames||gateName)?`<div class="dim" style="font-size:12px;margin-bottom:10px">Requires: ${[reqNames, gateName?`fly <b>${gateName}</b>`:null].filter(Boolean).join(' · ')}</div>`:''}
-    ${action}`;
+    ${action}
+    ${goalBtn}`;
 }
 // confirm/Research action bar shown inside the tech-tree card, so it's always in the
 // same area as the tree (not only in the right-hand detail panel)
