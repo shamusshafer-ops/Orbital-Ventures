@@ -71,7 +71,7 @@ Complexity: S = <1 day, M = 1–5 days, L = 1–3 weeks, XL = 1+ month. Impact: 
 |42| Mission patches (procedural SVG) per flight | Attachment/collection | M | ★★ | — | M |Backlog|
 |43| Photo mode / GIF export of flights | Marketing engine | L | ★★ | — | M |Backlog|
 |44| Simultaneous missions in flight (overlapping ops) | Late-game ops density | L | ★★★ | Outliner | H |Closed 2026-07-11 — already fully covered (engine+hangar+Outliner), see ROADMAP.md|
-|45| Ground track visualization on map | Sim texture | M | ★ | — | L |Backlog — needs inclination physics first (#114, scoped 2026-07-17); then a small draw slice on the Earth-globe SEAM|
+|45| Ground track visualization on map | Sim texture | M | ★ | — | L |Shipped 2026-07-17 — solid+dashed track on Earth-globe popout, shown for missions with .inclination|
 
 ### Rivals, politics, world (46–60)
 |46| Rival milestone race schedules ± variance | Core dread | L | ★★★ | — | H |E1.1|

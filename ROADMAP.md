@@ -4537,3 +4537,27 @@ the tradeoff. `test-inclination-missions.js` 8/8. Ground track (#45) now unblock
      stream — any code change that shifts draw counts can flake it (pre-edit 5/5 pass, post-edit 4/5).
      The harness has no RNG seeding at all. Worth a small harness addition (seedable RNG) so time-advancing
      e2e tests are deterministic — would also have made finding #1 reproducible instead of intermittent.
+
+## Session — #45 Ground track visualization (2026-07-17)
+
+Backlog #45, unblocked by #114 (inclination physics). `groundTrackPasses(inclDeg, ascNodeLon, passes)`
+in sim.js: standard argument-of-latitude parametrization for a circular orbit's ground path — 3 passes,
+each drifting west by a flavor `LEO_PERIOD_MIN=90` approximation (altitude/period isn't modeled anywhere
+else in this game, so this is illustrative, not orbit prediction). Drawn in `drawEarthGlobe` via the
+existing `P(lon,lat)` projection — same one used for continents and the Cape marker — so it's correctly
+aligned to the globe's current rotation. Solid track for the current pass (anchored at the Cape), dashed
+and fading for the next two. Each point is tested front/back-facing so the arc breaks cleanly at the limb
+instead of drawing through the globe.
+
+Trigger: shown only when `missionById(state.activeMission)` has `.inclination` set — currently Crewed
+Orbit and the Comsat contract, from #114. Nothing else changes; no mission carries this by default.
+`earthPopInfoHTML` gets a matching dynamic caption (mission name + inclination) when applicable, silent
+otherwise.
+
+`tests/test-ground-track.js` 12/12 — math (max\|lat\|==inclination, equatorial flat, westward drift,
+longitude normalization), caption presence/absence, `drawEarthGlobe` no-throw across all 3 cases via the
+harness's fake canvas context. Full 64-suite regression + `build.js --check` clean.
+
+**Not done:** this is a real-browser-owed item like the last few visual slices — verified headlessly
+(math + no-throw), not eyeballed for legibility/aesthetics at actual popout size.
+
