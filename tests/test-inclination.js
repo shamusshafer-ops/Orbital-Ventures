@@ -14,10 +14,10 @@ newGame('engineer');
   let mism=0;
   for(const m of MISSIONS){ if(m.reqDv==null) continue; if(effectiveReqDv(m)!==m.reqDv) mism++; }
   check('identity: effectiveReqDv === reqDv for all reqDv missions (nothing opts in yet)', mism===0);
-  // procedural archetypes too
+  // procedural archetypes too — excluding any that intentionally set .inclination (slice 2 retrofits)
   let pmism=0;
-  for(const a of CONTRACT_ARCHETYPES){ const o=a.build(2); if(o.reqDv==null) continue; if(effectiveReqDv(o)!==o.reqDv) pmism++; }
-  check('identity: holds for procedural contract offers too', pmism===0);
+  for(const a of CONTRACT_ARCHETYPES){ const o=a.build(2); if(o.reqDv==null||o.inclination!=null) continue; if(effectiveReqDv(o)!==o.reqDv) pmism++; }
+  check('identity: holds for procedural offers that do not opt into inclination', pmism===0);
 }
 
 // ---------- 2. inclinationDv: free at/above site latitude, zero when unset ----------
