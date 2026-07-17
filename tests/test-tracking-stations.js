@@ -17,7 +17,7 @@ newGame('engineer');
   check('data: unique ids', new Set(ids).size===3);
   check('data: all gated on deep_space research', TRACKING_STATIONS.every(s=>s.reqResearch==='deep_space'));
   check('data: all have positive setup + upkeep', TRACKING_STATIONS.every(s=>s.setup>0 && s.upkeep>0));
-  check('data: shipped state — gate is OFF', TRACKING_NETWORK_LIVE===false);
+  check('data: shipped state — gate is now LIVE (slice 2)', TRACKING_NETWORK_LIVE===true);
   const sr=MISSIONS.find(x=>x.id==='sample_return');
   check('setup: sample_return is a clean .profile test subject (reqResearch deep_space, no archFork/reqSynergy)', !!sr && !!sr.profile && sr.reqResearch==='deep_space' && !sr.archFork && !sr.reqSynergy);
   const ll=MISSIONS.find(x=>x.id==='luna_landing');
@@ -70,14 +70,18 @@ newGame('engineer');
   state.trackingStations=[];
 }
 
-// ---------- 4. needsTrackingNetwork: inert while the flag is off (the shipped-state regression guard) ----------
+// ---------- 4. needsTrackingNetwork: inert when the flag is forced off (kill-switch behavior) ----------
 {
-  state.research={deep_space:true}; state.trackingStations=[]; state.completed={};
-  const sr=MISSIONS.find(x=>x.id==='sample_return');
-  check('flag off: needsTrackingNetwork is false for an unflown .profile mission', needsTrackingNetwork(sr)===false);
-  state.completed={sample_return:true};
-  check('flag off: still false once completed (nothing to grandfather from — already inert)', needsTrackingNetwork(sr)===false);
-  state.completed={};
+  TRACKING_NETWORK_LIVE=false; // slice 2 ships this true; force off here to prove the kill-switch fully disables the gate
+  try{
+    state.research={deep_space:true}; state.trackingStations=[]; state.completed={};
+    const sr=MISSIONS.find(x=>x.id==='sample_return');
+    check('flag off: needsTrackingNetwork is false for an unflown .profile mission', needsTrackingNetwork(sr)===false);
+    state.completed={sample_return:true};
+    check('flag off: still false once completed (nothing to grandfather from — already inert)', needsTrackingNetwork(sr)===false);
+    state.completed={};
+  } finally { TRACKING_NETWORK_LIVE=true; }
+  check('flag restored to shipped-live state', TRACKING_NETWORK_LIVE===true);
 }
 
 // ---------- 5. needsTrackingNetwork with the flag on: profile + not-completed only ----------
@@ -93,8 +97,8 @@ newGame('engineer');
     check('setup: found a non-.profile mission to test against', !!nonProfile);
     check('flag on: false for a non-.profile mission regardless of completion', needsTrackingNetwork(nonProfile)===false);
     state.completed={};
-  } finally { TRACKING_NETWORK_LIVE=false; }
-  check('flag restored to shipped-off state', TRACKING_NETWORK_LIVE===false);
+  } finally { TRACKING_NETWORK_LIVE=true; }
+  check('flag at shipped-live state', TRACKING_NETWORK_LIVE===true);
 }
 
 // ---------- 6. missionTechMet: the real gate, flag on — blocks, then unblocks after a build, then stays open once completed ----------
@@ -109,7 +113,7 @@ newGame('engineer');
     state.trackingStations=[]; state.completed={sample_return:true};
     check('gate: sample_return stays flyable once completed, even back to 0 stations (grandfathered)', missionTechMet(sr)===true);
     state.completed={};
-  } finally { TRACKING_NETWORK_LIVE=false; }
+  } finally { TRACKING_NETWORK_LIVE=true; }
 }
 
 // ---------- 7. missionTechMet: the luna_landing early-return gotcha — station check must not be bypassed ----------
@@ -125,7 +129,7 @@ newGame('engineer');
     check('gotcha: luna_landing opens once a station exists (both gates now pass)', missionTechMet(ll)===true);
   } finally {
     anyLunarArchUnlocked=savedArchFn;
-    TRACKING_NETWORK_LIVE=false;
+    TRACKING_NETWORK_LIVE=true;
     state.trackingStations=[]; state.completed={};
   }
 }
@@ -139,23 +143,72 @@ newGame('engineer');
     check('setup: procedural sample-return archetype builds a .profile mission', !!proc && !!proc.profile);
     state.completed={}; // procedural offers never populate this, by design — nothing to fake here
     check('procedural: always needs the network (no grandfather — it never completes into state.completed)', needsTrackingNetwork(proc)===true);
-  } finally { TRACKING_NETWORK_LIVE=false; }
+  } finally { TRACKING_NETWORK_LIVE=true; }
 }
 
-// ---------- 9. missionAdvisor: surfaces the requirement when applicable, stays silent when the flag is off, never throws ----------
+// ---------- 9. missionAdvisor: surfaces the requirement when applicable, stays silent when forced off, never throws ----------
 {
   let threw=false;
   try{
     state.research={}; state.trackingStations=[]; state.completed={};
-    const a1=missionAdvisor(); // flag off (shipped state) — must not mention tracking at all
+    TRACKING_NETWORK_LIVE=false; // force the kill-switch off — advisor must not mention tracking at all
+    const a1=missionAdvisor();
     check('advisor (flag off): no tracking-network requirement leaks in', !a1.reqs.some(r=>/[Tt]racking/.test(r.label)));
 
     TRACKING_NETWORK_LIVE=true;
     const a2=missionAdvisor(); // flag on — may or may not apply depending on what nextObjective() picked, but must not throw
     check('advisor (flag on): reqs is an array', Array.isArray(a2.reqs));
   }catch(e){ threw=true; console.log('  threw:', e.message); }
-  finally { TRACKING_NETWORK_LIVE=false; }
+  finally { TRACKING_NETWORK_LIVE=true; }
   check('advisor: no throw across both flag states', !threw);
+}
+
+// ---------- 10. Slice 2: build panel + map marker model surface correctly (headless HTML/string checks) ----------
+{
+  // trackingPanelHTML gates on research and reflects built state
+  state.research={}; state.trackingStations=[];
+  const dark=trackingPanelHTML();
+  check('panel: shown even pre-research (explains the lock), mentions Deep Space Network', /Deep Space Network/.test(dark));
+  check('panel: pre-research copy points at the research unlock', /[Rr]esearch/.test(dark) && !/Build ·/.test(dark));
+
+  state.research={deep_space:true};
+  const buyable=trackingPanelHTML();
+  check('panel: post-research shows a Build button', /Build ·/.test(buyable));
+  check('panel: lists all three sites', /Goldstone/.test(buyable) && /Madrid/.test(buyable) && /Canberra/.test(buyable));
+
+  state.trackingStations=['goldstone'];
+  const partial=trackingPanelHTML();
+  check('panel: a built site reads as online, not another Build button', /online/.test(partial));
+  check('panel: header count reflects built/total', /1\/3/.test(partial));
+
+  // map asset model carries stations under earth, and only when >0
+  state.trackingStations=[];
+  check('map model: no stations key when none built', !mapAssetModel().earth || !mapAssetModel().earth.stations);
+  state.trackingStations=['goldstone','madrid'];
+  const em=mapAssetModel().earth;
+  check('map model: earth.stations reflects built ids', !!em && Array.isArray(em.stations) && em.stations.length===2);
+
+  // both marker renderers accept the model without throwing
+  let threw=false;
+  try{ assetMarkersSVG('earth', 100, 100, 12, mapAssetModel()); }catch(e){ threw=true; console.log('  svg threw:', e.message); }
+  check('map marker: assetMarkersSVG renders the station cluster without throwing', !threw);
+  check('map marker: SVG output contains a dish path for earth', /A 3 3/.test(assetMarkersSVG('earth',100,100,12,mapAssetModel())));
+
+  state.trackingStations=[];
+}
+
+// ---------- 11. Module-delivery logistics runs are exempt (resupply to an owned base, not a first) ----------
+{
+  TRACKING_NETWORK_LIVE=true;
+  try{
+    state.research={deep_space:true}; state.trackingStations=[]; state.completed={};
+    const delivery={ id:'md_test', proc:true, deliverModule:{facId:'lunar_base',modId:'lab_mod'},
+      profile:[{name:'Ascent to LEO',dv:9400,by:'lv'},{name:'Trans-Lunar Injection',dv:3120,by:'transfer'}] };
+    check('exempt: module-delivery run does not need the network', needsTrackingNetwork(delivery)===false);
+    check('exempt: the same offer WITHOUT the deliverModule tag DOES need it (proves the tag is what exempts it)',
+      needsTrackingNetwork({id:'md_test2', profile:delivery.profile})===true);
+  } finally { TRACKING_NETWORK_LIVE=true; }
+  state.completed={};
 }
 
 console.log(`${pass}/${pass+fail} checks passed`);

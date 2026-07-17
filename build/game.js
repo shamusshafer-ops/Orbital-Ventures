@@ -1127,11 +1127,12 @@ function commitLunarArch(id){
 }
 // #89: does mission m need the tracking network at all, right now? Shared by missionTechMet (the
 // real gate) and missionAdvisor (the explainer, render.js) so the two can never drift out of sync.
-// Gated behind TRACKING_NETWORK_LIVE (sim.js) — OFF until slice 2 ships an actual way to build a
-// station; flying the gate live with no build UI yet would hard-lock every unflown deep-space first
-// with no in-game escape hatch. Already-completed missions (and their routine reflights) are exempt
-// forever, regardless of the flag — nothing already earned gets taken away.
-function needsTrackingNetwork(m){ return TRACKING_NETWORK_LIVE && !!(m && m.profile) && !state.completed[m.id]; }
+// Applies to deep-space EXPLORATION missions (.profile) that haven't been flown yet. Two exemptions:
+//  - already-completed missions (grandfathered — nothing already earned gets taken away);
+//  - module-delivery logistics runs (.deliverModule) to a base you already operate — those are
+//    resupply, not an exploration first, and they never set state.completed, so without this exemption
+//    they'd be permanently gated (and it's the wrong call besides: you built the base, DSN or no).
+function needsTrackingNetwork(m){ return TRACKING_NETWORK_LIVE && !!(m && m.profile) && !m.deliverModule && !state.completed[m.id]; }
 // the gate a player actually flies through: normal reqResearch, plus the luna_landing arch fork
 function missionTechMet(m){
   if(!m) return false;
@@ -2924,13 +2925,15 @@ function partnershipUpkeep(){ if(!state.partnerships) return 0; return round2(st
    Partnerships just above (setup fee + ongoing upkeep, gated behind prerequisite research) but simpler:
    build-only for V1, no dissolve — decommissioning your only station would re-lock content that was
    flyable a moment ago, and there's no player-facing reason to want that yet.
-   TRACKING_NETWORK_LIVE: the flag that actually turns the gate on. Stays false until slice 2 ships a
-   real way to build a station (Map tab, per scoping) — flipping the gate live before that exists would
-   hard-lock every unflown deep-space first with no in-game escape hatch, same reasoning as BENCH_V2.
-   Declared `let`, not `const` like BENCH_V2 — this flag is inlined directly into needsTrackingNetwork's
-   condition (not just gating UI reachability), so tests need to flip it on to exercise the real
-   missionTechMet/missionAdvisor branches, then restore it (see tests/test-tracking-stations.js). */
-let TRACKING_NETWORK_LIVE=false;
+   TRACKING_NETWORK_LIVE: the flag that actually turns the gate on. As of slice 2 (2026-07-17) the Map
+   tab's Earth body-card carries the build panel (trackingPanelHTML, render.js), so the gate is now LIVE
+   — a player who hits a locked deep-space mission has an in-game path to satisfy it. The flag is kept
+   (rather than deleted) as a single kill-switch: flip to false to fully disable the requirement if a
+   balance problem surfaces in playtest, without unwinding the wiring. Declared `let`, not `const` — the
+   test suite flips it to exercise both gated and ungated branches, then restores it.
+   NOTE: this was never run in a real browser (headless sandbox) — the marker cluster + build panel
+   should get a real-browser eyeball before this is considered fully done (see ROADMAP.md #89 slice 2). */
+let TRACKING_NETWORK_LIVE=true;
 function stationDef(id){ return TRACKING_STATIONS.find(s=>s.id===id); }
 function stationBuilt(id){ return !!(state.trackingStations && state.trackingStations.indexOf(id)>=0); }
 function trackingStationCount(){ return (state.trackingStations||[]).length; }
@@ -17389,7 +17392,12 @@ function defineMapScene(){
         // LEO depot arc gauge
         if(am.depotT>0){ const cap=Math.max(am.depotT,120), frac=Math.min(1,am.depotT/cap);
           const rr=o.rad+5, a0=-Math.PI*0.75, a1=a0+frac*Math.PI*1.5;
-          g.lineStyle(2,themeColorNum('readout'),0.9); g.beginPath(); g.arc(o.x,o.y,rr,a0,a1,false); g.strokePath(); } } }
+          g.lineStyle(2,themeColorNum('readout'),0.9); g.beginPath(); g.arc(o.x,o.y,rr,a0,a1,false); g.strokePath(); }
+        // #89: tracking-station dish row below the body (Earth) — one small dish per built site
+        if(am.stations && am.stations.length){ const n=am.stations.length, gap=7, y=o.y+o.rad+9, x0=o.x-((n-1)*gap)/2;
+          for(let k=0;k<n;k++){ const dx=x0+k*gap;
+            g.lineStyle(0.9,0x8fc4ff,1); g.beginPath(); g.moveTo(dx,y); g.lineTo(dx,y+2.6); g.strokePath();
+            g.fillStyle(0x8fc4ff,0.95); g.beginPath(); g.arc(dx,y-0.5,3,Math.PI,0,false); g.closePath(); g.fillPath(); } } } }
     drawSel(){ const g=this.selRing; g.clear(); const o=this.bodies.find(q=>q.b.id===state.selectedBody); if(o){ g.lineStyle(1.5,themeColorNum('ignite'),1); g.strokeCircle(o.x,o.y,o.rad+3); } }
   };
 }
@@ -18044,6 +18052,20 @@ function assetMarkersSVG(bodyId,px,py,rad,model){
     s+=`<g><path d="M ${x0.toFixed(1)} ${y0.toFixed(1)} A ${rr} ${rr} 0 ${large} 1 ${x1.toFixed(1)} ${y1.toFixed(1)}" fill="none" stroke="#5fc4d0" stroke-width="2" stroke-linecap="round" opacity="0.9"/>
       <title>LEO propellant depot — ${a.depotT} t banked</title></g>`;
   }
+  // #89: tracking-station network — a small row of ground dishes below Earth, one per built site.
+  // Earth-anchored (this is the ground segment), distinct from the orbital depot arc above it.
+  if(a.stations && a.stations.length){
+    const n=a.stations.length, gap=7, y=py+rad+9, x0=px-((n-1)*gap)/2;
+    let dishes='';
+    for(let i=0;i<n;i++){ const dx=x0+i*gap;
+      // a tiny parabolic dish on a stalk
+      dishes+=`<g transform="translate(${dx.toFixed(1)},${y.toFixed(1)})">
+        <line x1="0" y1="0" x2="0" y2="2.6" stroke="#8fc4ff" stroke-width="0.9"/>
+        <path d="M -3 -0.5 A 3 3 0 0 1 3 -0.5 Z" fill="#8fc4ff" opacity="0.95"/></g>`;
+    }
+    const names=a.stations.map(id=>{ const sd=(typeof stationDef==='function')&&stationDef(id); return sd?sd.name:id; }).join(' · ');
+    s+=`<g>${dishes}<title>Tracking network — ${n} station${n>1?'s':''}: ${names}</title></g>`;
+  }
   return s;
 }
 // Planned-route arc for the ACTIVE mission (cyan = closes, red = Δv short, amber = committed window)
@@ -18118,6 +18140,7 @@ function mapAssetModel(){
   if(state.research.belt_volatiles) get('belt').isru=true;
   if((state.depot||0)>0.05) get('earth').depotT=round2(state.depot);
   if((state.pgmRoyalty||0)>0) get('belt').beltClaim=true;
+  if(trackingStationCount()>0) get('earth').stations=(state.trackingStations||[]).slice(); // #89: DSN-analog ground network — Earth-anchored, drawn as a small dish cluster
   return perBody;
 }
 // Planned route for the ACTIVE mission (committed or not): where it goes and whether it closes.
@@ -18146,6 +18169,7 @@ function empireStripHTML(){
   if(facN) s+=' '+chip('⬢', `${facN} facilit${facN>1?'ies':'y'} · ${modN} modules`, 'Stations and bases you operate');
   if((state.depot||0)>0.05) s+=' '+chip('⛽', `${round2(state.depot)} t depot`, 'Propellant banked in LEO');
   if(state.pgmRoyalty>0) s+=' '+chip('⛏', 'Belt claim', 'Platinum-group mining royalties flowing');
+  if(trackingStationCount()>0) s+=' '+chip('📡', `${trackingStationCount()}/${TRACKING_STATIONS.length} tracking`, 'Deep Space Network ground stations online');
   if(spaceIncome>0) s+=' '+chip('💰', `${fM(spaceIncome)}/mo`, 'Monthly income from space assets (facilities + royalties)');
   return `<div id="empireStrip" style="display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px">${s}</div>`;
 }
@@ -18372,9 +18396,39 @@ function bodyCardHTML(){
       <div class="metric"><div class="k">Legs</div><div class="v">${b.legs.length}</div></div>
     </div>
     <div class="eq">Each leg is a separate burn — a separate mass ratio. The cumulative figure is <em>not</em> a single Δv requirement; it's the sum of every burn a full round-trip architecture must budget for, in sequence, exactly like the mission profiles on the bench.</div>
-    ${missionsBlock}`;
+    ${missionsBlock}
+    ${b.id==='earth'?trackingPanelHTML():''}`;
 }
 function renderBodyCard(){ const el=$('bodyCard'); if(el) el.innerHTML=bodyCardHTML(); }
+// #89 slice 2: the tracking-station build panel — lives in Earth's body card (Map tab). This is the
+// one in-game surface that lets a player build a station, so flipping TRACKING_NETWORK_LIVE on and
+// shipping this panel are the same slice: before this exists there's no way to satisfy the gate.
+function trackingPanelHTML(){
+  if(!TRACKING_NETWORK_LIVE) return ''; // dark until the gate is live (defensive; they flip together)
+  const researched = !!(state.research && state.research.deep_space);
+  const built=trackingStationCount(), total=TRACKING_STATIONS.length;
+  const header=`<div class="mission-tag" style="margin-top:14px">📡 Deep Space Network <span class="pill ${built>0?'ok':''}">${built}/${total}</span>${trackingUpkeep()>0?` <span class="pill" style="font-size:11px">−${fM(trackingUpkeep())}/mo</span>`:''}</div>`;
+  if(!researched){
+    return header+`<div class="dim" style="font-size:12px;margin-top:4px">Ground stations to track spacecraft beyond Earth orbit. Unlocks with <b>Deep-Space Operations</b> research — deep-space missions can't fly without at least one.</div>`;
+  }
+  const intro=`<div class="dim" style="font-size:12px;margin:4px 0 8px">A ground station is required to fly any deep-space mission. Three sites ~120° apart give unbroken coverage as Earth turns.</div>`;
+  const rows=TRACKING_STATIONS.map(sd=>{
+    const isBuilt=stationBuilt(sd.id);
+    const chk=isBuilt?null:canBuildStation(sd.id);
+    const btn = isBuilt
+      ? `<span class="pill ok" style="flex:0 0 auto">✓ online</span>`
+      : `<button class="btn ${chk.ok?'':'ghost'}" style="padding:4px 10px;font-size:12px;flex:0 0 auto" onclick="buildTrackingStation('${sd.id}')" ${chk.ok?'':'disabled'} title="${chk.ok?`Setup ${fM(sd.setup)} · −${fM(sd.upkeep)}/mo`:chk.why}">Build · ${fM(sd.setup)}</button>`;
+    return `<div class="item">
+      <div class="body">
+        <div class="title">${sd.icon} ${esc(sd.name)}</div>
+        <div class="sub">${esc(sd.place)} · −${fM(sd.upkeep)}/mo</div>
+        <div class="sub" style="margin-top:2px">${esc(sd.blurb)}</div>
+      </div>
+      <div style="display:flex;align-items:center">${btn}</div>
+    </div>`;
+  }).join('');
+  return header+intro+rows;
+}
 function flyTo(missionId){
   if(mapPopoutOpen) closeMapPopout(); // flying from the map pop-out returns to the normal flow
   const m=MISSIONS.find(x=>x.id===missionId);

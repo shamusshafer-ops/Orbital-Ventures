@@ -332,13 +332,15 @@ function partnershipUpkeep(){ if(!state.partnerships) return 0; return round2(st
    Partnerships just above (setup fee + ongoing upkeep, gated behind prerequisite research) but simpler:
    build-only for V1, no dissolve — decommissioning your only station would re-lock content that was
    flyable a moment ago, and there's no player-facing reason to want that yet.
-   TRACKING_NETWORK_LIVE: the flag that actually turns the gate on. Stays false until slice 2 ships a
-   real way to build a station (Map tab, per scoping) — flipping the gate live before that exists would
-   hard-lock every unflown deep-space first with no in-game escape hatch, same reasoning as BENCH_V2.
-   Declared `let`, not `const` like BENCH_V2 — this flag is inlined directly into needsTrackingNetwork's
-   condition (not just gating UI reachability), so tests need to flip it on to exercise the real
-   missionTechMet/missionAdvisor branches, then restore it (see tests/test-tracking-stations.js). */
-let TRACKING_NETWORK_LIVE=false;
+   TRACKING_NETWORK_LIVE: the flag that actually turns the gate on. As of slice 2 (2026-07-17) the Map
+   tab's Earth body-card carries the build panel (trackingPanelHTML, render.js), so the gate is now LIVE
+   — a player who hits a locked deep-space mission has an in-game path to satisfy it. The flag is kept
+   (rather than deleted) as a single kill-switch: flip to false to fully disable the requirement if a
+   balance problem surfaces in playtest, without unwinding the wiring. Declared `let`, not `const` — the
+   test suite flips it to exercise both gated and ungated branches, then restores it.
+   NOTE: this was never run in a real browser (headless sandbox) — the marker cluster + build panel
+   should get a real-browser eyeball before this is considered fully done (see ROADMAP.md #89 slice 2). */
+let TRACKING_NETWORK_LIVE=true;
 function stationDef(id){ return TRACKING_STATIONS.find(s=>s.id===id); }
 function stationBuilt(id){ return !!(state.trackingStations && state.trackingStations.indexOf(id)>=0); }
 function trackingStationCount(){ return (state.trackingStations||[]).length; }

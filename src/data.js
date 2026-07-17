@@ -1127,11 +1127,12 @@ function commitLunarArch(id){
 }
 // #89: does mission m need the tracking network at all, right now? Shared by missionTechMet (the
 // real gate) and missionAdvisor (the explainer, render.js) so the two can never drift out of sync.
-// Gated behind TRACKING_NETWORK_LIVE (sim.js) — OFF until slice 2 ships an actual way to build a
-// station; flying the gate live with no build UI yet would hard-lock every unflown deep-space first
-// with no in-game escape hatch. Already-completed missions (and their routine reflights) are exempt
-// forever, regardless of the flag — nothing already earned gets taken away.
-function needsTrackingNetwork(m){ return TRACKING_NETWORK_LIVE && !!(m && m.profile) && !state.completed[m.id]; }
+// Applies to deep-space EXPLORATION missions (.profile) that haven't been flown yet. Two exemptions:
+//  - already-completed missions (grandfathered — nothing already earned gets taken away);
+//  - module-delivery logistics runs (.deliverModule) to a base you already operate — those are
+//    resupply, not an exploration first, and they never set state.completed, so without this exemption
+//    they'd be permanently gated (and it's the wrong call besides: you built the base, DSN or no).
+function needsTrackingNetwork(m){ return TRACKING_NETWORK_LIVE && !!(m && m.profile) && !m.deliverModule && !state.completed[m.id]; }
 // the gate a player actually flies through: normal reqResearch, plus the luna_landing arch fork
 function missionTechMet(m){
   if(!m) return false;
