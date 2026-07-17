@@ -3148,6 +3148,52 @@ function resolveInquiry(choice){
   _pendingInquiry=null; hideModal();
   if(state.money<0) gameOver(); else render();
 }
+/* ---------- #81: Sample-return disposition — bank vs sell ----------
+   Every sciMission (space_telescope, sample_return, astrobiology, oort_precursor) used to bank a fixed
+   sciYield windfall automatically on its first flight. This turns that windfall into a real choice,
+   reusing the inquiry fund/decline modal shape: bank it (unchanged outcome — the windfall, computed with
+   the same sciYieldMult/doctrineMult multipliers as before) or sell it (convert the same windfall into
+   money at SCI_SELL_RATE). The baseline per-flight sciGain (present on every successful flight) is
+   untouched either way — this only affects the prestige bonus. Gated identically to the line it replaces:
+   first flight only, not routine, not procedural (the Deep-Space Sample Return contract carries no
+   sciYield at all, by design — see its comment in data.js). */
+const SCI_SELL_RATE=0.5; // $M per ⚛ if sold instead of banked — a first-pass number, not a final balance
+                          // call: it roughly matches/beats a mission's own payout early (sample_return:
+                          // 42⚛→$21M vs its $14M payout) and fades to irrelevant late (oort_precursor:
+                          // 120⚛→$60M vs its own $1800M payout), so selling is tempting early, banking
+                          // wins naturally once money stops being the bottleneck.
+let _pendingSampleDecision=null; // a prestige science-mission windfall awaiting a bank/sell decision (transient, like _pendingInquiry)
+function triggerSampleDecision(m, sciAmount){
+  if(_pendingSampleDecision){ // one at a time — extremely rare (two prestige flights resolving the same
+    // tick via deferred arrivals); auto-bank rather than silently losing the second windfall or clobbering
+    // the pending one.
+    state.science=round2((state.science||0)+sciAmount);
+    log('note',`${m.name}: sample data auto-banked (+${sciAmount} ⚛) — another disposition decision was already pending.`);
+    return;
+  }
+  _pendingSampleDecision={ mName:m.name, sciAmount, moneyAmount:round2(sciAmount*SCI_SELL_RATE) };
+  log('note',`🧪 SAMPLE RETURNED — ${m.name}: bank it for research or license it commercially. A decision is needed.`);
+}
+function maybeShowSampleDecision(){ if(_pendingSampleDecision && !_pendingSetback && !_pendingLogiMishap && !_pendingInquiry && !_pendingHearing && !_pendingRivalDisaster) showSampleDecisionModal(); } // lowest precedence — good news, not a crisis
+function showSampleDecisionModal(){
+  const s=_pendingSampleDecision; if(!s) return;
+  showModal(`<h2 style="color:var(--readout)">🧪 Sample returned</h2>
+    <p><b>${s.mName}</b> brought material/data home — what happens to it?</p>
+    <button class="btn" onclick="resolveSampleDecision('bank')">Bank for research <span class="dim">· +${s.sciAmount} ⚛</span></button>
+    <button class="btn ghost" style="margin-top:8px" onclick="resolveSampleDecision('sell')">License commercially <span class="dim">· +${fM(s.moneyAmount)}, no science</span></button>`);
+}
+function resolveSampleDecision(choice){
+  const s=_pendingSampleDecision; if(!s) return;
+  if(choice==='sell'){
+    state.money+=s.moneyAmount;
+    log('ok',`${s.mName}: sample licensed to industry — +${fM(s.moneyAmount)}, no science banked.`);
+  } else {
+    state.science=round2((state.science||0)+s.sciAmount);
+    log('ok',`${s.mName}: sample banked for research — +${s.sciAmount} ⚛.`);
+  }
+  _pendingSampleDecision=null; hideModal();
+  if(state.money<0) gameOver(); else render();
+}
 /* ---------- E1.7: space telescope standing program ----------
    Reuses two proven shapes rather than inventing new ones: the passive-contract tick/expiry loop
    (steady monthly drip, ages out) for the routine case, and the inquiry fund/decline decision for
@@ -7190,7 +7236,7 @@ function finalizeLaunch(ctx, ops){
 
     // M14: missions yield science — more for novel, deep, or first-time flights
     let sciGain=Math.max(1, Math.round(((routine||m.proc)?0.3:1)*((m.rep||5)*0.12 + (m.profile?5:1))*sciYieldMult()*doctrineMult('sci'))); // #6b: Science track multiplies mission science yield; CE3(a) Science doctrine boosts it — E1.3: procedural contracts are perpetual filler, not a first, so they get the routine-tier rate too
-    if(m.sciYield && !routine && !m.proc) sciGain += Math.round(m.sciYield*sciYieldMult()*doctrineMult('sci')); // #3: prestige science missions bank a large knowledge windfall (first flight only — not farmable on routine reflights, and not on a regenerating procedural offer either)
+    if(m.sciYield && !routine && !m.proc) triggerSampleDecision(m, Math.round(m.sciYield*sciYieldMult()*doctrineMult('sci'))); // #81: prestige science missions now offer a bank/sell decision instead of an automatic sci add (first flight only — not farmable on routine reflights, and not on a regenerating procedural offer either)
     state.science=round2((state.science||0)+sciGain);
     // E1.7: flying the Orbital Observatory also stands up a passive science program (steady monthly
     // drip + occasional discovery events) — one slot; re-flying it while one's already running just
@@ -7369,7 +7415,7 @@ function finalizeLaunch(ctx, ops){
       modName:_md?_md.name:'Module', modShort:(_md&&_md.short)||'MOD', modColor:(_md&&_md.color)||'#b8c0c7',
       moduleCount:_fs?facilityModuleList(_fs).length:1 }; // post-dock count (dockModuleNow already pushed it)
   }
-  const finish=()=>{ if(state.money<0){ gameOver(); } else { _missionPulse=success?'ok':(outcome.kind==='loss'||outcome.kind==='strand')?'bad':null; render(); if(pendingCelebration) pendingCelebration(); maybeShowInquiry(); maybeShowHearing(); } _flightResolving=false; if(!state.over) pumpFlightArrivals(); }; // 1.2a: flight fully done — release the lock, surface a pending failure inquiry or budget hearing, then resolve the next arrival if any
+  const finish=()=>{ if(state.money<0){ gameOver(); } else { _missionPulse=success?'ok':(outcome.kind==='loss'||outcome.kind==='strand')?'bad':null; render(); if(pendingCelebration) pendingCelebration(); maybeShowInquiry(); maybeShowHearing(); maybeShowSampleDecision(); } _flightResolving=false; if(!state.over) pumpFlightArrivals(); }; // 1.2a: flight fully done — release the lock, surface a pending failure inquiry, budget hearing, or #81 sample disposition; then resolve the next arrival if any
   if(animEnabled){
     // E1.2 slice C: if a live-flight decision (live call/reserve/weather/rescue) opened this overlay
     // early (openFlightForDecision), resume that SAME animation in place with the now-known outcome
