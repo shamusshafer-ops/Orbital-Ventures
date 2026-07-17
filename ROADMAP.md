@@ -4396,3 +4396,65 @@ remaining-count and next-step math across both prereq states, the stale-pin self
 auto-clear-and-log on the goal vs. leaving it alone on an unrelated completion, and a surfacing no-throw
 check across the band/tree/detail-panel render paths. Full 60-suite regression + `test-build-parity.js` +
 `build.js --check` all green — no regressions.
+
+## Planned — #89 Tracking-station network requirement for deep space (scoped 2026-07-17, not built)
+
+Backlog #89 ("Tracking-station network requirement for deep space" — Classic sink). Scoping-only session;
+no code changed. User chose the **hard-requirement** fork over a soft reliability bonus, and the **Map
+tab** for placement over folding it into R&D/Partnerships.
+
+**What's already there.** The `deep_space` research node's own flavor text already namedrops a tracking
+network ("NASA's Deep Space Network...") with zero mechanic behind it — pure flavor gap this fills.
+
+**Gate mechanic.** `missionTechMet(m)` (data.js) is the real hard-launch gate used everywhere
+(`selectMission`, `missionFlyable`, contract popout, etc.) — add: any mission with `m.profile` (the
+codebase's existing "this is a deep-space/cislunar-or-beyond mission" marker) requires
+`trackingStationCount()>=1` UNLESS `state.completed[m.id]` is already true. **Gotcha found while
+scoping:** `missionTechMet`'s `luna_landing` branch `return`s early (its own lunar-architecture-fork
+check) — the new station check MUST be inserted *before* that branch, not after, or luna_landing (itself
+a `.profile` mission) silently bypasses the gate entirely.
+
+**Migration / grandfather strategy (the risk the user flagged).** The `!state.completed[m.id]` clause
+*is* the whole migration story — no explicit migrate function needed, same "purely additive" pattern as
+every other save-shape addition. A save that already completed Lunar Sample Return, Mars Orbit, etc.
+keeps flying those routine reflights forever regardless of station count (nothing already earned is taken
+away). Only *new, unflown* deep-space firsts require a station going forward — including the procedural
+Deep-Space Sample Return contract, which never sets `state.completed` (by design, per its own comment) so
+it's *always* gated behind ≥1 station, every time — arguably the most realistic case (an ongoing
+operational choice, not a grandfathered achievement).
+
+**Data model.** Three real DSN-site analogs (`TRACKING_STATIONS` in data.js) — Goldstone (Mojave Desert,
+CA), Madrid (Robledo de Chavela, Spain), Canberra (Tidbinbilla, Australia) — the actual historical
+network, ~120° apart for real global coverage, free flavor. Each: setup fee + monthly upkeep, modeled
+directly on the existing Research Partnerships shape (`PARTNERS`/`formPartnership`/`canFormPartnership`),
+gated behind `deep_space` research. **Open call, defaulted for the build session:** gate requirement is
+flat (`≥1 of 3` unlocks every `.profile` mission) for V1, not tiered by distance — simpler, lower-risk.
+Tiering (e.g. Oort-class missions wanting all 3 for "continuous coverage") is a natural stretch slice
+once the flat version is live and read against real playtest friction, not a day-one requirement. Also
+defaulted: **no dissolve** for V1 (unlike partnerships) — decommissioning your only station could
+re-lock content that was flyable a moment ago; skip that footgun until there's a reason to want it back.
+
+**Map placement.** The Map tab is solar-system/body-scale (`mapAssetModel()`/`assetMarkersSVG()` — one
+shared model consumed by the SVG map, the Phaser MapScene, and the empire strip), not an Earth-surface
+globe — there's no lat/lon ground sub-view anywhere in this codebase today. Real DSN coordinates won't
+place literally. Instead: reuse the exact pattern already used for the LEO depot arc / ISRU pick / belt
+claim (small icon(s) offset from Earth's marker at `px±rad`, e.g. a 3-dot cluster that lights up per
+station built) — same shared model, same renderer, genuinely Earth-anchored and thematic without
+inventing a globe view. `mapAssetModel()` gains a `get('earth').stations` field.
+
+**"Why can't I fly this?" hook.** `missionAdvisor()` (render.js, the E1.5/#18 explainer) already builds a
+`reqs`/`actions` checklist per gate (research, rep, arch fork, Δv, reliability) — add a matching entry:
+`{ok: stationsOk, label: 'Tracking network — build at least 1 ground station'}` + an action routing to
+the Map tab. Keeps the new gate self-explaining through the exact same UI players already use for every
+other lock reason, no new explainer UI needed.
+
+**Rough slice plan for the build session:** (1) data model + `trackingStationCount()`/build action +
+missionTechMet gate + missionAdvisor entry, headless-testable end to end without touching render; (2) map
+marker rendering (SVG + Phaser MapScene, mirroring the depot-arc/ISRU-pick precedent); (3) tests —
+gate-blocks-unflown-first, grandfather-allows-completed-routine-reflight, procedural-contract-always-
+gated, luna_landing-not-bypassed (the gotcha above, worth its own explicit regression test), map-model
+surfacing no-throw.
+
+**Model-tier note for the build session:** the gate/data-model slice (1) is mostly mechanical wiring —
+lighter model is fine. The map-marker slice (2) has a real (if small) design-judgment component (marker
+placement/legibility) — worth a heavier model, or at least a look before shipping.
