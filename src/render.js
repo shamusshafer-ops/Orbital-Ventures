@@ -699,7 +699,7 @@ function missionAdvisor(){
   if(state.activeMission===mm.id){
     const v=computeVehicle(), sim=mm.profile?simulateMission(mm):null;
     if(mm.profile){ const fails=sim.legs.filter(l=>!l.pass).length; reqs.push({ok:fails===0, label: fails?`${fails} mission leg${fails>1?'s':''} short on Δv`:'Δv — all legs pass'}); if(fails) actions.push({label:'Boost Δv — Vehicle Design',tab:'bench'}); }
-    else { const ok=v.totalDv>=mm.reqDv; reqs.push({ok, label:`Δv ${fI(v.totalDv)} / ${fI(mm.reqDv)} m/s`}); if(!ok) actions.push({label:'Add capability — Vehicle Design',tab:'bench'});
+    else { const need=effectiveReqDv(mm); const ok=v.totalDv>=need; reqs.push({ok, label:`Δv ${fI(v.totalDv)} / ${fI(need)} m/s`}); if(!ok) actions.push({label:'Add capability — Vehicle Design',tab:'bench'});
       if(v.twr<=1.0){ reqs.push({ok:false, label:`TWR ${v.twr.toFixed(2)} — won't lift off`}); actions.push({label:'Add engines — Vehicle Design',tab:'bench'}); } }
     const relTarget=mm.crew>0?0.80:0.70, relOk=v.reliability>=relTarget;
     reqs.push({ok:relOk, label:`Reliability ${(v.reliability*100|0)}% (target ${(relTarget*100)|0}%)`});
@@ -2595,7 +2595,7 @@ function plannerSteps(){
   const sim=m.profile?simulateMission(m):null;
   let dOk,dDetail;
   if(m.profile){ const fails=sim.legs.filter(l=>!l.pass).length; dOk=!!sim.ok&&fails===0; dDetail=fails?`${fails} mission leg${fails>1?'s':''} short on Δv · TWR ${v.twr.toFixed(2)}`:`All ${sim.legs.length} legs pass · TWR ${v.twr.toFixed(2)}`; }
-  else { dOk=v.totalDv>=m.reqDv&&v.twr>1.0; dDetail=`Δv ${fI(v.totalDv)} / ${fI(m.reqDv)} m/s · TWR ${v.twr.toFixed(2)}`; }
+  else { const need=effectiveReqDv(m); dOk=v.totalDv>=need&&v.twr>1.0; dDetail=`Δv ${fI(v.totalDv)} / ${fI(need)} m/s · TWR ${v.twr.toFixed(2)}`; }
   steps.push({key:'design',n:3,title:'Design the vehicle',done:dOk,detail:dDetail,tab:'bench',actLabel:'Design Bench'});
   // crew
   if(m.crew>0){ const assigned=state.assignedAstronaut&&(state.staff||[]).some(s=>s.id===state.assignedAstronaut); steps.push({key:'crew',n:4,title:'Assign crew',done:!!assigned,detail:assigned?`${(personById(state.assignedAstronaut)||{}).name||'Astronaut'} assigned`:'No astronaut assigned to this crewed flight.',tab:'personnel',actLabel:'Personnel'}); }
@@ -3659,16 +3659,18 @@ function renderReadout(){
   const m=curMission();
   if(m.profile){ renderProfileReadout(m); return; }
   const v=computeVehicle();
-  const pct=Math.min(100, v.totalDv/m.reqDv*100);
-  const meets=v.totalDv>=m.reqDv;
+  const need=effectiveReqDv(m); // #114: base reqDv + any plane-change surcharge
+  const pct=Math.min(100, v.totalDv/need*100);
+  const meets=v.totalDv>=need;
   const fillColor=meets?'var(--ok)':(pct>70?'var(--warn)':'var(--bad)');
-  const markerPos=Math.min(100,(m.reqDv/Math.max(v.totalDv,m.reqDv))*100);
+  const markerPos=Math.min(100,(need/Math.max(v.totalDv,need))*100);
   const chk=canLaunch(v,m);
   const e0=v.sm[0].eng;
   const ispEff=(((e0.ispSL+e0.ispVac)/2)*ispMult()).toFixed(0); // #2b: reflect research Isp bonus in the shown equation
 
   let flags='';
-  if(!meets) flags+=`<div class="flag bad">▲ Δv short by ${fI(m.reqDv-v.totalDv)} m/s.</div>`;
+  { const _inc=inclinationDv(m); if(_inc>0) flags+=`<div class="flag">🛰 Target inclination ${m.inclination}° is below the Cape's ${LAUNCH_SITE_LAT}° — a plane change adds +${fI(_inc)} m/s to the ${fI(m.reqDv)} m/s baseline (${fI(need)} m/s total).</div>`; }
+  if(!meets) flags+=`<div class="flag bad">▲ Δv short by ${fI(need-v.totalDv)} m/s.</div>`;
   if(v.twr<=1.0) flags+=`<div class="flag bad">▲ Liftoff TWR ${v.twr.toFixed(2)} ≤ 1 — won't leave the pad (add engines or cut mass).</div>`;
   else if(v.twr<1.2) flags+=`<div class="flag warn">△ Liftoff TWR ${v.twr.toFixed(2)} is marginal — leaves the pad sluggishly. (Upper-stage TWR is shown per stage but is advisory: Δv here is the ideal rocket equation, with no gravity-loss penalty.)</div>`;
   if(v.gravLoss>200){ const worst=(v.stageGravLoss||[]).reduce((b,l,i)=>l>(b.l||0)?{l,i}:b,{l:0,i:0}); flags+=`<div class="flag ${v.gravLoss>800?'warn':''}">▾ Gravity losses −${fI(v.gravLoss)} m/s from low thrust-to-weight${(v.stageGravLoss&&v.stageGravLoss.length>1)?` (worst: stage ${worst.i+1})`:''} — add or upsize engines to recover that Δv.</div>`; }
@@ -3696,7 +3698,7 @@ function renderReadout(){
 
     <div class="gauge">
       <div class="nums"><span class="achieved" style="color:${meets?'var(--ok)':'var(--ink)'}">${fI(v.totalDv)}<span style="font-size:12px;color:var(--muted)"> m/s Δv</span></span>
-        <span class="req">req ${fI(m.reqDv)}</span></div>
+        <span class="req">req ${fI(need)}</span></div>
       <div class="bar"><div class="fill" style="width:${pct}%;background:${fillColor}"></div><div class="marker" style="left:${markerPos}%"></div></div>
     </div>
 
@@ -5120,7 +5122,7 @@ function plannedRoute(){
   try{
     if(m.profile){ const sim=simulateMission(m); ok=!!sim.ok && sim.legs.every(l=>l.pass);
       if(!ok){ const worst=sim.legs.filter(l=>!l.pass); short=worst.length; } }
-    else { const v=computeVehicle(); ok=v.totalDv>=(m.reqDv||0); if(!ok) short=1; }
+    else { const v=computeVehicle(); ok=v.totalDv>=effectiveReqDv(m); if(!ok) short=1; }
   }catch(e){}
   const committed=!!(state.committedWindow && state.committedWindow.missionId===m.id);
   return {destId, name:m.name, ok, short, committed};
@@ -5829,8 +5831,8 @@ function renderMissions(){
       : m.profile // deep-space missions: total profile Δv (no single reqDv)
       ? `${fI(m.profile.reduce((a,p)=>a+p.dv,0))} m/s total Δv${m.crew?` · ${m.crew} crew`:''} · ${durTxt}`
       : m.crew
-      ? `required Δv ${fI(m.reqDv)} m/s · ${m.crew} crew · ${durTxt}`
-      : `required Δv ${fI(m.reqDv)} m/s · payload ${(m.payload*1000).toFixed(0)} kg`;
+      ? `required Δv ${fI(effectiveReqDv(m))} m/s · ${m.crew} crew · ${durTxt}`
+      : `required Δv ${fI(effectiveReqDv(m))} m/s · payload ${(m.payload*1000).toFixed(0)} kg`;
     const sciTag = m.sciMission ? ' <span class="pill" style="color:var(--readout);border-color:var(--readout)">science</span>' : '';
     const div=document.createElement('div'); div.className='item';
     div.innerHTML=`

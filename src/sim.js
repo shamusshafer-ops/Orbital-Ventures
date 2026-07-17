@@ -1961,7 +1961,7 @@ function canQueue(m,v,sim){
     const pw=powerViable(m); if(!pw.ok) return {ok:false,why:pw.why};
     if(!sim||!sim.ok) return {ok:false,why:'a mission leg falls short'};
   }else{
-    if(v.totalDv < m.reqDv) return {ok:false,why:'Δv shortfall'};
+    if(v.totalDv < effectiveReqDv(m)) return {ok:false,why:'Δv shortfall'};
     if(v.twr<=1.0) return {ok:false,why:'TWR ≤ 1'};
   }
   if(buildQueueList().length>=QUEUE_MAX) return {ok:false,why:'queue full'};
@@ -3230,6 +3230,29 @@ function padCapNext(){
   return null;
 }
 
+/* ---------- #114: orbital inclination as a Δv cost ----------
+   A launch reaches, for free, an orbit inclined at ≈ the launch site's latitude, and can steer to any
+   HIGHER inclination for free (change azimuth). Reaching a LOWER inclination costs a plane-change burn:
+   Δv ≈ 2·v·sin(Δi/2), v≈LEO orbital velocity. Cape Canaveral is 28.4°N (the value already hardcoded as
+   the Earth-globe marker in render.js). LAUNCH_SITE_LAT is a const now; it's the exact seam #30 (second
+   launch site) later swaps for a per-site value.
+   Missions opt in with an optional m.inclination (degrees). Missions without it are completely untouched:
+   inclinationDv returns 0, so effectiveReqDv === m.reqDv — an identity the tests pin across every mission.
+   IMPORTANT: this feeds the *budget* (effectiveReqDv), NOT the *classification* checks. The reqDv>=9000
+   "is this an orbital-class mission" tests (isOrbital / sepEvents / isLeoClassMission / recovery-when)
+   must keep reading raw m.reqDv, or a plane-change surcharge would spuriously reclassify a mission. */
+const LAUNCH_SITE_LAT=28.4;              // Cape Canaveral, °N — #30 seam (per-site latitude later)
+const INCLINATION_LEO_V=7800;            // m/s, orbital velocity the plane-change is priced against
+function inclinationDv(m){
+  if(!m || m.inclination==null) return 0;
+  const dLat=LAUNCH_SITE_LAT - m.inclination; // only a target BELOW site latitude costs anything
+  if(dLat<=0) return 0;                        // at or above site latitude → free (just change azimuth)
+  return Math.round(2*INCLINATION_LEO_V*Math.sin((dLat*Math.PI/180)/2));
+}
+// the Δv a design must actually beat for mission m: its base reqDv plus any plane-change surcharge.
+// Every BUDGET gate/display reads through this; classification (reqDv>=9000) still reads raw m.reqDv.
+function effectiveReqDv(m){ return (m&&m.reqDv||0) + inclinationDv(m); }
+
 function stackPerformance(stages, payload){
   const sm=stages.map(stageMasses);
   // strap-on boosters lift the full wet stack then jettison; the liftoff TWR they add reduces the
@@ -4386,7 +4409,8 @@ function canLaunch(v,m,sim,prebuilt){
   }else{
     { const cap=padMassCap();
       if(v.liftoff>cap) return {ok:false,why:`Pad limit — ${v.liftoff.toFixed(0)} t on a ${cap} t pad. The ground can't take this vehicle: research ${padCapNext()} to raise the ceiling.`}; }
-    if(v.totalDv < m.reqDv) return {ok:false,why:`Δv shortfall — ${Math.round(v.totalDv).toLocaleString()} of ${m.reqDv.toLocaleString()} m/s (${Math.round(m.reqDv-v.totalDv).toLocaleString()} short). Add propellant, engines, or a stage on the bench.`};
+    { const need=effectiveReqDv(m);
+      if(v.totalDv < need) return {ok:false,why:`Δv shortfall — ${Math.round(v.totalDv).toLocaleString()} of ${need.toLocaleString()} m/s (${Math.round(need-v.totalDv).toLocaleString()} short). Add propellant, engines, or a stage on the bench.`}; }
     if(v.twr<=1.0) return {ok:false,why:'Thrust-to-weight ≤ 1 — it will not leave the pad.'};
   }
   if(m.window){
