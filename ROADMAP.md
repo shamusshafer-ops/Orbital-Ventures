@@ -4584,3 +4584,15 @@ treatment already used for procedural archetypes. Full regression clean; `test-s
 pre-existing RNG flake (logged in the #114 slice-1 entry above) reconfirmed via 5 extra runs, not a new
 regression.
 
+## Session — Physics realism #2: one-way communication light-lag (2026-07-17)
+
+`lightLagMinutes(bodyId, farthest)` in sim.js — static distance-from-Sun (AU) table, Earth-to-body
+distance approximated as closest-opposition/farthest-conjunction range (no live ephemeris exists
+anywhere in this game). Moons share their parent planet's AU. Verified against real published figures:
+Moon ~1.3s, Mars ~4-24min, Jupiter ~35-52min — all match. Surfaced as a "Signal delay (one-way)" metric
+on the body card (Map tab, via `lightLagHTML`/`fmtLag`), present for every body except Earth. Display-only
+— pure sim texture, same category as #45. `tests/test-light-lag.js` 22/22. Full regression clean.
+
+Sets up #3 (solar conjunction blackout) well — the same BODY_AU table is the natural source for "this
+body just passed behind the Sun" logic.
+
