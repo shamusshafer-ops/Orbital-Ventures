@@ -4732,3 +4732,17 @@ satellite objects first, an epic) + the optional astronaut-roster section. Polis
 collapse, maybe a keyboard shortcut. No real-browser pass yet on the board's feel/legibility — the usual
 headless caveat.
 
+## Session — #115 Fleet Registry slice 2 (2026-07-17)
+
+Standing operations + astronaut roster added to the collector. Standing ops surfaces `state.passiveContracts`
+per the chosen **option A** — name/income/term/category with a near-expiry marker, satellites getting the
+sat icon — and deliberately shows NO location/Δv/consumables, since none exists for a passive contract and
+fabricating it would be exactly the fake telemetry the feature exists to avoid. Astronaut corps resolves
+each crew member's real position (in flight → names the mission, on station → names the facility, or
+available) plus flights flown and career radiation dose. Render layer needed no changes — slice 1's
+accordion renders any collector group generically. `test-fleet-registry.js` → 41/41. Full regression clean.
+
+**#115 feature-complete (option A).** Option B — promoting satellites to persistent objects with real orbit
+params/degradation/servicing — is filed as backlog #116, its own epic, not blocking anything. No real-browser
+pass on the board yet (usual headless caveat).
+

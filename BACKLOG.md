@@ -149,7 +149,8 @@ Complexity: S = <1 day, M = 1–5 days, L = 1–3 weeks, XL = 1+ month. Impact: 
 |112| Surface-specific base modules (ISRU plant, greenhouse, reactor pad, rover garage; surface:true flag filtering) | Base depth | M | ★★ | 111 | M |Shipped 2026-07-16 (E1.8 C)|
 |113| Part-based vehicle bench — KSP-VAB 2D drag-drop builder, parts-as-truth, deep per-part physics, all 4 categories | Core loop overhaul | XL | ★★★ | — | H |Built 2026-07-16 (E3.0-E3.6, BENCH_V2 flag off pending playtest)|
 |114| Orbital inclination as a physics dimension (plane-change Δv from launch-site latitude; effectiveReqDv accessor; retrofit Crewed Orbit + Comsat) | Sim depth · unblocks #45 & #30 | M | ★★ | — | M |Shipped 2026-07-17 (both slices) — #45 ground track now unblocked; launch-azimuth ceiling/dogleg tax added 2026-07-17 (symmetric extension, see ROADMAP.md)|
-|115| Fleet Registry — unified expandable status board for all assets (in-flight vehicles, logistics, bases/stations, depot, programs, standing ops) | Consolidation · info architecture | M | ★★ | — | M |Slice 1 shipped 2026-07-17 (collector + accordion board: flights, logistics, facilities, depot, programs) — Slice 2 (satellites (A)/(B) + crew roster) pending, see ROADMAP.md|
+|115| Fleet Registry — unified expandable status board for all assets (in-flight vehicles, logistics, bases/stations, depot, programs, standing ops) | Consolidation · info architecture | M | ★★ | — | M |Shipped 2026-07-17 (both slices) — collector + accordion board covering flights, logistics, facilities, depot, programs, standing ops/satellites (option A), astronaut roster. Option B (persistent satellite objects) filed separately|
+|116| Persistent satellite objects (deployed sats with orbit params, degradation, servicing tie-in) — enables real per-sat telemetry in the Fleet Registry | Sim depth · registry option B | L | ★★ | 115 | L |Backlog — the (B) alternative deferred from #115; its own epic if pursued|
 
 ---
 
