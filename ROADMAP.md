@@ -4714,3 +4714,21 @@ expand — is real design judgment; worth a heavier model or a review pass on th
 is lighter. The (A)-vs-(B) satellite call is a genuine design decision to settle with the user before
 slice 2.
 
+## Session — #115 Fleet Registry slice 1 (2026-07-17)
+
+Shipped the collector + board. `assetRegistryGroups()` (sim.js) is a DOM-free normalized list grouped by
+class — in-flight vehicles, logistics, bases/stations, LEO depot, standing programs — each item carrying a
+one-line status + a detail map. The information-architecture call landed as: each class's status line is
+its single most decision-relevant stat, and for facilities that means dynamically surfacing whichever of
+supply/condition/crew is *most at risk* rather than a fixed field (a healthy base shows its output
+summary instead). In-flight detail reuses the light-lag/conjunction helpers from the physics-realism work.
+render.js adds an accordion board (`showFleetRegistry`) reached from a new Outliner-header "registry"
+button; rows expand in place, multiple can stay open. `tests/test-fleet-registry.js` 26/26. Full regression
+clean.
+
+**Slice 2 — NOT STARTED.** Standing-ops/"satellites" (the (A)-vs-(B) design call still needs settling with
+the user — (A) show passive contracts as standing operations, honest and small; (B) build persistent
+satellite objects first, an epic) + the optional astronaut-roster section. Polish: sorting, section
+collapse, maybe a keyboard shortcut. No real-browser pass yet on the board's feel/legibility — the usual
+headless caveat.
+
