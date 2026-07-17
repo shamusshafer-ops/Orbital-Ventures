@@ -4420,8 +4420,34 @@ slice 2 ships an actual way to build a station. New `tests/test-tracking-station
 → 56 (purely additive — `state.trackingStations` always `[]` until slice 2). Full 61-suite regression +
 `build.js --check` clean.
 
-**Slice 2 — NOT STARTED.** Map-tab marker rendering (reuse the LEO-depot-arc/ISRU-pick pattern on Earth's
-existing map marker — no lat/lon globe exists in this codebase) + the actual build button/panel. Flip
-`TRACKING_NETWORK_LIVE` to `true` as part of this slice, not before — that's the whole point of the flag.
-Model-tier note carried over from scoping: this slice has real visual-design judgment in it (marker
-placement/legibility), worth a heavier model or at least a look before shipping.
+**Slice 2 — SHIPPED 2026-07-17 (build UI + map markers, gate now LIVE).** The Map tab's Earth body-card
+carries the DSN build panel (`trackingPanelHTML`, render.js): three sites with per-site Build buttons
+gated on `deep_space` research + capital, built sites read as "online", the header shows built/total and
+monthly upkeep, and a pre-research state explains the lock. Map markers: a small dish cluster below Earth
+in BOTH render paths — SVG `assetMarkersSVG` and Phaser `drawMarkers` — driven by a new
+`mapAssetModel().earth.stations` field (the same shared-model pattern as the depot arc / ISRU pick).
+Empire strip gains a 📡 tracking chip. **`TRACKING_NETWORK_LIVE` flipped false→true** — the gate is now
+enforced, and this slice ships the only in-game way to satisfy it, so the two went together. The flag is
+kept (not deleted) as a kill-switch: flip to false to fully disable the requirement if playtest surfaces a
+balance problem, without unwinding the wiring.
+
+**Design refinement caught mid-slice.** Flipping the gate live broke `test-station-slice2` (Moon module
+delivery failed to auto-select) — because module-delivery cargo runs are `.profile` missions too, and they
+*never* set `state.completed`, so they'd have been permanently gated. That's the wrong call: they're
+resupply to a base you already operate, not an exploration first. Added a second exemption to
+`needsTrackingNetwork` — `.deliverModule` offers are never gated — alongside the existing grandfather
+clause. Explicitly regression-tested now.
+
+**Validation.** `test-tracking-stations.js` updated for the now-live shipped state + the slice-2 surface
+(panel HTML string checks across pre-research/buyable/partially-built, map-model station field, both
+marker renderers no-throw, the module-delivery exemption): 49/49. Full 61-suite regression +
+`build.js --check` clean. Headless smoke check confirms panel + empire chip + overview markers all render
+with stations built.
+
+**CAVEAT — real-browser playtest still owed.** Same as the E3 epic: this sandbox has no browser, so the
+gate was flipped live and the markers/panel were verified only headlessly (string/no-throw level). Before
+considering #89 fully closed, a real-browser pass should confirm: the dish cluster is legible and
+correctly placed below Earth at map zoom (both Phaser and SVG paths), the build panel reads well in the
+body card, and — most importantly — that an existing save whose *next* objective is an ungated deep-space
+first surfaces the "build a station" step cleanly via the missionAdvisor rather than feeling like a dead
+end. If any of that is off, the kill-switch (flag → false) is the immediate mitigation.

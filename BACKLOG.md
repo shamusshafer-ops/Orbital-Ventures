@@ -123,7 +123,7 @@ Complexity: S = <1 day, M = 1–5 days, L = 1–3 weeks, XL = 1+ month. Impact: 
 |86| Procedural contract generator (era+capability keyed) | Fills troughs | L | ★★★ | — | H |E1.3|
 |87| 3–4 more committed program forks (Mars, crew vehicle, propulsion) | Replayability core | L | ★★★ | — | H |E2|
 |88| Manufacturing lines w/ learning-curve rates (#7 seam) | Money→time decisions | XL | ★★★ | — | M |Deferred|
-|89| Tracking-station network requirement for deep space | Classic sink | M | ★★ | — | M |Slice 1 shipped 2026-07-17 (backend + gate, flag-gated OFF) — Slice 2 (Map-tab build UI, flips the flag) pending, see ROADMAP.md|
+|89| Tracking-station network requirement for deep space | Classic sink | M | ★★ | — | M |Shipped 2026-07-17 (both slices) — hard gate on unflown deep-space missions + DSN build UI on Map tab; kill-switch flag retained, real-browser playtest still owed (see ROADMAP.md)|
 |90| Biology/human-factors research track | Late-era R&D identity | M | ★★ | — | M |Backlog|
 |91| Synergy prospecting UI ("2 of 3") | Set collection | S | ★★ | — | M |E2|
 |92| Era research capacity limits (can't buy everything) | Strategic scarcity | M | ★★★ | — | H |E2|
