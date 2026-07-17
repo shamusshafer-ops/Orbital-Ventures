@@ -4613,3 +4613,20 @@ Physics-realism survey (from the #45 ground-track conversation) is now 3/3 tract
 azimuth ceiling, light-lag, solar conjunction. Remaining: orbital decay/station-keeping (not started),
 Lagrange-point missions (recommended to stay flavor-only).
 
+## Session — Orbital decay/station-keeping: correction, not a new feature (2026-07-17)
+
+Item #4 from the physics-realism survey. Investigated before building and found it already existed: a
+mature facility condition/maintenance-decay system (`STATION_MAINT_DECAY_BASE`/`PER_MODULE`,
+`stationCondition()`, Repair action, resupply contracts). Building a parallel decay mechanic would have
+duplicated it — caught before writing any of that code.
+
+The one real gap: the UI never said *why* condition decays, reading as generic wear for all three
+facilities alike. Added `FACILITY_DEFS.decayReason` and surfaced it in the Condition metric: `leo_station`
+now honestly reads as real orbital decay (atmospheric drag, ISS-reboost-equivalent) since it's the one
+facility that actually orbits something; the surface bases get their own non-orbital reasons. Data +
+display only. `tests/test-facility-decay-flavor.js` 5/5.
+
+Physics-realism survey closed out: azimuth ceiling, light-lag, solar conjunction all shipped as new
+mechanics; orbital decay turned out to be a documentation fix, not new work. Lagrange-point missions
+remain recommended flavor-only (not pursued).
+
