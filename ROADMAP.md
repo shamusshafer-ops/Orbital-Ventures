@@ -4826,7 +4826,7 @@ suites green (`test-build-parity.js` excluded — a pre-existing `/tmp`-relative
 `require('../build.js')` path issue, reproduced identically against an unmodified build
 in a properly-rooted checkout; unrelated to this change, not fixed here).
 
-**E4.1 shipped 2026-07-18 (below). E4.2 (Three.js CDN + ESM shim + guard plumbing) is next up — mechanical, Sonnet tier.**
+**E4.1 + E4.2 shipped 2026-07-18 (below). E4.3 (3D solar-system scene + camera) is next up — heavy design.**
 
 
 ## Session — E4.1 shipped: real Keplerian ephemeris (2026-07-18)
@@ -4893,4 +4893,47 @@ confound guard. Now **28/28 across 12 seeds and deterministic** across repeated 
 Full regression: **69/69 real suites green** (`test-build-parity.js` excluded — pre-existing
 `/tmp`-path env issue). Documented in `tests/README.md`.
 
-**E4.2 (Three.js CDN plumbing + ESM→global shim + guarded 2D fallback) is next up — mechanical/wiring, Sonnet tier.** Note: E4.3+ (the actual 3D scene) is not headless-testable in this sandbox (no browser), same constraint as BENCH_V2 — those will need real-browser playtests.
+**E4.2 shipped 2026-07-18 (below).** Note: E4.3+ (the actual 3D scene) is not headless-testable in this sandbox (no browser), same constraint as BENCH_V2 — those will need real-browser playtests.
+
+
+## Session — E4.2 shipped: Three.js CDN plumbing + ESM→global shim + guard (2026-07-18)
+
+Pure plumbing per MIGRATION.md §6 — no behavior change yet. Commit `4745827`.
+
+Added Three.js the same way Phaser is added: a single pinned jsDelivr tag in `src/shell.html`,
+placed right after the Phaser tag and before `<!-- OV:SCRIPTS -->`. No single-file bloat, no
+build change. Because modern Three.js is ESM-only (the UMD global build was dropped ~r160), it
+loads via a tiny module shim that stashes it on `window.THREE` for the game's classic-script /
+global scope — current Three.js without making any of the game's onclick handlers modular.
+
+- **Version pin (resolved MIGRATION §9 open-item #1):** `three@0.185.1` (current npm `latest`;
+  ESM entry `build/three.module.js` verified against the package's declared `exports["."]` before
+  pinning). URL: `https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.js`.
+- **Dynamic import + catch** (rather than the static `import * as THREE` in the MIGRATION example)
+  so a CDN/offline failure is a quiet `console.warn`, not an uncaught module error — `window.THREE`
+  simply stays undefined and the guard reports absent. Directly delivers the "treat not-loaded as
+  absent, degrade to 2D" requirement.
+- **Guard:** `threeOK()` in `render.js`, placed next to `phaserOK()`, mirrors it exactly:
+  `typeof THREE!=='undefined' && !!THREE.Scene`. Every future Three.js call site (E4.3+) gates on
+  it and falls back to the existing 2D Solar System view. The shim is async (module scripts defer),
+  so THREE may be absent at first paint — the guard treats "not loaded yet" identically to "absent",
+  and the 3D tab will initialize on first open, not at boot.
+
+The 2D Solar System map is untouched and retained as the permanent fallback.
+
+**Tests:** new `test-three-guard.js` (9 checks) — `threeOK()` false when THREE absent (the headless
+harness / CDN-down / pre-deferred-load case), false when THREE exists but lacks `Scene` (partial or
+failed load), true when a real-shaped THREE is present, never throws, matches the `phaserOK()`
+convention, and the game boots + renders with THREE absent (3D is optional, not required). The shim
+itself isn't Node-testable; this covers the guard every call site will gate on. Reverified the build
+parity invariant (release inline `<script>` == `build/game.js`) after the shell.html edit — the awk
+extraction only captures the exact `<script>`/`</script>` OV block, not the module shim or the
+one-line CDN tags.
+
+Full regression: **70/70 real suites green** (build-parity excluded — pre-existing /tmp-path env
+issue). Documented in `tests/README.md`.
+
+**E4.3 (3D solar-system scene + camera, consuming the E4.1 `planetHelio` positions) is next up —
+heavy design.** First not-headless-testable step (no browser in the sandbox), same discipline as
+BENCH_V2: the scene-graph math (positions, camera transforms) is unit-testable, but visual
+correctness and the default-on flip will need a real-browser playtest pass from Shamus.
