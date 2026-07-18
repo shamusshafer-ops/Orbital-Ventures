@@ -534,7 +534,7 @@ function renderTopbarStatus(){
   $('skipBtn').disabled=!ar;
 }
 function renderSceneMain(){
-  if(state.tab==='command')renderCommandCenter(); else { stopCCScene(); pauseCapeGame(); }
+  if(state.tab==='command')renderCommandCenter(); else { stopCCScene(); pauseCapeGame(); pauseCape3D(); }
   if(state.tab!=='bench') pauseVehGame();
   if(state.tab!=='map'){ pauseMapGame(); pauseMap3D(); }
   if(state.tab!=='station') pauseStationGame();
@@ -1615,6 +1615,444 @@ function phaserOK(){ return typeof Phaser!=='undefined' && !!Phaser.Scene; }
 // "not loaded yet" is treated identically to "absent", and the 3D tab initializes on first open.
 function threeOK(){ return typeof THREE!=='undefined' && !!THREE && !!THREE.Scene; }
 const CAPE_W=1200, CAPE_H=860; // Cape scene render resolution (taller for the isometric view; CSS scales to the column)
+/* ---------- Cape 3D, Slice A: dormant scene contract ----------
+   The live Cape remains Phaser/Canvas until the later implementation slices have facility geometry,
+   interactions, and browser sign-off. These pure descriptors make the existing ISO site plan the
+   single authoritative source for a future Three.js scene without adding anything to saves. */
+const CAPE3D = true;
+const CAPE_WORLD_TILE_M = 120;
+const CAPE_WORLD_HEIGHT_M_PER_PX = 1.1;
+const CAPE3D_SITE_SPREAD = 1.15;
+const CAPE3D_TEXTURE_ASSET={ground:'assets/cape-ground-albedo.png',pavement:'assets/cape-pavement-albedo.png'};
+let cape3d = null;
+function capeWorldPoint(gx, gy, elevation){
+  return {x:gx*CAPE_WORLD_TILE_M*CAPE3D_SITE_SPREAD, y:elevation||0, z:gy*CAPE_WORLD_TILE_M*CAPE3D_SITE_SPREAD};
+}
+function capeFacilityDescriptor(b){
+  if(!b) return null;
+  const heightPx=b.key==='mfg' ? isoVAB_h() : b.h;
+  const height=heightPx*CAPE_WORLD_HEIGHT_M_PER_PX;
+  return {
+    key:b.key, type:b.type, tint:b.tint,
+    position:capeWorldPoint(b.gx,b.gy),
+    footprint:{x:b.fw*CAPE_WORLD_TILE_M,z:b.fd*CAPE_WORLD_TILE_M},
+    height,
+    anchor:capeWorldPoint(b.gx,b.gy,height),
+  };
+}
+function capeFacilityDescriptors(){ return ISO_BUILDINGS.map(capeFacilityDescriptor); }
+function cape3dAvailable(){
+  return CAPE3D && threeOK() && typeof THREE.WebGLRenderer==='function' && typeof THREE.PerspectiveCamera==='function';
+}
+function cape3dCameraEye(target, azimuth, elevation, distance){
+  const el=Math.max(.18,Math.min(1.25,elevation)), ce=Math.cos(el);
+  return {x:target.x+distance*ce*Math.cos(azimuth),y:target.y+distance*Math.sin(el),z:target.z+distance*ce*Math.sin(azimuth)};
+}
+function cape3dApplyCamera(){
+  if(!cape3d) return;
+  const c=cape3d.cam, eye=cape3dCameraEye(c.target,c.az,c.el,c.dist);
+  cape3d.camera.position.set(eye.x,eye.y,eye.z); cape3d.camera.lookAt(c.target.x,c.target.y,c.target.z);
+}
+function cape3dSetHotspotHost(id){ if(cape3d) cape3d.hotspotHostId=id||null; }
+function cape3dProjectHotspots(){
+  if(!cape3d||!cape3d.hotspotHostId) return;
+  const host=$(cape3d.hotspotHostId); if(!host||!host.querySelector) return;
+  const ds=cape3d.descriptors||[];
+  for(const d of ds){
+    const el=host.querySelector(`[data-cape3d-key="${d.key}"]`); if(!el) continue;
+    const v=new THREE.Vector3(d.anchor.x,d.anchor.y,d.anchor.z).project(cape3d.camera), visible=v.z>=-1&&v.z<=1;
+    el.style.display=visible?'flex':'none'; if(!visible) continue;
+    el.style.left=`${(v.x*.5+.5)*100}%`; el.style.top=`${(-v.y*.5+.5)*100}%`;
+    el.style.width='84px'; el.style.height='48px'; el.style.transform='translate(-50%,-100%)';
+  }
+}
+function cape3dPick(event){
+  if(!cape3d||!cape3d.raycaster) return;
+  const r=cape3d.renderer.domElement.getBoundingClientRect(); if(!r.width||!r.height) return;
+  cape3d.raycaster.setFromCamera({x:(event.clientX-r.left)/r.width*2-1,y:-((event.clientY-r.top)/r.height)*2+1},cape3d.camera);
+  const hit=cape3d.raycaster.intersectObjects(cape3d.root.children,true)[0]; let o=hit&&hit.object;
+  while(o&&!o.userData.facilityKey) o=o.parent;
+  if(!o) return;
+  const host=cape3d.hotspotHostId&&$(cape3d.hotspotHostId), spot=host&&host.querySelector&&host.querySelector(`[data-cape3d-key="${o.userData.facilityKey}"]`);
+  if(spot&&spot.click) spot.click();
+}
+function cape3dDown(e){ if(!cape3d) return; cape3d.drag={x:e.clientX,y:e.clientY,travel:0,pointerId:e.pointerId}; try{cape3d.renderer.domElement.setPointerCapture(e.pointerId);}catch(_){} }
+function cape3dMove(e){
+  if(!cape3d||!cape3d.drag) return; const d=cape3d.drag, dx=e.clientX-d.x, dy=e.clientY-d.y; d.x=e.clientX; d.y=e.clientY; d.travel+=Math.abs(dx)+Math.abs(dy);
+  cape3d.cam.az-=dx*.008; cape3d.cam.el=Math.max(.18,Math.min(1.25,cape3d.cam.el-dy*.008)); cape3dApplyCamera();
+}
+function cape3dUp(e){ if(!cape3d) return; const d=cape3d.drag; try{cape3d.renderer.domElement.releasePointerCapture(d&&d.pointerId);}catch(_){} cape3d.drag=null; if(d&&d.travel<5) cape3dPick(e); }
+function cape3dWheel(e){ if(!cape3d) return; e.preventDefault(); cape3d.cam.dist=Math.max(280,Math.min(2600,cape3d.cam.dist*(e.deltaY>0?1.12:.89))); cape3dApplyCamera(); }
+function attachCape3DInput(){
+  if(!cape3d||cape3d.inputAttached) return; const d=cape3d.renderer.domElement;
+  d.addEventListener('pointerdown',cape3dDown); d.addEventListener('pointermove',cape3dMove); d.addEventListener('pointerup',cape3dUp); d.addEventListener('wheel',cape3dWheel,{passive:false});
+  d.addEventListener('dblclick',()=>{ if(cape3d){ cape3d.cam={az:2.25,el:.48,dist:1450,target:{x:420*CAPE3D_SITE_SPREAD,y:0,z:250*CAPE3D_SITE_SPREAD}}; cape3dApplyCamera(); } }); d.style.cursor='grab'; d.style.touchAction='none'; cape3d.inputAttached=true;
+}
+function detachCape3DInput(){
+  if(!cape3d||!cape3d.inputAttached) return; const d=cape3d.renderer.domElement;
+  d.removeEventListener('pointerdown',cape3dDown); d.removeEventListener('pointermove',cape3dMove); d.removeEventListener('pointerup',cape3dUp); d.removeEventListener('wheel',cape3dWheel); cape3d.inputAttached=false;
+}
+function cape3dMaterial(color, roughness, metalness){ return new THREE.MeshStandardMaterial({color,roughness:roughness==null?0.8:roughness,metalness:metalness||0}); }
+function cape3dFlightQualityProfile(caps){
+  const source=caps||((typeof navigator!=='undefined')?navigator:{}), memory=Number(source.deviceMemory)||8, cores=Number(source.hardwareConcurrency)||8;
+  if(memory<=4||cores<=4) return {name:'efficient',pixelRatio:1,shadowMap:512};
+  if(memory>=12&&cores>=8) return {name:'cinematic',pixelRatio:1.75,shadowMap:2048};
+  return {name:'balanced',pixelRatio:1.25,shadowMap:1024};
+}
+function cape3dTexture(id,repeatX,repeatY){
+  if(!threeOK()||!THREE.TextureLoader) return null;
+  const data=window.__OV_TEXTURE_DATA__||{}, src=data['cape_'+id]||CAPE3D_TEXTURE_ASSET[id];
+  try{
+    const tx=new THREE.TextureLoader().load(src); tx.wrapS=tx.wrapT=THREE.RepeatWrapping; tx.repeat.set(repeatX||1,repeatY||repeatX||1);
+    if('colorSpace' in tx) tx.colorSpace=THREE.SRGBColorSpace; tx.anisotropy=4; return tx;
+  }catch(e){ return null; }
+}
+function cape3dCanvasTexture(draw,repeatX,repeatY){
+  const cv=document.createElement('canvas'); cv.width=cv.height=256; const ctx=cv.getContext('2d'); draw(ctx,cv.width,cv.height);
+  const tx=new THREE.CanvasTexture(cv); tx.wrapS=tx.wrapT=THREE.RepeatWrapping; tx.repeat.set(repeatX||1,repeatY||repeatX||1); return tx;
+}
+function cape3dWaterTexture(){ return cape3dCanvasTexture((ctx,w,h)=>{ ctx.fillStyle='#174d68'; ctx.fillRect(0,0,w,h); ctx.globalAlpha=.22; ctx.strokeStyle='#b3e5ed'; ctx.lineWidth=1; for(let y=8;y<h;y+=17){ ctx.beginPath(); for(let x=0;x<=w;x+=13) ctx.lineTo(x,y+Math.sin((x+y)*.12)*2); ctx.stroke(); } },18,16); }
+function cape3dTerrainVariationTexture(){ return cape3dCanvasTexture((ctx,w,h)=>{ ctx.clearRect(0,0,w,h); for(let i=0;i<28;i++){ const x=(i*83)%w,y=(i*137)%h,r=18+(i%6)*9,g=ctx.createRadialGradient(x,y,0,x,y,r); g.addColorStop(0,i%3?'rgba(109,91,46,.24)':'rgba(219,191,121,.28)'); g.addColorStop(1,'rgba(0,0,0,0)'); ctx.fillStyle=g; ctx.fillRect(x-r,y-r,r*2,r*2); } },7,6); }
+function cape3dCloudTexture(){
+  const cv=document.createElement('canvas'); cv.width=384; cv.height=192; const ctx=cv.getContext('2d');
+  for(let i=0;i<15;i++){ const x=45+(i*61)%300,y=72+(i*37)%58,r=24+(i%4)*12,g=ctx.createRadialGradient(x,y,0,x,y,r); g.addColorStop(0,'rgba(255,255,255,.62)'); g.addColorStop(.55,'rgba(237,247,255,.30)'); g.addColorStop(1,'rgba(255,255,255,0)'); ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill(); }
+  return new THREE.CanvasTexture(cv);
+}
+function cape3dVegetation(root,materials){
+  const g=new THREE.Group(); g.name='cape3d_vegetation'; const trunk=new THREE.MeshStandardMaterial({color:0x4c3925,roughness:1}), palms=[0x2e542e,0x466c37,0x6d7136].map(color=>new THREE.MeshStandardMaterial({color,roughness:.96})), scrub=[0x55673b,0x3c5a35,0x7a7140].map(color=>new THREE.MeshStandardMaterial({color,roughness:1}));
+  for(let i=0;i<116;i++){
+    const a=i*2.399, r=360+(i%14)*88, x=270+Math.cos(a)*r, z=230+Math.sin(a)*r*.72; if((x>770&&z>-250)||(Math.abs(x-420)<250&&Math.abs(z-290)<190)) continue;
+    const kind=i%5, h=kind===0?20+(i%4)*4:kind<3?9+(i%4)*3:3+(i%3)*2;
+    if(kind===0){ cape3dCylinder(g,1.4,h,trunk,x,h*.5,z); for(let j=0;j<7;j++){ const leaf=cape3dMesh(new THREE.ConeGeometry(7,24,5),palms[i%palms.length],x,h+4,z,false); leaf.rotation.z=(j/7)*Math.PI*2; leaf.rotation.x=.9; g.add(leaf); } }
+    else if(kind<3){ cape3dCylinder(g,.8,h*.42,trunk,x,h*.21,z); const crown=cape3dMesh(new THREE.ConeGeometry(5+(i%3)*2,h*.9,7),palms[(i+1)%palms.length],x,h*.72,z,false); g.add(crown); }
+    else { const bush=cape3dMesh(new THREE.DodecahedronGeometry(h,0),scrub[i%scrub.length],x,h*.55,z,false); bush.scale.set(1.5,.7,1.15); g.add(bush); }
+  }
+  root.add(g); return g;
+}
+function cape3dClouds(root){
+  const g=new THREE.Group(); g.name='cape3d_clouds'; const tx=cape3dCloudTexture(), clouds=[];
+  for(let i=0;i<9;i++){ const m=new THREE.SpriteMaterial({map:tx,transparent:true,opacity:.22+(i%3)*.07,depthWrite:false,color:i%2?0xddefff:0xfff3dd}); const s=new THREE.Sprite(m); s.position.set(-900+i*390,430+(i%3)*55,-620+(i*179)%1350); s.userData.baseX=s.position.x; s.scale.set(380+(i%4)*110,150+(i%3)*40,1); g.add(s); clouds.push(s); }
+  root.add(g); return clouds;
+}
+function cape3dPracticalLights(root,descriptors){
+  const g=new THREE.Group(); g.name='cape3d_practical_lights'; const lamps=[];
+  descriptors.filter(d=>['pad','rivalpad','vab','control','prod'].includes(d.type)).forEach((d,i)=>{
+    const color=i<2?0xffb15e:0xb8dcff, light=new THREE.PointLight(color,.8,230,2); light.position.set(d.position.x,d.height*.72+7,d.position.z); g.add(light);
+    const fixture=new THREE.Mesh(new THREE.SphereGeometry(i<2?3.8:2.5,10,8),new THREE.MeshStandardMaterial({color,emissive:color,emissiveIntensity:.15,roughness:.35})); fixture.position.copy(light.position); g.add(fixture); lamps.push({light,fixture});
+  });
+  root.add(g); return lamps;
+}
+function cape3dStreetLights(root,materials){
+  const g=new THREE.Group(); g.name='cape3d_street_lights'; const lamps=[], roadZ=capeWorldPoint(0,ISO_AV).z;
+  for(let i=0;i<15;i++){
+    const x=capeWorldPoint(-1.1+i*.52,0).x, side=i%2?1:-1, z=roadZ+side*18, poleH=19;
+    cape3dCylinder(g,.65,poleH,materials.dark,x,poleH*.5,z); cape3dBox(g,7,.55,.55,materials.dark,x+side*3.2,poleH,z,false);
+    const color=0xffd69a, light=new THREE.PointLight(color,.35,105,2); light.position.set(x+side*6.2,poleH-.3,z); g.add(light);
+    const fixture=new THREE.Mesh(new THREE.SphereGeometry(1.65,10,8),new THREE.MeshStandardMaterial({color,emissive:color,emissiveIntensity:.08,roughness:.3})); fixture.position.copy(light.position); g.add(fixture); lamps.push({light,fixture});
+  }
+  root.add(g); return lamps;
+}
+function cape3dMesh(geometry, material, x, y, z, shadow){
+  const mesh=new THREE.Mesh(geometry,material); mesh.position.set(x||0,y||0,z||0);
+  mesh.castShadow=shadow!==false; mesh.receiveShadow=true; return mesh;
+}
+function cape3dBox(group, w, h, d, material, x, y, z, shadow){
+  const mesh=cape3dMesh(new THREE.BoxGeometry(w,h,d),material,x,y,z,shadow); group.add(mesh); return mesh;
+}
+function cape3dCylinder(group, radius, h, material, x, y, z){
+  const mesh=cape3dMesh(new THREE.CylinderGeometry(radius,radius,h,16),material,x,y,z); group.add(mesh); return mesh;
+}
+function cape3dRoadSegment(group, a, b, width, material){
+  const dx=b.x-a.x, dz=b.z-a.z, len=Math.hypot(dx,dz); if(len<0.01) return;
+  const road=cape3dBox(group,width,0.35,len,material,(a.x+b.x)/2,0.18,(a.z+b.z)/2,false);
+  road.rotation.y=Math.atan2(dx,dz);
+}
+function cape3dFacilityGroup(d, materials){
+  const g=new THREE.Group(); g.name='cape3d_'+d.key; g.userData.facilityKey=d.key;
+  g.position.set(d.position.x,0,d.position.z);
+  const w=d.footprint.x, z=d.footprint.z, h=d.height;
+  const dark=materials.dark, metal=materials.metal, concrete=materials.concrete, glass=materials.glass;
+  if(d.type==='pad'||d.type==='rivalpad'){
+    cape3dBox(g,w,z*0.08,z,concrete,0,1,0,false);
+    const tower=new THREE.Group(); tower.position.set(w*.28,h*.5,0); g.add(tower);
+    for(const sx of [-1,1]) for(const sz of [-1,1]) cape3dBox(tower,3,h,3,metal,sx*11,0,sz*11);
+    for(let y=-h*.42;y<h*.43;y+=16){ cape3dBox(tower,25,1.4,1.4,metal,0,y,0); cape3dBox(tower,1.4,1.4,25,metal,0,y,0); }
+    for(const x of [-w*.32,-w*.48]) cape3dCylinder(g,9,16,materials.tank,x,8,z*.28);
+  } else if(d.type==='dishes'){
+    cape3dBox(g,w,h*.22,z,dark,0,h*.11,0);
+    const count=3;
+    for(let i=0;i<count;i++){
+      const dish=new THREE.Group(), x=((i-(count-1)/2)/(count||1))*w*.55; dish.position.set(x,h*.38,0); g.add(dish);
+      cape3dCylinder(dish,2.4,h*.38,metal,0,0,0);
+      const bowl=cape3dMesh(new THREE.SphereGeometry(24,24,14,0,Math.PI*2,0,Math.PI*.42),materials.dish,0,h*.38,0); bowl.rotation.x=-Math.PI*.52; dish.add(bowl);
+      const feed=cape3dMesh(new THREE.SphereGeometry(3.2,12,8),materials.dark,0,h*.38+7,-10,false); dish.add(feed);
+    }
+  } else if(d.type==='dome'){
+    cape3dBox(g,w,h*.18,z,dark,0,h*.09,0);
+    const dome=cape3dMesh(new THREE.SphereGeometry(Math.min(w,z)*.38,24,14,0,Math.PI*2,0,Math.PI*.5),materials.dome,0,h*.18,0); g.add(dome);
+  } else {
+    const base=d.type==='vab'?materials.vab:(d.type==='control'?materials.control:materials.building);
+    cape3dBox(g,w,h,z,base,0,h*.5,0);
+    // Roof cap and a repeated window band give every mass a readable industrial scale before PBR art lands.
+    cape3dBox(g,w*1.02,3,z*1.02,metal,0,h+1.5,0);
+    const rows=Math.max(2,Math.min(8,Math.round(h/24)));
+    for(let r=0;r<rows;r++){
+      const y=h*.22+r*(h*.56/Math.max(1,rows-1));
+      cape3dBox(g,w*.72,2,0.7,glass,0,y,z*.505,false);
+    }
+    if(d.type==='vab') for(let i=-1;i<=1;i++) cape3dBox(g,w*.16,h*.62,1.2,dark,i*w*.25,h*.31,z*.512,false);
+    if(d.type==='prod') for(let i=-1;i<=1;i++) cape3dBox(g,w*.2,10,1.2,metal,i*w*.25,h+7,z*.505,false);
+    if(d.type==='control') cape3dCylinder(g,2.2,26,metal,0,h+13,0);
+  }
+  return g;
+}
+function cape3dVehicleMesh(){
+  const g=new THREE.Group(); g.name='cape3d_active_vehicle';
+  let shape=null;
+  try{
+    const m=curMission(), spec={stages:state.stages.map(s=>({prop:s.prop,count:s.count,dia:s.dia})),boosters:boosterSpec(),transferProp:(m&&m.profile&&m.modules&&m.modules.includes('transfer'))?state.transfer.prop:0,crewed:!!(m&&m.crew>0)};
+    shape=buildVehicleShape(spec);
+  }catch(e){}
+  const segs=(shape&&shape.segs&&shape.segs.length)?shape.segs:[{w:10,h:56,engines:1},{w:7,h:32,engines:1}];
+  const scale=.72; let y=0;
+  for(const s of segs){ const h=s.h*scale, r=Math.max(2.4,s.w*scale*.5); cape3dCylinder(g,r,h,new THREE.MeshStandardMaterial({color:0xd9e2ea,roughness:.48,metalness:.25}),0,y+h*.5,0); y+=h; }
+  const top=segs[segs.length-1], nose=cape3dMesh(new THREE.ConeGeometry(Math.max(2.4,top.w*scale*.5),Math.max(7,top.w*scale*1.7),20),new THREE.MeshStandardMaterial({color:0xf0f4f6,roughness:.42,metalness:.18}),0,y+Math.max(7,top.w*scale*1.7)*.5,0); g.add(nose);
+  if(shape&&shape.boosters){ const b=shape.boosters, h=b.h*scale, r=Math.max(1.8,b.w*scale*.5), orbit=Math.max(r+2.5,segs[0].w*scale*.58+r); for(let i=0;i<b.count;i++){ const a=i*Math.PI*2/b.count; cape3dCylinder(g,r,h,new THREE.MeshStandardMaterial({color:b.solid?0xc9b9a5:0xd4dde3,roughness:.55,metalness:.18}),Math.cos(a)*orbit,h*.5,Math.sin(a)*orbit); } }
+  return g;
+}
+function cape3dRoads(materials){
+  const g=new THREE.Group(); g.name='cape3d_roads';
+  cape3dRoadSegment(g,capeWorldPoint(-1.2,ISO_AV),capeWorldPoint(6.8,ISO_AV),14,materials.road);
+  for(const b of ISO_BUILDINGS){ if(['pad','rivalpad','dishes'].includes(b.type)) continue; cape3dRoadSegment(g,capeWorldPoint(b.gx,b.gy),capeWorldPoint(b.gx,ISO_AV),7,materials.road); }
+  const route=crawlerRouteGrid(); for(let i=1;i<route.length;i++) cape3dRoadSegment(g,capeWorldPoint(route[i-1][0],route[i-1][1]),capeWorldPoint(route[i][0],route[i][1]),25,materials.crawlerway);
+  return g;
+}
+function cape3dLaunchProfile(snapshot){
+  const phase=snapshot&&snapshot.phase||'pad', p=Math.max(0,Math.min(1,(snapshot&&snapshot.phaseProgress)||0)), ignition=Math.max(0,Math.min(1,(snapshot&&snapshot.effects&&snapshot.effects.ignition)||0));
+  const ascent=phase==='ascent', altitude=ascent?45+14200*Math.pow(p,1.72):0;
+  const failed=!!(snapshot&&snapshot.effects&&snapshot.effects.ascentFailure);
+  return {phase,progress:p,altitude,plume:failed?0:(ascent?1:ignition),light:failed?0:(ascent?2.8:ignition*2.2),smoke:failed?0:(ascent?.26+Math.min(.74,p*1.4):ignition),failed,failureProgress:Math.max(0,Math.min(1,(snapshot&&snapshot.effects&&snapshot.effects.failureProgress)||0))};
+}
+function cape3dAscentBlend(progress){
+  const p=Math.max(0,Math.min(1,progress||0)), space=Math.max(0,Math.min(1,(p-.20)/.42));
+  // Darken the sky before the curved-Earth layer arrives. The overlap is intentional:
+  // it prevents a bright day background from bleeding through a newly-loaded globe texture.
+  return {atmosphere:Math.max(0,Math.min(1,(p-.45)/.26)),space,capeVisible:p<.72};
+}
+function cape3dOrbitProfile(snapshot){
+  const p=Math.max(0,Math.min(1,(snapshot&&snapshot.phaseProgress)||0)), a=-1.05+p*Math.PI*2.15;
+  return {progress:p,angle:a,burn:Math.max(0,Math.min(1,(.13-p)/.13)),altitude:430+Math.sin(p*Math.PI)*60};
+}
+function cape3dLaunchEffects(rocket){
+  const g=new THREE.Group(); g.name='cape3d_launch_effects'; g.visible=false; rocket.add(g);
+  const flame=new THREE.Mesh(new THREE.ConeGeometry(15,72,18),new THREE.MeshBasicMaterial({color:0xff8a28,transparent:true,opacity:.9,depthWrite:false})); flame.position.y=-36; g.add(flame);
+  const core=new THREE.Mesh(new THREE.ConeGeometry(7,48,16),new THREE.MeshBasicMaterial({color:0xfff0b0,transparent:true,opacity:1,depthWrite:false})); core.position.y=-24; g.add(core);
+  const smoke=new THREE.Group(); const smokeMat=new THREE.MeshStandardMaterial({color:0xdfe7e7,transparent:true,opacity:.3,roughness:1,depthWrite:false});
+  for(let i=0;i<9;i++){ const puff=new THREE.Mesh(new THREE.SphereGeometry(10+(i%3)*7,10,8),smokeMat.clone()); puff.position.set((i%3-1)*12,-50-i*13,((i*7)%3-1)*10); smoke.add(puff); } g.add(smoke);
+  const glow=new THREE.PointLight(0xff8b35,0,360,2); glow.position.y=-8; g.add(glow);
+  return {group:g,flame,core,smoke,glow};
+}
+function cape3dAscentWorld(root,pad){
+  // This is a launch-camera presentation world, not a physical Earth-scale simulation.
+  // Keeping a compact, camera-relative globe below the vehicle gives a stable curved horizon
+  // without allowing a 16,000-unit sphere to envelop the launch camera at mid-ascent.
+  const g=new THREE.Group(); g.name='cape3d_ascent_world'; g.visible=false; const center=new THREE.Vector3(), radius=1150;
+  // Reuse the packaged Earth day map from the solar renderer. It remains available under
+  // file:// because build.js embeds it, and gives the ascent a recognisable limb instead
+  // of a featureless bright sphere when the launch site falls away.
+  const earthMap=(typeof map3dPhotoTexture==='function')?map3dPhotoTexture('earth'):null;
+  // A dark blue fallback is visible for the one or two frames before the data-URL map has
+  // decoded. Never use white here: under the launch sun it clips to a full-screen flash.
+  const earthMat=new THREE.MeshStandardMaterial({color:0x396b86,map:earthMap,emissive:0x06131d,emissiveIntensity:.18,roughness:.94,metalness:0,transparent:true,opacity:0,depthWrite:false});
+  const earth=new THREE.Mesh(new THREE.SphereGeometry(radius,48,28),earthMat); earth.position.copy(center); earth.receiveShadow=false; g.add(earth);
+  const atmoMat=new THREE.MeshBasicMaterial({color:0x63b8ff,transparent:true,opacity:0,side:THREE.FrontSide,depthWrite:false,blending:THREE.AdditiveBlending});
+  const atmosphere=new THREE.Mesh(new THREE.SphereGeometry(radius+26,48,28),atmoMat); atmosphere.position.copy(center); g.add(atmosphere);
+  const stars=new THREE.Points(new THREE.BufferGeometry(),new THREE.PointsMaterial({color:0xeaf5ff,size:13,transparent:true,opacity:0,depthWrite:false}));
+  const pts=[]; for(let i=0;i<190;i++){ const a=i*2.399,b=(i%23)*.27; pts.push(Math.cos(a)*25000,9000+Math.sin(b)*16000,Math.sin(a)*25000); } stars.geometry.setAttribute('position',new THREE.Float32BufferAttribute(pts,3)); g.add(stars);
+  const trail=new THREE.Group(), puffs=[]; for(let i=0;i<18;i++){ const puff=new THREE.Mesh(new THREE.SphereGeometry(18+(i%4)*10,10,8),new THREE.MeshBasicMaterial({color:i%3?0xb9d3df:0xffb15b,transparent:true,opacity:0,depthWrite:false})); puff.visible=false; trail.add(puff); puffs.push(puff); } g.add(trail);
+  root.add(g); return {group:g,earth,atmosphere,stars,trail,puffs,center,radius};
+}
+function cape3dOrbitWorld(root){
+  const g=new THREE.Group(); g.name='cape3d_orbit_world'; g.visible=false;
+  const earthMap=(typeof map3dPhotoTexture==='function')?map3dPhotoTexture('earth'):null;
+  const earthMat=new THREE.MeshStandardMaterial({color:0x477b94,map:earthMap,emissive:0x06121c,emissiveIntensity:.18,roughness:.94,metalness:0});
+  const earth=new THREE.Mesh(new THREE.SphereGeometry(355,64,40),earthMat); g.add(earth);
+  const atmo=new THREE.Mesh(new THREE.SphereGeometry(366,48,30),new THREE.MeshBasicMaterial({color:0x64b9ff,transparent:true,opacity:.18,side:THREE.FrontSide,depthWrite:false,blending:THREE.AdditiveBlending})); g.add(atmo);
+  const orbitPts=[]; for(let i=0;i<=128;i++){ const a=-1.05+i/128*Math.PI*2.15; orbitPts.push(new THREE.Vector3(Math.cos(a)*690,Math.sin(a)*105,Math.sin(a)*505)); }
+  const ribbon=new THREE.Line(new THREE.BufferGeometry().setFromPoints(orbitPts),new THREE.LineBasicMaterial({color:0x67d7ff,transparent:true,opacity:.64})); g.add(ribbon);
+  const craft=cape3dVehicleMesh(); craft.scale.setScalar(.72); g.add(craft);
+  const plume=new THREE.Mesh(new THREE.ConeGeometry(12,72,14),new THREE.MeshBasicMaterial({color:0xffa23f,transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending})); plume.rotation.x=Math.PI*.5; craft.add(plume);
+  const glow=new THREE.PointLight(0xffa04d,0,280,2); craft.add(glow);
+  const stars=new THREE.BufferGeometry(), points=[]; for(let i=0;i<240;i++){ const a=i*2.399,b=(i%31)*.31,r=1800+(i%17)*90; points.push(Math.cos(a)*r,Math.sin(b)*r*.65,Math.sin(a)*r); } stars.setAttribute('position',new THREE.Float32BufferAttribute(points,3)); const starField=new THREE.Points(stars,new THREE.PointsMaterial({color:0xdcefff,size:4,transparent:true,opacity:.92,depthWrite:false})); g.add(starField);
+  root.add(g); return {group:g,earth,atmo,ribbon,craft,plume,glow,starField};
+}
+function cape3dFailureEffects(root,rocket,launchEffects){
+  const g=new THREE.Group(); g.name='cape3d_failure_effects'; g.visible=false;
+  const fire=new THREE.Mesh(new THREE.SphereGeometry(1,18,14),new THREE.MeshBasicMaterial({color:0xff7a28,transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending})); g.add(fire);
+  const core=new THREE.Mesh(new THREE.SphereGeometry(1,14,10),new THREE.MeshBasicMaterial({color:0xfff3c4,transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending})); g.add(core);
+  const flash=new THREE.PointLight(0xff8a36,0,720,2); g.add(flash);
+  const pieces=[];
+  rocket.children.filter(child=>child!==launchEffects.group).forEach((child,i)=>{
+    const mesh=child.clone(true); mesh.traverse(node=>{ if(node.material&&node.material.clone) node.material=node.material.clone(); }); mesh.visible=false; g.add(mesh);
+    const a=i*2.399, speed=52+(i%5)*18;
+    pieces.push({mesh,local:child.position.clone(),velocity:new THREE.Vector3(Math.cos(a)*speed,45+(i%4)*24,Math.sin(a)*speed),spin:new THREE.Vector3(.8+(i%3)*.55,.5+(i%4)*.32,.65+(i%5)*.24)});
+  });
+  const sparks=[]; const sparkMat=new THREE.MeshBasicMaterial({color:0xffd27b,transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending});
+  for(let i=0;i<26;i++){ const spark=new THREE.Mesh(new THREE.SphereGeometry(2+(i%3),7,6),sparkMat.clone()); spark.visible=false; g.add(spark); const a=i*2.399; sparks.push({mesh:spark,velocity:new THREE.Vector3(Math.cos(a)*(75+(i%6)*15),30+(i%5)*20,Math.sin(a)*(75+(i%6)*15))}); }
+  root.add(g); return {group:g,fire,core,flash,pieces,sparks,active:false,origin:new THREE.Vector3()};
+}
+function cape3dStartFailure(failure,rocket){
+  failure.active=true; failure.origin.copy(rocket.position); failure.group.visible=true;
+  failure.pieces.forEach(piece=>{ piece.mesh.visible=true; piece.mesh.position.copy(failure.origin).add(piece.local); piece.mesh.rotation.set(0,0,0); });
+  failure.sparks.forEach(spark=>{ spark.mesh.visible=true; spark.mesh.position.copy(failure.origin); });
+}
+function cape3dUpdateFailure(failure,p){
+  const t=Math.max(0,Math.min(1,p))*2.8, fade=Math.max(0,1-p*.72);
+  failure.fire.position.copy(failure.origin); failure.core.position.copy(failure.origin); failure.fire.scale.setScalar(24+125*Math.min(1,p*3)); failure.core.scale.setScalar(10+58*Math.min(1,p*4)); failure.fire.material.opacity=.86*fade; failure.core.material.opacity=.95*Math.max(0,1-p*1.8); failure.flash.position.copy(failure.origin); failure.flash.intensity=10*Math.max(0,1-p*2.4);
+  failure.pieces.forEach(piece=>{ piece.mesh.position.copy(failure.origin).add(piece.local).addScaledVector(piece.velocity,t); piece.mesh.position.y-=68*t*t; piece.mesh.rotation.x=piece.spin.x*t; piece.mesh.rotation.y=piece.spin.y*t; piece.mesh.rotation.z=piece.spin.z*t; piece.mesh.traverse(node=>{ if(node.material&&'opacity' in node.material){ node.material.transparent=true; node.material.opacity=fade; } }); });
+  failure.sparks.forEach(spark=>{ spark.mesh.position.copy(failure.origin).addScaledVector(spark.velocity,t); spark.mesh.position.y-=48*t*t; spark.mesh.material.opacity=Math.max(0,1-p*1.35); });
+}
+function cape3dResetFailure(failure){
+  if(!failure) return; failure.active=false; failure.group.visible=false; failure.fire.material.opacity=0; failure.core.material.opacity=0; failure.flash.intensity=0; failure.pieces.forEach(piece=>piece.mesh.visible=false); failure.sparks.forEach(spark=>spark.mesh.visible=false);
+}
+function cape3dEnterLaunchPresentation(snapshot){
+  if(!cape3d||!cape3d.root) return false; const root=cape3d.root, rocket=root.userData.launchRocket, fx=root.userData.launchEffects;
+  if(!rocket||!fx) return false; root.userData.launchActive=true; rocket.position.copy(root.userData.launchBase); fx.group.visible=true; detachCape3DInput(); cape3dUpdateLaunchPresentation(snapshot); return true;
+}
+function cape3dUpdateOrbitPresentation(snapshot){
+  if(!cape3d||!cape3d.root) return false;
+  const root=cape3d.root, orbit=root.userData.orbitWorld; if(!orbit) return false;
+  const launch=root.userData.launchEffects, rocket=root.userData.launchRocket, ascent=root.userData.ascentWorld;
+  if(launch){ launch.group.visible=false; launch.glow.intensity=0; } if(rocket) rocket.visible=false; if(ascent) ascent.group.visible=false;
+  (root.userData.siteObjects||[]).forEach(o=>o.visible=false); root.userData.launchActive=false; root.userData.launchSpace=1; root.userData.orbitActive=true; detachCape3DInput(); orbit.group.visible=true;
+  const q=cape3dOrbitProfile(snapshot), x=Math.cos(q.angle)*690, y=Math.sin(q.angle)*105, z=Math.sin(q.angle)*505;
+  orbit.craft.position.set(x,y,z); orbit.craft.rotation.set(0,-q.angle-.25,Math.sin(q.angle)*.16); orbit.earth.rotation.y=q.progress*.72; orbit.plume.visible=q.burn>.01; orbit.plume.scale.set(1,Math.max(.08,q.burn),1); orbit.plume.material.opacity=.82*q.burn; orbit.glow.intensity=2.4*q.burn;
+  const target=new THREE.Vector3(0,0,0), camA=-.85+q.progress*.34; cape3d.camera.position.set(Math.cos(camA)*1160,650+Math.sin(q.progress*Math.PI)*115,Math.sin(camA)*1160); cape3d.camera.lookAt(target); return true;
+}
+function cape3dUpdateFlightPresentation(snapshot){
+  if(snapshot&&snapshot.phase==='orbit') return cape3dUpdateOrbitPresentation(snapshot);
+  const root=cape3d&&cape3d.root, orbit=root&&root.userData.orbitWorld;
+  if(orbit&&orbit.group.visible){ orbit.group.visible=false; root.userData.orbitActive=false; }
+  return cape3dUpdateLaunchPresentation(snapshot);
+}
+function cape3dUpdateLaunchPresentation(snapshot){
+  if(!cape3d||!cape3d.root||!cape3d.root.userData.launchActive) return false;
+  const root=cape3d.root, rocket=root.userData.launchRocket, fx=root.userData.launchEffects, base=root.userData.launchBase, q=cape3dLaunchProfile(snapshot), failure=root.userData.launchFailure; if(!rocket||!fx||!base) return false;
+  rocket.position.copy(base); rocket.position.y+=q.altitude; root.userData.launchSpace=q.phase==='ascent'?cape3dAscentBlend(q.progress).space:0;
+  if(q.failed){ if(failure&&!failure.active) cape3dStartFailure(failure,rocket); rocket.visible=false; fx.group.visible=false; if(failure) cape3dUpdateFailure(failure,q.failureProgress); }
+  else { rocket.visible=true; if(failure&&failure.active) cape3dResetFailure(failure); fx.group.visible=q.plume>0.01; }
+  fx.flame.scale.set(1,Math.max(.08,q.plume)*(1+q.progress*.35),1); fx.core.scale.set(1,Math.max(.08,q.plume),1); fx.glow.intensity=q.light;
+  fx.smoke.children.forEach((p,i)=>{ p.material.opacity=.05+q.smoke*.28; p.scale.setScalar(.45+q.smoke*(.8+i*.08)); p.position.x=(i%3-1)*(12+q.progress*38); p.position.z=((i*7)%3-1)*(10+q.progress*28); });
+  const target=(q.failed&&failure)?failure.origin.clone():rocket.position.clone(); target.y+=55;
+  const world=root.userData.ascentWorld, blend=cape3dAscentBlend(q.progress);
+  if(world){
+    // The limb is deliberately kept well below the craft (Earth's top remains beneath the
+    // vehicle) and slightly ahead of the chase camera, yielding a horizon instead of a blue wall.
+    world.center.copy(target).add(new THREE.Vector3(300,-1400,-500)); world.earth.position.copy(world.center); world.atmosphere.position.copy(world.center); world.earth.rotation.y=q.progress*.24;
+    world.group.visible=q.phase==='ascent'&&blend.atmosphere>0.01; world.earth.material.opacity=blend.atmosphere; world.atmosphere.material.opacity=blend.atmosphere*.045; world.stars.material.opacity=Math.max(0,(q.progress-.58)/.42)*.9; world.puffs.forEach((p,i)=>{ const lag=(i+1)/world.puffs.length*.18, h=Math.max(0,q.altitude*(1-lag)); p.visible=q.phase==='ascent'&&q.plume>0; p.position.set(base.x+Math.sin(i*4.1)*i*3,base.y+h-28-i*34,base.z+Math.cos(i*3.7)*i*3); p.scale.setScalar(.35+q.progress*(.5+i*.04)); p.material.opacity=(.22+q.progress*.22)*(1-i/world.puffs.length*.6); }); (root.userData.siteObjects||[]).forEach(o=>o.visible=blend.capeVisible);
+  }
+  const follow=170+q.altitude*.085; cape3d.camera.position.set(target.x-follow*.72,target.y+110+q.altitude*.035,target.z+follow); cape3d.camera.lookAt(target); return true;
+}
+function cape3dExitLaunchPresentation(){
+  if(!cape3d||!cape3d.root) return false; const root=cape3d.root, rocket=root.userData.launchRocket, fx=root.userData.launchEffects;
+  if(rocket&&root.userData.launchBase){ rocket.position.copy(root.userData.launchBase); rocket.visible=true; } if(fx){ fx.group.visible=false; fx.glow.intensity=0; } cape3dResetFailure(root.userData.launchFailure); root.userData.launchSpace=0; const world=root.userData.ascentWorld; if(world){ world.group.visible=false; world.puffs.forEach(p=>p.visible=false); } (root.userData.siteObjects||[]).forEach(o=>o.visible=true); root.userData.launchActive=false;
+  cape3d.cam={az:2.25,el:.48,dist:1450,target:{x:420*CAPE3D_SITE_SPREAD,y:0,z:250*CAPE3D_SITE_SPREAD}}; cape3dApplyCamera(); attachCape3DInput(); return true;
+}
+function cape3dExitFlightPresentation(){
+  if(!cape3d||!cape3d.root) return false;
+  const root=cape3d.root, orbit=root.userData.orbitWorld; if(orbit) orbit.group.visible=false; root.userData.orbitActive=false;
+  return cape3dExitLaunchPresentation();
+}
+function buildCape3DScene(scene){
+  const root=new THREE.Group(); root.name='cape3d_root'; scene.add(root);
+  const groundTx=cape3dTexture('ground',20,18), pavementTx=cape3dTexture('pavement',8,8), waterTx=cape3dWaterTexture(), terrainTx=cape3dTerrainVariationTexture();
+  const materials={
+    ground:new THREE.MeshStandardMaterial({color:0xe2ddbc,map:groundTx,roughness:1}), water:new THREE.MeshPhysicalMaterial({color:0x167599,map:waterTx,roughness:.22,metalness:.08,clearcoat:.45,transparent:true,opacity:.88}), road:new THREE.MeshStandardMaterial({color:0x344047,map:pavementTx,roughness:.93}), crawlerway:new THREE.MeshStandardMaterial({color:0x596163,map:pavementTx,roughness:.86}), concrete:new THREE.MeshStandardMaterial({color:0xc8c0af,map:pavementTx,roughness:.91}), metal:cape3dMaterial(0x6d8792,.55,.6), tank:cape3dMaterial(0xe6eff4,.32,.35), dark:cape3dMaterial(0x18242c,.8,.25), building:cape3dMaterial(0x3d6680,.74,.35), vab:cape3dMaterial(0x315b7c,.7,.4), control:cape3dMaterial(0x0f304d,.63,.45), glass:new THREE.MeshStandardMaterial({color:0x84c8ed,emissive:0x0d2534,roughness:.22,metalness:.15}), dish:cape3dMaterial(0x8fb4c6,.38,.55), dome:cape3dMaterial(0x2b536c,.4,.5),
+  };
+  const ground=cape3dMesh(new THREE.PlaneGeometry(3400,3000),materials.ground,0,-1,180,false); ground.rotation.x=-Math.PI/2; root.add(ground);
+  const terrain=cape3dMesh(new THREE.PlaneGeometry(3400,3000),new THREE.MeshBasicMaterial({map:terrainTx,transparent:true,opacity:.72,depthWrite:false}),0,-.72,180,false); terrain.rotation.x=-Math.PI/2; root.add(terrain);
+  const ocean=cape3dMesh(new THREE.PlaneGeometry(3600,3400),materials.water,2700,-2.4,370,false); ocean.rotation.x=-Math.PI/2; root.add(ocean);
+  const roads=cape3dRoads(materials); root.add(roads);
+  const facilities=new THREE.Group(); facilities.name='cape3d_facilities'; root.add(facilities);
+  const descriptors=syncCape3DFromState(); descriptors.forEach(d=>facilities.add(cape3dFacilityGroup(d,materials))); const vegetation=cape3dVegetation(root,materials); root.userData.clouds=cape3dClouds(root); root.userData.practicalLights=[...cape3dPracticalLights(root,descriptors),...cape3dStreetLights(root,materials)]; root.userData.windowMaterial=materials.glass; root.userData.water=waterTx;
+  const pad=descriptors.find(d=>d.key==='pad'); if(pad){ const rocket=cape3dVehicleMesh(); rocket.position.set(pad.position.x-pad.footprint.x*.18,2,pad.position.z); root.add(rocket); root.userData.launchPad=pad; root.userData.launchRocket=rocket; root.userData.launchBase=rocket.position.clone(); root.userData.launchEffects=cape3dLaunchEffects(rocket); root.userData.launchFailure=cape3dFailureEffects(root,rocket,root.userData.launchEffects); root.userData.ascentWorld=cape3dAscentWorld(root,pad); root.userData.orbitWorld=cape3dOrbitWorld(root); }
+  root.userData.siteObjects=[ground,terrain,ocean,roads,facilities,vegetation];
+  // State-driven growth receives simple massing in this slice; detailed variants arrive with the art pass.
+  try{
+    const sc=siteScale(), padDef=ISO_BUILDINGS.find(b=>b.key==='pad');
+    for(let i=1;i<sc.pads;i++){ const off=[-2,-1,1,2][i-1]; if(off==null) break; const extra=capeFacilityDescriptor(Object.assign({},padDef,{key:'pad_extra_'+i,gy:padDef.gy+off,h:96})); facilities.add(cape3dFacilityGroup(extra,materials)); }
+    [['leoOps',0x5aa9e0],['lunarOps',0xb9c0c7],['marsOps',0xc1532b]].forEach((entry,i)=>{ if(!sc[entry[0]]) return; const o=new THREE.Group(), p=capeWorldPoint(2.8+i*1.1,4.5+i*.5); o.position.set(p.x,0,p.z); cape3dBox(o,82,46,82,materials.dark,0,23,0); cape3dCylinder(o,4,5,new THREE.MeshStandardMaterial({color:entry[1],emissive:entry[1],emissiveIntensity:.35}),0,49,0); facilities.add(o); });
+  }catch(e){}
+  return root;
+}
+function syncCape3DFromState(){
+  const descriptors=capeFacilityDescriptors();
+  if(cape3d) cape3d.descriptors=descriptors;
+  return descriptors;
+}
+function mountCape3D(hostId, hotspotHostId){
+  if(!cape3d || !cape3d.renderer) return false;
+  const host=$(hostId||'ccSceneHost'); if(!host) return false;
+  if(host.classList) host.classList.add('cape3d-host');
+  if(host.parentElement&&host.parentElement.classList) host.parentElement.classList.add('cape3d-zoom');
+  if(cape3d.renderer.domElement.parentNode!==host) host.appendChild(cape3d.renderer.domElement);
+  cape3d.mountId=hostId||'ccSceneHost'; cape3dSetHotspotHost(hotspotHostId); cape3dProjectHotspots();
+  return true;
+}
+function resizeCape3D(width,height){
+  if(!cape3d) return false;
+  const w=Math.max(1,width||CAPE_W), h=Math.max(1,height||CAPE_H);
+  cape3d.camera.aspect=w/h; cape3d.camera.updateProjectionMatrix(); cape3d.renderer.setSize(w,h,false);
+  return true;
+}
+function cape3dTick(){
+  if(!cape3d||cape3d.paused) return;
+  const t=(Date.now()-cape3d.startedAt)/1000, atmo=skyAtmosphere(t), c=atmo.mid.split(',').map(Number), spaceMix=Math.max(0,Math.min(1,((cape3d.root&&cape3d.root.userData.orbitActive)?1:(cape3d.root&&cape3d.root.userData.launchSpace)||0)));
+  const sky=new THREE.Color(c[0]/255,c[1]/255,c[2]/255), space=new THREE.Color(0x020914); cape3d.scene.background.copy(sky).lerp(space,spaceMix); if(cape3d.scene.fog){ cape3d.scene.fog.color.copy(cape3d.scene.background); cape3d.scene.fog.density=.00038*(1-spaceMix*.96); }
+  const sunA=Math.max(.03,atmo.sunA), az=(atmo.sunX-.5)*Math.PI*1.6, alt=(.15+(1-atmo.sunY)*.75)*Math.PI*.5;
+  cape3d.sun.position.set(800*Math.cos(alt)*Math.cos(az),800*Math.sin(alt),800*Math.cos(alt)*Math.sin(az));
+  // The daylight Cape needs a powerful key light; the textured Earth does not. Fade that
+  // exposure as we leave the site so bright terrain lighting cannot clip the globe to white.
+  cape3d.sun.intensity=(.08+sunA*3.0)*(1-spaceMix*.72); cape3d.hemi.intensity=(.035+sunA*.5)*(1-spaceMix*.36);
+  const night=Math.max(0,1-sunA);
+  if(cape3d.root&&cape3d.root.userData.practicalLights) cape3d.root.userData.practicalLights.forEach(l=>{ l.light.intensity=.04+night*3.1; l.fixture.material.emissiveIntensity=.08+night*2.6; });
+  if(cape3d.root&&cape3d.root.userData.windowMaterial) cape3d.root.userData.windowMaterial.emissiveIntensity=.08+night*2.25;
+  const water=cape3d.root&&cape3d.root.userData.water; if(water){ water.offset.x=t*.0025; water.offset.y=t*.0014; }
+  const clouds=cape3d.root&&cape3d.root.userData.clouds; if(clouds) clouds.forEach((cloud,i)=>{ cloud.position.x=-1000+((cloud.userData.baseX+1000+t*(.32+(i%3)*.11))%3500); cloud.material.opacity=(.14+(i%3)*.06)*(.38+sunA*.62); });
+  cape3dProjectHotspots();
+}
+function renderCape3DFrame(){ if(cape3d){ cape3dTick(); cape3d.renderer.render(cape3d.scene,cape3d.camera); } }
+function cape3dLoop(){ if(!cape3d||cape3d.paused) return; renderCape3DFrame(); cape3d.raf=requestAnimationFrame(cape3dLoop); }
+function startCape3D(hostId,width,height){
+  if(!cape3dAvailable()) return false;
+  try{
+    if(cape3d){ mountCape3D(hostId); resizeCape3D(width,height); return true; }
+    // Three may finish loading after the normal view has already created its Phaser fallback.
+    // Destroy that canvas before mounting so it cannot occupy the visible host above the WebGL canvas.
+    if(capeGame){ try{ capeGame.destroy(true); }catch(e){} capeGame=null; }
+    const quality=cape3dFlightQualityProfile(), renderer=new THREE.WebGLRenderer({antialias:true});
+    if('outputColorSpace' in renderer) renderer.outputColorSpace=THREE.SRGBColorSpace;
+    renderer.setPixelRatio(Math.min((typeof window!=='undefined'&&window.devicePixelRatio)||1,quality.pixelRatio));
+    const scene=new THREE.Scene(); scene.background=new THREE.Color(0x07101a); scene.fog=new THREE.FogExp2(0x07101a,.00038);
+    const camera=new THREE.PerspectiveCamera(40,1,1,100000);
+    camera.position.set(-850,650,1150); camera.lookAt(420,0,250);
+    renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFShadowMap;
+    const sun=new THREE.DirectionalLight(0xffefcf,1.8); sun.castShadow=true; sun.shadow.mapSize.set(quality.shadowMap,quality.shadowMap); sun.shadow.camera.left=-950; sun.shadow.camera.right=950; sun.shadow.camera.top=950; sun.shadow.camera.bottom=-950; scene.add(sun);
+    const hemi=new THREE.HemisphereLight(0x93cbed,0x14231a,.45); scene.add(hemi);
+    const root=buildCape3DScene(scene);
+    cape3d={renderer,scene,camera,sun,hemi,root,quality,descriptors:syncCape3DFromState(),mountId:hostId||'ccSceneHost',paused:false,startedAt:Date.now(),raf:0,cam:{az:2.25,el:.48,dist:1450,target:{x:420*CAPE3D_SITE_SPREAD,y:0,z:250*CAPE3D_SITE_SPREAD}},raycaster:new THREE.Raycaster(),inputAttached:false};
+    renderer.domElement.style.position='absolute'; renderer.domElement.style.inset='0'; renderer.domElement.style.width='100%'; renderer.domElement.style.height='100%'; renderer.domElement.style.display='block';
+    cape3dApplyCamera(); mountCape3D(hostId); resizeCape3D(width,height); attachCape3DInput(); renderCape3DFrame(); cape3d.raf=requestAnimationFrame(cape3dLoop);
+    return true;
+  }catch(e){ disposeCape3D(); return false; }
+}
+function pauseCape3D(){ if(cape3d){ cape3d.paused=true; if(cape3d.raf) cancelAnimationFrame(cape3d.raf); cape3d.raf=0; } }
+function resumeCape3D(){ if(cape3d&&cape3d.paused){ cape3d.paused=false; renderCape3DFrame(); cape3d.raf=requestAnimationFrame(cape3dLoop); } }
+function disposeCape3D(){
+  if(!cape3d) return;
+  try{ if(cape3d.raf) cancelAnimationFrame(cape3d.raf); detachCape3DInput(); cape3d.renderer.dispose(); const d=cape3d.renderer.domElement; if(d&&d.parentNode) d.parentNode.removeChild(d); }catch(e){}
+  cape3d=null;
+}
 let CapeScene=null, capeGame=null;
 function defineCapeScene(){
   if(CapeScene || !phaserOK()) return;
@@ -2060,7 +2498,7 @@ function ccSpotsHTML(){
     const label=esc(`${b.name}. ${g?g.label+'. ':''}${b.status}.`);
     const tag=planned?'div':'button';
     const buttonAttrs=planned?'':` type="button" aria-label="${label}"`;
-    return `<${tag} class="ccspot${planned?' planned':''}${g&&g.state==='attention'?' cc-attention':''}" style="${style}"${buttonAttrs}${onclick} title="${esc(titleTxt)}">
+    return `<${tag} class="ccspot${planned?' planned':''}${g&&g.state==='attention'?' cc-attention':''}" data-cape3d-key="${esc(b.key)}" style="${style}"${buttonAttrs}${onclick} title="${esc(titleTxt)}">
       ${b.planned?`<span class="pill lock"${lx}>planned</span>`:''}
       ${dot}
       <span class="nm"${lx}>${esc(b.name)}</span>
@@ -2070,6 +2508,26 @@ function ccSpotsHTML(){
 }
 function renderCCCenter(){
   const spots=ccSpotsHTML();
+  if(cape3dAvailable()){
+    if(!$('ccSceneHost')){
+      $('ccCenter').innerHTML=`<div class="card cc-hero-card">
+        <div class="cc-hero-head">
+          <div class="cc-panel-h" style="margin:0">Cape Canaveral — click a building to drill in</div>
+          <button class="btn ghost" onclick="openCCPopout()" title="Pop out — large 3D view + agency summary (Esc/Enter to close)" style="font-size:12px;padding:3px 9px">⤢ Pop out</button>
+        </div>
+        <div class="ccscene-wrap" id="ccSceneWrap" style="aspect-ratio:1200/860">
+          <div id="ccZoom">
+            <div id="ccSceneHost" class="ccscene" style="position:absolute;inset:0;padding:0"></div>
+            <div id="ccSpots">${spots}</div>
+          </div>
+          <div class="cc-zoomhint">drag to orbit · scroll to zoom · double-click reset</div>
+        </div>
+      </div>`;
+    } else $('ccSpots').innerHTML=spots;
+    const host=$('ccSceneHost'), wrap=$('ccSceneWrap');
+    const w=(host&&host.clientWidth)||(wrap&&wrap.clientWidth)||CAPE_W, h=(host&&host.clientHeight)||(wrap&&wrap.clientHeight)||CAPE_H;
+    if(startCape3D('ccSceneHost',w,h)){ cape3dSetHotspotHost('ccSpots'); resumeCape3D(); return; }
+  }
   if(phaserOK()){
     // persistent Phaser host: build the scaffold once, then only refresh the overlay
     if(!$('ccSceneHost')){
@@ -3630,6 +4088,7 @@ function openCCPopout(){
   if(ccPopoutOpen) return;
   closeOtherPopouts('cc');
   ccPopoutOpen=true; ccPop={z:POPOUT_ZOOM_BOOST,x:0,y:0}; ccPopT0=ccNow();
+  const use3d=!!(cape3dAvailable()&&cape3d);
   const ov=document.createElement('div'); ov.className='vehpop-scrim'; ov.id='ccPopout';
   ov.innerHTML=`<div class="vehpop-bar">
       <span class="vehpop-title">⌂ Command Center</span>
@@ -3637,7 +4096,7 @@ function openCCPopout(){
       <button class="vehpop-x" onclick="closeCCPopout()">✕ Close</button>
     </div>
     <div class="vehpop-body">
-      <div class="vehpop-stage" id="ccPopStage"><div id="ccPopFit" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)"><div id="ccPopZoom" style="position:absolute;inset:0;transform-origin:0 0"><canvas id="ccPopCanvas" width="${CAPE_W}" height="${CAPE_H}"></canvas><div id="ccPopSpots"></div></div></div></div>
+      <div class="vehpop-stage" id="ccPopStage">${use3d?'<div id="ccPop3dHost" style="position:absolute;inset:0"></div><div id="ccPopSpots" style="position:absolute;inset:0"></div>':`<div id="ccPopFit" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)"><div id="ccPopZoom" style="position:absolute;inset:0;transform-origin:0 0"><canvas id="ccPopCanvas" width="${CAPE_W}" height="${CAPE_H}"></canvas><div id="ccPopSpots"></div></div></div>`}</div>
       <aside class="vehpop-stats" id="ccPopInfo"></aside>
     </div>`;
   document.body.appendChild(ov); fadeInScrim(ov);
@@ -3658,13 +4117,23 @@ function openCCPopout(){
       try{ el.onclick.call(el,e); }catch(_){}
     },true);
   }
+  if(use3d){
+    const stage=$('ccPopStage'), w=stage&&stage.clientWidth, h=stage&&stage.clientHeight;
+    mountCape3D('ccPop3dHost','ccPopSpots'); resizeCape3D(w||CAPE_W,h||CAPE_H); resumeCape3D();
+    return;
+  }
   initCcPopZoom();
   const fit=ccPopFitBox(); if(fit){ const off=centeredZoomOffset(fit.w,fit.h,ccPop.z); ccPop.x=off.x; ccPop.y=off.y; }
   applyCcPopZoom();
   ccPopFrame=0;
   ccPopAnim=requestAnimationFrame(ccPopLoop);
 }
-function closeCCPopout(){ if(!ccPopoutOpen) return; ccPopoutOpen=false; if(ccPopAnim){ cancelAnimationFrame(ccPopAnim); ccPopAnim=null; } removeScrim('ccPopout'); }
+function closeCCPopout(){
+  if(!ccPopoutOpen) return;
+  const return3d=!!(cape3d&&cape3d.mountId==='ccPop3dHost');
+  ccPopoutOpen=false; if(ccPopAnim){ cancelAnimationFrame(ccPopAnim); ccPopAnim=null; } removeScrim('ccPopout');
+  if(return3d){ const host=$('ccSceneHost'), w=host&&host.clientWidth, h=host&&host.clientHeight; mountCape3D('ccSceneHost','ccSpots'); resizeCape3D(w||CAPE_W,h||CAPE_H); resumeCape3D(); }
+}
 // Scene ↔ pop-out parity: the same Vehicle → Station → Solar System → Control Center order works whether
 // you're in the normal scenes (Tab via nextScene) OR popped out (Tab here switches pop-out → pop-out).
 const POPOUT_OF = { bench:openVehPopout, station:openStationPopout, map:openMapPopout, command:openCCPopout };

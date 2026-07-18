@@ -471,6 +471,95 @@ function createGL2D(gl,textCtx,W,H){
 // Gated to success + orbital + crewed (the capsule nose) — suborbital already shows reentry
 // inline, and cislunar/deep returns aren't wired here yet (future extension).
 function flightHasReentry(s){ return !!(s && s.success && s.isOrbital && s.crewed); }
+/* ---------- Flight 3D Slice 1: presentation adapter + dormant lifecycle ----------
+   This adapter reads the proven flight clock and returns presentation-only data. It owns no
+   simulation state, outcome logic, time advancement, or save data. The renderer stays disabled
+   until the pad/ascent visual slice is ready for browser acceptance. */
+const FLIGHT3D=true;
+let flight3dSession=null;
+function flight3dPhaseAt(spec,t,timing){
+  const d=timing||{}, pad=Math.max(0,d.padDur||0), ascent=Math.max(1,d.ascentDur||7200), cruise=Math.max(1,d.cruiseDur||4800), local=Math.max(0,t||0);
+  if(pad>0&&local<pad) return 'pad';
+  const afterPad=local-pad; if(afterPad<ascent) return 'ascent';
+  if(spec&&spec.mode==='depart') return 'depart';
+  if(afterPad<ascent+cruise) return (spec&&spec.isCislunar)?'transfer':((spec&&spec.isOrbital)?'orbit':'suborbital');
+  return d.reentryDur>0?'reentry':((spec&&spec.dock)?'dock':'complete');
+}
+function flight3dPresentationSnapshot(spec,timing,t){
+  const d=timing||{}, phase=flight3dPhaseAt(spec,t,d), pad=Math.max(0,d.padDur||0), ascent=Math.max(1,d.ascentDur||7200), cruise=Math.max(1,d.cruiseDur||4800), reentry=Math.max(0,d.reentryDur||0), total=Math.max(1,d.totalDur||pad+ascent+cruise+reentry), local=Math.max(0,t||0);
+  let phaseP=0;
+  if(phase==='pad') phaseP=pad?local/pad:1;
+  else if(phase==='ascent') phaseP=(local-pad)/ascent;
+  else if(phase==='orbit'||phase==='transfer') phaseP=(local-pad-ascent)/cruise;
+  else if(phase==='reentry') phaseP=(local-pad-ascent-cruise)/Math.max(1,reentry);
+  else if(['depart','dock','complete'].includes(phase)) phaseP=1;
+  const stages=((spec&&spec.stages)||[]).map(s=>({prop:s.prop||0,count:s.count||1,dia:s.dia||0}));
+  const boosters=spec&&spec.boosters?{count:spec.boosters.count||0,prop:spec.boosters.prop||0,dia:spec.boosters.dia||0,solid:!!spec.boosters.solid}:null;
+  const ascentFailure=phase==='ascent'&&!!(spec&&spec.success===false&&spec.failPhase==='ascent')&&phaseP>=.5;
+  return {phase,phaseProgress:clampA(phaseP,0,1),overallProgress:clampA(local/total,0,1),mode:(spec&&spec.mode)||'launch',crewed:!!(spec&&spec.crewed),isOrbital:!!(spec&&spec.isOrbital),isCislunar:!!(spec&&spec.isCislunar),success:spec?spec.success!==false:true,vehicle:{stages,boosters,transferProp:(spec&&spec.transferProp)||0},effects:{ignition:clampA(d.ignite==null?(phase==='pad'?0:1):d.ignite,0,1),night:!!(spec&&spec.night),ascentFailure,failureProgress:ascentFailure?clampA((phaseP-.5)/.28,0,1):0}};
+}
+function flight3dAvailable(){ return FLIGHT3D&&typeof cape3dAvailable==='function'&&cape3dAvailable()&&typeof startCape3D==='function'; }
+function flight3dRestoreCape(s){
+  if(typeof cape3d==='undefined'||!cape3d) return false;
+  if(s&&s.returnMount&&$(s.returnMount)){ const host=$(s.returnMount); mountCape3D(s.returnMount,s.returnHotspots); resizeCape3D(host.clientWidth||CAPE_W,host.clientHeight||CAPE_H); if(state&&state.tab==='command') resumeCape3D(); else pauseCape3D(); return true; }
+  disposeCape3D(); return true;
+}
+function beginFlight3DSession(spec){
+  if(!flight3dAvailable()) return false;
+  const host=$('flight3dHost'); if(!host) return false;
+  const hadCape=!!cape3d, returnMount=hadCape?cape3d.mountId:null, returnHotspots=hadCape?cape3d.hotspotHostId:null;
+  if(!startCape3D('flight3dHost',900,520)) return false;
+  clearFlight3DDecision(); clearFlight3DReadout(); flight3dSession={active:true,spec,returnMount,returnHotspots,snapshot:null,handedOff:false};
+  host.style.display='block'; const fallback=$('flightZoom'); if(fallback) fallback.style.visibility='hidden';
+  mountCape3D('flight3dHost',null); resizeCape3D(900,520); resumeCape3D(); return cape3dEnterLaunchPresentation(null);
+}
+function flight3dHandoffToFallback(s,reason){
+  if(!s||s.handedOff) return false;
+  try{ cape3dExitFlightPresentation(); flight3dRestoreCape(s); }catch(e){}
+  clearFlight3DReadout(); const host=$('flight3dHost'), fallback=$('flightZoom'); if(host) host.style.display='none'; if(fallback) fallback.style.visibility='';
+  s.handedOff=true; if(reason) console.warn('Flight 3D handed off to the fallback renderer:',reason); return true;
+}
+function clearFlight3DDecision(){ const host=$('flight3dDecision'); if(!host) return false; host.classList.add('hidden'); host.innerHTML=''; return true; }
+function clearFlight3DReadout(){ const host=$('flight3dReadout'); if(!host) return false; host.classList.add('hidden'); host.textContent=''; return true; }
+function updateFlight3DReadout(snapshot){
+  const host=$('flight3dReadout'); if(!host||!snapshot) return false;
+  const p=Math.round(Math.max(0,Math.min(1,snapshot.phaseProgress||0))*100), phase=snapshot.phase;
+  let text='FLIGHT 3D';
+  if(phase==='pad') text+='\nCOUNTDOWN · '+p+'%';
+  else if(phase==='ascent') text+='\n'+(snapshot.effects&&snapshot.effects.ascentFailure?'VEHICLE LOSS':'ASCENT')+' · '+p+'%';
+  else if(phase==='orbit') text+='\n'+(p<13?'ORBITAL INSERTION':'EARTH ORBIT')+' · '+p+'%';
+  else return clearFlight3DReadout();
+  text+='\n'+(snapshot.crewed?'CREWED':'UNCREWED')+' · '+(snapshot.effects&&snapshot.effects.night?'NIGHT':'DAY')+' FLIGHT'; host.textContent=text; host.classList.remove('hidden'); return true;
+}
+function showFlight3DDecision(spec){
+  const s=flight3dSession, host=$('flight3dDecision'); if(!s||s.handedOff||!host||!spec) return false;
+  host.innerHTML=''; const panel=document.createElement('div'); panel.className='flight3d-decision-panel';
+  const title=document.createElement('h3'); title.id='flight3dDecisionTitle'; title.className='flight3d-decision-title'; title.textContent=spec.title||'MISSION CONTROL DECISION'; panel.appendChild(title);
+  for(const line of (spec.lines||[])){ const p=document.createElement('p'); p.className='flight3d-decision-line'; p.textContent=line; panel.appendChild(p); }
+  const actions=document.createElement('div'); actions.className='flight3d-decision-actions';
+  for(const b of (spec.buttons||[])){ const btn=document.createElement('button'); btn.type='button'; btn.className='btn'+(b.ghost?' ghost':''); btn.textContent=b.label; btn.addEventListener('click',()=>{ clearFlight3DDecision(); b.action(); }); actions.appendChild(btn); }
+  panel.appendChild(actions); host.appendChild(panel); host.classList.remove('hidden'); const first=actions.querySelector&&actions.querySelector('button'); if(first&&first.focus) first.focus(); return true;
+}
+function updateFlight3DSession(snapshot){
+  const s=flight3dSession; if(!s) return false; s.snapshot=snapshot;
+  try{
+    // Slice 4 keeps successful Earth-orbit insertion in the live Three renderer. Transfer,
+    // re-entry and failed/deep outcomes still deliberately use the established 2D scenes.
+    if(snapshot&&(['pad','ascent'].includes(snapshot.phase)||(snapshot.phase==='orbit'&&snapshot.isOrbital&&snapshot.success!==false))){
+      if(s.handedOff) return false;
+      updateFlight3DReadout(snapshot);
+      return cape3dUpdateFlightPresentation(snapshot);
+    }
+    if(!s.handedOff) flight3dHandoffToFallback(s);
+    return true;
+  }catch(e){ flight3dHandoffToFallback(s,e); return false; }
+}
+function endFlight3DSession(){
+  const s=flight3dSession; flight3dSession=null; clearFlight3DDecision(); clearFlight3DReadout(); const host=$('flight3dHost'), fallback=$('flightZoom'); if(host) host.style.display='none'; if(fallback) fallback.style.visibility='';
+  if(!s||typeof cape3d==='undefined'||!cape3d) return false;
+  if(!s.handedOff) cape3dExitFlightPresentation();
+  return flight3dRestoreCape(s);
+}
 // Shared flight setup — builds animState for either the Phaser host (CanvasTexture
 // 2D context) or the legacy WebGL/2D canvas. drawScene drives everything from t.
 function setupFlightState(spec, done, ctx, cv, viewCanvas, seedP){
@@ -510,6 +599,7 @@ function setupFlightState(spec, done, ctx, cv, viewCanvas, seedP){
   // than resetting the rocket to the ground. Defaults to 0 (today's ground-level start) for every other caller.
   const seedT=clampA(seedP||0,0,0.85)*ascentDur;
   animState={spec,done,ctx,cv,viewCanvas:viewCanvas||cv,t0:performance.now(),padDur,ascentDur,cruiseDur,reentryDur,totalDur,stars,path,raf:0,trail:[],particles:[],debris:[],rePlasma:[],reSplash:[],shakeX:0,shakeY:0,lastT:0,virtT:seedT,prevWall:performance.now(),sfxSepFired:{},sfxBoomFired:false,sfxEnginePhase:null,recovering:!!spec.recovering,_splashed:false,_splashX:null,reRing:0,ignite:1,_engineStarted:false,pendingDecision:spec._pendingDecisionSeed||null}; // E1.2 slice C: seeded from spec (not set after playMission returns) so the FIRST synchronous animLoop frame already sees it
+  animState.presentation3d=flight3dPresentationSnapshot(spec,animState,seedT);
   sfxInit();
   const totalProp=spec.stages.reduce((a,s)=>a+s.prop,0)+(spec.transferProp||0);
   const engCount=spec.stages[0]?spec.stages[0].count||1:1;
@@ -522,6 +612,7 @@ function setupFlightState(spec, done, ctx, cv, viewCanvas, seedP){
 function playMission(spec, done, seedP){
   $('animTitle').textContent=spec.title+(spec.crewed?'  ·  crewed':'');
   $('animOverlay').classList.remove('hidden');
+  beginFlight3DSession(spec);
   initFlightZoom(); resetFlightZoom(); // attach camera listeners once; reset the view for this fresh flight (persists across its own phase transitions)
   // The Phaser-hosted FlightScene (graphics Slices 1–3) rendered the ascent richly but its
   // reused CanvasTexture blanked the post-ascent phases (orbit / suborbital / cislunar) in
@@ -588,7 +679,7 @@ function endAnim(hold){
     flightRefresh(); // push the post-flight frame to the Phaser texture (no-op in fallback)
     return;
   }
-  animState=null; $('animOverlay').classList.add('hidden'); sleepFlightScene(); if(A.done) A.done();
+  animState=null; endFlight3DSession(); $('animOverlay').classList.add('hidden'); sleepFlightScene(); if(A.done) A.done();
 }
 /* ---------- Flight-overlay manual camera (wheel-zoom + drag-pan) ----------
    New this slice: the full-screen flight overlay (ascent → trajectory → orbit, all
@@ -862,8 +953,8 @@ function startFlightScene(spec, done){
   }
 }
 function sfxCleanupClickHandler(A){ if(A&&A.clickHandler){ const vc=A.viewCanvas||A.cv; if(vc) vc.removeEventListener('click',A.clickHandler); A.clickHandler=null; } }
-function dismissAnim(){ const A=animState; if(!A) return; sfxStop(); sfxCleanupClickHandler(A); const done=A.done; animState=null; $('animOverlay').classList.add('hidden'); sleepFlightScene(); if(done) done(); }
-function skipAnim(){ const A=animState; if(A&&A.held){ dismissAnim(); return; } if(!A) return; cancelAnimationFrame(A.raf); sfxStop(); sfxCleanupClickHandler(A); animState=null; $('animOverlay').classList.add('hidden'); sleepFlightScene(); if(A.done) A.done(); }
+function dismissAnim(){ const A=animState; if(!A) return; sfxStop(); sfxCleanupClickHandler(A); const done=A.done; animState=null; endFlight3DSession(); $('animOverlay').classList.add('hidden'); sleepFlightScene(); if(done) done(); }
+function skipAnim(){ const A=animState; if(A&&A.held){ dismissAnim(); return; } if(!A) return; cancelAnimationFrame(A.raf); sfxStop(); sfxCleanupClickHandler(A); animState=null; endFlight3DSession(); $('animOverlay').classList.add('hidden'); sleepFlightScene(); if(A.done) A.done(); }
 function drawPostFlight(){
   const A=animState; if(!A) return;
   const ctx=A.ctx,W=A.cv.width,H=A.cv.height,s=A.spec;
@@ -1150,7 +1241,7 @@ function resumeFlightForDecision(finalSpec, finish){
   else totalDur=A.ascentDur+A.cruiseDur+reentryDur+(A.spec.dock?DOCK_CARD_MS:1200);
   totalDur+=A.padDur;
   A.reentryDur=reentryDur; A.totalDur=totalDur; A.recovering=!!A.spec.recovering;
-  A.done=finish; A.pendingDecision=null; A._openedForDecision=false;
+  A.done=finish; A.pendingDecision=null; A._openedForDecision=false; clearFlight3DDecision();
   A.held=false; A.prevWall=performance.now();
   animLoop();
   return true;
@@ -1390,6 +1481,7 @@ function drawPad(t){
   if(!A._padStartCue){ A._padStartCue=true; sfxBlip(392, 0.55, 0.13); }
   const padU=clampA((A.padDur>0?t/A.padDur:1),0,1);
   A.ignite = padU<PAD_HOLD_FRAC ? 0 : smooth(clampA((padU-PAD_HOLD_FRAC)/(1-PAD_HOLD_FRAC),0,1));
+  A.presentation3d=flight3dPresentationSnapshot(A.spec,A,t); updateFlight3DSession(A.presentation3d);
   if(!A._engineStarted && padU>=PAD_HOLD_FRAC){
     const es=A._engSpec||{engCount:1,totalProp:0};
     sfxStartEngine(es.engCount, es.totalProp); A._engineStarted=true;
@@ -1414,6 +1506,7 @@ function drawPad(t){
 }
 function drawScene(t){
   const A=animState,s=A.spec;
+  A.presentation3d=flight3dPresentationSnapshot(s,A,t); updateFlight3DSession(A.presentation3d);
   if(A.ctx&&A.ctx.clearFrame) A.ctx.clearFrame(); // GL-2D fallback clears its framebuffer each frame
   A.earthPhase=false; // set true by drawOrbit so the Phaser scene knows to show the native Earth FX layer
   A.ascentPhase=false; // set true by drawAscent so the native ascent FX layer (clouds/vapor) shows only during ascent
@@ -1437,15 +1530,20 @@ function drawScene(t){
     if(A.pendingDecision && A.pendingDecision.holdAt==='pad-start'){ A.held=true;
       // The pad-start procedural cue is fired at the top of drawPad below (via this drawPad(0) call), so
       // the hold doesn't play a separate tone of its own — it's already sounding as the hold frame renders.
-      drawPad(0); drawDecisionPanel(A.pendingDecision.buildPanel()); A.lastT=t; return; }
+      drawPad(0); const panel=A.pendingDecision.buildPanel(); if(!showFlight3DDecision(panel)) drawDecisionPanel(panel); A.lastT=t; return; }
     drawPad(t); A.lastT=t; return;
   }
   // E1.2 slice C: the live-call decision holds RIGHT here, at the pad→ascent handoff — the
   // ignition/liftoff moment — instead of letting the outcome (already resolved before this
   // animation even opened) play out before the player has chosen press-on/abort. Default hold
   // point when a decision doesn't specify one (matches the original live-call-only behavior).
-  if(A.pendingDecision && (A.pendingDecision.holdAt==='pad-end' || !A.pendingDecision.holdAt)){ A.phase='pad'; A.held=true; drawPad(A.padDur); drawDecisionPanel(A.pendingDecision.buildPanel()); A.lastT=t; return; }
+  if(A.pendingDecision && (A.pendingDecision.holdAt==='pad-end' || !A.pendingDecision.holdAt)){
+    A.phase='pad'; A.held=true; drawPad(A.padDur);
+    const panel=A.pendingDecision.buildPanel(); if(!showFlight3DDecision(panel)) drawDecisionPanel(panel);
+    A.lastT=t; return;
+  }
   A.ignite=1; // Slice A: full flame for the rest of the flight — don't inherit the pad's near-1 ramp tail
+  A.presentation3d=flight3dPresentationSnapshot(s,A,t); updateFlight3DSession(A.presentation3d);
   if(at < A.ascentDur || ascentFail){ A.phase='ascent'; drawAscent(at, ascentFail); }
   else {
     // One-time context reset when first leaving the ascent phase. The Phaser path reuses ONE

@@ -496,11 +496,14 @@
   /* Command Center — animated Cape Canaveral scene */
   /* Phaser canvases must never exceed their host (Scale.NONE writes a fixed px width) */
   #ccSceneHost canvas, #flightHost canvas, #vehHost canvas, #mapHost canvas{max-width:100%!important;height:auto!important;display:block}
+  /* The Three canvas needs the whole host; only actual facility buttons should intercept it. */
+  #ccSceneHost.cape3d-host canvas{width:100%!important;height:100%!important;max-width:none!important}
+  #ccSpots,#ccPopSpots{pointer-events:none}
   .ccscene-wrap{position:relative;margin-top:4px;line-height:0;overflow:hidden;border-radius:8px;background:#050a11;touch-action:none}
   #ccZoom{position:absolute;inset:0;transform-origin:0 0}
   .cc-zoomhint{position:absolute;left:8px;bottom:6px;font-family:var(--mono);font-size:var(--fs-min);color:rgba(200,210,220,0.5);line-height:1;pointer-events:none;z-index:6}
   .ccscene{display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:8px;background:#05070d}
-  .ccspot{position:absolute;border:1px solid transparent;border-radius:6px;cursor:pointer;
+  .ccspot{position:absolute;border:1px solid transparent;border-radius:6px;cursor:pointer;pointer-events:auto;
     transition:border-color .12s,background .12s,box-shadow .12s;display:flex;flex-direction:column;justify-content:flex-end;
     padding:4px 6px;overflow:visible;text-align:left;color:inherit;font:inherit;line-height:0}
   button.ccspot{appearance:none;background:transparent}
@@ -736,6 +739,15 @@
   .animwrap{position:fixed;inset:0;background:rgba(4,7,10,.94);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;z-index:70}
   .animwrap #flightCanvasWrap{border:1px solid var(--line);border-radius:8px;max-width:94vw;overflow:hidden;background:#04060a}
   .animwrap #flightCanvasWrap canvas{display:block;width:100%;height:auto}
+  .flight3d-readout{position:absolute;z-index:8;top:14px;left:15px;max-width:250px;padding:8px 10px;border:1px solid rgba(110,208,255,.42);border-radius:5px;background:rgba(2,12,22,.72);box-shadow:0 4px 18px rgba(0,0,0,.25);color:#d9f4ff;font:11px/1.48 var(--mono);letter-spacing:.045em;white-space:pre-line;pointer-events:none}
+  .flight3d-readout.hidden{display:none!important}
+  .flight3d-decision{position:absolute;inset:0;z-index:9;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(2,8,14,.56);pointer-events:auto}
+  .flight3d-decision.hidden{display:none!important}
+  .flight3d-decision-panel{width:min(470px,90%);padding:20px;border:1px solid var(--warn);border-radius:9px;background:rgba(8,23,35,.97);box-shadow:0 18px 55px rgba(0,0,0,.58),inset 0 1px 0 rgba(255,255,255,.08);font-family:var(--mono);line-height:1.42}
+  .flight3d-decision-title{margin:0 0 12px;color:var(--warn);font-size:14px;letter-spacing:.045em;text-align:center}
+  .flight3d-decision-line{margin:5px 0;color:var(--ink);font-size:12px;text-align:center}
+  .flight3d-decision-actions{display:grid;gap:8px;margin-top:17px}
+  .flight3d-decision-actions .btn{width:100%;min-height:34px}
   .animbar{display:flex;align-items:center;gap:14px}
   #animTitle{font-family:var(--mono);letter-spacing:.06em;color:var(--ink);font-size:14px}
 
@@ -771,6 +783,10 @@
     .command-hero #ccZoom::before,.command-hero #ccZoom::after{content:"";position:absolute;inset:0;z-index:1;pointer-events:none}
     .command-hero #ccZoom::before{background:radial-gradient(ellipse at 50% 46%,transparent 34%,color-mix(in srgb,var(--hud-surface) 42%,transparent) 72%,color-mix(in srgb,var(--hud-surface) 68%,transparent) 100%);box-shadow:inset 0 0 72px color-mix(in srgb,var(--hud-surface) 48%,transparent)}
     .command-hero #ccZoom::after{background-image:linear-gradient(90deg,transparent 0 49%,var(--hud-line-soft) 50%,transparent 51%),linear-gradient(0deg,transparent 0 49%,var(--hud-line-soft) 50%,transparent 51%),radial-gradient(circle,var(--hud-glow) 0 1px,transparent 1.5px);background-size:44px 44px,44px 44px,22px 22px;background-position:center;mix-blend-mode:screen;opacity:.22}
+    /* The 2D Cape's dark grade/grid is useful over painted pixels but obscures the lit Three scene. */
+    .command-hero #ccZoom.cape3d-zoom::before,.command-hero #ccZoom.cape3d-zoom::after{display:none}
+    .command-hero #ccZoom.cape3d-zoom .ccspot .nm{font-weight:700;color:#f4fbff;background:rgba(2,13,22,.72);text-shadow:0 1px 3px #000,0 0 8px rgba(0,0,0,.9)}
+    .command-hero #ccZoom.cape3d-zoom .ccspot .st{color:#bdeeff;background:rgba(2,13,22,.58);text-shadow:0 1px 3px #000}
     .command-hero #ccSceneHost{z-index:0}
     .command-hero #ccSpots{position:absolute;inset:0;z-index:2}
     /* Cape names remain scan-friendly; their secondary status is available on intent or when
@@ -1186,7 +1202,7 @@
 
 <div id="animOverlay" class="animwrap hidden">
   <div id="animTitle">—</div>
-  <div id="flightCanvasWrap" style="position:relative;display:inline-block"><div id="flightHost" style="display:none"></div><div id="flightZoom" style="position:relative;transform-origin:0 0"><canvas id="flightCanvas" width="900" height="520"></canvas><canvas id="flightTextCanvas" width="900" height="520" style="position:absolute;left:0;top:0;pointer-events:none"></canvas></div></div>
+  <div id="flightCanvasWrap" style="position:relative;display:inline-block"><div id="flight3dHost" style="display:none;position:absolute;inset:0"></div><div id="flightHost" style="display:none"></div><div id="flightZoom" style="position:relative;transform-origin:0 0"><canvas id="flightCanvas" width="900" height="520"></canvas><canvas id="flightTextCanvas" width="900" height="520" style="position:absolute;left:0;top:0;pointer-events:none"></canvas></div><div id="flight3dReadout" class="flight3d-readout hidden" role="status" aria-live="polite"></div><div id="flight3dDecision" class="flight3d-decision hidden" role="dialog" aria-modal="true" aria-labelledby="flight3dDecisionTitle"></div></div>
   <div class="animbar">
     <span class="dim" style="font-size:12px">Mission playback</span>
     <button class="btn ghost" id="animSpeedBtn" onclick="cycleAnimSpeed()" style="min-width:90px;font-size:12px">1×  Slow</button>
@@ -1222,10 +1238,9 @@
   import('https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.js')
     .then(m => {
       window.THREE = m;
-      // The Map may have initially fallen back to the 2D/SVG renderer while this async module
-      // loaded. Re-render the active tab once Three is ready so the photographic sphere maps are
-      // actually mounted rather than leaving the player on that fallback until a later navigation.
-      if(window.state && window.state.tab==='map' && typeof window.render==='function') window.render();
+      // The Map or Cape may have initially fallen back while this async module loaded. Re-render
+      // the active 3D-capable tab once Three is ready so it mounts without a manual tab switch.
+      if(window.state && (window.state.tab==='map'||window.state.tab==='command') && typeof window.render==='function') window.render();
     })
     .catch(e => { console.warn('Three.js failed to load from CDN; the 3D view will fall back to the 2D Solar System map.', e); });
 </script>

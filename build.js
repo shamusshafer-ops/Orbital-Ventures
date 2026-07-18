@@ -31,6 +31,9 @@ const MAP3D_TEXTURE_FILES = {
   moon:'texture-moon.jpg', mars:'texture-mars.jpg', jupiter:'texture-jupiter.jpg', saturn:'texture-saturn.jpg',
   uranus:'texture-uranus.jpg', neptune:'texture-neptune.jpg',
 };
+// Cape's locally packaged material maps follow the same file://-safe route as the solar maps.
+// The generated PNGs are project assets, with their provenance recorded in assets/CREDITS.md.
+const CAPE3D_TEXTURE_FILES = {cape_ground:'cape-ground-albedo.png',cape_pavement:'cape-pavement-albedo.png'};
 
 // Match the marker independently of the checkout's line-ending style. Git may
 // materialize shell.html with CRLF on Windows; generated script/tag lines use LF.
@@ -40,9 +43,10 @@ function read(p) { return fs.readFileSync(p); }
 
 function embeddedTextureScript(root) {
   const data = {};
-  for (const [id, name] of Object.entries(MAP3D_TEXTURE_FILES)) {
+  for (const [id, name] of Object.entries({...MAP3D_TEXTURE_FILES,...CAPE3D_TEXTURE_FILES})) {
     const file = path.join(root, 'assets', name);
-    if (fs.existsSync(file)) data[id] = `data:image/jpeg;base64,${read(file).toString('base64')}`;
+    const mime=name.endsWith('.png')?'image/png':'image/jpeg';
+    if (fs.existsSync(file)) data[id] = `data:${mime};base64,${read(file).toString('base64')}`;
   }
   if (!Object.keys(data).length) return Buffer.alloc(0); // fixture builds and texture-less forks stay valid
   return Buffer.from(`<script>window.__OV_TEXTURE_DATA__=${JSON.stringify(data)};</script>\n`);
