@@ -1,6 +1,6 @@
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=56; // v56: #89 slice 1 — tracking-station network backend. state.trackingStations
+const SAVE_VERSION=57; // v57: E4.1 — real Keplerian ephemeris. state.windows is a regenerable cache; migrateEphemerisWindows() clears it on pre-v57 load so launch windows regenerate from real Earth→target phase geometry (with eccentricity-driven quality) instead of the old fixed-cadence + random-quality synthesis. committedWindow (a concrete absDay + quality the player already picked) is preserved as-is. No new persisted fields; purely a cache invalidation + physics swap, so no balance migration beyond the (intended) shift in window dates/qualities on next regeneration. v56: #89 slice 1 — tracking-station network backend. state.trackingStations
 // (built station ids, TRACKING_STATIONS in data.js). Purely additive: reads through
 // trackingStationCount()/trackingUpkeep(), both `||[]`-guarded. The gate itself (missionTechMet) is
 // inert — TRACKING_NETWORK_LIVE=false until slice 2 ships a build UI — so this version bump changes
@@ -95,6 +95,15 @@ function migrateWindowsToDays(saved, ver){
   if(saved.committedWindow && saved.committedWindow.abs!=null) saved.committedWindow.abs*=DAYS_PER_MONTH;
   saved.windows={};
 }
+// E4.1 (v57): the launch-window model changed from fixed-cadence + random quality to real
+// phase geometry. state.windows is a regenerable cache keyed by missionId — clear it so any
+// pre-v57 save regenerates windows from the new ephemeris on next access. committedWindow is a
+// concrete {abs, quality} the player already chose, so leave it intact (honor the commitment;
+// only the not-yet-committed candidate list regenerates). Idempotent; no-op on v57+ saves.
+function migrateEphemerisWindows(saved, ver){
+  if((ver||0) >= 57) return;
+  saved.windows={};
+}
 // 2.4 (v42): lazy per-facility field default. loadDefaults only seeds top-level state keys, so a
 // pre-v42 facility carries no autoResupply — default it OFF (undefined is already falsy, this just
 // makes it an explicit boolean so the toggle/UI reads cleanly). Idempotent; no-op on newer saves.
@@ -175,6 +184,7 @@ function showRecap(){
 function applyLoadedSave(payload){
   const saved=payload.state||payload;
   migrateWindowsToDays(saved, payload.v); // 4b: month→day window abs
+  migrateEphemerisWindows(saved, payload.v); // E4.1 (v57): clear regenerable window cache → real phase-geometry windows
   migrateFacilityAutoResupply(saved); // 2.4 (v42): default per-facility autoResupply OFF on pre-v42 saves
   migrateEraSeen(saved); // P6 6.1 (v44): backfill eraSeen to the save's CURRENT era + seed era baseline snapshot
   const defaults=loadDefaults();

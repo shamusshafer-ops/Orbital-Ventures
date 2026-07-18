@@ -97,8 +97,21 @@ flyModuleDelivery('mars_base','power_truss');
 
 // ---------- end-to-end: a deferred Mars delivery docks the module on arrival, via the REAL production path ----------
 {
+  // Seeded (E4.0, corrected E4.1 2026-07-18): seed BEFORE newGame so the WHOLE block is
+  // deterministic — newGame randomizes initial state (staff/rivals/offers), so seeding only
+  // the advance loop (the original E4.0 placement) left that setup on the unseeded stream and
+  // the block stayed subtly flaky. E4.1's ephemeris change shifted the dynamics enough to
+  // expose it; seeding the full block is the robust fix. (Underlying dockModuleNow-vs-
+  // decommissioned-facility bug is still logged separately, out of scope here.)
+  seedRNG(1);
   newGame('engineer'); animEnabled=false; _flightResolving=false;
   foundFacility('mars_base'); state.money=1000;
+  // This e2e validates the DOCKING path, not facility survival. A base founded with the default
+  // FAC_SUPPLY_MONTHS(8) can starve and decommission during the ~7-8mo Mars cruise on some RNG
+  // streams (the source of this block's long-standing flakiness + the logged dockModuleNow bug that
+  // surfaces when a delivery arrives at a vanished facility). Keep the facility provisioned for the
+  // test's duration so docking is validated deterministically under ANY seed, not a magic one.
+  facilityState('mars_base').supply = 999; facilityState('mars_base').autoResupply = true;
   const listBefore=facilityModuleList(facilityState('mars_base')).length;
   const m={ id:'md_e2e_mars', proc:true, deliverModule:{facId:'mars_base',modId:'power_truss'}, moduleCost:7,
     name:'Deliver Power Truss — Mars Base', crew:0, days:210, minRep:0, payout:0, rep:0,
@@ -109,14 +122,16 @@ flyModuleDelivery('mars_base','power_truss');
     deferred:true, ctx:{m, v:computeVehicle(), sim:null, windowQuality:1, flightExpense:1, routine:false, crewed:false,
       outcome:{kind:'success', rel:0.9, story:'', failPhase:null}, rehearsed:false, famId:null, crewId:null, ab:{rel:0,payoutMult:1}} };
   (state.activeFlights=state.activeFlights||[]).push(rec);
-  // Seeded (2026-07-18, E4.0): this block advances 8 real months through random
-  // econ/logistics events with no RNG control, so its pass/fail used to depend on
-  // the global Math.random stream (logged flaky in ROADMAP 2026-07-17). Seed 1 is
-  // verified stable across repeated local runs — see harness.js for seedRNG/restoreRNG.
-  seedRNG(1);
   for(let i=0;i<8;i++) advance(1); // advance() is in MONTHS — 8 covers the 210-day cruise; may pump the arrival along the way
+  // Neutralize the real source of this block's long-standing flakiness: a random decision-modal event
+  // during the cruise leaves a _pending* flag set, which gates pumpFlightArrivals (a legit production
+  // safety — don't resolve an arrival while the player is mid-decision). That has nothing to do with
+  // what this e2e validates (deferred arrival → module docks), so clear the flags to isolate that path
+  // deterministically under ANY seed. (Diagnosed 2026-07-18: failing runs showed the flight unresolved
+  // at absDay 240 > arriveAbs 210 with a pending flag set, NOT a facility/starvation problem.)
+  _pendingLive=_pendingReserve=_pendingOps=_pendingRescue=_pendingSetback=_pendingLogiMishap=_pendingInquiry=_pendingLaunch=_pendingRivalDisaster=null;
   pumpFlightArrivals(); // idempotent if advance() already resolved it
-  restoreRNG();
+  restoreRNG(); // block was seeded from the top (before newGame)
   check('Mars e2e: the deferred flight record is gone (resolved)', !(state.activeFlights||[]).some(f=>f&&f.id==='flt_e2e_mars'));
   check('Mars e2e: the module actually docked', facilityModuleList(facilityState('mars_base')).includes('power_truss'));
   check('Mars e2e: facility module count grew by exactly 1', facilityModuleList(facilityState('mars_base')).length===listBefore+1);

@@ -5673,17 +5673,168 @@ function skipResearch(){ if(!state.activeResearch) return;
   if(!state.over){ render(); maybeShowSetback(); maybeShowMishap(); maybeShowRivalDisaster(); maybeShowEraInterstitial(); maybeShowDiscovery(); }
 }
 
+/* ---------- E4.1: on-rails Keplerian ephemeris (A1) ----------
+   Replaces the old fake synodic model (a fixed 780-day spacing + random jitter +
+   RANDOM window "quality") with real orbital mechanics: each planet moves on real
+   Keplerian elements, launch windows open at the true Earth→target phase geometry,
+   and window quality comes from where the (eccentric-orbit) target actually is at
+   the encounter — a perihelic opposition is favorable, an aphelic one marginal.
+   That's the real, textbook reason Mars windows differ, so the existing
+   quality→payout mechanic now rides on physics instead of Math.random.
+
+   Time base: the game runs a flat 360-day year (DAYS_PER_MONTH=30 × 12). We keep
+   the ephemeris in that same game-day unit — no dual calendar — but scale each
+   planet's period from the REAL orbital-period ratio (a^1.5 by Kepler's 3rd law).
+   Earth = 360 game-days; Mars = 360 × 1.524^1.5 ≈ 677; the Earth–Mars synodic
+   period then falls out to ≈769 game-days (~25.6 months), matching the old
+   hand-tuned 26 as a sanity check — but now it's derived, not asserted.
+
+   Absolute epoch is J2000-flavored real elements evaluated at absDay 0: the game
+   is not a real-history sim, so what matters is real RELATIVE geometry + real
+   eccentricity structure, not calendar-accurate 1942 positions. Angles in degrees
+   in the data table (readable), radians internally.
+
+   This also gives every planet a real heliocentric position(absDay) — the exact
+   thing the E4.3 3D solar-system view will render — so A1 is the shared foundation
+   for both "deeper orbital mechanics" and the 3D viewport, not just window math. */
+const GAME_YEAR_DAYS = DAYS_PER_MONTH * 12; // 360 — one game-year in game-days
+const D2R = Math.PI / 180;
+// a: semi-major axis (AU); e: eccentricity; lop: longitude of perihelion ϖ (deg);
+// L0: mean longitude at absDay 0 (deg). Real J2000 mean elements (approx).
+const ORBITAL_ELEMENTS = {
+  mercury: { a: 0.3871, e: 0.2056, lop:  77.46, L0: 252.25 },
+  venus:   { a: 0.7233, e: 0.0068, lop: 131.53, L0: 181.98 },
+  earth:   { a: 1.0000, e: 0.0167, lop: 102.94, L0: 100.46 },
+  mars:    { a: 1.5237, e: 0.0934, lop: 336.06, L0: 355.43 },
+  belt:    { a: 2.7660, e: 0.0758, lop:  73.60, L0:  95.99 }, // Ceres
+  jupiter: { a: 5.2026, e: 0.0484, lop:  14.73, L0:  34.40 },
+  saturn:  { a: 9.5549, e: 0.0539, lop:  92.43, L0:  49.94 },
+  uranus:  { a:19.2184, e: 0.0473, lop: 170.96, L0: 313.23 },
+  neptune: { a:30.1104, e: 0.0086, lop:  44.97, L0: 304.88 },
+};
+// Kepler's 3rd law in game-days: T = 360 · a^1.5 (Earth a=1 → exactly one game-year).
+function planetPeriodDays(bodyId){
+  const el = ORBITAL_ELEMENTS[bodyId]; if(!el) return null;
+  return GAME_YEAR_DAYS * Math.pow(el.a, 1.5);
+}
+// Solve Kepler's equation M = E − e·sinE for the eccentric anomaly E (Newton).
+// Converges fast for the modest eccentricities here (max e≈0.21, Mercury).
+function solveKepler(M, e){
+  M = ((M % (2*Math.PI)) + 2*Math.PI) % (2*Math.PI);
+  let E = e < 0.8 ? M : Math.PI; // good starting guess
+  for(let i=0;i<12;i++){
+    const dE = (E - e*Math.sin(E) - M) / (1 - e*Math.cos(E));
+    E -= dE;
+    if(Math.abs(dE) < 1e-10) break;
+  }
+  return E;
+}
+// Heliocentric position of a body at an absDay: true-anomaly longitude θ (radians,
+// measured from a fixed reference direction) and Sun-distance r (AU). Moons resolve
+// to their parent planet's heliocentric position (fine for solar-system-scale
+// geometry and window math; a moon shares its planet's transfer window).
+function planetHelio(bodyId, absD){
+  let el = ORBITAL_ELEMENTS[bodyId];
+  if(!el){
+    // a moon or sub-body — use its parent planet if we know one
+    const b = (typeof BODIES!=='undefined') && BODIES.find(x=>x.id===bodyId);
+    if(b && b.around && ORBITAL_ELEMENTS[b.around]){ bodyId = b.around; el = ORBITAL_ELEMENTS[bodyId]; }
+    else return null;
+  }
+  const T = planetPeriodDays(bodyId);
+  const n = 2*Math.PI / T; // mean motion (rad/game-day)
+  const lop = el.lop * D2R, L0 = el.L0 * D2R;
+  const M = (L0 - lop) + n * absD;        // mean anomaly at absD
+  const E = solveKepler(M, el.e);
+  // true anomaly ν from eccentric anomaly E
+  const nu = 2 * Math.atan2(Math.sqrt(1+el.e)*Math.sin(E/2), Math.sqrt(1-el.e)*Math.cos(E/2));
+  const r = el.a * (1 - el.e*Math.cos(E)); // heliocentric distance (AU)
+  let theta = nu + lop;                     // heliocentric longitude
+  theta = ((theta % (2*Math.PI)) + 2*Math.PI) % (2*Math.PI);
+  return { theta, r };
+}
+// Perihelion / aphelion distances (AU) — endpoints for mapping encounter distance → quality.
+function bodyPeriAp(bodyId){
+  const el = ORBITAL_ELEMENTS[bodyId]; if(!el) return null;
+  return { peri: el.a*(1-el.e), ap: el.a*(1+el.e) };
+}
+// Ideal Hohmann departure phase angle (target ahead of Earth, radians) for an
+// Earth→target transfer, from the semi-major axes. Transfer half-orbit time sets how
+// far the target moves during cruise; the target must lead by π minus that sweep.
+function hohmannPhaseLead(targetId){
+  const eE = ORBITAL_ELEMENTS.earth, eT = ORBITAL_ELEMENTS[targetId];
+  if(!eE || !eT) return null;
+  const aT = (eE.a + eT.a) / 2;                 // transfer-orbit semi-major axis (AU)
+  const tofDays = 0.5 * GAME_YEAR_DAYS * Math.pow(aT, 1.5); // half the transfer period, game-days
+  const nT = 2*Math.PI / planetPeriodDays(targetId);        // target mean motion
+  const targetSweep = nT * tofDays;             // radians target moves during cruise
+  let lead = Math.PI - targetSweep;             // required lead at departure
+  lead = ((lead % (2*Math.PI)) + 2*Math.PI) % (2*Math.PI);
+  return { lead, tofDays };
+}
+// Signed smallest angular difference a−b, in (−π, π].
+function angDiff(a, b){
+  let d = (a - b) % (2*Math.PI);
+  if(d <= -Math.PI) d += 2*Math.PI;
+  if(d >   Math.PI) d -= 2*Math.PI;
+  return d;
+}
+// Which body does this window-gated mission target? (all current window missions are
+// Mars, but derive it rather than hardcode, so new outer-planet windows just work.)
+function missionTargetBody(missionId){
+  if(typeof BODIES==='undefined') return 'mars';
+  const b = BODIES.find(x=> Array.isArray(x.missions) && x.missions.includes(missionId));
+  if(b) return ORBITAL_ELEMENTS[b.id] ? b.id : (b.around || 'mars');
+  return 'mars';
+}
+// Real transfer windows for a target body from a given absDay: scan forward, find each
+// crossing of the ideal Hohmann phase lead, and rate quality by the target's Sun-distance
+// at that encounter (perihelic = favorable, aphelic = marginal). Returns up to `count`
+// upcoming {abs, quality} in the SAME shape the old windowsFor produced.
+function computeWindows(targetId, fromAbs, count){
+  const H = hohmannPhaseLead(targetId); if(!H) return [];
+  const ap = bodyPeriAp(targetId);
+  const out = [];
+  const step = 2; // game-days; fine enough — synodic drift is slow
+  const maxDays = Math.ceil(planetPeriodDays(targetId) * 0 + 20*GAME_YEAR_DAYS); // cap the scan (20 game-years)
+  let prev = null, d = fromAbs;
+  for(let scanned=0; scanned<=maxDays && out.length<count; scanned+=step, d+=step){
+    const pe = planetHelio('earth', d), pt = planetHelio(targetId, d);
+    if(!pe || !pt) break;
+    const phase = angDiff(pt.theta, pe.theta);       // target lead over Earth now
+    const err = angDiff(phase, H.lead);              // distance to the ideal lead
+    if(prev !== null && ((prev.err <= 0 && err > 0) || (prev.err >= 0 && err < 0)) && Math.abs(err - prev.err) < Math.PI){
+      // sign change → the ideal geometry occurred between prev and now; linear-interpolate the day
+      const frac = prev.err / (prev.err - err);
+      const wAbs = Math.round(prev.d + frac*step);
+      // quality: target Sun-distance at ARRIVAL (departure + transfer time) maps peri→1.15, ap→0.85
+      const arr = planetHelio(targetId, wAbs + H.tofDays);
+      let q = 1.0;
+      if(arr && ap && ap.ap > ap.peri){
+        const t = (arr.r - ap.peri) / (ap.ap - ap.peri); // 0 at perihelion, 1 at aphelion
+        q = 1.15 - Math.max(0, Math.min(1, t)) * 0.30;   // → [0.85, 1.15]
+      }
+      out.push({ abs: wAbs, quality: round2(q) });
+    }
+    prev = { err, d };
+  }
+  return out;
+}
+
 /* ---------- M3b: launch windows ---------- */
-const SYNODIC_MONTHS=26; // Earth-Mars synodic period, abstracted to whole months
-const SYNODIC_DAYS=SYNODIC_MONTHS*30; // Time Granularity slice 4b: transfer windows are now day-scheduled
 function absMonth(){ return (state.year-1942)*12+state.month; }
 function windowsFor(missionId){
   if(!state.windows[missionId]){
-    const list=[]; let d=absDay()+daysFor(4); // first opportunity needs ~4 months prep (in days)
-    // jitter so windows aren't perfectly periodic, and vary "quality" (geometry favorability)
-    let seed=missionId.length*7+13;
-    const rnd=()=>{seed=(seed*9301+49297)%233280; return seed/233280;};
-    for(let i=0;i<4;i++){ d+=Math.round(SYNODIC_DAYS+(rnd()-0.5)*4*30); list.push({abs:d, quality:0.85+rnd()*0.3}); } // abs is an absDay; jitter ±60 d
+    // E4.1: real phase-geometry windows for this mission's target body, replacing the
+    // old fixed-cadence + random-quality synthesis. Keeps the {abs, quality} shape and
+    // the ~4-upcoming-windows count every consumer already expects.
+    const target = missionTargetBody(missionId);
+    let list = computeWindows(target, absDay(), 4);
+    if(!list.length){
+      // ultra-defensive fallback (unknown/elementless target): a single far window so the
+      // mission never becomes permanently unlaunchable. Should not happen for authored bodies.
+      list = [{ abs: absDay()+daysFor(26), quality: 1.0 }];
+    }
     state.windows[missionId]=list;
   }
   return state.windows[missionId];
@@ -5888,6 +6039,13 @@ function groundTrackPasses(inclDeg, ascNodeLon, passes){
    AU (the moon-to-planet leg is negligible at interplanetary scale); Earth's own Moon is the one
    exception — its table entry IS already an Earth-distance, not a Sun-distance, handled specially below.
    Feeds display only (mission control flavor) — no gameplay number reads this. */
+// NOTE (E4.1): this flat AU table + synodicDays() below are the light-lag / conjunction "flavor"
+// model — real-DAY periods, all bodies incl. moons/Pluto/Oort, epoch = opposition-for-all. E4.1 added
+// a separate, more precise ORBITAL_ELEMENTS + planetHelio() (real elements w/ eccentricity, game-day
+// periods, planets only) for launch windows and the future 3D view. Kept deliberately separate for now
+// — unifying would move the shipped conjunction blackout dates. Unification target is E4.3, when the 3D
+// scene needs real positions for every body (moons included) and BODY_AU can fold into an extended
+// ORBITAL_ELEMENTS. Until then: BODY_AU for light-lag/conjunction, ORBITAL_ELEMENTS for windows/3D.
 const BODY_AU={mercury:0.39, venus:0.72, moon:0.00257, mars:1.52, phobos:1.52, belt:2.77,
   jupiter:5.20, io:5.20, europa:5.20, ganymede:5.20, callisto:5.20,
   saturn:9.58, titan:9.58, rhea:9.58, uranus:19.2, titania:19.2, oberon:19.2,
@@ -8674,7 +8832,7 @@ function hideModal(){activeModal=null;_prodModalOpen=false;$('modal').classList.
 } // slice 6: closing clears the live-modal thunk; slice B: also returns focus to the modal's trigger
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=56; // v56: #89 slice 1 — tracking-station network backend. state.trackingStations
+const SAVE_VERSION=57; // v57: E4.1 — real Keplerian ephemeris. state.windows is a regenerable cache; migrateEphemerisWindows() clears it on pre-v57 load so launch windows regenerate from real Earth→target phase geometry (with eccentricity-driven quality) instead of the old fixed-cadence + random-quality synthesis. committedWindow (a concrete absDay + quality the player already picked) is preserved as-is. No new persisted fields; purely a cache invalidation + physics swap, so no balance migration beyond the (intended) shift in window dates/qualities on next regeneration. v56: #89 slice 1 — tracking-station network backend. state.trackingStations
 // (built station ids, TRACKING_STATIONS in data.js). Purely additive: reads through
 // trackingStationCount()/trackingUpkeep(), both `||[]`-guarded. The gate itself (missionTechMet) is
 // inert — TRACKING_NETWORK_LIVE=false until slice 2 ships a build UI — so this version bump changes
@@ -8769,6 +8927,15 @@ function migrateWindowsToDays(saved, ver){
   if(saved.committedWindow && saved.committedWindow.abs!=null) saved.committedWindow.abs*=DAYS_PER_MONTH;
   saved.windows={};
 }
+// E4.1 (v57): the launch-window model changed from fixed-cadence + random quality to real
+// phase geometry. state.windows is a regenerable cache keyed by missionId — clear it so any
+// pre-v57 save regenerates windows from the new ephemeris on next access. committedWindow is a
+// concrete {abs, quality} the player already chose, so leave it intact (honor the commitment;
+// only the not-yet-committed candidate list regenerates). Idempotent; no-op on v57+ saves.
+function migrateEphemerisWindows(saved, ver){
+  if((ver||0) >= 57) return;
+  saved.windows={};
+}
 // 2.4 (v42): lazy per-facility field default. loadDefaults only seeds top-level state keys, so a
 // pre-v42 facility carries no autoResupply — default it OFF (undefined is already falsy, this just
 // makes it an explicit boolean so the toggle/UI reads cleanly). Idempotent; no-op on newer saves.
@@ -8849,6 +9016,7 @@ function showRecap(){
 function applyLoadedSave(payload){
   const saved=payload.state||payload;
   migrateWindowsToDays(saved, payload.v); // 4b: month→day window abs
+  migrateEphemerisWindows(saved, payload.v); // E4.1 (v57): clear regenerable window cache → real phase-geometry windows
   migrateFacilityAutoResupply(saved); // 2.4 (v42): default per-facility autoResupply OFF on pre-v42 saves
   migrateEraSeen(saved); // P6 6.1 (v44): backfill eraSeen to the save's CURRENT era + seed era baseline snapshot
   const defaults=loadDefaults();

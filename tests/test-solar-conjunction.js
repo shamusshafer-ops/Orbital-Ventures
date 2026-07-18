@@ -1,5 +1,5 @@
 // Physics realism #3 — solar conjunction blackout. synodicDays (Kepler-derived, cross-checked against
-// the game's own existing SYNODIC_MONTHS=26 Mars constant and real Jupiter ~13mo), nextConjunction's
+// the game's own existing Mars ~26-month synodic cadence and real Jupiter ~13mo), nextConjunction's
 // blackout window at/away from the exact conjunction epoch, Earth/Moon exclusion, and body-card
 // rendering (warning flag during blackout, metric otherwise, never both). absDay is monkey-patched for
 // determinism (a plain reassignable function in this codebase — no seeded-RNG dependency needed here).
@@ -14,7 +14,7 @@ newGame('engineer');
 // ---------- synodicDays: matches known real/in-game figures ----------
 {
   const marsSyn=synodicDays('mars');
-  check('mars synodic ≈ the game\'s own SYNODIC_MONTHS=26 constant (within a couple days)', Math.abs(marsSyn-SYNODIC_MONTHS*30)<15);
+  check('mars synodic ≈ the real Earth-Mars synodic period ~780 days (~26 months)', Math.abs(marsSyn-780)<15);
   const jSyn=synodicDays('jupiter');
   check('jupiter synodic ≈ real ~399 days (~13 months)', jSyn>380 && jSyn<420);
   check('moon: no synodic period (Earth-distance entry, not Sun-distance)', synodicDays('moon')===null);
