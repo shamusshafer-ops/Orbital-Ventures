@@ -4746,3 +4746,57 @@ accordion renders any collector group generically. `test-fleet-registry.js` → 
 params/degradation/servicing — is filed as backlog #116, its own epic, not blocking anything. No real-browser
 pass on the board yet (usual headless caveat).
 
+
+## E4 — 3D Viewport + Deeper Orbital Mechanics (2026-07-18, scoped) — EPIC
+
+Full scoping doc: **`MIGRATION.md`** (repo root). Grew out of a user question about
+porting the game to C++/Python/Godot for better orbital mechanics, individual ship
+tracking, and 3D graphics — reconciled against actual ROADMAP status (E0.1 split,
+Fleet Registry #115, the 2026-07-17 physics-realism pass) into the plan below rather
+than a platform port. No monolith to escape, no performance wall; this is new
+features on the existing zero-dependency web build, not a migration.
+
+**Resolved decisions:** 3D renderer is **Three.js**, integrated the way Phaser 3
+already is — pinned CDN tag (`three@<pinned>`), an ESM→global shim so classic-script
+code can use it, all calls guarded with a 2D-map fallback. Orbital-mechanics depth is
+**A1 + A2**: real on-rails Keplerian planet positions first (replacing the M3b-i
+synodic approximation), then orbital-element gameplay added as opt-in decision-bearing
+slices (phase-angle window quality, rendezvous/phasing, extended plane management),
+following the #inclination slice template exactly — no full n-body/Keplerian ship
+propagator (explicitly out of scope; the design's physics-only-where-decision-bearing
+rule rules it out).
+
+### Sub-workstreams
+
+- **E4.0 — Harness: seedable RNG.** Pre-req, not glamorous. The 2026-07-17 session log
+  flagged the harness has no seedable RNG, which already flaked `test-station-slice2`
+  and hid a latent `dockModuleNow` crash (module delivery resolving after its target
+  facility was decommissioned mid-cruise). Needed before E4.1's time-advancing
+  propagation tests can be deterministic. *Sonnet.*
+- **E4.1 — Truthful planetary ephemeris (A1).** Kepler's-equation on-rails planet
+  positions, replacing the synodic approximation. Headless-tested against real
+  2026–2033 Mars transfer-window dates. *Heavy model (math core).*
+- **E4.2 — Three.js integration plumbing.** CDN tag + ESM→global shim + guard pattern
+  (mirrors Phaser). 3D tab inits on first open, not at boot (module script is async).
+  *Sonnet.*
+- **E4.3 — 3D scene: camera + solar-system rendering.** Sun/planets on E4.1 positions,
+  orbit ellipses, pan/zoom/focus-on-body. Scene-graph math (positions, camera
+  transforms) is headless-testable; visual feel is NOT — needs a real-browser playtest
+  pass before the 3D tab ships default-on (same discipline as BENCH_V2). *Heavy design
+  → Sonnet features.*
+- **E4.4 — Persistent ship identity (B).** Narrow gap: Fleet Registry #115 already
+  tracks active flights/facilities/depot/programs/astronauts; this adds durable hull
+  identity + flight history + reuse count that exists *between* missions, reusing the
+  #115 collector shape. Save-versioned, additive. *Heavy design → Sonnet wiring.*
+- **E4.5 — Ships as tracked 3D markers.** Wires E4.4 registry entries onto the E4.3
+  scene. *Heavy seam → Sonnet.*
+- **E4.6 — A2 orbital-element gameplay slices.** One opt-in decision-bearing mechanic
+  at a time; each gets its own identity-guarantee test (no existing mission's numbers
+  move), per the inclination template. *Heavy per slice.*
+- **E4.7 — Flight animations into 3D; retire 2D canvas paths.** Includes folding the
+  still-unstarted unified flight overlay Slices B (cruise-begins outro), C (in-overlay
+  decision panels), D (polish) directly into 3D — decided 2026-07-18, no 2D versions
+  built first since none of B/C/D exist yet. Slice A (pad phase, already shipped in 2D)
+  migrates in this step too. *Sonnet + heavy at overlay-integration seams.*
+
+**Status:** all sub-workstreams NOT STARTED. E4.0 is next up.
