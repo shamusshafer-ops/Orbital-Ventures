@@ -15066,6 +15066,12 @@ function ccLoop(){
    CanvasTexture each frame. Everything here is lazily defined and feature-guarded so
    the headless vm harness (no Phaser global) loads the script and tests logic fine. */
 function phaserOK(){ return typeof Phaser!=='undefined' && !!Phaser.Scene; }
+// E4.2: Three.js availability guard, mirroring phaserOK(). THREE is stashed on window by the
+// async ESM shim in shell.html, so it may be absent at boot (module scripts defer) or absent
+// entirely (CDN/WebGL unavailable, or the headless harness which has no THREE). Callers must
+// gate every Three.js use on this and fall back to the 2D Solar System view when it's false —
+// "not loaded yet" is treated identically to "absent", and the 3D tab initializes on first open.
+function threeOK(){ return typeof THREE!=='undefined' && !!THREE && !!THREE.Scene; }
 const CAPE_W=1200, CAPE_H=860; // Cape scene render resolution (taller for the isometric view; CSS scales to the column)
 let CapeScene=null, capeGame=null;
 function defineCapeScene(){

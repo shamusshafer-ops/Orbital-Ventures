@@ -1207,6 +1207,22 @@
      from CDN so the file stays single-file/no-build. ALL Phaser use is guarded so
      the game still runs (DOM UI + missions via fallback canvas) if it fails to load. -->
 <script src="https://cdn.jsdelivr.net/npm/phaser@3.90.0/dist/phaser.min.js"></script>
+<!-- Three.js (E4.2, hybrid 3D viewport): powers the optional 3D solar-system view only.
+     Modern Three.js is ESM-only (the UMD global build was dropped ~r160), so load it as a
+     module and stash it on window.THREE for the game's classic-script/global scope — this
+     keeps current Three.js without making any of the game's onclick handlers modular. Pinned
+     CDN like Phaser (no single-file bloat, no build change). ALL Three.js use is guarded via
+     threeOK() so the game still runs and the map degrades to the existing 2D Solar System view
+     if the CDN or WebGL is unavailable. Dynamic import + catch so a load failure is a quiet
+     warning, not an uncaught module error — window.THREE simply stays undefined and threeOK()
+     reports absent. The module defers (async), so THREE may be missing at first paint: the guard
+     treats "not loaded yet" the same as "absent", and the 3D tab initializes on first open, not
+     at boot. -->
+<script type="module">
+  import('https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.js')
+    .then(m => { window.THREE = m; })
+    .catch(e => { console.warn('Three.js failed to load from CDN; the 3D view will fall back to the 2D Solar System map.', e); });
+</script>
 <!-- OV:SCRIPTS -->
 </body>
 </html>
