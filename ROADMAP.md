@@ -4826,4 +4826,71 @@ suites green (`test-build-parity.js` excluded — a pre-existing `/tmp`-relative
 `require('../build.js')` path issue, reproduced identically against an unmodified build
 in a properly-rooted checkout; unrelated to this change, not fixed here).
 
-**E4.1 (truthful planetary ephemeris) is next up.**
+**E4.1 shipped 2026-07-18 (below). E4.2 (Three.js CDN + ESM shim + guard plumbing) is next up — mechanical, Sonnet tier.**
+
+
+## Session — E4.1 shipped: real Keplerian ephemeris (2026-07-18)
+
+Replaced the fake launch-window model (fixed ~780-day spacing + random jitter + **random**
+window quality, tied to nothing physical) with real on-rails orbital mechanics. Commit
+`fb8fe0f`.
+
+**Physics.** New `ORBITAL_ELEMENTS` map (real J2000 mean elements a/e/lop/L0 for the 9
+planets + Ceres) drives `planetHelio(bodyId, absD)` → heliocentric {theta, r} via a Newton
+`solveKepler`. Windows now open at the true Earth→target Hohmann phase geometry
+(`hohmannPhaseLead` derives the ~44° lead from the semi-major axes, not hardcoded), and
+window **quality comes from where the eccentric-orbit target actually is at the encounter**
+— perihelic opposition favorable (~1.15), aphelic marginal (~0.85). That's the real reason
+Mars windows differ across the ~15-year great-opposition cycle, and it maps exactly onto the
+existing quality→payout multiplier, which now rides on physics instead of `Math.random`.
+
+**Time base.** Kept in the game's own 360-day-year unit (no dual calendar) with each planet's
+period scaled from the real orbital ratio (Kepler's 3rd law, T = 360·a^1.5). Earth = 360
+game-days, Mars ≈ 677; the Earth–Mars synodic period **falls out to ~769 game-days**, matching
+the old hand-tuned 26-month (780) constant as a derived sanity check rather than an assertion.
+Sample generated windows: first ~14 months out, ~26-month spacing, quality swinging
+1.14→0.85→1.15 over ~15 years — the real opposition cycle, now a genuine "launch now vs wait
+two years for a much better window" decision.
+
+**Shared foundation.** `planetHelio` gives every planet a real heliocentric position(absDay) —
+exactly what the E4.3 3D solar-system view will render — so A1 is infrastructure for both the
+deeper-orbital-mechanics track and the 3D viewport, not just window math.
+
+**API/consumers.** `windowsFor` now delegates to `computeWindows` but keeps the identical
+`{abs, quality}` shape and ~4-upcoming-windows count, so `nextWindowFor` / `missionPlan` /
+`bodyPlan` / `commitWindow` are all unchanged. Non-window missions completely untouched (the
+identity-style guarantee for the set that shouldn't move).
+
+**Save.** SAVE_VERSION 56→57. `state.windows` is a regenerable cache; `migrateEphemerisWindows`
+clears it on pre-v57 load so windows regenerate from the new geometry. `committedWindow` (a
+concrete date the player already chose) is preserved. No new persisted fields.
+
+**Two-model coexistence (deliberate).** The July-17 conjunction feature's `BODY_AU` +
+`synodicDays` (a real-DAY light-lag/conjunction "flavor" model covering all bodies incl.
+moons/Pluto/Oort, epoch = opposition-for-all) is kept **separate** from `ORBITAL_ELEMENTS`
+(precise, eccentric, game-day periods, planets only). Unifying now would move the shipped
+conjunction blackout dates. **Unification target is E4.3**, when the 3D scene needs real
+positions for every body (moons included) and `BODY_AU` can fold into an extended
+`ORBITAL_ELEMENTS`. A coexistence note is in the code at `BODY_AU`.
+
+**Tests.** New `test-ephemeris.js` (54 checks): Kepler round-trips, periods from a^1.5, the
+~769-day synodic period, position periodicity + peri/aphelion bounds, textbook Hohmann transfer
+time (~255 game-days) & phase lead (~44°), phase-geometry windows, quality varying across the
+opposition cycle, determinism (Math.random fully removed from window gen), and every consumer +
+non-window mission intact. `test-solar-conjunction.js`: dropped the reference to the removed
+`SYNODIC_MONTHS` constant, now cross-checks the real ~780-day figure directly.
+
+**test-station-slice2.js flakiness — root-caused and fixed durably.** E4.1's change perturbed
+this pre-existing flake (logged 2026-07-17, only partially tamed by E4.0). Diagnosed the real
+cause: on some RNG streams a random decision-modal event during the 8-month Mars cruise leaves a
+`_pending*` flag set, which gates `pumpFlightArrivals` (a legit production safety — don't resolve
+an arrival mid-decision), so the flight never resolved (observed unresolved at absDay 240 >
+arriveAbs 210). Also found E4.0 had seeded only the advance loop, leaving `newGame` setup on the
+unseeded stream. Durable fix (not a magic seed): seed the whole e2e block, clear the dangling
+`_pending*` flags before `pumpFlightArrivals`, and keep the facility provisioned as a second
+confound guard. Now **28/28 across 12 seeds and deterministic** across repeated runs.
+
+Full regression: **69/69 real suites green** (`test-build-parity.js` excluded — pre-existing
+`/tmp`-path env issue). Documented in `tests/README.md`.
+
+**E4.2 (Three.js CDN plumbing + ESM→global shim + guarded 2D fallback) is next up — mechanical/wiring, Sonnet tier.** Note: E4.3+ (the actual 3D scene) is not headless-testable in this sandbox (no browser), same constraint as BENCH_V2 — those will need real-browser playtests.
