@@ -15220,7 +15220,7 @@ function renderTopbarStatus(){
 function renderSceneMain(){
   if(state.tab==='command')renderCommandCenter(); else { stopCCScene(); pauseCapeGame(); }
   if(state.tab!=='bench') pauseVehGame();
-  if(state.tab!=='map') pauseMapGame();
+  if(state.tab!=='map'){ pauseMapGame(); pauseMap3D(); }
   if(state.tab!=='station') pauseStationGame();
   if(state.tab==='bench'){
     const v2=$('benchV2'); if(v2) v2.classList.toggle('hidden', !BENCH_V2);
@@ -18644,6 +18644,164 @@ function orbitCameraEye(target, azimuth, elevation, distance){
            z: target.z + distance*ce*Math.sin(azimuth) };
 }
 
+/* ---------- E4.3.1: optional Three.js 3D solar-system view (flag MAP3D) ----------
+   The rendering shell over E4.3.0's tested scene math. FLAG OFF by default: the math is
+   headless-tested (test-scene-math.js) but this Three.js layer can't run in the build sandbox
+   (no browser/WebGL), so — exactly like BENCH_V2 — it stays gated until a real-browser playtest.
+   When MAP3D is on AND threeOK(), it's the top-priority map renderer (see renderMap); on any
+   absence or failure it disposes and falls through to the existing Phaser 2D → SVG chain, so it
+   can never break the game. Every planet is placed each frame from bodyScenePos(id, absDay()), so
+   the view is truthful (real Earth↔target geometry) rather than the current 2D map's fake spin.
+
+   PLAYTEST CHECKLIST (before flipping MAP3D=true as default):
+   • scene renders (Sun + planets + orbit rings + starfield), no console errors;
+   • camera: drag rotates (azimuth/elevation), wheel zooms within clamps, click a planet focuses+selects it;
+   • planet positions match the 2D map / body card (advance a few months, Mars should track its window);
+   • fallback verified: force threeOK() false (or a throw) → Phaser/SVG map returns cleanly;
+   • pause/resume across tab switches doesn't leak a second canvas or a runaway rAF loop. */
+const MAP3D = false;
+let map3d = null; // live scene state, or null when not started
+// Pure helpers (testable without Three.js):
+function hexToNum(hex){ const n = parseInt(String(hex||'').replace('#',''), 16); return Number.isFinite(n) ? n : 0xffffff; }
+function planetMeshRadius(b){ // schematic sphere radius (scene units) for a body's mesh
+  if(!b) return 1;
+  if(b.around) return 0.55;                    // moons: small
+  if(b.kind==='belt'||b.kind==='cloud') return 0.6;
+  return Math.max(0.7, (b.dotR||6) * 0.18);    // planets: ~0.9 (small) … ~2.5 (gas giants)
+}
+function disposeMap3D(){
+  if(!map3d) return;
+  try{ if(map3d.raf) cancelAnimationFrame(map3d.raf); }catch(e){}
+  try{ map3d.dom && map3d.dom.removeEventListener && detachMap3DInput(); }catch(e){}
+  try{
+    if(map3d.renderer){
+      if(map3d.renderer.dispose) map3d.renderer.dispose();
+      const el = map3d.renderer.domElement;
+      if(el && el.parentNode) el.parentNode.removeChild(el);
+    }
+  }catch(e){}
+  map3d = null;
+}
+function addStarfield3D(scene){
+  const N=800, pos=new Float32Array(N*3);
+  for(let i=0;i<N;i++){ // random points on a large sphere shell around the scene
+    const u=Math.random()*2-1, t=Math.random()*2*Math.PI, r=1200, s=Math.sqrt(1-u*u);
+    pos[i*3]=r*s*Math.cos(t); pos[i*3+1]=r*u; pos[i*3+2]=r*s*Math.sin(t);
+  }
+  const geo=new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos,3));
+  scene.add(new THREE.Points(geo, new THREE.PointsMaterial({color:0xbcd4e0, size:1.4, sizeAttenuation:false, transparent:true, opacity:0.6})));
+}
+function startMap3D(){
+  if(!MAP3D || !threeOK()) return false;
+  try{
+    if(!ensureMapHost()) return false;
+    const host=$('mapHost'), W=MAP_W, H=MAP_H;
+    if(!map3d){
+      const renderer=new THREE.WebGLRenderer({antialias:true});
+      renderer.setSize(W,H,false);
+      const dom=renderer.domElement; dom.id='map3dCanvas';
+      dom.style.maxWidth='100%'; dom.style.height='auto'; dom.style.display='block';
+      host.appendChild(dom);
+      const scene=new THREE.Scene(); scene.background=new THREE.Color(0x05080d);
+      const camera=new THREE.PerspectiveCamera(50, W/H, 0.1, 5000);
+      scene.add(new THREE.PointLight(0xffffff, 2.4)); // at the Sun (origin)
+      scene.add(new THREE.AmbientLight(0x445566, 0.75));
+      const sun=new THREE.Mesh(new THREE.SphereGeometry(3.0,24,16), new THREE.MeshBasicMaterial({color:0xffcf6a}));
+      scene.add(sun);
+      addStarfield3D(scene);
+      const bodies={};
+      for(const b of BODIES){
+        if(b.kind==='cloud') continue;
+        const isMoon=!!b.around;
+        if(!isMoon && sceneRadiusFor(b.id)==null) continue; // no elements, not a moon → skip
+        const mat=new THREE.MeshStandardMaterial({color:hexToNum(b.color), roughness:0.85, metalness:0.05});
+        const mesh=new THREE.Mesh(new THREE.SphereGeometry(planetMeshRadius(b),20,14), mat);
+        mesh.userData.bodyId=b.id; scene.add(mesh); bodies[b.id]=mesh;
+        if(!isMoon){
+          const pts=orbitRingPoints(b.id,128).map(p=>new THREE.Vector3(p.x,p.y,p.z));
+          const geo=new THREE.BufferGeometry().setFromPoints(pts);
+          scene.add(new THREE.Line(geo, new THREE.LineBasicMaterial({color:0x2a4a63, transparent:true, opacity:0.55})));
+        }
+      }
+      const cam={ az:Math.PI*0.5, el:0.95, dist:190, target:{x:0,y:0,z:0} };
+      map3d={renderer, scene, camera, sun, bodies, cam, dom, raf:0, raycaster:new THREE.Raycaster(), _drag:null};
+      attachMap3DInput();
+    } else if(map3d.dom && !map3d.dom.parentNode){
+      host.appendChild(map3d.dom);
+    }
+    map3dRenderLoop();
+    return true;
+  }catch(e){
+    console.warn('3D map failed, falling back to 2D:', e);
+    disposeMap3D();
+    return false;
+  }
+}
+function map3dApplyCamera(){
+  const c=map3d.cam, eye=orbitCameraEye(c.target, c.az, c.el, c.dist);
+  map3d.camera.position.set(eye.x, eye.y, eye.z);
+  map3d.camera.lookAt(c.target.x, c.target.y, c.target.z);
+}
+function map3dTick(){
+  const d=(typeof absDay==='function')?absDay():0;
+  for(const id in map3d.bodies){
+    const p=bodyScenePos(id, d); if(!p) continue;
+    map3d.bodies[id].position.set(p.x, p.y, p.z);
+  }
+  // keep the focus target tracking the selected body as it orbits
+  const sel=state && state.selectedBody;
+  if(sel && map3d.bodies[sel]){ const t=bodyScenePos(sel,d); if(t) map3d.cam.target=t; }
+  map3dApplyCamera();
+  map3d.renderer.render(map3d.scene, map3d.camera);
+}
+function map3dRenderLoop(){
+  if(!map3d) return;
+  try{ map3dTick(); }catch(e){ console.warn('3D map tick failed, falling back:', e); disposeMap3D(); const c=$('mapCanvas'); if(c) c.style.display='block'; const h=$('mapHost'); if(h) h.style.display='none'; return; }
+  map3d.raf = requestAnimationFrame(map3dRenderLoop);
+}
+// Stop the render loop when leaving the map tab (mirrors pauseMapGame). Cheap teardown: cancels the
+// rAF; the scene rebuilds on the next startMap3D() — simplest correct behavior, no leaked loop.
+function pauseMap3D(){ if(map3d){ disposeMap3D(); } }
+// Hand-rolled orbit-camera input (drag=rotate, wheel=zoom, click=focus+select). Browser-only.
+function _map3dDown(e){ if(!map3d) return; map3d._drag={x:e.clientX, y:e.clientY}; }
+function _map3dUp(e){
+  if(!map3d) return;
+  const moved = map3d._drag && (Math.abs(e.clientX-map3d._drag.x)>3 || Math.abs(e.clientY-map3d._drag.y)>3);
+  if(!moved) map3dPick(e); // a click (not a drag) selects a body
+  map3d._drag=null;
+}
+function _map3dMove(e){
+  if(!map3d || !map3d._drag) return;
+  const dx=e.clientX-map3d._drag.x, dy=e.clientY-map3d._drag.y; map3d._drag={x:e.clientX,y:e.clientY};
+  map3d.cam.az -= dx*0.01;
+  map3d.cam.el = Math.max(-1.5, Math.min(1.5, map3d.cam.el - dy*0.01));
+}
+function _map3dWheel(e){ if(!map3d) return; e.preventDefault(); map3d.cam.dist = Math.max(25, Math.min(1500, map3d.cam.dist*(e.deltaY>0?1.12:0.89))); }
+function map3dPick(e){
+  try{
+    const r=map3d.dom.getBoundingClientRect();
+    const mx=((e.clientX-r.left)/r.width)*2-1, my=-((e.clientY-r.top)/r.height)*2+1;
+    map3d.raycaster.setFromCamera({x:mx,y:my}, map3d.camera);
+    const meshes=Object.keys(map3d.bodies).map(k=>map3d.bodies[k]);
+    const hit=map3d.raycaster.intersectObjects(meshes, false)[0];
+    if(hit && hit.object && hit.object.userData.bodyId) selectBody(hit.object.userData.bodyId);
+  }catch(err){}
+}
+function attachMap3DInput(){
+  const d=map3d.dom; if(!d) return;
+  d.addEventListener('pointerdown', _map3dDown);
+  d.addEventListener('pointerup', _map3dUp);
+  d.addEventListener('pointermove', _map3dMove);
+  d.addEventListener('wheel', _map3dWheel, {passive:false});
+}
+function detachMap3DInput(){
+  const d=map3d && map3d.dom; if(!d) return;
+  d.removeEventListener('pointerdown', _map3dDown);
+  d.removeEventListener('pointerup', _map3dUp);
+  d.removeEventListener('pointermove', _map3dMove);
+  d.removeEventListener('wheel', _map3dWheel);
+}
+
 /* ---------- Solar System map ---------- */
 /* ---------- planet/moon SVG textures (self-contained, no external images) ---------- */
 let _texSeq=0;
@@ -19230,6 +19388,7 @@ function renderMap(){
   const mv=$('mapView'); if(mv) mv.classList.toggle('expanded', mapExpanded);
   const eb=$('mapExpandBtn'); if(eb) eb.textContent = mapExpanded ? '⛶ Exit full screen' : '⛶ Expand';
   const es=$('empireStripWrap'); if(es) es.innerHTML=empireStripHTML(); // empire ledger — both render paths
+  if(MAP3D && threeOK() && startMap3D()){ renderBodyCard(); renderMapActivity(); return; } // E4.3.1: 3D view (flag-gated), falls through to Phaser→SVG on absence/failure
   if(phaserOK() && startMapScene()){ renderBodyCard(); renderMapActivity(); return; }
   const W=720,H=460; let svg;
   if(!state.mapZoom){ svg=renderMapOverview(W,H); }
