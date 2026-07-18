@@ -4799,4 +4799,31 @@ rule rules it out).
   built first since none of B/C/D exist yet. Slice A (pad phase, already shipped in 2D)
   migrates in this step too. *Sonnet + heavy at overlay-integration seams.*
 
-**Status:** all sub-workstreams NOT STARTED. E4.0 is next up.
+**Status:** E4.0 shipped 2026-07-18 (below). E4.1 (truthful planetary ephemeris) is next up.
+
+
+## Session — E4.0 shipped: harness seedable RNG (2026-07-18)
+
+Added `seedRNG(seed)` / `restoreRNG()` to `tests/harness.js`: a small mulberry32 PRNG
+that monkeypatches the global `Math.random`. The game calls `Math.random()` directly at
+~117 sites across sim.js/flight.js/data.js/render.js/shell.js with no threaded rng
+parameter and no captured local reference anywhere in src/ — so a global monkeypatch is
+the only way to get determinism without touching game source, and it correctly reaches
+every call site. Opt-in per suite: a test that never calls `seedRNG()` sees native,
+unseeded `Math.random` exactly as before — zero behavior change for the other 68 suites.
+
+Fixed the flaky `test-station-slice2.js` Mars e2e block flagged in the 2026-07-17 log
+(its 8-month `advance()` loop rides random econ/logistics rolls with no RNG control).
+Reproduced the flake locally first — 3/8 passing across 8 unseeded runs — then verified
+`seedRNG(1)` gives 10/10 passing, deterministic runs. Does NOT fix the underlying
+`dockModuleNow`-vs-decommissioned-facility crash the flake occasionally exposed; that
+stays logged separately as its own out-of-scope finding. Seeding only makes which random
+draws happen reproducible, so a draw-dependent bug now either always reproduces at a
+given seed or never does, instead of intermittently.
+
+Documented in `tests/README.md` (new "Determinism" section). Full regression: 69/69 real
+suites green (`test-build-parity.js` excluded — a pre-existing `/tmp`-relative
+`require('../build.js')` path issue, reproduced identically against an unmodified build
+in a properly-rooted checkout; unrelated to this change, not fixed here).
+
+**E4.1 (truthful planetary ephemeris) is next up.**
