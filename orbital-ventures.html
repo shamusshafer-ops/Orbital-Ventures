@@ -18564,6 +18564,86 @@ function renderProfileReadout(m){
     <div class="dim" style="font-size:12px;text-align:center;margin-top:6px">▸ Build &amp; Launch is under the rocket</div>`);
 }
 
+/* ---------- E4.3.0: 3D solar-system scene math (headless-testable core) ----------
+   Pure geometry that turns E4.1's real heliocentric positions (planetHelio) into 3D scene
+   coordinates for the optional Three.js view (E4.3.1, flag MAP3D). Kept separate from any
+   Three.js call so it runs and is unit-tested under the headless harness — the Three.js
+   rendering shell is a thin layer over these functions.
+
+   DESIGN — "real angles, schematic radii":
+   • ANGLE is truthful. Each planet sits at its real heliocentric longitude theta from
+     planetHelio(id, absDay()), so the scene shows the actual Earth↔target geometry that drives
+     launch windows (the decision-bearing property). This is a real improvement over the current
+     2D map, which fakes both the angle and the orbital motion.
+   • RADIUS is schematic. Real orbital radii span 0.39–30 AU (a 77× range) and can't render to
+     scale; like the existing 2D map we compress them — here with a documented power law
+     R_scene = SCENE_AU_BASE · AU^SCENE_AU_EXP (exp<1) so inner planets stay separated and the
+     outer system stays bounded. Orbit rings are therefore schematic circles, not metric ellipses
+     (same spirit as the 2D map's rings); eccentricity is carried in the truthful angle/among the
+     window math, not drawn to scale here.
+
+   Coordinate convention: Three.js is y-up; the ecliptic is the x–z plane (y≈0), so a top-down
+   camera looks along −y and the scene angle atan2(z,x) equals the real heliocentric theta. Moons
+   resolve to their parent planet's position plus a small schematic offset. */
+const SCENE_AU_BASE = 10;   // Earth (1 AU) → 10 scene units
+const SCENE_AU_EXP  = 0.6;  // radial compression exponent (<1): Neptune 30 AU → ~74 units, not 300
+const SCENE_MOON_OFFSET = 2.2; // schematic moon stand-off from its parent, scene units
+// Schematic orbital radius (scene units) for a body with real Keplerian elements. Moons/belt-less
+// bodies without elements resolve to their parent; unknown → null.
+function sceneRadiusFor(bodyId){
+  let el = (typeof ORBITAL_ELEMENTS!=='undefined') && ORBITAL_ELEMENTS[bodyId];
+  if(!el){
+    const b = (typeof BODIES!=='undefined') && BODIES.find(x=>x.id===bodyId);
+    if(b && b.around && ORBITAL_ELEMENTS[b.around]) el = ORBITAL_ELEMENTS[b.around];
+    else return null;
+  }
+  return SCENE_AU_BASE * Math.pow(el.a, SCENE_AU_EXP);
+}
+// 3D scene position {x,y,z} of a body at an absDay, from its real heliocentric angle + schematic
+// radius. Planets lie in the ecliptic (y=0). A moon is placed at its parent's position plus a small
+// offset along the moon's own (real, shared-with-parent) heliocentric angle so it reads as "beside"
+// the planet rather than colliding with it.
+function bodyScenePos(bodyId, absD){
+  const helio = (typeof planetHelio!=='undefined') && planetHelio(bodyId, absD);
+  if(!helio) return null;
+  const b = (typeof BODIES!=='undefined') && BODIES.find(x=>x.id===bodyId);
+  const isMoon = !!(b && b.around && (typeof ORBITAL_ELEMENTS==='undefined' || !ORBITAL_ELEMENTS[bodyId]));
+  if(isMoon){
+    const parent = bodyScenePos(b.around, absD);
+    if(!parent) return null;
+    return { x: parent.x + Math.cos(helio.theta)*SCENE_MOON_OFFSET,
+             y: 0,
+             z: parent.z + Math.sin(helio.theta)*SCENE_MOON_OFFSET };
+  }
+  const R = sceneRadiusFor(bodyId);
+  if(R==null) return null;
+  return { x: Math.cos(helio.theta)*R, y: 0, z: Math.sin(helio.theta)*R };
+}
+// Polyline points (array of {x,y,z}) tracing a body's schematic circular orbit in the ecliptic —
+// what the Three.js layer feeds into an orbit-ring line. `segments` points, closed loop.
+function orbitRingPoints(bodyId, segments){
+  const R = sceneRadiusFor(bodyId);
+  if(R==null) return [];
+  const n = Math.max(8, segments||96), pts=[];
+  for(let i=0;i<=n;i++){ const a = (i/n)*2*Math.PI; pts.push({ x: Math.cos(a)*R, y:0, z: Math.sin(a)*R }); }
+  return pts;
+}
+// Camera focus target: where the orbit camera should look when a body is selected — its scene
+// position now (falls back to the origin/Sun for unknown bodies so focus never returns null).
+function cameraTargetFor(bodyId, absD){
+  return bodyScenePos(bodyId, absD) || { x:0, y:0, z:0 };
+}
+// Spherical→cartesian for the hand-rolled orbit camera: eye position from a look-at target plus
+// azimuth (rad, around y), elevation (rad, above the ecliptic), and distance (scene units). Pure so
+// the camera math is testable without Three.js. Elevation clamped just inside the poles.
+function orbitCameraEye(target, azimuth, elevation, distance){
+  const el = Math.max(-1.5533, Math.min(1.5533, elevation)); // ~±89°
+  const ce = Math.cos(el), se = Math.sin(el);
+  return { x: target.x + distance*ce*Math.cos(azimuth),
+           y: target.y + distance*se,
+           z: target.z + distance*ce*Math.sin(azimuth) };
+}
+
 /* ---------- Solar System map ---------- */
 /* ---------- planet/moon SVG textures (self-contained, no external images) ---------- */
 let _texSeq=0;
