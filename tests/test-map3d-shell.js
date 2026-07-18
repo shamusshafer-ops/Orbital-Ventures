@@ -8,8 +8,12 @@ function check(name, cond){ if(cond){ pass++; } else { fail++; console.log('FAIL
 
 newGame('engineer');
 
-// ---------- flag ships OFF (browser-pending, like BENCH_V2) ----------
-check('MAP3D flag is defined and OFF by default', typeof MAP3D !== 'undefined' && MAP3D === false);
+// ---------- flag is ON as of 2026-07-18 (default-on at repo owner's request, browser-pending) ----------
+// The safety checks below matter MORE now it's default-on: they prove that even with MAP3D=true, when
+// Three.js/WebGL is unavailable (CDN down, no WebGL, or the headless harness) the game degrades cleanly
+// to the 2D map instead of breaking the tab. If a browser playtest turns up problems, flip MAP3D back off.
+check('MAP3D flag is defined', typeof MAP3D !== 'undefined');
+check('MAP3D is ON (default-on, browser-pending)', MAP3D === true);
 
 // ---------- hexToNum: parses body colors to 0xRRGGBB ints ----------
 check('hexToNum("#c1532b") === 0xc1532b', hexToNum('#c1532b') === 0xc1532b);
@@ -48,11 +52,11 @@ check('every BODIES color parses to a valid 0..0xffffff int',
   check('pauseMap3D() is a safe no-op when no 3D scene exists', !threw);
 }
 
-// ---------- renderMap still uses the 2D path with the flag off (no regression) ----------
+// ---------- renderMap still runs cleanly (harness has no THREE, so it takes the 2D fallback) ----------
 {
   let threw=false;
   try{ state.tab='map'; if(typeof renderMap==='function') renderMap(); }catch(e){ threw=true; console.log('renderMap threw:', e && e.message); }
-  check('renderMap() runs cleanly with MAP3D off (2D path intact)', !threw);
+  check('renderMap() runs cleanly with THREE absent (falls through to 2D even with MAP3D on)', !threw);
 }
 
 console.log(pass+'/'+(pass+fail)+' checks passed');

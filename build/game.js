@@ -17419,21 +17419,23 @@ function orbitCameraEye(target, azimuth, elevation, distance){
 }
 
 /* ---------- E4.3.1: optional Three.js 3D solar-system view (flag MAP3D) ----------
-   The rendering shell over E4.3.0's tested scene math. FLAG OFF by default: the math is
-   headless-tested (test-scene-math.js) but this Three.js layer can't run in the build sandbox
-   (no browser/WebGL), so — exactly like BENCH_V2 — it stays gated until a real-browser playtest.
-   When MAP3D is on AND threeOK(), it's the top-priority map renderer (see renderMap); on any
-   absence or failure it disposes and falls through to the existing Phaser 2D → SVG chain, so it
-   can never break the game. Every planet is placed each frame from bodyScenePos(id, absDay()), so
-   the view is truthful (real Earth↔target geometry) rather than the current 2D map's fake spin.
+   The rendering shell over E4.3.0's tested scene math. DEFAULT ON as of 2026-07-18 at the repo
+   owner's request (private repo, single user) so it can be playtested in a real browser — NOTE it
+   has still never rendered in-sandbox (no browser/WebGL here), so the math is headless-tested but
+   the Three.js rendering/camera/picking are not yet browser-verified. It's guarded three ways so
+   default-on can't break the game: it only runs when threeOK() (Three.js actually loaded + WebGL),
+   startMap3D() try/catches to false, and the render loop try/catches to a 2D-map fallback. On any
+   absence or failure it disposes and falls through to the existing Phaser 2D → SVG chain. Every
+   planet is placed each frame from bodyScenePos(id, absDay()), so the view is truthful (real
+   Earth↔target geometry) rather than the current 2D map's fake spin.
 
-   PLAYTEST CHECKLIST (before flipping MAP3D=true as default):
+   PLAYTEST CHECKLIST (to confirm default-on is actually good; if any fails, set MAP3D=false again):
    • scene renders (Sun + planets + orbit rings + starfield), no console errors;
    • camera: drag rotates (azimuth/elevation), wheel zooms within clamps, click a planet focuses+selects it;
    • planet positions match the 2D map / body card (advance a few months, Mars should track its window);
    • fallback verified: force threeOK() false (or a throw) → Phaser/SVG map returns cleanly;
    • pause/resume across tab switches doesn't leak a second canvas or a runaway rAF loop. */
-const MAP3D = false;
+const MAP3D = true;
 let map3d = null; // live scene state, or null when not started
 // Pure helpers (testable without Three.js):
 function hexToNum(hex){ const n = parseInt(String(hex||'').replace('#',''), 16); return Number.isFinite(n) ? n : 0xffffff; }
