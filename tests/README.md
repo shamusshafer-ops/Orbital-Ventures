@@ -64,6 +64,33 @@ process exit code (0 = all passed).
 | `test-depart-b.js` | Flight pop-out overlay, Slice B — the deferred-departure "cruise begins / ETA" outro card (`spec.mode:'depart'`), driving the real `playMission`/`animLoop`/`endAnim` + `proceedLaunch` dispatch; the actual mission outcome still resolves on arrival, turns later. |
 | `test-progress-unify.js` | F4 — the unified "what's happening now" surface (`#ccProgress` as a view of `outlinerItems()`, the retired UPCOMING chips / "Active R&D" stat line). **Work-in-progress: currently 16/34 — 18 checks fail on unfinished F4 behavior, a pre-existing state, not part of the 236-assertion baseline.** |
 
+## Determinism: `seedRNG(seed)` / `restoreRNG()`
+
+The game calls the global `Math.random()` directly everywhere (no threaded rng
+param, nothing to inject) — so `harness.js` can make a suite deterministic by
+monkeypatching `Math.random` itself. This is opt-in per suite; without calling
+`seedRNG()`, `Math.random` behaves exactly as it always has.
+
+Use it around any test that advances real game time through random econ/
+logistics/event rolls — `advance()` loops, multi-month e2e flows — where an
+unseeded RNG makes pass/fail depend on which random draws happened to land.
+`test-station-slice2.js`'s Mars e2e block is the motivating case (flagged
+flaky in the 2026-07-17 session log; fixed 2026-07-18 by seeding it):
+
+```js
+seedRNG(1);              // fixed seed → same draws every run
+for (let i = 0; i < 8; i++) advance(1);
+pumpFlightArrivals();
+restoreRNG();             // back to native Math.random for anything after
+```
+
+`seedRNG()` with no argument defaults to seed `1` (still reproducible, never
+silently falls back to real randomness). This does not fix bugs that only
+*surface* under specific random draws (e.g. the logged `dockModuleNow`-vs-
+decommissioned-facility case) — it just makes which draws happen reproducible,
+so such a bug either always reproduces at a given seed or never does, instead
+of intermittently.
+
 ## Adding a new suite
 
 Copy the `check()`/`pass`/`fail` pattern from any existing suite. If your

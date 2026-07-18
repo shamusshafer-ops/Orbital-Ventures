@@ -109,8 +109,14 @@ flyModuleDelivery('mars_base','power_truss');
     deferred:true, ctx:{m, v:computeVehicle(), sim:null, windowQuality:1, flightExpense:1, routine:false, crewed:false,
       outcome:{kind:'success', rel:0.9, story:'', failPhase:null}, rehearsed:false, famId:null, crewId:null, ab:{rel:0,payoutMult:1}} };
   (state.activeFlights=state.activeFlights||[]).push(rec);
+  // Seeded (2026-07-18, E4.0): this block advances 8 real months through random
+  // econ/logistics events with no RNG control, so its pass/fail used to depend on
+  // the global Math.random stream (logged flaky in ROADMAP 2026-07-17). Seed 1 is
+  // verified stable across repeated local runs — see harness.js for seedRNG/restoreRNG.
+  seedRNG(1);
   for(let i=0;i<8;i++) advance(1); // advance() is in MONTHS — 8 covers the 210-day cruise; may pump the arrival along the way
   pumpFlightArrivals(); // idempotent if advance() already resolved it
+  restoreRNG();
   check('Mars e2e: the deferred flight record is gone (resolved)', !(state.activeFlights||[]).some(f=>f&&f.id==='flt_e2e_mars'));
   check('Mars e2e: the module actually docked', facilityModuleList(facilityState('mars_base')).includes('power_truss'));
   check('Mars e2e: facility module count grew by exactly 1', facilityModuleList(facilityState('mars_base')).length===listBefore+1);

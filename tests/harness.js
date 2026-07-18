@@ -171,3 +171,45 @@ global.AudioContext = function(){
 };
 global.webkitAudioContext = global.AudioContext;
 global.Image = function(){ return { set src(v){}, addEventListener(){} }; };
+
+// --- seedable RNG -----------------------------------------------------------
+// The game calls the global Math.random() directly at ~117 call sites across
+// sim.js/flight.js/data.js/render.js/shell.js — there is no threaded rng param
+// and no captured local reference to patch around, so monkeypatching the
+// global is the only harness-only way to get determinism (confirmed: no
+// `const x = Math.random` capture anywhere in src/, only inline `Math.random()`
+// calls, so a global patch reaches every one of them).
+//
+// Off by default — existing suites that don't call seedRNG() see the native,
+// non-deterministic Math.random exactly as before; nothing about their
+// behavior changes by this file merely existing.
+//
+// Motivating case (2026-07-17 ROADMAP log): test-station-slice2.js's Mars
+// e2e block advances 8 real months through random econ/logistics events
+// with unseeded RNG, so its pass/fail depends on the global Math.random
+// stream — flaky by construction. Seeding it makes that suite (and any other
+// time-advancing e2e test) deterministic. This does NOT fix the underlying
+// dockModuleNow-vs-decommissioned-facility bug the flake occasionally
+// exposed — that stays logged as a separate, out-of-scope finding; seeding
+// only makes results reproducible instead of intermittent.
+//
+// mulberry32: tiny (one line of mixing), fast, good enough statistical
+// quality for deterministic test fixtures — not cryptographic, not meant to be.
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const _nativeRandom = Math.random.bind(Math);
+global.seedRNG = function (seed) {
+  if (seed === undefined) seed = 1; // fixed default so an omitted seed is still reproducible, not accidentally random
+  Math.random = mulberry32(seed);
+  return seed; // handy to log which seed a test ran with
+};
+global.restoreRNG = function () {
+  Math.random = _nativeRandom;
+};
