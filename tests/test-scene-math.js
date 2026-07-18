@@ -12,38 +12,38 @@ newGame('engineer');
 
 // ---------- sceneRadiusFor: monotonic compression, correct ordering ----------
 {
-  check('Earth scene radius == SCENE_AU_BASE (1 AU anchor)', Math.abs(sceneRadiusFor('earth') - 10) < 1e-9);
+  check('Earth scene radius == SCENE_AU_BASE (1 AU anchor)', Math.abs(sceneRadiusFor('earth') - SCENE_AU_BASE) < 1e-9);
   const order = ['mercury','venus','earth','mars','belt','jupiter','saturn','uranus','neptune'];
   let monotonic = true;
   for(let i=1;i<order.length;i++){ if(!(sceneRadiusFor(order[i]) > sceneRadiusFor(order[i-1]))) monotonic=false; }
   check('scene radii strictly increase Mercury→Neptune', monotonic);
   // compression really compresses: Neptune is 30x Earth's AU but nowhere near 30x the scene radius
-  check('outer system is compressed (Neptune < 10x Earth scene radius despite 30x the AU)',
-    sceneRadiusFor('neptune') < 10*sceneRadiusFor('earth'));
+  check('outer system is compressed but substantially spaced (Neptune is 10–15x Earth, not real-world 30x)',
+    sceneRadiusFor('neptune') > 10*sceneRadiusFor('earth') && sceneRadiusFor('neptune') < 15*sceneRadiusFor('earth'));
   check('sceneRadiusFor(unknown) is null', sceneRadiusFor('not_a_body')===null);
   // a moon resolves to its parent planet's radius
   check('a moon resolves to its parent planet radius (phobos == mars)', sceneRadiusFor('phobos')===sceneRadiusFor('mars'));
 }
 
-// ---------- bodyScenePos: ANGLE is truthful (equals planetHelio theta), planets in the ecliptic ----------
+// ---------- bodyScenePos: real heliocentric distance plus inclination-aware coordinates ----------
 {
   const d = absDay();
   for(const id of ['mercury','earth','mars','jupiter']){
     const p = bodyScenePos(id, d), h = planetHelio(id, d);
-    check(`${id}: lies in the ecliptic plane (y≈0)`, Math.abs(p.y) < 1e-9);
-    near(Math.hypot(p.x,p.z), sceneRadiusFor(id), 1e-6, `${id}: scene distance == schematic radius`);
-    near(norm2pi(Math.atan2(p.z, p.x)), norm2pi(h.theta), 1e-6, `${id}: scene angle == real heliocentric theta`);
+    near(Math.hypot(p.x,p.y,p.z), sceneRadiusAtAU(h.r), 1e-6, `${id}: scene distance follows its live heliocentric radius`);
   }
+  check('Earth remains in the reference ecliptic plane', Math.abs(bodyScenePos('earth',d).y)<1e-9);
+  check('Mercury rises above/below the ecliptic on its inclined plane', Math.abs(bodyScenePos('mercury',d).y)>1e-3);
 }
 
-// ---------- the decision-bearing invariant: Earth↔Mars scene angle == real relative geometry ----------
+// ---------- the decision-bearing planar geometry remains nearly identical for launch-window reading ----------
 {
   const d = absDay();
   const pe = bodyScenePos('earth', d), pm = bodyScenePos('mars', d);
   const he = planetHelio('earth', d), hm = planetHelio('mars', d);
   const sceneSep = norm2pi(Math.atan2(pm.z,pm.x) - Math.atan2(pe.z,pe.x));
   const realSep  = norm2pi(hm.theta - he.theta);
-  near(sceneSep, realSep, 1e-6, 'Earth→Mars scene angular separation == real heliocentric separation (window geometry preserved)');
+  near(sceneSep, realSep, 0.002, 'Earth→Mars projected separation stays close to real heliocentric separation');
 }
 
 // ---------- time evolution: planets move; Earth returns after one game-year ----------
@@ -52,26 +52,33 @@ newGame('engineer');
   check('Mars moves as game-time advances', Math.hypot(p1.x-p0.x, p1.z-p0.z) > 1e-3);
   const e0 = bodyScenePos('earth', 0), eYr = bodyScenePos('earth', planetPeriodDays('earth'));
   near(e0.x, eYr.x, 1e-3, 'Earth returns to the same scene x after one game-year (360 days)');
+  near(e0.y, eYr.y, 1e-3, 'Earth returns to the same scene y after one game-year');
   near(e0.z, eYr.z, 1e-3, 'Earth returns to the same scene z after one game-year');
 }
 
-// ---------- moons: placed beside their parent, small offset, still in-plane ----------
+// ---------- moons: placed at individually scaled orbital offsets, still in-plane ----------
 {
   const d = absDay();
-  const mars = bodyScenePos('mars', d), phobos = bodyScenePos('phobos', d);
+  const mars = bodyScenePos('mars', d), phobos = bodyScenePos('phobos', d), deimos = bodyScenePos('deimos', d);
   const off = Math.hypot(phobos.x-mars.x, phobos.z-mars.z);
-  near(off, SCENE_MOON_OFFSET, 1e-6, 'phobos sits at the schematic moon offset from Mars');
+  const want=planetMeshRadius(BODIES.find(b=>b.id==='mars'))*(0.95+1.65*Math.log(SCENE_MOON_ORBITS.phobos.r)/Math.log(60.3));
+  near(off, want, 1e-6, 'phobos sits at its individually scaled orbital offset from Mars');
   check('phobos stays in the ecliptic plane (y≈0)', Math.abs(phobos.y) < 1e-9);
   check('phobos is much closer to Mars than to the Sun (reads as a moon, not a planet)',
     off < sceneRadiusFor('mars')*0.5);
+  check('Deimos is farther from Mars than Phobos', Math.hypot(deimos.x-mars.x,deimos.z-mars.z) > off);
+  const j=bodyScenePos('jupiter',d), io=bodyScenePos('io',d), callisto=bodyScenePos('callisto',d);
+  check('major-moon spacing preserves ordering (Callisto beyond Io)', Math.hypot(callisto.x-j.x,callisto.z-j.z) > Math.hypot(io.x-j.x,io.z-j.z));
 }
 
-// ---------- orbitRingPoints: closed schematic circle at the body's radius ----------
+// ---------- orbitRingPoints: closed eccentric, inclined path ----------
 {
   const pts = orbitRingPoints('mars', 96);
   check('orbit ring returns segments+1 points (closed loop)', pts.length === 97);
-  const R = sceneRadiusFor('mars');
-  check('every orbit-ring point is at the body radius, in-plane', pts.every(p=> Math.abs(Math.hypot(p.x,p.z)-R) < 1e-6 && Math.abs(p.y)<1e-9));
+  const mercury=orbitRingPoints('mercury',128), mercR=mercury.map(p=>Math.hypot(p.x,p.y,p.z)), mercY=mercury.map(p=>p.y);
+  check('Mercury ring visibly expresses eccentricity', Math.max(...mercR)-Math.min(...mercR)>1);
+  check('Mercury ring visibly expresses inclination', Math.max(...mercY)-Math.min(...mercY)>0.5);
+  check('Earth ring remains flat in its reference plane', orbitRingPoints('earth',64).every(p=>Math.abs(p.y)<1e-9));
   near(pts[0].x, pts[pts.length-1].x, 1e-6, 'ring is closed (first x == last x)');
   near(pts[0].z, pts[pts.length-1].z, 1e-6, 'ring is closed (first z == last z)');
   check('orbit ring enforces a sane minimum segment count', orbitRingPoints('earth', 2).length >= 9);

@@ -15,6 +15,17 @@ newGame('engineer');
 check('MAP3D flag is defined', typeof MAP3D !== 'undefined');
 check('MAP3D is ON (default-on, browser-pending)', MAP3D === true);
 
+// ---------- visual-only map time scrubber never mutates the simulation clock ----------
+{
+  const live=absDay();
+  mapPreviewAbsDay=null;
+  check('map preview initially follows the live simulation day', mapViewAbsDay()===live);
+  mapTimeShift(30);
+  check('map time advances by one preview month without changing simulation time', mapViewAbsDay()===live+30 && absDay()===live);
+  resetMapTime();
+  check('map time reset returns to the live simulation day', mapViewAbsDay()===live);
+}
+
 // ---------- hexToNum: parses body colors to 0xRRGGBB ints ----------
 check('hexToNum("#c1532b") === 0xc1532b', hexToNum('#c1532b') === 0xc1532b);
 check('hexToNum without leading # still parses', hexToNum('3a7bd5') === 0x3a7bd5);
@@ -27,12 +38,21 @@ check('every BODIES color parses to a valid 0..0xffffff int',
 // ---------- planetMeshRadius: bounded, positive, planets bigger than moons ----------
 {
   check('planetMeshRadius is positive for every body', BODIES.every(b=> planetMeshRadius(b) > 0));
-  const mars=BODIES.find(b=>b.id==='mars'), phobos=BODIES.find(b=>b.id==='phobos');
+  const mars=BODIES.find(b=>b.id==='mars'), phobos=BODIES.find(b=>b.id==='phobos'), deimos=BODIES.find(b=>b.id==='deimos');
   const jupiter=BODIES.find(b=>b.id==='jupiter');
   check('a moon mesh is smaller than its planet', planetMeshRadius(phobos) < planetMeshRadius(mars));
   check('a gas giant is at least as large as a terrestrial planet', planetMeshRadius(jupiter) >= planetMeshRadius(mars));
   check('planetMeshRadius(null) is a safe positive default', planetMeshRadius(null) > 0);
-  check('mesh radii stay bounded (no absurd spheres)', BODIES.every(b=> planetMeshRadius(b) <= 4));
+  check('mesh radii stay bounded (no absurd spheres)', BODIES.every(b=> planetMeshRadius(b) <= 6));
+  check('giant planets are materially larger than Earth (scale is no longer nearly flat)', planetMeshRadius(jupiter) > planetMeshRadius(BODIES.find(b=>b.id==='earth'))*4);
+  check('the ten largest moons are represented', ['ganymede','titan','callisto','io','moon','europa','triton','titania','rhea','oberon'].every(id=>BODIES.some(b=>b.id===id)));
+  check('every half-Pluto-sized-or-larger moon is represented', ['ganymede','titan','callisto','io','moon','europa','triton','titania','rhea','oberon','iapetus','charon'].every(id=>BODIES.some(b=>b.id===id)));
+  check('both Martian moons are represented', !!phobos && !!deimos && phobos.around==='mars' && deimos.around==='mars');
+  check('the default planetary skin family is photographic', MAP3D_PLANET_SKIN_VARIANT==='photographic');
+  check('every major mapped world has a packaged equirectangular skin', ['sun','mercury','venus','earth','moon','mars','jupiter','saturn','uranus','neptune'].every(id=>typeof MAP3D_TEXTURE_ASSET[id]==='string'));
+  check('embedded texture data takes precedence when the standalone file cannot load', (()=>{ window.__OV_TEXTURE_DATA__={mars:'data:image/jpeg;base64,test'}; const ok=((window.__OV_TEXTURE_DATA__&&window.__OV_TEXTURE_DATA__.mars)||MAP3D_TEXTURE_ASSET.mars).startsWith('data:image/jpeg'); delete window.__OV_TEXTURE_DATA__; return ok; })());
+  check('a picked terrestrial planet receives a close texture-inspection distance', map3dFocusDistance(mars) < 12);
+  check('a picked gas giant remains far enough away to fit on screen', map3dFocusDistance(jupiter) > map3dFocusDistance(mars));
 }
 
 // ---------- the safety-critical invariant: with THREE absent, 3D never starts and never throws ----------

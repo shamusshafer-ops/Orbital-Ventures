@@ -1220,7 +1220,13 @@
      at boot. -->
 <script type="module">
   import('https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.js')
-    .then(m => { window.THREE = m; })
+    .then(m => {
+      window.THREE = m;
+      // The Map may have initially fallen back to the 2D/SVG renderer while this async module
+      // loaded. Re-render the active tab once Three is ready so the photographic sphere maps are
+      // actually mounted rather than leaving the player on that fallback until a later navigation.
+      if(window.state && window.state.tab==='map' && typeof window.render==='function') window.render();
+    })
     .catch(e => { console.warn('Three.js failed to load from CDN; the 3D view will fall back to the 2D Solar System map.', e); });
 </script>
 <!-- OV:SCRIPTS -->

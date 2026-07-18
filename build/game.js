@@ -1498,6 +1498,12 @@ const BODIES = [
       {label:'LEO → Trans-Mars Injection', dv:3600},
       {label:'TMI → Phobos rendezvous', dv:1500, note:'Phobos\'s gravity is negligible — this is essentially matching orbits.'},
     ]},
+  {id:'deimos', name:'Deimos', kind:'moon', around:'mars', moonR:17, dotR:3, color:'#a69a87', note:'Mars\'s outer, potato-shaped moon — smaller and farther out than Phobos, with an exceptionally gentle surface gravity.',
+    legs:[
+      {label:'Surface → LEO', dv:9400},
+      {label:'LEO → Trans-Mars Injection', dv:3600},
+      {label:'TMI → Deimos rendezvous', dv:1550, note:'A small matching burn reaches Mars\'s more distant natural satellite.'},
+    ]},
   {id:'belt', name:'Asteroid Belt (Ceres)', kind:'belt', r:128, color:'#9aa0a6', note:'Volatiles for propellant, metals, and platinum-group bounty — at the cost of years of transit.',
     missions:['belt_survey','belt_mining'],
     legs:[
@@ -1528,6 +1534,8 @@ const BODIES = [
     legs:[{label:'Surface → LEO', dv:9400},{label:'LEO → Saturn transfer', dv:7000},{label:'Capture → Titan (aerobrake)', dv:700, note:'The atmosphere does most of the braking.'}]},
   {id:'rhea', name:'Rhea', kind:'moon', around:'saturn', moonR:26, dotR:4, color:'#c8ccd0', note:'Saturn\'s second-largest moon — a cratered iceball.',
     legs:[{label:'Surface → LEO', dv:9400},{label:'LEO → Saturn transfer', dv:7000},{label:'Capture → Rhea orbit', dv:900}]},
+  {id:'iapetus', name:'Iapetus', kind:'moon', around:'saturn', moonR:34, dotR:4, color:'#a9a09a', note:'Saturn\'s two-tone outer moon — bright ice on one hemisphere, dark material across the other.',
+    legs:[{label:'Surface → LEO', dv:9400},{label:'LEO → Saturn transfer', dv:7000},{label:'Capture → Iapetus orbit', dv:1050}]},
   {id:'uranus', name:'Uranus System', kind:'planet', r:218, dotR:9, color:'#9fe3e0', note:'The tipped ice giant — orbiting on its side, a cold and distant frontier.',
     legs:[{label:'Surface → LEO', dv:9400},{label:'LEO → Uranus transfer', dv:7700},{label:'Transfer → Uranus system capture', dv:1000}]},
   {id:'titania', name:'Titania', kind:'moon', around:'uranus', moonR:15, dotR:4, color:'#b8a89a', note:'Uranus\'s largest moon — fault canyons across an icy crust.',
@@ -1540,14 +1548,16 @@ const BODIES = [
     legs:[{label:'Surface → LEO', dv:9400},{label:'LEO → Neptune transfer', dv:8200},{label:'Capture → Triton orbit', dv:900, note:'Retrograde orbit makes capture geometry tricky.'}]},
   {id:'pluto', name:'Pluto', kind:'dwarf', r:272, dotR:4, color:'#caa884', note:'The classic ninth — a nitrogen-ice dwarf with a heart-shaped plain, far out in the Kuiper Belt.',
     legs:[{label:'Surface → LEO', dv:9400},{label:'LEO → Pluto transfer', dv:8800, note:'A decade-plus cruise even with assists.'},{label:'Transfer → Pluto orbit', dv:1300, note:'No atmosphere — all propulsive capture.'}]},
+  {id:'charon', name:'Charon', kind:'moon', around:'pluto', moonR:18, dotR:4, color:'#a59b91', note:'Pluto\'s large binary companion — the pair orbit a shared barycenter above Pluto\'s surface.',
+    legs:[{label:'Surface → LEO', dv:9400},{label:'LEO → Pluto transfer', dv:8800},{label:'Pluto transfer → Charon orbit', dv:1400}]},
   {id:'oort', name:'Oort Cloud', kind:'cloud', r:320, color:'#8fb3c8', note:'A vast spherical shell of icy planetesimals at the edge of the Sun\'s gravity — the source of long-period comets, light-months away. Schematic ring only.',
     missions:['oort_precursor'], // I1: the interstellar-precursor capstone
     legs:[{label:'Surface → LEO', dv:9400},{label:'LEO → Solar System Escape', dv:8500, note:'A fusion-torch precursor burn — no other propulsion in reach has a realistic exhaust velocity for this.'}]},
 ];
 // fixed display angles (radians) so bodies aren't collinear — purely cosmetic. Moons use the angle about their planet.
-const ANGLES = {mercury:2.6, venus:2.1, earth:-0.7, moon:0.9, mars:-1.6, phobos:0.3, belt:-0.2,
+const ANGLES = {mercury:2.6, venus:2.1, earth:-0.7, moon:0.9, mars:-1.6, phobos:0.3, deimos:2.6, belt:-0.2,
   jupiter:1.3, io:0.2, europa:1.7, ganymede:3.2, callisto:4.7,
-  saturn:0.4, titan:0.6, rhea:3.5, uranus:-2.4, titania:1.2, oberon:4.0, neptune:3.0, triton:2.3, pluto:-2.9, oort:0};
+  saturn:0.4, titan:0.6, rhea:3.5, iapetus:5.0, uranus:-2.4, titania:1.2, oberon:4.0, neptune:3.0, triton:2.3, pluto:-2.9, charon:0.8, oort:0};
 
 /* ---------- M2: crew & life support ---------- */
 const DAILY_CONSUMABLE = 0.005; // t per crew per day (~5 kg: O2 + water + food + packaging)
@@ -5699,18 +5709,19 @@ function skipResearch(){ if(!state.activeResearch) return;
    for both "deeper orbital mechanics" and the 3D viewport, not just window math. */
 const GAME_YEAR_DAYS = DAYS_PER_MONTH * 12; // 360 — one game-year in game-days
 const D2R = Math.PI / 180;
-// a: semi-major axis (AU); e: eccentricity; lop: longitude of perihelion ϖ (deg);
-// L0: mean longitude at absDay 0 (deg). Real J2000 mean elements (approx).
+// a: semi-major axis (AU); e: eccentricity; inc: inclination; node: ascending node;
+// lop: longitude of perihelion ϖ (all angles degrees); L0: mean longitude at absDay 0.
+// Real J2000 mean elements (approx). inc/node are display-only today; window math remains planar.
 const ORBITAL_ELEMENTS = {
-  mercury: { a: 0.3871, e: 0.2056, lop:  77.46, L0: 252.25 },
-  venus:   { a: 0.7233, e: 0.0068, lop: 131.53, L0: 181.98 },
-  earth:   { a: 1.0000, e: 0.0167, lop: 102.94, L0: 100.46 },
-  mars:    { a: 1.5237, e: 0.0934, lop: 336.06, L0: 355.43 },
-  belt:    { a: 2.7660, e: 0.0758, lop:  73.60, L0:  95.99 }, // Ceres
-  jupiter: { a: 5.2026, e: 0.0484, lop:  14.73, L0:  34.40 },
-  saturn:  { a: 9.5549, e: 0.0539, lop:  92.43, L0:  49.94 },
-  uranus:  { a:19.2184, e: 0.0473, lop: 170.96, L0: 313.23 },
-  neptune: { a:30.1104, e: 0.0086, lop:  44.97, L0: 304.88 },
+  mercury: { a: 0.3871, e: 0.2056, inc:7.005, node: 48.33, lop:  77.46, L0: 252.25 },
+  venus:   { a: 0.7233, e: 0.0068, inc:3.395, node: 76.68, lop: 131.53, L0: 181.98 },
+  earth:   { a: 1.0000, e: 0.0167, inc:0.000, node:  0.00, lop: 102.94, L0: 100.46 },
+  mars:    { a: 1.5237, e: 0.0934, inc:1.851, node: 49.58, lop: 336.06, L0: 355.43 },
+  belt:    { a: 2.7660, e: 0.0758, inc:10.59, node: 80.31, lop:  73.60, L0:  95.99 }, // Ceres
+  jupiter: { a: 5.2026, e: 0.0484, inc:1.304, node:100.56, lop:  14.73, L0:  34.40 },
+  saturn:  { a: 9.5549, e: 0.0539, inc:2.485, node:113.72, lop:  92.43, L0:  49.94 },
+  uranus:  { a:19.2184, e: 0.0473, inc:0.773, node: 74.01, lop: 170.96, L0: 313.23 },
+  neptune: { a:30.1104, e: 0.0086, inc:1.770, node:131.78, lop:  44.97, L0: 304.88 },
 };
 // Kepler's 3rd law in game-days: T = 360 · a^1.5 (Earth a=1 → exactly one game-year).
 function planetPeriodDays(bodyId){
@@ -16759,7 +16770,17 @@ function refreshStationPopout(){
    Opens defaulted to Earth. Clicking a body re-selects it (selectBody → refreshMapPopout). */
 let mapPopoutOpen=false, mapPop={z:1,x:0,y:0};
 function refreshMapPopout(){
-  const z=$('mapPopZoom'); if(z) z.innerHTML=renderMapOverview(900,900);
+  const z=$('mapPopZoom'), host=$('mapPopHost');
+  const use3D=!!(host && MAP3D && threeOK());
+  if(use3D){
+    if(z) { z.innerHTML=''; z.style.display='none'; }
+    if(!map3d || map3d.mountId!=='mapPopHost'){
+      disposeMap3D();
+      startMap3D('mapPopHost', MAP_POP_W, MAP_POP_H);
+    }
+  } else if(z){
+    z.style.display='flex'; z.innerHTML=renderMapOverview(900,900);
+  }
   const inf=$('mapPopInfo'); if(inf) inf.innerHTML=bodyCardHTML();
 }
 function openMapPopout(){
@@ -16772,14 +16793,18 @@ function openMapPopout(){
       <button class="vehpop-x" onclick="closeMapPopout()">✕ Close</button>
     </div>
     <div class="vehpop-body">
-      <div class="vehpop-stage" id="mapPopStage"><div id="mapPopZoom" style="position:absolute;inset:0;transform-origin:0 0;display:flex;align-items:center;justify-content:center"></div></div>
+      <div class="vehpop-stage" id="mapPopStage"><div id="mapPopHost" style="position:absolute;inset:0;display:none"></div><div id="mapPopZoom" style="position:absolute;inset:0;transform-origin:0 0;display:flex;align-items:center;justify-content:center"></div></div>
       <aside class="vehpop-stats" id="mapPopInfo"></aside>
     </div>`;
   document.body.appendChild(ov); fadeInScrim(ov);
   refreshMapPopout();
-  initSvgPopZoom('mapPopStage','mapPopZoom',mapPop);
+  if(!map3d) initSvgPopZoom('mapPopStage','mapPopZoom',mapPop);
 }
-function closeMapPopout(){ if(!mapPopoutOpen) return; mapPopoutOpen=false; removeScrim('mapPopout'); }
+function closeMapPopout(){
+  if(!mapPopoutOpen) return;
+  mapPopoutOpen=false; disposeMap3D(); removeScrim('mapPopout');
+  const mv=$('mapView'); if(mv && !mv.classList.contains('hidden')) renderMap();
+}
 /* ---------- Live Earth pop-out ----------
    A dedicated, animated globe: a rotating surface (coarse but recognisable continents over ocean) with a
    moving day/night terminator, on its own full-screen overlay with grab-pan/wheel-zoom. drawEarthOrbits()
@@ -17352,16 +17377,22 @@ function renderProfileReadout(m){
    • RADIUS is schematic. Real orbital radii span 0.39–30 AU (a 77× range) and can't render to
      scale; like the existing 2D map we compress them — here with a documented power law
      R_scene = SCENE_AU_BASE · AU^SCENE_AU_EXP (exp<1) so inner planets stay separated and the
-     outer system stays bounded. Orbit rings are therefore schematic circles, not metric ellipses
-     (same spirit as the 2D map's rings); eccentricity is carried in the truthful angle/among the
-     window math, not drawn to scale here.
+     outer system stays bounded. Real eccentricity and inclination are then applied to both the
+     path and the live body position, so rings are no longer perfect coplanar circles.
 
    Coordinate convention: Three.js is y-up; the ecliptic is the x–z plane (y≈0), so a top-down
    camera looks along −y and the scene angle atan2(z,x) equals the real heliocentric theta. Moons
    resolve to their parent planet's position plus a small schematic offset. */
-const SCENE_AU_BASE = 10;   // Earth (1 AU) → 10 scene units
-const SCENE_AU_EXP  = 0.6;  // radial compression exponent (<1): Neptune 30 AU → ~74 units, not 300
-const SCENE_MOON_OFFSET = 2.2; // schematic moon stand-off from its parent, scene units
+const SCENE_AU_BASE = 18;   // Earth (1 AU) → 18 scene units; leaves room for a dominant solar disc
+const SCENE_AU_EXP  = 0.74; // gentler radial compression: outer planets read much closer to their real spacing
+const SCENE_CLOUD_RADIUS = 330; // still schematic, but clearly beyond the outer planets
+// The twelve moons at or above half Pluto's diameter, plus Mars's two small named moons, are present in BODIES. Their orbital radius is in parent-radius units
+// and their period is in days; the scene compresses their span without collapsing them together.
+const SCENE_MOON_ORBITS={
+  moon:{r:60.3,p:27.32}, phobos:{r:2.76,p:.319}, deimos:{r:6.92,p:1.263}, io:{r:5.90,p:1.769}, europa:{r:9.40,p:3.551},
+  ganymede:{r:15.0,p:7.155}, callisto:{r:26.3,p:16.689}, titan:{r:20.3,p:15.945}, rhea:{r:8.74,p:4.518},
+  titania:{r:17.0,p:8.706}, oberon:{r:22.8,p:13.463}, triton:{r:14.8,p:5.877}, iapetus:{r:61.2,p:79.321}, charon:{r:16.5,p:6.387},
+};
 // Schematic orbital radius (scene units) for a body with real Keplerian elements. Moons/belt-less
 // bodies without elements resolve to their parent; unknown → null.
 function sceneRadiusFor(bodyId){
@@ -17371,13 +17402,22 @@ function sceneRadiusFor(bodyId){
     if(b && b.around && ORBITAL_ELEMENTS[b.around]) el = ORBITAL_ELEMENTS[b.around];
     else return null;
   }
-  return SCENE_AU_BASE * Math.pow(el.a, SCENE_AU_EXP);
+  return sceneRadiusAtAU(el.a);
+}
+function sceneRadiusAtAU(au){ return SCENE_AU_BASE * Math.pow(au, SCENE_AU_EXP); }
+// Turn a heliocentric longitude + AU distance into scene coordinates. With inclination 0 this
+// exactly reduces to x=R·cos(theta), z=R·sin(theta), preserving the pre-existing window geometry.
+function orbitalScenePoint(el, theta, au){
+  const node=(el.node||0)*D2R, inc=(el.inc||0)*D2R, u=theta-node, R=sceneRadiusAtAU(au);
+  const cn=Math.cos(node), sn=Math.sin(node), cu=Math.cos(u), su=Math.sin(u), ci=Math.cos(inc), si=Math.sin(inc);
+  return {x:R*(cn*cu-sn*su*ci), y:R*(su*si), z:R*(sn*cu+cn*su*ci)};
 }
 // 3D scene position {x,y,z} of a body at an absDay, from its real heliocentric angle + schematic
 // radius. Planets lie in the ecliptic (y=0). A moon is placed at its parent's position plus a small
 // offset along the moon's own (real, shared-with-parent) heliocentric angle so it reads as "beside"
 // the planet rather than colliding with it.
 function bodyScenePos(bodyId, absD){
+  if(bodyId==='oort') return {x:0, y:0, z:SCENE_CLOUD_RADIUS};
   const helio = (typeof planetHelio!=='undefined') && planetHelio(bodyId, absD);
   if(!helio) return null;
   const b = (typeof BODIES!=='undefined') && BODIES.find(x=>x.id===bodyId);
@@ -17385,21 +17425,27 @@ function bodyScenePos(bodyId, absD){
   if(isMoon){
     const parent = bodyScenePos(b.around, absD);
     if(!parent) return null;
-    return { x: parent.x + Math.cos(helio.theta)*SCENE_MOON_OFFSET,
+    const orbit=SCENE_MOON_ORBITS[bodyId]||{r:10,p:8};
+    const parentBody=BODIES.find(x=>x.id===b.around), parentR=planetMeshRadius(parentBody);
+    const span=parentR*(0.95+1.65*Math.log(orbit.r)/Math.log(60.3));
+    const phase=(ANGLES[bodyId]||0)+absD*(2*Math.PI/orbit.p);
+    return { x: parent.x + Math.cos(phase)*span,
              y: 0,
-             z: parent.z + Math.sin(helio.theta)*SCENE_MOON_OFFSET };
+             z: parent.z + Math.sin(phase)*span };
   }
-  const R = sceneRadiusFor(bodyId);
-  if(R==null) return null;
-  return { x: Math.cos(helio.theta)*R, y: 0, z: Math.sin(helio.theta)*R };
+  const el=(typeof ORBITAL_ELEMENTS!=='undefined')&&ORBITAL_ELEMENTS[bodyId];
+  if(!el) return null;
+  return orbitalScenePoint(el,helio.theta,helio.r);
 }
-// Polyline points (array of {x,y,z}) tracing a body's schematic circular orbit in the ecliptic —
-// what the Three.js layer feeds into an orbit-ring line. `segments` points, closed loop.
+// Polyline points (array of {x,y,z}) tracing a compressed but eccentric/inclined Keplerian orbit.
 function orbitRingPoints(bodyId, segments){
-  const R = sceneRadiusFor(bodyId);
-  if(R==null) return [];
+  const el=(typeof ORBITAL_ELEMENTS!=='undefined')&&ORBITAL_ELEMENTS[bodyId];
+  if(!el) return [];
   const n = Math.max(8, segments||96), pts=[];
-  for(let i=0;i<=n;i++){ const a = (i/n)*2*Math.PI; pts.push({ x: Math.cos(a)*R, y:0, z: Math.sin(a)*R }); }
+  for(let i=0;i<=n;i++){
+    const nu=(i/n)*2*Math.PI, au=el.a*(1-el.e*el.e)/(1+el.e*Math.cos(nu));
+    pts.push(orbitalScenePoint(el,nu+el.lop*D2R,au));
+  }
   return pts;
 }
 // Camera focus target: where the orbit camera should look when a body is selected — its scene
@@ -17437,13 +17483,22 @@ function orbitCameraEye(target, azimuth, elevation, distance){
    • pause/resume across tab switches doesn't leak a second canvas or a runaway rAF loop. */
 const MAP3D = true;
 let map3d = null; // live scene state, or null when not started
+const MAP3D_ZOOM_MIN = 5;
+const MAP3D_ZOOM_MAX = 3200;
+const MAP_POP_W = 960, MAP_POP_H = 680;
+let mapPreviewAbsDay=null; // visual-only map time; never mutates the simulation/save
 // Pure helpers (testable without Three.js):
 function hexToNum(hex){ const n = parseInt(String(hex||'').replace('#',''), 16); return Number.isFinite(n) ? n : 0xffffff; }
-function planetMeshRadius(b){ // schematic sphere radius (scene units) for a body's mesh
+const BODY_RADIUS_REL={
+  mercury:.383,venus:.949,earth:1,moon:.273,mars:.532,phobos:.0017,deimos:.00098,belt:.074,jupiter:11.21,io:.286,europa:.245,ganymede:.413,callisto:.378,
+  saturn:9.45,titan:.404,rhea:.119,iapetus:.115,uranus:4.01,titania:.124,oberon:.119,neptune:3.88,triton:.212,pluto:.186,charon:.095,
+};
+function planetMeshRadius(b){ // true radii, compressed just enough to keep small worlds selectable
   if(!b) return 1;
-  if(b.around) return 0.55;                    // moons: small
-  if(b.kind==='belt'||b.kind==='cloud') return 0.6;
-  return Math.max(0.7, (b.dotR||6) * 0.18);    // planets: ~0.9 (small) … ~2.5 (gas giants)
+  const rel=BODY_RADIUS_REL[b.id]||0.1;
+  if(b.around) return 0.18+0.72*Math.pow(rel,0.62);
+  if(b.kind==='belt'||b.kind==='cloud') return 0.45;
+  return 0.32+0.92*Math.pow(rel,0.72);         // Earth ~1.24; Jupiter ~5.6 (still intentionally compressed)
 }
 function disposeMap3D(){
   if(!map3d) return;
@@ -17456,6 +17511,8 @@ function disposeMap3D(){
       if(el && el.parentNode) el.parentNode.removeChild(el);
     }
   }catch(e){}
+  try{ if(map3d.hud && map3d.hud.parentNode) map3d.hud.parentNode.removeChild(map3d.hud); }catch(e){}
+  try{ if(map3d.hoverCard && map3d.hoverCard.parentNode) map3d.hoverCard.parentNode.removeChild(map3d.hoverCard); }catch(e){}
   map3d = null;
 }
 function addStarfield3D(scene){
@@ -17467,40 +17524,232 @@ function addStarfield3D(scene){
   const geo=new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos,3));
   scene.add(new THREE.Points(geo, new THREE.PointsMaterial({color:0xbcd4e0, size:1.4, sizeAttenuation:false, transparent:true, opacity:0.6})));
 }
-function startMap3D(){
+const MAP3D_PLANET_SKIN_VARIANT='photographic'; // packaged locally: no external requests at play time
+const MAP3D_TEXTURE_ASSET={
+  sun:'assets/texture-sun.jpg', mercury:'assets/texture-mercury.jpg', venus:'assets/texture-venus.jpg',
+  earth:'assets/texture-earth-daymap.jpg', moon:'assets/texture-moon.jpg', mars:'assets/texture-mars.jpg',
+  jupiter:'assets/texture-jupiter.jpg', saturn:'assets/texture-saturn.jpg', uranus:'assets/texture-uranus.jpg', neptune:'assets/texture-neptune.jpg',
+};
+const map3dPhotoTextureCache={};
+function map3dPhotoTexture(id){
+  const embedded=(typeof window!=='undefined' && window.__OV_TEXTURE_DATA__);
+  const asset=(embedded&&embedded[id]) || MAP3D_TEXTURE_ASSET[id];
+  if(!asset) return null;
+  if(map3dPhotoTextureCache[id]) return map3dPhotoTextureCache[id];
+  const tx=new THREE.TextureLoader().load(asset);
+  tx.wrapS=THREE.RepeatWrapping; tx.wrapT=THREE.ClampToEdgeWrapping; tx.colorSpace=THREE.SRGBColorSpace; tx.anisotropy=4;
+  map3dPhotoTextureCache[id]=tx;
+  return tx;
+}
+function map3dSurfaceTexture(b, variant=MAP3D_PLANET_SKIN_VARIANT){
+  // Major planets and Earth's Moon use packaged CC-BY photographic/equirectangular maps. Smaller
+  // moons remain intentionally procedural, so each has an individual rock/ice appearance instead
+  // of looking like the Moon copied at a tiny scale.
+  const photo=map3dPhotoTexture(b.id); if(photo) return photo;
+  const W=variant==='realistic' && !b.around ? 1024 : 512, H=W/2;
+  const cv=document.createElement('canvas'); cv.width=W; cv.height=H;
+  const ctx=cv.getContext('2d');
+  const rnd=mulberry(hashStr('map3d-surface-'+variant+'-'+b.id));
+  ctx.fillStyle=b.color; ctx.fillRect(0,0,W,H);
+  const band=(y,h,col,a)=>{ ctx.fillStyle=col; ctx.globalAlpha=a; ctx.fillRect(0,y,W,h); ctx.globalAlpha=1; };
+  const blob=(x,y,rx,ry,col,a=1)=>{ ctx.fillStyle=col; ctx.globalAlpha=a; ctx.beginPath(); ctx.ellipse(x,y,rx,ry,rnd()*0.8,0,7); ctx.fill(); ctx.globalAlpha=1; };
+  if(b.id==='earth'){
+    band(0,22,'#d7edf5',0.6); band(H-22,22,'#e8f7fb',0.72);
+    for(let i=0;i<26;i++) blob(rnd()*W,rnd()*H,18+rnd()*40,7+rnd()*20,rnd()<0.55?'#3f8b52':'#6aaa52',0.92);
+    for(let i=0;i<40;i++) blob(rnd()*W,rnd()*H,8+rnd()*30,2+rnd()*7,'#ffffff',0.20);
+    for(let i=0;i<9;i++){ const y=28+rnd()*(H-56); ctx.strokeStyle='rgba(235,250,255,.24)'; ctx.lineWidth=1.5+rnd()*2; ctx.beginPath(); ctx.moveTo(0,y); ctx.bezierCurveTo(W*.3,y-18+rnd()*36,W*.65,y-18+rnd()*36,W,y); ctx.stroke(); }
+  } else if(b.id==='mars'){
+    band(0,22,'#f2eee5',0.75); band(H-22,22,'#f1eee5',0.70);
+    for(let i=0;i<32;i++) blob(rnd()*W,rnd()*H,4+rnd()*18,2+rnd()*10,rnd()<0.6?'#823d24':'#d96c42',0.38);
+    ctx.strokeStyle='rgba(80,30,18,0.58)'; ctx.lineWidth=5; ctx.beginPath(); ctx.moveTo(0,H*0.56); ctx.bezierCurveTo(W*.24,H*.43,W*.58,H*.68,W,H*.5); ctx.stroke();
+    for(let i=0;i<18;i++){ const x=rnd()*W,y=30+rnd()*(H-60),r=2+rnd()*7; ctx.strokeStyle='rgba(95,42,24,.35)'; ctx.lineWidth=1; ctx.beginPath(); ctx.arc(x,y,r,0,7); ctx.stroke(); }
+  } else if(b.id==='jupiter'){
+    for(let y=0;y<H;y+=11){ band(y,7,(y/11|0)%2?'#b47547':'#e3bc83',0.72); for(let i=0;i<5;i++) blob(rnd()*W,y+4,14+rnd()*38,1+rnd()*3,'#7e4f35',0.18); }
+    blob(W*.69,H*.64,43,18,'#b54a2d',0.88); blob(W*.69,H*.64,25,10,'#d36a3a',0.65);
+  } else if(b.id==='saturn'){
+    for(let y=0;y<H;y+=14){ band(y,8,(y/14|0)%2?'#c59f61':'#f0d69a',0.58); band(y+8,2,'#8f7045',0.16); }
+  } else if(b.id==='venus'){
+    for(let y=0;y<H;y+=10){ band(y,6,(y/10|0)%2?'#f5df96':'#b58e49',0.44); blob(rnd()*W,y+4,24+rnd()*60,2+rnd()*4,'#fff4cf',0.18); }
+  } else if(b.id==='mercury'){
+    for(let i=0;i<110;i++){ const x=rnd()*W,y=rnd()*H,r=1+rnd()*9; blob(x,y,r,r*.76,'#282329',0.32); ctx.strokeStyle='rgba(238,226,210,.18)'; ctx.lineWidth=1; ctx.beginPath(); ctx.arc(x,y,r,0,7); ctx.stroke(); }
+  } else if(b.id==='io'){
+    for(let i=0;i<38;i++) blob(rnd()*W,rnd()*H,2+rnd()*9,2+rnd()*6,rnd()<.45?'#c94c25':'#63301e',0.62);
+  } else if(b.id==='europa'){
+    for(let i=0;i<20;i++){ const y=rnd()*H; ctx.strokeStyle='rgba(95,122,142,.48)'; ctx.lineWidth=1+rnd()*2; ctx.beginPath(); ctx.moveTo(0,y); ctx.bezierCurveTo(W*.32,y-20+rnd()*40,W*.7,y-20+rnd()*40,W,y); ctx.stroke(); }
+  } else if(b.id==='titan'){
+    for(let i=0;i<24;i++) blob(rnd()*W,rnd()*H,8+rnd()*24,2+rnd()*8,'#8f5427',0.27);
+  } else if(b.id==='ganymede'||b.id==='callisto'){
+    for(let i=0;i<100;i++){ const x=rnd()*W,y=rnd()*H,r=1+rnd()*8; blob(x,y,r,r*.74,'#343239',0.27); }
+  } else if(b.id==='phobos'||b.id==='deimos'||b.id==='rhea'||b.id==='iapetus'||b.id==='titania'||b.id==='oberon'||b.id==='triton'||b.id==='charon'){
+    for(let i=0;i<90;i++){ const x=rnd()*W,y=rnd()*H,r=2+rnd()*10; blob(x,y,r,r*.72,'#25282e',0.34); ctx.strokeStyle='rgba(238,240,244,0.26)'; ctx.lineWidth=1; ctx.beginPath(); ctx.arc(x,y,r,0,7); ctx.stroke(); }
+  } else if(b.id==='neptune'||b.id==='uranus'){
+    for(let y=0;y<H;y+=16) band(y,7,'#d4ffff',0.10+rnd()*0.16);
+    for(let i=0;i<18;i++) blob(rnd()*W,rnd()*H,9+rnd()*32,2+rnd()*7,'#e7ffff',0.16);
+    if(b.id==='neptune') blob(W*.64,H*.42,24,11,'#173c8f',0.48);
+  } else if(b.id==='pluto'){
+    blob(W*.57,H*.53,36,24,'#f0d7bd',0.62); blob(W*.49,H*.53,24,18,'#f2e5d5',0.44);
+  } else {
+    for(let i=0;i<45;i++) blob(rnd()*W,rnd()*H,3+rnd()*20,2+rnd()*11,'#000000',0.10+rnd()*0.16);
+  }
+  for(let i=0;i<720;i++){ ctx.fillStyle=rnd()<0.5?'#000':'#fff'; ctx.globalAlpha=0.035+rnd()*0.035; ctx.fillRect(rnd()*W,rnd()*H,1+rnd()*2,1+rnd()*2); } ctx.globalAlpha=1;
+  const tx=new THREE.CanvasTexture(cv); tx.wrapS=THREE.RepeatWrapping; tx.wrapT=THREE.ClampToEdgeWrapping; tx.colorSpace=THREE.SRGBColorSpace; tx.anisotropy=4;
+  return tx;
+}
+function map3dSphereGeometry(b, radius){
+  // 64×40 = 4,992 triangles for planets and the Moon. Small procedural moons use 32×20 =
+  // 1,216 triangles, preserving smooth silhouettes without turning the whole system into a heavy mesh set.
+  const major=!b.around || b.id==='moon';
+  return new THREE.SphereGeometry(radius, major?64:32, major?40:20);
+}
+function map3dSunTexture(){
+  const photo=map3dPhotoTexture('sun'); if(photo) return photo;
+  const cv=document.createElement('canvas'), W=512,H=256,ctx=cv.getContext('2d'); cv.width=W; cv.height=H;
+  const rnd=mulberry(90317); ctx.fillStyle='#ff9d24'; ctx.fillRect(0,0,W,H);
+  for(let i=0;i<1800;i++){
+    const hot=rnd()>0.55, x=rnd()*W, y=rnd()*H, r=1+rnd()*5;
+    ctx.fillStyle=hot?'#fff1ae':'#dd5417'; ctx.globalAlpha=0.08+rnd()*0.26;
+    ctx.beginPath(); ctx.arc(x,y,r,0,7); ctx.fill();
+  }
+  for(let y=8;y<H;y+=20){ ctx.strokeStyle='rgba(255,240,170,0.17)'; ctx.lineWidth=3+rnd()*4; ctx.beginPath(); ctx.moveTo(0,y); ctx.bezierCurveTo(W*.3,y-12+rnd()*24,W*.7,y-12+rnd()*24,W,y); ctx.stroke(); }
+  ctx.globalAlpha=1;
+  const tx=new THREE.CanvasTexture(cv); tx.wrapS=THREE.RepeatWrapping; tx.colorSpace=THREE.SRGBColorSpace; return tx;
+}
+function map3dSunGlowTexture(){
+  const cv=document.createElement('canvas'), S=512,ctx=cv.getContext('2d'); cv.width=S; cv.height=S;
+  const g=ctx.createRadialGradient(S/2,S/2,S*.08,S/2,S/2,S*.5);
+  g.addColorStop(0,'rgba(255,250,210,0.96)'); g.addColorStop(0.20,'rgba(255,202,83,0.72)'); g.addColorStop(0.49,'rgba(255,111,28,0.20)'); g.addColorStop(1,'rgba(255,76,12,0)');
+  ctx.fillStyle=g; ctx.fillRect(0,0,S,S);
+  const tx=new THREE.CanvasTexture(cv); tx.colorSpace=THREE.SRGBColorSpace; return tx;
+}
+function addMap3dAtmosphere(mesh, b){
+  if(!['earth','venus','mars','jupiter','saturn','uranus','neptune'].includes(b.id)) return;
+  const radius=planetMeshRadius(b)*1.045;
+  const col={earth:0x67baff,venus:0xf5de9c,mars:0xe68d65,jupiter:0xf1ca9e,saturn:0xffe0a6,uranus:0x9feff0,neptune:0x6099ff}[b.id];
+  const halo=new THREE.Mesh(new THREE.SphereGeometry(radius,24,16),new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:b.id==='earth'?0.13:0.075,side:THREE.BackSide,depthWrite:false}));
+  mesh.add(halo);
+}
+function addMap3dSaturnRings(mesh, radius){
+  const ring=new THREE.Mesh(new THREE.RingGeometry(radius*1.32,radius*2.35,96),new THREE.MeshBasicMaterial({color:0xe8d39c,transparent:true,opacity:0.68,side:THREE.DoubleSide,depthWrite:false}));
+  ring.rotation.x=Math.PI/2; ring.rotation.z=-0.32; mesh.add(ring);
+}
+function addMap3dAsteroidBelt(scene){
+  const belt=BODIES.find(b=>b.id==='belt'), R=sceneRadiusFor('belt'); if(!belt||R==null) return null;
+  const N=150, pos=new Float32Array(N*3), col=new Float32Array(N*3), rnd=mulberry(45821);
+  for(let i=0;i<N;i++){
+    const a=rnd()*Math.PI*2, rr=R+(rnd()-.5)*7.5, y=(rnd()-.5)*1.05;
+    pos[i*3]=Math.cos(a)*rr; pos[i*3+1]=y; pos[i*3+2]=Math.sin(a)*rr;
+    const c=.48+rnd()*.36; col[i*3]=c; col[i*3+1]=c*.92; col[i*3+2]=c*.76;
+  }
+  const geo=new THREE.BufferGeometry(); geo.setAttribute('position',new THREE.BufferAttribute(pos,3)); geo.setAttribute('color',new THREE.BufferAttribute(col,3));
+  const field=new THREE.Points(geo,new THREE.PointsMaterial({size:0.16,vertexColors:true,sizeAttenuation:true,transparent:true,opacity:0.45}));
+  scene.add(field); return field;
+}
+function mapViewAbsDay(){ return mapPreviewAbsDay==null ? absDay() : mapPreviewAbsDay; }
+function mapTimeReadout(){ const shown=mapViewAbsDay(), live=absDay(); return `${dayToDate(shown)}${shown===live?'':' · preview'}`; }
+function updateMap3DTimeHud(){ if(map3d&&map3d.hudReadout) map3d.hudReadout.textContent=mapTimeReadout(); }
+function mapTimeShift(days){ mapPreviewAbsDay=mapViewAbsDay()+days; updateMap3DTimeHud(); }
+function resetMapTime(){ mapPreviewAbsDay=null; updateMap3DTimeHud(); }
+function addMap3DTimeHud(host, hostId){
+  host.style.position='relative'; host.style.overflow='hidden';
+  const hud=document.createElement('div'); hud.id='map3dHud_'+hostId;
+  hud.style.cssText='position:absolute;top:8px;left:8px;z-index:4;padding:7px 8px;background:rgba(3,9,16,.82);border:1px solid rgba(116,171,208,.48);border-radius:6px;color:#cfe5f4;font:11px ui-monospace,monospace;line-height:1.35;box-shadow:0 4px 16px rgba(0,0,0,.32)';
+  hud.innerHTML=`<div style="color:#7fb6dd;letter-spacing:.07em;font-size:10px">SOLAR DATE</div><div data-map-time style="font-size:12px;color:#fff4d4;margin:2px 0 5px"></div><div style="display:flex;gap:3px"><button onclick="mapTimeShift(-360)" title="Reverse one year">−1Y</button><button onclick="mapTimeShift(-30)" title="Reverse one month">−1M</button><button onclick="resetMapTime()" title="Return to the live game date">Now</button><button onclick="mapTimeShift(30)" title="Advance one month">+1M</button><button onclick="mapTimeShift(360)" title="Advance one year">+1Y</button></div><div style="color:#8fa9b9;margin-top:5px">hover for info · drag to orbit · wheel to zoom</div>`;
+  for(const b of hud.querySelectorAll('button')) b.style.cssText='padding:2px 4px;border:1px solid #43677f;border-radius:3px;background:#102232;color:#d4e8f5;font:10px ui-monospace,monospace;cursor:pointer';
+  host.appendChild(hud); return {hud,readout:hud.querySelector('[data-map-time]')};
+}
+function addMap3DHoverCard(host){
+  const tip=document.createElement('div');
+  tip.style.cssText='display:none;position:absolute;z-index:5;max-width:230px;padding:7px 9px;background:rgba(3,9,16,.92);border:1px solid rgba(140,195,228,.58);border-radius:6px;color:#dcecf7;font:11px/1.35 system-ui,sans-serif;pointer-events:none;box-shadow:0 5px 18px rgba(0,0,0,.42)';
+  host.appendChild(tip); return tip;
+}
+function hideMap3DHover(){ if(map3d&&map3d.hoverCard) map3d.hoverCard.style.display='none'; }
+function map3dRaycast(e){
+  if(!map3d) return null;
+  const r=map3d.dom.getBoundingClientRect(); if(!r.width||!r.height) return null;
+  const mx=((e.clientX-r.left)/r.width)*2-1, my=-((e.clientY-r.top)/r.height)*2+1;
+  map3d.raycaster.setFromCamera({x:mx,y:my},map3d.camera);
+  return map3d.raycaster.intersectObjects(map3d.pickables,false)[0]||null;
+}
+function map3dHover(e){
+  if(!map3d||map3d._drag) return;
+  const hit=map3dRaycast(e), id=hit&&hit.object&&hit.object.userData.bodyId, tip=map3d.hoverCard;
+  if(!id||!tip){ hideMap3DHover(); if(map3d) map3d.dom.style.cursor='grab'; return; }
+  const b=BODIES.find(x=>x.id===id), r=map3d.dom.getBoundingClientRect();
+  const title=b?b.name:'Sun';
+  const detail=b ? b.note : 'The star at the center of the system — the source of every day/night terminator in this view.';
+  const helio=b&&planetHelio(b.id,mapViewAbsDay());
+  const distance=helio ? `<div style="color:#91b8d4;margin-top:3px">Sun distance: ${helio.r.toFixed(2)} AU</div>` : '';
+  tip.innerHTML=`<b style="color:#fff2c9">${esc(title)}</b><div style="margin-top:2px">${esc(detail)}</div>${distance}`;
+  tip.style.left=Math.max(8,e.clientX-r.left+14)+'px'; tip.style.top=Math.max(8,e.clientY-r.top+14)+'px'; tip.style.display='block';
+  map3d.dom.style.cursor='pointer';
+}
+function map3dLabelSprite(text, color){
+  const cv=document.createElement('canvas'); cv.width=640; cv.height=96;
+  const ctx=cv.getContext('2d');
+  ctx.font='600 30px ui-monospace,monospace'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  const w=ctx.measureText(text).width;
+  ctx.fillStyle='rgba(4,10,17,0.82)'; ctx.fillRect((640-w)/2-14,8,w+28,80);
+  ctx.strokeStyle='rgba(125,180,220,0.42)'; ctx.lineWidth=2; ctx.strokeRect((640-w)/2-14,8,w+28,80);
+  ctx.fillStyle=color||'#b9c9d4'; ctx.fillText(text,320,48);
+  const tx=new THREE.CanvasTexture(cv); tx.colorSpace=THREE.SRGBColorSpace;
+  const sprite=new THREE.Sprite(new THREE.SpriteMaterial({map:tx,transparent:true,depthTest:false,depthWrite:false}));
+  sprite.scale.set(Math.max(5.5,Math.min(15,text.length*0.62)),1.45,1);
+  sprite.userData.bodyId=text;
+  return sprite;
+}
+function startMap3D(hostId='mapHost', W=MAP_W, H=MAP_H){
   if(!MAP3D || !threeOK()) return false;
   try{
-    if(!ensureMapHost()) return false;
-    const host=$('mapHost'), W=MAP_W, H=MAP_H;
+    if(!ensureMapHost(hostId, hostId==='mapHost'?'mapCanvas':null)) return false;
+    const host=$(hostId);
     if(!map3d){
       const renderer=new THREE.WebGLRenderer({antialias:true});
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
       renderer.setSize(W,H,false);
+      if('outputColorSpace' in renderer) renderer.outputColorSpace=THREE.SRGBColorSpace;
+      // The albedo JPEGs are already display-referred colour. ACES made their subtle bands and
+      // terrain look flat, so render the maps without a cinematic curve changing their colours.
+      if('toneMapping' in renderer){ renderer.toneMapping=THREE.NoToneMapping; renderer.toneMappingExposure=1; }
       const dom=renderer.domElement; dom.id='map3dCanvas';
       dom.style.maxWidth='100%'; dom.style.height='auto'; dom.style.display='block';
       host.appendChild(dom);
       const scene=new THREE.Scene(); scene.background=new THREE.Color(0x05080d);
-      const camera=new THREE.PerspectiveCamera(50, W/H, 0.1, 5000);
-      scene.add(new THREE.PointLight(0xffffff, 2.4)); // at the Sun (origin)
-      scene.add(new THREE.AmbientLight(0x445566, 0.75));
-      const sun=new THREE.Mesh(new THREE.SphereGeometry(3.0,24,16), new THREE.MeshBasicMaterial({color:0xffcf6a}));
+      const camera=new THREE.PerspectiveCamera(50, W/H, 0.01, 5000);
+      const sunLight=new THREE.PointLight(0xfff0ca, 12.0, 0, 0); // no distance falloff: same Sun-facing brightness in the outer system
+      scene.add(sunLight);
+      scene.add(new THREE.HemisphereLight(0x8fb7e8, 0x111522, 0.30));
+      scene.add(new THREE.AmbientLight(0x34475a, 0.16));
+      const cameraFill=new THREE.PointLight(0x7fb6ff, 0.24, 700, 2); scene.add(cameraFill);
+      const sun=new THREE.Mesh(new THREE.SphereGeometry(7.5,48,32), new THREE.MeshBasicMaterial({map:map3dSunTexture(),color:0xffffff}));
       scene.add(sun);
+      const corona=new THREE.Sprite(new THREE.SpriteMaterial({map:map3dSunGlowTexture(),color:0xffffff,transparent:true,opacity:0.92,blending:THREE.AdditiveBlending,depthWrite:false}));
+      corona.scale.set(42,42,1); scene.add(corona);
+      const sunLabel=map3dLabelSprite('Sun','#ffe0a0'); sunLabel.position.set(0,10,0); scene.add(sunLabel);
       addStarfield3D(scene);
-      const bodies={};
+      const asteroidBelt=addMap3dAsteroidBelt(scene), bodies={}, labels={}, pickables=[sunLabel];
       for(const b of BODIES){
-        if(b.kind==='cloud') continue;
-        const isMoon=!!b.around;
-        if(!isMoon && sceneRadiusFor(b.id)==null) continue; // no elements, not a moon → skip
-        const mat=new THREE.MeshStandardMaterial({color:hexToNum(b.color), roughness:0.85, metalness:0.05});
-        const mesh=new THREE.Mesh(new THREE.SphereGeometry(planetMeshRadius(b),20,14), mat);
-        mesh.userData.bodyId=b.id; scene.add(mesh); bodies[b.id]=mesh;
-        if(!isMoon){
+        const isCloud=b.kind==='cloud', isBelt=b.kind==='belt', isMoon=!!b.around;
+        if(!isCloud && !isMoon && sceneRadiusFor(b.id)==null) continue;
+        if(!isCloud && !isBelt){
+          const radius=planetMeshRadius(b);
+          const mat=new THREE.MeshStandardMaterial({map:map3dSurfaceTexture(b),color:0xffffff,roughness:b.id==='earth'?0.82:0.7,metalness:0.01});
+          const mesh=new THREE.Mesh(map3dSphereGeometry(b, radius), mat);
+          addMap3dAtmosphere(mesh,b); if(b.id==='saturn') addMap3dSaturnRings(mesh,radius);
+          mesh.userData.bodyId=b.id; scene.add(mesh); bodies[b.id]=mesh; pickables.push(mesh);
+        }
+        const label=map3dLabelSprite(b.name, b.id===state.selectedBody?'#ffc450':'#b9c9d4');
+        label.userData.bodyId=b.id; scene.add(label); labels[b.id]=label; pickables.push(label);
+        if(!isMoon && !isCloud && !isBelt){
           const pts=orbitRingPoints(b.id,128).map(p=>new THREE.Vector3(p.x,p.y,p.z));
           const geo=new THREE.BufferGeometry().setFromPoints(pts);
-          scene.add(new THREE.Line(geo, new THREE.LineBasicMaterial({color:0x2a4a63, transparent:true, opacity:0.55})));
+          scene.add(new THREE.Line(geo, new THREE.LineBasicMaterial({color:0x47708c, transparent:true, opacity:0.62})));
         }
       }
-      const cam={ az:Math.PI*0.5, el:0.95, dist:190, target:{x:0,y:0,z:0} };
-      map3d={renderer, scene, camera, sun, bodies, cam, dom, raf:0, raycaster:new THREE.Raycaster(), _drag:null};
+      const cam={ az:Math.PI*0.5, el:0.95, dist:560, target:{x:0,y:0,z:0} };
+      const hud=addMap3DTimeHud(host,hostId);
+      const hoverCard=addMap3DHoverCard(host);
+      map3d={renderer, scene, camera, sun, corona, sunLight, cameraFill, asteroidBelt, bodies, labels, pickables, cam, dom, hud:hud.hud, hudReadout:hud.readout, hoverCard, startedAt:Date.now(), mountId:hostId, fallbackId:hostId==='mapHost'?'mapCanvas':null, raf:0, raycaster:new THREE.Raycaster(), _drag:null};
+      updateMap3DTimeHud();
       attachMap3DInput();
     } else if(map3d.dom && !map3d.dom.parentNode){
       host.appendChild(map3d.dom);
@@ -17518,63 +17767,95 @@ function map3dApplyCamera(){
   map3d.camera.position.set(eye.x, eye.y, eye.z);
   map3d.camera.lookAt(c.target.x, c.target.y, c.target.z);
 }
+function map3dSpinRate(id){ return ({mercury:0.012,venus:-0.005,earth:0.11,moon:0.014,mars:0.106,jupiter:0.27,saturn:0.24,uranus:-0.16,neptune:0.15,pluto:0.009})[id]||0.05; }
 function map3dTick(){
-  const d=(typeof absDay==='function')?absDay():0;
+  const d=(typeof absDay==='function')?mapViewAbsDay():0;
+  if(mapPreviewAbsDay===null && map3d._hudLiveDay!==d){ map3d._hudLiveDay=d; updateMap3DTimeHud(); }
+  const t=(Date.now()-map3d.startedAt)/1000, pulse=1+Math.sin(t*1.7)*0.035+Math.sin(t*.47)*0.025;
+  map3d.sun.rotation.y=t*0.12; map3d.sun.rotation.z=Math.sin(t*.19)*0.08;
+  map3d.corona.material.rotation=Math.sin(t*.13)*0.18; map3d.corona.scale.set(42*pulse,42*pulse,1); map3d.corona.material.opacity=0.78+Math.sin(t*1.3)*0.08;
+  map3d.sunLight.intensity=11.8+Math.sin(t*1.1)*0.45;
+  if(map3d.asteroidBelt) map3d.asteroidBelt.rotation.y=d*0.004;
   for(const id in map3d.bodies){
     const p=bodyScenePos(id, d); if(!p) continue;
     map3d.bodies[id].position.set(p.x, p.y, p.z);
+    map3d.bodies[id].rotation.y=d*map3dSpinRate(id);
+    const label=map3d.labels[id];
+    if(label) label.position.set(p.x, p.y+planetMeshRadius(BODIES.find(b=>b.id===id))*1.8+1.2, p.z);
+  }
+  for(const id in map3d.labels){
+    if(map3d.bodies[id]) continue;
+    const p=bodyScenePos(id,d); if(p) map3d.labels[id].position.set(p.x,p.y+4,p.z);
   }
   // keep the focus target tracking the selected body as it orbits
   const sel=state && state.selectedBody;
   if(sel && map3d.bodies[sel]){ const t=bodyScenePos(sel,d); if(t) map3d.cam.target=t; }
   map3dApplyCamera();
+  map3d.cameraFill.position.copy(map3d.camera.position);
   map3d.renderer.render(map3d.scene, map3d.camera);
 }
 function map3dRenderLoop(){
   if(!map3d) return;
-  try{ map3dTick(); }catch(e){ console.warn('3D map tick failed, falling back:', e); disposeMap3D(); const c=$('mapCanvas'); if(c) c.style.display='block'; const h=$('mapHost'); if(h) h.style.display='none'; return; }
+  try{ map3dTick(); }catch(e){ console.warn('3D map tick failed, falling back:', e); const f=map3d.fallbackId, mount=map3d.mountId; disposeMap3D(); const c=f&&$(f); if(c) c.style.display='block'; const h=$(mount); if(h) h.style.display='none'; return; }
   map3d.raf = requestAnimationFrame(map3dRenderLoop);
 }
 // Stop the render loop when leaving the map tab (mirrors pauseMapGame). Cheap teardown: cancels the
 // rAF; the scene rebuilds on the next startMap3D() — simplest correct behavior, no leaked loop.
 function pauseMap3D(){ if(map3d){ disposeMap3D(); } }
 // Hand-rolled orbit-camera input (drag=rotate, wheel=zoom, click=focus+select). Browser-only.
-function _map3dDown(e){ if(!map3d) return; map3d._drag={x:e.clientX, y:e.clientY}; }
+function _map3dDown(e){
+  if(!map3d || (e.button!=null&&e.button!==0)) return;
+  map3d._drag={x:e.clientX,y:e.clientY,moved:false,travel:0,pointerId:e.pointerId};
+  hideMap3DHover();
+  map3d.dom.style.cursor='grabbing';
+  try{ map3d.dom.setPointerCapture(e.pointerId); }catch(_){}
+}
 function _map3dUp(e){
   if(!map3d) return;
-  const moved = map3d._drag && (Math.abs(e.clientX-map3d._drag.x)>3 || Math.abs(e.clientY-map3d._drag.y)>3);
+  const moved=!!(map3d._drag&&map3d._drag.moved);
   if(!moved) map3dPick(e); // a click (not a drag) selects a body
+  try{ map3d.dom.releasePointerCapture(map3d._drag&&map3d._drag.pointerId); }catch(_){}
+  map3d.dom.style.cursor='grab';
   map3d._drag=null;
 }
+function _map3dCancel(){ if(!map3d) return; map3d.dom.style.cursor='grab'; map3d._drag=null; }
 function _map3dMove(e){
-  if(!map3d || !map3d._drag) return;
-  const dx=e.clientX-map3d._drag.x, dy=e.clientY-map3d._drag.y; map3d._drag={x:e.clientX,y:e.clientY};
+  if(!map3d) return;
+  if(!map3d._drag){ map3dHover(e); return; }
+  const drag=map3d._drag, dx=e.clientX-drag.x, dy=e.clientY-drag.y; drag.x=e.clientX; drag.y=e.clientY;
+  drag.travel+=Math.abs(dx)+Math.abs(dy); drag.moved=drag.moved || drag.travel>3;
   map3d.cam.az -= dx*0.01;
   map3d.cam.el = Math.max(-1.5, Math.min(1.5, map3d.cam.el - dy*0.01));
 }
-function _map3dWheel(e){ if(!map3d) return; e.preventDefault(); map3d.cam.dist = Math.max(25, Math.min(1500, map3d.cam.dist*(e.deltaY>0?1.12:0.89))); }
+function _map3dWheel(e){ if(!map3d) return; e.preventDefault(); map3d.cam.dist = Math.max(MAP3D_ZOOM_MIN, Math.min(MAP3D_ZOOM_MAX, map3d.cam.dist*(e.deltaY>0?1.12:0.89))); }
+function map3dFocusDistance(b){ return Math.max(7, Math.min(72, planetMeshRadius(b)*8)); }
 function map3dPick(e){
   try{
-    const r=map3d.dom.getBoundingClientRect();
-    const mx=((e.clientX-r.left)/r.width)*2-1, my=-((e.clientY-r.top)/r.height)*2+1;
-    map3d.raycaster.setFromCamera({x:mx,y:my}, map3d.camera);
-    const meshes=Object.keys(map3d.bodies).map(k=>map3d.bodies[k]);
-    const hit=map3d.raycaster.intersectObjects(meshes, false)[0];
-    if(hit && hit.object && hit.object.userData.bodyId) selectBody(hit.object.userData.bodyId);
+    const hit=map3dRaycast(e);
+    if(hit && hit.object && hit.object.userData.bodyId){
+      const id=hit.object.userData.bodyId, body=BODIES.find(b=>b.id===id);
+      if(body) map3d.cam.dist=Math.min(map3d.cam.dist,map3dFocusDistance(body));
+      selectBody(id);
+    }
   }catch(err){}
 }
 function attachMap3DInput(){
   const d=map3d.dom; if(!d) return;
   d.addEventListener('pointerdown', _map3dDown);
   d.addEventListener('pointerup', _map3dUp);
+  d.addEventListener('pointercancel', _map3dCancel);
   d.addEventListener('pointermove', _map3dMove);
+  d.addEventListener('pointerleave', hideMap3DHover);
   d.addEventListener('wheel', _map3dWheel, {passive:false});
+  d.style.cursor='grab'; d.style.touchAction='none';
 }
 function detachMap3DInput(){
   const d=map3d && map3d.dom; if(!d) return;
   d.removeEventListener('pointerdown', _map3dDown);
   d.removeEventListener('pointerup', _map3dUp);
+  d.removeEventListener('pointercancel', _map3dCancel);
   d.removeEventListener('pointermove', _map3dMove);
+  d.removeEventListener('pointerleave', hideMap3DHover);
   d.removeEventListener('wheel', _map3dWheel);
 }
 
@@ -18146,7 +18427,12 @@ function defineMapScene(){
     drawSel(){ const g=this.selRing; g.clear(); const o=this.bodies.find(q=>q.b.id===state.selectedBody); if(o){ g.lineStyle(1.5,themeColorNum('ignite'),1); g.strokeCircle(o.x,o.y,o.rad+3); } }
   };
 }
-function ensureMapHost(){ const host=$('mapHost'); if(!host) return false; host.style.display='block'; const c=$('mapCanvas'); if(c) c.style.display='none'; return true; }
+function ensureMapHost(hostId='mapHost', fallbackId='mapCanvas'){
+  const host=$(hostId); if(!host) return false;
+  host.style.display='block';
+  const c=fallbackId&&$(fallbackId); if(c) c.style.display='none';
+  return true;
+}
 function startMapScene(){
   defineMapScene();
   if(!ensureMapHost()) return false;

@@ -22,12 +22,31 @@ const ROOT = __dirname;
 const MODULES = [
   'data.js', 'parts.js', 'sim.js', 'save.js', 'shell.js', 'flight.js', 'render.js', 'main.js',
 ];
+// 2K equirectangular maps are embedded as data URLs in both browser artifacts. The release is
+// routinely opened as file://, where Firefox may deny Three.TextureLoader's separate image fetches
+// and leave its black placeholder texture on-screen. Keeping the source JPEGs in assets/ preserves
+// attribution/auditability; embedding makes the browser builds self-contained and reliable.
+const MAP3D_TEXTURE_FILES = {
+  sun:'texture-sun.jpg', mercury:'texture-mercury.jpg', venus:'texture-venus.jpg', earth:'texture-earth-daymap.jpg',
+  moon:'texture-moon.jpg', mars:'texture-mars.jpg', jupiter:'texture-jupiter.jpg', saturn:'texture-saturn.jpg',
+  uranus:'texture-uranus.jpg', neptune:'texture-neptune.jpg',
+};
 
 // Match the marker independently of the checkout's line-ending style. Git may
 // materialize shell.html with CRLF on Windows; generated script/tag lines use LF.
 const PLACEHOLDER = '<!-- OV:SCRIPTS -->';
 
 function read(p) { return fs.readFileSync(p); }
+
+function embeddedTextureScript(root) {
+  const data = {};
+  for (const [id, name] of Object.entries(MAP3D_TEXTURE_FILES)) {
+    const file = path.join(root, 'assets', name);
+    if (fs.existsSync(file)) data[id] = `data:image/jpeg;base64,${read(file).toString('base64')}`;
+  }
+  if (!Object.keys(data).length) return Buffer.alloc(0); // fixture builds and texture-less forks stay valid
+  return Buffer.from(`<script>window.__OV_TEXTURE_DATA__=${JSON.stringify(data)};</script>\n`);
+}
 
 // Compute every generated artifact without changing the filesystem.
 function createBuildArtifacts(root = ROOT) {
@@ -43,10 +62,11 @@ function createBuildArtifacts(root = ROOT) {
   if (shell[afterIdx] === 13) afterIdx++; // CR in CRLF
   if (shell[afterIdx] === 10) afterIdx++; // LF
   const after = shell.slice(afterIdx);
+  const textureScript = embeddedTextureScript(root);
   const scriptBlock = Buffer.concat([Buffer.from('<script>\n'), body, Buffer.from('</script>\n')]);
-  const releaseHtml = Buffer.concat([before, scriptBlock, after]);
+  const releaseHtml = Buffer.concat([before, textureScript, scriptBlock, after]);
   const devTags = Buffer.from(MODULES.map((m) => `<script src="src/${m}"></script>`).join('\n') + '\n');
-  const devHtml = Buffer.concat([before, devTags, after]);
+  const devHtml = Buffer.concat([before, textureScript, devTags, after]);
 
   return [
     { name: 'orbital-ventures.html', path: path.join(root, 'orbital-ventures.html'), contents: releaseHtml },

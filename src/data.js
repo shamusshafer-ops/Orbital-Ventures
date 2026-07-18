@@ -1498,6 +1498,12 @@ const BODIES = [
       {label:'LEO → Trans-Mars Injection', dv:3600},
       {label:'TMI → Phobos rendezvous', dv:1500, note:'Phobos\'s gravity is negligible — this is essentially matching orbits.'},
     ]},
+  {id:'deimos', name:'Deimos', kind:'moon', around:'mars', moonR:17, dotR:3, color:'#a69a87', note:'Mars\'s outer, potato-shaped moon — smaller and farther out than Phobos, with an exceptionally gentle surface gravity.',
+    legs:[
+      {label:'Surface → LEO', dv:9400},
+      {label:'LEO → Trans-Mars Injection', dv:3600},
+      {label:'TMI → Deimos rendezvous', dv:1550, note:'A small matching burn reaches Mars\'s more distant natural satellite.'},
+    ]},
   {id:'belt', name:'Asteroid Belt (Ceres)', kind:'belt', r:128, color:'#9aa0a6', note:'Volatiles for propellant, metals, and platinum-group bounty — at the cost of years of transit.',
     missions:['belt_survey','belt_mining'],
     legs:[
@@ -1528,6 +1534,8 @@ const BODIES = [
     legs:[{label:'Surface → LEO', dv:9400},{label:'LEO → Saturn transfer', dv:7000},{label:'Capture → Titan (aerobrake)', dv:700, note:'The atmosphere does most of the braking.'}]},
   {id:'rhea', name:'Rhea', kind:'moon', around:'saturn', moonR:26, dotR:4, color:'#c8ccd0', note:'Saturn\'s second-largest moon — a cratered iceball.',
     legs:[{label:'Surface → LEO', dv:9400},{label:'LEO → Saturn transfer', dv:7000},{label:'Capture → Rhea orbit', dv:900}]},
+  {id:'iapetus', name:'Iapetus', kind:'moon', around:'saturn', moonR:34, dotR:4, color:'#a9a09a', note:'Saturn\'s two-tone outer moon — bright ice on one hemisphere, dark material across the other.',
+    legs:[{label:'Surface → LEO', dv:9400},{label:'LEO → Saturn transfer', dv:7000},{label:'Capture → Iapetus orbit', dv:1050}]},
   {id:'uranus', name:'Uranus System', kind:'planet', r:218, dotR:9, color:'#9fe3e0', note:'The tipped ice giant — orbiting on its side, a cold and distant frontier.',
     legs:[{label:'Surface → LEO', dv:9400},{label:'LEO → Uranus transfer', dv:7700},{label:'Transfer → Uranus system capture', dv:1000}]},
   {id:'titania', name:'Titania', kind:'moon', around:'uranus', moonR:15, dotR:4, color:'#b8a89a', note:'Uranus\'s largest moon — fault canyons across an icy crust.',
@@ -1540,14 +1548,16 @@ const BODIES = [
     legs:[{label:'Surface → LEO', dv:9400},{label:'LEO → Neptune transfer', dv:8200},{label:'Capture → Triton orbit', dv:900, note:'Retrograde orbit makes capture geometry tricky.'}]},
   {id:'pluto', name:'Pluto', kind:'dwarf', r:272, dotR:4, color:'#caa884', note:'The classic ninth — a nitrogen-ice dwarf with a heart-shaped plain, far out in the Kuiper Belt.',
     legs:[{label:'Surface → LEO', dv:9400},{label:'LEO → Pluto transfer', dv:8800, note:'A decade-plus cruise even with assists.'},{label:'Transfer → Pluto orbit', dv:1300, note:'No atmosphere — all propulsive capture.'}]},
+  {id:'charon', name:'Charon', kind:'moon', around:'pluto', moonR:18, dotR:4, color:'#a59b91', note:'Pluto\'s large binary companion — the pair orbit a shared barycenter above Pluto\'s surface.',
+    legs:[{label:'Surface → LEO', dv:9400},{label:'LEO → Pluto transfer', dv:8800},{label:'Pluto transfer → Charon orbit', dv:1400}]},
   {id:'oort', name:'Oort Cloud', kind:'cloud', r:320, color:'#8fb3c8', note:'A vast spherical shell of icy planetesimals at the edge of the Sun\'s gravity — the source of long-period comets, light-months away. Schematic ring only.',
     missions:['oort_precursor'], // I1: the interstellar-precursor capstone
     legs:[{label:'Surface → LEO', dv:9400},{label:'LEO → Solar System Escape', dv:8500, note:'A fusion-torch precursor burn — no other propulsion in reach has a realistic exhaust velocity for this.'}]},
 ];
 // fixed display angles (radians) so bodies aren't collinear — purely cosmetic. Moons use the angle about their planet.
-const ANGLES = {mercury:2.6, venus:2.1, earth:-0.7, moon:0.9, mars:-1.6, phobos:0.3, belt:-0.2,
+const ANGLES = {mercury:2.6, venus:2.1, earth:-0.7, moon:0.9, mars:-1.6, phobos:0.3, deimos:2.6, belt:-0.2,
   jupiter:1.3, io:0.2, europa:1.7, ganymede:3.2, callisto:4.7,
-  saturn:0.4, titan:0.6, rhea:3.5, uranus:-2.4, titania:1.2, oberon:4.0, neptune:3.0, triton:2.3, pluto:-2.9, oort:0};
+  saturn:0.4, titan:0.6, rhea:3.5, iapetus:5.0, uranus:-2.4, titania:1.2, oberon:4.0, neptune:3.0, triton:2.3, pluto:-2.9, charon:0.8, oort:0};
 
 /* ---------- M2: crew & life support ---------- */
 const DAILY_CONSUMABLE = 0.005; // t per crew per day (~5 kg: O2 + water + food + packaging)

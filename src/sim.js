@@ -3103,18 +3103,19 @@ function skipResearch(){ if(!state.activeResearch) return;
    for both "deeper orbital mechanics" and the 3D viewport, not just window math. */
 const GAME_YEAR_DAYS = DAYS_PER_MONTH * 12; // 360 — one game-year in game-days
 const D2R = Math.PI / 180;
-// a: semi-major axis (AU); e: eccentricity; lop: longitude of perihelion ϖ (deg);
-// L0: mean longitude at absDay 0 (deg). Real J2000 mean elements (approx).
+// a: semi-major axis (AU); e: eccentricity; inc: inclination; node: ascending node;
+// lop: longitude of perihelion ϖ (all angles degrees); L0: mean longitude at absDay 0.
+// Real J2000 mean elements (approx). inc/node are display-only today; window math remains planar.
 const ORBITAL_ELEMENTS = {
-  mercury: { a: 0.3871, e: 0.2056, lop:  77.46, L0: 252.25 },
-  venus:   { a: 0.7233, e: 0.0068, lop: 131.53, L0: 181.98 },
-  earth:   { a: 1.0000, e: 0.0167, lop: 102.94, L0: 100.46 },
-  mars:    { a: 1.5237, e: 0.0934, lop: 336.06, L0: 355.43 },
-  belt:    { a: 2.7660, e: 0.0758, lop:  73.60, L0:  95.99 }, // Ceres
-  jupiter: { a: 5.2026, e: 0.0484, lop:  14.73, L0:  34.40 },
-  saturn:  { a: 9.5549, e: 0.0539, lop:  92.43, L0:  49.94 },
-  uranus:  { a:19.2184, e: 0.0473, lop: 170.96, L0: 313.23 },
-  neptune: { a:30.1104, e: 0.0086, lop:  44.97, L0: 304.88 },
+  mercury: { a: 0.3871, e: 0.2056, inc:7.005, node: 48.33, lop:  77.46, L0: 252.25 },
+  venus:   { a: 0.7233, e: 0.0068, inc:3.395, node: 76.68, lop: 131.53, L0: 181.98 },
+  earth:   { a: 1.0000, e: 0.0167, inc:0.000, node:  0.00, lop: 102.94, L0: 100.46 },
+  mars:    { a: 1.5237, e: 0.0934, inc:1.851, node: 49.58, lop: 336.06, L0: 355.43 },
+  belt:    { a: 2.7660, e: 0.0758, inc:10.59, node: 80.31, lop:  73.60, L0:  95.99 }, // Ceres
+  jupiter: { a: 5.2026, e: 0.0484, inc:1.304, node:100.56, lop:  14.73, L0:  34.40 },
+  saturn:  { a: 9.5549, e: 0.0539, inc:2.485, node:113.72, lop:  92.43, L0:  49.94 },
+  uranus:  { a:19.2184, e: 0.0473, inc:0.773, node: 74.01, lop: 170.96, L0: 313.23 },
+  neptune: { a:30.1104, e: 0.0086, inc:1.770, node:131.78, lop:  44.97, L0: 304.88 },
 };
 // Kepler's 3rd law in game-days: T = 360 · a^1.5 (Earth a=1 → exactly one game-year).
 function planetPeriodDays(bodyId){
