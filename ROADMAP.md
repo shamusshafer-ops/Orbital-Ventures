@@ -4826,7 +4826,7 @@ suites green (`test-build-parity.js` excluded — a pre-existing `/tmp`-relative
 `require('../build.js')` path issue, reproduced identically against an unmodified build
 in a properly-rooted checkout; unrelated to this change, not fixed here).
 
-**E4.1 + E4.2 shipped 2026-07-18 (below). E4.3 (3D solar-system scene + camera) is next up — heavy design.**
+**E4.1 + E4.2 + E4.3 (code-complete, MAP3D flag OFF pending browser playtest) shipped 2026-07-18 (below). E4.4 (persistent ship identity + save migration) is next up — heavy design → Sonnet wiring.**
 
 
 ## Session — E4.1 shipped: real Keplerian ephemeris (2026-07-18)
@@ -4933,7 +4933,54 @@ one-line CDN tags.
 Full regression: **70/70 real suites green** (build-parity excluded — pre-existing /tmp-path env
 issue). Documented in `tests/README.md`.
 
-**E4.3 (3D solar-system scene + camera, consuming the E4.1 `planetHelio` positions) is next up —
+**E4.3 shipped 2026-07-18 as two slices — E4.3.0 (scene math, fully tested) + E4.3.1 (Three.js shell, flag MAP3D OFF, browser-pending). See below.**
 heavy design.** First not-headless-testable step (no browser in the sandbox), same discipline as
 BENCH_V2: the scene-graph math (positions, camera transforms) is unit-testable, but visual
 correctness and the default-on flip will need a real-browser playtest pass from Shamus.
+
+
+## Session — E4.3 shipped: 3D solar-system scene + camera (2026-07-18)
+
+Built as two slices, mirroring the E3/BENCH_V2 discipline: the headless-testable math first, then the
+Three.js rendering shell behind an OFF flag. Commits `41815db` (E4.3.0) + `46b1d40` (E4.3.1).
+
+**Why it matters beyond eye-candy:** the *current* 2D solar map fakes both the planet angles and the
+orbital motion (arbitrary `speed = 0.05/√r` from made-up start angles), and never consumed E4.1's real
+`planetHelio`. The 3D view places every planet at its **true heliocentric angle**, so it actually shows
+the Earth↔target geometry that drives launch windows.
+
+### E4.3.0 — scene math (`41815db`, fully tested)
+Pure geometry turning `planetHelio` into 3D scene coordinates. **Design: "real angles, schematic
+radii".** ANGLE is truthful (scene angle == real heliocentric theta; the Earth→Mars scene separation
+equals the real separation — window geometry preserved). RADIUS is compressed (real orbits span 0.39–30
+AU, unrenderable to scale) via a documented power law `R = SCENE_AU_BASE·AU^SCENE_AU_EXP` (exp 0.6):
+inner planets stay separated, Neptune ~74 units not ~300. Orbit rings are schematic circles (same
+spirit as the 2D map's rings). New pure fns: `sceneRadiusFor`, `bodyScenePos` (ecliptic x–z plane,
+y=0; moons resolve to parent + small offset), `orbitRingPoints`, `cameraTargetFor`, `orbitCameraEye`
+(spherical→cartesian for the hand-rolled camera, elevation clamped inside the poles). `test-scene-math.js`,
+36 checks.
+
+### E4.3.1 — Three.js rendering shell (`46b1d40`, flag MAP3D OFF, browser-pending)
+`startMap3D()` is `threeOK()`-guarded and, when `MAP3D` is on, becomes the top-priority renderer in
+`renderMap()` ahead of the existing Phaser 2D → SVG chain; on any absence/failure it disposes and falls
+through, so it can never break the game. Builds Sun + point/ambient light, planet spheres, schematic
+orbit-ring lines, starfield; a **hand-rolled orbit camera** (drag = rotate az/el, wheel = zoom within
+clamps, click = raycast → `selectBody`, chosen over importing OrbitControls to keep the shim to one
+import); and a render loop that repositions every planet each frame from `bodyScenePos(id, absDay())`
+— truthful, not the 2D map's fake spin. `pauseMap3D()` tears the loop down on tab switch. Pure helpers
+`hexToNum` / `planetMeshRadius` factored out and tested. `test-map3d-shell.js`, 17 checks.
+
+**CRITICAL STATUS — MAP3D stays OFF by default.** Like BENCH_V2, the entire Three.js shell was built and
+tested *headlessly only* — the sandbox has no browser/WebGL, so the scene has never actually rendered.
+The math is fully unit-tested; the rendering, camera feel, and picking are not. **Flipping `MAP3D=true`
+as the shipped default should follow a real-browser playtest**, not ride in on a code session. Playtest
+checklist is in the E4.3.1 code comment (scene renders + no console errors; camera drag/zoom/click-focus;
+positions track the body card as months advance; forced-fallback verified; no leaked canvas or runaway
+rAF across tab switches).
+
+Full regression: **72/72 real suites green** (build-parity excluded — pre-existing /tmp-path env issue);
+release-inline `<script>` == `build/game.js` parity reverified after the render.js edits.
+
+**E4.4 (persistent ship/hull identity + flight history + reuse count, save-versioned & additive, reusing
+the Fleet Registry #115 collector shape) is next up — heavy design → Sonnet wiring. Headless-testable
+(no renderer), so it's back to fully-verifiable ground after the browser-pending E4.3 shell.**
