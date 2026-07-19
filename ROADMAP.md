@@ -5125,3 +5125,65 @@ Build byte-faithful.
 **E4.6 (A2 orbital-element gameplay slices) is next up per the original E4 breakdown** — one
 opt-in decision-bearing mechanic at a time, each with its own identity-guarantee test. *Heavy per
 slice.*
+
+
+## Session — E4.6 (A2 slice 1): depot rendezvous/phasing as a Δv cost (2026-07-19)
+
+*Pure append, per standing instruction — nothing above this line altered.*
+
+Before scoping, checked MIGRATION.md's §9 open item #2 (A2 slice list) against what's actually
+live: **"phase-angle window quality as a real decision" is already fully shipped** — the existing
+`renderWindowPlanner()` UI lets the player commit to any of the ~4 offered windows, trading
+soonest-vs-best (a real, live decision, not just E4.1's underlying physics). **Ground track (#45)
+is also already shipped** (a separate thread — `groundTrackPasses`/`drawEarthGlobe`, tested in
+`test-ground-track.js`). That left **rendezvous & phasing for reuse/refuel** as the one genuinely
+open A2 candidate.
+
+**The gap:** the LEO propellant depot (#7/M3b-ii) tops off a mission's transfer stage for free,
+regardless of orbital plane — no rendezvous physics at all. Closed with `depotPhasingDv(m)`
+(`sim.js`), reusing the exact `2·v·sin(Δi/2)` formula `inclinationDv` already established: a depot
+can hand over propellant once you're alongside it, but can't pay for the plane-change burn your
+own vehicle needs to get there.
+
+`DEPOT_INCLINATION = LAUNCH_SITE_LAT` — no depot vehicle carries its own `.inclination` (Tanker Run
+flights are unmodified/free-plane), so by the same "unset ⇒ default plane" convention
+`inclinationDv` uses, the depot naturally forms at the launch site's latitude (28.4°).
+
+`depotPhasingDv(m)` is zero unless **both**: the mission is `.profile`-shaped (the only category
+the depot benefits at all — a flat-reqDv mission like `crew_orbit`, which already carries
+`.inclination:65` for the *unrelated* launch-azimuth tax, is correctly zero here since the depot
+mechanic doesn't apply to it at all), **and** `state.depotUse>0` this flight — unlike
+`inclinationDv` (a static, always-on per-mission surcharge), this is a *dynamic* cost: it only
+exists when the player actively chooses to draw from the depot. Also unlike `inclinationDv`'s
+floor/ceiling (free to steer higher via azimuth), there's no free band here — meeting a specific
+existing depot plane costs a burn in either direction, so it's a plain symmetric mismatch cost.
+
+Wired into `simulateMission`'s `'Ascent to LEO'` leg: when a mission draws from the depot with a
+plane mismatch, the phasing cost is added to that leg's required Δv (the depot's mass top-off,
+added to the transfer stage after this leg, is unchanged — only the vehicle's OWN Δv requirement to
+reach the rendezvous grows). The leg carries a new `phasingDv` field (`undefined` when zero) for
+display; `render.js`'s existing depot-note line grows a phasing explainer when it fires.
+
+**Identity guarantee:** no mission today combines `.profile` with `.inclination`, so
+`depotPhasingDv` is provably 0 for every mission in `MISSIONS`, regardless of `state.depotUse` —
+mechanism-only, exactly like `inclinationDv`'s slice 1. No existing mission's numbers move, and
+every real `.profile` mission's Ascent-to-LEO leg dv/pass output is unaffected by turning
+`depotUse` on. A synthetic mission (constructed in the test, following the established
+`test-inclination.js` pattern of not touching real content for a mechanism-only slice) proves the
+leg-dv gate actually responds once both conditions hold.
+
+Tests: new `test-depot-phasing.js` (17 checks — the `MISSIONS`-wide identity, per-mission
+`simulateMission` leg-output identity, the formula's opt-in/symmetric/monotonic properties matching
+the same ~3827 m/s magnitude the launch-site slice found for an equivalent angular offset, and the
+synthetic integration case).
+
+Full regression at push time: 78 suites; only `test-flight3d-trajectory.js` still differs
+(Codex's already-reviewed-and-accepted vehicle/hull refinement — unrelated, not touched). Build
+byte-faithful.
+
+**Remaining A2 candidates for a future slice** (per MIGRATION §9): extending the inclination
+mechanic into a fuller plane-management layer (the deferred #30 second-launch-site economics is
+the natural home for this). No mission currently combines `.profile`+`.inclination` in the *real*
+content, so a natural follow-on (mirroring the historical inclination Slice 1→Slice 2 pattern) is
+retrofitting one real interplanetary mission with a non-Cape-matching inclination to make this
+slice's mechanism *felt* rather than dormant — a deliberate balance call, not done here.
