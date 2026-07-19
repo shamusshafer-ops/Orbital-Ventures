@@ -37,8 +37,14 @@ check('phase adapter distinguishes a suborbital coast',flight3dPhaseAt(Object.as
   check('metre-scale first hop visibly clears the pad without inventing altitude',hop.altitude>40&&hop.altitudeKm<.03&&hop.pitch===0);
 }
 {
-  const early=cape3dLaunchProfile(flight3dPresentationSnapshot(spec,timing,3200+7200*.3)), late=cape3dLaunchProfile(flight3dPresentationSnapshot(spec,timing,3200+7200*.8));
-  check('gravity turn keeps a long vertical climb before pitching over',early.pitch===0&&late.pitch<0);
+  // 2026-07-19 trajectory rework: short vertical rise (~5.5% of ascent, clearing the tower), then a
+  // VERY GRADUAL pitch-over that reaches near-horizontal flight by orbital insertion — replacing the
+  // old long-vertical-then-late-turn shape. See test-flight3d-trajectory.js for the full battery.
+  const vertical=cape3dLaunchProfile(flight3dPresentationSnapshot(spec,timing,3200+7200*.04));
+  const early=cape3dLaunchProfile(flight3dPresentationSnapshot(spec,timing,3200+7200*.3)), late=cape3dLaunchProfile(flight3dPresentationSnapshot(spec,timing,3200+7200*.98));
+  check('ascent begins with a vertical tower-clearing rise',vertical.pitch===0&&vertical.downrangeKm<1e-6);
+  check('gravity turn is underway but still gentle at 30% of ascent',early.pitch<0&&early.pitch>-.5);
+  check('orbital insertion ends in near-horizontal flight',late.pitch<-1.35);
 }
 {
   const failed=Object.assign({},spec,{success:false,failPhase:'ascent'});

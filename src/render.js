@@ -1847,6 +1847,68 @@ function cape3dRoads(materials){
   const route=crawlerRouteGrid(); for(let i=1;i<route.length;i++) cape3dRoadSegment(g,capeWorldPoint(route[i-1][0],route[i-1][1]),capeWorldPoint(route[i][0],route[i][1]),25,materials.crawlerway);
   return g;
 }
+/* ---------- flight trajectory model (2026-07-19 rework) ----------
+   Replaces three independent curves (altitude, downrange, pitch — which could and did disagree,
+   so the nose visibly didn't match the motion) with one integrated gravity-turn trajectory:
+
+     pitch program  γ(p): 0 (vertical) until the tower is cleared (~5.5% of ascent), then a
+                          smoothstep ramp to γmax — the turn onset is imperceptible and the rate
+                          peaks mid-ascent, i.e. an initial vertical rise followed by a very
+                          gradual pitch-over toward the direction of flight.
+     speed program  v(p): 0.035 + 0.965·p^1.7 — a rocket at TWR≈1.2 crawls off the pad and
+                          accelerates hard as propellant burns off; ~25× faster at MECO than at
+                          liftoff.
+     trajectory:          d(alt) = v·cosγ, d(downrange) = v·sinγ, integrated (96 steps, memoized
+                          per flight class). The nose equals the velocity direction BY
+                          CONSTRUCTION — a gravity turn is zero-angle-of-attack flight — and the
+                          orbital altitude curve becomes the correct S-shape automatically: as
+                          γ→87° the climb rate dies while downrange keeps accelerating, so an
+                          orbital insertion ends in near-horizontal flight instead of the old
+                          p^1.62 "steepest at the end" shape.
+
+   γmax by mission energy: orbital/cislunar 87° (insertion is horizontal); suborbital lobs lean
+   with energy (sounding rockets stay near-vertical ~17°, high-apogee lobs up to ~36°).
+
+   Suborbital coast (phase 'suborbital') is a real unpowered ballistic arc continuing the burnout
+   state: h(q) = A1 + Vy·q − ½G·q², with G chosen so apogee lands at 42% of the coast and the arc
+   reaches h=0 — the water — exactly at its end. The nose follows the velocity vector through the
+   whole arc: past horizontal at apogee, steepening nose-down into the sea (splash flag at q≥.97).
+   Apogee is normalized to ≈1.12× the mission's targetAltitudeKm so ALT readouts stay in the same
+   range the 2D-era tuning established (burnout at ~53% of apogee — textbook sounding-rocket
+   proportions). Engine effects are altitude/phase-truthful: plume/smoke die at burnout (the old
+   code kept the engine burning through the entire coast), smoke is dense-atmosphere-only
+   (fades by ~13 km), vacuum shading is altitude-based (fixes the old first-hop-at-73%-progress
+   vacuum bug). The metre-scale first-hop branch is preserved verbatim.
+
+   Speed continuity across burnout is not exact (ascent and coast map their own [0,1] over
+   different real durations) — the cutoff moment reads as a pacing change, which is acceptable
+   and matches the phase handoff the overlay already makes. */
+const CAPE3D_TRAJ_CACHE=new Map();
+function cape3dGammaMax(orbital,reqDv){ return orbital?1.518:Math.max(.28,Math.min(.62,.28+(((reqDv||0)-1300)*7e-5))); }
+function cape3dAscentTable(orbital,reqDv,targetAltKm){
+  const key=(orbital?'o':'s')+'|'+(reqDv||0)+'|'+targetAltKm;
+  const hit=CAPE3D_TRAJ_CACHE.get(key); if(hit) return hit;
+  const N=96, P0=.055, gMax=cape3dGammaMax(orbital,reqDv);
+  const gam=p=>{ if(p<=P0) return 0; const s=(p-P0)/(1-P0); return gMax*s*s*(3-2*s); };
+  const vel=p=>.035+.965*Math.pow(p,1.7);
+  const alt=new Float64Array(N+1), dr=new Float64Array(N+1), g=new Float64Array(N+1);
+  let a=0,d=0;
+  for(let i=1;i<=N;i++){ const pm=(i-.5)/N, v=vel(pm), ga=gam(pm); a+=v*Math.cos(ga)/N; d+=v*Math.sin(ga)/N; alt[i]=a; dr[i]=d; g[i]=gam(i/N); }
+  // Normalization: orbital → MECO altitude == targetAltitudeKm. Suborbital → the COAST APOGEE
+  // (2.103·A1 from the coast construction below) lands at 1.12×target, mirroring the shipped
+  // 2D-era readout peak, so burnout A1 = 1.12·target/2.103.
+  const A1=orbital?targetAltKm:targetAltKm*1.12/2.103;
+  const k=A1/alt[N];
+  // Coast: h(q)=A1+Vy·q−½G·q². Constraints — splash h(1)=0 and apogee at q=.42 — give
+  // Vy=5.25·A1, G=12.5·A1 (apogee=2.103·A1). Vx continues the burnout flight-path angle.
+  const t={N,gMax,k,A1,D1:dr[N]*k,alt,dr,g,Vy:5.25*A1,G:12.5*A1,Vx:5.25*A1*Math.tan(gMax),apogeeKm:2.103*A1};
+  if(CAPE3D_TRAJ_CACHE.size>24) CAPE3D_TRAJ_CACHE.clear();
+  CAPE3D_TRAJ_CACHE.set(key,t); return t;
+}
+function cape3dTrajAt(t,p){ // interpolate the powered-ascent table at p∈[0,1]
+  const x=Math.max(0,Math.min(1,p))*t.N, i=Math.floor(x), j=Math.min(t.N,i+1), f=x-i;
+  return { altKm:(t.alt[i]+(t.alt[j]-t.alt[i])*f)*t.k, drKm:(t.dr[i]+(t.dr[j]-t.dr[i])*f)*t.k, gamma:t.g[i]+(t.g[j]-t.g[i])*f };
+}
 function cape3dLaunchProfile(snapshot){
   const phase=snapshot&&snapshot.phase||'pad', p=Math.max(0,Math.min(1,(snapshot&&snapshot.phaseProgress)||0)), ignition=Math.max(0,Math.min(1,(snapshot&&snapshot.effects&&snapshot.effects.ignition)||0));
   const ascent=phase==='ascent', suborbital=phase==='suborbital', orbital=!!(snapshot&&(snapshot.isOrbital||snapshot.isCislunar)), reqDv=(snapshot&&snapshot.reqDv)||0;
@@ -1855,11 +1917,26 @@ function cape3dLaunchProfile(snapshot){
   // flight. Only the first, metre-scale hop gets a small cinematic clearance so a full-size
   // 3D vehicle can visibly leave its pad without falsifying the ALT readout.
   const targetAltitudeKm=orbital?185:(reqDv<=1200?.02:reqDv<=1900?15+(reqDv-1300)*.108:reqDv<=2900?80+(reqDv-1900)*.02:reqDv<=4200?100+(reqDv-2900)*.225:reqDv<=6000?393+(reqDv-4200)*.39:1100);
-  const altitudeKm=ascent?targetAltitudeKm*Math.pow(p,1.62):(suborbital?targetAltitudeKm*Math.max(.04,1+.28*Math.sin(p*Math.PI)-.82*p*p):0), shortHop=targetAltitudeKm<1?(ascent?70*Math.pow(p,1.28):(suborbital?70*Math.max(.08,1-p*.88):0)):0, altitude=altitudeKm*20+shortHop;
-  const failed=!!(snapshot&&snapshot.effects&&snapshot.effects.ascentFailure), gravityTurn=targetAltitudeKm<1?0:Math.max(0,Math.min(1,(p-.42)/.58));
-  const lowAtmos=Math.max(0,1-p/.32), vacuum=Math.max(0,Math.min(1,(p-.18)/.55));
-  const downrangeKm=targetAltitudeKm<1?0:(ascent?targetAltitudeKm*.48*Math.pow(gravityTurn,1.7):(suborbital?targetAltitudeKm*(.48+2.2*p+2.25*p*p):0));
-  return {phase,progress:p,targetAltitudeKm,altitudeKm,altitude,downrangeKm,offsetX:downrangeKm*20,pitch:targetAltitudeKm<1?0:(ascent?-Math.pow(gravityTurn,1.45)*.78:(suborbital?-(.78+p*.35):0)),plume:failed?0:(ascent?1:(suborbital&&p<.16?.58:ignition)),light:failed?0:(ascent?2.8:ignition*2.2),smoke:failed?0:(ascent?lowAtmos*.9:(suborbital&&p<.16?.16:ignition)),vacuum,failed,failureProgress:Math.max(0,Math.min(1,(snapshot&&snapshot.effects&&snapshot.effects.failureProgress)||0))};
+  const failed=!!(snapshot&&snapshot.effects&&snapshot.effects.ascentFailure);
+  let altitudeKm=0, downrangeKm=0, pitch=0, flightPathRad=0, splash=false, apogeeKm=targetAltitudeKm, shortHop=0;
+  if(targetAltitudeKm<1){
+    // Metre-scale first hop: straight up, straight back down — no turn (preserved verbatim).
+    altitudeKm=ascent?targetAltitudeKm*Math.pow(p,1.62):(suborbital?targetAltitudeKm*Math.max(.04,1+.28*Math.sin(p*Math.PI)-.82*p*p):0);
+    shortHop=ascent?70*Math.pow(p,1.28):(suborbital?70*Math.max(.08,1-p*.88):0);
+  } else if(ascent){
+    const t=cape3dAscentTable(orbital,reqDv,targetAltitudeKm), s=cape3dTrajAt(t,p);
+    altitudeKm=s.altKm; downrangeKm=s.drKm; flightPathRad=s.gamma; pitch=-s.gamma; apogeeKm=orbital?targetAltitudeKm:t.apogeeKm;
+  } else if(suborbital){
+    const t=cape3dAscentTable(orbital,reqDv,targetAltitudeKm), vy=t.Vy-t.G*p;
+    altitudeKm=Math.max(0,t.A1+t.Vy*p-.5*t.G*p*p); downrangeKm=t.D1+t.Vx*p;
+    flightPathRad=Math.atan2(t.Vx,vy); pitch=-Math.min(2.75,flightPathRad); splash=p>=.97; apogeeKm=t.apogeeKm;
+  }
+  const altitude=altitudeKm*20+shortHop;
+  const lowAtmos=Math.max(0,Math.min(1,1-altitudeKm/13)), vacuum=Math.max(0,Math.min(1,(altitudeKm-30)/70));
+  const plume=failed?0:(ascent?1:(phase==='pad'?ignition:(suborbital&&p<.06?.5*(1-p/.06):0)));
+  const light=failed?0:(ascent?2.8:(phase==='pad'?ignition*2.2:0));
+  const smoke=failed?0:(ascent?lowAtmos*.9:(phase==='pad'?ignition:0));
+  return {phase,progress:p,targetAltitudeKm,altitudeKm,altitude,downrangeKm,offsetX:downrangeKm*20,pitch,flightPathRad,apogeeKm,splash,plume,light,smoke,vacuum,failed,failureProgress:Math.max(0,Math.min(1,(snapshot&&snapshot.effects&&snapshot.effects.failureProgress)||0))};
 }
 function cape3dAscentBlend(progress){
   const p=Math.max(0,Math.min(1,progress||0)), space=Math.max(0,Math.min(1,(p-.20)/.42));
@@ -1992,7 +2069,7 @@ function cape3dUpdateFlightPresentation(snapshot){
 function cape3dUpdateLaunchPresentation(snapshot){
   if(!cape3d||!cape3d.root||!cape3d.root.userData.launchActive) return false;
   const root=cape3d.root, rocket=root.userData.launchRocket, fx=root.userData.launchEffects, base=root.userData.launchBase, q=cape3dLaunchProfile(snapshot), failure=root.userData.launchFailure; if(!rocket||!fx||!base) return false;
-  rocket.position.copy(base); rocket.position.x+=q.offsetX||0; rocket.position.y+=q.altitude; rocket.rotation.z=q.pitch||0; root.userData.launchSpace=q.phase==='ascent'?cape3dAscentBlend(q.progress).space:(q.phase==='suborbital'?.12:0);
+  rocket.position.copy(base); rocket.position.x+=q.offsetX||0; rocket.position.y+=q.altitude; rocket.rotation.z=q.pitch||0; root.userData.launchSpace=q.phase==='ascent'?cape3dAscentBlend(q.progress).space:(q.phase==='suborbital'?Math.max(.1,Math.min(.9,(q.altitudeKm||0)/110)):0);
   if(q.failed){ if(failure&&!failure.active) cape3dStartFailure(failure,rocket); rocket.visible=false; fx.group.visible=false; if(failure) cape3dUpdateFailure(failure,q.failureProgress); }
   else { rocket.visible=true; if(failure&&failure.active) cape3dResetFailure(failure); fx.group.visible=q.plume>0.01; }
   const plumeWidth=1+q.vacuum*1.45, plumeLength=Math.max(.08,q.plume)*(1+q.vacuum*.75); fx.flame.scale.set(plumeWidth,plumeLength,plumeWidth); fx.core.scale.set(1+q.vacuum*.45,Math.max(.08,q.plume)*(1+q.vacuum*.28),1+q.vacuum*.45); fx.flame.material.opacity=.3+q.plume*.42; fx.core.material.opacity=.74+q.plume*.24; fx.glow.color.setHex(0xb9e6ff); fx.glow.intensity=q.light*(1-q.vacuum*.36);
