@@ -12,6 +12,7 @@ check('phase adapter reports pad',flight3dPhaseAt(spec,1000,timing)==='pad');
 check('phase adapter reports ascent',flight3dPhaseAt(spec,4000,timing)==='ascent');
 check('phase adapter reports orbit',flight3dPhaseAt(spec,11000,timing)==='orbit');
 check('phase adapter reports reentry',flight3dPhaseAt(spec,16000,timing)==='reentry');
+check('phase adapter distinguishes a suborbital coast',flight3dPhaseAt(Object.assign({},spec,{isOrbital:false}),11000,timing)==='suborbital');
 {
   const snap=flight3dPresentationSnapshot(spec,timing,1600);
   check('snapshot carries immutable presentation identity',snap.phase==='pad'&&snap.crewed&&snap.isOrbital&&snap.effects.night);
@@ -24,6 +25,20 @@ check('phase adapter reports reentry',flight3dPhaseAt(spec,16000,timing)==='reen
   const ascent=cape3dLaunchProfile(flight3dPresentationSnapshot(spec,timing,6800));
   check('launch profile keeps the vehicle on the pad before ascent',pad.altitude===0&&pad.plume>0);
   check('launch profile raises the vehicle and brightens the plume in ascent',ascent.altitude>0&&ascent.plume===1&&ascent.light>pad.light);
+}
+{
+  const sounding=Object.assign({},spec,{isOrbital:false,reqDv:1800}), rise=cape3dLaunchProfile(flight3dPresentationSnapshot(sounding,timing,3200+7200*.8)), coast=cape3dLaunchProfile(flight3dPresentationSnapshot(sounding,timing,3200+7200+1200));
+  check('sounding rockets use a bounded non-orbital ascent scale',rise.altitude<1400);
+  check('suborbital profile continues the 3D arc after burnout',coast.phase==='suborbital'&&coast.offsetX>0&&coast.altitude>0&&coast.altitude<2000);
+  check('sounding profile reports a physical upper-atmosphere altitude',coast.altitudeKm>60&&coast.altitudeKm<100);
+}
+{
+  const first=Object.assign({},spec,{isOrbital:false,reqDv:1000}), hop=cape3dLaunchProfile(flight3dPresentationSnapshot(first,timing,3200+7200*.8));
+  check('metre-scale first hop visibly clears the pad without inventing altitude',hop.altitude>40&&hop.altitudeKm<.03&&hop.pitch===0);
+}
+{
+  const early=cape3dLaunchProfile(flight3dPresentationSnapshot(spec,timing,3200+7200*.3)), late=cape3dLaunchProfile(flight3dPresentationSnapshot(spec,timing,3200+7200*.8));
+  check('gravity turn keeps a long vertical climb before pitching over',early.pitch===0&&late.pitch<0);
 }
 {
   const failed=Object.assign({},spec,{success:false,failPhase:'ascent'});
@@ -41,6 +56,11 @@ check('phase adapter reports reentry',flight3dPhaseAt(spec,16000,timing)==='reen
   const orbit=cape3dOrbitProfile(flight3dPresentationSnapshot(spec,timing,11000));
   check('orbit profile follows the authoritative cruise phase',orbit.progress>0&&orbit.progress<1);
   check('orbit profile gives insertion a bounded burn envelope',orbit.burn>=0&&orbit.burn<=1&&Number.isFinite(orbit.angle));
+}
+{
+  const reentry=cape3dReentryProfile(flight3dPresentationSnapshot(spec,timing,16000));
+  check('reentry profile starts with a bounded plasma envelope',reentry.progress>=0&&reentry.plasma>=0&&reentry.plasma<=1);
+  check('reentry profile supplies deterministic recovery deployments',reentry.drogue>=0&&reentry.mains>=0&&reentry.mains<=1);
 }
 {
   const efficient=cape3dFlightQualityProfile({deviceMemory:4,hardwareConcurrency:4}), cinematic=cape3dFlightQualityProfile({deviceMemory:16,hardwareConcurrency:12});

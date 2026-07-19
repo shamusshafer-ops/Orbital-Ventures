@@ -490,13 +490,13 @@ function flight3dPresentationSnapshot(spec,timing,t){
   let phaseP=0;
   if(phase==='pad') phaseP=pad?local/pad:1;
   else if(phase==='ascent') phaseP=(local-pad)/ascent;
-  else if(phase==='orbit'||phase==='transfer') phaseP=(local-pad-ascent)/cruise;
+  else if(phase==='orbit'||phase==='transfer'||phase==='suborbital') phaseP=(local-pad-ascent)/cruise;
   else if(phase==='reentry') phaseP=(local-pad-ascent-cruise)/Math.max(1,reentry);
   else if(['depart','dock','complete'].includes(phase)) phaseP=1;
   const stages=((spec&&spec.stages)||[]).map(s=>({prop:s.prop||0,count:s.count||1,dia:s.dia||0}));
   const boosters=spec&&spec.boosters?{count:spec.boosters.count||0,prop:spec.boosters.prop||0,dia:spec.boosters.dia||0,solid:!!spec.boosters.solid}:null;
   const ascentFailure=phase==='ascent'&&!!(spec&&spec.success===false&&spec.failPhase==='ascent')&&phaseP>=.5;
-  return {phase,phaseProgress:clampA(phaseP,0,1),overallProgress:clampA(local/total,0,1),mode:(spec&&spec.mode)||'launch',crewed:!!(spec&&spec.crewed),isOrbital:!!(spec&&spec.isOrbital),isCislunar:!!(spec&&spec.isCislunar),success:spec?spec.success!==false:true,vehicle:{stages,boosters,transferProp:(spec&&spec.transferProp)||0},effects:{ignition:clampA(d.ignite==null?(phase==='pad'?0:1):d.ignite,0,1),night:!!(spec&&spec.night),ascentFailure,failureProgress:ascentFailure?clampA((phaseP-.5)/.28,0,1):0}};
+  return {phase,phaseProgress:clampA(phaseP,0,1),overallProgress:clampA(local/total,0,1),mode:(spec&&spec.mode)||'launch',crewed:!!(spec&&spec.crewed),isOrbital:!!(spec&&spec.isOrbital),isCislunar:!!(spec&&spec.isCislunar),reqDv:(spec&&spec.reqDv)||0,success:spec?spec.success!==false:true,vehicle:{stages,boosters,transferProp:(spec&&spec.transferProp)||0},effects:{ignition:clampA(d.ignite==null?(phase==='pad'?0:1):d.ignite,0,1),night:!!(spec&&spec.night),ascentFailure,failureProgress:ascentFailure?clampA((phaseP-.5)/.28,0,1):0}};
 }
 function flight3dAvailable(){ return FLIGHT3D&&typeof cape3dAvailable==='function'&&cape3dAvailable()&&typeof startCape3D==='function'; }
 function flight3dRestoreCape(s){
@@ -509,7 +509,7 @@ function beginFlight3DSession(spec){
   const host=$('flight3dHost'); if(!host) return false;
   const hadCape=!!cape3d, returnMount=hadCape?cape3d.mountId:null, returnHotspots=hadCape?cape3d.hotspotHostId:null;
   if(!startCape3D('flight3dHost',900,520)) return false;
-  clearFlight3DDecision(); clearFlight3DReadout(); flight3dSession={active:true,spec,returnMount,returnHotspots,snapshot:null,handedOff:false};
+  clearFlight3DDecision(); clearFlight3DReadout(); if(typeof cape3d!=='undefined'&&cape3d) cape3d.flightPan={x:0,y:0}; flight3dSession={active:true,spec,returnMount,returnHotspots,snapshot:null,handedOff:false};
   host.style.display='block'; const fallback=$('flightZoom'); if(fallback) fallback.style.visibility='hidden';
   mountCape3D('flight3dHost',null); resizeCape3D(900,520); resumeCape3D(); return cape3dEnterLaunchPresentation(null);
 }
@@ -528,7 +528,19 @@ function updateFlight3DReadout(snapshot){
   if(phase==='pad') text+='\nCOUNTDOWN · '+p+'%';
   else if(phase==='ascent') text+='\n'+(snapshot.effects&&snapshot.effects.ascentFailure?'VEHICLE LOSS':'ASCENT')+' · '+p+'%';
   else if(phase==='orbit') text+='\n'+(p<13?'ORBITAL INSERTION':'EARTH ORBIT')+' · '+p+'%';
+  else if(phase==='reentry') text+='\n'+(p<52?'ATMOSPHERIC ENTRY':(p<66?'DROGUE DEPLOY':'RECOVERY DESCENT'))+' · '+p+'%';
+  else if(phase==='suborbital') text+='\nSUBORBITAL ARC · '+p+'%';
   else return clearFlight3DReadout();
+  // The 3D scene compresses distance only for camera readability. The HUD always reports the
+  // profile's physical altitude, so a sounding rocket is never presented as an orbital flight.
+  let altitudeKm=0;
+  try{
+    if(phase==='orbit') altitudeKm=cape3dOrbitProfile(snapshot).altitude;
+    else if(phase==='reentry') altitudeKm=Math.max(0,120*(1-(snapshot.phaseProgress||0)));
+    else altitudeKm=cape3dLaunchProfile(snapshot).altitudeKm||0;
+  }catch(e){}
+  const altitudeLabel=altitudeKm<1?Math.round(altitudeKm*1000)+' m':(altitudeKm<100?altitudeKm.toFixed(1):Math.round(altitudeKm))+' km';
+  text+='\nALT · '+altitudeLabel;
   text+='\n'+(snapshot.crewed?'CREWED':'UNCREWED')+' · '+(snapshot.effects&&snapshot.effects.night?'NIGHT':'DAY')+' FLIGHT'; host.textContent=text; host.classList.remove('hidden'); return true;
 }
 function showFlight3DDecision(spec){
@@ -545,7 +557,7 @@ function updateFlight3DSession(snapshot){
   try{
     // Slice 4 keeps successful Earth-orbit insertion in the live Three renderer. Transfer,
     // re-entry and failed/deep outcomes still deliberately use the established 2D scenes.
-    if(snapshot&&(['pad','ascent'].includes(snapshot.phase)||(snapshot.phase==='orbit'&&snapshot.isOrbital&&snapshot.success!==false))){
+    if(snapshot&&(['pad','ascent','suborbital'].includes(snapshot.phase)||(snapshot.phase==='orbit'&&snapshot.isOrbital&&snapshot.success!==false)||(snapshot.phase==='reentry'&&snapshot.isOrbital&&snapshot.crewed&&snapshot.success!==false))){
       if(s.handedOff) return false;
       updateFlight3DReadout(snapshot);
       return cape3dUpdateFlightPresentation(snapshot);
@@ -706,15 +718,15 @@ function initFlightZoom(){
     flightCam.z=Math.min(3,Math.max(1, flightCam.z*(e.deltaY<0?1.12:0.89)));
     flightCam.x=cx-(cx-flightCam.x)*(flightCam.z/z0); flightCam.y=cy-(cy-flightCam.y)*(flightCam.z/z0);
     flightClampPan(r.width,r.height); applyFlightZoom(); },{passive:false});
-  wrap.addEventListener('pointerdown',e=>{ if(flightCam.z<=1) return; drag=true; moved=0; lx=e.clientX; ly=e.clientY; try{wrap.setPointerCapture(e.pointerId);}catch(_){}});
-  wrap.addEventListener('pointermove',e=>{ if(!drag) return; const dx=e.clientX-lx, dy=e.clientY-ly; lx=e.clientX; ly=e.clientY; moved+=Math.abs(dx)+Math.abs(dy); const r=wrap.getBoundingClientRect(); flightCam.x+=dx; flightCam.y+=dy; flightClampPan(r.width,r.height); applyFlightZoom(); });
+  wrap.addEventListener('pointerdown',e=>{ const decision=$('flight3dDecision'); if(decision&&!decision.classList.contains('hidden')) return; if(flight3dSession&&!flight3dSession.handedOff){ drag='3d'; moved=0; lx=e.clientX; ly=e.clientY; try{wrap.setPointerCapture(e.pointerId);}catch(_){} return; } if(flightCam.z<=1) return; drag='2d'; moved=0; lx=e.clientX; ly=e.clientY; try{wrap.setPointerCapture(e.pointerId);}catch(_){}});
+  wrap.addEventListener('pointermove',e=>{ if(!drag) return; const dx=e.clientX-lx, dy=e.clientY-ly; lx=e.clientX; ly=e.clientY; moved+=Math.abs(dx)+Math.abs(dy); if(drag==='3d'){ if(typeof cape3d!=='undefined'&&cape3d){ const p=cape3d.flightPan||(cape3d.flightPan={x:0,y:0}); p.x=Math.max(-420,Math.min(420,p.x-dx*1.4)); p.y=Math.max(-280,Math.min(280,p.y+dy*1.1)); } return; } const r=wrap.getBoundingClientRect(); flightCam.x+=dx; flightCam.y+=dy; flightClampPan(r.width,r.height); applyFlightZoom(); });
   wrap.addEventListener('pointerup',()=>{ drag=false; });
   wrap.addEventListener('pointercancel',()=>{ drag=false; });
   // Swallow the click that follows a real pan (>6px, same threshold as the Cape/pop-out skip
   // guards) in capture phase so it never reaches the canvas' post-flight "Continue ▸" click
   // handler; a genuine tap (no drag) passes through untouched.
   wrap.addEventListener('click',e=>{ if(moved>6){ e.stopPropagation(); e.preventDefault(); moved=0; } }, true);
-  wrap.addEventListener('dblclick',()=>{ resetFlightZoom(); });
+  wrap.addEventListener('dblclick',()=>{ resetFlightZoom(); if(typeof cape3d!=='undefined'&&cape3d) cape3d.flightPan={x:0,y:0}; });
 }
 /* ---------- Hybrid Phaser layer (Slice 1): FlightScene ----------
    Hosts the mission flight playback in Phaser. The proven drawScene renderer (its
