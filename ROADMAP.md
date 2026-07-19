@@ -4984,3 +4984,76 @@ release-inline `<script>` == `build/game.js` parity reverified after the render.
 **E4.4 (persistent ship/hull identity + flight history + reuse count, save-versioned & additive, reusing
 the Fleet Registry #115 collector shape) is next up — heavy design → Sonnet wiring. Headless-testable
 (no renderer), so it's back to fully-verifiable ground after the browser-pending E4.3 shell.**
+
+
+## Session — MAP3D flipped default-ON; Cape 3D work landed outside this log; flight trajectory rework (2026-07-18 → 2026-07-19)
+
+*This entry is a catch-up append: several commits shipped to `main` without ROADMAP entries. Nothing
+above this line has been altered — some "next up" statements above are now stale; this entry is the
+current status.*
+
+### MAP3D default-ON (`dd55e30`, 2026-07-18)
+At the repo owner's request (private single-user repo), `MAP3D` was flipped to `true` so the E4.3 3D
+solar-system view could be playtested in a real browser. Safe to default-on because the shell degrades
+three ways (threeOK() gate, try/catch in startMap3D, try/catch → 2D fallback in the render loop). The
+`test-map3d-shell.js` flag assertion was updated; safety/fallback checks retained.
+
+### Cape 3D epic — landed on `main` outside this log (commits `2ec3ef1`, `d9d1f43`, `07c3da2`)
+Three commits were authored directly against the repo (per `AGENTS.md`, via a separate GPT-5.6-based
+agent toolchain — not the sessions writing this log). For the record, they shipped:
+- **`2ec3ef1` — photographic textures + Cape 3D design.** `assets/` added (10 planet-texture JPGs, 2
+  Cape albedo PNGs, `CREDITS.md`); `build.js` now base64-inlines assets into both HTMLs (release grew
+  ~1.6MB → ~18MB; build gracefully skips missing assets so texture-less forks still build).
+  `docs/cape-3d-architecture.md` (full design: replace the Command Center Cape's Canvas/Phaser
+  presentation with a Three.js site scene — one scene/renderer, two mounts, projected DOM hotspot
+  anchors). New `CAPE3D` flag + foundation (`capeWorldPoint`, `capeFacilityDescriptors`,
+  `cape3dCameraEye`), `test-cape3d-foundation.js`.
+- **`d9d1f43` — 3D Cape flight sequence.** `docs/cape-3d-launch-orbit-scope.md` (pad → ignition →
+  ascent → high-atmosphere handoff → orbit → result; 3D is a renderer over the authoritative sim, never
+  a second flight model). `FLIGHT3D` flag + presentation adapter (`flight3dPhaseAt`,
+  `flight3dPresentationSnapshot`), launch/orbit/reentry presentations, decision + readout overlays,
+  fallback handoff. `test-flight3d-foundation.js`.
+- **`07c3da2` — launch presentation refinements.**
+
+Both `CAPE3D` and `FLIGHT3D` shipped enabled. These slices are browser-verified by the owner directly
+(the sandbox writing this log has no browser). ROADMAP entries for future Cape-3D work may continue to
+land outside this log; treat the commit history as authoritative for that workstream.
+
+### Flight trajectory rework (`e90d7e6`, 2026-07-19) — owner-requested realism pass
+Replaced `cape3dLaunchProfile`'s three independent curves (altitude `p^1.62`, downrange, pitch — which
+could and did disagree, so the nose visibly didn't match the motion) with **one integrated gravity-turn
+trajectory**: a pitch program (vertical until the tower is cleared at ~5.5% of ascent, then a smoothstep
+ramp — imperceptible turn onset, very gradual pitch-over; γmax 87° orbital / 16–36° suborbital scaling
+with energy) and a speed program (`v = .035 + .965·p^1.7` — a TWR≈1.2 crawl off the pad, ~25× faster by
+MECO), integrated as d·alt = v·cosγ, d·downrange = v·sinγ (96 steps, memoized per flight class). The
+nose equals the velocity direction **by construction** (zero-angle-of-attack), and the orbital altitude
+curve becomes the correct S-shape automatically — the old model was steepest at the END; now the climb
+rate dies at insertion while downrange accelerates: horizontal flight into orbit at 87°, MECO exactly at
+the 185 km target.
+
+Suborbital coast is now a real unpowered ballistic arc, continuous with burnout in altitude/downrange/
+nose: apogee at 42% of the coast (normalized to ~1.12× targetAltitudeKm so readouts stay in the shipped
+range; burnout at ~53% of apogee — textbook sounding-rocket proportions), **horizontal at apogee, arcing
+over nose-down, reaching the water exactly at coast end** (new `splash` flag). Fixed en route: the old
+code kept the engine burning through the entire ballistic coast (plume/smoke now die at burnout); smoke
+is now dense-atmosphere-only (fades by ~13 km); vacuum shading is altitude-based (fixes the old bug
+where a 70 m first hop got vacuum plume effects at 73% progress); suborbital sky blend (`launchSpace`)
+is altitude-driven instead of a fixed .12. The metre-scale first-hop branch is preserved verbatim.
+Return shape kept (+ `flightPathRad`/`apogeeKm`/`splash` added).
+
+Tests: new `test-flight3d-trajectory.js` (31 checks — slow-then-fast, vertical rise, gradual monotone
+turn ≤3.2°/2%-of-ascent, nose-tracks-velocity <2.5° worst error, orbital S-curve + near-horizontal
+insertion, coast continuity, apogee timing/band, arc-over, splash, downrange monotone, energy scaling,
+engine-off coast, altitude-based effects, first-hop invariants, determinism). One
+`test-flight3d-foundation.js` assertion encoding the old long-vertical shape was updated to the new
+contract; all other assertions unchanged. Full regression at push time: **75/75 real suites green**
+(build-parity excluded — pre-existing /tmp-path env issue); build byte-faithful including embedded
+textures.
+
+**Known follow-ups from the trajectory rework (browser feedback wanted):** camera framing vs. the much
+larger realistic downrange travel (the pad now properly recedes; if the finite ground-plane edge shows
+late in ascent, blend it out earlier); speed continuity across the burnout handoff (ascent and coast map
+their own clocks — the cutoff reads as a pacing change, acceptable but tunable).
+
+**E4.4 (persistent ship/hull identity) remains the next E4 workstream** — unchanged from the entry
+above; the Cape-3D thread proceeds in parallel outside this log.
