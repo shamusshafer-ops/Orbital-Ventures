@@ -18,6 +18,20 @@ against `origin/main`; after a coherent, verified slice, commit and push to `mai
   suborbital splashdown, Earth orbit, cislunar transfer, and crewed Earth reentry are already
   rendered through the Flight 3D adapter.
 
+## Current UI / flight-report pass (Codex)
+
+- The Command Center now follows the framed-monitor composition: responsive side rails, clear
+  central Cape viewport, and one readable bottom scene-navigation row. The Earth pop-out uses
+  the same packaged equirectangular day-map as the Solar Map, with the correct longitude origin
+  for the Cape marker.
+- Vehicle, Station, Solar System, Earth, Command Center, and Contracts pop-outs are desktop
+  windows: drag their top bar, resize from the lower-right grip, or pin them to keep working in
+  the underlying game. Their existing close controls remain at the top.
+- Flight reports are data-backed by `flightReport()`: the bench shows a pre-flight card; the
+  launch overlay has an always-visible Flight Card; completion/failure holds a Flight Debrief
+  with payload, mass, Δv/TWR, duration, distance, outcome, and any recorded failed subsystem.
+  Do not replace these values with animation-derived estimates.
+
 ## Next task
 
 Implement visual **multi-stage separation** in the Cape 3D flight renderer. The physical
@@ -31,6 +45,12 @@ authoritative sim and outcome logic untouched.
 ```bash
 node build.js
 node tests/test-build-parity.js
+```
+
+Additional focused checks for this pass:
+
+```bash
+node tests/test-command-hero-layout.js
 ```
 
 Focused harness commands use `tests/harness.js + build/game.js + test file`, e.g.:

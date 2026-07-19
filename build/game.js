@@ -6597,6 +6597,18 @@ function flightPhysicsSpec(m, vehicle){
   const bm=boosterMasses(), boosters=bm?{count:bm.count,prop:bm.propTotal,dry:bm.dry,wet:bm.wet,diameterM:clampA(.38+.18*Math.cbrt(Math.max(.1,bm.propEach)),.32,6),thrustSL:bm.eng.thrustSL*bm.count*thrustK,thrustVac:bm.eng.thrustVac*bm.count*thrustK,ispSL:bm.eng.ispSL*ispK,ispVac:bm.eng.ispVac*ispK,solid:!!bm.eng.solid}:null;
   return {payload:v.payload,liftoff:v.liftoff,stages,boosters};
 }
+// One immutable, player-facing flight card.  It is built from the same mission/vehicle/outcome
+// snapshots that resolve the launch, so overlay telemetry and the debrief never invent a number.
+function flightReport(m, vehicle, sim, outcome){
+  const v=vehicle||computeVehicle(), legs=(sim&&sim.legs)||[];
+  const requiredDv=legs.length?legs.reduce((n,l)=>n+(Number(l.dv)||0),0):(m.reqDv||0);
+  const payload=v.payload||0, days=Math.round(m.days||0), delivered=m.tanker?tankerDelivery():payload;
+  const target=(BODIES.find(b=>b.id===missionBody(m.id))||{}).name||'Earth orbit';
+  const kind=(outcome&&outcome.kind)||'planned';
+  return {mission:m.name,target,payload,delivered,days,requiredDv,liftoff:v.liftoff||0,totalDv:v.totalDv||0,twr:v.twr||0,
+    stages:(v.sm||[]).length,crew:m.crew||0,outcome:kind,failure:(outcome&&outcome.story)||'',subsystem:(outcome&&outcome.subsystem)||'',
+    distanceKm: days>0 ? Math.round(days*86400*29.78) : (m.reqDv>=9000?40000:Math.max(5,Math.round((m.reqDv||0)*0.006))) };
+}
 
 // M-Complexity: base build time is 2 months for a single-stage vehicle with
 // no extra modules. Each additional stage beyond the first, and each extra
@@ -7995,7 +8007,7 @@ function finalizeLaunch(ctx, ops){
     recovering: recoveryActive(m) && state.stages.length>1 && failPhase!=='ascent', // #graphics: fly the first stage back for a landing instead of tumbling away
     hasCapsule: !!(state.research.crew_capsule || crewed), // recovery: parachutes + heat shield + splashdown (Mercury/Vostok era)
     isCislunar: !!m.profile, isOrbital: (!m.profile && m.reqDv>=9000),
-    reqDv: m.reqDv||9400, physics:flightPhysicsSpec(m,v),
+    reqDv: m.reqDv||9400, physics:flightPhysicsSpec(m,v), report:flightReport(m,v,sim,outcome),
     // #38: reuse the earlier roll if a live decision (weather/live-call/rescue) already opened this
     // overlay — resumeFlightForDecision's Object.assign would otherwise clobber A.spec.night mid-flight,
     // flipping the sky partway through a launch already being watched.
@@ -10881,6 +10893,16 @@ function flight3dHandoffToFallback(s,reason){
 }
 function clearFlight3DDecision(){ const host=$('flight3dDecision'); if(!host) return false; host.classList.add('hidden'); host.innerHTML=''; return true; }
 function clearFlight3DReadout(){ const host=$('flight3dReadout'); if(!host) return false; host.classList.add('hidden'); host.textContent=''; return true; }
+function flightReportCard(spec, final){
+  const wrap=$('flightCanvasWrap'); if(!wrap||!spec) return false;
+  let host=$('flightReportCard');
+  if(!host&&document.createElement){ host=document.createElement('aside'); host.id='flightReportCard'; host.className='flight-report-card'; wrap.appendChild(host); }
+  if(!host) return false; const r=spec.report||{}, failed=final&&!spec.success;
+  const rows=[['STATUS',final?(spec.success?'MISSION COMPLETE':String(r.outcome||'flight failure').toUpperCase()):'LAUNCH IN PROGRESS'],['PAYLOAD',r.payload!=null?(r.payload>=1?r.payload.toFixed(2)+' t':Math.round(r.payload*1000)+' kg'):'—'],['LIFTOFF',r.liftoff?r.liftoff.toFixed(1)+' t':'—'],['ΔV',r.totalDv?Math.round(r.totalDv).toLocaleString()+' m/s':'—'],['TWR',r.twr?r.twr.toFixed(2):'—'],['DURATION',r.days?r.days+' d':'launch-day'],['DISTANCE',r.distanceKm?r.distanceKm.toLocaleString()+' km':'—']];
+  if(final&&failed) rows.push(['FAILURE',r.subsystem||'mission anomaly']);
+  host.classList.toggle('failure',failed); host.innerHTML='<div class="fr-title">'+(final?'FLIGHT DEBRIEF':'FLIGHT CARD')+'</div>'+rows.map(x=>'<div class="fr-row"><span>'+x[0]+'</span><span>'+x[1]+'</span></div>').join(''); host.classList.remove('hidden'); return true;
+}
+function clearFlightReportCard(){ const host=$('flightReportCard'); if(host) host.classList.add('hidden'); }
 function flightAltitudeTelemetry(snapshot){
   const phase=snapshot&&snapshot.phase;
   if(!snapshot||!['pad','ascent','suborbital','orbit','reentry'].includes(phase)) return {visible:false,altitudeKm:0,label:'—'};
@@ -10907,6 +10929,7 @@ function updateFlight3DReadout(snapshot){
   if(phase==='pad') text+='\nCOUNTDOWN · '+p+'%';
   else if(phase==='ascent') text+='\n'+(snapshot.effects&&snapshot.effects.ascentFailure?'VEHICLE LOSS':'ASCENT')+' · '+p+'%';
   else if(phase==='orbit') text+='\n'+(p<13?'ORBITAL INSERTION':'EARTH ORBIT')+' · '+p+'%';
+  else if(phase==='transfer') text+='\nCISLUNAR TRANSFER · '+p+'%';
   else if(phase==='reentry') text+='\n'+(p<52?'ATMOSPHERIC ENTRY':(p<66?'DROGUE DEPLOY':'RECOVERY DESCENT'))+' · '+p+'%';
   else if(phase==='suborbital') text+='\nSUBORBITAL ARC · '+p+'%';
   else return clearFlight3DReadout();
@@ -10917,6 +10940,9 @@ function updateFlight3DReadout(snapshot){
   }catch(e){}
   if(speedMps>0) text+='\nVEL · '+(speedMps>=1000?(speedMps/1000).toFixed(2)+' km/s':Math.round(speedMps).toLocaleString()+' m/s');
   if(downrangeKm>.01) text+='\nDRANGE · '+(downrangeKm<10?downrangeKm.toFixed(2):Math.round(downrangeKm).toLocaleString())+' km';
+  const report=snapshot.report||{};
+  if(report.payload!=null) text+='\nPAYLOAD · '+(report.payload>=1?report.payload.toFixed(2)+' t':Math.round(report.payload*1000)+' kg');
+  if(report.twr) text+='\nTWR · '+report.twr.toFixed(2)+' · '+(report.stages||1)+' STAGES';
   text+='\n'+(snapshot.crewed?'CREWED':'UNCREWED')+' · '+(snapshot.effects&&snapshot.effects.night?'NIGHT':'DAY')+' FLIGHT'; host.textContent=text; host.classList.remove('hidden'); return true;
 }
 function showFlight3DDecision(spec){
@@ -10931,9 +10957,9 @@ function showFlight3DDecision(spec){
 function updateFlight3DSession(snapshot){
   const s=flight3dSession; if(!s) return false; s.snapshot=snapshot;
   try{
-    // Slice 4 keeps successful Earth-orbit insertion in the live Three renderer. Transfer,
-    // re-entry and failed/deep outcomes still deliberately use the established 2D scenes.
-    if(snapshot&&(['pad','ascent','suborbital'].includes(snapshot.phase)||(snapshot.phase==='orbit'&&snapshot.isOrbital&&snapshot.success!==false)||(snapshot.phase==='reentry'&&snapshot.isOrbital&&snapshot.crewed&&snapshot.success!==false))){
+    // E4.7 keeps the full successful Earth/cislunar flight in Three.js. The fallback remains
+    // available only for a renderer failure or an intentionally unsupported outcome.
+    if(snapshot&&(['pad','ascent','suborbital','transfer'].includes(snapshot.phase)||(snapshot.phase==='orbit'&&snapshot.isOrbital&&snapshot.success!==false)||(snapshot.phase==='reentry'&&snapshot.isOrbital&&snapshot.crewed&&snapshot.success!==false))){
       if(s.handedOff) return false;
       updateFlight3DReadout(snapshot);
       return cape3dUpdateFlightPresentation(snapshot);
@@ -11000,6 +11026,7 @@ function setupFlightState(spec, done, ctx, cv, viewCanvas, seedP){
 function playMission(spec, done, seedP){
   $('animTitle').textContent=spec.title+(spec.crewed?'  ·  crewed':'');
   $('animOverlay').classList.remove('hidden');
+  flightReportCard(spec,false);
   clearFlightAltitude();
   beginFlight3DSession(spec);
   initFlightZoom(); resetFlightZoom(); // attach camera listeners once; reset the view for this fresh flight (persists across its own phase transitions)
@@ -11064,10 +11091,13 @@ function endAnim(hold){
   }
   if(hold && A.spec.success && (A.spec.isOrbital||A.spec.isCislunar)){
     A.held=true;
+    flightReportCard(A.spec,true);
     drawPostFlight();
     flightRefresh(); // push the post-flight frame to the Phaser texture (no-op in fallback)
     return;
   }
+  if(hold && A.spec.success){ A.held=true; flightReportCard(A.spec,true); drawFlightDebrief(); flightRefresh(); return; }
+  if(hold && !A.spec.success){ A.held=true; flightReportCard(A.spec,true); drawFlightDebrief(); flightRefresh(); return; }
   animState=null; endFlight3DSession(); $('animOverlay').classList.add('hidden'); sleepFlightScene(); if(A.done) A.done();
 }
 /* ---------- Flight-overlay manual camera (wheel-zoom + drag-pan) ----------
@@ -11398,7 +11428,7 @@ function drawPostFlight(){
   ctx.font='8px ui-monospace,monospace'; ctx.fillStyle='rgba(88,196,122,0.5)'; ctx.textAlign='left';
   ctx.fillText('LAUNCH',lx+6,ly-3);
   ctx.save();
-  const panelW=220, panelH=s.crewed?190:170, panelX=14, panelY=14;
+  const report=s.report||{}, panelW=240, panelH=s.crewed?222:204, panelX=14, panelY=14;
   ctx.fillStyle=themeRgba('bg',0.85); ctx.fillRect(panelX,panelY,panelW,panelH);
   ctx.strokeStyle=themeRgba('readout',0.3); ctx.lineWidth=0.5; ctx.strokeRect(panelX,panelY,panelW,panelH);
   ctx.textAlign='left'; ctx.textBaseline='top';
@@ -11418,6 +11448,9 @@ function drawPostFlight(){
   if(fd.drangeKm) rows.push(['DRANGE', (fd.orbDrange||fd.drangeKm)+' km']);
   if(fd.stages) rows.push(['STAGES', (fd.dropped!==undefined?fd.dropped+1:fd.stages)+'/'+fd.stages+' used']);
   if(fd.maxQ) rows.push(['MAX-Q', fd.maxQ+' kPa']);
+  if(report.payload!=null) rows.push(['PAYLOAD', report.payload>=1?report.payload.toFixed(2)+' t':Math.round(report.payload*1000)+' kg']);
+  if(report.days) rows.push(['DURATION', report.days+' d']);
+  if(report.distanceKm) rows.push(['DISTANCE', report.distanceKm.toLocaleString()+' km']);
   rows.forEach((r,i)=>{
     const ry=dataY+i*16;
     ctx.fillStyle=themeColor('dim'); ctx.fillText(r[0],panelX+12,ry);
@@ -11469,6 +11502,18 @@ function drawPostFlight(){
   ctx.restore();
   ctx.textAlign='left';
   drawFlightContinueBtn(ctx,W,H);
+}
+function drawFlightDebrief(){
+  const A=animState; if(!A) return; const ctx=A.ctx,W=A.cv.width,H=A.cv.height,r=A.spec.report||{};
+  if(ctx.clearFrame) ctx.clearFrame(); ctx.fillStyle='#04060a'; ctx.fillRect(0,0,W,H); drawStars(ctx,W,H,performance.now());
+  const pw=Math.min(560,W-64), ph=260, x=(W-pw)/2, y=(H-ph)/2;
+  ctx.fillStyle=themeRgba('bg',.94); ctx.fillRect(x,y,pw,ph); ctx.strokeStyle=themeRgba('bad',.55); ctx.strokeRect(x,y,pw,ph);
+  ctx.fillStyle=A.spec.success?themeColor('ok'):themeColor('bad'); ctx.font='bold 16px ui-monospace,monospace'; ctx.fillText('FLIGHT DEBRIEF · '+String(r.outcome||'complete').toUpperCase(),x+18,y+18);
+  ctx.fillStyle=themeColor('ink'); ctx.font='13px ui-monospace,monospace'; ctx.fillText(A.spec.title,x+18,y+46);
+  const rows=[['FLIGHT DURATION',r.days?r.days+' d':'launch-day'],['DISTANCE TRAVELLED',r.distanceKm?(r.distanceKm.toLocaleString()+' km'):'—'],['PAYLOAD',r.payload!=null?(r.payload>=1?r.payload.toFixed(2)+' t':Math.round(r.payload*1000)+' kg'):'—'],['FAILURE',r.subsystem||'mission anomaly']];
+  rows.forEach((row,i)=>{const ry=y+76+i*25;ctx.fillStyle=themeColor('dim');ctx.font='11px ui-monospace,monospace';ctx.fillText(row[0],x+18,ry);ctx.fillStyle=themeColor('ink');ctx.font='12px ui-monospace,monospace';ctx.fillText(String(row[1]),x+190,ry);});
+  ctx.fillStyle=themeRgba('ink',.82);ctx.font='11px ui-monospace,monospace'; const story=String(r.failure||'The mission did not meet its planned outcome.');
+  ctx.fillText(story.slice(0,82),x+18,y+190); if(story.length>82) ctx.fillText(story.slice(82,164),x+18,y+207); drawFlightContinueBtn(ctx,W,H);
 }
 // The shared "Continue ▸" affordance for a held flight overlay: the rounded button, the [Enter]
 // hint, the hit-box on animState, and the one-shot canvas click handler that dismisses the overlay.
@@ -15843,6 +15888,16 @@ function cape3dOrbitWorld(root){
   const stars=new THREE.BufferGeometry(), points=[]; for(let i=0;i<240;i++){ const a=i*2.399,b=(i%31)*.31,r=1800+(i%17)*90; points.push(Math.cos(a)*r,Math.sin(b)*r*.65,Math.sin(a)*r); } stars.setAttribute('position',new THREE.Float32BufferAttribute(points,3)); const starField=new THREE.Points(stars,new THREE.PointsMaterial({color:0xdcefff,size:4,transparent:true,opacity:.92,depthWrite:false})); g.add(starField);
   root.add(g); return {group:g,earth,atmo,ribbon,craft,plume,glow,starField};
 }
+// E4.7 cislunar transfer world. Kept separate from the Earth-orbit scene so successful lunar
+// flights never fall back to the legacy canvas between injection and arrival.
+function cape3dTransferProfile(snapshot){ const p=Math.max(0,Math.min(1,(snapshot&&snapshot.phaseProgress)||0)); return {progress:p,x:-410+820*p,y:120+235*Math.sin(Math.PI*p),z:-90*Math.sin(Math.PI*p),burn:Math.max(0,1-p/.16),arrival:Math.max(0,(p-.84)/.16)}; }
+function cape3dTransferWorld(root){
+  const g=new THREE.Group(); g.visible=false; const earthMap=(typeof map3dPhotoTexture==='function')?map3dPhotoTexture('earth'):null;
+  const earth=new THREE.Mesh(new THREE.SphereGeometry(175,48,30),new THREE.MeshStandardMaterial({color:0x467994,map:earthMap,roughness:.94})); earth.position.set(-410,0,0); g.add(earth);
+  const moon=new THREE.Mesh(new THREE.SphereGeometry(56,32,20),new THREE.MeshStandardMaterial({color:0xbfc5c4,roughness:.9})); moon.position.set(410,0,0); g.add(moon);
+  const pts=[]; for(let i=0;i<=96;i++){const q=cape3dTransferProfile({phaseProgress:i/96});pts.push(new THREE.Vector3(q.x,q.y,q.z));} g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),new THREE.LineBasicMaterial({color:0x75d9ff,transparent:true,opacity:.62})));
+  const craft=cape3dVehicleMesh(); craft.scale.setScalar(.62); g.add(craft); const plume=new THREE.Mesh(new THREE.ConeGeometry(10,58,14),new THREE.MeshBasicMaterial({color:0xffa33f,transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending})); plume.rotation.x=Math.PI*.5; plume.position.y=craft.userData.nozzleY||-10; craft.add(plume); root.add(g); return {group:g,earth,moon,craft,plume};
+}
 function cape3dReentryWorld(root){
   const g=new THREE.Group(); g.name='cape3d_reentry_world'; g.visible=false;
   const earthMap=(typeof map3dPhotoTexture==='function')?map3dPhotoTexture('earth'):null;
@@ -15908,6 +15963,7 @@ function cape3dUpdateReentryPresentation(snapshot){
 }
 function cape3dUpdateFlightPresentation(snapshot){
   if(snapshot&&snapshot.phase==='orbit') return cape3dUpdateOrbitPresentation(snapshot);
+  if(snapshot&&snapshot.phase==='transfer'){ const root=cape3d&&cape3d.root, world=root&&root.userData.transferWorld; if(!world) return false; const q=cape3dTransferProfile(snapshot); world.group.visible=true; world.craft.position.set(q.x,q.y,q.z); world.plume.visible=q.burn>.01; world.plume.material.opacity=.82*q.burn; cape3dFlightCamera(new THREE.Vector3(q.x-310,q.y+210,720),new THREE.Vector3(q.x,q.y,0)); return true; }
   if(snapshot&&snapshot.phase==='reentry') return cape3dUpdateReentryPresentation(snapshot);
   const root=cape3d&&cape3d.root, orbit=root&&root.userData.orbitWorld;
   if(orbit&&orbit.group.visible){ orbit.group.visible=false; root.userData.orbitActive=false; }
@@ -15944,7 +16000,7 @@ function cape3dExitLaunchPresentation(){
 }
 function cape3dExitFlightPresentation(){
   if(!cape3d||!cape3d.root) return false;
-  const root=cape3d.root, orbit=root.userData.orbitWorld, reentry=root.userData.reentryWorld; if(orbit) orbit.group.visible=false; if(reentry) reentry.group.visible=false; root.userData.orbitActive=false; root.userData.reentryActive=false; root.userData.reentryProgress=0;
+  const root=cape3d.root, orbit=root.userData.orbitWorld, reentry=root.userData.reentryWorld, transfer=root.userData.transferWorld; if(orbit) orbit.group.visible=false; if(reentry) reentry.group.visible=false; if(transfer) transfer.group.visible=false; root.userData.orbitActive=false; root.userData.reentryActive=false; root.userData.reentryProgress=0;
   return cape3dExitLaunchPresentation();
 }
 function buildCape3DScene(scene){
@@ -15961,7 +16017,7 @@ function buildCape3DScene(scene){
   const roads=cape3dRoads(materials); root.add(roads);
   const facilities=new THREE.Group(); facilities.name='cape3d_facilities'; root.add(facilities);
   const descriptors=syncCape3DFromState(); descriptors.forEach(d=>facilities.add(cape3dFacilityGroup(d,materials))); const vegetation=cape3dVegetation(root,materials); root.userData.clouds=cape3dClouds(root); root.userData.practicalLights=[...cape3dPracticalLights(root,descriptors),...cape3dStreetLights(root,materials)]; root.userData.windowMaterial=materials.glass; root.userData.water=waterTx;
-  const pad=descriptors.find(d=>d.key==='pad'); if(pad){ const rocket=cape3dVehicleMesh(); rocket.position.set(pad.position.x-pad.footprint.x*.18,cape3dLaunchBaseY(rocket),pad.position.z); root.add(rocket); root.userData.launchPad=pad; root.userData.launchRocket=rocket; root.userData.launchBase=rocket.position.clone(); root.userData.launchEffects=cape3dLaunchEffects(rocket); root.userData.groundSmoke=cape3dGroundSmoke(root,rocket.position); root.userData.launchSplash=cape3dSplashEffects(root); root.userData.launchFailure=cape3dFailureEffects(root,rocket,root.userData.launchEffects); root.userData.ascentWorld=cape3dAscentWorld(root,pad); root.userData.orbitWorld=cape3dOrbitWorld(root); root.userData.reentryWorld=cape3dReentryWorld(root); }
+  const pad=descriptors.find(d=>d.key==='pad'); if(pad){ const rocket=cape3dVehicleMesh(); rocket.position.set(pad.position.x-pad.footprint.x*.18,cape3dLaunchBaseY(rocket),pad.position.z); root.add(rocket); root.userData.launchPad=pad; root.userData.launchRocket=rocket; root.userData.launchBase=rocket.position.clone(); root.userData.launchEffects=cape3dLaunchEffects(rocket); root.userData.groundSmoke=cape3dGroundSmoke(root,rocket.position); root.userData.launchSplash=cape3dSplashEffects(root); root.userData.launchFailure=cape3dFailureEffects(root,rocket,root.userData.launchEffects); root.userData.ascentWorld=cape3dAscentWorld(root,pad); root.userData.orbitWorld=cape3dOrbitWorld(root); root.userData.transferWorld=cape3dTransferWorld(root); root.userData.reentryWorld=cape3dReentryWorld(root); }
   root.userData.siteObjects=[ground,terrain,ocean,roads,facilities,vegetation];
   // State-driven growth receives simple massing in this slice; detailed variants arrive with the art pass.
   try{
@@ -17614,15 +17670,41 @@ const POPOUT_ZOOM_BOOST=1.1;
 function centeredZoomOffset(w,h,z){ return {x:-w*(z-1)/2, y:-h*(z-1)/2}; }
 // Shared pop-out fade: every overlay fades in on open and out on close (150ms, matching scene transitions).
 function fadeInScrim(ov){ if(!ov) return; ov.style.opacity='0'; requestAnimationFrame(()=>{ if(ov) ov.style.opacity='1'; }); }
-function removeScrim(id){ const ov=$(id); if(!ov||!ov.parentNode) return; ov.id=''; ov.style.opacity='0'; setTimeout(()=>{ if(ov.parentNode) ov.parentNode.removeChild(ov); },170); }
+function removeScrim(id){ const ov=$(id); if(!ov||!ov.parentNode) return; delete popoutPinned[id]; ov.id=''; ov.style.opacity='0'; setTimeout(()=>{ if(ov.parentNode) ov.parentNode.removeChild(ov); },170); }
+const popoutPinned={};
+function popoutIsPinned(id){ return !!popoutPinned[id]; }
+function togglePopoutPin(id){
+  popoutPinned[id]=!popoutPinned[id]; const ov=$(id); if(!ov) return;
+  ov.classList.toggle('popout-pinned',popoutPinned[id]);
+  const b=ov.querySelector&&ov.querySelector('.popout-pin'); if(b){ b.classList.toggle('pinned',popoutPinned[id]); b.textContent=popoutPinned[id]?'📌 Pinned':'📌 Pin'; }
+}
+// Shared desktop-window affordances for every pop-out. The title bar drags, the lower-right grip
+// resizes, and a pinned window stops dimming/blocking the game beneath it.
+function enablePopoutWindow(id){
+  const ov=$(id); if(!ov||ov._windowReady||!ov.firstElementChild||!document.createElement) return;
+  const panel=document.createElement('section'); panel.className='popout-window'; panel.dataset.popoutId=id;
+  while(ov.firstChild) panel.appendChild(ov.firstChild);
+  const bar=panel.querySelector&&panel.querySelector('.vehpop-bar');
+  if(bar){ const actions=document.createElement('span'); actions.className='popout-actions'; actions.innerHTML=`<button class="vehpop-x popout-pin" type="button" title="Pin this window over the game">📌 Pin</button>`; bar.appendChild(actions); const pin=actions.querySelector('.popout-pin'); if(pin) pin.addEventListener('click',()=>togglePopoutPin(id)); }
+  const grip=document.createElement('span'); grip.className='popout-resize'; panel.appendChild(grip); ov.appendChild(panel); ov._windowReady=true;
+  const place=()=>{ const r=panel.getBoundingClientRect(); if(panel.style.position!=='absolute'){ panel.style.position='absolute'; panel.style.left=r.left+'px'; panel.style.top=r.top+'px'; } return r; };
+  let drag=null;
+  if(bar) bar.addEventListener('pointerdown',e=>{ if(e.target&&e.target.closest&&e.target.closest('button')) return; const r=place(); drag={x:e.clientX,y:e.clientY,left:r.left,top:r.top}; try{bar.setPointerCapture(e.pointerId);}catch(_){}; });
+  if(bar) bar.addEventListener('pointermove',e=>{ if(!drag) return; panel.style.left=Math.max(0,drag.left+e.clientX-drag.x)+'px'; panel.style.top=Math.max(0,drag.top+e.clientY-drag.y)+'px'; });
+  if(bar) ['pointerup','pointercancel'].forEach(k=>bar.addEventListener(k,()=>{drag=null;}));
+  let size=null;
+  grip.addEventListener('pointerdown',e=>{ const r=place(); size={x:e.clientX,y:e.clientY,w:r.width,h:r.height}; try{grip.setPointerCapture(e.pointerId);}catch(_){}; e.preventDefault(); });
+  grip.addEventListener('pointermove',e=>{ if(!size) return; panel.style.width=Math.max(440,size.w+e.clientX-size.x)+'px'; panel.style.height=Math.max(300,size.h+e.clientY-size.y)+'px'; });
+  ['pointerup','pointercancel'].forEach(k=>grip.addEventListener(k,()=>{size=null;}));
+}
 // only one pop-out is open at a time — opening any closes the rest (they cross-fade)
 function closeOtherPopouts(keep){
-  if(keep!=='veh' && vehPopoutOpen) closeVehPopout();
-  if(keep!=='stn' && stnPopoutOpen) closeStationPopout();
-  if(keep!=='map' && mapPopoutOpen) closeMapPopout();
-  if(keep!=='earth' && earthPopoutOpen) closeEarthPopout();
-  if(keep!=='cc' && ccPopoutOpen) closeCCPopout();
-  if(keep!=='contracts' && contractsPopoutOpen) closeContractsPopout();
+  if(keep!=='veh' && vehPopoutOpen && !popoutIsPinned('vehPopout')) closeVehPopout();
+  if(keep!=='stn' && stnPopoutOpen && !popoutIsPinned('stnPopout')) closeStationPopout();
+  if(keep!=='map' && mapPopoutOpen && !popoutIsPinned('mapPopout')) closeMapPopout();
+  if(keep!=='earth' && earthPopoutOpen && !popoutIsPinned('earthPopout')) closeEarthPopout();
+  if(keep!=='cc' && ccPopoutOpen && !popoutIsPinned('ccPopout')) closeCCPopout();
+  if(keep!=='contracts' && contractsPopoutOpen && !popoutIsPinned('contractsPopout')) closeContractsPopout();
 }
 function openVehPopout(){
   if(vehPopoutOpen) return; vehPopoutOpen=true; closeOtherPopouts('veh'); vpZoom=POPOUT_ZOOM_BOOST; vpPanX=0; vpPanY=0;
@@ -17639,7 +17721,7 @@ function openVehPopout(){
       <div class="vehpop-stage" id="vehPopStage"><canvas id="vehPopCanvas"></canvas></div>
       <aside class="vehpop-stats" id="vehPopStats"></aside>
     </div>`;
-  document.body.appendChild(ov); fadeInScrim(ov);
+  document.body.appendChild(ov); enablePopoutWindow('vehPopout'); fadeInScrim(ov);
   // move the LIVE Build/Launch node into the bar, remembering its home so we can restore it exactly
   const host=$('benchLaunch');
   if(host){ _vpLaunchHome={parent:host.parentNode, next:host.nextSibling}; $('vehPopLaunchHost').appendChild(host); }
@@ -17725,7 +17807,7 @@ function openStationPopout(){
       <div class="vehpop-stage" id="stnPopStage"><div id="stnPopZoom" style="position:absolute;inset:0;transform-origin:0 0;display:flex;align-items:center;justify-content:center">${renderStationStackSVG(900,560,v.cur)}</div></div>
       <aside class="vehpop-stats" id="stnPopStats"></aside>
     </div>`;
-  document.body.appendChild(ov); fadeInScrim(ov);
+  document.body.appendChild(ov); enablePopoutWindow('stnPopout'); fadeInScrim(ov);
   const sp=$('stnPopStats'); if(sp) sp.innerHTML=stnPopStatsHTML(v);
   initSvgPopZoom('stnPopStage','stnPopZoom',stnPop);
 }
@@ -17772,7 +17854,7 @@ function openMapPopout(){
       <div class="vehpop-stage" id="mapPopStage"><div id="mapPopHost" style="position:absolute;inset:0;display:none"></div><div id="mapPopZoom" style="position:absolute;inset:0;transform-origin:0 0;display:flex;align-items:center;justify-content:center"></div></div>
       <aside class="vehpop-stats" id="mapPopInfo"></aside>
     </div>`;
-  document.body.appendChild(ov); fadeInScrim(ov);
+  document.body.appendChild(ov); enablePopoutWindow('mapPopout'); fadeInScrim(ov);
   refreshMapPopout();
   if(!map3d) initSvgPopZoom('mapPopStage','mapPopZoom',mapPop);
 }
@@ -17810,6 +17892,44 @@ const EARTH_LANDS=[
   [[167,-46],[171,-44],[174,-41],[178,-38],[176,-41],[173,-43],[170,-46]],
   [[95,5],[100,1],[105,-6],[114,-8],[119,-9],[123,-4],[117,-2],[110,-7],[103,0],[98,3]],
 ];
+// The expanded Earth view deliberately shares the Solar Map's packaged day-side albedo rather
+// than maintaining a second, hand-drawn planet.  It stays optional: the vector globe below is a
+// useful offline/loading fallback and keeps this canvas scene resilient if an asset is unavailable.
+let earthPopSkin=null, earthPopSkinLoading=false;
+function earthPopSkinSource(){
+  const embedded=(typeof window!=='undefined' && window.__OV_TEXTURE_DATA__);
+  return (embedded&&embedded.earth) || MAP3D_TEXTURE_ASSET.earth;
+}
+function earthPopSkinTextureX(longitude, width){
+  // Packaged equirectangular maps begin at −180° on their left edge (not at Greenwich).
+  return ((((longitude+180)%360)+360)%360)/360*width;
+}
+function ensureEarthPopSkin(){
+  if(earthPopSkin || earthPopSkinLoading || typeof Image==='undefined') return;
+  const src=earthPopSkinSource(); if(!src) return;
+  earthPopSkinLoading=true;
+  const image=new Image();
+  image.onload=()=>{ earthPopSkin=image; earthPopSkinLoading=false; };
+  image.onerror=()=>{ earthPopSkinLoading=false; };
+  image.src=src;
+}
+function drawEarthPopSkin(ctx,cx,cy,R,center){
+  const image=earthPopSkin;
+  if(!image || !image.naturalWidth || !image.naturalHeight || !ctx.drawImage) return false;
+  // A set of narrow longitude strips turns the equirectangular Solar Map skin into a readable
+  // orthographic globe.  The denser center / compressed limb also makes manual rotation feel like
+  // a world turning, rather than a flat image sliding behind a circular mask.
+  const iw=image.naturalWidth, ih=image.naturalHeight, stripe=Math.max(1,Math.round(R/105));
+  ctx.save(); ctx.beginPath(); ctx.arc(cx,cy,R,0,7); ctx.clip();
+  for(let x=-R;x<R;x+=stripe){
+    const u=Math.max(-1,Math.min(1,(x+stripe*.5)/R));
+    const lon=center+Math.asin(u)/_DEG;
+    const sx=earthPopSkinTextureX(lon,iw);
+    ctx.drawImage(image,sx,0,1,ih,cx+x,cy-R,stripe+0.7,R*2);
+  }
+  ctx.restore();
+  return true;
+}
 function drawEarthOrbits(ctx,cx,cy,R,t){
   // SEAM — orbital infrastructure (stations, LEO satellites, fuel depots) will render here from state.
   ctx.save();
@@ -17821,6 +17941,7 @@ function drawEarthOrbits(ctx,cx,cy,R,t){
   ctx.restore();
 }
 function drawEarthGlobe(ctx,cx,cy,R,center,sunLon,tilt){
+  ensureEarthPopSkin();
   const T=(tilt==null?0.33:tilt), cosT=Math.cos(T), sinT=Math.sin(T); // axial tilt (oscillates so both poles come into view)
   // Orthographic projection of the hemisphere centred on longitude `center`. East → screen +x (right),
   // north → screen +y (up); a point is front-facing when depth z ≥ 0 (within 90° of the centre meridian).
@@ -17830,9 +17951,10 @@ function drawEarthGlobe(ctx,cx,cy,R,center,sunLon,tilt){
   const og=ctx.createRadialGradient(cx-R*0.35,cy-R*0.35,R*0.1,cx,cy,R);
   og.addColorStop(0,'#2f7fc0'); og.addColorStop(0.6,'#1d5a96'); og.addColorStop(1,'#0c2c4e');
   ctx.fillStyle=og; ctx.beginPath(); ctx.arc(cx,cy,R,0,7); ctx.fill();
+  const hasSkin=drawEarthPopSkin(ctx,cx,cy,R,center);
   // continents (clipped to the disc; back-facing vertices clamp to the limb)
   ctx.save(); ctx.beginPath(); ctx.arc(cx,cy,R,0,7); ctx.clip();
-  for(const poly of EARTH_LANDS){
+  if(!hasSkin) for(const poly of EARTH_LANDS){
     const pts=poly.map(([lon,lat])=>P(lon,lat)); if(!pts.some(p=>p.z>=0)) continue;
     ctx.beginPath();
     pts.forEach((p,i)=>{ let sx,sy; if(p.z>=0){ sx=cx+p.x*R; sy=cy-p.y*R; } else { const m=Math.hypot(p.x,p.y)||1e-6; sx=cx+p.x/m*R; sy=cy-p.y/m*R; } i?ctx.lineTo(sx,sy):ctx.moveTo(sx,sy); });
@@ -17948,7 +18070,7 @@ function openEarthPopout(){
       <div class="vehpop-stage" id="earthPopStage"><canvas id="earthPopCanvas"></canvas></div>
       <aside class="vehpop-stats" id="earthPopInfo"></aside>
     </div>`;
-  document.body.appendChild(ov); fadeInScrim(ov);
+  document.body.appendChild(ov); enablePopoutWindow('earthPopout'); fadeInScrim(ov);
   const inf=$('earthPopInfo'); if(inf) inf.innerHTML=earthPopInfoHTML();
   initEarthPopZoom(); updateEarthRotBtn();
   earthAnim=requestAnimationFrame(earthLoop);
@@ -18086,7 +18208,7 @@ function openCCPopout(){
       <div class="vehpop-stage" id="ccPopStage">${use3d?'<div id="ccPop3dHost" style="position:absolute;inset:0"></div><div id="ccPopSpots" style="position:absolute;inset:0"></div>':`<div id="ccPopFit" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)"><div id="ccPopZoom" style="position:absolute;inset:0;transform-origin:0 0"><canvas id="ccPopCanvas" width="${CAPE_W}" height="${CAPE_H}"></canvas><div id="ccPopSpots"></div></div></div>`}</div>
       <aside class="vehpop-stats" id="ccPopInfo"></aside>
     </div>`;
-  document.body.appendChild(ov); fadeInScrim(ov);
+  document.body.appendChild(ov); enablePopoutWindow('ccPopout'); fadeInScrim(ov);
   const inf=$('ccPopInfo'); if(inf) inf.innerHTML=ccPopInfoHTML();
   const sp=$('ccPopSpots');
   if(sp){
@@ -18156,6 +18278,7 @@ function renderBenchLaunch(){
   try{ m=curMission(); if(!m){ host.innerHTML=''; return; } v=computeVehicle(); sim=m.profile?simulateMission(m):null; chk=canLaunch(v,m,sim); }
   catch(e){ host.innerHTML=''; return; }
   const sf=canStaticFire();
+  const report=flightReport(m,v,sim,null);
   const fired=state._staticFires&&state._staticFires[state.stages[0]&&state.stages[0].eng]||0;
   const cap=padMassCap(), padUse=v&&cap!==Infinity?v.liftoff/cap:0;
   const padBar = padUse>0.6 ? `<div style="margin-top:6px" title="Pad structural limit — ground R&D raises it">
@@ -18170,7 +18293,8 @@ function renderBenchLaunch(){
       <button class="btn ghost" style="font-size:12px;padding:6px 9px" onclick="toggleSfx()" title="${state.sfxMute?'Unmute':'Mute'} workshop sounds">${state.sfxMute?'🔇':'🔊'}</button>
     </div>
     ${state.staticFixBonus?`<div class="flag ok" style="margin-top:5px">🔧 Test-stand fix armed: next launch +${Math.round(state.staticFixBonus*100)}% reliability.</div>`:''}
-    ${padBar}`;
+    ${padBar}
+    <div class="dim" style="margin-top:8px;padding-top:7px;border-top:1px solid var(--line);font:11px/1.45 var(--mono)">FLIGHT PLAN · ${report.payload>=1?report.payload.toFixed(2)+' t':Math.round(report.payload*1000)+' kg'} payload · ${report.liftoff.toFixed(1)} t liftoff · Δv ${Math.round(report.totalDv).toLocaleString()} m/s · TWR ${report.twr.toFixed(2)} · ${report.stages} stage${report.stages===1?'':'s'}${report.days?' · '+report.days+' d mission':''}</div>`;
 }
 // Design-bench editor tabs: consolidate the stacked editor cards under a few tabs. The cards keep
 // their ids (render functions untouched); this only builds the tab bar, hides tabs whose cards are
@@ -21018,7 +21142,7 @@ function openContractsPopout(){
   if(contractsPopoutOpen) return; contractsPopoutOpen=true; closeOtherPopouts('contracts');
   const ov=document.createElement('div'); ov.className='vehpop-scrim'; ov.id='contractsPopout';
   ov.innerHTML=`<div class="vehpop-bar"><span class="vehpop-title">⌁ Contracts</span><span class="vehpop-hint">expand categories · Esc/Enter to close</span><button class="vehpop-x" onclick="closeContractsPopout()">✕ Close</button></div><div class="vehpop-body"><main class="vehpop-stats wide" style="flex:1;max-width:none;border-left:0;padding:18px 22px"><div style="max-width:1100px;margin:0 auto"><div class="metrics"><div class="metric"><div class="k">Standing income</div><div class="v" style="color:var(--ok)">+${fM(passiveMonthlyIncome())}/mo</div></div><div class="metric"><div class="k">Mission contracts</div><div class="v">${availableContracts()}</div></div></div><div id="contractsPopFlight" style="margin-top:12px"></div><div id="contractsPopPassive" style="margin-top:12px"></div></div></main></div>`;
-  document.body.appendChild(ov); fadeInScrim(ov);
+  document.body.appendChild(ov); enablePopoutWindow('contractsPopout'); fadeInScrim(ov);
   const flight=$('contractsPopFlight'); if(flight) flight.innerHTML=renderFlightContractsPopout();
   renderPassiveContracts('contractsPopPassive');
 }

@@ -22,7 +22,8 @@ try{
   check('compact deck lane uses compact cards while Mission Control stays under the hero control', /cc-deck-card\{padding:6px 8px\}/.test(compact) && /rail-right\{top:58px;max-height:calc\(100% - 78px\)\}/.test(compact));
   check('short desktop summaries show at most two active mission rows while Flight log remains available', /cc-active-missions \.cc-deck-row:nth-of-type\(n\+3\)\{display:none\}/.test(compact) && /Flight log/.test(render));
   check('compact timeline has its own fixed lower lane instead of colliding with the rail', /#ccTimeline\{height:86px;overflow:auto\}/.test(compact));
-  check('dock sizes to the complete readable button row instead of clipping labels', /\.cc-dock\{[^}]*width:max-content;max-width:none;overflow:visible/.test(desktop) && /cc-dock nav\.rail-nav button\{width:170px;min-width:170px;flex:0 0 170px/.test(desktop));
+  check('Cape rails remain 25% narrower at full desktop width and taper on smaller desktops', /--cc-rail-width:clamp\(220px,20vw,285px\)/.test(desktop));
+  check('dock bridges the Cape aperture in one readable six-button row', /\.cc-dock\{[^}]*left:calc\(var\(--cc-rail-width\) \+ 14px\);right:calc\(var\(--cc-rail-width\) \+ 14px\);bottom:14px;transform:none;width:auto/.test(desktop) && /cc-dock nav\.rail-nav\{display:grid;grid-template-columns:repeat\(6,minmax\(0,1fr\)\)/.test(desktop) && /cc-dock nav\.rail-nav button\{width:auto;min-width:0;min-height:50px;flex:none;flex-direction:column[^}]*font-size:clamp\(10px,.78vw,12px\)[^}]*white-space:nowrap;overflow:hidden/.test(desktop));
   check('desktop Cape grading is a non-interactive zoom-layer overlay', /#ccZoom::before,.command-hero #ccZoom::after\{content:"";position:absolute;inset:0;z-index:1;pointer-events:none\}/.test(desktop));
   check('Cape grading reuses HUD surface, line, and glow variables', /#ccZoom::before\{[^}]*var\(--hud-surface\)/.test(desktop) && /#ccZoom::after\{[^}]*var\(--hud-line-soft\)[^}]*var\(--hud-glow\)/.test(desktop));
   check('Cape hotspots stay above grading and keep their own interactive layer', /#ccSpots\{position:absolute;inset:0;z-index:2\}/.test(desktop));
@@ -37,7 +38,7 @@ try{
   // desktop geometry before its live measurement can only make the hero taller.
   const hero768=768-120-18, compactRailBottom=232+(hero768-416), compactTimelineTop=hero768-82-86;
   check('768px compact lanes leave a 16px rail-to-timeline gap', hero768===630 && compactRailBottom+16===compactTimelineTop);
-  check('desktop dock reserves the five-button readable row', 5*170+18+4*5===888);
+  check('six scene controls resolve into one row of six', 6/6===1);
   check('1366x768 compact lanes remain non-overlapping', compactRailBottom+16===compactTimelineTop);
 }catch(e){
   check('Command Center layout source is readable', false);

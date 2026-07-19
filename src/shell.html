@@ -410,13 +410,18 @@
   .vehpop-btn{position:absolute;top:8px;right:8px;z-index:2;background:var(--panel2);border:1px solid var(--line);color:var(--muted);
     border-radius:6px;cursor:pointer;font-size:13px;line-height:1;padding:4px 7px}
   .vehpop-btn:hover{border-color:var(--ignite);color:var(--ignite)}
-  .vehpop-scrim{position:fixed;inset:0;z-index:120;background:rgba(6,9,13,0.94);display:flex;flex-direction:column;opacity:1;transition:opacity .15s ease}
-  .vehpop-bar{display:flex;align-items:center;gap:14px;padding:9px 14px;border-bottom:1px solid var(--line);background:var(--bg)}
+  .vehpop-scrim{position:fixed;inset:0;z-index:120;background:rgba(6,9,13,0.94);display:flex;align-items:center;justify-content:center;opacity:1;transition:opacity .15s ease}
+  .popout-window{position:relative;display:flex;flex-direction:column;width:min(1380px,calc(100vw - 32px));height:min(820px,calc(100vh - 32px));min-width:440px;min-height:300px;overflow:hidden;border:1px solid var(--hud-line);border-radius:9px;background:var(--bg);box-shadow:0 24px 80px rgba(0,0,0,.68),inset 0 1px 0 var(--hud-line-soft)}
+  .vehpop-scrim.popout-pinned{z-index:130;background:transparent;pointer-events:none}
+  .vehpop-scrim.popout-pinned .popout-window{pointer-events:auto;box-shadow:0 18px 62px rgba(0,0,0,.72),inset 0 1px 0 var(--hud-line-soft)}
+  .vehpop-bar{display:flex;align-items:center;gap:14px;padding:9px 14px;border-bottom:1px solid var(--line);background:var(--bg);cursor:move;touch-action:none}
   .vehpop-bar .vehpop-launchhost{flex:1;max-width:560px}
   .vehpop-title{font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ink);white-space:nowrap}
   .vehpop-hint{font-family:var(--mono);font-size:var(--fs-min);color:var(--muted);margin-left:auto;white-space:nowrap}
   .vehpop-x{background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:6px;cursor:pointer;font-size:14px;padding:5px 10px}
   .vehpop-x:hover{border-color:var(--ignite);color:var(--ignite)}
+  .popout-actions{display:flex;gap:6px;margin-left:auto;align-items:center}.popout-pin.pinned{color:var(--ignite);border-color:var(--ignite)}
+  .popout-resize{position:absolute;right:0;bottom:0;width:22px;height:22px;cursor:nwse-resize;background:linear-gradient(135deg,transparent 45%,var(--hud-line) 46% 52%,transparent 53%);z-index:4}
   .vehpop-body{flex:1;display:flex;min-height:0}
   .vehpop-stage{flex:1;position:relative;overflow:hidden;cursor:grab;touch-action:none}
   /* Vehicle pop-out only (#vehPopStage is unique to it — station/map/earth/cc share .vehpop-stage
@@ -741,6 +746,8 @@
   .animwrap #flightCanvasWrap canvas{display:block;width:100%;height:auto}
   .flight3d-readout{position:absolute;z-index:8;top:14px;left:15px;max-width:250px;padding:8px 10px;border:1px solid rgba(110,208,255,.42);border-radius:5px;background:rgba(2,12,22,.72);box-shadow:0 4px 18px rgba(0,0,0,.25);color:#d9f4ff;font:11px/1.48 var(--mono);letter-spacing:.045em;white-space:pre-line;pointer-events:none}
   .flight3d-readout.hidden{display:none!important}
+  .flight-report-card{position:absolute;z-index:13;right:14px;top:14px;width:220px;padding:9px 10px;border:1px solid rgba(110,208,255,.52);border-radius:6px;background:rgba(2,12,22,.90);box-shadow:0 7px 24px rgba(0,0,0,.42);color:#e9faff;font:10px/1.45 var(--mono);pointer-events:none}
+  .flight-report-card.hidden{display:none!important}.flight-report-card .fr-title{color:#7bcff0;font-size:9px;letter-spacing:.14em;margin-bottom:5px}.flight-report-card .fr-row{display:flex;justify-content:space-between;gap:8px}.flight-report-card .fr-row span:last-child{color:#fff;text-align:right}.flight-report-card.failure{border-color:rgba(232,86,79,.75)}.flight-report-card.failure .fr-title{color:#ff9a8f}
   .flight-altitude{position:absolute;z-index:12;top:13px;left:50%;min-width:174px;transform:translateX(-50%);padding:7px 15px 8px;border:1px solid rgba(118,220,255,.68);border-radius:6px;background:rgba(2,12,22,.90);box-shadow:0 7px 24px rgba(0,0,0,.42),inset 0 1px 0 rgba(220,248,255,.08);color:#e9faff;text-align:center;font-family:var(--mono);font-variant-numeric:tabular-nums;pointer-events:none}
   .flight-altitude.hidden{display:none!important}
   .flight-altitude span{display:block;color:#7bcff0;font-size:9px;line-height:1.1;letter-spacing:.18em}
@@ -759,13 +766,17 @@
      Scoped to .command-hero so the bench, R&D, map and station keep the established shell. */
   @media(min-width:1101px){
     .shell.command-hero{--hud-surface:var(--cc-hero-surface);--hud-raised:var(--cc-hero-raised);--hud-line:var(--cc-hero-line);--hud-line-soft:var(--cc-hero-line-soft);--hud-glow:var(--cc-hero-glow);
+      /* Cape monitor framing: 25% slimmer than the general 380px application rails. */
+      --cc-rail-width:clamp(220px,20vw,285px);
       display:block;position:relative;isolation:isolate;min-height:calc(100vh - var(--topbar-h) - 18px)}
     .command-hero .viewport{width:100%}
     .command-hero .rail-left,.command-hero .rail-right{position:absolute;z-index:8;pointer-events:none}
-    .command-hero .rail-left{left:16px;top:372px;width:var(--cc-rail-width)}
+    /* Navigation moves into the lower bezel on Command Center. The agency deck becomes the
+       actual left column, while the persistent Mission Control accordion owns the right one. */
+    .command-hero .rail-left{display:none}
     /* The summary deck owns the upper-right corner; the persistent accordion, Rivals,
        News and Finance remain intact directly beneath it. */
-    .command-hero .rail-right{right:16px;top:58px;width:var(--cc-rail-width);max-height:calc(100vh - var(--topbar-h) - 78px);overflow-y:auto}
+    .command-hero .rail-right{right:16px;top:0;width:var(--cc-rail-width);max-height:calc(100vh - var(--topbar-h) - 34px);overflow-y:auto}
     .command-hero .rail-left,.command-hero .rail-right,
     .command-hero .rail-left > *, .command-hero .rail-right > *,
     .command-hero nav.rail-nav,.command-hero .rail-accordion,
@@ -775,7 +786,7 @@
     /* The hero is viewport-bound: a fixed floor here made the absolute overlays extend below
        short desktop windows before the player could see the ticker or scene dock. */
     .command-hero #commandView{position:relative;height:calc(100vh - var(--topbar-h) - 18px);min-height:0}
-    .command-hero #ccCenter{height:100%;margin-left:calc(var(--cc-rail-width) + 14px);margin-right:calc(var(--cc-rail-width) + 14px)}
+    .command-hero #ccCenter{height:calc(100% - 84px);margin-left:calc(var(--cc-rail-width) + 14px);margin-right:calc(var(--cc-rail-width) + 14px)}
     .command-hero #ccCenter > .cc-hero-card{height:100%}
     .command-hero .cc-hero-card{position:relative;padding:0;overflow:hidden;background:#05070d;border-color:var(--hud-line);box-shadow:inset 0 1px 0 var(--hud-line-soft),inset 0 0 80px rgba(44,140,177,.07),var(--hud-shadow)}
     .command-hero .cc-hero-head{position:absolute;z-index:3;right:14px;top:12px;display:flex;align-items:center;gap:8px;padding:5px 7px;border:1px solid var(--hud-line-soft);border-radius:5px;background:rgba(4,12,20,.74)}
@@ -798,18 +809,18 @@
     .command-hero .ccspot .st{max-height:0;margin:0;overflow:hidden;opacity:0;transform:translateY(-2px);transition:max-height .14s ease,margin .14s ease,opacity .14s ease,transform .14s ease}
     .command-hero .ccspot:hover .st,.command-hero .ccspot:focus-visible .st,.command-hero .ccspot.cc-attention .st{max-height:2.6em;margin-top:1px;opacity:1;transform:none}
     .command-hero .ccspot:focus-visible{outline:2px solid var(--readout);outline-offset:2px}
-    .command-hero .cc-zoomhint{left:auto;right:14px;bottom:90px;padding:4px 6px;border:1px solid var(--hud-line-soft);border-radius:4px;background:rgba(4,12,20,.66)}
+    .command-hero .cc-zoomhint{left:auto;right:14px;bottom:14px;padding:4px 6px;border:1px solid var(--hud-line-soft);border-radius:4px;background:rgba(4,12,20,.66)}
     .command-hero .cc-strip,.command-hero .cc-summary-right{position:absolute;z-index:7;top:16px;width:min(340px,calc(100% - 372px));overflow:visible}
-    .command-hero .cc-strip{width:min(var(--cc-overview-width),calc(100% - 372px))}
+    .command-hero .cc-strip{left:16px;top:0;bottom:16px;width:var(--cc-rail-width);display:flex;flex-direction:column;gap:8px;overflow-y:auto}
     .command-hero .cc-strip > .cc-deck-card{width:100%;box-sizing:border-box}
-    .command-hero .cc-strip{left:16px;padding:0;background:linear-gradient(135deg,rgba(3,13,22,.91),rgba(5,18,27,.70));border:1px solid var(--hud-line-soft);box-shadow:inset 0 1px 0 rgba(190,235,255,.08),var(--hud-shadow)}
-    .command-hero .cc-summary-right{right:16px;width:min(320px,25vw)}
-    .command-hero #ccTimeline{position:absolute;z-index:7;left:16px;bottom:82px;width:min(340px,calc(100% - 372px));margin:0;padding:10px;background:rgba(5,17,27,.88);border-color:var(--hud-line-soft)}
+    .command-hero .cc-strip{padding:0;background:linear-gradient(135deg,rgba(3,13,22,.91),rgba(5,18,27,.70));border:1px solid var(--hud-line-soft);box-shadow:inset 0 1px 0 rgba(190,235,255,.08),var(--hud-shadow)}
+    .command-hero .cc-summary-right{display:none}
+    .command-hero #ccTimeline{display:none}
     .command-hero #ccTimeline .cc-panel-h{font-size:10px;margin-bottom:5px}
     .command-hero #ccTimeline .tl-track{height:32px;margin:5px 0 3px}
     .command-hero #ccTimeline .tl-era{font-size:9px;padding:2px 4px}
     .command-hero #ccTimeline .tl-axis{font-size:9px}
-    .command-hero .cc-ticker{position:absolute;z-index:9;left:16px;right:16px;bottom:14px;min-height:50px;display:grid;grid-template-columns:auto minmax(0,1fr);gap:9px;align-items:center;padding:6px 9px;border:1px solid var(--hud-line);border-radius:6px;background:rgba(4,13,22,.91);box-shadow:var(--hud-shadow)}
+    .command-hero .cc-ticker{display:none}
     .command-hero .cc-ticker .tl-controls{flex-wrap:nowrap;gap:4px;margin:0;max-width:390px;overflow-x:auto;scrollbar-width:none}
     .command-hero .cc-ticker .tl-controls::-webkit-scrollbar{display:none}
     .command-hero .cc-ticker .tl-filter,.command-hero .cc-ticker .tl-collapse{font-size:10px;padding:2px 7px}
@@ -818,11 +829,14 @@
     .command-hero .cc-ticker .tl-date{display:none}
     .command-hero .cc-ticker .tl-chip{max-width:300px;padding:2px 8px;font-size:11px}
     .command-hero .cc-ticker .tl-chip .tl-when{font-size:8px}
-    .command-hero .cc-dock{position:absolute;z-index:10;left:50%;bottom:72px;transform:translateX(-50%);width:max-content;max-width:none;overflow:visible;padding:7px 9px;border:1px solid var(--hud-line);border-radius:7px;background:rgba(4,13,22,.93);box-shadow:var(--hud-shadow)}
+    /* The selector is the monitor's lower bezel: it bridges the inner rail edges in two rows. */
+    .command-hero .cc-dock{position:absolute;z-index:10;left:calc(var(--cc-rail-width) + 14px);right:calc(var(--cc-rail-width) + 14px);bottom:14px;transform:none;width:auto;max-width:none;overflow:visible;padding:7px 9px;border:1px solid var(--hud-line);border-radius:7px;background:rgba(4,13,22,.93);box-shadow:var(--hud-shadow)}
     .command-hero .cc-dock::-webkit-scrollbar{display:none}
-    .command-hero .cc-dock nav.rail-nav{flex-direction:row;align-items:stretch;gap:5px}
+    .command-hero .cc-dock nav.rail-nav{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));align-items:stretch;gap:4px}
     .command-hero .cc-dock nav.rail-nav .rail-group{display:none}
-    .command-hero .cc-dock nav.rail-nav button{width:170px;min-width:170px;flex:0 0 170px;padding:7px 11px;text-align:center;font-size:11px;white-space:nowrap;overflow:visible;text-overflow:clip}
+    .command-hero .cc-dock nav.rail-nav button{width:auto;min-width:0;min-height:50px;flex:none;flex-direction:column;gap:3px;padding:5px 3px;justify-content:center;text-align:center;font-size:clamp(10px,.78vw,12px);line-height:1.05;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .command-hero .cc-dock nav.rail-nav button .cc-icon{font-size:15px;line-height:1}
+    .command-hero .cc-dock nav.rail-nav button .cc-nav-label{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis}
     .command-hero .cc-dock nav.rail-nav button.active{box-shadow:inset 0 -2px 0 var(--readout),inset 0 1px 0 var(--hud-line-soft)}
   }
   /* Short desktop windows keep the same overlay mode, but split its vertical budget into

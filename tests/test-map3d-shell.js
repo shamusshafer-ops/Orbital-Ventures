@@ -50,6 +50,8 @@ check('every BODIES color parses to a valid 0..0xffffff int',
   check('both Martian moons are represented', !!phobos && !!deimos && phobos.around==='mars' && deimos.around==='mars');
   check('the default planetary skin family is photographic', MAP3D_PLANET_SKIN_VARIANT==='photographic');
   check('every major mapped world has a packaged equirectangular skin', ['sun','mercury','venus','earth','moon','mars','jupiter','saturn','uranus','neptune'].every(id=>typeof MAP3D_TEXTURE_ASSET[id]==='string'));
+  check('expanded Earth reuses the Solar Map Earth skin', earthPopSkinSource()===MAP3D_TEXTURE_ASSET.earth);
+  check('Earth pop-out texture longitude matches standard equirectangular coordinates', earthPopSkinTextureX(-180,360)===0 && earthPopSkinTextureX(0,360)===180 && earthPopSkinTextureX(-80,360)===100);
   check('embedded texture data takes precedence when the standalone file cannot load', (()=>{ window.__OV_TEXTURE_DATA__={mars:'data:image/jpeg;base64,test'}; const ok=((window.__OV_TEXTURE_DATA__&&window.__OV_TEXTURE_DATA__.mars)||MAP3D_TEXTURE_ASSET.mars).startsWith('data:image/jpeg'); delete window.__OV_TEXTURE_DATA__; return ok; })());
   check('a picked terrestrial planet receives a close texture-inspection distance', map3dFocusDistance(mars) < 12);
   check('a picked gas giant remains far enough away to fit on screen', map3dFocusDistance(jupiter) > map3dFocusDistance(mars));

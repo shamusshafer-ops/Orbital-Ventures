@@ -524,6 +524,16 @@ function flight3dHandoffToFallback(s,reason){
 }
 function clearFlight3DDecision(){ const host=$('flight3dDecision'); if(!host) return false; host.classList.add('hidden'); host.innerHTML=''; return true; }
 function clearFlight3DReadout(){ const host=$('flight3dReadout'); if(!host) return false; host.classList.add('hidden'); host.textContent=''; return true; }
+function flightReportCard(spec, final){
+  const wrap=$('flightCanvasWrap'); if(!wrap||!spec) return false;
+  let host=$('flightReportCard');
+  if(!host&&document.createElement){ host=document.createElement('aside'); host.id='flightReportCard'; host.className='flight-report-card'; wrap.appendChild(host); }
+  if(!host) return false; const r=spec.report||{}, failed=final&&!spec.success;
+  const rows=[['STATUS',final?(spec.success?'MISSION COMPLETE':String(r.outcome||'flight failure').toUpperCase()):'LAUNCH IN PROGRESS'],['PAYLOAD',r.payload!=null?(r.payload>=1?r.payload.toFixed(2)+' t':Math.round(r.payload*1000)+' kg'):'—'],['LIFTOFF',r.liftoff?r.liftoff.toFixed(1)+' t':'—'],['ΔV',r.totalDv?Math.round(r.totalDv).toLocaleString()+' m/s':'—'],['TWR',r.twr?r.twr.toFixed(2):'—'],['DURATION',r.days?r.days+' d':'launch-day'],['DISTANCE',r.distanceKm?r.distanceKm.toLocaleString()+' km':'—']];
+  if(final&&failed) rows.push(['FAILURE',r.subsystem||'mission anomaly']);
+  host.classList.toggle('failure',failed); host.innerHTML='<div class="fr-title">'+(final?'FLIGHT DEBRIEF':'FLIGHT CARD')+'</div>'+rows.map(x=>'<div class="fr-row"><span>'+x[0]+'</span><span>'+x[1]+'</span></div>').join(''); host.classList.remove('hidden'); return true;
+}
+function clearFlightReportCard(){ const host=$('flightReportCard'); if(host) host.classList.add('hidden'); }
 function flightAltitudeTelemetry(snapshot){
   const phase=snapshot&&snapshot.phase;
   if(!snapshot||!['pad','ascent','suborbital','orbit','reentry'].includes(phase)) return {visible:false,altitudeKm:0,label:'—'};
@@ -561,6 +571,9 @@ function updateFlight3DReadout(snapshot){
   }catch(e){}
   if(speedMps>0) text+='\nVEL · '+(speedMps>=1000?(speedMps/1000).toFixed(2)+' km/s':Math.round(speedMps).toLocaleString()+' m/s');
   if(downrangeKm>.01) text+='\nDRANGE · '+(downrangeKm<10?downrangeKm.toFixed(2):Math.round(downrangeKm).toLocaleString())+' km';
+  const report=snapshot.report||{};
+  if(report.payload!=null) text+='\nPAYLOAD · '+(report.payload>=1?report.payload.toFixed(2)+' t':Math.round(report.payload*1000)+' kg');
+  if(report.twr) text+='\nTWR · '+report.twr.toFixed(2)+' · '+(report.stages||1)+' STAGES';
   text+='\n'+(snapshot.crewed?'CREWED':'UNCREWED')+' · '+(snapshot.effects&&snapshot.effects.night?'NIGHT':'DAY')+' FLIGHT'; host.textContent=text; host.classList.remove('hidden'); return true;
 }
 function showFlight3DDecision(spec){
@@ -644,6 +657,7 @@ function setupFlightState(spec, done, ctx, cv, viewCanvas, seedP){
 function playMission(spec, done, seedP){
   $('animTitle').textContent=spec.title+(spec.crewed?'  ·  crewed':'');
   $('animOverlay').classList.remove('hidden');
+  flightReportCard(spec,false);
   clearFlightAltitude();
   beginFlight3DSession(spec);
   initFlightZoom(); resetFlightZoom(); // attach camera listeners once; reset the view for this fresh flight (persists across its own phase transitions)
@@ -708,10 +722,13 @@ function endAnim(hold){
   }
   if(hold && A.spec.success && (A.spec.isOrbital||A.spec.isCislunar)){
     A.held=true;
+    flightReportCard(A.spec,true);
     drawPostFlight();
     flightRefresh(); // push the post-flight frame to the Phaser texture (no-op in fallback)
     return;
   }
+  if(hold && A.spec.success){ A.held=true; flightReportCard(A.spec,true); drawFlightDebrief(); flightRefresh(); return; }
+  if(hold && !A.spec.success){ A.held=true; flightReportCard(A.spec,true); drawFlightDebrief(); flightRefresh(); return; }
   animState=null; endFlight3DSession(); $('animOverlay').classList.add('hidden'); sleepFlightScene(); if(A.done) A.done();
 }
 /* ---------- Flight-overlay manual camera (wheel-zoom + drag-pan) ----------
@@ -1042,7 +1059,7 @@ function drawPostFlight(){
   ctx.font='8px ui-monospace,monospace'; ctx.fillStyle='rgba(88,196,122,0.5)'; ctx.textAlign='left';
   ctx.fillText('LAUNCH',lx+6,ly-3);
   ctx.save();
-  const panelW=220, panelH=s.crewed?190:170, panelX=14, panelY=14;
+  const report=s.report||{}, panelW=240, panelH=s.crewed?222:204, panelX=14, panelY=14;
   ctx.fillStyle=themeRgba('bg',0.85); ctx.fillRect(panelX,panelY,panelW,panelH);
   ctx.strokeStyle=themeRgba('readout',0.3); ctx.lineWidth=0.5; ctx.strokeRect(panelX,panelY,panelW,panelH);
   ctx.textAlign='left'; ctx.textBaseline='top';
@@ -1062,6 +1079,9 @@ function drawPostFlight(){
   if(fd.drangeKm) rows.push(['DRANGE', (fd.orbDrange||fd.drangeKm)+' km']);
   if(fd.stages) rows.push(['STAGES', (fd.dropped!==undefined?fd.dropped+1:fd.stages)+'/'+fd.stages+' used']);
   if(fd.maxQ) rows.push(['MAX-Q', fd.maxQ+' kPa']);
+  if(report.payload!=null) rows.push(['PAYLOAD', report.payload>=1?report.payload.toFixed(2)+' t':Math.round(report.payload*1000)+' kg']);
+  if(report.days) rows.push(['DURATION', report.days+' d']);
+  if(report.distanceKm) rows.push(['DISTANCE', report.distanceKm.toLocaleString()+' km']);
   rows.forEach((r,i)=>{
     const ry=dataY+i*16;
     ctx.fillStyle=themeColor('dim'); ctx.fillText(r[0],panelX+12,ry);
@@ -1113,6 +1133,18 @@ function drawPostFlight(){
   ctx.restore();
   ctx.textAlign='left';
   drawFlightContinueBtn(ctx,W,H);
+}
+function drawFlightDebrief(){
+  const A=animState; if(!A) return; const ctx=A.ctx,W=A.cv.width,H=A.cv.height,r=A.spec.report||{};
+  if(ctx.clearFrame) ctx.clearFrame(); ctx.fillStyle='#04060a'; ctx.fillRect(0,0,W,H); drawStars(ctx,W,H,performance.now());
+  const pw=Math.min(560,W-64), ph=260, x=(W-pw)/2, y=(H-ph)/2;
+  ctx.fillStyle=themeRgba('bg',.94); ctx.fillRect(x,y,pw,ph); ctx.strokeStyle=themeRgba('bad',.55); ctx.strokeRect(x,y,pw,ph);
+  ctx.fillStyle=A.spec.success?themeColor('ok'):themeColor('bad'); ctx.font='bold 16px ui-monospace,monospace'; ctx.fillText('FLIGHT DEBRIEF · '+String(r.outcome||'complete').toUpperCase(),x+18,y+18);
+  ctx.fillStyle=themeColor('ink'); ctx.font='13px ui-monospace,monospace'; ctx.fillText(A.spec.title,x+18,y+46);
+  const rows=[['FLIGHT DURATION',r.days?r.days+' d':'launch-day'],['DISTANCE TRAVELLED',r.distanceKm?(r.distanceKm.toLocaleString()+' km'):'—'],['PAYLOAD',r.payload!=null?(r.payload>=1?r.payload.toFixed(2)+' t':Math.round(r.payload*1000)+' kg'):'—'],['FAILURE',r.subsystem||'mission anomaly']];
+  rows.forEach((row,i)=>{const ry=y+76+i*25;ctx.fillStyle=themeColor('dim');ctx.font='11px ui-monospace,monospace';ctx.fillText(row[0],x+18,ry);ctx.fillStyle=themeColor('ink');ctx.font='12px ui-monospace,monospace';ctx.fillText(String(row[1]),x+190,ry);});
+  ctx.fillStyle=themeRgba('ink',.82);ctx.font='11px ui-monospace,monospace'; const story=String(r.failure||'The mission did not meet its planned outcome.');
+  ctx.fillText(story.slice(0,82),x+18,y+190); if(story.length>82) ctx.fillText(story.slice(82,164),x+18,y+207); drawFlightContinueBtn(ctx,W,H);
 }
 // The shared "Continue ▸" affordance for a held flight overlay: the rounded button, the [Enter]
 // hint, the hit-box on animState, and the one-shot canvas click handler that dismisses the overlay.

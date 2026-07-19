@@ -3991,6 +3991,18 @@ function flightPhysicsSpec(m, vehicle){
   const bm=boosterMasses(), boosters=bm?{count:bm.count,prop:bm.propTotal,dry:bm.dry,wet:bm.wet,diameterM:clampA(.38+.18*Math.cbrt(Math.max(.1,bm.propEach)),.32,6),thrustSL:bm.eng.thrustSL*bm.count*thrustK,thrustVac:bm.eng.thrustVac*bm.count*thrustK,ispSL:bm.eng.ispSL*ispK,ispVac:bm.eng.ispVac*ispK,solid:!!bm.eng.solid}:null;
   return {payload:v.payload,liftoff:v.liftoff,stages,boosters};
 }
+// One immutable, player-facing flight card.  It is built from the same mission/vehicle/outcome
+// snapshots that resolve the launch, so overlay telemetry and the debrief never invent a number.
+function flightReport(m, vehicle, sim, outcome){
+  const v=vehicle||computeVehicle(), legs=(sim&&sim.legs)||[];
+  const requiredDv=legs.length?legs.reduce((n,l)=>n+(Number(l.dv)||0),0):(m.reqDv||0);
+  const payload=v.payload||0, days=Math.round(m.days||0), delivered=m.tanker?tankerDelivery():payload;
+  const target=(BODIES.find(b=>b.id===missionBody(m.id))||{}).name||'Earth orbit';
+  const kind=(outcome&&outcome.kind)||'planned';
+  return {mission:m.name,target,payload,delivered,days,requiredDv,liftoff:v.liftoff||0,totalDv:v.totalDv||0,twr:v.twr||0,
+    stages:(v.sm||[]).length,crew:m.crew||0,outcome:kind,failure:(outcome&&outcome.story)||'',subsystem:(outcome&&outcome.subsystem)||'',
+    distanceKm: days>0 ? Math.round(days*86400*29.78) : (m.reqDv>=9000?40000:Math.max(5,Math.round((m.reqDv||0)*0.006))) };
+}
 
 // M-Complexity: base build time is 2 months for a single-stage vehicle with
 // no extra modules. Each additional stage beyond the first, and each extra
@@ -5389,7 +5401,7 @@ function finalizeLaunch(ctx, ops){
     recovering: recoveryActive(m) && state.stages.length>1 && failPhase!=='ascent', // #graphics: fly the first stage back for a landing instead of tumbling away
     hasCapsule: !!(state.research.crew_capsule || crewed), // recovery: parachutes + heat shield + splashdown (Mercury/Vostok era)
     isCislunar: !!m.profile, isOrbital: (!m.profile && m.reqDv>=9000),
-    reqDv: m.reqDv||9400, physics:flightPhysicsSpec(m,v),
+    reqDv: m.reqDv||9400, physics:flightPhysicsSpec(m,v), report:flightReport(m,v,sim,outcome),
     // #38: reuse the earlier roll if a live decision (weather/live-call/rescue) already opened this
     // overlay — resumeFlightForDecision's Object.assign would otherwise clobber A.spec.night mid-flight,
     // flipping the sky partway through a launch already being watched.
