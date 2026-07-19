@@ -550,6 +550,7 @@ function updateFlight3DReadout(snapshot){
   if(phase==='pad') text+='\nCOUNTDOWN · '+p+'%';
   else if(phase==='ascent') text+='\n'+(snapshot.effects&&snapshot.effects.ascentFailure?'VEHICLE LOSS':'ASCENT')+' · '+p+'%';
   else if(phase==='orbit') text+='\n'+(p<13?'ORBITAL INSERTION':'EARTH ORBIT')+' · '+p+'%';
+  else if(phase==='transfer') text+='\nCISLUNAR TRANSFER · '+p+'%';
   else if(phase==='reentry') text+='\n'+(p<52?'ATMOSPHERIC ENTRY':(p<66?'DROGUE DEPLOY':'RECOVERY DESCENT'))+' · '+p+'%';
   else if(phase==='suborbital') text+='\nSUBORBITAL ARC · '+p+'%';
   else return clearFlight3DReadout();
@@ -574,9 +575,9 @@ function showFlight3DDecision(spec){
 function updateFlight3DSession(snapshot){
   const s=flight3dSession; if(!s) return false; s.snapshot=snapshot;
   try{
-    // Slice 4 keeps successful Earth-orbit insertion in the live Three renderer. Transfer,
-    // re-entry and failed/deep outcomes still deliberately use the established 2D scenes.
-    if(snapshot&&(['pad','ascent','suborbital'].includes(snapshot.phase)||(snapshot.phase==='orbit'&&snapshot.isOrbital&&snapshot.success!==false)||(snapshot.phase==='reentry'&&snapshot.isOrbital&&snapshot.crewed&&snapshot.success!==false))){
+    // E4.7 keeps the full successful Earth/cislunar flight in Three.js. The fallback remains
+    // available only for a renderer failure or an intentionally unsupported outcome.
+    if(snapshot&&(['pad','ascent','suborbital','transfer'].includes(snapshot.phase)||(snapshot.phase==='orbit'&&snapshot.isOrbital&&snapshot.success!==false)||(snapshot.phase==='reentry'&&snapshot.isOrbital&&snapshot.crewed&&snapshot.success!==false))){
       if(s.handedOff) return false;
       updateFlight3DReadout(snapshot);
       return cape3dUpdateFlightPresentation(snapshot);

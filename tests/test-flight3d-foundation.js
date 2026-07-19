@@ -102,6 +102,11 @@ check('successful suborbital playback stays on one 3D ocean scene through its se
   check('orbit profile gives insertion a bounded burn envelope',orbit.burn>=0&&orbit.burn<=1&&Number.isFinite(orbit.angle));
 }
 {
+  const transferSpec=Object.assign({},spec,{isOrbital:false,isCislunar:true}), snap=flight3dPresentationSnapshot(transferSpec,timing,11000), early=cape3dTransferProfile({phaseProgress:.08}), late=cape3dTransferProfile({phaseProgress:.92});
+  check('cislunar cruise has a dedicated transfer phase',snap.phase==='transfer');
+  check('transfer profile carries craft continuously from Earth toward the Moon',early.x<0&&late.x>0&&early.burn>late.burn&&late.arrival>0);
+}
+{
   const reentry=cape3dReentryProfile(flight3dPresentationSnapshot(spec,timing,16000));
   check('reentry profile starts with a bounded plasma envelope',reentry.progress>=0&&reentry.plasma>=0&&reentry.plasma<=1);
   check('reentry profile supplies deterministic recovery deployments',reentry.drogue>=0&&reentry.mains>=0&&reentry.mains<=1);
