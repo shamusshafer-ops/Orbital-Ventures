@@ -2127,22 +2127,6 @@ function cape3dOrbitWorld(root){
   const stars=new THREE.BufferGeometry(), points=[]; for(let i=0;i<240;i++){ const a=i*2.399,b=(i%31)*.31,r=1800+(i%17)*90; points.push(Math.cos(a)*r,Math.sin(b)*r*.65,Math.sin(a)*r); } stars.setAttribute('position',new THREE.Float32BufferAttribute(points,3)); const starField=new THREE.Points(stars,new THREE.PointsMaterial({color:0xdcefff,size:4,transparent:true,opacity:.92,depthWrite:false})); g.add(starField);
   root.add(g); return {group:g,earth,atmo,ribbon,craft,plume,glow,starField};
 }
-// E4.7: cislunar transfer is a dedicated 3D presentation, not a handoff back to the
-// legacy canvas. The arc is deliberately illustrative; mission timing/outcomes remain in sim.js.
-function cape3dTransferProfile(snapshot){ const p=Math.max(0,Math.min(1,(snapshot&&snapshot.phaseProgress)||0)); return {progress:p,x:-410+820*p,y:120+235*Math.sin(Math.PI*p),z:-90*Math.sin(Math.PI*p),burn:Math.max(0,1-p/.16),arrival:Math.max(0,(p-.84)/.16)}; }
-function cape3dTransferWorld(root){
-  const g=new THREE.Group(); g.name='cape3d_transfer_world'; g.visible=false;
-  const earthMap=(typeof map3dPhotoTexture==='function')?map3dPhotoTexture('earth'):null;
-  const earth=new THREE.Mesh(new THREE.SphereGeometry(175,48,30),new THREE.MeshStandardMaterial({color:0x467994,map:earthMap,emissive:0x06121c,emissiveIntensity:.18,roughness:.94})); earth.position.set(-410,0,0); g.add(earth);
-  const moon=new THREE.Mesh(new THREE.SphereGeometry(56,32,20),new THREE.MeshStandardMaterial({color:0xbfc5c4,roughness:.9,metalness:0})); moon.position.set(410,0,0); g.add(moon);
-  const pts=[]; for(let i=0;i<=96;i++){ const p=i/96,q=cape3dTransferProfile({phaseProgress:p}); pts.push(new THREE.Vector3(q.x,q.y,q.z)); }
-  const arc=new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),new THREE.LineBasicMaterial({color:0x75d9ff,transparent:true,opacity:.62})); g.add(arc);
-  const craft=cape3dVehicleMesh(); craft.scale.setScalar(.62); g.add(craft);
-  const plume=new THREE.Mesh(new THREE.ConeGeometry(10,58,14),new THREE.MeshBasicMaterial({color:0xffa33f,transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending})); plume.rotation.x=Math.PI*.5; plume.position.y=craft.userData.nozzleY||-10; craft.add(plume);
-  const glow=new THREE.PointLight(0xffa04d,0,230,2); glow.position.y=craft.userData.nozzleY||-10; craft.add(glow);
-  const stars=new THREE.BufferGeometry(), points=[]; for(let i=0;i<260;i++){ const a=i*2.399,b=(i%31)*.31,r=1500+(i%17)*90; points.push(Math.cos(a)*r,Math.sin(b)*r*.65,Math.sin(a)*r); } stars.setAttribute('position',new THREE.Float32BufferAttribute(points,3)); g.add(new THREE.Points(stars,new THREE.PointsMaterial({color:0xdcefff,size:4,transparent:true,opacity:.92,depthWrite:false})));
-  root.add(g); return {group:g,earth,moon,arc,craft,plume,glow};
-}
 function cape3dReentryWorld(root){
   const g=new THREE.Group(); g.name='cape3d_reentry_world'; g.visible=false;
   const earthMap=(typeof map3dPhotoTexture==='function')?map3dPhotoTexture('earth'):null;
@@ -2206,17 +2190,8 @@ function cape3dUpdateReentryPresentation(snapshot){
   world.capsule.position.set(x,y,40); world.capsule.rotation.z=.42*(1-q.mains)+Math.sin(q.progress*9)*.05; world.plasma.position.copy(world.capsule.position); world.plasma.scale.setScalar(26+q.plasma*62); world.plasma.material.opacity=q.plasma*.72; world.drogue.position.set(x,y+72,40); world.drogue.visible=q.drogue>.01&&q.mains<.1; world.drogue.material.opacity=q.drogue*(1-q.mains); world.mains.position.set(x,y+118,40); world.mains.visible=q.mains>.01; world.mains.children.forEach(c=>c.material.opacity=q.mains*.9); if(q.splash){ world.capsule.position.y=-126+Math.sin(q.progress*40)*2; world.mains.visible=false; }
   cape3dFlightCamera(new THREE.Vector3(0,330,1580),new THREE.Vector3(0,-110,-230)); return true;
 }
-function cape3dUpdateTransferPresentation(snapshot){
-  if(!cape3d||!cape3d.root) return false; const root=cape3d.root, world=root.userData.transferWorld; if(!world) return false;
-  const orbit=root.userData.orbitWorld, ascent=root.userData.ascentWorld, fx=root.userData.launchEffects, rocket=root.userData.launchRocket, groundSmoke=root.userData.groundSmoke, splash=root.userData.launchSplash;
-  if(orbit) orbit.group.visible=false; if(ascent) ascent.group.visible=false; if(fx) fx.group.visible=false; if(rocket) rocket.visible=false; if(groundSmoke) groundSmoke.group.visible=false; if(splash) splash.group.visible=false; (root.userData.siteObjects||[]).forEach(o=>o.visible=false);
-  const q=cape3dTransferProfile(snapshot); world.group.visible=true; root.userData.launchActive=false; root.userData.orbitActive=false; root.userData.reentryActive=false; root.userData.launchSpace=1; detachCape3DInput();
-  world.craft.position.set(q.x,q.y,q.z); world.craft.rotation.set(0,-Math.PI*.5,Math.atan2(235*Math.PI*Math.cos(Math.PI*q.progress),820)*.22); world.earth.rotation.y=q.progress*.9; world.moon.rotation.y=-q.progress*.3; world.plume.visible=q.burn>.01; world.plume.scale.set(1,Math.max(.08,q.burn),1); world.plume.material.opacity=.82*q.burn; world.glow.intensity=2.2*q.burn;
-  cape3dFlightCamera(new THREE.Vector3(q.x-310,q.y+210,720),new THREE.Vector3(q.x,q.y,0)); return true;
-}
 function cape3dUpdateFlightPresentation(snapshot){
   if(snapshot&&snapshot.phase==='orbit') return cape3dUpdateOrbitPresentation(snapshot);
-  if(snapshot&&snapshot.phase==='transfer') return cape3dUpdateTransferPresentation(snapshot);
   if(snapshot&&snapshot.phase==='reentry') return cape3dUpdateReentryPresentation(snapshot);
   const root=cape3d&&cape3d.root, orbit=root&&root.userData.orbitWorld;
   if(orbit&&orbit.group.visible){ orbit.group.visible=false; root.userData.orbitActive=false; }
@@ -2253,7 +2228,7 @@ function cape3dExitLaunchPresentation(){
 }
 function cape3dExitFlightPresentation(){
   if(!cape3d||!cape3d.root) return false;
-  const root=cape3d.root, orbit=root.userData.orbitWorld, reentry=root.userData.reentryWorld, transfer=root.userData.transferWorld; if(orbit) orbit.group.visible=false; if(reentry) reentry.group.visible=false; if(transfer) transfer.group.visible=false; root.userData.orbitActive=false; root.userData.reentryActive=false; root.userData.reentryProgress=0;
+  const root=cape3d.root, orbit=root.userData.orbitWorld, reentry=root.userData.reentryWorld; if(orbit) orbit.group.visible=false; if(reentry) reentry.group.visible=false; root.userData.orbitActive=false; root.userData.reentryActive=false; root.userData.reentryProgress=0;
   return cape3dExitLaunchPresentation();
 }
 function buildCape3DScene(scene){
@@ -2270,7 +2245,7 @@ function buildCape3DScene(scene){
   const roads=cape3dRoads(materials); root.add(roads);
   const facilities=new THREE.Group(); facilities.name='cape3d_facilities'; root.add(facilities);
   const descriptors=syncCape3DFromState(); descriptors.forEach(d=>facilities.add(cape3dFacilityGroup(d,materials))); const vegetation=cape3dVegetation(root,materials); root.userData.clouds=cape3dClouds(root); root.userData.practicalLights=[...cape3dPracticalLights(root,descriptors),...cape3dStreetLights(root,materials)]; root.userData.windowMaterial=materials.glass; root.userData.water=waterTx;
-  const pad=descriptors.find(d=>d.key==='pad'); if(pad){ const rocket=cape3dVehicleMesh(); rocket.position.set(pad.position.x-pad.footprint.x*.18,cape3dLaunchBaseY(rocket),pad.position.z); root.add(rocket); root.userData.launchPad=pad; root.userData.launchRocket=rocket; root.userData.launchBase=rocket.position.clone(); root.userData.launchEffects=cape3dLaunchEffects(rocket); root.userData.groundSmoke=cape3dGroundSmoke(root,rocket.position); root.userData.launchSplash=cape3dSplashEffects(root); root.userData.launchFailure=cape3dFailureEffects(root,rocket,root.userData.launchEffects); root.userData.ascentWorld=cape3dAscentWorld(root,pad); root.userData.orbitWorld=cape3dOrbitWorld(root); root.userData.transferWorld=cape3dTransferWorld(root); root.userData.reentryWorld=cape3dReentryWorld(root); }
+  const pad=descriptors.find(d=>d.key==='pad'); if(pad){ const rocket=cape3dVehicleMesh(); rocket.position.set(pad.position.x-pad.footprint.x*.18,cape3dLaunchBaseY(rocket),pad.position.z); root.add(rocket); root.userData.launchPad=pad; root.userData.launchRocket=rocket; root.userData.launchBase=rocket.position.clone(); root.userData.launchEffects=cape3dLaunchEffects(rocket); root.userData.groundSmoke=cape3dGroundSmoke(root,rocket.position); root.userData.launchSplash=cape3dSplashEffects(root); root.userData.launchFailure=cape3dFailureEffects(root,rocket,root.userData.launchEffects); root.userData.ascentWorld=cape3dAscentWorld(root,pad); root.userData.orbitWorld=cape3dOrbitWorld(root); root.userData.reentryWorld=cape3dReentryWorld(root); }
   root.userData.siteObjects=[ground,terrain,ocean,roads,facilities,vegetation];
   // State-driven growth receives simple massing in this slice; detailed variants arrive with the art pass.
   try{
@@ -4598,10 +4573,11 @@ function renderProfileReadout(m){
     else if(l.by==='lv') detail=`LV lofts ${l.mass.toFixed(1)} t · capacity ${fI(l.cap)} m/s${l.twr?` · TWR ${l.twr.toFixed(2)}`:''}`;
     else detail=`${VEHICLE_LABEL[l.by]||l.by} pushes ${l.mass.toFixed(1)} t · tank gives ${fI(l.cap)} m/s${l.ga?` · <span style="color:var(--ok)">gravity assist −8%</span>`:''}`;
     const depotNote = (l.name==='Ascent to LEO' && state.depotUse>0) ? ` · <span style="color:var(--readout)">+${state.depotUse.toFixed(1)} t from depot after this leg</span>` : '';
+    const phasingNote = l.phasingDv ? ` · <span style="color:var(--warn)">+${fI(l.phasingDv)} m/s rendezvous phasing — this mission's plane doesn't match the depot's</span>` : '';
     return `<div class="leg ${l.pass?'':'bad'}">
       <span class="legname" style="color:${l.pass?'var(--ok)':'var(--bad)'}">${l.pass?'✓':'✕'} ${l.name}</span>
       <span class="legdv">${fI(l.dv)} m/s</span>
-      <span class="legdetail">${detail}${depotNote}</span></div>`;
+      <span class="legdetail">${detail}${depotNote}${phasingNote}</span></div>`;
   }).join('');
   const testBtns=TEST_LEVELS.map((t,i)=>`<button class="btn" style="flex:1;font-size:12px;${state.testLevel===i?'border-color:var(--readout);color:var(--readout)':''}" onclick="setTestLevel(${i})">${t.name}${t.rel>0?` +${(t.rel*100)|0}%`:''}${t.cost>0?`<br><span class="dim" style="font-size:11px">${fM(t.cost)} · ${t.months} mo</span>`:''}</button>`).join('');
 
@@ -4848,7 +4824,6 @@ function activeShipMarkers(absD){
   }
   return out;
 }
-
 
 /* ---------- E4.3.1: optional Three.js 3D solar-system view (flag MAP3D) ----------
    The rendering shell over E4.3.0's tested scene math. DEFAULT ON as of 2026-07-18 at the repo
@@ -5267,7 +5242,6 @@ function map3dFocusDistance(b){ return Math.max(7, Math.min(72, planetMeshRadius
 function map3dPick(e){
   try{
     const hit=map3dRaycast(e);
-    if(hit && hit.object && hit.object.userData.shipId){ showFleetRegistry(); return; }
     if(hit && hit.object && hit.object.userData.bodyId){
       const id=hit.object.userData.bodyId;
       if(id.slice(0,5)==='ship:') return; // E4.5: a flight marker isn't a selectable body; hover already surfaces its info

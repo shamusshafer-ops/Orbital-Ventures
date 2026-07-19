@@ -3448,6 +3448,43 @@ function inclinationDv(m){
 // the Δv a design must actually beat for mission m: its base reqDv plus any plane-change surcharge.
 // Every BUDGET gate/display reads through this; classification (reqDv>=9000) still reads raw m.reqDv.
 function effectiveReqDv(m){ return (m&&m.reqDv||0) + inclinationDv(m); }
+
+/* ---------- E4.6 (A2 slice 1): depot rendezvous/phasing as a Δv cost ----------
+   The LEO propellant depot (#7/M3b-ii) tops off a mission's transfer stage for free today,
+   regardless of orbital plane — a real gap MIGRATION.md flagged ("rendezvous & phasing for
+   reuse/refuel" is unmodeled). A depot can hand over propellant once you're alongside it, but it
+   can't pay for the plane-change burn YOUR vehicle needs to actually get there: real rendezvous
+   phasing is a maneuver the visiting spacecraft's own engine performs, not something the depot
+   supplies. This closes that gap using the exact 2·v·sin(Δi/2) physics inclinationDv already
+   uses, applied to the mismatch between a mission's own plane and the depot's.
+
+   The depot has no separate orbital-plane field of its own: Tanker Run flights (which fill it)
+   carry no .inclination, so by the same "unset ⇒ the free/default plane" convention inclinationDv
+   uses, the depot naturally sits at LAUNCH_SITE_LAT — the plane any unmodified launch reaches.
+
+   Unlike inclinationDv (a STATIC per-mission surcharge, always present in effectiveReqDv), this
+   is a DYNAMIC cost: it only exists when the player actually chooses to draw from the depot this
+   flight (state.depotUse>0). A mission that never touches the depot is completely unaffected.
+   Also unlike inclinationDv's floor/ceiling (free to steer to any HIGHER inclination via azimuth,
+   since that's a launch-day choice), a rendezvous has no such free band — meeting a specific
+   existing depot in a specific existing plane costs a burn in EITHER direction, so this is a
+   plain symmetric Δv≈2·v·sin(Δi/2) on the angular mismatch, no direction-dependent asymmetry.
+
+   IDENTITY GUARANTEE (checked in tests): depotPhasingDv requires the mission be .profile-shaped
+   (the only category the depot benefits at all) — a flat-reqDv mission like crew_orbit or
+   Comsat Block Buy (which DO carry .inclination, for the unrelated launch-azimuth tax above) is
+   therefore provably 0 regardless of state.depotUse, since the depot mechanic doesn't apply to
+   them at all. And no mission today combines .profile with .inclination, so depotPhasingDv is
+   provably 0 for EVERY mission in MISSIONS, regardless of what the player sets state.depotUse to.
+   This is mechanism-only, exactly like inclinationDv's slice 1: no existing mission's numbers move. */
+const DEPOT_INCLINATION=LAUNCH_SITE_LAT; // no depot vehicle carries its own .inclination — it forms in the launch site's default/free plane
+function depotPhasingDv(m){
+  if(!m || !m.profile || !(state.depotUse>0)) return 0; // opt-in: only meaningful for depot-eligible (.profile) missions, and only a cost of USING the depot this flight, not a static mission property
+  const incl = m.inclination==null ? DEPOT_INCLINATION : m.inclination; // no .inclination ⇒ assumed to already share the depot's plane
+  const dOff = Math.abs(incl-DEPOT_INCLINATION);
+  if(dOff<=0) return 0;
+  return Math.round(2*INCLINATION_LEO_V*Math.sin((dOff*Math.PI/180)/2));
+}
 // #45: ground-track math for a mission with a known .inclination — the classic sinusoidal lat/lon path
 // a satellite traces under it, for a circular orbit (standard argument-of-latitude parametrization).
 // LEO_PERIOD_MIN is a flavor approximation for the per-orbit westward drift (Earth rotating under the
@@ -3663,8 +3700,15 @@ function simulateMission(m){
         upper=Math.max(upper, crewMass*0.5);
       }
       const perf=stackPerformance(state.stages, upper);
-      const pass=perf.totalDv>=leg.dv && perf.twr>1.0;
-      legs.push({name:leg.name, dv:leg.dv, cap:Math.round(perf.totalDv), by:'lv', mass:upper, twr:perf.twr, pass});
+      // E4.6: a mission drawing from the depot (state.depotUse>0) whose own plane differs from the
+      // depot's pays the rendezvous phasing burn HERE, on the same leg that reaches LEO — the depot
+      // tops off tanks after this leg passes, but can't supply the plane-change itself. Zero for
+      // every mission today (see depotPhasingDv); only non-zero once a future mission combines
+      // .profile with .inclination AND the player opts into depotUse>0 for that flight.
+      const phasingDv = (leg.name==='Ascent to LEO') ? depotPhasingDv(m) : 0;
+      const legDvNeed = leg.dv + phasingDv;
+      const pass=perf.totalDv>=legDvNeed && perf.twr>1.0;
+      legs.push({name:leg.name, dv:legDvNeed, cap:Math.round(perf.totalDv), by:'lv', mass:upper, twr:perf.twr, pass, phasingDv:phasingDv||undefined});
       if(!pass) ok=false;
       // depot top-off happens once in LEO — added after this leg, not counted in the LV's lift mass
       if(present.transfer && state.depotUse>0 && leg.name==='Ascent to LEO'){ present.transfer.propLeft += state.depotUse; }
