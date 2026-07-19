@@ -5821,6 +5821,18 @@ function missionTargetBody(missionId){
   if(b) return ORBITAL_ELEMENTS[b.id] ? b.id : (b.around || 'mars');
   return 'mars';
 }
+// E4.5: general mission→body lookup for the 3D ship-marker trajectory, distinct from
+// missionTargetBody above (which exists for window math and always falls back to Mars —
+// wrong for a marker: an Apollo mission should head to the Moon, not collapse to Mars).
+// Returns the body id whose bodyScenePos is a meaningful transfer destination, or null when
+// there isn't one (unknown mission, or a schematic non-point body like the Oort shell/cloud —
+// 'kind':'cloud' bodies have no single position for a marker to arrive at).
+function flightTargetBody(missionId){
+  if(typeof BODIES==='undefined') return null;
+  const b = BODIES.find(x=> Array.isArray(x.missions) && x.missions.includes(missionId));
+  if(!b || b.kind==='cloud') return null;
+  return b.id;
+}
 // Real transfer windows for a target body from a given absDay: scan forward, find each
 // crossing of the ideal Hohmann phase lead, and rate quality by the target's Sun-distance
 // at that encounter (perihelic = favorable, aphelic = marginal). Returns up to `count`
@@ -18384,15 +18396,104 @@ function orbitRingPoints(bodyId, segments){
 function cameraTargetFor(bodyId, absD){
   return bodyScenePos(bodyId, absD) || { x:0, y:0, z:0 };
 }
-// Spherical→cartesian for the hand-rolled orbit camera: eye position from a look-at target plus
-// azimuth (rad, around y), elevation (rad, above the ecliptic), and distance (scene units). Pure so
-// the camera math is testable without Three.js. Elevation clamped just inside the poles.
+// Spherical→cartesian for the solar-system map's free orbit camera (distinct from
+// cape3dCameraEye's ground-level launch-site clamp — this one allows any elevation, including
+// looking up from underneath the ecliptic, which a "drag to orbit the solar system" camera needs
+// and a launch-pad camera never should). Restored 2026-07-19: map3dApplyCamera calls this by name
+// but the definition had been dropped in a refactor, leaving the solar map's camera throwing every
+// frame and silently falling back to 2D (caught by map3dRenderLoop's outer try/catch) — unrelated
+// to E4.5, found via test-scene-math.js regressing. Pure so the camera math is testable without Three.js.
 function orbitCameraEye(target, azimuth, elevation, distance){
   const el = Math.max(-1.5533, Math.min(1.5533, elevation)); // ~±89°
   const ce = Math.cos(el), se = Math.sin(el);
   return { x: target.x + distance*ce*Math.cos(azimuth),
            y: target.y + distance*se,
            z: target.z + distance*ce*Math.sin(azimuth) };
+}
+// Spherical→cartesian for the hand-rolled orbit camera: eye position from a look-at target plus
+// azimuth (rad, around y), elevation (rad, above the ecliptic), and distance (scene units). Pure so
+// the camera math is testable without Three.js. Elevation clamped just inside the poles.
+/* ---------- E4.5: ship markers — a real transfer-trajectory arc for each active flight ----------
+   Wires the E4.4 hull registry onto the E4.3 scene: an in-flight mission's marker moves through
+   the same 3D space as the planets, on a genuine two-body transfer arc rather than a straight line
+   or a linear-in-angle interpolation.
+
+   Reuses bodyScenePos for BOTH endpoints (never re-derives Earth/target position independently),
+   so a marker's departure/arrival points are pixel-identical to wherever the actual planet mesh
+   sits on those exact days — including Codex's eccentric/inclined orbits and the moon-orbit model.
+   Because those endpoints can now have y≠0 (real inclination), the transfer is built in the actual
+   3D PLANE containing the Sun and both endpoints (an orthonormal basis e1/e2), not assumed flat —
+   the flat-ecliptic case (Earth, inc=0) falls out of this automatically when the target's
+   inclination is also ~0.
+
+   Within that plane, the same Hohmann-shaped Kepler construction as the ascent trajectory: treat
+   the transfer as a two-body conic with a=(r0+r1)/2 (endpoints AS periapsis/apoapsis — exact by
+   construction, no approximation error), e=|r1-r0|/(r1+r0) (always <1 for positive radii), and a
+   half-orbit true-anomaly sweep (periapsis→apoapsis or reverse) reparametrized so it lands EXACTLY
+   on both endpoints while following a genuine Kepler radius/angle profile in between (fast near
+   periapsis, slow near apoapsis — not a naive linear interpolation). */
+function flightTransferElements(r0,r1){
+  const a=(r0+r1)/2, e=Math.abs(r1-r0)/Math.max(1e-9,r1+r0); // guaranteed 0<=e<1 for r0,r1>0
+  return {a, e, outbound:r1>=r0}; // outbound: r grows (periapsis-start); else apoapsis-start
+}
+// Marker position for one active flight at absDay `absD`, or null when there's no renderable
+// target (unknown mission / schematic-only body) or the flight record is missing its timing.
+function flightScenePos(rec, absD){
+  if(!rec || rec.launchAbs==null || rec.arriveAbs==null) return null;
+  const target=(typeof flightTargetBody==='function') && flightTargetBody(rec.mission);
+  if(!target) return null;
+  const p0=bodyScenePos('earth', rec.launchAbs), p1=bodyScenePos(target, rec.arriveAbs);
+  if(!p0 || !p1) return null;
+  const r0=Math.hypot(p0.x,p0.y,p0.z), r1=Math.hypot(p1.x,p1.y,p1.z);
+  if(r0<1e-9 || r1<1e-9) return null; // degenerate (shouldn't happen for real bodies)
+  const span=Math.max(1, rec.arriveAbs-rec.launchAbs), f=Math.max(0,Math.min(1,(absD-rec.launchAbs)/span));
+  // Orthonormal basis for the plane through the Sun (origin), p0 and p1: e1 along p0, e2 the
+  // component of p1 orthogonal to e1. If p0/p1 are (near-)collinear (e.g. a Moon target, which
+  // collapses to Earth's own scene point) e2 falls back to an arbitrary perpendicular so the
+  // marker still traces a well-defined (short, near-circular) arc instead of NaN-ing out.
+  const e1={x:p0.x/r0,y:p0.y/r0,z:p0.z/r0};
+  const dot=(p1.x*e1.x+p1.y*e1.y+p1.z*e1.z);
+  let ox=p1.x-dot*e1.x, oy=p1.y-dot*e1.y, oz=p1.z-dot*e1.z, olen=Math.hypot(ox,oy,oz);
+  let e2;
+  if(olen<1e-6){ // p0,p1 nearly collinear from the Sun — pick any vector ⊥ e1
+    const arb=Math.abs(e1.x)<0.9?{x:1,y:0,z:0}:{x:0,y:1,z:0};
+    const cx=e1.y*arb.z-e1.z*arb.y, cy=e1.z*arb.x-e1.x*arb.z, cz=e1.x*arb.y-e1.y*arb.x, clen=Math.hypot(cx,cy,cz)||1;
+    e2={x:cx/clen,y:cy/clen,z:cz/clen};
+  } else e2={x:ox/olen,y:oy/olen,z:oz/olen};
+  // Real prograde-ish angular distance from p0 to p1 within this plane, taken as the positive
+  // (0..2π) angle so the marker always sweeps the SAME rotational sense the departure→arrival
+  // geometry implies (never the "wrong way round" through the far side of the Sun).
+  // dot = p1·e1 = p1·(p0/r0) = (p0·p1)/r0 — already carries one factor of 1/r0, so the
+  // standard angle-between-vectors cosine (p0·p1)/(r0·r1) is dot/r1, NOT dot/(r0·r1).
+  const cosDelta=Math.max(-1,Math.min(1,dot/r1)), rawDelta=Math.acos(cosDelta);
+  // Real Hohmann-window transfers land near 180° (Mars windows measure ~160-171° here, per
+  // Mars's eccentricity), which also makes `olen` small — so olen alone can't distinguish "target
+  // basically the same direction as Earth" (true near-0° degeneracy, e.g. a Moon target barely off
+  // Earth's own point) from "target basically opposite Earth" (the NORMAL, correct ~180° transfer
+  // geometry, where acos already returns the right answer near π with no numerical trouble at all).
+  // Only override toward a tiny arc in the former case (cosDelta>0); an near-π angle is left as-is.
+  const deltaReal=(olen<1e-6 && cosDelta>0)?0.0001:rawDelta;
+  const t=flightTransferElements(r0,r1), nu0=t.outbound?0:Math.PI;
+  const M=nu0+f*Math.PI, E=solveKepler(M,t.e);
+  const nu=2*Math.atan2(Math.sqrt(1+t.e)*Math.sin(E/2), Math.sqrt(1-t.e)*Math.cos(E/2));
+  const r=t.a*(1-t.e*Math.cos(E)), theta=(nu-nu0)/Math.PI*deltaReal; // 0 at f=0, deltaReal at f=1
+  const c=Math.cos(theta), s=Math.sin(theta);
+  return { x:r*(c*e1.x+s*e2.x), y:r*(c*e1.y+s*e2.y), z:r*(c*e1.z+s*e2.z), progress:f };
+}
+// Every active flight worth a 3D marker: deferred (long-cruise) missions with a renderable target
+// and a hull identity to display. Synchronous (short, same-turn) flights never appear here — they
+// never persist in state.activeFlights across a render, so there is nothing to mark.
+function activeShipMarkers(absD){
+  const out=[];
+  for(const rec of (state.activeFlights||[])){
+    if(!rec || !rec.deferred) continue;
+    const pos=flightScenePos(rec, absD); if(!pos) continue;
+    const hullId=(rec.ctx&&rec.ctx.hullId)||rec.hullId||null, hull=hullId&&(typeof hullById==='function')&&hullById(hullId);
+    out.push({ flightId:rec.id, hullId:hullId||null, serial:hull?hull.serial:null,
+               familyName:hull?hull.familyName:null, missionName:rec.name||rec.mission,
+               reuseCount:hull?(hull.reuseCount||0):0, pos, progress:pos.progress });
+  }
+  return out;
 }
 
 /* ---------- E4.3.1: optional Three.js 3D solar-system view (flag MAP3D) ----------
@@ -18605,6 +18706,15 @@ function map3dHover(e){
   if(!map3d||map3d._drag) return;
   const hit=map3dRaycast(e), id=hit&&hit.object&&hit.object.userData.bodyId, tip=map3d.hoverCard;
   if(!id||!tip){ hideMap3DHover(); if(map3d) map3d.dom.style.cursor='grab'; return; }
+  if(id.slice(0,5)==='ship:'){ // E4.5: a flight marker, not a BODIES entry — different card
+    const desc=map3d.shipData[id.slice(5)], r=map3d.dom.getBoundingClientRect();
+    if(!desc){ hideMap3DHover(); return; }
+    const hullLine=desc.serial?`<div style="color:#91b8d4;margin-top:3px">Hull ${esc(desc.serial)}${desc.familyName?' · '+esc(desc.familyName):''}</div>`:'';
+    const reuseLine=desc.serial?`<div style="color:#91b8d4">Reuse count: ${desc.reuseCount}</div>`:'';
+    tip.innerHTML=`<b style="color:#ffc98a">${esc(desc.missionName)}</b>${hullLine}${reuseLine}<div style="color:#91b8d4">Cruise progress: ${Math.round(desc.progress*100)}%</div>`;
+    tip.style.left=Math.max(8,e.clientX-r.left+14)+'px'; tip.style.top=Math.max(8,e.clientY-r.top+14)+'px'; tip.style.display='block';
+    map3d.dom.style.cursor='pointer'; return;
+  }
   const b=BODIES.find(x=>x.id===id), r=map3d.dom.getBoundingClientRect();
   const title=b?b.name:'Sun';
   const detail=b ? b.note : 'The star at the center of the system — the source of every day/night terminator in this view.';
@@ -18679,7 +18789,8 @@ function startMap3D(hostId='mapHost', W=MAP_W, H=MAP_H){
       const cam={ az:Math.PI*0.5, el:0.95, dist:560, target:{x:0,y:0,z:0} };
       const hud=addMap3DTimeHud(host,hostId);
       const hoverCard=addMap3DHoverCard(host);
-      map3d={renderer, scene, camera, sun, corona, sunLight, cameraFill, asteroidBelt, bodies, labels, pickables, cam, dom, hud:hud.hud, hudReadout:hud.readout, hoverCard, startedAt:Date.now(), mountId:hostId, fallbackId:hostId==='mapHost'?'mapCanvas':null, raf:0, raycaster:new THREE.Raycaster(), _drag:null};
+      map3d={renderer, scene, camera, sun, corona, sunLight, cameraFill, asteroidBelt, bodies, labels, pickables, cam, dom, hud:hud.hud, hudReadout:hud.readout, hoverCard, startedAt:Date.now(), mountId:hostId, fallbackId:hostId==='mapHost'?'mapCanvas':null, raf:0, raycaster:new THREE.Raycaster(), _drag:null,
+              ships:{}, shipData:{}}; // E4.5: flightId -> {mesh,label}, flightId -> latest marker descriptor (for hover/pick lookup)
       updateMap3DTimeHud();
       attachMap3DInput();
     } else if(map3d.dom && !map3d.dom.parentNode){
@@ -18699,6 +18810,44 @@ function map3dApplyCamera(){
   map3d.camera.lookAt(c.target.x, c.target.y, c.target.z);
 }
 function map3dSpinRate(id){ return ({mercury:0.012,venus:-0.005,earth:0.11,moon:0.014,mars:0.106,jupiter:0.27,saturn:0.24,uranus:-0.16,neptune:0.15,pluto:0.009})[id]||0.05; }
+// E4.5: one small marker + label per active flight, keyed by flightId (not by hull — a marker
+// tracks the MISSION's position; the hull identity is display info surfaced on hover/pick).
+// A distinct small emissive pip (not a photographic sphere) so it never reads as a planet.
+function map3dShipMarkerMesh(desc){
+  const geo=new THREE.OctahedronGeometry(0.55,0);
+  const mat=new THREE.MeshStandardMaterial({color:0xffb347,emissive:0xff8a1f,emissiveIntensity:1.1,roughness:.4,metalness:.2});
+  const mesh=new THREE.Mesh(geo,mat); mesh.userData.bodyId='ship:'+desc.flightId;
+  const label=map3dLabelSprite(desc.serial?`${desc.serial} · ${desc.missionName}`:desc.missionName,'#ffc98a');
+  label.userData.bodyId='ship:'+desc.flightId; label.scale.set(Math.min(15,Math.max(6,label.scale.x)),1.3,1);
+  return {mesh,label};
+}
+// Add/update/remove marker meshes to match this frame's active flights. Cheap (activeShipMarkers
+// is O(active flights), normally 0-3) and fully guarded — a bad flight record (missing hull, no
+// renderable target) is simply skipped by activeShipMarkers itself, never reaches the renderer.
+function map3dUpdateShipMarkers(d){
+  const seen={}, list=(typeof activeShipMarkers==='function')?activeShipMarkers(d):[];
+  for(const desc of list){
+    seen[desc.flightId]=true;
+    let entry=map3d.ships[desc.flightId];
+    if(!entry){
+      entry=map3dShipMarkerMesh(desc);
+      map3d.scene.add(entry.mesh); map3d.scene.add(entry.label);
+      map3d.pickables.push(entry.mesh, entry.label);
+      map3d.ships[desc.flightId]=entry;
+    }
+    entry.mesh.position.set(desc.pos.x, desc.pos.y, desc.pos.z);
+    entry.label.position.set(desc.pos.x, desc.pos.y+1.3, desc.pos.z);
+    map3d.shipData[desc.flightId]=desc; // latest descriptor, for hover/pick lookup this same frame
+  }
+  for(const flightId in map3d.ships){
+    if(seen[flightId]) continue; // flight completed/removed since last tick — tear its marker down
+    const entry=map3d.ships[flightId];
+    map3d.scene.remove(entry.mesh); map3d.scene.remove(entry.label);
+    const idx1=map3d.pickables.indexOf(entry.mesh); if(idx1>=0) map3d.pickables.splice(idx1,1);
+    const idx2=map3d.pickables.indexOf(entry.label); if(idx2>=0) map3d.pickables.splice(idx2,1);
+    delete map3d.ships[flightId]; delete map3d.shipData[flightId];
+  }
+}
 function map3dTick(){
   const d=(typeof absDay==='function')?mapViewAbsDay():0;
   if(mapPreviewAbsDay===null && map3d._hudLiveDay!==d){ map3d._hudLiveDay=d; updateMap3DTimeHud(); }
@@ -18721,6 +18870,7 @@ function map3dTick(){
   // keep the focus target tracking the selected body as it orbits
   const sel=state && state.selectedBody;
   if(sel && map3d.bodies[sel]){ const t=bodyScenePos(sel,d); if(t) map3d.cam.target=t; }
+  try{ map3dUpdateShipMarkers(d); }catch(e){ /* a marker glitch never breaks the planet view */ }
   map3dApplyCamera();
   map3d.cameraFill.position.copy(map3d.camera.position);
   map3d.renderer.render(map3d.scene, map3d.camera);
@@ -18764,7 +18914,9 @@ function map3dPick(e){
   try{
     const hit=map3dRaycast(e);
     if(hit && hit.object && hit.object.userData.bodyId){
-      const id=hit.object.userData.bodyId, body=BODIES.find(b=>b.id===id);
+      const id=hit.object.userData.bodyId;
+      if(id.slice(0,5)==='ship:') return; // E4.5: a flight marker isn't a selectable body; hover already surfaces its info
+      const body=BODIES.find(b=>b.id===id);
       if(body) map3d.cam.dist=Math.min(map3d.cam.dist,map3dFocusDistance(body));
       selectBody(id);
     }

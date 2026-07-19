@@ -3215,6 +3215,18 @@ function missionTargetBody(missionId){
   if(b) return ORBITAL_ELEMENTS[b.id] ? b.id : (b.around || 'mars');
   return 'mars';
 }
+// E4.5: general mission→body lookup for the 3D ship-marker trajectory, distinct from
+// missionTargetBody above (which exists for window math and always falls back to Mars —
+// wrong for a marker: an Apollo mission should head to the Moon, not collapse to Mars).
+// Returns the body id whose bodyScenePos is a meaningful transfer destination, or null when
+// there isn't one (unknown mission, or a schematic non-point body like the Oort shell/cloud —
+// 'kind':'cloud' bodies have no single position for a marker to arrive at).
+function flightTargetBody(missionId){
+  if(typeof BODIES==='undefined') return null;
+  const b = BODIES.find(x=> Array.isArray(x.missions) && x.missions.includes(missionId));
+  if(!b || b.kind==='cloud') return null;
+  return b.id;
+}
 // Real transfer windows for a target body from a given absDay: scan forward, find each
 // crossing of the ideal Hohmann phase lead, and rate quality by the target's Sun-distance
 // at that encounter (perihelic = favorable, aphelic = marginal). Returns up to `count`
