@@ -483,6 +483,9 @@ function flight3dPhaseAt(spec,t,timing){
   const afterPad=local-pad; if(afterPad<ascent) return 'ascent';
   if(spec&&spec.mode==='depart') return 'depart';
   if(afterPad<ascent+cruise) return (spec&&spec.isCislunar)?'transfer':((spec&&spec.isOrbital)?'orbit':'suborbital');
+  // Hold a successful ballistic flight on its ocean impact through the settle tail. This
+  // prevents the live 3D arc from handing off to the old second trajectory renderer.
+  if(spec&&spec.success!==false&&!spec.isOrbital&&!spec.isCislunar) return 'suborbital';
   return d.reentryDur>0?'reentry':((spec&&spec.dock)?'dock':'complete');
 }
 function flight3dPresentationSnapshot(spec,timing,t){
@@ -496,7 +499,7 @@ function flight3dPresentationSnapshot(spec,timing,t){
   const stages=((spec&&spec.stages)||[]).map(s=>({prop:s.prop||0,count:s.count||1,dia:s.dia||0}));
   const boosters=spec&&spec.boosters?{count:spec.boosters.count||0,prop:spec.boosters.prop||0,dia:spec.boosters.dia||0,solid:!!spec.boosters.solid}:null;
   const ascentFailure=phase==='ascent'&&!!(spec&&spec.success===false&&spec.failPhase==='ascent')&&phaseP>=.5;
-  return {phase,phaseProgress:clampA(phaseP,0,1),overallProgress:clampA(local/total,0,1),mode:(spec&&spec.mode)||'launch',crewed:!!(spec&&spec.crewed),isOrbital:!!(spec&&spec.isOrbital),isCislunar:!!(spec&&spec.isCislunar),reqDv:(spec&&spec.reqDv)||0,success:spec?spec.success!==false:true,vehicle:{stages,boosters,transferProp:(spec&&spec.transferProp)||0},effects:{ignition:clampA(d.ignite==null?(phase==='pad'?0:1):d.ignite,0,1),night:!!(spec&&spec.night),ascentFailure,failureProgress:ascentFailure?clampA((phaseP-.5)/.28,0,1):0}};
+  return {phase,phaseProgress:clampA(phaseP,0,1),overallProgress:clampA(local/total,0,1),mode:(spec&&spec.mode)||'launch',crewed:!!(spec&&spec.crewed),isOrbital:!!(spec&&spec.isOrbital),isCislunar:!!(spec&&spec.isCislunar),reqDv:(spec&&spec.reqDv)||0,success:spec?spec.success!==false:true,vehicle:{stages,boosters,transferProp:(spec&&spec.transferProp)||0,physics:(spec&&spec.physics)||null},effects:{ignition:clampA(d.ignite==null?(phase==='pad'?0:1):d.ignite,0,1),night:!!(spec&&spec.night),ascentFailure,failureProgress:ascentFailure?clampA((phaseP-.5)/.28,0,1):0}};
 }
 function flight3dAvailable(){ return FLIGHT3D&&typeof cape3dAvailable==='function'&&cape3dAvailable()&&typeof startCape3D==='function'; }
 function flight3dRestoreCape(s){
@@ -521,6 +524,25 @@ function flight3dHandoffToFallback(s,reason){
 }
 function clearFlight3DDecision(){ const host=$('flight3dDecision'); if(!host) return false; host.classList.add('hidden'); host.innerHTML=''; return true; }
 function clearFlight3DReadout(){ const host=$('flight3dReadout'); if(!host) return false; host.classList.add('hidden'); host.textContent=''; return true; }
+function flightAltitudeTelemetry(snapshot){
+  const phase=snapshot&&snapshot.phase;
+  if(!snapshot||!['pad','ascent','suborbital','orbit','reentry'].includes(phase)) return {visible:false,altitudeKm:0,label:'—'};
+  let altitudeKm=0;
+  try{
+    if(phase==='orbit') altitudeKm=cape3dOrbitProfile(snapshot).altitude;
+    else if(phase==='reentry') altitudeKm=Math.max(0,120*(1-(snapshot.phaseProgress||0)));
+    else altitudeKm=cape3dLaunchProfile(snapshot).altitudeKm||0;
+  }catch(e){ altitudeKm=0; }
+  altitudeKm=Math.max(0,Number(altitudeKm)||0);
+  const label=altitudeKm<1?Math.round(altitudeKm*1000).toLocaleString()+' m':(altitudeKm<100?altitudeKm.toFixed(1):Math.round(altitudeKm).toLocaleString())+' km';
+  return {visible:true,altitudeKm,label};
+}
+function clearFlightAltitude(){ const host=$('flightAltitude'); if(!host) return false; host.classList.add('hidden'); host.textContent=''; return true; }
+function updateFlightAltitude(snapshot){
+  const host=$('flightAltitude'); if(!host) return false; const q=flightAltitudeTelemetry(snapshot);
+  if(!q.visible) return clearFlightAltitude();
+  host.innerHTML='<span>ALTITUDE MSL</span><strong>'+q.label+'</strong>'; host.classList.remove('hidden'); return true;
+}
 function updateFlight3DReadout(snapshot){
   const host=$('flight3dReadout'); if(!host||!snapshot) return false;
   const p=Math.round(Math.max(0,Math.min(1,snapshot.phaseProgress||0))*100), phase=snapshot.phase;
@@ -531,16 +553,13 @@ function updateFlight3DReadout(snapshot){
   else if(phase==='reentry') text+='\n'+(p<52?'ATMOSPHERIC ENTRY':(p<66?'DROGUE DEPLOY':'RECOVERY DESCENT'))+' · '+p+'%';
   else if(phase==='suborbital') text+='\nSUBORBITAL ARC · '+p+'%';
   else return clearFlight3DReadout();
-  // The 3D scene compresses distance only for camera readability. The HUD always reports the
-  // profile's physical altitude, so a sounding rocket is never presented as an orbital flight.
-  let altitudeKm=0;
+  let speedMps=0, downrangeKm=0;
   try{
-    if(phase==='orbit') altitudeKm=cape3dOrbitProfile(snapshot).altitude;
-    else if(phase==='reentry') altitudeKm=Math.max(0,120*(1-(snapshot.phaseProgress||0)));
-    else altitudeKm=cape3dLaunchProfile(snapshot).altitudeKm||0;
+    if(phase==='orbit') speedMps=7800;
+    else if(phase==='ascent'||phase==='suborbital'){ const q=cape3dLaunchProfile(snapshot); speedMps=q.speedMps||0; downrangeKm=q.downrangeKm||0; }
   }catch(e){}
-  const altitudeLabel=altitudeKm<1?Math.round(altitudeKm*1000)+' m':(altitudeKm<100?altitudeKm.toFixed(1):Math.round(altitudeKm))+' km';
-  text+='\nALT · '+altitudeLabel;
+  if(speedMps>0) text+='\nVEL · '+(speedMps>=1000?(speedMps/1000).toFixed(2)+' km/s':Math.round(speedMps).toLocaleString()+' m/s');
+  if(downrangeKm>.01) text+='\nDRANGE · '+(downrangeKm<10?downrangeKm.toFixed(2):Math.round(downrangeKm).toLocaleString())+' km';
   text+='\n'+(snapshot.crewed?'CREWED':'UNCREWED')+' · '+(snapshot.effects&&snapshot.effects.night?'NIGHT':'DAY')+' FLIGHT'; host.textContent=text; host.classList.remove('hidden'); return true;
 }
 function showFlight3DDecision(spec){
@@ -567,7 +586,7 @@ function updateFlight3DSession(snapshot){
   }catch(e){ flight3dHandoffToFallback(s,e); return false; }
 }
 function endFlight3DSession(){
-  const s=flight3dSession; flight3dSession=null; clearFlight3DDecision(); clearFlight3DReadout(); const host=$('flight3dHost'), fallback=$('flightZoom'); if(host) host.style.display='none'; if(fallback) fallback.style.visibility='';
+  const s=flight3dSession; flight3dSession=null; clearFlight3DDecision(); clearFlight3DReadout(); clearFlightAltitude(); const host=$('flight3dHost'), fallback=$('flightZoom'); if(host) host.style.display='none'; if(fallback) fallback.style.visibility='';
   if(!s||typeof cape3d==='undefined'||!cape3d) return false;
   if(!s.handedOff) cape3dExitFlightPresentation();
   return flight3dRestoreCape(s);
@@ -624,6 +643,7 @@ function setupFlightState(spec, done, ctx, cv, viewCanvas, seedP){
 function playMission(spec, done, seedP){
   $('animTitle').textContent=spec.title+(spec.crewed?'  ·  crewed':'');
   $('animOverlay').classList.remove('hidden');
+  clearFlightAltitude();
   beginFlight3DSession(spec);
   initFlightZoom(); resetFlightZoom(); // attach camera listeners once; reset the view for this fresh flight (persists across its own phase transitions)
   // The Phaser-hosted FlightScene (graphics Slices 1–3) rendered the ascent richly but its
@@ -1217,7 +1237,7 @@ function openFlightForDecision(ctx, decision){
     boosters: boosterSpec(),
     transferProp: (m.profile&&m.modules&&m.modules.includes('transfer'))?state.transfer.prop:0,
     recovering:false, hasCapsule: !!(state.research.crew_capsule || ctx.crewed),
-    isCislunar: !!m.profile, isOrbital: (!m.profile && m.reqDv>=9000), reqDv: m.reqDv||9400,
+    isCislunar: !!m.profile, isOrbital: (!m.profile && m.reqDv>=9000), reqDv: m.reqDv||9400, physics:flightPhysicsSpec(m,ctx.v),
     night: rnd()<nightLaunchChance(), // #38: rolled here (not in finalizeLaunch) when a decision opens the overlay early — see finalizeLaunch's reuse via _openedForDecision, so the sky can't flip mid-launch on resume
     rng: { wind:(rnd()-0.5)*0.9, windFreq:1.4+rnd()*1.6, windPhase:rnd()*6.283,
            pitchJitter:(rnd()-0.5)*0.16, sep:state.stages.map(()=>(rnd()-0.5)*0.06),
@@ -1518,7 +1538,7 @@ function drawPad(t){
 }
 function drawScene(t){
   const A=animState,s=A.spec;
-  A.presentation3d=flight3dPresentationSnapshot(s,A,t); updateFlight3DSession(A.presentation3d);
+  A.presentation3d=flight3dPresentationSnapshot(s,A,t); updateFlightAltitude(A.presentation3d); updateFlight3DSession(A.presentation3d);
   if(A.ctx&&A.ctx.clearFrame) A.ctx.clearFrame(); // GL-2D fallback clears its framebuffer each frame
   A.earthPhase=false; // set true by drawOrbit so the Phaser scene knows to show the native Earth FX layer
   A.ascentPhase=false; // set true by drawAscent so the native ascent FX layer (clouds/vapor) shows only during ascent

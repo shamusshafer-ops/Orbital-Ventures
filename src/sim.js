@@ -57,7 +57,7 @@ function newGame(difficulty){
     powerSource:'solar', // Phase 2: vehicle power plant (solar/rtg/reactor)
     recentBuilds:[], // #7 slice 5: rolling ring buffer {at,units} of the last CADENCE_WINDOW months of builds
     materials:defaultMaterialsState(), // #7 slice 6: per-commodity spot price + optional fixed-price contract
-    buildQueue:[], hangar:[], orderSeq:0, // #7 final: production queue (in-progress orders) + hangar (finished vehicles)
+    buildQueue:[], hangar:[], hulls:[], hullSeq:0, orderSeq:0, // #7 final + E4.4: production orders, ready vehicles, and serial-numbered physical hulls
     padMonthAbs:-1, padMonthUsed:0, // CE2(b): launch-cadence — pad slots used in the current calendar month
     standingProd:null, juggernautReached:false, // CE2(c): juggernaut capstone — standing production line + milestone flag
     doctrine:null, // CE3(a): company doctrine (strategic identity) — null = undeclared/neutral
@@ -1926,6 +1926,26 @@ const QUEUE_MAX=8;
 function buildSlots(){ return prodLevel('bays'); }   // parallel build capacity = Assembly Bays level
 function buildQueueList(){ return Array.isArray(state.buildQueue)?state.buildQueue:(state.buildQueue=[]); }
 function hangarList(){ return Array.isArray(state.hangar)?state.hangar:(state.hangar=[]); }
+/* E4.4: families describe designs; hulls are the individual physical vehicles.  This
+   records identity without changing the existing recovery/refurbishment economics. */
+function hullList(){ return Array.isArray(state.hulls)?state.hulls:(state.hulls=[]); }
+function hullById(id){ return id?hullList().find(h=>h&&h.id===id):null; }
+function hullSerial(n){ return 'OVH-'+String(n).padStart(4,'0'); }
+function addHullEvent(h,outcome,missionId){ if(h){ h.history=Array.isArray(h.history)?h.history:[]; h.history.push({abs:absDay(),outcome,missionId:missionId||null}); if(h.history.length>24) h.history=h.history.slice(-24); } }
+function makeHull(spec,source){
+  const n=state.hullSeq=(state.hullSeq||0)+1, fam=spec&&spec.activeVehicle?familyById(spec.activeVehicle):null;
+  const h={id:'hull_'+n,serial:hullSerial(n),familyId:(spec&&spec.activeVehicle)||null,familyName:fam?fam.name:'Untracked vehicle',builtAbs:absDay(),status:'hangar',flights:0,reuseCount:0,recoveryFitted:!!(spec&&spec.recovery),history:[]};
+  addHullEvent(h,source||'rollout'); hullList().push(h); return h;
+}
+function assignHullToHangar(rec){
+  const familyId=(rec.spec&&rec.spec.activeVehicle)||null;
+  let h=(rec.spec&&rec.spec.recovery)?hullList().find(x=>x&&x.status==='recovered'&&x.familyId===familyId):null;
+  if(h){ h.status='hangar'; addHullEvent(h,'refurbished',rec.missionId); }
+  else h=makeHull(rec.spec,'rollout');
+  rec.hullId=h.id; return h;
+}
+function markHullLaunched(id,missionId){ const h=hullById(id); if(h){ h.status='in-flight'; h.flights=(h.flights||0)+1; h.reuseCount=Math.max(0,h.flights-1); addHullEvent(h,'launched',missionId); } return h; }
+function settleHullFlight(id,m,outcome){ const h=hullById(id); if(!h) return; const safe=/^(success|partial|scrub)$/.test(outcome||''); h.status=(safe&&h.recoveryFitted&&recoveryActive(m))?'recovered':(safe?'expended':'lost'); addHullEvent(h,h.status,m&&m.id); }
 // snapshot the full bench design (incl. boosters/recovery/family) so a queued order builds
 // the design as it was when ordered, even if the bench changes afterward. Also carries
 // testLevel/rehearsal — irrelevant to the original build-ahead-of-time use, but load-bearing
@@ -2004,7 +2024,8 @@ function tickBuildQueue(){
   for(const o of q){ if(o.started){ o.monthsLeft-=perDay(1); if(o.monthsLeft<=0) done.push(o); } }
   if(done.length){
     for(const o of done){
-      hangarList().push({id:o.id, name:o.name, missionId:o.missionId, missionName:o.missionName, spec:o.spec, units:o.units, builtMonth:absMonth()});
+      const ready={id:o.id, name:o.name, missionId:o.missionId, missionName:o.missionName, spec:o.spec, units:o.units, builtMonth:absMonth()};
+      assignHullToHangar(ready); hangarList().push(ready);
       log('ok',`Manufacturing — ${o.name} rolled out, ready to fly.`);
     }
     if(done.length) timeInterrupt(); // smart time: a finished vehicle is a decision point
@@ -2033,7 +2054,8 @@ function launchFromHangar(id){
   const chk=canLaunch(v,m,sim,true); // prebuilt-aware (build cost already paid)
   if(!chk.ok){ log('note',`Can’t fly ${h.name}: ${chk.why}`); render(); return; }
   state.hangar=hangarList().filter(x=>x.id!==id); // consumed by this flight
-  launch(true);
+  markHullLaunched(h.hullId, h.missionId);
+  launch(true, h.hullId);
 }
 // ---------- CE2 slice (c): the JUGGERNAUT capstone — standing, self-funding production ----------
 // The payoff for maxing the whole production tree. A juggernaut (all four production lines at
@@ -2073,8 +2095,9 @@ function tickStandingProduction(){
   if(standingHangarCount() >= standingStockCap()) return;        // stock full — idle until a copy is flown
   if(state.money - sp.buildCost < STANDING_RESERVE) return;      // protect the cash reserve
   state.money = round2(state.money - sp.buildCost);
-  hangarList().push({ id:'sp'+(state.orderSeq=(state.orderSeq||0)+1), name:sp.name, missionId:sp.missionId,
-    missionName:sp.missionName, spec:JSON.parse(JSON.stringify(sp.spec)), units:sp.units, builtMonth:absMonth(), standing:true });
+  const ready={ id:'sp'+(state.orderSeq=(state.orderSeq||0)+1), name:sp.name, missionId:sp.missionId,
+    missionName:sp.missionName, spec:JSON.parse(JSON.stringify(sp.spec)), units:sp.units, builtMonth:absMonth(), standing:true };
+  assignHullToHangar(ready); hangarList().push(ready);
   state.recentBuilds=state.recentBuilds||[];                     // the standing line still loads the cadence buffer
   state.recentBuilds.push({at:absMonth(), units:sp.units});
   const _cut=absMonth()-CADENCE_WINDOW; state.recentBuilds=state.recentBuilds.filter(r=>r&&r.at>_cut);
@@ -3900,6 +3923,19 @@ function computeVehicle(){
           dryTotal:perf.sm.reduce((a,b)=>a+b.dry,0)};
 }
 
+// Freeze the physical launch stack into mission playback. The renderer must not infer flight
+// performance from a mission label: it receives the exact engines, propellant, structural mass,
+// payload and current research multipliers that were used to approve this vehicle at launch.
+function flightPhysicsSpec(m, vehicle){
+  const v=vehicle||computeVehicle(), thrustK=thrustMult(), ispK=ispMult();
+  const stages=state.stages.map((st,i)=>{
+    const e=ENGINES[st.eng]||ENGINES.a4, masses=(v.sm&&v.sm[i])||stageMasses(st), dia=stageDia(st);
+    return {engine:e.id,prop:st.prop,dry:masses.dry,wet:masses.wet,count:st.count,diameterM:clampA((.42+.20*Math.cbrt(Math.max(.1,st.prop)))*dia,.35,9),thrustSL:e.thrustSL*st.count*thrustK,thrustVac:e.thrustVac*st.count*thrustK,ispSL:e.ispSL*ispK,ispVac:e.ispVac*ispK,solid:!!e.solid};
+  });
+  const bm=boosterMasses(), boosters=bm?{count:bm.count,prop:bm.propTotal,dry:bm.dry,wet:bm.wet,diameterM:clampA(.38+.18*Math.cbrt(Math.max(.1,bm.propEach)),.32,6),thrustSL:bm.eng.thrustSL*bm.count*thrustK,thrustVac:bm.eng.thrustVac*bm.count*thrustK,ispSL:bm.eng.ispSL*ispK,ispVac:bm.eng.ispVac*ispK,solid:!!bm.eng.solid}:null;
+  return {payload:v.payload,liftoff:v.liftoff,stages,boosters};
+}
+
 // M-Complexity: base build time is 2 months for a single-stage vehicle with
 // no extra modules. Each additional stage beyond the first, and each extra
 // module a mission profile requires (transfer stage, lander — descent+ascent
@@ -4387,7 +4423,7 @@ function showWeatherModal(m,wx){
 function launchAnyway(){
   if(!_pendingLaunch) return; const p=_pendingLaunch; _pendingLaunch=null; hideModal();
   log('note',`${p.m.name}: launch director polled GO despite ${p.wx.label.toLowerCase()} — flying with a ${Math.round(p.wx.penalty*100)}% reliability penalty.`);
-  proceedLaunch(p.m,p.v,p.sim,p.windowQuality,p.wx.penalty,p.prebuilt);
+  proceedLaunch(p.m,p.v,p.sim,p.windowQuality,p.wx.penalty,p.prebuilt,p.hullId);
 }
 function scrubLaunch(){
   if(!_pendingLaunch) return; const p=_pendingLaunch; _pendingLaunch=null; hideModal();
@@ -4395,7 +4431,7 @@ function scrubLaunch(){
   advance(p.wx.clear);
   log('note',`${p.m.name}: scrubbed for weather (${p.wx.label}). Waited ${p.wx.clear} mo; the front passed.`);
   if(state.money<0){ gameOver(); return; }
-  proceedLaunch(p.m,p.v,p.sim,p.windowQuality,0,p.prebuilt);
+  proceedLaunch(p.m,p.v,p.sim,p.windowQuality,0,p.prebuilt,p.hullId);
 }
 
 /* ---------- #20 slice 2: in-flight anomaly decisions ---------- */
@@ -4667,7 +4703,7 @@ function tankerDelivery(){
   // the transfer-stage tank IS the cargo on a tanker run: its propellant is delivered to the depot.
   return state.transfer.prop;
 }
-function launch(prebuilt){
+function launch(prebuilt,hullId){
   if(_pendingLaunch||_pendingLive||_pendingSetback||_pendingRivalDisaster) return; // a decision modal owns the flow — no re-entry
   if(vehPopoutOpen) closeVehPopout(); // launching from the pop-out returns to the normal flight flow
   const m=curMission();
@@ -4714,14 +4750,18 @@ function launch(prebuilt){
     advanceDays(leadDays); // build (complexity-scaled, minus pre-built engines) + launch + test campaign + rehearsal
   }
   recordPadLaunch(); // CE2(b): stamp the pad slot this flight occupied this month
+  // Window-bound launches still use the immediate build path (they cannot enter the generic
+  // queue without losing their committed date), so create their physical article here rather
+  // than leaving them as the one class of launch with no serial identity.
+  if(!prebuilt && !hullId){ const builtHull=makeHull(queueSpecSnapshot(),'rollout'); hullId=builtHull.id; markHullLaunched(hullId,m.id); }
   // #20 slice 1: launch-day weather go/no-go — the vehicle is built and rolled out
   const wx=rollWeather(m);
   if(wx.adverse){
-    if(animEnabled){ _pendingLaunch={m,v,sim,windowQuality,wx,prebuilt}; showWeatherModal(m,wx); return; }
+    if(animEnabled){ _pendingLaunch={m,v,sim,windowQuality,wx,prebuilt,hullId}; showWeatherModal(m,wx); return; }
     advance(wx.clear); // animations off / headless: take the safe call and wait it out
     log('note',`${m.name}: launch scrubbed for weather (${wx.label}); waited ${wx.clear} mo.`);
   }
-  proceedLaunch(m,v,sim,windowQuality,0,prebuilt);
+  proceedLaunch(m,v,sim,windowQuality,0,prebuilt,hullId);
 }
 // P1 slice 1.1: persistent in-flight mission entity model (groundwork).
 // A flight is registered for the duration of its cruise. In 1.1 this lifecycle is
@@ -4838,6 +4878,13 @@ function catIcon(cat){ return {sat:'🛰', tour:'👨‍🚀', lic:'📜', mil:'
 function assetRegistryGroups(){
   const now=absDay(), groups=[];
   const flights=(state.activeFlights||[]).filter(f=>f&&f.deferred);
+
+  const activeHulls=hullList().filter(h=>h&&['hangar','recovered','in-flight'].includes(h.status));
+  if(activeHulls.length) groups.push({key:'hulls',label:'Launch vehicles',icon:'🚀',items:activeHulls.sort((a,b)=>(b.builtAbs||0)-(a.builtAbs||0)).map(h=>({
+    id:h.id,icon:'🚀',name:h.serial+(h.familyName?' · '+h.familyName:''),
+    status:h.status==='hangar'?'ready in hangar':h.status==='recovered'?`recovered · ${h.flights||0} flight${(h.flights||0)===1?'':'s'}`:'in flight',
+    detail:{'Serial':h.serial,'Family':h.familyName||'untracked','Status':h.status,'Flights':String(h.flights||0),'Reuse count':String(h.reuseCount||0),'Recovery hardware':h.recoveryFitted?'fitted':'none'}
+  }))});
 
   // --- In flight: crewed/uncrewed missions ---
   const missionFlights=flights.filter(f=>f.kind!=='logistics').sort((a,b)=>(a.arriveAbs||0)-(b.arriveAbs||0));
@@ -4992,7 +5039,7 @@ function abortFlight(id){
   _flightResolving=true; // hold the pump; finalize's finish() releases it and resolves the next arrival
   finalizeLaunch(rec.ctx, {outcomeOverride:'scrub', log:'mission recalled in cruise — crew and vehicle recovered; the objective is forfeit.'});
 }
-function proceedLaunch(m,v,sim,windowQuality,weatherPenalty,prebuilt){
+function proceedLaunch(m,v,sim,windowQuality,weatherPenalty,prebuilt,hullId){
   _liftoffArmed=animEnabled; // arm the iso-view liftoff lead-in for this interactive launch (headless never arms)
   const tl=TEST_LEVELS[state.testLevel];
   state.flights++;
@@ -5023,7 +5070,7 @@ function proceedLaunch(m,v,sim,windowQuality,weatherPenalty,prebuilt){
   // time commitments (overhead, R&D, rivals, facilities all advance during the mission). Intentional
   // payoff of daily time. If the long cruise bankrupts the company, the gameOver modal is already up.
   const missionDays=Math.round(m.days||0);
-  const ctx={m,v,sim,windowQuality,flightExpense,routine,crewed,outcome,rehearsed:!!state.rehearsal, famId:(activeFamily()||{}).id||null,
+  const ctx={m,v,sim,windowQuality,flightExpense,routine,crewed,outcome,rehearsed:!!state.rehearsal, famId:(activeFamily()||{}).id||null, hullId:hullId||null,
              crewId:crewed?state.assignedAstronaut:null, ab:crewed?astroBonus():{rel:0,payoutMult:1}}; // 1.2b/S1: snapshot crew + bonus at launch; store famId (not the object) so a mid-cruise save round-trips cleanly
   // P1 1.2a/1.2b: a long interplanetary cruise (crewed or not) becomes a live flight. The outcome is already
   // locked (resolved above at launch-time tech); it is APPLIED on arrival as the player runs the clock, via
@@ -5084,7 +5131,7 @@ function buildDepartSpec(m, crewed, transitDays, etaAbs){
     recovering: recoveryActive(m) && state.stages.length>1,
     hasCapsule: !!(state.research.crew_capsule || crewed),
     isCislunar: !!m.profile, isOrbital: (!m.profile && m.reqDv>=9000),
-    reqDv: m.reqDv||9400,
+    reqDv: m.reqDv||9400, physics:flightPhysicsSpec(m),
     night: rnd()<nightLaunchChance(), // #38: era-scaled chance of a night launch (visuals only)
     rng: { wind:(rnd()-0.5)*0.9, windFreq:1.4+rnd()*1.6, windPhase:rnd()*6.283,
            pitchJitter:(rnd()-0.5)*0.16, sep:state.stages.map(()=>(rnd()-0.5)*0.06),
@@ -5247,6 +5294,7 @@ function finalizeLaunch(ctx, ops){
   }
   if(crewed && (outcome.kind==='success'||outcome.kind==='partial')) applyCrewDose(m, ctx.crewId); // surviving crew take a radiation dose
   if(crewed && ctx.crewId) logAstronautFlight(ctx.crewId, m.name, outcome.kind); // E1.4: per-astronaut flight log, survives the person leaving state.staff
+  settleHullFlight(ctx.hullId, m, outcome.kind);
   // #3: attribute this flight to the active vehicle family and accrue/dent its heritage
   const fam=ctx.famId?familyById(ctx.famId):activeFamily(); // 1.2a/S1: resolve the launched family by id at finalize (save-safe — a deferred flight stores famId, not a detachable object ref, and finalize mutates the live family)
   if(fam){
@@ -5285,7 +5333,7 @@ function finalizeLaunch(ctx, ops){
     recovering: recoveryActive(m) && state.stages.length>1 && failPhase!=='ascent', // #graphics: fly the first stage back for a landing instead of tumbling away
     hasCapsule: !!(state.research.crew_capsule || crewed), // recovery: parachutes + heat shield + splashdown (Mercury/Vostok era)
     isCislunar: !!m.profile, isOrbital: (!m.profile && m.reqDv>=9000),
-    reqDv: m.reqDv||9400,
+    reqDv: m.reqDv||9400, physics:flightPhysicsSpec(m,v),
     // #38: reuse the earlier roll if a live decision (weather/live-call/rescue) already opened this
     // overlay — resumeFlightForDecision's Object.assign would otherwise clobber A.spec.night mid-flight,
     // flipping the sky partway through a launch already being watched.

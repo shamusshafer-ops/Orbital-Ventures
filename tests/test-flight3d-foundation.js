@@ -8,11 +8,13 @@ const spec={mode:'launch',crewed:true,isOrbital:true,isCislunar:false,success:tr
 const timing={padDur:3200,ascentDur:7200,cruiseDur:4800,reentryDur:6400,totalDur:21600,ignite:.6};
 
 check('flight 3D renderer is enabled for the pad/ascent visual slice',FLIGHT3D===true);
+check('launch moves decisively from countdown to liftoff',PAD_PHASE_MS===2300&&PAD_PHASE_MS*(1-PAD_HOLD_FRAC)<700);
 check('phase adapter reports pad',flight3dPhaseAt(spec,1000,timing)==='pad');
 check('phase adapter reports ascent',flight3dPhaseAt(spec,4000,timing)==='ascent');
 check('phase adapter reports orbit',flight3dPhaseAt(spec,11000,timing)==='orbit');
 check('phase adapter reports reentry',flight3dPhaseAt(spec,16000,timing)==='reentry');
 check('phase adapter distinguishes a suborbital coast',flight3dPhaseAt(Object.assign({},spec,{isOrbital:false}),11000,timing)==='suborbital');
+check('successful suborbital playback stays on one 3D ocean scene through its settle tail',flight3dPhaseAt(Object.assign({},spec,{isOrbital:false}),16000,timing)==='suborbital');
 {
   const snap=flight3dPresentationSnapshot(spec,timing,1600);
   check('snapshot carries immutable presentation identity',snap.phase==='pad'&&snap.crewed&&snap.isOrbital&&snap.effects.night);
@@ -27,24 +29,60 @@ check('phase adapter distinguishes a suborbital coast',flight3dPhaseAt(Object.as
   check('launch profile raises the vehicle and brightens the plume in ascent',ascent.altitude>0&&ascent.plume===1&&ascent.light>pad.light);
 }
 {
+  const baseY=cape3dLaunchBaseY({userData:{nozzleY:-10}});
+  check('launch base keeps the nozzle visibly above the pad deck',baseY-10===CAPE3D_PAD_DECK_Y+CAPE3D_NOZZLE_CLEARANCE);
+}
+{
+  const ignition=cape3dGroundSmokeProfile('pad',.8,.8), liftoff=cape3dGroundSmokeProfile('ascent',.12,1), coast=cape3dGroundSmokeProfile('suborbital',.1,1);
+  check('pad smoke grows at ignition and remains behind through early ascent',ignition.strength>.8&&liftoff.strength>.6&&liftoff.spread>ignition.spread&&coast.strength===0);
+}
+{
+  const seaLevel=cape3dPlumeProfile(1,0), vacuum=cape3dPlumeProfile(1,1), idle=cape3dPlumeProfile(0,0);
+  check('layered plume broadens in vacuum while retaining a hot sea-level core',vacuum.width>seaLevel.width&&vacuum.length>seaLevel.length&&seaLevel.hotOpacity>vacuum.hotOpacity&&idle.hotOpacity===0);
+}
+{
+  const layout=cape3dLandscapeLayout();
+  near(layout.land.centerX+layout.land.width*.5,layout.coastX,1e-9,'land ends exactly at the coastline');
+  near(layout.ocean.centerX-layout.ocean.width*.5,layout.coastX,1e-9,'ocean begins exactly at the coastline without overlap');
+}
+{
   const sounding=Object.assign({},spec,{isOrbital:false,reqDv:1800}), rise=cape3dLaunchProfile(flight3dPresentationSnapshot(sounding,timing,3200+7200*.8)), coast=cape3dLaunchProfile(flight3dPresentationSnapshot(sounding,timing,3200+7200+1200));
-  check('sounding rockets use a bounded non-orbital ascent scale',rise.altitude<1400);
-  check('suborbital profile continues the 3D arc after burnout',coast.phase==='suborbital'&&coast.offsetX>0&&coast.altitude>0&&coast.altitude<2000);
+  check('sounding rockets use the same physical metre scale as the launch facility',rise.altitude===rise.altitudeKm*CAPE3D_METERS_PER_KM&&rise.altitude>10000);
+  check('suborbital profile continues the scaled 3D arc after burnout',coast.phase==='suborbital'&&coast.offsetX>0&&coast.altitude>0&&coast.offsetX===coast.downrangeKm*CAPE3D_METERS_PER_KM);
   check('sounding profile reports a physical upper-atmosphere altitude',coast.altitudeKm>60&&coast.altitudeKm<100);
+  const impact=cape3dLaunchProfile(flight3dPresentationSnapshot(sounding,timing,3200+7200+4800+500));
+  check('suborbital arc reaches sea level over the modeled ocean and triggers splashdown',impact.phase==='suborbital'&&impact.altitudeKm===0&&impact.splashProgress===1&&impact.offsetX>1000&&impact.offsetX===impact.downrangeKm*CAPE3D_METERS_PER_KM);
+  const altitude=flightAltitudeTelemetry(flight3dPresentationSnapshot(sounding,timing,3200+7200+4800+500));
+  check('separate MSL altitude telemetry reads zero at water impact',altitude.visible&&altitude.altitudeKm===0&&altitude.label==='0 m');
 }
 {
-  const first=Object.assign({},spec,{isOrbital:false,reqDv:1000}), hop=cape3dLaunchProfile(flight3dPresentationSnapshot(first,timing,3200+7200*.8));
-  check('metre-scale first hop visibly clears the pad without inventing altitude',hop.altitude>40&&hop.altitudeKm<.03&&hop.pitch===0);
+  const sounding=cape3dVehicleDetailProfile({totalH:58,maxW:9,segs:[{h:58,w:9}]}), orbital=cape3dVehicleDetailProfile({totalH:112,maxW:18,segs:[{h:112,w:18}]}), heavy=cape3dVehicleDetailProfile({totalH:175,maxW:28,boosters:{count:4}}), superheavy=cape3dVehicleDetailProfile({totalH:188,maxW:30},{methane:true});
+  check('pad detail scales from portable sounding rail to orbital strongback',sounding.kind==='sounding'&&sounding.rail&&orbital.kind==='orbital'&&orbital.strongback);
+  check('heavy facilities gain umbilicals, suppression and three lightning masts',heavy.kind==='heavy'&&heavy.armCount===3&&heavy.deluge&&heavy.lightningMasts===3);
+  check('methane super-heavy vehicle gains four control flaps and the largest tower class',superheavy.kind==='superheavy'&&superheavy.flaps&&superheavy.armCount===4);
 }
 {
-  // 2026-07-19 trajectory rework: short vertical rise (~5.5% of ascent, clearing the tower), then a
-  // VERY GRADUAL pitch-over that reaches near-horizontal flight by orbital insertion — replacing the
-  // old long-vertical-then-late-turn shape. See test-flight3d-trajectory.js for the full battery.
+  const physics=flightPhysicsSpec(curMission(),computeVehicle()), first=Object.assign({},spec,{isOrbital:false,reqDv:1000,physics}), early=cape3dLaunchProfile(flight3dPresentationSnapshot(first,timing,3200+7200*.3)), climb=cape3dLaunchProfile(flight3dPresentationSnapshot(first,timing,3200+7200*.8)), plan=cape3dTrajectoryPlan(physics,{isOrbital:false,reqDv:1000});
+  check('first flight altitude comes from actual thrust, wet mass and propellant instead of the old 18 metre mission cap',climb.altitudeKm>1&&plan.maxAltitudeKm>50);
+  check('physical projection reports substantial range and velocity for the high-TWR pioneer vehicle',plan.rangeKm>50&&plan.maxSpeedMps>1000&&plan.burnoutTime>10);
+  check('launch playback freezes this individually built rocket\'s complete physical stack',physics.liftoff===computeVehicle().liftoff&&physics.stages[0].prop===state.stages[0].prop&&physics.stages[0].thrustSL===ENGINES[state.stages[0].eng].thrustSL*state.stages[0].count*thrustMult());
+  check('flight geometry and the altitude instrument share a true metre scale',Math.abs(climb.altitude-climb.altitudeKm*CAPE3D_METERS_PER_KM)<1e-8&&Math.abs(climb.offsetX-climb.downrangeKm*CAPE3D_METERS_PER_KM)<1e-8);
+  check('every launch climbs nearly vertically before a slow gravity turn',Math.abs(early.pitch)<.02&&early.downrangeKm<.01&&climb.pitch<-.1&&climb.downrangeKm>.5);
+  const impact=cape3dTrajectorySample(plan,'suborbital',1);
+  check('physics-derived trajectory ends at sea level rather than an arbitrary mission endpoint',impact.altitudeKm===0&&impact.xKm===plan.rangeKm);
+  const higherThrust=JSON.parse(JSON.stringify(physics)); higherThrust.stages.forEach(s=>{ s.thrustSL*=1.2; s.thrustVac*=1.2; });
+  const higherPlan=cape3dTrajectoryPlan(higherThrust,{isOrbital:false,reqDv:1000});
+  check('a differently built rocket receives a different projection',higherPlan.maxSpeedMps>plan.maxSpeedMps&&higherPlan.maxAltitudeKm!==plan.maxAltitudeKm&&higherPlan.rangeKm!==plan.rangeKm);
+  check('flight camera depth expands with physical altitude',cape3dFlightCameraFar(100000)>cape3dFlightCameraFar(0));
+}
+{
+  // Old replay specs have no frozen physical stack. They retain a safe, metre-scaled fallback;
+  // live launches use the individually integrated physical plan tested above.
   const vertical=cape3dLaunchProfile(flight3dPresentationSnapshot(spec,timing,3200+7200*.04));
   const early=cape3dLaunchProfile(flight3dPresentationSnapshot(spec,timing,3200+7200*.3)), late=cape3dLaunchProfile(flight3dPresentationSnapshot(spec,timing,3200+7200*.98));
   check('ascent begins with a vertical tower-clearing rise',vertical.pitch===0&&vertical.downrangeKm<1e-6);
-  check('gravity turn is underway but still gentle at 30% of ascent',early.pitch<0&&early.pitch>-.5);
-  check('orbital insertion ends in near-horizontal flight',late.pitch<-1.35);
+  check('legacy replay fallback remains finite through its ascent',Number.isFinite(early.pitch)&&Number.isFinite(early.altitudeKm)&&early.altitude>0);
+  check('legacy replay fallback remains metre-scaled late in ascent',late.altitude===late.altitudeKm*CAPE3D_METERS_PER_KM&&late.downrangeKm>0);
 }
 {
   const failed=Object.assign({},spec,{success:false,failPhase:'ascent'});

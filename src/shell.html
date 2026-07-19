@@ -741,6 +741,10 @@
   .animwrap #flightCanvasWrap canvas{display:block;width:100%;height:auto}
   .flight3d-readout{position:absolute;z-index:8;top:14px;left:15px;max-width:250px;padding:8px 10px;border:1px solid rgba(110,208,255,.42);border-radius:5px;background:rgba(2,12,22,.72);box-shadow:0 4px 18px rgba(0,0,0,.25);color:#d9f4ff;font:11px/1.48 var(--mono);letter-spacing:.045em;white-space:pre-line;pointer-events:none}
   .flight3d-readout.hidden{display:none!important}
+  .flight-altitude{position:absolute;z-index:12;top:13px;left:50%;min-width:174px;transform:translateX(-50%);padding:7px 15px 8px;border:1px solid rgba(118,220,255,.68);border-radius:6px;background:rgba(2,12,22,.90);box-shadow:0 7px 24px rgba(0,0,0,.42),inset 0 1px 0 rgba(220,248,255,.08);color:#e9faff;text-align:center;font-family:var(--mono);font-variant-numeric:tabular-nums;pointer-events:none}
+  .flight-altitude.hidden{display:none!important}
+  .flight-altitude span{display:block;color:#7bcff0;font-size:9px;line-height:1.1;letter-spacing:.18em}
+  .flight-altitude strong{display:block;margin-top:3px;font-size:20px;line-height:1.05;letter-spacing:.035em;font-weight:650}
   .flight3d-decision{position:absolute;inset:0;z-index:9;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(2,8,14,.56);pointer-events:auto}
   .flight3d-decision.hidden{display:none!important}
   .flight3d-decision-panel{width:min(470px,90%);padding:20px;border:1px solid var(--warn);border-radius:9px;background:rgba(8,23,35,.97);box-shadow:0 18px 55px rgba(0,0,0,.58),inset 0 1px 0 rgba(255,255,255,.08);font-family:var(--mono);line-height:1.42}
@@ -1202,7 +1206,7 @@
 
 <div id="animOverlay" class="animwrap hidden">
   <div id="animTitle">—</div>
-  <div id="flightCanvasWrap" style="position:relative;display:inline-block"><div id="flight3dHost" style="display:none;position:absolute;inset:0"></div><div id="flightHost" style="display:none"></div><div id="flightZoom" style="position:relative;transform-origin:0 0"><canvas id="flightCanvas" width="900" height="520"></canvas><canvas id="flightTextCanvas" width="900" height="520" style="position:absolute;left:0;top:0;pointer-events:none"></canvas></div><div id="flight3dReadout" class="flight3d-readout hidden" role="status" aria-live="polite"></div><div id="flight3dDecision" class="flight3d-decision hidden" role="dialog" aria-modal="true" aria-labelledby="flight3dDecisionTitle"></div></div>
+  <div id="flightCanvasWrap" style="position:relative;display:inline-block"><div id="flight3dHost" style="display:none;position:absolute;inset:0"></div><div id="flightHost" style="display:none"></div><div id="flightZoom" style="position:relative;transform-origin:0 0"><canvas id="flightCanvas" width="900" height="520"></canvas><canvas id="flightTextCanvas" width="900" height="520" style="position:absolute;left:0;top:0;pointer-events:none"></canvas></div><div id="flight3dReadout" class="flight3d-readout hidden" role="status" aria-live="polite"></div><div id="flightAltitude" class="flight-altitude hidden" role="status" aria-label="Current altitude above mean sea level"></div><div id="flight3dDecision" class="flight3d-decision hidden" role="dialog" aria-modal="true" aria-labelledby="flight3dDecisionTitle"></div></div>
   <div class="animbar">
     <span class="dim" style="font-size:12px">Mission playback</span>
     <button class="btn ghost" id="animSpeedBtn" onclick="cycleAnimSpeed()" style="min-width:90px;font-size:12px">1×  Slow</button>

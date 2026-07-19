@@ -1,6 +1,6 @@
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=57; // v57: E4.1 — real Keplerian ephemeris. state.windows is a regenerable cache; migrateEphemerisWindows() clears it on pre-v57 load so launch windows regenerate from real Earth→target phase geometry (with eccentricity-driven quality) instead of the old fixed-cadence + random-quality synthesis. committedWindow (a concrete absDay + quality the player already picked) is preserved as-is. No new persisted fields; purely a cache invalidation + physics swap, so no balance migration beyond the (intended) shift in window dates/qualities on next regeneration. v56: #89 slice 1 — tracking-station network backend. state.trackingStations
+const SAVE_VERSION=58; // v58: E4.4 persistent launch-vehicle hull registry. Additive serial-numbered hulls and flight history; existing hangar entries are backfilled, never historical flights invented. v57: E4.1 — real Keplerian ephemeris. state.windows is a regenerable cache; migrateEphemerisWindows() clears it on pre-v57 load so launch windows regenerate from real Earth→target phase geometry (with eccentricity-driven quality) instead of the old fixed-cadence + random-quality synthesis. committedWindow (a concrete absDay + quality the player already picked) is preserved as-is. No new persisted fields; purely a cache invalidation + physics swap, so no balance migration beyond the (intended) shift in window dates/qualities on next regeneration. v56: #89 slice 1 — tracking-station network backend. state.trackingStations
 // (built station ids, TRACKING_STATIONS in data.js). Purely additive: reads through
 // trackingStationCount()/trackingUpkeep(), both `||[]`-guarded. The gate itself (missionTechMet) is
 // inert — TRACKING_NETWORK_LIVE=false until slice 2 ships a build UI — so this version bump changes
@@ -122,6 +122,18 @@ function migrateEraSeen(saved){
     rep: saved.rep||0
   };
 }
+function migrateHulls(saved){
+  if(!Array.isArray(saved.hulls)) saved.hulls=[];
+  let max=0;
+  saved.hulls.forEach(h=>{ const n=parseInt(String(h&&h.id||'').replace(/\D/g,''),10); if(n>max) max=n; });
+  (saved.hangar||[]).forEach(rec=>{
+    if(!rec || (rec.hullId&&saved.hulls.some(h=>h&&h.id===rec.hullId))) return;
+    const n=++max, spec=rec.spec||{}, fam=(saved.vehicles||[]).find(f=>f&&f.id===spec.activeVehicle);
+    const h={id:'hull_'+n,serial:'OVH-'+String(n).padStart(4,'0'),familyId:spec.activeVehicle||null,familyName:fam?fam.name:'Untracked vehicle',builtAbs:0,status:'hangar',flights:0,reuseCount:0,recoveryFitted:!!spec.recovery,history:[{abs:0,outcome:'legacy rollout',missionId:rec.missionId||null}]};
+    saved.hulls.push(h); rec.hullId=h.id;
+  });
+  saved.hullSeq=Math.max(saved.hullSeq||0,max);
+}
 // forward-compat load defaults: applied to any save missing newer fields (shared by loadGame + autoLoad)
 function loadDefaults(){ return {
       research:{}, unlocked:{a4:true}, completed:{}, stages:[{eng:'a4',count:1,prop:2.0}],
@@ -140,7 +152,7 @@ function loadDefaults(){ return {
       staff:[], assignedAstronaut:null, departments:defaultDepartments(),
       vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, rehearsal:false, techLevel:{}, divisions:{}, partnerships:[], breakthroughCooldown:3, relDebt:0, powerSource:'solar',
       recentBuilds:[], materials:defaultMaterialsState(),
-      buildQueue:[], hangar:[], orderSeq:0, padMonthAbs:-1, padMonthUsed:0, standingProd:null, juggernautReached:false, doctrine:null, lunarArch:null, uiLayer:'advanced', loanInterest:0, metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[], frontPages:[], crisis:null, crisisDone:null, leoFlights:0, deepFlights:0, crisisHistory:[], researchNext:null, day:0, engineStock:{}, engineStockTested:{}, partStock:{}, partStockTested:{}, activeFlights:[], inquiryCredit:null
+      buildQueue:[], hangar:[], hulls:[], hullSeq:0, orderSeq:0, padMonthAbs:-1, padMonthUsed:0, standingProd:null, juggernautReached:false, doctrine:null, lunarArch:null, uiLayer:'advanced', loanInterest:0, metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[], frontPages:[], crisis:null, crisisDone:null, leoFlights:0, deepFlights:0, crisisHistory:[], researchNext:null, day:0, engineStock:{}, engineStockTested:{}, partStock:{}, partStockTested:{}, activeFlights:[], inquiryCredit:null
 }; }
 
 /* ---------- Session bookend: "where you left off" ----------
@@ -187,6 +199,7 @@ function applyLoadedSave(payload){
   migrateEphemerisWindows(saved, payload.v); // E4.1 (v57): clear regenerable window cache → real phase-geometry windows
   migrateFacilityAutoResupply(saved); // 2.4 (v42): default per-facility autoResupply OFF on pre-v42 saves
   migrateEraSeen(saved); // P6 6.1 (v44): backfill eraSeen to the save's CURRENT era + seed era baseline snapshot
+  migrateHulls(saved); // E4.4: preserve ready hardware identities without fabricating history
   const defaults=loadDefaults();
   for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
   // H1 hardening: user-typed strings are length-clamped at input (setLiveryName slices to 24), but an
