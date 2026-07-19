@@ -15642,36 +15642,53 @@ function cape3dVehicleMesh(){
   let methane=false; try{ methane=!!(state&&state.stages&&state.stages.some(s=>String(s.eng||'').includes('methalox'))); }catch(e){}
   const profile=cape3dVehicleDetailProfile(shape,{methane}), bodyMat=new THREE.MeshStandardMaterial({color:profile.kind==='superheavy'?0xb9c4c8:liv.body,roughness:profile.kind==='superheavy'?.28:.48,metalness:profile.kind==='superheavy'?.72:.25}), bandMat=new THREE.MeshStandardMaterial({color:liv.accent,roughness:.42,metalness:.34}), darkMat=new THREE.MeshStandardMaterial({color:0x263039,roughness:.35,metalness:.72}), detailMat=new THREE.MeshStandardMaterial({color:0x8fa4af,roughness:.38,metalness:.66});
   g.userData.vehicleClass=profile.kind;
-  let y=0;
+  // E4.7 visual staging: each segs[i] (a real physics.stages[i] LV stage — see cape3dTrajectoryPlan
+  // and cape3dSeparationStates) gets its OWN sub-group at identity transform, so it renders exactly
+  // where it always has, but can later be reparented as a unit when that stage's real separation
+  // time passes. Any trailing "transfer" segment (spec.transferProp>0) never gets a stageEvent — it
+  // rides to orbit attached, correctly, since it doesn't separate during Cape ascent.
+  const stageGroups=[]; let y=0;
   for(let i=0;i<segs.length;i++){
-    const s=segs[i], h=s.h*scale, r=Math.max(2.4,s.w*scale*.5);
-    cape3dCylinder(g,r,h,bodyMat,0,y+h*.5,0);
+    const s=segs[i], h=s.h*scale, r=Math.max(2.4,s.w*scale*.5), sg=new THREE.Group(); sg.name='cape3d_stage_'+i;
+    cape3dCylinder(sg,r,h,bodyMat,0,y+h*.5,0);
     // The preview's livery bands/interstages are real 3D pieces here, not a separate generic rocket.
-    cape3dCylinder(g,r*1.012,Math.max(1.2,h*.035),bandMat,0,y+h*.84,0);
-    if(i<segs.length-1) cape3dCylinder(g,Math.max(r,segs[i+1].w*scale*.5)*1.035,2.2,darkMat,0,y+h,0);
-    for(let ringI=0;ringI<profile.ringCount;ringI++){ const bandY=(ringI+1)/(profile.ringCount+1), ring=cape3dMesh(new THREE.TorusGeometry(r*1.012,.28,8,24),detailMat,0,y+h*bandY,0,false); ring.rotation.x=Math.PI*.5; g.add(ring); }
-    for(let k=0;k<profile.stringers;k++){ const a=k*Math.PI*2/profile.stringers, stringer=cape3dMesh(new THREE.BoxGeometry(.5,h*.66,.5),detailMat,Math.cos(a)*r*1.015,y+h*.48,Math.sin(a)*r*1.015,false); g.add(stringer); }
+    cape3dCylinder(sg,r*1.012,Math.max(1.2,h*.035),bandMat,0,y+h*.84,0);
+    if(i<segs.length-1) cape3dCylinder(sg,Math.max(r,segs[i+1].w*scale*.5)*1.035,2.2,darkMat,0,y+h,0);
+    for(let ringI=0;ringI<profile.ringCount;ringI++){ const bandY=(ringI+1)/(profile.ringCount+1), ring=cape3dMesh(new THREE.TorusGeometry(r*1.012,.28,8,24),detailMat,0,y+h*bandY,0,false); ring.rotation.x=Math.PI*.5; sg.add(ring); }
+    for(let k=0;k<profile.stringers;k++){ const a=k*Math.PI*2/profile.stringers, stringer=cape3dMesh(new THREE.BoxGeometry(.5,h*.66,.5),detailMat,Math.cos(a)*r*1.015,y+h*.48,Math.sin(a)*r*1.015,false); sg.add(stringer); }
     // Small raised access/commodity panels break up otherwise featureless tank barrels.
-    if(profile.kind!=='sounding') for(const a of [0,Math.PI]) cape3dBox(g,1.1,Math.max(2.5,h*.055),1.4,darkMat,Math.cos(a)*(r+.3),y+h*.67,Math.sin(a)*(r+.3),false);
+    if(profile.kind!=='sounding') for(const a of [0,Math.PI]) cape3dBox(sg,1.1,Math.max(2.5,h*.055),1.4,darkMat,Math.cos(a)*(r+.3),y+h*.67,Math.sin(a)*(r+.3),false);
+    g.add(sg); stageGroups.push({index:i, group:sg, baseY:y, topY:y+h, kind:segs[i].kind||'stage'});
     y+=h;
   }
   const top=segs[segs.length-1], topR=Math.max(2.4,top.w*scale*.5), noseH=Math.max(7,top.w*scale*(liv.nose==='blunt'?1.05:1.7));
+  // Nose (and boosters, below) attach to the TOP stage's own sub-group: the nose never separates on
+  // its own in this model, so it correctly rides along with whatever the top segment is at any time.
+  const topGroup=stageGroups.length?stageGroups[stageGroups.length-1].group:g;
   let nose;
   if(shape&&shape.nose==='capsule'){
     nose=cape3dMesh(new THREE.SphereGeometry(topR,20,14),new THREE.MeshStandardMaterial({color:liv.body,roughness:.42,metalness:.2}),0,y+noseH*.42,0); nose.scale.y=Math.max(.62,noseH/(topR*2));
   } else {
     nose=cape3dMesh(new THREE.ConeGeometry(topR,noseH,20),new THREE.MeshStandardMaterial({color:liv.body,roughness:.42,metalness:.18}),0,y+noseH*.5,0);
   }
-  g.add(nose);
-  if(shape&&shape.nose==='capsule') for(const a of [-.55,.55]){ const window=cape3dMesh(new THREE.SphereGeometry(topR*.22,12,8),new THREE.MeshStandardMaterial({color:0x101d26,metalness:.7,roughness:.2}),Math.sin(a)*topR*.52,y+noseH*.56,Math.cos(a)*topR*.72,false); window.scale.y=.62; g.add(window); }
-  if(shape&&shape.boosters){ const b=shape.boosters, h=b.h*scale, r=Math.max(1.8,b.w*scale*.5), orbit=Math.max(r+2.5,segs[0].w*scale*.58+r), boosterMat=new THREE.MeshStandardMaterial({color:b.solid?0xc9b9a5:liv.body,roughness:.55,metalness:.18}); for(let i=0;i<b.count;i++){ const a=i*Math.PI*2/b.count, x=Math.cos(a)*orbit, z=Math.sin(a)*orbit; cape3dCylinder(g,r,h,boosterMat,x,h*.5,z); cape3dCylinder(g,r*1.02,1.4,bandMat,x,h*.7,z); const cap=cape3dMesh(new THREE.ConeGeometry(r,h*.13,14),boosterMat,x,h+h*.065,z), bell=cape3dMesh(new THREE.ConeGeometry(r*.46,7,12),darkMat,x,-3.5,z); g.add(cap); g.add(bell); } }
-  // Explicit engine bells define the only thrust origin. The launch plume is parented below this plane.
+  topGroup.add(nose);
+  if(shape&&shape.nose==='capsule') for(const a of [-.55,.55]){ const window=cape3dMesh(new THREE.SphereGeometry(topR*.22,12,8),new THREE.MeshStandardMaterial({color:0x101d26,metalness:.7,roughness:.2}),Math.sin(a)*topR*.52,y+noseH*.56,Math.cos(a)*topR*.72,false); window.scale.y=.62; topGroup.add(window); }
+  // Boosters get their own sub-group too (kind:'booster') — they separate as a unit, distinctly
+  // from any core stage, exactly matching cape3dTrajectoryPlan's separate boosterAttached tracking.
+  let boosterGroup=null;
+  if(shape&&shape.boosters){ boosterGroup=new THREE.Group(); boosterGroup.name='cape3d_boosters'; const b=shape.boosters, h=b.h*scale, r=Math.max(1.8,b.w*scale*.5), orbit=Math.max(r+2.5,segs[0].w*scale*.58+r), boosterMat=new THREE.MeshStandardMaterial({color:b.solid?0xc9b9a5:liv.body,roughness:.55,metalness:.18}); for(let i=0;i<b.count;i++){ const a=i*Math.PI*2/b.count, x=Math.cos(a)*orbit, z=Math.sin(a)*orbit; cape3dCylinder(boosterGroup,r,h,boosterMat,x,h*.5,z); cape3dCylinder(boosterGroup,r*1.02,1.4,bandMat,x,h*.7,z); const cap=cape3dMesh(new THREE.ConeGeometry(r,h*.13,14),boosterMat,x,h+h*.065,z), bell=cape3dMesh(new THREE.ConeGeometry(r*.46,7,12),darkMat,x,-3.5,z); boosterGroup.add(cap); boosterGroup.add(bell); } g.add(boosterGroup); }
+  // Explicit engine bells define the only thrust origin. The launch plume is parented below this
+  // plane. They stay on the bottom stage's sub-group (segs[0]) — the same simplification the
+  // pre-staging mesh already made (one fixed nozzle plane, not per-stage engine art); once segs[0]
+  // separates, cape3dUpdateLaunchPresentation repositions the flame FX to the new bottom stage's
+  // own base so the remaining stack visibly "ignites" from the right place.
   const engineCount=Math.max(1,segs[0].engines||1), baseR=Math.max(2.4,segs[0].w*scale*.5), bellR=Math.max(1.15,Math.min(3.4,baseR/(engineCount>1?engineCount*.72:2.25))), bellOrbit=engineCount===1?0:Math.max(1.2,baseR-bellR*1.25), nozzleY=-10;
-  for(let i=0;i<engineCount;i++){ const a=engineCount===1?0:i*Math.PI*2/engineCount, bell=cape3dMesh(new THREE.ConeGeometry(bellR,10,12),darkMat,Math.cos(a)*bellOrbit,nozzleY+5,Math.sin(a)*bellOrbit); g.add(bell); }
+  const bottomGroup=stageGroups.length?stageGroups[0].group:g;
+  for(let i=0;i<engineCount;i++){ const a=engineCount===1?0:i*Math.PI*2/engineCount, bell=cape3dMesh(new THREE.ConeGeometry(bellR,10,12),darkMat,Math.cos(a)*bellOrbit,nozzleY+5,Math.sin(a)*bellOrbit); bottomGroup.add(bell); }
   if(profile.kind==='sounding'){
     // Thin swept trapezoids match the cruciform tail fins used by Terrier/Orion and Black
     // Brant-class sounding vehicles. Orbital boosters omit them and steer by thrust vectoring.
-    for(let i=0;i<4;i++) cape3dTaperedFin(g,bandMat,baseR*.96,.3,14,Math.max(7,baseR*1.2),i*Math.PI*.5,.65);
+    for(let i=0;i<4;i++) cape3dTaperedFin(bottomGroup,bandMat,baseR*.96,.3,14,Math.max(7,baseR*1.2),i*Math.PI*.5,.65);
     g.userData.finStyle='tapered-cruciform';
   }
   if(profile.flaps){
@@ -15680,7 +15697,22 @@ function cape3dVehicleMesh(){
     cape3dBox(g,1.1,y*.72,baseR*.9,darkMat,-baseR-.2,y*.48,0,false);
   }
   g.userData.nozzleY=nozzleY;
+  g.userData.stageGroups=stageGroups; g.userData.boosterGroup=boosterGroup; g.userData.totalHeight=y;
   return g;
+}
+// E4.7 visual staging: the rocket mesh is built once (buildCape3DScene) and reused across flights
+// (cape3dEnterLaunchPresentation just repositions it), so any pieces detached during a PRIOR flight
+// must be reattached before a new one starts — otherwise the second launch would be missing its
+// first stage. Reattaches at identity local transform, exactly how each sub-group was originally
+// built, so this is a true reset, not an approximation.
+function cape3dResetStaging(rocket){
+  if(!rocket||!rocket.userData) return;
+  const parts=(rocket.userData.stageGroups||[]).map(sg=>sg.group).concat(rocket.userData.boosterGroup?[rocket.userData.boosterGroup]:[]);
+  for(const part of parts){
+    if(part.parent!==rocket){ rocket.add(part); }
+    part.position.set(0,0,0); part.rotation.set(0,0,0); part.visible=true;
+  }
+  rocket.userData.separatedKeys={};
 }
 function cape3dLaunchBaseY(rocket){
   const nozzleY=(rocket&&rocket.userData&&Number.isFinite(rocket.userData.nozzleY))?rocket.userData.nozzleY:0;
@@ -15711,6 +15743,7 @@ function cape3dTrajectoryPlan(physics, options){
   const burnEstimate=stages.reduce((n,s)=>{ const thrust=(Number(s.thrustSL)+Number(s.thrustVac))*.5, isp=(Number(s.ispSL)+Number(s.ispVac))*.5; return n+(thrust>0?(Number(s.prop)||0)/(thrust/(Math.max(1,isp)*G0)):0); },0);
   const maxTurnDeg=reqDv>=9000?82:(reqDv>=6000?72:(reqDv>=2900?62:(reqDv>=1900?48:34))), maxTurn=maxTurnDeg*Math.PI/180;
   const points=[{t:0,xKm:0,altitudeKm:0,vx:0,vy:0,speedMps:0}], dt=.2, earthR=6371000, cd=.34;
+  const stageEvents=[]; // E4.7 visual staging: {t, kind:'booster'|'stage', index, altitudeKm, xKm, vx, vy} at each real drop
   let t=0,x=0,y=0,vx=0,vy=0,burnoutTime=null,airborne=false,maxAltitude=0,maxSpeed=0;
   while(t<2400){
     const stage=stages[stageIndex]||null, powered=!!stage, rho=1.225*Math.exp(-Math.max(0,y)/8500), vacuumMix=Math.max(0,Math.min(1,1-rho/1.225));
@@ -15730,9 +15763,9 @@ function cape3dTrajectoryPlan(physics, options){
     if(y<=0&&vy<0&&powered){ y=0; vy=0; } else y+=vy*dt;
     x=Math.max(0,x+vx*dt); mass=Math.max(.01,mass-propBurn); t+=dt;
     if(y>1) airborne=true;
-    if(boosterAttached&&boosterProp<=1e-7){ mass=Math.max(.01,mass-(Number(booster.dry)||0)); boosterAttached=false; }
+    if(boosterAttached&&boosterProp<=1e-7){ mass=Math.max(.01,mass-(Number(booster.dry)||0)); boosterAttached=false; stageEvents.push({t,kind:'booster',index:-1,altitudeKm:Math.max(0,y)/1000,xKm:x/1000,vx,vy}); }
     if(stage&&coreProp<=1e-7){
-      if(stageIndex<stages.length-1) mass=Math.max(.01,mass-(Number(stage.dry)||0));
+      if(stageIndex<stages.length-1){ mass=Math.max(.01,mass-(Number(stage.dry)||0)); stageEvents.push({t,kind:'stage',index:stageIndex,altitudeKm:Math.max(0,y)/1000,xKm:x/1000,vx,vy}); }
       stageIndex++; coreProp=stageIndex<stages.length?Math.max(0,Number(stages[stageIndex].prop)||0):0;
       if(stageIndex>=stages.length) burnoutTime=t;
     }
@@ -15743,7 +15776,7 @@ function cape3dTrajectoryPlan(physics, options){
     if(!airborne&&burnoutTime!=null&&t>burnoutTime+2) break;
   }
   if(burnoutTime==null) burnoutTime=t;
-  const last=points[points.length-1], plan={points,burnoutTime,impactTime:last.t,maxAltitudeKm:maxAltitude/1000,rangeKm:last.xKm,maxSpeedMps:maxSpeed,airborne};
+  const last=points[points.length-1], plan={points,stageEvents,burnoutTime,impactTime:last.t,maxAltitudeKm:maxAltitude/1000,rangeKm:last.xKm,maxSpeedMps:maxSpeed,airborne};
   cape3dTrajectoryCache.set(key,plan); if(cape3dTrajectoryCache.size>12) cape3dTrajectoryCache.delete(cape3dTrajectoryCache.keys().next().value);
   if(cape3dTrajectoryObjectCache){ const variants=objectHit||{}; variants[variant]=plan; cape3dTrajectoryObjectCache.set(physics,variants); }
   return plan;
@@ -15755,6 +15788,23 @@ function cape3dTrajectorySample(plan, phase, progress){
   const b=pts[lo], a=pts[Math.max(0,lo-1)], f=b.t===a.t?0:(time-a.t)/(b.t-a.t), lerp=(u,v)=>u+(v-u)*f;
   return {t:time,xKm:lerp(a.xKm,b.xKm),altitudeKm:Math.max(0,lerp(a.altitudeKm,b.altitudeKm)),vx:lerp(a.vx,b.vx),vy:lerp(a.vy,b.vy),speedMps:lerp(a.speedMps,b.speedMps)};
 }
+// E4.7 visual staging: pure function turning a trajectory plan + current flight time into the
+// per-event separation state the launch presentation animates. For each staging event recorded in
+// the plan (booster jettison, spent-stage drop — real sim values from cape3dTrajectoryPlan's burn
+// integration), returns how long ago it happened (fallTime, s) once time passes it. The visual
+// layer uses fallTime to coast the jettisoned piece away from the still-climbing stack under a
+// simple ballistic drift — only the post-separation tumble is cosmetic, not the separation TIME
+// itself. Fully headless-testable; touches no Three.js and no authoritative sim state.
+function cape3dSeparationStates(plan, time){
+  if(!plan||!Array.isArray(plan.stageEvents)) return [];
+  const now=Number(time)||0;
+  return plan.stageEvents.map(ev=>({
+    kind:ev.kind, index:ev.index, t:ev.t,
+    separated: now>=ev.t,
+    fallTime: Math.max(0, now-ev.t),   // seconds since this piece let go (0 until it does)
+    altitudeKm: ev.altitudeKm, xKm: ev.xKm
+  }));
+}
 function cape3dLaunchProfile(snapshot){
   const phase=snapshot&&snapshot.phase||'pad', p=Math.max(0,Math.min(1,(snapshot&&snapshot.phaseProgress)||0)), ignition=Math.max(0,Math.min(1,(snapshot&&snapshot.effects&&snapshot.effects.ignition)||0));
   const ascent=phase==='ascent', suborbital=phase==='suborbital', orbital=!!(snapshot&&(snapshot.isOrbital||snapshot.isCislunar)), reqDv=(snapshot&&snapshot.reqDv)||0;
@@ -15763,7 +15813,7 @@ function cape3dLaunchProfile(snapshot){
     const failed=!!(snapshot&&snapshot.effects&&snapshot.effects.ascentFailure), vacuum=Math.max(0,Math.min(1,sample.altitudeKm/85)), lowAtmos=Math.max(0,1-sample.altitudeKm/18), pitch=sample.speedMps>1?-Math.atan2(Math.max(0,sample.vx),sample.vy):0;
     // Cape geometry is authored in metres. Keeping the flight in that same unit makes a
     // 100 m tower clear at ~0.1 km on the MSL instrument—not several kilometres later.
-    return {phase,progress:p,targetAltitudeKm:trajectory.maxAltitudeKm,altitudeKm:sample.altitudeKm,altitude:sample.altitudeKm*CAPE3D_METERS_PER_KM,downrangeKm:sample.xKm,offsetX:sample.xKm*CAPE3D_METERS_PER_KM,speedMps:sample.speedMps,maxSpeedMps:trajectory.maxSpeedMps,pitch,plume:failed?0:(phase==='pad'?ignition:(ascent?1:0)),light:failed?0:(phase==='pad'?ignition*2.2:(ascent?2.8:0)),smoke:failed?0:(phase==='pad'?ignition:(ascent?lowAtmos*.9:0)),vacuum,failed,splashProgress:suborbital?Math.max(0,Math.min(1,(p-.992)/.008)):0,failureProgress:Math.max(0,Math.min(1,(snapshot&&snapshot.effects&&snapshot.effects.failureProgress)||0)),trajectory};
+    return {phase,progress:p,t:sample.t,targetAltitudeKm:trajectory.maxAltitudeKm,altitudeKm:sample.altitudeKm,altitude:sample.altitudeKm*CAPE3D_METERS_PER_KM,downrangeKm:sample.xKm,offsetX:sample.xKm*CAPE3D_METERS_PER_KM,speedMps:sample.speedMps,maxSpeedMps:trajectory.maxSpeedMps,pitch,plume:failed?0:(phase==='pad'?ignition:(ascent?1:0)),light:failed?0:(phase==='pad'?ignition*2.2:(ascent?2.8:0)),smoke:failed?0:(phase==='pad'?ignition:(ascent?lowAtmos*.9:0)),vacuum,failed,splashProgress:suborbital?Math.max(0,Math.min(1,(p-.992)/.008)):0,failureProgress:Math.max(0,Math.min(1,(snapshot&&snapshot.effects&&snapshot.effects.failureProgress)||0)),trajectory};
   }
   // Compatibility path for old/replay specs that predate the per-vehicle physics record.
   const targetAltitudeKm=orbital?185:(reqDv<=1200?.02:reqDv<=1900?15+(reqDv-1300)*.108:reqDv<=2900?80+(reqDv-1900)*.02:reqDv<=4200?100+(reqDv-2900)*.225:reqDv<=6000?393+(reqDv-4200)*.39:1100);
@@ -15941,7 +15991,7 @@ function cape3dResetFailure(failure){
 }
 function cape3dEnterLaunchPresentation(snapshot){
   if(!cape3d||!cape3d.root) return false; const root=cape3d.root, rocket=root.userData.launchRocket, fx=root.userData.launchEffects;
-  if(!rocket||!fx) return false; root.userData.launchActive=true; rocket.position.copy(root.userData.launchBase); fx.group.visible=true; detachCape3DInput(); cape3dUpdateLaunchPresentation(snapshot); return true;
+  if(!rocket||!fx) return false; cape3dResetStaging(rocket); fx.group.position.y=rocket.userData.nozzleY||-10; root.userData.stageDebris=[]; root.userData.launchActive=true; rocket.position.copy(root.userData.launchBase); fx.group.visible=true; detachCape3DInput(); cape3dUpdateLaunchPresentation(snapshot); return true;
 }
 function cape3dUpdateOrbitPresentation(snapshot){
   if(!cape3d||!cape3d.root) return false;
@@ -15973,6 +16023,46 @@ function cape3dUpdateLaunchPresentation(snapshot){
   if(!cape3d||!cape3d.root||!cape3d.root.userData.launchActive) return false;
   const root=cape3d.root, rocket=root.userData.launchRocket, fx=root.userData.launchEffects, base=root.userData.launchBase, q=cape3dLaunchProfile(snapshot), failure=root.userData.launchFailure; if(!rocket||!fx||!base) return false;
   rocket.position.copy(base); rocket.position.x+=q.offsetX||0; rocket.position.y+=q.altitude; rocket.rotation.z=q.pitch||0; root.userData.launchSpace=q.phase==='ascent'?cape3dAscentBlend(q.progress).space:(q.phase==='suborbital'?.12:0);
+  // E4.7 visual staging: detach spent stages/boosters at their real separation times (from
+  // cape3dTrajectoryPlan's own burn integration, via cape3dSeparationStates) and let them coast
+  // away under real free fall (same G0 the ascent physics uses; the scene is 1:1 real metres, so
+  // no unit conversion is needed). Only the post-separation TUMBLE is cosmetic — the separation
+  // moment and the jettisoned piece's starting position/velocity are the real sim values. Skipped
+  // entirely on a failure (the failure FX already takes over the whole vehicle) or once the
+  // trajectory has no events to give (e.g. a single-stage vehicle).
+  if(!q.failed && q.trajectory && q.trajectory.stageEvents && q.trajectory.stageEvents.length && (q.phase==='ascent'||q.phase==='suborbital')){
+    const already=rocket.userData.separatedKeys||(rocket.userData.separatedKeys={}), debris=root.userData.stageDebris||(root.userData.stageDebris=[]);
+    const states=cape3dSeparationStates(q.trajectory, q.t);
+    for(const st of states){
+      const key=st.kind+':'+st.index;
+      if(!st.separated || already[key]) continue;
+      already[key]=true;
+      const part = st.kind==='booster' ? rocket.userData.boosterGroup : (rocket.userData.stageGroups&&rocket.userData.stageGroups[st.index]&&rocket.userData.stageGroups[st.index].group);
+      if(!part || part.parent!==rocket) continue;
+      root.attach(part); // preserves world transform (incl. the rocket's current pitch) across the reparent — no visual jump
+      part.userData.sep={x:part.position.x,y:part.position.y,z:part.position.z,rotZ:part.rotation.z,vx:st.vx||0,vy:st.vy||0,spinZ:(st.kind==='booster'?1:-1)*(.32+.11*((st.index+1)%3)),spinX:.18+.07*((st.index+2)%3)};
+      debris.push({obj:part,key});
+      // A core-stage separation (not a booster — the strap-ons don't change the CORE's own base)
+      // moves the flame FX's fixed nozzle offset up to the new bottom stage's base, so the exhaust
+      // visibly "ignites" from the right place instead of hanging in the empty air the dropped
+      // stage left behind. Boosters have no distinct flame of their own in this model — the core's
+      // single fx group already represents the whole visible exhaust.
+      if(st.kind==='stage' && rocket.userData.stageGroups){
+        const next=rocket.userData.stageGroups[st.index+1];
+        if(next) fx.group.position.y=next.baseY+(rocket.userData.nozzleY||-10);
+      }
+    }
+    // Every falling piece continues under real gravity from its own captured separation state —
+    // an honest unpowered ballistic drift, not a re-run of the sim (which stops modeling a piece
+    // the instant it drops). Culled once it's fallen well clear of the pad, purely for tidiness.
+    for(let i=debris.length-1;i>=0;i--){
+      const d=debris[i], part=d.obj, sep=part.userData.sep; if(!sep) continue;
+      const ev=q.trajectory.stageEvents.find(e=>e.kind+':'+e.index===d.key), fallTime=ev?Math.max(0,q.t-ev.t):0;
+      part.position.set(sep.x+sep.vx*fallTime, sep.y+sep.vy*fallTime-.5*G0*fallTime*fallTime, sep.z);
+      part.rotation.z=sep.rotZ+fallTime*sep.spinZ; part.rotation.x=fallTime*sep.spinX;
+      if(part.position.y<base.y-3000){ part.visible=false; root.remove(part); debris.splice(i,1); }
+    }
+  }
   if(q.failed){ if(failure&&!failure.active) cape3dStartFailure(failure,rocket); rocket.visible=false; fx.group.visible=false; if(failure) cape3dUpdateFailure(failure,q.failureProgress); }
   else { rocket.visible=!(q.phase==='suborbital'&&q.progress>=.999); if(failure&&failure.active) cape3dResetFailure(failure); fx.group.visible=rocket.visible&&q.plume>0.01; }
   cape3dUpdateGroundSmoke(root.userData.groundSmoke,q.phase,q.progress,(snapshot&&snapshot.effects&&snapshot.effects.ignition)||0);
@@ -15995,7 +16085,9 @@ function cape3dUpdateLaunchPresentation(snapshot){
 }
 function cape3dExitLaunchPresentation(){
   if(!cape3d||!cape3d.root) return false; const root=cape3d.root, rocket=root.userData.launchRocket, fx=root.userData.launchEffects;
-  if(rocket&&root.userData.launchBase){ rocket.position.copy(root.userData.launchBase); rocket.visible=true; } if(fx){ fx.group.visible=false; fx.glow.intensity=0; } if(root.userData.groundSmoke) root.userData.groundSmoke.group.visible=false; if(root.userData.launchSplash) root.userData.launchSplash.group.visible=false; cape3dResetFailure(root.userData.launchFailure); root.userData.launchSpace=0; const world=root.userData.ascentWorld; if(world){ world.group.visible=false; world.puffs.forEach(p=>p.visible=false); } (root.userData.siteObjects||[]).forEach(o=>o.visible=true); root.userData.launchActive=false;
+  if(rocket&&root.userData.launchBase){ cape3dResetStaging(rocket); rocket.position.copy(root.userData.launchBase); rocket.rotation.z=0; rocket.visible=true; } if(fx){ fx.group.visible=false; fx.glow.intensity=0; fx.group.position.y=rocket?(rocket.userData.nozzleY||-10):-10; } if(root.userData.groundSmoke) root.userData.groundSmoke.group.visible=false; if(root.userData.launchSplash) root.userData.launchSplash.group.visible=false; cape3dResetFailure(root.userData.launchFailure); root.userData.launchSpace=0;
+  for(const d of (root.userData.stageDebris||[])) root.remove(d.obj); root.userData.stageDebris=[];
+  const world=root.userData.ascentWorld; if(world){ world.group.visible=false; world.puffs.forEach(p=>p.visible=false); } (root.userData.siteObjects||[]).forEach(o=>o.visible=true); root.userData.launchActive=false;
   cape3d.camera.far=100000; cape3d.camera.updateProjectionMatrix(); cape3d.cam={az:2.25,el:.48,dist:1450,target:{x:420*CAPE3D_SITE_SPREAD,y:0,z:250*CAPE3D_SITE_SPREAD}}; cape3dApplyCamera(); attachCape3DInput(); return true;
 }
 function cape3dExitFlightPresentation(){

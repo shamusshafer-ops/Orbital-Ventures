@@ -32,13 +32,40 @@ against `origin/main`; after a coherent, verified slice, commit and push to `mai
   with payload, mass, Δv/TWR, duration, distance, outcome, and any recorded failed subsystem.
   Do not replace these values with animation-derived estimates.
 
+## Visual multi-stage separation — SHIPPED (Claude)
+
+Done. `cape3dTrajectoryPlan` now records `stageEvents[]` (booster-jettison and spent-stage-drop
+times, positions, and velocities — real values from the burn integration it already ran; they were
+previously discarded). Pure query `cape3dSeparationStates(plan, time)` maps the current flight time
+to which pieces have separated and how long each has been falling. `cape3dVehicleMesh` is now built
+as per-stage sub-groups (`userData.stageGroups`, `userData.boosterGroup`) with byte-identical visual
+output; `cape3dResetStaging(rocket)` reattaches them before each flight since the mesh is built once
+and reused. `cape3dUpdateLaunchPresentation` detaches each piece at its real separation time via
+`root.attach()` (world-transform-preserving, so no jump across the rocket's pitch) and drifts it
+under real free fall (scene is 1:1 metres, reuses `G0`); the flame FX moves to the new bottom
+stage's base on a core separation so the next stage visibly ignites. Sim and outcome logic untouched.
+
+NOT browser-verified: the sandbox has no WebGL/THREE, so the mesh/reparent/fall-physics path has
+never actually rendered — only the pure math is headless-tested (`tests/test-flight3d-staging.js`,
+29 checks: stageEvents recording for 1/2/3-stage and boosters+stages vehicles, ordering, and the
+separation-state time mapping/edge cases). A real-browser playtest should confirm: pieces detach at
+the right moments, fall away cleanly without popping, the flame re-anchors to the new base, and a
+second launch after a first (mesh reuse) still shows a complete rocket.
+
 ## Next task
 
-Implement visual **multi-stage separation** in the Cape 3D flight renderer. The physical
-trajectory already burns and drops every stage's dry mass in `cape3dTrajectoryPlan`; the visual
-rocket remains one mesh. Split it into stage meshes, detach spent stages at the real burn/staging
-times, let them coast/fall under gravity, and ignite/display the following stage. Keep the
-authoritative sim and outcome logic untouched.
+Suggested: **booster/stage separation visual polish + a brief separation event in the Flight Card**,
+OR pick up remaining **E4.7** scope (fold any remaining legacy 2D-canvas flight paths into the
+Flight 3D adapter). Coordinate on which. If continuing staging: the detached-debris drift is
+deliberately simple ballistic (no re-contact, no atmospheric tumble model) and debris is culled
+3000 m below the pad — a polish pass could add a small separation flash/puff at the interstage and
+a one-line "Stage 1 separation" beat on the always-visible Flight Card. Keep sim/outcome untouched.
+
+Two pre-existing test drifts to be aware of (NOT from the staging work — verified against a clean
+pre-edit pull): `test-flight3d-trajectory.js` (Codex's accepted trajectory/vehicle-physics changes)
+and, newer, `test-decision-panel.js` + `test-pad-a.js` (from the "Refine command UI and flight
+reporting" commit — look like an intentional post-failure hold/debrief screen). Confirm intent and
+refresh those assertions when convenient.
 
 ## Verification
 

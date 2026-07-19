@@ -5187,3 +5187,66 @@ the natural home for this). No mission currently combines `.profile`+`.inclinati
 content, so a natural follow-on (mirroring the historical inclination Slice 1→Slice 2 pattern) is
 retrofitting one real interplanetary mission with a non-Cape-matching inclination to make this
 slice's mechanism *felt* rather than dormant — a deliberate balance call, not done here.
+
+
+## Session — E4.7: visual multi-stage separation in the Cape 3D flight renderer (2026-07-19)
+
+*Pure append, per standing instruction — nothing above this line altered. Coordinated next task
+from CLAUDE.md; built by Claude against main HEAD d273bee.*
+
+The physical trajectory already burns and drops every stage's dry mass in `cape3dTrajectoryPlan`,
+but the visual rocket was a single mesh. This slice splits it and detaches spent stages/boosters at
+their real staging times, letting them coast and fall under gravity while the next stage ignites —
+sim and outcome logic untouched.
+
+**`cape3dTrajectoryPlan` now records `stageEvents[]`** — `{t, kind:'booster'|'stage', index,
+altitudeKm, xKm, vx, vy}` captured at each real drop point during the burn integration it already
+ran (a booster jettison when `boosterProp` hits zero; a spent-stage drop when `coreProp` hits zero
+and it's not the last stage). These were previously computed and discarded; now they're the
+authoritative separation schedule. The final stage never generates an event — it burns out rather
+than separating.
+
+**`cape3dSeparationStates(plan, time)`** — a pure, headless-testable function mapping the current
+flight time to each event's state: `separated` (has time passed its `t`) and `fallTime` (seconds
+since it let go, 0 until then). Touches no Three.js and no sim state.
+
+**`cape3dVehicleMesh` restructured into per-stage sub-groups** — each `segs[i]` (a real
+`physics.stages[i]`, same order, same source `state.stages`) is built into its own `THREE.Group` at
+identity transform, so visual output is byte-identical but each stage can be reparented as a unit.
+Boosters get their own sub-group (they separate distinctly, matching the plan's separate
+`boosterAttached` tracking); the nose rides the top stage's group; engine bells and the flame stay
+on the bottom stage. `userData.stageGroups` / `userData.boosterGroup` expose the pieces.
+`cape3dResetStaging(rocket)` reattaches everything at identity before each flight — necessary
+because the rocket mesh is built once (`buildCape3DScene`) and reused across launches, so a piece
+dropped last flight would otherwise be missing this flight. Wired into both enter and exit.
+
+**`cape3dUpdateLaunchPresentation` detach + fall** — when a piece's separation time passes, it's
+reparented to the scene root via `root.attach()` (preserves world transform, so no jump across the
+rocket's current pitch) with its captured separation position/velocity, then driven each frame under
+honest free fall (`sep.y + sep.vy·t − ½·G0·t²`; the scene is 1:1 real metres, so `G0` applies
+directly) plus a cosmetic tumble. Only the tumble is invented — the separation moment and the
+piece's initial state are real sim values. Debris is culled 3000 m below the pad. Skipped on a
+failure (the failure FX owns the whole vehicle) or when there are no events (single-stage). On a
+core-stage separation the flame FX's nozzle offset moves up to the new bottom stage's base, so the
+exhaust visibly re-ignites there instead of hanging in the dropped stage's empty space.
+
+**Tests:** new `test-flight3d-staging.js` (29 checks) — single-stage produces no events; two-stage
+produces exactly one `stage:0` event at the real burnout time with real position/velocity;
+boosters+stages produce a booster event *before* the core-stage event with correct `fallTime`
+ordering; three-stage drops exactly two stages in increasing time/index order; and
+`cape3dSeparationStates` edge cases (null plan, missing `stageEvents`, pre-liftoff query,
+non-numeric time — none throw). Also verifies `cape3dLaunchProfile` now exposes `t` (trajectory
+time), which the detach logic keys off.
+
+**NOT browser-verified — the honest gap.** This sandbox has no WebGL and the harness has no THREE
+stub, so the mesh/reparent/fall path has never actually rendered; only the pure math is tested. A
+real-browser playtest should confirm: pieces detach at the right moments and fall away without
+popping, the flame re-anchors to the new bottom stage, boosters drop before the core stage, and a
+second launch after a first (mesh reuse) still shows a complete rocket. Playtest checklist is in
+CLAUDE.md.
+
+**Regression at push time:** 79 suites. Three failing, all confirmed NOT caused by this work
+(checked against a clean pre-edit pull): `test-flight3d-trajectory.js` (Codex's accepted
+trajectory/vehicle-physics changes), and — newer — `test-decision-panel.js` + `test-pad-a.js`
+(from Codex's "Refine command UI and flight reporting" commit; look like an intentional
+post-failure hold/debrief screen, flagged in CLAUDE.md for intent confirmation). Build byte-faithful.
