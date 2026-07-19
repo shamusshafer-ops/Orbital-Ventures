@@ -5057,3 +5057,71 @@ their own clocks — the cutoff reads as a pacing change, acceptable but tunable
 
 **E4.4 (persistent ship/hull identity) remains the next E4 workstream** — unchanged from the entry
 above; the Cape-3D thread proceeds in parallel outside this log.
+
+
+## Session — E4.4 confirmed shipped by Codex; E4.5 ship markers (2026-07-19)
+
+*Pure append, per standing instruction — nothing above this line altered.*
+
+### E4.4 — persistent hull identity — confirmed already shipped (Codex, `075654d`)
+Before starting E4.5 ("wires E4.4 registry entries onto the E4.3 scene"), checked whether E4.4
+itself existed yet — it did, landed by Codex's "Refine physical launch vehicles and hull registry"
+commit without a ROADMAP entry. `state.hulls[]`: serial-numbered (`OVH-####`) physical vehicles
+with rollout/launch/loss/recovery/refurbishment lifecycle and a capped history log, wired through
+`assignHullToHangar`/`markHullLaunched`/`settleHullFlight`, save-migrated (`migrateHulls`,
+backfills a ready hangar hull without inventing prior flights, idempotent), and surfaced in the
+Fleet Registry (#115). `test-hull-registry.js` (9 checks) verified passing.
+
+### E4.5 — ships as tracked 3D markers (`71671bc`)
+An active (deferred/long-cruise) mission now gets a real 3D marker on the solar-system map, moving
+along a genuine two-body transfer arc and tied to its physical hull's identity.
+
+**`flightTargetBody(missionId)`** (`sim.js`) — a general mission→body lookup for markers, distinct
+from `missionTargetBody` (which exists for window math and always falls back to Mars — wrong for a
+marker: an Apollo mission should head to the Moon, not collapse to Mars). Returns `null` for unknown
+missions or schematic non-point bodies (the Oort cloud) rather than defaulting anywhere.
+
+**`flightScenePos(rec, absD)`** (`render.js`) — reuses `bodyScenePos` for BOTH endpoints (never
+re-derives Earth/target position independently), so a marker's departure/arrival points are
+pixel-identical to wherever the actual planet mesh sits on those exact days — including Codex's
+eccentric/inclined orbits (Belt at 10.6°) and per-moon orbit model. Because endpoints can have y≠0,
+the transfer is built in the real 3D plane through the Sun and both endpoints (orthonormal basis),
+not assumed flat. Within that plane: the same Hohmann-shaped Kepler construction as the E4.1/ascent
+work — endpoints ARE periapsis/apoapsis (exact by construction, e always <1 for positive radii),
+half-orbit true-anomaly sweep reparametrized to land EXACTLY on both endpoints while following a
+genuine Kepler radius/angle profile in between (fast near periapsis, slow near apoapsis), not a
+linear interpolation. Verified numerically (endpoints match `bodyScenePos` to float precision) —
+caught and fixed one real bug in the process: a double-division in the angle-between-vectors
+formula that left radius correct but direction wrong, found by comparing computed vs. actual arrival
+position rather than trusting the algebra alone.
+
+**`activeShipMarkers(absD)`** — scans `state.activeFlights` for deferred flights with a renderable
+target, joining in hull serial/family/reuse-count from the E4.4 registry; synchronous flights and
+malformed records are silently skipped, never thrown on.
+
+**Three.js shell** — a small emissive marker + label per active flight, reconciled every
+`map3dTick` (create/update/remove as flights start and end), added to the existing `pickables`
+array with a `ship:` `userData` prefix so the existing hover/pick handlers route to hull info
+(serial, family, reuse count, cruise progress) instead of falling through to a `BODIES` lookup.
+Uses `mapViewAbsDay()` so markers scrub consistently with the existing time-preview HUD.
+
+**Also fixed, found via regression (unrelated to E4.5, pre-existing):** `map3dApplyCamera()` called
+`orbitCameraEye`, which had been dropped from source in an earlier refactor (only
+`cape3dCameraEye`, the Cape launch-site camera, remained) — the solar map's free-orbit camera was
+throwing every frame and silently falling back to 2D (caught by `map3dRenderLoop`'s try/catch, so
+it degraded quietly rather than crashing — but the 3D solar map has effectively not been renderable
+since that refactor). Restored `orbitCameraEye` with its original symmetric ~±89° elevation clamp
+— a "drag to orbit the solar system" camera needs full freedom, unlike `cape3dCameraEye`'s
+ground-level `.18–1.25` clamp, which would have wrongly restricted it if reused instead.
+
+Tests: new `test-flight-markers.js` (38 checks — target lookup per program, transfer-element
+well-posedness, endpoint-exactness against `bodyScenePos` itself, monotonic radius growth,
+before/after clamping, graceful nulls, and the marker query's filtering/hull-joining/safety).
+
+Full regression at push time: 77 suites; only `test-flight3d-trajectory.js` still differs (Codex's
+already-reviewed-and-accepted vehicle/hull refinement — noted, not touched, out of scope here).
+Build byte-faithful.
+
+**E4.6 (A2 orbital-element gameplay slices) is next up per the original E4 breakdown** — one
+opt-in decision-bearing mechanic at a time, each with its own identity-guarantee test. *Heavy per
+slice.*
