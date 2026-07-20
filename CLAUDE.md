@@ -32,7 +32,7 @@ against `origin/main`; after a coherent, verified slice, commit and push to `mai
   with payload, mass, Δv/TWR, duration, distance, outcome, and any recorded failed subsystem.
   Do not replace these values with animation-derived estimates.
 
-## Visual multi-stage separation — SHIPPED (Claude)
+## Visual multi-stage separation — SHIPPED (Claude), core mechanism visually validated
 
 Done. `cape3dTrajectoryPlan` now records `stageEvents[]` (booster-jettison and spent-stage-drop
 times, positions, and velocities — real values from the burn integration it already ran; they were
@@ -45,12 +45,25 @@ and reused. `cape3dUpdateLaunchPresentation` detaches each piece at its real sep
 under real free fall (scene is 1:1 metres, reuses `G0`); the flame FX moves to the new bottom
 stage's base on a core separation so the next stage visibly ignites. Sim and outcome logic untouched.
 
-NOT browser-verified: the sandbox has no WebGL/THREE, so the mesh/reparent/fall-physics path has
-never actually rendered — only the pure math is headless-tested (`tests/test-flight3d-staging.js`,
-29 checks: stageEvents recording for 1/2/3-stage and boosters+stages vehicles, ordering, and the
-separation-state time mapping/edge cases). A real-browser playtest should confirm: pieces detach at
-the right moments, fall away cleanly without popping, the flame re-anchors to the new base, and a
-second launch after a first (mesh reuse) still shows a complete rocket.
+**Update (2026-07-20):** since the sandbox has no WebGL, a standalone offline preview
+(`staging-preview.html`, not committed to the repo — a scratch tuning tool) was built that pastes
+`cape3dTrajectoryPlan`/`cape3dSeparationStates` in **verbatim** from `build/game.js` and runs a
+faithful copy of the detach/free-fall logic against four synthetic vehicles (two-stage, three-stage,
+boosters+2-stage, single-stage control). The repo owner reviewed it directly and confirmed the
+separation timing and ballistic fall/tumble read correctly — boosters drop before the core stage,
+pieces coast away under gravity rather than popping, trajectory trails visibly diverge. **This
+confirms the underlying math and detach/fall logic are sound**, which was the main open risk.
+
+What it does NOT confirm: the ACTUAL in-game Cape 3D scene — real camera behavior (pulls back with
+altitude on its own schedule, unverified), real vehicle art/livery, and — importantly — **mesh
+reuse across a second launch in the real game session** (the preview rebuilds a fresh rocket per
+vehicle-button click, so it never exercised `cape3dResetStaging`'s actual job of un-doing a prior
+flight's separations). A real-browser playtest in the actual game should still confirm: the camera
+frames a separation sensibly at real Cape distances, and a second launch after a first shows a
+complete, correctly-reset rocket.
+
+Headless coverage unchanged: `tests/test-flight3d-staging.js`, 29 checks (stageEvents recording for
+1/2/3-stage and boosters+stages vehicles, ordering, separation-state time mapping/edge cases).
 
 ## Next task
 
@@ -60,6 +73,11 @@ Flight 3D adapter). Coordinate on which. If continuing staging: the detached-deb
 deliberately simple ballistic (no re-contact, no atmospheric tumble model) and debris is culled
 3000 m below the pad — a polish pass could add a small separation flash/puff at the interstage and
 a one-line "Stage 1 separation" beat on the always-visible Flight Card. Keep sim/outcome untouched.
+
+The core separation math/logic is now visually confirmed sound (see above) — the one remaining
+staging risk worth a quick real-browser check before further polish: fly two launches back-to-back
+in one session and confirm the second rocket is fully intact (mesh reuse + `cape3dResetStaging`
+was never exercised by the offline preview, only by the pure identity logic in code).
 
 Two pre-existing test drifts to be aware of (NOT from the staging work — verified against a clean
 pre-edit pull): `test-flight3d-trajectory.js` (Codex's accepted trajectory/vehicle-physics changes)
