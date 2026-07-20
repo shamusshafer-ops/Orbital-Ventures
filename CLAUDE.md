@@ -94,11 +94,19 @@ mission's Earth return currently isn't animated — the flight ends after the tr
 post-flight card. That's missing content (a new mission leg), not a gating fix; logged as the next
 Flight-3D-coverage candidate.
 
+## Crewed cislunar returns get a reentry leg — SHIPPED (Claude)
+
+`flightHasReentry` now allows `isCislunar` (not just `isOrbital`), so a crewed successful Moon
+mission gets the same 6.4s reentry leg an orbital crewed flight does — previously its Earth return
+was never animated (flight ended after the transfer). The reentry presentation is already
+progress-only (no isOrbital dependency), so no new renderer was needed; `drawScene`'s `entering`
+check already fires for cislunar once past the cruise. The `updateFlight3DSession` reentry gate was
+widened to `(isOrbital||isCislunar)`. Uncrewed/failed cislunar correctly get no reentry.
+Test: `tests/test-flight3d-cislunar-reentry.js` (8 checks). NOT browser-verified.
+
 ## Next task
 
-Suggested: **give crewed cislunar returns a reentry leg** (the gap noted above — the reentry
-renderer is already generic, so this is mostly generating the leg + widening `flightHasReentry`),
-OR **booster/stage separation visual polish + a brief separation event in the Flight Card**,
+Suggested: **booster/stage separation visual polish + a brief separation event in the Flight Card**,
 OR pick up remaining **E4.7** scope (fold any remaining legacy 2D-canvas flight paths into the
 Flight 3D adapter). Coordinate on which. If continuing staging: the detached-debris drift is
 deliberately simple ballistic (no re-contact, no atmospheric tumble model) and debris is culled

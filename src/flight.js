@@ -470,7 +470,7 @@ function createGL2D(gl,textCtx,W,H){
 // orbit phase: plasma sheath + heat down through the atmosphere, then chutes into the ocean.
 // Gated to success + orbital + crewed (the capsule nose) — suborbital already shows reentry
 // inline, and cislunar/deep returns aren't wired here yet (future extension).
-function flightHasReentry(s){ return !!(s && s.success && s.isOrbital && s.crewed); }
+function flightHasReentry(s){ return !!(s && s.success && (s.isOrbital || s.isCislunar) && s.crewed); }
 /* ---------- Flight 3D Slice 1: presentation adapter + dormant lifecycle ----------
    This adapter reads the proven flight clock and returns presentation-only data. It owns no
    simulation state, outcome logic, time advancement, or save data. The renderer stays disabled
@@ -604,7 +604,7 @@ function updateFlight3DSession(snapshot){
     // lost, instead of the mission cutting to the flat 2D fallback at its most dramatic beat. The
     // fallback remains for a genuine renderer failure or a still-unsupported outcome.
     const deepFail=snapshot&&snapshot.success===false&&snapshot.failPhase==='deep';
-    if(snapshot&&(['pad','ascent','suborbital','transfer'].includes(snapshot.phase)||(snapshot.phase==='orbit'&&snapshot.isOrbital&&snapshot.success!==false)||(snapshot.phase==='orbit'&&deepFail)||(snapshot.phase==='reentry'&&snapshot.isOrbital&&snapshot.crewed&&snapshot.success!==false))){
+    if(snapshot&&(['pad','ascent','suborbital','transfer'].includes(snapshot.phase)||(snapshot.phase==='orbit'&&snapshot.isOrbital&&snapshot.success!==false)||(snapshot.phase==='orbit'&&deepFail)||(snapshot.phase==='reentry'&&(snapshot.isOrbital||snapshot.isCislunar)&&snapshot.crewed&&snapshot.success!==false))){
       if(s.handedOff) return false;
       updateFlight3DReadout(snapshot);
       return cape3dUpdateFlightPresentation(snapshot);

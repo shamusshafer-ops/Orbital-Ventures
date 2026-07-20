@@ -5287,3 +5287,16 @@ Regression: 80 suites; the only failures are the three pre-existing Codex drifts
 (`test-flight3d-trajectory.js`, `test-decision-panel.js`, `test-pad-a.js`), verified unchanged from
 baseline (identical failing-check counts) — this slice added nothing to the failure set. Build
 byte-faithful.
+
+
+## Session — E4.7: crewed cislunar returns get a reentry leg (2026-07-20)
+
+*Pure append. Heavy tier (mission-leg content).* Follow-on to the deep-failure slice, which flagged
+this gap: `flightHasReentry` required `isOrbital`, so a crewed Moon mission's Earth return was never
+animated (flight ended after the cislunar transfer). Fix: `flightHasReentry` now allows
+`isCislunar||isOrbital`; the `updateFlight3DSession` reentry gate widened to `(isOrbital||isCislunar)`.
+No new renderer — the reentry presentation and `drawScene`'s `entering` transition are already
+progress-only / isOrbital-agnostic, so a crewed cislunar return flows pad→ascent→transfer→reentry
+automatically once `reentryDur>0`. Uncrewed and failed cislunar correctly get no reentry leg.
+Test: `tests/test-flight3d-cislunar-reentry.js` (8 checks). Regression: only the 3 pre-existing Codex
+drifts fail. NOT browser-verified (no WebGL) — eyeball a crewed Moon-return flight.
