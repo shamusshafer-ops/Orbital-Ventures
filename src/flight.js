@@ -559,7 +559,10 @@ function clearFlightAltitude(){ const host=$('flightAltitude'); if(!host) return
 function updateFlightAltitude(snapshot){
   const host=$('flightAltitude'); if(!host) return false; const q=flightAltitudeTelemetry(snapshot);
   if(!q.visible) return clearFlightAltitude();
-  host.innerHTML='<span>ALTITUDE MSL</span><strong>'+q.label+'</strong>'; host.classList.remove('hidden'); return true;
+  let beatHtml='';
+  try{ const beat=(typeof flightSeparationBeat==='function')?flightSeparationBeat(snapshot):null;
+    if(beat) beatHtml='<span class="flight-sep-beat" style="opacity:'+beat.fade.toFixed(2)+'">'+beat.label+'</span>'; }catch(e){}
+  host.innerHTML='<span>ALTITUDE MSL</span><strong>'+q.label+'</strong>'+beatHtml; host.classList.remove('hidden'); return true;
 }
 function updateFlight3DReadout(snapshot){
   const host=$('flight3dReadout'); if(!host||!snapshot) return false;

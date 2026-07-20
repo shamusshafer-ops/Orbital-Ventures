@@ -5300,3 +5300,17 @@ progress-only / isOrbital-agnostic, so a crewed cislunar return flows pad→asce
 automatically once `reentryDur>0`. Uncrewed and failed cislunar correctly get no reentry leg.
 Test: `tests/test-flight3d-cislunar-reentry.js` (8 checks). Regression: only the 3 pre-existing Codex
 drifts fail. NOT browser-verified (no WebGL) — eyeball a crewed Moon-return flight.
+
+
+## Session — E4.7: booster/stage separation polish (2026-07-20)
+
+*Pure append. Sonnet tier (polish on the staging base).* Two additions: (1) an expanding additive
+puff at the interstage on each detach (`cape3dSepPuffPool`/`cape3dSpawnSepPuff`/`cape3dTickSepPuffs`,
+4-sprite reused pool, spawned at the detach world position, expands+fades over 900ms; ticked each
+launch frame); (2) a transient flight-readout beat: `flightSeparationBeat(snapshot)` finds the
+most-recent staging event within 3.2s of the current flight time and returns `BOOSTER SEP` /
+`STAGE N SEP` (1-indexed) with a 1→0 fade, surfaced in the `flightAltitude` readout via a
+`flight-sep-beat` span. Both reuse the real `stageEvents` — no new timing, no sim coupling.
+Test: `tests/test-flight3d-sepbeat.js` (10 checks — booster vs stage label, fade ramp, none for
+single-stage or outside ascent). Regression: only the 3 pre-existing Codex drifts. NOT
+browser-verified (puff is Three.js) — eyeball a multi-stage launch.

@@ -10928,7 +10928,10 @@ function clearFlightAltitude(){ const host=$('flightAltitude'); if(!host) return
 function updateFlightAltitude(snapshot){
   const host=$('flightAltitude'); if(!host) return false; const q=flightAltitudeTelemetry(snapshot);
   if(!q.visible) return clearFlightAltitude();
-  host.innerHTML='<span>ALTITUDE MSL</span><strong>'+q.label+'</strong>'; host.classList.remove('hidden'); return true;
+  let beatHtml='';
+  try{ const beat=(typeof flightSeparationBeat==='function')?flightSeparationBeat(snapshot):null;
+    if(beat) beatHtml='<span class="flight-sep-beat" style="opacity:'+beat.fade.toFixed(2)+'">'+beat.label+'</span>'; }catch(e){}
+  host.innerHTML='<span>ALTITUDE MSL</span><strong>'+q.label+'</strong>'+beatHtml; host.classList.remove('hidden'); return true;
 }
 function updateFlight3DReadout(snapshot){
   const host=$('flight3dReadout'); if(!host||!snapshot) return false;
@@ -15819,6 +15822,43 @@ function cape3dSeparationStates(plan, time){
     altitudeKm: ev.altitudeKm, xKm: ev.xKm
   }));
 }
+// E4.7 polish: a transient "STAGE N SEP" / "BOOSTER SEP" beat for the flight readout. Given the
+// ascent/suborbital snapshot, finds the most recent staging event within BEAT_WINDOW seconds of the
+// current flight time and returns a short label + fade (1→0 across the window). Returns null when no
+// event is recent. Reuses the same real stageEvents the visual detach keys off — no new timing.
+const SEP_BEAT_WINDOW=3.2;
+function flightSeparationBeat(snapshot){
+  try{
+    const phase=snapshot&&snapshot.phase; if(phase!=='ascent'&&phase!=='suborbital') return null;
+    const q=cape3dLaunchProfile(snapshot); if(!q||!q.trajectory||q.t==null) return null;
+    const evs=q.trajectory.stageEvents; if(!evs||!evs.length) return null;
+    let best=null;
+    for(const ev of evs){ const dt=q.t-ev.t; if(dt>=0&&dt<=SEP_BEAT_WINDOW&&(!best||ev.t>best.ev.t)) best={ev,dt}; }
+    if(!best) return null;
+    const label=best.ev.kind==='booster'?'BOOSTER SEP':'STAGE '+(best.ev.index+1)+' SEP';
+    return {label, fade:Math.max(0,1-best.dt/SEP_BEAT_WINDOW)};
+  }catch(e){ return null; }
+}
+// E4.7 polish: a brief expanding puff at the interstage when a stage/booster lets go — the little
+// pyro/ullage burst of a real separation. A small reused pool of additive sprites; each spawn sets
+// a world position + start time, and cape3dTickSepPuffs expands/fades them over PUFF_LIFE. Purely
+// cosmetic, no sim coupling.
+const SEP_PUFF_LIFE=900; // ms
+function cape3dSepPuffPool(root){
+  const pool=[]; for(let i=0;i<4;i++){ const m=new THREE.Mesh(new THREE.SphereGeometry(1,10,8),new THREE.MeshBasicMaterial({color:0xfff2d6,transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false})); m.visible=false; root.add(m); pool.push({mesh:m,t0:0,active:false}); }
+  return pool;
+}
+function cape3dSpawnSepPuff(root,worldPos){
+  const pool=root.userData.sepPuffs; if(!pool) return;
+  const slot=pool.find(p=>!p.active)||pool[0];
+  slot.active=true; slot.t0=(typeof performance!=='undefined'?performance.now():Date.now());
+  slot.mesh.position.copy(worldPos); slot.mesh.visible=true; slot.mesh.scale.setScalar(2); slot.mesh.material.opacity=.9;
+}
+function cape3dTickSepPuffs(root){
+  const pool=root.userData.sepPuffs; if(!pool) return; const now=(typeof performance!=='undefined'?performance.now():Date.now());
+  for(const p of pool){ if(!p.active) continue; const age=(now-p.t0)/SEP_PUFF_LIFE; if(age>=1){ p.active=false; p.mesh.visible=false; p.mesh.material.opacity=0; continue; }
+    p.mesh.scale.setScalar(2+age*46); p.mesh.material.opacity=.9*(1-age); }
+}
 function cape3dLaunchProfile(snapshot){
   const phase=snapshot&&snapshot.phase||'pad', p=Math.max(0,Math.min(1,(snapshot&&snapshot.phaseProgress)||0)), ignition=Math.max(0,Math.min(1,(snapshot&&snapshot.effects&&snapshot.effects.ignition)||0));
   const ascent=phase==='ascent', suborbital=phase==='suborbital', orbital=!!(snapshot&&(snapshot.isOrbital||snapshot.isCislunar)), reqDv=(snapshot&&snapshot.reqDv)||0;
@@ -16061,6 +16101,7 @@ function cape3dUpdateLaunchPresentation(snapshot){
       const part = st.kind==='booster' ? rocket.userData.boosterGroup : (rocket.userData.stageGroups&&rocket.userData.stageGroups[st.index]&&rocket.userData.stageGroups[st.index].group);
       if(!part || part.parent!==rocket) continue;
       root.attach(part); // preserves world transform (incl. the rocket's current pitch) across the reparent — no visual jump
+      cape3dSpawnSepPuff(root, part.position.clone()); // E4.7 polish: pyro/ullage burst at the separation point
       part.userData.sep={x:part.position.x,y:part.position.y,z:part.position.z,rotZ:part.rotation.z,vx:st.vx||0,vy:st.vy||0,spinZ:(st.kind==='booster'?1:-1)*(.32+.11*((st.index+1)%3)),spinX:.18+.07*((st.index+2)%3)};
       debris.push({obj:part,key});
       // A core-stage separation (not a booster — the strap-ons don't change the CORE's own base)
@@ -16086,6 +16127,7 @@ function cape3dUpdateLaunchPresentation(snapshot){
   }
   if(q.failed){ if(failure&&!failure.active) cape3dStartFailure(failure,rocket); rocket.visible=false; fx.group.visible=false; if(failure) cape3dUpdateFailure(failure,q.failureProgress); }
   else { rocket.visible=!(q.phase==='suborbital'&&q.progress>=.999); if(failure&&failure.active) cape3dResetFailure(failure); fx.group.visible=rocket.visible&&q.plume>0.01; }
+  cape3dTickSepPuffs(root);
   cape3dUpdateGroundSmoke(root.userData.groundSmoke,q.phase,q.progress,(snapshot&&snapshot.effects&&snapshot.effects.ignition)||0);
   cape3dUpdateSplash(root.userData.launchSplash,q,base);
   const plume=cape3dPlumeProfile(q.plume,q.vacuum); fx.flame.scale.set(plume.width,plume.length,plume.width); fx.core.scale.set(1+q.vacuum*.48,Math.max(.08,q.plume)*(1+q.vacuum*.30),1+q.vacuum*.48); fx.hotCore.scale.set(1+q.vacuum*.18,Math.max(.08,q.plume),1+q.vacuum*.18); fx.flame.material.opacity=plume.outerOpacity; fx.core.material.opacity=plume.coreOpacity; fx.hotCore.material.opacity=plume.hotOpacity; fx.glow.color.setHex(0xb9e6ff); fx.glow.intensity=q.light*(1-q.vacuum*.36);
@@ -16130,7 +16172,7 @@ function buildCape3DScene(scene){
   const roads=cape3dRoads(materials); root.add(roads);
   const facilities=new THREE.Group(); facilities.name='cape3d_facilities'; root.add(facilities);
   const descriptors=syncCape3DFromState(); descriptors.forEach(d=>facilities.add(cape3dFacilityGroup(d,materials))); const vegetation=cape3dVegetation(root,materials); root.userData.clouds=cape3dClouds(root); root.userData.practicalLights=[...cape3dPracticalLights(root,descriptors),...cape3dStreetLights(root,materials)]; root.userData.windowMaterial=materials.glass; root.userData.water=waterTx;
-  const pad=descriptors.find(d=>d.key==='pad'); if(pad){ const rocket=cape3dVehicleMesh(); rocket.position.set(pad.position.x-pad.footprint.x*.18,cape3dLaunchBaseY(rocket),pad.position.z); root.add(rocket); root.userData.launchPad=pad; root.userData.launchRocket=rocket; root.userData.launchBase=rocket.position.clone(); root.userData.launchEffects=cape3dLaunchEffects(rocket); root.userData.groundSmoke=cape3dGroundSmoke(root,rocket.position); root.userData.launchSplash=cape3dSplashEffects(root); root.userData.launchFailure=cape3dFailureEffects(root,rocket,root.userData.launchEffects); root.userData.ascentWorld=cape3dAscentWorld(root,pad); root.userData.orbitWorld=cape3dOrbitWorld(root); root.userData.transferWorld=cape3dTransferWorld(root); root.userData.reentryWorld=cape3dReentryWorld(root); }
+  const pad=descriptors.find(d=>d.key==='pad'); if(pad){ const rocket=cape3dVehicleMesh(); rocket.position.set(pad.position.x-pad.footprint.x*.18,cape3dLaunchBaseY(rocket),pad.position.z); root.add(rocket); root.userData.launchPad=pad; root.userData.launchRocket=rocket; root.userData.launchBase=rocket.position.clone(); root.userData.launchEffects=cape3dLaunchEffects(rocket); root.userData.groundSmoke=cape3dGroundSmoke(root,rocket.position); root.userData.launchSplash=cape3dSplashEffects(root); root.userData.launchFailure=cape3dFailureEffects(root,rocket,root.userData.launchEffects); root.userData.ascentWorld=cape3dAscentWorld(root,pad); root.userData.orbitWorld=cape3dOrbitWorld(root); root.userData.transferWorld=cape3dTransferWorld(root); root.userData.reentryWorld=cape3dReentryWorld(root); root.userData.sepPuffs=cape3dSepPuffPool(root); }
   root.userData.siteObjects=[ground,terrain,ocean,roads,facilities,vegetation];
   // State-driven growth receives simple massing in this slice; detailed variants arrive with the art pass.
   try{

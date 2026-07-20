@@ -104,9 +104,20 @@ check already fires for cislunar once past the cruise. The `updateFlight3DSessio
 widened to `(isOrbital||isCislunar)`. Uncrewed/failed cislunar correctly get no reentry.
 Test: `tests/test-flight3d-cislunar-reentry.js` (8 checks). NOT browser-verified.
 
+## Booster/stage separation polish — SHIPPED (Claude)
+
+Two additions on the E4.7 staging base: (1) a brief expanding additive puff at the interstage when
+a piece detaches (`cape3dSepPuffPool`/`cape3dSpawnSepPuff`/`cape3dTickSepPuffs`, a 4-sprite reused
+pool, spawned at the detach point, expands+fades over 900ms); (2) a transient flight-readout beat —
+`flightSeparationBeat(snapshot)` finds the most-recent staging event within 3.2s of the current
+flight time and returns `BOOSTER SEP` / `STAGE N SEP` (1-indexed) with a 1→0 fade, surfaced in the
+`flightAltitude` readout. Reuses the real `stageEvents` — no new timing. Sim untouched.
+Test: `tests/test-flight3d-sepbeat.js` (10 checks). Puff is Three.js (not headless-testable); beat
+label/timing is. NOT browser-verified — eyeball a multi-stage launch.
+
 ## Next task
 
-Suggested: **booster/stage separation visual polish + a brief separation event in the Flight Card**,
+Suggested (open — pick per priority):
 OR pick up remaining **E4.7** scope (fold any remaining legacy 2D-canvas flight paths into the
 Flight 3D adapter). Coordinate on which. If continuing staging: the detached-debris drift is
 deliberately simple ballistic (no re-contact, no atmospheric tumble model) and debris is culled
