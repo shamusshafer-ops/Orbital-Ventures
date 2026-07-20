@@ -5250,3 +5250,40 @@ CLAUDE.md.
 trajectory/vehicle-physics changes), and — newer — `test-decision-panel.js` + `test-pad-a.js`
 (from Codex's "Refine command UI and flight reporting" commit; look like an intentional
 post-failure hold/debrief screen, flagged in CLAUDE.md for intent confirmation). Build byte-faithful.
+
+
+## Session — E4.7: deep (in-space) failures stay in the 3D renderer (2026-07-20)
+
+*Pure append. Model tier: heavy (failure-visualization design + gate-loosening judgment).*
+
+**Scoping finding (why this slice, and what it is NOT):** audited what still drops to the flat 2D
+fallback in `updateFlight3DSession`. The gate kept `orbit` in 3D only for `isOrbital && success!==false`
+and `reentry` only for `isOrbital && crewed && success!==false`. Investigating the renderers showed
+the gates are *conservative, not protective* — `cape3dUpdateOrbitPresentation` /
+`cape3dUpdateReentryPresentation` render from `phaseProgress` alone and read no `crewed`/`success`
+flag. Two real gaps fell out: (a) a **deep in-space failure** (post-orbit strand/loss) cut to 2D at
+the flight's climax; (b) a crewed **cislunar** mission gets **no reentry leg at all**
+(`flightHasReentry` requires `isOrbital`), so its Earth return isn't animated. This slice does (a);
+(b) is logged as the next candidate (it's new mission-leg content, not a gating fix).
+
+**Shipped — deep-failure 3D stranding.** A `success===false` / `failPhase==='deep'` outcome now stays
+in Three.js. Snapshot (`flight3dPresentationSnapshot`) emits `effects.deepFailure` /
+`deepFailureFrac` (0.42, matching the 2D renderer's freeze point) / `deepFailureProgress`, armed only
+for `orbit`/`transfer` phases once coasted past the freeze fraction, and passes `failPhase` through —
+mirroring the existing `ascentFailure` pattern. `cape3dOrbitProfile` and `cape3dTransferProfile`
+freeze `progress` at the loss fraction and cut `burn`/`arrival` when dead-stick, exposing `deadStick`
++ `failProgress`; both presentations tumble the craft dead-and-dark with a build driven by
+`failProgress`, and the 3D readout shows `SPACECRAFT LOST`. The `updateFlight3DSession` gate was
+loosened to keep `orbit` in 3D for a deep fail (`transfer` was already unconditionally in 3D but had
+no failure visual). Sim/outcome untouched — presentation only; the outcome was resolved by the sim
+before the animation opened.
+
+Test: `tests/test-flight3d-deepfail.js` (26 checks — signal arms only for a deep fail past the freeze
+fraction, never on success or an ascent fail; orbit + transfer freeze/dead-stick identically; a
+successful flight runs full progress and still reaches arrival). NOT browser-verified (no WebGL in
+sandbox) — the tumble should be eyeballed in a real failed-orbital-insertion flight.
+
+Regression: 80 suites; the only failures are the three pre-existing Codex drifts
+(`test-flight3d-trajectory.js`, `test-decision-panel.js`, `test-pad-a.js`), verified unchanged from
+baseline (identical failing-check counts) — this slice added nothing to the failure set. Build
+byte-faithful.

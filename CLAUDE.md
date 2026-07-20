@@ -65,9 +65,40 @@ complete, correctly-reset rocket.
 Headless coverage unchanged: `tests/test-flight3d-staging.js`, 29 checks (stageEvents recording for
 1/2/3-stage and boosters+stages vehicles, ordering, separation-state time mapping/edge cases).
 
+## Deep (in-space) failure stays in 3D — SHIPPED (Claude)
+
+A strand/loss that happens AFTER reaching orbit or cislunar cruise (`success===false`,
+`failPhase==='deep'` — e.g. life-support/propulsion loss in space) used to cut to the flat 2D
+fallback at the flight's most dramatic beat, because `updateFlight3DSession` gated `orbit` on
+`success!==false`. Now it stays in the Three.js renderer: the orbit/transfer presentation freezes
+the craft at the loss fraction (0.42, matching the 2D renderer's freeze point) and tumbles it
+dead-and-dark (`deadStick`), engine cut, with the readout showing `SPACECRAFT LOST`.
+
+Mechanism mirrors the existing ascent-failure path: `flight3dPresentationSnapshot` now emits
+`effects.deepFailure` / `deepFailureFrac` / `deepFailureProgress` (armed only for `orbit`/`transfer`
+phases past the freeze fraction) and passes `failPhase` through. `cape3dOrbitProfile` /
+`cape3dTransferProfile` freeze `progress` and cut `burn`/`arrival` when dead-stick, exposing
+`deadStick` + `failProgress`; the two presentations apply a building tumble. The gate in
+`updateFlight3DSession` was loosened to keep `orbit` in 3D for a deep fail (`transfer` was already
+unconditionally in 3D but had no failure visual before this). Sim/outcome logic untouched — this is
+presentation only; the outcome was resolved by the sim long before the animation opened.
+
+Test: `tests/test-flight3d-deepfail.js` (26 checks — the signal arms only for a deep fail past the
+freeze fraction, never on success or an ascent fail; orbit + transfer profiles freeze/dead-stick
+identically; a successful flight still runs full progress and reaches arrival). NOT browser-verified
+(no WebGL here) — the tumble render should be eyeballed in a real failed-orbital-insertion flight.
+
+NOTE — a related gap found while scoping, NOT fixed here: a crewed **cislunar** mission gets **no
+reentry leg at all** (`flightHasReentry` requires `isOrbital`, which cislunar isn't), so a Moon
+mission's Earth return currently isn't animated — the flight ends after the transfer with a
+post-flight card. That's missing content (a new mission leg), not a gating fix; logged as the next
+Flight-3D-coverage candidate.
+
 ## Next task
 
-Suggested: **booster/stage separation visual polish + a brief separation event in the Flight Card**,
+Suggested: **give crewed cislunar returns a reentry leg** (the gap noted above — the reentry
+renderer is already generic, so this is mostly generating the leg + widening `flightHasReentry`),
+OR **booster/stage separation visual polish + a brief separation event in the Flight Card**,
 OR pick up remaining **E4.7** scope (fold any remaining legacy 2D-canvas flight paths into the
 Flight 3D adapter). Coordinate on which. If continuing staging: the detached-debris drift is
 deliberately simple ballistic (no re-contact, no atmospheric tumble model) and debris is culled

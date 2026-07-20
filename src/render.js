@@ -2071,8 +2071,11 @@ function cape3dAscentBlend(progress){
   return {atmosphere:Math.max(0,Math.min(1,(p-.45)/.26)),space,capeVisible:p<.72};
 }
 function cape3dOrbitProfile(snapshot){
-  const p=Math.max(0,Math.min(1,(snapshot&&snapshot.phaseProgress)||0)), a=-1.05+p*Math.PI*2.15;
-  return {progress:p,angle:a,burn:Math.max(0,Math.min(1,(.13-p)/.13)),altitude:430+Math.sin(p*Math.PI)*60};
+  const fx=snapshot&&snapshot.effects, deep=fx&&fx.deepFailure;
+  // On a deep failure the craft never completes the orbit — it strands at the failure fraction
+  // (mirroring the 2D renderer, which freezes progress there and fires the loss cue).
+  const raw=Math.max(0,Math.min(1,(snapshot&&snapshot.phaseProgress)||0)), p=deep?Math.min(raw,fx.deepFailureFrac||.42):raw, a=-1.05+p*Math.PI*2.15;
+  return {progress:p,angle:a,burn:deep?0:Math.max(0,Math.min(1,(.13-p)/.13)),altitude:430+Math.sin(p*Math.PI)*60,deadStick:!!deep,failProgress:deep?(fx.deepFailureProgress||0):0};
 }
 function cape3dReentryProfile(snapshot){ const p=Math.max(0,Math.min(1,(snapshot&&snapshot.phaseProgress)||0)); return {progress:p,plasma:Math.max(0,Math.min(1,(.46-p)/.46)),drogue:Math.max(0,Math.min(1,(p-.52)/.06)),mains:Math.max(0,Math.min(1,(p-.66)/.08)),splash:p>=.96}; }
 function cape3dFlightCameraFar(altitudeMeters){ return Math.max(100000,100000+Math.max(0,Number(altitudeMeters)||0)*2.2); }
@@ -2179,7 +2182,7 @@ function cape3dOrbitWorld(root){
 }
 // E4.7 cislunar transfer world. Kept separate from the Earth-orbit scene so successful lunar
 // flights never fall back to the legacy canvas between injection and arrival.
-function cape3dTransferProfile(snapshot){ const p=Math.max(0,Math.min(1,(snapshot&&snapshot.phaseProgress)||0)); return {progress:p,x:-410+820*p,y:120+235*Math.sin(Math.PI*p),z:-90*Math.sin(Math.PI*p),burn:Math.max(0,1-p/.16),arrival:Math.max(0,(p-.84)/.16)}; }
+function cape3dTransferProfile(snapshot){ const fx=snapshot&&snapshot.effects, deep=fx&&fx.deepFailure; const raw=Math.max(0,Math.min(1,(snapshot&&snapshot.phaseProgress)||0)); const p=deep?Math.min(raw,fx.deepFailureFrac||.42):raw; return {progress:p,x:-410+820*p,y:120+235*Math.sin(Math.PI*p),z:-90*Math.sin(Math.PI*p),burn:deep?0:Math.max(0,1-p/.16),arrival:deep?0:Math.max(0,(p-.84)/.16),deadStick:!!deep,failProgress:deep?(fx.deepFailureProgress||0):0}; }
 function cape3dTransferWorld(root){
   const g=new THREE.Group(); g.visible=false; const earthMap=(typeof map3dPhotoTexture==='function')?map3dPhotoTexture('earth'):null;
   const earth=new THREE.Mesh(new THREE.SphereGeometry(175,48,30),new THREE.MeshStandardMaterial({color:0x467994,map:earthMap,roughness:.94})); earth.position.set(-410,0,0); g.add(earth);
@@ -2240,7 +2243,11 @@ function cape3dUpdateOrbitPresentation(snapshot){
   if(groundSmoke) groundSmoke.group.visible=false; if(splash) splash.group.visible=false;
   (root.userData.siteObjects||[]).forEach(o=>o.visible=false); root.userData.launchActive=false; root.userData.launchSpace=1; root.userData.orbitActive=true; detachCape3DInput(); orbit.group.visible=true;
   const q=cape3dOrbitProfile(snapshot), x=Math.cos(q.angle)*690, y=Math.sin(q.angle)*105, z=Math.sin(q.angle)*505;
-  orbit.craft.position.set(x,y,z); orbit.craft.rotation.set(0,-q.angle-.25,Math.sin(q.angle)*.16); orbit.earth.rotation.y=q.progress*.72; orbit.plume.visible=q.burn>.01; orbit.plume.scale.set(1,Math.max(.08,q.burn),1); orbit.plume.material.opacity=.82*q.burn; orbit.glow.intensity=2.4*q.burn;
+  // E4.7 deep-failure stranding: the craft holds at the loss point and slowly tumbles, dead and
+  // dark, instead of the flight cutting to the 2D fallback. failProgress ramps 0→1 from the moment
+  // of loss so the tumble builds and the plume stays cut.
+  const tumble=q.deadStick?q.failProgress:0;
+  orbit.craft.position.set(x,y,z); orbit.craft.rotation.set(tumble*2.4,-q.angle-.25+tumble*1.7,Math.sin(q.angle)*.16+tumble*1.9); orbit.earth.rotation.y=q.progress*.72; orbit.plume.visible=q.burn>.01; orbit.plume.scale.set(1,Math.max(.08,q.burn),1); orbit.plume.material.opacity=.82*q.burn; orbit.glow.intensity=2.4*q.burn;
   const target=new THREE.Vector3(0,0,0), camA=-.85+q.progress*.34; cape3dFlightCamera(new THREE.Vector3(Math.cos(camA)*1160,650+Math.sin(q.progress*Math.PI)*115,Math.sin(camA)*1160),target); return true;
 }
 function cape3dUpdateReentryPresentation(snapshot){
@@ -2252,7 +2259,7 @@ function cape3dUpdateReentryPresentation(snapshot){
 }
 function cape3dUpdateFlightPresentation(snapshot){
   if(snapshot&&snapshot.phase==='orbit') return cape3dUpdateOrbitPresentation(snapshot);
-  if(snapshot&&snapshot.phase==='transfer'){ const root=cape3d&&cape3d.root, world=root&&root.userData.transferWorld; if(!world) return false; const q=cape3dTransferProfile(snapshot); world.group.visible=true; world.craft.position.set(q.x,q.y,q.z); world.plume.visible=q.burn>.01; world.plume.material.opacity=.82*q.burn; cape3dFlightCamera(new THREE.Vector3(q.x-310,q.y+210,720),new THREE.Vector3(q.x,q.y,0)); return true; }
+  if(snapshot&&snapshot.phase==='transfer'){ const root=cape3d&&cape3d.root, world=root&&root.userData.transferWorld; if(!world) return false; const q=cape3dTransferProfile(snapshot); world.group.visible=true; world.craft.position.set(q.x,q.y,q.z); const tumble=q.deadStick?q.failProgress:0; if(world.craft.rotation) world.craft.rotation.set(tumble*2.2,tumble*1.6,tumble*1.9); world.plume.visible=q.burn>.01; world.plume.material.opacity=.82*q.burn; cape3dFlightCamera(new THREE.Vector3(q.x-310,q.y+210,720),new THREE.Vector3(q.x,q.y,0)); return true; }
   if(snapshot&&snapshot.phase==='reentry') return cape3dUpdateReentryPresentation(snapshot);
   const root=cape3d&&cape3d.root, orbit=root&&root.userData.orbitWorld;
   if(orbit&&orbit.group.visible){ orbit.group.visible=false; root.userData.orbitActive=false; }
