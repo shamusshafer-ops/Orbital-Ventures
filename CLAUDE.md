@@ -216,6 +216,26 @@ ascent-phase save, never premature, never for uncrewed or a genuine loss; readou
 clear-away render itself isn't headless-testable (no WebGL) — every value driving it is. BACKLOG.md
 #40 marked shipped.
 
+## Tech-tree audit + fixed 2 dead capstone nodes — SHIPPED (Claude)
+
+Ran a full structural audit of the 110-node tree (cost/depth pacing, effect-type distribution,
+prereq depth, dead-end analysis). Verdict: strong core — cost scales cleanly with depth (2.8→18
+avg), reliability hard-capped so the 28 reliability nodes can't trivialize risk — but ~20% filler,
+concentrated in tiny passive stat nodes, and TWO genuinely dead nodes found: `megastructure_construction`
+(cost 18, the single most expensive node) and `atmospheric_isru` (cost 10) both had `effect:{}` and
+ZERO references anywhere else — researching them did literally nothing (worst-feel outcome for a
+capstone). Wired both to real, cap-bounded effects matching their descriptions: megastructure →
+buildCostCut 0.10 + buildTimeCut 1.5 (civilization-scale production economy); atmospheric_isru →
+launchCostCut 0.08 (deep-space propellant relieves outer-system launch cost). Both flow through the
+existing `dimCurve` soft-knee caps, so they're felt but can't unbalance. Test:
+`tests/test-tech-capstones.js` (13 checks).
+
+The larger audit finding (NOT done here, logged for a future balance pass): ~35 nodes are
++0.02-type passive stat-shavers (32% of the tree), individually imperceptible; and 36 nodes are
+dead-end leaves. A tightening pass merging stat clusters (esp. the 6-node guidance reliability
+chain) → ~85 punchier nodes would make each research choice matter more. Scope separately — it's a
+real balance pass, not a fix.
+
 ## Next task
 
 Suggested (open — pick per priority):

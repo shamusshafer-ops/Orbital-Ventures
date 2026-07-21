@@ -5465,3 +5465,38 @@ flight or a real loss; a deep-phase failure never sets it (abort only exists on 
 readout text branches correctly. Pod clear-away render itself isn't headless-testable (no WebGL) —
 every value driving it is. Regression: only the 1 pre-existing Codex drift
 (`test-flight3d-trajectory.js`). Build byte-faithful. BACKLOG.md #40 marked shipped.
+
+
+## Session — tech-tree audit + fixed 2 dead capstone nodes (2026-07-20)
+
+*Pure append. Heavy tier (game-design/balance judgment).* Audited the full 110-node RESEARCH tree
+structurally: 14 tracks (~8 nodes each), cost scales cleanly with prereq depth (avg 2.8 at root →
+6.4 mid → 18 at the single deepest node), reliability aggregate (+0.89 across 28 nodes) is hard-
+capped by relCap so it can't trivialize the core risk mechanic — all good design. Two real problems
+surfaced: (1) `megastructure_construction` (cost 18, the most expensive node in the game) and
+`atmospheric_isru` (cost 10) had `effect:{}` AND zero references anywhere outside their own
+definition — verified via grep that nothing gated on them, nothing consumed them. Researching either
+did nothing: the worst possible payoff for an endgame capstone. (2) Broader: ~35 nodes are
++0.02-type passive stat-shavers (32% of tree) that are individually imperceptible, and 36 nodes are
+dead-end leaves — real "complexity without consequence" bloat.
+
+Fixed (1) this session: wired both dead nodes to real, cap-bounded economic effects matching their
+existing flavor text — `megastructure_construction` → `buildCostCut:0.10 + buildTimeCut:1.5`
+(kilometer-scale orbital construction rewrites the production economy); `atmospheric_isru` →
+`launchCostCut:0.08` (gas-giant propellant relieves the launch-cost burden of outer-system ops).
+Both use existing effect fields consumed by `mfgBuildMult`/`groundLaunchMult`/`buildTimeCut` through
+the `dimCurve` soft-knee (identity below cap 0.30, asymptotes toward 0.80, never trivializes) — no
+new machinery, felt but bounded. Confirmed the 14 remaining `effect:{}` nodes are NOT dead: they
+gate content via `reqMissionDone`/prereq chains or apply point-of-use multipliers (e.g.
+`strapon_integration` gates the booster card, `orbital_eva` a crewed-reliability multiplier,
+`megawatt_electric` a 1.10 factor).
+
+Deferred (2) for a future dedicated balance pass, logged in CLAUDE.md: merge the passive stat-node
+clusters (the 6-node guidance reliability chain radio→inertial→digital→star_trackers→autonomous→
+quantum is the clearest candidate) toward ~85 punchier nodes. That's a real balance/design pass, not
+a fix — scope it deliberately.
+
+Test: `tests/test-tech-capstones.js` (13 checks — both now non-empty; effects match fantasy;
+researching them moves the real effect sums; the whole tree stays under the dimCurve asymptote;
+values are substantial, not tokenistic). Regression: only the 1 pre-existing Codex drift. Build
+byte-faithful.
