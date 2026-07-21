@@ -12038,6 +12038,27 @@ function drawScene(t){
   }
   A.lastT=t;
 }
+// Real (metres) vehicle dimensions for the bench readout — distinct from buildVehicleShape's `h`,
+// which is a compressed rendering unit (h = f(prop)/dia — deliberately NOT to-scale, so short and
+// tall designs both render legibly). This is a straightforward, honest estimate instead: each
+// stage's tank length = propellant volume ÷ cross-sectional area (using a representative ~1.0 t/m³
+// mean propellant density — a reasonable single number across the game's LOX/RP-1/methalox/solid
+// mix, not tuned per engine), plus a flat 15% length margin for dry structure/plumbing/interstage.
+// Diameter is already real metres (state.stages[i].dia, same value the drag model uses).
+function vehicleRealDimensions(spec){
+  if(!spec||!spec.stages||!spec.stages.length) return {stages:[],totalHeightM:0,maxDiameterM:0};
+  const PROP_DENSITY=1.0; // t/m^3
+  const stages=spec.stages.map(s=>{
+    const dia=clampA(s.dia||1,GEO_DIA_MIN,GEO_DIA_MAX), area=Math.PI*(dia*.5)*(dia*.5);
+    const tankLen=area>0?(Math.max(0,s.prop||0)/PROP_DENSITY)/area:0, heightM=tankLen*1.15;
+    return {diameterM:dia,heightM};
+  });
+  let totalHeightM=stages.reduce((a,s)=>a+s.heightM,0);
+  const maxDiameterM=Math.max.apply(null,stages.map(s=>s.diameterM).concat([0]));
+  if(spec.transferProp>0){ const dia=stages.length?stages[stages.length-1].diameterM:2, area=Math.PI*(dia*.5)*(dia*.5); totalHeightM+=area>0?(spec.transferProp/PROP_DENSITY/area)*1.15:0; }
+  totalHeightM+=maxDiameterM*(spec.crewed?1.8:1.1); // nose/fairing or capsule allowance, scaled off diameter
+  return {stages,totalHeightM,maxDiameterM};
+}
 function buildVehicleShape(spec){
   const segs=[];
   spec.stages.forEach(s=>{
@@ -18504,6 +18525,8 @@ function renderReadout(){
   const ispEff=(((e0.ispSL+e0.ispVac)/2)*ispMult()).toFixed(0); // #2b: reflect research Isp bonus in the shown equation
 
   let flags='';
+  { const dims=vehicleRealDimensions({stages:state.stages.map(s=>({prop:s.prop,count:s.count,dia:s.dia})),transferProp:(m.profile&&m.modules&&m.modules.includes('transfer'))?state.transfer.prop:0,crewed:!!(m&&m.crew>0)});
+    flags+=`<div class="flag" style="opacity:.85">📏 Vehicle scale: ${dims.totalHeightM.toFixed(1)} m tall · ${dims.maxDiameterM.toFixed(1)} m diameter${dims.stages.length>1?` (stage ${dims.stages.map((s,i)=>(i+1)+': '+s.heightM.toFixed(0)+'m').join(', ')})`:''}</div>`; }
   { const _inc=inclinationDv(m); if(_inc>0){
       const below=m.inclination<LAUNCH_SITE_LAT;
       const why=below ? `below the Cape's ${LAUNCH_SITE_LAT}° — a plane change` : `above the Cape's ~${LAUNCH_SITE_MAX_DIRECT_INCL}° range-safety ceiling — a dogleg`;
@@ -18591,6 +18614,8 @@ function renderProfileReadout(m){
   const testBtns=TEST_LEVELS.map((t,i)=>`<button class="btn" style="flex:1;font-size:12px;${state.testLevel===i?'border-color:var(--readout);color:var(--readout)':''}" onclick="setTestLevel(${i})">${t.name}${t.rel>0?` +${(t.rel*100)|0}%`:''}${t.cost>0?`<br><span class="dim" style="font-size:11px">${fM(t.cost)} · ${t.months} mo</span>`:''}</button>`).join('');
 
   let flags='';
+  { const dims=vehicleRealDimensions({stages:state.stages.map(s=>({prop:s.prop,count:s.count,dia:s.dia})),transferProp:(m.modules&&m.modules.includes('transfer'))?state.transfer.prop:0,crewed:!!(m&&m.crew>0)});
+    flags+=`<div class="flag" style="opacity:.85">📏 Vehicle scale: ${dims.totalHeightM.toFixed(1)} m tall · ${dims.maxDiameterM.toFixed(1)} m diameter${dims.stages.length>1?` (stage ${dims.stages.map((s,i)=>(i+1)+': '+s.heightM.toFixed(0)+'m').join(', ')})`:''}</div>`; }
   if(fails) flags+=`<div class="flag bad">▲ ${fails} leg${fails>1?'s':''} short — fix the red rows above.</div>`;
   else flags+=`<div class="flag ok">✓ Every leg passes. Mission reliability ${(rel*100|0)}%.</div>`;
   if(sim.boiloff) flags+= sim.boiloff.controlled

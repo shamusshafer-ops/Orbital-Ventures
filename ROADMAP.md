@@ -5328,3 +5328,18 @@ the ballistic path, so a stage visibly drifts back-and-down instead of the split
 Both are Three.js visual-only (no headless tests); staging-preview.html updated to match (drag/zoom +
 the eased push) for offline review. Regression: only the 3 pre-existing Codex drifts. NOT
 browser-verified in-game. Bench height/diameter scale readout is the paired follow-up (Sonnet).
+
+
+## Session — vehicle bench height/diameter scale readout (2026-07-20)
+
+*Pure append. Sonnet tier.* Paired follow-up to the launch-camera slice's #3 finding: the 3D mesh
+already reflects bench design (prop/dia-driven), it just had no numeric readout. New
+`vehicleRealDimensions(spec)` (flight.js) gives an honest metres estimate — tank length = propellant
+volume ÷ cross-section (~1.0 t/m³ representative density, single number across the game's
+LOX/RP-1/methalox/solid mix) + 15% structure margin; diameter is the real value already used by the
+drag model. Distinct from `buildVehicleShape`'s `h`, a deliberately-compressed rendering unit not
+meant to be read as metres. Surfaced as a "📏 Vehicle scale" line in both bench readouts (flat-reqDv
+and profile/multi-leg) — total height, max diameter, per-stage breakdown for 2+ stage designs.
+Test: `tests/test-vehicle-dimensions.js` (12 checks — degenerate input, prop/diameter scaling
+direction, multi-stage sum, crewed nose allowance, transfer-stage addition, real bench sanity).
+Regression: only the 3 pre-existing Codex drifts. Build byte-faithful.

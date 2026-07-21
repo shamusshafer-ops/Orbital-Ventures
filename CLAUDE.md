@@ -115,6 +115,16 @@ flight time and returns `BOOSTER SEP` / `STAGE N SEP` (1-indexed) with a 1→0 f
 Test: `tests/test-flight3d-sepbeat.js` (10 checks). Puff is Three.js (not headless-testable); beat
 label/timing is. NOT browser-verified — eyeball a multi-stage launch.
 
+## Vehicle bench height/diameter scale readout — SHIPPED (Claude)
+
+New `vehicleRealDimensions(spec)` (flight.js): honest metres-based estimate distinct from
+`buildVehicleShape`'s `h` (a deliberately-compressed rendering unit). Tank length = propellant
+volume ÷ cross-section (~1.0 t/m³ representative density) + 15% structure margin; diameter is the
+real `dia` value already used by drag. Surfaced as a "📏 Vehicle scale" flag line in both bench
+readouts (`renderReadout`/`renderProfileReadout`) — total height, max diameter, per-stage heights.
+Test: `tests/test-vehicle-dimensions.js` (12 checks, pure). This also answers the earlier "does the
+mesh reflect the bench design" question — it does (prop/dia-driven), just wasn't legible before.
+
 ## Next task
 
 Suggested (open — pick per priority):

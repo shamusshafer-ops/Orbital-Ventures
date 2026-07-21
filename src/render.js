@@ -4726,6 +4726,8 @@ function renderReadout(){
   const ispEff=(((e0.ispSL+e0.ispVac)/2)*ispMult()).toFixed(0); // #2b: reflect research Isp bonus in the shown equation
 
   let flags='';
+  { const dims=vehicleRealDimensions({stages:state.stages.map(s=>({prop:s.prop,count:s.count,dia:s.dia})),transferProp:(m.profile&&m.modules&&m.modules.includes('transfer'))?state.transfer.prop:0,crewed:!!(m&&m.crew>0)});
+    flags+=`<div class="flag" style="opacity:.85">📏 Vehicle scale: ${dims.totalHeightM.toFixed(1)} m tall · ${dims.maxDiameterM.toFixed(1)} m diameter${dims.stages.length>1?` (stage ${dims.stages.map((s,i)=>(i+1)+': '+s.heightM.toFixed(0)+'m').join(', ')})`:''}</div>`; }
   { const _inc=inclinationDv(m); if(_inc>0){
       const below=m.inclination<LAUNCH_SITE_LAT;
       const why=below ? `below the Cape's ${LAUNCH_SITE_LAT}° — a plane change` : `above the Cape's ~${LAUNCH_SITE_MAX_DIRECT_INCL}° range-safety ceiling — a dogleg`;
@@ -4813,6 +4815,8 @@ function renderProfileReadout(m){
   const testBtns=TEST_LEVELS.map((t,i)=>`<button class="btn" style="flex:1;font-size:12px;${state.testLevel===i?'border-color:var(--readout);color:var(--readout)':''}" onclick="setTestLevel(${i})">${t.name}${t.rel>0?` +${(t.rel*100)|0}%`:''}${t.cost>0?`<br><span class="dim" style="font-size:11px">${fM(t.cost)} · ${t.months} mo</span>`:''}</button>`).join('');
 
   let flags='';
+  { const dims=vehicleRealDimensions({stages:state.stages.map(s=>({prop:s.prop,count:s.count,dia:s.dia})),transferProp:(m.modules&&m.modules.includes('transfer'))?state.transfer.prop:0,crewed:!!(m&&m.crew>0)});
+    flags+=`<div class="flag" style="opacity:.85">📏 Vehicle scale: ${dims.totalHeightM.toFixed(1)} m tall · ${dims.maxDiameterM.toFixed(1)} m diameter${dims.stages.length>1?` (stage ${dims.stages.map((s,i)=>(i+1)+': '+s.heightM.toFixed(0)+'m').join(', ')})`:''}</div>`; }
   if(fails) flags+=`<div class="flag bad">▲ ${fails} leg${fails>1?'s':''} short — fix the red rows above.</div>`;
   else flags+=`<div class="flag ok">✓ Every leg passes. Mission reliability ${(rel*100|0)}%.</div>`;
   if(sim.boiloff) flags+= sim.boiloff.controlled
