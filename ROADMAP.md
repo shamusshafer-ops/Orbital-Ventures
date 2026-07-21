@@ -5343,3 +5343,18 @@ and profile/multi-leg) — total height, max diameter, per-stage breakdown for 2
 Test: `tests/test-vehicle-dimensions.js` (12 checks — degenerate input, prop/diameter scaling
 direction, multi-stage sum, crewed nose allowance, transfer-stage addition, real bench sanity).
 Regression: only the 3 pre-existing Codex drifts. Build byte-faithful.
+
+
+## Session — flight playback speed range widened (2026-07-20)
+
+*Pure append. Sonnet tier.* `ANIM_SPEEDS`/`animSpeed()` (shell.js) already existed and drives
+`animLoop`'s virtual-time advance for every flight overlay screen — the button lives outside
+`flightCanvasWrap` so it already covered both 2D and 3D. Only offered 0.5/1/2x. Widened to
+0.1x/0.25x/1x/2x/5x/10x/25x/50x per the request ("sub frames per second to much faster"). Default
+speed index fixed to the 1x entry so real behavior is unchanged unless the player cycles (avoids a
+silent default-speed change from array reordering). Also fixed a stale static button label ("1×
+Slow" in shell.html, never matched the actual default). No change to `ANIM_MAX_WALL_DT`'s
+tab-resume clamp — it still bounds wall-dt per frame before the multiplier, so high speeds stay
+smoothly rendered rather than skipping frames.
+Test: `tests/test-anim-speed.js` (9 checks — range, default, cycling, wraparound). Regression: only
+the 3 pre-existing Codex drifts. Build byte-faithful.

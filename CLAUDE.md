@@ -125,6 +125,16 @@ readouts (`renderReadout`/`renderProfileReadout`) — total height, max diameter
 Test: `tests/test-vehicle-dimensions.js` (12 checks, pure). This also answers the earlier "does the
 mesh reflect the bench design" question — it does (prop/dia-driven), just wasn't legible before.
 
+## Flight playback speed range widened — SHIPPED (Claude)
+
+`ANIM_SPEEDS` (shell.js) already existed and applies to every flight overlay screen (2D and 3D
+alike — the button sits outside `flightCanvasWrap`) but only offered 0.5/1/2x. Widened to
+0.1x/0.25x/1x/2x/5x/10x/25x/50x — sub-fps slow-mo for watching a separation closely, up to 50x for
+skipping through a long cislunar cruise without a hard cut. Default stays 1x (index fixed to point
+at the 1x entry so behavior is unchanged unless the player cycles). Fixed a stale static button
+label ("1× Slow" → "1× Normal") found in the process. Cycle via the existing button or [Enter].
+Test: `tests/test-anim-speed.js` (9 checks, pure).
+
 ## Next task
 
 Suggested (open — pick per priority):
