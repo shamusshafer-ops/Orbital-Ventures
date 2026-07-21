@@ -5395,6 +5395,7 @@ function finalizeLaunch(ctx, ops){
   state.assembleOrbit=false; // #6: assembly choice applies to one flight
   const rnd=()=>Math.random();
   const spec={ title:m.name, crewed, success, failPhase,
+    crewEscaped: crewed && outcome.kind==='abort' && failPhase==='ascent', // BACKLOG #40: distinguishes an escape-tower save from a full loss for the failure visual (both set success=false/failPhase='ascent'; only outcome.kind differs)
     stages: state.stages.map(s=>({prop:s.prop,count:s.count,dia:s.dia})),
     boosters: boosterSpec(),
     transferProp: (m.profile&&m.modules.includes('transfer'))?state.transfer.prop:0,

@@ -66,7 +66,7 @@ Complexity: S = <1 day, M = 1–5 days, L = 1–3 weeks, XL = 1+ month. Impact: 
 |37| Max-Q structural check vs. fairing choice | Part relevance | M | ★★ | — | M |Backlog|
 |38| Night launches (era/window dependent) w/ visuals | Spectacle | S | ★ | — | L |Shipped 2026-07-13|
 |39| Pad aborts that damage pad (repair time) | Risk depth | S | ★★ | 29 | M |Backlog|
-|40| Crew survival mini-arc on failures (escape tower) | Emotional stakes | M | ★★★ | — | H |Backlog|
+|40| Crew survival mini-arc on failures (escape tower) | Emotional stakes | M | ★★★ | — | H |Shipped 2026-07-20 — the launch_escape tech + outcome-kind branch already existed; added the missing visual/readout distinction (escape pod clears vs full loss) in the 3D failure sequence|
 |41| Debris/range-safety consequences on populated tracks | Site choice matters | M | ★ | 30 | L |Backlog|
 |42| Mission patches (procedural SVG) per flight | Attachment/collection | M | ★★ | — | M |Backlog|
 |43| Photo mode / GIF export of flights | Marketing engine | L | ★★ | — | M |Backlog|

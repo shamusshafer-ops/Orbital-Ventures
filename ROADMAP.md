@@ -5435,3 +5435,33 @@ each scenario to completion and inspecting the actual final state before touchin
 Updated both to assert the new correct behavior. `test-decision-panel.js` 35/35,
 `test-pad-a.js` 36/36. Only `test-flight3d-trajectory.js` remains as a known drift (Codex's
 accepted trajectory/vehicle-physics changes, unrelated to this). Build byte-faithful.
+
+
+## Session — BACKLOG #40: crew survival mini-arc, escape-save visual (2026-07-20)
+
+*Pure append. Heavy tier (new visual content + real-mechanic investigation).* Investigated before
+building: BACKLOG.md listed #40 as untriaged, but the underlying MECHANIC — a `launch_escape` tech
+that turns a crewed ascent failure into `kind:'abort'` (crew survives) instead of crew death —
+already existed, complete with UI warnings and historical flavor text. The actual gap: the 3D
+failure sequence had no way to tell an escape-tower save apart from a full catastrophe (both set
+`success=false/failPhase='ascent'`), so both played the identical explosion, undercutting the
+already-written "the escape system pulled the crew clear" story.
+
+Reused the existing failure-debrief system instead of new geometry: `cape3dFailureEffects` already
+clones each stage group as one discrete debris "piece" with its own explosion velocity; the top
+group (nose/capsule) is now tagged as the escape-pod candidate at build time (structural, not
+outcome-dependent). Threaded a real signal end to end: `spec.crewEscaped` (sim.js, derived from
+`crewed && outcome.kind==='abort' && failPhase==='ascent'` — both branches set the same
+success/failPhase, only `kind` differs) → `flight3dPresentationSnapshot`'s `effects.crewEscaped`
+(gated on the same arm-point as `ascentFailure`, never premature) → `cape3dStartFailure`/
+`cape3dUpdateFailure`, which give the tagged pod piece a fast, mostly-upward clear-away velocity and
+its own brief abort-motor flash instead of the generic radial debris spread, with a much slower
+fade so it reads as "leaving," not "vanishing with the explosion." Readout branches to "LAUNCH
+ESCAPE — CREW CLEAR" vs "VEHICLE LOSS".
+
+Test: `tests/test-crew-escape.js` (12 checks) — signal only fires for a genuinely crewed,
+abort-kind, ascent-phase save; never premature (gated with ascentFailure); never for an uncrewed
+flight or a real loss; a deep-phase failure never sets it (abort only exists on ascent today);
+readout text branches correctly. Pod clear-away render itself isn't headless-testable (no WebGL) —
+every value driving it is. Regression: only the 1 pre-existing Codex drift
+(`test-flight3d-trajectory.js`). Build byte-faithful. BACKLOG.md #40 marked shipped.

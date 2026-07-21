@@ -194,6 +194,28 @@ Updated both tests' assertions to verify the new correct behavior rather than th
 `test-decision-panel.js` 35/35, `test-pad-a.js` 36/36. Only `test-flight3d-trajectory.js` (Codex's
 accepted physics changes, unrelated) remains as a known drift.
 
+## BACKLOG #40: crew survival mini-arc (escape-save visual) — SHIPPED (Claude)
+
+Investigated first: the `launch_escape` tech and its outcome-level branch (crewed ascent failure
+becomes `kind:'abort'` — crew survives — instead of the crew-death path) ALREADY existed, complete
+with UI warnings and flavor text. The real gap: the 3D failure VISUAL couldn't tell an escape-tower
+save apart from a full catastrophe — both set `success=false/failPhase='ascent'`, so the same
+explosion (and "VEHICLE LOSS" text) played either way, undercutting the "the escape system pulled
+the crew clear" story line.
+
+Fix reuses the existing failure-debrief system rather than building new geometry: the top stage
+group (holding the nose/capsule) is already cloned as one discrete debris "piece"; tagged as the
+escape-pod candidate at build time. On a real escape save (`spec.crewEscaped`, derived from
+`outcome.kind==='abort'`, threaded spec→snapshot→effects), that piece gets a distinct fast,
+mostly-upward clear-away velocity + its own brief abort-motor flash and a much slower fade, instead
+of joining the generic radial debris spread every other piece gets. Readout shows "LAUNCH ESCAPE —
+CREW CLEAR" instead of "VEHICLE LOSS".
+
+Test: `tests/test-crew-escape.js` (12 checks — signal only fires for a real crewed/abort-kind/
+ascent-phase save, never premature, never for uncrewed or a genuine loss; readout text). The pod
+clear-away render itself isn't headless-testable (no WebGL) — every value driving it is. BACKLOG.md
+#40 marked shipped.
+
 ## Next task
 
 Suggested (open — pick per priority):

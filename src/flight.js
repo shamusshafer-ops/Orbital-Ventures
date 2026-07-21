@@ -499,6 +499,7 @@ function flight3dPresentationSnapshot(spec,timing,t){
   const stages=((spec&&spec.stages)||[]).map(s=>({prop:s.prop||0,count:s.count||1,dia:s.dia||0}));
   const boosters=spec&&spec.boosters?{count:spec.boosters.count||0,prop:spec.boosters.prop||0,dia:spec.boosters.dia||0,solid:!!spec.boosters.solid}:null;
   const ascentFailure=phase==='ascent'&&!!(spec&&spec.success===false&&spec.failPhase==='ascent')&&phaseP>=.5;
+  const crewEscaped=ascentFailure&&!!(spec&&spec.crewEscaped); // BACKLOG #40: threads the escape-tower-save signal into the failure visual
   // E4.7: a deep (in-space) failure — a strand/loss that happens after reaching orbit or cislunar
   // cruise (life-support/propulsion loss, etc.). Mirrors ascentFailure but for the orbit/transfer
   // phases: it "arms" once the flight has coasted DEEP_FAIL_FRAC into the phase (0.42, matching the
@@ -507,7 +508,7 @@ function flight3dPresentationSnapshot(spec,timing,t){
   // — the outcome was already resolved by the sim long before this animation opened.
   const DEEP_FAIL_FRAC=.42;
   const deepFailure=(phase==='orbit'||phase==='transfer')&&!!(spec&&spec.success===false&&spec.failPhase==='deep')&&phaseP>=DEEP_FAIL_FRAC;
-  return {phase,phaseProgress:clampA(phaseP,0,1),overallProgress:clampA(local/total,0,1),mode:(spec&&spec.mode)||'launch',crewed:!!(spec&&spec.crewed),isOrbital:!!(spec&&spec.isOrbital),isCislunar:!!(spec&&spec.isCislunar),reqDv:(spec&&spec.reqDv)||0,success:spec?spec.success!==false:true,failPhase:(spec&&spec.failPhase)||null,vehicle:{stages,boosters,transferProp:(spec&&spec.transferProp)||0,physics:(spec&&spec.physics)||null},effects:{ignition:clampA(d.ignite==null?(phase==='pad'?0:1):d.ignite,0,1),night:!!(spec&&spec.night),ascentFailure,failureProgress:ascentFailure?clampA((phaseP-.5)/.28,0,1):0,deepFailure,deepFailureFrac:DEEP_FAIL_FRAC,deepFailureProgress:deepFailure?clampA((phaseP-DEEP_FAIL_FRAC)/.24,0,1):0}};
+  return {phase,phaseProgress:clampA(phaseP,0,1),overallProgress:clampA(local/total,0,1),mode:(spec&&spec.mode)||'launch',crewed:!!(spec&&spec.crewed),isOrbital:!!(spec&&spec.isOrbital),isCislunar:!!(spec&&spec.isCislunar),reqDv:(spec&&spec.reqDv)||0,success:spec?spec.success!==false:true,failPhase:(spec&&spec.failPhase)||null,vehicle:{stages,boosters,transferProp:(spec&&spec.transferProp)||0,physics:(spec&&spec.physics)||null},effects:{ignition:clampA(d.ignite==null?(phase==='pad'?0:1):d.ignite,0,1),night:!!(spec&&spec.night),ascentFailure,crewEscaped,failureProgress:ascentFailure?clampA((phaseP-.5)/.28,0,1):0,deepFailure,deepFailureFrac:DEEP_FAIL_FRAC,deepFailureProgress:deepFailure?clampA((phaseP-DEEP_FAIL_FRAC)/.24,0,1):0}};
 }
 function flight3dAvailable(){ return FLIGHT3D&&typeof cape3dAvailable==='function'&&cape3dAvailable()&&typeof startCape3D==='function'; }
 function flight3dRestoreCape(s){
@@ -570,7 +571,7 @@ function updateFlight3DReadout(snapshot){
   const deepFail=snapshot.effects&&snapshot.effects.deepFailure;
   let text='FLIGHT 3D';
   if(phase==='pad') text+='\nCOUNTDOWN · '+p+'%';
-  else if(phase==='ascent') text+='\n'+(snapshot.effects&&snapshot.effects.ascentFailure?'VEHICLE LOSS':'ASCENT')+' · '+p+'%';
+  else if(phase==='ascent') text+='\n'+(snapshot.effects&&snapshot.effects.crewEscaped?'LAUNCH ESCAPE — CREW CLEAR':(snapshot.effects&&snapshot.effects.ascentFailure?'VEHICLE LOSS':'ASCENT'))+' · '+p+'%';
   else if(phase==='orbit') text+='\n'+(deepFail?'SPACECRAFT LOST':(p<13?'ORBITAL INSERTION':'EARTH ORBIT'))+' · '+p+'%';
   else if(phase==='transfer') text+='\n'+(deepFail?'SPACECRAFT LOST':'CISLUNAR TRANSFER')+' · '+p+'%';
   else if(phase==='reentry') text+='\n'+(p<52?'ATMOSPHERIC ENTRY':(p<66?'DROGUE DEPLOY':'RECOVERY DESCENT'))+' · '+p+'%';

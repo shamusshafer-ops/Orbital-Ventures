@@ -8001,6 +8001,7 @@ function finalizeLaunch(ctx, ops){
   state.assembleOrbit=false; // #6: assembly choice applies to one flight
   const rnd=()=>Math.random();
   const spec={ title:m.name, crewed, success, failPhase,
+    crewEscaped: crewed && outcome.kind==='abort' && failPhase==='ascent', // BACKLOG #40: distinguishes an escape-tower save from a full loss for the failure visual (both set success=false/failPhase='ascent'; only outcome.kind differs)
     stages: state.stages.map(s=>({prop:s.prop,count:s.count,dia:s.dia})),
     boosters: boosterSpec(),
     transferProp: (m.profile&&m.modules.includes('transfer'))?state.transfer.prop:0,
@@ -10868,6 +10869,7 @@ function flight3dPresentationSnapshot(spec,timing,t){
   const stages=((spec&&spec.stages)||[]).map(s=>({prop:s.prop||0,count:s.count||1,dia:s.dia||0}));
   const boosters=spec&&spec.boosters?{count:spec.boosters.count||0,prop:spec.boosters.prop||0,dia:spec.boosters.dia||0,solid:!!spec.boosters.solid}:null;
   const ascentFailure=phase==='ascent'&&!!(spec&&spec.success===false&&spec.failPhase==='ascent')&&phaseP>=.5;
+  const crewEscaped=ascentFailure&&!!(spec&&spec.crewEscaped); // BACKLOG #40: threads the escape-tower-save signal into the failure visual
   // E4.7: a deep (in-space) failure — a strand/loss that happens after reaching orbit or cislunar
   // cruise (life-support/propulsion loss, etc.). Mirrors ascentFailure but for the orbit/transfer
   // phases: it "arms" once the flight has coasted DEEP_FAIL_FRAC into the phase (0.42, matching the
@@ -10876,7 +10878,7 @@ function flight3dPresentationSnapshot(spec,timing,t){
   // — the outcome was already resolved by the sim long before this animation opened.
   const DEEP_FAIL_FRAC=.42;
   const deepFailure=(phase==='orbit'||phase==='transfer')&&!!(spec&&spec.success===false&&spec.failPhase==='deep')&&phaseP>=DEEP_FAIL_FRAC;
-  return {phase,phaseProgress:clampA(phaseP,0,1),overallProgress:clampA(local/total,0,1),mode:(spec&&spec.mode)||'launch',crewed:!!(spec&&spec.crewed),isOrbital:!!(spec&&spec.isOrbital),isCislunar:!!(spec&&spec.isCislunar),reqDv:(spec&&spec.reqDv)||0,success:spec?spec.success!==false:true,failPhase:(spec&&spec.failPhase)||null,vehicle:{stages,boosters,transferProp:(spec&&spec.transferProp)||0,physics:(spec&&spec.physics)||null},effects:{ignition:clampA(d.ignite==null?(phase==='pad'?0:1):d.ignite,0,1),night:!!(spec&&spec.night),ascentFailure,failureProgress:ascentFailure?clampA((phaseP-.5)/.28,0,1):0,deepFailure,deepFailureFrac:DEEP_FAIL_FRAC,deepFailureProgress:deepFailure?clampA((phaseP-DEEP_FAIL_FRAC)/.24,0,1):0}};
+  return {phase,phaseProgress:clampA(phaseP,0,1),overallProgress:clampA(local/total,0,1),mode:(spec&&spec.mode)||'launch',crewed:!!(spec&&spec.crewed),isOrbital:!!(spec&&spec.isOrbital),isCislunar:!!(spec&&spec.isCislunar),reqDv:(spec&&spec.reqDv)||0,success:spec?spec.success!==false:true,failPhase:(spec&&spec.failPhase)||null,vehicle:{stages,boosters,transferProp:(spec&&spec.transferProp)||0,physics:(spec&&spec.physics)||null},effects:{ignition:clampA(d.ignite==null?(phase==='pad'?0:1):d.ignite,0,1),night:!!(spec&&spec.night),ascentFailure,crewEscaped,failureProgress:ascentFailure?clampA((phaseP-.5)/.28,0,1):0,deepFailure,deepFailureFrac:DEEP_FAIL_FRAC,deepFailureProgress:deepFailure?clampA((phaseP-DEEP_FAIL_FRAC)/.24,0,1):0}};
 }
 function flight3dAvailable(){ return FLIGHT3D&&typeof cape3dAvailable==='function'&&cape3dAvailable()&&typeof startCape3D==='function'; }
 function flight3dRestoreCape(s){
@@ -10939,7 +10941,7 @@ function updateFlight3DReadout(snapshot){
   const deepFail=snapshot.effects&&snapshot.effects.deepFailure;
   let text='FLIGHT 3D';
   if(phase==='pad') text+='\nCOUNTDOWN · '+p+'%';
-  else if(phase==='ascent') text+='\n'+(snapshot.effects&&snapshot.effects.ascentFailure?'VEHICLE LOSS':'ASCENT')+' · '+p+'%';
+  else if(phase==='ascent') text+='\n'+(snapshot.effects&&snapshot.effects.crewEscaped?'LAUNCH ESCAPE — CREW CLEAR':(snapshot.effects&&snapshot.effects.ascentFailure?'VEHICLE LOSS':'ASCENT'))+' · '+p+'%';
   else if(phase==='orbit') text+='\n'+(deepFail?'SPACECRAFT LOST':(p<13?'ORBITAL INSERTION':'EARTH ORBIT'))+' · '+p+'%';
   else if(phase==='transfer') text+='\n'+(deepFail?'SPACECRAFT LOST':'CISLUNAR TRANSFER')+' · '+p+'%';
   else if(phase==='reentry') text+='\n'+(p<52?'ATMOSPHERIC ENTRY':(p<66?'DROGUE DEPLOY':'RECOVERY DESCENT'))+' · '+p+'%';
@@ -16080,28 +16082,51 @@ function cape3dFailureEffects(root,rocket,launchEffects){
   const core=new THREE.Mesh(new THREE.SphereGeometry(1,14,10),new THREE.MeshBasicMaterial({color:0xfff3c4,transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending})); g.add(core);
   const flash=new THREE.PointLight(0xff8a36,0,720,2); g.add(flash);
   const pieces=[];
+  const topGroup=(rocket.userData.stageGroups&&rocket.userData.stageGroups.length)?rocket.userData.stageGroups[rocket.userData.stageGroups.length-1].group:null;
   rocket.children.filter(child=>child!==launchEffects.group).forEach((child,i)=>{
     const mesh=child.clone(true); mesh.traverse(node=>{ if(node.material&&node.material.clone) node.material=node.material.clone(); }); mesh.visible=false; g.add(mesh);
-    const a=i*2.399, speed=52+(i%5)*18;
-    pieces.push({mesh,local:child.position.clone(),velocity:new THREE.Vector3(Math.cos(a)*speed,45+(i%4)*24,Math.sin(a)*speed),spin:new THREE.Vector3(.8+(i%3)*.55,.5+(i%4)*.32,.65+(i%5)*.24)});
+    const a=i*2.399, speed=52+(i%5)*18, isEscapePod=(child===topGroup);
+    pieces.push({mesh,local:child.position.clone(),velocity:new THREE.Vector3(Math.cos(a)*speed,45+(i%4)*24,Math.sin(a)*speed),spin:new THREE.Vector3(.8+(i%3)*.55,.5+(i%4)*.32,.65+(i%5)*.24),isEscapePod});
   });
+  // Crew-escape "mini-arc" (BACKLOG #40): when a launch-escape-system save is signalled, the piece
+  // holding the nose/capsule (isEscapePod above) gets a distinct clear-away treatment in
+  // cape3dStartFailure/cape3dUpdateFailure instead of joining the generic debris field — a bright,
+  // brief abort-motor flash of its own, so the story ("the escape system pulled the crew clear")
+  // has something to actually watch, not just a log line under the same explosion as a full loss.
+  const escapeFlash=new THREE.PointLight(0xdff3ff,0,260,2); escapeFlash.visible=false; g.add(escapeFlash);
   const sparks=[]; const sparkMat=new THREE.MeshBasicMaterial({color:0xffd27b,transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending});
   for(let i=0;i<26;i++){ const spark=new THREE.Mesh(new THREE.SphereGeometry(2+(i%3),7,6),sparkMat.clone()); spark.visible=false; g.add(spark); const a=i*2.399; sparks.push({mesh:spark,velocity:new THREE.Vector3(Math.cos(a)*(75+(i%6)*15),30+(i%5)*20,Math.sin(a)*(75+(i%6)*15))}); }
-  root.add(g); return {group:g,fire,core,flash,pieces,sparks,active:false,origin:new THREE.Vector3()};
+  root.add(g); return {group:g,fire,core,flash,escapeFlash,pieces,sparks,active:false,escaped:false,origin:new THREE.Vector3()};
 }
-function cape3dStartFailure(failure,rocket){
-  failure.active=true; failure.origin.copy(rocket.position); failure.group.visible=true;
-  failure.pieces.forEach(piece=>{ piece.mesh.visible=true; piece.mesh.position.copy(failure.origin).add(piece.local); piece.mesh.rotation.set(0,0,0); });
+function cape3dStartFailure(failure,rocket,escaped){
+  failure.active=true; failure.escaped=!!escaped; failure.origin.copy(rocket.position); failure.group.visible=true;
+  failure.pieces.forEach(piece=>{
+    piece.mesh.visible=true; piece.mesh.position.copy(failure.origin).add(piece.local); piece.mesh.rotation.set(0,0,0);
+    // BACKLOG #40 mini-arc: on an escape-system save, the pod piece gets a fast, mostly-upward
+    // clear-away velocity (an abort motor is brief but powerful) instead of the generic radial
+    // debris spread every other piece gets — reads as "punched clear," not "blew apart with it."
+    if(failure.escaped && piece.isEscapePod) piece.escapeVelocity=new THREE.Vector3(piece.velocity.x*.4, 210, piece.velocity.z*.4);
+  });
   failure.sparks.forEach(spark=>{ spark.mesh.visible=true; spark.mesh.position.copy(failure.origin); });
+  if(failure.escaped){ failure.escapeFlash.visible=true; failure.escapeFlash.position.copy(failure.origin); }
 }
 function cape3dUpdateFailure(failure,p){
   const t=Math.max(0,Math.min(1,p))*2.8, fade=Math.max(0,1-p*.72);
   failure.fire.position.copy(failure.origin); failure.core.position.copy(failure.origin); failure.fire.scale.setScalar(24+125*Math.min(1,p*3)); failure.core.scale.setScalar(10+58*Math.min(1,p*4)); failure.fire.material.opacity=.86*fade; failure.core.material.opacity=.95*Math.max(0,1-p*1.8); failure.flash.position.copy(failure.origin); failure.flash.intensity=10*Math.max(0,1-p*2.4);
-  failure.pieces.forEach(piece=>{ piece.mesh.position.copy(failure.origin).add(piece.local).addScaledVector(piece.velocity,t); piece.mesh.position.y-=68*t*t; piece.mesh.rotation.x=piece.spin.x*t; piece.mesh.rotation.y=piece.spin.y*t; piece.mesh.rotation.z=piece.spin.z*t; piece.mesh.traverse(node=>{ if(node.material&&'opacity' in node.material){ node.material.transparent=true; node.material.opacity=fade; } }); });
+  failure.pieces.forEach(piece=>{
+    const escaping=failure.escaped&&piece.isEscapePod, v=escaping?piece.escapeVelocity:piece.velocity;
+    // The pod decelerates like a real short abort burn (drag/gravity catching it) instead of
+    // coasting forever, and fades much more slowly than the debris field — it's meant to be
+    // watched leaving, not vanish with the explosion.
+    const et=escaping?Math.min(1,t*.62):t, podFade=escaping?Math.max(0,1-p*.30):fade;
+    piece.mesh.position.copy(failure.origin).add(piece.local).addScaledVector(v,et); piece.mesh.position.y-=(escaping?18:68)*et*et; piece.mesh.rotation.x=piece.spin.x*(escaping?et*.15:t); piece.mesh.rotation.y=piece.spin.y*(escaping?et*.15:t); piece.mesh.rotation.z=piece.spin.z*(escaping?et*.15:t);
+    piece.mesh.traverse(node=>{ if(node.material&&'opacity' in node.material){ node.material.transparent=true; node.material.opacity=escaping?podFade:fade; } });
+  });
   failure.sparks.forEach(spark=>{ spark.mesh.position.copy(failure.origin).addScaledVector(spark.velocity,t); spark.mesh.position.y-=48*t*t; spark.mesh.material.opacity=Math.max(0,1-p*1.35); });
+  if(failure.escaped){ failure.escapeFlash.position.copy(failure.origin).addScaledVector(new THREE.Vector3(0,210,0),Math.min(1,t*.62)*.28); failure.escapeFlash.intensity=6*Math.max(0,1-p*2.6); }
 }
 function cape3dResetFailure(failure){
-  if(!failure) return; failure.active=false; failure.group.visible=false; failure.fire.material.opacity=0; failure.core.material.opacity=0; failure.flash.intensity=0; failure.pieces.forEach(piece=>piece.mesh.visible=false); failure.sparks.forEach(spark=>spark.mesh.visible=false);
+  if(!failure) return; failure.active=false; failure.escaped=false; failure.group.visible=false; failure.fire.material.opacity=0; failure.core.material.opacity=0; failure.flash.intensity=0; if(failure.escapeFlash){ failure.escapeFlash.intensity=0; failure.escapeFlash.visible=false; } failure.pieces.forEach(piece=>piece.mesh.visible=false); failure.sparks.forEach(spark=>spark.mesh.visible=false);
 }
 function cape3dEnterLaunchPresentation(snapshot){
   if(!cape3d||!cape3d.root) return false; const root=cape3d.root, rocket=root.userData.launchRocket, fx=root.userData.launchEffects;
@@ -16186,7 +16211,7 @@ function cape3dUpdateLaunchPresentation(snapshot){
       if(part.position.y<base.y-3000){ part.visible=false; root.remove(part); debris.splice(i,1); }
     }
   }
-  if(q.failed){ if(failure&&!failure.active) cape3dStartFailure(failure,rocket); rocket.visible=false; fx.group.visible=false; if(failure) cape3dUpdateFailure(failure,q.failureProgress); }
+  if(q.failed){ if(failure&&!failure.active) cape3dStartFailure(failure,rocket,snapshot&&snapshot.effects&&snapshot.effects.crewEscaped); rocket.visible=false; fx.group.visible=false; if(failure) cape3dUpdateFailure(failure,q.failureProgress); }
   else { rocket.visible=!(q.phase==='suborbital'&&q.progress>=.999); if(failure&&failure.active) cape3dResetFailure(failure); fx.group.visible=rocket.visible&&q.plume>0.01; }
   cape3dTickSepPuffs(root);
   cape3dUpdateGroundSmoke(root.userData.groundSmoke,q.phase,q.progress,(snapshot&&snapshot.effects&&snapshot.effects.ignition)||0);
