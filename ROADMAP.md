@@ -5619,3 +5619,67 @@ Remaining cluster for a future slice (same recipe): propulsion combustion sub-ch
 external refs before merging any of the four — the pattern in slices 2-3 (a load-bearing point-of-use
 gate hiding outside the track's own file section) has held twice in a row now, so assume it holds
 again until proven otherwise.
+
+
+## Session — tech-tree design pass, slice 4: combustion chain merge 4→2 — PASS COMPLETE (2026-07-21)
+
+*Pure append. Heavy tier (balance/design). Fourth and final slice of the tree-tightening pass.*
+Propulsion combustion sub-chain (`combustion_stability` → `turbopump` → `regen_cooling` →
+`chamber_pressure`) was structurally different from slices 1-3: **every** node in this 4-node chain is
+externally load-bearing — `combustion_stability` gates `sustainer`; `turbopump` gates `heavy_booster` +
+`strapon_integration`; `regen_cooling` gates `methane_propulsion`; `chamber_pressure` gates
+`super_heavy` + `full_flow_staged`. No pure-stat node existed to quietly drop, unlike the guidance,
+testing, and structures tracks. Collapsed 4→2 anyway by picking the survivor id at each pair with the
+heavier external footprint and re-pointing the lighter dependent onto it:
+- `turbopump` (kept id — 2 external dependents vs `combustion_stability`'s 1) absorbs
+  `combustion_stability`: req kerosene (unchanged root), thrust 0.09 (=0.04+0.05), cost compressed
+  4.5→3.5. `sustainer`'s req re-pointed from the removed `combustion_stability` onto `turbopump`.
+- `chamber_pressure` (kept id — 2 external dependents vs `regen_cooling`'s 1) absorbs `regen_cooling`:
+  req turbopump, isp 0.08 (=0.04+0.04) + thrust 0.05 (unchanged), cost compressed 6.5→5.0.
+  `methane_propulsion`'s req re-pointed from the removed `regen_cooling` onto `chamber_pressure`.
+
+**Flagged explicitly, not a silent side effect:** this is a real gating-*granularity* change, not just
+legibility, unlike slices 1-3. Before, `sustainer` sat one node shallower than
+`heavy_booster`/`strapon_integration`; `methane_propulsion` sat one node shallower than
+`super_heavy`/`full_flow_staged`. After, both pairs now gate on the same merged node — `sustainer` and
+`methane_propulsion` each cost one extra research step to reach than before. Thrust/Isp effect TOTALS
+are preserved exactly (0.14 thrust, 0.08 isp, same as the old 4-node chain), but this specific slice
+does shift *when* those two nodes become available, unlike the pure legibility wins in slices 1-3.
+Documented here and asserted directly in the test suite (section 8) rather than left implicit.
+
+Test: `tests/test-tech-combustion-merge.js` (21 checks — chain is now turbopump + chamber_pressure;
+both removed ids gone; no dangling reqs; all 6 external dependents re-verified (2 re-pointed, 4
+unchanged since their gating id survived); thrust/isp totals exactly preserved; costs compressed not
+inflated; the granularity change explicitly asserted; fresh-game reachability). Additionally ran a
+full-tree reachability + dangling-req proof across the whole 98-node RESEARCH array (down from 110
+before this 4-slice pass) post-merge: 0 dangling reqs, 0 unreachable nodes, matching the same proof
+style the original 2026-06-21 tech-tree buildout used. Regression: full suite run, only the 1
+pre-existing Codex drift (`test-flight3d-trajectory.js`, unrelated) — everything else including slices
+1-3's dedicated test files all still clean. Build byte-faithful (`node build.js --check` passes before
+commit).
+
+**This closes the tech-tree tightening pass** flagged by the 2026-07-20 audit. Summary across all 4
+slices: 110 → 98 nodes (12 removed, 0 orphaned, 2 dead capstones fixed pre-pass). Guidance 6→3,
+testing 9→5, structures 7→4, combustion 4→2. Every merge preserved its track's effect total (or, for
+structures, its final sigma floor) exactly; the combustion slice is the one exception where gating
+depth (not total power) shifted, called out above. No further clusters are queued — the tree is at a
+natural resting point. A future balance pass could still revisit: the ~35 nodes flagged in the
+2026-07-20 audit as individually-imperceptible passive stat-shavers span multiple tracks beyond the 4
+tackled here (guidance/testing/structures/combustion were the clearest linear-chain candidates;
+what's left is more scattered and would need a different approach than "collapse a chain").
+
+---
+
+**Note for Codex** (or whichever agent picks this repo up next): the tech-tree design pass that
+started with the 2026-07-20 audit is now complete across 4 slices (this file, search "tech-tree design
+pass" for all of them). `RESEARCH` in `src/data.js` is now 98 nodes, down from 110. If you're
+auditing, testing, or building against tech-tree node ids, the following ids **no longer exist** and
+will need updating in any external references, saved test fixtures, or docs you maintain:
+`radio_guidance`, `inertial_nav`, `star_trackers` (guidance, slice 1); `flight_telemetry`,
+`vibration_testing`, `accelerated_life_testing`, `digital_twin`, `autonomous_qa`, `stage_test`
+(testing, slice 2); `composite_structures`, `friction_stir_welding`, `carbon_cryotanks`,
+`self_healing_materials`, `metamaterial_structures` (structures, slice 3); `combustion_stability`,
+`regen_cooling` (combustion, slice 4). Their functionality was folded into surviving nodes — see each
+slice's entry above for the exact mapping and the reasoning. No save-compat shim was added (owner
+waived back-compat for this pass), so anything keying off the old ids will silently no-op rather than
+error — check `RESEARCH.find(r=>r.id===...)` for `undefined` if you're touching this area.

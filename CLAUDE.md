@@ -294,3 +294,36 @@ node -e "const F=require('fs'); const a=F.readFileSync('tests/harness.js','utf8'
 
 Also run `git diff --check`. Generated files are `build/game.js`, `index.html`, and
 `orbital-ventures.html`; edit `src/` and run `node build.js`, never edit the generated HTML.
+
+## Tech-tree design pass — complete, 4 slices (Claude, 2026-07-20/21)
+
+Note for Codex (or whoever touches `RESEARCH` in `src/data.js` next): a 4-slice tree-tightening
+pass just landed on `main`, triggered by a 2026-07-20 audit that found two dead capstone nodes
+(fixed same session) plus ~35 individually-imperceptible passive stat-shaver nodes. Full detail
+and per-slice reasoning is in `ROADMAP.md` — search "tech-tree design pass" for all 4 entries — but
+the load-bearing summary is:
+
+- `RESEARCH` is now **98 nodes**, down from 110. 12 ids were removed and folded into surviving
+  nodes; 0 orphaned, 0 dangling reqs, 0 unreachable (verified by a full-tree BFS reachability proof
+  after the last slice).
+- **Removed ids** — do not reference these, they no longer exist: `radio_guidance`, `inertial_nav`,
+  `star_trackers` (guidance); `flight_telemetry`, `vibration_testing`, `accelerated_life_testing`,
+  `digital_twin`, `autonomous_qa`, `stage_test` (testing); `composite_structures`,
+  `friction_stir_welding`, `carbon_cryotanks`, `self_healing_materials`, `metamaterial_structures`
+  (structures); `combustion_stability`, `regen_cooling` (propulsion combustion chain).
+- **Two reqs were re-pointed** onto merge survivors, not just internal chain links: `sustainer`
+  now reqs `turbopump` (was `combustion_stability`); `methane_propulsion` now reqs
+  `chamber_pressure` (was `regen_cooling`). This is a real gating-depth change for those two nodes,
+  not just a rename — flagged explicitly in the slice-4 ROADMAP entry and in
+  `tests/test-tech-combustion-merge.js`.
+- No save-compat shim exists for any of this (owner waived back-compat for the whole pass). A save
+  with a completed removed-id flag just carries a harmless dead key — `curRel()`/`curSigma()`/
+  `researchEffectSum()` all iterate the live `RESEARCH` array, not raw `state.research` keys, so
+  stale flags are inert, not broken. If you add a save-compat layer later, these are the ids to map.
+- Every merge slice has its own dedicated test file (`test-tech-guidance-merge.js`,
+  `test-tech-testing-merge.js`, `test-tech-structures-merge.js`, `test-tech-combustion-merge.js`) —
+  run these first if you're debugging anything tech-tree-adjacent, before assuming a regression is
+  new.
+- This pass is considered CLOSED — no more clusters are queued. If you're picking up the remaining
+  scattered +0.02-type stat-shavers flagged by the 2026-07-20 audit, note they don't form clean
+  linear chains like the 4 tackled here, so the same "collapse a chain" recipe won't directly apply.
