@@ -236,6 +236,23 @@ dead-end leaves. A tightening pass merging stat clusters (esp. the 6-node guidan
 chain) → ~85 punchier nodes would make each research choice matter more. Scope separately — it's a
 real balance pass, not a fix.
 
+## Tech-tree design pass — SLICE 1 (guidance) SHIPPED (Claude)
+
+First slice of the tree-tightening balance pass (option 1: real merges, no back-compat constraint —
+owner confirmed). Guidance reliability chain collapsed 6→3: radio_guidance + inertial_nav + digital_computer
+→ one `digital_computer` ("Onboard Guidance & Flight Computer", req:[], reliability 0.07); star_trackers +
+autonomous_navigation → one `autonomous_navigation` (req:digital_computer, reliability 0.06);
+quantum_navigation kept as the deep-tail capstone. Preserved the two LOAD-BEARING ids other systems
+reference (digital_computer gates deep_space/flight_automation + has a leveled sim.js variant;
+autonomous_navigation feeds the autonomous_landing synergy) and the EXACT 0.15 reliability total — no
+stealth buff/nerf, just fewer/punchier nodes. Removed ids (radio_guidance, inertial_nav, star_trackers)
+have zero remaining references anywhere. Test: `tests/test-tech-guidance-merge.js` (18 checks).
+
+**Pattern proven — repeat for the other clusters when ready** (each its own slice): testing (9→~4-5),
+structures (7 sigma→~4), propulsion combustion sub-chain (combustion_stability→turbopump→regen→chamber,
+4→~2). Same recipe: keep any id referenced externally (grep first), collapse the rest, preserve the
+effect total, rewire prereqs through survivors, test for dangling reqs.
+
 ## Next task
 
 Suggested (open — pick per priority):

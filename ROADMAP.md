@@ -5500,3 +5500,33 @@ Test: `tests/test-tech-capstones.js` (13 checks — both now non-empty; effects 
 researching them moves the real effect sums; the whole tree stays under the dimCurve asymptote;
 values are substantial, not tokenistic). Regression: only the 1 pre-existing Codex drift. Build
 byte-faithful.
+
+
+## Session — tech-tree design pass, slice 1: guidance merge 6→3 (2026-07-20)
+
+*Pure append. Heavy tier (balance/design). First slice of the tree-tightening pass flagged by the
+earlier audit.* Owner waived back-compat, so this does real merges (option 1), sliced one track at a
+time. Guidance track's six-node linear reliability chain (radio_guidance → inertial_nav →
+digital_computer → star_trackers → autonomous_navigation → quantum_navigation — each a +0.02-to-0.03
+shrug) collapsed to three meaningful steps:
+- `digital_computer` ("Onboard Guidance & Flight Computer") absorbs radio_guidance + inertial_nav:
+  req:[], reliability 0.07 (=0.02+0.02+0.03), cost compressed 7.5→5.
+- `autonomous_navigation` ("Autonomous Deep-Space Navigation") absorbs star_trackers: req:
+  digital_computer, reliability 0.06 (=0.03+0.03), cost 8.5→7.
+- `quantum_navigation` kept unchanged as the deep-tail capstone (req: autonomous_navigation).
+
+Method (the reusable recipe for the remaining slices): grepped every external reference FIRST and
+kept the two load-bearing ids — `digital_computer` gates `deep_space` (cislunar unlock) and
+`flight_automation`, and has a leveled variant in sim.js keyed by that id; `autonomous_navigation`
+feeds the `autonomous_landing` synergy. Collapsed only the pure-stat nodes that nothing else
+references (radio_guidance/inertial_nav/star_trackers → now zero references anywhere). Preserved the
+EXACT 0.15 chain reliability total (verified) — this is a legibility change, not a power change.
+
+Test: `tests/test-tech-guidance-merge.js` (18 checks — chain is now 3 nodes; removed ids gone; no
+dangling reqs anywhere; all four external gates still resolve; reliability total exactly preserved;
+each survivor is a substantial step; costs compressed not inflated; leveled variant intact).
+Regression: only the 1 pre-existing Codex drift. Build byte-faithful.
+
+Remaining clusters for future slices (same recipe): testing (9 nodes → ~4-5), structures (7 sigma
+nodes → ~4), propulsion combustion sub-chain (combustion_stability→turbopump→regen_cooling→
+chamber_pressure, 4 → ~2). Each is its own slice; grep-for-external-refs first every time.
