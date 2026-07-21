@@ -15503,6 +15503,22 @@ function cape3dLaunchChaseDist(altitudeMeters){
   const altKm=Math.max(0,Number(altitudeMeters)||0)/1000;
   return Math.min(620, 150+38*Math.sqrt(altKm));
 }
+// FIXED 2026-07-20: the camera/flame target used to assume stage 0's original span (baseY 0 to
+// totalHeight) for the WHOLE flight, including after stage 0 had separated and left. Once it's
+// gone, the remaining stack's actual lowest point is wherever the next still-attached stage
+// starts — not 0. Aiming at the old fixed span meant the camera kept looking at the empty space
+// the dropped stage vacated, with only the flame (which DOES correctly reanchor) in frame: read as
+// "no rocket, just a plume." This scans the CURRENTLY attached stage groups (a group's `.parent`
+// changes to something else once cape3dUpdateLaunchPresentation detaches it) and returns the real
+// span of whatever's left, defaulting to the full vehicle height if nothing has separated yet.
+// Pure aside from reading `.group.parent` — a plain object property, not Three.js behavior — so
+// it's fully testable with mock stage-group objects, no THREE dependency required.
+function cape3dLiveStageSpan(stageGroups, rocket){
+  const sgs=stageGroups||[]; let lo=Infinity, hi=0, any=false;
+  for(const sg of sgs){ if(sg.group.parent===rocket){ any=true; lo=Math.min(lo,sg.baseY); hi=Math.max(hi,sg.topY!=null?sg.topY:sg.baseY); } }
+  if(!any) return {baseY:0,topY:0,mid:0};
+  return {baseY:lo, topY:hi, mid:(lo+hi)*.5};
+}
 function attachCape3DInput(){
   if(!cape3d||cape3d.inputAttached) return; const d=cape3d.renderer.domElement;
   d.addEventListener('pointerdown',cape3dDown); d.addEventListener('pointermove',cape3dMove); d.addEventListener('pointerup',cape3dUp); d.addEventListener('wheel',cape3dWheel,{passive:false});
@@ -15917,7 +15933,14 @@ function cape3dAscentBlend(progress){
   const p=Math.max(0,Math.min(1,progress||0)), space=Math.max(0,Math.min(1,(p-.20)/.42));
   // Darken the sky before the curved-Earth layer arrives. The overlap is intentional:
   // it prevents a bright day background from bleeding through a newly-loaded globe texture.
-  return {atmosphere:Math.max(0,Math.min(1,(p-.45)/.26)),space,capeVisible:p<.72};
+  // FIXED 2026-07-20: capeVisible previously cut off at a separately-chosen p<.72 — a full 0.10 of
+  // progress AFTER `space` above already reaches 1 (fully-opaque Earth) at p=.62. That gap meant
+  // the flat launch-site ground stayed fully visible for a stretch where the opaque Earth sphere
+  // was ALSO fully visible — the two rendering simultaneously read as "mixed together," then the
+  // ground popped off in a single frame. Aligning the cutoff to the same point Earth saturates
+  // closes the double-exposure window entirely: the ground is only ever gone once Earth has
+  // already fully taken over the view, so the handoff reads as one continuous reveal.
+  return {atmosphere:Math.max(0,Math.min(1,(p-.45)/.26)),space,capeVisible:space<1};
 }
 function cape3dOrbitProfile(snapshot){
   const fx=snapshot&&snapshot.effects, deep=fx&&fx.deepFailure;
@@ -16171,7 +16194,12 @@ function cape3dUpdateLaunchPresentation(snapshot){
   const plume=cape3dPlumeProfile(q.plume,q.vacuum); fx.flame.scale.set(plume.width,plume.length,plume.width); fx.core.scale.set(1+q.vacuum*.48,Math.max(.08,q.plume)*(1+q.vacuum*.30),1+q.vacuum*.48); fx.hotCore.scale.set(1+q.vacuum*.18,Math.max(.08,q.plume),1+q.vacuum*.18); fx.flame.material.opacity=plume.outerOpacity; fx.core.material.opacity=plume.coreOpacity; fx.hotCore.material.opacity=plume.hotOpacity; fx.glow.color.setHex(0xb9e6ff); fx.glow.intensity=q.light*(1-q.vacuum*.36);
   fx.shock.children.forEach((cell,i)=>{ const visible=q.plume>.01&&q.vacuum>.04; cell.visible=visible; cell.material.opacity=visible?(.08+q.vacuum*.2)*(1-i*.13):0; cell.scale.x=cell.scale.z=(5.5-i*.65)*(1+q.vacuum*.55); });
   fx.smoke.children.forEach((p,i)=>{ p.visible=q.smoke>.012; p.material.opacity=q.smoke*(.12+.22*(1-i/fx.smoke.children.length)); p.scale.setScalar(.35+q.smoke*(.75+i*.07)+q.vacuum*i*.05); p.position.x=(i%3-1)*(12+q.progress*42); p.position.z=((i*7)%3-1)*(10+q.progress*30); });
-  const target=(q.failed&&failure)?failure.origin.clone():rocket.position.clone(); target.y+=(q.splashProgress>0?24:55);
+  // After a separation the remaining stack's lowest point is no longer the group origin (stage 0's
+  // baseY=0) — that stage has left. Find the lowest still-attached stage group so the camera frames
+  // the ACTUAL remaining vehicle and the flame sits at its real base, instead of aiming at the empty
+  // space the dropped stage vacated (which read as "no rocket, just a plume floating at the pad-side").
+  const live=cape3dLiveStageSpan(rocket.userData.stageGroups, rocket);
+  const target=(q.failed&&failure)?failure.origin.clone():rocket.position.clone(); target.y+=(q.failed?55:(q.splashProgress>0?24:live.mid));
   const world=root.userData.ascentWorld, blend=cape3dAscentBlend(q.progress);
   if(world){
     // The limb is deliberately kept well below the craft (Earth's top remains beneath the

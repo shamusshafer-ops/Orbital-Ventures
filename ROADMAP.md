@@ -5386,3 +5386,39 @@ Test: `tests/test-launch-camera.js` (11 checks — distance stays bounded/monoto
 even at min zoom-in orbital-altitude distance is sane; blend curve shape/monotonicity). Regression:
 only the 3 pre-existing Codex drifts. Build byte-faithful. NOT browser-verified (no WebGL) — all
 three original symptoms are plausible from the identified bugs but unconfirmed visually.
+
+
+## Session — launch view: real fixes for "no ship after sep" + "pad/Earth mixed" (2026-07-20)
+
+*Pure append. Heavy tier (root-cause investigation of persisting symptoms after a prior fix
+attempt).* The prior camera-distance-formula fix did not resolve "no rocket, just plume" after
+separation — the player re-reported it. Rather than theorize further, root-caused with a headless
+scene-graph inspection: built a minimal THREE stub (`/tmp/three_stub.js`, not committed — a
+throwaway diagnostic, not a real dependency) and actually ran `cape3dVehicleMesh()` +
+`root.attach()` on a 2-stage vehicle to inspect what remains parented to the rocket after a
+detach. Confirmed the MESH is fine (4 meshes remain: upper stage + nose) — the bug was the
+camera/flame TARGET, not the geometry.
+
+**Fix 1 — camera/flame target re-centring.** `target=rocket.position+55` assumed stage 0's
+original span (baseY 0..totalHeight) held for the whole flight. Once stage 0 detaches, the
+remaining stack's real base moved to wherever the next still-attached stage starts (verified via
+the stub: baseY jumps 0→20.9 on a 2-stage test vehicle) — but the camera kept aiming at the
+now-vacated space, with only the flame (which does correctly reanchor per the earlier polish
+slice) in frame. New `cape3dLiveStageSpan(stageGroups, rocket)`: pure, scans which stage groups are
+still parented to the rocket (a plain `.parent` property check, no THREE dependency, so directly
+testable with mock objects), returns the real current span. Camera + flame targets now use its
+midpoint instead of the fixed original-span assumption.
+
+**Fix 2 — ascent-blend clock misalignment.** `cape3dAscentBlend`'s Earth-opacity ramp (`space`)
+reaches full opacity at progress 0.62; the flat launch-site ground's visibility (`capeVisible`) was
+on an independently-chosen clock, staying true until 0.72. A real 0.10-progress window had BOTH the
+fully-opaque Earth sphere and the fully-visible flat pad simultaneously on screen — exactly "pad
+and Earth mixed, no smooth transition" — then the ground popped off in a single frame once past
+0.72. Aligned `capeVisible` to cut off at the exact point `space` saturates (`capeVisible:
+space<1`), closing the overlap window entirely.
+
+Test: `tests/test-launch-camera.js` grew from 11 to 24 checks — live-span recentring (mock
+stage-group objects), and an exhaustive progress-range scan proving no value has both a
+near-full-opacity Earth and a visible site simultaneously. Regression: only the 3 pre-existing
+Codex drifts. Build byte-faithful. NOT browser-verified (no WebGL in sandbox) — both are
+well-reasoned, scene-graph-confirmed fixes but the actual visual result is still unconfirmed.

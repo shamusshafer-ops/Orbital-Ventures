@@ -157,6 +157,33 @@ a booster/stage sep, panning shows the flat launch-site square not an expanding 
 Test: `tests/test-launch-camera.js` (11 checks — distance boundedness/monotonicity, blend curve
 shape). NOT browser-verified (no WebGL here) — this is exactly the kind of thing worth a look.
 
+## Launch view: real fixes for "no ship after sep" + "pad/Earth mixed" — SHIPPED (Claude)
+
+The prior camera-distance fix wasn't the actual cause of "no rocket, just a plume." Root-caused
+both remaining reports with a headless scene-graph inspection (a minimal THREE stub in
+`/tmp/three_stub.js`, not committed) confirming the mesh itself was fine — the bug was elsewhere:
+
+1. **"No rocket, just plume" after separation:** the camera/flame target used `rocket.position+55`
+   — a FIXED offset assuming stage 0's original span (baseY 0..totalHeight) for the whole flight.
+   Once stage 0 separates and leaves, the remaining stack's actual base is wherever the NEXT
+   still-attached stage starts (confirmed via the stub: e.g. baseY jumps from 0 to 20.9 on a
+   2-stage vehicle) — but the camera kept aiming at the now-empty space stage 0 vacated. Only the
+   flame (which DOES correctly reanchor) was in frame. New `cape3dLiveStageSpan(stageGroups,rocket)`
+   — pure, scans which stage groups are still parented to the rocket, returns the REAL current span
+   — re-centers both camera target and (implicitly, since it shares the target) framing on whatever
+   remains.
+2. **"Earth/pad mixed, no smooth transition":** `cape3dAscentBlend`'s `space` (Earth opacity) and
+   `capeVisible` (flat launch-site ground) were on two different clocks — `space` reaches full
+   opacity at progress 0.62, but `capeVisible` stayed true until 0.72. A real 0.10-progress window
+   had the fully-opaque Earth sphere AND the fully-visible flat pad ground rendering
+   simultaneously, then the ground popped off in one frame. Aligned `capeVisible` to cut off at the
+   exact point `space` saturates — verified with an exhaustive scan (no progress value has both
+   ≥full-opacity Earth and a visible site).
+
+Test: `tests/test-launch-camera.js` now 24 checks (was 11) — added live-span recentring (mock
+stage-group objects, no THREE needed) and the exhaustive no-overlap-window scan. NOT
+browser-verified (no WebGL here) — this is exactly the category of thing worth confirming visually.
+
 ## Next task
 
 Suggested (open — pick per priority):
