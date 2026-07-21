@@ -5530,3 +5530,47 @@ Regression: only the 1 pre-existing Codex drift. Build byte-faithful.
 Remaining clusters for future slices (same recipe): testing (9 nodes → ~4-5), structures (7 sigma
 nodes → ~4), propulsion combustion sub-chain (combustion_stability→turbopump→regen_cooling→
 chamber_pressure, 4 → ~2). Each is its own slice; grep-for-external-refs first every time.
+
+
+## Session — tech-tree design pass, slice 2: testing merge 9→5 (2026-07-21)
+
+*Pure append. Heavy tier (balance/design). Second slice of the tree-tightening pass, same recipe as
+slice 1.* Testing & Reliability track was nine nodes: `test_program` (root) branching into
+`qa_program` (a standalone QA node), an instrumentation/qualification chain (`flight_telemetry` →
+`vibration_testing` → `accelerated_life_testing` → `digital_twin` → `autonomous_qa`), and an
+engine/stage chain (`engine_test_stands` → `stage_test`). Collapsed to five nodes:
+- `test_program` — untouched. NOT merged: it's load-bearing beyond its listed effect — sim.js
+  directly multiplies ascent propulsion-failure weight by 0.7 when researched, and render.js gates a
+  bench-tab CTA on it. A pure-stat node this is not.
+- `qa_program` — untouched. Load-bearing: required (with `rapid_inspection`) by the `rapid_refurb`
+  synergy that unlocks the `lic_refurb` contract.
+- `flight_qualification` ("Flight Instrumentation & Qualification") absorbs `flight_telemetry` +
+  `vibration_testing`: req test_program, reliability 0.07 (=0.04+0.03), cost compressed 4.5→3.5.
+- `engine_test_stands` kept its id (grep found it's the req for `heavy_booster` in the propulsion
+  track — the one external gate in this whole cluster) while absorbing `stage_test`: req
+  test_program, reliability 0.05 (=0.02+0.03), cost compressed 5.0→3.5.
+- `autonomous_test_program` ("Autonomous Life-Cycle Testing") absorbs `accelerated_life_testing` +
+  `digital_twin` + `autonomous_qa`: req flight_qualification (chain re-pointed since
+  vibration_testing is gone), sciCost 20 preserved from digital_twin, reliability 0.09
+  (=0.03+0.04+0.02), cost compressed 14.5→10.0.
+
+Reliability total preserved exactly: 0.34 before and after. Method: grepped every external reference
+first (whole repo, not just data.js) — this is what caught `engine_test_stands` as load-bearing via
+`heavy_booster`, which a data.js-only grep would have missed since the reference lives in the
+propulsion block, not the testing block. Kept that id as the merge survivor rather than renaming, so
+no downstream req needed updating.
+
+Test: `tests/test-tech-testing-merge.js` (28 checks — track is now 5 nodes; all 6 removed ids gone;
+no dangling reqs; heavy_booster still gates on engine_test_stands; rapid_refurb still requires
+qa_program; reliability total exactly 0.34; each merged survivor is a substantial step; costs
+compressed not inflated; sciCost carried over; test_program's point-of-use effect still fires;
+fresh-game reachability). Regression: full suite run, only the 1 pre-existing Codex drift
+(`test-flight3d-trajectory.js`, unrelated) — everything else including
+`test-tech-guidance-merge.js` (slice 1, still 18/18) and `test-tech-capstones.js` (13/13) clean.
+Build byte-faithful (`node build.js --check` passes before commit).
+
+Remaining clusters for future slices (same recipe): structures/sigma track (7 nodes → ~4), propulsion
+combustion sub-chain (combustion_stability→turbopump→regen_cooling→chamber_pressure, 4 → ~2). Each is
+its own slice; grep-for-external-refs first every time, across the WHOLE repo not just the track's
+own file section — the engine_test_stands case shows a load-bearing ref can live far from the node's
+own listing.
