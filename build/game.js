@@ -15494,6 +15494,15 @@ function cape3dWheel(e){ if(!cape3d) return; e.preventDefault();
   if(cape3d.root&&cape3d.root.userData.launchActive){ const lc=cape3d.launchCam||(cape3d.launchCam=cape3dDefaultLaunchCam()); lc.distMul=Math.max(.35,Math.min(3.2,lc.distMul*(e.deltaY>0?1.12:.89))); return; }
   cape3d.cam.dist=Math.max(280,Math.min(2600,cape3d.cam.dist*(e.deltaY>0?1.12:.89))); cape3dApplyCamera(); }
 function cape3dDefaultLaunchCam(){ return {azOff:0, elOff:0, distMul:1}; }
+// Pure so the "doesn't run away with altitude" property is directly testable. FIXED 2026-07-20:
+// previously (150+altitudeMetres*.05) — linear in raw metres, exploding to 5000+ units by 100 km
+// and 15000+ by a realistic ~300 km insertion, far beyond the .35-3.2x zoom range's ability to
+// compensate. Now sqrt(altitude in KM), capped, so the chase stays close through the low climb
+// (where staging/pad-recession happen) and only grows gently at orbital altitudes.
+function cape3dLaunchChaseDist(altitudeMeters){
+  const altKm=Math.max(0,Number(altitudeMeters)||0)/1000;
+  return Math.min(620, 150+38*Math.sqrt(altKm));
+}
 function attachCape3DInput(){
   if(!cape3d||cape3d.inputAttached) return; const d=cape3d.renderer.domElement;
   d.addEventListener('pointerdown',cape3dDown); d.addEventListener('pointermove',cape3dMove); d.addEventListener('pointerup',cape3dUp); d.addEventListener('wheel',cape3dWheel,{passive:false});
@@ -16168,16 +16177,27 @@ function cape3dUpdateLaunchPresentation(snapshot){
     // The limb is deliberately kept well below the craft (Earth's top remains beneath the
     // vehicle) and slightly ahead of the chase camera, yielding a horizon instead of a blue wall.
     world.center.copy(target).add(new THREE.Vector3(300,-1400,-500)); world.earth.position.copy(world.center); world.atmosphere.position.copy(world.center); world.earth.rotation.y=q.progress*.24;
-    // The expanded ground/ocean scene is the ascent visual until orbit. The separate globe
-    // renderer was prone to a bright full-frame flash while its map decoded, so it stays off.
-    world.group.visible=false; world.earth.material.opacity=0; world.atmosphere.material.opacity=0; world.stars.material.opacity=0; world.puffs.forEach(p=>p.visible=false); (root.userData.siteObjects||[]).forEach(o=>o.visible=true);
+    // FIXED 2026-07-20: this reveal was fully wired (cape3dAscentBlend computes exactly the
+    // space/capeVisible curve for it) but had been force-disabled after a past bright-flash bug —
+    // the Earth texture loads asynchronously, and an unready THREE.Texture renders as an
+    // undefined/flash frame on a sphere this large and close to camera. Guarding on `.image`
+    // (set once the texture has actually decoded) gets the reveal back safely: opacity only ever
+    // rises once there's real image data to show, so the flash can't recur.
+    const texReady=!!(world.earth.material.map && world.earth.material.map.image);
+    const space=texReady?blend.space:0;
+    world.group.visible=space>0.001; world.earth.material.opacity=space; world.atmosphere.material.opacity=space*.7; world.stars.material.opacity=space; world.puffs.forEach(p=>p.visible=false);
+    (root.userData.siteObjects||[]).forEach(o=>o.visible=blend.capeVisible);
   }
   const desiredFar=cape3dFlightCameraFar(q.altitude); if(Math.abs(cape3d.camera.far-desiredFar)>1){ cape3d.camera.far=desiredFar; cape3d.camera.updateProjectionMatrix(); }
-  // User-steerable chase: a base follow distance (closer than before, grows gently with altitude)
-  // orbited by the player's drag/zoom offsets (cape3d.launchCam). Default sits behind-and-above the
-  // vehicle; drag rotates around it, wheel zooms. cape3dFlightCamera still adds any flightPan.
+  // User-steerable chase: a base follow distance orbited by the player's drag/zoom offsets
+  // (cape3d.launchCam). FIXED 2026-07-20: the previous formula scaled linearly with q.altitude in
+  // RAW METRES (150+altitudeM*.05) — at a realistic ~300 km insertion that's 15,000+ units, far
+  // beyond what the .35-3.2 zoom range could claw back, leaving the camera stranded no matter how
+  // far the player zoomed in. Now grows with sqrt(altitude in KM), which stays close through the
+  // low-altitude climb (where most of the visual interest — staging, the pad falling away — is)
+  // and only grows gently at orbital altitudes, capped so it can never run away.
   const lc=cape3d.launchCam||(cape3d.launchCam=cape3dDefaultLaunchCam());
-  const baseDist=(150+q.altitude*.05)*lc.distMul, az=-0.62+lc.azOff, el=0.34+lc.elOff, ce=Math.cos(el);
+  const baseDist=cape3dLaunchChaseDist(q.altitude)*lc.distMul, az=-0.62+lc.azOff, el=0.34+lc.elOff, ce=Math.cos(el);
   const eye=new THREE.Vector3(target.x+baseDist*ce*Math.sin(az), target.y+70+baseDist*Math.sin(el), target.z+baseDist*ce*Math.cos(az));
   cape3dFlightCamera(eye,target); return true;
 }

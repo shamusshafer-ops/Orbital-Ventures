@@ -5358,3 +5358,31 @@ tab-resume clamp — it still bounds wall-dt per frame before the multiplier, so
 smoothly rendered rather than skipping frames.
 Test: `tests/test-anim-speed.js` (9 checks — range, default, cycling, wraparound). Regression: only
 the 3 pre-existing Codex drifts. Build byte-faithful.
+
+
+## Session — launch camera distance bug + Earth-curvature reveal fix (2026-07-20)
+
+*Pure append. Heavy tier (camera/reveal design, root-cause investigation of 3 reported symptoms).*
+Player reported three launch-view issues; investigated before touching anything since they might
+share one cause. Confirmed two distinct root causes, both explaining all three symptoms together:
+
+1. **Camera distance formula bug**, introduced in the prior camera-control slice:
+   `baseDist=(150+q.altitude*.05)*distMul` used q.altitude in RAW METRES, not km — by a realistic
+   ~300 km orbital insertion that term alone is 15,150 units, and the zoom range (.35-3.2x) can
+   only claw back a factor of ~9x, nowhere near enough. Explains "far even with zoom" directly, and
+   plausibly "no ship after separation" too — a now-smaller, still-distant mesh becomes
+   imperceptible next to a bright additive-blended flame sprite. Fixed: extracted into standalone
+   `cape3dLaunchChaseDist(altitudeMeters)`, sqrt(km)-based, capped at 620 units — stays close
+   through the low climb (where staging/pad-recession happen) and grows only gently at altitude.
+2. **Earth-curvature ascent reveal was fully built (`cape3dAscentBlend`'s space/capeVisible curve)
+   but force-disabled** — a past comment noted a bright full-frame flash while the async-loaded
+   Earth texture decoded, so opacity was hardcoded to 0 and the flat launch-site ground plane
+   forced always-visible instead. This is exactly "panning shows the square of the facility, not
+   an expanding Earth." Re-wired to use the existing blend curve, gated on
+   `earth.material.map.image` (true only once the texture has actually decoded) so the original
+   flash risk is closed rather than worked around by disabling the feature.
+
+Test: `tests/test-launch-camera.js` (11 checks — distance stays bounded/monotonic at any altitude,
+even at min zoom-in orbital-altitude distance is sane; blend curve shape/monotonicity). Regression:
+only the 3 pre-existing Codex drifts. Build byte-faithful. NOT browser-verified (no WebGL) — all
+three original symptoms are plausible from the identified bugs but unconfirmed visually.

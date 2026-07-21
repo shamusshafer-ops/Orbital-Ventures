@@ -135,6 +135,28 @@ at the 1x entry so behavior is unchanged unless the player cycles). Fixed a stal
 label ("1× Slow" → "1× Normal") found in the process. Cycle via the existing button or [Enter].
 Test: `tests/test-anim-speed.js` (9 checks, pure).
 
+## Launch camera distance bug + Earth-curvature reveal — SHIPPED (Claude)
+
+Root-caused all three player-reported issues (far camera even at zoom, "no ship, just plume" after
+a booster/stage sep, panning shows the flat launch-site square not an expanding Earth):
+
+1. **Camera distance bug (mine, from the prior camera slice):** `baseDist` scaled linearly with
+   raw ALTITUDE IN METRES (`150+altitudeM*.05`) — exploded to 5000+ units by 100 km and 15000+ by a
+   realistic ~300 km insertion, far beyond what the .35–3.2x zoom range could pull back. This is
+   the dominant explanation for "far even with zoom," and very likely for "no ship, just plume"
+   too (a small/distant mesh reads as invisible against a bright additive flame). Fixed:
+   `cape3dLaunchChaseDist(altitude)` now uses sqrt(km), capped at 620 units — extracted as a
+   standalone pure function so the "never runs away" property is directly tested.
+2. **Earth-curvature reveal was fully built but force-disabled.** `cape3dAscentBlend` already
+   computed the right `space`/`capeVisible` curve; the update function hardcoded opacity to 0 and
+   the flat site plane to always-visible, with a comment noting a past bright-flash bug from the
+   Earth texture loading async. Re-wired to actually use the blend curve, gated on
+   `earth.material.map.image` being truthy (real decoded image data) so opacity can't rise before
+   there's something real to show — the same flash risk, closed properly instead of left disabled.
+
+Test: `tests/test-launch-camera.js` (11 checks — distance boundedness/monotonicity, blend curve
+shape). NOT browser-verified (no WebGL here) — this is exactly the kind of thing worth a look.
+
 ## Next task
 
 Suggested (open — pick per priority):
