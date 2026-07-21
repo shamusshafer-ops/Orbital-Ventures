@@ -5314,3 +5314,17 @@ most-recent staging event within 3.2s of the current flight time and returns `BO
 Test: `tests/test-flight3d-sepbeat.js` (10 checks — booster vs stage label, fade ramp, none for
 single-stage or outside ascent). Regression: only the 3 pre-existing Codex drifts. NOT
 browser-verified (puff is Three.js) — eyeball a multi-stage launch.
+
+
+## Session — E4.7: user-steerable launch camera + gradual separation (2026-07-20)
+
+*Pure append. Heavy tier (camera feel).* (1) Launch camera was fully scripted with input detached;
+now `attachCape3DInput` stays on during launch and the drag/wheel handlers branch on `launchActive`
+to steer a new `cape3d.launchCam` {azOff,elOff,distMul} instead of the site cam. The ascent follow
+was rewritten to a closer base distance (150 + alt*.05, was 170 + alt*.085) orbited by those offsets
+— drag rotates, wheel zooms, reset each launch. `flightPan` (previously a dead hook) still layered on.
+(2) Gradual separation: debris now gets an eased (smoothstep over 1.4s) retro/lateral push on top of
+the ballistic path, so a stage visibly drifts back-and-down instead of the split reading as instant.
+Both are Three.js visual-only (no headless tests); staging-preview.html updated to match (drag/zoom +
+the eased push) for offline review. Regression: only the 3 pre-existing Codex drifts. NOT
+browser-verified in-game. Bench height/diameter scale readout is the paired follow-up (Sonnet).

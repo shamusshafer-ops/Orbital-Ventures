@@ -1687,10 +1687,14 @@ function cape3dPick(event){
 function cape3dDown(e){ if(!cape3d) return; cape3d.drag={x:e.clientX,y:e.clientY,travel:0,pointerId:e.pointerId}; try{cape3d.renderer.domElement.setPointerCapture(e.pointerId);}catch(_){} }
 function cape3dMove(e){
   if(!cape3d||!cape3d.drag) return; const d=cape3d.drag, dx=e.clientX-d.x, dy=e.clientY-d.y; d.x=e.clientX; d.y=e.clientY; d.travel+=Math.abs(dx)+Math.abs(dy);
+  if(cape3d.root&&cape3d.root.userData.launchActive){ const lc=cape3d.launchCam||(cape3d.launchCam=cape3dDefaultLaunchCam()); lc.azOff-=dx*.008; lc.elOff=Math.max(-.5,Math.min(1.15,lc.elOff-dy*.006)); return; }
   cape3d.cam.az-=dx*.008; cape3d.cam.el=Math.max(.18,Math.min(1.25,cape3d.cam.el-dy*.008)); cape3dApplyCamera();
 }
 function cape3dUp(e){ if(!cape3d) return; const d=cape3d.drag; try{cape3d.renderer.domElement.releasePointerCapture(d&&d.pointerId);}catch(_){} cape3d.drag=null; if(d&&d.travel<5) cape3dPick(e); }
-function cape3dWheel(e){ if(!cape3d) return; e.preventDefault(); cape3d.cam.dist=Math.max(280,Math.min(2600,cape3d.cam.dist*(e.deltaY>0?1.12:.89))); cape3dApplyCamera(); }
+function cape3dWheel(e){ if(!cape3d) return; e.preventDefault();
+  if(cape3d.root&&cape3d.root.userData.launchActive){ const lc=cape3d.launchCam||(cape3d.launchCam=cape3dDefaultLaunchCam()); lc.distMul=Math.max(.35,Math.min(3.2,lc.distMul*(e.deltaY>0?1.12:.89))); return; }
+  cape3d.cam.dist=Math.max(280,Math.min(2600,cape3d.cam.dist*(e.deltaY>0?1.12:.89))); cape3dApplyCamera(); }
+function cape3dDefaultLaunchCam(){ return {azOff:0, elOff:0, distMul:1}; }
 function attachCape3DInput(){
   if(!cape3d||cape3d.inputAttached) return; const d=cape3d.renderer.domElement;
   d.addEventListener('pointerdown',cape3dDown); d.addEventListener('pointermove',cape3dMove); d.addEventListener('pointerup',cape3dUp); d.addEventListener('wheel',cape3dWheel,{passive:false});
@@ -2270,7 +2274,7 @@ function cape3dResetFailure(failure){
 }
 function cape3dEnterLaunchPresentation(snapshot){
   if(!cape3d||!cape3d.root) return false; const root=cape3d.root, rocket=root.userData.launchRocket, fx=root.userData.launchEffects;
-  if(!rocket||!fx) return false; cape3dResetStaging(rocket); fx.group.position.y=rocket.userData.nozzleY||-10; root.userData.stageDebris=[]; root.userData.launchActive=true; rocket.position.copy(root.userData.launchBase); fx.group.visible=true; detachCape3DInput(); cape3dUpdateLaunchPresentation(snapshot); return true;
+  if(!rocket||!fx) return false; cape3dResetStaging(rocket); fx.group.position.y=rocket.userData.nozzleY||-10; root.userData.stageDebris=[]; root.userData.launchActive=true; rocket.position.copy(root.userData.launchBase); fx.group.visible=true; cape3d.launchCam=cape3dDefaultLaunchCam(); attachCape3DInput(); cape3dUpdateLaunchPresentation(snapshot); return true;
 }
 function cape3dUpdateOrbitPresentation(snapshot){
   if(!cape3d||!cape3d.root) return false;
@@ -2324,7 +2328,7 @@ function cape3dUpdateLaunchPresentation(snapshot){
       if(!part || part.parent!==rocket) continue;
       root.attach(part); // preserves world transform (incl. the rocket's current pitch) across the reparent — no visual jump
       cape3dSpawnSepPuff(root, part.position.clone()); // E4.7 polish: pyro/ullage burst at the separation point
-      part.userData.sep={x:part.position.x,y:part.position.y,z:part.position.z,rotZ:part.rotation.z,vx:st.vx||0,vy:st.vy||0,spinZ:(st.kind==='booster'?1:-1)*(.32+.11*((st.index+1)%3)),spinX:.18+.07*((st.index+2)%3)};
+      part.userData.sep={kind:st.kind,x:part.position.x,y:part.position.y,z:part.position.z,rotZ:part.rotation.z,vx:st.vx||0,vy:st.vy||0,lateral:(st.index%2?1:-1),spinZ:(st.kind==='booster'?1:-1)*(.32+.11*((st.index+1)%3)),spinX:.18+.07*((st.index+2)%3)};
       debris.push({obj:part,key});
       // A core-stage separation (not a booster — the strap-ons don't change the CORE's own base)
       // moves the flame FX's fixed nozzle offset up to the new bottom stage's base, so the exhaust
@@ -2342,8 +2346,12 @@ function cape3dUpdateLaunchPresentation(snapshot){
     for(let i=debris.length-1;i>=0;i--){
       const d=debris[i], part=d.obj, sep=part.userData.sep; if(!sep) continue;
       const ev=q.trajectory.stageEvents.find(e=>e.kind+':'+e.index===d.key), fallTime=ev?Math.max(0,q.t-ev.t):0;
-      part.position.set(sep.x+sep.vx*fallTime, sep.y+sep.vy*fallTime-.5*G0*fallTime*fallTime, sep.z);
-      part.rotation.z=sep.rotZ+fallTime*sep.spinZ; part.rotation.x=fallTime*sep.spinX;
+      // Gradual separation: a gentle retro/lateral push (spring-pusher/ullage) that EASES in over
+      // ~1.4s via smoothstep, so the piece visibly drifts back-and-down away from the still-climbing
+      // stack instead of the split reading as instantaneous. Cosmetic, on top of the ballistic path.
+      const es=Math.min(1,fallTime/1.4), ease=es*es*(3-2*es), push=(sep.kind==='booster'?26:34)*ease;
+      part.position.set(sep.x+sep.vx*fallTime - push*.35, sep.y+sep.vy*fallTime-.5*G0*fallTime*fallTime - push, sep.z + (sep.lateral||0)*ease*18);
+      part.rotation.z=sep.rotZ+fallTime*sep.spinZ*ease; part.rotation.x=fallTime*sep.spinX*ease;
       if(part.position.y<base.y-3000){ part.visible=false; root.remove(part); debris.splice(i,1); }
     }
   }
@@ -2366,7 +2374,13 @@ function cape3dUpdateLaunchPresentation(snapshot){
     world.group.visible=false; world.earth.material.opacity=0; world.atmosphere.material.opacity=0; world.stars.material.opacity=0; world.puffs.forEach(p=>p.visible=false); (root.userData.siteObjects||[]).forEach(o=>o.visible=true);
   }
   const desiredFar=cape3dFlightCameraFar(q.altitude); if(Math.abs(cape3d.camera.far-desiredFar)>1){ cape3d.camera.far=desiredFar; cape3d.camera.updateProjectionMatrix(); }
-  const follow=170+q.altitude*.085; cape3dFlightCamera(new THREE.Vector3(target.x-follow*.72,target.y+110+q.altitude*.035,target.z+follow),target); return true;
+  // User-steerable chase: a base follow distance (closer than before, grows gently with altitude)
+  // orbited by the player's drag/zoom offsets (cape3d.launchCam). Default sits behind-and-above the
+  // vehicle; drag rotates around it, wheel zooms. cape3dFlightCamera still adds any flightPan.
+  const lc=cape3d.launchCam||(cape3d.launchCam=cape3dDefaultLaunchCam());
+  const baseDist=(150+q.altitude*.05)*lc.distMul, az=-0.62+lc.azOff, el=0.34+lc.elOff, ce=Math.cos(el);
+  const eye=new THREE.Vector3(target.x+baseDist*ce*Math.sin(az), target.y+70+baseDist*Math.sin(el), target.z+baseDist*ce*Math.cos(az));
+  cape3dFlightCamera(eye,target); return true;
 }
 function cape3dExitLaunchPresentation(){
   if(!cape3d||!cape3d.root) return false; const root=cape3d.root, rocket=root.userData.launchRocket, fx=root.userData.launchEffects;
