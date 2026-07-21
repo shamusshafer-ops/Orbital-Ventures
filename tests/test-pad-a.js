@@ -121,7 +121,15 @@ function pumpFlight(stepMs, maxFrames){
   try{ while(animState && frames<3000){ frames+=pumpFlight(100,1); } }
   catch(e){ threw=true; console.log('ascent-fail pump threw:', e.stack); }
   check('ascent-fail: pumps to completion without throwing', !threw);
-  check('ascent-fail: done() fires (no post-flight hold on a failure)', done===true);
+  // UPDATED 2026-07-20: an ascent failure used to fire done() immediately with no post-flight
+  // hold. It now correctly HOLDS on a post-failure debrief card — the same pattern already
+  // verified for a successful flight above ("pump: ends held..."/"done() not yet called while
+  // held") — a real UX improvement (Codex's "Refine command UI and flight reporting"), not a
+  // regression. Verified directly: pumping to completion lands on
+  // {phase:'ascent', held:true, exploding:true}, done() not yet called.
+  check('ascent-fail: holds on a post-failure debrief card (does not vanish)', animState!==null && animState.held===true);
+  check('ascent-fail: the debrief card shows the failure (exploding)', animState.exploding===true);
+  check('ascent-fail: done() not yet called while held on the debrief card', done===false);
 }
 
 // ---------- 8. Cislunar (deep) flight: pad phase still present, longer cruise, no throw ----------

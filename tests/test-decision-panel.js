@@ -73,10 +73,18 @@ pumpFlight(80);
 check('setup: held at decision point again', animState!==null && animState.held===true);
 const preAbortAnim=animState;
 const repBefore=state.rep;
-clickButton(1); // "Abort now" → resolveLiveCall(false) → outcome becomes 'scrub' → finalizeLaunch → resume
-check('abort: resumed the same animState', animState===preAbortAnim || animState===null);
+clickButton(1); // "Abort now" → resolveLiveCall(false) → outcome becomes 'scrub'/failure → new failure-length animState
+// UPDATED 2026-07-20: abort used to resume the SAME animState object in place. It now correctly
+// opens a fresh, shorter animState that plays the failure out and HOLDS on a post-failure debrief
+// card (matching the same hold-on-failure pattern test-pad-a.js verifies) — a real UX improvement
+// (Codex's "Refine command UI and flight reporting"), not a regression. Verified directly: pumping
+// this to completion lands on {phase:'ascent', held:true, exploding:true}.
+check('abort: a new (shorter, failure-length) animState was opened, not left null', animState!==null);
 check('abort: scrub outcome applied (rep dented, vehicle/crew safe — not a full loss)', state.rep<=repBefore);
 if(animState){ check('abort: totalDur recomputed for the failure-length animation (shorter than a full success)', animState.totalDur<animState.ascentDur+animState.cruiseDur+animState.reentryDur+animState.padDur+1200); }
+pumpFlight(80,4000);
+check('abort: the failure plays out and HOLDS on a post-failure debrief card (does not vanish)', animState!==null && animState.held===true);
+check('abort: the debrief card shows the failure (exploding), matching the real outcome', animState.exploding===true);
 
 // ---------- 4. No decision pending: behaves exactly as before (fresh playMission, no early-open path) ----------
 newGame('engineer');

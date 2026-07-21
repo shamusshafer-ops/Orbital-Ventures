@@ -184,6 +184,16 @@ Test: `tests/test-launch-camera.js` now 24 checks (was 11) — added live-span r
 stage-group objects, no THREE needed) and the exhaustive no-overlap-window scan. NOT
 browser-verified (no WebGL here) — this is exactly the category of thing worth confirming visually.
 
+## Two stale test drifts fixed — SHIPPED (Claude)
+
+Confirmed both were the SAME intentional Codex behavior ("Refine command UI and flight reporting"):
+a failure (ascent-fail directly, or abort→scrub) now correctly HOLDS on a post-failure debrief card
+(`held:true, exploding:true`) instead of the old behavior — a real UX improvement, not a
+regression. Verified directly by pumping each to completion and inspecting the final animState.
+Updated both tests' assertions to verify the new correct behavior rather than the stale one.
+`test-decision-panel.js` 35/35, `test-pad-a.js` 36/36. Only `test-flight3d-trajectory.js` (Codex's
+accepted physics changes, unrelated) remains as a known drift.
+
 ## Next task
 
 Suggested (open — pick per priority):

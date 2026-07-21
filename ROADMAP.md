@@ -5422,3 +5422,16 @@ stage-group objects), and an exhaustive progress-range scan proving no value has
 near-full-opacity Earth and a visible site simultaneously. Regression: only the 3 pre-existing
 Codex drifts. Build byte-faithful. NOT browser-verified (no WebGL in sandbox) — both are
 well-reasoned, scene-graph-confirmed fixes but the actual visual result is still unconfirmed.
+
+
+## Session — fixed 2 stale test drifts (2026-07-20)
+
+*Pure append. Sonnet tier.* Both `test-decision-panel.js` and `test-pad-a.js` failures traced to
+the SAME intentional behavior from Codex's "Refine command UI and flight reporting" commit: a
+failure (ascent-fail directly, or an abort that resolves to a scrub) now correctly holds on a
+post-failure debrief card (`{held:true, exploding:true}`) instead of either resuming the same
+animState in place or firing `done()` immediately — a real UX improvement, confirmed by pumping
+each scenario to completion and inspecting the actual final state before touching either test.
+Updated both to assert the new correct behavior. `test-decision-panel.js` 35/35,
+`test-pad-a.js` 36/36. Only `test-flight3d-trajectory.js` remains as a known drift (Codex's
+accepted trajectory/vehicle-physics changes, unrelated to this). Build byte-faithful.
