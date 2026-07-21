@@ -5574,3 +5574,48 @@ combustion sub-chain (combustion_stability→turbopump→regen_cooling→chamber
 its own slice; grep-for-external-refs first every time, across the WHOLE repo not just the track's
 own file section — the engine_test_stands case shows a load-bearing ref can live far from the node's
 own listing.
+
+
+## Session — tech-tree design pass, slice 3: structures merge 7→4 (2026-07-21)
+
+*Pure append. Heavy tier (balance/design). Third slice of the tree-tightening pass, same recipe as
+slices 1-2.* Structures/sigma track was a strictly linear 7-node chain (`alloy_tanks` →
+`balloon_tanks` → `composite_structures` → `friction_stir_welding` → `carbon_cryotanks` →
+`self_healing_materials` → `metamaterial_structures`). Unlike reliability (summed), each of these
+nodes directly SETS `state.sigma` on completion — so the chain is a sequence of stepping-stone floors
+from the 0.12 baseline down to 0.040, not an additive stack. Collapsed to 4 nodes:
+- `alloy_tanks`, `balloon_tanks` — both untouched. NOT merged: repo-wide grep found a tiered if/else
+  in sim.js (`if(state.research.balloon_tanks) ws*=0.6; else if(state.research.alloy_tanks) ws*=0.78`)
+  keying the ascent structural-failure weight directly off these two research flags — a two-step
+  point-of-use gate exactly like `test_program` in slice 2. `balloon_tanks` is also required by the
+  `lightweight_cryo` synergy (with `cryo_upper`). Both ids preserved unchanged.
+- `composite_isogrid_structures` ("Composite Structures & Friction-Stir Welding") absorbs
+  `composite_structures` + `friction_stir_welding`: req balloon_tanks, sigma floor 0.050 (the deeper
+  of the two absorbed values, since sigma is a SET not a sum), cost compressed 8.5→6.5.
+- `advanced_composite_structures` ("Carbon-Fiber, Self-Healing & Metamaterial Structures") absorbs
+  `carbon_cryotanks` + `self_healing_materials` + `metamaterial_structures`: req
+  composite_isogrid_structures, sigma floor 0.040 (the deepest/final value — same endgame mass-ratio
+  ceiling as before), cost compressed 24.0→22.0 (the shallowest discount of any merge slice yet — this
+  absorbs the game's 3 most expensive structures nodes and 22.0 still front-loads real capital, on
+  purpose: this is the endgame capstone tier, not a cheap consolidation).
+
+Final sigma floor preserved exactly: 0.040 reachable via the same 4-step chain order as before,
+verified by simulating `completeResearch`'s sigma-set side effect end-to-end from the 0.12 baseline.
+Method (unchanged from slice 2, worth restating): grepped every external reference to all 7 ids
+across the WHOLE repo, not just data.js — this is what caught the alloy_tanks/balloon_tanks
+point-of-use gate in sim.js, which a data.js-only pass would have missed entirely, exactly as
+engine_test_stands' heavy_booster reference was missed by a naive grep in slice 2.
+
+Test: `tests/test-tech-structures-merge.js` (21 checks — track is now 4 nodes; all 5 removed ids
+gone; no dangling reqs; alloy_tanks/balloon_tanks chain and gates intact; lightweight_cryo still
+resolves; both sigma floors (0.050 intermediate, 0.040 final) preserved exactly; costs compressed not
+inflated; full-chain simulation reaches 0.040 from the 0.12 baseline). Regression: full suite run,
+only the 1 pre-existing Codex drift (`test-flight3d-trajectory.js`, unrelated) — everything else
+including slice 1's `test-tech-guidance-merge.js` and slice 2's `test-tech-testing-merge.js` still
+clean. Build byte-faithful (`node build.js --check` passes before commit).
+
+Remaining cluster for a future slice (same recipe): propulsion combustion sub-chain
+(combustion_stability→turbopump→regen_cooling→chamber_pressure, 4 → ~2). Grep the WHOLE repo for
+external refs before merging any of the four — the pattern in slices 2-3 (a load-bearing point-of-use
+gate hiding outside the track's own file section) has held twice in a row now, so assume it holds
+again until proven otherwise.
