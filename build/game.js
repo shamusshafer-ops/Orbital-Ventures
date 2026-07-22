@@ -8463,6 +8463,7 @@ function showSettingsMenu(){
         <button class="btn ghost" onclick="hideModal();loadGame()">📂 Load</button>
         <button class="btn ghost" onclick="hideModal();confirmNew()">New Game</button>
       </div>
+      <button class="btn ghost" onclick="showHotkeyHelp()" style="width:100%;margin:4px 0 2px" title="Keyboard shortcuts — press ? anywhere outside a dialog">⌨ Keyboard shortcuts <span class="dim">[?]</span></button>
       <div style="margin:10px 0 2px">
         <div class="cc-panel-h" style="margin-bottom:6px">Theme</div>
         <div style="display:flex;gap:6px">
