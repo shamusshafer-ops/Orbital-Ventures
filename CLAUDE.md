@@ -1,3 +1,53 @@
+# Claude/Codex collaboration handoff
+
+⚠️ **Read the STATUS block below first.** It is rewritten in full each session — not appended to.
+Everything from `## History (pure append below)` onward is the permanent archive: never edit or
+reorder existing entries there, only add new ones at the end, same as `ROADMAP.md`.
+
+---
+
+## STATUS (as of 2026-07-22, HEAD `839148a`)
+
+**Repo health:** 95 test suites, clean build parity, `git diff --check` clean. Only known drift:
+`test-flight3d-trajectory.js` (long-standing — Codex's own accepted trajectory/vehicle-physics
+changes, not a regression). If you see a DIFFERENT test failing, don't assume it's pre-existing —
+check the history below for whether it's a known, intentional behavior change first.
+
+**In progress:** (none claimed right now)
+> When you start a task, replace this line with: `<task> — <Claude|Codex> — started <date>`.
+> When done, clear it back to "(none claimed right now)" and add your entry to the history below.
+
+**Oriented quickly (last few sessions, newest first) — see History for full detail:**
+- Consolidation pass (Claude) — verified Codex's tech-tree completion (98 nodes, closed), camera
+  director, and altitude-driven Earth reveal all integrate cleanly with prior work. No conflicts.
+- Flight 3D: physical Earth handoff + orbital operations (Codex) — Mission Control maneuver
+  sequence at orbit insertion, named camera-director shots, altitude-driven (not progress-driven)
+  Earth reveal, 0.1× default playback speed (intentional, confirmed with owner).
+- Tech-tree design pass, slices 1–4 (Claude slice 1, Codex slices 2–4) — 110→98 nodes, closed.
+- Palette Population PP.0/PP.1/PP.3 (Codex) — parts.js content, self-contained.
+- Crew-escape mini-arc, BACKLOG #40; launch camera + staging fixes; deep-failure/cislunar-reentry
+  3D coverage (Claude) — see History for the full run.
+
+**Standing conventions (both agents, keep doing):**
+- Always re-pull `main` HEAD before starting anything — state moves between sessions.
+- One dedicated test file per feature/slice; run it first when debugging anything adjacent before
+  assuming a regression is new.
+- Grep every external reference to an id/function BEFORE renaming or removing it (how the tech-tree
+  merges and dead-capstone fixes stayed safe).
+- Tag intentional, test-visible behavior changes in the commit message with a leading
+  `BEHAVIOR CHANGE:` line — saves the other agent from reverse-engineering "regression or on
+  purpose" from scratch (cost real time twice this week: the post-failure hold screen, the 0.1×
+  default speed).
+- Claim a task in the STATUS block above before starting it; clear the claim when you push.
+- `ROADMAP.md` and the History section below stay pure-append, always. This STATUS block is the one
+  exception — overwrite it fully each session; never touch anything past the divider.
+- The Git Data API push itself is a conflict guard: pushing against a stale base SHA fails outright
+  rather than silently overwriting the other agent's work. If a push fails, re-pull, don't force.
+
+---
+
+## History (pure append below — do not edit or reorder existing entries)
+
 # Claude collaboration handoff
 
 `main` is the shared integration branch for Codex and Claude. Before editing, pull/rebase
