@@ -364,3 +364,48 @@ the load-bearing summary is:
 - This pass is considered CLOSED — no more clusters are queued. If you're picking up the remaining
   scattered +0.02-type stat-shavers flagged by the 2026-07-20 audit, note they don't form clean
   linear chains like the 4 tackled here, so the same "collapse a chain" recipe won't directly apply.
+
+## Consolidation pass (Claude, 2026-07-22) — repo verified in a single healthy state
+
+Pulled fresh at HEAD `7d6d0df` (Codex's "Palette Population PP.3") and reconciled against my last
+push (`c62b3a6`, guidance tech-tree slice 1). Summary for whoever picks this up next:
+
+**Everything since `c62b3a6` is sound and cleanly integrated — no conflicts found.** Checked
+specifically because several commits touched files I'd been working in:
+
+- **Tech-tree design pass**: Codex picked up the recipe from my slice-1 entry and completed slices
+  2–4 (testing 9→5, structures 7→4, combustion 4→2) — the whole pass is now closed at 98 nodes (was
+  110). Their handoff note above is thorough; nothing to add.
+- **Camera director** (`cape3dLaunchCameraProfile`): a new named-shot system (PAD TRACKER, TOWER
+  CLEAR, ASCENT TRACK, INSERTION TRACK, reactive SEPARATION shots) that layers `distMul`/`az`/`el`
+  offsets on top of — not instead of — my `cape3dLaunchChaseDist` (sqrt-altitude base distance) and
+  the player's manual drag/zoom (`cape3d.launchCam`). Verified the actual call site combines all
+  three correctly. Clean extension.
+- **`cape3dPhysicalAscentBlend`** supersedes my `cape3dAscentBlend` (progress-driven) with an
+  altitude-driven Earth-reveal — a genuine correctness improvement I hadn't caught: tying the
+  reveal to playback progress meant a fast, powerful vehicle would "reach space" at the same
+  progress % as a slow climber regardless of real altitude. Altitude-driven is right. My old
+  function is now dead code (harmless, unused) — not cleaned up, matching the pure-append/no-
+  destructive-edit convention; flagging for whoever wants to prune it.
+- **0.1× default playback speed**: confirmed intentional with the owner (was going to flag as a
+  likely regression — it isn't). Not reverting.
+- **Palette Population (PP.0/PP.1/PP.3)**: entirely self-contained in `src/parts.js` + new tests.
+  Zero overlap with anything I or the mission-control pass touched.
+
+**Stale note correction:** an earlier note here said `test-decision-panel.js` + `test-pad-a.js`
+needed their assertions "refreshed when convenient" for an intentional post-failure hold screen.
+That was already done (commit `2ee7888`, 2026-07-20) — and `test-pad-a.js` was independently
+re-touched again by the mission-control commit for the new 0.1× default. Both are current and
+passing. Disregard that note going forward.
+
+**Full regression, clean pull, rebuilt from scratch:** 95 suites. Only `test-flight3d-trajectory.js`
+fails — the same single pre-existing drift flagged for weeks (Codex's own accepted
+trajectory/vehicle-physics changes). Build parity clean, `git diff --check` clean. No code changes
+were needed this pass — this is a documentation/verification consolidation only.
+
+**On Codex's direct ask** ("Claude browser follow-up: visually fly an orbital mission and inspect
+the 28–96 km Earth handoff"): still can't — this sandbox has no WebGL/display, unchanged limitation.
+Passing that ask through to the repo owner, who does have a browser.
+
+**Respecting Codex's stated next direction** (plane changes, then rendezvous/docking) — not
+proposing a competing next task here.
