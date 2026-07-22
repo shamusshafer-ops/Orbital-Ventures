@@ -82,10 +82,115 @@ const PART_DEFS = {
   // — propulsion —
   engine_a4: {
     id:'engine_a4', cat:'propulsion', name:'V-2 (A-4) Powerplant', short:'ENG',
-    era:0, dia:1.0, px:{len:56, dia:80}, engId:'a4', // pulls thrust/isp/mass/cost/rel from ENGINES.a4
+    era:0, dia:1.0, px:{len:56, dia:80}, engId:'a4', // pulls thrust/isp/mass/cost/rel from ENGINES.a4; a4 starts unlocked (state.unlocked={a4:true}), so this is available from turn 1 via the SAME engId gate every other engine part uses — not a base-part bypass.
     nodes:[ {id:'top', at:'top', class:'small'} ], // engine hangs off the bottom of a tank
     phys:{ dragCoeff:0.3, crossSection:1.0 },
     blurb:'The engine that started it all. Mounts to the base of a stage.',
+  },
+  /* ---------- PP.1: launch/upper-stage engine parts ----------
+     One part per engId, class-sized to its thrust tier (tiny<150kN vac, small 150-900,
+     large 900-3000, huge>3000 — matches ENGINES.thrustVac so a player can eyeball which
+     tank tier an engine wants without opening the R&D screen). No propMass on any liquid
+     engine part — propellant comes from the tank it's mounted under, exactly like
+     engine_a4. Gating is automatic via PP.0's partAvailable(): each part is available
+     the instant state.unlocked[engId] flips true, so these never need their own
+     reqResearch — the tech tree already IS the gate, through the engine unlock. */
+  engine_s3d: {
+    id:'engine_s3d', cat:'propulsion', name:'Rocketdyne S-3D', short:'ENG',
+    era:0, dia:1.0, px:{len:58, dia:82}, engId:'kerolox_mk1',
+    nodes:[ {id:'top', at:'top', class:'small'} ],
+    phys:{ dragCoeff:0.3, crossSection:1.0 },
+    blurb:'The first real kerosene-fueled powerplant — more thrust and Isp than the A-4, standard-diameter mount.',
+  },
+  engine_vernier: {
+    id:'engine_vernier', cat:'propulsion', name:'Bell Agena XLR81', short:'ENG',
+    era:0, dia:0.5, px:{len:34, dia:48}, engId:'vernier_v',
+    nodes:[ {id:'top', at:'top', class:'tiny'} ],
+    phys:{ dragCoeff:0.25, crossSection:1.0 },
+    blurb:'A small, restartable upper-stage engine — low thrust, but strong vacuum Isp for its size.',
+  },
+  engine_ma3: {
+    id:'engine_ma3', cat:'propulsion', name:'Rocketdyne MA-3 Sustainer', short:'ENG',
+    era:0, dia:1.0, px:{len:64, dia:86}, engId:'kerolox_mk2',
+    nodes:[ {id:'top', at:'top', class:'small'} ],
+    phys:{ dragCoeff:0.3, crossSection:1.0 },
+    blurb:'A stage-and-a-half sustainer — keeps firing well past first-stage separation on the same standard mount.',
+  },
+  engine_lr79: {
+    id:'engine_lr79', cat:'propulsion', name:'Rocketdyne LR79', short:'ENG',
+    era:0, dia:1.0, px:{len:60, dia:84}, engId:'kerolox_le',
+    nodes:[ {id:'top', at:'top', class:'small'} ],
+    phys:{ dragCoeff:0.3, crossSection:1.0 },
+    blurb:'A high-thrust kerosene sidegrade to the S-3D: more thrust, less Isp, cheaper and heavier.',
+  },
+  engine_h1: {
+    id:'engine_h1', cat:'propulsion', name:'Rocketdyne H-1', short:'ENG',
+    era:0, dia:1.6, px:{len:74, dia:112}, engId:'kerolox_mk3',
+    nodes:[ {id:'top', at:'top', class:'large'} ],
+    phys:{ dragCoeff:0.35, crossSection:1.0 },
+    blurb:'The heavy-lift powerplant that puts crew and life support into orbit. Needs a heavy-class tank mount.',
+  },
+  engine_f1: {
+    id:'engine_f1', cat:'propulsion', name:'Rocketdyne F-1', short:'ENG',
+    era:0, dia:2.4, px:{len:100, dia:150}, engId:'f1_class',
+    nodes:[ {id:'top', at:'top', class:'huge'} ],
+    phys:{ dragCoeff:0.4, crossSection:1.0 },
+    blurb:'An order of magnitude beyond anything before it — 6.7 MN of thrust. Only a super-heavy tank can carry it.',
+  },
+  engine_methalox: {
+    id:'engine_methalox', cat:'propulsion', name:'Methalox Full-Flow (Raptor-class)', short:'ENG',
+    era:0, dia:1.6, px:{len:70, dia:108}, engId:'methalox',
+    nodes:[ {id:'top', at:'top', class:'large'} ],
+    phys:{ dragCoeff:0.35, crossSection:1.0 },
+    blurb:'High Isp AND high thrust on one engine — the basis of a reusable booster. Heavy-class mount.',
+  },
+  engine_aj10: {
+    id:'engine_aj10', cat:'propulsion', name:'AJ10 Aerozine/N₂O₄', short:'ENG',
+    era:0, dia:0.5, px:{len:38, dia:50}, engId:'hyper_storable',
+    nodes:[ {id:'top', at:'top', class:'tiny'} ],
+    phys:{ dragCoeff:0.25, crossSection:1.0 },
+    blurb:'Storable, restartable, sits ready for days then reignites on command — the transfer-stage and lander workhorse.',
+  },
+  engine_j2: {
+    id:'engine_j2', cat:'propulsion', name:'Rocketdyne J-2', short:'ENG',
+    era:0, dia:1.6, px:{len:76, dia:110}, engId:'hydrolox_up',
+    nodes:[ {id:'top', at:'top', class:'large'} ],
+    phys:{ dragCoeff:0.35, crossSection:1.0 },
+    blurb:'High-thrust LH₂/LOX upper-stage power — the energy to throw heavy payloads to orbit and beyond.',
+  },
+  engine_rl10: {
+    id:'engine_rl10', cat:'propulsion', name:'RL10-class Cryo Upper', short:'ENG',
+    era:0, dia:0.5, px:{len:36, dia:46}, engId:'hydrolox_rl10',
+    nodes:[ {id:'top', at:'top', class:'tiny'} ],
+    phys:{ dragCoeff:0.25, crossSection:1.0 },
+    blurb:'Tiny mount, enormous vacuum Isp — little thrust, but nothing chemical burns more efficiently per kilogram.',
+  },
+  engine_methalox_vac: {
+    id:'engine_methalox_vac', cat:'propulsion', name:'Methalox Vacuum (RL-class)', short:'ENG',
+    era:0, dia:1.0, px:{len:62, dia:88}, engId:'methalox_vac',
+    nodes:[ {id:'top', at:'top', class:'small'} ],
+    phys:{ dragCoeff:0.3, crossSection:1.0 },
+    blurb:'A vacuum-optimized methalox upper — trades the full-flow booster\'s thrust for far more vacuum Isp.',
+  },
+  /* ---------- PP.1: solid motors ----------
+     Solids are self-contained (own propMass, no separate tank needed) — unlike liquid
+     engine parts above, which draw propellant from whatever tank they're mounted under.
+     stage_solid_scout is axial (top+bottom nodes): it can BE a stage on its own. The new
+     booster_srb generalizes the existing booster_solid pattern one tier up — segmented,
+     radial-only, heavy-class mount, for when Castor-class thrust isn't enough. */
+  stage_solid_scout: {
+    id:'stage_solid_scout', cat:'propulsion', name:'Scout-class Solid Stage', short:'SLD',
+    era:0, dia:1.0, px:{len:80, dia:80}, engId:'solid_scout',
+    nodes:[ {id:'top', at:'top', class:'small'}, {id:'bot', at:'bottom', class:'small'} ],
+    phys:{ propMass:8.0, dragCoeff:0.3, crossSection:1.0 },
+    blurb:'A complete solid stage in one part — no throttle, no shutdown once lit, but dead-simple and ready after years in storage.',
+  },
+  booster_srb: {
+    id:'booster_srb', cat:'propulsion', name:'Segmented Solid Booster', short:'SRB',
+    era:0, dia:1.6, px:{len:140, dia:60}, engId:'solid_srb',
+    nodes:[ {id:'r', at:'radial', class:'large'} ],
+    phys:{ propMass:20.0, dragCoeff:0.5, crossSection:0.5 },
+    blurb:'Field-jointed segments scale a solid motor to enormous thrust — the heavy-lift strap-on for when Castor-class thrust isn\'t enough. Use symmetry for a matched cluster.',
   },
   // E3.3: strap-on booster — radial-only (no axial nodes, it can't sit IN the spine, only beside
   // it), self-contained (carries its own propellant, unlike engine_a4 which needs a tank). Folds

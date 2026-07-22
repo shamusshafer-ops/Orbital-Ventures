@@ -5756,3 +5756,63 @@ propulsion, PP.2 transfer propulsion (exercises the transfer-only gate + power-b
 structural/payload (diameter tank tiers, fairings), PP.4 palette polish. Still all headless behind
 BENCH_V2 — the browser-playtest caveat from the E3.6 ROADMAP entry stands; populating the palette makes
 the flagged-off bench more worth turning on but doesn't substitute for a real-browser pass.
+
+
+## Session — Palette Population PP.1: launch/upper propulsion (2026-07-21)
+
+*Pure append. Started heavy tier (mapping lock, still design judgment); execution itself was the
+first genuinely lighter-tier PP slice as flagged in PP.0.* 13 new engine parts landed against the
+mapping locked and signed off earlier this session: `engine_s3d` (kerolox_mk1), `engine_vernier`
+(vernier_v), `engine_ma3` (kerolox_mk2), `engine_lr79` (kerolox_le), `engine_h1` (kerolox_mk3),
+`engine_f1` (f1_class), `engine_methalox` (methalox), `engine_aj10` (hyper_storable), `engine_j2`
+(hydrolox_up), `engine_rl10` (hydrolox_rl10), `engine_methalox_vac` (methalox_vac),
+`stage_solid_scout` (solid_scout, self-contained axial stage), `booster_srb` (solid_srb, radial heavy
+strap-on generalizing the existing booster_solid one tier up). `PART_DEFS` now 20 total (7 pre-PP.1 +
+13 new). Every part is `engId`-linked (no duplicated thrust/isp/mass — all flows from `ENGINES`), gated
+automatically via PP.0's `partAvailable()` off the SAME `state.unlocked[engId]` signal the slider bench
+already uses, and node-class-sized to its thrust tier (tiny<150kN vac / small 150-900 / large 900-3000
+/ huge>3000).
+
+**Honest finding surfaced by building this slice, not glossed over:** the game has exactly ONE tank
+part today (`tank_std`, node class `small`). That means only the 4 `small`-class liquids
+(`engine_s3d`, `engine_ma3`, `engine_lr79`, `engine_methalox_vac`) plus the self-contained
+`stage_solid_scout` can actually be PLACED in a build right now. The 3 `tiny`-class engines
+(`engine_vernier`, `engine_aj10`, `engine_rl10`) and the 4 `large`/`huge`-class engines (`engine_h1`,
+`engine_f1`, `engine_methalox`, `engine_j2`) plus `booster_srb` — 8 of the 13 new parts — are
+CORRECTLY and DELIBERATELY refused by E3.2's existing diameter-class gate (`nodesCompatible`'s hard
+class-mismatch block, verified already built in PP.0). This is the exact PP.3 dependency flagged when
+the mapping was signed off, now concretely visible: those 8 parts are geometrically inert until PP.3
+ships matching tank tiers (tiny/large/huge). The gate working correctly here — refusing an F-1 under a
+standard tank instead of silently allowing a wrong-scale build — is the diameter system doing its job,
+not a defect.
+
+**Data integrity is NOT blocked on PP.3, though.** Every one of the 8 pending parts carries verified-
+correct physics: `engId` resolves to the right `ENGINES` entry, and — via the same `_engOverride`
+stamping technique the E3.0 harness already established — each one's Δv/TWR contribution through the
+bridge-core (`stackPerformance(ir.stages, ir.payload)`) matches the direct slider-path calculation
+exactly. So when PP.3 lands the missing tank tiers, these parts' physics is already proven right; only
+the attach geometry was pending.
+
+**Test-convention correction worth recording:** the first equivalence pass failed all 5 attachable-
+today parts by ~7 m/s each — not a part-data bug, but a wrong comparison function. `stackPerformanceForBuild`
+(the E3.4 aero-aware wrapper) deliberately layers a small drag-loss reward on top of the core physics
+for part-built vehicles ("the slider bench has never modeled drag; part-built vehicles get to" — E3.4
+header comment) — it is SUPPOSED to diverge from the direct slider path by design. Switched to
+`stackPerformance(ir.stages, ir.payload)` — the exact convention `test-parts-bridge.js` already uses —
+to isolate what this slice needs to prove (bridge conversion fidelity for the new parts), and added an
+explicit check (section 3b) confirming the aero divergence IS present and intentional on the full-bench
+path, so the choice of comparison function is asserted, not just quietly made.
+
+Test: `tests/test-parts-pp1-propulsion.js` (120 checks — data integrity for all 13 parts; universal
+lock-at-game-start + unlock-signal-parity gating; real end-to-end attach+bridge+equivalence for the 5
+usable-today parts including the self-contained solid stage; the E3.4 divergence proof; honest
+diameter-gate refusal for the 8 pending parts; physics-correctness-via-override for those same 8;
+booster_srb's E3.3 booster-detection contract shape). Regression: full suite, only the 1 pre-existing
+Codex drift. Build byte-faithful.
+
+**Next: PP.2 — transfer propulsion** (medium-heavy tier — exercises the transfer-only gate built in
+PP.0 for real, plus the power-balance/low-thrust interactions for the 5 `transferOnly` engines: NTR,
+NEP, Hall, ion, fusion torch). **Then PP.3 — structural/payload**, which is no longer just "nice to
+have diameter tiers" but the thing that unlocks 8 of PP.1's 13 parts plus whatever PP.2 adds. Consider
+resequencing PP.3 ahead of PP.2 if the goal is "make what's already built usable" rather than "keep
+adding data" — worth a decision before starting either.
