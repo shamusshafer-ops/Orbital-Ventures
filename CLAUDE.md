@@ -255,6 +255,43 @@ effect total, rewire prereqs through survivors, test for dangling reqs.
 
 ## Next task
 
+## Flight 3D: physical Earth handoff + orbital operations — SHIPPED (Codex)
+
+This pass turns the Flight 3D Earth-orbit segment into an interactive Mission Control sequence.
+Earth-orbit flights now pause at insertion and expose four authoritative maneuver outcomes:
+planned circularization, a reserve-margin-gated orbit raise, a reserve-margin-gated orbit lower,
+or deorbit/recovery. The selected plan threads through settlement (payout/rep/outcome), the 3D
+orbit plane, and the new Mission Control telemetry card (apoapsis, periapsis, inclination,
+velocity, remaining maneuver Δv). Orbit camera drag/zoom remains enabled instead of being detached.
+
+The launch side now uses named, event-driven camera shots (pad, tower clear, ascent, actual
+booster/stage separation, insertion) and a decimated guide derived from the real integrated
+trajectory plus real staging markers. Camera offsets stay player-adjustable. Default playback is
+now **0.1× Slow-mo**; the existing control still cycles through 50× for coasts.
+
+**Important visual correction:** the ascent Earth is now physically scaled (Earth mean radius
+6,371 km) and permanently anchored below the pad. Its handoff is based on physical altitude rather
+than animation progress: globe begins at ~28 km and completes around 96 km; camera far distance is
+the real geometric horizon plus margin. The old texture guard left only a pale atmosphere shell
+while a map decoded, so the Earth mesh now renders immediately with a dark-blue fallback, then
+attaches the photo texture when ready. Atmosphere opacity is deliberately very low (4.5% of the
+blend) to avoid masking the surface.
+
+Files: `src/sim.js` (maneuver outcomes), `src/flight.js` (pause/HUD), `src/render.js` (orbit,
+trajectory, camera, physical Earth), `src/shell.js` + `src/shell.html` (speed/HUD/responsive CSS).
+Generated: `build/game.js`, `index.html`, `orbital-ventures.html`. Tests added/extended:
+`tests/test-orbital-maneuvers.js`, `tests/test-launch-camera.js`, `tests/test-anim-speed.js`.
+
+Validated after the final fallback-Earth fix: launch camera 37/37; orbital maneuvers 14/14;
+flight-3D foundation 58/58; deep-failure 26/26; cislunar reentry 8/8; staging 29/29;
+separation beat 10/10; regression 18/18; build parity and `git diff --check` clean.
+
+**Claude browser follow-up:** visually fly an orbital mission and inspect the 28–96 km Earth
+handoff now that the fallback globe cannot disappear. If the real horizon still needs art tuning,
+change only the constants in `cape3dPhysicalAscentBlend`, the physical-Earth material, or the
+camera director—do not return to a camera-relative globe. Plane changes are deliberately next;
+rendezvous/docking follows after that.
+
 Suggested (open — pick per priority):
 OR pick up remaining **E4.7** scope (fold any remaining legacy 2D-canvas flight paths into the
 Flight 3D adapter). Coordinate on which. If continuing staging: the detached-debris drift is

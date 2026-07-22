@@ -5,7 +5,7 @@ let animEnabled=true, animState=null;
 // arrivals never arm it (they resolve turns later, when a different vehicle may sit on the pad).
 let _liftoffArmed=false, _liftoff=null, _liftoffRAF=0;
 const ANIM_SPEEDS=[{label:'0.1×  Slow-mo',mult:0.1},{label:'¼×  Slow-mo',mult:0.25},{label:'1×  Normal',mult:1},{label:'2×  Fast',mult:2},{label:'5×  Fast',mult:5},{label:'10×  Fast',mult:10},{label:'25×  Fast',mult:25},{label:'50×  Fast',mult:50}];
-let animSpeedIdx=2; // 1× Normal — keeps existing default behavior; index 2 in the new wider ANIM_SPEEDS set
+let animSpeedIdx=0; // default to deliberate launch viewing; players can still cycle to 50× for long coasts
 function toggleAnim(){ animEnabled=!animEnabled; const b=$('animToggle'); if(b) b.textContent='Animation: '+(animEnabled?'On':'Off'); }
 // --- screen real estate: browser fullscreen + a persistent full-width "Wide" mode ---
 // Default to maximum real estate: Wide (full-width) is ON unless the player turned it

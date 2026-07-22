@@ -4509,6 +4509,7 @@ function scrubLaunch(){
 // governs hardware loss; anomalies are an ops-skill layer on top, and the safe option
 // is always available. The rocket equation is untouched.
 let _pendingOps=null; // a flight paused at an in-flight anomaly modal
+let _pendingOrbitOps=null; // Earth-orbit flight paused at orbital insertion for a maneuver call
 const ANOMALY_CHANCE_BASE=0.26;
 const MISSION_ANOMALIES=[
   { id:'solar_array', title:'Solar array failed to deploy',
@@ -4573,8 +4574,52 @@ function resolveAnomaly(i){
   if(!_pendingOps||!_pendingOps.opts) return;
   const ctx=_pendingOps, o=ctx.opts[i]; if(!o) return;
   _pendingOps=null; hideModal();
-  const eff=o.resolve(Math.random)||{};
+  const eff=o.resolve(Math.random)||{}, prior=ctx._priorOrbitOps||null; ctx._priorOrbitOps=null;
+  if(prior){
+    if(prior.log) log('note',`${ctx.m.name}: ${prior.log}`);
+    eff.payoutMult=(prior.payoutMult==null?1:prior.payoutMult)*(eff.payoutMult==null?1:eff.payoutMult);
+    eff.repDelta=(prior.repDelta||0)+(eff.repDelta||0);
+    if(prior.outcomeOverride&&!eff.outcomeOverride) eff.outcomeOverride=prior.outcomeOverride;
+  }
   finalizeLaunch(ctx, eff);
+}
+
+/* ---------- Flight 3D: Earth-orbit maneuver decisions ---------- */
+function orbitalManeuverBudget(ctx){
+  if(!ctx||!ctx.m||!ctx.v) return 0;
+  return Math.max(0,Math.round((Number(ctx.v.totalDv)||0)-effectiveReqDv(ctx.m)));
+}
+function orbitalManeuverOptions(ctx){
+  const budget=orbitalManeuverBudget(ctx), inc=Number(ctx&&ctx.m&&ctx.m.inclination)||LAUNCH_SITE_LAT;
+  const make=(id,label,cost,profile,effect)=>({id,label,cost,enabled:budget>=cost,profile:Object.assign({inclination:inc,remainingDv:Math.max(0,budget-cost)},profile),effect:effect||{}});
+  const opts=[
+    make('circularize','Execute planned circularization',0,{label:'NOMINAL ORBIT',periapsis:200,apoapsis:205},{repDelta:1,log:'Mission Control completed the insertion correction; the spacecraft is stable in its target orbit.'}),
+    make('raise','Raise orbit · 120 m/s',120,{label:'ORBIT RAISE',periapsis:205,apoapsis:420},{payoutMult:1.05,repDelta:2,log:'Mission Control used the available margin to raise apogee and expand the mission envelope.'}),
+    make('lower','Lower orbit · 70 m/s',70,{label:'LOW ORBIT',periapsis:155,apoapsis:205},{payoutMult:.9,outcomeOverride:'partial',log:'Mission Control lowered the orbit; the payload is safe, but lifetime and coverage are reduced.'}),
+    make('deorbit','Deorbit / recover vehicle',0,{label:'DEORBIT',periapsis:35,apoapsis:190},{outcomeOverride:'scrub',log:'Mission Control commanded an early deorbit; the vehicle was recovered and the objective was forfeited.'})
+  ];
+  return opts;
+}
+function showOrbitalManeuverDecision(ctx){
+  const opts=orbitalManeuverOptions(ctx), budget=orbitalManeuverBudget(ctx);
+  _pendingOrbitOps={ctx,opts};
+  openFlightForDecision(ctx,{holdAt:'orbit-start',buildPanel:()=>({
+    title:'ORBITAL INSERTION · MANEUVER GO/NO-GO',
+    lines:[`Tracking confirms insertion. ${budget.toLocaleString()} m/s of maneuver margin remains.`,
+      'Select the orbit plan. Mission elapsed time is paused while Mission Control evaluates the burn.'],
+    buttons:opts.filter(o=>o.enabled).map(o=>({label:o.label,ghost:o.id!=='circularize',action:()=>resolveOrbitalManeuver(o.id)}))
+  })});
+}
+function resolveOrbitalManeuver(id){
+  const pending=_pendingOrbitOps; if(!pending) return false;
+  const opt=pending.opts.find(o=>o.id===id&&o.enabled); if(!opt) return false;
+  _pendingOrbitOps=null; hideModal();
+  pending.ctx.orbitOps=Object.assign({id:opt.id,cost:opt.cost},opt.profile);
+  // A commanded deorbit ends orbital operations immediately; do not roll a later payload anomaly
+  // after Mission Control has already elected to recover the vehicle and forfeit the objective.
+  if(opt.id==='deorbit') finalizeLaunch(pending.ctx,opt.effect);
+  else maybeAnomaly(pending.ctx,opt.effect);
+  return true;
 }
 
 /* ---------- CE5(b): the live abort / press-on call ---------- */
@@ -4772,7 +4817,7 @@ function tankerDelivery(){
   return state.transfer.prop;
 }
 function launch(prebuilt,hullId){
-  if(_pendingLaunch||_pendingLive||_pendingSetback||_pendingRivalDisaster) return; // a decision modal owns the flow — no re-entry
+  if(_pendingLaunch||_pendingLive||_pendingOrbitOps||_pendingSetback||_pendingRivalDisaster) return; // a decision modal owns the flow — no re-entry
   if(vehPopoutOpen) closeVehPopout(); // launching from the pop-out returns to the normal flight flow
   const m=curMission();
   const v=computeVehicle();
@@ -4880,7 +4925,7 @@ function beginResolve(ctx){
 // a time. Guards prevent reentrancy (a strand/loss calls advance() → advanceDays → here) and modal stacking.
 function pumpFlightArrivals(){
   if(_flightResolving) return;
-  if(_pendingLive||_pendingReserve||_pendingOps||_pendingRescue||_pendingSetback||_pendingLogiMishap||_pendingInquiry||_pendingLaunch||_pendingRivalDisaster) return;
+  if(_pendingLive||_pendingReserve||_pendingOrbitOps||_pendingOps||_pendingRescue||_pendingSetback||_pendingLogiMishap||_pendingInquiry||_pendingLaunch||_pendingRivalDisaster) return;
   try{ if($('modal') && !$('modal').classList.contains('hidden')) return; }catch(e){} // a modal is on screen — wait
   const rec=(state.activeFlights||[]).find(f=>f&&f.deferred&&absDay()>=f.arriveAbs);
   if(!rec) return;
@@ -5172,18 +5217,21 @@ function postResolve(ctx){
   if(animEnabled){
     const dflag=deepCallFlag(ctx.outcome, ctx.sim, ctx.routine);
     if(dflag){ _pendingReserve=ctx; ctx.deepFlag=dflag; showReserveModal(ctx, dflag); return; }
+    if(!ctx.m.profile && (ctx.m.reqDv||0)>=9000 && (ctx.outcome.kind==='success'||ctx.outcome.kind==='partial')){
+      showOrbitalManeuverDecision(ctx); return;
+    }
   }
   maybeAnomaly(ctx);
 }
 // an in-flight anomaly may still fire on a flight that reaches its operational phase, else apply the outcome.
-function maybeAnomaly(ctx){
+function maybeAnomaly(ctx, priorOps){
   const {outcome}=ctx;
   // #20 slice 2: an in-flight anomaly can occur once the mission reaches its operational phase
   if(animEnabled && (outcome.kind==='success'||outcome.kind==='partial')){
     const ev=rollMissionEvents(ctx);
-    if(ev){ _pendingOps=ctx; showAnomalyModal(ev,ctx); return; }
+    if(ev){ ctx._priorOrbitOps=priorOps||null; _pendingOps=ctx; showAnomalyModal(ev,ctx); return; }
   }
-  finalizeLaunch(ctx,null);
+  finalizeLaunch(ctx,priorOps||null);
 }
 // Slice B: build the purely-visual spec for a deferred departure's "cruise begins" outro card. Mirrors the
 // finalizeLaunch flight spec (same vehicle geometry / livery / rng shape, so the pad + ascent render exactly
@@ -5402,7 +5450,7 @@ function finalizeLaunch(ctx, ops){
     recovering: recoveryActive(m) && state.stages.length>1 && failPhase!=='ascent', // #graphics: fly the first stage back for a landing instead of tumbling away
     hasCapsule: !!(state.research.crew_capsule || crewed), // recovery: parachutes + heat shield + splashdown (Mercury/Vostok era)
     isCislunar: !!m.profile, isOrbital: (!m.profile && m.reqDv>=9000),
-    reqDv: m.reqDv||9400, physics:flightPhysicsSpec(m,v), report:flightReport(m,v,sim,outcome),
+    reqDv: m.reqDv||9400, physics:flightPhysicsSpec(m,v), report:flightReport(m,v,sim,outcome), orbitOps:ctx.orbitOps||null,
     // #38: reuse the earlier roll if a live decision (weather/live-call/rescue) already opened this
     // overlay — resumeFlightForDecision's Object.assign would otherwise clobber A.spec.night mid-flight,
     // flipping the sky partway through a launch already being watched.

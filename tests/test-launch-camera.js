@@ -19,6 +19,41 @@ function near(a,b,tol,n){ check(n+` (${(+a).toFixed(2)} vs ${(+b).toFixed(2)})`,
   check('distance is monotonically non-decreasing with altitude (no weird dips)', (()=>{ let prev=0,ok=true; for(const km of [0,1,5,20,50,100,200,400,800]){ const d=cape3dLaunchChaseDist(km*1000); if(d<prev-1e-6) ok=false; prev=d; } return ok; })());
 }
 
+// ---------- 7. physical ascent handoff uses altitude, not arbitrary playback progress ----------
+{
+  const low=cape3dPhysicalAscentBlend(12000), mid=cape3dPhysicalAscentBlend(55000), high=cape3dPhysicalAscentBlend(110000);
+  check('physical Earth remains absent through the lower atmosphere',low.space===0&&low.capeVisible===true);
+  check('physical Earth handoff occurs in the high atmosphere',mid.space>0&&mid.space<1&&mid.capeVisible===true);
+  check('physical Earth is fully established above the Kármán line',high.space===1&&high.capeVisible===false);
+  check('physical handoff is monotonic by altitude',(()=>{let prev=-1;for(const km of [0,10,20,28,40,55,70,85,96,120]){const x=cape3dPhysicalAscentBlend(km*1000).space;if(x<prev)return false;prev=x;}return true;})());
+  check('camera depth reaches beyond the real geometric horizon at 100 km',cape3dFlightCameraFar(100000)>1100000);
+}
+
+// ---------- 5. NASA-style camera director: restrained authored beats with manual offsets layered later ----------
+{
+  const pad=cape3dLaunchCameraProfile({phase:'pad',progress:.5});
+  const tower=cape3dLaunchCameraProfile({phase:'ascent',progress:.05,t:2,trajectory:{stageEvents:[]}});
+  const climb=cape3dLaunchCameraProfile({phase:'ascent',progress:.45,t:40,trajectory:{stageEvents:[]}});
+  const insert=cape3dLaunchCameraProfile({phase:'ascent',progress:.92,t:100,trajectory:{stageEvents:[]}});
+  check('camera director names the pad/tower/ascent/insertion mission-control shots',pad.shot==='PAD TRACKER'&&tower.shot==='TOWER CLEAR'&&climb.shot==='ASCENT TRACK'&&insert.shot==='INSERTION TRACK');
+  check('camera distance multiplier remains tightly bounded through all authored shots',[pad,tower,climb,insert].every(c=>c.distMul>=.72&&c.distMul<=1.55));
+  const sep=cape3dLaunchCameraProfile({phase:'ascent',progress:.5,t:50,trajectory:{stageEvents:[{t:50.2,kind:'stage',index:0}]}});
+  check('camera recognizes and tightens for a real stage event',sep.shot==='STAGE SEPARATION'&&sep.distMul<climb.distMul);
+  const booster=cape3dLaunchCameraProfile({phase:'ascent',progress:.3,t:20,trajectory:{stageEvents:[{t:20,kind:'booster',index:-1}]}});
+  check('booster event gets its own tracking beat',booster.shot==='BOOSTER SEPARATION');
+}
+
+// ---------- 6. trajectory guide is bounded and preserves physical endpoints/events ----------
+{
+  const points=[]; for(let i=0;i<1000;i++) points.push({t:i*.2,xKm:i*.01,altitudeKm:i*.02});
+  const plan={points,stageEvents:[{t:10,kind:'stage',index:0,xKm:.5,altitudeKm:1}]};
+  const guide=cape3dTrajectoryGuideSamples(plan,100);
+  check('trajectory guide decimates long physics plans to a bounded render payload',guide.points.length<=101);
+  check('trajectory guide preserves first and final physical samples',guide.points[0].t===0&&guide.points[guide.points.length-1].t===points[points.length-1].t);
+  check('trajectory guide preserves authoritative staging markers',guide.events.length===1&&guide.events[0].t===10&&guide.events[0].kind==='stage');
+  check('trajectory guide safely handles a missing plan',cape3dTrajectoryGuideSamples(null,100).points.length===0);
+}
+
 // ---------- 2. cape3dAscentBlend drives a real reveal curve (already existed, now actually used) ----------
 {
   check('early ascent: cape site visible, no space reveal yet', cape3dAscentBlend(.1).space===0 && cape3dAscentBlend(.1).capeVisible===true);

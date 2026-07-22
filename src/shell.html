@@ -746,6 +746,8 @@
   .animwrap #flightCanvasWrap canvas{display:block;width:100%;height:auto}
   .flight3d-readout{position:absolute;z-index:8;top:14px;left:15px;max-width:250px;padding:8px 10px;border:1px solid rgba(110,208,255,.42);border-radius:5px;background:rgba(2,12,22,.72);box-shadow:0 4px 18px rgba(0,0,0,.25);color:#d9f4ff;font:11px/1.48 var(--mono);letter-spacing:.045em;white-space:pre-line;pointer-events:none}
   .flight3d-readout.hidden{display:none!important}
+  .flight-orbit-hud{position:absolute;z-index:12;left:15px;bottom:14px;width:286px;padding:9px 11px;border:1px solid rgba(110,208,255,.55);border-radius:5px;background:rgba(2,12,22,.88);box-shadow:0 7px 24px rgba(0,0,0,.4);color:#d9f4ff;font:10px/1.42 var(--mono);pointer-events:none}
+  .flight-orbit-hud.hidden{display:none!important}.orbit-hud-title{margin-bottom:6px;color:#7bcff0;letter-spacing:.12em;font-size:9px}.orbit-hud-grid{display:grid;grid-template-columns:1fr auto;gap:3px 12px}.orbit-hud-grid span{color:#83a7b8;letter-spacing:.06em}.orbit-hud-grid b{color:#fff;text-align:right;font-weight:600;font-variant-numeric:tabular-nums}
   .flight-report-card{position:absolute;z-index:13;right:14px;top:14px;width:220px;padding:9px 10px;border:1px solid rgba(110,208,255,.52);border-radius:6px;background:rgba(2,12,22,.90);box-shadow:0 7px 24px rgba(0,0,0,.42);color:#e9faff;font:10px/1.45 var(--mono);pointer-events:none}
   .flight-report-card.hidden{display:none!important}.flight-report-card .fr-title{color:#7bcff0;font-size:9px;letter-spacing:.14em;margin-bottom:5px}.flight-report-card .fr-row{display:flex;justify-content:space-between;gap:8px}.flight-report-card .fr-row span:last-child{color:#fff;text-align:right}.flight-report-card.failure{border-color:rgba(232,86,79,.75)}.flight-report-card.failure .fr-title{color:#ff9a8f}
   .flight-altitude{position:absolute;z-index:12;top:13px;left:50%;min-width:174px;transform:translateX(-50%);padding:7px 15px 8px;border:1px solid rgba(118,220,255,.68);border-radius:6px;background:rgba(2,12,22,.90);box-shadow:0 7px 24px rgba(0,0,0,.42),inset 0 1px 0 rgba(220,248,255,.08);color:#e9faff;text-align:center;font-family:var(--mono);font-variant-numeric:tabular-nums;pointer-events:none}
@@ -761,6 +763,14 @@
   .flight3d-decision-actions .btn{width:100%;min-height:34px}
   .animbar{display:flex;align-items:center;gap:14px}
   #animTitle{font-family:var(--mono);letter-spacing:.06em;color:var(--ink);font-size:14px}
+  @media(max-width:700px){
+    .animwrap{gap:8px}.animwrap #flightCanvasWrap{max-width:100vw;border-radius:0}
+    .flight3d-readout{display:none!important}.flight-report-card{right:8px;top:42px;width:146px;padding:7px 8px;font-size:9px}
+    .flight-altitude{top:8px;min-width:136px;padding:6px 9px 7px}.flight-altitude strong{font-size:16px}
+    .flight-orbit-hud{left:8px;bottom:8px;width:min(268px,calc(100% - 16px));padding:7px 9px;font-size:9px}.orbit-hud-grid{gap:2px 9px}
+    .flight3d-decision{padding:12px}.flight3d-decision-panel{width:min(470px,100%);padding:15px}.flight3d-decision-line{font-size:11px}
+    .animbar{gap:7px;flex-wrap:wrap;justify-content:center}.animbar .dim{font-size:10px!important}
+  }
 
   /* ---- Phase 3A: Command Center hero composition ----
      Scoped to .command-hero so the bench, R&D, map and station keep the established shell. */
@@ -1220,10 +1230,10 @@
 
 <div id="animOverlay" class="animwrap hidden">
   <div id="animTitle">—</div>
-  <div id="flightCanvasWrap" style="position:relative;display:inline-block"><div id="flight3dHost" style="display:none;position:absolute;inset:0"></div><div id="flightHost" style="display:none"></div><div id="flightZoom" style="position:relative;transform-origin:0 0"><canvas id="flightCanvas" width="900" height="520"></canvas><canvas id="flightTextCanvas" width="900" height="520" style="position:absolute;left:0;top:0;pointer-events:none"></canvas></div><div id="flight3dReadout" class="flight3d-readout hidden" role="status" aria-live="polite"></div><div id="flightAltitude" class="flight-altitude hidden" role="status" aria-label="Current altitude above mean sea level"></div><div id="flight3dDecision" class="flight3d-decision hidden" role="dialog" aria-modal="true" aria-labelledby="flight3dDecisionTitle"></div></div>
+  <div id="flightCanvasWrap" style="position:relative;display:inline-block"><div id="flight3dHost" style="display:none;position:absolute;inset:0"></div><div id="flightHost" style="display:none"></div><div id="flightZoom" style="position:relative;transform-origin:0 0"><canvas id="flightCanvas" width="900" height="520"></canvas><canvas id="flightTextCanvas" width="900" height="520" style="position:absolute;left:0;top:0;pointer-events:none"></canvas></div><div id="flight3dReadout" class="flight3d-readout hidden" role="status" aria-live="polite"></div><div id="flightOrbitHud" class="flight-orbit-hud hidden" role="status" aria-label="Orbital mission control telemetry"></div><div id="flightAltitude" class="flight-altitude hidden" role="status" aria-label="Current altitude above mean sea level"></div><div id="flight3dDecision" class="flight3d-decision hidden" role="dialog" aria-modal="true" aria-labelledby="flight3dDecisionTitle"></div></div>
   <div class="animbar">
     <span class="dim" style="font-size:12px">Mission playback</span>
-    <button class="btn ghost" id="animSpeedBtn" onclick="cycleAnimSpeed()" style="min-width:90px;font-size:12px">1×  Normal</button>
+    <button class="btn ghost" id="animSpeedBtn" onclick="cycleAnimSpeed()" style="min-width:90px;font-size:12px">0.1×  Slow-mo</button>
     <span class="dim" style="font-size:11px">[Enter]</span>
     <button class="btn" onclick="skipAnim()">Skip ▸</button>
   </div>

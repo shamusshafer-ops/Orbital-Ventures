@@ -508,7 +508,7 @@ function flight3dPresentationSnapshot(spec,timing,t){
   // — the outcome was already resolved by the sim long before this animation opened.
   const DEEP_FAIL_FRAC=.42;
   const deepFailure=(phase==='orbit'||phase==='transfer')&&!!(spec&&spec.success===false&&spec.failPhase==='deep')&&phaseP>=DEEP_FAIL_FRAC;
-  return {phase,phaseProgress:clampA(phaseP,0,1),overallProgress:clampA(local/total,0,1),mode:(spec&&spec.mode)||'launch',crewed:!!(spec&&spec.crewed),isOrbital:!!(spec&&spec.isOrbital),isCislunar:!!(spec&&spec.isCislunar),reqDv:(spec&&spec.reqDv)||0,success:spec?spec.success!==false:true,failPhase:(spec&&spec.failPhase)||null,vehicle:{stages,boosters,transferProp:(spec&&spec.transferProp)||0,physics:(spec&&spec.physics)||null},effects:{ignition:clampA(d.ignite==null?(phase==='pad'?0:1):d.ignite,0,1),night:!!(spec&&spec.night),ascentFailure,crewEscaped,failureProgress:ascentFailure?clampA((phaseP-.5)/.28,0,1):0,deepFailure,deepFailureFrac:DEEP_FAIL_FRAC,deepFailureProgress:deepFailure?clampA((phaseP-DEEP_FAIL_FRAC)/.24,0,1):0}};
+  return {phase,phaseProgress:clampA(phaseP,0,1),overallProgress:clampA(local/total,0,1),mode:(spec&&spec.mode)||'launch',crewed:!!(spec&&spec.crewed),isOrbital:!!(spec&&spec.isOrbital),isCislunar:!!(spec&&spec.isCislunar),reqDv:(spec&&spec.reqDv)||0,success:spec?spec.success!==false:true,failPhase:(spec&&spec.failPhase)||null,report:(spec&&spec.report)||null,orbitOps:(spec&&spec.orbitOps)||null,vehicle:{stages,boosters,transferProp:(spec&&spec.transferProp)||0,physics:(spec&&spec.physics)||null},effects:{ignition:clampA(d.ignite==null?(phase==='pad'?0:1):d.ignite,0,1),night:!!(spec&&spec.night),ascentFailure,crewEscaped,failureProgress:ascentFailure?clampA((phaseP-.5)/.28,0,1):0,deepFailure,deepFailureFrac:DEEP_FAIL_FRAC,deepFailureProgress:deepFailure?clampA((phaseP-DEEP_FAIL_FRAC)/.24,0,1):0}};
 }
 function flight3dAvailable(){ return FLIGHT3D&&typeof cape3dAvailable==='function'&&cape3dAvailable()&&typeof startCape3D==='function'; }
 function flight3dRestoreCape(s){
@@ -528,11 +528,29 @@ function beginFlight3DSession(spec){
 function flight3dHandoffToFallback(s,reason){
   if(!s||s.handedOff) return false;
   try{ cape3dExitFlightPresentation(); flight3dRestoreCape(s); }catch(e){}
-  clearFlight3DReadout(); const host=$('flight3dHost'), fallback=$('flightZoom'); if(host) host.style.display='none'; if(fallback) fallback.style.visibility='';
+  clearFlight3DReadout(); clearFlightOrbitHud(); const host=$('flight3dHost'), fallback=$('flightZoom'); if(host) host.style.display='none'; if(fallback) fallback.style.visibility='';
   s.handedOff=true; if(reason) console.warn('Flight 3D handed off to the fallback renderer:',reason); return true;
 }
 function clearFlight3DDecision(){ const host=$('flight3dDecision'); if(!host) return false; host.classList.add('hidden'); host.innerHTML=''; return true; }
 function clearFlight3DReadout(){ const host=$('flight3dReadout'); if(!host) return false; host.classList.add('hidden'); host.textContent=''; return true; }
+function clearFlightOrbitHud(){ const host=$('flightOrbitHud'); if(!host) return false; host.classList.add('hidden'); host.innerHTML=''; return true; }
+function flightOrbitTelemetry(snapshot){
+  if(!snapshot||snapshot.phase!=='orbit') return {visible:false};
+  let q; try{ q=cape3dOrbitProfile(snapshot); }catch(e){ return {visible:false}; }
+  const op=snapshot.orbitOps||{}, remaining=Math.max(0,Number(op.remainingDv)||0);
+  return {visible:true,phase:(op.label||((snapshot.phaseProgress||0)<.13?'INSERTION':'ORBITAL OPS')).toUpperCase(),
+    apoapsis:Math.round(q.apoapsis||q.altitude||0),periapsis:Math.round(q.periapsis||q.altitude||0),
+    inclination:Number(q.inclination)||28.4,velocity:Number(q.velocity)||7800,remainingDv:remaining};
+}
+function updateFlightOrbitHud(snapshot){
+  const host=$('flightOrbitHud'), q=flightOrbitTelemetry(snapshot); if(!host) return false;
+  if(!q.visible) return clearFlightOrbitHud();
+  host.innerHTML='<div class="orbit-hud-title">MISSION CONTROL · '+q.phase+'</div><div class="orbit-hud-grid">'+
+    '<span>APOAPSIS</span><b>'+q.apoapsis.toLocaleString()+' km</b><span>PERIAPSIS</span><b>'+q.periapsis.toLocaleString()+' km</b>'+
+    '<span>INCLINATION</span><b>'+q.inclination.toFixed(1)+'°</b><span>VELOCITY</span><b>'+(q.velocity/1000).toFixed(2)+' km/s</b>'+
+    '<span>MANEUVER ΔV</span><b>'+Math.round(q.remainingDv).toLocaleString()+' m/s</b></div>';
+  host.classList.remove('hidden'); return true;
+}
 function flightReportCard(spec, final){
   const wrap=$('flightCanvasWrap'); if(!wrap||!spec) return false;
   let host=$('flightReportCard');
@@ -608,9 +626,10 @@ function updateFlight3DSession(snapshot){
     // lost, instead of the mission cutting to the flat 2D fallback at its most dramatic beat. The
     // fallback remains for a genuine renderer failure or a still-unsupported outcome.
     const deepFail=snapshot&&snapshot.success===false&&snapshot.failPhase==='deep';
-    if(snapshot&&(['pad','ascent','suborbital','transfer'].includes(snapshot.phase)||(snapshot.phase==='orbit'&&snapshot.isOrbital&&snapshot.success!==false)||(snapshot.phase==='orbit'&&deepFail)||(snapshot.phase==='reentry'&&(snapshot.isOrbital||snapshot.isCislunar)&&snapshot.crewed&&snapshot.success!==false))){
+    if(snapshot&&(['pad','ascent','suborbital','transfer'].includes(snapshot.phase)||(snapshot.phase==='orbit'&&snapshot.isOrbital)||(snapshot.phase==='orbit'&&deepFail)||(snapshot.phase==='reentry'&&(snapshot.isOrbital||snapshot.isCislunar)&&snapshot.crewed&&snapshot.success!==false))){
       if(s.handedOff) return false;
       updateFlight3DReadout(snapshot);
+      updateFlightOrbitHud(snapshot);
       return cape3dUpdateFlightPresentation(snapshot);
     }
     if(!s.handedOff) flight3dHandoffToFallback(s);
@@ -618,7 +637,7 @@ function updateFlight3DSession(snapshot){
   }catch(e){ flight3dHandoffToFallback(s,e); return false; }
 }
 function endFlight3DSession(){
-  const s=flight3dSession; flight3dSession=null; clearFlight3DDecision(); clearFlight3DReadout(); clearFlightAltitude(); const host=$('flight3dHost'), fallback=$('flightZoom'); if(host) host.style.display='none'; if(fallback) fallback.style.visibility='';
+  const s=flight3dSession; flight3dSession=null; clearFlight3DDecision(); clearFlight3DReadout(); clearFlightOrbitHud(); clearFlightAltitude(); const host=$('flight3dHost'), fallback=$('flightZoom'); if(host) host.style.display='none'; if(fallback) fallback.style.visibility='';
   if(!s||typeof cape3d==='undefined'||!cape3d) return false;
   if(!s.handedOff) cape3dExitFlightPresentation();
   return flight3dRestoreCape(s);
@@ -1664,7 +1683,15 @@ function drawScene(t){
       if(A.pendingDecision && A.pendingDecision.holdAt==='cislunar-start'){ A.phase='cislunar'; A.held=true; drawCislunar(0); drawDecisionPanel(A.pendingDecision.buildPanel()); if(ho) finishHandoff(); A.lastT=t; return; }
       A.phase='cislunar'; drawCislunar(ct);
     }
-    else if(s.isOrbital){ A.phase='orbit'; drawOrbit(ct); }
+    else if(s.isOrbital){
+      if(A.pendingDecision && A.pendingDecision.holdAt==='orbit-start'){
+        A.phase='orbit'; A.held=true; drawOrbit(0);
+        A.presentation3d=flight3dPresentationSnapshot(s,A,(A.padDur||0)+A.ascentDur); updateFlight3DSession(A.presentation3d);
+        const panel=A.pendingDecision.buildPanel(); if(!showFlight3DDecision(panel)) drawDecisionPanel(panel);
+        if(ho) finishHandoff(); A.lastT=t; return;
+      }
+      A.phase='orbit'; drawOrbit(ct);
+    }
     else { A.phase='suborbital'; drawSuborbital(ct); }
     if(ho) finishHandoff();
   }
