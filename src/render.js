@@ -2025,9 +2025,9 @@ function cape3dTrajectoryPlan(physics, options){
   let stageIndex=0, coreProp=Math.max(0,Number(stages[0].prop)||0), boosterProp=booster?Math.max(0,Number(booster.prop)||0):0, boosterAttached=!!booster;
   const burnEstimate=stages.reduce((n,s)=>{ const thrust=(Number(s.thrustSL)+Number(s.thrustVac))*.5, isp=(Number(s.ispSL)+Number(s.ispVac))*.5; return n+(thrust>0?(Number(s.prop)||0)/(thrust/(Math.max(1,isp)*G0)):0); },0);
   const maxTurnDeg=reqDv>=9000?82:(reqDv>=6000?72:(reqDv>=2900?62:(reqDv>=1900?48:34))), maxTurn=maxTurnDeg*Math.PI/180;
-  const points=[{t:0,xKm:0,altitudeKm:0,vx:0,vy:0,speedMps:0}], dt=.2, earthR=6371000, cd=.34;
+  const points=[{t:0,xKm:0,altitudeKm:0,vx:0,vy:0,speedMps:0,qKpa:0}], dt=.2, earthR=6371000, cd=.34;
   const stageEvents=[]; // E4.7 visual staging: {t, kind:'booster'|'stage', index, altitudeKm, xKm, vx, vy} at each real drop
-  let t=0,x=0,y=0,vx=0,vy=0,burnoutTime=null,airborne=false,maxAltitude=0,maxSpeed=0;
+  let t=0,x=0,y=0,vx=0,vy=0,burnoutTime=null,airborne=false,maxAltitude=0,maxSpeed=0,maxQKpa=0;
   while(t<2400){
     const stage=stages[stageIndex]||null, powered=!!stage, rho=1.225*Math.exp(-Math.max(0,y)/8500), vacuumMix=Math.max(0,Math.min(1,1-rho/1.225));
     let thrust=0, propBurn=0;
@@ -2041,6 +2041,10 @@ function cape3dTrajectoryPlan(physics, options){
     }
     const burnP=Math.max(0,Math.min(1,t/Math.max(1,burnEstimate))), turnP=Math.max(0,Math.min(1,(burnP-.16)/.84)), turnEase=turnP*turnP*(3-2*turnP), tilt=maxTurn*turnEase;
     const speed=Math.hypot(vx,vy), dia=stage?Math.max(.25,Number(stage.diameterM)||1):1, area=Math.PI*dia*dia*.25, dragKn=.5*rho*speed*speed*cd*area/1000, dragAx=speed>.1?dragKn/mass*(vx/speed):0, dragAy=speed>.1?dragKn/mass*(vy/speed):0;
+    // #37 Max-Q: real dynamic pressure q = ½·ρ·v² (Pa→kPa), the same ρ and speed the drag term
+    // above uses — so it reflects THIS vehicle's actual mass/thrust/diameter/gravity-turn profile,
+    // not a cosmetic reqDv approximation. Tracked as a running peak for the structural-load check.
+    const qKpa=0.5*rho*speed*speed/1000; if(qKpa>maxQKpa) maxQKpa=qKpa;
     const gravity=G0*Math.pow(earthR/(earthR+Math.max(0,y)),2), ax=(thrust/mass)*Math.sin(tilt)-dragAx, ay=(thrust/mass)*Math.cos(tilt)-gravity-dragAy;
     vx+=ax*dt; vy+=ay*dt;
     if(y<=0&&vy<0&&powered){ y=0; vy=0; } else y+=vy*dt;
@@ -2053,13 +2057,13 @@ function cape3dTrajectoryPlan(physics, options){
       if(stageIndex>=stages.length) burnoutTime=t;
     }
     const nowSpeed=Math.hypot(vx,vy); maxAltitude=Math.max(maxAltitude,y); maxSpeed=Math.max(maxSpeed,nowSpeed);
-    points.push({t,xKm:x/1000,altitudeKm:Math.max(0,y)/1000,vx,vy,speedMps:nowSpeed});
+    points.push({t,xKm:x/1000,altitudeKm:Math.max(0,y)/1000,vx,vy,speedMps:nowSpeed,qKpa});
     if(burnoutTime!=null&&opts.isOrbital&&t>=burnoutTime+.4) break;
     if(burnoutTime!=null&&airborne&&y<=0&&vy<=0) break;
     if(!airborne&&burnoutTime!=null&&t>burnoutTime+2) break;
   }
   if(burnoutTime==null) burnoutTime=t;
-  const last=points[points.length-1], plan={points,stageEvents,burnoutTime,impactTime:last.t,maxAltitudeKm:maxAltitude/1000,rangeKm:last.xKm,maxSpeedMps:maxSpeed,airborne};
+  const last=points[points.length-1], plan={points,stageEvents,burnoutTime,impactTime:last.t,maxAltitudeKm:maxAltitude/1000,rangeKm:last.xKm,maxSpeedMps:maxSpeed,maxQKpa,airborne};
   cape3dTrajectoryCache.set(key,plan); if(cape3dTrajectoryCache.size>12) cape3dTrajectoryCache.delete(cape3dTrajectoryCache.keys().next().value);
   if(cape3dTrajectoryObjectCache){ const variants=objectHit||{}; variants[variant]=plan; cape3dTrajectoryObjectCache.set(physics,variants); }
   return plan;
@@ -4842,6 +4846,22 @@ function renderBenchTabs(){
   bar.innerHTML=avail.map(t=>`<button class="bench-tab ${t.key===benchTab?'active':''}" onclick="setBenchTab('${t.key}')">${t.label}</button>`).join('');
   panels.forEach(p=>{ const k=p.getAttribute('data-benchtab'); p.classList.toggle('active', k===benchTab && !!hasContent[k]); });
 }
+// #37: bench readout line for the Max-Q structural check, driven by the same structuralLoadAssessment
+// the outcome model uses. Presented as a qualitative band (not a raw kPa number — the integrator's
+// game-scaled q would contradict the ~35 kPa cosmetic flight readout) plus the fairing interaction,
+// so the player can see WHY a fairing choice matters for THIS design before a failure teaches them.
+function structuralLoadFlag(m, v){
+  const crewed=!!(m&&m.crew>0), sl=structuralLoadAssessment(m, v, crewed);
+  const cls = sl.band==='Severe'?'flag bad' : sl.band==='High'?'flag warn' : 'flag';
+  let note='';
+  if(!crewed){
+    if(sl.fairing==='none' && sl.qStress>0.3) note=' — no fairing on this high-Q ascent; fit one to cut structural-failure risk';
+    else if(sl.fairing==='none') note=' — no fairing, but this ascent is gentle enough to carry it';
+    else if(sl.fairing==='heavy' && sl.qStress>0.2) note=' — the extended fairing is absorbing the load';
+  } else if(sl.qStress>0.4) note=' — an aggressive, high-Q ascent for a crewed vehicle';
+  const dim=(sl.band==='Nominal'||sl.band==='Low')?' style="opacity:.85"':'';
+  return `<div class="${cls}"${dim}>🛡 Structural load: ${sl.band}${note}</div>`;
+}
 function renderReadout(){
   const m=curMission();
   if(m.profile){ renderProfileReadout(m); return; }
@@ -4858,6 +4878,7 @@ function renderReadout(){
   let flags='';
   { const dims=vehicleRealDimensions({stages:state.stages.map(s=>({prop:s.prop,count:s.count,dia:s.dia})),transferProp:(m.profile&&m.modules&&m.modules.includes('transfer'))?state.transfer.prop:0,crewed:!!(m&&m.crew>0)});
     flags+=`<div class="flag" style="opacity:.85">📏 Vehicle scale: ${dims.totalHeightM.toFixed(1)} m tall · ${dims.maxDiameterM.toFixed(1)} m diameter${dims.stages.length>1?` (stage ${dims.stages.map((s,i)=>(i+1)+': '+s.heightM.toFixed(0)+'m').join(', ')})`:''}</div>`; }
+  flags+=structuralLoadFlag(m, v);
   { const _inc=inclinationDv(m); if(_inc>0){
       const below=m.inclination<LAUNCH_SITE_LAT;
       const why=below ? `below the Cape's ${LAUNCH_SITE_LAT}° — a plane change` : `above the Cape's ~${LAUNCH_SITE_MAX_DIRECT_INCL}° range-safety ceiling — a dogleg`;
@@ -4947,6 +4968,7 @@ function renderProfileReadout(m){
   let flags='';
   { const dims=vehicleRealDimensions({stages:state.stages.map(s=>({prop:s.prop,count:s.count,dia:s.dia})),transferProp:(m.modules&&m.modules.includes('transfer'))?state.transfer.prop:0,crewed:!!(m&&m.crew>0)});
     flags+=`<div class="flag" style="opacity:.85">📏 Vehicle scale: ${dims.totalHeightM.toFixed(1)} m tall · ${dims.maxDiameterM.toFixed(1)} m diameter${dims.stages.length>1?` (stage ${dims.stages.map((s,i)=>(i+1)+': '+s.heightM.toFixed(0)+'m').join(', ')})`:''}</div>`; }
+  flags+=structuralLoadFlag(m, v);
   if(fails) flags+=`<div class="flag bad">▲ ${fails} leg${fails>1?'s':''} short — fix the red rows above.</div>`;
   else flags+=`<div class="flag ok">✓ Every leg passes. Mission reliability ${(rel*100|0)}%.</div>`;
   if(sim.boiloff) flags+= sim.boiloff.controlled

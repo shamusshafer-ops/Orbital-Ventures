@@ -86,8 +86,12 @@ function pumpFlight(stepMs, maxFrames){
   playMission(baseSpec({isOrbital:true, isCislunar:false}), ()=>{done=true;});
   const seenPhases=new Set();
   let frames=0, threw=false;
+  // Frame budget sized for the 0.1x default playback speed (mission-control commit 92a5a0d91):
+  // each frame contributes at most ANIM_MAX_WALL_DT(50ms)*0.1 = 5ms of virtual time, so a ~15.5-21.6s
+  // orbital flight needs up to ~4300 frames to fully resolve. 3000 was sized for the old 1x default
+  // and left this flight short of `held` by a few hundred frames — not a game bug, a stale test budget.
   try{
-    while(animState && frames<3000){
+    while(animState && frames<6000){
       seenPhases.add(animState.phase);
       if(animState.held) break;
       frames+=pumpFlight(100,1);

@@ -13,7 +13,7 @@ reorder existing entries there, only add new ones at the end, same as `ROADMAP.m
 changes, not a regression). If you see a DIFFERENT test failing, don't assume it's pre-existing —
 check the history below for whether it's a known, intentional behavior change first.
 
-**In progress:** BACKLOG #37 (Max-Q structural check vs. fairing choice) — Claude — started 2026-07-22
+**In progress:** (none claimed right now)
 > When you start a task, replace this line with: `<task> — <Claude|Codex> — started <date>`.
 > When done, clear it back to "(none claimed right now)" and add your entry to the history below.
 
@@ -459,3 +459,40 @@ Passing that ask through to the repo owner, who does have a browser.
 
 **Respecting Codex's stated next direction** (plane changes, then rendezvous/docking) — not
 proposing a competing next task here.
+
+## BACKLOG #37: Max-Q structural check vs. fairing choice — SHIPPED (Claude)
+
+"Max-Q" was a cosmetic 2D-canvas approximation (`35 + reqDv*0.003`) with zero gameplay weight; the
+fairing choice was a flat, trajectory-blind reliability delta ("No fairing" always −2%, regardless
+of how brutal the ascent actually was). Wired them together for real:
+
+- `cape3dTrajectoryPlan` now exposes real per-point dynamic pressure (`qKpa`, from the same ρ/v² the
+  drag term already computes) and a `maxQKpa` peak — reflecting THIS vehicle's actual diameter,
+  mass, thrust, and gravity-turn shape, not a reqDv formula.
+- New `vehicleMaxQ(m, vehicle)` / `structuralLoadAssessment(m, v, crewed)` (sim.js): the real peak
+  Max-Q combined with fairing sensitivity (none=1.6×, standard=1.0×, heavy=0.65×; crewed=neutral,
+  no fairing choice) into a bounded weight multiplier (0.6–2.4×) and a qualitative band
+  (Low/Nominal/High/Severe).
+- Modulates the `structures` fragility weight in `subsystemFragilities` — **attribution only**. The
+  `subsystemReport` renormalization (`rel_i = R^(weight_i/ΣW)`) guarantees `∏rel_i = R` exactly
+  regardless of weights, so aggregate mission difficulty is provably unchanged — verified directly
+  in the test (exact equality, not approximate). A no-fairing vehicle flying an aggressive ascent
+  just gets blamed for structural failures far more often, instead of an arbitrary flat penalty.
+- Surfaced as a "🛡 Structural load" bench flag (both readouts) with a plain-language note
+  ("no fairing on this high-Q ascent; fit one to cut structural-failure risk") so the player can see
+  *why* before a failure teaches them, matching the "Vehicle scale" readout precedent.
+
+Also fixed a real (not stale-build) test issue found while regressing: `test-pad-a.js`'s orbital
+pump-loop frame budget (3000) was sized for the old 1x default speed and fell just short of `held`
+at the now-intentional 0.1x default (~5ms virt/frame worst case) — bumped to 6000 with the math
+documented inline.
+
+Test: `tests/test-maxq-fairing.js` (18 checks — real q exposure, vehicle-shape sensitivity,
+fairing-band response, the aggregate-neutrality invariant proven exactly, crewed-neutral
+sensitivity). Regression: 96 suites, only the 1 pre-existing Codex drift.
+
+## Next task
+
+Suggested (open — pick per priority): #11 confirm-with-preview on destructive actions (S); #106
+guided first-launch tutorial (H, none exists); or continue the tech-tree bloat cleanup (36 dead-end
+leaves still untouched — different from the merged clusters already done).

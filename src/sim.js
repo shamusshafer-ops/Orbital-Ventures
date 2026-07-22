@@ -3991,6 +3991,33 @@ function flightPhysicsSpec(m, vehicle){
   const bm=boosterMasses(), boosters=bm?{count:bm.count,prop:bm.propTotal,dry:bm.dry,wet:bm.wet,diameterM:clampA(.38+.18*Math.cbrt(Math.max(.1,bm.propEach)),.32,6),thrustSL:bm.eng.thrustSL*bm.count*thrustK,thrustVac:bm.eng.thrustVac*bm.count*thrustK,ispSL:bm.eng.ispSL*ispK,ispVac:bm.eng.ispVac*ispK,solid:!!bm.eng.solid}:null;
   return {payload:v.payload,liftoff:v.liftoff,stages,boosters};
 }
+// #37 Max-Q structural check: the real peak dynamic pressure (kPa) THIS vehicle experiences flying
+// THIS mission's ascent, from the same integrated trajectory the 3D flight uses (drag/thrust/gravity-
+// turn, per-vehicle diameter and mass) — not the old cosmetic `35 + reqDv*0.003` display approximation.
+// Reused for the structural-load fragility term below and surfaced on the bench so the fairing/tank
+// choice reads against a real number. Returns 0 if the trajectory can't be built (degenerate vehicle).
+function vehicleMaxQ(m, vehicle){
+  try{
+    const phys=flightPhysicsSpec(m, vehicle||computeVehicle());
+    const plan=(typeof cape3dTrajectoryPlan==='function') ? cape3dTrajectoryPlan(phys, {isOrbital:missionReachesOrbit(m), reqDv:(m&&m.reqDv)||0}) : null;
+    return plan && isFinite(plan.maxQKpa) ? plan.maxQKpa : 0;
+  }catch(e){ return 0; }
+}
+// #37: the shared structural-load read used by BOTH the outcome model (structures fragility weight)
+// and the bench readout, so they can never disagree. Combines the real peak Max-Q (game-scaled; the
+// integrator runs ~10x real-world kPa, so MAXQ_REF is the in-game baseline a typical early vehicle
+// produces, not 30-40 kPa) with the fairing's tolerance: a no-fairing vehicle is more sensitive to a
+// high-Q ascent, an extended fairing less so. Crewed flights carry a capsule (no fairing choice), so
+// they use neutral sensitivity. weightMult ∈ [0.6, 2.4] scales the structures failure SHARE only.
+const MAXQ_REF=420;
+function structuralLoadAssessment(m, v, crewed){
+  const maxQ=vehicleMaxQ(m, v), qRatio=maxQ>0?maxQ/MAXQ_REF:1;
+  const fairing=(curParts&&curParts().fairing)||'standard';
+  const sens = crewed ? 1.0 : ({none:1.6, standard:1.0, heavy:0.65})[fairing] || 1.0;
+  const qStress=(qRatio-1)*sens, weightMult=clampA(1+qStress, 0.6, 2.4);
+  const band = qStress>=0.7?'Severe' : qStress>=0.3?'High' : qStress>=-0.15?'Nominal' : 'Low';
+  return {maxQ, qRatio, sens, qStress, weightMult, band, fairing};
+}
 // One immutable, player-facing flight card.  It is built from the same mission/vehicle/outcome
 // snapshots that resolve the launch, so overlay telemetry and the debrief never invent a number.
 function flightReport(m, vehicle, sim, outcome){
@@ -4168,6 +4195,12 @@ function subsystemFragilities(m,v,sim,crewed){
   let ws=0.5;
   if(state.research.balloon_tanks) ws*=0.6; else if(state.research.alloy_tanks) ws*=0.78;
   ws*=specialistFactor('structures');
+  // #37 Max-Q structural check vs. fairing choice: modulate the structures failure SHARE by how hard
+  // this specific ascent actually loads the airframe (real peak dynamic pressure) against how well the
+  // payload/structure choice tolerates it. Shifts ATTRIBUTION only — subsystemReport renormalizes so
+  // ∏rel_i = R, so aggregate difficulty is unchanged; this just makes the fairing choice read against
+  // a real number. (The fairing's small flat reliability delta on R still applies via partsRelBonus.)
+  ws *= structuralLoadAssessment(m, v, crewed).weightMult;
   list.push({key:'structures', label:SUBSYS_LABEL.structures, phase:'ascent', severity:'loss', weight:Math.max(0.04,ws)});
   const sepEvents=Math.max(0,stages.length-1)+((m.profile&&m.modules.includes('lander'))?2:0)+((m.profile||m.reqDv>=9000)?1:0);
   if(sepEvents>0) list.push({key:'separation', label:SUBSYS_LABEL.separation, phase:'ascent', severity:'loss', weight:0.18*sepEvents});

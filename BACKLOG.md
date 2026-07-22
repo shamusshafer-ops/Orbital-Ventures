@@ -63,7 +63,7 @@ Complexity: S = <1 day, M = 1–5 days, L = 1–3 weeks, XL = 1+ month. Impact: 
 |34| Recovery fleet (ships/zones) for splashdowns | Thematic sink | M | ★ | — | L |Backlog|
 |35| Countdown voice + hold at T-31s events | Drama | M | ★★ | — | M |E1.6|
 |36| Telemetry strip during ascent (alt/vel/Q) | Sim credibility | S | ★★ | 26 | H |E1.2|
-|37| Max-Q structural check vs. fairing choice | Part relevance | M | ★★ | — | M |Backlog|
+|37| Max-Q structural check vs. fairing choice | Part relevance | M | ★★★ | — | H |Shipped 2026-07-22 — real per-vehicle dynamic pressure now modulates structural-failure attribution against fairing choice; balance-neutral on aggregate difficulty (proven exactly)|
 |38| Night launches (era/window dependent) w/ visuals | Spectacle | S | ★ | — | L |Shipped 2026-07-13|
 |39| Pad aborts that damage pad (repair time) | Risk depth | S | ★★ | 29 | M |Backlog|
 |40| Crew survival mini-arc on failures (escape tower) | Emotional stakes | M | ★★★ | — | H |Shipped 2026-07-20 — the launch_escape tech + outcome-kind branch already existed; added the missing visual/readout distinction (escape pod clears vs full loss) in the 3D failure sequence|

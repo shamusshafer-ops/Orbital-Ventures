@@ -5881,3 +5881,52 @@ real, plus the power-balance/low-thrust interactions those engines are built to 
 consider a PP.4 palette-polish pass and, separately, a real browser playtest before `BENCH_V2` ships —
 that caveat from the E3.6 ROADMAP entry still stands; the palette is far more populated now but still
 entirely unverified outside the headless harness.
+
+
+## Session — BACKLOG #37: Max-Q structural check vs. fairing choice (2026-07-22)
+
+*Pure append. Heavy tier (physics extension + balance judgment).* "Max-Q" was purely cosmetic
+(2D-canvas display formula, `35 + reqDv*0.003`, zero gameplay weight); the fairing choice was a
+flat reliability delta blind to the actual trajectory flown. Connected them via a real physics
+quantity for the first time:
+
+`cape3dTrajectoryPlan` (render.js) now computes and exposes real dynamic pressure per trajectory
+point (`qKpa = 0.5·ρ·v²`, reusing the ρ/v² the existing drag term already integrates — no new
+physics, just exposing what was already computed) and a `maxQKpa` peak on the plan. This reflects
+each vehicle's actual diameter/mass/thrust/gravity-turn shape — verified narrower vehicles (less
+drag area, accelerate faster while still low) peak higher than wide ones for the same design, and
+a 2-stage orbital design peaks roughly 2× a small suborbital hop.
+
+New `vehicleMaxQ(m, vehicle)` and `structuralLoadAssessment(m, v, crewed)` (sim.js): builds the
+mission's real physics spec, runs the trajectory, reads the peak, and combines it with fairing
+sensitivity (none 1.6×, standard 1.0×, heavy 0.65×; crewed flights carry a capsule so use neutral
+1.0× regardless of the fairing field) into a bounded weight multiplier and a qualitative band
+(Low/Nominal/High/Severe) — game-scaled reference point (`MAXQ_REF=420`) since the integrator runs
+roughly 10× real-world kPa.
+
+Modulates `subsystemFragilities`'s `structures` weight — attribution only. `subsystemReport`
+renormalizes so `rel_i = R^(weight_i/ΣW)`, which guarantees `∏rel_i = R` exactly for ANY weight
+distribution — proven in the test with exact equality (not a tolerance check), across three fairing
+choices. This means the mechanic is balance-neutral on aggregate mission difficulty by
+construction: a no-fairing vehicle flying a high-Q ascent gets blamed for structural failures more
+often, but the overall chance of *some* failure is unchanged — matching the design goal ("part
+relevance," not "part power creep").
+
+Surfaced as a "🛡 Structural load" flag on both bench readouts (flat-reqDv and profile/multi-leg),
+alongside the existing "📏 Vehicle scale" line, with a plain-language note explaining the fairing
+interaction for the player's specific design.
+
+**Test-budget fix found in the same session (not stale, reproduced 3× against live GitHub content):**
+`test-pad-a.js`'s orbital-success pump loop used a 3000-frame budget sized for the pre-mission-control
+1x default speed; at the now-intentional 0.1x default (confirmed with the owner, not reverted) each
+frame contributes at most 5ms of virtual time (ANIM_MAX_WALL_DT clamp × speed), so a ~15.5-21.6s
+flight needs up to ~4300 frames — bumped to 6000 with the math documented inline. Confirmed via a
+byte-for-byte diff against live GitHub content that this wasn't a local staleness artifact.
+
+Test: `tests/test-maxq-fairing.js` (18 checks — real q exposure on every trajectory point, vehicle-
+shape sensitivity direction, fairing-band response on an aggressive design, the aggregate-neutrality
+invariant proven exactly across all three fairing choices, crewed-neutral sensitivity, graceful
+degradation on a degenerate mission). Regression: 96 suites, only the 1 pre-existing Codex drift
+(`test-flight3d-trajectory.js`). Build byte-faithful.
+
+Claimed and cleared per the STATUS-block convention (first real use of it end to end).
