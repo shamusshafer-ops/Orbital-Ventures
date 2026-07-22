@@ -13,7 +13,7 @@ reorder existing entries there, only add new ones at the end, same as `ROADMAP.m
 changes, not a regression). If you see a DIFFERENT test failing, don't assume it's pre-existing —
 check the history below for whether it's a known, intentional behavior change first.
 
-**In progress:** (none claimed right now)
+**In progress:** BACKLOG #37 (Max-Q structural check vs. fairing choice) — Claude — started 2026-07-22
 > When you start a task, replace this line with: `<task> — <Claude|Codex> — started <date>`.
 > When done, clear it back to "(none claimed right now)" and add your entry to the history below.
 
