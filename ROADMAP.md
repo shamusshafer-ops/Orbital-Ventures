@@ -5816,3 +5816,68 @@ NEP, Hall, ion, fusion torch). **Then PP.3 — structural/payload**, which is no
 have diameter tiers" but the thing that unlocks 8 of PP.1's 13 parts plus whatever PP.2 adds. Consider
 resequencing PP.3 ahead of PP.2 if the goal is "make what's already built usable" rather than "keep
 adding data" — worth a decision before starting either.
+
+
+## Session — Palette Population PP.3: diameter tank tiers + adapters (2026-07-21)
+
+*Pure append. Lighter tier throughout (structural data + straightforward adapter geometry, no new
+gate machinery needed).* Sequenced ahead of PP.2 deliberately — PP.1 left 8 of its 13 new engine parts
+geometrically stranded (correctly refused by the diameter gate, since the game only had one tank,
+'small'-class tank_std). PP.3 unsticks them rather than adding more data behind the same wall.
+
+**6 new structural parts**, `PART_DEFS` now 26 (up from 20):
+- `tank_tiny` / `tank_large` / `tank_huge` — one tank per non-small `NODE_CLASS` tier (tiny 0.5,
+  large 1.6, huge 2.4), matching the engine tiers PP.1 already shipped. Nominal `propMass` scales
+  ~diameter² (2.0 / 20.0 / 46.0t) as a starting point — same "stretchable, not a hard cap" contract
+  `tank_std` already has. No research gate (`base:true`): tank diameter is a structural choice, not a
+  tech unlock, consistent with `tank_std`/`decoupler`/`nosecone` already being base parts.
+- `adapter_tiny_small` / `adapter_small_large` / `adapter_large_huge` — thin structural parts with two
+  DIFFERENT node classes (top faces the narrower tier, bottom the wider), so the game's existing
+  small-class-only payload/decoupler/nosecone can cap a stack of ANY diameter instead of needing 4x
+  redundant copies of every structural/payload part. Standard KSP solution to exactly this problem.
+
+**Verification, precisely targeted at what PP.1 flagged as pending:** all 8 previously-stranded parts
+(`engine_vernier`, `engine_h1`, `engine_f1`, `engine_methalox`, `engine_aj10`, `engine_j2`,
+`engine_rl10`, `booster_srb`) now attach cleanly to their matching tank tier — re-tested directly
+against PP.1's own list, not just spot-checked. A full cross-tier stack (capsule → adapter →
+`tank_large` → adapter → `tank_huge` → `engine_f1`) builds end-to-end and bridges without error.
+Confirmed a real, correct, PRE-EXISTING accumulation behavior along the way: two tank sections joined
+by an adapter with no decoupler between them are the SAME stage, so their propellant sums (20+46=66)
+— a tapered single stage feeding one engine, not a bug. Per-tier equivalence proven for the large tier
+(H-1 + tank_large) and tiny tier (RL10 + tank_tiny) against the direct slider path, same
+`stackPerformance(ir.stages, ir.payload)` bridge-core convention as PP.1/E3.0.
+
+**Two of my own test mistakes caught and fixed in this slice, both worth recording as the same class
+of error:** (1) first attach-check attempt capped a tiny/large/huge tank directly under `probe_core`
+(small-class) with no adapter — the resulting "no such part" failures were the test proving exactly
+why adapters are needed, not a part-def bug; fixed by testing tank↔engine compatibility in isolation
+(tank as build root). (2) the large-tier equivalence check hardcoded the direct-path payload as the
+capsule's 1.2t alone, missing that `ir.payload` correctly folds in the adapter's 0.15t dry mass too —
+fixed by comparing against `ir.payload` on both sides rather than a hand-computed figure. Also fixed a
+brittle pattern flagged for the future: PP.1's test asserted an exact GLOBAL `PART_DEFS` count (20),
+which PP.3 correctly grew past (26) — broke PP.1's suite on this session's regression sweep. Rewrote
+both PP.1's and PP.3's count checks to assert their own slice's delta (their own parts exist) rather
+than a global total, so PP.4 won't repeat the same break.
+
+Test: `tests/test-parts-pp3-structural.js` (53 checks — tank/adapter data integrity; all 8 PP.1-
+stranded parts unstuck; adapter class-pairing correctness incl. refusing a mismatched third tier;
+full cross-tier bridge; tapered-stage propellant-sum sanity; large-tier and tiny-tier equivalence).
+Regression: full suite, only the 1 pre-existing Codex drift (both PP.1 and PP.3 suites now stable
+against each other's part counts). Build byte-faithful.
+
+**Deliberately deferred, not forgotten:** fairing and avionics TIERS (the slider bench's
+`FAIRINGS`/`AVIONICS` tables) have no equivalent in the part-graph bench at all — confirmed by grep,
+`parts.js` never references `curParts()`/`fairingPart()`/`avionicsPart()`. Tank MATERIAL (`TANK_MATERIALS`,
+the σ tiers), by contrast, is confirmed ALREADY correctly shared across both benches via the global
+`curSigma()`/`tankMaterial()` path — no part-level work was needed there, and none was done. Whether
+fairing/avionics tiers become graph parts is a real, separate design question for a future slice, not
+folded into PP.3's diameter-focused scope.
+
+**Status: PP.0/PP.1/PP.3 are all now mutually consistent — the palette has 26 parts, every non-base
+part is research-gated, every diameter tier has a matching tank, and the 8 previously-stranded PP.1
+engines are all buildable.** Remaining planned slice: **PP.2 — transfer propulsion** (the 5
+`transferOnly` engines: NTR, NEP, Hall, ion, fusion torch — exercises PP.0's transfer-only gate for
+real, plus the power-balance/low-thrust interactions those engines are built to trigger). After PP.2,
+consider a PP.4 palette-polish pass and, separately, a real browser playtest before `BENCH_V2` ships —
+that caveat from the E3.6 ROADMAP entry still stands; the palette is far more populated now but still
+entirely unverified outside the headless harness.

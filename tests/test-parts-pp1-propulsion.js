@@ -44,7 +44,11 @@ const PENDING_PP3 = ['engine_vernier','engine_h1','engine_f1','engine_methalox',
     check('engId: '+id+' links to a real ENGINES entry', !!ENGINES[d.engId]);
     check('cat: '+id+' is propulsion', d.cat==='propulsion');
   }
-  check('total PART_DEFS count is 20 (7 pre-PP.1 + 13 new)', Object.keys(PART_DEFS).length===20);
+  // NOTE: asserting a total PART_DEFS count here was brittle — PP.3 correctly added 6 more
+  // parts (3 tank tiers + 3 adapters), which broke a hardcoded "total is 20" check. Assert
+  // this slice's own delta instead: the 13 PP.1 parts exist, nothing about how many OTHER
+  // parts exist. (Same fix will be needed wherever PP.3's own count check goes stale next.)
+  check('all 13 PP.1 parts are present (this slice\'s delta, not a global total)', ALL_NEW.every(id=>!!PART_DEFS[id]));
 }
 
 // ---------- 1. gating: every new engine part is LOCKED at game start (none pre-unlocked except a4) ----------

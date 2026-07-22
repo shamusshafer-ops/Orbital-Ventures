@@ -1693,6 +1693,67 @@ const PART_DEFS = {
     phys:{ propMass:8.0, dragCoeff:0.2, crossSection:1.0 },
     blurb:'A stretchable propellant tank. The backbone of every stage.',
   },
+  /* ---------- PP.3: diameter tank tiers ----------
+     PP.1 shipped 8 engine parts in the 'tiny'/'large'/'huge' node classes that had
+     nowhere to mount — tank_std is the game's only tank, and it's 'small'. These
+     three tiers unstick them. Nominal propMass scales ~diameter² (cross-sectional
+     area), same as tank_std's role — a starting point the bench lets the player
+     stretch, not a hard cap. dia feeds the SAME tankStruct()/geoStructMult() path
+     tank_std already uses (clamped GEO_DIA_MIN..GEO_DIA_MAX=0.7..1.4 regardless of
+     the raw part dia, so a huge tank's structural penalty is bounded, not a cliff).
+     No research gate — tank diameter is a structural choice, not a tech unlock,
+     same as tank_std/decoupler/nosecone being base:true already. */
+  tank_tiny: {
+    id:'tank_tiny', cat:'structural', name:'Tiny Propellant Tank', short:'TNK', base:true,
+    era:0, dia:0.5, px:{len:64, dia:48},
+    nodes:[ {id:'top', at:'top', class:'tiny'}, {id:'bot', at:'bottom', class:'tiny'}, {id:'rad', at:'radial', class:'tiny'} ],
+    phys:{ propMass:2.0, dragCoeff:0.2, crossSection:0.25 },
+    blurb:'A slim 0.5m-class tank for small upper-stage and transfer engines. Stretchable, same as every tank.',
+  },
+  tank_large: {
+    id:'tank_large', cat:'structural', name:'Heavy Propellant Tank', short:'TNK', base:true,
+    era:0, dia:1.6, px:{len:180, dia:144},
+    nodes:[ {id:'top', at:'top', class:'large'}, {id:'bot', at:'bottom', class:'large'}, {id:'rad', at:'radial', class:'large'} ],
+    phys:{ propMass:20.0, dragCoeff:0.2, crossSection:2.56 },
+    blurb:'A wide-body 1.6m-class tank for heavy-lift first-stage engines. Stretchable, same as every tank.',
+  },
+  tank_huge: {
+    id:'tank_huge', cat:'structural', name:'Super-Heavy Propellant Tank', short:'TNK', base:true,
+    era:0, dia:2.4, px:{len:220, dia:216},
+    nodes:[ {id:'top', at:'top', class:'huge'}, {id:'bot', at:'bottom', class:'huge'}, {id:'rad', at:'radial', class:'huge'} ],
+    phys:{ propMass:46.0, dragCoeff:0.2, crossSection:5.76 },
+    blurb:'A super-heavy 2.4m-class tank built for the biggest engines in the fleet. Stretchable, same as every tank.',
+  },
+  /* ---------- PP.3: diameter adapters ----------
+     Without these, a large/huge stack has no way to reach the small-class capsule,
+     probe core, nosecone, or decoupler — every payload/staging part the game has is
+     'small'. Rather than quadruple every structural/payload part across 4 diameter
+     tiers, one adapter per adjacent tier transition lets the existing small-class
+     cap sit atop ANY stack. Standard KSP solution to this exact problem. Each
+     adapter is a thin structural part with two DIFFERENT node classes — top faces
+     the narrower tier, bottom faces the wider one, so a stack always narrows toward
+     the payload the way a real rocket does. */
+  adapter_tiny_small: {
+    id:'adapter_tiny_small', cat:'structural', name:'Tiny–Standard Adapter', short:'ADP', base:true,
+    era:0, dia:0.75, px:{len:24, dia:68},
+    nodes:[ {id:'top', at:'top', class:'tiny'}, {id:'bot', at:'bottom', class:'small'} ],
+    phys:{ dryMass:0.05, dragCoeff:0.15, crossSection:1.0 },
+    blurb:'Steps a 0.5m tiny-class part up to a standard 1.0m mount, or vice-versa.',
+  },
+  adapter_small_large: {
+    id:'adapter_small_large', cat:'structural', name:'Standard–Heavy Adapter', short:'ADP', base:true,
+    era:0, dia:1.3, px:{len:32, dia:116},
+    nodes:[ {id:'top', at:'top', class:'small'}, {id:'bot', at:'bottom', class:'large'} ],
+    phys:{ dryMass:0.15, dragCoeff:0.15, crossSection:1.0 },
+    blurb:'Steps a standard 1.0m payload/decoupler stack down onto a 1.6m heavy-lift booster.',
+  },
+  adapter_large_huge: {
+    id:'adapter_large_huge', cat:'structural', name:'Heavy–Super-Heavy Adapter', short:'ADP', base:true,
+    era:0, dia:2.0, px:{len:36, dia:180},
+    nodes:[ {id:'top', at:'top', class:'large'}, {id:'bot', at:'bottom', class:'huge'} ],
+    phys:{ dryMass:0.30, dragCoeff:0.15, crossSection:1.0 },
+    blurb:'Steps a 1.6m heavy stack down onto a 2.4m super-heavy booster.',
+  },
   decoupler: {
     id:'decoupler', cat:'structural', name:'Stage Decoupler', short:'DEC', base:true,
     era:0, dia:1.0, px:{len:18, dia:96},
