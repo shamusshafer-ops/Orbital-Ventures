@@ -5683,3 +5683,76 @@ will need updating in any external references, saved test fixtures, or docs you 
 slice's entry above for the exact mapping and the reasoning. No save-compat shim was added (owner
 waived back-compat for this pass), so anything keying off the old ids will silently no-op rather than
 error — check `RESEARCH.find(r=>r.id===...)` for `undefined` if you're touching this area.
+
+
+## Session — Palette Population PP.0: gate infrastructure (2026-07-21)
+
+*Pure append. Heavy tier (design/integrity judgment throughout — no lighter-model sub-slice in PP.0).*
+First slice of the palette-population epic that follows the part-builder assessment: the E3 VAB-style
+part bench (`BENCH_V2`, still flagged OFF) has a beautifully-engineered chassis but only 7 parts and
+ONE engine. PP.0 builds the gate machinery the full catalogue needs, tested against the existing 7
+parts + synthetic gated parts, before any new part data lands (same make-or-break role E3.0 played).
+
+**Three things built:**
+
+1. **`partAvailable(def, st)` — research/unlock gate.** An engine part (`def.engId`) is available iff
+   its engine id is in `state.unlocked`; a part with `def.reqResearch` iff that node is researched;
+   base parts (`def.base:true`) always. This mirrors the SLIDER bench's existing
+   `state.unlocked[e.id]` engine filter EXACTLY (render.js unlockedEngines / renderStages) — keeping
+   both benches on one unlock signal is the whole point of the E3 equivalence discipline: the palette
+   can never offer an engine the slider bench would refuse. Because `reconcileResearch` repopulates
+   `state.unlocked` from the LIVE `RESEARCH` array, the tech-tree merges we did earlier this session
+   can't strand a part. Marked the 5 always-on base parts (`tank_std`, `decoupler`, `nosecone`,
+   `capsule_mk1`, `probe_core`) with explicit `base:true` so intent is greppable and a future typo'd
+   `engId` can't silently fall through to "available".
+
+2. **`era` is deliberately NOT a hard gate.** ERAS are soft/overlapping/calendar-driven by design
+   (see currentEra in data.js); the game gates capability on RESEARCH, not year. `def.era` stays a
+   display-sort/flavor hint only. Documented in the partAvailable header so a future slice doesn't
+   "fix" it into a hard gate.
+
+3. **transfer-only enforcement in `canAttach`.** A `transferOnly` engine (NTR/NEP/ion/Hall/fusion)
+   can't power a launch stage — mirrors the slider bench's `!e.transferOnly` filter on ground stages.
+   "Launch stage" is defined in graph terms via new `attachWouldBeLaunchStage(build, parentUid)`: the
+   bottom-most spineGroups group (below the lowest decoupler, which fires first). Radial parents
+   resolve to their spine anchor; fail-OPEN (stricter) on an unresolvable spine so a malformed build
+   never permits a transfer engine on the pad.
+
+**Key architectural decision (this is why PP.0 is heavy-tier, not data entry): the availability gate
+lives at the INTERACTION layer, NOT in `canAttach`'s graph validation.** Availability is a UI
+affordance (what the palette offers); graph integrity is separate. A loaded save may legitimately hold
+a part that research changes have since gated, and the graph MUST still represent it — so
+`partAvailable` gates `benchPaletteClick` and `benchCanvasDrop`, while `canAttach`/`attachPart` stay
+research-agnostic. transfer-only, by contrast, IS physics integrity (a transfer engine on the pad is
+wrong however the build was made), so it stays in `canAttach`. This split was forced by a real signal:
+`test-parts-staging.js` builds with `booster_solid` right after `newGame` without unlocking
+`solid_castor` — putting the gate in `canAttach` broke 5 E3.3 staging tests, which correctly want to
+construct any topology regardless of research. Moving the gate to the interaction layer fixed that AND
+is the more correct design.
+
+**Diameter compatibility turned out to already exist** (E3.2 `nodesCompatible` hard-blocks class
+mismatch across the 4 NODE_CLASS tiers tiny/small/large/huge). PP.0's original scope assumed this
+needed building; it didn't. Re-verified in the test suite so the "PP.0 needs diameter work" assumption
+is on record as false — the future large-engine parts just declare the right node class, no adapter
+machinery needed yet (adapters are a later parts-data question, not gate infrastructure).
+
+**Palette rendering:** locked parts stay VISIBLE but greyed (opacity 0.45, dashed border, 🔒 badge,
+unlock reason shown + in tooltip) rather than vanishing — the player sees what's coming and what to
+research for it. `partLockReason(def)` names the engine to unlock in R&D.
+
+Test: `tests/test-parts-gate.js` (27 checks — base/engine/reqResearch availability; slider-bench
+signal parity; lock reason; the interaction-vs-graph layer split proven both directions; transfer-only
+refused on launch stage + allowed on upper; attachWouldBeLaunchStage predicate incl. radial resolution;
+diameter-already-built re-verification). All 8 existing E3 part suites still green (staging 31,
+attach 29, bridge 31, physics 21, migration 28, ui 23, render 26, polish 18). Regression: only the 1
+pre-existing Codex drift. Build byte-faithful.
+
+**Next (PP.1 — launch propulsion, MEDIUM tier, and the first place a lighter model fits):** the ~12
+launch/upper liquid + solid engine parts, each `engId`-linked and auto-gated by PP.0's machinery, with
+per-tier harness equivalence coverage (a part-built F-1 vehicle must produce the same numbers as the
+slider bench with an F-1). Once the engine→part mapping is locked, PP.1 is genuinely "type the decided
+entries + stamp the harness" — flag the model down at that point. Full remaining plan: PP.1 launch
+propulsion, PP.2 transfer propulsion (exercises the transfer-only gate + power-balance bite), PP.3
+structural/payload (diameter tank tiers, fairings), PP.4 palette polish. Still all headless behind
+BENCH_V2 — the browser-playtest caveat from the E3.6 ROADMAP entry stands; populating the palette makes
+the flagged-off bench more worth turning on but doesn't substitute for a real-browser pass.

@@ -1684,7 +1684,7 @@ const PART_CATEGORIES = {
 const PART_DEFS = {
   // — structural —
   tank_std: {
-    id:'tank_std', cat:'structural', name:'Propellant Tank', short:'TNK',
+    id:'tank_std', cat:'structural', name:'Propellant Tank', short:'TNK', base:true,
     era:0, dia:1.0, px:{len:140, dia:90},
     nodes:[ {id:'top', at:'top', class:'small'}, {id:'bot', at:'bottom', class:'small'}, {id:'rad', at:'radial', class:'small'} ], // E3.3: radial node for strap-on boosters
     // propMass is the *nominal full* load; the bench lets the player stretch it
@@ -1694,7 +1694,7 @@ const PART_DEFS = {
     blurb:'A stretchable propellant tank. The backbone of every stage.',
   },
   decoupler: {
-    id:'decoupler', cat:'structural', name:'Stage Decoupler', short:'DEC',
+    id:'decoupler', cat:'structural', name:'Stage Decoupler', short:'DEC', base:true,
     era:0, dia:1.0, px:{len:18, dia:96},
     nodes:[ {id:'top', at:'top', class:'small'}, {id:'bot', at:'bottom', class:'small'} ],
     // A decoupler is the staging boundary: everything below it separates as a
@@ -1703,7 +1703,7 @@ const PART_DEFS = {
     blurb:'Separates a spent stage. Defines where one stage ends and the next begins.',
   },
   nosecone: {
-    id:'nosecone', cat:'structural', name:'Aerodynamic Nosecone', short:'NOS',
+    id:'nosecone', cat:'structural', name:'Aerodynamic Nosecone', short:'NOS', base:true,
     era:0, dia:1.0, px:{len:70, dia:90},
     nodes:[ {id:'bot', at:'bottom', class:'small'} ], // caps a stack — bottom node only
     phys:{ dryMass:0.12, dragCoeff:0.05, crossSection:1.0 }, // low drag is the point
@@ -1731,14 +1731,14 @@ const PART_DEFS = {
   },
   // — payload —
   capsule_mk1: {
-    id:'capsule_mk1', cat:'payload', name:'Crew Capsule', short:'CAP',
+    id:'capsule_mk1', cat:'payload', name:'Crew Capsule', short:'CAP', base:true,
     era:0, dia:1.0, px:{len:90, dia:88},
     nodes:[ {id:'bot', at:'bottom', class:'small'} ],
     phys:{ dryMass:1.2, crew:1, dragCoeff:0.4, crossSection:1.0, isPayload:true, hasAvionics:true, powerGen:0.5, powerDraw:0.3 },
     blurb:'A one-seat crew capsule. Its avionics fly the rocket.',
   },
   probe_core: {
-    id:'probe_core', cat:'avionics', name:'Probe Guidance Core', short:'GNC',
+    id:'probe_core', cat:'avionics', name:'Probe Guidance Core', short:'GNC', base:true,
     era:0, dia:1.0, px:{len:44, dia:70},
     nodes:[ {id:'top', at:'top', class:'small'}, {id:'bot', at:'bottom', class:'small'} ],
     phys:{ dryMass:0.15, dragCoeff:0.1, crossSection:1.0, hasAvionics:true, isPayload:true, powerDraw:0.3 },
@@ -1828,6 +1828,68 @@ function nodesCompatible(nodeA, nodeB){
   return opp(nodeA.at, nodeB.at);
 }
 
+// PP.0: is the part `parentUid` in the LAUNCH (first-firing / ground-lit) stage?
+// spineGroups splits the top→bottom spine at each decoupler; firing order reverses
+// that, so the launch stage is the BOTTOM-MOST group — everything below the lowest
+// decoupler. A radial parent (booster on a tank) inherits its spine-parent's group.
+// Used to forbid transfer-only engines on the ground stage. Fail-OPEN (returns true,
+// the stricter answer) only when the spine can't be resolved, so a malformed build
+// never silently permits a transfer engine on the pad.
+function attachWouldBeLaunchStage(build, parentUid){
+  const g=spineGroups(build);
+  if(g.error || !g.groups.length) return true; // can't resolve → assume launch stage (stricter)
+  const launchGroup=g.groups[g.groups.length-1]; // bottom-most = first to fire
+  if(!launchGroup) return true;
+  // resolve a radial parent (e.g. attaching to a booster) back to its spine anchor
+  let anchor=parentUid;
+  const spineUids=new Set(g.spine.map(p=>p.uid));
+  if(!spineUids.has(anchor)){
+    const link=build.links.find(l=>l.child===anchor);
+    if(link) anchor=link.parent;
+  }
+  return launchGroup.some(p=>p.uid===anchor);
+}
+
+/* ---------- PP.0: part availability gate ----------
+   A part becomes available exactly when the tech that grants it is researched —
+   mirroring the SLIDER bench, which already filters engines by
+   `state.unlocked[e.id]` (see render.js unlockedEngines / renderStages). Keeping
+   the two benches on the SAME unlock signal is the whole point of the E3
+   equivalence discipline: the part palette must never offer an engine the slider
+   bench would refuse, or vice-versa.
+
+   Three kinds of part:
+     • engine parts (def.engId) → available iff that engine id is in state.unlocked.
+       This is the exact predicate the slider bench uses, so they stay in lockstep
+       through every research change (including the tech-tree merges we just did —
+       reconcileResearch repopulates state.unlocked from the LIVE tree, so a merged
+       or removed node can't strand a part).
+     • parts with an explicit def.reqResearch → available iff that node is researched.
+       For non-engine unlocks (a fairing behind a research node, etc.).
+     • everything else (base structural parts: tank, decoupler, nosecone) → always
+       available. def.base:true makes this explicit and greppable.
+
+   era is DELIBERATELY not a hard gate. ERAS are soft/overlapping/calendar-driven
+   by design (see the currentEra comment in data.js) — the game gates capability on
+   RESEARCH, not year. def.era stays as a display-sort/flavor hint only. */
+function partAvailable(def, st){
+  if(!def) return false;
+  st = st || (typeof state!=='undefined' ? state : null);
+  if(!st) return true; // no game state (pure geometry tests) → don't gate
+  if(def.base) return true;
+  if(def.engId) return !!(st.unlocked && st.unlocked[def.engId]);
+  if(def.reqResearch) return !!(st.research && st.research[def.reqResearch]);
+  return true;
+}
+// Human-readable reason a part is locked, for the greyed palette tooltip. Names the
+// engine (whose own research node the player can go find) or the research node id.
+function partLockReason(def){
+  if(!def) return '';
+  if(def.engId){ const e=(typeof ENGINES!=='undefined')&&ENGINES[def.engId]; return e?`Unlock ${e.name} in R&D`:'Locked — research required'; }
+  if(def.reqResearch) return 'Requires research: '+def.reqResearch;
+  return '';
+}
+
 // Can `childDefId` attach to the open node `parentNode` of part `parentUid`?
 // Returns {ok, childNode?, why?}. The child attaches via its first compatible
 // open node (typically its 'top' if the parent offers a 'bottom').
@@ -1837,7 +1899,21 @@ function canAttach(build, parentUid, parentNodeId, childDefId){
   const pnode=pdef.nodes.find(n=>n.id===parentNodeId); if(!pnode) return {ok:false, why:'no such node'};
   if(!openNodes(build, parentUid).some(n=>n.id===parentNodeId)) return {ok:false, why:'node occupied'};
   const cdef=partDef(childDefId); if(!cdef) return {ok:false, why:'unknown part'};
-  // gate: research/era (parts carry an era index today; research gating arrives with the full catalogue)
+  // NOTE: the research/unlock gate is DELIBERATELY not here. Availability is a UI
+  // affordance (what the palette offers), not graph integrity — a loaded save may
+  // legitimately hold a part that research changes have since gated, and the graph
+  // must still represent it. The gate lives at the interaction entry points
+  // (benchPaletteClick, benchCanvasDrop) via partAvailable(). What DOES belong here
+  // is transfer-only enforcement below: a transfer engine on a ground-lit stage is
+  // physically wrong regardless of how the build was constructed.
+  // PP.0 transfer-only enforcement: a nuclear/electric transfer engine cannot power
+  // a launch stage. Mirrors the slider bench's `!e.transferOnly` filter on ground
+  // stages. "Launch stage" in graph terms = the first-firing stage (stage 0), i.e.
+  // the group that has no decoupler BELOW it. We evaluate it against the build as it
+  // WOULD be after this attach by checking where the parent group sits.
+  if(cdef.engId && ENGINES && ENGINES[cdef.engId] && ENGINES[cdef.engId].transferOnly){
+    if(attachWouldBeLaunchStage(build, parentUid)) return {ok:false, why:`${ENGINES[cdef.engId].name} is a transfer-stage engine — it can't power a launch (ground-lit) stage. Place it above a decoupler.`};
+  }
   const cnode=cdef.nodes.find(n=>nodesCompatible(pnode, n));
   if(!cnode) return {ok:false, why: pnode.class!=='small' ? 'no matching '+NODE_CLASS[pnode.class].label+' node on this part' : 'these parts don\'t connect here'};
   return {ok:true, childNode:cnode.id};
@@ -2353,9 +2429,24 @@ function partPaletteCard(def){
     : def.phys.propMass ? `${def.phys.propMass} t prop`
     : def.phys.crew ? `${def.phys.crew} crew`
     : def.phys.dryMass ? `${def.phys.dryMass} t` : '';
+  // PP.0: locked parts stay VISIBLE (so the player sees what's coming) but greyed and
+  // non-interactive, with the unlock condition shown and in the tooltip.
+  const locked = !partAvailable(def);
+  const lockReason = locked ? partLockReason(def) : '';
   // E3.6 tooltip: blurb + historical flavor (engines pull their heritage line from ENGINES).
   const engHist = def.engId && eng && eng.name ? `\n\nEngine: ${eng.name}` : '';
-  const tip = `${def.name}\n${def.blurb||''}${def.hist?'\n\n'+def.hist:''}${engHist}`.replace(/"/g,'&quot;');
+  const lockTip = locked ? `\n\n🔒 ${lockReason}` : '';
+  const tip = `${def.name}\n${def.blurb||''}${def.hist?'\n\n'+def.hist:''}${engHist}${lockTip}`.replace(/"/g,'&quot;');
+  if(locked){
+    return `<div class="part-card locked" data-partid="${def.id}" title="${tip}"
+      style="border:1px dashed var(--line);border-radius:6px;padding:6px 8px;cursor:not-allowed;background:var(--panel2);min-width:120px;opacity:0.45">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px">
+        <b style="color:${PART_CAT_COLOR[def.cat]||'#8a97a3'};font-size:12px">${def.name}</b>
+        <span class="dim" style="font-size:10px">🔒</span>
+      </div>
+      <div class="dim" style="font-size:10px;margin-top:2px">${lockReason}</div>
+    </div>`;
+  }
   return `<div class="part-card" draggable="true" data-partid="${def.id}" title="${tip}"
       onclick="benchPaletteClick('${def.id}')"
       ondragstart="benchDragStart(event,'${def.id}')" ondragend="benchDragEnd()"
@@ -2383,6 +2474,10 @@ function renderPartsPalette(){
 // node if there's exactly one (the common case early in a build).
 function benchPaletteClick(defId){
   const b=benchBuild();
+  // PP.0: availability gate lives here (interaction layer), not in canAttach — see
+  // the note in canAttach. A locked part shows greyed in the palette; this is the
+  // belt-and-braces guard in case a click reaches a locked id anyway.
+  if(!partAvailable(partDef(defId))){ renderPartsBench(partLockReason(partDef(defId))||'That part isn\'t unlocked yet.'); return; }
   let target=_benchSelNode;
   if(!target){
     // auto-target: if exactly one open node ACROSS THE BUILD is compatible with this specific
@@ -2419,6 +2514,8 @@ function benchCanvasDrop(e){
   e.preventDefault();
   const defId=(_benchDrag&&_benchDrag.defId) || (e.dataTransfer&&e.dataTransfer.getData('text/plain'));
   if(!defId) return;
+  // PP.0: availability gate at the interaction layer (see the note in canAttach).
+  if(!partAvailable(partDef(defId))){ renderPartsBench(partLockReason(partDef(defId))||'That part isn\'t unlocked yet.'); _benchDrag=null; return; }
   const b=benchBuild();
   const host=document.getElementById('benchCanvas'); if(!host) return;
   const svg=host.querySelector('svg'); if(!svg) return;
