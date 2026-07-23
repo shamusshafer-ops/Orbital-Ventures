@@ -3064,18 +3064,31 @@ function runToNextEvent(){
   render();
 }
 
-let timeAuto={unit:null,timer:null}, timePrimed=null;
+let timeAuto={unit:null,timer:null};
 function stopTimeAuto(){ if(timeAuto.timer) clearInterval(timeAuto.timer); timeAuto={unit:null,timer:null}; updateTimeArrows(); }
 function startTimeAuto(unit){ stopTimeAuto(); timeAuto.unit=unit;
   timeAuto.timer=setInterval(()=>{ if(state.over){ stopTimeAuto(); return; } stepTime(TIME_UNIT_DAYS[unit]); }, 1000);
   updateTimeArrows(); }
+// Keyboard path: single step only (F1/F2/F3). No auto-run from keyboard — hold the mouse button for that.
 function clickTimeArrow(unit){
   if(!TIME_UNIT_DAYS[unit]||state.over) return;
-  if(timeAuto.unit===unit){ stopTimeAuto(); timePrimed=null; return; }   // running this unit → stop
-  if(timeAuto.unit) stopTimeAuto();                                      // running another unit → drop to single-step
-  if(timePrimed===unit){ timePrimed=null; startTimeAuto(unit); return; } // 2nd consecutive press → auto-run 1/sec
-  stepTime(TIME_UNIT_DAYS[unit]); timePrimed=unit;                       // 1st press → step once + prime
+  if(timeAuto.unit) stopTimeAuto(); // cancel any running auto-advance first
+  stepTime(TIME_UNIT_DAYS[unit]);
 }
+// Mouse path: press → immediate single step + start hold timer; release → stop.
+// The release listener is registered on document so it fires even if the pointer
+// drifts off the button, preventing runaway auto-advance after a quick tap.
+const HOLD_DELAY_MS=450;
+let _holdTimer=null;
+function holdTimeArrow(unit){
+  if(!TIME_UNIT_DAYS[unit]||state.over) return;
+  stopTimeAuto(); stepTime(TIME_UNIT_DAYS[unit]);
+  _holdTimer=setTimeout(()=>{ _holdTimer=null; startTimeAuto(unit); }, HOLD_DELAY_MS);
+  function onRelease(){ document.removeEventListener('pointerup',onRelease); document.removeEventListener('pointercancel',onRelease); releaseTimeArrow(); }
+  document.addEventListener('pointerup',onRelease);
+  document.addEventListener('pointercancel',onRelease);
+}
+function releaseTimeArrow(){ if(_holdTimer){ clearTimeout(_holdTimer); _holdTimer=null; } stopTimeAuto(); }
 function updateTimeArrows(){ for(const u in TIME_UNIT_DAYS){ const b=$('tArrow'+u[0].toUpperCase()+u.slice(1)); if(b) b.classList.toggle('running', timeAuto.unit===u); } }
 // E0.5-A: pause game-time auto-advance while the tab is hidden. timeAuto's 1s setInterval (each
 // tick runs a full render() into the hidden DOM) is the ONLY thing that keeps burning CPU in a

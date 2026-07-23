@@ -935,9 +935,9 @@
     <div class="stats">
       <div class="stat"><span class="k">Date</span><span class="v" id="stDate">—</span></div>
       <span class="timectl" title="Advance time — 1 click steps once, 2 clicks auto-runs (1 step/sec), click again to stop">
-        <button class="btn ghost tarrow" id="tArrowDay" onclick="clickTimeArrow('day')" title="Day · 1 click = +1 day · 2 clicks = 1 day/sec">▸</button>
-        <button class="btn ghost tarrow" id="tArrowWeek" onclick="clickTimeArrow('week')" title="Week · 1 click = +1 week · 2 clicks = 1 week/sec">▸▸</button>
-        <button class="btn ghost tarrow" id="tArrowMonth" onclick="clickTimeArrow('month')" title="Month · 1 click = +1 month · 2 clicks = 1 month/sec">▸▸▸</button>
+        <button class="btn ghost tarrow" id="tArrowDay" onpointerdown="holdTimeArrow('day')" title="Day +1 · hold to auto-advance">▸</button>
+        <button class="btn ghost tarrow" id="tArrowWeek" onpointerdown="holdTimeArrow('week')" title="Week +1 · hold to auto-advance">▸▸</button>
+        <button class="btn ghost tarrow" id="tArrowMonth" onpointerdown="holdTimeArrow('month')" title="Month +1 · hold to auto-advance">▸▸▸</button>
       </span>
       <div class="stat dom-economy"><span class="k">Capital</span><span class="v" id="stMoney">—</span></div>
       <div class="stat dom-exploration"><span class="k">Reputation</span><span class="v" id="stRep">—</span></div>
@@ -1275,3 +1275,4 @@
 <!-- OV:SCRIPTS -->
 </body>
 </html>
+

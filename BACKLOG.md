@@ -33,7 +33,7 @@ Complexity: S = <1 day, M = 1–5 days, L = 1–3 weeks, XL = 1+ month. Impact: 
 |6| Save export/import as first-class UI (file download) | Trust; localStorage is fragile | S | ★★★ | — | H |E0.2|
 |7| Multiple save slots (IndexedDB) | Standard expectation | M | ★★★ | 6 | H |E0.2|
 |8| Autosave ring (keep last 3) | Corruption insurance | S | ★★ | 7 | H |E0.2|
-|9| Floating money/rep deltas on change | Feedback | S | ★★ | — | M |Backlog|
+|9| Floating money/rep deltas on change | Feedback | S | ★★ | — | M |Shipped (`_statBump` + `statDeltaRise` CSS — confirmed 2026-07-23)|
 |10| Hover math breakdowns (reliability ∏, net econ) | Auditability = trust | M | ★★★ | — | H |E1.5|
 |11| Confirm-with-preview on all destructive actions | Prevent rage-quits | S | ★★ | — | H |Backlog|
 |12| Undo last build-change on bench | Design iteration comfort | M | ★★ | — | M |Backlog|
@@ -173,3 +173,4 @@ flavor beyond the reactive-race core (#50, 53, 56–60), and personnel/station d
 beyond the named E1.4/E2 items (#64, 66–72, 75–79, 82, 84–85, 89–90, 100, 104).
 None of these are blocking — they're candidates for future slice selection once E0/E1
 land. Revisit this tally each time ROADMAP.md workstreams close out.
+
