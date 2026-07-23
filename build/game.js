@@ -16006,6 +16006,14 @@ function cape3dFlightVehicleSpec(source){
   const boosters=boosterCount?{count:boosterCount,prop:Math.max(0,Number(b.prop)||0),dia:Math.max(0,Number(b.dia)||0),solid:!!b.solid,eng:String(b.eng||'')}:null;
   return {stages,boosters,transferProp:Math.max(0,Number(raw.transferProp)||0),crewed:!!((outer.vehicle?outer.crewed:raw.crewed))};
 }
+// Orbit/transfer presentation starts after every disposable launch element has done its job.
+// Keep the final core stage (the insertion stage), transfer segment and payload/capsule, but never
+// rebuild lower stages or strap-ons in the post-ascent worlds. Without this boundary the correctly
+// detached launch hardware reappeared as a pristine full stack at the ascent -> orbit handoff.
+function cape3dPostAscentVehicleSpec(source){
+  const v=cape3dFlightVehicleSpec(source), last=v.stages.length?v.stages[v.stages.length-1]:null;
+  return {stages:last?[Object.assign({},last)]:[],boosters:null,transferProp:v.transferProp,crewed:v.crewed};
+}
 function cape3dVehicleVisualKey(source){
   const v=cape3dFlightVehicleSpec(source);
   return JSON.stringify({stages:v.stages.map(s=>[s.prop,s.count,s.dia,s.eng]),boosters:v.boosters?[v.boosters.count,v.boosters.prop,v.boosters.dia,v.boosters.solid,v.boosters.eng]:null,transferProp:v.transferProp,crewed:v.crewed});
@@ -16225,7 +16233,13 @@ function cape3dTrajectoryPlan(physics, options){
   const stages=physics.stages.map(s=>Object.assign({},s)), booster=physics.boosters?Object.assign({},physics.boosters):null, reqDv=Number(opts.reqDv)||0;
   let mass=Number(physics.liftoff)||((Number(physics.payload)||0)+stages.reduce((n,s)=>n+(Number(s.wet)||0),0)+(booster?(Number(booster.wet)||0):0));
   let stageIndex=0, coreProp=Math.max(0,Number(stages[0].prop)||0), boosterProp=booster?Math.max(0,Number(booster.prop)||0):0, boosterAttached=!!booster;
-  const burnEstimate=stages.reduce((n,s)=>{ const thrust=(Number(s.thrustSL)+Number(s.thrustVac))*.5, isp=(Number(s.ispSL)+Number(s.ispVac))*.5; return n+(thrust>0?(Number(s.prop)||0)/(thrust/(Math.max(1,isp)*G0)):0); },0);
+  const coreBurnEstimate=stages.reduce((n,s)=>{ const thrust=(Number(s.thrustSL)+Number(s.thrustVac))*.5, isp=(Number(s.ispSL)+Number(s.ispVac))*.5; return n+(thrust>0?(Number(s.prop)||0)/(thrust/(Math.max(1,isp)*G0)):0); },0);
+  // The shipped performance model treats boosters as a serial-equivalent "stage 0": combined
+  // liftoff thrust during a booster-Isp boost segment, then the untouched core stack flies on.
+  // Include that segment in the gravity-turn clock so long-burn default boosters do not compress
+  // the whole turn into the later core burn.
+  const boostBurnEstimate=booster?(()=>{ const core=stages[0]||{}, thrust=(Number(core.thrustSL)+Number(core.thrustVac)+Number(booster.thrustSL)+Number(booster.thrustVac))*.5, isp=(Number(booster.ispSL)+Number(booster.ispVac))*.5; return thrust>0?(Number(booster.prop)||0)/(thrust/(Math.max(1,isp)*G0)):0; })():0;
+  const burnEstimate=coreBurnEstimate+boostBurnEstimate;
   const maxTurnDeg=reqDv>=9000?82:(reqDv>=6000?72:(reqDv>=2900?62:(reqDv>=1900?48:34))), maxTurn=maxTurnDeg*Math.PI/180;
   const points=[{t:0,xKm:0,altitudeKm:0,vx:0,vy:0,speedMps:0,qKpa:0}], dt=.2, earthR=6371000, cd=.34;
   const stageEvents=[]; // E4.7 visual staging: {t, kind:'booster'|'stage', index, altitudeKm, xKm, vx, vy} at each real drop
@@ -16233,13 +16247,17 @@ function cape3dTrajectoryPlan(physics, options){
   while(t<2400){
     const stage=stages[stageIndex]||null, powered=!!stage, rho=1.225*Math.exp(-Math.max(0,y)/8500), vacuumMix=Math.max(0,Math.min(1,1-rho/1.225));
     let thrust=0, propBurn=0;
-    if(stage){
+    if(stage&&boosterAttached&&boosterProp>0){
+      // Serial-equivalent booster phase: core + strap-on thrust is paid from the boost segment at
+      // booster Isp, leaving coreProp untouched until BOOSTER SEP. This mirrors stackPerformance's
+      // existing contract and, critically, makes every fitted booster leave before stage 1.
+      const isp=(Number(booster.ispSL)||0)+(Number(booster.ispVac)-Number(booster.ispSL))*vacuumMix;
+      const coreThrust=(Number(stage.thrustSL)||0)+(Number(stage.thrustVac)-Number(stage.thrustSL))*vacuumMix;
+      const boostThrust=(Number(booster.thrustSL)||0)+(Number(booster.thrustVac)-Number(booster.thrustSL))*vacuumMix, combinedThrust=coreThrust+boostThrust, mdot=combinedThrust/(Math.max(1,isp)*G0), burn=Math.min(boosterProp,mdot*dt);
+      if(mdot>0){ thrust+=combinedThrust*(burn/(mdot*dt)); propBurn+=burn; boosterProp-=burn; }
+    } else if(stage){
       const isp=(Number(stage.ispSL)||0)+(Number(stage.ispVac)-Number(stage.ispSL))*vacuumMix, stageThrust=(Number(stage.thrustSL)||0)+(Number(stage.thrustVac)-Number(stage.thrustSL))*vacuumMix, mdot=stageThrust/(Math.max(1,isp)*G0), burn=Math.min(coreProp,mdot*dt);
       if(mdot>0){ thrust+=stageThrust*(burn/(mdot*dt)); propBurn+=burn; coreProp-=burn; }
-    }
-    if(boosterAttached&&boosterProp>0){
-      const isp=(Number(booster.ispSL)||0)+(Number(booster.ispVac)-Number(booster.ispSL))*vacuumMix, boostThrust=(Number(booster.thrustSL)||0)+(Number(booster.thrustVac)-Number(booster.thrustSL))*vacuumMix, mdot=boostThrust/(Math.max(1,isp)*G0), burn=Math.min(boosterProp,mdot*dt);
-      if(mdot>0){ thrust+=boostThrust*(burn/(mdot*dt)); propBurn+=burn; boosterProp-=burn; }
     }
     const burnP=Math.max(0,Math.min(1,t/Math.max(1,burnEstimate))), turnP=Math.max(0,Math.min(1,(burnP-.16)/.84)), turnEase=turnP*turnP*(3-2*turnP), tilt=maxTurn*turnEase;
     const speed=Math.hypot(vx,vy), dia=stage?Math.max(.25,Number(stage.diameterM)||1):1, area=Math.PI*dia*dia*.25, dragKn=.5*rho*speed*speed*cd*area/1000, dragAx=speed>.1?dragKn/mass*(vx/speed):0, dragAy=speed>.1?dragKn/mass*(vy/speed):0;
@@ -16636,7 +16654,7 @@ function cape3dDisposeObject3D(obj){
 // groups, so keeping either from an older design would recreate the same topology mismatch.
 function cape3dInstallFlightVehicle(source){
   if(!cape3d||!cape3d.root) return false;
-  const root=cape3d.root, vehicleSpec=cape3dFlightVehicleSpec(source), pad=root.userData.launchPad;
+  const root=cape3d.root, vehicleSpec=cape3dFlightVehicleSpec(source), postAscentSpec=cape3dPostAscentVehicleSpec(vehicleSpec), pad=root.userData.launchPad;
   if(!vehicleSpec.stages.length||!pad) return false;
   root.userData.flightNight=!!(source&&source.effects?source.effects.night:source&&source.night);
   const current=root.userData.launchRocket;
@@ -16655,8 +16673,8 @@ function cape3dInstallFlightVehicle(source){
     if(root.userData.groundSmoke&&root.userData.groundSmoke.origin) root.userData.groundSmoke.origin.copy(rocket.position);
   }
   const launchOk=cape3dRocketMatchesVehicle(root.userData.launchRocket,vehicleSpec);
-  const orbitOk=!root.userData.orbitWorld||cape3dSyncFlightCraft(root.userData.orbitWorld,vehicleSpec,{scale:.72,plumeRadius:12,plumeLength:72,glow:true});
-  const transferOk=!root.userData.transferWorld||cape3dSyncFlightCraft(root.userData.transferWorld,vehicleSpec,{scale:.62,plumeRadius:10,plumeLength:58,glow:false});
+  const orbitOk=!root.userData.orbitWorld||cape3dSyncFlightCraft(root.userData.orbitWorld,postAscentSpec,{scale:.72,plumeRadius:12,plumeLength:72,glow:true});
+  const transferOk=!root.userData.transferWorld||cape3dSyncFlightCraft(root.userData.transferWorld,postAscentSpec,{scale:.62,plumeRadius:10,plumeLength:58,glow:false});
   return launchOk&&orbitOk&&transferOk;
 }
 function cape3dEnterLaunchPresentation(source){

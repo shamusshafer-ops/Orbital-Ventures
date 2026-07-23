@@ -25,6 +25,16 @@ function matchingMock(source){
   check('engine identity survives the snapshot for vehicle-class styling',fromSnapshot.stages[0].eng==='h1'&&fromSnapshot.boosters.eng==='solid_large');
 }
 {
+  const frozenBefore=JSON.stringify(snapshot), post=cape3dPostAscentVehicleSpec(snapshot);
+  check('post-ascent craft keeps only the final core/insertion stage',post.stages.length===1&&post.stages[0].eng==='aj10'&&post.stages[0].prop===24);
+  check('post-ascent craft never recreates strap-on boosters or lower stages',post.boosters===null);
+  check('post-ascent craft preserves transfer segment and crew payload',post.transferProp===8&&post.crewed===true);
+  check('deriving the post-ascent craft does not mutate the frozen snapshot',JSON.stringify(snapshot)===frozenBefore);
+  const full=matchingMock(snapshot), survivor=matchingMock(post);
+  check('the pristine launch stack cannot masquerade as the surviving orbit craft',!cape3dRocketMatchesVehicle(full,post));
+  check('surviving craft topology is one core plus transfer with no booster group',cape3dRocketMatchesVehicle(survivor,post)&&survivor.userData.stageGroups.map(x=>x.kind).join(',')==='stage,transfer'&&survivor.userData.boosterGroup===null);
+}
+{
   const frozenKey=cape3dVehicleVisualKey(snapshot);
   state.stages=[{eng:'a4',count:1,prop:2,dia:1}]; state.boosters=null;
   check('frozen launch visual is independent of later live-bench mutation',cape3dVehicleVisualKey(snapshot)===frozenKey&&cape3dVehicleVisualKey(cape3dCurrentVehicleSpec())!==frozenKey);

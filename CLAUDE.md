@@ -6,18 +6,20 @@ reorder existing entries there, only add new ones at the end, same as `ROADMAP.m
 
 ---
 
-## STATUS (as of 2026-07-22, working tree based on HEAD `f5bc61b`)
+## STATUS (as of 2026-07-22, working tree based on HEAD `59ecdb1`)
 
 **Repo health:** 98 test suites, clean build parity, `git diff --check` clean. Only known drift:
 `test-flight3d-trajectory.js` (long-standing — Codex's own accepted trajectory/vehicle-physics
 changes, not a regression). If you see a DIFFERENT test failing, don't assume it's pre-existing —
 check the history below for whether it's a known, intentional behavior change first.
 
-**In progress:** (none claimed right now)
+**In progress:** (none claimed right now).
 > When you start a task, replace this line with: `<task> — <Claude|Codex> — started <date>`.
 > When done, clear it back to "(none claimed right now)" and add your entry to the history below.
 
 **Oriented quickly (last few sessions, newest first) — see History for full detail:**
+- Flight 3D booster-first repair (Codex) — real default/long-burn strap-ons now fly as the promised
+  serial-equivalent stage 0, always detach before the core, and never reappear on orbit/transfer.
 - Flight 3D vehicle-authority + visibility repair (Codex) — the frozen launch snapshot now owns the
   pad/ascent/orbit meshes; staging topology is guarded; Earth-scale fog, lighting, map orientation,
   and horizon framing were browser-verified with a three-stage/two-booster launch.
@@ -536,3 +538,29 @@ complete suite sweep: 97 passing suite files and only the one documented traject
 parity and `git diff --check` clean. The sweep also exposed a Node-runtime harness issue (modern
 Node's inherited `performance.now` resisted assignment); `tests/harness.js` now installs the native
 clock as a writable own property so all virtual-clock animation suites pass again.
+
+## Flight 3D booster-first separation + surviving-stack handoff — SHIPPED (Codex, 2026-07-22)
+
+Two independent defects made side boosters survive to the end. First, the real bench default is
+20 t per booster; two slow A-4 strap-ons naturally burned for about 160 s while a normal 12 t S-3D
+core burned for about 84 s. The Flight 3D integrator burned both in parallel, so the core separated
+first—or a single-stage plan ended before ever creating a booster event. Second, the orbit and
+transfer scenes rebuilt the entire frozen launch stack, so even correctly detached hardware
+reappeared at the phase handoff.
+
+`cape3dTrajectoryPlan` now follows the authoritative performance model's serial-equivalent stage-0
+contract: during boost it applies combined core/booster thrust at booster Isp, consumes only the
+booster segment, emits BOOSTER SEP, drops booster dry mass, and only then begins consuming untouched
+core propellant. The booster segment is included in the gravity-turn burn clock. This guarantees a
+real booster event strictly before stage 1 for every fitted design without a cosmetic fixed-time
+override. `cape3dPostAscentVehicleSpec` separately derives the surviving craft—final insertion stage,
+optional transfer segment, and payload/capsule; no lower cores or strap-ons—for orbit/transfer sync.
+
+Regression coverage now includes the actual 2×20 t default A-4 case on both two-stage and
+single-stage cores, plus immutable post-ascent topology checks. Generated-game Firefox/WebGL
+acceptance used a three-stage/default-booster vehicle: events were booster → stage 1 → stage 2;
+8 s after BOOSTER SEP the booster group was root-detached and 597 m behind while stage 1 remained
+attached; the orbit handoff hid the launch vehicle and exposed exactly one upper stage with zero
+booster geometry. `test-flight3d-staging.js` is 35/35 and `test-flight3d-vehicle-sync.js` is 20/20.
+Full sweep: 97 suite files pass, only the established `test-flight3d-trajectory.js` drift remains;
+build parity and `git diff --check` clean.

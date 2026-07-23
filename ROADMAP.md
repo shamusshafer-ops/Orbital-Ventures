@@ -5964,3 +5964,33 @@ Cape coordinate. New `test-flight3d-vehicle-sync.js` is 14/14; staging 30/30; la
 Full sweep: 97 suite files pass, only the established `test-flight3d-trajectory.js` drift remains;
 build parity and `git diff --check` clean. A Node compatibility shim also makes the harness's
 virtual `performance.now` writable again, restoring all animation suites under the current runtime.
+
+
+## Session — Flight 3D booster-first staging + post-ascent stack (2026-07-22)
+
+The user's remaining “boosters stay attached to the end” report had two reproducible causes. The
+bench's first-click booster default is 20 t each and selects the always-unlocked A-4. Two such
+boosters burn for ~160 s, almost twice a normal 12 t S-3D core. Flight 3D had been burning booster
+and core propellant in parallel, so the core event could precede BOOSTER SEP; on a single-stage or
+short high-thrust stack, final burnout terminated the orbital plan before a booster event existed.
+Separately, the orbit/transfer worlds were synchronized with the complete frozen launch spec,
+making discarded stages and boosters reappear as a pristine full stack after ascent.
+
+The trajectory now implements the performance model's documented serial-equivalent stage 0. While
+boosters are attached, combined core-plus-booster thrust is paid from the booster segment at booster
+Isp and core propellant remains untouched. Booster burnout therefore emits the first event and drops
+the booster mass; core burning and core-stage events begin afterward. Its duration is included in
+the gravity-turn clock. This preserves the established combined-liftoff-thrust/unchanged-core model
+without inventing a fixed cosmetic separation fraction.
+
+New pure `cape3dPostAscentVehicleSpec` derives a phase-appropriate surviving craft from the frozen
+launch vehicle: only the final insertion stage, optional transfer segment, and payload/capsule.
+Orbit and transfer sync use that derivative; the launch mesh continues using the complete stack.
+
+Tests extend `test-flight3d-staging.js` with real `flightPhysicsSpec` cases for default 2×20 t A-4
+boosters on two-stage and single-stage cores, and extend `test-flight3d-vehicle-sync.js` with
+immutability/survivor-topology assertions. They pass 35/35 and 20/20. Firefox/WebGL acceptance on
+the generated release confirmed event order booster → stage 1 → stage 2, boosters detached/falling
+while stage 1 remained attached, and an orbit craft with one upper stage and no booster group.
+Full regression: 97 suite files pass; only the long-standing `test-flight3d-trajectory.js` drift
+remains. Build parity and `git diff --check` clean.

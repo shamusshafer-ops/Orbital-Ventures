@@ -70,6 +70,33 @@ newGame('engineer');
   state.stages=beforeStages; state.boosters=beforeBoosters;
 }
 
+// ---------- 3b. real bench defaults: long-burn A-4 strap-ons are still stage 0 ----------
+// Enabling boosters defaults to 20 t each. Under the old parallel timeline those slow A-4
+// strap-ons outlived a normal S-3D core, so stage 1 separated first (or a single-stage flight ended
+// before any booster event existed). Exercise the actual flightPhysicsSpec path, not a hand-tuned
+// short booster that guarantees the answer by construction.
+{
+  const beforeStages=JSON.parse(JSON.stringify(state.stages)), beforeBoosters=state.boosters?JSON.parse(JSON.stringify(state.boosters)):null;
+  state.stages=[
+    {eng:'kerolox_mk1',prop:12,count:1,dia:1},
+    {eng:'hyper_storable',prop:4,count:1,dia:1}
+  ];
+  state.boosters={eng:'a4',prop:20,count:2};
+  const physics=flightPhysicsSpec(curMission(),computeVehicle()), plan=cape3dTrajectoryPlan(physics,{isOrbital:false,reqDv:1000});
+  const boosterEvent=plan.stageEvents.find(e=>e.kind==='booster'), coreEvent=plan.stageEvents.find(e=>e.kind==='stage'&&e.index===0);
+  check('default 20 t boosters always produce a real separation event',!!boosterEvent);
+  check('default long-burn boosters separate strictly before the first core stage',!!coreEvent&&boosterEvent.t<coreEvent.t&&plan.stageEvents[0]===boosterEvent);
+  const atCore=cape3dSeparationStates(plan,coreEvent.t), boostState=atCore.find(s=>s.kind==='booster'), coreState=atCore.find(s=>s.kind==='stage'&&s.index===0);
+  check('by first-stage separation the boosters are already gone',boostState.separated&&boostState.fallTime>0&&coreState.separated);
+
+  state.stages=[{eng:'kerolox_mk1',prop:12,count:1,dia:1}];
+  const oneStagePlan=cape3dTrajectoryPlan(flightPhysicsSpec(curMission(),computeVehicle()),{isOrbital:false,reqDv:1000});
+  const oneStageBoosters=oneStagePlan.stageEvents.filter(e=>e.kind==='booster');
+  check('single-stage flight with default boosters records exactly one booster event',oneStageBoosters.length===1&&oneStagePlan.stageEvents.length===1);
+  check('single-stage boosters separate before final core burnout',oneStageBoosters[0].t>0&&oneStageBoosters[0].t<oneStagePlan.burnoutTime);
+  state.stages=beforeStages; state.boosters=beforeBoosters;
+}
+
 // ---------- 4. three-stage vehicle: two events, strictly increasing time and index ----------
 {
   const before=JSON.parse(JSON.stringify(state.stages));
