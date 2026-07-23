@@ -1680,15 +1680,19 @@ function drawScene(t){
       // E1.2 slice C: the reserve call (a drifting deep-phase subsystem) and rescue (a stranded
       // crew) both only ever apply to cislunar/deep missions — this is their natural "far from
       // home" moment, right on entering the cruise, rather than the pad→ascent handoff.
-      if(A.pendingDecision && A.pendingDecision.holdAt==='cislunar-start'){ A.phase='cislunar'; A.held=true; drawCislunar(0); drawDecisionPanel(A.pendingDecision.buildPanel()); if(ho) finishHandoff(); A.lastT=t; return; }
+      // Slice D: finishHandoff must run BEFORE drawDecisionPanel — at t=t0 (hold fires on the
+      // first frame the ascent ends) u≈0 so the snapshot is fully opaque; drawing the panel
+      // first then calling finishHandoff would paint the old frame over it, hiding the box.
+      if(A.pendingDecision && A.pendingDecision.holdAt==='cislunar-start'){ A.phase='cislunar'; A.held=true; drawCislunar(0); if(ho) finishHandoff(); const _cp=A.pendingDecision.buildPanel(); if(!showFlight3DDecision(_cp)) drawDecisionPanel(_cp); A.lastT=t; return; }
       A.phase='cislunar'; drawCislunar(ct);
     }
     else if(s.isOrbital){
       if(A.pendingDecision && A.pendingDecision.holdAt==='orbit-start'){
         A.phase='orbit'; A.held=true; drawOrbit(0);
         A.presentation3d=flight3dPresentationSnapshot(s,A,(A.padDur||0)+A.ascentDur); updateFlight3DSession(A.presentation3d);
+        if(ho) finishHandoff(); // Slice D: run crossfade BEFORE panel so the snapshot doesn't cover the decision box
         const panel=A.pendingDecision.buildPanel(); if(!showFlight3DDecision(panel)) drawDecisionPanel(panel);
-        if(ho) finishHandoff(); A.lastT=t; return;
+        A.lastT=t; return;
       }
       A.phase='orbit'; drawOrbit(ct);
     }
@@ -3456,3 +3460,4 @@ let _tlFilter='all';
 let _tlCollapsed=false;
 try{ const f=localStorage.getItem('ov_tlFilter'); if(f==='all' || TL_CAT_ICON[f]!==undefined) _tlFilter=f; }catch(e){}
 try{ _tlCollapsed=localStorage.getItem('ov_tlCollapsed')==='1'; }catch(e){}
+

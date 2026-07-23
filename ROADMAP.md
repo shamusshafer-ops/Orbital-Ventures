@@ -3050,8 +3050,9 @@ duplicating.
 - [x] **E1.2 Flight overlay Slice C** — SHIPPED 2026-07-23 (see session log below). All
       six decision modals now live in the flight overlay; `showAnomalyModal` was the last
       holdout. Slice D (chrome/transition polish) remains open.
-- [ ] **E1.2 Flight overlay Slice D** — chrome/transition-timing polish pass across all
-      phases (pad/ascent/cruise/reentry/decision panels).
+- [x] **E1.2 Flight overlay Slice D** — SHIPPED 2026-07-23 (see session log below).
+      Fixed visual layering: decision panels at cislunar-start and orbit-start now render
+      on top of the phase-transition crossfade instead of under it.
 - [x] **E1.3 Procedural contract generator** — SHIPPED (both slices) 2026-07-11 (see session log
       above), 637/637, **not yet committed/pushed, needs a real-browser check**. Comsat block buy,
       crew rotation, deep-space sample return; era-scaled concurrent-offer cap.
@@ -6023,3 +6024,39 @@ content lost; short detail stays single line. Full regression: **95/98** — the
 pre-existing (build-parity env path, command-hero-layout filesystem read, flight3d-trajectory
 long-standing drift); nothing introduced by this change. Slice D (chrome/transition polish) remains
 open.
+
+## Session — E1.2 Slice D: decision panel layering fix (2026-07-23)
+
+**Slice D complete. Unified flight overlay Slices A–D all done.**
+
+**The bug.** When a decision fires at `cislunar-start` or `orbit-start` (reserve, rescue, anomaly,
+orbital maneuver), `drawScene` called `drawDecisionPanel` BEFORE `finishHandoff()`. The crossfade
+handoff starts at `u=0` (the hold fires on the exact frame the ascent ends), so at `u≈0`
+`finishHandoff` draws the previous-phase (ascent) snapshot at full opacity — completely covering
+the decision panel. The held frame displayed the old ascent frame, not the decision box.
+
+**The fix.** In `flight.js`'s `drawScene`, two hold paths reordered:
+- **`cislunar-start`** (reserve/rescue/cislunar anomaly): `drawCislunar(0)` → `finishHandoff()` →
+  `drawDecisionPanel(panel)`. Also added the missing `showFlight3DDecision` guard (the cislunar
+  path was calling `drawDecisionPanel` directly, bypassing the 3D DOM path — the orbit-start path
+  already had this guard).
+- **`orbit-start`** (orbital anomaly/maneuver): `drawOrbit(0)` → presentation snapshot update →
+  `finishHandoff()` → `drawDecisionPanel(panel)`.
+
+Net visual: the ascent snapshot fades over the incoming phase background (crossfade starts), then
+the decision dim + box paint on top of that faded composite. At `u=0` the result is a dark-dimmed
+ascent frame with the decision box clearly visible — correct and readable. The `pad-start` and
+`pad-end` holds are unaffected (no crossfade running at those points).
+
+**Balance/behavior.** Purely presentational — no timing, outcome, or state changes. No SAVE_VERSION
+bump. The existing `test-decision-panel.js` (49/49) already verifies that held states at each hold
+point produce the correct `animState` and button wiring; the visual ordering is a browser-only
+concern not testable headlessly.
+
+**Regression: 95/98** — 3 pre-existing failures unchanged, 0 new failures.
+
+**Unified flight overlay status: Slices A–D all complete.**
+- A: pad phase (`drawPad`, countdown, ignition ramp) — July 9
+- B: cruise-begins outro (`drawDepartCard`, `spec.mode:'depart'`) — July 9
+- C: in-overlay decision panels (all 6 modals) — July 11 (infra) + July 23 (anomaly)
+- D: crossfade layering fix — July 23
