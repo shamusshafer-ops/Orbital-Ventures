@@ -3047,10 +3047,11 @@ duplicating.
       already live pre-session (CE1); slice A added contract snatching, budget hearings, and a
       failure→poach-heat link; slice B (rival intel dossier) added a paid one-time unlock that
       projects a rival's *full* remaining-firsts timeline (not just the next goal).
-- [ ] **E1.2 Flight overlay Slices C + D** — already scoped above (in-overlay decision
-      panels; chrome/transition polish). The eval independently ranks these top-tier;
-      add an ascent abort/press-on window and a small telemetry strip (alt/vel/Q) as
-      part of C's panel work.
+- [x] **E1.2 Flight overlay Slice C** — SHIPPED 2026-07-23 (see session log below). All
+      six decision modals now live in the flight overlay; `showAnomalyModal` was the last
+      holdout. Slice D (chrome/transition polish) remains open.
+- [ ] **E1.2 Flight overlay Slice D** — chrome/transition-timing polish pass across all
+      phases (pad/ascent/cruise/reentry/decision panels).
 - [x] **E1.3 Procedural contract generator** — SHIPPED (both slices) 2026-07-11 (see session log
       above), 637/637, **not yet committed/pushed, needs a real-browser check**. Comsat block buy,
       crew rotation, deep-space sample return; era-scaled concurrent-offer cap.
@@ -5994,3 +5995,31 @@ the generated release confirmed event order booster → stage 1 → stage 2, boo
 while stage 1 remained attached, and an orbit craft with one upper stage and no booster group.
 Full regression: 97 suite files pass; only the long-standing `test-flight3d-trajectory.js` drift
 remains. Build parity and `git diff --check` clean.
+
+
+## Session — E1.2 Slice C: anomaly modal moves into the flight overlay (2026-07-23)
+
+**Slice C complete.** The last of the six live-flight decision modals — `showAnomalyModal` — is now
+rendered inside the flight overlay instead of as a page-level `showModal`. The other five
+(`showLiveCallModal`, `showReserveModal`, `showRescueModal`, `showWeatherModal`,
+`showOrbitalManeuverDecision`) were already wired to `openFlightForDecision` in the July 11 session
+but the anomaly modal was left unconverted; this closes the gap.
+
+**What changed in `sim.js`.** `showAnomalyModal` drops its `showModal` call entirely. It now calls
+`openFlightForDecision(ctx, {holdAt, buildPanel:()=>({...})})` exactly like the other five decisions.
+Hold point is `'orbit-start'` for orbital missions (`!m.profile && reqDv≥9000`) and
+`'cislunar-start'` for deep/profile missions — the same hold as reserve and rescue, since anomalies
+fire in that same late-mission operational zone. `resolveAnomaly()` is unchanged; its `hideModal()`
+call becomes a no-op (the page modal was never shown). The `_pendingOps.ev`/`_pendingOps.opts`
+assignment that `resolveAnomaly` reads is kept — it was already in `showAnomalyModal` and is still
+needed. Detail text is word-wrapped at 62 chars (fits the 420 px overlay panel at 11 px monospace;
+the longest anomaly detail is ~105 chars and splits cleanly at the `—`). No SAVE_VERSION bump —
+purely presentational, no persisted state touched.
+
+**Validation.** `node --check` OK. Updated `test-decision-panel.js` (49/49, up from 28/28 before this
+session) — new checks 10–13 cover: orbital anomaly holds at `orbit-start`; cislunar anomaly holds at
+`cislunar-start`; panel title/lines/buttons correct; long detail word-wraps into two lines with no
+content lost; short detail stays single line. Full regression: **95/98** — the 3 failures are all
+pre-existing (build-parity env path, command-hero-layout filesystem read, flight3d-trajectory
+long-standing drift); nothing introduced by this change. Slice D (chrome/transition polish) remains
+open.

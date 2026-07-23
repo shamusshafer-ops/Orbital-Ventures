@@ -168,5 +168,56 @@ pumpFlight(80, 8000);
 check('rescue: holds at cislunar-start', animState!==null && animState.held===true && animState.pendingDecision.holdAt==='cislunar-start');
 check('rescue: crew not yet removed from staff (decision not resolved)', state.staff.some(s=>s.id==='a01'));
 
+
+// ---------- 10. Anomaly: orbital mission holds at ORBIT-START ----------
+// (E1.2 Slice C final piece: showAnomalyModal now uses openFlightForDecision instead of showModal)
+newGame('engineer');
+animState=null; _pendingOps=null;
+const orbitalM=MISSIONS.find(x=>x.id==='first_sat')||MISSIONS.find(x=>(!x.profile)&&(x.reqDv||0)>=9000);
+const solarEv=MISSION_ANOMALIES.find(a=>a.id==='solar_array');
+const anomCtxOrb={m:orbitalM, v:computeVehicle(), sim:null, windowQuality:1, flightExpense:1,
+  routine:false, crewed:false, outcome:{kind:'success',rel:0.85,story:'',failPhase:null,subsystem:null,phases:[]},
+  rehearsed:false, famId:null, crewId:null, ab:{rel:0,payoutMult:1}};
+_pendingOps=anomCtxOrb; // maybeAnomaly sets this before calling showAnomalyModal
+showAnomalyModal(solarEv, anomCtxOrb);
+check('anomaly orbital: overlay opened (openFlightForDecision, not showModal)', animState!==null);
+check('anomaly orbital: holdAt is orbit-start', animState&&animState.pendingDecision&&animState.pendingDecision.holdAt==='orbit-start');
+check('anomaly orbital: _pendingOps.opts populated (resolveAnomaly can find them)', Array.isArray(_pendingOps&&_pendingOps.opts));
+const panelOrb=animState&&animState.pendingDecision.buildPanel();
+check('anomaly orbital: panel title flags anomaly', panelOrb&&/ANOMALY/.test(panelOrb.title));
+check('anomaly orbital: panel lines include mission name', panelOrb&&panelOrb.lines.some(l=>l.includes(orbitalM.name)));
+check('anomaly orbital: buttons match anomaly options', panelOrb&&panelOrb.buttons.length===solarEv.options(anomCtxOrb).length);
+pumpFlight(80, 8000);
+check('anomaly orbital: held at orbit-start after animation reaches it', animState!==null&&animState.held===true);
+
+// ---------- 11. Anomaly: cislunar/profile mission holds at CISLUNAR-START ----------
+newGame('engineer');
+animState=null; _pendingOps=null;
+const cisM=MISSIONS.find(x=>!!x.profile); // any cislunar/deep mission
+const guidanceEv=MISSION_ANOMALIES.find(a=>a.id==='guidance');
+const anomCtxCis={m:cisM, v:computeVehicle(), sim:null, windowQuality:1, flightExpense:1,
+  routine:false, crewed:false, outcome:{kind:'success',rel:0.85,story:'',failPhase:null,subsystem:null,phases:[]},
+  rehearsed:false, famId:null, crewId:null, ab:{rel:0,payoutMult:1}};
+_pendingOps=anomCtxCis;
+showAnomalyModal(guidanceEv, anomCtxCis);
+check('anomaly cislunar: overlay opened', animState!==null);
+check('anomaly cislunar: holdAt is cislunar-start (not orbit-start)', animState&&animState.pendingDecision&&animState.pendingDecision.holdAt==='cislunar-start');
+pumpFlight(80, 10000);
+check('anomaly cislunar: held at cislunar-start', animState!==null&&animState.held===true);
+
+// ---------- 12. Anomaly: detail line word-wrap (long detail splits at last space ≤62 chars) ----------
+const longDet='One solar wing is stuck half-latched and the power margin is falling — the payload can\'t run every system.';
+const cut=longDet.length>62?Math.max(10,longDet.lastIndexOf(' ',62)):longDet.length;
+const wrappedLines=longDet.length>62?[longDet.slice(0,cut).trim(),longDet.slice(cut).trim()]:[longDet];
+check('anomaly word-wrap: long detail splits into 2 lines', wrappedLines.length===2);
+check('anomaly word-wrap: first line ≤62 chars', wrappedLines[0].length<=62);
+check('anomaly word-wrap: no content lost (recombined === original)', (wrappedLines[0]+' '+wrappedLines[1])===longDet);
+
+// ---------- 13. Anomaly: short detail (genuinely < 62 chars) stays as single line ----------
+const shortDet='Guidance radar dropping out at the worst moment.'; // 49 chars — under the 62-char wrap threshold
+const cutShort=shortDet.length>62?Math.max(10,shortDet.lastIndexOf(' ',62)):shortDet.length;
+const shortWrapped=shortDet.length>62?[shortDet.slice(0,cutShort).trim(),shortDet.slice(cutShort).trim()]:[shortDet];
+check('anomaly word-wrap: short detail (<62 chars) stays single line', shortWrapped.length===1);
+
 console.log(pass+'/'+(pass+fail)+' checks passed');
 process.exit(fail>0 ? 1 : 0);

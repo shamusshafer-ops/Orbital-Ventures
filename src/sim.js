@@ -4595,13 +4595,21 @@ function rollMissionEvents(ctx, rng){
 }
 function showAnomalyModal(ev, ctx){
   const opts=ev.options(ctx);
-  if(_pendingOps){ _pendingOps.ev=ev; _pendingOps.opts=opts; }
-  const btns=opts.map((o,i)=>`<button class="btn${i?' ghost':''}"${i?' style="margin-top:8px"':''} onclick="resolveAnomaly(${i})">${o.label}</button>`).join('');
-  showModal(`<h2 style="color:var(--warn)">⚠ In-flight anomaly</h2>
-    <p><b>${ctx.m.name}</b> — ${ev.title}.</p>
-    <p class="muted">${ev.detail}</p>
-    <p>Mission Control needs a call.</p>
-    ${btns}`);
+  if(_pendingOps){ _pendingOps.ev=ev; _pendingOps.opts=opts; } // resolveAnomaly reads _pendingOps.opts
+  // E1.2 slice C: anomaly now plays in the flight overlay (like live-call/reserve/rescue) rather
+  // than a page-level showModal. Hold at orbit-start for orbital missions, cislunar-start for
+  // deep/profile missions — same hold point as reserve and rescue, since anomalies fire in that
+  // same late-mission operational zone. resolveAnomaly() is unchanged; its hideModal() is a no-op
+  // when no page modal is up.
+  const holdAt=ctx.m.profile?'cislunar-start':'orbit-start';
+  openFlightForDecision(ctx, { holdAt, buildPanel:()=>{
+    const det=ev.detail, maxCh=62; // ~62 chars ≈ 420 px panel at 11 px monospace
+    const cut=det.length>maxCh?Math.max(10,det.lastIndexOf(' ',maxCh)):det.length;
+    const detLines=det.length>maxCh?[det.slice(0,cut).trim(),det.slice(cut).trim()]:[det];
+    return { title:'\u26a0 IN-FLIGHT ANOMALY', color:themeColor('warn'),
+      lines:[ctx.m.name+' \u2014 '+ev.title+'.', ...detLines, 'Mission Control needs a call.'],
+      buttons:opts.map((o,i)=>({label:o.label, ghost:i>0, action:()=>resolveAnomaly(i)})) };
+  }});
 }
 function resolveAnomaly(i){
   if(!_pendingOps||!_pendingOps.opts) return;
@@ -6434,3 +6442,4 @@ function hideModal(){activeModal=null;_prodModalOpen=false;$('modal').classList.
   try{ const el=resolveReturnFocus(_modalReturnFocus,_modalReturnFocusId,id=>document.getElementById(id),document.body); if(el && typeof el.focus==='function') el.focus(); }catch(e){}
   _modalReturnFocus=null; _modalReturnFocusId=null;
 } // slice 6: closing clears the live-modal thunk; slice B: also returns focus to the modal's trigger
+
