@@ -35,6 +35,8 @@ newGame('engineer');
   check('the event is a stage drop (not a booster) at index 0 (the first/bottom stage)', ev.kind==='stage' && ev.index===0);
   check('the event carries a real position (matches the trajectory\'s own altitude/downrange at that time)', ev.altitudeKm>0 && ev.xKm>=0);
   check('the event carries the real velocity at separation (non-zero, powered flight)', ev.vy>0);
+  const mapped=cape3dSeparationStates(plan,ev.t)[0];
+  check('separation-state mapping preserves real vx/vy for the debris drift', mapped.vx===ev.vx&&mapped.vy===ev.vy&&mapped.vy>0);
   // The recorded event time should be a genuine sample from the burn integration — sanity check it
   // falls strictly between liftoff and the final burnout/impact time.
   check('the event time sits between liftoff and the end of the trajectory', ev.t>0 && ev.t<plan.impactTime);

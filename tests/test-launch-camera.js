@@ -27,6 +27,15 @@ function near(a,b,tol,n){ check(n+` (${(+a).toFixed(2)} vs ${(+b).toFixed(2)})`,
   check('physical Earth is fully established above the Kármán line',high.space===1&&high.capeVisible===false);
   check('physical handoff is monotonic by altitude',(()=>{let prev=-1;for(const km of [0,10,20,28,40,55,70,85,96,120]){const x=cape3dPhysicalAscentBlend(km*1000).space;if(x<prev)return false;prev=x;}return true;})());
   check('camera depth reaches beyond the real geometric horizon at 100 km',cape3dFlightCameraFar(100000)>1100000);
+  check('Earth and Cape cross-fade complementarily with no translucent coverage gap',(()=>{for(let km=0;km<=100;km+=2){const q=cape3dPhysicalAscentBlend(km*1000);if(Math.abs(q.earthOpacity+q.capeOpacity-1)>1e-9)return false;}return true;})());
+  check('Earth is fully opaque before Cape geometry is removed at 70 km',cape3dPhysicalAscentBlend(70000).earthOpacity===1&&!cape3dPhysicalAscentBlend(70000).capeVisible);
+  check('Earth-scale fog is already below 1e-5 at 28 km and effectively gone by 70 km',cape3dPhysicalAscentBlend(28000).fogDensity<1e-5&&cape3dPhysicalAscentBlend(42000).fogDensity<1.5e-6&&cape3dPhysicalAscentBlend(70000).fogDensity<4e-8);
+  check('zenith darkens ahead of the solid Earth reveal instead of producing a flat blue wash',cape3dPhysicalAscentBlend(42000).skySpace>cape3dPhysicalAscentBlend(42000).earthOpacity);
+  check('authored chase elevation blends toward a shallow real-horizon view',(()=>{for(const km of [28,42,70,96,185]){const h=km*1000,dip=Math.acos(6371000/(6371000+h)),el=cape3dLaunchHorizonElevation(h,.3);if(el<0||el>dip+.000001)return false;}return true;})());
+  const capeTexture=cape3dEarthTextureVector(28.4,-80.6), capeLat=Math.asin(capeTexture.y)*180/Math.PI;
+  let capePhi=Math.atan2(capeTexture.z,-capeTexture.x); if(capePhi<0) capePhi+=Math.PI*2;
+  near(capeLat,28.4,1e-12,'Earth texture maps Cape latitude onto the launch tangent instead of showing the north pole');
+  near(capePhi*180/Math.PI-180,-80.6,1e-12,'Earth texture maps Cape longitude onto the launch tangent instead of Greenwich');
 }
 
 // ---------- 5. NASA-style camera director: restrained authored beats with manual offsets layered later ----------
@@ -94,6 +103,8 @@ function near(a,b,tol,n){ check(n+` (${(+a).toFixed(2)} vs ${(+b).toFixed(2)})`,
   check('after stage 0 separates, the span starts where the REMAINING stage begins (not 0)', after.baseY===20.9);
   check('after stage 0 separates, mid moves UP into the remaining stage — not stuck at the vacated base', after.mid>before.mid);
   near(after.mid, 30.45, 1e-9, 'the recentred midpoint matches the remaining stage\'s own midpoint exactly');
+  check('camera target uses the remaining stack height, not the departed stage origin',cape3dLiveStageTargetY(after,.30)===after.mid);
+  check('pad tracker lift stays proportional to live stack height rather than absolute topY',cape3dLiveStageTargetY(after,.40)>after.mid&&cape3dLiveStageTargetY(after,.40)<after.topY);
 
   sgs[1].group.parent={}; // everything detached (shouldn't happen in practice, but must not crash)
   const none=cape3dLiveStageSpan(sgs,rocket);

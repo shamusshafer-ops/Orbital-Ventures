@@ -5930,3 +5930,37 @@ degradation on a degenerate mission). Regression: 96 suites, only the 1 pre-exis
 (`test-flight3d-trajectory.js`). Build byte-faithful.
 
 Claimed and cleared per the STATUS-block convention (first real use of it end to end).
+
+
+## Session — Flight 3D frozen-vehicle sync + staging/haze repair (2026-07-22)
+
+The reported “tiny basic rocket” and “sound, then plume with no rocket” were one lifecycle defect:
+the persistent Cape scene cached the starting one-stage A-4 while the launch simulation used a later,
+frozen multi-stage vehicle. At core separation the renderer therefore detached the stale mesh's only
+stage/nose, even though the real launch still had upper stages. Flight 3D now normalizes and signs the
+immutable launch spec/snapshot, rebuilds any mismatched pad/ascent craft plus its launch/failure FX,
+and synchronizes the orbit/transfer craft. A topology guard requires exact stage/transfer kinds and
+booster count before separation. Bench edits also refresh the idle pad mesh. No sim/outcome balance
+changed.
+
+Secondary correctness fixes in the same path: engine ids survive spec snapshots; separation vx/vy
+are no longer discarded; live-stack targeting is proportional to the remaining stage height and is
+converted through the pitched rocket's world transform; the camera-side fill is directional so it
+does not disappear with inverse-square distance at staging.
+
+The ascent wash was fixed as an Earth-scale rendering problem. Local FogExp2 now decays
+exponentially and never affects Earth/atmosphere/stars; Cape and Earth use a complementary 28–70 km
+cross-fade; sky, clouds, and atmosphere have separate restrained altitude curves; the chase camera
+settles toward the geometric horizon. The packaged daytime Earth map is rendered unlit (it already
+contains lighting) and quaternion-oriented so the launch tangent is Cape Canaveral, 28.4°N / 80.6°W,
+with a tangent roll that puts Florida/Bahamas in the foreground instead of the north-pole ice or a
+featureless Atlantic patch.
+
+Actual generated-game WebGL validation in headless Firefox used a three-stage/two-booster vehicle.
+Pad topology was 3+2; at the first core event the attached-stage mask was
+`[false,true,true]`, separated booster/core objects existed, the lit upper stack remained visible,
+fog was ~`1.25e-9` at 94.7 km, the 2048 px map was applied, and the measured tangent was exactly the
+Cape coordinate. New `test-flight3d-vehicle-sync.js` is 14/14; staging 30/30; launch camera 46/46.
+Full sweep: 97 suite files pass, only the established `test-flight3d-trajectory.js` drift remains;
+build parity and `git diff --check` clean. A Node compatibility shim also makes the harness's
+virtual `performance.now` writable again, restoring all animation suites under the current runtime.

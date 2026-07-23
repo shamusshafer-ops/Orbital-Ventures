@@ -3366,7 +3366,7 @@ function boosterMasses(){
 // reliability; a high-reliability engine (solids ignite very reliably) costs less per unit.
 // Bounded so boosters stay a cost/thrust trade, never a reliability cliff.
 // vehicle-spec booster descriptor (count/prop + solid flag for drawing), or null when none fitted
-function boosterSpec(){ return boostersFitted()?{count:state.boosters.count, prop:state.boosters.prop, solid:!!(ENGINES[state.boosters.eng]&&ENGINES[state.boosters.eng].solid)}:null; }
+function boosterSpec(){ return boostersFitted()?{count:state.boosters.count, prop:state.boosters.prop, eng:state.boosters.eng, solid:!!(ENGINES[state.boosters.eng]&&ENGINES[state.boosters.eng].solid)}:null; }
 const BOOST_REL_CAP=0.12; // boosters never cost more than 12% reliability
 function boosterRelPenalty(){
   if(!boostersFitted()) return 1;
@@ -5274,7 +5274,7 @@ function buildDepartSpec(m, crewed, transitDays, etaAbs){
   const rnd=()=>Math.random();
   return { title:m.name, crewed, crew:crewed?(m.crew||0):0, success:true, failPhase:null,
     mode:'depart', transitDays, etaAbs, destName:m.name,
-    stages: state.stages.map(s=>({prop:s.prop,count:s.count,dia:s.dia})),
+    stages: state.stages.map(s=>({prop:s.prop,count:s.count,dia:s.dia,eng:s.eng})),
     boosters: boosterSpec(),
     transferProp: (m.profile&&m.modules&&m.modules.includes('transfer'))?state.transfer.prop:0,
     recovering: recoveryActive(m) && state.stages.length>1,
@@ -5477,7 +5477,7 @@ function finalizeLaunch(ctx, ops){
   const rnd=()=>Math.random();
   const spec={ title:m.name, crewed, success, failPhase,
     crewEscaped: crewed && outcome.kind==='abort' && failPhase==='ascent', // BACKLOG #40: distinguishes an escape-tower save from a full loss for the failure visual (both set success=false/failPhase='ascent'; only outcome.kind differs)
-    stages: state.stages.map(s=>({prop:s.prop,count:s.count,dia:s.dia})),
+    stages: state.stages.map(s=>({prop:s.prop,count:s.count,dia:s.dia,eng:s.eng})),
     boosters: boosterSpec(),
     transferProp: (m.profile&&m.modules.includes('transfer'))?state.transfer.prop:0,
     recovering: recoveryActive(m) && state.stages.length>1 && failPhase!=='ascent', // #graphics: fly the first stage back for a landing instead of tumbling away

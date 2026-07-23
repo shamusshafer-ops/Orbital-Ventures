@@ -496,8 +496,8 @@ function flight3dPresentationSnapshot(spec,timing,t){
   else if(phase==='orbit'||phase==='transfer'||phase==='suborbital') phaseP=(local-pad-ascent)/cruise;
   else if(phase==='reentry') phaseP=(local-pad-ascent-cruise)/Math.max(1,reentry);
   else if(['depart','dock','complete'].includes(phase)) phaseP=1;
-  const stages=((spec&&spec.stages)||[]).map(s=>({prop:s.prop||0,count:s.count||1,dia:s.dia||0}));
-  const boosters=spec&&spec.boosters?{count:spec.boosters.count||0,prop:spec.boosters.prop||0,dia:spec.boosters.dia||0,solid:!!spec.boosters.solid}:null;
+  const stages=((spec&&spec.stages)||[]).map(s=>({prop:s.prop||0,count:s.count||1,dia:s.dia||0,eng:s.eng||''}));
+  const boosters=spec&&spec.boosters?{count:spec.boosters.count||0,prop:spec.boosters.prop||0,dia:spec.boosters.dia||0,solid:!!spec.boosters.solid,eng:spec.boosters.eng||''}:null;
   const ascentFailure=phase==='ascent'&&!!(spec&&spec.success===false&&spec.failPhase==='ascent')&&phaseP>=.5;
   const crewEscaped=ascentFailure&&!!(spec&&spec.crewEscaped); // BACKLOG #40: threads the escape-tower-save signal into the failure visual
   // E4.7: a deep (in-space) failure — a strand/loss that happens after reaching orbit or cislunar
@@ -523,7 +523,7 @@ function beginFlight3DSession(spec){
   if(!startCape3D('flight3dHost',900,520)) return false;
   clearFlight3DDecision(); clearFlight3DReadout(); if(typeof cape3d!=='undefined'&&cape3d) cape3d.flightPan={x:0,y:0}; flight3dSession={active:true,spec,returnMount,returnHotspots,snapshot:null,handedOff:false};
   host.style.display='block'; const fallback=$('flightZoom'); if(fallback) fallback.style.visibility='hidden';
-  mountCape3D('flight3dHost',null); resizeCape3D(900,520); resumeCape3D(); return cape3dEnterLaunchPresentation(null);
+  mountCape3D('flight3dHost',null); resizeCape3D(900,520); resumeCape3D(); return cape3dEnterLaunchPresentation(spec);
 }
 function flight3dHandoffToFallback(s,reason){
   if(!s||s.handedOff) return false;
@@ -1303,7 +1303,7 @@ function openFlightForDecision(ctx, decision){
   }
   const m=ctx.m, rnd=()=>Math.random();
   const spec={ title:m.name, crewed:ctx.crewed, success:true, failPhase:null,
-    stages: state.stages.map(s=>({prop:s.prop,count:s.count,dia:s.dia})),
+    stages: state.stages.map(s=>({prop:s.prop,count:s.count,dia:s.dia,eng:s.eng})),
     boosters: boosterSpec(),
     transferProp: (m.profile&&m.modules&&m.modules.includes('transfer'))?state.transfer.prop:0,
     recovering:false, hasCapsule: !!(state.research.crew_capsule || ctx.crewed),

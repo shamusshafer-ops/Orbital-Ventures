@@ -144,6 +144,16 @@ global.addEventListener = ()=>{};
 global.removeEventListener = ()=>{};
 global.innerWidth = 1280;
 global.innerHeight = 800;
+// Animated suites replace performance.now() with a virtual clock. Recent Node releases expose
+// the inherited implementation as effectively read-only, so a plain assignment silently leaves
+// the real clock in place and thousands of synthetic frames advance only a few milliseconds.
+// Install the native function as a writable own property; tests can then swap and restore it as
+// intended without changing the default clock seen by production code in the harness.
+if(global.performance && typeof global.performance.now==='function'){
+  const nativePerformanceNow=global.performance.now.bind(global.performance);
+  try{ Object.defineProperty(global.performance,'now',{configurable:true,writable:true,value:nativePerformanceNow}); }
+  catch(e){ global.performance={now:nativePerformanceNow}; }
+}
 global.requestAnimationFrame = ()=>0;
 global.cancelAnimationFrame = ()=>{};
 // --- fake Web Audio API: covers exactly the surface the game's sfx* functions touch (gain,

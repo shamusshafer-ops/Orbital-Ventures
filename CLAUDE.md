@@ -6,9 +6,9 @@ reorder existing entries there, only add new ones at the end, same as `ROADMAP.m
 
 ---
 
-## STATUS (as of 2026-07-22, HEAD `839148a`)
+## STATUS (as of 2026-07-22, working tree based on HEAD `f5bc61b`)
 
-**Repo health:** 95 test suites, clean build parity, `git diff --check` clean. Only known drift:
+**Repo health:** 98 test suites, clean build parity, `git diff --check` clean. Only known drift:
 `test-flight3d-trajectory.js` (long-standing — Codex's own accepted trajectory/vehicle-physics
 changes, not a regression). If you see a DIFFERENT test failing, don't assume it's pre-existing —
 check the history below for whether it's a known, intentional behavior change first.
@@ -18,6 +18,9 @@ check the history below for whether it's a known, intentional behavior change fi
 > When done, clear it back to "(none claimed right now)" and add your entry to the history below.
 
 **Oriented quickly (last few sessions, newest first) — see History for full detail:**
+- Flight 3D vehicle-authority + visibility repair (Codex) — the frozen launch snapshot now owns the
+  pad/ascent/orbit meshes; staging topology is guarded; Earth-scale fog, lighting, map orientation,
+  and horizon framing were browser-verified with a three-stage/two-booster launch.
 - Consolidation pass (Claude) — verified Codex's tech-tree completion (98 nodes, closed), camera
   director, and altitude-driven Earth reveal all integrate cleanly with prior work. No conflicts.
 - Flight 3D: physical Earth handoff + orbital operations (Codex) — Mission Control maneuver
@@ -496,3 +499,40 @@ sensitivity). Regression: 96 suites, only the 1 pre-existing Codex drift.
 Suggested (open — pick per priority): #11 confirm-with-preview on destructive actions (S); #106
 guided first-launch tutorial (H, none exists); or continue the tech-tree bloat cleanup (36 dead-end
 leaves still untouched — different from the merged clusters already done).
+
+## Flight 3D vehicle authority + ascent visibility repair — SHIPPED (Codex, 2026-07-22)
+
+Root cause was lifecycle, not missing stage art: the persistent Cape scene built its rocket once,
+usually from the new-game one-stage A-4, then reused that stale mesh for later launches. Flight
+physics/audio correctly used the frozen multi-stage launch spec, so the first core event detached
+the stale mesh's only stage (including its nose) and left a live plume under an empty root.
+
+`cape3dFlightVehicleSpec` / `cape3dVehicleVisualKey` now make the immutable launch spec or snapshot
+the renderer's authority. `cape3dInstallFlightVehicle` rebuilds a mismatched pad rocket and all
+topology-dependent effects, synchronizes orbit/transfer craft, and validates stage/transfer/booster
+group counts before separation can run. Idle Mission Control also refreshes its pad stack when the
+bench design changes. Engine ids now survive every spec/snapshot seam, separation states preserve
+their real vx/vy, and camera targeting transforms the remaining live-stage span through the pitched
+rocket's world matrix instead of aiming at vacated local coordinates.
+
+The blue-grey ascent wash had three independent causes: Earth-scale objects shared the Cape's
+FogExp2 density, the Earth/Cape handoff left poor visual coverage, and a dynamically-lit day map was
+both dim and geographically pinned to the sphere's north pole. The launch blend now exponentially
+removes local fog with altitude, cross-fades Cape/Earth complementarily by 28–70 km, darkens the sky
+on its own 8–55 km curve, fades local clouds, and exempts Earth/atmosphere/stars from local fog. The
+day map uses an unlit material, its Cape Canaveral surface vector (28.4°N, 80.6°W) is quaternion-mapped
+to the physical launch tangent, and a harmless tangent roll puts the Florida/Bahamas coastline into
+the chase view. A camera-side directional fill and shallow real-horizon elevation keep the upper
+stack readable against space.
+
+Real headless-Firefox/WebGL validation used a synthetic three-stage vehicle with two boosters in the
+actual generated game: 3 stage groups + 2 boosters were present on the pad; after the first core
+event the parent mask was `[false,true,true]`, both separated assemblies existed as debris, the
+remaining stack stayed in frame, fog was `1.25e-9` at 94.7 km, the Earth texture decoded at 2048 px,
+and the visible tangent measured exactly 28.4°N / 80.6°W. No screenshot fixture was committed.
+
+Tests: new `test-flight3d-vehicle-sync.js` (14 checks), staging 30/30, launch camera 46/46, plus the
+complete suite sweep: 97 passing suite files and only the one documented trajectory drift. Build
+parity and `git diff --check` clean. The sweep also exposed a Node-runtime harness issue (modern
+Node's inherited `performance.now` resisted assignment); `tests/harness.js` now installs the native
+clock as a writable own property so all virtual-clock animation suites pass again.
