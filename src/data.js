@@ -997,6 +997,20 @@ const OVERSTRETCH_REL_PER = 0.015, OVERSTRETCH_REL_CAP = 0.06; // reliability lo
 const CADENCE_WINDOW = 12;             // months of recent build history that counts
 const CADENCE_SURCHARGE_PER = 0.05;    // +5% buildCost per 0.10 load over capacity
 const CADENCE_SURCHARGE_CAP = 0.30;    // ≤30% rush surcharge at extreme cadence
+// Money & Budget balance pass, Option C (2026-07-24) — "investor confidence": a rolling loss-streak
+// surcharge, same shape as the cadence surcharge above (rolling window, self-decaying, capped). Fills
+// the one real gap the audit found: a routine UNCREWED loss had zero economic consequence beyond the
+// sunk build cost (crewed losses already carry rep/era-stakes/hearing consequences elsewhere — this
+// is deliberately lighter on those so it doesn't double-punish). Traced against Option A's tightened
+// starting cash before shipping: a worst-case 4-consecutive-failure opening (~1.5% probability at 65%
+// reliability) already exhausts a no-staff Engineer-mode bankroll with this mechanism OFF — this
+// surcharge only shaves the remaining margin, it doesn't create the risk — and running out of money
+// is a designed jeopardy moment (gameOver's bridge-loan/restart choice), not a silent dead end.
+const INVESTOR_CONF_WINDOW = 12;          // months of recent losses that count
+const INVESTOR_CONF_SEV_UNCREWED = 1.0;   // severity weight per uncrewed vehicle loss
+const INVESTOR_CONF_SEV_CREWED = 0.5;     // halved — crewed losses already carry heavier consequences elsewhere
+const INVESTOR_CONF_BUILD_RATE = 0.05, INVESTOR_CONF_BUILD_CAP = 0.25; // +5% buildCost per severity point, ≤25%
+const INVESTOR_CONF_FUND_RATE = 0.04, INVESTOR_CONF_FUND_CAP = 0.20;   // −4% gov funding per severity point, ≤20%
 // #7 slice 6 — raw-material supply chains. Two commodities you can't avoid buying;
 // the spot price wanders and a long-term contract trades a small premium for predictability.
 const MATERIAL_DEFS = [

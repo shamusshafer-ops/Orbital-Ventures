@@ -997,6 +997,20 @@ const OVERSTRETCH_REL_PER = 0.015, OVERSTRETCH_REL_CAP = 0.06; // reliability lo
 const CADENCE_WINDOW = 12;             // months of recent build history that counts
 const CADENCE_SURCHARGE_PER = 0.05;    // +5% buildCost per 0.10 load over capacity
 const CADENCE_SURCHARGE_CAP = 0.30;    // ≤30% rush surcharge at extreme cadence
+// Money & Budget balance pass, Option C (2026-07-24) — "investor confidence": a rolling loss-streak
+// surcharge, same shape as the cadence surcharge above (rolling window, self-decaying, capped). Fills
+// the one real gap the audit found: a routine UNCREWED loss had zero economic consequence beyond the
+// sunk build cost (crewed losses already carry rep/era-stakes/hearing consequences elsewhere — this
+// is deliberately lighter on those so it doesn't double-punish). Traced against Option A's tightened
+// starting cash before shipping: a worst-case 4-consecutive-failure opening (~1.5% probability at 65%
+// reliability) already exhausts a no-staff Engineer-mode bankroll with this mechanism OFF — this
+// surcharge only shaves the remaining margin, it doesn't create the risk — and running out of money
+// is a designed jeopardy moment (gameOver's bridge-loan/restart choice), not a silent dead end.
+const INVESTOR_CONF_WINDOW = 12;          // months of recent losses that count
+const INVESTOR_CONF_SEV_UNCREWED = 1.0;   // severity weight per uncrewed vehicle loss
+const INVESTOR_CONF_SEV_CREWED = 0.5;     // halved — crewed losses already carry heavier consequences elsewhere
+const INVESTOR_CONF_BUILD_RATE = 0.05, INVESTOR_CONF_BUILD_CAP = 0.25; // +5% buildCost per severity point, ≤25%
+const INVESTOR_CONF_FUND_RATE = 0.04, INVESTOR_CONF_FUND_CAP = 0.20;   // −4% gov funding per severity point, ≤20%
 // #7 slice 6 — raw-material supply chains. Two commodities you can't avoid buying;
 // the spot price wanders and a long-term contract trades a small premium for predictability.
 const MATERIAL_DEFS = [
@@ -2947,6 +2961,7 @@ function newGame(difficulty){
     relDebt:0, // #26: permanent reliability penalty from "ship it degraded" research setbacks
     powerSource:'solar', // Phase 2: vehicle power plant (solar/rtg/reactor)
     recentBuilds:[], // #7 slice 5: rolling ring buffer {at,units} of the last CADENCE_WINDOW months of builds
+    recentLosses:[], // Option C: rolling {at,severity} of the last INVESTOR_CONF_WINDOW months of vehicle losses
     materials:defaultMaterialsState(), // #7 slice 6: per-commodity spot price + optional fixed-price contract
     buildQueue:[], hangar:[], hulls:[], hullSeq:0, orderSeq:0, // #7 final + E4.4: production orders, ready vehicles, and serial-numbered physical hulls
     padMonthAbs:-1, padMonthUsed:0, // CE2(b): launch-cadence — pad slots used in the current calendar month
@@ -3971,7 +3986,7 @@ function addSupport(delta){ state.publicSupport=clampA(publicSupport()+delta, SU
 // (still below its overhead, so idling stays net-negative — just slower to bite).
 function govMonthlyFunding(){
   const excess=Math.max(0, publicSupport()-SUPPORT_BASE);
-  const earned=GOV_FUNDING_BASE*Math.min(1,excess/30)*(1+0.15*eraIndex(currentEra()))*doctrineMult('gov')*(1+execGovBonus())*crisisGovFundingMult(); // full grant at 80 support — every point above neutral pays; executives lift the earned grant (0 when unstaffed); I3: a Funding Collapse crisis cuts the earned grant, not the difficulty floor below
+  const earned=GOV_FUNDING_BASE*Math.min(1,excess/30)*(1+0.15*eraIndex(currentEra()))*doctrineMult('gov')*(1+execGovBonus())*crisisGovFundingMult()*investorConfidenceFundMult(); // full grant at 80 support — every point above neutral pays; executives lift the earned grant (0 when unstaffed); I3: a Funding Collapse crisis cuts the earned grant, not the difficulty floor below; Option C: a recent loss streak also shakes investor/gov confidence
   return round2(earned + (diff().govFloor||0));
 } // CE3(a): Statecraft +, Commercial −
 // Months of cash left at the current monthly burn (Infinity when cash-positive).
@@ -4820,6 +4835,14 @@ function cadenceRecent(){ const list=state&&state.recentBuilds; if(!Array.isArra
 function cadenceUnits(){ return cadenceRecent().reduce((a,r)=>a+(r.units||0),0); }
 function cadenceLoad(){ const cap=bayCapacity()*CADENCE_WINDOW; return cap>0?cadenceUnits()/cap:0; }
 function cadenceSurcharge(){ const over=cadenceLoad()-1; if(over<=0) return 0; return Math.min(CADENCE_SURCHARGE_CAP, over*(CADENCE_SURCHARGE_PER/0.10)); }
+// Option C: "investor confidence" — a rolling loss-streak surcharge, same shape as cadence above
+// (rolling window, self-decaying as old entries age out, capped). recordLoss() is called from
+// finalizeLaunch's loss branches (abort/strand/rescued/catastrophe); severity is lower for a crewed
+// loss since those already carry rep/era-stakes/hearing consequences the uncrewed case lacks.
+function recordLoss(severity){ (state.recentLosses=state.recentLosses||[]).push({at:absMonth(), severity}); }
+function recentLossSeverity(){ const list=state&&state.recentLosses; if(!Array.isArray(list)) return 0; const cutoff=absMonth()-INVESTOR_CONF_WINDOW; return list.filter(l=>l&&l.at>cutoff).reduce((a,l)=>a+(l.severity||0),0); }
+function investorConfidenceBuildPenalty(){ return Math.min(INVESTOR_CONF_BUILD_CAP, recentLossSeverity()*INVESTOR_CONF_BUILD_RATE); }
+function investorConfidenceFundMult(){ return 1-Math.min(INVESTOR_CONF_FUND_CAP, recentLossSeverity()*INVESTOR_CONF_FUND_RATE); }
 // Bottleneck = whichever line is hurting the player the most right now. Bays cover both
 // overstretch (single-build, too big) and cadence (long-run, too many).
 function bottleneckLine(m){
@@ -6889,6 +6912,7 @@ function computeVehicle(){
   buildCost*=familyBuildMult(activeFamily()); // #3: a proven lineage gets cheaper to build (manufacturing knowledge)
   buildCost*=foundryCostMult(); // #7: engine-foundry economies of scale cut marginal build cost
   const cadence=cadenceSurcharge(); if(cadence>0) buildCost*=1+cadence; // #7 slice 5: rush surcharge if recent build volume exceeds sustainable cadence
+  const investorPenalty=investorConfidenceBuildPenalty(); if(investorPenalty>0) buildCost*=1+investorPenalty; // Option C: recent-loss-streak surcharge — investors get skittish after a run of failures
   buildCost*=materialCostMult(); // #7 slice 6: raw-material market price (alloys + electronics, blended with non-material baseline)
   buildCost*=mfgBuildMult(); // #6b: Manufacturing/Reuse research lowers build cost
   buildCost*=doctrineMult('build'); // CE3(a): Heavy-Lift doctrine builds cheaper
@@ -8337,11 +8361,13 @@ function finalizeLaunch(ctx, ops){
     personnelMissionEvent(false);
     const rep=Math.min(state.rep,12); state.rep-=rep;
     addSupport(supportDelta('abort')); // #8: a failure dents mood, but a safe crew limits the damage
+    recordLoss(crewed?INVESTOR_CONF_SEV_CREWED:INVESTOR_CONF_SEV_UNCREWED); // Option C: vehicle lost either way
     log('bad',`${m.name}: MISSION FAILURE — crew safe. The ${SUBSYS_LABEL[outcome.subsystem].toLowerCase()} gave out — ${outcome.story} Vehicle and mission lost, −${rep} rep.`, null, failDetail);
   }else if(outcome.kind==='strand'){
     personnelMissionEvent(false);
     const rep=Math.min(state.rep,40); state.rep-=rep;
     addSupport(supportDelta('strand')); // #8: a crew stranded in deep space is a national shock
+    recordLoss(INVESTOR_CONF_SEV_CREWED); // Option C: always crewed by definition
     loseAssignedCrew(ctx.crewId, m.name, outcome.story);
     advance(6); // grounding + investigation
     log('bad',`${m.name}: LOST IN DEEP SPACE — ${outcome.story} A long inquiry follows, −${rep} rep.`, null, failDetail);
@@ -8353,6 +8379,7 @@ function finalizeLaunch(ctx, ops){
     personnelMissionEvent(false);
     const rep=Math.min(state.rep,10); state.rep-=rep;
     addSupport(supportDelta('abort')); // relief tempered by a lost mission
+    recordLoss(INVESTOR_CONF_SEV_CREWED); // Option C: always crewed by definition
     log('ok',`${m.name}: CREW RESCUED — ${outcome.story} The mission and vehicle are lost, but the crew is home. −${rep} rep.`);
   }else{ // loss of vehicle on ascent — full loss, no escape-tower save: catastrophic
     personnelMissionEvent(false);
@@ -8360,6 +8387,7 @@ function finalizeLaunch(ctx, ops){
       const dmg=damageAPad(), monthsLeft=Math.max(1, dmg.until-absMonth());
       log('bad',`🔥 The failure damaged Pad ${dmg.pad} — offline for repairs, ${monthsLeft} month${monthsLeft===1?'':'s'}.`);
     }
+    recordLoss(crewed?INVESTOR_CONF_SEV_CREWED:INVESTOR_CONF_SEV_UNCREWED); // Option C: the catastrophic-loss branch, both crewed and uncrewed
     if(crewed){
       const rep=Math.min(state.rep,40); state.rep-=rep;
       addSupport(supportDelta('lossCrewed')); // #8: losing a crew is the worst political blow
@@ -19344,6 +19372,7 @@ function renderReadout(){
   if(meets && v.twr>1.2) flags+=`<div class="flag ok">✓ Cleared to fly. Reliability ${(v.reliability*100|0)}%.</div>`;
   if(bayBuildDelta(m)>0) flags+=`<div class="flag warn">△ Over assembly-bay capacity (${vehicleUnits(m)}/${bayCapacity()} units) — build runs +${bayBuildDelta(m)} mo and −${(overstretchRelPenalty(m)*100).toFixed(1)}% reliability. Expand Assembly Bays in Orbital Ops.</div>`;
   if(cadenceSurcharge()>0) flags+=`<div class="flag warn">△ Build cadence ${Math.round(cadenceLoad()*100)}% of sustainable — rush surcharge +${Math.round(cadenceSurcharge()*100)}% on this build. Slow down or expand Assembly Bays.</div>`;
+  if(investorConfidenceBuildPenalty()>0) flags+=`<div class="flag warn">△ Investor confidence shaken — ${Math.round(recentLossSeverity()*10)/10} recent loss severity, +${Math.round(investorConfidenceBuildPenalty()*100)}% build cost, government funding down ${Math.round((1-investorConfidenceFundMult())*100)}%. Confidence rebuilds as losses age out or you fly a success.</div>`;
   { const _mb=materialCostMult(); if(_mb>1.05) flags+=`<div class="flag warn">△ Raw-material market hot — +${Math.round((_mb-1)*100)}% on this build. Sign a supply contract or stockpile in Manufacturing Capacity.</div>`; else if(_mb<0.95) flags+=`<div class="flag ok">📦 Raw-material market favorable — −${Math.round((1-_mb)*100)}% on this build.</div>`; }
   { const _drew=MATERIAL_DEFS.filter(d=>{const s=materialState(d.key); return s&&s.stock>=1;}); if(_drew.length>0){ const lbls=_drew.map(d=>`${d.name} @ ${materialState(d.key).avgCost.toFixed(2)}×`).join(', '); flags+=`<div class="flag ok">📦 Drawing from inventory: ${lbls}. This build leaves the yard with ${_drew.map(d=>materialState(d.key).stock-1).join('/')} build${_drew.length===1?'':'s'}-worth remaining.</div>`; } }
   if(v.crewed && v.twr>1.2 && meets && !state.research.launch_escape) flags+=`<div class="flag warn">△ No escape system — a failure at ${(100-(v.reliability*100|0))}% odds loses the crew.</div>`;
@@ -19429,6 +19458,7 @@ function renderProfileReadout(m){
     : `<div class="flag warn">❄ Cryo boil-off: ~${sim.boiloff.lost} t of cryogenic propellant evaporates over the cruise (reflected above). Cryogenic Boil-off Control research cuts the rate ~4×.</div>`;
   if(bayBuildDelta(m)>0) flags+=`<div class="flag warn">△ Over assembly-bay capacity (${vehicleUnits(m)}/${bayCapacity()} units) — build runs +${bayBuildDelta(m)} mo and −${(overstretchRelPenalty(m)*100).toFixed(1)}% reliability. Expand Assembly Bays in Orbital Ops.</div>`;
   if(cadenceSurcharge()>0) flags+=`<div class="flag warn">△ Build cadence ${Math.round(cadenceLoad()*100)}% of sustainable — rush surcharge +${Math.round(cadenceSurcharge()*100)}% on this build. Slow down or expand Assembly Bays.</div>`;
+  if(investorConfidenceBuildPenalty()>0) flags+=`<div class="flag warn">△ Investor confidence shaken — ${Math.round(recentLossSeverity()*10)/10} recent loss severity, +${Math.round(investorConfidenceBuildPenalty()*100)}% build cost, government funding down ${Math.round((1-investorConfidenceFundMult())*100)}%. Confidence rebuilds as losses age out or you fly a success.</div>`;
   { const _mb=materialCostMult(); if(_mb>1.05) flags+=`<div class="flag warn">△ Raw-material market hot — +${Math.round((_mb-1)*100)}% on this build. Sign a supply contract or stockpile in Manufacturing Capacity.</div>`; else if(_mb<0.95) flags+=`<div class="flag ok">📦 Raw-material market favorable — −${Math.round((1-_mb)*100)}% on this build.</div>`; }
   { const _drew=MATERIAL_DEFS.filter(d=>{const s=materialState(d.key); return s&&s.stock>=1;}); if(_drew.length>0){ const lbls=_drew.map(d=>`${d.name} @ ${materialState(d.key).avgCost.toFixed(2)}×`).join(', '); flags+=`<div class="flag ok">📦 Drawing from inventory: ${lbls}. This build leaves the yard with ${_drew.map(d=>materialState(d.key).stock-1).join('/')} build${_drew.length===1?'':'s'}-worth remaining.</div>`; } }
   if(!state.research.launch_escape) flags+=`<div class="flag warn">△ No escape system — a failure at ${(100-(rel*100|0))}% odds loses the crew.</div>`;
@@ -21885,6 +21915,7 @@ function productionPanelHTML(){
       <div class="metrics adv-only" style="margin-bottom:10px">
         <div class="metric"><div class="k">Assembly capacity</div><div class="v">${cap} units</div></div>
         <div class="metric" title="Recent build volume vs. sustainable cadence (last ${CADENCE_WINDOW} mo). Bar fills toward the dashed 100% line — once you cross it you pay a rush surcharge."><div class="k">Build cadence</div><div class="v" style="color:${cadenceColor}">${cadenceVal}</div><div style="margin-top:4px">${cadenceGaugeSVG(160,8)}</div></div>
+        <div class="metric" title="Recent vehicle losses (last ${INVESTOR_CONF_WINDOW} mo) shake investor and government confidence — build cost rises, earned government funding falls. Fades as losses age out or you fly a success."><div class="k">Investor confidence</div><div class="v" style="color:${investorConfidenceBuildPenalty()>0?'var(--bad)':'var(--ink)'}">${investorConfidenceBuildPenalty()>0?`+${Math.round(investorConfidenceBuildPenalty()*100)}% build · −${Math.round((1-investorConfidenceFundMult())*100)}% funding`:'steady'}</div></div>
         <div class="metric"><div class="k">Build-cost economy</div><div class="v">−${Math.round((1-foundryCostMult())*100)}%</div></div>
         <div class="metric"><div class="k">Launch-cost economy</div><div class="v">−${Math.round((1-padLaunchMult())*100)}%</div></div>
         <div class="metric"><div class="k">Build quality</div><div class="v" style="color:${qaRelBonus()>0?'var(--ok)':'var(--ink)'}">+${(qaRelBonus()*100).toFixed(1)}% rel</div></div>

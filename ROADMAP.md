@@ -6218,3 +6218,58 @@ Income panel (the new "portfolio full" state, the X/Y count in the header)? Also
 longer playtest: does the passive-income curve still eventually make money a non-issue late-game (by
 design, once the cap is 8-10 and paybacks are sunk), or does it need Option C (failure economic teeth,
 scoped but not started) to keep tension alive into the late game too.
+
+## Session — Money & Budget balance pass, Option C: "investor confidence" loss-streak surcharge (2026-07-24)
+
+Third and final piece of the Money & Budget balance pass (see the two prior session entries for
+Options A/B and the original design audit). Scoped thoroughly before writing any code — a design
+scope was reviewed and approved, then a death-spiral risk was traced *before* implementation per
+that plan.
+
+**Pre-implementation trace.** The proposed mechanism (a rolling loss-streak build-cost surcharge)
+raised one real question: stacked on Option A's tightened Engineer-mode starting cash (3.5M), could a
+bad-luck early loss streak spiral into an unrecoverable state? Traced a worst-case 4-consecutive-
+failure First Flight opening (~1.5% probability at 65% reliability, no staff hired) both with and
+without the proposed surcharge: **the baseline (Option A alone, mechanism OFF) already exhausts the
+bankroll at that point** (0.22M left, can't afford attempt 5) — the surcharge only shaves the
+remaining margin (0.04M instead of 0.22M), it doesn't create the qualitative risk. Further check:
+`state.money<0` already triggers `gameOver()` throughout the codebase (found at 9+ call sites), which
+offers an emergency bridge loan or restart — running out of money is a designed jeopardy moment, not
+a silent dead end. Cleared to proceed with the originally-scoped rates.
+
+**Mechanism — "investor confidence"** (`src/data.js`, `src/sim.js`): a rolling loss-streak surcharge,
+deliberately built as a sibling to the existing cadence surcharge (same rolling-window / self-decaying
+/ capped shape) rather than a new subsystem. `state.recentLosses` (new, rolling `{at,severity}` list,
+12-month window) is populated by `recordLoss()`, called from `finalizeLaunch`'s four vehicle-loss
+branches (`abort`, `strand`, `rescued`, and the catastrophic-loss else-branch) — explicitly NOT from
+`scrub` (vehicle & crew recovered) or `partial` (objective incomplete but nothing lost). Severity is
+1.0 for an uncrewed loss, 0.5 for crewed — halved on purpose, since a crewed loss already carries
+rep/era-stakes/hearing consequences elsewhere that an uncrewed loss never had until now; this fills
+that specific gap rather than doubling up on the crewed case.
+
+`investorConfidenceBuildPenalty()` (≤25%, `INVESTOR_CONF_BUILD_RATE=0.05`/severity point) multiplies
+`buildCost` in `computeVehicle` right alongside the cadence surcharge.
+`investorConfidenceFundMult()` (≥0.80, `INVESTOR_CONF_FUND_RATE=0.04`/severity point) multiplies the
+earned grant in `govMonthlyFunding()` in the same slot as `crisisGovFundingMult()`. Both decay
+automatically as old losses age out of the 12-month window — no separate tick/expiry logic needed,
+same elegant self-cleaning the cadence mechanism already has.
+
+**UI**: a `flag warn` banner on the Bench (mirrors the existing cadence-surcharge banner exactly) when
+active, plus a new "Investor confidence" metric on the Manufacturing Capacity panel right next to the
+existing Build Cadence gauge.
+
+**Validation.** New `tests/test-investor-confidence.js` (27/27): severity accumulation and weighting
+(uncrewed vs. halved crewed), both multipliers scale correctly with severity and cap correctly, the
+rolling window actually decays a stale loss back to zero, `computeVehicle`/`govMonthlyFunding`
+integration match the raw multiplier math, all four real `finalizeLaunch` loss branches record the
+right severity, `scrub`/`partial`/`success` correctly do NOT record a loss, and a codified version of
+the pre-implementation death-spiral check (gameOver/bailout remain reachable, penalty stays capped).
+
+**Full regression**: only the long-standing `test-flight3d-trajectory.js` drift remains; build parity
+and `git diff --check` both clean.
+
+**This closes the three-part Money & Budget balance pass** (audit → Option A early-tension → Option B
+passive-income pacing → Option C failure consequences). **Needs a real playtest** across all three
+together: does the full curve — tight open, real loss consequences, capped passive income — read as
+tense-but-fair across a real multi-hour session, and does the Investor Confidence banner/metric
+communicate clearly in the actual UI (not just in a sim trace).
