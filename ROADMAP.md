@@ -6273,3 +6273,70 @@ passive-income pacing → Option C failure consequences). **Needs a real playtes
 together: does the full curve — tight open, real loss consequences, capped passive income — read as
 tense-but-fair across a real multi-hour session, and does the Investor Confidence banner/metric
 communicate clearly in the actual UI (not just in a sim trace).
+
+## Session — Solar System map improvement pass, Slice A: truthful angle + sizing (2026-07-24)
+
+First of a three-slice epic (A → B WASD nav → C ship-tracking port), scoped after a design
+conversation and owner feedback: "too small unless popped out, things look too close together,
+doesn't give the scale of the solar system feel." Traced the actual causes empirically before
+touching any code rather than guessing.
+
+**Two grounding discoveries changed the plan from the initial sketch:**
+
+1. **Live in-flight ship tracking already exists — only in the 3D view.** `activeShipMarkers()` +
+   `map3dUpdateShipMarkers()` (E4.5) already draw a moving marker for any deferred flight in transit.
+   Phaser and SVG never call it. This became Slice C: a port, not new invention.
+
+2. **The 3D view already solves real-vs-fake positioning — the 2D views didn't.** `bodyScenePos()`
+   positions every body from its REAL heliocentric angle (`planetHelio`) each frame; the SVG/Phaser
+   paths instead drew a frozen static `ANGLES` constant that never changed. Concretely: the body
+   card's "Next window: March 1994, good geometry" text was already computed from real orbital
+   mechanics, but the map you were looking at while reading that text showed planets that never
+   moved and never matched. That's the actual "not connected" bug behind the request.
+
+**A power-law radius port was tried and rejected — traced, not assumed.** The obvious move was to
+also port the 3D view's `SCENE_AU_EXP=0.74` real-AU radius compression to 2D. Numerically traced
+several exponents (see chat) against the existing hand-tuned per-body `.r` schedule: at every
+exponent tested, the real-AU model produced a *smaller* minimum inner-cluster gap (Mercury–Venus–
+Earth–Mars–Belt) than the existing hand-tuned values, because Venus–Earth–Mars are inherently close
+in AU terms relative to the 30 AU swing to Neptune — compression can't fix that for a static,
+non-flyable 2D chart the way it can for a 3D view you fly a camera into. **Radius was left untouched.**
+
+**What shipped:**
+- `map2dAngle(bodyId, absD)` (new, `src/render.js`, sibling to the 3D scene math) — real heliocentric
+  angle for any body with `ORBITAL_ELEMENTS` (planets + the belt), falling back to the old static
+  `ANGLES` constant for moons (correctly kept local/decorative — a moon's own heliocentric longitude
+  isn't the meaningful thing to draw) and Pluto (no orbital elements at all).
+- `renderMapOverview` (SVG) and Phaser's `MapScene` now draw top-level bodies at their truthful
+  angle. Phaser's fake continuous per-frame spin (`o.ang+=o.speed*dt`, tied to wall-clock time, not
+  game time) is replaced with a `map2dAngle` recompute each frame for anything with real elements —
+  planets now hold their true position and only move when game time actually advances, matching the
+  3D view's already-established behavior. Pluto and moons keep their old decorative spin unchanged.
+- `transferArc()` (shared by the committed-window arc and the planned-route preview) now sources its
+  Earth/destination/parent endpoints from `map2dAngle` too — otherwise the arc would visually
+  disconnect from the now-correctly-repositioned planet dots.
+- `renderMapOverview`'s fit-box calculation (`maxR`) now excludes the Oort Cloud (`kind==='cloud'`)
+  — previously the whole diagram sized itself to fit a mostly-empty outer shell nobody reaches until
+  deep endgame, forcing the entire inner system to render at a fraction of the available space every
+  single playthrough. (Phaser's `MapScene` already excluded Oort correctly — this was an
+  overview-only inconsistency.)
+- Canvas size: `MAP_W`/`MAP_H` (shared by SVG/Phaser/3D) raised 760×480 → 980×620 (same aspect
+  ratio), plus matching `.mapsvg`/`#mapHost` CSS max-width and the `renderMapZoom` per-body view —
+  addresses "too small unless popped out" directly, without touching the Expand/Pop-out modes
+  (already fine, just no longer mandatory for a usable view).
+
+**Validation.** New `tests/test-map-slice-a.js` (21/21): truthful-angle correctness against
+`planetHelio` for every body with real elements, correct static fallback for moons/Pluto, angle
+actually changes as game time advances (the whole point), Oort-exclusion sizes the viewBox to Pluto
+not Oort, `transferArc` endpoints match the truthful positions for both Earth and a top-level
+destination, a moon destination still resolves correctly through its parent, canvas dimensions and
+aspect ratio, and the Phaser truthful/decorative classification logic (mercury–neptune+belt vs.
+pluto/moons). Full regression clean except the known `test-flight3d-trajectory.js` drift; build
+parity and `git diff --check` clean.
+
+**Deliberately deferred to Slice B/C** (per the agreed sequencing): WASD/keyboard navigation across
+all three renderers, and porting `activeShipMarkers` to Phaser + SVG. **Needs a real-browser check**:
+does the bigger default canvas actually read as roomier in the real 3-column shell layout (the map's
+center grid column is bounded by two 380px side rails — a real viewport-width check, not just a
+canvas-dimension one), and does the now-moving Phaser/SVG map feel right rather than janky when time
+advances.

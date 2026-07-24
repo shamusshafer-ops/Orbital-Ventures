@@ -5217,6 +5217,25 @@ function sceneRadiusFor(bodyId){
   return sceneRadiusAtAU(el.a);
 }
 function sceneRadiusAtAU(au){ return SCENE_AU_BASE * Math.pow(au, SCENE_AU_EXP); }
+// ---------- Map improvement pass, Slice A (2026-07-24): truthful angle for the SVG + Phaser views ----------
+// The 3D view above already draws every body at its REAL heliocentric angle each frame (bodyScenePos
+// → planetHelio). The SVG/Phaser 2D paths instead drew a static ANGLES constant that never changed —
+// so a planet's drawn position never matched the transfer-window dates its own body card was quoting,
+// and never moved as game time advanced. This closes that gap for anything with real orbital elements
+// (the planets + the belt). Deliberately does NOT touch RADIUS: an empirical trace before implementing
+// (see ROADMAP.md) found that porting the 3D view's real-AU power-law radius to a static, non-flyable
+// 2D chart makes inner-planet crowding *worse*, not better — the existing hand-tuned per-body radii
+// stay as they are; only the angle becomes truthful. Moons keep their existing local/decorative angle
+// around the parent (not swapped to a heliocentric one) — a moon's own heliocentric longitude isn't
+// the meaningful thing to draw; see SCENE_MOON_ORBITS's local-phase approach in the 3D view above for
+// the same reasoning applied there.
+function map2dAngle(bodyId, absD){
+  if(typeof ORBITAL_ELEMENTS!=='undefined' && ORBITAL_ELEMENTS[bodyId]){
+    const helio=(typeof planetHelio==='function')&&planetHelio(bodyId, absD);
+    if(helio) return helio.theta;
+  }
+  return ANGLES[bodyId]!==undefined?ANGLES[bodyId]:0;
+}
 // Turn a heliocentric longitude + AU distance into scene coordinates. With inclination 0 this
 // exactly reduces to x=R·cos(theta), z=R·sin(theta), preserving the pre-existing window geometry.
 function orbitalScenePoint(el, theta, au){
@@ -6252,7 +6271,7 @@ function toggleMapExpand(){ mapExpanded=!mapExpanded; renderMap(); }
    interactive bodies with labels, slow orbital motion, drag-to-pan + wheel-zoom
    camera, and rival/facility markers. Reuses BODIES/ANGLES/selectBody/rivalsAtBody.
    Guarded + lazy; falls back to the SVG map (overview + click-zoom) when absent. */
-const MAP_W=760, MAP_H=480;
+const MAP_W=980, MAP_H=620; // Slice A (2026-07-24): bumped from 760x480 — the inline map was measurably too small before requiring Expand/Pop-out; same aspect ratio preserved
 let MapScene=null, mapGame=null, mapScene=null;
 function defineMapScene(){
   if(MapScene || !phaserOK()) return;
@@ -6297,12 +6316,12 @@ function defineMapScene(){
       c.setInteractive({useHandCursor:true});
       c.on('pointerdown',()=>selectBody(b.id));
       const t=this.add.text(0,0,b.name,{fontFamily:'ui-monospace,monospace',fontSize:parent?'9px':'11px',color:themeColor('muted')}).setOrigin(0.5,1);
-      this.bodies.push({b,parentId:parent?parent.id:null,ang:(ANGLES[b.id]!==undefined?ANGLES[b.id]:0),speed:(parent?0.12:0.05)/Math.sqrt(Math.max(10,b.r)),c,t,rad,x:0,y:0,ringed,isImg});
+      this.bodies.push({b,parentId:parent?parent.id:null,ang:(ANGLES[b.id]!==undefined?ANGLES[b.id]:0),speed:(parent?0.12:0.05)/Math.sqrt(Math.max(10,b.r)),c,t,rad,x:0,y:0,ringed,isImg,truthful:!parent&&typeof ORBITAL_ELEMENTS!=='undefined'&&!!ORBITAL_ELEMENTS[b.id]});
     }
     faceSun(o){ if(o.isImg && !o.ringed) o.c.rotation = Math.atan2(-o.y,-o.x) - BAKED_LIT_ANGLE; } // lit side toward the Sun (map centre)
     update(time,delta){
       const dt=(delta||16)/1000;
-      for(const o of this.bodies){ if(o.parentId) continue; o.ang+=o.speed*dt; o.x=Math.cos(o.ang)*o.b.r; o.y=Math.sin(o.ang)*o.b.r; o.c.setPosition(o.x,o.y); o.t.setPosition(o.x,o.y-o.rad-3); this.faceSun(o); }
+      for(const o of this.bodies){ if(o.parentId) continue; o.ang = o.truthful ? map2dAngle(o.b.id, mapViewAbsDay()) : (o.ang+o.speed*dt); o.x=Math.cos(o.ang)*o.b.r; o.y=Math.sin(o.ang)*o.b.r; o.c.setPosition(o.x,o.y); o.t.setPosition(o.x,o.y-o.rad-3); this.faceSun(o); }
       for(const o of this.bodies){ if(!o.parentId) continue; const p=this.bodies.find(q=>q.b.id===o.parentId); if(!p) continue; const mr=p.rad+(o.b.moonR||10)*1.3; o.ang+=o.speed*dt; o.x=p.x+Math.cos(o.ang)*mr; o.y=p.y+Math.sin(o.ang)*mr; o.c.setPosition(o.x,o.y); o.t.setPosition(o.x,o.y-o.rad-3); this.faceSun(o); }
       this.drawRings(); this.drawTransfer(time); this.drawMarkers(); this.drawSel();
     }
@@ -6404,7 +6423,7 @@ function renderMap(){
   const es=$('empireStripWrap'); if(es) es.innerHTML=empireStripHTML(); // empire ledger — both render paths
   if(MAP3D && threeOK() && startMap3D()){ renderBodyCard(); renderMapActivity(); return; } // E4.3.1: 3D view (flag-gated), falls through to Phaser→SVG on absence/failure
   if(phaserOK() && startMapScene()){ renderBodyCard(); renderMapActivity(); return; }
-  const W=720,H=460; let svg;
+  const W=980,H=620; let svg;
   if(!state.mapZoom){ svg=renderMapOverview(W,H); }
   else { svg=renderMapZoom(W,H,state.mapZoom); }
   $('mapCanvas').innerHTML=svg;
@@ -7161,18 +7180,19 @@ function empireStripHTML(){
 function transferArc(cx,cy,destId){
   const dest=BODIES.find(b=>b.id===destId); if(!dest) return null;
   const earth=BODIES.find(b=>b.id==='earth'); if(!earth) return null;
-  const aE=ANGLES.earth, rE=earth.r;
+  const absD=mapViewAbsDay();
+  const aE=map2dAngle('earth',absD), rE=earth.r;
   const from={x:cx+Math.cos(aE)*rE, y:cy+Math.sin(aE)*rE};
   let tR=dest.r, tx, ty;
   if(dest.around){
     const parent=BODIES.find(b=>b.id===dest.around);
-    if(parent){ const pAng=(ANGLES[parent.id]||0), pR=parent.r;
+    if(parent){ const pAng=map2dAngle(parent.id,absD), pR=parent.r;
       const pX=cx+Math.cos(pAng)*pR, pY=cy+Math.sin(pAng)*pR;
-      const mr=(parent.kind==='belt'?4:8)+10, mAng=(ANGLES[dest.id]||0);
+      const mr=(parent.kind==='belt'?4:8)+10, mAng=(ANGLES[dest.id]||0); // a moon's own local angle around its parent stays static/decorative, not heliocentric
       tx=pX+Math.cos(mAng)*mr; ty=pY+Math.sin(mAng)*mr; tR=pR;
     }
   }
-  if(tx===undefined){ const a=(ANGLES[dest.id]!==undefined?ANGLES[dest.id]:0); tx=cx+Math.cos(a)*tR; ty=cy+Math.sin(a)*tR; }
+  if(tx===undefined){ const a=map2dAngle(dest.id,absD); tx=cx+Math.cos(a)*tR; ty=cy+Math.sin(a)*tR; }
   const to={x:tx,y:ty};
   const mx=(from.x+tx)/2, my=(from.y+ty)/2, mr=Math.hypot(mx-cx,my-cy)||1;
   const dir=tR>=rE?1:-1, bow=(Math.abs(tR-rE)*0.45+18)*dir; // bow outward for higher orbits, inward for Venus
@@ -7183,7 +7203,7 @@ function renderMapOverview(W,H){
   const planets=BODIES.filter(b=>!b.around);
   // Centre the Sun and size a square viewBox to fit the outermost orbit (incl. Jupiter)
   // plus padding for labels and rival markers, so the whole system is always on-screen.
-  const maxR=Math.max.apply(null, planets.map(b=>b.r));
+  const maxR=Math.max.apply(null, planets.filter(b=>b.kind!=='cloud').map(b=>b.r)); // Slice A: Oort no longer forces the whole diagram to shrink around mostly-empty space
   const pad=48;
   const S=2*(maxR+pad);
   const cx=S/2, cy=S/2;
@@ -7222,7 +7242,7 @@ function renderMapOverview(W,H){
   svg+=plannedRouteSVG(cx,cy); // empire layer: active-mission planned route
   const _assetModel=mapAssetModel(); // computed once per render, shared by every marker below
   planets.forEach(b=>{
-    const ang = ANGLES[b.id]!==undefined?ANGLES[b.id]:0;
+    const ang = map2dAngle(b.id, mapViewAbsDay());
     const px=cx+Math.cos(ang)*b.r, py=cy+Math.sin(ang)*b.r;
     if(b.kind==='cloud') return; // already drawn as the Oort shell
     const sel=state.selectedBody===b.id;

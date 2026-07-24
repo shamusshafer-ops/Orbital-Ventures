@@ -151,6 +151,7 @@ Complexity: S = <1 day, M = 1–5 days, L = 1–3 weeks, XL = 1+ month. Impact: 
 |114| Orbital inclination as a physics dimension (plane-change Δv from launch-site latitude; effectiveReqDv accessor; retrofit Crewed Orbit + Comsat) | Sim depth · unblocks #45 & #30 | M | ★★ | — | M |Shipped 2026-07-17 (both slices) — #45 ground track now unblocked; launch-azimuth ceiling/dogleg tax added 2026-07-17 (symmetric extension, see ROADMAP.md)|
 |115| Fleet Registry — unified expandable status board for all assets (in-flight vehicles, logistics, bases/stations, depot, programs, standing ops) | Consolidation · info architecture | M | ★★ | — | M |Shipped 2026-07-17 (both slices) — collector + accordion board covering flights, logistics, facilities, depot, programs, standing ops/satellites (option A), astronaut roster. Option B (persistent satellite objects) filed separately|
 |116| Persistent satellite objects (deployed sats with orbit params, degradation, servicing tie-in) — enables real per-sat telemetry in the Fleet Registry | Sim depth · registry option B | L | ★★ | 115 | L |Backlog — the (B) alternative deferred from #115; its own epic if pursued|
+|117| Solar System map improvement epic: A) truthful angle + Oort-excluded sizing, B) WASD/keyboard nav all 3 renderers, C) port live ship-tracking to Phaser+SVG | Map = dashboard + planner, "more connected" | M (per slice) | ★★★ | — | M |Slice A shipped 2026-07-24 (map2dAngle, Oort-exclusion, 980×620 canvas — see ROADMAP.md). Slice B/C scoped, not started|
 
 ---
 

@@ -321,10 +321,10 @@
   .customrow .cv{font-family:var(--mono);font-size:12px;color:var(--ignite);text-align:right}
   .customrow input[type=range]{width:100%;accent-color:var(--ignite)}
   .customrow input[type=checkbox]{accent-color:var(--ignite);justify-self:start}
-  .mapsvg{display:block;width:100%;max-width:760px;height:auto;margin:0 auto;background:#04060a;border:1px solid var(--line);border-radius:8px}
-  /* cap the Phaser map (760x480 internal) to its native size + centre it, so the
+  .mapsvg{display:block;width:100%;max-width:980px;height:auto;margin:0 auto;background:#04060a;border:1px solid var(--line);border-radius:8px}
+  /* cap the Phaser map (980x620 internal) to its native size + centre it, so the
      full-width "Wide" layout can't inflate the canvas past its drawing buffer and blank it */
-  #mapHost{max-width:760px;margin:0 auto}
+  #mapHost{max-width:980px;margin:0 auto}
   #stationHost{max-width:760px;margin:0 auto}
   #stationView.expanded{position:fixed;inset:0;z-index:60;background:var(--bg);padding:12px 18px;overflow:auto}
   #stationView.expanded #stationHost{max-width:100%}
@@ -1105,7 +1105,7 @@
       </div>
       <p class="muted" style="font-size:12px;margin:6px 0 10px">Orbits are spaced for legibility, not to scale. Drag to pan, scroll to zoom; click a body for its Δv profile.</p>
       <div id="empireStripWrap"></div>
-      <div id="mapHost" style="display:none;width:100%;aspect-ratio:760/480"></div>
+      <div id="mapHost" style="display:none;width:100%;aspect-ratio:980/620"></div>
       <div id="mapCanvas"></div>
     </div>
     <!-- bodyCard + mapActivityCard relocated to the persistent right rail in slice 3 -->
