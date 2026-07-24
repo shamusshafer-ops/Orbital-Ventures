@@ -5415,9 +5415,25 @@ function activeShipMarkers(absD){
     const hullId=(rec.ctx&&rec.ctx.hullId)||rec.hullId||null, hull=hullId&&(typeof hullById==='function')&&hullById(hullId);
     out.push({ flightId:rec.id, hullId:hullId||null, serial:hull?hull.serial:null,
                familyName:hull?hull.familyName:null, missionName:rec.name||rec.mission,
-               reuseCount:hull?(hull.reuseCount||0):0, pos, progress:pos.progress });
+               reuseCount:hull?(hull.reuseCount||0):0, pos, progress:pos.progress,
+               destId:(typeof flightTargetBody==='function')&&flightTargetBody(rec.mission), // Slice C: the 2D renderers need this + the two absDays below to rebuild a matching on-screen curve (see shipMapPoint)
+               launchAbs:rec.launchAbs, arriveAbs:rec.arriveAbs });
   }
   return out;
+}
+// Slice C (2026-07-24): a ship marker's on-screen 2D position — NOT a re-derivation of the real
+// Kepler transfer math above (that's the 3D view's job and stays scene-unit-space only), but a point
+// at the marker's real progress fraction along the SAME quadratic-bezier curve the 2D map already
+// draws for the committed-window and planned-route arcs. This guarantees the moving marker visually
+// rides the exact curve already on screen instead of introducing a second, incompatible 2D transfer
+// shape — and sidesteps Slice A's finding that a real-AU radius model hurts 2D legibility, since this
+// reuses the existing hand-tuned-radius transferArc entirely.
+function shipMapPoint(cx,cy,marker){
+  if(!marker || !marker.destId) return null;
+  const arc=transferArc(cx,cy,marker.destId,marker.launchAbs,marker.arriveAbs); if(!arc) return null;
+  const u=Math.max(0,Math.min(1,marker.progress||0)), iu=1-u;
+  return { x: iu*iu*arc.from.x + 2*iu*u*arc.ctrl.x + u*u*arc.to.x,
+           y: iu*iu*arc.from.y + 2*iu*u*arc.ctrl.y + u*u*arc.to.y };
 }
 
 /* ---------- E4.3.1: optional Three.js 3D solar-system view (flag MAP3D) ----------
@@ -6352,7 +6368,7 @@ function defineMapScene(){
     create(){
       this.cam=this.cameras.main; this.cam.setBackgroundColor('#05080d');
       for(let i=0;i<70;i++){ this.add.circle((Math.random()-0.5)*MAP_W*3,(Math.random()-0.5)*MAP_H*3, Math.random()*1.2+0.3, 0xffffff, 0.1+Math.random()*0.4).setScrollFactor(0.4); }
-      this.rings=this.add.graphics(); this.transfer=this.add.graphics(); this.markers=this.add.graphics(); this.selRing=this.add.graphics();
+      this.rings=this.add.graphics(); this.transfer=this.add.graphics(); this.markers=this.add.graphics(); this.selRing=this.add.graphics(); this.ships=this.add.graphics(); this.shipTexts={};
       // detailed per-body planet textures (generated once)
       const S=448;
       for(const bb of BODIES){ if(bb.kind==='belt'||bb.kind==='cloud') continue; const key='planet_'+bb.id; if(!this.textures.exists(key)){ const tx=this.textures.createCanvas(key,S,S); try{ drawPlanetTex(tx.context,S,bb); }catch(e){} tx.refresh(); } }
@@ -6394,7 +6410,7 @@ function defineMapScene(){
       const dt=(delta||16)/1000;
       for(const o of this.bodies){ if(o.parentId) continue; o.ang = o.truthful ? map2dAngle(o.b.id, mapViewAbsDay()) : (o.ang+o.speed*dt); o.x=Math.cos(o.ang)*o.b.r; o.y=Math.sin(o.ang)*o.b.r; o.c.setPosition(o.x,o.y); o.t.setPosition(o.x,o.y-o.rad-3); this.faceSun(o); }
       for(const o of this.bodies){ if(!o.parentId) continue; const p=this.bodies.find(q=>q.b.id===o.parentId); if(!p) continue; const mr=p.rad+(o.b.moonR||10)*1.3; o.ang+=o.speed*dt; o.x=p.x+Math.cos(o.ang)*mr; o.y=p.y+Math.sin(o.ang)*mr; o.c.setPosition(o.x,o.y); o.t.setPosition(o.x,o.y-o.rad-3); this.faceSun(o); }
-      this.drawRings(); this.drawTransfer(time); this.drawMarkers(); this.drawSel();
+      this.drawRings(); this.drawTransfer(time); this.drawShips(); this.drawMarkers(); this.drawSel();
     }
     // #graphics: live committed-window transfer arc between the moving Earth and destination,
     // drawn as an animated dashed quadratic curve with a travelling marker.
@@ -6432,6 +6448,26 @@ function defineMapScene(){
     }
     drawRings(){ const g=this.rings; g.clear(); g.lineStyle(1,themeColorNum('muted'),0.22);
       for(const o of this.bodies){ if(o.parentId){ const p=this.bodies.find(q=>q.b.id===o.parentId); if(p) g.strokeCircle(p.x,p.y,p.rad+(o.b.moonR||10)*1.3); } else { g.strokeCircle(0,0,o.b.r); } } }
+    // Slice C (2026-07-24): active flights, ported from the 3D view's E4.5 ship markers. Origin
+    // (0,0) is the Sun in this scene's local coordinates (bodies are positioned without a cx/cy
+    // offset — the camera handles that), matching shipMapPoint(cx,cy,...)'s convention exactly.
+    drawShips(){
+      const g=this.ships; g.clear();
+      const list=(typeof activeShipMarkers==='function')?activeShipMarkers(mapViewAbsDay()):[];
+      const seen={};
+      list.forEach(mk=>{
+        const p=shipMapPoint(0,0,mk); if(!p) return;
+        seen[mk.flightId]=1;
+        g.fillStyle(0xffb347,1); g.fillCircle(p.x,p.y,3.4);
+        g.lineStyle(1,0xff8a1f,1); g.strokeCircle(p.x,p.y,3.4);
+        const label=mk.serial?`${mk.serial} · ${mk.missionName}`:mk.missionName;
+        let t=this.shipTexts[mk.flightId];
+        if(!t){ t=this.add.text(0,0,label,{fontFamily:'ui-monospace,monospace',fontSize:'9px',color:'#ffc98a'}).setOrigin(0.5,1); this.shipTexts[mk.flightId]=t; }
+        else if(t.text!==label) t.setText(label);
+        t.setPosition(p.x,p.y-8);
+      });
+      for(const id in this.shipTexts){ if(!seen[id]){ this.shipTexts[id].destroy(); delete this.shipTexts[id]; } } // a completed/lost flight's marker cleans itself up
+    }
     drawMarkers(){ const g=this.markers; g.clear(); const C=h=>{ try{ return Phaser.Display.Color.HexStringToColor(h).color; }catch(e){ return 0xffffff; } };
       const t=(this.time&&this.time.now)||0, pulse=0.55+0.45*Math.sin(t*0.0024), fast=0.35+0.65*Math.abs(Math.sin(t*0.006));
       const model=mapAssetModel();
@@ -7264,22 +7300,22 @@ function empireStripHTML(){
   return `<div id="empireStrip" style="display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px">${s}</div>`;
 }
 
-function transferArc(cx,cy,destId){
+function transferArc(cx,cy,destId,launchAbsD,arriveAbsD){
   const dest=BODIES.find(b=>b.id===destId); if(!dest) return null;
   const earth=BODIES.find(b=>b.id==='earth'); if(!earth) return null;
-  const absD=mapViewAbsDay();
-  const aE=map2dAngle('earth',absD), rE=earth.r;
+  const lD=launchAbsD==null?mapViewAbsDay():launchAbsD, aD=arriveAbsD==null?mapViewAbsDay():arriveAbsD;
+  const aE=map2dAngle('earth',lD), rE=earth.r;
   const from={x:cx+Math.cos(aE)*rE, y:cy+Math.sin(aE)*rE};
   let tR=dest.r, tx, ty;
   if(dest.around){
     const parent=BODIES.find(b=>b.id===dest.around);
-    if(parent){ const pAng=map2dAngle(parent.id,absD), pR=parent.r;
+    if(parent){ const pAng=map2dAngle(parent.id,aD), pR=parent.r;
       const pX=cx+Math.cos(pAng)*pR, pY=cy+Math.sin(pAng)*pR;
       const mr=(parent.kind==='belt'?4:8)+10, mAng=(ANGLES[dest.id]||0); // a moon's own local angle around its parent stays static/decorative, not heliocentric
       tx=pX+Math.cos(mAng)*mr; ty=pY+Math.sin(mAng)*mr; tR=pR;
     }
   }
-  if(tx===undefined){ const a=map2dAngle(dest.id,absD); tx=cx+Math.cos(a)*tR; ty=cy+Math.sin(a)*tR; }
+  if(tx===undefined){ const a=map2dAngle(dest.id,aD); tx=cx+Math.cos(a)*tR; ty=cy+Math.sin(a)*tR; }
   const to={x:tx,y:ty};
   const mx=(from.x+tx)/2, my=(from.y+ty)/2, mr=Math.hypot(mx-cx,my-cy)||1;
   const dir=tR>=rE?1:-1, bow=(Math.abs(tR-rE)*0.45+18)*dir; // bow outward for higher orbits, inward for Venus
@@ -7357,6 +7393,15 @@ function renderMapOverview(W,H){
           <text x="${mx}" y="${my-mRad-4}" fill="${msel?themeColor('ignite'):themeColor('muted')}" font-size="9" font-family="ui-monospace,monospace" text-anchor="middle">${m.name}</text>
         </g>${rivalMarkersSVG(m.id,mx,my,5)}${assetMarkersSVG(m.id,mx,my,5,_assetModel)}`;
     });
+  });
+  // Slice C (2026-07-24): active flights — ports the 3D view's live ship-tracking (E4.5) to SVG.
+  // A marker rides shipMapPoint's curve (the same one the committed/planned arcs above already
+  // draw), so it visually tracks the actual arc on screen rather than a second, unrelated path.
+  ((typeof activeShipMarkers==='function')?activeShipMarkers(mapViewAbsDay()):[]).forEach(mk=>{
+    const p=shipMapPoint(cx,cy,mk); if(!p) return;
+    const label=mk.serial?`${mk.serial} · ${mk.missionName}`:mk.missionName;
+    svg+=`<g opacity="0.95"><circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3.4" fill="#ffb347" stroke="#ff8a1f" stroke-width="1"><title>${esc(label)} — ${Math.round((mk.progress||0)*100)}% en route</title></circle>
+      <text x="${p.x.toFixed(1)}" y="${(p.y-8).toFixed(1)}" fill="#ffc98a" font-size="9" font-family="ui-monospace,monospace" text-anchor="middle">${esc(label)}</text></g>`;
   });
   svg+=`<text x="14" y="20" fill="#56666f" font-size="11" font-family="ui-monospace,monospace">Click a body to zoom in</text>`;
   svg+=`</svg>`;

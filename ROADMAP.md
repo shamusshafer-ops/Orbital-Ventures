@@ -6409,3 +6409,58 @@ does the SVG inline browse-then-confirm model feel intuitive without a visible h
 
 **Next: Slice C** — port the existing `activeShipMarkers()` live in-flight tracking (3D-only today,
 E4.5) to the Phaser and SVG render paths.
+
+## Session — Solar System map improvement pass, Slice C: ported live ship-tracking (2026-07-24)
+
+Third and final slice of the map epic (A truthful angle/sizing → B WASD nav → C, this entry).
+Closes the epic: the map originally identified as "too small, too crowded, doesn't feel connected"
+is now bigger, keyboard-navigable everywhere, and shows real in-flight missions in all three views,
+not just one.
+
+**What existed already**: `activeShipMarkers()`/`flightScenePos()` (E4.5) already computed a real
+Kepler-conic transfer position for any active flight, consumed only by the 3D view
+(`map3dUpdateShipMarkers`). Phaser and SVG never called it — a mission in transit was invisible in
+either.
+
+**Deliberate design choice: don't re-derive the real 3D transfer math in 2D pixel space.** The
+straightforward-looking option was porting `flightScenePos`'s Kepler-conic construction into 2D
+screen coordinates directly. Rejected for the same reason Slice A rejected porting the 3D radius
+model to 2D: `flightScenePos` works in the 3D view's real-AU scene-unit space, and Slice A already
+established that space doesn't map well onto the 2D map's hand-tuned legibility-first radii. Instead:
+
+- `transferArc()` generalized to accept explicit `launchAbsD`/`arriveAbsD` params (both default to
+  "now" via `==null`, so the two existing callers — committed-window and planned-route arcs — are
+  byte-identical in behavior). This lets a ship's *actual* fixed departure/arrival body positions
+  (not "where Earth/target are right now") anchor its arc.
+- `shipMapPoint(cx,cy,marker)` (new) evaluates the standard quadratic-bezier point formula at the
+  marker's real progress fraction (from the 3D model, so timing stays truthful) along that arc. A
+  ship marker rides the *exact same curve* the map already draws for the committed/planned arcs,
+  rather than a second, incompatible 2D transfer shape — real connectedness, not just a moving dot.
+- `activeShipMarkers()` extended with `destId`/`launchAbs`/`arriveAbs` (additive; the existing 3D
+  consumer ignores the new fields) so the 2D renderers have what they need to reconstruct a matching
+  arc without a second lookup path.
+- SVG (`renderMapOverview`): draws each active flight as a small amber marker + mission-name label,
+  with a title tooltip showing % en route.
+- Phaser (`MapScene`): new `drawShips()` method (graphics circle + a small pooled Text-object map
+  keyed by flightId, add/update/remove to match the current active-flights list each frame — same
+  add/update/remove shape as the 3D view's `map3dUpdateShipMarkers`), called from `update()`.
+
+**Validation.** New `tests/test-map-slice-c.js` (16/16) — verified empirically, not just by reading
+the math: a marker sits at *exactly* the origin body's hand-tuned radius at progress=0 and the
+destination's at progress=1 (checked against a real Mars Flyby fixture: 82.0px at launch matching
+Earth's r=82, 104.0px at arrival matching Mars's r=104, both within floating-point tolerance), bows
+outward past both endpoints at the midpoint (matching the existing static-arc visual language),
+`transferArc`'s generalized signature is provably byte-identical to the old 3-arg behavior when the
+new params are omitted, explicit launch/arrival days produce genuinely different (truthful, moving)
+endpoints, the SVG overview actually renders the marker for an active flight and renders nothing when
+there are none, multiple simultaneous flights each get their own independent marker, and
+`shipMapPoint`/`activeShipMarkers` handle missing/null input safely. Full regression clean except the
+known `test-flight3d-trajectory.js` drift; build parity and `git diff --check` clean.
+
+**This closes the three-slice Solar System map epic** (BACKLOG #117). All three sessions' full
+rationale, rejected alternatives, and numeric traces are in this file under their own entries above.
+
+**Needs a real-browser check** across all three slices together: does the bigger, truthfully-moving,
+keyboard-navigable, ship-tracking map actually read as a connected dashboard-and-planner in an actual
+play session — the sim traces and headless geometry checks say the pieces are individually correct,
+but only a real session confirms they add up to what was asked for.
