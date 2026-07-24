@@ -18794,9 +18794,32 @@ function initSvgPopZoom(stageId, zoomId, st){
   stage.addEventListener('pointerup',end); stage.addEventListener('pointercancel',end);
   const resetCentered=()=>{ const r=stage.getBoundingClientRect(); st.z=POPOUT_ZOOM_BOOST; const off=centeredZoomOffset(r.width,r.height,st.z); st.x=off.x; st.y=off.y; apply(); };
   stage.addEventListener('dblclick', resetCentered);
+  // Slice B (2026-07-24): keyboard pan/zoom, same math as the mouse handlers above, exposed on `st`
+  // itself (not the private `apply` closure) so a shared document-level keydown listener can drive
+  // any open SVG popout — map or station — without reaching into this function's internals.
+  st.keyPan=(dx,dy)=>{ st.x+=dx; st.y+=dy; apply(); };
+  st.keyZoom=(mult)=>{ const r=stage.getBoundingClientRect(), cx=r.width/2, cy=r.height/2, z0=st.z;
+    st.z=Math.min(18,Math.max(0.3, st.z*mult));
+    st.x=cx-(cx-st.x)*(st.z/z0); st.y=cy-(cy-st.y)*(st.z/z0); apply(); };
   resetCentered(); // establishes the boosted, centered default view (was a bare apply() at z:1)
 }
 let stnPopoutOpen=false, stnPop={z:1,x:0,y:0};
+// Slice B (2026-07-24): shared by any SVG popout (map, station) via their initSvgPopZoom `st` object.
+// st.x/st.y are a CONTENT offset (not a camera position), so a keyboard "d" (move the view right —
+// the inverse of what a rightward drag does, since dragging right pans content to follow the finger)
+// shifts content LEFT, not right; signs below are the inverse of the pointermove handler's dx/dy.
+function svgPopKeyNav(st, key){
+  if(!st || !st.keyPan) return false;
+  const panStep=40;
+  if(key==='w'||key==='ArrowUp'){ st.keyPan(0,panStep); }
+  else if(key==='s'||key==='ArrowDown'){ st.keyPan(0,-panStep); }
+  else if(key==='a'||key==='ArrowLeft'){ st.keyPan(panStep,0); }
+  else if(key==='d'||key==='ArrowRight'){ st.keyPan(-panStep,0); }
+  else if(key==='q'||key==='-'||key==='_'){ st.keyZoom(0.88); }
+  else if(key==='e'||key==='='||key==='+'){ st.keyZoom(1.14); }
+  else return false;
+  return true;
+}
 function stnPopStatsHTML(v){ return v.isDraft ? stationDraftStatsHTML(stationDraftFs()) : renderStationFacilityStats(v.built, v.cur); }
 function openStationPopout(){
   if(stnPopoutOpen) return; stnPopoutOpen=true; closeOtherPopouts('stn'); stnPop={z:1,x:0,y:0};
@@ -18805,7 +18828,7 @@ function openStationPopout(){
   const ov=document.createElement('div'); ov.className='vehpop-scrim'; ov.id='stnPopout';
   ov.innerHTML=`<div class="vehpop-bar">
       <span class="vehpop-title" id="stnPopTitle">⬡ ${esc(title)}</span>
-      <span class="vehpop-hint">drag to pan · scroll to zoom · double-click reset · Esc/Enter to close</span>
+      <span class="vehpop-hint">drag to pan · scroll to zoom · WASD/arrows to nudge · double-click reset · Esc/Enter to close</span>
       <button class="vehpop-x" onclick="closeStationPopout()">✕ Close</button>
     </div>
     <div class="vehpop-body">
@@ -18852,7 +18875,7 @@ function openMapPopout(){
   const ov=document.createElement('div'); ov.className='vehpop-scrim'; ov.id='mapPopout';
   ov.innerHTML=`<div class="vehpop-bar">
       <span class="vehpop-title">🪐 Solar System</span>
-      <span class="vehpop-hint">click a body to select · drag to pan · scroll to zoom · double-click reset · Esc/Enter to close</span>
+      <span class="vehpop-hint">click a body to select · drag to pan · scroll to zoom · WASD/arrows to nudge · double-click reset · Esc/Enter to close</span>
       <button class="vehpop-x" onclick="closeMapPopout()">✕ Close</button>
     </div>
     <div class="vehpop-body">
@@ -19264,6 +19287,19 @@ document.addEventListener('keydown',function(e){
     if(earthPopoutOpen) closeEarthPopout(); if(vehPopoutOpen) closeVehPopout(); if(stnPopoutOpen) closeStationPopout(); if(mapPopoutOpen) closeMapPopout(); if(ccPopoutOpen) closeCCPopout(); if(contractsPopoutOpen) closeContractsPopout(); return; }
   if(e.key==='Tab'){ e.preventDefault(); e.stopPropagation(); tabPopout(e.shiftKey?-1:1); return; }
   if(e.key>='1' && e.key<='4'){ const k=POPOUT_ORDER[+e.key-1]; if(k){ e.preventDefault(); e.stopPropagation(); switchPopoutTo(k); } }
+},true);
+document.addEventListener('keydown',function(e){
+  if(e.target && (e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA')) return; // never hijack a text field
+  const key=e.key;
+  let handled=false;
+  if(mapPopoutOpen){ handled = map3d ? map3dKeyNav(key) : svgPopKeyNav(mapPop,key); }
+  else if(stnPopoutOpen){ handled = svgPopKeyNav(stnPop,key); }
+  else if(state.tab==='map' && !anyPopoutOpen()){
+    if(MAP3D && threeOK() && map3d) handled=map3dKeyNav(key);
+    else if(phaserOK() && mapScene) handled=phaserMapKeyNav(key);
+    else handled=svgMapKeyNav(key);
+  }
+  if(handled){ e.preventDefault(); e.stopPropagation(); }
 },true);
 // Presentation: the primary Build & Launch CTA sits directly under the rocket on the
 // bench (in #vehicleCard), not in the right-rail readout. Same gate (canLaunch) + same
@@ -20127,6 +20163,22 @@ function _map3dMove(e){
   map3d.cam.el = Math.max(-1.5, Math.min(1.5, map3d.cam.el - dy*0.01));
 }
 function _map3dWheel(e){ if(!map3d) return; e.preventDefault(); map3d.cam.dist = Math.max(MAP3D_ZOOM_MIN, Math.min(MAP3D_ZOOM_MAX, map3d.cam.dist*(e.deltaY>0?1.12:0.89))); }
+// Slice B (2026-07-24): WASD/arrow-key orbit + zoom, mirroring the drag-to-orbit/wheel-to-zoom mouse
+// input above — same sign convention as _map3dMove's az-=dx*0.01/el-=dy*0.01 (a rightward/downward
+// drag), so keyboard and mouse produce the same rotation direction rather than fighting each other.
+// Returns false for an unhandled key so the caller knows whether to preventDefault/stopPropagation.
+function map3dKeyNav(key){
+  if(!map3d) return false;
+  const step=0.06;
+  if(key==='w'||key==='ArrowUp'){ map3d.cam.el=Math.max(-1.5,Math.min(1.5,map3d.cam.el+step)); }
+  else if(key==='s'||key==='ArrowDown'){ map3d.cam.el=Math.max(-1.5,Math.min(1.5,map3d.cam.el-step)); }
+  else if(key==='a'||key==='ArrowLeft'){ map3d.cam.az+=step*3; }
+  else if(key==='d'||key==='ArrowRight'){ map3d.cam.az-=step*3; }
+  else if(key==='q'||key==='-'||key==='_'){ map3d.cam.dist=Math.max(MAP3D_ZOOM_MIN,Math.min(MAP3D_ZOOM_MAX,map3d.cam.dist*1.12)); }
+  else if(key==='e'||key==='='||key==='+'){ map3d.cam.dist=Math.max(MAP3D_ZOOM_MIN,Math.min(MAP3D_ZOOM_MAX,map3d.cam.dist*0.89)); }
+  else return false;
+  return true;
+}
 function map3dFocusDistance(b){ return Math.max(7, Math.min(72, planetMeshRadius(b)*8)); }
 function map3dPick(e){
   try{
@@ -20265,6 +20317,25 @@ function selectBody(id){
   render();
 }
 function zoomOut(){ state.mapZoom=null; render(); }
+// Slice B (2026-07-24): keyboard nav for the SVG inline fallback. This view has no free camera (no
+// drag-pan/wheel-zoom at all, mouse or otherwise) — its interaction model is click-a-body-to-zoom-in,
+// click-Overview-to-back-out. Keyboard nav matches that model rather than inventing a camera for it:
+// left/right cycles the selection through the top-level bodies, up/enter zooms to the selection
+// (same as clicking it), down/escape/backspace zooms back out.
+function svgMapKeyNav(key){
+  const top=BODIES.filter(b=>!b.around); // orbital order as declared: mercury..neptune, pluto, oort
+  const cur=top.findIndex(b=>b.id===state.selectedBody);
+  const zoomed=!!state.mapZoom;
+  // Overview: browse-then-confirm (arrow moves the selection cursor only; up/enter commits to zoom).
+  // Already zoomed: arrow flips directly to the next/previous body's zoomed view — no reason to force
+  // a second confirm step once you're already in the detail view.
+  if(key==='a'||key==='ArrowLeft'){ const i=cur<0?0:(cur-1+top.length)%top.length; state.selectedBody=top[i].id; if(zoomed) state.mapZoom=top[i].id; render(); }
+  else if(key==='d'||key==='ArrowRight'){ const i=cur<0?0:(cur+1)%top.length; state.selectedBody=top[i].id; if(zoomed) state.mapZoom=top[i].id; render(); }
+  else if(key==='w'||key==='ArrowUp'||key==='Enter'){ if(state.selectedBody && !zoomed){ state.mapZoom=state.selectedBody; render(); } }
+  else if(key==='s'||key==='ArrowDown'||key==='Escape'||key==='Backspace'){ if(zoomed) zoomOut(); }
+  else return false;
+  return true;
+}
 /* ---------- M6: Personnel tab ---------- */
 function moraleColor(m){ return m>=70?'var(--ok)':m>=40?'var(--warn)':'var(--bad)'; }
 // Deterministic generated "roster headshot" — unique per person id, no binary assets.
@@ -20747,6 +20818,22 @@ function startMapScene(){
 }
 function pauseMapGame(){ if(mapGame){ try{ if(mapGame.scene.isActive('solarmap')) mapGame.scene.sleep('solarmap'); }catch(e){} } } // E0.5-A: sleep, not pause (stop render)
 function resumeMapGame(){ if(mapGame){ try{ mapGame.scene.wake('solarmap'); }catch(e){} } }
+// Slice B (2026-07-24): WASD/arrow-key pan + zoom. The drag handler in create() above follows a
+// content-follows-drag convention (scrollX-=dx on a rightward drag), so "d" — move the view right —
+// is the opposite sign from a rightward drag, not the same sign; matched here so keyboard and mouse
+// produce the same pan direction rather than fighting each other.
+function phaserMapKeyNav(key){
+  if(!mapScene || !mapScene.cam) return false;
+  const cam=mapScene.cam, panStep=44/cam.zoom;
+  if(key==='w'||key==='ArrowUp'){ cam.scrollY-=panStep; }
+  else if(key==='s'||key==='ArrowDown'){ cam.scrollY+=panStep; }
+  else if(key==='a'||key==='ArrowLeft'){ cam.scrollX-=panStep; }
+  else if(key==='d'||key==='ArrowRight'){ cam.scrollX+=panStep; }
+  else if(key==='q'||key==='-'||key==='_'){ cam.setZoom(Phaser.Math.Clamp(cam.zoom*0.88, mapScene.fitZoom*0.6, mapScene.fitZoom*42)); }
+  else if(key==='e'||key==='='||key==='+'){ cam.setZoom(Phaser.Math.Clamp(cam.zoom*1.14, mapScene.fitZoom*0.6, mapScene.fitZoom*42)); }
+  else return false;
+  return true;
+}
 function renderMap(){
   const mv=$('mapView'); if(mv) mv.classList.toggle('expanded', mapExpanded);
   const eb=$('mapExpandBtn'); if(eb) eb.textContent = mapExpanded ? '⛶ Exit full screen' : '⛶ Expand';

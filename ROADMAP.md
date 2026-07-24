@@ -6340,3 +6340,72 @@ does the bigger default canvas actually read as roomier in the real 3-column she
 center grid column is bounded by two 380px side rails — a real viewport-width check, not just a
 canvas-dimension one), and does the now-moving Phaser/SVG map feel right rather than janky when time
 advances.
+
+## Session — Solar System map improvement pass, Slice B: WASD/keyboard navigation (2026-07-24)
+
+Second of the three-slice map epic (A shipped earlier this session → B → C). Added keyboard
+navigation across all three render paths, each matched to its OWN existing interaction model rather
+than one scheme forced onto all three — same principle Slice A used for angle-vs-radius.
+
+**3D map** (`map3dKeyNav`, new): WASD/arrows orbit the camera (az/el), Q/E or −/+ zoom (dist). Signs
+matched exactly to the existing drag-to-orbit mouse handler's convention (`az-=dx*0.01`,
+`el-=dy*0.01` on a rightward/downward drag) rather than picked independently, so keyboard and mouse
+rotate the same direction instead of fighting each other.
+
+**Phaser map** (`phaserMapKeyNav`, new): WASD/arrows pan, Q/E or −/+ zoom. Caught a real sign error
+while implementing: assumed a "camera-scroll" convention (scrollX increasing = camera moves right)
+but the actual mouse handler is content-follows-drag (`scrollX-=dx` on a rightward drag) — traced the
+actual handler before finalizing signs rather than shipping the wrong assumption.
+
+**SVG popout** (`svgPopKeyNav`, new, on the shared `initSvgPopZoom` used by both the map AND station
+popouts): WASD/arrows pan, Q/E or −/+ zoom — station bench gets this for free as a consistency bonus,
+not a separate implementation. `initSvgPopZoom` now exposes `st.keyPan`/`st.keyZoom` on its state
+object so a shared document-level listener can drive it without reaching into the function's private
+closure.
+
+**SVG inline fallback** (`svgMapKeyNav`, new): this view has no free camera at all (not even mouse
+pan/zoom) — its model is click-a-body-to-zoom-in, click-Overview-to-back-out. Rather than bolt on an
+unrelated camera, keyboard nav matches that model: left/right browses the selection cursor around the
+overview WITHOUT committing to a zoom; up/Enter commits; down/Escape/Backspace backs out; once already
+zoomed, left/right flips directly between bodies' zoomed views (no reason to force a second confirm
+once you're already in the detail view).
+
+**A real bug caught mid-implementation, not just in code review**: the original design had left/right
+call the existing `selectBody()` to move the cursor — but `selectBody()` already auto-zooms on its
+*first* call ("first click zooms in" — pre-existing behavior, not something this session touched).
+That would have made the very first arrow-key press in the overview zoom in immediately instead of
+just browsing, defeating the intended browse-then-confirm distinction. Caught by writing a debug trace
+before finalizing rather than assuming the design worked — fixed by setting `state.selectedBody`
+directly and bypassing `selectBody()`'s auto-zoom for the browsing case.
+
+**Routing**: a new document-level capture-phase `keydown` listener (separate from the existing
+Esc/Enter/Tab popout-close listener — the two are mutually exclusive by guard condition, so no key
+conflict) routes to the right handler: `map3d`/`svgPopKeyNav` when the map popout is open,
+`svgPopKeyNav` when the station popout is open, and whichever of 3D/Phaser/SVG is actually mounted
+when the map TAB is active inline. Guarded against hijacking a focused text input.
+
+Hint text updated in three places (map popout bar, station popout bar, inline map card description)
+so the new controls are discoverable, matching the game's existing convention of surfacing every
+control in copy.
+
+**Validation.** New `tests/test-map-slice-b.js` (25/25): the browse-vs-commit distinction (including
+the caught bug's fixed behavior), wraparound at both ends of the body list, up/Enter/down/Escape/
+Backspace all correctly mapped, the already-zoomed flip-between-bodies behavior, unhandled keys
+correctly return false (so the caller doesn't preventDefault a key it didn't use), map3d/Phaser nav
+safely no-op when nothing is mounted, and the SVG popout's pan-sign inversion verified against a mock
+state object for all four directions plus zoom in/out, including null/uninitialized-state safety.
+Full regression clean except the known `test-flight3d-trajectory.js` drift; build parity and
+`git diff --check` clean.
+
+**One slip caught and fixed inline**: an early hint-text edit accidentally dropped the station
+popout's close button (an overly broad `old_str` match in the edit). Caught by viewing the file
+immediately after the edit rather than assuming it worked — standard practice, worth noting here
+since it's exactly the kind of small mechanical slip this practice exists to catch.
+
+**Needs a real-browser check**: does the keyboard camera direction actually feel right (sign
+conventions were derived algebraically from the existing mouse handlers, not visually confirmed), and
+does the SVG inline browse-then-confirm model feel intuitive without a visible hint of *which* mode
+(browsing vs. zoomed) a given arrow press will produce.
+
+**Next: Slice C** — port the existing `activeShipMarkers()` live in-flight tracking (3D-only today,
+E4.5) to the Phaser and SVG render paths.
