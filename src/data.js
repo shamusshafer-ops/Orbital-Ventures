@@ -198,8 +198,32 @@ const STAFF_POOLS = [
   {role:'exec',  list:EXECUTIVES, traits:EXEC_TRAITS,  traitKeys:EXEC_TRAIT_KEYS,  label:'executive'},
   {role:'controller', list:CONTROLLERS, traits:CTRL_TRAITS, traitKeys:CTRL_TRAIT_KEYS, label:'flight director'},
 ];
-function poolOf(id){ for(const P of STAFF_POOLS){ if(P.list.some(p=>p.id===id)) return P; } return null; }
+function roleMeta(role){ return STAFF_POOLS.find(P=>P.role===role); }
+// BACKLOG #68: procedural replacements — generated at retirement/death so the small named rosters
+// above never permanently run dry across a long campaign. Persisted in state (not the static
+// arrays above, which are shared, unowned consts) so they save/load and reset cleanly per-campaign.
+function proceduralDefs(){ return Array.isArray(state.proceduralStaffDefs) ? state.proceduralStaffDefs : (state.proceduralStaffDefs=[]); }
+function poolOf(id){
+  for(const P of STAFF_POOLS){ if(P.list.some(p=>p.id===id)) return P; }
+  const pd=proceduralDefs().find(x=>x.id===id);
+  if(!pd) return null;
+  const meta=roleMeta(pd.role); if(!meta) return null;
+  return {role:meta.role, list:proceduralDefs().filter(x=>x.role===meta.role), traits:meta.traits, traitKeys:meta.traitKeys, label:meta.label};
+}
 function roleOf(id){ const P=poolOf(id); return P?P.role:null; }
+// Deterministic (per-id, save-stable) starting hire age / retirement age — no per-record fields
+// needed on the ~40 hand-authored named characters, and procedural hires get the same treatment.
+const HIRE_AGE_BASE=26, HIRE_AGE_SPREAD=20;       // hired between 26 and 45
+const RETIRE_AGE_BASE=58, RETIRE_AGE_SPREAD=12;   // retires between 58 and 69
+function startingHireAge(id){ return HIRE_AGE_BASE + (_hashStr(id+'_hire')%HIRE_AGE_SPREAD); }
+function retirementAge(id){ return RETIRE_AGE_BASE + (_hashStr(id+'_retire')%RETIRE_AGE_SPREAD); }
+const FIRST_NAMES=['Wei','Anders','Fatima','Diego','Naledi','Ingrid','Kenji','Rosa','Omar','Elin',
+  'Tariq','Beatriz','Soren','Aiyana','Felix','Nia','Lars','Camila','Yusuf','Freya','Mateo','Amina',
+  'Erik','Sofia','Kwabena','Ines','Nikolai','Layla','Bjorn','Priscilla'];
+const LAST_NAMES=['Nakamura','Solberg','Reyes','Adeyemi','Kowalski','Moreau','Petrov','Lindgren',
+  'Okafor','Bianchi','Kaur','Hoffmann','Silva','Andersson','Haddad','Novak','Osei','Ferreira',
+  'Larsson','Chowdhury','Vance','Renner','Kimura','Duarte','Steiner','Mbeki'];
+
 // Human-readable role tag: engineers show their specialty; other roles show their label.
 function roleLabel(p){ if(!p) return ''; const P=poolOf(p.id); if(!P) return ''; return P.label || p.specialty || P.role; }
 function _hashStr(s){ let h=0; for(let i=0;i<s.length;i++){ h=(h*31+s.charCodeAt(i))|0; } return Math.abs(h); }

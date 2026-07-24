@@ -98,7 +98,7 @@ Complexity: S = <1 day, M = 1–5 days, L = 1–3 weeks, XL = 1+ month. Impact: 
 |65| Memorial wall on losses | Emotional weight | S | ★★★ | 61 | H |E1.4|
 |66| Chief designer character (Korolev-alike) with buffs/mortality | Era storytelling | M | ★★ | — | M |Backlog|
 |67| Department lead personalities → advisor lines | Leads already exist | S | ★★ | — | M |Backlog|
-|68| Staff aging/retirement across 50-year campaign | Time weight | M | ★★ | — | M |Backlog|
+|68| Staff aging/retirement across 50-year campaign | Time weight | M | ★★ | — | M |Shipped 2026-07-24 — deterministic hire/retirement age per id, procedural same-role/specialty replacement pool on retirement AND crewed-mission death, quiet departure (no rep hit), hooks existing dept-lead succession|
 |69| Hiring market quality tied to rep/support | Feedback loop | S | ★ | — | L |Backlog|
 |70| Strikes/morale events tied to overwork (launch cadence) | Ops coupling | M | ★ | — | L |Backlog|
 |71| Astronaut PR tours (send hero on tour = support, unavailable) | Tradeoff | S | ★★ | 61 | M |Backlog|

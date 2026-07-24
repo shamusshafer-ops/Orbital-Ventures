@@ -198,8 +198,32 @@ const STAFF_POOLS = [
   {role:'exec',  list:EXECUTIVES, traits:EXEC_TRAITS,  traitKeys:EXEC_TRAIT_KEYS,  label:'executive'},
   {role:'controller', list:CONTROLLERS, traits:CTRL_TRAITS, traitKeys:CTRL_TRAIT_KEYS, label:'flight director'},
 ];
-function poolOf(id){ for(const P of STAFF_POOLS){ if(P.list.some(p=>p.id===id)) return P; } return null; }
+function roleMeta(role){ return STAFF_POOLS.find(P=>P.role===role); }
+// BACKLOG #68: procedural replacements — generated at retirement/death so the small named rosters
+// above never permanently run dry across a long campaign. Persisted in state (not the static
+// arrays above, which are shared, unowned consts) so they save/load and reset cleanly per-campaign.
+function proceduralDefs(){ return Array.isArray(state.proceduralStaffDefs) ? state.proceduralStaffDefs : (state.proceduralStaffDefs=[]); }
+function poolOf(id){
+  for(const P of STAFF_POOLS){ if(P.list.some(p=>p.id===id)) return P; }
+  const pd=proceduralDefs().find(x=>x.id===id);
+  if(!pd) return null;
+  const meta=roleMeta(pd.role); if(!meta) return null;
+  return {role:meta.role, list:proceduralDefs().filter(x=>x.role===meta.role), traits:meta.traits, traitKeys:meta.traitKeys, label:meta.label};
+}
 function roleOf(id){ const P=poolOf(id); return P?P.role:null; }
+// Deterministic (per-id, save-stable) starting hire age / retirement age — no per-record fields
+// needed on the ~40 hand-authored named characters, and procedural hires get the same treatment.
+const HIRE_AGE_BASE=26, HIRE_AGE_SPREAD=20;       // hired between 26 and 45
+const RETIRE_AGE_BASE=58, RETIRE_AGE_SPREAD=12;   // retires between 58 and 69
+function startingHireAge(id){ return HIRE_AGE_BASE + (_hashStr(id+'_hire')%HIRE_AGE_SPREAD); }
+function retirementAge(id){ return RETIRE_AGE_BASE + (_hashStr(id+'_retire')%RETIRE_AGE_SPREAD); }
+const FIRST_NAMES=['Wei','Anders','Fatima','Diego','Naledi','Ingrid','Kenji','Rosa','Omar','Elin',
+  'Tariq','Beatriz','Soren','Aiyana','Felix','Nia','Lars','Camila','Yusuf','Freya','Mateo','Amina',
+  'Erik','Sofia','Kwabena','Ines','Nikolai','Layla','Bjorn','Priscilla'];
+const LAST_NAMES=['Nakamura','Solberg','Reyes','Adeyemi','Kowalski','Moreau','Petrov','Lindgren',
+  'Okafor','Bianchi','Kaur','Hoffmann','Silva','Andersson','Haddad','Novak','Osei','Ferreira',
+  'Larsson','Chowdhury','Vance','Renner','Kimura','Duarte','Steiner','Mbeki'];
+
 // Human-readable role tag: engineers show their specialty; other roles show their label.
 function roleLabel(p){ if(!p) return ''; const P=poolOf(p.id); if(!P) return ''; return P.label || p.specialty || P.role; }
 function _hashStr(s){ let h=0; for(let i=0;i<s.length;i++){ h=(h*31+s.charCodeAt(i))|0; } return Math.abs(h); }
@@ -2860,6 +2884,7 @@ function migrateStateToBuild(saved){
 }
 let state;
 function newGame(difficulty){
+  _procStaffSeq=0; // BACKLOG #68: fresh campaign starts with a clean procedural-hire id sequence
   const mode=DIFFICULTY[difficulty]?difficulty:'engineer';
   const customDifficulty=customDefaults();
   const startMoney=mode==='custom'?customDifficulty.startMoney:DIFFICULTY[mode].startMoney;
@@ -2881,7 +2906,7 @@ function newGame(difficulty){
     depot:0, depotUse:0,
     tab:'command', won:false, wonM2:false, wonM3a:false, wonM3aii:false, wonM3b:false, wonM3bii:false, over:false,
     log:[], rivalFired:{}, scooped:{}, rivalThreat:{}, rivalState:{},
-    staff:[], assignedAstronaut:null, persEventCooldown:5,
+    staff:[], assignedAstronaut:null, persEventCooldown:5, proceduralStaffDefs:[],
     departments:defaultDepartments(), // #19: org layer over hired staff (per-dept lead + training)
     econEvents:[], eventCooldown:6, pgmRoyalty:0,
     passiveContracts:[], contractCooldown:{}, contractSignings:{}, engineHeritage:{}, // passive-income contracts (repeatable + cooldown + diminishing)
@@ -3749,6 +3774,7 @@ function tickMonthlyBoundary(){
         return false;
       }
       return true;    });
+    tickRetirements(); // BACKLOG #68: age-based retirement, spawns a procedural replacement
     reconcileDeptLeads(); // #19 slice C: a lead who quit is succeeded by the best remaining member
 
     // #4 division: morale drift toward baseline (R&D progress itself is now a continuous daily flow)
@@ -7310,7 +7336,7 @@ function loseAssignedCrew(crewId, mission, story){
   if(!crewId) return;
   const p=personById(crewId);
   state.staff=(state.staff||[]).filter(s=>s.id!==crewId);
-  if(p){ log('bad',`Astronaut ${p.name} was lost with the vehicle.`); addMemorial(crewId, p.name, mission, story); } // E1.4: memorial wall
+  if(p){ log('bad',`Astronaut ${p.name} was lost with the vehicle.`); addMemorial(crewId, p.name, mission, story); spawnReplacementFor(crewId); } // E1.4: memorial wall; BACKLOG #68: keeps the corps pool from running dry
   if(state.assignedAstronaut===crewId) state.assignedAstronaut=null; // only clear the live slot if it's this crew (don't clobber a concurrent flight)
 }
 // E1.4: memorial wall — name snapshotted at death (independent of the static pool, matching how
@@ -8705,10 +8731,64 @@ function applyScience(){
 /* ---------- M6: personnel helpers ---------- */
 function personById(id){
   for(const P of STAFF_POOLS){ const p=P.list.find(x=>x.id===id); if(p) return p; }
-  return undefined;
+  return proceduralDefs().find(x=>x.id===id);
 }
 function staffRecord(id){ return state.staff.find(s=>s.id===id); }
 function isHired(id){ return !!staffRecord(id); }
+
+/* ---------- BACKLOG #68: staff aging/retirement + procedural replacement pool ----------
+   Age is derived, not stored per-tick: a staff record stamps birthYear once at hire (self-heals on
+   an older save that predates this field — see staffBirthYear). Age/retirement thresholds are
+   deterministic per person id (hash-based, no per-record fields needed on the ~40 hand-authored
+   named characters). A retirement OR a death (loseAssignedCrew) spawns one procedural candidate of
+   the same role/specialty into state.proceduralStaffDefs so the small named rosters never run
+   permanently dry across a long campaign; the departure itself is a quiet log line only. */
+function staffBirthYear(sr){ if(sr.birthYear==null) sr.birthYear=state.year-startingHireAge(sr.id); return sr.birthYear; }
+function staffAge(id){ const sr=staffRecord(id); if(!sr) return null; return state.year-staffBirthYear(sr); }
+let _procStaffSeq=0;
+function _usedStaffNames(){ return new Set(STAFF_POOLS.flatMap(P=>P.list).concat(proceduralDefs()).map(p=>p.name)); }
+function generateProceduralCandidate(role, specialty){
+  const meta=roleMeta(role); if(!meta) return null;
+  const ei=eraIndex(currentEra());
+  const used=_usedStaffNames();
+  let name, tries=0;
+  do{
+    const seed=_procStaffSeq+(tries++);
+    name=`${FIRST_NAMES[(seed*7+3)%FIRST_NAMES.length]} ${LAST_NAMES[(seed*13+5)%LAST_NAMES.length]}`;
+  } while(used.has(name) && tries<40);
+  const id=`p_${role}_${++_procStaffSeq}`;
+  // Skill/salary track the era's going rate (later hires are trained on more capable tooling),
+  // with modest per-hire variance — same shape as the hand-authored roster's skill/salary pairing.
+  const variance=(_hashStr(id)%21-10)/100; // ±0.10
+  const skill=clampA(0.58+ei*0.045+variance, 0.5, 0.97);
+  const salary=clampA(0.44*skill-0.24, 0.04, 0.22);
+  const specText=specialty?`${specialty[0].toUpperCase()+specialty.slice(1)} specialist. `:'';
+  const def={id, role, name, skill:round2(skill), salary:round2(salary), era:Math.min(ei,7),
+    specialty:specialty||undefined, bio:`${specText}New to the program, trained in the current generation of hardware and ready to carry the work forward.`};
+  proceduralDefs().push(def);
+  return def;
+}
+// Retirement/replacement for a staffer who is departing (retiring or dying). Generates a same-role
+// (and, for engineers, same-specialty) procedural candidate into the hire pool.
+function spawnReplacementFor(id){
+  const role=roleOf(id); if(!role) return;
+  const p=personById(id);
+  generateProceduralCandidate(role, p&&p.specialty);
+}
+// Called from the monthly tick: retires anyone past their (deterministic) retirement age.
+function tickRetirements(){
+  const retiring=(state.staff||[]).filter(s=>staffAge(s.id)>=retirementAge(s.id));
+  if(!retiring.length) return;
+  retiring.forEach(s=>{
+    const p=personById(s.id);
+    log('note',`${p?p.name:'A staff member'} retired after a long career.`);
+    if(state.assignedAstronaut===s.id) state.assignedAstronaut=null;
+    spawnReplacementFor(s.id);
+  });
+  const ids=new Set(retiring.map(s=>s.id));
+  state.staff=state.staff.filter(s=>!ids.has(s.id));
+  reconcileDeptLeads(); // #19 slice C: succession, same as any other departure
+}
 
 /* #19 slice B: career progression. A hired person's EFFECTIVE skill rises above their fixed
    hire-day base as they accrue experience (capped). xp is 0 until slice B starts accruing it,
@@ -8764,7 +8844,8 @@ function accrueStaffXp(){
 // Available to hire: not already hired, era unlocked
 function availablePool(){
   const ei=eraIndex(currentEra());
-  return STAFF_POOLS.flatMap(P=>P.list).filter(p=>{
+  const all=STAFF_POOLS.flatMap(P=>P.list).concat(proceduralDefs());
+  return all.filter(p=>{
     if(isHired(p.id)) return false;
     if(p.era>ei) return false;
     return true;
@@ -8772,7 +8853,7 @@ function availablePool(){
 }
 
 // Engineer team aggregate — skill weighted by morale (low morale = skill degraded)
-function engTeam(){ return (state.staff||[]).filter(s=>ENGINEERS.find(e=>e.id===s.id)); }
+function engTeam(){ return (state.staff||[]).filter(s=>roleOf(s.id)==='eng'); }
 
 /* ---------- #19 departments: derived membership + promotable leads ---------- */
 function deptState(id){ const d=(state.departments&&state.departments[id])||{}; return {lead:d.lead!=null?d.lead:null, training:d.training||0}; }
@@ -8969,7 +9050,7 @@ function astroBonus(){
 
 function hirePersonnel(id){
   if(isHired(id)) return;
-  state.staff.push({id, morale:70, lowMoraleMonths:0, commendCooldown:0, xp:0});
+  state.staff.push({id, morale:70, lowMoraleMonths:0, commendCooldown:0, xp:0, birthYear:state.year-startingHireAge(id)});
   const p=personById(id);
   log('note',`Hired ${p.name} (${p.salary.toFixed(2)}M/mo salary).`);
   render();
@@ -14976,7 +15057,7 @@ function objectivesList(){
     groups.push({title:'Main objective', items:[{label:mm.name, done:false, sub, tab:'bench', missionId:mm.id}]});
   } else groups.push({title:'Main objective', items:[{label:'All objectives complete', done:true}]});
   const rec=[];
-  if(!(state.staff||[]).some(s=>ENGINEERS.find(e=>e.id===s.id))) rec.push({label:'Hire an engineer', done:false, tab:'personnel'});
+  if(!(state.staff||[]).some(s=>roleOf(s.id)==='eng')) rec.push({label:'Hire an engineer', done:false, tab:'personnel'});
   // contextual nudges for the specialist hire categories — only when the role would help and one is hirable
   const _hasRole=r=>(state.staff||[]).some(s=>roleOf(s.id)===r), _canHire=r=>availablePool().some(p=>roleOf(p.id)===r);
   if(!_hasRole('sci') && _canHire('sci') && (state.activeResearch||RESEARCH.some(r=>!state.research[r.id]&&reqsMet(r)))) rec.push({label:'Hire a scientist', done:false, tab:'personnel'});
@@ -20138,7 +20219,7 @@ function personPortrait(p, size){
   let seed=_phash(id)||1;
   const rnd=()=>{ seed=(seed*1103515245+12345)>>>0; return seed/4294967296; };
   const pick=a=>a[Math.floor(rnd()*a.length)];
-  const isAstro=!!ASTRONAUTS.find(a=>a.id===id);
+  const isAstro=roleOf(id)==='astro';
   const skin=pick(['#f4cda6','#e7b38a','#cf9d6f','#b07c4f','#8d5a34','#6e4426']);
   const hairc=pick(['#23211f','#4a3526','#6b4a2a','#a8842f','#9aa3ab','#caa55a','#2b2b2b','#7a4a2a']);
   const bgA=pick(['#16222b','#1a2331','#221a2b','#122019','#231d18']);
@@ -20174,8 +20255,8 @@ function personPortrait(p, size){
 }
 
 function renderPersonnelCard(p, sr){
-  const isEng = !!ENGINEERS.find(e=>e.id===p.id);
-  const isAstro = !!ASTRONAUTS.find(a=>a.id===p.id);
+  const isEng = roleOf(p.id)==='eng';
+  const isAstro = roleOf(p.id)==='astro';
   const morale = sr.morale|0;
   const mColor = moraleColor(morale);
   const canCommend = sr.commendCooldown===0;
@@ -20310,7 +20391,7 @@ function renderPersonnel(){
   if(available.length){
     html+=`<div style="margin:12px 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">Available to Hire</div>`;
     html+=available.map(p=>{
-      const isEng=!!ENGINEERS.find(e=>e.id===p.id);
+      const isEng=roleOf(p.id)==='eng';
       return `<div class="card" style="margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;gap:10px">
         ${personPortrait(p,48)}
         <div style="flex:1">

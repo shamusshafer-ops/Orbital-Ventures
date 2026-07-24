@@ -6103,3 +6103,62 @@ calendar advance, wiring against real `resolveFlight`/`finalizeLaunch` for all t
 long-standing `test-flight3d-trajectory.js` drift remains; build parity and `git diff --check` show
 the same pre-existing trailing-blank-line lines as the `main` baseline (confirmed via stash diff),
 nothing newly introduced.
+
+## Session — BACKLOG #68: staff aging/retirement + procedural replacement pool (2026-07-24)
+
+Previously every named engineer/astronaut/scientist/executive/controller (~40 hand-authored
+characters across `STAFF_POOLS`) was immortal outside of firing, quitting on low morale, or a
+crewed-mission death — there was no age at all, so a 50+-year campaign could run entirely on the
+original Pioneer-era hires. This closes that gap and, per the owner's scoping call, extends the same
+replacement mechanism to crewed-mission deaths (which previously just shrank the named pool forever).
+
+**Age is derived, not stored per-tick.** A staff record stamps `birthYear` once at `hirePersonnel()`
+time (`state.year - startingHireAge(id)`); `staffAge(id)` reads it back against the live campaign
+year. `startingHireAge`/`retirementAge` are deterministic per person id (hash-based, salted
+differently so they don't correlate) — hired between 26–45, retires between 58–69 — so none of the
+~40 named characters needed new per-record fields, and procedural hires get identical treatment for
+free. A staff record loaded from a save that predates this feature self-heals on first read
+(`staffBirthYear` backfills it in place) — no `SAVE_VERSION` bump needed.
+
+**Procedural replacement pool.** `state.proceduralStaffDefs` (new, lazily-initialized, persisted)
+holds generated candidates shaped exactly like the hand-authored roster entries (id/name/skill/
+salary/era/bio/specialty), so every existing consumer (`personById`, `effSkill`, `traitOf`,
+`roleLabel`, department membership, `availablePool`) treats them identically to a named hire once
+`poolOf`/`roleOf`/`personById` were extended to also search this pool. `generateProceduralCandidate`
+matches the departing person's role (and, for engineers, specialty) and scales skill/salary to the
+current era's going rate — a late-campaign replacement isn't stuck at Pioneer-era competence. Names
+draw from new `FIRST_NAMES`/`LAST_NAMES` pools with a collision check against every name already in
+use (static + procedural).
+
+**Two triggers, one mechanism.** `tickRetirements()` (new, called from the monthly tick right after
+the existing low-morale attrition filter) retires anyone past their retirement age with a quiet
+`log('note', …)` line — no rep hit, no fanfare, per the owner's call — then calls the same
+`reconcileDeptLeads()` succession logic firing/quitting already use. `loseAssignedCrew` (crewed-loss
+death path) now also calls `spawnReplacementFor` alongside its existing memorial-wall write, so a
+fatal loss no longer permanently shrinks the astronaut corps pool — the emotional weight of the loss
+(rep hit, memorial, stand-down) is untouched; only the pool-exhaustion side effect is fixed.
+
+**Mechanical fixes along the way.** Six call sites (`engTeam`, a Command Center recommendation check,
+three portrait/card render sites) did direct `ENGINEERS.find`/`ASTRONAUTS.find` lookups instead of
+going through `roleOf`/`poolOf` — harmless while every hire was static, but would have silently
+excluded procedural hires from engineer-team bonuses and portrait styling. All six now route through
+`roleOf`, so a procedural engineer counts toward `engTeam()` bonuses exactly like a named one.
+
+**No SAVE_VERSION bump** — `proceduralStaffDefs` lazy-inits via `proceduralDefs()`, `birthYear`
+self-heals via `staffBirthYear()`; both read through `||`/null guards, so a pre-#68 save just starts
+every existing hire at their deterministic hire-age with an empty procedural pool.
+
+**Validation.** New `tests/test-personnel-retirement.js` (39/39): age-helper determinism and range,
+hire-time birthYear stamping + age progression with the campaign clock, legacy-record self-heal,
+retirement removes the staffer with a quiet neutral-tone log line and zero rep impact, staff below
+retirement age are untouched, retirement spawns a same-specialty engineer replacement that's
+immediately hirable and fully functional (effSkill/traitOf/hiring all work), a crewed death spawns an
+astro replacement without disturbing the existing memorial-wall behavior, department-lead succession
+fires on a retirement, legacy/fresh-save safety (missing field lazy-inits, `newGame` resets the pool),
+and multiple simultaneous retirements in one tick each get their own replacement. Full regression:
+only the long-standing `test-flight3d-trajectory.js` drift remains; build parity and `git diff --check`
+both clean (confirmed against the `main` baseline via stash diff).
+
+**Needs a real-browser check**: procedural-hire cards in the Personnel tab (portrait rendering, role
+label, hire flow), and that a long time-warp actually produces visible retirements/replacements over
+a multi-decade session.

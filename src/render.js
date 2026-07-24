@@ -763,7 +763,7 @@ function objectivesList(){
     groups.push({title:'Main objective', items:[{label:mm.name, done:false, sub, tab:'bench', missionId:mm.id}]});
   } else groups.push({title:'Main objective', items:[{label:'All objectives complete', done:true}]});
   const rec=[];
-  if(!(state.staff||[]).some(s=>ENGINEERS.find(e=>e.id===s.id))) rec.push({label:'Hire an engineer', done:false, tab:'personnel'});
+  if(!(state.staff||[]).some(s=>roleOf(s.id)==='eng')) rec.push({label:'Hire an engineer', done:false, tab:'personnel'});
   // contextual nudges for the specialist hire categories — only when the role would help and one is hirable
   const _hasRole=r=>(state.staff||[]).some(s=>roleOf(s.id)===r), _canHire=r=>availablePool().some(p=>roleOf(p.id)===r);
   if(!_hasRole('sci') && _canHire('sci') && (state.activeResearch||RESEARCH.some(r=>!state.research[r.id]&&reqsMet(r)))) rec.push({label:'Hire a scientist', done:false, tab:'personnel'});
@@ -5925,7 +5925,7 @@ function personPortrait(p, size){
   let seed=_phash(id)||1;
   const rnd=()=>{ seed=(seed*1103515245+12345)>>>0; return seed/4294967296; };
   const pick=a=>a[Math.floor(rnd()*a.length)];
-  const isAstro=!!ASTRONAUTS.find(a=>a.id===id);
+  const isAstro=roleOf(id)==='astro';
   const skin=pick(['#f4cda6','#e7b38a','#cf9d6f','#b07c4f','#8d5a34','#6e4426']);
   const hairc=pick(['#23211f','#4a3526','#6b4a2a','#a8842f','#9aa3ab','#caa55a','#2b2b2b','#7a4a2a']);
   const bgA=pick(['#16222b','#1a2331','#221a2b','#122019','#231d18']);
@@ -5961,8 +5961,8 @@ function personPortrait(p, size){
 }
 
 function renderPersonnelCard(p, sr){
-  const isEng = !!ENGINEERS.find(e=>e.id===p.id);
-  const isAstro = !!ASTRONAUTS.find(a=>a.id===p.id);
+  const isEng = roleOf(p.id)==='eng';
+  const isAstro = roleOf(p.id)==='astro';
   const morale = sr.morale|0;
   const mColor = moraleColor(morale);
   const canCommend = sr.commendCooldown===0;
@@ -6097,7 +6097,7 @@ function renderPersonnel(){
   if(available.length){
     html+=`<div style="margin:12px 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">Available to Hire</div>`;
     html+=available.map(p=>{
-      const isEng=!!ENGINEERS.find(e=>e.id===p.id);
+      const isEng=roleOf(p.id)==='eng';
       return `<div class="card" style="margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;gap:10px">
         ${personPortrait(p,48)}
         <div style="flex:1">

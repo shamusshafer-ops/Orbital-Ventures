@@ -1,5 +1,6 @@
 let state;
 function newGame(difficulty){
+  _procStaffSeq=0; // BACKLOG #68: fresh campaign starts with a clean procedural-hire id sequence
   const mode=DIFFICULTY[difficulty]?difficulty:'engineer';
   const customDifficulty=customDefaults();
   const startMoney=mode==='custom'?customDifficulty.startMoney:DIFFICULTY[mode].startMoney;
@@ -21,7 +22,7 @@ function newGame(difficulty){
     depot:0, depotUse:0,
     tab:'command', won:false, wonM2:false, wonM3a:false, wonM3aii:false, wonM3b:false, wonM3bii:false, over:false,
     log:[], rivalFired:{}, scooped:{}, rivalThreat:{}, rivalState:{},
-    staff:[], assignedAstronaut:null, persEventCooldown:5,
+    staff:[], assignedAstronaut:null, persEventCooldown:5, proceduralStaffDefs:[],
     departments:defaultDepartments(), // #19: org layer over hired staff (per-dept lead + training)
     econEvents:[], eventCooldown:6, pgmRoyalty:0,
     passiveContracts:[], contractCooldown:{}, contractSignings:{}, engineHeritage:{}, // passive-income contracts (repeatable + cooldown + diminishing)
@@ -889,6 +890,7 @@ function tickMonthlyBoundary(){
         return false;
       }
       return true;    });
+    tickRetirements(); // BACKLOG #68: age-based retirement, spawns a procedural replacement
     reconcileDeptLeads(); // #19 slice C: a lead who quit is succeeded by the best remaining member
 
     // #4 division: morale drift toward baseline (R&D progress itself is now a continuous daily flow)
@@ -4450,7 +4452,7 @@ function loseAssignedCrew(crewId, mission, story){
   if(!crewId) return;
   const p=personById(crewId);
   state.staff=(state.staff||[]).filter(s=>s.id!==crewId);
-  if(p){ log('bad',`Astronaut ${p.name} was lost with the vehicle.`); addMemorial(crewId, p.name, mission, story); } // E1.4: memorial wall
+  if(p){ log('bad',`Astronaut ${p.name} was lost with the vehicle.`); addMemorial(crewId, p.name, mission, story); spawnReplacementFor(crewId); } // E1.4: memorial wall; BACKLOG #68: keeps the corps pool from running dry
   if(state.assignedAstronaut===crewId) state.assignedAstronaut=null; // only clear the live slot if it's this crew (don't clobber a concurrent flight)
 }
 // E1.4: memorial wall — name snapshotted at death (independent of the static pool, matching how
@@ -5845,10 +5847,64 @@ function applyScience(){
 /* ---------- M6: personnel helpers ---------- */
 function personById(id){
   for(const P of STAFF_POOLS){ const p=P.list.find(x=>x.id===id); if(p) return p; }
-  return undefined;
+  return proceduralDefs().find(x=>x.id===id);
 }
 function staffRecord(id){ return state.staff.find(s=>s.id===id); }
 function isHired(id){ return !!staffRecord(id); }
+
+/* ---------- BACKLOG #68: staff aging/retirement + procedural replacement pool ----------
+   Age is derived, not stored per-tick: a staff record stamps birthYear once at hire (self-heals on
+   an older save that predates this field — see staffBirthYear). Age/retirement thresholds are
+   deterministic per person id (hash-based, no per-record fields needed on the ~40 hand-authored
+   named characters). A retirement OR a death (loseAssignedCrew) spawns one procedural candidate of
+   the same role/specialty into state.proceduralStaffDefs so the small named rosters never run
+   permanently dry across a long campaign; the departure itself is a quiet log line only. */
+function staffBirthYear(sr){ if(sr.birthYear==null) sr.birthYear=state.year-startingHireAge(sr.id); return sr.birthYear; }
+function staffAge(id){ const sr=staffRecord(id); if(!sr) return null; return state.year-staffBirthYear(sr); }
+let _procStaffSeq=0;
+function _usedStaffNames(){ return new Set(STAFF_POOLS.flatMap(P=>P.list).concat(proceduralDefs()).map(p=>p.name)); }
+function generateProceduralCandidate(role, specialty){
+  const meta=roleMeta(role); if(!meta) return null;
+  const ei=eraIndex(currentEra());
+  const used=_usedStaffNames();
+  let name, tries=0;
+  do{
+    const seed=_procStaffSeq+(tries++);
+    name=`${FIRST_NAMES[(seed*7+3)%FIRST_NAMES.length]} ${LAST_NAMES[(seed*13+5)%LAST_NAMES.length]}`;
+  } while(used.has(name) && tries<40);
+  const id=`p_${role}_${++_procStaffSeq}`;
+  // Skill/salary track the era's going rate (later hires are trained on more capable tooling),
+  // with modest per-hire variance — same shape as the hand-authored roster's skill/salary pairing.
+  const variance=(_hashStr(id)%21-10)/100; // ±0.10
+  const skill=clampA(0.58+ei*0.045+variance, 0.5, 0.97);
+  const salary=clampA(0.44*skill-0.24, 0.04, 0.22);
+  const specText=specialty?`${specialty[0].toUpperCase()+specialty.slice(1)} specialist. `:'';
+  const def={id, role, name, skill:round2(skill), salary:round2(salary), era:Math.min(ei,7),
+    specialty:specialty||undefined, bio:`${specText}New to the program, trained in the current generation of hardware and ready to carry the work forward.`};
+  proceduralDefs().push(def);
+  return def;
+}
+// Retirement/replacement for a staffer who is departing (retiring or dying). Generates a same-role
+// (and, for engineers, same-specialty) procedural candidate into the hire pool.
+function spawnReplacementFor(id){
+  const role=roleOf(id); if(!role) return;
+  const p=personById(id);
+  generateProceduralCandidate(role, p&&p.specialty);
+}
+// Called from the monthly tick: retires anyone past their (deterministic) retirement age.
+function tickRetirements(){
+  const retiring=(state.staff||[]).filter(s=>staffAge(s.id)>=retirementAge(s.id));
+  if(!retiring.length) return;
+  retiring.forEach(s=>{
+    const p=personById(s.id);
+    log('note',`${p?p.name:'A staff member'} retired after a long career.`);
+    if(state.assignedAstronaut===s.id) state.assignedAstronaut=null;
+    spawnReplacementFor(s.id);
+  });
+  const ids=new Set(retiring.map(s=>s.id));
+  state.staff=state.staff.filter(s=>!ids.has(s.id));
+  reconcileDeptLeads(); // #19 slice C: succession, same as any other departure
+}
 
 /* #19 slice B: career progression. A hired person's EFFECTIVE skill rises above their fixed
    hire-day base as they accrue experience (capped). xp is 0 until slice B starts accruing it,
@@ -5904,7 +5960,8 @@ function accrueStaffXp(){
 // Available to hire: not already hired, era unlocked
 function availablePool(){
   const ei=eraIndex(currentEra());
-  return STAFF_POOLS.flatMap(P=>P.list).filter(p=>{
+  const all=STAFF_POOLS.flatMap(P=>P.list).concat(proceduralDefs());
+  return all.filter(p=>{
     if(isHired(p.id)) return false;
     if(p.era>ei) return false;
     return true;
@@ -5912,7 +5969,7 @@ function availablePool(){
 }
 
 // Engineer team aggregate — skill weighted by morale (low morale = skill degraded)
-function engTeam(){ return (state.staff||[]).filter(s=>ENGINEERS.find(e=>e.id===s.id)); }
+function engTeam(){ return (state.staff||[]).filter(s=>roleOf(s.id)==='eng'); }
 
 /* ---------- #19 departments: derived membership + promotable leads ---------- */
 function deptState(id){ const d=(state.departments&&state.departments[id])||{}; return {lead:d.lead!=null?d.lead:null, training:d.training||0}; }
@@ -6109,7 +6166,7 @@ function astroBonus(){
 
 function hirePersonnel(id){
   if(isHired(id)) return;
-  state.staff.push({id, morale:70, lowMoraleMonths:0, commendCooldown:0, xp:0});
+  state.staff.push({id, morale:70, lowMoraleMonths:0, commendCooldown:0, xp:0, birthYear:state.year-startingHireAge(id)});
   const p=personById(id);
   log('note',`Hired ${p.name} (${p.salary.toFixed(2)}M/mo salary).`);
   render();
