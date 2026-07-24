@@ -956,6 +956,9 @@ const BAY_CAP_BASE = 3, BAY_CAP_PER = 2;        // assembly capacity = base + pe
 const BAY_SPEED_CAP = 2;                         // most build-months a roomy plant can shave
 const FOUNDRY_PER = 0.05, FOUNDRY_FLOOR = 0.78;  // build-cost multiplier (≤22% off at L5)
 const PAD_PER = 0.12, PAD_FLOOR = 0.60;          // launch-cost multiplier (≤40% off at L5)
+// BACKLOG #39: a catastrophic pad-phase loss damages one pad, taking it offline for a repair
+// window. Higher Pads level = better infrastructure/crews = faster repair (floored at 1 month).
+const PAD_REPAIR_BASE_MONTHS = 3, PAD_REPAIR_PER_LEVEL = 0.4;
 const QA_REL_PER = 0.012, QA_REL_CAP = 0.05;     // #7 slice 2: QA reliability bonus per level / cap (≤+4.8% at L5)
 const QA_FRAG_PER = 0.05, QA_FRAG_CAP = 0.20;    // #7 slice 3 (QA→#16): mfg-subsystem fragility weight cut per level / cap (≤−20% at L5)
 const QA_MFG_SUBSYS = new Set(['propulsion','structures','separation','boosters']); // subsystems QA can actually fix (welds, tolerances, pyros, integration) — avionics/life-support/deep-propulsion are software/environment-driven
@@ -4738,7 +4741,25 @@ function padLaunchMult(){ return Math.max(PAD_FLOOR, 1 - PAD_PER*(prodLevel('pad
 // tempo (5/mo at L5) a one-pad startup (1/mo, today's exact behavior) can't match. This is
 // throughput growth, not a stat buff: Δv/reliability are untouched. Build throughput already
 // scales the same way via buildSlots()==Assembly Bays (parallel in-progress orders).
-function launchPadCap(){ return prodLevel('pads'); }                 // flights you can fly in one calendar month
+// BACKLOG #39: per-pad damage tracking. state.padDamage maps pad index (1..prodLevel('pads')) to
+// the absMonth() its repair completes. A pad counts as healthy once absMonth() reaches that month.
+function padDamageMap(){ return (state.padDamage && typeof state.padDamage==='object') ? state.padDamage : (state.padDamage={}); }
+function padRepairMonths(level){ return Math.max(1, Math.round(PAD_REPAIR_BASE_MONTHS - PAD_REPAIR_PER_LEVEL*(level-1))); }
+function isPadDamaged(idx){ const until=padDamageMap()[idx]; return until!=null && absMonth()<until; }
+function damagedPadCount(){ const total=prodLevel('pads'); let n=0; for(let i=1;i<=total;i++){ if(isPadDamaged(i)) n++; } return n; }
+// A catastrophic pad-phase loss (full vehicle loss, no escape-tower save) damages one currently-
+// healthy pad. Picks the lowest-index healthy pad for determinism; if every pad is already down
+// (edge case on a 1-pad startup), extends that pad's repair instead of silently doing nothing.
+function damageAPad(){
+  const total=prodLevel('pads'), map=padDamageMap(), months=padRepairMonths(total===0?1:total);
+  let target=null;
+  for(let i=1;i<=total;i++){ if(!isPadDamaged(i)){ target=i; break; } }
+  if(target==null) target=1; // all pads already down — extend the first rather than no-op
+  const base=Math.max(absMonth(), map[target]||0);
+  map[target]=base+months;
+  return {pad:target, until:map[target]};
+}
+function launchPadCap(){ return Math.max(1, prodLevel('pads')-damagedPadCount()); }  // flights you can fly in one calendar month
 function curMonthPadUsed(){ return state.padMonthAbs===absMonth() ? (state.padMonthUsed||0) : 0; } // slots reset each new month
 function padSlotsLeft(){ return Math.max(0, launchPadCap()-curMonthPadUsed()); }
 // a prebuilt, rapid flight can share the month iff a pad already flew this month and a slot is free
@@ -5921,18 +5942,31 @@ function runToNextEvent(){
   render();
 }
 
-let timeAuto={unit:null,timer:null}, timePrimed=null;
+let timeAuto={unit:null,timer:null};
 function stopTimeAuto(){ if(timeAuto.timer) clearInterval(timeAuto.timer); timeAuto={unit:null,timer:null}; updateTimeArrows(); }
 function startTimeAuto(unit){ stopTimeAuto(); timeAuto.unit=unit;
   timeAuto.timer=setInterval(()=>{ if(state.over){ stopTimeAuto(); return; } stepTime(TIME_UNIT_DAYS[unit]); }, 1000);
   updateTimeArrows(); }
+// Keyboard path: single step only (F1/F2/F3). No auto-run from keyboard — hold the mouse button for that.
 function clickTimeArrow(unit){
   if(!TIME_UNIT_DAYS[unit]||state.over) return;
-  if(timeAuto.unit===unit){ stopTimeAuto(); timePrimed=null; return; }   // running this unit → stop
-  if(timeAuto.unit) stopTimeAuto();                                      // running another unit → drop to single-step
-  if(timePrimed===unit){ timePrimed=null; startTimeAuto(unit); return; } // 2nd consecutive press → auto-run 1/sec
-  stepTime(TIME_UNIT_DAYS[unit]); timePrimed=unit;                       // 1st press → step once + prime
+  if(timeAuto.unit) stopTimeAuto(); // cancel any running auto-advance first
+  stepTime(TIME_UNIT_DAYS[unit]);
 }
+// Mouse path: press → immediate single step + start hold timer; release → stop.
+// The release listener is registered on document so it fires even if the pointer
+// drifts off the button, preventing runaway auto-advance after a quick tap.
+const HOLD_DELAY_MS=450;
+let _holdTimer=null;
+function holdTimeArrow(unit){
+  if(!TIME_UNIT_DAYS[unit]||state.over) return;
+  stopTimeAuto(); stepTime(TIME_UNIT_DAYS[unit]);
+  _holdTimer=setTimeout(()=>{ _holdTimer=null; startTimeAuto(unit); }, HOLD_DELAY_MS);
+  function onRelease(){ document.removeEventListener('pointerup',onRelease); document.removeEventListener('pointercancel',onRelease); releaseTimeArrow(); }
+  document.addEventListener('pointerup',onRelease);
+  document.addEventListener('pointercancel',onRelease);
+}
+function releaseTimeArrow(){ if(_holdTimer){ clearTimeout(_holdTimer); _holdTimer=null; } stopTimeAuto(); }
 function updateTimeArrows(){ for(const u in TIME_UNIT_DAYS){ const b=$('tArrow'+u[0].toUpperCase()+u.slice(1)); if(b) b.classList.toggle('running', timeAuto.unit===u); } }
 // E0.5-A: pause game-time auto-advance while the tab is hidden. timeAuto's 1s setInterval (each
 // tick runs a full render() into the hidden DOM) is the ONLY thing that keeps burning CPU in a
@@ -7452,13 +7486,21 @@ function rollMissionEvents(ctx, rng){
 }
 function showAnomalyModal(ev, ctx){
   const opts=ev.options(ctx);
-  if(_pendingOps){ _pendingOps.ev=ev; _pendingOps.opts=opts; }
-  const btns=opts.map((o,i)=>`<button class="btn${i?' ghost':''}"${i?' style="margin-top:8px"':''} onclick="resolveAnomaly(${i})">${o.label}</button>`).join('');
-  showModal(`<h2 style="color:var(--warn)">⚠ In-flight anomaly</h2>
-    <p><b>${ctx.m.name}</b> — ${ev.title}.</p>
-    <p class="muted">${ev.detail}</p>
-    <p>Mission Control needs a call.</p>
-    ${btns}`);
+  if(_pendingOps){ _pendingOps.ev=ev; _pendingOps.opts=opts; } // resolveAnomaly reads _pendingOps.opts
+  // E1.2 slice C: anomaly now plays in the flight overlay (like live-call/reserve/rescue) rather
+  // than a page-level showModal. Hold at orbit-start for orbital missions, cislunar-start for
+  // deep/profile missions — same hold point as reserve and rescue, since anomalies fire in that
+  // same late-mission operational zone. resolveAnomaly() is unchanged; its hideModal() is a no-op
+  // when no page modal is up.
+  const holdAt=ctx.m.profile?'cislunar-start':'orbit-start';
+  openFlightForDecision(ctx, { holdAt, buildPanel:()=>{
+    const det=ev.detail, maxCh=62; // ~62 chars ≈ 420 px panel at 11 px monospace
+    const cut=det.length>maxCh?Math.max(10,det.lastIndexOf(' ',maxCh)):det.length;
+    const detLines=det.length>maxCh?[det.slice(0,cut).trim(),det.slice(cut).trim()]:[det];
+    return { title:'\u26a0 IN-FLIGHT ANOMALY', color:themeColor('warn'),
+      lines:[ctx.m.name+' \u2014 '+ev.title+'.', ...detLines, 'Mission Control needs a call.'],
+      buttons:opts.map((o,i)=>({label:o.label, ghost:i>0, action:()=>resolveAnomaly(i)})) };
+  }});
 }
 function resolveAnomaly(i){
   if(!_pendingOps||!_pendingOps.opts) return;
@@ -8278,8 +8320,12 @@ function finalizeLaunch(ctx, ops){
     const rep=Math.min(state.rep,10); state.rep-=rep;
     addSupport(supportDelta('abort')); // relief tempered by a lost mission
     log('ok',`${m.name}: CREW RESCUED — ${outcome.story} The mission and vehicle are lost, but the crew is home. −${rep} rep.`);
-  }else{ // loss of vehicle on ascent
+  }else{ // loss of vehicle on ascent — full loss, no escape-tower save: catastrophic
     personnelMissionEvent(false);
+    if(failPhase==='ascent'){ // BACKLOG #39: catastrophic ascent loss damages a pad
+      const dmg=damageAPad(), monthsLeft=Math.max(1, dmg.until-absMonth());
+      log('bad',`🔥 The failure damaged Pad ${dmg.pad} — offline for repairs, ${monthsLeft} month${monthsLeft===1?'':'s'}.`);
+    }
     if(crewed){
       const rep=Math.min(state.rep,40); state.rep-=rep;
       addSupport(supportDelta('lossCrewed')); // #8: losing a crew is the worst political blow
@@ -9291,6 +9337,7 @@ function hideModal(){activeModal=null;_prodModalOpen=false;$('modal').classList.
   try{ const el=resolveReturnFocus(_modalReturnFocus,_modalReturnFocusId,id=>document.getElementById(id),document.body); if(el && typeof el.focus==='function') el.focus(); }catch(e){}
   _modalReturnFocus=null; _modalReturnFocusId=null;
 } // slice 6: closing clears the live-modal thunk; slice B: also returns focus to the modal's trigger
+
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
 const SAVE_VERSION=58; // v58: E4.4 persistent launch-vehicle hull registry. Additive serial-numbered hulls and flight history; existing hangar entries are backfilled, never historical flights invented. v57: E4.1 — real Keplerian ephemeris. state.windows is a regenerable cache; migrateEphemerisWindows() clears it on pre-v57 load so launch windows regenerate from real Earth→target phase geometry (with eccentricity-driven quality) instead of the old fixed-cadence + random-quality synthesis. committedWindow (a concrete absDay + quality the player already picked) is preserved as-is. No new persisted fields; purely a cache invalidation + physics swap, so no balance migration beyond the (intended) shift in window dates/qualities on next regeneration. v56: #89 slice 1 — tracking-station network backend. state.trackingStations
@@ -12383,15 +12430,19 @@ function drawScene(t){
       // E1.2 slice C: the reserve call (a drifting deep-phase subsystem) and rescue (a stranded
       // crew) both only ever apply to cislunar/deep missions — this is their natural "far from
       // home" moment, right on entering the cruise, rather than the pad→ascent handoff.
-      if(A.pendingDecision && A.pendingDecision.holdAt==='cislunar-start'){ A.phase='cislunar'; A.held=true; drawCislunar(0); drawDecisionPanel(A.pendingDecision.buildPanel()); if(ho) finishHandoff(); A.lastT=t; return; }
+      // Slice D: finishHandoff must run BEFORE drawDecisionPanel — at t=t0 (hold fires on the
+      // first frame the ascent ends) u≈0 so the snapshot is fully opaque; drawing the panel
+      // first then calling finishHandoff would paint the old frame over it, hiding the box.
+      if(A.pendingDecision && A.pendingDecision.holdAt==='cislunar-start'){ A.phase='cislunar'; A.held=true; drawCislunar(0); if(ho) finishHandoff(); const _cp=A.pendingDecision.buildPanel(); if(!showFlight3DDecision(_cp)) drawDecisionPanel(_cp); A.lastT=t; return; }
       A.phase='cislunar'; drawCislunar(ct);
     }
     else if(s.isOrbital){
       if(A.pendingDecision && A.pendingDecision.holdAt==='orbit-start'){
         A.phase='orbit'; A.held=true; drawOrbit(0);
         A.presentation3d=flight3dPresentationSnapshot(s,A,(A.padDur||0)+A.ascentDur); updateFlight3DSession(A.presentation3d);
+        if(ho) finishHandoff(); // Slice D: run crossfade BEFORE panel so the snapshot doesn't cover the decision box
         const panel=A.pendingDecision.buildPanel(); if(!showFlight3DDecision(panel)) drawDecisionPanel(panel);
-        if(ho) finishHandoff(); A.lastT=t; return;
+        A.lastT=t; return;
       }
       A.phase='orbit'; drawOrbit(ct);
     }
@@ -14159,6 +14210,7 @@ let _tlFilter='all';
 let _tlCollapsed=false;
 try{ const f=localStorage.getItem('ov_tlFilter'); if(f==='all' || TL_CAT_ICON[f]!==undefined) _tlFilter=f; }catch(e){}
 try{ _tlCollapsed=localStorage.getItem('ov_tlCollapsed')==='1'; }catch(e){}
+
 function setTlFilter(id){ _tlFilter=id; try{ localStorage.setItem('ov_tlFilter', id); }catch(e){} renderLog(); }
 function toggleTlCollapse(){ _tlCollapsed=!_tlCollapsed; try{ localStorage.setItem('ov_tlCollapsed', _tlCollapsed?'1':'0'); }catch(e){} renderLog(); }
 // Slice 3: objective sparkle tracking
@@ -15164,7 +15216,7 @@ function siteBuildings(){
     {key:'mfg', icon:'🏭', name:'Manufacturing', tab:'infra', act:"showInfrastructureModal()",
      status:`Bays L${prodLevel('bays')} · capacity ${bayCapacity()}`, planned:false},
     {key:'prod', icon:'⚙', name:'Production', tab:'infra', act:"showInfrastructureModal()",
-     status:`Foundry L${prodLevel('foundry')} · Pads L${prodLevel('pads')} (${launchPadCap()}/mo${curMonthPadUsed()>0?`, ${padSlotsLeft()} free`:''})`, planned:false},
+     status:`Foundry L${prodLevel('foundry')} · Pads L${prodLevel('pads')} (${launchPadCap()}/mo${curMonthPadUsed()>0?`, ${padSlotsLeft()} free`:''}${damagedPadCount()>0?`, ⚠${damagedPadCount()} repairing`:''})`, planned:false},
     {key:'rnd', icon:'⚗', name:'R&D Lab', tab:'rnd',
      status: ar?`${(RESEARCH.find(r=>r.id===ar.id)||{}).name||ar.id} · ${fmtTimeLeft(ar.monthsLeft)}`:'idle', planned:false},
     {key:'personnel', icon:'👥', name:'Personnel', tab:'personnel', act:"showPersonnelModal()",
@@ -19124,6 +19176,7 @@ function renderBenchLaunch(){
   host.innerHTML=`<button class="launch" style="width:100%" onclick="launch()" ${chk.ok?'':'disabled'}>${chk.ok?launchButtonLabel(m,v):'Launch unavailable'}</button>
     ${chk.ok?'<div class="dim" style="font-size:12px;text-align:center;margin-top:4px">or press <b>Space</b></div>':`<div class="flag dim" style="color:var(--dim);margin-top:4px">${chk.why}</div>`}
     ${launchPadCap()>1?`<div class="dim" style="font-size:11px;text-align:center;margin-top:2px">Pads: ${padSlotsLeft()}/${launchPadCap()} free this month</div>`:''}
+    ${damagedPadCount()>0?`<div class="dim" style="font-size:11px;text-align:center;margin-top:2px;color:var(--warn)" title="A catastrophic ascent loss damages the pad it flew from">⚠ ${damagedPadCount()} pad${damagedPadCount()===1?'':'s'} under repair</div>`:''}
     <div style="display:flex;gap:6px;margin-top:8px;align-items:center">
       <button class="btn" style="flex:1;font-size:12px" onclick="staticFire()" ${sf.ok?'':'disabled'} title="Bolt the first stage to the stand and light it. Clean burn = heritage credit (${fired}/${STATIC_HERITAGE_CAP} ground). Anomaly = fixed, next launch +${Math.round(STATIC_FIX_BONUS*100)}% rel.">🔥 Static fire ${sf.ok?fM(STATIC_FIRE_COST):('· '+sf.why)}</button>
       <button class="btn ghost" style="font-size:12px;padding:6px 9px" onclick="toggleSfx()" title="${state.sfxMute?'Unmute':'Mute'} workshop sounds">${state.sfxMute?'🔇':'🔊'}</button>

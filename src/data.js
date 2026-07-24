@@ -956,6 +956,9 @@ const BAY_CAP_BASE = 3, BAY_CAP_PER = 2;        // assembly capacity = base + pe
 const BAY_SPEED_CAP = 2;                         // most build-months a roomy plant can shave
 const FOUNDRY_PER = 0.05, FOUNDRY_FLOOR = 0.78;  // build-cost multiplier (≤22% off at L5)
 const PAD_PER = 0.12, PAD_FLOOR = 0.60;          // launch-cost multiplier (≤40% off at L5)
+// BACKLOG #39: a catastrophic pad-phase loss damages one pad, taking it offline for a repair
+// window. Higher Pads level = better infrastructure/crews = faster repair (floored at 1 month).
+const PAD_REPAIR_BASE_MONTHS = 3, PAD_REPAIR_PER_LEVEL = 0.4;
 const QA_REL_PER = 0.012, QA_REL_CAP = 0.05;     // #7 slice 2: QA reliability bonus per level / cap (≤+4.8% at L5)
 const QA_FRAG_PER = 0.05, QA_FRAG_CAP = 0.20;    // #7 slice 3 (QA→#16): mfg-subsystem fragility weight cut per level / cap (≤−20% at L5)
 const QA_MFG_SUBSYS = new Set(['propulsion','structures','separation','boosters']); // subsystems QA can actually fix (welds, tolerances, pyros, integration) — avionics/life-support/deep-propulsion are software/environment-driven

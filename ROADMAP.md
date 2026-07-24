@@ -6060,3 +6060,46 @@ concern not testable headlessly.
 - B: cruise-begins outro (`drawDepartCard`, `spec.mode:'depart'`) — July 9
 - C: in-overlay decision panels (all 6 modals) — July 11 (infra) + July 23 (anomaly)
 - D: crossfade layering fix — July 23
+
+## Session — BACKLOG #39: pad aborts damage the pad (2026-07-24)
+
+Only a *catastrophic* pad-phase loss now has a structural consequence. Previously the pad-turnaround
+system (`launchPadCap()`/`padSlotsLeft()`, #29) limited monthly cadence but a failed launch had zero
+effect on future pad availability — the fleet was always back to full cadence next month regardless
+of how the flight was lost.
+
+**Trigger.** `finalizeLaunch`'s final `else` branch is exactly and only `outcome.kind==='loss'` —
+a full vehicle loss with no escape-tower save (crewed `abort` outcomes and uncrewed `partial`/`scrub`
+are handled in earlier branches and never reach here). Gated further on `failPhase==='ascent'`
+(deep-space losses don't touch the pad). This reuses the existing outcome taxonomy with no new
+failure category — "catastrophic" == the branch that already reads "CATASTROPHE"/"FAILURE" in the
+log line.
+
+**Per-pad tracking, not a global flag.** New `state.padDamage` maps pad index (1..`prodLevel('pads')`)
+to the absMonth its repair completes. `damageAPad()` picks the lowest-index *currently healthy* pad
+(deterministic, not random) and marks it; `launchPadCap()` now returns `prodLevel('pads') -
+damagedPadCount()`, floored at 1 so a bad flight never fully locks out launching, even on a one-pad
+startup. A juggernaut with 5 pads only loses 1/5 cadence from a single loss — multi-pad investment now
+pays off as damage resilience, not just raw throughput.
+
+**Repair time scales with Pads level** (`padRepairMonths`): base 3 months at L1, `−0.4mo`/level,
+floored at 1 month — better infrastructure and crews fix a damaged pad faster. If every pad somehow
+happens to already be down (edge case, not reachable at L1 without two losses in the same repair
+window), a further catastrophic loss extends the first pad's repair instead of silently no-op'ing.
+
+**No SAVE_VERSION bump** — `state.padDamage` is read through a lazy-init `padDamageMap()` (creates
+`{}` if missing), so a legacy save with no field at all just starts with every pad healthy.
+
+**UI.** Bench shows `⚠ N pads under repair` under the launch button when any pad is down; the topbar
+production status line gets a `, ⚠N repairing` suffix. The failure log line itself announces which
+pad was hit and how many months of downtime (`🔥 The failure damaged Pad N — offline for repairs,
+M months.`).
+
+**Validation.** New `tests/test-pad-abort.js` (32/32): repair-time level scaling + floor, pad
+selection (lowest healthy index, never the same pad twice on consecutive hits), cap math (floor at 1
+even with every pad down, single-pad-startup never locks out), repair-window expiry via direct
+calendar advance, wiring against real `resolveFlight`/`finalizeLaunch` for all three outcome kinds
+(`loss` damages, `success` and `partial` do not), and legacy-save lazy-init. Full regression: only the
+long-standing `test-flight3d-trajectory.js` drift remains; build parity and `git diff --check` show
+the same pre-existing trailing-blank-line lines as the `main` baseline (confirmed via stash diff),
+nothing newly introduced.

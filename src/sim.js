@@ -1881,7 +1881,25 @@ function padLaunchMult(){ return Math.max(PAD_FLOOR, 1 - PAD_PER*(prodLevel('pad
 // tempo (5/mo at L5) a one-pad startup (1/mo, today's exact behavior) can't match. This is
 // throughput growth, not a stat buff: Δv/reliability are untouched. Build throughput already
 // scales the same way via buildSlots()==Assembly Bays (parallel in-progress orders).
-function launchPadCap(){ return prodLevel('pads'); }                 // flights you can fly in one calendar month
+// BACKLOG #39: per-pad damage tracking. state.padDamage maps pad index (1..prodLevel('pads')) to
+// the absMonth() its repair completes. A pad counts as healthy once absMonth() reaches that month.
+function padDamageMap(){ return (state.padDamage && typeof state.padDamage==='object') ? state.padDamage : (state.padDamage={}); }
+function padRepairMonths(level){ return Math.max(1, Math.round(PAD_REPAIR_BASE_MONTHS - PAD_REPAIR_PER_LEVEL*(level-1))); }
+function isPadDamaged(idx){ const until=padDamageMap()[idx]; return until!=null && absMonth()<until; }
+function damagedPadCount(){ const total=prodLevel('pads'); let n=0; for(let i=1;i<=total;i++){ if(isPadDamaged(i)) n++; } return n; }
+// A catastrophic pad-phase loss (full vehicle loss, no escape-tower save) damages one currently-
+// healthy pad. Picks the lowest-index healthy pad for determinism; if every pad is already down
+// (edge case on a 1-pad startup), extends that pad's repair instead of silently doing nothing.
+function damageAPad(){
+  const total=prodLevel('pads'), map=padDamageMap(), months=padRepairMonths(total===0?1:total);
+  let target=null;
+  for(let i=1;i<=total;i++){ if(!isPadDamaged(i)){ target=i; break; } }
+  if(target==null) target=1; // all pads already down — extend the first rather than no-op
+  const base=Math.max(absMonth(), map[target]||0);
+  map[target]=base+months;
+  return {pad:target, until:map[target]};
+}
+function launchPadCap(){ return Math.max(1, prodLevel('pads')-damagedPadCount()); }  // flights you can fly in one calendar month
 function curMonthPadUsed(){ return state.padMonthAbs===absMonth() ? (state.padMonthUsed||0) : 0; } // slots reset each new month
 function padSlotsLeft(){ return Math.max(0, launchPadCap()-curMonthPadUsed()); }
 // a prebuilt, rapid flight can share the month iff a pad already flew this month and a slot is free
@@ -5442,8 +5460,12 @@ function finalizeLaunch(ctx, ops){
     const rep=Math.min(state.rep,10); state.rep-=rep;
     addSupport(supportDelta('abort')); // relief tempered by a lost mission
     log('ok',`${m.name}: CREW RESCUED — ${outcome.story} The mission and vehicle are lost, but the crew is home. −${rep} rep.`);
-  }else{ // loss of vehicle on ascent
+  }else{ // loss of vehicle on ascent — full loss, no escape-tower save: catastrophic
     personnelMissionEvent(false);
+    if(failPhase==='ascent'){ // BACKLOG #39: catastrophic ascent loss damages a pad
+      const dmg=damageAPad(), monthsLeft=Math.max(1, dmg.until-absMonth());
+      log('bad',`🔥 The failure damaged Pad ${dmg.pad} — offline for repairs, ${monthsLeft} month${monthsLeft===1?'':'s'}.`);
+    }
     if(crewed){
       const rep=Math.min(state.rep,40); state.rep-=rep;
       addSupport(supportDelta('lossCrewed')); // #8: losing a crew is the worst political blow

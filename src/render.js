@@ -1003,7 +1003,7 @@ function siteBuildings(){
     {key:'mfg', icon:'🏭', name:'Manufacturing', tab:'infra', act:"showInfrastructureModal()",
      status:`Bays L${prodLevel('bays')} · capacity ${bayCapacity()}`, planned:false},
     {key:'prod', icon:'⚙', name:'Production', tab:'infra', act:"showInfrastructureModal()",
-     status:`Foundry L${prodLevel('foundry')} · Pads L${prodLevel('pads')} (${launchPadCap()}/mo${curMonthPadUsed()>0?`, ${padSlotsLeft()} free`:''})`, planned:false},
+     status:`Foundry L${prodLevel('foundry')} · Pads L${prodLevel('pads')} (${launchPadCap()}/mo${curMonthPadUsed()>0?`, ${padSlotsLeft()} free`:''}${damagedPadCount()>0?`, ⚠${damagedPadCount()} repairing`:''})`, planned:false},
     {key:'rnd', icon:'⚗', name:'R&D Lab', tab:'rnd',
      status: ar?`${(RESEARCH.find(r=>r.id===ar.id)||{}).name||ar.id} · ${fmtTimeLeft(ar.monthsLeft)}`:'idle', planned:false},
     {key:'personnel', icon:'👥', name:'Personnel', tab:'personnel', act:"showPersonnelModal()",
@@ -4963,6 +4963,7 @@ function renderBenchLaunch(){
   host.innerHTML=`<button class="launch" style="width:100%" onclick="launch()" ${chk.ok?'':'disabled'}>${chk.ok?launchButtonLabel(m,v):'Launch unavailable'}</button>
     ${chk.ok?'<div class="dim" style="font-size:12px;text-align:center;margin-top:4px">or press <b>Space</b></div>':`<div class="flag dim" style="color:var(--dim);margin-top:4px">${chk.why}</div>`}
     ${launchPadCap()>1?`<div class="dim" style="font-size:11px;text-align:center;margin-top:2px">Pads: ${padSlotsLeft()}/${launchPadCap()} free this month</div>`:''}
+    ${damagedPadCount()>0?`<div class="dim" style="font-size:11px;text-align:center;margin-top:2px;color:var(--warn)" title="A catastrophic ascent loss damages the pad it flew from">⚠ ${damagedPadCount()} pad${damagedPadCount()===1?'':'s'} under repair</div>`:''}
     <div style="display:flex;gap:6px;margin-top:8px;align-items:center">
       <button class="btn" style="flex:1;font-size:12px" onclick="staticFire()" ${sf.ok?'':'disabled'} title="Bolt the first stage to the stand and light it. Clean burn = heritage credit (${fired}/${STATIC_HERITAGE_CAP} ground). Anomaly = fixed, next launch +${Math.round(STATIC_FIX_BONUS*100)}% rel.">🔥 Static fire ${sf.ok?fM(STATIC_FIRE_COST):('· '+sf.why)}</button>
       <button class="btn ghost" style="font-size:12px;padding:6px 9px" onclick="toggleSfx()" title="${state.sfxMute?'Unmute':'Mute'} workshop sounds">${state.sfxMute?'🔇':'🔊'}</button>
