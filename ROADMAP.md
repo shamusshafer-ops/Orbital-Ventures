@@ -6162,3 +6162,59 @@ both clean (confirmed against the `main` baseline via stash diff).
 **Needs a real-browser check**: procedural-hire cards in the Personnel tab (portrait rendering, role
 label, hire flow), and that a long time-warp actually produces visible retirements/replacements over
 a multi-decade session.
+
+## Session — Money & Budget balance pass: Option A (early tension) + Option B (passive-income pacing) (2026-07-24)
+
+Prompted by an owner-requested design review ("are costs, funding, and contracts fair and realistic
+but also fun — one more turn aspect?"). The audit (empirical sim traces, not just reading numbers)
+found the systems realistic but under-tense: a first-flight attempt cost 0.58M against a 5M
+Engineer-mode bankroll (8 cash-only attempts before broke, 1.5 expected tries to first success — no
+real risk of running out), and every passive-income contract paid back its setup in under 3 months
+then ran 30-36 months of pure profit with no cap on how many could run simultaneously — money stopped
+being a real constraint by mid-game. Full writeup with before/after numbers is in this session's chat
+transcript; only the shipped changes are logged here.
+
+**Option A — Engineer-difficulty starting capital: 5.0M → 3.5M** (`DIFFICULTY.engineer.startMoney`
+in `src/data.js`). Napkin (8.0M) and Custom (5.0M default, user-tunable) left untouched — this only
+sharpens the "Realistic" mode's opening, which is where the pinch should live. New numbers: 6
+cash-only attempts before broke (was 8), same 1.5 expected tries to first success, first-success net
+still comfortably positive — tighter without being unfair or risking an unwinnable opening.
+
+**Option B — passive-contract setup costs quadrupled** (all 18 entries in `PASSIVE_CONTRACT_DEFS`,
+`src/data.js`). Payback stretched from ~2-2.7 months to ~7-11 months uniformly (income and term
+untouched, so lifetime value per contract is still strongly positive — entry is now a real "saving
+toward" decision instead of a near-instant no-brainer). Example: Satellite Servicing Fleet
+5.0M→20.0M setup (payback 1.9mo→7.7mo); Lunar Flyby Tourism 12.0M→48.0M (2.7mo→10.7mo).
+
+**Option B — new portfolio cap on concurrent active contracts** (`passiveMaxActive()`, new,
+`src/data.js`): `3 + eraIndex(currentEra())` — 3 at Pioneer era, 6 by Station & Shuttle era (where 9+
+rep-gated contracts are simultaneously unlockable without any research/doctrine prerequisite, so the
+cap is a real constraint there), 10 by Speculative era. Enforced via a new `'capped'` status in
+`passiveStatus()` (sim.js) — distinct from `'unaffordable'`/`'locked'`/`'cooldown'` — that blocks
+`signPassiveContract()` and is surfaced in the Passive Income panel
+(`renderPassiveContracts`, render.js) as a "portfolio full" pill/button with an X/Y active count in
+the panel header. Freeing a slot (a contract's term expiring) immediately re-opens signing on
+whatever was capped — verified in tests, not just assumed.
+
+**Validation.** New `tests/test-econ-balance-2026-07.js` (40/40): starting-capital values, early-attempt
+tolerance bounds (tighter but not lethal), all 18 contracts' payback windows fall in the intended 6-12mo
+band, cap value at two different eras, cap enforcement (signing blocked exactly at the cap, capped
+status vs. locked/unaffordable stays distinct), cap release on contract expiry, and a regression check
+that diminishing-returns math on renewals is untouched by any of this.
+
+**One side effect caught and fixed**: `tests/test-materials.js` implicitly relied on the old 5.0M
+Engineer-mode boot default to fund several sequential dip-buys; with the tighter 3.5M start it ran out
+of cash mid-test and a later assertion failed on an unrelated symptom (stock not reaching cap). Fixed
+by giving that suite its own explicit test money (`state.money=100`) at the top rather than relying on
+difficulty defaults — decouples it from future balance passes, which is the right fix regardless of
+which change exposed it.
+
+**Full regression**: only the long-standing `test-flight3d-trajectory.js` drift remains; build parity
+and `git diff --check` both clean.
+
+**Needs a real-browser/playtest check**: does the tighter Engineer-mode opening actually *feel* tense
+rather than annoying over a real play session, and does the portfolio cap read clearly in the Passive
+Income panel (the new "portfolio full" state, the X/Y count in the header)? Also worth watching over a
+longer playtest: does the passive-income curve still eventually make money a non-issue late-game (by
+design, once the cap is 8-10 and paybacks are sunk), or does it need Option C (failure economic teeth,
+scoped but not started) to keep tension alive into the late game too.

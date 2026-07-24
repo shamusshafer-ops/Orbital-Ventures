@@ -7790,8 +7790,9 @@ function renderContractOffers(){
 function renderPassiveContracts(targetId){
   const box=$(targetId||'passiveCard'); if(!box) return;
   const totMo=passiveMonthlyIncome();
+  const activeN=passiveActiveCount(), capN=passiveMaxActive();
   let html=`<h2>Passive Income${totMo>0?` <span class="pill ok">+${fM(totMo)}/mo</span>`:''}</h2>
-    <p class="muted" style="font-size:12px;margin:-4px 0 10px">Standing contracts pay a fixed monthly income for a fixed term, then expire onto a cooldown. Each renewal of the same contract pays a little less.</p>`;
+    <p class="muted" style="font-size:12px;margin:-4px 0 10px">Standing contracts pay a fixed monthly income for a fixed term, then expire onto a cooldown. Each renewal of the same contract pays a little less. Portfolio: ${activeN}/${capN} active.</p>`;
   let any=false;
   for(const cat in PASSIVE_CATS){
     const rows=PASSIVE_CONTRACT_DEFS.filter(d=>d.cat===cat).map(d=>{
@@ -7811,6 +7812,10 @@ function renderPassiveContracts(targetId){
         pill=' <span class="pill lock">cooldown</span>';
         right=`<div class="reward"><div class="r">renew in ${passiveCooldownLeft(d.id)} mo</div></div>`;
         btn=`<button class="btn" disabled>On cooldown</button>`;
+      } else if(st==='capped'){
+        pill=' <span class="pill lock">portfolio full</span>';
+        right=`<div class="reward"><div class="p">+${fM(passiveIncomeNow(d.id))}/mo</div><div class="r">${d.term} mo term</div></div>`;
+        btn=`<button class="btn" disabled title="Let a running contract expire to free a slot (${activeN}/${capN} active)">Portfolio full</button>`;
       } else {
         const inc=passiveIncomeNow(d.id), afford=state.money>=d.setup;
         right=`<div class="reward"><div class="p">+${fM(inc)}/mo</div><div class="r">${d.term} mo term</div></div>`;

@@ -474,57 +474,63 @@ const FUEL_BASE=0.4, FUEL_MIN=0.18, FUEL_MAX=0.95, FUEL_SPREAD=0.10;
 const PASSIVE_DIMINISH=0.85;        // each renewal of a contract pays 85% of the previous
 const PASSIVE_FLOOR=0.40;           // …but never below 40% of the contract's base income
 const PASSIVE_COOLDOWN=12;          // default months a contract rests before it can re-sign
+// Money & Budget balance pass (2026-07-24): a portfolio cap so passive income can't be stacked
+// wholesale the moment enough contracts unlock — it grows with era (more infrastructure, more
+// bandwidth to run parallel retainers) but stays a real constraint through the mid-game where most
+// of the roster (9+ rep-gated contracts by station_shuttle era) would otherwise all fit at once.
+const PASSIVE_MAX_ACTIVE_BASE=3, PASSIVE_MAX_ACTIVE_PER_ERA=1;
+function passiveMaxActive(){ return PASSIVE_MAX_ACTIVE_BASE + PASSIVE_MAX_ACTIVE_PER_ERA*eraIndex(currentEra()); }
 const PASSIVE_CONTRACT_DEFS=[
-  {id:'svc_orbit', cat:'sat', name:'Satellite Servicing Fleet', income:2.6, term:30, setup:5.0,
+  {id:'svc_orbit', cat:'sat', name:'Satellite Servicing Fleet', income:2.6, term:30, setup:20.0,
     reqResearch:'onorbit_servicing', minRep:150, blurb:'Robotic tugs refuel, repair and relocate customer satellites on retainer — the fleet On-Orbit Servicing research put in reach.'},
   // satellite services — open up once you can reach orbit
-  {id:'sat_weather', cat:'sat', name:'Weather Satellite Operations', income:0.9, term:36, setup:2.0,
+  {id:'sat_weather', cat:'sat', name:'Weather Satellite Operations', income:0.9, term:36, setup:8.0,
     reqMission:'first_sat', minRep:40, blurb:'Feed meteorological data to shipping, agriculture and media clients under a commercial met-data contract.',
     eraVariants:[{maxEra:3, blurb:'Operate a meteorological satellite for the national weather service.'}]}, // P6 6.3: government weather service (eras 0-3) → commercial met-data (era 4+)
-  {id:'sat_comms', cat:'sat', name:'Commercial Comms Relay', income:1.6, term:36, setup:4.0,
+  {id:'sat_comms', cat:'sat', name:'Commercial Comms Relay', income:1.6, term:36, setup:16.0,
     reqMission:'first_sat', minRep:90, blurb:'Lease transponder capacity on a commercial communications relay.',
     eraVariants:[{maxEra:3, name:'Experimental Comms Relay', blurb:'Lease capacity on an experimental communications relay for the national telecom authority.'}]}, // P6 6.3: experimental/state relay (eras 0-3) → commercial transponder lease (era 4+)
-  {id:'sat_imaging', cat:'sat', name:'Earth-Imaging Constellation', income:2.4, term:36, setup:6.0,
+  {id:'sat_imaging', cat:'sat', name:'Earth-Imaging Constellation', income:2.4, term:36, setup:24.0,
     reqMission:'first_sat', minRep:140, blurb:'Sell multispectral imagery to agriculture, insurance and mapping clients.',
     eraVariants:[{maxEra:3, name:'Cartographic Survey Satellite', blurb:'Return survey imagery to the national mapping and resource-survey office.'}]}, // P6 6.3: state cartographic survey (eras 0-3) → commercial imaging constellation (era 4+)
   // human spaceflight / tourism
-  {id:'tour_suborbit', cat:'tour', name:'Suborbital Tourism', income:0.7, term:30, setup:1.5,
+  {id:'tour_suborbit', cat:'tour', name:'Suborbital Tourism', income:0.7, term:30, setup:6.0,
     reqMission:'first_astro', minRep:70, blurb:'Fly paying passengers on suborbital arcs to the edge of space.'},
-  {id:'tour_orbital', cat:'tour', name:'Orbital Tourism', income:1.8, term:30, setup:4.5,
+  {id:'tour_orbital', cat:'tour', name:'Orbital Tourism', income:1.8, term:30, setup:18.0,
     reqMission:'crew_orbit', minRep:120, blurb:'Private astronauts buy seats for a few days in orbit.'},
-  {id:'tour_lunar', cat:'tour', name:'Lunar Flyby Tourism', income:4.5, term:36, setup:12.0,
+  {id:'tour_lunar', cat:'tour', name:'Lunar Flyby Tourism', income:4.5, term:36, setup:48.0,
     reqMission:'luna_flyby', minRep:240, blurb:'The ultimate ticket: a free-return loop around the Moon.'},
   // technology licensing — needs the technology, not just a flight
-  {id:'lic_recovery', cat:'lic', name:'Booster-Recovery Licensing', income:2.0, term:36, setup:5.0,
+  {id:'lic_recovery', cat:'lic', name:'Booster-Recovery Licensing', income:2.0, term:36, setup:20.0,
     reqResearch:'propulsive_landing', minRep:120, blurb:'License your propulsive-landing IP to other launch providers.'},
-  {id:'lic_ntr', cat:'lic', name:'Nuclear-Thermal Patent Licensing', income:3.5, term:36, setup:9.0,
+  {id:'lic_ntr', cat:'lic', name:'Nuclear-Thermal Patent Licensing', income:3.5, term:36, setup:36.0,
     reqResearch:'nuclear_thermal', minRep:200, blurb:'Space agencies and defense pay to use your NTR designs.'},
-  {id:'lic_isru', cat:'lic', name:'Sabatier ISRU Licensing', income:2.8, term:36, setup:7.0,
+  {id:'lic_isru', cat:'lic', name:'Sabatier ISRU Licensing', income:2.8, term:36, setup:28.0,
     reqResearch:'mars_isru', minRep:220, blurb:'License in-situ propellant production to the wider industry.'},
   // P8: Rapid Refurbishment synergy unlock (rapid_inspection + qa_program)
-  {id:'lic_refurb', cat:'lic', name:'Fleet Refurbishment Licensing', income:2.4, term:36, setup:6.0,
+  {id:'lic_refurb', cat:'lic', name:'Fleet Refurbishment Licensing', income:2.4, term:36, setup:24.0,
     reqSynergy:'rapid_refurb', minRep:150, blurb:'License your rapid-turnaround inspection and refurbishment process to other operators running reusable fleets.'},
   // P9: one doctrine-exclusive standing contract per doctrine — only signable while that doctrine
   // is declared (reqDoctrine). An already-signed one keeps running if you later switch doctrine
   // (same as any other req-gated contract whose gate later stops holding) — just not renewable.
-  {id:'doct_reuse', cat:'doct', name:'Turnaround Advisory Retainer', income:1.8, term:30, setup:3.0,
+  {id:'doct_reuse', cat:'doct', name:'Turnaround Advisory Retainer', income:1.8, term:30, setup:12.0,
     reqDoctrine:'reuse', minRep:60, blurb:'Other operators pay a standing retainer for your rapid-refly turnaround expertise.'},
-  {id:'doct_heavy', cat:'doct', name:'Heavy-Cargo Charter', income:2.2, term:30, setup:4.0,
+  {id:'doct_heavy', cat:'doct', name:'Heavy-Cargo Charter', income:2.2, term:30, setup:16.0,
     reqDoctrine:'heavy', minRep:60, blurb:'A standing charter for oversized payloads only your throw-weight can lift.'},
-  {id:'doct_commercial', cat:'doct', name:'Manifest Brokerage', income:2.0, term:30, setup:3.5,
+  {id:'doct_commercial', cat:'doct', name:'Manifest Brokerage', income:2.0, term:30, setup:14.0,
     reqDoctrine:'commercial', minRep:60, blurb:'Broker spare manifest capacity to other payload customers on a standing commission.'},
-  {id:'doct_statecraft', cat:'doct', name:'National Prestige Program', income:1.6, term:30, setup:3.0, support:2,
+  {id:'doct_statecraft', cat:'doct', name:'National Prestige Program', income:1.6, term:30, setup:12.0, support:2,
     reqDoctrine:'statecraft', minRep:60, blurb:'A standing state retainer to keep the flag-planting program visible.'},
-  {id:'doct_science', cat:'doct', name:'Research Consortium Grant', income:1.6, term:30, setup:3.0,
+  {id:'doct_science', cat:'doct', name:'Research Consortium Grant', income:1.6, term:30, setup:12.0,
     reqDoctrine:'science', minRep:60, blurb:'A standing multi-university grant funding your ongoing science manifest.'},
   // military & defense — pay more, shorter terms (more churn), and lift public support
-  {id:'mil_launch', cat:'mil', name:'Defense Launch Services', income:2.2, term:24, setup:5.0, cooldown:10, support:3,
+  {id:'mil_launch', cat:'mil', name:'Defense Launch Services', income:2.2, term:24, setup:20.0, cooldown:10, support:3,
     reqMission:'first_sat', minRep:90, blurb:'Assured-access launch for military payloads on a standing contract.',
     eraVariants:[{maxEra:3, name:'Strategic Launch Mandate', blurb:'Guarantee the government assured access to space for military payloads by direct mandate — no interruption tolerated for national security.'}]}, // P6 6.3: Cold War strategic mandate (eras 0-3) → standing commercial defense contract (era 4+)
-  {id:'mil_recon', cat:'mil', name:'Reconnaissance Satellite Program', income:3.2, term:24, setup:8.0, cooldown:10, support:4,
+  {id:'mil_recon', cat:'mil', name:'Reconnaissance Satellite Program', income:3.2, term:24, setup:32.0, cooldown:10, support:4,
     reqMission:'first_sat', minRep:160, blurb:'Build and operate classified imaging satellites for the defense ministry.',
     eraVariants:[{minEra:4, name:'Commercial Reconnaissance Partnership', blurb:'License classified-grade imaging capacity to the intelligence community under a commercial remote-sensing partnership.'}]}, // P6 6.3: classic state recon program (eras 0-3) → commercial-partnership imagery (era 4+)
-  {id:'mil_warning', cat:'mil', name:'Missile-Warning Constellation', income:4.0, term:30, setup:11.0, cooldown:12, support:5,
+  {id:'mil_warning', cat:'mil', name:'Missile-Warning Constellation', income:4.0, term:30, setup:44.0, cooldown:12, support:5,
     reqMission:'crew_orbit', minRep:220, blurb:'Early-warning infrared sentinels in high orbit — a national-security backbone.',
     eraVariants:[{maxEra:3, name:'Strategic Early-Warning Network', blurb:'Field infrared missile-warning sentinels in high orbit for the national defense command — the backbone of nuclear deterrence.'}]}, // P6 6.3: Cold War deterrence network (eras 0-3) → national-security backbone (era 4+)
 ];
@@ -1622,7 +1628,7 @@ const DIFFICULTY={
   engineer:{
     label:'Engineer', tag:'Realistic',
     blurb:'Slide-rule mode. Sub-scale budgets, the genuine unreliability of a green company, and the full rocket-equation math exposed at every step on the bench.',
-    startMoney:5.0, overhead:0.12, relBonus:0.0, relFloor:0.35, relCap:0.95,
+    startMoney:3.5, overhead:0.12, relBonus:0.0, relFloor:0.35, relCap:0.95,
     payoutMult:1.0, buildCostMult:1.0, showEquations:true
   },
   custom:{
@@ -3994,12 +4000,14 @@ function passiveReqMet(d){
   if(d.minRep && state.rep<d.minRep) return false;
   return true;
 }
-// 'active' (running) · 'cooldown' (resting) · 'available' (signable) · 'unaffordable' · 'locked'
+function passiveActiveCount(){ return (state.passiveContracts||[]).length; }
+// 'active' (running) · 'cooldown' (resting) · 'capped' (portfolio full) · 'available' (signable) · 'unaffordable' · 'locked'
 function passiveStatus(id){
   const d=passiveDef(id); if(!d) return 'locked';
   if(passiveActive(id)) return 'active';
   if(!passiveReqMet(d)) return 'locked';
   if(passiveCooldownLeft(id)>0) return 'cooldown';
+  if(passiveActiveCount()>=passiveMaxActive()) return 'capped';
   if(state.money < d.setup) return 'unaffordable';
   return 'available';
 }
@@ -22084,8 +22092,9 @@ function renderContractOffers(){
 function renderPassiveContracts(targetId){
   const box=$(targetId||'passiveCard'); if(!box) return;
   const totMo=passiveMonthlyIncome();
+  const activeN=passiveActiveCount(), capN=passiveMaxActive();
   let html=`<h2>Passive Income${totMo>0?` <span class="pill ok">+${fM(totMo)}/mo</span>`:''}</h2>
-    <p class="muted" style="font-size:12px;margin:-4px 0 10px">Standing contracts pay a fixed monthly income for a fixed term, then expire onto a cooldown. Each renewal of the same contract pays a little less.</p>`;
+    <p class="muted" style="font-size:12px;margin:-4px 0 10px">Standing contracts pay a fixed monthly income for a fixed term, then expire onto a cooldown. Each renewal of the same contract pays a little less. Portfolio: ${activeN}/${capN} active.</p>`;
   let any=false;
   for(const cat in PASSIVE_CATS){
     const rows=PASSIVE_CONTRACT_DEFS.filter(d=>d.cat===cat).map(d=>{
@@ -22105,6 +22114,10 @@ function renderPassiveContracts(targetId){
         pill=' <span class="pill lock">cooldown</span>';
         right=`<div class="reward"><div class="r">renew in ${passiveCooldownLeft(d.id)} mo</div></div>`;
         btn=`<button class="btn" disabled>On cooldown</button>`;
+      } else if(st==='capped'){
+        pill=' <span class="pill lock">portfolio full</span>';
+        right=`<div class="reward"><div class="p">+${fM(passiveIncomeNow(d.id))}/mo</div><div class="r">${d.term} mo term</div></div>`;
+        btn=`<button class="btn" disabled title="Let a running contract expire to free a slot (${activeN}/${capN} active)">Portfolio full</button>`;
       } else {
         const inc=passiveIncomeNow(d.id), afford=state.money>=d.setup;
         right=`<div class="reward"><div class="p">+${fM(inc)}/mo</div><div class="r">${d.term} mo term</div></div>`;

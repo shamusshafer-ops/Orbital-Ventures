@@ -4,6 +4,7 @@
 let pass=0, fail=0;
 function check(name, cond){ if(cond){ pass++; } else { fail++; console.log('FAIL:', name); } }
 function approx(a,b,eps){ eps=eps===undefined?1e-6:eps; return Math.abs(a-b)<=eps; }
+state.money=100; // this suite buys several batches; give it ample cash so it tests material logic, not the difficulty's starting-cash balance (see DIFFICULTY.engineer.startMoney)
 
 // ---------- 1. Boot sanity ----------
 check('boot: state exists', !!state);

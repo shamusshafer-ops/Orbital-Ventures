@@ -1110,12 +1110,14 @@ function passiveReqMet(d){
   if(d.minRep && state.rep<d.minRep) return false;
   return true;
 }
-// 'active' (running) · 'cooldown' (resting) · 'available' (signable) · 'unaffordable' · 'locked'
+function passiveActiveCount(){ return (state.passiveContracts||[]).length; }
+// 'active' (running) · 'cooldown' (resting) · 'capped' (portfolio full) · 'available' (signable) · 'unaffordable' · 'locked'
 function passiveStatus(id){
   const d=passiveDef(id); if(!d) return 'locked';
   if(passiveActive(id)) return 'active';
   if(!passiveReqMet(d)) return 'locked';
   if(passiveCooldownLeft(id)>0) return 'cooldown';
+  if(passiveActiveCount()>=passiveMaxActive()) return 'capped';
   if(state.money < d.setup) return 'unaffordable';
   return 'available';
 }
