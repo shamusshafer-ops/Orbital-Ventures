@@ -24,6 +24,12 @@ change first.
 > When done, clear it back to "(none claimed right now)" and add your entry to the history below.
 
 **Oriented quickly (last few sessions, newest first) — see History for full detail:**
+- Solar Map diagnostics + host sizing (Claude) — added window.ovMapDiag() (mount, canvas DOM/size,
+  rAF state, context-lost, draw calls, camera, host computed styles) after four speculative fixes.
+  Found: addMap3DTimeHud forced host.style.position='relative', clobbering #mapPopHost's intentional
+  `position:absolute; inset:0` stage-fill; now only promotes a STATIC host. remountMap3D now sizes the
+  renderer from the host's real getBoundingClientRect, not the nominal 960x680.
+  RULE: a UI symptom that survives two fixes needs INSTRUMENTATION, not a third hypothesis.
 - Solar Map WebGL context architecture (Claude) — STRUCTURAL FIX. The map used to destroy+rebuild its
   WebGL context on every tab switch (pauseMap3D disposed despite its comment), every pop-out open and
   every close, re-uploading 15 planet textures each time and exhausting the browser's context cap. New

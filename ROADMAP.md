@@ -7112,3 +7112,34 @@ saying so from the first message — 15 texture uploads on every pop-out open sh
 the entire scene being rebuilt to move it into a different div?" long before the fourth attempt. When a
 resource is being exhausted, look at what ALLOCATES it, not at the handler for what happens when it runs
 out.
+
+### Instrumentation + host-sizing fix (2026-07-25)
+
+The structural fix worked as far as it went — `WebGL context was lost` disappeared from the console —
+but the stage was still blank. Four speculative fixes in, every one reasoned from reading the code
+rather than from the running page's state. Stopped guessing and added instrumentation.
+
+**`ovMapDiag()`** — a console diagnostic (`window.ovMapDiag`) reporting what actually matters: which
+host the scene is mounted on, whether the canvas is in the DOM and has non-zero layout size, whether the
+rAF loop is running, whether the GL context reports itself lost, the renderer's draw-call count, camera
+position/target, and the computed display/position/size of every relevant host element. Headless-safe
+(returns nulls rather than throwing) so it's harmless in the test harness.
+
+**A concrete bug found while adding it: `addMap3DTimeHud` clobbered an intentional layout.** It ran
+`host.style.position='relative'` unconditionally. `#mapPopHost`'s markup is
+`position:absolute; inset:0` *specifically so it fills `.vehpop-stage`* — forcing it to `relative` makes
+it content-sized instead of stage-filling, which can collapse it. The override was never necessary:
+`absolute` is already a positioned ancestor, so the HUD/hover-card/chevron overlays anchor correctly
+either way. Now only promotes a host whose computed position is `static`.
+
+**Related: the renderer was sized to nominal constants, not reality.** `remountMap3D` used the passed
+`MAP_POP_W/H` (960×680), but the pop-out stage is now squeezed by the roster on one side and the info
+panel on the other, so 960 was never the real width. It now measures the host's actual
+`getBoundingClientRect()` (falling back to the nominal values if layout hasn't settled) and calls
+`setSize(w,h,true)` so the canvas's CSS box matches its drawing buffer.
+
+**Process note.** The lesson from the previous entry recurred immediately: after the structural fix
+didn't fully land, the correct next move was instrumentation, not a fifth hypothesis. Reading code tells
+you what SHOULD happen; only the running page tells you what IS happening. For a UI symptom that has
+survived more than two fixes, add the diagnostic first — it is almost always cheaper than another wrong
+guess, and it converts an open-ended search into a single question.

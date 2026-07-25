@@ -19852,12 +19852,47 @@ function map3dFallbackTo2D(mountId, reason){
 
    appendChild() on an element that already has a parent MOVES it, so the canvas keeps its WebGL
    context, and every listener attachMap3DInput() bound to it stays bound. */
+/* Console diagnostic for the 3D map. Four speculative fixes for a blank pop-out stage failed to land
+   because each was reasoned from the code rather than from the running page's actual state. Run
+   ovMapDiag() in the browser console (with the pop-out open) to get facts instead: which host the
+   scene is mounted on, whether the canvas is actually in the DOM and has non-zero layout size, whether
+   the render loop is running, whether the GL context is alive, and what the 2D fallback is doing. */
+function ovMapDiag(){
+  const el=id=>{ const e=$(id); if(!e) return {id, present:false};
+    const r=e.getBoundingClientRect&&e.getBoundingClientRect();
+    const cs=(typeof getComputedStyle==='function')?getComputedStyle(e):{};
+    return {id, present:true, display:cs.display, position:cs.position, visibility:cs.visibility,
+            w:Math.round(r?r.width:0), h:Math.round(r?r.height:0), children:e.childElementCount}; };
+  const out={
+    flags:{MAP3D:typeof MAP3D!=='undefined'?MAP3D:null, threeOK:(typeof threeOK==='function')?threeOK():null,
+           popoutOpen:typeof mapPopoutOpen!=='undefined'?mapPopoutOpen:null, tab:state&&state.tab},
+    map3d: map3d ? {mountId:map3d.mountId, fallbackId:map3d.fallbackId, rafRunning:!!map3d.raf,
+                    disposing:!!map3d._disposing, selectedBody:state&&state.selectedBody} : null,
+    hosts:[el('mapHost'), el('mapPopHost'), el('mapPopStage'), el('mapPopZoom'), el('mapCanvas'), el('mapPopRoster')],
+  };
+  if(map3d && map3d.dom){
+    const d=map3d.dom, r=d.getBoundingClientRect();
+    out.canvas={ parent:(d.parentNode&&d.parentNode.id)||'(none)', attrW:d.width, attrH:d.height,
+                 cssW:Math.round(r.width), cssH:Math.round(r.height),
+                 styleMaxWidth:d.style.maxWidth, styleHeight:d.style.height, styleDisplay:d.style.display };
+    try{ const gl=map3d.renderer&&map3d.renderer.getContext&&map3d.renderer.getContext();
+         out.canvas.contextLost = gl && gl.isContextLost ? gl.isContextLost() : 'unknown'; }catch(e){ out.canvas.contextLost='error:'+e.message; }
+    try{ out.canvas.drawCalls = map3d.renderer.info && map3d.renderer.info.render ? map3d.renderer.info.render.calls : null; }catch(e){}
+  }
+  try{ out.camera = map3d ? {dist:map3d.cam.dist, az:+map3d.cam.az.toFixed(3), el:+map3d.cam.el.toFixed(3),
+        target:map3d.cam.target, pos:map3d.camera.position} : null; }catch(e){}
+  console.log('=== ovMapDiag ===');
+  console.log(JSON.stringify(out,null,1));
+  return out;
+}
+if(typeof window!=='undefined') window.ovMapDiag=ovMapDiag;
 function remountMap3D(hostId, W, H){
   if(!map3d) return false;
   const host=$(hostId); if(!host) return false;
   try{
     host.style.display='block';
-    host.style.position='relative'; host.style.overflow='hidden'; // same prep addMap3DTimeHud does
+    try{ if(getComputedStyle(host).position==='static') host.style.position='relative'; }catch(e){}
+    host.style.overflow='hidden';
     // Move the canvas AND every screen-space overlay appended alongside it, or they stay behind in
     // the old host: the time/scale/window HUD, the hover card, and D3b's chevron layer.
     host.appendChild(map3d.dom);
@@ -19868,10 +19903,15 @@ function remountMap3D(hostId, W, H){
     if(old && old!==host) old.style.display='none';
     map3d.mountId=hostId;
     map3d.fallbackId = hostId==='mapHost' ? 'mapCanvas' : null;
-    if(W && H){
-      map3d.renderer.setSize(W,H,false);
-      map3d.camera.aspect=W/H; map3d.camera.updateProjectionMatrix();
-    }
+    // Size to the host's ACTUAL box rather than the nominal W/H — the pop-out stage is now squeezed
+    // by a roster on one side and the info panel on the other, so the nominal 960x680 no longer
+    // matches reality. updateStyle=true so the canvas's CSS box matches its drawing buffer.
+    const r=host.getBoundingClientRect ? host.getBoundingClientRect() : null;
+    const w=Math.max(1, Math.round((r&&r.width)||W||MAP_W));
+    const h=Math.max(1, Math.round((r&&r.height)||H||MAP_H));
+    map3d.renderer.setSize(w,h,true);
+    map3d.camera.aspect=w/h; map3d.camera.updateProjectionMatrix();
+    map3d.dom.style.maxWidth='100%';
     if(!map3d.raf) map3dRenderLoop(); // resume if a previous teardown had stopped the loop
     return true;
   }catch(e){ console.warn('3D map remount failed:', e); return false; }
@@ -20080,7 +20120,12 @@ function updateMap3DScaleHud(){
 function mapTimeShift(days){ mapPreviewAbsDay=mapViewAbsDay()+days; updateMap3DTimeHud(); updateMap3DScaleHud(); updateMap3DWindowHud(); }
 function resetMapTime(){ mapPreviewAbsDay=null; updateMap3DTimeHud(); updateMap3DScaleHud(); updateMap3DWindowHud(); }
 function addMap3DTimeHud(host, hostId){
-  host.style.position='relative'; host.style.overflow='hidden';
+  // Only promote a STATIC host to relative. #mapPopHost is deliberately `position:absolute; inset:0`
+  // so it fills .vehpop-stage; forcing it to relative made it content-sized instead of stage-filling
+  // (and absolute is already a positioned ancestor, so the overlays anchor fine either way).
+  try{ if(getComputedStyle(host).position==='static') host.style.position='relative'; }
+  catch(e){ host.style.position='relative'; }
+  host.style.overflow='hidden';
   const hud=document.createElement('div'); hud.id='map3dHud_'+hostId;
   hud.style.cssText='position:absolute;top:8px;left:8px;z-index:4;padding:7px 8px;background:rgba(3,9,16,.82);border:1px solid rgba(116,171,208,.48);border-radius:6px;color:#cfe5f4;font:11px ui-monospace,monospace;line-height:1.35;box-shadow:0 4px 16px rgba(0,0,0,.32)';
   hud.innerHTML=`<div style="color:#7fb6dd;letter-spacing:.07em;font-size:10px">SOLAR DATE</div><div data-map-time style="font-size:12px;color:#fff4d4;margin:2px 0 5px"></div><div style="display:flex;gap:3px"><button onclick="mapTimeShift(-360)" title="Reverse one year">−1Y</button><button onclick="mapTimeShift(-30)" title="Reverse one month">−1M</button><button onclick="resetMapTime()" title="Return to the live game date">Now</button><button onclick="mapTimeShift(30)" title="Advance one month">+1M</button><button onclick="mapTimeShift(360)" title="Advance one year">+1Y</button></div><div data-map-scale style="margin-top:7px;padding-top:6px;border-top:1px solid rgba(116,171,208,.28)"></div><div data-map-window style="margin-top:7px;padding-top:6px;border-top:1px solid rgba(116,171,208,.28)"></div><div style="color:#8fa9b9;margin-top:5px">hover for info · drag to orbit · wheel to zoom</div>`;
