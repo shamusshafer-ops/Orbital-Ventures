@@ -19815,6 +19815,7 @@ function disposeMap3D(){
   }catch(e){}
   try{ if(map3d.hud && map3d.hud.parentNode) map3d.hud.parentNode.removeChild(map3d.hud); }catch(e){}
   try{ if(map3d.hoverCard && map3d.hoverCard.parentNode) map3d.hoverCard.parentNode.removeChild(map3d.hoverCard); }catch(e){}
+  try{ if(map3d.chevrons && map3d.chevrons.wrap && map3d.chevrons.wrap.parentNode) map3d.chevrons.wrap.parentNode.removeChild(map3d.chevrons.wrap); }catch(e){} // D3b: DOM overlay needs explicit teardown like the HUD/hover card
   map3d = null;
 }
 function addStarfield3D(scene){
@@ -20103,12 +20104,15 @@ function startMap3D(hostId='mapHost', W=MAP_W, H=MAP_H){
       }
       const cam={ az:Math.PI*0.5, el:0.95, dist:560, target:{x:0,y:0,z:0} };
       const auRuler=addMap3dAuRuler(scene); // D2: AU distance tags on the orbit rings
+      const eclipticGrid=addMap3dEclipticGrid(scene); // D3b: ecliptic reference plane
+      const chevrons=addMap3dChevrons(host);          // D3b: off-screen Sun/Earth direction arrows
       const hud=addMap3DTimeHud(host,hostId);
       const hoverCard=addMap3DHoverCard(host);
       map3d={renderer, scene, camera, sun, corona, sunLight, cameraFill, asteroidBelt, bodies, labels, pickables, cam, dom, hud:hud.hud, hudReadout:hud.readout, hoverCard, startedAt:Date.now(), mountId:hostId, fallbackId:hostId==='mapHost'?'mapCanvas':null, raf:0, raycaster:new THREE.Raycaster(), _drag:null,
               ships:{}, shipData:{}, // E4.5: flightId -> {mesh,label}, flightId -> latest marker descriptor (for hover/pick lookup)
               badges:{}, badgeSpecKeys:{}, badgeTooltips:{}, committedArc:null, plannedArc:null, // D1: bodyId -> badge sprite / its last-built spec key (rebuild texture only on change) / tooltip text; the two route-arc Lines (built lazily on first use)
-              auRuler, scaleReadout:hud.scaleReadout}; // D2: AU ruler sprites by body id; the HUD's live scale/distance line
+              auRuler, scaleReadout:hud.scaleReadout, // D2: AU ruler sprites by body id; the HUD's live scale/distance line
+              eclipticGrid, chevrons};                  // D3b: reference-plane group; the screen-space direction arrows
       updateMap3DTimeHud(); updateMap3DScaleHud();
       attachMap3DInput();
     } else if(map3d.dom && !map3d.dom.parentNode){
@@ -20256,6 +20260,82 @@ function map3dUpdateAuRuler(){
   }
 }
 
+/* ---------- D3b (2026-07-25): orientation aids — ecliptic grid + off-screen chevrons ----------
+   The camera is bare az/el/dist with no reference frame: zoom to an outer body and there's no cue
+   which way the Sun or Earth went. Two aids, both deliberately quiet (this is background reference,
+   not another thing competing with the planets).
+
+   The chevron math is the one real correctness trap in this slice, so it's a PURE function tested
+   headlessly rather than leaning on THREE's projectVector: a naive world→NDC projection divides by
+   the camera-space depth, and for a point BEHIND the camera that depth is negative, which silently
+   flips both screen axes — the arrow then points exactly backwards, and only when you rotate past
+   90°, which is precisely the case a hand-check misses. Handled explicitly below. */
+// View-basis projection of a world point. Returns camera-space components plus an on-screen test.
+// Pure (no THREE), so the behind-camera behavior is directly assertable.
+function map3dProjectPoint(eye, target, point, fovDeg, aspect){
+  const fx=target.x-eye.x, fy=target.y-eye.y, fz=target.z-eye.z;
+  const flen=Math.hypot(fx,fy,fz)||1;
+  const f={x:fx/flen, y:fy/flen, z:fz/flen};                 // forward
+  // right = normalize(forward × worldUp); worldUp is +y, matching orbitCameraEye's convention.
+  // f × (0,1,0) = (f.y*0 − f.z*1, f.z*0 − f.x*0, f.x*1 − f.y*0) = (−f.z, 0, f.x).
+  let rx=-f.z, ry=0, rz=f.x;
+  let rlen=Math.hypot(rx,ry,rz);
+  if(rlen<1e-9){ rx=1; ry=0; rz=0; rlen=1; }                 // looking straight up/down the pole
+  const r={x:rx/rlen, y:ry/rlen, z:rz/rlen};
+  const u={x:r.y*f.z-r.z*f.y, y:r.z*f.x-r.x*f.z, z:r.x*f.y-r.y*f.x}; // up = right × forward
+  const dx=point.x-eye.x, dy=point.y-eye.y, dz=point.z-eye.z;
+  const cx=dx*r.x+dy*r.y+dz*r.z;
+  const cy=dx*u.x+dy*u.y+dz*u.z;
+  const cz=dx*f.x+dy*f.y+dz*f.z;                             // >0 in front of the camera
+  const tanH=Math.tan((fovDeg||50)*Math.PI/360);
+  const inFront=cz>1e-6;
+  const ndcX=inFront?(cx/cz)/(tanH*(aspect||1)):0;
+  const ndcY=inFront?(cy/cz)/tanH:0;
+  const onScreen=inFront && Math.abs(ndcX)<=1 && Math.abs(ndcY)<=1;
+  return {cx, cy, cz, inFront, onScreen, ndcX, ndcY};
+}
+// Direction (unit vector in screen space, +x right / +y up) to point a chevron at an off-screen
+// target, or null when the target is already on screen. Uses the camera-space (cx,cy) direction for
+// BOTH the in-front and behind cases — which is correct in both, and is exactly why this avoids the
+// sign-flip: for a behind-camera point, rotating toward its (cx,cy) side is what brings it into view,
+// whereas the perspective-divided NDC would have inverted that.
+function map3dChevronDirection(proj){
+  if(!proj || proj.onScreen) return null;
+  const len=Math.hypot(proj.cx, proj.cy);
+  if(len<1e-9) return {x:0, y:-1};                           // dead astern: default to straight down
+  return {x:proj.cx/len, y:proj.cy/len};
+}
+// Where the chevron sits: the screen-edge intersection along that direction, inset from the rim.
+// Returned in NDC (-1..1); a caller maps that to pixels.
+function map3dChevronEdgePoint(dir, inset){
+  if(!dir) return null;
+  const m=Math.max(Math.abs(dir.x), Math.abs(dir.y))||1;
+  const k=(1-(inset==null?0.08:inset))/m;
+  return {x:dir.x*k, y:dir.y*k};
+}
+/* Ecliptic reference grid: concentric rings at real AU stops plus radial spokes, all at y=0. Ring
+   radii come from sceneRadiusAtAU — the same transform D2's AU labels and the orbit rings themselves
+   use — so the grid can never imply a spacing the rest of the view contradicts. */
+const MAP3D_GRID_AU=[1,5,10,20,30];
+const MAP3D_GRID_SPOKES=12;
+function addMap3dEclipticGrid(scene){
+  const group=new THREE.Group();
+  const mat=new THREE.LineBasicMaterial({color:0x2c4457, transparent:true, opacity:0.34});
+  for(const au of MAP3D_GRID_AU){
+    const R=sceneRadiusAtAU(au), pts=[];
+    for(let i=0;i<=96;i++){ const t=i/96*Math.PI*2; pts.push(new THREE.Vector3(Math.cos(t)*R,0,Math.sin(t)*R)); }
+    group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), mat));
+  }
+  const Rmax=sceneRadiusAtAU(MAP3D_GRID_AU[MAP3D_GRID_AU.length-1]);
+  for(let i=0;i<MAP3D_GRID_SPOKES;i++){
+    const t=i/MAP3D_GRID_SPOKES*Math.PI*2;
+    const pts=[new THREE.Vector3(0,0,0), new THREE.Vector3(Math.cos(t)*Rmax,0,Math.sin(t)*Rmax)];
+    group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), mat));
+  }
+  scene.add(group);
+  return group;
+}
+
 /* ---------- D3a (2026-07-25): body-name label LOD ----------
    Every body in BODIES gets a label sprite (map3dLabelSprite, in the scene-construction loop above) —
    8 planets/Sun/belt/Oort AND all 12 decorative moons, all at identical fixed scale regardless of
@@ -20279,6 +20359,47 @@ function map3dUpdateLabelLOD(){
   }
 }
 
+// Chevron overlay: two small DOM arrows (Sun, Earth) over the canvas. DOM rather than sprites so they
+// sit in screen space by construction and can't be occluded or scaled by the scene.
+const MAP3D_CHEVRON_TARGETS=[{key:'sun', label:'Sun', color:'#ffd27a'},{key:'earth', label:'Earth', color:'#7fc4ff'}];
+function addMap3dChevrons(host){
+  const wrap=document.createElement('div');
+  wrap.style.cssText='position:absolute;inset:0;pointer-events:none;z-index:3';
+  const els={};
+  for(const t of MAP3D_CHEVRON_TARGETS){
+    const el=document.createElement('div');
+    el.style.cssText=`position:absolute;display:none;transform:translate(-50%,-50%);padding:2px 6px;border:1px solid ${t.color}55;border-radius:9px;background:rgba(4,10,17,.8);color:${t.color};font:10px ui-monospace,monospace;white-space:nowrap`;
+    wrap.appendChild(el); els[t.key]=el;
+  }
+  host.appendChild(wrap);
+  return {wrap, els};
+}
+function map3dChevronWorldPos(key, d){
+  if(key==='sun') return {x:0,y:0,z:0};
+  return bodyScenePos(key, d);
+}
+function map3dUpdateChevrons(d){
+  if(!map3d || !map3d.chevrons) return;
+  const rect=map3d.dom.getBoundingClientRect();
+  const W=rect.width||1, H=rect.height||1, aspect=W/H;
+  const eye=map3d.camera.position, target=map3d.cam.target;
+  for(const t of MAP3D_CHEVRON_TARGETS){
+    const el=map3d.chevrons.els[t.key];
+    const p=map3dChevronWorldPos(t.key, d);
+    if(!p){ el.style.display='none'; continue; }
+    const proj=map3dProjectPoint(eye, target, p, 50, aspect);
+    const dir=map3dChevronDirection(proj);
+    if(!dir){ el.style.display='none'; continue; }            // on screen — no arrow needed
+    const edge=map3dChevronEdgePoint(dir, 0.08);
+    // NDC (+y up) → CSS pixels (+y down)
+    el.style.left=((edge.x*0.5+0.5)*W)+'px';
+    el.style.top=((0.5-edge.y*0.5)*H)+'px';
+    const ang=Math.round(Math.atan2(-dir.y, dir.x)*180/Math.PI);
+    el.textContent=`➤ ${t.label}`;
+    el.style.display='block';
+    el.title=`${t.label} is off screen — ${ang}°`;
+  }
+}
 /* ---------- D1 (2026-07-25): port the empire/asset overlay + route arcs into the 3D view ----------
    mapAssetModel()/rivalsAtBody()/plannedRoute()/transferArc() already exist and were wired into the
    SVG + Phaser renderers only — invisible in 3D, which is the default view (MAP3D=true). This ports
@@ -20499,6 +20620,7 @@ function map3dTick(){
   try{ map3dUpdateRouteArcs(d); }catch(e){}
   try{ map3dUpdateAuRuler(); }catch(e){} // D2: ruler LOD (fade/scale with camera distance)
   try{ map3dUpdateLabelLOD(); }catch(e){} // D3a: moon-label LOD (fade/hide with camera distance)
+  try{ map3dUpdateChevrons(d); }catch(e){} // D3b: off-screen Sun/Earth arrows
   map3dApplyCamera();
   map3d.cameraFill.position.copy(map3d.camera.position);
   map3d.renderer.render(map3d.scene, map3d.camera);

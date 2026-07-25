@@ -6767,3 +6767,59 @@ does the moon-label fade look smooth rather than a visible pop-in/pop-out at the
 chevrons for Sun/Earth — the projection-math and clutter-vs-clarity work the roster's existence may
 partly reduce the need for. Worth judging whether D3b's scope shrinks now that a roster exists before
 starting it.
+
+## Session — Solar Map D3b: ecliptic grid + off-screen chevrons (2026-07-25)
+
+Final slice of D3, and of the orientation half of the D-pass. Heavier tier was the right call for one
+specific reason — the chevron projection had a real correctness trap, and the first draft hit it.
+
+**The trap, and why the math is pure.** A world→NDC projection divides by camera-space depth. For a
+point BEHIND the camera that depth is negative, silently flipping BOTH screen axes: an off-screen
+arrow points exactly backwards. It only manifests past 90° of rotation, which is exactly what a quick
+visual check misses — and it would have been invisible to a headless test that leaned on THREE's own
+projection. So `map3dProjectPoint`/`map3dChevronDirection`/`map3dChevronEdgePoint` are pure (no THREE),
+and the behind-camera cases are asserted directly.
+
+**A real bug the trace caught immediately:** the first draft's right-vector was negated —
+`f × (0,1,0)` is `(−f.z, 0, f.x)`, not `(f.z, 0, −f.x)`. Every chevron direction was mirrored, in front
+AND behind. Found by tracing known cases (camera at +z looking at the origin, so screen axes are
+unambiguous by inspection) before writing the test file, not by reading the code back.
+
+**Resolution:** the chevron direction uses the camera-space `(cx, cy)` direction for both the in-front
+and behind cases — correct in both, and the reason this sidesteps the flip: for a behind-camera target,
+rotating toward its `(cx,cy)` side is what brings it into view, whereas the perspective-divided NDC
+would have inverted that. Dead-astern (no lateral component) falls back to a defined direction rather
+than NaN. The test asserts the invariant that matters: *a target on the same world side gives the same
+screen side whether it is in front of or behind the camera.*
+
+**What shipped:**
+- `addMap3dEclipticGrid` — concentric rings at 1/5/10/20/30 AU plus 12 radial spokes, all at y=0.
+  Ring radii come from `sceneRadiusAtAU`, the same transform the orbit rings and D2's AU labels use,
+  so the grid can never imply a spacing the rest of the view contradicts (asserted).
+- `addMap3dChevrons`/`map3dUpdateChevrons` — two small screen-space arrows (Sun, Earth) that appear
+  only when their target is off screen. Plain DOM over the canvas rather than sprites, so they sit in
+  screen space by construction and can't be occluded or scaled by the scene. Torn down explicitly in
+  `disposeMap3D` alongside the HUD and hover card.
+
+**Repeated the comment-header edit slip a 4th time** — and again `node --check build/game.js` caught it
+before any test ran. The guardrail is working; the habit is now to run it after literally every build.
+
+**Validation.** New `tests/test-map3d-orient.js` (35/35): in-front basics (target at NDC origin, no
+chevron when on screen, non-mirrored axes), all four in-front off-screen directions, the full
+behind-camera set including the same-side invariant and the degenerate dead-astern fallback, unit-length
+and finiteness across mixed positions, edge placement (right edge, corner diagonal, never exceeding the
+NDC box, null-safe), the straight-down-the-pole basis-degeneracy case, grid stop consistency with
+`sceneRadiusAtAU`, and chevron target resolution (Sun to origin, Earth via `bodyScenePos` — the same
+source the planet mesh uses). Full regression clean (109 suites) except the two known pre-existing
+drifts. `node --check build/game.js` and `git diff --check` clean.
+
+**NOT browser-verified** (no WebGL/DOM here): whether the grid reads as a helpful reference plane or as
+noise at typical camera angles (its opacity 0.34 is a guess and is the first thing to tune if it reads
+busy), whether the chevrons are legible at the 8% edge inset, and whether two anchors is the right
+number — Sun and Earth were chosen as the two frames a player actually navigates by, but the selected
+body may deserve a third.
+
+**This closes D3.** Remaining in the D-pass: **D4** — promote the time scrubber (jump-to-next-window per
+body, live transfer arc while previewing a date). D4 is design work; heavier tier recommended. Note the
+D2 write-up's standing point that the HUD SCALE block is the natural home for D4's jump control, so its
+layout is worth judging together with D4 rather than in isolation.
