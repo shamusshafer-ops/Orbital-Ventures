@@ -6464,3 +6464,54 @@ rationale, rejected alternatives, and numeric traces are in this file under thei
 keyboard-navigable, ship-tracking map actually read as a connected dashboard-and-planner in an actual
 play session — the sim traces and headless geometry checks say the pieces are individually correct,
 but only a real session confirms they add up to what was asked for.
+
+## Design review — Solar Map utility pass, scoped (2026-07-25)
+
+Owner feedback after the A/B/C epic above: scale doesn't read as "solar system," navigating doesn't
+tell you where everything is or what's going on. Reviewed all three render paths (`map3d*`, Phaser
+`MapScene`, SVG `renderMapOverview`) plus `bodyCardHTML` before proposing fixes. Not yet implemented —
+this entry is the review + proposed slice order (D1–D4), for a future session to pick up.
+
+**The big finding: the default view is the least-informed view.** `MAP3D=true`, so 3D is what's
+actually seen day to day. But `mapAssetModel()` (facility pennants/health, ISRU, depot tonnage, belt
+claim), `plannedRoute()`/`transferArc()` (planned + committed-window arcs), and rival-reach markers
+are wired into the Phaser and SVG paths only (`src/render.js` ~L6420, ~L6473, ~L7366) — never into
+`map3dTick()`/`map3dUpdateShipMarkers`. Everything the empire-overlay layer already tracks is
+invisible in the renderer the player actually sees. Same shape as the A/B/C epic's Slice C finding
+(a port, not new invention) — just the 3D direction this time instead of 2D.
+
+**Why scale doesn't read as "solar system."** Nothing on screen states a distance. `SCENE_AU_BASE=18`
+/ `SCENE_AU_EXP=0.74` compresses radially and planet meshes are exaggerated against their orbits by
+necessity (a to-scale system is unplayable — Neptune at 30 AU, planets sub-pixel), and the only AU
+figure anywhere is a single-body hover tooltip. Real scale can't be fixed by geometry here; it needs
+annotation: AU tick labels on the orbit rings, a camera-distance-driven scale bar in the HUD, and a
+light-time readout per body (`lightLagHTML()` already computes this for the body card — "Mars — 12.4
+light-minutes" on the map itself would do more for scale-feel than any respacing).
+
+**Why navigating loses the player.** Three compounding gaps: (1) no orientation frame — bare az/el/
+dist camera, no ecliptic grid, no compass, no off-screen indicator for where Sun/Earth went after
+zooming to an outer body; (2) no way to navigate to a body that isn't currently visible on screen —
+selection is click-a-visible-mesh only, no roster/list; (3) label mush — `map3dLabelSprite` renders
+all ~25 labels (8 planets + 14 moons + Sun) at fixed scale with `depthTest:false`, so moon names
+clutter identically to planet names regardless of camera distance, no LOD falloff.
+
+**One underused asset**: the `−1Y/−1M/Now/+1M/+1Y` time-scrubber HUD (`addMap3DTimeHud`) is the best
+planning idea already on this screen and it's tucked in an 11px corner widget. `plan.nextWindow` is
+already computed per body — a "jump to next window for selected body" control plus a live-updating
+transfer arc while scrubbing would connect the map to the body card's own window math, which is
+currently two disconnected surfaces telling the same story.
+
+**Proposed slice order:**
+- **D1** — Port `mapAssetModel()`/`plannedRoute()`/`transferArc()`/rival-reach markers into the 3D
+  view (`map3dTick`/`map3dUpdateShipMarkers` sibling functions). Highest value, lowest risk, mostly
+  reuse of existing pure functions — mechanical/wiring work.
+- **D2** — Scale legibility: AU ring labels, HUD scale bar, per-body light-time readout on hover/HUD.
+- **D3** — Orientation: ecliptic grid plane, off-screen direction chevrons for Sun/Earth, a body
+  roster rail (reached/reachable/locked, click-to-focus), label LOD by camera distance.
+- **D4** — Promote the time scrubber (jump-to-next-window per body, live transfer arc while previewing
+  a date).
+
+Not yet slice-planned in test-file/exact-function detail — that's the next session's job per slice,
+same as the A/B/C epic above. D1 is wiring/mechanical (lighter model tier appropriate); D2–D4 are
+design/balance work (heavier tier — visual legibility and information-density tradeoffs benefit from
+more careful judgment).
