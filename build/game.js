@@ -18857,15 +18857,26 @@ function refreshStationPopout(){
 let mapPopoutOpen=false, mapPop={z:1,x:0,y:0};
 function refreshMapPopout(){
   const z=$('mapPopZoom'), host=$('mapPopHost');
-  const use3D=!!(host && MAP3D && threeOK());
-  if(use3D){
-    if(z) { z.innerHTML=''; z.style.display='none'; }
+  // ORDERING BUG FIX (2026-07-25): this used to hide + empty the 2D fallback FIRST and then call
+  // startMap3D() while ignoring its return value. startMap3D catches any scene-construction failure,
+  // calls disposeMap3D() and returns false — so on any 3D failure the pop-out was left with the
+  // fallback already destroyed and nothing to replace it: a permanently blank stage with both side
+  // panels rendering normally. The inline tab never had this bug because renderMap() tests the return
+  // value and falls through 3D → Phaser → SVG. Now the pop-out does the same: prove 3D started BEFORE
+  // tearing down the 2D map, and restore the 2D map if it didn't.
+  let ok=false;
+  if(host && MAP3D && threeOK()){
     if(!map3d || map3d.mountId!=='mapPopHost'){
       disposeMap3D();
-      startMap3D('mapPopHost', MAP_POP_W, MAP_POP_H);
-    }
-  } else if(z){
-    z.style.display='flex'; z.innerHTML=renderMapOverview(900,900);
+      ok=!!startMap3D('mapPopHost', MAP_POP_W, MAP_POP_H);
+    } else ok=true; // already mounted here from a previous refresh
+  }
+  if(ok){
+    if(z){ z.innerHTML=''; z.style.display='none'; }
+    if(host) host.style.display='block';
+  } else {
+    if(host) host.style.display='none';
+    if(z){ z.style.display='flex'; z.innerHTML=renderMapOverview(900,900); } // guaranteed non-blank stage
   }
   const inf=$('mapPopInfo'); if(inf) inf.innerHTML=bodyCardHTML();
   renderMapRoster(); // keeps the pop-out's rail in sync with selection (same call the inline tab uses)

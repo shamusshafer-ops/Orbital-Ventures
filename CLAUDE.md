@@ -24,7 +24,12 @@ change first.
 > When done, clear it back to "(none claimed right now)" and add your entry to the history below.
 
 **Oriented quickly (last few sessions, newest first) — see History for full detail:**
-- Solar Map pop-out fix (Claude) — the pop-out roster regressed the canvas out of view: .vehpop-stage
+- Solar Map pop-out blank-stage fix (Claude) — refreshMapPopout destroyed the 2D fallback BEFORE
+  calling startMap3D and ignored its return value; startMap3D catches any failure, disposes and
+  returns false, so any 3D failure left a permanently blank stage with both side panels fine. Now
+  proves 3D started before tearing down 2D. RULE: when a symptom is ABSENCE, suspect a removed
+  fallback before suspecting the primary renderer.
+- Solar Map pop-out flexbox fix (Claude) — the pop-out roster regressed the canvas out of view: .vehpop-stage
   is flex:1 with default min-width:auto (floor = 960px canvas) while both side panels were
   flex-shrink:0, so the row overflowed .popout-window at every viewport width. Fixed with
   #mapPopStage{min-width:0}. RULE: any flex:1 sibling holding a canvas needs an explicit min-width:0.

@@ -6958,3 +6958,35 @@ scales down cleanly — 520px wide at a 1024px viewport up to 908px at 1440+.
 Any `flex:1` sibling holding replaced content (canvas/img/video) needs an explicit `min-width:0`, because
 its default floor is the content's intrinsic size, not zero. The inline tab avoided this only because it
 was built as a grid with `minmax(0,1fr)` — the grid equivalent of the same guard.
+
+### Second follow-up — the flexbox fix was NOT the cause (2026-07-25)
+
+Owner reported the canvas still missing after the `min-width:0` fix, and confirmed the build had shipped
+(`#mapPopStage{min-width:0}` verified present in `orbital-ventures.html`). So the flexbox overflow was a
+real latent bug worth fixing, but it was not what he was seeing. Diagnosis restarted rather than patched
+further.
+
+**Actual defect: `refreshMapPopout()` had no fallback chain.** It destroyed the 2D fallback FIRST
+(`z.innerHTML=''; z.style.display='none'`) and then called `startMap3D(…)` while **ignoring its return
+value**. `startMap3D` wraps its whole scene construction in a try/catch that, on ANY failure, logs
+`3D map failed, falling back to 2D`, calls `disposeMap3D()`, and returns `false`. The pop-out never
+checked — so any 3D failure left it with the fallback already torn down and nothing to replace it:
+a permanently blank stage with both side panels rendering perfectly. That matches the reported symptom
+exactly, and matches it for ANY underlying 3D cause, which is why chasing a specific cause was the wrong
+move.
+
+The inline tab never had this bug: `renderMap()` tests the return value and falls through 3D → Phaser →
+SVG. The pop-out simply never got that treatment.
+
+**Fix:** prove 3D actually started *before* tearing down the 2D map, and restore the 2D map if it
+didn't. The stage is now guaranteed non-blank on every path. This also makes the pop-out
+self-diagnosing: if the 2D SVG map now appears there, 3D is genuinely failing and the console warning
+from `startMap3D`'s catch names the underlying error; if the 3D map appears, the failure was in the
+ordering/teardown itself.
+
+**Process note for future sessions.** Two guesses were spent on this before finding it (the flexbox
+overflow, then a mis-read of `disposeMap3D` as not nulling `map3d` — it does, at the end). The thing
+that actually located it was reading the FAILURE path of the function being called rather than the
+happy path, and asking "what would make the centre blank regardless of cause" instead of "what is
+different about the 3D scene here". Worth reaching for sooner when a symptom is *absence* rather than
+misbehaviour: absence usually means a fallback was removed, not that the primary is subtly wrong.
