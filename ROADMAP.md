@@ -6669,6 +6669,101 @@ in practice, and whether the HUD `SCALE` block crowds the time scrubber it sits 
 also the natural home for D4's jump-to-next-window control, so its layout is worth judging with D4 in
 mind rather than in isolation.
 
-**Deferred to D3/D4:** ecliptic grid, off-screen direction chevrons for Sun/Earth, body roster rail,
-label LOD for the body-name sprites (this slice added LOD only for the new AU ruler), and promoting
-the time scrubber with a jump-to-next-window control + live arc while previewing a date.
+**Deferred to D3/D4:** ecliptic grid, off-screen direction chevrons for Sun/Earth, and promoting the
+time scrubber with a jump-to-next-window control + live arc while previewing a date. (Body roster rail
+and label LOD — the rest of the original D3 scope — shipped as D3a below.)
+
+## Session — Solar Map D3a: body roster rail + body-name label LOD (2026-07-25)
+
+Lighter-tier wiring slice, split off D3 per this session's own model-recommendation: the roster and
+label LOD are mostly reuse of existing pure functions and an established LOD pattern; the ecliptic
+grid + off-screen chevrons (now D3b) involve real projection-math correctness risk (screen-space
+projection sign-flips behind the camera) and clutter-vs-clarity judgment calls better suited to the
+heavier tier — deferred rather than rushed.
+
+**Body roster rail** (`mapRosterBodies`/`mapRosterTier`/`mapRosterModel`/`mapRosterHTML`,
+`renderMapRoster`, `mapRosterSelect`) — answers "where is everything" directly with a left-side list of
+every navigable body, grouped **Reached → Available → Locked → No content yet**, click to select+focus.
+Deliberately a plain DOM sidebar, not a 3D/Phaser/SVG-specific overlay — `renderMap()` calls it once,
+unconditionally, so it's identical across all three renderer paths for free rather than a per-renderer
+reimplementation.
+
+- **Membership rule**, reasoned from the game's own content structure rather than assumed: every body
+  with its OWN `missions` array (moon, mars, belt, jupiter, saturn, titan, oort — the Moon and Titan
+  are technically moons but carry real distinct mission content, e.g. the Apollo-era Moon program)
+  PLUS every top-level planet that has no missions yet (mercury/venus/uranus/neptune/pluto — visible on
+  the map, nothing to do there yet, but a player should see "no content yet" rather than a silent gap
+  in the roster). Deliberately excludes the 12 purely decorative moons with no distinct mission content
+  of their own (Phobos, Io, Titania, etc.) — the game already reaches them by drilling into their
+  parent planet, and a roster row for each would add clutter, not roster value. Earth is a pinned
+  "Home" row, handled separately from the tiered groups.
+- **Tiering** reuses `mapAssetModel()` (D1, for "reached") and `bodyPlan()` (already built for the body
+  card, for "available" vs "locked") rather than inventing new gate logic — same semantics the body
+  card's own `pill ok`/`pill`/`pill lock` badges already use, so a body's roster tier and its body-card
+  pill can never disagree.
+- **Selecting from the rail** (`mapRosterSelect`) mirrors `map3dPick`'s own camera-distance clamp when
+  the inline 3D view is mounted, so navigating from the roster behaves identically to clicking the
+  planet mesh itself — not a lesser or different path into the same feature.
+- New CSS (`src/shell.html`): `.map-stage` (172px roster column + flexible canvas column, same
+  narrow-column-beside-main-content pattern as the existing `.bench-stage`, collapses to one column
+  under 820px), `.map-roster-row`/`.map-roster-dot`/`.map-roster-heading` (hover/selected states, each
+  row's dot colored from the body's own existing `BODIES[].color` — free visual link back to the map).
+
+**Body-name label LOD** (`map3dMoonLabelOpacity`, `map3dUpdateLabelLOD`) — every body in `BODIES` gets a
+full-scale name sprite regardless of camera distance; with 12 decorative moons alongside 8 planets,
+that's "label mush" per the original review. Reuses the exact fade-by-camera-distance pattern D2
+established for the AU ruler rather than inventing a second LOD mechanism: moon labels fade from full
+opacity at distance ≤40 to fully hidden at distance ≥90; planet/Sun/belt/Oort labels are never touched
+(always full opacity — 8 names is orientation, not clutter). The two LOD bands were deliberately tuned
+to overlap coherently: D2's AU-ruler fade starts at the same distance (45) the moon-label band spans,
+so zooming out reads as one continuous decluttering rather than two unrelated cutoffs firing at
+arbitrary, unrelated distances (asserted in the test file).
+
+**A real gap in an early test, caught before it papered over incorrect behavior.** The "available"-tier
+test originally set `state.rep=100` assuming that was near-max — it isn't; `mars_flyby.minRep` is 480,
+so the test was accidentally checking the wrong thing and silently passing for the wrong reason (mars
+correctly landed in `locked`, but not because rep was insufficiently maxed — because the test's idea of
+"maxed" was wrong). Raising rep to 2000 then still failed: `mars_flyby` is a `.profile` mission, and
+`needsTrackingNetwork()` gates ALL profile missions on having a built tracking station
+(`TRACKING_NETWORK_LIVE=true`) — a gate independent of rep or research entirely. Fixed by fixturing
+`state.trackingStations=['goldstone']` alongside maxed rep/research. Worth recording because it's a
+second instance (after D1's rival-index assumption) of a test asserting the wrong thing for the right
+reason on the first pass — the fix in both cases was tracing the ACTUAL gate function rather than
+guessing what "unlocked" requires.
+
+**Repeated the D2 comment-header slip, twice, and finally added a guardrail.** Two more `str_replace`
+edits in this same session again matched only the OPENING line of a preceding multi-line `/* ... */`
+comment block (D1's, both times) and didn't re-include it in `new_str`, orphaning the comment body as
+bare code — the identical mistake noted in the D2 write-up. **Both were caught immediately** because
+`node --check build/game.js` (the guardrail D2 added after the first occurrence) was run right after
+every build this session, before any test was attempted. Given it recurred twice more even with the
+lesson written down, the fix going forward is mechanical, not just "remember better": when editing near
+the start of an existing `/* */` block, prefer widening `old_str` to include a full unique line PAST
+the opening `/*` (or edit below the block's closing `*/` instead of at its top), so a narrow match can't
+silently sever the comment marker from its body.
+
+**Validation.** New `tests/test-map3d-roster.js` (25/25) — roster membership (missions-bearing bodies
+included, decorative moons excluded, Earth excluded from the tiered groups, no duplicates), tiering
+precedence (reached > available > locked > future, verified against real gate functions including the
+tracking-network requirement), `mapRosterModel`'s exhaustive/exclusive partition (every roster body in
+exactly one group), `mapRosterHTML` rendering every body + Earth with no NaN/undefined and correct
+selected-row highlighting, and the LOD fade curve (full visibility at/below the start distance, fully
+hidden at/above the end distance, exact midpoint value, monotonic, clamped, and coherent with D2's own
+ruler threshold). Full regression clean (109 suites) except the two known pre-existing drifts. Build
+parity, `node --check build/game.js`, and `git diff --check` all clean.
+
+**Deliberately NOT added to the map pop-out** (`openMapPopout`) — that view is a maximized-canvas
+overlay with no side panel today, and the inline tab (where the roster now lives, alongside the
+persistent body-card right rail) is the default daily-use surface this was scoped to fix. Revisit if a
+pop-out roster turns out to matter in practice.
+
+**NOT browser-verified** (no WebGL in this sandbox for the 3D-specific pieces; the roster itself is
+plain DOM so it should render everywhere, but layout wasn't visually confirmed): does the 172px roster
+column actually read as a helpful list rather than a cramped one against the 980px canvas at typical
+window widths, does clicking a roster row's camera-snap feel identical to clicking the planet, and
+does the moon-label fade look smooth rather than a visible pop-in/pop-out at the threshold.
+
+**Deferred to D3b** (heavier tier, per the review's own split): ecliptic grid + off-screen direction
+chevrons for Sun/Earth — the projection-math and clutter-vs-clarity work the roster's existence may
+partly reduce the need for. Worth judging whether D3b's scope shrinks now that a roster exists before
+starting it.

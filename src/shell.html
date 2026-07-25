@@ -322,6 +322,21 @@
   .customrow input[type=range]{width:100%;accent-color:var(--ignite)}
   .customrow input[type=checkbox]{accent-color:var(--ignite);justify-self:start}
   .mapsvg{display:block;width:100%;max-width:980px;height:auto;margin:0 auto;background:#04060a;border:1px solid var(--line);border-radius:8px}
+  /* D3a (2026-07-25): body roster rail — a slim always-visible list of every navigable body, grouped
+     reached/available/locked/future, so "where is everything" has an answer that doesn't require
+     spotting a dot on the map or knowing where the camera happens to be pointed. Same local
+     narrow-column-beside-main-content pattern as .bench-stage, not a new layout idea. */
+  .map-stage{display:grid;grid-template-columns:172px minmax(0,1fr);gap:12px;align-items:start}
+  @media(max-width:820px){.map-stage{grid-template-columns:1fr}}
+  #mapRoster{max-height:640px;overflow-y:auto;border:1px solid var(--line);border-radius:8px;background:var(--panel2);padding:6px}
+  .map-roster-group{margin-bottom:2px}
+  .map-roster-heading{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);padding:6px 6px 3px}
+  .map-roster-row{display:flex;align-items:center;gap:7px;padding:5px 6px;border-radius:5px;cursor:pointer;font-size:12.5px}
+  .map-roster-row:hover{background:var(--hud-raised)}
+  .map-roster-row.sel{background:var(--hud-raised);color:var(--ignite)}
+  .map-roster-dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto}
+  .map-roster-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #mapView.expanded .map-stage{grid-template-columns:172px minmax(0,1fr)}
   /* cap the Phaser map (980x620 internal) to its native size + centre it, so the
      full-width "Wide" layout can't inflate the canvas past its drawing buffer and blank it */
   #mapHost{max-width:980px;margin:0 auto}
@@ -1104,9 +1119,14 @@
         </div>
       </div>
       <p class="muted" style="font-size:12px;margin:6px 0 10px">Orbits are spaced for legibility, not to scale. Drag to pan, scroll to zoom, WASD/arrows to nudge; click a body (or use ←/→) for its Δv profile.</p>
-      <div id="empireStripWrap"></div>
-      <div id="mapHost" style="display:none;width:100%;aspect-ratio:980/620"></div>
-      <div id="mapCanvas"></div>
+      <div class="map-stage">
+        <div id="mapRoster"></div>
+        <div>
+          <div id="empireStripWrap"></div>
+          <div id="mapHost" style="display:none;width:100%;aspect-ratio:980/620"></div>
+          <div id="mapCanvas"></div>
+        </div>
+      </div>
     </div>
     <!-- bodyCard + mapActivityCard relocated to the persistent right rail in slice 3 -->
   </div>

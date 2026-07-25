@@ -5926,6 +5926,29 @@ function map3dUpdateAuRuler(){
   }
 }
 
+/* ---------- D3a (2026-07-25): body-name label LOD ----------
+   Every body in BODIES gets a label sprite (map3dLabelSprite, in the scene-construction loop above) —
+   8 planets/Sun/belt/Oort AND all 12 decorative moons, all at identical fixed scale regardless of
+   camera distance. The review flagged this as "label mush": zoomed out, a dozen moon names clutter
+   identically to the planet names that actually matter for orientation. Reuses the exact LOD pattern
+   D2 established for the AU ruler (fade + hide by camera distance) rather than inventing a new one —
+   planets/Sun/belt/Oort are unaffected (always full opacity); only moon labels fade. */
+const MAP3D_MOON_LABEL_FADE_START=40; // camera distance at/below which a moon label is fully visible
+const MAP3D_MOON_LABEL_FADE_END=90;   // camera distance at/above which a moon label is fully hidden
+// Pure fade math (headless-testable) — kept separate from the THREE.js material write below it.
+function map3dMoonLabelOpacity(dist){
+  return Math.max(0, Math.min(1, (MAP3D_MOON_LABEL_FADE_END-dist)/(MAP3D_MOON_LABEL_FADE_END-MAP3D_MOON_LABEL_FADE_START)));
+}
+function map3dUpdateLabelLOD(){
+  if(!map3d) return;
+  for(const id in map3d.labels){
+    const b=BODIES.find(x=>x.id===id), isMoon=!!(b&&b.around), label=map3d.labels[id];
+    if(!isMoon){ label.visible=true; label.material.opacity=1; continue; } // planets/Sun/belt/Oort: never LOD'd
+    const op=map3dMoonLabelOpacity(map3d.cam.dist);
+    label.material.opacity=op; label.visible=op>0.02;
+  }
+}
+
 /* ---------- D1 (2026-07-25): port the empire/asset overlay + route arcs into the 3D view ----------
    mapAssetModel()/rivalsAtBody()/plannedRoute()/transferArc() already exist and were wired into the
    SVG + Phaser renderers only — invisible in 3D, which is the default view (MAP3D=true). This ports
@@ -6145,6 +6168,7 @@ function map3dTick(){
   try{ map3dUpdateOverlayBadges(d); }catch(e){ /* D1: same guard shape as ship markers — never breaks the planet view */ }
   try{ map3dUpdateRouteArcs(d); }catch(e){}
   try{ map3dUpdateAuRuler(); }catch(e){} // D2: ruler LOD (fade/scale with camera distance)
+  try{ map3dUpdateLabelLOD(); }catch(e){} // D3a: moon-label LOD (fade/hide with camera distance)
   map3dApplyCamera();
   map3d.cameraFill.position.copy(map3d.camera.position);
   map3d.renderer.render(map3d.scene, map3d.camera);
@@ -6875,10 +6899,78 @@ function phaserMapKeyNav(key){
   else return false;
   return true;
 }
+/* ---------- D3a (2026-07-25): body roster rail ----------
+   "Navigating doesn't tell me where everything is" — the map's only way to reach a body was clicking
+   its visible dot, so a body currently off-screen, occluded, or simply not yet known-about had no way
+   to be found. This is a plain DOM sidebar (not a 3D/Phaser/SVG-specific overlay), so it works
+   identically across all three renderer paths for free — renderMap() calls it once, unconditionally.
+   Membership + tiering pure/testable first, DOM string-building second, same split as every other
+   slice in this epic. */
+// Which bodies get a roster row: every body with its own missions (moon, mars, belt, jupiter, saturn,
+// titan, oort — matches empireStripHTML's own "reachable" count) PLUS every top-level planet that
+// doesn't have missions yet (mercury/venus/uranus/neptune/pluto — visible on the map, nothing to do
+// there yet, but still worth being able to navigate to and see "no content yet" rather than a mystery
+// gap). Deliberately excludes decorative moons with no distinct mission content (phobos, io, titania,
+// etc.) — they add rows, not roster value; reached via drilling into their parent planet instead, same
+// as the map itself already treats them. Earth is handled separately (always-first "Home" row).
+function mapRosterBodies(){
+  return BODIES.filter(b=>b.id!=='earth' && ((b.missions&&b.missions.length) || !b.around));
+}
+// reached (you've flown a mission there) > available (at least one flyable mission right now) >
+// locked (missions exist, all still gated behind research/rep) > future (no missions defined at all
+// yet — mercury/venus/uranus/neptune/pluto today).
+function mapRosterTier(b, model){
+  const a=(model||mapAssetModel())[b.id];
+  if(a && a.firsts && a.firsts.length) return 'reached';
+  if(!b.missions || !b.missions.length) return 'future';
+  const plan=bodyPlan(b.id);
+  return plan.missions.some(mp=>mp.available && !mp.done) ? 'available' : 'locked';
+}
+function mapRosterModel(){
+  const model=mapAssetModel();
+  const groups={reached:[],available:[],locked:[],future:[]};
+  mapRosterBodies().forEach(b=>{ groups[mapRosterTier(b,model)].push(b); });
+  return groups;
+}
+const MAP_ROSTER_TIERS=[
+  {key:'reached', label:'Reached'},
+  {key:'available', label:'Available'},
+  {key:'locked', label:'Locked'},
+  {key:'future', label:'No content yet'},
+];
+function mapRosterRowHTML(b){
+  const sel=state.selectedBody===b.id;
+  return `<div class="map-roster-row${sel?' sel':''}" onclick="mapRosterSelect('${b.id}')" title="${esc(b.name)}">
+    <span class="map-roster-dot" style="background:${b.color||'#8fa9b9'}"></span>
+    <span class="map-roster-name">${esc(b.name)}</span>
+  </div>`;
+}
+function mapRosterHTML(){
+  const earth=BODIES.find(x=>x.id==='earth'), g=mapRosterModel();
+  let s=`<div class="map-roster-heading">Home</div>${mapRosterRowHTML(earth)}`;
+  MAP_ROSTER_TIERS.forEach(t=>{
+    const list=g[t.key]; if(!list.length) return;
+    s+=`<div class="map-roster-group"><div class="map-roster-heading">${t.label} (${list.length})</div>${list.map(mapRosterRowHTML).join('')}</div>`;
+  });
+  return s;
+}
+function renderMapRoster(){ const el=$('mapRoster'); if(el) el.innerHTML=mapRosterHTML(); }
+// Roster click: snap the 3D camera in toward the body first (same distance-clamp map3dPick already
+// uses on a direct planet click), THEN select — so navigating from the rail behaves identically to
+// clicking the planet itself, not a lesser/different path. A no-op distance clamp when 3D isn't the
+// active inline renderer (Phaser/SVG own their own zoom entirely through selectBody already).
+function mapRosterSelect(id){
+  if(map3d && map3d.mountId==='mapHost'){
+    const body=BODIES.find(b=>b.id===id);
+    if(body) map3d.cam.dist=Math.min(map3d.cam.dist, map3dFocusDistance(body));
+  }
+  selectBody(id);
+}
 function renderMap(){
   const mv=$('mapView'); if(mv) mv.classList.toggle('expanded', mapExpanded);
   const eb=$('mapExpandBtn'); if(eb) eb.textContent = mapExpanded ? '⛶ Exit full screen' : '⛶ Expand';
   const es=$('empireStripWrap'); if(es) es.innerHTML=empireStripHTML(); // empire ledger — both render paths
+  renderMapRoster(); // D3a: renderer-agnostic — same rail regardless of 3D/Phaser/SVG below
   if(MAP3D && threeOK() && startMap3D()){ renderBodyCard(); renderMapActivity(); return; } // E4.3.1: 3D view (flag-gated), falls through to Phaser→SVG on absence/failure
   if(phaserOK() && startMapScene()){ renderBodyCard(); renderMapActivity(); return; }
   const W=980,H=620; let svg;
