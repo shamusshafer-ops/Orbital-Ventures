@@ -6990,3 +6990,47 @@ that actually located it was reading the FAILURE path of the function being call
 happy path, and asking "what would make the centre blank regardless of cause" instead of "what is
 different about the 3D scene here". Worth reaching for sooner when a symptom is *absence* rather than
 misbehaviour: absence usually means a fallback was removed, not that the primary is subtly wrong.
+
+### ROOT CAUSE — WebGL context leak (2026-07-25)
+
+Still blank after the fallback-ordering fix, with the decisive new detail: **"empty blue space"**, not
+a missing element. That reframed it — the canvas was present and rendering its clear colour with
+nothing in it, which means no exception was ever thrown, which is why two rounds of exception-handling
+fixes changed nothing.
+
+**Cause: `disposeMap3D()` never released the WebGL context.** `renderer.dispose()` frees THREE's own
+objects but does NOT release the underlying context — that needs `forceContextLoss()`, which appeared
+nowhere in the file. And `disposeMap3D()` runs constantly: on every tab leave (`pauseMap3D`), every
+pop-out open (`refreshMapPopout` re-mounts), every pop-out close, plus both failure paths. Every one of
+those leaked a context.
+
+Browsers cap concurrent WebGL contexts (~8–16) and, once the cap is hit, **silently drop the oldest**.
+A lost context renders nothing, throws nothing, and logs nothing — so `map3dTick()` kept running
+happily, `startMap3D()` kept returning `true`, no catch fired, no fallback engaged. Silent blank canvas.
+This is also why the inline tab looked fine while the pop-out didn't: the pop-out's context is created
+last, after a session's worth of leaks, so it's the one on the wrong side of the cap.
+
+**Three fixes, addressing three independent ways the stage could go blank:**
+1. **The leak itself** — `disposeMap3D()` now calls `renderer.forceContextLoss()` after `dispose()`,
+   and traverses the scene disposing geometries and materials first. Deliberately does NOT dispose
+   `material.map`: the photographic planet textures live in `map3dPhotoTextureCache` and are reused
+   across rebuilds, so disposing them would leave the cache holding dead textures.
+2. **Silent context loss** — a `webglcontextlost` listener on the canvas now falls back to the 2D map
+   instead of leaving a blank surface. `preventDefault()` marks it restorable, but we fall back rather
+   than restore, since a restore would need every texture and geometry rebuilt anyway.
+3. **The pop-out had no fallback in the tick-failure path** — `map3dRenderLoop`'s catch read
+   `map3d.fallbackId`, which is `'mapCanvas'` for the inline mount but **null** for the pop-out, so it
+   hid the host and showed nothing. All three failure paths (`startMap3D` catch, tick catch, context
+   loss) now route through one new `map3dFallbackTo2D(mountId, reason)` helper that knows both mounts.
+
+**Why this took three attempts, worth internalising.** The first two fixes both targeted *thrown
+errors* — but the actual failure mode threw nothing at all. The tell was in the symptom wording all
+along: "empty blue space" describes a canvas that IS there and IS painting, which rules out every
+exception path before you start. When a rendering symptom is a flat colour rather than a missing
+element, suspect resource/context state, not control flow. Ask "is it painting nothing, or is it not
+painting?" first — those have disjoint cause sets.
+
+**NOT browser-verified.** If the pop-out is still blank after this, the next diagnostic is the browser
+console: with fix (2) in place a lost context now logs `3D map falling back to 2D: webglcontextlost`
+and the 2D SVG map should appear in its place, which would confirm context loss and rule out
+everything else.

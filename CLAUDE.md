@@ -24,6 +24,13 @@ change first.
 > When done, clear it back to "(none claimed right now)" and add your entry to the history below.
 
 **Oriented quickly (last few sessions, newest first) — see History for full detail:**
+- Solar Map pop-out ROOT CAUSE (Claude) — WebGL context leak: disposeMap3D() never called
+  forceContextLoss(), and it runs on every tab leave / pop-out open / pop-out close. Browsers cap
+  contexts and silently drop the oldest; a lost context renders nothing and THROWS NOTHING, so no
+  catch fired and no fallback engaged. Fixed forceContextLoss + geometry/material disposal, added a
+  webglcontextlost handler, and routed all three failure paths through map3dFallbackTo2D() which
+  knows both mounts (the pop-out's fallbackId was null). RULE: a flat-colour render symptom means
+  resource/context state, not control flow — "painting nothing" and "not painting" have disjoint causes.
 - Solar Map pop-out blank-stage fix (Claude) — refreshMapPopout destroyed the 2D fallback BEFORE
   calling startMap3D and ignored its return value; startMap3D catches any failure, disposes and
   returns false, so any 3D failure left a permanently blank stage with both side panels fine. Now

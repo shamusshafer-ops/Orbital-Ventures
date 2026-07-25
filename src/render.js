@@ -5485,13 +5485,49 @@ function planetMeshRadius(b){ // true radii, compressed just enough to keep smal
   if(b.kind==='belt'||b.kind==='cloud') return 0.45;
   return 0.32+0.92*Math.pow(rel,0.72);         // Earth ~1.24; Jupiter ~5.6 (still intentionally compressed)
 }
+/* Fall back to the 2D map from wherever the 3D view was mounted. Both call sites that previously did
+   this inline assumed the INLINE mount's fallback element ('mapCanvas'), which is null for the
+   pop-out — so a 3D failure in the pop-out hid the host and showed nothing at all. Centralised here so
+   both mounts always end up with something on screen. */
+function map3dFallbackTo2D(mountId, reason){
+  try{ if(reason) console.warn('3D map falling back to 2D:', reason); }catch(e){}
+  const mount=mountId||(map3d&&map3d.mountId)||'mapHost';
+  disposeMap3D();
+  const host=$(mount); if(host) host.style.display='none';
+  if(mount==='mapPopHost'){
+    const z=$('mapPopZoom');
+    if(z){ z.style.display='flex'; z.innerHTML=renderMapOverview(900,900); }
+  } else {
+    const c=$('mapCanvas');
+    if(c){ c.style.display='block'; if(!c.innerHTML) c.innerHTML=renderMapOverview(980,620); }
+  }
+}
 function disposeMap3D(){
   if(!map3d) return;
   try{ if(map3d.raf) cancelAnimationFrame(map3d.raf); }catch(e){}
   try{ map3d.dom && map3d.dom.removeEventListener && detachMap3DInput(); }catch(e){}
+  /* Free GPU-side resources before dropping the context. renderer.dispose() alone does NOT release
+     the underlying WebGL context — and disposeMap3D() runs on EVERY tab leave (pauseMap3D), every
+     pop-out open, and every pop-out close, so without forceContextLoss() each of those leaked a
+     context. Browsers cap concurrent contexts (~8-16) and silently drop the oldest once the cap is
+     hit; a lost context renders nothing and throws nothing, so the symptom is a silently blank canvas
+     with no console error and no fallback triggered. That was the pop-out's "empty blue space". */
+  try{
+    if(map3d.scene && map3d.scene.traverse){
+      map3d.scene.traverse(o=>{
+        if(o.geometry && o.geometry.dispose) o.geometry.dispose();
+        const mats=o.material?(Array.isArray(o.material)?o.material:[o.material]):[];
+        // NOTE: deliberately NOT disposing material.map — the photographic planet textures live in
+        // map3dPhotoTextureCache and are reused across rebuilds; disposing them would leave the cache
+        // holding dead textures. Canvas-generated textures are released with the context below.
+        for(const m of mats){ if(m && m.dispose) m.dispose(); }
+      });
+    }
+  }catch(e){}
   try{
     if(map3d.renderer){
       if(map3d.renderer.dispose) map3d.renderer.dispose();
+      if(map3d.renderer.forceContextLoss) map3d.renderer.forceContextLoss(); // the actual context release
       const el = map3d.renderer.domElement;
       if(el && el.parentNode) el.parentNode.removeChild(el);
     }
@@ -5752,6 +5788,11 @@ function startMap3D(hostId='mapHost', W=MAP_W, H=MAP_H){
       if('toneMapping' in renderer){ renderer.toneMapping=THREE.NoToneMapping; renderer.toneMappingExposure=1; }
       const dom=renderer.domElement; dom.id='map3dCanvas';
       dom.style.maxWidth='100%'; dom.style.height='auto'; dom.style.display='block';
+      // A lost context renders nothing and throws nothing, so without this the map just goes blank
+      // with no error anywhere. preventDefault() marks it restorable; we fall back to the 2D map
+      // rather than attempting a restore, which would need every texture/geometry rebuilt anyway.
+      dom.addEventListener('webglcontextlost', ev=>{ try{ ev.preventDefault(); }catch(_){}
+        const mount=(map3d&&map3d.mountId)||hostId; map3dFallbackTo2D(mount, 'webglcontextlost'); });
       host.appendChild(dom);
       const scene=new THREE.Scene(); scene.background=new THREE.Color(0x05080d);
       const camera=new THREE.PerspectiveCamera(50, W/H, 0.01, 5000);
@@ -5805,8 +5846,7 @@ function startMap3D(hostId='mapHost', W=MAP_W, H=MAP_H){
     map3dRenderLoop();
     return true;
   }catch(e){
-    console.warn('3D map failed, falling back to 2D:', e);
-    disposeMap3D();
+    map3dFallbackTo2D(hostId, e);
     return false;
   }
 }
@@ -6399,7 +6439,7 @@ function map3dTick(){
 }
 function map3dRenderLoop(){
   if(!map3d) return;
-  try{ map3dTick(); }catch(e){ console.warn('3D map tick failed, falling back:', e); const f=map3d.fallbackId, mount=map3d.mountId; disposeMap3D(); const c=f&&$(f); if(c) c.style.display='block'; const h=$(mount); if(h) h.style.display='none'; return; }
+  try{ map3dTick(); }catch(e){ map3dFallbackTo2D(map3d.mountId, e); return; } // routed through the shared helper so the pop-out gets a fallback too (its fallbackId was null)
   map3d.raf = requestAnimationFrame(map3dRenderLoop);
 }
 // Stop the render loop when leaving the map tab (mirrors pauseMapGame). Cheap teardown: cancels the
