@@ -24,6 +24,11 @@ change first.
 > When done, clear it back to "(none claimed right now)" and add your entry to the history below.
 
 **Oriented quickly (last few sessions, newest first) — see History for full detail:**
+- Solar Map pop-out context-lost guard (Claude) — forceContextLoss() FIRES webglcontextlost, and it
+  arrives async after the next scene is built, so the handler was tearing down its own successor.
+  Handler now checks map3d.dom!==dom (each listener closes over its own canvas) plus a _disposing
+  flag. RULE: a teardown call that raises the event your recovery handler listens for needs an
+  IDENTITY check against the live object -- a null check passes exactly when the successor exists.
 - Solar Map pop-out ROOT CAUSE (Claude) — WebGL context leak: disposeMap3D() never called
   forceContextLoss(), and it runs on every tab leave / pop-out open / pop-out close. Browsers cap
   contexts and silently drop the oldest; a lost context renders nothing and THROWS NOTHING, so no

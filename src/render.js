@@ -5504,6 +5504,8 @@ function map3dFallbackTo2D(mountId, reason){
 }
 function disposeMap3D(){
   if(!map3d) return;
+  map3d._disposing=true; // set BEFORE forceContextLoss() below, so the webglcontextlost listener
+                         // installed in startMap3D ignores the loss we are about to cause ourselves
   try{ if(map3d.raf) cancelAnimationFrame(map3d.raf); }catch(e){}
   try{ map3d.dom && map3d.dom.removeEventListener && detachMap3DInput(); }catch(e){}
   /* Free GPU-side resources before dropping the context. renderer.dispose() alone does NOT release
@@ -5791,8 +5793,15 @@ function startMap3D(hostId='mapHost', W=MAP_W, H=MAP_H){
       // A lost context renders nothing and throws nothing, so without this the map just goes blank
       // with no error anywhere. preventDefault() marks it restorable; we fall back to the 2D map
       // rather than attempting a restore, which would need every texture/geometry rebuilt anyway.
+      // CRITICAL GUARD: disposeMap3D() calls forceContextLoss(), which fires this very event — and it
+      // arrives ASYNCHRONOUSLY, i.e. after the next scene has already been built. Without the identity
+      // check below, disposing the inline scene to mount the pop-out would deliver a stale loss event
+      // that tore down the freshly-built pop-out scene: texture uploads, then "context lost", then a
+      // fallback, with nothing actually wrong. Only honour a loss for the canvas that is still the
+      // live mount, and never during our own teardown.
       dom.addEventListener('webglcontextlost', ev=>{ try{ ev.preventDefault(); }catch(_){}
-        const mount=(map3d&&map3d.mountId)||hostId; map3dFallbackTo2D(mount, 'webglcontextlost'); });
+        if(!map3d || map3d._disposing || map3d.dom!==dom) return; // stale/self-inflicted — ignore
+        map3dFallbackTo2D(map3d.mountId, 'webglcontextlost'); });
       host.appendChild(dom);
       const scene=new THREE.Scene(); scene.background=new THREE.Color(0x05080d);
       const camera=new THREE.PerspectiveCamera(50, W/H, 0.01, 5000);

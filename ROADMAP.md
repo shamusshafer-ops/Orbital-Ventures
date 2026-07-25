@@ -7034,3 +7034,35 @@ painting?" first — those have disjoint cause sets.
 console: with fix (2) in place a lost context now logs `3D map falling back to 2D: webglcontextlost`
 and the 2D SVG map should appear in its place, which would confirm context loss and rule out
 everything else.
+
+### Follow-up — the context-lost handler was killing its own successor (2026-07-25)
+
+Console output confirmed the diagnostic path above, and named the remaining defect precisely:
+
+```
+WebGL warning: generateMipmap: ... lazy initialization. 15   <- new scene's 15 textures uploading
+WebGL context was lost.                                       three.module.js
+3D map falling back to 2D: webglcontextlost                   (twice)
+```
+
+**`forceContextLoss()` fires the very `webglcontextlost` event the new listener subscribes to — and it
+arrives asynchronously**, after the next scene has already been constructed. So opening the pop-out ran:
+dispose the inline scene → `forceContextLoss()` queues a loss event → `startMap3D('mapPopHost')` builds
+the pop-out scene (the 15 texture uploads in the log) → the stale queued event finally lands → the
+handler read the CURRENT `map3d` and tore down the freshly-built pop-out scene. Nothing was actually
+wrong with it. The texture-upload warnings appearing immediately BEFORE the loss line is the giveaway:
+the thing being destroyed had only just finished loading.
+
+So the previous commit's leak fix was correct and necessary, but it introduced a self-inflicted teardown
+on top of the bug it fixed.
+
+**Fix:** each canvas's listener closes over its own `dom`, so the handler now ignores any loss whose
+canvas is no longer the live mount, and ignores losses raised during our own teardown:
+`if(!map3d || map3d._disposing || map3d.dom!==dom) return;` with `_disposing` set at the top of
+`disposeMap3D()` before `forceContextLoss()` runs. A genuine loss on the live canvas is still honoured.
+Verified against the exact reported sequence (loss during dispose → ignored; stale loss after remount →
+ignored; genuine loss on the live canvas → falls back correctly).
+
+**General lesson:** a teardown API that *causes* the event your recovery handler listens for will make
+that handler fire against its own replacement. Any such handler needs an identity check against the
+currently-live object, not just a null check — a null check passes precisely when the successor exists.
