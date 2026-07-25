@@ -6,10 +6,10 @@ reorder existing entries there, only add new ones at the end, same as `ROADMAP.m
 
 ---
 
-## STATUS (as of 2026-07-25, working tree based on HEAD — Solar Map D3b commit)
+## STATUS (as of 2026-07-25, working tree based on HEAD — Solar Map D4 commit)
 
-**Repo health:** 110 test suites (added `test-map3d-overlay.js`, `test-map3d-scale.js`,
-`test-map3d-roster.js`, `test-map3d-orient.js`), clean build parity, `git diff --check` clean. **REMINDER (hit 4x in one
+**Repo health:** 111 test suites (added `test-map3d-overlay.js`, `test-map3d-scale.js`,
+`test-map3d-roster.js`, `test-map3d-orient.js`, `test-map3d-window.js`), clean build parity, `git diff --check` clean. **REMINDER (hit 5x in one
 session, 2026-07-25): `node build.js` is a bare string concat with NO syntax check** — a green build
 does not mean the output parses. ALWAYS run `node --check build/game.js` immediately after any edit
 near a `/* */` comment block, and prefer editing well past a comment's opening `/*` line (or below its
@@ -24,6 +24,11 @@ change first.
 > When done, clear it back to "(none claimed right now)" and add your entry to the history below.
 
 **Oriented quickly (last few sessions, newest first) — see History for full detail:**
+- Solar Map D4 (Claude) — time-scrubber promotion; **D-PASS COMPLETE**. Jump-to-next-window +
+  window readout + preview arc. Map anchors window search to the PREVIEWED date, body card stays
+  anchored to the LIVE date — different questions, same computeWindows geometry, so they can't
+  disagree. NOTE: window:true exists on only 4 missions, all Mars, so the control is Mars-only today;
+  test carries a canary that fails if new window content is authored.
 - Solar Map D3b (Claude) — ecliptic reference grid + off-screen Sun/Earth chevrons. Projection math is
   PURE (map3dProjectPoint/map3dChevronDirection) specifically so the behind-camera sign-flip trap is
   testable; caught an inverted right-vector (f x up = (-f.z,0,f.x)) in the first draft. D3 complete;

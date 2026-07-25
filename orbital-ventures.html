@@ -21276,15 +21276,15 @@ function updateMap3DScaleHud(){
   if(!map3d || !map3d.scaleReadout) return;
   map3d.scaleReadout.innerHTML=mapScaleReadoutHTML(state.selectedBody||'earth', mapViewAbsDay());
 }
-function mapTimeShift(days){ mapPreviewAbsDay=mapViewAbsDay()+days; updateMap3DTimeHud(); updateMap3DScaleHud(); }
-function resetMapTime(){ mapPreviewAbsDay=null; updateMap3DTimeHud(); updateMap3DScaleHud(); }
+function mapTimeShift(days){ mapPreviewAbsDay=mapViewAbsDay()+days; updateMap3DTimeHud(); updateMap3DScaleHud(); updateMap3DWindowHud(); }
+function resetMapTime(){ mapPreviewAbsDay=null; updateMap3DTimeHud(); updateMap3DScaleHud(); updateMap3DWindowHud(); }
 function addMap3DTimeHud(host, hostId){
   host.style.position='relative'; host.style.overflow='hidden';
   const hud=document.createElement('div'); hud.id='map3dHud_'+hostId;
   hud.style.cssText='position:absolute;top:8px;left:8px;z-index:4;padding:7px 8px;background:rgba(3,9,16,.82);border:1px solid rgba(116,171,208,.48);border-radius:6px;color:#cfe5f4;font:11px ui-monospace,monospace;line-height:1.35;box-shadow:0 4px 16px rgba(0,0,0,.32)';
-  hud.innerHTML=`<div style="color:#7fb6dd;letter-spacing:.07em;font-size:10px">SOLAR DATE</div><div data-map-time style="font-size:12px;color:#fff4d4;margin:2px 0 5px"></div><div style="display:flex;gap:3px"><button onclick="mapTimeShift(-360)" title="Reverse one year">−1Y</button><button onclick="mapTimeShift(-30)" title="Reverse one month">−1M</button><button onclick="resetMapTime()" title="Return to the live game date">Now</button><button onclick="mapTimeShift(30)" title="Advance one month">+1M</button><button onclick="mapTimeShift(360)" title="Advance one year">+1Y</button></div><div data-map-scale style="margin-top:7px;padding-top:6px;border-top:1px solid rgba(116,171,208,.28)"></div><div style="color:#8fa9b9;margin-top:5px">hover for info · drag to orbit · wheel to zoom</div>`;
+  hud.innerHTML=`<div style="color:#7fb6dd;letter-spacing:.07em;font-size:10px">SOLAR DATE</div><div data-map-time style="font-size:12px;color:#fff4d4;margin:2px 0 5px"></div><div style="display:flex;gap:3px"><button onclick="mapTimeShift(-360)" title="Reverse one year">−1Y</button><button onclick="mapTimeShift(-30)" title="Reverse one month">−1M</button><button onclick="resetMapTime()" title="Return to the live game date">Now</button><button onclick="mapTimeShift(30)" title="Advance one month">+1M</button><button onclick="mapTimeShift(360)" title="Advance one year">+1Y</button></div><div data-map-scale style="margin-top:7px;padding-top:6px;border-top:1px solid rgba(116,171,208,.28)"></div><div data-map-window style="margin-top:7px;padding-top:6px;border-top:1px solid rgba(116,171,208,.28)"></div><div style="color:#8fa9b9;margin-top:5px">hover for info · drag to orbit · wheel to zoom</div>`;
   for(const b of hud.querySelectorAll('button')) b.style.cssText='padding:2px 4px;border:1px solid #43677f;border-radius:3px;background:#102232;color:#d4e8f5;font:10px ui-monospace,monospace;cursor:pointer';
-  host.appendChild(hud); return {hud,readout:hud.querySelector('[data-map-time]'),scaleReadout:hud.querySelector('[data-map-scale]')};
+  host.appendChild(hud); return {hud,readout:hud.querySelector('[data-map-time]'),scaleReadout:hud.querySelector('[data-map-scale]'),windowReadout:hud.querySelector('[data-map-window]')};
 }
 function addMap3DHoverCard(host){
   const tip=document.createElement('div');
@@ -21408,8 +21408,9 @@ function startMap3D(hostId='mapHost', W=MAP_W, H=MAP_H){
               ships:{}, shipData:{}, // E4.5: flightId -> {mesh,label}, flightId -> latest marker descriptor (for hover/pick lookup)
               badges:{}, badgeSpecKeys:{}, badgeTooltips:{}, committedArc:null, plannedArc:null, // D1: bodyId -> badge sprite / its last-built spec key (rebuild texture only on change) / tooltip text; the two route-arc Lines (built lazily on first use)
               auRuler, scaleReadout:hud.scaleReadout, // D2: AU ruler sprites by body id; the HUD's live scale/distance line
-              eclipticGrid, chevrons};                  // D3b: reference-plane group; the screen-space direction arrows
-      updateMap3DTimeHud(); updateMap3DScaleHud();
+              eclipticGrid, chevrons,                   // D3b: reference-plane group; the screen-space direction arrows
+              windowReadout:hud.windowReadout, previewArc:null}; // D4: the HUD's transfer-window block; the hypothetical-geometry arc (built lazily)
+      updateMap3DTimeHud(); updateMap3DScaleHud(); updateMap3DWindowHud();
       attachMap3DInput();
     } else if(map3d.dom && !map3d.dom.parentNode){
       host.appendChild(map3d.dom);
@@ -21554,6 +21555,77 @@ function map3dUpdateAuRuler(){
     s.material.opacity=fade;
     s.scale.set(4.6*scale, 1.15*scale, 1);
   }
+}
+
+/* ---------- D4 (2026-07-25): time-scrubber promotion ----------
+   The −1Y/−1M/Now/+1M/+1Y scrubber was the best planning idea on this screen and it sat in an 11px
+   corner widget with nothing tied to it. This slice makes it an instrument: jump the previewed date
+   to the selected body's next transfer window, read how far the preview sits from that window, and
+   watch the transfer geometry actually close as you scrub.
+
+   Design note on map-vs-card agreement (flagged in the D2 write-up as this slice's real work). The
+   body card's `nextWindowFor` is anchored to absDay() — the LIVE date — and stays that way: the card
+   answers "when is my next window", which must not drift just because the map is being previewed.
+   The map's own search is anchored to the PREVIEWED date instead, so repeated jumps step forward
+   through successive windows. The two therefore never contradict each other; they answer different
+   questions, and the map's readout names the reference date explicitly so which is which is visible.
+   Both derive from the same computeWindows() geometry, so they can't disagree on where windows are. */
+// Next real transfer window for a body strictly after a reference day. Pure geometry via
+// computeWindows — deliberately NOT the state.windows cache, which is keyed per-mission and anchored
+// at absDay(), so it can't answer "what comes after the date I'm previewing".
+function nextWindowFromDay(bodyId, fromAbs){
+  if(!bodyId || bodyId==='earth') return null;
+  const list=(typeof computeWindows==='function')?computeWindows(bodyId, fromAbs+1, 1):[];
+  if(!list || !list.length) return null;
+  const w=list[0];
+  const q = w.quality>1.08?'Favorable':(w.quality<0.95?'Marginal':'Average');
+  return {abs:w.abs, quality:w.quality, qLabel:q, date:dayToDate(w.abs), daysFromRef:w.abs-fromAbs};
+}
+// Does this body have window-gated missions at all? Bodies without them (Earth, and the not-yet-
+// authored planets) get no jump control rather than a button that silently does nothing.
+function bodyHasWindows(bodyId){
+  const b=BODIES.find(x=>x.id===bodyId);
+  if(!b || !b.missions || !b.missions.length) return false;
+  return bodyMissions(bodyId).some(m=>m.window);
+}
+// The HUD's window block. Pure (returns HTML) so it's headless-testable, same split as D2's scale
+// readout. States the reference date outright so a previewed figure is never mistaken for the live one.
+function mapWindowReadoutHTML(bodyId, viewDay){
+  const b=BODIES.find(x=>x.id===bodyId);
+  if(!b || bodyId==='earth') return '';
+  if(!bodyHasWindows(bodyId)){
+    return `<div style="color:#7fb6dd;letter-spacing:.07em;font-size:10px">TRANSFER WINDOW</div>`+
+           `<div style="color:#8fa9b9">No window-gated missions to ${esc(b.name)} yet.</div>`;
+  }
+  const w=nextWindowFromDay(bodyId, viewDay);
+  const previewing=(mapPreviewAbsDay!=null);
+  let s=`<div style="color:#7fb6dd;letter-spacing:.07em;font-size:10px">TRANSFER WINDOW · ${esc(b.name)}</div>`;
+  if(!w){ return s+`<div style="color:#8fa9b9">No window found within the scan horizon.</div>`; }
+  const qCol=w.qLabel==='Favorable'?'#7bc46a':(w.qLabel==='Marginal'?'#e8a04c':'#dcecf7');
+  const months=Math.round(w.daysFromRef/DAYS_PER_MONTH);
+  s+=`<div style="display:flex;justify-content:space-between;gap:10px"><span style="color:#8fa9b9">Next</span><span style="color:#dcecf7">${esc(w.date)}</span></div>`;
+  s+=`<div style="display:flex;justify-content:space-between;gap:10px"><span style="color:#8fa9b9">Geometry</span><span style="color:${qCol}">${w.qLabel}</span></div>`;
+  s+=`<div style="display:flex;justify-content:space-between;gap:10px"><span style="color:#8fa9b9">${previewing?'From preview':'From today'}</span><span style="color:#dcecf7">${months} mo</span></div>`;
+  s+=`<button onclick="mapJumpNextWindow()" style="margin-top:5px;width:100%;padding:3px 4px;border:1px solid #43677f;border-radius:3px;background:#102232;color:#ffd9a0;font:10px ui-monospace,monospace;cursor:pointer" title="Set the previewed date to this window — press again to step to the one after">⊕ Jump to window</button>`;
+  return s;
+}
+// Step the previewed date forward to the selected body's next window. Repeated presses walk forward
+// through successive windows, because the search is anchored to the previewed date, not to today.
+// Gated on bodyHasWindows for the same reason the readout is: nextWindowFromDay is pure ORBITAL
+// GEOMETRY and will happily return a phase alignment for any body with elements — including ones
+// where no mission actually uses windows (Mercury et al). Jumping to a "window" the game has no
+// concept of would be a lie, so the action and the readout gate identically.
+function mapJumpNextWindow(){
+  const id=state.selectedBody;
+  if(!bodyHasWindows(id)) return;
+  const w=nextWindowFromDay(id, mapViewAbsDay());
+  if(!w) return;
+  mapPreviewAbsDay=w.abs;
+  updateMap3DTimeHud(); updateMap3DScaleHud(); updateMap3DWindowHud();
+}
+function updateMap3DWindowHud(){
+  if(!map3d || !map3d.windowReadout) return;
+  map3d.windowReadout.innerHTML=mapWindowReadoutHTML(state.selectedBody||'earth', mapViewAbsDay());
 }
 
 /* ---------- D3b (2026-07-25): orientation aids — ecliptic grid + off-screen chevrons ----------
@@ -21860,6 +21932,23 @@ function map3dUpdateRouteArcs(d){
       } else if(map3d.plannedArc) map3d.plannedArc.visible=false;
     } else if(map3d.plannedArc) map3d.plannedArc.visible=false;
   } else if(map3d.plannedArc) map3d.plannedArc.visible=false;
+  /* D4: preview arc — the geometry to the SELECTED body at the PREVIEWED date. Only drawn while
+     actually scrubbing (mapPreviewAbsDay!=null) and only when neither of the two real arcs above is
+     already showing that body, so it can never overdraw or contradict a committed/planned route —
+     it's a "what would this look like on that date" aid, not a claim about a plan. Dimmer and
+     thinner-dashed than both, so it reads as hypothetical at a glance. */
+  const previewing=(mapPreviewAbsDay!=null);
+  const selId=state.selectedBody;
+  const committedBody=cw?missionBody(cw.missionId):null;
+  const prNow=(!cw && typeof plannedRoute==='function')?plannedRoute():null;
+  const alreadyDrawn=(committedBody===selId)||(prNow && !prNow.committed && prNow.destId===selId);
+  if(previewing && selId && selId!=='earth' && !alreadyDrawn){
+    const arc=scene3DTransferArc(selId, d);
+    if(arc){
+      if(!map3d.previewArc){ map3d.previewArc=map3dMakeArcLine(0x8fa9b9); map3d.previewArc.material.opacity=0.5; map3d.scene.add(map3d.previewArc); }
+      map3d.previewArc.visible=true; map3dUpdateArcLine(map3d.previewArc, arc);
+    } else if(map3d.previewArc) map3d.previewArc.visible=false;
+  } else if(map3d.previewArc) map3d.previewArc.visible=false;
 }
 // Add/update/remove marker meshes to match this frame's active flights. Cheap (activeShipMarkers
 // is O(active flights), normally 0-3) and fully guarded — a bad flight record (missing hull, no
@@ -21890,8 +21979,8 @@ function map3dUpdateShipMarkers(d){
 }
 function map3dTick(){
   const d=(typeof absDay==='function')?mapViewAbsDay():0;
-  if(mapPreviewAbsDay===null && map3d._hudLiveDay!==d){ map3d._hudLiveDay=d; updateMap3DTimeHud(); updateMap3DScaleHud(); }
-  if(map3d._hudSelBody!==state.selectedBody){ map3d._hudSelBody=state.selectedBody; updateMap3DScaleHud(); } // D2: selection drives the scale block too
+  if(mapPreviewAbsDay===null && map3d._hudLiveDay!==d){ map3d._hudLiveDay=d; updateMap3DTimeHud(); updateMap3DScaleHud(); updateMap3DWindowHud(); }
+  if(map3d._hudSelBody!==state.selectedBody){ map3d._hudSelBody=state.selectedBody; updateMap3DScaleHud(); updateMap3DWindowHud(); } // D2/D4: selection drives the scale + window blocks too
   const t=(Date.now()-map3d.startedAt)/1000, pulse=1+Math.sin(t*1.7)*0.035+Math.sin(t*.47)*0.025;
   map3d.sun.rotation.y=t*0.12; map3d.sun.rotation.z=Math.sin(t*.19)*0.08;
   map3d.corona.material.rotation=Math.sin(t*.13)*0.18; map3d.corona.scale.set(42*pulse,42*pulse,1); map3d.corona.material.opacity=0.78+Math.sin(t*1.3)*0.08;

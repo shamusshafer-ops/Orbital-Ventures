@@ -6823,3 +6823,69 @@ body may deserve a third.
 body, live transfer arc while previewing a date). D4 is design work; heavier tier recommended. Note the
 D2 write-up's standing point that the HUD SCALE block is the natural home for D4's jump control, so its
 layout is worth judging together with D4 rather than in isolation.
+
+## Session — Solar Map D4: time-scrubber promotion (2026-07-25) — D-PASS COMPLETE
+
+Owner confirmed D1–D3b look right in a real browser before this slice started, which removed the
+standing risk that D4 would build onto a HUD needing rework.
+
+**The design question this slice had to settle** (flagged back in the D2 write-up): the map and the
+body card were two surfaces telling the same story independently. Resolution — they answer *different*
+questions and are deliberately anchored differently:
+- **body card** → `nextWindowFor(missionId)`, anchored to `absDay()`, the LIVE date. "When is my next
+  window?" must not drift because the map is being previewed. **Untouched by this slice.**
+- **map** → `nextWindowFromDay(bodyId, viewDay)` (new), anchored to the PREVIEWED date, so repeated
+  jumps step forward through successive windows.
+
+Both derive from the same `computeWindows()` geometry, so they cannot disagree about *where* windows
+are — only about which one is "next", which is the intended difference. The readout names its
+reference date outright ("From today" vs "From preview") so a previewed figure can't be mistaken for
+the live one. All asserted, including the invariant that previewing the map does not move the card.
+
+Deliberately NOT the `state.windows` cache: it's keyed per-mission and anchored at `absDay()`, so it
+structurally cannot answer "what comes after the date I'm previewing."
+
+**What shipped:**
+- `nextWindowFromDay(bodyId, fromAbs)` (pure) — next real transfer window strictly after any reference
+  day, straight off `computeWindows` geometry.
+- `bodyHasWindows(bodyId)` (pure) — whether the body has window-gated missions at all.
+- `mapWindowReadoutHTML` (pure) + a HUD `TRANSFER WINDOW` block under D2's SCALE block: next window
+  date, geometry quality (colour-coded), distance from the reference date, and the jump control.
+- `mapJumpNextWindow()` — sets the preview date to that window; pressing again steps to the one after.
+  Visual-only, never mutates the simulation or save (asserted: live day and money both unchanged).
+- **Preview arc** — a third precedence tier below the committed (amber) and planned (cyan/red) arcs
+  from D1: the geometry to the *selected* body at the *previewed* date, drawn only while actually
+  scrubbing, and only when neither real arc is already showing that body, so it can never overdraw or
+  contradict a real plan. Dimmer and thinner-dashed so it reads as hypothetical at a glance.
+
+**A real bug caught by the tests.** `nextWindowFromDay` is pure orbital geometry, so it happily returns
+a phase alignment for ANY body with elements — including Mercury, which has no window-gated missions.
+The readout gated on `bodyHasWindows`, but the jump ACTION did not, so it would have jumped to a
+"window" the game has no concept of. Fixed by gating both identically.
+
+**Content finding worth flagging.** `window:true` exists on exactly **4 missions in the entire game,
+all targeting Mars** (`mars_flyby`, `mars_orbit`, `mars_landing`, `astrobiology`). So D4's control is
+**Mars-only in practice today**. The implementation is fully data-driven — any future body whose
+missions declare `window:true` lights it up with no code change — and the test file carries an explicit
+canary asserting "exactly one body has windows" that will fail the moment new window content is
+authored, flagging that D4's reach widened. Worth deciding separately whether more destinations *should*
+be window-gated; that's a game-design question, not a map question, and is left alone here.
+
+**Validation.** New `tests/test-map3d-window.js` (36/36): window search correctness (strictly future,
+never the reference day itself, label vocabulary, null-safety), four-step forward stepping with gaps
+asserted against Mars' real ~26-month synodic period (not a made-up cadence), the map-vs-card anchoring
+invariants in both directions, `bodyHasWindows` gating plus the content canary, readout rendering
+(NaN/undefined-free for every body, Earth renders nothing, a window-less body explains itself rather
+than showing a dead button, correct "From today"/"From preview" labelling), and `mapJumpNextWindow`'s
+preview-only mutation plus its safe no-ops. Full regression clean (110 suites) except the two known
+pre-existing drifts. `node --check build/game.js` and `git diff --check` clean.
+
+**Repeated the comment-header edit slip a 5th time**, caught immediately by `node --check` as before.
+
+**NOT browser-verified**: whether the HUD now carries too many stacked blocks (SOLAR DATE + SCALE +
+TRANSFER WINDOW), and whether the preview arc is distinguishable from the planned arc at a glance.
+
+**The D-pass is complete** (D1 overlay port, D2 scale legibility, D3a roster + label LOD, D3b
+orientation aids, D4 scrubber promotion). Original review is in the "Design review — Solar Map utility
+pass" entry above; every proposed item shipped except the linear scale bar, which was traced and
+rejected on correctness grounds — see the D2 entry.
