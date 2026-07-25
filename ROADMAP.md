@@ -6929,3 +6929,32 @@ id specifically.
 **NOT browser-verified**: whether a 172px roster plus the 300px `.vehpop-stats` info panel leaves enough
 stage width in the pop-out at typical window sizes — that's the one layout call worth eyeballing, since
 the pop-out now has furniture on both sides of the canvas.
+
+### Follow-up fix — the pop-out canvas vanished (2026-07-25)
+
+The layout concern flagged directly above turned out to be an actual regression, reported immediately:
+both side panels rendered but the solar system did not.
+
+**Cause — the classic flexbox `min-width:auto` trap.** `.vehpop-stage` is `flex:1` but inherits the
+default `min-width:auto`, so its shrink floor is its CONTENT's intrinsic width — the 960px canvas.
+`.vehpop-roster` and `.vehpop-stats` were both `flex:0 0 <basis>`, i.e. `flex-shrink:0`, so neither
+could give up space. The row therefore demanded `172 + 960 + 300 = 1432px` inside a pop-out capped at
+`min(1380px, 100vw−32px)`. The overflow pushed the stage past `.popout-window`'s `overflow:hidden` edge,
+so the canvas was clipped out of view entirely while both non-shrinkable panels stayed put. Arithmetic
+check across 1024/1280/1440/1600/1920px viewports: it overflowed at EVERY width, which matches the
+report that the canvas was never visible at any window size rather than only when narrow.
+
+Before the roster existed the row demanded `960 + 300 = 1260px`, comfortably inside 1380 — which is why
+this only appeared with the pop-out roster, and why the inline tab (a CSS grid with a `minmax(0,1fr)`
+canvas column, already immune) was unaffected.
+
+**Fix:** `#mapPopStage{min-width:0}` so the stage can actually shrink, plus `.vehpop-roster` relaxed
+from `flex:0 0` to `flex:0 1` with `min-width:0`. Scoped to the map pop-out by id rather than patching
+the shared `.vehpop-stage` class, to keep the blast radius off the vehicle/station/earth/command
+pop-outs that also use it. The canvas already carried `max-width:100%`, so once the parent can shrink it
+scales down cleanly — 520px wide at a 1024px viewport up to 908px at 1440+.
+
+**Lesson worth carrying:** adding a fixed-basis flex item next to a canvas is not a free layout change.
+Any `flex:1` sibling holding replaced content (canvas/img/video) needs an explicit `min-width:0`, because
+its default floor is the content's intrinsic size, not zero. The inline tab avoided this only because it
+was built as a grid with `minmax(0,1fr)` — the grid equivalent of the same guard.

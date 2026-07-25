@@ -24,6 +24,10 @@ change first.
 > When done, clear it back to "(none claimed right now)" and add your entry to the history below.
 
 **Oriented quickly (last few sessions, newest first) — see History for full detail:**
+- Solar Map pop-out fix (Claude) — the pop-out roster regressed the canvas out of view: .vehpop-stage
+  is flex:1 with default min-width:auto (floor = 960px canvas) while both side panels were
+  flex-shrink:0, so the row overflowed .popout-window at every viewport width. Fixed with
+  #mapPopStage{min-width:0}. RULE: any flex:1 sibling holding a canvas needs an explicit min-width:0.
 - Solar Map pop-out parity (Claude) — the pop-out already inherited every 3D-scene D-pass feature via
   the shared startMap3D() builder; only the roster (plain DOM) needed mounting there. Fixed a D3a bug:
   mapRosterSelect's camera snap was gated to mountId==='mapHost', dead in the pop-out.

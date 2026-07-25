@@ -471,8 +471,17 @@
      other D-pass feature for free because it calls the same startMap3D() scene builder — only the
      roster was inline-tab-only, since it's plain DOM rather than part of the 3D scene. Mirrors the
      inline .map-stage column width so the two surfaces read identically. */
-  .vehpop-roster{flex:0 0 172px;border-right:1px solid var(--line);background:var(--bg);overflow-y:auto;padding:6px}
+  .vehpop-roster{flex:0 1 172px;min-width:0;border-right:1px solid var(--line);background:var(--bg);overflow-y:auto;padding:6px}
   @media(max-width:900px){ .vehpop-roster{display:none} }
+  /* FLEXBOX FIX (2026-07-25): .vehpop-stage is flex:1 but inherits the default min-width:auto, so its
+     floor is its CONTENT's intrinsic width — the 960px canvas. With the roster added, the row demanded
+     172+960+300 = 1432px against a 1380px pop-out, and since .vehpop-roster/.vehpop-stats were both
+     flex-shrink:0 the stage was pushed past .popout-window's overflow:hidden edge and vanished, while
+     both side panels stayed visible. min-width:0 lets the stage actually shrink (the canvas already
+     carries max-width:100%, so it scales down cleanly). Scoped to the map pop-out rather than the
+     shared .vehpop-stage class to keep the blast radius off the vehicle/station/earth/cc pop-outs. */
+  #mapPopStage{min-width:0}
+  #mapPopHost canvas{max-width:100%;height:auto}
   /* bench editor tabs — consolidate the many editor cards under a few tabs */
   .bench-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
   .bench-tab{font-family:var(--mono);font-size:12px;padding:5px 12px;border:1px solid var(--line);border-radius:7px;background:var(--panel);color:var(--muted);cursor:pointer}
