@@ -6889,3 +6889,43 @@ TRANSFER WINDOW), and whether the preview arc is distinguishable from the planne
 orientation aids, D4 scrubber promotion). Original review is in the "Design review — Solar Map utility
 pass" entry above; every proposed item shipped except the linear scale bar, which was traced and
 rejected on correctness grounds — see the D2 entry.
+
+## Session — Solar Map: pop-out parity follow-up (2026-07-25)
+
+Owner asked whether the D-pass could be mirrored into the map pop-out. **Most of it already was** —
+worth recording, because the honest answer was much smaller than the request implied.
+
+`refreshMapPopout()` calls the SAME `startMap3D('mapPopHost', …)` scene builder the inline tab uses, so
+every 3D-scene feature was already inherited there with no work at all: D1's overlay badges and route
+arcs, D2's AU ruler and HUD SCALE block, D3a's moon-label LOD, D3b's ecliptic grid and off-screen
+chevrons, and D4's TRANSFER WINDOW block, jump control, and preview arc. A grep for mount-specific
+gating confirmed only ONE line in the entire D-pass was conditional on `mountId==='mapHost'`.
+
+**That one line was a bug**, and it was mine: D3a's `mapRosterSelect` gated its camera snap on
+`mountId==='mapHost'`, so even once a pop-out roster existed the snap would have silently done nothing
+there. The gate was never load-bearing — any live `map3d` mount can be snapped — so it's now just
+`if(map3d)`. (Original D3a note said the pop-out was "deliberately NOT" given a roster because it had
+no side panel; that reasoning stands for why it wasn't done then, but the gate should have been written
+mount-agnostic regardless.)
+
+**The real gap** was the roster rail itself, because it's plain DOM rather than part of the 3D scene —
+so unlike everything else, it didn't come along for free. Now mounted in both places:
+- `.vehpop-roster` column in the pop-out body (172px, mirroring the inline `.map-stage` column width so
+  the two surfaces read identically; hidden under 900px like the existing `.vehpop-stats`).
+- `renderMapRoster()` writes to BOTH `#mapRoster` and `#mapPopRoster` from one `mapRosterHTML()` call —
+  the pop-out is the same rail mounted twice, not a reimplementation. `refreshMapPopout()` calls it so
+  the rail tracks selection there too.
+
+**Validation.** Four parity assertions appended to `tests/test-map3d-roster.js` (29/29 total): the
+roster HTML carries no host container id (so it's genuinely mount-agnostic), rows call the shared
+handler, `renderMapRoster` degrades safely when neither host exists (headless / pop-out closed), and
+`mapRosterSelect` works with no live 3D mount at all — covering the SVG/Phaser fallback paths as well as
+the pop-out. Full regression clean (110 suites) except the two known pre-existing drifts.
+
+One test needed fixing rather than the code: the first draft asserted the HTML contained no `mapRoster`
+substring, which matched inside the shared `mapRosterSelect(` handler name. Narrowed to the container
+id specifically.
+
+**NOT browser-verified**: whether a 172px roster plus the 300px `.vehpop-stats` info panel leaves enough
+stage width in the pop-out at typical window sizes — that's the one layout call worth eyeballing, since
+the pop-out now has furniture on both sides of the canvas.

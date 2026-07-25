@@ -18868,6 +18868,7 @@ function refreshMapPopout(){
     z.style.display='flex'; z.innerHTML=renderMapOverview(900,900);
   }
   const inf=$('mapPopInfo'); if(inf) inf.innerHTML=bodyCardHTML();
+  renderMapRoster(); // keeps the pop-out's rail in sync with selection (same call the inline tab uses)
 }
 function openMapPopout(){
   if(mapPopoutOpen) return; mapPopoutOpen=true; closeOtherPopouts('map'); mapPop={z:1,x:0,y:0};
@@ -18879,6 +18880,7 @@ function openMapPopout(){
       <button class="vehpop-x" onclick="closeMapPopout()">✕ Close</button>
     </div>
     <div class="vehpop-body">
+      <div class="vehpop-roster" id="mapPopRoster"></div>
       <div class="vehpop-stage" id="mapPopStage"><div id="mapPopHost" style="position:absolute;inset:0;display:none"></div><div id="mapPopZoom" style="position:absolute;inset:0;transform-origin:0 0;display:flex;align-items:center;justify-content:center"></div></div>
       <aside class="vehpop-stats" id="mapPopInfo"></aside>
     </div>`;
@@ -21495,13 +21497,20 @@ function mapRosterHTML(){
   });
   return s;
 }
-function renderMapRoster(){ const el=$('mapRoster'); if(el) el.innerHTML=mapRosterHTML(); }
+// Writes to BOTH roster hosts: the inline tab's rail and the pop-out's. Same HTML, same handlers —
+// the pop-out isn't a reimplementation, it's the same rail mounted twice (only one is ever visible).
+function renderMapRoster(){
+  const html=mapRosterHTML();
+  for(const id of ['mapRoster','mapPopRoster']){ const el=$(id); if(el) el.innerHTML=html; }
+}
 // Roster click: snap the 3D camera in toward the body first (same distance-clamp map3dPick already
 // uses on a direct planet click), THEN select — so navigating from the rail behaves identically to
 // clicking the planet itself, not a lesser/different path. A no-op distance clamp when 3D isn't the
 // active inline renderer (Phaser/SVG own their own zoom entirely through selectBody already).
 function mapRosterSelect(id){
-  if(map3d && map3d.mountId==='mapHost'){
+  // Any live 3D mount, inline OR pop-out — the pop-out re-mounts map3d into mapPopHost, so gating on
+  // mountId==='mapHost' (as this originally did) silently dropped the camera snap in the pop-out.
+  if(map3d){
     const body=BODIES.find(b=>b.id===id);
     if(body) map3d.cam.dist=Math.min(map3d.cam.dist, map3dFocusDistance(body));
   }

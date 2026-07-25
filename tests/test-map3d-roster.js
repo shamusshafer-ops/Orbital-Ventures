@@ -96,5 +96,33 @@ function check(n,c){ if(c) pass++; else{ fail++; console.log('FAIL:',n); } }
     45>=MAP3D_MOON_LABEL_FADE_START && 45<=MAP3D_MOON_LABEL_FADE_END);
 }
 
+// ---------- pop-out parity (2026-07-25 follow-up) ----------
+// The map pop-out calls the SAME startMap3D() scene builder as the inline tab, so every 3D-scene
+// feature in the D-pass (D1 overlay badges + route arcs, D2 AU ruler + scale HUD, D3a label LOD,
+// D3b ecliptic grid + chevrons, D4 window HUD + jump control + preview arc) is inherited there for
+// free — none of it is mount-specific. The roster was the ONE exception, because it's plain DOM
+// rather than part of the scene, so it lived only in the inline tab's markup. These assert the two
+// surfaces genuinely share one implementation rather than diverging into two copies.
+{
+  newGame('engineer');
+  state.selectedBody='mars';
+  const html=mapRosterHTML();
+  check('roster HTML is mount-agnostic — no host container id baked into it',
+    html.indexOf('id="mapRoster"')<0 && html.indexOf('mapPopRoster')<0);
+  check('roster rows call the shared handler, so both mounts get identical behaviour',
+    html.indexOf('mapRosterSelect(')>=0);
+  // renderMapRoster must target both hosts; in this headless harness neither element exists, so the
+  // meaningful assertion is that it degrades safely rather than throwing on a missing host.
+  let threw=false;
+  try{ renderMapRoster(); }catch(e){ threw=true; }
+  check('renderMapRoster is safe when neither host element exists (headless / pop-out closed)', threw===false);
+  // mapRosterSelect must not be gated to the inline mount: with no live map3d it should still select.
+  const before=state.selectedBody;
+  let selThrew=false;
+  try{ mapRosterSelect('jupiter'); }catch(e){ selThrew=true; }
+  check('mapRosterSelect works with no live 3D mount at all (SVG/Phaser paths, or pop-out closed)',
+    selThrew===false && state.selectedBody==='jupiter' && before==='mars');
+}
+
 console.log(`map3d-roster: ${pass} passed, ${fail} failed`);
 if(fail>0) process.exit(1);

@@ -24,6 +24,9 @@ change first.
 > When done, clear it back to "(none claimed right now)" and add your entry to the history below.
 
 **Oriented quickly (last few sessions, newest first) — see History for full detail:**
+- Solar Map pop-out parity (Claude) — the pop-out already inherited every 3D-scene D-pass feature via
+  the shared startMap3D() builder; only the roster (plain DOM) needed mounting there. Fixed a D3a bug:
+  mapRosterSelect's camera snap was gated to mountId==='mapHost', dead in the pop-out.
 - Solar Map D4 (Claude) — time-scrubber promotion; **D-PASS COMPLETE**. Jump-to-next-window +
   window readout + preview arc. Map anchors window search to the PREVIEWED date, body card stays
   anchored to the LIVE date — different questions, same computeWindows geometry, so they can't

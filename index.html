@@ -467,6 +467,12 @@
   .vehpop-stats.left{border-left:none;border-right:1px solid var(--line)}
   @media(max-width:900px){ .vehpop-stats.left{display:none} }
   @media(max-width:760px){ .vehpop-stats{display:none} }
+  /* D4-followup (2026-07-25): roster rail inside the map pop-out. The pop-out already inherits every
+     other D-pass feature for free because it calls the same startMap3D() scene builder — only the
+     roster was inline-tab-only, since it's plain DOM rather than part of the 3D scene. Mirrors the
+     inline .map-stage column width so the two surfaces read identically. */
+  .vehpop-roster{flex:0 0 172px;border-right:1px solid var(--line);background:var(--bg);overflow-y:auto;padding:6px}
+  @media(max-width:900px){ .vehpop-roster{display:none} }
   /* bench editor tabs — consolidate the many editor cards under a few tabs */
   .bench-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
   .bench-tab{font-family:var(--mono);font-size:12px;padding:5px 12px;border:1px solid var(--line);border-radius:7px;background:var(--panel);color:var(--muted);cursor:pointer}
