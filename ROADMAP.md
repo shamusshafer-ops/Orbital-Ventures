@@ -7066,3 +7066,49 @@ ignored; genuine loss on the live canvas → falls back correctly).
 **General lesson:** a teardown API that *causes* the event your recovery handler listens for will make
 that handler fire against its own replacement. Any such handler needs an identity check against the
 currently-live object, not just a null check — a null check passes precisely when the successor exists.
+
+### STRUCTURAL FIX — stop destroying and rebuilding the context at all (2026-07-25)
+
+The identity guard worked (the `falling back to 2D` lines disappeared) but the stage was still blue and
+`WebGL context was lost` still appeared. At that point three successive fixes had each been correct and
+none had solved it, which was the signal that the problem was architectural rather than a bug to patch.
+
+**The real problem: the map destroyed and recreated its WebGL context constantly.**
+- `pauseMap3D()` — called on EVERY tab switch away from the map — ran `disposeMap3D()`, despite its own
+  comment claiming it only cancelled the rAF.
+- Opening the pop-out ran `disposeMap3D()` then `startMap3D('mapPopHost')` — tear down one context,
+  build another.
+- Closing it did the same in reverse.
+
+So a normal session churned contexts continuously, each rebuild re-uploading all 15 planet textures
+(exactly the `generateMipmap ... lazy initialization. 15` warnings in the console, which were appearing
+on every single pop-out open — a strong hint in hindsight that the whole scene was being rebuilt when it
+had no reason to be). Browsers cap concurrent contexts and drop the oldest, and no amount of
+fallback-handling fixes a design that keeps allocating them.
+
+**Fix: one context per session, moved rather than rebuilt.** New `remountMap3D(hostId, W, H)` reparents
+the LIVE scene between mounts — `appendChild()` on an already-parented element moves it, so the canvas
+keeps its context and every listener `attachMap3DInput()` bound stays bound. It moves the canvas plus
+all three screen-space overlays that are appended alongside it (the HUD, the hover card, and D3b's
+chevron layer — miss any of those and they stay behind in the old host), flips `mountId`/`fallbackId`,
+and resizes the camera/renderer.
+
+Wired in at every churn point:
+- `refreshMapPopout()` — remount the live scene into the pop-out; only build fresh if nothing is live.
+- `closeMapPopout()` — remount back to the inline host BEFORE `removeScrim()`, or the canvas is
+  destroyed along with the pop-out DOM and the next open pays for a fresh context again.
+- `startMap3D()` — if a live scene exists on a different host, remount instead of assuming it's already
+  here (makes the function idempotent across mounts), plus a guard against starting a second rAF chain.
+- `pauseMap3D()` — now does what its comment always claimed: cancels the rAF and leaves the scene
+  intact. Returning to the map tab is instant, with no context churn and no texture re-upload.
+
+`disposeMap3D()` now runs only on genuine teardown (pop-out closed while the map tab is hidden, or a
+real 3D failure). `forceContextLoss()` stays, because those remaining paths do still need to release
+the context rather than orphan it.
+
+**Lesson worth carrying.** Three correct fixes in a row that don't resolve the symptom is itself
+diagnostic information: it means the thing being fixed isn't the thing causing it. The console had been
+saying so from the first message — 15 texture uploads on every pop-out open should have prompted "why is
+the entire scene being rebuilt to move it into a different div?" long before the fourth attempt. When a
+resource is being exhausted, look at what ALLOCATES it, not at the handler for what happens when it runs
+out.

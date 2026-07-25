@@ -24,6 +24,14 @@ change first.
 > When done, clear it back to "(none claimed right now)" and add your entry to the history below.
 
 **Oriented quickly (last few sessions, newest first) — see History for full detail:**
+- Solar Map WebGL context architecture (Claude) — STRUCTURAL FIX. The map used to destroy+rebuild its
+  WebGL context on every tab switch (pauseMap3D disposed despite its comment), every pop-out open and
+  every close, re-uploading 15 planet textures each time and exhausting the browser's context cap. New
+  remountMap3D(hostId,W,H) REPARENTS the live scene (appendChild moves it; canvas keeps its context and
+  listeners) — must move the HUD, hover card and chevron layer too or they stay behind. pauseMap3D now
+  only cancels the rAF. disposeMap3D is now rare. RULE: when a resource is exhausted, look at what
+  ALLOCATES it, not at the handler for running out. Three correct-but-ineffective fixes in a row means
+  you're fixing the wrong layer.
 - Solar Map pop-out context-lost guard (Claude) — forceContextLoss() FIRES webglcontextlost, and it
   arrives async after the next scene is built, so the handler was tearing down its own successor.
   Handler now checks map3d.dom!==dom (each listener closes over its own canvas) plus a _disposing

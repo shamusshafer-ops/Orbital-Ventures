@@ -18866,10 +18866,10 @@ function refreshMapPopout(){
   // tearing down the 2D map, and restore the 2D map if it didn't.
   let ok=false;
   if(host && MAP3D && threeOK()){
-    if(!map3d || map3d.mountId!=='mapPopHost'){
-      disposeMap3D();
-      ok=!!startMap3D('mapPopHost', MAP_POP_W, MAP_POP_H);
-    } else ok=true; // already mounted here from a previous refresh
+    if(map3d && map3d.mountId==='mapPopHost') ok=true;                              // already here
+    else if(map3d) ok=remountMap3D('mapPopHost', MAP_POP_W, MAP_POP_H);             // MOVE the live scene — no second context
+    else ok=!!startMap3D('mapPopHost', MAP_POP_W, MAP_POP_H);                       // nothing live yet: build it here
+    if(!ok && !map3d) ok=!!startMap3D('mapPopHost', MAP_POP_W, MAP_POP_H);          // remount failed and took the scene with it
   }
   if(ok){
     if(z){ z.innerHTML=''; z.style.display='none'; }
@@ -18901,7 +18901,14 @@ function openMapPopout(){
 }
 function closeMapPopout(){
   if(!mapPopoutOpen) return;
-  mapPopoutOpen=false; disposeMap3D(); removeScrim('mapPopout');
+  mapPopoutOpen=false;
+  // Move the live scene back to the inline host BEFORE removing the scrim — otherwise the canvas is
+  // destroyed along with the pop-out DOM and we pay for a fresh context (and 15 texture uploads) again.
+  const mv0=$('mapView'), mapTabVisible=!!(mv0 && !mv0.classList.contains('hidden'));
+  if(map3d && map3d.mountId==='mapPopHost'){
+    if(!(mapTabVisible && remountMap3D('mapHost', MAP_W, MAP_H))) disposeMap3D();
+  }
+  removeScrim('mapPopout');
   const mv=$('mapView'); if(mv && !mv.classList.contains('hidden')) renderMap();
 }
 /* ---------- Live Earth pop-out ----------
@@ -19832,6 +19839,43 @@ function map3dFallbackTo2D(mountId, reason){
     if(c){ c.style.display='block'; if(!c.innerHTML) c.innerHTML=renderMapOverview(980,620); }
   }
 }
+/* Move the LIVE 3D map between mounts (inline tab <-> pop-out) instead of destroying it and building
+   a second one. This is the structural fix for the pop-out's blank stage.
+
+   The old flow disposed the whole scene and called startMap3D() again on the other host, which meant
+   tearing down one WebGL context and creating another every single time the pop-out opened or closed.
+   That is what put us on the wrong side of the browser's concurrent-context cap (and, once
+   forceContextLoss() was added to fix the leak, it also queued a loss event that landed after the
+   replacement scene had been built). Reparenting sidesteps the entire class of problem: one context,
+   created once, moved around. It is also far faster — no re-upload of the 15 planet textures, which is
+   exactly the work the console warnings were showing on every single pop-out open.
+
+   appendChild() on an element that already has a parent MOVES it, so the canvas keeps its WebGL
+   context, and every listener attachMap3DInput() bound to it stays bound. */
+function remountMap3D(hostId, W, H){
+  if(!map3d) return false;
+  const host=$(hostId); if(!host) return false;
+  try{
+    host.style.display='block';
+    host.style.position='relative'; host.style.overflow='hidden'; // same prep addMap3DTimeHud does
+    // Move the canvas AND every screen-space overlay appended alongside it, or they stay behind in
+    // the old host: the time/scale/window HUD, the hover card, and D3b's chevron layer.
+    host.appendChild(map3d.dom);
+    if(map3d.hud) host.appendChild(map3d.hud);
+    if(map3d.hoverCard) host.appendChild(map3d.hoverCard);
+    if(map3d.chevrons && map3d.chevrons.wrap) host.appendChild(map3d.chevrons.wrap);
+    const old=$(map3d.mountId);
+    if(old && old!==host) old.style.display='none';
+    map3d.mountId=hostId;
+    map3d.fallbackId = hostId==='mapHost' ? 'mapCanvas' : null;
+    if(W && H){
+      map3d.renderer.setSize(W,H,false);
+      map3d.camera.aspect=W/H; map3d.camera.updateProjectionMatrix();
+    }
+    if(!map3d.raf) map3dRenderLoop(); // resume if a previous teardown had stopped the loop
+    return true;
+  }catch(e){ console.warn('3D map remount failed:', e); return false; }
+}
 function disposeMap3D(){
   if(!map3d) return;
   map3d._disposing=true; // set BEFORE forceContextLoss() below, so the webglcontextlost listener
@@ -19839,9 +19883,11 @@ function disposeMap3D(){
   try{ if(map3d.raf) cancelAnimationFrame(map3d.raf); }catch(e){}
   try{ map3d.dom && map3d.dom.removeEventListener && detachMap3DInput(); }catch(e){}
   /* Free GPU-side resources before dropping the context. renderer.dispose() alone does NOT release
-     the underlying WebGL context — and disposeMap3D() runs on EVERY tab leave (pauseMap3D), every
-     pop-out open, and every pop-out close, so without forceContextLoss() each of those leaked a
-     context. Browsers cap concurrent contexts (~8-16) and silently drop the oldest once the cap is
+     the underlying WebGL context. This used to run on EVERY tab leave (pauseMap3D), every pop-out
+     open and every pop-out close, so without forceContextLoss() each of those leaked a context. Those
+     three call sites now reparent the live scene instead (remountMap3D / pauseMap3D just stops the
+     rAF), so disposal is rare — but forceContextLoss() stays, because the remaining paths still need
+     to actually release the context rather than orphan it. Browsers cap concurrent contexts (~8-16) and silently drop the oldest once the cap is
      hit; a lost context renders nothing and throws nothing, so the symptom is a silently blank canvas
      with no console error and no fallback triggered. That was the pop-out's "empty blue space". */
   try{
@@ -20179,10 +20225,12 @@ function startMap3D(hostId='mapHost', W=MAP_W, H=MAP_H){
               windowReadout:hud.windowReadout, previewArc:null}; // D4: the HUD's transfer-window block; the hypothetical-geometry arc (built lazily)
       updateMap3DTimeHud(); updateMap3DScaleHud(); updateMap3DWindowHud();
       attachMap3DInput();
+    } else if(map3d.mountId!==hostId){
+      remountMap3D(hostId, W, H); // live scene lives on the other host — move it, don't rebuild it
     } else if(map3d.dom && !map3d.dom.parentNode){
       host.appendChild(map3d.dom);
     }
-    map3dRenderLoop();
+    if(!map3d.raf) map3dRenderLoop(); // guard: never start a second rAF chain (would double-speed the scene)
     return true;
   }catch(e){
     map3dFallbackTo2D(hostId, e);
@@ -20781,9 +20829,14 @@ function map3dRenderLoop(){
   try{ map3dTick(); }catch(e){ map3dFallbackTo2D(map3d.mountId, e); return; } // routed through the shared helper so the pop-out gets a fallback too (its fallbackId was null)
   map3d.raf = requestAnimationFrame(map3dRenderLoop);
 }
-// Stop the render loop when leaving the map tab (mirrors pauseMapGame). Cheap teardown: cancels the
-// rAF; the scene rebuilds on the next startMap3D() — simplest correct behavior, no leaked loop.
-function pauseMap3D(){ if(map3d){ disposeMap3D(); } }
+// Stop the render loop when leaving the map tab (mirrors pauseMapGame). This used to disposeMap3D(),
+// which destroyed the WebGL context on EVERY tab switch and rebuilt it (plus 15 texture uploads) on
+// every return — a major contributor to hitting the browser's concurrent-context cap. Now it does what
+// its own comment always claimed: cancel the rAF and leave the scene intact, so returning to the map
+// is instant and no context churn happens at all.
+function pauseMap3D(){
+  if(map3d && map3d.raf){ try{ cancelAnimationFrame(map3d.raf); }catch(e){} map3d.raf=0; }
+}
 // Hand-rolled orbit-camera input (drag=rotate, wheel=zoom, click=focus+select). Browser-only.
 function _map3dDown(e){
   if(!map3d || (e.button!=null&&e.button!==0)) return;
