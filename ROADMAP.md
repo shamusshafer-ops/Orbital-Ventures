@@ -6515,3 +6515,72 @@ Not yet slice-planned in test-file/exact-function detail — that's the next ses
 same as the A/B/C epic above. D1 is wiring/mechanical (lighter model tier appropriate); D2–D4 are
 design/balance work (heavier tier — visual legibility and information-density tradeoffs benefit from
 more careful judgment).
+
+## Session — Solar Map D1: port empire overlay + route arcs into the 3D view (2026-07-25)
+
+First slice of the D-pass scoped in the review above. Confirmed the review's central finding before
+writing any code: `mapAssetModel()`/`plannedRoute()`/`transferArc()`/`rivalsAtBody()` were consumed by
+the SVG and Phaser renderers only (`src/render.js` ~L6420/~L6473/~L7366) — never by `map3dTick()`, so
+none of the empire-overlay data (facility health, ISRU, depot tonnage, belt claim, tracking stations,
+player firsts, rival reach) or the committed/planned transfer arcs were visible in the 3D view, which
+is the DEFAULT view (`MAP3D=true`). This slice ports the same data in, reusing the existing pure
+functions rather than inventing new overlay data.
+
+**What shipped:**
+- `map3dBodyOverlaySpec(bodyId, model, rivalsHere)` (new, pure) — mirrors `assetMarkersSVG` +
+  `rivalMarkersSVG`'s DATA (not their SVG markup) into one spec per body: an icon list (🏁 firsts, a
+  facility's own `def.icon` + a health-colored ring, ⛏ ISRU, 🪙 belt claim, ⛽ depot, 📡 tracking, ●
+  per unique rival) plus one combined tooltip string. Returns `null` for the common case (a body with
+  nothing to show). Deliberately reuses the SAME glyph vocabulary the SVG map and the empire strip
+  already use (`empireStripHTML`'s 🏁/⬢/⛽/⛏/📡) rather than inventing a parallel icon language for 3D.
+- `map3dOverlaySpecKey(spec)` (new, pure) — a stable string key so the per-frame tick can skip
+  rebuilding a body's canvas texture unless its overlay actually changed (facility health/module count,
+  rival reach, etc.) — most frames do zero texture work.
+- `map3dOverlayBadgeTexture(spec)` (new, THREE-dependent) — canvas-texture sprite, same construction
+  pattern as the existing `map3dLabelSprite`/`map3dShipMarkerMesh`: a small dark rounded strip with the
+  spec's icons drawn left-to-right, health rings as colored circles behind facility icons.
+- `map3dUpdateOverlayBadges(d)` (new) — per-frame add/update/remove of one badge sprite per body with
+  a non-null spec, positioned just below the body (labels sit above, so the two never collide). Same
+  add/update/remove shape as the existing `map3dUpdateShipMarkers`. Picked via a `'asset:'+bodyId`
+  userData prefix, mirroring the existing `'ship:'+flightId` convention.
+- `scene3DTransferArc(destId, absD)` (new, pure) — the 3D equivalent of `transferArc()`'s
+  bow-outward-from-centre geometry. The 2D SVG bows a quadratic curve away from a canvas-space
+  `cx,cy` standing in for the Sun; in the 3D scene the Sun genuinely IS the origin (`bodyScenePos`
+  already places every body relative to it), so "bow from centre" becomes "bow along the midpoint's
+  own radial distance from the origin" with no coordinate translation needed — same formula, one
+  fewer abstraction layer. Sources both endpoints from `bodyScenePos`, the same function every other
+  3D element (planets, ship markers) already positions from, so a moon destination resolves through
+  its parent for free with no special-casing.
+- `map3dQuadPoints`/`map3dMakeArcLine`/`map3dUpdateArcLine` (new, THREE-dependent) — samples the
+  bezier into a fixed-length `THREE.Line` with a dashed material, updated in place each frame (vertex
+  attribute array write, not a geometry dispose/recreate — avoids per-frame GC churn for what's at
+  most 2 concurrent arcs).
+- `map3dUpdateRouteArcs(d)` (new) — draws the committed-window arc (amber) when
+  `state.committedWindow` is set, else the planned-route arc (cyan=closes, red=Δv short) when
+  `plannedRoute()` returns an uncommitted route — same precedence as `plannedRouteSVG`'s own
+  `if(pr.committed) return ''`.
+- `map3dHover`/`map3dPick` extended for the `'asset:'` prefix: hovering a badge shows its tooltip
+  (same info the SVG marker's `<title>` shows); clicking a badge selects that body, same as clicking
+  the planet mesh itself.
+
+**Validation.** New `tests/test-map3d-overlay.js` (34/34) — covers `map3dBodyOverlaySpec` for every
+overlay type individually and in combination (a facility's health ring color, ISRU + belt claim
+co-occurring on the same body with visually distinct glyphs so one doesn't read as the other, rival
+dedup by id with the rival's own color, depot's 0.05-ton badge-or-not threshold matching the SVG's own
+cutoff), `map3dOverlaySpecKey` stability/null-safety, and `scene3DTransferArc`/`map3dQuadPoints`
+against real `bodyScenePos` output (arc endpoints match exactly, control point providably bows farther
+from the origin than either endpoint, a moon destination resolves through its parent, unknown body
+returns null cleanly). Full regression clean (106 suites) except the two known pre-existing drifts
+(`test-build-parity.js` env path, `test-flight3d-trajectory.js` Codex's own accepted physics change);
+build parity and `git diff --check` clean.
+
+**NOT browser-verified** (no WebGL in this sandbox, same caveat as every other `map3d*` renderer
+function in this file): does a badge actually read as legible rather than clutter once several bodies
+have simultaneous overlays, does the dashed arc's bow look right at typical camera distances, and does
+clicking a badge sprite reliably hit-test given its `depthTest:false` billboard rendering (should be
+fine — the ship marker/label sprites already work this way — but worth eyeballing in a real session
+alongside the D1 badges specifically).
+
+**Deferred to D2/D3/D4** (per the review's proposed order): AU ring labels, HUD scale bar, per-body
+light-time readout, ecliptic grid, off-screen direction chevrons, body roster rail, label LOD, and
+promoting the time-scrubber HUD with a jump-to-next-window control + live arc while previewing a date.

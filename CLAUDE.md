@@ -6,18 +6,24 @@ reorder existing entries there, only add new ones at the end, same as `ROADMAP.m
 
 ---
 
-## STATUS (as of 2026-07-22, working tree based on HEAD `59ecdb1`)
+## STATUS (as of 2026-07-25, working tree based on HEAD — Solar Map D1 commit)
 
-**Repo health:** 98 test suites, clean build parity, `git diff --check` clean. Only known drift:
-`test-flight3d-trajectory.js` (long-standing — Codex's own accepted trajectory/vehicle-physics
-changes, not a regression). If you see a DIFFERENT test failing, don't assume it's pre-existing —
-check the history below for whether it's a known, intentional behavior change first.
+**Repo health:** 107 test suites (added `test-map3d-overlay.js`), clean build parity, `git diff
+--check` clean. Only known drift: `test-flight3d-trajectory.js` (long-standing — Codex's own accepted
+trajectory/vehicle-physics changes, not a regression). If you see a DIFFERENT test failing, don't
+assume it's pre-existing — check the history below for whether it's a known, intentional behavior
+change first.
 
 **In progress:** (none claimed right now).
 > When you start a task, replace this line with: `<task> — <Claude|Codex> — started <date>`.
 > When done, clear it back to "(none claimed right now)" and add your entry to the history below.
 
 **Oriented quickly (last few sessions, newest first) — see History for full detail:**
+- Solar Map D1 (Claude) — ported mapAssetModel()/plannedRoute()/transferArc()/rivalsAtBody() into the
+  3D view (previously SVG/Phaser-only, invisible in the default 3D view): overlay badges (facility
+  health, ISRU, depot, belt claim, tracking, firsts, rival reach) + committed/planned transfer arcs.
+  See ROADMAP.md for the full D1 review + slice writeup. D2–D4 (scale legibility, orientation, time-
+  scrubber promotion) still open.
 - Flight 3D booster-first repair (Codex) — real default/long-burn strap-ons now fly as the promised
   serial-equivalent stage 0, always detach before the core, and never reappear on orbit/transfer.
 - Flight 3D vehicle-authority + visibility repair (Codex) — the frozen launch snapshot now owns the

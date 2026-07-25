@@ -5655,6 +5655,14 @@ function map3dHover(e){
     tip.style.left=Math.max(8,e.clientX-r.left+14)+'px'; tip.style.top=Math.max(8,e.clientY-r.top+14)+'px'; tip.style.display='block';
     map3d.dom.style.cursor='pointer'; return;
   }
+  if(id.slice(0,6)==='asset:'){ // D1: an overlay badge (facility/firsts/ISRU/depot/rival) — same info the SVG map's markers show on hover
+    const bodyId=id.slice(6), tooltip=map3d.badgeTooltips[bodyId], r=map3d.dom.getBoundingClientRect();
+    if(!tooltip){ hideMap3DHover(); return; }
+    const b=BODIES.find(x=>x.id===bodyId);
+    tip.innerHTML=`<b style="color:#fff2c9">${esc(b?b.name:bodyId)}</b><div style="margin-top:2px">${esc(tooltip)}</div>`;
+    tip.style.left=Math.max(8,e.clientX-r.left+14)+'px'; tip.style.top=Math.max(8,e.clientY-r.top+14)+'px'; tip.style.display='block';
+    map3d.dom.style.cursor='pointer'; return;
+  }
   const b=BODIES.find(x=>x.id===id), r=map3d.dom.getBoundingClientRect();
   const title=b?b.name:'Sun';
   const detail=b ? b.note : 'The star at the center of the system — the source of every day/night terminator in this view.';
@@ -5730,7 +5738,8 @@ function startMap3D(hostId='mapHost', W=MAP_W, H=MAP_H){
       const hud=addMap3DTimeHud(host,hostId);
       const hoverCard=addMap3DHoverCard(host);
       map3d={renderer, scene, camera, sun, corona, sunLight, cameraFill, asteroidBelt, bodies, labels, pickables, cam, dom, hud:hud.hud, hudReadout:hud.readout, hoverCard, startedAt:Date.now(), mountId:hostId, fallbackId:hostId==='mapHost'?'mapCanvas':null, raf:0, raycaster:new THREE.Raycaster(), _drag:null,
-              ships:{}, shipData:{}}; // E4.5: flightId -> {mesh,label}, flightId -> latest marker descriptor (for hover/pick lookup)
+              ships:{}, shipData:{}, // E4.5: flightId -> {mesh,label}, flightId -> latest marker descriptor (for hover/pick lookup)
+              badges:{}, badgeSpecKeys:{}, badgeTooltips:{}, committedArc:null, plannedArc:null}; // D1: bodyId -> badge sprite / its last-built spec key (rebuild texture only on change) / tooltip text; the two route-arc Lines (built lazily on first use)
       updateMap3DTimeHud();
       attachMap3DInput();
     } else if(map3d.dom && !map3d.dom.parentNode){
@@ -5760,6 +5769,171 @@ function map3dShipMarkerMesh(desc){
   const label=map3dLabelSprite(desc.serial?`${desc.serial} · ${desc.missionName}`:desc.missionName,'#ffc98a');
   label.userData.bodyId='ship:'+desc.flightId; label.scale.set(Math.min(15,Math.max(6,label.scale.x)),1.3,1);
   return {mesh,label};
+}
+/* ---------- D1 (2026-07-25): port the empire/asset overlay + route arcs into the 3D view ----------
+   mapAssetModel()/rivalsAtBody()/plannedRoute()/transferArc() already exist and were wired into the
+   SVG + Phaser renderers only — invisible in 3D, which is the default view (MAP3D=true). This ports
+   the same data into the 3D scene rather than inventing new overlay data (see the Solar Map D1 review
+   in ROADMAP.md). Pure spec builder first (headless-testable, mirrors assetMarkersSVG/rivalMarkersSVG's
+   DATA, not their SVG markup); THREE-specific texture/mesh building second. */
+// Everything worth badging on one body, purely computed. Returns null when there's nothing to show
+// (the common case — most bodies have no facility/firsts/rivals yet).
+function map3dBodyOverlaySpec(bodyId, model, rivalsHere){
+  const a=(model||mapAssetModel())[bodyId];
+  const rv=rivalsHere||rivalsAtBody(bodyId);
+  const seen={}, rivals=[];
+  rv.forEach(h=>{ if(seen[h.rival.id]) return; seen[h.rival.id]=1; rivals.push({color:h.rival.color, name:h.rival.name, flag:h.rival.flag}); });
+  const icons=[], titleParts=[];
+  if(a && a.firsts && a.firsts.length){
+    icons.push({glyph:'🏁', color:'#ffc450'});
+    titleParts.push('Your firsts: '+a.firsts.join(' · '));
+  }
+  if(a && a.facility){
+    const {def,health,modules}=a.facility;
+    icons.push({glyph:def.icon, color:def.color, ring:HEALTH_COLOR[health]});
+    titleParts.push(`${def.name} — ${modules} module${modules>1?'s':''} · ${health==='ok'?'nominal':(health==='warn'?'strained (supply/power/crew)':'STARVED — resupply now')}`);
+  }
+  if(a && a.isru){ icons.push({glyph:'⛏',color:'#7bc46a'}); titleParts.push('ISRU plant online — propellant produced on-site'); }
+  if(a && a.beltClaim){ icons.push({glyph:'🪙',color:'#e8c04c'}); titleParts.push(`Belt mining claim — ${fM(state.pgmRoyalty)}/mo royalties`); }
+  if(a && a.depotT>0){ icons.push({glyph:'⛽',color:'#5fc4d0'}); titleParts.push(`LEO propellant depot — ${a.depotT} t banked`); }
+  if(a && a.stations && a.stations.length){ icons.push({glyph:'📡',color:'#8fc4ff'}); titleParts.push(`Tracking network — ${a.stations.length} station${a.stations.length>1?'s':''}`); }
+  rivals.forEach(r=>{ icons.push({glyph:'●', color:r.color, small:true}); titleParts.push(`${(r.flag||'')} ${r.name} reached this body`.trim()); });
+  if(!icons.length) return null;
+  return {icons, tooltip:titleParts.join(' · ')};
+}
+// A cheap, order-stable key so map3dTick can skip rebuilding a canvas texture every frame when
+// nothing about a body's overlay actually changed (icons only change on facility/rep/research/rival
+// events, not every tick).
+function map3dOverlaySpecKey(spec){
+  if(!spec) return '';
+  return spec.icons.map(ic=>`${ic.glyph}|${ic.color}|${ic.ring||''}|${ic.small?1:0}`).join(',');
+}
+// Canvas-texture sprite: a small horizontal icon strip, same glyph vocabulary as the SVG map and the
+// empire strip (🏁 firsts, def.icon+health ring for facilities, ⛏ ISRU, 🪙 belt claim, ⛽ depot, 📡
+// tracking, ● per rival) so the look stays consistent across every place the game already shows this
+// data — this view isn't inventing a new icon language, just reusing the existing one in 3D.
+function map3dOverlayBadgeTexture(spec){
+  const n=spec.icons.length, step=ic=>ic.small?24:38, W=Math.max(52, spec.icons.reduce((s,ic)=>s+step(ic),16)), H=52;
+  const cv=document.createElement('canvas'); cv.width=W*2; cv.height=H*2;
+  const ctx=cv.getContext('2d'); ctx.scale(2,2);
+  ctx.fillStyle='rgba(4,10,17,0.8)'; ctx.fillRect(1,1,W-2,H-2);
+  ctx.strokeStyle='rgba(125,180,220,0.42)'; ctx.lineWidth=1.4; ctx.strokeRect(1,1,W-2,H-2);
+  let x=13;
+  spec.icons.forEach(ic=>{
+    if(ic.ring){ ctx.beginPath(); ctx.arc(x,H/2,12,0,Math.PI*2); ctx.strokeStyle=ic.ring; ctx.lineWidth=2.2; ctx.stroke(); }
+    ctx.font=(ic.small?'700 15px':'600 20px')+' system-ui,"Segoe UI Emoji",sans-serif';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillStyle=ic.color||'#dcecf7';
+    ctx.fillText(ic.glyph, x, H/2+1);
+    x+=step(ic);
+  });
+  const tx=new THREE.CanvasTexture(cv); tx.colorSpace=THREE.SRGBColorSpace;
+  const sprite=new THREE.Sprite(new THREE.SpriteMaterial({map:tx,transparent:true,depthTest:false,depthWrite:false}));
+  const scaleW=Math.max(2.6,Math.min(9.5,W/24));
+  sprite.scale.set(scaleW, scaleW*(H/W), 1);
+  return sprite;
+}
+// Add/update/remove one badge sprite per body that has anything to show, mirroring the ship-marker
+// add/update/remove shape below. Texture only rebuilds when the spec actually changed (specKey diff)
+// — cheap per-frame cost is just the pure spec computation, not a canvas re-render every tick.
+function map3dUpdateOverlayBadges(d){
+  const model=mapAssetModel(); const seen={};
+  for(const b of BODIES){
+    const pos=map3d.bodies[b.id]; if(!pos) continue; // only badge bodies that actually have a mesh (skips moons-without-elements edge cases the scene didn't build)
+    const spec=map3dBodyOverlaySpec(b.id, model);
+    if(!spec) continue;
+    seen[b.id]=true;
+    const key=map3dOverlaySpecKey(spec);
+    let sprite=map3d.badges[b.id];
+    if(!sprite || map3d.badgeSpecKeys[b.id]!==key){
+      if(sprite){ map3d.scene.remove(sprite); const idx=map3d.pickables.indexOf(sprite); if(idx>=0) map3d.pickables.splice(idx,1); }
+      sprite=map3dOverlayBadgeTexture(spec);
+      sprite.userData.bodyId='asset:'+b.id;
+      map3d.scene.add(sprite); map3d.pickables.push(sprite);
+      map3d.badges[b.id]=sprite; map3d.badgeSpecKeys[b.id]=key;
+    }
+    map3d.badgeTooltips[b.id]=spec.tooltip;
+    const bp=pos.position, r=planetMeshRadius(b);
+    sprite.position.set(bp.x, bp.y-r*1.6-1.1, bp.z); // sits just below the body (label sits above), so the two never overlap
+  }
+  for(const id in map3d.badges){
+    if(seen[id]) continue; // condition cleared (facility lost, rival left, etc.) since last tick
+    const sprite=map3d.badges[id];
+    map3d.scene.remove(sprite); const idx=map3d.pickables.indexOf(sprite); if(idx>=0) map3d.pickables.splice(idx,1);
+    delete map3d.badges[id]; delete map3d.badgeSpecKeys[id]; delete map3d.badgeTooltips[id];
+  }
+}
+// 3D equivalent of transferArc()'s bow geometry. The 2D SVG bows a quadratic curve outward/inward
+// from a canvas-space centre (cx,cy) standing in for the Sun; in the 3D scene the Sun genuinely IS
+// the origin (bodyScenePos already places everything relative to it), so the same "bow along the
+// midpoint's own radial direction" logic applies directly with no cx/cy translation needed. Reuses
+// bodyScenePos — the same function every planet/ship marker in this view already positions from —
+// rather than a second position model.
+function scene3DTransferArc(destId, absD){
+  const dest=BODIES.find(b=>b.id===destId); if(!dest) return null;
+  const d=absD==null?mapViewAbsDay():absD;
+  const from=bodyScenePos('earth', d), to=bodyScenePos(destId, d);
+  if(!from || !to) return null;
+  const rE=Math.hypot(from.x,from.y,from.z), rT=Math.hypot(to.x,to.y,to.z);
+  const mx=(from.x+to.x)/2, my=(from.y+to.y)/2, mz=(from.z+to.z)/2, mr=Math.hypot(mx,my,mz)||1;
+  const dir=rT>=rE?1:-1, bow=(Math.abs(rT-rE)*0.45+18)*dir;
+  const ctrl={x:mx/mr*(mr+bow), y:my/mr*(mr+bow), z:mz/mr*(mr+bow)};
+  return {from, to, ctrl, destName:dest.name};
+}
+const MAP3D_ARC_SEGMENTS=48;
+// Sample the same quadratic-bezier shape transferArc() draws in 2D, in 3D scene-unit space.
+function map3dQuadPoints(arc, n){
+  const pts=[];
+  for(let i=0;i<=n;i++){
+    const t=i/n, it=1-t;
+    pts.push({ x:it*it*arc.from.x+2*it*t*arc.ctrl.x+t*t*arc.to.x,
+               y:it*it*arc.from.y+2*it*t*arc.ctrl.y+t*t*arc.to.y,
+               z:it*it*arc.from.z+2*it*t*arc.ctrl.z+t*t*arc.to.z });
+  }
+  return pts;
+}
+function map3dMakeArcLine(colorHex){
+  const pts=new Array(MAP3D_ARC_SEGMENTS+1).fill(0).map(()=>new THREE.Vector3());
+  const geo=new THREE.BufferGeometry().setFromPoints(pts);
+  const mat=new THREE.LineDashedMaterial({color:colorHex, dashSize:2.4, gapSize:1.5, transparent:true, opacity:0.88});
+  const line=new THREE.Line(geo, mat);
+  line.computeLineDistances();
+  return line;
+}
+// Update an existing arc Line's vertices in place (no geometry dispose/recreate per frame — same
+// fixed segment count every call, so this is a cheap attribute-array write, not GC churn).
+function map3dUpdateArcLine(line, arc){
+  const pts=map3dQuadPoints(arc, MAP3D_ARC_SEGMENTS);
+  const posAttr=line.geometry.attributes.position;
+  for(let i=0;i<pts.length;i++) posAttr.setXYZ(i, pts[i].x, pts[i].y, pts[i].z);
+  posAttr.needsUpdate=true;
+  line.geometry.computeBoundingSphere();
+  line.computeLineDistances(); // required again whenever a dashed line's vertices move
+}
+// Committed-window (amber) / planned-route (cyan=closes, red=Δv short) arcs — mirrors the SVG's own
+// draw-order exactly: a committed window always wins over an uncommitted planned route, matching
+// plannedRouteSVG's `if(pr.committed) return ''`.
+function map3dUpdateRouteArcs(d){
+  const cw=state.committedWindow;
+  if(cw){
+    const arc=scene3DTransferArc(missionBody(cw.missionId), d);
+    if(arc){
+      if(!map3d.committedArc){ map3d.committedArc=map3dMakeArcLine(0xffb84d); map3d.scene.add(map3d.committedArc); }
+      map3d.committedArc.visible=true; map3dUpdateArcLine(map3d.committedArc, arc);
+    } else if(map3d.committedArc) map3d.committedArc.visible=false;
+  } else if(map3d.committedArc) map3d.committedArc.visible=false;
+  if(!cw){
+    const pr=(typeof plannedRoute==='function')&&plannedRoute();
+    if(pr && !pr.committed){
+      const arc=scene3DTransferArc(pr.destId, d);
+      if(arc){
+        if(!map3d.plannedArc){ map3d.plannedArc=map3dMakeArcLine(pr.ok?0x5fc4d0:0xe8604c); map3d.scene.add(map3d.plannedArc); }
+        map3d.plannedArc.visible=true;
+        map3d.plannedArc.material.color.set(pr.ok?0x5fc4d0:0xe8604c);
+        map3dUpdateArcLine(map3d.plannedArc, arc);
+      } else if(map3d.plannedArc) map3d.plannedArc.visible=false;
+    } else if(map3d.plannedArc) map3d.plannedArc.visible=false;
+  } else if(map3d.plannedArc) map3d.plannedArc.visible=false;
 }
 // Add/update/remove marker meshes to match this frame's active flights. Cheap (activeShipMarkers
 // is O(active flights), normally 0-3) and fully guarded — a bad flight record (missing hull, no
@@ -5811,6 +5985,8 @@ function map3dTick(){
   const sel=state && state.selectedBody;
   if(sel && map3d.bodies[sel]){ const t=bodyScenePos(sel,d); if(t) map3d.cam.target=t; }
   try{ map3dUpdateShipMarkers(d); }catch(e){ /* a marker glitch never breaks the planet view */ }
+  try{ map3dUpdateOverlayBadges(d); }catch(e){ /* D1: same guard shape as ship markers — never breaks the planet view */ }
+  try{ map3dUpdateRouteArcs(d); }catch(e){}
   map3dApplyCamera();
   map3d.cameraFill.position.copy(map3d.camera.position);
   map3d.renderer.render(map3d.scene, map3d.camera);
@@ -5870,8 +6046,9 @@ function map3dPick(e){
   try{
     const hit=map3dRaycast(e);
     if(hit && hit.object && hit.object.userData.bodyId){
-      const id=hit.object.userData.bodyId;
+      let id=hit.object.userData.bodyId;
       if(id.slice(0,5)==='ship:') return; // E4.5: a flight marker isn't a selectable body; hover already surfaces its info
+      if(id.slice(0,6)==='asset:') id=id.slice(6); // D1: clicking a body's overlay badge selects that body, same as clicking the body itself
       const body=BODIES.find(b=>b.id===id);
       if(body) map3d.cam.dist=Math.min(map3d.cam.dist,map3dFocusDistance(body));
       selectBody(id);
