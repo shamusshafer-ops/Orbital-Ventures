@@ -6,10 +6,12 @@ reorder existing entries there, only add new ones at the end, same as `ROADMAP.m
 
 ---
 
-## STATUS (as of 2026-07-25, working tree based on HEAD — Solar Map D1 commit)
+## STATUS (as of 2026-07-25, working tree based on HEAD — Solar Map D2 commit)
 
-**Repo health:** 107 test suites (added `test-map3d-overlay.js`), clean build parity, `git diff
---check` clean. Only known drift: `test-flight3d-trajectory.js` (long-standing — Codex's own accepted
+**Repo health:** 108 test suites (added `test-map3d-overlay.js`, `test-map3d-scale.js`), clean build
+parity, `git diff --check` clean. NOTE: `node build.js` is a bare string concat with NO syntax check —
+a green build does not mean the output parses. Run `node --check build/game.js` too.
+Only known drift: `test-flight3d-trajectory.js` (long-standing — Codex's own accepted
 trajectory/vehicle-physics changes, not a regression). If you see a DIFFERENT test failing, don't
 assume it's pre-existing — check the history below for whether it's a known, intentional behavior
 change first.
@@ -19,6 +21,10 @@ change first.
 > When done, clear it back to "(none claimed right now)" and add your entry to the history below.
 
 **Oriented quickly (last few sessions, newest first) — see History for full detail:**
+- Solar Map D2 (Claude) — scale legibility: AU labels on the orbit rings, live real distance/light-time
+  readouts in the HUD + hover card. The review's proposed linear scale BAR was traced and REJECTED
+  (scene→AU mapping is nonlinear by 3.1×, a bar would mislead) — don't re-add it; see ROADMAP.md.
+  Caught a real bug: planetHelio resolves moons to their parent, so Earth↔Moon computed as 0 AU.
 - Solar Map D1 (Claude) — ported mapAssetModel()/plannedRoute()/transferArc()/rivalsAtBody() into the
   3D view (previously SVG/Phaser-only, invisible in the default 3D view): overlay badges (facility
   health, ISRU, depot, belt claim, tracking, firsts, rival reach) + committed/planned transfer arcs.

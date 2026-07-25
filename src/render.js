@@ -5619,15 +5619,45 @@ function addMap3dAsteroidBelt(scene){
 function mapViewAbsDay(){ return mapPreviewAbsDay==null ? absDay() : mapPreviewAbsDay; }
 function mapTimeReadout(){ const shown=mapViewAbsDay(), live=absDay(); return `${dayToDate(shown)}${shown===live?'':' · preview'}`; }
 function updateMap3DTimeHud(){ if(map3d&&map3d.hudReadout) map3d.hudReadout.textContent=mapTimeReadout(); }
-function mapTimeShift(days){ mapPreviewAbsDay=mapViewAbsDay()+days; updateMap3DTimeHud(); }
-function resetMapTime(){ mapPreviewAbsDay=null; updateMap3DTimeHud(); }
+// D2: the HUD's scale block. Pure (returns HTML, takes the body id + day) so it's headless-testable.
+// Three honest facts, none of which the render compression can distort: the selected body's real
+// distance from Earth right now, the one-way light time that follows from it, and its distance from
+// the Sun. Plus one standing note that the orbit SPACING on screen is compressed — stated outright
+// rather than letting the player infer scale from a picture that isn't linear (see the rejected
+// scale-bar note above).
+function mapScaleReadoutHTML(bodyId, absD){
+  const b=BODIES.find(x=>x.id===bodyId);
+  const name=b?b.name:'—';
+  const sunAU=liveSunDistanceAU(bodyId, absD);
+  const earthAU=liveEarthDistanceAU(bodyId, absD);
+  const lag=liveLightMinutes(bodyId, absD);
+  const row=(k,v)=>`<div style="display:flex;justify-content:space-between;gap:10px"><span style="color:#8fa9b9">${k}</span><span style="color:#dcecf7">${v}</span></div>`;
+  let s=`<div style="color:#7fb6dd;letter-spacing:.07em;font-size:10px">SCALE · ${esc(name)}</div>`;
+  if(bodyId==='earth'){
+    s+=row('From Sun', fmtAU(sunAU));
+    s+=`<div style="color:#8fa9b9;margin-top:2px">You are here.</div>`;
+  } else {
+    if(earthAU!=null) s+=row('From Earth', fmtAU(earthAU));
+    if(lag!=null)     s+=row('Signal delay', fmtLag(lag));
+    if(sunAU!=null)   s+=row('From Sun', fmtAU(sunAU));
+    if(earthAU==null && sunAU==null) s+=`<div style="color:#8fa9b9">No ephemeris for this body.</div>`;
+  }
+  s+=`<div style="color:#63798a;margin-top:4px;font-size:10px">Orbit spacing on screen is compressed — the numbers above are real.</div>`;
+  return s;
+}
+function updateMap3DScaleHud(){
+  if(!map3d || !map3d.scaleReadout) return;
+  map3d.scaleReadout.innerHTML=mapScaleReadoutHTML(state.selectedBody||'earth', mapViewAbsDay());
+}
+function mapTimeShift(days){ mapPreviewAbsDay=mapViewAbsDay()+days; updateMap3DTimeHud(); updateMap3DScaleHud(); }
+function resetMapTime(){ mapPreviewAbsDay=null; updateMap3DTimeHud(); updateMap3DScaleHud(); }
 function addMap3DTimeHud(host, hostId){
   host.style.position='relative'; host.style.overflow='hidden';
   const hud=document.createElement('div'); hud.id='map3dHud_'+hostId;
   hud.style.cssText='position:absolute;top:8px;left:8px;z-index:4;padding:7px 8px;background:rgba(3,9,16,.82);border:1px solid rgba(116,171,208,.48);border-radius:6px;color:#cfe5f4;font:11px ui-monospace,monospace;line-height:1.35;box-shadow:0 4px 16px rgba(0,0,0,.32)';
-  hud.innerHTML=`<div style="color:#7fb6dd;letter-spacing:.07em;font-size:10px">SOLAR DATE</div><div data-map-time style="font-size:12px;color:#fff4d4;margin:2px 0 5px"></div><div style="display:flex;gap:3px"><button onclick="mapTimeShift(-360)" title="Reverse one year">−1Y</button><button onclick="mapTimeShift(-30)" title="Reverse one month">−1M</button><button onclick="resetMapTime()" title="Return to the live game date">Now</button><button onclick="mapTimeShift(30)" title="Advance one month">+1M</button><button onclick="mapTimeShift(360)" title="Advance one year">+1Y</button></div><div style="color:#8fa9b9;margin-top:5px">hover for info · drag to orbit · wheel to zoom</div>`;
+  hud.innerHTML=`<div style="color:#7fb6dd;letter-spacing:.07em;font-size:10px">SOLAR DATE</div><div data-map-time style="font-size:12px;color:#fff4d4;margin:2px 0 5px"></div><div style="display:flex;gap:3px"><button onclick="mapTimeShift(-360)" title="Reverse one year">−1Y</button><button onclick="mapTimeShift(-30)" title="Reverse one month">−1M</button><button onclick="resetMapTime()" title="Return to the live game date">Now</button><button onclick="mapTimeShift(30)" title="Advance one month">+1M</button><button onclick="mapTimeShift(360)" title="Advance one year">+1Y</button></div><div data-map-scale style="margin-top:7px;padding-top:6px;border-top:1px solid rgba(116,171,208,.28)"></div><div style="color:#8fa9b9;margin-top:5px">hover for info · drag to orbit · wheel to zoom</div>`;
   for(const b of hud.querySelectorAll('button')) b.style.cssText='padding:2px 4px;border:1px solid #43677f;border-radius:3px;background:#102232;color:#d4e8f5;font:10px ui-monospace,monospace;cursor:pointer';
-  host.appendChild(hud); return {hud,readout:hud.querySelector('[data-map-time]')};
+  host.appendChild(hud); return {hud,readout:hud.querySelector('[data-map-time]'),scaleReadout:hud.querySelector('[data-map-scale]')};
 }
 function addMap3DHoverCard(host){
   const tip=document.createElement('div');
@@ -5668,7 +5698,14 @@ function map3dHover(e){
   const detail=b ? b.note : 'The star at the center of the system — the source of every day/night terminator in this view.';
   const helio=b&&planetHelio(b.id,mapViewAbsDay());
   const distance=helio ? `<div style="color:#91b8d4;margin-top:3px">Sun distance: ${helio.r.toFixed(2)} AU</div>` : '';
-  tip.innerHTML=`<b style="color:#fff2c9">${esc(title)}</b><div style="margin-top:2px">${esc(detail)}</div>${distance}`;
+  // D2: the live Earth-relative figures — these are what actually convey scale, and they move.
+  let live='';
+  if(b && b.id!=='earth'){
+    const eAU=liveEarthDistanceAU(b.id, mapViewAbsDay()), lag=liveLightMinutes(b.id, mapViewAbsDay());
+    if(eAU!=null) live+=`<div style="color:#91b8d4">From Earth: ${fmtAU(eAU)}</div>`;
+    if(lag!=null) live+=`<div style="color:#91b8d4">Signal delay: ${fmtLag(lag)} one-way</div>`;
+  }
+  tip.innerHTML=`<b style="color:#fff2c9">${esc(title)}</b><div style="margin-top:2px">${esc(detail)}</div>${distance}${live}`;
   tip.style.left=Math.max(8,e.clientX-r.left+14)+'px'; tip.style.top=Math.max(8,e.clientY-r.top+14)+'px'; tip.style.display='block';
   map3d.dom.style.cursor='pointer';
 }
@@ -5735,12 +5772,14 @@ function startMap3D(hostId='mapHost', W=MAP_W, H=MAP_H){
         }
       }
       const cam={ az:Math.PI*0.5, el:0.95, dist:560, target:{x:0,y:0,z:0} };
+      const auRuler=addMap3dAuRuler(scene); // D2: AU distance tags on the orbit rings
       const hud=addMap3DTimeHud(host,hostId);
       const hoverCard=addMap3DHoverCard(host);
       map3d={renderer, scene, camera, sun, corona, sunLight, cameraFill, asteroidBelt, bodies, labels, pickables, cam, dom, hud:hud.hud, hudReadout:hud.readout, hoverCard, startedAt:Date.now(), mountId:hostId, fallbackId:hostId==='mapHost'?'mapCanvas':null, raf:0, raycaster:new THREE.Raycaster(), _drag:null,
               ships:{}, shipData:{}, // E4.5: flightId -> {mesh,label}, flightId -> latest marker descriptor (for hover/pick lookup)
-              badges:{}, badgeSpecKeys:{}, badgeTooltips:{}, committedArc:null, plannedArc:null}; // D1: bodyId -> badge sprite / its last-built spec key (rebuild texture only on change) / tooltip text; the two route-arc Lines (built lazily on first use)
-      updateMap3DTimeHud();
+              badges:{}, badgeSpecKeys:{}, badgeTooltips:{}, committedArc:null, plannedArc:null, // D1: bodyId -> badge sprite / its last-built spec key (rebuild texture only on change) / tooltip text; the two route-arc Lines (built lazily on first use)
+              auRuler, scaleReadout:hud.scaleReadout}; // D2: AU ruler sprites by body id; the HUD's live scale/distance line
+      updateMap3DTimeHud(); updateMap3DScaleHud();
       attachMap3DInput();
     } else if(map3d.dom && !map3d.dom.parentNode){
       host.appendChild(map3d.dom);
@@ -5770,6 +5809,123 @@ function map3dShipMarkerMesh(desc){
   label.userData.bodyId='ship:'+desc.flightId; label.scale.set(Math.min(15,Math.max(6,label.scale.x)),1.3,1);
   return {mesh,label};
 }
+/* ---------- D2 (2026-07-25): scale legibility ----------
+   The review proposed a HUD scale bar. Traced it before building and REJECTED it: the scene's radial
+   mapping is the power law sceneRadiusAtAU (SCENE_AU_BASE·AU^SCENE_AU_EXP), which is nonlinear by
+   ~3.1× across the system — 23.0 scene-units/AU at Mercury vs 7.4 at Neptune. A linear scale bar
+   would therefore be actively WRONG: the same on-screen bar length represents a wildly different real
+   distance depending where the camera is looking, and a player using it to judge "how far is that"
+   would be misled. (Full numeric trace in ROADMAP.md.)
+   What's honest instead, and is what this slice builds:
+     • AU labels sitting ON each orbit ring — each label is at its own true radius, so it can't
+       misrepresent anything; together they read as a ruler outward from the Sun and make the
+       compression itself legible rather than hidden.
+     • Real numeric distance/light-time readouts, computed from planetHelio's true AU values, which
+       the rendering compression cannot distort.
+   Deliberately uses planetHelio (real elements, live per game-day) rather than sim.js's static
+   BODY_AU table that lightLagMinutes uses: BODY_AU is a fixed mean distance, so it can't show Mars
+   swinging between ~4 and ~22 light-minutes as the two planets move — which is exactly the
+   scale-and-motion feel this slice is for. lightLagMinutes stays untouched for the body card (its
+   near/far RANGE framing is still the right thing there). */
+const AU_KM=149597870.7;
+// Live heliocentric distance (AU) of a body at a given absDay, real elements. Moons resolve to their
+// parent (planetHelio already does this), which is correct at solar-system scale.
+function liveSunDistanceAU(bodyId, absD){
+  const h=(typeof planetHelio==='function')&&planetHelio(bodyId, absD==null?mapViewAbsDay():absD);
+  return h?h.r:null;
+}
+// Live Earth↔body distance (AU) from the two real heliocentric position vectors — law of cosines on
+// (r, theta). This is the number that actually moves: Mars ranges ~0.5–2.5 AU across a synodic cycle.
+// Moons need care: planetHelio resolves a moon to its PARENT's heliocentric position, so a naive
+// law-of-cosines gives Earth↔Moon = exactly 0 (both resolve to Earth) — visibly wrong, and it would
+// render as "0.0000 AU · 0 s signal delay". For a moon of Earth, fall back to the real Earth-relative
+// distance in sim.js's BODY_AU table; for a moon of any other planet the parent's distance IS the
+// right answer at solar-system scale (Io vs Jupiter differs by ~0.003 AU against ~4-6 AU of range).
+function liveEarthDistanceAU(bodyId, absD){
+  if(bodyId==='earth') return 0;
+  const body=BODIES.find(x=>x.id===bodyId);
+  if(body && body.around==='earth'){
+    const au=(typeof BODY_AU!=='undefined')?BODY_AU[bodyId]:null;
+    return au==null?null:au;
+  }
+  const d=absD==null?mapViewAbsDay():absD;
+  const b=(typeof planetHelio==='function')&&planetHelio(bodyId,d), e=(typeof planetHelio==='function')&&planetHelio('earth',d);
+  if(!b||!e) return null;
+  const v=b.r*b.r + e.r*e.r - 2*b.r*e.r*Math.cos(b.theta-e.theta);
+  return Math.sqrt(Math.max(0,v));
+}
+// One-way light time (minutes) to a body RIGHT NOW, from the live distance above.
+function liveLightMinutes(bodyId, absD){
+  const au=liveEarthDistanceAU(bodyId, absD);
+  if(au==null) return null;
+  return au*AU_KM/C_KM_S/60;
+}
+function fmtAU(au){
+  if(au==null) return '—';
+  if(au<0.01) return au.toFixed(4)+' AU';
+  if(au<10) return au.toFixed(2)+' AU';
+  return au.toFixed(1)+' AU';
+}
+// The AU ruler: which orbit rings get a distance label, and at what scene radius. Driven off the real
+// ORBITAL_ELEMENTS semi-major axis (same source the ring geometry itself uses), so a label can never
+// drift from the ring it annotates.
+function mapAuRulerTicks(){
+  const out=[];
+  for(const b of BODIES){
+    if(b.around || b.kind==='cloud') continue;               // moons/Oort aren't ruler stops
+    const el=(typeof ORBITAL_ELEMENTS!=='undefined')&&ORBITAL_ELEMENTS[b.id];
+    if(!el) continue;                                         // no real elements (Pluto) → no ring to label
+    out.push({id:b.id, name:b.name, au:el.a, sceneR:sceneRadiusAtAU(el.a)});
+  }
+  return out.sort((x,y)=>x.au-y.au);
+}
+// A small dim AU tag drawn on an orbit ring. Deliberately quieter than the body-name labels (smaller,
+// lower-contrast, no border box) — this is a background ruler, not another thing competing for
+// attention with the planets themselves.
+function map3dAuLabelSprite(text){
+  const cv=document.createElement('canvas'); cv.width=256; cv.height=64;
+  const ctx=cv.getContext('2d');
+  ctx.font='600 26px ui-monospace,monospace'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillStyle='rgba(4,10,17,0.55)';
+  const w=ctx.measureText(text).width;
+  ctx.fillRect(128-w/2-8, 16, w+16, 32);
+  ctx.fillStyle='#6f93ab';
+  ctx.fillText(text,128,32);
+  const tx=new THREE.CanvasTexture(cv); tx.colorSpace=THREE.SRGBColorSpace;
+  const sprite=new THREE.Sprite(new THREE.SpriteMaterial({map:tx,transparent:true,opacity:0.72,depthTest:false,depthWrite:false}));
+  sprite.scale.set(4.6,1.15,1);
+  return sprite;
+}
+// Build the ruler once (ticks never change — they're derived from static orbital elements).
+function addMap3dAuRuler(scene){
+  const sprites={};
+  for(const t of mapAuRulerTicks()){
+    const s=map3dAuLabelSprite(fmtAU(t.au));
+    // Placed on a fixed bearing (−z) rather than beside each planet: the labels then line up as one
+    // readable ruler spoke outward from the Sun, and they never chase the planets around their orbits
+    // or collide with the body-name labels.
+    s.position.set(0, 0, -t.sceneR);
+    scene.add(s); sprites[t.id]=s;
+  }
+  return sprites;
+}
+// LOD: fade the ruler out when zoomed close (it's a system-scale aid — at planet-inspection distance
+// it's just clutter), and scale the sprites up with camera distance so they stay readable when zoomed
+// way out instead of shrinking to nothing.
+function map3dUpdateAuRuler(){
+  if(!map3d || !map3d.auRuler) return;
+  const dist=map3d.cam.dist;
+  const vis=dist>45;                                  // below this the camera is inspecting one body
+  const fade=Math.max(0, Math.min(0.72, (dist-45)/90*0.72));
+  const scale=Math.max(1, dist/150);
+  for(const id in map3d.auRuler){
+    const s=map3d.auRuler[id];
+    s.visible=vis;
+    s.material.opacity=fade;
+    s.scale.set(4.6*scale, 1.15*scale, 1);
+  }
+}
+
 /* ---------- D1 (2026-07-25): port the empire/asset overlay + route arcs into the 3D view ----------
    mapAssetModel()/rivalsAtBody()/plannedRoute()/transferArc() already exist and were wired into the
    SVG + Phaser renderers only — invisible in 3D, which is the default view (MAP3D=true). This ports
@@ -5964,7 +6120,8 @@ function map3dUpdateShipMarkers(d){
 }
 function map3dTick(){
   const d=(typeof absDay==='function')?mapViewAbsDay():0;
-  if(mapPreviewAbsDay===null && map3d._hudLiveDay!==d){ map3d._hudLiveDay=d; updateMap3DTimeHud(); }
+  if(mapPreviewAbsDay===null && map3d._hudLiveDay!==d){ map3d._hudLiveDay=d; updateMap3DTimeHud(); updateMap3DScaleHud(); }
+  if(map3d._hudSelBody!==state.selectedBody){ map3d._hudSelBody=state.selectedBody; updateMap3DScaleHud(); } // D2: selection drives the scale block too
   const t=(Date.now()-map3d.startedAt)/1000, pulse=1+Math.sin(t*1.7)*0.035+Math.sin(t*.47)*0.025;
   map3d.sun.rotation.y=t*0.12; map3d.sun.rotation.z=Math.sin(t*.19)*0.08;
   map3d.corona.material.rotation=Math.sin(t*.13)*0.18; map3d.corona.scale.set(42*pulse,42*pulse,1); map3d.corona.material.opacity=0.78+Math.sin(t*1.3)*0.08;
@@ -5987,6 +6144,7 @@ function map3dTick(){
   try{ map3dUpdateShipMarkers(d); }catch(e){ /* a marker glitch never breaks the planet view */ }
   try{ map3dUpdateOverlayBadges(d); }catch(e){ /* D1: same guard shape as ship markers — never breaks the planet view */ }
   try{ map3dUpdateRouteArcs(d); }catch(e){}
+  try{ map3dUpdateAuRuler(); }catch(e){} // D2: ruler LOD (fade/scale with camera distance)
   map3dApplyCamera();
   map3d.cameraFill.position.copy(map3d.camera.position);
   map3d.renderer.render(map3d.scene, map3d.camera);

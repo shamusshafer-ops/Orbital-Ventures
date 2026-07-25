@@ -6584,3 +6584,91 @@ alongside the D1 badges specifically).
 **Deferred to D2/D3/D4** (per the review's proposed order): AU ring labels, HUD scale bar, per-body
 light-time readout, ecliptic grid, off-screen direction chevrons, body roster rail, label LOD, and
 promoting the time-scrubber HUD with a jump-to-next-window control + live arc while previewing a date.
+
+## Session — Solar Map D2: scale legibility (2026-07-25)
+
+Second slice of the D-pass. **The review's own proposal was traced and rejected** — worth recording,
+since it's the substantive finding of this slice.
+
+**Rejected: the HUD scale bar.** The D2 review proposed "a scale bar in the HUD that updates with
+camera distance." Traced the actual scene→AU mapping before building it. The scene compresses radially
+via `sceneRadiusAtAU` = `SCENE_AU_BASE·AU^SCENE_AU_EXP` (18·AU^0.74), which is **nonlinear by ~3.1×
+across the system**:
+
+| body | AU | scene units | scene-units per AU |
+|---|---|---|---|
+| Mercury | 0.387 | 8.9 | **23.0** |
+| Earth | 1.00 | 18.0 | 18.0 |
+| Jupiter | 5.20 | 61.0 | 11.7 |
+| Neptune | 30.1 | 223.6 | **7.4** |
+
+A linear scale bar is meaningful only under a linear mapping. Here, the same on-screen bar length
+represents a ~3× different real distance depending where the camera is pointed — a player using it to
+judge "how far is that jump" would be actively misled, not merely given an imprecise figure. That's
+worse than no scale bar at all. **Not built.** The nonlinearity is now asserted in
+`tests/test-map3d-scale.js` so a later session doesn't helpfully "finish" D2 by adding it back.
+
+**What shipped instead — honest by construction:**
+- **AU labels on the orbit rings** (`mapAuRulerTicks`, `map3dAuLabelSprite`, `addMap3dAuRuler`). Each
+  label sits at its own true ring radius, so it cannot misrepresent anything; together they read as a
+  ruler spoke outward from the Sun and make the compression itself *legible* rather than hidden. Placed
+  on a fixed −z bearing rather than beside each planet, so they line up as one readable scale and never
+  chase planets around their orbits or collide with the body-name labels. Tick radii derive from the
+  same `ORBITAL_ELEMENTS` semi-major axis the ring geometry uses, so a label can never drift from the
+  ring it annotates (asserted).
+- **Real numeric readouts** the compression can't distort — a new HUD `SCALE` block
+  (`mapScaleReadoutHTML`, pure) showing the selected body's live distance from Earth, the one-way light
+  time that follows, and its distance from the Sun; plus the same live figures added to the hover card
+  alongside the pre-existing static Sun-distance line. Ends with one standing note that on-screen orbit
+  spacing is compressed and the numbers are the real thing — stated outright rather than letting the
+  player infer scale from a picture that isn't linear.
+- **Ruler LOD** (`map3dUpdateAuRuler`): fades out below camera distance 45 (at planet-inspection range
+  it's clutter, not orientation) and scales up with distance so it stays readable zoomed out.
+
+**Deliberately uses live `planetHelio` positions, not sim.js's static `BODY_AU`.** `lightLagMinutes`
+(body card) reads `BODY_AU`, a fixed mean distance — it can only ever quote a near/far *range*. The map
+wants the number *right now*, because a distance that visibly changes as you scrub the time HUD is
+exactly the scale-and-motion feel this slice is for. New `liveSunDistanceAU`/`liveEarthDistanceAU`/
+`liveLightMinutes` compute from real elements via law-of-cosines on the two heliocentric vectors.
+`lightLagMinutes` is untouched — its range framing is still the right thing on the body card.
+
+**A real bug caught by tracing rather than by reading the code.** `planetHelio` resolves a moon to its
+PARENT's heliocentric position, so the naive law-of-cosines gives **Earth↔Moon = exactly 0** — the HUD
+would have rendered "0.0000 AU · 0 s signal delay" for the Moon. Fixed: a moon of Earth falls back to
+`BODY_AU`'s real Earth-relative distance (0.00257 AU → ~1.3 s, verified against reality); a moon of any
+other planet correctly inherits its parent's distance, which is right at solar-system scale (Io differs
+from Jupiter by ~0.003 AU against 4–6 AU of range). Only surfaced because the trace printed the Moon
+row — the code reads correctly.
+
+**Empirical validation against reality, not just internal consistency.** Traced Mars over a full
+synodic cycle: Earth-distance sweeps **0.46 – 2.62 AU**, light time **5.9 – 21.2 min** (real Mars:
+~0.37–2.68 AU, ~3–22 min). Mercury's Sun-distance varies 0.31–0.47 AU, matching its real e=0.2056
+perihelion/aphelion band rather than sitting at a mean. Earth→Sun light time lands on the textbook
+8.3 min. All asserted as bounds in the test file.
+
+**Validation.** New `tests/test-map3d-scale.js` (48/48): the rejected-scale-bar nonlinearity, live
+distances against real physical bounds for Sun/Earth/Mars/Mercury/Jupiter/Neptune, the moon-distance
+bug's fixed behavior (Moon non-zero and ~correct; Io/Titan inherit parent), light-time consistency with
+distance, `fmtAU` at every magnitude the system spans, ruler tick sorting/derivation/exclusions
+(moons, Oort, and Pluto-without-elements all correctly absent), and `mapScaleReadoutHTML` rendering
+NaN-free and undefined-free for **every** body in `BODIES` (it's selection-driven, so any body can
+reach it), with Earth correctly saying "You are here" instead of a meaningless 0 AU from itself. Full
+regression clean (107 suites) except the two known pre-existing drifts. Build parity and
+`git diff --check` clean.
+
+**One mechanical slip caught and fixed inline, worth recording** because it exposes a real gap: an
+early edit's `new_str` dropped the D1 comment block's opening `/*`, orphaning ~5 comment lines as bare
+code. **`node build.js` still reported success** — the "build" is a zero-dependency string concat with
+no syntax check, so it cannot catch this class of error. Caught by running the harness immediately
+after. Worth knowing: a green `build.js` is NOT evidence the output parses. `node --check build/game.js`
+is, and was added to this session's verification loop.
+
+**NOT browser-verified** (no WebGL in this sandbox): whether the ruler labels read as a helpful scale
+spoke or as visual noise across the ecliptic, whether the LOD fade threshold (dist>45) is tuned right
+in practice, and whether the HUD `SCALE` block crowds the time scrubber it sits under — that block is
+also the natural home for D4's jump-to-next-window control, so its layout is worth judging with D4 in
+mind rather than in isolation.
+
+**Deferred to D3/D4:** ecliptic grid, off-screen direction chevrons for Sun/Earth, body roster rail,
+label LOD for the body-name sprites (this slice added LOD only for the new AU ruler), and promoting
+the time scrubber with a jump-to-next-window control + live arc while previewing a date.
