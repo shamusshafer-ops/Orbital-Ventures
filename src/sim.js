@@ -5580,25 +5580,26 @@ function autoAdvanceMission(){
 }
 
 /* ---------- actions ---------- */
-// UI Consolidation slice 2: the center-viewport scene registry. These four tabs are full
-// "scenes" that own the center stage; the remaining tabs are "panels" headed for the rails /
-// modals in later slices. Mission Playback is a contextual center takeover (already an overlay).
-// Tab/number-key order follows the natural build→fly flow: Vehicle → Station → Solar System →
-// Control Center, with R&D last. (Rail nav order is independent.)
-const SCENES = {
-  bench:   { tab:'bench',   label:'Design Bench',   icon:'✎' },
-  station: { tab:'station', label:'Station Bench',   icon:'⬡' },
-  map:     { tab:'map',     label:'Solar System',   icon:'☉' },
-  command: { tab:'command', label:'Command Center', icon:'⌂' },
-  rnd:     { tab:'rnd',     label:'R&D',            icon:'⚛' },
-};
-const SCENE_TABS = Object.keys(SCENES);
+// Shared Mission Control shell contract. This is the single source for every primary
+// scene's identity and shell placement; renderers deliberately keep their existing,
+// specialized content hosts. Tab/number-key order follows build→fly flow.
+const SCENE_DEFS = Object.freeze({
+  bench:   Object.freeze({ id:'bench',   label:'Design Bench',   icon:'✎', layout:'workspace',  viewId:'benchView',   navId:'tabBench',   badgeId:'badgeBench',   railId:'railBench',   dockOrder:2 }),
+  station: Object.freeze({ id:'station', label:'Station Bench',  icon:'⬡', layout:'assembly',   viewId:'stationView', navId:'tabStation', badgeId:'badgeStation', railId:'railStation', dockOrder:5 }),
+  base:    Object.freeze({ id:'base',    label:'Base Bench',     icon:'⛰', layout:'assembly',   viewId:'baseView',    navId:'tabBase',    badgeId:'badgeBase',    railId:'railBase',    dockOrder:6 }),
+  map:     Object.freeze({ id:'map',     label:'Solar System',   icon:'☉', layout:'immersive', viewId:'mapView',     navId:'tabMap',     badgeId:'badgeMap',     railId:'railMap',     dockOrder:4 }),
+  command: Object.freeze({ id:'command', label:'Command Center',icon:'⌂', layout:'immersive', viewId:'commandView', navId:'tabCommand', badgeId:'badgeCommand', railId:'railCommand', dockOrder:1 }),
+  rnd:     Object.freeze({ id:'rnd',     label:'R&D',            icon:'⚛', layout:'workspace',  viewId:'rndView',     navId:'tabRnd',     badgeId:'badgeRnd',     railId:'railRnd',     dockOrder:3 }),
+});
+const SCENE_TABS = Object.keys(SCENE_DEFS);
+const SCENE_DOCK_TABS = SCENE_TABS.slice().sort((a,b)=>sceneDef(a).dockOrder-sceneDef(b).dockOrder);
+function sceneDef(t){ return SCENE_DEFS[t]||null; }
 // Retired tab ids → where they now live, so legacy saves / stray setTab calls resolve.
 // slice 4: Planner folded into the left-rail advisor. slice 5: Missions → the Command
 // Center "Mission Control" drill. slice 6: Programs/Rivals/Personnel → modals + hub drills.
 // All land on Command Center (their new homes hang off the hub).
 const RETIRED_TABS = { planner:'command', missions:'command', programs:'command', rivals:'command', personnel:'command', infra:'command', settings:'command' };
-function isSceneTab(t){ return SCENE_TABS.indexOf(t)>=0; }
+function isSceneTab(t){ return !!sceneDef(t); }
 // slice 5/6: a legacy "go to tab X" intent → the onclick expression for X's new home
 // (a hub drill or a modal). Used by the advisor, alerts, planner steps and hub buildings.
 function tabIntent(t){

@@ -193,7 +193,7 @@ document.addEventListener('keydown',function(e){
   }
 });
 // #32: keyboard scene navigation — ESC = close modal / back to Command Center,
-// TAB = next scene, number keys 1–4 = jump to a scene. Never hijacks typing.
+// TAB = next scene, number keys 1–6 = jump to a scene. Never hijacks typing.
 function modalOpen(){ const m=$('modal'); return !!m && m.classList && !m.classList.contains('hidden'); }
 function nextScene(dir){
   const i=SCENE_TABS.indexOf(state.tab);
@@ -220,7 +220,7 @@ document.addEventListener('keydown',function(e){
   if(e.key==='Tab' && modalOpen()){ trapModalTab(e); return; }
   if(typing || modalOpen()) return; // don't grab TAB/numbers while typing or in a modal
   if(e.key==='Tab'){ nextScene(e.shiftKey?-1:1); e.preventDefault(); return; }
-  if(e.key>='1' && e.key<='5'){ const idx=+e.key-1; if(idx<SCENE_TABS.length){ setTab(SCENE_TABS[idx]); e.preventDefault(); } }
+  if(e.key>='1' && e.key<='6'){ const idx=+e.key-1; if(idx<SCENE_TABS.length){ setTab(SCENE_TABS[idx]); e.preventDefault(); } }
 });
 // F1/F2/F3 mirror the ▸/▸▸/▸▸▸ day/week/month time-advance buttons — same clickTimeArrow() as a
 // mouse click, so the existing "press once = single step, press again = auto-run 1/sec" behavior

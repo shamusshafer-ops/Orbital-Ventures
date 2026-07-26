@@ -7182,11 +7182,13 @@ Logical scene-slot mapping:
 
 ### Migration phases
 
-1. **Shared shell contract — ACTIVE:** replace parallel scene metadata with one `SCENE_DEFS`
-   registry, correctly classify Base as a scene, keep the scene dock permanently mounted, and add
-   shared shell tokens/primitives without moving specialized page content.
-2. **Solar System pilot:** move the roster into the left slot, keep the live map in the monitor, and
-   move selected-body/activity information into the right inspector.
+1. **Shared shell contract — SHIPPED 2026-07-26:** replaced parallel scene metadata with one
+   `SCENE_DEFS` registry, correctly classified Base as a scene, permanently mounted the six-page
+   scene dock, and added shared shell tokens/primitives without moving specialized page content.
+   Firefox verified dock visibility on the initial Bench and long R&D views; focused shell,
+   hotkey, Command hero, regression, Base Bench, syntax, and build-parity checks pass.
+2. **Solar System pilot — ACTIVE:** move the roster into the left slot, keep the live map in the
+   monitor, and move selected-body/activity information into the right inspector.
 3. **Assembly unification:** render Station and Base through one configurable assembly-shell
    structure, including consistent toolbar and pop-out capabilities.
 4. **Workspace migration:** adapt Design Bench and R&D to the wider workspace variant while

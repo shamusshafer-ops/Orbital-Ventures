@@ -8484,25 +8484,26 @@ function autoAdvanceMission(){
 }
 
 /* ---------- actions ---------- */
-// UI Consolidation slice 2: the center-viewport scene registry. These four tabs are full
-// "scenes" that own the center stage; the remaining tabs are "panels" headed for the rails /
-// modals in later slices. Mission Playback is a contextual center takeover (already an overlay).
-// Tab/number-key order follows the natural build→fly flow: Vehicle → Station → Solar System →
-// Control Center, with R&D last. (Rail nav order is independent.)
-const SCENES = {
-  bench:   { tab:'bench',   label:'Design Bench',   icon:'✎' },
-  station: { tab:'station', label:'Station Bench',   icon:'⬡' },
-  map:     { tab:'map',     label:'Solar System',   icon:'☉' },
-  command: { tab:'command', label:'Command Center', icon:'⌂' },
-  rnd:     { tab:'rnd',     label:'R&D',            icon:'⚛' },
-};
-const SCENE_TABS = Object.keys(SCENES);
+// Shared Mission Control shell contract. This is the single source for every primary
+// scene's identity and shell placement; renderers deliberately keep their existing,
+// specialized content hosts. Tab/number-key order follows build→fly flow.
+const SCENE_DEFS = Object.freeze({
+  bench:   Object.freeze({ id:'bench',   label:'Design Bench',   icon:'✎', layout:'workspace',  viewId:'benchView',   navId:'tabBench',   badgeId:'badgeBench',   railId:'railBench',   dockOrder:2 }),
+  station: Object.freeze({ id:'station', label:'Station Bench',  icon:'⬡', layout:'assembly',   viewId:'stationView', navId:'tabStation', badgeId:'badgeStation', railId:'railStation', dockOrder:5 }),
+  base:    Object.freeze({ id:'base',    label:'Base Bench',     icon:'⛰', layout:'assembly',   viewId:'baseView',    navId:'tabBase',    badgeId:'badgeBase',    railId:'railBase',    dockOrder:6 }),
+  map:     Object.freeze({ id:'map',     label:'Solar System',   icon:'☉', layout:'immersive', viewId:'mapView',     navId:'tabMap',     badgeId:'badgeMap',     railId:'railMap',     dockOrder:4 }),
+  command: Object.freeze({ id:'command', label:'Command Center',icon:'⌂', layout:'immersive', viewId:'commandView', navId:'tabCommand', badgeId:'badgeCommand', railId:'railCommand', dockOrder:1 }),
+  rnd:     Object.freeze({ id:'rnd',     label:'R&D',            icon:'⚛', layout:'workspace',  viewId:'rndView',     navId:'tabRnd',     badgeId:'badgeRnd',     railId:'railRnd',     dockOrder:3 }),
+});
+const SCENE_TABS = Object.keys(SCENE_DEFS);
+const SCENE_DOCK_TABS = SCENE_TABS.slice().sort((a,b)=>sceneDef(a).dockOrder-sceneDef(b).dockOrder);
+function sceneDef(t){ return SCENE_DEFS[t]||null; }
 // Retired tab ids → where they now live, so legacy saves / stray setTab calls resolve.
 // slice 4: Planner folded into the left-rail advisor. slice 5: Missions → the Command
 // Center "Mission Control" drill. slice 6: Programs/Rivals/Personnel → modals + hub drills.
 // All land on Command Center (their new homes hang off the hub).
 const RETIRED_TABS = { planner:'command', missions:'command', programs:'command', rivals:'command', personnel:'command', infra:'command', settings:'command' };
-function isSceneTab(t){ return SCENE_TABS.indexOf(t)>=0; }
+function isSceneTab(t){ return !!sceneDef(t); }
 // slice 5/6: a legacy "go to tab X" intent → the onclick expression for X's new home
 // (a hub drill or a modal). Used by the advisor, alerts, planner steps and hub buildings.
 function tabIntent(t){
@@ -10313,7 +10314,7 @@ document.addEventListener('keydown',function(e){
   }
 });
 // #32: keyboard scene navigation — ESC = close modal / back to Command Center,
-// TAB = next scene, number keys 1–4 = jump to a scene. Never hijacks typing.
+// TAB = next scene, number keys 1–6 = jump to a scene. Never hijacks typing.
 function modalOpen(){ const m=$('modal'); return !!m && m.classList && !m.classList.contains('hidden'); }
 function nextScene(dir){
   const i=SCENE_TABS.indexOf(state.tab);
@@ -10340,7 +10341,7 @@ document.addEventListener('keydown',function(e){
   if(e.key==='Tab' && modalOpen()){ trapModalTab(e); return; }
   if(typing || modalOpen()) return; // don't grab TAB/numbers while typing or in a modal
   if(e.key==='Tab'){ nextScene(e.shiftKey?-1:1); e.preventDefault(); return; }
-  if(e.key>='1' && e.key<='5'){ const idx=+e.key-1; if(idx<SCENE_TABS.length){ setTab(SCENE_TABS[idx]); e.preventDefault(); } }
+  if(e.key>='1' && e.key<='6'){ const idx=+e.key-1; if(idx<SCENE_TABS.length){ setTab(SCENE_TABS[idx]); e.preventDefault(); } }
 });
 // F1/F2/F3 mirror the ▸/▸▸/▸▸▸ day/week/month time-advance buttons — same clickTimeArrow() as a
 // mouse click, so the existing "press once = single step, press again = auto-run 1/sec" behavior
@@ -14670,11 +14671,12 @@ function tabAlerts(){
 }
 function renderTabBadges(){
   const a=tabAlerts();
-  const map={command:'badgeCommand', bench:'badgeBench', rnd:'badgeRnd', map:'badgeMap', station:'badgeStation'};
-  for(const k in map){ const el=$(map[k]); if(!el) continue;
-    const n=a[k].length;
+  for(const k of SCENE_TABS){
+    const def=sceneDef(k), el=$(def.badgeId); if(!el) continue;
+    const alerts=a[k]||[];
+    const n=alerts.length;
     el.classList.toggle('hidden', n===0);
-    if(n){ el.textContent=n; el.title=a[k].join(' · '); }
+    if(n){ el.textContent=n; el.title=alerts.join(' · '); }
   }
 }
 
@@ -14804,16 +14806,17 @@ function renderTopbarStats(){
   renderMarketStat();
 }
 function renderChromeShellRail(){
-  // slice 2: tag the shell with the active view's kind (scene vs panel) so CSS / later
-  // slices (right rail, center takeover) can react without re-deriving it.
+  // Tag the shell with the active scene contract so future layout variants can react
+  // without re-deriving scene identity in every renderer.
   const shell=$('appShell');
   if(shell){
-    shell.classList.toggle('viewing-scene', isSceneTab(state.tab));
-    shell.classList.toggle('viewing-panel', !isSceneTab(state.tab));
+    const scene=sceneDef(state.tab);
+    shell.classList.toggle('viewing-scene', !!scene);
+    shell.classList.toggle('viewing-panel', !scene);
     shell.classList.toggle('command-hero', state.tab==='command');
-    // slice 3: show the active scene's contextual right-rail panel; collapse the rail on panels.
-    const RAIL={command:'railCommand',bench:'railBench',map:'railMap',rnd:'railRnd',station:'railStation',base:'railBase'};
-    let activePanel=RAIL[state.tab]||null;
+    for(const layout of ['immersive','assembly','workspace']) shell.classList.toggle('scene-'+layout, !!scene && scene.layout===layout);
+    // Show the active scene's contextual right-rail panel; the contract owns the mapping.
+    let activePanel=scene&&scene.railId;
     // command's alerts panel (ccRight) is adv-only, so the rail is empty in Basic → don't reserve it.
     let railAdvOnly=(state.tab==='command');
     // slice 5: on the hub, the Mission Control drill swaps Alerts for the Contracts panel (shown in all layers).
@@ -14826,32 +14829,28 @@ function renderChromeShellRail(){
   if(typeof document!=='undefined' && document.body) document.body.classList.toggle('command-mode', state.tab==='command');
   placeCommandCenterChrome();
 }
-// Phase 3A: there is still only one scene nav and one operations ticker. On Command Center they
-// are moved into the Cape hero; on every other scene they return to their established rail/topbar
-// homes. Moving the existing nodes preserves all ids, badges, handlers, focus behavior and filters.
+// The scene dock is permanently mounted in the shared shell. Only the operations ticker changes
+// placement for the Command Center's hero treatment; navigation never moves between scenes.
 function placeCommandCenterChrome(){
   const command=state.tab==='command';
   const move=(id,targetId)=>{
     const node=$(id), target=$(targetId);
     if(node&&target&&node.parentNode!==target) target.appendChild(node);
   };
-  move('sceneNav', command?'ccDock':'railNavHome');
   move('tlControls', command?'ccTicker':'opsTickerHome');
   move('opsTimeline', command?'ccTicker':'opsTickerHome');
 }
 function renderChromeTabsViews(){
-  $('tabCommand').classList.toggle('active',state.tab==='command');
-  $('tabBench').classList.toggle('active',state.tab==='bench');
-  $('tabRnd').classList.toggle('active',state.tab==='rnd');
-  $('tabMap').classList.toggle('active',state.tab==='map');
-  $('tabStation').classList.toggle('active',state.tab==='station');
-  { const tb=$('tabBase'); if(tb) tb.classList.toggle('active',state.tab==='base'); }
-  $('commandView').classList.toggle('hidden',state.tab!=='command');
-  $('benchView').classList.toggle('hidden',state.tab!=='bench');
-  $('rndView').classList.toggle('hidden',state.tab!=='rnd');
-  $('mapView').classList.toggle('hidden',state.tab!=='map');
-  $('stationView').classList.toggle('hidden',state.tab!=='station');
-  { const bv=$('baseView'); if(bv) bv.classList.toggle('hidden',state.tab!=='base'); }
+  setHTML($('sceneNav'), SCENE_DOCK_TABS.map(id=>{
+    const def=sceneDef(id);
+    return `<button id="${def.navId}" class="scene" type="button" onclick="setTab('${def.id}')"><span class="cc-icon" aria-hidden="true">${def.icon}</span><span class="cc-nav-label">${esc(def.label)}</span><span class="tabbadge hidden" id="${def.badgeId}"></span></button>`;
+  }).join(''));
+  for(const id of SCENE_TABS){
+    const def=sceneDef(id), tab=$(def.navId), view=$(def.viewId);
+    if(tab) tab.classList.toggle('active',state.tab===id);
+    if(view) view.classList.toggle('hidden',state.tab!==id);
+  }
+  renderTabBadges(); // the dock is rebuilt above, so apply current badge state to its fresh nodes
   placeOpsbar(); // on the Map view, the ops controls (row 2) ride across the top of the map card; elsewhere they stay pinned in the topbar
   applyDifficultyUI();
 }

@@ -8,7 +8,8 @@
   :root{
     --topbar-h:120px; /* height of the pinned header+opsbar; updated live in JS so sticky panels clear it */
     --cc-rail-width:380px; /* persistent left/right shell columns share one stable width */
-    --cc-overview-width:380px; /* readable width for the Command Center agency deck */
+    /* Shared scene-shell geometry. Variants inherit these rather than creating their own shell contract. */
+    --scene-gap:14px; --scene-dock-offset:14px; --scene-monitor-min:0px;
     --ui-scale:1; /* whole-UI zoom (E0.4 slice D); set live from JS (uiScale/100), persisted in localStorage 'ov_uiscale', NOT the save */
     --bg:#050b12; --panel:#0b1621; --panel2:#102231; --line:#24465a;
     --ink:#d8e2e7; --muted:#7d909b; --dim:#56666f;
@@ -184,13 +185,14 @@
   /* --- Mission Control Shell (UI Consolidation slice 1): persistent left rail + center viewport + (stub) right rail --- */
   /* The right-rail column is ALWAYS reserved (even on scenes with no rail panel) so the center
      viewport keeps a constant width — tabbing between scenes only swaps content, never shifts layout. */
-  .shell,.shell.has-right{display:grid;grid-template-columns:var(--cc-rail-width) minmax(0,1fr) var(--cc-rail-width);gap:14px;align-items:start}
+  .scene-shell,.shell.has-right{display:grid;grid-template-columns:var(--cc-rail-width) minmax(var(--scene-monitor-min),1fr) var(--cc-rail-width);gap:var(--scene-gap);align-items:start}
+  .scene-slot,.scene-monitor,.hud-deck,.scene-inspector,.scene-roster{min-width:0}
   .rail-left,.rail-right{min-width:0;width:100%}                       /* equal persistent shell columns; contents cannot widen either track */
   .rail-left{align-self:start}                                         /* nav + persistent advisor/objectives (slice 4) */
   .rail-advisor{margin-top:12px}
   .rail-advisor .card{padding:11px 12px}
   .rail-advisor .cc-panel-h{font-size:12px}
-  .viewport{min-width:0;transition:opacity .15s ease}                 /* lets overflow children (tech tree, map) size within the column */
+  .viewport{position:relative;min-width:0;transition:opacity .15s ease} /* lets overflow children (tech tree, map) size within the column */
   .rail-right{position:sticky;top:calc(var(--topbar-h) + 10px);align-self:start;max-height:calc(100vh - var(--topbar-h) - 24px);overflow-y:auto}  /* tall panels (e.g. contracts) scroll within the sticky rail; clears the pinned topbar */
   /* Persistent right-rail accordion (Mission Control / Flight Plan / Current Objectives) */
   .rail-accordion{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
@@ -218,13 +220,19 @@
     font-size:12px;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   nav.rail-nav button:hover{color:var(--ink);border-color:var(--ignite)}
   nav.rail-nav button.active{background:var(--panel2);color:var(--ink);border-color:var(--line);box-shadow:inset 3px 0 0 var(--ignite)}
+  /* The dock is a single, persistent navigation home. Scene variants may reposition it,
+     but no scene moves or duplicates its buttons. */
+  .scene-dock{position:sticky;bottom:var(--scene-dock-offset);z-index:20;margin-top:var(--scene-gap);padding:7px 9px;border:1px solid var(--line);border-radius:7px;background:color-mix(in srgb,var(--panel) 94%,transparent);box-shadow:var(--hud-shadow)}
+  .scene-dock nav.rail-nav{display:flex;flex-direction:row;flex-wrap:wrap;align-items:stretch;gap:4px}
+  .scene-dock nav.rail-nav button{width:auto;min-width:130px;flex:1 1 130px;text-align:center}
+  .scene-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:0}
   /* slice 2: group headers + scene emphasis (scenes own the center viewport; panels are secondary) */
   nav.rail-nav .rail-group{font-size:var(--fs-min);text-transform:uppercase;letter-spacing:.14em;color:var(--muted);
     opacity:.6;margin:10px 2px 2px;font-family:var(--sans)}
   nav.rail-nav .rail-group:first-child{margin-top:0}
   nav.rail-nav button.scene{font-weight:600}
   @media(max-width:880px){
-    .shell,.shell.has-right{grid-template-columns:1fr}
+    .scene-shell,.shell.has-right{grid-template-columns:1fr}
     .rail-left{position:static}
     nav.rail-nav{flex-direction:row;flex-wrap:wrap;align-items:center}
     nav.rail-nav button{width:auto}
@@ -838,8 +846,8 @@
       display:block;position:relative;isolation:isolate;min-height:calc(100vh - var(--topbar-h) - 18px)}
     .command-hero .viewport{width:100%}
     .command-hero .rail-left,.command-hero .rail-right{position:absolute;z-index:8;pointer-events:none}
-    /* Navigation moves into the lower bezel on Command Center. The agency deck becomes the
-       actual left column, while the persistent Mission Control accordion owns the right one. */
+    /* The shared lower-bezel dock stays mounted here. The agency deck becomes the actual
+       left column, while the persistent Mission Control accordion owns the right one. */
     .command-hero .rail-left{display:none}
     /* The summary deck owns the upper-right corner; the persistent accordion, Rivals,
        News and Finance remain intact directly beneath it. */
@@ -849,7 +857,6 @@
     .command-hero nav.rail-nav,.command-hero .rail-accordion,
     .command-hero nav.rail-nav button,.command-hero .rail-acc-btn{width:var(--cc-rail-width);max-width:100%;box-sizing:border-box}
     .command-hero .rail-left > *,.command-hero .rail-right > *{pointer-events:auto}
-    .command-hero #railNavHome{display:none}
     /* The hero is viewport-bound: a fixed floor here made the absolute overlays extend below
        short desktop windows before the player could see the ticker or scene dock. */
     .command-hero #commandView{position:relative;height:calc(100vh - var(--topbar-h) - 18px);min-height:0}
@@ -900,6 +907,7 @@
     .command-hero .cc-dock{position:absolute;z-index:10;left:calc(var(--cc-rail-width) + 14px);right:calc(var(--cc-rail-width) + 14px);bottom:14px;transform:none;width:auto;max-width:none;overflow:visible;padding:7px 9px;border:1px solid var(--hud-line);border-radius:7px;background:rgba(4,13,22,.93);box-shadow:var(--hud-shadow)}
     .command-hero .cc-dock::-webkit-scrollbar{display:none}
     .command-hero .cc-dock nav.rail-nav{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));align-items:stretch;gap:4px}
+    .command-hero .cc-dock nav.rail-nav{width:100%;max-width:none}
     .command-hero .cc-dock nav.rail-nav .rail-group{display:none}
     .command-hero .cc-dock nav.rail-nav button{width:auto;min-width:0;min-height:50px;flex:none;flex-direction:column;gap:3px;padding:5px 3px;justify-content:center;text-align:center;font-size:clamp(10px,.78vw,12px);line-height:1.05;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .command-hero .cc-dock nav.rail-nav button .cc-icon{font-size:15px;line-height:1}
@@ -929,7 +937,6 @@
     .command-hero .rail-left > *, .command-hero .rail-right > *,
     .command-hero nav.rail-nav,.command-hero .rail-accordion,
     .command-hero nav.rail-nav button,.command-hero .rail-acc-btn{width:100%;max-width:none}
-    .command-hero #railNavHome{display:none}
     .command-hero #commandView{display:flex;flex-direction:column;gap:14px}
     .command-hero #ccCenter{order:1}.command-hero #ccStrip{order:2}.command-hero #ccSummaryRight{order:3}.command-hero #ccTimeline{order:4}.command-hero #ccTicker{order:5}.command-hero #ccDock{order:6}
     .command-hero .cc-hero-card{padding:0;overflow:hidden}
@@ -1037,31 +1044,14 @@
   </div><!-- /topbar -->
   <button class="btn ghost hidden" id="topbarShow" onclick="toggleTopbar()" title="Show the top bar (h)">▾ Show bar</button>
 
-  <div class="shell" id="appShell">
-    <aside class="rail-left">
-      <div id="railNavHome">
-      <nav class="rail-nav" id="sceneNav">
-        <!-- Mission Control Shell slice 2: the rail is split into the four center "scenes"
-             (own the center viewport) and the "operations" panels (destined for the rails /
-             modals in later slices). Same button ids + setTab handlers — nothing removed. -->
-        <div class="rail-group">Mission Control</div>
-        <button id="tabCommand" class="scene active" onclick="setTab('command')"><span class="cc-icon" aria-hidden="true">⌂</span><span class="cc-nav-label">Command Center</span><span class="tabbadge hidden" id="badgeCommand"></span></button>
-        <button id="tabBench" class="scene" onclick="setTab('bench')"><span class="cc-icon" aria-hidden="true">✎</span><span class="cc-nav-label">Design Bench</span><span class="tabbadge hidden" id="badgeBench"></span></button>
-        <button id="tabRnd" class="scene" onclick="setTab('rnd')"><span class="cc-icon" aria-hidden="true">⚛</span><span class="cc-nav-label">R&amp;D</span><span class="tabbadge hidden" id="badgeRnd"></span></button>
-        <button id="tabMap" class="scene" onclick="setTab('map')"><span class="cc-icon" aria-hidden="true">☉</span><span class="cc-nav-label">Solar System</span><span class="tabbadge hidden" id="badgeMap"></span></button>
-        <button id="tabStation" class="scene" onclick="setTab('station')"><span class="cc-icon" aria-hidden="true">⬡</span><span class="cc-nav-label">Station Bench</span><span class="tabbadge hidden" id="badgeStation"></span></button>
-        <button id="tabBase" class="scene" onclick="setTab('base')"><span class="cc-icon" aria-hidden="true">⛰</span><span class="cc-nav-label">Base Bench</span><span class="tabbadge hidden" id="badgeBase"></span></button>
-        <!-- slice 8: the Operations group is gone — Settings → the HUD ⚙ menu; Programs/
-             Rivals/Personnel/Infrastructure → modals + hub drills. The rail is now purely
-             the four scene selectors. -->
-      </nav>
-      </div>
+  <div class="shell scene-shell" id="appShell">
+    <aside class="rail-left scene-slot">
       <!-- slice 4: the Mission Control Advisor + Objectives (was commandView's ccLeft) is
            promoted to the always-on left rail; render() rebuilds it on every scene. The
            retired Planner tab's flight-plan steps are folded in here. -->
       <div id="ccLeft" class="rail-advisor"></div>
     </aside>
-    <main class="viewport">
+    <main class="viewport scene-monitor">
 
   <div id="commandView">
     <!-- Phase 3A: the live Cape scene is the Command Center's hero. Existing content hosts stay
@@ -1072,7 +1062,6 @@
     <div class="cc-summary-right" id="ccSummaryRight"></div>
     <div class="card adv-only" id="ccTimeline"></div>
     <div class="cc-ticker" id="ccTicker"></div>
-    <div class="cc-dock" id="ccDock"></div>
   </div>
 
   <div id="benchView" class="hidden">
@@ -1256,8 +1245,10 @@
   <!-- Settings retired in slice 8 → the HUD ⚙ menu (showSettingsMenu builds #settingsCard
        on demand via renderSettings). -->
 
+      <!-- Shared shell dock: rendered from SCENE_DEFS and never moved between pages. -->
+      <div class="scene-dock cc-dock" id="ccDock"><nav class="rail-nav" id="sceneNav" aria-label="Primary scenes"></nav></div>
     </main>
-    <aside class="rail-right" id="railRight">
+    <aside class="rail-right scene-slot" id="railRight">
       <!-- Persistent accordion (shown on every scene): one click drops a section down to preview it,
            a second click on an open section jumps to its page. renderRailPersistent() fills the bodies. -->
       <div id="railPersistent" class="rail-accordion">
@@ -9853,25 +9844,26 @@ function autoAdvanceMission(){
 }
 
 /* ---------- actions ---------- */
-// UI Consolidation slice 2: the center-viewport scene registry. These four tabs are full
-// "scenes" that own the center stage; the remaining tabs are "panels" headed for the rails /
-// modals in later slices. Mission Playback is a contextual center takeover (already an overlay).
-// Tab/number-key order follows the natural build→fly flow: Vehicle → Station → Solar System →
-// Control Center, with R&D last. (Rail nav order is independent.)
-const SCENES = {
-  bench:   { tab:'bench',   label:'Design Bench',   icon:'✎' },
-  station: { tab:'station', label:'Station Bench',   icon:'⬡' },
-  map:     { tab:'map',     label:'Solar System',   icon:'☉' },
-  command: { tab:'command', label:'Command Center', icon:'⌂' },
-  rnd:     { tab:'rnd',     label:'R&D',            icon:'⚛' },
-};
-const SCENE_TABS = Object.keys(SCENES);
+// Shared Mission Control shell contract. This is the single source for every primary
+// scene's identity and shell placement; renderers deliberately keep their existing,
+// specialized content hosts. Tab/number-key order follows build→fly flow.
+const SCENE_DEFS = Object.freeze({
+  bench:   Object.freeze({ id:'bench',   label:'Design Bench',   icon:'✎', layout:'workspace',  viewId:'benchView',   navId:'tabBench',   badgeId:'badgeBench',   railId:'railBench',   dockOrder:2 }),
+  station: Object.freeze({ id:'station', label:'Station Bench',  icon:'⬡', layout:'assembly',   viewId:'stationView', navId:'tabStation', badgeId:'badgeStation', railId:'railStation', dockOrder:5 }),
+  base:    Object.freeze({ id:'base',    label:'Base Bench',     icon:'⛰', layout:'assembly',   viewId:'baseView',    navId:'tabBase',    badgeId:'badgeBase',    railId:'railBase',    dockOrder:6 }),
+  map:     Object.freeze({ id:'map',     label:'Solar System',   icon:'☉', layout:'immersive', viewId:'mapView',     navId:'tabMap',     badgeId:'badgeMap',     railId:'railMap',     dockOrder:4 }),
+  command: Object.freeze({ id:'command', label:'Command Center',icon:'⌂', layout:'immersive', viewId:'commandView', navId:'tabCommand', badgeId:'badgeCommand', railId:'railCommand', dockOrder:1 }),
+  rnd:     Object.freeze({ id:'rnd',     label:'R&D',            icon:'⚛', layout:'workspace',  viewId:'rndView',     navId:'tabRnd',     badgeId:'badgeRnd',     railId:'railRnd',     dockOrder:3 }),
+});
+const SCENE_TABS = Object.keys(SCENE_DEFS);
+const SCENE_DOCK_TABS = SCENE_TABS.slice().sort((a,b)=>sceneDef(a).dockOrder-sceneDef(b).dockOrder);
+function sceneDef(t){ return SCENE_DEFS[t]||null; }
 // Retired tab ids → where they now live, so legacy saves / stray setTab calls resolve.
 // slice 4: Planner folded into the left-rail advisor. slice 5: Missions → the Command
 // Center "Mission Control" drill. slice 6: Programs/Rivals/Personnel → modals + hub drills.
 // All land on Command Center (their new homes hang off the hub).
 const RETIRED_TABS = { planner:'command', missions:'command', programs:'command', rivals:'command', personnel:'command', infra:'command', settings:'command' };
-function isSceneTab(t){ return SCENE_TABS.indexOf(t)>=0; }
+function isSceneTab(t){ return !!sceneDef(t); }
 // slice 5/6: a legacy "go to tab X" intent → the onclick expression for X's new home
 // (a hub drill or a modal). Used by the advisor, alerts, planner steps and hub buildings.
 function tabIntent(t){
@@ -11682,7 +11674,7 @@ document.addEventListener('keydown',function(e){
   }
 });
 // #32: keyboard scene navigation — ESC = close modal / back to Command Center,
-// TAB = next scene, number keys 1–4 = jump to a scene. Never hijacks typing.
+// TAB = next scene, number keys 1–6 = jump to a scene. Never hijacks typing.
 function modalOpen(){ const m=$('modal'); return !!m && m.classList && !m.classList.contains('hidden'); }
 function nextScene(dir){
   const i=SCENE_TABS.indexOf(state.tab);
@@ -11709,7 +11701,7 @@ document.addEventListener('keydown',function(e){
   if(e.key==='Tab' && modalOpen()){ trapModalTab(e); return; }
   if(typing || modalOpen()) return; // don't grab TAB/numbers while typing or in a modal
   if(e.key==='Tab'){ nextScene(e.shiftKey?-1:1); e.preventDefault(); return; }
-  if(e.key>='1' && e.key<='5'){ const idx=+e.key-1; if(idx<SCENE_TABS.length){ setTab(SCENE_TABS[idx]); e.preventDefault(); } }
+  if(e.key>='1' && e.key<='6'){ const idx=+e.key-1; if(idx<SCENE_TABS.length){ setTab(SCENE_TABS[idx]); e.preventDefault(); } }
 });
 // F1/F2/F3 mirror the ▸/▸▸/▸▸▸ day/week/month time-advance buttons — same clickTimeArrow() as a
 // mouse click, so the existing "press once = single step, press again = auto-run 1/sec" behavior
@@ -16039,11 +16031,12 @@ function tabAlerts(){
 }
 function renderTabBadges(){
   const a=tabAlerts();
-  const map={command:'badgeCommand', bench:'badgeBench', rnd:'badgeRnd', map:'badgeMap', station:'badgeStation'};
-  for(const k in map){ const el=$(map[k]); if(!el) continue;
-    const n=a[k].length;
+  for(const k of SCENE_TABS){
+    const def=sceneDef(k), el=$(def.badgeId); if(!el) continue;
+    const alerts=a[k]||[];
+    const n=alerts.length;
     el.classList.toggle('hidden', n===0);
-    if(n){ el.textContent=n; el.title=a[k].join(' · '); }
+    if(n){ el.textContent=n; el.title=alerts.join(' · '); }
   }
 }
 
@@ -16173,16 +16166,17 @@ function renderTopbarStats(){
   renderMarketStat();
 }
 function renderChromeShellRail(){
-  // slice 2: tag the shell with the active view's kind (scene vs panel) so CSS / later
-  // slices (right rail, center takeover) can react without re-deriving it.
+  // Tag the shell with the active scene contract so future layout variants can react
+  // without re-deriving scene identity in every renderer.
   const shell=$('appShell');
   if(shell){
-    shell.classList.toggle('viewing-scene', isSceneTab(state.tab));
-    shell.classList.toggle('viewing-panel', !isSceneTab(state.tab));
+    const scene=sceneDef(state.tab);
+    shell.classList.toggle('viewing-scene', !!scene);
+    shell.classList.toggle('viewing-panel', !scene);
     shell.classList.toggle('command-hero', state.tab==='command');
-    // slice 3: show the active scene's contextual right-rail panel; collapse the rail on panels.
-    const RAIL={command:'railCommand',bench:'railBench',map:'railMap',rnd:'railRnd',station:'railStation',base:'railBase'};
-    let activePanel=RAIL[state.tab]||null;
+    for(const layout of ['immersive','assembly','workspace']) shell.classList.toggle('scene-'+layout, !!scene && scene.layout===layout);
+    // Show the active scene's contextual right-rail panel; the contract owns the mapping.
+    let activePanel=scene&&scene.railId;
     // command's alerts panel (ccRight) is adv-only, so the rail is empty in Basic → don't reserve it.
     let railAdvOnly=(state.tab==='command');
     // slice 5: on the hub, the Mission Control drill swaps Alerts for the Contracts panel (shown in all layers).
@@ -16195,32 +16189,28 @@ function renderChromeShellRail(){
   if(typeof document!=='undefined' && document.body) document.body.classList.toggle('command-mode', state.tab==='command');
   placeCommandCenterChrome();
 }
-// Phase 3A: there is still only one scene nav and one operations ticker. On Command Center they
-// are moved into the Cape hero; on every other scene they return to their established rail/topbar
-// homes. Moving the existing nodes preserves all ids, badges, handlers, focus behavior and filters.
+// The scene dock is permanently mounted in the shared shell. Only the operations ticker changes
+// placement for the Command Center's hero treatment; navigation never moves between scenes.
 function placeCommandCenterChrome(){
   const command=state.tab==='command';
   const move=(id,targetId)=>{
     const node=$(id), target=$(targetId);
     if(node&&target&&node.parentNode!==target) target.appendChild(node);
   };
-  move('sceneNav', command?'ccDock':'railNavHome');
   move('tlControls', command?'ccTicker':'opsTickerHome');
   move('opsTimeline', command?'ccTicker':'opsTickerHome');
 }
 function renderChromeTabsViews(){
-  $('tabCommand').classList.toggle('active',state.tab==='command');
-  $('tabBench').classList.toggle('active',state.tab==='bench');
-  $('tabRnd').classList.toggle('active',state.tab==='rnd');
-  $('tabMap').classList.toggle('active',state.tab==='map');
-  $('tabStation').classList.toggle('active',state.tab==='station');
-  { const tb=$('tabBase'); if(tb) tb.classList.toggle('active',state.tab==='base'); }
-  $('commandView').classList.toggle('hidden',state.tab!=='command');
-  $('benchView').classList.toggle('hidden',state.tab!=='bench');
-  $('rndView').classList.toggle('hidden',state.tab!=='rnd');
-  $('mapView').classList.toggle('hidden',state.tab!=='map');
-  $('stationView').classList.toggle('hidden',state.tab!=='station');
-  { const bv=$('baseView'); if(bv) bv.classList.toggle('hidden',state.tab!=='base'); }
+  setHTML($('sceneNav'), SCENE_DOCK_TABS.map(id=>{
+    const def=sceneDef(id);
+    return `<button id="${def.navId}" class="scene" type="button" onclick="setTab('${def.id}')"><span class="cc-icon" aria-hidden="true">${def.icon}</span><span class="cc-nav-label">${esc(def.label)}</span><span class="tabbadge hidden" id="${def.badgeId}"></span></button>`;
+  }).join(''));
+  for(const id of SCENE_TABS){
+    const def=sceneDef(id), tab=$(def.navId), view=$(def.viewId);
+    if(tab) tab.classList.toggle('active',state.tab===id);
+    if(view) view.classList.toggle('hidden',state.tab!==id);
+  }
+  renderTabBadges(); // the dock is rebuilt above, so apply current badge state to its fresh nodes
   placeOpsbar(); // on the Map view, the ops controls (row 2) ride across the top of the map card; elsewhere they stay pinned in the topbar
   applyDifficultyUI();
 }
@@ -25569,4 +25559,3 @@ showStartup(); // the startup screen — the Production drill (new game) or the 
 </script>
 </body>
 </html>
-
