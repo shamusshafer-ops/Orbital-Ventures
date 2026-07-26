@@ -45,7 +45,8 @@ function newGame(difficulty){
     researchGoal:null, // #14: pinned research goal — the tech tree persistently highlights this node's full prereq chain (and the R&D rail shows steps remaining) until it's researched or unpinned
     trackingStations:[], // #89: built tracking-station ids (see TRACKING_STATIONS, data.js). Gate itself is OFF (TRACKING_NETWORK_LIVE=false) until slice 2 ships a build UI.
     ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
-    facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
+    facilities:{}, assemblyLayouts:{}, // cosmetic Station/Base module placements; facility module lists remain the simulation authority
+    fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
     architectures:{}, science:0,
     vehicles:[], activeVehicle:null, // #3: named vehicle lineages with heritage
     assembleOrbit:false, // #6: orbital-assembly route toggle (per-launch, resets after flight)

@@ -34,6 +34,32 @@ check('camera defaults are finite and positive', [oc.yaw,oc.pitch,oc.dist,bc.yaw
 check('surface camera starts higher than orbital camera', bc.pitch>oc.pitch);
 check('scene signatures distinguish body and mode', assembly3dSpecKey(orbital)!==assembly3dSpecKey(surface));
 
+// Presentation-only drag layouts are keyed by facility/draft and module index. They may change
+// the scene projection, but must never reorder or mutate the simulation-owned module list.
+state.assemblyLayouts={'station:leo_station':{1:{x:12,z:-4}}};
+const movedOrbital=assembly3dSceneSpec('station',stationCur);
+check('saved station placement overrides only the matching module projection', movedOrbital.nodes[1].x===12&&movedOrbital.nodes[1].z===-4&&movedOrbital.nodes[0].x===orbital.nodes[0].x);
+check('placement changes the renderer signature without changing module authority', assembly3dSpecKey(movedOrbital)!==assembly3dSpecKey(orbital)&&JSON.stringify(stationCur.fs.moduleList)===stationBefore);
+assembly3dClearLayout('station',stationCur,1);
+check('clearing a station placement restores the exact generated grid coordinate', assembly3dSceneSpec('station',stationCur).nodes[1].x===orbital.nodes[1].x);
+assembly3dWriteLayout('base',baseCur,3,{x:9.26,z:-7.24,yaw:1.57,parent:1,dockTargetPort:'east',dockOwnPort:'west'});
+check('layout writes are scoped and grid-rounded', state.assemblyLayouts['base:lunar_base'][3].x===9.26&&state.assemblyLayouts['base:lunar_base'][3].z===-7.24);
+check('layout persists docking orientation and explicit connection ports', state.assemblyLayouts['base:lunar_base'][3].yaw===1.57&&state.assemblyLayouts['base:lunar_base'][3].parent===1&&state.assemblyLayouts['base:lunar_base'][3].dockTargetPort==='east'&&state.assemblyLayouts['base:lunar_base'][3].dockOwnPort==='west');
+const dockedSurface=assembly3dSceneSpec('base',baseCur);
+check('saved dock relationship returns with the same projected module', dockedSurface.nodes[3].parent===1&&dockedSurface.nodes[3].yaw===1.57&&dockedSurface.nodes[3].dockTargetPort==='east');
+assembly3dClearLayout('base',baseCur,3);
+check('clearing one placement leaves the matching facility layout empty', !state.assemblyLayouts['base:lunar_base']);
+assembly3dWriteLayout('station',stationCur,2,{x:0,z:0,yaw:0,parent:-1,hidden:true});
+const clearedOrbital=assembly3dSceneSpec('station',stationCur);
+check('canvas-cleared modules persist as visually hidden without leaving the module model', clearedOrbital.nodes[2].hidden===true&&clearedOrbital.ids.length===orbital.ids.length);
+check('hidden modules participate in renderer signatures', assembly3dSpecKey(clearedOrbital)!==assembly3dSpecKey(orbital));
+assembly3dClearLayout('station',stationCur,2);
+
+const assemblyChrome=assemblyShellHTML('station');
+check('assembly chrome exposes reversible clear-canvas and module-tray controls', assemblyChrome.includes('stationClearCanvasBtn')&&assemblyChrome.includes('stationModuleTray'));
+check('assembly chrome exposes selected-module rotation in both directions', assemblyChrome.includes('stationRotateLeftBtn')&&assemblyChrome.includes('stationRotateRightBtn'));
+check('assembly chrome explains full-scene orbiting while arranging', assemblyChrome.includes('right-drag to orbit'));
+
 // With THREE absent, both live renderers must take the established SVG route without creating
 // a WebGL state object. This is the release fallback, not a test-only alternate renderer.
 check('Three.js is absent in the headless harness', threeOK()===false);
@@ -42,6 +68,7 @@ let threw=false;
 try{ state.tab='station'; renderStation(); state.tab='base'; renderBase(); pauseAssembly3D(); resumeAssembly3D(); }
 catch(e){ threw=true; console.log('  threw:',e.message); }
 check('both benches render/fallback and lifecycle no-op safely', !threw);
+check('arrange controls are harmless without a live WebGL renderer', toggleAssembly3DArrange('station')===undefined&&assembly3d===null);
 check('station SVG fallback remains available', renderStationStackSVG(720,300,stationCur,true).includes('<svg'));
 check('base SVG fallback remains available', renderBaseSurfaceSVG(720,300,baseCur,true).includes('<svg'));
 

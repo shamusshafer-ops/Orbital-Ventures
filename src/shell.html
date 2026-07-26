@@ -366,12 +366,20 @@
   .assembly-toolbar{align-items:flex-start}
   .assembly-title{margin:0;min-width:0}
   .assembly-actions{display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:wrap}
+  .assembly-actions .assembly-arrange-active{color:var(--ink);border-color:var(--readout);background:linear-gradient(90deg,var(--hud-glow),var(--hud-raised));box-shadow:inset 0 -2px 0 var(--readout),inset 0 1px 0 var(--hud-line-soft)}
   .assembly-zoom-readout{min-width:38px;text-align:center;align-self:center;font:11px var(--mono)}
   .assembly-summary{font-size:12px;margin:6px 0 10px}
+  .assembly-module-tray{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0 0 10px;padding:8px;border:1px solid var(--line);border-radius:7px;background:var(--hud-raised)}
+  .assembly-module-tray.hidden{display:none}
+  .assembly-tray-label{font:10px var(--mono);letter-spacing:.08em;color:var(--dim);margin-right:4px}
+  .assembly-module-tray .btn{padding:5px 8px}
+  .assembly-input-hint{font:10px var(--mono);color:var(--dim);text-align:right;margin-top:6px}
   .assembly-monitor{min-width:0;position:relative;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#03070b}
   .assembly-3d-host{width:100%;height:clamp(520px,62vh,700px);min-height:520px;position:relative;cursor:grab;touch-action:none}
   .assembly-3d-host.grabbing{cursor:grabbing}
-  .assembly-3d-host canvas{display:block;width:100%!important;height:100%!important}
+  .assembly-3d-host.layout-edit{cursor:crosshair}
+  .assembly-3d-host.layout-edit.grabbing{cursor:grabbing}
+  .assembly-3d-host canvas{display:block;width:100%!important;height:100%!important;cursor:inherit}
   .assembly-svg-fallback{width:100%}
   .assembly-palette-slot{position:sticky;top:calc(var(--topbar-h) + 10px);max-height:calc(100vh - var(--topbar-h) - 24px);overflow:auto;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
   .assembly-palette-slot .station-palette{margin-top:0!important}

@@ -2952,7 +2952,8 @@ function newGame(difficulty){
     researchGoal:null, // #14: pinned research goal — the tech tree persistently highlights this node's full prereq chain (and the R&D rail shows steps remaining) until it's researched or unpinned
     trackingStations:[], // #89: built tracking-station ids (see TRACKING_STATIONS, data.js). Gate itself is OFF (TRACKING_NETWORK_LIVE=false) until slice 2 ships a build UI.
     ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
-    facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
+    facilities:{}, assemblyLayouts:{}, // cosmetic Station/Base module placements; facility module lists remain the simulation authority
+    fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
     architectures:{}, science:0,
     vehicles:[], activeVehicle:null, // #3: named vehicle lineages with heritage
     assembleOrbit:false, // #6: orbital-assembly route toggle (per-launch, resets after flight)
@@ -14949,6 +14950,12 @@ function assemblyShellHTML(sceneId){
     <div class="scene-toolbar assembly-toolbar">
       <h2 class="assembly-title">${esc(a.title)}</h2>
       <div class="assembly-actions" aria-label="${esc(scene.label)} controls">
+        <button class="btn ghost" type="button" id="${scene.id}ArrangeBtn" onclick="toggleAssembly3DArrange('${scene.id}')" title="Arrange modules — drag a module onto a cyan connection node to dock it">↔ Arrange</button>
+        <button class="btn ghost" type="button" id="${scene.id}RotateLeftBtn" onclick="assembly3dRotateSelected('${scene.id}',-1)" title="Rotate selected module 90° left" disabled>↺ Module</button>
+        <button class="btn ghost" type="button" id="${scene.id}RotateRightBtn" onclick="assembly3dRotateSelected('${scene.id}',1)" title="Rotate selected module 90° right" disabled>↻ Module</button>
+        <button class="btn ghost" type="button" id="${scene.id}ClearPlacementBtn" onclick="assembly3dClearPlacement('${scene.id}')" title="Clear the selected module's custom position" disabled>⌫ Clear position</button>
+        <button class="btn ghost" type="button" id="${scene.id}ClearCanvasBtn" onclick="assembly3dClearCanvas('${scene.id}')" title="Move every module into the tray and start with an empty canvas">∅ Clear canvas</button>
+        <button class="btn ghost" type="button" id="${scene.id}ResetLayoutBtn" onclick="assembly3dResetLayout('${scene.id}')" title="Return all modules to the generated layout" disabled>↶ Reset layout</button>
         ${a.popout?`<button class="btn ghost" type="button" onclick="${a.popout}()" title="Pop out — large pan/zoom view and focused facility stats">⤢ Pop out</button>`:''}
         <button class="btn ghost" type="button" id="${a.expandId}" onclick="${a.expand}()">⛶ Expand</button>
         <button class="btn ghost" type="button" onclick="${a.zoom}(1/1.25)" title="Zoom out">−</button>
@@ -14958,10 +14965,12 @@ function assemblyShellHTML(sceneId){
       </div>
     </div>
     <p class="muted assembly-summary">${esc(a.summary)}</p>
+    <div class="assembly-module-tray hidden" id="${scene.id}ModuleTray" aria-live="polite"></div>
     <div class="assembly-monitor" id="${scene.id}Monitor">
       <div id="${a.hostId}" class="assembly-3d-host" aria-label="${esc(scene.label)} 3D viewport"></div>
       <div id="${a.canvasId}" class="assembly-svg-fallback"></div>
     </div>
+    <div class="assembly-input-hint">drag a module to dock · drag empty space or right-drag to orbit · scroll to zoom · double-click to reset view</div>
     <div class="assembly-palette-home hidden" id="${a.paletteHomeId}"></div>
   </div>`;
 }
@@ -22468,25 +22477,51 @@ function resumeStationGame(){ if(stationGame){ try{ stationGame.scene.wake('stat
    facilityModuleList/STATION_MODULES data the SVG fallback and stats panels already use. */
 const ASSEMBLY3D=true;
 let assembly3d=null;
+let assembly3dEditScene=null, assembly3dSelection=null;
 function assembly3dIsScene(sceneId){ return !!(assembly3d&&assembly3d.sceneId===sceneId&&assembly3d.dom&&assembly3d.dom.parentNode); }
-function assembly3dSceneSpec(sceneId,cur){
+function assembly3dLayoutScope(sceneId,cur){
+  const def=cur&&cur.def;
+  return sceneId+':'+((def&&def.id)||'draft');
+}
+function assembly3dLayoutMap(sceneId,cur){
+  const scope=assembly3dLayoutScope(sceneId,cur), all=(state&&state.assemblyLayouts)||{};
+  return all[scope]||{};
+}
+function assembly3dWriteLayout(sceneId,cur,index,pos){
+  if(!state) return;
+  const scope=assembly3dLayoutScope(sceneId,cur);
+  state.assemblyLayouts=state.assemblyLayouts||{};
+  state.assemblyLayouts[scope]=state.assemblyLayouts[scope]||{};
+  state.assemblyLayouts[scope][index]={x:round2(pos.x),z:round2(pos.z),yaw:round2(pos.yaw||0),parent:pos.parent, dockTargetPort:pos.dockTargetPort||null,dockOwnPort:pos.dockOwnPort||null,hidden:pos.hidden===true};
+}
+function assembly3dClearLayout(sceneId,cur,index){
+  if(!state||!state.assemblyLayouts) return;
+  const scope=assembly3dLayoutScope(sceneId,cur), map=state.assemblyLayouts[scope];
+  if(!map) return;
+  if(index==null) delete state.assemblyLayouts[scope]; else delete map[index];
+  if(!Object.keys(map).length) delete state.assemblyLayouts[scope];
+}
+function assembly3dSceneSpec(sceneId,cur,ignoreLayout){
   const ids=facilityModuleList(cur.fs).slice();
+  const saved=ignoreLayout?{}:assembly3dLayoutMap(sceneId,cur);
   if(sceneId==='station'){
     const nodes=ids.map((id,i)=>{
       const slot=STATION_LAYOUT_SLOTS[i]||[i%5-2,Math.floor(i/5)+1];
       const parent=i===0?-1:(i<=4?0:Math.max(0,Math.floor((i-1)/4)));
-      return {id,index:i,parent,x:slot[0]*5.2,y:(i%3-1)*0.28,z:slot[1]*5.2};
+      const p=saved[i];
+      return {id,index:i,parent:p&&Number.isInteger(p.parent)?p.parent:parent,x:p&&Number.isFinite(p.x)?p.x:slot[0]*5.2,y:(i%3-1)*0.28,z:p&&Number.isFinite(p.z)?p.z:slot[1]*5.2,yaw:p&&Number.isFinite(p.yaw)?p.yaw:0,dockTargetPort:p&&p.dockTargetPort,dockOwnPort:p&&p.dockOwnPort,hidden:!!(p&&p.hidden)};
     });
     return {sceneId,body:'earth',ids,nodes};
   }
   const cols=Math.min(5,Math.max(1,Math.ceil(Math.sqrt(ids.length*1.5))));
   const nodes=ids.map((id,i)=>{
     const row=Math.floor(i/cols), col=i%cols, inRow=Math.min(cols,ids.length-row*cols);
-    return {id,index:i,parent:i?i-1:-1,x:(col-(inRow-1)/2)*5.5,y:0,z:(row-(Math.ceil(ids.length/cols)-1)/2)*6.0+(col%2?0.45:-0.45)};
+    const p=saved[i];
+    return {id,index:i,parent:p&&Number.isInteger(p.parent)?p.parent:(i?i-1:-1),x:p&&Number.isFinite(p.x)?p.x:(col-(inRow-1)/2)*5.5,y:0,z:p&&Number.isFinite(p.z)?p.z:(row-(Math.ceil(ids.length/cols)-1)/2)*6.0+(col%2?0.45:-0.45),yaw:p&&Number.isFinite(p.yaw)?p.yaw:0,dockTargetPort:p&&p.dockTargetPort,dockOwnPort:p&&p.dockOwnPort,hidden:!!(p&&p.hidden)};
   });
   return {sceneId,body:(cur.def&&cur.def.body)||'moon',ids,nodes};
 }
-function assembly3dSpecKey(spec){ return spec.sceneId+'|'+spec.body+'|'+spec.ids.join(','); }
+function assembly3dSpecKey(spec){ return spec.sceneId+'|'+spec.body+'|'+spec.nodes.map(n=>n.id+'@'+n.x.toFixed(2)+','+n.z.toFixed(2)+','+(n.yaw||0).toFixed(2)+','+n.parent+','+(n.dockTargetPort||'')+','+(n.hidden?'hidden':'shown')).join(','); }
 function assembly3dCameraDefault(sceneId,count){
   return sceneId==='station'
     ? {yaw:.72,pitch:.42,dist:Math.max(26,18+Math.sqrt(Math.max(1,count))*7),targetY:0}
@@ -22584,6 +22619,79 @@ function assembly3dStars(scene,count,radius,seed){
   const geo=new THREE.BufferGeometry(); geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
   scene.add(new THREE.Points(geo,new THREE.PointsMaterial({color:0xdcecff,size:.12,sizeAttenuation:true,transparent:true,opacity:.85})));
 }
+function assembly3dLink(a,b,r,material){
+  const av=new THREE.Vector3(a.x,a.y,a.z), bv=new THREE.Vector3(b.x,b.y,b.z), dir=bv.clone().sub(av), len=dir.length();
+  const g=new THREE.Group(), rail=new THREE.Mesh(new THREE.BoxGeometry(r*1.6,r*1.15,Math.max(.001,len)),material);
+  rail.position.copy(av.clone().add(bv).multiplyScalar(.5)); rail.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,1),dir.normalize()); g.add(rail);
+  for(const p of [av,bv]){ const collar=new THREE.Mesh(new THREE.BoxGeometry(r*2.25,r*2.0,r*.42),material); collar.position.copy(p); collar.quaternion.copy(rail.quaternion); g.add(collar); }
+  return g;
+}
+function assembly3dDisposeLinks(group){
+  if(!group) return;
+  group.traverse(o=>{ if(o.geometry) try{o.geometry.dispose();}catch(e){} });
+  group.clear();
+}
+function assembly3dPortRadius(node,mode){ return mode==='base'?(node.id==='hab_dome'?1.7:2.05):(node.id==='node_hub'?1.35:1.55); }
+function assembly3dPortPose(node,portId,mode){
+  const basis={east:[1,0],west:[-1,0],north:[0,-1],south:[0,1]}[portId]||[-1,0], yaw=node.yaw||0;
+  const x=basis[0]*Math.cos(yaw)+basis[1]*Math.sin(yaw), z=-basis[0]*Math.sin(yaw)+basis[1]*Math.cos(yaw), r=assembly3dPortRadius(node,mode);
+  return {x:node.x+x*r,y:mode==='base'?.72:node.y,z:node.z+z*r,nx:x,nz:z};
+}
+function assembly3dDockCandidate(data,index){
+  const n=data.nodes[index], ownR=assembly3dPortRadius(n,data.mode), here=new THREE.Vector3(n.x,n.y,n.z); let best=null;
+  for(const target of data.nodes){
+    if(target.index===index||target.hidden) continue;
+    for(const port of ['east','west','north','south']){
+      const pose=assembly3dPortPose(target,port,data.mode), center=new THREE.Vector3(pose.x+pose.nx*(ownR+.38),n.y,pose.z+pose.nz*(ownR+.38)), d=here.distanceTo(center);
+      if(!best||d<best.distance) best={target,port,pose,center,distance:d};
+    }
+  }
+  return best&&best.distance<3.8?best:null;
+}
+function assembly3dSnapNode(index){
+  const data=assembly3d&&assembly3d.scene&&assembly3d.scene.userData.assemblyLayout, n=data&&data.nodes[index]; if(!n) return false;
+  const dock=assembly3dDockCandidate(data,index); if(!dock) return false;
+  n.parent=dock.target.index; n.dockTargetPort=dock.port; n.dockOwnPort='west'; n.yaw=-Math.atan2(dock.pose.nz,dock.pose.nx);
+  n.x=dock.center.x; n.z=dock.center.z; return true;
+}
+function assembly3dRefreshPortGuides(){
+  if(!assembly3d||!assembly3d.scene) return;
+  const data=assembly3d.scene.userData.assemblyLayout; if(!data) return;
+  if(data.guides){ assembly3d.scene.remove(data.guides); assembly3dDisposeLinks(data.guides); data.guides=null; }
+  if(assembly3dEditScene!==assembly3d.sceneId) return;
+  const guides=new THREE.Group(), mat=new THREE.MeshBasicMaterial({color:0x65dfff,transparent:true,opacity:.82});
+  for(const n of data.nodes) if(!n.hidden) for(const port of ['east','west','north','south']){
+    const p=assembly3dPortPose(n,port,data.mode), marker=new THREE.Mesh(new THREE.TorusGeometry(.22,.045,6,14),mat);
+    marker.position.set(p.x,p.y,p.z); marker.rotation.x=Math.PI/2; guides.add(marker);
+  }
+  data.guides=guides; assembly3d.scene.add(guides);
+}
+function assembly3dRefreshLinks(){
+  if(!assembly3d||!assembly3d.scene) return;
+  const scene=assembly3d.scene, data=scene.userData.assemblyLayout;
+  if(!data) return;
+  if(data.links){ scene.remove(data.links); assembly3dDisposeLinks(data.links); }
+  const links=new THREE.Group();
+  for(const n of data.nodes){
+    if(n.hidden||n.parent<0) continue;
+    const p=data.nodes[n.parent];
+    if(!p||p.hidden) continue;
+    const docked=n.dockTargetPort&&n.dockOwnPort, from=docked?assembly3dPortPose(p,n.dockTargetPort,data.mode):{x:p.x,y:data.mode==='base'?.72:p.y,z:p.z};
+    const to=docked?assembly3dPortPose(n,n.dockOwnPort,data.mode):{x:n.x,y:data.mode==='base'?.72:n.y,z:n.z};
+    links.add(assembly3dLink(
+      from,to,
+      data.mode==='base'?.28:.18,data.material
+    ));
+  }
+  data.links=links; scene.add(links);
+  assembly3dRefreshPortGuides();
+}
+function assembly3dNodeRoot(group,node,mode){
+  group.userData.assemblyNodeIndex=node.index;
+  group.userData.assemblyNode=node;
+  group.userData.assemblyMode=mode;
+  return group;
+}
 function assembly3dBuildStation(scene,spec){
   scene.background=new THREE.Color(0x02060b); assembly3dStars(scene,420,95,4177);
   scene.add(new THREE.HemisphereLight(0x8db9dc,0x080b12,.72));
@@ -22592,14 +22700,17 @@ function assembly3dBuildStation(scene,spec){
   try{ const earth=BODIES.find(b=>b.id==='earth'), tx=earth&&map3dSurfaceTexture(earth); if(tx) earthMat.map=tx; }catch(e){}
   const earth=new THREE.Mesh(new THREE.SphereGeometry(9,42,28),earthMat); earth.position.set(4,-22,-18); earth.rotation.z=-.35; scene.add(earth);
   const glow=new THREE.Mesh(new THREE.SphereGeometry(9.28,42,28),new THREE.MeshBasicMaterial({color:0x78bfff,transparent:true,opacity:.10,side:THREE.BackSide})); glow.position.copy(earth.position); scene.add(glow);
-  const connector=assembly3dMat('#718995',.72,.35);
+  const connector=assembly3dMat('#718995',.72,.35), groups=[];
   for(const n of spec.nodes){
-    if(n.parent>=0){ const p=spec.nodes[n.parent]; scene.add(assembly3dTube({x:p.x,y:p.y,z:p.z},{x:n.x,y:n.y,z:n.z},.18,connector)); }
     const d=stationModuleDef(n.id)||stationModuleDef('can_std'), g=assembly3dModule(d,'station');
     g.position.set(n.x,n.y,n.z);
-    if(n.parent>=0){ const p=spec.nodes[n.parent]; g.rotation.y=-Math.atan2(n.z-p.z,n.x-p.x); }
-    scene.add(g);
+    if(!n.yaw&&n.parent>=0){ const p=spec.nodes[n.parent]; n.yaw=-Math.atan2(n.z-p.z,n.x-p.x); }
+    g.rotation.y=n.yaw||0;
+    g.visible=!n.hidden;
+    scene.add(assembly3dNodeRoot(g,n,'station')); groups[n.index]=g;
   }
+  scene.userData.assemblyLayout={mode:'station',nodes:spec.nodes,groups,material:connector,links:null};
+  assembly3dRefreshLinks();
 }
 function assembly3dBuildBase(scene,spec){
   const mars=spec.body==='mars', sky=mars?0x7d4b2f:0x02050a;
@@ -22611,12 +22722,15 @@ function assembly3dBuildBase(scene,spec){
   for(let i=0;i<pa.count;i++){ const x=pa.getX(i),z=pa.getZ(i), edge=Math.min(1,Math.max(0,(Math.abs(x)-12)/24)+(Math.max(0,Math.abs(z)-9)/18)); pa.setY(i,(rnd()-.5)*(mars?.42:.24)*(0.25+edge)); }
   geo.computeVertexNormals();
   const ground=new THREE.Mesh(geo,assembly3dMat(mars?'#7d4127':'#4a4d50',.05,.96)); ground.receiveShadow=true; scene.add(ground);
-  const padMat=assembly3dMat(mars?'#6b3925':'#5b6064',.08,.9), corridorMat=assembly3dMat('#6e808b',.5,.5);
+  const padMat=assembly3dMat(mars?'#6b3925':'#5b6064',.08,.9), corridorMat=assembly3dMat('#6e808b',.5,.5), groups=[];
   for(const n of spec.nodes){
-    const pad=new THREE.Mesh(new THREE.CylinderGeometry(2.25,2.5,.18,24),padMat); pad.position.set(n.x,.05,n.z); pad.receiveShadow=true; scene.add(pad);
-    if(n.parent>=0){ const p=spec.nodes[n.parent]; scene.add(assembly3dTube({x:p.x,y:.72,z:p.z},{x:n.x,y:.72,z:n.z},.28,corridorMat)); }
-    const d=stationModuleDef(n.id)||stationModuleDef('can_std'), g=assembly3dModule(d,'base'); g.position.set(n.x,.15,n.z); scene.add(g);
+    const site=new THREE.Group(), pad=new THREE.Mesh(new THREE.CylinderGeometry(2.25,2.5,.18,24),padMat);
+    pad.position.y=.05; pad.receiveShadow=true; site.add(pad);
+    const d=stationModuleDef(n.id)||stationModuleDef('can_std'), g=assembly3dModule(d,'base'); g.position.y=.15; site.add(g);
+    site.rotation.y=n.yaw||0; site.position.set(n.x,0,n.z); site.visible=!n.hidden; scene.add(assembly3dNodeRoot(site,n,'base')); groups[n.index]=site;
   }
+  scene.userData.assemblyLayout={mode:'base',nodes:spec.nodes,groups,material:corridorMat,links:null};
+  assembly3dRefreshLinks();
   const rockMat=assembly3dMat(mars?'#62301e':'#34383b',.05,1), rockRnd=mulberry(mars?901:603);
   for(let i=0;i<38;i++){ const x=(rockRnd()-.5)*70,z=(rockRnd()-.5)*48; if(Math.abs(x)<18&&Math.abs(z)<12) continue;
     const r=.18+rockRnd()*.8, rock=new THREE.Mesh(new THREE.DodecahedronGeometry(r,0),rockMat); rock.scale.y=.45+rockRnd()*.45; rock.position.set(x,r*.35,z); rock.rotation.set(rockRnd(),rockRnd(),rockRnd()); rock.castShadow=true; scene.add(rock); }
@@ -22652,19 +22766,181 @@ function assembly3dLoop(){
   assembly3d.renderer.render(assembly3d.scene,assembly3d.camera);
   assembly3d.raf=requestAnimationFrame(assembly3dLoop);
 }
+function assembly3dRootFor(object){
+  for(let o=object;o;o=o.parent) if(o.userData&&o.userData.assemblyNodeIndex!=null) return o;
+  return null;
+}
+function assembly3dPick(event){
+  if(!assembly3d||!assembly3d.scene) return null;
+  const rect=assembly3d.dom.getBoundingClientRect();
+  if(!rect.width||!rect.height) return null;
+  const p=new THREE.Vector2((event.clientX-rect.left)/rect.width*2-1,-((event.clientY-rect.top)/rect.height)*2+1);
+  assembly3d.raycaster=assembly3d.raycaster||new THREE.Raycaster();
+  assembly3d.raycaster.setFromCamera(p,assembly3d.camera);
+  for(const hit of assembly3d.raycaster.intersectObjects(assembly3d.scene.children,true)){
+    const root=assembly3dRootFor(hit.object); if(root) return {root,ray:assembly3d.raycaster.ray};
+  }
+  return null;
+}
+function assembly3dHasSavedLayout(sceneId,cur){ return Object.keys(assembly3dLayoutMap(sceneId,cur)).length>0; }
+function assembly3dUpdateEditUI(){
+  for(const sceneId of ['station','base']){
+    const scene=sceneDef(sceneId), a=scene&&scene.assembly, editing=assembly3dEditScene===sceneId;
+    const edit=a&&$(sceneId+'ArrangeBtn'), clear=a&&$(sceneId+'ClearPlacementBtn'), clearCanvas=a&&$(sceneId+'ClearCanvasBtn'), reset=a&&$(sceneId+'ResetLayoutBtn');
+    const rotateLeft=a&&$(sceneId+'RotateLeftBtn'), rotateRight=a&&$(sceneId+'RotateRightBtn'), tray=a&&$(sceneId+'ModuleTray');
+    if(edit){ edit.textContent=editing?'✓ Arrange mode':'↔ Arrange'; edit.classList.add('ghost'); edit.classList.toggle('assembly-arrange-active',editing); }
+    const active=assembly3d&&assembly3d.sceneId===sceneId, available=!!(active&&threeOK()), selected=available&&assembly3dSelection&&assembly3dSelection.sceneId===sceneId;
+    const data=active&&assembly3d.scene&&assembly3d.scene.userData.assemblyLayout, selectedNode=selected&&data&&data.nodes[assembly3dSelection.index];
+    const visible=data?data.nodes.filter(n=>!n.hidden):[], hidden=data?data.nodes.filter(n=>n.hidden):[];
+    if(edit) edit.disabled=!available;
+    if(clear) clear.disabled=!(selectedNode&&!selectedNode.hidden&&assembly3dLayoutMap(sceneId,assembly3d.cur)[assembly3dSelection.index]);
+    if(rotateLeft) rotateLeft.disabled=!(selectedNode&&!selectedNode.hidden);
+    if(rotateRight) rotateRight.disabled=!(selectedNode&&!selectedNode.hidden);
+    if(clearCanvas) clearCanvas.disabled=!(available&&visible.length);
+    if(reset) reset.disabled=!(available&&assembly3dHasSavedLayout(sceneId,assembly3d.cur));
+    if(tray){
+      tray.classList.toggle('hidden',!active||!hidden.length);
+      tray.innerHTML=active&&hidden.length
+        ? `<span class="assembly-tray-label">MODULE TRAY · ${hidden.length}</span>${hidden.map(n=>{ const d=stationModuleDef(n.id); return `<button class="btn ghost" type="button" onclick="assembly3dRestoreModule('${sceneId}',${n.index})">+ ${esc((d&&d.short)||n.id)}</button>`; }).join('')}`
+        : '';
+    }
+    const host=a&&$(a.hostId); if(host) host.classList.toggle('layout-edit',editing&&active);
+  }
+}
+function assembly3dSelectNode(sceneId,index){
+  if(!assembly3d||assembly3d.sceneId!==sceneId) return;
+  const data=assembly3d.scene&&assembly3d.scene.userData.assemblyLayout, previous=assembly3dSelection;
+  if(data&&previous&&previous.sceneId===sceneId&&data.groups[previous.index]) data.groups[previous.index].scale.setScalar(1);
+  assembly3dSelection=index==null?null:{sceneId,index};
+  if(data&&index!=null&&data.groups[index]) data.groups[index].scale.setScalar(1.075);
+  assembly3dUpdateEditUI();
+}
+function assembly3dPlaceNode(index,pos,persist,snap){
+  if(!assembly3d||!assembly3d.scene) return;
+  const data=assembly3d.scene.userData.assemblyLayout, n=data&&data.nodes[index], g=data&&data.groups[index];
+  if(!n||!g) return;
+  n.x=snap===false?pos.x:Math.round(pos.x*2)/2; n.z=snap===false?pos.z:Math.round(pos.z*2)/2;
+  if(data.mode==='station') g.position.set(n.x,n.y,n.z); else g.position.set(n.x,0,n.z);
+  g.rotation.y=n.yaw||0; g.visible=!n.hidden;
+  if(persist) assembly3dWriteLayout(assembly3d.sceneId,assembly3d.cur,index,n);
+  assembly3dRefreshLinks();
+  assembly3d.signature=assembly3dSpecKey({sceneId:assembly3d.sceneId,body:assembly3d.spec.body,ids:assembly3d.spec.ids,nodes:data.nodes});
+  assembly3dUpdateEditUI();
+}
+function assembly3dClearPlacement(sceneId,index){
+  if(!assembly3d||assembly3d.sceneId!==sceneId||!assembly3d.cur) return;
+  const target=index==null?(assembly3dSelection&&assembly3dSelection.sceneId===sceneId?assembly3dSelection.index:null):index;
+  if(target==null) return;
+  assembly3dClearLayout(sceneId,assembly3d.cur,target);
+  const base=assembly3dSceneSpec(sceneId,assembly3d.cur,true).nodes[target];
+  const data=assembly3d.scene.userData.assemblyLayout;
+  if(base&&data&&data.nodes[target]){ Object.assign(data.nodes[target],base); assembly3dPlaceNode(target,data.nodes[target],false,false); }
+  assembly3dUpdateEditUI();
+}
+function assembly3dClearCanvas(sceneId){
+  if(!assembly3d||assembly3d.sceneId!==sceneId||!assembly3d.cur) return;
+  const data=assembly3d.scene.userData.assemblyLayout; if(!data) return;
+  assembly3dEditScene=sceneId; assembly3dSelectNode(sceneId,null);
+  for(const n of data.nodes){
+    n.hidden=true; n.parent=-1; n.dockTargetPort=null; n.dockOwnPort=null;
+    assembly3dWriteLayout(sceneId,assembly3d.cur,n.index,n);
+    if(data.groups[n.index]) data.groups[n.index].visible=false;
+  }
+  assembly3dRefreshLinks(); assembly3dUpdateEditUI();
+}
+function assembly3dRestoreModule(sceneId,index){
+  if(!assembly3d||assembly3d.sceneId!==sceneId||!assembly3d.cur) return;
+  const data=assembly3d.scene.userData.assemblyLayout, n=data&&data.nodes[index]; if(!n) return;
+  const visible=data.nodes.filter(x=>!x.hidden&&x.index!==index), anchor=visible[0];
+  n.hidden=false; n.parent=-1; n.dockTargetPort=null; n.dockOwnPort=null; n.yaw=0;
+  n.x=anchor?anchor.x+5.4:0; n.z=anchor?anchor.z+4.2:0;
+  assembly3dEditScene=sceneId; assembly3dPlaceNode(index,n,true,false); assembly3dSelectNode(sceneId,index);
+}
+function assembly3dAnchorChildren(data,parentIndex,seen){
+  seen=seen||new Set(); if(seen.has(parentIndex)) return; seen.add(parentIndex);
+  for(const child of data.nodes){
+    if(child.hidden||child.parent!==parentIndex||!child.dockTargetPort||!child.dockOwnPort) continue;
+    const target=assembly3dPortPose(data.nodes[parentIndex],child.dockTargetPort,data.mode), own=assembly3dPortPose(child,child.dockOwnPort,data.mode);
+    child.x+=target.x+target.nx*.38-own.x; child.z+=target.z+target.nz*.38-own.z;
+    const g=data.groups[child.index]; if(g){ if(data.mode==='station') g.position.set(child.x,child.y,child.z); else g.position.set(child.x,0,child.z); }
+    assembly3dWriteLayout(assembly3d.sceneId,assembly3d.cur,child.index,child);
+    assembly3dAnchorChildren(data,child.index,seen);
+  }
+}
+function assembly3dRotateSelected(sceneId,direction){
+  if(!assembly3d||assembly3d.sceneId!==sceneId||!assembly3dSelection||assembly3dSelection.sceneId!==sceneId) return;
+  const data=assembly3d.scene.userData.assemblyLayout, n=data&&data.nodes[assembly3dSelection.index], g=n&&data.groups[n.index]; if(!n||n.hidden||!g) return;
+  n.yaw=(n.yaw||0)+(direction<0?-Math.PI/2:Math.PI/2);
+  if(n.parent>=0&&n.dockTargetPort){
+    const target=assembly3dPortPose(data.nodes[n.parent],n.dockTargetPort,data.mode);
+    let best='west', bestDot=Infinity;
+    for(const port of ['east','west','north','south']){ const p=assembly3dPortPose(n,port,data.mode), dot=p.nx*target.nx+p.nz*target.nz; if(dot<bestDot){ bestDot=dot; best=port; } }
+    n.dockOwnPort=best;
+  }
+  g.rotation.y=n.yaw; assembly3dWriteLayout(sceneId,assembly3d.cur,n.index,n);
+  assembly3dAnchorChildren(data,n.index); assembly3dRefreshLinks(); assembly3dUpdateEditUI();
+  assembly3d.signature=assembly3dSpecKey({sceneId,body:assembly3d.spec.body,ids:assembly3d.spec.ids,nodes:data.nodes});
+}
+function assembly3dResetLayout(sceneId){
+  if(!assembly3d||assembly3d.sceneId!==sceneId||!assembly3d.cur) return;
+  assembly3dClearLayout(sceneId,assembly3d.cur);
+  const base=assembly3dSceneSpec(sceneId,assembly3d.cur,true);
+  const data=assembly3d.scene.userData.assemblyLayout;
+  for(const n of base.nodes){ Object.assign(data.nodes[n.index],n); assembly3dPlaceNode(n.index,data.nodes[n.index],false,false); }
+  assembly3dSelectNode(sceneId,null); assembly3dUpdateEditUI();
+}
+function toggleAssembly3DArrange(sceneId){
+  if(!assembly3dIsScene(sceneId)) return;
+  assembly3dEditScene=assembly3dEditScene===sceneId?null:sceneId;
+  if(!assembly3dEditScene) assembly3dSelectNode(sceneId,null); else assembly3dUpdateEditUI();
+  assembly3dRefreshPortGuides();
+}
 function assembly3dWireInput(dom){
   if(dom._assemblyInput) return; dom._assemblyInput=true;
-  let down=false,lx=0,ly=0,moved=0;
-  dom.addEventListener('pointerdown',e=>{ down=true; moved=0; lx=e.clientX; ly=e.clientY; dom.parentNode?.classList.add('grabbing'); try{dom.setPointerCapture(e.pointerId);}catch(_){}});
-  dom.addEventListener('pointermove',e=>{ if(!down||!assembly3d) return; const dx=e.clientX-lx,dy=e.clientY-ly; lx=e.clientX;ly=e.clientY;moved+=Math.abs(dx)+Math.abs(dy); assembly3d.yaw-=dx*.007; assembly3d.pitch=clampA(assembly3d.pitch+dy*.006,-.12,1.35); assembly3dApplyCamera(); });
-  const end=e=>{down=false;dom.parentNode?.classList.remove('grabbing');try{dom.releasePointerCapture(e.pointerId);}catch(_){}};
+  let down=false,lx=0,ly=0,drag=null;
+  dom.addEventListener('pointerdown',e=>{
+    if(!assembly3d||(e.button!==0&&e.button!==2)) return;
+    if(e.button===0&&assembly3dEditScene===assembly3d.sceneId){
+      const hit=assembly3dPick(e);
+      if(hit){
+        const root=hit.root, node=root.userData.assemblyNode, plane=new THREE.Plane(new THREE.Vector3(0,1,0),-root.position.y), point=new THREE.Vector3();
+        if(hit.ray.intersectPlane(plane,point)){
+          assembly3dSelectNode(assembly3d.sceneId,node.index);
+          drag={index:node.index,plane,offset:root.position.clone().sub(point),start:{x:node.x,z:node.z,yaw:node.yaw,parent:node.parent,dockTargetPort:node.dockTargetPort,dockOwnPort:node.dockOwnPort}};
+          dom.parentNode?.classList.add('grabbing'); try{dom.setPointerCapture(e.pointerId);}catch(_){} e.preventDefault(); return;
+        }
+      }
+      assembly3dSelectNode(assembly3d.sceneId,null);
+    }
+    down=true; lx=e.clientX; ly=e.clientY; dom.parentNode?.classList.add('grabbing'); try{dom.setPointerCapture(e.pointerId);}catch(_){}
+    e.preventDefault();
+  });
+  dom.addEventListener('pointermove',e=>{
+    if(!assembly3d) return;
+    if(drag){
+      const rect=dom.getBoundingClientRect(), p=new THREE.Vector2((e.clientX-rect.left)/rect.width*2-1,-((e.clientY-rect.top)/rect.height)*2+1), point=new THREE.Vector3();
+      assembly3d.raycaster.setFromCamera(p,assembly3d.camera);
+      if(assembly3d.raycaster.ray.intersectPlane(drag.plane,point)) assembly3dPlaceNode(drag.index,point.add(drag.offset),false);
+      return;
+    }
+    if(!down) return; const dx=e.clientX-lx,dy=e.clientY-ly; lx=e.clientX;ly=e.clientY; assembly3d.yaw-=dx*.007; assembly3d.pitch=clampA(assembly3d.pitch+dy*.006,-1.48,1.48); assembly3dApplyCamera();
+  });
+  const end=e=>{
+    if(drag&&assembly3d){
+      const snapped=assembly3dSnapNode(drag.index);
+      const data=assembly3d.scene.userData.assemblyLayout, n=data&&data.nodes[drag.index];
+      if(n){ if(!snapped) Object.assign(n,drag.start); assembly3dPlaceNode(drag.index,n,snapped,false); }
+    }
+    down=false; drag=null; dom.parentNode?.classList.remove('grabbing'); try{dom.releasePointerCapture(e.pointerId);}catch(_){}
+  };
   dom.addEventListener('pointerup',end); dom.addEventListener('pointercancel',end);
+  dom.addEventListener('contextmenu',e=>e.preventDefault());
   dom.addEventListener('wheel',e=>{ if(!assembly3d)return;e.preventDefault();assembly3d.dist=clampA(assembly3d.dist*(e.deltaY>0?1.1:.9),7,120);assembly3dApplyCamera();},{passive:false});
   dom.addEventListener('dblclick',()=>{ if(assembly3d) resetAssembly3DView(assembly3d.sceneId); });
 }
 function startAssembly3D(sceneId,cur){
   const scene=sceneDef(sceneId), a=scene&&scene.assembly, host=a&&$(a.hostId), fallback=a&&$(a.canvasId);
-  if(!ASSEMBLY3D||!a||!host||!threeOK()){ if(host)host.style.display='none'; if(fallback)fallback.style.display='block'; return false; }
+  if(!ASSEMBLY3D||!a||!host||!threeOK()){ if(host)host.style.display='none'; if(fallback)fallback.style.display='block'; assembly3dUpdateEditUI(); return false; }
   try{
     if(!assembly3d){
       const renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,powerPreference:'high-performance'});
@@ -22672,12 +22948,13 @@ function startAssembly3D(sceneId,cur){
       renderer.outputColorSpace=THREE.SRGBColorSpace;
       renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
       const camera=new THREE.PerspectiveCamera(42,1,.1,220), dom=renderer.domElement;
-      dom.className='assembly-3d-canvas'; assembly3d={renderer,camera,dom,scene:null,sceneId:null,hostId:null,signature:null,raf:0,width:0,height:0,yaw:0,pitch:0,dist:30,defaultDist:30,target:new THREE.Vector3()};
+      dom.className='assembly-3d-canvas'; assembly3d={renderer,camera,dom,scene:null,sceneId:null,hostId:null,signature:null,raf:0,width:0,height:0,yaw:0,pitch:0,dist:30,defaultDist:30,target:new THREE.Vector3(),cur:null,spec:null,raycaster:null};
       assembly3dWireInput(dom);
     }
     if(assembly3d.dom.parentNode!==host) host.appendChild(assembly3d.dom);
     assembly3d.hostId=a.hostId; host.style.display='block'; if(fallback) fallback.style.display='none';
     const spec=assembly3dSceneSpec(sceneId,cur), signature=assembly3dSpecKey(spec);
+    assembly3d.cur=cur; assembly3d.spec=spec;
     if(assembly3d.sceneId!==sceneId||assembly3d.signature!==signature){
       assembly3dDisposeScene(assembly3d.scene);
       assembly3d.scene=new THREE.Scene(); assembly3d.sceneId=sceneId; assembly3d.signature=signature;
@@ -22686,6 +22963,7 @@ function startAssembly3D(sceneId,cur){
       assembly3d.width=assembly3d.height=0;
     }
     assembly3dResize(); assembly3dApplyCamera();
+    if(assembly3dSelection&&assembly3dSelection.sceneId===sceneId) assembly3dSelectNode(sceneId,assembly3dSelection.index); else assembly3dUpdateEditUI();
     if(!assembly3d.raf) assembly3dLoop();
     return true;
   }catch(e){
