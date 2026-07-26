@@ -5584,12 +5584,16 @@ function autoAdvanceMission(){
 // scene's identity and shell placement; renderers deliberately keep their existing,
 // specialized content hosts. Tab/number-key order follows build→fly flow.
 const SCENE_DEFS = Object.freeze({
-  bench:   Object.freeze({ id:'bench',   label:'Design Bench',   icon:'✎', layout:'workspace',  viewId:'benchView',   navId:'tabBench',   badgeId:'badgeBench',   railId:'railBench',   dockOrder:2 }),
-  station: Object.freeze({ id:'station', label:'Station Bench',  icon:'⬡', layout:'assembly',   viewId:'stationView', navId:'tabStation', badgeId:'badgeStation', railId:'railStation', dockOrder:5 }),
-  base:    Object.freeze({ id:'base',    label:'Base Bench',     icon:'⛰', layout:'assembly',   viewId:'baseView',    navId:'tabBase',    badgeId:'badgeBase',    railId:'railBase',    dockOrder:6 }),
-  map:     Object.freeze({ id:'map',     label:'Solar System',   icon:'☉', layout:'immersive', viewId:'mapView',     navId:'tabMap',     badgeId:'badgeMap',     railId:'railMap',     dockOrder:4 }),
+  bench:   Object.freeze({ id:'bench',   label:'Design Bench',   icon:'✎', layout:'workspace',  viewId:'benchView',   navId:'tabBench',   badgeId:'badgeBench',   railId:'railBench',   leftSlot:'workspaceContext', dockOrder:2,
+    workspace:Object.freeze({ contextId:'benchWorkspaceContext', contextHomeId:'benchWorkspaceHome' }) }),
+  station: Object.freeze({ id:'station', label:'Station Bench',  icon:'⬡', layout:'assembly',   viewId:'stationView', navId:'tabStation', badgeId:'badgeStation', railId:'railStation', leftSlot:'assemblyPalette', dockOrder:5,
+    assembly:Object.freeze({ title:'Station Bench — orbital assembly board', summary:'Build outward in four directions from the core. Modules use detailed hulls, ports, windows, tanks, crops, trusses and power hardware.', canvasId:'stationCanvas', inspectorId:'stationStats', paletteHomeId:'stationPaletteHome', zoomLabelId:'stationZoomLabel', expandId:'stationExpandBtn', popout:'openStationPopout', expand:'toggleStationExpand', zoom:'zoomStation', reset:'resetStationView' }) }),
+  base:    Object.freeze({ id:'base',    label:'Base Bench',     icon:'⛰', layout:'assembly',   viewId:'baseView',    navId:'tabBase',    badgeId:'badgeBase',    railId:'railBase',    leftSlot:'assemblyPalette', dockOrder:6,
+    assembly:Object.freeze({ title:'Base Bench — surface assembly board', summary:'Lay out habitats and hardware along the surface — modules joined by pressurized corridors on the regolith.', canvasId:'baseCanvas', inspectorId:'baseStats', paletteHomeId:'basePaletteHome', zoomLabelId:'baseZoomLabel', expandId:'baseExpandBtn', popout:'openBasePopout', expand:'toggleBaseExpand', zoom:'zoomBase', reset:'resetBaseView' }) }),
+  map:     Object.freeze({ id:'map',     label:'Solar System',   icon:'☉', layout:'immersive', viewId:'mapView',     navId:'tabMap',     badgeId:'badgeMap',     railId:'railMap',     leftSlot:'mapRoster', dockOrder:4 }),
   command: Object.freeze({ id:'command', label:'Command Center',icon:'⌂', layout:'immersive', viewId:'commandView', navId:'tabCommand', badgeId:'badgeCommand', railId:'railCommand', dockOrder:1 }),
-  rnd:     Object.freeze({ id:'rnd',     label:'R&D',            icon:'⚛', layout:'workspace',  viewId:'rndView',     navId:'tabRnd',     badgeId:'badgeRnd',     railId:'railRnd',     dockOrder:3 }),
+  rnd:     Object.freeze({ id:'rnd',     label:'R&D',            icon:'⚛', layout:'workspace',  viewId:'rndView',     navId:'tabRnd',     badgeId:'badgeRnd',     railId:'railRnd',     leftSlot:'workspaceContext', dockOrder:3,
+    workspace:Object.freeze({ contextId:'rndWorkspaceContext', contextHomeId:'rndWorkspaceHome' }) }),
 });
 const SCENE_TABS = Object.keys(SCENE_DEFS);
 const SCENE_DOCK_TABS = SCENE_TABS.slice().sort((a,b)=>sceneDef(a).dockOrder-sceneDef(b).dockOrder);

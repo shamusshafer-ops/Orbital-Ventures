@@ -195,11 +195,14 @@ document.addEventListener('keydown',function(e){
 // #32: keyboard scene navigation — ESC = close modal / back to Command Center,
 // TAB = next scene, number keys 1–6 = jump to a scene. Never hijacks typing.
 function modalOpen(){ const m=$('modal'); return !!m && m.classList && !m.classList.contains('hidden'); }
-function nextScene(dir){
-  const i=SCENE_TABS.indexOf(state.tab);
+function sceneAtOffset(tab,dir){
+  const i=SCENE_DOCK_TABS.indexOf(tab);
   const base=i<0?0:i;
-  const ni=((base+(dir||1))%SCENE_TABS.length+SCENE_TABS.length)%SCENE_TABS.length;
-  setTab(SCENE_TABS[ni]);
+  const ni=((base+(dir||1))%SCENE_DOCK_TABS.length+SCENE_DOCK_TABS.length)%SCENE_DOCK_TABS.length;
+  return SCENE_DOCK_TABS[ni];
+}
+function nextScene(dir){
+  setTab(sceneAtOffset(state.tab,dir));
 }
 document.addEventListener('keydown',function(e){
   if(!state || animState) return;
@@ -220,7 +223,7 @@ document.addEventListener('keydown',function(e){
   if(e.key==='Tab' && modalOpen()){ trapModalTab(e); return; }
   if(typing || modalOpen()) return; // don't grab TAB/numbers while typing or in a modal
   if(e.key==='Tab'){ nextScene(e.shiftKey?-1:1); e.preventDefault(); return; }
-  if(e.key>='1' && e.key<='6'){ const idx=+e.key-1; if(idx<SCENE_TABS.length){ setTab(SCENE_TABS[idx]); e.preventDefault(); } }
+  if(e.key>='1' && e.key<='6'){ const idx=+e.key-1; if(idx<SCENE_DOCK_TABS.length){ setTab(SCENE_DOCK_TABS[idx]); e.preventDefault(); } }
 });
 // F1/F2/F3 mirror the ▸/▸▸/▸▸▸ day/week/month time-advance buttons — same clickTimeArrow() as a
 // mouse click, so the existing "press once = single step, press again = auto-run 1/sec" behavior
@@ -274,7 +277,7 @@ function showHotkeyHelp(){
   showModal(`<h2 style="margin-bottom:2px">⌨ Keyboard Shortcuts</h2>
     <p class="muted" style="font-size:12px;margin:0 0 10px">Most keys are ignored while you're typing in a field.</p>
     <table style="font-size:13px;border-collapse:collapse"><tbody>
-      ${row('1 – 5','Jump to a scene (Vehicle · Station · Solar System · Command · R&amp;D)')}
+      ${row('1 – 6','Jump to a scene (Command · Design · R&amp;D · Solar · Station · Base)')}
       ${row('Tab / Shift+Tab','Next / previous scene')}
       ${row('Esc','Close a dialog, or step back to Command Center')}
       ${row('Space','Launch the ready mission — or pause the clock when it is auto-running (or skip/continue a playback)')}

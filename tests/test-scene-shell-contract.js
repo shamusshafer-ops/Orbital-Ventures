@@ -23,7 +23,7 @@ check('unknown tabs are not scenes', sceneDef('missions')===null && isSceneTab('
 
 state.tab='base';
 renderChromeShellRail();
-check('Base applies the assembly scene class, not panel class', _els.appShell.classList.contains('viewing-scene') && _els.appShell.classList.contains('scene-assembly') && !_els.appShell.classList.contains('viewing-panel'));
+check('Base applies the assembly scene class without retired scene/panel state classes', _els.appShell.classList.contains('scene-assembly') && !_els.appShell.classList.contains('viewing-scene') && !_els.appShell.classList.contains('viewing-panel'));
 
 renderChromeTabsViews();
 const dockHTML=_els.sceneNav.innerHTML;

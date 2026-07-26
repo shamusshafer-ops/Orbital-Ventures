@@ -474,33 +474,52 @@ function renderTopbarStats(){
   _statBump('stSci', sci);
   renderMarketStat();
 }
+// Shared shell contextual-slot placement. The Solar roster remains one live DOM node so its
+// selection handlers and renderer-agnostic markup work across inline, expanded, and pop-out maps.
+function placeSceneContextualSlots(){
+  const scene=sceneDef(state.tab);
+  const roster=$('mapRoster'), slot=$('mapRosterSlot'), home=$('mapRosterHome');
+  const inSharedSlot=!!(scene && scene.leftSlot==='mapRoster' && !mapExpanded);
+  const target=inSharedSlot ? slot : home;
+  if(roster && target && roster.parentNode!==target) target.appendChild(roster);
+  if(slot){ slot.classList.toggle('hidden', !inSharedSlot); slot.setAttribute('aria-hidden',String(!inSharedSlot)); }
+  const assemblySlot=$('assemblyPaletteSlot');
+  const assemblyExpanded=scene && scene.id==='station' ? stationExpanded : scene && scene.id==='base' ? baseExpanded : false;
+  const assemblyInSlot=!!(scene && scene.leftSlot==='assemblyPalette' && !assemblyExpanded);
+  if(assemblySlot){ assemblySlot.classList.toggle('hidden',!assemblyInSlot); assemblySlot.setAttribute('aria-hidden',String(!assemblyInSlot)); }
+  const workspaceSlot=$('workspaceContextSlot');
+  const workspaceInSlot=!!(scene && scene.leftSlot==='workspaceContext' && scene.workspace);
+  for(const id of ['bench','rnd']){
+    const def=sceneDef(id), context=def&&def.workspace&&$(def.workspace.contextId), contextHome=def&&def.workspace&&$(def.workspace.contextHomeId);
+    const contextTarget=workspaceInSlot && scene.id===id ? workspaceSlot : contextHome;
+    if(context && contextTarget && context.parentNode!==contextTarget) contextTarget.appendChild(context);
+  }
+  if(workspaceSlot){ workspaceSlot.classList.toggle('hidden',!workspaceInSlot); workspaceSlot.setAttribute('aria-hidden',String(!workspaceInSlot)); }
+}
 function renderChromeShellRail(){
   // Tag the shell with the active scene contract so future layout variants can react
   // without re-deriving scene identity in every renderer.
   const shell=$('appShell');
   if(shell){
     const scene=sceneDef(state.tab);
-    shell.classList.toggle('viewing-scene', !!scene);
-    shell.classList.toggle('viewing-panel', !scene);
     shell.classList.toggle('command-hero', state.tab==='command');
     for(const layout of ['immersive','assembly','workspace']) shell.classList.toggle('scene-'+layout, !!scene && scene.layout===layout);
+    shell.classList.toggle('has-contextual-left', !!(scene && scene.leftSlot));
     // Show the active scene's contextual right-rail panel; the contract owns the mapping.
     let activePanel=scene&&scene.railId;
-    // command's alerts panel (ccRight) is adv-only, so the rail is empty in Basic → don't reserve it.
-    let railAdvOnly=(state.tab==='command');
     // slice 5: on the hub, the Mission Control drill swaps Alerts for the Contracts panel (shown in all layers).
-    if(state.tab==='command' && hubPanel==='contracts'){ activePanel='railContracts'; railAdvOnly=false; }
+    if(state.tab==='command' && hubPanel==='contracts') activePanel='railContracts';
     for(const id of ['railCommand','railBench','railMap','railRnd','railStation','railBase','railContracts']){ const p=$(id); if(p) p.classList.toggle('hidden', id!==activePanel); }
-    shell.classList.add('has-right'); // the persistent accordion always occupies the right rail, so keep it shown on every scene
   }
   // The header is outside #appShell, so its Command Center grading needs the same
   // tab-derived class rather than inheriting the hero's scoped surface variables.
   if(typeof document!=='undefined' && document.body) document.body.classList.toggle('command-mode', state.tab==='command');
-  placeCommandCenterChrome();
+  placeSceneContextualSlots();
+  placeTimelineChrome();
 }
-// The scene dock is permanently mounted in the shared shell. Only the operations ticker changes
-// placement for the Command Center's hero treatment; navigation never moves between scenes.
-function placeCommandCenterChrome(){
+// The scene dock and all contextual slots are permanently mounted. Only the timeline projection
+// changes host for the Command Center hero; no scene layout or navigation node moves here.
+function placeTimelineChrome(){
   const command=state.tab==='command';
   const move=(id,targetId)=>{
     const node=$(id), target=$(targetId);
@@ -509,7 +528,36 @@ function placeCommandCenterChrome(){
   move('tlControls', command?'ccTicker':'opsTickerHome');
   move('opsTimeline', command?'ccTicker':'opsTickerHome');
 }
+// Station and Base keep their own SVG renderers/state, but share this presentation shell. The
+// configuration lives in SCENE_DEFS so toolbar actions, monitor host, and inspector ids cannot drift.
+function assemblyShellHTML(sceneId){
+  const scene=sceneDef(sceneId), a=scene&&scene.assembly;
+  if(!a) return '';
+  return `<div class="card assembly-shell" data-assembly-scene="${scene.id}">
+    <div class="scene-toolbar assembly-toolbar">
+      <h2 class="assembly-title">${esc(a.title)}</h2>
+      <div class="assembly-actions" aria-label="${esc(scene.label)} controls">
+        ${a.popout?`<button class="btn ghost" type="button" onclick="${a.popout}()" title="Pop out — large pan/zoom view and focused facility stats">⤢ Pop out</button>`:''}
+        <button class="btn ghost" type="button" id="${a.expandId}" onclick="${a.expand}()">⛶ Expand</button>
+        <button class="btn ghost" type="button" onclick="${a.zoom}(1/1.25)" title="Zoom out">−</button>
+        <span id="${a.zoomLabelId}" class="dim assembly-zoom-readout">100%</span>
+        <button class="btn ghost" type="button" onclick="${a.zoom}(1.25)" title="Zoom in">+</button>
+        <button class="btn ghost" type="button" onclick="${a.reset}()" title="Reset pan and zoom">Reset</button>
+      </div>
+    </div>
+    <p class="muted assembly-summary">${esc(a.summary)}</p>
+    <div class="assembly-monitor" id="${scene.id}Monitor"><div id="${a.canvasId}"></div></div>
+    <div class="assembly-palette-home hidden" id="${a.paletteHomeId}"></div>
+  </div>`;
+}
+function renderAssemblyShells(){
+  for(const id of ['station','base']){
+    const scene=sceneDef(id), view=scene&&$(scene.viewId);
+    if(view) setHTML(view,assemblyShellHTML(id));
+  }
+}
 function renderChromeTabsViews(){
+  renderAssemblyShells();
   setHTML($('sceneNav'), SCENE_DOCK_TABS.map(id=>{
     const def=sceneDef(id);
     return `<button id="${def.navId}" class="scene" type="button" onclick="setTab('${def.id}')"><span class="cc-icon" aria-hidden="true">${def.icon}</span><span class="cc-nav-label">${esc(def.label)}</span><span class="tabbadge hidden" id="${def.badgeId}"></span></button>`;
@@ -525,10 +573,10 @@ function renderChromeTabsViews(){
 }
 function renderTopbarStatus(){
   const ar=state.activeResearch;
-  const rbar=$('rndStatusBar'); if(rbar) rbar.classList.toggle('hidden', !ar); // only show the bar while R&D is running
+  const rbar=$('rndStatusBar'); if(rbar) rbar.classList.toggle('hidden', state.tab!=='rnd');
   $('rndStatus').innerHTML = ar
     ? `<span style="color:var(--readout)">R&D in progress:</span> ${RESEARCH.find(r=>r.id===ar.id).name} — <span class="num">${fmtTimeLeft(ar.monthsLeft)}</span> left`
-    : '';
+    : `<span style="color:var(--readout)">R&D program:</span> No active project`;
   $('skipBtn').disabled=!ar;
 }
 function renderSceneMain(){
@@ -3136,13 +3184,20 @@ function railObjectivesHTML(){
 // Left rail keeps only the Basic-only focal "what to do next"; the advisor / flight plan / objectives
 // now live in the persistent right-rail accordion (renderRailPersistent).
 function renderCCLeft(){
+  const scene=sceneDef(state.tab), rosterInSlot=!!(scene && scene.leftSlot==='mapRoster' && !mapExpanded);
+  const assemblyExpanded=scene && scene.id==='station' ? stationExpanded : scene && scene.id==='base' ? baseExpanded : false;
+  const assemblyInSlot=!!(scene && scene.leftSlot==='assemblyPalette' && !assemblyExpanded);
+  const workspaceInSlot=!!(scene && scene.leftSlot==='workspaceContext' && scene.workspace);
+  const left=$('ccLeft'); if(!left) return;
+  left.classList.toggle('hidden',rosterInSlot||assemblyInSlot||workspaceInSlot);
+  if(rosterInSlot||assemblyInSlot||workspaceInSlot){ left.innerHTML=''; return; }
   const rec=recommendedAction();
   let recSuccess='';
   if(rec.kind==='launch' && state.activeMission===rec.missionId){
     try{ const rv=computeVehicle(); if(rv) recSuccess=`<div class="muted" style="font-size:12px;margin-top:4px">Est. success chance: <b style="color:${rv.reliability>=0.7?'var(--ok)':'var(--warn)'}">${(rv.reliability*100)|0}%</b></div>`; }catch(e){}
   }
   const recReward = rec.reward ? `<div class="muted" style="font-size:12px;margin-top:4px">Reward: ${fM(rec.reward.money)} · +${rec.reward.rep} rep</div>` : '';
-  $('ccLeft').innerHTML=`<div class="card basic-only" style="border-color:var(--ignite)">
+  left.innerHTML=`<div class="card basic-only" style="border-color:var(--ignite)">
       <div class="cc-panel-h">▶ What to do next</div>
       <div class="rec-card">
         <div class="muted" style="font-size:13px">${rec.detail}</div>
@@ -4374,6 +4429,7 @@ function enablePopoutWindow(id){
 function closeOtherPopouts(keep){
   if(keep!=='veh' && vehPopoutOpen && !popoutIsPinned('vehPopout')) closeVehPopout();
   if(keep!=='stn' && stnPopoutOpen && !popoutIsPinned('stnPopout')) closeStationPopout();
+  if(keep!=='base' && basePopoutOpen && !popoutIsPinned('basePopout')) closeBasePopout();
   if(keep!=='map' && mapPopoutOpen && !popoutIsPinned('mapPopout')) closeMapPopout();
   if(keep!=='earth' && earthPopoutOpen && !popoutIsPinned('earthPopout')) closeEarthPopout();
   if(keep!=='cc' && ccPopoutOpen && !popoutIsPinned('ccPopout')) closeCCPopout();
@@ -4471,7 +4527,7 @@ function initSvgPopZoom(stageId, zoomId, st){
     st.x=cx-(cx-st.x)*(st.z/z0); st.y=cy-(cy-st.y)*(st.z/z0); apply(); };
   resetCentered(); // establishes the boosted, centered default view (was a bare apply() at z:1)
 }
-let stnPopoutOpen=false, stnPop={z:1,x:0,y:0};
+let stnPopoutOpen=false, basePopoutOpen=false, stnPop={z:1,x:0,y:0}, basePop={z:1,x:0,y:0};
 // Slice B (2026-07-24): shared by any SVG popout (map, station) via their initSvgPopZoom `st` object.
 // st.x/st.y are a CONTENT offset (not a camera position), so a keyboard "d" (move the view right —
 // the inverse of what a rightward drag does, since dragging right pans content to follow the finger)
@@ -4488,36 +4544,60 @@ function svgPopKeyNav(st, key){
   else return false;
   return true;
 }
-function stnPopStatsHTML(v){ return v.isDraft ? stationDraftStatsHTML(stationDraftFs()) : renderStationFacilityStats(v.built, v.cur); }
-function openStationPopout(){
-  if(stnPopoutOpen) return; stnPopoutOpen=true; closeOtherPopouts('stn'); stnPop={z:1,x:0,y:0};
-  const v=stationCurrentView();
-  const title = v.isDraft ? 'Station — Blueprint' : v.cur.def.name;
-  const ov=document.createElement('div'); ov.className='vehpop-scrim'; ov.id='stnPopout';
+function assemblyPopoutInfo(sceneId){
+  const isStation=sceneId==='station', prefix=isStation?'stn':'base';
+  const view=isStation ? stationCurrentView() : baseCurrentView();
+  const cur=view.isDraft && !isStation ? {def:facilityById(BASE_DRAFT_FACID[baseDraftBody()]),fs:baseDraftFs(baseDraftBody())} : view.cur;
+  const title=view.isDraft ? `${isStation?'Station':'Base'} — Blueprint` : cur.def.name;
+  return {sceneId,isStation,prefix,view,cur,title,icon:isStation?'⬡':'⛰'};
+}
+function assemblyPopoutArt(info){ return info.isStation ? renderStationStackSVG(900,560,info.cur) : renderBaseSurfaceSVG(900,560,info.cur,false); }
+function assemblyPopoutStats(info){
+  if(info.view.isDraft) return info.isStation ? stationDraftStatsHTML(stationDraftFs()) : baseDraftStatsHTML();
+  return info.isStation ? renderStationFacilityStats(info.view.built,info.cur) : renderStationFacilityStats(info.view.built,info.cur,state.baseFocus,'setBaseFocus');
+}
+function assemblyPopoutIds(info){ const p=info.prefix; return {overlay:`${p}Popout`,title:`${p}PopTitle`,stage:`${p}PopStage`,zoom:`${p}PopZoom`,stats:`${p}PopStats`}; }
+function assemblyPopoutIsOpen(sceneId){ return sceneId==='station' ? stnPopoutOpen : basePopoutOpen; }
+function setAssemblyPopoutOpen(sceneId,v){ if(sceneId==='station') stnPopoutOpen=v; else basePopoutOpen=v; }
+function assemblyPopoutState(sceneId){ return sceneId==='station' ? stnPop : basePop; }
+function setAssemblyPopoutState(sceneId,v){ if(sceneId==='station') stnPop=v; else basePop=v; }
+function openAssemblyPopout(sceneId){
+  if(assemblyPopoutIsOpen(sceneId)) return;
+  const info=assemblyPopoutInfo(sceneId), ids=assemblyPopoutIds(info), closeFn=sceneId==='station'?'closeStationPopout':'closeBasePopout';
+  setAssemblyPopoutOpen(sceneId,true); closeOtherPopouts(info.isStation?'stn':'base'); setAssemblyPopoutState(sceneId,{z:1,x:0,y:0});
+  const ov=document.createElement('div'); ov.className='vehpop-scrim'; ov.id=ids.overlay;
   ov.innerHTML=`<div class="vehpop-bar">
-      <span class="vehpop-title" id="stnPopTitle">⬡ ${esc(title)}</span>
+      <span class="vehpop-title" id="${ids.title}">${info.icon} ${esc(info.title)}</span>
       <span class="vehpop-hint">drag to pan · scroll to zoom · WASD/arrows to nudge · double-click reset · Esc/Enter to close</span>
-      <button class="vehpop-x" onclick="closeStationPopout()">✕ Close</button>
+      <button class="vehpop-x" onclick="${closeFn}()">✕ Close</button>
     </div>
     <div class="vehpop-body">
-      <div class="vehpop-stage" id="stnPopStage"><div id="stnPopZoom" style="position:absolute;inset:0;transform-origin:0 0;display:flex;align-items:center;justify-content:center">${renderStationStackSVG(900,560,v.cur)}</div></div>
-      <aside class="vehpop-stats" id="stnPopStats"></aside>
+      <div class="vehpop-stage" id="${ids.stage}"><div id="${ids.zoom}" style="position:absolute;inset:0;transform-origin:0 0;display:flex;align-items:center;justify-content:center">${assemblyPopoutArt(info)}</div></div>
+      <aside class="vehpop-stats" id="${ids.stats}"></aside>
     </div>`;
-  document.body.appendChild(ov); enablePopoutWindow('stnPopout'); fadeInScrim(ov);
-  const sp=$('stnPopStats'); if(sp) sp.innerHTML=stnPopStatsHTML(v);
-  initSvgPopZoom('stnPopStage','stnPopZoom',stnPop);
+  document.body.appendChild(ov); enablePopoutWindow(ids.overlay); fadeInScrim(ov);
+  const stats=$(ids.stats); if(stats) stats.innerHTML=assemblyPopoutStats(info);
+  initSvgPopZoom(ids.stage,ids.zoom,assemblyPopoutState(sceneId));
 }
-function closeStationPopout(){ if(!stnPopoutOpen) return; stnPopoutOpen=false; removeScrim('stnPopout'); }
-// Keeps the pop-out in sync when the focused facility changes elsewhere (setStationFocus) — a no-op
-// if the pop-out isn't open. The stack SVG lives inside #stnPopZoom (the pan/zoom transform target),
-// not #stnPopStage itself, so this only replaces the art, never disturbing the current pan/zoom state.
-function refreshStationPopout(){
-  if(!stnPopoutOpen) return;
-  const v=stationCurrentView();
-  const t=$('stnPopTitle'); if(t) t.textContent='⬡ '+(v.isDraft?'Station — Blueprint':v.cur.def.name);
-  const z=$('stnPopZoom'); if(z) z.innerHTML=renderStationStackSVG(900,560,v.cur);
-  const sp=$('stnPopStats'); if(sp) sp.innerHTML=stnPopStatsHTML(v);
+function closeAssemblyPopout(sceneId){
+  if(!assemblyPopoutIsOpen(sceneId)) return;
+  setAssemblyPopoutOpen(sceneId,false); removeScrim(assemblyPopoutIds(assemblyPopoutInfo(sceneId)).overlay);
 }
+// Refreshes only the pop-out's read-only projection. The main renderer remains the sole owner of
+// facility state and palette actions, so opening a pop-out never duplicates simulation state.
+function refreshAssemblyPopout(sceneId){
+  if(!assemblyPopoutIsOpen(sceneId)) return;
+  const info=assemblyPopoutInfo(sceneId), ids=assemblyPopoutIds(info);
+  const title=$(ids.title); if(title) title.textContent=info.icon+' '+info.title;
+  const zoom=$(ids.zoom); if(zoom) zoom.innerHTML=assemblyPopoutArt(info);
+  const stats=$(ids.stats); if(stats) stats.innerHTML=assemblyPopoutStats(info);
+}
+function openStationPopout(){ openAssemblyPopout('station'); }
+function closeStationPopout(){ closeAssemblyPopout('station'); }
+function refreshStationPopout(){ refreshAssemblyPopout('station'); }
+function openBasePopout(){ openAssemblyPopout('base'); }
+function closeBasePopout(){ closeAssemblyPopout('base'); }
+function refreshBasePopout(){ refreshAssemblyPopout('base'); }
 /* ---------- Solar System pop-out viewer ----------
    Same overlay chrome: the interactive system map (clickable bodies, vector-crisp) on the left with
    grab-to-pan + wheel-to-zoom, and the selected body's Δv profile + mission planning on the right.
@@ -5005,20 +5085,20 @@ function closeCCPopout(){
 }
 // Scene ↔ pop-out parity: the same Vehicle → Station → Solar System → Control Center order works whether
 // you're in the normal scenes (Tab via nextScene) OR popped out (Tab here switches pop-out → pop-out).
-const POPOUT_OF = { bench:openVehPopout, station:openStationPopout, map:openMapPopout, command:openCCPopout };
-const POPOUT_ORDER = ['bench','station','map','command'];
-function anyPopoutOpen(){ return vehPopoutOpen||stnPopoutOpen||mapPopoutOpen||earthPopoutOpen||ccPopoutOpen; }
-function currentPopoutSceneKey(){ if(vehPopoutOpen)return'bench'; if(stnPopoutOpen)return'station'; if(mapPopoutOpen||earthPopoutOpen)return'map'; if(ccPopoutOpen)return'command'; return null; }
+const POPOUT_OF = { bench:openVehPopout, station:openStationPopout, base:openBasePopout, map:openMapPopout, command:openCCPopout };
+const POPOUT_ORDER = ['bench','station','base','map','command'];
+function anyPopoutOpen(){ return vehPopoutOpen||stnPopoutOpen||basePopoutOpen||mapPopoutOpen||earthPopoutOpen||ccPopoutOpen; }
+function currentPopoutSceneKey(){ if(vehPopoutOpen)return'bench'; if(stnPopoutOpen)return'station'; if(basePopoutOpen)return'base'; if(mapPopoutOpen||earthPopoutOpen)return'map'; if(ccPopoutOpen)return'command'; return null; }
 function switchPopoutTo(key){ if(!POPOUT_OF[key]) return; closeOtherPopouts(null); state.tab=key; render(); POPOUT_OF[key](); } // underlying scene follows, so closing lands you here
 function tabPopout(dir){ const cur=currentPopoutSceneKey(); let i=POPOUT_ORDER.indexOf(cur); if(i<0)i=0; switchPopoutTo(POPOUT_ORDER[((i+dir)%POPOUT_ORDER.length+POPOUT_ORDER.length)%POPOUT_ORDER.length]); }
 // Capture-phase pop-out keys (beat the scene-nav + launch handlers): Esc/Enter close, Tab/Shift-Tab and
-// number keys 1–4 hop pop-out → pop-out in the same order as the scenes.
+// number keys 1–5 hop pop-out → pop-out in the same order as the scenes.
 document.addEventListener('keydown',function(e){
   if(!anyPopoutOpen()) return;
   if(e.key==='Escape'||e.key==='Enter'){ e.preventDefault(); e.stopPropagation();
-    if(earthPopoutOpen) closeEarthPopout(); if(vehPopoutOpen) closeVehPopout(); if(stnPopoutOpen) closeStationPopout(); if(mapPopoutOpen) closeMapPopout(); if(ccPopoutOpen) closeCCPopout(); if(contractsPopoutOpen) closeContractsPopout(); return; }
+    if(earthPopoutOpen) closeEarthPopout(); if(vehPopoutOpen) closeVehPopout(); if(stnPopoutOpen) closeStationPopout(); if(basePopoutOpen) closeBasePopout(); if(mapPopoutOpen) closeMapPopout(); if(ccPopoutOpen) closeCCPopout(); if(contractsPopoutOpen) closeContractsPopout(); return; }
   if(e.key==='Tab'){ e.preventDefault(); e.stopPropagation(); tabPopout(e.shiftKey?-1:1); return; }
-  if(e.key>='1' && e.key<='4'){ const k=POPOUT_ORDER[+e.key-1]; if(k){ e.preventDefault(); e.stopPropagation(); switchPopoutTo(k); } }
+  if(e.key>='1' && e.key<='5'){ const k=POPOUT_ORDER[+e.key-1]; if(k){ e.preventDefault(); e.stopPropagation(); switchPopoutTo(k); } }
 },true);
 document.addEventListener('keydown',function(e){
   if(e.target && (e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA')) return; // never hijack a text field
@@ -5026,6 +5106,7 @@ document.addEventListener('keydown',function(e){
   let handled=false;
   if(mapPopoutOpen){ handled = map3d ? map3dKeyNav(key) : svgPopKeyNav(mapPop,key); }
   else if(stnPopoutOpen){ handled = svgPopKeyNav(stnPop,key); }
+  else if(basePopoutOpen){ handled = svgPopKeyNav(basePop,key); }
   else if(state.tab==='map' && !anyPopoutOpen()){
     if(MAP3D && threeOK() && map3d) handled=map3dKeyNav(key);
     else if(phaserOK() && mapScene) handled=phaserMapKeyNav(key);
@@ -7540,7 +7621,7 @@ function renderRivals(){
 
 
 let mapExpanded=false;
-function toggleMapExpand(){ mapExpanded=!mapExpanded; renderMap(); }
+function toggleMapExpand(){ mapExpanded=!mapExpanded; placeSceneContextualSlots(); renderCCLeft(); renderMap(); }
 /* ---------- Hybrid Phaser layer (Slice 3): MapScene ----------
    The solar-system overview in Phaser: Sun + orbit rings, planets/moons as
    interactive bodies with labels, slow orbital motion, drag-to-pan + wheel-zoom
@@ -7803,6 +7884,7 @@ function mapRosterSelect(id){
   selectBody(id);
 }
 function renderMap(){
+  placeSceneContextualSlots();
   const mv=$('mapView'); if(mv) mv.classList.toggle('expanded', mapExpanded);
   const eb=$('mapExpandBtn'); if(eb) eb.textContent = mapExpanded ? '⛶ Exit full screen' : '⛶ Expand';
   const es=$('empireStripWrap'); if(es) es.innerHTML=empireStripHTML(); // empire ledger — both render paths
@@ -7839,7 +7921,7 @@ function stationViewBox(W,H,zoom){
 function setStationZoom(z){ stationZoom=Math.max(.65,Math.min(3,Number(z)||1)); renderStation(); }
 function zoomStation(f){ setStationZoom(stationZoom*f); }
 function resetStationView(){ stationPanX=0; stationPanY=0; stationZoom=1; renderStation(); }
-function toggleStationExpand(){ stationExpanded=!stationExpanded; renderStation(); }
+function toggleStationExpand(){ stationExpanded=!stationExpanded; placeSceneContextualSlots(); renderCCLeft(); renderStation(); }
 let StationScene=null, stationGame=null, stationScene=null;
 function defineStationScene(){
   if(StationScene || !phaserOK()) return;
@@ -7958,17 +8040,12 @@ function renderStationDraft(){
   const c=$('stationCanvas'), st=$('stationStats');
   const fs=stationDraftFs();
   if(c){
-    const cards=STATION_MODULES.map(md=>stationModuleCard(md, {def:facilityById('leo_station')||FACILITY_DEFS[0], fs}, false)).join('');
-    c.innerHTML=renderStationStackSVG(720,280,{fs},true)
-      +`<div style="display:flex;gap:6px;margin:8px 0 4px">
-          <button class="btn ghost" style="font-size:12px" onclick="draftRemove()">↶ Remove last</button>
-          <button class="btn ghost" style="font-size:12px" onclick="draftClear()">✕ Clear blueprint</button>
-        </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">${cards}</div>`;
+    c.innerHTML=renderStationStackSVG(720,280,{fs},true);
   }
   wireStationPan(c);
   const zl=$('stationZoomLabel'); if(zl) zl.textContent=Math.round(stationZoom*100)+'%';
   if(st) st.innerHTML=stationDraftStatsHTML(fs);
+  renderAssemblyPalette('station',{isDraft:true,cur:{fs}});
 }
 
 function wireStationPan(el){
@@ -8014,10 +8091,11 @@ function renderStation(){
   const v=stationCurrentView();
   if(v.isDraft){ renderStationDraft(); return; } // pre-facility: free blueprint drawing board
   const c=$('stationCanvas'), st=$('stationStats'), cur=v.cur;
-  if(c) c.innerHTML=renderStationStackSVG(720,300,cur,true)+renderStationPalette(cur);
+  if(c) c.innerHTML=renderStationStackSVG(720,300,cur,true);
   const zl=$('stationZoomLabel'); if(zl) zl.textContent=Math.round(stationZoom*100)+'%';
   wireStationPan(c);
   if(st) st.innerHTML=renderStationFacilityStats(v.built, cur);
+  renderAssemblyPalette('station',v);
 }
 // Facility tabs + aggregate stats for the focused facility
 function renderStationFacilityStats(built, cur, focusId, focusFn){ // E1.8: base bench reuses this panel with its own focus state
@@ -8116,8 +8194,34 @@ function renderStationPalette(cur){
   // shared ones (Habitat, Lab, Power Truss, Depot, Greenhouse) minus the orbital-only structure.
   const cards=STATION_MODULES.filter(md=> surface ? !ORBITAL_ONLY.includes(md.id) : !md.surface)
     .map(md=>stationModuleCard(md, cur, true)).join('');
-  return `<div style="margin-top:10px"><div class="mission-tag" style="margin-bottom:6px">Modules — dock to grow ${cur.def.name}</div>
+  return `<div class="station-palette" style="margin-top:10px"><div class="mission-tag" style="margin-bottom:6px">Modules — dock to grow ${cur.def.name}</div>
     <div style="display:flex;gap:10px;flex-wrap:wrap">${cards}</div></div>`;
+}
+function assemblyPaletteHTML(sceneId, view){
+  if(!view.isDraft) return renderStationPalette(view.cur);
+  if(sceneId==='station'){
+    const fs=stationDraftFs(), cur={def:facilityById('leo_station')||FACILITY_DEFS[0],fs};
+    const cards=STATION_MODULES.map(md=>stationModuleCard(md,cur,false)).join('');
+    return `<div class="station-palette"><div class="mission-tag">Blueprint modules — orbital assembly</div>
+      <div style="display:flex;gap:6px;margin:8px 0 4px"><button class="btn ghost" style="font-size:12px" onclick="draftRemove()">↶ Remove last</button><button class="btn ghost" style="font-size:12px" onclick="draftClear()">✕ Clear blueprint</button></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">${cards}</div></div>`;
+  }
+  const body=baseDraftBody(), def=facilityById(BASE_DRAFT_FACID[body]), fs=baseDraftFs(body), cur={def,fs};
+  const tabs=`<button class="btn ${body==='moon'?'launch':'ghost'}" style="font-size:12px" onclick="setBaseDraftBody('moon')">◆ Luna</button><button class="btn ${body==='mars'?'launch':'ghost'}" style="font-size:12px" onclick="setBaseDraftBody('mars')">★ Mars</button>`;
+  const cards=STATION_MODULES.filter(md=>md.id!=='node_hub').map(md=>stationModuleCard(md,cur,false)).join('');
+  return `<div class="station-palette"><div class="mission-tag">Blueprint modules — ${esc(def.name)}</div>
+    <div style="display:flex;gap:6px;margin:8px 0">${tabs}</div>
+    <div style="display:flex;gap:6px;margin:0 0 4px"><button class="btn ghost" style="font-size:12px" onclick="draftRemove()">↶ Remove last</button><button class="btn ghost" style="font-size:12px" onclick="draftClear()">✕ Clear blueprint</button></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">${cards}</div></div>`;
+}
+function renderAssemblyPalette(sceneId, view){
+  const scene=sceneDef(sceneId), a=scene&&scene.assembly;
+  if(!a) return;
+  const expanded=sceneId==='station'?stationExpanded:baseExpanded;
+  const slot=$('assemblyPaletteSlot'), home=$(a.paletteHomeId), target=expanded?home:slot;
+  if(slot){ slot.classList.toggle('hidden',expanded); slot.setAttribute('aria-hidden',String(expanded)); }
+  if(home) home.classList.toggle('hidden',!expanded);
+  setHTML(target,assemblyPaletteHTML(sceneId,view));
 }
 /* ---------- E1.8 slices A/B: Base Bench — surface-base sibling of the Station Bench ----------
    Lunar/Mars bases are full FACILITY_DEFS already running the complete station machinery
@@ -8137,8 +8241,8 @@ function baseViewBox(W,H,zoom){
 function setBaseZoom(z){ baseZoom=clampA(z,0.5,3); renderBase(); }
 function zoomBase(f){ setBaseZoom(baseZoom*f); }
 function resetBaseView(){ basePanX=0; basePanY=0; baseZoom=1; renderBase(); }
-function toggleBaseExpand(){ baseExpanded=!baseExpanded; renderBase(); }
-function setBaseFocus(id){ state.baseFocus=id; renderBase(); }
+function toggleBaseExpand(){ baseExpanded=!baseExpanded; placeSceneContextualSlots(); renderCCLeft(); renderBase(); }
+function setBaseFocus(id){ state.baseFocus=id; renderBase(); refreshBasePopout(); }
 function baseCurrentView(){
   const built=Object.keys(state.facilities||{}).map(id=>({def:facilityById(id), fs:state.facilities[id]})).filter(x=>x.def&&facilityBuilt(x.def.id)&&x.def.body!=='earth');
   if(!built.length) return {built:null, cur:null, isDraft:true};
@@ -8207,21 +8311,13 @@ function renderBaseDraft(){
   const c=$('baseCanvas'), st=$('baseStats');
   const body=baseDraftBody(), def=facilityById(BASE_DRAFT_FACID[body]), fs=baseDraftFs(body);
   const cur={def, fs};
-  const tabBtn=(b,label)=>`<button class="btn ${baseDraftBody()===b?'launch':'ghost'}" style="font-size:12px" onclick="setBaseDraftBody('${b}')">${label}</button>`;
   if(c){
-    const cards=STATION_MODULES.filter(md=>md.id!=='node_hub') // orbital-only structure — same exclusion renderStationPalette applies to surface benches
-      .map(md=>stationModuleCard(md, cur, false)).join('');
-    c.innerHTML=`<div style="display:flex;gap:6px;margin-bottom:8px">${tabBtn('moon','◆ Luna')}${tabBtn('mars','★ Mars')}</div>`
-      +renderBaseSurfaceSVG(720,280,cur,true)
-      +`<div style="display:flex;gap:6px;margin:8px 0 4px">
-          <button class="btn ghost" style="font-size:12px" onclick="draftRemove()">↶ Remove last</button>
-          <button class="btn ghost" style="font-size:12px" onclick="draftClear()">✕ Clear blueprint</button>
-        </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">${cards}</div>`;
+    c.innerHTML=renderBaseSurfaceSVG(720,280,cur,true);
   }
   wireBasePan(c);
   const zl=$('baseZoomLabel'); if(zl) zl.textContent=Math.round(baseZoom*100)+'%';
   if(st) st.innerHTML=baseDraftStatsHTML();
+  renderAssemblyPalette('base',{isDraft:true,cur});
 }
 // Body palettes: sky gradient stops + regolith tones. Luna: airless black over gray dust;
 // Mars: butterscotch daylight over rust.
@@ -8296,11 +8392,12 @@ function renderBase(){
   const c=$('baseCanvas'), st=$('baseStats');
   const v=baseCurrentView();
   if(v.isDraft){ renderBaseDraft(); return; } // E1.8 D: pre-facility free blueprint drawing board
-  if(c) c.innerHTML=renderBaseSurfaceSVG(720,300,v.cur,true)+renderStationPalette(v.cur);
+  if(c) c.innerHTML=renderBaseSurfaceSVG(720,300,v.cur,true);
   const zl=$('baseZoomLabel'); if(zl) zl.textContent=Math.round(baseZoom*100)+'%';
   wireBasePan(c);
   // stats panel: the station one is already facility-generic; only the focus-tab handler differs
   if(st) st.innerHTML=renderStationFacilityStats(v.built, v.cur, state.baseFocus, 'setBaseFocus');
+  renderAssemblyPalette('base',v);
 }
 // One rich module spec card. mode: live docking (real facility) when addable=true; blueprint otherwise.
 function stationModuleCard(md, cur, addable){

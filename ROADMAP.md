@@ -7158,7 +7158,7 @@ Only resizing, screen-stable labels/halo, mode and quality/orbit controls, and r
 with exactly one canvas. Added `tests/test-map-sm1-sm5-source.js` (26/26); all 11 adjacent map suites
 pass; full sweep is 108/109 with only the documented pre-existing `test-flight3d-trajectory.js` drift.
 
-## Planned — Mission Control UI shell standardization (scoped 2026-07-26)
+## Shipped — Mission Control UI shell standardization (completed 2026-07-26)
 
 Use Mission Control's spatial language as the shared application shell without forcing every scene
 into the Cape's exact composition. All six primary scenes should share the global HUD, a permanently
@@ -7187,15 +7187,27 @@ Logical scene-slot mapping:
    scene dock, and added shared shell tokens/primitives without moving specialized page content.
    Firefox verified dock visibility on the initial Bench and long R&D views; focused shell,
    hotkey, Command hero, regression, Base Bench, syntax, and build-parity checks pass.
-2. **Solar System pilot — ACTIVE:** move the roster into the left slot, keep the live map in the
-   monitor, and move selected-body/activity information into the right inspector.
-3. **Assembly unification:** render Station and Base through one configurable assembly-shell
-   structure, including consistent toolbar and pop-out capabilities.
-4. **Workspace migration:** adapt Design Bench and R&D to the wider workspace variant while
-   preserving their purpose-built editors and controls.
-5. **Consolidation and verification:** remove obsolete Command-only shell movement, unused
-   tokens/state classes, and page-specific breakpoints; add viewport screenshots plus keyboard,
-   focus, and overflow checks.
+2. **Solar System pilot — SHIPPED 2026-07-26:** moved the existing roster DOM into the shared
+   left contextual slot, kept the live map and all SM1–SM5 controls in the central monitor, and
+   retained selected-body/activity information in the right inspector. Expand mode returns the
+   same roster node inline, so no renderer state or WebGL context is duplicated. Verified at
+   1920×1080 and 800px wide with exactly one map canvas; all 11 map suites pass.
+3. **Assembly unification — SHIPPED 2026-07-26:** Station and Base now render through one
+   configurable assembly-shell structure with a shared palette, monitor toolbar, right inspector,
+   responsive stacking, and pop-out contract. Base gained a read-only pop-out projection without
+   duplicating simulation state. Verified at 1920×1080 and 800px wide; assembly, Base, Station,
+   shell, pop-out, syntax, and build-parity checks pass.
+4. **Workspace migration — SHIPPED 2026-07-26:** Design Bench now places the existing live
+   vehicle/mission summary in the left contextual slot, keeps its stage editor central, and retains
+   delta-v/readiness on the right. R&D places active-project status and track filters left, keeps
+   the technology tree central and node inspector right, with divisions and partnerships below.
+   Both preserve one live DOM host and stack cleanly at 800px.
+5. **Consolidation and verification — SHIPPED 2026-07-26:** removed retired scene/panel and
+   optional-right shell state, collapsed workspace layout onto the shared 880px breakpoint, and
+   limited Command-specific DOM projection to the timeline only. Tab and number-key navigation now
+   follow the visible six-scene dock order. Added focused workspace and shell-consolidation tests;
+   desktop and 800px Firefox checks confirm focusable navigation landmarks, unique live hosts,
+   contained overflow, and stable left/center/right geometry.
 
 Primary risks to hold constant during migration: do not alter simulation state or game balance; do
 not rebuild or duplicate the Solar Map's live WebGL context; keep generated release artifacts in sync
