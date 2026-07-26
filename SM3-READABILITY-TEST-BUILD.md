@@ -40,3 +40,7 @@ This records the standalone browser build `orbital-ventures-sm3-readability.html
 5. `SM3.5` hover emphasis and browser tuning.
 
 Do not edit generated `orbital-ventures.html` as the authoritative implementation. Port into `src/`, then build and validate according to repository conventions.
+
+## Source integration completed — 2026-07-26
+
+SM3 is now implemented in authoritative source with selection halo, distant-body DOM markers, screen-stable/collision-managed labels, orbit modes, and hover emphasis. Firefox verification caught and corrected prototype-scale label clipping; visible DOM markers now suppress duplicate sprite labels. The focused source guard and all 11 existing map/Three.js regression suites pass.

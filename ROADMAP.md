@@ -7143,3 +7143,17 @@ didn't fully land, the correct next move was instrumentation, not a fifth hypoth
 you what SHOULD happen; only the running page tells you what IS happening. For a UI symptom that has
 survived more than two fixes, add the diagnostic first — it is almost always cheaper than another wrong
 guess, and it converts an open-ended search into a single question.
+
+### Solar Map SM1–SM5 source integration (2026-07-26)
+
+Ported the complete SM1–SM5 review-build chain into authoritative source and rebuilt all generated
+artifacts. The Solar System scene now has a larger inline viewport and near-full-screen operations
+pop-out; collapsible rails and Map Only; real-size resize observation; camera presets, fit/easing, and
+distance-sensitive zoom; selection/hover/marker/label/orbit readability layers; deterministic layered
+deep space, solar lighting, and map quality tiers; and Navigation, Mission Planning, Operations, and
+Strategic modes over existing simulation truth.
+
+Preserved the one-live-WebGL-context architecture. Firefox/WebGL verification covered 1902×870 Map
+Only resizing, screen-stable labels/halo, mode and quality/orbit controls, and repeated remount cycles
+with exactly one canvas. Added `tests/test-map-sm1-sm5-source.js` (26/26); all 11 adjacent map suites
+pass; full sweep is 108/109 with only the documented pre-existing `test-flight3d-trajectory.js` drift.

@@ -30,9 +30,9 @@ These systems are the stable foundation. Future slices must preserve them unless
 
 ## Important current-state note
 
-- [T] Lighting and layered-starfield improvements were produced in a standalone test HTML during review.
-- [ ] Those visual changes are **not yet merged into `src/`**, are **not built by `node build.js`**, and are **not repository-complete**.
-- [ ] Before adopting them, port the changes into the proper source module, add a focused test where practical, run the full build/syntax checks, and browser-verify Firefox.
+- [x] SM1 through SM5 were ported from the standalone review builds into authoritative source on 2026-07-26.
+- [x] Generated artifacts were rebuilt with `node build.js`; syntax, parity, focused map coverage, and the full headless suite were run locally.
+- [x] Firefox/WebGL verification covered inline and near-full-screen layouts, Map Only resize, operating modes, quality/orbit controls, label readability, and repeated single-context remounts.
 
 ---
 
@@ -42,11 +42,11 @@ These systems are the stable foundation. Future slices must preserve them unless
 
 ## SM1.1 — Larger inline map
 
-- [ ] Remove or substantially raise the inline `#mapHost` 980 px width cap.
-- [ ] Increase the inline map’s usable height to roughly 700–740 px on desktop.
-- [ ] Preserve responsive behavior below tablet widths.
-- [ ] Ensure the Three canvas fills the available host without stretching its drawing buffer incorrectly.
-- [ ] Verify left/right application rails do not force the map below a useful width.
+- [x] Remove or substantially raise the inline `#mapHost` 980 px width cap.
+- [x] Increase the inline map’s usable height to roughly 700–740 px on desktop.
+- [x] Preserve responsive behavior below tablet widths.
+- [x] Ensure the Three canvas fills the available host without stretching its drawing buffer incorrectly.
+- [x] Verify left/right application rails do not force the map below a useful width.
 
 **Acceptance criteria**
 
@@ -56,10 +56,10 @@ These systems are the stable foundation. Future slices must preserve them unless
 
 ## SM1.2 — Near-full-screen map pop-out
 
-- [ ] Give the Solar Map a dedicated pop-out sizing rule instead of relying only on the shared 1380×820 cap.
-- [ ] Target approximately `calc(100vw - 16px)` × `calc(100vh - 16px)` with sensible minimums.
-- [ ] Keep drag, resize, pin, and close behavior.
-- [ ] Measure the actual stage after the pop-out mounts; do not assume 960×680 is the real viewport.
+- [x] Give the Solar Map a dedicated pop-out sizing rule instead of relying only on the shared 1380×820 cap.
+- [x] Target approximately `calc(100vw - 16px)` × `calc(100vh - 16px)` with sensible minimums.
+- [x] Keep drag, resize, pin, and close behavior.
+- [x] Measure the actual stage after the pop-out mounts; do not assume 960×680 is the real viewport.
 
 **Acceptance criteria**
 
@@ -69,11 +69,11 @@ These systems are the stable foundation. Future slices must preserve them unless
 
 ## SM1.3 — Collapsible side rails and Map Only mode
 
-- [ ] Add toolbar controls: `Bodies`, `Details`, and `Map Only`.
-- [ ] Body roster states: open, compact, hidden.
-- [ ] Details rail states: open, collapsed.
-- [ ] Map Only hides both rails and gives the stage the full pop-out body.
-- [ ] Persist only if a clear local UI preference pattern already exists; otherwise keep session-local.
+- [x] Add toolbar controls: `Bodies`, `Details`, and `Map Only`.
+- [x] Body roster states: open, compact, hidden.
+- [x] Details rail states: open, collapsed.
+- [x] Map Only hides both rails and gives the stage the full pop-out body.
+- [x] Persist only if a clear local UI preference pattern already exists; otherwise keep session-local.
 
 **Acceptance criteria**
 
@@ -83,10 +83,10 @@ These systems are the stable foundation. Future slices must preserve them unless
 
 ## SM1.4 — Real-size resize lifecycle
 
-- [ ] Add or extend a `ResizeObserver` for the active map host/stage.
-- [ ] Update renderer size, camera aspect, projection matrix, and screen-space overlays together.
-- [ ] Cap device pixel ratio by quality tier to avoid excessive 4K load.
-- [ ] Guard against zero-size measurements during DOM transitions.
+- [x] Add or extend a `ResizeObserver` for the active map host/stage.
+- [x] Update renderer size, camera aspect, projection matrix, and screen-space overlays together.
+- [x] Cap device pixel ratio by quality tier to avoid excessive 4K load.
+- [x] Guard against zero-size measurements during DOM transitions.
 
 **Suggested test**
 
@@ -101,30 +101,30 @@ These systems are the stable foundation. Future slices must preserve them unless
 
 ## SM2.1 — Named camera presets
 
-- [ ] Add presets: System, Inner System, Earth–Moon, Outer System, Selected Body, Mission Route.
-- [ ] Add Top and Perspective orientations.
-- [ ] Expose presets in the map toolbar and keep keyboard shortcuts discoverable.
+- [x] Add presets: System, Inner System, Earth–Moon, Outer System, Selected Body, Mission Route.
+- [x] Add Top and Perspective orientations.
+- [x] Expose presets in the map toolbar and keep keyboard shortcuts discoverable.
 
 ## SM2.2 — Fit-visible-objects helper
 
-- [ ] Build a pure bounds/fitting helper using relevant object positions or a combined bounding sphere.
-- [ ] Include 15–25% composition padding.
-- [ ] Account for the current aspect ratio and visible side rails.
-- [ ] Reuse for system, selected body, and route framing.
+- [x] Build a pure bounds/fitting helper using relevant object positions or a combined bounding sphere.
+- [x] Include 15–25% composition padding.
+- [x] Account for the current aspect ratio and visible side rails.
+- [x] Reuse for system, selected body, and route framing.
 
 ## SM2.3 — Smooth camera transitions
 
-- [ ] Add transition state for target, distance, azimuth/elevation where required.
-- [ ] Use a short eased transition rather than snapping.
-- [ ] Allow user input to cancel or take over immediately.
-- [ ] Avoid transition allocations every frame.
+- [x] Add transition state for target, distance, azimuth/elevation where required.
+- [x] Use a short eased transition rather than snapping.
+- [x] Allow user input to cancel or take over immediately.
+- [x] Avoid transition allocations every frame.
 
 ## SM2.4 — Better zoom behavior
 
-- [ ] Scale zoom speed by camera distance.
-- [ ] Evaluate cursor-directed zoom without destabilizing orbit controls.
-- [ ] Add visible `Reset`, `Fit System`, and `Focus Selected` controls.
-- [ ] Preserve existing keyboard and wheel controls.
+- [x] Scale zoom speed by camera distance.
+- [x] Evaluate cursor-directed zoom without destabilizing orbit controls.
+- [x] Add visible `Reset`, `Fit System`, and `Focus Selected` controls.
+- [x] Preserve existing keyboard and wheel controls.
 
 **Suggested test**
 
@@ -138,34 +138,34 @@ These systems are the stable foundation. Future slices must preserve them unless
 
 ## SM3.1 — Selected-body emphasis
 
-- [ ] Add a camera-facing selection halo/ring.
-- [ ] Keep its apparent screen size within a controlled range.
-- [ ] Ensure it does not obscure moons or trigger excessive bloom.
+- [x] Add a camera-facing selection halo/ring.
+- [x] Keep its apparent screen size within a controlled range.
+- [x] Ensure it does not obscure moons or trigger excessive bloom.
 
 ## SM3.2 — Distant-body HUD markers
 
-- [ ] Show screen-readable markers when a body projects below a minimum apparent size.
-- [ ] Keep markers clickable and synchronized with the roster/details panel.
-- [ ] Fade markers as the real body becomes visually large enough.
+- [x] Show screen-readable markers when a body projects below a minimum apparent size.
+- [x] Keep markers clickable and synchronized with the roster/details panel.
+- [x] Fade markers as the real body becomes visually large enough.
 
 ## SM3.3 — Label tiers and collision management
 
-- [ ] Define label tiers for system, planetary, and close views.
-- [ ] Project labels to screen space and resolve overlaps by priority.
-- [ ] Always preserve selected, hovered, active-mission, Sun, and Earth labels.
-- [ ] Extend existing moon-label LOD rather than creating an unrelated system.
+- [x] Define label tiers for system, planetary, and close views.
+- [x] Project labels to screen space and resolve overlaps by priority.
+- [x] Always preserve selected, hovered, active-mission, Sun, and Earth labels.
+- [x] Extend existing moon-label LOD rather than creating an unrelated system.
 
 ## SM3.4 — Orbit presentation modes
 
-- [ ] Add All, Relevant, Selected Only, and Hidden modes.
-- [ ] Highlight selected/mission-relevant orbits.
-- [ ] Distinguish planetary orbits, committed routes, planned routes, and spacecraft paths.
-- [ ] Keep opacity low enough that the starfield and planets remain legible.
+- [x] Add All, Relevant, Selected Only, and Hidden modes.
+- [x] Highlight selected/mission-relevant orbits.
+- [x] Distinguish planetary orbits, committed routes, planned routes, and spacecraft paths.
+- [x] Keep opacity low enough that the starfield and planets remain legible.
 
 ## SM3.5 — Hover feedback
 
-- [ ] Increase label/marker/orbit emphasis on hover.
-- [ ] Avoid permanent clutter or heavy per-frame material creation.
+- [x] Increase label/marker/orbit emphasis on hover.
+- [x] Avoid permanent clutter or heavy per-frame material creation.
 
 **Suggested test**
 
@@ -180,31 +180,31 @@ These systems are the stable foundation. Future slices must preserve them unless
 
 ## SM4.1 — Directional lighting pass
 
-- [ ] Port the reviewed warm solar key light into source.
-- [ ] Reduce broad ambient wash while preserving texture readability.
-- [ ] Improve day/night terminators and planetary material roughness.
-- [ ] Keep the Sun/corona controlled near close views.
-- [ ] Confirm tone-mapping compatibility with the repository’s Three.js version.
+- [x] Port the reviewed warm solar key light into source.
+- [x] Reduce broad ambient wash while preserving texture readability.
+- [x] Improve day/night terminators and planetary material roughness.
+- [x] Keep the Sun/corona controlled near close views.
+- [x] Confirm tone-mapping compatibility with the repository’s Three.js version.
 
 ## SM4.2 — Layered deterministic starfield
 
-- [ ] Replace the single flat star shell with deterministic near/mid/far layers.
-- [ ] Add restrained stellar color-temperature variation.
-- [ ] Add subtle parallax tied to camera movement.
-- [ ] Keep generation stable across opens and saves.
+- [x] Replace the single flat star shell with deterministic near/mid/far layers.
+- [x] Add restrained stellar color-temperature variation.
+- [x] Add subtle parallax tied to camera movement.
+- [x] Keep generation stable across opens and saves.
 
 ## SM4.3 — Galactic backdrop
 
-- [ ] Add a faint Milky Way/deep-space band that remains subordinate to gameplay.
-- [ ] Avoid external texture dependencies unless explicitly approved.
-- [ ] Ensure backdrop does not rotate or drift in a way that confuses orbital orientation.
+- [x] Add a faint Milky Way/deep-space band that remains subordinate to gameplay.
+- [x] Avoid external texture dependencies unless explicitly approved.
+- [x] Ensure backdrop does not rotate or drift in a way that confuses orbital orientation.
 
 ## SM4.4 — Map quality settings
 
-- [ ] Add Low, Balanced, High tiers for pixel ratio, star count, atmosphere/glow, and geometry detail.
-- [ ] Default to Balanced.
-- [ ] Keep settings map-specific.
-- [ ] Avoid introducing a second renderer or post-processing chain unless measured and justified.
+- [x] Add Low, Balanced, High tiers for pixel ratio, star count, atmosphere/glow, and geometry detail.
+- [x] Default to Balanced.
+- [x] Keep settings map-specific.
+- [x] Avoid introducing a second renderer or post-processing chain unless measured and justified.
 
 **Suggested test**
 
@@ -219,31 +219,31 @@ These systems are the stable foundation. Future slices must preserve them unless
 
 ## SM5.1 — Toolbar structure
 
-- [ ] Add grouped controls for View, Layers, Camera, and Layout.
-- [ ] Keep the primary actions visible; move secondary toggles into compact menus only if needed.
-- [ ] Add a concise controls/help overlay.
+- [x] Add grouped controls for View, Layers, Camera, and Layout.
+- [x] Keep the primary actions visible; move secondary toggles into compact menus only if needed.
+- [x] Add a concise controls/help overlay.
 
 ## SM5.2 — Navigation mode
 
-- [ ] Bodies, moons, roster, labels, and basic details.
-- [ ] Default browsing mode.
+- [x] Bodies, moons, roster, labels, and basic details.
+- [x] Default browsing mode.
 
 ## SM5.3 — Mission Planning mode
 
-- [ ] Emphasize Earth, destination, route, launch window, travel time, delta-v, and readiness.
-- [ ] Reuse existing `bodyPlan`, `missionPlan`, `computeWindows`, and transfer-arc geometry.
-- [ ] Do not create alternate mission truth in the renderer.
+- [x] Emphasize Earth, destination, route, launch window, travel time, delta-v, and readiness.
+- [x] Reuse existing `bodyPlan`, `missionPlan`, `computeWindows`, and transfer-arc geometry.
+- [x] Do not create alternate mission truth in the renderer.
 
 ## SM5.4 — Operations mode
 
-- [ ] Emphasize active spacecraft, estimated arrivals, communication delays, warnings, and next event.
-- [ ] Add follow-spacecraft camera behavior.
-- [ ] Keep markers explicitly mission-progress visualization, not fabricated telemetry.
+- [x] Emphasize active spacecraft, estimated arrivals, communication delays, warnings, and next event.
+- [x] Add follow-spacecraft camera behavior.
+- [x] Keep markers explicitly mission-progress visualization, not fabricated telemetry.
 
 ## SM5.5 — Strategic mode
 
-- [ ] Emphasize facilities, depots, ISRU, firsts, rival reach, claims, and logistics-relevant assets.
-- [ ] Reuse `mapAssetModel()` and existing rival/facility truth.
+- [x] Emphasize facilities, depots, ISRU, firsts, rival reach, claims, and logistics-relevant assets.
+- [x] Reuse `mapAssetModel()` and existing rival/facility truth.
 
 **Suggested test**
 
@@ -313,3 +313,14 @@ For every slice:
 - No generated release HTML.
 - No existing tests.
 - No D1–D4 completed behavior.
+
+
+## Source integration — SM1 through SM5 (2026-07-25)
+
+- [x] SM1 — viewport size, near-full-screen pop-out, collapsible rails, Map Only, ResizeObserver lifecycle.
+- [x] SM2 — camera presets, fit-visible helper, smooth transitions, distance-sensitive zoom and reset controls.
+- [x] SM3 — selection halo, distant-body markers, label tiers/collision handling, orbit modes, hover emphasis.
+- [x] SM4 — directional lighting, deterministic layered stars, galactic backdrop, map-specific quality tiers.
+- [x] SM5 — Navigation, Mission Planning, Operations, and Strategic operating modes over the shared scene.
+
+**Integration boundary:** source port only touches Solar System map presentation in `src/shell.html` and `src/render.js`; simulation, mission truth, save schema, economy, R&D, flight/Cape rendering, and D1–D4 data sources remain unchanged. Generated artifacts were rebuilt from source; 108/109 bundled suites pass, with only the documented pre-existing `test-flight3d-trajectory.js` drift remaining.

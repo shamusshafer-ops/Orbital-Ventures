@@ -326,9 +326,13 @@
      reached/available/locked/future, so "where is everything" has an answer that doesn't require
      spotting a dot on the map or knowing where the camera happens to be pointed. Same local
      narrow-column-beside-main-content pattern as .bench-stage, not a new layout idea. */
-  .map-stage{display:grid;grid-template-columns:172px minmax(0,1fr);gap:12px;align-items:start}
+  /* SM1.1 (2026-07-25): promote the Solar System to a primary scene. The roster remains a
+     stable navigation rail, while the live map receives the full remaining center width and a
+     desktop-height viewport instead of being constrained to the legacy 980x620 presentation box. */
+  .map-stage{display:grid;grid-template-columns:190px minmax(0,1fr);gap:12px;align-items:stretch}
+  .map-stage>div:last-child{min-width:0}
   @media(max-width:820px){.map-stage{grid-template-columns:1fr}}
-  #mapRoster{max-height:640px;overflow-y:auto;border:1px solid var(--line);border-radius:8px;background:var(--panel2);padding:6px}
+  #mapRoster{height:clamp(620px,70vh,760px);max-height:none;overflow-y:auto;border:1px solid var(--line);border-radius:8px;background:var(--panel2);padding:6px}
   .map-roster-group{margin-bottom:2px}
   .map-roster-heading{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);padding:6px 6px 3px}
   .map-roster-row{display:flex;align-items:center;gap:7px;padding:5px 6px;border-radius:5px;cursor:pointer;font-size:12.5px}
@@ -337,9 +341,12 @@
   .map-roster-dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto}
   .map-roster-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   #mapView.expanded .map-stage{grid-template-columns:172px minmax(0,1fr)}
-  /* cap the Phaser map (980x620 internal) to its native size + centre it, so the
-     full-width "Wide" layout can't inflate the canvas past its drawing buffer and blank it */
-  #mapHost{max-width:980px;margin:0 auto}
+  /* SM1.1: the Three.js map is resized to the host's real box, so the inline host no longer
+     needs the old 980px cap. The minimum desktop height gives the system enough visual presence;
+     narrow screens fall back to a smaller responsive floor. */
+  #mapHost{width:100%;max-width:none;min-height:clamp(620px,70vh,760px);height:clamp(620px,70vh,760px);margin:0;aspect-ratio:auto!important}
+  #mapCanvas{width:100%;min-height:clamp(620px,70vh,760px)}
+  @media(max-width:820px){#mapHost,#mapCanvas{min-height:500px;height:500px}#mapRoster{height:auto;max-height:260px}}
   #stationHost{max-width:760px;margin:0 auto}
   #stationView.expanded{position:fixed;inset:0;z-index:60;background:var(--bg);padding:12px 18px;overflow:auto}
   #stationView.expanded #stationHost{max-width:100%}
@@ -480,8 +487,28 @@
      both side panels stayed visible. min-width:0 lets the stage actually shrink (the canvas already
      carries max-width:100%, so it scales down cleanly). Scoped to the map pop-out rather than the
      shared .vehpop-stage class to keep the blast radius off the vehicle/station/earth/cc pop-outs. */
+  .map-pop-camera{display:flex;gap:4px;align-items:center;flex-wrap:wrap}.map-pop-camera .btn{padding:4px 8px;font-size:11px}
   #mapPopStage{min-width:0}
-  #mapPopHost canvas{max-width:100%;height:auto}
+  #mapPopHost canvas{max-width:none!important;width:100%!important;height:100%!important}
+  /* SM1.2: unlike the shared utility pop-outs, the Solar System is a dedicated operations console
+     and defaults to almost the entire browser viewport. Drag/resize/pin still work through the
+     existing shared window code. */
+  #mapPopout .popout-window{width:calc(100vw - 16px);height:calc(100vh - 16px);max-width:none;max-height:none}
+  #mapPopout .vehpop-bar{gap:8px;flex-wrap:wrap}
+  #mapPopout .vehpop-hint{order:4;flex-basis:100%;margin-left:0;font-size:10px}
+  .map-pop-layout{display:flex;gap:5px;align-items:center;margin-left:auto}
+  .map-pop-layout .btn{padding:5px 9px;font-size:11px;white-space:nowrap}
+  .map-pop-layout .btn.active{border-color:var(--ignite);color:var(--ignite);background:var(--panel2)}
+  /* SM1.3: roster and details are independent drawers. Compact roster preserves body dots as a
+     navigation strip; Map Only hides both rails without destroying or rebuilding the WebGL scene. */
+  #mapPopout.map-roster-compact .vehpop-roster{flex-basis:46px;width:46px;padding:5px 3px}
+  #mapPopout.map-roster-compact .map-roster-heading,#mapPopout.map-roster-compact .map-roster-name{display:none}
+  #mapPopout.map-roster-compact .map-roster-row{justify-content:center;padding:7px 3px}
+  #mapPopout.map-roster-hidden .vehpop-roster,#mapPopout.map-only .vehpop-roster{display:none!important}
+  #mapPopout.map-details-hidden .vehpop-stats,#mapPopout.map-only .vehpop-stats{display:none!important}
+  #mapPopout.map-only .vehpop-stage{flex:1 1 100%}
+  @media(max-width:900px){#mapPopout .vehpop-roster{display:block}#mapPopout .vehpop-stats{display:block;flex-basis:260px}}
+  @media(max-width:720px){#mapPopout .vehpop-roster,#mapPopout .vehpop-stats{display:none!important}.map-pop-layout{margin-left:0}}
   /* bench editor tabs — consolidate the many editor cards under a few tabs */
   .bench-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
   .bench-tab{font-family:var(--mono);font-size:12px;padding:5px 12px;border:1px solid var(--line);border-radius:7px;background:var(--panel);color:var(--muted);cursor:pointer}
@@ -951,6 +978,21 @@
   body .frontpage .fp-dateline{color:var(--ink)!important;border-color:var(--hud-line)!important}
   body .frontpage .fp-kind{background:rgba(88,199,255,.14)!important;color:var(--readout)!important;border-color:var(--hud-line)!important}
   body .frontpage .fp-chrome{background:#071523!important;border-color:var(--hud-line)!important}
+
+  /* SM5 — Solar Map operating modes. One live scene, four intent-driven layer profiles. */
+  .map-mode-toolbar{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:8px 0 10px}
+  .map-mode-toolbar .map-mode-label{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);margin-right:2px}
+  .map-mode-btn{font-size:11px!important;padding:4px 8px!important}
+  .map-mode-btn.active{border-color:var(--ignite)!important;color:var(--ignite)!important;background:rgba(245,166,35,.10)!important}
+  .map-mode-status{display:flex;align-items:flex-start;gap:9px;border:1px solid var(--hud-line-soft);border-radius:7px;padding:7px 9px;margin:0 0 9px;background:rgba(5,18,29,.72)}
+  .map-mode-status .mode-icon{font-size:18px;line-height:1}
+  .map-mode-status .mode-name{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--readout)}
+  .map-mode-status .mode-desc{font-size:11px;color:var(--muted);margin-top:2px;line-height:1.35}
+  #mapPopout .map-mode-toolbar{margin:0;flex:0 1 auto}
+  #mapPopout .map-mode-toolbar .map-mode-label{display:none}
+  #mapPopout .map-mode-btn{white-space:nowrap}
+  @media(max-width:1180px){#mapPopout .map-pop-camera{display:none}}
+
 </style>
 </head>
 <body>
@@ -1128,12 +1170,28 @@
     <div class="card dombar-exploration" id="mapCard">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
         <h2 style="margin:0"><span class="dom-dot" style="background:var(--dom-exploration)"></span>Solar System — click a body for its Δv profile</h2>
-        <div style="display:flex;gap:6px">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
+          <button class="btn ghost" onclick="map3dPreset('system')" title="Fit the complete Solar System">System</button>
+          <button class="btn ghost" onclick="map3dPreset('earthmoon')" title="Frame the Earth–Moon system">Earth–Moon</button>
+          <button class="btn ghost" onclick="map3dPreset('selected')" title="Focus the selected body and its moons">Selected</button>
+          <button class="btn ghost" onclick="map3dZoom(-1)" title="Zoom out">−</button>
+          <button class="btn ghost" onclick="map3dZoom(1)" title="Zoom in">+</button>
+          <button class="btn ghost" id="mapOrbitModeBtn" onclick="map3dCycleOrbitMode()" title="Cycle orbit visibility: relevant, selected, all, hidden">Orbits: Relevant</button>
+          <button class="btn ghost" id="mapQualityBtn" onclick="map3dCycleQuality()" title="Cycle Solar Map visual quality: Low, Balanced, High">Quality: Balanced</button>
+          <button class="btn ghost" onclick="map3dResetView()" title="Reset the map camera">Reset</button>
           <button class="btn ghost" onclick="openMapPopout()" title="Pop out — interactive map + planet info (Esc/Enter to close)">⤢ Pop out</button>
           <button class="btn ghost" id="mapExpandBtn" onclick="toggleMapExpand()">⛶ Expand</button>
         </div>
       </div>
       <p class="muted" style="font-size:12px;margin:6px 0 10px">Orbits are spaced for legibility, not to scale. Drag to pan, scroll to zoom, WASD/arrows to nudge; click a body (or use ←/→) for its Δv profile.</p>
+      <div class="map-mode-toolbar" id="mapModeToolbar" role="group" aria-label="Solar System operating mode">
+        <span class="map-mode-label">Operating mode</span>
+        <button class="btn ghost map-mode-btn active" type="button" data-map-mode="navigation" onclick="map3dSetMode('navigation')">Navigation</button>
+        <button class="btn ghost map-mode-btn" type="button" data-map-mode="planning" onclick="map3dSetMode('planning')">Mission Planning</button>
+        <button class="btn ghost map-mode-btn" type="button" data-map-mode="operations" onclick="map3dSetMode('operations')">Operations</button>
+        <button class="btn ghost map-mode-btn" type="button" data-map-mode="strategic" onclick="map3dSetMode('strategic')">Strategic</button>
+      </div>
+      <div class="map-mode-status" id="mapModeStatus" aria-live="polite"></div>
       <div class="map-stage">
         <div id="mapRoster"></div>
         <div>
@@ -20166,6 +20224,23 @@ function refreshStationPopout(){
    grab-to-pan + wheel-to-zoom, and the selected body's Δv profile + mission planning on the right.
    Opens defaulted to Earth. Clicking a body re-selects it (selectBody → refreshMapPopout). */
 let mapPopoutOpen=false, mapPop={z:1,x:0,y:0};
+// SM1.3: session-local pop-out layout. This is presentation state, never game/save state.
+let mapPopLayout={roster:'open',details:true,mapOnly:false};
+function mapPopApplyLayout(){
+  const ov=$('mapPopout'); if(!ov) return;
+  ov.classList.toggle('map-roster-compact',!mapPopLayout.mapOnly&&mapPopLayout.roster==='compact');
+  ov.classList.toggle('map-roster-hidden',!mapPopLayout.mapOnly&&mapPopLayout.roster==='hidden');
+  ov.classList.toggle('map-details-hidden',!mapPopLayout.mapOnly&&!mapPopLayout.details);
+  ov.classList.toggle('map-only',!!mapPopLayout.mapOnly);
+  const rb=$('mapPopRosterBtn'), db=$('mapPopDetailsBtn'), mb=$('mapPopOnlyBtn');
+  if(rb){ rb.textContent=mapPopLayout.roster==='open'?'Bodies: Open':mapPopLayout.roster==='compact'?'Bodies: Compact':'Bodies: Hidden'; rb.classList.toggle('active',mapPopLayout.roster!=='hidden'&&!mapPopLayout.mapOnly); rb.setAttribute('aria-pressed',String(mapPopLayout.roster!=='hidden'&&!mapPopLayout.mapOnly)); }
+  if(db){ db.textContent=mapPopLayout.details?'Details: Open':'Details: Hidden'; db.classList.toggle('active',mapPopLayout.details&&!mapPopLayout.mapOnly); db.setAttribute('aria-pressed',String(mapPopLayout.details&&!mapPopLayout.mapOnly)); }
+  if(mb){ mb.classList.toggle('active',!!mapPopLayout.mapOnly); mb.setAttribute('aria-pressed',String(!!mapPopLayout.mapOnly)); mb.textContent=mapPopLayout.mapOnly?'Exit Map Only':'Map Only'; }
+  scheduleMap3DResize();
+}
+function cycleMapPopRoster(){ mapPopLayout.mapOnly=false; mapPopLayout.roster=mapPopLayout.roster==='open'?'compact':mapPopLayout.roster==='compact'?'hidden':'open'; mapPopApplyLayout(); }
+function toggleMapPopDetails(){ mapPopLayout.mapOnly=false; mapPopLayout.details=!mapPopLayout.details; mapPopApplyLayout(); }
+function toggleMapPopOnly(){ mapPopLayout.mapOnly=!mapPopLayout.mapOnly; mapPopApplyLayout(); }
 function refreshMapPopout(){
   const z=$('mapPopZoom'), host=$('mapPopHost');
   // ORDERING BUG FIX (2026-07-25): this used to hide + empty the 2D fallback FIRST and then call
@@ -20190,15 +20265,40 @@ function refreshMapPopout(){
     if(z){ z.style.display='flex'; z.innerHTML=renderMapOverview(900,900); } // guaranteed non-blank stage
   }
   const inf=$('mapPopInfo'); if(inf) inf.innerHTML=bodyCardHTML();
-  renderMapRoster(); // keeps the pop-out's rail in sync with selection (same call the inline tab uses)
+  renderMapRoster(); map3dSyncModeUI(); // keeps roster and operating-mode toolbar in sync (same call the inline tab uses)
 }
 function openMapPopout(){
   if(mapPopoutOpen) return; mapPopoutOpen=true; closeOtherPopouts('map'); mapPop={z:1,x:0,y:0};
   state.selectedBody='earth'; state.mapZoom=null; // default selection on Earth, full-system view
   const ov=document.createElement('div'); ov.className='vehpop-scrim'; ov.id='mapPopout';
   ov.innerHTML=`<div class="vehpop-bar">
-      <span class="vehpop-title">🪐 Solar System</span>
-      <span class="vehpop-hint">click a body to select · drag to pan · scroll to zoom · WASD/arrows to nudge · double-click reset · Esc/Enter to close</span>
+      <span class="vehpop-title">🪐 Solar System Operations</span>
+      <div class="map-mode-toolbar" id="mapPopModeToolbar" role="group" aria-label="Solar System operating mode">
+        <button class="btn ghost map-mode-btn active" type="button" data-map-mode="navigation" onclick="map3dSetMode('navigation')">Navigation</button>
+        <button class="btn ghost map-mode-btn" type="button" data-map-mode="planning" onclick="map3dSetMode('planning')">Planning</button>
+        <button class="btn ghost map-mode-btn" type="button" data-map-mode="operations" onclick="map3dSetMode('operations')">Operations</button>
+        <button class="btn ghost map-mode-btn" type="button" data-map-mode="strategic" onclick="map3dSetMode('strategic')">Strategic</button>
+      </div>
+      <div class="map-pop-layout" role="group" aria-label="Map layout controls">
+        <button class="btn ghost active" id="mapPopRosterBtn" type="button" onclick="cycleMapPopRoster()" aria-pressed="true" title="Cycle the body roster between open, compact, and hidden">Bodies: Open</button>
+        <button class="btn ghost active" id="mapPopDetailsBtn" type="button" onclick="toggleMapPopDetails()" aria-pressed="true" title="Show or hide the selected-body details rail">Details: Open</button>
+        <button class="btn ghost" id="mapPopOnlyBtn" type="button" onclick="toggleMapPopOnly()" aria-pressed="false" title="Give the full pop-out body to the map">Map Only</button>
+      </div>
+      <div class="map-pop-camera" role="group" aria-label="Map camera controls">
+        <button class="btn ghost" type="button" onclick="map3dPreset('system')" title="Fit the complete Solar System">System</button>
+        <button class="btn ghost" type="button" onclick="map3dPreset('inner')" title="Frame Mercury through Mars">Inner</button>
+        <button class="btn ghost" type="button" onclick="map3dPreset('earthmoon')" title="Frame Earth and Moon">Earth–Moon</button>
+        <button class="btn ghost" type="button" onclick="map3dPreset('outer')" title="Frame Jupiter through Neptune">Outer</button>
+        <button class="btn ghost" type="button" onclick="map3dPreset('selected')" title="Focus the selected body and its moons">Selected</button>
+        <button class="btn ghost" type="button" onclick="map3dPreset('route')" title="Frame Earth, destination, and the active route">Route</button>
+        <button class="btn ghost" type="button" onclick="map3dPreset('top')" title="Top-down ecliptic view">Top</button>
+        <button class="btn ghost" type="button" onclick="map3dZoom(-1)" title="Zoom out">−</button>
+        <button class="btn ghost" type="button" onclick="map3dZoom(1)" title="Zoom in">+</button>
+        <button class="btn ghost" id="mapPopOrbitModeBtn" type="button" onclick="map3dCycleOrbitMode()" title="Cycle orbit visibility: relevant, selected, all, hidden">Orbits: Relevant</button>
+        <button class="btn ghost" id="mapPopQualityBtn" type="button" onclick="map3dCycleQuality()" title="Cycle Solar Map visual quality: Low, Balanced, High">Quality: Balanced</button>
+        <button class="btn ghost" type="button" onclick="map3dResetView()" title="Reset the camera">Reset</button>
+      </div>
+      <span class="vehpop-hint">click a body to select · drag to orbit · scroll to zoom · WASD/arrows to nudge · double-click reset · Esc/Enter to close</span>
       <button class="vehpop-x" onclick="closeMapPopout()">✕ Close</button>
     </div>
     <div class="vehpop-body">
@@ -20207,7 +20307,9 @@ function openMapPopout(){
       <aside class="vehpop-stats" id="mapPopInfo"></aside>
     </div>`;
   document.body.appendChild(ov); enablePopoutWindow('mapPopout'); fadeInScrim(ov);
+  mapPopApplyLayout();
   refreshMapPopout();
+  observeMap3DHost();
   if(!map3d) initSvgPopZoom('mapPopStage','mapPopZoom',mapPop);
 }
 function closeMapPopout(){
@@ -21118,7 +21220,33 @@ const MAP3D = true;
 let map3d = null; // live scene state, or null when not started
 const MAP3D_ZOOM_MIN = 5;
 const MAP3D_ZOOM_MAX = 3200;
-const MAP_POP_W = 960, MAP_POP_H = 680;
+const MAP_POP_W = 1600, MAP_POP_H = 900; // SM1.2 nominal fallback only; live sizing uses the actual host box
+let map3dResizeObserver=null, map3dResizeRAF=0;
+function resizeMap3DToHost(hostId, fallbackW, fallbackH){
+  if(!map3d) return false;
+  const host=$(hostId||map3d.mountId); if(!host) return false;
+  const r=host.getBoundingClientRect?host.getBoundingClientRect():null;
+  const w=Math.max(1,Math.round((r&&r.width)||fallbackW||MAP_W));
+  const h=Math.max(1,Math.round((r&&r.height)||fallbackH||MAP_H));
+  if(w<2||h<2) return false;
+  map3d.renderer.setSize(w,h,true);
+  map3d.camera.aspect=w/h; map3d.camera.updateProjectionMatrix();
+  return true;
+}
+function scheduleMap3DResize(){
+  if(map3dResizeRAF) cancelAnimationFrame(map3dResizeRAF);
+  map3dResizeRAF=requestAnimationFrame(()=>{ map3dResizeRAF=0; if(map3d) resizeMap3DToHost(map3d.mountId, map3d.mountId==='mapPopHost'?MAP_POP_W:MAP_W, map3d.mountId==='mapPopHost'?MAP_POP_H:MAP_H); });
+}
+function observeMap3DHost(){
+  if(!map3d) return;
+  const host=$(map3d.mountId); if(!host) return;
+  if(typeof ResizeObserver==='function'){
+    if(!map3dResizeObserver) map3dResizeObserver=new ResizeObserver(()=>scheduleMap3DResize());
+    try{ map3dResizeObserver.disconnect(); map3dResizeObserver.observe(host); }catch(e){}
+  }
+  scheduleMap3DResize();
+}
+try{ window.addEventListener('resize',scheduleMap3DResize); }catch(e){}
 let mapPreviewAbsDay=null; // visual-only map time; never mutates the simulation/save
 // Pure helpers (testable without Three.js):
 function hexToNum(hex){ const n = parseInt(String(hex||'').replace('#',''), 16); return Number.isFinite(n) ? n : 0xffffff; }
@@ -21179,7 +21307,9 @@ function ovMapDiag(){
            popoutOpen:typeof mapPopoutOpen!=='undefined'?mapPopoutOpen:null, tab:state&&state.tab},
     map3d: map3d ? {mountId:map3d.mountId, fallbackId:map3d.fallbackId, rafRunning:!!map3d.raf,
                     disposing:!!map3d._disposing, selectedBody:state&&state.selectedBody} : null,
-    hosts:[el('mapHost'), el('mapPopHost'), el('mapPopStage'), el('mapPopZoom'), el('mapCanvas'), el('mapPopRoster')],
+    hosts:[el('mapHost'), el('mapRoster'), el('mapPopHost'), el('mapPopStage'), el('mapPopZoom'), el('mapCanvas'), el('mapPopRoster'), el('mapPopInfo')],
+    resize:{observer:!!map3dResizeObserver,pendingRAF:!!map3dResizeRAF,layout:(typeof mapPopLayout!=='undefined'?mapPopLayout:null)},
+    quality:{id:map3dQuality,label:map3dQualityLabel(),config:MAP3D_QUALITY[map3dQuality]},
   };
   if(map3d && map3d.dom){
     const d=map3d.dom, r=d.getBoundingClientRect();
@@ -21191,7 +21321,7 @@ function ovMapDiag(){
     try{ out.canvas.drawCalls = map3d.renderer.info && map3d.renderer.info.render ? map3d.renderer.info.render.calls : null; }catch(e){}
   }
   try{ out.camera = map3d ? {dist:map3d.cam.dist, az:+map3d.cam.az.toFixed(3), el:+map3d.cam.el.toFixed(3),
-        target:map3d.cam.target, pos:map3d.camera.position} : null; }catch(e){}
+        target:map3d.cam.target, pos:map3d.camera.position, preset:map3d.cameraPreset, followSelected:!!map3d.followSelected, transitioning:!!map3d.cameraTransition} : null; }catch(e){}
   console.log('=== ovMapDiag ===');
   console.log(JSON.stringify(out,null,1));
   return out;
@@ -21210,6 +21340,7 @@ function remountMap3D(hostId, W, H){
     if(map3d.hud) host.appendChild(map3d.hud);
     if(map3d.hoverCard) host.appendChild(map3d.hoverCard);
     if(map3d.chevrons && map3d.chevrons.wrap) host.appendChild(map3d.chevrons.wrap);
+    if(map3d.markerLayer && map3d.markerLayer.wrap) host.appendChild(map3d.markerLayer.wrap);
     const old=$(map3d.mountId);
     if(old && old!==host) old.style.display='none';
     map3d.mountId=hostId;
@@ -21217,12 +21348,10 @@ function remountMap3D(hostId, W, H){
     // Size to the host's ACTUAL box rather than the nominal W/H — the pop-out stage is now squeezed
     // by a roster on one side and the info panel on the other, so the nominal 960x680 no longer
     // matches reality. updateStyle=true so the canvas's CSS box matches its drawing buffer.
-    const r=host.getBoundingClientRect ? host.getBoundingClientRect() : null;
-    const w=Math.max(1, Math.round((r&&r.width)||W||MAP_W));
-    const h=Math.max(1, Math.round((r&&r.height)||H||MAP_H));
-    map3d.renderer.setSize(w,h,true);
-    map3d.camera.aspect=w/h; map3d.camera.updateProjectionMatrix();
-    map3d.dom.style.maxWidth='100%';
+    resizeMap3DToHost(hostId,W,H);
+    map3d.dom.style.maxWidth='none';
+    map3d.dom.style.width='100%'; map3d.dom.style.height='100%';
+    observeMap3DHost();
     if(!map3d.raf) map3dRenderLoop(); // resume if a previous teardown had stopped the loop
     return true;
   }catch(e){ console.warn('3D map remount failed:', e); return false; }
@@ -21263,17 +21392,84 @@ function disposeMap3D(){
   }catch(e){}
   try{ if(map3d.hud && map3d.hud.parentNode) map3d.hud.parentNode.removeChild(map3d.hud); }catch(e){}
   try{ if(map3d.hoverCard && map3d.hoverCard.parentNode) map3d.hoverCard.parentNode.removeChild(map3d.hoverCard); }catch(e){}
-  try{ if(map3d.chevrons && map3d.chevrons.wrap && map3d.chevrons.wrap.parentNode) map3d.chevrons.wrap.parentNode.removeChild(map3d.chevrons.wrap); }catch(e){} // D3b: DOM overlay needs explicit teardown like the HUD/hover card
+  try{ if(map3d.chevrons && map3d.chevrons.wrap && map3d.chevrons.wrap.parentNode) map3d.chevrons.wrap.parentNode.removeChild(map3d.chevrons.wrap); }catch(e){} // D3b overlay
+  try{ if(map3d.markerLayer && map3d.markerLayer.wrap && map3d.markerLayer.wrap.parentNode) map3d.markerLayer.wrap.parentNode.removeChild(map3d.markerLayer.wrap); }catch(e){} // SM3 distant-marker overlay
   map3d = null;
 }
-function addStarfield3D(scene){
-  const N=800, pos=new Float32Array(N*3);
-  for(let i=0;i<N;i++){ // random points on a large sphere shell around the scene
-    const u=Math.random()*2-1, t=Math.random()*2*Math.PI, r=1200, s=Math.sqrt(1-u*u);
-    pos[i*3]=r*s*Math.cos(t); pos[i*3+1]=r*u; pos[i*3+2]=r*s*Math.sin(t);
+/* ---------- SM4: lighting, deterministic deep space, and map-only quality ---------- */
+const MAP3D_QUALITY_ORDER=['low','balanced','high'];
+const MAP3D_QUALITY={
+  low:{label:'Low',pixelRatio:1,stars:[360,520,700],galaxy:0,atmospheres:false,corona:.58,fill:.14,ambient:.07,hemi:.17},
+  balanced:{label:'Balanced',pixelRatio:1.5,stars:[700,1050,1350],galaxy:520,atmospheres:true,corona:.78,fill:.19,ambient:.09,hemi:.21},
+  high:{label:'High',pixelRatio:2,stars:[1050,1600,2100],galaxy:900,atmospheres:true,corona:.92,fill:.23,ambient:.11,hemi:.24}
+};
+let map3dQuality='balanced';
+try{ const q=localStorage.getItem('ov_map_quality'); if(MAP3D_QUALITY[q]) map3dQuality=q; }catch(e){}
+function map3dQualityLabel(){ return (MAP3D_QUALITY[map3dQuality]||MAP3D_QUALITY.balanced).label; }
+function map3dSyncQualityButtons(){ const txt='Quality: '+map3dQualityLabel(); for(const id of ['mapQualityBtn','mapPopQualityBtn']){ const b=$(id); if(b){ b.textContent=txt; b.setAttribute('aria-label',txt); } } }
+function map3dSetQuality(q){
+  if(!MAP3D_QUALITY[q]) q='balanced'; map3dQuality=q;
+  try{ localStorage.setItem('ov_map_quality',q); }catch(e){}
+  map3dApplyQuality(); map3dSyncQualityButtons();
+}
+function map3dCycleQuality(){ const i=MAP3D_QUALITY_ORDER.indexOf(map3dQuality); map3dSetQuality(MAP3D_QUALITY_ORDER[(i+1)%MAP3D_QUALITY_ORDER.length]); }
+function map3dApplyQuality(){
+  if(!map3d) return; const q=MAP3D_QUALITY[map3dQuality]||MAP3D_QUALITY.balanced;
+  try{ map3d.renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,q.pixelRatio)); resizeMap3DToHost(map3d.mountId,map3d.mountId==='mapPopHost'?MAP_POP_W:MAP_W,map3d.mountId==='mapPopHost'?MAP_POP_H:MAP_H); }catch(e){}
+  if(map3d.starLayers) map3d.starLayers.forEach((p,i)=>{ if(p&&p.geometry) p.geometry.setDrawRange(0,Math.min(q.stars[i]||0,p.userData.maxCount||0)); });
+  if(map3d.galaxy){ map3d.galaxy.visible=q.galaxy>0; if(map3d.galaxy.geometry) map3d.galaxy.geometry.setDrawRange(0,Math.min(q.galaxy,map3d.galaxy.userData.maxCount||0)); }
+  if(map3d.atmospheres) map3d.atmospheres.forEach(a=>a.visible=!!q.atmospheres);
+  if(map3d.corona) map3d.corona.userData.baseOpacity=q.corona;
+  if(map3d.cameraFill) map3d.cameraFill.intensity=q.fill;
+  if(map3d.ambientLight) map3d.ambientLight.intensity=q.ambient;
+  if(map3d.hemiLight) map3d.hemiLight.intensity=q.hemi;
+}
+function map3dStarColor(rnd){
+  const t=rnd();
+  if(t<.12) return [1.0,.72,.48];
+  if(t<.32) return [.72,.84,1.0];
+  if(t<.46) return [.88,.92,1.0];
+  return [1.0,.98,.90];
+}
+function map3dMakeStarLayer(scene,seed,count,radius,size,opacity){
+  const rnd=mulberry(seed),pos=new Float32Array(count*3),col=new Float32Array(count*3);
+  for(let i=0;i<count;i++){
+    const u=rnd()*2-1,a=rnd()*Math.PI*2,rr=radius*(.88+rnd()*.18),ss=Math.sqrt(1-u*u),c=map3dStarColor(rnd),br=.58+rnd()*.42;
+    pos[i*3]=rr*ss*Math.cos(a); pos[i*3+1]=rr*u; pos[i*3+2]=rr*ss*Math.sin(a);
+    col[i*3]=c[0]*br; col[i*3+1]=c[1]*br; col[i*3+2]=c[2]*br;
   }
-  const geo=new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos,3));
-  scene.add(new THREE.Points(geo, new THREE.PointsMaterial({color:0xbcd4e0, size:1.4, sizeAttenuation:false, transparent:true, opacity:0.6})));
+  const geo=new THREE.BufferGeometry(); geo.setAttribute('position',new THREE.BufferAttribute(pos,3)); geo.setAttribute('color',new THREE.BufferAttribute(col,3));
+  const pts=new THREE.Points(geo,new THREE.PointsMaterial({vertexColors:true,size,sizeAttenuation:false,transparent:true,opacity,depthWrite:false}));
+  pts.userData.maxCount=count; scene.add(pts); return pts;
+}
+function map3dMakeGalaxy(scene){
+  const count=900,rnd=mulberry(774231),pos=new Float32Array(count*3),col=new Float32Array(count*3);
+  for(let i=0;i<count;i++){
+    const lon=rnd()*Math.PI*2,lat=(rnd()-.5)*.23+(rnd()-.5)*.08,rr=1420+(rnd()-.5)*90;
+    let x=rr*Math.cos(lat)*Math.cos(lon),y=rr*Math.sin(lat),z=rr*Math.cos(lat)*Math.sin(lon);
+    const tilt=.52,yy=y*Math.cos(tilt)-z*Math.sin(tilt),zz=y*Math.sin(tilt)+z*Math.cos(tilt); y=yy; z=zz;
+    pos[i*3]=x; pos[i*3+1]=y; pos[i*3+2]=z;
+    const core=1-Math.min(1,Math.abs(lat)/.18),br=.24+core*.42+rnd()*.18;
+    col[i*3]=.70*br; col[i*3+1]=.78*br; col[i*3+2]=1.0*br;
+  }
+  const geo=new THREE.BufferGeometry(); geo.setAttribute('position',new THREE.BufferAttribute(pos,3)); geo.setAttribute('color',new THREE.BufferAttribute(col,3));
+  const pts=new THREE.Points(geo,new THREE.PointsMaterial({vertexColors:true,size:1.8,sizeAttenuation:false,transparent:true,opacity:.34,depthWrite:false,blending:THREE.AdditiveBlending}));
+  pts.userData.maxCount=count; scene.add(pts); return pts;
+}
+function addStarfield3D(scene){
+  const layers=[
+    map3dMakeStarLayer(scene,33011,1050,850,1.9,.78),
+    map3dMakeStarLayer(scene,77129,1600,1180,1.35,.68),
+    map3dMakeStarLayer(scene,99007,2100,1550,.95,.56)
+  ];
+  const galaxy=map3dMakeGalaxy(scene);
+  return {layers,galaxy};
+}
+function map3dUpdateDeepSpace(){
+  if(!map3d||!map3d.starLayers) return; const c=map3d.camera.position;
+  const factors=[.010,.006,.003];
+  map3d.starLayers.forEach((p,i)=>p.position.set(c.x*factors[i],c.y*factors[i],c.z*factors[i]));
+  if(map3d.galaxy) map3d.galaxy.position.set(c.x*.0015,c.y*.0015,c.z*.0015);
 }
 const MAP3D_PLANET_SKIN_VARIANT='photographic'; // packaged locally: no external requests at play time
 const MAP3D_TEXTURE_ASSET={
@@ -21377,7 +21573,7 @@ function addMap3dAtmosphere(mesh, b){
   const radius=planetMeshRadius(b)*1.045;
   const col={earth:0x67baff,venus:0xf5de9c,mars:0xe68d65,jupiter:0xf1ca9e,saturn:0xffe0a6,uranus:0x9feff0,neptune:0x6099ff}[b.id];
   const halo=new THREE.Mesh(new THREE.SphereGeometry(radius,24,16),new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:b.id==='earth'?0.13:0.075,side:THREE.BackSide,depthWrite:false}));
-  mesh.add(halo);
+  halo.userData.map3dAtmosphere=true; mesh.add(halo);
 }
 function addMap3dSaturnRings(mesh, radius){
   const ring=new THREE.Mesh(new THREE.RingGeometry(radius*1.32,radius*2.35,96),new THREE.MeshBasicMaterial({color:0xe8d39c,transparent:true,opacity:0.68,side:THREE.DoubleSide,depthWrite:false}));
@@ -21448,7 +21644,7 @@ function addMap3DHoverCard(host){
   tip.style.cssText='display:none;position:absolute;z-index:5;max-width:230px;padding:7px 9px;background:rgba(3,9,16,.92);border:1px solid rgba(140,195,228,.58);border-radius:6px;color:#dcecf7;font:11px/1.35 system-ui,sans-serif;pointer-events:none;box-shadow:0 5px 18px rgba(0,0,0,.42)';
   host.appendChild(tip); return tip;
 }
-function hideMap3DHover(){ if(map3d&&map3d.hoverCard) map3d.hoverCard.style.display='none'; }
+function hideMap3DHover(){ if(map3d&&map3d.hoverCard) map3d.hoverCard.style.display='none'; if(map3d) map3d.hoveredId=null; }
 function map3dRaycast(e){
   if(!map3d) return null;
   const r=map3d.dom.getBoundingClientRect(); if(!r.width||!r.height) return null;
@@ -21460,6 +21656,7 @@ function map3dHover(e){
   if(!map3d||map3d._drag) return;
   const hit=map3dRaycast(e), id=hit&&hit.object&&hit.object.userData.bodyId, tip=map3d.hoverCard;
   if(!id||!tip){ hideMap3DHover(); if(map3d) map3d.dom.style.cursor='grab'; return; }
+  map3d.hoveredId=id;
   if(id.slice(0,5)==='ship:'){ // E4.5: a flight marker, not a BODIES entry — different card
     const desc=map3d.shipData[id.slice(5)], r=map3d.dom.getBoundingClientRect();
     if(!desc){ hideMap3DHover(); return; }
@@ -21505,7 +21702,153 @@ function map3dLabelSprite(text, color){
   const sprite=new THREE.Sprite(new THREE.SpriteMaterial({map:tx,transparent:true,depthTest:false,depthWrite:false}));
   sprite.scale.set(Math.max(5.5,Math.min(15,text.length*0.62)),1.45,1);
   sprite.userData.bodyId=text;
+  sprite.userData.labelAspect=cv.width/cv.height;
   return sprite;
+}
+/* ---------- SM3: readability layers ----------
+   Screen-space markers and label collision are DOM/camera calculations, not a second renderer.
+   Orbit visibility is one explicit mode so clutter can be reduced without deleting geometry. */
+const MAP3D_ORBIT_MODES=['relevant','selected','all','hidden'];
+const MAP3D_LABEL_TIERS={system:260,planetary:105,close:42};
+function map3dOrbitModeLabel(mode){ return ({relevant:'Relevant',selected:'Selected',all:'All',hidden:'Hidden'})[mode]||'Relevant'; }
+function map3dSyncOrbitButtons(){
+  const txt='Orbits: '+map3dOrbitModeLabel(map3d&&map3d.orbitMode);
+  for(const id of ['mapOrbitModeBtn','mapPopOrbitModeBtn']){ const b=$(id); if(b){ b.textContent=txt; b.setAttribute('aria-label',txt); } }
+}
+function map3dSetOrbitMode(mode){
+  if(!MAP3D_ORBIT_MODES.includes(mode)) mode='relevant';
+  if(map3d) map3d.orbitMode=mode;
+  map3dSyncOrbitButtons();
+}
+function map3dCycleOrbitMode(){
+  const cur=map3d&&map3d.orbitMode||'relevant', i=MAP3D_ORBIT_MODES.indexOf(cur);
+  map3dSetOrbitMode(MAP3D_ORBIT_MODES[(i+1)%MAP3D_ORBIT_MODES.length]);
+}
+function addMap3dMarkerLayer(host){
+  const wrap=document.createElement('div');
+  wrap.style.cssText='position:absolute;inset:0;z-index:3;pointer-events:none;overflow:hidden';
+  host.appendChild(wrap); return {wrap,els:{}};
+}
+function map3dMarkerElement(id,name,color){
+  const el=document.createElement('button'); el.type='button'; el.dataset.bodyId=id;
+  el.style.cssText=`position:absolute;display:none;transform:translate(-50%,-50%);pointer-events:auto;padding:2px 7px;border:1px solid ${color||'#79bfe8'}88;border-radius:10px;background:rgba(3,10,17,.82);color:${color||'#cfe8f7'};font:10px ui-monospace,monospace;white-space:nowrap;cursor:pointer;box-shadow:0 2px 9px rgba(0,0,0,.35)`;
+  el.textContent='● '+name; el.title='Focus '+name;
+  el.addEventListener('click',e=>{ e.stopPropagation(); selectBody(id); map3dPreset('selected'); });
+  return el;
+}
+function map3dProjectedBody(id,d){
+  if(!map3d) return null; const p=id==='sun'?{x:0,y:0,z:0}:bodyScenePos(id,d); if(!p) return null;
+  const rect=map3d.dom.getBoundingClientRect(), W=rect.width||1,H=rect.height||1;
+  const v=new THREE.Vector3(p.x,p.y,p.z).project(map3d.camera);
+  return {x:(v.x*.5+.5)*W,y:(-.5*v.y+.5)*H,z:v.z,on:v.z>=-1&&v.z<=1&&Math.abs(v.x)<=1&&Math.abs(v.y)<=1,W,H};
+}
+function map3dBodyPriority(id){
+  if(id===state.selectedBody) return 100; if(id===map3d.hoveredId) return 95;
+  if(id==='earth'||id==='sun') return 90;
+  const pr=(typeof plannedRoute==='function')&&plannedRoute(); if(pr&&pr.destId===id) return 85;
+  const cw=state.committedWindow, dest=cw&&missionBody(cw.missionId); if(dest===id) return 86;
+  const b=BODIES.find(x=>x.id===id); if(b&&!b.around) return 60; return 20;
+}
+function map3dLabelTierAllows(id){
+  const b=BODIES.find(x=>x.id===id), dist=map3d.cam.dist;
+  if(id===state.selectedBody||id===map3d.hoveredId||id==='earth') return true;
+  if(dist>MAP3D_LABEL_TIERS.system) return !!(b&&!b.around&&b.kind!=='cloud');
+  if(dist>MAP3D_LABEL_TIERS.planetary) return !!(b&&!b.around);
+  if(dist>MAP3D_LABEL_TIERS.close) return !b||!b.around||b.around===state.selectedBody;
+  return true;
+}
+function map3dRectsOverlap(a,b,pad){ return !(a.r+pad<b.l||a.l-pad>b.r||a.b+pad<b.t||a.t-pad>b.b); }
+function map3dWorldUnitsForPixels(point,pixels){
+  if(!map3d||!point) return 1;
+  const rect=map3d.dom.getBoundingClientRect(), h=Math.max(1,rect.height||1);
+  const dist=Math.max(.01,map3d.camera.position.distanceTo(point));
+  const vfov=(map3d.camera.fov||50)*Math.PI/180;
+  return 2*dist*Math.tan(vfov/2)*(pixels/h);
+}
+function map3dUpdateReadability(d){
+  if(!map3d) return;
+  const hovered=(map3d.hoveredId||'').replace(/^asset:/,'').replace(/^ship:/,'');
+  const markerVisible={};
+  // Selection halo: camera-facing sprite, screen-stable scale, soft pulse.
+  const sel=state.selectedBody, selMesh=sel&&map3d.bodies[sel], halo=map3d.selectionHalo;
+  if(halo&&selMesh){
+    halo.visible=true; halo.position.copy(selMesh.position);
+    const r=planetMeshRadius(BODIES.find(b=>b.id===sel));
+    const rect=map3d.dom.getBoundingClientRect(), dist=Math.max(.01,map3d.camera.position.distanceTo(selMesh.position));
+    const vfov=(map3d.camera.fov||50)*Math.PI/180;
+    const bodyDiameterPx=r*Math.max(1,rect.height||1)/(dist*Math.tan(vfov/2));
+    const haloPx=Math.max(52,Math.min(112,bodyDiameterPx*1.45));
+    const pulse=1+Math.sin(performance.now()*.005)*.07;
+    const haloWorld=map3dWorldUnitsForPixels(selMesh.position,haloPx)*pulse;
+    halo.scale.set(haloWorld,haloWorld,1);
+  } else if(halo) halo.visible=false;
+  // Distant markers: show only when a body's apparent radius is small at the current camera distance.
+  if(map3d.markerLayer){
+    const seen={};
+    for(const b of BODIES){
+      if(b.around||b.kind==='cloud'||b.kind==='belt'||!map3d.bodies[b.id]) continue;
+      const q=map3dProjectedBody(b.id,d); if(!q||!q.on) continue;
+      const camDist=map3d.camera.position.distanceTo(map3d.bodies[b.id].position);
+      const apparent=planetMeshRadius(b)/Math.max(.01,camDist)*q.H;
+      const important=b.id===sel||b.id===hovered||b.id==='earth';
+      if(apparent>7&&!important) continue;
+      let el=map3d.markerLayer.els[b.id]; if(!el){ el=map3dMarkerElement(b.id,b.name,b.color); map3d.markerLayer.wrap.appendChild(el); map3d.markerLayer.els[b.id]=el; }
+      el.style.left=q.x+'px'; el.style.top=q.y+'px'; el.style.display='block'; el.style.opacity=important?'1':'.78';
+      el.style.transform=`translate(-50%,-50%) scale(${important?1.08:1})`; seen[b.id]=1; markerVisible[b.id]=1;
+    }
+    for(const id in map3d.markerLayer.els) if(!seen[id]) map3d.markerLayer.els[id].style.display='none';
+  }
+  // Label tiers + lightweight collision rejection in screen space.
+  const candidates=[];
+  for(const id in map3d.labels){
+    const label=map3d.labels[id], q=map3dProjectedBody(id,d), allowed=map3dLabelTierAllows(id);
+    if(!q||!q.on||!allowed||markerVisible[id]){ label.visible=false; continue; }
+    candidates.push({id,label,q,priority:map3dBodyPriority(id)});
+  }
+  candidates.sort((a,b)=>b.priority-a.priority);
+  const used=[];
+  for(const c of candidates){
+    const emphasized=c.id===hovered||c.id===sel;
+    const labelPx=emphasized?20:18;
+    const w=Math.max(44,(BODIES.find(b=>b.id===c.id)?.name||c.id).length*7)*(emphasized?1.08:1), h=labelPx;
+    const rect={l:c.q.x-w/2,r:c.q.x+w/2,t:c.q.y-h/2,b:c.q.y+h/2};
+    const collide=used.some(u=>map3dRectsOverlap(rect,u,5));
+    const essential=c.priority>=85;
+    c.label.visible=!collide||essential;
+    if(c.label.visible){
+      used.push(rect);
+      c.label.material.opacity=c.id===hovered?1:(c.id===sel?1:.88);
+      // The label texture is 96 px tall with a 30 px glyph box, so the sprite itself must occupy
+      // ~38–44 screen pixels for the rendered type to land at a readable 12–14 px.
+      const worldH=map3dWorldUnitsForPixels(c.label.position,emphasized?44:38);
+      c.label.scale.set(worldH*(c.label.userData.labelAspect||5),worldH,1);
+    }
+  }
+  // Hover feedback: emphasize hovered body and its orbit; return others to baseline.
+  for(const id in map3d.bodies){
+    const mesh=map3d.bodies[id], isHover=id===hovered, isSel=id===sel;
+    const base=mesh.userData.sm3BaseScale||1; mesh.userData.sm3BaseScale=base;
+    mesh.scale.setScalar(isHover?1.16:(isSel?1.06:1));
+    if(mesh.material&&'emissiveIntensity' in mesh.material){ mesh.material.emissive=new THREE.Color(isHover?0x17384f:0x000000); mesh.material.emissiveIntensity=isHover?.28:0; }
+  }
+}
+function map3dUpdateOrbitVisibility(){
+  if(!map3d||!map3d.orbitLines) return;
+  const mode=map3d.orbitMode||'relevant', sel=state.selectedBody;
+  const pr=(typeof plannedRoute==='function')&&plannedRoute(), cw=state.committedWindow;
+  const relevant=new Set(['earth',sel,pr&&pr.destId,cw&&missionBody(cw.missionId)].filter(Boolean));
+  for(const id in map3d.orbitLines){
+    const line=map3d.orbitLines[id], hover=(map3d.hoveredId||'').replace(/^asset:/,'')===id;
+    line.visible=mode==='all'||(mode==='selected'&&id===sel)||(mode==='relevant'&&(relevant.has(id)||hover));
+    line.material.opacity=(id===sel||hover)?.9:.42;
+    line.material.color.set((id===sel||hover)?0x79cfff:0x47708c);
+  }
+}
+function map3dSelectionHaloTexture(){
+  const cv=document.createElement('canvas'); cv.width=cv.height=128; const c=cv.getContext('2d');
+  c.translate(64,64); c.strokeStyle='rgba(95,207,255,.95)'; c.lineWidth=4; c.setLineDash([9,6]); c.beginPath(); c.arc(0,0,46,0,Math.PI*2); c.stroke();
+  c.strokeStyle='rgba(255,196,80,.72)'; c.lineWidth=2; c.setLineDash([]); c.beginPath(); c.arc(0,0,53,0,Math.PI*2); c.stroke();
+  const tx=new THREE.CanvasTexture(cv); tx.colorSpace=THREE.SRGBColorSpace; return tx;
 }
 function startMap3D(hostId='mapHost', W=MAP_W, H=MAP_H){
   if(!MAP3D || !threeOK()) return false;
@@ -21514,14 +21857,13 @@ function startMap3D(hostId='mapHost', W=MAP_W, H=MAP_H){
     const host=$(hostId);
     if(!map3d){
       const renderer=new THREE.WebGLRenderer({antialias:true});
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,(MAP3D_QUALITY[map3dQuality]||MAP3D_QUALITY.balanced).pixelRatio));
       renderer.setSize(W,H,false);
       if('outputColorSpace' in renderer) renderer.outputColorSpace=THREE.SRGBColorSpace;
-      // The albedo JPEGs are already display-referred colour. ACES made their subtle bands and
-      // terrain look flat, so render the maps without a cinematic curve changing their colours.
-      if('toneMapping' in renderer){ renderer.toneMapping=THREE.NoToneMapping; renderer.toneMappingExposure=1; }
+      // SM4: restrained neutral tone mapping preserves texture colour while improving highlight rolloff.
+      if('toneMapping' in renderer){ renderer.toneMapping=THREE.NeutralToneMapping||THREE.ACESFilmicToneMapping||THREE.NoToneMapping; renderer.toneMappingExposure=1.06; }
       const dom=renderer.domElement; dom.id='map3dCanvas';
-      dom.style.maxWidth='100%'; dom.style.height='auto'; dom.style.display='block';
+      dom.style.maxWidth='none'; dom.style.width='100%'; dom.style.height='100%'; dom.style.display='block';
       // A lost context renders nothing and throws nothing, so without this the map just goes blank
       // with no error anywhere. preventDefault() marks it restorable; we fall back to the 2D map
       // rather than attempting a restore, which would need every texture/geometry rebuilt anyway.
@@ -21537,18 +21879,20 @@ function startMap3D(hostId='mapHost', W=MAP_W, H=MAP_H){
       host.appendChild(dom);
       const scene=new THREE.Scene(); scene.background=new THREE.Color(0x05080d);
       const camera=new THREE.PerspectiveCamera(50, W/H, 0.01, 5000);
-      const sunLight=new THREE.PointLight(0xfff0ca, 12.0, 0, 0); // no distance falloff: same Sun-facing brightness in the outer system
-      scene.add(sunLight);
-      scene.add(new THREE.HemisphereLight(0x8fb7e8, 0x111522, 0.30));
-      scene.add(new THREE.AmbientLight(0x34475a, 0.16));
-      const cameraFill=new THREE.PointLight(0x7fb6ff, 0.24, 700, 2); scene.add(cameraFill);
+      // SM4: warm solar key, restrained sky/ground fill, and a camera-side readability light.
+      // The key has no distance falloff because orbital distances are visually compressed.
+      const sunLight=new THREE.PointLight(0xffe0a8, 10.6, 0, 0); scene.add(sunLight);
+      const hemiLight=new THREE.HemisphereLight(0x6f9bc8,0x05070c,0.21); scene.add(hemiLight);
+      const ambientLight=new THREE.AmbientLight(0x243546,0.09); scene.add(ambientLight);
+      const cameraFill=new THREE.PointLight(0x86bfff,0.19,900,2); scene.add(cameraFill);
       const sun=new THREE.Mesh(new THREE.SphereGeometry(7.5,48,32), new THREE.MeshBasicMaterial({map:map3dSunTexture(),color:0xffffff}));
       scene.add(sun);
       const corona=new THREE.Sprite(new THREE.SpriteMaterial({map:map3dSunGlowTexture(),color:0xffffff,transparent:true,opacity:0.92,blending:THREE.AdditiveBlending,depthWrite:false}));
       corona.scale.set(42,42,1); scene.add(corona);
       const sunLabel=map3dLabelSprite('Sun','#ffe0a0'); sunLabel.position.set(0,10,0); scene.add(sunLabel);
-      addStarfield3D(scene);
-      const asteroidBelt=addMap3dAsteroidBelt(scene), bodies={}, labels={}, pickables=[sunLabel];
+      const deepSpace=addStarfield3D(scene);
+      const asteroidBelt=addMap3dAsteroidBelt(scene), bodies={}, labels={}, orbitLines={}, pickables=[sunLabel], atmospheres=[];
+      const selectionHalo=new THREE.Sprite(new THREE.SpriteMaterial({map:map3dSelectionHaloTexture(),transparent:true,depthTest:false,depthWrite:false,blending:THREE.AdditiveBlending})); selectionHalo.visible=false; scene.add(selectionHalo);
       for(const b of BODIES){
         const isCloud=b.kind==='cloud', isBelt=b.kind==='belt', isMoon=!!b.around;
         if(!isCloud && !isMoon && sceneRadiusFor(b.id)==null) continue;
@@ -21556,7 +21900,7 @@ function startMap3D(hostId='mapHost', W=MAP_W, H=MAP_H){
           const radius=planetMeshRadius(b);
           const mat=new THREE.MeshStandardMaterial({map:map3dSurfaceTexture(b),color:0xffffff,roughness:b.id==='earth'?0.82:0.7,metalness:0.01});
           const mesh=new THREE.Mesh(map3dSphereGeometry(b, radius), mat);
-          addMap3dAtmosphere(mesh,b); if(b.id==='saturn') addMap3dSaturnRings(mesh,radius);
+          addMap3dAtmosphere(mesh,b); mesh.traverse(o=>{ if(o.userData&&o.userData.map3dAtmosphere) atmospheres.push(o); }); if(b.id==='saturn') addMap3dSaturnRings(mesh,radius);
           mesh.userData.bodyId=b.id; scene.add(mesh); bodies[b.id]=mesh; pickables.push(mesh);
         }
         const label=map3dLabelSprite(b.name, b.id===state.selectedBody?'#ffc450':'#b9c9d4');
@@ -21564,7 +21908,8 @@ function startMap3D(hostId='mapHost', W=MAP_W, H=MAP_H){
         if(!isMoon && !isCloud && !isBelt){
           const pts=orbitRingPoints(b.id,128).map(p=>new THREE.Vector3(p.x,p.y,p.z));
           const geo=new THREE.BufferGeometry().setFromPoints(pts);
-          scene.add(new THREE.Line(geo, new THREE.LineBasicMaterial({color:0x47708c, transparent:true, opacity:0.62})));
+          const orbitLine=new THREE.Line(geo, new THREE.LineBasicMaterial({color:0x47708c, transparent:true, opacity:0.42}));
+          scene.add(orbitLine); orbitLines[b.id]=orbitLine;
         }
       }
       const cam={ az:Math.PI*0.5, el:0.95, dist:560, target:{x:0,y:0,z:0} };
@@ -21573,19 +21918,23 @@ function startMap3D(hostId='mapHost', W=MAP_W, H=MAP_H){
       const chevrons=addMap3dChevrons(host);          // D3b: off-screen Sun/Earth direction arrows
       const hud=addMap3DTimeHud(host,hostId);
       const hoverCard=addMap3DHoverCard(host);
-      map3d={renderer, scene, camera, sun, corona, sunLight, cameraFill, asteroidBelt, bodies, labels, pickables, cam, dom, hud:hud.hud, hudReadout:hud.readout, hoverCard, startedAt:Date.now(), mountId:hostId, fallbackId:hostId==='mapHost'?'mapCanvas':null, raf:0, raycaster:new THREE.Raycaster(), _drag:null,
+      const markerLayer=addMap3dMarkerLayer(host);
+      map3d={renderer, scene, camera, sun, corona, sunLight, hemiLight, ambientLight, cameraFill, asteroidBelt, starLayers:deepSpace.layers, galaxy:deepSpace.galaxy, atmospheres, bodies, labels, orbitLines, selectionHalo, markerLayer, pickables, cam, dom, hud:hud.hud, hudReadout:hud.readout, hoverCard, startedAt:Date.now(), mountId:hostId, fallbackId:hostId==='mapHost'?'mapCanvas':null, raf:0, raycaster:new THREE.Raycaster(), _drag:null,
               ships:{}, shipData:{}, // E4.5: flightId -> {mesh,label}, flightId -> latest marker descriptor (for hover/pick lookup)
               badges:{}, badgeSpecKeys:{}, badgeTooltips:{}, committedArc:null, plannedArc:null, // D1: bodyId -> badge sprite / its last-built spec key (rebuild texture only on change) / tooltip text; the two route-arc Lines (built lazily on first use)
               auRuler, scaleReadout:hud.scaleReadout, // D2: AU ruler sprites by body id; the HUD's live scale/distance line
               eclipticGrid, chevrons,                   // D3b: reference-plane group; the screen-space direction arrows
-              windowReadout:hud.windowReadout, previewArc:null}; // D4: the HUD's transfer-window block; the hypothetical-geometry arc (built lazily)
-      updateMap3DTimeHud(); updateMap3DScaleHud(); updateMap3DWindowHud();
+              windowReadout:hud.windowReadout, previewArc:null, // D4: the HUD's transfer-window block; the hypothetical-geometry arc (built lazily)
+              cameraTransition:null, followSelected:false, cameraPreset:'system',
+              orbitMode:'relevant', hoveredId:null, mode:map3dMode}; // SM2 camera + SM3 readability + SM5 operating mode
+      updateMap3DTimeHud(); updateMap3DScaleHud(); updateMap3DWindowHud(); map3dSyncOrbitButtons(); map3dApplyQuality(); map3dSyncQualityButtons(); map3dSyncModeUI();
       attachMap3DInput();
     } else if(map3d.mountId!==hostId){
       remountMap3D(hostId, W, H); // live scene lives on the other host — move it, don't rebuild it
     } else if(map3d.dom && !map3d.dom.parentNode){
       host.appendChild(map3d.dom);
     }
+    observeMap3DHost();
     if(!map3d.raf) map3dRenderLoop(); // guard: never start a second rAF chain (would double-speed the scene)
     return true;
   }catch(e){
@@ -21593,6 +21942,161 @@ function startMap3D(hostId='mapHost', W=MAP_W, H=MAP_H){
     return false;
   }
 }
+
+/* ---------- SM5: toolbar + operating modes ----------
+   A mode is a presentation profile over the SAME scene and SAME simulation truth. It never creates
+   another renderer, another mission model, or alternate state. The mode decides which existing
+   layers receive emphasis, then camera presets remain available independently. */
+const MAP3D_MODE_DEFS={
+  navigation:{icon:'🧭',name:'Navigation',desc:'Browse bodies and moons with balanced labels, relevant orbits, and minimal operational clutter.'},
+  planning:{icon:'⌁',name:'Mission Planning',desc:'Emphasizes Earth, the selected destination, launch-window geometry, planned routes, and transfer context.'},
+  operations:{icon:'⌂',name:'Operations',desc:'Tracks active spacecraft, committed trajectories, arrival context, and mission-progress markers.'},
+  strategic:{icon:'◇',name:'Strategic',desc:'Highlights facilities, depots, ISRU, firsts, claims, tracking coverage, and rival reach.'}
+};
+let map3dMode='navigation';
+try{ const m=localStorage.getItem('ov_map_mode'); if(MAP3D_MODE_DEFS[m]) map3dMode=m; }catch(e){}
+function map3dModeDef(){ return MAP3D_MODE_DEFS[map3dMode]||MAP3D_MODE_DEFS.navigation; }
+function map3dSyncModeUI(){
+  try{
+    document.querySelectorAll('[data-map-mode]').forEach(b=>{
+      const on=b.getAttribute('data-map-mode')===map3dMode;
+      b.classList.toggle('active',on); b.setAttribute('aria-pressed',String(on));
+    });
+    const d=map3dModeDef(), html=`<span class="mode-icon">${d.icon}</span><span><div class="mode-name">${d.name}</div><div class="mode-desc">${d.desc}</div></span>`;
+    const s=$('mapModeStatus'); if(s) s.innerHTML=html;
+    const title=$('mapPopModeStatus'); if(title) title.innerHTML=html;
+  }catch(e){}
+}
+function map3dModeDestination(){
+  const pr=(typeof plannedRoute==='function')&&plannedRoute();
+  return (pr&&pr.destId)||(state.committedWindow&&missionBody(state.committedWindow.missionId))||state.selectedBody||null;
+}
+function map3dSetMode(mode,quiet){
+  if(!MAP3D_MODE_DEFS[mode]) mode='navigation';
+  map3dMode=mode;
+  try{ localStorage.setItem('ov_map_mode',mode); }catch(e){}
+  if(map3d) map3d.mode=mode;
+  // Give each mode a useful first composition without preventing later manual camera work.
+  if(!quiet && map3d){
+    if(mode==='planning') map3dPreset(map3dModeDestination()&&map3dModeDestination()!=='earth'?'route':'selected');
+    else if(mode==='operations'){
+      const ships=Object.values(map3d.shipData||{});
+      if(ships.length){
+        const pts=[{x:0,y:0,z:0,radius:8}].concat(ships.map(s=>({x:s.pos.x,y:s.pos.y,z:s.pos.z,radius:4})));
+        const fit=map3dFitVisibleObjects(pts,map3d.camera.aspect,map3d.camera.fov,1.35);
+        map3dStartTransition({target:fit.target,dist:fit.dist,az:map3d.cam.az,el:map3d.cam.el,preset:'operations'},700);
+      } else map3dPreset('system');
+    } else if(mode==='strategic') map3dPreset('system');
+    else map3dPreset('system');
+  }
+  if(mode==='planning'||mode==='operations'||mode==='strategic') map3dSetOrbitMode('relevant');
+  map3dSyncModeUI();
+  try{ map3dApplyOperatingMode(mapViewAbsDay()); }catch(e){}
+}
+function map3dApplyOperatingMode(d){
+  if(!map3d) return;
+  const mode=map3dMode;
+  map3d.mode=mode;
+  const dest=map3dModeDestination();
+  // D1 strategic badges are only a primary layer in Strategic mode.
+  for(const id in map3d.badges) map3d.badges[id].visible=(mode==='strategic');
+  // Flight markers belong to Operations. Navigation/Planning/Strategic stay uncluttered.
+  for(const id in map3d.ships){
+    const e=map3d.ships[id], show=mode==='operations';
+    if(e.mesh) e.mesh.visible=show;
+    if(e.label) e.label.visible=show;
+  }
+  // Route geometry: Planning shows planned + committed + preview. Operations shows committed only.
+  if(map3d.plannedArc) map3d.plannedArc.visible=map3d.plannedArc.visible && mode==='planning';
+  if(map3d.previewArc) map3d.previewArc.visible=map3d.previewArc.visible && mode==='planning';
+  if(map3d.committedArc) map3d.committedArc.visible=map3d.committedArc.visible && (mode==='planning'||mode==='operations');
+  // Reference plane is useful in planning/operations, quieter elsewhere.
+  if(map3d.eclipticGrid) map3d.eclipticGrid.visible=(mode==='planning'||mode==='operations');
+  // Additional label filtering comes AFTER SM3 collision resolution, so it only removes clutter.
+  for(const id in map3d.labels){
+    const label=map3d.labels[id]; if(!label||!label.visible) continue;
+    const b=BODIES.find(x=>x.id===id), major=b&&!b.around;
+    let keep=true;
+    if(mode==='planning') keep=(id==='earth'||id===dest||id===state.selectedBody||id==='sun'||(b&&b.around===state.selectedBody));
+    else if(mode==='operations') keep=(id==='earth'||id===dest||id===state.selectedBody||major);
+    else if(mode==='strategic'){
+      const model=(typeof mapAssetModel==='function')&&mapAssetModel();
+      const strategic=!!(model&&model[id]&&(model[id].facility||model[id].isru||model[id].beltClaim||model[id].depotT||model[id].stations?.length||model[id].firsts?.length));
+      const rival=(typeof rivalsAtBody==='function')&&(rivalsAtBody(id)||[]).length>0;
+      keep=major&&(strategic||rival||id==='earth'||id===state.selectedBody);
+    }
+    label.visible=keep;
+  }
+  map3dSyncModeUI();
+}
+
+/* ---------- SM2: camera usability ----------
+   Presets and fitting use one pure bounds helper. Camera movement is an eased state transition, not
+   an immediate mutation, and user input cancels it so controls never fight the player. */
+const MAP3D_CAMERA_DEFAULT={az:Math.PI*0.5,el:0.95,dist:560,target:{x:0,y:0,z:0}};
+function map3dFitVisibleObjects(points, aspect, fovDeg, padding){
+  points=(points||[]).filter(p=>p&&isFinite(p.x)&&isFinite(p.y)&&isFinite(p.z));
+  if(!points.length) return {target:{x:0,y:0,z:0},dist:560,radius:0};
+  const target=points.reduce((a,p)=>({x:a.x+p.x,y:a.y+p.y,z:a.z+p.z}),{x:0,y:0,z:0});
+  target.x/=points.length; target.y/=points.length; target.z/=points.length;
+  let radius=0; for(const p of points) radius=Math.max(radius,Math.hypot(p.x-target.x,p.y-target.y,p.z-target.z)+(p.radius||0));
+  radius=Math.max(radius,2);
+  const vfov=(fovDeg||50)*Math.PI/180, hfov=2*Math.atan(Math.tan(vfov/2)*Math.max(.25,aspect||1));
+  const limiting=Math.max(.18,Math.min(vfov,hfov));
+  const dist=radius/Math.sin(limiting/2)*(padding||1.22);
+  return {target,dist:Math.max(MAP3D_ZOOM_MIN,Math.min(MAP3D_ZOOM_MAX,dist)),radius};
+}
+function map3dEase(t){ return t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2; }
+function map3dAngleDelta(a,b){ let d=(b-a)%(Math.PI*2); if(d>Math.PI)d-=Math.PI*2; if(d<-Math.PI)d+=Math.PI*2; return d; }
+function map3dCancelTransition(){ if(map3d) map3d.cameraTransition=null; }
+function map3dStartTransition(next, opts){
+  if(!map3d||!next) return false; opts=opts||{};
+  const c=map3d.cam, now=performance.now();
+  map3d.cameraTransition={start:now,duration:Math.max(120,opts.duration||700),
+    from:{az:c.az,el:c.el,dist:c.dist,target:{...c.target}},
+    to:{az:next.az==null?c.az:next.az,el:next.el==null?c.el:next.el,dist:next.dist==null?c.dist:next.dist,target:{...(next.target||c.target)}}};
+  if(opts.followSelected!==undefined) map3d.followSelected=!!opts.followSelected;
+  if(opts.preset) map3d.cameraPreset=opts.preset;
+  return true;
+}
+function map3dUpdateTransition(now){
+  const tr=map3d&&map3d.cameraTransition; if(!tr) return false;
+  const raw=Math.max(0,Math.min(1,((now||performance.now())-tr.start)/tr.duration)), u=map3dEase(raw), c=map3d.cam;
+  c.az=tr.from.az+map3dAngleDelta(tr.from.az,tr.to.az)*u; c.el=tr.from.el+(tr.to.el-tr.from.el)*u;
+  c.dist=tr.from.dist+(tr.to.dist-tr.from.dist)*u;
+  c.target={x:tr.from.target.x+(tr.to.target.x-tr.from.target.x)*u,y:tr.from.target.y+(tr.to.target.y-tr.from.target.y)*u,z:tr.from.target.z+(tr.to.target.z-tr.from.target.z)*u};
+  if(raw>=1) map3d.cameraTransition=null;
+  return true;
+}
+function map3dAspect(){ const r=map3d&&map3d.dom&&map3d.dom.getBoundingClientRect(); return r&&r.height?r.width/r.height:1.6; }
+function map3dBodyPoint(id,d){ const p=bodyScenePos(id,d); if(!p)return null; const b=BODIES.find(x=>x.id===id); return {...p,radius:b?planetMeshRadius(b):0}; }
+function map3dPresetPoints(name,d){
+  const ids=name==='inner'?['mercury','venus','earth','mars']:
+    name==='earthmoon'?['earth','moon']:
+    name==='outer'?['jupiter','saturn','uranus','neptune','pluto']:
+    name==='selected'?(()=>{const id=state.selectedBody||'earth';return [id,...BODIES.filter(b=>b.around===id).map(b=>b.id)]})():
+    name==='system'?BODIES.filter(b=>!b.around&&b.kind!=='cloud').map(b=>b.id):[];
+  if(name==='route'){
+    const pr=plannedRoute&&plannedRoute(); const dest=pr&&pr.destId || (state.committedWindow&&missionBody(state.committedWindow.missionId));
+    const arc=dest&&scene3DTransferArc(dest,d); return arc?[{...arc.from,radius:2},{...arc.ctrl,radius:0},{...arc.to,radius:2}]:[map3dBodyPoint('earth',d),map3dBodyPoint(state.selectedBody||'earth',d)].filter(Boolean);
+  }
+  return ids.map(id=>map3dBodyPoint(id,d)).filter(Boolean);
+}
+function map3dPreset(name){
+  if(!map3d) return false; const d=mapViewAbsDay(), fit=map3dFitVisibleObjects(map3dPresetPoints(name,d),map3dAspect(),50,name==='selected'||name==='earthmoon'?1.65:1.28);
+  let az=map3d.cam.az, el=map3d.cam.el;
+  if(name==='top'){ name='system'; az=Math.PI*0.5; el=1.48; }
+  else if(name==='system'||name==='inner'||name==='outer') { az=Math.PI*0.5; el=0.95; }
+  const follow=name==='selected'||name==='earthmoon';
+  return map3dStartTransition({target:fit.target,dist:fit.dist,az,el},{duration:760,followSelected:follow,preset:name});
+}
+function map3dResetView(){ if(!map3d)return false; return map3dStartTransition(MAP3D_CAMERA_DEFAULT,{duration:700,followSelected:false,preset:'system'}); }
+function map3dZoom(dir){
+  if(!map3d)return false; map3dCancelTransition(); map3d.followSelected=map3d.followSelected!==false;
+  const factor=map3d.cam.dist>600?1.18:map3d.cam.dist>120?1.13:map3d.cam.dist>35?1.09:1.055;
+  map3d.cam.dist=Math.max(MAP3D_ZOOM_MIN,Math.min(MAP3D_ZOOM_MAX,map3d.cam.dist*(dir>0?1/factor:factor))); return true;
+}
+function map3dFocusSelected(){ return map3dPreset('selected'); }
 function map3dApplyCamera(){
   const c=map3d.cam, eye=orbitCameraEye(c.target, c.az, c.el, c.dist);
   map3d.camera.position.set(eye.x, eye.y, eye.z);
@@ -22153,8 +22657,10 @@ function map3dTick(){
   if(map3d._hudSelBody!==state.selectedBody){ map3d._hudSelBody=state.selectedBody; updateMap3DScaleHud(); updateMap3DWindowHud(); } // D2/D4: selection drives the scale + window blocks too
   const t=(Date.now()-map3d.startedAt)/1000, pulse=1+Math.sin(t*1.7)*0.035+Math.sin(t*.47)*0.025;
   map3d.sun.rotation.y=t*0.12; map3d.sun.rotation.z=Math.sin(t*.19)*0.08;
-  map3d.corona.material.rotation=Math.sin(t*.13)*0.18; map3d.corona.scale.set(42*pulse,42*pulse,1); map3d.corona.material.opacity=0.78+Math.sin(t*1.3)*0.08;
-  map3d.sunLight.intensity=11.8+Math.sin(t*1.1)*0.45;
+  map3d.corona.material.rotation=Math.sin(t*.13)*0.18; map3d.corona.scale.set(40*pulse,40*pulse,1);
+  const coronaBase=map3d.corona.userData.baseOpacity==null ? .78 : map3d.corona.userData.baseOpacity;
+  map3d.corona.material.opacity=coronaBase+Math.sin(t*1.3)*0.045;
+  map3d.sunLight.intensity=10.5+Math.sin(t*1.1)*0.28;
   if(map3d.asteroidBelt) map3d.asteroidBelt.rotation.y=d*0.004;
   for(const id in map3d.bodies){
     const p=bodyScenePos(id, d); if(!p) continue;
@@ -22167,16 +22673,21 @@ function map3dTick(){
     if(map3d.bodies[id]) continue;
     const p=bodyScenePos(id,d); if(p) map3d.labels[id].position.set(p.x,p.y+4,p.z);
   }
-  // keep the focus target tracking the selected body as it orbits
+  // SM2: update an active eased move first. Once settled, only explicit follow modes track a moving body;
+  // system/inner/outer/route presets stay where the player put them instead of snapping back to selection.
+  const transitioning=map3dUpdateTransition(performance.now());
   const sel=state && state.selectedBody;
-  if(sel && map3d.bodies[sel]){ const t=bodyScenePos(sel,d); if(t) map3d.cam.target=t; }
+  if(!transitioning && map3d.followSelected && sel && map3d.bodies[sel]){ const tp=bodyScenePos(sel,d); if(tp) map3d.cam.target=tp; }
   try{ map3dUpdateShipMarkers(d); }catch(e){ /* a marker glitch never breaks the planet view */ }
   try{ map3dUpdateOverlayBadges(d); }catch(e){ /* D1: same guard shape as ship markers — never breaks the planet view */ }
   try{ map3dUpdateRouteArcs(d); }catch(e){}
   try{ map3dUpdateAuRuler(); }catch(e){} // D2: ruler LOD (fade/scale with camera distance)
-  try{ map3dUpdateLabelLOD(); }catch(e){} // D3a: moon-label LOD (fade/hide with camera distance)
+  try{ map3dUpdateReadability(d); }catch(e){} // SM3: halo, distant markers, label tiers/collision, hover emphasis
+  try{ map3dUpdateOrbitVisibility(); }catch(e){} // SM3: relevant/selected/all/hidden orbit modes
+  try{ map3dApplyOperatingMode(d); }catch(e){} // SM5: intent-driven layer emphasis over the shared scene
   try{ map3dUpdateChevrons(d); }catch(e){} // D3b: off-screen Sun/Earth arrows
   map3dApplyCamera();
+  map3dUpdateDeepSpace();
   map3d.cameraFill.position.copy(map3d.camera.position);
   map3d.renderer.render(map3d.scene, map3d.camera);
 }
@@ -22196,8 +22707,10 @@ function pauseMap3D(){
 // Hand-rolled orbit-camera input (drag=rotate, wheel=zoom, click=focus+select). Browser-only.
 function _map3dDown(e){
   if(!map3d || (e.button!=null&&e.button!==0)) return;
+  map3dCancelTransition(); map3d.followSelected=false;
   map3d._drag={x:e.clientX,y:e.clientY,moved:false,travel:0,pointerId:e.pointerId};
   hideMap3DHover();
+  map3d.hoveredId=null;
   map3d.dom.style.cursor='grabbing';
   try{ map3d.dom.setPointerCapture(e.pointerId); }catch(_){}
 }
@@ -22218,20 +22731,24 @@ function _map3dMove(e){
   map3d.cam.az -= dx*0.01;
   map3d.cam.el = Math.max(-1.5, Math.min(1.5, map3d.cam.el - dy*0.01));
 }
-function _map3dWheel(e){ if(!map3d) return; e.preventDefault(); map3d.cam.dist = Math.max(MAP3D_ZOOM_MIN, Math.min(MAP3D_ZOOM_MAX, map3d.cam.dist*(e.deltaY>0?1.12:0.89))); }
+function _map3dWheel(e){ if(!map3d) return; e.preventDefault(); map3dCancelTransition(); map3dZoom(e.deltaY<0?1:-1); }
 // Slice B (2026-07-24): WASD/arrow-key orbit + zoom, mirroring the drag-to-orbit/wheel-to-zoom mouse
 // input above — same sign convention as _map3dMove's az-=dx*0.01/el-=dy*0.01 (a rightward/downward
 // drag), so keyboard and mouse produce the same rotation direction rather than fighting each other.
 // Returns false for an unhandled key so the caller knows whether to preventDefault/stopPropagation.
 function map3dKeyNav(key){
   if(!map3d) return false;
+  if(key==='r'||key==='R'||key==='0') return map3dResetView();
+  if(key==='f'||key==='F') return map3dFocusSelected();
+  if(key==='t'||key==='T') return map3dPreset('top');
+  map3dCancelTransition(); map3d.followSelected=false;
   const step=0.06;
   if(key==='w'||key==='ArrowUp'){ map3d.cam.el=Math.max(-1.5,Math.min(1.5,map3d.cam.el+step)); }
   else if(key==='s'||key==='ArrowDown'){ map3d.cam.el=Math.max(-1.5,Math.min(1.5,map3d.cam.el-step)); }
   else if(key==='a'||key==='ArrowLeft'){ map3d.cam.az+=step*3; }
   else if(key==='d'||key==='ArrowRight'){ map3d.cam.az-=step*3; }
-  else if(key==='q'||key==='-'||key==='_'){ map3d.cam.dist=Math.max(MAP3D_ZOOM_MIN,Math.min(MAP3D_ZOOM_MAX,map3d.cam.dist*1.12)); }
-  else if(key==='e'||key==='='||key==='+'){ map3d.cam.dist=Math.max(MAP3D_ZOOM_MIN,Math.min(MAP3D_ZOOM_MAX,map3d.cam.dist*0.89)); }
+  else if(key==='q'||key==='-'||key==='_'){ map3dZoom(-1); }
+  else if(key==='e'||key==='='||key==='+'){ map3dZoom(1); }
   else return false;
   return true;
 }
@@ -22243,9 +22760,8 @@ function map3dPick(e){
       let id=hit.object.userData.bodyId;
       if(id.slice(0,5)==='ship:') return; // E4.5: a flight marker isn't a selectable body; hover already surfaces its info
       if(id.slice(0,6)==='asset:') id=id.slice(6); // D1: clicking a body's overlay badge selects that body, same as clicking the body itself
-      const body=BODIES.find(b=>b.id===id);
-      if(body) map3d.cam.dist=Math.min(map3d.cam.dist,map3dFocusDistance(body));
       selectBody(id);
+      map3dPreset('selected');
     }
   }catch(err){}
 }
@@ -22257,6 +22773,7 @@ function attachMap3DInput(){
   d.addEventListener('pointermove', _map3dMove);
   d.addEventListener('pointerleave', hideMap3DHover);
   d.addEventListener('wheel', _map3dWheel, {passive:false});
+  d.addEventListener('dblclick', map3dResetView);
   d.style.cursor='grab'; d.style.touchAction='none';
 }
 function detachMap3DInput(){
@@ -22267,6 +22784,7 @@ function detachMap3DInput(){
   d.removeEventListener('pointermove', _map3dMove);
   d.removeEventListener('pointerleave', hideMap3DHover);
   d.removeEventListener('wheel', _map3dWheel);
+  d.removeEventListener('dblclick', map3dResetView);
 }
 
 /* ---------- Solar System map ---------- */

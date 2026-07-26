@@ -326,9 +326,13 @@
      reached/available/locked/future, so "where is everything" has an answer that doesn't require
      spotting a dot on the map or knowing where the camera happens to be pointed. Same local
      narrow-column-beside-main-content pattern as .bench-stage, not a new layout idea. */
-  .map-stage{display:grid;grid-template-columns:172px minmax(0,1fr);gap:12px;align-items:start}
+  /* SM1.1 (2026-07-25): promote the Solar System to a primary scene. The roster remains a
+     stable navigation rail, while the live map receives the full remaining center width and a
+     desktop-height viewport instead of being constrained to the legacy 980x620 presentation box. */
+  .map-stage{display:grid;grid-template-columns:190px minmax(0,1fr);gap:12px;align-items:stretch}
+  .map-stage>div:last-child{min-width:0}
   @media(max-width:820px){.map-stage{grid-template-columns:1fr}}
-  #mapRoster{max-height:640px;overflow-y:auto;border:1px solid var(--line);border-radius:8px;background:var(--panel2);padding:6px}
+  #mapRoster{height:clamp(620px,70vh,760px);max-height:none;overflow-y:auto;border:1px solid var(--line);border-radius:8px;background:var(--panel2);padding:6px}
   .map-roster-group{margin-bottom:2px}
   .map-roster-heading{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);padding:6px 6px 3px}
   .map-roster-row{display:flex;align-items:center;gap:7px;padding:5px 6px;border-radius:5px;cursor:pointer;font-size:12.5px}
@@ -337,9 +341,12 @@
   .map-roster-dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto}
   .map-roster-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   #mapView.expanded .map-stage{grid-template-columns:172px minmax(0,1fr)}
-  /* cap the Phaser map (980x620 internal) to its native size + centre it, so the
-     full-width "Wide" layout can't inflate the canvas past its drawing buffer and blank it */
-  #mapHost{max-width:980px;margin:0 auto}
+  /* SM1.1: the Three.js map is resized to the host's real box, so the inline host no longer
+     needs the old 980px cap. The minimum desktop height gives the system enough visual presence;
+     narrow screens fall back to a smaller responsive floor. */
+  #mapHost{width:100%;max-width:none;min-height:clamp(620px,70vh,760px);height:clamp(620px,70vh,760px);margin:0;aspect-ratio:auto!important}
+  #mapCanvas{width:100%;min-height:clamp(620px,70vh,760px)}
+  @media(max-width:820px){#mapHost,#mapCanvas{min-height:500px;height:500px}#mapRoster{height:auto;max-height:260px}}
   #stationHost{max-width:760px;margin:0 auto}
   #stationView.expanded{position:fixed;inset:0;z-index:60;background:var(--bg);padding:12px 18px;overflow:auto}
   #stationView.expanded #stationHost{max-width:100%}
@@ -480,8 +487,28 @@
      both side panels stayed visible. min-width:0 lets the stage actually shrink (the canvas already
      carries max-width:100%, so it scales down cleanly). Scoped to the map pop-out rather than the
      shared .vehpop-stage class to keep the blast radius off the vehicle/station/earth/cc pop-outs. */
+  .map-pop-camera{display:flex;gap:4px;align-items:center;flex-wrap:wrap}.map-pop-camera .btn{padding:4px 8px;font-size:11px}
   #mapPopStage{min-width:0}
-  #mapPopHost canvas{max-width:100%;height:auto}
+  #mapPopHost canvas{max-width:none!important;width:100%!important;height:100%!important}
+  /* SM1.2: unlike the shared utility pop-outs, the Solar System is a dedicated operations console
+     and defaults to almost the entire browser viewport. Drag/resize/pin still work through the
+     existing shared window code. */
+  #mapPopout .popout-window{width:calc(100vw - 16px);height:calc(100vh - 16px);max-width:none;max-height:none}
+  #mapPopout .vehpop-bar{gap:8px;flex-wrap:wrap}
+  #mapPopout .vehpop-hint{order:4;flex-basis:100%;margin-left:0;font-size:10px}
+  .map-pop-layout{display:flex;gap:5px;align-items:center;margin-left:auto}
+  .map-pop-layout .btn{padding:5px 9px;font-size:11px;white-space:nowrap}
+  .map-pop-layout .btn.active{border-color:var(--ignite);color:var(--ignite);background:var(--panel2)}
+  /* SM1.3: roster and details are independent drawers. Compact roster preserves body dots as a
+     navigation strip; Map Only hides both rails without destroying or rebuilding the WebGL scene. */
+  #mapPopout.map-roster-compact .vehpop-roster{flex-basis:46px;width:46px;padding:5px 3px}
+  #mapPopout.map-roster-compact .map-roster-heading,#mapPopout.map-roster-compact .map-roster-name{display:none}
+  #mapPopout.map-roster-compact .map-roster-row{justify-content:center;padding:7px 3px}
+  #mapPopout.map-roster-hidden .vehpop-roster,#mapPopout.map-only .vehpop-roster{display:none!important}
+  #mapPopout.map-details-hidden .vehpop-stats,#mapPopout.map-only .vehpop-stats{display:none!important}
+  #mapPopout.map-only .vehpop-stage{flex:1 1 100%}
+  @media(max-width:900px){#mapPopout .vehpop-roster{display:block}#mapPopout .vehpop-stats{display:block;flex-basis:260px}}
+  @media(max-width:720px){#mapPopout .vehpop-roster,#mapPopout .vehpop-stats{display:none!important}.map-pop-layout{margin-left:0}}
   /* bench editor tabs — consolidate the many editor cards under a few tabs */
   .bench-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
   .bench-tab{font-family:var(--mono);font-size:12px;padding:5px 12px;border:1px solid var(--line);border-radius:7px;background:var(--panel);color:var(--muted);cursor:pointer}
@@ -951,6 +978,21 @@
   body .frontpage .fp-dateline{color:var(--ink)!important;border-color:var(--hud-line)!important}
   body .frontpage .fp-kind{background:rgba(88,199,255,.14)!important;color:var(--readout)!important;border-color:var(--hud-line)!important}
   body .frontpage .fp-chrome{background:#071523!important;border-color:var(--hud-line)!important}
+
+  /* SM5 — Solar Map operating modes. One live scene, four intent-driven layer profiles. */
+  .map-mode-toolbar{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:8px 0 10px}
+  .map-mode-toolbar .map-mode-label{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);margin-right:2px}
+  .map-mode-btn{font-size:11px!important;padding:4px 8px!important}
+  .map-mode-btn.active{border-color:var(--ignite)!important;color:var(--ignite)!important;background:rgba(245,166,35,.10)!important}
+  .map-mode-status{display:flex;align-items:flex-start;gap:9px;border:1px solid var(--hud-line-soft);border-radius:7px;padding:7px 9px;margin:0 0 9px;background:rgba(5,18,29,.72)}
+  .map-mode-status .mode-icon{font-size:18px;line-height:1}
+  .map-mode-status .mode-name{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--readout)}
+  .map-mode-status .mode-desc{font-size:11px;color:var(--muted);margin-top:2px;line-height:1.35}
+  #mapPopout .map-mode-toolbar{margin:0;flex:0 1 auto}
+  #mapPopout .map-mode-toolbar .map-mode-label{display:none}
+  #mapPopout .map-mode-btn{white-space:nowrap}
+  @media(max-width:1180px){#mapPopout .map-pop-camera{display:none}}
+
 </style>
 </head>
 <body>
@@ -1128,12 +1170,28 @@
     <div class="card dombar-exploration" id="mapCard">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
         <h2 style="margin:0"><span class="dom-dot" style="background:var(--dom-exploration)"></span>Solar System — click a body for its Δv profile</h2>
-        <div style="display:flex;gap:6px">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
+          <button class="btn ghost" onclick="map3dPreset('system')" title="Fit the complete Solar System">System</button>
+          <button class="btn ghost" onclick="map3dPreset('earthmoon')" title="Frame the Earth–Moon system">Earth–Moon</button>
+          <button class="btn ghost" onclick="map3dPreset('selected')" title="Focus the selected body and its moons">Selected</button>
+          <button class="btn ghost" onclick="map3dZoom(-1)" title="Zoom out">−</button>
+          <button class="btn ghost" onclick="map3dZoom(1)" title="Zoom in">+</button>
+          <button class="btn ghost" id="mapOrbitModeBtn" onclick="map3dCycleOrbitMode()" title="Cycle orbit visibility: relevant, selected, all, hidden">Orbits: Relevant</button>
+          <button class="btn ghost" id="mapQualityBtn" onclick="map3dCycleQuality()" title="Cycle Solar Map visual quality: Low, Balanced, High">Quality: Balanced</button>
+          <button class="btn ghost" onclick="map3dResetView()" title="Reset the map camera">Reset</button>
           <button class="btn ghost" onclick="openMapPopout()" title="Pop out — interactive map + planet info (Esc/Enter to close)">⤢ Pop out</button>
           <button class="btn ghost" id="mapExpandBtn" onclick="toggleMapExpand()">⛶ Expand</button>
         </div>
       </div>
       <p class="muted" style="font-size:12px;margin:6px 0 10px">Orbits are spaced for legibility, not to scale. Drag to pan, scroll to zoom, WASD/arrows to nudge; click a body (or use ←/→) for its Δv profile.</p>
+      <div class="map-mode-toolbar" id="mapModeToolbar" role="group" aria-label="Solar System operating mode">
+        <span class="map-mode-label">Operating mode</span>
+        <button class="btn ghost map-mode-btn active" type="button" data-map-mode="navigation" onclick="map3dSetMode('navigation')">Navigation</button>
+        <button class="btn ghost map-mode-btn" type="button" data-map-mode="planning" onclick="map3dSetMode('planning')">Mission Planning</button>
+        <button class="btn ghost map-mode-btn" type="button" data-map-mode="operations" onclick="map3dSetMode('operations')">Operations</button>
+        <button class="btn ghost map-mode-btn" type="button" data-map-mode="strategic" onclick="map3dSetMode('strategic')">Strategic</button>
+      </div>
+      <div class="map-mode-status" id="mapModeStatus" aria-live="polite"></div>
       <div class="map-stage">
         <div id="mapRoster"></div>
         <div>

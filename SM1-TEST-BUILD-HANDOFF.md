@@ -58,3 +58,7 @@ Then run:
 - `[ ]` SM1 status promotion from `[T]` to `[x]` in `SOLAR-SYSTEM-MAP-ROADMAP.md`.
 
 Do not mark SM1 shipped until all six items above are complete.
+
+## Source integration completed — 2026-07-26
+
+SM1 is now ported into `src/shell.html` and `src/render.js`, rebuilt into all generated artifacts, covered by `tests/test-map-sm1-sm5-source.js`, and Firefox-verified at inline and near-full-screen sizes. Map Only measured 1902×870 in the verification viewport, both rails hid correctly, the drawing buffer resized to the live host, and repeated inline/pop-out remounts retained one canvas/context.

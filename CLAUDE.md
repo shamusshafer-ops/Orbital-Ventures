@@ -630,3 +630,28 @@ attached; the orbit handoff hid the launch vehicle and exposed exactly one upper
 booster geometry. `test-flight3d-staging.js` is 35/35 and `test-flight3d-vehicle-sync.js` is 20/20.
 Full sweep: 97 suite files pass, only the established `test-flight3d-trajectory.js` drift remains;
 build parity and `git diff --check` clean.
+
+## Solar Map SM1–SM5 source integration — SHIPPED (Codex, 2026-07-26)
+
+The five standalone review builds from the owner’s Downloads folder were ported into authoritative
+`src/shell.html` and `src/render.js`, then rebuilt into `index.html`, `orbital-ventures.html`, and
+`build/game.js`. SM1 adds the larger inline viewport, near-full-screen pop-out, collapsible
+Bodies/Details rails, Map Only, and `ResizeObserver`-driven live sizing. SM2 adds named camera
+presets, fit math, eased/cancellable transitions, reset/focus controls, and distance-sensitive zoom.
+SM3 adds selection halo, distant-body DOM markers, screen-stable collision-managed labels, orbit
+modes, and hover emphasis. SM4 adds deterministic near/mid/far star layers, galactic backdrop,
+solar lighting, atmosphere/corona tuning, camera-relative parallax, and Low/Balanced/High map quality.
+SM5 adds Navigation, Mission Planning, Operations, and Strategic presentation modes over the shared
+scene and existing mission/asset truth.
+
+The supplied source-integration package had one bad preflight assertion (`mapPopRosterBtn` was
+correctly generated from `render.js`, not static `shell.html`); the payload itself matched the current
+map anchors. Firefox/WebGL validation then exposed prototype label sprites growing enormous at close
+range. Labels and the selection halo now convert target screen pixels to world units every frame, and
+a visible DOM marker suppresses its duplicate sprite label.
+
+Validation: focused source guard 26/26; build parity 3/3; all 11 existing map/Three.js suites pass;
+full sweep 108/109 with only the documented pre-existing `test-flight3d-trajectory.js` drift.
+Firefox at 1920×1080 verified an 836×696 inline map, a 1902×870 Map Only host/drawing buffer,
+readable labels, all operating modes, quality/orbit controls, rail toggles, and repeated close/reopen
+cycles with exactly one live canvas/context.

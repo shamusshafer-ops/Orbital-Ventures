@@ -22,19 +22,21 @@ This handoff was added on 2026-07-25 to make the next Solar Map work unambiguous
 - The live Three.js scene is reparented between inline and pop-out mounts rather than rebuilt.
 - `pauseMap3D()`, `remountMap3D()`, `disposeMap3D()`, the 2D fallback, context-loss protection, `#mapPopStage{min-width:0}`, and `ovMapDiag()` are the stable baseline.
 
-### Test build only
+### Prototype provenance
 
-- A separate exported HTML was produced during review with improved lighting and a layered starfield.
-- That HTML was not a repository source change.
-- The visual work must be ported into `src/`, built, tested, and Firefox-verified before marking `SM4.1`–`SM4.3` complete.
+- Separate exported HTML builds were produced during review for SM1 through SM5.
+- Those builds were references only until the authoritative source port completed on 2026-07-26.
 
-### Planned and not touched
+### Integrated in repository
 
-- `SM1` viewport size and near-full-screen pop-out.
-- `SM2` camera presets, fit helpers, transitions, and zoom behavior.
-- `SM3` selection emphasis, distant markers, label collision, and orbit modes.
-- `SM4` source-integrated lighting/starfield plus quality tiers.
+- `SM1` viewport size, near-full-screen pop-out, collapsible rails, Map Only, and live resize lifecycle.
+- `SM2` camera presets, fit helpers, eased transitions, and distance-sensitive zoom behavior.
+- `SM3` selection emphasis, distant markers, screen-stable labels/collision handling, orbit modes, and hover feedback.
+- `SM4` source-integrated lighting, deterministic layered starfield/galactic backdrop, and quality tiers.
 - `SM5` toolbar and Navigation/Mission Planning/Operations/Strategic modes.
+
+### Still planned
+
 - `SM6` breadcrumbs, optional locator, and scale communication.
 
 ## Claude/Codex operating rule

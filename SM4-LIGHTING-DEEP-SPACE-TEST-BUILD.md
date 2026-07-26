@@ -42,3 +42,7 @@ Added in browser build `orbital-ventures-sm4-lighting-deep-space.html` on 2026-0
 - Firefox visual review is still required for brightness, galactic-band subtlety, and quality-tier performance.
 
 Do not mark SM4 `[x] DONE` in the source roadmap until the source port, build, tests, and Firefox verification are complete.
+
+## Source integration completed — 2026-07-26
+
+SM4 is now ported into `src/render.js` and `src/shell.html`, rebuilt, and Firefox/WebGL-verified. Low/Balanced/High quality controls update the shared live scene; deterministic layered stars, the galactic band, solar lighting, atmosphere/corona settings, and camera-relative parallax remain within the one-renderer architecture.
