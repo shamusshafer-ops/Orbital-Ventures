@@ -7234,3 +7234,30 @@ Logical scene-slot mapping:
 Primary risks to hold constant during migration: do not alter simulation state or game balance; do
 not rebuild or duplicate the Solar Map's live WebGL context; keep generated release artifacts in sync
 through `node build.js`; and preserve the existing classic-script/global-handler execution model.
+
+## Session — Station/Base Three.js assembly views, slice 1 (2026-07-26)
+
+Replaced the inline Station and Base assembly-board projections with one shared, remountable Three.js
+renderer. The Station view now builds the current ordered module list as a radial orbital complex with
+procedural pressure vessels, labs, docking nodes, trusses, arrays, connectors, an Earth limb, and an
+orbit camera. The Base view builds the same authoritative module model as a connected surface site on
+deterministic Moon- or Mars-specific terrain, including habitat domes, ISRU equipment, reactors,
+garages, corridors, pads, rocks, lighting, and atmosphere/body color treatment.
+
+The renderer consumes the existing `facilityModuleList`/draft state and module definitions; it does
+not add parallel assembly state or change costs, power, crew, ports, production, or progression. One
+WebGL context remounts between Station and Base hosts, pauses with the hidden-renderer lifecycle, and
+retains the exact SVG projection as the no-Three/WebGL fallback and for the current read-only pop-outs.
+Mouse drag orbits, the wheel zooms, double-click and the toolbar reset restore the scene camera, and
+the existing expand/zoom shell controls address the live 3D view.
+
+Firefox/WebGL review covered a seven-module orbital draft plus eight-module lunar and Martian sites:
+each view mounted exactly one canvas, the shared renderer moved cleanly between hosts, and the surface
+palette, Mission Control shell, and facility inspector remained intact. Added
+`tests/test-assembly3d.js` (21/21); the adjacent Station, Base, shell, retention, and Three guard suites
+are 111/111, with build parity clean.
+
+Logical follow-ups are interaction polish rather than a second renderer: hover/select module focus,
+inspector-to-mesh highlighting, lower-density label LOD, construction/attachment animation, and
+bringing the pop-out projections onto the same remountable context once their window lifecycle has a
+single-context handoff contract.

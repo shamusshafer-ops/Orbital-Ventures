@@ -350,21 +350,28 @@
   #mapHost{width:100%;max-width:none;min-height:clamp(620px,70vh,760px);height:clamp(620px,70vh,760px);margin:0;aspect-ratio:auto!important}
   #mapCanvas{width:100%;min-height:clamp(620px,70vh,760px)}
   @media(max-width:880px){#mapHost,#mapCanvas{min-height:500px;height:500px}#mapRoster{height:auto;max-height:260px}#mapRosterSlot{position:static}}
-  /* Config-driven Station/Base assembly shell. Their monitor art remains renderer-specific. */
+  /* Config-driven Station/Base assembly shell. One shared Three.js renderer moves between the
+     two live hosts; the established SVG plans remain in the fallback node when WebGL is absent. */
   .assembly-toolbar{align-items:flex-start}
   .assembly-title{margin:0;min-width:0}
   .assembly-actions{display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:wrap}
   .assembly-zoom-readout{min-width:38px;text-align:center;align-self:center;font:11px var(--mono)}
   .assembly-summary{font-size:12px;margin:6px 0 10px}
-  .assembly-monitor{min-width:0}
+  .assembly-monitor{min-width:0;position:relative;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#03070b}
+  .assembly-3d-host{width:100%;height:clamp(520px,62vh,700px);min-height:520px;position:relative;cursor:grab;touch-action:none}
+  .assembly-3d-host.grabbing{cursor:grabbing}
+  .assembly-3d-host canvas{display:block;width:100%!important;height:100%!important}
+  .assembly-svg-fallback{width:100%}
   .assembly-palette-slot{position:sticky;top:calc(var(--topbar-h) + 10px);max-height:calc(100vh - var(--topbar-h) - 24px);overflow:auto;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
   .assembly-palette-slot .station-palette{margin-top:0!important}
   .assembly-palette-home{margin-top:12px}
   .assembly-view.expanded .assembly-palette-home{display:block}
   .assembly-view.expanded{position:fixed;inset:0;z-index:60;background:var(--bg);padding:12px 18px;overflow:auto}
   .assembly-view.expanded .assembly-shell{min-height:calc(100vh - 24px)}
+  .assembly-view.expanded .assembly-3d-host{height:84vh}
   .assembly-view.expanded .assembly-monitor>div>svg{width:auto;max-width:100%;height:84vh;margin:0 auto}
-  @media(max-width:880px){.assembly-palette-slot{position:static;max-height:320px;margin-bottom:14px}}
+  @media(max-width:880px){.assembly-palette-slot{position:static;max-height:320px;margin-bottom:14px}.assembly-3d-host{height:480px;min-height:480px}}
+  @media(max-width:560px){.assembly-3d-host{height:390px;min-height:390px}}
   @media(max-width:700px){.assembly-toolbar{align-items:stretch;flex-direction:column}.assembly-actions{justify-content:flex-start}.assembly-actions .btn{flex:1 1 auto}}
   /* Workspace scenes use the same three-zone shell while retaining their specialist tools:
      Design Bench summary/vehicle left, editor center, readiness right; R&D project/filters left,
@@ -1342,7 +1349,9 @@
       window.THREE = m;
       // The Map or Cape may have initially fallen back while this async module loaded. Re-render
       // the active 3D-capable tab once Three is ready so it mounts without a manual tab switch.
-      if(window.state && (window.state.tab==='map'||window.state.tab==='command') && typeof window.render==='function') window.render();
+      // `state` is a top-level lexical binding, not a window property. Calling the guarded global
+      // renderer is the reliable way to let whichever 3D-capable scene is active mount now.
+      if(typeof window.render==='function'){ try{ window.render(); }catch(e){} }
     })
     .catch(e => { console.warn('Three.js failed to load from CDN; the 3D view will fall back to the 2D Solar System map.', e); });
 </script>

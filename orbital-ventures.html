@@ -350,21 +350,28 @@
   #mapHost{width:100%;max-width:none;min-height:clamp(620px,70vh,760px);height:clamp(620px,70vh,760px);margin:0;aspect-ratio:auto!important}
   #mapCanvas{width:100%;min-height:clamp(620px,70vh,760px)}
   @media(max-width:880px){#mapHost,#mapCanvas{min-height:500px;height:500px}#mapRoster{height:auto;max-height:260px}#mapRosterSlot{position:static}}
-  /* Config-driven Station/Base assembly shell. Their monitor art remains renderer-specific. */
+  /* Config-driven Station/Base assembly shell. One shared Three.js renderer moves between the
+     two live hosts; the established SVG plans remain in the fallback node when WebGL is absent. */
   .assembly-toolbar{align-items:flex-start}
   .assembly-title{margin:0;min-width:0}
   .assembly-actions{display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:wrap}
   .assembly-zoom-readout{min-width:38px;text-align:center;align-self:center;font:11px var(--mono)}
   .assembly-summary{font-size:12px;margin:6px 0 10px}
-  .assembly-monitor{min-width:0}
+  .assembly-monitor{min-width:0;position:relative;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#03070b}
+  .assembly-3d-host{width:100%;height:clamp(520px,62vh,700px);min-height:520px;position:relative;cursor:grab;touch-action:none}
+  .assembly-3d-host.grabbing{cursor:grabbing}
+  .assembly-3d-host canvas{display:block;width:100%!important;height:100%!important}
+  .assembly-svg-fallback{width:100%}
   .assembly-palette-slot{position:sticky;top:calc(var(--topbar-h) + 10px);max-height:calc(100vh - var(--topbar-h) - 24px);overflow:auto;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
   .assembly-palette-slot .station-palette{margin-top:0!important}
   .assembly-palette-home{margin-top:12px}
   .assembly-view.expanded .assembly-palette-home{display:block}
   .assembly-view.expanded{position:fixed;inset:0;z-index:60;background:var(--bg);padding:12px 18px;overflow:auto}
   .assembly-view.expanded .assembly-shell{min-height:calc(100vh - 24px)}
+  .assembly-view.expanded .assembly-3d-host{height:84vh}
   .assembly-view.expanded .assembly-monitor>div>svg{width:auto;max-width:100%;height:84vh;margin:0 auto}
-  @media(max-width:880px){.assembly-palette-slot{position:static;max-height:320px;margin-bottom:14px}}
+  @media(max-width:880px){.assembly-palette-slot{position:static;max-height:320px;margin-bottom:14px}.assembly-3d-host{height:480px;min-height:480px}}
+  @media(max-width:560px){.assembly-3d-host{height:390px;min-height:390px}}
   @media(max-width:700px){.assembly-toolbar{align-items:stretch;flex-direction:column}.assembly-actions{justify-content:flex-start}.assembly-actions .btn{flex:1 1 auto}}
   /* Workspace scenes use the same three-zone shell while retaining their specialist tools:
      Design Bench summary/vehicle left, editor center, readiness right; R&D project/filters left,
@@ -1342,7 +1349,9 @@
       window.THREE = m;
       // The Map or Cape may have initially fallen back while this async module loaded. Re-render
       // the active 3D-capable tab once Three is ready so it mounts without a manual tab switch.
-      if(window.state && (window.state.tab==='map'||window.state.tab==='command') && typeof window.render==='function') window.render();
+      // `state` is a top-level lexical binding, not a window property. Calling the guarded global
+      // renderer is the reliable way to let whichever 3D-capable scene is active mount now.
+      if(typeof window.render==='function'){ try{ window.render(); }catch(e){} }
     })
     .catch(e => { console.warn('Three.js failed to load from CDN; the 3D view will fall back to the 2D Solar System map.', e); });
 </script>
@@ -9876,9 +9885,9 @@ const SCENE_DEFS = Object.freeze({
   bench:   Object.freeze({ id:'bench',   label:'Design Bench',   icon:'✎', layout:'workspace',  viewId:'benchView',   navId:'tabBench',   badgeId:'badgeBench',   railId:'railBench',   leftSlot:'workspaceContext', dockOrder:2,
     workspace:Object.freeze({ contextId:'benchWorkspaceContext', contextHomeId:'benchWorkspaceHome' }) }),
   station: Object.freeze({ id:'station', label:'Station Bench',  icon:'⬡', layout:'assembly',   viewId:'stationView', navId:'tabStation', badgeId:'badgeStation', railId:'railStation', leftSlot:'assemblyPalette', dockOrder:5,
-    assembly:Object.freeze({ title:'Station Bench — orbital assembly board', summary:'Build outward in four directions from the core. Modules use detailed hulls, ports, windows, tanks, crops, trusses and power hardware.', canvasId:'stationCanvas', inspectorId:'stationStats', paletteHomeId:'stationPaletteHome', zoomLabelId:'stationZoomLabel', expandId:'stationExpandBtn', popout:'openStationPopout', expand:'toggleStationExpand', zoom:'zoomStation', reset:'resetStationView' }) }),
+    assembly:Object.freeze({ title:'Station Bench — orbital assembly board', summary:'Orbit the camera around the live station model. Every hull, docking node, truss, array and module is generated from the current assembly.', hostId:'station3dHost', canvasId:'stationCanvas', inspectorId:'stationStats', paletteHomeId:'stationPaletteHome', zoomLabelId:'stationZoomLabel', expandId:'stationExpandBtn', popout:'openStationPopout', expand:'toggleStationExpand', zoom:'zoomStation', reset:'resetStationView' }) }),
   base:    Object.freeze({ id:'base',    label:'Base Bench',     icon:'⛰', layout:'assembly',   viewId:'baseView',    navId:'tabBase',    badgeId:'badgeBase',    railId:'railBase',    leftSlot:'assemblyPalette', dockOrder:6,
-    assembly:Object.freeze({ title:'Base Bench — surface assembly board', summary:'Lay out habitats and hardware along the surface — modules joined by pressurized corridors on the regolith.', canvasId:'baseCanvas', inspectorId:'baseStats', paletteHomeId:'basePaletteHome', zoomLabelId:'baseZoomLabel', expandId:'baseExpandBtn', popout:'openBasePopout', expand:'toggleBaseExpand', zoom:'zoomBase', reset:'resetBaseView' }) }),
+    assembly:Object.freeze({ title:'Base Bench — surface assembly board', summary:'Orbit across the Moon or Mars site. Habitats, reactors, ISRU hardware, garages, arrays and corridors sit directly on the local terrain.', hostId:'base3dHost', canvasId:'baseCanvas', inspectorId:'baseStats', paletteHomeId:'basePaletteHome', zoomLabelId:'baseZoomLabel', expandId:'baseExpandBtn', popout:'openBasePopout', expand:'toggleBaseExpand', zoom:'zoomBase', reset:'resetBaseView' }) }),
   map:     Object.freeze({ id:'map',     label:'Solar System',   icon:'☉', layout:'immersive', viewId:'mapView',     navId:'tabMap',     badgeId:'badgeMap',     railId:'railMap',     leftSlot:'mapRoster', dockOrder:4 }),
   command: Object.freeze({ id:'command', label:'Command Center',icon:'⌂', layout:'immersive', viewId:'commandView', navId:'tabCommand', badgeId:'badgeCommand', railId:'railCommand', dockOrder:1 }),
   rnd:     Object.freeze({ id:'rnd',     label:'R&D',            icon:'⚛', layout:'workspace',  viewId:'rndView',     navId:'tabRnd',     badgeId:'badgeRnd',     railId:'railRnd',     leftSlot:'workspaceContext', dockOrder:3,
@@ -16308,7 +16317,10 @@ function assemblyShellHTML(sceneId){
       </div>
     </div>
     <p class="muted assembly-summary">${esc(a.summary)}</p>
-    <div class="assembly-monitor" id="${scene.id}Monitor"><div id="${a.canvasId}"></div></div>
+    <div class="assembly-monitor" id="${scene.id}Monitor">
+      <div id="${a.hostId}" class="assembly-3d-host" aria-label="${esc(scene.label)} 3D viewport"></div>
+      <div id="${a.canvasId}" class="assembly-svg-fallback"></div>
+    </div>
     <div class="assembly-palette-home hidden" id="${a.paletteHomeId}"></div>
   </div>`;
 }
@@ -16346,6 +16358,7 @@ function renderSceneMain(){
   if(state.tab!=='bench') pauseVehGame();
   if(state.tab!=='map'){ pauseMapGame(); pauseMap3D(); }
   if(state.tab!=='station') pauseStationGame();
+  if(state.tab!=='station'&&state.tab!=='base') pauseAssembly3D();
   if(state.tab==='bench'){
     const v2=$('benchV2'); if(v2) v2.classList.toggle('hidden', !BENCH_V2);
     if(BENCH_V2){ renderPartsBench(); }
@@ -22863,6 +22876,7 @@ function pauseVisualLoopsForHidden(){
     vehicle:phaserSceneActive(vehGame,'vehprev'),
     map:phaserSceneActive(mapGame,'solarmap'),
     map3d:!!(map3d&&map3d.raf),
+    assembly3d:!!(assembly3d&&assembly3d.raf),
     station:phaserSceneActive(stationGame,'station'),
     flight:!!(typeof flightScene!=='undefined'&&flightScene&&flightScene.scene&&phaserSceneActive(flightGame,'flight')),
     flightCanvas:!!(typeof animState!=='undefined'&&animState&&animState.raf&&!animState.held),
@@ -22875,6 +22889,7 @@ function pauseVisualLoopsForHidden(){
   if(_hiddenVisuals.vehicle) pauseVehGame();
   if(_hiddenVisuals.map) pauseMapGame();
   if(_hiddenVisuals.map3d) pauseMap3D();
+  if(_hiddenVisuals.assembly3d) pauseAssembly3D();
   if(_hiddenVisuals.station) pauseStationGame();
   if(_hiddenVisuals.flight) sleepFlightScene();
   if(_hiddenVisuals.flightCanvas){ try{ cancelAnimationFrame(animState.raf); animState.raf=0; }catch(e){} }
@@ -22890,6 +22905,7 @@ function resumeVisualLoopsFromHidden(){
   if(v.vehicle) resumeVehGame();
   if(v.map) resumeMapGame();
   if(v.map3d) resumeMap3D();
+  if(v.assembly3d) resumeAssembly3D();
   if(v.station) resumeStationGame();
   if(v.flight){ try{ if(flightScene&&flightScene.scene&&flightScene.scene.isSleeping()) flightScene.scene.wake(); }catch(e){} }
   if(v.flightCanvas && animState&&!animState.held&&!animState.raf){ animState.prevWall=performance.now(); animState.raf=requestAnimationFrame(animLoop); }
@@ -23731,8 +23747,8 @@ function stationViewBox(W,H,zoom){
   return `${stationPanX+(W-vw)/2} ${stationPanY+(H-vh)/2} ${vw} ${vh}`;
 }
 function setStationZoom(z){ stationZoom=Math.max(.65,Math.min(3,Number(z)||1)); renderStation(); }
-function zoomStation(f){ setStationZoom(stationZoom*f); }
-function resetStationView(){ stationPanX=0; stationPanY=0; stationZoom=1; renderStation(); }
+function zoomStation(f){ if(assembly3dIsScene('station')) zoomAssembly3D(f); else setStationZoom(stationZoom*f); }
+function resetStationView(){ stationPanX=0; stationPanY=0; stationZoom=1; if(assembly3dIsScene('station')) resetAssembly3DView('station'); else renderStation(); }
 function toggleStationExpand(){ stationExpanded=!stationExpanded; placeSceneContextualSlots(); renderCCLeft(); renderStation(); }
 let StationScene=null, stationGame=null, stationScene=null;
 function defineStationScene(){
@@ -23804,6 +23820,246 @@ function startStationScene(){
 }
 function pauseStationGame(){ if(stationGame){ try{ if(stationGame.scene.isActive('station')) stationGame.scene.sleep('station'); }catch(e){} } } // E0.5-A: sleep, not pause (stop render)
 function resumeStationGame(){ if(stationGame){ try{ stationGame.scene.wake('station'); }catch(e){} } }
+
+/* ---------- Station + Base shared Three.js assembly viewport ----------
+   One renderer moves between the Station and Base hosts, so these benches add ONE WebGL context
+   rather than one per tab/pop-out. The simulation remains the authority: sceneSpec reads the same
+   facilityModuleList/STATION_MODULES data the SVG fallback and stats panels already use. */
+const ASSEMBLY3D=true;
+let assembly3d=null;
+function assembly3dIsScene(sceneId){ return !!(assembly3d&&assembly3d.sceneId===sceneId&&assembly3d.dom&&assembly3d.dom.parentNode); }
+function assembly3dSceneSpec(sceneId,cur){
+  const ids=facilityModuleList(cur.fs).slice();
+  if(sceneId==='station'){
+    const nodes=ids.map((id,i)=>{
+      const slot=STATION_LAYOUT_SLOTS[i]||[i%5-2,Math.floor(i/5)+1];
+      const parent=i===0?-1:(i<=4?0:Math.max(0,Math.floor((i-1)/4)));
+      return {id,index:i,parent,x:slot[0]*5.2,y:(i%3-1)*0.28,z:slot[1]*5.2};
+    });
+    return {sceneId,body:'earth',ids,nodes};
+  }
+  const cols=Math.min(5,Math.max(1,Math.ceil(Math.sqrt(ids.length*1.5))));
+  const nodes=ids.map((id,i)=>{
+    const row=Math.floor(i/cols), col=i%cols, inRow=Math.min(cols,ids.length-row*cols);
+    return {id,index:i,parent:i?i-1:-1,x:(col-(inRow-1)/2)*5.5,y:0,z:(row-(Math.ceil(ids.length/cols)-1)/2)*6.0+(col%2?0.45:-0.45)};
+  });
+  return {sceneId,body:(cur.def&&cur.def.body)||'moon',ids,nodes};
+}
+function assembly3dSpecKey(spec){ return spec.sceneId+'|'+spec.body+'|'+spec.ids.join(','); }
+function assembly3dCameraDefault(sceneId,count){
+  return sceneId==='station'
+    ? {yaw:.72,pitch:.42,dist:Math.max(26,18+Math.sqrt(Math.max(1,count))*7),targetY:0}
+    : {yaw:-.72,pitch:.66,dist:Math.max(24,17+Math.sqrt(Math.max(1,count))*5.4),targetY:.4};
+}
+function assembly3dMat(color,metalness,roughness,extra){
+  return new THREE.MeshStandardMaterial(Object.assign({color,metalness:metalness==null ? .35 : metalness,roughness:roughness==null ? .55 : roughness},extra||{}));
+}
+function assembly3dCylinderX(radius,length,material,segments){
+  const mesh=new THREE.Mesh(new THREE.CylinderGeometry(radius,radius,length,segments||20),material);
+  mesh.rotation.z=Math.PI/2; return mesh;
+}
+function assembly3dBox(w,h,d,material,x,y,z){
+  const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),material); m.position.set(x||0,y||0,z||0); return m;
+}
+function assembly3dTube(a,b,r,material){
+  const av=new THREE.Vector3(a.x,a.y,a.z), bv=new THREE.Vector3(b.x,b.y,b.z), dir=bv.clone().sub(av), len=dir.length();
+  const m=new THREE.Mesh(new THREE.CylinderGeometry(r,r,len,12),material);
+  m.position.copy(av.add(bv).multiplyScalar(.5));
+  m.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),dir.normalize());
+  return m;
+}
+function assembly3dLabel(text,color){
+  const cv=document.createElement('canvas'); cv.width=256; cv.height=64; const c=cv.getContext('2d');
+  c.clearRect(0,0,256,64); c.fillStyle='rgba(3,9,14,.78)'; c.fillRect(1,8,254,48);
+  c.strokeStyle=color||'#8bdcff'; c.lineWidth=2; c.strokeRect(1,8,254,48);
+  c.font='600 23px ui-monospace,monospace'; c.textAlign='center'; c.textBaseline='middle'; c.fillStyle='#e8f4fb'; c.fillText(text,128,32);
+  const tx=new THREE.CanvasTexture(cv); tx.colorSpace=THREE.SRGBColorSpace;
+  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tx,transparent:true,depthTest:false,depthWrite:false}));
+  sp.scale.set(4.1,1.03,1); sp.userData.assemblyTexture=tx; return sp;
+}
+function assembly3dPanel(w,h,color){
+  const g=new THREE.Group(), frame=assembly3dMat('#8495a0',.75,.32), cell=assembly3dMat(color||'#153b63',.25,.35,{emissive:new THREE.Color(color||'#153b63').multiplyScalar(.16)});
+  g.add(assembly3dBox(w+.14,.12,h+.14,frame));
+  g.add(assembly3dBox(w,.16,h,cell,0,.08,0));
+  for(let i=-2;i<=2;i++) g.add(assembly3dBox(.035,.19,h,frame,i*w/5,.1,0));
+  g.add(assembly3dBox(w,.19,.035,frame,0,.1,0));
+  return g;
+}
+function assembly3dModule(d,mode){
+  const id=d.id, g=new THREE.Group(), L=Math.max(2.2,(d.len||150)/48), R=Math.max(.62,(d.dia||80)/78);
+  const hull=assembly3dMat(d.color||'#b8c0c7',.42,.48), dark=assembly3dMat('#25343e',.62,.42), trim=assembly3dMat('#aebbc3',.72,.3);
+  const gold=assembly3dMat('#d5a83f',.65,.34,{emissive:0x241400}), glass=assembly3dMat('#55b8e8',.18,.22,{emissive:0x12364b});
+  const addDock=(x)=>{ const t=new THREE.Mesh(new THREE.TorusGeometry(R*.48,.10,8,20),trim); t.rotation.y=Math.PI/2; t.position.x=x; g.add(t); };
+  if(mode==='base'&&id==='hab_dome'){
+    const dome=new THREE.Mesh(new THREE.SphereGeometry(1.55,28,18,0,Math.PI*2,0,Math.PI/2),hull); dome.scale.y=.72; dome.position.y=.05; g.add(dome);
+    const ring=new THREE.Mesh(new THREE.TorusGeometry(1.5,.12,8,28),trim); ring.rotation.x=Math.PI/2; g.add(ring);
+    for(let a=0;a<Math.PI*2;a+=Math.PI/3){ const w=assembly3dBox(.34,.28,.08,glass,Math.cos(a)*1.18,.55,Math.sin(a)*1.18); w.rotation.y=-a; g.add(w); }
+  } else if(mode==='base'&&id==='isru_plant'){
+    g.add(assembly3dBox(3.4,1.25,2.1,hull,0,.65,0),assembly3dBox(3.0,.15,1.75,trim,0,1.32,0));
+    for(const x of [-1.05,1.05]){ const tank=new THREE.Mesh(new THREE.CylinderGeometry(.42,.42,1.4,18),gold); tank.position.set(x,1.45,.45); g.add(tank); }
+    g.add(assembly3dTube({x:-1.05,y:1.55,z:.45},{x:1.05,y:1.55,z:.45},.08,trim));
+  } else if(mode==='base'&&id==='reactor_pad'){
+    const pad=new THREE.Mesh(new THREE.CylinderGeometry(1.8,2.15,.32,24),dark); pad.position.y=.16; g.add(pad);
+    const core=new THREE.Mesh(new THREE.CylinderGeometry(.55,.72,2.2,20),hull); core.position.y=1.35; g.add(core);
+    for(let i=0;i<8;i++){ const fin=assembly3dBox(.12,1.25,1.15,gold,0,1.05,0); fin.rotation.y=i*Math.PI/4; fin.position.x=Math.cos(i*Math.PI/4)*.95; fin.position.z=Math.sin(i*Math.PI/4)*.95; g.add(fin); }
+  } else if(mode==='base'&&id==='rover_garage'){
+    g.add(assembly3dBox(3.8,1.55,2.6,hull,0,.78,0));
+    const door=assembly3dBox(2.15,1.12,.08,dark,0,.62,1.34); g.add(door);
+    for(let x=-.75;x<=.75;x+=.5) g.add(assembly3dBox(.035,1.05,.10,trim,x,.62,1.40));
+    const beacon=new THREE.Mesh(new THREE.SphereGeometry(.12,10,8),new THREE.MeshBasicMaterial({color:0xff6b45})); beacon.position.set(1.45,1.75,1.0); g.add(beacon);
+  } else if(id==='node_hub'){
+    g.add(new THREE.Mesh(new THREE.SphereGeometry(R*1.18,24,16),hull));
+    for(const v of [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]]){
+      const p={x:v[0]*R*1.2,y:v[1]*R*1.2,z:v[2]*R*1.2}, q={x:v[0]*R*1.75,y:v[1]*R*1.75,z:v[2]*R*1.75};
+      g.add(assembly3dTube(p,q,R*.32,trim));
+    }
+  } else if(id==='power_truss'){
+    g.add(assembly3dBox(L,.18,.18,trim));
+    for(const z of [-1.9,1.9]){ const p=assembly3dPanel(L*1.15,1.55,'#123d70'); p.position.z=z; p.position.y=.05; g.add(p); g.add(assembly3dBox(.16,.12,3.6,trim,0,0,z/2)); }
+  } else {
+    g.add(assembly3dCylinderX(R,L,hull,24)); addDock(-L/2-.02); addDock(L/2+.02);
+    for(let x=-L*.32;x<=L*.32;x+=Math.max(.62,L/4)){ const ring=new THREE.Mesh(new THREE.TorusGeometry(R*.99,.035,6,24),trim); ring.rotation.y=Math.PI/2; ring.position.x=x; g.add(ring); }
+    for(let x=-L*.28;x<=L*.28;x+=Math.max(.72,L/3)){ const w=new THREE.Mesh(new THREE.SphereGeometry(.12,10,8),glass); w.position.set(x,R*.15,R*.96); g.add(w); }
+    if(id==='greenhouse'){
+      const glow=assembly3dCylinderX(R*.82,L*.88,assembly3dMat('#6ebc62',.08,.28,{transparent:true,opacity:.5,emissive:0x16361d}),20); g.add(glow);
+      for(let x=-L*.3;x<=L*.3;x+=.45) g.add(assembly3dBox(.18,.05,R*1.25,assembly3dMat('#86c968',.05,.8),x,-R*.25,0));
+    }
+    if(id==='depot_mod') for(const z of [-.45,.45]){ const tank=assembly3dCylinderX(R*.38,L*.72,gold,18); tank.position.z=z; g.add(tank); }
+    if(id==='lab_mod'){ const band=assembly3dCylinderX(R*1.015,L*.42,glass,24); g.add(band); }
+    if(id==='can_std'&&mode==='station'){
+      for(const z of [-2.25,2.25]){ const p=assembly3dPanel(L*.92,1.55,'#123d70'); p.position.z=z; g.add(p); g.add(assembly3dBox(.12,.12,3.4,trim,0,0,z/2)); }
+    }
+  }
+  if(mode==='base'&&(id==='power_truss'||id==='can_std')){
+    const p=assembly3dPanel(Math.max(3.4,L),1.5,'#123d70'); p.rotation.x=-.18; p.position.set(0,1.25,-1.8); g.add(p);
+  }
+  const label=assembly3dLabel(d.short||id,d.color); label.position.set(0,mode==='base'?3.25:R+1.25,0); g.add(label);
+  g.traverse(o=>{ if(o.isMesh){ o.castShadow=true; o.receiveShadow=true; } });
+  return g;
+}
+function assembly3dStars(scene,count,radius,seed){
+  const pos=[], rnd=mulberry(seed||8221);
+  for(let i=0;i<count;i++){ const th=rnd()*Math.PI*2, u=rnd()*2-1, rr=radius*(.7+rnd()*.3), s=Math.sqrt(1-u*u); pos.push(rr*s*Math.cos(th),rr*u,rr*s*Math.sin(th)); }
+  const geo=new THREE.BufferGeometry(); geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+  scene.add(new THREE.Points(geo,new THREE.PointsMaterial({color:0xdcecff,size:.12,sizeAttenuation:true,transparent:true,opacity:.85})));
+}
+function assembly3dBuildStation(scene,spec){
+  scene.background=new THREE.Color(0x02060b); assembly3dStars(scene,420,95,4177);
+  scene.add(new THREE.HemisphereLight(0x8db9dc,0x080b12,.72));
+  const sun=new THREE.DirectionalLight(0xffe6ba,3.6); sun.position.set(-18,22,14); sun.castShadow=true; scene.add(sun);
+  const earthMat=assembly3dMat('#327bb5',.05,.78);
+  try{ const earth=BODIES.find(b=>b.id==='earth'), tx=earth&&map3dSurfaceTexture(earth); if(tx) earthMat.map=tx; }catch(e){}
+  const earth=new THREE.Mesh(new THREE.SphereGeometry(9,42,28),earthMat); earth.position.set(4,-22,-18); earth.rotation.z=-.35; scene.add(earth);
+  const glow=new THREE.Mesh(new THREE.SphereGeometry(9.28,42,28),new THREE.MeshBasicMaterial({color:0x78bfff,transparent:true,opacity:.10,side:THREE.BackSide})); glow.position.copy(earth.position); scene.add(glow);
+  const connector=assembly3dMat('#718995',.72,.35);
+  for(const n of spec.nodes){
+    if(n.parent>=0){ const p=spec.nodes[n.parent]; scene.add(assembly3dTube({x:p.x,y:p.y,z:p.z},{x:n.x,y:n.y,z:n.z},.18,connector)); }
+    const d=stationModuleDef(n.id)||stationModuleDef('can_std'), g=assembly3dModule(d,'station');
+    g.position.set(n.x,n.y,n.z);
+    if(n.parent>=0){ const p=spec.nodes[n.parent]; g.rotation.y=-Math.atan2(n.z-p.z,n.x-p.x); }
+    scene.add(g);
+  }
+}
+function assembly3dBuildBase(scene,spec){
+  const mars=spec.body==='mars', sky=mars?0x7d4b2f:0x02050a;
+  scene.background=new THREE.Color(sky); if(mars) scene.fog=new THREE.Fog(0x9a603b,35,92); else assembly3dStars(scene,320,100,7711);
+  scene.add(new THREE.HemisphereLight(mars?0xf4bd86:0x91b7d8,mars?0x3a160c:0x080a0d,mars?1.45:.72));
+  const sun=new THREE.DirectionalLight(mars?0xffd0a1:0xf4f7ff,mars?3.1:4.1); sun.position.set(-18,28,12); sun.castShadow=true; sun.shadow.mapSize.set(1024,1024); scene.add(sun);
+  const geo=new THREE.PlaneGeometry(84,58,40,28); geo.rotateX(-Math.PI/2);
+  const pa=geo.attributes.position, rnd=mulberry(mars?2881:1999);
+  for(let i=0;i<pa.count;i++){ const x=pa.getX(i),z=pa.getZ(i), edge=Math.min(1,Math.max(0,(Math.abs(x)-12)/24)+(Math.max(0,Math.abs(z)-9)/18)); pa.setY(i,(rnd()-.5)*(mars?.42:.24)*(0.25+edge)); }
+  geo.computeVertexNormals();
+  const ground=new THREE.Mesh(geo,assembly3dMat(mars?'#7d4127':'#4a4d50',.05,.96)); ground.receiveShadow=true; scene.add(ground);
+  const padMat=assembly3dMat(mars?'#6b3925':'#5b6064',.08,.9), corridorMat=assembly3dMat('#6e808b',.5,.5);
+  for(const n of spec.nodes){
+    const pad=new THREE.Mesh(new THREE.CylinderGeometry(2.25,2.5,.18,24),padMat); pad.position.set(n.x,.05,n.z); pad.receiveShadow=true; scene.add(pad);
+    if(n.parent>=0){ const p=spec.nodes[n.parent]; scene.add(assembly3dTube({x:p.x,y:.72,z:p.z},{x:n.x,y:.72,z:n.z},.28,corridorMat)); }
+    const d=stationModuleDef(n.id)||stationModuleDef('can_std'), g=assembly3dModule(d,'base'); g.position.set(n.x,.15,n.z); scene.add(g);
+  }
+  const rockMat=assembly3dMat(mars?'#62301e':'#34383b',.05,1), rockRnd=mulberry(mars?901:603);
+  for(let i=0;i<38;i++){ const x=(rockRnd()-.5)*70,z=(rockRnd()-.5)*48; if(Math.abs(x)<18&&Math.abs(z)<12) continue;
+    const r=.18+rockRnd()*.8, rock=new THREE.Mesh(new THREE.DodecahedronGeometry(r,0),rockMat); rock.scale.y=.45+rockRnd()*.45; rock.position.set(x,r*.35,z); rock.rotation.set(rockRnd(),rockRnd(),rockRnd()); rock.castShadow=true; scene.add(rock); }
+}
+function assembly3dDisposeScene(scene){
+  if(!scene) return;
+  scene.traverse(o=>{
+    if(o.geometry) try{o.geometry.dispose();}catch(e){}
+    const mats=o.material?(Array.isArray(o.material)?o.material:[o.material]):[];
+    mats.forEach(m=>{ if(m.map&&m.map.userData&&m.map.userData.assemblyOwned) try{m.map.dispose();}catch(e){} try{m.dispose();}catch(e){} });
+    if(o.userData&&o.userData.assemblyTexture) try{o.userData.assemblyTexture.dispose();}catch(e){}
+  });
+  scene.clear();
+}
+function assembly3dApplyCamera(){
+  if(!assembly3d) return;
+  const a=assembly3d, cp=Math.cos(a.pitch);
+  a.camera.position.set(a.target.x+a.dist*cp*Math.sin(a.yaw),a.target.y+a.dist*Math.sin(a.pitch),a.target.z+a.dist*cp*Math.cos(a.yaw));
+  a.camera.lookAt(a.target);
+  const scene=sceneDef(a.sceneId), zl=scene&&scene.assembly&&$(scene.assembly.zoomLabelId);
+  if(zl) zl.textContent=Math.round(a.defaultDist/a.dist*100)+'%';
+}
+function assembly3dResize(){
+  if(!assembly3d) return;
+  const host=$(assembly3d.hostId); if(!host) return;
+  const w=Math.max(2,Math.round(host.clientWidth||host.getBoundingClientRect().width||720)), h=Math.max(2,Math.round(host.clientHeight||host.getBoundingClientRect().height||520));
+  if(w===assembly3d.width&&h===assembly3d.height) return;
+  assembly3d.width=w; assembly3d.height=h; assembly3d.renderer.setSize(w,h,false); assembly3d.camera.aspect=w/h; assembly3d.camera.updateProjectionMatrix();
+}
+function assembly3dLoop(){
+  if(!assembly3d) return;
+  assembly3dResize(); assembly3dApplyCamera();
+  assembly3d.renderer.render(assembly3d.scene,assembly3d.camera);
+  assembly3d.raf=requestAnimationFrame(assembly3dLoop);
+}
+function assembly3dWireInput(dom){
+  if(dom._assemblyInput) return; dom._assemblyInput=true;
+  let down=false,lx=0,ly=0,moved=0;
+  dom.addEventListener('pointerdown',e=>{ down=true; moved=0; lx=e.clientX; ly=e.clientY; dom.parentNode?.classList.add('grabbing'); try{dom.setPointerCapture(e.pointerId);}catch(_){}});
+  dom.addEventListener('pointermove',e=>{ if(!down||!assembly3d) return; const dx=e.clientX-lx,dy=e.clientY-ly; lx=e.clientX;ly=e.clientY;moved+=Math.abs(dx)+Math.abs(dy); assembly3d.yaw-=dx*.007; assembly3d.pitch=clampA(assembly3d.pitch+dy*.006,-.12,1.35); assembly3dApplyCamera(); });
+  const end=e=>{down=false;dom.parentNode?.classList.remove('grabbing');try{dom.releasePointerCapture(e.pointerId);}catch(_){}};
+  dom.addEventListener('pointerup',end); dom.addEventListener('pointercancel',end);
+  dom.addEventListener('wheel',e=>{ if(!assembly3d)return;e.preventDefault();assembly3d.dist=clampA(assembly3d.dist*(e.deltaY>0?1.1:.9),7,120);assembly3dApplyCamera();},{passive:false});
+  dom.addEventListener('dblclick',()=>{ if(assembly3d) resetAssembly3DView(assembly3d.sceneId); });
+}
+function startAssembly3D(sceneId,cur){
+  const scene=sceneDef(sceneId), a=scene&&scene.assembly, host=a&&$(a.hostId), fallback=a&&$(a.canvasId);
+  if(!ASSEMBLY3D||!a||!host||!threeOK()){ if(host)host.style.display='none'; if(fallback)fallback.style.display='block'; return false; }
+  try{
+    if(!assembly3d){
+      const renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,powerPreference:'high-performance'});
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.75));
+      renderer.outputColorSpace=THREE.SRGBColorSpace;
+      renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+      const camera=new THREE.PerspectiveCamera(42,1,.1,220), dom=renderer.domElement;
+      dom.className='assembly-3d-canvas'; assembly3d={renderer,camera,dom,scene:null,sceneId:null,hostId:null,signature:null,raf:0,width:0,height:0,yaw:0,pitch:0,dist:30,defaultDist:30,target:new THREE.Vector3()};
+      assembly3dWireInput(dom);
+    }
+    if(assembly3d.dom.parentNode!==host) host.appendChild(assembly3d.dom);
+    assembly3d.hostId=a.hostId; host.style.display='block'; if(fallback) fallback.style.display='none';
+    const spec=assembly3dSceneSpec(sceneId,cur), signature=assembly3dSpecKey(spec);
+    if(assembly3d.sceneId!==sceneId||assembly3d.signature!==signature){
+      assembly3dDisposeScene(assembly3d.scene);
+      assembly3d.scene=new THREE.Scene(); assembly3d.sceneId=sceneId; assembly3d.signature=signature;
+      if(sceneId==='station') assembly3dBuildStation(assembly3d.scene,spec); else assembly3dBuildBase(assembly3d.scene,spec);
+      const d=assembly3dCameraDefault(sceneId,spec.ids.length); assembly3d.yaw=d.yaw;assembly3d.pitch=d.pitch;assembly3d.dist=assembly3d.defaultDist=d.dist;assembly3d.target.set(0,d.targetY,0);
+      assembly3d.width=assembly3d.height=0;
+    }
+    assembly3dResize(); assembly3dApplyCamera();
+    if(!assembly3d.raf) assembly3dLoop();
+    return true;
+  }catch(e){
+    console.warn('assembly 3D failed, using SVG:',e);
+    if(host)host.style.display='none'; if(fallback)fallback.style.display='block';
+    return false;
+  }
+}
+function pauseAssembly3D(){ if(assembly3d&&assembly3d.raf){ cancelAnimationFrame(assembly3d.raf); assembly3d.raf=0; } }
+function resumeAssembly3D(){ if(assembly3d&&!assembly3d.raf&&(state.tab==='station'||state.tab==='base')) assembly3dLoop(); }
+function zoomAssembly3D(f){ if(!assembly3d)return; assembly3d.dist=clampA(assembly3d.dist/(Number(f)||1),7,120); assembly3dApplyCamera(); }
+function resetAssembly3DView(sceneId){
+  if(!assembly3d||assembly3d.sceneId!==sceneId) return;
+  const d=assembly3dCameraDefault(sceneId,(assembly3d.signature||'').split(',').length); assembly3d.yaw=d.yaw;assembly3d.pitch=d.pitch;assembly3d.dist=assembly3d.defaultDist=d.dist;assembly3d.target.set(0,d.targetY,0);assembly3dApplyCamera();
+}
 /* ---------- Station blueprint mode (pre-facility drawing board) ----------
    Before any facility exists, the Station Bench is a free design sandbox: assemble a
    blueprint, watch the engineering totals react, and carry the plan (it saves) until
@@ -23850,11 +24106,13 @@ function stationDraftStatsHTML(fs){
 }
 function renderStationDraft(){
   const c=$('stationCanvas'), st=$('stationStats');
-  const fs=stationDraftFs();
+  const fs=stationDraftFs(), cur={def:facilityById('leo_station')||FACILITY_DEFS[0],fs};
+  const use3d=startAssembly3D('station',cur);
   if(c){
-    c.innerHTML=renderStationStackSVG(720,280,{fs},true);
+    c.style.display=use3d?'none':'block';
+    if(!use3d) c.innerHTML=renderStationStackSVG(720,280,{fs},true);
   }
-  wireStationPan(c);
+  if(!use3d) wireStationPan(c);
   const zl=$('stationZoomLabel'); if(zl) zl.textContent=Math.round(stationZoom*100)+'%';
   if(st) st.innerHTML=stationDraftStatsHTML(fs);
   renderAssemblyPalette('station',{isDraft:true,cur:{fs}});
@@ -23903,9 +24161,10 @@ function renderStation(){
   const v=stationCurrentView();
   if(v.isDraft){ renderStationDraft(); return; } // pre-facility: free blueprint drawing board
   const c=$('stationCanvas'), st=$('stationStats'), cur=v.cur;
-  if(c) c.innerHTML=renderStationStackSVG(720,300,cur,true);
+  const use3d=startAssembly3D('station',cur);
+  if(c){ c.style.display=use3d?'none':'block'; if(!use3d)c.innerHTML=renderStationStackSVG(720,300,cur,true); }
   const zl=$('stationZoomLabel'); if(zl) zl.textContent=Math.round(stationZoom*100)+'%';
-  wireStationPan(c);
+  if(!use3d) wireStationPan(c);
   if(st) st.innerHTML=renderStationFacilityStats(v.built, cur);
   renderAssemblyPalette('station',v);
 }
@@ -24051,8 +24310,8 @@ function baseViewBox(W,H,zoom){
   return `${basePanX+(W-vw)/2} ${basePanY+(H-vh)/2} ${vw} ${vh}`;
 }
 function setBaseZoom(z){ baseZoom=clampA(z,0.5,3); renderBase(); }
-function zoomBase(f){ setBaseZoom(baseZoom*f); }
-function resetBaseView(){ basePanX=0; basePanY=0; baseZoom=1; renderBase(); }
+function zoomBase(f){ if(assembly3dIsScene('base')) zoomAssembly3D(f); else setBaseZoom(baseZoom*f); }
+function resetBaseView(){ basePanX=0; basePanY=0; baseZoom=1; if(assembly3dIsScene('base')) resetAssembly3DView('base'); else renderBase(); }
 function toggleBaseExpand(){ baseExpanded=!baseExpanded; placeSceneContextualSlots(); renderCCLeft(); renderBase(); }
 function setBaseFocus(id){ state.baseFocus=id; renderBase(); refreshBasePopout(); }
 function baseCurrentView(){
@@ -24123,10 +24382,12 @@ function renderBaseDraft(){
   const c=$('baseCanvas'), st=$('baseStats');
   const body=baseDraftBody(), def=facilityById(BASE_DRAFT_FACID[body]), fs=baseDraftFs(body);
   const cur={def, fs};
+  const use3d=startAssembly3D('base',cur);
   if(c){
-    c.innerHTML=renderBaseSurfaceSVG(720,280,cur,true);
+    c.style.display=use3d?'none':'block';
+    if(!use3d) c.innerHTML=renderBaseSurfaceSVG(720,280,cur,true);
   }
-  wireBasePan(c);
+  if(!use3d) wireBasePan(c);
   const zl=$('baseZoomLabel'); if(zl) zl.textContent=Math.round(baseZoom*100)+'%';
   if(st) st.innerHTML=baseDraftStatsHTML();
   renderAssemblyPalette('base',{isDraft:true,cur});
@@ -24204,9 +24465,10 @@ function renderBase(){
   const c=$('baseCanvas'), st=$('baseStats');
   const v=baseCurrentView();
   if(v.isDraft){ renderBaseDraft(); return; } // E1.8 D: pre-facility free blueprint drawing board
-  if(c) c.innerHTML=renderBaseSurfaceSVG(720,300,v.cur,true);
+  const use3d=startAssembly3D('base',v.cur);
+  if(c){ c.style.display=use3d?'none':'block'; if(!use3d)c.innerHTML=renderBaseSurfaceSVG(720,300,v.cur,true); }
   const zl=$('baseZoomLabel'); if(zl) zl.textContent=Math.round(baseZoom*100)+'%';
-  wireBasePan(c);
+  if(!use3d) wireBasePan(c);
   // stats panel: the station one is already facility-generic; only the focus-tab handler differs
   if(st) st.innerHTML=renderStationFacilityStats(v.built, v.cur, state.baseFocus, 'setBaseFocus');
   renderAssemblyPalette('base',v);
