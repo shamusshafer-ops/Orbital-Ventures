@@ -7157,3 +7157,44 @@ Preserved the one-live-WebGL-context architecture. Firefox/WebGL verification co
 Only resizing, screen-stable labels/halo, mode and quality/orbit controls, and repeated remount cycles
 with exactly one canvas. Added `tests/test-map-sm1-sm5-source.js` (26/26); all 11 adjacent map suites
 pass; full sweep is 108/109 with only the documented pre-existing `test-flight3d-trajectory.js` drift.
+
+## Planned — Mission Control UI shell standardization (scoped 2026-07-26)
+
+Use Mission Control's spatial language as the shared application shell without forcing every scene
+into the Cape's exact composition. All six primary scenes should share the global HUD, a permanently
+mounted bottom scene dock, compact contextual side slots, a common monitor toolbar, consistent surface
+tokens, and one responsive breakpoint system. Preserve each scene's specialized interaction model
+through three shell variants:
+
+- **Immersive:** Command Center and Solar System.
+- **Assembly:** Station Bench and Base Bench.
+- **Workspace:** Design Bench and R&D.
+
+Logical scene-slot mapping:
+
+- **Command Center:** agency/program/technology deck | Cape scene | mission and global status.
+- **Solar System:** body roster | live map | selected-body and activity inspector.
+- **Station/Base Bench:** facility or module palette | assembly board | focused facility statistics
+  and actions.
+- **Design Bench:** vehicle and mission summary | stage editor | delta-v and readiness inspector.
+- **R&D:** active project and filters | technology tree | node inspector; divisions and partnerships
+  remain below the monitor or move into subtabs.
+
+### Migration phases
+
+1. **Shared shell contract — ACTIVE:** replace parallel scene metadata with one `SCENE_DEFS`
+   registry, correctly classify Base as a scene, keep the scene dock permanently mounted, and add
+   shared shell tokens/primitives without moving specialized page content.
+2. **Solar System pilot:** move the roster into the left slot, keep the live map in the monitor, and
+   move selected-body/activity information into the right inspector.
+3. **Assembly unification:** render Station and Base through one configurable assembly-shell
+   structure, including consistent toolbar and pop-out capabilities.
+4. **Workspace migration:** adapt Design Bench and R&D to the wider workspace variant while
+   preserving their purpose-built editors and controls.
+5. **Consolidation and verification:** remove obsolete Command-only shell movement, unused
+   tokens/state classes, and page-specific breakpoints; add viewport screenshots plus keyboard,
+   focus, and overflow checks.
+
+Primary risks to hold constant during migration: do not alter simulation state or game balance; do
+not rebuild or duplicate the Solar Map's live WebGL context; keep generated release artifacts in sync
+through `node build.js`; and preserve the existing classic-script/global-handler execution model.
