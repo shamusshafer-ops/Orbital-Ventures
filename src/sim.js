@@ -35,11 +35,12 @@ function newGame(difficulty){
     lastMonth:{revenue:0,expenses:0,net:0,flights:0}, // #18: rolling ops-summary ledger
     history:{}, // #18: missionId -> completion year, for the Home timeline
     metricHist:defaultMetricHist(), // #28: monthly trend buffers for dashboard sparklines
+    metricArchive:defaultMetricArchive(), metricArchivePending:defaultMetricArchivePending(), // E0.5-B: full-run quarterly trends + incomplete quarter
     livery:defaultLivery(), // bench customization: cosmetic vehicle livery
     parts:defaultParts(), // BC2: performance parts (tank material / avionics / fairing)
     blueprints:[], // saved full ship designs (reloadable blueprints)
     frontPages:[], // P7: The Agency Wire — headline records for the Chronicle scrapbook
-    crisis:null, crisisDone:null, leoFlights:0, deepFlights:0, crisisHistory:[], // P11/I3: the crisis roster (leoFlights/deepFlights are trigger counters; crisisHistory is every resolved crisis)
+    crisis:null, crisisDone:null, leoFlights:0, deepFlights:0, crisisHistory:[], crisisArchive:null, // P11/I3 + E0.5-B: recent crisis records plus aggregate archive
     researchNext:null, // I5: queued "start next" research pick — auto-starts once the active project finishes and it's affordable/eligible
     researchGoal:null, // #14: pinned research goal — the tech tree persistently highlights this node's full prereq chain (and the R&D rail shows steps remaining) until it's researched or unpinned
     trackingStations:[], // #89: built tracking-station ids (see TRACKING_STATIONS, data.js). Gate itself is OFF (TRACKING_NETWORK_LIVE=false) until slice 2 ships a build UI.
@@ -923,11 +924,27 @@ function tickMonthlyBoundary(){
     tryStartQueuedResearch(); // I5: retry monthly in case the queued pick just became affordable/unlocked (the immediate try lives in completeResearch)
     pushMetricHistory(); // #28: snapshot this month's core metrics for the dashboard sparklines
 }
-// #28: append the current core-metric values to their trend buffers (capped at METRIC_HISTORY_LEN).
+// #28/E0.5-B: keep the dashboard's recent monthly window, but roll evicted samples into
+// quarter-sized averages for the Chronicle. This preserves a lightweight full-campaign trend instead
+// of silently throwing away everything older than two years.
 function pushMetricHistory(){
   if(!state.metricHist) state.metricHist=defaultMetricHist();
-  const h=state.metricHist;
-  const push=(key,v)=>{ if(!Array.isArray(h[key])) h[key]=[]; h[key].push(round2(v)); if(h[key].length>METRIC_HISTORY_LEN) h[key].splice(0, h[key].length-METRIC_HISTORY_LEN); };
+  if(!state.metricArchive) state.metricArchive=defaultMetricArchive();
+  if(!state.metricArchivePending) state.metricArchivePending=defaultMetricArchivePending();
+  const h=state.metricHist, archive=state.metricArchive, pending=state.metricArchivePending;
+  const push=(key,v)=>{
+    if(!Array.isArray(h[key])) h[key]=[];
+    if(!Array.isArray(archive[key])) archive[key]=[];
+    if(!Array.isArray(pending[key])) pending[key]=[];
+    h[key].push(round2(v));
+    while(h[key].length>METRIC_HISTORY_LEN){
+      pending[key].push(h[key].shift());
+      if(pending[key].length>=METRIC_ARCHIVE_BUCKET){
+        const bucket=pending[key].splice(0,METRIC_ARCHIVE_BUCKET);
+        archive[key].push(round2(bucket.reduce((sum,n)=>sum+n,0)/bucket.length));
+      }
+    }
+  };
   push('money', state.money);
   push('rep', state.rep);
   push('support', publicSupport());
@@ -935,6 +952,20 @@ function pushMetricHistory(){
   push('revenue', lm.revenue||0); push('expenses', lm.expenses||0); push('net', lm.net||0);
   push('success', state.flights>0 ? 100*state.successes/state.flights : 0);
   push('science', state.science||0);
+}
+// Chronicle-facing series: completed archived quarters followed by quarter-sized buckets made from
+// the not-yet-archived tail and the current 24-month dashboard window. The final partial quarter is
+// intentionally retained so the line always ends at the current campaign.
+function chronicleMetricSeries(key){
+  const archive=(state.metricArchive&&Array.isArray(state.metricArchive[key]))?state.metricArchive[key]:[];
+  const pending=(state.metricArchivePending&&Array.isArray(state.metricArchivePending[key]))?state.metricArchivePending[key]:[];
+  const recent=(state.metricHist&&Array.isArray(state.metricHist[key]))?state.metricHist[key]:[];
+  const tail=pending.concat(recent), out=archive.slice();
+  for(let i=0;i<tail.length;i+=METRIC_ARCHIVE_BUCKET){
+    const bucket=tail.slice(i,i+METRIC_ARCHIVE_BUCKET);
+    if(bucket.length) out.push(round2(bucket.reduce((sum,n)=>sum+n,0)/bucket.length));
+  }
+  return out;
 }
 
 
@@ -3121,20 +3152,21 @@ function holdTimeArrow(unit){
 }
 function releaseTimeArrow(){ if(_holdTimer){ clearTimeout(_holdTimer); _holdTimer=null; } stopTimeAuto(); }
 function updateTimeArrows(){ for(const u in TIME_UNIT_DAYS){ const b=$('tArrow'+u[0].toUpperCase()+u.slice(1)); if(b) b.classList.toggle('running', timeAuto.unit===u); } }
-// E0.5-A: pause game-time auto-advance while the tab is hidden. timeAuto's 1s setInterval (each
-// tick runs a full render() into the hidden DOM) is the ONLY thing that keeps burning CPU in a
-// backgrounded tab — RAF-driven rendering (all Phaser scenes + the flight canvas loop) is already
-// throttled to a stop by the browser when the tab is hidden. We record the running unit ONLY when
-// hidden-pause itself stops it, so a run the player had already manually paused stays paused on
-// return, and we never auto-start time the player didn't have running.
+// E0.5: pause both simulation auto-advance and every sustained visual renderer while hidden.
+// Browsers throttle RAF, but they do not promise to fully suspend every compositor/WebGL path; Phaser
+// scenes in particular must be slept to stop postFX rendering. Each visual loop snapshots whether it
+// was active, so visibility return resumes only work that this handler itself stopped.
 let _timeAutoHiddenUnit=null;
 function handleVisibilityChange(){
   if(document.hidden){
     if(timeAuto.unit){ _timeAutoHiddenUnit=timeAuto.unit; stopTimeAuto(); } // was auto-running → remember + stop
-    // (timeAuto.unit falsy → nothing was auto-running; leave state untouched, no-op)
-  } else if(_timeAutoHiddenUnit){
-    const u=_timeAutoHiddenUnit; _timeAutoHiddenUnit=null;                  // resume ONLY what hidden-pause stopped
-    if(!state.over) startTimeAuto(u);
+    try{ if(typeof pauseVisualLoopsForHidden==='function') pauseVisualLoopsForHidden(); }catch(e){}
+  } else {
+    try{ if(typeof resumeVisualLoopsFromHidden==='function') resumeVisualLoopsFromHidden(); }catch(e){}
+    if(_timeAutoHiddenUnit){
+      const u=_timeAutoHiddenUnit; _timeAutoHiddenUnit=null;                // resume ONLY what hidden-pause stopped
+      if(!state.over) startTimeAuto(u);
+    }
   }
 }
 try{ document.addEventListener('visibilitychange', handleVisibilityChange); }catch(e){}
@@ -6412,7 +6444,23 @@ function activeCrisisDef(){ return state.crisis ? crisisDef(state.crisis.id) : n
 function crisisHistory(){
   const h=state.crisisHistory=state.crisisHistory||[];
   if(state.crisisDone && !h.length){ h.push(state.crisisDone); }
+  while(h.length>CRISIS_HISTORY_CAP) archiveCrisisRecord(h.shift());
   return h;
+}
+const CRISIS_HISTORY_CAP=48;
+function crisisArchive(){
+  const a=state.crisisArchive=state.crisisArchive||{};
+  a.resolved=Math.max(0,Number(a.resolved)||0);
+  a.mitigated=Math.max(0,Number(a.mitigated)||0);
+  a.bonus=Number(a.bonus)||0;
+  return a;
+}
+function archiveCrisisRecord(record){
+  if(!record) return;
+  const a=crisisArchive();
+  a.resolved++;
+  if(record.outcome==='mitigated') a.mitigated++;
+  a.bonus+=record.outcome==='mitigated'?18:8;
 }
 function crisisFundCost(def){ def=def||activeCrisisDef(); if(!def) return Infinity; return round2(def.fundCostBase*(1+eraStakesFrac()*1.2)); } // scales with era like bailoutTerms
 // eligible candidates right now: era-gated, threshold-gated (if any), and not an immediate repeat
@@ -6451,6 +6499,7 @@ function resolveCrisis(outcome){
   const def=crisisDef(c.id);
   const record={id:c.id, outcome, peakSeverity:c.peakSeverity||0, months:absMonth()-c.startAbs};
   crisisHistory().push(record);
+  while(state.crisisHistory.length>CRISIS_HISTORY_CAP) archiveCrisisRecord(state.crisisHistory.shift());
   state.crisisDone=record; // kept in sync for anything still reading the old singular field
   state.crisis=null;
   if(outcome==='mitigated'){ addSupport(6); state.rep+=8; log('ok', def?def.mitigatedMsg:'Crisis resolved.'); }

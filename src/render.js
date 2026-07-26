@@ -1,5 +1,8 @@
-function setTlFilter(id){ _tlFilter=id; try{ localStorage.setItem('ov_tlFilter', id); }catch(e){} renderLog(); }
+const TL_RENDER_PAGE=12;
+let _tlVisible=TL_RENDER_PAGE;
+function setTlFilter(id){ _tlFilter=id; _tlVisible=TL_RENDER_PAGE; try{ localStorage.setItem('ov_tlFilter', id); }catch(e){} renderLog(); }
 function toggleTlCollapse(){ _tlCollapsed=!_tlCollapsed; try{ localStorage.setItem('ov_tlCollapsed', _tlCollapsed?'1':'0'); }catch(e){} renderLog(); }
+function showOlderLog(){ _tlVisible+=TL_RENDER_PAGE; renderLog(); }
 // Slice 3: objective sparkle tracking
 const _prevObjDoneSet=new Set();
 let _objSectionOpen=false;
@@ -16,6 +19,8 @@ let _objSectionOpen=false;
    moment, browsable later from the Chronicle. Same lazy-default pattern as blueprints() —
    no SAVE_VERSION bump; a legacy save simply starts with an empty wire. */
 const FRONT_PAGE_CAP=100; // E0.5-A fold-in: raised 24→100 so the Chronicle retains a fuller history
+const FRONT_PAGE_RENDER_PAGE=20;
+let _frontPageVisible=FRONT_PAGE_RENDER_PAGE;
 function frontPages(){ return state.frontPages=state.frontPages||[]; }
 function pushFrontPage(kind, icon, headline, dek){
   frontPages().unshift({abs:absMonth(), kind, icon, headline, dek});
@@ -72,11 +77,23 @@ function showFrontPage(idx){
 }
 function frontPagesHTML(){
   if(!frontPages().length) return '<div class="dim" style="font-size:12px">No wire copy yet — a first, a disaster or a scoop will file the opening edition.</div>';
-  return frontPages().map((e,i)=>`<div onclick="showFrontPage(${i})" style="display:flex;gap:8px;align-items:baseline;padding:3px 0;font-size:12px;cursor:pointer" onmouseover="this.style.background='var(--panel2)'" onmouseout="this.style.background=''">
+  const pages=frontPages(), visible=pages.slice(0,_frontPageVisible);
+  const rows=visible.map((e,i)=>`<div onclick="showFrontPage(${i})" style="display:flex;gap:8px;align-items:baseline;padding:3px 0;font-size:12px;cursor:pointer" onmouseover="this.style.background='var(--panel2)'" onmouseout="this.style.background=''">
     <span style="flex:0 0 16px">${e.icon}</span>
     <span style="color:var(--ink);flex:1">${esc(e.headline)}</span>
     <span class="dim" style="font-size:11px">${dateOfAbs(e.abs)}</span>
   </div>`).join('');
+  return rows+(visible.length<pages.length?`<button class="btn ghost" style="width:100%;margin-top:6px" onclick="showOlderFrontPages()">Show older editions · ${pages.length-visible.length} remaining</button>`:'');
+}
+function showOlderFrontPages(){ _frontPageVisible+=FRONT_PAGE_RENDER_PAGE; showChronicle('view',true); }
+function chronicleTrendsHTML(){
+  const money=chronicleMetricSeries('money'), rep=chronicleMetricSeries('rep'), support=chronicleMetricSeries('support');
+  if(!money.length&&!rep.length&&!support.length) return '';
+  const cell=(label,series,opts)=>`<div style="flex:1;min-width:120px"><div class="dim" style="font-size:10px;text-transform:uppercase;letter-spacing:.08em">${label}</div>${sparklineSVG(series,Object.assign({height:42,label:label+' quarterly campaign trend'},opts||{}))}</div>`;
+  return `<div class="cc-panel-h" style="margin:0 0 4px">Campaign trends · quarterly</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;border-bottom:1px solid var(--line);padding:2px 0 8px;margin-bottom:10px">
+      ${cell('Capital',money)}${cell('Reputation',rep)}${cell('Public support',support,{min:0,max:100})}
+    </div>`;
 }
 
 /* ---------- The Agency Chronicle: your century, scored ----------
@@ -111,14 +128,18 @@ function legacyScore(){
   // reads correctly — crisisHistory() lazily seeds itself from it — but a longer game can now
   // survive more than one, and each one should count).
   const cHist=crisisHistory();
-  const crisisBonus=cHist.reduce((a,c)=>a+(c.outcome==='mitigated'?18:8),0);
+  const cArchive=crisisArchive();
+  const crisisBonus=cArchive.bonus+cHist.reduce((a,c)=>a+(c.outcome==='mitigated'?18:8),0);
+  const crisisCount=cArchive.resolved+cHist.length;
+  const crisisMitigated=cArchive.mitigated+cHist.filter(c=>c.outcome==='mitigated').length;
   const fusionFlown=!!state.completed['oort_precursor']; // I1/I2: the interstellar-precursor capstone
   const fusionBonus=fusionFlown?20:0;
   const score=firsts*10 + worlds*12 + facN*8 + Math.round(safety*20) - scooped*5 - crewPenalty + crisisBonus + fusionBonus;
   const grade= score>=140?'S':score>=100?'A':score>=65?'B':score>=35?'C':'D';
-  return {score,grade,firsts,scooped,worlds,facN,safety,crewLost:state.crewLost||0,crisesResolved:cHist,fusionFlown};
+  return {score,grade,firsts,scooped,worlds,facN,safety,crewLost:state.crewLost||0,crisesResolved:cHist,crisisCount,crisisMitigated,fusionFlown};
 }
-function showChronicle(mode){ // mode: 'view' | 'era' (1990) | 'era2' (2100) | 'retire'
+function showChronicle(mode,preservePage){ // mode: 'view' | 'era' (1990) | 'era2' (2100) | 'retire'
+  if(!preservePage) _frontPageVisible=FRONT_PAGE_RENDER_PAGE;
   const L=legacyScore(); const entries=chronicleEntries();
   const gradeCol={S:'#ffd98a',A:'#58c47a',B:'#4fd1d9',C:'#e8b64c',D:'#e0564f'}[L.grade];
   const rows=entries.map(e=>{ const y=1942+Math.floor(e.abs/12);
@@ -147,11 +168,12 @@ function showChronicle(mode){ // mode: 'view' | 'era' (1990) | 'era2' (2100) | '
         ${stat('Flights', state.flights+' ('+Math.round(L.safety*100)+'% success)')}
         ${stat('Crew flown', (state.crewFlown||0)+((state.crewLost||0)?' · '+state.crewLost+' lost':''))}
         ${stat('Facilities', L.facN)}
-        ${L.crisesResolved.length?stat('Crises survived', L.crisesResolved.length+(L.crisesResolved.some(c=>c.outcome==='mitigated')?' · '+L.crisesResolved.filter(c=>c.outcome==='mitigated').length+' cleared':'')):''}
+        ${L.crisisCount?stat('Crises survived', L.crisisCount+(L.crisisMitigated?' · '+L.crisisMitigated+' cleared':'')):''}
         ${L.fusionFlown?stat('Interstellar precursor','Flown ✓'):''}
       </div>
     </div>
     <div style="max-height:240px;overflow:auto;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:6px 0;margin-bottom:10px">${rows}</div>
+    ${chronicleTrendsHTML()}
     ${mode==='view'?`<div class="cc-panel-h" style="margin:0 0 4px">📰 The Agency Wire</div>
     <div style="max-height:160px;overflow:auto;border-bottom:1px solid var(--line);padding:2px 0 6px;margin-bottom:10px">${frontPagesHTML()}</div>`:''}
     ${mode==='retire'
@@ -7084,6 +7106,56 @@ function map3dRenderLoop(){
 function pauseMap3D(){
   if(map3d && map3d.raf){ try{ cancelAnimationFrame(map3d.raf); }catch(e){} map3d.raf=0; }
 }
+function resumeMap3D(){
+  if(map3d && !map3d.raf) map3dRenderLoop();
+}
+
+// E0.5-B: one visibility lifecycle for every sustained renderer. This is deliberately a snapshot,
+// not a blanket wake: tabs/scenes that were already inactive remain inactive after the browser returns.
+let _hiddenVisuals=null;
+function phaserSceneActive(game,key){ try{ return !!(game&&game.scene&&game.scene.isActive(key)); }catch(e){ return false; } }
+function pauseVisualLoopsForHidden(){
+  if(_hiddenVisuals) return;
+  _hiddenVisuals={
+    cc:ccAnim!=null,
+    cape3d:!!(cape3d&&cape3d.raf),
+    cape:phaserSceneActive(capeGame,'cape'),
+    vehicle:phaserSceneActive(vehGame,'vehprev'),
+    map:phaserSceneActive(mapGame,'solarmap'),
+    map3d:!!(map3d&&map3d.raf),
+    station:phaserSceneActive(stationGame,'station'),
+    flight:!!(typeof flightScene!=='undefined'&&flightScene&&flightScene.scene&&phaserSceneActive(flightGame,'flight')),
+    flightCanvas:!!(typeof animState!=='undefined'&&animState&&animState.raf&&!animState.held),
+    earth:earthAnim!=null,
+    ccPop:ccPopAnim!=null
+  };
+  if(_hiddenVisuals.cc) stopCCScene();
+  if(_hiddenVisuals.cape3d) pauseCape3D();
+  if(_hiddenVisuals.cape) pauseCapeGame();
+  if(_hiddenVisuals.vehicle) pauseVehGame();
+  if(_hiddenVisuals.map) pauseMapGame();
+  if(_hiddenVisuals.map3d) pauseMap3D();
+  if(_hiddenVisuals.station) pauseStationGame();
+  if(_hiddenVisuals.flight) sleepFlightScene();
+  if(_hiddenVisuals.flightCanvas){ try{ cancelAnimationFrame(animState.raf); animState.raf=0; }catch(e){} }
+  if(_hiddenVisuals.earth){ try{ cancelAnimationFrame(earthAnim); earthAnim=null; }catch(e){} }
+  if(_hiddenVisuals.ccPop){ try{ cancelAnimationFrame(ccPopAnim); ccPopAnim=null; }catch(e){} }
+}
+function resumeVisualLoopsFromHidden(){
+  const v=_hiddenVisuals; _hiddenVisuals=null;
+  if(!v) return;
+  if(v.cc && state&&state.tab==='command') startCCScene();
+  if(v.cape3d && cape3d) resumeCape3D();
+  if(v.cape) resumeCapeGame();
+  if(v.vehicle) resumeVehGame();
+  if(v.map) resumeMapGame();
+  if(v.map3d) resumeMap3D();
+  if(v.station) resumeStationGame();
+  if(v.flight){ try{ if(flightScene&&flightScene.scene&&flightScene.scene.isSleeping()) flightScene.scene.wake(); }catch(e){} }
+  if(v.flightCanvas && animState&&!animState.held&&!animState.raf){ animState.prevWall=performance.now(); animState.raf=requestAnimationFrame(animLoop); }
+  if(v.earth && earthPopoutOpen&&!earthAnim){ earthLastT=0; earthAnim=requestAnimationFrame(earthLoop); }
+  if(v.ccPop && ccPopoutOpen&&!ccPopAnim) ccPopAnim=requestAnimationFrame(ccPopLoop);
+}
 // Hand-rolled orbit-camera input (drag=rotate, wheel=zoom, click=focus+select). Browser-only.
 function _map3dDown(e){
   if(!map3d || (e.button!=null&&e.button!==0)) return;
@@ -9943,11 +10015,13 @@ function renderLog(){
     if(!entries.length){ const e=document.createElement('div'); e.className='tl-empty';
       e.textContent=state.log.length?'No entries in this category yet.':'No flights or events yet — advance time or fly a mission.'; box.appendChild(e); return; }
     let firstLogChip=true;
-    entries.forEach(l=>{ const nav=logNav(l); const icon=TL_CAT_ICON[logCategory(l)]||TL_CAT_ICON.other;
+    entries.slice(0,_tlVisible).forEach(l=>{ const nav=logNav(l); const icon=TL_CAT_ICON[logCategory(l)]||TL_CAT_ICON.other;
       const c=document.createElement('div'); c.className='tl-chip '+(l.kind||'note')+(nav?' clk':'')+(hasNew&&firstLogChip&&l===state.log[0]?' tl-chip-new':'');
       firstLogChip=false;
       c.innerHTML=`<span class="tl-when">${l.when}</span><span class="tl-msg" title="${l.detail?tlAttr(l.msg)+'\n\n'+esc(l.detail):tlAttr(l.msg)}">${icon} ${tlStrip(l.msg)}</span>`; // E1.5: append the failure causal chain (if any) to the existing message tooltip
       if(nav) c.onclick=()=>timelineGo(nav); box.appendChild(c); });
+    if(entries.length>_tlVisible){ const more=document.createElement('button'); more.className='btn ghost tl-more';
+      more.textContent=`Show older · ${entries.length-_tlVisible} remaining`; more.onclick=showOlderLog; box.appendChild(more); }
   } finally {
     box.scrollTop=_scrollTop;
   }

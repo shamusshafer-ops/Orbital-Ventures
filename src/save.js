@@ -152,7 +152,7 @@ function loadDefaults(){ return {
       staff:[], assignedAstronaut:null, departments:defaultDepartments(),
       vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, rehearsal:false, techLevel:{}, divisions:{}, partnerships:[], breakthroughCooldown:3, relDebt:0, powerSource:'solar',
       recentBuilds:[], materials:defaultMaterialsState(),
-      buildQueue:[], hangar:[], hulls:[], hullSeq:0, orderSeq:0, padMonthAbs:-1, padMonthUsed:0, standingProd:null, juggernautReached:false, doctrine:null, lunarArch:null, uiLayer:'advanced', loanInterest:0, metricHist:defaultMetricHist(), livery:defaultLivery(), parts:defaultParts(), blueprints:[], frontPages:[], crisis:null, crisisDone:null, leoFlights:0, deepFlights:0, crisisHistory:[], researchNext:null, day:0, engineStock:{}, engineStockTested:{}, partStock:{}, partStockTested:{}, activeFlights:[], inquiryCredit:null
+      buildQueue:[], hangar:[], hulls:[], hullSeq:0, orderSeq:0, padMonthAbs:-1, padMonthUsed:0, standingProd:null, juggernautReached:false, doctrine:null, lunarArch:null, uiLayer:'advanced', loanInterest:0, metricHist:defaultMetricHist(), metricArchive:defaultMetricArchive(), metricArchivePending:defaultMetricArchivePending(), livery:defaultLivery(), parts:defaultParts(), blueprints:[], frontPages:[], crisis:null, crisisDone:null, leoFlights:0, deepFlights:0, crisisHistory:[], crisisArchive:null, researchNext:null, day:0, engineStock:{}, engineStockTested:{}, partStock:{}, partStockTested:{}, activeFlights:[], inquiryCredit:null
 }; }
 
 /* ---------- Session bookend: "where you left off" ----------

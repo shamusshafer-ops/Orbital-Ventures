@@ -2392,6 +2392,27 @@ manual pause stays paused). `FRONT_PAGE_CAP` raised 24→100 (folded in, trivial
 `test-hidden-tab.js`, 34/34. **Suite total: 525/525.** Slice (b) log retention/windowing and metric
 archive (deferred per user) not started.
 
+## Session — E0.5 slice (b): bounded histories + unified renderer sleep (2026-07-26)
+
+**Shipped.** The global ops timeline now mounts 12 retained entries at a time and the Chronicle Wire
+mounts 20 editions at a time, each with an explicit **Show older** affordance. The simulation still
+keeps the existing small recent log (40) and Wire archive (100), but normal renders no longer rebuild
+all of either collection.
+
+The 24-month dashboard histories now decimate evicted monthly samples into exact three-month averages
+in `state.metricArchive`, with an incomplete-quarter buffer so no sample disappears. The Chronicle
+renders full-campaign quarterly capital/reputation/support trends; old saves lazily acquire both
+archive fields without a save-version migration. Resolved crisis objects are capped at 48 and older
+records roll into a compact aggregate that preserves exact crisis count, mitigated count, and legacy
+score bonus.
+
+The earlier visibility handler now snapshots and stops every sustained canvas/Three.js RAF plus every
+active Phaser scene, then resumes only renderers it actually stopped. This covers Command Center,
+Cape 3D, Vehicle, Solar Map 2D/3D, Station, flight playback, Earth pop-out, and Command Center pop-out;
+time auto-advance retains its existing same-unit resume semantics. New `test-e05-retention.js` validates
+the retention math, paging, score-preserving archive, and snapshot/idempotency behavior (27/27);
+`test-hidden-tab.js` remains 34/34 and the regression/build-parity checks remain green.
+
 ## Session — BACKLOG.md #9: floating money/rep deltas (2026-07-10)
 
 **Shipped, out-of-band from the E0.x sequence** (user-requested, first still-untriaged `Backlog`-status
@@ -3030,10 +3051,11 @@ duplicating.
 - [~] **E0.4 Keyboard + accessibility baseline** — slices (a) hotkeys, (b) focus trap, (d) UI-scale
       SHIPPED 2026-07-10 (see session logs above), 491/491. **Slice (c) (reduced-motion +
       colorblind icons) deliberately deferred, not started.**
-- [ ] **E0.5 Unbounded-array audit** — cap rendered log entries (windowed + "show
+- [x] **E0.5 Unbounded-array audit** — cap rendered log entries (windowed + "show
       older"), decimate metric histories monthly→quarterly after N years, cap/archive
       chronicle. Verify `document.hidden` pauses every RAF loop and sleeps Phaser scenes
-      (bloom postFX must not run on hidden canvases).
+      (bloom postFX must not run on hidden canvases). **SHIPPED 2026-07-26 in slices
+      (a)+(b); see session logs above.**
 - [x] **E0.6 `esc()` all dynamic text in innerHTML template strings** — SHIPPED 2026-07-11 (see
       session log above), tests 561/561, **not yet committed/pushed, needs a real-browser check**.
       Real user-typed surface was blueprint/livery names + import-controlled save fields (company/

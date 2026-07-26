@@ -1039,11 +1039,14 @@ const MATERIAL_DIP_THRESHOLD = 0.88;    // spot at/below this = a buying opportu
 const MATERIAL_DIP_BONUS     = 0.05;    // a dip bulk-buy shaves another 5% under the already-low spot
 const MATERIAL_DIP_BATCH     = 8;       // one dip buy tops the yard up by this many builds' worth (capped)
 const METRIC_HISTORY_LEN = 24;          // #28: months of core-metric history retained for dashboard sparklines
+const METRIC_ARCHIVE_BUCKET = 3;        // E0.5-B: three evicted monthly samples become one quarterly point
 // #28: per-metric monthly trend buffers (capital/rep/support/success-rate/science)
 // Finances tab: revenue/expenses/net added — money[] is the capital LEVEL each month (a running
 // balance), these three are the recurring FLOW for that month (state.lastMonth, snapshotted here
 // rather than derived by diffing money[], since one-time windfalls would otherwise pollute the diff).
 function defaultMetricHist(){ return {money:[], rep:[], support:[], success:[], science:[], revenue:[], expenses:[], net:[]}; }
+function defaultMetricArchive(){ return defaultMetricHist(); }
+function defaultMetricArchivePending(){ return defaultMetricHist(); }
 // Bench customization slice 1: cosmetic livery (body + accent color, nose style, name).
 // Pure visual — read by drawVehicle, so it shows on the bench preview AND in flight.
 const DEFAULT_LIVERY={ body:'#d4dee4', accent:'#e0564f', nose:'auto', name:'' };
