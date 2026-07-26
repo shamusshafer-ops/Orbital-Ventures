@@ -35,7 +35,9 @@ const repo=fs.existsSync(path.join(__dirname,'..','src','shell.html')) ? path.jo
 const renderSource=fs.readFileSync(path.join(repo,'src','render.js'),'utf8');
 const shellSource=fs.readFileSync(path.join(repo,'src','shell.html'),'utf8');
 check('rendering no longer moves the scene navigation DOM', !/move\('sceneNav'/.test(renderSource));
-check('the dock has one shared shell home', /class="scene-dock cc-dock" id="ccDock"><nav class="rail-nav" id="sceneNav"/.test(shellSource));
+check('the scene selector has one shared home inside the global header',
+  /<header>[\s\S]*class="scene-dock header-scene-nav" id="ccDock"><nav class="rail-nav" id="sceneNav"[\s\S]*<\/header>/.test(shellSource) &&
+  (shellSource.match(/id="sceneNav"/g)||[]).length===1);
 
 console.log(`${pass}/${pass+fail} checks passed`);
 process.exit(fail?1:0);

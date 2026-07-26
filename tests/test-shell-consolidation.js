@@ -23,6 +23,9 @@ check('number keys use the same dock order as Tab and visible navigation',
 check('the dock is a labelled navigation landmark with real buttons',
   /<nav class="rail-nav" id="sceneNav" aria-label="Primary scenes"/.test(shell) &&
   /<button id="\$\{def\.navId\}" class="scene" type="button"/.test(renderSrc));
+check('header scene navigation keeps one desktop row and a readable narrow three-by-two grid',
+  /\.scene-dock nav\.rail-nav\{display:grid;grid-template-columns:repeat\(6,minmax\(0,1fr\)\)/.test(shell) &&
+  /@media\(max-width:880px\)\{[\s\S]*?\.scene-dock nav\.rail-nav\{grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/.test(shell));
 check('all contextual destinations expose stable accessible labels',
   /id="mapRosterSlot"[^>]*aria-label="Solar System bodies"/.test(shell) &&
   /id="assemblyPaletteSlot"[^>]*aria-label="Assembly module palette"/.test(shell) &&

@@ -23,7 +23,11 @@ try{
   check('short desktop summaries show at most two active mission rows while Flight log remains available', /cc-active-missions \.cc-deck-row:nth-of-type\(n\+3\)\{display:none\}/.test(compact) && /Flight log/.test(render));
   check('compact timeline has its own fixed lower lane instead of colliding with the rail', /#ccTimeline\{height:86px;overflow:auto\}/.test(compact));
   check('Cape rails remain 25% narrower at full desktop width and taper on smaller desktops', /--cc-rail-width:clamp\(220px,20vw,285px\)/.test(desktop));
-  check('dock bridges the Cape aperture in one readable six-button row', /\.cc-dock\{[^}]*left:calc\(var\(--cc-rail-width\) \+ 14px\);right:calc\(var\(--cc-rail-width\) \+ 14px\);bottom:14px;transform:none;width:auto/.test(desktop) && /cc-dock nav\.rail-nav\{display:grid;grid-template-columns:repeat\(6,minmax\(0,1fr\)\)/.test(desktop) && /cc-dock nav\.rail-nav button\{width:auto;min-width:0;min-height:50px;flex:none;flex-direction:column[^}]*font-size:clamp\(10px,.78vw,12px\)[^}]*white-space:nowrap;overflow:hidden/.test(desktop));
+  check('global header owns one readable six-button scene row while Cape reclaims the lower bezel',
+    /class="scene-dock header-scene-nav" id="ccDock"/.test(shell) &&
+    /\.scene-dock nav\.rail-nav\{display:grid;grid-template-columns:repeat\(6,minmax\(0,1fr\)\)/.test(shell) &&
+    /#ccCenter\{height:100%;margin-left:calc\(var\(--cc-rail-width\) \+ 14px\)/.test(desktop) &&
+    !/\.command-hero \.cc-dock/.test(shell));
   check('desktop Cape grading is a non-interactive zoom-layer overlay', /#ccZoom::before,.command-hero #ccZoom::after\{content:"";position:absolute;inset:0;z-index:1;pointer-events:none\}/.test(desktop));
   check('Cape grading reuses HUD surface, line, and glow variables', /#ccZoom::before\{[^}]*var\(--hud-surface\)/.test(desktop) && /#ccZoom::after\{[^}]*var\(--hud-line-soft\)[^}]*var\(--hud-glow\)/.test(desktop));
   check('Cape hotspots stay above grading and keep their own interactive layer', /#ccSpots\{position:absolute;inset:0;z-index:2\}/.test(desktop));

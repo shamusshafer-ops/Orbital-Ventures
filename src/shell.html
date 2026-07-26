@@ -9,7 +9,7 @@
     --topbar-h:120px; /* height of the pinned header+opsbar; updated live in JS so sticky panels clear it */
     --cc-rail-width:380px; /* persistent left/right shell columns share one stable width */
     /* Shared scene-shell geometry. Variants inherit these rather than creating their own shell contract. */
-    --scene-gap:14px; --scene-dock-offset:14px;
+    --scene-gap:14px;
     --ui-scale:1; /* whole-UI zoom (E0.4 slice D); set live from JS (uiScale/100), persisted in localStorage 'ov_uiscale', NOT the save */
     --bg:#050b12; --panel:#0b1621; --panel2:#102231; --line:#24465a;
     --ink:#d8e2e7; --muted:#7d909b; --dim:#56666f;
@@ -219,11 +219,12 @@
     font-size:12px;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   nav.rail-nav button:hover{color:var(--ink);border-color:var(--ignite)}
   nav.rail-nav button.active{background:var(--panel2);color:var(--ink);border-color:var(--line);box-shadow:inset 3px 0 0 var(--ignite)}
-  /* The dock is a single, persistent navigation home. Scene variants may reposition it,
-     but no scene moves or duplicates its buttons. */
-  .scene-dock{position:sticky;bottom:var(--scene-dock-offset);z-index:20;margin-top:var(--scene-gap);padding:7px 9px;border:1px solid var(--line);border-radius:7px;background:color-mix(in srgb,var(--panel) 94%,transparent);box-shadow:var(--hud-shadow)}
-  .scene-dock nav.rail-nav{display:flex;flex-direction:row;flex-wrap:wrap;align-items:stretch;gap:4px}
-  .scene-dock nav.rail-nav button{width:auto;min-width:130px;flex:1 1 130px;text-align:center}
+  /* The scene selector has one persistent home in the global header. Keeping the real navigation
+     node above the scene shell removes the old lower-bezel obstruction without duplicating buttons. */
+  .scene-dock{position:relative;flex:1 0 100%;min-width:0;margin:0;padding:7px 0 0;border:0;border-top:1px solid var(--hud-line-soft);background:transparent;box-shadow:none}
+  .scene-dock nav.rail-nav{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));align-items:stretch;gap:5px}
+  .scene-dock nav.rail-nav button{width:auto;min-width:0;min-height:34px;padding:6px 8px;justify-content:center;text-align:center}
+  .scene-dock nav.rail-nav button.active{box-shadow:inset 0 -2px 0 var(--readout),inset 0 1px 0 var(--hud-line-soft)}
   .scene-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:0}
   /* slice 2: group headers + scene emphasis (scenes own the center viewport; panels are secondary) */
   nav.rail-nav .rail-group{font-size:var(--fs-min);text-transform:uppercase;letter-spacing:.14em;color:var(--muted);
@@ -232,10 +233,20 @@
   nav.rail-nav button.scene{font-weight:600}
   @media(max-width:880px){
     .scene-shell{grid-template-columns:1fr}
+    header{gap:10px}
+    .stats{order:2;width:100%;margin-left:0;justify-content:space-between;gap:8px}
+    .header-actions{position:absolute;top:13px;right:17px;margin-left:0!important}
+    .scene-dock{order:3}
     .rail-left{position:static}
     nav.rail-nav{flex-direction:row;flex-wrap:wrap;align-items:center}
     nav.rail-nav button{width:auto}
     nav.rail-nav .rail-group{width:100%;margin:6px 2px 0}
+    .scene-dock nav.rail-nav{grid-template-columns:repeat(3,minmax(0,1fr))}
+  }
+  @media(max-width:560px){
+    .header-actions{position:static;order:2;margin-left:0!important}
+    .stats{order:3;justify-content:flex-start;overflow-x:auto;padding-bottom:3px}
+    .scene-dock{order:4}
   }
 
   .opsbar{display:flex;align-items:center;gap:10px;margin-bottom:14px;padding:8px 12px;
@@ -813,7 +824,7 @@
     background:var(--readout);opacity:.62;box-shadow:38px 0 0 -1px var(--hud-line);pointer-events:none}
   header::after,.opsbar::after,.card::after,.stage::after{content:"";position:absolute;right:8px;bottom:8px;width:4px;height:4px;
     border-right:1px solid var(--hud-line);border-bottom:1px solid var(--hud-line);opacity:.85;pointer-events:none}
-  .cc-deck-card::before,.command-hero .cc-strip::before,.command-hero #ccTimeline::before,.command-hero .cc-ticker::before,.command-hero .cc-dock::before{opacity:.82}
+  .cc-deck-card::before,.command-hero .cc-strip::before,.command-hero #ccTimeline::before,.command-hero .cc-ticker::before{opacity:.82}
   nav.rail-nav button::before,.rail-acc-btn::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:1px;background:var(--hud-line-soft);}
   nav.rail-nav button.active::before,.rail-acc-btn.open::before{background:var(--readout);box-shadow:0 0 8px var(--hud-glow)}
   @media(max-width:880px){.cc-icon{margin-right:6px}.cc-brand-mark{width:23px;height:23px}}
@@ -870,8 +881,8 @@
       display:block;position:relative;isolation:isolate;min-height:calc(100vh - var(--topbar-h) - 18px)}
     .command-hero .viewport{width:100%}
     .command-hero .rail-left,.command-hero .rail-right{position:absolute;z-index:8;pointer-events:none}
-    /* The shared lower-bezel dock stays mounted here. The agency deck becomes the actual
-       left column, while the persistent Mission Control accordion owns the right one. */
+    /* The agency deck becomes the actual left column, while the persistent Mission Control
+       accordion owns the right one. Scene navigation now lives in the global header. */
     .command-hero .rail-left{display:none}
     /* The summary deck owns the upper-right corner; the persistent accordion, Rivals,
        News and Finance remain intact directly beneath it. */
@@ -884,7 +895,7 @@
     /* The hero is viewport-bound: a fixed floor here made the absolute overlays extend below
        short desktop windows before the player could see the ticker or scene dock. */
     .command-hero #commandView{position:relative;height:calc(100vh - var(--topbar-h) - 18px);min-height:0}
-    .command-hero #ccCenter{height:calc(100% - 84px);margin-left:calc(var(--cc-rail-width) + 14px);margin-right:calc(var(--cc-rail-width) + 14px)}
+    .command-hero #ccCenter{height:100%;margin-left:calc(var(--cc-rail-width) + 14px);margin-right:calc(var(--cc-rail-width) + 14px)}
     .command-hero #ccCenter > .cc-hero-card{height:100%}
     .command-hero .cc-hero-card{position:relative;padding:0;overflow:hidden;background:#05070d;border-color:var(--hud-line);box-shadow:inset 0 1px 0 var(--hud-line-soft),inset 0 0 80px rgba(44,140,177,.07),var(--hud-shadow)}
     .command-hero .cc-hero-head{position:absolute;z-index:3;right:14px;top:12px;display:flex;align-items:center;gap:8px;padding:5px 7px;border:1px solid var(--hud-line-soft);border-radius:5px;background:rgba(4,12,20,.74)}
@@ -927,16 +938,6 @@
     .command-hero .cc-ticker .tl-date{display:none}
     .command-hero .cc-ticker .tl-chip{max-width:300px;padding:2px 8px;font-size:11px}
     .command-hero .cc-ticker .tl-chip .tl-when{font-size:8px}
-    /* The selector is the monitor's lower bezel: it bridges the inner rail edges in two rows. */
-    .command-hero .cc-dock{position:absolute;z-index:10;left:calc(var(--cc-rail-width) + 14px);right:calc(var(--cc-rail-width) + 14px);bottom:14px;transform:none;width:auto;max-width:none;overflow:visible;padding:7px 9px;border:1px solid var(--hud-line);border-radius:7px;background:rgba(4,13,22,.93);box-shadow:var(--hud-shadow)}
-    .command-hero .cc-dock::-webkit-scrollbar{display:none}
-    .command-hero .cc-dock nav.rail-nav{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));align-items:stretch;gap:4px}
-    .command-hero .cc-dock nav.rail-nav{width:100%;max-width:none}
-    .command-hero .cc-dock nav.rail-nav .rail-group{display:none}
-    .command-hero .cc-dock nav.rail-nav button{width:auto;min-width:0;min-height:50px;flex:none;flex-direction:column;gap:3px;padding:5px 3px;justify-content:center;text-align:center;font-size:clamp(10px,.78vw,12px);line-height:1.05;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .command-hero .cc-dock nav.rail-nav button .cc-icon{font-size:15px;line-height:1}
-    .command-hero .cc-dock nav.rail-nav button .cc-nav-label{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis}
-    .command-hero .cc-dock nav.rail-nav button.active{box-shadow:inset 0 -2px 0 var(--readout),inset 0 1px 0 var(--hud-line-soft)}
   }
   /* Short desktop windows keep the same overlay mode, but split its vertical budget into
      distinct deck, rail, and timeline lanes. The rail contents retain their own scrollbar;
@@ -962,19 +963,15 @@
     .command-hero nav.rail-nav,.command-hero .rail-accordion,
     .command-hero nav.rail-nav button,.command-hero .rail-acc-btn{width:100%;max-width:none}
     .command-hero #commandView{display:flex;flex-direction:column;gap:14px}
-    .command-hero #ccCenter{order:1}.command-hero #ccStrip{order:2}.command-hero #ccSummaryRight{order:3}.command-hero #ccTimeline{order:4}.command-hero #ccTicker{order:5}.command-hero #ccDock{order:6}
+    .command-hero #ccCenter{order:1}.command-hero #ccStrip{order:2}.command-hero #ccSummaryRight{order:3}.command-hero #ccTimeline{order:4}.command-hero #ccTicker{order:5}
     .command-hero .cc-hero-card{padding:0;overflow:hidden}
     .command-hero .cc-hero-head{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--hud-line-soft)}
     .command-hero .ccscene-wrap{margin:0;touch-action:pan-y}
     .command-hero .cc-ticker{padding:8px 10px;border:1px solid var(--hud-line);border-radius:7px;background:var(--hud-surface)}
     .command-hero .cc-ticker .tl-controls{margin:0 0 6px;overflow-x:auto;flex-wrap:nowrap}
     .command-hero .cc-ticker .timeline{margin-top:0}
-    .command-hero .cc-dock{width:100%;max-width:none;padding:9px;border:1px solid var(--hud-line);border-radius:7px;background:var(--hud-surface)}
-    .command-hero .cc-dock nav.rail-nav{flex-direction:row;flex-wrap:wrap}
-    .command-hero .cc-dock nav.rail-nav .rail-group{display:none}
     .command-hero .cc-strip{position:static;width:100%;max-width:none}
     .command-hero #ccCenter{margin-left:0;margin-right:0}
-    .command-hero .cc-dock nav.rail-nav button{width:auto;min-width:170px;flex:1 1 170px;text-align:center;white-space:nowrap;overflow:visible;text-overflow:clip}
   }
 
   /* #31 · UI microanimations */
@@ -1053,10 +1050,12 @@
       <div class="stat hidden dom-research" id="stSciWrap"><span class="k">Science</span><span class="v" id="stSci">—</span></div>
       <div class="stat hidden adv-only dom-economy" id="stDepotWrap"><span class="k">LEO Depot</span><span class="v" id="stDepot">—</span></div>
     </div>
-    <div style="display:flex;align-items:center;gap:8px;margin-left:14px;align-self:center">
+    <div class="header-actions" style="display:flex;align-items:center;gap:8px;margin-left:14px;align-self:center">
       <button class="btn ghost" onclick="showSettingsMenu()" title="Settings, save / load / new game, display options, and interface detail level">⚙ Menu</button>
       <button class="btn ghost" id="topbarHideBtn" onclick="toggleTopbar()" title="Hide the top bar (h)" style="padding:2px 10px;font-size:12px">▴ Hide bar</button>
     </div>
+    <!-- One global navigation home: renderChromeTabsViews fills these six buttons from SCENE_DEFS. -->
+    <div class="scene-dock header-scene-nav" id="ccDock"><nav class="rail-nav" id="sceneNav" aria-label="Primary scenes"></nav></div>
   </header>
 
   <!-- The Command Center moves this existing ticker into its lower hero edge. It returns here on
@@ -1243,8 +1242,6 @@
   <!-- Settings retired in slice 8 → the HUD ⚙ menu (showSettingsMenu builds #settingsCard
        on demand via renderSettings). -->
 
-      <!-- Shared shell dock: rendered from SCENE_DEFS and never moved between pages. -->
-      <div class="scene-dock cc-dock" id="ccDock"><nav class="rail-nav" id="sceneNav" aria-label="Primary scenes"></nav></div>
     </main>
     <aside class="rail-right scene-slot" id="railRight">
       <!-- Persistent accordion (shown on every scene): one click drops a section down to preview it,

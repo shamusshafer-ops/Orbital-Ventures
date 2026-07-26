@@ -14929,8 +14929,8 @@ function renderChromeShellRail(){
   placeSceneContextualSlots();
   placeTimelineChrome();
 }
-// The scene dock and all contextual slots are permanently mounted. Only the timeline projection
-// changes host for the Command Center hero; no scene layout or navigation node moves here.
+// The scene selector stays permanently mounted in the global header and all contextual slots keep
+// their stable homes. Only the timeline projection changes host for the Command Center hero.
 function placeTimelineChrome(){
   const command=state.tab==='command';
   const move=(id,targetId)=>{
