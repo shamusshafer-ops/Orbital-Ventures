@@ -381,13 +381,17 @@
   .assembly-3d-host.layout-edit.grabbing{cursor:grabbing}
   .assembly-3d-host canvas{display:block;width:100%!important;height:100%!important;cursor:inherit}
   .assembly-svg-fallback{width:100%}
+  .assembly-godot-frame{display:block;width:100%;height:clamp(520px,62vh,700px);min-height:520px;border:0;background:#071119}
+  .assembly-godot-frame.hidden{display:none}
+  .assembly-godot-status{margin-top:6px;padding:5px 8px;border:1px solid var(--line);border-radius:5px;background:var(--hud-raised);color:var(--readout);font:10px var(--mono);text-align:right}
+  .assembly-godot-status.hidden{display:none}
   .assembly-palette-slot{position:sticky;top:calc(var(--topbar-h) + 10px);max-height:calc(100vh - var(--topbar-h) - 24px);overflow:auto;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
   .assembly-palette-slot .station-palette{margin-top:0!important}
   .assembly-palette-home{margin-top:12px}
   .assembly-view.expanded .assembly-palette-home{display:block}
   .assembly-view.expanded{position:fixed;inset:0;z-index:60;background:var(--bg);padding:12px 18px;overflow:auto}
   .assembly-view.expanded .assembly-shell{min-height:calc(100vh - 24px)}
-  .assembly-view.expanded .assembly-3d-host{height:84vh}
+  .assembly-view.expanded .assembly-3d-host,.assembly-view.expanded .assembly-godot-frame{height:84vh}
   .assembly-view.expanded .assembly-monitor>div>svg{width:auto;max-width:100%;height:84vh;margin:0 auto}
   @media(max-width:880px){.assembly-palette-slot{position:static;max-height:320px;margin-bottom:14px}.assembly-3d-host{height:480px;min-height:480px}}
   @media(max-width:560px){.assembly-3d-host{height:390px;min-height:390px}}

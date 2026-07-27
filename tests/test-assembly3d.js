@@ -42,6 +42,11 @@ check('saved station placement overrides only the matching module projection', m
 check('placement changes the renderer signature without changing module authority', assembly3dSpecKey(movedOrbital)!==assembly3dSpecKey(orbital)&&JSON.stringify(stationCur.fs.moduleList)===stationBefore);
 assembly3dClearLayout('station',stationCur,1);
 check('clearing a station placement restores the exact generated grid coordinate', assembly3dSceneSpec('station',stationCur).nodes[1].x===orbital.nodes[1].x);
+assembly3dWriteLayout('station',stationCur,4,{x:0,y:3.48,z:0,yaw:0,parent:0,dockTargetPort:'top',dockOwnPort:'bottom'});
+const stackedOrbital=assembly3dSceneSpec('station',stationCur);
+check('station layouts persist vertical node docking and elevation', stackedOrbital.nodes[4].y===3.48&&stackedOrbital.nodes[4].dockTargetPort==='top'&&stackedOrbital.nodes[4].dockOwnPort==='bottom');
+check('vertical docking changes the station renderer signature', assembly3dSpecKey(stackedOrbital)!==assembly3dSpecKey(orbital));
+assembly3dClearLayout('station',stationCur,4);
 assembly3dWriteLayout('base',baseCur,3,{x:9.26,z:-7.24,yaw:1.57,parent:1,dockTargetPort:'east',dockOwnPort:'west'});
 check('layout writes are scoped and grid-rounded', state.assemblyLayouts['base:lunar_base'][3].x===9.26&&state.assemblyLayouts['base:lunar_base'][3].z===-7.24);
 check('layout persists docking orientation and explicit connection ports', state.assemblyLayouts['base:lunar_base'][3].yaw===1.57&&state.assemblyLayouts['base:lunar_base'][3].parent===1&&state.assemblyLayouts['base:lunar_base'][3].dockTargetPort==='east'&&state.assemblyLayouts['base:lunar_base'][3].dockOwnPort==='west');
@@ -58,7 +63,17 @@ assembly3dClearLayout('station',stationCur,2);
 const assemblyChrome=assemblyShellHTML('station');
 check('assembly chrome exposes reversible clear-canvas and module-tray controls', assemblyChrome.includes('stationClearCanvasBtn')&&assemblyChrome.includes('stationModuleTray'));
 check('assembly chrome exposes selected-module rotation in both directions', assemblyChrome.includes('stationRotateLeftBtn')&&assemblyChrome.includes('stationRotateRightBtn'));
-check('assembly chrome explains full-scene orbiting while arranging', assemblyChrome.includes('right-drag to orbit'));
+check('assembly chrome explains full-scene orbiting and vertical docking while arranging', assemblyChrome.includes('right-drag to orbit')&&assemblyChrome.includes('Shift: top port')&&assemblyChrome.includes('Alt/Option: bottom port'));
+const baseChrome=assemblyShellHTML('base');
+check('Base chrome exposes a reversible embedded Godot Web test', baseChrome.includes('baseGodotBtn')&&baseChrome.includes('baseGodotFrame')&&baseChrome.includes('godot-base-bench/index.html'));
+const bridgePayload=baseGodotPayload(baseCur);
+check('Godot bridge sends the simulation-owned module inventory and facility identity', bridgePayload.source==='orbital-ventures'&&bridgePayload.facility_id==='lunar_base'&&JSON.stringify(bridgePayload.modules)===JSON.stringify(baseCur.fs.moduleList));
+baseGodotCur=baseCur;
+baseGodotPersistLayout({isru_plant:{x:4.25,z:-2.5,yaw:1.571,hidden:false,parent_id:'hab_dome',target_port:'east',own_port:'west'}});
+const bridgeSaved=assembly3dLayoutMap('base',baseCur)[3];
+check('Godot layout messages round-trip into the existing visual-layout save boundary', bridgeSaved.x===4.25&&bridgeSaved.z===-2.5&&bridgeSaved.parent===0&&bridgeSaved.dockTargetPort==='east');
+assembly3dClearLayout('base',baseCur);
+baseGodotCur=null;
 
 // With THREE absent, both live renderers must take the established SVG route without creating
 // a WebGL state object. This is the release fallback, not a test-only alternate renderer.
