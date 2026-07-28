@@ -119,6 +119,18 @@ change first.
   anything past the divider.
 - The Git Data API push itself is a conflict guard: pushing against a stale base SHA fails outright
   rather than silently overwriting the other agent's work. If a push fails, re-pull, don't force.
+- **SAVE COMPATIBILITY IS NOT REQUIRED (owner directive, 2026-07-28).** This is a single-player game
+  with a single player — Shamus — and there is no released install base to protect. Save-breaking
+  changes are explicitly acceptable. Do NOT contort a design to preserve backwards compatibility, and
+  do NOT add lazy-default guards, grandfather clauses, or `migrate*()` functions purely for the sake of
+  old saves. If the clean implementation requires a save format change, take it.
+  - Still bump `SAVE_VERSION` and add an entry to `docs/SAVE-VERSIONS.md` — the history is useful as a
+    changelog of what state exists and why, independent of migration.
+  - Still keep the forward-version guard on load (a newer save opened by an older build should warn,
+    not silently corrupt) — that protects Shamus from his own two-agent workflow, not an install base.
+  - Existing lazy-default/grandfather code is NOT to be ripped out wholesale on the strength of this
+    note. Much of it now doubles as ordinary defensive coding against malformed state. Remove it only
+    where it is demonstrably dead weight in a slice you are already touching.
 
 ---
 

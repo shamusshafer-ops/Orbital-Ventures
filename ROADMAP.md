@@ -1777,3 +1777,38 @@ rendering slices via `ovMapDiag()`; record the completed slice in `ROADMAP-HISTO
 
 Model tier: SM6.1 and SM6.2 are mechanical/wiring (lighter tier appropriate); SM6.3's wording and any
 visual-legibility judgment calls benefit from the heavier tier, same split as D1 vs. D2–D4 above.
+
+## Planned — #118 Seeded deterministic RNG for the simulation layer (scoped 2026-07-28, not built)
+
+Filed out of the 2026-07-28 full-code refactor review. The ROADMAP note under the inclination work
+says *"the harness has no RNG seeding at all — worth a small harness addition."* That understates what
+exists and overstates how small the change is, in opposite directions.
+
+**What already exists.** `mulberry(seed)` and `hashStr(s)` are in `src/shell.js:440-441` — a complete
+seedable PRNG, already used ~15× in `render.js` for deterministic visuals (star layers, crew scatter,
+iso props, twinkle). The primitive does not need writing.
+
+**What doesn't.** `src/sim.js` makes **46 raw `Math.random()` calls** against only 8 `rnd()` calls.
+Gameplay-critical draws — setback rolls (432/475/477), logistics mishap selection (530/531), telescope
+discovery + fault (683/694), fuel-price walk (871) — all run off the global unseeded stream. Because
+everything is one concatenated scope with hoisted function declarations, `sim.js` can reach `mulberry`
+at call time despite loading first, so no build-order change is needed.
+
+**Why it is NOT harness-only.** Reseeding changes the *order and count* of draws. That is precisely the
+mechanism behind the existing `test-station-slice2` flakiness (its unseeded Mars e2e advances 8 months
+through random econ/logistics events, so any change to draw counts flips it). Converting the call sites
+will move outcomes in existing saves and in every time-advancing test. Treat it as a balance-affecting
+change with a full-suite reseat, not a cleanup.
+
+**Why it is worth doing.** Two Deferred backlog items are blocked on it and become cheap once it lands:
+**#94 Ironman mode** and **#95 challenge scenarios with fixed seeds + par scores**. It also makes every
+time-advancing e2e test reproducible, which would have made the `dockModuleNow` defect (found in the
+same review) deterministic to reproduce instead of intermittent.
+
+**Suggested shape.** Slice 1: a seeded `rnd()` funnel + `state.rngSeed` persisted (SAVE_VERSION bump,
+lazy-defaulted from `Date.now()` on legacy load so existing saves keep behaving randomly). Slice 2:
+convert `sim.js` call sites in batches, re-baselining tests per batch. Slice 3: expose the seed in the
+UI and build #95 on top.
+
+Model tier: slice 1 is mechanical; slice 2 needs judgment about which draws are gameplay-meaningful vs.
+cosmetic and how to re-baseline balance, so it wants the heavier tier.

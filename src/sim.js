@@ -859,7 +859,13 @@ function tickMonthlyBoundary(){
         if(fst.starvedMonths===1) log('bad',`${fdef.icon} ${fdef.name} has run out of supplies — the crew are on emergency reserves. Resupply now or you'll start losing modules.`);
         if(fst.starvedMonths>=FAC_STARVE_ABANDON_MONTHS){
           fst.starvedMonths=0;
-          if((fst.modules||1)>1){ fst.modules-=1; log('bad',`${fdef.icon} ${fdef.name}: a module was evacuated and mothballed — capacity cut to ${fst.modules}. Resupply to halt the decline.`); }
+          // FIXED 2026-07-28: this branch used to do `fst.modules-=1` and nothing else. But moduleList
+          // is the canonical store — facilityModuleList() re-derives `fst.modules` from it on EVERY read
+          // (29 call sites, several on the render path), so the decrement was reverted within the same
+          // frame and the mid-tier starvation penalty never actually landed. Evacuate from the list
+          // itself and let the count follow, which is the invariant facilityModuleList already asserts.
+          const mods=facilityModuleList(fst); // canonical list; also lazily seeds it on legacy saves
+          if(mods.length>1){ mods.pop(); fst.modules=mods.length; log('bad',`${fdef.icon} ${fdef.name}: a module was evacuated and mothballed — capacity cut to ${fst.modules}. Resupply to halt the decline.`); }
           else { fst.built=false; log('bad',`${fdef.icon} ${fdef.name} was abandoned — the outpost is lost. Re-establish it to return.`); }
         }
       } else if(fst.starvedMonths){ fst.starvedMonths=0; }
@@ -1613,11 +1619,23 @@ function canAddStationModule(facId, modId){
 // module-list/supply/logging side, so the three callers can't drift out of sync with each other.
 function dockModuleNow(facId, modId, note){
   const def=facilityById(facId), fs=facilityState(facId), md=stationModuleDef(modId);
+  // A "fly it yourself" delivery can outlive its destination: a long cruise can resolve after the target
+  // was abandoned by the starvation branch (built=false) or, on a malformed save, never existed at all.
+  // The old code went straight to facilityModuleList(fs) and threw on a missing fs — inside finalizeLaunch,
+  // which has no try/catch, so the throw also skipped autoAdvanceMission() and the rest of resolution.
+  // Docking into an abandoned base is equally wrong: it silently restores capacity the abandon just took,
+  // and foundFacility() overwrites the whole record on re-establish, so the module vanishes later anyway.
+  // Refuse and say so plainly. The cost is deliberately NOT refunded — the flight flew and the cargo is lost.
+  if(!def || !md || !fs || !fs.built){
+    log('bad',`${def?def.name:'Target facility'}: ${md?md.name:'module'} delivery lost — the destination is no longer in service. The launch cost is not recovered.`);
+    return false;
+  }
   facilityModuleList(fs).push(modId); fs.modules=fs.moduleList.length; stationOps(fs).maintenanceEnabled=true;
   fs.supply=FAC_SUPPLY_MONTHS; fs.starvedMonths=0; // fresh provisions ride along with any delivery
   const pw=facilityPower(fs);
   log('ok',`${def.name}: ${md.name} docked${note?` (${note})`:''}. ${fs.moduleList.length} modules · power ${pw.net>=0?'+':''}${pw.net} kW.`);
   if(pw.net<0) log('note',`${def.name} is power-starved — production is running at 60%. Dock a Solar Power Truss.`);
+  return true;
 }
 function addStationModule(facId, modId){
   const chk=canAddStationModule(facId, modId); if(!chk.ok) return;
@@ -5466,6 +5484,9 @@ function finalizeLaunch(ctx, ops){
     }
     if(m.proc) state.contractOffers=(state.contractOffers||[]).filter(o=>o.id!==m.id); // E1.3: one-shot — consumed on success, not reflown
     if(m.deliverModule){ // #73 Slice 1: a "fly it yourself" module delivery docks on successful arrival
+      // The cost is charged unconditionally and deliberately: you built and flew the module, so it is
+      // sunk whether or not the destination survived the cruise. dockModuleNow returns false (and logs
+      // the loss) if the target was abandoned mid-flight — no refund, no throw. See dockModuleNow.
       state.money-=m.moduleCost;
       dockModuleNow(m.deliverModule.facId, m.deliverModule.modId, `${fM(m.moduleCost)}, flown`);
     }

@@ -152,6 +152,7 @@ Complexity: S = <1 day, M = 1–5 days, L = 1–3 weeks, XL = 1+ month. Impact: 
 |115| Fleet Registry — unified expandable status board for all assets (in-flight vehicles, logistics, bases/stations, depot, programs, standing ops) | Consolidation · info architecture | M | ★★ | — | M |Shipped 2026-07-17 (both slices) — collector + accordion board covering flights, logistics, facilities, depot, programs, standing ops/satellites (option A), astronaut roster. Option B (persistent satellite objects) filed separately|
 |116| Persistent satellite objects (deployed sats with orbit params, degradation, servicing tie-in) — enables real per-sat telemetry in the Fleet Registry | Sim depth · registry option B | L | ★★ | 115 | L |Backlog — the (B) alternative deferred from #115; its own epic if pursued|
 |117| Solar System map improvement epic: A) truthful angle + Oort-excluded sizing, B) WASD/keyboard nav all 3 renderers, C) port live ship-tracking to Phaser+SVG | Map = dashboard + planner, "more connected" | M (per slice) | ★★★ | — | M |**Epic complete 2026-07-24.** Slice A: map2dAngle truthful angle, Oort-exclusion, 980×620 canvas. Slice B: WASD/arrows across 3D/Phaser/SVG + shared popout. Slice C: ported activeShipMarkers live in-flight tracking to Phaser+SVG (shipMapPoint rides the existing 2D transferArc curve). See ROADMAP.md for all three session entries|
+|118| Seeded deterministic RNG for the simulation layer (route sim.js's 46 raw `Math.random()` calls through a seeded stream; `mulberry()`/`hashStr()` already exist in shell.js:440-441 and are used ~15× in render.js for deterministic visuals) | Test determinism · unblocks #94 Ironman and #95 challenge seeds · fixes test-station-slice2 flakiness | M | ★★ | — | M |Backlog — filed 2026-07-28 from the full-code refactor review. NOT a harness-only change: reseeding shifts the RNG draw order, which is itself the cause of the existing flakiness, so it carries real balance-regression risk and wants its own slice|
 
 ---
 
@@ -162,11 +163,14 @@ Complexity: S = <1 day, M = 1–5 days, L = 1–3 weeks, XL = 1+ month. Impact: 
 
 | Status | Count | Meaning |
 |---|---|---|
-| E0.x | 8 | Folded into a named critical-fix item |
-| E1.x | 20 | Folded into a named high-value item |
-| E2 | 10 | Folded into medium-priority grouped item |
-| Deferred | 12 | Named in ROADMAP.md's deferred list |
-| **Backlog** | **52** | Not yet on ROADMAP.md in any form |
+| E0.x / E1.x / E2 | 27 | Folded into a named ROADMAP.md workstream |
+| Shipped / closed | 21 | Built and verified; see ROADMAP-HISTORY.md |
+| Deferred | 13 | Named in ROADMAP.md's deferred list |
+| **Backlog** | **46** | Not yet on ROADMAP.md in any form |
+
+*Recounted 2026-07-28 directly from the table above (118 items). The previous tally was
+written before the 2026-07-13 → 07-24 shipping run and had drifted — it reported 52 backlog
+items and omitted the shipped category entirely.*
 
 Over half the list (58/112) hasn't been triaged onto ROADMAP.md yet — mostly small
 QoL items (#9, 11–12, 15–16, 19–25), flight/ops texture (#31, 33–34, 37–45), rival/world
