@@ -1740,3 +1740,40 @@ Not yet slice-planned in test-file/exact-function detail — that's the next ses
 same as the A/B/C epic above. D1 is wiring/mechanical (lighter model tier appropriate); D2–D4 are
 design/balance work (heavier tier — visual legibility and information-density tradeoffs benefit from
 more careful judgment).
+
+## Planned — Solar Map SM6: advanced navigation and spatial context (scoped)
+
+Folded in from the retired `SOLAR-SYSTEM-MAP-ROADMAP.md` (2026-07-28) — SM1–SM5 from that file shipped
+2026-07-26 and are recorded in `ROADMAP-HISTORY.md`; SM6 was the only phase still `[ ]`. Continuation
+of the Solar Map utility pass above (D1–D4 shipped; this is the next layer: reducing disorientation
+once zoomed deep into a planetary system).
+
+**Goal:** Reduce disorientation when zoomed deeply into planetary systems.
+
+- [ ] **SM6.1 — Breadcrumb navigation.** Clickable context such as `Solar System › Earth System ›
+  Moon`. Breadcrumb actions use camera presets/fitting rather than hard-coded teleports.
+- [ ] **SM6.2 — Optional overview locator.** Evaluate a small system locator only when deeply zoomed.
+  Prefer a lightweight overlay over a second Three.js scene or renderer. Show camera target/current
+  region, not a misleading linear miniature.
+- [ ] **SM6.3 — Scale communication.** Keep numeric AU, distance, and light-time readouts. Add a clear
+  note that orbital distance is compressed and body radius enhanced. Do **not** add a universal linear
+  scale bar — the scene-to-AU mapping is nonlinear and the D2 review above explicitly rejected it.
+
+**Suggested test:** source guards for breadcrumb/locator state; extend existing map3d test coverage
+rather than starting a new suite.
+
+**Protected baseline — do not regress:** D1–D4 empire-overlay/scale/orientation/time-scrubber work,
+the reparented single Three.js/WebGL scene (`pauseMap3D()`, `remountMap3D()`, `disposeMap3D()`,
+`ovMapDiag()`), 2D fallback on startup/tick/context-loss, and `#mapPopStage{min-width:0}`.
+
+**Explicitly out of scope:** gameplay simulation values, mission definitions/gating, save schema,
+economy/R&D/personnel/contracts/facilities/rival logic, the flight renderer or Cape scene.
+
+**Slice discipline (applies to all map work, not just SM6):** claim the slice in `CLAUDE.md` STATUS
+before editing; re-pull `main`; edit `src/`, never generated `orbital-ventures.html`; add one focused
+test where logic can run headlessly; run that test, then `node build.js`, then `node --check
+build/game.js`, then the full suite and `git diff --check`; browser-verify Firefox for layout/
+rendering slices via `ovMapDiag()`; record the completed slice in `ROADMAP-HISTORY.md`.
+
+Model tier: SM6.1 and SM6.2 are mechanical/wiring (lighter tier appropriate); SM6.3's wording and any
+visual-legibility judgment calls benefit from the heavier tier, same split as D1 vs. D2–D4 above.
