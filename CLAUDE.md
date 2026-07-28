@@ -110,8 +110,13 @@ change first.
   purpose" from scratch (cost real time twice this week: the post-failure hold screen, the 0.1×
   default speed).
 - Claim a task in the STATUS block above before starting it; clear the claim when you push.
-- `ROADMAP.md` and the History section below stay pure-append, always. This STATUS block is the one
-  exception — overwrite it fully each session; never touch anything past the divider.
+- `ROADMAP-HISTORY.md` and the History section below stay pure-append, always: completed session
+  writeups go at the end of `ROADMAP-HISTORY.md`, never into `ROADMAP.md`. `ROADMAP.md` is now the
+  forward-looking file (workflow, milestone status, open threads, scoped/`Planned` blocks) and may
+  be edited in place — tick status, close out a scoped block, add new planned work. Read it first
+  at session start; open `ROADMAP-HISTORY.md` only when you need detail on a specific past slice.
+  This STATUS block is the one full-overwrite exception — rewrite it each session; never touch
+  anything past the divider.
 - The Git Data API push itself is a conflict guard: pushing against a stale base SHA fails outright
   rather than silently overwriting the other agent's work. If a push fails, re-pull, don't force.
 

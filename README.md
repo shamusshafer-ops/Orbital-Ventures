@@ -15,6 +15,7 @@ Found and run a space launch company from the Pioneer era (1940s) through specul
 - **M3b-ii** — Refueling depots (Tanker Run + LEO depot top-off) and Lunar/Mars ISRU — breaks the rocket equation's compounding for the first time.
 
 See `ROADMAP.md` for full milestone detail, open scoping notes, and candidate next steps.
+Completed session-by-session history lives in `ROADMAP-HISTORY.md`.
 
 ## Design philosophy
 
@@ -24,7 +25,8 @@ See `ROADMAP.md` for full milestone detail, open scoping notes, and candidate ne
 
 ## Docs
 
-- `ROADMAP.md` — milestone status, workflow, and what's next.
+- `ROADMAP.md` — milestone status, workflow, open threads, and what's next.
+- `ROADMAP-HISTORY.md` — append-only log of completed session work (split out of `ROADMAP.md`, 2026-07-28).
 - `orbital-ventures-design.md` — original full design document (tech tree, economy, personnel, Solar System map).
 - `orbital-ventures-systems-spec.md` — deep dive on the rocket-equation vehicle design and ECLSS systems.
 
