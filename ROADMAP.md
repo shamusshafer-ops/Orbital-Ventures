@@ -1538,18 +1538,17 @@ make with real numbers at build time.
 `inclination:0` equatorial (full ~3827 m/s tax; payout 8.4→14.9, ~77%, to offset). Both blurbs explain
 the tradeoff. `test-inclination-missions.js` 8/8. Ground track (#45) now unblocked — separate slice.
 
-**Two findings surfaced during slice 1 (logged, not fixed — out of scope):**
-  1. **Latent `dockModuleNow` crash.** A module-delivery flight that resolves *after* its target facility
-     has been decommissioned mid-cruise (the standing-resupply mechanic can remove an un-resupplied base
-     over a long Mars cruise) throws `Cannot read properties of undefined (reading 'moduleList')` —
-     `dockModuleNow`/`facilityModuleList` don't guard against the facility having vanished. Pre-existing;
-     slice 1's RNG-timing shift just made `test-station-slice2`'s unseeded Mars e2e trip it more often.
-     Fix candidate: `dockModuleNow` should no-op (and probably log/refund) if the target facility is gone.
+**One finding surfaced during slice 1, still open (item 2 below); item 1 fixed 2026-07-28:**
+  1. ~~**Latent `dockModuleNow` crash.**~~ **Fixed 2026-07-28** in the full-code refactor review —
+     see the commit tagged `BEHAVIOR CHANGE: fix facility starvation penalty + dockModuleNow guard`.
+     `dockModuleNow` now refuses a missing/unbuilt facility instead of throwing, logs the loss, and
+     does not refund (the flight flew). Covered by `tests/test-facility-module-integrity.js`.
   2. **Unseeded-RNG test fragility.** `test-station-slice2`'s Mars e2e advances 8 real months through
      random econ/logistics events with no seeded RNG, so its pass/fail depends on the global `Math.random`
      stream — any code change that shifts draw counts can flake it (pre-edit 5/5 pass, post-edit 4/5).
-     The harness has no RNG seeding at all. Worth a small harness addition (seedable RNG) so time-advancing
-     e2e tests are deterministic — would also have made finding #1 reproducible instead of intermittent.
+     Filed as **`#118`** (see BACKLOG.md and the scoped block below) rather than fixed inline — reseeding
+     `sim.js`'s 46 raw `Math.random()` calls shifts draw order for every gameplay roll, so it's a
+     balance-affecting change, not a harness tweak.
 
 ## Planned — Fleet Registry: unified all-asset status board (scoped 2026-07-17, not built)
 
