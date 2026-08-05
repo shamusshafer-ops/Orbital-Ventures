@@ -5333,14 +5333,14 @@ function renderReadout(){
     <div class="mission-tag">Flying against</div>
     <div class="mission-name">${m.name} ${m.crew?`<span class="pill" style="color:var(--ignite);border-color:var(--hud-line)">${m.crew} crew · ${m.days<1?(m.days*24).toFixed(0)+'h':m.days+'d'}</span>`:''} ${state.completed[m.id]?'<span class="pill ok">routine</span>':''}</div>
 
-    <div class="gauge">
+    <div class="gauge" title="Δv (delta-v): total velocity change your vehicle can produce — the fuel budget for the whole mission. Must clear the mission's required Δv (the marker) to be flyable.">
       <div class="nums"><span class="achieved" style="color:${meets?'var(--ok)':'var(--ink)'}">${fI(v.totalDv)}<span style="font-size:12px;color:var(--muted)"> m/s Δv</span></span>
         <span class="req">req ${fI(need)}</span></div>
       <div class="bar"><div class="fill" style="width:${pct}%;background:${fillColor}"></div><div class="marker" style="left:${markerPos}%"></div></div>
     </div>
 
     <div class="metrics">
-      <div class="metric"><div class="k">Liftoff TWR</div><div class="v" style="color:${v.twr>1.2?'var(--ink)':(v.twr>1?'var(--warn)':'var(--bad)')}">${v.twr.toFixed(2)}</div></div>
+      <div class="metric" title="Thrust-to-weight ratio at liftoff. Below 1.0 the vehicle can't lift off at all; below ~1.2 it wastes Δv fighting gravity on the way up (see Gravity loss)."><div class="k">Liftoff TWR</div><div class="v" style="color:${v.twr>1.2?'var(--ink)':(v.twr>1?'var(--warn)':'var(--bad)')}">${v.twr.toFixed(2)}</div></div>
       <div class="metric" title="Δv bled by stages whose TWR is below nominal — raise thrust to recover it"><div class="k">Gravity loss</div><div class="v" style="color:${v.gravLoss>800?'var(--bad)':(v.gravLoss>200?'var(--warn)':'var(--ink)')}">${v.gravLoss>1?'−'+fI(v.gravLoss)+' m/s':'—'}</div></div>
       <div class="metric" title="${relTip}"><div class="k">${domDot('engineering')}Reliability</div><div class="v">${(v.reliability*100|0)}%</div></div>
       <div class="metric"><div class="k">Liftoff mass</div><div class="v">${v.liftoff.toFixed(1)} t</div></div>
