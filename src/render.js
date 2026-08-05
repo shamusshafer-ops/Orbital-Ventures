@@ -754,6 +754,61 @@ function commandSummary(){
     scienceProgram: state.scienceProgram ? {monthsLeft:state.scienceProgram.monthsLeft, health:Math.round(state.scienceProgram.health), sciPerMonth:state.scienceProgram.sciPerMonth} : null, // E1.7
   };
 }
+/* ---------- #19 (backlog): time-to-affordability estimate ----------
+   Pure calc + a shared HTML progress-bar widget, dropped in beside every purchase
+   button that can be gated on capital (research, facility founding/expansion,
+   division/department training, passive-contract setup fees, material dip buys).
+   Two numbers, matching the two different "net" figures the game already tracks
+   elsewhere (runwayMonths() uses the same lastMonth field for the inverse question
+   — months of runway left — this is months-to-afford instead):
+     - months:        cost / commandSummary().net  — instantaneous recurring net
+                       AT THIS MOMENT (current facilities/payroll/overhead, no
+                       one-off mission income).
+     - monthsTypical: cost / state.lastMonth.net    — what actually landed last
+                       completed month (includes one-off mission payouts/losses
+                       the instantaneous figure can't see). Falls back to the
+                       instantaneous net before the first month ticks.
+   Deliberately does NOT cover hiring (no upfront cost — salary is recurring, not
+   a capital purchase) or small instant-decision buys (fuel lots, resupply, repair,
+   rival intel/counterpoach) where a save-up estimate adds little. */
+function affordEstimate(cost){
+  const shortfall=round2(Math.max(0, cost-state.money));
+  const simpleNet=commandSummary().net;
+  const lm=state.lastMonth;
+  const typicalNet=(lm&&lm.net!=null)?lm.net:simpleNet;
+  return {
+    shortfall,
+    affordable: shortfall<=0,
+    months: shortfall<=0 ? 0 : (simpleNet>0 ? shortfall/simpleNet : Infinity),
+    monthsTypical: shortfall<=0 ? 0 : (typicalNet>0 ? shortfall/typicalNet : Infinity),
+    simpleNet, typicalNet,
+  };
+}
+function fmtAffordMonths(m){
+  if(m===Infinity) return 'never at this rate';
+  if(m<=0) return '0 mo';
+  return `~${Math.ceil(m)} mo`;
+}
+// Always renders — even once affordable, per design: a full green bar + "0 mo"
+// reads as a consistent element beside the button rather than popping in/out.
+function affordWidgetHTML(cost){
+  if(!(cost>0)) return '';
+  const est=affordEstimate(cost);
+  const pct=Math.max(0, Math.min(100, (state.money/cost)*100));
+  const stuck=est.months===Infinity; // burning cash right now — won't close this gap unaided
+  const color = est.affordable ? 'var(--ok)' : (stuck ? 'var(--bad)' : 'var(--warn,#d9a441)');
+  const label = est.affordable
+    ? '0 mo — affordable now'
+    : (stuck
+        ? `⚠ losing ${fM(-est.simpleNet)}/mo — won't close this gap at current burn`
+        : `${fmtAffordMonths(est.months)} at current rate · ${fmtAffordMonths(est.monthsTypical)} typical`);
+  return `<div class="afford-widget" style="margin-top:4px">
+    <div style="height:4px;border-radius:2px;background:var(--panel2);overflow:hidden">
+      <div style="height:100%;width:${pct.toFixed(0)}%;background:${color}"></div>
+    </div>
+    <div class="dim" style="font-size:11px;margin-top:2px;${stuck?'color:var(--bad)':''}">${label}</div>
+  </div>`;
+}
 /* ---------- #18 (Home redesign): pure builders for the dashboard panels ----------
    These take no DOM and return plain data, so the Home logic is unit-testable just
    like commandSummary()/siteBuildings(). The render functions below consume them. */
@@ -7553,9 +7608,13 @@ function renderPersonnel(){
       const trainBtn = ds.training>=TRAIN_MAX_LEVEL
         ? `<span class="pill" title="Training maxed">🎓 L${TRAIN_MAX_LEVEL} max</span>`
         : `<button class="btn ghost" style="font-size:12px;padding:3px 8px" onclick="trainDepartment('${def.id}')" ${trainChk.ok?'':'disabled'} title="${trainChk.ok?`Invest in training: accelerates this department's experience growth (${fM(trainChk.cost)})`:trainChk.why}">🎓 Train L${ds.training}→${ds.training+1} · ${fM(trainDepartmentCost(def.id))}</button>`;
-      const header=`<div class="card" style="background:var(--panel2);margin-bottom:6px;padding:8px 10px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
-        <div><span style="font-weight:700">${dot}${def.icon} ${def.name}</span> <span class="pill" style="margin-left:4px">${members.length}</span>${ds.training>0?` <span class="pill" style="color:var(--ok);border-color:#2f5a2f" title="Training level accelerates experience growth">🎓 L${ds.training}</span>`:''}</div>
-        <div style="display:flex;align-items:center;gap:10px;font-size:12px">Lead: ${leadTxt} ${trainBtn}</div>
+      const trainCostGap = (trainChk.why==='Not enough capital.') ? affordWidgetHTML(trainDepartmentCost(def.id)) : '';
+      const header=`<div class="card" style="background:var(--panel2);margin-bottom:6px;padding:8px 10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+          <div><span style="font-weight:700">${dot}${def.icon} ${def.name}</span> <span class="pill" style="margin-left:4px">${members.length}</span>${ds.training>0?` <span class="pill" style="color:var(--ok);border-color:#2f5a2f" title="Training level accelerates experience growth">🎓 L${ds.training}</span>`:''}</div>
+          <div style="display:flex;align-items:center;gap:10px;font-size:12px">Lead: ${leadTxt} ${trainBtn}</div>
+        </div>
+        ${trainCostGap?`<div style="max-width:260px;margin-left:auto">${trainCostGap}</div>`:''}
       </div>`;
       return header + members.map(sr=>renderPersonnelCard(personById(sr.id), sr)).join('');
     }).join('');
@@ -9763,7 +9822,7 @@ function productionPanelHTML(){
     const dip = isMaterialDip(d.key);
     const buy = dip ? canBuyMaterialDip(d.key) : {ok:false};
     const dipBtn = dip
-      ? `<button class="btn ${buy.ok?'launch':'ghost'}" style="padding:4px 9px;font-size:12px;font-weight:600" onclick="buyMaterialDip('${d.key}')" ${buy.ok?'':'disabled'} title="${buy.ok?`Bulk-buy ${buy.units} builds-worth at ${materialDipUnitCost(d.key).toFixed(2)}× (yard cap ${MATERIAL_STOCK_CAP})`:'Not enough capital, or yard is full'}">📦 On sale — buy ${buy.units||materialDipUnits(d.key)}× (${fM(materialDipTotal(d.key))})</button>`
+      ? `<button class="btn ${buy.ok?'launch':'ghost'}" style="padding:4px 9px;font-size:12px;font-weight:600" onclick="buyMaterialDip('${d.key}')" ${buy.ok?'':'disabled'} title="${buy.ok?`Bulk-buy ${buy.units} builds-worth at ${materialDipUnitCost(d.key).toFixed(2)}× (yard cap ${MATERIAL_STOCK_CAP})`:'Not enough capital, or yard is full'}">📦 On sale — buy ${buy.units||materialDipUnits(d.key)}× (${fM(materialDipTotal(d.key))})</button>${(!buy.ok&&buy.why==='Not enough capital.')?affordWidgetHTML(materialDipTotal(d.key)):''}`
       : `<span class="dim" style="font-size:12px">watching for a dip ≤${MATERIAL_DIP_THRESHOLD.toFixed(2)}×</span>`;
     return `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:5px 0;border-top:1px solid #2a2a2a">
       <div style="min-width:150px;font-weight:600">${d.icon} ${d.name} <span class="dim" style="font-size:11px;font-weight:400">· ${Math.round(d.share*100)}%</span></div>
@@ -9839,6 +9898,7 @@ function renderInfrastructure(){
           <button class="btn" style="flex:1" onclick="resupplyFacility('${def.id}')" ${canRs?'':'disabled'}>${resupplyInTransit(def.id)?'📦 Resupply en route':(facilitySupply(def.id)>=FAC_SUPPLY_MONTHS?'Fully provisioned':`Resupply · ${fM(rsC)}`)}</button>
           <button class="btn" style="flex:1" onclick="expandFacility('${def.id}')" ${canEx?'':'disabled'}>Expand → ${fs.modules+1} · ${fM(ec)} · ${em} mo</button>
         </div>
+        ${canEx?'':affordWidgetHTML(ec)}
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px;font-size:12px">
           <span class="dim" title="When on, this base automatically reorders resupply the moment its provisions fall to ${AUTO_RESUPPLY_THRESHOLD} months or below — same cost, market price and en-route gate as clicking Resupply yourself. It can spend during a fuel-price spike, so watch the log.">Auto-resupply</span>
           <button class="btn ghost" style="font-size:12px;padding:4px 10px;${fs.autoResupply?'border-color:var(--ignite);color:var(--ignite)':''}" onclick="toggleAutoResupply('${def.id}')">${fs.autoResupply?'On ✓':'Off'}</button>
@@ -9853,6 +9913,7 @@ function renderInfrastructure(){
       <div class="sub" style="margin:2px 0 8px">${def.blurb}</div>
       <div class="dim" style="font-size:12px;margin-bottom:8px">Found at ${bodyName}: ${fM(def.foundCost)} · ${def.foundMonths} mo. Then expand it module by module — it produces income and propellant, and makes missions to ${bodyName} cheaper and more reliable, forever.</div>
       <button class="btn launch" onclick="foundFacility('${def.id}')" ${chk.ok?'':'disabled'}>${chk.ok?`Establish ${def.name} · ${fM(def.foundCost)}`:chk.why}</button>
+      ${(reqDone&&!chk.ok&&state.money<def.foundCost)?affordWidgetHTML(def.foundCost):''}
     </div>`;
   }).join('');
   const fp=state.fuelPrice;
@@ -10023,9 +10084,11 @@ function renderPassiveContracts(targetId){
       }
       const meta=`base +${fM(d.income)}/mo · setup ${fM(d.setup)} · ${(d.cooldown||PASSIVE_COOLDOWN)} mo cooldown${d.support?` · +${d.support} public support`:''}${dimNote}`;
       const disp=passiveContractDisplay(d);
+      const signable = !ac && st!=='cooldown' && st!=='capped';
+      const gapWidget = (signable && state.money<d.setup) ? affordWidgetHTML(d.setup) : '';
       return `<div class="item"><div class="body"><div class="title">${disp.name}${pill}</div>
         <div class="sub">${disp.blurb}</div>
-        <div class="sub num" style="margin-top:4px;color:var(--readout)">${meta}</div></div>${right}${btn}</div>`;
+        <div class="sub num" style="margin-top:4px;color:var(--readout)">${meta}</div>${gapWidget}</div>${right}${btn}</div>`;
     }).filter(Boolean);
     if(!rows.length) continue;
     const open=contractAccordion[cat]!==false;
@@ -10413,7 +10476,7 @@ function renderResearchDetail(){
       <div class="dim" style="font-size:12px;margin-bottom:8px">A leveled technology — keep investing to advance it. Each level: <b>${perLine}/level</b>${lvl>1?` · current bonus from this tech: <b style="color:var(--ok)">${curBonus}</b>`:''}.</div>
       ${maxed
         ? `<button class="btn" disabled style="width:100%">✓ ${techLevelName(id)} — max level (${d.max})</button>`
-        : `<button class="launch" style="width:100%" onclick="upgradeTech('${id}')" ${chk.ok?'':'disabled'}>${chk.ok?`Upgrade → ${(d.names&&d.names[lvl])||('Level '+(lvl+1))} · ${fM(cost)} · ${d.months} mo`:chk.why}</button>`}`;
+        : `<button class="launch" style="width:100%" onclick="upgradeTech('${id}')" ${chk.ok?'':'disabled'}>${chk.ok?`Upgrade → ${(d.names&&d.names[lvl])||('Level '+(lvl+1))} · ${fM(cost)} · ${d.months} mo`:chk.why}</button>${(!chk.ok&&state.money<cost)?affordWidgetHTML(cost):''}`}`;
   }
   else if(st==='done') action=`<button class="btn" disabled style="width:100%">✓ Researched</button>`;
   else if(st==='active'){
@@ -10426,7 +10489,7 @@ function renderResearchDetail(){
     const afford=state.money>=rdCostOf(r), sciNeed=sciGateCost(r), sciOk=sciGateMet(r), ok=st==='available'&&afford&&sciOk&&!busy;
     const why = busy?'Another project is in progress':(st!=='available'?'Prerequisites not met':(!afford?'Not enough capital':(!sciOk?`Needs ${sciNeed} ⚛ (have ${Math.round(state.science||0)})`:'')));
     const sciTag = sciNeed?` · ${sciNeed} ⚛`:'';
-    action=`<button class="launch" style="width:100%" onclick="buyResearch('${r.id}')" ${ok?'':'disabled'}>${ok?`Research · ${fM(rdCostOf(r))}${sciTag} · ${r.months} mo`:why}</button>`;
+    action=`<button class="launch" style="width:100%" onclick="buyResearch('${r.id}')" ${ok?'':'disabled'}>${ok?`Research · ${fM(rdCostOf(r))}${sciTag} · ${r.months} mo`:why}</button>${(st==='available'&&!busy&&!afford)?affordWidgetHTML(rdCostOf(r)):''}`;
   }
   const stateTag={done:'<span class="pill ok">researched</span>',active:'<span class="pill active">in progress</span>',available:'<span class="pill">available</span>',locked:'<span class="pill lock">locked</span>'}[st];
   const debtBanner = relDebt()>0 ? `<div class="flag bad" style="margin-bottom:8px">⚠ Cut-corner penalty: −${Math.round(relDebt()*100)}% reliability on every vehicle, from pushing a flawed project through a past setback. It's permanent — weigh the schedule against the risk next time.</div>` : '';
@@ -10474,7 +10537,7 @@ function renderTechAction(){
     const afford=state.money>=rdCostOf(r), sciNeed=sciGateCost(r), sciOk=sciGateMet(r), ok=st==='available'&&afford&&sciOk;
     const why=st!=='available'?'Prerequisites not met':(!afford?'Not enough capital':(!sciOk?`Needs ${sciNeed} ⚛ (have ${Math.round(state.science||0)})`:''));
     const sciTag=sciNeed?` · ${sciNeed} ⚛`:'';
-    btn=`<button class="launch" onclick="buyResearch('${r.id}')" ${ok?'':'disabled'}>${ok?`Research · ${fM(rdCostOf(r))}${sciTag} · ${r.months} mo`:why}</button>`;
+    btn=`<button class="launch" onclick="buyResearch('${r.id}')" ${ok?'':'disabled'}>${ok?`Research · ${fM(rdCostOf(r))}${sciTag} · ${r.months} mo`:why}</button>${(st==='available'&&!afford)?affordWidgetHTML(rdCostOf(r)):''}`;
   }
   const tag={done:'researched',active:'in progress',available:'available',locked:'locked'}[st];
   el.innerHTML=`<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 11px;border:1px solid var(--line);border-radius:6px;background:var(--panel2)">
@@ -10513,6 +10576,7 @@ function renderDivisions(){
       ${bar('Morale', s.morale, mColor)}
       </div>
       <button class="btn" style="width:100%;margin-top:8px;font-size:12px" onclick="trainDivision('${d.id}')" ${chk.ok?'':'disabled'}>${maxed?'✓ Fully trained':(chk.ok?`Train (+${Math.round(DIV_TRAIN_SKILL*100)}% skill · ${fM(cost)})`:chk.why)}</button>
+      ${(!maxed&&!chk.ok&&state.money<cost)?affordWidgetHTML(cost):''}
     </div>`;
   }).join('');
   box.innerHTML=`${synergiesStripHTML()}<h2>Research Divisions <span class="pill">${DIVISIONS.length} teams</span></h2>

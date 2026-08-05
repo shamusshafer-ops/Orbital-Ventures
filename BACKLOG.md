@@ -43,7 +43,7 @@ Complexity: S = <1 day, M = 1–5 days, L = 1–3 weeks, XL = 1+ month. Impact: 
 |16| Log filters already exist → add text search | Late-game archaeology | S | ★ | — | L |Backlog|
 |17| Compare two vehicle families side-by-side | Decision support | M | ★★ | — | M |Already shipped — vehicleCompareHTML() in render.js|
 |18| "Why can't I fly this?" explainer on disabled launch | Removes guesswork | S | ★★★ | — | H |E1.5|
-|19| Time-to-affordability estimates on purchases | Planning | S | ★★ | — | M |Backlog|
+|19| Time-to-affordability estimates on purchases | Planning | S | ★★ | — | M |Shipped 2026-08-04 — affordEstimate()/affordWidgetHTML() shared widget (progress bar + "Xmo at current rate · Ymo typical", red when burning cash) wired into research (tree + detail + leveled upgrade), facility found/expand, division/department training, passive contracts, material dip buys. Deliberately not wired into hiring (no upfront cost) or small instant-decision buys (fuel/resupply/repair)|
 |20| Clock/date always visible during flight overlay | Orientation | S | ★ | Overlay | M |Backlog|
 |21| Settings: autosave frequency control | Player agency | S | ★ | — | L |Backlog|
 |22| Copy build sharecode (base64 blueprint) | Community seeding | M | ★★ | — | M |Backlog|
@@ -164,13 +164,14 @@ Complexity: S = <1 day, M = 1–5 days, L = 1–3 weeks, XL = 1+ month. Impact: 
 | Status | Count | Meaning |
 |---|---|---|
 | E0.x / E1.x / E2 | 27 | Folded into a named ROADMAP.md workstream |
-| Shipped / closed | 21 | Built and verified; see ROADMAP-HISTORY.md |
+| Shipped / closed | 22 | Built and verified; see ROADMAP-HISTORY.md |
 | Deferred | 13 | Named in ROADMAP.md's deferred list |
-| **Backlog** | **46** | Not yet on ROADMAP.md in any form |
+| **Backlog** | **45** | Not yet on ROADMAP.md in any form |
 
 *Recounted 2026-07-28 directly from the table above (118 items). The previous tally was
 written before the 2026-07-13 → 07-24 shipping run and had drifted — it reported 52 backlog
-items and omitted the shipped category entirely.*
+items and omitted the shipped category entirely. #19 shipped 2026-08-04 (see its row above);
+counts above reflect that one move out of Backlog.*
 
 Over half the list (58/112) hasn't been triaged onto ROADMAP.md yet — mostly small
 QoL items (#9, 11–12, 15–16, 19–25), flight/ops texture (#31, 33–34, 37–45), rival/world
