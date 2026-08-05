@@ -1,0 +1,8 @@
+# Generated build artifacts — fully reproducible via `node build.js` from src/.
+# Not tracked: they add no information git needs (game save/progress lives in browser
+# localStorage, not here — see src/save.js's writeSave()/SAVE_KEY), and orbital-ventures.html's
+# embedded textures don't diff/delta well, so tracking it just grows history for no benefit.
+# Tier 0.1, 2026-08-04.
+/orbital-ventures.html
+/index.html
+/build/game.js

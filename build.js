@@ -70,7 +70,11 @@ function createBuildArtifacts(root = ROOT) {
   const scriptBlock = Buffer.concat([Buffer.from('<script>\n'), body, Buffer.from('</script>\n')]);
   const releaseHtml = Buffer.concat([before, textureScript, scriptBlock, after]);
   const devTags = Buffer.from(MODULES.map((m) => `<script src="src/${m}"></script>`).join('\n') + '\n');
-  const devHtml = Buffer.concat([before, textureScript, devTags, after]);
+  // Tier 0.1 (2026-08-04): the dev build doesn't carry the file://-safety constraint the release build
+  // does (embeddedTextureScript's comment above explains why the release needs it) — index.html is run
+  // from a folder that already has assets/ sitting right next to it, so map3dPhotoTexture/cape3dTexture's
+  // existing plain-URL fallback (MAP3D_TEXTURE_ASSET/CAPE3D_TEXTURE_ASSET) covers it with no code change.
+  const devHtml = Buffer.concat([before, devTags, after]);
 
   return [
     { name: 'orbital-ventures.html', path: path.join(root, 'orbital-ventures.html'), contents: releaseHtml },
