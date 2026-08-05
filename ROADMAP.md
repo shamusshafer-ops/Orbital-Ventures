@@ -1811,3 +1811,200 @@ UI and build #95 on top.
 
 Model tier: slice 1 is mechanical; slice 2 needs judgment about which draws are gameplay-meaningful vs.
 cosmetic and how to re-baseline balance, so it wants the heavier tier.
+
+## Planned — Tier 0 playability pass: boot weight, desktop breakpoint, first-contact clarity (scoped 2026-08-04)
+
+Filed from the two-critic playability review (2026-08-04). Three small, independent items — sequenced
+first because nothing else in that review matters if players bounce before they get past the shell.
+
+### 0.1 — Stop the dev build and git history from carrying the texture embed [SHIPPED 2026-08-04]
+
+`build.js`'s `embeddedTextureScript()` inlines ~16.6MB of base64 planet/cape textures into **both**
+`orbital-ventures.html` and `index.html`. The release build needs this — it's opened via `file://` for
+personal use, and Firefox can refuse `THREE.TextureLoader`'s separate image fetches under `file://`,
+leaving black planets (the comment in `build.js` documents this deliberately). `index.html` (the dev
+build) doesn't share that constraint and doesn't need the embed.
+
+Confirmed with Shamus (2026-08-04): boot weight isn't currently a felt problem (personal, local use) —
+this is scoped down accordingly. No lazy-load/deferred-inject work; no texture recompression. Just:
+
+- [x] `index.html` drops the texture embed entirely; its `map3dPhotoTexture`/`cape3dTexture` calls
+  already fall back to plain `assets/*.jpg`/`.png` relative URLs when `window.__OV_TEXTURE_DATA__` is
+  absent (`src/render.js:5953-5962`, `:1896-1903`) — no code change needed there, only `build.js`'s
+  `createBuildArtifacts()` no longer passing `textureScript` into `devHtml`.
+- [x] `orbital-ventures.html` keeps the embed unchanged (`file://` safety net stays).
+- [x] `.gitignore` added for `orbital-ventures.html`, `index.html`, `build/game.js` — all three are
+  fully reproducible via `node build.js`; the actual save/progress lives in browser `localStorage`
+  (`src/save.js`'s `writeSave()`/`SAVE_KEY`), never in these files, so untracking them risks nothing.
+  `git rm --cached` (not `rm`) so the on-disk files survive for local play.
+
+**Explicitly out of scope:** rewriting `.git` history to reclaim the existing ~109MB — confirmed
+low-priority (repo size isn't currently a problem); revisit only if that changes. Texture
+recompression/resolution reduction — deferred, no felt problem to justify it right now.
+
+**Protected baseline — do not regress:** `orbital-ventures.html` must keep working standalone via
+`file://` with all textures present (verify by opening it directly, not just `index.html` over a dev
+server). The Map3D/Cape3D texture fallback path (`MAP3D_TEXTURE_ASSET`/`CAPE3D_TEXTURE_ASSET`) must
+keep working un-embedded for `index.html`.
+
+**Suggested test:** a small build-output assertion (extend `test-build-parity.js` or add alongside it)
+that `index.html` does NOT contain `__OV_TEXTURE_DATA__` and `orbital-ventures.html` DOES.
+
+Model tier: mechanical — lighter tier appropriate.
+
+### 0.2 — Desktop breakpoint for the persistent 3-column shell [SHIPPED 2026-08-04]
+
+Correction to the original playability-review claim of "zero `@media` rules" — `src/shell.html` already
+has 6+ breakpoints (880/900/980/560/720/760px). The actual gap: `.scene-shell`'s persistent
+`--cc-rail-width:380px` left/right rails have no intermediate step between full width and the 880px
+collapse-to-single-column — so a ~1100-1280px browser window (a common laptop viewport) gets the full
+380+content+380px layout squeezed into insufficient space instead of gracefully narrowing first.
+
+- [x] Add one `@media` tier around ~1100-1200px that narrows `--cc-rail-width` on **both** left and
+  right rails (confirmed with Shamus — not a right-rail-drop approach) before the existing 880px
+  single-column collapse.
+
+**Protected baseline — do not regress:** the existing 880px single-column collapse and all
+component-level breakpoints (560/720/760/900/980px) stay exactly as they are; this adds one step
+above them, it doesn't replace anything.
+
+**Explicitly out of scope:** any new mobile/narrow-viewport support below the existing 880px collapse;
+this is a laptop-width fix only.
+
+**Suggested test:** none needed if this stays CSS-only (no headless DOM layout testing in this harness)
+— verify visually in Firefox at 1150px, 1280px, and 1366px viewport widths per the existing
+browser-verification convention for layout slices.
+
+Model tier: mechanical CSS wiring — lighter tier appropriate.
+
+### 0.3 — Header/readout tooltips for jargon-cold stats [SHIPPED 2026-08-04]
+
+Split from the first-launch-checklist idea (confirmed with Shamus, 2026-08-04) — different risk profile,
+shouldn't block on checklist-content design work. This slice is tooltips only.
+
+- [x] Add `title=` attributes to the header stat blocks in `src/shell.html` (`stMoney`/`stRep`/`stSci`/
+  `stMarket`/`stRoyalty`/`stPassive`/`stInfra`/`stDepot` and siblings) — currently zero tooltips on
+  these despite the adjacent time-control buttons (`tArrowDay` etc.) already using the pattern.
+- [x] Add `title=` to the bench Δv/TWR readout in `src/render.js` (`:5337` Δv figure, `:5343` Liftoff
+  TWR) — dynamically generated markup, not static, so this is a template-string edit not a shell.html
+  edit.
+
+**Explicitly out of scope:** the first-launch checklist (separate future entry, needs Shamus's design
+input on the actual steps — not to be invented unilaterally); any other jargon beyond Δv/TWR/rep/⚛
+unless it's found to need one while doing this pass.
+
+**Suggested test:** `tests/test-header-tooltips.js` — source-guard test (reads `src/shell.html` and
+`src/render.js` directly, same pattern as `test-scene-shell-contract.js`) confirming every listed
+stat and the Δv/TWR readout carry a non-empty `title=`. Content is caught by a small live-game find
+while writing the copy, not by this test: the "Market" stat originally read as if it were about
+propellant pricing — it's actually active economy events (booms/downturns), which was checked
+against `renderMarketStat()` before writing the final tooltip text.
+
+Model tier: mechanical — lighter tier appropriate.
+
+## Planned — Tier 1 playability pass: make the existing flight drama land (scoped 2026-08-04)
+
+From the two-critic playability review (2026-08-04). Tier 0 shipped the gating fixes; this tier
+targets the review's highest-confidence shared finding — that the moment of maximum drama (a flight
+resolving) has less felt weight than the simulation depth behind it deserves.
+
+**Important correction to the review's own framing.** The review claimed the in-flight decision system
+needed building. It does not — scoping found it substantially complete: `openFlightForDecision()`
+(`src/flight.js:1297`) already backs six live decision points, including a weather go/no-go hold at
+T-31s, a **live abort / press-on call on a marginal subsystem before the outcome is revealed**
+(`showLiveCallModal`, CE5(b) — this is precisely what the review proposed as new work), orbital
+maneuver go/no-go trading real Δv margin, and the anomaly hook. Failure is already subsystem-attributed
+with per-cause narrative (`resolveFlight`'s `storyMap`). Tier 1 is therefore **not** "build a decision
+system" — it is three narrower gaps in a system that already works.
+
+### 1.1 — Expand the in-flight anomaly pool (3 → 10) [SHIPPED 2026-08-04]
+
+`MISSION_ANOMALIES` (`src/sim.js`) holds exactly three entries: stuck solar array, life-support leak,
+terminal guidance radar. `rollMissionEvents()` picks uniformly from those eligible, so across a
+158-year campaign the same three recur constantly. The *mechanism* is good (real branching options,
+`opsLuck()`-modified odds that mission-controller staffing improves, genuine payout/rep/outcome
+consequences, a safe option always present) — there is simply not enough content in it.
+
+- [x] Add ~7 entries following the existing shape exactly: `{id, title, when(ctx), detail,
+  options(ctx)}` returning `{payoutMult?, repDelta?, outcomeOverride?, log}` from each option's
+  `resolve(rng)`. Historically-grounded candidates (confirmed with Shamus — historical framing is
+  wanted): thruster runaway / stuck-on attitude control (Gemini 8), guidance-computer alarm during
+  descent (Apollo 11 1202/1203), thermal-control loss requiring an improvised shade (Skylab parasol),
+  comms blackout across a critical burn, docking latch failure, transfer-stage propellant leak,
+  micrometeoroid strike.
+- [x] `when(ctx)` predicates must gate on capability, not just mission shape — a docking-latch anomaly
+  must not fire before docking research exists. Gate against `state.research` where the scenario
+  presupposes a capability.
+
+**Balance-neutrality (by construction):** `ANOMALY_CHANCE_BASE` and the crewed/deep/rehearsal/
+controller modifiers in `rollMissionEvents()` are NOT touched. Anomaly *frequency* is unchanged; only
+*variety* increases. Any change to firing rate would be a separate, deliberate balance decision.
+
+**Protected baseline — do not regress:** the existing three anomalies' text, odds, and options;
+`opsLuck()`/`ctrlAnomScore()` staffing effects; the `_pendingOps`/`resolveAnomaly` flow and its
+`_priorOrbitOps` merge with a preceding orbital-maneuver decision; the always-available safe option
+convention (every anomaly must keep offering a choice that doesn't gamble the crew).
+
+**Suggested test:** new `tests/test-anomaly-pool.js` — every entry has a unique id; `when()` and
+`options()` never throw for a representative spread of contexts (crewed/uncrewed, profile/orbital,
+short/long duration); every entry yields ≥1 option in at least one context; no option's `resolve()`
+throws; research-gated entries return false when the gating research is absent.
+
+### 1.2 — Near-miss attribution on successful flights [NOT STARTED]
+
+`resolveFlight()` rolls every subsystem independently (`for(const s of rep.subsystems){ if(Math.random()
+>s.rel) failed[s.key]=s; }`) and, on a clean success, sets `subsystem:null` and discards the roll data.
+That data is exactly the material for the feedback the review found missing: the player never learns
+which subsystem nearly killed them, so reliability investment never produces a felt moment.
+
+- [ ] Capture, among surviving subsystems, the narrowest margin (`s.rel - roll`) and carry it on the
+  outcome. Surface it in the post-flight log naming the subsystem and how close it came.
+- [ ] **Near-miss-only, not every-success** (confirmed with Shamus 2026-08-04): fire only when the
+  smallest margin falls under a threshold constant, starting at **0.05**. With per-subsystem
+  reliabilities typically ~0.95 across 5-7 subsystems this fires on roughly 1 in 4 successful flights
+  — an event rather than wallpaper. Single tunable constant; revisit after playtest.
+
+**Honest scope limit — do NOT promise research-node attribution.** The review's original framing
+("the QA program you funded is why this held") is not deliverable as stated: reliability is aggregated
+from research, engineer team score, QA level, test campaigns, era and weather penalty into a single
+`R` (`effectiveReliability`) *before* `subsystemReport()` splits it per-subsystem by weight. There is
+no seam that attributes a surviving margin to a specific investment. Deliverable is subsystem + margin
+("Structures held — two points from a max-q breakup"), which is honest and still lands. Anything more
+would require inventing a causal chain the math does not contain.
+
+**Balance-neutrality:** read-only. The rolls, the governing-failure priority pick, and the outcome
+selection are all unchanged — this only stops discarding a number that is already computed.
+
+**Protected baseline — do not regress:** `resolveFlight`'s outcome selection and `∏ phaseRel = R`
+invariant; `devSynthOutcome`'s forced-outcome dev path; existing failure `story`/`subsystem`
+attribution.
+
+**Suggested test:** extend flight/outcome coverage — a forced high-reliability success with a stubbed
+RNG placing one roll just inside its threshold produces attribution naming that subsystem; a roll
+comfortably clear of every threshold produces none; attribution never appears on a failure outcome.
+
+### 1.3 — Third Chronicle scoring bookend at 2060 [NOT STARTED]
+
+Scoring ceremonies currently fire at `SCORING_YEAR=1990` (campaign year 48 of 158) and
+`SCORING_YEAR_2=2100` (year 158) — a 110-year stretch with no scored milestone, across what the review
+identified as the campaign's weakest pacing zone. 2060 confirmed with Shamus; it aligns with the
+Interplanetary era boundary (`ERAS`, `from:2060`).
+
+- [ ] Mirror the existing `SCORING_YEAR_2`/`state.eraScored2` pattern exactly: a third constant, a
+  third independent one-shot flag, a third `showChronicle()` mode string and heading.
+- [ ] `SAVE_VERSION` bump with a lazy default, so a save already past 2060 does not retroactively fire
+  the ceremony on load.
+
+**Protected baseline — do not regress:** both existing bookends fire exactly once each, independently
+of the new one; the `retire` mode and legacy-grade scoring are untouched.
+
+**Suggested test:** the 2060 bookend fires once and only once; a save loaded already past 2060 does not
+fire it; the 1990 and 2100 bookends still fire independently and once each.
+
+**Explicitly out of scope for all of Tier 1:** anomaly *frequency* tuning; any change to the rocket
+equation, reliability model, or outcome-selection math; new flight-overlay decision *types* beyond the
+anomaly pool (the six existing hold points are sufficient); Tier 2's calendar/progression coupling.
+
+Model tier: 1.1 is the bulk and is creative/balance judgment (scenario framing, resolve odds, gating
+predicates) — heavier tier. 1.2's threshold and message wording want the heavier tier; its wiring is
+mechanical. 1.3 is purely mechanical — lighter tier appropriate if taken alone.

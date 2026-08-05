@@ -24,6 +24,54 @@ change first.
 > When done, clear it back to "(none claimed right now)" and add your entry to the history below.
 
 **Oriented quickly (last few sessions, newest first) — see History for full detail:**
+- Tier 1.1 anomaly pool 3 → 10 (Claude) — seven historically-grounded in-flight anomalies added to
+  `MISSION_ANOMALIES` (Gemini 8 thruster runaway, Apollo 11 1202 alarm, Skylab thermal loss, comms
+  blackout, docking latch, transfer-stage leak, micrometeoroid). Balance-neutral by construction:
+  `ANOMALY_CHANCE_BASE` and every frequency modifier untouched, pool length never enters
+  `rollMissionEvents()`'s chance math — variety, not risk, and a test now pins that. Two conventions
+  enforced by test: every anomaly always offers a non-fatal option, and capability-presupposing
+  entries gate on `state.research` (`digital_computer`, `orbital_assembly`, `orbital_eva`).
+  New `test-anomaly-pool.js` (24/24). RULE: scoping found the review's premise wrong — the flight
+  decision system was already substantially built (`openFlightForDecision` backs six hold points
+  incl. the abort/press-on call). Check what exists before scoping "build X".
+- Tier 0.3 header/readout tooltips (Claude) — `title=` added to every header stat (Capital/
+  Reputation/Flights/Public Support/Market/PGM Royalties/Passive Income/Facilities/Science/LEO
+  Depot/Date) and to the bench Δv gauge + Liftoff TWR metric. Caught one accuracy bug before
+  shipping: "Market" reads like propellant pricing but is actually active economy-event effects
+  (`renderMarketStat()`) — checked against source rather than guessed. New source-guard test
+  `test-header-tooltips.js` (13/13). **Tier 0 (0.1/0.2/0.3) is now fully shipped.**
+- Tier 0.2 desktop breakpoint (Claude) — one new `@media(max-width:1200px)` tier narrows
+  `--cc-rail-width` 380px→300px on both persistent rails, sitting above the existing 880px
+  single-column collapse. Discovered `.command-hero` (Command Center's own hero layout,
+  `@media(min-width:1101px)`) already uses a fluid `clamp(220px,20vw,285px)` rail width and is
+  scoped/later in source order, so it correctly wins over the new `:root` override on the Command
+  scene — the fix only reaches the other 5 scenes (Bench/R&D/Map/Station/Base), which is exactly
+  the intended target. CSS-only; no JS touched. **VERIFY: Firefox at 1150px/1200px/1366px viewport
+  widths** — no headless test exists for layout, per the item's own scoping.
+- Tier 0.1 build/git cleanup (Claude) — `index.html` no longer embeds the ~16.6MB texture blob
+  (already had a working plain-URL fallback via `MAP3D_TEXTURE_ASSET`/`CAPE3D_TEXTURE_ASSET`);
+  `orbital-ventures.html` keeps the embed (confirmed `file://` use, needed there). Added
+  `.gitignore` for all three generated artifacts (`orbital-ventures.html`/`index.html`/
+  `build/game.js`) and untracked them — fully reproducible via `node build.js`, game progress
+  lives in browser `localStorage`, not git. History rewrite to reclaim existing repo size
+  explicitly declined (confirmed not a problem). New texture-embed-split checks in
+  `test-build-parity.js`. **VERIFY: open `index.html` however you normally do during dev and
+  confirm Solar Map/Cape textures actually load — this only reproduces the file://-safe fallback
+  logically, not against a real browser.**
+- #19 Time-to-affordability estimates (Claude) — shared affordEstimate()/affordWidgetHTML()
+  widget (progress bar + two months-to-afford figures: `months` from commandSummary()'s
+  instantaneous recurring net, `monthsTypical` from state.lastMonth.net — the actually-realized
+  last month, which already existed for runwayMonths()'s inverse question). Always renders, even
+  once affordable ("0 mo" + full green bar), per design — red + warning copy when net<=0. Wired
+  into research (tree action bar + detail panel + leveled tech upgrade), facility founding/
+  expansion, division training, department training, passive-contract signing, material dip buys.
+  Deliberately NOT wired into hiring (verified hirePersonnel has no money gate — salary is
+  recurring, not a capital purchase) or small instant-decision buys (fuel lots, resupply, repair,
+  rival intel/counterpoach) where a save-up estimate adds little. New test-afford-estimate.js
+  (39 checks); full suite otherwise unchanged (120 suites, only the pre-existing
+  test-flight3d-trajectory.js drift). RULE: when two "which net figure" options both already
+  exist in the codebase for a different question, reuse them rather than inventing a third
+  (rolling-average) figure — state.lastMonth was built for runwayMonths() and slots in unchanged.
 - Solar Map diagnostics + host sizing (Claude) — added window.ovMapDiag() (mount, canvas DOM/size,
   rAF state, context-lost, draw calls, camera, host computed styles) after four speculative fixes.
   Found: addMap3DTimeHud forced host.style.position='relative', clobbering #mapPopHost's intentional

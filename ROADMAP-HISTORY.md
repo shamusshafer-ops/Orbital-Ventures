@@ -5537,3 +5537,180 @@ Logical follow-ups are interaction polish rather than a second renderer: hover/s
 inspector-to-mesh highlighting, lower-density label LOD, construction/attachment animation, and
 bringing the pop-out projections onto the same remountable context once their window lifecycle has a
 single-context handoff contract.
+
+## Session — #19 Time-to-affordability estimates (2026-08-04)
+
+Backlog item #19 (S complexity, ★★ impact): a shared progress-bar widget showing how close the
+player is to affording a purchase, wired into every one-time capital-purchase surface in the game.
+
+`affordEstimate(cost)` (render.js) is the pure calc. Two months-to-afford figures, deliberately
+reusing two "net" figures the game already tracks for a different question rather than inventing
+a third:
+- `months` — shortfall ÷ `commandSummary().net`, the instantaneous recurring net at this moment
+  (current facilities/payroll/overhead, no one-off mission income).
+- `monthsTypical` — shortfall ÷ `state.lastMonth.net`, what actually landed last completed month
+  (the same field `runwayMonths()` already reads for the inverse question — months of runway
+  left). Falls back to the instantaneous figure before the first month ticks.
+
+`affordWidgetHTML(cost)` renders both alongside a slim progress bar (`state.money/cost`).
+Always renders — even once affordable, showing a full green bar and "0 mo" — rather than
+disappearing, so it reads as a stable element beside the button instead of popping in and out.
+Amber when on track; red with a "won't close this gap at current burn" warning when the live net
+is at or below zero.
+
+Wired into: research (tree action bar `renderTechAction`, detail panel `renderResearchDetail`,
+and leveled-tech upgrades), facility founding and expansion (`renderInfrastructure`), division
+training (`renderDivisions`), department training (`renderPersonnel`), passive-contract signing
+(`renderPassiveContracts`), and material dip bulk-buys. Each site only calls the widget when the
+specific gate is "not enough capital" (checked against each function's own `why`/`chk.why`
+discriminator, e.g. `canBuyMaterialDip`'s `'Not enough capital.'` vs `'Yard cap is...'`) so a
+locked/prereq-gated/full-yard state never shows a misleading afford-widget.
+
+Deliberately NOT wired into hiring — `hirePersonnel(id)` has no money gate at all (salary is a
+recurring monthly cost, not an upfront capital purchase) — nor into small instant-decision buys
+(fuel lots, station resupply/repair, rival intel/counterpoach) where a save-up estimate adds
+little over the existing disabled-button state.
+
+New `tests/test-afford-estimate.js` (39/39): pure-calc branches (affordable/shortfall/typical-vs-
+simple/no-lastMonth-fallback/stuck-on-either-side), the formatter, widget HTML for all three
+color states, wiring checks for every surface above (using a cached-`getElementById` shim, same
+pattern as `test-roster.js`, since the harness's default stub is memory-less per call), and a
+behavioral check that hiring succeeds at $0. `commandSummary()` is locally stubbed for the calc/
+widget sections so the arithmetic is deterministic rather than riding the live starting economy
+(which nets negative at game start on Engineer difficulty, before any facilities or contracts).
+
+Full suite: 120/120 files run clean except the pre-existing `test-flight3d-trajectory.js` drift
+(documented above as Codex's own accepted physics change, unrelated to this slice). Build parity
+clean; `node --check build/game.js` clean.
+
+## Session — Tier 0.1: dev build stops embedding textures, generated artifacts untracked (2026-08-04)
+
+From the Tier 0 playability-review scoping. `build.js`'s `embeddedTextureScript()` was inlining the
+same ~16.6MB base64 texture blob into both `orbital-ventures.html` (release) and `index.html` (dev).
+Only the release build needs it — confirmed it's opened via `file://` for personal use, where Firefox
+can refuse `THREE.TextureLoader`'s separate image fetches, and the code comment in `build.js` documents
+that as the deliberate reason for embedding. `index.html` runs from a folder with `assets/` sitting
+right next to it and carries no such constraint.
+
+Change: `createBuildArtifacts()` now only threads `textureScript` into `releaseHtml`, not `devHtml`.
+No source-code change was needed beyond `build.js` — `map3dPhotoTexture()`/`cape3dTexture()`
+(`src/render.js`) already prefer `window.__OV_TEXTURE_DATA__` when present and fall back to plain
+`assets/*.jpg`/`.png` relative URLs (`MAP3D_TEXTURE_ASSET`/`CAPE3D_TEXTURE_ASSET`) when it's absent —
+that fallback path was already correct, just never exercised for the dev build before now.
+`index.html` dropped from 16.7MB to 117KB; `orbital-ventures.html` unchanged at 18.6MB (by design).
+
+Added two checks to `tests/test-build-parity.js`: a synthetic fixture with one fake texture file
+confirms the release build's output contains `__OV_TEXTURE_DATA__` and the dev build's does not.
+
+Separately: added `.gitignore` for `orbital-ventures.html`, `index.html`, `build/game.js` and
+`git rm --cached` all three (files remain on disk, still fully playable — only git tracking changed).
+Confirmed with Shamus this is safe: actual save/progress lives in browser `localStorage`
+(`src/save.js`'s `SAVE_KEY`), never in these generated files, and all three regenerate byte-identical
+from `src/` via `node build.js`. Rewriting `.git` history to reclaim the ~109MB already committed
+across past sessions was explicitly declined (repo size isn't currently a problem) — left as a
+possible future decision, not done here.
+
+Full suite clean except the pre-existing, documented `test-flight3d-trajectory.js` drift. Build parity
+clean. **Open item for Shamus to verify in a real browser**: confirm `index.html`'s Solar Map/Cape
+textures actually render when opened however he normally runs the dev build — the fallback logic is
+sound by inspection, but wasn't (and can't be, headlessly) visually confirmed this session.
+
+## Session — Tier 0.2: desktop breakpoint for the persistent 3-column shell (2026-08-04)
+
+Added one `@media(max-width:1200px)` tier narrowing `--cc-rail-width` from 380px to 300px on both
+left and right rails (confirmed with Shamus — not a right-rail-drop approach), sitting above the
+existing 880px single-column collapse in `src/shell.html`. Nothing else in the file changed —
+`.scene-shell`'s `grid-template-columns:var(--cc-rail-width) minmax(0,1fr) var(--cc-rail-width)`
+already read the variable, so overriding it at `:root` was sufficient.
+
+Found while placing the rule: `.command-hero` (Command Center's own hero composition,
+`@media(min-width:1101px)`, added Phase 3A) already gives that one scene a fluid
+`--cc-rail-width:clamp(220px,20vw,285px)` — narrower and continuously responsive, no fixed
+breakpoint needed. Its comment says it explicitly: "Scoped to .command-hero so the bench, R&D, map
+and station keep the established shell." Same specificity as the new `:root` rule, later in source
+order → wins on Command Center as intended, leaving the new tier to reach exactly the 5 scenes that
+didn't already have an answer for this width range (Bench/R&D/Map/Station/Base). No conflict, no
+double-narrowing.
+
+CSS-only change; `node --check`/build parity trivially clean (no JS touched). No headless test —
+this class of layout change isn't testable in the current DOM-stub harness, matching the item's own
+scoping note. **Not yet browser-verified** — Shamus to confirm visually at 1150px, 1200px, and
+1366px viewport widths in Firefox per the existing layout-slice convention.
+
+## Session — Tier 0.3: header/readout tooltips, Tier 0 complete (2026-08-04)
+
+Last of the three Tier 0 playability items. Added `title=` tooltips to every header stat in
+`src/shell.html` (Date, Capital, Reputation, Flights, Public Support, Market, PGM Royalties,
+Passive Income, Facilities, Science, LEO Depot) and to the bench readout's Δv gauge and Liftoff
+TWR metric in `src/render.js` — both previously had zero tooltips despite the adjacent
+time-control buttons already using the exact same `title=` pattern.
+
+Checked each stat's actual mechanic against source before writing copy rather than guessing from
+the label — caught one real mistake in the process: "Market" reads like it should be about
+propellant/materials pricing, but `renderMarketStat()` shows it's actually active `econEvents`
+(booms/downturns) affecting payout multiplier and overhead. Tooltip text corrected before shipping
+to describe economy events, not a fuel-price mechanic that doesn't exist for this stat.
+
+New `tests/test-header-tooltips.js` — a source-guard test (reads `src/shell.html`/`src/render.js`
+directly, same style as `test-scene-shell-contract.js`/`test-map-sm1-sm5-source.js` rather than a
+harness+game.js render test, since this is static markup) confirming every listed stat and the
+Δv/TWR readout carry a non-empty `title=`. 13/13.
+
+Full suite clean except the pre-existing `test-flight3d-trajectory.js` drift. Build parity clean.
+
+**Tier 0 is now fully shipped (0.1 texture-embed split + git untracking, 0.2 desktop breakpoint,
+0.3 tooltips).** Two items from this arc still need Shamus's own eyes, not headlessly verifiable:
+`index.html`'s textures actually loading when opened his normal way, and the 0.2 breakpoint's
+visual result at 1150/1200/1366px in Firefox.
+
+## Session — Tier 1.1: in-flight anomaly pool expanded 3 → 10 (2026-08-04)
+
+`MISSION_ANOMALIES` (`src/sim.js`) held three entries — stuck solar array, life-support leak,
+terminal guidance radar — selected uniformly by `rollMissionEvents()`, so the same three recurred
+across an entire 158-year campaign. The mechanism was already good; it just had no content depth.
+
+Added seven historically-grounded entries, each following the existing shape exactly
+(`{id, title, when(ctx), detail, options(ctx)}` → `resolve(rng)` returning
+`{payoutMult?, repDelta?, outcomeOverride?, log}`), with odds running through `opsLuck()` so
+mission-controller staffing still improves them:
+
+- **thruster_stuck** — Gemini 8's stuck-open OAMS thruster. Isolate the ring, null the rates on the
+  reentry control system (crewed), or let it drain.
+- **guidance_alarm** — Apollo 11's 1202/1203 executive overflow alarms during descent. Call go on
+  the reasoning that overflow ≠ failure, abort the burn, or hand-fly it. Gated on `digital_computer`.
+- **thermal_loss** — Skylab's torn-away sun shield. Improvise a parasol (crewed), thermal-roll the
+  vehicle, or power down and ride it out.
+- **comms_blackout** — link lost before a burn window closes. Trust the stored onboard sequence,
+  wait for reacquisition and take a later window, or safe-mode the vehicle.
+- **dock_latch** — soft capture holds but the hard-latch ring won't seat. Retry, EVA to the interface
+  and drive them by hand, or work the soft capture alone. Gated on `orbital_assembly`; the EVA branch
+  additionally on `orbital_eva`.
+- **transfer_leak** — transfer stage venting faster than boil-off explains. Burn early, isolate the
+  feed line, or re-plan for a lower-energy objective.
+- **micrometeoroid** — hypervelocity strike. Survey before committing, patch from inside (crewed), or
+  seal off the affected section.
+
+**Balance-neutral by construction:** `ANOMALY_CHANCE_BASE` (0.26) and every frequency modifier
+(crewed +0.06, profile +0.06, `REHEARSAL_ANOMALY_MULT`, `ctrlAnomScore()`) are untouched. Pool length
+does not enter `rollMissionEvents()`'s chance calculation at all — this changes *variety*, not risk.
+A dedicated test pins both constants and asserts a draw just under/over the computed threshold still
+fires/doesn't, so a future pool change can't silently move the risk curve.
+
+Two conventions held throughout and now test-enforced: every anomaly always offers at least one option
+that cannot strand or lose the crew even on the worst roll (the player is never forced to gamble
+lives), and anything presupposing a capability gates on `state.research` rather than mission shape
+alone.
+
+Also tightened while here: coerced every new `when()` predicate to return a strict boolean. The
+originals are inconsistent about this (`guidance` returns `!!c.m.profile`, `solar_array` returns a
+truthy expression) — harmless since all callers use truthiness, but the new entries are consistent.
+Caught by the new test asserting `when()===true`, which is worth keeping strict.
+
+New `tests/test-anomaly-pool.js` (24/24): structural contract, unique ids, the three originals still
+present, `when()`/`options()` never throwing across six representative flight contexts (suborbital/
+orbital/deep × crewed/uncrewed/tanker), every entry reachable, every option well-formed, every
+`resolve()` safe on both RNG extremes, the safe-option convention, research gating on and off,
+crew-only branches never leaking onto uncrewed flights, frequency neutrality, and uniform selection
+across the eligible set.
+
+Full suite clean except the pre-existing `test-flight3d-trajectory.js` drift. Build parity clean.
