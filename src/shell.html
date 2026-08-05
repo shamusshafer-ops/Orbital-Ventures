@@ -231,6 +231,13 @@
     opacity:.6;margin:10px 2px 2px;font-family:var(--sans)}
   nav.rail-nav .rail-group:first-child{margin-top:0}
   nav.rail-nav button.scene{font-weight:600}
+  /* Tier 0.2 (2026-08-04): the persistent 380px rails have no step between full width and the 880px
+     single-column collapse, so a ~1100-1280px browser window (a common laptop viewport) gets the full
+     380+content+380px layout squeezed into whatever's left instead of narrowing gracefully first.
+     Narrow both rails here; the 880px collapse below is unchanged and still the true breakpoint. */
+  @media(max-width:1200px){
+    :root{ --cc-rail-width:300px; }
+  }
   @media(max-width:880px){
     .scene-shell{grid-template-columns:1fr}
     header{gap:10px}
