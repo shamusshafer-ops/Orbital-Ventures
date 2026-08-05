@@ -4678,6 +4678,120 @@ const MISSION_ANOMALIES=[
         ? {log:'the radar recovered on the retry — nominal.'}
         : {payoutMult:0.82, outcomeOverride:'partial', log:'the automated system settled for a safe but off-target result.'} });
       return o; } },
+  /* ---------- Tier 1.1 (2026-08-04): pool expansion, 3 → 10 ----------
+     Same shape and conventions as the three above: `when(ctx)` eligibility, `options(ctx)` returning
+     branching calls whose `resolve(rng)` yields {payoutMult?, repDelta?, outcomeOverride?, log}.
+     Odds run through opsLuck() so mission-controller staffing improves them, exactly as before.
+     ANOMALY_CHANCE_BASE and every frequency modifier are untouched — this adds variety, not risk.
+     Two standing conventions preserved in every entry: (1) a safe option is always available that
+     doesn't gamble the crew, and (2) anything presupposing a capability gates on state.research, so
+     e.g. a docking-latch fault can't fire in an era that has no docking. */
+  { id:'thruster_stuck', title:'Attitude thruster stuck open',
+    // Gemini 8, 1966: a stuck-on OAMS thruster spun the docked stack to nearly one revolution per
+    // second. Armstrong killed the tumble on the reentry control system and made an emergency return.
+    when:c=> !!(c.m.profile || (c.m.reqDv||0)>=9000),
+    detail:'One attitude thruster is firing continuously. The spacecraft is building a roll rate and the propellant is draining with it.',
+    options:c=>{ const o=[];
+      o.push({id:'isolate', label:'Isolate the thruster ring and damp the roll', resolve:rng=> rng()<opsLuck(0.7)
+        ? {repDelta:2, log:'the bad ring was isolated and the roll damped out — control restored on the backup set.'}
+        : {payoutMult:0.75, outcomeOverride:'partial', log:'isolating the ring cost most of the attitude propellant; what was left only covered a conservative, reduced mission.'} });
+      if(c.crewed) o.push({id:'manual_null', label:'Crew nulls the rates on the reentry control system', resolve:rng=> rng()<opsLuck(0.62)
+        ? {repDelta:4, log:'the crew nulled the rates by hand on the reentry system — the tumble stopped a long way past where the training said it would.'}
+        : {payoutMult:0.5, outcomeOverride:'partial', log:'the rates were caught, but burning the reentry propellant to do it forced an immediate return — the objective went unmet.'} });
+      o.push({id:'ride_it', label:'Let it drain and fly what remains', resolve:rng=> rng()<opsLuck(0.45)
+        ? {payoutMult:0.9, log:'the thruster ran itself dry and the vehicle stabilized with just enough control authority to finish.'}
+        : {payoutMult:0.6, outcomeOverride:'partial', log:'the roll rate built past what the sensors could track; the mission was salvaged only in part.'} });
+      return o; } },
+  { id:'guidance_alarm', title:'Guidance computer alarm during descent',
+    // Apollo 11, 1969: 1202/1203 executive overflow alarms during powered descent. The computer was
+    // shedding low-priority tasks and still flying the trajectory — Bales called go on that reasoning.
+    when:c=> !!(c.m.profile && state.research && state.research.digital_computer),
+    detail:'The flight computer is throwing executive overflow alarms and restarting its task list mid-burn. Nobody on the loop has seen this one in training.',
+    options:c=>{ const o=[];
+      o.push({id:'go_on_alarm', label:'Call go — the alarms are overflow, not failure', resolve:rng=> rng()<opsLuck(0.72)
+        ? {repDelta:4, log:'the alarms were task overflow, not a guidance fault — the computer was shedding low-priority work and still flying the trajectory. The call held.'}
+        : {payoutMult:0.7, outcomeOverride:'partial', log:'the overflow was a symptom of a real load fault; the burn ran long before it was caught, and the result was off-nominal.'} });
+      o.push({id:'abort_burn', label:'Abort the burn and reassess from a safe trajectory', resolve:()=>
+        ({payoutMult:0.35, outcomeOverride:'partial', log:'the burn was aborted on the alarms. The vehicle is intact on a safe trajectory, but the objective was given up.'}) });
+      if(c.crewed) o.push({id:'manual_takeover', label:'Crew flies it manually, computer as reference only', resolve:rng=> rng()<opsLuck(0.66)
+        ? {repDelta:3, log:'the crew took it manually with the computer demoted to reference — flown in past the alarms by hand.'}
+        : {payoutMult:0.72, outcomeOverride:'partial', log:'hand-flying without full guidance ate the margins; the result was safe but well off plan.'} });
+      return o; } },
+  { id:'thermal_loss', title:'Thermal control lost — vehicle overheating',
+    // Skylab, 1973: the micrometeoroid/sun shield tore away at launch, and interior temperatures
+    // climbed toward unsurvivable until the first crew deployed an improvised parasol through an airlock.
+    when:c=> !!((c.m.days||0)>=3 && (c.m.profile || (c.m.reqDv||0)>=9000)),
+    detail:'The thermal shield is gone and the interior temperature is climbing past what the systems — and any crew aboard — are rated for.',
+    options:c=>{ const o=[];
+      if(c.crewed) o.push({id:'parasol', label:'Improvise and deploy a sun shade', resolve:rng=> rng()<opsLuck(0.68)
+        ? {repDelta:4, log:'an improvised parasol went out through the airlock and took hold — temperatures fell back into limits and the mission was saved.'}
+        : {payoutMult:0.6, outcomeOverride:'partial', log:'the improvised shade only partly deployed; the interior stayed hot enough to curtail the work plan.'} });
+      o.push({id:'attitude_shade', label:'Roll the vehicle to shade the hot face', resolve:rng=> rng()<opsLuck(0.75)
+        ? {payoutMult:0.92, log:'a slow thermal roll spread the load and held temperatures inside limits — at some cost to the pointing schedule.'}
+        : {payoutMult:0.7, outcomeOverride:'partial', log:'the roll traded one hot face for another; systems ran at their limits and output suffered.'} });
+      o.push({id:'power_down', label:'Power down non-essential systems and ride it out', resolve:()=>
+        ({payoutMult:0.72, outcomeOverride:'partial', log:'non-essential systems were shut down to survive the heat load — the vehicle came through, the objective only partly.'}) });
+      return o; } },
+  { id:'comms_blackout', title:'Deep-space link lost before a critical burn',
+    // Tracking gaps and light-lag: with the link down, a burn either runs on its stored onboard
+    // sequence or waits for reacquisition — and the window won't wait.
+    when:c=> !!(c.m.profile && (c.m.days||0)>=5),
+    detail:'The link dropped and reacquisition is not coming before the burn window closes. Whatever is loaded onboard is what will execute.',
+    options:c=>[
+      {id:'trust_sequence', label:'Let the stored sequence execute unsupervised', resolve:rng=> rng()<opsLuck(0.7)
+        ? {repDelta:2, log:'the onboard sequence executed on time and clean — the link came back to a vehicle already on the new trajectory.'}
+        : {payoutMult:0.75, outcomeOverride:'partial', log:'the stored sequence ran on stale state; the burn was off enough to cost a chunk of the mission.'} },
+      {id:'wait_reacquire', label:'Wait for reacquisition and take a later window', resolve:rng=> rng()<opsLuck(0.6)
+        ? {payoutMult:0.88, log:'the link came back in time for a later window — the burn ran late but supervised and correct.'}
+        : {payoutMult:0.55, outcomeOverride:'partial', log:'reacquisition took too long and the window was lost; a degraded backup trajectory had to do.'} },
+      {id:'safe_mode', label:'Command safe mode and preserve the vehicle', resolve:()=>
+        ({payoutMult:0.4, outcomeOverride:'partial', log:'the vehicle was put into safe mode with the burn skipped — hardware preserved, objective forfeited.'}) },
+    ] },
+  { id:'dock_latch', title:'Docking latches will not capture',
+    // Soft capture without hard latch: soft dock holds, but the hard-latch ring won't drive home,
+    // and every retry costs propellant with the two vehicles station-keeping metres apart.
+    when:c=> !!(state.research && state.research.orbital_assembly && (c.m.profile || (c.m.reqDv||0)>=9000)),
+    detail:'Soft capture is holding, but the hard-latch ring will not drive home. Every retry burns propellant with two vehicles metres apart.',
+    options:c=>{ const o=[];
+      o.push({id:'retry_latch', label:'Back off and retry the capture sequence', resolve:rng=> rng()<opsLuck(0.7)
+        ? {repDelta:2, log:'a clean back-off and second approach drove the ring home — hard dock confirmed.'}
+        : {payoutMult:0.75, outcomeOverride:'partial', log:'repeated attempts wouldn\u2019t seat the ring and drank the approach propellant; the vehicles separated with the transfer only partly done.'} });
+      if(c.crewed && state.research.orbital_eva) o.push({id:'eva_latch', label:'EVA to the interface and drive the latches by hand', resolve:rng=> rng()<opsLuck(0.78)
+        ? {repDelta:4, log:'a spacewalker got to the interface and drove the latches manually — hard dock achieved the hard way.'}
+        : {payoutMult:0.7, outcomeOverride:'partial', log:'the EVA reached the ring but couldn\u2019t seat it; consumables were spent for a partial result.'} });
+      o.push({id:'soft_only', label:'Work the soft capture and skip hard dock', resolve:()=>
+        ({payoutMult:0.78, outcomeOverride:'partial', log:'the operation was run on soft capture alone — enough to transfer some of the load, not all of it.'}) });
+      return o; } },
+  { id:'transfer_leak', title:'Transfer stage venting propellant',
+    // Cryogenic boil-off and seal failures on a loaded stage: the longer it coasts, the less is left
+    // to burn — which is precisely the tension cryo_boiloff_control is meant to answer.
+    when:c=> !!(c.m.profile && c.m.modules && c.m.modules.includes('transfer')),
+    detail:'The transfer stage is venting. Telemetry has the tank dropping faster than boil-off explains, and the burn is still ahead.',
+    options:c=>{ const o=[];
+      o.push({id:'burn_early', label:'Burn early, before more is lost', resolve:rng=> rng()<opsLuck(0.68)
+        ? {repDelta:2, log:'the burn was moved up and caught most of the remaining propellant — off the ideal window, but on the right trajectory.'}
+        : {payoutMult:0.7, outcomeOverride:'partial', log:'burning early off an unfavourable geometry cost more than the leak would have; the trajectory came out degraded.'} });
+      o.push({id:'isolate_seal', label:'Isolate the suspect feed line and re-pressurize', resolve:rng=> rng()<opsLuck(0.6)
+        ? {log:'the leaking feed line was isolated and the tank held — the burn ran on schedule.'}
+        : {payoutMult:0.72, outcomeOverride:'partial', log:'isolation didn\u2019t stop the vent; the burn ran short on what was left.'} });
+      o.push({id:'downgrade_target', label:'Re-plan for a lower-energy objective', resolve:()=>
+        ({payoutMult:0.65, outcomeOverride:'partial', log:'the flight plan was rewritten around the propellant actually remaining — a lesser objective, reliably met.'}) });
+      return o; } },
+  { id:'micrometeoroid', title:'Micrometeoroid strike',
+    // A hypervelocity particle strike: small mass, enormous energy. The damage is rarely where the
+    // shielding is, and the first sign is usually a pressure or power trend rather than a bang.
+    when:c=> !!((c.m.days||0)>=7 && (c.m.profile || (c.m.reqDv||0)>=9000)),
+    detail:'Something hit. Small, fast, and not where the shielding is — telemetry is showing a trend that is going the wrong way.',
+    options:c=>{ const o=[];
+      o.push({id:'survey', label:'Survey the damage before committing to anything', resolve:rng=> rng()<opsLuck(0.72)
+        ? {repDelta:2, log:'the survey found the strike had missed anything critical — the trend was a sensor artifact, and the mission carried on.'}
+        : {payoutMult:0.75, outcomeOverride:'partial', log:'the survey found real damage to a system that couldn\u2019t be worked around; the mission continued at reduced capability.'} });
+      if(c.crewed) o.push({id:'patch', label:'Crew patches the breach from inside', resolve:rng=> rng()<opsLuck(0.8)
+        ? {repDelta:3, log:'the crew found the breach and patched it from inside — pressure stabilized and the flight went on.'}
+        : {payoutMult:0.62, outcomeOverride:'partial', log:'the patch slowed the loss without stopping it; the flight plan was cut back to preserve margin.'} });
+      o.push({id:'seal_and_continue', label:'Seal off the affected section and press on', resolve:()=>
+        ({payoutMult:0.8, outcomeOverride:'partial', log:'the affected section was sealed off and the mission continued without it — safe, and short of the full objective.'}) });
+      return o; } },
 ];
 function rollMissionEvents(ctx, rng){
   rng=rng||Math.random;
