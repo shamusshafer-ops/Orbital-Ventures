@@ -6640,6 +6640,24 @@ function archiveCrisisRecord(record){
 function crisisFundCost(def){ def=def||activeCrisisDef(); if(!def) return Infinity; return round2(def.fundCostBase*(1+eraStakesFrac()*1.2)); } // scales with era like bailoutTerms
 // eligible candidates right now: era-gated, threshold-gated (if any), and not an immediate repeat
 // of whichever crisis type just resolved (variety over a full game, not the same one on loop)
+// Tier 2 A3 (2026-08-04): progress-toward-eligibility, for display — deliberately NOT the same query
+// as crisisCandidates() below, which returns crises already past their threshold (ready to trigger).
+// This returns every ERA-eligible crisis regardless of threshold, with how close each one is. Era-
+// ineligible crises are omitted entirely (no spoilers for content not yet reachable). Returns [] while
+// a crisis is already active — that state is already surfaced elsewhere (the Outliner strip and
+// agencyAlerts() both read state.crisis directly), so this card would be redundant, not just quiet.
+// Deliberately does NOT account for the "not an immediate repeat" variety rule in crisisCandidates() —
+// that's a mechanical exclusion on what can trigger *next*, not a reason to hide a real, rising number.
+function crisisProximity(){
+  if(state.crisis) return [];
+  const era=eraIndex(currentEra());
+  return CRISES.filter(c=>era>=c.eraMin).map(c=>{
+    const has=!!c.thresholdStat;
+    const val=has?(state[c.thresholdStat]||0):null;
+    const pct=has?Math.min(100,Math.round(val/c.threshold*100)):null;
+    return {c, val, pct};
+  });
+}
 function crisisCandidates(){
   if(state.crisis) return [];
   const era=eraIndex(currentEra());

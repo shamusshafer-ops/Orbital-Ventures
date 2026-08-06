@@ -24,6 +24,13 @@ change first.
 > When done, clear it back to "(none claimed right now)" and add your entry to the history below.
 
 **Oriented quickly (last few sessions, newest first) — see History for full detail:**
+- Tier 2 A3 crisis proximity (Claude) — new `crisisProximity()` (era-eligible crises regardless of
+  threshold, deliberately different from `crisisCandidates()` which requires threshold too) feeds a
+  new "Horizon" card on the Command deck: `34/40` progress, amber past 75%, "watching political
+  conditions" for `funding_collapse`'s null threshold instead of `0/0`. Card vanishes entirely while
+  a crisis is active (already surfaced via Outliner/agencyAlerts) or nothing is era-eligible yet.
+  `test-crisis-proximity.js` 29/29, includes a protected-baseline check that `crisisCandidates()`'s
+  own filtering is untouched.
 - Tier 2 A2 rival strip (Claude) — Command deck rival rows now show next-goal name + projected
   year (`rivalProjectedYear()`) with ahead/behind framing, plus a shared `rivalCrowdFactor()` line.
   Scoping worried about intel-gating this; turned out `rivalProjectedYear()`'s own comment already

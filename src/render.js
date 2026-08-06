@@ -3494,6 +3494,24 @@ function renderCCRight(){
       <div class="row-item"><span class="dim">Expenses</span><span class="num" style="color:var(--bad)">−${fM(o.expenses)}</span></div>
       <div class="row-item"><span class="dim">Net</span><span class="num" style="color:${o.net>=0?'var(--ok)':'var(--bad)'}">${o.net>=0?'+':''}${fM(o.net)}</span></div>
     </div>
+    ${(()=>{ // Tier 2 A3: era-eligible crises not yet triggered, as a progress readout — "34/40" reads
+      // as dramatic irony (every LEO launch loading the gun) instead of an ambush. Empty while a crisis
+      // is already active (surfaced elsewhere) or none are era-eligible yet — card omits itself rather
+      // than rendering empty chrome.
+      const prox=crisisProximity();
+      if(!prox.length) return '';
+      const rows=prox.map(({c,val,pct})=>{
+        const near = pct!=null && pct>=75;
+        const readout = pct==null
+          ? `<span class="dim" style="font-size:11px">watching political conditions</span>`
+          : `<span class="num" style="color:${near?'var(--warn)':'inherit'}">${val}/${c.threshold}</span>`;
+        return `<div class="row-item"><span class="dim">${c.icon} ${c.name}</span>${readout}</div>`;
+      }).join('');
+      return `<div class="card adv-only">
+        <div class="cc-panel-h">Horizon</div>
+        ${rows}
+      </div>`;
+    })()}
     <div class="card">
       <div class="cc-panel-h">Space news</div>
       <div class="news-scroll">${nRows}</div>

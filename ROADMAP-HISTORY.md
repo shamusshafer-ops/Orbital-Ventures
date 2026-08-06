@@ -5842,3 +5842,42 @@ displayed value against `rivalCrowdFactor()` across contract counts, singular/pl
 and that the Deep view / Chronicle buttons and threat pills are untouched.
 
 Full suite clean except the pre-existing `test-flight3d-trajectory.js` drift. Build parity clean.
+
+## Session — Tier 2 A3: surface crisis proximity on the Command deck (2026-08-04)
+
+`crisisCandidates()` gates each of the three `CRISES` on era AND threshold — it only returns crises
+already eligible to trigger. The player was never shown either counter, so a crisis arrived as an
+ambush even though the ingredients for dramatic irony ("34 of 40 — every LEO launch is loading the
+gun") were already sitting in `state.leoFlights`/`state.deepFlights`.
+
+Added `crisisProximity()` (`sim.js`, next to `crisisCandidates()`) as a deliberately different query:
+every ERA-eligible crisis regardless of threshold, each with its current value and percent progress.
+Era-ineligible crises are omitted entirely — no spoilers for content not yet reachable. Returns `[]`
+while a crisis is already active, since that state is already surfaced elsewhere (the Outliner strip
+and `agencyAlerts()` both read `state.crisis` directly) — the new card would be redundant, not just
+quiet, so it doesn't render at all in that state rather than rendering an empty shell.
+
+A new "Horizon" card in `renderCCRight()`'s right rail (between "This month" and "Space news") reads
+this: `34/40` for a threshold crisis, amber once past 75%, and "watching political conditions" for
+`funding_collapse` (`thresholdStat:null`) instead of a nonsensical `0/0`. The card itself omits when
+`crisisProximity()` returns empty, matching the existing convention of the other cards in this rail
+(the "Rivals" card similarly only renders its crowd line conditionally).
+
+Deliberately did NOT fold in `crisisCandidates()`'s "not an immediate repeat of the last resolved
+crisis" exclusion — that's a mechanical rule about what can trigger *next*, not a reason to hide a
+real, rising number the player has been building toward. Documented directly in `crisisProximity()`'s
+comment so a future reader doesn't "fix" it into matching `crisisCandidates()`.
+
+New `tests/test-crisis-proximity.js` (29/29): era gating tested one crisis at a time rather than
+all-or-nothing (era 3 admits only `funding_collapse`, era 4 adds `debris_cascade`, era 5 adds
+`solar_storm`); progress percentage correctness at 0%, mid-range, exactly-at-threshold, and clamped at
+100% past it; the `funding_collapse` null-not-zero contract at both the accessor and rendered-text
+level; the card's self-omission when nothing is eligible; the card's disappearance while a crisis is
+active; and — as an explicit protected-baseline check — that `crisisCandidates()` still excludes a
+below-threshold crisis that `crisisProximity()` correctly still lists, proving the two functions answer
+different questions rather than one silently becoming a wrapper around the other.
+
+Full suite clean except the pre-existing `test-flight3d-trajectory.js` drift. Build parity clean.
+
+**Tier 2 progress: A1 (human-blocked) and C6 (decision-blocked) remain blocked; A2 and A3 shipped;
+B4, B5, C7 still open.**

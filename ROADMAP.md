@@ -2099,17 +2099,17 @@ and the count pluralizes correctly at n=1.
 
 Model tier: mechanical wiring over existing accessors — lighter tier appropriate.
 
-### A3 — Surface crisis proximity [NOT STARTED]
+### A3 — Surface crisis proximity [SHIPPED 2026-08-04]
 
 `crisisCandidates()` gates each crisis on `era >= c.eraMin` and `state[c.thresholdStat] >= c.threshold`
 — `leoFlights >= 40` for the debris cascade, `deepFlights >= 15` for solar storms. The player is
 never shown either counter. A crisis therefore arrives as an ambush, when the ingredients for dramatic
 irony ("34 of 40 — every LEO launch is loading the gun") are already tracked in state.
 
-- [ ] Show, for each era-eligible crisis not yet triggered, its threshold stat as a progress readout
+- [x] Show, for each era-eligible crisis not yet triggered, its threshold stat as a progress readout
   (e.g. `LEO flights 34/40`). Era-ineligible crises stay hidden entirely — no spoilers for content the
   player cannot yet reach.
-- [ ] `funding_collapse` has `thresholdStat:null` (era-gated only) and must render sensibly with no
+- [x] `funding_collapse` has `thresholdStat:null` (era-gated only) and must render sensibly with no
   counter rather than showing `0/0`.
 
 **Protected baseline — do not regress:** `CRISIS_TRIGGER_CHANCE` and the whole of `tickCrisisTrigger()`
@@ -2118,9 +2118,15 @@ are untouched — this shows a counter, it does not change when anything fires. 
 
 **Explicitly out of scope:** changing thresholds, trigger chance, or severity ramp.
 
-**Suggested test:** a crisis below its era gate is not displayed; an era-eligible one displays its
-counter and threshold; `funding_collapse` renders without a counter; nothing displays while
-`state.crisis` is active.
+**Suggested test:** `tests/test-crisis-proximity.js` (new, 29/29) — era gating gates one crisis at a
+time (not all-or-nothing); progress percentage is accurate at 0%, mid-range, exactly-at-threshold, and
+clamps at 100% past it; `funding_collapse` reports `val`/`pct` as `null` (not `0/0`) and the card
+renders the no-counter fallback copy; the card omits itself entirely rather than rendering empty
+chrome when nothing is era-eligible; nothing renders while `state.crisis` is active; and
+`crisisCandidates()`'s own semantics are unchanged — it still excludes a below-threshold crisis that
+`crisisProximity()` would still list, confirming the two accessors answer genuinely different
+questions (eligible-to-trigger vs. progress-toward-eligibility) rather than one being a filtered view
+of the other.
 
 Model tier: mechanical — lighter tier appropriate.
 
