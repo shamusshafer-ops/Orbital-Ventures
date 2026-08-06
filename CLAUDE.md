@@ -24,6 +24,12 @@ change first.
 > When done, clear it back to "(none claimed right now)" and add your entry to the history below.
 
 **Oriented quickly (last few sessions, newest first) — see History for full detail:**
+- Tier 2 A2 rival strip (Claude) — Command deck rival rows now show next-goal name + projected
+  year (`rivalProjectedYear()`) with ahead/behind framing, plus a shared `rivalCrowdFactor()` line.
+  Scoping worried about intel-gating this; turned out `rivalProjectedYear()`'s own comment already
+  documents the pending goal as free for every player — only `rivalFullProjection()`'s indices 1+
+  are paid. Verified with a debug script (7-goal rival never leaks goal #2) before writing the test.
+  `test-rival-strip.js` 22/22.
 - Tier 1.3 third Chronicle bookend, TIER 1 COMPLETE (Claude) — `SCORING_YEAR_3=2060` mirrors the
   `SCORING_YEAR_2` pattern exactly: constant, `state.eraScored3` flag, `'era3'` showChronicle mode,
   `checkScoringDate()` block. RULE (corrected my own prior scoping): I had written "a save already

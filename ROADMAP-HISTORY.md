@@ -5811,3 +5811,34 @@ Full suite clean except the pre-existing `test-flight3d-trajectory.js` drift. Bu
 **Tier 1 is now fully shipped: 1.1 anomaly pool (3→10), 1.2 near-miss attribution, 1.3 this bookend.**
 Remaining work is Tier 2 (A1 human-blocked, A2/A3/B4/B5/C7 open, C6 decision-blocked) and Tier 3
 (3.1-3.5, all open).
+
+## Session — Tier 2 A2: surface the rival simulation on the Command deck (2026-08-04)
+
+The Command deck's rival strip (`renderCCRight()`) showed only `flag · name · threat-pill` for the top
+three rivals by threat score — none of the momentum, projection or market-crowding machinery that
+`showRivalsModal()`'s deep view already renders was visible without opening it.
+
+Each of the three rows now also shows the rival's next goal and its projected claim year, reusing
+`rivalProjectedYear(r)` — the exact same accessor the modal already calls — with the same ahead/behind
+framing against the historical nominal year. A shared line below the three rows reports
+`rivalCrowdFactor()` when it's below 1, naming the player's own passive-contract count as the cause.
+
+**A scoping assumption turned out backwards, in the reviewer's favor.** The ROADMAP entry (written
+during Tier 2's scoping) worried about correctly gating the projection behind `rivalIntelOwned()`. Reading
+`rivalFullProjection()`'s own code comment settled it the other way: `rivalProjectedYear(r)` —
+`rivalFullProjection(r)[0]` — is explicitly documented as the free figure ("the first entry is
+byte-identical to the number this used to compute... every free player sees the same"). Only the REST
+of the timeline (indices 1+, the paid intel dossier's content) is gated. So surfacing the pending goal
+needed no new gate logic at all — it just needed reusing the existing free accessor, exactly as
+`showRivalsModal()` already does for its own `projTxt`. Verified directly rather than assumed: a debug
+script confirmed a rival with 7 remaining goals never leaks goal #2's name onto the strip, with or
+without intel owned.
+
+New `tests/test-rival-strip.js` (22/22): basic rendering, the projection text matches the real
+accessor's output, the "all goals claimed" fallback when a rival is exhausted, the intel-gate
+non-leak (both without and with intel owned — the strip stays to the free pending goal either way, by
+design; the full timeline stays modal-only), the crowd-factor line's presence/absence and exact
+displayed value against `rivalCrowdFactor()` across contract counts, singular/plural grammar at n=1,
+and that the Deep view / Chronicle buttons and threat pills are untouched.
+
+Full suite clean except the pre-existing `test-flight3d-trajectory.js` drift. Build parity clean.

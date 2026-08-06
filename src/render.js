@@ -3448,9 +3448,31 @@ function renderCCRight(){
   const news=ccNews(7);
   const nRows=news.map(l=>`<div class="news-line"><span class="dim">${l.when}</span> <span class="${l.kind}">${tlStrip(l.msg)}</span></div>`).join('') || '<div class="dim" style="font-size:12px">No news yet.</div>';
   // slice 6: rivals mini-leaderboard (top threats) + deep-view modal — the Rivals tab's hub home
+  // Tier 2 A2 (2026-08-04): surfaces what was previously modal-only. rivalProjectedYear(r) —
+  // rivalFullProjection(r)[0] — is deliberately the FREE figure (see that function's own comment:
+  // "the first entry is byte-identical to the number this used to compute... every free player sees
+  // the same"); only the REST of the timeline is paid-intel-gated. Reusing that split here for free
+  // is correct, not a leak — this mirrors exactly what showRivalsModal's projTxt already shows, just
+  // condensed for a 3-row strip instead of a full card per rival.
   const rivalMini=RIVALS.map(r=>({r,score:(state.rivalThreat&&state.rivalThreat[r.id])||0}))
     .sort((a,b)=>b.score-a.score).slice(0,3)
-    .map(({r,score})=>{ const tl=rivalThreatLabel(score); return `<div class="row-item"><span>${r.flag} ${r.name}</span><span class="pill" style="color:${tl.col};border-color:${tl.col}">${tl.txt}</span></div>`; }).join('');
+    .map(({r,score})=>{ const tl=rivalThreatLabel(score);
+      const pj=rivalProjectedYear(r);
+      const projLine = !pj ? '<span class="dim" style="font-size:11px">all goals claimed</span>'
+        : `<span class="dim" style="font-size:11px">${esc(pj.goal.name)} → <b>${pj.year}</b>`
+          + (pj.year<pj.nominal?` <span style="color:var(--bad)">${pj.nominal-pj.year}y ahead of history</span>`
+           : pj.year>pj.nominal?` <span style="color:var(--ok)">${pj.year-pj.nominal}y behind — you're slowing them</span>`:'')
+          + '</span>';
+      return `<div class="row-item" style="flex-direction:column;align-items:stretch;gap:2px">
+        <div style="display:flex;justify-content:space-between;align-items:center"><span>${r.flag} ${r.name}</span><span class="pill" style="color:${tl.col};border-color:${tl.col}">${tl.txt}</span></div>
+        ${projLine}
+      </div>`; }).join('');
+  // Player's own drag on the market — one shared line, not per-rival (rivalCrowdFactor() is global,
+  // driven by state.passiveContracts.length, the same figure showRivalsModal calls crowdTxt).
+  const rivalCrowd=rivalCrowdFactor();
+  const rivalCrowdLine = rivalCrowd<1
+    ? `<div class="dim" style="font-size:11px;margin-top:4px">Your ${(state.passiveContracts||[]).length} passive contract${(state.passiveContracts||[]).length===1?'':'s'} are crowding the market — rival programs slowed to ×${rivalCrowd.toFixed(2)}</div>`
+    : '';
   $('ccRight').innerHTML=`
     <div class="card adv-only">
       <div style="display:flex;justify-content:space-between;align-items:center">
@@ -3460,6 +3482,7 @@ function renderCCRight(){
         <button class="btn ghost" style="font-size:11px;padding:3px 8px" onclick="showRivalsModal()">Deep view →</button></span>
       </div>
       ${rivalMini}
+      ${rivalCrowdLine}
     </div>
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center">

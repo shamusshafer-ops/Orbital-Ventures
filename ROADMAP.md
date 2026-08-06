@@ -2065,7 +2065,7 @@ If playtest goes badly the flag flips back — that is the entire point of it be
 
 Model tier: the playtest is human work. Any fixes it surfaces should be scoped per-bug afterward.
 
-### A2 — Promote the rival simulation out of its modal [NOT STARTED]
+### A2 — Promote the rival simulation out of its modal [SHIPPED 2026-08-04]
 
 The Command deck currently renders the top three rivals as `flag · name · threat-pill` and nothing
 else (`render.js:3438-3450`). Everything that makes the rival system interesting is invisible:
@@ -2073,11 +2073,11 @@ else (`render.js:3438-3450`). Everything that makes the rival system interesting
 `rivalCrowdFactor()` already quantifies how much the player's passive contracts are slowing them;
 `denyRivalGoal()` already logs momentum destruction when the player wins a race.
 
-- [ ] Surface, on the Command deck rival strip: the rival's *next* goal, its projected year (from
+- [x] Surface, on the Command deck rival strip: the rival's *next* goal, its projected year (from
   `rivalFullProjection()`), and — where the player has a live claim on the same mission — the margin.
-- [ ] Show the player's own drag on the market: a line reading how much `rivalCrowdFactor()` is
+- [x] Show the player's own drag on the market: a line reading how much `rivalCrowdFactor()` is
   currently slowing rival accrual, so contract-signing reads as a competitive act, not just income.
-- [ ] Keep the intel gate honest: `rivalIntelOwned()` currently gates the *full* remaining timeline.
+- [x] Keep the intel gate honest: `rivalIntelOwned()` currently gates the *full* remaining timeline.
   The next goal + projection should respect that gate — surfacing the immediate race is fine, but
   handing over the full projection for free would devalue a purchase the player can already make.
 
@@ -2087,9 +2087,15 @@ full timeline; the "Deep view →" modal keeps everything it has today; no chang
 **Explicitly out of scope:** any change to `RIVAL_*` tuning constants, `denyRivalGoal`, crowding, or
 projection math. This is a window onto the simulation, not a change to it.
 
-**Suggested test:** the Command strip includes next-goal and projection text when intel is owned and
-omits/blurs it when not; `rivalCrowdFactor()`'s displayed figure matches its computed value across a
-spread of passive-contract counts.
+**Suggested test:** `tests/test-rival-strip.js` (new, 22/22) — the strip renders next-goal name and
+projected year using the real `rivalProjectedYear()` accessor; an exhausted rival falls back to "all
+goals claimed" rather than blank output; critically, the strip never leaks any goal beyond the free
+pending one (indices 1+ of `rivalFullProjection()`) whether or not intel is owned — confirmed the
+scoping note's assumption was backwards: `rivalProjectedYear()`'s own code comment establishes the
+PENDING goal is already free for every player, and only the REST of the timeline is intel-gated, so
+docking the strip's free line required no gate logic of its own, only reuse; `rivalCrowdFactor()`'s
+displayed figure and contract count match the computed values exactly, the line is absent at factor 1,
+and the count pluralizes correctly at n=1.
 
 Model tier: mechanical wiring over existing accessors — lighter tier appropriate.
 
