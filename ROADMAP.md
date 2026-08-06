@@ -2008,3 +2008,202 @@ anomaly pool (the six existing hold points are sufficient); Tier 2's calendar/pr
 Model tier: 1.1 is the bulk and is creative/balance judgment (scenario framing, resolve odds, gating
 predicates) — heavier tier. 1.2's threshold and message wording want the heavier tier; its wiring is
 mechanical. 1.3 is purely mechanical — lighter tier appropriate if taken alone.
+
+## Planned — Tier 2 "close the visibility gap": ship what's built, surface what's hidden (scoped 2026-08-04)
+
+From the second critical review (2026-08-04, Architect / Ranger / Adjudicator). Its central finding
+supersedes the first review's framing:
+
+> **Orbital Ventures is not short of systems. Its best systems are dark.**
+
+Evidence for that claim, all found by reading source rather than assuming: the flight decision system
+was already substantially complete when the *first* review proposed building it. The rival simulation
+is a genuine economic model — capital accrual, momentum, market crowding from the player's own passive
+contracts, momentum-and-capital destruction when the player beats a rival to a first, rival disasters,
+historical anchor years with pull-in floors — and it surfaces to the player as a single word plus a
+"Deep view →" button. The crisis system the first review demanded be built already exists. And the
+entire E3 part-builder epic is complete, tested to 207 checks, and **switched off**.
+
+Sequencing follows from that: Phase A ships and surfaces what exists (highest leverage, lowest cost),
+Phase B expands the one system that already does what the late game needs, Phase C takes on the
+structural coupling problem — which is real, but bites at hour 20, and nobody reaches hour 20 through
+a UI that hides its best work.
+
+### A1 — Browser-playtest and enable BENCH_V2 [NOT STARTED — REQUIRES SHAMUS, NOT CLAUDE]
+
+`parts.js:18` still reads `const BENCH_V2 = false`. The drag-drop part builder is the single most
+player-visible unshipped thing in the codebase. E3.0's numerical-equivalence harness already proved
+`buildToStageIR` matches the slider physics core, and `state.stages` remains source of truth with
+`state.build` derived — so this is a **playtest gate, not an engineering one**.
+
+This sandbox has no browser and cannot download one (network is allowlisted to package registries),
+so Claude cannot close this item. It needs a real session at a real browser.
+
+- [ ] Playtest against the E3.6 checklist already in ROADMAP.md: palette drag → snap-to-node, ghost
+  preview, detach/delete, diameter hard-block vs. soft structural warn, footprint collision, symmetry
+  tool, undo/redo, blueprint toggle, per-stage Δv/TWR overlay correctness against a known design.
+- [ ] Verify a migrated pre-E3.5 save renders an equivalent graph and flies identically (the
+  migration-parity test covers the numbers; this covers what it *looks* like).
+- [ ] Flip `BENCH_V2` to true, rebuild, re-run the full suite, confirm `renderPartsBench()` is reached
+  and the old bench is cleanly hidden (`render.js:625`).
+
+**Protected baseline:** `state.stages` stays source of truth; `state.build` stays derived/regenerable.
+If playtest goes badly the flag flips back — that is the entire point of it being a flag.
+
+Model tier: the playtest is human work. Any fixes it surfaces should be scoped per-bug afterward.
+
+### A2 — Promote the rival simulation out of its modal [NOT STARTED]
+
+The Command deck currently renders the top three rivals as `flag · name · threat-pill` and nothing
+else (`render.js:3438-3450`). Everything that makes the rival system interesting is invisible:
+`rivalFullProjection()` already computes each rival's projected claim year for every remaining first;
+`rivalCrowdFactor()` already quantifies how much the player's passive contracts are slowing them;
+`denyRivalGoal()` already logs momentum destruction when the player wins a race.
+
+- [ ] Surface, on the Command deck rival strip: the rival's *next* goal, its projected year (from
+  `rivalFullProjection()`), and — where the player has a live claim on the same mission — the margin.
+- [ ] Show the player's own drag on the market: a line reading how much `rivalCrowdFactor()` is
+  currently slowing rival accrual, so contract-signing reads as a competitive act, not just income.
+- [ ] Keep the intel gate honest: `rivalIntelOwned()` currently gates the *full* remaining timeline.
+  The next goal + projection should respect that gate — surfacing the immediate race is fine, but
+  handing over the full projection for free would devalue a purchase the player can already make.
+
+**Protected baseline — do not regress:** `rivalIntelOwned()` must still gate `rivalFullProjection()`'s
+full timeline; the "Deep view →" modal keeps everything it has today; no change to rival math.
+
+**Explicitly out of scope:** any change to `RIVAL_*` tuning constants, `denyRivalGoal`, crowding, or
+projection math. This is a window onto the simulation, not a change to it.
+
+**Suggested test:** the Command strip includes next-goal and projection text when intel is owned and
+omits/blurs it when not; `rivalCrowdFactor()`'s displayed figure matches its computed value across a
+spread of passive-contract counts.
+
+Model tier: mechanical wiring over existing accessors — lighter tier appropriate.
+
+### A3 — Surface crisis proximity [NOT STARTED]
+
+`crisisCandidates()` gates each crisis on `era >= c.eraMin` and `state[c.thresholdStat] >= c.threshold`
+— `leoFlights >= 40` for the debris cascade, `deepFlights >= 15` for solar storms. The player is
+never shown either counter. A crisis therefore arrives as an ambush, when the ingredients for dramatic
+irony ("34 of 40 — every LEO launch is loading the gun") are already tracked in state.
+
+- [ ] Show, for each era-eligible crisis not yet triggered, its threshold stat as a progress readout
+  (e.g. `LEO flights 34/40`). Era-ineligible crises stay hidden entirely — no spoilers for content the
+  player cannot yet reach.
+- [ ] `funding_collapse` has `thresholdStat:null` (era-gated only) and must render sensibly with no
+  counter rather than showing `0/0`.
+
+**Protected baseline — do not regress:** `CRISIS_TRIGGER_CHANCE` and the whole of `tickCrisisTrigger()`
+are untouched — this shows a counter, it does not change when anything fires. The
+"not an immediate repeat of the last resolved crisis" variety rule stays.
+
+**Explicitly out of scope:** changing thresholds, trigger chance, or severity ramp.
+
+**Suggested test:** a crisis below its era gate is not displayed; an era-eligible one displays its
+counter and threshold; `funding_collapse` renders without a counter; nothing displays while
+`state.crisis` is active.
+
+Model tier: mechanical — lighter tier appropriate.
+
+### B4 — Expand the crisis pool (3 → 8-10) [NOT STARTED]
+
+`CRISES` holds three entries gated to eras 3, 4 and 5. The Interplanetary (2060+) and Speculative
+(2100+) eras — the back half of a 158-year campaign, and the review's identified weak zone — have
+**no crisis content at all**. The mechanism is good (era gate + player-footprint threshold, fund the
+remedy or endure a permanent tax, severity ramp, variety rule); it is under-populated.
+
+- [ ] Add 5-7 entries following the existing shape exactly: `{id, name, icon, eraMin, thresholdStat,
+  threshold, fundCostBase, maxPenalty, effectKey, remedyName, effectLabel, modalTitle, modalDesc,
+  triggerMsg, mitigatedMsg, enduredMsg}`. Weight new entries toward `eraMin` 6-8.
+- [ ] New entries will likely need new `effectKey` handlers — the current three cover `leoRel`,
+  `deepRel`, `govFunding` via `crisisRelPenalty()`/`crisisGovFundingMult()`. Any new effect axis needs
+  its own accessor and must be applied somewhere real, not just logged.
+- [ ] New `thresholdStat` values must be counters that already exist or are cheaply added, and must
+  count something the player *did* — the design principle here is the empire creating its own hazard.
+
+**Protected baseline — do not regress:** the three existing crises; `CRISIS_TRIGGER_CHANCE`;
+`crisisFundCost()`'s era scaling; the fund-or-endure structure and permanent-tax outcome.
+
+**Explicitly out of scope:** raising trigger frequency (more variety, not more crises per campaign —
+same discipline as Tier 1.1's anomaly pool); multi-crisis concurrency (`state.crisis` is singular and
+should stay so for now).
+
+**Suggested test:** every entry is well-formed and has a unique id; every `effectKey` has a real
+handler that changes something; `crisisCandidates()` respects era and threshold gating for the new
+entries; the no-immediate-repeat rule still holds; late-era candidates actually become eligible on a
+simulated late-era state.
+
+Model tier: content, balance, and new effect axes — heavier tier.
+
+### B5 — Convert the 14 empty-effect research nodes [NOT STARTED]
+
+14 of 98 `RESEARCH` entries carry `effect:{}`: `strapon_integration`, `orbital_eva`, `precision_edl`,
+`surface_fission_power`, `cryo_boiloff_control`, `electrolysis_scaleup`, `station_keeping`,
+`large_space_stations`, `onorbit_servicing`, `autonomous_operations`, `megawatt_electric`,
+`hydrogen_storage`, `gravity_assist_planning`, `aerocapture`.
+
+Several are legitimate pure gates — `orbital_eva` and `orbital_assembly` gate Tier 1.1 anomaly
+branches, `onorbit_servicing` gates a passive contract — and those are fine as they are. Others are
+genuine placeholders; ROADMAP already flags `cryo_boiloff_control` as unfulfilled.
+
+- [ ] Audit all 14. For each, record whether it is a legitimate gate (leave alone, but comment it as
+  intentional) or an unfulfilled placeholder.
+- [ ] Give the placeholders real payloads. Opportunistic — take them as adjacent work is done in each
+  area rather than as one sweep, since each needs a different system touched.
+
+**Protected baseline:** nodes that function as gates keep gating exactly what they gate today; no
+change to prereq chains, costs, or `sciGateCost`.
+
+**Suggested test:** per-node, whatever effect is added. Plus a standing assertion that any node whose
+`effect` is `{}` appears on an explicit allowlist of intentional-gate ids, so a *new* empty-effect node
+can't be added silently.
+
+Model tier: mixed — the audit is judgment (heavier), individual payload wiring is mechanical.
+
+### C6 — Couple the calendar to progression [NOT STARTED — DECISION REQUIRED]
+
+The structural finding both reviews agreed on: `state.year` drives eras, reputation drives the mission
+ladder, capital+science drives research, and **nothing couples them**. All 28 missions are rep-gated
+with zero era-gating; zero research nodes are era-gated. The 158-year calendar is a backdrop, not a
+constraint. A fast player exhausts the authored ladder and then has decades of procedural filler; a
+slow one flies Pioneer hardware into the Commercial era with no pressure either way.
+
+**This item is blocked on a design decision Shamus has not yet made.** Three options, cheapest first,
+from the Architect/Ranger exchange:
+
+- **(a) Obsolescence pressure only.** Era-scaled payout/rep decay on hardware and mission classes that
+  the era has moved past. No gating; falling behind costs money and prestige rather than access.
+- **(b) Era-gate research only, not missions.** *The compromise neither critic objected to.* Keeps
+  every mission reachable (so a behind player never has *fewer* things to do — the Ranger's core
+  objection to (c)) while stopping anachronistic tech availability.
+- **(c) Hard era-gating on missions.** The Architect's original ask. Strongest coupling, strongest
+  realism; the Ranger's objection is that it makes an already decision-sparse late game emptier.
+
+Do not implement until the option is chosen. Scope the chosen one properly at that point.
+
+Model tier: heavier — this is a fork in the game's identity, not a wiring task.
+
+### C7 — Facility specialization [NOT STARTED]
+
+`FACILITY_DEFS` holds three entries (LEO station, lunar base, Mars base) for the entire colonization
+arc. Facilities currently grow along one axis — module count — with `facilityPortCap` returning
+Infinity off-Earth. Late-game 4X depth normally lives here.
+
+- [ ] Give facilities a specialization axis: divergent module trees or a role choice (research /
+  industry / logistics) that changes what a base *is*, not just how big it is.
+- [ ] Sequence after B4. Crises are the cheaper late-game pressure fix and should land first; this is
+  the larger structural investment and benefits from knowing what late-game pressure actually feels
+  like once crises are populated.
+
+**Protected baseline — do not regress:** existing facility founding/expansion economics, ISRU,
+`facilityPortCap`'s off-Earth behaviour, the Base Bench (E1.8) surface-module set.
+
+**Explicitly out of scope:** new bodies; this is depth on the three that exist.
+
+Model tier: heavier — systems design with real balance surface.
+
+**Sequencing note for the whole tier:** A1 is human-blocked and can proceed in parallel with anything.
+A2 and A3 are small, mechanical, and independent of each other. B4 before C7. C6 is blocked on a
+decision and should not be started before it is made. Explicitly deprioritized by the review and NOT
+scoped here: tutorial/onboarding (Shamus is currently the sole player — speculative work for a
+hypothetical audience), SM6, mission patches/photo mode, and full backlog triage.

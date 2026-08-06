@@ -24,6 +24,17 @@ change first.
 > When done, clear it back to "(none claimed right now)" and add your entry to the history below.
 
 **Oriented quickly (last few sessions, newest first) — see History for full detail:**
+- Tier 2 scoped (Claude, 2026-08-04) — second critical review's finding supersedes the first's:
+  **the game isn't short of systems, its best systems are dark.** Evidence: the flight decision
+  system was already built when review #1 proposed building it; the rival economic sim (capital,
+  momentum, contract crowding, firsts-denial) surfaces as ONE WORD behind a modal; the crisis
+  system review #1 demanded already exists; and `BENCH_V2` is still `false` — the whole E3 part
+  builder is complete, 207 checks green, and switched off. Seven items scoped in ROADMAP.md:
+  A1 enable BENCH_V2 (**human-blocked — needs a real browser, Claude cannot close it**),
+  A2 surface rivals, A3 surface crisis proximity, B4 crisis pool 3→8-10, B5 the 14 empty-effect
+  research nodes, C6 calendar/progression coupling (**blocked on Shamus choosing option a/b/c**),
+  C7 facility specialization. RULE: read the shipping state before scoping "build X" — twice now a
+  review has proposed building something that already existed.
 - Tier 1.2 near-miss attribution (Claude) — `resolveFlight()` now tracks the narrowest surviving
   subsystem margin during its existing roll loop (same RNG draws, same order, outcomes provably
   unchanged — `test-near-miss.js` runs the original inline-compare loop against the live one across
