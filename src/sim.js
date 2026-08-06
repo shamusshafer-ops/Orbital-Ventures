@@ -1779,12 +1779,30 @@ const FAC_STARVE_PROD=0.4;           // production multiplier while a facility i
 const FAC_STARVE_REP=2;              // reputation lost each month a crewed facility goes unsupplied
 const FAC_STARVE_SUPPORT=1.5;        // public support lost per starved month
 const FAC_STARVE_ABANDON_MONTHS=6;   // consecutive starved months before crew evacuate a module
-const BODY_RESUPPLY_MULT={earth:1.0, moon:2.2, mars:4.2}; // launch-logistics multiplier by destination
+const BODY_RESUPPLY_MULT={earth:1.0, moon:2.2, mars:4.2, callisto:9.5, titan:12.0}; // launch-logistics multiplier by destination
+/* ---------- C8: per-body environmental hazard ----------
+   A hostile environment is a COST OF PRESENCE, not a random failure — the player can plan against it
+   (budget more maintenance, more resupply) rather than being ambushed. Two effects, both feeding hooks
+   that already existed:
+     - condition decay (tickStationOperations) scales by (1 + hazard*HAZARD_DECAY_MULT): a base in a
+       radiation bath or a cryogenic atmosphere wears out faster.
+     - resupply cost (resupplyCostFull) scales by (1 + hazard*HAZARD_RESUPPLY_MULT): keeping it alive
+       costs more per module per month.
+   Earth/Moon/Mars are deliberately 0 — this mechanic ships numerically inert for every facility that
+   existed before it, which is what makes it safe to add to live economy paths. Unlisted bodies also
+   read 0 via the `||0` fallback, so a future body is inert until explicitly given a hazard number. */
+const BODY_HAZARD={earth:0, moon:0, mars:0, callisto:0.55, titan:0.40};
+const HAZARD_DECAY_MULT=0.8;    // at hazard 0.55 (Callisto) condition decays ~1.44× as fast
+const HAZARD_RESUPPLY_MULT=0.5; // at hazard 0.55 resupply costs ~1.28× more per module
+function bodyHazard(body){ return BODY_HAZARD[body]||0; }
+function facilityHazard(id){ const def=facilityById(id); return def?bodyHazard(def.body):0; }
+function hazardDecayMult(body){ return 1 + bodyHazard(body)*HAZARD_DECAY_MULT; }
+function hazardResupplyMult(body){ return 1 + bodyHazard(body)*HAZARD_RESUPPLY_MULT; }
 function bodyResupplyMult(body){ return BODY_RESUPPLY_MULT[body]||1; }
 // Slice 2.1: resupply cruise time by destination body. Earth/Moon top up instantly (< DEFER_CRUISE_DAYS);
 // Mars ships across a Hohmann-class transit and arrives ~210 d later as a live logistics flight. No existing
 // one-way Earth→Mars constant to reuse (mars_flyby.days:420 is a round trip), so 210 d is a fresh figure.
-const LOGI_TRANSIT_DAYS={earth:0, moon:4, mars:210};
+const LOGI_TRANSIT_DAYS={earth:0, moon:4, mars:210, callisto:1000, titan:1400}; // C8: an outer-system resupply is a multi-year commitment — the base must be provisioned for the wait, which is the real difficulty of holding one
 function logiTransitDays(body){ return LOGI_TRANSIT_DAYS[body]||0; }
 function facilitySupply(id){ const fs=facilityState(id); if(!fs) return 0; return fs.supply!=null?fs.supply:FAC_SUPPLY_MONTHS; } // legacy facilities default to fully provisioned
 function facilitySupplyDrain(){ return 1; } // one month of provisions consumed per calendar month
@@ -1804,7 +1822,7 @@ function boiloffMargin(months, controlled){ // extra-propellant factor needed to
 }
 const FUEL_BUY_BASE=round2(FUEL_BASE*(1+FUEL_SPREAD)); // baseline buy price the flat resupply cost implicitly assumed
 function resupplyCostFull(id){ const def=facilityById(id), fs=facilityState(id); if(!def||!fs) return 0; const mod=Math.max(1,fs.modules||1); const fission=state.research.surface_fission_power?0.75:1; /* a base that makes its own power ships fewer consumables */ const grn=Math.max(0.5, 1-0.15*facilityGreenhouses(fs)); /* greenhouses grow food on-site */ const feedMod=Math.max(1, mod-facilityGreenhouses(fs)); /* a greenhouse feeds itself */
-  const base=FAC_RESUPPLY_PER_MODULE*feedMod*bodyResupplyMult(def.body)*fission*grn; // pre-2.2 flat cost
+  const base=FAC_RESUPPLY_PER_MODULE*feedMod*bodyResupplyMult(def.body)*hazardResupplyMult(def.body)*fission*grn; // pre-2.2 flat cost; C8: hostile environments cost more to sustain (inert at hazard 0, i.e. every pre-C8 body)
   // 2.2: fold in the live fuel market (marketRatio) and cryo boil-off margin (boiloffRatio) on the propellant fraction only.
   const marketRatio=fuelBuyPrice()/FUEL_BUY_BASE;                         // 1.0 at baseline fuel price → neutral
   const months=logiTransitDays(def.body)/30;                             // cruise duration; ~0 for LEO/Moon → neutral
@@ -1852,7 +1870,7 @@ function tickStationOperations(){
   for(const fid in (state.facilities||{})){
     if(!facilityBuilt(fid)) continue;
     const fs=facilityState(fid), def=facilityById(fid), ops=stationOps(fs), modules=facilityModuleList(fs).length;
-    if(ops.maintenanceEnabled) ops.condition=Math.max(0,stationCondition(fs)-(STATION_MAINT_DECAY_BASE+modules*STATION_MAINT_DECAY_PER_MODULE));
+    if(ops.maintenanceEnabled) ops.condition=Math.max(0,stationCondition(fs)-(STATION_MAINT_DECAY_BASE+modules*STATION_MAINT_DECAY_PER_MODULE)*hazardDecayMult(def.body)); // C8: hazard accelerates wear (×1 at hazard 0)
     if(ops.crewManaged && stationRotationDue(fs) && ops.rotationNotifiedAbs!==absMonth()){
       const names=stationCrewIds(fs).map(id=>personById(id)?.name||id).join(', ')||'station crew';
       log('note',`${def.icon} ${def.name}: crew rotation due for ${names}.`);

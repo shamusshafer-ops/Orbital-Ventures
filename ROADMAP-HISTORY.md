@@ -5978,3 +5978,51 @@ not just against the audit's own say-so.
 
 Full suite clean. Build parity clean. No source logic changed — this session's actual code delta is
 one new constant and its guarding test.
+
+## Session — Tier 2 C8: outer-system bases + per-body environmental hazard (2026-08-04)
+
+C7 ("give facilities a specialization axis") was superseded before any code was written: the audit
+found that system already exists and is good — 10 distinct `STATION_MODULES` with real production
+profiles, four working synergies rewarding composition over accumulation, surface/orbital gating, and
+power/crew/maintenance constraints. Module choice already changes what a base *is*. `facilityPortCap`
+returning `Infinity` off-Earth, flagged in C7 as a gap, is a documented deliberate decision. That was
+the **fourth** review finding in this project not to survive contact with the source.
+
+The real gap: `FACILITY_DEFS` had exactly three entries, so base *count* was hard-capped at 3 for a
+158-year campaign, and Moon/Mars differed only by numeric scalars. Shamus confirmed new bodies were
+wanted, specifically outer-system ones with body-defining problems (Jovian radiation, Io's volcanism),
+and asked for a combined push.
+
+**Built in a strict internal order so a mistake in one half couldn't hide in the other:**
+
+*Step 1 — hazard mechanic, inert.* `BODY_HAZARD` + `hazardDecayMult`/`hazardResupplyMult`, wired into
+the two existing live hooks: the condition-decay line in `tickStationOperations()` and
+`resupplyCostFull()`. Earth/Moon/Mars set to 0 and unlisted bodies falling back to 0, so the mechanic
+shipped numerically inert for every facility that existed before it. Verified empirically rather than
+by inspection: captured production/resupply/decay figures for all three existing facilities, stashed
+the changes, rebuilt, re-ran the same fixture, and diffed — output identical. Those exact figures are
+now pinned as literals in `test-outer-bases.js`, so if hazard ever stops being inert for a pre-C8 body
+the suite fails.
+
+*Step 2 — the new bodies.* `callisto_base` (gated on `jupiter_orbit`) and `titan_base` (gated on
+`titan_landing`), both reusing `STATION_MODULES` and existing surface gating wholesale — no new module
+types. Callisto is the game's own nominated safe Jovian site per its `BODIES` note. Hazard 0.55 and
+0.40 respectively; `BODY_RESUPPLY_MULT` 9.5/12.0; `LOGI_TRANSIT_DAYS` 1000/1400 — the multi-year
+resupply lead is the real difficulty of holding an outer base, not the sticker cost.
+
+Also generalized `BASE_DRAFT_FACID` from a hardcoded `{moon,mars}` literal to being derived from
+`FACILITY_DEFS`, with `baseDraftBody()`/`setBaseDraftBody()` validating against the derived list — so a
+future surface body needs only its `FACILITY_DEFS` entry.
+
+**Io deliberately excluded.** Volcanism is a structural-risk problem (episodic damage), not a
+sustained-cost one; bolting it onto a hazard system designed around ongoing cost would either
+trivialise it or make it arbitrary. Left as a future item with its own mechanic.
+
+New `tests/test-outer-bases.js` (72/72). Full suite clean; build parity clean.
+
+**Balance figures for playtest — these are the first hazard numbers, with no precedent to calibrate
+against.** Sustained monthly economics for a 3-module base: Mars net +3.14/mo (sci 17.4), Callisto
++1.60 (sci 22.7), Titan +0.15 (sci 22.6, fuel 1.40). Outer bases are deliberately science/fuel plays
+rather than income plays, and Titan sits right at break-even — a single `isru_supply_shock` crisis
+(−35% facility output, added in B4) would push it negative. That may be good drama or may be too
+tight; it is the item in this slice most likely to need retuning after actual play.

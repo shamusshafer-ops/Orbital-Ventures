@@ -856,6 +856,22 @@ const FACILITY_DEFS = [
    blurb:'A foothold on Mars. Sabatier methalox production, greenhouses, and the seed of a self-sustaining second home for humanity.',
    decayReason:'dust storms and thin-CO₂ weathering on exposed seals and panels',
    base:{income:2.6, fuel:0.6, rep:3, sci:4}, perModule:{income:1.8, fuel:0.8, rep:1.5, sci:3}},
+  /* C8 (2026-08-04): outer-system bases. Both reuse STATION_MODULES and the existing surface-module
+     gating wholesale — no new module types. Their defining difficulty is BODY_HAZARD (sim.js), which
+     makes them cost more to sustain and wear out faster, rather than paying out less. Callisto is the
+     game's own nominated safe Jovian site (see its BODIES note: "outside the worst radiation, the
+     safest Jovian base site") — Io is deliberately NOT a facility body, since volcanism is a
+     structural-risk problem rather than a sustained-cost one and needs its own mechanic. */
+  {id:'callisto_base', name:'Callisto Outpost', body:'callisto', icon:'◇', color:'#6f6a63',
+   reqMission:'jupiter_orbit', foundCost:210, foundMonths:24,
+   blurb:'A hardened outpost on the outermost Galilean moon — far enough from Jupiter to sit outside the killing radiation belts, close enough to stage the whole Jovian system. Ice mining, a deep-space relay, and humanity\'s first foothold beyond the asteroid belt.',
+   decayReason:'Jovian radiation and the slow embrittlement of everything left exposed to it',
+   base:{income:3.4, fuel:0.9, rep:5, sci:6}, perModule:{income:2.2, fuel:1.0, rep:2.2, sci:4}},
+  {id:'titan_base', name:'Titan Station', body:'titan', icon:'◈', color:'#d8a24a',
+   reqMission:'titan_landing', foundCost:260, foundMonths:30,
+   blurb:'A base on the only other world with a thick atmosphere and standing liquid on its surface. Cryogenic methane lakes feed the propellant plant; the haze overhead is thick enough to shield what is underneath it.',
+   decayReason:'cryogenic embrittlement and methane-solvent attack on seals at 94 K',
+   base:{income:3.0, fuel:1.4, rep:5, sci:7}, perModule:{income:2.0, fuel:1.6, rep:2.2, sci:4.5}},
 ];
 
 // #89: three real Deep Space Network analogs — the actual historical siting (~120° apart in

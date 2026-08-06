@@ -9041,15 +9041,18 @@ function baseCurrentView(){
    only the draft plumbing (add/remove/clear/cost/stats) is new, and even that is thin: draftAdd/
    draftRemove/draftClear now dispatch on state.tab so stationModuleCard's hardcoded onclick names
    need no changes at all. */
-const BASE_DRAFT_FACID={moon:'lunar_base', mars:'mars_base'};
+// C8: extended beyond {moon,mars}. Derived from FACILITY_DEFS rather than re-listing ids, so a future
+// surface body only needs its FACILITY_DEFS entry — this map and baseDraftBody() below follow it.
+const BASE_DRAFT_FACID=Object.fromEntries(FACILITY_DEFS.filter(d=>d.body!=='earth').map(d=>[d.body,d.id]));
+const BASE_DRAFT_BODIES=Object.keys(BASE_DRAFT_FACID);
 function baseDraftFs(body){
   state.baseDraftByBody=state.baseDraftByBody||{};
   const cur=state.baseDraftByBody[body];
   state.baseDraftByBody[body]=(cur&&cur.length)?cur:['can_std'];
   return {moduleList:state.baseDraftByBody[body]};
 }
-function baseDraftBody(){ return state.baseDraftBody==='mars'?'mars':'moon'; } // default Luna
-function setBaseDraftBody(body){ state.baseDraftBody=(body==='mars')?'mars':'moon'; render(); }
+function baseDraftBody(){ return BASE_DRAFT_BODIES.includes(state.baseDraftBody)?state.baseDraftBody:'moon'; } // default Luna; C8: any surface facility body is valid
+function setBaseDraftBody(body){ state.baseDraftBody=BASE_DRAFT_BODIES.includes(body)?body:'moon'; render(); }
 function draftAddBase(modId){
   const body=baseDraftBody(), def=facilityById(BASE_DRAFT_FACID[body]), fs=baseDraftFs(body);
   fs.moduleList.push(modId); state.baseDraftByBody[body]=fs.moduleList; render();

@@ -24,6 +24,17 @@ change first.
 > When done, clear it back to "(none claimed right now)" and add your entry to the history below.
 
 **Oriented quickly (last few sessions, newest first) — see History for full detail:**
+- Tier 2 C8 outer-system bases + hazard (Claude) — C7's premise died on audit (module
+  specialization ALREADY EXISTS: 10 STATION_MODULES, 4 synergies, surface/orbital gating; portCap
+  Infinity off-Earth is deliberate) — FOURTH such finding, after decision system, crisis system and
+  B5's "placeholders". Real gap was base COUNT hard-capped at 3. Shipped `callisto_base`
+  (jupiter_orbit gate) + `titan_base` (titan_landing gate) reusing STATION_MODULES wholesale, plus
+  `BODY_HAZARD` feeding condition-decay and resupplyCostFull. Built hazard FIRST at zero effect and
+  proved existing econ byte-identical by stash/rebuild/diff before adding bodies — those figures are
+  now pinned as literals in `test-outer-bases.js` (72/72). Io excluded: volcanism is structural risk,
+  not sustained cost, needs its own mechanic.
+  PLAYTEST FLAG: first hazard numbers ever set, no precedent. Titan nets +0.15/mo — one B4
+  `isru_supply_shock` (−35% facility output) pushes it negative. Most likely thing to need retuning.
 - Tier 2 B5 research audit, ZERO placeholders found (Claude) — B5 assumed some of the 14 `effect:{}`
   RESEARCH nodes needed real payloads. Audited all 14 (grep both quoted and dot-notation refs, read
   every call site): all legitimately empty — 7 bespoke-implemented (mechanic lives at its own point

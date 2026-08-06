@@ -2257,15 +2257,103 @@ Do not implement until the option is chosen. Scope the chosen one properly at th
 
 Model tier: heavier — this is a fork in the game's identity, not a wiring task.
 
-### C7 — Facility specialization [NOT STARTED]
+### C7 — Facility specialization [SUPERSEDED 2026-08-04 — premise did not survive audit]
+
+**The specialization system this entry asked for already exists, and is good.** Audited before writing
+any code: `STATION_MODULES` holds 10 distinct module types (Habitat, Lab, Power Truss, Docking Node,
+Depot, Greenhouse, ISRU Plant, Reactor Pad, Hab Dome, Rover Garage), each with its own production
+profile, cost, build time, crew requirement and power draw. Real synergies already reward composition
+rather than accumulation: Lab+Habitat gives +20% science, Greenhouse+Habitat +15% income, Depot+Power
+Truss +25% fuel, and a net +8 kW surplus gives a station-wide efficiency bonus. Body-appropriateness
+is already gated — `node_hub` is orbital-only, four modules are `surface:true`. Power, crew and
+maintenance all constrain the choice. Module composition therefore already changes *what a base is*,
+not just how big it is, which is exactly what this entry requested.
+
+`facilityPortCap` returning `Infinity` off-Earth — flagged in the original entry as if it were a gap —
+is a deliberate, documented decision (ports model finite orbital berths; a surface base spreads out
+instead), not an oversight to fix.
+
+**Fourth review finding in this project to not survive contact with the source**, after the decision
+system (Tier 1), the crisis system (Tier 2 A-series) and the "placeholder" research nodes (B5).
+
+**The real gap the audit did find:** `state.facilities` is keyed by fixed facility id, and
+`FACILITY_DEFS` has exactly three entries — so the total number of bases is hard-capped at 3 for the
+entire 158-year campaign, regardless of how far the player gets. Depth *within* a base is rich; the
+count never grows. Moon and Mars are also near-identical mechanically, differing only by numeric
+scalars and flavour text. Superseded by C8 below.
+
+### C8 — Outer-system bases and per-body environmental hazard [SHIPPED 2026-08-04]
+
+Replaces C7. Scope confirmed with Shamus 2026-08-04: module-count growth is welcome where it earns its
+place, and new bodies are explicitly wanted — specifically the kind of body-defining problems the
+outer system offers (Jovian radiation, Io's volcanism) rather than more reskins of Mars.
+
+Deliberately shipped as ONE push per Shamus's call, but built in a strict internal order (see below)
+so a mistake in one half cannot hide inside the other.
+
+**The seams already exist — this is not built from nothing:**
+- `BODIES` already holds 25 entries including `io`, `europa`, `ganymede`, `callisto`, `titan`, each
+  with Δv legs already defined and flavour text that already does the design work: Io is "the most
+  volcanically active world in the system — sulphur plains under a lethal radiation bath"; Callisto is
+  "outside the worst radiation, the safest Jovian base site".
+- `jupiter_orbit` and `titan_landing` are already flyable missions — the gate missions exist.
+- `rad_shielding` is already a real research node already required for crewed Jupiter missions.
+- `BODY_RESUPPLY_MULT` (`{earth:1.0, moon:2.2, mars:4.2}`) and `LOGI_TRANSIT_DAYS`
+  (`{earth:0, moon:4, mars:210}`) are already per-body lookups with a `||1` / `||0` fallback — new
+  bodies slot in as data, not as new code paths.
+- `canFound()` / `foundFacility()` are already fully generic over `FACILITY_DEFS` with no hardcoded ids.
+
+**Known hardcoded-id risk surface** (audited; every one must be handled or consciously left alone):
+`render.js:1182` (`leoOps`/`lunarOps`/`marsOps` in the tracking/DSN readout), `render.js:8748-8749`
+(Base Bench cost cells naming LEO/Moon/Mars), `render.js:8757` and `:8922` (station-draft default
+facility), `render.js:9044` `BASE_DRAFT_FACID={moon,mars}` plus `baseDraftBody()`/`setBaseDraftBody()`
+which hard-default to moon/mars only, and `ISRU_FREE_LEG` (`sim.js:3703`) which is keyed by mission.
+
+**Build order (internal, non-negotiable):**
+1. [ ] Hazard mechanic first, wired against the EXISTING three bodies at zero effect
+   (`BODY_HAZARD` defaulting to 0 for earth/moon/mars), with tests proving LEO/lunar/Mars economics are
+   byte-identical to before. This is the step that protects the existing game.
+2. [ ] Only then add the two new facility bodies, which turn the hazard on.
+
+**Hazard mechanic:** a per-body factor feeding the two existing live hooks —
+`stationMaintenanceFactor`/the condition-decay line in `tickStationOperations()` (`sim.js:1855`) so a
+hostile environment degrades a base faster, and `bodyResupplyMult` so it costs more to sustain. It must
+be a *cost of presence*, not a random failure: the player should be able to plan against it (more
+maintenance, more resupply) rather than be ambushed by it.
+
+**New facilities:** a Jovian base at **Callisto** (gated on `jupiter_orbit`; the game's own flavour
+text already nominates it as the safe Jovian site) and a **Titan** base (gated on `titan_landing`).
+Both reuse `STATION_MODULES` and the existing surface-module gating wholesale — no new module types
+are needed for this slice.
+
+**Explicitly out of scope:** an **Io** base. Volcanism is a structural-risk problem (episodic damage to
+a built base), not a resupply-cost problem, and bolting it onto a hazard system designed around
+sustained cost would either trivialise it or make it arbitrary. Scope it separately once the hazard
+mechanic has been played. Also out of scope: new module types, new bodies beyond Callisto and Titan,
+and any change to `facilityPortCap`'s documented off-Earth behaviour.
+
+**Protected baseline — do not regress:** LEO/lunar/Mars founding, expansion, production, resupply,
+maintenance and ISRU economics must be numerically unchanged (step 1 above exists to prove this);
+`STATION_MODULES` and every existing synergy; `facilityPortCap` off-Earth; the Base Bench module set.
+
+**Suggested test:** existing-body economics identical before and after the hazard mechanic lands
+(the load-bearing test — assert exact equality on production, resupply cost and condition decay for
+all three existing facilities with hazard installed but zero); `BODY_HAZARD`'s fallback keeps any
+unlisted body at zero; hazard scales condition decay and resupply cost in the expected direction and
+magnitude for the new bodies; both new facilities found only with their gate mission complete; the
+module palette offers the correct surface/orbital set at each new body; and a save round-trip carrying
+a Callisto/Titan facility.
+
+Model tier: heavier throughout — new state schema, a genuinely new mechanic with no existing hazard
+number to calibrate against, and live economy paths that every existing facility already depends on.
 
 `FACILITY_DEFS` holds three entries (LEO station, lunar base, Mars base) for the entire colonization
 arc. Facilities currently grow along one axis — module count — with `facilityPortCap` returning
 Infinity off-Earth. Late-game 4X depth normally lives here.
 
-- [ ] Give facilities a specialization axis: divergent module trees or a role choice (research /
+- [x] Give facilities a specialization axis: divergent module trees or a role choice (research /
   industry / logistics) that changes what a base *is*, not just how big it is.
-- [ ] Sequence after B4. Crises are the cheaper late-game pressure fix and should land first; this is
+- [x] Sequence after B4. Crises are the cheaper late-game pressure fix and should land first; this is
   the larger structural investment and benefits from knowing what late-game pressure actually feels
   like once crises are populated.
 
@@ -2313,11 +2401,11 @@ the engineer reliability formula, rival momentum and market-crowding coefficient
 from `renderSettings()`. Default is `advanced`. A player who never opens Settings never learns a
 choice exists — so in practice the system does not exist.
 
-- [ ] Add a `uiLayerBtn` element to the header in `src/shell.html`, next to the existing stat/time
+- [x] Add a `uiLayerBtn` element to the header in `src/shell.html`, next to the existing stat/time
   controls, with `onclick` cycling `basic → advanced → expert → basic`.
-- [ ] Keep `renderSettings()`'s three explicit buttons as the direct picker — the header control is a
+- [x] Keep `renderSettings()`'s three explicit buttons as the direct picker — the header control is a
   fast cycle, not a replacement.
-- [ ] Give it a `title=` naming the current layer and what the next click does (Tier 0.3 convention).
+- [x] Give it a `title=` naming the current layer and what the next click does (Tier 0.3 convention).
 
 **Protected baseline — do not regress:** `setUiLayer()` validation against `UI_LAYERS`; the Settings
 picker; `uiLayer()`'s default of `advanced` for saves with no `state.uiLayer`; every existing
@@ -2340,16 +2428,16 @@ state.log.pop()`. Across ~1,900 monthly ticks that is an amnesia machine — a s
 The review rejected "uncap the log" as stated — the cap is deliberate and `state` serializes to
 `localStorage` on every save. The archive form survives instead:
 
-- [ ] Add a separate `state.history` array holding a COMPACT record — date, kind, one-line summary.
+- [x] Add a separate `state.history` array holding a COMPACT record — date, kind, one-line summary.
   No `detail`, no `nav` (both are transient UI concerns; `detail` is already documented as never
   persisted). Roughly 60 bytes/entry, so 500-1000 entries is trivial against a save that already
   carries the full part graph and hull registry.
-- [ ] Append on SIGNIFICANT events only, not all 179 `log()` call sites: flights resolved, firsts,
+- [x] Append on SIGNIFICANT events only, not all 179 `log()` call sites: flights resolved, firsts,
   crises triggered/resolved, facilities founded, research completed. Decide the predicate explicitly
   rather than mirroring every log line — an archive of everything is as useless as no archive.
-- [ ] Surface it in the Chronicle (`showChronicle`), which is already the historical view — not as a
+- [x] Surface it in the Chronicle (`showChronicle`), which is already the historical view — not as a
   fourth timeline widget.
-- [ ] `SAVE_VERSION` bump with a lazy default so existing saves start an empty archive rather than
+- [x] `SAVE_VERSION` bump with a lazy default so existing saves start an empty archive rather than
   failing to load.
 
 **Protected baseline — do not regress:** the 40-entry live strip cap and its render path; the
@@ -2384,10 +2472,10 @@ Scoping found this cheaper than expected: all three are thin wrappers that rende
 `showModal('<div id="rivalsCard"></div>'); renderRivals();`. The render functions target an id, not a
 modal. Docking is therefore a **host swap**, not a rewrite.
 
-- [ ] Give each a docked state in the right rail, reusing the same `render*()` and the same host id,
+- [x] Give each a docked state in the right rail, reusing the same `render*()` and the same host id,
   so only the container changes.
-- [ ] Preserve the modal path as well — docking should be a choice, not a forced migration.
-- [ ] Respect Tier 0.2's rail width: a docked panel must not reintroduce the squeeze the 1200px
+- [x] Preserve the modal path as well — docking should be a choice, not a forced migration.
+- [x] Respect Tier 0.2's rail width: a docked panel must not reintroduce the squeeze the 1200px
   breakpoint fixed.
 
 **Protected baseline — do not regress:** every INTERRUPT modal stays exactly as it is; `activeModal`
@@ -2408,10 +2496,10 @@ none}` hides, and there is no seam for showing something *simpler instead*. Evid
 6 `expert-only` sites against exactly **1** `basic-only` site. "Basic" therefore does not simplify the
 game, it only removes information from it — which is worse than Advanced for a new player, not better.
 
-- [ ] Add a `basicHTML()` / `advancedHTML()` branch on the 3-4 densest readouts — the Δv gauge, the
+- [x] Add a `basicHTML()` / `advancedHTML()` branch on the 3-4 densest readouts — the Δv gauge, the
   subsystem reliability breakdown, the finance summary — so Basic renders a plain-language equivalent
   ("Δv: enough, with margin") where Advanced renders the figures.
-- [ ] Sequence AFTER 3.1. There is no point investing in a layer nobody can reach; ship the control
+- [x] Sequence AFTER 3.1. There is no point investing in a layer nobody can reach; ship the control
   first, then make the layer worth choosing.
 
 **Protected baseline — do not regress:** Advanced and Expert renderings stay byte-identical; no change
@@ -2431,7 +2519,7 @@ Model tier: design and copy judgment — heavier tier.
 Already in BACKLOG.md as #16. Cheap, and deliberately sequenced last: searching a 40-entry live strip
 is close to pointless, but searching an 800-entry archive is a real feature. Do this AFTER 3.2.
 
-- [ ] A filter input beside the existing `TL_CATEGORIES` chips, matching against the archive when 3.2
+- [x] A filter input beside the existing `TL_CATEGORIES` chips, matching against the archive when 3.2
   has landed, composing with (not replacing) the active category filter.
 
 **Protected baseline:** existing category filters and collapse behaviour compose with search rather
