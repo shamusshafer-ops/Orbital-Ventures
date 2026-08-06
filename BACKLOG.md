@@ -40,7 +40,7 @@ Complexity: S = <1 day, M = 1–5 days, L = 1–3 weeks, XL = 1+ month. Impact: 
 |13| Searchable tech tree | 110 nodes needs it | S | ★★ | — | M |Already shipped — techSearchMatch()/#techSearch input in R&D render|
 |14| Pin a research node as "goal" → path highlight | Planning aid | M | ★★ | — | M |Shipped 2026-07-17 — persistent prereq-chain highlight + rail progress band|
 |15| Notification center (missed events while warping) | Smart-time complement | M | ★★ | — | M |Backlog|
-|16| Log filters already exist → add text search | Late-game archaeology | S | ★ | — | L |Backlog|
+|16| Log filters already exist → add text search | Late-game archaeology | S | ★ | 3.2 | L |Scoped as ROADMAP Tier 3.5 (2026-08-04) — sequenced AFTER 3.2's history archive; searching a 40-entry live strip is near-pointless, searching an 800-entry archive is a real feature|
 |17| Compare two vehicle families side-by-side | Decision support | M | ★★ | — | M |Already shipped — vehicleCompareHTML() in render.js|
 |18| "Why can't I fly this?" explainer on disabled launch | Removes guesswork | S | ★★★ | — | H |E1.5|
 |19| Time-to-affordability estimates on purchases | Planning | S | ★★ | — | M |Shipped 2026-08-04 — affordEstimate()/affordWidgetHTML() shared widget (progress bar + "Xmo at current rate · Ymo typical", red when burning cash) wired into research (tree + detail + leveled upgrade), facility found/expand, division/department training, passive contracts, material dip buys. Deliberately not wired into hiring (no upfront cost) or small instant-decision buys (fuel/resupply/repair)|

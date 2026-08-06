@@ -2207,3 +2207,167 @@ A2 and A3 are small, mechanical, and independent of each other. B4 before C7. C6
 decision and should not be started before it is made. Explicitly deprioritized by the review and NOT
 scoped here: tutorial/onboarding (Shamus is currently the sole player — speculative work for a
 hypothetical audience), SM6, mission patches/photo mode, and full backlog triage.
+
+## Planned — Tier 3 "hand the player the tools": UI & information delivery (scoped 2026-08-04)
+
+From the third critical review (2026-08-04, Architect / Ranger / Adjudicator), scoped to UI and player
+experience only — items already covered by Tiers 0-2 were excluded from that review by request.
+
+Its finding is the UI-layer echo of Tier 2's: **the game has already built the tools to manage its own
+complexity, then failed to hand them to the player.** A three-layer progressive-disclosure system with
+no discoverable control. A log with good category filters and no memory. Modals that interrupt
+correctly and serve reference badly. In each case the machinery is right and only the delivery is
+missing.
+
+Judged throughout against the standard Shamus set for this review: the result must make the player
+*want to keep using these systems* because they are functional, utilitarian, and deliver the
+information needed to play in concise, easily understood form.
+
+### 3.1 — Build the missing `uiLayerBtn` header control [NOT STARTED]
+
+`applyUiLayer()` (`render.js:3494`) ends with:
+
+    const b=$('uiLayerBtn'); if(b) b.textContent='View: '+UI_LAYER_LABEL[L];
+
+**`uiLayerBtn` does not exist in `src/shell.html`.** Every render reaches for it, finds nothing, and
+silently no-ops. A header control was designed, coded against, and never built — this is an unfinished
+feature the codebase believes is finished.
+
+The consequence is that the whole `basic` / `advanced` / `expert` system (`UI_LAYERS`, `applyUiLayer`,
+`.adv-only` / `.basic-only` / `.expert-only`, 6 real expert-only readouts including mass fractions,
+the engineer reliability formula, rival momentum and market-crowding coefficients) is reachable only
+from `renderSettings()`. Default is `advanced`. A player who never opens Settings never learns a
+choice exists — so in practice the system does not exist.
+
+- [ ] Add a `uiLayerBtn` element to the header in `src/shell.html`, next to the existing stat/time
+  controls, with `onclick` cycling `basic → advanced → expert → basic`.
+- [ ] Keep `renderSettings()`'s three explicit buttons as the direct picker — the header control is a
+  fast cycle, not a replacement.
+- [ ] Give it a `title=` naming the current layer and what the next click does (Tier 0.3 convention).
+
+**Protected baseline — do not regress:** `setUiLayer()` validation against `UI_LAYERS`; the Settings
+picker; `uiLayer()`'s default of `advanced` for saves with no `state.uiLayer`; every existing
+`.adv-only` / `.expert-only` / `.basic-only` class placement.
+
+**Explicitly out of scope:** changing which content sits in which layer (that is 3.4).
+
+**Suggested test:** source-guard that `uiLayerBtn` exists in `shell.html` and that `applyUiLayer`'s
+lookup therefore resolves; `setUiLayer` rejects an unknown layer; the cycle order wraps correctly.
+
+Model tier: mechanical, and small — lighter tier appropriate.
+
+### 3.2 — Persistent history archive, separate from the live log [NOT STARTED]
+
+`log()` (`sim.js:98`) caps at 40 entries: `state.log.unshift(...); if(state.log.length>40)
+state.log.pop()`. Across ~1,900 monthly ticks that is an amnesia machine — a single Mars transfer
+(~26 months) can push its own launch out of history before arrival. "What did my agency do in the
+1970s?" is currently unanswerable. The Chronicle records *firsts*; ordinary agency history evaporates.
+
+The review rejected "uncap the log" as stated — the cap is deliberate and `state` serializes to
+`localStorage` on every save. The archive form survives instead:
+
+- [ ] Add a separate `state.history` array holding a COMPACT record — date, kind, one-line summary.
+  No `detail`, no `nav` (both are transient UI concerns; `detail` is already documented as never
+  persisted). Roughly 60 bytes/entry, so 500-1000 entries is trivial against a save that already
+  carries the full part graph and hull registry.
+- [ ] Append on SIGNIFICANT events only, not all 179 `log()` call sites: flights resolved, firsts,
+  crises triggered/resolved, facilities founded, research completed. Decide the predicate explicitly
+  rather than mirroring every log line — an archive of everything is as useless as no archive.
+- [ ] Surface it in the Chronicle (`showChronicle`), which is already the historical view — not as a
+  fourth timeline widget.
+- [ ] `SAVE_VERSION` bump with a lazy default so existing saves start an empty archive rather than
+  failing to load.
+
+**Protected baseline — do not regress:** the 40-entry live strip cap and its render path; the
+`TL_CATEGORIES` filters, collapse toggle, and scroll-position preservation in `renderLog()`; `log()`'s
+existing 4-arg signature and its transient `detail` behaviour.
+
+**Explicitly out of scope:** changing the live log's cap, filters, or appearance; retroactively
+reconstructing history for existing saves (start the archive from the version bump forward).
+
+**Suggested test:** an archived entry is appended for each significant event class and NOT for routine
+chatter; the archive survives a save/load round-trip; an old save loads with an empty archive and no
+error; the live log's 40-cap is unchanged.
+
+Model tier: mostly mechanical; the "which events are significant" predicate is a judgment call —
+heavier tier for that decision, lighter for the wiring.
+
+### 3.3 — Dock the three REFERENCE modals [NOT STARTED]
+
+25 `show*Modal` surfaces exist. The review's finding is that modal count is the wrong axis — the right
+one is **interrupt vs. reference**. Anomaly, crisis, weather, live-call, inquiry, sample-decision,
+hearing, mandate, mishap, rescue and setback modals are all *correct*: they demand a decision and
+should block. Three are not:
+
+- `showFinancesModal` — consulted *while* deciding whether to spend
+- `showRivalsModal` — consulted *while* choosing what to race for
+- `showInfrastructureModal` — consulted *while* planning expansion
+
+Each is currently a wall between two facts that belong side by side.
+
+Scoping found this cheaper than expected: all three are thin wrappers that render an existing
+`render*()` into a bare host div — e.g. `showRivalsModal` is
+`showModal('<div id="rivalsCard"></div>'); renderRivals();`. The render functions target an id, not a
+modal. Docking is therefore a **host swap**, not a rewrite.
+
+- [ ] Give each a docked state in the right rail, reusing the same `render*()` and the same host id,
+  so only the container changes.
+- [ ] Preserve the modal path as well — docking should be a choice, not a forced migration.
+- [ ] Respect Tier 0.2's rail width: a docked panel must not reintroduce the squeeze the 1200px
+  breakpoint fixed.
+
+**Protected baseline — do not regress:** every INTERRUPT modal stays exactly as it is; `activeModal`
+re-entrancy and `modalClose()`; `renderRivals`/`renderInfrastructure`/`showFinancesModal`'s existing
+content; `_prodModalOpen`'s bookkeeping in `showInfrastructureModal`.
+
+**Explicitly out of scope:** reducing modal count generally; touching any interrupt modal.
+
+**Suggested test:** each of the three renders identical content in docked and modal hosts; interrupt
+modals still block; the docked state survives a scene switch; no rail overflow at 1200px.
+
+Model tier: layout work with real judgment about rail budget — heavier tier.
+
+### 3.4 — Give the Basic layer real alternative renderings [NOT STARTED]
+
+The structural finding underneath 3.1. Today the layer system can only SUBTRACT: `.adv-only{display:
+none}` hides, and there is no seam for showing something *simpler instead*. Evidence of the asymmetry:
+6 `expert-only` sites against exactly **1** `basic-only` site. "Basic" therefore does not simplify the
+game, it only removes information from it — which is worse than Advanced for a new player, not better.
+
+- [ ] Add a `basicHTML()` / `advancedHTML()` branch on the 3-4 densest readouts — the Δv gauge, the
+  subsystem reliability breakdown, the finance summary — so Basic renders a plain-language equivalent
+  ("Δv: enough, with margin") where Advanced renders the figures.
+- [ ] Sequence AFTER 3.1. There is no point investing in a layer nobody can reach; ship the control
+  first, then make the layer worth choosing.
+
+**Protected baseline — do not regress:** Advanced and Expert renderings stay byte-identical; no change
+to the underlying values, only their presentation.
+
+**Explicitly out of scope:** a full Basic-mode pass over every surface — this is 3-4 targeted readouts,
+chosen because they are the densest and the most jargon-cold.
+
+**Suggested test:** each converted readout produces non-empty, different output in Basic vs. Advanced;
+Advanced/Expert output is unchanged from before the slice; no numeric value differs between layers
+(the same truth, differently said).
+
+Model tier: design and copy judgment — heavier tier.
+
+### 3.5 — Log text search (backlog #16) [NOT STARTED]
+
+Already in BACKLOG.md as #16. Cheap, and deliberately sequenced last: searching a 40-entry live strip
+is close to pointless, but searching an 800-entry archive is a real feature. Do this AFTER 3.2.
+
+- [ ] A filter input beside the existing `TL_CATEGORIES` chips, matching against the archive when 3.2
+  has landed, composing with (not replacing) the active category filter.
+
+**Protected baseline:** existing category filters and collapse behaviour compose with search rather
+than being replaced by it.
+
+**Suggested test:** search narrows results; search + category compose; clearing search restores the
+unfiltered view.
+
+Model tier: mechanical — lighter tier appropriate.
+
+**Sequencing for the whole tier:** 3.1 first and alone — it is small, it fixes a live dangling
+reference, and it makes an entire existing system reachable. Then 3.2, which 3.5 depends on. 3.3 is
+independent and can slot anywhere. 3.4 only after 3.1.

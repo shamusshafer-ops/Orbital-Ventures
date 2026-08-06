@@ -24,6 +24,18 @@ change first.
 > When done, clear it back to "(none claimed right now)" and add your entry to the history below.
 
 **Oriented quickly (last few sessions, newest first) — see History for full detail:**
+- Tier 3 scoped (Claude, 2026-08-04) — third critical review, UI/player-experience only. Finding is
+  the UI echo of Tier 2's: **the game built the tools to manage its own complexity and never handed
+  them to the player.** Headline bug: `applyUiLayer()` sets `$('uiLayerBtn').textContent` every
+  render but **`uiLayerBtn` does not exist in `shell.html`** — a header control was designed, coded
+  against, and never built, so the whole basic/advanced/expert system is reachable only from
+  Settings and in practice doesn't exist. Five items: 3.1 build that button (small, do first),
+  3.2 persistent history archive separate from the 40-entry live log, 3.3 dock the three REFERENCE
+  modals (finances/rivals/infrastructure — all thin wrappers around a `render*()` into a host div,
+  so it's a host swap not a rewrite; every INTERRUPT modal stays), 3.4 give Basic real alternative
+  renderings (today `.adv-only{display:none}` can only SUBTRACT — 6 expert-only sites vs 1
+  basic-only), 3.5 log search (backlog #16, after 3.2). RULE: `$('id')` lookups guarded with
+  `if(el)` fail silently forever — grep shell.html for every id render.js reaches for.
 - Tier 2 scoped (Claude, 2026-08-04) — second critical review's finding supersedes the first's:
   **the game isn't short of systems, its best systems are dark.** Evidence: the flight decision
   system was already built when review #1 proposed building it; the rival economic sim (capital,
