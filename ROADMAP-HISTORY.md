@@ -5881,3 +5881,63 @@ Full suite clean except the pre-existing `test-flight3d-trajectory.js` drift. Bu
 
 **Tier 2 progress: A1 (human-blocked) and C6 (decision-blocked) remain blocked; A2 and A3 shipped;
 B4, B5, C7 still open.**
+
+## Session — Tier 2 B4: crisis pool expanded 3 → 9, four new effect axes (2026-08-04)
+
+`CRISES` held three entries gated to eras 3, 4 and 5, leaving the Interplanetary (2060+) and
+Speculative (2100+) eras — the back half of a 158-year campaign, and the second review's identified
+weak zone — with no crisis content at all.
+
+Shamus chose shape (b) from the pre-work options: genuinely new effect axes rather than reskinning the
+existing three. Four were added, each with exactly one application site in live code:
+
+- `crewRel` — crewed-mission reliability tax. A fourth branch in the existing `crisisRelPenalty()`,
+  so near-zero risk: same shape as `leoRel`/`deepRel`, same call site.
+- `research` — `crisisResearchMult()`, applied at the daily R&D tick (`state.activeResearch.monthsLeft
+  -= perDay((1+rdBonus)*crisisResearchMult())`).
+- `facilityOut` — `crisisFacilityMult()`, folded into the daily facility production loop's `factor`,
+  so it cuts every stream a facility produces (money, rep, fuel, science) rather than just income.
+- `buildTime` — `crisisBuildMult()`, applied in `buildMonths()`. The only axis that INCREASES rather
+  than decreasing. `buildMonths()` is pure and recomputed per call, so this shows live in every
+  build-time readout in the UI and does not retroactively extend already-queued builds.
+
+All three new multiplier accessors follow `crisisGovFundingMult()`'s existing contract exactly —
+return the neutral value unless a crisis is active AND owns that axis — so every call site is a safe
+unconditional multiply.
+
+Six new entries: `crew_attrition` (era 6, crewFlown≥30, crewRel), `isru_supply_shock` (era 6,
+deepFlights≥30, facilityOut), `talent_exodus` (era 6, flights≥80, research), `orbital_congestion`
+(era 7, leoFlights≥80, buildTime), `safety_backlash` (era 5, crewLost≥3, govFunding) and
+`deep_comms_saturation` (era 7, deepFlights≥45, deepRel). The last two deliberately reuse an existing
+axis with a new fiction and a new TRIGGER — the trigger is what makes a crisis feel distinct, not only
+the tax.
+
+**No new counters were introduced.** Every threshold uses one of the five that already exist and are
+already incremented. A `thresholdStat` naming a field nothing increments would make its crisis
+unreachable forever, so the test now pins the whole set against a known-counter allowlist.
+
+`CRISIS_TRIGGER_CHANCE` and every frequency modifier are untouched — more variety at the same rate,
+the same discipline used for Tier 1.1's anomaly pool.
+
+New `tests/test-crisis-pool.js` (43/43). The load-bearing check loops every distinct `effectKey` in
+the pool and asserts each moves at least one live observable at full severity — a typo'd or unhandled
+key would otherwise ship as an inert label-only crisis, and this catches that by construction rather
+than by remembering to hand-test each new axis.
+
+**A stale assertion in my own A3 test broke, correctly.** `test-crisis-proximity.js` asserted "at era
+5: all three crises are eligible" with a hardcoded `=== 3`, written when the pool held exactly three.
+Expanding to nine made four eligible at era 5 and the assertion failed — the logic was right, the test
+was brittle. Rewritten to derive the expected count from `CRISES` itself, so it tests the actual
+invariant ("every crisis whose eraMin is satisfied is listed") and survives future pool changes. RULE:
+don't hardcode a collection's size in an assertion when the collection is expected to grow.
+
+Also verified explicitly, rather than assumed, that `test-flight3d-trajectory.js`'s drift is unchanged
+by this slice: stashed the changes, rebuilt, ran it (13/31), restored, rebuilt, ran it again (13/31).
+Worth doing because this slice touched three live game paths and a genuine new regression there would
+have been easy to wave away as the known drift.
+
+**Balance note for playtest:** `safety_backlash` is the only crisis triggered by failure rather than
+scale (`crewLost >= 3`). Thematically strong but it does compound a bad run, so its `maxPenalty` is
+0.30 against `funding_collapse`'s 0.50 on the same axis. One number to change if it feels punitive.
+
+Full suite clean except the pre-existing drift. Build parity clean.

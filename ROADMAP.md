@@ -2130,20 +2130,20 @@ of the other.
 
 Model tier: mechanical — lighter tier appropriate.
 
-### B4 — Expand the crisis pool (3 → 8-10) [NOT STARTED]
+### B4 — Expand the crisis pool (3 → 9) [SHIPPED 2026-08-04]
 
 `CRISES` holds three entries gated to eras 3, 4 and 5. The Interplanetary (2060+) and Speculative
 (2100+) eras — the back half of a 158-year campaign, and the review's identified weak zone — have
 **no crisis content at all**. The mechanism is good (era gate + player-footprint threshold, fund the
 remedy or endure a permanent tax, severity ramp, variety rule); it is under-populated.
 
-- [ ] Add 5-7 entries following the existing shape exactly: `{id, name, icon, eraMin, thresholdStat,
+- [x] Add 5-7 entries following the existing shape exactly: `{id, name, icon, eraMin, thresholdStat,
   threshold, fundCostBase, maxPenalty, effectKey, remedyName, effectLabel, modalTitle, modalDesc,
   triggerMsg, mitigatedMsg, enduredMsg}`. Weight new entries toward `eraMin` 6-8.
-- [ ] New entries will likely need new `effectKey` handlers — the current three cover `leoRel`,
+- [x] New entries will likely need new `effectKey` handlers — the current three cover `leoRel`,
   `deepRel`, `govFunding` via `crisisRelPenalty()`/`crisisGovFundingMult()`. Any new effect axis needs
   its own accessor and must be applied somewhere real, not just logged.
-- [ ] New `thresholdStat` values must be counters that already exist or are cheaply added, and must
+- [x] New `thresholdStat` values must be counters that already exist or are cheaply added, and must
   count something the player *did* — the design principle here is the empire creating its own hazard.
 
 **Protected baseline — do not regress:** the three existing crises; `CRISIS_TRIGGER_CHANCE`;
@@ -2153,10 +2153,33 @@ remedy or endure a permanent tax, severity ramp, variety rule); it is under-popu
 same discipline as Tier 1.1's anomaly pool); multi-crisis concurrency (`state.crisis` is singular and
 should stay so for now).
 
-**Suggested test:** every entry is well-formed and has a unique id; every `effectKey` has a real
-handler that changes something; `crisisCandidates()` respects era and threshold gating for the new
-entries; the no-immediate-repeat rule still holds; late-era candidates actually become eligible on a
-simulated late-era state.
+**Suggested test:** `tests/test-crisis-pool.js` (new, 43/43). The load-bearing one is a loop over every
+distinct `effectKey` in the pool asserting each moves at least one live observable at full severity —
+a typo'd or unhandled key becomes an inert label-only crisis, and this catches it by construction
+rather than by remembering to test each new axis. Also: pool shape and required-field completeness;
+every `thresholdStat` names a counter this codebase actually increments (an unknown one would make its
+crisis unreachable forever); each new axis's exact multiplier and its isolation from the other three;
+severity scaling; era-6/7 coverage actually exists; and protected-baseline checks that
+`crisisCandidates()`'s era/threshold gating and the no-immediate-repeat variety rule both still hold
+across a 9-entry pool.
+
+**Shipped shape (b), per Shamus's call:** four genuinely NEW effect axes rather than reskinning the
+existing three — `crewRel` (crewed-mission reliability tax, a fourth branch in `crisisRelPenalty`),
+`research` (`crisisResearchMult()`, applied at the daily R&D tick), `facilityOut`
+(`crisisFacilityMult()`, applied to the daily facility production loop) and `buildTime`
+(`crisisBuildMult()`, applied in `buildMonths()` — the only axis that INCREASES rather than decreasing).
+Two of the six new entries deliberately reuse an existing axis (`govFunding`, `deepRel`) with a new
+fiction and, more importantly, a new TRIGGER — the trigger is what makes a crisis feel distinct, not
+only the tax.
+
+**No new counters were introduced.** All six new thresholds use counters that already exist and are
+already incremented (`leoFlights`, `deepFlights`, `crewFlown`, `crewLost`, `flights`), keeping the
+"threshold counts something the player did" principle without adding bookkeeping that could drift.
+
+**Balance note for playtest:** `safety_backlash` triggers on `crewLost >= 3` — the only crisis in the
+pool triggered by failure rather than by scale. Thematically strong (Apollo 1 / Challenger / Columbia
+all produced exactly this) but it does compound a bad run, so its `maxPenalty` was set to 0.30 against
+`funding_collapse`'s 0.50 on the same axis. Worth watching in play; it is a one-number change.
 
 Model tier: content, balance, and new effect axes — heavier tier.
 

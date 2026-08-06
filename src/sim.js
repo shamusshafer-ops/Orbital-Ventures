@@ -824,7 +824,7 @@ function tickContinuousDay(){
   if(state.activeResearch && !_pendingSetback){ // #26: R&D progresses daily; a pending setback freezes it
     const _rdNode=RESEARCH.find(r=>r.id===state.activeResearch.id);
     const rdBonus=engRdSpeedBonus()+stationRdSpeedBonus()+divisionSpeedBonus(_rdNode)+partnerSpeedBonus(_rdNode)+sciStaffRdBonus(); // #6: research partnerships accelerate their track; orbital labs add station R&D speed; science staff add R&D speed
-    state.activeResearch.monthsLeft-=perDay(1+rdBonus); // rate reads (monthly-drifting) morale — stable within a month
+    state.activeResearch.monthsLeft-=perDay((1+rdBonus)*crisisResearchMult()); // rate reads (monthly-drifting) morale — stable within a month; B4: a Talent Exodus crisis slows the rate
     if(state.activeResearch.monthsLeft<=0) completeResearch();
   }
   // M17: persistent facilities produce daily (slice 3b). The supply factor is stable within a month —
@@ -832,7 +832,7 @@ function tickContinuousDay(){
   // per-day round2 — rounding tiny daily fuel/sci increments would inflate the monthly total).
   for(const fid in (state.facilities||{})){
     if(!facilityBuilt(fid)) continue;
-    const factor=facilitySupplyFactor(fid), pr=facilityProduction(facilityById(fid), facilityState(fid));
+    const factor=facilitySupplyFactor(fid)*crisisFacilityMult(), pr=facilityProduction(facilityById(fid), facilityState(fid)); // B4: an ISRU Supply Shock crisis cuts every stream this facility produces
     state.money+=perDay(pr.income*factor); state.rep+=perDay(pr.rep*factor);
     if(pr.fuel>0) state.depot+=perDay(pr.fuel*factor);
     if(pr.sci>0) state.science=(state.science||0)+perDay(pr.sci*factor);
@@ -4158,6 +4158,7 @@ function buildMonths(m){
   let mo=BASE_BUILD_MONTHS+extra+bayBuildDelta(m); // #7: assembly-bay capacity speeds or stretches the build
   if(recoveryRefly(m)) mo-=1; // M5: reflying a recovered booster shortens turnaround (floored below)
   mo-=Math.round(buildTimeCut()); // #6c: Manufacturing/Ground research shortens build/turnaround time
+  mo=Math.round(mo*crisisBuildMult()); // B4: an Orbital Traffic Regulation crisis stretches every build (pure fn, so this shows live in the UI's build-time readouts too, and does NOT retroactively extend already-queued builds)
   return Math.max(1, mo);
 }
 
@@ -6609,6 +6610,71 @@ const CRISES=[
     triggerMsg:'📉 A change in government has put your public funding on notice — a hostile legislature is threatening to slash the program\'s budget.',
     mitigatedMsg:'✅ Public confidence has been rebuilt — government funding is restored to its normal level.',
     enduredMsg:'The funding cut has become permanent political reality — the agency has learned to operate leaner.' },
+  /* ---------- Tier 2 B4 (2026-08-04): pool expansion, 3 → 9 ----------
+     The three above cover eras 3-5 and leave the Interplanetary (2060+) and Speculative (2100+) eras
+     — the back half of a 158-year campaign — with no crisis content at all. Same shape, same
+     fund-or-endure structure, same severity ramp; ANY frequency constant (CRISIS_TRIGGER_CHANCE) is
+     untouched, so this is more variety at the same rate, matching the discipline used for Tier 1.1's
+     anomaly pool.
+
+     Four NEW effect axes were added for these (crewRel, research, facilityOut, buildTime), each with
+     exactly one application site in live code — see crisisRelPenalty/crisisResearchMult/
+     crisisFacilityMult/crisisBuildMult below. Two entries deliberately REUSE an existing axis
+     (govFunding, deepRel) with a new fiction and, more importantly, a new TRIGGER — the trigger is
+     what makes a crisis feel distinct, not only the tax.
+
+     Every threshold uses a counter that ALREADY EXISTS and is already incremented (leoFlights,
+     deepFlights, crewFlown, crewLost, flights). No new counters were introduced: a threshold that
+     counts something the player did is the design principle here, and the existing five cover it
+     without adding new bookkeeping that could drift out of sync. */
+  { id:'crew_attrition', name:'Long-Duration Crew Crisis', icon:'☣',
+    eraMin:6, thresholdStat:'crewFlown', threshold:30, fundCostBase:8.0, maxPenalty:0.14, effectKey:'crewRel',
+    remedyName:'Crew Health & Countermeasures Program', effectLabel:'Crewed-mission reliability tax',
+    modalTitle:'Long-Duration Crew Crisis',
+    modalDesc:'Cumulative radiation dose, bone loss and the psychological toll of multi-year flights are catching up with your astronaut corps. Every crewed mission flies at reduced reliability while this lasts.',
+    triggerMsg:'☣ Flight surgeons report the crew corps is accumulating damage faster than it recovers — years of long-duration missions arriving as a medical reckoning.',
+    mitigatedMsg:'✅ The countermeasures programme is working — crew health metrics have recovered and crewed operations are back to full margins.',
+    enduredMsg:'Long-duration crew attrition has become an accepted cost of the programme — the corps flies on, diminished.' },
+  { id:'isru_supply_shock', name:'ISRU Supply Shock', icon:'⛏',
+    eraMin:6, thresholdStat:'deepFlights', threshold:30, fundCostBase:9.0, maxPenalty:0.35, effectKey:'facilityOut',
+    remedyName:'Supply Chain Hardening', effectLabel:'Facility output cut',
+    modalTitle:'ISRU Supply Shock',
+    modalDesc:'The off-world production chain your bases depend on has faltered — reagent stocks, spares and consumables are all short at once. Every facility produces at reduced output while this lasts.',
+    triggerMsg:'⛏ Off-world production has stalled across the network — the supply chain that took decades to build turns out to have had a single point of failure after all.',
+    mitigatedMsg:'✅ Redundant supply lines are in place — facility output has recovered and the network is more resilient than before.',
+    enduredMsg:'The production shortfall has settled into the baseline — facilities run permanently leaner than designed.' },
+  { id:'talent_exodus', name:'Talent Exodus', icon:'🎓',
+    eraMin:6, thresholdStat:'flights', threshold:80, fundCostBase:8.0, maxPenalty:0.30, effectKey:'research',
+    remedyName:'Retention & Fellowship Programme', effectLabel:'R&D rate cut',
+    modalTitle:'Talent Exodus',
+    modalDesc:'A booming commercial sector is hiring your researchers faster than you can replace them. Research progresses more slowly while this lasts.',
+    triggerMsg:'🎓 Your best researchers are leaving for commercial ventures that can pay what you cannot — the industry your programme created is now competing with it for people.',
+    mitigatedMsg:'✅ The fellowship programme has stemmed the outflow — R&D throughput is back to normal.',
+    enduredMsg:'The brain drain has stabilised at a permanently lower level — the agency does more with fewer good people.' },
+  { id:'orbital_congestion', name:'Orbital Traffic Regulation', icon:'⚖',
+    eraMin:7, thresholdStat:'leoFlights', threshold:80, fundCostBase:10.0, maxPenalty:0.40, effectKey:'buildTime',
+    remedyName:'Regulatory Compliance Office', effectLabel:'Build-time penalty',
+    modalTitle:'Orbital Traffic Regulation',
+    modalDesc:'A new international regime governs everything that reaches orbit. Certification, review and compliance add time to every vehicle you build while this lasts.',
+    triggerMsg:'⚖ A new orbital traffic regime has come into force — every vehicle now needs certification your programme was never built to produce.',
+    mitigatedMsg:'✅ The compliance office is running smoothly — certification is routine again and build times are back to normal.',
+    enduredMsg:'Regulatory overhead has become a permanent line in every build schedule — the paperwork is simply part of spaceflight now.' },
+  { id:'safety_backlash', name:'Public Safety Backlash', icon:'🕯',
+    eraMin:5, thresholdStat:'crewLost', threshold:3, fundCostBase:6.0, maxPenalty:0.30, effectKey:'govFunding',
+    remedyName:'Independent Safety Review', effectLabel:'Government funding cut',
+    modalTitle:'Public Safety Backlash',
+    modalDesc:'The accumulated cost in lives has broken public patience. Government funding is cut while the programme is under scrutiny.',
+    triggerMsg:'🕯 The names of the dead have become a political argument — public confidence in the programme has collapsed and the funding follows.',
+    mitigatedMsg:'✅ The independent review has reported and been accepted — public trust and funding are restored.',
+    enduredMsg:'The programme carries its losses as permanent political weight — funding never fully returned.' },
+  { id:'deep_comms_saturation', name:'Deep Space Network Saturation', icon:'📡',
+    eraMin:7, thresholdStat:'deepFlights', threshold:45, fundCostBase:10.0, maxPenalty:0.13, effectKey:'deepRel',
+    remedyName:'Network Expansion Programme', effectLabel:'Deep-space reliability tax',
+    modalTitle:'Deep Space Network Saturation',
+    modalDesc:'You have more spacecraft in deep space than you have antenna time to talk to them. Contact windows are short and contended, and every deep-space mission flies at reduced reliability while this lasts.',
+    triggerMsg:'📡 The tracking network is oversubscribed — your own fleet is now competing with itself for antenna time, and something will be out of contact when it matters.',
+    mitigatedMsg:'✅ The expanded network is online — every spacecraft has the contact time it needs again.',
+    enduredMsg:'Contention for antenna time is permanent now — deep-space operations plan around the gaps.' },
 ];
 function isLeoClassMission(m){ return !!(m && !m.profile && (m.reqDv||0)>=9000); }
 function crisisDef(id){ return CRISES.find(c=>c.id===id); }
@@ -6673,7 +6739,24 @@ function crisisRelPenalty(m){
   const def=activeCrisisDef(); if(!def) return 0;
   if(def.effectKey==='leoRel' && isLeoClassMission(m)) return def.maxPenalty*state.crisis.severity;
   if(def.effectKey==='deepRel' && !!m.profile) return def.maxPenalty*state.crisis.severity;
+  if(def.effectKey==='crewRel' && (m.crew||0)>0) return def.maxPenalty*state.crisis.severity; // B4: crewed-only tax, same shape as the two above
   return 0;
+}
+/* ---------- Tier 2 B4: three further effect axes, each with ONE application site ----------
+   All three follow crisisGovFundingMult's contract exactly: return the neutral value (1) unless a
+   crisis is active AND it is the one that owns this axis, so every call site is a safe unconditional
+   multiply. Severity ramps them the same way it ramps the reliability taxes. */
+function crisisResearchMult(){   // applied at the daily R&D tick
+  const def=activeCrisisDef(); if(!def || def.effectKey!=='research') return 1;
+  return 1-(def.maxPenalty*state.crisis.severity);
+}
+function crisisFacilityMult(){   // applied to the daily facility production loop
+  const def=activeCrisisDef(); if(!def || def.effectKey!=='facilityOut') return 1;
+  return 1-(def.maxPenalty*state.crisis.severity);
+}
+function crisisBuildMult(){      // applied in buildMonths() — note this one INCREASES (>=1)
+  const def=activeCrisisDef(); if(!def || def.effectKey!=='buildTime') return 1;
+  return 1+(def.maxPenalty*state.crisis.severity);
 }
 function crisisGovFundingMult(){
   const def=activeCrisisDef(); if(!def || def.effectKey!=='govFunding') return 1;

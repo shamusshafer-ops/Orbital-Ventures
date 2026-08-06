@@ -37,7 +37,12 @@ newGame('engineer');
 
   state.year=ERAS[5].from;
   const prox3=crisisProximity();
-  check('at era 5: all three crises are eligible', prox3.length===3);
+  // Derived, not hardcoded: this originally asserted `=== 3` when the pool held exactly three crises,
+  // and broke the moment Tier 2 B4 expanded it to nine. The invariant being tested is "every crisis
+  // whose eraMin is satisfied is listed" — express that against CRISES so it survives pool changes.
+  const expectedAtEra5=CRISES.filter(c=>c.eraMin<=5).length;
+  check('at era 5: every era-eligible crisis is listed', prox3.length===expectedAtEra5);
+  check('at era 5: nothing with a higher eraMin leaked in', prox3.every(p=>p.c.eraMin<=5));
 }
 
 // ---------- threshold progress is reported accurately, including edge values ----------

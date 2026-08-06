@@ -24,6 +24,19 @@ change first.
 > When done, clear it back to "(none claimed right now)" and add your entry to the history below.
 
 **Oriented quickly (last few sessions, newest first) — see History for full detail:**
+- Tier 2 B4 crisis pool 3→9 (Claude) — six new crises weighted to eras 6-7 (previously zero content
+  there), plus FOUR new effect axes, each with one live application site: `crewRel` (branch in
+  `crisisRelPenalty`), `research` (`crisisResearchMult()` at the daily R&D tick), `facilityOut`
+  (`crisisFacilityMult()` in the facility production loop), `buildTime` (`crisisBuildMult()` in
+  `buildMonths()` — only axis that INCREASES). New multiplier accessors follow
+  `crisisGovFundingMult()`'s contract so call sites are unconditional multiplies. No new counters —
+  all thresholds use the existing five. `CRISIS_TRIGGER_CHANCE` untouched (variety, not rate).
+  `test-crisis-pool.js` 43/43, incl. a loop asserting EVERY effectKey moves a live observable so a
+  typo'd key can't ship as an inert label-only crisis.
+  RULE: don't hardcode a collection's size in an assertion when it's expected to grow — my own A3
+  test asserted `crisisProximity().length===3` and correctly broke; now derives from `CRISES`.
+  Balance flag: `safety_backlash` triggers on `crewLost>=3`, the only failure-triggered crisis —
+  compounds a bad run by design, maxPenalty 0.30 vs funding_collapse's 0.50. Watch in playtest.
 - Tier 2 A3 crisis proximity (Claude) — new `crisisProximity()` (era-eligible crises regardless of
   threshold, deliberately different from `crisisCandidates()` which requires threshold too) feeds a
   new "Horizon" card on the Command deck: `34/40` progress, amber past 75%, "watching political
