@@ -1983,23 +1983,36 @@ attribution.
 RNG placing one roll just inside its threshold produces attribution naming that subsystem; a roll
 comfortably clear of every threshold produces none; attribution never appears on a failure outcome.
 
-### 1.3 — Third Chronicle scoring bookend at 2060 [NOT STARTED]
+### 1.3 — Third Chronicle scoring bookend at 2060 [SHIPPED 2026-08-04]
 
 Scoring ceremonies currently fire at `SCORING_YEAR=1990` (campaign year 48 of 158) and
 `SCORING_YEAR_2=2100` (year 158) — a 110-year stretch with no scored milestone, across what the review
 identified as the campaign's weakest pacing zone. 2060 confirmed with Shamus; it aligns with the
 Interplanetary era boundary (`ERAS`, `from:2060`).
 
-- [ ] Mirror the existing `SCORING_YEAR_2`/`state.eraScored2` pattern exactly: a third constant, a
+- [x] Mirror the existing `SCORING_YEAR_2`/`state.eraScored2` pattern exactly: a third constant, a
   third independent one-shot flag, a third `showChronicle()` mode string and heading.
-- [ ] `SAVE_VERSION` bump with a lazy default, so a save already past 2060 does not retroactively fire
-  the ceremony on load.
+- [x] `SAVE_VERSION` bump (58→59) documenting the additive field, per this codebase's convention.
+
+**Correction to this entry's own scoping, made before implementing.** The bullet above originally
+required that "a save already past 2060 does not retroactively fire the ceremony on load." That is
+NOT how `SCORING_YEAR`/`SCORING_YEAR_2` actually behave, and it cannot be built without contradicting
+them: `state.eraScored2` is simply `undefined` on any save from before it existed, so a save already
+past 2100 fires that ceremony once on its next check — there is no way to distinguish "just crossed
+the year during play" from "loaded already past it," because both produce identical state. Building
+a skip-guard for 2060 alone would make it behave differently from its two siblings for no reason.
+Shipped matching era/era2's real behavior instead: all three bookends fire once each, in year order,
+whenever their year is first reached or already passed. Verified in `test-chronicle-bookends.js` by
+jumping a fresh save straight to year 2150 and confirming all three fire in chronological order.
 
 **Protected baseline — do not regress:** both existing bookends fire exactly once each, independently
 of the new one; the `retire` mode and legacy-grade scoring are untouched.
 
-**Suggested test:** the 2060 bookend fires once and only once; a save loaded already past 2060 does not
-fire it; the 1990 and 2100 bookends still fire independently and once each.
+**Suggested test:** `tests/test-chronicle-bookends.js` (new — the mechanism had ZERO prior coverage
+for any of its three bookends before this slice, so this backfills 1990/2100 as well as 2060): each
+bookend fires once and only once, does not re-fire on repeated checks, a save jumping straight past
+all three fires all three in year order, `showChronicle()` accepts every mode without throwing, the
+era3 heading/footer render correctly, and the continue/retire button branch's source includes 'era3'.
 
 **Explicitly out of scope for all of Tier 1:** anomaly *frequency* tuning; any change to the rocket
 equation, reliability model, or outcome-selection math; new flight-overlay decision *types* beyond the

@@ -103,6 +103,10 @@ function chronicleTrendsHTML(){
    ceremony when the player chooses to step down. Open-ended play is never taken away. */
 const SCORING_YEAR=1990;
 const SCORING_YEAR_2=2100; // I2: second scoring bookend — the Speculative era opens; the post-2000 game gets its own arc instead of coasting on the first ceremony
+// Tier 1.3 (2026-08-04): third bookend, placed at the Interplanetary era boundary (ERAS, from:2060)
+// rather than splitting the 1990-2100 gap arbitrarily — it closes the 110-year stretch with no scored
+// milestone that the second critical review flagged as the campaign's weakest pacing zone.
+const SCORING_YEAR_3=2060;
 function chronicleEntries(){
   const out=[];
   for(const [mid,abs] of Object.entries(state.firstDates||{})){
@@ -138,7 +142,7 @@ function legacyScore(){
   const grade= score>=140?'S':score>=100?'A':score>=65?'B':score>=35?'C':'D';
   return {score,grade,firsts,scooped,worlds,facN,safety,crewLost:state.crewLost||0,crisesResolved:cHist,crisisCount,crisisMitigated,fusionFlown};
 }
-function showChronicle(mode,preservePage){ // mode: 'view' | 'era' (1990) | 'era2' (2100) | 'retire'
+function showChronicle(mode,preservePage){ // mode: 'view' | 'era' (1990) | 'era2' (2100) | 'era3' (2060) | 'retire'
   if(!preservePage) _frontPageVisible=FRONT_PAGE_RENDER_PAGE;
   const L=legacyScore(); const entries=chronicleEntries();
   const gradeCol={S:'#ffd98a',A:'#58c47a',B:'#4fd1d9',C:'#e8b64c',D:'#e0564f'}[L.grade];
@@ -153,8 +157,9 @@ function showChronicle(mode,preservePage){ // mode: 'view' | 'era' (1990) | 'era
   // I2: a second bookend at SCORING_YEAR_2 so the post-2000 game gets its own ceremony instead of
   // coasting on the 1990 one — framed around the "deep-space dimensions" the first ceremony predates
   // (worlds reached, crises survived, whether the fusion-precursor capstone has flown).
-  const heading = mode==='retire' ? 'The Chronicle closes' : mode==='era2' ? 'A new age dawns — '+SCORING_YEAR_2 : (mode==='era' ? 'An era closes — '+SCORING_YEAR : 'Agency Chronicle');
+  const heading = mode==='retire' ? 'The Chronicle closes' : mode==='era3' ? 'The interplanetary age — '+SCORING_YEAR_3 : mode==='era2' ? 'A new age dawns — '+SCORING_YEAR_2 : (mode==='era' ? 'An era closes — '+SCORING_YEAR : 'Agency Chronicle');
   const sub = mode==='retire' ? 'You step down. This is what the history books will say.' :
+              mode==='era3' ? 'The gap between the second measure and this one has been the quiet decades — this is where the interplanetary program either takes shape or stalls. History has taken its third measure.' :
               mode==='era2' ? 'A century and a half of spaceflight — the deep frontier now within reach. The program may continue; history has taken its second measure.' :
               mode==='era' ? 'Half a century of spaceflight, scored. The program may continue — history has simply taken its first measure.' :
               esc(state.company)+' — the story so far.';
@@ -179,7 +184,7 @@ function showChronicle(mode,preservePage){ // mode: 'view' | 'era' (1990) | 'era
     ${mode==='retire'
       ? `<button class="btn launch" style="width:100%" onclick="hideModal();newGame();render()">Found a new agency ▸</button>
          <button class="btn ghost" style="width:100%;margin-top:6px" onclick="hideModal()">…not yet — back to work</button>`
-      : (mode==='era'||mode==='era2')
+      : (mode==='era'||mode==='era2'||mode==='era3')
       ? `<button class="btn launch" style="width:100%" onclick="hideModal()">The program continues ▸</button>
          <button class="btn ghost" style="width:100%;margin-top:6px" onclick="showChronicle('retire')">Retire with this legacy</button>`
       : `<button class="btn" style="width:100%" onclick="hideModal()">Close</button>
@@ -191,6 +196,14 @@ function checkScoringDate(){
     timeInterrupt();
     if(animEnabled){ showChronicle('era'); }
     log('note',`📖 ${SCORING_YEAR}: history takes its first measure of ${state.company}. Legacy grade so far: ${legacyScore().grade}.`);
+  }
+  // Tier 1.3: third bookend, between the first two. Independent flag, same shape as era2 below —
+  // fires once state.year reaches SCORING_YEAR_3, regardless of whether era/era2 have fired (era2
+  // won't have, since YEAR_3<YEAR_2, but the flag makes no assumption either way).
+  if(state.year>=SCORING_YEAR_3 && !state.eraScored3){ state.eraScored3=true;
+    timeInterrupt();
+    if(animEnabled){ showChronicle('era3'); }
+    log('note',`📖 ${SCORING_YEAR_3}: history takes its third measure of ${state.company}. Legacy grade now: ${legacyScore().grade}.`);
   }
   // I2: second bookend — independent flag, fires once state.year reaches SCORING_YEAR_2 regardless
   // of whether the first one already fired (it always will have, by definition, since YEAR_2>YEAR).

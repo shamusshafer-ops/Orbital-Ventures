@@ -5766,3 +5766,48 @@ anything else runs. RULE: when a fixture feeds a numeric model, assert the model
 before asserting anything about its behaviour.
 
 Full suite clean except the pre-existing `test-flight3d-trajectory.js` drift. Build parity clean.
+
+## Session — Tier 1.3: third Chronicle bookend at 2060, Tier 1 complete (2026-08-04)
+
+Last item in Tier 1. `SCORING_YEAR` (1990) and `SCORING_YEAR_2` (2100) left a 110-year stretch with no
+scored milestone — the campaign's weakest pacing zone per the second critical review. Added
+`SCORING_YEAR_3=2060`, aligned to the Interplanetary era boundary, mirroring the existing pattern
+exactly: an independent one-shot `state.eraScored3` flag, a third `'era3'` mode in `showChronicle()`
+with its own heading/sub-text, and a block in `checkScoringDate()` placed in year order between the
+existing two. `SAVE_VERSION` bumped 58→59 documenting the additive field (no migration code needed —
+`!state.eraScored3` is naturally true when the field doesn't exist).
+
+**Corrected a mistake in my own prior scoping before implementing it.** The ROADMAP entry, written
+when Tier 1 was first scoped, required that "a save already past 2060 does not retroactively fire the
+ceremony on load." Checked against the actual behavior of `SCORING_YEAR`/`SCORING_YEAR_2` and found
+that requirement contradicts how both already work: `state.eraScored2` is simply `undefined` on any
+save predating it, so a save already past 2100 fires that ceremony once on its next check — there is
+no code path distinguishing "the player just crossed this year during play" from "this save was
+already past it," because both produce identical state (`state.year>=SCORING_YEAR_2 &&
+!state.eraScored2`). No test guarded this for era/era2 either. Building a skip-guard for 2060 alone
+would have made it behave inconsistently with its two siblings for no principled reason. Shipped to
+match the real, established behavior instead, and corrected the ROADMAP wording rather than leaving a
+requirement in the doc that the implementation deliberately doesn't satisfy.
+
+New `tests/test-chronicle-bookends.js` (22/22) — `checkScoringDate()`/`showChronicle()` had **zero**
+prior test coverage for any of the three bookends, so this backfills 1990 and 2100 alongside the new
+2060: each fires exactly once and does not re-fire on repeated checks; a fresh save jumped straight to
+year 2150 (simulating an old save's first post-load check) fires all three once each, in chronological
+log order; `showChronicle()` accepts every mode without throwing; the era3 heading/footer render with
+the expected text; and a source-level check confirms the continue/retire button branch's condition
+actually lists `'era3'` (a missed mode there would have silently degraded era3's modal to the plain
+'view' footer instead of the ceremony footer — the kind of gap this session has been especially
+careful about after Tier 3's `uiLayerBtn` finding).
+
+One test-authoring note worth keeping: the first draft of the modal-content check guessed at the DOM
+host id (`'modal'` before falling back to `'modalBody'`) rather than confirming which one `showModal()`
+actually writes to. It happened to resolve correctly, but a debug script was run to prove that before
+trusting it, and the test was tightened afterward to assert the real id directly with a fixture-sanity
+check (`html.length>0`) guarding the two assertions that would otherwise have been silently vacuous
+had the guess been wrong.
+
+Full suite clean except the pre-existing `test-flight3d-trajectory.js` drift. Build parity clean.
+
+**Tier 1 is now fully shipped: 1.1 anomaly pool (3→10), 1.2 near-miss attribution, 1.3 this bookend.**
+Remaining work is Tier 2 (A1 human-blocked, A2/A3/B4/B5/C7 open, C6 decision-blocked) and Tier 3
+(3.1-3.5, all open).

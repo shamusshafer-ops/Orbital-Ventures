@@ -24,6 +24,17 @@ change first.
 > When done, clear it back to "(none claimed right now)" and add your entry to the history below.
 
 **Oriented quickly (last few sessions, newest first) — see History for full detail:**
+- Tier 1.3 third Chronicle bookend, TIER 1 COMPLETE (Claude) — `SCORING_YEAR_3=2060` mirrors the
+  `SCORING_YEAR_2` pattern exactly: constant, `state.eraScored3` flag, `'era3'` showChronicle mode,
+  `checkScoringDate()` block. RULE (corrected my own prior scoping): I had written "a save already
+  past 2060 should not retroactively fire the ceremony" as a requirement — that's not how
+  `SCORING_YEAR`/`SCORING_YEAR_2` work and can't be built without making 2060 behave inconsistently
+  with its siblings (the flag is just `undefined` on old saves, so it fires once on next check
+  regardless of why the year is already past — there's no way to distinguish the two cases). Shipped
+  matching actual behavior instead. New `test-chronicle-bookends.js` (22/22) — this mechanism had
+  ZERO test coverage for any of its three bookends before this slice, so it backfills 1990/2100 too.
+  SAVE_VERSION 58→59.
+  **TIER 1 IS NOW FULLY SHIPPED (1.1 anomaly pool, 1.2 near-miss attribution, 1.3 this).**
 - Tier 3 scoped (Claude, 2026-08-04) — third critical review, UI/player-experience only. Finding is
   the UI echo of Tier 2's: **the game built the tools to manage its own complexity and never handed
   them to the player.** Headline bug: `applyUiLayer()` sets `$('uiLayerBtn').textContent` every
