@@ -24,6 +24,17 @@ change first.
 > When done, clear it back to "(none claimed right now)" and add your entry to the history below.
 
 **Oriented quickly (last few sessions, newest first) — see History for full detail:**
+- Tier 2 C6 era-gated research, option (b) (Claude) — `eraMin` on all 98 RESEARCH nodes; MISSIONS
+  stay ungated. `researchNodeState()` gains `'era'`, checked BEFORE `reqsMet` so era-gated reads
+  differently from prereq-locked. Enforced at `buyResearch()` AND `tryStartQueuedResearch()` (the
+  latter calls `startResearchProject()` directly — would have been a silent bypass).
+  RULE: the approved track+depth heuristic was generated and DISCARDED — it put `precision_edl`/
+  `mars_traj`/`lunar_lander` in era 7 and `orbital_depot` (gates `tanker_leo` at minRep 38!) in era
+  6. Prereq depth measures position in a track's arc, not in history. Hand-assigned all 98 instead,
+  validated against: every mission's reqResearch reachable, and no node gated later than its own
+  prereqs (that check caught 2 real inversions). Curve: 9 nodes open at 1942 → 98 by 2100.
+  `test-research-era-gate.js` 25/25. Two old fixtures broke correctly (assumed prereqs-met ⇒
+  available) and were advanced to a valid era.
 - Tier 2 C8 outer-system bases + hazard (Claude) — C7's premise died on audit (module
   specialization ALREADY EXISTS: 10 STATION_MODULES, 4 synergies, surface/orbital gating; portCap
   Infinity off-Earth is deliberate) — FOURTH such finding, after decision system, crisis system and

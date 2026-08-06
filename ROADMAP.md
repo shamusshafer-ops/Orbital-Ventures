@@ -2234,7 +2234,7 @@ non-empty (a documented-but-unexplained entry is as useless as an undocumented o
 Model tier: audit was judgment (heavier, now spent); the allowlist + test + doc corrections that
 shipped are mechanical — lighter tier.
 
-### C6 — Couple the calendar to progression [NOT STARTED — DECISION REQUIRED]
+### C6 — Couple the calendar to progression [SHIPPED 2026-08-04 — option (b) chosen]
 
 The structural finding both reviews agreed on: `state.year` drives eras, reputation drives the mission
 ladder, capital+science drives research, and **nothing couples them**. All 28 missions are rep-gated
@@ -2253,7 +2253,32 @@ from the Architect/Ranger exchange:
 - **(c) Hard era-gating on missions.** The Architect's original ask. Strongest coupling, strongest
   realism; the Ranger's objection is that it makes an already decision-sparse late game emptier.
 
-Do not implement until the option is chosen. Scope the chosen one properly at that point.
+**Shamus chose (b), 2026-08-04.** Shipped: `eraMin` on all 98 `RESEARCH` nodes; `researchNodeState()`
+gains a distinct `'era'` state (checked BEFORE `reqsMet`, so an era-gated node reads as era-gated even
+with prereqs complete — "not invented yet" and "you haven't earned it" imply different player actions
+and must not look alike). Enforced at BOTH purchase paths: `buyResearch()` and
+`tryStartQueuedResearch()`, the latter mattering because it calls `startResearchProject()` directly and
+would otherwise have been a silent bypass. A queued era-gated pick is retained rather than discarded,
+so it fires when the era arrives. MISSIONS remain completely ungated, as (b) requires.
+
+**Method note — the approved heuristic was discarded.** The plan was track-baseline + prereq-depth
+offset. Generated, then rejected on inspection: it put `lunar_lander`, `mars_traj`, `precision_edl` and
+`rad_shielding` in era 7 (2100+) and `parachute_recovery` in era 4, which would have made Mars landings
+impossible until the Speculative era and gated Mercury-era parachutes to 2000. Worst case found:
+`orbital_depot` at era 6 while gating `tanker_leo` at **minRep 38** — a near-start mission. All 98 were
+hand-assigned instead, anchored to real spaceflight history and validated against two hard constraints:
+every mission's `reqResearch` must stay reachable, and no node may be gated later than its own
+prereqs. That second check caught two real inversions (`deep_space` before `digital_computer`,
+`deep_throttling` before `methane_propulsion`), both resolved in favour of the tree's own structure.
+
+Resulting curve: 9/98 nodes era-open at 1942, 21 by 1957, 43 by 1961, 62 by 1975, 80 by 2000, 98 by
+2100. Six nodes are available at game start across multiple tracks, including an engine unlock — a
+real opening choice, not a forced line.
+
+**Three pre-existing test fixtures broke, all correctly**, having assumed "prereqs met ⇒ available":
+`test-afford-estimate.js` (used `vac_upper`, eraMin 1, at the 1942 start) and `test-research-goal.js`
+(the `earth_observation`→`planetary_science` chain, eraMin 1 and 2). Both advanced to an era that opens
+their nodes, so they test what they mean to test rather than the era gate.
 
 Model tier: heavier — this is a fork in the game's identity, not a wiring task.
 

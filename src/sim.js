@@ -6023,6 +6023,7 @@ function startResearchProject(r, viaQueue){
 function buyResearch(id){
   const r=RESEARCH.find(x=>x.id===id);
   if(state.research[id]||state.activeResearch) return; // one project at a time
+  if(!researchEraMet(r)) return; // C6(b): the era gate is enforced here, not only in the UI state
   if(!reqsMet(r)) return;
   if(state.money < rdCostOf(r)) return; // CE3(a): doctrine-adjusted R&D price
   if(!sciGateMet(r)) return; // #1: flagship deep-tech also costs banked science to start
@@ -6053,7 +6054,7 @@ function tryStartQueuedResearch(){
   if(state.activeResearch || !state.researchNext) return;
   const r=RESEARCH.find(x=>x.id===state.researchNext);
   if(!r || state.research[r.id]){ state.researchNext=null; return; }
-  if(!reqsMet(r) || !sciGateMet(r) || state.money<rdCostOf(r)) return;
+  if(!researchEraMet(r) || !reqsMet(r) || !sciGateMet(r) || state.money<rdCostOf(r)) return; // C6(b): era gate here too — this path calls startResearchProject directly, bypassing buyResearch's check. Left queued (not cleared), same as the other not-yet-met cases, so it fires when the era arrives.
   state.researchNext=null;
   startResearchProject(r, true);
   if(state.money<0) gameOver();

@@ -120,6 +120,9 @@ newGame('engineer');
 // ---------- wiring: research (detail panel) ----------
 {
   state.money=0;
+  // C6(b): vac_upper is eraMin 1, so at the 1942 start it reports 'era', not 'available', and the
+  // widget correctly declines to render. Advance into its era so this exercises affordability.
+  state.year=ERAS[1].from;
   state.selectedResearch='vac_upper'; // cost 2.5, no prereqs
   renderResearchDetail();
   let html=htmlOf('researchDetail');

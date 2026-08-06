@@ -6026,3 +6026,55 @@ against.** Sustained monthly economics for a 3-module base: Mars net +3.14/mo (s
 rather than income plays, and Titan sits right at break-even — a single `isru_supply_shock` crisis
 (−35% facility output, added in B4) would push it negative. That may be good drama or may be too
 tight; it is the item in this slice most likely to need retuning after actual play.
+
+## Session — Tier 2 C6: era-gated research, option (b) (2026-08-04)
+
+Shamus chose option (b) — era-gate research, leave missions ungated — from the three C6 options. It
+was the compromise neither critic objected to: a player who falls behind never has *fewer* things to
+do (the Ranger's objection to hard-gating missions), but the tech tree stops being a pure
+capital-and-science race, so you cannot out-spend the calendar.
+
+`eraMin` added to all 98 `RESEARCH` nodes. `researchNodeState()` gains a distinct `'era'` state,
+checked *before* `reqsMet` so an era-gated node reads as era-gated even when its prereqs are complete —
+"not invented yet" and "you haven't earned it yet" imply completely different player actions and must
+not look identical. UI copy, node palette tint and the status tag all distinguish the two.
+
+Enforced at BOTH purchase paths. `buyResearch()` was the obvious one; `tryStartQueuedResearch()` was
+the one that mattered, because it calls `startResearchProject()` directly and would have been a silent
+bypass letting any queued node auto-start regardless of era. A queued era-gated pick is retained
+rather than cleared, matching how the existing not-yet-affordable case behaves, so it fires when the
+era arrives.
+
+**The approved method was generated and then discarded.** The plan (agreed with Shamus before starting)
+was track-baseline + prereq-depth offset — 14 reviewable decisions instead of 98. Generated it, and it
+was unusable: `lunar_lander`, `mars_traj`, `precision_edl` and `rad_shielding` all landed in era 7
+(2100+), `parachute_recovery` in era 4. That would have made Mars landings impossible until the
+Speculative era and gated Mercury-era parachute recovery to the year 2000. The clearest failure:
+`orbital_depot` at era 6 while gating `tanker_leo` at **minRep 38**, a near-start mission. Depth-from-
+root turns out to measure position within a track's own arc, not position in history, and the two
+diverge badly for tracks whose roots are late (deepspace, nuclear, automation) or early (reuse).
+
+All 98 were hand-assigned instead, anchored to real spaceflight history, then validated
+programmatically against two hard constraints: every mission's `reqResearch` must remain reachable,
+and no node may be gated later than its own prerequisites. The second check caught two genuine
+inversions — `deep_space`(1) before `digital_computer`(2), and `deep_throttling`(2) before
+`methane_propulsion`(4) — both resolved in favour of the tree's own structure rather than my
+historical instinct, since an unreachable branch is worse than a slightly-late one.
+
+Resulting curve: 9/98 era-open at 1942, 21 by 1957, 43 by 1961, 62 by 1975, 80 by 2000, 89 by 2030,
+96 by 2060, 98 by 2100. Six nodes available at game start spanning multiple tracks and including an
+engine unlock — a real opening choice, not a forced line, and no softlock risk.
+
+**Three pre-existing fixtures broke, all correctly.** `test-afford-estimate.js` and
+`test-research-goal.js` both assumed "prereqs met ⇒ available", which C6(b) makes false by design.
+Both advanced to an era that opens their nodes so they test their actual subject rather than the era
+gate. New `tests/test-research-era-gate.js` (25/25) covers the three things that would be disastrous
+if wrong: the game is playable at turn one, no node precedes its prereqs, and no mission is stranded
+behind late research — plus both enforcement paths and the era/locked distinction.
+
+One test-authoring note: the first draft of the "queued node starts once its era arrives" check failed
+against correct code, because `reqsMet()` also tests `reqMissionDone` and the fixture satisfied only
+`req`, leaving it returning `undefined`. A fixture-sanity assertion now pins `reqsMet(late)===true`
+before the real assertion runs.
+
+Full suite clean. Build parity clean.

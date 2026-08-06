@@ -10226,9 +10226,16 @@ function researchTier(id){
   if(gate && RESEARCH.find(x=>x.id===gate)) t=Math.max(t, researchTier(gate)+1);
   _tierCache[id]=t; return t;
 }
+// C6 option (b), 2026-08-04: research is era-gated; MISSIONS deliberately are NOT. A node whose
+// eraMin exceeds the current era reports 'era' rather than 'locked' — the player must be able to tell
+// "I haven't earned this yet" (locked: go do the prereqs) from "this hasn't been invented yet"
+// (era: nothing you can do but advance time), because those imply completely different actions.
+// Checked BEFORE reqsMet so an era-gated node reads as era-gated even when its prereqs are done.
+function researchEraMet(r){ return eraIndex(currentEra()) >= (r.eraMin||0); }
 function researchNodeState(r){
   if(state.research[r.id]) return 'done';
   if(state.activeResearch && state.activeResearch.id===r.id) return 'active';
+  if(!researchEraMet(r)) return 'era';
   if(reqsMet(r)) return 'available';
   return 'locked';
 }
@@ -10355,7 +10362,7 @@ function availableTechCount(){ return RESEARCH.filter(r=>researchNodeState(r)===
 function renderTechTree(){
   const el=$('techTree'); if(!el) return;
   const L=techLayout(), NW=L.NW, NH=L.NH;
-  const palette={ done:{fill:'#13241b',text:'#cfe8d6'}, active:{fill:'#123653',text:'#bde8ff'},
+  const palette={ done:{fill:'#13241b',text:'#cfe8d6'}, active:{fill:'#123653',text:'#bde8ff'}, era:{fill:'#1c1a24',text:'#6d6880'},
                   available:{fill:'#16222b',text:'#d0dce4'}, locked:{fill:'#0c1318',text:'#5a6a75'} };
   const hi=techHighlightSet(); // prereq-chain highlight (null = none)
   const inFilter=(key)=> !techFilter || key===techFilter;
@@ -10544,7 +10551,7 @@ function renderResearchDetail(){
       <button class="btn ghost" style="width:100%;font-size:12px" onclick="applyScience()" ${canSci?'':'disabled'}>Apply science −1 mo (${sc} ⚛)</button>`;
   } else {
     const afford=state.money>=rdCostOf(r), sciNeed=sciGateCost(r), sciOk=sciGateMet(r), ok=st==='available'&&afford&&sciOk&&!busy;
-    const why = busy?'Another project is in progress':(st!=='available'?'Prerequisites not met':(!afford?'Not enough capital':(!sciOk?`Needs ${sciNeed} ⚛ (have ${Math.round(state.science||0)})`:'')));
+    const why = busy?'Another project is in progress':(st==='era'?`Not yet — ${eraName(r.eraMin)} era technology`:(st!=='available'?'Prerequisites not met':(!afford?'Not enough capital':(!sciOk?`Needs ${sciNeed} ⚛ (have ${Math.round(state.science||0)})`:''))));
     const sciTag = sciNeed?` · ${sciNeed} ⚛`:'';
     action=`<button class="launch" style="width:100%" onclick="buyResearch('${r.id}')" ${ok?'':'disabled'}>${ok?`Research · ${fM(rdCostOf(r))}${sciTag} · ${r.months} mo`:why}</button>${(st==='available'&&!busy&&!afford)?affordWidgetHTML(rdCostOf(r)):''}`;
   }
@@ -10592,11 +10599,11 @@ function renderTechAction(){
       : `<button class="btn ghost" onclick="queueResearchNext('${r.id}')">📋 Queue next</button>`;
   } else{
     const afford=state.money>=rdCostOf(r), sciNeed=sciGateCost(r), sciOk=sciGateMet(r), ok=st==='available'&&afford&&sciOk;
-    const why=st!=='available'?'Prerequisites not met':(!afford?'Not enough capital':(!sciOk?`Needs ${sciNeed} ⚛ (have ${Math.round(state.science||0)})`:''));
+    const why=st==='era'?`Not yet — ${eraName(r.eraMin)} era technology`:(st!=='available'?'Prerequisites not met':(!afford?'Not enough capital':(!sciOk?`Needs ${sciNeed} ⚛ (have ${Math.round(state.science||0)})`:'')));
     const sciTag=sciNeed?` · ${sciNeed} ⚛`:'';
     btn=`<button class="launch" onclick="buyResearch('${r.id}')" ${ok?'':'disabled'}>${ok?`Research · ${fM(rdCostOf(r))}${sciTag} · ${r.months} mo`:why}</button>${(st==='available'&&!afford)?affordWidgetHTML(rdCostOf(r)):''}`;
   }
-  const tag={done:'researched',active:'in progress',available:'available',locked:'locked'}[st];
+  const tag={done:'researched',active:'in progress',available:'available',locked:'locked',era:'not yet invented'}[st];
   el.innerHTML=`<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 11px;border:1px solid var(--line);border-radius:6px;background:var(--panel2)">
     <span style="font-weight:600">${r.name}</span><span class="dim" style="font-size:12px">${tag}</span>
     <span style="flex:1;min-width:8px"></span>${btn}</div>${nextRow}`;

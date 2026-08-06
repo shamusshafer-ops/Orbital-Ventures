@@ -11,6 +11,11 @@ let pass=0, fail=0;
 function check(name, cond){ if(cond){ pass++; } else { fail++; console.log('FAIL:', name); } }
 
 newGame('engineer');
+// C6(b): this suite leans on the earth_observation (eraMin 1) -> planetary_science (eraMin 2)
+// chain being reachable. At the 1942 start both now report 'era' rather than 'available', which
+// is correct era-gating, not a regression — advance far enough that both are era-open so the
+// suite tests what it means to test (the goal/prereq-chain logic, not the era gate).
+state.year=ERAS[2].from;
 
 // ---------- 0. Setup: confirm the chain this whole suite leans on ----------
 {
