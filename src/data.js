@@ -1446,6 +1446,37 @@ const RESEARCH = [
   {id:'automated_factory', track:'manufacturing', name:'Fully Automated Factory', cost:12.0, months:10, req:['additive_manufacturing'], effect:{buildCostCut:0.05,buildTimeCut:1.0}, desc:'A lights-out plant where robots build vehicles end to end, around the clock. <b>−5% build cost · −1 mo build.</b><span class="hist">↳ Full factory automation is the endgame of manufacturing — the line that builds itself.</span>'},
   {id:'megastructure_construction', track:'assembly', name:'Megastructure Construction', cost:18.0, months:18, req:['orbital_shipyards'], reqMissionDone:'jupiter_orbit', effect:{buildCostCut:0.10, buildTimeCut:1.5}, desc:'Kilometer-scale orbital construction — solar collectors, rotating colonies, the bones of a spacefaring civilization. Building at this scale rewrites your whole production economy: everything you build afterward is cheaper and faster.<span class="hist">↳ Megastructures are where an aerospace company becomes a civilization-scale enterprise.</span>'},
 ];
+
+// Tier 2 B5 (2026-08-04): standing allowlist for RESEARCH nodes whose `effect:{}` is empty. Audited
+// all 14 that existed at the time this was written — every one is legitimately empty, for one of
+// three reasons (see the comment on each id below). `effect:{}` is the GENERIC effect bus that
+// researchEffectSum() pools for stats like reliability/cost-cut/isp; a node with a bespoke mechanic
+// implements it at the point it belongs (e.g. aerocapture's -70% capture Δv lives at its actual burn
+// calculation, not in a pooled sum) and correctly leaves the generic bus empty — that is NOT the same
+// thing as the node doing nothing. A prior review read "empty effect bus" as "does nothing" and was
+// wrong; this allowlist exists so nobody has to re-derive that conclusion, and so a genuinely new
+// empty-effect placeholder (which SHOULD be flagged) doesn't get lost among the 14 legitimate ones.
+// Test-enforced: test-research-effect-gates.js fails if any RESEARCH node has effect:{} and isn't
+// listed here, or if a listed id no longer exists / no longer has effect:{}.
+const RESEARCH_EMPTY_EFFECT_ALLOWLIST={
+  // bespoke-implemented: real mechanic wired at its own point of use, not through the generic bus
+  strapon_integration:   'gates the Boosters card on the design bench (render.js)',
+  orbital_eva:            'crew reliability penalty 0.92→0.95 in curRel() (sim.js) + an EVA option on the Tier 1.1 dock_latch anomaly',
+  cryo_boiloff_control:   'boiloffMargin() rate BOILOFF_RATE_CONTROLLED vs _BASE, consumed by resupplyCostFull() (sim.js)',
+  megawatt_electric:      '+10% Isp multiplier on electric drives, sim.js ~line 4232',
+  gravity_assist_planning:'gaMult 0.92 on Jupiter/Saturn/Belt transfer burns, sim.js ~line 3781',
+  aerocapture:             'aeroMult 0.3 on Mars/Jovian/Saturn capture burns, sim.js ~line 3782',
+  surface_fission_power:  '×0.75 facility resupply cost in resupplyCostFull() (sim.js)',
+  // capability gates: the node's only job is a reqResearch check elsewhere, no numeric effect at all
+  precision_edl:           'reqResearch gate on the Mars Landing mission (data.js)',
+  onorbit_servicing:       'reqResearch gate on the Satellite Servicing Fleet passive contract (data.js)',
+  // pure prereqs: tree-structure nodes whose only job is unlocking a successor node's req:[...]
+  electrolysis_scaleup:    'prereq for atmospheric_isru',
+  station_keeping:         'prereq for large_space_stations',
+  large_space_stations:    'prereq for orbital_shipyards',
+  autonomous_operations:   'prereq for ai_mission_management',
+  hydrogen_storage:        'prereq for expander_cycle',
+};
 // P8: Cross-Track Synergies. Thoughtful composition across ≥2 research tracks earns a bonus no
 // single node grants alone. Fully derived from the researched set — no new state. The two
 // numeric-fold seeds fold into the SAME reliability accumulator as familyRelBonus/doctrineRelMod/

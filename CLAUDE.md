@@ -24,6 +24,17 @@ change first.
 > When done, clear it back to "(none claimed right now)" and add your entry to the history below.
 
 **Oriented quickly (last few sessions, newest first) — see History for full detail:**
+- Tier 2 B5 research audit, ZERO placeholders found (Claude) — B5 assumed some of the 14 `effect:{}`
+  RESEARCH nodes needed real payloads. Audited all 14 (grep both quoted and dot-notation refs, read
+  every call site): all legitimately empty — 7 bespoke-implemented (mechanic lives at its own point
+  of use, not the pooled effect bus), 2 capability gates, 5 pure prereqs. Real finding was two STALE
+  DOCS: ROADMAP's own "Open threads" note claimed cryo boil-off isn't modeled — it is
+  (`boiloffMargin()`, sim.js:1800, been there a while) — and B5's entry repeated that stale claim.
+  Both corrected. New `RESEARCH_EMPTY_EFFECT_ALLOWLIST` (data.js) + `test-research-effect-gates.js`
+  (12/12) guard the invariant both directions going forward.
+  RULE (third time now): "build X" findings that trace to reasoning about the design instead of
+  reading the code, after decision-system (Tier 1) and crisis-system (Tier 2 A). When a review flags
+  something as missing/broken, grep for it before believing it.
 - Tier 2 B4 crisis pool 3→9 (Claude) — six new crises weighted to eras 6-7 (previously zero content
   there), plus FOUR new effect axes, each with one live application site: `crewRel` (branch in
   `crisisRelPenalty`), `research` (`crisisResearchMult()` at the daily R&D tick), `facilityOut`

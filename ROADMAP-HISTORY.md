@@ -5941,3 +5941,40 @@ scale (`crewLost >= 3`). Thematically strong but it does compound a bad run, so 
 0.30 against `funding_collapse`'s 0.50 on the same axis. One number to change if it feels punitive.
 
 Full suite clean except the pre-existing drift. Build parity clean.
+
+## Session — Tier 2 B5: research node audit finds no placeholders; two stale docs corrected (2026-08-04)
+
+B5's original scoping assumed some of the 14 `effect:{}` RESEARCH nodes were unfulfilled placeholders
+needing real payloads. A full audit — grepping every id for both quoted and dot-notation references,
+then reading each call site rather than trusting the name — found zero. All 14 are legitimately empty:
+
+- **Bespoke-implemented (7):** `strapon_integration`, `orbital_eva`, `cryo_boiloff_control`,
+  `megawatt_electric`, `gravity_assist_planning`, `aerocapture`, `surface_fission_power`. Each has a
+  real mechanic wired at its own point of use rather than through the generic effect bus
+  `researchEffectSum()` pools for stats like reliability/cost-cut/isp.
+- **Capability gates (2):** `precision_edl`, `onorbit_servicing`.
+- **Pure prereqs (5):** `electrolysis_scaleup`, `station_keeping`, `large_space_stations`,
+  `autonomous_operations`, `hydrogen_storage`.
+
+The actual finding was two stale documentation defects. ROADMAP.md's own "Open threads" section
+claimed cryo boil-off "is not modeled as a *mechanic*" and that `cryo_boiloff_control` was an
+unfulfilled placeholder — but `boiloffMargin()` (`sim.js:1800`) has existed and been consumed by
+`resupplyCostFull()` for some time; the note was simply never updated after the mechanic shipped.
+B5's own ROADMAP entry then repeated that stale claim as its justification for existing. Both
+corrected — the open-thread note left visible with a strikethrough and correction rather than deleted,
+as a record that a stale doc can survive multiple sessions unnoticed.
+
+This is the third review finding in this project's history that traced to reasoning about the design
+instead of reading the code, after "build a decision system" (Tier 1) and "build a crisis system"
+(Tier 2 A-series) — both already built when proposed.
+
+Shipped: `RESEARCH_EMPTY_EFFECT_ALLOWLIST` (`data.js`, immediately after `RESEARCH`) documenting each
+of the 14 with its specific reason. New `tests/test-research-effect-gates.js` (12/12) guards the
+invariant both directions — any new empty-effect node must be documented (catches a genuine future
+placeholder), and any allowlisted id must still exist and still be empty (catches a stale entry
+surviving a future edit that gives that node a real payload) — plus a substantive-reason-string check
+and spot-checks that each claimed category (bespoke/gate/prereq) actually holds up against source,
+not just against the audit's own say-so.
+
+Full suite clean. Build parity clean. No source logic changed — this session's actual code delta is
+one new constant and its guarding test.

@@ -84,11 +84,13 @@ companion to `orbital-ventures-design.md` (original full design doc) and
 
 ## Open threads / known scoping notes
 
-- Cryogenic boil-off is not modeled as a *mechanic* (hydrolox transfer stages
-  are still "free" on long coasts) — a future realism pass that would strengthen
-  the case for hypergolic/ISRU choices. A `cryo_boiloff_control` research node
-  now exists (refueling track) but ships with an empty `effect:{}` — a capability
-  gate placeholder, so it does **not** yet close this note.
+- ~~Cryogenic boil-off is not modeled as a *mechanic*~~ **STALE, corrected 2026-08-04 (Tier 2 B5
+  audit).** It is modeled: `boiloffMargin()` (`sim.js:1800`) computes an extra-propellant factor from
+  `BOILOFF_RATE_BASE`/`BOILOFF_RATE_CONTROLLED` and cruise duration, consumed by `resupplyCostFull()`.
+  The `cryo_boiloff_control` research node (refueling track) gates the controlled rate — its
+  `effect:{}` is correct, not a placeholder; see `RESEARCH_EMPTY_EFFECT_ALLOWLIST` in `data.js`. This
+  note was written before the mechanic landed and nobody came back to close it — left visible above
+  (rather than deleted) as a record that a stale doc can survive multiple sessions unnoticed.
 - Mars ISRU only unlocks *after* a first successful Mars Orbit — by design
   (you discover the resource, then build the plant), but means the first Mars
   trip can't benefit from it.
@@ -2183,30 +2185,54 @@ all produced exactly this) but it does compound a bad run, so its `maxPenalty` w
 
 Model tier: content, balance, and new effect axes — heavier tier.
 
-### B5 — Convert the 14 empty-effect research nodes [NOT STARTED]
+### B5 — Convert the 14 empty-effect research nodes [AUDITED 2026-08-04 — NO PLACEHOLDERS FOUND]
 
-14 of 98 `RESEARCH` entries carry `effect:{}`: `strapon_integration`, `orbital_eva`, `precision_edl`,
-`surface_fission_power`, `cryo_boiloff_control`, `electrolysis_scaleup`, `station_keeping`,
-`large_space_stations`, `onorbit_servicing`, `autonomous_operations`, `megawatt_electric`,
-`hydrogen_storage`, `gravity_assist_planning`, `aerocapture`.
+**Original premise was wrong.** This entry assumed some of the 14 `effect:{}` nodes were unfulfilled
+placeholders needing real payloads. A full audit — grepping every id for both quoted (`'id'`) and
+dot-notation (`.id`) references, then reading each call site — found **zero placeholders**. Every one
+of the 14 is legitimately empty, for one of three reasons:
 
-Several are legitimate pure gates — `orbital_eva` and `orbital_assembly` gate Tier 1.1 anomaly
-branches, `onorbit_servicing` gates a passive contract — and those are fine as they are. Others are
-genuine placeholders; ROADMAP already flags `cryo_boiloff_control` as unfulfilled.
+- **Bespoke-implemented (7):** `strapon_integration`, `orbital_eva`, `cryo_boiloff_control`,
+  `megawatt_electric`, `gravity_assist_planning`, `aerocapture`, `surface_fission_power`. Each has a
+  real mechanic wired at its own point of use rather than through the generic effect bus
+  `researchEffectSum()` pools — e.g. `aerocapture` cuts capture-burn Δv by 70% at its actual burn
+  calculation (`sim.js:3782`), not as a pooled stat.
+- **Capability gates (2):** `precision_edl`, `onorbit_servicing` — gate the Mars Landing mission and
+  the Satellite Servicing passive contract via `reqResearch`, no numeric effect needed.
+- **Pure prereqs (5):** `electrolysis_scaleup`, `station_keeping`, `large_space_stations`,
+  `autonomous_operations`, `hydrogen_storage` — tree-structure nodes whose only job is unlocking a
+  successor via that successor's `req:[...]`.
 
-- [ ] Audit all 14. For each, record whether it is a legitimate gate (leave alone, but comment it as
-  intentional) or an unfulfilled placeholder.
-- [ ] Give the placeholders real payloads. Opportunistic — take them as adjacent work is done in each
-  area rather than as one sweep, since each needs a different system touched.
+**Two stale-documentation defects were the actual finding here, both corrected:**
+1. This ROADMAP's own "Open threads" note claimed cryo boil-off "is not modeled as a *mechanic*" and
+   that `cryo_boiloff_control` was an unfulfilled placeholder. `boiloffMargin()` has existed and been
+   consumed by `resupplyCostFull()` since well before this session — the note was never updated after
+   the mechanic shipped.
+2. This entry itself repeated that stale claim as its justification for existing.
 
-**Protected baseline:** nodes that function as gates keep gating exactly what they gate today; no
-change to prereq chains, costs, or `sciGateCost`.
+This is the third time in this project's review history that a finding traced to reasoning about the
+design instead of reading the code — after "build a decision system" (Tier 1) and "build a crisis
+system" (Tier 2 A-series), both already built when proposed.
 
-**Suggested test:** per-node, whatever effect is added. Plus a standing assertion that any node whose
-`effect` is `{}` appears on an explicit allowlist of intentional-gate ids, so a *new* empty-effect node
-can't be added silently.
+- [x] Audit all 14 — see `RESEARCH_EMPTY_EFFECT_ALLOWLIST` in `data.js`, which records each node's id
+  and the specific reason its `effect:{}` is correct.
+- [x] No payloads to give — there were no placeholders.
+- [x] Standing test so this can't silently regress: any `RESEARCH` node with `effect:{}` must appear
+  on the allowlist, and every allowlisted id must still exist and still be empty (catching both a new
+  undocumented placeholder and a stale allowlist entry after a future edit).
+- [x] Corrected both stale docs above rather than leaving them to mislead a future session.
 
-Model tier: mixed — the audit is judgment (heavier), individual payload wiring is mechanical.
+**Protected baseline:** unchanged — no prereq chains, costs, or `sciGateCost` were touched, since
+nothing needed fixing.
+
+**Suggested test:** `tests/test-research-effect-gates.js` (new) — every `effect:{}` node is on the
+allowlist and vice versa; every allowlisted id still exists in `RESEARCH`; every allowlisted id's
+`effect` is still literally empty (so if a future session gives one a real payload, the test fails
+until the entry is removed, rather than silently going stale itself); every listed reason string is
+non-empty (a documented-but-unexplained entry is as useless as an undocumented one).
+
+Model tier: audit was judgment (heavier, now spent); the allowlist + test + doc corrections that
+shipped are mechanical — lighter tier.
 
 ### C6 — Couple the calendar to progression [NOT STARTED — DECISION REQUIRED]
 
