@@ -5714,3 +5714,55 @@ crew-only branches never leaking onto uncrewed flights, frequency neutrality, an
 across the eligible set.
 
 Full suite clean except the pre-existing `test-flight3d-trajectory.js` drift. Build parity clean.
+
+## Session — Tier 1.2: near-miss attribution on successful flights (2026-08-04)
+
+`resolveFlight()` rolled every subsystem independently and, on a clean success, set `subsystem:null`
+and discarded the roll data — so a player never learned which subsystem nearly ended the flight, and
+reliability investment produced no felt moment.
+
+The loop now binds each draw to a local instead of comparing it inline, and tracks the narrowest
+surviving margin (`s.rel - roll`) as it goes. Same single `Math.random()` per subsystem, same order,
+same comparisons — the roll sequence and every outcome are unchanged. It simply stops throwing away a
+number that was already computed. `NEAR_MISS_MARGIN` (0.05) gates whether it surfaces; attribution
+attaches only to `kind==='success'`, since a failure already carries a subsystem and causal story and
+a "what nearly went wrong" note beside "what did go wrong" would only muddy it.
+
+`nearMissText()` renders it: "⚠ Close call — Structures held at 91%, 2 points from failing."
+
+**A scoping estimate corrected by measurement.** The entry predicted ~1 in 4 successful flights would
+carry attribution, assuming ~0.95 reliabilities across 5-7 subsystems. Measured over 5000 seeded
+flights from an Engineer start, the real figure early game is **~11%** — an early vehicle has THREE
+subsystems (propulsion 81%, structures 91%, avionics 88%), not five to seven at 95%. The rate rises
+through the campaign as staging/boosters/deep-propulsion/life-support come online, each an
+independent chance to land in the band, toward roughly 25-30% late. Constant left at 0.05; the code
+comment and ROADMAP entry now carry the measured range rather than the guess.
+
+**Scope limit held.** The original review framing — "the QA program you funded is why this held" — was
+not shipped, because it is not derivable: reliability aggregates research, engineer score, QA level,
+test campaigns, era and weather into a single `R` before `subsystemReport()` splits it per-subsystem
+by weight. `nearMissText()` names the subsystem and the margin and makes no per-investment causal
+claim; a test asserts it doesn't.
+
+**Bonus, deliberately kept.** The per-phase causal breakdown previously threaded only into failure log
+entries is now attached to every outcome. `phaseBreakdownLines()` marks a governing subsystem only
+when one is supplied, so on a clean success it renders as a plain per-phase reliability breakdown with
+nothing flagged — hovering a successful flight now shows what the odds actually were and where. The
+variable was renamed `failDetail` → `phaseDetail` to match its widened role.
+
+New `tests/test-near-miss.js` (33/33). The important one is a parity proof: a reference implementation
+of the ORIGINAL inline-compare loop is run against the same seeded stream as the live `resolveFlight`
+across 300 seeds, asserting an identical governing subsystem every time, with the fixture verified to
+exercise both successes and failures. Also covers the text shape (including singular/plural and
+sub-point margins never rendering as "0 points"), attribution never riding on a failure, every
+reported margin being under threshold, the reported subsystem being real and surviving and never the
+failed one, dev-forced outcomes carrying none, and the clean-vs-governed breakdown rendering.
+
+**A test bug worth recording.** The first fixture hand-rolled a `v` literal instead of calling
+`computeVehicle()`. `subsystemReport()` returned NaN reliabilities, `roll > NaN` is false, so every
+flight "succeeded", no margin was ever finite, and three assertions silently proved nothing while the
+suite reported passes. A fixture-sanity block now asserts reliabilities are finite and in (0,1] before
+anything else runs. RULE: when a fixture feeds a numeric model, assert the model's output is finite
+before asserting anything about its behaviour.
+
+Full suite clean except the pre-existing `test-flight3d-trajectory.js` drift. Build parity clean.

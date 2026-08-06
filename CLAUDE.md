@@ -24,6 +24,17 @@ change first.
 > When done, clear it back to "(none claimed right now)" and add your entry to the history below.
 
 **Oriented quickly (last few sessions, newest first) — see History for full detail:**
+- Tier 1.2 near-miss attribution (Claude) — `resolveFlight()` now tracks the narrowest surviving
+  subsystem margin during its existing roll loop (same RNG draws, same order, outcomes provably
+  unchanged — `test-near-miss.js` runs the original inline-compare loop against the live one across
+  300 seeds) and reports it on clean successes via `nearMissText()` when under `NEAR_MISS_MARGIN`
+  (0.05). Also widened the per-phase breakdown from failures to every outcome (`failDetail` →
+  `phaseDetail`), so hovering a success shows what the odds were. 33/33.
+  RULE: the scoping estimate ("~1 in 4 successes") was wrong — measured ~11% early game, since an
+  early vehicle has THREE subsystems at 81-91%, not 5-7 at 95%. Measure rates, don't estimate them.
+  RULE: a hand-rolled `v` literal makes `subsystemReport()` return NaN, which makes every flight
+  succeed and every assertion vacuous — use `computeVehicle()`/`curMission()`, and assert fixture
+  outputs are finite before asserting behaviour.
 - Tier 1.1 anomaly pool 3 → 10 (Claude) — seven historically-grounded in-flight anomalies added to
   `MISSION_ANOMALIES` (Gemini 8 thruster runaway, Apollo 11 1202 alarm, Skylab thermal loss, comms
   blackout, docking latch, transfer-stage leak, micrometeoroid). Balance-neutral by construction:

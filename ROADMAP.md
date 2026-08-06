@@ -1950,16 +1950,16 @@ convention (every anomaly must keep offering a choice that doesn't gamble the cr
 short/long duration); every entry yields ≥1 option in at least one context; no option's `resolve()`
 throws; research-gated entries return false when the gating research is absent.
 
-### 1.2 — Near-miss attribution on successful flights [NOT STARTED]
+### 1.2 — Near-miss attribution on successful flights [SHIPPED 2026-08-04]
 
 `resolveFlight()` rolls every subsystem independently (`for(const s of rep.subsystems){ if(Math.random()
 >s.rel) failed[s.key]=s; }`) and, on a clean success, sets `subsystem:null` and discards the roll data.
 That data is exactly the material for the feedback the review found missing: the player never learns
 which subsystem nearly killed them, so reliability investment never produces a felt moment.
 
-- [ ] Capture, among surviving subsystems, the narrowest margin (`s.rel - roll`) and carry it on the
+- [x] Capture, among surviving subsystems, the narrowest margin (`s.rel - roll`) and carry it on the
   outcome. Surface it in the post-flight log naming the subsystem and how close it came.
-- [ ] **Near-miss-only, not every-success** (confirmed with Shamus 2026-08-04): fire only when the
+- [x] **Near-miss-only, not every-success** (confirmed with Shamus 2026-08-04): fire only when the
   smallest margin falls under a threshold constant, starting at **0.05**. With per-subsystem
   reliabilities typically ~0.95 across 5-7 subsystems this fires on roughly 1 in 4 successful flights
   — an event rather than wallpaper. Single tunable constant; revisit after playtest.

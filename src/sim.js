@@ -4344,6 +4344,15 @@ const SUBSYS_PRIORITY=['propulsion','boosters','structures','separation','avioni
 // hooks a live abort / press-on call into; here the outcome selection is unchanged from the
 // single-roll model (same rolls, same governing-priority pick).
 const FLIGHT_PHASE_ORDER=['pad','ascent','staging','coast','deep','return'];
+// Tier 1.2: a surviving subsystem whose draw landed within this of its reliability threshold is
+// reported as a near miss on an otherwise clean success. Single tunable knob for how often that
+// feedback surfaces. MEASURED at 0.05 (5000 seeded flights, Engineer start): ~11% of successful
+// flights carry one early on — 3 subsystems at 81-91% reliability. The rate RISES through the
+// campaign as staging/boosters/deep-propulsion/life-support add subsystems (each an independent
+// chance to land in the band) even as individual reliabilities improve; expect roughly 25-30% by
+// late game with 7 subsystems. Raise it for more frequent feedback, lower it to reserve the moment
+// for genuine squeakers. Purely presentational: it gates a message, never a roll.
+const NEAR_MISS_MARGIN=0.05;
 const FLIGHT_PHASE_LABEL={pad:'Pad & ignition', ascent:'Ascent', staging:'Staging', coast:'Orbit / coast', deep:'Deep space', return:'Reentry / return'};
 const SUBSYS_PHASE={propulsion:'ascent', boosters:'ascent', structures:'ascent', avionics:'ascent', separation:'staging', deep_propulsion:'deep', life_support:'deep'};
 function livePhaseOf(key){ return SUBSYS_PHASE[key]||'ascent'; }
@@ -4401,12 +4410,34 @@ function devSynthOutcome(kind, m, v, sim, crewed, relPenalty){
   out.phases=phases; out.govPhase=out.subsystem?livePhaseOf(out.subsystem):null;
   return out;
 }
-function resolveFlight(m,v,sim,crewed,relPenalty=0){
-  if(_devForceOutcome){ const k=_devForceOutcome; _devForceOutcome=null; return devSynthOutcome(k,m,v,sim,crewed,relPenalty); } // dev menu: single-shot forced outcome
+// Tier 1.2: the near-miss line appended to a successful flight's log entry. Names the subsystem and
+// how close it came, in points of reliability — the honest, derivable signal. Deliberately does NOT
+// claim which investment saved the flight: reliability aggregates research, engineer score, QA level,
+// test campaigns, era and weather into a single R before subsystemReport() splits it per-subsystem by
+// weight, so no seam attributes a surviving margin to a specific choice the player made.
+function nearMissText(nm){
+  if(!nm) return '';
+  const pts=Math.max(0.1, nm.margin*100);
+  const pretty = pts<1 ? pts.toFixed(1) : Math.round(pts).toString();
+  return ` ⚠ Close call — ${nm.label} held at ${Math.round(nm.rel*100)}%, ${pretty} point${pretty==='1'?'':'s'} from failing.`;
+}
+function resolveFlight(m,v,sim,crewed,relPenalty=0){  if(_devForceOutcome){ const k=_devForceOutcome; _devForceOutcome=null; return devSynthOutcome(k,m,v,sim,crewed,relPenalty); } // dev menu: single-shot forced outcome
   const rep=subsystemReport(m,v,sim,crewed,1-(relPenalty||0));
   const phases=flightPhaseBreakdown(rep); // CE5(a): per-phase decomposition (outcome unchanged)
   const failed={};
-  for(const s of rep.subsystems){ if(Math.random()>s.rel) failed[s.key]=s; }
+  // Tier 1.2: capture the narrowest surviving margin as we go. Same loop, same single Math.random()
+  // per subsystem, same order — the roll sequence and therefore every outcome is byte-identical to
+  // before. We simply stop discarding a number we already computed: for each subsystem that SURVIVED,
+  // how close its draw came to its reliability threshold. The tightest of those is the one that
+  // nearly ended the flight, and is the only honest "this is why it held" signal available (see the
+  // scope note in ROADMAP.md 1.2 — reliability aggregates before it splits, so no per-investment
+  // attribution is derivable).
+  let nearMiss=null;
+  for(const s of rep.subsystems){
+    const roll=Math.random();
+    if(roll>s.rel) failed[s.key]=s;
+    else { const margin=s.rel-roll; if(!nearMiss || margin<nearMiss.margin) nearMiss={key:s.key, label:s.label, rel:s.rel, margin}; }
+  }
   let gov=null; for(const k of SUBSYS_PRIORITY){ if(failed[k]){ gov=failed[k]; break; } }
   let out;
   if(!gov) out={kind:'success', rel:rep.R, failPhase:null, subsystem:null};
@@ -4429,6 +4460,10 @@ function resolveFlight(m,v,sim,crewed,relPenalty=0){
     else out={kind:'loss', subsystem:gov.key, failPhase:'ascent', rel:rep.R, story:storyMap[gov.key]};
   }
   out.phases=phases; out.govPhase=gov?livePhaseOf(gov.key):null; // CE5(a) seam for the live-call hook
+  // Tier 1.2: attribution rides only on a CLEAN success. On any failure the outcome already carries a
+  // subsystem + causal story, and a "what nearly went wrong" note alongside "what did go wrong" would
+  // only muddy it. Near-miss-only, not every success — see NEAR_MISS_MARGIN for the measured rate.
+  if(out.kind==='success' && nearMiss && nearMiss.margin<NEAR_MISS_MARGIN) out.nearMiss=nearMiss;
   return out;
 }
 // CE5(b): the near-miss live call. A loss-severity subsystem on an early phase (pad/ascent/
@@ -5526,7 +5561,11 @@ function finalizeLaunch(ctx, ops){
   // E1.5: the per-phase / per-subsystem causal chain for a failed flight, threaded into the failure
   // log lines below as the 4th (detail) arg so hovering the log entry reveals WHY it failed (not just
   // the flavor story). Guarded on .phases — every real resolveFlight AND the dev-forced outcomes carry it.
-  const failDetail = outcome.phases ? phaseBreakdownLines(outcome.phases, outcome.subsystem).join('\n') : null;
+  // Tier 1.2 widened this from failures to EVERY outcome. phaseBreakdownLines marks the governing
+  // subsystem only when one is supplied, so on a clean success (subsystem null) it renders as a plain
+  // per-phase reliability breakdown with nothing flagged — exactly the "what were my odds, and where"
+  // detail that makes reliability investment legible. Transient/UI-only, never persisted.
+  const phaseDetail = outcome.phases ? phaseBreakdownLines(outcome.phases, outcome.subsystem).join('\n') : null;
   if(success){
     personnelMissionEvent(true); // M6: morale boost on success
     state.successes++;
@@ -5563,14 +5602,14 @@ function finalizeLaunch(ctx, ops){
       state.depot+=delivered;
       payout = 0.4*delivered; // tankers earn by the tonne delivered, not a flat contract fee
       state.money+=payout; state.rep+=rep; flightRevenue=payout;
-      log('ok',`${m.name}: SUCCESS. Delivered ${delivered.toFixed(1)} t to the LEO depot (now ${state.depot.toFixed(1)} t). +${fM(payout)}, +${rep} rep, +${sciGain} sci.`);
+      log('ok',`${m.name}: SUCCESS. Delivered ${delivered.toFixed(1)} t to the LEO depot (now ${state.depot.toFixed(1)} t). +${fM(payout)}, +${rep} rep, +${sciGain} sci.${nearMissText(outcome.nearMiss)}`, null, phaseDetail);
     }else{
       state.money+=payout; state.rep+=rep; flightRevenue=payout;
       fulfillSpecialIfMatch(m.id); // special contract bonus on a matching routine/repeat flight
       const qTxt = m.window?(windowQuality>1.05?' Favorable window geometry boosted the payload value.':windowQuality<0.92?' A marginal window cut into the payload value.':''):'';
       const scoopTxt = (!routine && state.scooped[m.id]) ? ' (scooped — reduced first-time payout)' : '';
       const firstTxt = firstOfDesign ? ` This vehicle's maiden flight — a +${Math.round(FIRST_DESIGN_PAYOUT_BONUS*100)}% prestige premium and +${FIRST_DESIGN_REP_BONUS} rep for flying it new.` : '';
-      log('ok',`${m.name}: SUCCESS.${crewed?` Crew of ${m.crew} home safe.`:''} +${fM(payout)}, +${rep} rep, +${sciGain} sci. (reliability ${(rel*100|0)}%)${qTxt}${scoopTxt}${firstTxt}`);
+      log('ok',`${m.name}: SUCCESS.${crewed?` Crew of ${m.crew} home safe.`:''} +${fM(payout)}, +${rep} rep, +${sciGain} sci. (reliability ${(rel*100|0)}%)${qTxt}${scoopTxt}${firstTxt}${nearMissText(outcome.nearMiss)}`, null, phaseDetail);
     }
     if(m.profile && state.depotUse>0){ state.depot=Math.max(0,state.depot-state.depotUse);
       if(!state.wonM3bii && !pendingCelebration){ state.wonM3bii=true; pendingCelebration=()=>victoryM3bii('depot'); } }
@@ -5612,7 +5651,7 @@ function finalizeLaunch(ctx, ops){
     const rep=Math.max(0,Math.round((routine?2:m.rep)*0.25)+opsRep);
     state.rep+=rep;
     addSupport(supportDelta('partial')); // #8: a salvaged flight still reads as progress
-    log('note',`${m.name}: PARTIAL SUCCESS — ${outcome.story} Salvaged value +${fM(payout)}, +${rep} rep, but the objective is not complete.`, null, failDetail);
+    log('note',`${m.name}: PARTIAL SUCCESS — ${outcome.story} Salvaged value +${fM(payout)}, +${rep} rep, but the objective is not complete.`, null, phaseDetail);
   }else if(outcome.kind==='scrub'){
     // CE5(b): the player called a precautionary in-flight abort — vehicle & crew recovered, mission
     // forfeit. No catastrophe: no crew loss, no stand-down/investigation, a lighter rep dent than a
@@ -5626,7 +5665,7 @@ function finalizeLaunch(ctx, ops){
     const rep=Math.min(state.rep,12); state.rep-=rep;
     addSupport(supportDelta('abort')); // #8: a failure dents mood, but a safe crew limits the damage
     recordLoss(crewed?INVESTOR_CONF_SEV_CREWED:INVESTOR_CONF_SEV_UNCREWED); // Option C: vehicle lost either way
-    log('bad',`${m.name}: MISSION FAILURE — crew safe. The ${SUBSYS_LABEL[outcome.subsystem].toLowerCase()} gave out — ${outcome.story} Vehicle and mission lost, −${rep} rep.`, null, failDetail);
+    log('bad',`${m.name}: MISSION FAILURE — crew safe. The ${SUBSYS_LABEL[outcome.subsystem].toLowerCase()} gave out — ${outcome.story} Vehicle and mission lost, −${rep} rep.`, null, phaseDetail);
   }else if(outcome.kind==='strand'){
     personnelMissionEvent(false);
     const rep=Math.min(state.rep,40); state.rep-=rep;
@@ -5634,7 +5673,7 @@ function finalizeLaunch(ctx, ops){
     recordLoss(INVESTOR_CONF_SEV_CREWED); // Option C: always crewed by definition
     loseAssignedCrew(ctx.crewId, m.name, outcome.story);
     advance(6); // grounding + investigation
-    log('bad',`${m.name}: LOST IN DEEP SPACE — ${outcome.story} A long inquiry follows, −${rep} rep.`, null, failDetail);
+    log('bad',`${m.name}: LOST IN DEEP SPACE — ${outcome.story} A long inquiry follows, −${rep} rep.`, null, phaseDetail);
     applyEraStakes('loss of the crew'); // CE4(c): era-scaled compounding setback
     state.poachHeat=Math.max(state.poachHeat||0, POACH_HEAT_ON_FATAL); // E1.1: instability rivals press on
     triggerHearing(ctx); // E1.1: the political response to a fatal crewed loss (inquiry above is the engineering one, uncrewed-only)
@@ -5658,7 +5697,7 @@ function finalizeLaunch(ctx, ops){
       loseAssignedCrew(ctx.crewId, m.name, outcome.story);
       advance(6); // grounding + investigation
       state.crewLost=(state.crewLost||0)+m.crew; // chronicle: the price paid
-      log('bad',`${m.name}: CATASTROPHE. The ${SUBSYS_LABEL[outcome.subsystem].toLowerCase()} failed — ${outcome.story} Vehicle lost with all ${m.crew} aboard. Six-month stand-down, −${rep} rep. Fit a launch-escape system before flying crew again.`, null, failDetail);
+      log('bad',`${m.name}: CATASTROPHE. The ${SUBSYS_LABEL[outcome.subsystem].toLowerCase()} failed — ${outcome.story} Vehicle lost with all ${m.crew} aboard. Six-month stand-down, −${rep} rep. Fit a launch-escape system before flying crew again.`, null, phaseDetail);
       pushFrontPage('disaster', '⚠', `${m.name}: crew lost`, outcome.story);
       applyEraStakes('loss of the crew and vehicle'); // CE4(c): era-scaled compounding setback
       state.poachHeat=Math.max(state.poachHeat||0, POACH_HEAT_ON_FATAL); // E1.1: instability rivals press on
@@ -5666,7 +5705,7 @@ function finalizeLaunch(ctx, ops){
     }else{
       const rep=Math.min(state.rep, routine?3:8); state.rep-=rep;
       addSupport(supportDelta('lossUncrewed')); // #8: an uncrewed loss costs some goodwill
-      log('bad',`${m.name}: FAILURE. The ${SUBSYS_LABEL[outcome.subsystem].toLowerCase()} failed — ${outcome.story} Vehicle cost forfeit, −${rep} rep.`, null, failDetail);
+      log('bad',`${m.name}: FAILURE. The ${SUBSYS_LABEL[outcome.subsystem].toLowerCase()} failed — ${outcome.story} Vehicle cost forfeit, −${rep} rep.`, null, phaseDetail);
       if(m.profile) applyEraStakes('loss of a flagship mission'); // CE4(c): a deep-space robotic flagship is a real setback late
     }
   }
