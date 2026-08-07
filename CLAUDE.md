@@ -24,6 +24,15 @@ change first.
 > When done, clear it back to "(none claimed right now)" and add your entry to the history below.
 
 **Oriented quickly (last few sessions, newest first) — see History for full detail:**
+- Tier 3.2 annals archive (Claude) — `state.annals` (NOT `state.history` — that's already a
+  {missionId:year} map; collision caught in scoping): a permanent oldest-first record of significant
+  events, separate from the 40-cap live log. `appendAnnal(kind,summary)` beside `log()` (not a
+  signature change — protected baseline), wired at 8 sites (flight success/failure, crisis
+  trigger/resolve, facility founded, research done); routine log() chatter deliberately excluded.
+  Surfaced in the Chronicle grouped by era (`chronicleAnnalsHTML`), omitted when empty. Ring-buffer
+  cap 1200. SAVE_VERSION 59→60, lazy default. `test-annals-archive.js` 28/28.
+  RULE: same checklist mislabel as 3.1 — 3.2's boxes were `[x]` from the original scoping despite
+  nothing built; reverted before starting. (3.3/3.4/3.5 checked clean.)
 - Tier 3.1 uiLayerBtn built (Claude) — the header control genuinely didn't exist (applyUiLayer's
   `$('uiLayerBtn')` no-op'd via `if(b)` every render). Added it, wired to new `cycleUiLayer()`
   (wraps basic→advanced→expert→basic) calling the SAME `setUiLayer()` Settings' picker uses — one

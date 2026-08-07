@@ -142,6 +142,26 @@ function legacyScore(){
   const grade= score>=140?'S':score>=100?'A':score>=65?'B':score>=35?'C':'D';
   return {score,grade,firsts,scooped,worlds,facN,safety,crewLost:state.crewLost||0,crisesResolved:cHist,crisisCount,crisisMitigated,fusionFlown};
 }
+// Tier 3.2: the annals archive, rendered inside the Chronicle. Milestones (chronicleEntries, the ★/●
+// firsts board above) answer "what was historic"; the annals answer "what did my agency actually DO"
+// — every significant event, grouped by era, newest era first. Scrolls independently; empty until the
+// archive has entries (existing saves start empty, by design).
+function chronicleAnnalsHTML(){
+  const a=state.annals||[];
+  if(!a.length) return '';
+  const byEra=new Map();
+  for(let i=a.length-1;i>=0;i--){ const e=a[i]; const ei=eraIndexForYear(e.y); if(!byEra.has(ei)) byEra.set(ei,[]); byEra.get(ei).push(e); }
+  const kindCol={ok:'var(--ok)',bad:'var(--bad)',note:'var(--muted)',info:'var(--muted)',rival:'var(--bad)'};
+  const blocks=[...byEra.keys()].sort((x,y)=>y-x).map(ei=>{
+    const rows=byEra.get(ei).map(e=>`<div style="display:flex;gap:8px;align-items:baseline;padding:1px 0;font-size:11px">
+        <span style="font-family:var(--mono);color:var(--dim);flex:0 0 34px">${e.y}</span>
+        <span style="flex:0 0 6px;color:${kindCol[e.kind]||'var(--muted)'}">•</span>
+        <span style="color:var(--ink)">${esc(e.msg)}</span></div>`).join('');
+    return `<div style="margin-bottom:8px"><div class="dim" style="font-size:10px;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px">${esc(ERAS[ei]?ERAS[ei].name:'—')}</div>${rows}</div>`;
+  }).join('');
+  return `<div class="cc-panel-h" style="margin:0 0 4px">📜 Agency annals — ${a.length} recorded</div>
+    <div style="max-height:200px;overflow:auto;border-bottom:1px solid var(--line);padding:2px 0 6px;margin-bottom:10px">${blocks}</div>`;
+}
 function showChronicle(mode,preservePage){ // mode: 'view' | 'era' (1990) | 'era2' (2100) | 'era3' (2060) | 'retire'
   if(!preservePage) _frontPageVisible=FRONT_PAGE_RENDER_PAGE;
   const L=legacyScore(); const entries=chronicleEntries();
@@ -178,6 +198,7 @@ function showChronicle(mode,preservePage){ // mode: 'view' | 'era' (1990) | 'era
       </div>
     </div>
     <div style="max-height:240px;overflow:auto;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:6px 0;margin-bottom:10px">${rows}</div>
+    ${chronicleAnnalsHTML()}
     ${chronicleTrendsHTML()}
     ${mode==='view'?`<div class="cc-panel-h" style="margin:0 0 4px">📰 The Agency Wire</div>
     <div style="max-height:160px;overflow:auto;border-bottom:1px solid var(--line);padding:2px 0 6px;margin-bottom:10px">${frontPagesHTML()}</div>`:''}

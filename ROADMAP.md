@@ -2451,7 +2451,7 @@ confirmed untouched; render doesn't throw under any of the three layers.
 
 Model tier: mechanical, and small — lighter tier appropriate.
 
-### 3.2 — Persistent history archive, separate from the live log [NOT STARTED]
+### 3.2 — Persistent history archive, separate from the live log [SHIPPED 2026-08-04]
 
 `log()` (`sim.js:98`) caps at 40 entries: `state.log.unshift(...); if(state.log.length>40)
 state.log.pop()`. Across ~1,900 monthly ticks that is an amnesia machine — a single Mars transfer
@@ -2461,7 +2461,15 @@ state.log.pop()`. Across ~1,900 monthly ticks that is an amnesia machine — a s
 The review rejected "uncap the log" as stated — the cap is deliberate and `state` serializes to
 `localStorage` on every save. The archive form survives instead:
 
-- [x] Add a separate `state.history` array holding a COMPACT record — date, kind, one-line summary.
+**Correction 1 — checklist mislabel.** As with 3.1, this entry's checklist boxes were `[x]` from the
+initial Tier 3 scoping despite nothing being built. Reverted to `[ ]` below before starting.
+
+**Correction 2 — `state.history` is already taken.** This entry proposed `state.history` for the
+archive, but `state.history` already exists as a `{missionId: year}` map driving the Home timeline
+(`sim.js`, `render.js`). Using it as an array would corrupt that. The archive uses **`state.annals`**
+instead.
+
+- [x] Add a separate `state.annals` array holding a COMPACT record — date, kind, one-line summary.
   No `detail`, no `nav` (both are transient UI concerns; `detail` is already documented as never
   persisted). Roughly 60 bytes/entry, so 500-1000 entries is trivial against a save that already
   carries the full part graph and hull registry.
@@ -2480,9 +2488,12 @@ existing 4-arg signature and its transient `detail` behaviour.
 **Explicitly out of scope:** changing the live log's cap, filters, or appearance; retroactively
 reconstructing history for existing saves (start the archive from the version bump forward).
 
-**Suggested test:** an archived entry is appended for each significant event class and NOT for routine
-chatter; the archive survives a save/load round-trip; an old save loads with an empty archive and no
-error; the live log's 40-cap is unchanged.
+**Suggested test:** `tests/test-annals-archive.js` (new, 28/28) — entry shape (date/year/kind/summary,
+no nav/detail); oldest-first ordering (push, unlike the live log's unshift); the ring-buffer cap;
+significant events record (research complete, crisis trigger/resolve) while routine `log()` chatter
+does not; the live log's 40-cap, newest-first order and 4-arg signature are all untouched; the
+Chronicle surfaces the archive grouped by era and omits the section entirely when empty; and a save
+round-trip plus an "old save with no annals field" both work without error.
 
 Model tier: mostly mechanical; the "which events are significant" predicate is a judgment call —
 heavier tier for that decision, lighter for the wiring.

@@ -1,9 +1,9 @@
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=59; // v59: Tier 1.3 third Chronicle bookend (state.eraScored3) — additive; absent on
-// existing saves, which is the correct default (checkScoringDate() reads !state.eraScored3, so it's
-// simply undefined→false until state.year crosses SCORING_YEAR_3, same as eraScored/eraScored2 always
-// have — no migration code needed or written, this comment exists for the save-format changelog only.
+const SAVE_VERSION=60; // v60: Tier 3.2 persistent history archive (state.annals) — additive; absent on
+// existing saves, which is the correct default (appendAnnal and chronicleAnnalsHTML both guard with
+// `state.annals||[]`, so an old save simply starts an empty archive and records forward from load).
+// No migration code and no retroactive reconstruction — history begins accumulating at v60.
 //
 // FULL PER-VERSION HISTORY (v26 → v58) LIVES IN `docs/SAVE-VERSIONS.md`. It used to sit here as a single
 // ~12,800-character inline comment — one line of which was 9,459 characters — which made this file 42%

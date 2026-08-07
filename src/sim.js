@@ -96,6 +96,21 @@ function domColor(d){ return (DOMAINS[d]||{}).color || 'var(--ink)'; }
 function domDot(d){ return `<span class="dom-dot" style="background:${domColor(d)}"></span>`; } // a small colored chip prefix
 function dateStr(){return ((state.day||0)+1)+' '+MONTHS[state.month]+' '+state.year;} // "14 Mar 1962" — day-of-month is 1-based (Time Granularity)
 function log(kind,msg,nav,detail){state.log.unshift({when:dateStr(),kind,msg,nav,detail}); if(state.log.length>40)state.log.pop();} // E1.5: optional 4th `detail` (plain text) — transient UI-only causal chain for failure entries, never persisted (JSON drops undefined)
+// Tier 3.2 (2026-08-04): the persistent history archive, separate from the 40-entry live log above.
+// The live log is a scrolling console (newest-first, capped, transient detail); annals are the
+// permanent record of SIGNIFICANT events only — flights resolved, crises, facilities, research —
+// stored oldest-first and surfaced in the Chronicle. A compact record (date, year, kind, one-line
+// summary) with no nav/detail, so it serializes cheaply. Not every log() call becomes an annal; the
+// caller decides, by choosing to call this. See the appendAnnal call sites for the significance
+// predicate. Cap is generous (a full campaign produces a few hundred significant events); if it ever
+// trips, oldest drops, standard ring-buffer.
+const ANNALS_CAP=1200;
+function appendAnnal(kind,summary){
+  if(!summary) return;
+  state.annals=state.annals||[];
+  state.annals.push({when:dateStr(), y:state.year, kind, msg:summary});
+  if(state.annals.length>ANNALS_CAP) state.annals.shift();
+}
 function curSigma(){return clampA(state.sigma * tankMaterial().sigmaMult, 0.02, 0.9);} // BC2: tank material scales structural coefficient
 function curRel(){
   let base=0.65+0.025*Math.min(state.successes,12); // heritage: green company is genuinely unreliable
@@ -1907,6 +1922,7 @@ function foundFacility(id){
   if(state.over){ render(); return; }
   state.facilities[id]={built:true, modules:1, since:state.year, supply:FAC_SUPPLY_MONTHS, starvedMonths:0, autoResupply:false, maintenanceEnabled:true, condition:STATION_MAINT_MAX, crewIds:[], crewManaged:false, rotationDueAbs:absMonth()+STATION_ROTATION_MONTHS}; // CE4(b): founded fully provisioned; 2.4: auto-resupply opt-in, off by default
   log('ok',`★ ${def.name} established — your first permanent presence at ${BODIES.find(b=>b.id===def.body).name}. It will grow and produce for decades.`);
+  appendAnnal('ok',`${def.name} founded at ${BODIES.find(b=>b.id===def.body).name}.`);
   render();
 }
 function expandFacility(id){
@@ -3066,6 +3082,7 @@ function checkPoaching(){
 function completeResearch(){
   const r=RESEARCH.find(x=>x.id===state.activeResearch.id);
   state.research[r.id]=true; state.activeResearch=null;
+  appendAnnal('note',`Researched ${r.name}.`);
   if(state.researchGoal===r.id){ log('ok',`🎯 Goal reached: ${r.name}!`); state.researchGoal=null; } // #14: pinned goal achieved — auto-unpin
   divisionGainExp(r); // #4: the covering division gains experience from completing a project
   if(isLeveledTech(r.id)){ if(!state.techLevel) state.techLevel={}; state.techLevel[r.id]=1; } // #3: leveled techs start at L1
@@ -5622,6 +5639,7 @@ function finalizeLaunch(ctx, ops){
       payout = 0.4*delivered; // tankers earn by the tonne delivered, not a flat contract fee
       state.money+=payout; state.rep+=rep; flightRevenue=payout;
       log('ok',`${m.name}: SUCCESS. Delivered ${delivered.toFixed(1)} t to the LEO depot (now ${state.depot.toFixed(1)} t). +${fM(payout)}, +${rep} rep, +${sciGain} sci.${nearMissText(outcome.nearMiss)}`, null, phaseDetail);
+      appendAnnal('ok',`${m.name} — success (${delivered.toFixed(1)} t to LEO depot).`);
     }else{
       state.money+=payout; state.rep+=rep; flightRevenue=payout;
       fulfillSpecialIfMatch(m.id); // special contract bonus on a matching routine/repeat flight
@@ -5629,6 +5647,7 @@ function finalizeLaunch(ctx, ops){
       const scoopTxt = (!routine && state.scooped[m.id]) ? ' (scooped — reduced first-time payout)' : '';
       const firstTxt = firstOfDesign ? ` This vehicle's maiden flight — a +${Math.round(FIRST_DESIGN_PAYOUT_BONUS*100)}% prestige premium and +${FIRST_DESIGN_REP_BONUS} rep for flying it new.` : '';
       log('ok',`${m.name}: SUCCESS.${crewed?` Crew of ${m.crew} home safe.`:''} +${fM(payout)}, +${rep} rep, +${sciGain} sci. (reliability ${(rel*100|0)}%)${qTxt}${scoopTxt}${firstTxt}${nearMissText(outcome.nearMiss)}`, null, phaseDetail);
+      appendAnnal('ok',`${m.name} — success${firstOfDesign?' (maiden flight)':''}${crewed?', crew home safe':''}.`);
     }
     if(m.profile && state.depotUse>0){ state.depot=Math.max(0,state.depot-state.depotUse);
       if(!state.wonM3bii && !pendingCelebration){ state.wonM3bii=true; pendingCelebration=()=>victoryM3bii('depot'); } }
@@ -5685,6 +5704,7 @@ function finalizeLaunch(ctx, ops){
     addSupport(supportDelta('abort')); // #8: a failure dents mood, but a safe crew limits the damage
     recordLoss(crewed?INVESTOR_CONF_SEV_CREWED:INVESTOR_CONF_SEV_UNCREWED); // Option C: vehicle lost either way
     log('bad',`${m.name}: MISSION FAILURE — crew safe. The ${SUBSYS_LABEL[outcome.subsystem].toLowerCase()} gave out — ${outcome.story} Vehicle and mission lost, −${rep} rep.`, null, phaseDetail);
+    appendAnnal('bad',`${m.name} — failure (${SUBSYS_LABEL[outcome.subsystem].toLowerCase()}); crew safe, vehicle lost.`);
   }else if(outcome.kind==='strand'){
     personnelMissionEvent(false);
     const rep=Math.min(state.rep,40); state.rep-=rep;
@@ -5725,6 +5745,7 @@ function finalizeLaunch(ctx, ops){
       const rep=Math.min(state.rep, routine?3:8); state.rep-=rep;
       addSupport(supportDelta('lossUncrewed')); // #8: an uncrewed loss costs some goodwill
       log('bad',`${m.name}: FAILURE. The ${SUBSYS_LABEL[outcome.subsystem].toLowerCase()} failed — ${outcome.story} Vehicle cost forfeit, −${rep} rep.`, null, phaseDetail);
+      appendAnnal('bad',`${m.name} — failure (${SUBSYS_LABEL[outcome.subsystem].toLowerCase()}); vehicle lost.`);
       if(m.profile) applyEraStakes('loss of a flagship mission'); // CE4(c): a deep-space robotic flagship is a real setback late
     }
   }
@@ -6787,6 +6808,7 @@ function tickCrisisTrigger(){
   state.crisis={id:def.id, phase:'building', startAbs:absMonth(), severity:0.15, peakSeverity:0.15, fundedUntilAbs:null};
   timeInterrupt();
   log('bad', def.triggerMsg);
+  appendAnnal('bad',`${def.name} — crisis began.`);
   if(animEnabled) showCrisisModal();
 }
 function resolveCrisis(outcome){
@@ -6797,8 +6819,8 @@ function resolveCrisis(outcome){
   while(state.crisisHistory.length>CRISIS_HISTORY_CAP) archiveCrisisRecord(state.crisisHistory.shift());
   state.crisisDone=record; // kept in sync for anything still reading the old singular field
   state.crisis=null;
-  if(outcome==='mitigated'){ addSupport(6); state.rep+=8; log('ok', def?def.mitigatedMsg:'Crisis resolved.'); }
-  else { addSupport(2); log('note', def?def.enduredMsg:'Crisis endured.'); }
+  if(outcome==='mitigated'){ addSupport(6); state.rep+=8; log('ok', def?def.mitigatedMsg:'Crisis resolved.'); appendAnnal('ok',`${def?def.name:'Crisis'} — resolved.`); }
+  else { addSupport(2); log('note', def?def.enduredMsg:'Crisis endured.'); appendAnnal('note',`${def?def.name:'Crisis'} — endured, its cost now permanent.`); }
 }
 function tickCrisis(){
   tickCrisisTrigger();

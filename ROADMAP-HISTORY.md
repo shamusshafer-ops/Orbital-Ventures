@@ -6106,3 +6106,45 @@ untouched — the header control is additive, not a replacement for anything tha
 Full suite clean. Build parity clean. Smallest slice of the session; per its own sequencing note this
 was intentionally done first and alone, since it makes the rest of Tier 3 (specifically 3.4) worth
 doing at all — nobody could reach Basic or Expert mode before this.
+
+## Session — Tier 3.2: persistent history archive (state.annals) (2026-08-04)
+
+The live log (`log()`, `sim.js`) caps at 40 entries and unshifts newest-first — a scrolling console,
+not a record. Over ~1,900 monthly ticks it forgets everything; a single Mars transfer can push its own
+launch out of history before arrival. Added a separate permanent archive of significant events only.
+
+Two corrections were needed before any code:
+1. Same checklist mislabel as 3.1 — this entry's boxes were `[x]` from the initial Tier 3 scoping
+   despite nothing being built. Reverted to `[ ]` first.
+2. The entry proposed `state.history` for the archive, but `state.history` already exists as a
+   `{missionId: year}` map driving the Home timeline. Using it as an array would have corrupted that.
+   Renamed the archive to **`state.annals`**.
+
+`appendAnnal(kind, summary)` sits beside `log()` and is deliberately NOT a modification of it — the
+protected baseline requires `log()`'s 4-arg signature stay intact, so the archive is a separate
+function significant sites call explicitly rather than a 5th positional arg or a flag threaded through
+179 call sites. Entries are compact (date, numeric year, kind, one-line summary — no nav, no detail),
+stored oldest-first, ring-buffer capped at 1200 (a full campaign produces a few hundred significant
+events, so the cap is headroom, not a live constraint).
+
+Eight significant-event sites wired: flight success (tanker + general), flight failure (crew-safe +
+full loss), crisis trigger, crisis resolution (mitigated + endured, distinct summaries), facility
+founded, and research completed. Routine `log()` chatter deliberately does not record — the
+significance predicate is "the caller chose to call appendAnnal", decided per-site, not mirrored from
+every log line.
+
+Surfaced in the Chronicle (`chronicleAnnalsHTML()`), grouped by era newest-first, below the existing
+milestones board — milestones answer "what was historic", annals answer "what did the agency actually
+do". The section omits itself entirely when the archive is empty, so an existing save (which starts
+empty by design) sees no change until it accumulates history. `SAVE_VERSION` 59→60; additive, lazy
+default via `state.annals||[]` at both the append and render sites, no migration, no retroactive
+reconstruction.
+
+New `tests/test-annals-archive.js` (28/28), including explicit protected-baseline checks that the live
+log's cap, order and signature are untouched, and that a save with no annals field loads and records
+forward without error. One test-authoring slip caught in the run: the first draft called a
+`triggerCrisis()` function that doesn't exist (triggering is inlined in `tickCrisisTrigger()`); fixed
+to set the crisis state the way the real code does.
+
+3.5 (log text search) depends on this — searching a 40-entry live strip is near-pointless, searching
+the archive is a real feature. Full suite clean; build parity clean.
