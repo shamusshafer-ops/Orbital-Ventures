@@ -6078,3 +6078,31 @@ against correct code, because `reqsMet()` also tests `reqMissionDone` and the fi
 before the real assertion runs.
 
 Full suite clean. Build parity clean.
+
+## Session — Tier 3.1: the missing uiLayerBtn header control, built (2026-08-04)
+
+`applyUiLayer()` (`render.js`) had been calling `$('uiLayerBtn')` and no-oping via `if(b)` on every
+single render, because `uiLayerBtn` never existed in `src/shell.html`. Added it to the header, next to
+the existing Settings button, wired to a new `cycleUiLayer()` helper (basic→advanced→expert→basic,
+wrapping) that calls the same `setUiLayer()` the Settings picker's three buttons already call — one
+source of truth, so the header control and the picker cannot disagree.
+
+`applyUiLayer()` also gained a `title=` naming both the current layer and what the next click does
+(the Tier 0.3 convention), computed fresh on every render rather than baked into the static HTML, so
+it stays correct across every cycle rather than only being right once.
+
+**Found and fixed a real documentation bug before starting.** This item's three checklist items were
+already marked `[x]` in ROADMAP.md despite the button genuinely not existing — `git log -S` confirms
+this was wrong from the very commit that first scoped Tier 3, not a later accidental flip during a
+"mark shipped" pass. Reverted to `[ ]` before doing the actual work, so the doc reflected reality
+during the build rather than claiming completion for code that didn't exist.
+
+New `tests/test-ui-layer-button.js` (19/19): the button resolves on a real render (the original bug —
+it did not); text and title update live across every cycle, not just on first paint; the cycle order
+and its wrap; and explicit protected-baseline checks that `setUiLayer()`'s validation, the
+Settings-picker call path, and the advanced default for a save with no `uiLayer` field are all
+untouched — the header control is additive, not a replacement for anything that existed before it.
+
+Full suite clean. Build parity clean. Smallest slice of the session; per its own sequencing note this
+was intentionally done first and alone, since it makes the rest of Tier 3 (specifically 3.4) worth
+doing at all — nobody could reach Basic or Expert mode before this.

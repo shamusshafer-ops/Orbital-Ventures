@@ -2410,7 +2410,7 @@ Judged throughout against the standard Shamus set for this review: the result mu
 *want to keep using these systems* because they are functional, utilitarian, and deliver the
 information needed to play in concise, easily understood form.
 
-### 3.1 — Build the missing `uiLayerBtn` header control [NOT STARTED]
+### 3.1 — Build the missing `uiLayerBtn` header control [SHIPPED 2026-08-04]
 
 `applyUiLayer()` (`render.js:3494`) ends with:
 
@@ -2438,8 +2438,16 @@ picker; `uiLayer()`'s default of `advanced` for saves with no `state.uiLayer`; e
 
 **Explicitly out of scope:** changing which content sits in which layer (that is 3.4).
 
-**Suggested test:** source-guard that `uiLayerBtn` exists in `shell.html` and that `applyUiLayer`'s
-lookup therefore resolves; `setUiLayer` rejects an unknown layer; the cycle order wraps correctly.
+**Correction to this entry's own checklist:** when this was first scoped, its three checklist items
+were mistakenly written as `[x]` despite `uiLayerBtn` genuinely not existing yet (confirmed by
+`git log -S` — wrong from the initial scoping commit, not a later accidental flip). Reverted to `[ ]`
+before starting real work, so the doc matched reality while this was being built.
+
+**Suggested test:** `tests/test-ui-layer-button.js` (new, 19/19) — the button resolves on a real
+render (the original bug: it did not); text and title update live across every cycle, not just once;
+`cycleUiLayer()` goes basic→advanced→expert→basic and wraps; `setUiLayer()`'s validation, the
+Settings-picker call path, and the advanced default for a save with no `uiLayer` field are all
+confirmed untouched; render doesn't throw under any of the three layers.
 
 Model tier: mechanical, and small — lighter tier appropriate.
 

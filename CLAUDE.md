@@ -24,6 +24,13 @@ change first.
 > When done, clear it back to "(none claimed right now)" and add your entry to the history below.
 
 **Oriented quickly (last few sessions, newest first) — see History for full detail:**
+- Tier 3.1 uiLayerBtn built (Claude) — the header control genuinely didn't exist (applyUiLayer's
+  `$('uiLayerBtn')` no-op'd via `if(b)` every render). Added it, wired to new `cycleUiLayer()`
+  (wraps basic→advanced→expert→basic) calling the SAME `setUiLayer()` Settings' picker uses — one
+  source of truth. Title now names current layer + what next click does, recomputed every render.
+  RULE: found this item's own checklist was `[x]`'d in ROADMAP.md since the ORIGINAL scoping commit
+  despite the button not existing (`git log -S` confirmed) — reverted to `[ ]` before building, so
+  the doc didn't claim done for undone work. `test-ui-layer-button.js` 19/19.
 - Tier 2 C6 era-gated research, option (b) (Claude) — `eraMin` on all 98 RESEARCH nodes; MISSIONS
   stay ungated. `researchNodeState()` gains `'era'`, checked BEFORE `reqsMet` so era-gated reads
   differently from prereq-locked. Enforced at `buyResearch()` AND `tryStartQueuedResearch()` (the

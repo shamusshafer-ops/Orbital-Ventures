@@ -3550,9 +3550,18 @@ function applyUiLayer(){
   document.body.classList.toggle('ui-basic', L==='basic');
   document.body.classList.toggle('ui-advanced', L==='advanced');
   document.body.classList.toggle('ui-expert', L==='expert');
-  const b=$('uiLayerBtn'); if(b) b.textContent='View: '+UI_LAYER_LABEL[L];
+  const b=$('uiLayerBtn');
+  if(b){
+    b.textContent='View: '+UI_LAYER_LABEL[L];
+    // Tier 3.1 (2026-08-04): name the current layer AND what the next click does — Tier 0.3 convention
+    const next=UI_LAYERS[(UI_LAYERS.indexOf(L)+1)%UI_LAYERS.length];
+    b.title=`Interface detail level: ${UI_LAYER_LABEL[L]}. Click to switch to ${UI_LAYER_LABEL[next]}.`;
+  }
 }
 function setUiLayer(L){ if(!UI_LAYERS.includes(L)) return; state.uiLayer=L; render(); }
+// Tier 3.1: the header control is a fast CYCLE (basic→advanced→expert→basic), not a replacement for
+// renderSettings()'s three explicit buttons — both call the same setUiLayer(), so they can't disagree.
+function cycleUiLayer(){ setUiLayer(UI_LAYERS[(UI_LAYERS.indexOf(uiLayer())+1)%UI_LAYERS.length]); }
 // #23 Expert-only: per-stage propellant mass fraction (propellant ÷ wet mass)
 function massFractionHTML(v){
   if(!v||!Array.isArray(v.sm)||!v.sm.length) return '';
