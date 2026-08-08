@@ -54,7 +54,7 @@ _devForceWeather=true;
 launchFromHangar(g1RegressionReady.id,g1RegressionReady.hullId,'gate1-b06-fly');
 launch=g1RegressionLaunch; canLaunch=g1RegressionCanLaunch;
 g1RegressionCheck('B06: ownership transfers to the exact pending hull',
-  !hangarList().some(r=>r.id===g1RegressionReady.id)&&_pendingLaunch&&_pendingLaunch.hullId===g1RegressionReady.hullId&&hullById(g1RegressionReady.hullId).status==='in-flight');
+  !hangarList().some(r=>r.id===g1RegressionReady.id)&&_pendingLaunch&&_pendingLaunch.hullId===g1RegressionReady.hullId&&hullById(g1RegressionReady.hullId).status==='preparing');
 g1RegressionCheck('B06: ownership transfer immediately refreshes owning UI', g1RegressionRenders>0);
 g1RegressionCheck('B07: ready execution consumes the one validated pre-transfer quote without re-quoting',
   g1RegressionCanLaunchCalls===1&&JSON.stringify(g1RegressionExecutedQuote)===JSON.stringify(g1RegressionFrozenAgain.quote));

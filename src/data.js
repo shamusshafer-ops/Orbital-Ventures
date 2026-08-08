@@ -36,11 +36,11 @@ const LIFECYCLE_TERMS=Object.freeze({
   history:'The resolved event record for a hull or mission; distinct from the permanent campaign annals.',
   annals:'The permanent campaign-wide record of significant resolved events.',
 });
-const LIFECYCLE_SCHEMA_VERSION=1;
+const LIFECYCLE_SCHEMA_VERSION=2;
 const ORDER_STATUSES=Object.freeze(['queued','building','fulfilled','cancelled']);
-const HULL_STATUSES=Object.freeze(['hangar','in-flight','recovered','expended','lost','scrapped']);
-const LAUNCH_TRANSACTION_PHASES=Object.freeze(['committed','building','hangar','preparing','decision','cruise','resolved','rolled-back']);
-const LAUNCH_SOURCES=Object.freeze(['bench','hangar','window','standing-production']);
+const HULL_STATUSES=Object.freeze(['hangar','preparing','in-flight','recovered','expended','lost','scrapped']);
+const LAUNCH_TRANSACTION_PHASES=Object.freeze(['preparing','decision','liftoff','cruise','settling','presentation','resolved','rolled-back']);
+const LAUNCH_SOURCES=Object.freeze(['hangar','window','arrival','recall']);
 function plainRecord(value){ return value==null?value:JSON.parse(JSON.stringify(value)); }
 function finiteRecordNumber(value,fallback){ const n=Number(value); return Number.isFinite(n)?n:(fallback==null?0:fallback); }
 function makeFamilyRecord(x){ x=x||{}; return {schema:LIFECYCLE_SCHEMA_VERSION,id:String(x.id||''),name:String(x.name||''),born:String(x.born||''),parentId:x.parentId||null,inherited:finiteRecordNumber(x.inherited),flights:finiteRecordNumber(x.flights),successes:finiteRecordNumber(x.successes),losses:finiteRecordNumber(x.losses),spec:plainRecord(x.spec||{})}; }
@@ -48,9 +48,20 @@ function makeOrderRecord(x){ x=x||{}; const started=!!x.started; return {schema:
 function makeHullHistoryEvent(x){ x=x||{}; return {schema:LIFECYCLE_SCHEMA_VERSION,abs:finiteRecordNumber(x.abs),outcome:String(x.outcome||''),missionId:x.missionId||null,transactionId:x.transactionId||null}; }
 function makeHullRecord(x){ x=x||{}; const history=Array.isArray(x.history)?x.history:[]; return {schema:LIFECYCLE_SCHEMA_VERSION,id:String(x.id||''),serial:String(x.serial||''),familyId:x.familyId||null,familyName:String(x.familyName||'Untracked vehicle'),builtAbs:finiteRecordNumber(x.builtAbs),status:HULL_STATUSES.includes(x.status)?x.status:'hangar',flights:finiteRecordNumber(x.flights),reuseCount:finiteRecordNumber(x.reuseCount),recoveryFitted:!!x.recoveryFitted,history:history.map(makeHullHistoryEvent)}; }
 function makeCampaignAnnal(x){ x=x||{}; return {schema:LIFECYCLE_SCHEMA_VERSION,when:String(x.when||''),y:finiteRecordNumber(x.y),kind:String(x.kind||'other'),msg:String(x.msg||'')}; }
-// Schema-only until Gate 2: defining this record must not create, resume, or
-// settle a live launch. Resolved draws/outcome are snapshots, never callbacks.
-function makeLaunchTransactionRecord(x){ x=x||{}; return {schema:LIFECYCLE_SCHEMA_VERSION,id:String(x.id||''),requestId:String(x.requestId||''),revision:finiteRecordNumber(x.revision),phase:LAUNCH_TRANSACTION_PHASES.includes(x.phase)?x.phase:'committed',source:LAUNCH_SOURCES.includes(x.source)?x.source:'bench',missionId:String(x.missionId||''),orderId:x.orderId||null,hullId:x.hullId||null,quote:plainRecord(x.quote||null),timing:plainRecord(x.timing||{}),decision:plainRecord(x.decision||null),outcome:plainRecord(x.outcome||null),applied:Object.assign({build:false,flight:false,time:false,outcome:false},plainRecord(x.applied||{})),nextAction:x.nextAction||null}; }
+// Gate 2 foreground transaction. Only JSON-safe snapshots and stable ids live
+// here; callbacks, DOM nodes, animation frames, and authored mission objects are
+// reconstructed projections. Applied receipts are monotonic and make replay a
+// no-op after the corresponding mutation has completed.
+function makeLaunchTransactionRecord(x){
+  x=x||{};
+  return {schema:LIFECYCLE_SCHEMA_VERSION,id:String(x.id||''),requestId:String(x.requestId||''),intentFingerprint:String(x.intentFingerprint||''),
+    revision:finiteRecordNumber(x.revision),phase:LAUNCH_TRANSACTION_PHASES.includes(x.phase)?x.phase:'preparing',
+    source:LAUNCH_SOURCES.includes(x.source)?x.source:'hangar',missionId:String(x.missionId||''),mission:plainRecord(x.mission||null),orderId:x.orderId||null,hullId:x.hullId||null,
+    quote:plainRecord(x.quote||null),spec:plainRecord(x.spec||null),timing:plainRecord(x.timing||{}),context:plainRecord(x.context||null),
+    decision:plainRecord(x.decision||null),outcome:plainRecord(x.outcome||null),resolution:plainRecord(x.resolution||null),draws:plainRecord(x.draws||{}),receipts:plainRecord(x.receipts||{}),
+    applied:Object.assign({ownership:false,cash:false,stock:false,time:false,pad:false,liftoff:false,cruise:false,decision:false,outcome:false,hull:false,ledger:false,terminal:false},plainRecord(x.applied||{})),
+    terminalPending:!!x.terminalPending,nextAction:x.nextAction||null};
+}
 function recordIsJsonSafe(record){
   const seen=new Set();
   function visit(value){

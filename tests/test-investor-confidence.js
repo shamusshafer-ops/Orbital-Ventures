@@ -110,12 +110,12 @@ function approxEq(a,b){ return Math.abs(a-b)<1e-9; }
     check('crewed catastrophic loss records halved severity', approxEq(recentLossSeverity(), INVESTOR_CONF_SEV_CREWED));
   }
 
-  // scrub — vehicle and crew explicitly recovered — must NOT record a loss
+  // controlled scrub — no catastrophe, regardless of whether the exact hull is recovered or expended — must NOT record an investor-confidence loss
   {
     const ctx=freshMissionCtx('first_flight', false);
     const outcome={kind:'scrub', rel:0.5, story:'test scrub'};
     finalizeLaunch(Object.assign(ctx,{outcome}));
-    check('a scrub (vehicle recovered) does not record a loss', recentLossSeverity()===0);
+    check('a controlled scrub does not record a catastrophic loss', recentLossSeverity()===0);
   }
 
   // partial success — objective incomplete but not a vehicle loss — must NOT record a loss

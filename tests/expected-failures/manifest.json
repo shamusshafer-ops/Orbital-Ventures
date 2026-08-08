@@ -1,8 +1,3 @@
 [
-  {"issue":"G0-B01","file":"skip-before-decision.js","title":"Skip before decision orphans launch resolution"},
-  {"issue":"G0-B02","file":"launch-save-boundaries.js","title":"Reload loses weather-boundary launch ownership"},
-  {"issue":"G0-B03","file":"weather-scrub-premature-terminal.js","title":"Weather scrub triggers premature terminal evaluation"},
-  {"issue":"G0-B04","file":"weather-scrub-gameover.js","title":"Successful payout leaves a stale terminal latch"},
-  {"issue":"G0-B05","file":"static-fire-opening.js","title":"Recommended opening path exhausts First Flight runway"},
-  {"issue":"G0-B08","file":"duplicate-activation.js","title":"Build mutation lacks duplicate-request idempotency"}
+  {"issue":"G0-B05","file":"static-fire-opening.js","title":"Recommended opening path exhausts First Flight runway"}
 ]

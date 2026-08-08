@@ -1,8 +1,8 @@
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=61; // v61: Gate 1 canonical campaign/lifecycle schema. Additive: schemaId and
-// launchTxn default to `ov-campaign-v1` and null; Gate 2 will be the first code allowed to populate
-// the transaction. Existing v60 saves remain best-effort compatible through the established defaults.
+const SAVE_VERSION=62; // v62: Gate 2 resumable, idempotent launch transactions and request receipts.
+// Pre-v62 saves with in-progress flight ownership are rejected rather than assigned a fabricated
+// outcome; ordinary v61 lifecycle records are remapped through the schema-2 factories on load.
 //
 // v60: Tier 3.2 persistent history archive (state.annals) — additive; absent on
 // existing saves, which is the correct default (appendAnnal and chronicleAnnalsHTML both guard with
@@ -33,6 +33,11 @@ function saveCompatibility(payload){
   if(!saved || typeof saved!=='object' || !saved.year || !saved.company) return {ok:false,reason:'Save is missing its company or campaign date.'};
   if(saved.schemaId && saved.schemaId!==CAMPAIGN_SCHEMA_ID) return {ok:false,reason:`Unsupported campaign schema “${saved.schemaId}”; this build requires “${CAMPAIGN_SCHEMA_ID}”.`};
   if((payload.v||0)>SAVE_VERSION) return {ok:false,reason:`Save version v${payload.v} is newer than this build (v${SAVE_VERSION}). Open it with the build that created it.`};
+  if((payload.v||0)<62){
+    const activeHull=(saved.hulls||[]).find(h=>h&&['preparing','in-flight'].includes(h.status));
+    const activeMission=(saved.activeFlights||[]).find(f=>f&&f.deferred&&f.kind!=='logistics');
+    if(saved.launchTxn||saved.pendingLaunch||activeHull||activeMission) return {ok:false,reason:'This pre-v62 save was captured during a launch or cruise without a resumable transaction owner. Restart that development campaign; this build will not invent the missing outcome or hull history.'};
+  }
   return {ok:true,legacy:!saved.schemaId};
 }
 function resetSaveTransients(){
@@ -42,7 +47,7 @@ function autosave(force){
   try{
     if(!_gameStarted) return; // S2: never autosave the boot placeholder before the player picks Continue/Open/New (would clobber the real save)
     if(!state||!state.company||state.over) return;
-    if(_flightResolving && !force) return;
+    if(_launchMutationDepth>0) return;
     const now=Date.now();
     if(!force && now-_lastAutosaveT<AUTOSAVE_MIN_MS) return;
     _lastAutosaveT=now; writeSave();
@@ -70,8 +75,9 @@ function rehydrateFlights(){
   state.activeFlights=state.activeFlights.filter(rec=>{
     if(!rec||!rec.deferred) return false;
     if(rec.kind==='logistics'){ if(!facilityById(rec.facId)) return false; } // 2.1: keep resupply shipments; drop ones whose facility no longer exists
-    else if(!rec.ctx) return false; // a crewed/uncrewed mission must carry its resolved ctx
+    else if(!rec.ctx||!rec.txn) return false; // v62 mission flights carry exact context plus transaction ownership
     else if(rec.ctx.m && rec.ctx.m.id){ const cm=MISSIONS.find(x=>x.id===rec.ctx.m.id); if(cm) rec.ctx.m=cm; }
+    if(rec.txn) rec.txn=makeLaunchTransactionRecord(rec.txn);
     const n=parseInt(String(rec.id||'').replace(/\D/g,''),10); if(!isNaN(n)&&n>maxSeq) maxSeq=n;
     return true;
   });
@@ -153,6 +159,15 @@ function backfillLegacyOrderSpecs(saved){
     if(rec.spec.livery===undefined) rec.spec.livery=plainRecord(fallback.livery);
   }
 }
+function migrateLifecycleV62(saved,ver){
+  if((ver||0)>=62) return;
+  saved.vehicles=(saved.vehicles||[]).map(makeFamilyRecord);
+  saved.buildQueue=(saved.buildQueue||[]).map(makeOrderRecord);
+  saved.hangar=(saved.hangar||[]).map(makeOrderRecord);
+  saved.hulls=(saved.hulls||[]).map(makeHullRecord);
+  saved.annals=(saved.annals||[]).map(makeCampaignAnnal);
+  saved.launchTxn=null; saved.requestReceipts={}; saved.launchTxnSeq=0;
+}
 // Forward-compat defaults come from the same factory as New Game. Only undefined
 // keys are copied into a loaded save, so live values are never overwritten.
 function loadDefaults(){ return createFreshState('engineer'); }
@@ -205,6 +220,7 @@ function applyLoadedSave(payload){
   migrateEraSeen(saved); // P6 6.1 (v44): backfill eraSeen to the save's CURRENT era + seed era baseline snapshot
   migrateHulls(saved); // E4.4: preserve ready hardware identities without fabricating history
   backfillLegacyOrderSpecs(saved); // Gate 1 best effort: freeze newly canonical physical fields once
+  migrateLifecycleV62(saved,payload.v); // Gate 2: active pre-v62 launches were rejected before mutation
   const defaults=loadDefaults();
   for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
   // H1 hardening: user-typed strings are length-clamped at input (setLiveryName slices to 24), but an
@@ -212,12 +228,17 @@ function applyLoadedSave(payload){
   // (Sinks still esc() — this is defense in depth, not the primary fix.)
   if(saved.livery && typeof saved.livery.name==='string') saved.livery.name=saved.livery.name.slice(0,24);
   if(typeof saved.company==='string') saved.company=saved.company.slice(0,48);
+  const incomingLifecycleErrors=auditLifecycleState(saved);
+  if(incomingLifecycleErrors.length) throw new Error(`Save lifecycle is inconsistent: ${incomingLifecycleErrors.slice(0,3).join('; ')}`);
   resetSessionTransients();
   state=saved;
   migrateStateToBuild(state); // E3.5: derive state.build from state.stages (additive, never throws, stages stays source of truth)
   reconcileResearch(); // close any prerequisite gaps opened by tech-tree changes
   rehydrateFlights(); // S1: re-link in-flight records after load
+  rehydrateLaunchTransaction(); // Gate 2: reconstruct only durable ownership; the UI resumes after render
   rehydrateProceduralStaffSeq(); // Gate 1: derived IDs resume above persisted candidates
+  const lifecycleErrors=auditLifecycleState();
+  if(lifecycleErrors.length) throw new Error(`Save lifecycle is inconsistent: ${lifecycleErrors.slice(0,3).join('; ')}`);
   return saved;
 }
 function _applySaveFromPayload(payload, srcLabel){
@@ -229,7 +250,7 @@ function _applySaveFromPayload(payload, srcLabel){
   log('info', srcLabel||'Game loaded.');
   announceAction(`${srcLabel||'Game loaded.'} ${state.company}, ${dateStr()}.`);
   render();
-  showRecap(); // session bookend: where you left off
+  if(!resumeLaunchTransactionUI()&&!evaluateTerminalAfterTransaction()) showRecap(); // launch or derived terminal state owns the first post-load surface
 }
 function loadSaveFromText(raw, srcLabel){
   try{
@@ -276,7 +297,7 @@ function showStartup(){
     ${meta?'':'<p class="dim" style="font-size:11px;margin-top:12px">No saved game found in this browser yet.</p>'}
   </div>`);
 }
-function startupContinue(){ if(autoLoad()){ _gameStarted=true; hideModal(); render(); showRecap(); } else { showStartup(); } }
+function startupContinue(){ if(autoLoad()){ _gameStarted=true; hideModal(); render(); if(!resumeLaunchTransactionUI()&&!evaluateTerminalAfterTransaction()) showRecap(); } else { showStartup(); } }
 function startupNew(){
   showModal(`<h2>New Game</h2>
     <p class="muted" style="font-size:12px">${truthBadge('fiction')} Found a government-enabled public-private space venture in an alternate 1942. Choose a difficulty (changeable later in Settings):</p>
@@ -480,7 +501,7 @@ function _ringIdle(fn){
 // and must never touch or delay the fast path. Never throws.
 function ringAutosave(){
   try{
-    if(!_gameStarted || !state || !state.company || state.over) return;
+    if(!_gameStarted || !state || !state.company || state.over || _launchMutationDepth>0) return;
     const nowMonth=absMonth(), nowMs=Date.now();
     if(!ringCadenceDue(_lastRingWrite, nowMonth, nowMs)) return;
     _lastRingWrite={ absMonth:nowMonth, wallMs:nowMs }; // set synchronously so a burst of advances can't re-trigger

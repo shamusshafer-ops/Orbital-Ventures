@@ -51,6 +51,16 @@ records, deterministic quote authority and locked First Flight numbers, action
 descriptors/accessibility, and the positive G0-B06/G0-B07 promotions. It does
 not replace the full `run-gate0-evidence.js` sweep or real-browser validation.
 
+Gate 2 has its own fast required lane:
+
+```bash
+node tests/run-gate2-contracts.js
+```
+
+It covers stable request identity, exact launch/hull ownership, all six resumable
+decision types, decision-aware Skip, v61 orphan rejection, exactly-once outcome
+settlement, terminal deferral, and capability-truthful recovery disposition.
+
 ## Suites
 
 | File | Covers |

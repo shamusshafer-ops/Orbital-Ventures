@@ -12,8 +12,8 @@ const buildCost=computeVehicle().buildCost;
 issue.setup('build mutation starts from an empty affordable queue',
   buildQueueList().length===0 && state.money>=buildCost,
   `orders=${buildQueueList().length}, money=${state.money.toFixed(2)}, build=${buildCost.toFixed(2)}`);
-queueBuild(true); // deliberate caller invocation 1
-queueBuild(true); // deliberate caller invocation 2
+queueBuild(true,'g0-b08-same-control'); // deliberate delivery 1 from one stable player action
+queueBuild(true,'g0-b08-same-control'); // repeated delivery of that exact request
 
 issue.expect('replaying the same logical build request creates one production order',
   buildQueueList().length===1,
@@ -21,6 +21,11 @@ issue.expect('replaying the same logical build request creates one production or
 issue.expect('replaying the same logical build request debits build cost once',
   Math.abs(state.money-(before-buildCost))<0.011,
   `deliberate calls=2, before=${before.toFixed(2)}, after=${state.money.toFixed(2)}, build=${buildCost.toFixed(2)}`);
+
+newGame('engineer'); state.money=100; state.activeMission='first_flight';
+queueBuild(true,'g0-b08-distinct-a'); queueBuild(true,'g0-b08-distinct-b');
+issue.setup('distinct player requests still create distinct paid orders',buildQueueList().length===2,
+  `orders=${buildQueueList().length}`);
 
 // Supporting positive control: a consumed Hangar ID already rejects a repeated
 // call because ownership of that exact physical hull has moved.

@@ -171,13 +171,13 @@ document.addEventListener('keydown',function(e){
   if(e.key===' '||e.code==='Space'){
     if(mutatingShortcutBlocked(e)) return; // native controls/modal own activation; key-repeat never mutates
     e.preventDefault();
-    if(animState){ if(animState.held) dismissAnim(); else skipAnim(); return; }
+    if(animState){ if(animState.held&&animState.pendingDecision) presentPendingDecisionNow(animState); else if(animState.held) dismissAnim(); else skipAnim(); return; }
     if(spaceAction(!!timeAuto.unit)==='pause'){ stopTimeAuto(); return; } // auto-run active → pause, don't launch
     tryLaunchHotkey();
     return;
   }
   if(!animState) return;
-  if(e.key==='Enter'&&!mutatingShortcutBlocked(e)){ e.preventDefault(); if(animState.held){ dismissAnim(); } else { cycleAnimSpeed(); } }
+  if(e.key==='Enter'&&!mutatingShortcutBlocked(e)){ e.preventDefault(); if(animState.held&&animState.pendingDecision){ presentPendingDecisionNow(animState); } else if(animState.held){ dismissAnim(); } else { cycleAnimSpeed(); } }
 });
 // 'h' toggles the top bar (collapse to free the top of the screen / restore it)
 document.addEventListener('keydown',function(e){

@@ -1055,7 +1055,21 @@ function startFlightScene(spec, done){
 }
 function sfxCleanupClickHandler(A){ if(A&&A.clickHandler){ const vc=A.viewCanvas||A.cv; if(vc) vc.removeEventListener('click',A.clickHandler); A.clickHandler=null; } }
 function dismissAnim(){ const A=animState; if(!A) return; sfxStop(); sfxCleanupClickHandler(A); const done=A.done; animState=null; endFlight3DSession(); $('animOverlay').classList.add('hidden'); sleepFlightScene(); if(done) done(); }
-function skipAnim(){ const A=animState; if(A&&A.held){ dismissAnim(); return; } if(!A) return; cancelAnimationFrame(A.raf); sfxStop(); sfxCleanupClickHandler(A); animState=null; endFlight3DSession(); $('animOverlay').classList.add('hidden'); sleepFlightScene(); if(A.done) A.done(); }
+function presentPendingDecisionNow(A){
+  if(!A||!A.pendingDecision) return false;
+  cancelAnimationFrame(A.raf); sfxStop();
+  const hold=A.pendingDecision.holdAt||'pad-end';
+  const target=hold==='pad-start'?0:(hold==='pad-end'?A.padDur:(A.padDur+A.ascentDur));
+  A.virtT=target; A.held=false; A.prevWall=performance.now();
+  drawScene(target);
+  return !!A.held;
+}
+function skipAnim(){
+  const A=animState; if(!A) return;
+  if(A.pendingDecision){ presentPendingDecisionNow(A); return; }
+  if(A.held){ dismissAnim(); return; }
+  cancelAnimationFrame(A.raf); sfxStop(); sfxCleanupClickHandler(A); animState=null; endFlight3DSession(); $('animOverlay').classList.add('hidden'); sleepFlightScene(); if(A.done) A.done();
+}
 function drawPostFlight(){
   const A=animState; if(!A) return;
   const ctx=A.ctx,W=A.cv.width,H=A.cv.height,s=A.spec;

@@ -63,7 +63,8 @@ function createFreshState(difficulty){
     recentBuilds:[], // #7 slice 5: rolling ring buffer {at,units} of the last CADENCE_WINDOW months of builds
     recentLosses:[], // Option C: rolling {at,severity} of the last INVESTOR_CONF_WINDOW months of vehicle losses
     materials:defaultMaterialsState(), // #7 slice 6: per-commodity spot price + optional fixed-price contract
-    buildQueue:[], hangar:[], hulls:[], hullSeq:0, orderSeq:0, launchTxn:null, // Gate 1: launchTxn is a schema-only slot until Gate 2 owns atomic/resumable launch behavior
+    buildQueue:[], hangar:[], hulls:[], hullSeq:0, orderSeq:0,
+    launchTxn:null, launchTxnSeq:0, requestReceipts:{}, // Gate 2: one foreground launch owner plus durable mutation receipts
     padMonthAbs:-1, padMonthUsed:0, // CE2(b): launch-cadence — pad slots used in the current calendar month
     standingProd:null, juggernautReached:false, // CE2(c): juggernaut capstone — standing production line + milestone flag
     doctrine:null, // CE3(a): company doctrine (strategic identity) — null = undeclared/neutral
@@ -2084,6 +2085,133 @@ function hangarList(){ return Array.isArray(state.hangar)?state.hangar:(state.ha
 function hullList(){ return Array.isArray(state.hulls)?state.hulls:(state.hulls=[]); }
 function hullById(id){ return id?hullList().find(h=>h&&h.id===id):null; }
 function hullSerial(n){ return 'OVH-'+String(n).padStart(4,'0'); }
+function stableRecordJson(value){
+  if(value===null||typeof value!=='object') return JSON.stringify(value);
+  if(Array.isArray(value)) return '['+value.map(stableRecordJson).join(',')+']';
+  return '{'+Object.keys(value).sort().map(k=>JSON.stringify(k)+':'+stableRecordJson(value[k])).join(',')+'}';
+}
+function requestIntentFingerprint(kind,payload){
+  return String(kind||'mutation')+':'+stableRecordJson(plainRecord(payload||{}));
+}
+function requestReceipt(id){ return id&&state.requestReceipts&&state.requestReceipts[id]||null; }
+function inspectRequestReceipt(id,kind,fingerprint){
+  if(!id) return {ok:true,receipt:null};
+  const prior=requestReceipt(id);
+  if(!prior) return {ok:true,receipt:null};
+  if(prior.kind===kind&&prior.fingerprint===fingerprint) return {ok:true,replay:true,receipt:prior};
+  const why=`Request ${id} was already used for a different ${prior.kind||'mutation'}; refresh the action before trying again.`;
+  announceAction(why); log('bad',why); return {ok:false,collision:true,receipt:prior,why};
+}
+function recordRequestReceipt(id,kind,fingerprint,resultId,missionId,subjectId){
+  if(!id) return null;
+  state.requestReceipts=state.requestReceipts||{};
+  const prior=state.requestReceipts[id];
+  if(prior) return prior;
+  return state.requestReceipts[id]={requestId:id,kind,fingerprint,resultId:resultId||null,missionId:missionId||null,subjectId:subjectId||null,atAbs:absDay()};
+}
+function activeLaunchTransaction(snapshot){
+  const tx=(snapshot||state).launchTxn;
+  return !!(tx&&tx.phase!=='resolved'&&tx.phase!=='rolled-back');
+}
+function launchTransactionContextSnapshot(ctx){
+  const copy=plainRecord(ctx||{}); if(copy) delete copy.m; return copy;
+}
+function launchTransactionContext(tx){
+  if(!tx) return null;
+  const m=missionById(tx.missionId)||plainRecord(tx.mission); if(!m) return null;
+  return Object.assign({},plainRecord(tx.context||{}),{m});
+}
+function beginLaunchTransaction(input){
+  input=input||{};
+  const fingerprint=input.intentFingerprint||requestIntentFingerprint('launch',{missionId:input.missionId,orderId:input.orderId||null,hullId:input.hullId||null,quote:input.quote||null,spec:input.spec||null,source:input.source||'hangar'});
+  const replay=inspectRequestReceipt(input.requestId,'launch',fingerprint);
+  if(!replay.ok) return replay;
+  if(replay.replay){
+    const tx=state.launchTxn&&state.launchTxn.id===replay.receipt.resultId?state.launchTxn:null;
+    announceAction(`Request ${input.requestId} already owns ${replay.receipt.resultId||'this launch'}; no launch effect was repeated.`);
+    return {ok:true,replay:true,receipt:replay.receipt,txn:tx};
+  }
+  if(activeLaunchTransaction()){
+    const why=`Launch ${state.launchTxn.id} already owns ${state.launchTxn.hullId||state.launchTxn.missionId}; resolve it before starting another.`;
+    announceAction(why); return {ok:false,why};
+  }
+  const id='ltx'+(state.launchTxnSeq=(state.launchTxnSeq||0)+1);
+  const mission=missionById(input.missionId);
+  const tx=makeLaunchTransactionRecord(Object.assign({},input,{id,intentFingerprint:fingerprint,mission:plainRecord(input.mission||mission),phase:'preparing',revision:0,nextAction:'prepare'}));
+  state.launchTxn=tx;
+  recordRequestReceipt(input.requestId,'launch',fingerprint,id,input.missionId,input.hullId||input.orderId||input.missionId);
+  return {ok:true,txn:tx};
+}
+function checkpointLaunchTransaction(phase,nextAction){
+  const tx=state.launchTxn; if(!tx) return null;
+  if(phase) tx.phase=phase;
+  tx.nextAction=nextAction||null;
+  return tx;
+}
+function checkpointLaunchSave(){
+  try{ if(typeof autosave==='function') autosave(true); }catch(e){}
+}
+// A decision selection and every cost/time/effect it authorizes are one write
+// barrier. Time advancement invokes autosave internally, so callers that cross
+// time must use this helper and expose only the next resumable phase afterward.
+function runLaunchMutationGroup(apply){
+  const outer=_launchMutationDepth===0;
+  _launchMutationDepth++;
+  let completed=false;
+  try{
+    const result=apply(); completed=true; return result;
+  }finally{
+    _launchMutationDepth=Math.max(0,_launchMutationDepth-1);
+    if(outer&&completed) checkpointLaunchSave();
+  }
+}
+function setLaunchTransactionContext(ctx){ const tx=state.launchTxn; if(tx) tx.context=launchTransactionContextSnapshot(ctx); return tx; }
+function setLaunchTransactionDecision(kind,ctx,data,optionIds){
+  const tx=state.launchTxn; if(!tx) return null;
+  tx.revision=(tx.revision||0)+1;
+  tx.context=launchTransactionContextSnapshot(ctx);
+  tx.decision={id:`${tx.id}:d${tx.revision}:${kind}`,kind,revision:tx.revision,options:(optionIds||[]).map(String),selected:null,resolvedEffect:null,data:plainRecord(data||{})};
+  tx.phase='decision'; tx.nextAction=`decide:${kind}`; tx.applied.decision=false;
+  return tx.decision;
+}
+function ensureLaunchTransactionDecision(kind,ctx,data,optionIds){
+  const tx=state.launchTxn;
+  if(!tx) return null;
+  const current=tx.decision;
+  if(current&&current.kind===kind&&current.selected==null){
+    tx.context=launchTransactionContextSnapshot(ctx);
+    return current;
+  }
+  const decision=setLaunchTransactionDecision(kind,ctx,data,optionIds);
+  checkpointLaunchSave();
+  return decision;
+}
+function validateLaunchDecision(kind,txnId,revision,optionId){
+  const tx=state.launchTxn, d=tx&&tx.decision;
+  if(!tx||!d||d.kind!==kind) return {ok:false,why:'That launch decision is no longer active.'};
+  if(txnId!=null&&String(txnId)!==tx.id) return {ok:false,why:'That control belongs to an older launch transaction.'};
+  if(revision!=null&&Number(revision)!==Number(d.revision)) return {ok:false,why:'That control belongs to an older decision revision.'};
+  if(optionId!=null&&d.options.length&&!d.options.includes(String(optionId))) return {ok:false,why:'That option is not valid for the active launch decision.'};
+  if(d.selected!=null){
+    if(String(d.selected)===String(optionId)) return {ok:true,replay:true,decision:d,txn:tx};
+    return {ok:false,why:'This decision has already been resolved with a different option.'};
+  }
+  return {ok:true,decision:d,txn:tx};
+}
+function selectLaunchDecision(kind,optionId,txnId,revision,resolvedEffect){
+  const check=validateLaunchDecision(kind,txnId,revision,optionId);
+  if(!check.ok){ announceAction(check.why); return check; }
+  if(check.replay) return check;
+  check.decision.selected=String(optionId);
+  if(resolvedEffect!==undefined) check.decision.resolvedEffect=plainRecord(resolvedEffect);
+  check.txn.applied.decision=true;
+  check.txn.nextAction=`apply:${kind}:${optionId}`;
+  return check;
+}
+function launchDecisionArgs(decision){
+  const tx=state.launchTxn;
+  return decision&&tx?{txnId:tx.id,revision:decision.revision}:{};
+}
 function auditLifecycleState(snapshot){
   const s=snapshot||state, errors=[];
   const collections=[['family',s.vehicles||[]],['order',s.buildQueue||[]],['hangar order',s.hangar||[]],['hull',s.hulls||[]]];
@@ -2104,13 +2232,44 @@ function auditLifecycleState(snapshot){
   }
   if(s.launchTxn){
     errors.push(...lifecycleRecordErrors('transaction',s.launchTxn).map(e=>`launchTxn: ${e}`));
-    if(s.launchTxn.hullId&&owned.has(s.launchTxn.hullId)) errors.push(`hull ${s.launchTxn.hullId}: owned by hangar and transaction`);
+    if(s.launchTxn.phase==='decision'&&s.launchTxn.decision&&s.launchTxn.decision.selected!=null)
+      errors.push('launchTxn: selected decision is a transient mutation state, not a resumable checkpoint');
+    if(activeLaunchTransaction(s)&&s.launchTxn.applied.ownership&&s.launchTxn.hullId&&owned.has(s.launchTxn.hullId)) errors.push(`hull ${s.launchTxn.hullId}: owned by hangar and transaction`);
+    const txHull=s.launchTxn.hullId&&hulls.get(s.launchTxn.hullId);
+    if(activeLaunchTransaction(s)&&s.launchTxn.hullId&&!txHull) errors.push(`launchTxn: unknown hull ${s.launchTxn.hullId}`);
+    if(activeLaunchTransaction(s)&&s.launchTxn.applied.ownership&&txHull&&!s.launchTxn.applied.hull&&!['preparing','in-flight'].includes(txHull.status)) errors.push(`launchTxn: active hull ${txHull.id} is ${txHull.status}`);
+    if(activeLaunchTransaction(s)&&!s.launchTxn.applied.ownership&&s.launchTxn.hullId&&!owned.has(s.launchTxn.hullId)) errors.push(`launchTxn: unclaimed hull ${s.launchTxn.hullId} is not in Hangar`);
+    if(activeLaunchTransaction(s)&&s.launchTxn.applied.ownership&&s.launchTxn.hullId) owned.add(s.launchTxn.hullId);
+  }
+  for(const rec of (s.activeFlights||[])){
+    if(!rec||!rec.deferred||rec.kind==='logistics') continue;
+    if(!rec.ctx||!rec.txn){ errors.push(`flight ${rec.id||'?'}: missing resumable context/transaction owner`); continue; }
+    errors.push(...lifecycleRecordErrors('transaction',rec.txn).map(e=>`flight ${rec.id||'?'} txn: ${e}`));
+    if(rec.txn.phase!=='cruise') errors.push(`flight ${rec.id||'?'} txn: phase ${rec.txn.phase} is not cruise`);
+    const hullId=rec.txn.hullId;
+    if(hullId){
+      const hull=hulls.get(hullId);
+      if(!hull) errors.push(`flight ${rec.id||'?'} txn: unknown hull ${hullId}`);
+      else if(hull.status!=='in-flight') errors.push(`flight ${rec.id||'?'} txn: hull ${hullId} is ${hull.status}`);
+      if(owned.has(hullId)) errors.push(`hull ${hullId}: multiple lifecycle owners`);
+      owned.add(hullId);
+    }
+  }
+  for(const hull of hulls.values()){
+    if(['preparing','in-flight'].includes(hull.status)&&!owned.has(hull.id))
+      errors.push(`hull ${hull.id}: ${hull.status} status has no transaction or flight owner`);
+  }
+  const receiptIds=new Set();
+  for(const id of Object.keys(s.requestReceipts||{})){
+    const rec=s.requestReceipts[id];
+    if(!rec||rec.requestId!==id||!rec.kind||!rec.fingerprint) errors.push(`request receipt ${id}: malformed`);
+    if(receiptIds.has(id)) errors.push(`request receipt ${id}: duplicate`); receiptIds.add(id);
   }
   if(!s.history||Array.isArray(s.history)) errors.push('mission history must be an id→year map');
   if(!Array.isArray(s.annals)) errors.push('annals must be an array');
   return errors;
 }
-function addHullEvent(h,outcome,missionId,transactionId){ if(h){ h.history=Array.isArray(h.history)?h.history:[]; h.history.push(makeHullHistoryEvent({abs:absDay(),outcome,missionId:missionId||null,transactionId:transactionId||null})); if(h.history.length>24) h.history=h.history.slice(-24); } }
+function addHullEvent(h,outcome,missionId,transactionId){ if(h){ h.history=Array.isArray(h.history)?h.history:[]; if(transactionId&&h.history.some(e=>e&&e.transactionId===transactionId&&e.outcome===outcome)) return; h.history.push(makeHullHistoryEvent({abs:absDay(),outcome,missionId:missionId||null,transactionId:transactionId||null})); if(h.history.length>24) h.history=h.history.slice(-24); } }
 function makeHull(spec,source){
   const n=state.hullSeq=(state.hullSeq||0)+1, fam=spec&&spec.activeVehicle?familyById(spec.activeVehicle):null;
   const h=makeHullRecord({id:'hull_'+n,serial:hullSerial(n),familyId:(spec&&spec.activeVehicle)||null,familyName:fam?fam.name:'Untracked vehicle',builtAbs:absDay(),status:'hangar',flights:0,reuseCount:0,recoveryFitted:!!(spec&&spec.recovery),history:[]});
@@ -2123,8 +2282,15 @@ function assignHullToHangar(rec){
   else h=makeHull(rec.spec,'rollout');
   rec.hullId=h.id; return h;
 }
-function markHullLaunched(id,missionId){ const h=hullById(id); if(h){ h.status='in-flight'; h.flights=(h.flights||0)+1; h.reuseCount=Math.max(0,h.flights-1); addHullEvent(h,'launched',missionId); } return h; }
-function settleHullFlight(id,m,outcome){ const h=hullById(id); if(!h) return; const safe=/^(success|partial|scrub)$/.test(outcome||''); h.status=(safe&&h.recoveryFitted&&recoveryActive(m))?'recovered':(safe?'expended':'lost'); addHullEvent(h,h.status,m&&m.id); }
+function markHullPreparing(id){ const h=hullById(id); if(h&&h.status==='hangar') h.status='preparing'; return h; }
+function markHullLaunched(id,missionId,transactionId){ const h=hullById(id); if(h&&h.status!=='in-flight'){ h.status='in-flight'; h.flights=(h.flights||0)+1; h.reuseCount=Math.max(0,h.flights-1); addHullEvent(h,'launched',missionId,transactionId); } return h; }
+function hullRecoveryFitted(id){ const h=hullById(id); return !!(h&&h.recoveryFitted); }
+function recoveryDispositionText(hullId,crewed,crewCanEscape){
+  if(hullRecoveryFitted(hullId)) return crewed?'crew survival and vehicle recovery are expected, subject to the abort profile':'the fitted recovery system can return the vehicle';
+  if(crewed) return crewCanEscape?'the launch-escape system protects the crew, but this launch vehicle will be expended':'no launch-escape system is fitted; the crew cannot separate safely and the launch vehicle will be lost';
+  return 'this launch vehicle has no fitted recovery system and will be expended';
+}
+function settleHullFlight(id,m,outcome,transactionId){ const h=hullById(id); if(!h) return; const survived=/^(success|partial|scrub)$/.test(outcome||''); const recoverable=survived&&h.recoveryFitted; h.status=recoverable?'recovered':(survived?'expended':'lost'); addHullEvent(h,h.status,m&&m.id,transactionId); }
 // snapshot the full bench design (incl. boosters/recovery/family) so a queued order builds
 // the design as it was when ordered, even if the bench changes afterward. Also carries
 // testLevel/rehearsal — irrelevant to the original build-ahead-of-time use, but load-bearing
@@ -2264,6 +2430,15 @@ function canQueue(m,v,sim){
 // distinguish them (it currently doesn't need to).
 function queueBuild(committed,requestId){
   const m=curMission(); const v=computeVehicle(); const sim=m&&m.profile?simulateMission(m):null;
+  const spec=queueSpecSnapshot();
+  const intent=requestIntentFingerprint('build',{missionId:m&&m.id,committed:!!committed,spec});
+  const replay=inspectRequestReceipt(requestId,'build',intent);
+  if(!replay.ok) return null;
+  if(replay.replay){
+    const existing=[...buildQueueList(),...hangarList()].find(rec=>rec&&rec.id===replay.receipt.resultId);
+    announceAction(`Request ${requestId} already created order ${replay.receipt.resultId}; no second build or debit was applied.`);
+    return existing||Object.assign({replay:true},plainRecord(replay.receipt));
+  }
   const chk=canQueue(m,v,sim); if(!chk.ok){ announceAction(chk.why||'Build unavailable.'); return null; }
   state.money-=v.buildCost;                       // build cost committed up front
   consumeMaterialsForBuild();                     // #7 s7: draw materials now (the build is starting)
@@ -2276,8 +2451,9 @@ function queueBuild(committed,requestId){
   const order=makeOrderRecord({ id:'ord'+(state.orderSeq=(state.orderSeq||0)+1),
     familyId:fam?fam.id:null,
     name:(fam?fam.name:'Vehicle')+' — '+m.name, missionId:m.id, missionName:m.name,
-    spec:queueSpecSnapshot(), units:vehicleUnits(m), monthsTotal:mo, monthsLeft:mo, cost:v.buildCost, status:'queued', started:false, committed:!!committed, requestId:requestId||null });
+    spec, units:vehicleUnits(m), monthsTotal:mo, monthsLeft:mo, cost:v.buildCost, status:'queued', started:false, committed:!!committed, requestId:requestId||null });
   state.buildQueue.push(order);
+  recordRequestReceipt(requestId,'build',intent,order.id,m.id,order.id);
   log('note', committed
     ? `Launch committed: ${order.name} — building now (${mo>0?mo+' mo':'<1 mo'}, ${fM(order.cost)}). Fly it from the hangar once it rolls out.`
     : `Manufacturing — queued ${order.name} (${mo} mo, ${fM(order.cost)}). It builds while you work.`);
@@ -2330,10 +2506,17 @@ function launchFromHangar(id,exactHullId,requestId){
   const m=curMission(), v=computeVehicle(), sim=m&&m.profile?simulateMission(m):null;
   const chk=canLaunch(v,m,sim,true); // prebuilt-aware (build cost already paid)
   if(!chk.ok){ log('note',`Can’t fly ${h.name}: ${chk.why}`); announceAction(chk.why); render(); return false; }
+  const begun=beginLaunchTransaction({requestId,source:'hangar',missionId:m.id,orderId:h.id,hullId:h.hullId,
+    quote:chk.quote,spec:h.spec,timing:{startedAbs:absDay()}});
+  if(!begun.ok) return false;
+  if(begun.replay) return true;
   state.hangar=hangarList().filter(x=>x.id!==id); // consumed by this flight
-  markHullLaunched(h.hullId, h.missionId);
+  markHullPreparing(h.hullId);
+  begun.txn.applied.ownership=true;
+  begun.txn.nextAction='continue-preparation';
   announceAction(`${h.name}, hull ${h.hullId}, transferred from Hangar to launch preparation.`);
   render(); // ownership changes immediately; a later decision overlay must never leave a stale Fly control behind it
+  checkpointLaunchSave();
   launch(true, h.hullId, requestId, chk.quote);
   return true;
 }
@@ -4121,14 +4304,16 @@ function fleetHeritageRelBonus(){
 // effective per-unit engine cost used everywhere build cost is summed
 function engCost(id){ const e=ENGINES[id]; return e?e.cost*engineCostMult(id):0; }
 // record a successful flight's engines toward heritage (called on mission success)
-function creditEngineHeritage(){
+function creditEngineHeritage(spec,mission){
   if(!state.engineHeritage) state.engineHeritage={};
   const ids=new Set();
-  (state.stages||[]).forEach(s=>ids.add(s.eng));
-  if(boostersFitted&&boostersFitted()) ids.add(state.boosters.eng);
-  const m=curMission();
-  if(m&&m.profile){ if(m.modules.includes('transfer')) ids.add(state.transfer.eng);
-    if(m.modules.includes('lander')){ ids.add(state.descent.eng); ids.add(state.ascent.eng); } }
+  const frozen=spec||{}, stages=Array.isArray(frozen.stages)?frozen.stages:(state.stages||[]);
+  stages.forEach(s=>ids.add(s.eng));
+  const boosters=frozen.boosters||state.boosters;
+  if(boosters&&boosters.count>0) ids.add(boosters.eng);
+  const m=mission||curMission(), transfer=frozen.transfer||state.transfer, descent=frozen.descent||state.descent, ascent=frozen.ascent||state.ascent;
+  if(m&&m.profile){ if(m.modules.includes('transfer')) ids.add(transfer.eng);
+    if(m.modules.includes('lander')){ ids.add(descent.eng); ids.add(ascent.eng); } }
   ids.forEach(id=>{ if(ENGINES[id]) state.engineHeritage[id]=Math.min(ENG_HERITAGE_MAX_FLIGHTS,(state.engineHeritage[id]||0)+1); });
 }
 // is a solid the final stage doing orbital insertion? (last stage, non-profile orbital-class mission)
@@ -4693,7 +4878,7 @@ const LIVE_CALL_SUB_HI=0.94;  // a loss-severity early subsystem at/under this r
 // touch the underlying reliability roll at all, only how forgivingly it's read on a reflight.
 const LIVE_CALL_SUB_HI_ROUTINE=0.97;
 const LIVE_CALL_R_FLOOR=0.40; // ...but only fire when the flight overall is still a real gamble
-const LIVE_CALL_PHASES={pad:1, ascent:1, staging:1}; // early phases where an abort can still save the vehicle
+const LIVE_CALL_PHASES={pad:1, ascent:1, staging:1}; // early phases where a controlled abort can still limit consequences
 // dev menu: synthesize a live-call flag from an early-phase subsystem (or a last-resort fake), so
 // "force live call" fires even when nothing is naturally amber. Matches the real {sub, phase} shape.
 function devSynthLiveFlag(outcome){
@@ -4851,6 +5036,9 @@ function rollWeather(m){
 // E1.2 slice C: holds at pad-start (before the countdown even ramps) instead of a page modal
 // before the overlay opens at all — the range-weather call is the very first thing about a launch.
 function showWeatherModal(m,wx){
+  const p=_pendingLaunch||{m,wx};
+  const decision=ensureLaunchTransactionDecision('weather',p,{weather:wx},['scrub','launch']);
+  const args=launchDecisionArgs(decision);
   openFlightForDecision({m, crewed:(m.crew||0)>0}, { holdAt:'pad-start', buildPanel:()=>{
     const pen=Math.round(wx.penalty*100);
     // Slice B reskin: frame the existing pad-start weather hold as the built-in T-31s hold (the last
@@ -4860,23 +5048,33 @@ function showWeatherModal(m,wx){
               `Range weather: ${wx.label}.`, wx.detail,
               `Scrubbing waits ~${wx.clear} month${wx.clear>1?'s':''}. Flying through it costs −${pen}% reliability, this flight only.` ],
       buttons:[
-        {label:`Scrub & wait (${wx.clear} mo)`, ghost:true, action:scrubLaunch},
-        {label:`Launch anyway (−${pen}% reliability)`, action:launchAnyway},
+        {label:`Stand down & recycle (${wx.clear} mo) — retain this hull`, ghost:true, action:()=>scrubLaunch(args.txnId,args.revision)},
+        {label:`Launch anyway (−${pen}% reliability)`, action:()=>launchAnyway(args.txnId,args.revision)},
       ] };
   }});
 }
-function launchAnyway(){
-  if(!_pendingLaunch) return; const p=_pendingLaunch; _pendingLaunch=null; hideModal();
+function launchAnyway(txnId,revision){
+  if(!_pendingLaunch) return; const p=_pendingLaunch;
+  if(state.launchTxn){ const selected=selectLaunchDecision('weather','launch',txnId,revision); if(!selected.ok||selected.replay) return; }
+  _pendingLaunch=null; hideModal();
   log('note',`${p.m.name}: launch director polled GO despite ${p.wx.label.toLowerCase()} — flying with a ${Math.round(p.wx.penalty*100)}% reliability penalty.`);
   proceedLaunch(p.m,p.v,p.sim,p.windowQuality,p.wx.penalty,p.prebuilt,p.hullId);
 }
-function scrubLaunch(){
-  if(!_pendingLaunch) return; const p=_pendingLaunch; _pendingLaunch=null; hideModal();
-  dismissAnim(); // E1.2 slice C: scrubbing skips months ahead to retry — that's a new attempt later, not a continuation of this held pad frame, so don't try to resume it across the time-skip
-  advance(p.wx.clear);
-  log('note',`${p.m.name}: scrubbed for weather (${p.wx.label}). Waited ${p.wx.clear} mo; the front passed.`);
-  if(state.money<0){ gameOver(); return; }
-  proceedLaunch(p.m,p.v,p.sim,p.windowQuality,0,p.prebuilt,p.hullId);
+function scrubLaunch(txnId,revision){
+  if(!_pendingLaunch) return; const p=_pendingLaunch;
+  return runLaunchMutationGroup(()=>{
+    if(state.launchTxn){ const selected=selectLaunchDecision('weather','scrub',txnId,revision); if(!selected.ok||selected.replay) return false; }
+    _pendingLaunch=null; hideModal();
+    dismissAnim(); // E1.2 slice C: scrubbing skips months ahead to retry — that's a new attempt later, not a continuation of this held pad frame, so don't try to resume it across the time-skip
+    advance(p.wx.clear);
+    if(state.launchTxn){
+      state.launchTxn.timing.weatherWaitDays=(state.launchTxn.timing.weatherWaitDays||0)+daysFor(p.wx.clear);
+      state.launchTxn.receipts.weatherRecycle={applied:true,days:daysFor(p.wx.clear),atAbs:absDay()};
+    }
+    log('note',`${p.m.name}: scrubbed for weather (${p.wx.label}). Waited ${p.wx.clear} mo; the front passed.`);
+    proceedLaunch(p.m,p.v,p.sim,p.windowQuality,0,p.prebuilt,p.hullId);
+    return true;
+  });
 }
 
 /* ---------- #20 slice 2: in-flight anomaly decisions ---------- */
@@ -5054,6 +5252,9 @@ function rollMissionEvents(ctx, rng){
 function showAnomalyModal(ev, ctx){
   const opts=ev.options(ctx);
   if(_pendingOps){ _pendingOps.ev=ev; _pendingOps.opts=opts; } // resolveAnomaly reads _pendingOps.opts
+  const active=state.launchTxn&&state.launchTxn.decision&&state.launchTxn.decision.kind==='anomaly'?state.launchTxn.decision:null;
+  const decision=ensureLaunchTransactionDecision('anomaly',ctx,{eventId:ev.id,roll:state.launchTxn?(active&&active.data?active.data.roll:Math.random()):null},opts.map(o=>o.id));
+  const args=launchDecisionArgs(decision);
   // E1.2 slice C: anomaly now plays in the flight overlay (like live-call/reserve/rescue) rather
   // than a page-level showModal. Hold at orbit-start for orbital missions, cislunar-start for
   // deep/profile missions — same hold point as reserve and rescue, since anomalies fire in that
@@ -5066,20 +5267,23 @@ function showAnomalyModal(ev, ctx){
     const detLines=det.length>maxCh?[det.slice(0,cut).trim(),det.slice(cut).trim()]:[det];
     return { title:'\u26a0 IN-FLIGHT ANOMALY', color:themeColor('warn'),
       lines:[ctx.m.name+' \u2014 '+ev.title+'.', ...detLines, 'Mission Control needs a call.'],
-      buttons:opts.map((o,i)=>({label:o.label, ghost:i>0, action:()=>resolveAnomaly(i)})) };
+      buttons:opts.map((o,i)=>({label:o.label, ghost:i>0, action:()=>resolveAnomaly(o.id,args.txnId,args.revision)})) };
   }});
 }
-function resolveAnomaly(i){
+function resolveAnomaly(i,txnId,revision){
   if(!_pendingOps||!_pendingOps.opts) return;
-  const ctx=_pendingOps, o=ctx.opts[i]; if(!o) return;
-  _pendingOps=null; hideModal();
-  const eff=o.resolve(Math.random)||{}, prior=ctx._priorOrbitOps||null; ctx._priorOrbitOps=null;
+  const ctx=_pendingOps, o=typeof i==='number'?ctx.opts[i]:ctx.opts.find(opt=>opt.id===i); if(!o) return;
+  const txDecision=state.launchTxn&&state.launchTxn.decision&&state.launchTxn.decision.kind==='anomaly'?state.launchTxn.decision:null;
+  const roll=txDecision&&txDecision.data&&Number.isFinite(txDecision.data.roll)?txDecision.data.roll:Math.random();
+  const eff=o.resolve(()=>roll)||{}, prior=ctx._priorOrbitOps||null; ctx._priorOrbitOps=null;
   if(prior){
     if(prior.log) log('note',`${ctx.m.name}: ${prior.log}`);
     eff.payoutMult=(prior.payoutMult==null?1:prior.payoutMult)*(eff.payoutMult==null?1:eff.payoutMult);
     eff.repDelta=(prior.repDelta||0)+(eff.repDelta||0);
     if(prior.outcomeOverride&&!eff.outcomeOverride) eff.outcomeOverride=prior.outcomeOverride;
   }
+  if(state.launchTxn){ const selected=selectLaunchDecision('anomaly',o.id,txnId,revision,eff); if(!selected.ok||selected.replay) return; }
+  _pendingOps=null; hideModal();
   finalizeLaunch(ctx, eff);
 }
 
@@ -5091,29 +5295,37 @@ function orbitalManeuverBudget(ctx){
 function orbitalManeuverOptions(ctx){
   const budget=orbitalManeuverBudget(ctx), inc=Number(ctx&&ctx.m&&ctx.m.inclination)||LAUNCH_SITE_LAT;
   const make=(id,label,cost,profile,effect)=>({id,label,cost,enabled:budget>=cost,profile:Object.assign({inclination:inc,remainingDv:Math.max(0,budget-cost)},profile),effect:effect||{}});
+  const recovery=hullRecoveryFitted(ctx&&ctx.hullId);
   const opts=[
     make('circularize','Execute planned circularization',0,{label:'NOMINAL ORBIT',periapsis:200,apoapsis:205},{repDelta:1,log:'Mission Control completed the insertion correction; the spacecraft is stable in its target orbit.'}),
     make('raise','Raise orbit · 120 m/s',120,{label:'ORBIT RAISE',periapsis:205,apoapsis:420},{payoutMult:1.05,repDelta:2,log:'Mission Control used the available margin to raise apogee and expand the mission envelope.'}),
     make('lower','Lower orbit · 70 m/s',70,{label:'LOW ORBIT',periapsis:155,apoapsis:205},{payoutMult:.9,outcomeOverride:'partial',log:'Mission Control lowered the orbit; the payload is safe, but lifetime and coverage are reduced.'}),
-    make('deorbit','Deorbit / recover vehicle',0,{label:'DEORBIT',periapsis:35,apoapsis:190},{outcomeOverride:'scrub',log:'Mission Control commanded an early deorbit; the vehicle was recovered and the objective was forfeited.'})
+    make('deorbit',recovery?'Deorbit / recover fitted vehicle':'Deorbit / terminate mission',0,{label:'DEORBIT',periapsis:35,apoapsis:190},{outcomeOverride:'scrub',log:recovery
+      ?'Mission Control commanded an early deorbit; the fitted recovery system returned the vehicle and the objective was forfeited.'
+      :`Mission Control commanded an early deorbit; ${ctx&&ctx.crewed?'the crew-return system brought the crew home, but ':''}the launch vehicle was expended because no compatible recovery system was fitted.`})
   ];
   return opts;
 }
 function showOrbitalManeuverDecision(ctx){
   const opts=orbitalManeuverOptions(ctx), budget=orbitalManeuverBudget(ctx);
   _pendingOrbitOps={ctx,opts};
+  const decision=ensureLaunchTransactionDecision('orbit',ctx,{budget,options:opts},opts.filter(o=>o.enabled).map(o=>o.id));
+  const args=launchDecisionArgs(decision);
   openFlightForDecision(ctx,{holdAt:'orbit-start',buildPanel:()=>({
     title:'ORBITAL INSERTION · MANEUVER GO/NO-GO',
     lines:[`Tracking confirms insertion. ${budget.toLocaleString()} m/s of maneuver margin remains.`,
       'Select the orbit plan. Mission elapsed time is paused while Mission Control evaluates the burn.'],
-    buttons:opts.filter(o=>o.enabled).map(o=>({label:o.label,ghost:o.id!=='circularize',action:()=>resolveOrbitalManeuver(o.id)}))
+    buttons:opts.filter(o=>o.enabled).map(o=>({label:o.label,ghost:o.id!=='circularize',action:()=>resolveOrbitalManeuver(o.id,args.txnId,args.revision)}))
   })});
 }
-function resolveOrbitalManeuver(id){
+function resolveOrbitalManeuver(id,txnId,revision){
   const pending=_pendingOrbitOps; if(!pending) return false;
   const opt=pending.opts.find(o=>o.id===id&&o.enabled); if(!opt) return false;
+  if(state.launchTxn){ const selected=selectLaunchDecision('orbit',id,txnId,revision,opt.effect); if(!selected.ok||selected.replay) return false; }
   _pendingOrbitOps=null; hideModal();
   pending.ctx.orbitOps=Object.assign({id:opt.id,cost:opt.cost},opt.profile);
+  setLaunchTransactionContext(pending.ctx);
+  if(opt.id==='deorbit'&&state.launchTxn) state.launchTxn.resolution=Object.assign({},state.launchTxn.resolution||{},{command:'commanded-deorbit',stage:'orbit'});
   // A commanded deorbit ends orbital operations immediately; do not roll a later payload anomaly
   // after Mission Control has already elected to recover the vehicle and forfeit the objective.
   if(opt.id==='deorbit') finalizeLaunch(pending.ctx,opt.effect);
@@ -5125,7 +5337,7 @@ function resolveOrbitalManeuver(id){
 // A marginal early-phase subsystem flags amber mid-launch. The player chooses, BEFORE the
 // outcome is revealed, to press on (fly the flight as resolveFlight already rolled it — the
 // balance-neutral default the headless path also takes) or abort now: a precautionary `scrub`
-// that saves the vehicle and crew but forfeits the mission. Amber ≠ doomed, so the abort trades
+// that protects crew and only recovers a vehicle carrying compatible hardware. Amber ≠ doomed, so the abort trades
 // a possibly-successful mission for certainty — genuine agency with a real opportunity cost.
 let _pendingLive=null; // a flight paused at the live abort / press-on call
 // E1.2 slice C: lives IN the flight overlay (opened early by openFlightForDecision, held at the
@@ -5133,29 +5345,40 @@ let _pendingLive=null; // a flight paused at the live abort / press-on call
 // even opens. buildPanel() is called once, at hold-time, by drawDecisionPanel — canvas fillText, not
 // innerHTML, so no esc() needed (there's no markup parsing to inject into either way).
 function showLiveCallModal(ctx, flag){
+  const tx=state.launchTxn, launchEscape=tx&&tx.resolution&&typeof tx.resolution.launchEscapeFitted==='boolean'
+    ? tx.resolution.launchEscapeFitted : !!(state.research&&state.research.launch_escape);
+  const survivableAbort=!ctx.crewed||launchEscape;
+  const decision=ensureLaunchTransactionDecision('live',ctx,{flag,launchEscapeFitted:launchEscape},survivableAbort?['press','abort']:['press']);
+  const args=launchDecisionArgs(decision);
   openFlightForDecision(ctx, { buildPanel:()=>{
     const m=ctx.m, sub=flag.sub, ph=flag.phase, pc=Math.round(sub.rel*100);
     const subName=SUBSYS_LABEL[sub.key]||sub.label;
     const crewLine=ctx.crewed?' Crew strapped in, awaiting your call.':'';
     const routineLine=ctx.routine?' A proven design isn\'t immune to a bad day.':'';
+    const noEscapeLine=ctx.crewed&&!launchEscape?' No launch-escape system is fitted; Mission Control has no survivable ascent-abort option.':'';
+    const buttons=[{label:'Press on — fly it', action:()=>resolveLiveCall(true,args.txnId,args.revision)}];
+    if(survivableAbort) buttons.push({label:`Abort now — ${hullRecoveryFitted(ctx.hullId)?(ctx.crewed?'save crew; recover fitted vehicle':'recover fitted vehicle'):(ctx.crewed?'save crew; expend vehicle':'terminate flight')}`, ghost:true, action:()=>resolveLiveCall(false,args.txnId,args.revision)});
     return { title:'⚠ MARGINAL SUBSYSTEM — LIVE CALL', color:themeColor('warn'),
       lines:[ `${subName} flagging amber on ${ph.label.toLowerCase()}, holding at just ${pc}%.`,
-              `It may hold — or let go and take the vehicle with it.${crewLine}${routineLine}` ],
-      buttons:[
-        {label:'Press on — fly it', action:()=>resolveLiveCall(true)},
-        {label:`Abort now — save the vehicle${ctx.crewed?' & crew':''}`, ghost:true, action:()=>resolveLiveCall(false)},
-      ] };
+              `It may hold — or let go and take the vehicle with it.${crewLine}${routineLine}${noEscapeLine}` ],
+      buttons };
   }});
 }
-function resolveLiveCall(pressOn){
+function resolveLiveCall(pressOn,txnId,revision){
   const ctx=_pendingLive; if(!ctx) return;
+  if(state.launchTxn){ const selected=selectLaunchDecision('live',pressOn?'press':'abort',txnId,revision); if(!selected.ok||selected.replay) return; }
   _pendingLive=null; hideModal();
   if(pressOn){ postResolve(ctx); return; } // fly the outcome resolveFlight already rolled (balance-neutral)
   const flag=ctx.liveFlag, ph=flag?flag.phase:null, subKey=flag?flag.sub.key:null;
   const subName=(SUBSYS_LABEL[subKey]||'systems').toLowerCase();
+  const launchEscape=state.launchTxn&&state.launchTxn.resolution?!!state.launchTxn.resolution.launchEscapeFitted:!!(state.research&&state.research.launch_escape);
   ctx.outcome=Object.assign({}, ctx.outcome, { kind:'scrub', subsystem:subKey,
-    failPhase:ph?ph.phase:'ascent',
-    story:`a precautionary abort on ${(ph?ph.label:'ascent').toLowerCase()} after the ${subName} flagged marginal — the vehicle was brought back intact.` });
+    // The renderer's early-loss phase is `ascent`; keep the exact pad/ascent/
+    // staging decision point separately in resolution.stage.
+    failPhase:'ascent',
+    story:`a precautionary abort on ${(ph?ph.label:'ascent').toLowerCase()} after the ${subName} flagged marginal — ${recoveryDispositionText(ctx.hullId,ctx.crewed,launchEscape)}.` });
+  if(state.launchTxn){ state.launchTxn.outcome=plainRecord(ctx.outcome); setLaunchTransactionContext(ctx); }
+  if(state.launchTxn) state.launchTxn.resolution=Object.assign({},state.launchTxn.resolution||{},{command:'live-abort',stage:ph?ph.phase:'ascent'});
   finalizeLaunch(ctx, null);
 }
 
@@ -5170,6 +5393,8 @@ function resolveLiveCall(pressOn){
 let _pendingReserve=null; // a flight paused at the deep-leg reserve call
 // E1.2 slice C: holds at cislunar-start (entering the deep cruise) — its own "far from home" moment.
 function showReserveModal(ctx, flag){
+  const decision=ensureLaunchTransactionDecision('reserve',ctx,{flag},['burn','bank']);
+  const args=launchDecisionArgs(decision);
   openFlightForDecision(ctx, { holdAt:'cislunar-start', buildPanel:()=>{
     const m=ctx.m, sub=flag.sub, ph=flag.phase, pc=Math.round(sub.rel*100);
     const subName=SUBSYS_LABEL[sub.key]||sub.label;
@@ -5179,19 +5404,21 @@ function showReserveModal(ctx, flag){
       lines:[ `${subName} drifting far from home, holding at ${pc}%. ~${marginPct}% reserve margin aboard.`,
               `Burn the reserve ${word} to nurse it through for certain, or bank it and fly as built.` ],
       buttons:[
-        {label:'Burn the reserve — salvage a partial', action:()=>resolveReserveCall(true)},
-        {label:'Bank the reserve — fly it as built', ghost:true, action:()=>resolveReserveCall(false)},
+        {label:'Burn the reserve — salvage a partial', action:()=>resolveReserveCall(true,args.txnId,args.revision)},
+        {label:'Bank the reserve — fly it as built', ghost:true, action:()=>resolveReserveCall(false,args.txnId,args.revision)},
       ] };
   }});
 }
-function resolveReserveCall(spend){
+function resolveReserveCall(spend,txnId,revision){
   const ctx=_pendingReserve; if(!ctx) return;
+  if(state.launchTxn){ const selected=selectLaunchDecision('reserve',spend?'burn':'bank',txnId,revision); if(!selected.ok||selected.replay) return; }
   _pendingReserve=null; hideModal();
   if(!spend){ maybeAnomaly(ctx); return; } // bank → today's flow (balance-neutral), anomaly may still fire
   const f=ctx.deepFlag, subKey=f?f.sub.key:null;
   const subName=(SUBSYS_LABEL[subKey]||'systems').toLowerCase();
   ctx.outcome=Object.assign({}, ctx.outcome, { kind:'partial', subsystem:subKey, failPhase:null,
     story:`reserve ${reserveKindWord(subKey)} was burned deep in the cruise to nurse the drifting ${subName} through — the objective was salvaged, degraded.` });
+  if(state.launchTxn){ state.launchTxn.outcome=plainRecord(ctx.outcome); setLaunchTransactionContext(ctx); }
   finalizeLaunch(ctx, null); // the deep-space decision was the drama; resolve it directly
 }
 
@@ -5216,13 +5443,17 @@ function rescueCost(m){ return Math.max(3, Math.round((m.payout||10)*0.6)); }
 function rescueMonths(m){ return m.profile?6:3; }
 // E1.2 slice C: holds at cislunar-start — same "far from home" moment as the reserve call.
 function showRescueModal(ctx, outcome){
+  const current=state.launchTxn&&state.launchTxn.decision&&state.launchTxn.decision.kind==='rescue'?state.launchTxn.decision:null;
+  const cost=rescueCost(ctx.m), months=rescueMonths(ctx.m), chance=rescueChance(ctx.m);
+  const afford=current&&current.data?!!current.data.afford:state.money>=cost;
+  const decision=ensureLaunchTransactionDecision('rescue',ctx,{cost,months,chance,roll:state.launchTxn?(current&&current.data?current.data.roll:Math.random()):null,afford,outcome,ops:_pendingRescue&&_pendingRescue.ops||null},afford?['mount','abandon']:['abandon']);
+  const args=launchDecisionArgs(decision);
   openFlightForDecision(ctx, { holdAt:'cislunar-start', buildPanel:()=>{
-    const m=ctx.m, cost=rescueCost(m), months=rescueMonths(m), chance=Math.round(rescueChance(m)*100);
-    const afford=state.money>=cost;
+    const m=ctx.m, chancePct=Math.round(chance*100);
     const sub=outcome.subsystem?(SUBSYS_LABEL[outcome.subsystem]||'systems').toLowerCase():'systems';
     const buttons=[];
-    if(afford) buttons.push({label:`Mount a rescue (${fM(cost)}, ~${months} mo, ${chance}%)`, action:mountRescue});
-    buttons.push({label:'Abandon the mission (crew lost)', ghost:true, action:abandonRescue});
+    if(afford) buttons.push({label:`Mount a rescue (${fM(cost)}, ~${months} mo, ${chancePct}%)`, action:()=>mountRescue(args.txnId,args.revision)});
+    buttons.push({label:'Abandon the mission (crew lost)', ghost:true, action:()=>abandonRescue(args.txnId,args.revision)});
     return { title:'CREW STRANDED IN DEEP SPACE', color:themeColor('bad'),
       lines:[ `A ${sub} failure left the crew stranded but alive — they can't get home alone.`,
               afford ? 'A rescue is a long shot: a fast-tracked launch, a hard rendezvous, the clock against you.'
@@ -5230,25 +5461,32 @@ function showRescueModal(ctx, outcome){
       buttons };
   }});
 }
-function mountRescue(){
+function mountRescue(txnId,revision){
   if(!_pendingRescue) return;
-  const {ctx}=_pendingRescue; _pendingRescue=null; hideModal();
-  const m=ctx.m, cost=rescueCost(m), months=rescueMonths(m), chance=rescueChance(m);
-  state.money-=cost;
-  log('note',`${m.name}: emergency rescue launched — ${fM(cost)} committed; crews work around the clock.`);
-  advance(months);
-  if(Math.random()<chance){
-    finalizeLaunch(ctx, {rescueResolved:true, outcomeOverride:'rescued',
-      story:`After ${months} tense months a rescue craft reached the stranded crew and brought them home alive.`});
-  }else{
-    finalizeLaunch(ctx, {rescueResolved:true, outcomeOverride:'strand',
-      story:`a rescue launched but couldn't reach the crew in time — they were lost ${months} months into the ordeal.`});
-  }
+  const {ctx}=_pendingRescue;
+  const d=state.launchTxn&&state.launchTxn.decision&&state.launchTxn.decision.kind==='rescue'?state.launchTxn.decision:null;
+  const m=ctx.m, cost=d&&d.data?d.data.cost:rescueCost(m), months=d&&d.data?d.data.months:rescueMonths(m), chance=d&&d.data?d.data.chance:rescueChance(m);
+  const roll=d&&d.data&&Number.isFinite(d.data.roll)?d.data.roll:Math.random();
+  const result=roll<chance
+    ? {rescueResolved:true,outcomeOverride:'rescued',story:`After ${months} tense months a rescue craft reached the stranded crew and brought them home alive.`}
+    : {rescueResolved:true,outcomeOverride:'strand',story:`a rescue launched but couldn't reach the crew in time — they were lost ${months} months into the ordeal.`};
+  return runLaunchMutationGroup(()=>{
+    if(state.launchTxn){ const selected=selectLaunchDecision('rescue','mount',txnId,revision,result); if(!selected.ok||selected.replay) return false; }
+    _pendingRescue=null; hideModal();
+    state.money-=cost;
+    log('note',`${m.name}: emergency rescue launched — ${fM(cost)} committed; crews work around the clock.`);
+    advance(months);
+    finalizeLaunch(ctx, result);
+    return true;
+  });
 }
-function abandonRescue(){
+function abandonRescue(txnId,revision){
   if(!_pendingRescue) return;
-  const {ctx, ops}=_pendingRescue; _pendingRescue=null; hideModal();
-  finalizeLaunch(ctx, Object.assign({}, ops||{}, {rescueResolved:true}));
+  const {ctx, ops}=_pendingRescue;
+  const result=Object.assign({},ops||{},{rescueResolved:true});
+  if(state.launchTxn){ const selected=selectLaunchDecision('rescue','abandon',txnId,revision,result); if(!selected.ok||selected.replay) return; }
+  _pendingRescue=null; hideModal();
+  finalizeLaunch(ctx, result);
 }
 
 /* ---------- #20 slice 4: pre-flight rehearsal & readiness ---------- */
@@ -5339,7 +5577,17 @@ function launch(prebuilt,hullId,requestId,validatedQuote){
     if(buildQueueList().length>=QUEUE_MAX){ log('note','Manufacturing queue is full — cancel or wait for a build to finish before committing another launch.'); return; }
     return !!queueBuild(true,requestId);
   }
+  const effectiveRequestId=requestId||`launch:${m.id}:${(state.launchTxnSeq||0)+1}`;
+  let tx=state.launchTxn;
+  if(!(activeLaunchTransaction()&&tx.requestId===effectiveRequestId&&tx.missionId===m.id&&(tx.hullId||null)===(hullId||null))){
+    const begun=beginLaunchTransaction({requestId:effectiveRequestId,source:m.window?'window':'hangar',missionId:m.id,hullId:hullId||null,
+      quote,spec:queueSpecSnapshot(),timing:{startedAbs:absDay()}});
+    if(!begun.ok) return false;
+    if(begun.replay) return true;
+    tx=begun.txn;
+  }
   _flightResolving=true; // P1 1.2a: hold the arrival pump until this launch fully resolves (released in finish()/on defer)
+  _launchMutationDepth++;
   const tl=TEST_LEVELS[state.testLevel];
   const rehMo=state.rehearsal?REHEARSAL_MONTHS:0; // #20 slice 4: rehearsal adds cost + a month of prep
   const buildMo=prebuilt?0:buildMonths(m); // #7 final: a hangar vehicle is already built & paid for
@@ -5347,31 +5595,44 @@ function launch(prebuilt,hullId,requestId,validatedQuote){
   // (credit cuts the build cost to keep it cost-neutral) and already made (shaves assembly days).
   const draw = prebuilt ? {draw:{},total:0,credit:0,saveDays:0} : ((quote.stock&&quote.stock.engines)||{draw:{},total:0,credit:0,saveDays:0});
   const pdraw = prebuilt ? {draw:{},total:0,credit:0,saveDays:0} : ((quote.stock&&quote.stock.parts)||{draw:{},total:0,credit:0,saveDays:0}); // #7 slice 2: tank/habitat sub-assemblies
-  state.money-=(quote.buildCost+quote.flightBurn);
-  if(draw.total>0){ consumeEngineStock(draw.draw); log('note',`Assembly — fitted ${draw.total} pre-built engine${draw.total===1?'':'s'} from the yard (${fM(draw.credit)} pre-paid, ~${draw.saveDays} d faster).`); }
-  if(pdraw.total>0){ consumePartStock(pdraw.draw); log('note',`Assembly — fitted ${pdraw.total} pre-built structural component${pdraw.total===1?'':'s'} from the yard (${fM(pdraw.credit)} pre-paid, ~${pdraw.saveDays} d faster).`); }
+  if(!tx.applied.cash){ state.money-=(quote.buildCost+quote.flightBurn); tx.applied.cash=true; }
+  if(!tx.applied.stock){
+    if(draw.total>0){ consumeEngineStock(draw.draw); log('note',`Assembly — fitted ${draw.total} pre-built engine${draw.total===1?'':'s'} from the yard (${fM(draw.credit)} pre-paid, ~${draw.saveDays} d faster).`); }
+    if(pdraw.total>0){ consumePartStock(pdraw.draw); log('note',`Assembly — fitted ${pdraw.total} pre-built structural component${pdraw.total===1?'':'s'} from the yard (${fM(pdraw.credit)} pre-paid, ~${pdraw.saveDays} d faster).`); }
+    tx.applied.stock=true;
+  }
   // CE2(b): an extra pad lets a prebuilt rapid flight share this calendar month (cadence); else the launch costs its usual +1 month
   const leadDays = quote.buildDays+quote.preparationDays+quote.launchDays;
   let windowQuality=1;
-  if(m.window){
-    windowQuality=state.committedWindow.quality;
-    const gap=state.committedWindow.abs-absDay(); // days until the committed window (slice 4b)
-    advanceDays(Math.max(leadDays, gap)); // wait out the rest of the window if build finishes early
-    state.committedWindow=null;
-  }else{
-    advanceDays(leadDays); // build (complexity-scaled, minus pre-built engines) + launch + test campaign + rehearsal
-  }
-  recordPadLaunch(); // CE2(b): stamp the pad slot this flight occupied this month
+  if(!tx.applied.time){
+    if(m.window){
+      windowQuality=state.committedWindow.quality;
+      const gap=state.committedWindow.abs-absDay(); // days until the committed window (slice 4b)
+      advanceDays(Math.max(leadDays, gap)); // wait out the rest of the window if build finishes early
+      state.committedWindow=null;
+    }else{
+      advanceDays(leadDays); // build (complexity-scaled, minus pre-built engines) + launch + test campaign + rehearsal
+    }
+    tx.applied.time=true; tx.timing.readyAbs=absDay(); tx.timing.windowQuality=windowQuality;
+  }else windowQuality=tx.timing.windowQuality==null?1:tx.timing.windowQuality;
   // Window-bound launches still use the immediate build path (they cannot enter the generic
   // queue without losing their committed date), so create their physical article here rather
   // than leaving them as the one class of launch with no serial identity.
-  if(!prebuilt && !hullId){ const builtHull=makeHull(queueSpecSnapshot(),'rollout'); hullId=builtHull.id; markHullLaunched(hullId,m.id); }
+  if(!prebuilt && !hullId){ const builtHull=makeHull(queueSpecSnapshot(),'rollout'); hullId=builtHull.id; markHullPreparing(hullId); tx.hullId=hullId; tx.applied.ownership=true; }
   // #20 slice 1: launch-day weather go/no-go — the vehicle is built and rolled out
-  const wx=rollWeather(m);
+  const wx=tx.draws.weather&&tx.draws.weather.id?plainRecord(tx.draws.weather):rollWeather(m);
+  tx.draws.weather=plainRecord(wx);
+  _launchMutationDepth=Math.max(0,_launchMutationDepth-1);
   if(wx.adverse){
     if(animEnabled){ _pendingLaunch={m,v,sim,windowQuality,wx,prebuilt,hullId}; showWeatherModal(m,wx); return; }
-    advance(wx.clear); // animations off / headless: take the safe call and wait it out
-    log('note',`${m.name}: launch scrubbed for weather (${wx.label}); waited ${wx.clear} mo.`);
+    return runLaunchMutationGroup(()=>{
+      advance(wx.clear); // animations off / headless: take the safe call and wait it out
+      tx.timing.weatherWaitDays=(tx.timing.weatherWaitDays||0)+daysFor(wx.clear);
+      tx.receipts.weatherRecycle={applied:true,days:daysFor(wx.clear),atAbs:absDay(),automatic:true};
+      log('note',`${m.name}: launch scrubbed for weather (${wx.label}); waited ${wx.clear} mo.`);
+      proceedLaunch(m,v,sim,windowQuality,0,prebuilt,hullId);
+      return true;
+    });
   }
   proceedLaunch(m,v,sim,windowQuality,0,prebuilt,hullId);
   return true;
@@ -5409,6 +5670,7 @@ function isCrewDeployed(id){ return !!id && (state.activeFlights||[]).some(f=>f&
 // P1 1.2a: deferred-arrival plumbing. A long uncrewed cruise resolves on ARRIVAL, not at launch.
 const DEFER_CRUISE_DAYS=60; // ≥ this many cruise days ⇒ the flight goes "live" (interplanetary); shorter stays synchronous
 let _flightResolving=false;  // true while a launch OR an arrival resolution is mid-flight — blocks the pump from stacking modals
+let _launchMutationDepth=0;  // no save boundary may observe a partially applied launch mutation group
 // The resolution chain from a built ctx onward (live-call → reserve → anomaly → finalize). Shared by the
 // synchronous launch path and deferred arrivals so both reproduce the exact same outcome flow.
 function beginResolve(ctx){
@@ -5440,7 +5702,12 @@ function pumpFlightArrivals(){
   }
   if(!rec.ctx){ completeFlight(rec); return pumpFlightArrivals(); } // S1: a corrupt/re-hydrated record without a ctx — drop it, don't crash the arrival
   _flightResolving=true;
+  const arrivalTxn=rec.txn
+    ? makeLaunchTransactionRecord(Object.assign({},rec.txn,{phase:'settling',source:'arrival',context:launchTransactionContextSnapshot(rec.ctx),decision:null,nextAction:'begin-resolution'}))
+    : makeLaunchTransactionRecord({id:'ltx'+(state.launchTxnSeq=(state.launchTxnSeq||0)+1),requestId:`arrival:${rec.id}`,source:'arrival',phase:'settling',missionId:rec.mission,hullId:rec.ctx.hullId||null,context:launchTransactionContextSnapshot(rec.ctx),outcome:rec.ctx.outcome,applied:{ownership:true,cash:true,stock:true,time:true,pad:true,liftoff:true,cruise:true},nextAction:'begin-resolution'});
+  state.launchTxn=arrivalTxn;
   completeFlight(rec);
+  checkpointLaunchSave();
   beginResolve(rec.ctx);
 }
 // P1 1.4: cruise telemetry panel — a live read-out of every mission in flight, with an abort verb.
@@ -5492,10 +5759,10 @@ function assetRegistryGroups(){
   const now=absDay(), groups=[];
   const flights=(state.activeFlights||[]).filter(f=>f&&f.deferred);
 
-  const activeHulls=hullList().filter(h=>h&&['hangar','recovered','in-flight'].includes(h.status));
+  const activeHulls=hullList().filter(h=>h&&['hangar','preparing','recovered','in-flight'].includes(h.status));
   if(activeHulls.length) groups.push({key:'hulls',label:'Launch vehicles',icon:'🚀',items:activeHulls.sort((a,b)=>(b.builtAbs||0)-(a.builtAbs||0)).map(h=>({
     id:h.id,icon:'🚀',name:h.serial+(h.familyName?' · '+h.familyName:''),
-    status:h.status==='hangar'?'ready in hangar':h.status==='recovered'?`recovered · ${h.flights||0} flight${(h.flights||0)===1?'':'s'}`:'in flight',
+    status:h.status==='hangar'?'ready in hangar':h.status==='preparing'?'assigned to launch preparation':h.status==='recovered'?`recovered · ${h.flights||0} flight${(h.flights||0)===1?'':'s'}`:'in flight',
     detail:{'Serial':h.serial,'Family':h.familyName||'untracked','Status':h.status,'Flights':String(h.flights||0),'Reuse count':String(h.reuseCount||0),'Recovery hardware':h.recoveryFitted?'fitted':'none'}
   }))});
 
@@ -5638,8 +5905,9 @@ function assetRegistryCount(){ return assetRegistryGroups().reduce((a,g)=>a+g.it
 
 function confirmAbortFlight(id){
   const rec=(state.activeFlights||[]).find(f=>f&&f.id===id); if(!rec) return;
+  const fitted=hullRecoveryFitted(rec.ctx&&rec.ctx.hullId);
   showModal(`<h2>Recall ${rec.name||'the mission'}?</h2>
-    <p class="muted" style="font-size:13px">Abort the mission in cruise. The ${rec.crew>0?'crew and vehicle are':'vehicle is'} recovered safely, but the objective is forfeit and the flight's costs are sunk — a small reputation dent applies.</p>
+    <p class="muted" style="font-size:13px">Abort the mission in cruise. ${rec.crew>0?'The crew-return system will bring the crew home. ':''}${fitted?'Fitted recovery hardware can return the vehicle.':'The launch vehicle has no fitted recovery system and will be expended.'} The objective is forfeit and the flight's costs are sunk — a reputation dent applies.</p>
     <div style="display:flex;gap:8px;margin-top:12px">
       <button class="btn" onclick="abortFlight('${id}')" style="flex:1">Recall the mission</button>
       <button class="btn ghost" onclick="showFlightsModal()" style="flex:1">Keep flying</button>
@@ -5647,14 +5915,31 @@ function confirmAbortFlight(id){
 }
 function abortFlight(id){
   const rec=(state.activeFlights||[]).find(f=>f&&f.id===id); if(!rec||!rec.ctx){ hideModal(); return; }
+  if(activeLaunchTransaction()){ announceAction(`Launch ${state.launchTxn.id} already owns Mission Control; finish it before recalling another flight.`); return false; }
   hideModal();
+  const recallTxn=rec.txn
+    ? makeLaunchTransactionRecord(Object.assign({},rec.txn,{phase:'settling',source:'recall',context:launchTransactionContextSnapshot(rec.ctx),decision:null,nextAction:'resolve-recall'}))
+    : makeLaunchTransactionRecord({id:'ltx'+(state.launchTxnSeq=(state.launchTxnSeq||0)+1),requestId:`recall:${rec.id}`,source:'recall',phase:'settling',missionId:rec.mission,hullId:rec.ctx.hullId||null,context:launchTransactionContextSnapshot(rec.ctx),outcome:rec.ctx.outcome,applied:{ownership:true,cash:true,stock:true,time:true,pad:true,liftoff:true,cruise:true},nextAction:'resolve-recall'});
+  state.launchTxn=recallTxn;
+  state.launchTxn.resolution=Object.assign({},state.launchTxn.resolution||{},{command:'cruise-recall',stage:'cruise'});
   completeFlight(rec);
+  checkpointLaunchSave();
   _flightResolving=true; // hold the pump; finalize's finish() releases it and resolves the next arrival
-  finalizeLaunch(rec.ctx, {outcomeOverride:'scrub', log:'mission recalled in cruise — crew and vehicle recovered; the objective is forfeit.'});
+  const fitted=hullRecoveryFitted(rec.ctx.hullId);
+  finalizeLaunch(rec.ctx, {outcomeOverride:'scrub', log:`mission recalled in cruise — ${rec.crew>0?'crew returned safely; ':''}${fitted?'fitted recovery hardware returned the vehicle':'the launch vehicle was expended'}; the objective is forfeit.`});
+  return true;
 }
 function proceedLaunch(m,v,sim,windowQuality,weatherPenalty,prebuilt,hullId){
+  const tx=state.launchTxn&&state.launchTxn.missionId===m.id?state.launchTxn:null;
+  if(tx&&tx.applied.liftoff){ announceAction(`Launch transaction ${tx.id} has already crossed liftoff; replay ignored.`); return false; }
+  _launchMutationDepth++;
+  checkpointLaunchTransaction('liftoff','resolve-outcome');
   _liftoffArmed=animEnabled; // arm the iso-view liftoff lead-in for this interactive launch (headless never arms)
   const tl=TEST_LEVELS[state.testLevel];
+  if(tx&&!tx.applied.pad){ recordPadLaunch(); tx.applied.pad=true; }
+  else if(!tx) recordPadLaunch();
+  if(tx) markHullLaunched(hullId,m.id,tx.id);
+  else markHullLaunched(hullId,m.id);
   state.flights++;
   state.lastFlightAbs=absMonth(); // economy tension: windfall events require recent activity
   if(!prebuilt){ // #7 final: a hangar vehicle already registered its cadence load + materials when it was queued
@@ -5670,7 +5955,7 @@ function proceedLaunch(m,v,sim,windowQuality,weatherPenalty,prebuilt,hullId){
   const routine=!!state.completed[m.id];
   const crewed=m.crew>0;
   // M16: subsystem-based reliability — which subsystem (if any) fails decides the story
-  const outcome=resolveFlight(m,v,sim,crewed,weatherPenalty); // outcome locks at launch-time tech (resolve BEFORE the cruise advances time)
+  const outcome=tx&&tx.outcome?plainRecord(tx.outcome):resolveFlight(m,v,sim,crewed,weatherPenalty); // outcome locks at launch-time tech (resolve BEFORE the cruise advances time)
   // P3: this real flight commits the funded-inquiry reliability credit if its subsystem is in play — consume one flight here
   // (the single point where the +R bonus is baked into a genuine outcome; preview/sim calls never reach this line).
   if(state.inquiryCredit && state.inquiryCredit.flights>0 && inquiryCreditRelevant(m,v,sim,crewed)){
@@ -5683,8 +5968,18 @@ function proceedLaunch(m,v,sim,windowQuality,weatherPenalty,prebuilt,hullId){
   // time commitments (overhead, R&D, rivals, facilities all advance during the mission). Intentional
   // payoff of daily time. If the long cruise bankrupts the company, the gameOver modal is already up.
   const missionDays=Math.round(m.days||0);
-  const ctx={m,v,sim,windowQuality,flightExpense,routine,crewed,outcome,rehearsed:!!state.rehearsal, famId:(activeFamily()||{}).id||null, hullId:hullId||null,
+  const ctx={m,v,sim,windowQuality,flightExpense,routine,crewed,outcome,rehearsed:!!state.rehearsal,
+             depotUse:state.depotUse||0,assembleOrbit:!!state.assembleOrbit,
+             transactionId:tx&&tx.id||null, famId:(activeFamily()||{}).id||null, hullId:hullId||null,
              crewId:crewed?state.assignedAstronaut:null, ab:crewed?astroBonus():{rel:0,payoutMult:1}}; // 1.2b/S1: snapshot crew + bonus at launch; store famId (not the object) so a mid-cruise save round-trips cleanly
+  if(tx){
+    tx.outcome=plainRecord(outcome); tx.draws.outcome=plainRecord(outcome); tx.context=launchTransactionContextSnapshot(ctx);
+    tx.resolution={command:'nominal',stage:'liftoff',liftoffOccurred:true,vehicleRecoveryFitted:hullRecoveryFitted(hullId),
+      crewCapsuleFitted:!!(state.research.crew_capsule||crewed),launchEscapeFitted:!!state.research.launch_escape,
+      vehicleDisposition:'in-flight',crewDisposition:crewed?'aboard':'not-applicable',recoveryMethod:null};
+    tx.applied.liftoff=true; tx.nextAction='begin-resolution';
+  }
+  _launchMutationDepth=Math.max(0,_launchMutationDepth-1);
   // P1 1.2a/1.2b: a long interplanetary cruise (crewed or not) becomes a live flight. The outcome is already
   // locked (resolved above at launch-time tech); it is APPLIED on arrival as the player runs the clock, via
   // pumpFlightArrivals() — instead of one fast-forward. Short flights stay fully synchronous (byte-identical).
@@ -5694,20 +5989,23 @@ function proceedLaunch(m,v,sim,windowQuality,weatherPenalty,prebuilt,hullId){
     rec.marginSnapshot={ rel:(outcome&&outcome.rel!=null)?outcome.rel:null, tightDv:(sim&&sim.legs)?(()=>{let mn=Infinity;for(const l of sim.legs){if(l&&l.cap!=null&&l.dv!=null){const s=l.cap-l.dv;if(s<mn)mn=s;}}return isFinite(mn)?Math.round(mn):null;})():null }; // 1.4: cruise telemetry — reliability + tightest Δv margin, snapshotted at launch
     state.testLevel=0; state.rehearsal=false; state.depotUse=0; state.assembleOrbit=false;
     if(ctx.crewId) state.assignedAstronaut=null; // 1.2b: crew is committed to this flight — free the live slot so another concurrent mission can crew up
+    if(tx){ tx.phase='cruise'; tx.nextAction='await-arrival'; tx.applied.cruise=true; rec.txn=plainRecord(tx); state.launchTxn=null; checkpointLaunchSave(); }
     _liftoffArmed=false; // a deferred cruise resolves on arrival (turns later) — no liftoff lead-in when it lands
     log('note',`${m.name}: departed — arrival in ~${Math.round(missionDays/30)} mo (${missionDays} d).${ctx.crewId?` Crew of ${m.crew} aboard.`:''} The cruise plays out as you run the clock; the outcome lands on arrival.`);
     // Slice B: end the launch-day session with a "cruise begins / ETA" outro card in the overlay, then
     // settle. Animation-off / headless takes the byte-identical synchronous settle below (balance-neutral).
-    const settle=()=>{ _flightResolving=false; render(); pumpFlightArrivals(); }; // release the launch lock; catch anything that came due during lead time
+    const settle=()=>{ _flightResolving=false; if(!evaluateTerminalAfterTransaction()){ render(); pumpFlightArrivals(); } }; // release launch-day atomicity; cruise ownership remains durable on the flight
     if(animEnabled) playMission(buildDepartSpec(m, crewed, missionDays, rec.arriveAbs), settle);
     else settle();
     return;
   }
   // synchronous path — today's behavior, provably byte-identical
   const _flight=registerFlight(m,crewed,missionDays); // the flight is "in cruise" for this span
-  if(missionDays>=1){ advanceDays(missionDays); if(state.over){ completeFlight(_flight); _flightResolving=false; render(); return; } }
+  if(missionDays>=1){ advanceDays(missionDays); }
   completeFlight(_flight);
+  if(tx){ tx.phase='settling'; tx.nextAction='begin-resolution'; checkpointLaunchSave(); }
   beginResolve(ctx);
+  return true;
 }
 // the post-resolve flow shared by the headless path and the live-call's "press on".
 function postResolve(ctx){
@@ -5753,10 +6051,52 @@ function buildDepartSpec(m, crewed, transitDays, etaAbs){
            pitchJitter:(rnd()-0.5)*0.16, sep:state.stages.map(()=>(rnd()-0.5)*0.06),
            apogee:0.86+rnd()*0.28, bow:(rnd()-0.5)*0.9 } };
 }
+function resolvedLaunchDisposition(tx,ctx,outcome){
+  const survived=/^(success|partial|scrub)$/.test(outcome&&outcome.kind||'');
+  const prior=tx&&tx.resolution||{};
+  const recovery=tx&&tx.resolution?!!prior.vehicleRecoveryFitted:hullRecoveryFitted(ctx&&ctx.hullId);
+  const vehicle=survived?(recovery?'recovered':'expended'):'lost';
+  const earlyLiveAbort=prior.command==='live-abort'&&['pad','ascent','staging'].includes(prior.stage);
+  const liveAbortWithoutEscape=ctx&&ctx.crewed&&outcome&&outcome.kind==='scrub'&&earlyLiveAbort&&!prior.launchEscapeFitted;
+  const crew=ctx&&ctx.crewed?((/^(loss|strand)$/.test(outcome&&outcome.kind||'')||liveAbortWithoutEscape)?'lost':'safe'):'not-applicable';
+  const crewRecovery=crew==='safe'?(earlyLiveAbort?'launch-escape':'capsule'):null;
+  return Object.assign({},prior, {vehicleDisposition:vehicle,crewDisposition:crew,
+    recoveryMethod:vehicle==='recovered'?'propulsive':crewRecovery});
+}
+function finishLaunchTransaction(tx,success,outcome,pendingCelebration){
+  if(tx){
+    tx.phase='resolved'; tx.nextAction=null; tx.applied.terminal=true;
+    tx.receipts.resolved={applied:true,atAbs:absDay(),outcome:outcome&&outcome.kind||null};
+    const receipt=requestReceipt(tx.requestId);
+    if(receipt){ receipt.status='resolved'; receipt.outcome=outcome&&outcome.kind||null; receipt.resolvedAbs=absDay(); }
+    if(state.launchTxn&&state.launchTxn.id===tx.id) state.launchTxn=null;
+  }
+  _flightResolving=false;
+  checkpointLaunchSave(); // save the released owner before a bankruptcy modal latches state.over
+  const terminal=evaluateTerminalAfterTransaction();
+  if(!terminal){
+    _missionPulse=success?'ok':(outcome&&(/^(loss|strand)$/.test(outcome.kind)))?'bad':null;
+    render();
+    if(pendingCelebration) pendingCelebration();
+    maybeShowInquiry(); maybeShowHearing(); maybeShowSampleDecision();
+    pumpFlightArrivals();
+  }
+  return !terminal;
+}
+function completePersistedLaunchPresentation(tx){
+  if(!tx) return false;
+  return finishLaunchTransaction(tx,tx.outcome&&tx.outcome.kind==='success',tx.outcome||{},null);
+}
 // applies the (possibly anomaly-modified) outcome: money/rep/science, logs, family heritage,
 // the ops ledger, and the flight animation. `ops` carries the in-flight decision's effect.
 function finalizeLaunch(ctx, ops){
   ops=ops||{};
+  const tx=state.launchTxn&&state.launchTxn.missionId===ctx.m.id&&(!ctx.transactionId||state.launchTxn.id===ctx.transactionId)?state.launchTxn:null;
+  if(!tx&&ctx.transactionId){
+    const receipt=Object.values(state.requestReceipts||{}).find(r=>r&&r.resultId===ctx.transactionId);
+    if(receipt&&receipt.status==='resolved') return false;
+  }
+  if(tx&&tx.applied.outcome) return false;
   let {m,v,sim,windowQuality,flightExpense,routine,crewed,outcome}=ctx;
   if(ops.outcomeOverride && ops.outcomeOverride!==outcome.kind)
     outcome=Object.assign({},outcome,{kind:ops.outcomeOverride, story:(ops.story||ops.log||outcome.story)});
@@ -5764,6 +6104,8 @@ function finalizeLaunch(ctx, ops){
   if(outcome.kind==='strand' && crewed && ctx.crewId && animEnabled && !ops.rescueResolved){
     _pendingRescue={ctx, ops, outcome}; showRescueModal(ctx, outcome); return;
   }
+  _launchMutationDepth++;
+  if(tx){ tx.outcome=plainRecord(outcome); tx.context=launchTransactionContextSnapshot(Object.assign({},ctx,{outcome})); tx.resolution=resolvedLaunchDisposition(tx,ctx,outcome); }
   if(ops.log) log(/strand|loss|abort/.test(ops.outcomeOverride||'')?'bad':'note', `${m.name}: ${ops.log}`);
   const opsPayoutMult=(ops.payoutMult==null?1:ops.payoutMult);
   const opsRep=ops.repDelta||0;
@@ -5786,7 +6128,7 @@ function finalizeLaunch(ctx, ops){
     if(m.crew>0){ state.crewFlown=(state.crewFlown||0)+m.crew; } // chronicle: souls carried
     if(isLeoClassMission(m)) state.leoFlights=(state.leoFlights||0)+1; // P11: the crisis trigger's own counter — the empire's launch history creating its own hazard
     if(m.profile) state.deepFlights=(state.deepFlights||0)+1; // I3: solar-storm crisis's own trigger counter
-    creditEngineHeritage(); // engines earn flight heritage toward cost/reliability edge
+    creditEngineHeritage(tx&&tx.spec||null,m); // the exact launched engines earn heritage, even if the Bench changes during a deferred cruise
     state.staticFixBonus=0;  // the static-fire fix flies once
 
     // M14: missions yield science — more for novel, deep, or first-time flights
@@ -5807,7 +6149,7 @@ function finalizeLaunch(ctx, ops){
     // at creditFamilySuccess), so ===0 means this vehicle configuration has never flown before. Flying
     // something new (vs. re-flying the same proven design forever) earns a premium — this is the
     // "reward for risk" lever once reliability alone stops being the interesting choice.
-    const firstOfDesign=(()=>{ const f=activeFamily(); return !!f && (f.flights||0)===0; })();
+    const firstOfDesign=(()=>{ const f=ctx.famId?familyById(ctx.famId):activeFamily(); return !!f && (f.flights||0)===0; })();
     if(firstOfDesign) payout*=(1+FIRST_DESIGN_PAYOUT_BONUS);
     const rep=Math.max(0,Math.round(((routine?2:m.rep)+opsRep+(firstOfDesign?FIRST_DESIGN_REP_BONUS:0))*doctrineMult('rep'))); // CE3(a): Statecraft lifts reputation gain
     addSupport(routine?supportDelta('routineSuccess'):clampA(2+(m.rep||5)*0.05,2,10)); // #8: a win lifts public mood, scaled by how big a win
@@ -5827,7 +6169,8 @@ function finalizeLaunch(ctx, ops){
       log('ok',`${m.name}: SUCCESS.${crewed?` Crew of ${m.crew} home safe.`:''} +${fM(payout)}, +${rep} rep, +${sciGain} sci. (reliability ${(rel*100|0)}%)${qTxt}${scoopTxt}${firstTxt}${nearMissText(outcome.nearMiss)}`, null, phaseDetail);
       appendAnnal('ok',`${m.name} — success${firstOfDesign?' (maiden flight)':''}${crewed?', crew home safe':''}.`);
     }
-    if(m.profile && state.depotUse>0){ state.depot=Math.max(0,state.depot-state.depotUse);
+    const launchedDepotUse=ctx.depotUse==null?(state.depotUse||0):ctx.depotUse;
+    if(m.profile && launchedDepotUse>0){ state.depot=Math.max(0,state.depot-launchedDepotUse);
       if(!state.wonM3bii && !pendingCelebration){ state.wonM3bii=true; pendingCelebration=()=>victoryM3bii('depot'); } }
     if(m.profile && !routine){
       const isru=ISRU_FREE_LEG[m.id];
@@ -5869,13 +6212,32 @@ function finalizeLaunch(ctx, ops){
     addSupport(supportDelta('partial')); // #8: a salvaged flight still reads as progress
     log('note',`${m.name}: PARTIAL SUCCESS — ${outcome.story} Salvaged value +${fM(payout)}, +${rep} rep, but the objective is not complete.`, null, phaseDetail);
   }else if(outcome.kind==='scrub'){
-    // CE5(b): the player called a precautionary in-flight abort — vehicle & crew recovered, mission
-    // forfeit. No catastrophe: no crew loss, no stand-down/investigation, a lighter rep dent than a
-    // loss. The flight outlay is still sunk; the payoff is avoiding the worse outcome you gambled on.
+    // A controlled abort is only crew-safe when the persisted launch snapshot
+    // actually contains the capability needed at that phase. The live-call UI
+    // suppresses an unsafe ascent-abort, but settlement remains defensive for
+    // imported/replayed records and never upgrades a missing LES into survival.
+    const disposition=tx&&tx.resolution||resolvedLaunchDisposition(null,ctx,outcome);
     personnelMissionEvent(false);
-    const rep=Math.min(state.rep, crewed?8:5); state.rep-=rep;
-    addSupport(supportDelta('abort')); // a scrubbed flight dents mood, but a saved vehicle limits it
-    log('note',`${m.name}: ABORTED IN FLIGHT — ${outcome.story} Crew and vehicle safe; the mission is forfeit, −${rep} rep.`);
+    if(crewed&&disposition.crewDisposition==='lost'){
+      const rep=Math.min(state.rep,40); state.rep-=rep;
+      addSupport(supportDelta('lossCrewed'));
+      recordLoss(INVESTOR_CONF_SEV_CREWED);
+      loseAssignedCrew(ctx.crewId,m.name,outcome.story);
+      advance(6);
+      state.crewLost=(state.crewLost||0)+m.crew;
+      log('bad',`${m.name}: ABORT COMMAND FAILED. No fitted launch-escape system could pull the crew clear during ascent. ${outcome.story} Vehicle and crew lost; six-month stand-down, −${rep} rep.`,null,phaseDetail);
+      appendAnnal('bad',`${m.name} — crew lost during an ascent abort without a launch-escape system.`);
+      pushFrontPage('disaster','⚠',`${m.name}: crew lost`,outcome.story);
+      applyEraStakes('loss of the crew and vehicle');
+      state.poachHeat=Math.max(state.poachHeat||0,POACH_HEAT_ON_FATAL);
+      triggerHearing(ctx);
+    }else{
+      const rep=Math.min(state.rep, crewed?8:5); state.rep-=rep;
+      addSupport(supportDelta('abort')); // a controlled abort dents mood less than a catastrophic loss
+      const crewText=crewed?' Crew returned safely.':'';
+      const vehicleText=disposition.vehicleDisposition==='recovered'?' Fitted recovery hardware returned the launch vehicle.':' The launch vehicle was expended.';
+      log('note',`${m.name}: ABORTED IN FLIGHT — ${outcome.story}${crewText}${vehicleText} The mission is forfeit, −${rep} rep.`);
+    }
   }else if(outcome.kind==='abort'){
     personnelMissionEvent(false);
     const rep=Math.min(state.rep,12); state.rep-=rep;
@@ -5929,14 +6291,15 @@ function finalizeLaunch(ctx, ops){
   }
   if(crewed && (outcome.kind==='success'||outcome.kind==='partial')) applyCrewDose(m, ctx.crewId); // surviving crew take a radiation dose
   if(crewed && ctx.crewId) logAstronautFlight(ctx.crewId, m.name, outcome.kind); // E1.4: per-astronaut flight log, survives the person leaving state.staff
-  settleHullFlight(ctx.hullId, m, outcome.kind);
+  settleHullFlight(ctx.hullId, m, outcome.kind,tx&&tx.id);
+  if(tx) tx.applied.hull=true;
   // #3: attribute this flight to the active vehicle family and accrue/dent its heritage
   const fam=ctx.famId?familyById(ctx.famId):activeFamily(); // 1.2a/S1: resolve the launched family by id at finalize (save-safe — a deferred flight stores famId, not a detachable object ref, and finalize mutates the live family)
   if(fam){
     fam.flights=(fam.flights||0)+1;
     if(success){
       fam.successes=(fam.successes||0)+1;
-      if(recoveryRefly(m)) fam.reflights=(fam.reflights||0)+1; // #7 slice 4: a successful refly adds wear to the recovered booster
+      if(tx?tx.resolution&&tx.resolution.vehicleDisposition==='recovered':recoveryRefly(m)) fam.reflights=(fam.reflights||0)+1; // exact launched capability, never the mutable live Bench on deferred arrival
       if(FAM_MILESTONES.includes(fam.successes)){
         const brandRep=fam.successes; // 5 / 10 / 20 rep as the lineage becomes a household name
         state.rep+=brandRep;
@@ -5956,18 +6319,31 @@ function finalizeLaunch(ctx, ops){
   // existing grounding narration untouched; abort/strand are crewed-only in practice, guarded here for safety).
   if(!crewed && (outcome.kind==='loss'||outcome.kind==='abort'||outcome.kind==='strand') && outcome.subsystem) triggerInquiry(ctx, outcome);
   recordFlightLedger(flightRevenue, flightExpense); // #18: attribute this flight to the current month's ops summary
+  if(tx) tx.applied.ledger=true;
   state.testLevel=0; // campaign applies to one flight
   state.rehearsal=false; // #20 slice 4: rehearsal applies to one flight
   state.depotUse=0;
   state.assembleOrbit=false; // #6: assembly choice applies to one flight
+  if(tx){
+    tx.applied.outcome=true; tx.phase='presentation'; tx.nextAction='finish-presentation';
+    tx.receipts.outcome={applied:true,atAbs:absDay(),kind:outcome.kind};
+  }
+  _launchMutationDepth=Math.max(0,_launchMutationDepth-1);
+  if(tx) checkpointLaunchSave();
   const rnd=()=>Math.random();
+  const launchSpec=tx&&tx.spec||{};
+  const snapStages=Array.isArray(launchSpec.stages)?launchSpec.stages:state.stages;
+  const snapBoost=launchSpec.boosters&&launchSpec.boosters.count>0
+    ? {count:launchSpec.boosters.count,prop:launchSpec.boosters.prop,eng:launchSpec.boosters.eng,solid:!!(ENGINES[launchSpec.boosters.eng]&&ENGINES[launchSpec.boosters.eng].solid)}
+    : boosterSpec();
+  const resolution=tx&&tx.resolution||resolvedLaunchDisposition(null,ctx,outcome);
   const spec={ title:m.name, crewed, success, failPhase,
-    crewEscaped: crewed && outcome.kind==='abort' && failPhase==='ascent', // BACKLOG #40: distinguishes an escape-tower save from a full loss for the failure visual (both set success=false/failPhase='ascent'; only outcome.kind differs)
-    stages: state.stages.map(s=>({prop:s.prop,count:s.count,dia:s.dia,eng:s.eng})),
-    boosters: boosterSpec(),
-    transferProp: (m.profile&&m.modules.includes('transfer'))?state.transfer.prop:0,
-    recovering: recoveryActive(m) && state.stages.length>1 && failPhase!=='ascent', // #graphics: fly the first stage back for a landing instead of tumbling away
-    hasCapsule: !!(state.research.crew_capsule || crewed), // recovery: parachutes + heat shield + splashdown (Mercury/Vostok era)
+    crewEscaped: crewed && resolution.launchEscapeFitted && /^(abort|scrub)$/.test(outcome.kind) && failPhase==='ascent',
+    stages: snapStages.map(s=>({prop:s.prop,count:s.count,dia:s.dia,eng:s.eng})),
+    boosters: snapBoost,
+    transferProp: (m.profile&&m.modules.includes('transfer'))?((launchSpec.transfer&&launchSpec.transfer.prop)||state.transfer.prop):0,
+    recovering: resolution.vehicleDisposition==='recovered' && snapStages.length>1 && failPhase!=='ascent',
+    hasCapsule: resolution.crewCapsuleFitted!=null?resolution.crewCapsuleFitted:!!(state.research.crew_capsule || crewed),
     isCislunar: !!m.profile, isOrbital: (!m.profile && m.reqDv>=9000),
     reqDv: m.reqDv||9400, physics:flightPhysicsSpec(m,v), report:flightReport(m,v,sim,outcome), orbitOps:ctx.orbitOps||null,
     // #38: reuse the earlier roll if a live decision (weather/live-call/rescue) already opened this
@@ -5987,7 +6363,8 @@ function finalizeLaunch(ctx, ops){
       modName:_md?_md.name:'Module', modShort:(_md&&_md.short)||'MOD', modColor:(_md&&_md.color)||'#b8c0c7',
       moduleCount:_fs?facilityModuleList(_fs).length:1 }; // post-dock count (dockModuleNow already pushed it)
   }
-  const finish=()=>{ if(state.money<0){ gameOver(); } else { _missionPulse=success?'ok':(outcome.kind==='loss'||outcome.kind==='strand')?'bad':null; render(); if(pendingCelebration) pendingCelebration(); maybeShowInquiry(); maybeShowHearing(); maybeShowSampleDecision(); } _flightResolving=false; if(!state.over) pumpFlightArrivals(); }; // 1.2a: flight fully done — release the lock, surface a pending failure inquiry, budget hearing, or #81 sample disposition; then resolve the next arrival if any
+  let finished=false;
+  const finish=()=>{ if(finished) return; finished=true; finishLaunchTransaction(tx,success,outcome,pendingCelebration); };
   if(animEnabled){
     // E1.2 slice C: if a live-flight decision (live call/reserve/weather/rescue) opened this overlay
     // early (openFlightForDecision), resume that SAME animation in place with the now-known outcome
@@ -7045,7 +7422,10 @@ function showCrisisModal(){
       :`<button class="btn" onclick="fundCrisisRemediation();showCrisisModal()" ${afford?'':'disabled'}>Fund ${def.remedyName} (${fM(cost)}, ${CRISIS_FUND_MONTHS} mo)</button>`}
     <button class="btn ghost" style="width:100%;margin-top:8px" onclick="hideModal()">Close — keep flying through it</button>`);
 }
-function gameOver(){
+function evaluateTerminalAfterTransaction(){
+  const insolvent=state.money<0;
+  if(!insolvent){ state.over=false; return false; }
+  if(state.over) return true;
   state.over=true;
   const usesLeft=2-(state.bailouts||0);
   const t=bailoutTerms();
@@ -7056,6 +7436,14 @@ function gameOver(){
     <p>The company has run dry. Take a bridge loan to keep flying — late loans are larger but carry a steeper reputation hit and a <b>permanent monthly interest drag</b>${loanInterest()>0?` (you already owe ${fM(loanInterest())}/mo)`:''}. Or close the books and start a new company.</p>
     ${loanBtn}
     <button class="btn ghost" onclick="restart()" style="margin-top:8px">Start over</button>`);
+  return true;
+}
+function gameOver(){
+  if(_launchMutationDepth>0||_flightResolving||activeLaunchTransaction()){
+    if(state.launchTxn) state.launchTxn.terminalPending=true;
+    return false;
+  }
+  return evaluateTerminalAfterTransaction();
 }
 function bailout(){
   const t=bailoutTerms();
@@ -7065,6 +7453,57 @@ function bailout(){
   state.over=false;
   log('note',`Emergency bridge loan: +${fM(t.amount)}, −${t.repCost} rep, +${fM(t.interest)}/mo permanent interest. (${2-state.bailouts} remaining)`);
   hideModal(); render();
+}
+function rehydrateLaunchTransaction(){
+  if(!state.launchTxn) return false;
+  state.launchTxn=makeLaunchTransactionRecord(state.launchTxn);
+  if(state.launchTxn.phase==='resolved'||state.launchTxn.phase==='rolled-back'){ state.launchTxn=null; return false; }
+  _flightResolving=true;
+  return true;
+}
+function resumeLaunchTransactionUI(){
+  const tx=state.launchTxn;
+  if(!tx||!activeLaunchTransaction()) return false;
+  _flightResolving=true;
+  if(tx.phase==='presentation'&&tx.applied.outcome){ completePersistedLaunchPresentation(tx); return true; }
+  if(tx.phase==='preparing'){
+    state.activeMission=tx.missionId;
+    if(tx.spec) loadOrderSpec(tx.spec);
+    launch(tx.source==='hangar',tx.hullId,tx.requestId,tx.quote);
+    return true;
+  }
+  const ctx=launchTransactionContext(tx);
+  if(!ctx){ announceAction(`Launch ${tx.id} cannot resume because mission ${tx.missionId} is unavailable.`); return true; }
+  const d=tx.decision;
+  if(tx.phase==='decision'&&d&&d.selected==null){
+    const data=d.data||{};
+    if(d.kind==='weather'){
+      const wx=data.weather||tx.draws.weather;
+      _pendingLaunch=Object.assign({},ctx,{wx,prebuilt:tx.source==='hangar',hullId:tx.hullId});
+      showWeatherModal(ctx.m,wx); return true;
+    }
+    if(d.kind==='live'){
+      ctx.liveFlag=data.flag; _pendingLive=ctx; showLiveCallModal(ctx,data.flag); return true;
+    }
+    if(d.kind==='reserve'){
+      ctx.deepFlag=data.flag; _pendingReserve=ctx; showReserveModal(ctx,data.flag); return true;
+    }
+    if(d.kind==='orbit'){
+      _pendingOrbitOps={ctx,opts:(data.options||orbitalManeuverOptions(ctx))};
+      showOrbitalManeuverDecision(ctx); return true;
+    }
+    if(d.kind==='anomaly'){
+      const ev=MISSION_ANOMALIES.find(x=>x.id===data.eventId);
+      if(ev){ _pendingOps=ctx; showAnomalyModal(ev,ctx); return true; }
+    }
+    if(d.kind==='rescue'){
+      _pendingRescue={ctx,ops:data.ops||null,outcome:data.outcome||ctx.outcome};
+      showRescueModal(ctx,_pendingRescue.outcome); return true;
+    }
+  }
+  tx.phase='settling'; tx.nextAction='begin-resolution';
+  beginResolve(ctx);
+  return true;
 }
 // One campaign replacement boundary for every non-persisted simulation owner.
 // This deliberately abandons old callbacks/decisions; it never resolves them
@@ -7080,7 +7519,7 @@ function resetSimTransients(){
   _pendingResearchDone=[]; _timeInterrupted=false; _timeAutoHiddenUnit=null;
   _devForceOutcome=null; _devForceLiveCall=false; _devForceReserve=false; _devForceWeather=false;
   _pendingLaunch=null; _pendingOps=null; _pendingOrbitOps=null; _pendingLive=null;
-  _pendingReserve=null; _pendingRescue=null; _flightResolving=false; _flightSeq=0;
+  _pendingReserve=null; _pendingRescue=null; _flightResolving=false; _launchMutationDepth=0; _flightSeq=0;
   _procStaffSeq=0; _victoryWire=null; activeModal=null; _prodModalOpen=false;
   _modalReturnFocus=null; _modalReturnFocusId=null;
   try{ const me=$('modal'); if(me&&me.classList){ me.classList.add('hidden'); me.setAttribute('aria-hidden','true'); } }catch(e){}

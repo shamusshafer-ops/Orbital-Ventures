@@ -31,6 +31,7 @@ function buildPlayedState(){
   const m=MISSIONS.find(x=>x.id==='belt_survey');
   const v=computeVehicle();
   let sim=null; try{ sim=simulateMission(m); }catch(e){}
+  beginLaunchTransaction({requestId:'save-roundtrip-flight',source:'hangar',missionId:m.id,quote:{fixture:true},spec:queueSpecSnapshot(),timing:{startedAbs:absDay()}});
   try{ proceedLaunch(m, v, sim, 1, 0, true); }catch(e){}
 }
 

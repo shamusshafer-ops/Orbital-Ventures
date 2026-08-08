@@ -31,6 +31,16 @@ When bumping `SAVE_VERSION`, add an entry at the top of the list below.
 
 ---
 
+## v62 — Gate 2 resumable launch transactions
+
+Adds the single foreground `launchTxn`, durable request receipts, exact mission,
+hull, quote, capability, decision, outcome, and effect snapshots, plus transaction
+ownership on deferred flights. Launch decisions resume from JSON state after reload
+and settlement receipts make repeated delivery a no-op. Pre-v62 saves captured with
+an in-progress launch or mission flight are rejected: development builds do not
+fabricate missing hull ownership, random results, or flight history. Ordinary v61
+lifecycle records are remapped through the schema-2 factories.
+
 ## v61 — Gate 1 canonical campaign and lifecycle schema
 
 Adds the explicit campaign `schemaId`, canonical empty `annals` and `launchTxn`

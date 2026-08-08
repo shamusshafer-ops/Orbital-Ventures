@@ -27,7 +27,7 @@ let boundary=beginProductionWeatherBoundary('ord-save-boundary');
 let mission=boundary.mission, hull=boundary.hull;
 issue.setup('production launch reaches the weather hold with exact hull ownership',
   !!_pendingLaunch && _pendingLaunch.m.id===mission.id && _pendingLaunch.hullId===hull.id &&
-    _pendingLaunch.prebuilt===true && _flightResolving && hullById(hull.id).status==='in-flight' &&
+    _pendingLaunch.prebuilt===true && _flightResolving && hullById(hull.id).status==='preparing' &&
     !hangarList().some(rec=>rec.id===boundary.ready.id),
   `pending=${!!_pendingLaunch}, pendingHull=${_pendingLaunch&&_pendingLaunch.hullId}, hull=${hull.id}, status=${hullById(hull.id)&&hullById(hull.id).status}`);
 
@@ -38,7 +38,7 @@ const savedTxn=payload&&payload.state&&(payload.state.launchTxn||payload.state.p
 issue.expect('save serializes a resumable weather hold for the exact mission and hull',
   !!savedTxn && savedTxn.hullId===hull.id &&
     (savedTxn.missionId===mission.id || (savedTxn.m&&savedTxn.m.id===mission.id)) &&
-    !!(savedTxn.weather||savedTxn.wx),
+    !!((savedTxn.draws&&savedTxn.draws.weather)||(savedTxn.decision&&savedTxn.decision.data&&savedTxn.decision.data.weather)),
   `saved=${!!raw}, transaction=${JSON.stringify(savedTxn||null)}, hull=${hull.id}`);
 
 _pendingLaunch=null;
@@ -59,7 +59,10 @@ issue.setup('lifecycle case reaches the same production weather hold',
   !!_pendingLaunch && _pendingLaunch.hullId===hull.id && _flightResolving,
   `pending=${!!_pendingLaunch}, pendingHull=${_pendingLaunch&&_pendingLaunch.hullId}, hull=${hull.id}`);
 autosave(false);
-issue.expect('ordinary autosave skips an unresolved launch', localStorage.getItem(SAVE_KEY)===null);
+const ordinaryRaw=localStorage.getItem(SAVE_KEY), ordinaryPayload=ordinaryRaw&&JSON.parse(ordinaryRaw);
+const ordinaryTxn=ordinaryPayload&&ordinaryPayload.state&&ordinaryPayload.state.launchTxn;
+issue.expect('ordinary autosave persists the unresolved launch owner',
+  !!ordinaryTxn&&ordinaryTxn.hullId===hull.id&&ordinaryTxn.decision&&ordinaryTxn.decision.kind==='weather');
 autosave(true);
 const forcedRaw=localStorage.getItem(SAVE_KEY);
 const forcedPayload=forcedRaw&&JSON.parse(forcedRaw);

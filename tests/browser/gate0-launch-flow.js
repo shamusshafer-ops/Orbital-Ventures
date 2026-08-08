@@ -266,8 +266,11 @@ async function runGate0LaunchFlow(driver,url){
     throw new Error(`Skip precondition is not the hidden future-decision boundary for hull ${launchedHullId}: ${JSON.stringify(boundaryBeforeSkip)}`);
   }
   metrics.syntheticPlayerDomActivations+=2; // exact Fly control, then exact visible Skip control
-  await waitUntil(()=>driver.execute(`return document.getElementById('animOverlay').classList.contains('hidden');`),
-    {timeout:5000,label:'skipped overlay to close'});
+  await waitUntil(()=>driver.execute(`
+    const overlay=document.getElementById('animOverlay');
+    return window.eval('!!(animState&&animState.held&&animState.pendingDecision)')&&
+      overlay&&!overlay.classList.contains('hidden');
+  `),{timeout:5000,label:'Skip to preserve and reveal the pending decision'});
   await driver.navigate(url);
   metrics.reloadNavigations++;
   await waitUntil(()=>driver.execute(`return typeof startupContinue==='function' && !!localStorage.getItem('orbital_ventures_save');`),

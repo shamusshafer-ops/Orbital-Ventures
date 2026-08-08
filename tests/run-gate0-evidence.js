@@ -170,7 +170,7 @@ async function main(){
     build:output=>output.trim().length>0,
     buildCheck:output=>output.includes('build parity ok'),
     buildParity:output=>output.includes('3/3 build parity checks passed')&&output.includes('2/2 texture-embed split checks passed'),
-    expectedFailures:output=>output.includes('Gate 0 quarantine: 6 reproduced, 0 unexpected')
+    expectedFailures:output=>output.includes('Gate 0 quarantine: 1 reproduced, 0 unexpected')
   };
   const commandFailures=['build','buildCheck','buildParity','expectedFailures'].filter(name=>{
     const result=evidence.commands[name], output=result.stdout+result.stderr;

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Real-browser quarantine for the launch → future decision → Skip → reload boundary.
+// Real-browser positive contracts for launch → decision → Skip → reload and
+// repeated delivery of one stable player action.
 // No browser automation package is required; this speaks the W3C WebDriver protocol.
 const fs=require('fs');
 const http=require('http');
@@ -153,7 +154,7 @@ function startServer(){
 async function run(){
   const browsers=requested==='all'?['firefox','chromium']:[requested];
   const local=await startServer();
-  let reproduced=0,unexpected=0,unavailable=0;
+  let passed=0,unexpected=0,unavailable=0;
   const report={schema:'orbital-ventures.gate0-browser.v1',startedAt:new Date().toISOString(),
     commands:{runner:[process.execPath,...process.argv.slice(1)]},requestedBrowsers:browsers,
     provenance:provenance(),
@@ -183,14 +184,14 @@ async function run(){
 
         try{
           const result=await runGate0LaunchFlow(session,local.url);
-          const flow={issue:'G0-B01',status:result.recoverable?'xpass':'xfail',result};
+          const flow={issue:'G0-B01',status:result.recoverable?'pass':'fail',result};
           browserResult.flows.push(flow);
           if(result.recoverable){
-            unexpected++;
-            human('error',`XPASS G0-B01 ${browser}: exact launched hull remained recoverable ${JSON.stringify(result)}`);
+            passed++;
+            human('log',`PASS G0-B01 ${browser}: exact launched hull and decision remained resumable ${JSON.stringify(result)}`);
           }else{
-            reproduced++;
-            human('log',`XFAIL G0-B01 ${browser}: exact launched hull lost ownership after Skip/reload ${JSON.stringify(result)}`);
+            unexpected++;
+            human('error',`FAIL G0-B01 ${browser}: exact launched hull lost ownership after Skip/reload ${JSON.stringify(result)}`);
           }
         }catch(error){
           unexpected++;
@@ -201,14 +202,14 @@ async function run(){
 
         try{
           const result=await runGate0DuplicateControlFlow(session,local.url);
-          const flow={issue:'G0-B08',status:result.reproduced?'xfail':'xpass',result};
+          const flow={issue:'G0-B08',status:result.idempotent?'pass':'fail',result};
           browserResult.flows.push(flow);
-          if(result.reproduced){
-            reproduced++;
-            human('log',`XFAIL G0-B08 ${browser}: rapid activation of one DOM control duplicated commitment ${JSON.stringify(result)}`);
+          if(result.idempotent){
+            passed++;
+            human('log',`PASS G0-B08 ${browser}: rapid activation of one DOM control was idempotent ${JSON.stringify(result)}`);
           }else{
             unexpected++;
-            human('error',`XPASS G0-B08 ${browser}: rapid activation of one DOM control was idempotent ${JSON.stringify(result)}`);
+            human('error',`FAIL G0-B08 ${browser}: rapid activation duplicated commitment ${JSON.stringify(result)}`);
           }
         }catch(error){
           unexpected++;
@@ -236,15 +237,15 @@ async function run(){
     await new Promise(resolve=>local.server.close(resolve));
   }
   report.finishedAt=new Date().toISOString();
-  report.summary={reproduced,unexpected,unavailable};
+  report.summary={passed,unexpected,unavailable};
   emitStructuredReport(report);
   if(!jsonOutput){
-    console.log(`Gate 0 browser quarantine: ${reproduced} reproduced, ${unexpected} unexpected, ${unavailable} unavailable`);
+    console.log(`Gate 2 browser contracts: ${passed} passed, ${unexpected} unexpected, ${unavailable} unavailable`);
     if(jsonOutputPath) console.log(`Browser evidence: ${report.evidenceOutputPath}`);
   }
   if(unexpected) process.exitCode=1;
   else if(unavailable&&!allowMissing) process.exitCode=2;
-  else if(!reproduced) process.exitCode=2;
+  else if(!passed) process.exitCode=2;
   return report;
 }
 

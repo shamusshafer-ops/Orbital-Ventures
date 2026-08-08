@@ -1,4 +1,4 @@
-# Gate 0 browser quarantine
+# Gate 2 browser contracts
 
 This dependency-free W3C WebDriver harness exercises visible controls in real
 Firefox/Chromium documents through synthetic DOM `click()` activation. It does
@@ -34,11 +34,10 @@ control used, and visible top-level navigation immediately after Engineer
 startup. These are automation diagnostics, not human timing, click-count, or
 accessibility assertions.
 
-The expected result while `G0-B01` is open is `XFAIL`: the exact saved hull remains
-`in-flight`, but neither the save nor the UI owns a resumable transaction. An
-`XPASS` is deliberately an error so a fix must be promoted out of quarantine.
-G0-B08 likewise remains XFAIL while the rapid same-control delivery creates two
-orders/debits.
+Both former blockers are positive Gate 2 contracts. Skip must reveal—not
+dismiss—the pending decision, reload must restore the exact transaction/hull,
+and repeated delivery of one DOM action must create one order and one debit.
+Any lost owner, hidden decision, duplicate order, or duplicate debit is a failure.
 
 Run both required engines:
 
