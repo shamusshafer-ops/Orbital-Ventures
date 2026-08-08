@@ -64,17 +64,6 @@ const assemblyChrome=assemblyShellHTML('station');
 check('assembly chrome exposes reversible clear-canvas and module-tray controls', assemblyChrome.includes('stationClearCanvasBtn')&&assemblyChrome.includes('stationModuleTray'));
 check('assembly chrome exposes selected-module rotation in both directions', assemblyChrome.includes('stationRotateLeftBtn')&&assemblyChrome.includes('stationRotateRightBtn'));
 check('assembly chrome explains full-scene orbiting and vertical docking while arranging', assemblyChrome.includes('right-drag to orbit')&&assemblyChrome.includes('Shift: top port')&&assemblyChrome.includes('Alt/Option: bottom port'));
-const baseChrome=assemblyShellHTML('base');
-check('Base chrome exposes a reversible embedded Godot Web test', baseChrome.includes('baseGodotBtn')&&baseChrome.includes('baseGodotFrame')&&baseChrome.includes('godot-base-bench/index.html'));
-const bridgePayload=baseGodotPayload(baseCur);
-check('Godot bridge sends the simulation-owned module inventory and facility identity', bridgePayload.source==='orbital-ventures'&&bridgePayload.facility_id==='lunar_base'&&JSON.stringify(bridgePayload.modules)===JSON.stringify(baseCur.fs.moduleList));
-baseGodotCur=baseCur;
-baseGodotPersistLayout({isru_plant:{x:4.25,z:-2.5,yaw:1.571,hidden:false,parent_id:'hab_dome',target_port:'east',own_port:'west'}});
-const bridgeSaved=assembly3dLayoutMap('base',baseCur)[3];
-check('Godot layout messages round-trip into the existing visual-layout save boundary', bridgeSaved.x===4.25&&bridgeSaved.z===-2.5&&bridgeSaved.parent===0&&bridgeSaved.dockTargetPort==='east');
-assembly3dClearLayout('base',baseCur);
-baseGodotCur=null;
-
 // With THREE absent, both live renderers must take the established SVG route without creating
 // a WebGL state object. This is the release fallback, not a test-only alternate renderer.
 check('Three.js is absent in the headless harness', threeOK()===false);

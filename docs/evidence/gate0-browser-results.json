@@ -1,0 +1,424 @@
+{
+  "schema": "orbital-ventures.gate0-browser.v1",
+  "startedAt": "2026-08-08T18:46:53.428Z",
+  "commands": {
+    "runner": [
+      "/usr/bin/node",
+      "/mnt/c/WINDOWS/system32/Orbital-Ventures-Gate0/tests/run-browser-gate0.js",
+      "--json-output",
+      "docs/evidence/gate0-browser-results.json"
+    ]
+  },
+  "requestedBrowsers": [
+    "firefox",
+    "chromium"
+  ],
+  "provenance": {
+    "repository": {
+      "baseCommit": "bfe31ff1b53bc86a058ea35891b68f06605ae12a",
+      "baseCommitError": null,
+      "worktreeStatus": "D GODOT-BASE-BENCH-HANDOFF.md\n D godot-base-bench-src/.gitignore\n D godot-base-bench-src/README.md\n D godot-base-bench-src/export_presets.cfg\n D godot-base-bench-src/main.gd\n D godot-base-bench-src/main.gd.uid\n D godot-base-bench-src/main.tscn\n D godot-base-bench-src/project.godot\n D godot-base-bench/index.apple-touch-icon.png\n D godot-base-bench/index.audio.position.worklet.js\n D godot-base-bench/index.audio.worklet.js\n D godot-base-bench/index.html\n D godot-base-bench/index.icon.png\n D godot-base-bench/index.js\n D godot-base-bench/index.pck\n D godot-base-bench/index.png\n D godot-base-bench/index.wasm\n M src/render.js\n M src/shell.html\n M tests/test-assembly3d.js\n?? docs/GATE-0-BASELINE.md\n?? docs/evidence/\n?? tests/browser/\n?? tests/expected-failures/\n?? tests/run-browser-gate0.js\n?? tests/run-expected-failures.js\n?? tests/run-gate0-evidence.js",
+      "worktreeClean": false,
+      "worktreeStatusError": null
+    },
+    "runtime": {
+      "nodeVersion": "v18.19.1",
+      "nodeExecutable": "/usr/bin/node",
+      "platform": "linux",
+      "arch": "x64",
+      "osType": "Linux",
+      "osRelease": "6.6.87.2-microsoft-standard-WSL2"
+    },
+    "browserEnvironment": {
+      "OV_FIREFOX_BINARY": null,
+      "OV_CHROMIUM_BINARY": "/tmp/ov-chrome-testing.kfNw8D/chrome-linux64/chrome",
+      "OV_FIREFOX_WEBDRIVER_URL": null,
+      "OV_CHROMIUM_WEBDRIVER_URL": null,
+      "OV_ALLOW_REMOTE_WEBDRIVER": null,
+      "OV_CHROMIUM_NO_SANDBOX": null
+    }
+  },
+  "fixture": {
+    "generator": "build.js#createBuildArtifacts",
+    "name": "index.html",
+    "bytes": 118743,
+    "persistedToWorktree": false,
+    "servedPaths": [
+      "/__gate0__.html",
+      "/src/**",
+      "/assets/**"
+    ]
+  },
+  "results": [
+    {
+      "browser": "firefox",
+      "flows": [
+        {
+          "issue": "G0-B01",
+          "status": "xfail",
+          "result": {
+            "research": "Static Fire Test Program",
+            "researchCompleted": true,
+            "launchedHullId": "hull_1",
+            "recoverable": false,
+            "exactTransaction": false,
+            "exactHangar": false,
+            "exactDecision": false,
+            "exactSettled": false,
+            "decisionVisible": false,
+            "exactHullStatus": "in-flight",
+            "hangarHullIds": [],
+            "pendingOwnerHullIds": [],
+            "hullStatuses": [
+              {
+                "id": "hull_1",
+                "status": "in-flight"
+              }
+            ],
+            "launchIdentity": {
+              "activated": true,
+              "orderId": "ord1",
+              "hullId": "hull_1",
+              "missionId": "first_flight",
+              "handler": "launchFromHangar('ord1')"
+            },
+            "boundaryBeforeSkip": {
+              "hasAnimState": true,
+              "hasPendingFutureDecision": true,
+              "decisionHeld": false,
+              "pendingLiveHullId": "hull_1",
+              "flightResolving": true,
+              "overlayVisible": true,
+              "decisionVisible": false
+            },
+            "metrics": {
+              "syntheticPlayerDomActivations": 16,
+              "syntheticDevDomActivations": 7,
+              "reloadNavigations": 1,
+              "researchCompletionControl": "Next Event",
+              "elapsedEndToEndWallMs": 3046
+            },
+            "openingTopLevelNavigation": {
+              "count": 6,
+              "nav": [
+                {
+                  "id": "tabCommand",
+                  "label": "Command Center"
+                },
+                {
+                  "id": "tabBench",
+                  "label": "Design Bench"
+                },
+                {
+                  "id": "tabRnd",
+                  "label": "R&D"
+                },
+                {
+                  "id": "tabMap",
+                  "label": "Solar System"
+                },
+                {
+                  "id": "tabStation",
+                  "label": "Station Bench"
+                },
+                {
+                  "id": "tabBase",
+                  "label": "Base Bench"
+                }
+              ],
+              "activeViews": [
+                "commandView"
+              ]
+            }
+          }
+        },
+        {
+          "issue": "G0-B08",
+          "status": "xfail",
+          "result": {
+            "sameControlObject": true,
+            "syntheticDomActivations": 2,
+            "before": {
+              "orders": 0,
+              "money": 3.5,
+              "buildCost": 0.44,
+              "text": "■ Build & Launch — builds 2 mo, fly from hangar when ready",
+              "html": "<button class=\"launch\" style=\"width:100%\" onclick=\"launch()\">■ Build &amp; Launch — builds 2 mo, fly from hangar when ready</button>"
+            },
+            "afterFirst": {
+              "orders": 1,
+              "money": 3.06,
+              "isConnected": false
+            },
+            "afterSecond": {
+              "orders": 2,
+              "money": 2.62,
+              "isConnected": false
+            },
+            "firstOrdersAdded": 1,
+            "firstDebit": 0.44,
+            "secondOrdersAdded": 1,
+            "secondDebit": 0.44,
+            "ordersAdded": 2,
+            "debit": 0.88,
+            "expectedDebit": 0.44,
+            "setupValid": true,
+            "targetShapeValid": true,
+            "idempotent": false,
+            "reproduced": true
+          }
+        }
+      ],
+      "driver": {
+        "source": "/snap/bin/geckodriver",
+        "command": [
+          "/snap/bin/geckodriver",
+          "--port",
+          "39651"
+        ],
+        "driverVersion": "geckodriver 0.37.0 ( 2026-07-20)",
+        "external": false,
+        "status": {
+          "ready": true,
+          "message": ""
+        }
+      },
+      "requestedCapabilities": {
+        "browserName": "firefox",
+        "moz:firefoxOptions": {
+          "args": [
+            "-headless"
+          ]
+        }
+      },
+      "capabilities": {
+        "acceptInsecureCerts": false,
+        "browserName": "firefox",
+        "browserVersion": "153.0",
+        "platformName": "linux",
+        "setWindowRect": true,
+        "unhandledPromptBehavior": "dismiss and notify",
+        "userAgent": "Mozilla/5.0 (X11; Linux x86_64; rv:153.0) Gecko/20100101 Firefox/153.0",
+        "moz:buildID": "20260720151037",
+        "moz:headless": true,
+        "moz:platformVersion": "6.6.87.2-microsoft-standard-WSL2",
+        "moz:processID": 99443,
+        "moz:profile": "/tmp/rust_mozprofilegHdCzl",
+        "moz:shutdownTimeout": 60000,
+        "pageLoadStrategy": "normal",
+        "timeouts": {
+          "implicit": 0,
+          "pageLoad": 300000,
+          "script": 30000
+        },
+        "strictFileInteractability": false,
+        "moz:accessibilityChecks": false,
+        "moz:webdriverClick": true,
+        "moz:windowless": false,
+        "proxy": {},
+        "moz:geckodriverVersion": "0.37.0"
+      },
+      "status": "completed",
+      "shutdown": {
+        "managed": true,
+        "stopped": true,
+        "forced": false
+      }
+    },
+    {
+      "browser": "chromium",
+      "flows": [
+        {
+          "issue": "G0-B01",
+          "status": "xfail",
+          "result": {
+            "decisionVisible": false,
+            "exactDecision": false,
+            "exactHangar": false,
+            "exactHullStatus": "in-flight",
+            "exactSettled": false,
+            "exactTransaction": false,
+            "hangarHullIds": [],
+            "hullStatuses": [
+              {
+                "id": "hull_1",
+                "status": "in-flight"
+              }
+            ],
+            "launchedHullId": "hull_1",
+            "pendingOwnerHullIds": [],
+            "recoverable": false,
+            "research": "Static Fire Test Program",
+            "researchCompleted": true,
+            "launchIdentity": {
+              "activated": true,
+              "handler": "launchFromHangar('ord1')",
+              "hullId": "hull_1",
+              "missionId": "first_flight",
+              "orderId": "ord1"
+            },
+            "boundaryBeforeSkip": {
+              "decisionHeld": false,
+              "decisionVisible": false,
+              "flightResolving": true,
+              "hasAnimState": true,
+              "hasPendingFutureDecision": true,
+              "overlayVisible": true,
+              "pendingLiveHullId": "hull_1"
+            },
+            "metrics": {
+              "syntheticPlayerDomActivations": 16,
+              "syntheticDevDomActivations": 7,
+              "reloadNavigations": 1,
+              "researchCompletionControl": "Next Event",
+              "elapsedEndToEndWallMs": 2077
+            },
+            "openingTopLevelNavigation": {
+              "activeViews": [
+                "commandView"
+              ],
+              "count": 6,
+              "nav": [
+                {
+                  "id": "tabCommand",
+                  "label": "Command Center"
+                },
+                {
+                  "id": "tabBench",
+                  "label": "Design Bench"
+                },
+                {
+                  "id": "tabRnd",
+                  "label": "R&D"
+                },
+                {
+                  "id": "tabMap",
+                  "label": "Solar System"
+                },
+                {
+                  "id": "tabStation",
+                  "label": "Station Bench"
+                },
+                {
+                  "id": "tabBase",
+                  "label": "Base Bench"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "issue": "G0-B08",
+          "status": "xfail",
+          "result": {
+            "afterFirst": {
+              "isConnected": false,
+              "money": 3.06,
+              "orders": 1
+            },
+            "afterSecond": {
+              "isConnected": false,
+              "money": 2.62,
+              "orders": 2
+            },
+            "before": {
+              "buildCost": 0.44,
+              "html": "<button class=\"launch\" style=\"width:100%\" onclick=\"launch()\">■ Build &amp; Launch — builds 2 mo, fly from hangar when ready</button>",
+              "money": 3.5,
+              "orders": 0,
+              "text": "■ Build & Launch — builds 2 mo, fly from hangar when ready"
+            },
+            "debit": 0.88,
+            "expectedDebit": 0.44,
+            "firstDebit": 0.44,
+            "firstOrdersAdded": 1,
+            "idempotent": false,
+            "ordersAdded": 2,
+            "reproduced": true,
+            "sameControlObject": true,
+            "secondDebit": 0.44,
+            "secondOrdersAdded": 1,
+            "setupValid": true,
+            "syntheticDomActivations": 2,
+            "targetShapeValid": true
+          }
+        }
+      ],
+      "driver": {
+        "source": "/tmp/ov-chrome-testing.kfNw8D/chromedriver",
+        "command": [
+          "/tmp/ov-chrome-testing.kfNw8D/chromedriver",
+          "--port=43853"
+        ],
+        "driverVersion": "ChromeDriver 151.0.7922.77 (ff37cfca210138f2a40b843b4a8195ab7e4fc7ff-refs/branch-heads/7922_47@{#19})",
+        "external": false,
+        "status": {
+          "build": {
+            "version": "151.0.7922.77 (ff37cfca210138f2a40b843b4a8195ab7e4fc7ff-refs/branch-heads/7922_47@{#19})"
+          },
+          "message": "ChromeDriver ready for new sessions.",
+          "os": {
+            "arch": "x86_64",
+            "name": "Linux",
+            "version": "6.6.87.2-microsoft-standard-WSL2"
+          },
+          "ready": true
+        }
+      },
+      "requestedCapabilities": {
+        "browserName": "chrome",
+        "goog:chromeOptions": {
+          "args": [
+            "--headless=new",
+            "--disable-gpu"
+          ],
+          "binary": "/tmp/ov-chrome-testing.kfNw8D/chrome-linux64/chrome"
+        }
+      },
+      "capabilities": {
+        "acceptInsecureCerts": false,
+        "browserName": "chrome",
+        "browserVersion": "151.0.7922.77",
+        "chrome": {
+          "chromedriverVersion": "151.0.7922.77 (ff37cfca210138f2a40b843b4a8195ab7e4fc7ff-refs/branch-heads/7922_47@{#19})",
+          "userDataDir": "/tmp/org.chromium.Chromium.scoped_dir.WdFvcD"
+        },
+        "fedcm:accounts": true,
+        "goog:chromeOptions": {
+          "debuggerAddress": "localhost:33137"
+        },
+        "goog:processID": 100856,
+        "networkConnectionEnabled": false,
+        "pageLoadStrategy": "normal",
+        "platformName": "linux",
+        "proxy": {},
+        "setWindowRect": true,
+        "strictFileInteractability": false,
+        "timeouts": {
+          "implicit": 0,
+          "pageLoad": 300000,
+          "script": 30000
+        },
+        "unhandledPromptBehavior": "dismiss and notify",
+        "webauthn:extension:credBlob": true,
+        "webauthn:extension:largeBlob": true,
+        "webauthn:extension:minPinLength": true,
+        "webauthn:extension:prf": true,
+        "webauthn:virtualAuthenticators": true
+      },
+      "status": "completed",
+      "shutdown": {
+        "managed": true,
+        "stopped": true,
+        "forced": false
+      }
+    }
+  ],
+  "finishedAt": "2026-08-08T18:47:07.700Z",
+  "summary": {
+    "reproduced": 4,
+    "unexpected": 0,
+    "unavailable": 0
+  },
+  "evidenceOutputPath": "/mnt/c/WINDOWS/system32/Orbital-Ventures-Gate0/docs/evidence/gate0-browser-results.json"
+}

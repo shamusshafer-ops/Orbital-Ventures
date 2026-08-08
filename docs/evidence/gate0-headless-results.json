@@ -1,0 +1,2504 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-08-08T18:45:36.169Z",
+  "baseCommit": {
+    "exitCode": 0,
+    "stdout": "bfe31ff1b53bc86a058ea35891b68f06605ae12a",
+    "stderr": ""
+  },
+  "worktree": {
+    "exitCode": 0,
+    "stdout": "## main...origin/main\n D GODOT-BASE-BENCH-HANDOFF.md\n D godot-base-bench-src/.gitignore\n D godot-base-bench-src/README.md\n D godot-base-bench-src/export_presets.cfg\n D godot-base-bench-src/main.gd\n D godot-base-bench-src/main.gd.uid\n D godot-base-bench-src/main.tscn\n D godot-base-bench-src/project.godot\n D godot-base-bench/index.apple-touch-icon.png\n D godot-base-bench/index.audio.position.worklet.js\n D godot-base-bench/index.audio.worklet.js\n D godot-base-bench/index.html\n D godot-base-bench/index.icon.png\n D godot-base-bench/index.js\n D godot-base-bench/index.pck\n D godot-base-bench/index.png\n D godot-base-bench/index.wasm\n M src/render.js\n M src/shell.html\n M tests/test-assembly3d.js\n?? docs/GATE-0-BASELINE.md\n?? docs/evidence/\n?? tests/browser/\n?? tests/expected-failures/\n?? tests/run-browser-gate0.js\n?? tests/run-expected-failures.js\n?? tests/run-gate0-evidence.js",
+    "stderr": ""
+  },
+  "environment": {
+    "platform": "linux",
+    "arch": "x64",
+    "node": "v18.19.1",
+    "release": "6.6.87.2-microsoft-standard-WSL2",
+    "hostname": "Hal9100"
+  },
+  "commands": {
+    "build": {
+      "command": [
+        "/usr/bin/node",
+        "build.js"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "elapsedMs": 829,
+      "stdout": "build ok:\n  orbital-ventures.html 18654000 bytes\n  build/game.js         1945584 bytes\n  index.html            118743 bytes\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    "buildCheck": {
+      "command": [
+        "/usr/bin/node",
+        "build.js",
+        "--check"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "elapsedMs": 1442,
+      "stdout": "build parity ok\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    "buildParity": {
+      "command": [
+        "/usr/bin/node",
+        "tests/test-build-parity.js"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "elapsedMs": 181,
+      "stdout": "3/3 build parity checks passed\n2/2 texture-embed split checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    "expectedFailures": {
+      "command": [
+        "/usr/bin/node",
+        "tests/run-expected-failures.js"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "elapsedMs": 5203,
+      "stdout": "XFAIL G0-B01 Skip before decision orphans launch resolution :: XFAIL G0-B01: Skip preserves a reachable decision or completes the transaction -- animState=false, pendingReserve=true, flightResolving=true\nXFAIL G0-B02 Reload loses weather-boundary launch ownership :: XFAIL G0-B02: save serializes a resumable weather hold for the exact mission and hull -- saved=true, transaction=null, hull=hull_1 | XFAIL G0-B02: reload restores a reachable transaction or returns the hull to Hangar -- hullStatus=in-flight, hangar=0 | XFAIL G0-B02: lifecycle-forced save defers or persists a resumable owner for the exact hull -- saved=true, transaction=null, hull=hull_1\nXFAIL G0-B03 Weather scrub triggers premature terminal evaluation :: XFAIL G0-B03: terminal evaluation waits until the launch transaction resolves -- calls=2, snapshot={\"flightResolving\":true,\"pendingLaunch\":false,\"hullStatus\":\"in-flight\",\"money\":-0.11000000000000013} | XFAIL G0-B03: the scrub returns or resolves hull ownership before any game-over latch -- over=true, resolving=true, hull=in-flight, hangar=0\nXFAIL G0-B04 Successful payout leaves a stale terminal latch :: XFAIL G0-B04: a successful payout clears the stale terminal latch once cash is positive -- 364/1000 solvent-but-over; 364/1000 still have bridge loans; 364/1000 total over\nXFAIL G0-B05 Research plus prominent bench static fire blocks displayed-affordable hull :: XFAIL G0-B05: the enabled ready-hull action honors displayed launch-cost affordability -- money=0.25, displayed launch=0.14, reason=Not enough capital to build, test, and fly this mission. | XFAIL G0-B05: activating the enabled, displayed-affordable action consumes that exact hull -- order=ord1, stillReady=true, flights=0->0\nXFAIL G0-B06 Exact Hangar Fly action is ghost-styled and stale :: XFAIL G0-B06: ready-hull action uses primary launch styling rather than ghost styling -- <button class=\"btn ghost\" style=\"padding:2px 8px;font-size:12px\" onclick=\"launchFromHangar('ord1')\">Fly from hangar</button> | XFAIL G0-B06: consuming a Hangar hull immediately refreshes the owning UI -- render calls=0, order=ord1, hull=hull_1, pendingLaunch=true\nXFAIL G0-B07 Commitment surfaces omit staged cash requirements :: XFAIL G0-B07: fresh primary action quotes the immediate build commitment -- label=■ Build & Launch — builds 2 mo, fly from hangar when ready, immediate build=$0.44M | XFAIL G0-B07: fresh primary action distinguishes later flight burn and carry reserve -- label=■ Build & Launch — builds 2 mo, fly from hangar when ready, later burn=$0.14M, carry reserve=$0.12M | XFAIL G0-B07: ready-hull action quotes immediate flight commitment and operating carry separately -- action=<button class=\"btn ghost\" style=\"padding:2px 8px;font-size:12px\" onclick=\"launchFromHangar('ord-quote-ready')\">Fly from hangar</button>, immediate=$0.14M, carry=$0.12M | XFAIL G0-B07: ready hull is affordable at the displayed launch price -- money=0.15, displayed launch=0.14, reason=Not enough capital to build, test, and fly this mission. | XFAIL G0-B07: ready-hull rejection does not claim the already-built hull is unpaid -- Not enough capital to build, test, and fly this mission.\nXFAIL G0-B08 Build mutation lacks duplicate-request idempotency :: XFAIL G0-B08: replaying the same logical build request creates one production order -- deliberate calls=2, orders=2 | XFAIL G0-B08: replaying the same logical build request debits build cost once -- deliberate calls=2, before=100.00, after=99.12, build=0.44\nGate 0 quarantine: 8 reproduced, 0 unexpected\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    }
+  },
+  "suites": [
+    {
+      "name": "test-afford-estimate.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-afford-estimate.js"
+      ],
+      "elapsedMs": 280,
+      "summary": [
+        "39/39 checks passed"
+      ],
+      "stdout": "39/39 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-anim-speed.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-anim-speed.js"
+      ],
+      "elapsedMs": 234,
+      "summary": [
+        "9/9 checks passed"
+      ],
+      "stdout": "9/9 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-annals-archive.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-annals-archive.js"
+      ],
+      "elapsedMs": 233,
+      "summary": [
+        "28/28 checks passed"
+      ],
+      "stdout": "28/28 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-anomaly-pool.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-anomaly-pool.js"
+      ],
+      "elapsedMs": 262,
+      "summary": [
+        "24/24 checks passed"
+      ],
+      "stdout": "24/24 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-assembly-shell.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-assembly-shell.js"
+      ],
+      "elapsedMs": 370,
+      "summary": [
+        "10/10 checks passed"
+      ],
+      "stdout": "10/10 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-assembly3d.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-assembly3d.js"
+      ],
+      "elapsedMs": 258,
+      "summary": [
+        "36/36 checks passed"
+      ],
+      "stdout": "\n36/36 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-astronaut-log.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-astronaut-log.js"
+      ],
+      "elapsedMs": 291,
+      "summary": [
+        "9/9 checks passed"
+      ],
+      "stdout": "9/9 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-base-bench.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-base-bench.js"
+      ],
+      "elapsedMs": 250,
+      "summary": [
+        "22/22 checks passed"
+      ],
+      "stdout": "22/22 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-base-draft.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-base-draft.js"
+      ],
+      "elapsedMs": 299,
+      "summary": [
+        "23/23 checks passed"
+      ],
+      "stdout": "23/23 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-build-parity.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "tests/test-build-parity.js"
+      ],
+      "elapsedMs": 179,
+      "summary": [
+        "3/3 build parity checks passed",
+        "2/2 texture-embed split checks passed"
+      ],
+      "stdout": "3/3 build parity checks passed\n2/2 texture-embed split checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-cape-zoom.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-cape-zoom.js"
+      ],
+      "elapsedMs": 238,
+      "summary": [
+        "11/11 checks passed"
+      ],
+      "stdout": "11/11 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-cape3d-foundation.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-cape3d-foundation.js"
+      ],
+      "elapsedMs": 249,
+      "summary": [
+        "17/17 checks passed"
+      ],
+      "stdout": "17/17 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-cc-atmosphere.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-cc-atmosphere.js"
+      ],
+      "elapsedMs": 350,
+      "summary": [
+        "14/14 checks passed"
+      ],
+      "stdout": "14/14 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-chronicle-bookends.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-chronicle-bookends.js"
+      ],
+      "elapsedMs": 300,
+      "summary": [
+        "22/22 checks passed"
+      ],
+      "stdout": "22/22 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-command-hero-layout.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-command-hero-layout.js"
+      ],
+      "elapsedMs": 263,
+      "summary": [
+        "23/23 checks passed"
+      ],
+      "stdout": "23/23 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-command-mode.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-command-mode.js"
+      ],
+      "elapsedMs": 232,
+      "summary": [
+        "3/3 checks passed"
+      ],
+      "stdout": "3/3 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-contract-popout.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-contract-popout.js"
+      ],
+      "elapsedMs": 246,
+      "summary": [
+        "8/8 checks passed"
+      ],
+      "stdout": "8/8 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-contracts.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-contracts.js"
+      ],
+      "elapsedMs": 290,
+      "summary": [
+        "33/33 checks passed"
+      ],
+      "stdout": "33/33 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-crew-escape.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-crew-escape.js"
+      ],
+      "elapsedMs": 242,
+      "summary": [
+        "12/12 checks passed"
+      ],
+      "stdout": "12/12 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-crisis-pool.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-crisis-pool.js"
+      ],
+      "elapsedMs": 245,
+      "summary": [
+        "43/43 checks passed"
+      ],
+      "stdout": "43/43 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-crisis-proximity.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-crisis-proximity.js"
+      ],
+      "elapsedMs": 255,
+      "summary": [
+        "30/30 checks passed"
+      ],
+      "stdout": "30/30 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-decision-panel.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-decision-panel.js"
+      ],
+      "elapsedMs": 4239,
+      "summary": [
+        "49/49 checks passed"
+      ],
+      "stdout": "49/49 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-depart-b.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-depart-b.js"
+      ],
+      "elapsedMs": 2472,
+      "summary": [
+        "39/39 checks passed"
+      ],
+      "stdout": "\n39/39 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-depot-phasing.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-depot-phasing.js"
+      ],
+      "elapsedMs": 255,
+      "summary": [
+        "17/17 checks passed"
+      ],
+      "stdout": "17/17 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-dept-a.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-dept-a.js"
+      ],
+      "elapsedMs": 989,
+      "summary": [
+        "42/42 checks passed"
+      ],
+      "stdout": "\n42/42 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-dept-b.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-dept-b.js"
+      ],
+      "elapsedMs": 1021,
+      "summary": [
+        "27/27 checks passed"
+      ],
+      "stdout": "\n27/27 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-dept-c.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-dept-c.js"
+      ],
+      "elapsedMs": 1010,
+      "summary": [
+        "30/30 checks passed"
+      ],
+      "stdout": "\n30/30 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-dev-menu.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-dev-menu.js"
+      ],
+      "elapsedMs": 513,
+      "summary": [
+        "30/30"
+      ],
+      "stdout": "30/30\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-e05-retention.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-e05-retention.js"
+      ],
+      "elapsedMs": 231,
+      "summary": [
+        "27/27 checks passed"
+      ],
+      "stdout": "\n27/27 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-econ-balance-2026-07.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-econ-balance-2026-07.js"
+      ],
+      "elapsedMs": 294,
+      "summary": [
+        "40 passed, 0 failed"
+      ],
+      "stdout": "\n40 passed, 0 failed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-ephemeris.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-ephemeris.js"
+      ],
+      "elapsedMs": 268,
+      "summary": [
+        "54/54 checks passed"
+      ],
+      "stdout": "54/54 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-era-visual.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-era-visual.js"
+      ],
+      "elapsedMs": 239,
+      "summary": [
+        "(skipped built-HTML check — orbital-ventures.html not found relative to tests/: ENOENT: no such file or directory, open '/tmp/orbital-ventures.html' )",
+        "39/39 checks passed"
+      ],
+      "stdout": "(skipped built-HTML check — orbital-ventures.html not found relative to tests/: ENOENT: no such file or directory, open '/tmp/orbital-ventures.html' )\n39/39 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-esc.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-esc.js"
+      ],
+      "elapsedMs": 271,
+      "summary": [
+        "36/36 checks passed"
+      ],
+      "stdout": "36/36 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-facility-decay-flavor.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-facility-decay-flavor.js"
+      ],
+      "elapsedMs": 224,
+      "summary": [
+        "5/5 checks passed"
+      ],
+      "stdout": "5/5 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-facility-module-integrity.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-facility-module-integrity.js"
+      ],
+      "elapsedMs": 240,
+      "summary": [
+        "15/15 checks passed"
+      ],
+      "stdout": "15/15 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-fleet-registry.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-fleet-registry.js"
+      ],
+      "elapsedMs": 248,
+      "summary": [
+        "41/41 checks passed"
+      ],
+      "stdout": "41/41 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-flight-markers.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-flight-markers.js"
+      ],
+      "elapsedMs": 232,
+      "summary": [
+        "38/38 checks passed"
+      ],
+      "stdout": "38/38 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-flight3d-cislunar-reentry.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-flight3d-cislunar-reentry.js"
+      ],
+      "elapsedMs": 230,
+      "summary": [
+        "8/8 checks passed"
+      ],
+      "stdout": "8/8 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-flight3d-deepfail.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-flight3d-deepfail.js"
+      ],
+      "elapsedMs": 235,
+      "summary": [
+        "26/26 checks passed"
+      ],
+      "stdout": "26/26 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-flight3d-foundation.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-flight3d-foundation.js"
+      ],
+      "elapsedMs": 251,
+      "summary": [
+        "58/58 checks passed"
+      ],
+      "stdout": "58/58 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-flight3d-sepbeat.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-flight3d-sepbeat.js"
+      ],
+      "elapsedMs": 316,
+      "summary": [
+        "10/10 checks passed"
+      ],
+      "stdout": "10/10 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-flight3d-staging.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-flight3d-staging.js"
+      ],
+      "elapsedMs": 345,
+      "summary": [
+        "35/35 checks passed"
+      ],
+      "stdout": "35/35 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-flight3d-trajectory.js",
+      "classification": "known-red",
+      "exitCode": 1,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-flight3d-trajectory.js"
+      ],
+      "elapsedMs": 238,
+      "summary": [
+        "FAIL: nose tracks the velocity vector through the whole gravity turn (<2.5° worst error)",
+        "FAIL: altitude climb rate flattens toward insertion (S-curve, not steepest-at-the-end)",
+        "FAIL: orbital insertion is near-horizontal (flight path >77° from vertical)",
+        "FAIL: at insertion the motion is mostly downrange, not up (horizontal flight into orbit)",
+        "FAIL: apogee lands ~42% into the coast (0.1500 vs 0.4200 ±0.03)",
+        "FAIL: coast apogee matches the profile apogee (71.4842 vs NaN ±1)",
+        "FAIL: the vehicle is horizontal at apogee (arcing over) (1.1076 vs 1.5708 ±0.1)",
+        "FAIL: past apogee the nose drops below the horizon (coming down)",
+        "FAIL: the arc reaches the water at the end of the coast",
+        "FAIL: splash is flagged only at the very end",
+        "FAIL: a high-energy lob pitches farther over than a sounding rocket",
+        "FAIL: a high-energy lob flies farther downrange relative to its altitude",
+        "FAIL: the engine is off during the ballistic coast (old code burned it the whole way)",
+        "FAIL: a brief shutdown fade is allowed right at burnout",
+        "FAIL: smoke is a dense-atmosphere effect (gone above ~13 km)",
+        "FAIL: vacuum shading is altitude-based (none low, full high)",
+        "FAIL: a metre-scale hop never shows vacuum effects",
+        "FAIL: a metre-scale hop still clears its pad visibly",
+        "13/31 checks passed"
+      ],
+      "stdout": "FAIL: nose tracks the velocity vector through the whole gravity turn (<2.5° worst error)\nFAIL: altitude climb rate flattens toward insertion (S-curve, not steepest-at-the-end)\nFAIL: orbital insertion is near-horizontal (flight path >77° from vertical)\nFAIL: at insertion the motion is mostly downrange, not up (horizontal flight into orbit)\nFAIL: apogee lands ~42% into the coast (0.1500 vs 0.4200 ±0.03)\nFAIL: coast apogee matches the profile apogee (71.4842 vs NaN ±1)\nFAIL: the vehicle is horizontal at apogee (arcing over) (1.1076 vs 1.5708 ±0.1)\nFAIL: past apogee the nose drops below the horizon (coming down)\nFAIL: the arc reaches the water at the end of the coast\nFAIL: splash is flagged only at the very end\nFAIL: a high-energy lob pitches farther over than a sounding rocket\nFAIL: a high-energy lob flies farther downrange relative to its altitude\nFAIL: the engine is off during the ballistic coast (old code burned it the whole way)\nFAIL: a brief shutdown fade is allowed right at burnout\nFAIL: smoke is a dense-atmosphere effect (gone above ~13 km)\nFAIL: vacuum shading is altitude-based (none low, full high)\nFAIL: a metre-scale hop never shows vacuum effects\nFAIL: a metre-scale hop still clears its pad visibly\n13/31 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-flight3d-vehicle-sync.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-flight3d-vehicle-sync.js"
+      ],
+      "elapsedMs": 228,
+      "summary": [
+        "20/20 checks passed"
+      ],
+      "stdout": "20/20 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-focus-trap.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-focus-trap.js"
+      ],
+      "elapsedMs": 232,
+      "summary": [
+        "31/31 checks passed"
+      ],
+      "stdout": "\n31/31 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-ground-track.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-ground-track.js"
+      ],
+      "elapsedMs": 240,
+      "summary": [
+        "12/12 checks passed"
+      ],
+      "stdout": "12/12 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-header-tooltips.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-header-tooltips.js"
+      ],
+      "elapsedMs": 258,
+      "summary": [
+        "13/13 checks passed"
+      ],
+      "stdout": "13/13 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-hidden-tab.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-hidden-tab.js"
+      ],
+      "elapsedMs": 220,
+      "summary": [
+        "34/34 checks passed"
+      ],
+      "stdout": "\n34/34 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-hotkeys.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-hotkeys.js"
+      ],
+      "elapsedMs": 237,
+      "summary": [
+        "31/31 checks passed"
+      ],
+      "stdout": "\n31/31 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-hull-registry.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-hull-registry.js"
+      ],
+      "elapsedMs": 241,
+      "summary": [
+        "9/9 checks passed"
+      ],
+      "stdout": "9/9 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-icon-set.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-icon-set.js"
+      ],
+      "elapsedMs": 258,
+      "summary": [
+        "27/27 checks passed"
+      ],
+      "stdout": "27/27 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-inclination-missions.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-inclination-missions.js"
+      ],
+      "elapsedMs": 239,
+      "summary": [
+        "10/10 checks passed"
+      ],
+      "stdout": "10/10 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-inclination.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-inclination.js"
+      ],
+      "elapsedMs": 237,
+      "summary": [
+        "21/21 checks passed"
+      ],
+      "stdout": "21/21 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-investor-confidence.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-investor-confidence.js"
+      ],
+      "elapsedMs": 412,
+      "summary": [
+        "27 passed, 0 failed"
+      ],
+      "stdout": "\n27 passed, 0 failed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-launch-camera.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-launch-camera.js"
+      ],
+      "elapsedMs": 239,
+      "summary": [
+        "46/46 checks passed"
+      ],
+      "stdout": "46/46 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-light-lag.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-light-lag.js"
+      ],
+      "elapsedMs": 253,
+      "summary": [
+        "22/22 checks passed"
+      ],
+      "stdout": "22/22 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-live-call-freq.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-live-call-freq.js"
+      ],
+      "elapsedMs": 260,
+      "summary": [
+        "10/10 checks passed"
+      ],
+      "stdout": "10/10 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-livery-esc.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-livery-esc.js"
+      ],
+      "elapsedMs": 253,
+      "summary": [
+        "10/10 checks passed"
+      ],
+      "stdout": "10/10 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-map-shell-slots.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-map-shell-slots.js"
+      ],
+      "elapsedMs": 273,
+      "summary": [
+        "8/8 checks passed"
+      ],
+      "stdout": "8/8 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-map-slice-a.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-map-slice-a.js"
+      ],
+      "elapsedMs": 249,
+      "summary": [
+        "21 passed, 0 failed"
+      ],
+      "stdout": "\n21 passed, 0 failed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-map-slice-b.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-map-slice-b.js"
+      ],
+      "elapsedMs": 292,
+      "summary": [
+        "25 passed, 0 failed"
+      ],
+      "stdout": "\n25 passed, 0 failed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-map-slice-c.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-map-slice-c.js"
+      ],
+      "elapsedMs": -471,
+      "summary": [
+        "16 passed, 0 failed"
+      ],
+      "stdout": "\n16 passed, 0 failed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-map-sm1-sm5-source.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "tests/test-map-sm1-sm5-source.js"
+      ],
+      "elapsedMs": 187,
+      "summary": [
+        "26/26 checks passed"
+      ],
+      "stdout": "26/26 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-map3d-orient.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-map3d-orient.js"
+      ],
+      "elapsedMs": 237,
+      "summary": [
+        "map3d-orient: 35 passed, 0 failed"
+      ],
+      "stdout": "map3d-orient: 35 passed, 0 failed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-map3d-overlay.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-map3d-overlay.js"
+      ],
+      "elapsedMs": 267,
+      "summary": [
+        "map3d-overlay: 34 passed, 0 failed"
+      ],
+      "stdout": "map3d-overlay: 34 passed, 0 failed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-map3d-roster.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-map3d-roster.js"
+      ],
+      "elapsedMs": 281,
+      "summary": [
+        "map3d-roster: 29 passed, 0 failed"
+      ],
+      "stdout": "map3d-roster: 29 passed, 0 failed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-map3d-scale.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-map3d-scale.js"
+      ],
+      "elapsedMs": 260,
+      "summary": [
+        "map3d-scale: 48 passed, 0 failed"
+      ],
+      "stdout": "map3d-scale: 48 passed, 0 failed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-map3d-shell.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-map3d-shell.js"
+      ],
+      "elapsedMs": 304,
+      "summary": [
+        "32/32 checks passed"
+      ],
+      "stdout": "32/32 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-map3d-window.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-map3d-window.js"
+      ],
+      "elapsedMs": 332,
+      "summary": [
+        "map3d-window: 36 passed, 0 failed"
+      ],
+      "stdout": "map3d-window: 36 passed, 0 failed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-materials.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-materials.js"
+      ],
+      "elapsedMs": 327,
+      "summary": [
+        "46/46 checks passed"
+      ],
+      "stdout": "\n46/46 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-maxq-fairing.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-maxq-fairing.js"
+      ],
+      "elapsedMs": 305,
+      "summary": [
+        "18/18 checks passed"
+      ],
+      "stdout": "18/18 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-memorial.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-memorial.js"
+      ],
+      "elapsedMs": 301,
+      "summary": [
+        "13/13 checks passed"
+      ],
+      "stdout": "13/13 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-near-miss.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-near-miss.js"
+      ],
+      "elapsedMs": 310,
+      "summary": [
+        "33/33 checks passed"
+      ],
+      "stdout": "33/33 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-night-launch.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-night-launch.js"
+      ],
+      "elapsedMs": 245,
+      "summary": [
+        "9/9 checks passed"
+      ],
+      "stdout": "9/9 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-ops-friction.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-ops-friction.js"
+      ],
+      "elapsedMs": 305,
+      "summary": [
+        "36/36"
+      ],
+      "stdout": "36/36\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-orbital-maneuvers.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-orbital-maneuvers.js"
+      ],
+      "elapsedMs": 346,
+      "summary": [
+        "orbital maneuvers: 14/14"
+      ],
+      "stdout": "orbital maneuvers: 14/14\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-outer-bases.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-outer-bases.js"
+      ],
+      "elapsedMs": 258,
+      "summary": [
+        "72/72 checks passed"
+      ],
+      "stdout": "72/72 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-pad-a.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-pad-a.js"
+      ],
+      "elapsedMs": 3009,
+      "summary": [
+        "36/36 checks passed"
+      ],
+      "stdout": "\n36/36 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-pad-abort.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-pad-abort.js"
+      ],
+      "elapsedMs": 267,
+      "summary": [
+        "32 passed, 0 failed"
+      ],
+      "stdout": "\n32 passed, 0 failed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-parts-attach.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-parts-attach.js"
+      ],
+      "elapsedMs": 239,
+      "summary": [
+        "29/29 checks passed"
+      ],
+      "stdout": "29/29 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-parts-bridge.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-parts-bridge.js"
+      ],
+      "elapsedMs": 239,
+      "summary": [
+        "31/31 checks passed"
+      ],
+      "stdout": "31/31 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-parts-gate.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-parts-gate.js"
+      ],
+      "elapsedMs": 258,
+      "summary": [
+        "27/27 checks passed"
+      ],
+      "stdout": "27/27 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-parts-migration.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-parts-migration.js"
+      ],
+      "elapsedMs": 235,
+      "summary": [
+        "28/28 checks passed"
+      ],
+      "stdout": "28/28 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-parts-physics.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-parts-physics.js"
+      ],
+      "elapsedMs": 229,
+      "summary": [
+        "21/21 checks passed"
+      ],
+      "stdout": "21/21 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-parts-polish.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-parts-polish.js"
+      ],
+      "elapsedMs": 245,
+      "summary": [
+        "18/18 checks passed"
+      ],
+      "stdout": "18/18 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-parts-pp1-propulsion.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-parts-pp1-propulsion.js"
+      ],
+      "elapsedMs": 234,
+      "summary": [
+        "120/120 checks passed"
+      ],
+      "stdout": "120/120 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-parts-pp3-structural.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-parts-pp3-structural.js"
+      ],
+      "elapsedMs": 237,
+      "summary": [
+        "53/53 checks passed"
+      ],
+      "stdout": "53/53 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-parts-render.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-parts-render.js"
+      ],
+      "elapsedMs": 238,
+      "summary": [
+        "45/45 checks passed"
+      ],
+      "stdout": "45/45 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-parts-staging.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-parts-staging.js"
+      ],
+      "elapsedMs": 238,
+      "summary": [
+        "31/31 checks passed"
+      ],
+      "stdout": "31/31 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-parts-ui.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-parts-ui.js"
+      ],
+      "elapsedMs": 248,
+      "summary": [
+        "23/23 checks passed"
+      ],
+      "stdout": "23/23 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-personnel-retirement.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-personnel-retirement.js"
+      ],
+      "elapsedMs": 321,
+      "summary": [
+        "39 passed, 0 failed"
+      ],
+      "stdout": "\n39 passed, 0 failed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-popout-sizing.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-popout-sizing.js"
+      ],
+      "elapsedMs": 271,
+      "summary": [
+        "19/19 checks passed"
+      ],
+      "stdout": "19/19 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-progress-unify.js",
+      "classification": "known-skip",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-progress-unify.js"
+      ],
+      "elapsedMs": 235,
+      "summary": [
+        "SKIP: F4 forward test (unfinished feature — set RUN_F4=1 to run)",
+        "0/0 checks passed"
+      ],
+      "stdout": "SKIP: F4 forward test (unfinished feature — set RUN_F4=1 to run)\n0/0 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-regression.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-regression.js"
+      ],
+      "elapsedMs": 309,
+      "summary": [
+        "18/18 checks passed"
+      ],
+      "stdout": "\n18/18 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-render-regions.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-render-regions.js"
+      ],
+      "elapsedMs": 399,
+      "summary": [
+        "24/24 checks passed"
+      ],
+      "stdout": "24/24 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-research-effect-gates.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-research-effect-gates.js"
+      ],
+      "elapsedMs": 277,
+      "summary": [
+        "12/12 checks passed"
+      ],
+      "stdout": "12/12 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-research-era-gate.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-research-era-gate.js"
+      ],
+      "elapsedMs": 230,
+      "summary": [
+        "25/25 checks passed"
+      ],
+      "stdout": "25/25 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-research-goal.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-research-goal.js"
+      ],
+      "elapsedMs": 258,
+      "summary": [
+        "27/27 checks passed"
+      ],
+      "stdout": "27/27 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-research-notice.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-research-notice.js"
+      ],
+      "elapsedMs": 252,
+      "summary": [
+        "14/14 checks passed"
+      ],
+      "stdout": "14/14 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-rival-intel.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-rival-intel.js"
+      ],
+      "elapsedMs": 244,
+      "summary": [
+        "29/29 checks passed"
+      ],
+      "stdout": "29/29 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-rival-strip.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-rival-strip.js"
+      ],
+      "elapsedMs": 224,
+      "summary": [
+        "22/22 checks passed"
+      ],
+      "stdout": "22/22 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-rivals-e11.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-rivals-e11.js"
+      ],
+      "elapsedMs": 300,
+      "summary": [
+        "24/24 checks passed"
+      ],
+      "stdout": "24/24 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-roster.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-roster.js"
+      ],
+      "elapsedMs": 306,
+      "summary": [
+        "12/12 checks passed"
+      ],
+      "stdout": "12/12 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-sample-decision.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-sample-decision.js"
+      ],
+      "elapsedMs": 249,
+      "summary": [
+        "29/29 checks passed"
+      ],
+      "stdout": "29/29 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-save-ring.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-save-ring.js"
+      ],
+      "elapsedMs": 231,
+      "summary": [
+        "42/42 checks passed"
+      ],
+      "stdout": "\n42/42 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-save-slots.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-save-slots.js"
+      ],
+      "elapsedMs": 241,
+      "summary": [
+        "69/69 checks passed"
+      ],
+      "stdout": "\n69/69 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-save.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-save.js"
+      ],
+      "elapsedMs": 265,
+      "summary": [
+        "34/34 checks passed"
+      ],
+      "stdout": "\n34/34 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-scene-math.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-scene-math.js"
+      ],
+      "elapsedMs": 249,
+      "summary": [
+        "35/35 checks passed"
+      ],
+      "stdout": "35/35 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-scene-shell-contract.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-scene-shell-contract.js"
+      ],
+      "elapsedMs": 259,
+      "summary": [
+        "10/10 checks passed"
+      ],
+      "stdout": "10/10 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-science-program.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-science-program.js"
+      ],
+      "elapsedMs": 241,
+      "summary": [
+        "22/22 checks passed"
+      ],
+      "stdout": "22/22 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-sethtml.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-sethtml.js"
+      ],
+      "elapsedMs": 230,
+      "summary": [
+        "9/9 checks passed"
+      ],
+      "stdout": "9/9 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-shell-consolidation.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-shell-consolidation.js"
+      ],
+      "elapsedMs": 275,
+      "summary": [
+        "10/10 checks passed"
+      ],
+      "stdout": "10/10 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-solar-conjunction.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-solar-conjunction.js"
+      ],
+      "elapsedMs": 250,
+      "summary": [
+        "19/19 checks passed"
+      ],
+      "stdout": "19/19 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-sound.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-sound.js"
+      ],
+      "elapsedMs": 268,
+      "summary": [
+        "12/12 checks passed"
+      ],
+      "stdout": "12/12 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-station-operations.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-station-operations.js"
+      ],
+      "elapsedMs": 275,
+      "summary": [
+        "18/18 checks passed"
+      ],
+      "stdout": "18/18 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-station-popout.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-station-popout.js"
+      ],
+      "elapsedMs": 260,
+      "summary": [
+        "20/20 checks passed"
+      ],
+      "stdout": "20/20 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-station-slice1.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-station-slice1.js"
+      ],
+      "elapsedMs": 346,
+      "summary": [
+        "31/31 checks passed"
+      ],
+      "stdout": "31/31 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-station-slice2.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-station-slice2.js"
+      ],
+      "elapsedMs": 310,
+      "summary": [
+        "28/28 checks passed"
+      ],
+      "stdout": "28/28 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-station-slice3.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-station-slice3.js"
+      ],
+      "elapsedMs": 3990,
+      "summary": [
+        "27/27 checks passed"
+      ],
+      "stdout": "27/27 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-surface-modules.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-surface-modules.js"
+      ],
+      "elapsedMs": 272,
+      "summary": [
+        "34/34 checks passed"
+      ],
+      "stdout": "34/34 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-tech-capstones.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-tech-capstones.js"
+      ],
+      "elapsedMs": 231,
+      "summary": [
+        "13/13 checks passed"
+      ],
+      "stdout": "13/13 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-tech-combustion-merge.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-tech-combustion-merge.js"
+      ],
+      "elapsedMs": 224,
+      "summary": [
+        "21/21 checks passed"
+      ],
+      "stdout": "21/21 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-tech-guidance-merge.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-tech-guidance-merge.js"
+      ],
+      "elapsedMs": 228,
+      "summary": [
+        "18/18 checks passed"
+      ],
+      "stdout": "18/18 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-tech-structures-merge.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-tech-structures-merge.js"
+      ],
+      "elapsedMs": 233,
+      "summary": [
+        "21/21 checks passed"
+      ],
+      "stdout": "21/21 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-tech-testing-merge.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-tech-testing-merge.js"
+      ],
+      "elapsedMs": 242,
+      "summary": [
+        "28/28 checks passed"
+      ],
+      "stdout": "28/28 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-theme-sync.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-theme-sync.js"
+      ],
+      "elapsedMs": 237,
+      "summary": [
+        "40/40 checks passed"
+      ],
+      "stdout": "40/40 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-three-guard.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-three-guard.js"
+      ],
+      "elapsedMs": 233,
+      "summary": [
+        "9/9 checks passed"
+      ],
+      "stdout": "9/9 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-tracking-stations.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-tracking-stations.js"
+      ],
+      "elapsedMs": 257,
+      "summary": [
+        "49/49 checks passed"
+      ],
+      "stdout": "49/49 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-ui-layer-button.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-ui-layer-button.js"
+      ],
+      "elapsedMs": 289,
+      "summary": [
+        "19/19 checks passed"
+      ],
+      "stdout": "19/19 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-ui-scale.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-ui-scale.js"
+      ],
+      "elapsedMs": 233,
+      "summary": [
+        "48/48 checks passed"
+      ],
+      "stdout": "\n48/48 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-vehicle-dimensions.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-vehicle-dimensions.js"
+      ],
+      "elapsedMs": 224,
+      "summary": [
+        "12/12 checks passed"
+      ],
+      "stdout": "12/12 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-workspace-shell.js",
+      "classification": "pass",
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/usr/bin/node",
+        "/tmp/ov-gate0-sweep-RF0gma/test-workspace-shell.js"
+      ],
+      "elapsedMs": 246,
+      "summary": [
+        "10/10 checks passed"
+      ],
+      "stdout": "10/10 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    }
+  ],
+  "artifacts": {
+    "orbital-ventures.html": 18654000,
+    "index.html": 118743,
+    "build/game.js": 1945584,
+    "trackedBytes": {
+      "src": 2064054,
+      "tests": 822799,
+      "assets": 12443285
+    },
+    "worktreeBytes": {
+      "src": 2064054,
+      "tests": 909904,
+      "assets": 12443285
+    },
+    "godotPathsPresent": []
+  },
+  "overall": {
+    "ok": true,
+    "totalSuites": 132,
+    "passedSuites": 130,
+    "knownRedSuites": [
+      "test-flight3d-trajectory.js"
+    ],
+    "knownSkippedSuites": [
+      "test-progress-unify.js"
+    ],
+    "badSuites": [],
+    "commandFailures": []
+  }
+}

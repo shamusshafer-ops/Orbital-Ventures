@@ -593,7 +593,6 @@ function assemblyShellHTML(sceneId){
     <div class="scene-toolbar assembly-toolbar">
       <h2 class="assembly-title">${esc(a.title)}</h2>
       <div class="assembly-actions" aria-label="${esc(scene.label)} controls">
-        ${scene.id==='base'?`<button class="btn ghost" type="button" id="baseGodotBtn" onclick="toggleBaseGodotBench()" title="Run the isolated Godot Web integration test inside the Base Bench">◇ Godot test</button>`:''}
         <button class="btn ghost" type="button" id="${scene.id}ArrangeBtn" onclick="toggleAssembly3DArrange('${scene.id}')" title="Arrange modules — drag a module onto a cyan connection node to dock it">↔ Arrange</button>
         <button class="btn ghost" type="button" id="${scene.id}RotateLeftBtn" onclick="assembly3dRotateSelected('${scene.id}',-1)" title="Rotate selected module 90° left" disabled>↺ Module</button>
         <button class="btn ghost" type="button" id="${scene.id}RotateRightBtn" onclick="assembly3dRotateSelected('${scene.id}',1)" title="Rotate selected module 90° right" disabled>↻ Module</button>
@@ -613,9 +612,7 @@ function assemblyShellHTML(sceneId){
     <div class="assembly-monitor" id="${scene.id}Monitor">
       <div id="${a.hostId}" class="assembly-3d-host" aria-label="${esc(scene.label)} 3D viewport"></div>
       <div id="${a.canvasId}" class="assembly-svg-fallback"></div>
-      ${scene.id==='base'?`<iframe id="baseGodotFrame" class="assembly-godot-frame hidden" title="Godot Base Bench integration test" data-src="godot-base-bench/index.html" allow="fullscreen; gamepad"></iframe>`:''}
     </div>
-    ${scene.id==='base'?`<div id="baseGodotStatus" class="assembly-godot-status hidden"></div>`:''}
     <div class="assembly-input-hint">drag a module to dock · Shift: top port · Alt/Option: bottom port · drag empty space or right-drag to orbit · scroll to zoom</div>
     <div class="assembly-palette-home hidden" id="${a.paletteHomeId}"></div>
   </div>`;
@@ -8983,70 +8980,6 @@ function renderAssemblyPalette(sceneId, view){
    already did via the facility modal. */
 let baseExpanded=false;
 let basePanX=0, basePanY=0, baseZoom=1;
-let baseGodotMode=false, baseGodotCur=null, baseGodotStartedAt=0, baseGodotReady=false, baseGodotLoadMs=0, baseGodotRoundTrips=0;
-function baseGodotStatusText(){
-  const frame=$('baseGodotFrame'); let bytes=0;
-  try{ for(const e of frame.contentWindow.performance.getEntriesByType('resource')) bytes+=e.transferSize||e.encodedBodySize||0; }catch(_){}
-  return `Godot Web ready · ${baseGodotLoadMs} ms · bridge ${baseGodotRoundTrips?'round-trip confirmed':'connected'}${bytes?` · ${(bytes/1048576).toFixed(1)} MB transfer`:''}`;
-}
-function baseGodotPayload(cur){
-  const ids=facilityModuleList(cur.fs).slice(), saved=assembly3dLayoutMap('base',cur), layout={};
-  ids.forEach((id,index)=>{
-    if(layout[id]) return; // prototype boundary: repeated types are represented once
-    const p=saved[index]||{}, parent=Number.isInteger(p.parent)&&p.parent>=0?ids[p.parent]:'';
-    layout[id]={x:Number.isFinite(p.x)?p.x:0,z:Number.isFinite(p.z)?p.z:0,yaw:Number.isFinite(p.yaw)?p.yaw:0,hidden:p.hidden===true,parent_id:parent,target_port:p.dockTargetPort||'',own_port:p.dockOwnPort||''};
-  });
-  return {source:'orbital-ventures',type:'load',body:(cur.def&&cur.def.body)||'moon',facility_id:(cur.def&&cur.def.id)||'draft',modules:ids,layout};
-}
-function baseGodotPostState(){
-  const frame=$('baseGodotFrame'); if(!baseGodotMode||!baseGodotCur||!frame||!frame.contentWindow) return;
-  frame.contentWindow.postMessage(JSON.stringify(baseGodotPayload(baseGodotCur)),'*');
-}
-function baseGodotPersistLayout(layout){
-  if(!baseGodotCur||!layout) return;
-  const ids=facilityModuleList(baseGodotCur.fs);
-  ids.forEach((id,index)=>{
-    const p=layout[id]; if(!p) return;
-    const parent=typeof p.parent_id==='string'&&p.parent_id?ids.indexOf(p.parent_id):-1;
-    assembly3dWriteLayout('base',baseGodotCur,index,{x:Number(p.x)||0,y:0,z:Number(p.z)||0,yaw:Number(p.yaw)||0,parent,dockTargetPort:p.target_port||null,dockOwnPort:p.own_port||null,hidden:p.hidden===true});
-  });
-}
-function handleBaseGodotMessage(event){
-  const frame=$('baseGodotFrame'); if(!frame||event.source!==frame.contentWindow) return;
-  let msg=event.data; if(typeof msg==='string'){ try{msg=JSON.parse(msg);}catch(_){return;} }
-  if(!msg||msg.source!=='orbital-ventures-godot') return;
-  if(msg.type==='ready'){
-    baseGodotReady=true;
-    baseGodotLoadMs=Math.max(0,Math.round(performance.now()-baseGodotStartedAt));
-    const status=$('baseGodotStatus');
-    if(status){ status.textContent=baseGodotStatusText(); status.classList.remove('hidden'); }
-    baseGodotPostState();
-    setTimeout(()=>{if(status)status.textContent=baseGodotStatusText();},1500);
-  }else if(msg.type==='layout_changed'&&baseGodotReady){
-    baseGodotPersistLayout(msg.layout); baseGodotRoundTrips++;
-    const status=$('baseGodotStatus'); if(status)status.textContent=baseGodotStatusText();
-  }
-}
-if(typeof window!=='undefined'&&window.addEventListener) window.addEventListener('message',handleBaseGodotMessage);
-function showBaseGodotBench(cur){
-  const frame=$('baseGodotFrame'), host=$('base3dHost'), fallback=$('baseCanvas'), button=$('baseGodotBtn'), status=$('baseGodotStatus');
-  baseGodotCur=cur; if(!frame) return;
-  if(host) host.style.display='none'; if(fallback) fallback.style.display='none';
-  frame.classList.remove('hidden'); if(button){button.textContent='✓ Godot test';button.classList.add('assembly-arrange-active');}
-  if(status){status.classList.remove('hidden');status.textContent=baseGodotReady?baseGodotStatusText():'Starting Godot Web…';}
-  pauseAssembly3D();
-  if(!frame.getAttribute('src')){ baseGodotStartedAt=performance.now(); frame.setAttribute('src',frame.dataset.src); }
-  else if(baseGodotReady) baseGodotPostState();
-}
-function toggleBaseGodotBench(){
-  baseGodotMode=!baseGodotMode;
-  const frame=$('baseGodotFrame'), status=$('baseGodotStatus'), button=$('baseGodotBtn');
-  if(!baseGodotMode){
-    if(frame) frame.classList.add('hidden'); if(status)status.classList.add('hidden');
-    if(button){button.textContent='◇ Godot test';button.classList.remove('assembly-arrange-active');}
-  }
-  renderBase();
-}
 function baseViewBox(W,H,zoom){
   const vw=W/zoom, vh=H/zoom;
   return `${basePanX+(W-vw)/2} ${basePanY+(H-vh)/2} ${vw} ${vh}`;
@@ -9127,12 +9060,6 @@ function renderBaseDraft(){
   const c=$('baseCanvas'), st=$('baseStats');
   const body=baseDraftBody(), def=facilityById(BASE_DRAFT_FACID[body]), fs=baseDraftFs(body);
   const cur={def, fs};
-  if(baseGodotMode){
-    showBaseGodotBench(cur);
-    if(st) st.innerHTML=baseDraftStatsHTML();
-    renderAssemblyPalette('base',{isDraft:true,cur});
-    return;
-  }
   const use3d=startAssembly3D('base',cur);
   if(c){
     c.style.display=use3d?'none':'block';
@@ -9216,12 +9143,6 @@ function renderBase(){
   const c=$('baseCanvas'), st=$('baseStats');
   const v=baseCurrentView();
   if(v.isDraft){ renderBaseDraft(); return; } // E1.8 D: pre-facility free blueprint drawing board
-  if(baseGodotMode){
-    showBaseGodotBench(v.cur);
-    if(st) st.innerHTML=renderStationFacilityStats(v.built,v.cur,state.baseFocus,'setBaseFocus');
-    renderAssemblyPalette('base',v);
-    return;
-  }
   const use3d=startAssembly3D('base',v.cur);
   if(c){ c.style.display=use3d?'none':'block'; if(!use3d)c.innerHTML=renderBaseSurfaceSVG(720,300,v.cur,true); }
   const zl=$('baseZoomLabel'); if(zl) zl.textContent=Math.round(baseZoom*100)+'%';
