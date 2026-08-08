@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-08-08",
+  "difficulty": "engineer",
+  "missionId": "first_flight",
+  "missionName": "First Flight",
+  "currencyUnit": "millions of nominal campaign-year US dollars; no inflation model",
+  "startingTreasury": 3.5,
+  "quote": {
+    "buildCost": 0.44,
+    "buildCarry": 0.24,
+    "flightBurn": 0.14,
+    "launchCarry": 0.12,
+    "missionCarry": 0,
+    "requiredAtCommit": 0.44,
+    "requiredAtFlight": 0.26,
+    "endToEndRunway": 0.94,
+    "buildDays": 60,
+    "launchDays": 30,
+    "nominalFlightDay": 90,
+    "successProbability": 0.65
+  },
+  "authority": "calculateLaunchQuote via launchCommitmentQuote",
+  "regressionSuite": "tests/test-gate1-quote-contract.js"
+}

@@ -104,21 +104,20 @@ function makeStubEl(){
   return el;
 }
 
+const _domElements=new Map();
 global.document = {
   body: makeStubEl(),
   documentElement: makeStubEl(),
   fullscreenElement: null,
   webkitFullscreenElement: null,
   getElementById(id){
-    if(id==='flightCanvas'||id==='flightTextCanvas'||id==='vehPopCanvas'||id==='earthPopCanvas'||id==='ccPopCanvas') return makeCanvasStub(960,540);
-    // #73 Slice 2: pumpFlightArrivals() (and anything else checking "is a modal open?") reads
-    // $('modal').classList.contains('hidden') as its neutral/no-modal-shown state — every other id
-    // returns a fresh, memory-less stub each call, so without this #modal would look permanently
-    // "open" (empty classList never contains 'hidden'), silently blocking deferred-flight arrival
-    // resolution in every headless test, forever. Default to hidden (no modal shown), matching what
-    // every existing test file already implicitly assumes.
-    if(id==='modal'){ const el=makeStubEl(); el.classList.add('hidden'); return el; }
-    return makeStubEl();
+    if(_domElements.has(id)) return _domElements.get(id);
+    const el=(id==='flightCanvas'||id==='flightTextCanvas'||id==='vehPopCanvas'||id==='earthPopCanvas'||id==='ccPopCanvas')
+      ? makeCanvasStub(960,540) : makeStubEl();
+    // Real getElementById is identity-stable. In particular, modal state must
+    // persist across showModal()/modalOpen()/hideModal() calls.
+    if(id==='modal') el.classList.add('hidden');
+    _domElements.set(id,el); return el;
   },
   createElement(){ return makeStubEl(); },
   querySelector(){ return makeStubEl(); },

@@ -35,9 +35,9 @@ issue.setup('positive control has one exact ready hull',
   !!ready && !!ready.hullId && hullById(ready.hullId).status==='hangar',
   `order=${ready&&ready.id}, hull=${ready&&ready.hullId}`);
 _devForceOutcome='success';
-launchFromHangar(ready.id);
+launchFromHangar(ready.id,ready.hullId,'g0-b08-ready');
 const flightsAfterFirst=state.flights;
-launchFromHangar(ready.id);
+launchFromHangar(ready.id,ready.hullId,'g0-b08-ready');
 issue.setup('consumed-hull identity rejects a repeated launch call',
   state.flights===flightsAfterFirst && !hangarList().some(rec=>rec.id===ready.id),
   `first=${flightsAfterFirst}, after repeated call=${state.flights}, orderPresent=${hangarList().some(rec=>rec.id===ready.id)}`);

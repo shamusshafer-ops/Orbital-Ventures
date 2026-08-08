@@ -29,7 +29,7 @@ gameOver=()=>{
   realGameOver();
 };
 
-launchFromHangar(ready.id);
+launchFromHangar(ready.id,ready.hullId,'g0-b03-weather');
 issue.setup('forced scrub begins inside an active, non-terminal transaction',
   !!_pendingLaunch&&_flightResolving&&!state.over,
   `pendingLaunch=${!!_pendingLaunch}, resolving=${_flightResolving}, over=${state.over}, money=${state.money.toFixed(3)}`);

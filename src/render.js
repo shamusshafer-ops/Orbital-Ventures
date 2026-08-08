@@ -6,13 +6,22 @@ function showOlderLog(){ _tlVisible+=TL_RENDER_PAGE; renderLog(); }
 // Slice 3: objective sparkle tracking
 const _prevObjDoneSet=new Set();
 let _objSectionOpen=false;
+function resetRenderTransients(){
+  if(railClickTimer){ try{ clearTimeout(railClickTimer); }catch(e){} railClickTimer=null; }
+  try{ closeVehPopout(); }catch(e){}
+  try{ closeStationPopout(); closeBasePopout(); closeMapPopout(); closeEarthPopout(); closeCCPopout(); closeContractsPopout(); }catch(e){}
+  _tlVisible=TL_RENDER_PAGE; _prevObjDoneSet.clear(); _objSectionOpen=false;
+  _frontPageVisible=FRONT_PAGE_RENDER_PAGE; _registryOpen={}; _lastEraVisual=null;
+  try{ _htmlCache.clear(); }catch(e){} _htmlCacheStateRef=null;
+  _lastTick=0; _benchRumble=null; _hiddenVisuals=null;
+}
 
 /* ---------- render ---------- */
 
 
 
 
-/* ---------- P7: The Agency Wire — front-page artifacts + Chronicle scrapbook ----------
+/* ---------- P7: The Orbital Wire — front-page artifacts + Chronicle scrapbook ----------
    Firsts, disasters and scoops already fire their own modal/log at the moment they happen
    (showMilestoneModal, fireRivalFirst, maybeRivalDisaster, the crewed-catastrophe branch) —
    this doesn't touch any of that. It just also files a short "front page" record of the same
@@ -60,9 +69,9 @@ function frontPageHTML(e, withFiller){
   const kind=FRONT_PAGE_KIND_LABEL[e.kind]||'';
   const filler=withFiller ? newsFillerHTML(pickNewsFiller(1 + (Math.random()<0.5?1:0))) : '';
   return `<div class="frontpage">
-    <div class="fp-chrome"><span class="fp-dot"></span><span class="fp-dot"></span><span class="fp-dot"></span><span class="fp-url">agencywire.news/${esc((kind||'wire').toLowerCase())}</span></div>
+    <div class="fp-chrome"><span class="fp-dot"></span><span class="fp-dot"></span><span class="fp-dot"></span><span class="fp-url">orbitalwire.news/${esc((kind||'wire').toLowerCase())}</span></div>
     <div class="fp-body">
-      <div class="fp-masthead">The Agency Wire</div>
+      <div class="fp-masthead">The Orbital Wire</div>
       <div class="fp-dateline">${dateOfAbs(e.abs)}</div>
       <div class="fp-kind">${kind}</div>
       <h2 class="fp-headline">${e.icon} ${esc(e.headline)}</h2>
@@ -96,7 +105,7 @@ function chronicleTrendsHTML(){
     </div>`;
 }
 
-/* ---------- The Agency Chronicle: your century, scored ----------
+/* ---------- The Venture Chronicle: your century, scored ----------
    A timeline of every first — yours against the rivals' — plus lifetime statistics and a
    legacy grade. Openable anytime from the Command Center; fires as "An Era Closes" at the
    soft scoring date (Jan 1990) with the option to keep playing; and is the retirement
@@ -159,7 +168,7 @@ function chronicleAnnalsHTML(){
         <span style="color:var(--ink)">${esc(e.msg)}</span></div>`).join('');
     return `<div style="margin-bottom:8px"><div class="dim" style="font-size:10px;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px">${esc(ERAS[ei]?ERAS[ei].name:'—')}</div>${rows}</div>`;
   }).join('');
-  return `<div class="cc-panel-h" style="margin:0 0 4px">📜 Agency annals — ${a.length} recorded</div>
+  return `<div class="cc-panel-h" style="margin:0 0 4px">📜 Venture annals — ${a.length} recorded</div>
     <div style="max-height:200px;overflow:auto;border-bottom:1px solid var(--line);padding:2px 0 6px;margin-bottom:10px">${blocks}</div>`;
 }
 function showChronicle(mode,preservePage){ // mode: 'view' | 'era' (1990) | 'era2' (2100) | 'era3' (2060) | 'retire'
@@ -177,7 +186,7 @@ function showChronicle(mode,preservePage){ // mode: 'view' | 'era' (1990) | 'era
   // I2: a second bookend at SCORING_YEAR_2 so the post-2000 game gets its own ceremony instead of
   // coasting on the 1990 one — framed around the "deep-space dimensions" the first ceremony predates
   // (worlds reached, crises survived, whether the fusion-precursor capstone has flown).
-  const heading = mode==='retire' ? 'The Chronicle closes' : mode==='era3' ? 'The interplanetary age — '+SCORING_YEAR_3 : mode==='era2' ? 'A new age dawns — '+SCORING_YEAR_2 : (mode==='era' ? 'An era closes — '+SCORING_YEAR : 'Agency Chronicle');
+  const heading = mode==='retire' ? 'The Chronicle closes' : mode==='era3' ? 'The interplanetary age — '+SCORING_YEAR_3 : mode==='era2' ? 'A new age dawns — '+SCORING_YEAR_2 : (mode==='era' ? 'An era closes — '+SCORING_YEAR : 'Venture Chronicle');
   const sub = mode==='retire' ? 'You step down. This is what the history books will say.' :
               mode==='era3' ? 'The gap between the second measure and this one has been the quiet decades — this is where the interplanetary program either takes shape or stalls. History has taken its third measure.' :
               mode==='era2' ? 'A century and a half of spaceflight — the deep frontier now within reach. The program may continue; history has taken its second measure.' :
@@ -200,10 +209,10 @@ function showChronicle(mode,preservePage){ // mode: 'view' | 'era' (1990) | 'era
     <div style="max-height:240px;overflow:auto;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:6px 0;margin-bottom:10px">${rows}</div>
     ${chronicleAnnalsHTML()}
     ${chronicleTrendsHTML()}
-    ${mode==='view'?`<div class="cc-panel-h" style="margin:0 0 4px">📰 The Agency Wire</div>
+    ${mode==='view'?`<div class="cc-panel-h" style="margin:0 0 4px">📰 The Orbital Wire</div>
     <div style="max-height:160px;overflow:auto;border-bottom:1px solid var(--line);padding:2px 0 6px;margin-bottom:10px">${frontPagesHTML()}</div>`:''}
     ${mode==='retire'
-      ? `<button class="btn launch" style="width:100%" onclick="hideModal();newGame();render()">Found a new agency ▸</button>
+      ? `<button class="btn launch" style="width:100%" onclick="hideModal();newGame();render()">Found a new venture ▸</button>
          <button class="btn ghost" style="width:100%;margin-top:6px" onclick="hideModal()">…not yet — back to work</button>`
       : (mode==='era'||mode==='era2'||mode==='era3')
       ? `<button class="btn launch" style="width:100%" onclick="hideModal()">The program continues ▸</button>
@@ -3172,7 +3181,8 @@ function renderCCLegacyStrip(){
   const orderRows=orders.map(o=>ccStripProg('🏗', o.name, fmtTimeLeft(o.monthsLeft)+' left',
      clampA(Math.round(100*(o.monthsTotal-o.monthsLeft)/Math.max(1,o.monthsTotal)),0,100), 'var(--dom-engineering)')).join('');
   const hangar=hangarList();
-  const hangarRows=hangar.map(h=>`<div class="cc-strip-prow"><span class="cc-strip-pname">✓ <b>${h.name}</b> ready</span><button class="btn ghost" style="padding:1px 8px;font-size:12px;margin-left:auto" onclick="launchFromHangar('${h.id}')">Fly ▸</button></div>`).join('');
+  const hangarRows=hangar.map(h=>{ const view=readyHullActionView(h), q=view.quote, a=view.action;
+    return `<div class="cc-strip-prow"><span class="cc-strip-pname">✓ <b>${h.name}</b> · ${esc(h.hullId)} · ${fM(q.flightBurn)} + ${fM(q.launchCarry)} reserve</span><button class="btn launch" style="padding:1px 8px;font-size:12px;margin-left:auto" onclick="launchFromHangar('${h.id}','${h.hullId}','${a.id}')" ${actionButtonAttrs(a)}>Fly ▸</button></div>`; }).join('');
   const buildEmpty=(!orders.length&&!hangar.length)?`<div class="cc-strip-prow dim">🏗 Nothing building — commit a launch from the Bench.</div>`:'';
   el.innerHTML=`
     <div class="cc-strip-id">
@@ -3193,7 +3203,7 @@ function renderCCStrip(){
   const pct=(ar&&node)?clampA(Math.round(100*(node.months-ar.monthsLeft)/Math.max(1,node.months)),0,100):0;
   el.innerHTML=`
     <section class="cc-deck-card dombar-economy">
-      <div class="cc-deck-head"><div class="cc-panel-h">Agency overview</div><button class="btn ghost cc-deck-link" onclick="showFinancesModal()">Finances &rarr;</button></div>
+      <div class="cc-deck-head"><div class="cc-panel-h">Venture overview</div><button class="btn ghost cc-deck-link" onclick="showFinancesModal()">Finances &rarr;</button></div>
       <div class="cc-deck-metrics">
         ${ccDeckMetric('Capital',fM(s.capital),state.money<1.5?'var(--bad)':'var(--ink)')}
         ${ccDeckMetric('Net',`${s.net>=0?'+':''}${fM(s.net)}/mo`,netCol)}
@@ -3224,8 +3234,9 @@ function ccMissionDeckGo(i){ const it=ccMissionDeckItems()[i]; if(it) it.go(); }
 function ccSummaryDeckHTML(){
   const adv=missionAdvisor(), amb=currentAmbition(), prog=ambitionProgress();
   const hangar=hangarList(), orders=buildQueueList().filter(o=>o.started).sort((a,b)=>a.monthsLeft-b.monthsLeft);
-  const launch=hangar[0]
-    ? {title:hangar[0].missionName||hangar[0].name, sub:'Ready in hangar', action:`launchFromHangar('${hangar[0].id}')`, label:'Fly'}
+  const readyView=hangar[0]?readyHullActionView(hangar[0]):null;
+  const launch=readyView
+    ? {title:hangar[0].missionName||hangar[0].name, sub:`${hangar[0].hullId} ready · ${fM(readyView.quote.flightBurn)} flight + ${fM(readyView.quote.launchCarry)} reserve`, action:`launchFromHangar('${hangar[0].id}','${hangar[0].hullId}','${readyView.action.id}')`, label:'Fly',descriptor:readyView.action}
     : orders[0]
       ? {title:orders[0].name||'Vehicle build', sub:`In build - ${fmtTimeLeft(orders[0].monthsLeft)} remaining`, action:'showInfrastructureModal()', label:'Build status'}
       : {title:adv.goal||'No launch queued', sub:adv.ready?'Vehicle can be prepared on the Bench.':(adv.summary||'Choose the next launch objective.'), action:adv.actions[0]?advisorClick(adv.actions[0]):"setTab('bench')", label:adv.actions[0]?adv.actions[0].label:'Design vehicle'};
@@ -3241,7 +3252,7 @@ function ccSummaryDeckHTML(){
       <div class="cc-deck-sub">${prog.done}/${prog.total} objectives complete &middot; ${prog.pct}%</div>
     </section>
     <section class="cc-deck-card dombar-engineering">
-      <div class="cc-deck-head"><div class="cc-panel-h">Next launch</div><button class="btn ghost cc-deck-link" onclick="${launch.action}">${esc(launch.label)}</button></div>
+      <div class="cc-deck-head"><div class="cc-panel-h">Next launch</div><button class="btn ${launch.descriptor?'launch':'ghost'} cc-deck-link" onclick="${launch.action}" ${launch.descriptor?actionButtonAttrs(launch.descriptor):''}>${esc(launch.label)}</button></div>
       <div class="cc-deck-title">${esc(launch.title)}</div>
       <div class="cc-deck-sub">${esc(launch.sub)}</div>
       ${adv.reqs.length?`<div class="cc-deck-sub" style="margin-top:6px">${adv.reqs.filter(r=>!r.ok).slice(0,1).map(r=>'Pending: '+esc(r.label)).join('')||'Readiness checks clear'}</div>`:''}
@@ -3276,7 +3287,10 @@ function railFlightPlanHTML(){
   const fpStepsHTML = fpM ? plannerSteps().map(s=>{
     const icon = s.skip?'<span class="dim">—</span>':(s.done?'<span style="color:var(--ok)">✓</span>':'<span style="color:var(--warn)">○</span>');
     let actBtn='';
-    if(s.launch){ actBtn=`<button class="launch" style="font-size:11px;padding:3px 8px" onclick="launch()" ${s.ready?'':'disabled'} title="${s.ready?'':s.detail.replace(/"/g,'')}">■ Launch</button>`; }
+    if(s.launch){ const view=s.actionView, a=view&&view.action;
+      const onclick=view&&view.kind==='ready'?`launchFromHangar('${view.record.id}','${view.record.hullId}','${a.id}')`:`launch(false,null,'${a&&a.id||''}')`;
+      const readyQuote=view&&view.kind==='ready'?` · ${fM(view.quote.flightBurn)} + ${fM(view.quote.launchCarry)} reserve`:'';
+      actBtn=`<button class="launch" style="font-size:11px;padding:3px 8px" onclick="${onclick}" ${a?actionButtonAttrs(a):(s.ready?'':'disabled')} title="${s.ready?'':s.detail.replace(/"/g,'')}">${view&&view.kind==='ready'?'■ Fly exact hull':'■ Commit'}${readyQuote}</button>`; }
     else if(s.actLabel){ actBtn=`<button class="btn ghost" style="font-size:11px;padding:3px 7px" onclick="${plannerStepClick(s)}">${s.actLabel}</button>`; }
     return `<div class="obj-item" style="${s.skip?'opacity:.55':''}"><span class="obj-label" style="flex:1">${icon} ${s.title}</span>${actBtn}</div>`;
   }).join('') : '';
@@ -3343,7 +3357,8 @@ let railClickTimer=null;
 // pre-empt the toggle and navigate to the section's page instead.
 function railAccordClick(key){
   clearTimeout(railClickTimer);
-  railClickTimer=setTimeout(()=>{ railClickTimer=null; railOpen=(railOpen===key)?null:key; renderRailPersistent(); }, 220);
+  const owner=state;
+  railClickTimer=setTimeout(()=>{ railClickTimer=null; if(state!==owner) return; railOpen=(railOpen===key)?null:key; renderRailPersistent(); }, 220);
 }
 function railAccordDbl(key){
   clearTimeout(railClickTimer); railClickTimer=null;
@@ -3407,7 +3422,7 @@ function renderCCCenter(){
       $('ccCenter').innerHTML=`<div class="card cc-hero-card">
         <div class="cc-hero-head">
           <div class="cc-panel-h" style="margin:0">Cape Canaveral — click a building to drill in</div>
-          <button class="btn ghost" onclick="openCCPopout()" title="Pop out — large 3D view + agency summary (Esc/Enter to close)" style="font-size:12px;padding:3px 9px">⤢ Pop out</button>
+          <button class="btn ghost" onclick="openCCPopout()" title="Pop out — large 3D view + venture summary (Esc/Enter to close)" style="font-size:12px;padding:3px 9px">⤢ Pop out</button>
         </div>
         <div class="ccscene-wrap" id="ccSceneWrap" style="aspect-ratio:1200/860">
           <div id="ccZoom">
@@ -3428,7 +3443,7 @@ function renderCCCenter(){
       $('ccCenter').innerHTML=`<div class="card cc-hero-card">
         <div class="cc-hero-head">
           <div class="cc-panel-h" style="margin:0">Cape Canaveral — click a building to drill in</div>
-          <button class="btn ghost" onclick="openCCPopout()" title="Pop out — large pan/zoom view + agency summary (Esc/Enter to close)" style="font-size:12px;padding:3px 9px">⤢ Pop out</button>
+          <button class="btn ghost" onclick="openCCPopout()" title="Pop out — large pan/zoom view + venture summary (Esc/Enter to close)" style="font-size:12px;padding:3px 9px">⤢ Pop out</button>
         </div>
         <div class="ccscene-wrap" id="ccSceneWrap" style="aspect-ratio:1200/860">
           <div id="ccZoom">
@@ -3450,7 +3465,7 @@ function renderCCCenter(){
   $('ccCenter').innerHTML=`<div class="card cc-hero-card">
     <div class="cc-hero-head">
       <div class="cc-panel-h" style="margin:0">Cape Canaveral — click a building to drill in</div>
-      <button class="btn ghost" onclick="openCCPopout()" title="Pop out — large pan/zoom view + agency summary (Esc/Enter to close)" style="font-size:12px;padding:3px 9px">⤢ Pop out</button>
+      <button class="btn ghost" onclick="openCCPopout()" title="Pop out — large pan/zoom view + venture summary (Esc/Enter to close)" style="font-size:12px;padding:3px 9px">⤢ Pop out</button>
     </div>
     <div class="ccscene-wrap">
       <canvas id="ccScene" class="ccscene" width="900" height="420"></canvas>
@@ -3873,7 +3888,7 @@ function renderPower(){
     card.innerHTML=`<h2>Power</h2><div class="flag"><span style="color:var(--ok)">⚛ Nuclear-electric drive — self-powered</span><span class="dim">The NEP reactor powers the whole spacecraft anywhere in the Solar System; no separate power plant is needed.</span></div>`;
     return;
   }
-  const demand=powerDemand(m), src=powerSourceDef(state.powerSource), pv=powerViable(m), mass=powerSystemMass(m), flux=destSolarFlux(m);
+  const demand=powerDemand(m), src=powerSourceDef(state.powerSource), pv=powerViable(m), mass=powerSystemMass(m), flux=destSolarFlux(m), destination=missionDestination(m);
   const sources=Object.values(POWER_SOURCES).map(s=>{
     const locked=s.research && !state.research[s.research], sel=state.powerSource===s.id;
     const sp=s.kwPerTonne*(s.distScaled?flux:1);
@@ -3890,7 +3905,7 @@ function renderPower(){
       <div class="metric"><div class="k">Specific power here</div><div class="v">${powerSpecific(m).toFixed(1)} kW/t</div></div>
       <div class="metric"><div class="k">Power-plant mass</div><div class="v" style="color:${pv.ok?'var(--ignite)':'var(--bad)'}">${pv.ok?mass.toFixed(2)+' t':'—'}</div></div>
     </div>
-    <div class="eq">demand = ${base.toFixed(1)} baseline${eclss>0?` + ${eclss.toFixed(1)} life support`:''}${prop>0?` + ${prop} electric drive`:''} = <b>${demand.toFixed(1)} kW</b> · ${Math.round(flux*100)}% sunlight at the destination${src.rad>0?` · ${src.name} add radiation — keep crews shielded`:''}</div>
+    <div class="eq">demand = ${base.toFixed(1)} baseline${eclss>0?` + ${eclss.toFixed(1)} life support`:''}${prop>0?` + ${prop} electric drive`:''} = <b>${demand.toFixed(1)} kW</b> · ${Math.round(flux*100)}% sunlight at ${esc(destination.name)}${src.rad>0?` · ${src.name} add radiation — keep crews shielded`:''}</div>
     ${pv.ok?'':`<div class="flag warn"><span style="color:var(--warn)">⚠ Power not viable</span><span class="dim">${pv.why}</span></div>`}`;
 }
 function renderTransfer(){
@@ -3958,7 +3973,7 @@ function moduleOptions(sel, allowTransferOnly){
   // transferOnly (NTR/NEP) engines are available to the transfer stage only — never landers.
   // Solids are launch motors (no restart/throttle for precise in-space burns) — excluded from in-space modules.
   return Object.values(ENGINES).filter(e=>state.unlocked[e.id] && !e.solid && (allowTransferOnly || !e.transferOnly))
-    .map(e=>`<option value="${e.id}" ${e.id===sel?'selected':''}>${e.name} · Isp ${e.ispVac}s vac${e.lowThrust?' · low-thrust':''}</option>`).join('');
+    .map(e=>`<option value="${e.id}" ${e.id===sel?'selected':''}>${e.truth==='speculative'?'[CONCEPT · MODELED] ':''}${e.name} · Isp ${e.ispVac}s vac${e.lowThrust?' · low-thrust':''}</option>`).join('');
 }
 function renderLander(){
   const m=curMission();
@@ -4037,8 +4052,9 @@ function plannerSteps(){
   if(archs&&archs.length>1){ const a=missionArchOf(m.id); steps.push({key:'arch',n:2,title:'Choose architecture',done:true,detail:`${a?a.name:'—'} — ${archs.length} profiles available`,tab:'bench',actLabel:'Architecture'}); }
   else steps.push({key:'arch',n:2,title:'Architecture',done:true,skip:true,detail:'Standard profile — no architecture choice for this mission.'});
   // design feasibility
-  const v=computeVehicle();
-  const sim=m.profile?simulateMission(m):null;
+  const ready=hangarFor(m)[0], readyView=ready?readyHullActionView(ready):null;
+  const v=readyView?readyView.vehicle:computeVehicle();
+  const sim=readyView?readyView.simulation:(m.profile?simulateMission(m):null);
   let dOk,dDetail;
   if(m.profile){ const fails=sim.legs.filter(l=>!l.pass).length; dOk=!!sim.ok&&fails===0; dDetail=fails?`${fails} mission leg${fails>1?'s':''} short on Δv · TWR ${v.twr.toFixed(2)}`:`All ${sim.legs.length} legs pass · TWR ${v.twr.toFixed(2)}`; }
   else { const need=effectiveReqDv(m); dOk=v.totalDv>=need&&v.twr>1.0; dDetail=`Δv ${fI(v.totalDv)} / ${fI(need)} m/s · TWR ${v.twr.toFixed(2)}`; }
@@ -4050,8 +4066,8 @@ function plannerSteps(){
   const relTarget=m.crew>0?0.80:0.70, relOk=v.reliability>=relTarget;
   steps.push({key:'reliability',n:5,title:'Review reliability',done:relOk,detail:`${(v.reliability*100|0)}% reliability vs ${(relTarget*100)|0}% recommended${relOk?'':' — consider a test campaign or QA'}`,tab:'bench',actLabel:'Tune'});
   // launch — gated by the same canLaunch the bench uses
-  const chk=canLaunch(v,m,sim);
-  steps.push({key:'launch',n:6,title:'Integrate & launch',done:chk.ok,ready:chk.ok,detail:chk.ok?'All systems go — build & launch when ready.':chk.why,launch:true});
+  const actionView=readyView||launchCommitmentActionView(m,v,sim), chk=actionView.check;
+  steps.push({key:'launch',n:6,title:readyView?'Fly exact hangar hull':'Integrate & launch',done:chk.ok,ready:chk.ok,detail:chk.ok?(readyView?`${ready.hullId} is ready — ${fM(actionView.quote.flightBurn)} flight + ${fM(actionView.quote.launchCarry)} reserve.`:'All systems go — commit the displayed build and flight stages.'):chk.why,launch:true,actionView});
   return steps;
 }
 function plannerStepClick(s){ return s.focus==='mission'?'plannerChoose()':(s.tab?tabIntent(s.tab):''); } // slice 6: crew step → personnel modal via tabIntent
@@ -5268,13 +5284,14 @@ function tabPopout(dir){ const cur=currentPopoutSceneKey(); let i=POPOUT_ORDER.i
 // number keys 1–5 hop pop-out → pop-out in the same order as the scenes.
 document.addEventListener('keydown',function(e){
   if(!anyPopoutOpen()) return;
+  if(e.repeat||isNativeInteractive(e)||modalOpen()) return;
   if(e.key==='Escape'||e.key==='Enter'){ e.preventDefault(); e.stopPropagation();
     if(earthPopoutOpen) closeEarthPopout(); if(vehPopoutOpen) closeVehPopout(); if(stnPopoutOpen) closeStationPopout(); if(basePopoutOpen) closeBasePopout(); if(mapPopoutOpen) closeMapPopout(); if(ccPopoutOpen) closeCCPopout(); if(contractsPopoutOpen) closeContractsPopout(); return; }
   if(e.key==='Tab'){ e.preventDefault(); e.stopPropagation(); tabPopout(e.shiftKey?-1:1); return; }
   if(e.key>='1' && e.key<='5'){ const k=POPOUT_ORDER[+e.key-1]; if(k){ e.preventDefault(); e.stopPropagation(); switchPopoutTo(k); } }
 },true);
 document.addEventListener('keydown',function(e){
-  if(e.target && (e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA')) return; // never hijack a text field
+  if(e.repeat||isNativeInteractive(e)||modalOpen()) return;
   const key=e.key;
   let handled=false;
   if(mapPopoutOpen){ handled = map3d ? map3dKeyNav(key) : svgPopKeyNav(mapPop,key); }
@@ -5290,14 +5307,9 @@ document.addEventListener('keydown',function(e){
 // Presentation: the primary Build & Launch CTA sits directly under the rocket on the
 // bench (in #vehicleCard), not in the right-rail readout. Same gate (canLaunch) + same
 // label logic as the readout used to carry.
-function launchButtonLabel(m,v){
+function launchButtonLabel(m,v,sim){
   if(!m) return '■ Build & Launch';
-  // window missions still resolve in one instant jump (their build/test time must land exactly on
-  // the committed transfer-window date) — everything else now commits to a tracked build, so the
-  // label says so up front rather than implying an immediate flight.
-  const trackedNote = (!m.window && buildMonths(m)>0) ? ` — builds ${buildMonths(m)} mo, fly from hangar when ready` : '';
-  if(!m.profile) return (m.tanker?'■ Launch Tanker':(v.crewed?'■ Build & Launch (crewed)':'■ Build & Launch'))+trackedNote;
-  return '■ Build & Launch mission'+trackedNote;
+  return launchCommitmentActionView(m,v,sim).label;
 }
 function renderBenchLaunch(){
   const host=$('benchLaunch'); if(!host) return;
@@ -5305,6 +5317,12 @@ function renderBenchLaunch(){
   try{ m=curMission(); if(!m){ host.innerHTML=''; return; } v=computeVehicle(); sim=m.profile?simulateMission(m):null; chk=canLaunch(v,m,sim); }
   catch(e){ host.innerHTML=''; return; }
   const sf=canStaticFire();
+  const launchView=launchCommitmentActionView(m,v,sim), quote=launchView.quote;
+  chk=launchView.check;
+  const launchLabel=launchView.label, launchAction=launchView.action;
+  const quoteStages=quote.trackedBuild
+    ? `<div class="flag" style="margin-top:5px;text-align:left"><b>Commitment:</b> ${fM(quote.buildCost)} build now · ${fM(quote.buildCarry)} operating carry through rollout · ${fM(quote.flightBurn)} flight/test later · keep ${fM(quote.launchCarry)} launch-period reserve.<br><span class="dim">Nominal rollout ${dayToDate(quote.nominalReadyAbs)} · flight decision ${dayToDate(quote.nominalFlightAbs)} · end-to-end runway ${fM(quote.endToEndRunway)}. Outcome remains probabilistic (${Math.round(quote.successProbability*100)}% modeled reliability). Current projection; future flight/carry costs are recalculated at rollout.</span></div>`
+    : `<div class="flag" style="margin-top:5px;text-align:left"><b>Commitment:</b> ${fM(quote.cashNow)} hardware/flight now${quote.buildCredit?` after ${fM(quote.buildCredit)} prepaid stock credit`:''} · ${fM(quote.buildCarry+quote.launchCarry)} operating reserve.<br><span class="dim">${quote.buildSaveDays?`${quote.buildSaveDays} stock-saved assembly days · `:''}Nominal flight decision ${dayToDate(quote.nominalFlightAbs)} · end-to-end runway ${fM(quote.endToEndRunway)} · ${Math.round(quote.successProbability*100)}% modeled reliability. Current projection; non-committed future costs are recalculated at rollout.</span></div>`;
   const report=flightReport(m,v,sim,null);
   const fired=state._staticFires&&state._staticFires[state.stages[0]&&state.stages[0].eng]||0;
   const cap=padMassCap(), padUse=v&&cap!==Infinity?v.liftoff/cap:0;
@@ -5312,7 +5330,8 @@ function renderBenchLaunch(){
       <div style="display:flex;justify-content:space-between;font-size:11px;font-family:var(--mono)"><span class="dim">PAD LOAD</span><span style="color:${padUse>1?'var(--bad)':padUse>0.85?'var(--warn)':'var(--muted)'}">${v.liftoff.toFixed(0)} / ${cap} t</span></div>
       <div style="height:4px;background:var(--panel2);border-radius:2px;overflow:hidden"><div style="height:100%;width:${Math.min(100,padUse*100)}%;background:${padUse>1?'var(--bad)':padUse>0.85?'var(--warn)':'var(--readout)'}"></div></div>
     </div>` : '';
-  host.innerHTML=`<button class="launch" style="width:100%" onclick="launch()" ${chk.ok?'':'disabled'}>${chk.ok?launchButtonLabel(m,v):'Launch unavailable'}</button>
+  host.innerHTML=`<button class="launch" style="width:100%" onclick="launch(false,null,'${launchAction.id}')" ${actionButtonAttrs(launchAction)}>${chk.ok?launchLabel:'Commit unavailable'}</button>
+    ${quoteStages}
     ${chk.ok?'<div class="dim" style="font-size:12px;text-align:center;margin-top:4px">or press <b>Space</b></div>':`<div class="flag dim" style="color:var(--dim);margin-top:4px">${chk.why}</div>`}
     ${launchPadCap()>1?`<div class="dim" style="font-size:11px;text-align:center;margin-top:2px">Pads: ${padSlotsLeft()}/${launchPadCap()} free this month</div>`:''}
     ${damagedPadCount()>0?`<div class="dim" style="font-size:11px;text-align:center;margin-top:2px;color:var(--warn)" title="A catastrophic ascent loss damages the pad it flew from">⚠ ${damagedPadCount()} pad${damagedPadCount()===1?'':'s'} under repair</div>`:''}
@@ -7728,7 +7747,7 @@ function renderPersonnel(){
     const lostIds=new Set(memorialRoll().map(f=>f.id));
     html+=`<div class="card" style="margin-top:12px">
       <h2>🚀 Astronaut Roster</h2>
-      <p class="muted" style="font-size:12px;margin:-2px 0 8px">Every astronaut who has flown for this agency, most-flown first.</p>
+      <p class="muted" style="font-size:12px;margin:-2px 0 8px">Every astronaut who has flown for this venture, most-flown first.</p>
       ${rosterIds.map(id=>{
         const p=personById(id); if(!p) return '';
         const flights=astronautFlights(id);
@@ -7749,7 +7768,7 @@ function renderPersonnel(){
   if(fallen.length){
     html+=`<div class="card" style="margin-top:12px;background:var(--panel2);border-color:#5a2f2f">
       <h2 style="margin-bottom:2px">🕊 Memorial Wall</h2>
-      <p class="muted" style="font-size:12px;margin:-2px 0 8px">Every astronaut lost flying for this agency.</p>
+      <p class="muted" style="font-size:12px;margin:-2px 0 8px">Every astronaut lost flying for this venture.</p>
       ${fallen.map(f=>`<div style="padding:6px 0;border-top:1px solid var(--line)">
         <div style="font-size:13px;color:var(--ink)"><b>${esc(f.name)}</b> <span class="dim">— ${f.when}</span></div>
         <div class="dim" style="font-size:12px">${esc(f.mission)}${f.story?`: ${esc(f.story)}`:''}</div>
@@ -10430,8 +10449,8 @@ function branchAffinityNote(r){
 }
 function techModifierText(r){
   const e=r.effect||{}, bits=[];
-  if(e.engine && ENGINES[e.engine]){ const en=ENGINES[e.engine]; bits.push(`Unlocks engine — <b>${en.name}</b> (${en.prop}, Isp ${en.ispVac}s vac, ${en.thrustVac} kN)`); }
-  if(e.engines){ e.engines.filter(id=>ENGINES[id]).forEach(id=>{ const en=ENGINES[id]; bits.push(`Unlocks engine — <b>${en.name}</b> (${en.prop}, Isp ${en.ispVac}s vac, ${en.thrustVac} kN)`); }); }
+  if(e.engine && ENGINES[e.engine]){ const en=ENGINES[e.engine]; bits.push(`${en.truth==='speculative'?truthBadge('speculative')+' Modeled game specification — ':''}Unlocks engine — <b>${en.name}</b> (${en.prop}, Isp ${en.ispVac}s vac, ${en.thrustVac} kN)`); }
+  if(e.engines){ e.engines.filter(id=>ENGINES[id]).forEach(id=>{ const en=ENGINES[id]; bits.push(`${en.truth==='speculative'?truthBadge('speculative')+' Modeled game specification — ':''}Unlocks engine — <b>${en.name}</b> (${en.prop}, Isp ${en.ispVac}s vac, ${en.thrustVac} kN)`); }); }
   if(e.isp) bits.push(`<b>+${Math.round(e.isp*100)}% Isp</b> on the launch vehicle (more Δv)`);
   if(e.thrust) bits.push(`<b>+${Math.round(e.thrust*100)}% liftoff thrust</b> (higher TWR)`);
   if(e.reliability) bits.push(`<b>+${Math.round(e.reliability*100)}%</b> launch reliability`);

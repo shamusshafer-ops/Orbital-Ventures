@@ -91,9 +91,11 @@ async function startDriver(browser){
     const source=`OV_${upper}_WEBDRIVER_URL`;
     return {browser,url:validateDriverUrl(external,source),process:null,source,command:null,driverVersion:null,status:null,external:true};
   }
-  const command=browser==='firefox'
+  const explicitBinary=process.env[`OV_${upper}_WEBDRIVER_BINARY`];
+  const command=explicitBinary ? findCommand([explicitBinary]) : (browser==='firefox'
     ? findCommand(['geckodriver'])
-    : findCommand(['chromedriver','chromium-driver']);
+    : findCommand(['chromedriver','chromium-driver']));
+  if(explicitBinary&&!command) throw new Error(`OV_${upper}_WEBDRIVER_BINARY is not executable: ${explicitBinary}`);
   if(!command) return null;
   const port=await freePort();
   const args=browser==='firefox'?['--port',String(port)]:[`--port=${port}`];

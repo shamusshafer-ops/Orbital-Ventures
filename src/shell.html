@@ -651,6 +651,10 @@
   .item .title{font-weight:600;margin-bottom:2px}
   .item .sub{font-size:12px;color:var(--muted)}
   .hist{display:block;margin-top:4px;font-style:italic;color:var(--dim);font-size:12px;line-height:1.4}
+  .context-label{display:inline-block;margin-right:5px;color:var(--muted);font:700 9px/1.35 var(--mono);font-style:normal;letter-spacing:.08em;vertical-align:.08em}
+  .truth-badge{display:inline-block;margin-right:5px;padding:1px 5px;border:1px solid currentColor;border-radius:3px;font:700 9px/1.35 var(--mono);letter-spacing:.08em;vertical-align:.08em}
+  .truth-history{color:var(--ok)}.truth-fiction{color:var(--ignite)}.truth-schematic,.truth-simulation{color:var(--readout)}.truth-speculative{color:var(--warn)}
+  .sr-only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
   /* tech-tree hover tooltip */
   .techtip{position:fixed;z-index:2000;max-width:340px;pointer-events:none;background:#0d1620;border:1px solid var(--line);border-left:3px solid var(--ignite);border-radius:8px;padding:11px 13px;box-shadow:0 10px 30px rgba(0,0,0,.55);font-size:12px;color:var(--ink)}
   .techtip.hidden{display:none}
@@ -707,7 +711,7 @@
   .modal{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:26px;max-width:440px;text-align:center;max-height:88vh;overflow-y:auto}
   .modal.view{max-width:680px;width:92vw;text-align:left}   /* slice 6 deep-view modals (Programs/Rivals/Personnel): wide, left-aligned, scrollable */
 
-  /* ---- Newspaper front page — "The Agency Wire" (Slice C, 2026-07-12) ----
+  /* ---- Newspaper front page — "The Orbital Wire" (Slice C, 2026-07-12) ----
      The shared frontPageHTML() content (milestone modal, disaster hearing, victory wire, Chronicle
      browser) rendered large and evolving across the 4 visual eras. SIZE lives on the .modal.newspaper
      container; the PAPER LOOK lives on the inner .frontpage card so it applies wherever frontPageHTML
@@ -1055,7 +1059,7 @@
         <button class="btn ghost tarrow" id="tArrowMonth" onpointerdown="holdTimeArrow('month')" title="Month +1 · hold to auto-advance">▸▸▸</button>
       </span>
       <div class="stat dom-economy" title="Cash on hand — spend it on research, facilities, training, and vehicle builds. Run dry and you'll be offered an emergency bridge loan before game over."><span class="k">Capital</span><span class="v" id="stMoney">—</span></div>
-      <div class="stat dom-exploration" title="Public trust in your agency, earned by successful missions — gates which missions you're allowed to attempt next."><span class="k">Reputation</span><span class="v" id="stRep">—</span></div>
+      <div class="stat dom-exploration" title="Public trust in your venture, earned by successful missions — gates which missions you're allowed to attempt next."><span class="k">Reputation</span><span class="v" id="stRep">—</span></div>
       <div class="stat adv-only dom-engineering" title="Total missions flown."><span class="k">Flights</span><span class="v" id="stFlights">—</span></div>
       <div class="stat adv-only dom-warn" title="Government/public backing. Above neutral, it unlocks a monthly funding grant — every point above baseline pays; below neutral, it pays nothing."><span class="k">Public Support</span><span class="v" id="stSupport">—</span></div>
       <div class="stat hidden adv-only dom-economy" id="stMarketWrap" title="Active economy events affecting your mission payouts and overhead right now — booms and downturns."><span class="k">Market</span><span class="v" id="stMarket">—</span></div>
@@ -1220,7 +1224,7 @@
           <button class="btn ghost" id="mapExpandBtn" onclick="toggleMapExpand()">⛶ Expand</button>
         </div>
       </div>
-      <p class="muted" style="font-size:12px;margin:6px 0 10px">Orbits are spaced for legibility, not to scale. Drag to pan, scroll to zoom, WASD/arrows to nudge; click a body (or use ←/→) for its Δv profile.</p>
+      <p class="muted" style="font-size:12px;margin:6px 0 10px"><span class="truth-badge truth-schematic">SCHEMATIC</span> Orbits and body sizes are spaced for legibility, not to scale; travel playback is compressed. Modeled orbital angles and mission Δv remain decision inputs. Drag to pan, scroll to zoom, WASD/arrows to nudge; click a body (or use ←/→) for its Δv profile.</p>
       <div class="map-mode-toolbar" id="mapModeToolbar" role="group" aria-label="Solar System operating mode">
         <span class="map-mode-label">Operating mode</span>
         <button class="btn ghost map-mode-btn active" type="button" data-map-mode="navigation" onclick="map3dSetMode('navigation')">Navigation</button>
@@ -1319,7 +1323,8 @@
   <!-- Flight & Operations log relocated to the always-visible #opsTimeline strip in the top bar. -->
 </div>
 
-<div id="modal" class="scrim hidden"><div class="modal" id="modalBody"></div></div>
+<div id="actionStatus" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+<div id="modal" class="scrim hidden" aria-hidden="true"><div class="modal" id="modalBody" role="dialog" aria-modal="true" aria-label="Orbital Ventures dialog"></div></div>
 <div id="techTip" class="techtip hidden"></div>
 
 <div id="animOverlay" class="animwrap hidden">

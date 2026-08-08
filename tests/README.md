@@ -40,6 +40,17 @@ emission bug is ever suspected.
 Every suite ends with `console.log('N/M checks passed')` and a matching
 process exit code (0 = all passed).
 
+Gate 1 has a fast required contract lane covering its five new suites:
+
+```bash
+node tests/run-gate1-contracts.js
+```
+
+This lane validates the truth/premise registry, canonical state and lifecycle
+records, deterministic quote authority and locked First Flight numbers, action
+descriptors/accessibility, and the positive G0-B06/G0-B07 promotions. It does
+not replace the full `run-gate0-evidence.js` sweep or real-browser validation.
+
 ## Suites
 
 | File | Covers |

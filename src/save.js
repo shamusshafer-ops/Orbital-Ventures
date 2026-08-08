@@ -1,6 +1,10 @@
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=60; // v60: Tier 3.2 persistent history archive (state.annals) — additive; absent on
+const SAVE_VERSION=61; // v61: Gate 1 canonical campaign/lifecycle schema. Additive: schemaId and
+// launchTxn default to `ov-campaign-v1` and null; Gate 2 will be the first code allowed to populate
+// the transaction. Existing v60 saves remain best-effort compatible through the established defaults.
+//
+// v60: Tier 3.2 persistent history archive (state.annals) — additive; absent on
 // existing saves, which is the correct default (appendAnnal and chronicleAnnalsHTML both guard with
 // `state.annals||[]`, so an old save simply starts an empty archive and records forward from load).
 // No migration code and no retroactive reconstruction — history begins accumulating at v60.
@@ -22,6 +26,18 @@ let _lastAutosaveT=0, _gameStarted=false; const AUTOSAVE_MIN_MS=4000;
 // not a transient blip), then stay quiet. Counter resets on any successful write, so a recovered
 // browser re-arms the warning for a future failure streak.
 let _autosaveFails=0, _autosaveWarned=false;
+const CAMPAIGN_SCHEMA_ID='ov-campaign-v1';
+function saveCompatibility(payload){
+  if(!payload || typeof payload!=='object') return {ok:false,reason:'Save payload is not an object.'};
+  const saved=payload.state||payload;
+  if(!saved || typeof saved!=='object' || !saved.year || !saved.company) return {ok:false,reason:'Save is missing its company or campaign date.'};
+  if(saved.schemaId && saved.schemaId!==CAMPAIGN_SCHEMA_ID) return {ok:false,reason:`Unsupported campaign schema “${saved.schemaId}”; this build requires “${CAMPAIGN_SCHEMA_ID}”.`};
+  if((payload.v||0)>SAVE_VERSION) return {ok:false,reason:`Save version v${payload.v} is newer than this build (v${SAVE_VERSION}). Open it with the build that created it.`};
+  return {ok:true,legacy:!saved.schemaId};
+}
+function resetSaveTransients(){
+  _lastAutosaveT=0; _autosaveFails=0; _autosaveWarned=false; _lastRingWrite=null;
+}
 function autosave(force){
   try{
     if(!_gameStarted) return; // S2: never autosave the boot placeholder before the player picks Continue/Open/New (would clobber the real save)
@@ -66,6 +82,7 @@ function saveGame(){
     _gameStarted=true;
     writeSave();
     log('info','Game saved.');
+    announceAction(`Game saved for ${state.company}, ${dateStr()}.`);
     render();
     showModal(`<h2>Game Saved</h2><p class="muted">${dateStr()} — ${esc(state.company)}</p>
       <p class="dim" style="font-size:12px">Saved to browser local storage. Clearing browser data will erase it.</p>
@@ -116,31 +133,29 @@ function migrateHulls(saved){
   (saved.hangar||[]).forEach(rec=>{
     if(!rec || (rec.hullId&&saved.hulls.some(h=>h&&h.id===rec.hullId))) return;
     const n=++max, spec=rec.spec||{}, fam=(saved.vehicles||[]).find(f=>f&&f.id===spec.activeVehicle);
-    const h={id:'hull_'+n,serial:'OVH-'+String(n).padStart(4,'0'),familyId:spec.activeVehicle||null,familyName:fam?fam.name:'Untracked vehicle',builtAbs:0,status:'hangar',flights:0,reuseCount:0,recoveryFitted:!!spec.recovery,history:[{abs:0,outcome:'legacy rollout',missionId:rec.missionId||null}]};
+    const h=makeHullRecord({id:'hull_'+n,serial:'OVH-'+String(n).padStart(4,'0'),familyId:spec.activeVehicle||null,familyName:fam?fam.name:'Untracked vehicle',builtAbs:0,status:'hangar',flights:0,reuseCount:0,recoveryFitted:!!spec.recovery,history:[{abs:0,outcome:'legacy rollout',missionId:rec.missionId||null}]});
     saved.hulls.push(h); rec.hullId=h.id;
   });
   saved.hullSeq=Math.max(saved.hullSeq||0,max);
 }
-// forward-compat load defaults: applied to any save missing newer fields (shared by loadGame + autoLoad)
-function loadDefaults(){ return {
-      research:{}, unlocked:{a4:true}, completed:{}, stages:[{eng:'a4',count:1,prop:2.0}],
-      boosters:{eng:null,count:0,prop:0},
-      transfer:{eng:'hyper_storable',prop:10.0}, descent:{eng:'hyper_storable',prop:6.0},
-      ascent:{eng:'hyper_storable',prop:2.5}, eclss:'open', testLevel:0,
-      windows:{}, committedWindow:null, selectedBody:'moon', mapZoom:null,
-      depot:0, depotUse:0, tab:'command', log:[], rivalFired:{}, scooped:{}, rivalThreat:{}, rivalState:{}, bailouts:0,
-      difficulty:'engineer', customDifficulty:customDefaults(),
-      econEvents:[], eventCooldown:6, pgmRoyalty:0, publicSupport:SUPPORT_BASE,
-      passiveContracts:[], contractCooldown:{}, contractSignings:{}, engineHeritage:{},
-      production:{bays:1,foundry:1,pads:1,qa:1}, lastMonth:{revenue:0,expenses:0,net:0,flights:0}, history:{},
-      ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
-      facilities:{}, fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
-      architectures:{}, science:0, persEventCooldown:5,
-      staff:[], assignedAstronaut:null, departments:defaultDepartments(),
-      vehicles:[], activeVehicle:null, assembleOrbit:false, recovery:false, rehearsal:false, techLevel:{}, divisions:{}, partnerships:[], breakthroughCooldown:3, relDebt:0, powerSource:'solar',
-      recentBuilds:[], materials:defaultMaterialsState(),
-      buildQueue:[], hangar:[], hulls:[], hullSeq:0, orderSeq:0, padMonthAbs:-1, padMonthUsed:0, standingProd:null, juggernautReached:false, doctrine:null, lunarArch:null, uiLayer:'advanced', loanInterest:0, metricHist:defaultMetricHist(), metricArchive:defaultMetricArchive(), metricArchivePending:defaultMetricArchivePending(), livery:defaultLivery(), parts:defaultParts(), blueprints:[], frontPages:[], crisis:null, crisisDone:null, leoFlights:0, deepFlights:0, crisisHistory:[], crisisArchive:null, researchNext:null, day:0, engineStock:{}, engineStockTested:{}, partStock:{}, partStockTested:{}, activeFlights:[], inquiryCredit:null
-}; }
+// v60 orders predate the complete Gate 1 physical snapshot. Historical per-order
+// values cannot be reconstructed, so best-effort compatibility freezes each
+// missing field once from the save's current Bench/defaults. It never overwrites
+// a value already carried by an order.
+function backfillLegacyOrderSpecs(saved){
+  const fallback={parts:plainRecord(saved.parts||defaultParts()),powerSource:saved.powerSource||'solar',
+    engineOut:!!saved.engineOut,livery:plainRecord(saved.livery||defaultLivery())};
+  for(const rec of [...(saved.buildQueue||[]),...(saved.hangar||[])]){
+    if(!rec||!rec.spec||typeof rec.spec!=='object'||Array.isArray(rec.spec)) continue;
+    if(rec.spec.parts===undefined) rec.spec.parts=plainRecord(fallback.parts);
+    if(rec.spec.powerSource===undefined) rec.spec.powerSource=fallback.powerSource;
+    if(rec.spec.engineOut===undefined) rec.spec.engineOut=fallback.engineOut;
+    if(rec.spec.livery===undefined) rec.spec.livery=plainRecord(fallback.livery);
+  }
+}
+// Forward-compat defaults come from the same factory as New Game. Only undefined
+// keys are copied into a loaded save, so live values are never overwritten.
+function loadDefaults(){ return createFreshState('engineer'); }
 
 /* ---------- Session bookend: "where you left off" ----------
    On load, 30 seconds of re-orientation: date/treasury, the top of the Outliner (what's
@@ -181,12 +196,15 @@ function showRecap(){
 // bare state object (payload.state||payload). Callers own their OWN validity handling (throw vs. return
 // false) and post-load UI — this is only the shared transform. Returns the installed state.
 function applyLoadedSave(payload){
+  const compatibility=saveCompatibility(payload);
+  if(!compatibility.ok) throw new Error(compatibility.reason);
   const saved=payload.state||payload;
   migrateWindowsToDays(saved, payload.v); // 4b: month→day window abs
   migrateEphemerisWindows(saved, payload.v); // E4.1 (v57): clear regenerable window cache → real phase-geometry windows
   migrateFacilityAutoResupply(saved); // 2.4 (v42): default per-facility autoResupply OFF on pre-v42 saves
   migrateEraSeen(saved); // P6 6.1 (v44): backfill eraSeen to the save's CURRENT era + seed era baseline snapshot
   migrateHulls(saved); // E4.4: preserve ready hardware identities without fabricating history
+  backfillLegacyOrderSpecs(saved); // Gate 1 best effort: freeze newly canonical physical fields once
   const defaults=loadDefaults();
   for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
   // H1 hardening: user-typed strings are length-clamped at input (setLiveryName slices to 24), but an
@@ -194,47 +212,37 @@ function applyLoadedSave(payload){
   // (Sinks still esc() — this is defense in depth, not the primary fix.)
   if(saved.livery && typeof saved.livery.name==='string') saved.livery.name=saved.livery.name.slice(0,24);
   if(typeof saved.company==='string') saved.company=saved.company.slice(0,48);
+  resetSessionTransients();
   state=saved;
   migrateStateToBuild(state); // E3.5: derive state.build from state.stages (additive, never throws, stages stays source of truth)
   reconcileResearch(); // close any prerequisite gaps opened by tech-tree changes
   rehydrateFlights(); // S1: re-link in-flight records after load
+  rehydrateProceduralStaffSeq(); // Gate 1: derived IDs resume above persisted candidates
   return saved;
 }
-// M3 (audit 2026-07-13): a save written by a NEWER build may carry semantics this build can't
-// migrate (the v34 months→days kind of change would be silently misread, then corrupted on the
-// next write). Warn + require explicit confirmation instead of applying silently. The pending
-// payload is stashed here between the warning modal and the player's choice.
-let _pendingNewerLoad=null;
-function confirmNewerLoad(){ const p=_pendingNewerLoad; _pendingNewerLoad=null; hideModal(); if(p) _applySaveFromPayload(p.payload, p.srcLabel); }
-function cancelNewerLoad(){ _pendingNewerLoad=null; hideModal(); }
 function _applySaveFromPayload(payload, srcLabel){
+  const compatibility=saveCompatibility(payload);
+  if(!compatibility.ok) throw new Error(compatibility.reason);
   snapshotLiveToRing(); // E0.2 Slice B import-safety net: preserve the current live game in the ring before this overwrite (payload captured synchronously, so it lands the pre-import state)
   applyLoadedSave(payload);
   _gameStarted=true;
   log('info', srcLabel||'Game loaded.');
+  announceAction(`${srcLabel||'Game loaded.'} ${state.company}, ${dateStr()}.`);
   render();
   showRecap(); // session bookend: where you left off
 }
 function loadSaveFromText(raw, srcLabel){
   try{
     const payload=JSON.parse(raw);
-    const saved=payload.state||payload;
-    if(!saved.year||!saved.company){ throw new Error('Not a valid Orbital Ventures save (missing company/year).'); }
-    if((payload.v||0)>SAVE_VERSION){
-      _pendingNewerLoad={payload, srcLabel};
-      showModal(`<h2>Save From a Newer Version</h2>
-        <p class="muted">This save was written by a newer build (v${payload.v}) than this one (v${SAVE_VERSION}). Loading it here may misread newer fields and could corrupt the save on the next write.</p>
-        <p class="dim" style="font-size:12px">Safest: open it in the build that wrote it. If you continue, export a backup copy first.</p>
-        <div style="display:flex;gap:8px;margin-top:10px">
-          <button class="btn ghost" onclick="cancelNewerLoad()" style="flex:1">Cancel</button>
-          <button class="btn" onclick="confirmNewerLoad()" style="flex:1">Load anyway</button>
-        </div>`);
-      return;
-    }
+    const compatibility=saveCompatibility(payload);
+    if(!compatibility.ok) throw new Error(compatibility.reason);
     _applySaveFromPayload(payload, srcLabel);
+    return true;
   }catch(e){
-    showModal(`<h2>Load Failed</h2><p class="muted">${e.message}</p>
+    announceAction(`Save not loaded. ${e.message}`);
+    showModal(`<h2>Save Not Loaded</h2><p class="muted">${esc(e.message)}</p>
       <button class="btn" onclick="hideModal()" style="margin-top:8px">OK</button>`);
+    return false;
   }
 }
 function loadGame(){
@@ -246,15 +254,21 @@ function loadGame(){
 // S2: startup screen — the game ALWAYS asks on launch (Continue last game / Open a save file / New game).
 function savedGameMeta(){
   try{ const raw=localStorage.getItem(SAVE_KEY); if(!raw) return null; const p=JSON.parse(raw); const s=p.state||p;
-    if(!s.year||!s.company) return null; return {company:s.company, ts:p.ts||0, year:s.year}; }catch(e){ return null; }
+    const compatibility=saveCompatibility(p);
+    if(!compatibility.ok) return {incompatible:true,reason:compatibility.reason,company:s&&s.company,ts:p.ts||0,year:s&&s.year};
+    return {company:s.company, ts:p.ts||0, year:s.year}; }catch(e){ return {incompatible:true,reason:'The stored save is corrupt and cannot be read.'}; }
 }
 function showStartup(){
   const meta=savedGameMeta();
   const when=meta&&meta.ts?new Date(meta.ts).toLocaleString():'';
-  const cont = meta ? `<button class="btn launch" style="width:100%;margin-bottom:8px" onclick="startupContinue()">▸ Continue last game<br><span class="dim" style="font-size:11px">${esc(meta.company)} · year ${meta.year}${when?` · saved ${when}`:''}</span></button>` : '';
+  const cont = meta&&!meta.incompatible ? `<button class="btn launch" style="width:100%;margin-bottom:8px" onclick="startupContinue()">▸ Continue last game<br><span class="dim" style="font-size:11px">${esc(meta.company)} · year ${meta.year}${when?` · saved ${when}`:''}</span></button>` : '';
+  const incompatible = meta&&meta.incompatible ? `<div class="flag warn" role="status" style="margin-bottom:10px">Stored save not loaded: ${esc(meta.reason)} Start a new campaign or open a compatible export.</div>` : '';
   showModal(`<div style="text-align:center">
     <h2 style="margin-bottom:2px">Orbital Ventures</h2>
-    <p class="muted" style="font-size:12px;margin:0 0 14px">Found a space agency and reach the planets before your rivals.</p>
+    <p class="muted" style="font-size:12px;margin:0 0 5px">${truthBadge('fiction')} Found a government-enabled public-private space venture in alternate-history 1942.</p>
+    <p class="dim" style="font-size:11px;margin:0 0 10px">${truthModelNote()}</p>
+    <p class="dim" style="font-size:11px;margin:0 0 14px">Build real hardware, manage probabilistic flight risk, and reach the planets before rival programs.</p>
+    ${incompatible}
     ${cont}
     <button class="btn ghost" style="width:100%;margin-bottom:8px" onclick="importSave()">📂 Open a save file…</button>
     <button class="btn ghost" style="width:100%;margin-bottom:8px" onclick="showManageSaves()">🗂 Manage saves…</button>
@@ -265,7 +279,7 @@ function showStartup(){
 function startupContinue(){ if(autoLoad()){ _gameStarted=true; hideModal(); render(); showRecap(); } else { showStartup(); } }
 function startupNew(){
   showModal(`<h2>New Game</h2>
-    <p class="muted" style="font-size:12px">Start a fresh company from 1942. Choose a difficulty (changeable later in Settings):</p>
+    <p class="muted" style="font-size:12px">${truthBadge('fiction')} Found a government-enabled public-private space venture in an alternate 1942. Choose a difficulty (changeable later in Settings):</p>
     <div style="display:flex;gap:8px;margin-top:10px">
       <button class="btn ghost" onclick="startupBegin('napkin')" style="flex:1">Napkin<br><span class="dim" style="font-size:11px">forgiving · ${fM(DIFFICULTY.napkin.startMoney)} start</span></button>
       <button class="btn" onclick="startupBegin('engineer')" style="flex:1">Engineer<br><span class="dim" style="font-size:11px">realistic · ${fM(DIFFICULTY.engineer.startMoney)} start</span></button>
@@ -303,7 +317,7 @@ function confirmNew(){
   const hasSave=!!localStorage.getItem(SAVE_KEY);
   const cur=(state&&state.difficulty)||'engineer';
   showModal(`<h2>New Game</h2>
-    <p class="muted">Start a fresh company from 1942. Current progress will be lost unless you save first.</p>
+    <p class="muted">${truthBadge('fiction')} Found a new government-enabled public-private space venture in the alternate 1942 timeline. Current progress will be lost unless you save first.</p>
     ${hasSave?'<p class="dim" style="font-size:12px">A saved game exists in this browser and will not be overwritten.</p>':''}
     <p class="dim" style="font-size:12px;margin-top:10px">Choose a difficulty (changeable later in Settings):</p>
     <div style="display:flex;gap:8px;margin-top:8px">
@@ -318,12 +332,9 @@ function autoLoad(){
     const raw=localStorage.getItem(SAVE_KEY);
     if(!raw) return false;
     const payload=JSON.parse(raw);
-    const saved=payload.state||payload;
-    if(!saved.year||!saved.company) return false;
+    const compatibility=saveCompatibility(payload);
+    if(!compatibility.ok) return false;
     applyLoadedSave(payload);
-    // M3: Continue-flow can't sensibly run the interactive newer-version confirm (it IS this
-    // browser's canonical slot), so apply — but say so out loud instead of staying silent.
-    if((payload.v||0)>SAVE_VERSION) try{ log('bad',`⚠ This save was written by a newer build (v${payload.v} > v${SAVE_VERSION}). Export a backup before playing on — newer fields may be misread here.`); }catch(_){}
     return true;
   }catch(e){ return false; }
 }

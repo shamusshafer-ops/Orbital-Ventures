@@ -72,7 +72,9 @@ the exact same report. Evidence includes the base commit, porcelain worktree
 status, OS/Node runtime, relevant `OV_*` browser settings, runner and driver
 commands, requested session capabilities, negotiated capabilities, and results.
 
-The runner starts `geckodriver` or `chromedriver` when found on `PATH`. An
+The runner starts `geckodriver` or `chromedriver` when found on `PATH`. A
+specific installed driver outside `PATH` may be selected with
+`OV_FIREFOX_WEBDRIVER_BINARY` or `OV_CHROMIUM_WEBDRIVER_BINARY`. An
 already-running loopback driver can be supplied with
 `OV_FIREFOX_WEBDRIVER_URL` or `OV_CHROMIUM_WEBDRIVER_URL`; only `http://` URLs
 without embedded credentials are accepted. Non-loopback endpoints expose full

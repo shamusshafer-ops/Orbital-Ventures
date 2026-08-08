@@ -1,8 +1,9 @@
-// G0-B05: follow the recommended R&D project with the separately, prominently
-// offered bench static fire. This fixture proves only that its enabled Fly action
-// is blocked despite the displayed launch price being affordable; it does not
-// claim that the company has no eventual recovery route.
-const issue=createExpectedFailureTracker('G0-B05','Research plus prominent bench static fire blocks a displayed-affordable hull');
+// G0-B05 after Gate 1: quote disclosure is now honest and the exact-hull action
+// is correctly disabled. The remaining defect is economic continuity: following
+// the recommended early research + static-fire + build path exhausts the runway
+// needed to fly that finished First Flight article. Gate 3 owns the rebalance or
+// recovery design; this fixture does not claim all eventual routes are exhausted.
+const issue=createExpectedFailureTracker('G0-B05','Recommended opening path exhausts First Flight runway');
 animEnabled=false;
 seedRNG(7);
 newGame('engineer');
@@ -18,39 +19,27 @@ issue.setup('prominently offered bench static fire executes once',
   Math.abs(state.money-(beforeStaticFire-STATIC_FIRE_COST))<0.011,
   `before=${beforeStaticFire.toFixed(2)}, after=${state.money.toFixed(2)}, cost=${STATIC_FIRE_COST.toFixed(2)}`);
 state.activeMission='first_flight';
-queueBuild(true);
+queueBuild(true,'g0-b05-opening');
 while(buildQueueList().length && !state.over) advanceDays(1);
 
 const ready=hangarFor(curMission());
 const vehicle=computeVehicle();
 const check=canLaunch(vehicle,curMission(),null,true);
-const visibleLaunchCostAffordable=state.money>=vehicle.launchCost;
+const quote=launchCommitmentQuote(curMission(),vehicle,null,true);
 const surface=benchQueueHTML(curMission());
-const flyAction=ready[0]&&`onclick="launchFromHangar('${ready[0].id}')"`;
-let readoutSurface='';
-const originalSetHTML=setHTML;
-setHTML=(el,html)=>{
-  if(String(html).includes('Launch cost')) readoutSurface=String(html);
-  return originalSetHTML(el,html);
-};
-renderReadout();
-setHTML=originalSetHTML;
 
 issue.setup('research and bench-test path produces one ready First Flight hull', ready.length===1,
   `hangar=${ready.length}, over=${state.over}, money=${state.money.toFixed(2)}`);
-issue.setup('the exact ready-hull Fly action is surfaced and enabled',
-  !!flyAction && surface.includes(flyAction) && !/onclick="launchFromHangar\([^)]*\)"[^>]*disabled/.test(surface),
-  `action=${flyAction||'missing'}, surface=${surface.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim()}`);
-issue.setup('Bench readout surfaces the exact launch cost used for the affordability comparison',
-  readoutSurface.includes('Launch cost') && readoutSurface.includes(fM(vehicle.launchCost)),
-  `displayed=${fM(vehicle.launchCost)}, readoutCaptured=${!!readoutSurface}`);
-issue.expect('the enabled ready-hull action honors displayed launch-cost affordability',
-  !visibleLaunchCostAffordable || check.ok,
-  `money=${state.money.toFixed(2)}, displayed launch=${vehicle.launchCost.toFixed(2)}, reason=${check.why||'none'}`);
-const flightsBefore=state.flights;
-if(ready[0]) launchFromHangar(ready[0].id);
-issue.expect('activating the enabled, displayed-affordable action consumes that exact hull',
-  !visibleLaunchCostAffordable || !hangarList().some(rec=>rec.id===ready[0].id) || state.flights>flightsBefore,
-  `order=${ready[0]&&ready[0].id}, stillReady=${!!(ready[0]&&hangarList().some(rec=>rec.id===ready[0].id))}, flights=${flightsBefore}->${state.flights}`);
+issue.setup('the exact ready-hull action is surfaced, disabled, and identifies its hull',
+  !!ready[0] && surface.includes(`data-subject-id="${ready[0].hullId}"`) &&
+    /data-action-role="primary"[^>]*disabled aria-disabled="true"/.test(surface),
+  surface.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim());
+issue.setup('the surface discloses flight burn, reserve, and exact shortfall',
+  !quote.canCommit && surface.includes(fM(quote.flightBurn))&&surface.includes(fM(quote.launchCarry))&&
+    surface.includes(fM(quote.rejection.shortfall)),
+  `cash=${fM(state.money)}, flight=${fM(quote.flightBurn)}, reserve=${fM(quote.launchCarry)}, short=${fM(quote.rejection&&quote.rejection.shortfall||0)}`);
+issue.expect('recommended opening sequence preserves enough runway to fly its exact First Flight hull',
+  check.ok,
+  `cash=${fM(state.money)}, required=${fM(quote.requiredAtCommit)}, reason=${check.why||'none'}`);
 restoreRNG();
 issue.finish();

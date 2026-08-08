@@ -133,7 +133,29 @@ async function runGate0LaunchFlow(driver,url){
   await closeDevPanel(driver);
   metrics.syntheticDevDomActivations++;
 
-  await playerWaitClick('build & launch');
+  const gate1CommitSurface=await driver.execute(`
+    const b=[...document.querySelectorAll('button[data-action-role="primary"][data-subject-type="mission"]')]
+      .find(x=>!x.disabled&&(x.offsetWidth||x.offsetHeight||x.getClientRects().length));
+    if(!b)return null;
+    const host=document.getElementById('benchLaunch');
+    const expected=window.eval('(()=>{const m=curMission(),v=computeVehicle(),q=launchCommitmentQuote(m,v,m.profile?simulateMission(m):null,false);return {build:fM(q.buildCost),flight:fM(q.flightBurn),reserve:fM(q.launchCarry)}})()');
+    const first={id:b.dataset.actionId,subjectId:b.dataset.subjectId,label:b.getAttribute('aria-label'),text:(host&&host.textContent||'').replace(/\\s+/g,' ').trim(),expected};
+    window.eval('renderBenchLaunch()');
+    const b2=[...document.querySelectorAll('button[data-action-role="primary"][data-subject-type="mission"]')]
+      .find(x=>!x.disabled&&(x.offsetWidth||x.offsetHeight||x.getClientRects().length));
+    return {...first,stableAcrossRender:!!b2&&b2.dataset.actionId===first.id,
+      staged:first.text.includes(expected.build)&&first.text.includes(expected.flight)&&first.text.includes(expected.reserve)};
+  `);
+  if(!gate1CommitSurface||!gate1CommitSurface.stableAcrossRender||!gate1CommitSurface.staged||gate1CommitSurface.subjectId!=='first_flight'){
+    throw new Error(`Gate 1 primary commitment contract is not present: ${JSON.stringify(gate1CommitSurface)}`);
+  }
+  const committed=await driver.execute(`
+    const b=[...document.querySelectorAll('button[data-action-role="primary"][data-subject-type="mission"]')]
+      .find(x=>!x.disabled&&(x.offsetWidth||x.offsetHeight||x.getClientRects().length));
+    if(!b)return false; b.click(); return true;
+  `);
+  if(!committed) throw new Error('Gate 1 primary commitment action is unavailable');
+  metrics.syntheticPlayerDomActivations++;
 
   // Advance through the actual outliner button until rollout. Benign opening modals
   // are dismissed through their visible controls; inability to roll out is a harness error.
@@ -148,6 +170,53 @@ async function runGate0LaunchFlow(driver,url){
   }
   if(!rolledOut) throw new Error('Vehicle did not roll out within 16 next-event actions');
 
+  // Every visible ready-hull route must bind the same frozen order specification,
+  // exact hull, semantic request id, and staged flight/reserve quote.
+  const gate1ReadySurfaces=await driver.execute(`
+    const record=hangarList()[0]; if(!record)return {ok:false,reason:'hangar empty'};
+    const view=readyHullActionView(record), q=view.quote, a=view.action;
+    const handler="launchFromHangar('"+record.id+"','"+record.hullId+"','"+a.id+"')";
+    renderCCLegacyStrip();
+    const surfaces={bench:benchQueueHTML(curMission()),manifest:buildQueuePanelHTML(),
+      commandSummary:ccSummaryDeckHTML(),commandLegacy:(document.getElementById('ccStrip')||{}).innerHTML||'',planner:railFlightPlanHTML()};
+    const expected={flight:window.eval('fM('+JSON.stringify(q.flightBurn)+')'),reserve:window.eval('fM('+JSON.stringify(q.launchCarry)+')'),handler,actionId:a.id,hullId:record.hullId,
+      listedBuildCost:q.listedBuildCost,listedBuildDays:q.listedBuildDays};
+    const checks=Object.fromEntries(Object.entries(surfaces).map(([name,html])=>[name,{
+      exactHandler:html.includes(handler),semanticAction:html.includes('data-action-id="'+a.id+'"'),
+      stagedQuote:html.includes(expected.flight)&&html.includes(expected.reserve)}]));
+    return {ok:Object.values(checks).every(check=>check.exactHandler&&check.semanticAction&&check.stagedQuote),expected,checks};
+  `);
+  if(!gate1ReadySurfaces.ok) throw new Error(`Gate 1 ready-hull surfaces diverge: ${JSON.stringify(gate1ReadySurfaces)}`);
+
+  // Exercise native-control, repeat, modal, Tab, and Space ownership in the real
+  // browser before using document-level Space as the actual launch route.
+  const gate1KeyboardOwnership=await driver.execute(`
+    const record=hangarList()[0], hullId=record&&record.hullId;
+    const fly=[...document.querySelectorAll('button[onclick^="launchFromHangar"]')]
+      .find(button=>!button.disabled&&(button.offsetWidth||button.offsetHeight||button.getClientRects().length));
+    if(!record||!fly)return {ok:false,reason:'ready Fly control missing'};
+    const status=()=>{const hull=hullById(hullId);return hull&&hull.status};
+    fly.focus();
+    fly.dispatchEvent(new KeyboardEvent('keydown',{key:' ',code:'Space',bubbles:true,cancelable:true}));
+    const nativeControlHeld=status()==='hangar';
+    document.dispatchEvent(new KeyboardEvent('keydown',{key:' ',code:'Space',repeat:true,bubbles:true,cancelable:true}));
+    const repeatHeld=status()==='hangar';
+    document.dispatchEvent(new KeyboardEvent('keydown',{key:'?',code:'Slash',shiftKey:true,bubbles:true,cancelable:true}));
+    const modal=document.getElementById('modal'), body=document.getElementById('modalBody');
+    const opened=!!modal&&!modal.classList.contains('hidden');
+    document.dispatchEvent(new KeyboardEvent('keydown',{key:' ',code:'Space',bubbles:true,cancelable:true}));
+    const modalHeld=opened&&!modal.classList.contains('hidden')&&status()==='hangar';
+    const beforeTab=document.activeElement;
+    (beforeTab||document).dispatchEvent(new KeyboardEvent('keydown',{key:'Tab',code:'Tab',bubbles:true,cancelable:true}));
+    const afterTab=document.activeElement;
+    const tabTrapped=!!body&&!!afterTab&&body.contains(afterTab);
+    document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',bubbles:true,cancelable:true}));
+    const closed=modal.classList.contains('hidden');
+    return {ok:nativeControlHeld&&repeatHeld&&modalHeld&&tabTrapped&&closed,nativeControlHeld,repeatHeld,modalHeld,
+      tabTrapped,closed,beforeTab:beforeTab&&beforeTab.tagName,afterTab:afterTab&&afterTab.tagName,hullId,status:status()};
+  `);
+  if(!gate1KeyboardOwnership.ok) throw new Error(`Gate 1 keyboard ownership failed: ${JSON.stringify(gate1KeyboardOwnership)}`);
+
   // Pin the remaining incidental RNG to a weather-GO draw. Outcome and live-call
   // selection still travel through the shipped dev controls above.
   const forcedDecisionSetup=await driver.execute(`
@@ -161,12 +230,18 @@ async function runGate0LaunchFlow(driver,url){
     const b=[...document.querySelectorAll('button[onclick^="launchFromHangar"]')].find(x=>!x.disabled&&(x.offsetWidth||x.offsetHeight||x.getClientRects().length));
     if(!b)return {activated:false,reason:'missing control'};
     const handler=b.getAttribute('onclick')||'';
-    const match=handler.match(/launchFromHangar\\('([^']+)'\\)/);
-    const orderId=match&&match[1];
+    const match=handler.match(/launchFromHangar\\('([^']+)','([^']*)','([^']*)'\\)/);
+    const orderId=match&&match[1], boundHullId=match&&match[2], requestId=match&&match[3];
     const record=orderId&&hangarList().find(entry=>entry&&entry.id===orderId);
-    if(!record||!record.hullId) return {activated:false,reason:'control is not bound to an exact Hangar hull',handler,orderId};
-    const identity={activated:true,orderId,hullId:record.hullId,missionId:record.missionId,handler};
-    b.click();
+    const view=record&&readyHullActionView(record), q=view&&view.quote;
+    const expected=q&&{flight:window.eval('fM('+JSON.stringify(q.flightBurn)+')'),reserve:window.eval('fM('+JSON.stringify(q.launchCarry)+')'),listedBuildCost:q.listedBuildCost,listedBuildDays:q.listedBuildDays};
+    const contract={primary:b.dataset.actionRole==='primary',subjectType:b.dataset.subjectType,subjectId:b.dataset.subjectId,
+      actionId:b.dataset.actionId,launchClass:b.classList.contains('launch'),boundHullId,requestId,expected,
+      staged:((b.parentElement&&b.parentElement.textContent)||'').includes(expected.flight)&&((b.parentElement&&b.parentElement.textContent)||'').includes(expected.reserve)};
+    if(!record||!record.hullId||boundHullId!==record.hullId||contract.subjectId!==record.hullId||!contract.primary||!contract.launchClass||!contract.staged)
+      return {activated:false,reason:'control is not bound to one exact staged primary Hangar action',handler,orderId,record,contract};
+    const identity={activated:true,orderId,hullId:record.hullId,missionId:record.missionId,handler,contract};
+    document.dispatchEvent(new KeyboardEvent('keydown',{key:' ',code:'Space',bubbles:true,cancelable:true}));
     const decision=document.getElementById('flight3dDecision');
     const visible=el=>!!el&&!el.classList.contains('hidden')&&!!(el.offsetWidth||el.offsetHeight||el.getClientRects().length);
     const internal=window.eval('({hasAnimState:!!animState,hasPendingFutureDecision:!!(animState&&animState.pendingDecision),decisionHeld:!!(animState&&animState.held),pendingLiveHullId:(typeof _pendingLive!=="undefined"&&_pendingLive&&_pendingLive.hullId)||null,flightResolving:typeof _flightResolving!=="undefined"&&!!_flightResolving})');
@@ -229,6 +304,9 @@ async function runGate0LaunchFlow(driver,url){
   `,[launchedHullId]);
   result.launchIdentity=launchIdentity;
   result.boundaryBeforeSkip=boundaryBeforeSkip;
+  result.gate1CommitSurface=gate1CommitSurface;
+  result.gate1ReadySurfaces=gate1ReadySurfaces;
+  result.gate1KeyboardOwnership=gate1KeyboardOwnership;
   result.metrics={...metrics,elapsedEndToEndWallMs:Date.now()-startedAt};
   result.openingTopLevelNavigation=openingTopLevelNavigation;
   return result;

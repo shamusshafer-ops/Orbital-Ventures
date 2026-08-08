@@ -1,3 +1,17 @@
+// Hard teardown used when a campaign is replaced. It never invokes the old
+// animation's completion callback, because that callback belongs to old state.
+function resetFlightTransients(){
+  const active=animState;
+  if(active&&active.raf){ try{ cancelAnimationFrame(active.raf); }catch(e){} }
+  try{ sfxStop(); }catch(e){}
+  try{ if(active) sfxCleanupClickHandler(active); }catch(e){}
+  animState=null;
+  try{ endFlight3DSession(); }catch(e){}
+  try{ $('animOverlay').classList.add('hidden'); sleepFlightScene(); }catch(e){}
+  try{ for(const k in _prevStats) delete _prevStats[k]; }catch(e){}
+  _lastUnlockedTech=null; _missionPulse=null; _prevLogLength=0;
+}
+
 /* E1.2 slice C (visual overhaul): theme-synced HUD chrome for the flight overlay's canvas rendering.
    CSS custom properties (shell.html's body.theme-* classes) can't be read from canvas/Phaser draw
    calls, so this mirrors the same 3 palettes as a JS table — keep both in sync by hand if a theme
@@ -3460,4 +3474,3 @@ let _tlFilter='all';
 let _tlCollapsed=false;
 try{ const f=localStorage.getItem('ov_tlFilter'); if(f==='all' || TL_CAT_ICON[f]!==undefined) _tlFilter=f; }catch(e){}
 try{ _tlCollapsed=localStorage.getItem('ov_tlCollapsed')==='1'; }catch(e){}
-

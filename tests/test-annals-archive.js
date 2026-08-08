@@ -13,7 +13,7 @@ newGame('engineer');
 
 // ---------- appendAnnal: shape, order, cap ----------
 {
-  check('a fresh game starts with no annals array (lazy — created on first append)', state.annals===undefined);
+  check('a fresh game owns an empty canonical annals array', Array.isArray(state.annals) && state.annals.length===0);
   appendAnnal('ok','First thing.');
   check('appendAnnal creates the array and records one entry', Array.isArray(state.annals) && state.annals.length===1);
   const e=state.annals[0];
@@ -90,14 +90,14 @@ newGame('engineer');
   appendAnnal('ok','Something historic.');
   showChronicle('view');
   const html=htmlOf('modalBody');
-  check('the Chronicle shows an annals section when the archive is non-empty', /Agency annals/.test(html));
+  check('the Chronicle shows an annals section when the archive is non-empty', /Venture annals/.test(html));
   check('the annals section shows the recorded entry', /Something historic\./.test(html));
   check('entries are grouped under an era heading', /Pioneer/.test(html));
 
   newGame('engineer'); state.annals=undefined;
   showChronicle('view');
   const html2=htmlOf('modalBody');
-  check('the annals section is omitted entirely when the archive is empty', !/Agency annals/.test(html2));
+  check('the annals section is omitted entirely when the archive is empty', !/Venture annals/.test(html2));
   check('the Chronicle still renders normally with an empty archive', html2.length>200);
 }
 

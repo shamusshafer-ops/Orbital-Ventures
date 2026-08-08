@@ -30,9 +30,9 @@ async function runGate0DuplicateControlFlow(driver,url){
   if(!openedBench) throw new Error('Design Bench navigation is unavailable for G0-B08');
   await waitUntil(()=>driver.execute(`
     const view=document.getElementById('benchView');
-    return !!view&&!view.classList.contains('hidden')&&[...document.querySelectorAll('button')]
-      .some(button=>!button.disabled&&/build & launch/i.test(button.textContent||''));
-  `),{timeout:5000,label:'Build & Launch control for G0-B08'});
+    return !!view&&!view.classList.contains('hidden')&&[...document.querySelectorAll('button[data-action-role="primary"][data-subject-type="mission"]')]
+      .some(button=>!button.disabled&&button.dataset.subjectId==='first_flight');
+  `),{timeout:5000,label:'primary First Flight commitment control for G0-B08'});
 
   // Hold one concrete DOM node and deliver two click activations in the same
   // browser task. The second activation is against that exact node even if the
@@ -40,8 +40,9 @@ async function runGate0DuplicateControlFlow(driver,url){
   // UI control, not two independent direct calls to queueBuild/launch.
   const result=await driver.execute(`
     const visible=el=>!!(el.offsetWidth||el.offsetHeight||el.getClientRects().length);
-    const button=[...document.querySelectorAll('button')].find(el=>visible(el)&&!el.disabled&&/build & launch/i.test(el.textContent||''));
-    if(!button) return {setupError:'Build & Launch control disappeared'};
+    const button=[...document.querySelectorAll('button[data-action-role="primary"][data-subject-type="mission"]')]
+      .find(el=>visible(el)&&!el.disabled&&el.dataset.subjectId==='first_flight');
+    if(!button) return {setupError:'primary First Flight commitment control disappeared'};
     const heldButton=button;
     const beforeState=window.eval('({orders:buildQueueList().length,money:state.money,buildCost:computeVehicle().buildCost})');
     const before={...beforeState,text:(button.textContent||'').replace(/\\s+/g,' ').trim(),html:button.outerHTML};

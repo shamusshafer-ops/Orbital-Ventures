@@ -10,6 +10,7 @@ const {createSession,startDriver,stopDriver}=require('./browser/webdriver');
 const {runGate0LaunchFlow}=require('./browser/gate0-launch-flow');
 const {runGate0DuplicateControlFlow}=require('./browser/gate0-duplicate-control');
 const {createBuildArtifacts}=require('../build.js');
+const {evidenceFingerprint}=require('./evidence-fingerprint');
 
 const root=path.resolve(__dirname,'..');
 const requested=process.argv.includes('--browser')?process.argv[process.argv.indexOf('--browser')+1]:'all';
@@ -42,7 +43,7 @@ function provenance(){
   const head=gitValue(['rev-parse','HEAD']);
   const status=gitValue(['status','--short']);
   const browserEnvironment={};
-  for(const key of ['OV_FIREFOX_BINARY','OV_CHROMIUM_BINARY','OV_FIREFOX_WEBDRIVER_URL','OV_CHROMIUM_WEBDRIVER_URL',
+  for(const key of ['OV_FIREFOX_BINARY','OV_CHROMIUM_BINARY','OV_FIREFOX_WEBDRIVER_BINARY','OV_CHROMIUM_WEBDRIVER_BINARY','OV_FIREFOX_WEBDRIVER_URL','OV_CHROMIUM_WEBDRIVER_URL',
     'OV_ALLOW_REMOTE_WEBDRIVER','OV_CHROMIUM_NO_SANDBOX']){
     let value=process.env[key]||null;
     if(value&&key.endsWith('_WEBDRIVER_URL')){
@@ -53,7 +54,8 @@ function provenance(){
   }
   return {
     repository:{baseCommit:head.ok?head.value:null,baseCommitError:head.error,
-      worktreeStatus:status.ok?status.value:null,worktreeClean:status.ok&&!status.value,worktreeStatusError:status.error},
+      worktreeStatus:status.ok?status.value:null,worktreeClean:status.ok&&!status.value,worktreeStatusError:status.error,
+      contentFingerprint:evidenceFingerprint(root)},
     runtime:{nodeVersion:process.version,nodeExecutable:process.execPath,platform:process.platform,arch:process.arch,
       osType:os.type(),osRelease:os.release()},
     browserEnvironment

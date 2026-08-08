@@ -31,6 +31,29 @@ When bumping `SAVE_VERSION`, add an entry at the top of the list below.
 
 ---
 
+## v61 — Gate 1 canonical campaign and lifecycle schema
+
+Adds the explicit campaign `schemaId`, canonical empty `annals` and `launchTxn`
+slots, JSON-safe lifecycle records, and one fresh-state/default authority. The
+transaction slot is deliberately `null`: Gate 1 defines its serializable shape,
+while Gate 2 alone may create, resume, settle, or roll back live launch
+transactions. Version 60 payloads remain best-effort compatible through additive
+defaults; schema mismatches and future save versions are rejected before the
+incoming payload or live campaign is mutated. A v60 order that lacks the newly
+canonical physical snapshot fields freezes them once from that save's current
+Bench/defaults; historical per-order values are intentionally not invented.
+
+## v60 — Tier 3.2 persistent history archive
+
+Adds `state.annals`, the compact campaign-wide archive of significant events.
+No retroactive reconstruction is attempted; a save without the field records
+forward from an empty archive.
+
+## v59 — Tier 1.3 third Chronicle bookend
+
+Adds `state.eraScored3` for the 2060 Chronicle bookend. It is additive and reads
+false until the campaign crosses the scoring year.
+
 ## v58 — E4.4 persistent launch-vehicle hull registry
 
 Additive serial-numbered hulls and flight history; existing hangar entries are backfilled, never historical flights invented.

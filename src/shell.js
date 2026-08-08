@@ -4,6 +4,11 @@ let animEnabled=true, animState=null;
 // _liftoffArmed is set per interactive launch and consumed once at the ascent handoff; deferred
 // arrivals never arm it (they resolve turns later, when a different vehicle may sit on the pad).
 let _liftoffArmed=false, _liftoff=null, _liftoffRAF=0;
+function resetShellTransients(){
+  if(_liftoffRAF){ try{ cancelAnimationFrame(_liftoffRAF); }catch(e){} }
+  _liftoffArmed=false; _liftoff=null; _liftoffRAF=0;
+  try{ closeDevPanel(); }catch(e){}
+}
 const ANIM_SPEEDS=[{label:'0.1×  Slow-mo',mult:0.1},{label:'¼×  Slow-mo',mult:0.25},{label:'1×  Normal',mult:1},{label:'2×  Fast',mult:2},{label:'5×  Fast',mult:5},{label:'10×  Fast',mult:10},{label:'25×  Fast',mult:25},{label:'50×  Fast',mult:50}];
 let animSpeedIdx=0; // default to deliberate launch viewing; players can still cycle to 50× for long coasts
 function toggleAnim(){ animEnabled=!animEnabled; const b=$('animToggle'); if(b) b.textContent='Animation: '+(animEnabled?'On':'Off'); }
@@ -116,6 +121,12 @@ function animSpeed(){ return ANIM_SPEEDS[animSpeedIdx].mult; }
 // One typing guard for every keydown handler (was repeated inline at each call site): never
 // hijack a keystroke aimed at a text field / dropdown.
 function isTyping(e){ const tag=(e&&e.target&&e.target.tagName)||''; return tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT'; }
+function isNativeInteractive(e){
+  const t=e&&e.target, tag=(t&&t.tagName)||'';
+  if(isTyping(e)||tag==='BUTTON'||tag==='A') return true;
+  try{ return !!(t&&(t.isContentEditable||t.getAttribute&&((t.getAttribute('role')==='button')||t.getAttribute('contenteditable')==='true'))); }catch(_){ return false; }
+}
+function mutatingShortcutBlocked(e){ return !!(e&&(e.repeat||isNativeInteractive(e)||modalOpen())); }
 // Space's pause/launch split as a pure, headless-testable decision: while the clock is auto-running
 // Space stops it (pause); otherwise Space keeps its original "launch the current mission" behavior.
 function spaceAction(timeAutoRunning){ return timeAutoRunning ? 'pause' : 'launch'; }
@@ -145,7 +156,7 @@ function nextTrapFocus(focusableEls, currentIndex, shiftKey){
 function trapModalTab(e){
   try{
     const mb=$('modalBody'); if(!mb) return;
-    const list=mb.querySelectorAll(MODAL_FOCUSABLE_SEL);
+    const list=modalFocusableElements(mb);
     const n=(list && list.length)||0;
     if(n===0){ e.preventDefault(); try{ mb.focus(); }catch(_){} return; } // nothing to land on → keep focus on the body
     let cur=-1; const active=document.activeElement;
@@ -158,7 +169,7 @@ document.addEventListener('keydown',function(e){
   // Space: pause the clock if auto-running, else launch the current mission
   // (or skip/continue the playback if one is running).
   if(e.key===' '||e.code==='Space'){
-    if(isTyping(e)) return; // never hijack typing
+    if(mutatingShortcutBlocked(e)) return; // native controls/modal own activation; key-repeat never mutates
     e.preventDefault();
     if(animState){ if(animState.held) dismissAnim(); else skipAnim(); return; }
     if(spaceAction(!!timeAuto.unit)==='pause'){ stopTimeAuto(); return; } // auto-run active → pause, don't launch
@@ -166,19 +177,19 @@ document.addEventListener('keydown',function(e){
     return;
   }
   if(!animState) return;
-  if(e.key==='Enter'){ e.preventDefault(); if(animState.held){ dismissAnim(); } else { cycleAnimSpeed(); } }
+  if(e.key==='Enter'&&!mutatingShortcutBlocked(e)){ e.preventDefault(); if(animState.held){ dismissAnim(); } else { cycleAnimSpeed(); } }
 });
 // 'h' toggles the top bar (collapse to free the top of the screen / restore it)
 document.addEventListener('keydown',function(e){
   if((e.key!=='h'&&e.key!=='H') || e.metaKey || e.ctrlKey || e.altKey || animState) return;
-  if(isTyping(e)) return;
+  if(e.repeat||isNativeInteractive(e)||modalOpen()) return;
   toggleTopbar(); e.preventDefault();
 });
 // Presentation pass: tech-tree keyboard navigation — only on the R&D scene, never while typing.
 // Arrow keys pan the scroll pane; +/-/0 zoom.
 document.addEventListener('keydown',function(e){
   if(!state || state.tab!=='rnd' || animState) return;
-  if(isTyping(e)) return;
+  if(e.repeat||isNativeInteractive(e)||modalOpen()) return;
   const el=$('techTree'); if(!el) return;
   if(techExpanded && (e.key==='Escape'||e.key==='Enter')){ toggleTechExpand(); e.preventDefault(); return; } // close the pop-out
   const STEP=64;
@@ -217,11 +228,11 @@ document.addEventListener('keydown',function(e){
     return;
   }
   // Enter also minimizes the Production drill (the boot-time top layer) — but never while typing in a field.
-  if(e.key==='Enter' && _prodModalOpen && modalOpen() && !typing){ hideModal(); e.preventDefault(); return; }
+  if(e.key==='Enter' && _prodModalOpen && modalOpen() && !typing && !e.repeat && !isNativeInteractive(e)){ hideModal(); e.preventDefault(); return; }
   // E0.4 Slice B: while a modal is open, Tab/Shift+Tab cycle focus WITHIN it (even from a focused field)
   // instead of escaping to background page controls. Runs before the "return on modalOpen" guard below.
   if(e.key==='Tab' && modalOpen()){ trapModalTab(e); return; }
-  if(typing || modalOpen()) return; // don't grab TAB/numbers while typing or in a modal
+  if(typing || isNativeInteractive(e) || modalOpen() || e.repeat) return; // native controls keep their keyboard behavior
   if(e.key==='Tab'){ nextScene(e.shiftKey?-1:1); e.preventDefault(); return; }
   if(e.key>='1' && e.key<='6'){ const idx=+e.key-1; if(idx<SCENE_DOCK_TABS.length){ setTab(SCENE_DOCK_TABS[idx]); e.preventDefault(); } }
 });
@@ -233,7 +244,7 @@ document.addEventListener('keydown',function(e){
 document.addEventListener('keydown',function(e){
   if(!state || animState || modalOpen()) return;
   if(e.ctrlKey||e.metaKey||e.altKey||e.shiftKey) return;
-  if(isTyping(e)) return;
+  if(e.repeat||isNativeInteractive(e)) return;
   if(e.key==='F1'){ clickTimeArrow('day'); e.preventDefault(); }
   else if(e.key==='F2'){ clickTimeArrow('week'); e.preventDefault(); }
   else if(e.key==='F3'){ clickTimeArrow('month'); e.preventDefault(); }
@@ -245,7 +256,7 @@ document.addEventListener('keydown',function(e){
   if(e.key!=='p'&&e.key!=='P') return;
   if(!state || animState || modalOpen()) return;
   if(e.ctrlKey||e.metaKey||e.altKey) return;
-  if(isTyping(e)) return;
+  if(e.repeat||isNativeInteractive(e)) return;
   if(timeAuto.unit){ stopTimeAuto(); } else { startTimeAuto('day'); }
   e.preventDefault();
 });
@@ -256,7 +267,7 @@ document.addEventListener('keydown',function(e){
   if(e.key!=='+'&&e.key!=='='&&e.key!=='-'&&e.key!=='_') return;
   if(!state || animState || modalOpen()) return;
   if(e.ctrlKey||e.metaKey||e.altKey) return;
-  if(isTyping(e)) return;
+  if(e.repeat||isNativeInteractive(e)) return;
   if(!warpKeysActive(state.tab)) return; // R&D owns +/=/- for the tech tree
   const up=(e.key==='+'||e.key==='=');
   const u=warpStep(timeAuto.unit, up?1:-1);
@@ -294,9 +305,10 @@ function showHotkeyHelp(){
 function tryLaunchHotkey(){
   if(!state || state.over || animState) return;
   try{
-    const m=curMission(); if(!m) return;
-    const v=computeVehicle(); const sim=m.profile?simulateMission(m):null;
-    if(canLaunch(v,m,sim).ok){ if(state.tab!=='bench'){ state.tab='bench'; render(); } launch(); }
+    const view=primaryLaunchActionView(); if(!view||!view.check.ok) return;
+    if(state.tab!=='bench'){ state.tab='bench'; render(); }
+    if(view.kind==='ready') launchFromHangar(view.record.id,view.record.hullId,view.action.id);
+    else launch(false,null,view.action.id);
   }catch(err){}
 }
 /* ============================================================================
@@ -428,7 +440,7 @@ document.addEventListener('keydown',function(e){
   if(!(e.ctrlKey && e.shiftKey && (e.key==='D'||e.key==='d'))) return;
   if(e.altKey||e.metaKey) return;
   if(!state || animState || modalOpen()) return;
-  if(isTyping(e)) return;
+  if(e.repeat||isNativeInteractive(e)) return;
   toggleDevPanel(); e.preventDefault();
 });
 function clampA(v,a,b){return Math.max(a,Math.min(b,v));}

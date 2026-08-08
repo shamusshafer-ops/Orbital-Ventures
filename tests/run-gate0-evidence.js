@@ -6,6 +6,7 @@ const fs=require('fs');
 const os=require('os');
 const path=require('path');
 const {spawn,spawnSync}=require('child_process');
+const {evidenceFingerprint}=require('./evidence-fingerprint');
 
 const root=path.resolve(__dirname,'..');
 const outputArg=process.argv.includes('--output')?process.argv[process.argv.indexOf('--output')+1]:null;
@@ -112,7 +113,8 @@ function suiteSummary(output){
 async function main(){
   const evidence={schemaVersion:1,capturedAt:new Date().toISOString(),baseCommit:gitText(['rev-parse','HEAD']),
     worktree:gitText(['status','-sb']),environment:{platform:process.platform,arch:process.arch,
-      node:process.version,release:os.release(),hostname:os.hostname()},commands:{},suites:[],artifacts:{},overall:null};
+      node:process.version,release:os.release(),hostname:os.hostname()},contentFingerprint:evidenceFingerprint(root),
+    commands:{},suites:[],artifacts:{},overall:null};
 
   evidence.commands.build=await run(process.execPath,['build.js']);
   evidence.commands.buildCheck=await run(process.execPath,['build.js','--check']);
@@ -168,7 +170,7 @@ async function main(){
     build:output=>output.trim().length>0,
     buildCheck:output=>output.includes('build parity ok'),
     buildParity:output=>output.includes('3/3 build parity checks passed')&&output.includes('2/2 texture-embed split checks passed'),
-    expectedFailures:output=>output.includes('Gate 0 quarantine: 8 reproduced, 0 unexpected')
+    expectedFailures:output=>output.includes('Gate 0 quarantine: 6 reproduced, 0 unexpected')
   };
   const commandFailures=['build','buildCheck','buildParity','expectedFailures'].filter(name=>{
     const result=evidence.commands[name], output=result.stdout+result.stderr;

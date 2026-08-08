@@ -19,7 +19,7 @@ function beginProductionWeatherBoundary(orderId){
     missionName:mission.name,spec,units:1,builtMonth:absMonth(),hullId:hull.id};
   state.hangar=[ready];
   _devForceWeather=true;
-  launchFromHangar(ready.id);
+  launchFromHangar(ready.id,ready.hullId,'g0-b02-boundary');
   return {mission,hull,ready};
 }
 
