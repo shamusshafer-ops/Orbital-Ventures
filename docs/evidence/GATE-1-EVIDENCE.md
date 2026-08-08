@@ -163,4 +163,4 @@ its affected evidence rerun before approval.
 - [x] Contract lane, full headless sweep, and two-engine browser evidence are durable.
 - [x] Remaining failures are exact, reproduced, and assigned to later gates.
 - [x] All three original reviewers approve the finished Gate 1 diff.
-- [ ] Gate 1 closure is committed and pushed when explicitly requested.
+- [x] Gate 1 closure is committed and pushed when explicitly requested.
