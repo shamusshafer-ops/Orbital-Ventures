@@ -53,11 +53,16 @@ permits loopback:
 node tests/run-browser-gate0.js --browser firefox --json-output docs/evidence/gate0-browser-results.json
 ```
 
-- Firefox (geckodriver 0.37.0): `2 passed, 0 unexpected, 0 unavailable`.
+Both engines: `4 passed, 0 unexpected, 0 unavailable`.
+
+- Firefox (geckodriver 0.37.0) and Chromium (Chrome for Testing 151.0.7922.77 /
+  ChromeDriver 151), each covering:
   - `G0-B01`: exact launched hull and decision remained resumable across
     Skip/reload.
   - `G0-B08`: rapid activation of one DOM control was idempotent.
-- Chromium arm not run in this environment (no Chromium binary installed).
+- Chromium was run from a local, root-free Chrome-for-Testing download with
+  NSS/NSPR/ALSA staged from extracted Ubuntu packages (`OV_CHROMIUM_BINARY` /
+  `OV_CHROMIUM_WEBDRIVER_BINARY` / `OV_CHROMIUM_NO_SANDBOX=1`).
 
 ## Manual browser play-through
 

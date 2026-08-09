@@ -1,24 +1,25 @@
 {
   "schema": "orbital-ventures.gate0-browser.v1",
-  "startedAt": "2026-08-09T18:44:34.466Z",
+  "startedAt": "2026-08-09T21:34:28.457Z",
   "commands": {
     "runner": [
       "/usr/bin/node",
       "/mnt/c/Windows/System32/Orbital-Ventures-Gate0/tests/run-browser-gate0.js",
       "--browser",
-      "firefox",
+      "all",
       "--json-output",
       "docs/evidence/gate0-browser-results.json"
     ]
   },
   "requestedBrowsers": [
-    "firefox"
+    "firefox",
+    "chromium"
   ],
   "provenance": {
     "repository": {
-      "baseCommit": "b8eb5812e2f1253c1c90e1eeaf6a043d970ee061",
+      "baseCommit": "a1f94654ceb80535b3263b00bcfe8511dc15b3ba",
       "baseCommitError": null,
-      "worktreeStatus": "M docs/evidence/gate0-headless-results.json\n M src/data.js\n M src/reorganization.js\n M tests/test-gate3-reorganization-contract.js\n M tests/test-gate3-state-contract.js",
+      "worktreeStatus": "M docs/evidence/gate0-browser-results.json",
       "worktreeClean": false,
       "worktreeStatusError": null,
       "contentFingerprint": {
@@ -1011,13 +1012,13 @@
     },
     "browserEnvironment": {
       "OV_FIREFOX_BINARY": null,
-      "OV_CHROMIUM_BINARY": null,
+      "OV_CHROMIUM_BINARY": "/tmp/claude-1000/-mnt-c-WINDOWS-system32/dd3065dc-c8e1-4976-8ad9-702fd40047bc/scratchpad/browsers/chrome-linux64/chrome",
       "OV_FIREFOX_WEBDRIVER_BINARY": null,
-      "OV_CHROMIUM_WEBDRIVER_BINARY": null,
+      "OV_CHROMIUM_WEBDRIVER_BINARY": "/tmp/claude-1000/-mnt-c-WINDOWS-system32/dd3065dc-c8e1-4976-8ad9-702fd40047bc/scratchpad/browsers/chromedriver-linux64/chromedriver",
       "OV_FIREFOX_WEBDRIVER_URL": null,
       "OV_CHROMIUM_WEBDRIVER_URL": null,
       "OV_ALLOW_REMOTE_WEBDRIVER": null,
-      "OV_CHROMIUM_NO_SANDBOX": null
+      "OV_CHROMIUM_NO_SANDBOX": "1"
     }
   },
   "fixture": {
@@ -1160,7 +1161,7 @@
               "syntheticDevDomActivations": 7,
               "reloadNavigations": 1,
               "researchCompletionControl": "Next Event",
-              "elapsedEndToEndWallMs": 2230
+              "elapsedEndToEndWallMs": 1984
             },
             "openingTopLevelNavigation": {
               "count": 6,
@@ -1238,7 +1239,7 @@
         "command": [
           "/snap/bin/geckodriver",
           "--port",
-          "37665"
+          "40861"
         ],
         "driverVersion": "geckodriver 0.37.0 ( 2026-07-20)",
         "external": false,
@@ -1266,8 +1267,8 @@
         "moz:buildID": "20260720151037",
         "moz:headless": true,
         "moz:platformVersion": "6.6.87.2-microsoft-standard-WSL2",
-        "moz:processID": 20209,
-        "moz:profile": "/tmp/rust_mozprofileepbaQa",
+        "moz:processID": 27960,
+        "moz:profile": "/tmp/rust_mozprofileAKeuOh",
         "moz:shutdownTimeout": 60000,
         "pageLoadStrategy": "normal",
         "timeouts": {
@@ -1288,11 +1289,282 @@
         "stopped": true,
         "forced": false
       }
+    },
+    {
+      "browser": "chromium",
+      "flows": [
+        {
+          "issue": "G0-B01",
+          "status": "pass",
+          "result": {
+            "decisionVisible": true,
+            "exactDecision": true,
+            "exactHangar": false,
+            "exactHullStatus": "in-flight",
+            "exactSettled": false,
+            "exactTransaction": true,
+            "hangarHullIds": [],
+            "hullStatuses": [
+              {
+                "id": "hull_1",
+                "status": "in-flight"
+              }
+            ],
+            "launchedHullId": "hull_1",
+            "pendingOwnerHullIds": [
+              "hull_1"
+            ],
+            "recoverable": true,
+            "research": "Static Fire Test Program",
+            "researchCompleted": true,
+            "launchIdentity": {
+              "activated": true,
+              "contract": {
+                "actionId": "fly:ord1:hull_1",
+                "boundHullId": "hull_1",
+                "expected": {
+                  "flight": "$0.14M",
+                  "listedBuildCost": 0,
+                  "listedBuildDays": 0,
+                  "reserve": "$0.12M"
+                },
+                "launchClass": true,
+                "primary": true,
+                "requestId": "fly:ord1:hull_1",
+                "staged": true,
+                "subjectId": "hull_1",
+                "subjectType": "hull"
+              },
+              "handler": "launchFromHangar('ord1','hull_1','fly:ord1:hull_1')",
+              "hullId": "hull_1",
+              "missionId": "first_flight",
+              "orderId": "ord1"
+            },
+            "boundaryBeforeSkip": {
+              "decisionHeld": false,
+              "decisionVisible": false,
+              "flightResolving": true,
+              "hasAnimState": true,
+              "hasPendingFutureDecision": true,
+              "overlayVisible": true,
+              "pendingLiveHullId": "hull_1"
+            },
+            "gate1CommitSurface": {
+              "expected": {
+                "build": "$0.47M",
+                "flight": "$0.14M",
+                "reserve": "$0.12M"
+              },
+              "id": "commit:first_flight:1",
+              "label": "■ Commit build — $0.47M now · flight later $0.14M + $0.12M reserve",
+              "stableAcrossRender": true,
+              "staged": true,
+              "subjectId": "first_flight",
+              "text": "■ Commit build — $0.47M now · flight later $0.14M + $0.12M reserve Commitment: $0.47M build now · $0.24M operating carry through rollout · $0.14M flight/test later · keep $0.12M launch-period reserve.Nominal rollout 1 May 1942 · flight decision 1 Jun 1942 · end-to-end runway $0.97M. Outcome remains probabilistic (73% modeled reliability). Current projection; future flight/carry costs are recalculated at rollout. or press Space 🔥 Bench static fire $0.35M 🔊 FLIGHT PLAN · 50 kg payload · 3.3 t liftoff · Δv 1,936 m/s · TWR 7.63 · 1 stage"
+            },
+            "gate1ReadySurfaces": {
+              "checks": {
+                "bench": {
+                  "exactHandler": true,
+                  "semanticAction": true,
+                  "stagedQuote": true
+                },
+                "commandLegacy": {
+                  "exactHandler": true,
+                  "semanticAction": true,
+                  "stagedQuote": true
+                },
+                "commandSummary": {
+                  "exactHandler": true,
+                  "semanticAction": true,
+                  "stagedQuote": true
+                },
+                "manifest": {
+                  "exactHandler": true,
+                  "semanticAction": true,
+                  "stagedQuote": true
+                },
+                "planner": {
+                  "exactHandler": true,
+                  "semanticAction": true,
+                  "stagedQuote": true
+                }
+              },
+              "expected": {
+                "actionId": "fly:ord1:hull_1",
+                "flight": "$0.14M",
+                "handler": "launchFromHangar('ord1','hull_1','fly:ord1:hull_1')",
+                "hullId": "hull_1",
+                "listedBuildCost": 0,
+                "listedBuildDays": 0,
+                "reserve": "$0.12M"
+              },
+              "ok": true
+            },
+            "gate1KeyboardOwnership": {
+              "afterTab": "BUTTON",
+              "beforeTab": "BUTTON",
+              "closed": true,
+              "hullId": "hull_1",
+              "modalHeld": true,
+              "nativeControlHeld": true,
+              "ok": true,
+              "repeatHeld": true,
+              "status": "hangar",
+              "tabTrapped": true
+            },
+            "metrics": {
+              "syntheticPlayerDomActivations": 16,
+              "syntheticDevDomActivations": 7,
+              "reloadNavigations": 1,
+              "researchCompletionControl": "Next Event",
+              "elapsedEndToEndWallMs": 1893
+            },
+            "openingTopLevelNavigation": {
+              "activeViews": [
+                "commandView"
+              ],
+              "count": 6,
+              "nav": [
+                {
+                  "id": "tabCommand",
+                  "label": "Command Center"
+                },
+                {
+                  "id": "tabBench",
+                  "label": "Design Bench"
+                },
+                {
+                  "id": "tabRnd",
+                  "label": "R&D"
+                },
+                {
+                  "id": "tabMap",
+                  "label": "Solar System"
+                },
+                {
+                  "id": "tabStation",
+                  "label": "Station Bench"
+                },
+                {
+                  "id": "tabBase",
+                  "label": "Base Bench"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "issue": "G0-B08",
+          "status": "pass",
+          "result": {
+            "afterFirst": {
+              "isConnected": false,
+              "money": 3.06,
+              "orders": 1
+            },
+            "afterSecond": {
+              "isConnected": false,
+              "money": 3.06,
+              "orders": 1
+            },
+            "before": {
+              "buildCost": 0.44,
+              "html": "<button class=\"launch\" style=\"width:100%\" onclick=\"launch(false,null,'commit:first_flight:1')\" data-action-id=\"commit:first_flight:1\" data-action-role=\"primary\" data-subject-type=\"mission\" data-subject-id=\"first_flight\" aria-label=\"■ Commit build — $0.44M now · flight later $0.14M + $0.12M reserve\">■ Commit build — $0.44M now · flight later $0.14M + $0.12M reserve</button>",
+              "money": 3.5,
+              "orders": 0,
+              "text": "■ Commit build — $0.44M now · flight later $0.14M + $0.12M reserve"
+            },
+            "debit": 0.44,
+            "expectedDebit": 0.44,
+            "firstDebit": 0.44,
+            "firstOrdersAdded": 1,
+            "idempotent": true,
+            "ordersAdded": 1,
+            "reproduced": false,
+            "sameControlObject": true,
+            "secondDebit": 0,
+            "secondOrdersAdded": 0,
+            "setupValid": true,
+            "syntheticDomActivations": 2,
+            "targetShapeValid": true
+          }
+        }
+      ],
+      "driver": {
+        "source": "/tmp/claude-1000/-mnt-c-WINDOWS-system32/dd3065dc-c8e1-4976-8ad9-702fd40047bc/scratchpad/browsers/chromedriver-linux64/chromedriver",
+        "command": [
+          "/tmp/claude-1000/-mnt-c-WINDOWS-system32/dd3065dc-c8e1-4976-8ad9-702fd40047bc/scratchpad/browsers/chromedriver-linux64/chromedriver",
+          "--port=35607"
+        ],
+        "driverVersion": "ChromeDriver 151.0.7922.77 (ff37cfca210138f2a40b843b4a8195ab7e4fc7ff-refs/branch-heads/7922_47@{#19})",
+        "external": false,
+        "status": {
+          "build": {
+            "version": "151.0.7922.77 (ff37cfca210138f2a40b843b4a8195ab7e4fc7ff-refs/branch-heads/7922_47@{#19})"
+          },
+          "message": "ChromeDriver ready for new sessions.",
+          "os": {
+            "arch": "x86_64",
+            "name": "Linux",
+            "version": "6.6.87.2-microsoft-standard-WSL2"
+          },
+          "ready": true
+        }
+      },
+      "requestedCapabilities": {
+        "browserName": "chrome",
+        "goog:chromeOptions": {
+          "args": [
+            "--headless=new",
+            "--disable-gpu",
+            "--no-sandbox"
+          ],
+          "binary": "/tmp/claude-1000/-mnt-c-WINDOWS-system32/dd3065dc-c8e1-4976-8ad9-702fd40047bc/scratchpad/browsers/chrome-linux64/chrome"
+        }
+      },
+      "capabilities": {
+        "acceptInsecureCerts": false,
+        "browserName": "chrome",
+        "browserVersion": "151.0.7922.77",
+        "chrome": {
+          "chromedriverVersion": "151.0.7922.77 (ff37cfca210138f2a40b843b4a8195ab7e4fc7ff-refs/branch-heads/7922_47@{#19})",
+          "userDataDir": "/tmp/org.chromium.Chromium.scoped_dir.BE16cY"
+        },
+        "fedcm:accounts": true,
+        "goog:chromeOptions": {
+          "debuggerAddress": "localhost:46517"
+        },
+        "goog:processID": 29349,
+        "networkConnectionEnabled": false,
+        "pageLoadStrategy": "normal",
+        "platformName": "linux",
+        "proxy": {},
+        "setWindowRect": true,
+        "strictFileInteractability": false,
+        "timeouts": {
+          "implicit": 0,
+          "pageLoad": 300000,
+          "script": 30000
+        },
+        "unhandledPromptBehavior": "dismiss and notify",
+        "webauthn:extension:credBlob": true,
+        "webauthn:extension:largeBlob": true,
+        "webauthn:extension:minPinLength": true,
+        "webauthn:extension:prf": true,
+        "webauthn:virtualAuthenticators": true
+      },
+      "status": "completed",
+      "shutdown": {
+        "managed": true,
+        "stopped": true,
+        "forced": false
+      }
     }
   ],
-  "finishedAt": "2026-08-09T18:44:44.812Z",
+  "finishedAt": "2026-08-09T21:34:38.674Z",
   "summary": {
-    "passed": 2,
+    "passed": 4,
     "unexpected": 0,
     "unavailable": 0
   },
