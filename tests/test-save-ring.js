@@ -114,7 +114,8 @@ async function main(){
     try{
       newGame('engineer'); animState=null; _gameStarted=true;
       state.company='LiveCo'; state.money=9e6; state.year=1972; state.over=false;
-      const importRaw=JSON.stringify({v:SAVE_VERSION, ts:1, state:{ company:'ImportCo', year:1999, money:1e6 }});
+      const incoming=createFreshState('engineer'); incoming.company='ImportCo'; incoming.year=1999; incoming.money=1e6;
+      const importRaw=JSON.stringify({v:SAVE_VERSION, ts:1, state:incoming});
       loadSaveFromText(importRaw, 'import test'); // snapshotLiveToRing() fires synchronously inside, before applyLoadedSave
       await new Promise(r=>setTimeout(r,0)); // let the async (idle-less, mem-backed) snapshot idbPut settle
       check('import: the incoming save was applied to live state', state.company==='ImportCo' && state.year===1999);

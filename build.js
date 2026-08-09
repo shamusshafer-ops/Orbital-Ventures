@@ -20,7 +20,7 @@ const path = require('path');
 
 const ROOT = __dirname;
 const MODULES = [
-  'data.js', 'parts.js', 'sim.js', 'save.js', 'shell.js', 'flight.js', 'render.js', 'main.js',
+  'data.js', 'parts.js', 'sim.js', 'reorganization.js', 'save.js', 'shell.js', 'flight.js', 'render.js', 'main.js',
 ];
 // 2K equirectangular maps are embedded as data URLs in both browser artifacts. The release is
 // routinely opened as file://, where Firefox may deny Three.TextureLoader's separate image fetches

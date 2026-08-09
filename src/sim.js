@@ -65,6 +65,11 @@ function createFreshState(difficulty){
     materials:defaultMaterialsState(), // #7 slice 6: per-commodity spot price + optional fixed-price contract
     buildQueue:[], hangar:[], hulls:[], hullSeq:0, orderSeq:0,
     launchTxn:null, launchTxnSeq:0, requestReceipts:{}, // Gate 2: one foreground launch owner plus durable mutation receipts
+    campaignRules:makeCampaignRules({ironman:false}), // Gate 3: immutable-at-creation rules; current campaigns are Standard
+    debtRenegotiated:false, legacyPenalty:0, // one campaign-wide debt workout; explicit cumulative legacy cost
+    insolvencySeq:0, insolvency:null, lastInsolvency:null,
+    reorganizationSeq:0, reorganizationAttempts:0, reorganizationSuccesses:0, reorganization:null, lastReorganization:null,
+    operatingSupport:null, // bounded 90-day post-success recurring-operations support; never ordinary cash
     padMonthAbs:-1, padMonthUsed:0, // CE2(b): launch-cadence — pad slots used in the current calendar month
     standingProd:null, juggernautReached:false, // CE2(c): juggernaut capstone — standing production line + milestone flag
     doctrine:null, // CE3(a): company doctrine (strategic identity) — null = undeclared/neutral
@@ -257,6 +262,7 @@ function canSetDoctrine(id){
   return {ok:true, first:false};
 }
 function setDoctrine(id){
+  if(!guardOrdinaryAction('Changing doctrine')) return false;
   const chk=canSetDoctrine(id); if(!chk.ok) return;
   if(chk.first){
     state.doctrine=id;
@@ -301,6 +307,7 @@ function canUpgradeTech(id){
   return {ok:true};
 }
 function upgradeTech(id){
+  if(!guardOrdinaryAction('Technology upgrades')) return false;
   const chk=canUpgradeTech(id); if(!chk.ok) return;
   const d=TECH_LEVELS[id], cost=techUpgradeCost(id);
   state.money-=cost;
@@ -346,6 +353,11 @@ function divisionExpLevel(id){ return Math.min(1, divisionState(id).exp/DIV_EXP_
 function divisionQuality(id){ const s=divisionState(id); return Math.max(0, Math.min(1, 0.5*s.skill + 0.3*divisionExpLevel(id) + 0.2*(s.morale/100))); }
 function divisionSpeedBonus(r){ const id=divisionForResearch(r); if(!id) return 0; return divisionQuality(id)*DIV_SPEED_MAX; }
 function divisionTrainCost(id){ return round2(DIV_TRAIN_BASE*(1+divisionState(id).skill*4)); }
+// Experience improves quality without silently creating a standing organization.
+// The first explicit training investment is the capitalization event that starts
+// recurring division operations.
+function divisionCapitalized(id){ return divisionState(id).skill>DIV_SKILL0+1e-9; }
+function divisionTrainingUpkeepText(id){ return divisionCapitalized(id)?'no additional upkeep':`establishes ${fM(EMPIRE_DIV_OPEX)}/mo standing ops`; }
 
 /* ===== #6 / R&D pillar — Research Partnerships =======================================
    Form a standing partnership with an external institution to accelerate one or more
@@ -397,6 +409,7 @@ function canBuildStation(id){
   return {ok:true, cost:s.setup};
 }
 function buildTrackingStation(id){
+  if(!guardOrdinaryAction('Tracking-station construction')) return false;
   const chk=canBuildStation(id); if(!chk.ok) return;
   const s=stationDef(id);
   state.money-=s.setup; state.trackingStations=state.trackingStations||[]; state.trackingStations.push(id);
@@ -413,12 +426,14 @@ function canFormPartnership(id){
   return {ok:true, cost:p.setup};
 }
 function formPartnership(id){
+  if(!guardOrdinaryAction('Research partnerships')) return false;
   const chk=canFormPartnership(id); if(!chk.ok) return;
   const p=partnerDef(id); state.money-=p.setup; state.partnerships=state.partnerships||[]; state.partnerships.push(id);
   log('ok', `Partnership formed — ${p.name} (${fM(p.setup)} setup · −${fM(p.upkeep)}/mo). +${Math.round(p.speed*100)}% R&D speed on ${p.tracks.map(t=>(TRACKS.find(x=>x.key===t)||{}).label||t).join(', ')}.`);
   render();
 }
 function dissolvePartnership(id){
+  if(!guardOrdinaryAction('Research partnerships')) return false;
   if(!partnerActive(id)) return; const p=partnerDef(id);
   state.partnerships=state.partnerships.filter(x=>x!==id);
   log('note', `Partnership with ${p.name} dissolved — its upkeep ends.`);
@@ -426,18 +441,40 @@ function dissolvePartnership(id){
 }
 function canTrainDivision(id){
   if(!divisionDef(id)) return {ok:false,why:'Unknown division.'};
-  if(divisionState(id).skill>=1) return {ok:false,why:'Fully trained.'};
-  if(state.money<divisionTrainCost(id)) return {ok:false,why:'Not enough capital.'};
-  return {ok:true};
+  const cost=divisionTrainCost(id);
+  const establishes=!divisionCapitalized(id);
+  const offer={cost, establishes, upkeepDelta:establishes?EMPIRE_DIV_OPEX:0, disclosure:divisionTrainingUpkeepText(id)};
+  if(divisionState(id).skill>=1) return {...offer,ok:false,why:'Fully trained.'};
+  if(state.money<cost) return {...offer,ok:false,why:'Not enough capital.'};
+  return {...offer,ok:true};
 }
 function trainDivision(id){
+  if(!guardOrdinaryAction('Division training')) return false;
   const chk=canTrainDivision(id); if(!chk.ok) return;
+  const establishes=!divisionCapitalized(id);
   const cost=divisionTrainCost(id); state.money-=cost;
   if(!state.divisions) state.divisions={};
   const cur=divisionState(id);
   state.divisions[id]={skill:Math.min(1, cur.skill+DIV_TRAIN_SKILL), exp:cur.exp, morale:Math.min(100, cur.morale+DIV_TRAIN_MORALE)};
-  log('ok',`${divisionDef(id).name} trained — skill now ${Math.round(state.divisions[id].skill*100)}% (−${fM(cost)}).`);
+  log('ok',`${divisionDef(id).name} trained${establishes?' and established':''} — skill now ${Math.round(state.divisions[id].skill*100)}% (−${fM(cost)}${establishes?`; +${fM(EMPIRE_DIV_OPEX)}/mo standing operations`:'; no additional upkeep'}).`);
   render();
+}
+function requestDivisionTraining(id){
+  if(!guardOrdinaryAction('Division training')) return false;
+  const d=divisionDef(id), chk=canTrainDivision(id);
+  if(!d||!chk.ok) return false;
+  if(!chk.establishes) return trainDivision(id);
+  showModal(`<h2>Establish ${esc(d.name)}?</h2>
+    <p class="muted" style="font-size:13px">The core team is already covered by base overhead. This first training investment expands it into a standing research division.</p>
+    <div class="metrics" style="margin:10px 0">
+      <div class="metric"><div class="k">Training now</div><div class="v">${fM(chk.cost)}</div></div>
+      <div class="metric"><div class="k">Standing operations</div><div class="v">${fM(chk.upkeepDelta)}/mo</div></div>
+      <div class="metric"><div class="k">Skill gain</div><div class="v">+${Math.round(DIV_TRAIN_SKILL*100)}%</div></div>
+    </div>
+    <p class="muted" style="font-size:12px">Later training improves this division without adding another standing charge.</p>
+    <button class="btn launch" style="width:100%" onclick="hideModal();trainDivision('${d.id}')">Confirm expansion · ${fM(chk.cost)} now + ${fM(chk.upkeepDelta)}/mo</button>
+    <button class="btn ghost" style="width:100%;margin-top:6px" onclick="hideModal()">Keep the core team</button>`,true);
+  return true;
 }
 function divisionGainExp(r){ const id=divisionForResearch(r); if(!id) return; if(!state.divisions) state.divisions={}; const cur=divisionState(id); state.divisions[id]={skill:cur.skill, exp:cur.exp+1, morale:Math.min(100,cur.morale+2)}; }
 function tickDivisionMorale(){
@@ -663,6 +700,7 @@ function resolveInquiry(choice){
     log('note',`No inquiry funded — the ${s.mName} loss goes on the books without a formal review.`);
   }
   _pendingInquiry=null; hideModal();
+  if(typeof completeAdministrativeArrivalForeground==='function'&&completeAdministrativeArrivalForeground()) return;
   if(state.money<0) gameOver(); else render();
 }
 /* ---------- #81: Sample-return disposition — bank vs sell ----------
@@ -709,6 +747,7 @@ function resolveSampleDecision(choice){
     log('ok',`${s.mName}: sample banked for research — +${s.sciAmount} ⚛.`);
   }
   _pendingSampleDecision=null; hideModal();
+  if(typeof completeAdministrativeArrivalForeground==='function'&&completeAdministrativeArrivalForeground()) return;
   if(state.money<0) gameOver(); else render();
 }
 /* ---------- E1.7: space telescope standing program ----------
@@ -815,6 +854,7 @@ function resolveHearing(choice){
     log('bad',`Budget hearing: you blamed the vendor. +${HEARING_SUPPORT_BLAME} support, but staff morale takes a hit — and it shows.`);
   }
   _pendingHearing=null; hideModal();
+  if(typeof completeAdministrativeArrivalForeground==='function'&&completeAdministrativeArrivalForeground()) return;
   if(state.money<0) gameOver(); else render();
 }
 // Time Granularity epic — the simulation funnel iterates DAYS, not months. Each day runs the
@@ -844,12 +884,24 @@ function fmtTimeLeft(months){
 }
 function advance(months){ advanceDays(daysFor(months)); }
 function advanceDays(days){
+  if(typeof ordinaryActionsSuspended==='function'&&ordinaryActionsSuspended()&&!(typeof reorganizationClockRunning==='function'&&reorganizationClockRunning())){
+    // A launch/inquiry already owned by Gate 2 may impose time while the company
+    // is in administration. That time uses the narrow clock; ordinary player
+    // time controls and action-side advances are rejected before mutation.
+    if(_launchMutationDepth>0||_flightResolving) return advanceReorganizationClock(absDay()+Math.max(0,Math.round(days||0)));
+    guardOrdinaryAction('Advancing ordinary campaign time'); return false;
+  }
   for(let i=0; i<days; i++){
     state.day=(state.day||0)+1;
     const monthEnd = state.day>=DAYS_PER_MONTH;
     if(monthEnd){ state.day=0; state.month++; if(state.month>11){state.month=0;state.year++;} } // a month completed
     tickContinuousDay();              // per-day money flows (overhead, payroll, royalty)
     if(monthEnd) tickMonthlyBoundary(); // discrete monthly subsystems — same order as the old tick
+    // Outside a launch transaction, stop on the first unsafe day. Launch-owned
+    // preparation/cruise keeps Gate 2's existing deferred terminal settlement.
+    if(state.money<0&&!state.over&&_launchMutationDepth===0&&!_flightResolving&&!activeLaunchTransaction()){
+      gameOver(); break;
+    }
   }
   if(state.money<0 && !state.over){ gameOver(); }
   if(!state.over){ pumpFlightArrivals(); autosave(); ringAutosave(); } // P1 1.2a: resolve arrivals; S1: fast localStorage autosave (throttled); E0.2 Slice B: coarse IndexedDB autosave ring (month+3min cadence, idle-deferred)
@@ -878,6 +930,10 @@ function tickContinuousDay(){
     if(pr.fuel>0) state.depot+=perDay(pr.fuel*factor);
     if(pr.sci>0) state.science=(state.science||0)+perDay(pr.sci*factor);
   }
+  // Gate 3 support is an expense-side daily offset, never an upfront cash
+  // grant. Applying it here—before the daily insolvency check—makes its 90-day
+  // promise independent of the calendar day on which reorganization succeeds.
+  if(typeof applyOperatingSupportDay==='function') applyOperatingSupportDay();
   tickBuildQueue(); // #7 final: progress queued vehicle builds (slice 3c: per-day); finished ones go to the hangar
 }
 // the monthly subsystem tick — the original advance() body minus the now-continuous flows (≈22
@@ -947,9 +1003,8 @@ function tickMonthlyBoundary(){
     tickDivisionMorale();
 
     // #18 (Home): snapshot this month's recurring cashflow for the ops-summary panel
-    const mRev=round2(totalFacilityIncome()+(state.pgmRoyalty>0?state.pgmRoyalty:0)+govMonthlyFunding()+passiveMonthlyIncome());
-    const mExp=round2(Math.max(0,diff().overhead+econOverheadAdd()+productionUpkeep()+empireOpex()+loanInterest()+partnershipUpkeep()+trackingUpkeep())+monthlyPayroll());
-    state.lastMonth={revenue:mRev, expenses:mExp, net:round2(mRev-mExp), flights:0};
+    const recurring=liveRecurringEconomy();
+    state.lastMonth={revenue:recurring.revenue, expenses:recurring.expenses, net:recurring.net, flights:0};
     // Economy tension: warn (once per threshold crossing) when the runway gets short.
     const rw=runwayMonths();
     if(rw<=6 && state._runwayWarned!==6){ state._runwayWarned=6; timeInterrupt(); log('bad',`⚠ Treasury critical — about ${Math.max(1,Math.round(rw))} months of runway at current burn. Fly something, sign a contract, or cut payroll.`); }
@@ -1107,8 +1162,8 @@ function showMandateModal(){
     <button class="btn launch" onclick="acceptMandate()">Accept the mandate</button>
     <button class="btn ghost" onclick="declineMandate()" style="margin-top:8px">Decline (no penalty)</button>`);
 }
-function acceptMandate(){ if(state.mandate) state.mandate.accepted=true; hideModal(); log('note',`Mandate accepted: ${state.mandate.name} by ${dateOfAbs(state.mandate.deadlineAbs)}.`); render(); }
-function declineMandate(){ if(state.mandate){ log('note',`Mandate declined: ${state.mandate.name}.`); state.mandate=null; state.mandateCooldown=MANDATE_COOLDOWN_MO; } hideModal(); render(); }
+function acceptMandate(){ if(!guardOrdinaryAction('Government mandates')) return false; if(state.mandate) state.mandate.accepted=true; hideModal(); log('note',`Mandate accepted: ${state.mandate.name} by ${dateOfAbs(state.mandate.deadlineAbs)}.`); render(); }
+function declineMandate(){ if(!guardOrdinaryAction('Government mandates')) return false; if(state.mandate){ log('note',`Mandate declined: ${state.mandate.name}.`); state.mandate=null; state.mandateCooldown=MANDATE_COOLDOWN_MO; } hideModal(); render(); }
 function dateOfAbs(abs){ const y=1942+Math.floor(abs/12), mo=abs%12; return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][mo]+' '+y; }
 // called monthly from the tick + on mission completion
 function tickMandate(){
@@ -1164,10 +1219,17 @@ function govMonthlyFunding(){
   const earned=GOV_FUNDING_BASE*Math.min(1,excess/30)*(1+0.15*eraIndex(currentEra()))*doctrineMult('gov')*(1+execGovBonus())*crisisGovFundingMult()*investorConfidenceFundMult(); // full grant at 80 support — every point above neutral pays; executives lift the earned grant (0 when unstaffed); I3: a Funding Collapse crisis cuts the earned grant, not the difficulty floor below; Option C: a recent loss streak also shakes investor/gov confidence
   return round2(earned + (diff().govFloor||0));
 } // CE3(a): Statecraft +, Commercial −
-// Months of cash left at the current monthly burn (Infinity when cash-positive).
+// Canonical current recurring economy. Projections read this live authority so a
+// hire, contract, facility, or upkeep change is reflected immediately;
+// state.lastMonth remains the historical completed-month ledger.
+function liveRecurringEconomy(){
+  const revenue=round2(totalFacilityIncome()+(state.pgmRoyalty||0)+govMonthlyFunding()+passiveMonthlyIncome());
+  const expenses=round2(Math.max(0,diff().overhead+econOverheadAdd()+productionUpkeep()+empireOpex()+loanInterest()+partnershipUpkeep()+trackingUpkeep())+monthlyPayroll());
+  return {revenue,expenses,net:round2(revenue-expenses)};
+}
+// Months of cash left at the live recurring monthly burn (Infinity when cash-positive).
 function runwayMonths(){
-  const lm=state.lastMonth; if(!lm) return Infinity;
-  const net=lm.net!=null?lm.net:0;
+  const net=liveRecurringEconomy().net;
   if(net>=0) return Infinity;
   return state.money/(-net);
 }
@@ -1202,6 +1264,7 @@ function passiveStatus(id){
   return 'available';
 }
 function signPassiveContract(id){
+  if(!guardOrdinaryAction('Signing a contract')) return false;
   const d=passiveDef(id); if(!d || passiveStatus(id)!=='available') return false;
   const mult=passiveDiminish(id);
   const income=round2(d.income*mult);
@@ -1433,7 +1496,7 @@ function rivalsAtBody(bodyId){
 /* ---------- programs & ambition ---------- */
 function programComplete(p){ return p.missions.every(mid=>state.completed[mid]); }
 function currentAmbition(){ return AMBITIONS.find(a=>a.id===state.ambition) || AMBITIONS[0]; }
-function setAmbition(id){ if(!AMBITIONS.find(a=>a.id===id)) return; state.ambition=id; log('info',`Long-term ambition set: ${AMBITIONS.find(a=>a.id===id).name}.`); render(); }
+function setAmbition(id){ if(!guardOrdinaryAction('Changing program ambition')) return false; if(!AMBITIONS.find(a=>a.id===id)) return; state.ambition=id; log('info',`Long-term ambition set: ${AMBITIONS.find(a=>a.id===id).name}.`); render(); }
 // the next unfinished objective across the program ladder (drives the one-more-turn nudge)
 function nextObjective(){
   for(const p of PROGRAMS){
@@ -1534,6 +1597,7 @@ function stationMaintenanceCost(facId){
   return round2(Math.max(0,100-stationCondition(fs))/100*STATION_REPAIR_COST_PER_MODULE*Math.max(1,facilityModuleList(fs).length));
 }
 function repairStation(facId){
+  if(!guardOrdinaryAction('Station maintenance')) return false;
   const fs=facilityState(facId), def=facilityById(facId), cost=stationMaintenanceCost(facId);
   if(!fs||!def||cost<=0||state.money<cost) return;
   state.money-=cost; stationOps(fs).maintenanceEnabled=true; stationOps(fs).condition=STATION_MAINT_MAX;
@@ -1554,6 +1618,7 @@ function stationCrewCandidates(){
 }
 function stationRotationDue(fs){ return stationOps(fs).crewManaged && absMonth()>=stationOps(fs).rotationDueAbs; }
 function rotateStationCrew(facId){
+  if(!guardOrdinaryAction('Station crew rotation')) return false;
   const fs=facilityState(facId), def=facilityById(facId); if(!fs||!def) return;
   const ops=stationOps(fs), ids=stationCrewIds(fs), candidates=stationCrewCandidates();
   if(!ops.crewManaged||!ids.length||!candidates.length){
@@ -1567,6 +1632,7 @@ function rotateStationCrew(facId){
   render();
 }
 function assignStationCrew(facId, id){
+  if(!guardOrdinaryAction('Station crew assignment')) return false;
   const fs=facilityState(facId), def=facilityById(facId), p=personById(id);
   if(!fs||!def||!p||roleOf(id)!=='astro'||!isHired(id)||isCrewDeployed(id)||stationCrewAssigned(id)) return;
   const ops=stationOps(fs), cap=facilityModuleList(fs).reduce((n,mid)=>n+((stationModuleDef(mid)?.stats?.crew)||0),0);
@@ -1575,6 +1641,7 @@ function assignStationCrew(facId, id){
   log('note',`${def.icon} ${def.name}: ${p.name} assigned to station duty.`); render();
 }
 function removeStationCrew(facId, id){
+  if(!guardOrdinaryAction('Station crew assignment')) return false;
   const fs=facilityState(facId), def=facilityById(facId); if(!fs||!def) return;
   const ops=stationOps(fs); ops.crewIds=ops.crewIds.filter(x=>x!==id);
   log('note',`${def.icon} ${def.name}: ${personById(id)?.name||id} rotated off station duty.`); render();
@@ -1584,6 +1651,7 @@ function resupplyContractCost(facId){
 }
 function stationContractActive(fs){ const c=stationOps(fs).resupplyContract; return !!(c&&absMonth()<c.untilAbs); }
 function signResupplyContract(facId){
+  if(!guardOrdinaryAction('Station resupply contracts')) return false;
   const fs=facilityState(facId), def=facilityById(facId), cost=resupplyContractCost(facId); if(!fs||!def||stationContractActive(fs)||state.money<cost) return;
   stationOps(fs).maintenanceEnabled=true;
   stationOps(fs).resupplyContract={untilAbs:absMonth()+STATION_RESUPPLY_CONTRACT_TERM, premium:STATION_RESUPPLY_CONTRACT_PREMIUM};
@@ -1592,6 +1660,7 @@ function signResupplyContract(facId){
   render();
 }
 function cancelResupplyContract(facId){
+  if(!guardOrdinaryAction('Station resupply contracts')) return false;
   const fs=facilityState(facId), def=facilityById(facId); if(!fs||!def) return;
   stationOps(fs).resupplyContract=null; log('note',`${def.icon} ${def.name}: resupply contract cancelled.`); render();
 }
@@ -1692,6 +1761,7 @@ function dockModuleNow(facId, modId, note){
   return true;
 }
 function addStationModule(facId, modId){
+  if(!guardOrdinaryAction('Facility module construction')) return false;
   const chk=canAddStationModule(facId, modId); if(!chk.ok) return;
   const md=stationModuleDef(modId);
   state.money-=chk.cost;
@@ -1719,6 +1789,7 @@ function canContractStationModule(facId, modId){
   return {ok:true, cost};
 }
 function contractStationModule(facId, modId){
+  if(!guardOrdinaryAction('Facility module contracts')) return false;
   const chk=canContractStationModule(facId, modId); if(!chk.ok) return;
   const md=stationModuleDef(modId);
   state.money-=chk.cost;
@@ -1815,7 +1886,7 @@ function facilityBonus(body){
 }
 function expandCost(id){ const def=facilityById(id), fs=facilityState(id); const mod=(fs&&fs.modules)||1; return round2(def.foundCost*0.45*mod); }
 function expandMonths(def){ return Math.max(2, Math.round(def.foundMonths*0.4)); }
-function totalFacilityIncome(){ let s=0; for(const id in (state.facilities||{})){ if(facilityBuilt(id)) s+=facilityProduction(facilityById(id), facilityState(id)).income*facilitySupplyFactor(id); } return s; }
+function totalFacilityIncome(){ let s=0; for(const id in (state.facilities||{})){ if(facilityBuilt(id)) s+=facilityProduction(facilityById(id), facilityState(id)).income*facilitySupplyFactor(id)*crisisFacilityMult(); } return s; }
 /* ---------- CE4(b): standing resupply obligations — a base is a commitment, not a trophy ----------
    A crewed outpost is not a one-time win: it consumes consumables every month and must be
    resupplied or it decays. Each built facility carries a supply meter (months of provisions);
@@ -1897,6 +1968,7 @@ function canResupply(id){
   return {ok:true};
 }
 function resupplyFacility(id, source){
+  if(!guardOrdinaryAction('Facility resupply')) return false;
   const chk=canResupply(id); if(!chk.ok) return;
   const def=facilityById(id), fs=facilityState(id);
   const premium=source==='contract' ? (stationOps(fs).resupplyContract?.premium||STATION_RESUPPLY_CONTRACT_PREMIUM) : 0;
@@ -1945,7 +2017,7 @@ function tickStationOperations(){
 // reaction buffer on instant LEO/Moon bodies and fires as early as the shortfall-shipped model usefully
 // can for Mars (a single in-flight shipment carries only the shortfall, so Mars stays marginal by design).
 const AUTO_RESUPPLY_THRESHOLD=6;
-function toggleAutoResupply(id){ const fs=facilityState(id); if(!fs) return; fs.autoResupply=!fs.autoResupply; const def=facilityById(id); log('info',`${def.icon} ${def.name}: auto-resupply ${fs.autoResupply?'enabled':'disabled'}.`); render(); }
+function toggleAutoResupply(id){ if(!guardOrdinaryAction('Facility resupply controls')) return false; const fs=facilityState(id); if(!fs) return; fs.autoResupply=!fs.autoResupply; const def=facilityById(id); log('info',`${def.icon} ${def.name}: auto-resupply ${fs.autoResupply?'enabled':'disabled'}.`); render(); }
 function canFound(id){
   const def=facilityById(id); if(!def) return {ok:false,why:'Unknown facility.'};
   if(facilityBuilt(id)) return {ok:false,why:'Already established.'};
@@ -1954,6 +2026,7 @@ function canFound(id){
   return {ok:true};
 }
 function foundFacility(id){
+  if(!guardOrdinaryAction('Founding a facility')) return false;
   const chk=canFound(id); if(!chk.ok) return;
   const def=facilityById(id);
   state.money-=def.foundCost;
@@ -1965,6 +2038,7 @@ function foundFacility(id){
   render();
 }
 function expandFacility(id){
+  if(!guardOrdinaryAction('Expanding a facility')) return false;
   if(!facilityBuilt(id)) return;
   const def=facilityById(id), cost=expandCost(id);
   if(state.money<cost) return;
@@ -2116,6 +2190,9 @@ function activeLaunchTransaction(snapshot){
 function launchTransactionContextSnapshot(ctx){
   const copy=plainRecord(ctx||{}); if(copy) delete copy.m; return copy;
 }
+function mergedLaunchTransactionContext(tx,ctx){
+  return launchTransactionContextSnapshot(Object.assign({},tx&&tx.context||{},ctx||{}));
+}
 function launchTransactionContext(tx){
   if(!tx) return null;
   const m=missionById(tx.missionId)||plainRecord(tx.mission); if(!m) return null;
@@ -2165,11 +2242,11 @@ function runLaunchMutationGroup(apply){
     if(outer&&completed) checkpointLaunchSave();
   }
 }
-function setLaunchTransactionContext(ctx){ const tx=state.launchTxn; if(tx) tx.context=launchTransactionContextSnapshot(ctx); return tx; }
+function setLaunchTransactionContext(ctx){ const tx=state.launchTxn; if(tx) tx.context=mergedLaunchTransactionContext(tx,ctx); return tx; }
 function setLaunchTransactionDecision(kind,ctx,data,optionIds){
   const tx=state.launchTxn; if(!tx) return null;
   tx.revision=(tx.revision||0)+1;
-  tx.context=launchTransactionContextSnapshot(ctx);
+  tx.context=mergedLaunchTransactionContext(tx,ctx);
   tx.decision={id:`${tx.id}:d${tx.revision}:${kind}`,kind,revision:tx.revision,options:(optionIds||[]).map(String),selected:null,resolvedEffect:null,data:plainRecord(data||{})};
   tx.phase='decision'; tx.nextAction=`decide:${kind}`; tx.applied.decision=false;
   return tx.decision;
@@ -2179,7 +2256,7 @@ function ensureLaunchTransactionDecision(kind,ctx,data,optionIds){
   if(!tx) return null;
   const current=tx.decision;
   if(current&&current.kind===kind&&current.selected==null){
-    tx.context=launchTransactionContextSnapshot(ctx);
+    tx.context=mergedLaunchTransactionContext(tx,ctx);
     return current;
   }
   const decision=setLaunchTransactionDecision(kind,ctx,data,optionIds);
@@ -2354,10 +2431,7 @@ function calculateLaunchQuote(input){
   return {schema:1,prebuilt:!!x.prebuilt,trackedBuild:!!x.trackedBuild,window:!!x.window,stockAdjustedBuild:!!x.stockAdjustedBuild,cashNow:(x.trackedBuild&&!x.prebuilt&&!x.window)?buildCost:directCommit,listedBuildCost,buildCredit,buildCost,buildCarry,flightBurn,launchCarry,missionCarry,requiredAtCommit,requiredAtFlight,endToEndRunway,listedBuildDays,buildSaveDays,buildDays,preparationDays,launchDays,missionDays:Math.max(0,Math.round(finiteRecordNumber(x.missionDays))),nominalReadyAbs,nominalFlightAbs,successProbability:finiteRecordNumber(x.reliability),stock:plainRecord(x.stock||null),canCommit,rejection};
 }
 function operatingMonthlyBurn(){
-  const expenses=Math.max(0,diff().overhead+econOverheadAdd()+productionUpkeep()+empireOpex()+loanInterest()+partnershipUpkeep()+trackingUpkeep())+monthlyPayroll();
-  let income=(state.pgmRoyalty||0)+govMonthlyFunding()+passiveMonthlyIncome();
-  for(const fid in (state.facilities||{})){ if(facilityBuilt(fid)){ const pr=facilityProduction(facilityById(fid),facilityState(fid)); income+=(pr.income||0)*facilitySupplyFactor(fid)*crisisFacilityMult(); } }
-  return round2(Math.max(0,expenses-income));
+  return round2(Math.max(0,-liveRecurringEconomy().net));
 }
 function projectedLaunchMonthlyBurn(prebuilt){
   // A ready article stops accruing parked-fleet maintenance the instant its exact
@@ -2429,6 +2503,7 @@ function canQueue(m,v,sim){
 // log line and an order flag the Command Center progress card can use if it ever wants to
 // distinguish them (it currently doesn't need to).
 function queueBuild(committed,requestId){
+  if(typeof guardOrdinaryAction==='function'&&!guardOrdinaryAction('Manufacturing')) return null;
   const m=curMission(); const v=computeVehicle(); const sim=m&&m.profile?simulateMission(m):null;
   const spec=queueSpecSnapshot();
   const intent=requestIntentFingerprint('build',{missionId:m&&m.id,committed:!!committed,spec});
@@ -2482,6 +2557,7 @@ function tickBuildQueue(){
   }
 }
 function cancelOrder(id){
+  if(typeof guardOrdinaryAction==='function'&&!guardOrdinaryAction('Cancelling production')) return false;
   const q=buildQueueList(); const i=q.findIndex(o=>o.id===id); if(i<0) return;
   const o=q[i];
   if(!o.started){ state.money+=o.cost; log('note',`Manufacturing — cancelled ${o.name}; ${fM(o.cost)} refunded (build not yet started).`); }
@@ -2489,16 +2565,22 @@ function cancelOrder(id){
   q.splice(i,1); render();
 }
 function scrapHangar(id){
+  if(typeof guardOrdinaryAction==='function'&&!guardOrdinaryAction('Scrapping a vehicle')) return false;
   const h=hangarList(); const i=h.findIndex(x=>x.id===id); if(i<0) return;
   const rec=h[i], hull=hullById(rec.hullId);
   if(hull){ hull.status='scrapped'; addHullEvent(hull,'scrapped',rec.missionId); }
   log('note',`Manufacturing — scrapped ${rec.name} from the hangar${rec.hullId?` (hull ${rec.hullId})`:''}.`);
   h.splice(i,1); render();
 }
-function hangarToBench(id){ const h=hangarList().find(x=>x.id===id); if(h){ state.activeMission=h.missionId; setTab('bench'); } }
+function hangarToBench(id){
+  if(typeof guardOrdinaryAction==='function'&&!guardOrdinaryAction('Opening an ordinary hangar article')) return false;
+  const h=hangarList().find(x=>x.id===id); if(h){ state.activeMission=h.missionId; setTab('bench'); return true; }
+  return false;
+}
 function hangarFor(m){ return m?hangarList().filter(h=>h.missionId===m.id):[]; }
 // launch a finished vehicle: load its snapshot into the bench, validate, then fly prebuilt
 function launchFromHangar(id,exactHullId,requestId){
+  if(typeof guardOrdinaryAction==='function'&&!guardOrdinaryAction('An ordinary launch')) return false;
   const h=hangarList().find(x=>x.id===id); if(!h) return;
   if(!exactHullId||!requestId){ announceAction('Launch rejected: this action does not identify an exact hull and request. Refresh the owning surface and try again.'); return false; }
   if(exactHullId&&h.hullId!==exactHullId){ announceAction(`Launch rejected: action expected hull ${exactHullId}, but order ${id} owns ${h.hullId||'no hull'}.`); return false; }
@@ -2538,6 +2620,7 @@ function standingStockCap(){ return Math.max(2, launchPadCap()*2); } // keep ~2 
 function standingHangarCount(){ const sp=state.standingProd; if(!sp) return 0; return hangarList().filter(h=>h.missionId===sp.missionId).length; }
 // snapshot the CURRENT bench design as the standing line (must be a juggernaut + a flyable design)
 function setStandingProduction(missionId){
+  if(!guardOrdinaryAction('Standing production controls')) return false;
   if(!isJuggernaut()) return;
   const m = (missionId && missionById(missionId)) || curMission(); if(!m || m.proc) return; // E1.3: procedural contracts expire/rotate — not a fit for a standing repeat-build line
   const v = computeVehicle(); const sim=m.profile?simulateMission(m):null;
@@ -2548,8 +2631,8 @@ function setStandingProduction(missionId){
   log('ok',`🏭 Standing production online — ${state.standingProd.name}. The line builds itself now, ${fM(state.standingProd.buildCost)}/copy, up to ${standingStockCap()} in stock.`);
   render();
 }
-function toggleStandingProduction(){ if(state.standingProd){ state.standingProd.enabled=!state.standingProd.enabled; log('note',`Standing production ${state.standingProd.enabled?'resumed':'paused'}.`); render(); } }
-function clearStandingProduction(){ if(state.standingProd){ log('note',`Standing production line cleared (${state.standingProd.name}).`); state.standingProd=null; render(); } }
+function toggleStandingProduction(){ if(!guardOrdinaryAction('Standing production controls')) return false; if(state.standingProd){ state.standingProd.enabled=!state.standingProd.enabled; log('note',`Standing production ${state.standingProd.enabled?'resumed':'paused'}.`); render(); } }
+function clearStandingProduction(){ if(!guardOrdinaryAction('Standing production controls')) return false; if(state.standingProd){ log('note',`Standing production line cleared (${state.standingProd.name}).`); state.standingProd=null; render(); return true; } return false; }
 // runs each month in advance(): the line rolls one finished copy into the hangar if there's stock
 // room and cash stays above the reserve. Pays full build cost and logs cadence load — real work.
 function tickStandingProduction(){
@@ -2683,6 +2766,7 @@ function canBuyMaterialDip(key){
   return {ok:true,cost,units};
 }
 function buyMaterialDip(key){
+  if(!guardOrdinaryAction('Buying materials')) return false;
   const chk=canBuyMaterialDip(key); if(!chk.ok) return;
   const s=materialState(key), d=materialDef(key), units=chk.units;
   state.money-=chk.cost;
@@ -2769,6 +2853,7 @@ function canBuildEngineStock(engId, count, tested){
   return {ok:true, cost, days};
 }
 function buildEngineStock(engId, count, tested){
+  if(!guardOrdinaryAction('Engine-stock manufacturing')) return false;
   count=count||1;
   const chk=canBuildEngineStock(engId,count,tested); if(!chk.ok) return;
   state.money-=chk.cost;
@@ -2861,6 +2946,7 @@ function canBuildPartStock(key, count, tested){
   return {ok:true, cost, days};
 }
 function buildPartStock(key, count, tested){
+  if(!guardOrdinaryAction('Component-stock manufacturing')) return false;
   count=count||1;
   const chk=canBuildPartStock(key,count,tested); if(!chk.ok) return;
   state.money-=chk.cost;
@@ -3021,6 +3107,8 @@ const EMPIRE_DEPOT_OPEX=0.02;      // $M/mo per tonne held in the LEO depot (boi
 const EMPIRE_BELT_OPEX=1.5;        // $M/mo to keep the platinum-group Belt claim operating (against its +$4.5M royalty)
 const EMPIRE_HANGAR_OPEX=0.15;     // $M/mo to keep each parked vehicle flight-ready
 const EMPIRE_DIV_OPEX=0.25;        // $M/mo standing overhead per research division you've actually invested in
+function capitalizedDivisionCount(){ return DIVISIONS.filter(d=>divisionCapitalized(d.id)).length; }
+function expandedDivisionOpex(){ return round2(capitalizedDivisionCount()*EMPIRE_DIV_OPEX*(1-execOpexCut())); }
 function empireOpex(){
   let o=0;
   for(const id in (state.facilities||{})){ // off-world facilities: every module costs to run
@@ -3031,9 +3119,8 @@ function empireOpex(){
   o += EMPIRE_DEPOT_OPEX*Math.max(0, state.depot||0);                 // LEO propellant holding
   if((state.pgmRoyalty||0)>0) o += EMPIRE_BELT_OPEX;                  // Belt mining operation
   o += EMPIRE_HANGAR_OPEX*hangarList().length;                       // standing fleet maintenance
-  for(const id in (state.divisions||{})){                            // research divisions actually stood up (trained beyond baseline, or with project experience)
-    const ds=state.divisions[id];
-    if(ds && ((ds.skill>DIV_SKILL0+1e-9) || (ds.exp>0))) o += EMPIRE_DIV_OPEX;
+  for(const id in (state.divisions||{})){                            // only explicitly trained/capitalized divisions carry standing operations
+    if(divisionCapitalized(id)) o += EMPIRE_DIV_OPEX;                // experience alone remains a quality gain, not a hidden subscription
   }
   return round2(o*(1-execOpexCut())); // executives trim monthly overhead (0 when unstaffed; opex is already $0 early)
 }
@@ -3045,6 +3132,7 @@ function canUpgradeProduction(key){
   return {ok:true};
 }
 function upgradeProduction(key){
+  if(!guardOrdinaryAction('Production expansion')) return false;
   const chk=canUpgradeProduction(key); if(!chk.ok) return;
   const d=prodDef(key), cost=prodUpgradeCost(key);
   state.money-=cost;
@@ -3059,6 +3147,7 @@ function upgradeProduction(key){
 function fuelBuyPrice(){ return round2(state.fuelPrice*(1+FUEL_SPREAD)); }          // what you pay to acquire fuel in LEO
 function fuelSellPrice(){ return round2(state.fuelPrice*(1-FUEL_SPREAD)); }         // baseline market rate you receive
 function buyFuel(t){
+  if(!guardOrdinaryAction('Propellant trading')) return false;
   if(!state.research.orbital_depot) return;
   t=round2(t); if(t<=0) return;
   const cost=round2(t*fuelBuyPrice());
@@ -3068,6 +3157,7 @@ function buyFuel(t){
   render();
 }
 function sellFuel(t){
+  if(!guardOrdinaryAction('Propellant trading')) return false;
   if(!state.research.orbital_depot) return;
   t=round2(Math.min(t, state.depot)); if(t<=0) return;
   let revenue=0, premiumSold=0;
@@ -3128,7 +3218,8 @@ function rivalStateFor(r){
 // CE1 slice (a): the rival AGENT turn — replaces the calendar-only checkRivalFirsts.
 // Each rival accrues budget·momentum into capital and buys its next goal when capital
 // clears the cost; momentum tracks the race (ahead → faster, dominated → rubber-banded).
-function tickRivals(){
+function tickRivals(options){
+  options=options||{};
   const playerScore=playerFirstsScore();
   const crowd=rivalCrowdFactor(); // CE1(b): contract crowding slows every rival's saving
   for(const r of RIVALS){
@@ -3143,7 +3234,7 @@ function tickRivals(){
     const f=r.firsts[rs.idx];
     if(rs.prevYear==null) rs.prevYear=f.year-RIVAL_FIRST_RUNWAY; // debut saving window opens here
     if(state.year<rs.prevYear) continue; // saving window not open yet (keeps early game quiet)
-    maybeRivalDisaster(r, rs); // P5: monthly disaster roll — only while actively saving toward a goal (not done, window open)
+    if(!options.administration) maybeRivalDisaster(r, rs); // transient rescue decisions cannot safely interrupt the persisted administrative clock
     const window=Math.max(RIVAL_MIN_WINDOW, f.year-rs.prevYear);
     const cost=prof.income*12*window;
     rs.capital+=prof.income*rs.momentum*crowd; // monthly accrual, sped/slowed by momentum & market crowding
@@ -3383,6 +3474,7 @@ function rivalIntelOwned(id){ return !!(state.rivalIntel && state.rivalIntel[id]
 // E1.1 slice B — buy the one-time intel dossier: unlocks the full projected remaining-firsts
 // timeline (rivalFullProjection) for this rival, permanent for the rest of the playthrough.
 function buyRivalIntel(rivalId){
+  if(!guardOrdinaryAction('Rival intelligence purchases')) return false;
   const r=RIVALS.find(x=>x.id===rivalId); if(!r) return false;
   if(rivalIntelOwned(rivalId)){ log('note',`You already hold an intel dossier on ${r.name}.`); return false; }
   if(state.money<RIVAL_INTEL_COST){ log('note','Not enough capital to buy an intel dossier right now.'); return false; }
@@ -3765,12 +3857,13 @@ function monthToDate(abs){ const y=1942+Math.floor(abs/12), mo=((abs%12)+12)%12;
 // day-precise date from an absDay (sibling of monthToDate) — "14 Mar 1962"
 function dayToDate(absD){ const mo=Math.floor(absD/DAYS_PER_MONTH), dd=(((absD%DAYS_PER_MONTH)+DAYS_PER_MONTH)%DAYS_PER_MONTH)+1, y=1942+Math.floor(mo/12), m=((mo%12)+12)%12; return dd+' '+MONTHS[m]+' '+y; }
 function commitWindow(missionId, idx){
+  if(!guardOrdinaryAction('Transfer-window commitments')) return false;
   const w=windowsFor(missionId)[idx];
   state.committedWindow={missionId, abs:w.abs, quality:w.quality};
   log('note',`Committed to the ${dayToDate(w.abs)} window for ${MISSIONS.find(x=>x.id===missionId).name}. Build and test before it closes.`);
   render();
 }
-function cancelWindow(){ state.committedWindow=null; render(); }
+function cancelWindow(){ if(!guardOrdinaryAction('Transfer-window commitments')) return false; state.committedWindow=null; render(); }
 
 /* ---------- #13: map as a planning surface ----------
    Pure planners (no DOM) that turn the selected body into actionable plans:
@@ -4241,7 +4334,7 @@ function missionNetEconomics(m, v, sim){
   const tl=TEST_LEVELS[state.testLevel];
   const directCost=round2(v.buildCost + v.launchCost + (tl.cost||0));
   const campaignMo=(buildMonths(m)+1+(tl.months||0)) + Math.round((m.days||0)/30); // build+launch+test, then flight duration
-  const monthlyNet=(state.lastMonth&&state.lastMonth.net!=null)?state.lastMonth.net:0; // current recurring net (funding, payroll, upkeep…)
+  const monthlyNet=liveRecurringEconomy().net; // live recurring net; lastMonth is historical only
   const carryCost=round2(-monthlyNet*campaignMo); // if net is negative, campaign months cost you this much
   const payout=estMissionPayout(m);
   const md=state.mandate;
@@ -5066,7 +5159,9 @@ function scrubLaunch(txnId,revision){
     if(state.launchTxn){ const selected=selectLaunchDecision('weather','scrub',txnId,revision); if(!selected.ok||selected.replay) return false; }
     _pendingLaunch=null; hideModal();
     dismissAnim(); // E1.2 slice C: scrubbing skips months ahead to retry — that's a new attempt later, not a continuation of this held pad frame, so don't try to resume it across the time-skip
-    advance(p.wx.clear);
+    const weatherDays=daysFor(p.wx.clear);
+    if(typeof sponsorWeatherDebit==='function') sponsorWeatherDebit(state.launchTxn,weatherDays);
+    advanceTransactionDays(weatherDays);
     if(state.launchTxn){
       state.launchTxn.timing.weatherWaitDays=(state.launchTxn.timing.weatherWaitDays||0)+daysFor(p.wx.clear);
       state.launchTxn.receipts.weatherRecycle={applied:true,days:daysFor(p.wx.clear),atAbs:absDay()};
@@ -5496,7 +5591,7 @@ function abandonRescue(txnId,revision){
 const REHEARSAL_ANOMALY_MULT=0.4; // a rehearsed flight runs anomalies at 40% of the base chance
 const REHEARSAL_MONTHS=1;
 function rehearsalCost(m){ return Math.max(1, Math.round((m.payout||10)*0.15)); }
-function toggleRehearsal(){ state.rehearsal=!state.rehearsal; render(); }
+function toggleRehearsal(){ if(!guardOrdinaryAction('Mission rehearsal planning')) return false; state.rehearsal=!state.rehearsal; render(); }
 function flightReadiness(m){
   const wTotal=WEATHER_CONDITIONS.reduce((a,c)=>a+c.weight,0);
   const goPct=Math.round((WEATHER_CONDITIONS.find(c=>c.id==='go').weight/wTotal)*100);
@@ -5586,6 +5681,9 @@ function launch(prebuilt,hullId,requestId,validatedQuote){
     if(begun.replay) return true;
     tx=begun.txn;
   }
+  if(typeof ordinaryActionsSuspended==='function'&&ordinaryActionsSuspended()&&!(typeof sponsoredLaunchTransaction==='function'&&sponsoredLaunchTransaction(tx))){
+    announceAction('Only the exact sponsor-directed return-to-flight article may launch during administration.'); return false;
+  }
   _flightResolving=true; // P1 1.2a: hold the arrival pump until this launch fully resolves (released in finish()/on defer)
   _launchMutationDepth++;
   const tl=TEST_LEVELS[state.testLevel];
@@ -5595,7 +5693,16 @@ function launch(prebuilt,hullId,requestId,validatedQuote){
   // (credit cuts the build cost to keep it cost-neutral) and already made (shaves assembly days).
   const draw = prebuilt ? {draw:{},total:0,credit:0,saveDays:0} : ((quote.stock&&quote.stock.engines)||{draw:{},total:0,credit:0,saveDays:0});
   const pdraw = prebuilt ? {draw:{},total:0,credit:0,saveDays:0} : ((quote.stock&&quote.stock.parts)||{draw:{},total:0,credit:0,saveDays:0}); // #7 slice 2: tank/habitat sub-assemblies
-  if(!tx.applied.cash){ state.money-=(quote.buildCost+quote.flightBurn); tx.applied.cash=true; }
+  if(!tx.applied.cash){
+    const sponsored=typeof sponsoredLaunchTransaction==='function'&&sponsoredLaunchTransaction(tx);
+    if(sponsored){
+      if(!(typeof sponsorLaunchCashDebit==='function'&&sponsorLaunchCashDebit(tx,quote))){
+        _launchMutationDepth=Math.max(0,_launchMutationDepth-1); _flightResolving=false;
+        announceAction('The restricted sponsor escrow could not fund this exact launch; no campaign Capital was substituted.');
+        return false;
+      }
+    }else{ state.money-=(quote.buildCost+quote.flightBurn); tx.applied.cash=true; }
+  }
   if(!tx.applied.stock){
     if(draw.total>0){ consumeEngineStock(draw.draw); log('note',`Assembly — fitted ${draw.total} pre-built engine${draw.total===1?'':'s'} from the yard (${fM(draw.credit)} pre-paid, ~${draw.saveDays} d faster).`); }
     if(pdraw.total>0){ consumePartStock(pdraw.draw); log('note',`Assembly — fitted ${pdraw.total} pre-built structural component${pdraw.total===1?'':'s'} from the yard (${fM(pdraw.credit)} pre-paid, ~${pdraw.saveDays} d faster).`); }
@@ -5608,10 +5715,10 @@ function launch(prebuilt,hullId,requestId,validatedQuote){
     if(m.window){
       windowQuality=state.committedWindow.quality;
       const gap=state.committedWindow.abs-absDay(); // days until the committed window (slice 4b)
-      advanceDays(Math.max(leadDays, gap)); // wait out the rest of the window if build finishes early
+      advanceTransactionDays(Math.max(leadDays, gap)); // wait out the rest of the window if build finishes early
       state.committedWindow=null;
     }else{
-      advanceDays(leadDays); // build (complexity-scaled, minus pre-built engines) + launch + test campaign + rehearsal
+      advanceTransactionDays(leadDays); // build (complexity-scaled, minus pre-built engines) + launch + test campaign + rehearsal
     }
     tx.applied.time=true; tx.timing.readyAbs=absDay(); tx.timing.windowQuality=windowQuality;
   }else windowQuality=tx.timing.windowQuality==null?1:tx.timing.windowQuality;
@@ -5626,7 +5733,9 @@ function launch(prebuilt,hullId,requestId,validatedQuote){
   if(wx.adverse){
     if(animEnabled){ _pendingLaunch={m,v,sim,windowQuality,wx,prebuilt,hullId}; showWeatherModal(m,wx); return; }
     return runLaunchMutationGroup(()=>{
-      advance(wx.clear); // animations off / headless: take the safe call and wait it out
+      const weatherDays=daysFor(wx.clear);
+      if(typeof sponsorWeatherDebit==='function') sponsorWeatherDebit(tx,weatherDays);
+      advanceTransactionDays(weatherDays); // animations off / headless: take the safe call and wait it out
       tx.timing.weatherWaitDays=(tx.timing.weatherWaitDays||0)+daysFor(wx.clear);
       tx.receipts.weatherRecycle={applied:true,days:daysFor(wx.clear),atAbs:absDay(),automatic:true};
       log('note',`${m.name}: launch scrubbed for weather (${wx.label}); waited ${wx.clear} mo.`);
@@ -5689,7 +5798,8 @@ function pumpFlightArrivals(){
   if(_flightResolving) return;
   if(_pendingLive||_pendingReserve||_pendingOrbitOps||_pendingOps||_pendingRescue||_pendingSetback||_pendingLogiMishap||_pendingInquiry||_pendingLaunch||_pendingRivalDisaster) return;
   try{ if($('modal') && !$('modal').classList.contains('hidden')) return; }catch(e){} // a modal is on screen — wait
-  const rec=(state.activeFlights||[]).find(f=>f&&f.deferred&&absDay()>=f.arriveAbs);
+  const rec=(state.activeFlights||[]).filter(f=>f&&f.deferred&&absDay()>=finiteRecordNumber(f.arriveAbs))
+    .sort((a,b)=>finiteRecordNumber(a.arriveAbs)-finiteRecordNumber(b.arriveAbs))[0];
   if(!rec) return;
   if(rec.kind==='logistics'){ // 2.1: a resupply shipment reaching its destination — top up provisions, no ctx/modal
     const fs=facilityState(rec.facId), def=facilityById(rec.facId);
@@ -5705,7 +5815,7 @@ function pumpFlightArrivals(){
   const arrivalTxn=rec.txn
     ? makeLaunchTransactionRecord(Object.assign({},rec.txn,{phase:'settling',source:'arrival',context:launchTransactionContextSnapshot(rec.ctx),decision:null,nextAction:'begin-resolution'}))
     : makeLaunchTransactionRecord({id:'ltx'+(state.launchTxnSeq=(state.launchTxnSeq||0)+1),requestId:`arrival:${rec.id}`,source:'arrival',phase:'settling',missionId:rec.mission,hullId:rec.ctx.hullId||null,context:launchTransactionContextSnapshot(rec.ctx),outcome:rec.ctx.outcome,applied:{ownership:true,cash:true,stock:true,time:true,pad:true,liftoff:true,cruise:true},nextAction:'begin-resolution'});
-  state.launchTxn=arrivalTxn;
+  state.launchTxn=(typeof markArrivalUnderAdministration==='function')?markArrivalUnderAdministration(arrivalTxn):arrivalTxn;
   completeFlight(rec);
   checkpointLaunchSave();
   beginResolve(rec.ctx);
@@ -5973,7 +6083,7 @@ function proceedLaunch(m,v,sim,windowQuality,weatherPenalty,prebuilt,hullId){
              transactionId:tx&&tx.id||null, famId:(activeFamily()||{}).id||null, hullId:hullId||null,
              crewId:crewed?state.assignedAstronaut:null, ab:crewed?astroBonus():{rel:0,payoutMult:1}}; // 1.2b/S1: snapshot crew + bonus at launch; store famId (not the object) so a mid-cruise save round-trips cleanly
   if(tx){
-    tx.outcome=plainRecord(outcome); tx.draws.outcome=plainRecord(outcome); tx.context=launchTransactionContextSnapshot(ctx);
+    tx.outcome=plainRecord(outcome); tx.draws.outcome=plainRecord(outcome); tx.context=mergedLaunchTransactionContext(tx,ctx);
     tx.resolution={command:'nominal',stage:'liftoff',liftoffOccurred:true,vehicleRecoveryFitted:hullRecoveryFitted(hullId),
       crewCapsuleFitted:!!(state.research.crew_capsule||crewed),launchEscapeFitted:!!state.research.launch_escape,
       vehicleDisposition:'in-flight',crewDisposition:crewed?'aboard':'not-applicable',recoveryMethod:null};
@@ -6064,6 +6174,8 @@ function resolvedLaunchDisposition(tx,ctx,outcome){
     recoveryMethod:vehicle==='recovered'?'propulsive':crewRecovery});
 }
 function finishLaunchTransaction(tx,success,outcome,pendingCelebration){
+  const administrative=!!(tx&&typeof settleAdministrativeArrival==='function'&&settleAdministrativeArrival(tx));
+  const sponsored=!!(tx&&typeof settleSponsoredAttempt==='function'&&settleSponsoredAttempt(tx,outcome));
   if(tx){
     tx.phase='resolved'; tx.nextAction=null; tx.applied.terminal=true;
     tx.receipts.resolved={applied:true,atAbs:absDay(),outcome:outcome&&outcome.kind||null};
@@ -6077,9 +6189,15 @@ function finishLaunchTransaction(tx,success,outcome,pendingCelebration){
   if(!terminal){
     _missionPulse=success?'ok':(outcome&&(/^(loss|strand)$/.test(outcome.kind)))?'bad':null;
     render();
-    if(pendingCelebration) pendingCelebration();
+    const reorganizationResult=!!(sponsored&&success&&typeof showReorganizationSuccessModal==='function'&&showReorganizationSuccessModal(pendingCelebration));
+    if(pendingCelebration&&!reorganizationResult) pendingCelebration();
     maybeShowInquiry(); maybeShowHearing(); maybeShowSampleDecision();
     pumpFlightArrivals();
+  }else if(administrative&&!sponsored){
+    // Physical settlement remains ordinary. If it opened a durable consequence
+    // decision, show that before returning foreground ownership to administration.
+    maybeShowInquiry(); maybeShowHearing(); maybeShowSampleDecision();
+    if(typeof completeAdministrativeArrivalForeground==='function') completeAdministrativeArrivalForeground();
   }
   return !terminal;
 }
@@ -6105,7 +6223,14 @@ function finalizeLaunch(ctx, ops){
     _pendingRescue={ctx, ops, outcome}; showRescueModal(ctx, outcome); return;
   }
   _launchMutationDepth++;
-  if(tx){ tx.outcome=plainRecord(outcome); tx.context=launchTransactionContextSnapshot(Object.assign({},ctx,{outcome})); tx.resolution=resolvedLaunchDisposition(tx,ctx,outcome); }
+  if(tx){
+    tx.outcome=plainRecord(outcome);
+    // Preserve durable transaction-owner metadata (for example Gate 3's
+    // restricted-funding and administrative-arrival tags) when the richer
+    // flight context replaces the preparation snapshot at settlement.
+    tx.context=mergedLaunchTransactionContext(tx,Object.assign({},ctx,{outcome}));
+    tx.resolution=resolvedLaunchDisposition(tx,ctx,outcome);
+  }
   if(ops.log) log(/strand|loss|abort/.test(ops.outcomeOverride||'')?'bad':'note', `${m.name}: ${ops.log}`);
   const opsPayoutMult=(ops.payoutMult==null?1:ops.payoutMult);
   const opsRep=ops.repDelta||0;
@@ -6490,6 +6615,9 @@ function showSettingsMenu(){
 // 'scene' = owns the center viewport; 'panel' = secondary view (future rail/modal home).
 let _tabTransitionTimer=null, _campaignGeneration=0;
 function setTab(t){
+  if(typeof ordinaryActionsSuspended==='function'&&ordinaryActionsSuspended()){
+    guardOrdinaryAction('Navigation'); resumeReorganizationUI(); return false;
+  }
   closeLiveModal();
   if(state.tab===t){hubPanel='alerts';render();return;}
   const vp=document.querySelector('.viewport');
@@ -6503,12 +6631,15 @@ function setTab(t){
   else{state.tab=t;render();}
 } // nav resets the hub drill + closes any live modal (slice 5/6)
 function addStage(){
+  if(!guardOrdinaryAction('Vehicle redesign')) return false;
   try{ sfxThunk(); }catch(e){} if(state.stages.length>=3)return; state.stages.push({eng:firstUnlocked(),count:1,prop:2.0}); collapsedStages={}; render(); }
 function removeStage(i){
+  if(!guardOrdinaryAction('Vehicle redesign')) return false;
   try{ sfxThunk(); }catch(e){} if(state.stages.length<=1)return; state.stages.splice(i,1); collapsedStages={}; render(); }
 // #27: reorder the stage stack (drag-to-reorder). Indices are validated; a no-op move
 // just re-renders. Collapse flags are keyed by position, so reset them on a structural change.
 function moveStage(from,to){
+  if(!guardOrdinaryAction('Vehicle redesign')) return false;
   const n=state.stages.length;
   if(from==null||to==null||from===to||from<0||to<0||from>=n||to>=n) return;
   const [s]=state.stages.splice(from,1);
@@ -6525,17 +6656,17 @@ function stageDrop(e,i){ if(e){ e.preventDefault(); const t=e.currentTarget; if(
 function stageDragEnd(){ stageDrag=null; }
 function toggleStageCollapse(i){ collapsedStages[i]=!collapsedStages[i]; render(); }
 function firstUnlocked(){return Object.keys(ENGINES).find(k=>state.unlocked[k])||'a4';}
-function setEngine(i,v){state.stages[i].eng=v;render();}
+function setEngine(i,v){if(!guardOrdinaryAction('Vehicle redesign')) return false;state.stages[i].eng=v;render();}
 function setCount(i,d){
-  try{ sfxThunk(); }catch(e){}state.stages[i].count=Math.max(1,Math.min(8,state.stages[i].count+d));render();}
-function setProp(i,v){state.stages[i].prop=Math.max(0.1,Math.min(1000,parseFloat(v)||0.1));render();}
-function setStageDia(i,v){ if(!state.stages[i])return; state.stages[i].dia=clampA(parseFloat(v)||1,GEO_DIA_MIN,GEO_DIA_MAX); render(); } // BC3: per-stage diameter
+  if(!guardOrdinaryAction('Vehicle redesign')) return false;try{ sfxThunk(); }catch(e){}state.stages[i].count=Math.max(1,Math.min(8,state.stages[i].count+d));render();}
+function setProp(i,v){if(!guardOrdinaryAction('Vehicle redesign')) return false;state.stages[i].prop=Math.max(0.1,Math.min(1000,parseFloat(v)||0.1));render();}
+function setStageDia(i,v){ if(!guardOrdinaryAction('Vehicle redesign')) return false;if(!state.stages[i])return; state.stages[i].dia=clampA(parseFloat(v)||1,GEO_DIA_MIN,GEO_DIA_MAX); render(); } // BC3: per-stage diameter
 // Bench customization slice 1: livery controls (cosmetic only)
 function ensureLivery(){ if(!state.livery) state.livery=defaultLivery(); return state.livery; }
-function setLiveryBody(v){ ensureLivery().body=v; render(); }
-function setLiveryAccent(v){ ensureLivery().accent=v; render(); }
-function setLiveryNose(v){ ensureLivery().nose=v; render(); }
-function setLiveryName(v){ ensureLivery().name=(v||'').slice(0,24); render(); }
+function setLiveryBody(v){ if(!guardOrdinaryAction('Vehicle redesign')) return false;ensureLivery().body=v; render(); }
+function setLiveryAccent(v){ if(!guardOrdinaryAction('Vehicle redesign')) return false;ensureLivery().accent=v; render(); }
+function setLiveryNose(v){ if(!guardOrdinaryAction('Vehicle redesign')) return false;ensureLivery().nose=v; render(); }
+function setLiveryName(v){ if(!guardOrdinaryAction('Vehicle redesign')) return false;ensureLivery().name=(v||'').slice(0,24); render(); }
 // Saved designs (blueprints) card
 function renderBlueprints(){
   const el=$('blueprintsCard'); if(!el) return;
@@ -6552,7 +6683,7 @@ function renderBlueprints(){
 }
 // BC2: performance-parts controls
 function ensureParts(){ if(!state.parts) state.parts=defaultParts(); return state.parts; }
-function setPart(slot,value){ ensureParts()[slot]=value; render(); }
+function setPart(slot,value){ if(!guardOrdinaryAction('Vehicle redesign')) return false;ensureParts()[slot]=value; render(); }
 function renderParts(){
   const el=$('partsCard'); if(!el) return;
   const p=curParts();
@@ -6579,18 +6710,18 @@ function renderLivery(){
     <div class="row"><label>Nose</label><div style="display:flex;gap:5px;flex-wrap:wrap">${noseBtn('auto','Ogive')}${noseBtn('cone','Cone')}${noseBtn('blunt','Blunt')}</div></div>
     <div class="dim" style="font-size:12px;margin-top:2px">Nose style applies to uncrewed payload fairings; crewed flights fly a capsule.</div>`;
 }
-function setTransferEng(v){state.transfer.eng=v;render();}
-function setTransferProp(v){state.transfer.prop=Math.max(0.1,Math.min(400,parseFloat(v)||0.1));render();}
-function setDepotUse(v){state.depotUse=Math.max(0,Math.min(state.depot,parseFloat(v)||0));render();}
-function setAssembleOrbit(on){ state.assembleOrbit=!!on; render(); } // #6: orbital-assembly route toggle
-function toggleRecovery(){ if(!recoveryAvailable()) return; state.recovery=!state.recovery; render(); } // M5: fit/remove first-stage recovery
-function setDescentEng(v){state.descent.eng=v;render();}
-function setDescentProp(v){state.descent.prop=Math.max(0.1,Math.min(60,parseFloat(v)||0.1));render();}
-function setAscentEng(v){state.ascent.eng=v;render();}
-function setAscentProp(v){state.ascent.prop=Math.max(0.1,Math.min(40,parseFloat(v)||0.1));render();}
-function setEclss(id){ const t=ECLSS[id]; if(t.research && !state.research[t.research]) return; state.eclss=id; render(); }
-function setTestLevel(n){ state.testLevel=n; render(); }
-function selectMission(id){const m=missionById(id); if(!m||state.rep<m.minRep)return; if(!missionTechMet(m))return; state.activeMission=id; closeLiveModal(); state.tab='bench'; render();}
+function setTransferEng(v){if(!guardOrdinaryAction('Vehicle redesign')) return false;state.transfer.eng=v;render();}
+function setTransferProp(v){if(!guardOrdinaryAction('Vehicle redesign')) return false;state.transfer.prop=Math.max(0.1,Math.min(400,parseFloat(v)||0.1));render();}
+function setDepotUse(v){if(!guardOrdinaryAction('Vehicle redesign')) return false;state.depotUse=Math.max(0,Math.min(state.depot,parseFloat(v)||0));render();}
+function setAssembleOrbit(on){ if(!guardOrdinaryAction('Vehicle redesign')) return false;state.assembleOrbit=!!on; render(); } // #6: orbital-assembly route toggle
+function toggleRecovery(){ if(!guardOrdinaryAction('Vehicle redesign')) return false;if(!recoveryAvailable()) return; state.recovery=!state.recovery; render(); } // M5: fit/remove first-stage recovery
+function setDescentEng(v){if(!guardOrdinaryAction('Vehicle redesign')) return false;state.descent.eng=v;render();}
+function setDescentProp(v){if(!guardOrdinaryAction('Vehicle redesign')) return false;state.descent.prop=Math.max(0.1,Math.min(60,parseFloat(v)||0.1));render();}
+function setAscentEng(v){if(!guardOrdinaryAction('Vehicle redesign')) return false;state.ascent.eng=v;render();}
+function setAscentProp(v){if(!guardOrdinaryAction('Vehicle redesign')) return false;state.ascent.prop=Math.max(0.1,Math.min(40,parseFloat(v)||0.1));render();}
+function setEclss(id){ if(!guardOrdinaryAction('Vehicle redesign')) return false;const t=ECLSS[id]; if(t.research && !state.research[t.research]) return; state.eclss=id; render(); }
+function setTestLevel(n){ if(!guardOrdinaryAction('Test-campaign planning')) return false;state.testLevel=n; render(); }
+function selectMission(id){if(!guardOrdinaryAction('Mission selection')) return false;const m=missionById(id); if(!m||state.rep<m.minRep)return; if(!missionTechMet(m))return; state.activeMission=id; closeLiveModal(); state.tab='bench'; render();}
 function reqsMet(r){
   return r.req.every(q=>state.research[q]) && (!r.reqMissionDone || state.completed[r.reqMissionDone]);
 }
@@ -6603,6 +6734,7 @@ function startResearchProject(r, viaQueue){
   log('note',`R&D started: ${r.name} (${r.months} mo)${sciNeed?` · ${sciNeed} ⚛ science invested`:''}.${viaQueue?' Auto-started from the queue.':' It advances while you build and fly.'}`);
 }
 function buyResearch(id){
+  if(!guardOrdinaryAction('Starting research')) return false;
   const r=RESEARCH.find(x=>x.id===id);
   if(state.research[id]||state.activeResearch) return; // one project at a time
   if(!researchEraMet(r)) return; // C6(b): the era gate is enforced here, not only in the UI state
@@ -6616,18 +6748,20 @@ function buyResearch(id){
 // (the common case: you're mid-project and already know the next step in the chain), since the
 // real eligibility/affordability check happens for real at start time, not at queue time.
 function queueResearchNext(id){
+  if(!guardOrdinaryAction('Research planning')) return false;
   if(state.research[id] || (state.activeResearch && state.activeResearch.id===id)) return;
   state.researchNext=id; render();
 }
-function clearResearchNext(){ state.researchNext=null; render(); }
+function clearResearchNext(){ if(!guardOrdinaryAction('Research planning')) return false; state.researchNext=null; render(); }
 // #14: pin/unpin a (possibly still-locked) node as the standing planning goal. Unlike researchNext
 // (a depth-1 auto-start queue), this doesn't buy anything — it's purely a highlight/tracking aid over
 // the node's full prereq chain, so it's fine to pin something many steps away that isn't reqsMet yet.
 function pinResearchGoal(id){
+  if(!guardOrdinaryAction('Research planning')) return false;
   const r=RESEARCH.find(x=>x.id===id); if(!r || state.research[id]) return; // no such node, or already researched — nothing to plan toward
   state.researchGoal=(state.researchGoal===id)?null:id; render();
 }
-function clearResearchGoal(){ if(state.researchGoal){ state.researchGoal=null; render(); } }
+function clearResearchGoal(){ if(!guardOrdinaryAction('Research planning')) return false; if(state.researchGoal){ state.researchGoal=null; render(); } }
 // Tried right after a project completes (the common case) AND every monthly tick (the "became
 // affordable/unlocked later" case) — idempotent either way since it no-ops once activeResearch
 // is set. Leaves the pick queued (retried later) rather than clearing it if reqs/cost aren't met
@@ -6651,6 +6785,7 @@ function tryStartQueuedResearch(){
 const RUSH_BASE_COST = 0.8; // $M for the 1st month rushed off any project
 function rushCost(rushedSoFar){ return RUSH_BASE_COST*Math.pow(rushedSoFar+1,2); }
 function rushResearch(){
+  if(!guardOrdinaryAction('R&D acceleration')) return false;
   const ar=state.activeResearch; if(!ar) return;
   if(ar.monthsLeft<=1) return; // floor: can't rush below 1 month
   const cost=rushCost(ar.rushed||0);
@@ -6664,6 +6799,7 @@ function rushResearch(){
 const SCI_RUSH_BASE = 6;
 function sciRushCost(rushedSoFar){ return Math.round(SCI_RUSH_BASE*(rushedSoFar+1)); } // 6, 12, 18, ...
 function applyScience(){
+  if(!guardOrdinaryAction('R&D acceleration')) return false;
   const ar=state.activeResearch; if(!ar) return;
   if(ar.monthsLeft<=1) return;
   const cost=sciRushCost(ar.sciRushed||0);
@@ -6773,6 +6909,7 @@ function canTrainDepartment(deptId){
   return {ok:true,cost};
 }
 function trainDepartment(deptId){
+  if(!guardOrdinaryAction('Department training')) return false;
   const chk=canTrainDepartment(deptId); if(!chk.ok) return;
   state.departments=state.departments||defaultDepartments();
   state.departments[deptId]=state.departments[deptId]||{lead:null,training:0};
@@ -6841,6 +6978,7 @@ function canPromoteLead(personId){
   return {ok:true, dep};
 }
 function promoteLead(personId){
+  if(!guardOrdinaryAction('Department leadership')) return false;
   const chk=canPromoteLead(personId); if(!chk.ok) return;
   state.departments=state.departments||defaultDepartments();
   state.departments[chk.dep]=state.departments[chk.dep]||{lead:null,training:0};
@@ -6850,6 +6988,7 @@ function promoteLead(personId){
   render();
 }
 function stepDownLead(deptId){
+  if(!guardOrdinaryAction('Department leadership')) return false;
   if(state.departments&&state.departments[deptId]){ state.departments[deptId].lead=null; render(); }
 }
 // lead influence factor for a department: 1.0 with no lead (balance-neutral), else scaled by
@@ -7000,6 +7139,7 @@ function astroBonus(){
 }
 
 function hirePersonnel(id){
+  if(!guardOrdinaryAction('Hiring personnel')) return false;
   if(isHired(id)) return;
   state.staff.push({id, morale:70, lowMoraleMonths:0, commendCooldown:0, xp:0, birthYear:state.year-startingHireAge(id)});
   const p=personById(id);
@@ -7008,6 +7148,7 @@ function hirePersonnel(id){
 }
 
 function firePersonnel(id){
+  if(!guardOrdinaryAction('Changing personnel')) return false;
   const p=personById(id);
   state.staff=state.staff.filter(s=>s.id!==id);
   if(state.assignedAstronaut===id) state.assignedAstronaut=null;
@@ -7017,6 +7158,7 @@ function firePersonnel(id){
 }
 
 function giveRaise(id){
+  if(!guardOrdinaryAction('Personnel compensation')) return false;
   const p=personById(id); const sr=staffRecord(id); if(!p||!sr) return;
   p.salary+=RAISE_SALARY_BUMP;
   sr.morale=Math.min(100,sr.morale+RAISE_MORALE_BUMP);
@@ -7026,6 +7168,7 @@ function giveRaise(id){
 }
 
 function commendPersonnel(id){
+  if(!guardOrdinaryAction('Personnel management')) return false;
   const p=personById(id); const sr=staffRecord(id); if(!p||!sr) return;
   if(sr.commendCooldown>0) return;
   sr.morale=Math.min(100,sr.morale+COMMEND_MORALE_BUMP);
@@ -7035,6 +7178,7 @@ function commendPersonnel(id){
 }
 
 function assignAstronaut(id){
+  if(!guardOrdinaryAction('Astronaut assignment')) return false;
   if(!isHired(id)) return;
   if(isCrewDeployed(id)){ const dp=personById(id); log('note',`${dp?dp.name:'That astronaut'} is on a mission — they can be assigned again once the flight returns.`); return; } // 1.2b: no double-booking a deployed astronaut
   state.assignedAstronaut=(state.assignedAstronaut===id)?null:id;
@@ -7399,6 +7543,7 @@ function tickCrisis(){
 }
 function canFundCrisisRemediation(){ const def=activeCrisisDef(); return !!def && state.money>=crisisFundCost(def); }
 function fundCrisisRemediation(){
+  if(!guardOrdinaryAction('Crisis spending')) return false;
   const def=activeCrisisDef(); if(!def || !canFundCrisisRemediation()) return;
   const cost=crisisFundCost(def);
   state.money=round2(state.money-cost);
@@ -7423,20 +7568,15 @@ function showCrisisModal(){
     <button class="btn ghost" style="width:100%;margin-top:8px" onclick="hideModal()">Close — keep flying through it</button>`);
 }
 function evaluateTerminalAfterTransaction(){
-  const insolvent=state.money<0;
+  if(typeof activeReorganization==='function'&&activeReorganization()){
+    state.over=true;
+    if(!activeLaunchTransaction()) resumeReorganizationUI();
+    return true;
+  }
+  const insolvent=state.money<0||!!(state.insolvency&&state.insolvency.status==='open');
   if(!insolvent){ state.over=false; return false; }
-  if(state.over) return true;
-  state.over=true;
-  const usesLeft=2-(state.bailouts||0);
-  const t=bailoutTerms();
-  const loanBtn = usesLeft>0
-    ? `<button class="btn" onclick="bailout()">Emergency bridge loan (+${fM(t.amount)}, −${t.repCost} rep, +${fM(t.interest)}/mo interest)</button>`
-    : `<div class="dim" style="font-size:12px;margin-top:6px">No further bridge loans available — investors have lost confidence.</div>`;
-  showModal(`<h2 style="color:var(--bad)">Out of capital.</h2>
-    <p>The company has run dry. Take a bridge loan to keep flying — late loans are larger but carry a steeper reputation hit and a <b>permanent monthly interest drag</b>${loanInterest()>0?` (you already owe ${fM(loanInterest())}/mo)`:''}. Or close the books and start a new company.</p>
-    ${loanBtn}
-    <button class="btn ghost" onclick="restart()" style="margin-top:8px">Start over</button>`);
-  return true;
+  if(!state.insolvency) createInsolvencyRecord(state.launchTxn&&state.launchTxn.id||null,state.money);
+  state.over=true; showInsolvencyContinuityModal(); return true;
 }
 function gameOver(){
   if(_launchMutationDepth>0||_flightResolving||activeLaunchTransaction()){
@@ -7446,13 +7586,8 @@ function gameOver(){
   return evaluateTerminalAfterTransaction();
 }
 function bailout(){
-  const t=bailoutTerms();
-  state.bailouts=(state.bailouts||0)+1;
-  state.money+=t.amount; state.rep=Math.max(0,state.rep-t.repCost);
-  state.loanInterest=round2(loanInterest()+t.interest); // CE4(c): the loan's interest is forever
-  state.over=false;
-  log('note',`Emergency bridge loan: +${fM(t.amount)}, −${t.repCost} rep, +${fM(t.interest)}/mo permanent interest. (${2-state.bailouts} remaining)`);
-  hideModal(); render();
+  const ins=state.insolvency||createInsolvencyRecord(null,state.money);
+  return chooseBridgeLoan(ins.id,`loan:${ins.id}:${state.bailouts||0}`);
 }
 function rehydrateLaunchTransaction(){
   if(!state.launchTxn) return false;
@@ -7520,6 +7655,7 @@ function resetSimTransients(){
   _devForceOutcome=null; _devForceLiveCall=false; _devForceReserve=false; _devForceWeather=false;
   _pendingLaunch=null; _pendingOps=null; _pendingOrbitOps=null; _pendingLive=null;
   _pendingReserve=null; _pendingRescue=null; _flightResolving=false; _launchMutationDepth=0; _flightSeq=0;
+  try{ _reorganizationClockDepth=0; _reorganizationModalLocked=false; _administrativeArrivalHold=null; }catch(e){}
   _procStaffSeq=0; _victoryWire=null; activeModal=null; _prodModalOpen=false;
   _modalReturnFocus=null; _modalReturnFocusId=null;
   try{ const me=$('modal'); if(me&&me.classList){ me.classList.add('hidden'); me.setAttribute('aria-hidden','true'); } }catch(e){}
@@ -7551,7 +7687,8 @@ function resolveReturnFocus(savedEl, savedId, getById, body){
 // that literal modal modifier class (e.g. 'newspaper' → .modal.newspaper, the large era-evolving front
 // page); anything falsy → the plain centered .modal. Pure + headless-testable (see test-era-visual).
 function modalClassName(view){ return 'modal'+(view===true?' view':view?(' '+view):''); }
-function showModal(html,view){ try{ timeInterrupt(); }catch(e){}
+function showModal(html,view,locked){ try{ timeInterrupt(); }catch(e){}
+  try{ _reorganizationModalLocked=locked===true; }catch(e){}
   const modalEl=$('modal');
   // Only treat a closed→open transition as "opening": while a deep-view modal is open, render() re-invokes
   // activeModal() (which calls showModal again) on every tick — we must NOT re-capture the trigger (it'd now
@@ -7579,8 +7716,10 @@ function showModal(html,view){ try{ timeInterrupt(); }catch(e){}
   try{ if(!mb.getAttribute('tabindex')) mb.setAttribute('tabindex','-1'); }catch(e){}
   if(!wasOpen){ try{ const f=modalFocusableElements(mb); if(f.length){ f[0].focus(); } else { mb.focus(); } }catch(e){} }
 } // view=true → wide, left-aligned, scrollable deep-view layout
-function hideModal(){activeModal=null;_prodModalOpen=false;$('modal').classList.add('hidden');
+function hideModal(){
+  try{ if(_reorganizationModalLocked) return false; }catch(e){}
+  activeModal=null;_prodModalOpen=false;$('modal').classList.add('hidden');
   try{ $('modal').setAttribute('aria-hidden','true'); }catch(e){}
   try{ const el=resolveReturnFocus(_modalReturnFocus,_modalReturnFocusId,id=>document.getElementById(id),document.body); if(el && typeof el.focus==='function') el.focus(); }catch(e){}
-  _modalReturnFocus=null; _modalReturnFocusId=null;
+  _modalReturnFocus=null; _modalReturnFocusId=null; return true;
 } // slice 6: closing clears the live-modal thunk; slice B: also returns focus to the modal's trigger

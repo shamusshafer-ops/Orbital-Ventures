@@ -1,6 +1,6 @@
 # Headless test suite
 
-The game now lives in `src/*.js` (seven plain classic-script modules loaded in
+The game now lives in `src/*.js` (nine plain classic-script modules loaded in
 order into one shared global scope) plus `src/shell.html` (the page template).
 `node build.js` (from the repo root) concatenates the modules into three
 outputs: the release `orbital-ventures.html` (one inline `<script>`), the dev
@@ -60,6 +60,18 @@ node tests/run-gate2-contracts.js
 It covers stable request identity, exact launch/hull ownership, all six resumable
 decision types, decision-aware Skip, v61 orphan rejection, exactly-once outcome
 settlement, terminal deferral, and capability-truthful recovery disposition.
+
+Gate 3 has a fast required lane as well:
+
+```bash
+node tests/run-gate3-contracts.js
+```
+
+It covers the promoted opening-economy path, strict v63 continuity records,
+Standard insolvency behavior plus the persisted future-Ironman suppression seam, fresh-cycle penalties and one-time
+debt relief, narrow-clock suspension and deferred arrivals, exact sponsored
+order/hull ownership, restricted escrow, success/failure/retry settlement,
+save/reload, replay safety, and bounded 90-day operating support accrued daily.
 
 ## Suites
 

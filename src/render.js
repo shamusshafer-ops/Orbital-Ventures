@@ -147,9 +147,10 @@ function legacyScore(){
   const crisisMitigated=cArchive.mitigated+cHist.filter(c=>c.outcome==='mitigated').length;
   const fusionFlown=!!state.completed['oort_precursor']; // I1/I2: the interstellar-precursor capstone
   const fusionBonus=fusionFlown?20:0;
-  const score=firsts*10 + worlds*12 + facN*8 + Math.round(safety*20) - scooped*5 - crewPenalty + crisisBonus + fusionBonus;
+  const reorganizationPenalty=Math.max(0,state.legacyPenalty||0);
+  const score=firsts*10 + worlds*12 + facN*8 + Math.round(safety*20) - scooped*5 - crewPenalty + crisisBonus + fusionBonus - reorganizationPenalty;
   const grade= score>=140?'S':score>=100?'A':score>=65?'B':score>=35?'C':'D';
-  return {score,grade,firsts,scooped,worlds,facN,safety,crewLost:state.crewLost||0,crisesResolved:cHist,crisisCount,crisisMitigated,fusionFlown};
+  return {score,grade,firsts,scooped,worlds,facN,safety,crewLost:state.crewLost||0,crisesResolved:cHist,crisisCount,crisisMitigated,fusionFlown,reorganizationPenalty};
 }
 // Tier 3.2: the annals archive, rendered inside the Chronicle. Milestones (chronicleEntries, the ★/●
 // firsts board above) answer "what was historic"; the annals answer "what did my agency actually DO"
@@ -204,6 +205,7 @@ function showChronicle(mode,preservePage){ // mode: 'view' | 'era' (1990) | 'era
         ${stat('Facilities', L.facN)}
         ${L.crisisCount?stat('Crises survived', L.crisisCount+(L.crisisMitigated?' · '+L.crisisMitigated+' cleared':'')):''}
         ${L.fusionFlown?stat('Interstellar precursor','Flown ✓'):''}
+        ${L.reorganizationPenalty?stat('Reorganization penalty','−'+L.reorganizationPenalty+' legacy'):''}
       </div>
     </div>
     <div style="max-height:240px;overflow:auto;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:6px 0;margin-bottom:10px">${rows}</div>
@@ -511,6 +513,10 @@ function renderTopbarStats(){
   $('eraBadge').innerHTML=`Era ${eraIndex(era)+1}/${ERAS.length} · ${era.name}`;
   $('stDate').textContent=dateStr();
   $('stMoney').textContent=fM(state.money);
+  const supportView=typeof operatingSupportView==='function'?operatingSupportView():null;
+  $('stMoney').title=supportView
+    ? `Spendable Capital. Restricted operating support is separate: ${fM(supportView.remaining)} of ${fM(supportView.authorized)} remains, capped at ${fM(supportView.monthlyCap)}/mo for ${supportView.daysLeft} more days.`
+    : 'Spendable Capital.';
   $('stMoney').style.color = state.money<1.5?'var(--bad)':'var(--ink)';
   _statBump('stMoney', state.money, d=>(d>=0?'+':'−')+fM(Math.abs(d)));
   $('stRep').textContent=fI(state.rep);
@@ -772,13 +778,14 @@ function renderContractsSubtabs(){
 }
 function commandSummary(){
   const era=currentEra();
+  const recurring=liveRecurringEconomy();
   const eOpex=empireOpex(); // CE4(a): empire carrying cost
   const overhead=Math.max(0, diff().overhead+econOverheadAdd()+productionUpkeep()+eOpex+loanInterest()+partnershipUpkeep()+trackingUpkeep()); // includes #7 production upkeep + CE4(a) empire opex + CE4(c) bridge-loan interest + #6 research-partnership upkeep + #89 tracking-station upkeep
   const govFunding=govMonthlyFunding(); // #8: political funding from public support
-  const income=round2(totalFacilityIncome()+(state.pgmRoyalty||0)+govFunding+passiveMonthlyIncome());
+  const income=recurring.revenue;
   const payroll=monthlyPayroll();
   const mood=publicMood();
-  const net=round2(income-overhead-payroll);
+  const net=recurring.net;
   const m=curMission();
   const ar=state.activeResearch;
   const no=nextObjective();
@@ -798,15 +805,13 @@ function commandSummary(){
    Pure calc + a shared HTML progress-bar widget, dropped in beside every purchase
    button that can be gated on capital (research, facility founding/expansion,
    division/department training, passive-contract setup fees, material dip buys).
-   Two numbers, matching the two different "net" figures the game already tracks
-   elsewhere (runwayMonths() uses the same lastMonth field for the inverse question
-   — months of runway left — this is months-to-afford instead):
+   Two numbers, matching the current projection and historical ledger the game tracks:
      - months:        cost / commandSummary().net  — instantaneous recurring net
                        AT THIS MOMENT (current facilities/payroll/overhead, no
                        one-off mission income).
-     - monthsTypical: cost / state.lastMonth.net    — what actually landed last
-                       completed month (includes one-off mission payouts/losses
-                       the instantaneous figure can't see). Falls back to the
+     - monthsTypical: cost / state.lastMonth.net    — the recurring snapshot that landed last
+                       completed month. One-off flight transactions are reported
+                       separately by the historical ledger. Falls back to the
                        instantaneous net before the first month ticks.
    Deliberately does NOT cover hiring (no upfront cost — salary is recurring, not
    a capital purchase) or small instant-decision buys (fuel lots, resupply, repair,
@@ -919,7 +924,7 @@ function missionAdvisor(){
       if(v.twr<=1.0){ reqs.push({ok:false, label:`TWR ${v.twr.toFixed(2)} — won't lift off`}); actions.push({label:'Add engines — Vehicle Design',tab:'bench'}); } }
     const relTarget=mm.crew>0?0.80:0.70, relOk=v.reliability>=relTarget;
     reqs.push({ok:relOk, label:`Reliability ${(v.reliability*100|0)}% (target ${(relTarget*100)|0}%)`});
-    if(!relOk){ if(!state.research.test_program) actions.push({label:'Research Static Fire Test',tab:'rnd'}); else actions.push({label:'Run a test campaign / upgrade QA',tab:'bench'}); }
+    if(!relOk){ if(!state.research.test_program) actions.push({label:'Research Static Fire Test Program (+8% permanent)',tab:'rnd'}); else actions.push({label:'Run a per-flight test campaign / upgrade QA',tab:'bench'}); }
   } else {
     reqs.push({ok:false, label:'Design a vehicle for this mission'});
     actions.push({label:`Select ${mm.name} on the bench`,tab:'bench',missionId:mm.id});
@@ -991,11 +996,13 @@ function financesBreakdown(){
     {label:'Government funding', amount:govMonthlyFunding()},
     {label:'Passive contracts', amount:passiveMonthlyIncome()},
   ].filter(x=>x.amount>0.001);
+  const divisionCost=expandedDivisionOpex(), otherEmpireCost=round2(Math.max(0,empireOpex()-divisionCost));
   const expenseItems=[
     {label:'Base overhead', amount:diff().overhead},
     {label:'Market/event surcharge', amount:Math.max(0,econOverheadAdd())},
     {label:'Production upkeep', amount:productionUpkeep()},
-    {label:'Empire operating cost', amount:empireOpex()},
+    {label:'Other empire operating cost', amount:otherEmpireCost},
+    {label:`Expanded research divisions · ${capitalizedDivisionCount()} × ${fM(EMPIRE_DIV_OPEX)}`, amount:divisionCost},
     {label:'Bridge-loan interest', amount:loanInterest()},
     {label:'Research partnerships', amount:partnershipUpkeep()},
     {label:'Tracking stations', amount:trackingUpkeep()},
@@ -1067,6 +1074,7 @@ function showFinancesModal(){
     <div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:6px 0;margin-bottom:12px">
       <b>Net</b><b style="font-size:16px;color:${b.net>=0?'var(--ok)':'var(--bad)'}">${b.net>=0?'+':''}${fM(b.net)}/mo</b>
     </div>
+    ${typeof operatingSupportPanelHTML==='function'?operatingSupportPanelHTML():''}
     <div class="cc-panel-h" style="margin:0 0 4px">Recent transactions</div>
     <div style="max-height:150px;overflow:auto;margin-bottom:12px">${evHTML}</div>
     <div class="cc-panel-h" style="margin:0 0 4px">Past — monthly net, last ${METRIC_HISTORY_LEN} months</div>
@@ -3160,6 +3168,7 @@ function renderCommandCenter(){
 function renderCCLegacyStrip(){
   const el=$('ccStrip'); if(!el) return;
   const s=commandSummary();
+  const supportView=typeof operatingSupportView==='function'?operatingSupportView():null;
   const netCol=s.net>=0?'var(--ok)':'var(--bad)';
   const fam=activeFamily();
   const vehName=(fam&&fam.name)?fam.name:(curMission()?curMission().name:'—');
@@ -3167,6 +3176,7 @@ function renderCCLegacyStrip(){
   const chips=`
     <div class="stat" title="${netTitle}"><span class="k">${domDot('economy')}Net</span><span class="v" style="color:${netCol}">${s.net>=0?'+':''}${fM(s.net)}/mo</span></div>
     <div class="stat"><span class="k">${domDot('economy')}Capital</span><span class="v" style="color:${state.money<1.5?'var(--bad)':'var(--ink)'}">${fM(s.capital)}</span></div>
+    ${supportView?`<div class="stat" title="Restricted recurring-cost offset; not spendable Capital. Expires in ${supportView.daysLeft} days."><span class="k">${domDot('economy')}Operating support</span><span class="v" style="color:var(--ok)">${fM(supportView.remaining)} / ${fM(supportView.authorized)}</span></div>`:''}
     <div class="stat"><span class="k">${domDot('exploration')}Rep</span><span class="v">${fI(s.rep)}</span></div>
     <div class="stat"><span class="k">${domDot('research')}Science</span><span class="v" style="color:var(--dom-research)">${s.science}</span></div>
     <div class="stat"><span class="k">${domDot('crew')}Staff</span><span class="v">${(state.staff||[]).length}</span></div>
@@ -3607,6 +3617,7 @@ function massFractionHTML(v){
     <div class="dim" style="font-size:12px;margin-top:6px">Higher is better — a bigger propellant fraction means a lighter structure for the same Δv (the rocket equation rewards it exponentially).</div></div>`;
 }
 function setDifficulty(mode){
+  if(!guardOrdinaryAction('Difficulty settings')) return false;
   if(!DIFFICULTY[mode] || state.difficulty===mode) return;
   if(mode==='custom' && !state.customDifficulty){
     const cur=diff(); // seed Custom from whatever mode is currently active
@@ -3618,6 +3629,7 @@ function setDifficulty(mode){
   render();
 }
 function setCustomKnob(key,val){
+  if(!guardOrdinaryAction('Difficulty settings')) return false;
   if(!state.customDifficulty) state.customDifficulty=customDefaults();
   val=parseFloat(val); if(isNaN(val)) return;
   state.customDifficulty[key]=val;
@@ -3627,6 +3639,7 @@ function setCustomKnob(key,val){
   render();
 }
 function setCustomEq(on){
+  if(!guardOrdinaryAction('Difficulty settings')) return false;
   if(!state.customDifficulty) state.customDifficulty=customDefaults();
   state.customDifficulty.showEquations=!!on;
   render();
@@ -3815,9 +3828,9 @@ function ensureBoosterEng(){
   }
   if(!b.prop || b.prop<0.1) b.prop=20;
 }
-function setBoosterCount(d){ state.boosters=state.boosters||{eng:null,count:0,prop:0}; state.boosters.count=Math.max(0,Math.min(8,state.boosters.count+d)); if(state.boosters.count>0) ensureBoosterEng(); render(); }
-function setBoosterEng(v){ state.boosters.eng=v; render(); }
-function setBoosterProp(v){ state.boosters.prop=Math.max(0.1,Math.min(1000,parseFloat(v)||0.1)); render(); }
+function setBoosterCount(d){ if(!guardOrdinaryAction('Vehicle redesign')) return false;state.boosters=state.boosters||{eng:null,count:0,prop:0}; state.boosters.count=Math.max(0,Math.min(8,state.boosters.count+d)); if(state.boosters.count>0) ensureBoosterEng(); render(); }
+function setBoosterEng(v){ if(!guardOrdinaryAction('Vehicle redesign')) return false;state.boosters.eng=v; render(); }
+function setBoosterProp(v){ if(!guardOrdinaryAction('Vehicle redesign')) return false;state.boosters.prop=Math.max(0.1,Math.min(1000,parseFloat(v)||0.1)); render(); }
 function renderBoosters(){
   const card=$('boostersCard'); if(!card) return;
   if(!state.research.strapon_integration){ card.classList.add('hidden'); return; }
@@ -3879,7 +3892,7 @@ function renderCrew(){
       ${state.research.launch_escape?'<span style="color:var(--ok)">abort tower fitted — crew survive a launch failure</span>':'<span style="color:var(--bad)">no escape system — a launch failure means loss of crew</span>'}</div>`;
 }
 
-function setPowerSource(id){ const s=POWER_SOURCES[id]; if(!s) return; if(s.research&&!state.research[s.research]) return; state.powerSource=id; render(); }
+function setPowerSource(id){ if(!guardOrdinaryAction('Vehicle redesign')) return false;const s=POWER_SOURCES[id]; if(!s) return; if(s.research&&!state.research[s.research]) return; state.powerSource=id; render(); }
 function renderPower(){
   const m=curMission(), card=$('powerCard'); if(!card) return;
   if(!(m&&m.profile)){ card.classList.add('hidden'); return; }
@@ -4302,6 +4315,7 @@ function canStaticFire(){
   return {ok:true, eng};
 }
 function staticFire(){
+  if(!guardOrdinaryAction('A separate Bench static fire')) return false;
   const chk=canStaticFire(); if(!chk.ok) return;
   state.money-=STATIC_FIRE_COST;
   const eng=chk.eng, def=ENGINES[eng]||{};
@@ -5336,7 +5350,7 @@ function renderBenchLaunch(){
     ${launchPadCap()>1?`<div class="dim" style="font-size:11px;text-align:center;margin-top:2px">Pads: ${padSlotsLeft()}/${launchPadCap()} free this month</div>`:''}
     ${damagedPadCount()>0?`<div class="dim" style="font-size:11px;text-align:center;margin-top:2px;color:var(--warn)" title="A catastrophic ascent loss damages the pad it flew from">⚠ ${damagedPadCount()} pad${damagedPadCount()===1?'':'s'} under repair</div>`:''}
     <div style="display:flex;gap:6px;margin-top:8px;align-items:center">
-      <button class="btn" style="flex:1;font-size:12px" onclick="staticFire()" ${sf.ok?'':'disabled'} title="Bolt the first stage to the stand and light it. Clean burn = heritage credit (${fired}/${STATIC_HERITAGE_CAP} ground). Anomaly = fixed, next launch +${Math.round(STATIC_FIX_BONUS*100)}% rel.">🔥 Static fire ${sf.ok?fM(STATIC_FIRE_COST):('· '+sf.why)}</button>
+      <button class="btn" style="flex:1;font-size:12px" onclick="staticFire()" ${sf.ok?'':'disabled'} title="One-off Bench action: bolt the first stage to the stand and light it. Separate from Static Fire Test Program research. Clean burn = heritage credit (${fired}/${STATIC_HERITAGE_CAP} ground). Anomaly = fixed, next launch +${Math.round(STATIC_FIX_BONUS*100)}% rel.">🔥 Bench static fire ${sf.ok?fM(STATIC_FIRE_COST):('· '+sf.why)}</button>
       <button class="btn ghost" style="font-size:12px;padding:6px 9px" onclick="toggleSfx()" title="${state.sfxMute?'Unmute':'Mute'} workshop sounds">${state.sfxMute?'🔇':'🔊'}</button>
     </div>
     ${state.staticFixBonus?`<div class="flag ok" style="margin-top:5px">🔧 Test-stand fix armed: next launch +${Math.round(state.staticFixBonus*100)}% reliability.</div>`:''}
@@ -10593,13 +10607,13 @@ function renderDivisions(){
   const cards=DIVISIONS.map(d=>{
     const s=divisionState(d.id), q=divisionQuality(d.id), bonus=Math.round(q*DIV_SPEED_MAX*100);
     const chk=canTrainDivision(d.id), cost=divisionTrainCost(d.id), maxed=s.skill>=1;
-    const isActive=activeDiv===d.id;
+    const isActive=activeDiv===d.id, expanded=divisionCapitalized(d.id);
     const mColor=s.morale>=70?'var(--ok)':s.morale>=40?'var(--warn)':'var(--bad)';
     const trackChips=d.tracks.map(t=>{const tr=TRACKS.find(x=>x.key===t)||{};return `<span class="pill" style="color:${tr.color};border-color:${tr.color}">${tr.label||t}</span>`;}).join(' ');
     const bar=(label,val,col)=>`<div style="display:flex;align-items:center;gap:8px;margin-top:4px"><span style="font-size:12px;color:var(--dim);width:46px">${label}</span><div style="flex:1;height:5px;background:var(--panel2);border-radius:3px;overflow:hidden"><div style="height:100%;width:${Math.round(val)}%;background:${col}"></div></div><span style="font-family:var(--mono);font-size:12px;color:${col};width:30px;text-align:right">${Math.round(val)}</span></div>`;
     return `<div class="card" style="background:var(--panel2);margin-bottom:10px;${isActive?'border-color:var(--ignite)':''}">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-        <div class="mission-name" style="font-size:14px;margin:0">${d.name} ${isActive?'<span class="pill active" style="font-size:11px">researching</span>':''}</div>
+        <div class="mission-name" style="font-size:14px;margin:0">${d.name} ${expanded?'<span class="pill ok" style="font-size:11px">expanded · $0.25M/mo</span>':'<span class="pill" style="font-size:11px">core team · included</span>'} ${isActive?'<span class="pill active" style="font-size:11px">researching</span>':''}</div>
         <div style="text-align:right"><div class="dim" style="font-size:11px">R&D speed</div><div style="font-family:var(--mono);color:var(--ok)">+${bonus}%/mo</div></div>
       </div>
       <div style="margin:4px 0 2px">${trackChips}</div>
@@ -10609,12 +10623,12 @@ function renderDivisions(){
       ${bar('Experience', divisionExpLevel(d.id)*100, 'var(--ignite)')}
       ${bar('Morale', s.morale, mColor)}
       </div>
-      <button class="btn" style="width:100%;margin-top:8px;font-size:12px" onclick="trainDivision('${d.id}')" ${chk.ok?'':'disabled'}>${maxed?'✓ Fully trained':(chk.ok?`Train (+${Math.round(DIV_TRAIN_SKILL*100)}% skill · ${fM(cost)})`:chk.why)}</button>
+      <button class="btn" style="width:100%;margin-top:8px;font-size:12px" onclick="requestDivisionTraining('${d.id}')" ${chk.ok?'':'disabled'}>${maxed?'✓ Fully trained':`${chk.ok?`Train (+${Math.round(DIV_TRAIN_SKILL*100)}% skill · ${fM(cost)})`:chk.why} · ${chk.disclosure}`}</button>
       ${(!maxed&&!chk.ok&&state.money<cost)?affordWidgetHTML(cost):''}
     </div>`;
   }).join('');
   box.innerHTML=`${synergiesStripHTML()}<h2>Research Divisions <span class="pill">${DIVISIONS.length} teams</span></h2>
-    <p class="muted" style="font-size:12px;margin:-4px 0 10px">Each division researches its own tracks. A division's <b>quality</b> — skill + accumulated experience + morale — accelerates projects in those tracks (stacks with your engineers) and makes <b>⚡ breakthroughs</b> (months shaved off the active project) more frequent. Invest capital to train them; experience grows as they ship; morale follows the company's finances.</p>
+    <p class="muted" style="font-size:12px;margin:-4px 0 10px">Each division begins as a core team covered by base overhead. Experience and morale improve quality without adding cost. The first explicit training investment expands that team and adds <b>${fM(EMPIRE_DIV_OPEX)}/month</b> in standing operations; its confirmation shows the exact commitment before spending.</p>
     ${cards}`;
 }
 

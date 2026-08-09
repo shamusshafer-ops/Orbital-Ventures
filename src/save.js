@@ -1,6 +1,6 @@
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=62; // v62: Gate 2 resumable, idempotent launch transactions and request receipts.
+const SAVE_VERSION=63; // v63: persisted insolvency and Program Reorganization continuity records.
 // Pre-v62 saves with in-progress flight ownership are rejected rather than assigned a fabricated
 // outcome; ordinary v61 lifecycle records are remapped through the schema-2 factories on load.
 //
@@ -46,7 +46,7 @@ function resetSaveTransients(){
 function autosave(force){
   try{
     if(!_gameStarted) return; // S2: never autosave the boot placeholder before the player picks Continue/Open/New (would clobber the real save)
-    if(!state||!state.company||state.over) return;
+    if(!state||!state.company||(state.over&&!(typeof continuityStateOwnsSave==='function'&&continuityStateOwnsSave(state)))) return;
     if(_launchMutationDepth>0) return;
     const now=Date.now();
     if(!force && now-_lastAutosaveT<AUTOSAVE_MIN_MS) return;
@@ -168,6 +168,34 @@ function migrateLifecycleV62(saved,ver){
   saved.annals=(saved.annals||[]).map(makeCampaignAnnal);
   saved.launchTxn=null; saved.requestReceipts={}; saved.launchTxnSeq=0;
 }
+// v63 introduces a durable recovery-program owner. Older saves cannot contain
+// a legitimate active attempt, so they become Standard campaigns with empty
+// continuity history. Current-version records are validated before any
+// normalization so NaN/Infinity, lossy values, or contradictory identities are
+// rejected instead of silently repaired into a different recovery state.
+function migrateReorganizationV63(saved,ver){
+  if((ver||0)>=63){
+    const continuityKeys=['campaignRules','debtRenegotiated','legacyPenalty','insolvencySeq','insolvency','lastInsolvency','reorganizationSeq','reorganizationAttempts','reorganizationSuccesses','reorganization','lastReorganization','operatingSupport'];
+    const missing=continuityKeys.filter(key=>saved[key]===undefined);
+    if(missing.length) throw new Error(`Save reorganization state is inconsistent: missing ${missing.slice(0,3).join(', ')}`);
+    const errors=auditReorganizationState(saved);
+    if(errors.length) throw new Error(`Save reorganization state is inconsistent: ${errors.slice(0,3).join('; ')}`);
+    return;
+  }
+  saved.campaignRules=makeCampaignRules({ironman:false});
+  saved.debtRenegotiated=false; saved.legacyPenalty=0;
+  saved.insolvencySeq=0; saved.insolvency=null; saved.lastInsolvency=null;
+  saved.reorganizationSeq=0; saved.reorganizationAttempts=0; saved.reorganizationSuccesses=0;
+  saved.reorganization=null; saved.lastReorganization=null; saved.operatingSupport=null;
+}
+function rehydrateReorganizationRecords(saved){
+  saved.campaignRules=makeCampaignRules(saved.campaignRules);
+  if(saved.insolvency) saved.insolvency=makeInsolvencyRecord(saved.insolvency);
+  if(saved.lastInsolvency) saved.lastInsolvency=makeInsolvencyRecord(saved.lastInsolvency);
+  if(saved.reorganization) saved.reorganization=makeReorganizationRecord(saved.reorganization);
+  if(saved.lastReorganization) saved.lastReorganization=makeReorganizationRecord(saved.lastReorganization);
+  if(saved.operatingSupport) saved.operatingSupport=makeOperatingSupportRecord(saved.operatingSupport);
+}
 // Forward-compat defaults come from the same factory as New Game. Only undefined
 // keys are copied into a loaded save, so live values are never overwritten.
 function loadDefaults(){ return createFreshState('engineer'); }
@@ -221,8 +249,10 @@ function applyLoadedSave(payload){
   migrateHulls(saved); // E4.4: preserve ready hardware identities without fabricating history
   backfillLegacyOrderSpecs(saved); // Gate 1 best effort: freeze newly canonical physical fields once
   migrateLifecycleV62(saved,payload.v); // Gate 2: active pre-v62 launches were rejected before mutation
+  migrateReorganizationV63(saved,payload.v); // Gate 3: pre-v63 is Standard/no active recovery; v63 is strict
   const defaults=loadDefaults();
   for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
+  rehydrateReorganizationRecords(saved); // copy only validated JSON state into canonical record shapes
   // H1 hardening: user-typed strings are length-clamped at input (setLiveryName slices to 24), but an
   // imported save file bypasses that — re-clamp here so no sink ever sees an unbounded user string.
   // (Sinks still esc() — this is defense in depth, not the primary fix.)
@@ -230,6 +260,8 @@ function applyLoadedSave(payload){
   if(typeof saved.company==='string') saved.company=saved.company.slice(0,48);
   const incomingLifecycleErrors=auditLifecycleState(saved);
   if(incomingLifecycleErrors.length) throw new Error(`Save lifecycle is inconsistent: ${incomingLifecycleErrors.slice(0,3).join('; ')}`);
+  const incomingReorganizationErrors=auditReorganizationState(saved);
+  if(incomingReorganizationErrors.length) throw new Error(`Save reorganization state is inconsistent: ${incomingReorganizationErrors.slice(0,3).join('; ')}`);
   resetSessionTransients();
   state=saved;
   migrateStateToBuild(state); // E3.5: derive state.build from state.stages (additive, never throws, stages stays source of truth)
@@ -239,6 +271,8 @@ function applyLoadedSave(payload){
   rehydrateProceduralStaffSeq(); // Gate 1: derived IDs resume above persisted candidates
   const lifecycleErrors=auditLifecycleState();
   if(lifecycleErrors.length) throw new Error(`Save lifecycle is inconsistent: ${lifecycleErrors.slice(0,3).join('; ')}`);
+  const reorganizationErrors=auditReorganizationState(state);
+  if(reorganizationErrors.length) throw new Error(`Save reorganization state is inconsistent: ${reorganizationErrors.slice(0,3).join('; ')}`);
   return saved;
 }
 function _applySaveFromPayload(payload, srcLabel){
@@ -250,7 +284,7 @@ function _applySaveFromPayload(payload, srcLabel){
   log('info', srcLabel||'Game loaded.');
   announceAction(`${srcLabel||'Game loaded.'} ${state.company}, ${dateStr()}.`);
   render();
-  if(!resumeLaunchTransactionUI()&&!evaluateTerminalAfterTransaction()) showRecap(); // launch or derived terminal state owns the first post-load surface
+  if(!resumeLaunchTransactionUI()&&!resumeReorganizationUI()&&!evaluateTerminalAfterTransaction()) showRecap(); // transaction → administration → derived terminal owns the post-load surface
 }
 function loadSaveFromText(raw, srcLabel){
   try{
@@ -297,13 +331,13 @@ function showStartup(){
     ${meta?'':'<p class="dim" style="font-size:11px;margin-top:12px">No saved game found in this browser yet.</p>'}
   </div>`);
 }
-function startupContinue(){ if(autoLoad()){ _gameStarted=true; hideModal(); render(); if(!resumeLaunchTransactionUI()&&!evaluateTerminalAfterTransaction()) showRecap(); } else { showStartup(); } }
+function startupContinue(){ if(autoLoad()){ _gameStarted=true; hideModal(); render(); if(!resumeLaunchTransactionUI()&&!resumeReorganizationUI()&&!evaluateTerminalAfterTransaction()) showRecap(); } else { showStartup(); } }
 function startupNew(){
   showModal(`<h2>New Game</h2>
     <p class="muted" style="font-size:12px">${truthBadge('fiction')} Found a government-enabled public-private space venture in an alternate 1942. Choose a difficulty (changeable later in Settings):</p>
     <div style="display:flex;gap:8px;margin-top:10px">
       <button class="btn ghost" onclick="startupBegin('napkin')" style="flex:1">Napkin<br><span class="dim" style="font-size:11px">forgiving · ${fM(DIFFICULTY.napkin.startMoney)} start</span></button>
-      <button class="btn" onclick="startupBegin('engineer')" style="flex:1">Engineer<br><span class="dim" style="font-size:11px">realistic · ${fM(DIFFICULTY.engineer.startMoney)} start</span></button>
+      <button class="btn" onclick="startupBegin('engineer')" style="flex:1">Engineer<br><span class="dim" style="font-size:11px">detailed &amp; unforgiving · ${fM(DIFFICULTY.engineer.startMoney)} start</span></button>
       <button class="btn ghost" onclick="startupBegin('custom')" style="flex:1">Custom<br><span class="dim" style="font-size:11px">your rules · tune in Settings</span></button>
     </div>
     <button class="btn ghost" onclick="showStartup()" style="width:100%;margin-top:10px">← Back</button>`);
@@ -343,7 +377,7 @@ function confirmNew(){
     <p class="dim" style="font-size:12px;margin-top:10px">Choose a difficulty (changeable later in Settings):</p>
     <div style="display:flex;gap:8px;margin-top:8px">
       <button class="btn ${cur==='napkin'?'':'ghost'}" onclick="restart('napkin')" style="flex:1">Napkin<br><span class="dim" style="font-size:11px">forgiving · ${fM(DIFFICULTY.napkin.startMoney)} start</span></button>
-      <button class="btn ${cur==='engineer'?'':'ghost'}" onclick="restart('engineer')" style="flex:1">Engineer<br><span class="dim" style="font-size:11px">realistic · ${fM(DIFFICULTY.engineer.startMoney)} start</span></button>
+      <button class="btn ${cur==='engineer'?'':'ghost'}" onclick="restart('engineer')" style="flex:1">Engineer<br><span class="dim" style="font-size:11px">detailed &amp; unforgiving · ${fM(DIFFICULTY.engineer.startMoney)} start</span></button>
       <button class="btn ${cur==='custom'?'':'ghost'}" onclick="restart('custom')" style="flex:1">Custom<br><span class="dim" style="font-size:11px">your rules · tune in Settings</span></button>
     </div>
     <button class="btn ghost" onclick="hideModal()" style="width:100%;margin-top:8px">Cancel</button>`);
@@ -501,7 +535,7 @@ function _ringIdle(fn){
 // and must never touch or delay the fast path. Never throws.
 function ringAutosave(){
   try{
-    if(!_gameStarted || !state || !state.company || state.over || _launchMutationDepth>0) return;
+    if(!_gameStarted || !state || !state.company || (state.over&&!(typeof continuityStateOwnsSave==='function'&&continuityStateOwnsSave(state))) || _launchMutationDepth>0) return;
     const nowMonth=absMonth(), nowMs=Date.now();
     if(!ringCadenceDue(_lastRingWrite, nowMonth, nowMs)) return;
     _lastRingWrite={ absMonth:nowMonth, wallMs:nowMs }; // set synchronously so a burst of advances can't re-trigger
@@ -514,7 +548,7 @@ function ringAutosave(){
 // autosave. Guarded so a fresh boot / game-over never snapshots a placeholder. Payload is captured
 // synchronously inside writeRingEntry, so the async put lands the PRE-overwrite state. Never throws.
 function snapshotLiveToRing(){
-  try{ if(_gameStarted && state && state.company && !state.over) return writeRingEntry(); }catch(e){ _idbWarnOnce(e); }
+  try{ if(_gameStarted && state && state.company && (!state.over||(typeof continuityStateOwnsSave==='function'&&continuityStateOwnsSave(state)))) return writeRingEntry(); }catch(e){ _idbWarnOnce(e); }
   return Promise.resolve(null);
 }
 // Restore UI — a small modal listing the ring's meta (newest first) with a per-entry restore. Async
@@ -588,7 +622,7 @@ function writeSlotEntry(id){
 // game to capture — from the startup screen (before Continue/New) there's nothing worth saving, so those
 // buttons are withheld; Load/Export/Delete stay available so a player can jump straight into a slot.
 function showManageSaves(){
-  const canSave=!!(_gameStarted && state && state.company && !state.over);
+  const canSave=!!(_gameStarted && state && state.company && (!state.over||(typeof continuityStateOwnsSave==='function'&&continuityStateOwnsSave(state))));
   idbGetAll().then(entries=>{
     const byId={}; for(const e of (entries||[])){ if(e && e.kind==='slot' && e.id) byId[e.id]=e; } // kind filter: ring entries never leak in
     const rows=SLOT_IDS.map((id,i)=>{ const n=i+1, e=byId[id];

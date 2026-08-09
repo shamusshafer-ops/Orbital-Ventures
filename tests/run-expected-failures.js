@@ -27,7 +27,11 @@ const game=gameArtifact.contents;
 const helpers=fs.readFileSync(path.join(fixtureDir,'_helpers.js'));
 let manifest=JSON.parse(fs.readFileSync(path.join(fixtureDir,'manifest.json'),'utf8'));
 if(requested) manifest=manifest.filter(entry=>entry.issue===requested);
-if(!manifest.length){ console.error(`Unknown or missing issue: ${requested||'(none)'}`); process.exit(2); }
+if(!manifest.length){
+  if(requested){ console.error(`Unknown or missing issue: ${requested}`); process.exit(2); }
+  console.log('Gate 0 quarantine: 0 reproduced, 0 unexpected');
+  process.exit(0);
+}
 
 const tempDir=fs.mkdtempSync(path.join(os.tmpdir(),'ov-gate0-xfail-'));
 let reproduced=0, unexpected=0;

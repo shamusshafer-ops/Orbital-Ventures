@@ -31,6 +31,51 @@ When bumping `SAVE_VERSION`, add an entry at the top of the list below.
 
 ---
 
+## v63 — Gate 3 economic continuity
+
+Adds persisted insolvency and Program Reorganization continuity:
+
+- `state.campaignRules` — immutable campaign-creation rules. Its `ironman`
+  member defaults to Standard (`false`) for missing development state; Ironman
+  suppresses Program Reorganization and permits permanent insolvency after
+  optional credit.
+- `state.insolvencySeq`, `state.insolvency`, and `state.lastInsolvency` —
+  monotonic insolvency identity, the active offer/reorganization owner, and the
+  most recently resolved compact record.
+- `state.reorganizationSeq`, `state.reorganizationAttempts`,
+  `state.reorganizationSuccesses`, `state.reorganization`, and
+  `state.lastReorganization` — monotonic cycle identity and counters, the live
+  360-day narrow-clock owner with exact sponsored mission/design/order/hull,
+  quote, restricted escrow and receipts, and the most recently closed compact
+  cycle. Every non-success closes the current cycle; retry creates a fresh id,
+  fresh 360-day stand-down, fresh penalties, and fresh exact article/escrow.
+- `state.legacyPenalty` — cumulative explicit legacy deduction (`10` per
+  accepted cycle), scored without rewriting unrelated history.
+- `state.debtRenegotiated` — one-way campaign flag. The first accepted cycle
+  sets `loanInterest=round2(old*0.5)`; replay, reload, and later cycles cannot
+  reduce it again. Existing bailout-use history is preserved.
+- `state.operatingSupport` — null or a separate 90-day restricted operating
+  ledger. It stores the success-time recurring-economy snapshot, monthly cap,
+  remaining three-month authorization, amount paid, daily accrual receipts
+  grouped into three 30-day periods, a consistency fingerprint, and closure
+  reason. Each of 90 elapsed days pays at most the lesser of one-thirtieth of
+  live recurring burn, one-thirtieth of the snapshot cap, and remaining authorization. Unspent
+  authorization is never available Capital and cannot directly pay one-time
+  purchases; only a receipted monthly reimbursement enters Capital. A new
+  reorganization closes active support with `new-reorganization` before
+  suspension starts.
+
+Division capitalization adds no persisted field: it is derived from
+`skill > DIV_SKILL0`. Project experience and morale at or below the baseline do
+not create division opex; the first explicit training crosses the predicate and
+activates one `$0.25M/month` charge.
+
+Deferred flights retain their existing Gate 2 ownership and dates. The narrow
+administrative clock stops at a due arrival; logistics settles normally, while
+a mission acquires Gate 2 foreground/UI/transaction ownership. Administration
+resumes after that owner releases. No arrival/deadline is frozen or shifted,
+and v63 creates no second flight owner or rerolled outcome.
+
 ## v62 — Gate 2 resumable launch transactions
 
 Adds the single foreground `launchTxn`, durable request receipts, exact mission,

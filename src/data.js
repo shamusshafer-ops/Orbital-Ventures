@@ -91,6 +91,288 @@ function lifecycleRecordErrors(kind,record){
   if(!recordIsJsonSafe(record)) errors.push('json-safe');
   return errors;
 }
+// Gate 3 continuity records are deliberately separate from Gate 2 launch
+// transactions. They retain stable identities and receipts, but never contain
+// callbacks, DOM state, RNG functions, or unrestricted sponsor cash.
+const REORGANIZATION_SCHEMA_VERSION=1;
+const REORGANIZATION_RULES=Object.freeze({
+  standdownDays:360,rivalMonths:12,recoveryMissionId:'first_flight',recoveryCrew:0,
+  repLossFraction:0.15,repLossFloor:10,publicSupportLoss:10,legacyPenalty:10,
+  loanInterestMultiplier:0.5,loanRenegotiationsPerCampaign:1,exitSupportDays:90,
+  exitSupportMonths:3,
+});
+const INSOLVENCY_STATUSES=Object.freeze(['open','reorganization','resolved']);
+const INSOLVENCY_RESOLUTIONS=Object.freeze(['loan','reorganization-success','restart','closure']);
+const ACTIVE_REORGANIZATION_PHASES=Object.freeze(['standdown','planning','building','ready','launching','settling']);
+const TERMINAL_REORGANIZATION_PHASES=Object.freeze(['succeeded','failed']);
+const REORGANIZATION_PHASES=Object.freeze([...ACTIVE_REORGANIZATION_PHASES,...TERMINAL_REORGANIZATION_PHASES]);
+function makeCampaignRules(x){ x=x||{}; return {schema:REORGANIZATION_SCHEMA_VERSION,ironman:x.ironman===true}; }
+function nullableRecordId(value){ return value==null?null:String(value); }
+function nullableRecordNumber(value){ return value==null?null:finiteRecordNumber(value); }
+function reorganizationMoney(value){ return Math.round(finiteRecordNumber(value)*100)/100; }
+function reorganizationAccrual(value){ return Math.round(finiteRecordNumber(value)*1000000)/1000000; }
+function calculateReorganizationPenaltyTerms(rep){
+  const before=Math.max(0,finiteRecordNumber(rep));
+  return {repBefore:before,repLoss:Math.min(before,Math.max(REORGANIZATION_RULES.repLossFloor,Math.round(REORGANIZATION_RULES.repLossFraction*before))),
+    supportLoss:REORGANIZATION_RULES.publicSupportLoss,legacyLoss:REORGANIZATION_RULES.legacyPenalty};
+}
+function calculateReorganizationDebtTerms(interest,alreadyRenegotiated){
+  const before=Math.max(0,reorganizationMoney(interest));
+  const renegotiatedNow=!alreadyRenegotiated;
+  return {interestBefore:before,interestAfter:renegotiatedNow?reorganizationMoney(before*REORGANIZATION_RULES.loanInterestMultiplier):before,
+    alreadyRenegotiatedBefore:!!alreadyRenegotiated,renegotiatedNow};
+}
+function makeInsolvencyRecord(x){
+  x=x||{};
+  return {schema:REORGANIZATION_SCHEMA_VERSION,id:String(x.id||''),sequence:finiteRecordNumber(x.sequence),revision:finiteRecordNumber(x.revision),
+    status:INSOLVENCY_STATUSES.includes(x.status)?x.status:'open',atAbs:finiteRecordNumber(x.atAbs),cash:reorganizationMoney(x.cash),
+    sourceTransactionId:nullableRecordId(x.sourceTransactionId),reorganizationId:nullableRecordId(x.reorganizationId),
+    resolvedBy:INSOLVENCY_RESOLUTIONS.includes(x.resolvedBy)?x.resolvedBy:null,resolvedAbs:nullableRecordNumber(x.resolvedAbs),receipts:plainRecord(x.receipts||{})};
+}
+function makeReorganizationRecord(x){
+  x=x||{};
+  const penalties=x.penalties||calculateReorganizationPenaltyTerms(0), debt=x.debt||calculateReorganizationDebtTerms(0,false);
+  const mission=x.mission||{}, escrow=x.escrow||{}, foreground=x.administrativeForeground;
+  return {schema:REORGANIZATION_SCHEMA_VERSION,id:String(x.id||''),sequence:finiteRecordNumber(x.sequence),insolvencyId:String(x.insolvencyId||''),
+    retryOf:nullableRecordId(x.retryOf),revision:finiteRecordNumber(x.revision),phase:REORGANIZATION_PHASES.includes(x.phase)?x.phase:'standdown',
+    acceptedAbs:finiteRecordNumber(x.acceptedAbs),standdownEndsAbs:finiteRecordNumber(x.standdownEndsAbs),clockAbs:finiteRecordNumber(x.clockAbs),
+    rivalMonthsApplied:finiteRecordNumber(x.rivalMonthsApplied),closedAbs:nullableRecordNumber(x.closedAbs),
+    penalties:{repBefore:finiteRecordNumber(penalties.repBefore),repLoss:finiteRecordNumber(penalties.repLoss),supportLoss:finiteRecordNumber(penalties.supportLoss),legacyLoss:finiteRecordNumber(penalties.legacyLoss),applied:!!penalties.applied},
+    debt:{interestBefore:reorganizationMoney(debt.interestBefore),interestAfter:reorganizationMoney(debt.interestAfter),alreadyRenegotiatedBefore:!!debt.alreadyRenegotiatedBefore,renegotiatedNow:!!debt.renegotiatedNow,applied:!!debt.applied},
+    mission:{missionId:String(mission.missionId||REORGANIZATION_RULES.recoveryMissionId),crew:finiteRecordNumber(mission.crew),specFingerprint:String(mission.specFingerprint||''),spec:plainRecord(mission.spec||null),
+      buildRequestId:nullableRecordId(mission.buildRequestId),orderId:nullableRecordId(mission.orderId),hullId:nullableRecordId(mission.hullId),
+      launchRequestId:nullableRecordId(mission.launchRequestId),launchTransactionId:nullableRecordId(mission.launchTransactionId)},
+    escrow:{currency:'USD_M',purpose:'first-flight-recovery',authorized:reorganizationMoney(escrow.authorized),spent:reorganizationMoney(escrow.spent),returned:reorganizationMoney(escrow.returned),
+      quoteFingerprint:nullableRecordId(escrow.quoteFingerprint),quote:plainRecord(escrow.quote||null),receipts:plainRecord(escrow.receipts||{})},
+    administrativeForeground:foreground?{transactionId:String(foreground.transactionId||''),kind:String(foreground.kind||''),
+      cashBaseline:reorganizationMoney(foreground.cashBaseline),startedAbs:finiteRecordNumber(foreground.startedAbs),data:plainRecord(foreground.data||{})}:null,
+    receipts:plainRecord(x.receipts||{}),outcome:plainRecord(x.outcome||null)};
+}
+const OPERATING_SUPPORT_CLOSE_REASONS=Object.freeze(['expired','exhausted','new-reorganization','campaign-ended']);
+function makeOperatingSupportRecord(x){
+  x=x||{};
+  return {schema:REORGANIZATION_SCHEMA_VERSION,id:String(x.id||''),reorganizationId:String(x.reorganizationId||''),
+    startAbs:finiteRecordNumber(x.startAbs),endAbs:finiteRecordNumber(x.endAbs),monthsLeft:finiteRecordNumber(x.monthsLeft),
+    monthlyCap:reorganizationMoney(x.monthlyCap),authorized:reorganizationAccrual(x.authorized),remaining:reorganizationAccrual(x.remaining),paid:reorganizationAccrual(x.paid),
+    eligibleSnapshot:plainRecord(x.eligibleSnapshot||{}),receipts:plainRecord(x.receipts||{}),ledgerFingerprint:String(x.ledgerFingerprint||''),
+    closedReason:OPERATING_SUPPORT_CLOSE_REASONS.includes(x.closedReason)?x.closedReason:null};
+}
+function operatingSupportLedgerFingerprint(record){
+  record=record||{};
+  return requestIntentFingerprint('operating-support-ledger',{id:record.id,reorganizationId:record.reorganizationId,
+    startAbs:record.startAbs,endAbs:record.endAbs,monthsLeft:record.monthsLeft,monthlyCap:record.monthlyCap,authorized:record.authorized,
+    remaining:record.remaining,paid:record.paid,eligibleSnapshot:record.eligibleSnapshot,receipts:record.receipts,closedReason:record.closedReason});
+}
+function finiteNumberField(value){ return typeof value==='number'&&Number.isFinite(value); }
+function nonnegativeIntegerField(value){ return finiteNumberField(value)&&Number.isInteger(value)&&value>=0; }
+function plainObjectField(value){ return !!value&&typeof value==='object'&&!Array.isArray(value); }
+function insolvencyRecordErrors(record){
+  const errors=[];
+  if(!plainObjectField(record)) return ['record must be an object'];
+  if(record.schema!==REORGANIZATION_SCHEMA_VERSION) errors.push('schema');
+  if(typeof record.id!=='string'||!record.id) errors.push('id');
+  if(!Number.isInteger(record.sequence)||record.sequence<1) errors.push('sequence');
+  if(!nonnegativeIntegerField(record.revision)) errors.push('revision');
+  if(!INSOLVENCY_STATUSES.includes(record.status)) errors.push('status');
+  if(!nonnegativeIntegerField(record.atAbs)||!finiteNumberField(record.cash)) errors.push('atAbs/cash');
+  for(const key of ['sourceTransactionId','reorganizationId']) if(record[key]!=null&&(typeof record[key]!=='string'||!record[key])) errors.push(key);
+  if(record.resolvedBy!=null&&!INSOLVENCY_RESOLUTIONS.includes(record.resolvedBy)) errors.push('resolvedBy');
+  if(record.resolvedAbs!=null&&(!nonnegativeIntegerField(record.resolvedAbs)||record.resolvedAbs<record.atAbs)) errors.push('resolvedAbs');
+  if(record.status==='resolved'&&(!record.resolvedBy||record.resolvedAbs==null)) errors.push('resolution incomplete');
+  if(record.status!=='resolved'&&(record.resolvedBy!=null||record.resolvedAbs!=null)) errors.push('premature resolution');
+  if(record.status==='reorganization'&&!record.reorganizationId) errors.push('reorganizationId');
+  if(!plainObjectField(record.receipts)) errors.push('receipts');
+  if(!recordIsJsonSafe(record)) errors.push('json-safe');
+  return errors;
+}
+function reorganizationRecordErrors(record){
+  const errors=[];
+  if(!plainObjectField(record)) return ['record must be an object'];
+  if(record.schema!==REORGANIZATION_SCHEMA_VERSION) errors.push('schema');
+  if(typeof record.id!=='string'||!record.id||typeof record.insolvencyId!=='string'||!record.insolvencyId) errors.push('identity');
+  if(!Number.isInteger(record.sequence)||record.sequence<1) errors.push('sequence');
+  if(record.retryOf!=null&&(typeof record.retryOf!=='string'||!record.retryOf||record.retryOf===record.id)) errors.push('retryOf');
+  if(!nonnegativeIntegerField(record.revision)||!REORGANIZATION_PHASES.includes(record.phase)) errors.push('revision/phase');
+  if(!nonnegativeIntegerField(record.acceptedAbs)||!nonnegativeIntegerField(record.standdownEndsAbs)||record.standdownEndsAbs!==record.acceptedAbs+REORGANIZATION_RULES.standdownDays) errors.push('standdown identity');
+  if(!nonnegativeIntegerField(record.clockAbs)||record.clockAbs<record.acceptedAbs) errors.push('clockAbs');
+  if(!Number.isInteger(record.rivalMonthsApplied)||record.rivalMonthsApplied<0||record.rivalMonthsApplied>REORGANIZATION_RULES.rivalMonths) errors.push('rivalMonthsApplied');
+  if(record.phase!=='standdown'&&(record.clockAbs<record.standdownEndsAbs||record.rivalMonthsApplied!==REORGANIZATION_RULES.rivalMonths)) errors.push('standdown incomplete');
+  const terminal=TERMINAL_REORGANIZATION_PHASES.includes(record.phase);
+  if(terminal&&(!nonnegativeIntegerField(record.closedAbs)||record.closedAbs<record.acceptedAbs)) errors.push('closedAbs');
+  if(!terminal&&record.closedAbs!=null) errors.push('premature close');
+  const p=record.penalties, expected=p&&calculateReorganizationPenaltyTerms(p.repBefore);
+  if(!plainObjectField(p)||!finiteNumberField(p.repBefore)||p.repBefore<0||!finiteNumberField(p.repLoss)||!finiteNumberField(p.supportLoss)||!finiteNumberField(p.legacyLoss)||typeof p.applied!=='boolean') errors.push('penalties');
+  else if(!p.applied||p.repLoss!==expected.repLoss||p.supportLoss!==expected.supportLoss||p.legacyLoss!==expected.legacyLoss) errors.push('penalty contract');
+  const d=record.debt;
+  if(!plainObjectField(d)||!finiteNumberField(d.interestBefore)||d.interestBefore<0||!finiteNumberField(d.interestAfter)||d.interestAfter<0||typeof d.alreadyRenegotiatedBefore!=='boolean'||typeof d.renegotiatedNow!=='boolean'||typeof d.applied!=='boolean') errors.push('debt');
+  else { const expectedDebt=calculateReorganizationDebtTerms(d.interestBefore,d.alreadyRenegotiatedBefore);
+    if(!d.applied||d.renegotiatedNow!==expectedDebt.renegotiatedNow||d.interestAfter!==expectedDebt.interestAfter) errors.push('debt contract'); }
+  if(plainObjectField(d)&&((record.sequence===1&&d.alreadyRenegotiatedBefore)||(record.sequence>1&&(!d.alreadyRenegotiatedBefore||d.renegotiatedNow)))) errors.push('debt sequence contract');
+  const m=record.mission;
+  if(!plainObjectField(m)||m.missionId!==REORGANIZATION_RULES.recoveryMissionId||m.crew!==REORGANIZATION_RULES.recoveryCrew||typeof m.specFingerprint!=='string'||!m.specFingerprint||!plainObjectField(m.spec)) errors.push('mission contract');
+  else {
+    for(const key of ['buildRequestId','orderId','hullId','launchRequestId','launchTransactionId']) if(m[key]!=null&&(typeof m[key]!=='string'||!m[key])) errors.push(`mission ${key}`);
+    if(m.orderId&&!m.buildRequestId) errors.push('order without build request');
+    if(m.hullId&&!m.orderId) errors.push('hull without order');
+    if(m.launchTransactionId&&(!m.hullId||!m.launchRequestId)) errors.push('transaction without exact hull/request');
+    const hasBuild=['building','ready','launching','settling','succeeded','failed'].includes(record.phase);
+    const hasHull=['ready','launching','settling','succeeded','failed'].includes(record.phase);
+    const hasLaunch=['launching','settling','succeeded','failed'].includes(record.phase);
+    if(hasBuild!==!!(m.buildRequestId&&m.orderId)) errors.push('build phase identity');
+    if(hasHull!==!!m.hullId) errors.push('hull phase identity');
+    if(hasLaunch!==!!(m.launchRequestId&&m.launchTransactionId)) errors.push('launch phase identity');
+    if(m.specFingerprint!==requestIntentFingerprint('reorganization-spec',m.spec)) errors.push('mission spec fingerprint');
+    if(typeof canonicalRecoverySpec==='function'&&m.specFingerprint!==requestIntentFingerprint('reorganization-spec',canonicalRecoverySpec())) errors.push('mission is not the authorized recovery article');
+  }
+  const e=record.escrow;
+  if(!plainObjectField(e)||e.currency!=='USD_M'||e.purpose!=='first-flight-recovery'||!finiteNumberField(e.authorized)||!finiteNumberField(e.spent)||!finiteNumberField(e.returned)||e.authorized<0||e.spent<0||e.returned<0||e.spent+e.returned>e.authorized+1e-9||!plainObjectField(e.receipts)) errors.push('escrow');
+  else if((e.quote!=null&&!e.quoteFingerprint)||(e.quoteFingerprint!=null&&(typeof e.quoteFingerprint!=='string'||!e.quoteFingerprint))||
+    (e.quote!=null&&e.quoteFingerprint!==requestIntentFingerprint('sponsor-quote',e.quote))) errors.push('escrow quote identity');
+  if(plainObjectField(e)){
+    const auth=e.receipts&&e.receipts.authorization, debits=e.receipts&&e.receipts.debits;
+    if(e.quote!=null){
+      if(!plainObjectField(auth)||!finiteNumberField(auth.atAbs)||!finiteNumberField(auth.endToEndRunway)||!finiteNumberField(auth.weatherContingency)||!finiteNumberField(auth.authorized)||
+        !finiteNumberField(auth.monthlyBurnBasis)||typeof auth.fingerprint!=='string'||!auth.fingerprint||auth.endToEndRunway!==e.quote.endToEndRunway||
+        auth.weatherContingency!==round2(auth.monthlyBurnBasis*30/DAYS_PER_MONTH)||round2(auth.endToEndRunway+auth.weatherContingency)!==e.authorized||auth.authorized!==e.authorized||
+        auth.fingerprint!==requestIntentFingerprint('sponsor-authorization',{quoteFingerprint:e.quoteFingerprint,monthlyBurnBasis:auth.monthlyBurnBasis,
+          weatherContingency:auth.weatherContingency,authorized:auth.authorized})) errors.push('escrow authorization receipt');
+      if(!plainObjectField(record.receipts.plan)||record.receipts.plan.quoteFingerprint!==e.quoteFingerprint||record.receipts.plan.authorized!==e.authorized) errors.push('escrow plan receipt');
+    }else if(e.authorized!==0||e.spent!==0||e.returned!==0||auth!=null||debits!=null) errors.push('premature escrow authority');
+    if(e.spent>0||e.quote!=null){
+      if(!Array.isArray(debits)) errors.push('escrow debit receipts');
+      else {
+        const allowed=['article-build','build-operating-carry','flight-and-test','launch-operating-carry','weather-operating-carry'];
+        let debitTotal=0;
+        for(const debit of debits){
+          if(!plainObjectField(debit)||!nonnegativeIntegerField(debit.atAbs)||!allowed.includes(debit.purpose)||!finiteNumberField(debit.amount)||debit.amount<0) errors.push('escrow debit receipt');
+          else debitTotal+=debit.amount;
+        }
+        if(round2(debitTotal)!==e.spent) errors.push('escrow debit total');
+      }
+    }
+    if(terminal&&round2(e.spent+e.returned)!==e.authorized) errors.push('terminal escrow closure');
+    if(!terminal&&e.returned!==0) errors.push('premature escrow return');
+  }
+  const foreground=record.administrativeForeground;
+  if(foreground!=null){
+    if(!plainObjectField(foreground)||typeof foreground.transactionId!=='string'||!foreground.transactionId||
+      !['inquiry','hearing','sample'].includes(foreground.kind)||!finiteNumberField(foreground.cashBaseline)||
+      !nonnegativeIntegerField(foreground.startedAbs)||!plainObjectField(foreground.data)) errors.push('administrative foreground');
+    const arrivals=record.receipts&&record.receipts.administrativeArrivals;
+    if(!plainObjectField(arrivals)||!plainObjectField(arrivals[foreground.transactionId])) errors.push('administrative foreground receipt');
+  }
+  if(!plainObjectField(record.receipts)) errors.push('receipts');
+  else {
+    const accepted=record.receipts.accepted, penaltyReceipt=record.receipts.penalties, debtReceipt=record.receipts.debt;
+    if(!plainObjectField(accepted)||accepted.atAbs!==record.acceptedAbs||typeof accepted.requestId!=='string'||!accepted.requestId) errors.push('acceptance receipt');
+    if(!plainObjectField(penaltyReceipt)||penaltyReceipt.atAbs!==record.acceptedAbs||penaltyReceipt.repBefore!==record.penalties.repBefore||
+      penaltyReceipt.repLoss!==record.penalties.repLoss||penaltyReceipt.repAfter!==Math.max(0,record.penalties.repBefore-record.penalties.repLoss)||
+      !finiteNumberField(penaltyReceipt.supportBefore)||penaltyReceipt.supportLoss!==record.penalties.supportLoss||
+      penaltyReceipt.supportAfter!==clampA(penaltyReceipt.supportBefore-record.penalties.supportLoss,SUPPORT_MIN,SUPPORT_MAX)||
+      !nonnegativeIntegerField(penaltyReceipt.legacyBefore)||penaltyReceipt.legacyLoss!==record.penalties.legacyLoss||
+      penaltyReceipt.legacyAfter!==penaltyReceipt.legacyBefore+record.penalties.legacyLoss) errors.push('penalty receipt');
+    if(!plainObjectField(debtReceipt)||debtReceipt.atAbs!==record.acceptedAbs||debtReceipt.interestBefore!==record.debt.interestBefore||
+      debtReceipt.interestAfter!==record.debt.interestAfter||debtReceipt.alreadyRenegotiatedBefore!==record.debt.alreadyRenegotiatedBefore||
+      debtReceipt.renegotiatedNow!==record.debt.renegotiatedNow) errors.push('debt receipt');
+  }
+  if(record.phase==='succeeded'&&(!plainObjectField(record.outcome)||record.outcome.kind!=='success')) errors.push('success outcome');
+  if(record.phase==='failed'&&(!plainObjectField(record.outcome)||record.outcome.kind==='success')) errors.push('failure outcome');
+  if(!recordIsJsonSafe(record)) errors.push('json-safe');
+  return errors;
+}
+function operatingSupportRecordErrors(record){
+  const errors=[];
+  if(!plainObjectField(record)) return ['record must be an object'];
+  if(record.schema!==REORGANIZATION_SCHEMA_VERSION) errors.push('schema');
+  if(typeof record.id!=='string'||!record.id||typeof record.reorganizationId!=='string'||!record.reorganizationId) errors.push('identity');
+  if(!nonnegativeIntegerField(record.startAbs)||!nonnegativeIntegerField(record.endAbs)||record.endAbs-record.startAbs!==REORGANIZATION_RULES.exitSupportDays) errors.push('support window');
+  if(!Number.isInteger(record.monthsLeft)||record.monthsLeft<0||record.monthsLeft>REORGANIZATION_RULES.exitSupportMonths) errors.push('monthsLeft');
+  if(!finiteNumberField(record.monthlyCap)||!finiteNumberField(record.authorized)||!finiteNumberField(record.remaining)||!finiteNumberField(record.paid)||record.monthlyCap<0||record.authorized<0||record.remaining<0||record.paid<0) errors.push('support amounts');
+  else if(Math.abs(record.authorized-record.monthlyCap*REORGANIZATION_RULES.exitSupportMonths)>1e-6||record.remaining+record.paid>record.authorized+1e-6) errors.push('support cap');
+  if(!plainObjectField(record.eligibleSnapshot)) errors.push('eligibleSnapshot');
+  if(typeof record.ledgerFingerprint!=='string'||!record.ledgerFingerprint||record.ledgerFingerprint!==operatingSupportLedgerFingerprint(record)) errors.push('support ledger fingerprint');
+  if(!plainObjectField(record.receipts)) errors.push('receipts');
+  else {
+    const opened=record.receipts.opened;
+    if(!plainObjectField(opened)||opened.atAbs!==record.startAbs) errors.push('support opened receipt');
+    let receiptPaid=0;
+    for(const key of Object.keys(record.receipts).filter(k=>/^period:\d+$/.test(k))){
+      const p=record.receipts[key];
+      if(!plainObjectField(p)||!nonnegativeIntegerField(p.fromAbs)||!nonnegativeIntegerField(p.throughAbs)||p.throughAbs<p.fromAbs||
+        !Number.isInteger(p.days)||p.days<1||p.days>DAYS_PER_MONTH||!finiteNumberField(p.eligibleBurn)||p.eligibleBurn<0||!finiteNumberField(p.paid)||p.paid<0) errors.push('support period receipt');
+      else receiptPaid+=p.paid;
+    }
+    if(Math.abs(reorganizationAccrual(receiptPaid)-record.paid)>1e-6) errors.push('support paid receipts');
+  }
+  if(record.closedReason!=null&&!OPERATING_SUPPORT_CLOSE_REASONS.includes(record.closedReason)) errors.push('closedReason');
+  if(record.closedReason!=null&&(record.monthsLeft!==0||record.remaining!==0)) errors.push('closed support retains authority');
+  if(record.closedReason==null&&(record.monthsLeft===0||record.remaining===0)) errors.push('active support is exhausted');
+  if(record.closedReason==null&&Math.abs(record.remaining+record.paid-record.authorized)>1e-6) errors.push('active support authority');
+  if(!recordIsJsonSafe(record)) errors.push('json-safe');
+  return errors;
+}
+function auditReorganizationState(snapshot){
+  const s=snapshot||{}, errors=[];
+  if(!plainObjectField(s.campaignRules)||s.campaignRules.schema!==REORGANIZATION_SCHEMA_VERSION||typeof s.campaignRules.ironman!=='boolean') errors.push('campaignRules');
+  if(typeof s.debtRenegotiated!=='boolean') errors.push('debtRenegotiated');
+  for(const key of ['legacyPenalty','insolvencySeq','reorganizationSeq','reorganizationAttempts','reorganizationSuccesses']) if(!nonnegativeIntegerField(s[key])) errors.push(key);
+  if(nonnegativeIntegerField(s.reorganizationAttempts)&&nonnegativeIntegerField(s.reorganizationSeq)&&s.reorganizationAttempts!==s.reorganizationSeq) errors.push('reorganization attempt sequence');
+  if(nonnegativeIntegerField(s.reorganizationSuccesses)&&nonnegativeIntegerField(s.reorganizationAttempts)&&s.reorganizationSuccesses>s.reorganizationAttempts) errors.push('reorganization success count');
+  if(nonnegativeIntegerField(s.legacyPenalty)&&nonnegativeIntegerField(s.reorganizationAttempts)&&s.legacyPenalty!==s.reorganizationAttempts*REORGANIZATION_RULES.legacyPenalty) errors.push('legacy penalty count');
+  if(nonnegativeIntegerField(s.reorganizationAttempts)&&typeof s.debtRenegotiated==='boolean'&&s.debtRenegotiated!==(s.reorganizationAttempts>0)) errors.push('debt renegotiation count');
+  const insolvencies=[['insolvency',s.insolvency],['lastInsolvency',s.lastInsolvency]], reorganizations=[['reorganization',s.reorganization],['lastReorganization',s.lastReorganization]];
+  for(const [name,rec] of insolvencies) if(rec!=null) errors.push(...insolvencyRecordErrors(rec).map(e=>`${name}: ${e}`));
+  for(const [name,rec] of reorganizations) if(rec!=null) errors.push(...reorganizationRecordErrors(rec).map(e=>`${name}: ${e}`));
+  if(s.operatingSupport!=null) errors.push(...operatingSupportRecordErrors(s.operatingSupport).map(e=>`operatingSupport: ${e}`));
+  if(s.insolvency&&s.insolvency.sequence!==s.insolvencySeq) errors.push('insolvency sequence owner');
+  if(s.lastInsolvency&&s.lastInsolvency.sequence>s.insolvencySeq) errors.push('last insolvency sequence');
+  if(s.insolvencySeq>0&&!s.insolvency&&!s.lastInsolvency) errors.push('missing insolvency record');
+  if(!s.insolvency&&s.lastInsolvency&&s.lastInsolvency.sequence!==s.insolvencySeq) errors.push('last insolvency is not latest');
+  if(s.insolvency&&s.lastInsolvency&&s.lastInsolvency.sequence>=s.insolvency.sequence) errors.push('insolvency sequence overlap');
+  if(s.insolvency&&s.lastInsolvency&&s.insolvency.id===s.lastInsolvency.id) errors.push('duplicate insolvency owner');
+  if(s.lastInsolvency&&s.lastInsolvency.status!=='resolved') errors.push('lastInsolvency is not resolved');
+  if(s.reorganization&&s.reorganization.sequence!==s.reorganizationSeq) errors.push('reorganization sequence owner');
+  if(s.lastReorganization&&s.lastReorganization.sequence>s.reorganizationSeq) errors.push('last reorganization sequence');
+  if(s.reorganizationSeq===0&&(s.reorganization||s.lastReorganization)) errors.push('unexpected reorganization record');
+  if(s.reorganizationSeq>0&&!s.reorganization&&!s.lastReorganization) errors.push('missing reorganization record');
+  if(!s.reorganization&&s.lastReorganization&&s.lastReorganization.sequence!==s.reorganizationSeq) errors.push('last reorganization is not latest');
+  if(s.reorganization&&s.lastReorganization&&s.lastReorganization.sequence>=s.reorganization.sequence) errors.push('reorganization sequence overlap');
+  if(s.reorganization&&s.lastReorganization&&s.reorganization.id===s.lastReorganization.id) errors.push('duplicate reorganization owner');
+  if(s.reorganization&&!ACTIVE_REORGANIZATION_PHASES.includes(s.reorganization.phase)) errors.push('active reorganization is terminal');
+  if(s.lastReorganization&&!TERMINAL_REORGANIZATION_PHASES.includes(s.lastReorganization.phase)) errors.push('last reorganization is active');
+  if(s.reorganization&&(!s.insolvency||s.reorganization.insolvencyId!==s.insolvency.id||s.insolvency.status!=='reorganization'||s.insolvency.reorganizationId!==s.reorganization.id)) errors.push('reorganization/insolvency identity');
+  if(s.reorganization&&s.reorganization.debt&&s.reorganization.debt.applied&&reorganizationMoney(s.loanInterest)!==s.reorganization.debt.interestAfter) errors.push('active debt settlement');
+  if(s.lastReorganization&&s.lastReorganization.phase==='succeeded'&&s.reorganizationSuccesses<1) errors.push('success counter');
+  if(s.operatingSupport&&s.operatingSupport.closedReason==null){
+    if(s.reorganization) errors.push('operating support overlaps reorganization');
+    if(!s.lastReorganization||s.lastReorganization.phase!=='succeeded'||s.lastReorganization.id!==s.operatingSupport.reorganizationId) errors.push('operating support/reorganization identity');
+    else if(s.operatingSupport.startAbs!==s.lastReorganization.closedAbs||s.operatingSupport.endAbs!==s.lastReorganization.closedAbs+REORGANIZATION_RULES.exitSupportDays) errors.push('operating support/reorganization window');
+    const now=((finiteRecordNumber(s.year)-1942)*12+finiteRecordNumber(s.month))*DAYS_PER_MONTH+finiteRecordNumber(s.day);
+    const elapsed=Math.max(0,Math.min(REORGANIZATION_RULES.exitSupportDays,Math.floor(now-s.operatingSupport.startAbs)));
+    const expectedMonths=Math.max(0,REORGANIZATION_RULES.exitSupportMonths-Math.floor(elapsed/DAYS_PER_MONTH));
+    const receiptDays=Object.keys(s.operatingSupport.receipts||{}).filter(k=>/^period:\d+$/.test(k))
+      .reduce((n,k)=>n+finiteRecordNumber(s.operatingSupport.receipts[k]&&s.operatingSupport.receipts[k].days),0);
+    if(s.operatingSupport.monthsLeft!==expectedMonths||receiptDays!==elapsed) errors.push('operating support elapsed ledger');
+  }
+  const r=s.reorganization, tx=s.launchTxn;
+  if(r&&r.mission&&r.mission.launchTransactionId&&tx){
+    if(tx.id!==r.mission.launchTransactionId||tx.missionId!==r.mission.missionId||tx.hullId!==r.mission.hullId||((tx.orderId||null)!==r.mission.orderId)) errors.push('reorganization/launch transaction identity');
+  }
+  if(r&&r.administrativeForeground&&tx) errors.push('administrative foreground overlaps launch transaction');
+  if(r){
+    const buildMatches=(s.buildQueue||[]).filter(o=>o&&o.id===r.mission.orderId);
+    const readyMatches=(s.hangar||[]).filter(o=>o&&o.id===r.mission.orderId&&o.hullId===r.mission.hullId);
+    if(r.phase==='building'&&(buildMatches.length!==1||requestIntentFingerprint('reorganization-spec',buildMatches[0]&&buildMatches[0].spec)!==r.mission.specFingerprint)) errors.push('reorganization/build owner');
+    if(r.phase==='ready'&&(readyMatches.length!==1||requestIntentFingerprint('reorganization-spec',readyMatches[0]&&readyMatches[0].spec)!==r.mission.specFingerprint||
+      (s.hulls||[]).filter(h=>h&&h.id===r.mission.hullId&&h.status==='hangar').length!==1)) errors.push('reorganization/ready owner');
+    if(['launching','settling'].includes(r.phase)){
+      const funding=tx&&tx.context&&tx.context.funding;
+      if(!tx||tx.id!==r.mission.launchTransactionId||tx.missionId!==r.mission.missionId||tx.orderId!==r.mission.orderId||tx.hullId!==r.mission.hullId||
+        !funding||funding.source!=='restricted-program-funds'||funding.reorganizationId!==r.id||funding.escrowQuoteFingerprint!==r.escrow.quoteFingerprint) errors.push('reorganization/sponsored launch owner');
+    }
+  }
+  return errors;
+}
 function truthBadge(kind){ const t=TRUTH_KINDS[kind]||TRUTH_KINDS.simulation; return `<span class="truth-badge truth-${kind}">${t.badge}</span>`; }
 function truthModelNote(){ return `${truthBadge('simulation')} ${GAME_TRUTH.units.money}; ${GAME_TRUTH.units.duration}; reliability is a ${GAME_TRUTH.units.reliability}.`; }
 // User-directed icon set (2026-07-11): the timeline-category icons were emoji, which render
@@ -699,7 +981,7 @@ const ENGINES = {
 };
 
 const MISSIONS = [
-  {id:'first_flight', name:'First Flight',          reqDv:1000, payload:0.05, crew:0, days:0, payout:1.6,  rep:5,  minRep:0,  blurb:'Get a vehicle off the pad and back intact. Prove the company can fly.<span class="hist"><span class="context-label">CONTEXT</span>↳ Goddard\'s first liquid-fuel rocket rose just 12 m over a Massachusetts field in 1926.</span>'},
+  {id:'first_flight', name:'First Flight',          reqDv:1000, payload:0.05, crew:0, days:0, payout:1.6,  rep:5,  minRep:0,  blurb:'Get an uncrewed vehicle off the pad and prove the company can fly. Without fitted recovery hardware, the launch vehicle is expended rather than returned intact.<span class="hist"><span class="context-label">CONTEXT</span>↳ Goddard\'s first liquid-fuel rocket rose just 12 m over a Massachusetts field in 1926.</span>'},
   {id:'sounding',     name:'Sounding Rocket',       reqDv:1900, payload:0.10, crew:0, days:0, payout:2.3,  rep:9,  minRep:4,  blurb:'Loft instruments into the upper atmosphere, roughly 80 km.<span class="hist"><span class="context-label">CONTEXT</span>↳ The WAC Corporal and Aerobee first carried science into the upper atmosphere in the late 1940s.</span>'},
   {id:'reach_space',  name:'Reach Space',           reqDv:2900, payload:0.10, crew:0, days:0, payout:3.3,  rep:15, minRep:10, blurb:'Cross the Kármán line at 100 km — at the edge of what alcohol/LOX can do.<span class="hist"><span class="context-label">CONTEXT</span>↳ A V-2 fired straight up in 1944 became the first craft to cross 100 km into space.</span>'},
   {id:'high_alt',     name:'High-Altitude Science', reqDv:4200, payload:0.25, crew:0, days:0, payout:5.0,  rep:22, minRep:16, blurb:'Carry a heavier package higher than the A-4 can reach — kerosene or staging required.<span class="hist"><span class="context-label">CONTEXT</span>↳ The two-stage Bumper-WAC hit 393 km in 1949 — altitudes a single stage couldn\'t touch.</span>'},
@@ -1272,6 +1554,7 @@ function canCommitLunarArch(id){
   return {ok:true, first:false};
 }
 function commitLunarArch(id){
+  if(!guardOrdinaryAction('Mission architecture')) return false;
   const chk=canCommitLunarArch(id); if(!chk.ok) return;
   const a=(missionArchList('luna_landing')||[]).find(x=>x.id===id);
   if(chk.first){
@@ -1319,6 +1602,7 @@ function curMission(){
   return Object.assign({}, base, {profile:arch.profile||base.profile, modules:arch.modules||base.modules, days:arch.days!=null?arch.days:base.days, _arch:arch});
 }
 function setArchitecture(missionId, archId){
+  if(!guardOrdinaryAction('Mission architecture')) return false;
   if(!missionArchList(missionId)) return;
   if(missionId==='luna_landing'){ commitLunarArch(archId); return; } // CE3(c): the lunar fork is a committed choice, not a free toggle
   state.architectures=state.architectures||{}; state.architectures[missionId]=archId; render();
@@ -1353,6 +1637,7 @@ function benchSpecSnapshot(){
   return JSON.parse(JSON.stringify({stages:state.stages, transfer:state.transfer, descent:state.descent, ascent:state.ascent, eclss:state.eclss}));
 }
 function saveAsFamily(){
+  if(!guardOrdinaryAction('Vehicle-family registration')) return false;
   const parent=activeFamily();
   const fam=makeFamilyRecord({ id:'veh_'+Date.now().toString(36)+Math.floor(Math.random()*1e4).toString(36),
     name:nextFamilyName(), born:dateStr(), parentId:parent?parent.id:null,
@@ -1364,6 +1649,7 @@ function saveAsFamily(){
   render();
 }
 function loadFamily(fid){
+  if(!guardOrdinaryAction('Vehicle redesign')) return false;
   const fam=familyById(fid); if(!fam) return;
   const s=fam.spec||{};
   if(s.stages) state.stages=JSON.parse(JSON.stringify(s.stages));
@@ -1375,6 +1661,7 @@ function loadFamily(fid){
   render();
 }
 function retireFamily(fid){
+  if(!guardOrdinaryAction('Vehicle-family registry')) return false;
   const fam=familyById(fid); if(!fam) return;
   state.vehicles=vehicleFamilies().filter(f=>f.id!==fid);
   if(state.activeVehicle===fid) state.activeVehicle=null;
@@ -1411,6 +1698,7 @@ function blueprintSummary(){
   return `${state.stages.length} stage${state.stages.length>1?'s':''} · ${eng} eng${boostersFitted()?` · ${state.boosters.count} bstr`:''}`;
 }
 function saveBlueprint(){
+  if(!guardOrdinaryAction('Saved designs')) return false;
   const inp=$('bpName'); let name=((inp&&inp.value)||'').trim();
   if(!name) name='Design '+(blueprints().length+1);
   const bp={ id:'bp_'+Date.now().toString(36)+Math.floor(Math.random()*1e4).toString(36),
@@ -1420,12 +1708,14 @@ function saveBlueprint(){
   render();
 }
 function loadBlueprint(id){
+  if(!guardOrdinaryAction('Vehicle redesign')) return false;
   const bp=blueprints().find(b=>b.id===id); if(!bp) return;
   applyFullSnapshot(bp.spec);
   log('info',`Design loaded: ${bp.name}.`);
   render();
 }
 function deleteBlueprint(id){
+  if(!guardOrdinaryAction('Saved designs')) return false;
   const bp=blueprints().find(b=>b.id===id);
   state.blueprints=blueprints().filter(b=>b.id!==id);
   if(bp) log('info',`Design deleted: ${bp.name}.`);
@@ -1438,7 +1728,7 @@ const RESEARCH = [
   {id:'sustainer', track:'propulsion', eraMin:1,    name:'High-Thrust Sustainer',         cost:3.0, months:4, req:['turbopump'],effect:{engine:'kerolox_mk2'}, desc:'Unlocks the Rocketdyne MA-3 Sustainer — more thrust and Isp for first stages.<span class="hist"><span class="context-label">CONTEXT</span>↳ Atlas\'s sustainer kept firing to orbit after the boosters dropped away — &ldquo;stage-and-a-half.&rdquo;</span>'},
   {id:'alloy_tanks', track:'structures', eraMin:0,  name:'Welded Alloy Tanks',            cost:2.0, months:3, req:[],          effect:{sigma:0.09},           desc:'Lowers σ from 0.12 to 0.09. Lighter tanks, better mass ratio.<span class="hist"><span class="context-label">CONTEXT</span>↳ Welded aluminium alloy replaced the heavy riveted steel of the earliest airframes.</span>'},
   {id:'balloon_tanks', track:'structures', eraMin:1,name:'Stainless Balloon Tanks',       cost:3.0, months:3, req:['alloy_tanks'],effect:{sigma:0.07},        desc:'Lowers σ to 0.07. The mass-ratio edge that makes orbit reachable.<span class="hist"><span class="context-label">CONTEXT</span>↳ Atlas used pressure-stabilized stainless &ldquo;balloon&rdquo; tanks so thin they\'d crumple unless kept inflated.</span>'},
-  {id:'test_program', track:'testing', eraMin:0, name:'Static Fire Test Program',      cost:1.5, months:2, req:[],          effect:{reliability:0.08},     desc:'Ground-fire engines before flight: +8% launch reliability. Vital while heritage is low.<span class="hist"><span class="context-label">CONTEXT</span>↳ Test stands from Peenemünde to Santa Susana turned ground explosions into flight reliability.</span>'},
+  {id:'test_program', track:'testing', eraMin:0, name:'Static Fire Test Program',      cost:1.5, months:2, req:[],          effect:{reliability:0.08},     desc:'Establish the engineering, instrumentation, and procedures for systematic ground testing: a permanent +8% launch reliability. This research program is separate from the one-off $0.35M Bench static fire action on the Design Bench.<span class="hist"><span class="context-label">CONTEXT</span>↳ Test stands from Peenemünde to Santa Susana turned ground explosions into flight reliability.</span>'},
   {id:'composite_isogrid_structures', track:'structures', eraMin:3, name:'Composite Structures &amp; Friction-Stir Welding', cost:6.5, months:6, req:['balloon_tanks'], effect:{sigma:0.050}, desc:'Machined isogrid panels and filament-wound composite tanks push mass ratio hard, and solid-state friction-stir welds make the joins both lighter and stronger. Lowers σ to 0.050 — the last big gain chemistry can give you.<span class="hist"><span class="context-label">CONTEXT</span>↳ Saturn used machined isogrid before later stages and fairings went to carbon-fibre composites; friction stir welding gave modern launch tanks their light, defect-free seams.</span>'},
   {id:'flight_qualification', track:'testing', eraMin:1, name:'Flight Instrumentation &amp; Qualification', cost:3.5, months:4, req:['test_program'], effect:{reliability:0.07}, desc:'Dense sensor suites and downlinked telemetry turn every flight into data you can act on, while shake tables and acoustic chambers qualify the vehicle against launch loads before it ever flies. +7% reliability.<span class="hist"><span class="context-label">CONTEXT</span>↳ Heavily instrumented early flights let engineers trace failures to a single valve or weld — the brutal acoustic environment of liftoff has killed more hardware than vacuum ever has, and qualification testing tames it.</span>'},
   {id:'qa_program', track:'testing', eraMin:1, name:'Quality-Assurance Program', cost:2.5, months:3, req:['test_program'], effect:{reliability:0.05}, desc:'Inspection, traceability, and process control across the whole build — catching defects on the bench instead of on the pad. +5% reliability.<span class="hist"><span class="context-label">CONTEXT</span>↳ Apollo-era QA traced every part to its lot and operator; process discipline, not heroics, is what made crewed flight survivable.</span>'},
@@ -1781,8 +2071,8 @@ const DIFFICULTY={
     payoutMult:1.25, buildCostMult:0.85, showEquations:false, govFloor:0.05
   },
   engineer:{
-    label:'Engineer', tag:'Realistic',
-    blurb:'Slide-rule mode. Sub-scale budgets, the genuine unreliability of a green company, and the full rocket-equation math exposed at every step on the bench.',
+    label:'Engineer', tag:'Detailed & unforgiving',
+    blurb:'Slide-rule mode. Tight abstracted budgets, the unreliability of a green company, and the full rocket-equation math exposed at every step. This is a detailed simulation setting, not a claim of literal historical fidelity.',
     startMoney:3.5, overhead:0.12, relBonus:0.0, relFloor:0.35, relCap:0.95,
     payoutMult:1.0, buildCostMult:1.0, showEquations:true
   },
