@@ -118,6 +118,9 @@ g3Check('success opens a restricted 90-day, three-month burn ledger',
   state.operatingSupport.monthsLeft===3&&state.operatingSupport.monthlyCap>0&&state.operatingSupport.paid===0);
 g3Check('successful continuity state passes the complete audit',auditReorganizationState(state).length===0,
   auditReorganizationState(state).join(', '));
+g3Check('sponsored success captures the flight payout to the estate rather than player Capital',
+  state.money===0&&state.lastReorganization.receipts.settlement.capturedRevenue>0,
+  `money=${state.money} captured=${state.lastReorganization.receipts.settlement.capturedRevenue}`);
 const g3AfterSuccess={money:state.money,flights:state.flights,successes:state.successes,attempts:state.reorganizationAttempts};
 launchSponsoredHull(g3AttemptId,g3Ready.mission.orderId,g3HullId,g3LaunchRequest);
 g3Check('replaying a settled sponsored launch applies no second outcome',

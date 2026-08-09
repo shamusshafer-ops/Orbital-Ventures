@@ -3176,7 +3176,7 @@ function renderCCLegacyStrip(){
   const chips=`
     <div class="stat" title="${netTitle}"><span class="k">${domDot('economy')}Net</span><span class="v" style="color:${netCol}">${s.net>=0?'+':''}${fM(s.net)}/mo</span></div>
     <div class="stat"><span class="k">${domDot('economy')}Capital</span><span class="v" style="color:${state.money<1.5?'var(--bad)':'var(--ink)'}">${fM(s.capital)}</span></div>
-    ${supportView?`<div class="stat" title="Restricted recurring-cost offset; not spendable Capital. Expires in ${supportView.daysLeft} days."><span class="k">${domDot('economy')}Operating support</span><span class="v" style="color:var(--ok)">${fM(supportView.remaining)} / ${fM(supportView.authorized)}</span></div>`:''}
+    ${supportView?`<div class="stat" title="Restricted recurring-cost offset; not spendable Capital. Expires in ${supportView.daysLeft} days."><span class="k">${domDot('economy')}Operating support</span><span class="v" style="color:var(--readout)">${fM(supportView.remaining)} / ${fM(supportView.authorized)}</span></div>`:''}
     <div class="stat"><span class="k">${domDot('exploration')}Rep</span><span class="v">${fI(s.rep)}</span></div>
     <div class="stat"><span class="k">${domDot('research')}Science</span><span class="v" style="color:var(--dom-research)">${s.science}</span></div>
     <div class="stat"><span class="k">${domDot('crew')}Staff</span><span class="v">${(state.staff||[]).length}</span></div>

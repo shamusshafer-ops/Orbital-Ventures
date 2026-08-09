@@ -1,6 +1,6 @@
 {
   "schema": "orbital-ventures.gate0-browser.v1",
-  "startedAt": "2026-08-09T10:53:55.201Z",
+  "startedAt": "2026-08-09T16:24:49.645Z",
   "commands": {
     "runner": [
       "/usr/bin/node",
@@ -16,17 +16,17 @@
   ],
   "provenance": {
     "repository": {
-      "baseCommit": "106feabe778910b477b307ffae6a33aeb6891056",
+      "baseCommit": "223c6e9a4c98340fa33dfc4f88c99d6c3a8bb07f",
       "baseCommitError": null,
-      "worktreeStatus": "",
-      "worktreeClean": true,
+      "worktreeStatus": "M docs/evidence/gate0-headless-results.json\n M src/render.js\n M src/reorganization.js\n M src/sim.js\n M tests/test-gate3-reorganization-contract.js",
+      "worktreeClean": false,
       "worktreeStatusError": null,
       "contentFingerprint": {
         "algorithm": "sha256",
         "scope": "authoritative source/tests/assets and Gate 1-2 contracts; generated evidence excluded",
-        "digest": "3ffdc14e27e8b942c6fe4e54635613cec22a59d482a6c1c2fc752b2851b52d4d",
+        "digest": "e041ad4c366418585b70fcd17ed070a398c1512713cee7ac9c00da2d94f79363",
         "fileCount": 194,
-        "totalBytes": 15730425,
+        "totalBytes": 15733778,
         "entries": [
           {
             "path": "assets/CREDITS.md",
@@ -135,13 +135,13 @@
           },
           {
             "path": "src/render.js",
-            "bytes": 843997,
-            "sha256": "e584b8022413d8df48f06284e0abdc5c9a9abfe7832ae896ba3a7cee455d17d7"
+            "bytes": 844002,
+            "sha256": "b97e8d71c5b32074ac197a79b2e60ede85bdf8fab794fc54ffbfaf9757b0e0e1"
           },
           {
             "path": "src/reorganization.js",
-            "bytes": 42644,
-            "sha256": "5b0b942983fc706beb8579c85d3d5150094dadc850526f1661edf1f832431619"
+            "bytes": 45675,
+            "sha256": "7a5a12de31668becf847607050675ed131778c7e384bf5fc208b2714bd57f571"
           },
           {
             "path": "src/save.js",
@@ -160,8 +160,8 @@
           },
           {
             "path": "src/sim.js",
-            "bytes": 568925,
-            "sha256": "edbe38578e323cadb510dca9e87d09ff0019ef6f9c35abe8a3ca6a332d27f9ea"
+            "bytes": 568962,
+            "sha256": "a2b2fcb598fd5bf272746cd867b549c9cde14af02a71dca28850132d3d2bf85c"
           },
           {
             "path": "tests/README.md",
@@ -555,8 +555,8 @@
           },
           {
             "path": "tests/test-gate3-reorganization-contract.js",
-            "bytes": 19700,
-            "sha256": "f10796a6be36f21751fc2686c0928477333345c0e3d2cff3e20fc541d2030db5"
+            "bytes": 19980,
+            "sha256": "e4db5fe5e9be58b2fafcd2efaf18926d655e29436648062abc21e04e16b36b68"
           },
           {
             "path": "tests/test-gate3-state-contract.js",
@@ -1160,7 +1160,7 @@
               "syntheticDevDomActivations": 7,
               "reloadNavigations": 1,
               "researchCompletionControl": "Next Event",
-              "elapsedEndToEndWallMs": 2517
+              "elapsedEndToEndWallMs": 2191
             },
             "openingTopLevelNavigation": {
               "count": 6,
@@ -1238,7 +1238,7 @@
         "command": [
           "/snap/bin/geckodriver",
           "--port",
-          "39227"
+          "36609"
         ],
         "driverVersion": "geckodriver 0.37.0 ( 2026-07-20)",
         "external": false,
@@ -1266,8 +1266,8 @@
         "moz:buildID": "20260720151037",
         "moz:headless": true,
         "moz:platformVersion": "6.6.87.2-microsoft-standard-WSL2",
-        "moz:processID": 1883,
-        "moz:profile": "/tmp/rust_mozprofileZHbK9U",
+        "moz:processID": 14350,
+        "moz:profile": "/tmp/rust_mozprofilePtmmQF",
         "moz:shutdownTimeout": 60000,
         "pageLoadStrategy": "normal",
         "timeouts": {
@@ -1290,7 +1290,7 @@
       }
     }
   ],
-  "finishedAt": "2026-08-09T10:54:12.432Z",
+  "finishedAt": "2026-08-09T16:24:59.745Z",
   "summary": {
     "passed": 2,
     "unexpected": 0,

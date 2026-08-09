@@ -141,11 +141,19 @@ function acceptReorganization(insolvencyId,requestId){
     debt=calculateReorganizationDebtTerms(loanInterest(),!!state.debtRenegotiated), spec=canonicalRecoverySpec();
   const retryOf=state.lastReorganization&&state.lastReorganization.phase==='failed'?state.lastReorganization.id:null;
   const acceptedAbs=absDay();
+  // Balance instrumentation (design re-audit #2/#3): the penalty contract is
+  // frozen and must not be silently re-tuned without play data, so instead of
+  // changing it we record what a tuning pass needs — how large a deficit each
+  // reorganization forgives and how quickly the program re-enters continuity.
+  const deficitForgiven=round2(Math.max(0,-finiteRecordNumber(state.money)));
+  const priorClose=state.lastReorganization?nullableRecordNumber(state.lastReorganization.closedAbs):null;
+  const daysSinceLast=priorClose!=null?Math.max(0,acceptedAbs-priorClose):null;
   const r=makeReorganizationRecord({id,sequence,insolvencyId:insolvency.id,retryOf,phase:'standdown',acceptedAbs,
     standdownEndsAbs:acceptedAbs+REORGANIZATION_RULES.standdownDays,clockAbs:acceptedAbs,rivalMonthsApplied:0,
     penalties:Object.assign({},penalties,{applied:true}),debt:Object.assign({},debt,{applied:true}),
     mission:{missionId:REORGANIZATION_RULES.recoveryMissionId,crew:0,spec,specFingerprint:recoverySpecFingerprint(spec)},
-    escrow:{authorized:0,spent:0,returned:0,receipts:{}},receipts:{accepted:{atAbs:acceptedAbs,requestId}},outcome:null});
+    escrow:{authorized:0,spent:0,returned:0,receipts:{}},
+    receipts:{accepted:{atAbs:acceptedAbs,requestId,cycleIndex:sequence,deficitForgiven,daysSinceLastReorganization:daysSinceLast}},outcome:null});
   const supportBefore=publicSupport(), legacyBefore=Math.max(0,state.legacyPenalty||0);
   state.rep=Math.max(0,state.rep-penalties.repLoss); addSupport(-penalties.supportLoss);
   state.legacyPenalty=(state.legacyPenalty||0)+penalties.legacyLoss;
@@ -159,7 +167,7 @@ function acceptReorganization(insolvencyId,requestId){
   insolvency.receipts=insolvency.receipts||{}; insolvency.receipts.acceptedReorganization={atAbs:acceptedAbs,reorganizationId:id};
   recordRequestReceipt(requestId,'reorganization',fingerprint,id,REORGANIZATION_RULES.recoveryMissionId,insolvency.id);
   state.over=true;
-  log('bad',`Program Reorganization accepted — 360-day protective stand-down, −${penalties.repLoss} rep, −${penalties.supportLoss} support, −${penalties.legacyLoss} legacy.${debt.renegotiatedNow?` Permanent bridge-loan service reduced from ${fM(debt.interestBefore)}/mo to ${fM(debt.interestAfter)}/mo.`:' The one-time creditor workout was already used.'}`);
+  log('bad',`Program Reorganization accepted${sequence>1?` (cycle ${sequence})`:''} — ${fM(deficitForgiven)} deficit transferred to the restructuring estate, 360-day protective stand-down, −${penalties.repLoss} rep, −${penalties.supportLoss} support, −${penalties.legacyLoss} legacy.${debt.renegotiatedNow?` Permanent bridge-loan service reduced from ${fM(debt.interestBefore)}/mo to ${fM(debt.interestAfter)}/mo.`:' The one-time creditor workout was already used.'}`);
   checkpointReorganizationSave(); resumeReorganizationUI(); return true;
 }
 
@@ -344,7 +352,7 @@ function launchSponsoredHull(reorganizationId,orderId,hullId,requestId){
     m=curMission(); v=computeVehicle(); quote=launchCommitmentQuote(m,v,null,true);
     if(v.totalDv<effectiveReqDv(m)||v.twr<=1||v.liftoff>padMassCap()){ announceAction('The sponsor article no longer passes First Flight physics validation.'); return false; }
   }
-  const funding={source:'restricted-program-funds',reorganizationId:r.id,escrowQuoteFingerprint:r.escrow.quoteFingerprint};
+  const funding={source:'restricted-program-funds',reorganizationId:r.id,escrowQuoteFingerprint:r.escrow.quoteFingerprint,capitalBefore:round2(state.money)};
   const available=round2(r.escrow.authorized-r.escrow.spent-r.escrow.returned);
   const required=round2(quote.flightBurn+quote.launchCarry+projectedLaunchMonthlyBurn(true));
   if(available+0.0001<required){ announceAction(`The frozen sponsor authorization is ${fM(round2(required-available))} short; this article cannot acquire launch ownership.`); return false; }
@@ -448,13 +456,25 @@ function settleSponsoredAttempt(tx,outcome){
   r.phase=success?'succeeded':'failed'; r.closedAbs=absDay(); r.outcome=plainRecord(outcome||{kind}); r.revision=(r.revision||0)+1;
   r.escrow.returned=round2(Math.max(0,r.escrow.authorized-r.escrow.spent));
   r.receipts.settlement={atAbs:absDay(),transactionId:tx.id,outcome:kind,success,capitalAtSettlement:state.money};
+  if(success){
+    // The sponsored article is 100% escrow-funded, so its ordinary Gate 2
+    // success payout has just landed in player Capital via finalizeLaunch.
+    // Return-to-flight buys continuity, never a cash award: capture that
+    // revenue to the restructuring estate and reopen Capital at the exact
+    // pre-flight baseline, mirroring settleAdministrativeArrival. Done before
+    // the record is snapshotted so lastReorganization carries the receipt.
+    const capitalBefore=finiteRecordNumber(funding.capitalBefore);
+    r.receipts.settlement.capturedRevenue=round2(state.money-capitalBefore); state.money=round2(capitalBefore);
+    r.receipts.settlement.capitalAtSettlement=state.money;
+  }
   const insolvency=state.insolvency;
   state.lastReorganization=makeReorganizationRecord(r); state.reorganization=null;
   if(success){
+    const capturedRevenue=r.receipts.settlement.capturedRevenue;
     state.reorganizationSuccesses=(state.reorganizationSuccesses||0)+1;
     archiveResolvedInsolvency(insolvency,'reorganization-success');
     const support=beginOperatingSupport(r.id); state.over=false;
-    log('ok',`Program Reorganization complete — First Flight succeeded. Ordinary operations resume with ${fM(support.remaining)} of restricted three-month operating support; it is not Capital.`);
+    log('ok',`Program Reorganization complete — First Flight succeeded. ${capturedRevenue>0?`${fM(capturedRevenue)} in sponsored flight proceeds was assigned to the restructuring estate and did not enter player Capital. `:''}Ordinary operations resume with ${fM(support.remaining)} of restricted three-month operating support; it is not Capital.`);
   }else{
     state.money=0; archiveResolvedInsolvency(insolvency,'closure');
     createInsolvencyRecord(tx.id,0); state.over=true;
@@ -482,7 +502,7 @@ function operatingSupportPanelHTML(){
   </div>`;
 }
 function closeReorganizationResult(){
-  hideModal(); const followup=_reorganizationResultFollowup; _reorganizationResultFollowup=null;
+  _reorganizationModalLocked=false; hideModal(); const followup=_reorganizationResultFollowup; _reorganizationResultFollowup=null;
   if(typeof followup==='function') followup();
 }
 function showReorganizationSuccessModal(pendingCelebration){
@@ -497,7 +517,7 @@ function showReorganizationSuccessModal(pendingCelebration){
       <div class="metric"><div class="k">Escrow spent</div><div class="v">${fM(last.escrow.spent)}</div></div>
       <div class="metric"><div class="k">Unused authority closed</div><div class="v">${fM(last.escrow.returned)}</div></div>
     </div>${operatingSupportPanelHTML()}
-    <button class="btn launch" style="width:100%" onclick="closeReorganizationResult()">Resume ordinary operations</button>`,true);
+    <button class="btn launch" style="width:100%" onclick="closeReorganizationResult()">Resume ordinary operations</button>`,true,true);
   return true;
 }
 
@@ -559,9 +579,15 @@ function showInsolvencyContinuityModal(){
   checkpointReorganizationSave();
   showModal(reorganizationOfferHTML(ins),true,true); return true;
 }
+function reorganizationEstateCaptured(r){
+  const arrivals=r&&r.receipts&&r.receipts.administrativeArrivals||{};
+  return round2(Object.keys(arrivals).reduce((n,k)=>n+finiteRecordNumber(arrivals[k]&&arrivals[k].capturedCash),0));
+}
 function reorganizationStatusHTML(r){
   const e=r.escrow, remaining=round2(e.authorized-e.spent-e.returned);
-  return `<div class="metrics" style="margin:10px 0"><div class="metric"><div class="k">Date</div><div class="v">${dateStr()}</div></div><div class="metric"><div class="k">Restricted funds</div><div class="v">${fM(remaining)} / ${fM(e.authorized)}</div></div><div class="metric"><div class="k">Attempt</div><div class="v">${r.sequence}</div></div></div>`;
+  const ins=state.insolvency, deficit=ins?Math.max(0,round2(-finiteRecordNumber(ins.cash))):0, captured=reorganizationEstateCaptured(r);
+  const estateNote=captured!==0?`<p class="muted" style="font-size:11px;margin:6px 0 0">The restructuring estate has also ${captured>=0?`withheld ${fM(captured)} in deferred-arrival proceeds from`:`absorbed a ${fM(Math.abs(captured))} deferred-arrival cost instead of charging`} player Capital.</p>`:'';
+  return `<div class="metrics" style="margin:10px 0"><div class="metric"><div class="k">Date</div><div class="v">${dateStr()}</div></div><div class="metric"><div class="k">Restricted funds</div><div class="v">${fM(remaining)} / ${fM(e.authorized)}</div></div><div class="metric"><div class="k">Estate deficit held</div><div class="v">${fM(deficit)}</div></div><div class="metric"><div class="k">Attempt</div><div class="v">${r.sequence}</div></div></div>${estateNote}`;
 }
 function resumeReorganizationUI(){
   const r=activeReorganization();
@@ -569,7 +595,14 @@ function resumeReorganizationUI(){
   if(activeLaunchTransaction()) return false;
   if(r.administrativeForeground) return restoreAdministrativeArrivalForeground(r);
   let body='';
-  if(r.phase==='standdown') body=`<h2>Program under administration</h2><p class="muted">Ordinary research, production, staffing, facilities, contracts, purchases, and time controls are suspended. Rivals continue. Deferred arrivals keep their dates and may temporarily take Mission Control.</p>${reorganizationStatusHTML(r)}<p><b>Protective stand-down:</b> ${Math.max(0,r.standdownEndsAbs-absDay())} days remaining.</p><button class="btn launch" style="width:100%" onclick="advanceReorganization('standdown:${r.id}')">Advance the administrative clock</button>`;
+  if(r.phase==='standdown'){
+    const total=REORGANIZATION_RULES.standdownDays, elapsed=Math.max(0,Math.min(total,absDay()-r.acceptedAbs)), remaining=Math.max(0,r.standdownEndsAbs-absDay());
+    const pct=total>0?Math.round(elapsed/total*100):0;
+    body=`<h2>Program under administration</h2><p class="muted">Ordinary research, production, staffing, facilities, contracts, purchases, and time controls are suspended. Rivals continue. Deferred arrivals keep their dates and may temporarily take Mission Control.</p>${reorganizationStatusHTML(r)}
+      <p><b>Protective stand-down:</b> day ${elapsed} of ${total} · ${remaining} remaining.</p>
+      <div class="dim" style="font-size:12px;margin:-4px 0 8px">Rival movement applied: ${r.rivalMonthsApplied||0} of ${REORGANIZATION_RULES.rivalMonths} months. The estate carries all costs while the clock runs.</div>
+      <button class="btn launch" style="width:100%" onclick="advanceReorganization('standdown:${r.id}')">Advance the administrative clock (${pct}%)</button>`;
+  }
   else if(r.phase==='planning'){
     const plan=recoveryPlanFor(r), q=plan.quote||{}, escrowPlan=calculateSponsorEscrow(q,operatingMonthlyBurn());
     body=`<h2>Sponsor-directed return to flight</h2><p class="muted">Restricted program funds finance one newly built, uncrewed A-4 First Flight article. Hardware, timing, testing, weather, reliability, and failure consequences remain normal.</p>${reorganizationStatusHTML(r)}

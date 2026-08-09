@@ -2,8 +2,10 @@
 
 **Status:** implementation and automated acceptance are complete, the real
 Firefox browser lane is green, and the manual browser play-through is tested.
-The final independent design and space/aesthetic re-audits remain the
-outstanding sign-off gate (see [handoff](../HANDOFF-CLAUDE-CODE-GATE3.md)).
+Both final independent re-audits have now run: the design re-audit returned
+BLOCK on a payout exploit and the space/aesthetic re-audit returned
+APPROVE-WITH-CONDITIONS. Every finding has been remediated and re-validated
+(see "Final re-audits and remediation" below).
 
 ## Checkout identity and scope
 
@@ -34,7 +36,9 @@ Recorded results:
 
 - Gate 1 contracts: `5/5` suites pass; `102/102` checks.
 - Gate 2 contracts: `3/3` suites pass; `49/49` checks.
-- Gate 3 contracts: `3/3` suites pass; `94/94` checks.
+- Gate 3 contracts: `3/3` suites pass; `95/95` checks (adds an exploit-closure
+  regression: sponsored success must capture its payout to the estate, not
+  Capital).
 - Gate 0 evidence sweep: `141/143` suites pass; `1` known red, `1` known skip,
   `0` unexpected.
 
@@ -74,11 +78,49 @@ surfaces called out in the handoff:
   non-success closes the attempt and escrow, then a fresh 360-day cycle is
   offered.
 
-## Outstanding sign-off
+## Final re-audits and remediation
 
-- Final independent design re-audit.
-- Final independent space/aesthetic re-audit.
+Both re-audits (blocked at codex's checkpoint by the agent service usage limit)
+ran on `2026-08-09` against commit `223c6e9`. All findings are remediated and
+the full suite re-validated.
 
-Both were blocked at codex's checkpoint by the agent service usage limit. Treat
-these two re-audits as the remaining sign-off gate before claiming unanimous
-Gate 3 approval.
+### Design re-audit — verdict was BLOCK (now cleared)
+
+1. **[BLOCKER — fixed] Deficit-shedding exploit.** The escrow-funded sponsored
+   First Flight credited its ~$1.6M success payout to player Capital
+   (`finalizeLaunch`), and `settleSponsoredAttempt` never clawed it back, making
+   reorganization net cash-positive. Fixed: the sponsored funding now records
+   `capitalBefore` at launch, and the success branch captures the flight revenue
+   to the restructuring estate and reopens Capital at that baseline — mirroring
+   `settleAdministrativeArrival`. Guarded by a new contract check
+   (`sponsored success captures the flight payout to the estate rather than
+   player Capital`).
+2. **[HIGH — instrumented] No floor on the forgiven deficit.**
+3. **[MED — instrumented] Unlimited repeat cycles.** The frozen penalty
+   contract is deliberately not re-tuned here (locked scope + "measure first").
+   Instead the acceptance receipt now records `deficitForgiven`, `cycleIndex`,
+   and `daysSinceLastReorganization`, and the acceptance log surfaces the
+   deficit and cycle — the telemetry a data-driven tuning pass needs.
+4. **[MED — fixed] Restructuring estate was invisible.** The administration
+   status panel now shows an "Estate deficit held" metric plus a disclosure line
+   for captured deferred-arrival cash.
+5. **[LOW — fixed] Standdown read as inert.** The standdown modal now shows day
+   `elapsed`/`total`, remaining days, rival-months applied, and a progress %.
+
+### Space/aesthetic re-audit — verdict APPROVE-WITH-CONDITIONS (conditions met)
+
+1. **[HIGH — fixed] Escape orphaned the flight-celebration payoff.** The
+   success modal is now locked; `closeReorganizationResult()` clears the lock
+   before hiding, so Escape can no longer bypass the deferred celebration.
+2. **[LOW-MED — fixed] Restricted-support color semantics.** The operating
+   support chip now uses `--readout` (informational cyan) instead of success
+   green `--ok`.
+3. **[LOW — fixed] Over-wide confirmation modal.** The division-training
+   confirm is now a narrow modal with an even 3-up metric grid.
+
+### Remaining judgment call
+
+Findings D2/D3 are implemented as instrumentation, not silent balance changes,
+per the handoff's locked-contract rule. A future tuning pass should use the new
+telemetry to decide whether to scale penalties to deficit/burn or gate
+re-entry. That decision is deferred, not skipped.

@@ -466,14 +466,14 @@ function requestDivisionTraining(id){
   if(!chk.establishes) return trainDivision(id);
   showModal(`<h2>Establish ${esc(d.name)}?</h2>
     <p class="muted" style="font-size:13px">The core team is already covered by base overhead. This first training investment expands it into a standing research division.</p>
-    <div class="metrics" style="margin:10px 0">
+    <div class="metrics" style="margin:10px 0;grid-template-columns:repeat(3,1fr)">
       <div class="metric"><div class="k">Training now</div><div class="v">${fM(chk.cost)}</div></div>
       <div class="metric"><div class="k">Standing operations</div><div class="v">${fM(chk.upkeepDelta)}/mo</div></div>
       <div class="metric"><div class="k">Skill gain</div><div class="v">+${Math.round(DIV_TRAIN_SKILL*100)}%</div></div>
     </div>
     <p class="muted" style="font-size:12px">Later training improves this division without adding another standing charge.</p>
     <button class="btn launch" style="width:100%" onclick="hideModal();trainDivision('${d.id}')">Confirm expansion · ${fM(chk.cost)} now + ${fM(chk.upkeepDelta)}/mo</button>
-    <button class="btn ghost" style="width:100%;margin-top:6px" onclick="hideModal()">Keep the core team</button>`,true);
+    <button class="btn ghost" style="width:100%;margin-top:6px" onclick="hideModal()">Keep the core team</button>`,false);
   return true;
 }
 function divisionGainExp(r){ const id=divisionForResearch(r); if(!id) return; if(!state.divisions) state.divisions={}; const cur=divisionState(id); state.divisions[id]={skill:cur.skill, exp:cur.exp+1, morale:Math.min(100,cur.morale+2)}; }
