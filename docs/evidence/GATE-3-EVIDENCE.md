@@ -36,9 +36,10 @@ Recorded results:
 
 - Gate 1 contracts: `5/5` suites pass; `102/102` checks.
 - Gate 2 contracts: `3/3` suites pass; `49/49` checks.
-- Gate 3 contracts: `3/3` suites pass; `95/95` checks (adds an exploit-closure
-  regression: sponsored success must capture its payout to the estate, not
-  Capital).
+- Gate 3 contracts: `3/3` suites pass; `96/96` checks (adds an exploit-closure
+  regression — sponsored success must capture its payout to the estate, not
+  Capital — and a tuning regression for the deficit-scaled reputation and
+  cycle-escalated legacy penalties).
 - Gate 0 evidence sweep: `141/143` suites pass; `1` known red, `1` known skip,
   `0` unexpected.
 
@@ -95,12 +96,18 @@ the full suite re-validated.
    `settleAdministrativeArrival`. Guarded by a new contract check
    (`sponsored success captures the flight payout to the estate rather than
    player Capital`).
-2. **[HIGH — instrumented] No floor on the forgiven deficit.**
-3. **[MED — instrumented] Unlimited repeat cycles.** The frozen penalty
-   contract is deliberately not re-tuned here (locked scope + "measure first").
-   Instead the acceptance receipt now records `deficitForgiven`, `cycleIndex`,
-   and `daysSinceLastReorganization`, and the acceptance log surfaces the
-   deficit and cycle — the telemetry a data-driven tuning pass needs.
+2. **[HIGH — tuned] No floor on the forgiven deficit.** The reputation penalty
+   now scales with the deficit forgiven:
+   `repLoss = min(rep, max(10, round(0.15*rep)) + round(2 * deficitForgiven))`
+   (`deficitForgiven` in $M). A $20M shed now costs ~+40 reputation on top of
+   the base, so a large wipe is no longer priced like a rounding error.
+3. **[MED — tuned] Unlimited repeat cycles.** The legacy penalty escalates per
+   cycle (`10 * cycleIndex`: 10, 20, 30, …), making each repeat a worsening
+   permanent mark; the cumulative invariant is now triangular
+   (`10 * n(n+1)/2`). The acceptance receipt also records `deficitForgiven`,
+   `cycleIndex`, and `daysSinceLastReorganization` for further tuning. Both
+   changes were made deliberately (user-authorized override of the "measure
+   first" default) and are guarded by contract checks.
 4. **[MED — fixed] Restructuring estate was invisible.** The administration
    status panel now shows an "Estate deficit held" metric plus a disclosure line
    for captured deferred-arrival cash.
@@ -118,9 +125,12 @@ the full suite re-validated.
 3. **[LOW — fixed] Over-wide confirmation modal.** The division-training
    confirm is now a narrow modal with an even 3-up metric grid.
 
-### Remaining judgment call
+### Balance tuning note
 
-Findings D2/D3 are implemented as instrumentation, not silent balance changes,
-per the handoff's locked-contract rule. A future tuning pass should use the new
-telemetry to decide whether to scale penalties to deficit/burn or gate
-re-entry. That decision is deferred, not skipped.
+Findings D2/D3 are now implemented as real balance changes (deficit-scaled
+reputation, cycle-escalated legacy), a deliberate user-authorized override of
+the handoff's "measure first" default. The chosen coefficients
+(`repDeficitRate = 2` per $M; `legacyPenalty = 10` × cycle) are first estimates;
+the acceptance-receipt telemetry (`deficitForgiven`, `cycleIndex`,
+`daysSinceLastReorganization`) remains in place so they can be refined against
+play data.

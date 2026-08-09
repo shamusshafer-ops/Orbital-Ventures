@@ -9,7 +9,7 @@ function g3Attempt(sequence,phase){
   const fixtureSpec=canonicalRecoverySpec();
   const fixtureQuote={requiredAtCommit:.75,endToEndRunway:.75};
   phase=phase||'standdown';
-  const penalties=calculateReorganizationPenaltyTerms(80); penalties.applied=true;
+  const penalties=calculateReorganizationPenaltyTerms(80,0,sequence); penalties.applied=true;
   const debt=calculateReorganizationDebtTerms(.37,sequence>1); debt.applied=true;
   const hasBuild=['building','ready','launching','settling','succeeded','failed'].includes(phase);
   const hasHull=['ready','launching','settling','succeeded','failed'].includes(phase);
@@ -17,7 +17,8 @@ function g3Attempt(sequence,phase){
   const quoteFingerprint=requestIntentFingerprint('sponsor-quote',fixtureQuote), authorized=1.25, spent=hasBuild?.75:0;
   const acceptance={atAbs:acceptedAbs,requestId:`accept-fixture-${sequence}`};
   const penaltyReceipt={atAbs:acceptedAbs,repBefore:penalties.repBefore,repLoss:penalties.repLoss,repAfter:penalties.repBefore-penalties.repLoss,
-    supportBefore:50,supportLoss:penalties.supportLoss,supportAfter:40,legacyBefore:(sequence-1)*10,legacyLoss:penalties.legacyLoss,legacyAfter:sequence*10};
+    supportBefore:50,supportLoss:penalties.supportLoss,supportAfter:40,
+    legacyBefore:REORGANIZATION_RULES.legacyPenalty*(sequence-1)*sequence/2,legacyLoss:penalties.legacyLoss,legacyAfter:REORGANIZATION_RULES.legacyPenalty*sequence*(sequence+1)/2};
   const debtReceipt={atAbs:acceptedAbs,interestBefore:debt.interestBefore,interestAfter:debt.interestAfter,
     alreadyRenegotiatedBefore:debt.alreadyRenegotiatedBefore,renegotiatedNow:debt.renegotiatedNow};
   const authorization={atAbs:acceptedAbs+REORGANIZATION_RULES.standdownDays,endToEndRunway:.75,monthlyBurnBasis:.5,
@@ -63,10 +64,15 @@ g3Check('fresh counters and cumulative penalties start at zero',
   g3Fresh.insolvencySeq===0&&g3Fresh.reorganizationSeq===0&&g3Fresh.reorganizationAttempts===0&&g3Fresh.reorganizationSuccesses===0&&g3Fresh.legacyPenalty===0);
 g3Check('fresh continuity state passes the pure audit',auditReorganizationState(g3Fresh).length===0);
 
-g3Check('locked reputation/support/legacy terms are exact and clamped',
+g3Check('base reputation/support/legacy terms are exact and clamped',
   calculateReorganizationPenaltyTerms(0).repLoss===0&&calculateReorganizationPenaltyTerms(5).repLoss===5&&
   calculateReorganizationPenaltyTerms(80).repLoss===12&&calculateReorganizationPenaltyTerms(100).repLoss===15&&
   calculateReorganizationPenaltyTerms(80).supportLoss===10&&calculateReorganizationPenaltyTerms(80).legacyLoss===10);
+g3Check('tuned penalties scale reputation with deficit and legacy with cycle (D2/D3)',
+  calculateReorganizationPenaltyTerms(80,5,1).repLoss===22&&calculateReorganizationPenaltyTerms(80,20,1).repLoss===52&&
+  calculateReorganizationPenaltyTerms(80,0,1).legacyLoss===10&&calculateReorganizationPenaltyTerms(80,0,3).legacyLoss===30&&
+  calculateReorganizationPenaltyTerms(80,5,2).deficitForgiven===5&&calculateReorganizationPenaltyTerms(80,0,3).cycleIndex===3&&
+  calculateReorganizationPenaltyTerms(100,20,1).repLoss===55);
 const g3DebtFirst=calculateReorganizationDebtTerms(.37,false),g3DebtRetry=calculateReorganizationDebtTerms(.37,true);
 g3Check('debt workout halves once at money precision',g3DebtFirst.interestBefore===.37&&g3DebtFirst.interestAfter===.19&&g3DebtFirst.renegotiatedNow);
 g3Check('retry cannot ratchet interest and future service remains intact',g3DebtRetry.interestAfter===.37&&!g3DebtRetry.renegotiatedNow&&g3DebtRetry.alreadyRenegotiatedBefore);
@@ -115,7 +121,7 @@ g3Check('support ledger fingerprint rejects a coherent rewrite of paid authority
   operatingSupportRecordErrors(g3CoherentRewrite).includes('support ledger fingerprint'));
 const g3Overlap=createFreshState('engineer'),g3OldAttempt=g3Attempt(1,'succeeded'),g3NewAttempt=g3Attempt(2,'standdown');
 g3NewAttempt.insolvencyId='insolvency-2';
-g3Overlap.loanInterest=g3NewAttempt.debt.interestAfter; g3Overlap.debtRenegotiated=true; g3Overlap.legacyPenalty=20;
+g3Overlap.loanInterest=g3NewAttempt.debt.interestAfter; g3Overlap.debtRenegotiated=true; g3Overlap.legacyPenalty=30;
 g3Overlap.insolvencySeq=2;
 g3Overlap.insolvency=makeInsolvencyRecord({id:'insolvency-2',sequence:2,revision:1,status:'reorganization',atAbs:119,cash:-1,reorganizationId:g3NewAttempt.id,receipts:{}});
 g3Overlap.lastInsolvency=makeInsolvencyRecord({id:'insolvency-1',sequence:1,revision:2,status:'resolved',atAbs:100,cash:-1,reorganizationId:g3OldAttempt.id,resolvedBy:'reorganization-success',resolvedAbs:g3OldAttempt.closedAbs,receipts:{}});

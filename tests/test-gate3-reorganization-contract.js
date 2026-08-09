@@ -54,8 +54,9 @@ const g3Before={day:absDay(),rep:state.rep,support:publicSupport(),interest:loan
 const g3First=g3AcceptAndStandDown('success');
 g3Check('acceptance creates exactly one active attempt and reuses no ordinary cash',
   g3First.accepted&&state.reorganizationAttempts===1&&state.reorganization.id===g3First.id&&state.money===0);
-g3Check('acceptance applies the locked first-cycle penalties exactly once',
-  state.rep===g3Before.rep-12&&g3Near(publicSupport(),g3Before.support-10)&&state.legacyPenalty===10);
+g3Check('acceptance applies the tuned first-cycle penalties exactly once (deficit-scaled rep, cycle-1 legacy)',
+  state.rep===g3Before.rep-calculateReorganizationPenaltyTerms(g3Before.rep,0.25,1).repLoss&&g3Near(publicSupport(),g3Before.support-10)&&state.legacyPenalty===10,
+  `rep=${state.rep} expectedLoss=${calculateReorganizationPenaltyTerms(g3Before.rep,0.25,1).repLoss} legacy=${state.legacyPenalty}`);
 g3Check('acceptance persists exact penalty and creditor receipts',
   state.reorganization.receipts.penalties.repBefore===g3Before.rep&&state.reorganization.receipts.penalties.repAfter===state.rep&&
   state.reorganization.receipts.penalties.supportAfter===publicSupport()&&state.reorganization.receipts.penalties.legacyAfter===10&&
@@ -170,9 +171,10 @@ const g3Retry=g3AcceptAndStandDown('failure-two');
 g3Check('retry is a new identity linked to the failed attempt',
   g3Retry.accepted&&state.reorganization.id!==g3FailedAttempt&&state.reorganization.retryOf===g3FailedAttempt&&
   state.reorganization.insolvencyId===g3RetryIns.id);
-g3Check('retry exacts another full year and another set of penalties',
-  absDay()===g3RetryBefore.day+360&&state.rep===g3RetryBefore.rep-calculateReorganizationPenaltyTerms(g3RetryBefore.rep).repLoss&&
-  g3Near(publicSupport(),g3RetryBefore.support-10)&&state.legacyPenalty===20&&state.reorganizationAttempts===2);
+g3Check('retry exacts another full year and an escalated cycle-2 legacy penalty',
+  absDay()===g3RetryBefore.day+360&&state.rep===g3RetryBefore.rep-calculateReorganizationPenaltyTerms(g3RetryBefore.rep,0,2).repLoss&&
+  g3Near(publicSupport(),g3RetryBefore.support-10)&&state.legacyPenalty===30&&state.reorganizationAttempts===2,
+  `rep=${state.rep} legacy=${state.legacyPenalty}`);
 g3Check('retry cannot repeat the one-time debt workout',
   g3Near(loanInterest(),g3RetryBefore.interest)&&!state.reorganization.debt.renegotiatedNow&&state.reorganization.debt.alreadyRenegotiatedBefore);
 g3Check('retry continuity state remains audit-clean',auditReorganizationState(state).length===0,auditReorganizationState(state).join(', '));

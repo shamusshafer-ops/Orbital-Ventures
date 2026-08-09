@@ -1,6 +1,6 @@
 {
   "schema": "orbital-ventures.gate0-browser.v1",
-  "startedAt": "2026-08-09T16:24:49.645Z",
+  "startedAt": "2026-08-09T18:44:34.466Z",
   "commands": {
     "runner": [
       "/usr/bin/node",
@@ -16,17 +16,17 @@
   ],
   "provenance": {
     "repository": {
-      "baseCommit": "223c6e9a4c98340fa33dfc4f88c99d6c3a8bb07f",
+      "baseCommit": "b8eb5812e2f1253c1c90e1eeaf6a043d970ee061",
       "baseCommitError": null,
-      "worktreeStatus": "M docs/evidence/gate0-headless-results.json\n M src/render.js\n M src/reorganization.js\n M src/sim.js\n M tests/test-gate3-reorganization-contract.js",
+      "worktreeStatus": "M docs/evidence/gate0-headless-results.json\n M src/data.js\n M src/reorganization.js\n M tests/test-gate3-reorganization-contract.js\n M tests/test-gate3-state-contract.js",
       "worktreeClean": false,
       "worktreeStatusError": null,
       "contentFingerprint": {
         "algorithm": "sha256",
         "scope": "authoritative source/tests/assets and Gate 1-2 contracts; generated evidence excluded",
-        "digest": "e041ad4c366418585b70fcd17ed070a398c1512713cee7ac9c00da2d94f79363",
+        "digest": "4e33c10cd60691d92bd6510815221f35840cd4b904c624c14409c92a9038e3ce",
         "fileCount": 194,
-        "totalBytes": 15733778,
+        "totalBytes": 15736045,
         "entries": [
           {
             "path": "assets/CREDITS.md",
@@ -115,8 +115,8 @@
           },
           {
             "path": "src/data.js",
-            "bytes": 245680,
-            "sha256": "388a69c6ec8ea0578ce08444b2c81b4c5b1c31d1a4cb035469c5516aa13a6f6a"
+            "bytes": 246833,
+            "sha256": "ecf4416bfc327b9788b85147b147f5e0f2383e212666f64d9bd16445480aae72"
           },
           {
             "path": "src/flight.js",
@@ -140,8 +140,8 @@
           },
           {
             "path": "src/reorganization.js",
-            "bytes": 45675,
-            "sha256": "7a5a12de31668becf847607050675ed131778c7e384bf5fc208b2714bd57f571"
+            "bytes": 45864,
+            "sha256": "a75389737ebe7090237eae9d8592842016eb228bc95f7e36a2b89132c21bcf40"
           },
           {
             "path": "src/save.js",
@@ -555,13 +555,13 @@
           },
           {
             "path": "tests/test-gate3-reorganization-contract.js",
-            "bytes": 19980,
-            "sha256": "e4db5fe5e9be58b2fafcd2efaf18926d655e29436648062abc21e04e16b36b68"
+            "bytes": 20278,
+            "sha256": "9e74ce67b4f5428598d840c5becaa98680c8662f3bf71758e13dfbf017e74a79"
           },
           {
             "path": "tests/test-gate3-state-contract.js",
-            "bytes": 17060,
-            "sha256": "079f05b5df8ce4b0e739f083e5dbc8b193084baa2456045f79128f61711dc12d"
+            "bytes": 17687,
+            "sha256": "10ccb0c5170ed3c3234f844dab9c96251825bb6186c632ea8fd023382e9e9004"
           },
           {
             "path": "tests/test-ground-track.js",
@@ -1160,7 +1160,7 @@
               "syntheticDevDomActivations": 7,
               "reloadNavigations": 1,
               "researchCompletionControl": "Next Event",
-              "elapsedEndToEndWallMs": 2191
+              "elapsedEndToEndWallMs": 2230
             },
             "openingTopLevelNavigation": {
               "count": 6,
@@ -1238,7 +1238,7 @@
         "command": [
           "/snap/bin/geckodriver",
           "--port",
-          "36609"
+          "37665"
         ],
         "driverVersion": "geckodriver 0.37.0 ( 2026-07-20)",
         "external": false,
@@ -1266,8 +1266,8 @@
         "moz:buildID": "20260720151037",
         "moz:headless": true,
         "moz:platformVersion": "6.6.87.2-microsoft-standard-WSL2",
-        "moz:processID": 14350,
-        "moz:profile": "/tmp/rust_mozprofilePtmmQF",
+        "moz:processID": 20209,
+        "moz:profile": "/tmp/rust_mozprofileepbaQa",
         "moz:shutdownTimeout": 60000,
         "pageLoadStrategy": "normal",
         "timeouts": {
@@ -1290,7 +1290,7 @@
       }
     }
   ],
-  "finishedAt": "2026-08-09T16:24:59.745Z",
+  "finishedAt": "2026-08-09T18:44:44.812Z",
   "summary": {
     "passed": 2,
     "unexpected": 0,

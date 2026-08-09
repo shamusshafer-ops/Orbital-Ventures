@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
-  "capturedAt": "2026-08-09T16:24:07.087Z",
+  "capturedAt": "2026-08-09T18:43:53.406Z",
   "baseCommit": {
     "exitCode": 0,
-    "stdout": "223c6e9a4c98340fa33dfc4f88c99d6c3a8bb07f",
+    "stdout": "b8eb5812e2f1253c1c90e1eeaf6a043d970ee061",
     "stderr": ""
   },
   "worktree": {
     "exitCode": 0,
-    "stdout": "## main...origin/main\n M src/render.js\n M src/reorganization.js\n M src/sim.js\n M tests/test-gate3-reorganization-contract.js",
+    "stdout": "## main...origin/main\n M src/data.js\n M src/reorganization.js\n M tests/test-gate3-reorganization-contract.js\n M tests/test-gate3-state-contract.js",
     "stderr": ""
   },
   "environment": {
@@ -21,9 +21,9 @@
   "contentFingerprint": {
     "algorithm": "sha256",
     "scope": "authoritative source/tests/assets and Gate 1-2 contracts; generated evidence excluded",
-    "digest": "e041ad4c366418585b70fcd17ed070a398c1512713cee7ac9c00da2d94f79363",
+    "digest": "4e33c10cd60691d92bd6510815221f35840cd4b904c624c14409c92a9038e3ce",
     "fileCount": 194,
-    "totalBytes": 15733778,
+    "totalBytes": 15736045,
     "entries": [
       {
         "path": "assets/CREDITS.md",
@@ -112,8 +112,8 @@
       },
       {
         "path": "src/data.js",
-        "bytes": 245680,
-        "sha256": "388a69c6ec8ea0578ce08444b2c81b4c5b1c31d1a4cb035469c5516aa13a6f6a"
+        "bytes": 246833,
+        "sha256": "ecf4416bfc327b9788b85147b147f5e0f2383e212666f64d9bd16445480aae72"
       },
       {
         "path": "src/flight.js",
@@ -137,8 +137,8 @@
       },
       {
         "path": "src/reorganization.js",
-        "bytes": 45675,
-        "sha256": "7a5a12de31668becf847607050675ed131778c7e384bf5fc208b2714bd57f571"
+        "bytes": 45864,
+        "sha256": "a75389737ebe7090237eae9d8592842016eb228bc95f7e36a2b89132c21bcf40"
       },
       {
         "path": "src/save.js",
@@ -552,13 +552,13 @@
       },
       {
         "path": "tests/test-gate3-reorganization-contract.js",
-        "bytes": 19980,
-        "sha256": "e4db5fe5e9be58b2fafcd2efaf18926d655e29436648062abc21e04e16b36b68"
+        "bytes": 20278,
+        "sha256": "9e74ce67b4f5428598d840c5becaa98680c8662f3bf71758e13dfbf017e74a79"
       },
       {
         "path": "tests/test-gate3-state-contract.js",
-        "bytes": 17060,
-        "sha256": "079f05b5df8ce4b0e739f083e5dbc8b193084baa2456045f79128f61711dc12d"
+        "bytes": 17687,
+        "sha256": "10ccb0c5170ed3c3234f844dab9c96251825bb6186c632ea8fd023382e9e9004"
       },
       {
         "path": "tests/test-ground-track.js",
@@ -1005,8 +1005,8 @@
       ],
       "exitCode": 0,
       "signal": null,
-      "elapsedMs": 568,
-      "stdout": "build ok:\n  orbital-ventures.html 18818088 bytes\n  build/game.js         2108573 bytes\n  index.html            119888 bytes\n",
+      "elapsedMs": 709,
+      "stdout": "build ok:\n  orbital-ventures.html 18819430 bytes\n  build/game.js         2109915 bytes\n  index.html            119888 bytes\n",
       "stderr": "",
       "spawnError": null,
       "timedOut": false
@@ -1019,7 +1019,7 @@
       ],
       "exitCode": 0,
       "signal": null,
-      "elapsedMs": 1208,
+      "elapsedMs": 1387,
       "stdout": "build parity ok\n",
       "stderr": "",
       "spawnError": null,
@@ -1032,7 +1032,7 @@
       ],
       "exitCode": 0,
       "signal": null,
-      "elapsedMs": 130,
+      "elapsedMs": 146,
       "stdout": "3/3 build parity checks passed\n2/2 texture-embed split checks passed\n",
       "stderr": "",
       "spawnError": null,
@@ -1045,7 +1045,7 @@
       ],
       "exitCode": 0,
       "signal": null,
-      "elapsedMs": 400,
+      "elapsedMs": 424,
       "stdout": "Gate 0 quarantine: 0 reproduced, 0 unexpected\n",
       "stderr": "",
       "spawnError": null,
@@ -1060,9 +1060,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-afford-estimate.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-afford-estimate.js"
       ],
-      "elapsedMs": 226,
+      "elapsedMs": 245,
       "summary": [
         "39/39 checks passed"
       ],
@@ -1078,9 +1078,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-anim-speed.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-anim-speed.js"
       ],
-      "elapsedMs": 175,
+      "elapsedMs": 192,
       "summary": [
         "9/9 checks passed"
       ],
@@ -1096,9 +1096,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-annals-archive.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-annals-archive.js"
       ],
-      "elapsedMs": 180,
+      "elapsedMs": 198,
       "summary": [
         "28/28 checks passed"
       ],
@@ -1114,9 +1114,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-anomaly-pool.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-anomaly-pool.js"
       ],
-      "elapsedMs": 179,
+      "elapsedMs": 197,
       "summary": [
         "24/24 checks passed"
       ],
@@ -1132,9 +1132,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-assembly-shell.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-assembly-shell.js"
       ],
-      "elapsedMs": 180,
+      "elapsedMs": 203,
       "summary": [
         "10/10 checks passed"
       ],
@@ -1150,9 +1150,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-assembly3d.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-assembly3d.js"
       ],
-      "elapsedMs": 175,
+      "elapsedMs": 218,
       "summary": [
         "36/36 checks passed"
       ],
@@ -1168,9 +1168,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-astronaut-log.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-astronaut-log.js"
       ],
-      "elapsedMs": 203,
+      "elapsedMs": 226,
       "summary": [
         "9/9 checks passed"
       ],
@@ -1186,9 +1186,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-base-bench.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-base-bench.js"
       ],
-      "elapsedMs": 182,
+      "elapsedMs": 203,
       "summary": [
         "22/22 checks passed"
       ],
@@ -1204,9 +1204,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-base-draft.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-base-draft.js"
       ],
-      "elapsedMs": 243,
+      "elapsedMs": 246,
       "summary": [
         "23/23 checks passed"
       ],
@@ -1224,7 +1224,7 @@
         "/usr/bin/node",
         "tests/test-build-parity.js"
       ],
-      "elapsedMs": 136,
+      "elapsedMs": 146,
       "summary": [
         "3/3 build parity checks passed",
         "2/2 texture-embed split checks passed"
@@ -1241,9 +1241,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-cape-zoom.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-cape-zoom.js"
       ],
-      "elapsedMs": 179,
+      "elapsedMs": 180,
       "summary": [
         "11/11 checks passed"
       ],
@@ -1259,9 +1259,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-cape3d-foundation.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-cape3d-foundation.js"
       ],
-      "elapsedMs": 174,
+      "elapsedMs": 201,
       "summary": [
         "17/17 checks passed"
       ],
@@ -1277,9 +1277,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-cc-atmosphere.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-cc-atmosphere.js"
       ],
-      "elapsedMs": 216,
+      "elapsedMs": 261,
       "summary": [
         "14/14 checks passed"
       ],
@@ -1295,9 +1295,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-chronicle-bookends.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-chronicle-bookends.js"
       ],
-      "elapsedMs": 204,
+      "elapsedMs": 235,
       "summary": [
         "22/22 checks passed"
       ],
@@ -1313,9 +1313,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-command-hero-layout.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-command-hero-layout.js"
       ],
-      "elapsedMs": 193,
+      "elapsedMs": 211,
       "summary": [
         "23/23 checks passed"
       ],
@@ -1331,9 +1331,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-command-mode.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-command-mode.js"
       ],
-      "elapsedMs": 173,
+      "elapsedMs": 178,
       "summary": [
         "3/3 checks passed"
       ],
@@ -1349,9 +1349,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-contract-popout.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-contract-popout.js"
       ],
-      "elapsedMs": 176,
+      "elapsedMs": 183,
       "summary": [
         "8/8 checks passed"
       ],
@@ -1367,9 +1367,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-contracts.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-contracts.js"
       ],
-      "elapsedMs": 218,
+      "elapsedMs": 225,
       "summary": [
         "33/33 checks passed"
       ],
@@ -1385,9 +1385,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-crew-escape.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-crew-escape.js"
       ],
-      "elapsedMs": 173,
+      "elapsedMs": 189,
       "summary": [
         "12/12 checks passed"
       ],
@@ -1403,9 +1403,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-crisis-pool.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-crisis-pool.js"
       ],
-      "elapsedMs": 170,
+      "elapsedMs": 175,
       "summary": [
         "43/43 checks passed"
       ],
@@ -1421,9 +1421,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-crisis-proximity.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-crisis-proximity.js"
       ],
-      "elapsedMs": 172,
+      "elapsedMs": 181,
       "summary": [
         "30/30 checks passed"
       ],
@@ -1439,9 +1439,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-decision-panel.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-decision-panel.js"
       ],
-      "elapsedMs": 2574,
+      "elapsedMs": 609,
       "summary": [
         "49/49 checks passed"
       ],
@@ -1457,9 +1457,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-depart-b.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-depart-b.js"
       ],
-      "elapsedMs": 1464,
+      "elapsedMs": 1691,
       "summary": [
         "39/39 checks passed"
       ],
@@ -1475,9 +1475,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-depot-phasing.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-depot-phasing.js"
       ],
-      "elapsedMs": 172,
+      "elapsedMs": 185,
       "summary": [
         "17/17 checks passed"
       ],
@@ -1493,9 +1493,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-dept-a.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-dept-a.js"
       ],
-      "elapsedMs": 557,
+      "elapsedMs": 640,
       "summary": [
         "42/42 checks passed"
       ],
@@ -1511,9 +1511,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-dept-b.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-dept-b.js"
       ],
-      "elapsedMs": 613,
+      "elapsedMs": 697,
       "summary": [
         "27/27 checks passed"
       ],
@@ -1529,9 +1529,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-dept-c.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-dept-c.js"
       ],
-      "elapsedMs": 513,
+      "elapsedMs": 568,
       "summary": [
         "30/30 checks passed"
       ],
@@ -1547,9 +1547,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-dev-menu.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-dev-menu.js"
       ],
-      "elapsedMs": 297,
+      "elapsedMs": 344,
       "summary": [
         "30/30"
       ],
@@ -1565,9 +1565,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-e05-retention.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-e05-retention.js"
       ],
-      "elapsedMs": 171,
+      "elapsedMs": 194,
       "summary": [
         "27/27 checks passed"
       ],
@@ -1583,9 +1583,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-econ-balance-2026-07.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-econ-balance-2026-07.js"
       ],
-      "elapsedMs": 199,
+      "elapsedMs": 223,
       "summary": [
         "40 passed, 0 failed"
       ],
@@ -1601,9 +1601,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-ephemeris.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-ephemeris.js"
       ],
-      "elapsedMs": 199,
+      "elapsedMs": 214,
       "summary": [
         "54/54 checks passed"
       ],
@@ -1619,9 +1619,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-era-visual.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-era-visual.js"
       ],
-      "elapsedMs": 180,
+      "elapsedMs": 216,
       "summary": [
         "(skipped built-HTML check — orbital-ventures.html not found relative to tests/: ENOENT: no such file or directory, open '/tmp/orbital-ventures.html' )",
         "39/39 checks passed"
@@ -1638,9 +1638,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-esc.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-esc.js"
       ],
-      "elapsedMs": 175,
+      "elapsedMs": 200,
       "summary": [
         "36/36 checks passed"
       ],
@@ -1656,9 +1656,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-facility-decay-flavor.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-facility-decay-flavor.js"
       ],
-      "elapsedMs": 170,
+      "elapsedMs": 194,
       "summary": [
         "5/5 checks passed"
       ],
@@ -1674,9 +1674,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-facility-module-integrity.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-facility-module-integrity.js"
       ],
-      "elapsedMs": 174,
+      "elapsedMs": 187,
       "summary": [
         "15/15 checks passed"
       ],
@@ -1692,9 +1692,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-fleet-registry.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-fleet-registry.js"
       ],
-      "elapsedMs": 177,
+      "elapsedMs": 189,
       "summary": [
         "41/41 checks passed"
       ],
@@ -1710,9 +1710,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-flight-markers.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-flight-markers.js"
       ],
-      "elapsedMs": 183,
+      "elapsedMs": 199,
       "summary": [
         "38/38 checks passed"
       ],
@@ -1728,9 +1728,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-flight3d-cislunar-reentry.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-flight3d-cislunar-reentry.js"
       ],
-      "elapsedMs": 174,
+      "elapsedMs": 193,
       "summary": [
         "8/8 checks passed"
       ],
@@ -1746,9 +1746,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-flight3d-deepfail.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-flight3d-deepfail.js"
       ],
-      "elapsedMs": 183,
+      "elapsedMs": 208,
       "summary": [
         "26/26 checks passed"
       ],
@@ -1764,9 +1764,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-flight3d-foundation.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-flight3d-foundation.js"
       ],
-      "elapsedMs": 197,
+      "elapsedMs": 207,
       "summary": [
         "58/58 checks passed"
       ],
@@ -1782,9 +1782,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-flight3d-sepbeat.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-flight3d-sepbeat.js"
       ],
-      "elapsedMs": 209,
+      "elapsedMs": 213,
       "summary": [
         "10/10 checks passed"
       ],
@@ -1800,9 +1800,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-flight3d-staging.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-flight3d-staging.js"
       ],
-      "elapsedMs": 254,
+      "elapsedMs": 267,
       "summary": [
         "35/35 checks passed"
       ],
@@ -1818,9 +1818,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-flight3d-trajectory.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-flight3d-trajectory.js"
       ],
-      "elapsedMs": 179,
+      "elapsedMs": 201,
       "summary": [
         "FAIL: nose tracks the velocity vector through the whole gravity turn (<2.5° worst error)",
         "FAIL: altitude climb rate flattens toward insertion (S-curve, not steepest-at-the-end)",
@@ -1854,9 +1854,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-flight3d-vehicle-sync.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-flight3d-vehicle-sync.js"
       ],
-      "elapsedMs": 177,
+      "elapsedMs": 193,
       "summary": [
         "20/20 checks passed"
       ],
@@ -1872,9 +1872,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-focus-trap.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-focus-trap.js"
       ],
-      "elapsedMs": 180,
+      "elapsedMs": 179,
       "summary": [
         "31/31 checks passed"
       ],
@@ -1890,9 +1890,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-gate1-interaction-contract.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-gate1-interaction-contract.js"
       ],
-      "elapsedMs": 228,
+      "elapsedMs": 278,
       "summary": [
         "18/18 checks passed"
       ],
@@ -1908,9 +1908,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-gate1-lifecycle-regressions.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-gate1-lifecycle-regressions.js"
       ],
-      "elapsedMs": 236,
+      "elapsedMs": 258,
       "summary": [
         "15/15 checks passed"
       ],
@@ -1926,9 +1926,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-gate1-quote-contract.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-gate1-quote-contract.js"
       ],
-      "elapsedMs": 196,
+      "elapsedMs": 235,
       "summary": [
         "22/22 checks passed"
       ],
@@ -1944,9 +1944,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-gate1-state-contract.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-gate1-state-contract.js"
       ],
-      "elapsedMs": 181,
+      "elapsedMs": 205,
       "summary": [
         "22/22 checks passed"
       ],
@@ -1962,9 +1962,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-gate1-truth-contract.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-gate1-truth-contract.js"
       ],
-      "elapsedMs": 202,
+      "elapsedMs": 210,
       "summary": [
         "25/25 checks passed"
       ],
@@ -1980,9 +1980,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-gate2-resume-contract.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-gate2-resume-contract.js"
       ],
-      "elapsedMs": 247,
+      "elapsedMs": 263,
       "summary": [
         "24/24 checks passed"
       ],
@@ -1998,9 +1998,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-gate2-settlement-contract.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-gate2-settlement-contract.js"
       ],
-      "elapsedMs": 235,
+      "elapsedMs": 234,
       "summary": [
         "13/13 checks passed"
       ],
@@ -2016,9 +2016,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-gate2-transaction-contract.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-gate2-transaction-contract.js"
       ],
-      "elapsedMs": 225,
+      "elapsedMs": 229,
       "summary": [
         "12/12 checks passed"
       ],
@@ -2034,9 +2034,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-gate3-opening-economy.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-gate3-opening-economy.js"
       ],
-      "elapsedMs": 205,
+      "elapsedMs": 213,
       "summary": [
         "22/22 checks passed"
       ],
@@ -2052,9 +2052,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-gate3-reorganization-contract.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-gate3-reorganization-contract.js"
       ],
-      "elapsedMs": 490,
+      "elapsedMs": 460,
       "summary": [
         "44/44 checks passed"
       ],
@@ -2070,13 +2070,13 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-gate3-state-contract.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-gate3-state-contract.js"
       ],
-      "elapsedMs": 234,
+      "elapsedMs": 201,
       "summary": [
-        "29/29 checks passed"
+        "30/30 checks passed"
       ],
-      "stdout": "29/29 checks passed\n",
+      "stdout": "30/30 checks passed\n",
       "stderr": "",
       "spawnError": null,
       "timedOut": false
@@ -2088,9 +2088,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-ground-track.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-ground-track.js"
       ],
-      "elapsedMs": 199,
+      "elapsedMs": 185,
       "summary": [
         "12/12 checks passed"
       ],
@@ -2106,9 +2106,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-header-tooltips.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-header-tooltips.js"
       ],
-      "elapsedMs": 201,
+      "elapsedMs": 196,
       "summary": [
         "13/13 checks passed"
       ],
@@ -2124,9 +2124,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-hidden-tab.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-hidden-tab.js"
       ],
-      "elapsedMs": 186,
+      "elapsedMs": 177,
       "summary": [
         "34/34 checks passed"
       ],
@@ -2142,9 +2142,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-hotkeys.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-hotkeys.js"
       ],
-      "elapsedMs": 198,
+      "elapsedMs": 178,
       "summary": [
         "31/31 checks passed"
       ],
@@ -2160,9 +2160,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-hull-registry.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-hull-registry.js"
       ],
-      "elapsedMs": 188,
+      "elapsedMs": 180,
       "summary": [
         "9/9 checks passed"
       ],
@@ -2178,9 +2178,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-icon-set.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-icon-set.js"
       ],
-      "elapsedMs": 191,
+      "elapsedMs": 183,
       "summary": [
         "27/27 checks passed"
       ],
@@ -2196,9 +2196,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-inclination-missions.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-inclination-missions.js"
       ],
-      "elapsedMs": 183,
+      "elapsedMs": 182,
       "summary": [
         "10/10 checks passed"
       ],
@@ -2214,9 +2214,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-inclination.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-inclination.js"
       ],
-      "elapsedMs": 189,
+      "elapsedMs": 184,
       "summary": [
         "21/21 checks passed"
       ],
@@ -2232,9 +2232,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-investor-confidence.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-investor-confidence.js"
       ],
-      "elapsedMs": 266,
+      "elapsedMs": 258,
       "summary": [
         "27 passed, 0 failed"
       ],
@@ -2250,9 +2250,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-launch-camera.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-launch-camera.js"
       ],
-      "elapsedMs": 192,
+      "elapsedMs": 184,
       "summary": [
         "46/46 checks passed"
       ],
@@ -2268,9 +2268,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-light-lag.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-light-lag.js"
       ],
-      "elapsedMs": 227,
+      "elapsedMs": 190,
       "summary": [
         "22/22 checks passed"
       ],
@@ -2286,9 +2286,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-live-call-freq.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-live-call-freq.js"
       ],
-      "elapsedMs": 224,
+      "elapsedMs": 205,
       "summary": [
         "10/10 checks passed"
       ],
@@ -2304,9 +2304,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-livery-esc.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-livery-esc.js"
       ],
-      "elapsedMs": 188,
+      "elapsedMs": 194,
       "summary": [
         "10/10 checks passed"
       ],
@@ -2322,9 +2322,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-map-shell-slots.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-map-shell-slots.js"
       ],
-      "elapsedMs": 189,
+      "elapsedMs": 196,
       "summary": [
         "8/8 checks passed"
       ],
@@ -2340,9 +2340,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-map-slice-a.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-map-slice-a.js"
       ],
-      "elapsedMs": 185,
+      "elapsedMs": 186,
       "summary": [
         "21 passed, 0 failed"
       ],
@@ -2358,9 +2358,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-map-slice-b.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-map-slice-b.js"
       ],
-      "elapsedMs": 209,
+      "elapsedMs": 216,
       "summary": [
         "25 passed, 0 failed"
       ],
@@ -2376,9 +2376,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-map-slice-c.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-map-slice-c.js"
       ],
-      "elapsedMs": 184,
+      "elapsedMs": 187,
       "summary": [
         "16 passed, 0 failed"
       ],
@@ -2396,7 +2396,7 @@
         "/usr/bin/node",
         "tests/test-map-sm1-sm5-source.js"
       ],
-      "elapsedMs": 118,
+      "elapsedMs": 129,
       "summary": [
         "26/26 checks passed"
       ],
@@ -2412,9 +2412,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-map3d-orient.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-map3d-orient.js"
       ],
-      "elapsedMs": 174,
+      "elapsedMs": 187,
       "summary": [
         "map3d-orient: 35 passed, 0 failed"
       ],
@@ -2430,9 +2430,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-map3d-overlay.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-map3d-overlay.js"
       ],
-      "elapsedMs": 188,
+      "elapsedMs": 210,
       "summary": [
         "map3d-overlay: 34 passed, 0 failed"
       ],
@@ -2448,9 +2448,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-map3d-roster.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-map3d-roster.js"
       ],
-      "elapsedMs": 204,
+      "elapsedMs": 224,
       "summary": [
         "map3d-roster: 29 passed, 0 failed"
       ],
@@ -2466,9 +2466,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-map3d-scale.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-map3d-scale.js"
       ],
-      "elapsedMs": 175,
+      "elapsedMs": 194,
       "summary": [
         "map3d-scale: 48 passed, 0 failed"
       ],
@@ -2484,9 +2484,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-map3d-shell.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-map3d-shell.js"
       ],
-      "elapsedMs": 196,
+      "elapsedMs": 213,
       "summary": [
         "32/32 checks passed"
       ],
@@ -2502,9 +2502,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-map3d-window.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-map3d-window.js"
       ],
-      "elapsedMs": 196,
+      "elapsedMs": 218,
       "summary": [
         "map3d-window: 36 passed, 0 failed"
       ],
@@ -2520,9 +2520,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-materials.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-materials.js"
       ],
-      "elapsedMs": 256,
+      "elapsedMs": 254,
       "summary": [
         "46/46 checks passed"
       ],
@@ -2538,9 +2538,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-maxq-fairing.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-maxq-fairing.js"
       ],
-      "elapsedMs": -2247,
+      "elapsedMs": 241,
       "summary": [
         "18/18 checks passed"
       ],
@@ -2556,9 +2556,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-memorial.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-memorial.js"
       ],
-      "elapsedMs": 228,
+      "elapsedMs": 234,
       "summary": [
         "13/13 checks passed"
       ],
@@ -2574,9 +2574,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-near-miss.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-near-miss.js"
       ],
-      "elapsedMs": 222,
+      "elapsedMs": 227,
       "summary": [
         "33/33 checks passed"
       ],
@@ -2592,9 +2592,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-night-launch.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-night-launch.js"
       ],
-      "elapsedMs": 181,
+      "elapsedMs": 184,
       "summary": [
         "9/9 checks passed"
       ],
@@ -2610,9 +2610,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-ops-friction.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-ops-friction.js"
       ],
-      "elapsedMs": 202,
+      "elapsedMs": 217,
       "summary": [
         "36/36"
       ],
@@ -2628,9 +2628,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-orbital-maneuvers.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-orbital-maneuvers.js"
       ],
-      "elapsedMs": 190,
+      "elapsedMs": 202,
       "summary": [
         "orbital maneuvers: 14/14"
       ],
@@ -2646,9 +2646,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-outer-bases.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-outer-bases.js"
       ],
-      "elapsedMs": 189,
+      "elapsedMs": 200,
       "summary": [
         "72/72 checks passed"
       ],
@@ -2664,9 +2664,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-pad-a.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-pad-a.js"
       ],
-      "elapsedMs": 1771,
+      "elapsedMs": 1833,
       "summary": [
         "36/36 checks passed"
       ],
@@ -2682,9 +2682,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-pad-abort.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-pad-abort.js"
       ],
-      "elapsedMs": 203,
+      "elapsedMs": 210,
       "summary": [
         "32 passed, 0 failed"
       ],
@@ -2700,9 +2700,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-parts-attach.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-parts-attach.js"
       ],
-      "elapsedMs": 173,
+      "elapsedMs": 183,
       "summary": [
         "29/29 checks passed"
       ],
@@ -2718,9 +2718,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-parts-bridge.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-parts-bridge.js"
       ],
-      "elapsedMs": 170,
+      "elapsedMs": 180,
       "summary": [
         "31/31 checks passed"
       ],
@@ -2736,9 +2736,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-parts-gate.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-parts-gate.js"
       ],
-      "elapsedMs": 173,
+      "elapsedMs": 179,
       "summary": [
         "27/27 checks passed"
       ],
@@ -2754,9 +2754,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-parts-migration.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-parts-migration.js"
       ],
-      "elapsedMs": 174,
+      "elapsedMs": 183,
       "summary": [
         "28/28 checks passed"
       ],
@@ -2772,9 +2772,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-parts-physics.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-parts-physics.js"
       ],
-      "elapsedMs": 178,
+      "elapsedMs": 190,
       "summary": [
         "21/21 checks passed"
       ],
@@ -2790,9 +2790,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-parts-polish.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-parts-polish.js"
       ],
-      "elapsedMs": 182,
+      "elapsedMs": 193,
       "summary": [
         "18/18 checks passed"
       ],
@@ -2808,9 +2808,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-parts-pp1-propulsion.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-parts-pp1-propulsion.js"
       ],
-      "elapsedMs": 174,
+      "elapsedMs": 183,
       "summary": [
         "120/120 checks passed"
       ],
@@ -2826,9 +2826,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-parts-pp3-structural.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-parts-pp3-structural.js"
       ],
-      "elapsedMs": 175,
+      "elapsedMs": 186,
       "summary": [
         "53/53 checks passed"
       ],
@@ -2844,9 +2844,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-parts-render.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-parts-render.js"
       ],
-      "elapsedMs": 182,
+      "elapsedMs": 191,
       "summary": [
         "45/45 checks passed"
       ],
@@ -2862,9 +2862,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-parts-staging.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-parts-staging.js"
       ],
-      "elapsedMs": 181,
+      "elapsedMs": 188,
       "summary": [
         "31/31 checks passed"
       ],
@@ -2880,9 +2880,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-parts-ui.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-parts-ui.js"
       ],
-      "elapsedMs": 179,
+      "elapsedMs": 189,
       "summary": [
         "23/23 checks passed"
       ],
@@ -2898,9 +2898,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-personnel-retirement.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-personnel-retirement.js"
       ],
-      "elapsedMs": 214,
+      "elapsedMs": 226,
       "summary": [
         "39 passed, 0 failed"
       ],
@@ -2916,9 +2916,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-popout-sizing.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-popout-sizing.js"
       ],
-      "elapsedMs": 196,
+      "elapsedMs": 211,
       "summary": [
         "19/19 checks passed"
       ],
@@ -2934,9 +2934,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-progress-unify.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-progress-unify.js"
       ],
-      "elapsedMs": 169,
+      "elapsedMs": 178,
       "summary": [
         "SKIP: F4 forward test (unfinished feature — set RUN_F4=1 to run)",
         "0/0 checks passed"
@@ -2953,9 +2953,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-regression.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-regression.js"
       ],
-      "elapsedMs": 233,
+      "elapsedMs": 240,
       "summary": [
         "18/18 checks passed"
       ],
@@ -2971,9 +2971,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-render-regions.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-render-regions.js"
       ],
-      "elapsedMs": 292,
+      "elapsedMs": 304,
       "summary": [
         "24/24 checks passed"
       ],
@@ -2989,9 +2989,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-research-effect-gates.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-research-effect-gates.js"
       ],
-      "elapsedMs": 196,
+      "elapsedMs": 202,
       "summary": [
         "12/12 checks passed"
       ],
@@ -3007,9 +3007,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-research-era-gate.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-research-era-gate.js"
       ],
-      "elapsedMs": 174,
+      "elapsedMs": 181,
       "summary": [
         "25/25 checks passed"
       ],
@@ -3025,9 +3025,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-research-goal.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-research-goal.js"
       ],
-      "elapsedMs": 186,
+      "elapsedMs": 214,
       "summary": [
         "27/27 checks passed"
       ],
@@ -3043,9 +3043,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-research-notice.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-research-notice.js"
       ],
-      "elapsedMs": 171,
+      "elapsedMs": 178,
       "summary": [
         "14/14 checks passed"
       ],
@@ -3061,9 +3061,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-rival-intel.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-rival-intel.js"
       ],
-      "elapsedMs": 180,
+      "elapsedMs": 198,
       "summary": [
         "29/29 checks passed"
       ],
@@ -3079,9 +3079,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-rival-strip.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-rival-strip.js"
       ],
-      "elapsedMs": 174,
+      "elapsedMs": 183,
       "summary": [
         "22/22 checks passed"
       ],
@@ -3097,9 +3097,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-rivals-e11.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-rivals-e11.js"
       ],
-      "elapsedMs": 215,
+      "elapsedMs": 239,
       "summary": [
         "24/24 checks passed"
       ],
@@ -3115,9 +3115,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-roster.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-roster.js"
       ],
-      "elapsedMs": 227,
+      "elapsedMs": 244,
       "summary": [
         "12/12 checks passed"
       ],
@@ -3133,9 +3133,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-sample-decision.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-sample-decision.js"
       ],
-      "elapsedMs": 187,
+      "elapsedMs": 194,
       "summary": [
         "29/29 checks passed"
       ],
@@ -3151,9 +3151,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-save-ring.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-save-ring.js"
       ],
-      "elapsedMs": 180,
+      "elapsedMs": 197,
       "summary": [
         "42/42 checks passed"
       ],
@@ -3169,9 +3169,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-save-slots.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-save-slots.js"
       ],
-      "elapsedMs": 186,
+      "elapsedMs": 192,
       "summary": [
         "69/69 checks passed"
       ],
@@ -3187,9 +3187,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-save.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-save.js"
       ],
-      "elapsedMs": 212,
+      "elapsedMs": 216,
       "summary": [
         "34/34 checks passed"
       ],
@@ -3205,9 +3205,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-scene-math.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-scene-math.js"
       ],
-      "elapsedMs": 174,
+      "elapsedMs": 183,
       "summary": [
         "35/35 checks passed"
       ],
@@ -3223,9 +3223,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-scene-shell-contract.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-scene-shell-contract.js"
       ],
-      "elapsedMs": 191,
+      "elapsedMs": 201,
       "summary": [
         "10/10 checks passed"
       ],
@@ -3241,9 +3241,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-science-program.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-science-program.js"
       ],
-      "elapsedMs": 184,
+      "elapsedMs": 190,
       "summary": [
         "22/22 checks passed"
       ],
@@ -3259,9 +3259,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-sethtml.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-sethtml.js"
       ],
-      "elapsedMs": 168,
+      "elapsedMs": 185,
       "summary": [
         "9/9 checks passed"
       ],
@@ -3277,9 +3277,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-shell-consolidation.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-shell-consolidation.js"
       ],
-      "elapsedMs": 190,
+      "elapsedMs": 207,
       "summary": [
         "10/10 checks passed"
       ],
@@ -3295,9 +3295,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-solar-conjunction.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-solar-conjunction.js"
       ],
-      "elapsedMs": 187,
+      "elapsedMs": 198,
       "summary": [
         "19/19 checks passed"
       ],
@@ -3313,9 +3313,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-sound.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-sound.js"
       ],
-      "elapsedMs": 202,
+      "elapsedMs": 213,
       "summary": [
         "12/12 checks passed"
       ],
@@ -3331,9 +3331,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-station-operations.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-station-operations.js"
       ],
-      "elapsedMs": 201,
+      "elapsedMs": 216,
       "summary": [
         "18/18 checks passed"
       ],
@@ -3349,9 +3349,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-station-popout.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-station-popout.js"
       ],
-      "elapsedMs": 175,
+      "elapsedMs": 185,
       "summary": [
         "20/20 checks passed"
       ],
@@ -3367,9 +3367,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-station-slice1.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-station-slice1.js"
       ],
-      "elapsedMs": 243,
+      "elapsedMs": 258,
       "summary": [
         "31/31 checks passed"
       ],
@@ -3385,9 +3385,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-station-slice2.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-station-slice2.js"
       ],
-      "elapsedMs": 230,
+      "elapsedMs": 236,
       "summary": [
         "28/28 checks passed"
       ],
@@ -3403,9 +3403,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-station-slice3.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-station-slice3.js"
       ],
-      "elapsedMs": 2512,
+      "elapsedMs": 2730,
       "summary": [
         "27/27 checks passed"
       ],
@@ -3421,9 +3421,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-surface-modules.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-surface-modules.js"
       ],
-      "elapsedMs": 198,
+      "elapsedMs": 208,
       "summary": [
         "34/34 checks passed"
       ],
@@ -3439,9 +3439,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-tech-capstones.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-tech-capstones.js"
       ],
-      "elapsedMs": 173,
+      "elapsedMs": 178,
       "summary": [
         "13/13 checks passed"
       ],
@@ -3457,9 +3457,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-tech-combustion-merge.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-tech-combustion-merge.js"
       ],
-      "elapsedMs": 175,
+      "elapsedMs": -2309,
       "summary": [
         "21/21 checks passed"
       ],
@@ -3475,9 +3475,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-tech-guidance-merge.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-tech-guidance-merge.js"
       ],
-      "elapsedMs": 188,
+      "elapsedMs": 180,
       "summary": [
         "18/18 checks passed"
       ],
@@ -3493,9 +3493,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-tech-structures-merge.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-tech-structures-merge.js"
       ],
-      "elapsedMs": 174,
+      "elapsedMs": 179,
       "summary": [
         "21/21 checks passed"
       ],
@@ -3511,9 +3511,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-tech-testing-merge.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-tech-testing-merge.js"
       ],
-      "elapsedMs": 169,
+      "elapsedMs": 186,
       "summary": [
         "28/28 checks passed"
       ],
@@ -3529,9 +3529,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-theme-sync.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-theme-sync.js"
       ],
-      "elapsedMs": 172,
+      "elapsedMs": 182,
       "summary": [
         "40/40 checks passed"
       ],
@@ -3547,9 +3547,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-three-guard.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-three-guard.js"
       ],
-      "elapsedMs": 173,
+      "elapsedMs": 186,
       "summary": [
         "9/9 checks passed"
       ],
@@ -3565,9 +3565,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-tracking-stations.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-tracking-stations.js"
       ],
-      "elapsedMs": 186,
+      "elapsedMs": 199,
       "summary": [
         "49/49 checks passed"
       ],
@@ -3583,9 +3583,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-ui-layer-button.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-ui-layer-button.js"
       ],
-      "elapsedMs": 204,
+      "elapsedMs": 220,
       "summary": [
         "19/19 checks passed"
       ],
@@ -3601,9 +3601,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-ui-scale.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-ui-scale.js"
       ],
-      "elapsedMs": 171,
+      "elapsedMs": 181,
       "summary": [
         "48/48 checks passed"
       ],
@@ -3619,9 +3619,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-vehicle-dimensions.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-vehicle-dimensions.js"
       ],
-      "elapsedMs": 170,
+      "elapsedMs": 182,
       "summary": [
         "12/12 checks passed"
       ],
@@ -3637,9 +3637,9 @@
       "signal": null,
       "command": [
         "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-ZpwvQA/test-workspace-shell.js"
+        "/tmp/ov-gate0-sweep-QgCQ3v/test-workspace-shell.js"
       ],
-      "elapsedMs": 179,
+      "elapsedMs": 188,
       "summary": [
         "10/10 checks passed"
       ],
@@ -3650,17 +3650,17 @@
     }
   ],
   "artifacts": {
-    "orbital-ventures.html": 18818088,
+    "orbital-ventures.html": 18819430,
     "index.html": 119888,
-    "build/game.js": 2108573,
+    "build/game.js": 2109915,
     "trackedBytes": {
-      "src": 2228142,
-      "tests": 1022383,
+      "src": 2229484,
+      "tests": 1023308,
       "assets": 12443285
     },
     "worktreeBytes": {
-      "src": 2228142,
-      "tests": 1022383,
+      "src": 2229484,
+      "tests": 1023308,
       "assets": 12443285
     },
     "godotPathsPresent": []

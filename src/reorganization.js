@@ -137,15 +137,15 @@ function acceptReorganization(insolvencyId,requestId){
   }
   if(state.operatingSupport&&!state.operatingSupport.closedReason) closeOperatingSupport('new-reorganization');
   const sequence=state.reorganizationSeq=(state.reorganizationSeq||0)+1;
-  const id=`reorg${sequence}`, penalties=calculateReorganizationPenaltyTerms(state.rep),
+  // Gate 3 tuning (design re-audit D2/D3): penalties now scale with the deficit
+  // being forgiven and escalate with each reorganization cycle, so a large or
+  // repeated shed costs materially more than a tiny one-off. The forgiven
+  // deficit is player Capital at this instant, just before it reopens at $0.
+  const deficitForgiven=round2(Math.max(0,-finiteRecordNumber(state.money)));
+  const id=`reorg${sequence}`, penalties=calculateReorganizationPenaltyTerms(state.rep,deficitForgiven,sequence),
     debt=calculateReorganizationDebtTerms(loanInterest(),!!state.debtRenegotiated), spec=canonicalRecoverySpec();
   const retryOf=state.lastReorganization&&state.lastReorganization.phase==='failed'?state.lastReorganization.id:null;
   const acceptedAbs=absDay();
-  // Balance instrumentation (design re-audit #2/#3): the penalty contract is
-  // frozen and must not be silently re-tuned without play data, so instead of
-  // changing it we record what a tuning pass needs — how large a deficit each
-  // reorganization forgives and how quickly the program re-enters continuity.
-  const deficitForgiven=round2(Math.max(0,-finiteRecordNumber(state.money)));
   const priorClose=state.lastReorganization?nullableRecordNumber(state.lastReorganization.closedAbs):null;
   const daysSinceLast=priorClose!=null?Math.max(0,acceptedAbs-priorClose):null;
   const r=makeReorganizationRecord({id,sequence,insolvencyId:insolvency.id,retryOf,phase:'standdown',acceptedAbs,
@@ -542,7 +542,7 @@ function chooseBridgeLoan(insolvencyId,requestId){
 function confirmReorganization(insolvencyId){
   const ins=state.insolvency;
   if(!ins||ins.id!==String(insolvencyId||'')||!reorganizationEligible()) return false;
-  const penalties=calculateReorganizationPenaltyTerms(state.rep), debt=calculateReorganizationDebtTerms(loanInterest(),!!state.debtRenegotiated);
+  const penalties=calculateReorganizationPenaltyTerms(state.rep,Math.max(0,round2(-finiteRecordNumber(state.money))),(state.reorganizationSeq||0)+1), debt=calculateReorganizationDebtTerms(loanInterest(),!!state.debtRenegotiated);
   showModal(`<h2>Confirm Program Reorganization</h2>
     <p class="muted" style="font-size:13px">This is a severe continuity measure, not a bailout. Accepting transfers the current ${fM(Math.abs(Math.min(0,state.money)))} deficit to the restructuring estate and reopens player Capital at ${fM(0)}.</p>
     <div class="metrics" style="margin:10px 0">
@@ -563,7 +563,7 @@ function reorganizationOfferHTML(ins){
   const rules=state.campaignRules||makeCampaignRules({ironman:false}), usesLeft=2-(state.bailouts||0), terms=bailoutTerms();
   const loan=usesLeft>0?`<button class="btn" onclick="chooseBridgeLoan('${ins.id}','loan:${ins.id}:${state.bailouts||0}')">Emergency bridge loan (+${fM(terms.amount)}, −${terms.repCost} rep, +${fM(terms.interest)}/mo)</button>`
     :'<div class="dim" style="font-size:12px;margin-top:6px">No further bridge loans are available.</div>';
-  const penalties=calculateReorganizationPenaltyTerms(state.rep), debt=calculateReorganizationDebtTerms(loanInterest(),!!state.debtRenegotiated);
+  const penalties=calculateReorganizationPenaltyTerms(state.rep,Math.max(0,round2(-finiteRecordNumber(state.money))),(state.reorganizationSeq||0)+1), debt=calculateReorganizationDebtTerms(loanInterest(),!!state.debtRenegotiated);
   const failed=state.lastReorganization&&state.lastReorganization.phase==='failed'?state.lastReorganization:null;
   const reorg=rules.ironman
     ? `<div class="flag warn" style="margin-top:10px"><b>Ironman · Permanent insolvency</b><br>Program Reorganization is disabled for this campaign.</div>`

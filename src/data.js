@@ -97,7 +97,7 @@ function lifecycleRecordErrors(kind,record){
 const REORGANIZATION_SCHEMA_VERSION=1;
 const REORGANIZATION_RULES=Object.freeze({
   standdownDays:360,rivalMonths:12,recoveryMissionId:'first_flight',recoveryCrew:0,
-  repLossFraction:0.15,repLossFloor:10,publicSupportLoss:10,legacyPenalty:10,
+  repLossFraction:0.15,repLossFloor:10,repDeficitRate:2,publicSupportLoss:10,legacyPenalty:10,
   loanInterestMultiplier:0.5,loanRenegotiationsPerCampaign:1,exitSupportDays:90,
   exitSupportMonths:3,
 });
@@ -111,10 +111,21 @@ function nullableRecordId(value){ return value==null?null:String(value); }
 function nullableRecordNumber(value){ return value==null?null:finiteRecordNumber(value); }
 function reorganizationMoney(value){ return Math.round(finiteRecordNumber(value)*100)/100; }
 function reorganizationAccrual(value){ return Math.round(finiteRecordNumber(value)*1000000)/1000000; }
-function calculateReorganizationPenaltyTerms(rep){
+// Gate 3 tuning (design re-audit D2/D3): the reputation penalty now scales with
+// the absolute deficit forgiven (so shedding a large obligation costs more than
+// a rounding error), and the legacy penalty escalates with the cycle index (so
+// repeat reorganizations are a worsening permanent mark, not a free reset). Both
+// inputs default to the original flat contract (deficit 0, cycle 1), so callers
+// that pass only `rep` observe unchanged first-cycle terms.
+function calculateReorganizationPenaltyTerms(rep,deficitForgiven,cycleIndex){
   const before=Math.max(0,finiteRecordNumber(rep));
-  return {repBefore:before,repLoss:Math.min(before,Math.max(REORGANIZATION_RULES.repLossFloor,Math.round(REORGANIZATION_RULES.repLossFraction*before))),
-    supportLoss:REORGANIZATION_RULES.publicSupportLoss,legacyLoss:REORGANIZATION_RULES.legacyPenalty};
+  const deficit=Math.max(0,finiteRecordNumber(deficitForgiven));
+  const cycle=Math.max(1,Math.round(finiteRecordNumber(cycleIndex)||1));
+  const baseRep=Math.max(REORGANIZATION_RULES.repLossFloor,Math.round(REORGANIZATION_RULES.repLossFraction*before));
+  const deficitRep=Math.round(REORGANIZATION_RULES.repDeficitRate*deficit);
+  return {repBefore:before,repLoss:Math.min(before,baseRep+deficitRep),
+    supportLoss:REORGANIZATION_RULES.publicSupportLoss,legacyLoss:REORGANIZATION_RULES.legacyPenalty*cycle,
+    deficitForgiven:reorganizationMoney(deficit),cycleIndex:cycle};
 }
 function calculateReorganizationDebtTerms(interest,alreadyRenegotiated){
   const before=Math.max(0,reorganizationMoney(interest));
@@ -137,7 +148,7 @@ function makeReorganizationRecord(x){
     retryOf:nullableRecordId(x.retryOf),revision:finiteRecordNumber(x.revision),phase:REORGANIZATION_PHASES.includes(x.phase)?x.phase:'standdown',
     acceptedAbs:finiteRecordNumber(x.acceptedAbs),standdownEndsAbs:finiteRecordNumber(x.standdownEndsAbs),clockAbs:finiteRecordNumber(x.clockAbs),
     rivalMonthsApplied:finiteRecordNumber(x.rivalMonthsApplied),closedAbs:nullableRecordNumber(x.closedAbs),
-    penalties:{repBefore:finiteRecordNumber(penalties.repBefore),repLoss:finiteRecordNumber(penalties.repLoss),supportLoss:finiteRecordNumber(penalties.supportLoss),legacyLoss:finiteRecordNumber(penalties.legacyLoss),applied:!!penalties.applied},
+    penalties:{repBefore:finiteRecordNumber(penalties.repBefore),repLoss:finiteRecordNumber(penalties.repLoss),supportLoss:finiteRecordNumber(penalties.supportLoss),legacyLoss:finiteRecordNumber(penalties.legacyLoss),deficitForgiven:reorganizationMoney(penalties.deficitForgiven),cycleIndex:Math.max(1,Math.round(finiteRecordNumber(penalties.cycleIndex)||1)),applied:!!penalties.applied},
     debt:{interestBefore:reorganizationMoney(debt.interestBefore),interestAfter:reorganizationMoney(debt.interestAfter),alreadyRenegotiatedBefore:!!debt.alreadyRenegotiatedBefore,renegotiatedNow:!!debt.renegotiatedNow,applied:!!debt.applied},
     mission:{missionId:String(mission.missionId||REORGANIZATION_RULES.recoveryMissionId),crew:finiteRecordNumber(mission.crew),specFingerprint:String(mission.specFingerprint||''),spec:plainRecord(mission.spec||null),
       buildRequestId:nullableRecordId(mission.buildRequestId),orderId:nullableRecordId(mission.orderId),hullId:nullableRecordId(mission.hullId),
@@ -200,8 +211,8 @@ function reorganizationRecordErrors(record){
   const terminal=TERMINAL_REORGANIZATION_PHASES.includes(record.phase);
   if(terminal&&(!nonnegativeIntegerField(record.closedAbs)||record.closedAbs<record.acceptedAbs)) errors.push('closedAbs');
   if(!terminal&&record.closedAbs!=null) errors.push('premature close');
-  const p=record.penalties, expected=p&&calculateReorganizationPenaltyTerms(p.repBefore);
-  if(!plainObjectField(p)||!finiteNumberField(p.repBefore)||p.repBefore<0||!finiteNumberField(p.repLoss)||!finiteNumberField(p.supportLoss)||!finiteNumberField(p.legacyLoss)||typeof p.applied!=='boolean') errors.push('penalties');
+  const p=record.penalties, expected=p&&calculateReorganizationPenaltyTerms(p.repBefore,p.deficitForgiven,p.cycleIndex);
+  if(!plainObjectField(p)||!finiteNumberField(p.repBefore)||p.repBefore<0||!finiteNumberField(p.repLoss)||!finiteNumberField(p.supportLoss)||!finiteNumberField(p.legacyLoss)||!finiteNumberField(p.deficitForgiven)||p.deficitForgiven<0||!nonnegativeIntegerField(p.cycleIndex)||p.cycleIndex<1||typeof p.applied!=='boolean') errors.push('penalties');
   else if(!p.applied||p.repLoss!==expected.repLoss||p.supportLoss!==expected.supportLoss||p.legacyLoss!==expected.legacyLoss) errors.push('penalty contract');
   const d=record.debt;
   if(!plainObjectField(d)||!finiteNumberField(d.interestBefore)||d.interestBefore<0||!finiteNumberField(d.interestAfter)||d.interestAfter<0||typeof d.alreadyRenegotiatedBefore!=='boolean'||typeof d.renegotiatedNow!=='boolean'||typeof d.applied!=='boolean') errors.push('debt');
@@ -318,7 +329,7 @@ function auditReorganizationState(snapshot){
   for(const key of ['legacyPenalty','insolvencySeq','reorganizationSeq','reorganizationAttempts','reorganizationSuccesses']) if(!nonnegativeIntegerField(s[key])) errors.push(key);
   if(nonnegativeIntegerField(s.reorganizationAttempts)&&nonnegativeIntegerField(s.reorganizationSeq)&&s.reorganizationAttempts!==s.reorganizationSeq) errors.push('reorganization attempt sequence');
   if(nonnegativeIntegerField(s.reorganizationSuccesses)&&nonnegativeIntegerField(s.reorganizationAttempts)&&s.reorganizationSuccesses>s.reorganizationAttempts) errors.push('reorganization success count');
-  if(nonnegativeIntegerField(s.legacyPenalty)&&nonnegativeIntegerField(s.reorganizationAttempts)&&s.legacyPenalty!==s.reorganizationAttempts*REORGANIZATION_RULES.legacyPenalty) errors.push('legacy penalty count');
+  if(nonnegativeIntegerField(s.legacyPenalty)&&nonnegativeIntegerField(s.reorganizationAttempts)&&s.legacyPenalty!==REORGANIZATION_RULES.legacyPenalty*s.reorganizationAttempts*(s.reorganizationAttempts+1)/2) errors.push('legacy penalty count');
   if(nonnegativeIntegerField(s.reorganizationAttempts)&&typeof s.debtRenegotiated==='boolean'&&s.debtRenegotiated!==(s.reorganizationAttempts>0)) errors.push('debt renegotiation count');
   const insolvencies=[['insolvency',s.insolvency],['lastInsolvency',s.lastInsolvency]], reorganizations=[['reorganization',s.reorganization],['lastReorganization',s.lastReorganization]];
   for(const [name,rec] of insolvencies) if(rec!=null) errors.push(...insolvencyRecordErrors(rec).map(e=>`${name}: ${e}`));

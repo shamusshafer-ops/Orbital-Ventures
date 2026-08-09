@@ -106,10 +106,17 @@ Acceptance applies once per cycle:
 - advance a narrow stand-down clock by exactly `360` campaign days;
 - let rival programs advance over those same dates;
 - subtract reputation by
-  `min(currentRep, max(10, round(0.15 * currentRep)))`;
+  `min(currentRep, max(10, round(0.15 * currentRep)) + round(2 * deficitForgiven))`,
+  where `deficitForgiven` (in $M) is the negative Capital transferred to the
+  restructuring estate — so shedding a larger obligation costs proportionally
+  more reputation (design re-audit D2);
 - subtract `10` public-support points, clamped to the ordinary support bounds;
-- apply `-10` legacy points through the explicit persisted `legacyPenalty`
-  accumulator, never by rewriting unrelated history; and
+- apply `10 * cycleIndex` legacy points through the explicit persisted
+  `legacyPenalty` accumulator (cycle 1 = 10, cycle 2 = 20, …), so repeat
+  reorganizations are a worsening permanent mark; the cumulative accumulator
+  therefore satisfies `legacyPenalty === 10 * n * (n + 1) / 2` after `n`
+  accepted cycles (design re-audit D3), never by rewriting unrelated history;
+  and
 - on the first accepted reorganization in the campaign only, perform the
   one-time creditor workout below.
 
