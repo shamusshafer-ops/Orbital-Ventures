@@ -1,20 +1,25 @@
 {
   "schema": "orbital-ventures.gate0-browser.v1",
+  "startedAt": "2026-08-09T10:53:55.201Z",
   "commands": {
     "runner": [
       "/usr/bin/node",
-      "/mnt/c/WINDOWS/system32/Orbital-Ventures-Gate0/tests/run-browser-gate0.js",
-      "--allow-missing",
+      "/mnt/c/Windows/System32/Orbital-Ventures-Gate0/tests/run-browser-gate0.js",
+      "--browser",
+      "firefox",
       "--json-output",
       "docs/evidence/gate0-browser-results.json"
     ]
   },
+  "requestedBrowsers": [
+    "firefox"
+  ],
   "provenance": {
     "repository": {
-      "baseCommit": "cc50c3ca54cbbd5abf94981778d63835802bd60d",
+      "baseCommit": "106feabe778910b477b307ffae6a33aeb6891056",
       "baseCommitError": null,
-      "worktreeStatus": "M build.js\n M docs/SAVE-VERSIONS.md\n M docs/evidence/gate0-headless-results.json\n M src/data.js\n M src/render.js\n M src/save.js\n M src/sim.js\n M tests/README.md\n M tests/expected-failures/README.md\n M tests/expected-failures/manifest.json\n M tests/run-expected-failures.js\n M tests/run-gate0-evidence.js\n M tests/test-save-ring.js\n?? docs/GATE-3-CONTRACTS.md\n?? src/reorganization.js\n?? tests/run-gate3-contracts.js\n?? tests/test-gate3-opening-economy.js\n?? tests/test-gate3-reorganization-contract.js\n?? tests/test-gate3-state-contract.js",
-      "worktreeClean": false,
+      "worktreeStatus": "",
+      "worktreeClean": true,
       "worktreeStatusError": null,
       "contentFingerprint": {
         "algorithm": "sha256",
@@ -1015,6 +1020,281 @@
       "OV_CHROMIUM_NO_SANDBOX": null
     }
   },
-  "fatalError": "Error: listen EPERM: operation not permitted 127.0.0.1\n    at Server.setupListenHandle [as _listen2] (node:net:1794:21)\n    at listenInCluster (node:net:1859:12)\n    at doListen (node:net:2008:7)\n    at process.processTicksAndRejections (node:internal/process/task_queues:83:21)",
-  "evidenceOutputPath": "/mnt/c/WINDOWS/system32/Orbital-Ventures-Gate0/docs/evidence/gate0-browser-results.json"
+  "fixture": {
+    "generator": "build.js#createBuildArtifacts",
+    "name": "index.html",
+    "bytes": 119888,
+    "persistedToWorktree": false,
+    "servedPaths": [
+      "/__gate0__.html",
+      "/src/**",
+      "/assets/**"
+    ]
+  },
+  "results": [
+    {
+      "browser": "firefox",
+      "flows": [
+        {
+          "issue": "G0-B01",
+          "status": "pass",
+          "result": {
+            "research": "Static Fire Test Program",
+            "researchCompleted": true,
+            "launchedHullId": "hull_1",
+            "recoverable": true,
+            "exactTransaction": true,
+            "exactHangar": false,
+            "exactDecision": true,
+            "exactSettled": false,
+            "decisionVisible": true,
+            "exactHullStatus": "in-flight",
+            "hangarHullIds": [],
+            "pendingOwnerHullIds": [
+              "hull_1"
+            ],
+            "hullStatuses": [
+              {
+                "id": "hull_1",
+                "status": "in-flight"
+              }
+            ],
+            "launchIdentity": {
+              "activated": true,
+              "orderId": "ord1",
+              "hullId": "hull_1",
+              "missionId": "first_flight",
+              "handler": "launchFromHangar('ord1','hull_1','fly:ord1:hull_1')",
+              "contract": {
+                "primary": true,
+                "subjectType": "hull",
+                "subjectId": "hull_1",
+                "actionId": "fly:ord1:hull_1",
+                "launchClass": true,
+                "boundHullId": "hull_1",
+                "requestId": "fly:ord1:hull_1",
+                "expected": {
+                  "flight": "$0.14M",
+                  "reserve": "$0.12M",
+                  "listedBuildCost": 0,
+                  "listedBuildDays": 0
+                },
+                "staged": true
+              }
+            },
+            "boundaryBeforeSkip": {
+              "hasAnimState": true,
+              "hasPendingFutureDecision": true,
+              "decisionHeld": false,
+              "pendingLiveHullId": "hull_1",
+              "flightResolving": true,
+              "overlayVisible": true,
+              "decisionVisible": false
+            },
+            "gate1CommitSurface": {
+              "id": "commit:first_flight:1",
+              "subjectId": "first_flight",
+              "label": "■ Commit build — $0.44M now · flight later $0.14M + $0.12M reserve",
+              "text": "■ Commit build — $0.44M now · flight later $0.14M + $0.12M reserve Commitment: $0.44M build now · $0.24M operating carry through rollout · $0.14M flight/test later · keep $0.12M launch-period reserve.Nominal rollout 1 May 1942 · flight decision 1 Jun 1942 · end-to-end runway $0.94M. Outcome remains probabilistic (73% modeled reliability). Current projection; future flight/carry costs are recalculated at rollout. or press Space 🔥 Bench static fire $0.35M 🔊 FLIGHT PLAN · 50 kg payload · 3.3 t liftoff · Δv 1,936 m/s · TWR 7.63 · 1 stage",
+              "expected": {
+                "build": "$0.44M",
+                "flight": "$0.14M",
+                "reserve": "$0.12M"
+              },
+              "stableAcrossRender": true,
+              "staged": true
+            },
+            "gate1ReadySurfaces": {
+              "ok": true,
+              "expected": {
+                "flight": "$0.14M",
+                "reserve": "$0.12M",
+                "handler": "launchFromHangar('ord1','hull_1','fly:ord1:hull_1')",
+                "actionId": "fly:ord1:hull_1",
+                "hullId": "hull_1",
+                "listedBuildCost": 0,
+                "listedBuildDays": 0
+              },
+              "checks": {
+                "bench": {
+                  "exactHandler": true,
+                  "semanticAction": true,
+                  "stagedQuote": true
+                },
+                "manifest": {
+                  "exactHandler": true,
+                  "semanticAction": true,
+                  "stagedQuote": true
+                },
+                "commandSummary": {
+                  "exactHandler": true,
+                  "semanticAction": true,
+                  "stagedQuote": true
+                },
+                "commandLegacy": {
+                  "exactHandler": true,
+                  "semanticAction": true,
+                  "stagedQuote": true
+                },
+                "planner": {
+                  "exactHandler": true,
+                  "semanticAction": true,
+                  "stagedQuote": true
+                }
+              }
+            },
+            "gate1KeyboardOwnership": {
+              "ok": true,
+              "nativeControlHeld": true,
+              "repeatHeld": true,
+              "modalHeld": true,
+              "tabTrapped": true,
+              "closed": true,
+              "beforeTab": "BUTTON",
+              "afterTab": "BUTTON",
+              "hullId": "hull_1",
+              "status": "hangar"
+            },
+            "metrics": {
+              "syntheticPlayerDomActivations": 16,
+              "syntheticDevDomActivations": 7,
+              "reloadNavigations": 1,
+              "researchCompletionControl": "Next Event",
+              "elapsedEndToEndWallMs": 2517
+            },
+            "openingTopLevelNavigation": {
+              "count": 6,
+              "nav": [
+                {
+                  "id": "tabCommand",
+                  "label": "Command Center"
+                },
+                {
+                  "id": "tabBench",
+                  "label": "Design Bench"
+                },
+                {
+                  "id": "tabRnd",
+                  "label": "R&D"
+                },
+                {
+                  "id": "tabMap",
+                  "label": "Solar System"
+                },
+                {
+                  "id": "tabStation",
+                  "label": "Station Bench"
+                },
+                {
+                  "id": "tabBase",
+                  "label": "Base Bench"
+                }
+              ],
+              "activeViews": [
+                "commandView"
+              ]
+            }
+          }
+        },
+        {
+          "issue": "G0-B08",
+          "status": "pass",
+          "result": {
+            "sameControlObject": true,
+            "syntheticDomActivations": 2,
+            "before": {
+              "orders": 0,
+              "money": 3.5,
+              "buildCost": 0.44,
+              "text": "■ Commit build — $0.44M now · flight later $0.14M + $0.12M reserve",
+              "html": "<button class=\"launch\" style=\"width:100%\" onclick=\"launch(false,null,'commit:first_flight:1')\" data-action-id=\"commit:first_flight:1\" data-action-role=\"primary\" data-subject-type=\"mission\" data-subject-id=\"first_flight\" aria-label=\"■ Commit build — $0.44M now · flight later $0.14M + $0.12M reserve\">■ Commit build — $0.44M now · flight later $0.14M + $0.12M reserve</button>"
+            },
+            "afterFirst": {
+              "orders": 1,
+              "money": 3.06,
+              "isConnected": false
+            },
+            "afterSecond": {
+              "orders": 1,
+              "money": 3.06,
+              "isConnected": false
+            },
+            "firstOrdersAdded": 1,
+            "firstDebit": 0.44,
+            "secondOrdersAdded": 0,
+            "secondDebit": 0,
+            "ordersAdded": 1,
+            "debit": 0.44,
+            "expectedDebit": 0.44,
+            "setupValid": true,
+            "targetShapeValid": true,
+            "idempotent": true,
+            "reproduced": false
+          }
+        }
+      ],
+      "driver": {
+        "source": "/snap/bin/geckodriver",
+        "command": [
+          "/snap/bin/geckodriver",
+          "--port",
+          "39227"
+        ],
+        "driverVersion": "geckodriver 0.37.0 ( 2026-07-20)",
+        "external": false,
+        "status": {
+          "ready": true,
+          "message": ""
+        }
+      },
+      "requestedCapabilities": {
+        "browserName": "firefox",
+        "moz:firefoxOptions": {
+          "args": [
+            "-headless"
+          ]
+        }
+      },
+      "capabilities": {
+        "acceptInsecureCerts": false,
+        "browserName": "firefox",
+        "browserVersion": "153.0",
+        "platformName": "linux",
+        "setWindowRect": true,
+        "unhandledPromptBehavior": "dismiss and notify",
+        "userAgent": "Mozilla/5.0 (X11; Linux x86_64; rv:153.0) Gecko/20100101 Firefox/153.0",
+        "moz:buildID": "20260720151037",
+        "moz:headless": true,
+        "moz:platformVersion": "6.6.87.2-microsoft-standard-WSL2",
+        "moz:processID": 1883,
+        "moz:profile": "/tmp/rust_mozprofileZHbK9U",
+        "moz:shutdownTimeout": 60000,
+        "pageLoadStrategy": "normal",
+        "timeouts": {
+          "implicit": 0,
+          "pageLoad": 300000,
+          "script": 30000
+        },
+        "strictFileInteractability": false,
+        "moz:accessibilityChecks": false,
+        "moz:webdriverClick": true,
+        "moz:windowless": false,
+        "proxy": {},
+        "moz:geckodriverVersion": "0.37.0"
+      },
+      "status": "completed",
+      "shutdown": {
+        "managed": true,
+        "stopped": true,
+        "forced": false
+      }
+    }
+  ],
+  "finishedAt": "2026-08-09T10:54:12.432Z",
+  "summary": {
+    "passed": 2,
+    "unexpected": 0,
+    "unavailable": 0
+  },
+  "evidenceOutputPath": "/mnt/c/Windows/System32/Orbital-Ventures-Gate0/docs/evidence/gate0-browser-results.json"
 }
