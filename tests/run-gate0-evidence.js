@@ -15,27 +15,7 @@ if(process.argv.includes('--help')){
   process.exit(0);
 }
 const outputPath=path.resolve(root,outputArg||'docs/evidence/gate0-headless-results.json');
-const knownRed=new Set(['test-flight3d-trajectory.js']);
 const standalone=new Set(['test-build-parity.js','test-map-sm1-sm5-source.js']);
-const expectedTrajectoryOutput=`FAIL: nose tracks the velocity vector through the whole gravity turn (<2.5° worst error)
-FAIL: altitude climb rate flattens toward insertion (S-curve, not steepest-at-the-end)
-FAIL: orbital insertion is near-horizontal (flight path >77° from vertical)
-FAIL: at insertion the motion is mostly downrange, not up (horizontal flight into orbit)
-FAIL: apogee lands ~42% into the coast (0.1500 vs 0.4200 ±0.03)
-FAIL: coast apogee matches the profile apogee (71.4842 vs NaN ±1)
-FAIL: the vehicle is horizontal at apogee (arcing over) (1.1076 vs 1.5708 ±0.1)
-FAIL: past apogee the nose drops below the horizon (coming down)
-FAIL: the arc reaches the water at the end of the coast
-FAIL: splash is flagged only at the very end
-FAIL: a high-energy lob pitches farther over than a sounding rocket
-FAIL: a high-energy lob flies farther downrange relative to its altitude
-FAIL: the engine is off during the ballistic coast (old code burned it the whole way)
-FAIL: a brief shutdown fade is allowed right at burnout
-FAIL: smoke is a dense-atmosphere effect (gone above ~13 km)
-FAIL: vacuum shading is altitude-based (none low, full high)
-FAIL: a metre-scale hop never shows vacuum effects
-FAIL: a metre-scale hop still clears its pad visibly
-13/31 checks passed`;
 
 let runSequence=0;
 function run(command,args,options={}){
@@ -135,13 +115,9 @@ async function main(){
           fs.readFileSync(path.join(root,'tests',name))]));
         result=await run(process.execPath,[bundle]);
       }
-      const expectedRed=knownRed.has(name);
       const combined=(result.stdout+result.stderr).trim();
       let classification;
-      if(expectedRed){
-        classification=result.exitCode===1&&!result.signal&&!result.spawnError&&combined===expectedTrajectoryOutput
-          ?'known-red':(result.exitCode===0?'unexpected-pass':'unexpected-failure');
-    }else if(name==='test-progress-unify.js'){
+      if(name==='test-progress-unify.js'){
       classification=result.exitCode===0&&!result.signal&&!result.spawnError&&
         combined==='SKIP: F4 forward test (unfinished feature — set RUN_F4=1 to run)\n0/0 checks passed'
           ?'known-skip':(result.exitCode===0?'unexpected-pass':'unexpected-failure');

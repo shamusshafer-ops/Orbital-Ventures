@@ -2249,6 +2249,7 @@ function cape3dRoads(materials){
   return g;
 }
 const cape3dTrajectoryCache=new Map(), cape3dTrajectoryObjectCache=typeof WeakMap!=='undefined'?new WeakMap():null;
+const cape3dParametricCache=new Map();
 function cape3dTrajectoryPlan(physics, options){
   if(!physics||!physics.stages||!physics.stages.length) return null;
   const opts=options||{}, variant=(opts.isOrbital?'o':'s')+':' +(Number(opts.reqDv)||0), objectHit=cape3dTrajectoryObjectCache&&cape3dTrajectoryObjectCache.get(physics);
@@ -2381,6 +2382,46 @@ function cape3dTickSepPuffs(root){
   for(const p of pool){ if(!p.active) continue; const age=(now-p.t0)/SEP_PUFF_LIFE; if(age>=1){ p.active=false; p.mesh.visible=false; p.mesh.material.opacity=0; continue; }
     p.mesh.scale.setScalar(2+age*46); p.mesh.material.opacity=.9*(1-age); }
 }
+// Physics-less presentation trajectory (replay/old specs that predate the per-vehicle physics
+// record). One INTEGRATED gravity turn instead of three independent parametric curves: a pitch
+// program γ(p) (angle from vertical) and a speed program v(p) are integrated as d·alt=v·cosγ and
+// d·downrange=v·sinγ, so the nose direction (γ) is the velocity direction by construction — a
+// true zero-angle-of-attack gravity turn. Altitude is scaled to the mission target (orbital MECO
+// = 185 km; suborbital burnout sits below apogee so the ballistic coast rises into the target
+// band). Memoized per (reqDv, orbital): pure math, so identical inputs yield identical tables.
+function cape3dParametricPlan(reqDv, orbital){
+  const dv=Math.max(0,Number(reqDv)||0), key=(orbital?'o:':'s:')+dv;
+  if(cape3dParametricCache.has(key)) return cape3dParametricCache.get(key);
+  const targetAltitudeKm=orbital?185:(dv<=1200?Math.max(.15,dv*.00016):dv<=1900?15+(dv-1300)*.108:dv<=2900?80+(dv-1900)*.02:dv<=4200?100+(dv-2900)*.225:dv<=6000?393+(dv-4200)*.39:1100);
+  // Max flight-path angle from vertical at burnout, scaled by mission energy. A metre-scale hop
+  // (dv<=1200) never turns — it is a straight-up pad clearance, so it shows zero pitch/downrange.
+  const maxTurnDeg=orbital?(dv>=9000?84:80):(dv<=1200?0:dv>=6000?78:dv>=2900?68:dv>=1900?52:38), maxTurn=maxTurnDeg*Math.PI/180;
+  const pv=.05, N=240, dp=1/N, smooth=u=>{ const c=Math.max(0,Math.min(1,u)); return c*c*(3-2*c); };
+  const gammaAt=p=>p<=pv?0:maxTurn*smooth((p-pv)/(1-pv)), speedShape=p=>Math.pow(Math.max(0,p),1.7);
+  let altRaw=0, drRaw=0; const raw=[{p:0,altRaw:0,drRaw:0,gamma:0,v:0}];
+  for(let i=1;i<=N;i++){ const p=i*dp, g=gammaAt(p), v=speedShape(p); altRaw+=v*Math.cos(g)*dp; drRaw+=v*Math.sin(g)*dp; raw.push({p,altRaw,drRaw,gamma:g,v}); }
+  const altRawEnd=Math.max(1e-9,altRaw), qa=.42, coastK=1/((1-qa)*(1-qa));
+  const apogeeKm=orbital?targetAltitudeKm:targetAltitudeKm*1.06;
+  const burnoutAltKm=orbital?targetAltitudeKm:apogeeKm*(1-coastK*qa*qa), scale=burnoutAltKm/altRawEnd;
+  const ascent=raw.map(pt=>({p:pt.p,altitudeKm:pt.altRaw*scale,downrangeKm:pt.drRaw*scale,gamma:pt.gamma,v:pt.v}));
+  const burnoutDrKm=drRaw*scale, coastAltRate0=apogeeKm*coastK*2*qa, coastDrRate=Math.tan(maxTurn)*coastAltRate0;
+  const maxSpeedMps=orbital?7800:Math.max(900,Math.min(7800,dv*.9));
+  const plan={reqDv:dv,orbital,targetAltitudeKm,apogeeKm,maxSpeedMps,ascent,burnoutAltKm,burnoutDrKm,qa,coastK,coastDrRate};
+  cape3dParametricCache.set(key,plan); if(cape3dParametricCache.size>16) cape3dParametricCache.delete(cape3dParametricCache.keys().next().value);
+  return plan;
+}
+function cape3dParametricSample(plan, phase, progress){
+  const p=Math.max(0,Math.min(1,progress||0));
+  if(phase==='suborbital'){
+    const q=p, apogee=plan.apogeeKm, dAltDq=-apogee*plan.coastK*2*(q-plan.qa);
+    let altitudeKm=Math.max(0,apogee*(1-plan.coastK*(q-plan.qa)*(q-plan.qa))); if(altitudeKm<1e-6) altitudeKm=0; // snap sub-mm splashdown to exact sea level
+    const downrangeKm=plan.burnoutDrKm+plan.coastDrRate*q, motion=Math.atan2(plan.coastDrRate,dAltDq), altFrac=apogee>0?altitudeKm/apogee:0;
+    return {altitudeKm,downrangeKm,pitch:-motion,speedMps:plan.maxSpeedMps*Math.max(.12,.85-.55*q),apogeeKm:apogee,splash:altFrac<.08&&q>.5,splashProgress:Math.max(0,Math.min(1,(q-.9)/.09)),coast:true};
+  }
+  const pts=plan.ascent, idx=Math.min(pts.length-1,Math.max(0,p*(pts.length-1))), lo=Math.floor(idx), hi=Math.min(pts.length-1,lo+1), f=idx-lo, a=pts[lo], b=pts[hi], lerp=(u,v)=>u+(v-u)*f;
+  const gamma=lerp(a.gamma,b.gamma), v=lerp(a.v,b.v);
+  return {altitudeKm:lerp(a.altitudeKm,b.altitudeKm),downrangeKm:lerp(a.downrangeKm,b.downrangeKm),pitch:-gamma,speedMps:plan.maxSpeedMps*v,apogeeKm:plan.apogeeKm,splash:false,splashProgress:0,coast:false};
+}
 function cape3dLaunchProfile(snapshot){
   const phase=snapshot&&snapshot.phase||'pad', p=Math.max(0,Math.min(1,(snapshot&&snapshot.phaseProgress)||0)), ignition=Math.max(0,Math.min(1,(snapshot&&snapshot.effects&&snapshot.effects.ignition)||0));
   const ascent=phase==='ascent', suborbital=phase==='suborbital', orbital=!!(snapshot&&(snapshot.isOrbital||snapshot.isCislunar)), reqDv=(snapshot&&snapshot.reqDv)||0;
@@ -2389,17 +2430,23 @@ function cape3dLaunchProfile(snapshot){
     const failed=!!(snapshot&&snapshot.effects&&snapshot.effects.ascentFailure), vacuum=Math.max(0,Math.min(1,sample.altitudeKm/85)), lowAtmos=Math.max(0,1-sample.altitudeKm/18), pitch=sample.speedMps>1?-Math.atan2(Math.max(0,sample.vx),sample.vy):0;
     // Cape geometry is authored in metres. Keeping the flight in that same unit makes a
     // 100 m tower clear at ~0.1 km on the MSL instrument—not several kilometres later.
-    return {phase,progress:p,t:sample.t,targetAltitudeKm:trajectory.maxAltitudeKm,altitudeKm:sample.altitudeKm,altitude:sample.altitudeKm*CAPE3D_METERS_PER_KM,downrangeKm:sample.xKm,offsetX:sample.xKm*CAPE3D_METERS_PER_KM,speedMps:sample.speedMps,maxSpeedMps:trajectory.maxSpeedMps,pitch,plume:failed?0:(phase==='pad'?ignition:(ascent?1:0)),light:failed?0:(phase==='pad'?ignition*2.2:(ascent?2.8:0)),smoke:failed?0:(phase==='pad'?ignition:(ascent?lowAtmos*.9:0)),vacuum,failed,splashProgress:suborbital?Math.max(0,Math.min(1,(p-.992)/.008)):0,failureProgress:Math.max(0,Math.min(1,(snapshot&&snapshot.effects&&snapshot.effects.failureProgress)||0)),trajectory};
+    return {phase,progress:p,t:sample.t,targetAltitudeKm:trajectory.maxAltitudeKm,apogeeKm:trajectory.maxAltitudeKm,altitudeKm:sample.altitudeKm,altitude:sample.altitudeKm*CAPE3D_METERS_PER_KM,downrangeKm:sample.xKm,offsetX:sample.xKm*CAPE3D_METERS_PER_KM,speedMps:sample.speedMps,maxSpeedMps:trajectory.maxSpeedMps,pitch,plume:failed?0:(phase==='pad'?ignition:(ascent?1:0)),light:failed?0:(phase==='pad'?ignition*2.2:(ascent?2.8:0)),smoke:failed?0:(phase==='pad'?ignition:(ascent?lowAtmos*.9:0)),vacuum,failed,splash:suborbital&&sample.altitudeKm<.5,splashProgress:suborbital?Math.max(0,Math.min(1,(p-.992)/.008)):0,failureProgress:Math.max(0,Math.min(1,(snapshot&&snapshot.effects&&snapshot.effects.failureProgress)||0)),trajectory};
   }
-  // Compatibility path for old/replay specs that predate the per-vehicle physics record.
-  const targetAltitudeKm=orbital?185:(reqDv<=1200?.02:reqDv<=1900?15+(reqDv-1300)*.108:reqDv<=2900?80+(reqDv-1900)*.02:reqDv<=4200?100+(reqDv-2900)*.225:reqDv<=6000?393+(reqDv-4200)*.39:1100);
-  const ballisticHeight=suborbital?Math.max(0,1+.22*Math.sin(p*Math.PI)-Math.pow(p,1.45)):0;
-  const altitudeKm=ascent?targetAltitudeKm*Math.pow(p,1.62):(suborbital?targetAltitudeKm*ballisticHeight:0);
-  const altitude=altitudeKm*CAPE3D_METERS_PER_KM;
-  const failed=!!(snapshot&&snapshot.effects&&snapshot.effects.ascentFailure), gravityTurn=Math.max(0,Math.min(1,(p-.42)/.58));
-  const lowAtmos=Math.max(0,1-p/.32), vacuum=Math.max(0,Math.min(1,(p-.18)/.55));
-  const downrangeKm=targetAltitudeKm<1?0:(ascent?targetAltitudeKm*.48*Math.pow(gravityTurn,1.7):(suborbital?targetAltitudeKm*(.48+2.2*p+2.25*p*p):0));
-  return {phase,progress:p,targetAltitudeKm,altitudeKm,altitude,downrangeKm,offsetX:downrangeKm*CAPE3D_METERS_PER_KM,pitch:ascent?-Math.pow(gravityTurn,1.45)*.78:(suborbital?-(.78+p*.78):0),plume:failed?0:(ascent?1:(suborbital&&p<.16?.58:ignition)),light:failed?0:(ascent?2.8:ignition*2.2),smoke:failed?0:(ascent?lowAtmos*.9:(suborbital&&p<.16?.16:ignition)),vacuum,failed,splashProgress:suborbital?Math.max(0,Math.min(1,(p-.88)/.10)):0,failureProgress:Math.max(0,Math.min(1,(snapshot&&snapshot.effects&&snapshot.effects.failureProgress)||0))};
+  // Compatibility path for old/replay specs that predate the per-vehicle physics record: an
+  // integrated gravity turn (cape3dParametricPlan) rather than three independent parametric curves.
+  const failed=!!(snapshot&&snapshot.effects&&snapshot.effects.ascentFailure), plan=cape3dParametricPlan(reqDv,orbital);
+  const failureProgress=Math.max(0,Math.min(1,(snapshot&&snapshot.effects&&snapshot.effects.failureProgress)||0));
+  if(ascent||suborbital){
+    const s=cape3dParametricSample(plan,phase,p), altitudeKm=Math.max(0,s.altitudeKm);
+    // Vacuum shading and smoke are altitude-driven truth: smoke is a dense-atmosphere effect that
+    // dies above ~13 km; vacuum saturates near the Kármán line. The engine is off through the
+    // ballistic coast — only a brief shutdown fade right at burnout.
+    const vacuum=Math.max(0,Math.min(1,(altitudeKm-8)/72)), smoke=altitudeKm<13?Math.max(0,1-altitudeKm/13)*.9:0;
+    const coastPlume=s.coast?(p<.06?Math.max(0,1-p/.06)*.6:0):1;
+    return {phase,progress:p,targetAltitudeKm:plan.targetAltitudeKm,apogeeKm:plan.apogeeKm,altitudeKm,altitude:altitudeKm*CAPE3D_METERS_PER_KM,downrangeKm:s.downrangeKm,offsetX:s.downrangeKm*CAPE3D_METERS_PER_KM,speedMps:s.speedMps,maxSpeedMps:plan.maxSpeedMps,pitch:s.pitch,plume:failed?0:coastPlume,light:failed?0:(s.coast?0:2.8),smoke:failed?0:(s.coast?0:smoke),vacuum,splash:!!s.splash,failed,splashProgress:s.splashProgress,failureProgress};
+  }
+  // Pad and other phases: no motion, ground ignition plume only.
+  return {phase,progress:p,targetAltitudeKm:plan.targetAltitudeKm,apogeeKm:plan.apogeeKm,altitudeKm:0,altitude:0,downrangeKm:0,offsetX:0,speedMps:0,maxSpeedMps:plan.maxSpeedMps,pitch:0,plume:failed?0:ignition,light:failed?0:ignition*2.2,smoke:failed?0:ignition,vacuum:0,splash:false,failed,splashProgress:0,failureProgress};
 }
 function cape3dAscentBlend(progress){
   const p=Math.max(0,Math.min(1,progress||0)), space=Math.max(0,Math.min(1,(p-.20)/.42));
