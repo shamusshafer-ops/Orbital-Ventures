@@ -32,10 +32,15 @@ who picks Apollo Beige receives no beige.
 **Half the UI cannot be themed at all.** `render.js` carries 391 distinct hex
 literals across 497 occurrences and 921 inline `style="` attributes, against 437
 `var(--token)` references; `flight.js` adds 135 distinct literals, `shell.html`
-104. Against a 47-token system this is the mechanism behind the first defect:
-re-pointing the tokens re-tints only the fraction of the interface that reads
-them, so every theme and era necessarily looks similar no matter what values the
-palette blocks hold.
+104. Against a 47-token system this initially read as a half-applied migration —
+re-point the tokens and the rest would follow.
+
+*Superseded by implementation (2026-08-11): it isn't.* Only 3 of the 391
+literals in `render.js` exactly matched a token value, and 82% of distinct
+literals are used exactly once — there is no head to the distribution for a
+migration to work through. The Token coverage contract below reflects the
+corrected scope: named chrome surfaces resolve through tokens and respond to
+theme/era changes; the literal count itself is not the target.
 
 **Typography is decided by the player's operating system.** `--sans` is
 `"Arial Narrow","Roboto Condensed","Segoe UI",system-ui,sans-serif` with no
@@ -97,18 +102,50 @@ declared once rather than repeated per selector.
 
 ## Token coverage contract
 
-- Chrome colour decisions resolve through the token system. Canvas drawing code
-  and scene art keep their literals; DOM-facing string-built markup in
-  `render.js` does not.
-- Distinct hex-literal counts per file become a ratcheted ceiling: the count
-  recorded at gate close is the maximum, and a rise fails the lane. The ceiling
-  ratchets down only when a migration commit lowers it.
+*Revised from the original draft (2026-08-11).* The ratchet below was written
+before implementation and assumed a literal count was the right thing to
+constrain. Measurement disproved that: only 3 of 391 distinct literals in
+`render.js` exactly matched a token value, and 82% of distinct literals are
+used exactly once, so a per-file hex-count ceiling would have passed while the
+UI stayed exactly as visually incoherent as before. It is replaced with a
+contract on the thing a player can actually perceive.
+
+- Named chrome surfaces — panel backgrounds, borders, body text, section
+  captions, status text — resolve through the token system wherever the
+  surrounding markup is a `style`/`cssText` CSS context. They respond when the
+  theme or era changes.
+- Canvas drawing code, scene art, and SVG presentation attributes (`fill=`,
+  `stroke=`, `stop-color=` as bare attributes rather than inside a `style=`
+  value) are out of scope for this rule: `var()` does not reliably resolve in a
+  presentation attribute, and canvas literals are excluded by the Locked
+  product rules above. A colour sitting in either of these contexts is not a
+  token-coverage gap.
+- One-off accent colours used exactly once, in dense data readouts where the
+  value itself carries meaning distinct from the surrounding chrome, are not
+  required to migrate. Forcing every such value onto a shared token would
+  either multiply the token set past the point of being a coherent design
+  language or collapse genuinely different colours onto one token and lose
+  information.
+- New tokens are added when a literal represents a real recurring role rather
+  than a one-off — for example `--label`, added to cover a section-caption
+  colour that was hardcoded identically at four call sites and could not
+  respond to theme or era.
+- Coverage is asserted per named surface, not per literal count: a fixed list
+  of chrome roles (surface backgrounds, borders, body/value/footnote text,
+  section captions) must resolve through tokens at every site that renders
+  them, and the assertion fails if any of those specific sites regresses to a
+  literal. The list grows only when a new recurring chrome role is identified
+  and given a token.
 - Dead and duplicate tokens are removed. `--cc-hero-navy-raised` is defined and
   referenced zero times repo-wide. The `--hud-*` redeclaration under the theme
   and era selectors repeats `--hud-line`, `--hud-line-soft` and `--hud-glow` at
   values identical to `:root`. The `--cc-hero-*` family duplicates `--hud-*`
   semantics on a second cyan (`#67d5ff` against `rgb(88,204,255)`); the two
   families collapse to one, on one cyan.
+- `fill="var(--ignite)"` / `stroke="var(--ignite)"` as bare SVG presentation
+  attributes (15 sites, pre-existing) are recorded as F8 and held at a ceiling
+  rather than fixed under this contract, pending real-browser confirmation of
+  whether the value resolves at all. See Explicit non-goals.
 
 ## Typography contract
 
@@ -174,11 +211,16 @@ Gate 6 acceptance requires:
 
 - Gate 1: 5/5 suites, 102/102 checks; Gate 2: 3/3, 49/49; Gate 3: 3/3, 96/96;
   Gate 5: `test-flight3d-trajectory.js` 31/31;
-- new suites green — `test-theme-palettes.js` (no two named palettes identical;
-  era geometry preserved; manual override still wins), `test-contrast-tokens.js`
-  (every measured pair ≥ 4.5:1; tier ordering holds), `test-token-drift.js`
-  (per-file distinct-literal ceilings), `test-reduced-motion.js` (preference
-  honoured in JS; no information or outcome suppressed);
+- new suites green — `test-theme-palettes.js` (no two named palettes
+  byte-identical; every measured foreground/accent pair ≥ 4.5:1; emphasis tiers
+  ordered dim<muted<ink; domain hues ≥20° apart; era geometry preserved; manual
+  override still wins — 274 checks, shipped in the F1/F5 commit),
+  `test-themeable-surfaces.js` (named chrome surfaces resolve through tokens at
+  every asserted site; no new `var()` in an SVG presentation attribute — 20
+  checks, shipped in the F2 commit, supersedes the originally planned
+  `test-contrast-tokens.js` and `test-token-drift.js`, folded into the above),
+  `test-reduced-motion.js` (preference honoured in JS; no information or
+  outcome suppressed — not yet built);
 - full headless sweep: no known-red and no unexpected failures;
 - Firefox and Chromium: theme and era switching re-tints the whole chrome, the
   bundled face renders, and reduced-motion is honoured live in both engines;
@@ -221,3 +263,13 @@ Gate 6 acceptance requires:
   the `commandLegacy` surface that the Gate 1 ready-hull check then asserts
   against — so that contract validates a route no player can reach. It is a real
   defect and it belongs to Gate 1 remediation, not to a presentation gate.
+- No fix to F8: 15 pre-existing sites (found during the F2 commit, present
+  before any Gate 6 work) use `fill="var(--ignite)"` or `stroke="var(--ignite)"`
+  as bare SVG presentation attributes rather than inside a `style=` value.
+  Presentation attributes are not guaranteed to resolve a full CSS `var()`
+  reference the way a `style` property does. Fixing this without a browser to
+  confirm the actual rendered behaviour risks the same failure mode this
+  project has hit before — a plausible-sounding fix applied to unverified
+  source reasoning. `test-themeable-surfaces.js` holds the count at a ceiling
+  of 15 so it cannot silently grow; the fix itself waits on real-browser
+  confirmation.
