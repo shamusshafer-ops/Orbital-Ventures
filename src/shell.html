@@ -12,13 +12,13 @@
     --scene-gap:14px;
     --ui-scale:1; /* whole-UI zoom (E0.4 slice D); set live from JS (uiScale/100), persisted in localStorage 'ov_uiscale', NOT the save */
     --bg:#050b12; --panel:#0b1621; --panel2:#102231; --line:#24465a;
-    --ink:#d8e2e7; --muted:#7d909b; --dim:#56666f;
-    --ignite:#f5a623; --readout:#4fd1d9; --ok:#58c47a; --bad:#e0564f; --warn:#e8b341;
+    --ink:#d8e2e7; --muted:#7d909b; --dim:#7a8d98;
+    --ignite:#f5a623; --readout:#4fd1d9; --ok:#58c47a; --bad:#e2605a; --warn:#e8b341;
     /* #30 domain color-coding language — one hue per domain, so every metric/panel reads
        its domain at a glance. Reused where the existing palette already fits (military=bad,
        exploration=ignite, crew=readout, warn=warn) + new hues for economy/engineering/research. */
     --dom-economy:#5ec27a; --dom-engineering:#5b9bd5; --dom-research:#a98bd6;
-    --dom-military:#e0564f; --dom-exploration:#f5a623; --dom-crew:#4fd1d9; --dom-warn:#e8b341;
+    --dom-military:#e2605a; --dom-exploration:#f38e42; --dom-crew:#4fd1d9; --dom-warn:#dbc21b;
     --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
     --sans:"Arial Narrow","Roboto Condensed","Segoe UI",system-ui,sans-serif;
     --hud-surface:rgba(7,20,32,.90); --hud-raised:rgba(12,34,50,.92);
@@ -33,15 +33,30 @@
   }
   /* ---- Optional nostalgia theme variants (chrome only; the cinematic canvas scenes keep their own art).
      Each just re-points the core CSS vars, so the whole DOM UI re-tints with no other code. ---- */
-  body.theme-green,body.theme-beige{
-    --bg:#071523; --panel:#0b2033; --panel2:#102c43; --line:#2d5c7a;
-    --ink:#d9efff; --muted:#7fa8bf; --dim:#55758b;
-    --ignite:#58c7ff; --readout:#8de5ff; --ok:#65d39a; --bad:#ef6a73; --warn:#f3c56b;
-    --dom-economy:#65d39a; --dom-engineering:#6fbfff; --dom-research:#9bb9ff;
-    --dom-military:#ef6a73; --dom-exploration:#58c7ff; --dom-crew:#8de5ff; --dom-warn:#f3c56b; }
+  /* Control Room Green — phosphor-CRT console. Shared with era-80s below, which is a
+     DOCUMENTED reuse (that era's own comment already names this palette), declared once
+     rather than repeated as a duplicate literal block. */
+  body.theme-green,body.era-80s:not(.theme-green):not(.theme-beige){
+    --bg:#04120a; --panel:#082010; --panel2:#0d2c16; --line:#314737;
+    --ink:#e2ece4; --muted:#92b69b; --dim:#6d9979;
+    --ignite:#65b10e; --readout:#23c791; --ok:#2fbd63; --bad:#e66e66; --warn:#d2ac17;
+    --dom-economy:#37b967; --dom-engineering:#6fa1d4; --dom-research:#ab82da;
+    --dom-military:#d57972; --dom-exploration:#cd8c59; --dom-crew:#3cbcc5; --dom-warn:#bead39; }
+  /* Apollo Beige — warm sand console. Kept as a DARK warm palette rather than a true light
+     theme: ~662 hardcoded hex literals still bypass the token system (Gate 6 F2), so a
+     light-surface theme would render half-broken until that migration lands. */
+  body.theme-beige{
+    --bg:#1a1610; --panel:#242018; --panel2:#302a20; --line:#4c453a;
+    --ink:#e1ddd3; --muted:#b1a794; --dim:#9e9381;
+    --ignite:#e28036; --readout:#6baec7; --ok:#49b370; --bad:#e17b73; --warn:#caa924;
+    --dom-economy:#54bc7a; --dom-engineering:#80a6cd; --dom-research:#ac8cd2;
+    --dom-military:#cd857f; --dom-exploration:#c7966f; --dom-crew:#69bec4; --dom-warn:#bfb25c; }
   /* ---- Era-evolving visual identity (user-directed, 2026-07-11): the console ages up
      automatically with state.year (applyEraVisual() in render.js), independent of the manual
-     theme picker above. All 4 visual eras (apollo/80s/90s2000s/spacex) have real distinct CSS.
+     theme picker above. All 4 visual eras (apollo/80s/90s2000s/spacex) have real distinct CSS,
+     verified by tests/test-theme-palettes.js: no two named palettes are byte-identical, and any
+     two differ on at least one of --bg/--panel/--ink/--ignite. (Gate 6 F1: before that gate all
+     six blocks held byte-identical values while these comments claimed otherwise.)
      Palette only takes over on the DEFAULT theme (:not(.theme-green):not(.theme-beige)) — an
      explicit manual theme pick still wins; shape/font (corner radius, border weight, header
      letter-spacing/case) apply per era regardless of theme, since those aren't really a "color
@@ -51,11 +66,11 @@
      Y2K-web palette) → SpaceX-modern (thin/near-borderless, fully pill-shaped, condensed headers —
      the destination the whole progression ages TOWARD, meaningfully past today's default). ---- */
   body.era-apollo:not(.theme-green):not(.theme-beige){
-    --bg:#071523; --panel:#0b2033; --panel2:#102c43; --line:#2d5c7a;
-    --ink:#d9efff; --muted:#7fa8bf; --dim:#55758b;
-    --ignite:#58c7ff; --readout:#8de5ff; --ok:#65d39a; --bad:#ef6a73; --warn:#f3c56b;
-    --dom-economy:#65d39a; --dom-engineering:#6fbfff; --dom-research:#9bb9ff;
-    --dom-military:#ef6a73; --dom-exploration:#58c7ff; --dom-crew:#8de5ff; --dom-warn:#f3c56b;
+    --bg:#120d07; --panel:#1d150c; --panel2:#2a1f11; --line:#494032;
+    --ink:#e4ddd0; --muted:#b3a489; --dim:#9a886e;
+    --ignite:#e36f09; --readout:#36b99e; --ok:#3dac66; --bad:#e7645a; --warn:#caa510;
+    --dom-economy:#3cb267; --dom-engineering:#6b9cce; --dom-research:#a67dd4;
+    --dom-military:#cf756e; --dom-exploration:#c78757; --dom-crew:#3fb6be; --dom-warn:#b7a63d;
     background-image:linear-gradient(rgba(90,72,46,.18) 1px,transparent 1px),linear-gradient(90deg,rgba(90,72,46,.18) 1px,transparent 1px); }
   body.era-apollo .card,body.era-apollo header{ border-radius:2px; border-width:2px; }
   body.era-apollo .btn{ border-radius:1px; border-width:2px; font-weight:600; letter-spacing:.02em; }
@@ -65,25 +80,23 @@
      exact palette (that theme's own comment already calls it that) — same manual-override gate.
      Shape: moderate rounding (tube-shaped CRT bezels, not Apollo's hard corners), medium borders,
      a little letter-spacing (monospace-terminal read) short of Apollo's full uppercase. */
+  /* Palette lives in the shared Control Room Green rule above (documented reuse); only the
+     CRT grid tint is era-80s-specific. */
   body.era-80s:not(.theme-green):not(.theme-beige){
-    --bg:#071523; --panel:#0b2033; --panel2:#102c43; --line:#2d5c7a;
-    --ink:#d9efff; --muted:#7fa8bf; --dim:#55758b;
-    --ignite:#58c7ff; --readout:#8de5ff; --ok:#65d39a; --bad:#ef6a73; --warn:#f3c56b;
-    --dom-economy:#65d39a; --dom-engineering:#6fbfff; --dom-research:#9bb9ff;
-    --dom-military:#ef6a73; --dom-exploration:#58c7ff; --dom-crew:#8de5ff; --dom-warn:#f3c56b;
     background-image:linear-gradient(rgba(40,90,55,.16) 1px,transparent 1px),linear-gradient(90deg,rgba(40,90,55,.16) 1px,transparent 1px); }
   body.era-80s .card,body.era-80s header{ border-radius:4px; border-width:1.5px; }
   body.era-80s .btn{ border-radius:3px; border-width:1.5px; letter-spacing:.02em; }
   body.era-80s h1,body.era-80s h2,body.era-80s h3{ letter-spacing:.03em; }
   /* 90s/2000s — Commercial (2000-2030): Y2K/early-broadband web look — glossy gradient buttons,
      bubbly rounded corners, a cooler brighter blue-gray palette than either retro era. No existing
-     theme to reuse (neither Green nor Beige fits this), so this is a fresh palette. */
+     theme to reuse (neither Green nor Beige fits this), so this is a fresh palette — now actually
+     fresh (#0a1220 surfaces, cyan-blue ignite), not a copy of the default as it was before Gate 6. */
   body.era-90s2000s:not(.theme-green):not(.theme-beige){
-    --bg:#071523; --panel:#0b2033; --panel2:#102c43; --line:#2d5c7a;
-    --ink:#d9efff; --muted:#7fa8bf; --dim:#55758b;
-    --ignite:#58c7ff; --readout:#8de5ff; --ok:#65d39a; --bad:#ef6a73; --warn:#f3c56b;
-    --dom-economy:#65d39a; --dom-engineering:#6fbfff; --dom-research:#9bb9ff;
-    --dom-military:#ef6a73; --dom-exploration:#58c7ff; --dom-crew:#8de5ff; --dom-warn:#f3c56b; }
+    --bg:#0a1220; --panel:#121d30; --panel2:#1a2942; --line:#364551;
+    --ink:#e3e9f0; --muted:#9cb1c3; --dim:#7d96a8;
+    --ignite:#2eb4ee; --readout:#18c9dc; --ok:#37bc68; --bad:#e5756c; --warn:#d6b018;
+    --dom-economy:#2fbd63; --dom-engineering:#6ea5db; --dom-research:#af83e0;
+    --dom-military:#dc7a72; --dom-exploration:#d58d56; --dom-crew:#32c0ca; --dom-warn:#c3af31; }
   body.era-90s2000s .card,body.era-90s2000s header{ border-radius:10px; }
   body.era-90s2000s .btn{ border-radius:16px; background-image:linear-gradient(rgba(255,255,255,.08),transparent); }
   /* SpaceX-modern — Expansion onward (2030+): clean, minimal, high-contrast, borderless-leaning —
@@ -91,11 +104,11 @@
      default (thinner borders, fully pill-shaped buttons, tighter/condensed headers), not just a
      restatement of the current look. */
   body.era-spacex:not(.theme-green):not(.theme-beige){
-    --bg:#071523; --panel:#0b2033; --panel2:#102c43; --line:#2d5c7a;
-    --ink:#d9efff; --muted:#7fa8bf; --dim:#55758b;
-    --ignite:#58c7ff; --readout:#8de5ff; --ok:#65d39a; --bad:#ef6a73; --warn:#f3c56b;
-    --dom-economy:#65d39a; --dom-engineering:#6fbfff; --dom-research:#9bb9ff;
-    --dom-military:#ef6a73; --dom-exploration:#58c7ff; --dom-crew:#8de5ff; --dom-warn:#f3c56b; }
+    --bg:#08090b; --panel:#131518; --panel2:#1e2126; --line:#3c4043;
+    --ink:#f6f7f7; --muted:#b2b7bd; --dim:#888e95;
+    --ignite:#62b3ec; --readout:#6dc0d5; --ok:#3eb96b; --bad:#e56960; --warn:#d0ac1a;
+    --dom-economy:#42b16b; --dom-engineering:#6f9cca; --dom-research:#a47fcf;
+    --dom-military:#ca7671; --dom-exploration:#c3895c; --dom-crew:#4ab4bc; --dom-warn:#b6a643; }
   body.era-spacex .card,body.era-spacex header{ border-radius:14px; border-width:0.5px; }
   body.era-spacex .btn{ border-radius:20px; border-width:0.5px; }
   body.era-spacex h1,body.era-spacex h2,body.era-spacex h3{ letter-spacing:-0.01em; }
