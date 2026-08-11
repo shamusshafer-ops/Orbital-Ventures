@@ -3360,7 +3360,7 @@ function railFlightPlanHTML(){
 // ---- Objectives checklist (slice 5) ----
 function railObjectivesHTML(){
   const amb=currentAmbition(), prog=ambitionProgress();
-  const bar=`<div style="height:8px;border-radius:4px;background:#0d1418;overflow:hidden;margin:7px 0 5px"><div style="height:100%;width:${prog.pct}%;background:var(--ok)"></div></div>`;
+  const bar=`<div style="height:8px;border-radius:4px;background:var(--bg);overflow:hidden;margin:7px 0 5px"><div style="height:100%;width:${prog.pct}%;background:var(--ok)"></div></div>`;
   const objHTML=objectivesList().map(g=>`
     <div class="cc-panel-h" style="margin:10px 0 3px">${g.title}</div>
     ${g.items.map(it=>`<div class="obj-item ${it.tab?'clk':''}" data-obj-id="${it.missionId||'__'+(it.label.replace(/\W/g,'_'))}"${it.tab?` onclick="${it.missionId?`selectMission('${it.missionId}')`:`setTab('${it.tab}')`}"`:''}>
@@ -6239,18 +6239,18 @@ function mapScaleReadoutHTML(bodyId, absD){
   const sunAU=liveSunDistanceAU(bodyId, absD);
   const earthAU=liveEarthDistanceAU(bodyId, absD);
   const lag=liveLightMinutes(bodyId, absD);
-  const row=(k,v)=>`<div style="display:flex;justify-content:space-between;gap:10px"><span style="color:#8fa9b9">${k}</span><span style="color:#dcecf7">${v}</span></div>`;
-  let s=`<div style="color:#7fb6dd;letter-spacing:.07em;font-size:10px">SCALE · ${esc(name)}</div>`;
+  const row=(k,v)=>`<div style="display:flex;justify-content:space-between;gap:10px"><span style="color:var(--muted)">${k}</span><span style="color:var(--ink)">${v}</span></div>`;
+  let s=`<div style="color:var(--label);letter-spacing:.07em;font-size:10px">SCALE · ${esc(name)}</div>`;
   if(bodyId==='earth'){
     s+=row('From Sun', fmtAU(sunAU));
-    s+=`<div style="color:#8fa9b9;margin-top:2px">You are here.</div>`;
+    s+=`<div style="color:var(--muted);margin-top:2px">You are here.</div>`;
   } else {
     if(earthAU!=null) s+=row('From Earth', fmtAU(earthAU));
     if(lag!=null)     s+=row('Signal delay', fmtLag(lag));
     if(sunAU!=null)   s+=row('From Sun', fmtAU(sunAU));
-    if(earthAU==null && sunAU==null) s+=`<div style="color:#8fa9b9">No ephemeris for this body.</div>`;
+    if(earthAU==null && sunAU==null) s+=`<div style="color:var(--muted)">No ephemeris for this body.</div>`;
   }
-  s+=`<div style="color:#63798a;margin-top:4px;font-size:10px">Orbit spacing on screen is compressed — the numbers above are real.</div>`;
+  s+=`<div style="color:var(--dim);margin-top:4px;font-size:10px">Orbit spacing on screen is compressed — the numbers above are real.</div>`;
   return s;
 }
 function updateMap3DScaleHud(){
@@ -6267,14 +6267,14 @@ function addMap3DTimeHud(host, hostId){
   catch(e){ host.style.position='relative'; }
   host.style.overflow='hidden';
   const hud=document.createElement('div'); hud.id='map3dHud_'+hostId;
-  hud.style.cssText='position:absolute;top:8px;left:8px;z-index:4;padding:7px 8px;background:rgba(3,9,16,.82);border:1px solid rgba(116,171,208,.48);border-radius:6px;color:#cfe5f4;font:11px ui-monospace,monospace;line-height:1.35;box-shadow:0 4px 16px rgba(0,0,0,.32)';
-  hud.innerHTML=`<div style="color:#7fb6dd;letter-spacing:.07em;font-size:10px">SOLAR DATE</div><div data-map-time style="font-size:12px;color:#fff4d4;margin:2px 0 5px"></div><div style="display:flex;gap:3px"><button onclick="mapTimeShift(-360)" title="Reverse one year">−1Y</button><button onclick="mapTimeShift(-30)" title="Reverse one month">−1M</button><button onclick="resetMapTime()" title="Return to the live game date">Now</button><button onclick="mapTimeShift(30)" title="Advance one month">+1M</button><button onclick="mapTimeShift(360)" title="Advance one year">+1Y</button></div><div data-map-scale style="margin-top:7px;padding-top:6px;border-top:1px solid rgba(116,171,208,.28)"></div><div data-map-window style="margin-top:7px;padding-top:6px;border-top:1px solid rgba(116,171,208,.28)"></div><div style="color:#8fa9b9;margin-top:5px">hover for info · drag to orbit · wheel to zoom</div>`;
-  for(const b of hud.querySelectorAll('button')) b.style.cssText='padding:2px 4px;border:1px solid #43677f;border-radius:3px;background:#102232;color:#d4e8f5;font:10px ui-monospace,monospace;cursor:pointer';
+  hud.style.cssText='position:absolute;top:8px;left:8px;z-index:4;padding:7px 8px;background:rgba(3,9,16,.82);border:1px solid rgba(116,171,208,.48);border-radius:6px;color:var(--ink);font:11px ui-monospace,monospace;line-height:1.35;box-shadow:0 4px 16px rgba(0,0,0,.32)';
+  hud.innerHTML=`<div style="color:var(--label);letter-spacing:.07em;font-size:10px">SOLAR DATE</div><div data-map-time style="font-size:12px;color:#fff4d4;margin:2px 0 5px"></div><div style="display:flex;gap:3px"><button onclick="mapTimeShift(-360)" title="Reverse one year">−1Y</button><button onclick="mapTimeShift(-30)" title="Reverse one month">−1M</button><button onclick="resetMapTime()" title="Return to the live game date">Now</button><button onclick="mapTimeShift(30)" title="Advance one month">+1M</button><button onclick="mapTimeShift(360)" title="Advance one year">+1Y</button></div><div data-map-scale style="margin-top:7px;padding-top:6px;border-top:1px solid rgba(116,171,208,.28)"></div><div data-map-window style="margin-top:7px;padding-top:6px;border-top:1px solid rgba(116,171,208,.28)"></div><div style="color:var(--muted);margin-top:5px">hover for info · drag to orbit · wheel to zoom</div>`;
+  for(const b of hud.querySelectorAll('button')) b.style.cssText='padding:2px 4px;border:1px solid var(--line);border-radius:3px;background:var(--panel2);color:var(--ink);font:10px ui-monospace,monospace;cursor:pointer';
   host.appendChild(hud); return {hud,readout:hud.querySelector('[data-map-time]'),scaleReadout:hud.querySelector('[data-map-scale]'),windowReadout:hud.querySelector('[data-map-window]')};
 }
 function addMap3DHoverCard(host){
   const tip=document.createElement('div');
-  tip.style.cssText='display:none;position:absolute;z-index:5;max-width:230px;padding:7px 9px;background:rgba(3,9,16,.92);border:1px solid rgba(140,195,228,.58);border-radius:6px;color:#dcecf7;font:11px/1.35 system-ui,sans-serif;pointer-events:none;box-shadow:0 5px 18px rgba(0,0,0,.42)';
+  tip.style.cssText='display:none;position:absolute;z-index:5;max-width:230px;padding:7px 9px;background:rgba(3,9,16,.92);border:1px solid rgba(140,195,228,.58);border-radius:6px;color:var(--ink);font:11px/1.35 system-ui,sans-serif;pointer-events:none;box-shadow:0 5px 18px rgba(0,0,0,.42)';
   host.appendChild(tip); return tip;
 }
 function hideMap3DHover(){ if(map3d&&map3d.hoverCard) map3d.hoverCard.style.display='none'; if(map3d) map3d.hoveredId=null; }
@@ -6901,19 +6901,19 @@ function mapWindowReadoutHTML(bodyId, viewDay){
   const b=BODIES.find(x=>x.id===bodyId);
   if(!b || bodyId==='earth') return '';
   if(!bodyHasWindows(bodyId)){
-    return `<div style="color:#7fb6dd;letter-spacing:.07em;font-size:10px">TRANSFER WINDOW</div>`+
-           `<div style="color:#8fa9b9">No window-gated missions to ${esc(b.name)} yet.</div>`;
+    return `<div style="color:var(--label);letter-spacing:.07em;font-size:10px">TRANSFER WINDOW</div>`+
+           `<div style="color:var(--muted)">No window-gated missions to ${esc(b.name)} yet.</div>`;
   }
   const w=nextWindowFromDay(bodyId, viewDay);
   const previewing=(mapPreviewAbsDay!=null);
-  let s=`<div style="color:#7fb6dd;letter-spacing:.07em;font-size:10px">TRANSFER WINDOW · ${esc(b.name)}</div>`;
-  if(!w){ return s+`<div style="color:#8fa9b9">No window found within the scan horizon.</div>`; }
+  let s=`<div style="color:var(--label);letter-spacing:.07em;font-size:10px">TRANSFER WINDOW · ${esc(b.name)}</div>`;
+  if(!w){ return s+`<div style="color:var(--muted)">No window found within the scan horizon.</div>`; }
   const qCol=w.qLabel==='Favorable'?'#7bc46a':(w.qLabel==='Marginal'?'#e8a04c':'#dcecf7');
   const months=Math.round(w.daysFromRef/DAYS_PER_MONTH);
-  s+=`<div style="display:flex;justify-content:space-between;gap:10px"><span style="color:#8fa9b9">Next</span><span style="color:#dcecf7">${esc(w.date)}</span></div>`;
-  s+=`<div style="display:flex;justify-content:space-between;gap:10px"><span style="color:#8fa9b9">Geometry</span><span style="color:${qCol}">${w.qLabel}</span></div>`;
-  s+=`<div style="display:flex;justify-content:space-between;gap:10px"><span style="color:#8fa9b9">${previewing?'From preview':'From today'}</span><span style="color:#dcecf7">${months} mo</span></div>`;
-  s+=`<button onclick="mapJumpNextWindow()" style="margin-top:5px;width:100%;padding:3px 4px;border:1px solid #43677f;border-radius:3px;background:#102232;color:#ffd9a0;font:10px ui-monospace,monospace;cursor:pointer" title="Set the previewed date to this window — press again to step to the one after">⊕ Jump to window</button>`;
+  s+=`<div style="display:flex;justify-content:space-between;gap:10px"><span style="color:var(--muted)">Next</span><span style="color:var(--ink)">${esc(w.date)}</span></div>`;
+  s+=`<div style="display:flex;justify-content:space-between;gap:10px"><span style="color:var(--muted)">Geometry</span><span style="color:${qCol}">${w.qLabel}</span></div>`;
+  s+=`<div style="display:flex;justify-content:space-between;gap:10px"><span style="color:var(--muted)">${previewing?'From preview':'From today'}</span><span style="color:var(--ink)">${months} mo</span></div>`;
+  s+=`<button onclick="mapJumpNextWindow()" style="margin-top:5px;width:100%;padding:3px 4px;border:1px solid var(--line);border-radius:3px;background:var(--panel2);color:#ffd9a0;font:10px ui-monospace,monospace;cursor:pointer" title="Set the previewed date to this window — press again to step to the one after">⊕ Jump to window</button>`;
   return s;
 }
 // Step the previewed date forward to the selected body's next window. Repeated presses walk forward
@@ -7625,7 +7625,7 @@ function personPortrait(p, size){
   const gl=glasses?`<g fill="none" stroke="#1c1c1c" stroke-width="1.6"><circle cx="${50-eyeDx}" cy="${eyeY}" r="5"/><circle cx="${50+eyeDx}" cy="${eyeY}" r="5"/><line x1="${50-eyeDx+5}" y1="${eyeY}" x2="${50+eyeDx-5}" y2="${eyeY}"/></g>`:'';
   const fh=beard?`<path d="M34 49 Q34 67 50 69 Q66 67 66 49 Q60 59 50 59 Q40 59 34 49 Z" fill="${hairc}" opacity="0.92"/>`:(mustache?`<path d="M42 55 Q50 59 58 55 Q50 57 42 55 Z" fill="${hairc}"/>`:'');
   const patch=isAstro?(()=>{ const pc=pick(['#ef6a73','#8de5ff','#65d39a','#58c7ff']); return `<rect x="59" y="85" width="12" height="9" rx="1.5" fill="${pc}" stroke="#0007"/><circle cx="65" cy="89.5" r="2" fill="#ffffffaa"/>`; })():'';
-  return `<svg width="${size}" height="${size}" viewBox="0 0 100 100" style="display:block;border-radius:8px;flex-shrink:0;background:#0c1318" xmlns="http://www.w3.org/2000/svg">
+  return `<svg width="${size}" height="${size}" viewBox="0 0 100 100" style="display:block;border-radius:8px;flex-shrink:0;background:var(--bg)" xmlns="http://www.w3.org/2000/svg">
     <defs><linearGradient id="${uid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${bgA}"/><stop offset="1" stop-color="#0c1318"/></linearGradient></defs>
     <rect width="100" height="100" rx="10" fill="url(#${uid})"/>
     <ellipse cx="50" cy="104" rx="40" ry="28" fill="${suit}"/>
@@ -9005,7 +9005,7 @@ function renderStationStackSVG(W,H,cur,interactive){
   const scale=Math.min(1.25,(W-28)/((maxX-minX)*cell),(H-28)/((maxY-minY)*cell));
   const ox=W/2-(minX+maxX)*cell*scale/2, oy=H/2-(minY+maxY)*cell*scale/2;
   const viewBox=interactive?stationViewBox(W,H,stationZoom):`0 0 ${W} ${H}`;
-  let s=`<svg id="${interactive?'stationSvg':''}" data-bw="${W}" data-bh="${H}" data-zoom="${interactive?stationZoom:1}" viewBox="${viewBox}" width="${W}" height="${H}" style="max-width:100%;height:auto;background:#060d16;border-radius:8px 8px 0 0;cursor:${interactive?'grab':'default'};touch-action:none"><defs><filter id="stnGlow"><feGaussianBlur stdDeviation="1.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter><pattern id="stnGrid" width="24" height="24" patternUnits="userSpaceOnUse"><path d="M24 0H0V24" fill="none" stroke="#6a9ab8" stroke-opacity=".08"/></pattern>${STATION_MODULES.map(d=>`<linearGradient id="g-${d.id}" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="${d.color}" stop-opacity=".95"/><stop offset=".48" stop-color="${d.color}"/><stop offset="1" stop-color="#293743"/></linearGradient>`).join('')}</defs><rect x="${-W*2}" y="${-H*2}" width="${W*5}" height="${H*5}" fill="#060d16"/><rect width="100%" height="100%" fill="url(#stnGrid)"/><text x="14" y="20" fill="#9bb6c8" font-size="10" font-family="ui-monospace,monospace" letter-spacing="1.5">ORBITAL ASSEMBLY PLAN · RADIAL DOCKING GRID</text>`;
+  let s=`<svg id="${interactive?'stationSvg':''}" data-bw="${W}" data-bh="${H}" data-zoom="${interactive?stationZoom:1}" viewBox="${viewBox}" width="${W}" height="${H}" style="max-width:100%;height:auto;background:var(--bg);border-radius:8px 8px 0 0;cursor:${interactive?'grab':'default'};touch-action:none"><defs><filter id="stnGlow"><feGaussianBlur stdDeviation="1.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter><pattern id="stnGrid" width="24" height="24" patternUnits="userSpaceOnUse"><path d="M24 0H0V24" fill="none" stroke="#6a9ab8" stroke-opacity=".08"/></pattern>${STATION_MODULES.map(d=>`<linearGradient id="g-${d.id}" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="${d.color}" stop-opacity=".95"/><stop offset=".48" stop-color="${d.color}"/><stop offset="1" stop-color="#293743"/></linearGradient>`).join('')}</defs><rect x="${-W*2}" y="${-H*2}" width="${W*5}" height="${H*5}" fill="#060d16"/><rect width="100%" height="100%" fill="url(#stnGrid)"/><text x="14" y="20" fill="#9bb6c8" font-size="10" font-family="ui-monospace,monospace" letter-spacing="1.5">ORBITAL ASSEMBLY PLAN · RADIAL DOCKING GRID</text>`;
   const pts=slots.map(([gx,gy])=>[ox+gx*cell*scale,oy+gy*cell*scale]);
   for(let i=1;i<pts.length;i++){ const parent=i<=4?0:Math.max(0,Math.floor((i-1)/4)); const [x1,y1]=pts[parent],[x2,y2]=pts[i]; s+=`<path d="M ${x1} ${y1} L ${x2} ${y2}" stroke="#6e8999" stroke-opacity=".5" stroke-width="3" stroke-dasharray="5 4"/><circle cx="${x2}" cy="${y2}" r="4" fill="#d4b35e"/>`; }
   list.forEach((id,i)=>{ const d=stationModuleDef(id)||stationModuleDef('can_std'),[x,y]=pts[i]; s+=stationModuleSVG(id,d,x,y,scale); });
@@ -10156,7 +10156,7 @@ function renderPassiveContracts(targetId){
         pill=' <span class="pill ok">active</span>';
         right=`<div class="reward"><div class="p">+${fM(ac.income)}/mo</div><div class="r">${ac.monthsLeft} mo left</div></div>`;
         btn=`<button class="btn" disabled>Running</button>`;
-        right+=`<div style="width:100%;height:4px;background:#1a2230;border-radius:3px;margin-top:6px"><div style="width:${pct}%;height:100%;background:var(--ok);border-radius:3px"></div></div>`;
+        right+=`<div style="width:100%;height:4px;background:var(--panel2);border-radius:3px;margin-top:6px"><div style="width:${pct}%;height:100%;background:var(--ok);border-radius:3px"></div></div>`;
       } else if(st==='cooldown'){
         pill=' <span class="pill lock">cooldown</span>';
         right=`<div class="reward"><div class="r">renew in ${passiveCooldownLeft(d.id)} mo</div></div>`;

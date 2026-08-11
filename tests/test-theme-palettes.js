@@ -48,7 +48,7 @@ function hueSep(a, b) { const d = Math.abs(hue(a) - hue(b)); return Math.min(d, 
 
 /* ---------- extract palettes ---------- */
 const FG = ['ink', 'muted', 'dim'];
-const ACCENT = ['ignite', 'readout', 'ok', 'bad', 'warn'];
+const ACCENT = ['ignite', 'readout', 'ok', 'bad', 'warn', 'label'];
 const DOMAIN = ['dom-economy', 'dom-engineering', 'dom-research', 'dom-military',
                 'dom-exploration', 'dom-crew', 'dom-warn'];
 const SURFACES = ['bg', 'panel', 'panel2'];

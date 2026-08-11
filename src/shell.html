@@ -13,7 +13,7 @@
     --ui-scale:1; /* whole-UI zoom (E0.4 slice D); set live from JS (uiScale/100), persisted in localStorage 'ov_uiscale', NOT the save */
     --bg:#050b12; --panel:#0b1621; --panel2:#102231; --line:#24465a;
     --ink:#d8e2e7; --muted:#7d909b; --dim:#7a8d98;
-    --ignite:#f5a623; --readout:#4fd1d9; --ok:#58c47a; --bad:#e2605a; --warn:#e8b341;
+    --ignite:#f5a623; --readout:#4fd1d9; --ok:#58c47a; --bad:#e2605a; --warn:#e8b341; --label:#86b0cd;
     /* #30 domain color-coding language — one hue per domain, so every metric/panel reads
        its domain at a glance. Reused where the existing palette already fits (military=bad,
        exploration=ignite, crew=readout, warn=warn) + new hues for economy/engineering/research. */
@@ -39,7 +39,7 @@
   body.theme-green,body.era-80s:not(.theme-green):not(.theme-beige){
     --bg:#04120a; --panel:#082010; --panel2:#0d2c16; --line:#314737;
     --ink:#e2ece4; --muted:#92b69b; --dim:#6d9979;
-    --ignite:#65b10e; --readout:#23c791; --ok:#2fbd63; --bad:#e66e66; --warn:#d2ac17;
+    --ignite:#65b10e; --readout:#23c791; --ok:#2fbd63; --bad:#e66e66; --warn:#d2ac17; --label:#7cbf92;
     --dom-economy:#37b967; --dom-engineering:#6fa1d4; --dom-research:#ab82da;
     --dom-military:#d57972; --dom-exploration:#cd8c59; --dom-crew:#3cbcc5; --dom-warn:#bead39; }
   /* Apollo Beige — warm sand console. Kept as a DARK warm palette rather than a true light
@@ -48,7 +48,7 @@
   body.theme-beige{
     --bg:#1a1610; --panel:#242018; --panel2:#302a20; --line:#4c453a;
     --ink:#e1ddd3; --muted:#b1a794; --dim:#9e9381;
-    --ignite:#e28036; --readout:#6baec7; --ok:#49b370; --bad:#e17b73; --warn:#caa924;
+    --ignite:#e28036; --readout:#6baec7; --ok:#49b370; --bad:#e17b73; --warn:#caa924; --label:#98bbcd;
     --dom-economy:#54bc7a; --dom-engineering:#80a6cd; --dom-research:#ac8cd2;
     --dom-military:#cd857f; --dom-exploration:#c7966f; --dom-crew:#69bec4; --dom-warn:#bfb25c; }
   /* ---- Era-evolving visual identity (user-directed, 2026-07-11): the console ages up
@@ -68,7 +68,7 @@
   body.era-apollo:not(.theme-green):not(.theme-beige){
     --bg:#120d07; --panel:#1d150c; --panel2:#2a1f11; --line:#494032;
     --ink:#e4ddd0; --muted:#b3a489; --dim:#9a886e;
-    --ignite:#e36f09; --readout:#36b99e; --ok:#3dac66; --bad:#e7645a; --warn:#caa510;
+    --ignite:#e36f09; --readout:#36b99e; --ok:#3dac66; --bad:#e7645a; --warn:#caa510; --label:#c2a872;
     --dom-economy:#3cb267; --dom-engineering:#6b9cce; --dom-research:#a67dd4;
     --dom-military:#cf756e; --dom-exploration:#c78757; --dom-crew:#3fb6be; --dom-warn:#b7a63d;
     background-image:linear-gradient(rgba(90,72,46,.18) 1px,transparent 1px),linear-gradient(90deg,rgba(90,72,46,.18) 1px,transparent 1px); }
@@ -94,7 +94,7 @@
   body.era-90s2000s:not(.theme-green):not(.theme-beige){
     --bg:#0a1220; --panel:#121d30; --panel2:#1a2942; --line:#364551;
     --ink:#e3e9f0; --muted:#9cb1c3; --dim:#7d96a8;
-    --ignite:#2eb4ee; --readout:#18c9dc; --ok:#37bc68; --bad:#e5756c; --warn:#d6b018;
+    --ignite:#2eb4ee; --readout:#18c9dc; --ok:#37bc68; --bad:#e5756c; --warn:#d6b018; --label:#8cbad4;
     --dom-economy:#2fbd63; --dom-engineering:#6ea5db; --dom-research:#af83e0;
     --dom-military:#dc7a72; --dom-exploration:#d58d56; --dom-crew:#32c0ca; --dom-warn:#c3af31; }
   body.era-90s2000s .card,body.era-90s2000s header{ border-radius:10px; }
@@ -106,7 +106,7 @@
   body.era-spacex:not(.theme-green):not(.theme-beige){
     --bg:#08090b; --panel:#131518; --panel2:#1e2126; --line:#3c4043;
     --ink:#f6f7f7; --muted:#b2b7bd; --dim:#888e95;
-    --ignite:#62b3ec; --readout:#6dc0d5; --ok:#3eb96b; --bad:#e56960; --warn:#d0ac1a;
+    --ignite:#62b3ec; --readout:#6dc0d5; --ok:#3eb96b; --bad:#e56960; --warn:#d0ac1a; --label:#8fafc3;
     --dom-economy:#42b16b; --dom-engineering:#6f9cca; --dom-research:#a47fcf;
     --dom-military:#ca7671; --dom-exploration:#c3895c; --dom-crew:#4ab4bc; --dom-warn:#b6a643; }
   body.era-spacex .card,body.era-spacex header{ border-radius:14px; border-width:0.5px; }
