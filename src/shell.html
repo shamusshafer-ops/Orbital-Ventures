@@ -793,15 +793,11 @@
   /* ---- Phase 2: cinematic mission-control foundation ----
      A surface-only pass: this deliberately reuses the existing shell, IDs and state classes.
      Translucency is supplied by layered alpha backgrounds, never backdrop-filter, so HUD text
-     remains stable over animated scenes and low-power browsers. */
-  body.theme-green,body.theme-beige,
-  body.era-apollo:not(.theme-green):not(.theme-beige),
-  body.era-80s:not(.theme-green):not(.theme-beige),
-  body.era-90s2000s:not(.theme-green):not(.theme-beige),
-  body.era-spacex:not(.theme-green):not(.theme-beige){
-    --hud-surface:rgba(7,20,32,.92);--hud-raised:rgba(12,34,50,.94);
-    --hud-line:rgba(88,204,255,.36);--hud-line-soft:rgba(88,204,255,.18);--hud-glow:rgba(45,190,255,.16);
-  }
+     remains stable over animated scenes and low-power browsers.
+     Gate 6 F7: this selector list previously redeclared --hud-surface/--hud-raised/--hud-line/
+     --hud-line-soft/--hud-glow. Three of five properties were byte-identical to :root and the
+     other two differed only by an undocumented 2% alpha nudge -- removed; these six selectors
+     now inherit the :root values, with no visible change. */
   body{background-image:linear-gradient(rgba(42,126,164,.11) 1px,transparent 1px),linear-gradient(90deg,rgba(42,126,164,.11) 1px,transparent 1px);}
   h1,h2,h3,.brand .co,.mission-tag,.cc-panel-h,.rail-group{font-family:var(--sans);font-stretch:condensed;}
   h1,h2,h3,.brand .co{letter-spacing:.055em;}
@@ -865,7 +861,7 @@
 
   /* Command Center is an instrument surface from header through scene. This is deliberately
      body-scoped: eras and user themes return untouched as soon as another tab is selected. */
-  body.command-mode{--cc-hero-navy:#06121e;--cc-hero-navy-raised:#0a1d2d;--cc-hero-cyan:#67d5ff;
+  body.command-mode{--cc-hero-navy:#06121e;--cc-hero-cyan:#67d5ff;
     --cc-hero-surface:rgba(6,18,30,.91);--cc-hero-raised:rgba(10,29,45,.93);--cc-hero-line:rgba(103,213,255,.36);--cc-hero-line-soft:rgba(103,213,255,.18);--cc-hero-glow:rgba(76,198,255,.16)}
   body.command-mode .topbar{background:linear-gradient(180deg,var(--cc-hero-navy) 72%,transparent)}
   body.command-mode header,body.command-mode .opsbar{border-color:var(--cc-hero-line);background:linear-gradient(180deg,var(--cc-hero-raised),var(--cc-hero-surface));box-shadow:inset 0 1px 0 var(--cc-hero-line-soft),var(--hud-shadow)}

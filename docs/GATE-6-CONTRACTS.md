@@ -136,12 +136,26 @@ contract on the thing a player can actually perceive.
   them, and the assertion fails if any of those specific sites regresses to a
   literal. The list grows only when a new recurring chrome role is identified
   and given a token.
-- Dead and duplicate tokens are removed. `--cc-hero-navy-raised` is defined and
-  referenced zero times repo-wide. The `--hud-*` redeclaration under the theme
-  and era selectors repeats `--hud-line`, `--hud-line-soft` and `--hud-glow` at
-  values identical to `:root`. The `--cc-hero-*` family duplicates `--hud-*`
-  semantics on a second cyan (`#67d5ff` against `rgb(88,204,255)`); the two
-  families collapse to one, on one cyan.
+- Dead and duplicate tokens: two of three identified problems are fixed.
+  `--cc-hero-navy-raised` was defined and referenced zero times repo-wide;
+  removed. The `--hud-*` redeclaration under the theme/era selectors repeated
+  `--hud-line`, `--hud-line-soft` and `--hud-glow` at values byte-identical to
+  `:root`, with the other two properties (`--hud-surface`, `--hud-raised`)
+  differing only by an undocumented 2% alpha nudge; removed, no visible change.
+  Both are asserted by `test-dead-tokens.js`.
+
+  *Revised from the original draft (2026-08-11):* a full merge of `--cc-hero-*`
+  into `--hud-*` onto one cyan is **not done**. The premise — that the two
+  families are a naive duplicate pair — was disproven during implementation.
+  `.shell.command-hero` and `body.command-mode` toggle from the same state
+  (`render.js`: `state.tab==='command'`) and form a deliberate two-tier system:
+  `--cc-hero-*` is applied directly to header/opsbar with no viewport gate, and
+  separately bridged into `--hud-*` only at `>=1101px` for the Phase 3A hero
+  composition — so header/opsbar stay cyan-tinted below that breakpoint while
+  the rest of the hero layout only exists above it. Flattening the two families
+  risks losing that breakpoint behaviour, and there is no browser available to
+  confirm the visual result either way. Deferred until a browser pass can verify
+  it; `--cc-hero-navy` and `--cc-hero-cyan` remain as live, singly-used tokens.
 - `fill="var(--ignite)"` / `stroke="var(--ignite)"` as bare SVG presentation
   attributes (15 sites, pre-existing) are recorded as F8 and held at a ceiling
   rather than fixed under this contract, pending real-browser confirmation of
