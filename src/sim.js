@@ -96,6 +96,22 @@ function newGame(difficulty){
 
 /* ---------- helpers ---------- */
 const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+// Gregorian calendar core (added when the Time Granularity epic's flat 30-day/360-day
+// abstraction was replaced with a real calendar). Two things now share one epoch but serve
+// different jobs: (1) the CALENDAR -- absDay/dayToDate/advanceDays' month rollover -- uses
+// real variable month lengths and the real leap-year rule below, so a displayed date is a
+// genuine Gregorian date and the orbital-mechanics ephemeris (GAME_YEAR_DAYS, sim.js ~3700)
+// derives every body's period from the real 365.2425-day year. (2) DURATIONS -- a build's
+// "N months", perDay() rate conversion, fmtTimeLeft() countdowns -- stay pegged to the
+// NOMINAL average month (GREGORIAN_YEAR_DAYS/12 ~= 30.4368d) via DAYS_PER_MONTH below, so a
+// "$X/month" cost does not quietly vary depending on whether the current calendar month is
+// January or February. Deliberately NOT the same axis: a duration has no fixed position on
+// the calendar to derive a real month length from.
+const GREGORIAN_YEAR_DAYS = 365.2425; // exact Gregorian average: 146097 days / 400 years
+const MONTH_LENGTHS = [31,28,31,30,31,30,31,31,30,31,30,31]; // Jan..Dec, non-leap February
+function isLeapYear(y){ return (y%4===0 && y%100!==0) || y%400===0; }
+function monthLength(y,m){ return (m===1 && isLeapYear(y)) ? 29 : MONTH_LENGTHS[m]; }
+function daysInYear(y){ return isLeapYear(y) ? 366 : 365; }
 const $=id=>document.getElementById(id);
 const fM=v=>GAME_TRUTH.currency.symbol+v.toFixed(2)+GAME_TRUTH.currency.suffix;
 const fI=v=>Math.round(v).toLocaleString();
@@ -868,11 +884,29 @@ function resolveHearing(choice){
 // earlier within the month — a deliberately tiny shift, this being the day-resolution retune slice).
 // The whole money economy now flows daily. Still monthly-gated (genuinely month-quantized concepts):
 // supply drain + starvation/abandon counters, morale drift, market RNG walks, build/event cadence.
-const DAYS_PER_MONTH=GAME_TRUTH.calendar.daysPerMonth; // one authority for the documented flat campaign month
+// DAYS_PER_MONTH is now a NOMINAL duration unit (see the block comment above MONTH_LENGTHS), not
+// the calendar's own truth -- the calendar itself uses monthLength(y,m)/isLeapYear(y). "30·perDay(x)
+// = x" above is no longer exactly 30, but the same identity holds at whatever this nominal value is.
+const DAYS_PER_MONTH=GREGORIAN_YEAR_DAYS/12; // ~30.4368d -- see GAME_TRUTH.calendar.nominalMonthDays
 const SUPPORT_REVERT_DAY = 1 - Math.pow(1-SUPPORT_REVERT, 1/DAYS_PER_MONTH); // per-day rate that compounds to SUPPORT_REVERT over a month
 function perDay(monthlyRate){ return monthlyRate/DAYS_PER_MONTH; } // a monthly rate spread across the month
 function daysFor(months){ return Math.round(months*DAYS_PER_MONTH); } // a duration in months → whole days
-function absDay(){ return absMonth()*DAYS_PER_MONTH + (state.day||0); }
+// Real Gregorian day-of-epoch: epoch is 1 Jan 1942 = absDay 0. daysBeforeYear is O(1) via a
+// closed-form leap-year count (NOT a year-by-year loop): a linear walk from 1942 was the first
+// version of this function and was a genuine performance bug -- a late-game state near year
+// 2100 did ~160 loop iterations on every single date lookup, which is exactly what caused
+// tests/test-gate3-reorganization-contract.js and others to time out during verification.
+// leapCountBefore(y) counts leap years strictly before year y, using years 1..y-1.
+function leapCountBefore(y){ const yy=y-1; return Math.floor(yy/4) - Math.floor(yy/100) + Math.floor(yy/400); }
+function daysBeforeYear(y){ return (y-1942)*365 + (leapCountBefore(y) - leapCountBefore(1942)); }
+function daysBeforeMonth(y,m){ let d=0; for(let mm=0; mm<m; mm++) d+=monthLength(y,mm); return d; } // <=12 iterations, not the bottleneck
+// General form, usable for any (year, 0-indexed month, 0-indexed day-of-month), not just the
+// live state -- reorganization.js's setCampaignAbsDay and data.js's Gate 3 invariant check both
+// used to re-derive this with the OLD flat-30-day formula (`((y-1942)*12+m)*DAYS_PER_MONTH+d`),
+// which silently broke when DAYS_PER_MONTH stopped being an integer calendar constant. One
+// shared implementation instead of three separately-maintained copies of the same math.
+function absDayOf(y,m,d){ return daysBeforeYear(y)+daysBeforeMonth(y,m)+(d||0); }
+function absDay(){ return absDayOf(state.year, state.month, state.day); }
 // format a fractional month-count as a human countdown — e.g. 2.9 → "2 mo 27 d", 0.4 → "12 d", 1 → "1 mo".
 // Days round UP so the readout counts down to completion (… "1 mo 1 d" → "1 mo" → "29 d" …).
 function fmtTimeLeft(months){
@@ -893,7 +927,7 @@ function advanceDays(days){
   }
   for(let i=0; i<days; i++){
     state.day=(state.day||0)+1;
-    const monthEnd = state.day>=DAYS_PER_MONTH;
+    const monthEnd = state.day>=monthLength(state.year, state.month);
     if(monthEnd){ state.day=0; state.month++; if(state.month>11){state.month=0;state.year++;} } // a month completed
     tickContinuousDay();              // per-day money flows (overhead, payroll, royalty)
     if(monthEnd) tickMonthlyBoundary(); // discrete monthly subsystems — same order as the old tick
@@ -3683,12 +3717,16 @@ function skipResearch(){ if(!state.activeResearch) return;
    That's the real, textbook reason Mars windows differ, so the existing
    quality→payout mechanic now rides on physics instead of Math.random.
 
-   Time base: the game runs a flat 360-day year (DAYS_PER_MONTH=30 × 12). We keep
-   the ephemeris in that same game-day unit — no dual calendar — but scale each
-   planet's period from the REAL orbital-period ratio (a^1.5 by Kepler's 3rd law).
-   Earth = 360 game-days; Mars = 360 × 1.524^1.5 ≈ 677; the Earth–Mars synodic
-   period then falls out to ≈769 game-days (~25.6 months), matching the old
-   hand-tuned 26 as a sanity check — but now it's derived, not asserted.
+   Time base: the game uses a real Gregorian calendar (variable month lengths, leap years;
+   see MONTH_LENGTHS/isLeapYear near the top of this file). The ephemeris rides the same
+   game-day unit — no dual calendar — but scales each planet's period from the REAL
+   orbital-period ratio (a^1.5 by Kepler's 3rd law) against a real 365.2425-day year.
+   Earth = 365.24 game-days (this is now literally the real length of a year, not a game
+   abstraction); Mars = 365.2425 × 1.524^1.5 ≈ 687.16; the Earth–Mars synodic period then
+   falls out to ≈779.6 game-days. In nominal months (the duration unit builds/research use,
+   not the calendar) that's ≈25.6 — essentially unchanged from the old flat-360-day figure,
+   since Earth and Mars periods both scale by the same ratio and synodic period is
+   scale-insensitive. Still derived, not asserted.
 
    Absolute epoch is J2000-flavored real elements evaluated at absDay 0: the game
    is not a real-history sim, so what matters is real RELATIVE geometry + real
@@ -3698,7 +3736,7 @@ function skipResearch(){ if(!state.activeResearch) return;
    This also gives every planet a real heliocentric position(absDay) — the exact
    thing the E4.3 3D solar-system view will render — so A1 is the shared foundation
    for both "deeper orbital mechanics" and the 3D viewport, not just window math. */
-const GAME_YEAR_DAYS = DAYS_PER_MONTH * 12; // 360 — one game-year in game-days
+const GAME_YEAR_DAYS = DAYS_PER_MONTH * 12; // = GREGORIAN_YEAR_DAYS (365.2425) by construction — one real game-year in game-days, feeds the ephemeris below
 const D2R = Math.PI / 180;
 // a: semi-major axis (AU); e: eccentricity; inc: inclination; node: ascending node;
 // lop: longitude of perihelion ϖ (all angles degrees); L0: mean longitude at absDay 0.
@@ -3855,7 +3893,25 @@ function windowsFor(missionId){
 }
 function monthToDate(abs){ const y=1942+Math.floor(abs/12), mo=((abs%12)+12)%12; return MONTHS[mo]+' '+y; }
 // day-precise date from an absDay (sibling of monthToDate) — "14 Mar 1962"
-function dayToDate(absD){ const mo=Math.floor(absD/DAYS_PER_MONTH), dd=(((absD%DAYS_PER_MONTH)+DAYS_PER_MONTH)%DAYS_PER_MONTH)+1, y=1942+Math.floor(mo/12), m=((mo%12)+12)%12; return dd+' '+MONTHS[m]+' '+y; }
+// Inverse of absDay(): given an absolute epoch-day count, find its real (year, 0-indexed
+// month, 0-indexed day-of-month). Year-finding is estimate + correction against the now-O(1)
+// daysBeforeYear -- verified (Python cross-check before porting) to need at most 1 correction
+// step even from a deliberately crude estimate, so this is effectively O(1), not O(years).
+function yearForDay(absD){
+  let y = 1942 + Math.floor(absD/365);
+  while(daysBeforeYear(y) > absD) y--;
+  while(daysBeforeYear(y+1) <= absD) y++;
+  return y;
+}
+function absDayToParts(absD){
+  const d = Math.round(absD);
+  const y = yearForDay(d);
+  let remaining = d - daysBeforeYear(y);
+  let m=0;
+  while(remaining>=monthLength(y,m)){ remaining-=monthLength(y,m); m++; }
+  return {y, m, d:remaining};
+}
+function dayToDate(absD){ const p=absDayToParts(absD); return (p.d+1)+' '+MONTHS[p.m]+' '+p.y; }
 function commitWindow(missionId, idx){
   if(!guardOrdinaryAction('Transfer-window commitments')) return false;
   const w=windowsFor(missionId)[idx];

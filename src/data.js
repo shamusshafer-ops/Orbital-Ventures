@@ -24,7 +24,7 @@ const GAME_TRUTH=Object.freeze({
   premise:Object.freeze({kind:'fiction',text:'A government-enabled public-private launch venture is founded in 1942. Its institutions, contracts, and achievements form an alternate history.'}),
   physics:Object.freeze({kind:'simulation',text:'The rocket equation and mission budgets are authoritative simulation inputs; costs, schedules, reliability, and operations are decision-bearing abstractions.'}),
   maps:Object.freeze({kind:'schematic',text:'Orbital angles use modeled geometry, while body sizes, orbital radii, travel playback, and scene spacing are schematic.'}),
-  calendar:Object.freeze({daysPerMonth:30}),
+  calendar:Object.freeze({rule:'real Gregorian calendar: variable month lengths (28-31 days), leap years on the standard divisible-by-4/not-100/except-400 rule', nominalMonthDays:365.2425/12}),
   currency:Object.freeze({symbol:'$',suffix:'M',basis:'millions of nominal campaign-year US dollars; no inflation model'}),
   units:Object.freeze({money:'millions of nominal campaign-year US dollars ($M); no inflation model',mass:'metric tonnes (t) or kilograms (kg)',velocity:'metres per second (m/s)',duration:'30-day campaign months and whole mission days',reliability:'modeled probability, not a safety certification'}),
 });
@@ -358,7 +358,7 @@ function auditReorganizationState(snapshot){
     if(s.reorganization) errors.push('operating support overlaps reorganization');
     if(!s.lastReorganization||s.lastReorganization.phase!=='succeeded'||s.lastReorganization.id!==s.operatingSupport.reorganizationId) errors.push('operating support/reorganization identity');
     else if(s.operatingSupport.startAbs!==s.lastReorganization.closedAbs||s.operatingSupport.endAbs!==s.lastReorganization.closedAbs+REORGANIZATION_RULES.exitSupportDays) errors.push('operating support/reorganization window');
-    const now=((finiteRecordNumber(s.year)-1942)*12+finiteRecordNumber(s.month))*DAYS_PER_MONTH+finiteRecordNumber(s.day);
+    const now=absDayOf(finiteRecordNumber(s.year), finiteRecordNumber(s.month), finiteRecordNumber(s.day));
     const elapsed=Math.max(0,Math.min(REORGANIZATION_RULES.exitSupportDays,Math.floor(now-s.operatingSupport.startAbs)));
     const expectedMonths=Math.max(0,REORGANIZATION_RULES.exitSupportMonths-Math.floor(elapsed/DAYS_PER_MONTH));
     const receiptDays=Object.keys(s.operatingSupport.receipts||{}).filter(k=>/^period:\d+$/.test(k))

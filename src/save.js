@@ -102,7 +102,10 @@ function saveGame(){
 // window/committedWindow .abs in months — scale to days, and drop the (regenerable) windows cache.
 function migrateWindowsToDays(saved, ver){
   if((ver||0) >= 34) return;
-  if(saved.committedWindow && saved.committedWindow.abs!=null) saved.committedWindow.abs*=DAYS_PER_MONTH;
+  // Historical literal, deliberately NOT DAYS_PER_MONTH: this converts a save written when the
+  // game's month unit was exactly 30 (pre real-Gregorian-calendar). DAYS_PER_MONTH is now a
+  // ~30.4368 nominal average and using it here would misconvert every pre-v34 save.
+  if(saved.committedWindow && saved.committedWindow.abs!=null) saved.committedWindow.abs*=30;
   saved.windows={};
 }
 // E4.1 (v57): the launch-window model changed from fixed-cadence + random quality to real

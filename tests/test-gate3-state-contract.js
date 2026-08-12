@@ -2,7 +2,7 @@
 // bounded JSON-safe owners, strict v63 loading, and v62 Standard migration.
 let g3Pass=0,g3Fail=0;
 function g3Check(name,condition){ if(condition) g3Pass++; else { g3Fail++; console.log('FAIL:',name); } }
-function g3SetStateAbs(s,day){ const mo=Math.floor(day/DAYS_PER_MONTH); s.year=1942+Math.floor(mo/12); s.month=mo%12; s.day=day%DAYS_PER_MONTH; }
+function g3SetStateAbs(s,day){ const p=absDayToParts(day); s.year=p.y; s.month=p.m; s.day=p.d; }
 
 function g3Attempt(sequence,phase){
   const acceptedAbs=120;
@@ -14,15 +14,22 @@ function g3Attempt(sequence,phase){
   const hasBuild=['building','ready','launching','settling','succeeded','failed'].includes(phase);
   const hasHull=['ready','launching','settling','succeeded','failed'].includes(phase);
   const hasLaunch=['launching','settling','succeeded','failed'].includes(phase);
-  const quoteFingerprint=requestIntentFingerprint('sponsor-quote',fixtureQuote), authorized=1.25, spent=hasBuild?.75:0;
+  const quoteFingerprint=requestIntentFingerprint('sponsor-quote',fixtureQuote);
+  const monthlyBurnBasis=.5;
+  // Gate 6/calendar rework: authorized and weatherContingency used to be hardcoded literals
+  // (1.25, .5) that were only correct because monthlyBurn*30/DAYS_PER_MONTH was an identity
+  // transform under the old exact-integer DAYS_PER_MONTH=30. Derived from the real game
+  // function instead, so this fixture can't go stale again if the constant is retuned further.
+  const {authorized,weatherContingency}=calculateSponsorEscrow(fixtureQuote,monthlyBurnBasis);
+  const spent=hasBuild?.75:0;
   const acceptance={atAbs:acceptedAbs,requestId:`accept-fixture-${sequence}`};
   const penaltyReceipt={atAbs:acceptedAbs,repBefore:penalties.repBefore,repLoss:penalties.repLoss,repAfter:penalties.repBefore-penalties.repLoss,
     supportBefore:50,supportLoss:penalties.supportLoss,supportAfter:40,
     legacyBefore:REORGANIZATION_RULES.legacyPenalty*(sequence-1)*sequence/2,legacyLoss:penalties.legacyLoss,legacyAfter:REORGANIZATION_RULES.legacyPenalty*sequence*(sequence+1)/2};
   const debtReceipt={atAbs:acceptedAbs,interestBefore:debt.interestBefore,interestAfter:debt.interestAfter,
     alreadyRenegotiatedBefore:debt.alreadyRenegotiatedBefore,renegotiatedNow:debt.renegotiatedNow};
-  const authorization={atAbs:acceptedAbs+REORGANIZATION_RULES.standdownDays,endToEndRunway:.75,monthlyBurnBasis:.5,
-    weatherContingency:.5,authorized,fingerprint:requestIntentFingerprint('sponsor-authorization',{quoteFingerprint,monthlyBurnBasis:.5,weatherContingency:.5,authorized})};
+  const authorization={atAbs:acceptedAbs+REORGANIZATION_RULES.standdownDays,endToEndRunway:.75,monthlyBurnBasis,
+    weatherContingency,authorized,fingerprint:requestIntentFingerprint('sponsor-authorization',{quoteFingerprint,monthlyBurnBasis,weatherContingency,authorized})};
   return makeReorganizationRecord({id:'reorganization-'+sequence,sequence,insolvencyId:'insolvency-1',revision:0,phase,
     acceptedAbs,standdownEndsAbs:acceptedAbs+REORGANIZATION_RULES.standdownDays,
     clockAbs:phase&&phase!=='standdown'?acceptedAbs+REORGANIZATION_RULES.standdownDays:acceptedAbs,

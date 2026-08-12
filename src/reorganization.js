@@ -65,8 +65,8 @@ function reorganizationEligible(snapshot){
   return !!(s.insolvency&&s.insolvency.status==='open'&&!s.insolvency.resolvedBy);
 }
 function setCampaignAbsDay(value){
-  const day=Math.max(0,Math.floor(finiteRecordNumber(value))), monthAbs=Math.floor(day/DAYS_PER_MONTH);
-  state.year=1942+Math.floor(monthAbs/12); state.month=((monthAbs%12)+12)%12; state.day=day%DAYS_PER_MONTH;
+  const day=Math.max(0,Math.floor(finiteRecordNumber(value))), p=absDayToParts(day);
+  state.year=p.y; state.month=p.m; state.day=p.d;
   return day;
 }
 function checkpointReorganizationSave(){
