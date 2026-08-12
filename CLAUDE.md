@@ -285,6 +285,16 @@ change first.
   at session start; open `ROADMAP-HISTORY.md` only when you need detail on a specific past slice.
   This STATUS block is the one full-overwrite exception — rewrite it each session; never touch
   anything past the divider.
+- **Keep `ROADMAP.md` lean; archive on a recurring basis, not once.** The 2026-07-28 split created
+  `ROADMAP-HISTORY.md`, but `ROADMAP.md` grew straight back to 210KB within two weeks and was
+  archived again on 2026-08-12 (2579 → 1861 lines, 210KB → 146KB). Every session pays that cost up
+  front, since this file is read at session start. When a scoped block has no open `[ ]` items left,
+  move it to `ROADMAP-HISTORY.md` rather than leaving it in place. Two rules learned from the
+  2026-08-12 pass: (1) verify completion against the *codebase*, not a section's own header — several
+  blocks titled "not built" were in fact shipped, and one (E3) reads as complete but must stay
+  because `BENCH_V2` is still flagged OFF pending a browser playtest; (2) before moving anything,
+  grep the retained text for `see § <section>` pointers into it and rewrite them to name
+  `ROADMAP-HISTORY.md`, or the move leaves dangling references.
 - The Git Data API push itself is a conflict guard: pushing against a stale base SHA fails outright
   rather than silently overwriting the other agent's work. If a push fails, re-pull, don't force.
 - **SAVE COMPATIBILITY IS NOT REQUIRED (owner directive, 2026-07-28).** This is a single-player game
