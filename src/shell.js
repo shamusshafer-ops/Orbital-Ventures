@@ -1,3 +1,16 @@
+/* ---------- Gate 6 F6: reduced-motion accessor ----------
+   One MediaQueryList created once; .matches is read live on every call, so a
+   mid-session OS-level change is picked up on the very next animation frame with
+   no reload and no change listener needed. Consumers use this to suppress
+   purely-ambient sustained motion (sky/sun sweep, drifting clouds, ripple,
+   pulsing corona, launch-canvas screen shake, globe auto-spin) while leaving
+   any state that carries real information -- vehicle position, launch/reentry
+   phase, telemetry, sim day -- completely untouched. See docs/GATE-6-CONTRACTS.md
+   Contrast and motion contract. */
+const _reducedMotionQuery=(typeof window!=='undefined' && typeof window.matchMedia==='function')
+  ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+function reducedMotion(){ return !!(_reducedMotionQuery && _reducedMotionQuery.matches); }
+
 /* ---------- flight animation (canvas) ---------- */
 let animEnabled=true, animState=null;
 // Liftoff lead-in (iso-view rocket rise + camera zoom-chase, handed off into playMission).

@@ -1777,14 +1777,26 @@ function drawCape(cv, t){
   items.forEach(it=>it.draw());
   drawCapeVignette(ctx,W,H);
 }
-let ccAnim=null, ccT0=0, ccPhaserSmoke=false, ccPhaserDetail=false;
+let ccAnim=null, ccT0=0, ccClock={}, ccPhaserSmoke=false, ccPhaserDetail=false;
 function ccNow(){ return (typeof performance!=='undefined'&&performance.now)?performance.now():Date.now(); }
-function startCCScene(){ if(ccAnim!=null) return; ccT0=ccNow(); ccAnim=requestAnimationFrame(ccLoop); }
+// Gate 6 F6: shared ambient clock for every drawCape(canvas,t) caller (ccLoop, ccPopLoop, the
+// Phaser CapeScene). `t` there drives only sky/sun sweep, star twinkle and cloud drift -- pure
+// decoration, nothing informational -- so freezing it under reduced motion is always safe.
+// `store` is any small per-caller object; each caller keeps its own clock so freezing one
+// popout doesn't desync another. No jump-cut on resume: _last keeps advancing even while frozen.
+function ambientClockT(store){
+  const now=ccNow();
+  if(store._t==null){ store._t=0; store._last=now; return 0; }
+  if(!reducedMotion()) store._t+=(now-store._last)/1000;
+  store._last=now;
+  return store._t;
+}
+function startCCScene(){ if(ccAnim!=null) return; ccT0=ccNow(); ccClock={}; ccAnim=requestAnimationFrame(ccLoop); }
 function stopCCScene(){ if(ccAnim!=null){ cancelAnimationFrame(ccAnim); ccAnim=null; } }
 function ccLoop(){
   if(!state || state.tab!=='command'){ ccAnim=null; return; }
   const cv=$('ccScene'); if(!cv){ ccAnim=null; return; }
-  try{ drawCape(cv, (ccNow()-ccT0)/1000); }catch(e){}
+  try{ drawCape(cv, ambientClockT(ccClock)); }catch(e){}
   ccAnim=requestAnimationFrame(ccLoop);
 }
 
@@ -2951,7 +2963,21 @@ function resizeCape3D(width,height){
 }
 function cape3dTick(){
   if(!cape3d||cape3d.paused) return;
-  const t=(Date.now()-cape3d.startedAt)/1000, atmo=skyAtmosphere(t), c=atmo.mid.split(',').map(Number), root=cape3d.root, launchActive=!!(root&&root.userData.launchActive), reentryP=root&&root.userData.reentryActive?(root.userData.reentryProgress||0):null, spaceMix=Math.max(0,Math.min(1,((root&&root.userData.orbitActive)?1:(root&&root.userData.launchSpace)||0)));
+  // Gate 6 F6: t drives only ambient decoration below (sky/sun sweep, water ripple, cloud
+  // drift) -- never launchActive/reentryP/orbitActive or vehicle position, which live in
+  // root.userData and are set elsewhere from real game/flight state. Freezing this local
+  // accumulator under reduced motion therefore cannot suppress any outcome or telemetry.
+  const realNow=Date.now();
+  if(reducedMotion()){
+    if(cape3d._motionT==null) cape3d._motionT=(realNow-cape3d.startedAt)/1000;
+    cape3d._motionLast=realNow;
+  } else {
+    if(cape3d._motionT==null) cape3d._motionT=(realNow-cape3d.startedAt)/1000;
+    cape3d._motionT+=(realNow-(cape3d._motionLast||realNow))/1000;
+    cape3d._motionLast=realNow;
+  }
+  const t=cape3d._motionT;
+  const atmo=skyAtmosphere(t), c=atmo.mid.split(',').map(Number), root=cape3d.root, launchActive=!!(root&&root.userData.launchActive), reentryP=root&&root.userData.reentryActive?(root.userData.reentryProgress||0):null, spaceMix=Math.max(0,Math.min(1,((root&&root.userData.orbitActive)?1:(root&&root.userData.launchSpace)||0)));
   const sky=new THREE.Color(c[0]/255,c[1]/255,c[2]/255), space=new THREE.Color(0x020914); cape3d.scene.background.copy(sky).lerp(space,spaceMix); if(cape3d.scene.fog){ cape3d.scene.fog.color.copy(cape3d.scene.background); cape3d.scene.fog.density=(root&&root.userData.orbitActive)||reentryP!=null?0:(launchActive&&root.userData.launchVisual?root.userData.launchVisual.fogDensity:.00038); }
   if(reentryP!=null){ cape3d.scene.background.copy(space).lerp(new THREE.Color(0x315d77),Math.min(.72,reentryP*.78)); if(cape3d.scene.fog){ cape3d.scene.fog.color.copy(cape3d.scene.background); cape3d.scene.fog.density=.000025+reentryP*.00007; } }
   const sunA=Math.max(.03,atmo.sunA), az=(atmo.sunX-.5)*Math.PI*1.6, alt=(.15+(1-atmo.sunY)*.75)*Math.PI*.5;
@@ -3015,7 +3041,7 @@ function defineCapeScene(){
       this.add.image(0,0,'capeTex').setOrigin(0,0);
       ccPhaserSmoke=true;   // baked pad smoke replaced by emitters
       ccPhaserDetail=true;  // baked stars+clouds replaced by Phaser sky layers
-      this.t0=ccNow();
+      this._clock={}; // Gate 6 F6: own ambient clock, independent of the canvas-fallback loops
       try{ this.buildDetail(W,H); }catch(e){ console.warn('cape detail failed (base scene still renders):',e); }
     }
     // generate a texture once from a Graphics draw callback
@@ -3025,11 +3051,19 @@ function defineCapeScene(){
       this.mkTex('smokeDot',g=>{g.fillStyle(0xffffff,1);g.fillCircle(16,16,16);},32,32);
       let pad; try{ pad=isoLayout().pad; }catch(e){}
       const px=pad?pad.sx-ISO_TW*0.35:W*0.5, py=pad?pad.sy:H*0.6;
-      this.add.particles(px, py, 'smokeDot', { speedY:{min:-26,max:-58}, speedX:{min:-12,max:12}, scale:{start:0.18,end:0.9}, alpha:{start:0.30,end:0}, lifespan:2600, frequency:90, tint:0xc9d2dc });
+      this.padSmoke=this.add.particles(px, py, 'smokeDot', { speedY:{min:-26,max:-58}, speedX:{min:-12,max:12}, scale:{start:0.18,end:0.9}, alpha:{start:0.30,end:0}, lifespan:2600, frequency:90, tint:0xc9d2dc });
       // (no camera breathe — CSS zoom/pan is the interaction now, and breathe would desync the hotspots)
     }
     update(time,delta){
-      if(this.tex&&this.tex.canvas){ try{ drawCape(this.tex.canvas, (ccNow()-this.t0)/1000); this.tex.refresh(); }catch(e){} }
+      // Gate 6 F6: pad smoke is the one continuous Phaser-native effect layered over drawCape's
+      // canvas art (which is frozen separately via ambientClockT below); toggle it the same way
+      // FlightScene toggles its plume/smoke emitters (this._plumeOn convention).
+      const wantSmoke=!reducedMotion();
+      if(this.padSmoke && wantSmoke!==this._smokeWanted){
+        this._smokeWanted=wantSmoke;
+        try{ if(wantSmoke) this.padSmoke.start(); else this.padSmoke.stop(); }catch(e){}
+      }
+      if(this.tex&&this.tex.canvas){ try{ drawCape(this.tex.canvas, ambientClockT(this._clock)); this.tex.refresh(); }catch(e){} }
     }
   };
 }
@@ -5121,7 +5155,7 @@ function earthPopInfoHTML(){
     <button class="btn" style="width:100%;margin-bottom:8px" onclick="earthGoToCape()">🟡 Go to Cape Canaveral — Mission Control</button>
     ${bodyCardHTML()}`;
 }
-let earthPopoutOpen=false, earthAnim=null, earthT0=0, earthPop={z:1,x:0,y:0};
+let earthPopoutOpen=false, earthAnim=null, earthT0=0, earthLoopT=null, earthPop={z:1,x:0,y:0};
 // Manual-spin view: `lon` is the centre meridian (driven by drag, or auto-advanced when `auto`).
 let earthView={lon:-80,auto:true}, earthLastT=0, earthCapeHit={visible:false};
 function earthLoop(){
@@ -5130,8 +5164,14 @@ function earthLoop(){
   if(cv&&stage){ const w=stage.clientWidth, h=stage.clientHeight;
     if(w>1&&h>1){ if(cv.width!==w||cv.height!==h){ cv.width=w; cv.height=h; }
       const ctx=cv.getContext('2d');
-      if(ctx){ const now=ccNow(), t=(now-earthT0)/1000;
-        let dt=(now-(earthLastT||now))/1000; earthLastT=now; if(dt>0.1) dt=0.1;
+      if(ctx){ const now=ccNow();
+        // Gate 6 F6: dt=0 under reduced motion freezes both auto-spin (earthView.lon) and the
+        // terminator sweep (t passed to drawEarthGlobe below) at whatever position they were
+        // last in. The ground-track overlay is inclination-based (groundTrackPasses), not
+        // time-based, so it renders correctly either way -- nothing informational is hidden.
+        let dt=reducedMotion() ? 0 : (now-(earthLastT||now))/1000; earthLastT=now; if(dt>0.1) dt=0.1;
+        if(!reducedMotion()) earthLoopT=(earthLoopT||0)+dt; else if(earthLoopT==null) earthLoopT=(now-earthT0)/1000;
+        const t=earthLoopT;
         if(earthView.auto) earthView.lon += dt*9; // ~9°/s auto-spin when enabled
         ctx.setTransform(1,0,0,1,0,0); ctx.fillStyle='#05080f'; ctx.fillRect(0,0,w,h);
         const rnd=mulberry(424242); for(let i=0;i<90;i++){ const x=rnd()*w, y=rnd()*h, tw=0.3+0.5*Math.abs(Math.sin(t*1.1+i)); ctx.fillStyle=`rgba(220,230,255,${(tw*0.5).toFixed(2)})`; ctx.fillRect(x,y,1.1,1.1); }
@@ -5148,7 +5188,7 @@ function earthLoop(){
 function openEarthPopout(){
   if(earthPopoutOpen) return;
   closeOtherPopouts('earth');
-  earthPopoutOpen=true; earthPop={z:POPOUT_ZOOM_BOOST,x:0,y:0}; earthView={lon:-80,auto:true}; earthLastT=0; earthT0=ccNow(); state.selectedBody='earth';
+  earthPopoutOpen=true; earthPop={z:POPOUT_ZOOM_BOOST,x:0,y:0}; earthView={lon:-80,auto:true}; earthLastT=0; earthLoopT=null; earthT0=ccNow(); state.selectedBody='earth';
   const ov=document.createElement('div'); ov.className='vehpop-scrim'; ov.id='earthPopout';
   ov.innerHTML=`<div class="vehpop-bar">
       <span class="vehpop-title">🌍 Earth</span>
@@ -5205,7 +5245,7 @@ function initEarthPopZoom(){
 /* ---------- Command Center pop-out ----------
    The animated Cape Canaveral scene blown up to full screen (drawn off-screen at native res, then
    blitted with grab-pan/wheel-zoom), with the agency summary on the right — same chrome as the others. */
-let ccPopoutOpen=false, ccPopAnim=null, ccPopT0=0, ccPop={z:1,x:0,y:0}, ccPopFrame=0;
+let ccPopoutOpen=false, ccPopAnim=null, ccPopT0=0, ccPopClock={}, ccPop={z:1,x:0,y:0}, ccPopFrame=0;
 function ccPopInfoHTML(){
   let s; try{ s=commandSummary(); }catch(e){ return ''; }
   const row=(l,v,c)=>`<div class="vps-row"><span class="lbl">${l}</span><span class="val"${c?` style="color:${c}"`:''}>${v}</span></div>`;
@@ -5276,7 +5316,7 @@ function ccPopLoop(){
   const cv=$('ccPopCanvas');
   ccPopFitBox(); // keep the fitted art box in sync with the stage (handles resize)
   if(cv){ if(cv.width!==CAPE_W) cv.width=CAPE_W; if(cv.height!==CAPE_H) cv.height=CAPE_H;
-    try{ drawCape(cv,(ccNow()-ccPopT0)/1000); }catch(e){} } // draw straight onto the visible canvas at native res; CSS scales it, the wrapper transform pans/zooms
+    try{ drawCape(cv,ambientClockT(ccPopClock)); }catch(e){} } // draw straight onto the visible canvas at native res; CSS scales it, the wrapper transform pans/zooms
   // Refresh the hotspot glyphs ~2x/sec (every 30 frames): the canvas redraws every frame, but the status
   // glyphs only change on game-turn boundaries, so per-frame innerHTML churn would be wasteful. The delegated
   // click listener lives on the persistent #ccPopSpots container, so rebuilding its children here is safe.
@@ -5286,7 +5326,7 @@ function ccPopLoop(){
 function openCCPopout(){
   if(ccPopoutOpen) return;
   closeOtherPopouts('cc');
-  ccPopoutOpen=true; ccPop={z:POPOUT_ZOOM_BOOST,x:0,y:0}; ccPopT0=ccNow();
+  ccPopoutOpen=true; ccPop={z:POPOUT_ZOOM_BOOST,x:0,y:0}; ccPopT0=ccNow(); ccPopClock={};
   const use3d=!!(cape3dAvailable()&&cape3d);
   const ov=document.createElement('div'); ov.className='vehpop-scrim'; ov.id='ccPopout';
   ov.innerHTML=`<div class="vehpop-bar">
@@ -7288,7 +7328,19 @@ function map3dTick(){
   const d=(typeof absDay==='function')?mapViewAbsDay():0;
   if(mapPreviewAbsDay===null && map3d._hudLiveDay!==d){ map3d._hudLiveDay=d; updateMap3DTimeHud(); updateMap3DScaleHud(); updateMap3DWindowHud(); }
   if(map3d._hudSelBody!==state.selectedBody){ map3d._hudSelBody=state.selectedBody; updateMap3DScaleHud(); updateMap3DWindowHud(); } // D2/D4: selection drives the scale + window blocks too
-  const t=(Date.now()-map3d.startedAt)/1000, pulse=1+Math.sin(t*1.7)*0.035+Math.sin(t*.47)*0.025;
+  // Gate 6 F6: t drives only the sun pulse/rotation/corona breathing below -- every planet
+  // and label position is driven by d (mapViewAbsDay, real sim time), never by t. Freezing
+  // this local accumulator under reduced motion cannot move a body or change an orbit.
+  const realNow=(typeof performance!=='undefined'?performance.now():Date.now());
+  if(reducedMotion()){
+    if(map3d._motionT==null) map3d._motionT=(Date.now()-map3d.startedAt)/1000;
+    map3d._motionLast=realNow;
+  } else {
+    if(map3d._motionT==null) map3d._motionT=(Date.now()-map3d.startedAt)/1000;
+    map3d._motionT+=(realNow-(map3d._motionLast||realNow))/1000;
+    map3d._motionLast=realNow;
+  }
+  const t=map3d._motionT, pulse=1+Math.sin(t*1.7)*0.035+Math.sin(t*.47)*0.025;
   map3d.sun.rotation.y=t*0.12; map3d.sun.rotation.z=Math.sin(t*.19)*0.08;
   map3d.corona.material.rotation=Math.sin(t*.13)*0.18; map3d.corona.scale.set(40*pulse,40*pulse,1);
   const coronaBase=map3d.corona.userData.baseOpacity==null ? .78 : map3d.corona.userData.baseOpacity;

@@ -143,6 +143,15 @@ global.addEventListener = ()=>{};
 global.removeEventListener = ()=>{};
 global.innerWidth = 1280;
 global.innerHeight = 800;
+// Gate 6 F6: minimal matchMedia stub so reducedMotion() (shell.js) has something to query.
+// Only '(prefers-reduced-motion: reduce)' is handled; matches reads live from a global flag
+// so a test can flip __mockReducedMotion after game.js has already loaded and captured the
+// MediaQueryList reference — matching how the real accessor is meant to respond live.
+global.__mockReducedMotion = false;
+global.matchMedia = (query)=>({
+  get matches(){ return query.indexOf('prefers-reduced-motion')>=0 && !!global.__mockReducedMotion; },
+  media: query, addEventListener(){}, removeEventListener(){}, addListener(){}, removeListener(){}
+});
 // Animated suites replace performance.now() with a virtual clock. Recent Node releases expose
 // the inherited implementation as effectively read-only, so a plain assignment silently leaves
 // the real clock in place and thousands of synthetic frames advance only a few milliseconds.

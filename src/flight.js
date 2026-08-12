@@ -2597,7 +2597,7 @@ function drawAscent(t,canFail){
       ctx.beginPath(); ctx.arc(sx,sy+4+Math.random()*3,5+Math.random()*8+p*40,0,7); ctx.fill();
     }
   }
-  const shakeAmt = qNorm * 2.5;
+  const shakeAmt = reducedMotion() ? 0 : qNorm * 2.5;
   A.shakeX = (Math.random()-0.5)*shakeAmt;
   A.shakeY = (Math.random()-0.5)*shakeAmt;
   if(!A.shape) A.shape=buildVehicleShape(s);
