@@ -163,6 +163,8 @@ contract on the thing a player can actually perceive.
 
 ## Typography contract
 
+*Shipped 2026-08-11, as specified below.*
+
 - One condensed display face is bundled in `assets/` and declared with
   `@font-face`, loaded locally with no network dependency, and attributed in
   `assets/CREDITS.md` under a licence that permits redistribution.
@@ -174,6 +176,25 @@ contract on the thing a player can actually perceive.
 - The bundled face is subset to the glyphs the UI uses and is small enough that
   it does not regress the Tier 0.1 boot-weight work. Build parity and the
   texture-embedding checks stay green.
+
+Implementation: Roboto Condensed (SIL OFL 1.1, github.com/google/fonts),
+chosen because it was already second in the pre-Gate-6 `--sans` fallback
+chain — bundling it means machines that already had it installed see zero
+visual change, and the machines that didn't (the actual bug) get exactly the
+look the game was designed around rather than a new typeface. It's a variable
+font (`wght` 100-900, no `wdth` axis), so `font-stretch:condensed` was a no-op
+against it and is removed. Subsetted with `pyftsubset` to the glyphs a
+full-source scan found in actual use — Basic Latin, Latin-1 Supplement, the
+specific punctuation in play (en/em dash, curly quotes, bullet, ellipsis), the
+Greek letters used inline as physics notation (Δv, γ, θ, etc.), and subscript
+digits — 459 glyphs, 78KB. Icon/dingbat ranges (arrows, warning signs,
+checkmarks) were deliberately excluded: no text face carries them, so they
+already fall through to the system emoji font regardless of which webfont is
+active. Embedded as a `data:` URI directly in the `@font-face` rule (not a
+separate file reference), mirroring `build.js`'s `embeddedTextureScript()`
+pattern for the planet/Cape textures and for the same reason: the release
+build opens via `file://`, where Firefox can block a separately-fetched
+sub-resource, and a `data:` URI has no fetch to block.
 
 ## Contrast and motion contract
 
@@ -233,8 +254,16 @@ Gate 6 acceptance requires:
   every asserted site; no new `var()` in an SVG presentation attribute — 20
   checks, shipped in the F2 commit, supersedes the originally planned
   `test-contrast-tokens.js` and `test-token-drift.js`, folded into the above),
-  `test-reduced-motion.js` (preference honoured in JS; no information or
-  outcome suppressed — not yet built);
+  `test-reduced-motion.js` (accessor on/off/live-toggle; ambientClockT
+  freezes and resumes without a catch-up jump; flight shake present when
+  motion is allowed and zero throughout ascent when reduced, with virtT
+  still advancing either way; source-level wiring + information-preserved
+  guards for every ambient loop — 24 checks, shipped in the F6 commit),
+  `test-dead-tokens.js` (the two confirmed-dead declarations stay removed
+  — 4 checks, shipped in the F7 commit), `test-typography.js` (embedded
+  font decodes as a valid WOFF2 of the expected size; --sans and
+  font-stretch wiring; CREDITS.md attribution — 23 checks, shipped in the
+  F3 commit);
 - full headless sweep: no known-red and no unexpected failures;
 - Firefox and Chromium: theme and era switching re-tints the whole chrome, the
   bundled face renders, and reduced-motion is honoured live in both engines;
