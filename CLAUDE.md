@@ -6,266 +6,116 @@ reorder existing entries there, only add new ones at the end, same as `ROADMAP.m
 
 ---
 
-## STATUS (as of 2026-07-25, working tree based on HEAD — Solar Map D4 commit)
+## STATUS (as of 2026-08-12, working tree based on HEAD — Gate 6 F3 commit)
 
-**Repo health:** 111 test suites (added `test-map3d-overlay.js`, `test-map3d-scale.js`,
-`test-map3d-roster.js`, `test-map3d-orient.js`, `test-map3d-window.js`), clean build parity, `git diff --check` clean. **REMINDER (hit 5x in one
-session, 2026-07-25): `node build.js` is a bare string concat with NO syntax check** — a green build
-does not mean the output parses. ALWAYS run `node --check build/game.js` immediately after any edit
-near a `/* */` comment block, and prefer editing well past a comment's opening `/*` line (or below its
-closing `*/`) so a narrow str_replace match can't sever the marker from its body.
-Only known drift: `test-flight3d-trajectory.js` (long-standing — Codex's own accepted
-trajectory/vehicle-physics changes, not a regression). If you see a DIFFERENT test failing, don't
-assume it's pre-existing — check the history below for whether it's a known, intentional behavior
-change first.
+**Repo health:** 148 test suites, clean build parity, `git diff --check` clean.
+No known drift — `test-flight3d-trajectory.js` was the long-standing exception and Gate 5 closed it
+(31/31 green). If you see ANY suite failing, treat it as new until proven otherwise; do not assume
+it is pre-existing.
+**REMINDER (hit 5x in one session, 2026-07-25): `node build.js` is a bare string concat with NO
+syntax check** — a green build does not mean the output parses. ALWAYS run `node --check
+build/game.js` immediately after any edit near a `/* */` comment block, and prefer editing well past
+a comment's opening `/*` line (or below its closing `*/`) so a narrow str_replace match can't sever
+the marker from its body.
 
 **In progress:** (none claimed right now).
 > When you start a task, replace this line with: `<task> — <Claude|Codex> — started <date>`.
 > When done, clear it back to "(none claimed right now)" and add your entry to the history below.
 
-**Oriented quickly (last few sessions, newest first) — see History for full detail:**
-- Tier 3.2 annals archive (Claude) — `state.annals` (NOT `state.history` — that's already a
-  {missionId:year} map; collision caught in scoping): a permanent oldest-first record of significant
-  events, separate from the 40-cap live log. `appendAnnal(kind,summary)` beside `log()` (not a
-  signature change — protected baseline), wired at 8 sites (flight success/failure, crisis
-  trigger/resolve, facility founded, research done); routine log() chatter deliberately excluded.
-  Surfaced in the Chronicle grouped by era (`chronicleAnnalsHTML`), omitted when empty. Ring-buffer
-  cap 1200. SAVE_VERSION 59→60, lazy default. `test-annals-archive.js` 28/28.
-  RULE: same checklist mislabel as 3.1 — 3.2's boxes were `[x]` from the original scoping despite
-  nothing built; reverted before starting. (3.3/3.4/3.5 checked clean.)
-- Tier 3.1 uiLayerBtn built (Claude) — the header control genuinely didn't exist (applyUiLayer's
-  `$('uiLayerBtn')` no-op'd via `if(b)` every render). Added it, wired to new `cycleUiLayer()`
-  (wraps basic→advanced→expert→basic) calling the SAME `setUiLayer()` Settings' picker uses — one
-  source of truth. Title now names current layer + what next click does, recomputed every render.
-  RULE: found this item's own checklist was `[x]`'d in ROADMAP.md since the ORIGINAL scoping commit
-  despite the button not existing (`git log -S` confirmed) — reverted to `[ ]` before building, so
-  the doc didn't claim done for undone work. `test-ui-layer-button.js` 19/19.
-- Tier 2 C6 era-gated research, option (b) (Claude) — `eraMin` on all 98 RESEARCH nodes; MISSIONS
-  stay ungated. `researchNodeState()` gains `'era'`, checked BEFORE `reqsMet` so era-gated reads
-  differently from prereq-locked. Enforced at `buyResearch()` AND `tryStartQueuedResearch()` (the
-  latter calls `startResearchProject()` directly — would have been a silent bypass).
-  RULE: the approved track+depth heuristic was generated and DISCARDED — it put `precision_edl`/
-  `mars_traj`/`lunar_lander` in era 7 and `orbital_depot` (gates `tanker_leo` at minRep 38!) in era
-  6. Prereq depth measures position in a track's arc, not in history. Hand-assigned all 98 instead,
-  validated against: every mission's reqResearch reachable, and no node gated later than its own
-  prereqs (that check caught 2 real inversions). Curve: 9 nodes open at 1942 → 98 by 2100.
-  `test-research-era-gate.js` 25/25. Two old fixtures broke correctly (assumed prereqs-met ⇒
-  available) and were advanced to a valid era.
-- Tier 2 C8 outer-system bases + hazard (Claude) — C7's premise died on audit (module
-  specialization ALREADY EXISTS: 10 STATION_MODULES, 4 synergies, surface/orbital gating; portCap
-  Infinity off-Earth is deliberate) — FOURTH such finding, after decision system, crisis system and
-  B5's "placeholders". Real gap was base COUNT hard-capped at 3. Shipped `callisto_base`
-  (jupiter_orbit gate) + `titan_base` (titan_landing gate) reusing STATION_MODULES wholesale, plus
-  `BODY_HAZARD` feeding condition-decay and resupplyCostFull. Built hazard FIRST at zero effect and
-  proved existing econ byte-identical by stash/rebuild/diff before adding bodies — those figures are
-  now pinned as literals in `test-outer-bases.js` (72/72). Io excluded: volcanism is structural risk,
-  not sustained cost, needs its own mechanic.
-  PLAYTEST FLAG: first hazard numbers ever set, no precedent. Titan nets +0.15/mo — one B4
-  `isru_supply_shock` (−35% facility output) pushes it negative. Most likely thing to need retuning.
-- Tier 2 B5 research audit, ZERO placeholders found (Claude) — B5 assumed some of the 14 `effect:{}`
-  RESEARCH nodes needed real payloads. Audited all 14 (grep both quoted and dot-notation refs, read
-  every call site): all legitimately empty — 7 bespoke-implemented (mechanic lives at its own point
-  of use, not the pooled effect bus), 2 capability gates, 5 pure prereqs. Real finding was two STALE
-  DOCS: ROADMAP's own "Open threads" note claimed cryo boil-off isn't modeled — it is
-  (`boiloffMargin()`, sim.js:1800, been there a while) — and B5's entry repeated that stale claim.
-  Both corrected. New `RESEARCH_EMPTY_EFFECT_ALLOWLIST` (data.js) + `test-research-effect-gates.js`
-  (12/12) guard the invariant both directions going forward.
-  RULE (third time now): "build X" findings that trace to reasoning about the design instead of
-  reading the code, after decision-system (Tier 1) and crisis-system (Tier 2 A). When a review flags
-  something as missing/broken, grep for it before believing it.
-- Tier 2 B4 crisis pool 3→9 (Claude) — six new crises weighted to eras 6-7 (previously zero content
-  there), plus FOUR new effect axes, each with one live application site: `crewRel` (branch in
-  `crisisRelPenalty`), `research` (`crisisResearchMult()` at the daily R&D tick), `facilityOut`
-  (`crisisFacilityMult()` in the facility production loop), `buildTime` (`crisisBuildMult()` in
-  `buildMonths()` — only axis that INCREASES). New multiplier accessors follow
-  `crisisGovFundingMult()`'s contract so call sites are unconditional multiplies. No new counters —
-  all thresholds use the existing five. `CRISIS_TRIGGER_CHANCE` untouched (variety, not rate).
-  `test-crisis-pool.js` 43/43, incl. a loop asserting EVERY effectKey moves a live observable so a
-  typo'd key can't ship as an inert label-only crisis.
-  RULE: don't hardcode a collection's size in an assertion when it's expected to grow — my own A3
-  test asserted `crisisProximity().length===3` and correctly broke; now derives from `CRISES`.
-  Balance flag: `safety_backlash` triggers on `crewLost>=3`, the only failure-triggered crisis —
-  compounds a bad run by design, maxPenalty 0.30 vs funding_collapse's 0.50. Watch in playtest.
-- Tier 2 A3 crisis proximity (Claude) — new `crisisProximity()` (era-eligible crises regardless of
-  threshold, deliberately different from `crisisCandidates()` which requires threshold too) feeds a
-  new "Horizon" card on the Command deck: `34/40` progress, amber past 75%, "watching political
-  conditions" for `funding_collapse`'s null threshold instead of `0/0`. Card vanishes entirely while
-  a crisis is active (already surfaced via Outliner/agencyAlerts) or nothing is era-eligible yet.
-  `test-crisis-proximity.js` 29/29, includes a protected-baseline check that `crisisCandidates()`'s
-  own filtering is untouched.
-- Tier 2 A2 rival strip (Claude) — Command deck rival rows now show next-goal name + projected
-  year (`rivalProjectedYear()`) with ahead/behind framing, plus a shared `rivalCrowdFactor()` line.
-  Scoping worried about intel-gating this; turned out `rivalProjectedYear()`'s own comment already
-  documents the pending goal as free for every player — only `rivalFullProjection()`'s indices 1+
-  are paid. Verified with a debug script (7-goal rival never leaks goal #2) before writing the test.
-  `test-rival-strip.js` 22/22.
-- Tier 1.3 third Chronicle bookend, TIER 1 COMPLETE (Claude) — `SCORING_YEAR_3=2060` mirrors the
-  `SCORING_YEAR_2` pattern exactly: constant, `state.eraScored3` flag, `'era3'` showChronicle mode,
-  `checkScoringDate()` block. RULE (corrected my own prior scoping): I had written "a save already
-  past 2060 should not retroactively fire the ceremony" as a requirement — that's not how
-  `SCORING_YEAR`/`SCORING_YEAR_2` work and can't be built without making 2060 behave inconsistently
-  with its siblings (the flag is just `undefined` on old saves, so it fires once on next check
-  regardless of why the year is already past — there's no way to distinguish the two cases). Shipped
-  matching actual behavior instead. New `test-chronicle-bookends.js` (22/22) — this mechanism had
-  ZERO test coverage for any of its three bookends before this slice, so it backfills 1990/2100 too.
-  SAVE_VERSION 58→59.
-  **TIER 1 IS NOW FULLY SHIPPED (1.1 anomaly pool, 1.2 near-miss attribution, 1.3 this).**
-- Tier 3 scoped (Claude, 2026-08-04) — third critical review, UI/player-experience only. Finding is
-  the UI echo of Tier 2's: **the game built the tools to manage its own complexity and never handed
-  them to the player.** Headline bug: `applyUiLayer()` sets `$('uiLayerBtn').textContent` every
-  render but **`uiLayerBtn` does not exist in `shell.html`** — a header control was designed, coded
-  against, and never built, so the whole basic/advanced/expert system is reachable only from
-  Settings and in practice doesn't exist. Five items: 3.1 build that button (small, do first),
-  3.2 persistent history archive separate from the 40-entry live log, 3.3 dock the three REFERENCE
-  modals (finances/rivals/infrastructure — all thin wrappers around a `render*()` into a host div,
-  so it's a host swap not a rewrite; every INTERRUPT modal stays), 3.4 give Basic real alternative
-  renderings (today `.adv-only{display:none}` can only SUBTRACT — 6 expert-only sites vs 1
-  basic-only), 3.5 log search (backlog #16, after 3.2). RULE: `$('id')` lookups guarded with
-  `if(el)` fail silently forever — grep shell.html for every id render.js reaches for.
-- Tier 2 scoped (Claude, 2026-08-04) — second critical review's finding supersedes the first's:
-  **the game isn't short of systems, its best systems are dark.** Evidence: the flight decision
-  system was already built when review #1 proposed building it; the rival economic sim (capital,
-  momentum, contract crowding, firsts-denial) surfaces as ONE WORD behind a modal; the crisis
-  system review #1 demanded already exists; and `BENCH_V2` is still `false` — the whole E3 part
-  builder is complete, 207 checks green, and switched off. Seven items scoped in ROADMAP.md:
-  A1 enable BENCH_V2 (**human-blocked — needs a real browser, Claude cannot close it**),
-  A2 surface rivals, A3 surface crisis proximity, B4 crisis pool 3→8-10, B5 the 14 empty-effect
-  research nodes, C6 calendar/progression coupling (**blocked on Shamus choosing option a/b/c**),
-  C7 facility specialization. RULE: read the shipping state before scoping "build X" — twice now a
-  review has proposed building something that already existed.
-- Tier 1.2 near-miss attribution (Claude) — `resolveFlight()` now tracks the narrowest surviving
-  subsystem margin during its existing roll loop (same RNG draws, same order, outcomes provably
-  unchanged — `test-near-miss.js` runs the original inline-compare loop against the live one across
-  300 seeds) and reports it on clean successes via `nearMissText()` when under `NEAR_MISS_MARGIN`
-  (0.05). Also widened the per-phase breakdown from failures to every outcome (`failDetail` →
-  `phaseDetail`), so hovering a success shows what the odds were. 33/33.
-  RULE: the scoping estimate ("~1 in 4 successes") was wrong — measured ~11% early game, since an
-  early vehicle has THREE subsystems at 81-91%, not 5-7 at 95%. Measure rates, don't estimate them.
-  RULE: a hand-rolled `v` literal makes `subsystemReport()` return NaN, which makes every flight
-  succeed and every assertion vacuous — use `computeVehicle()`/`curMission()`, and assert fixture
-  outputs are finite before asserting behaviour.
-- Tier 1.1 anomaly pool 3 → 10 (Claude) — seven historically-grounded in-flight anomalies added to
-  `MISSION_ANOMALIES` (Gemini 8 thruster runaway, Apollo 11 1202 alarm, Skylab thermal loss, comms
-  blackout, docking latch, transfer-stage leak, micrometeoroid). Balance-neutral by construction:
-  `ANOMALY_CHANCE_BASE` and every frequency modifier untouched, pool length never enters
-  `rollMissionEvents()`'s chance math — variety, not risk, and a test now pins that. Two conventions
-  enforced by test: every anomaly always offers a non-fatal option, and capability-presupposing
-  entries gate on `state.research` (`digital_computer`, `orbital_assembly`, `orbital_eva`).
-  New `test-anomaly-pool.js` (24/24). RULE: scoping found the review's premise wrong — the flight
-  decision system was already substantially built (`openFlightForDecision` backs six hold points
-  incl. the abort/press-on call). Check what exists before scoping "build X".
-- Tier 0.3 header/readout tooltips (Claude) — `title=` added to every header stat (Capital/
-  Reputation/Flights/Public Support/Market/PGM Royalties/Passive Income/Facilities/Science/LEO
-  Depot/Date) and to the bench Δv gauge + Liftoff TWR metric. Caught one accuracy bug before
-  shipping: "Market" reads like propellant pricing but is actually active economy-event effects
-  (`renderMarketStat()`) — checked against source rather than guessed. New source-guard test
-  `test-header-tooltips.js` (13/13). **Tier 0 (0.1/0.2/0.3) is now fully shipped.**
-- Tier 0.2 desktop breakpoint (Claude) — one new `@media(max-width:1200px)` tier narrows
-  `--cc-rail-width` 380px→300px on both persistent rails, sitting above the existing 880px
-  single-column collapse. Discovered `.command-hero` (Command Center's own hero layout,
-  `@media(min-width:1101px)`) already uses a fluid `clamp(220px,20vw,285px)` rail width and is
-  scoped/later in source order, so it correctly wins over the new `:root` override on the Command
-  scene — the fix only reaches the other 5 scenes (Bench/R&D/Map/Station/Base), which is exactly
-  the intended target. CSS-only; no JS touched. **VERIFY: Firefox at 1150px/1200px/1366px viewport
-  widths** — no headless test exists for layout, per the item's own scoping.
-- Tier 0.1 build/git cleanup (Claude) — `index.html` no longer embeds the ~16.6MB texture blob
-  (already had a working plain-URL fallback via `MAP3D_TEXTURE_ASSET`/`CAPE3D_TEXTURE_ASSET`);
-  `orbital-ventures.html` keeps the embed (confirmed `file://` use, needed there). Added
-  `.gitignore` for all three generated artifacts (`orbital-ventures.html`/`index.html`/
-  `build/game.js`) and untracked them — fully reproducible via `node build.js`, game progress
-  lives in browser `localStorage`, not git. History rewrite to reclaim existing repo size
-  explicitly declined (confirmed not a problem). New texture-embed-split checks in
-  `test-build-parity.js`. **VERIFY: open `index.html` however you normally do during dev and
-  confirm Solar Map/Cape textures actually load — this only reproduces the file://-safe fallback
-  logically, not against a real browser.**
-- #19 Time-to-affordability estimates (Claude) — shared affordEstimate()/affordWidgetHTML()
-  widget (progress bar + two months-to-afford figures: `months` from commandSummary()'s
-  instantaneous recurring net, `monthsTypical` from state.lastMonth.net — the actually-realized
-  last month, which already existed for runwayMonths()'s inverse question). Always renders, even
-  once affordable ("0 mo" + full green bar), per design — red + warning copy when net<=0. Wired
-  into research (tree action bar + detail panel + leveled tech upgrade), facility founding/
-  expansion, division training, department training, passive-contract signing, material dip buys.
-  Deliberately NOT wired into hiring (verified hirePersonnel has no money gate — salary is
-  recurring, not a capital purchase) or small instant-decision buys (fuel lots, resupply, repair,
-  rival intel/counterpoach) where a save-up estimate adds little. New test-afford-estimate.js
-  (39 checks); full suite otherwise unchanged (120 suites, only the pre-existing
-  test-flight3d-trajectory.js drift). RULE: when two "which net figure" options both already
-  exist in the codebase for a different question, reuse them rather than inventing a third
-  (rolling-average) figure — state.lastMonth was built for runwayMonths() and slots in unchanged.
-- Solar Map diagnostics + host sizing (Claude) — added window.ovMapDiag() (mount, canvas DOM/size,
-  rAF state, context-lost, draw calls, camera, host computed styles) after four speculative fixes.
-  Found: addMap3DTimeHud forced host.style.position='relative', clobbering #mapPopHost's intentional
-  `position:absolute; inset:0` stage-fill; now only promotes a STATIC host. remountMap3D now sizes the
-  renderer from the host's real getBoundingClientRect, not the nominal 960x680.
-  RULE: a UI symptom that survives two fixes needs INSTRUMENTATION, not a third hypothesis.
-- Solar Map WebGL context architecture (Claude) — STRUCTURAL FIX. The map used to destroy+rebuild its
-  WebGL context on every tab switch (pauseMap3D disposed despite its comment), every pop-out open and
-  every close, re-uploading 15 planet textures each time and exhausting the browser's context cap. New
-  remountMap3D(hostId,W,H) REPARENTS the live scene (appendChild moves it; canvas keeps its context and
-  listeners) — must move the HUD, hover card and chevron layer too or they stay behind. pauseMap3D now
-  only cancels the rAF. disposeMap3D is now rare. RULE: when a resource is exhausted, look at what
-  ALLOCATES it, not at the handler for running out. Three correct-but-ineffective fixes in a row means
-  you're fixing the wrong layer.
-- Solar Map pop-out context-lost guard (Claude) — forceContextLoss() FIRES webglcontextlost, and it
-  arrives async after the next scene is built, so the handler was tearing down its own successor.
-  Handler now checks map3d.dom!==dom (each listener closes over its own canvas) plus a _disposing
-  flag. RULE: a teardown call that raises the event your recovery handler listens for needs an
-  IDENTITY check against the live object -- a null check passes exactly when the successor exists.
-- Solar Map pop-out ROOT CAUSE (Claude) — WebGL context leak: disposeMap3D() never called
-  forceContextLoss(), and it runs on every tab leave / pop-out open / pop-out close. Browsers cap
-  contexts and silently drop the oldest; a lost context renders nothing and THROWS NOTHING, so no
-  catch fired and no fallback engaged. Fixed forceContextLoss + geometry/material disposal, added a
-  webglcontextlost handler, and routed all three failure paths through map3dFallbackTo2D() which
-  knows both mounts (the pop-out's fallbackId was null). RULE: a flat-colour render symptom means
-  resource/context state, not control flow — "painting nothing" and "not painting" have disjoint causes.
-- Solar Map pop-out blank-stage fix (Claude) — refreshMapPopout destroyed the 2D fallback BEFORE
-  calling startMap3D and ignored its return value; startMap3D catches any failure, disposes and
-  returns false, so any 3D failure left a permanently blank stage with both side panels fine. Now
-  proves 3D started before tearing down 2D. RULE: when a symptom is ABSENCE, suspect a removed
-  fallback before suspecting the primary renderer.
-- Solar Map pop-out flexbox fix (Claude) — the pop-out roster regressed the canvas out of view: .vehpop-stage
-  is flex:1 with default min-width:auto (floor = 960px canvas) while both side panels were
-  flex-shrink:0, so the row overflowed .popout-window at every viewport width. Fixed with
-  #mapPopStage{min-width:0}. RULE: any flex:1 sibling holding a canvas needs an explicit min-width:0.
-- Solar Map pop-out parity (Claude) — the pop-out already inherited every 3D-scene D-pass feature via
-  the shared startMap3D() builder; only the roster (plain DOM) needed mounting there. Fixed a D3a bug:
-  mapRosterSelect's camera snap was gated to mountId==='mapHost', dead in the pop-out.
-- Solar Map D4 (Claude) — time-scrubber promotion; **D-PASS COMPLETE**. Jump-to-next-window +
-  window readout + preview arc. Map anchors window search to the PREVIEWED date, body card stays
-  anchored to the LIVE date — different questions, same computeWindows geometry, so they can't
-  disagree. NOTE: window:true exists on only 4 missions, all Mars, so the control is Mars-only today;
-  test carries a canary that fails if new window content is authored.
-- Solar Map D3b (Claude) — ecliptic reference grid + off-screen Sun/Earth chevrons. Projection math is
-  PURE (map3dProjectPoint/map3dChevronDirection) specifically so the behind-camera sign-flip trap is
-  testable; caught an inverted right-vector (f x up = (-f.z,0,f.x)) in the first draft. D3 complete;
-  D4 (time-scrubber promotion) is the last D-pass slice.
-- Solar Map D3a (Claude) — body roster rail (left-side list of every navigable body, grouped
-  reached/available/locked/future, click to focus — reuses mapAssetModel/bodyPlan, no new gate logic)
-  + moon-label LOD (reuses D2's ruler fade pattern). D3b (ecliptic grid, off-screen chevrons) still
-  open — heavier tier, per the model split recorded in ROADMAP.md.
-- Solar Map D2 (Claude) — scale legibility: AU labels on the orbit rings, live real distance/light-time
-  readouts in the HUD + hover card. The review's proposed linear scale BAR was traced and REJECTED
-  (scene→AU mapping is nonlinear by 3.1×, a bar would mislead) — don't re-add it; see ROADMAP.md.
-  Caught a real bug: planetHelio resolves moons to their parent, so Earth↔Moon computed as 0 AU.
-- Solar Map D1 (Claude) — ported mapAssetModel()/plannedRoute()/transferArc()/rivalsAtBody() into the
-  3D view (previously SVG/Phaser-only, invisible in the default 3D view): overlay badges (facility
-  health, ISRU, depot, belt claim, tracking, firsts, rival reach) + committed/planned transfer arcs.
-  See ROADMAP.md for the full D1 review + slice writeup. D2–D4 (scale legibility, orientation, time-
-  scrubber promotion) still open.
-- Flight 3D booster-first repair (Codex) — real default/long-burn strap-ons now fly as the promised
-  serial-equivalent stage 0, always detach before the core, and never reappear on orbit/transfer.
-- Flight 3D vehicle-authority + visibility repair (Codex) — the frozen launch snapshot now owns the
-  pad/ascent/orbit meshes; staging topology is guarded; Earth-scale fog, lighting, map orientation,
-  and horizon framing were browser-verified with a three-stage/two-booster launch.
-- Consolidation pass (Claude) — verified Codex's tech-tree completion (98 nodes, closed), camera
-  director, and altitude-driven Earth reveal all integrate cleanly with prior work. No conflicts.
-- Flight 3D: physical Earth handoff + orbital operations (Codex) — Mission Control maneuver
-  sequence at orbit insertion, named camera-director shots, altitude-driven (not progress-driven)
-  Earth reveal, 0.1× default playback speed (intentional, confirmed with owner).
-- Tech-tree design pass, slices 1–4 (Claude slice 1, Codex slices 2–4) — 110→98 nodes, closed.
-- Palette Population PP.0/PP.1/PP.3 (Codex) — parts.js content, self-contained.
-- Crew-escape mini-arc, BACKLOG #40; launch camera + staging fixes; deep-failure/cislunar-reentry
-  3D coverage (Claude) — see History for the full run.
+**Human-blocked — needs a real browser, no agent can close these:**
+- `BENCH_V2` is still `false` (parts.js:18). The whole E3 part builder is complete, 207 checks
+  green, and switched off pending a playtest. Checklist in ROADMAP.md.
+- Gate 6 browser items: re-capture `docs/ui-baseline/` (every existing file is smaller than its
+  filename claims — `command-1920x1080.png` is actually 1003×1072, so no before/after comparison
+  against them is valid); confirm F8; and simply LOOK at the six new palettes, which no human has
+  seen yet.
+- Gate 3's engineering/design/aesthetic final re-audits never ran (agent hit its usage limit), so
+  Gate 3 is not fully signed off.
+
+**Gate system (Codex's adversarial-review track, separate from Tiers/ROADMAP).** Contracts live in
+`docs/GATE-N-CONTRACTS.md`; evidence in `docs/evidence/`. Shipped: Gate 0 (baseline), 1 (authority),
+2 (atomic launch), 3 (economic continuity + bankruptcy reorg), 5 (honest trajectory), 6 (presentation
+polish). **Gate 4 (onboarding / progressive disclosure) was skipped and is still unbuilt** — it sits
+BEFORE Gate 6 in the ladder recorded in `GATE-1-CONTRACTS.md`. A Gate 7 is referenced there but never
+defined.
+
+**Gate 6 — presentation polish (Claude, 2026-08-11/12), all seven findings addressed:**
+- **F1/F5 palettes + contrast** — all six theme/era blocks previously held BYTE-IDENTICAL values
+  while the source comments claimed distinct palettes; Apollo Beige and Control Room Green both
+  rendered the default blue. Palettes are now solved numerically so contrast holds by construction.
+  Default keeps its shipped surfaces; only 3 failing tokens moved (`--dim` 2.72:1 → 4.70:1,
+  `--bad`/`--dom-military` 4.33 → 4.67). `test-theme-palettes.js` 274 checks.
+  RULE: domain hues are a SEMANTIC language and must stay stable across palettes, not drift toward
+  each theme. The inherited wheel had `dom-exploration` and `dom-warn` **3.5° apart** — two of seven
+  domains were effectively one colour. Re-spaced to clear 20°.
+  RULE: my own hand-set "fix" for that made it WORSE (12.7°). Solve colour numerically and verify;
+  do not eyeball hex.
+- **F2 token coverage — RE-SCOPED, original premise was wrong** — "662 literals vs a 47-token
+  system" implied a mechanical migration. Measurement killed it: only **3** literals in render.js
+  exactly matched a token value, and **82% of distinct literals are used exactly once**, so
+  promoting even the top 50 repeated colours covers ~32% of occurrences. It is not one system
+  half-applied; it is one system plus ~300 one-off decisions never systematised. Scope became
+  "named chrome surfaces resolve through tokens": new `--label` token, 28 substitutions in the Solar
+  Map DOM overlays. `test-themeable-surfaces.js` 20 checks.
+  RULE: the planned `test-token-drift.js` literal-count ratchet was ABANDONED — it would have passed
+  while the UI stayed exactly as incoherent. Assert the perceivable property, not a proxy metric.
+- **F3 typography** — `--sans` named fonts that were never bundled and had no `@font-face`, so a
+  Linux/ChromeOS player fell through to `system-ui` in a non-condensed face. Bundled Roboto
+  Condensed (SIL OFL 1.1) — chosen because it was ALREADY second in the fallback chain, so machines
+  that had it see zero change. Variable font (wght 100-900, no wdth axis), so `font-stretch:
+  condensed` was a no-op and is removed. Subsetted to 459 glyphs / 78KB from a real source scan, and
+  embedded as a `data:` URI — same `file://` fix `embeddedTextureScript()` already uses for
+  textures. `test-typography.js` 23 checks (decodes the base64 and validates it as a real WOFF2).
+- **F6 reduced-motion** — the preference appeared ONCE in the whole codebase, in CSS, and zero times
+  in JS: every animation ignored it. New shared `reducedMotion()` accessor in shell.js (loads before
+  flight.js/render.js). Six fix points: flight Max-Q shake, `cape3dTick`, `map3dTick`, `earthLoop`,
+  the three `drawCape(t)` callers unified onto one `ambientClockT()` helper, and CapeScene's pad-smoke
+  emitter. `assembly3dLoop` checked and correctly left alone (camera is fully user-driven).
+  Each freeze point was verified NOT to carry information first — launch/reentry state lives in
+  `root.userData`, planets are driven by `d` (sim day), ground track is inclination-based.
+  `tests/harness.js` gained a `matchMedia` stub (there was no way to test either state headlessly).
+  `test-reduced-motion.js` 24 checks.
+- **F7 dead tokens, 2 of 3** — removed `--cc-hero-navy-raised` (0 uses) and a `--hud-*`
+  redeclaration that was 3/5 byte-identical to `:root`. `test-dead-tokens.js` 4 checks.
+  RULE: the third item (merge `--cc-hero-*` into `--hud-*`) was DEFERRED because the premise was
+  wrong. `.shell.command-hero` and `body.command-mode` toggle from the same state and form a
+  deliberate two-tier system — cc-hero applies directly to header/opsbar with no viewport gate AND
+  is bridged into hud-* only at ≥1101px. Flattening would likely break that breakpoint.
+- **F4 (out of scope, belongs to Gate 1):** `renderCCLegacyStrip()` is called from NO production
+  path — only from `tests/browser/gate0-launch-flow.js`, which synthesises the `commandLegacy`
+  surface that Gate 1's ready-hull check then asserts against. That contract validates a route no
+  player can reach and will pass forever regardless of the real UI.
+- **F8 (deferred, needs a browser):** 15 pre-existing sites use `fill="var(--ignite)"` /
+  `stroke="var(--ignite)"` as bare SVG presentation attributes, which do not resolve `var()` the way
+  a `style=` value does. Held at a ceiling by `test-themeable-surfaces.js` so it cannot grow.
+
+**Earlier work (newest first) — see History and ROADMAP-HISTORY.md for full detail:**
+- Tiers 0–3 playability passes (Claude, 2026-08-04→10) — Tier 1 complete (anomaly pool, near-miss
+  attribution, 2060 Chronicle bookend); Tier 2 (rival strip, crisis Horizon card, crisis pool 3→9,
+  outer-system bases at Callisto/Titan with a hazard mechanic, all 98 research nodes era-gated);
+  Tier 3 (`uiLayerBtn`, persistent annals archive).
+- Codex bankruptcy reorganization system pulled and verified (141/143 suites at the time).
+- Solar Map D-pass + pop-out (Claude) — root cause of the pop-out bug was the map destroying and
+  rebuilding its WebGL context on every tab switch, exhausting the browser's context cap; fixed by
+  `remountMap3D()` reparenting the live canvas.
+- Money/Budget Option C investor-confidence surcharge; Solar Map A/B/C slices.
+- Flight overlay unification, anomaly modal → `openFlightForDecision`, press-and-hold time advance.
+- Fleet Registry (#115), inclination physics (#114), tracking-station network (#89).
+- Flight 3D work (Codex + Claude), tech tree 110→98 nodes, security audit `TECH-AUDIT-2026-07.md`.
+
+**RULES worth keeping in front of you (each one cost real time):**
+- **Grep before asserting.** FIVE separate reviews have now flagged something as missing that
+  already existed: the decision system, the crisis system, B5's "placeholders", C7's facility
+  specialization, and Gate 6's F2/F7 premises. When a review says "build X", read the code first.
+- **Headers lie; verify against the codebase.** The 2026-08-12 roadmap archival found three sections
+  whose own titles said "not built" and which were in fact shipped.
+- **Don't hardcode a growing collection's size in an assertion** (an A3 test asserted
+  `crisisProximity().length===3` and broke correctly).
+- **Measure rates, don't estimate them** (the near-miss "~1 in 4" scoping estimate measured ~11%).
+- **A checklist can be `[x]` from its ORIGINAL scoping commit despite nothing being built** — hit on
+  Tier 3.1 AND 3.2, both confirmed via `git log -S`. Check before trusting a tick.
+- **A test that passes but cannot fail is worthless.** Every Gate 6 suite was run against pre-fix
+  source to confirm it actually fails there (47, 13, 12, 2 failures respectively).
 
 **Standing conventions (both agents, keep doing):**
 - Always re-pull `main` HEAD before starting anything — state moves between sessions.
@@ -314,539 +164,6 @@ change first.
 
 ## History (pure append below — do not edit or reorder existing entries)
 
-# Claude collaboration handoff
-
-`main` is the shared integration branch for Codex and Claude. Before editing, pull/rebase
-against `origin/main`; after a coherent, verified slice, commit and push to `main`.
-
-## Current E4 status
-
-- E4.4 shipped: `state.hulls` provides persistent, serial-numbered physical launch-vehicle
-  records. Rollout, launch, loss/expending, recovery, reuse count, save migration, and Fleet
-  Registry visibility are implemented. The physical trajectory is frozen per vehicle from its
-  thrust, mass, propellant, Isp, and drag inputs.
-- E4.5 shipped: deferred interplanetary hulls appear as clickable 3D Solar System markers on
-  true two-body transfer arcs. The shared marker path is `flightTargetBody`, `flightScenePos`,
-  `activeShipMarkers`, and `map3dUpdateShipMarkers`; it is explicitly mission-progress
-  visualization, not fabricated live orbital telemetry. Test: `tests/test-flight-markers.js`.
-- E4.7 has been extended: successful cislunar missions stay in Three.js through a dedicated
-  Earth–Moon transfer presentation instead of handing off to the legacy 2D canvas. Pad/ascent,
-  suborbital splashdown, Earth orbit, cislunar transfer, and crewed Earth reentry are already
-  rendered through the Flight 3D adapter.
-
-## Current UI / flight-report pass (Codex)
-
-- The Command Center now follows the framed-monitor composition: responsive side rails, clear
-  central Cape viewport, and one readable bottom scene-navigation row. The Earth pop-out uses
-  the same packaged equirectangular day-map as the Solar Map, with the correct longitude origin
-  for the Cape marker.
-- Vehicle, Station, Solar System, Earth, Command Center, and Contracts pop-outs are desktop
-  windows: drag their top bar, resize from the lower-right grip, or pin them to keep working in
-  the underlying game. Their existing close controls remain at the top.
-- Flight reports are data-backed by `flightReport()`: the bench shows a pre-flight card; the
-  launch overlay has an always-visible Flight Card; completion/failure holds a Flight Debrief
-  with payload, mass, Δv/TWR, duration, distance, outcome, and any recorded failed subsystem.
-  Do not replace these values with animation-derived estimates.
-
-## Visual multi-stage separation — SHIPPED (Claude), core mechanism visually validated
-
-Done. `cape3dTrajectoryPlan` now records `stageEvents[]` (booster-jettison and spent-stage-drop
-times, positions, and velocities — real values from the burn integration it already ran; they were
-previously discarded). Pure query `cape3dSeparationStates(plan, time)` maps the current flight time
-to which pieces have separated and how long each has been falling. `cape3dVehicleMesh` is now built
-as per-stage sub-groups (`userData.stageGroups`, `userData.boosterGroup`) with byte-identical visual
-output; `cape3dResetStaging(rocket)` reattaches them before each flight since the mesh is built once
-and reused. `cape3dUpdateLaunchPresentation` detaches each piece at its real separation time via
-`root.attach()` (world-transform-preserving, so no jump across the rocket's pitch) and drifts it
-under real free fall (scene is 1:1 metres, reuses `G0`); the flame FX moves to the new bottom
-stage's base on a core separation so the next stage visibly ignites. Sim and outcome logic untouched.
-
-**Update (2026-07-20):** since the sandbox has no WebGL, a standalone offline preview
-(`staging-preview.html`, not committed to the repo — a scratch tuning tool) was built that pastes
-`cape3dTrajectoryPlan`/`cape3dSeparationStates` in **verbatim** from `build/game.js` and runs a
-faithful copy of the detach/free-fall logic against four synthetic vehicles (two-stage, three-stage,
-boosters+2-stage, single-stage control). The repo owner reviewed it directly and confirmed the
-separation timing and ballistic fall/tumble read correctly — boosters drop before the core stage,
-pieces coast away under gravity rather than popping, trajectory trails visibly diverge. **This
-confirms the underlying math and detach/fall logic are sound**, which was the main open risk.
-
-What it does NOT confirm: the ACTUAL in-game Cape 3D scene — real camera behavior (pulls back with
-altitude on its own schedule, unverified), real vehicle art/livery, and — importantly — **mesh
-reuse across a second launch in the real game session** (the preview rebuilds a fresh rocket per
-vehicle-button click, so it never exercised `cape3dResetStaging`'s actual job of un-doing a prior
-flight's separations). A real-browser playtest in the actual game should still confirm: the camera
-frames a separation sensibly at real Cape distances, and a second launch after a first shows a
-complete, correctly-reset rocket.
-
-Headless coverage unchanged: `tests/test-flight3d-staging.js`, 29 checks (stageEvents recording for
-1/2/3-stage and boosters+stages vehicles, ordering, separation-state time mapping/edge cases).
-
-## Deep (in-space) failure stays in 3D — SHIPPED (Claude)
-
-A strand/loss that happens AFTER reaching orbit or cislunar cruise (`success===false`,
-`failPhase==='deep'` — e.g. life-support/propulsion loss in space) used to cut to the flat 2D
-fallback at the flight's most dramatic beat, because `updateFlight3DSession` gated `orbit` on
-`success!==false`. Now it stays in the Three.js renderer: the orbit/transfer presentation freezes
-the craft at the loss fraction (0.42, matching the 2D renderer's freeze point) and tumbles it
-dead-and-dark (`deadStick`), engine cut, with the readout showing `SPACECRAFT LOST`.
-
-Mechanism mirrors the existing ascent-failure path: `flight3dPresentationSnapshot` now emits
-`effects.deepFailure` / `deepFailureFrac` / `deepFailureProgress` (armed only for `orbit`/`transfer`
-phases past the freeze fraction) and passes `failPhase` through. `cape3dOrbitProfile` /
-`cape3dTransferProfile` freeze `progress` and cut `burn`/`arrival` when dead-stick, exposing
-`deadStick` + `failProgress`; the two presentations apply a building tumble. The gate in
-`updateFlight3DSession` was loosened to keep `orbit` in 3D for a deep fail (`transfer` was already
-unconditionally in 3D but had no failure visual before this). Sim/outcome logic untouched — this is
-presentation only; the outcome was resolved by the sim long before the animation opened.
-
-Test: `tests/test-flight3d-deepfail.js` (26 checks — the signal arms only for a deep fail past the
-freeze fraction, never on success or an ascent fail; orbit + transfer profiles freeze/dead-stick
-identically; a successful flight still runs full progress and reaches arrival). NOT browser-verified
-(no WebGL here) — the tumble render should be eyeballed in a real failed-orbital-insertion flight.
-
-NOTE — a related gap found while scoping, NOT fixed here: a crewed **cislunar** mission gets **no
-reentry leg at all** (`flightHasReentry` requires `isOrbital`, which cislunar isn't), so a Moon
-mission's Earth return currently isn't animated — the flight ends after the transfer with a
-post-flight card. That's missing content (a new mission leg), not a gating fix; logged as the next
-Flight-3D-coverage candidate.
-
-## Crewed cislunar returns get a reentry leg — SHIPPED (Claude)
-
-`flightHasReentry` now allows `isCislunar` (not just `isOrbital`), so a crewed successful Moon
-mission gets the same 6.4s reentry leg an orbital crewed flight does — previously its Earth return
-was never animated (flight ended after the transfer). The reentry presentation is already
-progress-only (no isOrbital dependency), so no new renderer was needed; `drawScene`'s `entering`
-check already fires for cislunar once past the cruise. The `updateFlight3DSession` reentry gate was
-widened to `(isOrbital||isCislunar)`. Uncrewed/failed cislunar correctly get no reentry.
-Test: `tests/test-flight3d-cislunar-reentry.js` (8 checks). NOT browser-verified.
-
-## Booster/stage separation polish — SHIPPED (Claude)
-
-Two additions on the E4.7 staging base: (1) a brief expanding additive puff at the interstage when
-a piece detaches (`cape3dSepPuffPool`/`cape3dSpawnSepPuff`/`cape3dTickSepPuffs`, a 4-sprite reused
-pool, spawned at the detach point, expands+fades over 900ms); (2) a transient flight-readout beat —
-`flightSeparationBeat(snapshot)` finds the most-recent staging event within 3.2s of the current
-flight time and returns `BOOSTER SEP` / `STAGE N SEP` (1-indexed) with a 1→0 fade, surfaced in the
-`flightAltitude` readout. Reuses the real `stageEvents` — no new timing. Sim untouched.
-Test: `tests/test-flight3d-sepbeat.js` (10 checks). Puff is Three.js (not headless-testable); beat
-label/timing is. NOT browser-verified — eyeball a multi-stage launch.
-
-## Vehicle bench height/diameter scale readout — SHIPPED (Claude)
-
-New `vehicleRealDimensions(spec)` (flight.js): honest metres-based estimate distinct from
-`buildVehicleShape`'s `h` (a deliberately-compressed rendering unit). Tank length = propellant
-volume ÷ cross-section (~1.0 t/m³ representative density) + 15% structure margin; diameter is the
-real `dia` value already used by drag. Surfaced as a "📏 Vehicle scale" flag line in both bench
-readouts (`renderReadout`/`renderProfileReadout`) — total height, max diameter, per-stage heights.
-Test: `tests/test-vehicle-dimensions.js` (12 checks, pure). This also answers the earlier "does the
-mesh reflect the bench design" question — it does (prop/dia-driven), just wasn't legible before.
-
-## Flight playback speed range widened — SHIPPED (Claude)
-
-`ANIM_SPEEDS` (shell.js) already existed and applies to every flight overlay screen (2D and 3D
-alike — the button sits outside `flightCanvasWrap`) but only offered 0.5/1/2x. Widened to
-0.1x/0.25x/1x/2x/5x/10x/25x/50x — sub-fps slow-mo for watching a separation closely, up to 50x for
-skipping through a long cislunar cruise without a hard cut. Default stays 1x (index fixed to point
-at the 1x entry so behavior is unchanged unless the player cycles). Fixed a stale static button
-label ("1× Slow" → "1× Normal") found in the process. Cycle via the existing button or [Enter].
-Test: `tests/test-anim-speed.js` (9 checks, pure).
-
-## Launch camera distance bug + Earth-curvature reveal — SHIPPED (Claude)
-
-Root-caused all three player-reported issues (far camera even at zoom, "no ship, just plume" after
-a booster/stage sep, panning shows the flat launch-site square not an expanding Earth):
-
-1. **Camera distance bug (mine, from the prior camera slice):** `baseDist` scaled linearly with
-   raw ALTITUDE IN METRES (`150+altitudeM*.05`) — exploded to 5000+ units by 100 km and 15000+ by a
-   realistic ~300 km insertion, far beyond what the .35–3.2x zoom range could pull back. This is
-   the dominant explanation for "far even with zoom," and very likely for "no ship, just plume"
-   too (a small/distant mesh reads as invisible against a bright additive flame). Fixed:
-   `cape3dLaunchChaseDist(altitude)` now uses sqrt(km), capped at 620 units — extracted as a
-   standalone pure function so the "never runs away" property is directly tested.
-2. **Earth-curvature reveal was fully built but force-disabled.** `cape3dAscentBlend` already
-   computed the right `space`/`capeVisible` curve; the update function hardcoded opacity to 0 and
-   the flat site plane to always-visible, with a comment noting a past bright-flash bug from the
-   Earth texture loading async. Re-wired to actually use the blend curve, gated on
-   `earth.material.map.image` being truthy (real decoded image data) so opacity can't rise before
-   there's something real to show — the same flash risk, closed properly instead of left disabled.
-
-Test: `tests/test-launch-camera.js` (11 checks — distance boundedness/monotonicity, blend curve
-shape). NOT browser-verified (no WebGL here) — this is exactly the kind of thing worth a look.
-
-## Launch view: real fixes for "no ship after sep" + "pad/Earth mixed" — SHIPPED (Claude)
-
-The prior camera-distance fix wasn't the actual cause of "no rocket, just a plume." Root-caused
-both remaining reports with a headless scene-graph inspection (a minimal THREE stub in
-`/tmp/three_stub.js`, not committed) confirming the mesh itself was fine — the bug was elsewhere:
-
-1. **"No rocket, just plume" after separation:** the camera/flame target used `rocket.position+55`
-   — a FIXED offset assuming stage 0's original span (baseY 0..totalHeight) for the whole flight.
-   Once stage 0 separates and leaves, the remaining stack's actual base is wherever the NEXT
-   still-attached stage starts (confirmed via the stub: e.g. baseY jumps from 0 to 20.9 on a
-   2-stage vehicle) — but the camera kept aiming at the now-empty space stage 0 vacated. Only the
-   flame (which DOES correctly reanchor) was in frame. New `cape3dLiveStageSpan(stageGroups,rocket)`
-   — pure, scans which stage groups are still parented to the rocket, returns the REAL current span
-   — re-centers both camera target and (implicitly, since it shares the target) framing on whatever
-   remains.
-2. **"Earth/pad mixed, no smooth transition":** `cape3dAscentBlend`'s `space` (Earth opacity) and
-   `capeVisible` (flat launch-site ground) were on two different clocks — `space` reaches full
-   opacity at progress 0.62, but `capeVisible` stayed true until 0.72. A real 0.10-progress window
-   had the fully-opaque Earth sphere AND the fully-visible flat pad ground rendering
-   simultaneously, then the ground popped off in one frame. Aligned `capeVisible` to cut off at the
-   exact point `space` saturates — verified with an exhaustive scan (no progress value has both
-   ≥full-opacity Earth and a visible site).
-
-Test: `tests/test-launch-camera.js` now 24 checks (was 11) — added live-span recentring (mock
-stage-group objects, no THREE needed) and the exhaustive no-overlap-window scan. NOT
-browser-verified (no WebGL here) — this is exactly the category of thing worth confirming visually.
-
-## Two stale test drifts fixed — SHIPPED (Claude)
-
-Confirmed both were the SAME intentional Codex behavior ("Refine command UI and flight reporting"):
-a failure (ascent-fail directly, or abort→scrub) now correctly HOLDS on a post-failure debrief card
-(`held:true, exploding:true`) instead of the old behavior — a real UX improvement, not a
-regression. Verified directly by pumping each to completion and inspecting the final animState.
-Updated both tests' assertions to verify the new correct behavior rather than the stale one.
-`test-decision-panel.js` 35/35, `test-pad-a.js` 36/36. Only `test-flight3d-trajectory.js` (Codex's
-accepted physics changes, unrelated) remains as a known drift.
-
-## BACKLOG #40: crew survival mini-arc (escape-save visual) — SHIPPED (Claude)
-
-Investigated first: the `launch_escape` tech and its outcome-level branch (crewed ascent failure
-becomes `kind:'abort'` — crew survives — instead of the crew-death path) ALREADY existed, complete
-with UI warnings and flavor text. The real gap: the 3D failure VISUAL couldn't tell an escape-tower
-save apart from a full catastrophe — both set `success=false/failPhase='ascent'`, so the same
-explosion (and "VEHICLE LOSS" text) played either way, undercutting the "the escape system pulled
-the crew clear" story line.
-
-Fix reuses the existing failure-debrief system rather than building new geometry: the top stage
-group (holding the nose/capsule) is already cloned as one discrete debris "piece"; tagged as the
-escape-pod candidate at build time. On a real escape save (`spec.crewEscaped`, derived from
-`outcome.kind==='abort'`, threaded spec→snapshot→effects), that piece gets a distinct fast,
-mostly-upward clear-away velocity + its own brief abort-motor flash and a much slower fade, instead
-of joining the generic radial debris spread every other piece gets. Readout shows "LAUNCH ESCAPE —
-CREW CLEAR" instead of "VEHICLE LOSS".
-
-Test: `tests/test-crew-escape.js` (12 checks — signal only fires for a real crewed/abort-kind/
-ascent-phase save, never premature, never for uncrewed or a genuine loss; readout text). The pod
-clear-away render itself isn't headless-testable (no WebGL) — every value driving it is. BACKLOG.md
-#40 marked shipped.
-
-## Tech-tree audit + fixed 2 dead capstone nodes — SHIPPED (Claude)
-
-Ran a full structural audit of the 110-node tree (cost/depth pacing, effect-type distribution,
-prereq depth, dead-end analysis). Verdict: strong core — cost scales cleanly with depth (2.8→18
-avg), reliability hard-capped so the 28 reliability nodes can't trivialize risk — but ~20% filler,
-concentrated in tiny passive stat nodes, and TWO genuinely dead nodes found: `megastructure_construction`
-(cost 18, the single most expensive node) and `atmospheric_isru` (cost 10) both had `effect:{}` and
-ZERO references anywhere else — researching them did literally nothing (worst-feel outcome for a
-capstone). Wired both to real, cap-bounded effects matching their descriptions: megastructure →
-buildCostCut 0.10 + buildTimeCut 1.5 (civilization-scale production economy); atmospheric_isru →
-launchCostCut 0.08 (deep-space propellant relieves outer-system launch cost). Both flow through the
-existing `dimCurve` soft-knee caps, so they're felt but can't unbalance. Test:
-`tests/test-tech-capstones.js` (13 checks).
-
-The larger audit finding (NOT done here, logged for a future balance pass): ~35 nodes are
-+0.02-type passive stat-shavers (32% of the tree), individually imperceptible; and 36 nodes are
-dead-end leaves. A tightening pass merging stat clusters (esp. the 6-node guidance reliability
-chain) → ~85 punchier nodes would make each research choice matter more. Scope separately — it's a
-real balance pass, not a fix.
-
-## Tech-tree design pass — SLICE 1 (guidance) SHIPPED (Claude)
-
-First slice of the tree-tightening balance pass (option 1: real merges, no back-compat constraint —
-owner confirmed). Guidance reliability chain collapsed 6→3: radio_guidance + inertial_nav + digital_computer
-→ one `digital_computer` ("Onboard Guidance & Flight Computer", req:[], reliability 0.07); star_trackers +
-autonomous_navigation → one `autonomous_navigation` (req:digital_computer, reliability 0.06);
-quantum_navigation kept as the deep-tail capstone. Preserved the two LOAD-BEARING ids other systems
-reference (digital_computer gates deep_space/flight_automation + has a leveled sim.js variant;
-autonomous_navigation feeds the autonomous_landing synergy) and the EXACT 0.15 reliability total — no
-stealth buff/nerf, just fewer/punchier nodes. Removed ids (radio_guidance, inertial_nav, star_trackers)
-have zero remaining references anywhere. Test: `tests/test-tech-guidance-merge.js` (18 checks).
-
-**Pattern proven — repeat for the other clusters when ready** (each its own slice): testing (9→~4-5),
-structures (7 sigma→~4), propulsion combustion sub-chain (combustion_stability→turbopump→regen→chamber,
-4→~2). Same recipe: keep any id referenced externally (grep first), collapse the rest, preserve the
-effect total, rewire prereqs through survivors, test for dangling reqs.
-
-## Next task
-
-## Flight 3D: physical Earth handoff + orbital operations — SHIPPED (Codex)
-
-This pass turns the Flight 3D Earth-orbit segment into an interactive Mission Control sequence.
-Earth-orbit flights now pause at insertion and expose four authoritative maneuver outcomes:
-planned circularization, a reserve-margin-gated orbit raise, a reserve-margin-gated orbit lower,
-or deorbit/recovery. The selected plan threads through settlement (payout/rep/outcome), the 3D
-orbit plane, and the new Mission Control telemetry card (apoapsis, periapsis, inclination,
-velocity, remaining maneuver Δv). Orbit camera drag/zoom remains enabled instead of being detached.
-
-The launch side now uses named, event-driven camera shots (pad, tower clear, ascent, actual
-booster/stage separation, insertion) and a decimated guide derived from the real integrated
-trajectory plus real staging markers. Camera offsets stay player-adjustable. Default playback is
-now **0.1× Slow-mo**; the existing control still cycles through 50× for coasts.
-
-**Important visual correction:** the ascent Earth is now physically scaled (Earth mean radius
-6,371 km) and permanently anchored below the pad. Its handoff is based on physical altitude rather
-than animation progress: globe begins at ~28 km and completes around 96 km; camera far distance is
-the real geometric horizon plus margin. The old texture guard left only a pale atmosphere shell
-while a map decoded, so the Earth mesh now renders immediately with a dark-blue fallback, then
-attaches the photo texture when ready. Atmosphere opacity is deliberately very low (4.5% of the
-blend) to avoid masking the surface.
-
-Files: `src/sim.js` (maneuver outcomes), `src/flight.js` (pause/HUD), `src/render.js` (orbit,
-trajectory, camera, physical Earth), `src/shell.js` + `src/shell.html` (speed/HUD/responsive CSS).
-Generated: `build/game.js`, `index.html`, `orbital-ventures.html`. Tests added/extended:
-`tests/test-orbital-maneuvers.js`, `tests/test-launch-camera.js`, `tests/test-anim-speed.js`.
-
-Validated after the final fallback-Earth fix: launch camera 37/37; orbital maneuvers 14/14;
-flight-3D foundation 58/58; deep-failure 26/26; cislunar reentry 8/8; staging 29/29;
-separation beat 10/10; regression 18/18; build parity and `git diff --check` clean.
-
-**Claude browser follow-up:** visually fly an orbital mission and inspect the 28–96 km Earth
-handoff now that the fallback globe cannot disappear. If the real horizon still needs art tuning,
-change only the constants in `cape3dPhysicalAscentBlend`, the physical-Earth material, or the
-camera director—do not return to a camera-relative globe. Plane changes are deliberately next;
-rendezvous/docking follows after that.
-
-Suggested (open — pick per priority):
-OR pick up remaining **E4.7** scope (fold any remaining legacy 2D-canvas flight paths into the
-Flight 3D adapter). Coordinate on which. If continuing staging: the detached-debris drift is
-deliberately simple ballistic (no re-contact, no atmospheric tumble model) and debris is culled
-3000 m below the pad — a polish pass could add a small separation flash/puff at the interstage and
-a one-line "Stage 1 separation" beat on the always-visible Flight Card. Keep sim/outcome untouched.
-
-The core separation math/logic is now visually confirmed sound (see above) — the one remaining
-staging risk worth a quick real-browser check before further polish: fly two launches back-to-back
-in one session and confirm the second rocket is fully intact (mesh reuse + `cape3dResetStaging`
-was never exercised by the offline preview, only by the pure identity logic in code).
-
-Two pre-existing test drifts to be aware of (NOT from the staging work — verified against a clean
-pre-edit pull): `test-flight3d-trajectory.js` (Codex's accepted trajectory/vehicle-physics changes)
-and, newer, `test-decision-panel.js` + `test-pad-a.js` (from the "Refine command UI and flight
-reporting" commit — look like an intentional post-failure hold/debrief screen). Confirm intent and
-refresh those assertions when convenient.
-
-## Verification
-
-```bash
-node build.js
-node tests/test-build-parity.js
-```
-
-Additional focused checks for this pass:
-
-```bash
-node tests/test-command-hero-layout.js
-```
-
-Focused harness commands use `tests/harness.js + build/game.js + test file`, e.g.:
-
-```bash
-node -e "const F=require('fs'); const a=F.readFileSync('tests/harness.js','utf8'), b=F.readFileSync('build/game.js','utf8'), c=F.readFileSync('tests/test-flight3d-foundation.js','utf8'); require('vm').runInThisContext(a+'\n'+b+'\n'+c);"
-```
-
-Also run `git diff --check`. Generated files are `build/game.js`, `index.html`, and
-`orbital-ventures.html`; edit `src/` and run `node build.js`, never edit the generated HTML.
-
-## Tech-tree design pass — complete, 4 slices (Claude, 2026-07-20/21)
-
-Note for Codex (or whoever touches `RESEARCH` in `src/data.js` next): a 4-slice tree-tightening
-pass just landed on `main`, triggered by a 2026-07-20 audit that found two dead capstone nodes
-(fixed same session) plus ~35 individually-imperceptible passive stat-shaver nodes. Full detail
-and per-slice reasoning is in `ROADMAP.md` — search "tech-tree design pass" for all 4 entries — but
-the load-bearing summary is:
-
-- `RESEARCH` is now **98 nodes**, down from 110. 12 ids were removed and folded into surviving
-  nodes; 0 orphaned, 0 dangling reqs, 0 unreachable (verified by a full-tree BFS reachability proof
-  after the last slice).
-- **Removed ids** — do not reference these, they no longer exist: `radio_guidance`, `inertial_nav`,
-  `star_trackers` (guidance); `flight_telemetry`, `vibration_testing`, `accelerated_life_testing`,
-  `digital_twin`, `autonomous_qa`, `stage_test` (testing); `composite_structures`,
-  `friction_stir_welding`, `carbon_cryotanks`, `self_healing_materials`, `metamaterial_structures`
-  (structures); `combustion_stability`, `regen_cooling` (propulsion combustion chain).
-- **Two reqs were re-pointed** onto merge survivors, not just internal chain links: `sustainer`
-  now reqs `turbopump` (was `combustion_stability`); `methane_propulsion` now reqs
-  `chamber_pressure` (was `regen_cooling`). This is a real gating-depth change for those two nodes,
-  not just a rename — flagged explicitly in the slice-4 ROADMAP entry and in
-  `tests/test-tech-combustion-merge.js`.
-- No save-compat shim exists for any of this (owner waived back-compat for the whole pass). A save
-  with a completed removed-id flag just carries a harmless dead key — `curRel()`/`curSigma()`/
-  `researchEffectSum()` all iterate the live `RESEARCH` array, not raw `state.research` keys, so
-  stale flags are inert, not broken. If you add a save-compat layer later, these are the ids to map.
-- Every merge slice has its own dedicated test file (`test-tech-guidance-merge.js`,
-  `test-tech-testing-merge.js`, `test-tech-structures-merge.js`, `test-tech-combustion-merge.js`) —
-  run these first if you're debugging anything tech-tree-adjacent, before assuming a regression is
-  new.
-- This pass is considered CLOSED — no more clusters are queued. If you're picking up the remaining
-  scattered +0.02-type stat-shavers flagged by the 2026-07-20 audit, note they don't form clean
-  linear chains like the 4 tackled here, so the same "collapse a chain" recipe won't directly apply.
-
-## Consolidation pass (Claude, 2026-07-22) — repo verified in a single healthy state
-
-Pulled fresh at HEAD `7d6d0df` (Codex's "Palette Population PP.3") and reconciled against my last
-push (`c62b3a6`, guidance tech-tree slice 1). Summary for whoever picks this up next:
-
-**Everything since `c62b3a6` is sound and cleanly integrated — no conflicts found.** Checked
-specifically because several commits touched files I'd been working in:
-
-- **Tech-tree design pass**: Codex picked up the recipe from my slice-1 entry and completed slices
-  2–4 (testing 9→5, structures 7→4, combustion 4→2) — the whole pass is now closed at 98 nodes (was
-  110). Their handoff note above is thorough; nothing to add.
-- **Camera director** (`cape3dLaunchCameraProfile`): a new named-shot system (PAD TRACKER, TOWER
-  CLEAR, ASCENT TRACK, INSERTION TRACK, reactive SEPARATION shots) that layers `distMul`/`az`/`el`
-  offsets on top of — not instead of — my `cape3dLaunchChaseDist` (sqrt-altitude base distance) and
-  the player's manual drag/zoom (`cape3d.launchCam`). Verified the actual call site combines all
-  three correctly. Clean extension.
-- **`cape3dPhysicalAscentBlend`** supersedes my `cape3dAscentBlend` (progress-driven) with an
-  altitude-driven Earth-reveal — a genuine correctness improvement I hadn't caught: tying the
-  reveal to playback progress meant a fast, powerful vehicle would "reach space" at the same
-  progress % as a slow climber regardless of real altitude. Altitude-driven is right. My old
-  function is now dead code (harmless, unused) — not cleaned up, matching the pure-append/no-
-  destructive-edit convention; flagging for whoever wants to prune it.
-- **0.1× default playback speed**: confirmed intentional with the owner (was going to flag as a
-  likely regression — it isn't). Not reverting.
-- **Palette Population (PP.0/PP.1/PP.3)**: entirely self-contained in `src/parts.js` + new tests.
-  Zero overlap with anything I or the mission-control pass touched.
-
-**Stale note correction:** an earlier note here said `test-decision-panel.js` + `test-pad-a.js`
-needed their assertions "refreshed when convenient" for an intentional post-failure hold screen.
-That was already done (commit `2ee7888`, 2026-07-20) — and `test-pad-a.js` was independently
-re-touched again by the mission-control commit for the new 0.1× default. Both are current and
-passing. Disregard that note going forward.
-
-**Full regression, clean pull, rebuilt from scratch:** 95 suites. Only `test-flight3d-trajectory.js`
-fails — the same single pre-existing drift flagged for weeks (Codex's own accepted
-trajectory/vehicle-physics changes). Build parity clean, `git diff --check` clean. No code changes
-were needed this pass — this is a documentation/verification consolidation only.
-
-**On Codex's direct ask** ("Claude browser follow-up: visually fly an orbital mission and inspect
-the 28–96 km Earth handoff"): still can't — this sandbox has no WebGL/display, unchanged limitation.
-Passing that ask through to the repo owner, who does have a browser.
-
-**Respecting Codex's stated next direction** (plane changes, then rendezvous/docking) — not
-proposing a competing next task here.
-
-## BACKLOG #37: Max-Q structural check vs. fairing choice — SHIPPED (Claude)
-
-"Max-Q" was a cosmetic 2D-canvas approximation (`35 + reqDv*0.003`) with zero gameplay weight; the
-fairing choice was a flat, trajectory-blind reliability delta ("No fairing" always −2%, regardless
-of how brutal the ascent actually was). Wired them together for real:
-
-- `cape3dTrajectoryPlan` now exposes real per-point dynamic pressure (`qKpa`, from the same ρ/v² the
-  drag term already computes) and a `maxQKpa` peak — reflecting THIS vehicle's actual diameter,
-  mass, thrust, and gravity-turn shape, not a reqDv formula.
-- New `vehicleMaxQ(m, vehicle)` / `structuralLoadAssessment(m, v, crewed)` (sim.js): the real peak
-  Max-Q combined with fairing sensitivity (none=1.6×, standard=1.0×, heavy=0.65×; crewed=neutral,
-  no fairing choice) into a bounded weight multiplier (0.6–2.4×) and a qualitative band
-  (Low/Nominal/High/Severe).
-- Modulates the `structures` fragility weight in `subsystemFragilities` — **attribution only**. The
-  `subsystemReport` renormalization (`rel_i = R^(weight_i/ΣW)`) guarantees `∏rel_i = R` exactly
-  regardless of weights, so aggregate mission difficulty is provably unchanged — verified directly
-  in the test (exact equality, not approximate). A no-fairing vehicle flying an aggressive ascent
-  just gets blamed for structural failures far more often, instead of an arbitrary flat penalty.
-- Surfaced as a "🛡 Structural load" bench flag (both readouts) with a plain-language note
-  ("no fairing on this high-Q ascent; fit one to cut structural-failure risk") so the player can see
-  *why* before a failure teaches them, matching the "Vehicle scale" readout precedent.
-
-Also fixed a real (not stale-build) test issue found while regressing: `test-pad-a.js`'s orbital
-pump-loop frame budget (3000) was sized for the old 1x default speed and fell just short of `held`
-at the now-intentional 0.1x default (~5ms virt/frame worst case) — bumped to 6000 with the math
-documented inline.
-
-Test: `tests/test-maxq-fairing.js` (18 checks — real q exposure, vehicle-shape sensitivity,
-fairing-band response, the aggregate-neutrality invariant proven exactly, crewed-neutral
-sensitivity). Regression: 96 suites, only the 1 pre-existing Codex drift.
-
-## Next task
-
-Suggested (open — pick per priority): #11 confirm-with-preview on destructive actions (S); #106
-guided first-launch tutorial (H, none exists); or continue the tech-tree bloat cleanup (36 dead-end
-leaves still untouched — different from the merged clusters already done).
-
-## Flight 3D vehicle authority + ascent visibility repair — SHIPPED (Codex, 2026-07-22)
-
-Root cause was lifecycle, not missing stage art: the persistent Cape scene built its rocket once,
-usually from the new-game one-stage A-4, then reused that stale mesh for later launches. Flight
-physics/audio correctly used the frozen multi-stage launch spec, so the first core event detached
-the stale mesh's only stage (including its nose) and left a live plume under an empty root.
-
-`cape3dFlightVehicleSpec` / `cape3dVehicleVisualKey` now make the immutable launch spec or snapshot
-the renderer's authority. `cape3dInstallFlightVehicle` rebuilds a mismatched pad rocket and all
-topology-dependent effects, synchronizes orbit/transfer craft, and validates stage/transfer/booster
-group counts before separation can run. Idle Mission Control also refreshes its pad stack when the
-bench design changes. Engine ids now survive every spec/snapshot seam, separation states preserve
-their real vx/vy, and camera targeting transforms the remaining live-stage span through the pitched
-rocket's world matrix instead of aiming at vacated local coordinates.
-
-The blue-grey ascent wash had three independent causes: Earth-scale objects shared the Cape's
-FogExp2 density, the Earth/Cape handoff left poor visual coverage, and a dynamically-lit day map was
-both dim and geographically pinned to the sphere's north pole. The launch blend now exponentially
-removes local fog with altitude, cross-fades Cape/Earth complementarily by 28–70 km, darkens the sky
-on its own 8–55 km curve, fades local clouds, and exempts Earth/atmosphere/stars from local fog. The
-day map uses an unlit material, its Cape Canaveral surface vector (28.4°N, 80.6°W) is quaternion-mapped
-to the physical launch tangent, and a harmless tangent roll puts the Florida/Bahamas coastline into
-the chase view. A camera-side directional fill and shallow real-horizon elevation keep the upper
-stack readable against space.
-
-Real headless-Firefox/WebGL validation used a synthetic three-stage vehicle with two boosters in the
-actual generated game: 3 stage groups + 2 boosters were present on the pad; after the first core
-event the parent mask was `[false,true,true]`, both separated assemblies existed as debris, the
-remaining stack stayed in frame, fog was `1.25e-9` at 94.7 km, the Earth texture decoded at 2048 px,
-and the visible tangent measured exactly 28.4°N / 80.6°W. No screenshot fixture was committed.
-
-Tests: new `test-flight3d-vehicle-sync.js` (14 checks), staging 30/30, launch camera 46/46, plus the
-complete suite sweep: 97 passing suite files and only the one documented trajectory drift. Build
-parity and `git diff --check` clean. The sweep also exposed a Node-runtime harness issue (modern
-Node's inherited `performance.now` resisted assignment); `tests/harness.js` now installs the native
-clock as a writable own property so all virtual-clock animation suites pass again.
-
-## Flight 3D booster-first separation + surviving-stack handoff — SHIPPED (Codex, 2026-07-22)
-
-Two independent defects made side boosters survive to the end. First, the real bench default is
-20 t per booster; two slow A-4 strap-ons naturally burned for about 160 s while a normal 12 t S-3D
-core burned for about 84 s. The Flight 3D integrator burned both in parallel, so the core separated
-first—or a single-stage plan ended before ever creating a booster event. Second, the orbit and
-transfer scenes rebuilt the entire frozen launch stack, so even correctly detached hardware
-reappeared at the phase handoff.
-
-`cape3dTrajectoryPlan` now follows the authoritative performance model's serial-equivalent stage-0
-contract: during boost it applies combined core/booster thrust at booster Isp, consumes only the
-booster segment, emits BOOSTER SEP, drops booster dry mass, and only then begins consuming untouched
-core propellant. The booster segment is included in the gravity-turn burn clock. This guarantees a
-real booster event strictly before stage 1 for every fitted design without a cosmetic fixed-time
-override. `cape3dPostAscentVehicleSpec` separately derives the surviving craft—final insertion stage,
-optional transfer segment, and payload/capsule; no lower cores or strap-ons—for orbit/transfer sync.
-
-Regression coverage now includes the actual 2×20 t default A-4 case on both two-stage and
-single-stage cores, plus immutable post-ascent topology checks. Generated-game Firefox/WebGL
-acceptance used a three-stage/default-booster vehicle: events were booster → stage 1 → stage 2;
-8 s after BOOSTER SEP the booster group was root-detached and 597 m behind while stage 1 remained
-attached; the orbit handoff hid the launch vehicle and exposed exactly one upper stage with zero
-booster geometry. `test-flight3d-staging.js` is 35/35 and `test-flight3d-vehicle-sync.js` is 20/20.
-Full sweep: 97 suite files pass, only the established `test-flight3d-trajectory.js` drift remains;
-build parity and `git diff --check` clean.
-
-## Solar Map SM1–SM5 source integration — SHIPPED (Codex, 2026-07-26)
-
-The five standalone review builds from the owner’s Downloads folder were ported into authoritative
-`src/shell.html` and `src/render.js`, then rebuilt into `index.html`, `orbital-ventures.html`, and
-`build/game.js`. SM1 adds the larger inline viewport, near-full-screen pop-out, collapsible
-Bodies/Details rails, Map Only, and `ResizeObserver`-driven live sizing. SM2 adds named camera
-presets, fit math, eased/cancellable transitions, reset/focus controls, and distance-sensitive zoom.
-SM3 adds selection halo, distant-body DOM markers, screen-stable collision-managed labels, orbit
-modes, and hover emphasis. SM4 adds deterministic near/mid/far star layers, galactic backdrop,
-solar lighting, atmosphere/corona tuning, camera-relative parallax, and Low/Balanced/High map quality.
-SM5 adds Navigation, Mission Planning, Operations, and Strategic presentation modes over the shared
-scene and existing mission/asset truth.
-
-The supplied source-integration package had one bad preflight assertion (`mapPopRosterBtn` was
-correctly generated from `render.js`, not static `shell.html`); the payload itself matched the current
-map anchors. Firefox/WebGL validation then exposed prototype label sprites growing enormous at close
-range. Labels and the selection halo now convert target screen pixels to world units every frame, and
-a visible DOM marker suppresses its duplicate sprite label.
-
-Validation: focused source guard 26/26; build parity 3/3; all 11 existing map/Three.js suites pass;
-full sweep 108/109 with only the documented pre-existing `test-flight3d-trajectory.js` drift.
-Firefox at 1920×1080 verified an 836×696 inline map, a 1902×870 Map Only host/drawing buffer,
-readable labels, all operating modes, quality/orbit controls, rail toggles, and repeated close/reopen
-cycles with exactly one live canvas/context.
+Entries through 2026-07-26 were archived to `ROADMAP-HISTORY.md` on 2026-08-12 (see
+"Archived from CLAUDE.md History" there). This zone stays pure-append: add new session
+writeups below, newest last, and never edit or reorder an existing entry.
