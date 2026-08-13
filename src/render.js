@@ -1183,7 +1183,7 @@ function siteBuildings(){
   const threatTxt=topThreat?rivalThreatLabel(topScore):'quiet';
   return [
     {key:'pad', icon:'🚀', name:'Launch Pad', tab:'bench', labelDx:-104, // shift label left so it clears the rocket on the pad
-     status: m?`${m.name} · ${buildMonths(m)+1+TEST_LEVELS[state.testLevel].months} mo to fly`:'no mission selected', planned:false},
+     status: m?`${m.name} · ${fmtTimeLeft(buildMonths(m)+1+TEST_LEVELS[state.testLevel].months)} to fly`:'no mission selected', planned:false},
     {key:'mission', icon:'📡', name:'Mission Control', tab:'missions', act:"openHubPanel('contracts')",
      status:`${availableContracts()} contract${availableContracts()===1?'':'s'} available`, planned:false},
     {key:'mfg', icon:'🏭', name:'Manufacturing', tab:'infra', act:"showInfrastructureModal()",
@@ -5548,7 +5548,7 @@ function renderReadout(){
       <div class="metric"><div class="k">Payload</div><div class="v">${v.payload>=1?v.payload.toFixed(2)+' t':(v.payload*1000).toFixed(0)+' kg'}</div></div>
       <div class="metric"><div class="k">${domDot('economy')}Build cost</div><div class="v">${fM(v.buildCost)}</div></div>
       <div class="metric"><div class="k">${domDot('economy')}Launch cost</div><div class="v">${fM(v.launchCost)}</div></div>
-      <div class="metric"><div class="k">Build time</div><div class="v">${buildMonths(m)+1+TEST_LEVELS[state.testLevel].months} mo</div></div>
+      <div class="metric"><div class="k">Build time</div><div class="v">${fmtTimeLeft(buildMonths(m)+1+TEST_LEVELS[state.testLevel].months)}</div></div>
     </div>
 
     <div class="adv-only">${buildCostBreakdownHTML(m)}${subsystemBreakdownHTML(m,v)}</div>
@@ -5629,7 +5629,7 @@ function renderProfileReadout(m){
       <div class="metric"><div class="k">To LEO</div><div class="v">${v.payload.toFixed(2)} t</div></div>
       <div class="metric"><div class="k">${domDot('economy')}Build cost</div><div class="v">${fM(v.buildCost)}</div></div>
       <div class="metric"><div class="k">${domDot('economy')}Launch cost</div><div class="v">${fM(v.launchCost)}</div></div>
-      <div class="metric"><div class="k">Build time</div><div class="v">${buildMonths(m)+1+TEST_LEVELS[state.testLevel].months} mo</div></div>
+      <div class="metric"><div class="k">Build time</div><div class="v">${fmtTimeLeft(buildMonths(m)+1+TEST_LEVELS[state.testLevel].months)}</div></div>
     </div>
 
     <div class="adv-only">${buildCostBreakdownHTML(m)}${subsystemBreakdownHTML(m,v)}</div>

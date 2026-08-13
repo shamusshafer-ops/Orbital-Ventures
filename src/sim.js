@@ -910,9 +910,15 @@ function absDay(){ return absDayOf(state.year, state.month, state.day); }
 // format a fractional month-count as a human countdown — e.g. 2.9 → "2 mo 27 d", 0.4 → "12 d", 1 → "1 mo".
 // Days round UP so the readout counts down to completion (… "1 mo 1 d" → "1 mo" → "29 d" …).
 function fmtTimeLeft(months){
-  const totalDays=Math.max(0, Math.ceil((months||0)*DAYS_PER_MONTH));
-  const mo=Math.floor(totalDays/DAYS_PER_MONTH), d=totalDays%DAYS_PER_MONTH;
-  if(mo<=0) return d+' d';
+  // DAYS_PER_MONTH is a fractional nominal average (~30.4368) since the Gregorian calendar
+  // rework, so this splits on whole months first and converts only the remainder to days.
+  // Deriving both parts from a ceil'd total-day count (the previous approach) produced both
+  // fractional days ("1 mo 0.5631249999999994 d") and a rounding artifact where an exact
+  // 1-month duration read "1 mo 1 d".
+  const v=Math.max(0, months||0);
+  let mo=Math.floor(v), d=Math.round((v-mo)*DAYS_PER_MONTH);
+  if(d>=Math.round(DAYS_PER_MONTH)){ mo++; d=0; }
+  if(mo<=0) return Math.max(v>0?1:0, Math.ceil(v*DAYS_PER_MONTH))+' d';
   if(d<=0) return mo+' mo';
   return mo+' mo '+d+' d';
 }
@@ -2564,8 +2570,8 @@ function queueBuild(committed,requestId){
   state.buildQueue.push(order);
   recordRequestReceipt(requestId,'build',intent,order.id,m.id,order.id);
   log('note', committed
-    ? `Launch committed: ${order.name} — building now (${mo>0?mo+' mo':'<1 mo'}, ${fM(order.cost)}). Fly it from the hangar once it rolls out.`
-    : `Manufacturing — queued ${order.name} (${mo} mo, ${fM(order.cost)}). It builds while you work.`);
+    ? `Launch committed: ${order.name} — building now (${fmtTimeLeft(mo)}, ${fM(order.cost)}). Fly it from the hangar once it rolls out.`
+    : `Manufacturing — queued ${order.name} (${fmtTimeLeft(mo)}, ${fM(order.cost)}). It builds while you work.`);
   announceAction(`${order.name} committed once. ${fM(order.cost)} paid; order ${order.id} now owns the build.`);
   render();
   return order;
@@ -2702,7 +2708,7 @@ function benchQueueHTML(m){
   const buildLabel=`Queue ${m.name} build — ${fM(v.buildCost)} now`;
   const buildAction=makeActionDescriptor({id:`queue:${m.id}:${(state.orderSeq||0)+1}`,label:buildLabel,role:'secondary',enabled:cq.ok,disabledReason:cq.ok?'':cq.why,subjectType:'mission',subjectId:m.id,quote:launchCommitmentQuote(m,v,sim,false)});
   html += cq.ok
-    ? `<button class="btn ghost" style="width:100%;margin-top:6px" onclick="queueBuild(false,'${buildAction.id}')" ${actionButtonAttrs(buildAction)}>⊕ Queue this build — ${fM(v.buildCost)} now · ${buildMonths(m)} mo${slots>1?` · ${slots} bay slots`:''}</button>`
+    ? `<button class="btn ghost" style="width:100%;margin-top:6px" onclick="queueBuild(false,'${buildAction.id}')" ${actionButtonAttrs(buildAction)}>⊕ Queue this build — ${fM(v.buildCost)} now · ${fmtTimeLeft(buildMonths(m))}${slots>1?` · ${slots} bay slots`:''}</button>`
     : `<button class="btn ghost" style="width:100%;margin-top:6px" ${actionButtonAttrs(buildAction)}>Queue build — ${esc(cq.why)}</button>`;
   return html;
 }
@@ -4697,7 +4703,14 @@ function buildMonths(m){
   if(recoveryRefly(m)) mo-=1; // M5: reflying a recovered booster shortens turnaround (floored below)
   mo-=Math.round(buildTimeCut()); // #6c: Manufacturing/Ground research shortens build/turnaround time
   mo=Math.round(mo*crisisBuildMult()); // B4: an Orbital Traffic Regulation crisis stretches every build (pure fn, so this shows live in the UI's build-time readouts too, and does NOT retroactively extend already-queued builds)
-  return Math.max(1, mo);
+  // Time Granularity 4c: was Math.max(1, mo) -- a hard 1-month floor that made a heavily
+  // researched, bay-accelerated, booster-reflown build take a full month anyway. The build
+  // pipeline was ALREADY day-scale internally (orders decrement o.monthsLeft by perDay(1)
+  // daily, and fmtTimeLeft renders sub-month durations as "N d"), so the floor was the only
+  // thing forcing a whole month. Now floored in days, reusing the same
+  // ENGINE_BUILD_FLOOR_DAYS constant the launch-quote pipeline already applies to
+  // stock-adjusted builds -- one authority for "a vehicle still needs this much assembly".
+  return Math.max(ENGINE_BUILD_FLOOR_DAYS/DAYS_PER_MONTH, mo);
 }
 
 /* ---------- M16: subsystem-based reliability & story failures ----------
