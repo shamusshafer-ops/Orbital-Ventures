@@ -505,7 +505,8 @@ duplicating.
       region-by-region.
 - [~] **E0.4 Keyboard + accessibility baseline** — slices (a) hotkeys, (b) focus trap, (d) UI-scale
       SHIPPED 2026-07-10 (see session logs above), 491/491. **Slice (c) (reduced-motion +
-      colorblind icons) deliberately deferred, not started.**
+      colorblind icons):** reduced-motion shipped 2026-08-11 via Gate 6 F6, not as part of this
+      slice — see `docs/GATE-6-CONTRACTS.md`. Colorblind-safe redundancy is still not started.
 - [x] **E0.5 Unbounded-array audit** — cap rendered log entries (windowed + "show
       older"), decimate metric histories monthly→quarterly after N years, cap/archive
       chronicle. Verify `document.hidden` pauses every RAF loop and sleeps Phaser scenes

@@ -28,7 +28,7 @@ Complexity: S = <1 day, M = 1–5 days, L = 1–3 weeks, XL = 1+ month. Impact: 
 |1| Keyboard shortcuts (tabs 1–5, space pause, +/- time) | Sim audience expectation | S | ★★★ | — | H |E0.4|
 |2| Esc closes modals / focus trap in modals | Basic UX hygiene | S | ★★ | — | H |E0.4|
 |3| UI scale slider (CSS var) | Readability, older audience | S | ★★ | — | H |E0.4|
-|4| `prefers-reduced-motion` gating | Accessibility | S | ★ | — | H |E0.4|
+|4| `prefers-reduced-motion` gating | Accessibility | S | ★ | — | H |Shipped 2026-08-11 (Gate 6 F6) — was E0.4 slice (c), left "deliberately deferred, not started" when E0.4 shipped 2026-07-10; built later as part of Gate 6, not E0.4. The other half of slice (c), colorblind-safe redundancy (#5 below), is still open|
 |5| Colorblind-safe redundancy (icons beside color states) | Accessibility | M | ★★ | — | H |E0.4|
 |6| Save export/import as first-class UI (file download) | Trust; localStorage is fragile | S | ★★★ | — | H |E0.2|
 |7| Multiple save slots (IndexedDB) | Standard expectation | M | ★★★ | 6 | H |E0.2|
@@ -36,7 +36,7 @@ Complexity: S = <1 day, M = 1–5 days, L = 1–3 weeks, XL = 1+ month. Impact: 
 |9| Floating money/rep deltas on change | Feedback | S | ★★ | — | M |Shipped (`_statBump` + `statDeltaRise` CSS — confirmed 2026-07-23)|
 |10| Hover math breakdowns (reliability ∏, net econ) | Auditability = trust | M | ★★★ | — | H |E1.5|
 |11| Confirm-with-preview on all destructive actions | Prevent rage-quits | S | ★★ | — | H |Backlog|
-|12| Undo last build-change on bench | Design iteration comfort | M | ★★ | — | M |Backlog|
+|12| Undo last build-change on bench | Design iteration comfort | M | ★★ | — | M |Shipped — `_benchUndo`/`benchUndo()`/`benchPushUndo()`/`BENCH_UNDO_CAP`, a real undo/redo stack with a UI button (parts.js). No shipped date recorded in ROADMAP-HISTORY.md; found already built during the 2026-08-12 backlog audit|
 |13| Searchable tech tree | 110 nodes needs it | S | ★★ | — | M |Already shipped — techSearchMatch()/#techSearch input in R&D render|
 |14| Pin a research node as "goal" → path highlight | Planning aid | M | ★★ | — | M |Shipped 2026-07-17 — persistent prereq-chain highlight + rail progress band|
 |15| Notification center (missed events while warping) | Smart-time complement | M | ★★ | — | M |Backlog|
@@ -142,7 +142,7 @@ Complexity: S = <1 day, M = 1–5 days, L = 1–3 weeks, XL = 1+ month. Impact: 
 |105| Soundtrack: 4–6 era-shifting ambient tracks | Identity | M | ★★★ | — | H |E1.6|
 |106| Guided first launch (5-step interactive tutorial — none exists; #24 presumed one) | Onboarding | M | ★★★ | — | H |Backlog|
 |107| First-session tooltips on header stats (Δv, rep, ⚛ jargon-cold to new players) | Onboarding | S | ★★ | 106 | M |Backlog|
-|108| Desktop breakpoint ~1280px (zero @media rules; CC deck overflows laptops) | Accessibility | S | ★★ | — | M |Backlog|
+|108| Desktop breakpoint ~1280px (zero @media rules; CC deck overflows laptops) | Accessibility | S | ★★ | — | M |Backlog -- rationale is stale (found during the 2026-08-12 audit): shell.html now has 24 @media rules including several at 1100-1200px, close to the claimed ~1280px range. Whether that already fixes the CC-deck-overflow complaint or the item is still genuinely needed is a browser question, not resolved from source|
 |109| Font-scale setting | Accessibility | S | ★ | — | L |Backlog|
 |110| Progressive CC deck (hide advanced cards until after first launch) | Onboarding | S | ★ | 106 | L |Backlog|
 |111| Base Bench: third bench tab for lunar/Mars surface bases (horizontal ground-line SVG; facilities already run full station machinery) | Empire visualization | M | ★★★ | — | H |Shipped 2026-07-16 (E1.8 A+B+C+D complete)|
@@ -163,15 +163,19 @@ Complexity: S = <1 day, M = 1–5 days, L = 1–3 weeks, XL = 1+ month. Impact: 
 
 | Status | Count | Meaning |
 |---|---|---|
-| E0.x / E1.x / E2 | 27 | Folded into a named ROADMAP.md workstream |
-| Shipped / closed | 22 | Built and verified; see ROADMAP-HISTORY.md |
+| E0.x / E1.x / E2 | 26 | Folded into a named ROADMAP.md workstream |
+| Shipped / closed | 24 | Built and verified; see ROADMAP-HISTORY.md |
 | Deferred | 13 | Named in ROADMAP.md's deferred list |
-| **Backlog** | **45** | Not yet on ROADMAP.md in any form |
+| **Backlog** | **44** | Not yet on ROADMAP.md in any form |
 
-*Recounted 2026-07-28 directly from the table above (118 items). The previous tally was
-written before the 2026-07-13 → 07-24 shipping run and had drifted — it reported 52 backlog
-items and omitted the shipped category entirely. #19 shipped 2026-08-04 (see its row above);
-counts above reflect that one move out of Backlog.*
+*Recounted 2026-08-12 after a full audit against the codebase (not just the table's own
+claims): #4 moved from `E0.4` to `Shipped` (built later via Gate 6 F6, not the E0.4 slice it
+was originally tagged under) and #12 moved from `Backlog` to `Shipped` (found already built --
+`_benchUndo`/`benchUndo()` in parts.js -- with no corresponding ROADMAP-HISTORY.md entry).
+Every other Backlog/Deferred-tagged item (roughly 55 of the 58) was checked against the
+codebase and confirmed still accurate. #108's stated rationale was found to be stale (see its
+row) but the item itself was left in Backlog pending a browser check. The previous tally was
+written 2026-07-28 directly from the table; counts above reflect the two moves above only.
 
 Over half the list (58/112) hasn't been triaged onto ROADMAP.md yet — mostly small
 QoL items (#9, 11–12, 15–16, 19–25), flight/ops texture (#31, 33–34, 37–45), rival/world

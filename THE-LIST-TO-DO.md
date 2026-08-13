@@ -6,18 +6,16 @@
 - Deep-space civilization: planetary economies, orbital shipyards, megaprojects, terraforming, interstellar missions.
 - Political depth: budget shocks, shareholders/investors, stock market, media, mandates.
 - Research depth: TRL, prototypes, testing, era research-capacity limits.
-- Flight overlay: in-overlay decision panels, telemetry strip, ascent abort decisions, and transition/chrome polish.
-- Milestone spectacle: newspaper coverage, ambient/UI sound, countdown voice, milestone stingers.
+- Flight overlay: ascent abort decisions and transition/chrome polish. (In-overlay decision panels and telemetry are shipped -- `openFlightForDecision`/`drawDecisionPanel` in flight.js, E1.2 slices C/D.)
+- Milestone spectacle: ambient/UI sound, countdown voice, milestone stingers. (Newspaper front-page coverage on firsts is shipped -- `frontPageHTML()`, wired to milestones/victory/budget-hearing modals.)
 - Station resupply contracts, crew rotation, module maintenance/degradation, station science generation.
 - Optional station manufacturing tie-in.
-- Click-to-jump notifications, animated Command Center scene tiers, and map cost/ROI overlays.
-- Daily-time polish: short-fuse events/contracts, finer duration handling, optional Gregorian calendar.
+- Click-to-jump notifications, animated Command Center scene tiers, and map cost/ROI overlays. (Animated CC scene tiers are shipped -- `ccPhaserDetail`/`ccPhaserSmoke` in render.js; click-to-jump notifications and map cost/ROI overlays are not.)
+- Colorblind-safe status indicators. (Reduced-motion support shipped 2026-08-11 via Gate 6 F6; a true Gregorian calendar and 4c duration re-authoring shipped 2026-08-12 via the Calendar epic Stages 1-3 -- see ROADMAP.md. Save migration for the calendar switch, Calendar Stage 4, is still open.)
 - Optional recoverable solid boosters.
-- E0.5 array/history growth audit and hidden-tab rendering checks.
-- Reduced-motion support and colorblind-safe status indicators.
 - Continue dirty-flag rendering on hot paths.
 - Real-browser verification and commit/push cleanup for recent completed slices.
-- Remove dead Station Phaser scene code and remaining low-priority technical debt.
+- Remove dead Station Phaser scene code (StationScene, render.js -- confirmed still present, 10 references) and remaining low-priority technical debt.
 - Offline/manual fallback testing for Phaser scenes.
 
 ## Unclassified Backlog
