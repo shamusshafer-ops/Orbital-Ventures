@@ -49,6 +49,7 @@ function createFreshState(difficulty){
     ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
     facilities:{}, assemblyLayouts:{}, stationVisitSeq:0, // D2 visiting-berth reservations/visitors live on exact facility records
     orbitAssets:[], orbitAssetSeq:0, orbitMissionSeq:0, // D3 surviving free/docked spacecraft and separately launched targets
+    orbitOps:[], orbitOpSeq:0, // D4 durable rendezvous, undock, relocation, return and transfer receipts
     fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
     architectures:{}, science:0,
     vehicles:[], activeVehicle:null, // #3: named vehicle lineages with heritage
@@ -1694,7 +1695,7 @@ function orbitAssetList(snapshot){ const list=(snapshot||state).orbitAssets; ret
 function orbitAssetById(id,snapshot){ return orbitAssetList(snapshot).find(asset=>asset&&asset.id===id)||null; }
 function orbitAssetKindLabel(kind){ return ({capsule:'Crew capsule',pod:'Cargo pod',tug:'Orbital tug',target:'Docking target'})[kind]||'Orbital craft'; }
 function orbitAssetServices(kind){
-  return kind==='capsule'?['crew','cargo','power','data']:(kind==='tug'?['cargo','fuel','power','data']:['cargo','power','data']);
+  return kind==='capsule'?['crew','cargo','power','data']:(['pod','tug'].includes(kind)?['cargo','fuel','power','data']:['cargo','power','data']);
 }
 function orbitAssetPort(kind,id){
   return makeDockInterface({id:id||'forward_port',standard:'androgynous',size:'standard',role:'androgynous',services:dockingServices(...orbitAssetServices(kind))});
@@ -1771,6 +1772,356 @@ function releaseStationVisitorToOrbit(facId,operationId){
   hull.status='in-orbit'; addHullEvent(hull,'released to orbit',visitor.missionId);
   log('ok',`${def?def.icon+' '+def.name:'Station'}: ${record.name} undocked into free ${record.orbit.band} orbit; ${visitor.berthId.split(':').pop()} is open.`);
   render(); return record;
+}
+// Docking D4: durable operations for craft that already exist in orbit. The
+// operation ledger is simulation authority; modals merely call these actions.
+const ORBIT_RENDEZVOUS_ATTEMPT_DV=25;
+const ORBIT_BAND_ORDER=Object.freeze(['low','medium','high','geosynchronous']);
+function orbitOperationList(snapshot){ const list=(snapshot||state).orbitOps; return Array.isArray(list)?list:[]; }
+function orbitOperationById(id,snapshot){ return orbitOperationList(snapshot).find(operation=>operation&&operation.id===id)||null; }
+function orbitOperationByRequest(requestId,snapshot){ return requestId&&orbitOperationList(snapshot).find(operation=>operation&&operation.requestId===requestId)||null; }
+function orbitOperationForAsset(assetId,snapshot){
+  return orbitOperationList(snapshot).slice().reverse().find(operation=>operation&&
+    ((operation.actor.type==='orbit-asset'&&operation.actor.id===assetId)||(operation.target.type==='orbit-asset'&&operation.target.id===assetId)))||null;
+}
+function activeOrbitDockOperationForAsset(assetId,snapshot){
+  const s=snapshot||state, asset=orbitAssetById(assetId,s);
+  return orbitOperationList(s).slice().reverse().find(operation=>operation&&operation.kind==='dock'&&
+    ['stationkeeping','soft_capture','hard_dock','wave_off'].includes(operation.phase)&&
+    ((operation.actor.type==='orbit-asset'&&operation.actor.id===assetId)||(operation.target.type==='orbit-asset'&&operation.target.id===assetId))&&
+    (operation.phase!=='hard_dock'||(asset&&asset.status==='docked'&&asset.dockOperation?.id===operation.dockOperation?.id)))||null;
+}
+function nextOrbitOperationId(){
+  state.orbitOpSeq=Math.max(0,finiteRecordNumber(state.orbitOpSeq));
+  let id; do{ id=`oop_${++state.orbitOpSeq}`; }while(orbitOperationById(id));
+  return id;
+}
+function orbitOperationRequestReplay(requestId,kind){
+  const prior=orbitOperationByRequest(requestId);
+  if(!prior) return null;
+  return prior.kind===kind?{ok:true,replay:true,operation:prior}:{ok:false,why:`Request ${requestId} already belongs to a ${prior.kind} operation.`,operation:prior};
+}
+function appendOrbitOperationRecord(input){
+  input=input||{};
+  const explicit=String(input.requestId||''), replay=explicit&&orbitOperationRequestReplay(explicit,input.kind);
+  if(replay) return replay;
+  const id=String(input.id||nextOrbitOperationId()), requestId=explicit||`request:${id}`;
+  const operation=makeOrbitOperation(Object.assign({},input,{id,requestId}));
+  const errors=orbitOperationErrors(operation);
+  if(errors.length) return {ok:false,why:`Invalid orbital operation: ${errors.join(', ')}.`,errors,operation};
+  state.orbitOps=orbitOperationList(); state.orbitOps.push(operation);
+  return {ok:true,replay:false,operation};
+}
+function appendOrbitOperationReceipt(operation,requestId,action,details){
+  if(!operation) return {ok:false,why:'The orbital operation no longer exists.'};
+  const id=String(requestId||`${operation.id}:${action}`), prior=operation.receipts.find(receipt=>receipt.requestId===id);
+  if(prior) return {ok:true,replay:true,receipt:prior};
+  const receipt=makeOrbitOperationReceipt({requestId:id,action,atAbs:absDay(),details:details||{}});
+  if(orbitOperationReceiptErrors(receipt).length) return {ok:false,why:'The operation receipt is invalid.'};
+  operation.receipts.push(receipt); operation.updatedAbs=absDay();
+  return {ok:true,replay:false,receipt};
+}
+function orbitDockOperationAssets(operation){
+  if(!operation||operation.kind!=='dock'||operation.actor.type!=='orbit-asset'||operation.target.type!=='orbit-asset') return null;
+  const actor=orbitAssetById(operation.actor.id), target=orbitAssetById(operation.target.id);
+  return actor&&target?{actor,target}:null;
+}
+function orbitDockPortPair(actor,target,operationId,services,preferredActorPortId,preferredTargetPortId){
+  if(!actor||!target) return {ok:false,why:'Both orbital craft must still exist.'};
+  const actorPorts=(actor.interfaces||[]).filter(port=>!preferredActorPortId||port.id===preferredActorPortId);
+  const targetPorts=(target.interfaces||[]).filter(port=>!preferredTargetPortId||port.id===preferredTargetPortId);
+  let reasons=[];
+  for(const actorPort of actorPorts) for(const targetPort of targetPorts){
+    const fit=dockCompatibility(actorPort,targetPort,{operationId,services});
+    if(fit.ok) return {ok:true,actorPort,targetPort,services:fit.services};
+    if(!reasons.length) reasons=fit.reasons.slice();
+  }
+  return {ok:false,why:reasons.length?`No compatible interface pair: ${reasons.join(', ')}.`:'No compatible interfaces remain.',reasons};
+}
+function canPlanOrbitDocking(actorAssetId,targetAssetId){
+  const actor=orbitAssetById(actorAssetId), target=orbitAssetById(targetAssetId);
+  if(!actor||!target) return {ok:false,why:'Both orbital craft must still exist.'};
+  if(actor.id===target.id) return {ok:false,why:'A spacecraft cannot dock with itself.'};
+  if(actor.status!=='free'||target.status!=='free') return {ok:false,why:'Both spacecraft must be free before rendezvous planning.'};
+  if(activeOrbitDockOperationForAsset(actor.id)||activeOrbitDockOperationForAsset(target.id)) return {ok:false,why:'Close or retry the existing waved-off rendezvous before planning another.'};
+  if(actor.bodyId!==target.bodyId||actor.orbit.band!==target.orbit.band) return {ok:false,why:'Move both spacecraft into the same body and orbit band before rendezvous.'};
+  if(actor.resources.rendezvousDv<ORBIT_RENDEZVOUS_ATTEMPT_DV) return {ok:false,why:`${actor.name} needs ${ORBIT_RENDEZVOUS_ATTEMPT_DV} m/s of rendezvous reserve.`};
+  const pair=orbitDockPortPair(actor,target,'orbit-operation-preview',null);
+  return pair.ok?{ok:true,actor,target,actorPort:pair.actorPort,targetPort:pair.targetPort,services:pair.services}:pair;
+}
+function clearOrbitAssetOperationState(asset,operationId){
+  if(!asset) return;
+  for(const port of (asset.interfaces||[])) if(port.occupiedBy===operationId) port.occupiedBy=null;
+  if(asset.reservation&&asset.reservation.operationId===operationId) asset.reservation=null;
+  if(asset.dockOperation&&asset.dockOperation.id===operationId){ asset.dockOperation=null; asset.dockedTo=null; }
+  if(asset.status!=='free'&&(!asset.reservation&&!asset.dockOperation)) asset.status='free';
+}
+function reserveExactOrbitPair(operation,requestId,action){
+  const pair=orbitDockOperationAssets(operation); if(!pair) return {ok:false,why:'One of the rendezvous craft no longer exists.'};
+  const actor=pair.actor, target=pair.target, dockId=operation.dockOperation.id;
+  if(actor.status!=='free'||target.status!=='free') return {ok:false,why:'Both spacecraft must be free before another approach.'};
+  if(actor.resources.rendezvousDv<ORBIT_RENDEZVOUS_ATTEMPT_DV) return {ok:false,why:`${actor.name} lacks the ${ORBIT_RENDEZVOUS_ATTEMPT_DV} m/s retry reserve.`};
+  const ports=orbitDockPortPair(actor,target,dockId,operation.services,operation.actorPortId,operation.targetPortId);
+  if(!ports.ok) return ports;
+  ports.actorPort.occupiedBy=dockId; ports.targetPort.occupiedBy=dockId;
+  const missionId=`orbit-op:${operation.id}`;
+  actor.reservation=makeOrbitAssetReservation({operationId:dockId,missionId,actorKind:target.kind,targetPortId:ports.actorPort.id,services:operation.services,createdAbs:absDay()});
+  target.reservation=makeOrbitAssetReservation({operationId:dockId,missionId,actorKind:actor.kind,targetPortId:ports.targetPort.id,services:operation.services,createdAbs:absDay()});
+  actor.status='reserved'; target.status='reserved';
+  actor.resources.rendezvousDv=round2(actor.resources.rendezvousDv-ORBIT_RENDEZVOUS_ATTEMPT_DV);
+  operation.phase='stationkeeping'; operation.dockOperation=makeDockOperation(Object.assign({},operation.dockOperation,{status:'approach'}));
+  operation.payload.attempts=Math.max(0,finiteRecordNumber(operation.payload.attempts))+1;
+  operation.payload.rendezvousDvSpent=round2(finiteRecordNumber(operation.payload.rendezvousDvSpent)+ORBIT_RENDEZVOUS_ATTEMPT_DV);
+  const receipt=appendOrbitOperationReceipt(operation,requestId,action||'stationkeeping',{attempt:operation.payload.attempts,rendezvousDv:ORBIT_RENDEZVOUS_ATTEMPT_DV});
+  return {ok:true,operation,actor,target,receipt:receipt.receipt,replay:receipt.replay};
+}
+function planOrbitDockingOperation(actorAssetId,targetAssetId,requestId){
+  if(typeof guardOrdinaryAction==='function'&&!guardOrdinaryAction('Planning an orbital rendezvous')) return {ok:false,why:'Ordinary actions are suspended.'};
+  const replay=requestId&&orbitOperationRequestReplay(requestId,'dock'); if(replay) return replay;
+  const check=canPlanOrbitDocking(actorAssetId,targetAssetId); if(!check.ok) return check;
+  const id=nextOrbitOperationId(), dockId=`${id}:dock`, services=check.services.slice();
+  const dockOperation=makeDockOperation({id:dockId,missionId:`orbit-op:${id}`,purpose:'Persistent orbital rendezvous',status:'planned',
+    actorId:`orbit-asset:${check.actor.id}`,actorPortId:check.actorPort.id,targetId:`orbit-asset:${check.target.id}`,targetPortId:check.targetPort.id,
+    services,reliability:1,source:'orbit_operation'});
+  const appended=appendOrbitOperationRecord({id,requestId:requestId||`request:${id}`,kind:'dock',phase:'stationkeeping',
+    actor:{type:'orbit-asset',id:check.actor.id},target:{type:'orbit-asset',id:check.target.id},actorPortId:check.actorPort.id,targetPortId:check.targetPort.id,
+    services,dockOperation,payload:{attempts:0,rendezvousDvSpent:0},receipts:[],createdAbs:absDay(),updatedAbs:absDay()});
+  if(!appended.ok||appended.replay) return appended;
+  const reserved=reserveExactOrbitPair(appended.operation,appended.operation.requestId,'stationkeeping');
+  if(!reserved.ok){ state.orbitOps=orbitOperationList().filter(operation=>operation!==appended.operation); return reserved; }
+  log('note',`${check.actor.name}: stationkeeping with ${check.target.name}; exact ports reserved (−${ORBIT_RENDEZVOUS_ATTEMPT_DV} m/s).`);
+  if(typeof render==='function') render();
+  return reserved;
+}
+function linkOrbitOperationPair(operation,status){
+  const pair=orbitDockOperationAssets(operation); if(!pair) return {ok:false,why:'One of the rendezvous craft no longer exists.'};
+  const dockId=operation.dockOperation.id, actorPort=pair.actor.interfaces.find(port=>port.id===operation.actorPortId), targetPort=pair.target.interfaces.find(port=>port.id===operation.targetPortId);
+  if(!actorPort||!targetPort||actorPort.occupiedBy!==dockId||targetPort.occupiedBy!==dockId) return {ok:false,why:'The exact docking-port reservation is no longer intact.'};
+  const dockStatus=status==='soft-captured'?'soft_capture':'hard_dock', dockOperation=makeDockOperation(Object.assign({},operation.dockOperation,{status:dockStatus}));
+  for(const asset of [pair.actor,pair.target]){ asset.reservation=null; asset.status=status; asset.dockOperation=makeDockOperation(dockOperation); }
+  pair.actor.dockedTo=pair.target.id; pair.target.dockedTo=pair.actor.id; operation.dockOperation=dockOperation;
+  return {ok:true,actor:pair.actor,target:pair.target};
+}
+function softCaptureOrbitOperation(operationId,requestId){
+  const operation=orbitOperationById(operationId); if(!operation||operation.kind!=='dock') return {ok:false,why:'The rendezvous operation no longer exists.'};
+  if(operation.phase==='soft_capture'||operation.phase==='hard_dock') return {ok:true,replay:true,operation};
+  if(operation.phase!=='stationkeeping') return {ok:false,why:'The craft must be in stationkeeping before soft capture.'};
+  const attempt=Math.max(1,finiteRecordNumber(operation.payload.attempts)), req=requestId||`${operation.id}:soft-capture:${attempt}`;
+  const prior=operation.receipts.find(receipt=>receipt.requestId===req); if(prior) return {ok:true,replay:true,operation,receipt:prior};
+  const linked=linkOrbitOperationPair(operation,'soft-captured'); if(!linked.ok) return linked;
+  operation.phase='soft_capture'; const receipt=appendOrbitOperationReceipt(operation,req,'soft_capture',{attempt});
+  log('note',`${linked.actor.name} and ${linked.target.name}: soft capture confirmed; no transfer has occurred.`);
+  if(typeof render==='function') render();
+  return {ok:true,operation,actor:linked.actor,target:linked.target,receipt:receipt.receipt};
+}
+function hardDockOrbitOperation(operationId,requestId){
+  const operation=orbitOperationById(operationId); if(!operation||operation.kind!=='dock') return {ok:false,why:'The rendezvous operation no longer exists.'};
+  if(operation.phase==='hard_dock') return {ok:true,replay:true,operation};
+  if(!['stationkeeping','soft_capture'].includes(operation.phase)) return {ok:false,why:'The craft are not in a capturable approach state.'};
+  const attempt=Math.max(1,finiteRecordNumber(operation.payload.attempts)), req=requestId||`${operation.id}:hard-dock:${attempt}`;
+  const prior=operation.receipts.find(receipt=>receipt.requestId===req); if(prior) return {ok:true,replay:true,operation,receipt:prior};
+  const linked=linkOrbitOperationPair(operation,'docked'); if(!linked.ok) return linked;
+  operation.phase='hard_dock'; const receipt=appendOrbitOperationReceipt(operation,req,'hard_dock',{attempt});
+  log('ok',`${linked.actor.name} hard-docked with ${linked.target.name}; shared services: ${operation.services.join(', ')}.`);
+  if(typeof render==='function') render();
+  return {ok:true,operation,actor:linked.actor,target:linked.target,receipt:receipt.receipt};
+}
+function waveOffOrbitOperation(operationId,requestId){
+  const operation=orbitOperationById(operationId); if(!operation||operation.kind!=='dock') return {ok:false,why:'The rendezvous operation no longer exists.'};
+  if(operation.phase==='wave_off') return {ok:true,replay:true,operation};
+  if(!['stationkeeping','soft_capture'].includes(operation.phase)) return {ok:false,why:'Only an active approach or soft capture can wave off.'};
+  const attempt=Math.max(1,finiteRecordNumber(operation.payload.attempts)), req=requestId||`${operation.id}:wave-off:${attempt}`;
+  const pair=orbitDockOperationAssets(operation); if(!pair) return {ok:false,why:'One of the rendezvous craft no longer exists.'};
+  clearOrbitAssetOperationState(pair.actor,operation.dockOperation.id); clearOrbitAssetOperationState(pair.target,operation.dockOperation.id);
+  operation.phase='wave_off'; operation.dockOperation=makeDockOperation(Object.assign({},operation.dockOperation,{status:'failed'}));
+  const receipt=appendOrbitOperationReceipt(operation,req,'wave_off',{attempt});
+  log('note',`${pair.actor.name}: approach to ${pair.target.name} waved off; both exact ports are free.`);
+  if(typeof render==='function') render();
+  return {ok:true,operation,actor:pair.actor,target:pair.target,receipt:receipt.receipt};
+}
+function retryOrbitOperation(operationId,requestId){
+  const operation=orbitOperationById(operationId); if(!operation||operation.kind!=='dock') return {ok:false,why:'The rendezvous operation no longer exists.'};
+  if(operation.phase==='stationkeeping') return {ok:true,replay:true,operation};
+  if(!['wave_off','soft_capture'].includes(operation.phase)) return {ok:false,why:'Retry is available after a wave-off or soft capture.'};
+  const pair=orbitDockOperationAssets(operation); if(!pair) return {ok:false,why:'One of the rendezvous craft no longer exists.'};
+  if(pair.actor.resources.rendezvousDv<ORBIT_RENDEZVOUS_ATTEMPT_DV) return {ok:false,why:`${pair.actor.name} lacks the ${ORBIT_RENDEZVOUS_ATTEMPT_DV} m/s retry reserve.`};
+  const nextAttempt=Math.max(1,finiteRecordNumber(operation.payload.attempts))+1, req=requestId||`${operation.id}:retry:${nextAttempt}`;
+  const prior=operation.receipts.find(receipt=>receipt.requestId===req); if(prior) return {ok:true,replay:true,operation,receipt:prior};
+  if(operation.phase==='soft_capture'){
+    clearOrbitAssetOperationState(pair.actor,operation.dockOperation.id); clearOrbitAssetOperationState(pair.target,operation.dockOperation.id);
+  }
+  const retried=reserveExactOrbitPair(operation,req,'retry');
+  if(!retried.ok) return retried;
+  log('note',`${pair.actor.name}: retry established stationkeeping with ${pair.target.name} (−${ORBIT_RENDEZVOUS_ATTEMPT_DV} m/s).`);
+  if(typeof render==='function') render();
+  return retried;
+}
+function cancelOrbitOperation(operationId,requestId){
+  const operation=orbitOperationById(operationId); if(!operation||operation.kind!=='dock') return {ok:false,why:'The rendezvous operation no longer exists.'};
+  if(operation.phase==='cancelled') return {ok:true,replay:true,operation};
+  if(operation.phase==='hard_dock') return {ok:false,why:'Hard-docked craft must undock rather than cancel.'};
+  const req=requestId||`${operation.id}:cancel`, pair=orbitDockOperationAssets(operation);
+  if(pair){ clearOrbitAssetOperationState(pair.actor,operation.dockOperation.id); clearOrbitAssetOperationState(pair.target,operation.dockOperation.id); }
+  operation.phase='cancelled'; operation.dockOperation=makeDockOperation(Object.assign({},operation.dockOperation,{status:'released'}));
+  const receipt=appendOrbitOperationReceipt(operation,req,'cancel',{});
+  if(typeof render==='function') render();
+  return {ok:true,operation,receipt:receipt.receipt};
+}
+function undockOrbitAssets(assetId,requestId){
+  if(typeof guardOrdinaryAction==='function'&&!guardOrdinaryAction('Undocking orbital spacecraft')) return {ok:false,why:'Ordinary actions are suspended.'};
+  const replay=requestId&&orbitOperationRequestReplay(requestId,'undock'); if(replay) return replay;
+  const actor=orbitAssetById(assetId), target=actor&&orbitAssetById(actor.dockedTo), source=actor&&actor.dockOperation;
+  if(!actor||actor.status!=='docked'||!target||target.status!=='docked'||!source||!target.dockOperation||target.dockOperation.id!==source.id) return {ok:false,why:'The spacecraft is not part of a reciprocal hard dock.'};
+  const stableRequest=requestId||`undock:${source.id}`, prior=orbitOperationByRequest(stableRequest); if(prior) return {ok:true,replay:true,operation:prior};
+  const appended=appendOrbitOperationRecord({requestId:stableRequest,kind:'undock',phase:'undocked',actor:{type:'orbit-asset',id:actor.id},target:{type:'orbit-asset',id:target.id},
+    actorPortId:source.actorId===`orbit-asset:${actor.id}`?source.actorPortId:source.targetPortId,targetPortId:source.actorId===`orbit-asset:${actor.id}`?source.targetPortId:source.actorPortId,
+    services:source.services,sourceOperationId:source.id,payload:{},receipts:[],createdAbs:absDay(),updatedAbs:absDay()});
+  if(!appended.ok||appended.replay) return appended;
+  clearOrbitAssetOperationState(actor,source.id); clearOrbitAssetOperationState(target,source.id);
+  appendOrbitOperationReceipt(appended.operation,stableRequest,'undock',{sourceOperationId:source.id});
+  log('note',`${actor.name} undocked from ${target.name}; the exact shared ports are free.`);
+  if(typeof render==='function') render();
+  return {ok:true,operation:appended.operation,actor,target};
+}
+function orbitRelocationCost(asset,destination){
+  const fromBand=Math.max(0,ORBIT_BAND_ORDER.indexOf(asset.orbit.band)), toBand=Math.max(0,ORBIT_BAND_ORDER.indexOf(destination.band));
+  return round2(Math.max(10,Math.abs(toBand-fromBand)*50+Math.abs(finiteRecordNumber(destination.inclination)-asset.orbit.inclination)*2));
+}
+function relocateOrbitAsset(assetId,destination,requestId){
+  if(typeof guardOrdinaryAction==='function'&&!guardOrdinaryAction('Relocating an orbital spacecraft')) return {ok:false,why:'Ordinary actions are suspended.'};
+  const replay=requestId&&orbitOperationRequestReplay(requestId,'relocate'); if(replay) return replay;
+  const asset=orbitAssetById(assetId); if(!asset) return {ok:false,why:'The orbital spacecraft no longer exists.'};
+  if(asset.status!=='free') return {ok:false,why:'Undock or cancel the current approach before relocating.'};
+  const requested=typeof destination==='string'?{band:destination,inclination:asset.orbit.inclination}:(destination||{});
+  const targetOrbit={band:String(requested.band||asset.orbit.band),inclination:finiteRecordNumber(requested.inclination,asset.orbit.inclination)};
+  if(!ORBIT_BAND_ORDER.includes(targetOrbit.band)||targetOrbit.inclination<0||targetOrbit.inclination>180) return {ok:false,why:'Choose a supported orbit band and inclination from 0° to 180°.'};
+  if(targetOrbit.band===asset.orbit.band&&targetOrbit.inclination===asset.orbit.inclination) return {ok:false,why:'The spacecraft is already in that orbit.'};
+  const cost=orbitRelocationCost(asset,targetOrbit); if(asset.resources.rendezvousDv<cost) return {ok:false,why:`Relocation needs ${cost} m/s; ${asset.resources.rendezvousDv} m/s remains.`};
+  const from=plainRecord(asset.orbit), appended=appendOrbitOperationRecord({requestId,kind:'relocate',phase:'relocated',actor:{type:'orbit-asset',id:asset.id},target:{type:'facility',id:`${asset.bodyId}:${targetOrbit.band}`},
+    services:[],payload:{from,to:targetOrbit,rendezvousDv:cost},receipts:[],createdAbs:absDay(),updatedAbs:absDay()});
+  if(!appended.ok||appended.replay) return appended;
+  asset.resources.rendezvousDv=round2(asset.resources.rendezvousDv-cost); asset.orbit=targetOrbit;
+  appendOrbitOperationReceipt(appended.operation,appended.operation.requestId,'relocate',{from,to:targetOrbit,rendezvousDv:cost});
+  log('note',`${asset.name}: relocated to ${targetOrbit.band} orbit at ${targetOrbit.inclination.toFixed(1)}° (−${cost} m/s).`);
+  if(typeof render==='function') render();
+  return {ok:true,operation:appended.operation,asset,cost};
+}
+function returnOrbitAsset(assetId,requestId){
+  if(typeof guardOrdinaryAction==='function'&&!guardOrdinaryAction('Returning an orbital spacecraft')) return {ok:false,why:'Ordinary actions are suspended.'};
+  const replay=requestId&&orbitOperationRequestReplay(requestId,'return'); if(replay) return replay;
+  const asset=orbitAssetById(assetId); if(!asset) return {ok:false,why:'The orbital spacecraft no longer exists.'};
+  if(asset.status!=='free') return {ok:false,why:'The spacecraft must be free before return.'};
+  const hull=hullById(asset.hullId); if(!hull) return {ok:false,why:'The spacecraft no longer owns a physical hull.'};
+  const disposition=(asset.kind==='capsule'||hull.recoveryFitted)?'recovered':'expended';
+  const appended=appendOrbitOperationRecord({requestId,kind:'return',phase:'returned',actor:{type:'orbit-asset',id:asset.id},target:{type:'facility',id:`${asset.bodyId}:recovery`},
+    services:[],payload:{hullId:hull.id,crewId:asset.crewId,disposition,orbit:plainRecord(asset.orbit)},receipts:[],createdAbs:absDay(),updatedAbs:absDay()});
+  if(!appended.ok||appended.replay) return appended;
+  state.orbitAssets=orbitAssetList().filter(item=>item!==asset); hull.status=disposition; addHullEvent(hull,disposition,'orbit-return',appended.operation.id);
+  appendOrbitOperationReceipt(appended.operation,appended.operation.requestId,'return',{hullId:hull.id,crewId:asset.crewId,disposition});
+  log(disposition==='recovered'?'ok':'note',`${asset.name}: return complete; hull ${hull.serial} ${disposition}${asset.crewId?' and crew available':''}.`);
+  if(typeof render==='function') render();
+  return {ok:true,operation:appended.operation,hull,disposition};
+}
+function hardDockServicePair(sourceAssetId,targetAssetId,service){
+  const source=orbitAssetById(sourceAssetId), target=orbitAssetById(targetAssetId||(source&&source.dockedTo));
+  if(!source||!target||source.status!=='docked'||target.status!=='docked'||source.dockedTo!==target.id||target.dockedTo!==source.id||
+     !source.dockOperation||!target.dockOperation||source.dockOperation.id!==target.dockOperation.id) return {ok:false,why:'A reciprocal hard dock is required for transfer.'};
+  if(!source.dockOperation.services.includes(service)) return {ok:false,why:`The shared docking interface does not carry ${service}.`};
+  return {ok:true,source,target,dockOperation:source.dockOperation};
+}
+function transferOrbitServices(sourceAssetId,targetAssetId,transfer,requestId){
+  if(typeof guardOrdinaryAction==='function'&&!guardOrdinaryAction('Transferring orbital services')) return {ok:false,why:'Ordinary actions are suspended.'};
+  const replay=requestId&&orbitOperationRequestReplay(requestId,'transfer'); if(replay) return replay;
+  transfer=transfer||{};
+  const kinds=[transfer.crewId!=null?'crew':null,transfer.cargo?'cargo':null,transfer.fuel!=null?'fuel':null].filter(Boolean);
+  if(kinds.length!==1) return {ok:false,why:'Transfer exactly one defined crew, cargo, or propellant item per request.'};
+  const service=kinds[0], pair=hardDockServicePair(sourceAssetId,targetAssetId,service); if(!pair.ok) return pair;
+  const payload={service,sourceOperationId:pair.dockOperation.id}, details={};
+  if(service==='crew'){
+    const crewId=String(transfer.crewId||pair.source.crewId||'');
+    if(!crewId||pair.source.crewId!==crewId||pair.target.crewId) return {ok:false,why:'The named crew member must be aboard the source and the destination seat must be open.'};
+    payload.crewId=crewId; details.crewId=crewId;
+  }else if(service==='cargo'){
+    const key=String(transfer.cargo.key||''), amount=round2(Math.max(0,finiteRecordNumber(transfer.cargo.amount)));
+    if(!key||amount<=0||finiteRecordNumber(pair.source.cargo[key])<amount) return {ok:false,why:'The source does not hold that defined cargo quantity.'};
+    payload.cargo={key,amount}; details.cargo=payload.cargo;
+  }else{
+    const amount=round2(Math.max(0,finiteRecordNumber(transfer.fuel)));
+    if(amount<=0||pair.source.resources.fuel<amount) return {ok:false,why:'The source does not hold that propellant quantity.'};
+    payload.fuel=amount; details.fuel=amount;
+  }
+  const appended=appendOrbitOperationRecord({requestId,kind:'transfer',phase:'transferred',actor:{type:'orbit-asset',id:pair.source.id},target:{type:'orbit-asset',id:pair.target.id},
+    services:[service],sourceOperationId:pair.dockOperation.id,payload,receipts:[],createdAbs:absDay(),updatedAbs:absDay()});
+  if(!appended.ok||appended.replay) return appended;
+  if(service==='crew'){ pair.target.crewId=pair.source.crewId; pair.source.crewId=null; }
+  else if(service==='cargo'){
+    const cargo=payload.cargo; pair.source.cargo[cargo.key]=round2(finiteRecordNumber(pair.source.cargo[cargo.key])-cargo.amount);
+    pair.target.cargo[cargo.key]=round2(finiteRecordNumber(pair.target.cargo[cargo.key])+cargo.amount);
+  }else{ pair.source.resources.fuel=round2(pair.source.resources.fuel-payload.fuel); pair.target.resources.fuel=round2(pair.target.resources.fuel+payload.fuel); }
+  appendOrbitOperationReceipt(appended.operation,appended.operation.requestId,'transfer',details);
+  log('ok',`${pair.source.name} → ${pair.target.name}: ${service} transfer complete.`);
+  if(typeof render==='function') render();
+  return {ok:true,operation:appended.operation,source:pair.source,target:pair.target,service};
+}
+function transferOrbitCrew(sourceAssetId,targetAssetId,crewId,requestId){ return transferOrbitServices(sourceAssetId,targetAssetId,{crewId},requestId); }
+function transferOrbitCargo(sourceAssetId,targetAssetId,key,amount,requestId){ return transferOrbitServices(sourceAssetId,targetAssetId,{cargo:{key,amount}},requestId); }
+function transferOrbitPropellant(sourceAssetId,targetAssetId,amount,requestId){ return transferOrbitServices(sourceAssetId,targetAssetId,{fuel:amount},requestId); }
+function transferStationVisitorCrew(facId,visitorOperationId,direction,crewId,requestId){
+  if(typeof guardOrdinaryAction==='function'&&!guardOrdinaryAction('Transferring station crew')) return {ok:false,why:'Ordinary actions are suspended.'};
+  const replay=requestId&&orbitOperationRequestReplay(requestId,'transfer'); if(replay) return replay;
+  const fs=facilityState(facId), def=facilityById(facId), ops=fs&&stationOps(fs), visitor=ops&&ops.dockedVisitors.find(item=>item&&item.operationId===visitorOperationId);
+  if(!fs||!def||!visitor||!visitor.services.includes('crew')) return {ok:false,why:'A crew-capable docked station visitor is required.'};
+  const toStation=direction==='to-station', id=String(crewId||(toStation?visitor.crewId:'')||'');
+  if(!id||!staffRecord(id)||roleOf(id)!=='astro') return {ok:false,why:'Choose a hired astronaut for transfer.'};
+  if(toStation){
+    const cap=facilityModuleList(fs).reduce((sum,moduleId)=>sum+finiteRecordNumber(stationModuleDef(moduleId)?.stats?.crew),0);
+    if(visitor.crewId!==id||ops.crewIds.includes(id)||ops.crewIds.length>=cap) return {ok:false,why:'The visitor must carry that astronaut and the station must have an open crew berth.'};
+  }else if(visitor.crewId||!ops.crewIds.includes(id)) return {ok:false,why:'The visitor seat must be open and the astronaut must be assigned to this station.'};
+  const appended=appendOrbitOperationRecord({requestId,kind:'transfer',phase:'transferred',
+    actor:{type:toStation?'station-visitor':'facility',id:toStation?visitor.operationId:facId},target:{type:toStation?'facility':'station-visitor',id:toStation?facId:visitor.operationId},
+    services:['crew'],sourceOperationId:visitor.operationId,payload:{direction,crewId:id},receipts:[],createdAbs:absDay(),updatedAbs:absDay()});
+  if(!appended.ok||appended.replay) return appended;
+  if(toStation){ visitor.crewId=null; ops.crewIds.push(id); }
+  else{ ops.crewIds=ops.crewIds.filter(item=>item!==id); visitor.crewId=id; }
+  ops.crewManaged=true; ops.maintenanceEnabled=true; ops.rotationDueAbs=absMonth()+STATION_ROTATION_MONTHS; ops.rotationNotifiedAbs=-1;
+  appendOrbitOperationReceipt(appended.operation,appended.operation.requestId,'transfer',{direction,crewId:id,facilityId:facId,visitorOperationId});
+  log('ok',`${def.icon} ${def.name}: ${personById(id)?.name||id} transferred ${toStation?'from the visitor to station duty':'from station duty into the docked visitor'}.`);
+  if(typeof render==='function') render();
+  return {ok:true,operation:appended.operation,visitor,crewId:id};
+}
+function refuelOrbitAssetFromDepot(assetId,amount,requestId){
+  if(typeof guardOrdinaryAction==='function'&&!guardOrdinaryAction('Refueling an orbital spacecraft')) return {ok:false,why:'Ordinary actions are suspended.'};
+  const replay=requestId&&orbitOperationRequestReplay(requestId,'refuel'); if(replay) return replay;
+  const asset=orbitAssetById(assetId), tons=round2(Math.max(0,finiteRecordNumber(amount)));
+  if(!asset) return {ok:false,why:'The orbital spacecraft no longer exists.'};
+  if(asset.bodyId!=='earth'||asset.orbit.band!=='low') return {ok:false,why:'Depot transfers are currently available only in low Earth orbit.'};
+  if(!(asset.interfaces||[]).some(port=>port.services&&port.services.fuel)) return {ok:false,why:'The spacecraft has no propellant-transfer interface.'};
+  if(tons<=0||finiteRecordNumber(state.depot)<tons) return {ok:false,why:'The depot does not hold that propellant quantity.'};
+  const appended=appendOrbitOperationRecord({requestId,kind:'refuel',phase:'refueled',actor:{type:'depot',id:'leo-propellant-depot'},target:{type:'orbit-asset',id:asset.id},
+    services:['fuel'],payload:{tons},receipts:[],createdAbs:absDay(),updatedAbs:absDay()});
+  if(!appended.ok||appended.replay) return appended;
+  state.depot=round2(state.depot-tons); asset.resources.fuel=round2(asset.resources.fuel+tons);
+  appendOrbitOperationReceipt(appended.operation,appended.operation.requestId,'refuel',{tons,depotRemaining:state.depot,assetFuel:asset.resources.fuel});
+  log('ok',`${asset.name}: received ${tons.toFixed(1)} t from the LEO depot; ${state.depot.toFixed(1)} t remains.`);
+  if(typeof render==='function') render();
+  return {ok:true,operation:appended.operation,asset,tons};
+}
+function recordOrbitAssetService(providerAssetId,targetAssetId,service,requestId){
+  if(typeof guardOrdinaryAction==='function'&&!guardOrdinaryAction('Servicing an orbital spacecraft')) return {ok:false,why:'Ordinary actions are suspended.'};
+  const replay=requestId&&orbitOperationRequestReplay(requestId,'service'); if(replay) return replay;
+  if(!['power','data'].includes(service)) return {ok:false,why:'Use the defined crew, cargo, or propellant transfer action for material services.'};
+  const pair=hardDockServicePair(providerAssetId,targetAssetId,service); if(!pair.ok) return pair;
+  const appended=appendOrbitOperationRecord({requestId,kind:'service',phase:'serviced',actor:{type:'orbit-asset',id:pair.source.id},target:{type:'orbit-asset',id:pair.target.id},
+    services:[service],sourceOperationId:pair.dockOperation.id,payload:{service},receipts:[],createdAbs:absDay(),updatedAbs:absDay()});
+  if(!appended.ok||appended.replay) return appended;
+  if(service==='power') pair.target.resources.power=Math.max(100,pair.target.resources.power);
+  appendOrbitOperationReceipt(appended.operation,appended.operation.requestId,'service',{service});
+  log('ok',`${pair.source.name} serviced ${pair.target.name}'s ${service} connection.`);
+  if(typeof render==='function') render();
+  return {ok:true,operation:appended.operation,source:pair.source,target:pair.target,service};
+}
+function serviceOrbitAsset(assetId,service,requestId){
+  const asset=orbitAssetById(assetId); return recordOrbitAssetService(asset&&asset.dockedTo,assetId,service,requestId);
 }
 function stationCondition(fs){ return Math.max(0,Math.min(STATION_MAINT_MAX, stationOps(fs).condition)); }
 function stationMaintenanceFactor(fs){
@@ -2674,7 +3025,7 @@ function auditLifecycleState(snapshot){
       }
     }
   }
-  const assetIds=new Set(), assetMap=new Map(), orbitReservations=new Set();
+  const assetIds=new Set(), assetMap=new Map(), orbitReservations=new Map();
   for(const asset of orbitAssetList(s)){
     if(!asset||!asset.id){ errors.push('orbit asset: missing id'); continue; }
     if(assetIds.has(asset.id)) errors.push(`orbit asset: duplicate ${asset.id}`);
@@ -2686,10 +3037,13 @@ function auditLifecycleState(snapshot){
     if(owned.has(asset.hullId)) errors.push(`hull ${asset.hullId}: multiple lifecycle owners`);
     owned.add(asset.hullId);
     if(asset.reservation){
-      if(orbitReservations.has(asset.reservation.operationId)) errors.push(`orbit asset reservation ${asset.reservation.operationId}: duplicate target owner`);
-      orbitReservations.add(asset.reservation.operationId);
+      const owners=orbitReservations.get(asset.reservation.operationId)||[]; owners.push(asset.id); orbitReservations.set(asset.reservation.operationId,owners);
       const offer=(s.contractOffers||[]).find(item=>item&&item.id===asset.reservation.missionId&&item.vehicleDocking);
-      if(!offer||offer.vehicleDocking.targetAssetId!==asset.id||offer.vehicleDocking.operationId!==asset.reservation.operationId) errors.push(`orbit asset ${asset.id}: reservation has no pending mission owner`);
+      const persistent=orbitOperationList(s).find(operation=>operation&&operation.kind==='dock'&&operation.phase==='stationkeeping'&&
+        operation.actor&&operation.target&&operation.dockOperation&&operation.dockOperation.id===asset.reservation.operationId&&asset.reservation.missionId===`orbit-op:${operation.id}`&&
+        [operation.actor.id,operation.target.id].includes(asset.id));
+      if((!offer||offer.vehicleDocking.targetAssetId!==asset.id||offer.vehicleDocking.operationId!==asset.reservation.operationId)&&!persistent)
+        errors.push(`orbit asset ${asset.id}: reservation has no pending mission owner`);
     }
   }
   for(const asset of assetMap.values()){
@@ -2697,6 +3051,32 @@ function auditLifecycleState(snapshot){
     const partner=assetMap.get(asset.dockedTo), operationId=asset.dockOperation&&asset.dockOperation.id;
     if(!partner||partner.dockedTo!==asset.id||!partner.dockOperation||partner.dockOperation.id!==operationId) errors.push(`orbit asset ${asset.id}: dock link is not reciprocal`);
     if(operationId&&!asset.interfaces.some(port=>port.occupiedBy===operationId)) errors.push(`orbit asset ${asset.id}: dock operation owns no interface`);
+  }
+  const orbitOpIds=new Set(), orbitRequestIds=new Set();
+  for(const operation of orbitOperationList(s)){
+    const operationErrors=orbitOperationErrors(operation);
+    if(operationErrors.length) errors.push(`orbit operation ${operation&&operation.id||'?'}: invalid record`);
+    if(operation&&orbitOpIds.has(operation.id)) errors.push(`orbit operation: duplicate ${operation.id}`);
+    if(operation) orbitOpIds.add(operation.id);
+    if(operation&&orbitRequestIds.has(operation.requestId)) errors.push(`orbit request: duplicate ${operation.requestId}`);
+    if(operation) orbitRequestIds.add(operation.requestId);
+    if(operationErrors.length) continue;
+    if(!operation||operation.kind!=='dock'||!operation.dockOperation) continue;
+    const actor=assetMap.get(operation.actor.id), target=assetMap.get(operation.target.id), dockId=operation.dockOperation.id;
+    if(operation.phase==='stationkeeping'){
+      if(!actor||!target||actor.status!=='reserved'||target.status!=='reserved'||actor.reservation?.operationId!==dockId||target.reservation?.operationId!==dockId)
+        errors.push(`orbit operation ${operation.id}: stationkeeping does not own both craft`);
+      if((orbitReservations.get(dockId)||[]).length!==2) errors.push(`orbit operation ${operation.id}: stationkeeping does not own two exact ports`);
+    }
+    if(['soft_capture','hard_dock'].includes(operation.phase)){
+      const released=orbitOperationList(s).some(candidate=>candidate&&candidate.kind==='undock'&&candidate.sourceOperationId===dockId);
+      if(!released&&(!actor||!target||actor.dockedTo!==target.id||target.dockedTo!==actor.id||actor.dockOperation?.id!==dockId||target.dockOperation?.id!==dockId))
+        errors.push(`orbit operation ${operation.id}: capture link is not reciprocal`);
+    }
+  }
+  for(const [operationId,owners] of orbitReservations){
+    const persistent=orbitOperationList(s).find(operation=>operation&&operation.kind==='dock'&&operation.dockOperation?.id===operationId&&operation.phase==='stationkeeping');
+    if((persistent&&owners.length!==2)||(!persistent&&owners.length!==1)) errors.push(`orbit asset reservation ${operationId}: invalid owner count ${owners.length}`);
   }
   for(const hull of hulls.values()){
     const hasOwner=owned.has(hull.id);
@@ -4874,7 +5254,15 @@ function failVehicleDocking(m){
 function removeOrbitAsset(assetId,outcome,force){
   const asset=orbitAssetById(assetId); if(!asset) return {ok:false,why:'Orbit asset not found.'};
   if((asset.status==='docked'||asset.status==='soft-captured')&&!force) return {ok:false,why:'Undock the linked craft before removing it.'};
-  const linked=asset.dockedTo&&orbitAssetById(asset.dockedTo), opId=asset.dockOperation&&asset.dockOperation.id;
+  const linked=asset.dockedTo&&orbitAssetById(asset.dockedTo), opId=asset.dockOperation&&asset.dockOperation.id||asset.reservation&&asset.reservation.operationId;
+  const persistent=opId&&orbitOperationList().find(operation=>operation&&operation.kind==='dock'&&operation.dockOperation?.id===opId&&
+    ['stationkeeping','soft_capture','hard_dock'].includes(operation.phase));
+  if(persistent){
+    const pair=orbitDockOperationAssets(persistent);
+    if(pair){ clearOrbitAssetOperationState(pair.actor,opId); clearOrbitAssetOperationState(pair.target,opId); }
+    persistent.phase='cancelled'; persistent.dockOperation=makeDockOperation(Object.assign({},persistent.dockOperation,{status:'failed'}));
+    appendOrbitOperationReceipt(persistent,`${persistent.id}:asset-loss:${asset.id}`,'asset_loss',{assetId:asset.id,outcome:outcome||'lost'});
+  }
   if(linked&&opId){
     linked.interfaces.forEach(port=>{ if(port.occupiedBy===opId) port.occupiedBy=null; });
     linked.status='free'; linked.dockedTo=null; linked.dockOperation=null; linked.reservation=null;
@@ -6578,11 +6966,11 @@ function assetRegistryGroups(){
 
   const orbital=orbitAssetList().slice().sort((a,b)=>(b.createdAbs||0)-(a.createdAbs||0));
   if(orbital.length) groups.push({key:'orbit-assets',label:'Spacecraft in orbit',icon:'◈',items:orbital.map(asset=>{
-    const hull=hullById(asset.hullId), partner=asset.dockedTo&&orbitAssetById(asset.dockedTo), pending=asset.reservation&&(state.contractOffers||[]).find(offer=>offer&&offer.id===asset.reservation.missionId);
-    const status=asset.status==='free'?`free · ${asset.orbit.band} orbit`:asset.status==='reserved'?'target reserved':asset.status==='docked'?`docked to ${partner?partner.name:asset.dockedTo}`:'soft captured';
+    const hull=hullById(asset.hullId), partner=asset.dockedTo&&orbitAssetById(asset.dockedTo), operation=activeOrbitDockOperationForAsset(asset.id);
+    const status=asset.status==='free'?`free · ${asset.orbit.band} orbit`:asset.status==='reserved'?(operation?'stationkeeping':'target reserved'):asset.status==='docked'?`docked to ${partner?partner.name:asset.dockedTo}`:'soft captured';
     return {id:asset.id,icon:asset.kind==='capsule'?'◉':asset.kind==='pod'?'◇':'◈',name:asset.name,status,
-      detail:{'Kind':orbitAssetKindLabel(asset.kind),'Hull':hull?hull.serial:asset.hullId,'Location':`${asset.bodyId} · ${asset.orbit.band} orbit · ${asset.orbit.inclination.toFixed(1)}°`,'Docking state':asset.status,'Linked craft':partner?partner.name:'—','Rendezvous reserve':`${asset.resources.rendezvousDv} m/s`},
-      action:asset.status==='free'?{label:'Launch capsule rendezvous',fn:`hideModal();flyVehicleDocking('${asset.id}','capsule')`}:(pending?{label:'Cancel planned rendezvous',fn:`hideModal();cancelOrbitMission('${pending.id}')`}:null)};
+      detail:{'Kind':orbitAssetKindLabel(asset.kind),'Hull':hull?hull.serial:asset.hullId,'Location':`${asset.bodyId} · ${asset.orbit.band} orbit · ${asset.orbit.inclination.toFixed(1)}°`,'Docking state':operation?operation.phase.replace('_',' '):asset.status,'Linked craft':partner?partner.name:'—','Rendezvous reserve':`${asset.resources.rendezvousDv} m/s`,'Propellant':`${asset.resources.fuel.toFixed(1)} t`},
+      action:{label:'Manage orbital craft',fn:`showOrbitAssetOperations('${asset.id}')`}};
   })});
 
   const activeHulls=hullList().filter(h=>h&&['hangar','preparing','recovered','in-flight','docked'].includes(h.status));
@@ -6653,6 +7041,7 @@ function assetRegistryGroups(){
       else if(cond<35) status=`⚠ condition ${cond}%`;
       else if(crew.req>crew.cap) status=`⚠ under-crewed ${crew.cap}/${crew.req}`;
       else status=`${def.modules||fs.modules||1} mod · ${cond}% · +${fM(pr.income)}/mo`;
+      const visitorCount=stationOps(fs).dockedVisitors.length;
       return { id, icon:def.icon||'🏗', name:def.name,
         status, detail:{
           'Location': bodyName,
@@ -6664,7 +7053,8 @@ function assetRegistryGroups(){
           'Fuel': pr.fuel>0?'+'+pr.fuel.toFixed(1)+' t/mo':'—',
           'Science': pr.sci>0?'+'+pr.sci.toFixed(1)+'/mo':'—',
           'Power balance': (pr.powerNet>=0?'+':'')+pr.powerNet+' kW',
-        } };
+          'Docked visitors':String(visitorCount),
+        }, action:visitorCount?{label:'Manage docked visitors',fn:`showStationVisitorOperations('${id}')`}:null };
     })});
   }
 

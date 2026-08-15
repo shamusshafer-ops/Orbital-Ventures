@@ -781,7 +781,7 @@ bodies.
 
 **Slice 4 (manufacturing tie-in) is optional/last** and remains unstarted.
 
-## In progress — Generalized vehicle and station docking (D0–D3 shipped 2026-08-15)
+## In progress — Generalized vehicle and station docking (D0–D4 shipped 2026-08-15)
 
 Extend #73's module-delivery spectacle into one simulation authority for capsule↔capsule/pod,
 capsule↔station, cargo-pod↔station, permanent module attachment, and mission-internal LOR/EOR docking.
@@ -795,8 +795,8 @@ station/production truth, and cosmetic `assemblyLayouts` never authorize docking
 separate from the existing permanent module cap. Docking feeds the existing mission outcome as a named
 phase rather than adding a second post-success destruction roll.
 
-D0 compatibility/reservations, D1 mission-internal rendezvous, D2 station visits, and D3 persistent
-spacecraft are shipped: fitted interfaces and
+D0 compatibility/reservations, D1 mission-internal rendezvous, D2 station visits, D3 persistent
+spacecraft, and D4 persistent operations are shipped. Fitted interfaces and
 rendezvous guidance freeze into build/launch snapshots; reservations have exact owners/rejection
 reasons; LOR/EOR create real operations; and docking is a named reliability/debrief phase whose
 anomaly/presentation data comes from the frozen operation. Station crew rotation, resupply and LEO
@@ -804,8 +804,11 @@ module delivery now reserve separate visiting berths, apply typed hard-dock tran
 return or persist a station-local docked visitor. Launches can now leave exact hulls in canonical
 `orbitAssets[]`; station visitors can release into it; and later launches reserve a target interface
 before establishing reciprocal capsule/pod/target links. Fleet Registry, Outliner, and Solar Map
-surfaces share that collection. Remaining slices are D4 persistent retry/undock/refuel/servicing
-operations, then D5 visual playback, automation and balance. Full
+surfaces share that collection. D4 retry/undock/refuel/servicing operations live in a durable
+`orbitOps[]` command/receipt ledger: existing craft can stationkeep,
+wave off, retry, soft/hard capture, undock, relocate and return, with named crew, defined cargo,
+propellant and power/data services applied exactly once. Fleet Registry consoles drive those same
+records. The remaining slice is D5 visual playback, automation and balance. Full
 decisions, state shapes, interaction matrix, protected baselines, tests and non-goals:
 `docs/DOCKING-SYSTEM-SCOPE.md`.
 

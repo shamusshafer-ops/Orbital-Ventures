@@ -379,6 +379,121 @@ function showFleetRegistry(){
     <div style="text-align:right;margin-top:10px"><button class="btn ghost" onclick="hideModal()">Close</button></div>`, true);
 }
 
+// Docking D4 operation console. Tokens are URI-encoded before they enter inline
+// handlers so imported ids/cargo keys cannot break out of an attribute.
+let _orbitUiNotice='';
+function orbitUiToken(value){ return encodeURIComponent(String(value==null?'':value)).replace(/'/g,'%27'); }
+function orbitUiValue(token){ try{ return decodeURIComponent(String(token||'')); }catch(e){ return ''; } }
+function orbitUiRequest(action,subject){ return `ui:${action}:${subject}:${Math.max(0,finiteRecordNumber(state.orbitOpSeq))+1}`; }
+function orbitUiButton(label,fn,disabled,why,kind){
+  return `<button class="btn ${kind==='danger'?'danger':'ghost'}" style="font-size:11px" onclick="${fn}"${disabled?` disabled title="${esc(why||'Unavailable')}"`:''}>${esc(label)}</button>`;
+}
+function finishOrbitUi(result,assetId){
+  _orbitUiNotice=result&&result.ok?'':String(result&&result.why||'The orbital operation could not be completed.');
+  const asset=assetId&&orbitAssetById(assetId);
+  if(asset) showOrbitAssetOperations(asset.id); else showFleetRegistry();
+  return !!(result&&result.ok);
+}
+function runOrbitDockPlan(actorToken,targetToken,requestToken){
+  const actorId=orbitUiValue(actorToken), result=planOrbitDockingOperation(actorId,orbitUiValue(targetToken),orbitUiValue(requestToken));
+  return finishOrbitUi(result,actorId);
+}
+function runOrbitDockAction(action,operationToken,assetToken,requestToken){
+  const operationId=orbitUiValue(operationToken), assetId=orbitUiValue(assetToken), requestId=orbitUiValue(requestToken);
+  const actions={soft:softCaptureOrbitOperation,hard:hardDockOrbitOperation,wave:waveOffOrbitOperation,retry:retryOrbitOperation,cancel:cancelOrbitOperation};
+  const fn=actions[action], result=fn?fn(operationId,requestId):{ok:false,why:'Unknown docking action.'};
+  return finishOrbitUi(result,assetId);
+}
+function runOrbitUndock(assetToken,requestToken){ const id=orbitUiValue(assetToken); return finishOrbitUi(undockOrbitAssets(id,orbitUiValue(requestToken)),id); }
+function runOrbitRelocation(assetToken,bandToken,requestToken){
+  const id=orbitUiValue(assetToken), asset=orbitAssetById(id);
+  return finishOrbitUi(relocateOrbitAsset(id,{band:orbitUiValue(bandToken),inclination:asset&&asset.orbit.inclination},orbitUiValue(requestToken)),id);
+}
+function confirmOrbitReturn(assetToken){
+  const id=orbitUiValue(assetToken), asset=orbitAssetById(id); if(!asset) return showFleetRegistry();
+  const request=orbitUiToken(orbitUiRequest('return',id)), token=orbitUiToken(id);
+  showModal(`<h2>Return ${esc(asset.name)}?</h2><p class="muted" style="font-size:13px">This removes the craft from orbital control. Capsules and recovery-fitted hulls are recovered; other hardware is expended after controlled disposal.</p>
+    <div style="display:flex;gap:8px;margin-top:12px"><button class="btn danger" style="flex:1" onclick="runOrbitReturn('${token}','${request}')">Commit return</button><button class="btn ghost" style="flex:1" onclick="showOrbitAssetOperations('${token}')">Keep in orbit</button></div>`);
+}
+function runOrbitReturn(assetToken,requestToken){ const id=orbitUiValue(assetToken); return finishOrbitUi(returnOrbitAsset(id,orbitUiValue(requestToken)),id); }
+function runOrbitRefuel(assetToken,amount,requestToken){ const id=orbitUiValue(assetToken); return finishOrbitUi(refuelOrbitAssetFromDepot(id,amount,orbitUiValue(requestToken)),id); }
+function runOrbitCargoTransfer(sourceToken,targetToken,keyToken,amount,requestToken){
+  const source=orbitUiValue(sourceToken); return finishOrbitUi(transferOrbitCargo(source,orbitUiValue(targetToken),orbitUiValue(keyToken),amount,orbitUiValue(requestToken)),source);
+}
+function runOrbitFuelTransfer(sourceToken,targetToken,amount,requestToken){
+  const source=orbitUiValue(sourceToken); return finishOrbitUi(transferOrbitPropellant(source,orbitUiValue(targetToken),amount,orbitUiValue(requestToken)),source);
+}
+function runOrbitCrewTransfer(sourceToken,targetToken,crewToken,requestToken){
+  const source=orbitUiValue(sourceToken); return finishOrbitUi(transferOrbitCrew(source,orbitUiValue(targetToken),orbitUiValue(crewToken),orbitUiValue(requestToken)),source);
+}
+function runOrbitService(providerToken,targetToken,service,requestToken){
+  const target=orbitUiValue(targetToken); return finishOrbitUi(recordOrbitAssetService(orbitUiValue(providerToken),target,service,orbitUiValue(requestToken)),target);
+}
+function showOrbitAssetOperations(assetToken){
+  const id=orbitAssetById(assetToken)?assetToken:orbitUiValue(assetToken), asset=orbitAssetById(id); if(!asset) return showFleetRegistry();
+  const token=orbitUiToken(id), operation=activeOrbitDockOperationForAsset(id), partner=asset.dockedTo&&orbitAssetById(asset.dockedTo);
+  const pending=asset.reservation&&(state.contractOffers||[]).find(offer=>offer&&offer.id===asset.reservation.missionId&&offer.vehicleDocking);
+  const notice=_orbitUiNotice?`<div class="flag warn" style="margin-bottom:8px">${esc(_orbitUiNotice)}</div>`:''; _orbitUiNotice='';
+  let controls='';
+  if(operation&&operation.phase!=='hard_dock'){
+    const op=orbitUiToken(operation.id), attempt=Math.max(1,finiteRecordNumber(operation.payload.attempts)), peerId=operation.actor.id===id?operation.target.id:operation.actor.id, peer=orbitAssetById(peerId);
+    const action=(name,label)=>orbitUiButton(label,`runOrbitDockAction('${name}','${op}','${token}','${orbitUiToken(`ui:${name}:${operation.id}:${attempt}`)}')`);
+    let buttons=[];
+    if(operation.phase==='stationkeeping') buttons=[action('soft','Confirm soft capture'),action('hard','Proceed to hard dock'),action('wave','Wave off'),action('cancel','Cancel rendezvous')];
+    if(operation.phase==='soft_capture') buttons=[action('hard','Proceed to hard dock'),action('retry','Retreat and retry'),action('wave','Wave off')];
+    if(operation.phase==='wave_off') buttons=[action('retry','Retry from stationkeeping'),action('cancel','Close operation')];
+    controls+=`<div class="card" style="margin-bottom:8px"><b>Rendezvous · ${esc(operation.phase.replace('_',' '))}</b><div class="dim" style="font-size:12px;margin:4px 0 8px">Counterpart: ${esc(peer?peer.name:peerId)} · attempt ${attempt} · ${operation.payload.rendezvousDvSpent||0} m/s spent</div><div style="display:flex;gap:6px;flex-wrap:wrap">${buttons.join('')}</div></div>`;
+  }else if(asset.status==='reserved'&&pending){
+    controls+=`<div class="card" style="margin-bottom:8px"><b>Later-launch rendezvous reserved</b><div class="dim" style="font-size:12px;margin:4px 0 8px">${esc(pending.name)} owns this exact target port.</div>${orbitUiButton('Cancel planned launch',`hideModal();cancelOrbitMission('${orbitUiToken(pending.id)}')`)}</div>`;
+  }else if(asset.status==='free'){
+    const targets=orbitAssetList().filter(other=>other.id!==id&&canPlanOrbitDocking(id,other.id).ok);
+    const rendezvous=targets.length?targets.map(other=>orbitUiButton(`Stationkeep with ${other.name}`,`runOrbitDockPlan('${token}','${orbitUiToken(other.id)}','${orbitUiToken(orbitUiRequest('dock',`${id}:${other.id}`))}')`)).join(''):'<span class="dim" style="font-size:12px">No compatible free craft share this orbit band.</span>';
+    const bands=ORBIT_BAND_ORDER.filter(band=>band!==asset.orbit.band).map(band=>{
+      const cost=orbitRelocationCost(asset,{band,inclination:asset.orbit.inclination});
+      return orbitUiButton(`Move to ${band} orbit · ${cost} m/s`,`runOrbitRelocation('${token}','${orbitUiToken(band)}','${orbitUiToken(orbitUiRequest('move',`${id}:${band}`))}')`,asset.resources.rendezvousDv<cost,`Needs ${cost} m/s`);
+    }).join('');
+    controls+=`<div class="card" style="margin-bottom:8px"><b>Rendezvous</b><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:7px">${rendezvous}</div></div>
+      <div class="card" style="margin-bottom:8px"><b>Orbit and return</b><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:7px">${bands}${orbitUiButton('Return / dispose',`confirmOrbitReturn('${token}')`,false,'','danger')}</div></div>`;
+  }
+  if(asset.status==='docked'&&partner){
+    const partnerToken=orbitUiToken(partner.id), shared=asset.dockOperation&&asset.dockOperation.services||[], buttons=[];
+    if(shared.includes('crew')&&asset.crewId&&!partner.crewId) buttons.push(orbitUiButton(`Move ${personById(asset.crewId)?.name||asset.crewId} to ${partner.name}`,`runOrbitCrewTransfer('${token}','${partnerToken}','${orbitUiToken(asset.crewId)}','${orbitUiToken(orbitUiRequest('crew',id))}')`));
+    if(shared.includes('cargo')) for(const [key,value] of Object.entries(asset.cargo||{})) if(typeof value==='number'&&value>0){
+      const amount=Math.min(1,value); buttons.push(orbitUiButton(`Transfer ${amount} ${key}`,`runOrbitCargoTransfer('${token}','${partnerToken}','${orbitUiToken(key)}',${amount},'${orbitUiToken(orbitUiRequest('cargo',`${id}:${key}`))}')`));
+    }
+    if(shared.includes('fuel')&&asset.resources.fuel>0){ const amount=Math.min(1,asset.resources.fuel); buttons.push(orbitUiButton(`Cross-feed ${amount.toFixed(1)} t`,`runOrbitFuelTransfer('${token}','${partnerToken}',${amount},'${orbitUiToken(orbitUiRequest('fuel',id))}')`)); }
+    if(shared.includes('power')) buttons.push(orbitUiButton(`Power-service ${partner.name}`,`runOrbitService('${token}','${partnerToken}','power','${orbitUiToken(orbitUiRequest('power',id))}')`));
+    if(shared.includes('data')) buttons.push(orbitUiButton(`Data-service ${partner.name}`,`runOrbitService('${token}','${partnerToken}','data','${orbitUiToken(orbitUiRequest('data',id))}')`));
+    controls+=`<div class="card" style="margin-bottom:8px"><b>Hard dock · ${esc(partner.name)}</b><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:7px">${orbitUiButton('Undock exact ports',`runOrbitUndock('${token}','${orbitUiToken(`undock:${asset.dockOperation.id}`)}')`)}${buttons.join('')||'<span class="dim" style="font-size:12px">No transferable service is currently loaded on this side.</span>'}</div></div>`;
+  }
+  const fuelPort=(asset.interfaces||[]).some(port=>port.services&&port.services.fuel), refuelAmount=Math.min(1,finiteRecordNumber(state.depot));
+  if(fuelPort) controls+=`<div class="card" style="margin-bottom:8px"><b>LEO propellant depot</b><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:7px">${orbitUiButton(`Load ${refuelAmount.toFixed(1)} t`,`runOrbitRefuel('${token}',${refuelAmount},'${orbitUiToken(orbitUiRequest('refuel',id))}')`,asset.bodyId!=='earth'||asset.orbit.band!=='low'||refuelAmount<=0,'Requires depot stock and low Earth orbit')}<span class="dim" style="font-size:12px">${finiteRecordNumber(state.depot).toFixed(1)} t available</span></div></div>`;
+  showModal(`<h2>◈ ${esc(asset.name)}</h2>${notice}<div class="dim" style="font-size:12px;margin-bottom:10px">${esc(orbitAssetKindLabel(asset.kind))} · ${esc(asset.bodyId)} ${esc(asset.orbit.band)} orbit · ${asset.orbit.inclination.toFixed(1)}° · ${asset.resources.rendezvousDv} m/s reserve</div>${controls}
+    <div style="display:flex;gap:8px;margin-top:10px"><button class="btn ghost" style="flex:1" onclick="showFleetRegistry()">Back to registry</button><button class="btn ghost" style="flex:1" onclick="hideModal()">Close</button></div>`,true);
+}
+function runStationCrewTransfer(facToken,visitorToken,direction,crewToken,requestToken){
+  const facId=orbitUiValue(facToken), result=transferStationVisitorCrew(facId,orbitUiValue(visitorToken),direction,orbitUiValue(crewToken),orbitUiValue(requestToken));
+  _orbitUiNotice=result&&result.ok?'':String(result&&result.why||'The crew transfer could not be completed.'); showStationVisitorOperations(facId); return !!(result&&result.ok);
+}
+function runStationVisitorRelease(facToken,visitorToken){
+  const released=releaseStationVisitorToOrbit(orbitUiValue(facToken),orbitUiValue(visitorToken));
+  if(released&&released.id) showOrbitAssetOperations(released.id); else showStationVisitorOperations(orbitUiValue(facToken));
+}
+function showStationVisitorOperations(facToken){
+  const facId=facilityState(facToken)?facToken:orbitUiValue(facToken), fs=facilityState(facId), def=facilityById(facId); if(!fs||!def) return showFleetRegistry();
+  const fac=orbitUiToken(facId), ops=stationOps(fs), crew=stationCrewIds(fs), notice=_orbitUiNotice?`<div class="flag warn" style="margin-bottom:8px">${esc(_orbitUiNotice)}</div>`:''; _orbitUiNotice='';
+  const visitors=ops.dockedVisitors.map(visitor=>{
+    const visitorToken=orbitUiToken(visitor.operationId), controls=[];
+    if(visitor.services.includes('crew')){
+      if(visitor.crewId) controls.push(orbitUiButton(`Transfer ${personById(visitor.crewId)?.name||visitor.crewId} to station`,`runStationCrewTransfer('${fac}','${visitorToken}','to-station','${orbitUiToken(visitor.crewId)}','${orbitUiToken(orbitUiRequest('station-in',visitor.operationId))}')`));
+      else for(const crewId of crew) controls.push(orbitUiButton(`Board ${personById(crewId)?.name||crewId}`,`runStationCrewTransfer('${fac}','${visitorToken}','to-craft','${orbitUiToken(crewId)}','${orbitUiToken(orbitUiRequest('station-out',`${visitor.operationId}:${crewId}`))}')`));
+    }
+    controls.push(orbitUiButton('Release to free orbit',`runStationVisitorRelease('${fac}','${visitorToken}')`));
+    return `<div class="card" style="margin-bottom:8px"><b>${esc(visitor.actor.label)}</b><div class="dim" style="font-size:12px;margin:4px 0 7px">${esc(visitor.berthId)} · crew ${esc(visitor.crewId?(personById(visitor.crewId)?.name||visitor.crewId):'seat open')}</div><div style="display:flex;gap:6px;flex-wrap:wrap">${controls.join('')}</div></div>`;
+  }).join('')||'<p class="muted" style="font-size:13px">No visitors are currently docked.</p>';
+  showModal(`<h2>${def.icon} ${esc(def.name)} · docked visitors</h2>${notice}<div class="dim" style="font-size:12px;margin-bottom:9px">Station crew: ${crew.map(id=>esc(personById(id)?.name||id)).join(', ')||'none assigned'}</div>${visitors}<div style="text-align:right;margin-top:10px"><button class="btn ghost" onclick="showFleetRegistry()">Back to registry</button></div>`,true);
+}
+
 /* ---------- attention badges: what needs the player, per scene ----------
    Cheap checks only — this runs every render. A badge shows a count; hover text names the items. */
 function tabAlerts(){

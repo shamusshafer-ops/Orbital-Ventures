@@ -345,6 +345,16 @@ simultaneous-flight coverage.
 
 ### D4 — Persistent operations
 
+**Shipped 2026-08-15.** `state.orbitOps[]` is the durable operation/receipt ledger for craft that
+already exist in orbit. A rendezvous reserves exact ports on both assets, enters stationkeeping,
+charges one recorded reserve increment per attempt, and may wave off, retry, soft-capture or hard-dock
+without replaying a charge. Undock frees only the shared operation's ports; relocation and return
+preserve exact hull ownership through their terminal disposition. Typed service actions transfer named
+crew, numeric cargo and propellant only across compatible hard-dock services, while station crew
+exchange, LEO-depot refueling and power/data service receipts provide the promised servicing seams.
+Fleet Registry consoles expose the full loop. Save v66 and lifecycle auditing reject missing operation
+owners, one-sided captures and malformed/replayed receipts.
+
 - Retry from stationkeeping after a wave-off or soft capture.
 - Undock, relocate, return and free the exact port.
 - Transfer station crew, defined cargo and depot propellant.

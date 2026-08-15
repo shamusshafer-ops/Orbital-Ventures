@@ -31,6 +31,16 @@ When bumping `SAVE_VERSION`, add an entry at the top of the list below.
 
 ---
 
+## v66 — Docking D4 persistent operations and services
+
+Adds a durable command-and-receipt ledger for spacecraft that already exist in orbit:
+
+- `state.orbitOps[]` records exact actor/target identities and ports, operation phase, services, source dock, immutable request identity, payload, and exactly-once receipts. `state.orbitOpSeq` supplies stable operation ids.
+- Existing craft can reserve both ports for stationkeeping, wave off, retry from wave-off or soft capture, then establish reciprocal soft-capture or hard-dock links. Each approach consumes a recorded 25 m/s rendezvous increment; reload and repeated requests cannot spend it twice.
+- Hard-docked craft can undock and free only their shared interfaces. Free craft can relocate between supported orbit bands or return, recovering capsules/recovery-fitted hulls and disposing of other hardware without duplicating hull ownership.
+- Named crew, defined numeric cargo, and propellant cross-feed only across a reciprocal hard dock with the matching shared service. Station visitors can exchange named crew with their host, LEO depot stock can refuel a fuel-capable craft, and power/data servicing writes a durable hook for later satellite/tug systems.
+- Fleet Registry operation consoles expose rendezvous phase control, transfers, refueling, relocation, return, and station-visitor crew management from the same canonical state.
+
 ## v65 — Docking D3 persistent orbit assets
 
 Adds durable spacecraft that survive between launches:

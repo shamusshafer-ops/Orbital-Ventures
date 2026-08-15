@@ -6,9 +6,9 @@ reorder existing entries there, only add new ones at the end, same as `ROADMAP.m
 
 ---
 
-## STATUS (as of 2026-08-15, working tree based on HEAD plus completed Docking D3)
+## STATUS (as of 2026-08-15, working tree based on HEAD plus completed Docking D4)
 
-**Repo health:** 152/162 test suites pass, one intentional skip, and nine known baseline failures
+**Repo health:** 154/164 test suites pass, one intentional skip, and nine known baseline failures
 (the same names reproduced from untouched `HEAD` before D2). Build parity, generated-script syntax,
 and `git diff --check` are clean. Treat any different failing suite as new.
 **REMINDER (hit 5x in one session, 2026-07-25): `node build.js` is a bare string concat with NO
@@ -201,3 +201,18 @@ removal clean up only the owning reservation. Fleet Registry actions, Outliner e
 and SVG/Phaser/Three Solar Map badges share the same collection. The two D3 suites pass 35/35; the
 focused D0–D3/station/lifecycle/registry/map set passes 367/367, Gate 2 is 49/49, Gate 3 is 96/96, and
 the 162-suite sweep adds no failure beyond the same nine baseline suites (plus one intentional skip).
+
+### 2026-08-15 — Docking D4 persistent operations and services (Codex)
+
+Shipped save-v66 `state.orbitOps[]` command/receipt authority for existing orbital craft. Two exact
+ports now enter durable stationkeeping, charge one replay-safe 25 m/s reserve increment per attempt,
+and can wave off, retry from wave-off or soft capture, then soft-capture or hard-dock. Linked craft can
+undock their shared ports; free craft can relocate or return with exact recovered/expended hull
+disposition. Typed hard-dock actions move named crew, numeric cargo and propellant exactly once;
+station visitors exchange crew, the LEO depot refuels fuel-capable pods/tugs, and power/data service
+receipts provide later satellite/tug hooks. Fleet Registry consoles expose the complete D4 loop.
+
+`test-docking-operations.js` and `test-docking-services.js` add 34/34 checks; the focused D0–D4 docking
+set passes 190/190. Gate 2 remains 49/49 and Gate 3 remains 96/96. The 164-suite sweep has 154 real
+passes plus one intentional skip and the same nine baseline failures; build parity, generated-script
+syntax and `git diff --check` are clean. D5 presentation/automation/balance remains.

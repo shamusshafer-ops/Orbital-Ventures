@@ -411,6 +411,84 @@ function orbitAssetErrors(record){
   if(!recordIsJsonSafe(record)) errors.push('json-safe');
   return errors;
 }
+// Docking D4 persistent operations. These records are the durable command-and-
+// receipt ledger for spacecraft that already exist in orbit. They reference
+// physical assets/facilities by id, retain the exact ports used for a dock, and
+// keep applied mutations in JSON-safe receipts so a repeated request can replay
+// without charging reserve or moving crew/cargo twice.
+const ORBIT_OPERATION_SCHEMA_VERSION=1;
+const ORBIT_OPERATION_KINDS=Object.freeze(['dock','undock','relocate','return','transfer','refuel','service']);
+const ORBIT_OPERATION_PHASES=Object.freeze(['stationkeeping','soft_capture','hard_dock','wave_off','cancelled','undocked','relocated','returned','transferred','refueled','serviced']);
+const ORBIT_OPERATION_REF_TYPES=Object.freeze(['orbit-asset','station-visitor','facility','depot']);
+function makeOrbitOperationRef(x){
+  x=x||{};
+  return {type:ORBIT_OPERATION_REF_TYPES.includes(x.type)?x.type:'orbit-asset',id:String(x.id||'')};
+}
+function orbitOperationRefErrors(record){
+  const errors=[];
+  if(!record||typeof record!=='object'||Array.isArray(record)) return ['reference'];
+  if(!ORBIT_OPERATION_REF_TYPES.includes(record.type)||typeof record.id!=='string'||!record.id) errors.push('identity');
+  if(!recordIsJsonSafe(record)) errors.push('json-safe');
+  return errors;
+}
+function makeOrbitOperationReceipt(x){
+  x=x||{};
+  return {requestId:String(x.requestId||''),action:String(x.action||''),atAbs:finiteRecordNumber(x.atAbs),details:plainRecord(x.details||{})};
+}
+function orbitOperationReceiptErrors(record){
+  const errors=[];
+  if(!record||typeof record!=='object'||Array.isArray(record)) return ['receipt'];
+  if(typeof record.requestId!=='string'||!record.requestId||typeof record.action!=='string'||!record.action) errors.push('identity');
+  if(typeof record.atAbs!=='number'||!Number.isFinite(record.atAbs)) errors.push('atAbs');
+  if(!record.details||typeof record.details!=='object'||Array.isArray(record.details)) errors.push('details');
+  if(!recordIsJsonSafe(record)) errors.push('json-safe');
+  return errors;
+}
+function makeOrbitOperation(x){
+  x=x||{};
+  const services=Array.isArray(x.services)?x.services.filter((key,i,a)=>DOCKING_SERVICE_KEYS.includes(key)&&a.indexOf(key)===i):[];
+  const receipts=Array.isArray(x.receipts)?x.receipts:[];
+  return {schema:ORBIT_OPERATION_SCHEMA_VERSION,id:String(x.id||''),requestId:String(x.requestId||''),
+    kind:ORBIT_OPERATION_KINDS.includes(x.kind)?x.kind:'service',phase:ORBIT_OPERATION_PHASES.includes(x.phase)?x.phase:'serviced',
+    actor:makeOrbitOperationRef(x.actor||{}),target:makeOrbitOperationRef(x.target||{}),
+    actorPortId:x.actorPortId==null?null:String(x.actorPortId),targetPortId:x.targetPortId==null?null:String(x.targetPortId),services,
+    dockOperation:x.dockOperation?makeDockOperation(x.dockOperation):null,sourceOperationId:x.sourceOperationId==null?null:String(x.sourceOperationId),
+    payload:plainRecord(x.payload||{}),receipts:receipts.map(makeOrbitOperationReceipt),
+    createdAbs:finiteRecordNumber(x.createdAbs),updatedAbs:finiteRecordNumber(x.updatedAbs,x.createdAbs)};
+}
+function orbitOperationErrors(record){
+  const errors=[];
+  if(!record||typeof record!=='object'||Array.isArray(record)) return ['operation'];
+  const actor=record.actor&&typeof record.actor==='object'?record.actor:{}, target=record.target&&typeof record.target==='object'?record.target:{}, services=Array.isArray(record.services)?record.services:[];
+  if(record.schema!==ORBIT_OPERATION_SCHEMA_VERSION) errors.push('schema');
+  for(const key of ['id','requestId']) if(typeof record[key]!=='string'||!record[key]) errors.push(key);
+  if(!ORBIT_OPERATION_KINDS.includes(record.kind)||!ORBIT_OPERATION_PHASES.includes(record.phase)) errors.push('kind/phase');
+  if(orbitOperationRefErrors(record.actor).length||orbitOperationRefErrors(record.target).length) errors.push('references');
+  if(actor.type&&target.type&&actor.type===target.type&&actor.id===target.id) errors.push('self-operation');
+  if(record.actorPortId!=null&&(typeof record.actorPortId!=='string'||!record.actorPortId)) errors.push('actorPortId');
+  if(record.targetPortId!=null&&(typeof record.targetPortId!=='string'||!record.targetPortId)) errors.push('targetPortId');
+  if(!Array.isArray(record.services)||record.services.some(key=>!DOCKING_SERVICE_KEYS.includes(key))) errors.push('services');
+  if(record.dockOperation!=null&&dockOperationErrors(record.dockOperation).length) errors.push('dockOperation');
+  if(record.sourceOperationId!=null&&(typeof record.sourceOperationId!=='string'||!record.sourceOperationId)) errors.push('sourceOperationId');
+  if(!record.payload||typeof record.payload!=='object'||Array.isArray(record.payload)) errors.push('payload');
+  if(!Array.isArray(record.receipts)||record.receipts.some(receipt=>orbitOperationReceiptErrors(receipt).length)) errors.push('receipts');
+  else{
+    const ids=new Set();
+    for(const receipt of record.receipts){ if(ids.has(receipt.requestId)) errors.push('duplicate receipt'); ids.add(receipt.requestId); }
+  }
+  if(typeof record.createdAbs!=='number'||!Number.isFinite(record.createdAbs)||typeof record.updatedAbs!=='number'||!Number.isFinite(record.updatedAbs)) errors.push('timestamps');
+  const phases={dock:['stationkeeping','soft_capture','hard_dock','wave_off','cancelled'],undock:['undocked'],relocate:['relocated'],return:['returned'],transfer:['transferred'],refuel:['refueled'],service:['serviced']};
+  if(phases[record.kind]&&!phases[record.kind].includes(record.phase)) errors.push('phase contract');
+  if(record.kind==='dock'&&(!record.actorPortId||!record.targetPortId||!services.length||!record.dockOperation)) errors.push('dock contract');
+  if(['dock','undock'].includes(record.kind)&&(actor.type!=='orbit-asset'||target.type!=='orbit-asset')) errors.push('spacecraft contract');
+  if(record.kind==='undock'&&!record.sourceOperationId) errors.push('undock source');
+  if(['relocate','return'].includes(record.kind)&&actor.type!=='orbit-asset') errors.push('asset contract');
+  if(record.kind==='transfer'&&services.length!==1) errors.push('transfer service');
+  if(record.kind==='refuel'&&(actor.type!=='depot'||target.type!=='orbit-asset'||services.length!==1||services[0]!=='fuel')) errors.push('refuel contract');
+  if(record.kind==='service'&&(actor.type!=='orbit-asset'||target.type!=='orbit-asset'||services.length!==1||!['power','data'].includes(services[0]))) errors.push('service contract');
+  if(!recordIsJsonSafe(record)) errors.push('json-safe');
+  return errors;
+}
 // Gate 3 continuity records are deliberately separate from Gate 2 launch
 // transactions. They retain stable identities and receipts, but never contain
 // callbacks, DOM state, RNG functions, or unrestricted sponsor cash.

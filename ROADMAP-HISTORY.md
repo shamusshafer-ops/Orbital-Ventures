@@ -7627,3 +7627,32 @@ lifecycle, registry, and map set passes 367/367; Gate 2 passes 49/49 and Gate 3 
 162-suite sweep has 152 real passes plus one intentional skip and the same nine baseline failures as
 before D3; the separately invoked source-only SM1–SM5 contract is 26/26. Build parity,
 `node --check build/game.js`, and `git diff --check` are clean.
+
+## Generalized docking D4 — SHIPPED (Codex, 2026-08-15)
+
+D4 turns persistent spacecraft into operable vehicles rather than static registry entries. The new
+save-v66 `state.orbitOps[]` ledger carries stable request/operation identities, exact actor and target
+ports, phase, compatible services, source dock, payload and exactly-once receipts. A pair of free craft
+can reserve both interfaces and enter stationkeeping; each first approach or retry spends one recorded
+25 m/s rendezvous increment. Wave-off frees both ports, retry works after wave-off or directly from soft
+capture, and the same operation advances through reciprocal soft capture and hard dock without applying
+any transfer early. Save/reload and repeated clicks replay the receipt instead of spending twice.
+
+Hard-docked craft can undock and release only the interfaces owned by their shared operation. Free
+craft can relocate between supported bands using canonical rendezvous reserve or return, recovering a
+capsule/recovery-fitted hull and disposing of other hardware while leaving crew available. Compatible
+hard-dock services now move one named astronaut, one defined numeric cargo quantity, or propellant per
+request. A station visitor can exchange crew with its exact host, fuel-capable pods/tugs can draw from
+canonical LEO depot stock, and persistent power/data service receipts form a narrow hook for later
+satellite and tug epics. Forced asset removal closes any live persistent operation rather than stranding
+its partner or port.
+
+Fleet Registry rows open operation consoles for craft and station visitors, with stationkeeping,
+capture, wave-off/retry, undock, transfer, refuel, relocation and return controls all reading the same
+simulation records. Lifecycle auditing validates operation schemas, unique request identities,
+two-owner stationkeeping reservations and reciprocal captures. `test-docking-operations.js` and
+`test-docking-services.js` add 34/34 checks; the focused D0–D4 docking set passes 190/190. Gate 2 remains
+49/49 and Gate 3 remains 96/96. The full sweep is 154/164 real suite passes plus one intentional skip,
+with exactly the same nine pre-existing red suite names. Build parity, generated-script syntax and
+`git diff --check` are clean. D5 visual playback, automation and balance is the only remaining docking
+slice.
