@@ -523,10 +523,11 @@ function flight3dPhaseAt(spec,t,timing){
   const afterPad=local-pad; if(afterPad<ascent) return 'ascent';
   if(spec&&spec.mode==='depart') return 'depart';
   if(afterPad<ascent+cruise) return (spec&&spec.isCislunar)?'transfer':((spec&&spec.isOrbital)?'orbit':'suborbital');
+  if(spec&&spec.dock) return 'dock'; // terminal docking owns the tail, including crewed station visits
   // Hold a successful ballistic flight on its ocean impact through the settle tail. This
   // prevents the live 3D arc from handing off to the old second trajectory renderer.
   if(spec&&spec.success!==false&&!spec.isOrbital&&!spec.isCislunar) return 'suborbital';
-  return d.reentryDur>0?'reentry':((spec&&spec.dock)?'dock':'complete');
+  return d.reentryDur>0?'reentry':'complete';
 }
 function flight3dPresentationSnapshot(spec,timing,t){
   const d=timing||{}, phase=flight3dPhaseAt(spec,t,d), pad=Math.max(0,d.padDur||0), ascent=Math.max(1,d.ascentDur||7200), cruise=Math.max(1,d.cruiseDur||4800), reentry=Math.max(0,d.reentryDur||0), total=Math.max(1,d.totalDur||pad+ascent+cruise+reentry), local=Math.max(0,t||0);
@@ -697,7 +698,7 @@ function setupFlightState(spec, done, ctx, cv, viewCanvas, seedP){
     }
   }catch(e){}
   const ascentDur=7200, cruiseDur=spec.isCislunar?9000:4800;
-  const reentryDur=flightHasReentry(spec)?6400:0; // appended after the orbit phase for a returning capsule
+  const reentryDur=spec.dock?0:(flightHasReentry(spec)?6400:0); // docking is the terminal beat; disposition summarizes any later return
   // Slice A: a pad phase (countdown → ignition → hold-down) plays on THIS canvas, ahead of the
   // ascent, so the launch and the climb are one continuous shot instead of two containers. Only
   // full launches get it; an arrival-only replay (mode 'arrive', Slice B) starts in cruise (padDur 0).
@@ -713,7 +714,7 @@ function setupFlightState(spec, done, ctx, cv, viewCanvas, seedP){
   else if(!spec.success && spec.failPhase==='deep') totalDur=ascentDur+cruiseDur*0.42+2000;
   // #73 Slice 3: a successful module delivery (spec.dock) appends a rendezvous+dock card after the cruise,
   // in place of the usual 1200ms settle tail (reentryDur is 0 here — module deliveries are uncrewed).
-  else totalDur=ascentDur+cruiseDur+reentryDur+(spec.dock?DOCK_CARD_MS:1200);
+  else totalDur=ascentDur+cruiseDur+reentryDur+(spec.dock?dockingCardDuration(spec):1200);
   totalDur+=padDur; // the loop must run through the pad pre-roll too
   const stars=[]; for(let i=0;i<160;i++) stars.push({x:Math.random(),y:Math.random()*0.92,b:0.3+Math.random()*0.7,s:0.8+Math.random()*1.4,twinkle:Math.random()*6.28});
   const path=spec.isCislunar?buildLunarPath(cv.width,cv.height,spec.rng):null;
@@ -794,7 +795,7 @@ function endAnim(hold){
   }
   if(hold && A.spec.dock){ // #73 Slice 3: hold on the module-docked spectacle (checked before the generic post-flight card, which a delivery would otherwise match)
     A.held=true;
-    drawDockCard(DOCK_CARD_MS, true); // settled soft-dock frame + a Continue affordance
+    drawDockCard(dockingCardDuration(A.spec), true); // settled hard-dock frame + Continue
     flightRefresh();
     return;
   }
@@ -1389,7 +1390,7 @@ function openFlightForDecision(ctx, decision){
 function resumeFlightForDecision(finalSpec, finish){
   const A=animState; if(!A || !A._openedForDecision) return false;
   Object.assign(A.spec, finalSpec);
-  const reentryDur=flightHasReentry(A.spec)?6400:0;
+  const reentryDur=A.spec.dock?0:(flightHasReentry(A.spec)?6400:0);
   const departMode=A.spec.mode==='depart';
   let totalDur;
   if(departMode) totalDur=A.ascentDur+DEPART_CARD_MS;
@@ -1397,7 +1398,7 @@ function resumeFlightForDecision(finalSpec, finish){
   else if(!A.spec.success && A.spec.failPhase==='deep') totalDur=A.ascentDur+A.cruiseDur*0.42+2000;
   // #73 Slice 3: keep the dock-card tail when a delivery hit an in-flight decision (reserve/rescue) and is
   // resumed here — spec.dock rode in via the Object.assign above, so totalDur must include it as setupFlightState does.
-  else totalDur=A.ascentDur+A.cruiseDur+reentryDur+(A.spec.dock?DOCK_CARD_MS:1200);
+  else totalDur=A.ascentDur+A.cruiseDur+reentryDur+(A.spec.dock?dockingCardDuration(A.spec):1200);
   totalDur+=A.padDur;
   A.reentryDur=reentryDur; A.totalDur=totalDur; A.recovering=!!A.spec.recovering;
   A.done=finish; A.pendingDecision=null; A._openedForDecision=false; clearFlight3DDecision();
@@ -1456,124 +1457,99 @@ function drawDepartCard(ct, held){
   if(held) drawFlightContinueBtn(ctx,W,H);
 }
 
-// #73 Slice 3 (2026-07-11): the module rendezvous + soft-dock spectacle. Played on the flight overlay's
-// Terminal station-visit / cargo-arrival card. Simulation has already settled
-// hard dock, transfer, berth occupancy and return/remain disposition; this
-// renderer consumes the frozen actor/target/interface spec and cannot mutate it.
-function drawDockCard(ct, held){
-  const A=animState, s=A.spec, ctx=A.ctx, W=A.cv.width, H=A.cv.height;
-  const d=s.dock||{};
-  const time=(A.padDur||0)+A.ascentDur+A.cruiseDur+ct;
-  const cp=clampA(ct/DOCK_CARD_MS,0,1);
-  spaceBg(ctx,W,H,time,A.nativeStars); // deep-space backdrop + parallax stars (native layer when Phaser-hosted)
-  // Destination body limb at lower-left, tinted per body — Earth blue / Moon grey / Mars rust. The one
-  // per-body branch in the whole beat; the station + docking geometry is shared across all three.
-  const BODY_PAL={ earth:['#3a8cc7','#245f96','#14406e','#0a2340'], moon:['#c9cdd2','#9aa0a7','#6c727a','#3c4046'],
-                   mars:['#d9764a','#b4542b','#7e381b','#4a2011'] };
-  const pal=BODY_PAL[d.body]||BODY_PAL.earth;
-  const bR=Math.max(60,H*0.44), bCx=W*0.15, bCy=H*1.30;
-  const bg=ctx.createRadialGradient(bCx-bR*0.30,bCy-bR*0.34,bR*0.2,bCx,bCy,bR);
-  bg.addColorStop(0,pal[0]); bg.addColorStop(0.55,pal[1]); bg.addColorStop(0.85,pal[2]); bg.addColorStop(1,pal[3]);
-  ctx.fillStyle=bg; ctx.beginPath(); ctx.arc(bCx,bCy,bR,0,7); ctx.fill();
-  ctx.save(); ctx.beginPath(); ctx.arc(bCx,bCy,bR,0,7); ctx.clip(); // night-side terminator shadow
-  ctx.fillStyle='rgba(2,5,15,0.42)'; ctx.beginPath(); ctx.arc(bCx+bR*0.5,bCy-bR*0.15,bR*1.02,0,7); ctx.fill(); ctx.restore();
-  ctx.strokeStyle='rgba(150,180,220,0.22)'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(bCx,bCy,bR+2,0,7); ctx.stroke();
-
-  // Station right-of-centre; the incoming module closes from the left onto the open berthing port.
-  const stX=W*0.66, stY=H*0.44;
-  const portX=stX-52, portY=stY;           // the open port the module approaches (left face of the node)
-  const contact=0.82;                       // capture happens here; the tail is the settled soft-dock
-  const ap=clampA(cp/contact,0,1), ae=1-Math.pow(1-ap,2); // easeOut approach
-  const startX=portX-152, seatX=portX-22;   // module right end (modX+halfLen, halfLen≈22) meets the port at capture
-  const settle=cp>=contact ? Math.sin((cp-contact)*40)*Math.max(0,1-(cp-contact)/(1-contact))*0.8 : 0; // tiny post-capture damped nudge
-  const modX=startX+(seatX-startX)*ae+settle;
-  const docked=cp>=contact;
-
-  // A capsule (horizontal cylinder w/ ellipse endcaps) — used for both the station core and the module.
-  function can(cx,cy,hl,r,col){
-    ctx.save();
-    ctx.fillStyle=col;
-    ctx.beginPath();
-    ctx.moveTo(cx-hl,cy-r); ctx.lineTo(cx+hl,cy-r);
-    ctx.ellipse(cx+hl,cy,r*0.55,r,0,-Math.PI/2,Math.PI/2);
-    ctx.lineTo(cx-hl,cy+r);
-    ctx.ellipse(cx-hl,cy,r*0.55,r,0,Math.PI/2,Math.PI*1.5);
-    ctx.closePath(); ctx.fill();
-    ctx.fillStyle='rgba(255,255,255,0.12)'; ctx.fillRect(cx-hl,cy-r,hl*2,r*0.4);   // top highlight
-    ctx.fillStyle='rgba(0,0,0,0.22)'; ctx.fillRect(cx-hl,cy+r*0.55,hl*2,r*0.45);   // underside shade
-    ctx.strokeStyle='rgba(0,0,0,0.28)'; ctx.lineWidth=0.6;
-    for(let gx=cx-hl+8; gx<cx+hl; gx+=12){ ctx.beginPath(); ctx.moveTo(gx,cy-r); ctx.lineTo(gx,cy+r); ctx.stroke(); } // ring frames
-    ctx.restore();
+// Docking D5 terminal presentation timing and renderer-neutral telemetry.
+const DOCK_ROUTINE_MS=1800;
+function dockingCardDuration(spec){ return spec&&spec.dock&&spec.dock.routineSkipEligible?DOCK_ROUTINE_MS:DOCK_CARD_MS; }
+function dockingPlaybackProgress(ct,duration){ return typeof reducedMotion==='function'&&reducedMotion()?1:clampA(ct/Math.max(1,duration),0,1); }
+function dockingTelemetry(progress,dock){
+  const p=clampA(progress,0,1), contact=.82, approach=clampA(p/contact,0,1), range=Math.max(0,Math.round(180*Math.pow(1-approach,2)));
+  let capture='APPROACH'; if(p>=.58) capture='STATIONKEEPING'; if(p>=contact) capture='SOFT CAPTURE'; if(p>=.92) capture='HARD DOCK';
+  return {rangeM:range,closingRateMps:p>=contact?0:Math.max(.02,Math.round((.34-.29*approach)*100)/100),reserveMps:Math.max(0,Number(dock&&dock.reserveMps)||0),capture};
+}
+function dockingCraftVisual(vehicle){
+  const v=vehicle||{}; if(!Array.isArray(v.stages)||!v.stages.length) return null;
+  let shape; try{ shape=buildVehicleShape(v); }catch(e){ return null; }
+  const core=v.stages.length, segs=shape.segs.slice(Math.max(0,core-1)); if(!segs.length) return null;
+  const units=segs.reduce((sum,seg)=>sum+seg.h,0), px=clampA(shape.totalH*VEH_BASE_PX_PER_UNIT,58,110);
+  return {segs,nose:shape.nose,scale:px/Math.max(1,units),length:px,livery:v.livery||null};
+}
+function drawDockingCraft(ctx,vehicle,kind,x,y,facesRight,color,label){
+  const visual=dockingCraftVisual(vehicle);
+  if(visual){
+    ctx.save(); ctx.translate(x,y); ctx.rotate(facesRight?Math.PI/2:-Math.PI/2); ctx.translate(0,visual.length/2);
+    drawVehicle(ctx,visual.segs,visual.nose,visual.scale,0,1,false,visual.livery); ctx.restore();
+    return visual.length/2;
   }
-
-  // approach corridor guide + range crosshair on the port
-  ctx.strokeStyle=themeRgba('readout',0.18); ctx.setLineDash([4,6]); ctx.lineWidth=1;
-  ctx.beginPath(); ctx.moveTo(seatX-118,portY); ctx.lineTo(portX,portY); ctx.stroke(); ctx.setLineDash([]);
-
-  // --- station: solar wings, core, berthing node with the open port ---
-  ctx.save();
-  for(const sgn of [-1,1]){
-    const wy=stY+sgn*52;
-    ctx.strokeStyle='rgba(70,100,150,0.6)'; ctx.lineWidth=1;
-    ctx.beginPath(); ctx.moveTo(stX,stY+sgn*16); ctx.lineTo(stX,wy); ctx.stroke(); // truss to the wing
-    ctx.fillStyle='rgba(38,66,116,0.55)'; ctx.fillRect(stX-34,wy-9,68,18);
-    ctx.strokeStyle='rgba(96,146,206,0.5)';
-    for(let i=0;i<=4;i++){ ctx.beginPath(); ctx.moveTo(stX-34+i*17,wy-9); ctx.lineTo(stX-34+i*17,wy+9); ctx.stroke(); }
-    ctx.strokeStyle='rgba(70,100,150,0.6)'; ctx.strokeRect(stX-34,wy-9,68,18);
-  }
-  can(stX+6,stY,30,16,d.facColor||'#aeb6bd');                     // core
-  ctx.fillStyle='#8f9aa6'; ctx.beginPath(); ctx.arc(stX-34,stY,13,0,7); ctx.fill(); // berthing node sphere
-  ctx.strokeStyle='rgba(0,0,0,0.3)'; ctx.lineWidth=0.8; ctx.beginPath(); ctx.arc(stX-34,stY,13,0,7); ctx.stroke();
-  // open port mouth (a shallow ring facing the incoming module)
-  ctx.strokeStyle=docked?themeColor('ok'):themeRgba('readout',0.85); ctx.lineWidth=2;
-  ctx.beginPath(); ctx.ellipse(portX,portY,4,9,0,0,7); ctx.stroke();
-  ctx.restore();
-
-  // --- incoming capsule/pod/module + its docking probe + approach RCS puffs ---
-  ctx.save();
-  if(d.actorKind==='capsule'){
-    ctx.fillStyle=d.modColor||'#e5edf2'; ctx.beginPath();
-    ctx.moveTo(modX-18,portY-12); ctx.lineTo(modX+17,portY-8); ctx.lineTo(modX+22,portY+8); ctx.lineTo(modX-18,portY+12); ctx.closePath(); ctx.fill();
-    ctx.fillStyle='rgba(95,150,185,.72)'; ctx.beginPath(); ctx.ellipse(modX+2,portY-5,6,3,0,0,7); ctx.fill();
-  }else can(modX,portY,20,13,d.modColor||'#b8c0c7');
-  ctx.strokeStyle='rgba(60,66,72,0.9)'; ctx.lineWidth=1.4;
-  ctx.beginPath(); ctx.moveTo(modX+20,portY); ctx.lineTo(modX+27,portY); ctx.stroke(); // capture probe
-  if(d.modShort){ ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.font='bold 8px ui-monospace,monospace'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(d.modShort,modX,portY); }
-  if(!docked){ // translation thruster puffs firing aft as it brakes into the port
-    const puff=0.4+0.6*Math.abs(Math.sin(time*0.02));
-    ctx.fillStyle=`rgba(210,225,255,${0.18*puff})`;
-    for(const sgn of [-1,1]){ ctx.beginPath(); ctx.arc(modX-20-6, portY+sgn*9, 3+2*puff, 0,7); ctx.fill(); }
-  }
-  ctx.restore();
-
-  if(docked){ // soft-dock capture: an expanding ring flash + a steady green contact light
-    const dg=clampA((cp-contact)/0.12,0,1);
-    ctx.strokeStyle=themeRgba('ok',0.6*(1-dg)); ctx.lineWidth=2;
-    ctx.beginPath(); ctx.arc(portX,portY,4+dg*22,0,7); ctx.stroke();
-    ctx.fillStyle=themeColor('ok'); ctx.beginPath(); ctx.arc(portX,portY,2.2,0,7); ctx.fill();
-  }
-
-  // Info panel fades in over the first part of the card (mirrors drawDepartCard's panel).
-  const pa=clampA(ct/(DOCK_CARD_MS*0.4),0,1);
-  if(pa>0){
-    ctx.save(); ctx.globalAlpha=pa;
-    const surface=d.captureMode==='surface_handoff';
-    const rows=[[surface?'DESTINATION':'TARGET', (d.target&&d.target.label)||d.facName||s.title], [surface?'CARGO':'ACTOR', (d.actor&&d.actor.label)||d.modName||'Spacecraft']];
-    if(!surface&&d.standard) rows.push(['INTERFACE', String(d.standard).replace('_',' ')+' · '+(d.size||'standard')]);
+  // Old/imported assets may predate launch snapshots; retain a readable,
+  // kind-specific silhouette without pretending it is the real vehicle.
+  ctx.save(); ctx.translate(x,y); ctx.scale(facesRight?1:-1,1); ctx.fillStyle=color||'#b8c0c7';
+  if(kind==='capsule'){
+    ctx.beginPath(); ctx.moveTo(19,0); ctx.lineTo(7,-11); ctx.lineTo(-18,-9); ctx.lineTo(-18,9); ctx.lineTo(7,11); ctx.closePath(); ctx.fill();
+    ctx.fillStyle='rgba(95,150,185,.72)'; ctx.beginPath(); ctx.ellipse(5,-5,5,2.5,0,0,7); ctx.fill();
+  }else{ ctx.fillRect(-20,-10,38,20); ctx.strokeStyle='#d6e0e6'; ctx.strokeRect(-20,-10,38,20); }
+  if(label){ ctx.fillStyle='rgba(0,0,0,.55)'; ctx.font='bold 8px ui-monospace,monospace'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(label,0,0); }
+  ctx.restore(); return 20;
+}
+function drawDockingFacility(ctx,scene,cx,cy,docked){
+  const modules=scene&&scene.modules&&scene.modules.filter(node=>!node.hidden)||[];
+  if(!modules.length){ ctx.fillStyle='#8f9aa6'; ctx.beginPath(); ctx.arc(cx,cy,17,0,7); ctx.fill(); return {x:cx-23,y:cy}; }
+  const scale=Math.min(7.2,82/Math.max(5.2,...modules.map(n=>Math.abs(n.x||0))),62/Math.max(5.2,...modules.map(n=>Math.abs(n.z||0))));
+  const points=modules.map(n=>({n,x:cx+n.x*scale,y:cy+n.z*scale}));
+  ctx.strokeStyle='rgba(145,170,187,.55)'; ctx.lineWidth=3;
+  points.forEach(p=>{ if(p.n.parent<0) return; const parent=points.find(q=>q.n.index===p.n.parent); if(parent){ ctx.beginPath(); ctx.moveTo(parent.x,parent.y); ctx.lineTo(p.x,p.y); ctx.stroke(); } });
+  points.forEach(p=>{ const n=p.n, col=n.color||'#b8c0c7'; ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(n.yaw||0);
+    if(n.id==='power_truss'){
+      ctx.strokeStyle='#c9d1d7'; ctx.lineWidth=3; ctx.beginPath(); ctx.moveTo(-22,0); ctx.lineTo(22,0); ctx.stroke();
+      ctx.fillStyle='#173d67'; ctx.fillRect(-31,-14,25,9); ctx.fillRect(6,-14,25,9); ctx.fillRect(-31,5,25,9); ctx.fillRect(6,5,25,9);
+    }else if(n.id==='node_hub'){
+      ctx.fillStyle=col; ctx.beginPath(); ctx.arc(0,0,13,0,7); ctx.fill(); ctx.strokeStyle='#d6e0e6'; ctx.stroke();
+      for(const a of [0,Math.PI/2,Math.PI,Math.PI*1.5]){ ctx.beginPath(); ctx.moveTo(Math.cos(a)*12,Math.sin(a)*12); ctx.lineTo(Math.cos(a)*18,Math.sin(a)*18); ctx.stroke(); }
+    }else{
+      const w=n.id==='greenhouse'?31:35,h=n.id==='depot_mod'?17:14; ctx.fillStyle=col; ctx.fillRect(-w/2,-h/2,w,h);
+      ctx.strokeStyle=n.id==='greenhouse'?'#b5e99e':'#d6e0e6'; ctx.lineWidth=1; ctx.strokeRect(-w/2,-h/2,w,h);
+      ctx.fillStyle='rgba(5,14,20,.62)'; ctx.font='7px ui-monospace,monospace'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(n.short||'',0,0);
+    } ctx.restore(); });
+  const minX=Math.min(...points.map(p=>p.x))-22, portY=cy;
+  ctx.strokeStyle=docked?themeColor('ok'):themeRgba('readout',.9); ctx.lineWidth=2; ctx.beginPath(); ctx.ellipse(minX,portY,4,9,0,0,7); ctx.stroke();
+  return {x:minX,y:portY};
+}
+function drawDockingBody(ctx,W,H,body){
+  const palettes={earth:['#3a8cc7','#245f96','#14406e','#0a2340'],moon:['#c9cdd2','#9aa0a7','#6c727a','#3c4046'],mars:['#d9764a','#b4542b','#7e381b','#4a2011']}, pal=palettes[body]||palettes.earth;
+  const r=Math.max(60,H*.44),x=W*.15,y=H*1.30,g=ctx.createRadialGradient(x-r*.3,y-r*.34,r*.2,x,y,r);
+  pal.forEach((col,i)=>g.addColorStop([0,.55,.85,1][i],col)); ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x,y,r,0,7); ctx.fill();
+  ctx.strokeStyle='rgba(150,180,220,.22)'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(x,y,r+2,0,7); ctx.stroke();
+}
+// Terminal docking card. Simulation has already settled hard dock, transfers
+// and ownership; this renderer only consumes its frozen real-vehicle/facility scene.
+function drawDockCard(ct,held){
+  const A=animState,s=A.spec,ctx=A.ctx,W=A.cv.width,H=A.cv.height,d=s.dock||{},duration=dockingCardDuration(s);
+  const time=(A.padDur||0)+A.ascentDur+A.cruiseDur+ct,reduce=typeof reducedMotion==='function'&&reducedMotion();
+  const cp=dockingPlaybackProgress(ct,duration),contact=.82,docked=cp>=contact,telemetry=dockingTelemetry(cp,d);
+  spaceBg(ctx,W,H,time,A.nativeStars); drawDockingBody(ctx,W,H,d.body);
+  const targetY=H*.59,scene=d.scene||{},targetX=W*.72;
+  let port;
+  if(scene.targetType==='facility') port=drawDockingFacility(ctx,scene.facility,targetX,targetY,docked);
+  else if(scene.targetType==='vehicle'){
+    const half=drawDockingCraft(ctx,scene.targetVehicle,d.targetKind,targetX,targetY,false,d.facColor,(d.target&&d.target.label||'').slice(0,4).toUpperCase());
+    port={x:targetX-half,y:targetY}; ctx.strokeStyle=docked?themeColor('ok'):themeRgba('readout',.9); ctx.lineWidth=2; ctx.beginPath(); ctx.ellipse(port.x,port.y,4,9,0,0,7); ctx.stroke();
+  }else{ port=drawDockingFacility(ctx,null,targetX,targetY,docked); }
+  const actorVisual=dockingCraftVisual(scene.actorVehicle),actorHalf=actorVisual?actorVisual.length/2:20;
+  const ap=clampA(cp/contact,0,1),ease=1-Math.pow(1-ap,2),startX=port.x-Math.min(190,W*.31),seatX=port.x-actorHalf-3;
+  const settle=!reduce&&cp>=contact?Math.sin((cp-contact)*40)*Math.max(0,1-(cp-contact)/(1-contact))*.8:0,actorX=startX+(seatX-startX)*ease+settle;
+  ctx.strokeStyle=themeRgba('readout',.2); ctx.setLineDash([4,6]); ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(startX-25,port.y); ctx.lineTo(port.x,port.y); ctx.stroke(); ctx.setLineDash([]);
+  drawDockingCraft(ctx,scene.actorVehicle,d.actorKind,actorX,port.y,true,d.modColor,d.modShort);
+  if(!docked&&!reduce){ const puff=.4+.6*Math.abs(Math.sin(time*.02)); ctx.fillStyle=`rgba(210,225,255,${.18*puff})`; for(const sign of [-1,1]){ ctx.beginPath(); ctx.arc(actorX-actorHalf-6,port.y+sign*9,3+2*puff,0,7); ctx.fill(); } }
+  if(docked){ const flash=reduce?1:clampA((cp-contact)/.12,0,1); ctx.strokeStyle=themeRgba('ok',.6*(1-flash)); ctx.lineWidth=2; ctx.beginPath(); ctx.arc(port.x,port.y,4+flash*22,0,7); ctx.stroke(); ctx.fillStyle=themeColor('ok'); ctx.beginPath(); ctx.arc(port.x,port.y,2.2,0,7); ctx.fill(); }
+  const pa=reduce?1:clampA(ct/(duration*.3),0,1); if(pa>0){
+    ctx.save(); ctx.globalAlpha=pa; const surface=d.captureMode==='surface_handoff',title=d.ceremony?'★ FIRST DOCKING':(docked?(surface?'DELIVERY COMPLETE':'HARD DOCK'):(surface?'FINAL APPROACH':'RENDEZVOUS'));
+    const rows=[['TARGET',(d.target&&d.target.label)||d.facName||s.title],['ACTOR',(d.actor&&d.actor.label)||d.modName||'Spacecraft'],['RANGE',telemetry.rangeM+' m'],['CLOSING',telemetry.closingRateMps.toFixed(2)+' m/s'],['RESERVE',telemetry.reserveMps+' m/s'],['CAPTURE',telemetry.capture]];
     if(d.transferLabel) rows.push(['TRANSFER',d.transferLabel]);
-    if(!surface&&d.disposition) rows.push(['DISPOSITION',d.disposition==='remain'?'Remain docked':'Undock / return']);
-    if(d.moduleCount&&d.transfer&&d.transfer.kind==='module_delivery') rows.push(['ASSEMBLY', d.moduleCount+' module'+(d.moduleCount===1?'':'s')]);
-    const panelW=250, panelH=46+rows.length*16, panelX=(W-panelW)/2, panelY=Math.round(H*0.09);
-    ctx.fillStyle=themeRgba('bg',0.82); ctx.fillRect(panelX,panelY,panelW,panelH);
-    ctx.strokeStyle=themeRgba('readout',0.3); ctx.lineWidth=0.5; ctx.strokeRect(panelX,panelY,panelW,panelH);
-    ctx.textAlign='center'; ctx.textBaseline='top';
-    ctx.fillStyle=docked?themeColor('ok'):themeColor('readout'); ctx.font='bold 15px ui-monospace,monospace';
-    ctx.fillText(docked?(surface?'DELIVERY COMPLETE':'HARD DOCK'):(surface?'FINAL APPROACH':'RENDEZVOUS'), W/2, panelY+10);
-    ctx.font='10px ui-monospace,monospace'; ctx.textBaseline='alphabetic';
-    rows.forEach((r,i)=>{ const ry=panelY+42+i*16;
-      ctx.textAlign='left'; ctx.fillStyle=themeColor('dim'); ctx.fillText(r[0],panelX+14,ry);
-      ctx.textAlign='right'; ctx.fillStyle=themeColor('ink'); ctx.fillText(String(r[1]),panelX+panelW-14,ry); });
-    ctx.textAlign='left'; ctx.restore();
+    const panelW=Math.min(300,W-24),panelH=44+rows.length*15,panelX=(W-panelW)/2,panelY=Math.round(H*.055);
+    ctx.fillStyle=themeRgba('bg',.86); ctx.fillRect(panelX,panelY,panelW,panelH); ctx.strokeStyle=themeRgba('readout',.35); ctx.lineWidth=.5; ctx.strokeRect(panelX,panelY,panelW,panelH);
+    ctx.textAlign='center'; ctx.textBaseline='top'; ctx.fillStyle=docked?themeColor('ok'):themeColor('readout'); ctx.font='bold 15px ui-monospace,monospace'; ctx.fillText(title,W/2,panelY+9);
+    ctx.font='10px ui-monospace,monospace'; ctx.textBaseline='alphabetic'; rows.forEach((row,i)=>{ const y=panelY+38+i*15; ctx.textAlign='left'; ctx.fillStyle=themeColor('dim'); ctx.fillText(row[0],panelX+14,y); ctx.textAlign='right'; ctx.fillStyle=themeColor('ink'); ctx.fillText(String(row[1]),panelX+panelW-14,y); });
+    if(d.routineSkipEligible){ ctx.textAlign='center'; ctx.fillStyle=themeColor('dim'); ctx.fillText('AUTOMATED · PROVEN ROUTINE',W/2,panelY+panelH-6); }
+    ctx.restore();
   }
   if(held) drawFlightContinueBtn(ctx,W,H);
 }
@@ -1734,7 +1710,7 @@ function drawScene(t){
     if(docking && prevPhase!=='dock' && prevPhase!=='ascent') captureHandoff('dock'); // cruise → dock crossfade
     if(entering && prevPhase!=='reentry' && prevPhase!=='ascent') captureHandoff('reentry'); // cruise → reentry cut
     const ho=beginHandoff(t); // Phase A: camera ease while the previous frame crossfades away
-    if(docking){ A.phase='dock'; drawDockCard(ct-A.cruiseDur, false); }
+    if(docking){ A.phase='dock'; clearFlightReportCard(); drawDockCard(ct-A.cruiseDur, false); }
     else if(entering){ A.phase='reentry'; drawReentry(ct-A.cruiseDur); }
     else if(s.isCislunar){
       // E1.2 slice C: the reserve call (a drifting deep-phase subsystem) and rescue (a stranded
@@ -1907,10 +1883,10 @@ function drawCanvasPressurePlume(ctx,ex,nozzleR,flame,altFrac,engineId,solid){
   }
   ctx.restore();
 }
-function drawVehicle(ctx, segs, nose, scale, flame, altFrac, hideBells){
+function drawVehicle(ctx, segs, nose, scale, flame, altFrac, hideBells,liveryOverride){
   if(!segs.length) return;
   altFrac=altFrac||0;
-  const liv=curLivery(); // bench livery: body color, accent, nose style
+  const liv=liveryOverride?Object.assign(defaultLivery(),liveryOverride):curLivery(); // frozen docking craft may differ from the live Bench
   const base=segs[0], bw=base.w*scale, ne=base.engines;
   // strap-on boosters (only the full shape's seg array carries .boosters — sliced/spent draws won't)
   if(segs.boosters && segs.boosters.count>0) drawStrapOns(ctx, base, segs.boosters, scale, flame, altFrac, hideBells);

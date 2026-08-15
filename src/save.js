@@ -1,6 +1,6 @@
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=66; // v66: persistent orbital-operation ledger, retry, lifecycle actions and service receipts.
+const SAVE_VERSION=67; // v67: successful-docking count for first/routine presentation.
 // Pre-v62 saves with in-progress flight ownership are rejected rather than assigned a fabricated
 // outcome; ordinary v61 lifecycle records are remapped through the schema-2 factories on load.
 //

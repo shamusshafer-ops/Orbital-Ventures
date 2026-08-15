@@ -7656,3 +7656,19 @@ two-owner stationkeeping reservations and reciprocal captures. `test-docking-ope
 with exactly the same nine pre-existing red suite names. Build parity, generated-script syntax and
 `git diff --check` are clean. D5 visual playback, automation and balance is the only remaining docking
 slice.
+
+## Generalized docking D5 — SHIPPED (Codex, 2026-08-15)
+
+D5 replaces the generic two-can terminal illustration with read-only frozen presentation sources.
+Actors and separately launched targets use their real launch vehicle shape and livery; stations use
+the same renderer-neutral typed module nodes and saved layout as the Three/SVG assembly bench. The
+Canvas/WebGL-2D card adds range, closing-rate, rendezvous-reserve and capture-state telemetry, a
+save-v67 first-docking ceremony, a bounded 1.8-second proven automated tail, and a static settled
+reduced-motion frame. It never settles docking state.
+
+Firefox/WebGL acceptance at 1280–1600px covered capsule/capsule, capsule/station and pod/station. That
+pass exposed and fixed a crewed-only integration bug where the 3D layer classified the terminal tail
+as reentry and covered the docking renderer. Reliability remains `0.97`; replay-safe persistent
+rendezvous attempts remain `25 m/s`. The D5 suite passes 17/17, Gate 2 passes 49/49, Gate 3 passes
+96/96, and the 165-suite sweep has 155 real passes, one intentional skip and the same nine baseline
+failures.

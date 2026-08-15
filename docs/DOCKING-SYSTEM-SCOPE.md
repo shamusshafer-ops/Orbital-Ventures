@@ -1,6 +1,6 @@
 # Generalized Docking Operations — Scope
 
-Status: D0, D1 and D2 shipped 2026-08-15; D3–D5 remain planned.
+Status: D0–D5 shipped 2026-08-15.
 
 ## Goal
 
@@ -364,6 +364,17 @@ Suggested tests: `test-docking-operations.js`, replay/idempotency tests and arri
 
 ### D5 — Presentation, automation and balance pass
 
+**Shipped 2026-08-15.** The terminal card now consumes frozen real launch-vehicle snapshots for both
+actors and vehicle targets, plus the same renderer-neutral facility nodes used by the Three/SVG
+assembly bench. Typed modules and saved presentation layout survive into the Canvas/WebGL-2D flight
+fallback without becoming docking authority. Range, closing rate, reserve and capture telemetry are
+readable throughout approach; the first successful hard dock receives a persisted ceremony, while a
+proven automated operation receives a bounded 1.8-second routine tail and remains skippable. Reduced
+motion jumps directly to a quiet settled frame. Firefox acceptance covered capsule/capsule,
+capsule/station and pod/station at 1280–1600px desktop widths and caught a crewed-docking phase bug:
+the 3D launch layer now hands off to docking rather than covering it with reentry. Reliability remains
+`0.97` and persistent-operation reserve attempts remain `25 m/s`; D5 made no balance change.
+
 - Reuse the real actor vehicle snapshot and facility assembly scene rather than the current generic
   two-can illustration.
 - Maintain Canvas fallback and reduced-motion behavior.
@@ -418,8 +429,8 @@ scene in headless tests.
 
 - Overall architecture and D2–D4 implementation: GPT-5.6-sol with xhigh reasoning.
 - D0 pure helpers and focused test wiring: GPT-5.6-sol with high reasoning is sufficient.
-- D5 visual tuning: GPT-5.6-sol high for implementation; move to xhigh when evaluating interaction,
-  balance or conflicting visual/technical constraints.
+- D5 visual tuning used GPT-5.6-sol high; xhigh remains appropriate for future interaction or balance
+  changes with conflicting visual/technical constraints.
 
 Do not start all slices in one change. D0 and D1 establish the authority; D2 delivers the first
 player-facing loop; D3 is the largest state/lifecycle seam and should land independently.

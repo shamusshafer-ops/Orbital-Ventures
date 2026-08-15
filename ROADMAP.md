@@ -781,7 +781,7 @@ bodies.
 
 **Slice 4 (manufacturing tie-in) is optional/last** and remains unstarted.
 
-## In progress — Generalized vehicle and station docking (D0–D4 shipped 2026-08-15)
+## Complete — Generalized vehicle and station docking (D0–D5 shipped 2026-08-15)
 
 Extend #73's module-delivery spectacle into one simulation authority for capsule↔capsule/pod,
 capsule↔station, cargo-pod↔station, permanent module attachment, and mission-internal LOR/EOR docking.
@@ -808,7 +808,10 @@ surfaces share that collection. D4 retry/undock/refuel/servicing operations live
 `orbitOps[]` command/receipt ledger: existing craft can stationkeep,
 wave off, retry, soft/hard capture, undock, relocate and return, with named crew, defined cargo,
 propellant and power/data services applied exactly once. Fleet Registry consoles drive those same
-records. The remaining slice is D5 visual playback, automation and balance. Full
+records. D5 replaces the generic docking illustration with frozen real actor/target vehicles and the
+shared facility assembly scene, adds range/closing-rate/reserve/capture telemetry, persists the first
+docking ceremony, shortens proven automated playback, and settles reduced-motion immediately. The
+Firefox pass covered capsule/capsule, capsule/station and pod/station; balance stayed unchanged. Full
 decisions, state shapes, interaction matrix, protected baselines, tests and non-goals:
 `docs/DOCKING-SYSTEM-SCOPE.md`.
 

@@ -8572,24 +8572,7 @@ function assembly3dClearLayout(sceneId,cur,index){
   if(!Object.keys(map).length) delete state.assemblyLayouts[scope];
 }
 function assembly3dSceneSpec(sceneId,cur,ignoreLayout){
-  const ids=facilityModuleList(cur.fs).slice();
-  const saved=ignoreLayout?{}:assembly3dLayoutMap(sceneId,cur);
-  if(sceneId==='station'){
-    const nodes=ids.map((id,i)=>{
-      const slot=STATION_LAYOUT_SLOTS[i]||[i%5-2,Math.floor(i/5)+1];
-      const parent=i===0?-1:(i<=4?0:Math.max(0,Math.floor((i-1)/4)));
-      const p=saved[i];
-      return {id,index:i,parent:p&&Number.isInteger(p.parent)?p.parent:parent,x:p&&Number.isFinite(p.x)?p.x:slot[0]*5.2,y:p&&Number.isFinite(p.y)?p.y:(i%3-1)*0.28,z:p&&Number.isFinite(p.z)?p.z:slot[1]*5.2,yaw:p&&Number.isFinite(p.yaw)?p.yaw:0,dockTargetPort:p&&p.dockTargetPort,dockOwnPort:p&&p.dockOwnPort,hidden:!!(p&&p.hidden)};
-    });
-    return {sceneId,body:'earth',ids,nodes};
-  }
-  const cols=Math.min(5,Math.max(1,Math.ceil(Math.sqrt(ids.length*1.5))));
-  const nodes=ids.map((id,i)=>{
-    const row=Math.floor(i/cols), col=i%cols, inRow=Math.min(cols,ids.length-row*cols);
-    const p=saved[i];
-    return {id,index:i,parent:p&&Number.isInteger(p.parent)?p.parent:(i?i-1:-1),x:p&&Number.isFinite(p.x)?p.x:(col-(inRow-1)/2)*5.5,y:0,z:p&&Number.isFinite(p.z)?p.z:(row-(Math.ceil(ids.length/cols)-1)/2)*6.0+(col%2?0.45:-0.45),yaw:p&&Number.isFinite(p.yaw)?p.yaw:0,dockTargetPort:p&&p.dockTargetPort,dockOwnPort:p&&p.dockOwnPort,hidden:!!(p&&p.hidden)};
-  });
-  return {sceneId,body:(cur.def&&cur.def.body)||'moon',ids,nodes};
+  return facilityAssemblySceneSpec(sceneId,cur,ignoreLayout?{}:assembly3dLayoutMap(sceneId,cur));
 }
 function assembly3dSpecKey(spec){ return spec.sceneId+'|'+spec.body+'|'+spec.nodes.map(n=>n.id+'@'+n.x.toFixed(2)+','+(n.y||0).toFixed(2)+','+n.z.toFixed(2)+','+(n.yaw||0).toFixed(2)+','+n.parent+','+(n.dockTargetPort||'')+','+(n.hidden?'hidden':'shown')).join(','); }
 function assembly3dCameraDefault(sceneId,count){
@@ -9220,7 +9203,6 @@ function renderStationFacilityStats(built, cur, focusId, focusFn){ // E1.8: base
 }
 // Radial station renderer: the save model remains an ordered module list, but the bench now
 // lays modules out across a docking grid instead of flattening them into a left/right chain.
-const STATION_LAYOUT_SLOTS=[[0,0],[1,0],[-1,0],[0,-1],[0,1],[2,0],[-2,0],[0,-2],[0,2],[1,-1],[-1,-1],[1,1],[-1,1],[3,0],[-3,0],[0,-3],[0,3]];
 function stationModuleSVG(id,d,x,y,scale){
   const L=Math.max(92,(d.len||150)*0.48)*scale, hd=Math.max(18,(d.dia||80)*0.30)*scale, c=d.color||'#b8c0c7';
   const stroke='#81909b', dark='#0a1520', glow=`filter="url(#stnGlow)"`;

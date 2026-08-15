@@ -50,6 +50,7 @@ function createFreshState(difficulty){
     facilities:{}, assemblyLayouts:{}, stationVisitSeq:0, // D2 visiting-berth reservations/visitors live on exact facility records
     orbitAssets:[], orbitAssetSeq:0, orbitMissionSeq:0, // D3 surviving free/docked spacecraft and separately launched targets
     orbitOps:[], orbitOpSeq:0, // D4 durable rendezvous, undock, relocation, return and transfer receipts
+    dockingPresentation:{successful:0}, // D5 first-docking ceremony / proven routine playback
     fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
     architectures:{}, science:0,
     vehicles:[], activeVehicle:null, // #3: named vehicle lineages with heritage
@@ -1610,6 +1611,42 @@ function facilityModuleList(fs){
   fs.modules=fs.moduleList.length; // keep the legacy count in lockstep
   return fs.moduleList;
 }
+// Shared renderer-neutral facility scene. The assembly editor supplies its
+// saved layout; flight settlement freezes these exact nodes for playback.
+function facilityAssemblySceneSpec(sceneId,cur,saved){
+  const ids=facilityModuleList(cur.fs).slice(), layout=saved||{};
+  if(sceneId==='station'){
+    const nodes=ids.map((id,i)=>{
+      const slot=STATION_LAYOUT_SLOTS[i]||[i%5-2,Math.floor(i/5)+1], p=layout[i];
+      const parent=i===0?-1:(i<=4?0:Math.max(0,Math.floor((i-1)/4)));
+      return {id,index:i,parent:p&&Number.isInteger(p.parent)?p.parent:parent,x:p&&Number.isFinite(p.x)?p.x:slot[0]*5.2,
+        y:p&&Number.isFinite(p.y)?p.y:(i%3-1)*0.28,z:p&&Number.isFinite(p.z)?p.z:slot[1]*5.2,
+        yaw:p&&Number.isFinite(p.yaw)?p.yaw:0,dockTargetPort:p&&p.dockTargetPort,dockOwnPort:p&&p.dockOwnPort,hidden:!!(p&&p.hidden)};
+    });
+    return {sceneId,body:'earth',ids,nodes};
+  }
+  const cols=Math.min(5,Math.max(1,Math.ceil(Math.sqrt(ids.length*1.5))));
+  const nodes=ids.map((id,i)=>{
+    const row=Math.floor(i/cols), col=i%cols, inRow=Math.min(cols,ids.length-row*cols), p=layout[i];
+    return {id,index:i,parent:p&&Number.isInteger(p.parent)?p.parent:(i?i-1:-1),x:p&&Number.isFinite(p.x)?p.x:(col-(inRow-1)/2)*5.5,
+      y:0,z:p&&Number.isFinite(p.z)?p.z:(row-(Math.ceil(ids.length/cols)-1)/2)*6.0+(col%2?0.45:-0.45),
+      yaw:p&&Number.isFinite(p.yaw)?p.yaw:0,dockTargetPort:p&&p.dockTargetPort,dockOwnPort:p&&p.dockOwnPort,hidden:!!(p&&p.hidden)};
+  });
+  return {sceneId,body:(cur.def&&cur.def.body)||'moon',ids,nodes};
+}
+function dockingVehicleSnapshot(launchSpec,kind){
+  const src=launchSpec||{};
+  return plainRecord({kind:kind||'pod',crewed:kind==='capsule'||!!src.crewed,
+    stages:Array.isArray(src.stages)?src.stages.map(s=>({prop:s.prop||0,count:s.count||1,dia:s.dia||1,eng:s.eng||''})):[],
+    boosters:src.boosters||{count:0},transferProp:src.transferProp||(src.transfer&&src.transfer.prop)||0,
+    transferEng:src.transferEng||(src.transfer&&src.transfer.eng)||'',livery:src.livery||null});
+}
+function dockingFacilitySnapshot(facId){
+  const fd=facilityById(facId), fs=facilityState(facId); if(!fd||!fs) return null;
+  const layout=((state.assemblyLayouts||{})[`station:${facId}`])||{}, scene=facilityAssemblySceneSpec('station',{def:fd,fs},layout);
+  scene.modules=scene.nodes.map(node=>{ const md=stationModuleDef(node.id)||stationModuleDef('can_std'); return Object.assign({},node,{name:md.name,short:md.short,color:md.color}); });
+  return plainRecord(scene);
+}
 // Station operations are lazy so existing facilities keep their established output until the
 // player explicitly assigns crew or signs a resupply contract. New facilities opt into condition
 // tracking immediately; new fields are persisted with the facility and remain harmless to older saves.
@@ -1756,6 +1793,7 @@ function releaseOrbitAssetReservation(targetAssetId,operationId){
   return true;
 }
 function orbitAssetCrewAssigned(id){ return !!id&&orbitAssetList().some(asset=>asset&&asset.crewId===id); }
+const STATION_VISITOR_RENDEZVOUS_DV=350;
 function releaseStationVisitorToOrbit(facId,operationId){
   if(typeof guardOrdinaryAction==='function'&&!guardOrdinaryAction('Releasing a station visitor to orbit')) return false;
   const fs=facilityState(facId), def=facilityById(facId), ops=fs&&stationOps(fs), index=ops&&ops.dockedVisitors.findIndex(v=>v&&v.operationId===operationId);
@@ -1764,7 +1802,7 @@ function releaseStationVisitorToOrbit(facId,operationId){
   const id=nextOrbitAssetId(), interfaces=visitor.actor.interfaces.map(port=>makeDockInterface(Object.assign({},port,{occupiedBy:null})));
   const record=makeOrbitAsset({id,hullId:visitor.hullId,name:`${orbitAssetKindLabel(visitor.kind)} ${hull.serial}`,kind:visitor.kind,bodyId:'earth',
     orbit:{band:'low',inclination:28.5},vehicleSnapshot:{source:'station-visitor',missionId:visitor.missionId,actor:plainRecord(visitor.actor)},interfaces,status:'free',
-    crewId:visitor.crewId,cargo:visitor.transfer&&visitor.transfer.cargo||{},resources:{rendezvousDv:350,fuel:0,power:100},createdAbs:absDay()});
+    crewId:visitor.crewId,cargo:visitor.transfer&&visitor.transfer.cargo||{},resources:{rendezvousDv:STATION_VISITOR_RENDEZVOUS_DV,fuel:0,power:100},createdAbs:absDay()});
   if(orbitAssetErrors(record).length||orbitAssetById(id)||orbitAssetList().some(asset=>asset&&asset.hullId===record.hullId)) return false;
   ops.dockedVisitors.splice(index,1);
   const berth=facilityVisitingBerths(facId).find(b=>b.id===visitor.berthId); if(berth&&berth.interface.occupiedBy===operationId) berth.interface.occupiedBy=null;
@@ -7598,6 +7636,7 @@ function finalizeLaunch(ctx, ops){
     rng: { wind:(rnd()-0.5)*0.9, windFreq:1.4+rnd()*1.6, windPhase:rnd()*6.283,
            pitchJitter:(rnd()-0.5)*0.16, sep:state.stages.map(()=>(rnd()-0.5)*0.06),
            apogee:0.86+rnd()*0.28, bow:(rnd()-0.5)*0.9 } };
+  const actorVehicle=dockingVehicleSnapshot(Object.assign({},spec,{livery:launchSpec.livery||state.livery}),m.stationVisit&&m.stationVisit.actorKind||m.vehicleDocking&&m.vehicleDocking.actorKind||'pod');
   // D2: the terminal card consumes one generalized, frozen actor/target/
   // interface/transfer spec. Surface-base module flights retain their visual
   // arrival beat, but label it as a cargo handoff rather than literal docking.
@@ -7609,7 +7648,16 @@ function finalizeLaunch(ctx, ops){
       actorKind:visit.actorKind,disposition:stationSettlement.disposition,hardDock:true,transfer:plainRecord(transfer),
       transferLabel:visit.kind==='crew_rotation'?'Crew exchanged':visit.kind==='resupply'?'Provisions unloaded':'Module installed',
       modName:md?md.name:(visit.actorKind==='capsule'?'Crew capsule':'Cargo pod'),modShort:md?md.short:(visit.actorKind==='capsule'?'CREW':'POD'),
-      modColor:(md&&md.color)||(visit.actorKind==='capsule'?'#e5edf2':'#79b7d8'),moduleCount:fs?facilityModuleList(fs).length:0});
+      modColor:(md&&md.color)||(visit.actorKind==='capsule'?'#e5edf2':'#79b7d8'),moduleCount:fs?facilityModuleList(fs).length:0,
+      reserveMps:STATION_VISITOR_RENDEZVOUS_DV,scene:{targetType:'facility',actorVehicle,facility:dockingFacilitySnapshot(visit.facilityId)}});
+  }else if(success&&m.vehicleDocking&&orbitSettlement&&orbitSettlement.hardDock){
+    const snapshot=vehicleDockingSnapshot(m,ctx), target=orbitSettlement.target, actor=orbitSettlement.asset;
+    const base=snapshot?dockingPresentationSpec(orbitSettlement.operation,[snapshot.actor,snapshot.target],target.bodyId||'earth')||{}:{};
+    spec.dock=Object.assign(base,{captureMode:'hard_dock',hardDock:true,actorKind:m.vehicleDocking.actorKind,targetKind:target.kind,
+      disposition:'remain',transfer:null,transferLabel:null,modName:actor.name,modShort:m.vehicleDocking.actorKind==='capsule'?'CREW':'POD',
+      modColor:m.vehicleDocking.actorKind==='capsule'?'#e5edf2':'#79b7d8',reserveMps:actor.resources.rendezvousDv,
+      scene:{targetType:'vehicle',actorVehicle:dockingVehicleSnapshot(actor.vehicleSnapshot&&actor.vehicleSnapshot.launchSpec||actorVehicle,m.vehicleDocking.actorKind),
+        targetVehicle:dockingVehicleSnapshot(target.vehicleSnapshot&&target.vehicleSnapshot.launchSpec||{},target.kind)}});
   }else if(m.deliverModule&&success){
     const fd=facilityById(m.deliverModule.facId), fs=facilityState(m.deliverModule.facId), md=stationModuleDef(m.deliverModule.modId);
     spec.dock={schema:DOCKING_SCHEMA_VERSION,phase:'delivery',captureMode:'surface_handoff',purpose:'Surface cargo handoff',body:(fd&&fd.body)||'earth',
@@ -7618,6 +7666,12 @@ function finalizeLaunch(ctx, ops){
       facId:m.deliverModule.facId,facName:fd?fd.name:'Facility',facColor:(fd&&fd.color)||'#aeb6bd',actorKind:'pod',disposition:'delivered',hardDock:false,
       transfer:makeDockTransferReceipt({kind:'module_delivery',status:'applied',services:['cargo','permanent'],cargo:{modId:m.deliverModule.modId,moduleCost:m.moduleCost},appliedAbs:absDay()}),transferLabel:'Cargo delivered',
       modName:md?md.name:'Module',modShort:md?md.short:'MOD',modColor:(md&&md.color)||'#b8c0c7',moduleCount:fs?facilityModuleList(fs).length:1};
+  }
+  if(spec.dock&&spec.dock.hardDock){
+    const history=state.dockingPresentation||(state.dockingPresentation={successful:0}), prior=Math.max(0,history.successful||0);
+    spec.dock.ceremony=prior===0;
+    spec.dock.routineSkipEligible=prior>0&&!!(ctx.docking&&ctx.docking.guidance==='automated');
+    history.successful=prior+1;
   }
   let finished=false;
   const finish=()=>{ if(finished) return; finished=true; finishLaunchTransaction(tx,success,outcome,pendingCelebration); };

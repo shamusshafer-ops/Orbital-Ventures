@@ -1678,6 +1678,9 @@ const TRACKING_STATIONS = [
 // node, radial berthing ports, dish + whip antennas, solar wings and a radiator. Each `parts`
 // entry is a labelled detail the bench annotates with a leader line — the hook future content
 // extends. Coordinates are relative to the module centre.
+// Renderer-neutral orbital assembly topology. The Three assembly bench, SVG
+// fallback and flight docking card all project this same saved layout.
+const STATION_LAYOUT_SLOTS=[[0,0],[1,0],[-1,0],[0,-1],[0,1],[2,0],[-2,0],[0,-2],[0,2],[1,-1],[-1,-1],[1,1],[-1,1],[3,0],[-3,0],[0,-3],[0,3]];
 const STATION_MODULES = [
   { id:'can_std', name:'Pressurized Habitat', short:'HAB', len:200, dia:88, color:'#b8c0c7',
     cost:8, buildMo:4, stats:{ mass:18.0, crew:3, powerGenKw:6.0, powerDrawKw:4.2 },

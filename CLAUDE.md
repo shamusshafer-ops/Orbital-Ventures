@@ -6,9 +6,9 @@ reorder existing entries there, only add new ones at the end, same as `ROADMAP.m
 
 ---
 
-## STATUS (as of 2026-08-15, working tree based on HEAD plus completed Docking D4)
+## STATUS (as of 2026-08-15, Docking D0–D5 complete in the working tree)
 
-**Repo health:** 154/164 test suites pass, one intentional skip, and nine known baseline failures
+**Repo health:** 155/165 test suites pass, one intentional skip, and nine known baseline failures
 (the same names reproduced from untouched `HEAD` before D2). Build parity, generated-script syntax,
 and `git diff --check` are clean. Treat any different failing suite as new.
 **REMINDER (hit 5x in one session, 2026-07-25): `node build.js` is a bare string concat with NO
@@ -216,3 +216,16 @@ receipts provide later satellite/tug hooks. Fleet Registry consoles expose the c
 set passes 190/190. Gate 2 remains 49/49 and Gate 3 remains 96/96. The 164-suite sweep has 154 real
 passes plus one intentional skip and the same nine baseline failures; build parity, generated-script
 syntax and `git diff --check` are clean. D5 presentation/automation/balance remains.
+
+### 2026-08-15 — Docking D5 presentation, automation and balance (Codex)
+
+Shipped the final generalized-docking slice. Flight settlement freezes the actual launched vehicle
+shape/livery for the actor and any separately launched target, plus the same renderer-neutral station
+nodes and saved layout consumed by the Three/SVG assembly bench. The Canvas/WebGL-2D docking card now
+shows typed station modules or the second vehicle, range/closing-rate/reserve/capture telemetry, a
+persisted first-docking ceremony, 1.8-second proven automated playback, and a quiet settled
+reduced-motion frame. Save v67 carries presentation history only; reliability and 25 m/s rendezvous
+attempt cost are unchanged. Firefox checks at 1280–1600px covered capsule/capsule, capsule/station and
+pod/station, and caught/fixed crewed docking being covered by the 3D reentry phase. The D5 suite passes
+17/17, Gate 2 remains 49/49, Gate 3 remains 96/96, and the full sweep is 155/165 plus one intentional
+skip and the same nine baseline failures.

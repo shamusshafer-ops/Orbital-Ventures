@@ -21,6 +21,10 @@ Two things still apply:
   should warn rather than silently misread — that protects against the two-agent workflow, not an
   install base.
 
+## v67 — Docking presentation history
+
+Adds `state.dockingPresentation.successful`, used only to distinguish the first-docking ceremony from proven routine playback. Docking reliability, resource costs and settlement authority are unchanged.
+
 The entries below predate this directive, so nearly all of them describe the older additive-only
 pattern: new fields read through `||` / falsy guards so a pre-bump save loaded unchanged, with an
 explicit `migrate*()` only where a value had to be *transformed* rather than defaulted (e.g.
