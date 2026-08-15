@@ -6,9 +6,9 @@ reorder existing entries there, only add new ones at the end, same as `ROADMAP.m
 
 ---
 
-## STATUS (as of 2026-08-15, working tree based on HEAD plus completed Docking D2)
+## STATUS (as of 2026-08-15, working tree based on HEAD plus completed Docking D3)
 
-**Repo health:** 150/160 test suites pass, one intentional skip, and nine known baseline failures
+**Repo health:** 152/162 test suites pass, one intentional skip, and nine known baseline failures
 (the same names reproduced from untouched `HEAD` before D2). Build parity, generated-script syntax,
 and `git diff --check` are clean. Treat any different failing suite as new.
 **REMINDER (hit 5x in one session, 2026-07-25): `node build.js` is a bare string concat with NO
@@ -190,3 +190,14 @@ reservations, transfer receipts, docked visitors and `docked` hull state. The tw
 38/38; all focused docking/station suites pass 228/228 and selected Gate 2/3 ownership checks pass
 55/55; the full sweep is 150/160 plus one intentional skip, with the
 same nine baseline failures and no new red suite.
+
+### 2026-08-15 — Docking D3 persistent orbit assets and separate-launch rendezvous (Codex)
+
+Shipped canonical `state.orbitAssets[]` ownership for free/reserved/docked capsules, pods, tugs and
+targets, plus `in-orbit` hull state and save v65. Deployment launches and station releases preserve an
+exact hull between turns. A later launch reserves one target interface, freezes explicit actor/target
+fitment, and converts hard dock into reciprocal persistent links; failure, cancellation and target
+removal clean up only the owning reservation. Fleet Registry actions, Outliner entries, empire strip,
+and SVG/Phaser/Three Solar Map badges share the same collection. The two D3 suites pass 35/35; the
+focused D0–D3/station/lifecycle/registry/map set passes 367/367, Gate 2 is 49/49, Gate 3 is 96/96, and
+the 162-suite sweep adds no failure beyond the same nine baseline suites (plus one intentional skip).

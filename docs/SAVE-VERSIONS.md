@@ -31,6 +31,16 @@ When bumping `SAVE_VERSION`, add an entry at the top of the list below.
 
 ---
 
+## v65 — Docking D3 persistent orbit assets
+
+Adds durable spacecraft that survive between launches:
+
+- `state.orbitAssets[]` is the single owner for free, reserved, soft-captured, or vehicle-docked capsules, pods, tugs, and targets. Each record carries an exact hull, orbit, frozen vehicle snapshot, docking interfaces, crew/cargo/resources, and any reciprocal link.
+- `state.orbitAssetSeq` and `state.orbitMissionSeq` provide stable asset and player-created deployment/rendezvous identities.
+- Hull lifecycle status `in-orbit` is valid only when exactly one orbit asset owns that hull. Lifecycle auditing rejects missing/duplicate owners, malformed reservations, non-reciprocal links, and dock operations that own no physical interface.
+- A pending later-launch rendezvous stores its reservation on the target asset and exact target port. Hard dock replaces that reservation atomically with reciprocal `dockedTo` and operation records on both assets; failure, cancellation, or target removal releases it deterministically.
+- Station-local D2 visitors may undock into `orbitAssets[]` without copying their hull. Fleet Registry, Outliner, and Solar Map state are derived from the same collection.
+
 ## v64 — Docking D2 station visits
 
 Adds persisted capsule/pod visits to orbital stations:

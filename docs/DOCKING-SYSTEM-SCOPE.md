@@ -145,6 +145,7 @@ An independently launched target requires a persistent spacecraft seam. Add cano
 {
   id,
   hullId,
+  name,
   kind,                       // capsule | pod | tug | target
   bodyId,
   orbit: {band,inclination},
@@ -152,9 +153,12 @@ An independently launched target requires a persistent spacecraft seam. Add cano
   interfaces: [],
   status,                     // free | reserved | soft-captured | docked
   dockedTo: null,
+  dockOperation: null,
+  reservation: null,          // exact pending mission + target interface owner
   crewId: null,               // current named-astronaut model; other seats remain abstract
   cargo: {},
-  resources: {rendezvousDv,fuel,power}
+  resources: {rendezvousDv,fuel,power},
+  createdAbs
 }
 ```
 
@@ -250,9 +254,10 @@ not merely because soft capture was achieved.
 ### Undock and return
 
 A same-mission station visit can transfer and return without persisting between turns. A player who
-chooses to remain docked leaves a station-local visitor occupying the berth. D3 will promote a craft
-to a free orbit asset when it undocks; D4 will expose that persistent undock/return operation. A
-same-mission capsule already uses the existing reentry/recovery flow.
+chooses to remain docked leaves a station-local visitor occupying the berth. D3 promotes that visitor
+to a free orbit asset when the player releases it from the station. D4 will add persistent operations
+for undocking linked vehicle pairs, relocation, retry and return. A same-mission capsule already uses
+the existing reentry/recovery flow.
 
 ## Supported interaction matrix
 
@@ -318,6 +323,16 @@ Suggested tests: `test-station-docking.js`, `test-docking-transfer.js`, and the 
 1–3 suites.
 
 ### D3 — Persistent orbit assets and separately launched craft
+
+**Shipped 2026-08-15.** Launches may now deploy free capsules, cargo pods, and docking targets into a
+canonical `state.orbitAssets[]` collection, and station-local visitors may be released into that same
+owner without duplicating their hull. A later launch reserves one exact target interface, freezes
+separate actor/target fitment, rechecks the live reservation, and converts a successful hard dock into
+reciprocal links between two persistent craft. Failure/cancellation releases the target; removal
+cancels only missions that own that target. Hull status `in-orbit`, save v65, and lifecycle auditing
+enforce single ownership and reciprocal links. Fleet Registry deployment/rendezvous actions, the
+global Outliner, and all Solar Map renderers derive from the same collection. Retry after approach,
+undocking linked pairs, return/refuel/relocation, and transfer services remain D4.
 
 - Add `state.orbitAssets[]`, hull ownership states and save-version documentation.
 - Allow a launch or station undock to leave a free capsule, pod or target in orbit.

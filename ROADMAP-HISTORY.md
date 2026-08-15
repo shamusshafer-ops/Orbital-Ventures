@@ -7599,3 +7599,31 @@ Save v64 records the new facility docking state. `test-station-docking.js` and
 228/228, with another 55/55 selected Gate 2/3 ownership checks green. The repository sweep passes 150/160 suites plus one intentional skip (up from 148/158 only because of the two new
 suites), with exactly the same nine pre-existing failing suite names and no new red suite. Build
 parity, `node --check build/game.js`, and `git diff --check` are clean.
+
+## Generalized docking D3 — SHIPPED (Codex, 2026-08-15)
+
+D3 introduces the durable owner that separate-launch rendezvous needed. `state.orbitAssets[]` stores
+free, reserved, soft-captured, or docked capsules, cargo pods, tugs, and targets with an exact hull,
+orbit, frozen vehicle snapshot, interfaces, resources, and link state. Successful deployment missions
+leave a capsule/pod/target in low Earth orbit instead of expending its hull; a D2 station-local visitor
+can also be released into the same collection while freeing its exact station berth. Hull lifecycle
+status `in-orbit` is valid only with one orbit-asset owner.
+
+A later launch reserves one exact interface on a free target. Its build freezes separate actor and
+target records, launch rechecks the live target/reservation, and hard dock atomically replaces the
+reservation with reciprocal links and one shared operation on both persistent assets. Failed/aborted
+approaches release the target, retained missions can rebook it, cancellation is exact, simultaneous
+targets remain independent, and target removal cancels only its owning mission. Forced linked-target
+loss deterministically frees the surviving craft. D4 retains retry from stationkeeping, ordinary
+linked-pair undock/return/relocation, refueling, and service transfers.
+
+Fleet Registry now provides deployment, target-rendezvous and cancellation actions; its orbital group,
+the global Outliner, the empire strip, and SVG/Phaser/Three Solar Map badges all derive from the same
+asset collection. Save v65 records the new state and lifecycle audits reject malformed reservations,
+duplicate hull owners, non-reciprocal links, or links that own no physical interface.
+
+`test-orbit-assets.js` and `test-vehicle-docking.js` add 35/35 checks. The focused D0–D3, station,
+lifecycle, registry, and map set passes 367/367; Gate 2 passes 49/49 and Gate 3 passes 96/96. The full
+162-suite sweep has 152 real passes plus one intentional skip and the same nine baseline failures as
+before D3; the separately invoked source-only SM1–SM5 contract is 26/26. Build parity,
+`node --check build/game.js`, and `git diff --check` are clean.

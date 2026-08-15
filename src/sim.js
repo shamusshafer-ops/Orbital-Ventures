@@ -48,6 +48,7 @@ function createFreshState(difficulty){
     trackingStations:[], // #89: built tracking-station ids (see TRACKING_STATIONS, data.js). Gate itself is OFF (TRACKING_NETWORK_LIVE=false) until slice 2 ships a build UI.
     ambition:'flag', programsAwarded:{}, ambitionFulfilled:false,
     facilities:{}, assemblyLayouts:{}, stationVisitSeq:0, // D2 visiting-berth reservations/visitors live on exact facility records
+    orbitAssets:[], orbitAssetSeq:0, orbitMissionSeq:0, // D3 surviving free/docked spacecraft and separately launched targets
     fuelPrice:FUEL_BASE, fuelPrevPrice:FUEL_BASE, fuelBuyer:null,
     architectures:{}, science:0,
     vehicles:[], activeVehicle:null, // #3: named vehicle lineages with heritage
@@ -1415,7 +1416,7 @@ function contractOfferReferenced(id){
 }
 function tickContractOffers(){
   state.contractOffers=(state.contractOffers||[]).filter(o=>{
-    if(o.deliverModule||o.stationVisit) return true; // player-committed infrastructure/visit missions keep their exact target reservation until flown or cancelled
+    if(o.deliverModule||o.stationVisit||o.orbitDeployment||o.vehicleDocking) return true; // player-committed infrastructure/docking missions keep their exact target reservation until flown or cancelled
     if(absMonth()<=o.expiresAbs || contractOfferReferenced(o.id)) return true; // still open, or committed to (build queue/hangar/selected) — don't yank it out from under a build
     log('note',`${o.name}: contract window closed — the client went elsewhere.`);
     return false;
@@ -1686,6 +1687,90 @@ function stationVisitBerthSummary(facId){
   const fs=facilityState(facId); if(!fs) return {total:0,occupied:0,reserved:0,visitors:0,open:0};
   const ops=stationOps(fs), berths=facilityVisitingBerths(facId), occupied=berths.filter(b=>b.interface.occupiedBy).length;
   return {total:berths.length,occupied,reserved:ops.dockReservations.length,visitors:ops.dockedVisitors.length,open:Math.max(0,berths.length-occupied)};
+}
+// Docking D3: persistent spacecraft between launches. Every consumer reads
+// this same collection; no map/registry-only satellite copies are minted.
+function orbitAssetList(snapshot){ const list=(snapshot||state).orbitAssets; return Array.isArray(list)?list:[]; }
+function orbitAssetById(id,snapshot){ return orbitAssetList(snapshot).find(asset=>asset&&asset.id===id)||null; }
+function orbitAssetKindLabel(kind){ return ({capsule:'Crew capsule',pod:'Cargo pod',tug:'Orbital tug',target:'Docking target'})[kind]||'Orbital craft'; }
+function orbitAssetServices(kind){
+  return kind==='capsule'?['crew','cargo','power','data']:(kind==='tug'?['cargo','fuel','power','data']:['cargo','power','data']);
+}
+function orbitAssetPort(kind,id){
+  return makeDockInterface({id:id||'forward_port',standard:'androgynous',size:'standard',role:'androgynous',services:dockingServices(...orbitAssetServices(kind))});
+}
+function orbitAssetActor(asset){
+  return asset&&makeDockActor({id:`orbit-asset:${asset.id}`,label:asset.name||orbitAssetKindLabel(asset.kind),interfaces:asset.interfaces});
+}
+function nextOrbitAssetId(){
+  state.orbitAssetSeq=Math.max(0,finiteRecordNumber(state.orbitAssetSeq));
+  let id; do{ id=`orb_${++state.orbitAssetSeq}`; }while(orbitAssetById(id));
+  return id;
+}
+function orbitAssetVehicleSnapshot(ctx,source){
+  const tx=state.launchTxn&&ctx&&state.launchTxn.missionId===ctx.m.id?state.launchTxn:null;
+  return {source:String(source||'launch'),missionId:ctx&&ctx.m&&ctx.m.id||null,launchSpec:plainRecord(tx&&tx.spec||{}),
+    vehicle:plainRecord(ctx&&ctx.v||{}),createdAbs:absDay()};
+}
+function appendOrbitAsset(input){
+  const asset=makeOrbitAsset(input), hull=hullById(asset.hullId);
+  if(orbitAssetErrors(asset).length||!hull||orbitAssetById(asset.id)||orbitAssetList().some(other=>other&&other.hullId===asset.hullId)) return null;
+  state.orbitAssets=orbitAssetList(); state.orbitAssets.push(asset); return asset;
+}
+function orbitAssetCompatibleInterface(asset,operationId,actorKind,services,preferredPortId){
+  if(!asset) return {ok:false,why:'The target spacecraft no longer exists.'};
+  const actorPort=orbitAssetPort(actorKind,'approach_port'), ports=asset.interfaces||[];
+  const ordered=preferredPortId?[...ports.filter(p=>p.id===preferredPortId),...ports.filter(p=>p.id!==preferredPortId)]:ports.slice();
+  let firstReasons=[];
+  for(const port of ordered){
+    const fit=dockCompatibility(actorPort,port,{operationId,services});
+    if(fit.ok) return {ok:true,port,services:fit.services};
+    if(!firstReasons.length) firstReasons=fit.reasons.slice();
+  }
+  return {ok:false,why:firstReasons.length?`No compatible target interface: ${firstReasons.join(', ')}.`:'The target has no docking interface.',reasons:firstReasons};
+}
+function reserveOrbitAssetDocking(targetAssetId,missionId,actorKind,services,preferredPortId){
+  const asset=orbitAssetById(targetAssetId), operationId=`${missionId}:orbit-dock`, requested=(services||['cargo','power','data']).slice();
+  if(!asset) return {ok:false,why:'The target spacecraft no longer exists.'};
+  if(asset.reservation&&asset.reservation.operationId===operationId){
+    const port=asset.interfaces.find(p=>p.id===asset.reservation.targetPortId&&p.occupiedBy===operationId);
+    return port?{ok:true,asset,port,reservation:asset.reservation}:{ok:false,why:'The target reservation is stale.'};
+  }
+  if(asset.status!=='free') return {ok:false,why:`${asset.name} is ${asset.status.replace('-', ' ')} and cannot accept another approach.`};
+  const fit=orbitAssetCompatibleInterface(asset,operationId,actorKind,requested,preferredPortId);
+  if(!fit.ok) return fit;
+  fit.port.occupiedBy=operationId;
+  asset.reservation=makeOrbitAssetReservation({operationId,missionId,actorKind,targetPortId:fit.port.id,services:requested,createdAbs:absDay()});
+  asset.status='reserved';
+  return {ok:true,asset,port:fit.port,reservation:asset.reservation};
+}
+function releaseOrbitAssetReservation(targetAssetId,operationId){
+  const asset=orbitAssetById(targetAssetId); if(!asset) return false;
+  const reservation=asset.reservation;
+  if(!reservation||reservation.operationId!==operationId) return false;
+  const port=asset.interfaces.find(p=>p.id===reservation.targetPortId);
+  if(port&&port.occupiedBy===operationId) port.occupiedBy=null;
+  asset.reservation=null;
+  if(asset.status==='reserved') asset.status='free';
+  return true;
+}
+function orbitAssetCrewAssigned(id){ return !!id&&orbitAssetList().some(asset=>asset&&asset.crewId===id); }
+function releaseStationVisitorToOrbit(facId,operationId){
+  if(typeof guardOrdinaryAction==='function'&&!guardOrdinaryAction('Releasing a station visitor to orbit')) return false;
+  const fs=facilityState(facId), def=facilityById(facId), ops=fs&&stationOps(fs), index=ops&&ops.dockedVisitors.findIndex(v=>v&&v.operationId===operationId);
+  if(!ops||index<0) return false;
+  const visitor=ops.dockedVisitors[index], hull=hullById(visitor.hullId); if(!hull) return false;
+  const id=nextOrbitAssetId(), interfaces=visitor.actor.interfaces.map(port=>makeDockInterface(Object.assign({},port,{occupiedBy:null})));
+  const record=makeOrbitAsset({id,hullId:visitor.hullId,name:`${orbitAssetKindLabel(visitor.kind)} ${hull.serial}`,kind:visitor.kind,bodyId:'earth',
+    orbit:{band:'low',inclination:28.5},vehicleSnapshot:{source:'station-visitor',missionId:visitor.missionId,actor:plainRecord(visitor.actor)},interfaces,status:'free',
+    crewId:visitor.crewId,cargo:visitor.transfer&&visitor.transfer.cargo||{},resources:{rendezvousDv:350,fuel:0,power:100},createdAbs:absDay()});
+  if(orbitAssetErrors(record).length||orbitAssetById(id)||orbitAssetList().some(asset=>asset&&asset.hullId===record.hullId)) return false;
+  ops.dockedVisitors.splice(index,1);
+  const berth=facilityVisitingBerths(facId).find(b=>b.id===visitor.berthId); if(berth&&berth.interface.occupiedBy===operationId) berth.interface.occupiedBy=null;
+  state.orbitAssets=orbitAssetList(); state.orbitAssets.push(record);
+  hull.status='in-orbit'; addHullEvent(hull,'released to orbit',visitor.missionId);
+  log('ok',`${def?def.icon+' '+def.name:'Station'}: ${record.name} undocked into free ${record.orbit.band} orbit; ${visitor.berthId.split(':').pop()} is open.`);
+  render(); return record;
 }
 function stationCondition(fs){ return Math.max(0,Math.min(STATION_MAINT_MAX, stationOps(fs).condition)); }
 function stationMaintenanceFactor(fs){
@@ -1993,6 +2078,66 @@ function cancelStationVisitMission(missionId){
   state.contractOffers=state.contractOffers.filter(o=>o.id!==missionId);
   if(state.activeMission===missionId) autoAdvanceMission();
   log('note',`${offer.name}: visit cancelled; its reserved berth is open again.`); render(); return true;
+}
+function canFlyOrbitAssetDeployment(kind){
+  if(!['capsule','pod','target'].includes(kind)) return {ok:false,why:'Only a capsule, cargo pod, or docking target can be deployed in this slice.'};
+  if(kind==='capsule'&&!state.research.crew_capsule) return {ok:false,why:'Crew Capsule research is required to build an orbital capsule.'};
+  return {ok:true};
+}
+function flyOrbitAssetDeployment(kind){
+  if(!guardOrdinaryAction('Orbital asset deployment planning')) return false;
+  const chk=canFlyOrbitAssetDeployment(kind); if(!chk.ok){ announceAction(chk.why); return false; }
+  state.orbitMissionSeq=(state.orbitMissionSeq||0)+1;
+  const id=`oa_${state.orbitMissionSeq}`, label=orbitAssetKindLabel(kind), payload=kind==='capsule'?1.5:(kind==='pod'?0.8:0.3);
+  const offer={id,proc:true,crew:0,days:1,reqDv:9400,payload,minRep:0,payout:0,rep:0,name:`Deploy ${label}`,
+    orbitDeployment:{kind,bodyId:'earth',orbit:{band:'low',inclination:28.5}},
+    blurb:`Launch an uncrewed ${label.toLowerCase()} into low Earth orbit and leave it there as a persistent, separately targetable spacecraft. Its fitted forward interface and exact hull identity survive between turns.`};
+  (state.contractOffers=state.contractOffers||[]).push(offer); selectMission(id); return offer;
+}
+function pendingVehicleDocking(targetAssetId){
+  return (state.contractOffers||[]).find(offer=>offer&&offer.vehicleDocking&&offer.vehicleDocking.targetAssetId===targetAssetId)||null;
+}
+function canFlyVehicleDocking(targetAssetId,actorKind){
+  actorKind=actorKind||'capsule'; const target=orbitAssetById(targetAssetId), existing=pendingVehicleDocking(targetAssetId);
+  if(!target) return {ok:false,why:'The target spacecraft no longer exists.'};
+  if(existing){
+    const visit=existing.vehicleDocking, reservation=target.reservation;
+    if(!reservation||reservation.operationId!==visit.operationId){
+      const rebound=reserveOrbitAssetDocking(targetAssetId,existing.id,visit.actorKind,visit.services,visit.targetPortId);
+      if(!rebound.ok) return rebound;
+      visit.targetPortId=rebound.port.id; visit.operationId=rebound.reservation.operationId;
+    }
+    return {ok:true,existing,target};
+  }
+  if(!['capsule','pod','tug'].includes(actorKind)) return {ok:false,why:'Unsupported approaching spacecraft.'};
+  if(actorKind==='capsule'&&!state.research.crew_capsule) return {ok:false,why:'Crew Capsule research is required for the approaching capsule.'};
+  if(target.status!=='free') return {ok:false,why:`${target.name} is ${target.status.replace('-', ' ')} and cannot accept another approach.`};
+  const fit=orbitAssetCompatibleInterface(target,'availability-check',actorKind,['cargo','power','data']);
+  return fit.ok?{ok:true,target}:{ok:false,why:fit.why};
+}
+function flyVehicleDocking(targetAssetId,actorKind){
+  if(!guardOrdinaryAction('Vehicle docking planning')) return false;
+  actorKind=actorKind||'capsule'; const chk=canFlyVehicleDocking(targetAssetId,actorKind);
+  if(!chk.ok){ announceAction(chk.why); return false; }
+  if(chk.existing){ selectMission(chk.existing.id); return chk.existing; }
+  state.orbitMissionSeq=(state.orbitMissionSeq||0)+1;
+  const id=`od_${state.orbitMissionSeq}`, services=['cargo','power','data'];
+  const reservation=reserveOrbitAssetDocking(targetAssetId,id,actorKind,services);
+  if(!reservation.ok){ announceAction(reservation.why); return false; }
+  const label=orbitAssetKindLabel(actorKind), target=reservation.asset;
+  const offer={id,proc:true,crew:0,days:1,reqDv:9400,payload:actorKind==='capsule'?1.5:.8,minRep:0,payout:0,rep:0,
+    name:`Rendezvous ${label} — ${target.name}`,
+    vehicleDocking:{targetAssetId,targetPortId:reservation.port.id,operationId:reservation.reservation.operationId,actorKind,services},
+    blurb:`Launch a separately built ${label.toLowerCase()}, rendezvous with ${target.name}, and establish a persistent hard-dock link at its reserved ${reservation.port.id}. Both physical hulls remain in orbit.`};
+  (state.contractOffers=state.contractOffers||[]).push(offer); selectMission(id); return offer;
+}
+function cancelOrbitMission(missionId){
+  const offer=(state.contractOffers||[]).find(item=>item&&item.id===missionId&&(item.orbitDeployment||item.vehicleDocking));
+  if(!offer) return false;
+  if(offer.vehicleDocking) releaseOrbitAssetReservation(offer.vehicleDocking.targetAssetId,offer.vehicleDocking.operationId);
+  state.contractOffers=state.contractOffers.filter(item=>item!==offer);
+  if(state.activeMission===missionId) autoAdvanceMission();
+  log('note',`${offer.name}: mission cancelled${offer.vehicleDocking?'; the target interface is free again':''}.`); render(); return true;
 }
 /* ---------- #73 Slice 2 (2026-07-11): Moon/Mars delivery is a real profile-based cargo cruise ----------
    User chose the mechanically-consistent option over a cheap simple-mission reskin: Moon/Mars delivery
@@ -2529,11 +2674,36 @@ function auditLifecycleState(snapshot){
       }
     }
   }
+  const assetIds=new Set(), assetMap=new Map(), orbitReservations=new Set();
+  for(const asset of orbitAssetList(s)){
+    if(!asset||!asset.id){ errors.push('orbit asset: missing id'); continue; }
+    if(assetIds.has(asset.id)) errors.push(`orbit asset: duplicate ${asset.id}`);
+    assetIds.add(asset.id); assetMap.set(asset.id,asset);
+    if(orbitAssetErrors(asset).length) errors.push(`orbit asset ${asset.id}: invalid record`);
+    const hull=hulls.get(asset.hullId);
+    if(!hull) errors.push(`orbit asset ${asset.id}: unknown hull ${asset.hullId}`);
+    else if(hull.status!=='in-orbit') errors.push(`orbit asset ${asset.id}: hull ${asset.hullId} is ${hull.status}`);
+    if(owned.has(asset.hullId)) errors.push(`hull ${asset.hullId}: multiple lifecycle owners`);
+    owned.add(asset.hullId);
+    if(asset.reservation){
+      if(orbitReservations.has(asset.reservation.operationId)) errors.push(`orbit asset reservation ${asset.reservation.operationId}: duplicate target owner`);
+      orbitReservations.add(asset.reservation.operationId);
+      const offer=(s.contractOffers||[]).find(item=>item&&item.id===asset.reservation.missionId&&item.vehicleDocking);
+      if(!offer||offer.vehicleDocking.targetAssetId!==asset.id||offer.vehicleDocking.operationId!==asset.reservation.operationId) errors.push(`orbit asset ${asset.id}: reservation has no pending mission owner`);
+    }
+  }
+  for(const asset of assetMap.values()){
+    if(asset.status!=='docked'&&asset.status!=='soft-captured') continue;
+    const partner=assetMap.get(asset.dockedTo), operationId=asset.dockOperation&&asset.dockOperation.id;
+    if(!partner||partner.dockedTo!==asset.id||!partner.dockOperation||partner.dockOperation.id!==operationId) errors.push(`orbit asset ${asset.id}: dock link is not reciprocal`);
+    if(operationId&&!asset.interfaces.some(port=>port.occupiedBy===operationId)) errors.push(`orbit asset ${asset.id}: dock operation owns no interface`);
+  }
   for(const hull of hulls.values()){
     const hasOwner=owned.has(hull.id);
     if(hull.status==='hangar'&&!hasOwner) errors.push(`hull ${hull.id}: hangar status has no hangar owner`);
     if(hull.status==='docked'&&!hasOwner) errors.push(`hull ${hull.id}: docked status has no station visitor owner`);
-    if(!['hangar','docked'].includes(hull.status)&&hasOwner) errors.push(`hull ${hull.id}: ${hull.status} hull has an incompatible durable owner`);
+    if(hull.status==='in-orbit'&&!hasOwner) errors.push(`hull ${hull.id}: in-orbit status has no orbit asset owner`);
+    if(!['hangar','docked','in-orbit'].includes(hull.status)&&hasOwner) errors.push(`hull ${hull.id}: ${hull.status} hull has an incompatible durable owner`);
   }
   if(s.launchTxn){
     errors.push(...lifecycleRecordErrors('transaction',s.launchTxn).map(e=>`launchTxn: ${e}`));
@@ -2564,7 +2734,7 @@ function auditLifecycleState(snapshot){
     }
   }
   for(const hull of hulls.values()){
-    if(['preparing','in-flight','docked'].includes(hull.status)&&!owned.has(hull.id))
+    if(['preparing','in-flight','docked','in-orbit'].includes(hull.status)&&!owned.has(hull.id))
       errors.push(`hull ${hull.id}: ${hull.status} status has no transaction or flight owner`);
   }
   const receiptIds=new Set();
@@ -2598,7 +2768,7 @@ function recoveryDispositionText(hullId,crewed,crewCanEscape){
   if(crewed) return crewCanEscape?'the launch-escape system protects the crew, but this launch vehicle will be expended':'no launch-escape system is fitted; the crew cannot separate safely and the launch vehicle will be lost';
   return 'this launch vehicle has no fitted recovery system and will be expended';
 }
-function settleHullFlight(id,m,outcome,transactionId,disposition){ const h=hullById(id); if(!h) return; const survived=/^(success|partial|scrub)$/.test(outcome||''); const recoverable=survived&&h.recoveryFitted; h.status=disposition==='docked'&&survived?'docked':(recoverable?'recovered':(survived?'expended':'lost')); addHullEvent(h,h.status,m&&m.id,transactionId); }
+function settleHullFlight(id,m,outcome,transactionId,disposition){ const h=hullById(id); if(!h) return; const survived=/^(success|partial|scrub)$/.test(outcome||''); const recoverable=survived&&h.recoveryFitted; h.status=disposition==='docked'&&survived?'docked':(disposition==='orbit'&&survived?'in-orbit':(recoverable?'recovered':(survived?'expended':'lost'))); addHullEvent(h,h.status,m&&m.id,transactionId); }
 // snapshot the full bench design (incl. boosters/recovery/family/docking fitment) so a queued order builds
 // the design as it was when ordered, even if the bench changes afterward. Also carries
 // testLevel/rehearsal — irrelevant to the original build-ahead-of-time use, but load-bearing
@@ -3845,8 +4015,8 @@ function timeInterrupt(){ _timeInterrupted=true; try{ stopTimeAuto(); }catch(e){
 function runToNextEvent(){
   if(state.over) return;
   stopTimeAuto(); _timeInterrupted=false;
-  const items=outlinerItems();
-  const target=items.length?Math.max(1,Math.ceil(items[0].etaDays)):30;
+  const items=outlinerItems(), timed=items.filter(item=>Number.isFinite(item.etaDays));
+  const target=timed.length?Math.max(1,Math.ceil(timed[0].etaDays)):30;
   const cap=Math.min(target, 365*3);
   let d=0;
   while(d<cap && !_timeInterrupted && !state.over && !_pendingSetback && !_pendingLogiMishap && !_pendingInquiry && !_pendingRivalDisaster){
@@ -4489,6 +4659,18 @@ function dockingBuildCapability(m){
     port(actorId,actorLabel,'visitor_port','androgynous','standard','androgynous',dockingServices(...stationVisitServices(visit.kind)));
     if(def&&berth) port(`facility:${visit.facilityId}`,def.name,berth.interface.id,berth.interface.standard,berth.interface.size,berth.interface.role,berth.interface.services);
   }
+  if(m.orbitDeployment){
+    const deploy=m.orbitDeployment, actorId=`orbit-deploy:${m.id}`;
+    port(actorId,orbitAssetKindLabel(deploy.kind),'forward_port','androgynous','standard','androgynous',dockingServices(...orbitAssetServices(deploy.kind)));
+  }
+  if(m.vehicleDocking){
+    const visit=m.vehicleDocking, target=orbitAssetById(visit.targetAssetId), actorId=`orbit-visitor:${m.id}`;
+    port(actorId,orbitAssetKindLabel(visit.actorKind),'approach_port','androgynous','standard','androgynous',dockingServices(...orbitAssetServices(visit.actorKind)));
+    if(target){
+      const targetActor=orbitAssetActor(target), targetPort=targetActor&&targetActor.interfaces.find(p=>p.id===visit.targetPortId);
+      if(targetPort) port(targetActor.id,targetActor.label,targetPort.id,targetPort.standard,targetPort.size,targetPort.role,targetPort.services);
+    }
+  }
   return makeDockingCapability({missionId:m.id,guidance:state.research.auto_rendezvous?'automated':(state.research.orbital_assembly?'assisted':'manual'),actors});
 }
 function frozenDockingBuildCapability(m,snapshot){
@@ -4523,6 +4705,11 @@ function dockingMissionOperations(m,build){
     const visit=m.stationVisit, berthId=`${visit.berthId}:port`;
     ops.push(dockingOperationRecord(m,'station-visit',stationVisitPurpose(visit.kind),`station-visitor:${m.id}`,'visitor_port',`facility:${visit.facilityId}`,berthId,stationVisitServices(visit.kind),'station_visit',1));
   }
+  if(m.vehicleDocking){
+    const visit=m.vehicleDocking;
+    ops.push(dockingOperationRecord(m,'orbit-dock',`Vehicle rendezvous with ${orbitAssetById(visit.targetAssetId)?.name||'orbital target'}`,
+      `orbit-visitor:${m.id}`,'approach_port',`orbit-asset:${visit.targetAssetId}`,visit.targetPortId,visit.services,'orbit_asset_visit',1));
+  }
   return ops;
 }
 function dockingMissionCapability(m,frozenBuild){
@@ -4537,6 +4724,17 @@ function dockingMissionCapability(m,frozenBuild){
       const frozenTarget=findDockInterface(actors,operation.targetId,operation.targetPortId);
       if(!frozenTarget){ rejections.push({operationId:operation.id,reasons:['interface-not-found']}); continue; }
       frozenTarget.port.occupiedBy=berth.interface.occupiedBy;
+    }
+    if(operation.source==='orbit_asset_visit'){
+      const visit=m.vehicleDocking, target=visit&&orbitAssetById(visit.targetAssetId);
+      if(!target){ rejections.push({operationId:operation.id,reasons:['target-missing']}); continue; }
+      const reservation=target.reservation, livePort=target.interfaces.find(port=>port.id===visit.targetPortId);
+      if(target.status!=='reserved'||!reservation||reservation.operationId!==operation.id||reservation.missionId!==m.id||!livePort||livePort.occupiedBy!==operation.id){
+        rejections.push({operationId:operation.id,reasons:['target-reservation-stale']}); continue;
+      }
+      const frozenTarget=findDockInterface(actors,operation.targetId,operation.targetPortId);
+      if(!frozenTarget){ rejections.push({operationId:operation.id,reasons:['interface-not-found']}); continue; }
+      frozenTarget.port.occupiedBy=livePort.occupiedBy;
     }
     const result=reserveDockingOperation(operation,actors);
     if(!result.ok){ rejections.push({operationId:operation.id,reasons:result.reasons.slice()}); continue; }
@@ -4560,7 +4758,7 @@ function dockingOperationFromContext(ctx){
 }
 function dockingRejectionText(capability){
   const first=capability&&capability.rejections&&capability.rejections[0]; if(!first) return '';
-  const labels={'standard-mismatch':'wrong docking standard','size-mismatch':'wrong docking-port size','role-mismatch':'both ports have incompatible active/passive roles','actor-port-unavailable':'the spacecraft port is already reserved','target-port-unavailable':'the target port is already reserved','service-mismatch':'the ports do not share the required transfer service','interface-not-found':'the built vehicle lacks a required docking interface','target-missing':'the target station is no longer operating','berth-unavailable':'the reserved station berth is no longer available','invalid-operation':'the docking plan is invalid'};
+  const labels={'standard-mismatch':'wrong docking standard','size-mismatch':'wrong docking-port size','role-mismatch':'both ports have incompatible active/passive roles','actor-port-unavailable':'the spacecraft port is already reserved','target-port-unavailable':'the target port is already reserved','service-mismatch':'the ports do not share the required transfer service','interface-not-found':'the built vehicle lacks a required docking interface','target-missing':'the target spacecraft or station no longer exists','target-reservation-stale':'the exact target interface reservation is stale','berth-unavailable':'the reserved station berth is no longer available','invalid-operation':'the docking plan is invalid'};
   return `Docking unavailable — ${(first.reasons||[]).map(reason=>labels[reason]||reason).join(', ')}.`;
 }
 function stationVisitDockingSnapshot(m,ctx){
@@ -4625,6 +4823,71 @@ function failStationVisit(m){
   const visit=m.stationVisit;
   releaseStationVisitReservation(visit.facilityId,visit.operationId);
   return true;
+}
+function orbitDeploymentActor(m,ctx){
+  const actors=ctx&&ctx.docking&&ctx.docking.actors||[];
+  return actors.find(actor=>actor&&actor.id===`orbit-deploy:${m.id}`)||null;
+}
+function settleOrbitAssetDeployment(m,ctx){
+  if(!m||!m.orbitDeployment||!ctx||!ctx.hullId) return {ok:false,reason:'missing-deployment'};
+  const actor=orbitDeploymentActor(m,ctx); if(!actor) return {ok:false,reason:'missing-built-interface'};
+  const hull=hullById(ctx.hullId); if(!hull) return {ok:false,reason:'missing-hull'};
+  const deploy=m.orbitDeployment, id=nextOrbitAssetId();
+  const asset=appendOrbitAsset({id,hullId:hull.id,name:`${orbitAssetKindLabel(deploy.kind)} ${hull.serial}`,kind:deploy.kind,bodyId:deploy.bodyId,
+    orbit:deploy.orbit,vehicleSnapshot:orbitAssetVehicleSnapshot(ctx,'launch-deployment'),interfaces:actor.interfaces.map(port=>Object.assign({},port,{occupiedBy:null})),
+    status:'free',crewId:null,cargo:{},resources:{rendezvousDv:500,fuel:0,power:100},createdAbs:absDay()});
+  if(!asset) return {ok:false,reason:'asset-rejected'};
+  log('ok',`${asset.name} established in ${asset.orbit.band} ${asset.bodyId} orbit as a persistent, targetable craft.`);
+  return {ok:true,asset,disposition:'orbit'};
+}
+function vehicleDockingSnapshot(m,ctx){
+  const cap=ctx&&ctx.docking&&ctx.docking.missionId===m.id?makeDockingCapability(ctx.docking):dockingMissionCapability(m,dockingBuildCapability(m));
+  const operation=(cap.operations||[]).find(op=>op.source==='orbit_asset_visit');
+  if(!operation) return null;
+  const actor=findDockInterface(cap.actors,operation.actorId,operation.actorPortId), target=findDockInterface(cap.actors,operation.targetId,operation.targetPortId);
+  return actor&&target?{cap,operation,actor:actor.actor,target:target.actor}:null;
+}
+function settleVehicleDocking(m,ctx){
+  const visit=m&&m.vehicleDocking, snapshot=visit&&vehicleDockingSnapshot(m,ctx);
+  if(!visit||!snapshot||!ctx.hullId) return {ok:false,reason:'missing-docking-operation'};
+  const target=orbitAssetById(visit.targetAssetId), reservation=target&&target.reservation;
+  const targetPort=target&&target.interfaces.find(port=>port.id===visit.targetPortId);
+  if(!target||target.status!=='reserved'||!reservation||reservation.operationId!==snapshot.operation.id||!targetPort||targetPort.occupiedBy!==snapshot.operation.id){
+    releaseOrbitAssetReservation(visit.targetAssetId,visit.operationId);
+    return {ok:false,reason:'target-unavailable'};
+  }
+  const hull=hullById(ctx.hullId), operation=makeDockOperation(Object.assign({},snapshot.operation,{status:'hard_dock'}));
+  if(!hull) { releaseOrbitAssetReservation(visit.targetAssetId,visit.operationId); return {ok:false,reason:'missing-hull'}; }
+  const id=nextOrbitAssetId();
+  const actorAsset=appendOrbitAsset({id,hullId:hull.id,name:`${orbitAssetKindLabel(visit.actorKind)} ${hull.serial}`,kind:visit.actorKind,bodyId:target.bodyId,
+    orbit:target.orbit,vehicleSnapshot:orbitAssetVehicleSnapshot(ctx,'vehicle-docking'),interfaces:snapshot.actor.interfaces,
+    status:'docked',dockedTo:target.id,dockOperation:operation,crewId:null,cargo:{},resources:{rendezvousDv:250,fuel:0,power:100},createdAbs:absDay()});
+  if(!actorAsset){ releaseOrbitAssetReservation(visit.targetAssetId,visit.operationId); return {ok:false,reason:'asset-rejected'}; }
+  target.status='docked'; target.dockedTo=actorAsset.id; target.dockOperation=operation; target.reservation=null;
+  log('ok',`${actorAsset.name} hard-docked with ${target.name}; both exact hulls remain linked in ${target.orbit.band} orbit.`);
+  return {ok:true,hardDock:true,asset:actorAsset,target,operation,disposition:'orbit'};
+}
+function failVehicleDocking(m){
+  if(!m||!m.vehicleDocking) return false;
+  return releaseOrbitAssetReservation(m.vehicleDocking.targetAssetId,m.vehicleDocking.operationId);
+}
+function removeOrbitAsset(assetId,outcome,force){
+  const asset=orbitAssetById(assetId); if(!asset) return {ok:false,why:'Orbit asset not found.'};
+  if((asset.status==='docked'||asset.status==='soft-captured')&&!force) return {ok:false,why:'Undock the linked craft before removing it.'};
+  const linked=asset.dockedTo&&orbitAssetById(asset.dockedTo), opId=asset.dockOperation&&asset.dockOperation.id;
+  if(linked&&opId){
+    linked.interfaces.forEach(port=>{ if(port.occupiedBy===opId) port.occupiedBy=null; });
+    linked.status='free'; linked.dockedTo=null; linked.dockOperation=null; linked.reservation=null;
+  }
+  const cancelled=(state.contractOffers||[]).filter(offer=>offer&&offer.vehicleDocking&&offer.vehicleDocking.targetAssetId===asset.id);
+  for(const offer of cancelled) releaseOrbitAssetReservation(asset.id,offer.vehicleDocking.operationId);
+  if(cancelled.length) state.contractOffers=state.contractOffers.filter(offer=>!cancelled.includes(offer));
+  if(cancelled.some(offer=>offer.id===state.activeMission)) autoAdvanceMission();
+  state.orbitAssets=orbitAssetList().filter(item=>item!==asset);
+  const hull=hullById(asset.hullId), terminal=outcome==='scrapped'?'scrapped':'lost';
+  if(hull){ hull.status=terminal; addHullEvent(hull,terminal,null,opId||null); }
+  log(terminal==='lost'?'bad':'note',`${asset.name} removed from orbital control${cancelled.length?`; ${cancelled.length} pending rendezvous cancelled`:''}.`);
+  return {ok:true,asset,cancelled:cancelled.map(offer=>offer.id),released:linked&&linked.id||null};
 }
 // #6: the strategic routes to a deep-space destination, with unlocked/in-use status
 function marsRoutes(m){
@@ -6219,7 +6482,7 @@ function completeFlight(rec){
   const i=state.activeFlights.indexOf(rec);
   if(i>=0) state.activeFlights.splice(i,1);
 }
-function isCrewDeployed(id){ return !!id && (state.activeFlights||[]).some(f=>f&&f.crewId===id); } // 1.2b: astronaut is aboard an in-flight deferred mission
+function isCrewDeployed(id){ return !!id && ((state.activeFlights||[]).some(f=>f&&f.crewId===id)||orbitAssetCrewAssigned(id)); } // deferred transit or a persistent free/docked orbital craft
 // P1 1.2a: deferred-arrival plumbing. A long uncrewed cruise resolves on ARRIVAL, not at launch.
 const DEFER_CRUISE_DAYS=60; // ≥ this many cruise days ⇒ the flight goes "live" (interplanetary); shorter stays synchronous
 let _flightResolving=false;  // true while a launch OR an arrival resolution is mid-flight — blocks the pump from stacking modals
@@ -6312,6 +6575,15 @@ function catIcon(cat){ return {sat:'🛰', tour:'👨‍🚀', lic:'📜', mil:'
 function assetRegistryGroups(){
   const now=absDay(), groups=[];
   const flights=(state.activeFlights||[]).filter(f=>f&&f.deferred);
+
+  const orbital=orbitAssetList().slice().sort((a,b)=>(b.createdAbs||0)-(a.createdAbs||0));
+  if(orbital.length) groups.push({key:'orbit-assets',label:'Spacecraft in orbit',icon:'◈',items:orbital.map(asset=>{
+    const hull=hullById(asset.hullId), partner=asset.dockedTo&&orbitAssetById(asset.dockedTo), pending=asset.reservation&&(state.contractOffers||[]).find(offer=>offer&&offer.id===asset.reservation.missionId);
+    const status=asset.status==='free'?`free · ${asset.orbit.band} orbit`:asset.status==='reserved'?'target reserved':asset.status==='docked'?`docked to ${partner?partner.name:asset.dockedTo}`:'soft captured';
+    return {id:asset.id,icon:asset.kind==='capsule'?'◉':asset.kind==='pod'?'◇':'◈',name:asset.name,status,
+      detail:{'Kind':orbitAssetKindLabel(asset.kind),'Hull':hull?hull.serial:asset.hullId,'Location':`${asset.bodyId} · ${asset.orbit.band} orbit · ${asset.orbit.inclination.toFixed(1)}°`,'Docking state':asset.status,'Linked craft':partner?partner.name:'—','Rendezvous reserve':`${asset.resources.rendezvousDv} m/s`},
+      action:asset.status==='free'?{label:'Launch capsule rendezvous',fn:`hideModal();flyVehicleDocking('${asset.id}','capsule')`}:(pending?{label:'Cancel planned rendezvous',fn:`hideModal();cancelOrbitMission('${pending.id}')`}:null)};
+  })});
 
   const activeHulls=hullList().filter(h=>h&&['hangar','preparing','recovered','in-flight','docked'].includes(h.status));
   if(activeHulls.length) groups.push({key:'hulls',label:'Launch vehicles',icon:'🚀',items:activeHulls.sort((a,b)=>(b.builtAbs||0)-(a.builtAbs||0)).map(h=>({
@@ -6440,7 +6712,8 @@ function assetRegistryGroups(){
       let where='available', whereDetail='On the ground, available for assignment.';
       if(isCrewDeployed(s.id)){
         const fl=(state.activeFlights||[]).find(f=>f&&f.crewId===s.id);
-        where='in flight'; whereDetail=fl?`Aboard ${fl.name||'a mission'} in cruise.`:'Aboard an active mission.';
+        const asset=orbitAssetList().find(item=>item&&item.crewId===s.id);
+        where=asset?'in orbit':'in flight'; whereDetail=asset?`Aboard ${asset.name} in ${asset.orbit.band} orbit.`:(fl?`Aboard ${fl.name||'a mission'} in cruise.`:'Aboard an active mission.');
       } else {
         const facId=Object.keys(state.facilities||{}).find(fid=>stationCrewIds(facilityState(fid)).includes(s.id));
         if(facId){ const def=facilityById(facId); where='on station'; whereDetail=`Stationed at ${def?def.name:facId}.`; }
@@ -6684,7 +6957,7 @@ function finalizeLaunch(ctx, ops){
   let flightRevenue=0;
   const success=outcome.kind==='success';
   const rel=outcome.rel;
-  let pendingCelebration=null, failPhase=outcome.failPhase, stationSettlement=null;
+  let pendingCelebration=null, failPhase=outcome.failPhase, stationSettlement=null, orbitSettlement=null;
   // E1.5: the per-phase / per-subsystem causal chain for a failed flight, threaded into the failure
   // log lines below as the 4th (detail) arg so hovering the log entry reveals WHY it failed (not just
   // the flavor story). Guarded on .phases — every real resolveFlight AND the dev-forced outcomes carry it.
@@ -6695,6 +6968,8 @@ function finalizeLaunch(ctx, ops){
   const phaseDetail = outcome.phases ? phaseBreakdownLines(outcome.phases, outcome.subsystem).join('\n') : null;
   if(success){
     if(m.stationVisit) stationSettlement=settleStationVisit(m,ctx);
+    if(m.orbitDeployment) orbitSettlement=settleOrbitAssetDeployment(m,ctx);
+    if(m.vehicleDocking) orbitSettlement=settleVehicleDocking(m,ctx);
     personnelMissionEvent(true); // M6: morale boost on success
     state.successes++;
     if(m.crew>0){ state.crewFlown=(state.crewFlown||0)+m.crew; } // chronicle: souls carried
@@ -6863,10 +7138,13 @@ function finalizeLaunch(ctx, ops){
     }
   }
   if(m.stationVisit&&!success) failStationVisit(m);
+  if(m.vehicleDocking&&!success) failVehicleDocking(m);
   if(crewed && (outcome.kind==='success'||outcome.kind==='partial')) applyCrewDose(m, ctx.crewId); // surviving crew take a radiation dose
   if(crewed && ctx.crewId) logAstronautFlight(ctx.crewId, m.name, outcome.kind); // E1.4: per-astronaut flight log, survives the person leaving state.staff
-  settleHullFlight(ctx.hullId, m, outcome.kind,tx&&tx.id,stationSettlement&&stationSettlement.remained?'docked':null);
+  const persistentDisposition=stationSettlement&&stationSettlement.remained?'docked':(orbitSettlement&&orbitSettlement.ok?'orbit':null);
+  settleHullFlight(ctx.hullId, m, outcome.kind,tx&&tx.id,persistentDisposition);
   if(tx&&stationSettlement&&stationSettlement.remained) tx.resolution=Object.assign({},tx.resolution,{vehicleDisposition:'docked',recoveryMethod:null});
+  if(tx&&orbitSettlement&&orbitSettlement.ok) tx.resolution=Object.assign({},tx.resolution,{vehicleDisposition:'in-orbit',recoveryMethod:null,orbitAssetId:orbitSettlement.asset.id});
   if(tx) tx.applied.hull=true;
   // #3: attribute this flight to the active vehicle family and accrue/dent its heritage
   const fam=ctx.famId?familyById(ctx.famId):activeFamily(); // 1.2a/S1: resolve the launched family by id at finalize (save-safe — a deferred flight stores famId, not a detachable object ref, and finalize mutates the live family)

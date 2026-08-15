@@ -286,6 +286,10 @@ function outlinerItems(){
     const pct=total>0?Math.min(100,Math.max(0,Math.round((nowD-(fl.launchAbs||0))/total*100))):0;
     const crewTxt=fl.crew>0?` · crew ${fl.crew}`:'';
     push('🚀', `${fl.name||'Mission'} en route${crewTxt} · ${pct}%`, eta, ()=>{ try{ showFlightsModal(); }catch(e){ setTab('map'); } }, eta<=30?'var(--warn)':'var(--ignite)'); });
+  // D3 persistent orbit assets have no completion ETA. Keep them after timed
+  // work while still making each exact craft reachable from the global strip.
+  orbitAssetList().forEach(asset=>items.push({icon:asset.kind==='capsule'?'◉':'◇',label:`${asset.name} · ${asset.status.replace('-', ' ')}`,
+    etaDays:Infinity,etaText:'in orbit',go:()=>showFleetRegistry(),color:asset.status==='reserved'?'var(--warn)':'var(--readout)',kind:'orbit-asset',assetId:asset.id}));
   // expiring passive contracts (only when near)
   (state.passiveContracts||[]).forEach(cn=>{ const d=PASSIVE_CONTRACT_DEFS.find(x=>x.id===cn.id);
     if(cn.monthsLeft<=4) push('📄', (d?passiveContractDisplay(d).name:cn.id)+' expires', cn.monthsLeft*30, ()=>setTab('missions'), cn.monthsLeft<=2?'var(--warn)':null); });
@@ -320,11 +324,11 @@ function outlinerEtaText(d){
 function renderOutliner(){
   const el=$('outlinerCard'); if(!el) return;
   const items=outlinerItems();
-  if(!items.length){ setHTML(el, `<div class="cc-panel-h" style="margin:0 0 4px">◈ In flight</div><div class="dim" style="font-size:12px">Nothing on the clock — start research, queue a build, or take a contract.</div>`); return; }
+  if(!items.length){ setHTML(el, `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><div class="cc-panel-h" style="margin:0">◈ In flight</div><button class="btn ghost" style="font-size:11px;padding:1px 8px" onclick="showFleetRegistry()">▤ registry</button></div><div class="dim" style="font-size:12px">Nothing on the clock — start research, queue a build, or take a contract.</div>`); return; }
   const rows=items.slice(0,8).map((it,i)=>`<div onclick="(outlinerItems()[${i}]||{go:()=>{}}).go()" style="display:flex;align-items:center;gap:7px;padding:3px 4px;margin:0 -4px;border-radius:5px;cursor:pointer;font-size:12px" onmouseover="this.style.background='var(--panel2)'" onmouseout="this.style.background=''">
       <span style="width:16px;text-align:center;flex:0 0 auto">${it.icon}</span>
       <span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:${it.color||'var(--muted)'}">${it.label}</span>
-      <b style="font-family:var(--mono);font-size:11px;color:${it.color||'var(--readout)'};flex:0 0 auto">${outlinerEtaText(it.etaDays)}</b>
+      <b style="font-family:var(--mono);font-size:11px;color:${it.color||'var(--readout)'};flex:0 0 auto">${it.etaText||outlinerEtaText(it.etaDays)}</b>
     </div>`).join('');
   setHTML(el, `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
       <div class="cc-panel-h" style="margin:0">◈ In flight</div>
@@ -366,6 +370,11 @@ function renderFleetRegistryBody(){ const el=$('fleetRegistryBody'); if(el) el.i
 function showFleetRegistry(){
   showModal(`<h2>▤ Fleet Registry</h2>
     <div class="dim" style="font-size:12px;margin-bottom:8px">Every active asset. Tap any row to expand its full status.</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+      <button class="btn ghost" style="font-size:11px" onclick="hideModal();flyOrbitAssetDeployment('target')">Deploy docking target</button>
+      <button class="btn ghost" style="font-size:11px" onclick="hideModal();flyOrbitAssetDeployment('pod')">Deploy cargo pod</button>
+      <button class="btn ghost" style="font-size:11px" onclick="hideModal();flyOrbitAssetDeployment('capsule')" ${canFlyOrbitAssetDeployment('capsule').ok?'':`disabled title="${esc(canFlyOrbitAssetDeployment('capsule').why)}"`}>Deploy capsule</button>
+    </div>
     <div id="fleetRegistryBody">${fleetRegistryBodyHTML()}</div>
     <div style="text-align:right;margin-top:10px"><button class="btn ghost" onclick="hideModal()">Close</button></div>`, true);
 }
@@ -6752,7 +6761,7 @@ function map3dApplyOperatingMode(d){
     else if(mode==='operations') keep=(id==='earth'||id===dest||id===state.selectedBody||major);
     else if(mode==='strategic'){
       const model=(typeof mapAssetModel==='function')&&mapAssetModel();
-      const strategic=!!(model&&model[id]&&(model[id].facility||model[id].isru||model[id].beltClaim||model[id].depotT||model[id].stations?.length||model[id].firsts?.length));
+      const strategic=!!(model&&model[id]&&(model[id].facility||model[id].isru||model[id].beltClaim||model[id].depotT||model[id].stations?.length||model[id].orbitAssets?.length||model[id].firsts?.length));
       const rival=(typeof rivalsAtBody==='function')&&(rivalsAtBody(id)||[]).length>0;
       keep=major&&(strategic||rival||id==='earth'||id===state.selectedBody);
     }
@@ -7200,6 +7209,7 @@ function map3dBodyOverlaySpec(bodyId, model, rivalsHere){
   if(a && a.beltClaim){ icons.push({glyph:'🪙',color:'#e8c04c'}); titleParts.push(`Belt mining claim — ${fM(state.pgmRoyalty)}/mo royalties`); }
   if(a && a.depotT>0){ icons.push({glyph:'⛽',color:'#5fc4d0'}); titleParts.push(`LEO propellant depot — ${a.depotT} t banked`); }
   if(a && a.stations && a.stations.length){ icons.push({glyph:'📡',color:'#8fc4ff'}); titleParts.push(`Tracking network — ${a.stations.length} station${a.stations.length>1?'s':''}`); }
+  if(a && a.orbitAssets && a.orbitAssets.length){ icons.push({glyph:'◈',color:'#9ed8ff'}); titleParts.push(`${a.orbitAssets.length} persistent spacecraft in orbit: ${a.orbitAssets.map(asset=>asset.name).join(' · ')}`); }
   rivals.forEach(r=>{ icons.push({glyph:'●', color:r.color, small:true}); titleParts.push(`${(r.flag||'')} ${r.name} reached this body`.trim()); });
   if(!icons.length) return null;
   return {icons, tooltip:titleParts.join(' · ')};
@@ -8190,7 +8200,10 @@ function defineMapScene(){
         if(am.stations && am.stations.length){ const n=am.stations.length, gap=7, y=o.y+o.rad+9, x0=o.x-((n-1)*gap)/2;
           for(let k=0;k<n;k++){ const dx=x0+k*gap;
             g.lineStyle(0.9,0x8fc4ff,1); g.beginPath(); g.moveTo(dx,y); g.lineTo(dx,y+2.6); g.strokePath();
-            g.fillStyle(0x8fc4ff,0.95); g.beginPath(); g.arc(dx,y-0.5,3,Math.PI,0,false); g.closePath(); g.fillPath(); } } } }
+            g.fillStyle(0x8fc4ff,0.95); g.beginPath(); g.arc(dx,y-0.5,3,Math.PI,0,false); g.closePath(); g.fillPath(); } }
+        if(am.orbitAssets && am.orbitAssets.length){ const n=Math.min(4,am.orbitAssets.length), x=o.x-o.rad-8, y=o.y+o.rad+7;
+          for(let k=0;k<n;k++){ g.fillStyle(0x9ed8ff,1); g.fillRect(x+k*5-1.7,y-1.7,3.4,3.4); } }
+      } }
     drawSel(){ const g=this.selRing; g.clear(); const o=this.bodies.find(q=>q.b.id===state.selectedBody); if(o){ g.lineStyle(1.5,themeColorNum('ignite'),1); g.strokeCircle(o.x,o.y,o.rad+3); } }
   };
 }
@@ -9065,7 +9078,7 @@ function renderStationFacilityStats(built, cur, focusId, focusFn){ // E1.8: base
     const summary=stationVisitBerthSummary(def.id), crewPending=pendingStationVisit(def.id,'crew_rotation'), supplyPending=pendingStationVisit(def.id,'resupply');
     const crewCheck=canFlyStationVisit(def.id,'crew_rotation'), supplyCheck=canFlyStationVisit(def.id,'resupply');
     const pendingRow=(label,mission)=>mission?`<div class="flag warn" style="margin:4px 0">${label}: ${esc(mission.name)} · berth ${esc(mission.stationVisit.berthId.split(':').pop())} reserved <button class="btn ghost" style="font-size:10px;margin-left:5px" onclick="cancelStationVisitMission('${mission.id}')">Cancel</button></div>`:'';
-    const visitors=ops.dockedVisitors.map(v=>`<div class="flag ok" style="margin:4px 0">● ${esc(v.actor.label)} remains at ${esc(v.berthId.split(':').pop())} · hull ${esc(v.hullId||'untracked')}</div>`).join('');
+    const visitors=ops.dockedVisitors.map(v=>`<div class="flag ok" style="margin:4px 0">● ${esc(v.actor.label)} remains at ${esc(v.berthId.split(':').pop())} · hull ${esc(v.hullId||'untracked')} <button class="btn ghost" style="font-size:10px;margin-left:5px" onclick="releaseStationVisitorToOrbit('${def.id}','${v.operationId}')">Release to orbit</button></div>`).join('');
     return `<div style="margin-top:10px"><div class="mission-tag">Visiting berths — ${summary.open} open / ${summary.total}</div>
       <div class="dim" style="font-size:12px;margin-top:4px">Temporary capsule and pod visits do not consume the station's ${facilityPortCap(fs,def)} permanent module ports. Each Docking Node adds two visiting berths.</div>
       ${pendingRow('Crew rotation',crewPending)}${pendingRow('Resupply',supplyPending)}${visitors}
@@ -9506,6 +9519,11 @@ function assetMarkersSVG(bodyId,px,py,rad,model){
     const names=a.stations.map(id=>{ const sd=(typeof stationDef==='function')&&stationDef(id); return sd?sd.name:id; }).join(' · ');
     s+=`<g>${dishes}<title>Tracking network — ${n} station${n>1?'s':''}: ${names}</title></g>`;
   }
+  if(a.orbitAssets && a.orbitAssets.length){
+    const x=px-rad-8, y=py+rad+7, n=Math.min(4,a.orbitAssets.length), names=a.orbitAssets.map(asset=>asset.name).join(' · ');
+    let diamonds=''; for(let i=0;i<n;i++){ const dx=x+i*5; diamonds+=`<rect x="${(dx-1.8).toFixed(1)}" y="${(y-1.8).toFixed(1)}" width="3.6" height="3.6" transform="rotate(45 ${dx.toFixed(1)} ${y.toFixed(1)})" fill="#9ed8ff" stroke="#31546b" stroke-width="0.6"/>`; }
+    s+=`<g>${diamonds}<title>${a.orbitAssets.length} persistent spacecraft — ${esc(names)}</title></g>`;
+  }
   return s;
 }
 // Planned-route arc for the ACTIVE mission (cyan = closes, red = Δv short, amber = committed window)
@@ -9564,7 +9582,7 @@ function facilityHealth(def, fs){
 }
 function mapAssetModel(){
   const perBody={};
-  const get=id=>(perBody[id]=perBody[id]||{firsts:[],facility:null,isru:false,depotT:0,beltClaim:false});
+  const get=id=>(perBody[id]=perBody[id]||{firsts:[],facility:null,isru:false,depotT:0,beltClaim:false,orbitAssets:[]});
   BODIES.forEach(b=>{
     const f=bodyFirsts(b.id);
     if(f.length) get(b.id).firsts=f;
@@ -9581,6 +9599,7 @@ function mapAssetModel(){
   if((state.depot||0)>0.05) get('earth').depotT=round2(state.depot);
   if((state.pgmRoyalty||0)>0) get('belt').beltClaim=true;
   if(trackingStationCount()>0) get('earth').stations=(state.trackingStations||[]).slice(); // #89: DSN-analog ground network — Earth-anchored, drawn as a small dish cluster
+  orbitAssetList().forEach(asset=>get(asset.bodyId).orbitAssets.push({id:asset.id,name:asset.name,kind:asset.kind,status:asset.status,orbit:plainRecord(asset.orbit)}));
   return perBody;
 }
 // Planned route for the ACTIVE mission (committed or not): where it goes and whether it closes.
@@ -9610,6 +9629,7 @@ function empireStripHTML(){
   if((state.depot||0)>0.05) s+=' '+chip('⛽', `${round2(state.depot)} t depot`, 'Propellant banked in LEO');
   if(state.pgmRoyalty>0) s+=' '+chip('⛏', 'Belt claim', 'Platinum-group mining royalties flowing');
   if(trackingStationCount()>0) s+=' '+chip('📡', `${trackingStationCount()}/${TRACKING_STATIONS.length} tracking`, 'Deep Space Network ground stations online');
+  if(orbitAssetList().length) s+=' '+chip('◈', `${orbitAssetList().length} orbital craft`, 'Persistent free, reserved, or docked spacecraft');
   if(spaceIncome>0) s+=' '+chip('💰', `${fM(spaceIncome)}/mo`, 'Monthly income from space assets (facilities + royalties)');
   return `<div id="empireStrip" style="display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px">${s}</div>`;
 }

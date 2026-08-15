@@ -38,7 +38,7 @@ const LIFECYCLE_TERMS=Object.freeze({
 });
 const LIFECYCLE_SCHEMA_VERSION=2;
 const ORDER_STATUSES=Object.freeze(['queued','building','fulfilled','cancelled']);
-const HULL_STATUSES=Object.freeze(['hangar','preparing','in-flight','docked','recovered','expended','lost','scrapped']);
+const HULL_STATUSES=Object.freeze(['hangar','preparing','in-flight','in-orbit','docked','recovered','expended','lost','scrapped']);
 const LAUNCH_TRANSACTION_PHASES=Object.freeze(['preparing','decision','liftoff','cruise','settling','presentation','resolved','rolled-back']);
 const LAUNCH_SOURCES=Object.freeze(['hangar','window','arrival','recall']);
 function plainRecord(value){ return value==null?value:JSON.parse(JSON.stringify(value)); }
@@ -341,6 +341,73 @@ function stationDockVisitorErrors(record){
   if(!Array.isArray(record.services)||!record.services.length||record.services.some(key=>!DOCKING_SERVICE_KEYS.includes(key))) errors.push('services');
   if(dockTransferReceiptErrors(record.transfer).length) errors.push('transfer');
   if(typeof record.arrivedAbs!=='number'||!Number.isFinite(record.arrivedAbs)) errors.push('arrivedAbs');
+  if(!recordIsJsonSafe(record)) errors.push('json-safe');
+  return errors;
+}
+// Docking D3 persistent spacecraft. activeFlights owns transit and a station's
+// dockedVisitors owns an attached visitor; this record is the one durable owner
+// for a free or vehicle-docked craft between turns. A target reservation lives
+// on the target asset and its exact interface, never in renderer/UI state.
+const ORBIT_ASSET_SCHEMA_VERSION=1;
+const ORBIT_ASSET_KINDS=Object.freeze(['capsule','pod','tug','target']);
+const ORBIT_ASSET_STATUSES=Object.freeze(['free','reserved','soft-captured','docked']);
+function makeOrbitAssetReservation(x){
+  x=x||{};
+  return {schema:ORBIT_ASSET_SCHEMA_VERSION,operationId:String(x.operationId||''),missionId:String(x.missionId||''),
+    actorKind:ORBIT_ASSET_KINDS.includes(x.actorKind)?x.actorKind:'capsule',targetPortId:String(x.targetPortId||''),
+    services:Array.isArray(x.services)?x.services.filter((key,i,a)=>DOCKING_SERVICE_KEYS.includes(key)&&a.indexOf(key)===i):[],createdAbs:finiteRecordNumber(x.createdAbs)};
+}
+function orbitAssetReservationErrors(record){
+  const errors=[];
+  if(!record||typeof record!=='object'||Array.isArray(record)) return ['reservation must be an object'];
+  if(record.schema!==ORBIT_ASSET_SCHEMA_VERSION) errors.push('schema');
+  for(const key of ['operationId','missionId','targetPortId']) if(typeof record[key]!=='string'||!record[key]) errors.push(key);
+  if(!ORBIT_ASSET_KINDS.includes(record.actorKind)) errors.push('actorKind');
+  if(!Array.isArray(record.services)||!record.services.length||record.services.some(key=>!DOCKING_SERVICE_KEYS.includes(key))) errors.push('services');
+  if(typeof record.createdAbs!=='number'||!Number.isFinite(record.createdAbs)) errors.push('createdAbs');
+  if(!recordIsJsonSafe(record)) errors.push('json-safe');
+  return errors;
+}
+function makeOrbitAsset(x){
+  x=x||{}; const interfaces=Array.isArray(x.interfaces)?x.interfaces:[];
+  const orbit=x.orbit||{}, resources=x.resources||{};
+  return {schema:ORBIT_ASSET_SCHEMA_VERSION,id:String(x.id||''),hullId:String(x.hullId||''),
+    name:String(x.name||x.id||'Orbital craft'),kind:ORBIT_ASSET_KINDS.includes(x.kind)?x.kind:'target',bodyId:String(x.bodyId||'earth'),
+    orbit:{band:String(orbit.band||'low'),inclination:finiteRecordNumber(orbit.inclination,28.5)},
+    vehicleSnapshot:plainRecord(x.vehicleSnapshot||{}),interfaces:interfaces.map(makeDockInterface),
+    status:ORBIT_ASSET_STATUSES.includes(x.status)?x.status:'free',dockedTo:x.dockedTo==null?null:String(x.dockedTo),
+    dockOperation:x.dockOperation?makeDockOperation(x.dockOperation):null,
+    reservation:x.reservation?makeOrbitAssetReservation(x.reservation):null,crewId:x.crewId==null?null:String(x.crewId),
+    cargo:plainRecord(x.cargo||{}),resources:{rendezvousDv:finiteRecordNumber(resources.rendezvousDv),fuel:finiteRecordNumber(resources.fuel),power:finiteRecordNumber(resources.power)},
+    createdAbs:finiteRecordNumber(x.createdAbs)};
+}
+function orbitAssetErrors(record){
+  const errors=[];
+  if(!record||typeof record!=='object'||Array.isArray(record)) return ['asset must be an object'];
+  if(record.schema!==ORBIT_ASSET_SCHEMA_VERSION) errors.push('schema');
+  for(const key of ['id','hullId','name','bodyId']) if(typeof record[key]!=='string'||!record[key]) errors.push(key);
+  if(!ORBIT_ASSET_KINDS.includes(record.kind)||!ORBIT_ASSET_STATUSES.includes(record.status)) errors.push('kind/status');
+  if(!record.orbit||typeof record.orbit.band!=='string'||!record.orbit.band||typeof record.orbit.inclination!=='number'||!Number.isFinite(record.orbit.inclination)) errors.push('orbit');
+  if(!record.vehicleSnapshot||typeof record.vehicleSnapshot!=='object'||Array.isArray(record.vehicleSnapshot)) errors.push('vehicleSnapshot');
+  if(!Array.isArray(record.interfaces)||!record.interfaces.length) errors.push('interfaces');
+  else{
+    const ids=new Set();
+    for(const port of record.interfaces){ if(dockInterfaceErrors(port).length) errors.push(`interface:${port&&port.id||'unknown'}`); if(port&&ids.has(port.id)) errors.push('duplicate interface'); if(port) ids.add(port.id); }
+  }
+  if(record.crewId!=null&&(typeof record.crewId!=='string'||!record.crewId)) errors.push('crewId');
+  if(!record.cargo||typeof record.cargo!=='object'||Array.isArray(record.cargo)) errors.push('cargo');
+  if(!record.resources||['rendezvousDv','fuel','power'].some(key=>typeof record.resources[key]!=='number'||!Number.isFinite(record.resources[key]))) errors.push('resources');
+  if(typeof record.createdAbs!=='number'||!Number.isFinite(record.createdAbs)) errors.push('createdAbs');
+  if(record.status==='reserved'){
+    if(orbitAssetReservationErrors(record.reservation).length) errors.push('reservation');
+    else if(!record.interfaces.some(port=>port.id===record.reservation.targetPortId&&port.occupiedBy===record.reservation.operationId)) errors.push('reservation interface');
+  }else if(record.reservation!=null) errors.push('unexpected reservation');
+  if(record.status==='docked'||record.status==='soft-captured'){
+    if(typeof record.dockedTo!=='string'||!record.dockedTo||!record.dockOperation||dockOperationErrors(record.dockOperation).length) errors.push('dock link');
+    else if(record.status==='docked'&&record.dockOperation.status!=='hard_dock') errors.push('dock status');
+    else if(record.status==='soft-captured'&&record.dockOperation.status!=='soft_capture') errors.push('dock status');
+  }else if(record.dockedTo!=null||record.dockOperation!=null) errors.push('unexpected dock link');
+  if(record.status==='free'&&record.interfaces.some(port=>port.occupiedBy!=null)) errors.push('free interface occupied');
   if(!recordIsJsonSafe(record)) errors.push('json-safe');
   return errors;
 }
