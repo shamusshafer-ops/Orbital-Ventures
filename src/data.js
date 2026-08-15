@@ -38,7 +38,7 @@ const LIFECYCLE_TERMS=Object.freeze({
 });
 const LIFECYCLE_SCHEMA_VERSION=2;
 const ORDER_STATUSES=Object.freeze(['queued','building','fulfilled','cancelled']);
-const HULL_STATUSES=Object.freeze(['hangar','preparing','in-flight','recovered','expended','lost','scrapped']);
+const HULL_STATUSES=Object.freeze(['hangar','preparing','in-flight','docked','recovered','expended','lost','scrapped']);
 const LAUNCH_TRANSACTION_PHASES=Object.freeze(['preparing','decision','liftoff','cruise','settling','presentation','resolved','rolled-back']);
 const LAUNCH_SOURCES=Object.freeze(['hangar','window','arrival','recall']);
 function plainRecord(value){ return value==null?value:JSON.parse(JSON.stringify(value)); }
@@ -101,6 +101,8 @@ const DOCKING_ROLES=Object.freeze(['active','passive','androgynous']);
 const DOCKING_SERVICE_KEYS=Object.freeze(['crew','cargo','fuel','power','data','permanent']);
 const DOCKING_OPERATION_STATUSES=Object.freeze(['planned','reserved','approach','soft_capture','hard_dock','released','failed']);
 const DOCKING_BERTH_KINDS=Object.freeze(['visiting','permanent']);
+const DOCKING_TRANSFER_KINDS=Object.freeze(['crew_rotation','resupply','module_delivery','none']);
+const DOCKING_VISIT_DISPOSITIONS=Object.freeze(['return','remain']);
 function makeDockServices(x){
   x=x||{}; const out={}; for(const key of DOCKING_SERVICE_KEYS) out[key]=x[key]===true; return out;
 }
@@ -286,6 +288,61 @@ function dockingPresentationSpec(operation,actors,body){
   return {schema:DOCKING_SCHEMA_VERSION,operationId:op.id,purpose:op.purpose,phase:'docking',body:String(body||'earth'),standard:actor.port.standard,size:actor.port.size,
     services:op.services.slice(),actor:{id:actor.actor.id,label:actor.actor.label,portId:actor.port.id,role:actor.port.role},
     target:{id:target.actor.id,label:target.actor.label,portId:target.port.id,role:target.port.role}};
+}
+// D2 station-visiting records. A reservation owns one exact facility berth
+// before launch; a visitor owns the same berth only after a successful hard
+// dock chooses to remain. Transfer receipts are frozen simulation facts, not
+// animation callbacks or renderer state.
+function makeStationDockReservation(x){
+  x=x||{};
+  return {schema:DOCKING_SCHEMA_VERSION,id:String(x.id||''),operationId:String(x.operationId||''),missionId:String(x.missionId||''),
+    facilityId:String(x.facilityId||''),berthId:String(x.berthId||''),purpose:String(x.purpose||''),createdAbs:finiteRecordNumber(x.createdAbs)};
+}
+function stationDockReservationErrors(record){
+  const errors=[];
+  if(!record||typeof record!=='object'||Array.isArray(record)) return ['reservation must be an object'];
+  if(record.schema!==DOCKING_SCHEMA_VERSION) errors.push('schema');
+  for(const key of ['id','operationId','missionId','facilityId','berthId','purpose']) if(typeof record[key]!=='string'||!record[key]) errors.push(key);
+  if(typeof record.createdAbs!=='number'||!Number.isFinite(record.createdAbs)) errors.push('createdAbs');
+  if(!recordIsJsonSafe(record)) errors.push('json-safe');
+  return errors;
+}
+function makeDockTransferReceipt(x){
+  x=x||{};
+  const services=Array.isArray(x.services)?x.services.filter((key,i,a)=>DOCKING_SERVICE_KEYS.includes(key)&&a.indexOf(key)===i):[];
+  return {schema:DOCKING_SCHEMA_VERSION,kind:DOCKING_TRANSFER_KINDS.includes(x.kind)?x.kind:'none',status:x.status==='applied'?'applied':'none',
+    services,crewInId:x.crewInId||null,crewOutId:x.crewOutId||null,cargo:plainRecord(x.cargo||{}),appliedAbs:x.appliedAbs==null?null:finiteRecordNumber(x.appliedAbs)};
+}
+function dockTransferReceiptErrors(record){
+  const errors=[];
+  if(!record||typeof record!=='object'||Array.isArray(record)) return ['transfer receipt must be an object'];
+  if(record.schema!==DOCKING_SCHEMA_VERSION) errors.push('schema');
+  if(!DOCKING_TRANSFER_KINDS.includes(record.kind)||!['none','applied'].includes(record.status)) errors.push('kind/status');
+  if(!Array.isArray(record.services)||record.services.some(key=>!DOCKING_SERVICE_KEYS.includes(key))) errors.push('services');
+  if(record.appliedAbs!=null&&(typeof record.appliedAbs!=='number'||!Number.isFinite(record.appliedAbs))) errors.push('appliedAbs');
+  if(!recordIsJsonSafe(record)) errors.push('json-safe');
+  return errors;
+}
+function makeStationDockVisitor(x){
+  x=x||{};
+  return {schema:DOCKING_SCHEMA_VERSION,id:String(x.id||''),operationId:String(x.operationId||''),missionId:String(x.missionId||''),
+    facilityId:String(x.facilityId||''),berthId:String(x.berthId||''),hullId:x.hullId==null?null:String(x.hullId),kind:['capsule','pod'].includes(x.kind)?x.kind:'pod',
+    actor:makeDockActor(x.actor||{}),target:makeDockActor(x.target||{}),services:Array.isArray(x.services)?x.services.filter((key,i,a)=>DOCKING_SERVICE_KEYS.includes(key)&&a.indexOf(key)===i):[],
+    status:'docked',arrivedAbs:finiteRecordNumber(x.arrivedAbs),transfer:makeDockTransferReceipt(x.transfer||{}),crewId:x.crewId||null};
+}
+function stationDockVisitorErrors(record){
+  const errors=[];
+  if(!record||typeof record!=='object'||Array.isArray(record)) return ['visitor must be an object'];
+  if(record.schema!==DOCKING_SCHEMA_VERSION) errors.push('schema');
+  for(const key of ['id','operationId','missionId','facilityId','berthId']) if(typeof record[key]!=='string'||!record[key]) errors.push(key);
+  if(record.hullId!=null&&(typeof record.hullId!=='string'||!record.hullId)) errors.push('hullId');
+  if(!['capsule','pod'].includes(record.kind)||record.status!=='docked') errors.push('kind/status');
+  if(dockActorErrors(record.actor).length||dockActorErrors(record.target).length) errors.push('actors');
+  if(!Array.isArray(record.services)||!record.services.length||record.services.some(key=>!DOCKING_SERVICE_KEYS.includes(key))) errors.push('services');
+  if(dockTransferReceiptErrors(record.transfer).length) errors.push('transfer');
+  if(typeof record.arrivedAbs!=='number'||!Number.isFinite(record.arrivedAbs)) errors.push('arrivedAbs');
+  if(!recordIsJsonSafe(record)) errors.push('json-safe');
+  return errors;
 }
 // Gate 3 continuity records are deliberately separate from Gate 2 launch
 // transactions. They retain stable identities and receipts, but never contain
@@ -1509,9 +1566,9 @@ const STATION_MODULES = [
   { id:'node_hub', name:'Docking Node', short:'NODE', len:90, dia:76, color:'#8f9aa6',
     cost:5, buildMo:3, stats:{ mass:9.0, crew:0, powerGenKw:0, powerDrawKw:0.8 },
     prod:{ income:0.1, fuel:0, rep:0.2, sci:0 }, ports:3, role:'Structure',
-    blurb:'A six-port junction sphere. Every node adds 3 berths of growth room to the station.',
+    blurb:'A six-port junction sphere. Every node adds 3 permanent growth ports and 2 visiting berths to the station.',
     hist:'The ISS nodes Unity, Harmony and Tranquility are the junctions everything else bolts onto — without them the station couldn\'t branch.',
-    synHint:'Cheap and light. The only way past the 4-port base limit — dock one before the station fills up, or growth stalls.' },
+    synHint:'Cheap and light. The only way past the 4-port base limit, and the way to host more than one visiting capsule or pod at a time.' },
   { id:'depot_mod', name:'Propellant Depot Module', short:'FUEL', len:170, dia:96, color:'#67c587',
     cost:12, buildMo:5, stats:{ mass:20.0, crew:0, crewReq:1, powerGenKw:0, powerDrawKw:2.2 }, reqResearch:'orbital_depot',
     prod:{ income:0.35, fuel:0.8, rep:0.3, sci:0 }, role:'Logistics',

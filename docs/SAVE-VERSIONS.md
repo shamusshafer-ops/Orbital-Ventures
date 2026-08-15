@@ -31,6 +31,15 @@ When bumping `SAVE_VERSION`, add an entry at the top of the list below.
 
 ---
 
+## v64 — Docking D2 station visits
+
+Adds persisted capsule/pod visits to orbital stations:
+
+- `state.stationVisitSeq` provides stable identities for player-created crew-rotation and resupply missions.
+- Orbital facility records may carry `visitingBerths`, `dockReservations`, and `dockedVisitors`. These are separate from permanent `moduleList` capacity: the core Habitat supplies one visiting berth and each Docking Node supplies two.
+- Reservations bind one mission operation to one exact berth. A successful hard dock records an immutable transfer receipt and either releases the berth for same-mission return or leaves a visitor as its durable owner.
+- Hull lifecycle status `docked` is owned by exactly one persisted station visitor; lifecycle auditing rejects duplicate, missing, or mismatched berth/hull ownership.
+
 ## v63 — Gate 3 economic continuity
 
 Adds persisted insolvency and Program Reorganization continuity:

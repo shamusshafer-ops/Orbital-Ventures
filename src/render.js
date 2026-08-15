@@ -9054,7 +9054,6 @@ function renderStationFacilityStats(built, cur, focusId, focusFn){ // E1.8: base
     ? `<div class="dim" style="font-size:12px;margin-top:8px">Station crew: ${crewNames.length?crewNames.join(', '):'none assigned'} · rotation ${stationRotationDue(fs)?'<span style="color:var(--warn)">due now</span>':`due in ${Math.max(0,ops.rotationDueAbs-absMonth())} mo`}</div>
        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:5px">
          ${candidates.length&&crewNames.length<crewSlots?`<select class="btn ghost" style="font-size:11px" onchange="assignStationCrew('${def.id}',this.value);this.value=''" aria-label="Assign astronaut"><option value="">Assign astronaut…</option>${candidates.map(s=>`<option value="${s.id}">${esc(personById(s.id).name)}</option>`).join('')}</select>`:''}
-         ${crewNames.length&&stationRotationDue(fs)?`<button class="btn ghost" style="font-size:11px" onclick="rotateStationCrew('${def.id}')">↻ Rotate crew</button>`:''}
          ${crewNames.map(id=>`<button class="btn ghost" style="font-size:11px" onclick="removeStationCrew('${def.id}','${id}')">Relieve ${esc(personById(id)?.name||id)}</button>`).join('')}
        </div>`
     : `<div class="dim" style="font-size:12px;margin-top:8px">Crew management is off — modules provide legacy crew capacity. Assign an astronaut to begin station rotations.</div>
@@ -9062,6 +9061,19 @@ function renderStationFacilityStats(built, cur, focusId, focusFn){ // E1.8: base
   const contract=stationContractActive(fs), contractCost=resupplyContractCost(def.id);
   const contractHTML=`<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:9px;font-size:12px"><span class="dim">Resupply contract</span><span>${contract?`active · ${Math.max(0,ops.resupplyContract.untilAbs-absMonth())} mo left`:'none'}</span></div>
     <div style="display:flex;gap:6px;margin-top:5px">${contract?`<button class="btn ghost" style="font-size:11px" onclick="cancelResupplyContract('${def.id}')">Cancel contract</button>`:`<button class="btn ghost" style="font-size:11px" onclick="signResupplyContract('${def.id}')" ${state.money>=contractCost?'':'disabled'}>Sign · ${fM(contractCost)} setup</button>`}<button class="btn ghost" style="font-size:11px" onclick="repairStation('${def.id}')" ${maintCost>0&&state.money>=maintCost?'':'disabled'}>Repair · ${fM(maintCost)}</button></div>`;
+  const dockHTML=def.body==='earth'?(()=>{
+    const summary=stationVisitBerthSummary(def.id), crewPending=pendingStationVisit(def.id,'crew_rotation'), supplyPending=pendingStationVisit(def.id,'resupply');
+    const crewCheck=canFlyStationVisit(def.id,'crew_rotation'), supplyCheck=canFlyStationVisit(def.id,'resupply');
+    const pendingRow=(label,mission)=>mission?`<div class="flag warn" style="margin:4px 0">${label}: ${esc(mission.name)} · berth ${esc(mission.stationVisit.berthId.split(':').pop())} reserved <button class="btn ghost" style="font-size:10px;margin-left:5px" onclick="cancelStationVisitMission('${mission.id}')">Cancel</button></div>`:'';
+    const visitors=ops.dockedVisitors.map(v=>`<div class="flag ok" style="margin:4px 0">● ${esc(v.actor.label)} remains at ${esc(v.berthId.split(':').pop())} · hull ${esc(v.hullId||'untracked')}</div>`).join('');
+    return `<div style="margin-top:10px"><div class="mission-tag">Visiting berths — ${summary.open} open / ${summary.total}</div>
+      <div class="dim" style="font-size:12px;margin-top:4px">Temporary capsule and pod visits do not consume the station's ${facilityPortCap(fs,def)} permanent module ports. Each Docking Node adds two visiting berths.</div>
+      ${pendingRow('Crew rotation',crewPending)}${pendingRow('Resupply',supplyPending)}${visitors}
+      <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:6px">
+        ${!crewPending?`<button class="btn ghost" style="font-size:11px" onclick="flyStationVisit('${def.id}','crew_rotation',false)" ${crewCheck.ok?'':`disabled title="${esc(crewCheck.why)}"`}>Fly crew rotation</button><button class="btn ghost" style="font-size:11px" onclick="flyStationVisit('${def.id}','crew_rotation',true)" ${crewCheck.ok?'':`disabled title="${esc(crewCheck.why)}"`}>Crew visit · remain</button>`:''}
+        ${!supplyPending?`<button class="btn ghost" style="font-size:11px" onclick="flyStationVisit('${def.id}','resupply',false)" ${supplyCheck.ok?'':`disabled title="${esc(supplyCheck.why)}"`}>Fly resupply</button><button class="btn ghost" style="font-size:11px" onclick="flyStationVisit('${def.id}','resupply',true)" ${supplyCheck.ok?'':`disabled title="${esc(supplyCheck.why)}"`}>Resupply · remain</button>`:''}
+      </div></div>`;
+  })():'';
   return `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${tabs}</div>
     <div class="mission-tag">${def.name} — ${list.length} module${list.length>1?'s':''} / ${facilityPortCap(fs,def)} ports</div>
     <div class="metrics">
@@ -9076,7 +9088,7 @@ function renderStationFacilityStats(built, cur, focusId, focusFn){ // E1.8: base
     ${pw.net<0?`<div class="flag warn">△ Power-starved — production running at 60%. Dock a Solar Power Truss.</div>`:''}
     ${crew.req>crew.cap?`<div class="flag warn">△ Under-crewed (${crew.cap}/${crew.req}) — output at ${Math.round(crew.factor*100)}%. Dock a Habitat (each adds 3 crew).</div>`:''}
     ${list.length>=facilityPortCap(fs,def)?`<div class="flag warn">△ All ${facilityPortCap(fs,def)} ports occupied — a Docking Node adds 3 more.</div>`:''}
-    ${synHTML}${crewHTML}${contractHTML}`;
+    ${synHTML}${crewHTML}${contractHTML}${dockHTML}`;
 }
 // Radial station renderer: the save model remains an ordered module list, but the bench now
 // lays modules out across a docking grid instead of flattening them into a left/right chain.
@@ -9393,7 +9405,7 @@ function stationModuleCard(md, cur, addable){
       ${specRow('Power', (netPower>=0?'+':'')+netPower.toFixed(1)+' kW', netPower>=0?'var(--ok)':'var(--warn)')}
       ${st.crew?specRow('Crew berths','+'+st.crew,'var(--ok)'):''}
       ${st.crewReq?specRow('Crew required',st.crewReq,'var(--warn)'):''}
-      ${md.ports?specRow('Docking ports','+'+md.ports+' berths','var(--ink)'):''}
+      ${md.ports?specRow('Docking ports',md.id==='node_hub'?`+${md.ports} permanent · +2 visiting`:'+'+md.ports+' berths','var(--ink)'):''}
       ${md.resupplyCut?specRow('Resupply','−'+Math.round(md.resupplyCut*100)+'% (self-feeding)','var(--ok)'):''}
       ${specRow('Build', fM(cost)+' · '+md.buildMo+' mo')}
     </div>
@@ -10072,6 +10084,7 @@ function renderInfrastructure(){
       const ec=expandCost(def.id), em=expandMonths(def), canEx=state.money>=ec;
       // CE4(b): standing resupply obligation
       const sup=facilitySupplyMonths(def.id), starved=facilityStarved(def.id), rsC=resupplyCost(def.id), canRs=canResupply(def.id).ok;
+      const orbitalVisit=def.body==='earth', visitRs=orbitalVisit?canFlyStationVisit(def.id,'resupply'):null, rsReady=orbitalVisit?visitRs.ok:canRs;
       const supFrac=Math.max(0,Math.min(1, facilitySupply(def.id)/FAC_SUPPLY_MONTHS));
       const supCol=starved?'var(--bad)':(sup<=2?'var(--warn,#d9a441)':'var(--ok)');
       const supLabel=starved?'OUT OF SUPPLY — crew on reserves':(sup<=2?`${sup} mo of provisions — resupply soon`:`${sup} mo of provisions`);
@@ -10093,7 +10106,7 @@ function renderInfrastructure(){
           <div class="metric"><div class="k">Home-field bonus</div><div class="v">−${Math.round(bonus.buildDiscount*100)}% build · +${(bonus.relBump*100).toFixed(1)}% rel</div></div>
         </div>
         <div style="display:flex;gap:8px;margin-top:10px">
-          <button class="btn" style="flex:1" onclick="resupplyFacility('${def.id}')" ${canRs?'':'disabled'}>${resupplyInTransit(def.id)?'📦 Resupply en route':(facilitySupply(def.id)>=FAC_SUPPLY_MONTHS?'Fully provisioned':`Resupply · ${fM(rsC)}`)}</button>
+          <button class="btn" style="flex:1" onclick="${orbitalVisit?`flyStationVisit('${def.id}','resupply',false)`:`resupplyFacility('${def.id}')`}" ${rsReady?'':'disabled'}>${orbitalVisit&&pendingStationVisit(def.id,'resupply')?'📦 Resupply visit planned':(resupplyInTransit(def.id)?'📦 Resupply en route':(facilitySupply(def.id)>=FAC_SUPPLY_MONTHS?'Fully provisioned':`${orbitalVisit?'Fly resupply':'Resupply'} · ${fM(rsC)}`))}</button>
           <button class="btn" style="flex:1" onclick="expandFacility('${def.id}')" ${canEx?'':'disabled'}>Expand → ${fs.modules+1} · ${fM(ec)} · ${em} mo</button>
         </div>
         ${canEx?'':affordWidgetHTML(ec)}

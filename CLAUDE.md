@@ -6,19 +6,18 @@ reorder existing entries there, only add new ones at the end, same as `ROADMAP.m
 
 ---
 
-## STATUS (as of 2026-08-12, working tree based on HEAD — Gate 6 F3 commit)
+## STATUS (as of 2026-08-15, working tree based on HEAD plus completed Docking D2)
 
-**Repo health:** 148 test suites, clean build parity, `git diff --check` clean.
-No known drift — `test-flight3d-trajectory.js` was the long-standing exception and Gate 5 closed it
-(31/31 green). If you see ANY suite failing, treat it as new until proven otherwise; do not assume
-it is pre-existing.
+**Repo health:** 150/160 test suites pass, one intentional skip, and nine known baseline failures
+(the same names reproduced from untouched `HEAD` before D2). Build parity, generated-script syntax,
+and `git diff --check` are clean. Treat any different failing suite as new.
 **REMINDER (hit 5x in one session, 2026-07-25): `node build.js` is a bare string concat with NO
 syntax check** — a green build does not mean the output parses. ALWAYS run `node --check
 build/game.js` immediately after any edit near a `/* */` comment block, and prefer editing well past
 a comment's opening `/*` line (or below its closing `*/`) so a narrow str_replace match can't sever
 the marker from its body.
 
-**In progress:** (none claimed right now)
+**In progress:** (none claimed right now).
 > When you start a task, replace this line with: `<task> — <Claude|Codex> — started <date>`.
 > When done, clear it back to "(none claimed right now)" and add your entry to the history below.
 
@@ -178,3 +177,16 @@ docking reliability/debrief phase, gates `dock_latch` on a real operation, and e
 read-only actor/target presentation specs. Existing module-delivery settlement and visuals remain
 unchanged for D2/D5. Focused docking tests are 83/83 and the anomaly contract is 25/25; see
 `ROADMAP-HISTORY.md` for the full validation note and the nine unrelated current-HEAD suite failures.
+
+### 2026-08-15 — Docking D2 station visits and transfer settlement (Codex)
+
+Shipped capsule/pod visits to LEO stations. Core Habitats expose one visiting berth and Docking Nodes
+add two, wholly separate from permanent module capacity. Crew rotations, flown resupply and LEO
+module delivery now reserve one exact station interface in the mission/build snapshot; hard dock
+applies an allowed crew/cargo/permanent-module transfer exactly once, then either releases for the
+same-mission return or persists a station-local visitor with exact berth and hull ownership. Surface
+base module arrivals are labeled cargo handoffs, not orbital docks. Save v64 records visiting berths,
+reservations, transfer receipts, docked visitors and `docked` hull state. The two new suites pass
+38/38; all focused docking/station suites pass 228/228 and selected Gate 2/3 ownership checks pass
+55/55; the full sweep is 150/160 plus one intentional skip, with the
+same nine baseline failures and no new red suite.

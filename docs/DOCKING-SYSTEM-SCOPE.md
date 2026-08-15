@@ -1,6 +1,6 @@
 # Generalized Docking Operations — Scope
 
-Status: D0 and D1 shipped 2026-08-15; D2–D5 remain planned.
+Status: D0, D1 and D2 shipped 2026-08-15; D3–D5 remain planned.
 
 ## Goal
 
@@ -158,9 +158,11 @@ An independently launched target requires a persistent spacecraft seam. Add cano
 }
 ```
 
-`activeFlights[]` owns spacecraft in transit. `orbitAssets[]` owns surviving orbital spacecraft.
-A facility or another orbit asset may reference an established dock link, but never owns a duplicate
-copy of the hull. Extend `auditLifecycleState()` so each physical hull has exactly one durable owner.
+`activeFlights[]` owns spacecraft in transit. D2's station-local `dockedVisitors[]` owns a spacecraft
+only while it remains attached to that facility; D3's `orbitAssets[]` will own free-flying surviving
+spacecraft. A facility or another orbit asset may reference an established dock link, but never owns a
+duplicate copy of the hull. `auditLifecycleState()` requires each physical hull to have exactly one
+durable owner.
 
 Existing missions that launch, complete and recover/expire in one resolution do not create orbit
 assets. Mission-internal capsule/lander rendezvous can use an ephemeral dock operation until a craft
@@ -248,8 +250,9 @@ not merely because soft capture was achieved.
 ### Undock and return
 
 A same-mission station visit can transfer and return without persisting between turns. A player who
-chooses to remain docked leaves an orbit asset occupying the berth. Undock releases both ports and
-returns the asset to `free`; a capsule can then enter the existing reentry/recovery flow.
+chooses to remain docked leaves a station-local visitor occupying the berth. D3 will promote a craft
+to a free orbit asset when it undocks; D4 will expose that persistent undock/return operation. A
+same-mission capsule already uses the existing reentry/recovery flow.
 
 ## Supported interaction matrix
 
@@ -297,6 +300,14 @@ Suggested test: `test-docking-mission-phase.js` plus existing lunar architecture
 
 ### D2 — Capsule/pod to station
 
+**Shipped 2026-08-15.** Orbital facilities now expose one visiting berth from their core Habitat and
+two more per Docking Node, independent of permanent module ports. Player-created crew-rotation and
+resupply missions plus flown LEO module deliveries reserve an exact berth and freeze an explicit
+capsule/pod, station target, interface and transfer. Successful hard dock applies the typed transfer
+once, then either releases for same-mission return or persists a station-local visitor with exact
+berth/hull ownership. Surface-base cargo arrivals are explicitly presented as handoffs rather than
+false orbital docks. Save v64 records the new ownership state.
+
 - Add station visiting berths and occupancy separate from permanent module capacity.
 - Target a station from crew-rotation, resupply and module-delivery missions.
 - Support hard-dock transfer, same-mission undock/return and optional remain-docked state.
@@ -309,7 +320,7 @@ Suggested tests: `test-station-docking.js`, `test-docking-transfer.js`, and the 
 ### D3 — Persistent orbit assets and separately launched craft
 
 - Add `state.orbitAssets[]`, hull ownership states and save-version documentation.
-- Allow a launch to leave a capsule, pod or target in orbit.
+- Allow a launch or station undock to leave a free capsule, pod or target in orbit.
 - Target that asset from a later launch and establish capsule-to-capsule/pod links.
 - Extend Fleet Registry, Outliner and Solar Map markers from the same asset collector.
 - Make target removal, abort, loss and stale reservation behavior deterministic and recoverable.

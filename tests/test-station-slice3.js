@@ -48,12 +48,15 @@ foundFacility('leo_station'); resetOverlay();
 {
   const m={ id:'md_leo', proc:true, deliverModule:{facId:'leo_station',modId:'lab_mod'}, moduleCost:11,
     name:'Deliver Research Laboratory — LEO Station', crew:0, days:0, reqDv:9400, payload:16.5, minRep:0, payout:0, rep:0 };
+  attachStationVisitPlan(m,'leo_station','module_delivery',{kind:'module_delivery',modId:'lab_mod',moduleCost:11},false);
   const listBefore=facilityModuleList(facilityState('leo_station')).length;
   finalizeLaunch(deliverCtx(m), null);
   check('LEO: overlay opened (animState exists)', animState!==null);
   check('LEO: spec.dock attached', !!(animState&&animState.spec.dock));
   check('LEO: dock carries the real facility name/body', animState.spec.dock.facName==='LEO Station' && animState.spec.dock.body==='earth');
   check('LEO: dock carries the real module name', animState.spec.dock.modName==='Research Laboratory');
+  check('LEO: generalized spec freezes actor, target, and interface', animState.spec.dock.actor.label==='Cargo pod' && animState.spec.dock.target.label==='LEO Station' && animState.spec.dock.standard==='androgynous');
+  check('LEO: generalized spec carries settled transfer/disposition', animState.spec.dock.hardDock===true && animState.spec.dock.transfer.status==='applied' && animState.spec.dock.disposition==='return');
   check('LEO: this flight is orbital (isOrbital, not cislunar)', animState.spec.isOrbital===true && !animState.spec.isCislunar);
   check('LEO: totalDur reserves the DOCK_CARD_MS tail (not the 1200ms post-flight settle)',
     animState.totalDur===animState.padDur+animState.ascentDur+animState.cruiseDur+animState.reentryDur+DOCK_CARD_MS);
@@ -77,6 +80,7 @@ foundFacility('lunar_base'); resetOverlay();
   check('Moon: overlay opened', animState!==null);
   check('Moon: this flight is cislunar (profile mission)', animState.spec.isCislunar===true);
   check('Moon: spec.dock tinted for the Moon', animState.spec.dock && animState.spec.dock.body==='moon');
+  check('Moon: surface arrival is explicitly a handoff, not a hard dock', animState.spec.dock.captureMode==='surface_handoff' && animState.spec.dock.hardDock===false);
   check('Moon: module docked in state', facilityModuleList(facilityState('lunar_base')).includes('power_truss'));
   const saw={hit:false};
   pumpFlight(saw);

@@ -7576,3 +7576,26 @@ of untouched `HEAD` passes 145/155 and produces the exact same nine red suite na
 baseline issues: four source-reading tests run from a temporary directory, four Gregorian-calendar
 expectation suites still assert the retired 360-day model, and one personnel succession suite has two
 unrelated failures. Build parity, generated-script syntax and `git diff --check` are clean.
+
+## Generalized docking D2 — SHIPPED (Codex, 2026-08-15)
+
+D2 turns LEO station servicing into real docking missions. The core Habitat supplies one visiting
+berth and every Docking Node adds two, held in a facility-local occupancy ledger that never changes
+`facilityModuleList()` or `facilityPortCap()`. Crew rotation and manual resupply actions now create
+one-shot mission offers; flown LEO module deliveries join the same path. Each reserves an exact berth,
+freezes an explicit capsule or cargo pod plus station interface into the build snapshot, rechecks the
+live facility/berth at launch, and feeds the existing docking reliability phase without a second roll.
+
+On success the simulation settles hard dock before presentation and applies only the intersection of
+declared services: named-astronaut exchange, provisions unload, or permanent module installation.
+Same-mission return releases both ports into the existing recovery/expended lifecycle. “Remain” stores
+a canonical station visitor, applied transfer receipt and `docked` hull owner; replay is idempotent and
+the lifecycle audit rejects duplicate/missing berth or hull ownership. D3 still owns free-flying
+`orbitAssets[]`, while D4 owns later persistent undock/retry/refuel operations. Surface-base deliveries
+remain economically identical and are now explicitly presented as surface cargo handoffs, not docks.
+
+Save v64 records the new facility docking state. `test-station-docking.js` and
+`test-docking-transfer.js` add 38/38 checks; the complete focused D0–D2/station set passes
+228/228, with another 55/55 selected Gate 2/3 ownership checks green. The repository sweep passes 150/160 suites plus one intentional skip (up from 148/158 only because of the two new
+suites), with exactly the same nine pre-existing failing suite names and no new red suite. Build
+parity, `node --check build/game.js`, and `git diff --check` are clean.

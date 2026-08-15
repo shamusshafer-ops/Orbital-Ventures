@@ -1,6 +1,6 @@
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=63; // v63: persisted insolvency and Program Reorganization continuity records.
+const SAVE_VERSION=64; // v64: station visiting berths, reservations, transfers and docked visitor ownership.
 // Pre-v62 saves with in-progress flight ownership are rejected rather than assigned a fabricated
 // outcome; ordinary v61 lifecycle records are remapped through the schema-2 factories on load.
 //

@@ -781,7 +781,7 @@ bodies.
 
 **Slice 4 (manufacturing tie-in) is optional/last** and remains unstarted.
 
-## In progress — Generalized vehicle and station docking (D0–D1 shipped 2026-08-15)
+## In progress — Generalized vehicle and station docking (D0–D2 shipped 2026-08-15)
 
 Extend #73's module-delivery spectacle into one simulation authority for capsule↔capsule/pod,
 capsule↔station, cargo-pod↔station, permanent module attachment, and mission-internal LOR/EOR docking.
@@ -795,11 +795,12 @@ station/production truth, and cosmetic `assemblyLayouts` never authorize docking
 separate from the existing permanent module cap. Docking feeds the existing mission outcome as a named
 phase rather than adding a second post-success destruction roll.
 
-D0 compatibility/reservations and D1 mission-internal rendezvous are shipped: fitted interfaces and
+D0 compatibility/reservations, D1 mission-internal rendezvous, and D2 station visits are shipped: fitted interfaces and
 rendezvous guidance freeze into build/launch snapshots; reservations have exact owners/rejection
 reasons; LOR/EOR create real operations; and docking is a named reliability/debrief phase whose
-anomaly/presentation data comes from the frozen operation. Remaining slices are D2 capsule/pod-to-
-station with transfers; D3 persistent orbit assets and separately launched craft; D4 persistent
+anomaly/presentation data comes from the frozen operation. Station crew rotation, resupply and LEO
+module delivery now reserve separate visiting berths, apply typed hard-dock transfers and either
+return or persist a station-local docked visitor. Remaining slices are D3 persistent orbit assets and separately launched craft; D4 persistent
 retry/undock/refuel/servicing operations; then D5 visual playback, automation and balance. Full
 decisions, state shapes, interaction matrix, protected baselines, tests and non-goals:
 `docs/DOCKING-SYSTEM-SCOPE.md`.

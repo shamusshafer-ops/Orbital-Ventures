@@ -1457,14 +1457,9 @@ function drawDepartCard(ct, held){
 }
 
 // #73 Slice 3 (2026-07-11): the module rendezvous + soft-dock spectacle. Played on the flight overlay's
-// own canvas as the TERMINAL beat of a successful "fly it yourself" module delivery (spec.dock, set in
-// finalizeLaunch) — after the ascent + orbit/cislunar cruise, in place of the generic post-flight card.
-// Purely presentational: the module already docked in state (dockModuleNow, at resolution); this is the
-// visual payoff, NOT a separate success/fail roll — a resolved-success delivery simply docks (mirrors
-// Slice 2's precedent of not modeling a separate landing mechanic). One abstraction across LEO/Moon/Mars:
-// the backdrop body is tinted per spec.dock.body, everything else is identical. Structured after
-// drawDepartCard (backdrop + a moving craft + a fading info panel + a held Continue affordance), but the
-// beat is an APPROACH — the module closes on the station's berthing port and captures.
+// Terminal station-visit / cargo-arrival card. Simulation has already settled
+// hard dock, transfer, berth occupancy and return/remain disposition; this
+// renderer consumes the frozen actor/target/interface spec and cannot mutate it.
 function drawDockCard(ct, held){
   const A=animState, s=A.spec, ctx=A.ctx, W=A.cv.width, H=A.cv.height;
   const d=s.dock||{};
@@ -1534,9 +1529,13 @@ function drawDockCard(ct, held){
   ctx.beginPath(); ctx.ellipse(portX,portY,4,9,0,0,7); ctx.stroke();
   ctx.restore();
 
-  // --- the incoming module + its docking probe + approach RCS puffs ---
+  // --- incoming capsule/pod/module + its docking probe + approach RCS puffs ---
   ctx.save();
-  can(modX,portY,20,13,d.modColor||'#b8c0c7');
+  if(d.actorKind==='capsule'){
+    ctx.fillStyle=d.modColor||'#e5edf2'; ctx.beginPath();
+    ctx.moveTo(modX-18,portY-12); ctx.lineTo(modX+17,portY-8); ctx.lineTo(modX+22,portY+8); ctx.lineTo(modX-18,portY+12); ctx.closePath(); ctx.fill();
+    ctx.fillStyle='rgba(95,150,185,.72)'; ctx.beginPath(); ctx.ellipse(modX+2,portY-5,6,3,0,0,7); ctx.fill();
+  }else can(modX,portY,20,13,d.modColor||'#b8c0c7');
   ctx.strokeStyle='rgba(60,66,72,0.9)'; ctx.lineWidth=1.4;
   ctx.beginPath(); ctx.moveTo(modX+20,portY); ctx.lineTo(modX+27,portY); ctx.stroke(); // capture probe
   if(d.modShort){ ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.font='bold 8px ui-monospace,monospace'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(d.modShort,modX,portY); }
@@ -1558,14 +1557,18 @@ function drawDockCard(ct, held){
   const pa=clampA(ct/(DOCK_CARD_MS*0.4),0,1);
   if(pa>0){
     ctx.save(); ctx.globalAlpha=pa;
-    const rows=[['STATION', d.facName||s.title], ['MODULE', d.modName||'Module']];
-    if(d.moduleCount) rows.push(['ASSEMBLY', d.moduleCount+' module'+(d.moduleCount===1?'':'s')]);
+    const surface=d.captureMode==='surface_handoff';
+    const rows=[[surface?'DESTINATION':'TARGET', (d.target&&d.target.label)||d.facName||s.title], [surface?'CARGO':'ACTOR', (d.actor&&d.actor.label)||d.modName||'Spacecraft']];
+    if(!surface&&d.standard) rows.push(['INTERFACE', String(d.standard).replace('_',' ')+' · '+(d.size||'standard')]);
+    if(d.transferLabel) rows.push(['TRANSFER',d.transferLabel]);
+    if(!surface&&d.disposition) rows.push(['DISPOSITION',d.disposition==='remain'?'Remain docked':'Undock / return']);
+    if(d.moduleCount&&d.transfer&&d.transfer.kind==='module_delivery') rows.push(['ASSEMBLY', d.moduleCount+' module'+(d.moduleCount===1?'':'s')]);
     const panelW=250, panelH=46+rows.length*16, panelX=(W-panelW)/2, panelY=Math.round(H*0.09);
     ctx.fillStyle=themeRgba('bg',0.82); ctx.fillRect(panelX,panelY,panelW,panelH);
     ctx.strokeStyle=themeRgba('readout',0.3); ctx.lineWidth=0.5; ctx.strokeRect(panelX,panelY,panelW,panelH);
     ctx.textAlign='center'; ctx.textBaseline='top';
     ctx.fillStyle=docked?themeColor('ok'):themeColor('readout'); ctx.font='bold 15px ui-monospace,monospace';
-    ctx.fillText(docked?'MODULE DOCKED':'RENDEZVOUS', W/2, panelY+10);
+    ctx.fillText(docked?(surface?'DELIVERY COMPLETE':'HARD DOCK'):(surface?'FINAL APPROACH':'RENDEZVOUS'), W/2, panelY+10);
     ctx.font='10px ui-monospace,monospace'; ctx.textBaseline='alphabetic';
     rows.forEach((r,i)=>{ const ry=panelY+42+i*16;
       ctx.textAlign='left'; ctx.fillStyle=themeColor('dim'); ctx.fillText(r[0],panelX+14,ry);
