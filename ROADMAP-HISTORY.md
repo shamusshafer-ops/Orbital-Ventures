@@ -7452,3 +7452,79 @@ full sweep 108/109 with only the documented pre-existing `test-flight3d-trajecto
 Firefox at 1920×1080 verified an 836×696 inline map, a 1902×870 Map Only host/drawing buffer,
 readable labels, all operating modes, quality/orbit controls, rail toggles, and repeated close/reopen
 cycles with exactly one live canvas/context.
+
+## Exhaust plume visual-language overhaul — SHIPPED (Codex, 2026-08-15)
+
+The live Three.js launch renderer was literally drawing three opaque cone meshes inside one another,
+and the Canvas fallback repeated the same inner/outer-cone construction. Both paths now use one soft,
+pressure-shaped exhaust envelope: tight and luminous near sea level, progressively broader and more
+translucent as ambient pressure falls, with restrained shock cells in the atmospheric transition
+instead of permanent geometric bands. Orbit and transfer burns use the same sprite-based language,
+and the launch plume stays anchored to the lowest attached live stage through separation. The Canvas
+envelope uses the quadratic-curve primitive supported by the game's WebGL 2D compatibility context.
+
+Plume colour, width and particulate smoke now follow the fitted propulsion family (kerolox/alcohol,
+hydrolox/NTR, methalox, hypergolic, solid, electric or fusion). Frozen launch snapshots preserve core,
+booster and transfer-engine identity through the presentation boundary, so staging changes the plume
+with the active engine and a deep-space drive cannot inherit the insertion engine's appearance.
+
+Headless Firefox/WebGL acceptance used the rebuilt local game at 4.0 km and 40.1 km: the lower-
+atmosphere plume read as one continuous luminous body with no nested shell, while the high-altitude
+plume opened into a wider, softer fan. Firefox also confirmed Three.js active, electric transfer-family
+resolution, and no `ConeGeometry` in the live launch plume constructor. No screenshot fixture was
+committed. The new plume contract is 16/16; 13 adjacent flight, staging, trajectory, failure, departure,
+night-launch and accessibility suites add 346/346 checks. Build, generated-script syntax, parity and
+`git diff --check` are clean.
+
+## Stage-proportional rocket fins — SHIPPED (Codex, 2026-08-15)
+
+Sounding-rocket fins previously used fixed Three.js dimensions (`14` root chord and at least `7`
+span), so the smallest vehicles inherited surfaces sized for much larger stacks. Canvas separately
+used a root chord equal to 45% of first-stage height. Both renderers now consume one fin profile
+derived from the carrier stage's actual radius and height, with height, radius and thickness clamps
+that remain proportional across both short/wide and long/narrow designs.
+
+Firefox/WebGL instantiated the real minimum A-4 vehicle as a sounding rocket and reported a fin root
+at 22% of first-stage height and outward span at 75% of body radius; the retired fixed mesh would have
+been roughly 67% of that stage's height and 2.3 body radii. The new fin contract is 12/12 and five
+adjacent vehicle, Flight 3D, pad and regression suites add 144/144 checks. Build parity, generated-
+script syntax and `git diff --check` are clean.
+
+## Cape ascent-guide removal + coastal green terrain — SHIPPED (Codex, 2026-08-15)
+
+The cyan past/future line and its event-marker scene object have been removed from live ascent and
+suborbital presentation. This is a presentation-only deletion: the physics-derived trajectory plan,
+samples, staging events, vehicle motion, camera tracking and altitude/range telemetry remain the
+authoritative flight path.
+
+The Three.js Cape ground now tints its existing photographic albedo toward muted coastal green and
+layers a stronger mottled overlay whose patches are three parts vegetation to one part sand. Roads,
+crawlerways, concrete pads and the existing palms/scrub remain separate materials and geometry, so
+the site keeps its industrial clearings rather than turning into a flat lawn. The already-green
+Canvas fallback is unchanged.
+
+Firefox/WebGL mounted the rebuilt Cape and confirmed ground colour `0xb6c78b`, terrain-overlay
+opacity `0.68`, and no `cape3d_trajectory_guide` anywhere in the live scene graph. The new cleanup
+contract is 10/10 and six adjacent Cape, Flight 3D, trajectory, camera, pad and regression suites add
+206/206 checks. Build parity, generated-script syntax and `git diff --check` are clean.
+
+## Extended Cape ascent-to-orbit transition — SHIPPED (Codex, 2026-08-15)
+
+The launch camera previously chased only the vehicle while the local Cape scene covered just an
+8×12 km patch. That combination sent the pad out of frame almost immediately and exposed the edge
+of the local terrain before the orbital Earth presentation was ready, making ascent read as two
+disconnected scenes.
+
+The coastal shelf now extends 180 km inland and 260 km along the range while retaining physical
+texture density and an exact land/ocean shoreline. From 60 m through the first few kilometres, a
+range-wide camera framing function holds both the launch site and rising vehicle in view, then
+releases cleanly back to the normal chase camera by 6.5 km. Local haze now clears on that same visual
+scale. Cape materials fade continuously as the Earth becomes opaque from 38–96 km, so the handoff
+has no geometry pop or translucent coverage gap.
+
+Firefox/WebGL validation used the real flight overlay at 3 km: the rocket remained clear of the
+altitude HUD while the facility, coastline, land and ocean stayed visible below. A deterministic
+runtime audit confirmed full Cape coverage at 1, 3 and 30 km, Cape/Earth opacity of 0.793/0.207 at
+55 km and 0.188/0.812 at 80 km, and a complete Earth handoff at 96 km. The new continuity contract
+is 17/17 and seven adjacent launch, Cape, trajectory, pad and regression suites add 216/216 checks.
+Build parity, generated-script syntax and `git diff --check` are clean.

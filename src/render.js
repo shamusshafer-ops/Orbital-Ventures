@@ -1826,10 +1826,13 @@ const CAPE3D_SITE_SPREAD = 1.15;
 const CAPE3D_PAD_DECK_Y = 2;
 const CAPE3D_NOZZLE_CLEARANCE = 4;
 const CAPE3D_COAST_X = 1000;
+const CAPE3D_EXTENDED_LAND_INLAND_M = 180000;
+const CAPE3D_EXTENDED_LAND_DEPTH_M = 260000;
 const CAPE3D_METERS_PER_KM = 1000;
 const CAPE3D_OCEAN_WIDTH_M = 12000000;
 const CAPE3D_OCEAN_DEPTH_M = 2000000;
 const CAPE3D_TEXTURE_ASSET={ground:'assets/cape-ground-albedo.png',pavement:'assets/cape-pavement-albedo.png'};
+const CAPE3D_TERRAIN_STYLE={ground:0xb6c78b,overlayOpacity:.68,sandPatchEvery:4};
 let cape3d = null;
 function capeWorldPoint(gx, gy, elevation){
   return {x:gx*CAPE_WORLD_TILE_M*CAPE3D_SITE_SPREAD, y:elevation||0, z:gy*CAPE_WORLD_TILE_M*CAPE3D_SITE_SPREAD};
@@ -1933,6 +1936,10 @@ function cape3dLiveStageSpan(stageGroups, rocket){
   if(!any) return {baseY:0,topY:0,mid:0};
   return {baseY:lo, topY:hi, mid:(lo+hi)*.5};
 }
+function cape3dLiveEngine(stageGroups,rocket){
+  const live=(stageGroups||[]).filter(sg=>sg&&sg.kind==='stage'&&sg.group&&sg.group.parent===rocket).sort((a,b)=>(a.baseY||0)-(b.baseY||0));
+  return live.length?String(live[0].engine||''):'';
+}
 function cape3dLiveStageTargetY(live,targetLift){
   const s=live||{baseY:0,topY:0,mid:0}, h=Math.max(0,(Number(s.topY)||0)-(Number(s.baseY)||0));
   return (Number(s.mid)||0)+h*((Math.max(0,Math.min(1,Number(targetLift)||0)))-.30);
@@ -1966,7 +1973,13 @@ function cape3dCanvasTexture(draw,repeatX,repeatY){
   const tx=new THREE.CanvasTexture(cv); tx.wrapS=tx.wrapT=THREE.RepeatWrapping; tx.repeat.set(repeatX||1,repeatY||repeatX||1); return tx;
 }
 function cape3dWaterTexture(){ return cape3dCanvasTexture((ctx,w,h)=>{ ctx.fillStyle='#174d68'; ctx.fillRect(0,0,w,h); ctx.globalAlpha=.22; ctx.strokeStyle='#b3e5ed'; ctx.lineWidth=1; for(let y=8;y<h;y+=17){ ctx.beginPath(); for(let x=0;x<=w;x+=13) ctx.lineTo(x,y+Math.sin((x+y)*.12)*2); ctx.stroke(); } },18,16); }
-function cape3dTerrainVariationTexture(){ return cape3dCanvasTexture((ctx,w,h)=>{ ctx.clearRect(0,0,w,h); for(let i=0;i<28;i++){ const x=(i*83)%w,y=(i*137)%h,r=18+(i%6)*9,g=ctx.createRadialGradient(x,y,0,x,y,r); g.addColorStop(0,i%3?'rgba(109,91,46,.24)':'rgba(219,191,121,.28)'); g.addColorStop(1,'rgba(0,0,0,0)'); ctx.fillStyle=g; ctx.fillRect(x-r,y-r,r*2,r*2); } },7,6); }
+function cape3dTerrainVariationTexture(repeatX,repeatY){ return cape3dCanvasTexture((ctx,w,h)=>{
+  ctx.clearRect(0,0,w,h); const greens=['rgba(44,91,42,.34)','rgba(79,119,55,.30)','rgba(103,132,66,.26)'];
+  for(let i=0;i<36;i++){
+    const x=(i*83)%w,y=(i*137)%h,r=18+(i%6)*9,g=ctx.createRadialGradient(x,y,0,x,y,r), sandy=i%CAPE3D_TERRAIN_STYLE.sandPatchEvery===0;
+    g.addColorStop(0,sandy?'rgba(214,191,125,.20)':greens[i%greens.length]); g.addColorStop(1,'rgba(0,0,0,0)'); ctx.fillStyle=g; ctx.fillRect(x-r,y-r,r*2,r*2);
+  }
+},repeatX||7,repeatY||6); }
 function cape3dCloudTexture(){
   const cv=document.createElement('canvas'); cv.width=384; cv.height=192; const ctx=cv.getContext('2d');
   for(let i=0;i<15;i++){ const x=45+(i*61)%300,y=72+(i*37)%58,r=24+(i%4)*12,g=ctx.createRadialGradient(x,y,0,x,y,r); g.addColorStop(0,'rgba(255,255,255,.62)'); g.addColorStop(.55,'rgba(237,247,255,.30)'); g.addColorStop(1,'rgba(255,255,255,0)'); ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill(); }
@@ -2041,7 +2054,7 @@ function cape3dFlightVehicleSpec(source){
   })):[];
   const b=raw.boosters, boosterCount=Math.max(0,Math.min(8,Number(b&&b.count)||0));
   const boosters=boosterCount?{count:boosterCount,prop:Math.max(0,Number(b.prop)||0),dia:Math.max(0,Number(b.dia)||0),solid:!!b.solid,eng:String(b.eng||'')}:null;
-  return {stages,boosters,transferProp:Math.max(0,Number(raw.transferProp)||0),crewed:!!((outer.vehicle?outer.crewed:raw.crewed))};
+  return {stages,boosters,transferProp:Math.max(0,Number(raw.transferProp)||0),transferEng:String(raw.transferEng||''),crewed:!!((outer.vehicle?outer.crewed:raw.crewed))};
 }
 // Orbit/transfer presentation starts after every disposable launch element has done its job.
 // Keep the final core stage (the insertion stage), transfer segment and payload/capsule, but never
@@ -2049,15 +2062,15 @@ function cape3dFlightVehicleSpec(source){
 // detached launch hardware reappeared as a pristine full stack at the ascent -> orbit handoff.
 function cape3dPostAscentVehicleSpec(source){
   const v=cape3dFlightVehicleSpec(source), last=v.stages.length?v.stages[v.stages.length-1]:null;
-  return {stages:last?[Object.assign({},last)]:[],boosters:null,transferProp:v.transferProp,crewed:v.crewed};
+  return {stages:last?[Object.assign({},last)]:[],boosters:null,transferProp:v.transferProp,transferEng:v.transferEng,crewed:v.crewed};
 }
 function cape3dVehicleVisualKey(source){
   const v=cape3dFlightVehicleSpec(source);
-  return JSON.stringify({stages:v.stages.map(s=>[s.prop,s.count,s.dia,s.eng]),boosters:v.boosters?[v.boosters.count,v.boosters.prop,v.boosters.dia,v.boosters.solid,v.boosters.eng]:null,transferProp:v.transferProp,crewed:v.crewed});
+  return JSON.stringify({stages:v.stages.map(s=>[s.prop,s.count,s.dia,s.eng]),boosters:v.boosters?[v.boosters.count,v.boosters.prop,v.boosters.dia,v.boosters.solid,v.boosters.eng]:null,transferProp:v.transferProp,transferEng:v.transferEng,crewed:v.crewed});
 }
 function cape3dCurrentVehicleSpec(){
   try{
-    const m=curMission(); return cape3dFlightVehicleSpec({stages:state.stages,boosters:boosterSpec(),transferProp:(m&&m.profile&&m.modules&&m.modules.includes('transfer'))?state.transfer.prop:0,crewed:!!(m&&m.crew>0)});
+    const m=curMission(), hasTransfer=!!(m&&m.profile&&m.modules&&m.modules.includes('transfer')); return cape3dFlightVehicleSpec({stages:state.stages,boosters:boosterSpec(),transferProp:hasTransfer?state.transfer.prop:0,transferEng:hasTransfer?state.transfer.eng:'',crewed:!!(m&&m.crew>0)});
   }catch(e){ return cape3dFlightVehicleSpec({stages:[{prop:2,count:1,dia:1}],boosters:null,transferProp:0,crewed:false}); }
 }
 function cape3dCurrentVehicleShape(){ return buildVehicleShape(cape3dCurrentVehicleSpec()); }
@@ -2188,7 +2201,7 @@ function cape3dVehicleMesh(source){
     for(let k=0;k<profile.stringers;k++){ const a=k*Math.PI*2/profile.stringers, stringer=cape3dMesh(new THREE.BoxGeometry(.5,h*.66,.5),detailMat,Math.cos(a)*r*1.015,y+h*.48,Math.sin(a)*r*1.015,false); sg.add(stringer); }
     // Small raised access/commodity panels break up otherwise featureless tank barrels.
     if(profile.kind!=='sounding') for(const a of [0,Math.PI]) cape3dBox(sg,1.1,Math.max(2.5,h*.055),1.4,darkMat,Math.cos(a)*(r+.3),y+h*.67,Math.sin(a)*(r+.3),false);
-    g.add(sg); stageGroups.push({index:i, group:sg, baseY:y, topY:y+h, kind:segs[i].kind||'stage'});
+    g.add(sg); stageGroups.push({index:i, group:sg, baseY:y, topY:y+h, kind:segs[i].kind||'stage', engine:(vehicleSpec.stages[i]&&vehicleSpec.stages[i].eng)||segs[i].engine||''});
     y+=h;
   }
   const top=segs[segs.length-1], topR=Math.max(2.4,top.w*scale*.5), noseH=Math.max(7,top.w*scale*(liv.nose==='blunt'?1.05:1.7));
@@ -2218,8 +2231,10 @@ function cape3dVehicleMesh(source){
   if(profile.kind==='sounding'){
     // Thin swept trapezoids match the cruciform tail fins used by Terrier/Orion and Black
     // Brant-class sounding vehicles. Orbital boosters omit them and steer by thrust vectoring.
-    for(let i=0;i<4;i++) cape3dTaperedFin(bottomGroup,bandMat,baseR*.96,.3,14,Math.max(7,baseR*1.2),i*Math.PI*.5,.65);
+    const fin=rocketTailFinProfile(baseR,segs[0].h*scale);
+    for(let i=0;i<4;i++) cape3dTaperedFin(bottomGroup,bandMat,baseR*.96,.3,fin.rootChord,fin.span,i*Math.PI*.5,fin.thickness);
     g.userData.finStyle='tapered-cruciform';
+    g.userData.finProfile=fin;
   }
   if(profile.flaps){
     // Starship-scale stainless vehicles read through paired forward/aft control flaps, not tail fins.
@@ -2227,6 +2242,7 @@ function cape3dVehicleMesh(source){
     cape3dBox(g,1.1,y*.72,baseR*.9,darkMat,-baseR-.2,y*.48,0,false);
   }
   g.userData.nozzleY=nozzleY;
+  g.userData.boosterSolid=!!(vehicleSpec.boosters&&vehicleSpec.boosters.solid);
   g.userData.stageGroups=stageGroups; g.userData.boosterGroup=boosterGroup; g.userData.totalHeight=y;
   return g;
 }
@@ -2249,9 +2265,15 @@ function cape3dLaunchBaseY(rocket){
   return CAPE3D_PAD_DECK_Y+CAPE3D_NOZZLE_CLEARANCE-nozzleY;
 }
 function cape3dLandscapeLayout(){
-  // Land and ocean meet at one edge. The old full-size land plane continued
-  // underneath the ocean for 6 km of scene space, producing depth shimmer.
-  return {coastX:CAPE3D_COAST_X,land:{width:8000,centerX:-3000,depth:12000},ocean:{width:CAPE3D_OCEAN_WIDTH_M,centerX:CAPE3D_COAST_X+CAPE3D_OCEAN_WIDTH_M*.5,depth:CAPE3D_OCEAN_DEPTH_M}};
+  // A broad, low-detail coastal shelf keeps the Cape beneath the vehicle during the range-wide
+  // camera beat. Land still ends exactly at the shoreline (never under the ocean), while the
+  // detailed facilities/roads remain concentrated in their original kilometre-scale footprint.
+  const landWidth=CAPE3D_EXTENDED_LAND_INLAND_M;
+  return {coastX:CAPE3D_COAST_X,land:{width:landWidth,centerX:CAPE3D_COAST_X-landWidth*.5,depth:CAPE3D_EXTENDED_LAND_DEPTH_M},ocean:{width:CAPE3D_OCEAN_WIDTH_M,centerX:CAPE3D_COAST_X+CAPE3D_OCEAN_WIDTH_M*.5,depth:CAPE3D_OCEAN_DEPTH_M}};
+}
+function cape3dLandscapeTextureRepeat(layout,metresPerTile){
+  const land=(layout&&layout.land)||{}, tile=Math.max(100,Number(metresPerTile)||400);
+  return {x:Math.max(1,(Number(land.width)||1)/tile),y:Math.max(1,(Number(land.depth)||1)/tile)};
 }
 function cape3dRoads(materials){
   const g=new THREE.Group(); g.name='cape3d_roads';
@@ -2482,8 +2504,30 @@ function cape3dPhysicalAscentBlend(altitudeMeters){
   // space" floor erased a globe hundreds of kilometres away into one blue-grey field. Local haze
   // now falls exponentially with real altitude; the sky darkens before the solid Earth/horizon
   // completes its complementary handoff.
-  const earthOpacity=smooth(km,28,70), skySpace=smooth(km,8,55), capeOpacity=1-earthOpacity;
-  return {space:earthOpacity,earthOpacity,skySpace,capeOpacity,atmosphere:smooth(km,18,80),cloudOpacity:1-smooth(km,2,15),fogDensity:.00038*Math.exp(-km/7.5),capeVisible:capeOpacity>.001};
+  const earthOpacity=smooth(km,38,96), skySpace=smooth(km,8,62), capeOpacity=1-earthOpacity;
+  return {space:earthOpacity,earthOpacity,skySpace,capeOpacity,atmosphere:smooth(km,18,100),cloudOpacity:1-smooth(km,2,18),fogDensity:.00038*Math.exp(-km/1.8),capeVisible:capeOpacity>.001};
+}
+function cape3dAscentSiteFraming(altitudeMeters){
+  const h=Math.max(0,Number(altitudeMeters)||0), smooth=(x,a,b)=>{ const u=Math.max(0,Math.min(1,(x-a)/(b-a))); return u*u*(3-2*u); };
+  // Once the vehicle clears the tower, ease into a range-wide shot that frames the pad and
+  // climbing rocket together. Release back to the close chase before the physical Earth handoff.
+  const mix=smooth(h,60,350)*(1-smooth(h,2200,6500));
+  return {mix,targetSiteWeight:.4*mix,distanceFloor:150+h*2.05*mix};
+}
+function cape3dApplySiteOpacity(objects,opacity){
+  const op=Math.max(0,Math.min(1,Number(opacity)||0)), seen=new Set();
+  for(const object of (objects||[])){
+    if(!object) continue; object.visible=op>.001;
+    const apply=node=>{ const mats=Array.isArray(node&&node.material)?node.material:[node&&node.material]; for(const material of mats){
+      if(!material||seen.has(material)) continue; seen.add(material); material.userData=material.userData||{};
+      if(material.userData.capeBaseOpacity==null){ material.userData.capeBaseOpacity=material.opacity==null?1:material.opacity; material.userData.capeBaseTransparent=!!material.transparent; material.userData.capeBaseDepthWrite=material.depthWrite!==false; }
+      const transparent=material.userData.capeBaseTransparent||op<.999, depthWrite=op>.995?material.userData.capeBaseDepthWrite:false;
+      if(material.transparent!==transparent){ material.transparent=transparent; material.needsUpdate=true; }
+      material.opacity=material.userData.capeBaseOpacity*op; material.depthWrite=depthWrite;
+    } };
+    if(typeof object.traverse==='function') object.traverse(apply); else apply(object);
+  }
+  return op;
 }
 function cape3dLaunchHorizonElevation(altitudeMeters, authoredElevation){
   const h=Math.max(0,Number(altitudeMeters)||0), km=h/1000, u=Math.max(0,Math.min(1,(km-2)/26)), blend=u*u*(3-2*u), earthR=6371000;
@@ -2513,23 +2557,51 @@ function cape3dFlightCameraFar(altitudeMeters){
   return Math.max(180000,Math.min(4200000,horizon+260000));
 }
 function cape3dFlightCamera(position,target){ const pan=(cape3d&&cape3d.flightPan)||{x:0,y:0}; cape3d.camera.position.copy(position).add(new THREE.Vector3(pan.x,pan.y,0)); cape3d.camera.lookAt(target.clone().add(new THREE.Vector3(pan.x*.28,pan.y*.28,0))); }
+let _cape3dPlumeTexture=null;
+function cape3dPlumeTexture(){
+  if(_cape3dPlumeTexture) return _cape3dPlumeTexture;
+  const cv=document.createElement('canvas'); cv.width=cv.height=64; const c=cv.getContext('2d'), g=c.createRadialGradient(32,32,0,32,32,32);
+  g.addColorStop(0,'rgba(255,255,255,1)'); g.addColorStop(.28,'rgba(255,255,255,.78)'); g.addColorStop(.62,'rgba(255,255,255,.22)'); g.addColorStop(1,'rgba(255,255,255,0)'); c.fillStyle=g; c.fillRect(0,0,64,64);
+  _cape3dPlumeTexture=new THREE.CanvasTexture(cv); _cape3dPlumeTexture.needsUpdate=true; return _cape3dPlumeTexture;
+}
+function cape3dPlumeEnvelope(count,radius,length){
+  const group=new THREE.Group(); group.name='cape3d_plume_envelope'; group.userData={radius,length}; const tx=cape3dPlumeTexture();
+  for(let i=0;i<count;i++){
+    const t=(i+.35)/count, phase=i*2.399, mat=new THREE.SpriteMaterial({map:tx,color:0xffffff,transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending}), puff=new THREE.Sprite(mat);
+    puff.userData={t,phase}; puff.position.y=-length*t; puff.scale.setScalar(radius); group.add(puff);
+  }
+  return group;
+}
 function cape3dLaunchEffects(rocket){
   const g=new THREE.Group(); g.name='cape3d_launch_effects'; g.visible=false; g.position.y=rocket.userData.nozzleY||-10; rocket.add(g);
-  // Geometry tips are translated to y=0 before scaling. This preserves the nozzle anchor:
-  // increasing plume length can only grow below the engine, never creep up the vehicle body.
-  const flame=new THREE.Mesh(new THREE.ConeGeometry(19,94,20).translate(0,-47,0),new THREE.MeshBasicMaterial({color:0x4d9cff,transparent:true,opacity:.9,depthWrite:false,blending:THREE.AdditiveBlending})); g.add(flame);
-  const core=new THREE.Mesh(new THREE.ConeGeometry(8,68,18).translate(0,-34,0),new THREE.MeshBasicMaterial({color:0xf4fbff,transparent:true,opacity:1,depthWrite:false,blending:THREE.AdditiveBlending})); g.add(core);
-  const hotCore=new THREE.Mesh(new THREE.ConeGeometry(3.5,42,16).translate(0,-21,0),new THREE.MeshBasicMaterial({color:0xffb35d,transparent:true,opacity:.9,depthWrite:false,blending:THREE.AdditiveBlending})); g.add(hotCore);
+  // One soft pressure envelope replaces the old three concentric cone meshes. Overlapping
+  // radial sprites create a continuous turbulent body with no hard geometric shell; position,
+  // radius and opacity are pressure-shaped every frame below.
+  const envelope=cape3dPlumeEnvelope(28,19,94); g.add(envelope);
+  const flareMat=new THREE.SpriteMaterial({map:cape3dPlumeTexture(),color:0xffffff,transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending}), flare=new THREE.Sprite(flareMat); flare.position.y=-5; flare.scale.set(10,16,1); g.add(flare);
   const shock=new THREE.Group(); const shockMat=new THREE.MeshBasicMaterial({color:0xb8e7ff,transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending});
-  for(let i=0;i<4;i++){ const cell=new THREE.Mesh(new THREE.SphereGeometry(1,14,10),shockMat.clone()); cell.position.y=-10-i*12; cell.scale.set(5.5-i*.65,2.3,5.5-i*.65); shock.add(cell); } g.add(shock);
-  const smoke=new THREE.Group(); const smokeMat=new THREE.MeshStandardMaterial({color:0xdfe7e7,transparent:true,opacity:.3,roughness:1,depthWrite:false});
-  for(let i=0;i<9;i++){ const puff=new THREE.Mesh(new THREE.SphereGeometry(10+(i%3)*7,10,8),smokeMat.clone()); puff.position.set((i%3-1)*12,-50-i*13,((i*7)%3-1)*10); smoke.add(puff); } g.add(smoke);
+  for(let i=0;i<3;i++){ const cell=new THREE.Mesh(new THREE.OctahedronGeometry(1,0),shockMat.clone()); cell.position.y=-17-i*18; cell.scale.set(3.0+i*.28,5.2+i*.35,3.0+i*.28); shock.add(cell); } g.add(shock);
+  const smoke=new THREE.Group(), smokeTx=cape3dPlumeTexture();
+  for(let i=0;i<9;i++){ const size=14+(i%3)*8, mat=new THREE.SpriteMaterial({map:smokeTx,color:0xdfe7e7,transparent:true,opacity:0,depthWrite:false}), puff=new THREE.Sprite(mat); puff.userData.size=size; puff.position.set((i%3-1)*12,-50-i*13,((i*7)%3-1)*10); smoke.add(puff); } g.add(smoke);
   const glow=new THREE.PointLight(0xff8b35,0,360,2); glow.position.y=-8; g.add(glow);
-  return {group:g,flame,core,hotCore,shock,smoke,glow};
+  return {group:g,envelope,flare,shock,smoke,glow};
 }
-function cape3dPlumeProfile(plume, vacuum){
+function cape3dPlumeProfile(plume, vacuum, engineId, solid){
   const thrust=Math.max(0,Math.min(1,plume||0)), vac=Math.max(0,Math.min(1,vacuum||0));
-  return {width:1+vac*1.55,length:Math.max(.08,thrust)*(1+vac*.85),outerOpacity:(.22+thrust*.50)*(1-vac*.12),coreOpacity:.72+thrust*.26,hotOpacity:thrust*(.84-vac*.40)};
+  const style=enginePlumeStyle(engineId,solid), shockEnvelope=Math.max(0,1-Math.abs(vac-.20)/.42);
+  return {family:style.family,vacuum:vac,width:style.width*(1+vac*1.65),length:Math.max(.08,thrust)*(1+vac*1.05),outerOpacity:thrust*(.54-vac*.18),coreOpacity:thrust*(.92-vac*.30),hotOpacity:thrust*(.82-vac*.48),shockOpacity:thrust*shockEnvelope*(style.family==='solid'?.55:1),smokeMult:style.smoke,outerColor:style.outer,coreColor:style.core,hotColor:style.hot,glowColor:style.glow};
+}
+function cape3dApplyPlumeEnvelope(envelope,profile,clock){
+  if(!envelope) return; const vac=Math.max(0,Math.min(1,profile.vacuum||0)), radius=envelope.userData.radius||19, length=envelope.userData.length||94;
+  envelope.children.forEach((p,i)=>{ const d=p.userData, t=d.t, pulse=reducedMotion()?1:(.96+.04*Math.sin((clock||0)*17+d.phase));
+    const tight=.24+.54*Math.pow(Math.sin(Math.PI*t),.72)+.13*t, fan=.27+1.95*Math.pow(t,.76), shape=(tight+(fan-tight)*vac)*profile.width/(1+vac*1.65);
+    const r=radius*shape*pulse, wander=(.10+.12*t)*(1-vac*.45); p.position.set(Math.cos(d.phase)*r*wander,-length*t*profile.length,Math.sin(d.phase)*r*wander); p.scale.setScalar(r*(1.78+(i%4)*.08)); p.material.color.setHex(profile.outerColor); p.material.opacity=profile.outerOpacity*(.64-.48*t)*(i%3===0?.82:1);
+  });
+}
+function cape3dApplyLaunchPlume(fx,profile,clock){
+  cape3dApplyPlumeEnvelope(fx.envelope,profile,clock); fx.flare.material.color.setHex(profile.hotColor); fx.flare.material.opacity=profile.coreOpacity; fx.flare.scale.set(8+profile.hotOpacity*4,12+profile.hotOpacity*8,1);
+  fx.glow.color.setHex(profile.glowColor);
+  fx.shock.children.forEach((cell,i)=>{ const visible=profile.shockOpacity>.04; cell.visible=visible; cell.material.color.setHex(profile.coreColor); cell.material.opacity=visible?profile.shockOpacity*(.095-i*.018):0; const pulse=reducedMotion()?1:(.97+.035*Math.sin((clock||0)*21+i*1.7)); cell.scale.set((3.0+i*.28)*pulse,(5.2+i*.35)*pulse,(3.0+i*.28)*pulse); });
 }
 function cape3dGroundSmokeProfile(phase, progress, ignition){
   const p=Math.max(0,Math.min(1,progress||0)), ign=Math.max(0,Math.min(1,ignition||0));
@@ -2607,30 +2679,17 @@ function cape3dAscentWorld(root,pad,base){
   const trail=new THREE.Group(), puffs=[]; for(let i=0;i<18;i++){ const puff=new THREE.Mesh(new THREE.SphereGeometry(18+(i%4)*10,10,8),new THREE.MeshBasicMaterial({color:i%3?0xb9d3df:0xffb15b,transparent:true,opacity:0,depthWrite:false})); puff.visible=false; trail.add(puff); puffs.push(puff); } g.add(trail);
   root.add(g); return {group:g,earth,earthMap,atmosphere,stars,trail,puffs,center,radius,earthBaseQuaternion:earth.quaternion.clone(),earthUp,textureApplied:false};
 }
-function cape3dTrajectoryVisual(root){
-  const group=new THREE.Group(); group.name='cape3d_trajectory_guide'; group.visible=false;
-  const past=new THREE.Line(new THREE.BufferGeometry(),new THREE.LineBasicMaterial({color:0x67d7ff,transparent:true,opacity:.78,depthWrite:false}));
-  const future=new THREE.Line(new THREE.BufferGeometry(),new THREE.LineBasicMaterial({color:0x67d7ff,transparent:true,opacity:.20,depthWrite:false}));
-  group.add(past); group.add(future); root.add(group); return {group,past,future,markers:[],plan:null,samples:[]};
-}
-function cape3dUpdateTrajectoryVisual(visual,q,base){
-  if(!visual) return;
-  const active=q&&q.trajectory&&(q.phase==='ascent'||q.phase==='suborbital'); visual.group.visible=!!active; if(!active) return;
-  if(visual.plan!==q.trajectory){
-    visual.plan=q.trajectory; const guide=cape3dTrajectoryGuideSamples(q.trajectory,190); visual.samples=guide.points;
-    const pts=guide.points.map(p=>new THREE.Vector3(base.x+p.xKm*CAPE3D_METERS_PER_KM,base.y+p.altitudeKm*CAPE3D_METERS_PER_KM,base.z));
-    visual.past.geometry.dispose(); visual.future.geometry.dispose(); visual.past.geometry=new THREE.BufferGeometry().setFromPoints(pts); visual.future.geometry=new THREE.BufferGeometry().setFromPoints(pts);
-    visual.markers.forEach(m=>visual.group.remove(m)); visual.markers=[];
-    for(const ev of guide.events){ const marker=new THREE.Mesh(new THREE.SphereGeometry(5,10,7),new THREE.MeshBasicMaterial({color:0xffc85a,transparent:true,opacity:.9,depthWrite:false})); marker.position.set(base.x+ev.xKm*CAPE3D_METERS_PER_KM,base.y+ev.altitudeKm*CAPE3D_METERS_PER_KM,base.z); visual.group.add(marker); visual.markers.push(marker); }
-  }
-  let at=0; while(at<visual.samples.length-1&&visual.samples[at+1].t<=(Number(q.t)||0)) at++;
-  visual.past.geometry.setDrawRange(0,Math.max(2,at+1)); visual.future.geometry.setDrawRange(at,Math.max(0,visual.samples.length-at));
-}
 function cape3dFlightCraftModel(source,scale,plumeRadius,plumeLength,withGlow){
-  const craft=cape3dVehicleMesh(source); craft.scale.setScalar(scale);
-  const plume=new THREE.Mesh(new THREE.ConeGeometry(plumeRadius,plumeLength,14),new THREE.MeshBasicMaterial({color:0xffa23f,transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending})); plume.rotation.x=Math.PI*.5; plume.position.y=craft.userData.nozzleY||-10; craft.add(plume);
+  const craft=cape3dVehicleMesh(source); craft.scale.setScalar(scale), v=cape3dFlightVehicleSpec(source), engine=(v.transferProp>0?v.transferEng:(v.stages.length&&v.stages[v.stages.length-1].eng))||'';
+  const plume=new THREE.Group(); plume.name='cape3d_compact_plume'; plume.userData={engine,fx:{envelope:cape3dPlumeEnvelope(12,plumeRadius,plumeLength)}}; plume.add(plume.userData.fx.envelope);
+  const flareMat=new THREE.SpriteMaterial({map:cape3dPlumeTexture(),color:0xffffff,transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending}), flare=new THREE.Sprite(flareMat); flare.position.y=-3; flare.scale.set(plumeRadius*.65,plumeRadius*.92,1); plume.add(flare); plume.userData.fx.flare=flare;
+  plume.rotation.x=Math.PI*.5; plume.position.y=craft.userData.nozzleY||-10; craft.add(plume);
   let glow=null; if(withGlow){ glow=new THREE.PointLight(0xffa04d,0,280,2); glow.position.y=craft.userData.nozzleY||-10; craft.add(glow); }
   return {craft,plume,glow};
+}
+function cape3dSetCompactPlume(plume,burn,clock){
+  if(!plume||!plume.userData||!plume.userData.fx) return false; const thrust=Math.max(0,Math.min(1,Number(burn)||0)), profile=cape3dPlumeProfile(thrust,1,plume.userData.engine,false), fx=plume.userData.fx;
+  plume.visible=thrust>.01; cape3dApplyPlumeEnvelope(fx.envelope,profile,clock); fx.flare.material.color.setHex(profile.hotColor); fx.flare.material.opacity=profile.coreOpacity; return plume.visible;
 }
 function cape3dSyncFlightCraft(world,source,options){
   if(!world||!world.group||!source) return false;
@@ -2765,7 +2824,7 @@ function cape3dEnterLaunchPresentation(source){
   if(!cape3d||!cape3d.root) return false;
   if(source&&!cape3dInstallFlightVehicle(source)) return false;
   const root=cape3d.root, rocket=root.userData.launchRocket, fx=root.userData.launchEffects;
-  if(!rocket||!fx) return false; cape3dResetStaging(rocket); fx.group.position.y=rocket.userData.nozzleY||-10; root.userData.stageDebris=[]; root.userData.launchActive=true; root.userData.orbitActive=false; root.userData.reentryActive=false; rocket.position.copy(root.userData.launchBase); fx.group.visible=true; cape3d.launchCam=cape3dDefaultLaunchCam(); cape3d.orbitCam={azOff:0,elOff:0,distMul:1}; attachCape3DInput(); cape3dUpdateLaunchPresentation(source&&source.vehicle?source:null); return true;
+  if(!rocket||!fx) return false; cape3dApplySiteOpacity(root.userData.siteObjects,1); cape3dResetStaging(rocket); fx.group.position.y=rocket.userData.nozzleY||-10; root.userData.stageDebris=[]; root.userData.launchActive=true; root.userData.orbitActive=false; root.userData.reentryActive=false; rocket.position.copy(root.userData.launchBase); fx.group.visible=true; cape3d.launchCam=cape3dDefaultLaunchCam(); cape3d.orbitCam={azOff:0,elOff:0,distMul:1}; attachCape3DInput(); cape3dUpdateLaunchPresentation(source&&source.vehicle?source:null); return true;
 }
 function cape3dUpdateOrbitPresentation(snapshot){
   if(!cape3d||!cape3d.root) return false;
@@ -2773,7 +2832,7 @@ function cape3dUpdateOrbitPresentation(snapshot){
   const launch=root.userData.launchEffects, rocket=root.userData.launchRocket, ascent=root.userData.ascentWorld, groundSmoke=root.userData.groundSmoke, splash=root.userData.launchSplash;
   if(launch){ launch.group.visible=false; launch.glow.intensity=0; } if(rocket) rocket.visible=false; if(ascent) ascent.group.visible=false;
   if(groundSmoke) groundSmoke.group.visible=false; if(splash) splash.group.visible=false;
-  (root.userData.siteObjects||[]).forEach(o=>o.visible=false); root.userData.launchActive=false; root.userData.launchSpace=1; root.userData.orbitActive=true; attachCape3DInput(); orbit.group.visible=true;
+  cape3dApplySiteOpacity(root.userData.siteObjects,0); root.userData.launchActive=false; root.userData.launchSpace=1; root.userData.orbitActive=true; attachCape3DInput(); orbit.group.visible=true;
   const q=cape3dOrbitProfile(snapshot), inc=q.inclination*Math.PI/180, minR=600+(q.periapsis-185)*.62, maxR=600+(q.apoapsis-185)*.62, semi=(minR+maxR)*.5, off=(maxR-minR)*.5;
   const orbitPoint=a=>{ const radial=semi-off*Math.cos(a), px=Math.cos(a)*radial, pz=Math.sin(a)*radial; return new THREE.Vector3(px,pz*Math.sin(inc),pz*Math.cos(inc)); };
   const sig=[Math.round(q.periapsis),Math.round(q.apoapsis),q.inclination.toFixed(2)].join(':');
@@ -2783,20 +2842,20 @@ function cape3dUpdateOrbitPresentation(snapshot){
   // dark, instead of the flight cutting to the 2D fallback. failProgress ramps 0→1 from the moment
   // of loss so the tumble builds and the plume stays cut.
   const tumble=q.deadStick?q.failProgress:0;
-  orbit.craft.position.set(x,y,z); orbit.craft.rotation.set(tumble*2.4,-q.angle-.25+tumble*1.7,Math.sin(q.angle)*.16+tumble*1.9); orbit.earth.rotation.y=q.progress*.72; orbit.plume.visible=q.burn>.01; orbit.plume.scale.set(1,Math.max(.08,q.burn),1); orbit.plume.material.opacity=.82*q.burn; orbit.glow.intensity=2.4*q.burn;
+  orbit.craft.position.set(x,y,z); orbit.craft.rotation.set(tumble*2.4,-q.angle-.25+tumble*1.7,Math.sin(q.angle)*.16+tumble*1.9); orbit.earth.rotation.y=q.progress*.72; cape3dSetCompactPlume(orbit.plume,q.burn,q.progress*12); orbit.glow.color.setHex(enginePlumeStyle(orbit.plume.userData.engine,false).glow); orbit.glow.intensity=2.4*q.burn;
   const target=new THREE.Vector3(0,0,0), oc=cape3d.orbitCam||(cape3d.orbitCam={azOff:0,elOff:0,distMul:1}), camA=-.85+q.progress*.34+oc.azOff, dist=1160*oc.distMul;
   cape3dFlightCamera(new THREE.Vector3(Math.cos(camA)*dist,(650+Math.sin(q.progress*Math.PI)*115)+oc.elOff*760,Math.sin(camA)*dist),target); return true;
 }
 function cape3dUpdateReentryPresentation(snapshot){
   if(!cape3d||!cape3d.root) return false; const root=cape3d.root, world=root.userData.reentryWorld; if(!world) return false;
-  const orbit=root.userData.orbitWorld, ascent=root.userData.ascentWorld, fx=root.userData.launchEffects, rocket=root.userData.launchRocket, groundSmoke=root.userData.groundSmoke, splash=root.userData.launchSplash; if(orbit) orbit.group.visible=false; if(ascent) ascent.group.visible=false; if(fx) fx.group.visible=false; if(rocket) rocket.visible=false; if(groundSmoke) groundSmoke.group.visible=false; if(splash) splash.group.visible=false; (root.userData.siteObjects||[]).forEach(o=>o.visible=false);
+  const orbit=root.userData.orbitWorld, ascent=root.userData.ascentWorld, fx=root.userData.launchEffects, rocket=root.userData.launchRocket, groundSmoke=root.userData.groundSmoke, splash=root.userData.launchSplash; if(orbit) orbit.group.visible=false; if(ascent) ascent.group.visible=false; if(fx) fx.group.visible=false; if(rocket) rocket.visible=false; if(groundSmoke) groundSmoke.group.visible=false; if(splash) splash.group.visible=false; cape3dApplySiteOpacity(root.userData.siteObjects,0);
   const q=cape3dReentryProfile(snapshot), x=Math.sin(q.progress*5.2)*95*(1-q.mains*.75), y=570-690*(q.progress<.96?q.progress:.96); world.group.visible=true; root.userData.launchActive=false; root.userData.orbitActive=false; root.userData.reentryActive=true; root.userData.reentryProgress=q.progress; root.userData.launchSpace=1; detachCape3DInput();
   world.capsule.position.set(x,y,40); world.capsule.rotation.z=.42*(1-q.mains)+Math.sin(q.progress*9)*.05; world.plasma.position.copy(world.capsule.position); world.plasma.scale.setScalar(26+q.plasma*62); world.plasma.material.opacity=q.plasma*.72; world.drogue.position.set(x,y+72,40); world.drogue.visible=q.drogue>.01&&q.mains<.1; world.drogue.material.opacity=q.drogue*(1-q.mains); world.mains.position.set(x,y+118,40); world.mains.visible=q.mains>.01; world.mains.children.forEach(c=>c.material.opacity=q.mains*.9); if(q.splash){ world.capsule.position.y=-126+Math.sin(q.progress*40)*2; world.mains.visible=false; }
   cape3dFlightCamera(new THREE.Vector3(0,330,1580),new THREE.Vector3(0,-110,-230)); return true;
 }
 function cape3dUpdateFlightPresentation(snapshot){
   if(snapshot&&snapshot.phase==='orbit') return cape3dUpdateOrbitPresentation(snapshot);
-  if(snapshot&&snapshot.phase==='transfer'){ const root=cape3d&&cape3d.root, world=root&&root.userData.transferWorld; if(!world) return false; const q=cape3dTransferProfile(snapshot); world.group.visible=true; world.craft.position.set(q.x,q.y,q.z); const tumble=q.deadStick?q.failProgress:0; if(world.craft.rotation) world.craft.rotation.set(tumble*2.2,tumble*1.6,tumble*1.9); world.plume.visible=q.burn>.01; world.plume.material.opacity=.82*q.burn; cape3dFlightCamera(new THREE.Vector3(q.x-310,q.y+210,720),new THREE.Vector3(q.x,q.y,0)); return true; }
+  if(snapshot&&snapshot.phase==='transfer'){ const root=cape3d&&cape3d.root, world=root&&root.userData.transferWorld; if(!world) return false; const q=cape3dTransferProfile(snapshot); world.group.visible=true; world.craft.position.set(q.x,q.y,q.z); const tumble=q.deadStick?q.failProgress:0; if(world.craft.rotation) world.craft.rotation.set(tumble*2.2,tumble*1.6,tumble*1.9); cape3dSetCompactPlume(world.plume,q.burn,q.progress*12); cape3dFlightCamera(new THREE.Vector3(q.x-310,q.y+210,720),new THREE.Vector3(q.x,q.y,0)); return true; }
   if(snapshot&&snapshot.phase==='reentry') return cape3dUpdateReentryPresentation(snapshot);
   const root=cape3d&&cape3d.root, orbit=root&&root.userData.orbitWorld;
   if(orbit&&orbit.group.visible){ orbit.group.visible=false; root.userData.orbitActive=false; }
@@ -2860,10 +2919,9 @@ function cape3dUpdateLaunchPresentation(snapshot){
   cape3dTickSepPuffs(root);
   cape3dUpdateGroundSmoke(root.userData.groundSmoke,q.phase,q.progress,(snapshot&&snapshot.effects&&snapshot.effects.ignition)||0);
   cape3dUpdateSplash(root.userData.launchSplash,q,base);
-  cape3dUpdateTrajectoryVisual(root.userData.launchTrajectory,q,base);
-  const plume=cape3dPlumeProfile(q.plume,q.vacuum); fx.flame.scale.set(plume.width,plume.length,plume.width); fx.core.scale.set(1+q.vacuum*.48,Math.max(.08,q.plume)*(1+q.vacuum*.30),1+q.vacuum*.48); fx.hotCore.scale.set(1+q.vacuum*.18,Math.max(.08,q.plume),1+q.vacuum*.18); fx.flame.material.opacity=plume.outerOpacity; fx.core.material.opacity=plume.coreOpacity; fx.hotCore.material.opacity=plume.hotOpacity; fx.glow.color.setHex(0xb9e6ff); fx.glow.intensity=q.light*(1-q.vacuum*.36);
-  fx.shock.children.forEach((cell,i)=>{ const visible=q.plume>.01&&q.vacuum>.04; cell.visible=visible; cell.material.opacity=visible?(.08+q.vacuum*.2)*(1-i*.13):0; cell.scale.x=cell.scale.z=(5.5-i*.65)*(1+q.vacuum*.55); });
-  fx.smoke.children.forEach((p,i)=>{ p.visible=q.smoke>.012; p.material.opacity=q.smoke*(.12+.22*(1-i/fx.smoke.children.length)); p.scale.setScalar(.35+q.smoke*(.75+i*.07)+q.vacuum*i*.05); p.position.x=(i%3-1)*(12+q.progress*42); p.position.z=((i*7)%3-1)*(10+q.progress*30); });
+  const liveEngine=cape3dLiveEngine(rocket.userData.stageGroups,rocket), solidBoost=!!(rocket.userData.boosterSolid&&rocket.userData.boosterGroup&&rocket.userData.boosterGroup.parent===rocket), plume=cape3dPlumeProfile(q.plume,q.vacuum,liveEngine,solidBoost);
+  cape3dApplyLaunchPlume(fx,plume,q.t==null?q.progress*12:q.t); fx.glow.intensity=q.light*(1-q.vacuum*.36);
+  fx.smoke.children.forEach((p,i)=>{ const smokeStrength=q.smoke*plume.smokeMult, size=p.userData.size||16; p.visible=smokeStrength>.012; p.material.opacity=smokeStrength*(.07+.12*(1-i/fx.smoke.children.length)); p.scale.setScalar(size*(.35+smokeStrength*(.55+i*.045)+q.vacuum*i*.025)); p.position.x=(i%3-1)*(12+q.progress*42); p.position.z=((i*7)%3-1)*(10+q.progress*30); });
   // After a separation the remaining stack's lowest point is no longer the group origin (stage 0's
   // baseY=0) — that stage has left. Find the lowest still-attached stage group so the camera frames
   // the ACTUAL remaining vehicle and the flame sits at its real base, instead of aiming at the empty
@@ -2886,7 +2944,7 @@ function cape3dUpdateLaunchPresentation(snapshot){
     if(texReady&&!world.textureApplied){ world.earth.material.map=world.earthMap; world.earth.material.color.setHex(0xffffff); world.earth.material.needsUpdate=true; world.textureApplied=true; }
     const space=blend.earthOpacity;
     world.group.visible=space>0.001; world.earth.material.opacity=space; world.earth.material.depthWrite=space>.995; world.atmosphere.material.opacity=blend.atmosphere*.026; world.stars.material.opacity=blend.skySpace; world.puffs.forEach(p=>p.visible=false);
-    (root.userData.siteObjects||[]).forEach(o=>o.visible=blend.capeVisible);
+    cape3dApplySiteOpacity(root.userData.siteObjects,blend.capeOpacity);
   }
   const desiredFar=cape3dFlightCameraFar(q.altitude); if(Math.abs(cape3d.camera.far-desiredFar)>1){ cape3d.camera.far=desiredFar; cape3d.camera.updateProjectionMatrix(); }
   // User-steerable chase: a base follow distance orbited by the player's drag/zoom offsets
@@ -2896,20 +2954,20 @@ function cape3dUpdateLaunchPresentation(snapshot){
   // far the player zoomed in. Now grows with sqrt(altitude in KM), which stays close through the
   // low-altitude climb (where most of the visual interest — staging, the pad falling away — is)
   // and only grows gently at orbital altitudes, capped so it can never run away.
-  const lc=cape3d.launchCam||(cape3d.launchCam=cape3dDefaultLaunchCam());
-  const baseDist=cape3dLaunchChaseDist(q.altitude)*director.distMul*lc.distMul, az=director.az+lc.azOff, el=cape3dLaunchHorizonElevation(q.altitude,director.el)+lc.elOff, ce=Math.cos(el), lowRise=70*Math.max(0,1-Math.min(1,q.altitude/12000));
-  const eye=new THREE.Vector3(target.x+baseDist*ce*Math.sin(az), target.y+lowRise+baseDist*Math.sin(el), target.z+baseDist*ce*Math.cos(az));
+  const lc=cape3d.launchCam||(cape3d.launchCam=cape3dDefaultLaunchCam()), siteFrame=cape3dAscentSiteFraming(q.altitude), siteTarget=new THREE.Vector3(base.x,base.y+24,base.z), cameraTarget=target.clone().lerp(siteTarget,siteFrame.targetSiteWeight);
+  const chaseDist=cape3dLaunchChaseDist(q.altitude)*director.distMul, baseDist=Math.max(chaseDist,siteFrame.distanceFloor)*lc.distMul, az=director.az+lc.azOff, el=cape3dLaunchHorizonElevation(q.altitude,director.el)+lc.elOff, ce=Math.cos(el), lowRise=70*Math.max(0,1-Math.min(1,q.altitude/12000));
+  const eye=new THREE.Vector3(cameraTarget.x+baseDist*ce*Math.sin(az), cameraTarget.y+lowRise+baseDist*Math.sin(el), cameraTarget.z+baseDist*ce*Math.cos(az));
   if(cape3d.flightFill){
     cape3d.flightFill.position.copy(eye); cape3d.flightFill.target.position.copy(target); cape3d.flightFill.target.updateMatrixWorld();
     cape3d.flightFill.intensity=root.userData.flightNight?1.18:.82;
   }
-  cape3dFlightCamera(eye,target); return true;
+  cape3dFlightCamera(eye,cameraTarget); return true;
 }
 function cape3dExitLaunchPresentation(){
   if(!cape3d||!cape3d.root) return false; const root=cape3d.root, rocket=root.userData.launchRocket, fx=root.userData.launchEffects;
   if(rocket&&root.userData.launchBase){ cape3dResetStaging(rocket); rocket.position.copy(root.userData.launchBase); rocket.rotation.z=0; rocket.visible=true; } if(fx){ fx.group.visible=false; fx.glow.intensity=0; fx.group.position.y=rocket?(rocket.userData.nozzleY||-10):-10; } if(root.userData.groundSmoke) root.userData.groundSmoke.group.visible=false; if(root.userData.launchSplash) root.userData.launchSplash.group.visible=false; cape3dResetFailure(root.userData.launchFailure); root.userData.launchSpace=0;
   for(const d of (root.userData.stageDebris||[])) root.remove(d.obj); root.userData.stageDebris=[];
-  const world=root.userData.ascentWorld; if(world){ world.group.visible=false; world.puffs.forEach(p=>p.visible=false); } if(root.userData.launchTrajectory) root.userData.launchTrajectory.group.visible=false; (root.userData.siteObjects||[]).forEach(o=>o.visible=true); root.userData.launchActive=false; root.userData.launchVisual=null; if(cape3d.flightFill) cape3d.flightFill.intensity=0;
+  const world=root.userData.ascentWorld; if(world){ world.group.visible=false; world.puffs.forEach(p=>p.visible=false); } cape3dApplySiteOpacity(root.userData.siteObjects,1); root.userData.launchActive=false; root.userData.launchVisual=null; if(cape3d.flightFill) cape3d.flightFill.intensity=0;
   cape3d.camera.far=100000; cape3d.camera.updateProjectionMatrix(); cape3d.cam={az:2.25,el:.48,dist:1450,target:{x:420*CAPE3D_SITE_SPREAD,y:0,z:250*CAPE3D_SITE_SPREAD}}; cape3dApplyCamera(); attachCape3DInput(); return true;
 }
 function cape3dExitFlightPresentation(){
@@ -2919,19 +2977,19 @@ function cape3dExitFlightPresentation(){
 }
 function buildCape3DScene(scene){
   const root=new THREE.Group(); root.name='cape3d_root'; scene.add(root);
-  const landscape=cape3dLandscapeLayout();
-  const groundTx=cape3dTexture('ground',20,18), pavementTx=cape3dTexture('pavement',8,8), waterTx=cape3dWaterTexture(), terrainTx=cape3dTerrainVariationTexture();
+  const landscape=cape3dLandscapeLayout(), groundRepeat=cape3dLandscapeTextureRepeat(landscape,400), terrainRepeat=cape3dLandscapeTextureRepeat(landscape,1500);
+  const groundTx=cape3dTexture('ground',groundRepeat.x,groundRepeat.y), pavementTx=cape3dTexture('pavement',8,8), waterTx=cape3dWaterTexture(), terrainTx=cape3dTerrainVariationTexture(terrainRepeat.x,terrainRepeat.y);
   const materials={
-    ground:new THREE.MeshStandardMaterial({color:0xe2ddbc,map:groundTx,roughness:1}), water:new THREE.MeshPhysicalMaterial({color:0x167599,map:waterTx,roughness:.22,metalness:.08,clearcoat:.45,transparent:true,opacity:.88}), road:new THREE.MeshStandardMaterial({color:0x344047,map:pavementTx,roughness:.93}), crawlerway:new THREE.MeshStandardMaterial({color:0x596163,map:pavementTx,roughness:.86}), concrete:new THREE.MeshStandardMaterial({color:0xc8c0af,map:pavementTx,roughness:.91}), metal:cape3dMaterial(0x6d8792,.55,.6), tank:cape3dMaterial(0xe6eff4,.32,.35), dark:cape3dMaterial(0x18242c,.8,.25), building:cape3dMaterial(0x3d6680,.74,.35), vab:cape3dMaterial(0x315b7c,.7,.4), control:cape3dMaterial(0x0f304d,.63,.45), glass:new THREE.MeshStandardMaterial({color:0x84c8ed,emissive:0x0d2534,roughness:.22,metalness:.15}), dish:cape3dMaterial(0x8fb4c6,.38,.55), dome:cape3dMaterial(0x2b536c,.4,.5),
+    ground:new THREE.MeshStandardMaterial({color:CAPE3D_TERRAIN_STYLE.ground,map:groundTx,roughness:1}), water:new THREE.MeshPhysicalMaterial({color:0x167599,map:waterTx,roughness:.22,metalness:.08,clearcoat:.45,transparent:true,opacity:.88}), road:new THREE.MeshStandardMaterial({color:0x344047,map:pavementTx,roughness:.93}), crawlerway:new THREE.MeshStandardMaterial({color:0x596163,map:pavementTx,roughness:.86}), concrete:new THREE.MeshStandardMaterial({color:0xc8c0af,map:pavementTx,roughness:.91}), metal:cape3dMaterial(0x6d8792,.55,.6), tank:cape3dMaterial(0xe6eff4,.32,.35), dark:cape3dMaterial(0x18242c,.8,.25), building:cape3dMaterial(0x3d6680,.74,.35), vab:cape3dMaterial(0x315b7c,.7,.4), control:cape3dMaterial(0x0f304d,.63,.45), glass:new THREE.MeshStandardMaterial({color:0x84c8ed,emissive:0x0d2534,roughness:.22,metalness:.15}), dish:cape3dMaterial(0x8fb4c6,.38,.55), dome:cape3dMaterial(0x2b536c,.4,.5),
   };
   if(waterTx&&waterTx.repeat) waterTx.repeat.set(12000,2000);
   const ground=cape3dMesh(new THREE.PlaneGeometry(landscape.land.width,landscape.land.depth),materials.ground,landscape.land.centerX,-1,180,false); ground.rotation.x=-Math.PI/2; root.add(ground);
-  const terrain=cape3dMesh(new THREE.PlaneGeometry(landscape.land.width,landscape.land.depth),new THREE.MeshBasicMaterial({map:terrainTx,transparent:true,opacity:.5,depthWrite:false}),landscape.land.centerX,-.72,180,false); terrain.rotation.x=-Math.PI/2; root.add(terrain);
+  const terrain=cape3dMesh(new THREE.PlaneGeometry(landscape.land.width,landscape.land.depth),new THREE.MeshBasicMaterial({map:terrainTx,transparent:true,opacity:CAPE3D_TERRAIN_STYLE.overlayOpacity,depthWrite:false}),landscape.land.centerX,-.72,180,false); terrain.rotation.x=-Math.PI/2; root.add(terrain);
   const ocean=cape3dMesh(new THREE.PlaneGeometry(landscape.ocean.width,landscape.ocean.depth),materials.water,landscape.ocean.centerX,-.6,370,false); ocean.rotation.x=-Math.PI/2; root.add(ocean);
   const roads=cape3dRoads(materials); root.add(roads);
   const facilities=new THREE.Group(); facilities.name='cape3d_facilities'; root.add(facilities);
   const descriptors=syncCape3DFromState(); descriptors.forEach(d=>facilities.add(cape3dFacilityGroup(d,materials))); const vegetation=cape3dVegetation(root,materials); root.userData.clouds=cape3dClouds(root); root.userData.practicalLights=[...cape3dPracticalLights(root,descriptors),...cape3dStreetLights(root,materials)]; root.userData.windowMaterial=materials.glass; root.userData.water=waterTx;
-  const pad=descriptors.find(d=>d.key==='pad'); if(pad){ const rocket=cape3dVehicleMesh(); rocket.position.set(pad.position.x-pad.footprint.x*.18,cape3dLaunchBaseY(rocket),pad.position.z); root.add(rocket); root.userData.launchPad=pad; root.userData.launchRocket=rocket; root.userData.launchBase=rocket.position.clone(); root.userData.launchEffects=cape3dLaunchEffects(rocket); root.userData.groundSmoke=cape3dGroundSmoke(root,rocket.position); root.userData.launchSplash=cape3dSplashEffects(root); root.userData.launchFailure=cape3dFailureEffects(root,rocket,root.userData.launchEffects); root.userData.ascentWorld=cape3dAscentWorld(root,pad,root.userData.launchBase); root.userData.launchTrajectory=cape3dTrajectoryVisual(root); root.userData.orbitWorld=cape3dOrbitWorld(root); root.userData.transferWorld=cape3dTransferWorld(root); root.userData.reentryWorld=cape3dReentryWorld(root); root.userData.sepPuffs=cape3dSepPuffPool(root); }
+  const pad=descriptors.find(d=>d.key==='pad'); if(pad){ const rocket=cape3dVehicleMesh(); rocket.position.set(pad.position.x-pad.footprint.x*.18,cape3dLaunchBaseY(rocket),pad.position.z); root.add(rocket); root.userData.launchPad=pad; root.userData.launchRocket=rocket; root.userData.launchBase=rocket.position.clone(); root.userData.launchEffects=cape3dLaunchEffects(rocket); root.userData.groundSmoke=cape3dGroundSmoke(root,rocket.position); root.userData.launchSplash=cape3dSplashEffects(root); root.userData.launchFailure=cape3dFailureEffects(root,rocket,root.userData.launchEffects); root.userData.ascentWorld=cape3dAscentWorld(root,pad,root.userData.launchBase); root.userData.orbitWorld=cape3dOrbitWorld(root); root.userData.transferWorld=cape3dTransferWorld(root); root.userData.reentryWorld=cape3dReentryWorld(root); root.userData.sepPuffs=cape3dSepPuffPool(root); }
   root.userData.siteObjects=[ground,terrain,ocean,roads,facilities,vegetation];
   // State-driven growth receives simple massing in this slice; detailed variants arrive with the art pass.
   try{

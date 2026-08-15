@@ -18,7 +18,7 @@ build/game.js` immediately after any edit near a `/* */` comment block, and pref
 a comment's opening `/*` line (or below its closing `*/`) so a narrow str_replace match can't sever
 the marker from its body.
 
-**In progress:** (none claimed right now).
+**In progress:** (none claimed right now)
 > When you start a task, replace this line with: `<task> — <Claude|Codex> — started <date>`.
 > When done, clear it back to "(none claimed right now)" and add your entry to the history below.
 

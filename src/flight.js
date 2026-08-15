@@ -24,6 +24,32 @@ const THEME_COLORS = {
   green: {bg:'#0a1410', panel:'#0e1c14', panel2:'#163024', line:'#26442f', ink:'#9affb4', muted:'#5a9a6e', dim:'#3d6e4d', ignite:'#d7b32a', readout:'#5fe0a0', ok:'#4fe26e', bad:'#e0564f', warn:'#e8c341'},
   beige: {bg:'#1b1610', panel:'#2a2218', panel2:'#342a1c', line:'#4a3c28', ink:'#ecdfc4', muted:'#b09a72', dim:'#7d6a4c', ignite:'#e08a3c', readout:'#5bb9c4', ok:'#6db86a', bad:'#d2542b', warn:'#e8b341'},
 };
+
+/* ---------- Shared exhaust-plume visual language ----------
+   Engine exhaust is not three nested solid cones. Keep one shared family table for the
+   Canvas fallback and the Three.js flight renderer: the renderer may choose different
+   primitives, but propellant identity and the pressure/colour story must agree. */
+const ENGINE_PLUME_STYLES={
+  kerolox:   {outer:0xff7a32,core:0xffd27a,hot:0xf7fbff,glow:0xff9b45,width:1.00,smoke:0.28},
+  hydrolox:  {outer:0x78bfff,core:0xd9efff,hot:0xffffff,glow:0xa9dcff,width:1.18,smoke:0.02},
+  methalox:  {outer:0x849dff,core:0xd9e2ff,hot:0xffffff,glow:0xaabfff,width:1.08,smoke:0.08},
+  hypergolic:{outer:0xff8d45,core:0xffc27c,hot:0xfff5df,glow:0xffa45e,width:0.86,smoke:0.18},
+  solid:     {outer:0xff6828,core:0xffc348,hot:0xfff1b8,glow:0xff7b2f,width:1.12,smoke:1.05},
+  electric:  {outer:0x6c86ff,core:0xb9c7ff,hot:0xf2f5ff,glow:0x8398ff,width:0.56,smoke:0},
+  fusion:    {outer:0xb66cff,core:0xe1c1ff,hot:0xffffff,glow:0xc281ff,width:1.35,smoke:0},
+};
+function enginePlumeFamily(engineId,solid){
+  const id=String(engineId||'').toLowerCase();
+  if(solid||id.includes('solid')||id.includes('srb')||id.includes('castor')||id.includes('scout')) return 'solid';
+  if(id.includes('methalox')) return 'methalox';
+  if(id.includes('hydrolox')||id.includes('ntr')||id.includes('nerva')) return 'hydrolox';
+  if(id.includes('hyper')||id.includes('aj10')) return 'hypergolic';
+  if(id.includes('fusion')) return 'fusion';
+  if(id.includes('ion')||id.includes('hall')||id.includes('nep')) return 'electric';
+  return 'kerolox';
+}
+function enginePlumeStyle(engineId,solid){ const family=enginePlumeFamily(engineId,solid); return Object.assign({family},ENGINE_PLUME_STYLES[family]); }
+function plumeRgb(hex){ return [(hex>>16)&255,(hex>>8)&255,hex&255]; }
 function themeColor(key){ const t=THEME_COLORS.dark; return t[key]||THEME_COLORS.dark[key]; }
 function themeRgba(key, alpha){
   const hex=themeColor(key).replace('#','');
@@ -522,7 +548,7 @@ function flight3dPresentationSnapshot(spec,timing,t){
   // — the outcome was already resolved by the sim long before this animation opened.
   const DEEP_FAIL_FRAC=.42;
   const deepFailure=(phase==='orbit'||phase==='transfer')&&!!(spec&&spec.success===false&&spec.failPhase==='deep')&&phaseP>=DEEP_FAIL_FRAC;
-  return {phase,phaseProgress:clampA(phaseP,0,1),overallProgress:clampA(local/total,0,1),mode:(spec&&spec.mode)||'launch',crewed:!!(spec&&spec.crewed),isOrbital:!!(spec&&spec.isOrbital),isCislunar:!!(spec&&spec.isCislunar),reqDv:(spec&&spec.reqDv)||0,success:spec?spec.success!==false:true,failPhase:(spec&&spec.failPhase)||null,report:(spec&&spec.report)||null,orbitOps:(spec&&spec.orbitOps)||null,vehicle:{stages,boosters,transferProp:(spec&&spec.transferProp)||0,physics:(spec&&spec.physics)||null},effects:{ignition:clampA(d.ignite==null?(phase==='pad'?0:1):d.ignite,0,1),night:!!(spec&&spec.night),ascentFailure,crewEscaped,failureProgress:ascentFailure?clampA((phaseP-.5)/.28,0,1):0,deepFailure,deepFailureFrac:DEEP_FAIL_FRAC,deepFailureProgress:deepFailure?clampA((phaseP-DEEP_FAIL_FRAC)/.24,0,1):0}};
+  return {phase,phaseProgress:clampA(phaseP,0,1),overallProgress:clampA(local/total,0,1),mode:(spec&&spec.mode)||'launch',crewed:!!(spec&&spec.crewed),isOrbital:!!(spec&&spec.isOrbital),isCislunar:!!(spec&&spec.isCislunar),reqDv:(spec&&spec.reqDv)||0,success:spec?spec.success!==false:true,failPhase:(spec&&spec.failPhase)||null,report:(spec&&spec.report)||null,orbitOps:(spec&&spec.orbitOps)||null,vehicle:{stages,boosters,transferProp:(spec&&spec.transferProp)||0,transferEng:String((spec&&spec.transferEng)||''),physics:(spec&&spec.physics)||null},effects:{ignition:clampA(d.ignite==null?(phase==='pad'?0:1):d.ignite,0,1),night:!!(spec&&spec.night),ascentFailure,crewEscaped,failureProgress:ascentFailure?clampA((phaseP-.5)/.28,0,1):0,deepFailure,deepFailureFrac:DEEP_FAIL_FRAC,deepFailureProgress:deepFailure?clampA((phaseP-DEEP_FAIL_FRAC)/.24,0,1):0}};
 }
 function flight3dAvailable(){ return FLIGHT3D&&typeof cape3dAvailable==='function'&&cape3dAvailable()&&typeof startCape3D==='function'; }
 function flight3dRestoreCape(s){
@@ -1334,6 +1360,7 @@ function openFlightForDecision(ctx, decision){
     stages: state.stages.map(s=>({prop:s.prop,count:s.count,dia:s.dia,eng:s.eng})),
     boosters: boosterSpec(),
     transferProp: (m.profile&&m.modules&&m.modules.includes('transfer'))?state.transfer.prop:0,
+    transferEng: (m.profile&&m.modules&&m.modules.includes('transfer'))?state.transfer.eng:'',
     recovering:false, hasCapsule: !!(state.research.crew_capsule || ctx.crewed),
     isCislunar: !!m.profile, isOrbital: (!m.profile && m.reqDv>=9000), reqDv: m.reqDv||9400, physics:flightPhysicsSpec(m,ctx.v),
     night: rnd()<nightLaunchChance(), // #38: rolled here (not in finalizeLaunch) when a decision opens the overlay early — see finalizeLaunch's reuse via _openedForDecision, so the sky can't flip mid-launch on resume
@@ -1756,10 +1783,10 @@ function buildVehicleShape(spec){
     const dia=clampA(s.dia||1, GEO_DIA_MIN, GEO_DIA_MAX); // BC3: wider tank → shorter for the same propellant
     const w=clampA(clampA(5+2.8*Math.cbrt(s.prop),6,20)*dia, 4, 30);
     const h=clampA(clampA(22+5.0*Math.sqrt(s.prop),24,200)/dia, 16, 260);
-    segs.push({ w, h, engines:Math.max(1,Math.min(s.count,8)), kind:'stage', prop:s.prop });
+    segs.push({ w, h, engines:Math.max(1,Math.min(s.count,8)), kind:'stage', prop:s.prop, engine:s.eng||s.engine||'' });
   });
   if(spec.transferProp>0){
-    segs.push({ w:clampA(5+2.4*Math.cbrt(spec.transferProp),6,16), h:clampA(16+3.6*Math.sqrt(spec.transferProp),16,80), engines:1, kind:'transfer', prop:spec.transferProp });
+    segs.push({ w:clampA(5+2.4*Math.cbrt(spec.transferProp),6,16), h:clampA(16+3.6*Math.sqrt(spec.transferProp),16,80), engines:1, kind:'transfer', prop:spec.transferProp, engine:spec.transferEng||'' });
   }
   const nose = spec.crewed ? 'capsule' : 'fairing';
   const totalH=segs.reduce((a,s)=>a+s.h,0);
@@ -1768,7 +1795,7 @@ function buildVehicleShape(spec){
   let boosters=null;
   if(spec.boosters && spec.boosters.count>0 && segs.length){
     const bp=spec.boosters.prop||10;
-    boosters={ count:Math.min(spec.boosters.count,8), solid:!!spec.boosters.solid,
+    boosters={ count:Math.min(spec.boosters.count,8), solid:!!spec.boosters.solid, engine:spec.boosters.eng||spec.boosters.engine||'',
       w:clampA(4+2.2*Math.cbrt(bp),4,segs[0].w*0.8),
       h:clampA(16+4.4*Math.sqrt(bp),16,segs[0].h*0.95) };
     maxW += 2*(boosters.w+1.5); // leave room so the fit-to-frame scale doesn't clip them
@@ -1827,12 +1854,59 @@ function drawRecoveryStage(ctx, spent, x, baseY, dt, scale, altFrac, pitch){
       ctx.fillRect(rx+Math.cos(a)*w*0.6, ry-h*0.7+Math.sin(a)*4, 1.6,1.6); }
   }
 }
+function rocketTailFinProfile(bodyRadius,stageHeight){
+  const r=Math.max(.1,Number(bodyRadius)||.1), h=Math.max(1,Number(stageHeight)||1);
+  // Tail surfaces scale from the stage that actually carries them. Height limits prevent
+  // fins on a short/small sounding rocket from inheriting fixed orbital-rocket dimensions;
+  // radius limits keep long pencil stages from growing implausibly wide paddles.
+  return {
+    rootChord:Math.min(h*.34,Math.max(h*.22,r*1.5)),
+    span:Math.max(r*.36,Math.min(r*.78,h*.11)),
+    thickness:Math.max(.16,Math.min(.8,r*.12)),
+  };
+}
+function drawCanvasPressurePlume(ctx,ex,nozzleR,flame,altFrac,engineId,solid){
+  if(flame<=0) return;
+  const vac=clampA(altFrac||0,0,1), style=enginePlumeStyle(engineId,solid), outer=plumeRgb(style.outer), core=plumeRgb(style.core), hot=plumeRgb(style.hot);
+  const length=flame*(.82+vac*1.15), base=nozzleR*(.46+vac*.08), spread=nozzleR*style.width*(.78+vac*2.05);
+  const flicker=.96+Math.random()*.08, endY=length*flicker;
+  ctx.save(); ctx.globalCompositeOperation='lighter';
+  // A single pressure envelope: pinched close to the nozzle, gently turbulent in air,
+  // then progressively fanned out as ambient pressure falls. Its tail fades at a broad
+  // open edge; there is deliberately no second cone nested inside it.
+  const g=ctx.createLinearGradient(ex,3,ex,endY);
+  g.addColorStop(0,`rgba(${hot[0]},${hot[1]},${hot[2]},0.94)`);
+  g.addColorStop(.12,`rgba(${core[0]},${core[1]},${core[2]},0.82)`);
+  g.addColorStop(.42,`rgba(${outer[0]},${outer[1]},${outer[2]},${(.48-vac*.12).toFixed(3)})`);
+  g.addColorStop(.78,`rgba(${outer[0]},${outer[1]},${outer[2]},${(.18-vac*.04).toFixed(3)})`);
+  g.addColorStop(1,`rgba(${outer[0]},${outer[1]},${outer[2]},0)`);
+  ctx.fillStyle=g; ctx.beginPath();
+  ctx.moveTo(ex-base,3);
+  ctx.quadraticCurveTo(ex-base*.70,endY*.18,ex-spread*.58,endY*.54);
+  ctx.quadraticCurveTo(ex-spread*(.82+Math.random()*.08),endY*.82,ex-spread,endY);
+  ctx.lineTo(ex+spread,endY);
+  ctx.quadraticCurveTo(ex+spread*(.82+Math.random()*.08),endY*.82,ex+spread*.58,endY*.54);
+  ctx.quadraticCurveTo(ex+base*.70,endY*.18,ex+base,3);
+  ctx.closePath(); ctx.fill();
+  // The near-nozzle flare is a compact bloom rather than another geometric shell.
+  const flare=ctx.createRadialGradient(ex,5,0,ex,5,base*2.25);
+  flare.addColorStop(0,`rgba(${hot[0]},${hot[1]},${hot[2]},0.95)`); flare.addColorStop(.42,`rgba(${core[0]},${core[1]},${core[2]},0.58)`); flare.addColorStop(1,`rgba(${outer[0]},${outer[1]},${outer[2]},0)`);
+  ctx.fillStyle=flare; ctx.beginPath(); ctx.ellipse(ex,6,base*1.35,base*2.1,0,0,Math.PI*2); ctx.fill();
+  // Pressure cells peak in the lower/middle atmosphere and dissolve toward vacuum.
+  const shock=Math.max(0,1-Math.abs(vac-.20)/.42)*(solid?.72:1);
+  if(shock>.04){
+    for(let i=0;i<3;i++){ const cy=endY*(.22+i*.17), rw=base*(1.00+i*.22), rh=Math.max(1,base*(.42+i*.08));
+      ctx.fillStyle=`rgba(${core[0]},${core[1]},${core[2]},${(shock*(.36-i*.075)).toFixed(3)})`;
+      ctx.beginPath(); ctx.moveTo(ex,cy-rh); ctx.lineTo(ex+rw,cy); ctx.lineTo(ex,cy+rh); ctx.lineTo(ex-rw,cy); ctx.closePath(); ctx.fill();
+    }
+  }
+  ctx.restore();
+}
 function drawVehicle(ctx, segs, nose, scale, flame, altFrac, hideBells){
   if(!segs.length) return;
   altFrac=altFrac||0;
   const liv=curLivery(); // bench livery: body color, accent, nose style
   const base=segs[0], bw=base.w*scale, ne=base.engines;
-  const plumeExpand = 1 + altFrac * 2.5;
   // strap-on boosters (only the full shape's seg array carries .boosters — sliced/spent draws won't)
   if(segs.boosters && segs.boosters.count>0) drawStrapOns(ctx, base, segs.boosters, scale, flame, altFrac, hideBells);
   if(!hideBells) for(let e=0;e<ne;e++){
@@ -1852,37 +1926,7 @@ function drawVehicle(ctx, segs, nose, scale, flame, altFrac, hideBells){
     ctx.moveTo(ex+nz*0.22,-1*scale); ctx.lineTo(ex+nz*0.42,4.5*scale); ctx.stroke();
     ctx.strokeStyle='rgba(170,182,190,0.5)'; ctx.lineWidth=0.5; // bell rim highlight
     ctx.beginPath(); ctx.moveTo(ex-nz*0.6,4.5*scale); ctx.lineTo(ex+nz*0.6,4.5*scale); ctx.stroke();
-    if(flame>0){
-      const fl=flame*(0.7+Math.random()*0.4)*plumeExpand;
-      const nzE=nz*plumeExpand*0.85;
-      const coreGrad=ctx.createLinearGradient(ex,3*scale,ex,fl);
-      coreGrad.addColorStop(0,'rgba(210,230,255,0.95)');
-      coreGrad.addColorStop(0.08,'rgba(180,200,255,0.9)');
-      coreGrad.addColorStop(0.25,'rgba(255,220,130,0.85)');
-      coreGrad.addColorStop(0.5,'rgba(255,150,50,0.6)');
-      coreGrad.addColorStop(0.8,'rgba(255,80,20,0.25)');
-      coreGrad.addColorStop(1,'rgba(200,40,10,0)');
-      ctx.fillStyle=coreGrad;
-      ctx.beginPath(); ctx.moveTo(ex-nzE*0.9,3*scale); ctx.lineTo(ex+nzE*0.9,3*scale);
-      ctx.quadraticCurveTo(ex+nzE*0.3,fl*0.6,ex+nzE*0.08,fl);
-      ctx.lineTo(ex-nzE*0.08,fl);
-      ctx.quadraticCurveTo(ex-nzE*0.3,fl*0.6,ex-nzE*0.9,3*scale);
-      ctx.closePath(); ctx.fill();
-      ctx.fillStyle='rgba(200,220,255,0.75)';
-      ctx.beginPath(); ctx.moveTo(ex-nz*0.3,3*scale); ctx.lineTo(ex+nz*0.3,3*scale);
-      ctx.lineTo(ex+nz*0.05,fl*0.4); ctx.lineTo(ex-nz*0.05,fl*0.4); ctx.closePath(); ctx.fill();
-      if(altFrac<0.55){
-        const dCount=Math.floor(2+altFrac*6);
-        for(let d=0;d<dCount;d++){
-          const dy=fl*0.45+fl*0.5*(d/dCount);
-          const dw=nzE*(0.5-d*0.05)*(0.8+Math.random()*0.3);
-          ctx.fillStyle=`rgba(255,${170+Math.random()*50},${40+Math.random()*30},${0.25-altFrac*0.4})`;
-          ctx.beginPath(); ctx.ellipse(ex+(Math.random()-0.5)*nz*0.2,dy,Math.max(0.5,dw),Math.max(0.5,nzE*0.06),0,0,6.28); ctx.fill();
-        }
-      }
-      ctx.fillStyle=`rgba(255,${130+Math.random()*50},20,${0.1*plumeExpand})`;
-      ctx.beginPath(); ctx.arc(ex,fl*0.25,nzE*1.5,0,7); ctx.fill();
-    }
+    if(flame>0) drawCanvasPressurePlume(ctx,ex,nz,flame,altFrac,base.engine,false);
   }
   let y=0;
   for(let i=0;i<segs.length;i++){
@@ -1962,14 +2006,14 @@ function drawVehicle(ctx, segs, nose, scale, flame, altFrac, hideBells){
       y-=h;
     }
   }
-  const fw=base.w*scale, fh=base.h*scale;
-  const finH=fh*0.45, finW=fw*0.55;
+  const fw=base.w*scale, fh=base.h*scale, fin=rocketTailFinProfile(fw*.5,fh);
+  const finH=fin.rootChord, finSpan=fin.span;
   if(!hideBells){ // booster fins (hidden once lifted off, like the bells)
   ctx.fillStyle='#5a666e'; ctx.strokeStyle='rgba(60,72,82,0.6)'; ctx.lineWidth=0.5;
-  ctx.beginPath(); ctx.moveTo(-fw/2,0); ctx.lineTo(-fw/2-finW*0.6,4*scale);
-  ctx.lineTo(-fw/2-finW*0.3,4*scale); ctx.lineTo(-fw/2,-finH); ctx.closePath(); ctx.fill(); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(fw/2,0); ctx.lineTo(fw/2+finW*0.6,4*scale);
-  ctx.lineTo(fw/2+finW*0.3,4*scale); ctx.lineTo(fw/2,-finH); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-fw/2,0); ctx.lineTo(-fw/2-finSpan,4*scale);
+  ctx.lineTo(-fw/2-finSpan*.52,4*scale); ctx.lineTo(-fw/2,-finH); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(fw/2,0); ctx.lineTo(fw/2+finSpan,4*scale);
+  ctx.lineTo(fw/2+finSpan*.52,4*scale); ctx.lineTo(fw/2,-finH); ctx.closePath(); ctx.fill(); ctx.stroke();
   }
   const topSeg=segs[segs.length-1];
   const tw=topSeg.w*scale, th=topSeg.h*scale;
@@ -2062,15 +2106,7 @@ function drawOneBooster(ctx, boostW, boostH, scale, flame, altFrac, hideBells, d
     ctx.fillStyle=C(58,68,75);
     ctx.beginPath(); ctx.moveTo(-nz*0.5,-1*scale); ctx.lineTo(-nz*0.78,4*scale); ctx.lineTo(nz*0.78,4*scale); ctx.lineTo(nz*0.5,-1*scale); ctx.closePath(); ctx.fill();
   }
-  if(flame>0){
-    const fl=flame*(0.7+Math.random()*0.4)*(1+altFrac*2.5)*0.9, nzE=boostW*0.42;
-    const g=ctx.createLinearGradient(0,3*scale,0,fl);
-    g.addColorStop(0,'rgba(210,230,255,0.9)'); g.addColorStop(0.28,'rgba(255,220,130,0.8)');
-    g.addColorStop(0.65,'rgba(255,120,40,0.4)'); g.addColorStop(1,'rgba(200,40,10,0)');
-    ctx.fillStyle=g;
-    ctx.beginPath(); ctx.moveTo(-nzE*0.8,3*scale); ctx.lineTo(nzE*0.8,3*scale);
-    ctx.quadraticCurveTo(nzE*0.2,fl*0.7,0,fl); ctx.quadraticCurveTo(-nzE*0.2,fl*0.7,-nzE*0.8,3*scale); ctx.closePath(); ctx.fill();
-  }
+  if(flame>0) drawCanvasPressurePlume(ctx,0,boostW*.42,flame*(1+altFrac*2.5)*.9,altFrac,'',!!solid);
 }
 // The strap-on cluster flanking the core's first stage. Draws a primary booster on each
 // side (one only, if count===1), plus any extras peeking from behind toward the centerline.
