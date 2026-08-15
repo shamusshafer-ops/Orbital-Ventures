@@ -7528,3 +7528,51 @@ runtime audit confirmed full Cape coverage at 1, 3 and 30 km, Cape/Earth opacity
 55 km and 0.188/0.812 at 80 km, and a complete Earth handoff at 96 km. The new continuity contract
 is 17/17 and seven adjacent launch, Cape, trajectory, pad and regression suites add 216/216 checks.
 Build parity, generated-script syntax and `git diff --check` are clean.
+
+## Generalized vehicle and station docking — SCOPED (Codex, 2026-08-15)
+
+Repository audit found four disconnected docking seams: abstract orbital-assembly reliability,
+module delivery that mutates a facility before playing a success-only dock card, cosmetic Station 3D
+port links, and launch hulls that cannot persist as orbital targets. The scoped design unifies them
+under one simulation-owned dock interface and operation contract while keeping presentation read-only.
+
+The design covers capsule-to-capsule/pod, capsule/pod-to-station, permanent module attachment and
+mission-internal LOR/EOR rendezvous. It locks mission-scale control rather than manual six-axis flight;
+three broad interface standards with size, role and service compatibility; temporary visiting berths
+separate from permanent station capacity; docking as a named mission-reliability phase rather than a
+second post-success roll; and a future `state.orbitAssets[]` authority so persistent craft retain exact
+hull ownership outside the cruise-only `activeFlights[]` queue.
+
+Delivery is split into D0 compatibility/reservations, D1 mission-internal rendezvous, D2 station
+visits and transfer, D3 persistent orbit assets and separately launched vehicles, D4 retry/undock/
+refuel/servicing operations, and D5 presentation/automation/balance. The complete interaction matrix,
+state shapes, player flow, tests, protected baselines, non-goals and risks live in
+`docs/DOCKING-SYSTEM-SCOPE.md`. No gameplay code or balance values changed in this scoping pass.
+
+## Generalized docking D0–D1 — SHIPPED (Codex, 2026-08-15)
+
+D0 establishes one pure, JSON-safe docking authority in `src/data.js`: normalized interfaces expose
+standard, size, active/passive role, transfer services and exact occupancy; operations bind stable
+actor/target port ids; compatibility reports standard, size, role, service and occupancy failures;
+explicit adapters bridge only the dimensions they declare; and reservation/release transitions are
+pure and idempotent. Capability audits reject duplicate operations, unknown reservation owners and
+one-sided port ownership. Vehicle build snapshots now freeze fitted mission ports and rendezvous
+guidance independently of the parts bench's launch-stack nodes and Station 3D's cosmetic layout.
+
+D1 proves that authority on mission-internal rendezvous. LOR reserves a lunar ascent-craft to command-
+capsule operation; EOR reserves its Earth-orbit transfer/lander assembly plus lunar rendezvous; and
+the existing optional orbital-assembly route creates one operation per separately launched module.
+The established EOR and orbital-assembly reliability values now flow through the shared docking
+capability, which enters the existing subsystem outcome exactly once as a named “Rendezvous &
+docking” phase. `dock_latch` is eligible only when the frozen flight context owns a real operation.
+Flight/debrief specs receive generic read-only actor/target presentation records; D5 still owns the
+visual approach playback and eventual balance tuning, so the existing module-delivery spectacle and
+economics remain unchanged.
+
+Three focused suites cover 83/83 checks across compatibility/frozen fitment, reservation/audit
+ownership and LOR/EOR mission integration; the updated anomaly pool is 25/25. The repository-wide
+headless sweep passes 148/158 suites after this work, with one intentional skip. An isolated archive
+of untouched `HEAD` passes 145/155 and produces the exact same nine red suite names, proving they are
+baseline issues: four source-reading tests run from a temporary directory, four Gregorian-calendar
+expectation suites still assert the retired 360-day model, and one personnel succession suite has two
+unrelated failures. Build parity, generated-script syntax and `git diff --check` are clean.

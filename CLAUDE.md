@@ -167,3 +167,14 @@ defined.
 Entries through 2026-07-26 were archived to `ROADMAP-HISTORY.md` on 2026-08-12 (see
 "Archived from CLAUDE.md History" there). This zone stays pure-append: add new session
 writeups below, newest last, and never edit or reorder an existing entry.
+
+### 2026-08-15 — Docking D0 compatibility authority + D1 mission rendezvous (Codex)
+
+Shipped the first two slices of `docs/DOCKING-SYSTEM-SCOPE.md`. D0 adds pure JSON-safe docking
+interface/actor/operation/capability records, exact compatibility and adapter results, immutable
+reservation/release transitions, ownership audits, and build-frozen port/guidance fitment. D1 routes
+LOR, EOR and optional orbital assembly through exact mission operations, adds the named Rendezvous &
+docking reliability/debrief phase, gates `dock_latch` on a real operation, and emits generalized
+read-only actor/target presentation specs. Existing module-delivery settlement and visuals remain
+unchanged for D2/D5. Focused docking tests are 83/83 and the anomaly contract is 25/25; see
+`ROADMAP-HISTORY.md` for the full validation note and the nine unrelated current-HEAD suite failures.

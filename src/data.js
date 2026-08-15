@@ -91,6 +91,202 @@ function lifecycleRecordErrors(kind,record){
   if(!recordIsJsonSafe(record)) errors.push('json-safe');
   return errors;
 }
+/* Docking D0: one JSON-safe authority for flight docking interfaces. These
+   records are deliberately separate from the parts bench's structural attach
+   nodes and the Station Bench's cosmetic 3D port layout. */
+const DOCKING_SCHEMA_VERSION=1;
+const DOCKING_STANDARDS=Object.freeze(['probe_drogue','androgynous','berthing']);
+const DOCKING_SIZES=Object.freeze(['small','standard','heavy']);
+const DOCKING_ROLES=Object.freeze(['active','passive','androgynous']);
+const DOCKING_SERVICE_KEYS=Object.freeze(['crew','cargo','fuel','power','data','permanent']);
+const DOCKING_OPERATION_STATUSES=Object.freeze(['planned','reserved','approach','soft_capture','hard_dock','released','failed']);
+const DOCKING_BERTH_KINDS=Object.freeze(['visiting','permanent']);
+function makeDockServices(x){
+  x=x||{}; const out={}; for(const key of DOCKING_SERVICE_KEYS) out[key]=x[key]===true; return out;
+}
+function makeDockInterface(x){
+  x=x||{};
+  return {schema:DOCKING_SCHEMA_VERSION,id:String(x.id||''),
+    standard:DOCKING_STANDARDS.includes(x.standard)?x.standard:'probe_drogue',
+    size:DOCKING_SIZES.includes(x.size)?x.size:'standard',
+    role:DOCKING_ROLES.includes(x.role)?x.role:'androgynous',
+    services:makeDockServices(x.services),occupiedBy:x.occupiedBy==null?null:String(x.occupiedBy)};
+}
+function dockInterfaceErrors(port){
+  const errors=[];
+  if(!port||typeof port!=='object'||Array.isArray(port)) return ['interface must be an object'];
+  if(port.schema!==DOCKING_SCHEMA_VERSION) errors.push('schema');
+  if(typeof port.id!=='string'||!port.id) errors.push('id');
+  if(!DOCKING_STANDARDS.includes(port.standard)) errors.push('standard');
+  if(!DOCKING_SIZES.includes(port.size)) errors.push('size');
+  if(!DOCKING_ROLES.includes(port.role)) errors.push('role');
+  if(!port.services||typeof port.services!=='object'||Array.isArray(port.services)||
+     DOCKING_SERVICE_KEYS.some(key=>typeof port.services[key]!=='boolean')) errors.push('services');
+  if(port.occupiedBy!=null&&(typeof port.occupiedBy!=='string'||!port.occupiedBy)) errors.push('occupiedBy');
+  if(!recordIsJsonSafe(port)) errors.push('json-safe');
+  return errors;
+}
+function makeDockActor(x){
+  x=x||{}; const interfaces=Array.isArray(x.interfaces)?x.interfaces:[];
+  return {schema:DOCKING_SCHEMA_VERSION,id:String(x.id||''),label:String(x.label||x.id||''),interfaces:interfaces.map(makeDockInterface)};
+}
+function dockActorErrors(actor){
+  const errors=[];
+  if(!actor||typeof actor!=='object'||Array.isArray(actor)) return ['actor must be an object'];
+  if(actor.schema!==DOCKING_SCHEMA_VERSION) errors.push('schema');
+  if(typeof actor.id!=='string'||!actor.id||typeof actor.label!=='string'||!actor.label) errors.push('identity');
+  if(!Array.isArray(actor.interfaces)||!actor.interfaces.length) errors.push('interfaces');
+  else{
+    const ids=new Set();
+    for(const port of actor.interfaces){ if(dockInterfaceErrors(port).length) errors.push(`interface:${port&&port.id||'unknown'}`); if(port&&ids.has(port.id)) errors.push('duplicate interface'); if(port) ids.add(port.id); }
+  }
+  if(!recordIsJsonSafe(actor)) errors.push('json-safe');
+  return errors;
+}
+function makeDockBerth(x){
+  x=x||{};
+  return {schema:DOCKING_SCHEMA_VERSION,id:String(x.id||''),ownerId:String(x.ownerId||''),label:String(x.label||x.id||''),
+    kind:DOCKING_BERTH_KINDS.includes(x.kind)?x.kind:'visiting',enabled:x.enabled!==false,interface:makeDockInterface(x.interface||{})};
+}
+function dockBerthErrors(berth){
+  const errors=[];
+  if(!berth||typeof berth!=='object'||Array.isArray(berth)) return ['berth must be an object'];
+  if(berth.schema!==DOCKING_SCHEMA_VERSION) errors.push('schema');
+  if(typeof berth.id!=='string'||!berth.id||typeof berth.ownerId!=='string'||!berth.ownerId||typeof berth.label!=='string'||!berth.label) errors.push('identity');
+  if(!DOCKING_BERTH_KINDS.includes(berth.kind)) errors.push('kind');
+  if(typeof berth.enabled!=='boolean') errors.push('enabled');
+  if(dockInterfaceErrors(berth.interface).length) errors.push('interface');
+  if(!recordIsJsonSafe(berth)) errors.push('json-safe');
+  return errors;
+}
+function dockBerthAvailability(berth,operationId){
+  const errors=dockBerthErrors(berth); if(errors.length) return {ok:false,reason:'invalid-berth',operationId:null};
+  const id=operationId==null?null:String(operationId);
+  if(!berth.enabled) return {ok:false,reason:'berth-disabled',operationId:berth.interface.occupiedBy};
+  if(berth.interface.occupiedBy!=null&&berth.interface.occupiedBy!==id) return {ok:false,reason:'berth-unavailable',operationId:berth.interface.occupiedBy};
+  return {ok:true,reason:null,operationId:berth.interface.occupiedBy};
+}
+function makeDockOperation(x){
+  x=x||{}; const services=Array.isArray(x.services)?x.services.filter((key,i,a)=>DOCKING_SERVICE_KEYS.includes(key)&&a.indexOf(key)===i):[];
+  const reliability=Math.max(0,Math.min(1,finiteRecordNumber(x.reliability,1)));
+  return {schema:DOCKING_SCHEMA_VERSION,id:String(x.id||''),missionId:String(x.missionId||''),purpose:String(x.purpose||''),
+    status:DOCKING_OPERATION_STATUSES.includes(x.status)?x.status:'planned',actorId:String(x.actorId||''),actorPortId:String(x.actorPortId||''),
+    targetId:String(x.targetId||''),targetPortId:String(x.targetPortId||''),services,reliability,source:String(x.source||'mission')};
+}
+function dockOperationErrors(operation){
+  const errors=[];
+  if(!operation||typeof operation!=='object'||Array.isArray(operation)) return ['operation must be an object'];
+  if(operation.schema!==DOCKING_SCHEMA_VERSION) errors.push('schema');
+  for(const key of ['id','missionId','purpose','actorId','actorPortId','targetId','targetPortId','source']) if(typeof operation[key]!=='string'||!operation[key]) errors.push(key);
+  if(operation.actorId===operation.targetId&&operation.actorPortId===operation.targetPortId) errors.push('self-dock');
+  if(!DOCKING_OPERATION_STATUSES.includes(operation.status)) errors.push('status');
+  if(!Array.isArray(operation.services)||!operation.services.length||operation.services.some(key=>!DOCKING_SERVICE_KEYS.includes(key))) errors.push('services');
+  if(typeof operation.reliability!=='number'||!Number.isFinite(operation.reliability)||operation.reliability<0||operation.reliability>1) errors.push('reliability');
+  if(!recordIsJsonSafe(operation)) errors.push('json-safe');
+  return errors;
+}
+function dockRolesCompatible(a,b){ return a==='androgynous'||b==='androgynous'||(a==='active'&&b==='passive')||(a==='passive'&&b==='active'); }
+function dockAdapterMatches(adapter,a,b){
+  if(!adapter||typeof adapter!=='object') return false;
+  const standards=Array.isArray(adapter.standards)?adapter.standards:[], sizes=Array.isArray(adapter.sizes)?adapter.sizes:[];
+  const standardOK=standards.length===2&&((standards[0]===a.standard&&standards[1]===b.standard)||(standards[1]===a.standard&&standards[0]===b.standard));
+  const sizeOK=!sizes.length||(sizes.length===2&&((sizes[0]===a.size&&sizes[1]===b.size)||(sizes[1]===a.size&&sizes[0]===b.size)));
+  return standardOK&&sizeOK;
+}
+function dockAdapterSizeMatches(adapter,a,b){
+  if(!adapter||typeof adapter!=='object') return false;
+  const standards=Array.isArray(adapter.standards)?adapter.standards:[], sizes=Array.isArray(adapter.sizes)?adapter.sizes:[];
+  const sizeOK=sizes.length===2&&((sizes[0]===a.size&&sizes[1]===b.size)||(sizes[1]===a.size&&sizes[0]===b.size));
+  const standardOK=!standards.length||(standards.length===2&&((standards[0]===a.standard&&standards[1]===b.standard)||(standards[1]===a.standard&&standards[0]===b.standard)));
+  return sizeOK&&standardOK;
+}
+// Pure compatibility query: no caller-owned port, service map, or reservation is mutated.
+function dockCompatibility(actorPort,targetPort,options){
+  options=options||{}; const reasons=[];
+  const actorErrors=dockInterfaceErrors(actorPort), targetErrors=dockInterfaceErrors(targetPort);
+  if(actorErrors.length) reasons.push('invalid-actor-interface');
+  if(targetErrors.length) reasons.push('invalid-target-interface');
+  if(reasons.length) return {ok:false,reasons,services:[]};
+  const adapters=Array.isArray(options.adapters)?options.adapters:[];
+  const standardAdapter=adapters.some(a=>dockAdapterMatches(a,actorPort,targetPort));
+  const sizeAdapter=adapters.some(a=>dockAdapterSizeMatches(a,actorPort,targetPort));
+  if(actorPort.standard!==targetPort.standard&&!standardAdapter) reasons.push('standard-mismatch');
+  if(actorPort.size!==targetPort.size&&!sizeAdapter) reasons.push('size-mismatch');
+  if(!dockRolesCompatible(actorPort.role,targetPort.role)) reasons.push('role-mismatch');
+  const operationId=options.operationId==null?null:String(options.operationId);
+  if(actorPort.occupiedBy!=null&&actorPort.occupiedBy!==operationId) reasons.push('actor-port-unavailable');
+  if(targetPort.occupiedBy!=null&&targetPort.occupiedBy!==operationId) reasons.push('target-port-unavailable');
+  const overlap=DOCKING_SERVICE_KEYS.filter(key=>actorPort.services[key]&&targetPort.services[key]);
+  const required=Array.isArray(options.services)?options.services.filter(key=>DOCKING_SERVICE_KEYS.includes(key)):[];
+  if(required.length?required.some(key=>!overlap.includes(key)):!overlap.length) reasons.push('service-mismatch');
+  return {ok:reasons.length===0,reasons,services:overlap,adapter:(standardAdapter||sizeAdapter)};
+}
+function findDockInterface(actors,actorId,portId){
+  const actor=(Array.isArray(actors)?actors:[]).find(a=>a&&a.id===actorId);
+  const port=actor&&Array.isArray(actor.interfaces)?actor.interfaces.find(p=>p&&p.id===portId):null;
+  return actor&&port?{actor,port}:null;
+}
+// Pure reservation transition. A repeated reservation by the same operation is idempotent.
+function reserveDockingOperation(operation,actors,options){
+  const op=makeDockOperation(operation), cloned=(Array.isArray(actors)?actors:[]).map(makeDockActor);
+  if(dockOperationErrors(op).length) return {ok:false,reasons:['invalid-operation'],operation:op,actors:cloned,compatibility:null};
+  const actor=findDockInterface(cloned,op.actorId,op.actorPortId), target=findDockInterface(cloned,op.targetId,op.targetPortId);
+  if(!actor||!target) return {ok:false,reasons:['interface-not-found'],operation:op,actors:cloned,compatibility:null};
+  const compatibility=dockCompatibility(actor.port,target.port,Object.assign({},options||{},{operationId:op.id,services:op.services}));
+  if(!compatibility.ok) return {ok:false,reasons:compatibility.reasons.slice(),operation:op,actors:cloned,compatibility};
+  actor.port.occupiedBy=op.id; target.port.occupiedBy=op.id; op.status='reserved';
+  return {ok:true,reasons:[],operation:op,actors:cloned,compatibility};
+}
+function releaseDockingReservation(actors,operationId){
+  const id=String(operationId||''), cloned=(Array.isArray(actors)?actors:[]).map(makeDockActor);
+  for(const actor of cloned) for(const port of actor.interfaces) if(port.occupiedBy===id) port.occupiedBy=null;
+  return cloned;
+}
+function makeDockingCapability(x){
+  x=x||{}; const actors=Array.isArray(x.actors)?x.actors:[], operations=Array.isArray(x.operations)?x.operations:[];
+  return {schema:DOCKING_SCHEMA_VERSION,missionId:String(x.missionId||''),guidance:['manual','assisted','automated'].includes(x.guidance)?x.guidance:'manual',
+    actors:actors.map(makeDockActor),operations:operations.map(makeDockOperation),presentation:plainRecord(Array.isArray(x.presentation)?x.presentation:[]),
+    reliability:plainRecord(x.reliability||{factor:1,additive:0}),rejections:plainRecord(Array.isArray(x.rejections)?x.rejections:[])};
+}
+function dockingCapabilityErrors(capability){
+  const errors=[];
+  if(!capability||typeof capability!=='object'||Array.isArray(capability)) return ['capability must be an object'];
+  if(capability.schema!==DOCKING_SCHEMA_VERSION||typeof capability.missionId!=='string'||!capability.missionId) errors.push('identity');
+  if(!['manual','assisted','automated'].includes(capability.guidance)) errors.push('guidance');
+  if(!Array.isArray(capability.actors)||capability.actors.some(actor=>dockActorErrors(actor).length)) errors.push('actors');
+  if(!Array.isArray(capability.operations)||capability.operations.some(op=>dockOperationErrors(op).length)) errors.push('operations');
+  if(!Array.isArray(capability.presentation)) errors.push('presentation');
+  if(!Array.isArray(capability.rejections)) errors.push('rejections');
+  if(!capability.reliability||typeof capability.reliability.factor!=='number'||typeof capability.reliability.additive!=='number') errors.push('reliability');
+  if(!recordIsJsonSafe(capability)) errors.push('json-safe');
+  return errors;
+}
+function dockingReservationErrors(capability){
+  const errors=dockingCapabilityErrors(capability).slice();
+  if(errors.length) return errors;
+  const opIds=new Set(), occupied=new Map();
+  for(const operation of capability.operations){ if(opIds.has(operation.id)) errors.push(`duplicate operation ${operation.id}`); opIds.add(operation.id); }
+  for(const actor of capability.actors) for(const port of actor.interfaces){
+    const key=`${actor.id}:${port.id}`;
+    if(occupied.has(key)) errors.push(`duplicate interface owner ${key}`);
+    occupied.set(key,port.occupiedBy);
+    if(port.occupiedBy!=null&&!opIds.has(port.occupiedBy)) errors.push(`interface ${key} reserved by unknown operation ${port.occupiedBy}`);
+  }
+  for(const operation of capability.operations){
+    const actorKey=`${operation.actorId}:${operation.actorPortId}`, targetKey=`${operation.targetId}:${operation.targetPortId}`;
+    if(!occupied.has(actorKey)||!occupied.has(targetKey)) errors.push(`operation ${operation.id} references a missing interface`);
+    if(['reserved','approach','soft_capture','hard_dock'].includes(operation.status)&&
+       (occupied.get(actorKey)!==operation.id||occupied.get(targetKey)!==operation.id)) errors.push(`operation ${operation.id} does not uniquely own both interfaces`);
+  }
+  return errors;
+}
+function dockingPresentationSpec(operation,actors,body){
+  const op=makeDockOperation(operation), actor=findDockInterface(actors,op.actorId,op.actorPortId), target=findDockInterface(actors,op.targetId,op.targetPortId);
+  if(dockOperationErrors(op).length||!actor||!target) return null;
+  return {schema:DOCKING_SCHEMA_VERSION,operationId:op.id,purpose:op.purpose,phase:'docking',body:String(body||'earth'),standard:actor.port.standard,size:actor.port.size,
+    services:op.services.slice(),actor:{id:actor.actor.id,label:actor.actor.label,portId:actor.port.id,role:actor.port.role},
+    target:{id:target.actor.id,label:target.actor.label,portId:target.port.id,role:target.port.role}};
+}
 // Gate 3 continuity records are deliberately separate from Gate 2 launch
 // transactions. They retain stable identities and receipts, but never contain
 // callbacks, DOM state, RNG functions, or unrestricted sponsor cash.

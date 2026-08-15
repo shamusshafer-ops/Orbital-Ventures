@@ -597,6 +597,7 @@ function flightReportCard(spec, final){
   if(!host&&document.createElement){ host=document.createElement('aside'); host.id='flightReportCard'; host.className='flight-report-card'; wrap.appendChild(host); }
   if(!host) return false; const r=spec.report||{}, failed=final&&!spec.success;
   const rows=[['STATUS',final?(spec.success?'MISSION COMPLETE':String(r.outcome||'flight failure').toUpperCase()):'LAUNCH IN PROGRESS'],['PAYLOAD',r.payload!=null?(r.payload>=1?r.payload.toFixed(2)+' t':Math.round(r.payload*1000)+' kg'):'—'],['LIFTOFF',r.liftoff?r.liftoff.toFixed(1)+' t':'—'],['ΔV',r.totalDv?Math.round(r.totalDv).toLocaleString()+' m/s':'—'],['TWR',r.twr?r.twr.toFixed(2):'—'],['DURATION',r.days?r.days+' d':'launch-day'],['DISTANCE',r.distanceKm?r.distanceKm.toLocaleString()+' km':'—']];
+  if(r.docking&&r.docking.count) rows.push(['DOCKING',r.docking.count+' operation'+(r.docking.count===1?'':'s')+' · '+r.docking.guidance]);
   if(final&&failed) rows.push(['FAILURE',r.subsystem||'mission anomaly']);
   host.classList.toggle('failure',failed); host.innerHTML='<div class="fr-title">'+(final?'FLIGHT DEBRIEF':'FLIGHT CARD')+'</div>'+rows.map(x=>'<div class="fr-row"><span>'+x[0]+'</span><span>'+x[1]+'</span></div>').join(''); host.classList.remove('hidden'); return true;
 }
@@ -1173,6 +1174,7 @@ function drawPostFlight(){
   if(report.payload!=null) rows.push(['PAYLOAD', report.payload>=1?report.payload.toFixed(2)+' t':Math.round(report.payload*1000)+' kg']);
   if(report.days) rows.push(['DURATION', report.days+' d']);
   if(report.distanceKm) rows.push(['DISTANCE', report.distanceKm.toLocaleString()+' km']);
+  if(report.docking&&report.docking.count) rows.push(['DOCK OPS',report.docking.count+' · '+report.docking.guidance]);
   rows.forEach((r,i)=>{
     const ry=dataY+i*16;
     ctx.fillStyle=themeColor('dim'); ctx.fillText(r[0],panelX+12,ry);

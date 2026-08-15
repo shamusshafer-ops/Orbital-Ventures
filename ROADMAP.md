@@ -781,6 +781,29 @@ bodies.
 
 **Slice 4 (manufacturing tie-in) is optional/last** and remains unstarted.
 
+## In progress — Generalized vehicle and station docking (D0–D1 shipped 2026-08-15)
+
+Extend #73's module-delivery spectacle into one simulation authority for capsule↔capsule/pod,
+capsule↔station, cargo-pod↔station, permanent module attachment, and mission-internal LOR/EOR docking.
+The player plans compatible interfaces, a target and rendezvous reserve; the game simulates port
+reservation, approach risk, hard dock, transfers and exact vehicle ownership. This is mission-scale
+control, not a manual six-axis piloting minigame.
+
+The critical architecture boundary is a new persistent `state.orbitAssets[]` owner for craft that
+remain in orbit. `activeFlights[]` stays the transit queue, `facilityModuleList()` stays permanent
+station/production truth, and cosmetic `assemblyLayouts` never authorize docking. Visiting berths are
+separate from the existing permanent module cap. Docking feeds the existing mission outcome as a named
+phase rather than adding a second post-success destruction roll.
+
+D0 compatibility/reservations and D1 mission-internal rendezvous are shipped: fitted interfaces and
+rendezvous guidance freeze into build/launch snapshots; reservations have exact owners/rejection
+reasons; LOR/EOR create real operations; and docking is a named reliability/debrief phase whose
+anomaly/presentation data comes from the frozen operation. Remaining slices are D2 capsule/pod-to-
+station with transfers; D3 persistent orbit assets and separately launched craft; D4 persistent
+retry/undock/refuel/servicing operations; then D5 visual playback, automation and balance. Full
+decisions, state shapes, interaction matrix, protected baselines, tests and non-goals:
+`docs/DOCKING-SYSTEM-SCOPE.md`.
+
 ### Workstream E2 — Medium (post-EA-gate)
 
 Station assembly + resupply loop (hangs on the existing STATION_MODULES seam — see #73 scoping above) · 3–4 more

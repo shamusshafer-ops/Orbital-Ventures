@@ -12,12 +12,15 @@ function mk(overrides){
   const m=Object.assign({id:'t_mission', name:'Test Mission', reqDv:9400, days:0, crew:0}, overrides.m||{});
   return Object.assign({m, crewed:false, rehearsed:false, v:null, sim:null}, overrides, {m});
 }
+const DOCKING_OPERATION_FIXTURE=makeDockOperation({id:'test:dock',missionId:'t_mission',purpose:'Test rendezvous',actorId:'capsule',actorPortId:'nose',targetId:'lander',targetPortId:'top',services:['crew'],status:'reserved'});
+function withDocking(ctx){ return Object.assign({},ctx,{docking:{operations:[DOCKING_OPERATION_FIXTURE]}}); }
 const CONTEXTS=[
   {label:'suborbital uncrewed', ctx:mk({m:{reqDv:3000, days:0}})},
   {label:'orbital uncrewed',    ctx:mk({m:{reqDv:9400, days:1}})},
   {label:'orbital crewed',      ctx:mk({m:{reqDv:9400, days:4, crew:2}, crewed:true})},
   {label:'profile deep uncrewed', ctx:mk({m:{reqDv:9400, days:180, profile:[{name:'TLI',dv:3120}], modules:['lv','transfer']}})},
   {label:'profile deep crewed',   ctx:mk({m:{reqDv:9400, days:240, crew:3, profile:[{name:'TLI',dv:3120}], modules:['lv','transfer']}, crewed:true})},
+  {label:'profile docking crewed',ctx:withDocking(mk({m:{reqDv:9400, days:12, crew:3, profile:[{name:'TLI',dv:3120}], modules:['lv','transfer','lander']}, crewed:true}))},
   {label:'tanker',              ctx:mk({m:{reqDv:9400, days:2, tanker:true}})},
 ];
 
@@ -141,17 +144,20 @@ const CONTEXTS=[
 
   state.research={};
   check('guidance_alarm gated off without digital_computer', byId('guidance_alarm').when(deepCrewed)===false);
-  check('dock_latch gated off without orbital_assembly', byId('dock_latch').when(deepCrewed)===false);
+  check('dock_latch gated off without a real docking operation', byId('dock_latch').when(deepCrewed)===false);
 
   state.research={digital_computer:true, orbital_assembly:true};
   check('guidance_alarm eligible once digital_computer is researched', byId('guidance_alarm').when(deepCrewed)===true);
-  check('dock_latch eligible once orbital_assembly is researched', byId('dock_latch').when(deepCrewed)===true);
+  check('dock_latch remains gated on a generic deep mission even with orbital_assembly', byId('dock_latch').when(deepCrewed)===false);
+
+  const dockingCrewed=withDocking(deepCrewed);
+  check('dock_latch is eligible when the frozen context owns a real docking operation', byId('dock_latch').when(dockingCrewed)===true);
 
   // the EVA branch inside dock_latch is separately gated on orbital_eva
-  const withoutEva=byId('dock_latch').options(deepCrewed).map(o=>o.id);
+  const withoutEva=byId('dock_latch').options(dockingCrewed).map(o=>o.id);
   check('dock_latch has no EVA option without orbital_eva', !withoutEva.includes('eva_latch'));
   state.research.orbital_eva=true;
-  const withEva=byId('dock_latch').options(deepCrewed).map(o=>o.id);
+  const withEva=byId('dock_latch').options(dockingCrewed).map(o=>o.id);
   check('dock_latch gains its EVA option with orbital_eva', withEva.includes('eva_latch'));
 
   state.research=saved;

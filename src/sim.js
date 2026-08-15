@@ -2349,6 +2349,8 @@ function auditLifecycleState(snapshot){
   }
   if(s.launchTxn){
     errors.push(...lifecycleRecordErrors('transaction',s.launchTxn).map(e=>`launchTxn: ${e}`));
+    if(s.launchTxn.spec&&s.launchTxn.spec.docking) errors.push(...dockingReservationErrors(s.launchTxn.spec.docking).map(e=>`launchTxn docking fitment: ${e}`));
+    if(s.launchTxn.context&&s.launchTxn.context.docking) errors.push(...dockingReservationErrors(s.launchTxn.context.docking).map(e=>`launchTxn docking operation: ${e}`));
     if(s.launchTxn.phase==='decision'&&s.launchTxn.decision&&s.launchTxn.decision.selected!=null)
       errors.push('launchTxn: selected decision is a transient mutation state, not a resumable checkpoint');
     if(activeLaunchTransaction(s)&&s.launchTxn.applied.ownership&&s.launchTxn.hullId&&owned.has(s.launchTxn.hullId)) errors.push(`hull ${s.launchTxn.hullId}: owned by hangar and transaction`);
@@ -2362,6 +2364,7 @@ function auditLifecycleState(snapshot){
     if(!rec||!rec.deferred||rec.kind==='logistics') continue;
     if(!rec.ctx||!rec.txn){ errors.push(`flight ${rec.id||'?'}: missing resumable context/transaction owner`); continue; }
     errors.push(...lifecycleRecordErrors('transaction',rec.txn).map(e=>`flight ${rec.id||'?'} txn: ${e}`));
+    if(rec.ctx&&rec.ctx.docking) errors.push(...dockingReservationErrors(rec.ctx.docking).map(e=>`flight ${rec.id||'?'} docking: ${e}`));
     if(rec.txn.phase!=='cruise') errors.push(`flight ${rec.id||'?'} txn: phase ${rec.txn.phase} is not cruise`);
     const hullId=rec.txn.hullId;
     if(hullId){
@@ -2408,17 +2411,18 @@ function recoveryDispositionText(hullId,crewed,crewCanEscape){
   return 'this launch vehicle has no fitted recovery system and will be expended';
 }
 function settleHullFlight(id,m,outcome,transactionId){ const h=hullById(id); if(!h) return; const survived=/^(success|partial|scrub)$/.test(outcome||''); const recoverable=survived&&h.recoveryFitted; h.status=recoverable?'recovered':(survived?'expended':'lost'); addHullEvent(h,h.status,m&&m.id,transactionId); }
-// snapshot the full bench design (incl. boosters/recovery/family) so a queued order builds
+// snapshot the full bench design (incl. boosters/recovery/family/docking fitment) so a queued order builds
 // the design as it was when ordered, even if the bench changes afterward. Also carries
 // testLevel/rehearsal — irrelevant to the original build-ahead-of-time use, but load-bearing
 // now that a committed Launch (see queueBuild's `committed` flag) routes through this same
 // snapshot: the test campaign/rehearsal choice made at commit time must survive to the later
 // Fly click even if the player changes the Bench's live toggles for a different design meanwhile.
-function queueSpecSnapshot(){
+function queueSpecSnapshot(m){
+  m=m||curMission();
   return JSON.parse(JSON.stringify({stages:state.stages, transfer:state.transfer, descent:state.descent,
     ascent:state.ascent, eclss:state.eclss, boosters:state.boosters, recovery:!!state.recovery, activeVehicle:state.activeVehicle,
     parts:curParts(), powerSource:state.powerSource, engineOut:!!state.engineOut, livery:curLivery(),
-    testLevel:state.testLevel, rehearsal:!!state.rehearsal}));
+    docking:dockingBuildCapability(m),testLevel:state.testLevel, rehearsal:!!state.rehearsal}));
 }
 function loadOrderSpec(s){
   if(!s) return;
@@ -2480,14 +2484,15 @@ function projectedLaunchMonthlyBurn(prebuilt){
   const departingHullOpex=prebuilt?EMPIRE_HANGAR_OPEX*(1-execOpexCut()):0;
   return round2(Math.max(0,operatingMonthlyBurn()-departingHullOpex));
 }
-function launchCommitmentQuote(m,v,sim,prebuilt){
+function launchCommitmentQuote(m,v,sim,prebuilt,frozenDockingBuild){
   const tl=TEST_LEVELS[state.testLevel]||TEST_LEVELS[0];
   const buildMo=prebuilt?0:buildMonths(m), rehMo=state.rehearsal?REHEARSAL_MONTHS:0;
   const launchMo=canParallelLaunch(!!prebuilt,tl,rehMo,buildMo,m)?0:1;
   const stockAdjustedBuild=!prebuilt&&!!m.window;
   const engines=stockAdjustedBuild?engineDrawForBuild(m):{draw:{},total:0,credit:0,saveDays:0,tested:0};
   const parts=stockAdjustedBuild?partDrawForBuild(m):{draw:{},total:0,credit:0,saveDays:0,tested:0};
-  return calculateLaunchQuote({prebuilt:!!prebuilt,trackedBuild:!prebuilt&&!m.window,window:!!m.window,stockAdjustedBuild,buildCost:v.buildCost,buildCredit:engines.credit+parts.credit,buildSaveDays:engines.saveDays+parts.saveDays,buildFloorCost:stockAdjustedBuild?0.1:0,buildFloorDays:stockAdjustedBuild?ENGINE_BUILD_FLOOR_DAYS:0,stock:{engines,parts},launchCost:v.launchCost,testCost:tl.cost||0,rehearsalCost:state.rehearsal?rehearsalCost(m):0,buildMonths:buildMo,testMonths:tl.months||0,rehearsalMonths:rehMo,launchMonths:launchMo,missionDays:m.days||0,monthlyBurn:projectedLaunchMonthlyBurn(!!prebuilt),money:state.money,nowAbsDay:absDay(),windowAbs:state.committedWindow&&state.committedWindow.missionId===m.id?state.committedWindow.abs:null,reliability:effectiveReliability(m,v,sim,!!m.crew)});
+  const docking=dockingMissionCapability(m,frozenDockingBuild);
+  return calculateLaunchQuote({prebuilt:!!prebuilt,trackedBuild:!prebuilt&&!m.window,window:!!m.window,stockAdjustedBuild,buildCost:v.buildCost,buildCredit:engines.credit+parts.credit,buildSaveDays:engines.saveDays+parts.saveDays,buildFloorCost:stockAdjustedBuild?0.1:0,buildFloorDays:stockAdjustedBuild?ENGINE_BUILD_FLOOR_DAYS:0,stock:{engines,parts},launchCost:v.launchCost,testCost:tl.cost||0,rehearsalCost:state.rehearsal?rehearsalCost(m):0,buildMonths:buildMo,testMonths:tl.months||0,rehearsalMonths:rehMo,launchMonths:launchMo,missionDays:m.days||0,monthlyBurn:projectedLaunchMonthlyBurn(!!prebuilt),money:state.money,nowAbsDay:absDay(),windowAbs:state.committedWindow&&state.committedWindow.missionId===m.id?state.committedWindow.abs:null,reliability:effectiveReliability(m,v,sim,!!m.crew,docking)});
 }
 function launchCommitmentActionView(m,v,sim){
   if(!m) return null;
@@ -2508,7 +2513,7 @@ function readyHullActionView(rec){
   if(!rec||!rec.id||!rec.hullId) return null;
   return withOrderSpec(rec,()=>{
     const m=curMission(), v=computeVehicle(), sim=m&&m.profile?simulateMission(m):null;
-    const check=canLaunch(v,m,sim,true), quote=check.quote||launchCommitmentQuote(m,v,sim,true);
+    const check=canLaunch(v,m,sim,true,rec.spec&&rec.spec.docking), quote=check.quote||launchCommitmentQuote(m,v,sim,true);
     const label=`Fly ${rec.hullId} — ${fM(quote.flightBurn)} flight + ${fM(quote.launchCarry)} reserve`;
     const action=makeActionDescriptor({id:`fly:${rec.id}:${rec.hullId}`,label,role:'primary',enabled:check.ok,disabledReason:check.ok?'':check.why,subjectType:'hull',subjectId:rec.hullId,quote});
     return {kind:'ready',record:rec,mission:m,vehicle:v,simulation:sim,check,quote,action,label};
@@ -2545,7 +2550,7 @@ function canQueue(m,v,sim){
 function queueBuild(committed,requestId){
   if(typeof guardOrdinaryAction==='function'&&!guardOrdinaryAction('Manufacturing')) return null;
   const m=curMission(); const v=computeVehicle(); const sim=m&&m.profile?simulateMission(m):null;
-  const spec=queueSpecSnapshot();
+  const spec=queueSpecSnapshot(m);
   const intent=requestIntentFingerprint('build',{missionId:m&&m.id,committed:!!committed,spec});
   const replay=inspectRequestReceipt(requestId,'build',intent);
   if(!replay.ok) return null;
@@ -2626,7 +2631,7 @@ function launchFromHangar(id,exactHullId,requestId){
   if(exactHullId&&h.hullId!==exactHullId){ announceAction(`Launch rejected: action expected hull ${exactHullId}, but order ${id} owns ${h.hullId||'no hull'}.`); return false; }
   state.activeMission=h.missionId; loadOrderSpec(h.spec);
   const m=curMission(), v=computeVehicle(), sim=m&&m.profile?simulateMission(m):null;
-  const chk=canLaunch(v,m,sim,true); // prebuilt-aware (build cost already paid)
+  const chk=canLaunch(v,m,sim,true,h.spec&&h.spec.docking); // prebuilt-aware (build cost already paid); docking fitment is frozen with this hull
   if(!chk.ok){ log('note',`Can’t fly ${h.name}: ${chk.why}`); announceAction(chk.why); render(); return false; }
   const begun=beginLaunchTransaction({requestId,source:'hangar',missionId:m.id,orderId:h.id,hullId:h.hullId,
     quote:chk.quote,spec:h.spec,timing:{startedAbs:absDay()}});
@@ -2667,7 +2672,7 @@ function setStandingProduction(missionId){
   const chk=canQueue(m,v,sim); if(!chk.ok && chk.why!=='can’t afford the build' && chk.why!=='queue full'){ log('note',`Can’t set standing production: ${chk.why}`); return; }
   const fam = activeFamily();
   state.standingProd = { missionId:m.id, missionName:m.name, name:(fam?fam.name:'Vehicle')+' — '+m.name,
-    spec:queueSpecSnapshot(), units:vehicleUnits(m), buildCost:round2(v.buildCost), enabled:true };
+    spec:queueSpecSnapshot(m.id===state.activeMission?curMission():m), units:vehicleUnits(m), buildCost:round2(v.buildCost), enabled:true };
   log('ok',`🏭 Standing production online — ${state.standingProd.name}. The line builds itself now, ${fM(state.standingProd.buildCost)}/copy, up to ${standingStockCap()} in stock.`);
   render();
 }
@@ -4259,14 +4264,94 @@ function missionAerocaptureLeg(m){ const l=(m&&m.profile||[]).find(x=>AEROCAPTUR
 // raw lift for extra flights, integration time, and docking risk.
 const ASSEMBLY_LAUNCH_COST=0.5;  // $M per extra dedicated assembly flight
 const ASSEMBLY_DOCK_REL=0.97;    // reliability factor per docking (halved by auto_rendezvous)
-function assemblyAvailable(m){ return !!(state.research.orbital_assembly && m && m.profile && m.modules && m.modules.includes('transfer')); }
+function assemblyAvailable(m){ return !!(state.research.orbital_assembly && m && m.profile && m.modules && m.modules.includes('transfer') && !(m._arch&&m._arch.id==='eor')); }
 function assemblyOn(m){ return !!(state.assembleOrbit && assemblyAvailable(m)); }
 function assemblyModules(m){ const mods=[]; if(!assemblyAvailable(m)) return mods; if(m.modules.includes('transfer')) mods.push('transfer'); if(m.modules.includes('lander')) mods.push('lander'); return mods; }
 function assemblyFlights(m){ return assemblyOn(m)?assemblyModules(m).length:0; }
-function assemblyDockPenalty(m){
-  const n=assemblyFlights(m); if(n<=0) return 1;
-  const p = state.research.auto_rendezvous ? 1-(1-ASSEMBLY_DOCK_REL)/2 : ASSEMBLY_DOCK_REL;
-  return Math.pow(p, n);
+function dockingServices(){ const out={}; for(const key of DOCKING_SERVICE_KEYS) out[key]=false; for(const key of arguments) if(key in out) out[key]=true; return out; }
+function dockingBuildCapability(m){
+  if(!m) return makeDockingCapability({missionId:'unknown'});
+  const actors=[], actorMap={};
+  function actor(id,label){ if(!actorMap[id]){ actorMap[id]={id,label,interfaces:[]}; actors.push(actorMap[id]); } return actorMap[id]; }
+  function port(ownerId,ownerLabel,id,standard,size,role,services){ actor(ownerId,ownerLabel).interfaces.push({id,standard,size,role,services}); }
+  const arch=m._arch&&m._arch.id;
+  // LOR/EOR hardware is mission-integrated: an early directional crew-transfer
+  // interface between the lunar ascent craft and its command capsule.
+  if(arch==='lor'||arch==='eor'){
+    port('lunar_ascent','Lunar ascent craft','lunar_ascent_nose','probe_drogue','standard','active',dockingServices('crew','cargo','power','data'));
+    port('command_capsule','Command capsule','command_capsule_nose','probe_drogue','standard','passive',dockingServices('crew','cargo','power','data'));
+  }
+  // EOR inherently carries assembly fitment. Other transfer missions only
+  // freeze these ports when Orbital Assembly was available at build time.
+  const assemblyFitted=arch==='eor'||assemblyAvailable(m);
+  if(assemblyFitted){
+    port('departure_stack','Departure stack','departure_transfer_port','androgynous','standard','androgynous',dockingServices('fuel','power','data','permanent'));
+    port('transfer_module','Transfer stage','transfer_module_port','androgynous','standard','androgynous',dockingServices('fuel','power','data','permanent'));
+    if(m.modules&&m.modules.includes('lander')){
+      port('departure_stack','Departure stack','departure_lander_port','androgynous','standard','androgynous',dockingServices('cargo','power','data','permanent'));
+      port('lander_module','Lander','lander_module_port','androgynous','standard','androgynous',dockingServices('cargo','power','data','permanent'));
+    }
+  }
+  return makeDockingCapability({missionId:m.id,guidance:state.research.auto_rendezvous?'automated':(state.research.orbital_assembly?'assisted':'manual'),actors});
+}
+function frozenDockingBuildCapability(m,snapshot){
+  if(snapshot==null) return dockingBuildCapability(m);
+  if(snapshot.missionId===m.id&&dockingCapabilityErrors(snapshot).length===0) return makeDockingCapability(snapshot);
+  // A malformed or wrong-mission frozen record never gains live hardware by
+  // fallback. It will produce an exact missing-interface launch rejection.
+  return makeDockingCapability({missionId:m.id,guidance:'manual'});
+}
+function dockingOperationRecord(m,id,purpose,actorId,actorPortId,targetId,targetPortId,services,source,reliability){
+  return makeDockOperation({id:`${m.id}:${id}`,missionId:m.id,purpose,status:'planned',actorId,actorPortId,targetId,targetPortId,services,source,reliability});
+}
+function dockingMissionOperations(m,build){
+  if(!m) return [];
+  const ops=[], arch=m._arch&&m._arch.id;
+  // Architecture reliability modifiers remain at their established balance in
+  // D1; per-operation tuning belongs to D5. The operation records still make
+  // the real rendezvous authoritative for phase attribution and anomalies.
+  if(arch==='eor'){
+    ops.push(dockingOperationRecord(m,'eor-transfer','Earth-orbit transfer-stage assembly','transfer_module','transfer_module_port','departure_stack','departure_transfer_port',['fuel','power','data','permanent'],'architecture',1));
+    if(m.modules&&m.modules.includes('lander')) ops.push(dockingOperationRecord(m,'eor-lander','Earth-orbit lander assembly','lander_module','lander_module_port','departure_stack','departure_lander_port',['cargo','power','data','permanent'],'architecture',1));
+  }
+  if(arch==='lor'||arch==='eor') ops.push(dockingOperationRecord(m,'lunar-rendezvous','Lunar-orbit crew rendezvous','lunar_ascent','lunar_ascent_nose','command_capsule','command_capsule_nose',['crew','cargo','power','data'],'architecture',1));
+  // The optional assembly route retains its existing per-module operation and
+  // reliability. EOR already includes those assembly operations above.
+  if(assemblyOn(m)&&arch!=='eor'){
+    const p=build.guidance==='automated'?1-(1-ASSEMBLY_DOCK_REL)/2:ASSEMBLY_DOCK_REL;
+    if(assemblyModules(m).includes('transfer')) ops.push(dockingOperationRecord(m,'assembly-transfer','Orbital transfer-stage assembly','transfer_module','transfer_module_port','departure_stack','departure_transfer_port',['fuel','power','data','permanent'],'orbital_assembly_route',p));
+    if(assemblyModules(m).includes('lander')) ops.push(dockingOperationRecord(m,'assembly-lander','Orbital lander assembly','lander_module','lander_module_port','departure_stack','departure_lander_port',['cargo','power','data','permanent'],'orbital_assembly_route',p));
+  }
+  return ops;
+}
+function dockingMissionCapability(m,frozenBuild){
+  const build=frozenDockingBuildCapability(m,frozenBuild), operations=dockingMissionOperations(m,build);
+  let actors=build.actors.map(makeDockActor); const reserved=[], rejections=[];
+  for(const operation of operations){
+    const result=reserveDockingOperation(operation,actors);
+    if(!result.ok){ rejections.push({operationId:operation.id,reasons:result.reasons.slice()}); continue; }
+    actors=result.actors; reserved.push(result.operation);
+  }
+  const assemblyFactor=reserved.filter(op=>op.source==='orbital_assembly_route').reduce((factor,op)=>factor*op.reliability,1);
+  const archDockingAdd=(m&&m._arch&&m._arch.id==='eor')?finiteRecordNumber(m._arch.relMod):0;
+  const presentation=reserved.map(op=>dockingPresentationSpec(op,actors,/^Earth-orbit/.test(op.purpose)?'earth':((missionDestination(m).bodyId)||'earth'))).filter(Boolean);
+  return makeDockingCapability({missionId:m.id,guidance:build.guidance,actors,operations:reserved,presentation,
+    reliability:{factor:assemblyFactor,additive:archDockingAdd},rejections});
+}
+function dockingReliabilityAdjustment(m,capability){
+  const cap=capability&&capability.missionId===m.id?capability:dockingMissionCapability(m);
+  const rel=cap&&cap.reliability||{};
+  return {factor:Math.max(0,finiteRecordNumber(rel.factor,1)),additive:finiteRecordNumber(rel.additive),operations:(cap&&cap.operations||[]).length};
+}
+function assemblyDockPenalty(m,capability){ return dockingReliabilityAdjustment(m,capability).factor; }
+function dockingOperationFromContext(ctx){
+  const operations=ctx&&ctx.docking&&Array.isArray(ctx.docking.operations)?ctx.docking.operations:[];
+  return operations.find(op=>dockOperationErrors(op).length===0&&['reserved','approach','soft_capture','hard_dock'].includes(op.status))||null;
+}
+function dockingRejectionText(capability){
+  const first=capability&&capability.rejections&&capability.rejections[0]; if(!first) return '';
+  const labels={'standard-mismatch':'wrong docking standard','size-mismatch':'wrong docking-port size','role-mismatch':'both ports have incompatible active/passive roles','actor-port-unavailable':'the spacecraft port is already reserved','target-port-unavailable':'the target port is already reserved','service-mismatch':'the ports do not share the required transfer service','interface-not-found':'the built vehicle lacks a required docking interface','invalid-operation':'the docking plan is invalid'};
+  return `Docking unavailable — ${(first.reasons||[]).map(reason=>labels[reason]||reason).join(', ')}.`;
 }
 // #6: the strategic routes to a deep-space destination, with unlocked/in-use status
 function marsRoutes(m){
@@ -4660,15 +4745,19 @@ function structuralLoadAssessment(m, v, crewed){
 }
 // One immutable, player-facing flight card.  It is built from the same mission/vehicle/outcome
 // snapshots that resolve the launch, so overlay telemetry and the debrief never invent a number.
-function flightReport(m, vehicle, sim, outcome){
+function flightReport(m, vehicle, sim, outcome, dockingCapability){
   const v=vehicle||computeVehicle(), legs=(sim&&sim.legs)||[];
   const requiredDv=legs.length?legs.reduce((n,l)=>n+(Number(l.dv)||0),0):(m.reqDv||0);
   const payload=v.payload||0, days=Math.round(m.days||0), delivered=m.tanker?tankerDelivery():payload;
   const target=missionDestination(m).name;
   const kind=(outcome&&outcome.kind)||'planned';
-  return {mission:m.name,target,payload,delivered,days,requiredDv,liftoff:v.liftoff||0,totalDv:v.totalDv||0,twr:v.twr||0,
+  const docking=dockingCapability&&dockingCapability.missionId===m.id?dockingCapability:dockingMissionCapability(m);
+  const report={mission:m.name,target,payload,delivered,days,requiredDv,liftoff:v.liftoff||0,totalDv:v.totalDv||0,twr:v.twr||0,
     stages:(v.sm||[]).length,crew:m.crew||0,outcome:kind,failure:(outcome&&outcome.story)||'',subsystem:(outcome&&outcome.subsystem)||'',
     distanceKm: days>0 ? Math.round(days*86400*29.78) : (m.reqDv>=9000?40000:Math.max(5,Math.round((m.reqDv||0)*0.006))) };
+  if(docking.operations.length) report.docking={phase:FLIGHT_PHASE_LABEL.docking,count:docking.operations.length,guidance:docking.guidance,
+    operations:docking.presentation.map(plainRecord)};
+  return report;
 }
 
 // M-Complexity: base build time is 2 months for a single-stage vehicle with
@@ -4722,7 +4811,7 @@ function buildMonths(m){
    lose the vehicle (abort if a launch-escape system is fitted), and deep-space
    propulsion or life-support faults strand a crew on the way home. */
 const PARTIAL_PAYOUT_MULT = 0.45;
-const SUBSYS_LABEL = {propulsion:'Propulsion', boosters:'Boosters', structures:'Structures', separation:'Staging', avionics:'Guidance', deep_propulsion:'Deep-space propulsion', life_support:'Life support'};
+const SUBSYS_LABEL = {propulsion:'Propulsion', boosters:'Boosters', structures:'Structures', separation:'Staging', avionics:'Guidance', deep_propulsion:'Deep-space propulsion', docking:'Rendezvous & docking', life_support:'Life support'};
 // Which engineering specialties reduce each vehicle subsystem's fragility. New disciplines fold
 // into an existing subsystem: materials strengthens structures, software strengthens avionics.
 // A subsystem with only its original specialty behaves exactly as before (byte-identical when the
@@ -4812,7 +4901,7 @@ function powerViable(m){
     return {ok:false, why:`Solar Arrays can't power the spacecraft this far from the Sun (~${Math.round(destSolarFlux(m)*100)}% sunlight at ${bn}). Fit RTGs or a Fission Reactor.`}; }
   return {ok:true};
 }
-function effectiveReliability(m,v,sim,crewed){
+function effectiveReliability(m,v,sim,crewed,dockingCapability){
   let rel=v.reliability;
   if(sim) rel=Math.max(0.30, rel*Math.pow(0.985, sim.inSpaceLegs));
   rel*=radRelPenalty(m,crewed); // radiation degrades reliability on long deep missions (bought down by shielding)
@@ -4824,8 +4913,10 @@ function effectiveReliability(m,v,sim,crewed){
   rel=Math.min(0.995, rel + inquiryRelBonus(m,v,sim,crewed)); // P3: a funded failure inquiry's reliability credit, only while its subsystem is in play
   if(state.staticFixBonus) rel=Math.min(0.995, rel + state.staticFixBonus); // Phase 2: fault found & fixed on the test stand
   if(recoveryRefly(m)) rel=Math.max(diff().relFloor, rel - refurbRelPenalty()); // #7 slice 4: refurbishment wear — each refly chips a little reliability (bounded; mitigated by retiring the airframe)
-  rel*=assemblyDockPenalty(m); // #6: each orbital docking is a chance to fail (halved by auto-rendezvous)
-  if(m && m._arch && m._arch.relMod) rel=clampA(rel + m._arch.relMod, 0.1, 0.995); // M12: architecture reliability modifier
+  const dockingRel=dockingReliabilityAdjustment(m,dockingCapability);
+  rel*=dockingRel.factor; // D1: the established orbital-assembly penalty now comes from exact reserved operations
+  if(dockingRel.additive) rel=clampA(rel+dockingRel.additive,0.1,0.995); // EOR's established −2% is owned by the docking phase
+  if(m && m._arch && m._arch.relMod && m._arch.id!=='eor') rel=clampA(rel + m._arch.relMod, 0.1, 0.995); // other M12 architecture modifiers remain unchanged
   return rel;
 }
 // does this mission actually reach orbital velocity (or fly a deep-space profile)? Suborbital/ballistic
@@ -4834,7 +4925,7 @@ function effectiveReliability(m,v,sim,crewed){
 // a long coast home) shouldn't be able to fire on them.
 function missionReachesOrbit(m){ return !!(m&&m.profile) || ((m&&m.reqDv)||0)>=9000; }
 // relative fragility weights per subsystem (higher = likelier culprit), reflecting the design
-function subsystemFragilities(m,v,sim,crewed){
+function subsystemFragilities(m,v,sim,crewed,dockingCapability){
   const stages=state.stages, totalEng=stages.reduce((a,s)=>a+s.count,0);
   let er=0,ec=0; stages.forEach(s=>{ const e=ENGINES[s.eng]||ENGINES.a4; er+=e.rel*s.count; ec+=s.count; });
   const avgEngRel=ec?er/ec:0.95;
@@ -4870,6 +4961,8 @@ function subsystemFragilities(m,v,sim,crewed){
     const wd=0.4*(sim.inSpaceLegs||1)*(1+(0.96-te.rel)*6);
     list.push({key:'deep_propulsion', label:SUBSYS_LABEL.deep_propulsion, phase:'deep', severity:'deep', weight:Math.max(0.05,wd)});
   }
+  const docking=dockingCapability&&dockingCapability.missionId===m.id?dockingCapability:dockingMissionCapability(m);
+  if(docking.operations.length) list.push({key:'docking',label:SUBSYS_LABEL.docking,phase:'docking',severity:'partial',weight:Math.max(0.12,0.22*docking.operations.length)});
   if(crewed){
     const orbital=missionReachesOrbit(m); // suborbital hops (e.g. First Astronaut) don't get a deep-space "strand" — there's nowhere to be stranded on a 15-minute ballistic arc
     const rec=(ECLSS[state.eclss]||ECLSS.open).recovery;
@@ -4891,19 +4984,19 @@ function inquiryCreditRelevant(m,v,sim,crewed){
 function inquiryRelBonus(m,v,sim,crewed){ return inquiryCreditRelevant(m,v,sim,crewed) ? state.inquiryCredit.rel : 0; }
 // distribute the mission failure probability across subsystems so the product of
 // their reliabilities equals the overall R (rel_i = R^(weight_i / sum_weights))
-function subsystemReport(m,v,sim,crewed,relMult=1){
-  const R=effectiveReliability(m,v,sim,crewed)*(relMult||1); // #20: weather/ops penalties scale R for one flight
-  const frs=subsystemFragilities(m,v,sim,crewed);
+function subsystemReport(m,v,sim,crewed,relMult=1,dockingCapability){
+  const R=effectiveReliability(m,v,sim,crewed,dockingCapability)*(relMult||1); // #20: weather/ops penalties scale R for one flight
+  const frs=subsystemFragilities(m,v,sim,crewed,dockingCapability);
   const W=frs.reduce((a,f)=>a+f.weight,0)||1;
   return {R, subsystems:frs.map(f=>{ const rel=Math.pow(R, f.weight/W); return Object.assign({}, f, {rel, p:1-rel}); })};
 }
-const SUBSYS_PRIORITY=['propulsion','boosters','structures','separation','avionics','deep_propulsion','life_support'];
+const SUBSYS_PRIORITY=['propulsion','boosters','structures','separation','avionics','deep_propulsion','docking','life_support'];
 // CE5(a): the flight resolves as an ordered sequence of PHASES, each owning a set of subsystems.
 // Per-phase reliability = the product of its subsystems' reliabilities, so the product across all
 // phases equals the overall R (∏ phaseRel = R) — provably balance-neutral. This is the seam CE5(b)
 // hooks a live abort / press-on call into; here the outcome selection is unchanged from the
 // single-roll model (same rolls, same governing-priority pick).
-const FLIGHT_PHASE_ORDER=['pad','ascent','staging','coast','deep','return'];
+const FLIGHT_PHASE_ORDER=['pad','ascent','staging','coast','deep','docking','return'];
 // Tier 1.2: a surviving subsystem whose draw landed within this of its reliability threshold is
 // reported as a near miss on an otherwise clean success. Single tunable knob for how often that
 // feedback surfaces. MEASURED at 0.05 (5000 seeded flights, Engineer start): ~11% of successful
@@ -4913,8 +5006,8 @@ const FLIGHT_PHASE_ORDER=['pad','ascent','staging','coast','deep','return'];
 // late game with 7 subsystems. Raise it for more frequent feedback, lower it to reserve the moment
 // for genuine squeakers. Purely presentational: it gates a message, never a roll.
 const NEAR_MISS_MARGIN=0.05;
-const FLIGHT_PHASE_LABEL={pad:'Pad & ignition', ascent:'Ascent', staging:'Staging', coast:'Orbit / coast', deep:'Deep space', return:'Reentry / return'};
-const SUBSYS_PHASE={propulsion:'ascent', boosters:'ascent', structures:'ascent', avionics:'ascent', separation:'staging', deep_propulsion:'deep', life_support:'deep'};
+const FLIGHT_PHASE_LABEL={pad:'Pad & ignition', ascent:'Ascent', staging:'Staging', coast:'Orbit / coast', deep:'Deep space', docking:'Rendezvous & docking', return:'Reentry / return'};
+const SUBSYS_PHASE={propulsion:'ascent', boosters:'ascent', structures:'ascent', avionics:'ascent', separation:'staging', deep_propulsion:'deep', docking:'docking', life_support:'deep'};
 function livePhaseOf(key){ return SUBSYS_PHASE[key]||'ascent'; }
 // group a subsystemReport into ordered phases, each carrying its product reliability (∏ phaseRel = R)
 function flightPhaseBreakdown(rep){
@@ -4956,8 +5049,8 @@ let _devForceWeather=false;    // forces the next rollWeather() to return an adv
 // Reuses the REAL per-phase machinery (subsystemReport/flightPhaseBreakdown) for `phases` so nothing
 // that iterates outcome.phases chokes. 'strand' is crewed-deep-failure-shaped, so a forced strand on
 // a crewed flight reaches finalizeLaunch's _pendingRescue branch exactly like a natural one.
-function devSynthOutcome(kind, m, v, sim, crewed, relPenalty){
-  const rep=subsystemReport(m,v,sim,crewed,1-(relPenalty||0));
+function devSynthOutcome(kind, m, v, sim, crewed, relPenalty, dockingCapability){
+  const rep=subsystemReport(m,v,sim,crewed,1-(relPenalty||0),dockingCapability);
   const phases=flightPhaseBreakdown(rep);
   let out;
   if(kind==='success') out={kind:'success', rel:Math.max(rep.R,0.98), failPhase:null, subsystem:null};
@@ -4981,8 +5074,8 @@ function nearMissText(nm){
   const pretty = pts<1 ? pts.toFixed(1) : Math.round(pts).toString();
   return ` ⚠ Close call — ${nm.label} held at ${Math.round(nm.rel*100)}%, ${pretty} point${pretty==='1'?'':'s'} from failing.`;
 }
-function resolveFlight(m,v,sim,crewed,relPenalty=0){  if(_devForceOutcome){ const k=_devForceOutcome; _devForceOutcome=null; return devSynthOutcome(k,m,v,sim,crewed,relPenalty); } // dev menu: single-shot forced outcome
-  const rep=subsystemReport(m,v,sim,crewed,1-(relPenalty||0));
+function resolveFlight(m,v,sim,crewed,relPenalty=0,dockingCapability){  if(_devForceOutcome){ const k=_devForceOutcome; _devForceOutcome=null; return devSynthOutcome(k,m,v,sim,crewed,relPenalty,dockingCapability); } // dev menu: single-shot forced outcome
+  const rep=subsystemReport(m,v,sim,crewed,1-(relPenalty||0),dockingCapability);
   const phases=flightPhaseBreakdown(rep); // CE5(a): per-phase decomposition (outcome unchanged)
   const failed={};
   // Tier 1.2: capture the narrowest surviving margin as we go. Same loop, same single Math.random()
@@ -5002,7 +5095,9 @@ function resolveFlight(m,v,sim,crewed,relPenalty=0){  if(_devForceOutcome){ cons
   let out;
   if(!gov) out={kind:'success', rel:rep.R, failPhase:null, subsystem:null};
   else if(gov.severity==='partial'){
-    out={kind:'partial', subsystem:gov.key, failPhase:null, rel:rep.R, story: missionReachesOrbit(m)
+    out={kind:'partial', subsystem:gov.key, failPhase:gov.key==='docking'?'docking':null, rel:rep.R, story: gov.key==='docking'
+      ? 'the rendezvous reached soft capture, but the docking interface could not complete a hard dock.'
+      : missionReachesOrbit(m)
       ? 'guidance drifted during ascent — the payload reached space but in the wrong orbit.'
       : 'guidance drifted during ascent — the payload reached space but well off the planned trajectory.'};
   }
@@ -5156,7 +5251,7 @@ function subsystemBreakdownHTML(m,v){
   const qaLvl=prodLevel('qa'), qaChip=qaLvl>1?` <span class="pill ok" title="QA L${qaLvl}: catches manufacturing defects on this subsystem before flight">🔬 QA L${qaLvl}</span>`:'';
   const rows=rep.subsystems.map(s=>{
     const pc=Math.round(s.rel*100), col=pc>=97?'var(--ok)':(pc>=92?'var(--warn)':'var(--bad)');
-    const sev=s.severity==='partial'?'wrong orbit':(s.phase==='deep'?'lost in deep space':'loss of vehicle');
+    const sev=s.key==='docking'?'rendezvous incomplete':(s.severity==='partial'?'wrong orbit':(s.phase==='deep'?'lost in deep space':'loss of vehicle'));
     const chip=QA_MFG_SUBSYS.has(s.key)?qaChip:'';
     return `<div class="leg"><span class="legname">${s.label}${chip}</span><span class="legdv" style="color:${col}">${pc}%</span><span class="legdetail">fault → ${sev}</span></div>`;
   }).join('');
@@ -5360,7 +5455,7 @@ const MISSION_ANOMALIES=[
   { id:'dock_latch', title:'Docking latches will not capture',
     // Soft capture without hard latch: soft dock holds, but the hard-latch ring won't drive home,
     // and every retry costs propellant with the two vehicles station-keeping metres apart.
-    when:c=> !!(state.research && state.research.orbital_assembly && (c.m.profile || (c.m.reqDv||0)>=9000)),
+    when:c=> !!dockingOperationFromContext(c),
     detail:'Soft capture is holding, but the hard-latch ring will not drive home. Every retry burns propellant with two vehicles metres apart.',
     options:c=>{ const o=[];
       o.push({id:'retry_latch', label:'Back off and retry the capture sequence', resolve:rng=> rng()<opsLuck(0.7)
@@ -5686,7 +5781,7 @@ function rehearsalHTML(m){
 }
 
 /* ---------- launch ---------- */
-function canLaunch(v,m,sim,prebuilt){
+function canLaunch(v,m,sim,prebuilt,frozenDockingBuild){
   if(m.tanker){
     if(v.totalDv < m.reqDv) return {ok:false,why:'Δv shortfall — this design can\'t reach LEO to deliver propellant.'};
     if(v.twr<=1.0) return {ok:false,why:'Thrust-to-weight ≤ 1 — it will not leave the pad.'};
@@ -5701,7 +5796,9 @@ function canLaunch(v,m,sim,prebuilt){
       if(v.totalDv < need) return {ok:false,why:`Δv shortfall — ${Math.round(v.totalDv).toLocaleString()} of ${need.toLocaleString()} m/s (${Math.round(need-v.totalDv).toLocaleString()} short). Add propellant, engines, or a stage on the bench.`}; }
     if(v.twr<=1.0) return {ok:false,why:'Thrust-to-weight ≤ 1 — it will not leave the pad.'};
   }
-  const quote=launchCommitmentQuote(m,v,sim,!!prebuilt);
+  const docking=dockingMissionCapability(m,frozenDockingBuild);
+  if(docking.rejections.length) return {ok:false,why:dockingRejectionText(docking),reason:'DOCKING_INCOMPATIBLE',docking};
+  const quote=launchCommitmentQuote(m,v,sim,!!prebuilt,frozenDockingBuild);
   if(m.window){
     const cw=state.committedWindow;
     if(!cw||cw.missionId!==m.id) return {ok:false,why:'No launch window committed — pick one from the Launch Window Planner below.'};
@@ -5745,7 +5842,7 @@ function launch(prebuilt,hullId,requestId,validatedQuote){
   let tx=state.launchTxn;
   if(!(activeLaunchTransaction()&&tx.requestId===effectiveRequestId&&tx.missionId===m.id&&(tx.hullId||null)===(hullId||null))){
     const begun=beginLaunchTransaction({requestId:effectiveRequestId,source:m.window?'window':'hangar',missionId:m.id,hullId:hullId||null,
-      quote,spec:queueSpecSnapshot(),timing:{startedAbs:absDay()}});
+      quote,spec:queueSpecSnapshot(m),timing:{startedAbs:absDay()}});
     if(!begun.ok) return false;
     if(begun.replay) return true;
     tx=begun.txn;
@@ -5794,7 +5891,7 @@ function launch(prebuilt,hullId,requestId,validatedQuote){
   // Window-bound launches still use the immediate build path (they cannot enter the generic
   // queue without losing their committed date), so create their physical article here rather
   // than leaving them as the one class of launch with no serial identity.
-  if(!prebuilt && !hullId){ const builtHull=makeHull(queueSpecSnapshot(),'rollout'); hullId=builtHull.id; markHullPreparing(hullId); tx.hullId=hullId; tx.applied.ownership=true; }
+  if(!prebuilt && !hullId){ const builtHull=makeHull((tx&&tx.spec)||queueSpecSnapshot(m),'rollout'); hullId=builtHull.id; markHullPreparing(hullId); tx.hullId=hullId; tx.applied.ownership=true; }
   // #20 slice 1: launch-day weather go/no-go — the vehicle is built and rolled out
   const wx=tx.draws.weather&&tx.draws.weather.id?plainRecord(tx.draws.weather):rollWeather(m);
   tx.draws.weather=plainRecord(wx);
@@ -6133,8 +6230,9 @@ function proceedLaunch(m,v,sim,windowQuality,weatherPenalty,prebuilt,hullId){
   const flightExpense=(prebuilt?0:v.buildCost)+v.launchCost+tl.cost+(state.rehearsal?rehearsalCost(m):0); // #18: this flight's outlay for the ops ledger
   const routine=!!state.completed[m.id];
   const crewed=m.crew>0;
+  const docking=dockingMissionCapability(m,tx&&tx.spec&&tx.spec.docking);
   // M16: subsystem-based reliability — which subsystem (if any) fails decides the story
-  const outcome=tx&&tx.outcome?plainRecord(tx.outcome):resolveFlight(m,v,sim,crewed,weatherPenalty); // outcome locks at launch-time tech (resolve BEFORE the cruise advances time)
+  const outcome=tx&&tx.outcome?plainRecord(tx.outcome):resolveFlight(m,v,sim,crewed,weatherPenalty,docking); // outcome locks at launch-time tech and frozen docking fitment
   // P3: this real flight commits the funded-inquiry reliability credit if its subsystem is in play — consume one flight here
   // (the single point where the +R bonus is baked into a genuine outcome; preview/sim calls never reach this line).
   if(state.inquiryCredit && state.inquiryCredit.flights>0 && inquiryCreditRelevant(m,v,sim,crewed)){
@@ -6147,7 +6245,7 @@ function proceedLaunch(m,v,sim,windowQuality,weatherPenalty,prebuilt,hullId){
   // time commitments (overhead, R&D, rivals, facilities all advance during the mission). Intentional
   // payoff of daily time. If the long cruise bankrupts the company, the gameOver modal is already up.
   const missionDays=Math.round(m.days||0);
-  const ctx={m,v,sim,windowQuality,flightExpense,routine,crewed,outcome,rehearsed:!!state.rehearsal,
+  const ctx={m,v,sim,windowQuality,flightExpense,routine,crewed,outcome,rehearsed:!!state.rehearsal,docking:plainRecord(docking),
              depotUse:state.depotUse||0,assembleOrbit:!!state.assembleOrbit,
              transactionId:tx&&tx.id||null, famId:(activeFamily()||{}).id||null, hullId:hullId||null,
              crewId:crewed?state.assignedAstronaut:null, ab:crewed?astroBonus():{rel:0,payoutMult:1}}; // 1.2b/S1: snapshot crew + bonus at launch; store famId (not the object) so a mid-cruise save round-trips cleanly
@@ -6541,7 +6639,8 @@ function finalizeLaunch(ctx, ops){
     recovering: resolution.vehicleDisposition==='recovered' && snapStages.length>1 && failPhase!=='ascent',
     hasCapsule: resolution.crewCapsuleFitted!=null?resolution.crewCapsuleFitted:!!(state.research.crew_capsule || crewed),
     isCislunar: !!m.profile, isOrbital: (!m.profile && m.reqDv>=9000),
-    reqDv: m.reqDv||9400, physics:flightPhysicsSpec(m,v), report:flightReport(m,v,sim,outcome), orbitOps:ctx.orbitOps||null,
+    reqDv: m.reqDv||9400, physics:flightPhysicsSpec(m,v), report:flightReport(m,v,sim,outcome,ctx.docking), orbitOps:ctx.orbitOps||null,
+    docking:plainRecord(ctx.docking||null),rendezvous:plainRecord(ctx.docking&&ctx.docking.presentation||[]),
     // #38: reuse the earlier roll if a live decision (weather/live-call/rescue) already opened this
     // overlay — resumeFlightForDecision's Object.assign would otherwise clobber A.spec.night mid-flight,
     // flipping the sky partway through a launch already being watched.
