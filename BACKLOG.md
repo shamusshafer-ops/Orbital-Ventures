@@ -105,10 +105,10 @@ Complexity: S = <1 day, M = 1–5 days, L = 1–3 weeks, XL = 1+ month. Impact: 
 |72| Named test pilots for static-fire/atmospheric era | Pre-1957 texture | S | ★ | 61 | L |Backlog|
 
 ### Stations, logistics, late game (73–85)
-|73| Station assembly loop (launch modules, dock) | Economy/UI done 2026-07-02 (`5c60c8c`); remaining = real launch/dock interactivity | L | ★★★ | — | H |E2 (scoped 2026-07-11)|
-|74| Station resupply contracts (recurring ops) | Late-game loop | L | ★★★ | 73 | H |E2|
-|75| Crew rotation cadence requirements | Standing obligation | M | ★★ | 73,61 | M |Backlog|
-|76| Module degradation/maintenance | Sink + tension | M | ★★ | 73 | M |Backlog|
+|73| Station assembly loop (launch modules, dock) | Economy/UI done 2026-07-02 (`5c60c8c`); remaining = real launch/dock interactivity | L | ★★★ | — | H |Shipped — Slices 0-3 of the 2026-07-11 scoping all confirmed in source: `stationCurrentView()` (Slice 0), player's choice of real launch vs. contracted delivery with the double-charge risk actually resolved (`flyModuleCost` excludes the body multiplier, Slice 1), Moon/Mars delivery as a real cargo cruise (Slice 2), rendezvous+dock spectacle in the flight overlay (Slice 3). Only Slice 4 (optional manufacturing-bay tie-in) remains — see its own row below|
+|74| Station resupply contracts (recurring ops) | Late-game loop | L | ★★★ | 73 | H |Shipped — `signResupplyContract`/`cancelResupplyContract`, term-limited with expiry, premium pricing, auto-reorder at a supply threshold, full UI. Never cross-referenced back to this row when built|
+|75| Crew rotation cadence requirements | Standing obligation | M | ★★ | 73,61 | M |Shipped — assign/remove station crew, `rotationDueAbs` tracking, UI shows "due now"/"due in N mo"|
+|76| Module degradation/maintenance | Sink + tension | M | ★★ | 73 | M |Shipped — hazard-accelerated `condition` decay, `repairStation()`, real sink/tension mechanic|
 |77| Science-over-time from staffed station | Passive→active R&D | M | ★★ | 73 | M |Already shipped (M17 facilities pass) — facilityProduction().sci feeds the daily tick|
 |78| Depot network view (already have depots) | Logistics legibility | M | ★ | — | L |Backlog|
 |79| Cargo manifest choices on resupply (pick 3 of 5) | Small decisions | S | ★★ | 74 | M |Backlog|
@@ -153,6 +153,7 @@ Complexity: S = <1 day, M = 1–5 days, L = 1–3 weeks, XL = 1+ month. Impact: 
 |116| Persistent satellite objects (deployed sats with orbit params, degradation, servicing tie-in) — enables real per-sat telemetry in the Fleet Registry | Sim depth · registry option B | L | ★★ | 115 | L |Partly shipped 2026-08-12 (#116-A) — re-scoped on inspection: the premise ("option B deferred from #115") predated the docking/orbitAssets work, so this was built by extending `state.orbitAssets` with a `satellite` kind rather than a parallel array. Deployed satellites now persist with orbit params, health degradation over a ~12yr design life, end-of-life retirement, a servicing port, save migration (v68) and their own Fleet Registry group. **Still open (option C):** tying contract income to satellite health, so degradation creates replacement pressure — deliberately deferred as a balance change needing playtest judgement|
 |117| Solar System map improvement epic: A) truthful angle + Oort-excluded sizing, B) WASD/keyboard nav all 3 renderers, C) port live ship-tracking to Phaser+SVG | Map = dashboard + planner, "more connected" | M (per slice) | ★★★ | — | M |**Epic complete 2026-07-24.** Slice A: map2dAngle truthful angle, Oort-exclusion, 980×620 canvas. Slice B: WASD/arrows across 3D/Phaser/SVG + shared popout. Slice C: ported activeShipMarkers live in-flight tracking to Phaser+SVG (shipMapPoint rides the existing 2D transferArc curve). See ROADMAP.md for all three session entries|
 |118| Seeded deterministic RNG for the simulation layer (route sim.js's 46 raw `Math.random()` calls through a seeded stream; `mulberry()`/`hashStr()` already exist in shell.js:440-441 and are used ~15× in render.js for deterministic visuals) | Test determinism · unblocks #94 Ironman and #95 challenge seeds · fixes test-station-slice2 flakiness | M | ★★ | — | M |Backlog — filed 2026-07-28 from the full-code refactor review. NOT a harness-only change: reseeding shifts the RNG draw order, which is itself the cause of the existing flakiness, so it carries real balance-regression risk and wants its own slice|
+|119| #73 Slice 4: manufacturing tie-in — station module builds occupy assembly-bay units instead of resolving instantly | Consistency with the vehicle-build pipeline | S–M | ★ | 73 | L |Backlog — filed 2026-08-12 during the station-cluster audit. Marked optional in the original 2026-07-11 scoping; #73 Slices 0-3 are all shipped without it. Small, well-bounded, no balance risk identified|
 
 ---
 
@@ -163,11 +164,17 @@ Complexity: S = <1 day, M = 1–5 days, L = 1–3 weeks, XL = 1+ month. Impact: 
 
 | Status | Count | Meaning |
 |---|---|---|
-| E0.x / E1.x / E2 | 26 | Folded into a named ROADMAP.md workstream |
-| Shipped / closed | 24 | Built and verified; see ROADMAP-HISTORY.md |
+| E0.x / E1.x / E2 | 24 | Folded into a named ROADMAP.md workstream |
+| Shipped / closed | 28 | Built and verified; see ROADMAP-HISTORY.md |
 | Partly shipped | 1 | One slice built, a named remainder still open (#116) |
 | Deferred | 13 | Named in ROADMAP.md's deferred list |
-| **Backlog** | **43** | Not yet on ROADMAP.md in any form |
+| **Backlog** | **42** | Not yet on ROADMAP.md in any form |
+
+*Recounted 2026-08-12 (station-cluster audit): #73/#74 moved from `E2` to `Shipped` (all
+scoped slices except an optional one confirmed built) and #75/#76 moved from `Backlog` to
+`Shipped` (fully built, never cross-referenced). New row #119 filed for #73's one remaining
+optional slice. Prompted by finding #4 and #12 in the same state during the 2026-08-12
+backlog audit — this cluster had the same pattern at higher volume.*
 
 *Recounted 2026-08-12 after a full audit against the codebase (not just the table's own
 claims): #4 moved from `E0.4` to `Shipped` (built later via Gate 6 F6, not the E0.4 slice it
@@ -181,7 +188,7 @@ written 2026-07-28 directly from the table; counts above reflect the two moves a
 Over half the list (58/112) hasn't been triaged onto ROADMAP.md yet — mostly small
 QoL items (#9, 11–12, 15–16, 19–25), flight/ops texture (#31, 33–34, 37–45), rival/world
 flavor beyond the reactive-race core (#50, 53, 56–60), and personnel/station depth
-beyond the named E1.4/E2 items (#64, 66–72, 75–79, 82, 84–85, 89–90, 100, 104).
+beyond the named E1.4/E2 items (#64, 66–72, 78–79, 82, 84–85, 89–90, 100, 104).
 None of these are blocking — they're candidates for future slice selection once E0/E1
 land. Revisit this tally each time ROADMAP.md workstreams close out.
 

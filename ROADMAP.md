@@ -583,9 +583,11 @@ already proved works (`missionById`, one-shot `m.proc` consumption).
 
 **Still open (implementation-time, not blocking further scoping):** launch-failure semantics for a module
 aboard (destroyed/insured/retry-launch-only) · real vs. rescaled module payload mass (9–20t modules would
-gate stations behind heavy lift — a real balance shift) · module cost rebalancing (current cost already
-implicitly bakes in delivery via the body multiplier — stacking a real launch cost on top double-charges
-unless base costs drop) · whether #74/#76/#77's "depends on #73" should re-point at "Slice 1 done."
+gate stations behind heavy lift — a real balance shift).
+**Resolved 2026-08-12:** the cost-double-counting concern above did not materialize —
+`flyModuleCost` deliberately excludes the body multiplier when flying yourself, so it isn't
+stacked on top of a real launch cost. #74/#75/#76/#77 are all shipped; the "depends on #73"
+question is moot.
 
 **Risks:** cost double-counting (see above) · pacing if flights feel mandatory rather than optional ·
 progression shift from real payload masses · flight.js churn colliding with the visual-overhaul work.
@@ -817,7 +819,9 @@ decisions, state shapes, interaction matrix, protected baselines, tests and non-
 
 ### Workstream E2 — Medium (post-EA-gate)
 
-Station assembly + resupply loop (hangs on the existing STATION_MODULES seam — see #73 scoping above) · 3–4 more
+Station assembly + resupply loop: **shipped** (Slices 0-3 of the #73 scoping, plus #74/#75/#76 —
+confirmed against source 2026-08-12; see BACKLOG.md #73-76). Only the optional manufacturing-bay
+tie-in remains, filed as BACKLOG.md #119. · 3–4 more
 committed program forks on the lunar-arch pattern (Mars architecture, crew vehicle
 philosophy, propulsion doctrine) · era research-capacity limits · political/media layer
 extending mandates · SVG icon set replacing emoji · synergy-prospecting UI ("2 of 3") ·
