@@ -978,6 +978,7 @@ function tickContinuousDay(){
   // promise independent of the calendar day on which reorganization succeeds.
   if(typeof applyOperatingSupportDay==='function') applyOperatingSupportDay();
   tickBuildQueue(); // #7 final: progress queued vehicle builds (slice 3c: per-day); finished ones go to the hangar
+  satelliteDegradeDay(); // #116-A: persistent satellites age one day
 }
 // the monthly subsystem tick — the original advance() body minus the now-continuous flows (≈22
 // subsystems), fired once per completed month instead of per loop iteration.
@@ -1317,6 +1318,12 @@ function signPassiveContract(id){
   state.contractSignings=state.contractSignings||{};
   const n=(state.contractSignings[id]=passiveSignings(id)+1);
   if(d.support) addSupport(d.support);
+  // #116-A: a satellite contract now puts a real, persistent object in orbit rather than being a
+  // pure income abstraction. This is deliberately presentation/registry-only for now -- the
+  // satellite degrades and is visible in the Fleet Registry, but income is still governed
+  // entirely by the contract's own term. Tying income to satellite health is option (C) in the
+  // #116 scoping and is a separate, balance-affecting slice.
+  if(d.cat==='sat') deploySatelliteForContract(d, income);
   log('ok',`Signed ${passiveContractDisplay(d).name} — +${fM(income)}/mo for ${d.term} months${n>1?` (renewal #${n-1}, ${Math.round(mult*100)}% of base)`:''}.`);
   render();
   return true;
@@ -1750,9 +1757,57 @@ function orbitAssetVehicleSnapshot(ctx,source){
   return {source:String(source||'launch'),missionId:ctx&&ctx.m&&ctx.m.id||null,launchSpec:plainRecord(tx&&tx.spec||{}),
     vehicle:plainRecord(ctx&&ctx.v||{}),createdAbs:absDay()};
 }
+/* ---------- #116-A: persistent satellite objects ----------
+   Satellites are the first PAYLOAD-kind orbit asset: deployed by a launch that then departs, so
+   unlike every other kind they own no hull (see orbitAssetIsHullBound in data.js). They carry a
+   `health` field that decays daily, and they expose a servicing port so the existing docking
+   system can reach them -- that's the "servicing tie-in" #116 asks for, obtained for free by
+   reusing orbitAssets rather than building a parallel satellite array.
+   SATELLITE_LIFE_DAYS is the nominal design life: health falls from 1.0 to 0 over that span, at
+   which point the satellite is 'retired' but stays in the registry as a dead object rather than
+   vanishing -- a defunct satellite is still a real thing in orbit. */
+const SATELLITE_LIFE_DAYS = 12*365; // ~12 real years of nominal design life
+const SATELLITE_ORBITS = {
+  sat_weather:{band:'high',inclination:98.7},   // sun-synchronous-ish polar
+  sat_comms:{band:'high',inclination:0.5},      // geostationary belt
+  sat_imaging:{band:'low',inclination:97.4},    // sun-synchronous imaging
+  svc_orbit:{band:'low',inclination:28.5}       // servicing fleet parks near the launch inclination
+};
+function satelliteList(snapshot){ return orbitAssetList(snapshot).filter(a=>a&&a.kind==='satellite'); }
+function deploySatelliteForContract(def, income){
+  if(!def||def.cat!=='sat') return null;
+  const orbit=SATELLITE_ORBITS[def.id]||{band:'low',inclination:28.5};
+  return appendOrbitAsset({
+    id:nextOrbitAssetId(), hullId:'', kind:'satellite', name:passiveContractDisplay(def).name,
+    bodyId:'earth', orbit:{band:orbit.band,inclination:orbit.inclination},
+    vehicleSnapshot:{source:'passive-contract',contractId:def.id,income:finiteRecordNumber(income),createdAbs:absDay()},
+    interfaces:[makeDockInterface({id:'svc',standard:'probe_drogue',size:'standard',role:'passive',
+      services:{power:true,data:true}})],
+    status:'free', resources:{rendezvousDv:0,fuel:0,power:1}, health:1, createdAbs:absDay()
+  });
+}
+// Runs once per day from advance(). Pure state math, no DOM -- headless-testable.
+function satelliteDegradeDay(){
+  for(const sat of satelliteList()){
+    if(sat.status==='retired') continue;
+    // NOT rounded per-step: the daily decrement (1/SATELLITE_LIFE_DAYS ~= 0.000228) is smaller
+    // than 4dp granularity, so rounding here truncated it to 0.0002 and compounded -- decay ran
+    // ~12% slow and a satellite outlived its design life. Health is stored at full precision and
+    // rounded only where it's displayed.
+    sat.health=Math.max(0, sat.health - 1/SATELLITE_LIFE_DAYS);
+    sat.resources.power=sat.health;
+    if(sat.health<=0){
+      sat.status='retired';
+      log('warn',`${sat.name} has reached end of life and is no longer operational.`);
+    }
+  }
+}
 function appendOrbitAsset(input){
-  const asset=makeOrbitAsset(input), hull=hullById(asset.hullId);
-  if(orbitAssetErrors(asset).length||!hull||orbitAssetById(asset.id)||orbitAssetList().some(other=>other&&other.hullId===asset.hullId)) return null;
+  const asset=makeOrbitAsset(input), hullBound=orbitAssetIsHullBound(asset.kind), hull=hullBound?hullById(asset.hullId):null;
+  // #116-A: satellites carry no hull, so the hull-existence and one-asset-per-hull checks below
+  // don't apply to them (every satellite's hullId is '', which would otherwise collide).
+  if(orbitAssetErrors(asset).length||orbitAssetById(asset.id)) return null;
+  if(hullBound&&(!hull||orbitAssetList().some(other=>other&&other.hullId===asset.hullId))) return null;
   state.orbitAssets=orbitAssetList(); state.orbitAssets.push(asset); return asset;
 }
 function orbitAssetCompatibleInterface(asset,operationId,actorKind,services,preferredPortId){
@@ -3069,11 +3124,16 @@ function auditLifecycleState(snapshot){
     if(assetIds.has(asset.id)) errors.push(`orbit asset: duplicate ${asset.id}`);
     assetIds.add(asset.id); assetMap.set(asset.id,asset);
     if(orbitAssetErrors(asset).length) errors.push(`orbit asset ${asset.id}: invalid record`);
-    const hull=hulls.get(asset.hullId);
-    if(!hull) errors.push(`orbit asset ${asset.id}: unknown hull ${asset.hullId}`);
-    else if(hull.status!=='in-orbit') errors.push(`orbit asset ${asset.id}: hull ${asset.hullId} is ${hull.status}`);
-    if(owned.has(asset.hullId)) errors.push(`hull ${asset.hullId}: multiple lifecycle owners`);
-    owned.add(asset.hullId);
+    // #116-A: satellites are payloads with no hull, so the hull-ownership invariants below don't
+    // apply. Skipping them here (rather than loosening them) keeps the checks strict for every
+    // hull-bound kind, where a missing or double-owned hull is still a real corruption.
+    if(orbitAssetIsHullBound(asset.kind)){
+      const hull=hulls.get(asset.hullId);
+      if(!hull) errors.push(`orbit asset ${asset.id}: unknown hull ${asset.hullId}`);
+      else if(hull.status!=='in-orbit') errors.push(`orbit asset ${asset.id}: hull ${asset.hullId} is ${hull.status}`);
+      if(owned.has(asset.hullId)) errors.push(`hull ${asset.hullId}: multiple lifecycle owners`);
+      owned.add(asset.hullId);
+    }
     if(asset.reservation){
       const owners=orbitReservations.get(asset.reservation.operationId)||[]; owners.push(asset.id); orbitReservations.set(asset.reservation.operationId,owners);
       const offer=(s.contractOffers||[]).find(item=>item&&item.id===asset.reservation.missionId&&item.vehicleDocking);
@@ -7002,7 +7062,23 @@ function assetRegistryGroups(){
   const now=absDay(), groups=[];
   const flights=(state.activeFlights||[]).filter(f=>f&&f.deferred);
 
-  const orbital=orbitAssetList().slice().sort((a,b)=>(b.createdAbs||0)-(a.createdAbs||0));
+  // #116-A: satellites get their own group -- they're payloads with a different decision-relevant
+  // stat (remaining life) than crewed/dockable spacecraft (docking state), and mixing them would
+  // bury a dying satellite among tugs and capsules.
+  const orbital=orbitAssetList().filter(a=>a&&a.kind!=='satellite').slice().sort((a,b)=>(b.createdAbs||0)-(a.createdAbs||0));
+  const sats=satelliteList().slice().sort((a,b)=>(a.health||0)-(b.health||0)); // most degraded first: the one that needs attention
+  if(sats.length) groups.push({key:'satellites',label:'Satellites',icon:'🛰',items:sats.map(sat=>{
+    const pct=Math.round((sat.health||0)*100), daysLeft=Math.max(0,Math.round((sat.health||0)*SATELLITE_LIFE_DAYS));
+    const snap=sat.vehicleSnapshot||{};
+    return {id:sat.id,icon:'🛰',name:sat.name,
+      status:sat.status==='retired'?'defunct · end of life':`${pct}% health · ~${fmtTimeLeft(daysLeft/DAYS_PER_MONTH)} of design life`,
+      detail:{'Status':sat.status==='retired'?'defunct':'operational','Health':pct+'%',
+        'Remaining design life':sat.status==='retired'?'—':fmtTimeLeft(daysLeft/DAYS_PER_MONTH),
+        'Orbit':`${sat.orbit.band} · ${sat.orbit.inclination.toFixed(1)}°`,
+        'Deployed':dayToDate(sat.createdAbs||0),
+        'Contract':snap.contractId||'—',
+        'Servicing port':(sat.interfaces||[]).length?'available':'none'}};
+  })});
   if(orbital.length) groups.push({key:'orbit-assets',label:'Spacecraft in orbit',icon:'◈',items:orbital.map(asset=>{
     const hull=hullById(asset.hullId), partner=asset.dockedTo&&orbitAssetById(asset.dockedTo), operation=activeOrbitDockOperationForAsset(asset.id);
     const status=asset.status==='free'?`free · ${asset.orbit.band} orbit`:asset.status==='reserved'?(operation?'stationkeeping':'target reserved'):asset.status==='docked'?`docked to ${partner?partner.name:asset.dockedTo}`:'soft captured';

@@ -348,9 +348,14 @@ function stationDockVisitorErrors(record){
 // dockedVisitors owns an attached visitor; this record is the one durable owner
 // for a free or vehicle-docked craft between turns. A target reservation lives
 // on the target asset and its exact interface, never in renderer/UI state.
-const ORBIT_ASSET_SCHEMA_VERSION=1;
-const ORBIT_ASSET_KINDS=Object.freeze(['capsule','pod','tug','target']);
-const ORBIT_ASSET_STATUSES=Object.freeze(['free','reserved','soft-captured','docked']);
+const ORBIT_ASSET_SCHEMA_VERSION=2; // v2 (#116-A): + 'satellite' kind, payload-derived (hull-less), with a health field
+const ORBIT_ASSET_KINDS=Object.freeze(['capsule','pod','tug','target','satellite']);
+const ORBIT_ASSET_STATUSES=Object.freeze(['free','reserved','soft-captured','docked','retired']);
+// #116-A: satellites are PAYLOADS, not launch-vehicle hulls. Every other orbit-asset kind is a
+// physical hull that went up and can come back, so hullId is required and uniquely bound to one
+// asset. A satellite is deployed BY a hull that then departs or is expended, so it owns no hull
+// and its hullId is ''. This is the one documented exception to the hullId rule; keep it narrow.
+function orbitAssetIsHullBound(kind){ return kind!=='satellite'; }
 function makeOrbitAssetReservation(x){
   x=x||{};
   return {schema:ORBIT_ASSET_SCHEMA_VERSION,operationId:String(x.operationId||''),missionId:String(x.missionId||''),
@@ -379,13 +384,21 @@ function makeOrbitAsset(x){
     dockOperation:x.dockOperation?makeDockOperation(x.dockOperation):null,
     reservation:x.reservation?makeOrbitAssetReservation(x.reservation):null,crewId:x.crewId==null?null:String(x.crewId),
     cargo:plainRecord(x.cargo||{}),resources:{rendezvousDv:finiteRecordNumber(resources.rendezvousDv),fuel:finiteRecordNumber(resources.fuel),power:finiteRecordNumber(resources.power)},
+    // #116-A: health is 1.0 at deployment and decays for satellites (see satelliteDegradeDay in
+    // sim.js). Present on every kind so the record shape stays uniform and save/validation logic
+    // doesn't need a per-kind branch; only satellites currently decay it.
+    health:x.health==null?1:Math.max(0,Math.min(1,finiteRecordNumber(x.health,1))),
     createdAbs:finiteRecordNumber(x.createdAbs)};
 }
 function orbitAssetErrors(record){
   const errors=[];
   if(!record||typeof record!=='object'||Array.isArray(record)) return ['asset must be an object'];
   if(record.schema!==ORBIT_ASSET_SCHEMA_VERSION) errors.push('schema');
-  for(const key of ['id','hullId','name','bodyId']) if(typeof record[key]!=='string'||!record[key]) errors.push(key);
+  for(const key of ['id','name','bodyId']) if(typeof record[key]!=='string'||!record[key]) errors.push(key);
+  // #116-A: hull-bound kinds must name a hull; satellites are payloads and must NOT claim one.
+  if(orbitAssetIsHullBound(record.kind)){ if(typeof record.hullId!=='string'||!record.hullId) errors.push('hullId'); }
+  else if(record.hullId!==''){ errors.push('satellite must not own a hull'); }
+  if(typeof record.health!=='number'||!Number.isFinite(record.health)||record.health<0||record.health>1) errors.push('health');
   if(!ORBIT_ASSET_KINDS.includes(record.kind)||!ORBIT_ASSET_STATUSES.includes(record.status)) errors.push('kind/status');
   if(!record.orbit||typeof record.orbit.band!=='string'||!record.orbit.band||typeof record.orbit.inclination!=='number'||!Number.isFinite(record.orbit.inclination)) errors.push('orbit');
   if(!record.vehicleSnapshot||typeof record.vehicleSnapshot!=='object'||Array.isArray(record.vehicleSnapshot)) errors.push('vehicleSnapshot');

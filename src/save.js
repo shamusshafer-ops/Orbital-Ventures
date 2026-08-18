@@ -1,6 +1,6 @@
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=67; // v67: successful-docking count for first/routine presentation.
+const SAVE_VERSION=68; // v68: orbit-asset schema v2 -- satellite kind + health field (#116-A).
 // Pre-v62 saves with in-progress flight ownership are rejected rather than assigned a fabricated
 // outcome; ordinary v61 lifecycle records are remapped through the schema-2 factories on load.
 //
@@ -176,6 +176,21 @@ function migrateLifecycleV62(saved,ver){
 // continuity history. Current-version records are validated before any
 // normalization so NaN/Infinity, lossy values, or contradictory identities are
 // rejected instead of silently repaired into a different recovery state.
+// #116-A (v68): orbit-asset records went from schema v1 to v2 -- added a `health` field (1.0 =
+// as-new) and a 'satellite' kind. Pre-v68 records have neither, and orbitAssetErrors() now
+// rejects a record whose schema/health don't match, so every existing asset needs upgrading or
+// auditLifecycleState() would report the whole fleet as invalid on load. Every pre-v68 asset is
+// by definition a hull-bound kind (satellites didn't exist yet), so health backfills to 1.0 --
+// no existing asset silently starts degraded. Idempotent; no-op on v68+ saves.
+function migrateOrbitAssetsV68(saved,ver){
+  if((ver||0) >= 68) return;
+  const list=Array.isArray(saved.orbitAssets)?saved.orbitAssets:[];
+  for(const asset of list){
+    if(!asset||typeof asset!=='object') continue;
+    asset.schema=ORBIT_ASSET_SCHEMA_VERSION;
+    if(asset.health==null) asset.health=1;
+  }
+}
 function migrateReorganizationV63(saved,ver){
   if((ver||0)>=63){
     const continuityKeys=['campaignRules','debtRenegotiated','legacyPenalty','insolvencySeq','insolvency','lastInsolvency','reorganizationSeq','reorganizationAttempts','reorganizationSuccesses','reorganization','lastReorganization','operatingSupport'];
@@ -253,6 +268,7 @@ function applyLoadedSave(payload){
   backfillLegacyOrderSpecs(saved); // Gate 1 best effort: freeze newly canonical physical fields once
   migrateLifecycleV62(saved,payload.v); // Gate 2: active pre-v62 launches were rejected before mutation
   migrateReorganizationV63(saved,payload.v); // Gate 3: pre-v63 is Standard/no active recovery; v63 is strict
+  migrateOrbitAssetsV68(saved,payload.v); // #116-A: orbit-asset schema v1 -> v2 (health backfill)
   const defaults=loadDefaults();
   for(const k in defaults){ if(saved[k]===undefined) saved[k]=defaults[k]; }
   rehydrateReorganizationRecords(saved); // copy only validated JSON state into canonical record shapes
