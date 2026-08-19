@@ -2396,10 +2396,17 @@ function dockModuleNow(facId, modId, note){
 function addStationModule(facId, modId){
   if(!guardOrdinaryAction('Facility module construction')) return false;
   const chk=canAddStationModule(facId, modId); if(!chk.ok) return;
-  const md=stationModuleDef(modId);
+  const def=facilityById(facId), md=stationModuleDef(modId);
+  // #119: this used to call advance(md.buildMo||4), which fast-forwarded the ENTIRE game clock --
+  // every other build, contract and crew system jumped forward too, just to buy one module. It now
+  // queues into the same assembly bays vehicles use, so a module build competes for bay capacity
+  // and time passes only when the player chooses to advance it.
+  const mo=md.buildMo||4;
   state.money-=chk.cost;
-  advance(md.buildMo||4); if(state.over){ render(); return; }
-  dockModuleNow(facId, modId, `${fM(chk.cost)}, ${md.buildMo} mo`);
+  buildQueueList().push(makeOrderRecord({ id:'ord'+(state.orderSeq=(state.orderSeq||0)+1),
+    kind:'station-module', name:`${md.name} → ${def.name}`, facilityId:facId, moduleId:modId,
+    units:1, monthsTotal:mo, monthsLeft:mo, cost:chk.cost, status:'queued', started:false }));
+  log('ok',`Manufacturing — queued ${md.name} for ${def.name} (${fmtTimeLeft(mo)}, ${fM(chk.cost)}). It builds in the assembly bays alongside your vehicles.`);
   render();
 }
 
@@ -3429,6 +3436,13 @@ function tickBuildQueue(){
   for(const o of q){ if(o.started){ o.monthsLeft-=perDay(1); if(o.monthsLeft<=0) done.push(o); } }
   if(done.length){
     for(const o of done){
+      // #119: a station-module order finishes by docking onto its facility, not by acquiring a
+      // hull and landing in the hangar. Routed through dockModuleNow() -- the same function the
+      // instant-contract and fly-it-yourself paths already use -- so all three stay in sync.
+      if(o.kind==='station-module'){
+        dockModuleNow(o.facilityId, o.moduleId, `${fM(o.cost)}, built in the assembly bays`);
+        continue;
+      }
       const ready=makeOrderRecord(Object.assign({},o,{status:'fulfilled',started:true,monthsLeft:0,builtAbs:absDay()}));
       assignHullToHangar(ready); hangarList().push(ready);
       log('ok',`Manufacturing — ${o.name} rolled out, ready to fly.`);

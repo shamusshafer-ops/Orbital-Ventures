@@ -81,7 +81,18 @@ foundLeo(); // moduleList already has 'can_std' once — a second Habitat is a R
 const expectedRepeatCost=stationModuleCost(facilityById('leo_station'), {moduleList:['can_std']}, stationModuleDef('can_std'));
 check('repeat module: no premium in the quoted price (unlike the contracted-delivery path)', canAddStationModule('leo_station','can_std').cost===expectedRepeatCost);
 addStationModule('leo_station','can_std');
-check('repeat module: addStationModule still works exactly as before (instant, one click)', facilityModuleList(facilityState('leo_station')).filter(id=>id==='can_std').length===2);
+// #119 re-pin: this asserted the module docked INSTANTLY on click. That instant path was the
+// bug -- it called advance(md.buildMo), fast-forwarding the whole game clock to buy one module.
+// A repeat purchase now queues into the assembly bays like any vehicle build. The slice-1
+// contract this test guards (repeat purchases work, no first-of-type premium) is unchanged;
+// only the delivery mechanism moved, so the check now follows the order through completion.
+{
+  const q=buildQueueList().filter(o=>o.kind==='station-module');
+  check('repeat module: queues a station-module build rather than skipping the clock', q.length===1);
+  const o=q[0];
+  advanceDays(Math.ceil(o.monthsTotal*DAYS_PER_MONTH)+3);
+}
+check('repeat module: addStationModule still delivers the module (now via the build queue)', facilityModuleList(facilityState('leo_station')).filter(id=>id==='can_std').length===2);
 
 // ---------- Moon/Mars facilities: the fly/contract fork now applies there too (#73 Slice 2) ----------
 foundLeo();

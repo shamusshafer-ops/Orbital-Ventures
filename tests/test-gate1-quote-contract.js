@@ -13,8 +13,12 @@ g1QuoteCheck('quote separates build, carry, flight, reserve, and mission carry',
   ['buildCost','buildCarry','flightBurn','launchCarry','missionCarry'].every(k=>typeof g1QuoteA[k]==='number'));
 g1QuoteCheck('quote separates cash due now from end-to-end runway',
   g1QuoteA.requiredAtCommit===.44&&g1QuoteA.endToEndRunway===.94);
+// Re-pinned 2026-08-18: these asserted literal 30-day months (60/30/90). The Gregorian calendar
+// rework made DAYS_PER_MONTH a real nominal average (~30.4368), so daysFor(2) is 61, not 60 --
+// these were left failing by that epic and only surfaced now. Derived from daysFor() so they
+// track the constant instead of a hardcoded month length. The DURATIONS are unchanged.
 g1QuoteCheck('quote timing is whole-day deterministic',
-  g1QuoteA.buildDays===60&&g1QuoteA.launchDays===30&&g1QuoteA.nominalFlightAbs===90);
+  g1QuoteA.buildDays===daysFor(2)&&g1QuoteA.launchDays===daysFor(1)&&g1QuoteA.nominalFlightAbs===daysFor(3));
 g1QuoteCheck('quote exposes modeled outcome probability without certifying it', g1QuoteA.successProbability===.65);
 const g1QuoteShort=calculateLaunchQuote(Object.assign({},g1QuoteInput,{money:.40}));
 g1QuoteCheck('rejection has a stable reason code and exact shortfall',
@@ -25,12 +29,12 @@ const g1QuoteMission=curMission(), g1QuoteVehicle=computeVehicle();
 const g1QuoteOpening=launchCommitmentQuote(g1QuoteMission,g1QuoteVehicle,null,false);
 g1QuoteCheck('Engineer opens with $3.50M', g1QuoteNear(state.money,3.50));
 g1QuoteCheck('First Flight build commitment remains $0.44M', g1QuoteNear(g1QuoteOpening.buildCost,.44));
-g1QuoteCheck('First Flight build duration remains two months', g1QuoteOpening.buildDays===60);
+g1QuoteCheck('First Flight build duration remains two months', g1QuoteOpening.buildDays===daysFor(2));
 g1QuoteCheck('First Flight build carry is explicitly $0.24M', g1QuoteNear(g1QuoteOpening.buildCarry,.24));
 g1QuoteCheck('First Flight later flight burn remains $0.14M', g1QuoteNear(g1QuoteOpening.flightBurn,.14));
 g1QuoteCheck('First Flight ready reserve remains $0.12M', g1QuoteNear(g1QuoteOpening.launchCarry,.12));
 g1QuoteCheck('First Flight nominal build-through-launch duration remains three months',
-  g1QuoteOpening.nominalFlightAbs-g1QuoteOpening.nominalReadyAbs===30&&g1QuoteOpening.nominalFlightAbs-absDay()===90);
+  g1QuoteOpening.nominalFlightAbs-g1QuoteOpening.nominalReadyAbs===daysFor(1)&&g1QuoteOpening.nominalFlightAbs-absDay()===daysFor(3));
 g1QuoteCheck('First Flight modeled reliability remains 65%', g1QuoteNear(g1QuoteOpening.successProbability,.65));
 g1QuoteCheck('opening quote is additive disclosure, not a balance change',
   g1QuoteNear(g1QuoteOpening.endToEndRunway,.94)&&g1QuoteOpening.requiredAtCommit===g1QuoteOpening.buildCost);

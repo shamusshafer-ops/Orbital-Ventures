@@ -409,7 +409,18 @@ function devPresetStation(){
       const fs=facilityState('leo_station');
       if(fs && facilityModuleList(fs).includes(mid)) continue;
       if(state.money<200) state.money=200;
-      addStationModule('leo_station', mid); // real dock: charges cost, advances build months, calls dockModuleNow
+      addStationModule('leo_station', mid); // real path: charges cost and QUEUES the build (#119)
+    }
+    // #119: addStationModule used to dock instantly (it called advance() internally, skipping the
+    // whole game clock). Module builds now queue into the assembly bays, so this preset has to
+    // advance time itself or it would hand back an empty "pre-stocked" station. Bay capacity
+    // means a queued build only STARTS once an earlier one finishes, so a single advance sized
+    // to the longest order isn't enough -- drain in a bounded loop instead.
+    for(let guard=0; guard<12 && !state.over; guard++){
+      const pending=buildQueueList().filter(o=>o.kind==='station-module');
+      if(!pending.length) break;
+      const longest=pending.reduce((mx,o)=>Math.max(mx,o.monthsLeft),0);
+      advanceDays(Math.max(1, Math.ceil(longest*DAYS_PER_MONTH)+1));
     }
   }
   devToast('LEO Station founded and pre-stocked with Lab, Power Truss, and Docking Node modules.');
