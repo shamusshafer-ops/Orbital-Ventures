@@ -81,7 +81,7 @@ Complexity: S = <1 day, M = 1–5 days, L = 1–3 weeks, XL = 1+ month. Impact: 
 |50| Joint-mission offers (share cost, share credit) | Diplomacy lite | L | ★★ | 46 | M |Backlog|
 |51| Budget hearings after fatal failures | Political stakes | M | ★★★ | — | H |E1.1|
 |52| Multi-month geopolitical event arcs | World alive | M | ★★ | — | M |E2|
-|53| Public support decomposed (visible drivers) | Auditability | S | ★ | — | L |Backlog|
+|53| Public support decomposed (visible drivers) | Auditability | S | ★ | — | L |Shipped 2026-08-18 (`3073a6d`) — addSupport() now tags every change with a reason, logged to a bounded ledger; click-through breakdown modal off the Public Support stat. `tests/test-support-breakdown.js`, 25 checks|
 |54| Media system: press conferences after events | Support management | M | ★★ | — | M |E2|
 |55| Congressional mandate negotiation (pick 1 of 3) | Agency over mandates | M | ★★ | — | M |E2|
 |56| Rival bankruptcy/merger events | Dynamic field | S | ★ | 46 | L |Backlog|
@@ -165,10 +165,10 @@ Complexity: S = <1 day, M = 1–5 days, L = 1–3 weeks, XL = 1+ month. Impact: 
 | Status | Count | Meaning |
 |---|---|---|
 | E0.x / E1.x / E2 | 24 | Folded into a named ROADMAP.md workstream |
-| Shipped / closed | 29 | Built and verified; see ROADMAP-HISTORY.md |
+| Shipped / closed | 30 | Built and verified; see ROADMAP-HISTORY.md |
 | Partly shipped | 1 | One slice built, a named remainder still open (#116) |
 | Deferred | 13 | Named in ROADMAP.md's deferred list |
-| **Backlog** | **41** | Not yet on ROADMAP.md in any form |
+| **Backlog** | **40** | Not yet on ROADMAP.md in any form |
 
 *Recounted 2026-08-12 (station-cluster audit): #73/#74 moved from `E2` to `Shipped` (all
 scoped slices except an optional one confirmed built) and #75/#76 moved from `Backlog` to
