@@ -153,7 +153,7 @@ Complexity: S = <1 day, M = 1–5 days, L = 1–3 weeks, XL = 1+ month. Impact: 
 |116| Persistent satellite objects (deployed sats with orbit params, degradation, servicing tie-in) — enables real per-sat telemetry in the Fleet Registry | Sim depth · registry option B | L | ★★ | 115 | L |Partly shipped 2026-08-12 (#116-A) — re-scoped on inspection: the premise ("option B deferred from #115") predated the docking/orbitAssets work, so this was built by extending `state.orbitAssets` with a `satellite` kind rather than a parallel array. Deployed satellites now persist with orbit params, health degradation over a ~12yr design life, end-of-life retirement, a servicing port, save migration (v68) and their own Fleet Registry group. **Still open (option C):** tying contract income to satellite health, so degradation creates replacement pressure — deliberately deferred as a balance change needing playtest judgement|
 |117| Solar System map improvement epic: A) truthful angle + Oort-excluded sizing, B) WASD/keyboard nav all 3 renderers, C) port live ship-tracking to Phaser+SVG | Map = dashboard + planner, "more connected" | M (per slice) | ★★★ | — | M |**Epic complete 2026-07-24.** Slice A: map2dAngle truthful angle, Oort-exclusion, 980×620 canvas. Slice B: WASD/arrows across 3D/Phaser/SVG + shared popout. Slice C: ported activeShipMarkers live in-flight tracking to Phaser+SVG (shipMapPoint rides the existing 2D transferArc curve). See ROADMAP.md for all three session entries|
 |118| Seeded deterministic RNG for the simulation layer (route sim.js's 46 raw `Math.random()` calls through a seeded stream; `mulberry()`/`hashStr()` already exist in shell.js:440-441 and are used ~15× in render.js for deterministic visuals) | Test determinism · unblocks #94 Ironman and #95 challenge seeds · fixes test-station-slice2 flakiness | M | ★★ | — | M |Backlog — filed 2026-07-28 from the full-code refactor review. NOT a harness-only change: reseeding shifts the RNG draw order, which is itself the cause of the existing flakiness, so it carries real balance-regression risk and wants its own slice|
-|119| #73 Slice 4: manufacturing tie-in — station module builds occupy assembly-bay units instead of resolving instantly | Consistency with the vehicle-build pipeline | S–M | ★ | 73 | L |Backlog — filed 2026-08-12 during the station-cluster audit. Marked optional in the original 2026-07-11 scoping; #73 Slices 0-3 are all shipped without it. Small, well-bounded, no balance risk identified|
+|119| #73 Slice 4: manufacturing tie-in — station module builds occupy assembly-bay units instead of resolving instantly | Consistency with the vehicle-build pipeline | S–M | ★ | 73 | L |Shipped 2026-08-18 (`fa68f9a`) — module builds now queue into buildQueueList()/tickBuildQueue() and compete for real bay capacity, instead of addStationModule() fast-forwarding the whole game clock via advance(). `tests/test-station-module-queue.js`, 32 checks|
 
 ---
 
@@ -165,10 +165,10 @@ Complexity: S = <1 day, M = 1–5 days, L = 1–3 weeks, XL = 1+ month. Impact: 
 | Status | Count | Meaning |
 |---|---|---|
 | E0.x / E1.x / E2 | 24 | Folded into a named ROADMAP.md workstream |
-| Shipped / closed | 28 | Built and verified; see ROADMAP-HISTORY.md |
+| Shipped / closed | 29 | Built and verified; see ROADMAP-HISTORY.md |
 | Partly shipped | 1 | One slice built, a named remainder still open (#116) |
 | Deferred | 13 | Named in ROADMAP.md's deferred list |
-| **Backlog** | **42** | Not yet on ROADMAP.md in any form |
+| **Backlog** | **41** | Not yet on ROADMAP.md in any form |
 
 *Recounted 2026-08-12 (station-cluster audit): #73/#74 moved from `E2` to `Shipped` (all
 scoped slices except an optional one confirmed built) and #75/#76 moved from `Backlog` to
