@@ -342,7 +342,30 @@ function renderOutliner(){
 // row expandable in-place (multiple can be open; it stays one scannable surface). Reads the normalized
 // assetRegistryGroups() collector from sim.js; this function is layout only.
 let _registryOpen={}; // id -> bool, which rows are expanded (persists across re-renders while modal is open)
+// #53: Public Support was a single unexplained number. This surfaces the ledger addSupport()
+// now keeps -- what's moved it recently, grouped by reason -- as a click-through modal, the
+// same showModal pattern the rest of the UI already uses for detail views.
+function showSupportBreakdown(){
+  const rows=supportLedgerBreakdown(), mood=publicMood(), log=supportLedgerList();
+  const rowsHTML=rows.length ? rows.map(r=>{
+    const sign=r.total>0?'+':''; const color=r.total>0?'var(--ok)':(r.total<0?'var(--bad)':'var(--muted)');
+    return `<div style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid var(--line-soft)">
+      <span>${esc(r.label)}${r.count>1?` <span class="dim" style="font-size:11px">×${r.count}</span>`:''}</span>
+      <span style="color:${color};font-variant-numeric:tabular-nums">${sign}${r.total.toFixed(1)}</span>
+    </div>`;
+  }).join('') : `<div class="dim" style="font-size:13px;padding:8px 0">No recorded drivers yet — support has been steady since the campaign began.</div>`;
+  const netRecent=round2(rows.reduce((s,r)=>s+r.total,0));
+  const span=log.length ? `since ${dayToDate(log[0].abs)}` : '';
+  showModal(`<h2>Public Support — ${Math.round(publicSupport())}% · ${esc(mood.label)}</h2>
+    <div class="dim" style="font-size:12px;margin-bottom:10px">Last ${log.length} recorded change${log.length===1?'':'s'}${span?' '+esc(span):''} — grouped by cause, most significant first.</div>
+    ${rowsHTML}
+    ${rows.length?`<div style="display:flex;justify-content:space-between;gap:10px;padding:8px 0 0;margin-top:4px;border-top:1px solid var(--line);font-weight:600">
+      <span>Net over this window</span><span style="color:${netRecent>=0?'var(--ok)':'var(--bad)'}">${netRecent>=0?'+':''}${netRecent.toFixed(1)}</span>
+    </div>`:''}
+    <div class="dim" style="font-size:11px;margin-top:10px">Only the most recent ${SUPPORT_LEDGER_CAP} changes are kept — this is a recent-drivers view, not a full history.</div>`);
+}
 function toggleRegistryRow(id){ _registryOpen[id]=!_registryOpen[id]; renderFleetRegistryBody(); }
+
 function fleetRegistryBodyHTML(){
   const groups=assetRegistryGroups();
   const total=groups.reduce((a,g)=>a+g.items.length,0);

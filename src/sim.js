@@ -861,13 +861,13 @@ function resolveHearing(choice){
   const s=_pendingHearing; if(!s) return;
   if(choice==='fund'){
     const cost=hearingFundCost(); if(state.money<cost) return; // guarded; button disabled when unaffordable
-    state.money-=cost; addSupport(HEARING_SUPPORT_FUND);
+    state.money-=cost; addSupport(HEARING_SUPPORT_FUND,'hearingFunded');
     log('ok',`Budget hearing: funded a safety program after the ${s.mName} loss. −${fM(cost)}, +${HEARING_SUPPORT_FUND} support.`);
   } else if(choice==='defend'){
-    state.rep=Math.max(0,state.rep-HEARING_REP_COST_DEFEND); addSupport(HEARING_SUPPORT_DEFEND);
+    state.rep=Math.max(0,state.rep-HEARING_REP_COST_DEFEND); addSupport(HEARING_SUPPORT_DEFEND,'hearingDefended');
     log('note',`Budget hearing: you defended the program's record. −${HEARING_REP_COST_DEFEND} rep, +${HEARING_SUPPORT_DEFEND} support.`);
   } else { // blame
-    addSupport(HEARING_SUPPORT_BLAME);
+    addSupport(HEARING_SUPPORT_BLAME,'hearingBlamed');
     (state.staff||[]).forEach(st=>{ st.morale=clampA((st.morale||50)-HEARING_MORALE_HIT_BLAME,0,100); });
     state.poachHeat=Math.max(state.poachHeat||0, HEARING_POACH_HEAT_BLAME); // spin over substance leaves staff rattled — rivals notice more than usual
     log('bad',`Budget hearing: you blamed the vendor. +${HEARING_SUPPORT_BLAME} support, but staff morale takes a hit — and it shows.`);
@@ -1217,7 +1217,7 @@ function tickMandate(){
     if(!md.accepted){ // unanswered offer in headless/anims-off: auto-accept (it's strictly optional upside until accepted... keep it pending 6mo then quietly lapse)
       if(absMonth()-md.offeredAbs>6){ state.mandate=null; state.mandateCooldown=MANDATE_COOLDOWN_MO; }
     } else if(absMonth()>md.deadlineAbs){
-      addSupport(MANDATE_SUPPORT_MISS);
+      addSupport(MANDATE_SUPPORT_MISS,'mandateMissed');
       log('bad',`📜 Mandate FAILED — ${md.name} was not flown by the deadline. Public support ${MANDATE_SUPPORT_MISS}.`);
       state.mandate=null; state.mandateCooldown=MANDATE_COOLDOWN_MO;
     }
@@ -1230,7 +1230,7 @@ function fulfillMandateIfMatch(missionId){
     const pressure=clampA((md.deadlineAbs-absMonth())/lead, 0, 1); // 1 = flown right at offer, 0 = flown right at the deadline
     const scheduleMult=1+SCHEDULE_PRESSURE_MAX*(1-pressure); // P10: the closer to the wire, the bigger the premium
     const bonus=round2(md.bonus*scheduleMult);
-    state.money+=bonus; addSupport(MANDATE_SUPPORT_WIN);
+    state.money+=bonus; addSupport(MANDATE_SUPPORT_WIN,'mandateWon');
     const pressureTxt=scheduleMult>1.01?` (schedule-pressure premium ×${scheduleMult.toFixed(2)} — cut it close)`:'';
     log('ok',`📜 Mandate fulfilled: ${md.name}. +${fM(bonus)} bonus${pressureTxt}, +${MANDATE_SUPPORT_WIN} public support.`);
   }
@@ -1252,7 +1252,35 @@ function recordFlightLedger(revenue, expense){
 // #8 Program politics helpers
 function publicSupport(){ return clampA(state.publicSupport==null?SUPPORT_BASE:state.publicSupport, SUPPORT_MIN, SUPPORT_MAX); }
 function publicMood(){ const s=publicSupport(); return SUPPORT_TIERS.find(t=>s>=t.min)||SUPPORT_TIERS[SUPPORT_TIERS.length-1]; }
-function addSupport(delta){ state.publicSupport=clampA(publicSupport()+delta, SUPPORT_MIN, SUPPORT_MAX); return state.publicSupport; }
+const SUPPORT_LEDGER_CAP=30; // #53: same windowed-history idiom E0.5 established for hull events (cap 24)
+function supportLedgerList(){ return Array.isArray(state.supportLedger)?state.supportLedger:(state.supportLedger=[]); }
+// #53: every addSupport() call now records WHY, in a bounded ledger, so "Public Support" stops
+// being a single unexplained number. `reason` is a short key into SUPPORT_REASON_LABELS (data.js);
+// an unrecognized or omitted reason still moves support (never silently drops a real delta) but is
+// grouped under 'other' in the breakdown, so a caller that forgets to tag stays visible as a gap
+// rather than being misattributed to something specific.
+function addSupport(delta, reason){
+  state.publicSupport=clampA(publicSupport()+delta, SUPPORT_MIN, SUPPORT_MAX);
+  if(delta){ // a zero-delta call (rare, but SUPPORT_DELTA can be tuned to 0) isn't a driver worth logging
+    const log=supportLedgerList();
+    log.push({abs:absDay(), delta:round2(delta), reason:(reason&&SUPPORT_REASON_LABELS[reason])?reason:'other'});
+    if(log.length>SUPPORT_LEDGER_CAP) state.supportLedger=log.slice(-SUPPORT_LEDGER_CAP);
+  }
+  return state.publicSupport;
+}
+// Aggregates the ledger by reason for display: [{reason, label, total, count, lastAbs}], sorted by
+// |total| descending so the biggest driver of recent support movement leads.
+function supportLedgerBreakdown(){
+  const byReason=new Map();
+  for(const e of supportLedgerList()){
+    const cur=byReason.get(e.reason)||{reason:e.reason, total:0, count:0, lastAbs:0};
+    cur.total=round2(cur.total+e.delta); cur.count++; cur.lastAbs=Math.max(cur.lastAbs,e.abs||0);
+    byReason.set(e.reason, cur);
+  }
+  return Array.from(byReason.values())
+    .map(r=>Object.assign(r,{label:SUPPORT_REASON_LABELS[r.reason]||'Other'}))
+    .sort((a,b)=>Math.abs(b.total)-Math.abs(a.total));
+}
 // monthly government grant: scales with support (linear, 0 at no support) and era
 // Economy tension pass: government funding is EARNED, not ambient. Only support above
 // neutral (50) buys funding — an idle agency reverts to neutral and the grants dry up,
@@ -1317,7 +1345,7 @@ function signPassiveContract(id){
   state.passiveContracts.push({id, monthsLeft:d.term, income});
   state.contractSignings=state.contractSignings||{};
   const n=(state.contractSignings[id]=passiveSignings(id)+1);
-  if(d.support) addSupport(d.support);
+  if(d.support) addSupport(d.support,'contractSigned');
   // #116-A: a satellite contract now puts a real, persistent object in orbit rather than being a
   // pure income abstraction. This is deliberately presentation/registry-only for now -- the
   // satellite degrades and is visible in the Fleet Registry, but income is still governed
@@ -1405,7 +1433,7 @@ function tickSpecialContract(){
 function fulfillSpecialIfMatch(missionId){
   const sc=state.specialContract; if(!sc || sc.missionId!==missionId) return;
   if(absMonth()<=sc.deadlineAbs){
-    state.money+=sc.bonus; addSupport(3); state.rep+=2;
+    state.money+=sc.bonus; addSupport(3,'scoopBonus'); state.rep+=2;
     log('ok',`★ Special contract fulfilled: ${sc.title}. +${fM(sc.bonus)} bonus, +3 support, +2 rep.`);
   }
   state.specialContract=null; state.specialCooldown=SPECIAL_COOLDOWN_MO;
@@ -4081,7 +4109,7 @@ function fireRivalFirst(r, f){
   const _taunt=rivalVoiceLine(r,'taunt'); // P4: per-profile communiqué (flavor only)
   if(_taunt) log('rival', `${r.flag} ${r.name}: “${_taunt}”`);
   // #8: national prestige — a rival's first stings the home crowd, but far less if you'd already done it
-  addSupport((f.missionId && state.completed[f.missionId]) ? supportDelta('rivalFirstDone') : supportDelta('rivalFirst'));
+  addSupport((f.missionId && state.completed[f.missionId]) ? supportDelta('rivalFirstDone') : supportDelta('rivalFirst'), (f.missionId && state.completed[f.missionId]) ? 'rivalFirstDone' : 'rivalFirst');
   if(f.missionId && !state.completed[f.missionId] && !state.scooped[f.missionId]){
     state.scooped[f.missionId]=true;
     const mm=MISSIONS.find(x=>x.id===f.missionId);
@@ -4246,7 +4274,7 @@ function mountRivalRescue(){
   state.money-=cost;                               // cost is committed whether or not the rescue succeeds
   log('note', `Rescue launched toward ${r?r.name:'the stranded crew'} — ${fM(cost)} committed; your contingency teams scramble.`);
   if(Math.random()<chance){
-    state.rep+=RIVAL_RESCUE_REP; addSupport(RIVAL_RESCUE_SUPPORT);
+    state.rep+=RIVAL_RESCUE_REP; addSupport(RIVAL_RESCUE_SUPPORT,'rivalRescue');
     log('ok', `Your crews reached ${r?r.name+"'s":'the stranded'} astronauts and brought them home alive — a global goodwill coup (+${RIVAL_RESCUE_REP} rep).`);
     const humbled=r&&rivalVoiceLine(r,'humbled'); if(humbled) log('rival', `${r.flag} ${r.name}: “${humbled}”`);
   } else {
@@ -4258,7 +4286,7 @@ function declineRivalRescue(){
   const s=_pendingRivalDisaster; if(!s) return;
   const r=RIVALS.find(x=>x.id===s.rivalId);
   _pendingRivalDisaster=null; hideModal();
-  state.rep=Math.max(0, state.rep-RIVAL_DECLINE_REP); addSupport(-RIVAL_DECLINE_SUPPORT); // small callousness hit (≈1/3 of the windfall)
+  state.rep=Math.max(0, state.rep-RIVAL_DECLINE_REP); addSupport(-RIVAL_DECLINE_SUPPORT,'rivalDecline'); // small callousness hit (≈1/3 of the windfall)
   log('note', `You stood down from ${r?r.name+"'s":'the'} crew emergency — commentators call it cold (−${RIVAL_DECLINE_REP} rep).`);
   render(); if(!state.over) pumpFlightArrivals();
 }
@@ -7517,7 +7545,7 @@ function finalizeLaunch(ctx, ops){
     const firstOfDesign=(()=>{ const f=ctx.famId?familyById(ctx.famId):activeFamily(); return !!f && (f.flights||0)===0; })();
     if(firstOfDesign) payout*=(1+FIRST_DESIGN_PAYOUT_BONUS);
     const rep=Math.max(0,Math.round(((routine?2:m.rep)+opsRep+(firstOfDesign?FIRST_DESIGN_REP_BONUS:0))*doctrineMult('rep'))); // CE3(a): Statecraft lifts reputation gain
-    addSupport(routine?supportDelta('routineSuccess'):clampA(2+(m.rep||5)*0.05,2,10)); // #8: a win lifts public mood, scaled by how big a win
+    addSupport(routine?supportDelta('routineSuccess'):clampA(2+(m.rep||5)*0.05,2,10), 'routineSuccess'); // #8: a win lifts public mood, scaled by how big a win
     if(m.tanker){
       const delivered=tankerDelivery();
       state.depot+=delivered;
@@ -7575,7 +7603,7 @@ function finalizeLaunch(ctx, ops){
     state.money+=payout; flightRevenue=payout;
     const rep=Math.max(0,Math.round((routine?2:m.rep)*0.25)+opsRep);
     state.rep+=rep;
-    addSupport(supportDelta('partial')); // #8: a salvaged flight still reads as progress
+    addSupport(supportDelta('partial'), 'partial'); // #8: a salvaged flight still reads as progress
     log('note',`${m.name}: PARTIAL SUCCESS — ${outcome.story} Salvaged value +${fM(payout)}, +${rep} rep, but the objective is not complete.`, null, phaseDetail);
   }else if(outcome.kind==='scrub'){
     // A controlled abort is only crew-safe when the persisted launch snapshot
@@ -7586,7 +7614,7 @@ function finalizeLaunch(ctx, ops){
     personnelMissionEvent(false);
     if(crewed&&disposition.crewDisposition==='lost'){
       const rep=Math.min(state.rep,40); state.rep-=rep;
-      addSupport(supportDelta('lossCrewed'));
+      addSupport(supportDelta('lossCrewed'), 'lossCrewed');
       recordLoss(INVESTOR_CONF_SEV_CREWED);
       loseAssignedCrew(ctx.crewId,m.name,outcome.story);
       advance(6);
@@ -7599,7 +7627,7 @@ function finalizeLaunch(ctx, ops){
       triggerHearing(ctx);
     }else{
       const rep=Math.min(state.rep, crewed?8:5); state.rep-=rep;
-      addSupport(supportDelta('abort')); // a controlled abort dents mood less than a catastrophic loss
+      addSupport(supportDelta('abort'), 'abort'); // a controlled abort dents mood less than a catastrophic loss
       const crewText=crewed?' Crew returned safely.':'';
       const vehicleText=disposition.vehicleDisposition==='recovered'?' Fitted recovery hardware returned the launch vehicle.':' The launch vehicle was expended.';
       log('note',`${m.name}: ABORTED IN FLIGHT — ${outcome.story}${crewText}${vehicleText} The mission is forfeit, −${rep} rep.`);
@@ -7607,14 +7635,14 @@ function finalizeLaunch(ctx, ops){
   }else if(outcome.kind==='abort'){
     personnelMissionEvent(false);
     const rep=Math.min(state.rep,12); state.rep-=rep;
-    addSupport(supportDelta('abort')); // #8: a failure dents mood, but a safe crew limits the damage
+    addSupport(supportDelta('abort'), 'abort'); // #8: a failure dents mood, but a safe crew limits the damage
     recordLoss(crewed?INVESTOR_CONF_SEV_CREWED:INVESTOR_CONF_SEV_UNCREWED); // Option C: vehicle lost either way
     log('bad',`${m.name}: MISSION FAILURE — crew safe. The ${SUBSYS_LABEL[outcome.subsystem].toLowerCase()} gave out — ${outcome.story} Vehicle and mission lost, −${rep} rep.`, null, phaseDetail);
     appendAnnal('bad',`${m.name} — failure (${SUBSYS_LABEL[outcome.subsystem].toLowerCase()}); crew safe, vehicle lost.`);
   }else if(outcome.kind==='strand'){
     personnelMissionEvent(false);
     const rep=Math.min(state.rep,40); state.rep-=rep;
-    addSupport(supportDelta('strand')); // #8: a crew stranded in deep space is a national shock
+    addSupport(supportDelta('strand'), 'strand'); // #8: a crew stranded in deep space is a national shock
     recordLoss(INVESTOR_CONF_SEV_CREWED); // Option C: always crewed by definition
     loseAssignedCrew(ctx.crewId, m.name, outcome.story);
     advance(6); // grounding + investigation
@@ -7626,7 +7654,7 @@ function finalizeLaunch(ctx, ops){
     // #20 slice 3: a deep-space rescue brought the crew home — mission & vehicle lost, crew safe
     personnelMissionEvent(false);
     const rep=Math.min(state.rep,10); state.rep-=rep;
-    addSupport(supportDelta('abort')); // relief tempered by a lost mission
+    addSupport(supportDelta('abort'), 'abort'); // relief tempered by a lost mission
     recordLoss(INVESTOR_CONF_SEV_CREWED); // Option C: always crewed by definition
     log('ok',`${m.name}: CREW RESCUED — ${outcome.story} The mission and vehicle are lost, but the crew is home. −${rep} rep.`);
   }else{ // loss of vehicle on ascent — full loss, no escape-tower save: catastrophic
@@ -7638,7 +7666,7 @@ function finalizeLaunch(ctx, ops){
     recordLoss(crewed?INVESTOR_CONF_SEV_CREWED:INVESTOR_CONF_SEV_UNCREWED); // Option C: the catastrophic-loss branch, both crewed and uncrewed
     if(crewed){
       const rep=Math.min(state.rep,40); state.rep-=rep;
-      addSupport(supportDelta('lossCrewed')); // #8: losing a crew is the worst political blow
+      addSupport(supportDelta('lossCrewed'), 'lossCrewed'); // #8: losing a crew is the worst political blow
       loseAssignedCrew(ctx.crewId, m.name, outcome.story);
       advance(6); // grounding + investigation
       state.crewLost=(state.crewLost||0)+m.crew; // chronicle: the price paid
@@ -7649,7 +7677,7 @@ function finalizeLaunch(ctx, ops){
       triggerHearing(ctx); // E1.1: the political response to a fatal crewed loss
     }else{
       const rep=Math.min(state.rep, routine?3:8); state.rep-=rep;
-      addSupport(supportDelta('lossUncrewed')); // #8: an uncrewed loss costs some goodwill
+      addSupport(supportDelta('lossUncrewed'), 'lossUncrewed'); // #8: an uncrewed loss costs some goodwill
       log('bad',`${m.name}: FAILURE. The ${SUBSYS_LABEL[outcome.subsystem].toLowerCase()} failed — ${outcome.story} Vehicle cost forfeit, −${rep} rep.`, null, phaseDetail);
       appendAnnal('bad',`${m.name} — failure (${SUBSYS_LABEL[outcome.subsystem].toLowerCase()}); vehicle lost.`);
       if(m.profile) applyEraStakes('loss of a flagship mission'); // CE4(c): a deep-space robotic flagship is a real setback late
@@ -8587,7 +8615,7 @@ function applyEraStakes(label){
   const frac=eraStakesFrac(); if(frac<=0) return 0;
   const repBite=Math.round(CE4_LOSS_REP_FRAC*state.rep*frac);
   if(repBite>0) state.rep=Math.max(0,state.rep-repBite);
-  addSupport(-CE4_LOSS_SUPPORT*frac);
+  addSupport(-CE4_LOSS_SUPPORT*frac, 'reorganizationLoss');
   let spiked=false;
   for(const r of RIVALS){ const rs=rivalStateFor(r); const b=rs.momentum; rs.momentum=clampA(rs.momentum+CE4_LOSS_RIVAL_MOM*frac, RIVAL_MOM_MIN, RIVAL_MOM_MAX); if(rs.momentum>b+1e-9) spiked=true; }
   if(repBite>0||spiked) log('bad',`The ${label} reverberates through the program — −${repBite} rep beyond the mission penalty${spiked?'; rivals press their advantage':''}.`);
@@ -8805,8 +8833,8 @@ function resolveCrisis(outcome){
   while(state.crisisHistory.length>CRISIS_HISTORY_CAP) archiveCrisisRecord(state.crisisHistory.shift());
   state.crisisDone=record; // kept in sync for anything still reading the old singular field
   state.crisis=null;
-  if(outcome==='mitigated'){ addSupport(6); state.rep+=8; log('ok', def?def.mitigatedMsg:'Crisis resolved.'); appendAnnal('ok',`${def?def.name:'Crisis'} — resolved.`); }
-  else { addSupport(2); log('note', def?def.enduredMsg:'Crisis endured.'); appendAnnal('note',`${def?def.name:'Crisis'} — endured, its cost now permanent.`); }
+  if(outcome==='mitigated'){ addSupport(6,'crisisMitigated'); state.rep+=8; log('ok', def?def.mitigatedMsg:'Crisis resolved.'); appendAnnal('ok',`${def?def.name:'Crisis'} — resolved.`); }
+  else { addSupport(2,'crisisEndured'); log('note', def?def.enduredMsg:'Crisis endured.'); appendAnnal('note',`${def?def.name:'Crisis'} — endured, its cost now permanent.`); }
 }
 function tickCrisis(){
   tickCrisisTrigger();

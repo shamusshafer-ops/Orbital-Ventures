@@ -1368,6 +1368,21 @@ const SUPPORT_DELTA={             // outcome-driven support swings
   routineSuccess:0.5, partial:1.0, abort:-3, lossUncrewed:-2,
   lossCrewed:-12, strand:-14, rivalFirst:-2.5, rivalFirstDone:-0.5,
 };
+// #53: one label per addSupport() call site (sim.js), keyed the same as SUPPORT_DELTA where that
+// table already supplies the key. Grouped by the story each swing tells, not by code location --
+// e.g. every mission-outcome flavor stays distinct rather than collapsing to one "mission" bucket,
+// since "a crewed loss" and "a routine success" are very different answers to "why did support move".
+const SUPPORT_REASON_LABELS={
+  hearingFunded:'Budget hearing — funded', hearingDefended:'Budget hearing — defended the record',
+  hearingBlamed:'Budget hearing — blamed for setbacks', mandateMissed:'National mandate missed',
+  mandateWon:'National mandate achieved', contractSigned:'Contract signed', scoopBonus:'News scoop',
+  rivalFirst:'A rival claimed a first', rivalFirstDone:'Matched a rival\u2019s first',
+  rivalRescue:'Rescued a stranded rival crew', rivalDecline:'Declined to rescue a rival crew',
+  routineSuccess:'Routine mission success', partial:'Mission partially salvaged',
+  lossCrewed:'Crewed mission lost', abort:'Mission aborted', strand:'Crew stranded',
+  lossUncrewed:'Uncrewed mission lost', reorganizationLoss:'Bankruptcy reorganization',
+  crisisMitigated:'Crisis mitigated', crisisEndured:'Crisis endured', other:'Other',
+};
 // P6 6.4: era-sensitive public mood. Pioneer through Station & Shuttle (eras 0-3) — the space race is
 // still front-page news — keep every SUPPORT_DELTA value exactly as tuned (mult 1, byte-identical).
 // From Commercial era on, spaceflight is progressively more routine and a single mission's outcome
