@@ -52,7 +52,12 @@ check('vehicle actor reserve comes from the settled orbit asset',vehicleDock.res
 check('assembly docking reliability remains the established value',ASSEMBLY_DOCK_REL===.97);
 check('persistent rendezvous attempt cost remains 25 m/s',ORBIT_RENDEZVOUS_ATTEMPT_DV===25);
 const saveRoundTrip=JSON.parse(JSON.stringify({v:SAVE_VERSION,ts:1,state})); applyLoadedSave(saveRoundTrip);
-check('presentation history survives v67 save/load',state.dockingPresentation.successful===1&&SAVE_VERSION===67);
+// Re-pinned 2026-08-18: dropped the hardcoded "&&SAVE_VERSION===67" clause. SAVE_VERSION is
+// expected to keep incrementing (it was 68 as of #116-A, 2026-08-18) -- pinning it here was
+// testing an implementation detail, not a behavior. The real assertion, that save/load preserves
+// docking presentation history, is the first clause and is unaffected by which version number
+// the game happens to be on.
+check('presentation history survives save/load',state.dockingPresentation.successful===1);
 
 console.log(`${pass}/${pass+fail} checks passed`);
 process.exit(fail?1:0);

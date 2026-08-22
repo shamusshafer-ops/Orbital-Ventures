@@ -15,9 +15,15 @@ g1TruthCheck('simulation contract distinguishes modeled decision inputs from sou
   GAME_TRUTH.physics.kind==='simulation'&&/abstraction/i.test(GAME_TRUTH.physics.text));
 g1TruthCheck('map contract explicitly declares non-literal scale and timing',
   GAME_TRUTH.maps.kind==='schematic'&&/schematic/i.test(GAME_TRUTH.maps.text));
+// Re-pinned 2026-08-18: checked GAME_TRUTH.calendar.daysPerMonth, which Calendar Stage 1
+// deliberately removed (the calendar is now real Gregorian, not a flat N-day month) and replaced
+// with GAME_TRUTH.calendar.nominalMonthDays -- the nominal duration unit DAYS_PER_MONTH derives
+// from. This is my own bug from that rework, not inherited: I added a new test asserting the old
+// field was GONE (test-gregorian-calendar.js) but never updated this pre-existing one that
+// asserted the old field's VALUE.
 g1TruthCheck('money, mass, velocity, duration, and reliability units have one authority',
   ['money','mass','velocity','duration','reliability'].every(k=>GAME_TRUTH.units[k])&&
-  DAYS_PER_MONTH===GAME_TRUTH.calendar.daysPerMonth&&fM(1.25)===`${GAME_TRUTH.currency.symbol}1.25${GAME_TRUTH.currency.suffix}`&&
+  DAYS_PER_MONTH===GAME_TRUTH.calendar.nominalMonthDays&&fM(1.25)===`${GAME_TRUTH.currency.symbol}1.25${GAME_TRUTH.currency.suffix}`&&
   /no inflation model/.test(truthModelNote()));
 g1TruthCheck('source registry uses stable NASA/NASA ADS records',
   CONTENT_SOURCES.voyager_heliopause.url.includes('science.nasa.gov')&&

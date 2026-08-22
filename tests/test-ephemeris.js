@@ -22,21 +22,30 @@ newGame('engineer');
   check('Kepler: e=0 gives E==M exactly (circular orbit)', Math.abs(solveKepler(1.234, 0) - 1.234) < 1e-9);
 }
 
-// ---------- periods from Kepler's 3rd law (game-days = 360 · a^1.5) ----------
-near(planetPeriodDays('earth'), 360, 1e-6, 'Earth period is exactly one game-year (360 game-days)');
-near(planetPeriodDays('mars'), 360*Math.pow(1.5237,1.5), 0.5, 'Mars period = 360·a^1.5');
-// real Mars sidereal period is 686.98 d vs Earth 365.256 → ratio 1.8808; in game-days that's ~677
-near(planetPeriodDays('mars'), 360*(686.98/365.256), 3, 'Mars period matches the real Earth-relative ratio (~677 game-days)');
+// ---------- periods from Kepler's 3rd law (game-days = GAME_YEAR_DAYS · a^1.5) ----------
+// Re-pinned 2026-08-18: this file predates the Gregorian calendar rework (Calendar Stage 1,
+// 2026-08-18), which changed GAME_YEAR_DAYS from a flat 360 to the real 365.2425 -- a real Earth
+// year, not a game abstraction. That made the ephemeris MORE physically accurate, not less (Mars
+// now lands at 686.96, essentially exact against its real 686.98-day period), so the fix here is
+// to derive from the current constant rather than pin back to the retired one.
+near(planetPeriodDays('earth'), GAME_YEAR_DAYS, 1e-6, 'Earth period is exactly one game-year');
+near(planetPeriodDays('mars'), GAME_YEAR_DAYS*Math.pow(1.5237,1.5), 0.5, 'Mars period = GAME_YEAR_DAYS·a^1.5');
+// real Mars sidereal period is 686.98 d vs Earth 365.256 → ratio 1.8808; against the real game year
+// that lands at ~687 game-days, essentially the real value, since GAME_YEAR_DAYS IS a real year now
+near(planetPeriodDays('mars'), GAME_YEAR_DAYS*(686.98/365.256), 3, 'Mars period matches the real Earth-relative ratio (~687 game-days)');
 check('outer planets ordered by period (Jupiter < Saturn < Uranus < Neptune)',
   planetPeriodDays('jupiter') < planetPeriodDays('saturn') &&
   planetPeriodDays('saturn') < planetPeriodDays('uranus') &&
   planetPeriodDays('uranus') < planetPeriodDays('neptune'));
 
-// ---------- Earth-Mars synodic period should fall out to ~769 game-days (~25.6 mo) ----------
+// ---------- Earth-Mars synodic period should fall out to ~779.6 game-days (~25.6 mo) ----------
+// Re-pinned 2026-08-18: was 769±6 under the old flat 360-day year. Barely moves in real terms --
+// both periods scale by the same ratio, and synodic period is scale-insensitive -- but the exact
+// figure shifts along with GAME_YEAR_DAYS.
 {
   const Te = planetPeriodDays('earth'), Tm = planetPeriodDays('mars');
   const synodic = 1 / (1/Te - 1/Tm);
-  near(synodic, 769, 6, 'Earth-Mars synodic period ~769 game-days (derived, not the old hardcoded 780)');
+  near(synodic, 779.6, 6, 'Earth-Mars synodic period ~779.6 game-days (derived, not the old hardcoded 780)');
   // sanity: it's close to the old 26-month (780 game-day) constant it replaces
   check('synodic period is within a month of the old 26-mo constant', Math.abs(synodic-780) < 30);
 }
@@ -59,9 +68,9 @@ check('outer planets ordered by period (Jupiter < Saturn < Uranus < Neptune)',
 // ---------- Hohmann transfer geometry: known Earth→Mars textbook values ----------
 {
   const H = hohmannPhaseLead('mars');
-  // ideal Earth→Mars Hohmann transfer time is ~259 real days = ~255 game-days
-  near(H.tofDays, 0.5*360*Math.pow((1+1.5237)/2,1.5), 0.5, 'Hohmann transfer time = half the transfer-orbit period');
-  near(H.tofDays, 255, 6, 'Earth→Mars transfer time ~255 game-days (~259 real days)');
+  // ideal Earth→Mars Hohmann transfer time is ~259 real days = ~258.9 game-days
+  near(H.tofDays, 0.5*GAME_YEAR_DAYS*Math.pow((1+1.5237)/2,1.5), 0.5, 'Hohmann transfer time = half the transfer-orbit period');
+  near(H.tofDays, 258.9, 6, 'Earth→Mars transfer time ~258.9 game-days (~259 real days)');
   // classic required phase lead is ~44° ahead
   near(H.lead*180/Math.PI, 44.3, 3, 'Earth→Mars departure phase lead ≈ 44° (textbook)');
 }

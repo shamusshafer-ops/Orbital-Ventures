@@ -86,7 +86,14 @@ function buildPlayedState(){
   localStorage.setItem(SAVE_KEY, raw);
   const ok=autoLoad();
   check('pre-v34: load succeeded', ok===true);
-  check('pre-v34: committedWindow.abs scaled ×DAYS_PER_MONTH (months→days)', state.committedWindow && state.committedWindow.abs===12*DAYS_PER_MONTH);
+  // Re-pinned 2026-08-18: was 12*DAYS_PER_MONTH. The Gregorian calendar rework (Calendar Stage 1)
+  // redefined DAYS_PER_MONTH from the flat literal 30 to a nominal ~30.4368 average. This
+  // migration is deliberately pinned to the historical literal 30 -- it reconstructs what a
+  // pre-v34 save's committedWindow meant when THAT save was written, under the system that was
+  // true then, not under today's redefined constant (see the comment on migrateWindowsToDays in
+  // save.js). Asserting against DAYS_PER_MONTH here would have made a future "fix" that matched
+  // this test corrupt every real pre-v34 save.
+  check('pre-v34: committedWindow.abs scaled ×30 (months→days, historical literal)', state.committedWindow && state.committedWindow.abs===12*30);
   check('pre-v34: the regenerable windows cache was cleared', JSON.stringify(state.windows)==='{}');
   check('pre-v34: forward-compat defaults still applied (e.g. activeFlights seeded)', Array.isArray(state.activeFlights));
 }
@@ -144,7 +151,9 @@ function buildPlayedState(){
     const b={ abs:state.committedWindow&&state.committedWindow.abs, windows:JSON.stringify(state.windows),
       eraSeen:state.eraSeen, snap:JSON.stringify(state.eraStartSnapshot), flightsArr:Array.isArray(state.activeFlights) };
 
-    check('unify: both paths scale committedWindow identically', a.abs===b.abs && a.abs===9*DAYS_PER_MONTH);
+    // Re-pinned 2026-08-18: same reason as the pre-v34 check above -- this must stay pinned to
+    // the historical literal 30, not today's redefined DAYS_PER_MONTH.
+    check('unify: both paths scale committedWindow identically', a.abs===b.abs && a.abs===9*30);
     check('unify: both paths clear the windows cache identically', a.windows===b.windows && a.windows==='{}');
     check('unify: both paths backfill eraSeen identically', a.eraSeen===b.eraSeen && a.eraSeen===eraIndexForYear(1955));
     check('unify: both paths seed eraStartSnapshot identically', a.snap===b.snap);

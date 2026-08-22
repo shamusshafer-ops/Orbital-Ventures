@@ -43,7 +43,12 @@ function hireAll(){ state.year=1990; availablePool().forEach(p=>hirePersonnel(p.
   const lead=staffRecord(members[0].id);
   lead.morale=5; lead.lowMoraleMonths=MORALE_QUIT_MONTHS; // will be removed next monthly boundary
   const leadId=members[0].id;
-  advanceDays(30);
+  // Re-pinned 2026-08-18: was advanceDays(30). The campaign starts 1 Jan (month 0), and January is
+  // a real 31-day month post-Gregorian-calendar-rework (Calendar Stage 1) -- 30 days lands on Jan
+  // 30, one day short of the monthly boundary this mechanic checks at, so lowMoraleMonths never
+  // incremented and the quit never fired. Advance by the real length of the CURRENT month, not a
+  // fixed number, so this can't go stale again if the starting date or the calendar changes.
+  advanceDays(monthLength(state.year, state.month)-state.day);
   check('succession: quit lead is gone from roster', !staffRecord(leadId));
   check('succession: dept.lead is valid-or-null after attrition', (()=>{ const L=state.departments.avionics.lead; return L===null || deptMembers('avionics').some(m=>m.id===L); })());
   check('succession: recorded lead is never the departed person', state.departments.avionics.lead!==leadId);
