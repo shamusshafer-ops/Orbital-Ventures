@@ -25,6 +25,7 @@ Completed session-by-session history lives in `ROADMAP-HISTORY.md`.
 
 ## Docs
 
+- [Codex pass-on](docs/HANDOFF-CODEX-2026-09-07.md) — review recommendations, mass-fix status, validation limits, and suggested next slices.
 - `ROADMAP.md` — milestone status, workflow, open threads, and what's next.
 - `ROADMAP-HISTORY.md` — append-only log of completed session work (split out of `ROADMAP.md`, 2026-07-28).
 - `orbital-ventures-design.md` — original full design document (tech tree, economy, personnel, Solar System map).

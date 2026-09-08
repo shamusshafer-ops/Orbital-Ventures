@@ -7672,3 +7672,14 @@ as reentry and covered the docking renderer. Reliability remains `0.97`; replay-
 rendezvous attempts remain `25 m/s`. The D5 suite passes 17/17, Gate 2 passes 49/49, Gate 3 passes
 96/96, and the 165-suite sweep has 155 real passes, one intentional skip and the same nine baseline
 failures.
+
+## 2026-09-07 — Codex review and recommendations handoff
+
+At the owner's request, recorded the senior engineering/game-development review
+in `docs/HANDOFF-CODEX-2026-09-07.md` and linked it from the shared agent handoff
+and README. Includes the committed mass-accounting correction (`1634a3f`, draft
+PR #2), remaining coast/ISRU abstractions, test-runner and browser evidence gaps,
+eight gameplay opportunities, and a proposed implementation sequence. Only the
+mass correction is implemented; the remaining items are recommendations. The
+recorded mass-fix validation is 168 passing headless suites, one intentional skip,
+and no failures. This documentation update does not rerun or extend that result.
