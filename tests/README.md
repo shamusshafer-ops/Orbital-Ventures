@@ -77,6 +77,7 @@ save/reload, replay safety, and bounded 90-day operating support accrued daily.
 
 | File | Covers |
 |---|---|
+| `test-mission-mass-accounting.js` | Shared launch/mission carried mass, retained power hardware, phase-ordered boil-off, separation, depot top-off, orbital assembly, and planning purity. See `docs/MISSION-MASS-ACCOUNTING.md` for timing assumptions. |
 | `test-livery-esc.js` | H1 stored-XSS regression: esc() fundamentals, hostile livery.name renders inert at the vehicle pop-out title sink, import path re-clamps user-string lengths. |
 | `test-parts-bridge.js` | E3.0 make-or-break: part graph → stage-IR bridge reduces to the same stages the slider bench produces; Δv/TWR/liftoff/per-stage numerical equivalence + graph integrity + malformed-build handling. |
 | `test-parts-render.js` | E3.1 read-only bench renderer: every part shape draws without throwing, stage-Δv/TWR overlay matches real physics (no drift from the E3.0-proven bridge), stage-label count is correct, malformed builds handled, geometry sanity, symmetry tolerance. |

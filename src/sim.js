@@ -4897,21 +4897,33 @@ function boosterRelPenalty(){
 /* ---------- M3: in-space modules & multi-leg missions ---------- */
 function inSpaceDry(mod){const e=ENGINES[mod.eng]||ENGINES.a4;const s=curSigma();return e.mass + s/(1-s)*mod.prop;}
 function inSpaceWet(mod){return inSpaceDry(mod)+mod.prop;}
+// The mass manifest is a fresh value object: simulations may consume and detach its entries
+// without mutating the selected mission or vehicle configuration.  The launch quote and profile
+// simulator share it, so their definition of what left the pad cannot drift.
+function missionMassManifest(m){
+  if(!(m&&m.profile)) return null;
+  const modules=m.modules||[];
+  const fixed={crew:lifeSupport(m,state.eclss).total,cargo:Math.max(0,m.cargo||0),power:powerSystemMass(m),avionics:avionicsPart().mass,fairing:m.crew>0?0:fairingPart().mass};
+  const stages={};
+  if(modules.includes('transfer')) stages.transfer={eng:state.transfer.eng,dry:inSpaceDry(state.transfer),prop:state.transfer.prop};
+  if(modules.includes('lander')){
+    stages.descent={eng:state.descent.eng,dry:inSpaceDry(state.descent),prop:state.descent.prop};
+    stages.ascent={eng:state.ascent.eng,dry:inSpaceDry(state.ascent),prop:state.ascent.prop};
+  }
+  const assembled=assemblyOn(m)?new Set(assemblyModules(m)):new Set();
+  let launchMass=Object.values(fixed).reduce((sum,mass)=>sum+mass,0);
+  for(const key in stages) if(!assembled.has(key==='transfer'?'transfer':'lander')) launchMass+=stages[key].dry+stages[key].prop;
+  return {fixed,stages,assembled,launchMass};
+}
 function lvPayload(m){
   // what the launch vehicle must loft to LEO
-  let p;
-  if(m && m.tanker) p=inSpaceWet(state.transfer); // the tank itself is the cargo
-  else if(m && m.profile){
-    p=lifeSupport(m,state.eclss).total; // crew module
-    p+=powerSystemMass(m); // Phase 2: power plant (solar/RTG/reactor) is mass you must lift
-    p+=(m.cargo||0); // #73 Slice 2: uncrewed cargo (e.g. a station module) carried through the whole profile
-    if(m.modules.includes('transfer')) p+=inSpaceWet(state.transfer);
-    if(m.modules.includes('lander')){ p+=inSpaceWet(state.descent)+inSpaceWet(state.ascent); }
-  }
-  else if(m && m.crew>0) p=lifeSupport(m,state.eclss).total;
-  else p=m?m.payload:0.05;
-  return p + partsExtraMass(m); // BC2: avionics + fairing add lofted mass
+  if(m&&m.tanker) return inSpaceWet(state.transfer)+partsExtraMass(m); // the tank itself is the cargo
+  const manifest=missionMassManifest(m);
+  if(manifest) return manifest.launchMass;
+  const p=(m&&m.crew>0)?lifeSupport(m,state.eclss).total:(m?m.payload:0.05);
+  return p+partsExtraMass(m); // BC2: avionics + fairing add lofted mass
 }
+function legCoastDays(leg){ return leg&&leg.by!=='lv'&&Number.isFinite(leg.coastDays)?Math.max(0,leg.coastDays):0; }
 // Gravity-loss model: a low-TWR burn spends longer fighting gravity, so it delivers less of its
 // ideal Δv. Mission reqDv ALREADY budgets a nominal gravity/drag loss (LEO 9400 vs ~7800 m/s
 // orbital velocity), so this is a penalty applied ONLY BELOW a nominal TWR — a sensibly-thrusted
@@ -5437,37 +5449,34 @@ function marsRoutes(m){
   ];
 }
 function simulateMission(m){
-  const crewMass=lifeSupport(m,state.eclss).total;
+  const manifest=missionMassManifest(m), crewMass=manifest.fixed.crew;
   const present={};
-  if(m.modules.includes('transfer')) present.transfer={eng:state.transfer.eng, dry:inSpaceDry(state.transfer), propLeft:state.transfer.prop};
-  if(m.modules.includes('lander')){
-    present.descent={eng:state.descent.eng, dry:inSpaceDry(state.descent), propLeft:state.descent.prop};
-    present.ascent ={eng:state.ascent.eng,  dry:inSpaceDry(state.ascent),  propLeft:state.ascent.prop};
-  }
+  for(const key in manifest.stages){ const stage=manifest.stages[key]; present[key]={eng:stage.eng,dry:stage.dry,propLeft:stage.prop,boiloffFraction:0}; }
+  const carried=Object.assign({},manifest.fixed);
   const isru=ISRU_FREE_LEG[m.id];
   const isruActive = isru && state.research[isru.research];
-  // Cryogenic boil-off: LH₂ (and, at half rate, CH₄) in-space stages lose propellant over the
-  // mission's coast time. Cryo Boil-off Control research cuts the rate ~4×. Capped at 30% loss.
-  let boiloff=null;
-  { const mo=(m.days||0)/30;
-    if(mo>0.5){
-      const controlled=!!state.research.cryo_boiloff_control;
-      const rate=controlled?BOILOFF_RATE_CONTROLLED:BOILOFF_RATE_BASE; // per month, LH₂; CH₄ at half
-      let lost=0;
-      for(const k in present){
-        const prop=(ENGINES[present[k].eng]||{}).prop||'';
-        const cryo=/LH₂/.test(prop)?1:(/CH₄|methal/i.test(prop)?0.5:0);
-        if(!cryo) continue;
-        const frac=Math.min(BOILOFF_CAP, rate*cryo*mo);
-        const dl=present[k].propLeft*frac;
-        present[k].propLeft-=dl; lost+=dl;
-      }
-      if(lost>0.01) boiloff={lost:Math.round(lost*100)/100, controlled};
-    } }
-  const cargoMass=m.cargo||0; // #73 Slice 2: uncrewed cargo carried through every leg, same as crew life support
-  const stackMass=()=>{let s=crewMass+cargoMass; for(const k in present) s+=present[k].dry+present[k].propLeft; return s;};
-  // #6: orbital assembly — these modules are pre-positioned in LEO, so the main launch doesn't lift them
-  const asmSet = assemblyOn(m) ? new Set(assemblyModules(m)) : null;
+  // Profile legs have no authored ephemeris. Optional coastDays is coast immediately before that
+  // leg. Otherwise legacy m.days is one post-departure coast before the next burn (or tail coast).
+  // Explicit coastDays consumes m.days; only an unallocated remainder is tail coast.
+  let coastBudget=Math.max(0,Number.isFinite(m.days)?m.days:0);
+  const hasExplicitCoast=m.profile.some(leg=>legCoastDays(leg)>0);
+  let legacyCoastPending=!hasExplicitCoast, boiloffLost=0;
+  const applyCoast=(days)=>{
+    const months=Math.max(0,Number.isFinite(days)?days:0)/30;
+    if(!(months>0)) return;
+    const rate=state.research.cryo_boiloff_control?BOILOFF_RATE_CONTROLLED:BOILOFF_RATE_BASE;
+    for(const key in present){
+      const stage=present[key], prop=(ENGINES[stage.eng]||{}).prop||'', cryo=/LH₂/.test(prop)?1:(/CH₄|methal/i.test(prop)?0.5:0);
+      if(!cryo) continue;
+      // Fractional loss is applied to what remains after earlier burns.  Advancing the cumulative
+      // fraction this way makes split coast phases equivalent to one uninterrupted coast and keeps
+      // the 30% cap cumulative rather than renewing it for every authored phase.
+      const oldFraction=stage.boiloffFraction, newFraction=Math.min(BOILOFF_CAP,oldFraction+rate*cryo*months);
+      const loss=Math.min(stage.propLeft,stage.propLeft*(newFraction-oldFraction)/Math.max(1-oldFraction,1e-9));
+      stage.propLeft-=loss; stage.boiloffFraction=newFraction; boiloffLost+=loss;
+    }
+  };
+  const stackMass=()=>{let s=0; for(const key in carried) s+=carried[key]; for(const key in present) s+=present[key].dry+present[key].propLeft; return s;};
   const legs=[]; let ok=true, inSpaceLegs=0;
   const gaMult=state.research.gravity_assist_planning?0.92:1; // gravity-assist chains shave the big injection burns
   const aeroMult=state.research.aerocapture?0.3:1; // I6: atmosphere does almost all the braking on a real capture burn — a much steeper cut than gravity-assist's trajectory shave, and a DIFFERENT leg (the insertion/capture itself, not the interplanetary injection), so the two can legitimately stack
@@ -5477,14 +5486,13 @@ function simulateMission(m){
     if(aeroMult<1 && AEROCAPTURE_LEG_RE.test(leg.name||'')) dv=Math.round(dv*aeroMult);
     return dv;
   };
-  for(const leg of m.profile){
+  for(let index=0;index<m.profile.length;index++){
+    const leg=m.profile[index];
+    const authoredCoast=legCoastDays(leg);
+    if(authoredCoast>0){ const coast=Math.min(authoredCoast,coastBudget); applyCoast(coast); coastBudget-=coast; }
+    else if(legacyCoastPending && leg.by!=='lv' && m.profile.slice(0,index).some(item=>item.by!=='lv')){ applyCoast(coastBudget); coastBudget=0; legacyCoastPending=false; }
     if(leg.by==='lv'){
-      let upper=stackMass();
-      if(asmSet){ // subtract pre-assembled modules from the lift mass (they're already docked in orbit)
-        if(asmSet.has('transfer') && present.transfer) upper-=(present.transfer.dry+present.transfer.propLeft);
-        if(asmSet.has('lander')){ if(present.descent) upper-=(present.descent.dry+present.descent.propLeft); if(present.ascent) upper-=(present.ascent.dry+present.ascent.propLeft); }
-        upper=Math.max(upper, crewMass*0.5);
-      }
+      const upper=stackMass()-Object.keys(present).reduce((sum,key)=>sum+(manifest.assembled.has(key==='transfer'?'transfer':'lander')?(present[key].dry+present[key].propLeft):0),0);
       const perf=stackPerformance(state.stages, upper);
       // E4.6: a mission drawing from the depot (state.depotUse>0) whose own plane differs from the
       // depot's pays the rendezvous phasing burn HERE, on the same leg that reaches LEO — the depot
@@ -5497,7 +5505,13 @@ function simulateMission(m){
       legs.push({name:leg.name, dv:legDvNeed, cap:Math.round(perf.totalDv), by:'lv', mass:upper, twr:perf.twr, pass, phasingDv:phasingDv||undefined});
       if(!pass) ok=false;
       // depot top-off happens once in LEO — added after this leg, not counted in the LV's lift mass
-      if(present.transfer && state.depotUse>0 && leg.name==='Ascent to LEO'){ present.transfer.propLeft += state.depotUse; }
+      if(present.transfer && state.depotUse>0 && leg.name==='Ascent to LEO'){
+        const prior=present.transfer.propLeft, topoff=state.depotUse;
+        present.transfer.propLeft+=topoff;
+        // Fresh depot fuel begins with no exposure.  Mixing by current inventory preserves the
+        // already-accrued loss while allowing the added propellant to participate in later coasts.
+        present.transfer.boiloffFraction=prior?present.transfer.boiloffFraction*prior/(prior+topoff):0;
+      }
     }else if(isruActive && leg.name===isru.leg){
       // ISRU-produced propellant covers this burn entirely — no mass drawn from carried tanks
       inSpaceLegs++;
@@ -5518,7 +5532,10 @@ function simulateMission(m){
       }
     }
     if(leg.dropAfter) for(const d of leg.dropAfter) if(d!=='lv') delete present[d];
+    if(leg.by==='lv') delete carried.fairing; // fairings protect ascent only; avionics remains aboard
   }
+  if(coastBudget>0) applyCoast(coastBudget);
+  const boiloff=boiloffLost>0.01?{lost:Math.round(boiloffLost*100)/100,controlled:!!state.research.cryo_boiloff_control}:null;
   return {boiloff, legs, ok, crewMass, inSpaceLegs};
 }
 

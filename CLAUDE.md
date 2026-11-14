@@ -21,6 +21,14 @@ the marker from its body.
 > When you start a task, replace this line with: `<task> — <Claude|Codex> — started <date>`.
 > When done, clear it back to "(none claimed right now)" and add your entry to the history below.
 
+**Codex checkpoint — 2026-09-07:** Read
+[the Codex pass-on](docs/HANDOFF-CODEX-2026-09-07.md) for the current review,
+implementation status, and prioritized engineering/realism/gameplay recommendations.
+It records mass fix `1634a3f` on `codex/mission-mass-accounting` (draft PR #2,
+not merged at this checkpoint), with 168 passing headless suites and one intentional
+skip. That measured baseline supersedes the older suite counts above for this
+branch. Browser validation and the proposed follow-on features remain open.
+
 **Human-blocked — needs a real browser, no agent can close these:**
 - `BENCH_V2` is still `false` (parts.js:18). The whole E3 part builder is complete, 207 checks
   green, and switched off pending a playtest. Checklist in ROADMAP.md.
@@ -229,3 +237,12 @@ attempt cost are unchanged. Firefox checks at 1280–1600px covered capsule/caps
 pod/station, and caught/fixed crewed docking being covered by the 3D reentry phase. The D5 suite passes
 17/17, Gate 2 remains 49/49, Gate 3 remains 96/96, and the full sweep is 155/165 plus one intentional
 skip and the same nine baseline failures.
+
+### 2026-09-07 — Codex review recommendations passed on
+
+Recorded the engineering, realism, and gameplay recommendations in
+`docs/HANDOFF-CODEX-2026-09-07.md`, linked from this STATUS and the README. The
+handoff distinguishes the committed mission-mass fix (`1634a3f`, draft PR #2)
+from pending work, records its validation limits, and proposes failure learning,
+logistics planning, then personnel assignment as the next gameplay slices.
+Documentation only; no additional game behavior changes.

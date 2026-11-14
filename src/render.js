@@ -5801,8 +5801,10 @@ function renderProfileReadout(m){
   if(fails) flags+=`<div class="flag bad">▲ ${fails} leg${fails>1?'s':''} short — fix the red rows above.</div>`;
   else flags+=`<div class="flag ok">✓ Every leg passes. Mission reliability ${(rel*100|0)}%.</div>`;
   if(sim.boiloff) flags+= sim.boiloff.controlled
-    ? `<div class="flag ok">❄ Cryo boil-off (controlled): ~${sim.boiloff.lost} t evaporates over the cruise — already reflected in the legs above.</div>`
-    : `<div class="flag warn">❄ Cryo boil-off: ~${sim.boiloff.lost} t of cryogenic propellant evaporates over the cruise (reflected above). Cryogenic Boil-off Control research cuts the rate ~4×.</div>`;
+    ? `<div class="flag ok">❄ Cryo boil-off (controlled): ~${sim.boiloff.lost} t evaporates as coast phases progress.</div>`
+    : `<div class="flag warn">❄ Cryo boil-off: ~${sim.boiloff.lost} t of cryogenic propellant evaporates during coast phases. Cryogenic Boil-off Control research cuts the rate ~4×.</div>`;
+  if(m.profile&&m.profile.some(l=>legCoastDays(l)>0)) flags+=`<div class="flag" style="opacity:.85">◷ Coast timing uses this profile's authored phase durations; remaining mission days are tail coast.</div>`;
+  else if(m.profile&&(m.days||0)>0) flags+=`<div class="flag" style="opacity:.85">◷ Coast timing is approximate: this mission's duration is modeled after departure, before later burns when present.</div>`;
   if(bayBuildDelta(m)>0) flags+=`<div class="flag warn">△ Over assembly-bay capacity (${vehicleUnits(m)}/${bayCapacity()} units) — build runs +${bayBuildDelta(m)} mo and −${(overstretchRelPenalty(m)*100).toFixed(1)}% reliability. Expand Assembly Bays in Orbital Ops.</div>`;
   if(cadenceSurcharge()>0) flags+=`<div class="flag warn">△ Build cadence ${Math.round(cadenceLoad()*100)}% of sustainable — rush surcharge +${Math.round(cadenceSurcharge()*100)}% on this build. Slow down or expand Assembly Bays.</div>`;
   if(investorConfidenceBuildPenalty()>0) flags+=`<div class="flag warn">△ Investor confidence shaken — ${Math.round(recentLossSeverity()*10)/10} recent loss severity, +${Math.round(investorConfidenceBuildPenalty()*100)}% build cost, government funding down ${Math.round((1-investorConfidenceFundMult())*100)}%. Confidence rebuilds as losses age out or you fly a success.</div>`;
