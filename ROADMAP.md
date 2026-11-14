@@ -1383,9 +1383,8 @@ so Claude cannot close this item. It needs a real session at a real browser.
 - [ ] Verify a migrated pre-E3.5 save renders an equivalent graph and flies identically (the
   migration-parity test covers the numbers; this covers what it *looks* like).
 - [x] Flip `BENCH_V2` to true, rebuild, re-run the full suite *(2026-11-14, owner request, ahead of the
-  playtest; 168/169 suites green + 1 intentional skip).* NOTE: the old slider bench is NOT hidden —
-  `renderSceneMain()` shows the part bench alongside it — and the part bench never writes back to
-  `state.stages`, so it is a sandbox, not the flown design. Wiring build → stages is the open next step.
+  playtest; 168/169 suites green + 1 intentional skip).* The slider bench stays visible alongside it,
+  and since **E3.7 (2026-11-14)** both edit the same flown rocket, synced both ways — see ROADMAP-HISTORY.md.
 
 **Protected baseline:** `state.stages` stays source of truth; `state.build` stays derived/regenerable.
 If playtest goes badly the flag flips back — that is the entire point of it being a flag.

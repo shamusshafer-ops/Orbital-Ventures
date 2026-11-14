@@ -33,9 +33,11 @@ branch. Browser validation and the proposed follow-on features remain open.
 
 **Human-blocked — needs a real browser, no agent can close these:**
 - `BENCH_V2` flipped to `true` 2026-11-14 at the owner's request (part bench now visible on the
-  Design Bench). Browser playtest checklist in ROADMAP.md (Tier 2 A1) still unrun. KNOWN GAP: the
-  part bench edits a local graph (`_benchBuild`) that never writes back to `state.stages`, so what
-  you build there does not fly — the slider bench below it is still the real design.
+  Design Bench). Since E3.7 (2026-11-14) it drives the FLOWN rocket: part edits write
+  `state.stages`/`state.boosters` (`benchCommit`), slider/family/blueprint edits regenerate the graph
+  (`benchBuild` signature sync), payload comes from the mission, and aero drag is real flight physics
+  (`aeroLossFrac`, applied in `computeVehicle` + `simulateMission`'s launch leg, never in
+  `stackPerformance`). Human playtest checklist in ROADMAP.md (Tier 2 A1) still unrun.
 - Gate 6 browser items: re-capture `docs/ui-baseline/` (every existing file is smaller than its
   filename claims — `command-1920x1080.png` is actually 1003×1072, so no before/after comparison
   against them is valid); confirm F8; and simply LOOK at the six new palettes, which no human has

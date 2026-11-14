@@ -24,10 +24,16 @@ newGame('engineer');
 
 // ---------- 2. Crewed vs uncrewed root ----------
 {
-  const crewed=stateDesignToBuild({stages:[{eng:'a4',count:1,prop:8}], eclss:'open'});
-  const uncrewed=stateDesignToBuild({stages:[{eng:'a4',count:1,prop:8}], eclss:'none'});
-  check('root: eclss!=none -> crew capsule root', partDef(crewed.parts.find(p=>p.uid===crewed.root).defId).cat==='payload');
-  check('root: eclss==none -> probe core root', partDef(uncrewed.parts.find(p=>p.uid===uncrewed.root).defId).cat==='avionics');
+  // E3.7 (2026-11-14): the root follows the SELECTED MISSION, not ECLSS (ECLSS starts 'open' on every
+  // new game, which put a 1.2 t capsule on uncrewed rockets and made the two benches disagree).
+  const prevMission=state.activeMission;
+  state.activeMission=MISSIONS.find(m=>m.crew>0).id;
+  const crewed=stateDesignToBuild({stages:[{eng:'a4',count:1,prop:8}], eclss:'none'});
+  state.activeMission=MISSIONS.find(m=>!(m.crew>0)).id;
+  const uncrewed=stateDesignToBuild({stages:[{eng:'a4',count:1,prop:8}], eclss:'open'});
+  state.activeMission=prevMission;
+  check('root: crewed mission -> crew capsule root (whatever ECLSS says)', partDef(crewed.parts.find(p=>p.uid===crewed.root).defId).cat==='payload');
+  check('root: uncrewed mission -> probe core root (whatever ECLSS says)', partDef(uncrewed.parts.find(p=>p.uid===uncrewed.root).defId).cat==='avionics');
 }
 
 // ---------- 3. Boosters carry across ----------

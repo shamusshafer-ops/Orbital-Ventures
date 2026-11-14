@@ -5493,7 +5493,7 @@ function simulateMission(m){
     else if(legacyCoastPending && leg.by!=='lv' && m.profile.slice(0,index).some(item=>item.by!=='lv')){ applyCoast(coastBudget); coastBudget=0; legacyCoastPending=false; }
     if(leg.by==='lv'){
       const upper=stackMass()-Object.keys(present).reduce((sum,key)=>sum+(manifest.assembled.has(key==='transfer'?'transfer':'lander')?(present[key].dry+present[key].propLeft):0),0);
-      const perf=stackPerformance(state.stages, upper);
+      const perf=withAeroDrag(stackPerformance(state.stages, upper), m); // E3.7: same drag the bench readout shows
       // E4.6: a mission drawing from the depot (state.depotUse>0) whose own plane differs from the
       // depot's pays the rendezvous phasing burn HERE, on the same leg that reaches LEO — the depot
       // tops off tanks after this leg passes, but can't supply the plane-change itself. Zero for
@@ -5740,11 +5740,20 @@ function buildCostBreakdownHTML(m){
   </details>`;
 }
 
+// E3.7 (2026-11-14): stage-1 aero drag applied on top of stackPerformance() — never inside it, which the
+// E3.0 slider/graph equivalence harness locks. aeroLossFrac() (parts.js) is the fraction of stage-1 Δv lost.
+function withAeroDrag(perf, m){
+  const f=(typeof aeroLossFrac==='function')?aeroLossFrac(m):0;
+  if(!(f>0) || !perf || !perf.stageDv || !perf.stageDv.length) return Object.assign({}, perf, {dragLoss:0});
+  const dragLoss=perf.stageDv[0]*f;
+  const stageDv=perf.stageDv.slice(); stageDv[0]=Math.max(0, stageDv[0]-dragLoss);
+  return Object.assign({}, perf, {stageDv, totalDv:Math.max(0, perf.totalDv-dragLoss), dragLoss});
+}
 function computeVehicle(){
   const m=curMission();
   const crewed=!!(m && m.crew>0);
   const payload=lvPayload(m);
-  const perf=stackPerformance(state.stages, payload);
+  const perf=withAeroDrag(stackPerformance(state.stages, payload), m); // E3.7: aero drag is real flight physics
   const totalEng=state.stages.reduce((a,s)=>a+s.count,0);
   let totalProp=state.stages.reduce((a,s)=>a+s.prop,0);
   let buildCost=state.stages.reduce((a,s)=>a+engCost(s.eng)*s.count+0.02*s.prop,0.1);
@@ -5779,7 +5788,7 @@ function computeVehicle(){
   }
   const reliability=Math.min(diff().relCap,Math.max(diff().relFloor,(curRel()+testBonus+partsRelBonus(crewed)+geoRelBonus()+benchRelBonus(m)+doctrineRelMod()+fleetHeritageRelBonus())*enginePenalty*boosterRelPenalty()*(crewed?(state.research.orbital_eva?0.95:0.92):1)*(1-solidInsertionTax(m))+productionRelMod(m)+((state.engineOut&&state.stages[0].count>=3)?0.025:0))); // Phase 3 engine-out: a stage-1 engine failure becomes survivable; #7: QA bonus − bay-overstretch penalty + bench-tested sub-assembly heritage; #16: booster failure-point penalty; BC2 parts + BC3 geometry reliability; CE3(a) doctrine early-reliability delta
   const launchCost=((0.12+0.01*totalProp)*padLaunchMult()*groundLaunchMult()*doctrineMult('launch')) + assemblyFlights(m)*ASSEMBLY_LAUNCH_COST; // #7: pads + #6b: Ground/Reuse research amortize launch ops; #6: dedicated assembly flights; CE3(a) doctrine launch-cost factor
-  return {payload, sm:perf.sm, stageDv:perf.stageDv, stageTwr:perf.stageTwr, stageGravLoss:perf.stageGravLoss, gravLoss:perf.gravLoss, totalDv:perf.totalDv, liftoff:perf.liftoff, twr:perf.twr,
+  return {payload, dragLoss:perf.dragLoss||0, sm:perf.sm, stageDv:perf.stageDv, stageTwr:perf.stageTwr, stageGravLoss:perf.stageGravLoss, gravLoss:perf.gravLoss, totalDv:perf.totalDv, liftoff:perf.liftoff, twr:perf.twr,
           boostDv:perf.boostDv||0, boosters:perf.boosters||null,
           totalEng, totalProp, reliability, buildCost, launchCost, crewed,
           dryTotal:perf.sm.reduce((a,b)=>a+b.dry,0)};
@@ -8980,6 +8989,7 @@ function resumeLaunchTransactionUI(){
 // against the incoming campaign. Gate 2 will make launchTxn resumable.
 function resetSimTransients(){
   _campaignGeneration++;
+  try{ if(typeof resetBenchTransients==='function') resetBenchTransients(); }catch(e){} // E3.7: no graph/undo leaks across campaigns
   if(_tabTransitionTimer){ try{ clearTimeout(_tabTransitionTimer); }catch(e){} _tabTransitionTimer=null; }
   try{ stopTimeAuto(); }catch(e){}
   if(_holdTimer){ try{ clearTimeout(_holdTimer); }catch(e){} _holdTimer=null; }

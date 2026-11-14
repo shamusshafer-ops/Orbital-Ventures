@@ -281,6 +281,12 @@ const PART_DEFS = {
     blurb:'Uncrewed guidance core. Flies the trajectory without a pilot aboard.',
   },
 };
+// E3.7 (2026-11-14): an engine needs a BOTTOM node, or nothing can sit below it and a multi-stage
+// rocket can't be built by hand (an upper stage's engine would have nowhere for the decoupler to go).
+// It accepts only a decoupler, of any size — see the decouplerOnly rule in canAttach().
+for(const d of Object.values(PART_DEFS)){
+  if(d.engId && d.nodes.length===1 && d.nodes[0].at==='top') d.nodes.push({id:'bot', at:'bottom', class:d.nodes[0].class, decouplerOnly:true});
+}
 
 function partDef(id){ return PART_DEFS[id]; }
 function partsInCategory(cat){ return Object.values(PART_DEFS).filter(p=>p.cat===cat); }
@@ -450,6 +456,15 @@ function canAttach(build, parentUid, parentNodeId, childDefId){
   if(cdef.engId && ENGINES && ENGINES[cdef.engId] && ENGINES[cdef.engId].transferOnly){
     if(attachWouldBeLaunchStage(build, parentUid)) return {ok:false, why:`${ENGINES[cdef.engId].name} is a transfer-stage engine — it can't power a launch (ground-lit) stage. Place it above a decoupler.`};
   }
+  // E3.7: below an engine only a decoupler fits (size-agnostic: the decoupler is the interstage).
+  if(pnode.decouplerOnly){
+    if(!cdef.phys.isDecoupler) return {ok:false, why:'only a decoupler fits below an engine — it separates this stage from the next'};
+    const top=cdef.nodes.find(n=>n.at==='top'); return top?{ok:true, childNode:top.id}:{ok:false, why:'decoupler has no top node'};
+  }
+  // E3.7: the payload root's top node is for a nose only. Stacking tanks or engines above the payload
+  // would bury it mid-stack — and it gave every first click two "valid" spots, so auto-attach stopped working.
+  if(parentUid===build.root && pnode.at==='top' && (!cdef.nodes.every(n=>n.at==='bottom') || cdef.phys.isPayload))
+    return {ok:false, why:'only a nosecone fits above the payload — stack tanks and engines below it'};
   const cnode=cdef.nodes.find(n=>nodesCompatible(pnode, n));
   if(!cnode) return {ok:false, why: pnode.class!=='small' ? 'no matching '+NODE_CLASS[pnode.class].label+' node on this part' : 'these parts don\'t connect here'};
   return {ok:true, childNode:cnode.id};
@@ -526,13 +541,10 @@ function buildWarnings(build){
   const ir=buildToStageIR(build);
   if(ir.error){ w.push(ir.error); return w; }
   if(ir.warnings) w.push(...ir.warnings);
-  const spine=stackSpine(build);
-  const hasControl=spine.some(p=>{ const d=partDef(p.defId); return d && d.phys.hasAvionics; })
-    || build.parts.some(p=>{ const d=partDef(p.defId); return d && d.phys.hasAvionics; });
-  if(!hasControl) w.push('No avionics — this vehicle flies open-loop. Nothing steers it, and reliability takes a hit (−15%). Add a capsule or a guidance core.'); // E3.4: now a real reliability penalty, not just a nag
-  // E3.4: power deficit — avionics draw power nothing on board generates yet
-  const power=buildPowerBalance(build);
-  if(power.deficit>0) w.push(`Power deficit: ${power.draw} kW drawn, ${power.gen} kW generated. Onboard systems would run down (no generation part fitted yet).`);
+  // 2026-11-14: the no-avionics and launch-power warnings were removed when the part bench started
+  // driving the flown rocket. Guidance is the bench's avionics choice (AVIONICS/avionicsPart());
+  // spacecraft power is the POWER_SOURCES system. The payload root always carried guidance, so the
+  // open-loop penalty could never fire, and no part generated power, so the deficit could never clear.
   return w;
 }
 
@@ -586,7 +598,8 @@ function buildToStageIR(build){
       const prop_  = (part._propOverride!=null) ? part._propOverride : def.phys.propMass;
       const count_ = (part._countOverride!=null) ? part._countOverride : 1;
       if(engId_){ engId=engId_; engCount+=count_*(part.sym||1); }
-      if(prop_){ stageProp+=prop_*(part.sym||1); stageDiaSum+=def.dia*(part.sym||1); stageDiaN+=(part.sym||1); }
+      const dia_ = (part._diaOverride!=null) ? part._diaOverride : def.dia; // slider diameter carried through a round trip
+      if(prop_){ stageProp+=prop_*(part.sym||1); stageDiaSum+=dia_*(part.sym||1); stageDiaN+=(part.sym||1); }
       if(def.phys.crew) crew+=def.phys.crew*(part.sym||1);
       if(!engId_ && !prop_ && def.phys.dryMass) nonPropDry+=def.phys.dryMass*(part.sym||1);
     }
@@ -656,15 +669,26 @@ function buildToStageIR(build){
 const AERO_LOSS_K = 0.02;        // max ~ a few % of stage-1 Δv at the worst geometry
 const AERO_LOSS_CAP = 0.06;
 const AERO_NOSE_RELIEF = 0.5;    // a nosecone halves drag loss
+// The part(s) stacked ABOVE the root via its top node (e.g. a nosecone on a guidance core), topmost first.
+// stackSpine() walks down from the root, so without this a nose mounted on the payload was invisible to drag.
+function partsAboveRoot(build){
+  const out=[]; let cur=build&&build.root, guard=0;
+  while(cur && guard++<16){
+    const up=(build.links||[]).find(l=>l.parent===cur && l.parentNode==='top');
+    if(!up) break; const p=buildPart(build,up.child); if(!p) break; out.unshift(p); cur=p.uid;
+  }
+  return out;
+}
 function buildAeroProfile(build){
-  const spine=stackSpine(build);
+  const spine=partsAboveRoot(build).concat(stackSpine(build));
   if(!spine.length) return {dragArea:0, hasNose:false, lossFrac:0};
   // frontal drag ≈ the largest cross-section in the stack × the top part's drag
   // coefficient (the top part meets the airstream first). Radial boosters add
   // their cross-section (they sit in the freestream).
   let maxCross=0, topDrag=0.3;
   spine.forEach((p,i)=>{ const d=partDef(p.defId); if(!d) return;
-    const cs=(d.phys.crossSection!=null?d.phys.crossSection:1)*(d.px?d.px.dia/90:1);
+    const baseCs=(p._diaOverride!=null)?p._diaOverride*p._diaOverride:(d.phys.crossSection!=null?d.phys.crossSection:1); // slider diameter → frontal area ∝ dia²
+    const cs=baseCs*(d.px?d.px.dia/90:1);
     if(cs>maxCross) maxCross=cs;
     if(i===0) topDrag=(d.phys.dragCoeff!=null?d.phys.dragCoeff:0.3);
   });
@@ -676,30 +700,6 @@ function buildAeroProfile(build){
   return {dragArea:round2(dragArea), hasNose, lossFrac};
 }
 
-// Power balance: avionics/probe cores DRAW power; nothing in the viable set
-// GENERATES it yet (batteries are a future part). This is a warning-level check,
-// never a Δv effect — an unpowered guidance core is a "your probe goes dark"
-// caution, not a physics penalty. Returns {gen, draw, deficit}.
-function buildPowerBalance(build){
-  let gen=0, draw=0;
-  for(const p of build.parts){ const d=partDef(p.defId); if(!d) continue;
-    gen+=(d.phys.powerGen||0)*(p.sym||1); draw+=(d.phys.powerDraw||0)*(p.sym||1); }
-  return {gen:round2(gen), draw:round2(draw), deficit:round2(Math.max(0,draw-gen))};
-}
-
-// Control/reliability: E3.2 already WARNS when there's no avionics; E3.4 makes
-// it bite. A vehicle with no guidance flies open-loop — a real reliability hit,
-// returned as a multiplier the bench applies to displayed reliability (and, at
-// cutover, the live flight). Bounded and simple: has avionics → 1.0, none → a
-// fixed penalty (open-loop rockets historically failed far more often).
-const NO_AVIONICS_REL_MULT = 0.85;
-function buildControlProfile(build){
-  const spine=stackSpine(build);
-  const hasAvionics = spine.some(p=>{ const d=partDef(p.defId); return d && d.phys.hasAvionics; })
-    || build.parts.some(p=>{ const d=partDef(p.defId); return d && d.phys.hasAvionics; });
-  return {hasAvionics, relMult: hasAvionics?1:NO_AVIONICS_REL_MULT};
-}
-
 function stackPerformanceForBuild(build){
   const ir=buildToStageIR(build);
   if(ir.error) return ir;
@@ -709,8 +709,6 @@ function stackPerformanceForBuild(build){
     const perf=stackPerformance(ir.stages, ir.payload);
     // E3.4 adjustments — layered ON TOP, never inside stackPerformance.
     const aero=buildAeroProfile(build);
-    const power=buildPowerBalance(build);
-    const control=buildControlProfile(build);
     // apply aero drag loss to stage-1 Δv and the total (stage 1 is the atmospheric one)
     const adj=Object.assign({}, ir, perf);
     if(aero.lossFrac>0 && adj.stageDv && adj.stageDv.length){
@@ -719,7 +717,7 @@ function stackPerformanceForBuild(build){
       adj.totalDv=Math.max(0, adj.totalDv-dragDv);
       adj.dragLoss=round2(dragDv);
     } else { adj.dragLoss=0; }
-    adj.aero=aero; adj.power=power; adj.control=control;
+    adj.aero=aero;
     return adj;
   } finally {
     state.boosters=prevBoosters;
@@ -884,7 +882,10 @@ function renderBuildSVG(build, W, H, interactive){
   const ir=buildToStageIR(build);
   let overlay='';
   if(!ir.error){
-    const perf=stackPerformanceForBuild(build);
+    // E3.7: when this graph IS the flown design, label it with the flown numbers (mission payload, real drag)
+    // so the diagram agrees with every other readout; a standalone/unflyable graph keeps its own physics.
+    const flown=(typeof benchFlyable==='function') && !benchFlyable(ir) && buildDesignSig(build)===benchDesignSig();
+    const perf=flown ? computeVehicle() : stackPerformanceForBuild(build);
     // g.groups is top→bottom; firing order (ir.stages) is bottom→top, so stage k in firing
     // order corresponds to group (groups.length-1-k) in the top→bottom list — mirrors the
     // same reversal buildToStageIR applies, keeping label placement in lockstep with the IR.
@@ -934,29 +935,39 @@ let _benchBlueprint = false;     // schematic/blueprint view toggle
 const BENCH_UNDO_CAP = 40;
 function benchClone(b){ return b ? JSON.parse(JSON.stringify(b)) : b; }
 function benchUndo(){
+  if(!benchGuard()) return false;
   if(!_benchUndo.length) return;
   _benchRedo.push(benchClone(benchBuild()));
   _benchBuild=_benchUndo.pop(); _benchSelNode=null;
-  renderPartsBench();
+  benchCommit();
 }
 function benchRedo(){
+  if(!benchGuard()) return false;
   if(!_benchRedo.length) return;
   _benchUndo.push(benchClone(benchBuild()));
   _benchBuild=_benchRedo.pop(); _benchSelNode=null;
-  renderPartsBench();
+  benchCommit();
 }
 function benchToggleBlueprint(){ _benchBlueprint=!_benchBlueprint; renderPartsBench(); }
 // snapshot current build for undo + clear redo — the single line every mutator calls first
 function benchPushUndo(){ _benchUndo.push(benchClone(benchBuild())); if(_benchUndo.length>BENCH_UNDO_CAP)_benchUndo.shift(); _benchRedo.length=0; }
 
 function benchBuild(){
-  if(!_benchBuild){
-    if(state.build && state.build.parts) _benchBuild=state.build;
-    else { const derived=stateDesignToBuild(state); _benchBuild = derived || emptyBuild('capsule_mk1'); } // E3.5: derive from the live slider design if no graph yet (fresh game)
-  }
+  // E3.7: the graph is a VIEW of the flown design (state.stages/state.boosters). If that design changed
+  // anywhere else (slider cards, loadFamily, a blueprint, an order spec, a new/loaded campaign), the
+  // signature no longer matches what the part bench last wrote, and the graph is regenerated from it.
+  const sig=benchDesignSig();
+  if(_benchBuild && sig===_benchSyncSig){ benchSyncPayloadRoot(_benchBuild); return _benchBuild; }
+  let next=null;
+  // a saved graph that still reduces to the flown design keeps the player's arrangement (nosecone, tank mix)
+  if(!_benchBuild && state.build && state.build.parts && state.build.parts.length && buildDesignSig(state.build)===sig) next=state.build;
+  if(!next) next=stateDesignToBuild(state) || emptyBuild(benchMissionCrewed()?'capsule_mk1':'probe_core');
+  if(_benchBuild){ _benchUndo.push(benchClone(_benchBuild)); if(_benchUndo.length>BENCH_UNDO_CAP)_benchUndo.shift(); _benchRedo.length=0; }
+  _benchBuild=next; state.build=next; _benchSyncSig=sig; _benchSelNode=null;
+  benchSyncPayloadRoot(_benchBuild);
   return _benchBuild;
 }
-function benchReset(){ benchPushUndo(); _benchBuild = emptyBuild('capsule_mk1'); _benchSelNode=null; renderPartsBench(); }
+function benchReset(){ if(!benchGuard()) return false; benchPushUndo(); _benchBuild = emptyBuild(benchMissionCrewed()?'capsule_mk1':'probe_core'); _benchSelNode=null; benchCommit(); }
 
 // palette card for one part def
 function partPaletteCard(def){
@@ -998,7 +1009,8 @@ function partPaletteCard(def){
 function renderPartsPalette(){
   const cats = Object.values(PART_CATEGORIES);
   return cats.map(c=>{
-    const parts=partsInCategory(c.id); if(!parts.length) return '';
+    // E3.7: the payload root (capsule / guidance core) follows the mission automatically — not a placeable part
+    const parts=partsInCategory(c.id).filter(d=>!d.phys.isPayload); if(!parts.length) return '';
     return `<div style="margin-bottom:8px">
       <div class="dim" style="font-size:11px;letter-spacing:1px;margin-bottom:4px">${c.icon} ${c.name.toUpperCase()}</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">${parts.map(partPaletteCard).join('')}</div>
@@ -1009,6 +1021,7 @@ function renderPartsPalette(){
 // click a palette part: attach to the selected open node, or to the single open
 // node if there's exactly one (the common case early in a build).
 function benchPaletteClick(defId){
+  if(!benchGuard()) return false;
   const b=benchBuild();
   // PP.0: availability gate lives here (interaction layer), not in canAttach — see
   // the note in canAttach. A locked part shows greyed in the palette; this is the
@@ -1031,15 +1044,16 @@ function benchPaletteClick(defId){
   benchPushUndo();
   attachPart(b, uid, nodeId, defId);
   _benchSelNode=null;
-  renderPartsBench();
+  benchCommit();
 }
 // E3.6: delete a part (and its subtree) — the bench could add but not remove a specific part before.
 function benchDeletePart(uid){
+  if(!benchGuard()) return false;
   const b=benchBuild();
   if(uid===b.root){ renderPartsBench('Can\'t delete the root part — clear the build to start over.'); return; }
   benchPushUndo();
   detachPart(b, uid); _benchSelNode=null;
-  renderPartsBench();
+  benchCommit();
 }
 
 function benchDragStart(e, defId){ _benchDrag={defId}; try{ e.dataTransfer.setData('text/plain',defId); e.dataTransfer.effectAllowed='copy'; }catch(_){}; }
@@ -1050,6 +1064,7 @@ function benchCanvasDrop(e){
   e.preventDefault();
   const defId=(_benchDrag&&_benchDrag.defId) || (e.dataTransfer&&e.dataTransfer.getData('text/plain'));
   if(!defId) return;
+  if(!benchGuard()){ _benchDrag=null; return false; }
   // PP.0: availability gate at the interaction layer (see the note in canAttach).
   if(!partAvailable(partDef(defId))){ renderPartsBench(partLockReason(partDef(defId))||'That part isn\'t unlocked yet.'); _benchDrag=null; return; }
   const b=benchBuild();
@@ -1064,14 +1079,14 @@ function benchCanvasDrop(e){
   benchPushUndo();
   attachPart(b, snap.parentUid, snap.parentNode, defId);
   _benchDrag=null;
-  renderPartsBench();
+  benchCommit();
 }
 function benchCanvasDragOver(e){ e.preventDefault(); try{ e.dataTransfer.dropEffect='copy'; }catch(_){}; }
 
 // click an open-node marker in the SVG to select it as the click-attach target
 function benchNodeClick(key){ _benchSelNode = (_benchSelNode===key)?null:key; renderPartsBench(); }
 
-function benchSetSymmetry(uid, n){ benchPushUndo(); applySymmetry(benchBuild(), uid, n); renderPartsBench(); }
+function benchSetSymmetry(uid, n){ if(!benchGuard()) return false; benchPushUndo(); applySymmetry(benchBuild(), uid, n); benchCommit(); }
 function renderPartsBench(msg){
   const host=document.getElementById('benchCanvas'); if(!host) return;
   const b=benchBuild();
@@ -1109,19 +1124,28 @@ function renderPartsBench(msg){
   }
   const pal=document.getElementById('benchPalette'); if(pal) pal.innerHTML=renderPartsPalette();
   const st=document.getElementById('benchPartStats');
+  if(msg==null && _benchFlash){ msg=_benchFlash; _benchFlash=null; }
   if(st){
     const warns=buildWarnings(b);
     const ir=buildToStageIR(b);
+    // E3.7: when the graph IS the flown design, show the flown numbers (computeVehicle: mission payload,
+    // real drag). A graph that isn't flyable yet shows only what's wrong with it.
+    const synced=!benchFlyable(ir) && buildDesignSig(b)===benchDesignSig();
     let html='';
     if(msg) html+=`<div class="flag">${msg}</div>`;
-    if(!ir.error){
-      const perf=stackPerformanceForBuild(b); // E3.3: booster-aware
-      html+=`<div class="metrics"><div class="metric"><div class="k">Δv total</div><div class="v">${Math.round(perf.totalDv)} m/s</div></div>
+    if(synced){
+      const v=computeVehicle(), m=curMission();
+      const payTxt=v.payload>=1?v.payload.toFixed(2)+' t':Math.round(v.payload*1000)+' kg';
+      html+=`<div class="dim" style="font-size:11px;margin-bottom:6px">Payload <b style="color:var(--ink)">${payTxt}</b>${m?' — '+m.name:''} · guidance: ${avionicsPart().name}. This is the rocket you fly.</div>`;
+      html+=`<div class="metrics"><div class="metric"><div class="k">Δv total</div><div class="v">${Math.round(v.totalDv)} m/s</div></div>
         <div class="metric"><div class="k">Stages</div><div class="v">${ir.stages.length}</div></div>
-        <div class="metric"><div class="k">Liftoff</div><div class="v">${perf.liftoff.toFixed(1)} t</div></div>
-        <div class="metric"><div class="k">Liftoff TWR</div><div class="v">${perf.twr.toFixed(2)}</div></div></div>`;
-      if(perf.dragLoss>0) html+=`<div class="dim" style="font-size:11px;margin-top:4px">Aero drag costs ${Math.round(perf.dragLoss)} m/s off stage 1${perf.aero&&perf.aero.hasNose?' (nosecone helping)':' — a nosecone would cut this'}.</div>`;
-      if(perf.control && !perf.control.hasAvionics) html+=`<div class="dim" style="font-size:11px;margin-top:2px;color:var(--warn)">Open-loop: reliability ×${perf.control.relMult} (no guidance aboard).</div>`;
+        <div class="metric"><div class="k">Liftoff</div><div class="v">${v.liftoff.toFixed(1)} t</div></div>
+        <div class="metric"><div class="k">Liftoff TWR</div><div class="v">${v.twr.toFixed(2)}</div></div></div>`;
+      if(v.dragLoss>0){
+        const nose=benchHasNose(b), crewed=!!(m&&m.crew>0);
+        const why=nose?' (nosecone helping)':(!crewed&&curParts().fairing!=='none')?' (payload fairing helping)':crewed?' — a crewed capsule rides bare':' — a nosecone or fairing would halve this';
+        html+=`<div class="dim" style="font-size:11px;margin-top:4px">Aero drag costs ${Math.round(v.dragLoss)} m/s off stage 1${why}.</div>`;
+      }
       if(ir.boosters) html+=`<div class="dim" style="font-size:11px;margin-top:4px">${ir.boosters.count}× booster — boosts liftoff TWR and total Δv above (not shown per-stage, same as the classic bench).</div>`;
       // E3.3: auto-inferred visible stage stack. Firing order is the only physically valid order
       // for a single linear spine — see the E3.3 ROADMAP note on why this is a readout, not a
@@ -1129,8 +1153,22 @@ function renderPartsBench(msg){
       html+=`<div class="mission-tag" style="margin-top:10px">Stage stack — auto-inferred fire order</div>`;
       html+=`<div class="legs">`+ir.stages.map((s,i)=>{
         const eng=ENGINES[s.eng];
-        return `<div class="leg"><span class="legname">Stage ${i+1}${i===0&&ir.boosters?' (+ boosters)':''}</span><span class="legdv">${Math.round(perf.stageDv[i])} m/s</span><span class="legdetail">${eng?eng.name:s.eng} ×${s.count} · TWR ${perf.stageTwr[i].toFixed(2)}</span></div>`;
+        return `<div class="leg"><span class="legname">Stage ${i+1}${i===0&&ir.boosters?' (+ boosters)':''}</span><span class="legdv">${Math.round(v.stageDv[i])} m/s</span><span class="legdetail">${eng?eng.name:s.eng} ×${s.count} · TWR ${v.stageTwr[i].toFixed(2)}</span></div>`;
       }).join('')+`</div>`;
+    }
+    // E3.7: engine clusters — one engine part per tank bottom, so the cluster size is a count on it
+    const engs=benchEngineParts(b);
+    if(engs.length){
+      html+=`<div class="mission-tag" style="margin-top:10px">Engines per stage</div>`;
+      html+=engs.map(part=>{
+        const def=partDef(part.defId), n=part._countOverride||1;
+        return `<div style="display:flex;align-items:center;gap:6px;margin:4px 0">
+          <span style="font-size:12px;flex:1">${def.name}</span>
+          <button class="btn ghost" style="font-size:11px;padding:2px 8px" onclick="benchSetEngineCount('${part.uid}',${n-1})" ${n<=1?'disabled':''}>−</button>
+          <span style="font-family:var(--mono);font-size:12px;min-width:16px;text-align:center">×${n}</span>
+          <button class="btn ghost" style="font-size:11px;padding:2px 8px" onclick="benchSetEngineCount('${part.uid}',${n+1})" ${n>=BENCH_MAX_ENGINES?'disabled':''}>+</button>
+        </div>`;
+      }).join('');
     }
     // placed radial (booster) parts get a symmetry stepper — the only parts symmetry applies to
     const radials=radialParts(b);
@@ -1175,7 +1213,9 @@ function renderPartsBench(msg){
 function stateDesignToBuild(st){
   try{
     if(!st || !Array.isArray(st.stages) || !st.stages.length) return null;
-    const crewed = (st.eclss && st.eclss!=='none') || (st.crew|0)>0 || !!st.hasCapsule;
+    // 2026-11-14: the payload root follows the SELECTED MISSION (the mission decides the payload, see
+    // lvPayload). Keying it off ECLSS put a 1.2 t capsule on every new game's rocket (ECLSS starts 'open').
+    const crewed = benchMissionCrewed();
     const build={ parts:[], links:[], root:null };
     const add=(defId)=>{ const uid=newPartUid(); build.parts.push({uid, defId, x:0,y:0,rot:0,sym:1}); return uid; };
     const rootUid = add(crewed ? 'capsule_mk1' : 'probe_core');
@@ -1192,6 +1232,7 @@ function stateDesignToBuild(st){
       }
       const tank=add('tank_std');
       const tp=buildPart(build,tank); tp._propOverride = (stage.prop!=null?stage.prop:0);
+      if(stage.dia!=null) tp._diaOverride = stage.dia;
       build.links.push({parent:prevBottom, parentNode:'bot', child:tank, childNode:'top'});
       const eng=add('engine_a4');
       const ep=buildPart(build,eng); ep._engOverride = stage.eng||'a4'; ep._countOverride = stage.count||1;
@@ -1224,4 +1265,109 @@ function migrateStateToBuild(saved){
     const b=stateDesignToBuild(saved);
     if(b) saved.build=b; // additive only; leave stages as the source of truth
   }catch(e){/* migration is best-effort — a failure just means no graph, game runs as before */}
+}
+
+/* ============================================================================
+   E3.7 (2026-11-14) — the part bench drives the FLOWN rocket.
+   Before this, the part graph was a sandbox: nothing it built reached state.stages/state.boosters,
+   which every launch reads. Now:
+     • parts → design: every part mutation ends in benchCommit(), which reduces the graph through
+       buildToStageIR() and, if the result is flyable, writes state.stages/state.boosters;
+     • design → parts: benchBuild() regenerates the graph whenever the flown design's signature no
+       longer matches what the part bench last wrote (slider cards, families, blueprints, orders);
+     • the payload root follows the selected mission and carries no mass of its own — the mission's
+       payload (lvPayload) is what flies, and the part-bench readout shows computeVehicle()'s numbers;
+     • aero drag (buildAeroProfile) is real flight physics via aeroLossFrac(), applied in
+       computeVehicle() and simulateMission()'s launch leg — never inside stackPerformance(), which the
+       E3.0 equivalence harness locks.
+   ============================================================================ */
+const BENCH_MAX_STAGES=3, BENCH_MAX_BOOSTERS=8, BENCH_MAX_ENGINES=8; // the slider bench's caps
+let _benchSyncSig=null;   // design signature the part bench last wrote or synced from
+let _benchFlash=null;     // one-shot banner for the next renderPartsBench() (survives the full render())
+
+function designSig(stages, boosters){
+  const st=(stages||[]).map(x=>[x.eng, x.count|0||1, Math.round((+x.prop||0)*1000)/1000, Math.round((x.dia!=null?+x.dia:1)*1000)/1000]);
+  const b=boosters&&boosters.count>0&&boosters.eng ? [boosters.eng, boosters.count|0, Math.round((+boosters.prop||0)*1000)/1000] : null;
+  return JSON.stringify([st,b]);
+}
+function benchDesignSig(){ return designSig(state.stages, state.boosters); }
+function buildDesignSig(build){
+  const ir=buildToStageIR(build); if(ir.error) return null;
+  return designSig(ir.stages, ir.boosters);
+}
+function benchMissionCrewed(){ try{ const m=curMission(); return !!(m&&m.crew>0); }catch(e){ return false; } }
+// The root is the payload marker: a capsule for crewed missions, a guidance core otherwise. A capsule
+// has no top node, so anything stacked on a probe's top (a nosecone) is removed when it becomes one.
+function benchSyncPayloadRoot(b, crewedOverride){
+  const root=b&&buildPart(b,b.root); if(!root) return;
+  if(root.defId!=='capsule_mk1' && root.defId!=='probe_core') return; // a custom root is the player's choice
+  const want=(crewedOverride!=null?crewedOverride:benchMissionCrewed())?'capsule_mk1':'probe_core';
+  if(root.defId===want) return;
+  if(want==='capsule_mk1') b.links.filter(l=>l.parent===root.uid&&l.parentNode==='top').map(l=>l.child).forEach(uid=>detachPart(b,uid));
+  root.defId=want;
+}
+function benchHasNose(b){ const sp=partsAboveRoot(b).concat(stackSpine(b)); return !!(sp.length&&partDef(sp[0].defId)&&partDef(sp[0].defId).id==='nosecone'); }
+function benchGuard(){ return typeof guardOrdinaryAction!=='function' || guardOrdinaryAction('Vehicle redesign')!==false; }
+// null when the graph can fly as the real vehicle, otherwise the reason it can't.
+function benchFlyable(ir){
+  if(!ir || ir.error) return (ir&&ir.error)||'empty build';
+  if(ir.stages.length>BENCH_MAX_STAGES) return `${ir.stages.length} stages — the pad integrates at most ${BENCH_MAX_STAGES}`;
+  if(ir.boosters && ir.boosters.count>BENCH_MAX_BOOSTERS) return `${ir.boosters.count} boosters — at most ${BENCH_MAX_BOOSTERS}`;
+  const bad=ir.stages.find(st=>!ENGINES[st.eng]); if(bad) return `unknown engine ${bad.eng}`;
+  return null;
+}
+function benchCommit(msg){
+  const b=benchBuild();
+  const ir=buildToStageIR(b), why=benchFlyable(ir);
+  state.build=b;
+  if(why){
+    _benchFlash=(msg?msg+' ':'')+`Not flyable as built (${why}) — your flown rocket is unchanged.`;
+  } else {
+    state.stages=ir.stages.map(st=>({eng:st.eng, count:st.count, prop:st.prop, dia:st.dia}));
+    state.boosters=ir.boosters ? {eng:ir.boosters.eng, count:ir.boosters.count, prop:ir.boosters.prop} : {eng:null, count:0, prop:0};
+    _benchSyncSig=benchDesignSig();
+    try{ if(typeof collapsedStages!=='undefined') collapsedStages={}; }catch(e){}
+    _benchFlash=msg||null;
+  }
+  render();
+  return !why;
+}
+// Engine clusters: the part graph has one engine part per tank bottom, so a cluster is a count on it.
+function benchSetEngineCount(uid, n){
+  if(!benchGuard()) return false;
+  const b=benchBuild(), p=buildPart(b,uid); if(!p) return;
+  const def=partDef(p.defId); if(!def||!def.engId||def.nodes.every(nd=>nd.at==='radial')) return;
+  benchPushUndo();
+  p._countOverride=Math.max(1,Math.min(BENCH_MAX_ENGINES,n|0));
+  benchCommit();
+}
+function benchEngineParts(b){ return stackSpine(b).filter(p=>{ const d=partDef(p.defId); return d&&d.engId&&!d.nodes.every(nd=>nd.at==='radial'); }); }
+// Campaign boundary (resetSimTransients): never show the previous campaign's graph or undo history.
+function resetBenchTransients(){
+  _benchBuild=null; _benchUndo=[]; _benchRedo=[]; _benchSelNode=null; _benchDrag=null;
+  _benchSyncSig=null; _benchFlash=null; _aeroCache=null;
+}
+
+// Aero drag as flight physics. Fraction of stage-1 Δv lost to drag for the CURRENT design flying mission m.
+// The nose is whatever leads the stack: a nosecone part, or — on an uncrewed flight — the payload fairing
+// (any choice but "none"). A crewed capsule rides bare and pays full drag. Bounded by AERO_LOSS_CAP.
+let _aeroCache=null;
+function aeroLossFrac(m){
+  try{
+    const crewed=!!(m&&m.crew>0);
+    const fairing=(typeof curParts==='function')?curParts().fairing:'standard';
+    const sig=benchDesignSig();
+    const live=state.build&&state.build.parts&&state.build.parts.length&&buildDesignSig(state.build)===sig ? state.build : null;
+    const graphKey=live ? JSON.stringify(live.parts.map(p=>[p.defId,p.sym||1,p._diaOverride])) : 'derived';
+    const key=sig+'|'+crewed+'|'+fairing+'|'+graphKey;
+    if(_aeroCache&&_aeroCache.key===key) return _aeroCache.f;
+    const g=benchClone(live||stateDesignToBuild(state)); if(!g){ _aeroCache={key,f:0}; return 0; }
+    benchSyncPayloadRoot(g, crewed);
+    const prof=buildAeroProfile(g);
+    let f=prof.lossFrac;
+    if(!prof.hasNose && !crewed && fairing!=='none') f*=AERO_NOSE_RELIEF;
+    f=Math.max(0,Math.min(AERO_LOSS_CAP,f));
+    _aeroCache={key,f};
+    return f;
+  }catch(e){ return 0; }
 }

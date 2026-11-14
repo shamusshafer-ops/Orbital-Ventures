@@ -93,10 +93,10 @@ newGame('engineer');
   const t=stackSpine(b); const eng=attachPart(b, t[t.length-1].uid, 'bot', 'engine_a4');
   check('warnings: a valid controlled rocket has no avionics warning', !buildWarnings(b).some(w=>w.includes('avionics')));
 
-  // a build with no avionics part should warn
+  // E3.7 (2026-11-14): guidance is the bench's avionics choice, not a part — the open-loop warning is gone
   const b2={parts:[{uid:'t',defId:'tank_std',x:0,y:0,rot:0,sym:1}], links:[], root:'t'};
   const eng2=attachPart(b2, 't', 'bot', 'engine_a4');
-  check('warnings: no-avionics build warns (but still builds)', buildWarnings(b2).some(w=>w.includes('avionics')));
+  check('warnings: a build with no guidance part still builds and no longer warns about avionics', !!eng2 && !buildWarnings(b2).some(w=>w.includes('avionics')));
 }
 
 console.log(`${pass}/${pass+fail} checks passed`);

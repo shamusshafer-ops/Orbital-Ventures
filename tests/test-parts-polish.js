@@ -8,7 +8,9 @@ function check(name, cond){ if(cond){ pass++; } else { fail++; console.log('FAIL
 newGame('engineer');
 
 // ---------- helper: force the bench onto a known fresh build ----------
-function freshBench(){ _benchBuild=emptyBuild('capsule_mk1'); _benchUndo=[]; _benchRedo=[]; _benchSelNode=null; return benchBuild(); }
+// E3.7: the graph is a view of the flown design — mark this hand-built one as in sync with it, or benchBuild()
+// correctly treats it as stale and regenerates it from state.stages.
+function freshBench(){ _benchBuild=emptyBuild('capsule_mk1'); _benchUndo=[]; _benchRedo=[]; _benchSelNode=null; _benchSyncSig=benchDesignSig(); return benchBuild(); }
 
 // ---------- 1. Undo restores the prior build exactly ----------
 {

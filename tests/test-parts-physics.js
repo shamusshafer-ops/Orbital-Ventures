@@ -43,34 +43,25 @@ newGame('engineer');
   check('isolation: the E3.0 equivalence harness contract is untouched (raw has no dragLoss field)', raw1.dragLoss===undefined);
 }
 
-// ---------- 4. Power balance detects a deficit ----------
+// ---------- 4/5. Part-bench power and no-guidance checks were removed (E3.7, 2026-11-14) ----------
 {
-  // probe_core draws power; nothing generates it -> deficit
+  check('removed: launch power balance (spacecraft power is the POWER_SOURCES system)', typeof buildPowerBalance==='undefined');
+  check('removed: no-guidance penalty (guidance is the AVIONICS choice)', typeof buildControlProfile==='undefined' && typeof NO_AVIONICS_REL_MULT==='undefined');
   const build=emptyBuild('probe_core');
-  const tank=attachPart(build, build.root, 'bot', 'tank_std');
-  attachPart(build, tank, 'bot', 'engine_a4');
-  const bal=buildPowerBalance(build);
-  check('power: draw is positive (probe core draws)', bal.draw>0);
-  check('power: gen is zero (no generation part in the viable set)', bal.gen===0);
-  check('power: deficit reported', bal.deficit>0);
-  check('power: a deficit warning is surfaced', buildWarnings(build).some(w=>w.includes('Power deficit')));
+  const tank=attachPart(build, build.root, 'bot', 'tank_std'); attachPart(build, tank, 'bot', 'engine_a4');
+  check('removed: no power-deficit warning on a probe-led rocket', !buildWarnings(build).some(w=>/power/i.test(w)));
 }
 
-// ---------- 5. No-avionics reliability penalty is real ----------
+// ---------- 5b. A nose mounted ABOVE the payload root counts for drag ----------
 {
-  // build with avionics (probe core) -> mult 1
-  const withA=emptyBuild('probe_core');
-  const t1=attachPart(withA, withA.root, 'bot', 'tank_std'); attachPart(withA, t1, 'bot', 'engine_a4');
-  check('control: build WITH avionics has relMult 1', buildControlProfile(withA).relMult===1);
-  check('control: hasAvionics true', buildControlProfile(withA).hasAvionics===true);
-
-  // build with NO avionics (tank + engine only) -> penalty
-  const noA={parts:[{uid:'t',defId:'tank_std',x:0,y:0,rot:0,sym:1}], links:[], root:'t'};
-  attachPart(noA, 't', 'bot', 'engine_a4');
-  check('control: build WITHOUT avionics has relMult < 1', buildControlProfile(noA).relMult<1);
-  check('control: relMult equals NO_AVIONICS_REL_MULT', buildControlProfile(noA).relMult===NO_AVIONICS_REL_MULT);
-  check('control: no-avionics warning mentions the reliability hit', buildWarnings(noA).some(w=>w.includes('reliability')));
-  check('control: perf exposes the control profile', stackPerformanceForBuild(noA).control && stackPerformanceForBuild(noA).control.relMult<1);
+  const build=emptyBuild('probe_core');
+  const tank=attachPart(build, build.root, 'bot', 'tank_std'); attachPart(build, tank, 'bot', 'engine_a4');
+  const bare=buildAeroProfile(build);
+  attachPart(build, build.root, 'top', 'nosecone');
+  const nosed=buildAeroProfile(build);
+  check('nose above root: detected', nosed.hasNose===true && bare.hasNose===false);
+  check('nose above root: drag loss falls', nosed.lossFrac < bare.lossFrac);
+  check('payload root top: a tank is refused there', canAttach(emptyBuild('probe_core'), emptyBuild('probe_core').root, 'top', 'tank_std').ok===false);
 }
 
 // ---------- 6. Drag loss is bounded (never a cliff) ----------
@@ -89,7 +80,7 @@ newGame('engineer');
   state.boosters={eng:'a4', count:7, prop:7};
   const build=sliderDesignToBuild([{eng:'kerolox_mk1',count:1,prop:12,dia:1}], {crewed:true});
   stackPerformanceForBuild(build);
-  buildAeroProfile(build); buildPowerBalance(build); buildControlProfile(build);
+  buildAeroProfile(build);
   check('purity: state.boosters sentinel intact after all E3.4 calls', JSON.stringify(state.boosters)===JSON.stringify({eng:'a4',count:7,prop:7}));
   state.boosters=saved;
 }

@@ -7710,3 +7710,40 @@ From the 2026-11-14 full evaluation (real-browser tour in headless Firefox). `te
 
 Full sweep: 169/170 suites pass, 1 intentional skip, 0 unexpected. Verified in headless Firefox: contracts card,
 Up next row, filled flight card during a decision hold, 86 km debrief, menu without theme chips, 1× button label.
+
+## 2026-11-14 — E3.7: the part bench drives the flown rocket (Claude)
+
+Before: `BENCH_V2` showed the part builder, but its graph (`_benchBuild`) never reached `state.stages`/
+`state.boosters`, which every launch reads, and the two benches disagreed on the same rocket (1,224 vs
+1,936 m/s) because `stateDesignToBuild` put a 1.2 t capsule on top whenever ECLSS was set — always, on a new game.
+
+Owner decisions: sliders stay and sync both ways; aero drag becomes real flight physics; guidance stays the
+existing AVIONICS choice (part-bench no-guidance penalty removed — it could never fire); launch power check
+removed (no part generated power, so every uncrewed rocket showed an unfixable deficit).
+
+- **Parts → design:** every part mutator ends in `benchCommit()`: `buildToStageIR` → if flyable (1–3 stages,
+  ≤8 boosters) write `state.stages`/`state.boosters`/`state.build`, else keep the flown rocket and say why.
+  All mutators honour `guardOrdinaryAction('Vehicle redesign')`.
+- **Design → parts:** `benchBuild()` compares a signature of the flown design with what the part bench last wrote,
+  and regenerates the graph (undoably) when sliders, `loadFamily`, `applyFullSnapshot`, `loadOrderSpec`, etc.
+  changed it — one check instead of hooks at seven call sites. Slider diameters round-trip via `_diaOverride`.
+  `resetBenchTransients()` runs at the campaign boundary.
+- **Payload = the mission's:** the root follows the selected mission (capsule if crewed, guidance core otherwise),
+  carries no mass, and is no longer offered in the palette. The part-bench readout and diagram labels show
+  `computeVehicle()` numbers, so all three bench readouts agree.
+- **Engine clusters:** ×1–8 stepper per engine part (`_countOverride`).
+- **Multi-stage by hand (pre-existing gap):** engines had only a top node, so nothing could go below one and a
+  two-stage rocket could not be built interactively (converted designs only worked because the converter wrote
+  links directly). Engines now get a bottom node that accepts only a decoupler, of any size. The payload root's top
+  node accepts only a nose, which also restores single-click auto-attach on a guidance-core root.
+- **Aero drag:** `aeroLossFrac(m)` from `buildAeroProfile` (now also sees a nose mounted ABOVE the root; frontal
+  area ∝ slider diameter²). Nose relief from a nosecone, or on uncrewed flights from any fairing but "none";
+  crewed capsules ride bare. Applied via `withAeroDrag()` in `computeVehicle()` and `simulateMission()`'s launch leg,
+  never inside `stackPerformance()`. Measured: uncrewed 2–6 m/s (0.1–0.2% of stage 1), crewed 24–51 m/s
+  (0.85–1.6%); a crewed stack of 2.4 m part tanks up to ~4.6%. No locked-number suite moved.
+- Known simplification kept from the slider model: decouplers/adapters/nosecone add no flown mass.
+
+Tests: new `tests/test-parts-wiring.js` (40 checks; cannot even load against pre-change source); updated
+parts-attach/migration/physics/polish/ui to the decided behaviour. Full sweep 170/171, 1 intentional skip,
+0 unexpected. Headless Firefox: a two-stage rocket built by real palette/node clicks became the flown design,
+a slider edit flowed back into the graph, and the flight card matched the bench (4,541 m/s, 24.7 t).

@@ -10,10 +10,10 @@ newGame('engineer');
 // ---------- 1. Palette renders all categories with cards ----------
 {
   const html=renderPartsPalette();
-  check('palette: has all 4 category headers', ['STRUCTURAL','PROPULSION','AVIONICS','PAYLOAD'].every(c=>html.includes(c)));
+  check('palette: has the placeable category headers', ['STRUCTURAL','PROPULSION'].every(c=>html.includes(c)));
+  check('palette: payload-root parts are automatic, not offered (E3.7)', !html.includes('data-partid="capsule_mk1"') && !html.includes('data-partid="probe_core"'));
   check('palette: tank card present + draggable', html.includes('data-partid="tank_std"') && html.includes('draggable="true"'));
   check('palette: engine card shows thrust stat', html.includes('kN'));
-  check('palette: capsule card shows crew stat', html.includes('crew'));
 }
 
 // ---------- 2. Reset produces a clean single-part build ----------
@@ -21,7 +21,7 @@ newGame('engineer');
   benchReset();
   const b=benchBuild();
   check('reset: single root part', b.parts.length===1);
-  check('reset: root is a capsule', partDef(b.parts[0].defId).cat==='payload');
+  check('reset: root is the payload marker for the selected mission (probe for uncrewed First Flight)', b.parts[0].defId===(curMission().crew>0?'capsule_mk1':'probe_core'));
   check('reset: selection cleared', typeof _benchSelNode==='undefined' || _benchSelNode===null);
 }
 
