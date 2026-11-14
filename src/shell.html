@@ -677,7 +677,9 @@
 
   /* Mission & research lists */
   .item{display:flex;gap:12px;align-items:center;border:1px solid var(--line);border-radius:6px;padding:11px 13px;margin-bottom:9px;background:var(--panel2)}
-  .item .body{flex:1}
+  .item{flex-wrap:wrap} /* narrow rails: payout + action drop below the text instead of crushing it to one word per line */
+  .item .body{flex:1 1 180px;min-width:0}
+  .item>.btn{margin-left:auto}
   .item .title{font-weight:600;margin-bottom:2px}
   .item .sub{font-size:12px;color:var(--muted)}
   .hist{display:block;margin-top:4px;font-style:italic;color:var(--dim);font-size:12px;line-height:1.4}
@@ -1363,7 +1365,7 @@
   <div id="flightCanvasWrap" style="position:relative;display:inline-block"><div id="flight3dHost" style="display:none;position:absolute;inset:0"></div><div id="flightHost" style="display:none"></div><div id="flightZoom" style="position:relative;transform-origin:0 0"><canvas id="flightCanvas" width="900" height="520"></canvas><canvas id="flightTextCanvas" width="900" height="520" style="position:absolute;left:0;top:0;pointer-events:none"></canvas></div><div id="flight3dReadout" class="flight3d-readout hidden" role="status" aria-live="polite"></div><div id="flightOrbitHud" class="flight-orbit-hud hidden" role="status" aria-label="Orbital mission control telemetry"></div><div id="flightAltitude" class="flight-altitude hidden" role="status" aria-label="Current altitude above mean sea level"></div><div id="flight3dDecision" class="flight3d-decision hidden" role="dialog" aria-modal="true" aria-labelledby="flight3dDecisionTitle"></div></div>
   <div class="animbar">
     <span class="dim" style="font-size:12px">Mission playback</span>
-    <button class="btn ghost" id="animSpeedBtn" onclick="cycleAnimSpeed()" style="min-width:90px;font-size:12px">0.1×  Slow-mo</button>
+    <button class="btn ghost" id="animSpeedBtn" onclick="cycleAnimSpeed()" style="min-width:90px;font-size:12px">1×  Normal</button>
     <span class="dim" style="font-size:11px">[Enter]</span>
     <button class="btn" onclick="skipAnim()">Skip ▸</button>
   </div>

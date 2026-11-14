@@ -23,7 +23,11 @@ function resetShellTransients(){
   try{ closeDevPanel(); }catch(e){}
 }
 const ANIM_SPEEDS=[{label:'0.1×  Slow-mo',mult:0.1},{label:'¼×  Slow-mo',mult:0.25},{label:'1×  Normal',mult:1},{label:'2×  Fast',mult:2},{label:'5×  Fast',mult:5},{label:'10×  Fast',mult:10},{label:'25×  Fast',mult:25},{label:'50×  Fast',mult:50}];
-let animSpeedIdx=0; // default to deliberate launch viewing; players can still cycle to 50× for long coasts
+// Default 1× Normal (owner request 2026-11-14; was 0.1× slow-mo). The player's last choice is a
+// display preference persisted in localStorage like theme/wide (not the save), so picking slow-mo once sticks.
+const ANIM_SPEED_DEFAULT_IDX=ANIM_SPEEDS.findIndex(s=>s.mult===1);
+let animSpeedIdx=ANIM_SPEED_DEFAULT_IDX;
+try{ const v=parseInt(localStorage.getItem('ov_anim_speed'),10); if(v>=0&&v<ANIM_SPEEDS.length) animSpeedIdx=v; }catch(e){}
 function toggleAnim(){ animEnabled=!animEnabled; const b=$('animToggle'); if(b) b.textContent='Animation: '+(animEnabled?'On':'Off'); }
 // --- screen real estate: browser fullscreen + a persistent full-width "Wide" mode ---
 // Default to maximum real estate: Wide (full-width) is ON unless the player turned it
@@ -34,6 +38,10 @@ try{ const v=localStorage.getItem('ov_wide'); if(v!==null) wideOn=(v==='1'); }ca
 // Display-only theme variants — persisted like wideOn (localStorage, NOT in the save), so they
 // survive new games and need no SAVE_VERSION bump. Each name maps to a body.theme-* palette class.
 const THEMES={ dark:'Mission Dark', green:'Control Room Green', beige:'Apollo Beige' };
+// 2026-11-14: theme selection is paused (applyTheme pins dark, and shell.html's "Command Center blue
+// baseline" block pins every palette's tokens), so the Menu hides its theme chips instead of offering
+// buttons that do nothing. Flip to true only together with lifting both pins.
+const THEMES_SELECTABLE=false;
 let currentTheme='dark';
 try{ const v=localStorage.getItem('ov_theme'); if(v && THEMES[v]) currentTheme=v; }catch(e){}
 function applyTheme(name){
@@ -127,8 +135,11 @@ document.addEventListener('pointerdown',_firstGestureFs);
 document.addEventListener('keydown',_firstGestureFs);
 function cycleAnimSpeed(){
   animSpeedIdx=(animSpeedIdx+1)%ANIM_SPEEDS.length;
-  const b=$('animSpeedBtn'); if(b) b.textContent=ANIM_SPEEDS[animSpeedIdx].label;
+  try{ localStorage.setItem('ov_anim_speed', String(animSpeedIdx)); }catch(e){}
+  syncAnimSpeedBtn();
 }
+// The button's label must come from animSpeedIdx (default or the persisted choice), not static markup.
+function syncAnimSpeedBtn(){ const b=$('animSpeedBtn'); if(b) b.textContent=ANIM_SPEEDS[animSpeedIdx].label; }
 function animSpeed(){ return ANIM_SPEEDS[animSpeedIdx].mult; }
 // ── E0.4 Slice A: shared keyboard helpers ──
 // One typing guard for every keydown handler (was repeated inline at each call site): never

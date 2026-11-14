@@ -264,7 +264,11 @@ function outlinerItems(){
   // material dip — the one live decision left in the collapsed market; surfaced at the top (eta 0)
   MATERIAL_DEFS.forEach(d=>{ if(isMaterialDip(d.key) && canBuyMaterialDip(d.key).ok) push('📦', d.name+' on sale', 0, ()=>{ setTab('command'); try{ showInfrastructureModal(); }catch(e){} }, 'var(--ok)'); });
   // #19 slice C: an unstaffed critical department is a standing reliability risk — surface it in the flow
-  workforceGaps().filter(g=>g.kind==='understaffed').forEach(g=>push('👥', (departmentDef(g.id)||{}).name+' dept unstaffed', 0, ()=>{ try{ showPersonnelModal(); }catch(e){} }, 'var(--bad)'));
+  // 2026-11-14: one row, not one per department — at game start all three critical depts are empty and
+  // three identical "now" rows crowded out everything else in the strip.
+  { const under=workforceGaps().filter(g=>g.kind==='understaffed');
+    if(under.length) push('👥', under.length===1 ? (departmentDef(under[0].id)||{}).name+' dept unstaffed'
+      : `${under.length} departments unstaffed (${under.map(g=>(departmentDef(g.id)||{}).name).join(', ')})`, 0, ()=>{ try{ showPersonnelModal(); }catch(e){} }, 'var(--bad)'); }
   // station... (module builds advance time inline; nothing queued) — skip
   // mandate deadline
   const md=state.mandate;
@@ -324,14 +328,14 @@ function outlinerEtaText(d){
 function renderOutliner(){
   const el=$('outlinerCard'); if(!el) return;
   const items=outlinerItems();
-  if(!items.length){ setHTML(el, `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><div class="cc-panel-h" style="margin:0">◈ In flight</div><button class="btn ghost" style="font-size:11px;padding:1px 8px" onclick="showFleetRegistry()">▤ registry</button></div><div class="dim" style="font-size:12px">Nothing on the clock — start research, queue a build, or take a contract.</div>`); return; }
+  if(!items.length){ setHTML(el, `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><div class="cc-panel-h" style="margin:0" title="Everything with a countdown — research, builds, missions en route, deadlines, warnings — soonest first">◈ Up next</div><button class="btn ghost" style="font-size:11px;padding:1px 8px" onclick="showFleetRegistry()">▤ registry</button></div><div class="dim" style="font-size:12px">Nothing on the clock — start research, queue a build, or take a contract.</div>`); return; }
   const rows=items.slice(0,8).map((it,i)=>`<div onclick="(outlinerItems()[${i}]||{go:()=>{}}).go()" style="display:flex;align-items:center;gap:7px;padding:3px 4px;margin:0 -4px;border-radius:5px;cursor:pointer;font-size:12px" onmouseover="this.style.background='var(--panel2)'" onmouseout="this.style.background=''">
       <span style="width:16px;text-align:center;flex:0 0 auto">${it.icon}</span>
       <span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:${it.color||'var(--muted)'}">${it.label}</span>
       <b style="font-family:var(--mono);font-size:11px;color:${it.color||'var(--readout)'};flex:0 0 auto">${it.etaText||outlinerEtaText(it.etaDays)}</b>
     </div>`).join('');
   setHTML(el, `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-      <div class="cc-panel-h" style="margin:0">◈ In flight</div>
+      <div class="cc-panel-h" style="margin:0" title="Everything with a countdown — research, builds, missions en route, deadlines, warnings — soonest first">◈ Up next</div>
       <div style="display:flex;gap:4px">
         <button class="btn ghost" style="font-size:11px;padding:1px 8px" onclick="showFleetRegistry()" title="Full status board for every asset — ships, bases, depot, programs">▤ registry</button>
         <button class="btn ghost" style="font-size:11px;padding:1px 8px" onclick="runToNextEvent()" title="Fast-forward until the next item completes or a decision arrives">⏭ next event</button>
@@ -9509,7 +9513,7 @@ function stationModuleCard(md, cur, addable){
     if(netPower<0){ bits.push(pwAfter<0
       ? `<span style="color:var(--warn)">⚡ would draw the station to ${pwAfter.toFixed(1)} kW — starves output unless you add power</span>`
       : `<span class="dim">⚡ station power ${pwNow.net.toFixed(1)} → ${pwAfter.toFixed(1)} kW</span>`); }
-    else if(netPower>0){ bits.push(`<span style="color:var(--ok)">⚡ +${netPower} kW → station ${pwAfter.toFixed(1)} kW</span>`); }
+    else if(netPower>0){ bits.push(`<span style="color:var(--ok)">⚡ +${netPower.toFixed(1)} kW → station ${pwAfter.toFixed(1)} kW</span>`); }
     if(st.crewReq){ const haveSpare=crewNow.cap-crewNow.req;
       bits.push(haveSpare>=st.crewReq
         ? `<span class="dim">👤 ${st.crewReq} crew available</span>`

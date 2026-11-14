@@ -70,7 +70,7 @@ function pumpFlight(stepMs, maxFrames){
   return frames;
 }
 {
-  // Default animSpeedIdx is 0 (0.1x slow-mo) and animLoop clamps each call to <=50ms of real
+  // Default animSpeedIdx is 1x normal (was 0.1x slow-mo before 2026-11-14) and animLoop clamps each call to <=50ms of real
   // time before applying speed, so at default speed a frame advances virtual time by <=5ms --
   // reaching Max-Q (pad phase ~2300ms, then ramping across 15-35% of a 7200ms ascent) would
   // need ~1000+ frames. Speed the clock up for this test only; it doesn't change what's being

@@ -5826,6 +5826,20 @@ function structuralLoadAssessment(m, v, crewed){
 }
 // One immutable, player-facing flight card.  It is built from the same mission/vehicle/outcome
 // snapshots that resolve the launch, so overlay telemetry and the debrief never invent a number.
+// Launch-day suborbital flights: the debrief distance is the landing downrange of the SAME integrated
+// trajectory the overlay's DRANGE telemetry samples (cape3dTrajectoryPlan), so the card and the HUD
+// agree. 2026-11-14: was a Δv×0.006 heuristic (First Flight debriefed 6 km after flying 86 km).
+// cape3dTrajectoryPlan lives in render.js (later in the bundle); called at runtime only, guarded.
+function launchDayDownrangeKm(m, v){
+  const fallback=Math.max(5,Math.round((m.reqDv||0)*0.006));
+  try{
+    if(typeof cape3dTrajectoryPlan!=='function') return fallback;
+    const plan=cape3dTrajectoryPlan(flightPhysicsSpec(m,v),{isOrbital:false,reqDv:m.reqDv||0});
+    if(!plan||!plan.points||!plan.points.length) return fallback;
+    const x=plan.points.reduce((mx,pt)=>Math.max(mx,Number(pt.xKm)||0),0);
+    return x>0?Math.max(1,Math.round(x)):fallback;
+  }catch(e){ return fallback; }
+}
 function flightReport(m, vehicle, sim, outcome, dockingCapability){
   const v=vehicle||computeVehicle(), legs=(sim&&sim.legs)||[];
   const requiredDv=legs.length?legs.reduce((n,l)=>n+(Number(l.dv)||0),0):(m.reqDv||0);
@@ -5835,7 +5849,7 @@ function flightReport(m, vehicle, sim, outcome, dockingCapability){
   const docking=dockingCapability&&dockingCapability.missionId===m.id?dockingCapability:dockingMissionCapability(m);
   const report={mission:m.name,target,payload,delivered,days,requiredDv,liftoff:v.liftoff||0,totalDv:v.totalDv||0,twr:v.twr||0,
     stages:(v.sm||[]).length,crew:m.crew||0,outcome:kind,failure:(outcome&&outcome.story)||'',subsystem:(outcome&&outcome.subsystem)||'',
-    distanceKm: days>0 ? Math.round(days*86400*29.78) : (m.reqDv>=9000?40000:Math.max(5,Math.round((m.reqDv||0)*0.006))) };
+    distanceKm: days>0 ? Math.round(days*86400*29.78) : (m.reqDv>=9000?40000:launchDayDownrangeKm(m,v)) };
   if(docking.operations.length) report.docking={phase:FLIGHT_PHASE_LABEL.docking,count:docking.operations.length,guidance:docking.guidance,
     operations:docking.presentation.map(plainRecord)};
   return report;
@@ -7920,7 +7934,7 @@ function showSettingsMenu(){
         <button class="btn ghost" onclick="hideModal();confirmNew()">New Game</button>
       </div>
       <button class="btn ghost" onclick="showHotkeyHelp()" style="width:100%;margin:4px 0 2px" title="Keyboard shortcuts — press ? anywhere outside a dialog">⌨ Keyboard shortcuts <span class="dim">[?]</span></button>
-      <div style="margin:10px 0 2px">
+      <div style="margin:10px 0 2px" ${THEMES_SELECTABLE?'':'hidden'}>
         <div class="cc-panel-h" style="margin-bottom:6px">Theme</div>
         <div style="display:flex;gap:6px">
           ${Object.keys(THEMES).map(k=>`<button class="btn ghost" onclick="pickTheme('${k}')" style="flex:1;font-size:12px;${currentTheme===k?'border-color:var(--ignite);color:var(--ignite)':''}">${THEMES[k]}</button>`).join('')}

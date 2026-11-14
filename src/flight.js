@@ -736,6 +736,7 @@ function setupFlightState(spec, done, ctx, cv, viewCanvas, seedP){
 function playMission(spec, done, seedP){
   $('animTitle').textContent=spec.title+(spec.crewed?'  ·  crewed':'');
   $('animOverlay').classList.remove('hidden');
+  try{ syncAnimSpeedBtn(); }catch(e){}
   flightReportCard(spec,false);
   clearFlightAltitude();
   beginFlight3DSession(spec);
@@ -1366,6 +1367,9 @@ function openFlightForDecision(ctx, decision){
     transferEng: (m.profile&&m.modules&&m.modules.includes('transfer'))?state.transfer.eng:'',
     recovering:false, hasCapsule: !!(state.research.crew_capsule || ctx.crewed),
     isCislunar: !!m.profile, isOrbital: (!m.profile && m.reqDv>=9000), reqDv: m.reqDv||9400, physics:flightPhysicsSpec(m,ctx.v),
+    // 2026-11-14: the planned (pre-outcome) card, so the overlay shows payload/liftoff/Δv/TWR while a
+    // decision holds the launch instead of a column of dashes. Replaced by the real report on resume.
+    report:(()=>{ try{ return flightReport(m,ctx.v,ctx.sim||null,null,ctx.docking); }catch(e){ return {}; } })(),
     night: rnd()<nightLaunchChance(), // #38: rolled here (not in finalizeLaunch) when a decision opens the overlay early — see finalizeLaunch's reuse via _openedForDecision, so the sky can't flip mid-launch on resume
     rng: { wind:(rnd()-0.5)*0.9, windFreq:1.4+rnd()*1.6, windPhase:rnd()*6.283,
            pitchJitter:(rnd()-0.5)*0.16, sep:state.stages.map(()=>(rnd()-0.5)*0.06),
@@ -1390,6 +1394,7 @@ function openFlightForDecision(ctx, decision){
 function resumeFlightForDecision(finalSpec, finish){
   const A=animState; if(!A || !A._openedForDecision) return false;
   Object.assign(A.spec, finalSpec);
+  flightReportCard(A.spec,false); // refresh the card with the real report now that the outcome is known
   const reentryDur=A.spec.dock?0:(flightHasReentry(A.spec)?6400:0);
   const departMode=A.spec.mode==='depart';
   let totalDur;

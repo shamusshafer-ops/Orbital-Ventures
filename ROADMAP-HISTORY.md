@@ -7683,3 +7683,30 @@ eight gameplay opportunities, and a proposed implementation sequence. Only the
 mass correction is implemented; the remaining items are recommendations. The
 recorded mass-fix validation is 168 passing headless suites, one intentional skip,
 and no failures. This documentation update does not rerun or extend that result.
+
+## 2026-11-14 — Evaluation bug-fix pass (Claude)
+
+From the 2026-11-14 full evaluation (real-browser tour in headless Firefox). `tests/test-eval-bugfixes-2026-11.js`
+(22 checks; 10 fail against pre-fix source) plus updates to `test-anim-speed.js`.
+
+- **Station module card float noise** — `+1.7999999999999998 kW` → `+1.8 kW` (`stationModuleCard`).
+- **Flight playback default** — 0.1× slow-mo → 1× Normal at the owner's request (the 0.1× default had been
+  confirmed intentional in July; superseded). The chosen speed now persists in localStorage (`ov_anim_speed`),
+  and the button label is synced from the real speed (it was static markup that always read "0.1× Slow-mo").
+- **Inert theme chips** — the Menu offered Mission Dark / Control Room Green / Apollo Beige, but themes are pinned
+  twice: `applyTheme()` forces dark, and shell.html's "Command Center blue baseline" block pins every theme and era
+  palette's tokens (plus ~25 hard-coded HUD blue literals). Unpinning only the JS was tried and verified in Firefox
+  to change nothing visible. The chips are now hidden behind `THEMES_SELECTABLE=false`; reviving themes is a
+  visual-pass job (lift both pins, re-token the HUD blues), not a bug fix.
+- **Contract cards in the narrow right rail** crushed their text to one word per line and clipped the Select
+  button — `.item` now wraps (`flex-wrap`, body `flex:1 1 180px`).
+- **Outliner** — heading "In flight" → "Up next" (it lists research, builds, deadlines and warnings too), and the
+  per-department "dept unstaffed" rows merge into one ("3 departments unstaffed (Propulsion, Structures, Avionics)").
+- **Flight card** — showed dashes while a weather/live-call decision held the launch: the early-open spec now
+  carries the planned `flightReport`, and `resumeFlightForDecision` refreshes the card with the real one.
+- **Debrief distance** — launch-day suborbital flights used a Δv×0.006 guess (First Flight debriefed 6 km after
+  the DRANGE telemetry showed 86 km). Now `launchDayDownrangeKm()` reads the landing downrange of the same
+  `cape3dTrajectoryPlan` the overlay samples. Orbital launch-day missions keep their orbit-scale figure.
+
+Full sweep: 169/170 suites pass, 1 intentional skip, 0 unexpected. Verified in headless Firefox: contracts card,
+Up next row, filled flight card during a decision hold, 86 km debrief, menu without theme chips, 1× button label.
