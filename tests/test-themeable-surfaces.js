@@ -1,3 +1,4 @@
+// @ov-test-mode standalone -- run directly with node (reads repo files via __dirname/cwd); never bundle with harness.js + build/game.js.
 /* Gate 6 F2 (re-scoped) — themeable surfaces.
    The original F2 framing ("662 hardcoded literals against a 47-token system")
    implied a mechanical migration. Measurement disproved that: only 3 literals in

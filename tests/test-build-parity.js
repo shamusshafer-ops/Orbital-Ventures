@@ -1,3 +1,4 @@
+// @ov-test-mode standalone -- run directly with node (reads repo files via __dirname/cwd); never bundle with harness.js + build/game.js.
 // Focused build-parity tests. All writes stay inside a disposable fixture.
 const assert = require('assert');
 const fs = require('fs');

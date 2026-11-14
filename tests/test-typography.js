@@ -1,3 +1,4 @@
+// @ov-test-mode standalone -- run directly with node (reads repo files via __dirname/cwd); never bundle with harness.js + build/game.js.
 /* Gate 6 F3 -- bundled webfont typography contract.
    Source-level checks: the font is embedded (no network dependency), --sans names it
    first with the original stack preserved as fallback, font-stretch:condensed is gone

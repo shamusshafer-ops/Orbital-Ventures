@@ -18,6 +18,14 @@ files.
 
 ## Running a suite
 
+**Full sweep:** `node build.js && node tests/run-gate0-evidence.js --output /tmp/sweep.json`
+(omit `--output` only when you mean to refresh the tracked `docs/evidence/` file). A suite whose
+FIRST line is `// @ov-test-mode standalone` runs directly with node (it reads repo files via
+`__dirname`/cwd); every other suite is bundled after `harness.js` + `build/game.js`. Add that
+directive to any new suite that reads source files instead of running the game. The runner also
+fails a suite that prints a partial count (`19/22 checks passed`, `3 passed, 1 failed`) even if
+it exits 0.
+
 Run the parity check first; rebuild only when it reports drift. Then concatenate
 `build/game.js` **after** `harness.js` and **before**
 the test file, and run the whole thing as one script (not `require()`d — the

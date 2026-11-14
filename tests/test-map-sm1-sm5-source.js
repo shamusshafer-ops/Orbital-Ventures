@@ -1,3 +1,4 @@
+// @ov-test-mode standalone -- run directly with node (reads repo files via __dirname/cwd); never bundle with harness.js + build/game.js.
 const fs=require('fs');
 const shell=fs.readFileSync(process.argv[2]||'src/shell.html','utf8');
 const render=fs.readFileSync(process.argv[3]||'src/render.js','utf8');

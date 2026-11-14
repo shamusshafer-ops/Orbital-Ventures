@@ -1,3 +1,4 @@
+// @ov-test-mode standalone -- run directly with node (reads repo files via __dirname/cwd); never bundle with harness.js + build/game.js.
 /* Gate 6 F1/F5 — theme + era palette contracts.
    Parses the real CSS out of src/shell.html (no DOM, no build step) and asserts:
      1. every named palette declares the full token set

@@ -6,11 +6,13 @@ reorder existing entries there, only add new ones at the end, same as `ROADMAP.m
 
 ---
 
-## STATUS (as of 2026-08-15, Docking D0–D5 complete in the working tree)
+## STATUS (as of 2026-11-14 — PR #2 mass accounting merged, runner fixed, BENCH_V2 on)
 
-**Repo health:** 155/165 test suites pass, one intentional skip, and nine known baseline failures
-(the same names reproduced from untouched `HEAD` before D2). Build parity, generated-script syntax,
-and `git diff --check` are clean. Treat any different failing suite as new.
+**Repo health:** `node tests/run-gate0-evidence.js` → 168/169 suites pass, one intentional skip
+(`test-progress-unify.js`), zero unexpected. Build parity, generated-script syntax clean. The runner
+now reads each suite's execution mode from a first-line `// @ov-test-mode standalone` directive
+(6 suites) and fails any suite reporting a partial count (`19/22 checks passed`) even on exit 0.
+Treat any failing suite as new. `build/` is gitignored: run `node build.js` after a fresh pull.
 **REMINDER (hit 5x in one session, 2026-07-25): `node build.js` is a bare string concat with NO
 syntax check** — a green build does not mean the output parses. ALWAYS run `node --check
 build/game.js` immediately after any edit near a `/* */` comment block, and prefer editing well past
@@ -30,8 +32,10 @@ skip. That measured baseline supersedes the older suite counts above for this
 branch. Browser validation and the proposed follow-on features remain open.
 
 **Human-blocked — needs a real browser, no agent can close these:**
-- `BENCH_V2` is still `false` (parts.js:18). The whole E3 part builder is complete, 207 checks
-  green, and switched off pending a playtest. Checklist in ROADMAP.md.
+- `BENCH_V2` flipped to `true` 2026-11-14 at the owner's request (part bench now visible on the
+  Design Bench). Browser playtest checklist in ROADMAP.md (Tier 2 A1) still unrun. KNOWN GAP: the
+  part bench edits a local graph (`_benchBuild`) that never writes back to `state.stages`, so what
+  you build there does not fly — the slider bench below it is still the real design.
 - Gate 6 browser items: re-capture `docs/ui-baseline/` (every existing file is smaller than its
   filename claims — `command-1920x1080.png` is actually 1003×1072, so no before/after comparison
   against them is valid); confirm F8; and simply LOOK at the six new palettes, which no human has

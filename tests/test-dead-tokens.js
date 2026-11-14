@@ -1,3 +1,4 @@
+// @ov-test-mode standalone -- run directly with node (reads repo files via __dirname/cwd); never bundle with harness.js + build/game.js.
 /* Gate 6 F7 -- dead/duplicate token cleanup.
    Two of the three items in the original F7 finding are fixed here and asserted
    so they cannot regress. The third, a full hud-star/cc-hero-star token merge,

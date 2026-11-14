@@ -14,8 +14,8 @@
    behind the BENCH_V2 flag and only reachable from tests until E3.5 cutover.
    ============================================================================ */
 
-// Feature flag — the whole part bench stays dark until E3.5 flips this.
-const BENCH_V2 = false;
+// Feature flag — part bench is visible on the Design Bench (enabled 2026-11-14). View-only toggle: state.stages stays source of truth.
+const BENCH_V2 = true;
 
 /* ---------- Attach-node diameter classes ----------
    Parts connect only at matching node sizes (KSP-style). A class maps to a

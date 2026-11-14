@@ -15,7 +15,24 @@ if(process.argv.includes('--help')){
   process.exit(0);
 }
 const outputPath=path.resolve(root,outputArg||'docs/evidence/gate0-headless-results.json');
-const standalone=new Set(['test-build-parity.js','test-map-sm1-sm5-source.js']);
+// Execution mode is declared by each suite, not by a list here: a suite whose first line is
+// `// @ov-test-mode standalone` runs directly with node (it reads repo files via __dirname/cwd);
+// every other suite is concatenated after harness.js + build/game.js. A hand-kept list drifted --
+// four Gate 6 suites were bundled by mistake and reported as false failures.
+const STANDALONE_DIRECTIVE=/^\/\/\s*@ov-test-mode\s+standalone\b/;
+function suiteMode(source){
+  const first=String(source).replace(/^\uFEFF/,'').split(/\r?\n/,1)[0];
+  return STANDALONE_DIRECTIVE.test(first)?'standalone':'harness';
+}
+// A suite can exit 0 while reporting a partial pass ("19/22 checks passed", "3 passed, 1 failed");
+// exit code alone hid five such suites for several sessions. Any reported count that is not a
+// full pass makes the suite a failure regardless of exit code.
+function partialPassReport(output){
+  const bad=[];
+  for(const m of String(output).matchAll(/(\d+)\/(\d+)\b[^\n]*?\bpassed\b/g)) if(m[1]!==m[2]) bad.push(m[0]);
+  for(const m of String(output).matchAll(/\b(\d+) passed,\s*(\d+) failed\b/g)) if(m[2]!=='0') bad.push(m[0]);
+  return bad;
+}
 
 let runSequence=0;
 function run(command,args,options={}){
@@ -107,12 +124,14 @@ async function main(){
     const files=fs.readdirSync(path.join(root,'tests')).filter(name=>/^test-.*\.js$/.test(name)).sort();
     for(const name of files){
       let result;
-      if(standalone.has(name)){
+      const source=fs.readFileSync(path.join(root,'tests',name));
+      const mode=suiteMode(source);
+      if(mode==='standalone'){
         result=await run(process.execPath,[path.join('tests',name)]);
       }else{
         const bundle=path.join(tempDir,name);
         fs.writeFileSync(bundle,Buffer.concat([harness,Buffer.from('\n'),game,Buffer.from('\n'),
-          fs.readFileSync(path.join(root,'tests',name))]));
+          source]));
         result=await run(process.execPath,[bundle]);
       }
       const combined=(result.stdout+result.stderr).trim();
@@ -122,11 +141,17 @@ async function main(){
         combined==='SKIP: F4 forward test (unfinished feature — set RUN_F4=1 to run)\n0/0 checks passed'
           ?'known-skip':(result.exitCode===0?'unexpected-pass':'unexpected-failure');
       }else{
-        classification=result.exitCode===0&&!result.signal&&!result.spawnError?'pass':'unexpected-failure';
+        classification=result.exitCode===0&&!result.signal&&!result.spawnError&&
+          partialPassReport(combined).length===0?'pass':'unexpected-failure';
       }
-      evidence.suites.push({name,classification,exitCode:result.exitCode,signal:result.signal,
+      evidence.suites.push({name,mode,classification,partialPass:partialPassReport(combined),exitCode:result.exitCode,signal:result.signal,
         command:result.command,elapsedMs:result.elapsedMs,summary:suiteSummary(result.stdout+result.stderr),
         stdout:result.stdout,stderr:result.stderr,spawnError:result.spawnError,timedOut:result.timedOut});
+    }
+    // Every discovered suite runs exactly once.
+    const ran=evidence.suites.map(s=>s.name);
+    if(ran.length!==files.length||new Set(ran).size!==ran.length||files.some(f=>!ran.includes(f))){
+      throw new Error(`suite accounting mismatch: discovered ${files.length}, recorded ${ran.length}`);
     }
   }finally{
     fs.rmSync(tempDir,{recursive:true,force:true});
@@ -160,7 +185,8 @@ async function main(){
 
   fs.mkdirSync(path.dirname(outputPath),{recursive:true});
   fs.writeFileSync(outputPath,JSON.stringify(evidence,null,2)+'\n');
-  console.log(`Gate 0 evidence: ${evidence.overall.passedSuites}/${evidence.overall.totalSuites} suites pass; known red ${evidence.overall.knownRedSuites.length}; known skip ${evidence.overall.knownSkippedSuites.length}; unexpected ${badSuites.length}`);
+  console.log(`Gate 0 evidence: ${evidence.overall.passedSuites}/${evidence.overall.totalSuites} suites pass; known red ${evidence.overall.knownRedSuites.length}; known skip ${evidence.overall.knownSkippedSuites.length}; unexpected ${badSuites.length}; standalone ${evidence.suites.filter(s=>s.mode==='standalone').length}`);
+  for(const s of badSuites) console.log(`  UNEXPECTED ${s.name} [${s.mode}] exit=${s.exitCode}${s.partialPass&&s.partialPass.length?' partial: '+s.partialPass.join('; '):''}`);
   console.log(`Evidence: ${path.relative(root,outputPath)}`);
   process.exitCode=evidence.overall.ok?0:1;
 }
