@@ -10,7 +10,7 @@ const _origGEBI=global.document.getElementById.bind(global.document);
 global.document.getElementById=(id)=>{ if(!(id in _elCache)) _elCache[id]=_origGEBI(id); return _elCache[id]; };
 function elOf(id){ return _elCache[id]; }
 
-newGame('engineer');
+newGame('engineer'); state.uiLayer='advanced'; // #4: new games start Basic; these checks begin from Advanced
 
 // ---------- the element exists and a real render resolves it ----------
 {
@@ -25,7 +25,8 @@ newGame('engineer');
 // ---------- cycleUiLayer() cycles in the documented order and wraps ----------
 {
   newGame('engineer'); render();
-  check('starts at advanced (the documented default)', uiLayer()==='advanced');
+  check('a new game starts in Basic (#4, 2026-11-14)', uiLayer()==='basic');
+  state.uiLayer='advanced';
   cycleUiLayer();
   check('advanced -> expert', uiLayer()==='expert');
   cycleUiLayer();
@@ -36,7 +37,7 @@ newGame('engineer');
 
 // ---------- text and title update live on every cycle, not just once ----------
 {
-  newGame('engineer'); render();
+  newGame('engineer'); state.uiLayer='advanced'; render();
   cycleUiLayer(); render();
   check('button text updates after cycling to expert', elOf('uiLayerBtn').textContent==='View: Expert');
   check('button title updates to name the NEXT click correctly (expert -> basic)',
@@ -44,12 +45,12 @@ newGame('engineer');
   cycleUiLayer(); render();
   check('button text updates after cycling to basic', elOf('uiLayerBtn').textContent==='View: Basic');
   check('button title updates correctly (basic -> advanced)',
-    elOf('uiLayerBtn').title==='Interface detail level: Basic. Click to switch to Advanced.');
+    elOf('uiLayerBtn').title==='Interface detail level: Basic. Click to switch to Advanced. Basic hides tabs you can\'t use yet; Advanced shows every tab.');
 }
 
 // ---------- protected baseline: setUiLayer/Settings picker/default are untouched ----------
 {
-  newGame('engineer');
+  newGame('engineer'); state.uiLayer='advanced';
   check('setUiLayer still rejects an unknown layer', (setUiLayer('not_a_layer'), uiLayer())==='advanced');
   setUiLayer('expert');
   check('setUiLayer(\'expert\') still works directly (what renderSettings\' buttons call)', uiLayer()==='expert');

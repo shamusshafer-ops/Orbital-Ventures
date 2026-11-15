@@ -77,7 +77,8 @@ function createFreshState(difficulty){
     standingProd:null, juggernautReached:false, // CE2(c): juggernaut capstone — standing production line + milestone flag
     doctrine:null, // CE3(a): company doctrine (strategic identity) — null = undeclared/neutral
     lunarArch:null, // CE3(c): committed lunar architecture (LOR/Direct/EOR) — null = uncommitted
-    uiLayer:'advanced', // #23: progressive UI complexity (basic/advanced/expert), independent of difficulty
+    uiLayer:'advanced', // #23: progressive UI complexity (basic/advanced/expert), independent of difficulty — newGame() starts Basic (#4)
+    onboarding:{seen:{}, tabHidden:{}, newTabs:{}}, // #4: First Flight checklist — only what campaign state can't express
     loanInterest:0, // CE4(c): permanent monthly bridge-loan debt service
     inquiryCredit:null, // P3: unused funded-inquiry reliability credit {subsystem,rel,flights} or null
     eraSeen:0, eraStartSnapshot:{flights:0,playerFirsts:0,rivalFirsts:0,money:startMoney,rep:0}, // P6 6.1: canonical Pioneer-era baseline
@@ -93,6 +94,8 @@ function resetSessionTransients(){
 function newGame(difficulty){
   resetSessionTransients();
   state=createFreshState(difficulty);
+  state.uiLayer='basic'; // #4 (2026-11-14): new campaigns start in Basic; the header View button switches
+  state.onboarding.tracked=true; // #4: this campaign's checklist runs from step 1 (older saves that have flown count as done)
   log('info','Public-private venture founded in the alternate 1942 timeline. The pad is yours — go make some noise.');
   reconcileEngineMods(); // reset engine stats to base for a fresh company
 }
@@ -7479,6 +7482,8 @@ function resolvedLaunchDisposition(tx,ctx,outcome){
     recoveryMethod:vehicle==='recovered'?'propulsive':crewRecovery});
 }
 function finishLaunchTransaction(tx,success,outcome,pendingCelebration){
+  if(state&&state.onboarding&&state.onboarding.seen){ state.onboarding.seen.debrief=true; // #4: runs once the debrief is closed (or at once with animation off)
+    setTimeout(()=>{ try{ renderCoach(); }catch(e){} },0); } // after this transaction clears, so the checklist ticks without waiting for the next render
   const administrative=!!(tx&&typeof settleAdministrativeArrival==='function'&&settleAdministrativeArrival(tx));
   const sponsored=!!(tx&&typeof settleSponsoredAttempt==='function'&&settleSponsoredAttempt(tx,outcome));
   if(tx){
@@ -7943,6 +7948,8 @@ function showSettingsMenu(){
         <button class="btn ghost" onclick="hideModal();confirmNew()">New Game</button>
       </div>
       <button class="btn ghost" onclick="showHotkeyHelp()" style="width:100%;margin:4px 0 2px" title="Keyboard shortcuts — press ? anywhere outside a dialog">⌨ Keyboard shortcuts <span class="dim">[?]</span></button>
+      <button class="btn ghost" onclick="hideModal();restartCoach()" style="width:100%;margin:4px 0 2px" title="Show the First Flight checklist again (or, in Basic view after your first flight, the Next step card)">▶ Show the getting-started checklist</button>
+      <button class="btn ghost" onclick="hideModal();showInfrastructureModal()" style="width:100%;margin:4px 0 2px">🏭 Manufacturing capacity</button>
       <div style="margin:10px 0 2px" ${THEMES_SELECTABLE?'':'hidden'}>
         <div class="cc-panel-h" style="margin-bottom:6px">Theme</div>
         <div style="display:flex;gap:6px">
@@ -7962,6 +7969,7 @@ function setTab(t){
     guardOrdinaryAction('Navigation'); resumeReorganizationUI(); return false;
   }
   closeLiveModal();
+  if(t==='bench'&&typeof onboardingMark==='function') onboardingMark('bench'); // #4 checklist step 1
   if(state.tab===t){hubPanel='alerts';render();return;}
   const vp=document.querySelector('.viewport');
   hubPanel='alerts';

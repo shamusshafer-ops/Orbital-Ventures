@@ -7779,3 +7779,40 @@ Tests: new `tests/test-layout-pass.js` (25 checks); updated theme-sync (177 incl
 themeable-surfaces, dead-tokens, command-hero-layout, eval-bugfixes, icon-set, ops-friction to the decided behaviour.
 Full sweep 171/172, 1 intentional skip, 0 unexpected. Screenshots reviewed in all four themes, eras 1942/1985/2010/2031,
 both window sizes, rails collapsed/expanded, flight ascent + decision hold.
+
+## 2026-11-14 — #4 onboarding: First Flight checklist + a real Basic view (Claude)
+
+From the 2026-11-14 evaluation ("no onboarding; Basic is almost the same as Advanced"). Owner decisions: checklist
+panel (not a modal tutorial), Basic hides what isn't usable yet, new games start in Basic, no economy changes.
+
+- **First Flight checklist** (`onboardingSteps()`/`renderCoach()`, render.js next to `recommendedAction()`): six steps
+  (look over the rocket → start research → commit the build → wait for rollout → launch → read the debrief). Every
+  `done` is derived from campaign state (activeResearch/research, buildQueue/hangar, launchTxn, flights); only the
+  bench visit and debrief-closed are recorded (`state.onboarding.seen`, set in `setTab` and
+  `finishLaunchTransaction`). The debrief step never ticks while a launch is still resolving. Older campaigns that
+  have flown (no `onboarding.tracked`) count as complete. Compact fixed panel at the foot of the left rail
+  (z 55: under expanded views, launch scene and modals), collapsible to a pill, dismissible, restartable from Menu.
+  **Show me** switches tab and pulses the real control (`.coach-pulse`, re-applied after each render for 6 s):
+  `#readoutCard`, the `buyResearch` button for Static Fire Test Program, `[data-action-id^="commit:"]`, the
+  `launchFromHangar` button. "Advance to rollout" repeats `runToNextEvent()` until the hull reaches the hangar or a
+  modal opens. After the checklist, Basic shows a **Next step** card (`coachNextAction()`: `recommendedAction()`,
+  except "Launch: X" becomes "Fix the design: X" when `canLaunch()` reports a Δv/TWR shortfall — the existing
+  advisor recommended launching a rocket 13 m/s short of Sounding Rocket).
+- **Basic view**: `basicTabVisible()` hides Solar System (until a profile/tracking mission is next, a tracking
+  station exists, or a profile mission is flown), Station Bench (crew_orbit or an Earth facility), Base Bench
+  (luna_landing/mars_orbit or an off-Earth facility). A tab revealed in Basic logs once and carries a dot until
+  visited. Advanced/Expert unchanged; `setTab()` still reaches hidden tabs.
+- **Staffing warning**: "departments unstaffed" had no effect in the Pioneer era (`deptStaffingRelPenalty()` 0) but
+  showed red/"now" in Up Next, badged Command Center, and red-dotted Personnel. While the penalty is 0: Basic drops
+  it; Advanced keeps the row labelled "no effect yet", untimed. Side fix: as an eta-0 item it pinned "next event" to
+  a 1-day step at game start.
+- **Start-up**: New Game no longer opens the Manufacturing Capacity pop-up (Menu gained a Manufacturing entry); the
+  New Game screen says Napkin is the learning setting. `newGame()` sets `uiLayer:'basic'`; saves keep their layer.
+- Not done from the plan: extra `.adv-only` lines on the Command left deck (the deck read fine in screenshots).
+
+Tests: new `tests/test-onboarding.js` (56–58 checks, count depends on which random launch decisions occur; it answers
+weather/live calls and closes the debrief like a player); updated `test-ui-layer-button.js` (new games start Basic),
+`test-dept-c.js` (staffing alerts asserted in a later era where they cost reliability), `test-eval-bugfixes-2026-11.js`
+(merged staffing row asserted in Advanced). Headless Firefox at 1920×1080 and 1366×768: new game played through
+all six steps via Show me / Advance to rollout, flight decisions answered, debrief closed → Next step card; tab
+unlock dot; four themes. No console errors.

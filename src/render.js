@@ -266,9 +266,12 @@ function outlinerItems(){
   // #19 slice C: an unstaffed critical department is a standing reliability risk — surface it in the flow
   // 2026-11-14: one row, not one per department — at game start all three critical depts are empty and
   // three identical "now" rows crowded out everything else in the strip.
-  { const under=workforceGaps().filter(g=>g.kind==='understaffed');
-    if(under.length) push('👥', under.length===1 ? (departmentDef(under[0].id)||{}).name+' dept unstaffed'
-      : `${under.length} departments unstaffed (${under.map(g=>(departmentDef(g.id)||{}).name).join(', ')})`, 0, ()=>{ try{ showPersonnelModal(); }catch(e){} }, 'var(--bad)'); }
+  // #4: understaffedForAlerts() drops it in Basic while it costs nothing (Pioneer era); Advanced keeps it,
+  // labelled and uncoloured, until deptStaffingRelPenalty() actually bites.
+  { const under=understaffedForAlerts(), quiet=staffingWarningQuiet();
+    if(under.length) push('👥', (under.length===1 ? (departmentDef(under[0].id)||{}).name+' dept unstaffed'
+      : `${under.length} departments unstaffed (${under.map(g=>(departmentDef(g.id)||{}).name).join(', ')})`), quiet?Infinity:0, ()=>{ try{ showPersonnelModal(); }catch(e){} }, quiet?'var(--dim)':'var(--bad)');
+    if(under.length&&quiet) items[items.length-1].etaText='no effect yet'; } // Infinity: not a timed event, so "next event" no longer stops 1 day in
   // station... (module builds advance time inline; nothing queued) — skip
   // mandate deadline
   const md=state.mandate;
@@ -532,7 +535,7 @@ function tabAlerts(){
   if(md && md.accepted && md.deadlineAbs-absMonth()<=6) a.command.push('Mandate deadline near');
   if(md && !md.accepted) a.command.push('Mandate offer pending');
   (state.staff||[]).forEach(s=>{ if(s.morale<30){ const p=personById(s.id); a.command.push((p?p.name:'Staff')+' morale critical'); } });
-  workforceGaps().filter(g=>g.kind==='understaffed').forEach(g=>a.command.push((departmentDef(g.id)||{}).name+' dept unstaffed'));
+  if(!staffingWarningQuiet()) workforceGaps().filter(g=>g.kind==='understaffed').forEach(g=>a.command.push((departmentDef(g.id)||{}).name+' dept unstaffed')); // #4: badge only once it costs reliability
   (state.passiveContracts||[]).forEach(cn=>{ if(cn.monthsLeft<=3){ const d=passiveDef(cn.id); a.command.push((d?passiveContractDisplay(d).name:cn.id)+' expiring'); } });
   // P9: surface an unsigned doctrine-exclusive contract once it's actually signable
   if(state.doctrine){ const dd=PASSIVE_CONTRACT_DEFS.find(x=>x.cat==='doct'&&x.reqDoctrine===state.doctrine);
@@ -801,6 +804,7 @@ function renderChromeTabsViews(){
     if(view) view.classList.toggle('hidden',state.tab!==id);
   }
   renderTabBadges(); // the dock is rebuilt above, so apply current badge state to its fresh nodes
+  syncBasicTabs(); // #4: Basic hides tabs that aren't useful yet
   placeOpsbar(); // on the Map view, the ops controls (row 2) ride across the top of the map card; elsewhere they stay pinned in the topbar
   applyDifficultyUI();
 }
@@ -853,6 +857,7 @@ const RENDER_REGIONS=[
   {name:'log', fn:renderLog},
   {name:'modal', fn:renderModalRegion},
   {name:'topbar', fn:renderTopbarLayout},
+  {name:'coach', fn:renderCoach}, // #4: First Flight checklist / Basic "Next step" card — last, so its pulse re-applies to fresh DOM
 ];
 // render() stays a permanent alias for renderAll() — every existing call site (158 across the
 // codebase as of this slice) keeps working untouched, forever if need be. invalidate(...names) is
@@ -1038,6 +1043,207 @@ function recommendedAction(){
     if(next) return {kind:'research', title:`Research: ${next.name}`, detail:'Expand your capabilities.', tab:'rnd', researchId:next.id};
   }
   return {kind:'advance', title:'Advance the calendar', detail:'Let R&D and the program move forward a month.', tab:null};
+}
+// ---------- #4 (2026-11-14): First Flight checklist + Basic "Next step" card ----------
+// A small non-blocking coach panel. Every step's `done` is derived from real campaign state (never from a
+// click alone), so the checklist can't drift from what actually happened. state.onboarding only records
+// what state can't express: bench visited, debrief read, collapsed/dismissed, tabs revealed in Basic.
+const OB_MISSION='first_flight';
+function onboarding(){
+  const o=(state.onboarding&&typeof state.onboarding==='object')?state.onboarding:(state.onboarding={});
+  if(!o.seen||typeof o.seen!=='object') o.seen={};
+  if(!o.tabHidden||typeof o.tabHidden!=='object') o.tabHidden={};
+  if(!o.newTabs||typeof o.newTabs!=='object') o.newTabs={};
+  return o;
+}
+function onboardingMark(key){
+  if(!state) return;
+  const o=onboarding(); if(o.seen[key]) return;
+  o.seen[key]=true;
+  try{ renderCoach(); }catch(e){}
+}
+// The research the checklist suggests: the reliability fix the advisor already recommends for First
+// Flight (Static Fire Test Program), else the first affordable project that can start now.
+function onboardingResearchPick(){
+  const ok=r=>r&&!state.research[r.id]&&reqsMet(r)&&researchEraMet(r)&&sciGateMet(r)&&state.money>=rdCostOf(r);
+  const tp=RESEARCH.find(r=>r.id==='test_program');
+  if(ok(tp)) return tp;
+  return RESEARCH.find(ok)||null;
+}
+function onboardingSteps(){
+  const o=onboarding(), m=missionById(OB_MISSION);
+  const flown=(state.flights||0)>0;
+  const legacy=!o.tracked && flown; // a campaign that predates the checklist and has already flown
+  const queued=buildQueueList().some(q=>q.missionId===OB_MISSION);
+  const ready=hangarFor(m).length>0;
+  const inFlight=!!state.launchTxn;
+  const researched=!!state.activeResearch||Object.keys(state.research||{}).length>0;
+  const rp=onboardingResearchPick();
+  const steps=[
+    {key:'bench', title:'Look over your rocket',
+      detail:'The Design Bench shows the rocket you\'ll fly, its Δv against what First Flight needs, and the estimated profit.',
+      done:legacy||flown||!!o.seen.bench, show:'bench'},
+    {key:'research', title:'Start a research project',
+      detail: rp&&rp.id==='test_program'
+        ? `Static Fire Test Program lifts reliability for every flight (First Flight is ${Math.round((computeVehicleSafe()||{}).reliability*100||0)}% today). R&D runs while you build.`
+        : 'R&D runs in the background while you build — start one project now so the months aren\'t wasted.',
+      done:legacy||researched, show:'research'},
+    {key:'commit', title:'Commit the build',
+      detail:'On the Design Bench, "Commit build" pays for the rocket now. Flight costs are paid later, at launch.',
+      done:legacy||flown||queued||ready||inFlight, show:'commit'},
+    {key:'rollout', title:'Wait for rollout',
+      detail:'Building takes a few months. Advance the calendar until the rocket reaches the hangar.',
+      done:legacy||flown||ready||inFlight, show:'rollout'},
+    {key:'launch', title:'Launch',
+      detail:'Back on the Design Bench, "Fly from hangar" rolls it to the pad. You may get a weather or engine call to make.',
+      done:legacy||flown, show:'launch'},
+    {key:'debrief', title:'Read the debrief',
+      detail:'After the flight, the debrief explains what worked and what failed. Close it to bank the result.',
+      done:legacy||(flown&&!!o.seen.debrief&&!inFlight), show:null}, // !inFlight: never while a launch is still resolving
+  ];
+  const cur=steps.findIndex(s=>!s.done);
+  steps.forEach((s,i)=>{ s.current=i===cur; });
+  return steps;
+}
+function computeVehicleSafe(){ try{ return computeVehicle(); }catch(e){ return null; } }
+function onboardingComplete(){ return onboardingSteps().every(s=>s.done); }
+// What the coach panel shows right now: 'checklist', 'next' (Basic only, after the checklist), or null.
+function coachMode(){
+  if(!state||state.over||(typeof _gameStarted!=='undefined'&&!_gameStarted)) return null;
+  const o=onboarding();
+  if(!onboardingComplete()) return o.dismissed?null:'checklist';
+  return (uiLayer()==='basic'&&!o.nextDismissed)?'next':null;
+}
+let _coachTarget=null; // {sel, until} — re-applied after every render so a rebuilt control keeps its pulse
+function coachPulse(sel){
+  document.querySelectorAll('.coach-pulse').forEach(e=>e.classList.remove('coach-pulse'));
+  _coachTarget=sel?{sel, until:Date.now()+6000}:null;
+  let tries=0;
+  const tick=()=>{ if(!_coachTarget) return; if(applyCoachPulse()) return; if(++tries<15) setTimeout(tick,120); };
+  setTimeout(tick,0);
+}
+function applyCoachPulse(){
+  if(!_coachTarget) return false;
+  if(Date.now()>_coachTarget.until){ _coachTarget=null; document.querySelectorAll('.coach-pulse').forEach(e=>e.classList.remove('coach-pulse')); return false; }
+  let el=null; try{ el=document.querySelector(_coachTarget.sel); }catch(e){}
+  if(!el||!el.classList) return false;
+  if(!el.classList.contains('coach-pulse')){
+    el.classList.add('coach-pulse');
+    try{ el.scrollIntoView({block:'nearest', behavior:reducedMotion()?'auto':'smooth'}); }catch(e){}
+    try{ el.addEventListener('click',()=>{ _coachTarget=null; el.classList.remove('coach-pulse'); },{once:true}); }catch(e){}
+  }
+  return true;
+}
+function coachShow(key){
+  if(key==='bench'){ setTab('bench'); coachPulse('#readoutCard'); }
+  else if(key==='research'){ const r=onboardingResearchPick(); setTab('rnd'); if(r){ state.selectedResearch=r.id; techFocus=r.id; coachPulse(`button[onclick="buyResearch('${r.id}')"]`); } }
+  else if(key==='commit'){ if(state.activeMission!==OB_MISSION&&missionById(OB_MISSION)) state.activeMission=OB_MISSION; setTab('bench'); coachPulse('[data-action-id^="commit:"]'); }
+  else if(key==='launch'){ if(state.activeMission!==OB_MISSION&&missionById(OB_MISSION)) state.activeMission=OB_MISSION; setTab('bench'); coachPulse('button[onclick^="launchFromHangar"]'); }
+  else if(key==='rollout'){ coachPulse('.timectl'); }
+}
+// "Advance to rollout": the existing run-to-next-event, repeated until the hull is in the hangar, a
+// decision opens, or the game ends — never past a modal the player needs to see.
+function onboardingAdvanceToRollout(){
+  const m=missionById(OB_MISSION);
+  for(let i=0;i<12;i++){
+    if(state.over||hangarFor(m).length||!buildQueueList().some(q=>q.missionId===OB_MISSION)) break;
+    const md=$('modal'); if(md&&!md.classList.contains('hidden')) break;
+    runToNextEvent();
+  }
+  render();
+}
+// The Next step card: recommendedAction(), except that "Launch: X" becomes "Fix the design" when the rocket
+// on the bench can't fly X — the same canLaunch() shortfall/TWR test the Design Bench tab badge uses.
+function coachNextAction(){
+  const rec=recommendedAction();
+  if(rec.kind==='launch'&&rec.missionId&&rec.missionId===state.activeMission){
+    try{
+      const m=missionById(rec.missionId), v=computeVehicle(), chk=canLaunch(v,m,m.profile?simulateMission(m):null);
+      if(!chk.ok&&/shortfall|TWR|thrust/i.test(chk.why||''))
+        return {kind:'design', title:`Fix the design: ${m.name}`, detail:`The rocket on the bench can't fly ${m.name} yet — ${chk.why}`, tab:'bench', missionId:m.id};
+    }catch(e){}
+  }
+  return rec;
+}
+function toggleCoach(){ const o=onboarding(); o.collapsed=!o.collapsed; renderCoach(); }
+function dismissCoach(){
+  const o=onboarding();
+  if(coachMode()==='next') o.nextDismissed=true; else o.dismissed=true;
+  _coachTarget=null; renderCoach();
+}
+function restartCoach(){ const o=onboarding(); o.dismissed=false; o.nextDismissed=false; o.collapsed=false; renderCoach(); }
+function coachHTML(){
+  const mode=coachMode(); if(!mode) return '';
+  const o=onboarding();
+  const head=(title,count)=>`<div class="coach-h"><span class="coach-title">▶ ${title}</span>${count?`<span class="coach-count">${count}</span>`:''}
+      <button class="coach-x" type="button" onclick="toggleCoach()" title="${o.collapsed?'Expand':'Collapse'}" aria-label="${o.collapsed?'Expand':'Collapse'}">${o.collapsed?'▴':'▾'}</button>
+      <button class="coach-x" type="button" onclick="dismissCoach()" title="Hide (Menu brings it back)" aria-label="Hide">×</button></div>`;
+  if(mode==='next'){
+    const rec=coachNextAction();
+    if(o.collapsed) return `<button class="coach-pill" type="button" onclick="toggleCoach()">▶ Next step: ${esc(rec.title)}</button>`;
+    return `${head('Next step')}<div class="coach-body"><div class="coach-why">${rec.detail}</div>
+      <button class="btn launch coach-go" type="button" onclick="${advisorClick(rec)}">▸ ${esc(rec.title)}</button></div>`;
+  }
+  const steps=onboardingSteps(), n=steps.filter(s=>s.done).length;
+  if(o.collapsed) return `<button class="coach-pill" type="button" onclick="toggleCoach()">▶ First Flight · ${n}/${steps.length}</button>`;
+  const btns=s=>{
+    if(s.key==='rollout') return `<button class="btn launch coach-go" type="button" onclick="onboardingAdvanceToRollout()">▸ Advance to rollout</button>`;
+    return s.show?`<button class="btn coach-go" type="button" onclick="coachShow('${s.show}')">Show me</button>`:'';
+  };
+  // compact: progress bar, the current step in full, then the rest on one line — keeps the panel ~150px
+  // tall so it doesn't bury the left rail at 1366×768.
+  const cur=steps.find(s=>s.current), later=steps.filter(s=>!s.done&&!s.current);
+  return `${head('First Flight',`${n}/${steps.length}`)}
+    <div class="coach-bar" role="progressbar" aria-valuemin="0" aria-valuemax="${steps.length}" aria-valuenow="${n}"><span style="width:${Math.round(n/steps.length*100)}%"></span></div>
+    ${cur?`<div class="coach-cur"><div class="coach-step-t"><span class="coach-tick" aria-hidden="true">●</span> ${n+1}. ${cur.title}</div><div class="coach-why">${cur.detail}</div>${btns(cur)}</div>`:''}
+    ${later.length?`<div class="coach-later">Then: ${later.map(s=>s.title).join(' → ')}</div>`:''}`;
+}
+function renderCoach(){
+  const el=$('coachPanel'); if(!el) return;
+  const html=coachHTML(), mode=html?coachMode():null;
+  el.classList.toggle('hidden', !html);
+  el.classList.toggle('coach-collapsed', !!(html&&onboarding().collapsed));
+  el.setAttribute('data-mode', mode||'');
+  if(el.innerHTML!==html) el.innerHTML=html;
+  applyCoachPulse();
+}
+// #4: Basic hides tabs the campaign can't use yet; each comes back (with a log line and a "new" dot) the
+// first time it becomes useful. Advanced/Expert always show every tab. setTab() to a hidden tab still works.
+function tabUsefulNow(id){
+  if(id==='map'){
+    const no=nextObjective(), mm=no&&no.mission;
+    if(mm&&(mm.profile||needsTrackingNetwork(mm))) return true;
+    if(trackingStationCount()>0) return true;
+    return MISSIONS.some(x=>x.profile&&state.completed[x.id]);
+  }
+  const fac=Object.keys(state.facilities||{}).map(facilityById).filter(Boolean);
+  if(id==='station') return !!state.completed.crew_orbit||fac.some(f=>f.body==='earth');
+  if(id==='base') return !!(state.completed.luna_landing||state.completed.mars_orbit)||fac.some(f=>f.body!=='earth');
+  return true;
+}
+function basicTabVisible(id){ return uiLayer()!=='basic'||tabUsefulNow(id); }
+const TAB_UNLOCK_NOTE={
+  map:'Solar System now available — tracking stations and the wider map live there.',
+  station:'Station Bench now available — design and grow your orbital station there.',
+  base:'Base Bench now available — lay out surface bases there.',
+};
+function syncBasicTabs(){
+  const o=onboarding(), basic=uiLayer()==='basic';
+  for(const id of SCENE_TABS){
+    const def=sceneDef(id), tab=def&&$(def.navId);
+    const vis=basicTabVisible(id);
+    if(basic&&!vis) o.tabHidden[id]=true;
+    else if(basic&&vis&&o.tabHidden[id]){ delete o.tabHidden[id]; o.newTabs[id]=true; if(TAB_UNLOCK_NOTE[id]) log('info',TAB_UNLOCK_NOTE[id]); }
+    if(state.tab===id&&o.newTabs[id]) delete o.newTabs[id];
+    if(tab){ tab.classList.toggle('hidden', !vis); tab.classList.toggle('tab-new', !!o.newTabs[id]); }
+  }
+}
+// #4: "departments unstaffed" is a real warning only once it costs reliability (deptStaffingRelPenalty,
+// 0 in the Pioneer era). Basic drops it until then; Advanced keeps it but without alarm colouring.
+function staffingWarningQuiet(){ return deptStaffingRelPenalty()<=0; }
+function understaffedForAlerts(){
+  if(staffingWarningQuiet()&&uiLayer()==='basic') return [];
+  return workforceGaps().filter(g=>g.kind==='understaffed');
 }
 // #18 slice 4: Mission Control Advisor — focus goal, requirement ✓/✗ analysis, and ranked actions.
 // Pure: reuses nextObjective/missionFlyable/firstResearchableToward/computeVehicle/simulateMission.
@@ -1297,7 +1503,8 @@ function buildingGlyph(key){
     case 'personnel': {
       const crit=(state.staff||[]).filter(s=>s.morale<30).length;
       if(crit>0) return {state:'attention', label:crit+' staff at critical morale'};
-      const gaps=workforceGaps();
+      const quietBasic=staffingWarningQuiet()&&uiLayer()==='basic'; // #4: Basic keeps the Cape calm until staffing costs reliability
+      const gaps=workforceGaps().filter(g=>!(quietBasic&&g.kind==='understaffed'));
       const under=gaps.filter(g=>g.kind==='understaffed');
       if(under.length) return {state:'attention', label:(departmentDef(under[0].id)||{}).name+' department unstaffed'};
       if(gaps.length) return {state:'attention', label:(departmentDef(gaps[0].id)||{}).name+' has no lead'};
@@ -3923,7 +4130,7 @@ function applyUiLayer(){
     b.textContent='View: '+UI_LAYER_LABEL[L];
     // Tier 3.1 (2026-08-04): name the current layer AND what the next click does — Tier 0.3 convention
     const next=UI_LAYERS[(UI_LAYERS.indexOf(L)+1)%UI_LAYERS.length];
-    b.title=`Interface detail level: ${UI_LAYER_LABEL[L]}. Click to switch to ${UI_LAYER_LABEL[next]}.`;
+    b.title=`Interface detail level: ${UI_LAYER_LABEL[L]}. Click to switch to ${UI_LAYER_LABEL[next]}.`+(L==='basic'?' Basic hides tabs you can\'t use yet; Advanced shows every tab.':'');
   }
 }
 function setUiLayer(L){ if(!UI_LAYERS.includes(L)) return; state.uiLayer=L; render(); }

@@ -49,7 +49,7 @@ newGame('engineer');
 
 // ---------- 5. outliner heading + merged staffing row ----------
 {
-  newGame('engineer');
+  newGame('engineer'); state.uiLayer='advanced'; // #4: Basic drops this row while it costs nothing (test-onboarding.js)
   const gaps=workforceGaps().filter(g=>g.kind==='understaffed');
   const rows=outlinerItems().filter(it=>it.icon==='👥');
   check('fresh campaign has several unstaffed departments (precondition)', gaps.length>=2);

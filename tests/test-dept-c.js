@@ -118,8 +118,10 @@ function hireAll(){ state.year=1990; availablePool().forEach(p=>hirePersonnel(p.
 }
 
 // ---------- 9. Outliner + tab alerts surface an unstaffed critical dept ----------
+// #4 (2026-11-14): surfaced once it costs reliability (a later era); in the Pioneer era the penalty is 0
+// and test-onboarding.js covers the quieter treatment.
 {
-  newGame('engineer'); // empty → gaps exist
+  newGame('engineer'); state.year=1995; // empty → gaps exist, and eraStakesFrac>0 so they cost reliability
   const items=outlinerItems();
   check('outliner: unstaffed dept surfaces as an item', items.some(it=>/unstaffed/i.test(it.label)));
   const alerts=tabAlerts();

@@ -49,9 +49,10 @@ branch. Browser validation and the proposed follow-on features remain open.
 **Gate system (Codex's adversarial-review track, separate from Tiers/ROADMAP).** Contracts live in
 `docs/GATE-N-CONTRACTS.md`; evidence in `docs/evidence/`. Shipped: Gate 0 (baseline), 1 (authority),
 2 (atomic launch), 3 (economic continuity + bankruptcy reorg), 5 (honest trajectory), 6 (presentation
-polish). **Gate 4 (onboarding / progressive disclosure) was skipped and is still unbuilt** — it sits
-BEFORE Gate 6 in the ladder recorded in `GATE-1-CONTRACTS.md`. A Gate 7 is referenced there but never
-defined.
+polish). **Gate 4 (onboarding / progressive disclosure)** was skipped by the gate track; a first pass
+landed 2026-11-14 outside it (First Flight checklist, Basic view that hides not-yet-useful tabs, new
+games start in Basic — see ROADMAP-HISTORY.md "#4 onboarding"). No Gate 4 contract or adversarial
+review exists for it. A Gate 7 is referenced in `GATE-1-CONTRACTS.md` but never defined.
 
 **Gate 6 — presentation polish (Claude, 2026-08-11/12), all seven findings addressed:**
 - **F1/F5 palettes + contrast** — all six theme/era blocks previously held BYTE-IDENTICAL values

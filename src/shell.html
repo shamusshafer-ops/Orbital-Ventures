@@ -1126,6 +1126,38 @@
   ::-webkit-scrollbar{width:10px;height:10px}
   ::-webkit-scrollbar-track{background:transparent}
   ::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--ignite) 34%,var(--panel));border-radius:5px;border:2px solid transparent;background-clip:padding-box}
+  /* #4 (2026-11-14): First Flight checklist / Basic "Next step" card. Fixed and non-blocking, at the foot of
+     the left rail — the one region that is mostly empty on every tab (the centre column holds the bench
+     stats and tech tree). Above the topbar (40) and show-bar button (50); below expanded views (60), the
+     launch scene (70) and modals (80), so it never covers a decision. */
+  #coachPanel{position:fixed;left:30px;bottom:16px;z-index:55;width:calc(var(--cc-rail-width) - 12px);max-width:calc(100vw - 32px);
+    background:var(--panel);border:1px solid color-mix(in srgb,var(--ignite) 55%,var(--line));
+    border-radius:8px;box-shadow:0 8px 28px rgba(0,0,0,.35);padding:10px 12px;font-size:12.5px;color:var(--ink)}
+  body.rail-l-collapsed #coachPanel{width:300px}
+  #coachPanel.coach-collapsed{width:auto;padding:0;border:0;background:transparent;box-shadow:none}
+  .coach-h{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+  .coach-title{font-family:var(--mono);font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ignite);flex:1}
+  .coach-count{font-family:var(--mono);font-size:11px;color:var(--muted)}
+  .coach-x{background:none;border:0;color:var(--muted);cursor:pointer;font-size:14px;line-height:1;padding:2px 4px}
+  .coach-x:hover{color:var(--ink)}
+  .coach-tick{width:14px;flex:0 0 14px;text-align:center;font-family:var(--mono);color:var(--dim)}
+  .coach-bar{height:3px;background:color-mix(in srgb,var(--line) 70%,transparent);border-radius:2px;overflow:hidden;margin:-2px 0 9px}
+  .coach-bar span{display:block;height:100%;background:var(--ok)}
+  .coach-cur .coach-step-t{color:var(--ink);font-weight:600}
+  .coach-cur .coach-tick{color:var(--ignite);display:inline-block;width:auto}
+  .coach-later{color:var(--dim);font-size:11.5px;margin-top:8px;line-height:1.35}
+  .coach-why{color:var(--muted);font-size:12px;line-height:1.4;margin:3px 0 6px}
+  .coach-go{font-size:12px;padding:5px 10px;margin:0}
+  .coach-body .coach-go{width:100%}
+  .coach-pill{font-family:var(--mono);font-size:11.5px;letter-spacing:.05em;background:var(--panel);
+    color:var(--ignite);border:1px solid color-mix(in srgb,var(--ignite) 55%,var(--line));border-radius:999px;padding:6px 12px;cursor:pointer;
+    max-width:min(420px,calc(100vw - 32px));white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 4px 16px rgba(0,0,0,.3)}
+  .coach-pulse{outline:2px solid var(--ignite)!important;outline-offset:3px;animation:coachPulse 1.1s ease-in-out infinite;position:relative;z-index:2}
+  @keyframes coachPulse{0%,100%{outline-color:var(--ignite)}50%{outline-color:color-mix(in srgb,var(--ignite) 25%,transparent)}}
+  @media (prefers-reduced-motion:reduce){ .coach-pulse{animation:none} }
+  /* #4: a tab Basic just revealed carries a dot until it's visited */
+  .scene-dock nav.rail-nav button.tab-new .cc-nav-label::after,#sceneNav button.tab-new .cc-nav-label::after{content:'';display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--ignite);margin-left:6px;vertical-align:middle}
+  @media(max-width:880px){ #coachPanel{left:16px;bottom:12px} }
 </style>
 </head>
 <body>
@@ -1412,6 +1444,7 @@
 </div>
 
 <div id="actionStatus" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+<div id="coachPanel" class="hidden" role="region" aria-label="Getting started" data-mode=""></div>
 <div id="modal" class="scrim hidden" aria-hidden="true"><div class="modal" id="modalBody" role="dialog" aria-modal="true" aria-label="Orbital Ventures dialog"></div></div>
 <div id="techTip" class="techtip hidden"></div>
 

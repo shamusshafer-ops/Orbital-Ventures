@@ -359,9 +359,12 @@ function startupNew(){
       <button class="btn" onclick="startupBegin('engineer')" style="flex:1">Engineer<br><span class="dim" style="font-size:11px">detailed &amp; unforgiving · ${fM(DIFFICULTY.engineer.startMoney)} start</span></button>
       <button class="btn ghost" onclick="startupBegin('custom')" style="flex:1">Custom<br><span class="dim" style="font-size:11px">your rules · tune in Settings</span></button>
     </div>
+    <p class="muted" style="font-size:12px;margin:10px 0 0">First time? <b>Napkin</b> is the learning setting. A short First Flight checklist will walk you through your first launch.</p>
     <button class="btn ghost" onclick="showStartup()" style="width:100%;margin-top:10px">← Back</button>`);
 }
-function startupBegin(diff){ hideModal(); newGame(diff); _gameStarted=true; render(); showInfrastructureModal(); }
+// #4 (2026-11-14): no Manufacturing Capacity pop-up at the start any more — the First Flight checklist
+// takes over. Manufacturing stays one click away (Cape building, Up Next production rows, Menu).
+function startupBegin(diff){ hideModal(); newGame(diff); _gameStarted=true; render(); }
 function exportSave(){
   try{
     const payload=JSON.stringify({v:SAVE_VERSION, ts:Date.now(), state}); // single-pass; state is JSON-safe (see writeSave) so the inner clone was pure waste
