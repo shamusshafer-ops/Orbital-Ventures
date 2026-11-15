@@ -21,6 +21,11 @@ Two things still apply:
   should warn rather than silently misread — that protects against the two-agent workflow, not an
   install base.
 
+## v73 — Annual Review (spine step 7)
+
+Adds `state.review` (`{year, snap, last, graded, offered, chosen, pending}`) and two counters,
+`state.serviceDelivered` and `state.procDelivered`, used to judge yearly objectives by delta.
+
 ## v72 — Rivals on the world clock (spine step 6)
 
 Adds `state.rivalLead` — the most years the frontier era has led the calendar; rivals run on `state.year + rivalLead`.

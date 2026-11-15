@@ -26,7 +26,7 @@ function createFreshState(difficulty){
     log:[], annals:[], rivalFired:{}, scooped:{}, rivalThreat:{}, rivalState:{}, rivalLead:0, bailouts:0,
     staff:[], assignedAstronaut:null, persEventCooldown:5, proceduralStaffDefs:[],
     departments:defaultDepartments(), // #19: org layer over hired staff (per-dept lead + training)
-    econEvents:[], eventCooldown:6, pgmRoyalty:0, launchPolicy:'nominal', reflights:{}, // spine step 2: absMonth of each recent paid re-flight, per mission
+    econEvents:[], eventCooldown:6, pgmRoyalty:0, launchPolicy:'nominal', reflights:{}, review:null, serviceDelivered:0, procDelivered:0, // spine step 2: absMonth of each recent paid re-flight, per mission
     passiveContracts:[], contractCooldown:{}, contractSignings:{}, engineHeritage:{}, // passive-income contracts (repeatable + cooldown + diminishing)
     publicSupport:SUPPORT_BASE, // #8: program politics — public mood dial
     production:{bays:1,foundry:1,pads:1,qa:1}, // #7: manufacturing capacity — leveled production lines
@@ -1073,6 +1073,7 @@ function tickMonthlyBoundary(){
     tickCrisis(); // P11: the one late-game crisis — trigger check, then escalate/remediate if active
     tryStartQueuedResearch(); // I5: retry monthly in case the queued pick just became affordable/unlocked (the immediate try lives in completeResearch)
     pushMetricHistory(); // #28: snapshot this month's core metrics for the dashboard sparklines
+    if(state.month===0) annualReviewTick(); // spine step 7: the yearly heartbeat
 }
 // #28/E0.5-B: keep the dashboard's recent monthly window, but roll evicted samples into
 // quarter-sized averages for the Chronicle. This preserves a lightweight full-campaign trend instead
@@ -1189,6 +1190,114 @@ function mandateCandidate(){
       && state.rep >= (m.minRep||0)*0.5)
     .sort((a,b)=>(a.minRep||0)-(b.minRep||0))[0]||null;
 }
+/* ---------- Spine step 7: the Annual Review ----------
+   Every January (from 1943) one screen grades last year's objectives and pays them, summarises the year and
+   the rivals, states next year's government funding, and offers three objectives for the coming year of which
+   the player commits to two. Objectives are judged by deltas from a snapshot taken at the review, so they need
+   no per-event bookkeeping beyond two counters (serviceDelivered, procDelivered). The "mission" objective is the
+   old government mandate (same bonus formula and support), which no longer arrives as a random pop-up. A met
+   objective pays money at era prices, reputation and support; a missed one costs REVIEW_MISS_SUPPORT support.
+   Chosen objectives sit in Up Next with progress and a year-end deadline — a goal always within 12 turns. */
+const REVIEW_MISS_SUPPORT=1, REVIEW_PICK=2, REVIEW_OFFER=3;
+function reviewSnapshot(){ return {year:state.year, successes:state.successes||0, flights:state.flights||0, firsts:Object.keys(state.completed||{}).length,
+  research:Object.keys(state.research||{}).length, service:state.serviceDelivered||0, proc:state.procDelivered||0, money:round2(state.money), rep:Math.round(state.rep||0),
+  support:Math.round(publicSupport()), rivalFirsts:Object.keys(state.rivalFired||{}).length}; }
+function objectiveProgress(o, snap){
+  snap=snap||(state.review&&state.review.snap)||reviewSnapshot();
+  switch(o.kind){
+    case 'mission': return {have:state.completed[o.missionId]?1:0, need:1};
+    case 'flights': return {have:(state.successes||0)-snap.successes, need:o.target};
+    case 'research': return {have:Object.keys(state.research||{}).length-snap.research, need:o.target};
+    case 'service': return {have:(state.serviceDelivered||0)-snap.service, need:o.target};
+    case 'contracts': return {have:(state.procDelivered||0)-snap.proc, need:o.target};
+    case 'support': return {have:Math.round(publicSupport()), need:o.target};
+  }
+  return {have:0,need:1};
+}
+function objectiveMet(o,snap){ const p=objectiveProgress(o,snap); return p.have>=p.need; }
+function objectiveLabel(o){
+  switch(o.kind){
+    case 'mission': return `Fly ${o.name}`;
+    case 'flights': return `Fly ${o.target} successful missions`;
+    case 'research': return `Complete ${o.target} research project${o.target>1?'s':''}`;
+    case 'service': return `Deliver ${o.target} service flights`;
+    case 'contracts': return `Fly ${o.target} contract missions`;
+    case 'support': return `Keep public support at ${o.target}% or more through year end`;
+  }
+  return o.kind;
+}
+function reviewOffers(prevSnap){
+  const out=[], ec=eraCostMult(), lastSucc=prevSnap?Math.max(0,(state.successes||0)-prevSnap.successes):1;
+  const add=(o)=>{ o.id=o.kind+(o.missionId?':'+o.missionId:''); if(!out.some(x=>x.id===o.id)) out.push(o); };
+  // 1. the mandate: the next Program mission, or another plausible one
+  const no=nextObjective(), mm=(no&&no.mission&&!state.completed[no.mission.id]&&no.mission)||mandateCandidate();
+  if(mm){ const bonus=round2((mm.payout||2)*MANDATE_BONUS_MULT*(1+0.15*eraIndex(currentEra()))*(1+execMandateBonus()));
+    add({kind:'mission', missionId:mm.id, name:mm.name, reward:{money:bonus, rep:0, support:MANDATE_SUPPORT_WIN}}); }
+  const pool=[];
+  const nFl=Math.max(2,lastSucc); pool.push( // calibrated by the bot: +25% a year was met 35-39% of the time
+   {kind:'flights', target:nFl, reward:{money:round2(1.5*nFl*ec), rep:2*nFl, support:2}});
+  const openR=RESEARCH.filter(r=>!state.research[r.id]&&reqsMet(r)&&researchEraMet(r)).length;
+  if(openR>=2) pool.push({kind:'research', target:openR>=4?3:2, reward:{money:round2(2*ec), rep:4, support:1}});
+  const svc=(state.passiveContracts||[]).filter(c=>c.service&&c.monthsLeft>=12); // only contracts that run all year
+  if(svc.length){ const due=svc.reduce((a,c)=>{ const d=passiveDef(c.id); return a+(d?Math.floor(12/d.service.every):0); },0), tgt=Math.max(1,Math.round(due*0.75)); if(due>0) pool.push({kind:'service', target:tgt, reward:{money:round2(1.2*tgt*ec), rep:3, support:2}}); } // 75%: every flight due was met 4-32% of the time
+  if((state.procDelivered||0)>0||(state.contractOffers||[]).some(o=>!o.service)) pool.push({kind:'contracts', target:2, reward:{money:round2(2.5*ec), rep:3, support:1}});
+  const sup=Math.round(publicSupport()); pool.push({kind:'support', target:Math.max(50,sup), reward:{money:round2(1*ec), rep:2, support:0}}); // hold it: support drifts to 50 daily, so +6 was met 8-12% of the time
+  // fill to REVIEW_OFFER with a deterministic-per-year shuffle of the pool
+  const rnd=mulberry(state.year*7919+((state.procSeq||0)%97));
+  pool.sort(()=>rnd()-0.5).forEach(o=>{ if(out.length<REVIEW_OFFER) add(o); });
+  return out;
+}
+function annualReviewTick(){
+  if(state.over||state.year<=1942) return;
+  const prev=state.review, graded=[];
+  if(prev&&prev.chosen){
+    for(const o of prev.chosen){ const met=objectiveMet(o,prev.snap);
+      if(met){ state.money=round2(state.money+(o.reward.money||0)); state.rep+=(o.reward.rep||0); if(o.reward.support) addSupport(o.reward.support,'reviewObjective'); }
+      else addSupport(-REVIEW_MISS_SUPPORT,'reviewObjectiveMissed');
+      graded.push(Object.assign({},o,{met, progress:objectiveProgress(o,prev.snap)})); }
+  }
+  const last=prev&&prev.snap||null, now=reviewSnapshot();
+  state.review={year:state.year, snap:now, last, graded, offered:reviewOffers(last), chosen:null, pending:true};
+  const met=graded.filter(g=>g.met).length;
+  log('note',`📋 Annual Review ${state.year-1}: ${graded.length?`${met}/${graded.length} objectives met. `:''}Choose next year's objectives.`);
+  timeInterrupt();
+  if(animEnabled) showAnnualReview(); else chooseReviewObjectives(state.review.offered.slice(0,REVIEW_PICK).map(o=>o.id));
+}
+function chooseReviewObjectives(ids){
+  const rv=state.review; if(!rv||!rv.pending) return false;
+  const pick=(ids||[]).map(id=>rv.offered.find(o=>o.id===id)).filter(Boolean).slice(0,REVIEW_PICK);
+  if(pick.length<Math.min(REVIEW_PICK,rv.offered.length)) return false;
+  rv.chosen=pick; rv.pending=false; hideModal();
+  log('note',`📋 Objectives for ${state.year}: ${pick.map(objectiveLabel).join(' · ')}.`);
+  render(); return true;
+}
+let _reviewPick=[];
+function toggleReviewPick(id){ const i=_reviewPick.indexOf(id); if(i>=0) _reviewPick.splice(i,1); else { _reviewPick.push(id); if(_reviewPick.length>REVIEW_PICK) _reviewPick.shift(); } showAnnualReview(); }
+function showAnnualReview(){
+  const rv=state.review; if(!rv||!rv.pending) return;
+  _reviewPick=_reviewPick.filter(id=>rv.offered.some(o=>o.id===id));
+  const s=rv.snap, l=rv.last, d=(k)=>l?s[k]-l[k]:null, sign=v=>v==null?'—':(v>=0?'+':'')+v;
+  const stat=(k,v)=>`<div class="stat"><span class="k">${k}</span><span class="v">${v}</span></div>`;
+  const graded=(rv.graded||[]).map(g=>`<div class="row" style="justify-content:space-between;padding:3px 0"><span>${g.met?'<b style="color:var(--ok)">✓</b>':'<b style="color:var(--bad)">✕</b>'} ${esc(objectiveLabel(g))} <span class="dim">(${Math.min(g.progress.have,g.progress.need)}/${g.progress.need})</span></span><span class="dim">${g.met?`+${fM(g.reward.money)}${g.reward.rep?` · +${g.reward.rep} rep`:''}${g.reward.support?` · +${g.reward.support} support`:''}`:`−${REVIEW_MISS_SUPPORT} support`}</span></div>`).join('');
+  const rivals=RIVALS.map(r=>{ const all=Object.keys(state.rivalFired||{}).filter(k=>k.indexOf(r.id+'|')===0).length; const p=rivalProjectedYear(r);
+    return `<div class="row" style="justify-content:space-between;font-size:12px;padding:2px 0"><span>${r.flag} ${esc(r.name)} · ${all} firsts</span><span class="dim">${p?`next: ${esc(p.goal.name)} ~${p.year}`:'no goals left'}</span></div>`; }).join('');
+  const offers=rv.offered.map(o=>{ const on=_reviewPick.includes(o.id);
+    return `<button class="btn ${on?'':'ghost'}" type="button" role="checkbox" aria-checked="${on}" onclick="toggleReviewPick('${o.id}')" style="width:100%;text-align:left;margin-bottom:6px;${on?'border-color:var(--ignite)':''}">
+      <div style="display:flex;justify-content:space-between;gap:10px"><b>${on?'☑':'☐'} ${esc(objectiveLabel(o))}</b><span style="color:var(--ok);white-space:nowrap">+${fM(o.reward.money)}${o.reward.rep?` · +${o.reward.rep} rep`:''}${o.reward.support?` · +${o.reward.support} support`:''}</span></div></button>`; }).join('');
+  const need=Math.min(REVIEW_PICK,rv.offered.length), ready=_reviewPick.length===need;
+  showModal(`<h2>📋 Annual Review — ${rv.year-1}</h2>
+    <div class="stats" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px">
+      ${stat('Flights',`${l?s.flights-l.flights:s.flights} (${l?s.successes-l.successes:s.successes} successful)`)}${stat('Firsts',`${l?s.firsts-l.firsts:s.firsts}`)}${stat('Research',`${l?s.research-l.research:s.research} done`)}
+      ${stat('Treasury',`${fM(s.money)} <span class="dim">(${l?(d('money')>=0?'+':'')+fM(d('money')):'—'})</span>`)}${stat('Reputation',`${s.rep} <span class="dim">(${sign(d('rep'))})</span>`)}${stat('Public support',`${s.support}%`)}
+    </div>
+    ${graded?`<div class="mission-tag">Last year's objectives</div>${graded}`:''}
+    <div class="mission-tag" style="margin-top:10px">Rivals</div>${rivals}
+    <div class="mission-tag" style="margin-top:10px">Budget</div>
+    <div style="font-size:13px">Government funding next year ≈ <b>${fM(round2(govMonthlyFunding()*12))}</b> at ${s.support}% public support. Meeting objectives lifts support; missing them costs it.</div>
+    <div class="mission-tag" style="margin-top:12px">Commit to ${need} objectives for ${state.year}</div>
+    ${offers}
+    <button class="btn launch" style="width:100%;margin-top:6px" onclick="chooseReviewObjectives(_reviewPick.slice())" ${ready?'':'disabled'}>${ready?`Commit to these ${need} ▸`:`Pick ${need}`}</button>`, true);
+}
 function offerMandate(){
   if(state.mandate || (state.mandateCooldown||0)>0) return;
   const m=mandateCandidate(); if(!m) return;
@@ -1224,7 +1333,7 @@ function tickMandate(){
       log('bad',`📜 Mandate FAILED — ${md.name} was not flown by the deadline. Public support ${MANDATE_SUPPORT_MISS}.`);
       state.mandate=null; state.mandateCooldown=MANDATE_COOLDOWN_MO;
     }
-  } else offerMandate();
+  } // spine step 7: no new random offers — the Annual Review's mission objective replaces them
 }
 function fulfillMandateIfMatch(missionId){
   const md=state.mandate; if(!md || !md.accepted || md.missionId!==missionId) return;
@@ -1387,7 +1496,7 @@ function serviceOfferFor(c){ return (state.contractOffers||[]).find(o=>o.service
 // A service flight flew successfully: credit the contract (called from finalizeLaunch on a proc success).
 function serviceFlightDelivered(m){
   if(!m||!m.service) return; const c=(state.passiveContracts||[]).find(x=>x.id===m.service.contractId&&x.service); if(!c) return;
-  c.flown=(c.flown||0)+1; c.missed=0;
+  c.flown=(c.flown||0)+1; c.missed=0; state.serviceDelivered=(state.serviceDelivered||0)+1;
 }
 function serviceFlightMissed(o){
   const c=(state.passiveContracts||[]).find(x=>x.id===o.service.contractId&&x.service); const d=c&&passiveDef(c.id);
@@ -1495,7 +1604,12 @@ function contractOfferCap(){ return eraIndex(currentEra())>=4 ? 3 : 2; } // Slic
 function contractOfferReferenced(id){
   return state.activeMission===id
     || (state.buildQueue||[]).some(o=>o.missionId===id)
-    || (state.hangar||[]).some(h=>h.missionId===id);
+    || (state.hangar||[]).some(h=>h.missionId===id)
+    // A hangar launch moves its record into the launch transaction, and a long contract flight cruises for
+    // months; an offer that expired under either left the launch unable to resolve (it needs its mission),
+    // and an open launch blocks every later one — a soft-lock found by the bot (2026-11-16).
+    || !!(state.launchTxn&&state.launchTxn.missionId===id&&state.launchTxn.phase!=='resolved'&&state.launchTxn.phase!=='rolled-back')
+    || (state.activeFlights||[]).some(f=>f&&(f.mission===id||f.missionId===id));
 }
 function tickContractOffers(){
   state.contractOffers=(state.contractOffers||[]).filter(o=>{
@@ -3561,6 +3675,14 @@ function launchFromHangar(id,exactHullId,requestId){
   const m=curMission(), v=computeVehicle(), sim=m&&m.profile?simulateMission(m):null;
   const chk=canLaunch(v,m,sim,true,h.spec&&h.spec.docking); // prebuilt-aware (build cost already paid); docking fitment is frozen with this hull
   if(!chk.ok){ log('note',`Can’t fly ${h.name}: ${chk.why}`); announceAction(chk.why); render(); return false; }
+  // Check launch()'s own early-return conditions BEFORE taking ownership of the hull. Otherwise a pending
+  // decision (e.g. a research setback whose dialog hadn't surfaced yet) made launch() return after the
+  // transaction was opened, stranding the hull in 'preparing' and blocking every later launch (bot, 2026-11-16).
+  if(_pendingLaunch||_pendingLive||_pendingOrbitOps||_pendingSetback||_pendingRivalDisaster){
+    announceAction('Resolve the decision waiting for you before launching.');
+    try{ maybeShowSetback(); maybeShowRivalDisaster(); }catch(e){}
+    return false;
+  }
   const begun=beginLaunchTransaction({requestId,source:'hangar',missionId:m.id,orderId:h.id,hullId:h.hullId,
     quote:chk.quote,spec:h.spec,timing:{startedAbs:absDay()}});
   if(!begun.ok) return false;
@@ -7765,6 +7887,7 @@ function finalizeLaunch(ctx, ops){
       if(ambCeleb && !pendingCelebration) pendingCelebration=ambCeleb;
     }
     if(m.proc) state.contractOffers=(state.contractOffers||[]).filter(o=>o.id!==m.id); // E1.3: one-shot — consumed on success, not reflown
+    if(m.proc) state.procDelivered=(state.procDelivered||0)+1; // step 7: counted for annual objectives
     if(m.proc&&m.service) serviceFlightDelivered(m); // step 5a
     if(m.deliverModule&&!m.stationVisit){ // surface delivery keeps the established settlement path; orbital station transfer is handled atomically by settleStationVisit above
       // The cost is charged unconditionally and deliberately: you built and flew the module, so it is

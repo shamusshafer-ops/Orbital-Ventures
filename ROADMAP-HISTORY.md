@@ -8111,3 +8111,33 @@ seeds to 2000, same bot on both builds: median gap player-first → rival claim 
 
 Tests: new `tests/test-rival-world-clock.js` (16 checks). Full sweep 181/182, 1 intentional skip, 0 unexpected.
 
+## 2026-11-16 — Spine step 7: the Annual Review (Claude)
+
+From `EVALUATION-2026-11-GAMEPLAY.md` §5.4 / §7 step 7.
+
+- Every January from 1943 `annualReviewTick()` grades last year's two objectives (paid on success: money at era
+  prices, rep, support; −1 support per miss), snapshots the year, and offers three objectives for the coming
+  year; `showAnnualReview()` shows the year's results, the rivals (tally + next projected goal), next year's
+  government funding and the three choices; the player commits to two (`chooseReviewObjectives`). Headless
+  auto-commits to the first two. Objective kinds: fly a specific mission (the old government mandate — same
+  bonus formula and support), N successful flights, N research projects, N service deliveries, N contract
+  flights, hold public support. Progress is a delta from the review snapshot plus two counters
+  (`serviceDelivered`, `procDelivered`). Chosen objectives sit in Up Next with progress and a year-end deadline.
+  SAVE_VERSION 73.
+- Mandates no longer arrive as random pop-ups (existing ones still resolve); budget hearings after fatal crewed
+  losses stay as consequences.
+- Targets calibrated with the bot: +25% flights a year was met 35–39% of the time → match last year; "every
+  service flight due" 4–32% → 75% of those due from contracts running all year; "+6 support" 8–12% (support
+  reverts to 50 daily) → hold it, floor 50. Overall met rate 32–38% → 52–58%.
+- **Two pre-existing soft-locks fixed** (found because the bot stalled):
+  1. A contract offer could expire while its rocket was in launch preparation (a hangar launch moves the record
+     into the transaction) or in cruise; the launch then had no mission, and an open launch blocks all later
+     launches. `contractOfferReferenced` now counts an open launch transaction and active flights.
+  2. `launchFromHangar` took ownership of the hull and opened the transaction before calling `launch()`, which
+     returns early if a decision is pending (e.g. a research setback whose dialog had not surfaced). The hull
+     was stranded in 'preparing' forever. The pending check now runs before anything is committed.
+
+Bot, four seeds to 2000: political stops per year 0.31–0.34 (scattered mandates) → 1.0 (one review); all
+solvent at ~200 flights. Tests: new `tests/test-annual-review.js` (22 checks); soft-lock checks added to
+`tests/test-service-contracts.js` (31). Full sweep 182/183, 1 intentional skip, 0 unexpected.
+

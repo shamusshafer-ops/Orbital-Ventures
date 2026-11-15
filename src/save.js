@@ -1,6 +1,6 @@
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=72; // v72: state.rivalLead — years the world clock leads the calendar (spine step 6).
+const SAVE_VERSION=73; // v73: state.review + serviceDelivered/procDelivered counters — the Annual Review (spine step 7).
 // Pre-v62 saves with in-progress flight ownership are rejected rather than assigned a fabricated
 // outcome; ordinary v61 lifecycle records are remapped through the schema-2 factories on load.
 //

@@ -150,6 +150,12 @@ function answerPending(){
   if(_pendingHearing){ p.push('hearing'); resolveHearing('defend'); }
   if(_pendingRivalDisaster){ p.push('rivaldisaster'); try{ declineRivalRescue(); }catch(e){} _pendingRivalDisaster=null; }
   if(state.mandate&&!state.mandate.accepted&&!state.mandate.declined){ p.push('mandate'); try{ acceptMandate(); }catch(e){} }
+  if(state.review&&state.review.pending){ p.push('review'); const g=state.review.graded||[]; stats.objMet=(stats.objMet||0)+g.filter(x=>x.met).length; stats.objKinds=stats.objKinds||{}; g.forEach(x=>{ const k=stats.objKinds[x.kind]=stats.objKinds[x.kind]||[0,0]; k[1]++; if(x.met) k[0]++; }); stats.objTotal=(stats.objTotal||0)+g.length; try{ // pick the two it can most plausibly meet, as a player would
+      const feas=o=>{ switch(o.kind){ case 'mission': { const m=missionById(o.missionId); return m&&missionFlyable(m)&&design(m)?3:0; }
+        case 'flights': return o.target<=Math.max(2,(stats.lastYearSucc||2))?2.5:1; case 'service': return 2.6; case 'contracts': return 2.2;
+        case 'research': return 1.8; case 'support': return 1.2; } return 0; };
+      const pick=state.review.offered.slice().sort((a,b)=>feas(b)-feas(a)||(b.reward.money-a.reward.money)).slice(0,2);
+      chooseReviewObjectives(pick.map(o=>o.id)); stats.lastYearSucc=0; }catch(e){} }
   if(state.crisis&&state.crisis.pending){ p.push('crisis'); try{ resolveCrisis('endured'); }catch(e){} }
   p.forEach(k=>bump(stats.modals,k));
   return p;
@@ -197,7 +203,7 @@ while(state.year<YEAR_END && stats.turns<4000){
     const before=state.flights||0, wins=Object.keys(state.completed||{}).length;
     try{ launchFromHangar(h.id,h.hullId,R()); }catch(e){ bump(stats.stuck,'launch-throw'); }
     answerLaunch();
-    if((state.flights||0)>before){ stats.launches++; acts.push('launch '+m.id); }
+    if((state.flights||0)>before){ stats.launches++; acts.push('launch '+m.id); stats.lastYearSucc=(stats.lastYearSucc||0)+1; }
   }
   // build toward the advisor's target, else repeat a profitable flyable mission
   const openService=(state.contractOffers||[]).filter(o=>o.service&&!contractOfferReferenced(o.id)).length;
@@ -268,7 +274,8 @@ let maxDecade=[0,'']; for(const id in perDecade){ const ys=perDecade[id].sort((a
 const repeats={}; timeline.forEach(t=>(t.acts||'').split('; ').forEach(a=>{ if(a.startsWith('launch ')){ const id=a.slice(7).replace(' (window)',''); repeats[id]=(repeats[id]||0)+1; } }));
 const decisionStops=Object.entries(stats.modals).filter(([k])=>k.startsWith('launch:')).reduce((a,[,v])=>a+v,0);
 if(process.env.BOT_LEDGER){ require('fs').writeFileSync(process.env.BOT_LEDGER, JSON.stringify(LEDGER)); }
-console.log(JSON.stringify({rivalClaims:RIVAL_CLAIMS,crash:stats.crash||0,serviceFlown:stats.serviceFlown||0,firstInsolvency:stats.firstInsolvency?+stats.firstInsolvency.toFixed(2):null,decisionsPerLaunch:+(decisionStops/Math.max(1,stats.launches)).toFixed(2),decisionKinds:Object.fromEntries(Object.entries(stats.modals).filter(([k])=>k.startsWith('launch:'))),maxPerDecade:maxDecade,thinWindows:thin.length,thinRuns,procFlown:stats.procFlown||0,topRepeats:Object.entries(repeats).sort((a,b)=>b[1]-a[1]).slice(0,4),eraAt:ERAS[eraIndex(currentEra())].id,programsDone:PROGRAMS.filter(p=>p.missions.every(id=>state.completed[id])).map(p=>p.id)}));
+const polit=['mandate','review','hearing'].reduce((a,k)=>a+(stats.modals[k]||0),0);
+console.log(JSON.stringify({politicalPerYear:+(polit/Math.max(1,state.year-1942)).toFixed(2),politicalKinds:{mandate:stats.modals.mandate||0,review:stats.modals.review||0,hearing:stats.modals.hearing||0},objectives:(stats.objMet||0)+'/'+(stats.objTotal||0),objKinds:stats.objKinds||{},rivalClaims:RIVAL_CLAIMS,crash:stats.crash||0,serviceFlown:stats.serviceFlown||0,firstInsolvency:stats.firstInsolvency?+stats.firstInsolvency.toFixed(2):null,decisionsPerLaunch:+(decisionStops/Math.max(1,stats.launches)).toFixed(2),decisionKinds:Object.fromEntries(Object.entries(stats.modals).filter(([k])=>k.startsWith('launch:'))),maxPerDecade:maxDecade,thinWindows:thin.length,thinRuns,procFlown:stats.procFlown||0,topRepeats:Object.entries(repeats).sort((a,b)=>b[1]-a[1]).slice(0,4),eraAt:ERAS[eraIndex(currentEra())].id,programsDone:PROGRAMS.filter(p=>p.missions.every(id=>state.completed[id])).map(p=>p.id)}));
 console.log(JSON.stringify({diff:DIFF,seed:SEED,endYear:state.year,over:!!state.over,money:Math.round(state.money),rep:Math.round(state.rep),flights:state.flights,
   turns:stats.turns,idleTurns:stats.idleTurns,daysPerTurnMedian:med(stats.daysPerTurn),daysPerTurnMean:Math.round(sum(stats.daysPerTurn)/stats.turns),
   turnsPerYear:Math.round(stats.turns/Math.max(1,state.year-1942)),research:stats.research,researchedNodes:Object.keys(state.research).length,contracts:stats.contractsSigned,

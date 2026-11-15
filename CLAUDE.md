@@ -29,8 +29,9 @@ topology — staging, smoke and the plume read them. Needs a human look at an as
 **Gameplay spine (2026-11-16, branch `gameplay-spine`):** working through EVALUATION-2026-11-GAMEPLAY.md §7 in
 order; steps 1 (frontier era), 2 (re-flight saturation, SAVE_VERSION 69) and 3 (launch commit policy,
 SAVE_VERSION 70), 4 (opening: checklist research step after the first flight, with a cash reserve), 5a (service contracts,
-SAVE_VERSION 71) 5b (era cost growth `eraCostMult()`, crash programs) and 6 (rivals on the world clock `rivalYear()`,
-SAVE_VERSION 72) done. RULE: a test of the manual decision panels must set `state.launchPolicy='manual'` —
+SAVE_VERSION 71) 5b (era cost growth `eraCostMult()`, crash programs) 6 (rivals on the world clock `rivalYear()`,
+SAVE_VERSION 72) and 7 (Annual Review, SAVE_VERSION 73) done. RULE: when the bot stalls, look for a stuck
+`state.launchTxn` first — two real soft-locks were found that way. RULE: a test of the manual decision panels must set `state.launchPolicy='manual'` —
 new games default to Nominal, which answers weather/live/reserve/orbit calls itself. Measure every step with `tools/autoplay-bot.js` before and after.
 RULE: `currentEra()` is the WORLD era (calendar or Program-opened frontier) — use `calendarEraIndex()` only
 when you specifically mean the calendar.

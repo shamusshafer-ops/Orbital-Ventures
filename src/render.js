@@ -282,6 +282,10 @@ function outlinerItems(){
   if(sc) push('★', sc.title+' ('+fM(sc.bonus)+')', (sc.deadlineAbs-nowM)*30, ()=>setTab('missions'), (sc.deadlineAbs-nowM)<=4?'var(--warn)':'var(--ignite)');
   // P11/I3: whichever crisis is active, always at the top (eta 0) — a standing decision, not a countdown
   if(state.crisis){ const cd=activeCrisisDef(); if(cd) push(cd.icon, `${cd.name} — ${Math.round(state.crisis.severity*100)}% severity`, 0, ()=>showCrisisModal(), 'var(--bad)'); }
+  // step 7: this year's objectives — a goal within twelve turns, with progress
+  if(state.review&&state.review.chosen){ const daysLeft=Math.max(0,absDayOf(state.year+1,0,0)-nowD);
+    state.review.chosen.forEach(o=>{ const p=objectiveProgress(o), met=p.have>=p.need;
+      push(met?'✓':'🎯', `${objectiveLabel(o)} (${Math.min(p.have,p.need)}/${p.need})`, met?Infinity:daysLeft, ()=>{ if(o.missionId) selectMission(o.missionId); }, met?'var(--ok)':(daysLeft<=60?'var(--warn)':'var(--ignite)')); }); }
   // step 5a: open service flights — a deadline you can act on, and a stop point for "next event"
   (state.contractOffers||[]).forEach(o=>{ if(!o.service) return; const left=(o.expiresAbs-nowM+1)*30;
     push('🛰', `Service flight: ${o.name} (${fM(o.payout)})`, Math.max(0,left), ()=>{ selectMission(o.id); }, left<=60?'var(--warn)':'var(--readout)'); });

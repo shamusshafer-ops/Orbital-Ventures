@@ -1418,6 +1418,7 @@ const SUPPORT_DELTA={             // outcome-driven support swings
 // e.g. every mission-outcome flavor stays distinct rather than collapsing to one "mission" bucket,
 // since "a crewed loss" and "a routine success" are very different answers to "why did support move".
 const SUPPORT_REASON_LABELS={
+  reviewObjective:'Annual objective met', reviewObjectiveMissed:'Annual objective missed',
   hearingFunded:'Budget hearing — funded', hearingDefended:'Budget hearing — defended the record',
   hearingBlamed:'Budget hearing — blamed for setbacks', mandateMissed:'National mandate missed',
   mandateWon:'National mandate achieved', contractSigned:'Contract signed', scoopBonus:'News scoop',

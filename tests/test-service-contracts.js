@@ -70,6 +70,17 @@ check('outliner lists open service flights as deadlines', outlinerItems().some(i
   check('the Bench refuses an orphaned hull', hangarToBench('h_orph')===false);
 }
 
+// an offer must survive its own launch (soft-lock found 2026-11-16: an expired offer stranded the launch)
+{
+  animEnabled=false; newGame('engineer'); state.money=50; state.flights=1;
+  state.contractOffers=[{id:'pc_t', proc:true, name:'Upper-Atmosphere Research', reqDv:1000, payload:0.05, crew:0, days:0, minRep:0, payout:3, rep:3, expiresAbs:absMonth()+1}];
+  state.launchTxn={id:'ltx_fake', missionId:'pc_t', phase:'preparing'}; state.year+=1; tickContractOffers();
+  check('an offer does not expire while a launch for it is open', (state.contractOffers||[]).some(o=>o.id==='pc_t'));
+  state.launchTxn=null; state.activeFlights=[{id:'f1', mission:'pc_t', deferred:true}]; tickContractOffers();
+  check('…nor while its flight is in cruise', (state.contractOffers||[]).some(o=>o.id==='pc_t'));
+  state.activeFlights=[]; tickContractOffers();
+  check('…and does once nothing references it', !(state.contractOffers||[]).some(o=>o.id==='pc_t'));
+}
 check('SAVE_VERSION bumped for service contracts', SAVE_VERSION>=71);
 console.log(pass+'/'+(pass+fail)+' checks passed');
 process.exit(fail?1:0);
