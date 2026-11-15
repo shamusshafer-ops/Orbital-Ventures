@@ -282,6 +282,9 @@ function outlinerItems(){
   if(sc) push('★', sc.title+' ('+fM(sc.bonus)+')', (sc.deadlineAbs-nowM)*30, ()=>setTab('missions'), (sc.deadlineAbs-nowM)<=4?'var(--warn)':'var(--ignite)');
   // P11/I3: whichever crisis is active, always at the top (eta 0) — a standing decision, not a countdown
   if(state.crisis){ const cd=activeCrisisDef(); if(cd) push(cd.icon, `${cd.name} — ${Math.round(state.crisis.severity*100)}% severity`, 0, ()=>showCrisisModal(), 'var(--bad)'); }
+  // step 5a: open service flights — a deadline you can act on, and a stop point for "next event"
+  (state.contractOffers||[]).forEach(o=>{ if(!o.service) return; const left=(o.expiresAbs-nowM+1)*30;
+    push('🛰', `Service flight: ${o.name} (${fM(o.payout)})`, Math.max(0,left), ()=>{ selectMission(o.id); }, left<=60?'var(--warn)':'var(--readout)'); });
   // committed launch window
   if(state.committedWindow){ const m=MISSIONS.find(x=>x.id===state.committedWindow.missionId);
     push('☄', 'Window: '+(m?m.name:'mission'), state.committedWindow.abs-nowD, ()=>setTab('map'), 'var(--readout)'); }
@@ -885,7 +888,7 @@ function availableContracts(){
 function contractsRailSummary(){
   const openMissions=availableContracts();
   const signable=PASSIVE_CONTRACT_DEFS.filter(d=>passiveStatus(d.id)==='available');
-  const signableMo=round2(signable.reduce((a,d)=>a+passiveIncomeNow(d.id),0));
+  const signableMo=round2(signable.filter(d=>!isServiceContract(d)).reduce((a,d)=>a+passiveIncomeNow(d.id),0)); // service contracts pay per flight
   return {openMissions, signable, signableMo, activeMo:passiveMonthlyIncome(), count:openMissions+signable.length};
 }
 // Preview body for the persistent-rail Contracts accordion section: standing income, the top
@@ -900,7 +903,7 @@ function railContractsHTML(){
     html+=top.map(d=>{
       const inc=passiveIncomeNow(d.id);
       return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px;font-size:12px">
-        <div style="min-width:0"><div style="color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${passiveContractDisplay(d).name}</div><div class="dim">+${fM(inc)}/mo · ${fM(d.setup)} setup</div></div>
+        <div style="min-width:0"><div style="color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${passiveContractDisplay(d).name}</div><div class="dim">${isServiceContract(d)?`${fM(round2(inc*d.service.every+(d.service.allow||0)))}/flight every ${d.service.every} mo`:`+${fM(inc)}/mo`} · ${fM(passiveSetupCost(d))} setup</div></div>
         <button class="btn" style="font-size:11px;padding:3px 8px;flex-shrink:0" onclick="signPassiveContract('${d.id}')">Sign</button>
       </div>`;
     }).join('');
@@ -4071,7 +4074,9 @@ function renderCCLegacyStrip(){
   const orderRows=orders.map(o=>ccStripProg('🏗', o.name, fmtTimeLeft(o.monthsLeft)+' left',
      clampA(Math.round(100*(o.monthsTotal-o.monthsLeft)/Math.max(1,o.monthsTotal)),0,100), 'var(--dom-engineering)')).join('');
   const hangar=hangarList();
-  const hangarRows=hangar.map(h=>{ const view=readyHullActionView(h), q=view.quote, a=view.action;
+  const hangarRows=hangar.map(h=>{ const view=readyHullActionView(h);
+    if(!view) return `<div class="cc-strip-prow dim">✕ <b>${esc(h.name)}</b> · ${esc(h.hullId)} · contract closed — scrap it in Manufacturing</div>`;
+    const q=view.quote, a=view.action;
     return `<div class="cc-strip-prow"><span class="cc-strip-pname">✓ <b>${h.name}</b> · ${esc(h.hullId)} · ${fM(q.flightBurn)} + ${fM(q.launchCarry)} reserve</span><button class="btn launch" style="padding:1px 8px;font-size:12px;margin-left:auto" onclick="launchFromHangar('${h.id}','${h.hullId}','${a.id}')" ${actionButtonAttrs(a)}>Fly ▸</button></div>`; }).join('');
   const buildEmpty=(!orders.length&&!hangar.length)?`<div class="cc-strip-prow dim">🏗 Nothing building — commit a launch from the Bench.</div>`:'';
   el.innerHTML=`
@@ -11025,12 +11030,15 @@ function renderContractOffers(){
     </div>`;
   }).join('');
 }
+function serviceSpecText(d){ const m=serviceMission({income:0},d); const like=d.service.like&&MISSIONS.find(x=>x.id===d.service.like);
+  if(like) return `flies the ${like.name} profile`;
+  return `${m.crew?`${m.crew} crew · `:''}${m.payload?`${m.payload} t · `:''}${Math.round(m.reqDv).toLocaleString()} m/s`; }
 function renderPassiveContracts(targetId){
   const box=$(targetId||'passiveCard'); if(!box) return;
   const totMo=passiveMonthlyIncome();
   const activeN=passiveActiveCount(), capN=passiveMaxActive();
   let html=`<h2>Passive Income${totMo>0?` <span class="pill ok">+${fM(totMo)}/mo</span>`:''}</h2>
-    <p class="muted" style="font-size:12px;margin:-4px 0 10px">Standing contracts pay a fixed monthly income for a fixed term, then expire onto a cooldown. Each renewal of the same contract pays a little less. Portfolio: ${activeN}/${capN} active.</p>`;
+    <p class="muted" style="font-size:12px;margin:-4px 0 10px">Service contracts pay per delivery: each posts a service flight every few months — fly it before the next is due or it pays nothing. Licensing and doctrine retainers pay monthly. Terms expire onto a cooldown; each renewal pays a little less. Portfolio: ${activeN}/${capN} active.</p>`;
   let any=false;
   for(const cat in PASSIVE_CATS){
     const rows=PASSIVE_CONTRACT_DEFS.filter(d=>d.cat===cat).map(d=>{
@@ -11043,7 +11051,9 @@ function renderPassiveContracts(targetId){
       if(ac){
         const pct=Math.round(100*(d.term-ac.monthsLeft)/d.term);
         pill=' <span class="pill ok">active</span>';
-        right=`<div class="reward"><div class="p">+${fM(ac.income)}/mo</div><div class="r">${ac.monthsLeft} mo left</div></div>`;
+        right=ac.service
+          ? `<div class="reward"><div class="p">${fM(serviceFee(ac,d))}/flight</div><div class="r">${serviceOfferFor(ac)?'flight on the board':`next in ${Math.max(0,ac.dueIn||0)} mo`} · ${ac.flown||0} flown${ac.missed?` · ${ac.missed} missed`:''} · ${ac.monthsLeft} mo left</div></div>`
+          : `<div class="reward"><div class="p">+${fM(ac.income)}/mo</div><div class="r">${ac.monthsLeft} mo left</div></div>`;
         btn=`<button class="btn" disabled>Running</button>`;
         right+=`<div style="width:100%;height:4px;background:var(--panel2);border-radius:3px;margin-top:6px"><div style="width:${pct}%;height:100%;background:var(--ok);border-radius:3px"></div></div>`;
       } else if(st==='cooldown'){
@@ -11052,17 +11062,21 @@ function renderPassiveContracts(targetId){
         btn=`<button class="btn" disabled>On cooldown</button>`;
       } else if(st==='capped'){
         pill=' <span class="pill lock">portfolio full</span>';
-        right=`<div class="reward"><div class="p">+${fM(passiveIncomeNow(d.id))}/mo</div><div class="r">${d.term} mo term</div></div>`;
+        right=`<div class="reward"><div class="p">${isServiceContract(d)?`${fM(round2(passiveIncomeNow(d.id)*d.service.every+(d.service.allow||0)))}/flight`:`+${fM(passiveIncomeNow(d.id))}/mo`}</div><div class="r">${d.term} mo term</div></div>`;
         btn=`<button class="btn" disabled title="Let a running contract expire to free a slot (${activeN}/${capN} active)">Portfolio full</button>`;
       } else {
-        const inc=passiveIncomeNow(d.id), afford=state.money>=d.setup;
-        right=`<div class="reward"><div class="p">+${fM(inc)}/mo</div><div class="r">${d.term} mo term</div></div>`;
-        btn=`<button class="btn" onclick="signPassiveContract('${d.id}')" ${afford?'':'disabled'}>Sign · ${fM(d.setup)}</button>`;
+        const inc=passiveIncomeNow(d.id), setup=passiveSetupCost(d), afford=state.money>=setup;
+        right=isServiceContract(d)
+          ? `<div class="reward"><div class="p">${fM(round2(inc*d.service.every+(d.service.allow||0)))}/flight</div><div class="r">every ${d.service.every} mo · ${Math.floor(d.term/d.service.every)} flights</div></div>`
+          : `<div class="reward"><div class="p">+${fM(inc)}/mo</div><div class="r">${d.term} mo term</div></div>`;
+        btn=`<button class="btn" onclick="signPassiveContract('${d.id}')" ${afford?'':'disabled'}>Sign · ${fM(setup)}</button>`;
       }
-      const meta=`base +${fM(d.income)}/mo · setup ${fM(d.setup)} · ${(d.cooldown||PASSIVE_COOLDOWN)} mo cooldown${d.support?` · +${d.support} public support`:''}${dimNote}`;
+      const meta=isServiceContract(d)
+        ? `${d.service.label} · ${serviceSpecText(d)} · setup ${fM(passiveSetupCost(d))} · ${(d.cooldown||PASSIVE_COOLDOWN)} mo cooldown${d.support?` · +${d.support} public support`:''}${dimNote}`
+        : `base +${fM(d.income)}/mo · setup ${fM(d.setup)} · ${(d.cooldown||PASSIVE_COOLDOWN)} mo cooldown${d.support?` · +${d.support} public support`:''}${dimNote}`;
       const disp=passiveContractDisplay(d);
       const signable = !ac && st!=='cooldown' && st!=='capped';
-      const gapWidget = (signable && state.money<d.setup) ? affordWidgetHTML(d.setup) : '';
+      const gapWidget = (signable && state.money<passiveSetupCost(d)) ? affordWidgetHTML(passiveSetupCost(d)) : '';
       return `<div class="item"><div class="body"><div class="title">${disp.name}${pill}</div>
         <div class="sub">${disp.blurb}</div>
         <div class="sub num" style="margin-top:4px;color:var(--readout)">${meta}</div>${gapWidget}</div>${right}${btn}</div>`;
@@ -11076,7 +11090,7 @@ function renderPassiveContracts(targetId){
 }
 
 function renderFlightContractsPopout(){
-  const rows=MISSIONS.filter(m=>!state.completed[m.id] && state.rep>=m.minRep && missionTechMet(m)).map(m=>`<div class="item"><div class="body"><div class="title">${esc(m.name)}</div><div class="sub">${esc(m.blurb||'')}</div><div class="sub num" style="margin-top:4px;color:var(--readout)">+${fM(m.payout)} · +${m.rep} rep</div></div><button class="btn" onclick="selectMission('${m.id}');closeContractsPopout();setTab('bench')">Fly ▸</button></div>`).join('');
+  const rows=MISSIONS.filter(m=>!state.completed[m.id] && state.rep>=m.minRep && missionTechMet(m)).map(m=>`<div class="item"><div class="body"><div class="title">${esc(m.name)}</div><div class="sub">${(m.blurb||'')}</div><div class="sub num" style="margin-top:4px;color:var(--readout)">+${fM(m.payout)} · +${m.rep} rep</div></div><button class="btn" onclick="selectMission('${m.id}');closeContractsPopout();setTab('bench')">Fly ▸</button></div>`).join('');
   const offers=renderContractOffers();
   return `<button class="rail-acc-btn ${contractAccordion.flight?'open':''}" onclick="toggleContractAccordion('flight')"><span>Flight Contracts</span><span class="rail-acc-sign"></span></button><div class="rail-acc-body ${contractAccordion.flight?'open':''}">${offers}${rows||'<p class="dim" style="font-size:12px">No flyable contracts available right now.</p>'}</div>`;
 }

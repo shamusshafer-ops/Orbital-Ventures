@@ -1294,26 +1294,38 @@ const PASSIVE_COOLDOWN=12;          // default months a contract rests before it
 // bandwidth to run parallel retainers) but stays a real constraint through the mid-game where most
 // of the roster (9+ rep-gated contracts by station_shuttle era) would otherwise all fit at once.
 const PASSIVE_MAX_ACTIVE_BASE=3, PASSIVE_MAX_ACTIVE_PER_ERA=1;
+// Spine step 5a (2026-11-16): SERVICE contracts. The bot's money ledger showed standing contracts were the
+// biggest income source of the 1940s-50s — a 3.6x return with no flights. Contracts with a `service` spec
+// (satellite, tourism, defense) now pay per delivery: every `every` months they post a service flight (a
+// procedural mission sized by the spec) that pays income x every; it stays open until the next is due.
+// A missed one pays nothing and costs SERVICE_MISS_REP; SERVICE_MISS_LIMIT misses in a row and the client
+// walks. Setup is SERVICE_SETUP_MULT of the old fee because the flights now cost money. Fees are cost-plus:
+// the old margin (income x every) plus `allow`, a launch allowance sized to a typical vehicle for the job
+// (first measured run without it: weather-satellite flights paid $5.4M against ~$5-7M rockets). Licensing and
+// doctrine retainers have no `service` and stay passive (royalties, not launches).
+const SERVICE_SETUP_MULT=0.5, SERVICE_MISS_REP=2, SERVICE_MISS_LIMIT=2;
+function isServiceContract(d){ return !!(d&&d.service); }
+function passiveSetupCost(d){ return d?round2(d.setup*(isServiceContract(d)?SERVICE_SETUP_MULT:1)):0; }
 function passiveMaxActive(){ return PASSIVE_MAX_ACTIVE_BASE + PASSIVE_MAX_ACTIVE_PER_ERA*eraIndex(currentEra()); }
 const PASSIVE_CONTRACT_DEFS=[
-  {id:'svc_orbit', cat:'sat', name:'Satellite Servicing Fleet', income:2.6, term:30, setup:20.0,
+  {id:'svc_orbit', cat:'sat', service:{every:6, payload:2.0, allow:7, label:'servicing tug'},  name:'Satellite Servicing Fleet', income:2.6, term:30, setup:20.0,
     reqResearch:'onorbit_servicing', minRep:150, blurb:'Robotic tugs refuel, repair and relocate customer satellites on retainer — the fleet On-Orbit Servicing research put in reach.'},
   // satellite services — open up once you can reach orbit
-  {id:'sat_weather', cat:'sat', name:'Weather Satellite Operations', income:0.9, term:36, setup:8.0,
+  {id:'sat_weather', cat:'sat', service:{every:6, payload:0.3, allow:5, label:'weather satellite'},  name:'Weather Satellite Operations', income:0.9, term:36, setup:8.0,
     reqMission:'first_sat', minRep:40, blurb:'Feed meteorological data to shipping, agriculture and media clients under a commercial met-data contract.',
     eraVariants:[{maxEra:3, blurb:'Operate a meteorological satellite for the national weather service.'}]}, // P6 6.3: government weather service (eras 0-3) → commercial met-data (era 4+)
-  {id:'sat_comms', cat:'sat', name:'Commercial Comms Relay', income:1.6, term:36, setup:16.0,
+  {id:'sat_comms', cat:'sat', service:{every:6, payload:0.6, allow:5.5, label:'relay satellite'},  name:'Commercial Comms Relay', income:1.6, term:36, setup:16.0,
     reqMission:'first_sat', minRep:90, blurb:'Lease transponder capacity on a commercial communications relay.',
     eraVariants:[{maxEra:3, name:'Experimental Comms Relay', blurb:'Lease capacity on an experimental communications relay for the national telecom authority.'}]}, // P6 6.3: experimental/state relay (eras 0-3) → commercial transponder lease (era 4+)
-  {id:'sat_imaging', cat:'sat', name:'Earth-Imaging Constellation', income:2.4, term:36, setup:24.0,
+  {id:'sat_imaging', cat:'sat', service:{every:6, payload:1.0, allow:6, label:'imaging satellite'},  name:'Earth-Imaging Constellation', income:2.4, term:36, setup:24.0,
     reqMission:'first_sat', minRep:140, blurb:'Sell multispectral imagery to agriculture, insurance and mapping clients.',
     eraVariants:[{maxEra:3, name:'Cartographic Survey Satellite', blurb:'Return survey imagery to the national mapping and resource-survey office.'}]}, // P6 6.3: state cartographic survey (eras 0-3) → commercial imaging constellation (era 4+)
   // human spaceflight / tourism
-  {id:'tour_suborbit', cat:'tour', name:'Suborbital Tourism', income:0.7, term:30, setup:6.0,
+  {id:'tour_suborbit', cat:'tour', service:{every:4, reqDv:2900, payload:0, crew:1, days:0.2, allow:1.5, label:'suborbital tourist flight'},  name:'Suborbital Tourism', income:0.7, term:30, setup:6.0,
     reqMission:'first_astro', minRep:70, blurb:'Fly paying passengers on suborbital arcs to the edge of space.'},
-  {id:'tour_orbital', cat:'tour', name:'Orbital Tourism', income:1.8, term:30, setup:18.0,
+  {id:'tour_orbital', cat:'tour', service:{every:5, payload:0, crew:1, days:3, allow:7, label:'orbital tourist flight'},  name:'Orbital Tourism', income:1.8, term:30, setup:18.0,
     reqMission:'crew_orbit', minRep:120, blurb:'Private astronauts buy seats for a few days in orbit.'},
-  {id:'tour_lunar', cat:'tour', name:'Lunar Flyby Tourism', income:4.5, term:36, setup:48.0,
+  {id:'tour_lunar', cat:'tour', service:{every:9, like:'luna_flyby', allow:20, label:'lunar tourist flight'},  name:'Lunar Flyby Tourism', income:4.5, term:36, setup:48.0,
     reqMission:'luna_flyby', minRep:240, blurb:'The ultimate ticket: a free-return loop around the Moon.'},
   // technology licensing — needs the technology, not just a flight
   {id:'lic_recovery', cat:'lic', name:'Booster-Recovery Licensing', income:2.0, term:36, setup:20.0,
@@ -1339,13 +1351,13 @@ const PASSIVE_CONTRACT_DEFS=[
   {id:'doct_science', cat:'doct', name:'Research Consortium Grant', income:1.6, term:30, setup:12.0,
     reqDoctrine:'science', minRep:60, blurb:'A standing multi-university grant funding your ongoing science manifest.'},
   // military & defense — pay more, shorter terms (more churn), and lift public support
-  {id:'mil_launch', cat:'mil', name:'Defense Launch Services', income:2.2, term:24, setup:20.0, cooldown:10, support:3,
+  {id:'mil_launch', cat:'mil', service:{every:6, payload:1.5, allow:6.5, label:'defense payload'},  name:'Defense Launch Services', income:2.2, term:24, setup:20.0, cooldown:10, support:3,
     reqMission:'first_sat', minRep:90, blurb:'Assured-access launch for military payloads on a standing contract.',
     eraVariants:[{maxEra:3, name:'Strategic Launch Mandate', blurb:'Guarantee the government assured access to space for military payloads by direct mandate — no interruption tolerated for national security.'}]}, // P6 6.3: Cold War strategic mandate (eras 0-3) → standing commercial defense contract (era 4+)
-  {id:'mil_recon', cat:'mil', name:'Reconnaissance Satellite Program', income:3.2, term:24, setup:32.0, cooldown:10, support:4,
+  {id:'mil_recon', cat:'mil', service:{every:6, payload:1.2, allow:6, label:'reconnaissance satellite'},  name:'Reconnaissance Satellite Program', income:3.2, term:24, setup:32.0, cooldown:10, support:4,
     reqMission:'first_sat', minRep:160, blurb:'Build and operate classified imaging satellites for the defense ministry.',
     eraVariants:[{minEra:4, name:'Commercial Reconnaissance Partnership', blurb:'License classified-grade imaging capacity to the intelligence community under a commercial remote-sensing partnership.'}]}, // P6 6.3: classic state recon program (eras 0-3) → commercial-partnership imagery (era 4+)
-  {id:'mil_warning', cat:'mil', name:'Missile-Warning Constellation', income:4.0, term:30, setup:44.0, cooldown:12, support:5,
+  {id:'mil_warning', cat:'mil', service:{every:8, payload:2.5, allow:9, label:'early-warning satellite'},  name:'Missile-Warning Constellation', income:4.0, term:30, setup:44.0, cooldown:12, support:5,
     reqMission:'crew_orbit', minRep:220, blurb:'Early-warning infrared sentinels in high orbit — a national-security backbone.',
     eraVariants:[{maxEra:3, name:'Strategic Early-Warning Network', blurb:'Field infrared missile-warning sentinels in high orbit for the national defense command — the backbone of nuclear deterrence.'}]}, // P6 6.3: Cold War deterrence network (eras 0-3) → national-security backbone (era 4+)
 ];

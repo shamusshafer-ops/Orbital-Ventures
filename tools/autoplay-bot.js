@@ -16,10 +16,20 @@
 // Headless "sensible player" bot. Appended after harness.js + build/game.js.
 // Plays with the game's own advisor + "advance to next event", logs what each turn was.
 const OUT=[]; const say=s=>OUT.push(s);
+// ---- money ledger: wrap the functions that move money; nesting-aware so a launch's payout isn't also counted as launch spend
+const LEDGER={}; const _stack=[];
+function ledgerWrap(name,cat){ const f=globalThis[name]||eval(name); if(typeof f!=='function') return;
+  const w=function(...a){ const m0=state.money; _stack.push(0); let r; try{ r=f.apply(this,a); } finally { const child=_stack.pop(); const d=(state.money-m0)-child; const dec=Math.floor(state.year/10)*10; const L=LEDGER[dec]=LEDGER[dec]||{}; L[cat]=(L[cat]||0)+d; if(_stack.length) _stack[_stack.length-1]+=state.money-m0; } return r; };
+  eval(name+'=w'); }
+
 const YEAR_END=+(process.env.BOT_YEAR||1990), DIFF=process.env.BOT_DIFF||'engineer', SEED=+(process.env.BOT_SEED||1);
 // deterministic Math.random for reproducibility
 { let a=SEED*2654435761>>>0; Math.random=()=>{ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+// shims so the same bot runs on builds from before step 5a
+if(typeof isServiceContract!=='function') globalThis.isServiceContract=()=>false;
+if(typeof passiveSetupCost!=='function') globalThis.passiveSetupCost=d=>d.setup;
 newGame(DIFF); _gameStarted=true;
+[['buyResearch','research'],['rushResearch','research'],['queueBuild','build'],['buildEngineStock','build'],['launchFromHangar','launch'],['finalizeLaunch','payouts'],['tickPassiveContracts','contracts'],['tickContinuousDay','daily (overhead, payroll, gov, facilities)'],['signPassiveContract','contracts'],['buildTrackingStation','infrastructure'],['bailout','loans'],['chooseBridgeLoan','loans'],['tickMonthlyBoundary','monthly events'],['resolveInquiry','events'],['acceptMandate','events'],['resolveSetback','events']].forEach(([n,c])=>{ try{ ledgerWrap(n,c); }catch(e){} });
 // Animation stays ON so launch decisions stop the clock exactly as they do for a player (with it off the
 // game auto-scrubs weather and never raises live calls). closeAnim() plays the role of the player
 // closing each flight presentation, which is what releases deferred-flight settlement.
@@ -35,11 +45,16 @@ const launchEngines=()=>unlockedEngines().filter(id=>!ENGINES[id].transferOnly);
 // search is expensive and retrying it every turn made long runs take tens of minutes.
 const _designMiss={};
 function techKey(){ return Object.keys(state.research||{}).length+'|'+unlockedEngines().length+'|'+trackingStationCount()+'|'+(state.lunarArch||''); }
+const _designHit={};
+function shapeKey(m){ return [m.proc?'proc':m.id, m.reqDv, m.payload, m.crew, m.days, m.inclination||'', (m.modules||[]).join('+'), m.window?m.id:''].join('|'); }
 function design(m){
   if((state.activeFlights||[]).some(f=>f&&(f.mission===m.id||f.missionId===m.id))) return null; // already en route: wait for it rather than launch copies
-  const key=m.id+'@'+techKey(); if(_designMiss[key]) return null;
-  const d=_design(m); if(!d) _designMiss[key]=true; return d;
+  const key=shapeKey(m)+'@'+techKey(); if(_designMiss[key]) return null;
+  if(_designHit[key]){ const d=_designHit[key]; return d; }
+  const d=_design(m); if(!d) _designMiss[key]=true; else _designHit[key]=d; return d;
 }
+// what a sensible player maximises: expected payout minus what the flight costs
+function netValue(x){ const d=design(x); if(!d) return -Infinity; const pay=x.proc?x.payout:estMissionPayout(x); return pay*(d.v.reliability||0.7)-(d.v.buildCost+d.v.launchCost); }
 function repairProfile(m){
   // Greedy sizing for profile missions: start from the best-Isp in-space engines and a mid-size stack,
   // then grow whichever component's leg falls short (by l.by) and add engines when TWR is low.
@@ -178,7 +193,8 @@ while(state.year<YEAR_END && stats.turns<4000){
     if((state.flights||0)>before){ stats.launches++; acts.push('launch '+m.id); }
   }
   // build toward the advisor's target, else repeat a profitable flyable mission
-  if(!buildQueueList().length&&!hangarList().some(h=>!(missionById(h.missionId)||{}).window)&&!state.launchTxn){ // hulls parked for a launch window don't stop other work
+  const openService=(state.contractOffers||[]).filter(o=>o.service&&!contractOfferReferenced(o.id)).length;
+  if(buildQueueList().length<(openService?2:1)&&hangarList().filter(h=>!(missionById(h.missionId)||{}).window).length<1&&!state.launchTxn){ // hulls parked for a launch window don't stop other work; a second line when service flights are waiting
     let rec=recommendedAction();
     if(rec.kind==='tracking'&&rec.action){ try{ eval(rec.action); acts.push('advisor: '+rec.title); }catch(e){} rec=recommendedAction(); }
     let m=rec.missionId?missionById(rec.missionId):null;
@@ -189,10 +205,13 @@ while(state.year<YEAR_END && stats.turns<4000){
       const val=x=>x.proc?x.payout:estMissionPayout(x);
       const pool=MISSIONS.filter(x=>missionFlyable(x)&&(!x.window||(state.committedWindow&&state.committedWindow.missionId===x.id))&&!x.stationVisit&&!x.tanker)
         .concat((state.contractOffers||[]).filter(o=>!o.deliverModule&&!o.stationVisit&&!o.orbitDeployment&&!o.vehicleDocking&&(o.minRep||0)<=state.rep&&(!o.reqResearch||state.research[o.reqResearch])));
-      m=pool.sort((a,b)=>val(b)-val(a))[0];
+      const ranked=pool.sort((a,b)=>val(b)-val(a)).slice(0,6).map(x=>[x,netValue(x)]).filter(([,n])=>n>-Infinity).sort((a,b)=>b[1]-a[1]);
+      m=ranked.length?ranked[0][0]:null;
       if(m&&m.proc) stats.procFlown=(stats.procFlown||0)+1;
     }
     if(m&&needsTrackingNetwork(m)&&trackingStationCount()<1){ const st=TRACKING_STATIONS.find(x=>canBuildStation(x.id).ok); if(st){ buildTrackingStation(st.id); acts.push('build tracking '+st.id); } }
+    { const sv=(state.contractOffers||[]).filter(o=>o.service&&!contractOfferReferenced(o.id)).map(o=>[o,netValue(o)]).filter(([,n])=>n>0).sort((a,b)=>b[1]-a[1])[0];
+      if(sv&&(!m||state.completed[m.id]||buildQueueList().length)) { m=sv[0]; stats.serviceFlown=(stats.serviceFlown||0)+1; } }
     let d=m?design(m):null;
     if(m&&!d){ bump(stats.stuck,'no-design:'+m.id);
       const val=x=>x.proc?x.payout:estMissionPayout(x);
@@ -207,7 +226,7 @@ while(state.year<YEAR_END && stats.turns<4000){
     }
   }
   // contracts
-  try{ for(const d of PASSIVE_CONTRACT_DEFS){ if(passiveStatus(d.id)==='available'&&state.money>d.setup*2.5){ if(signPassiveContract(d.id)){ stats.contractsSigned++; acts.push('sign '+d.id); } } } }catch(e){}
+  try{ for(const d of PASSIVE_CONTRACT_DEFS){ const svcLoad=(state.passiveContracts||[]).filter(c=>c.service).reduce((a,c)=>a+1/(passiveDef(c.id).service.every),0); if(isServiceContract(d)&&svcLoad+1/d.service.every>0.45) continue; if(passiveStatus(d.id)==='available'&&state.money>passiveSetupCost(d)*2.5){ if(signPassiveContract(d.id)){ stats.contractsSigned++; acts.push('sign '+d.id); } } } }catch(e){}
   // a committed window that has passed: drop it so the next turn recommits to a later one
   if(state.committedWindow&&absDay()+20>state.committedWindow.abs){ const cw=state.committedWindow, h=hangarList().find(x=>x.missionId===cw.missionId);
     let ok=false; if(h){ try{ const m=missionById(cw.missionId); state.activeMission=m.id; ok=canLaunch(computeVehicle(),m,m.profile?simulateMission(m):null,true).ok; }catch(e){} }
@@ -240,7 +259,8 @@ const perDecade={}; timeline.forEach(t=>{ const y=+t.d.slice(0,4); (t.acts||'').
 let maxDecade=[0,'']; for(const id in perDecade){ const ys=perDecade[id].sort((a,b)=>a-b); for(let i=0;i<ys.length;i++){ let j=i; while(j<ys.length&&ys[j]<ys[i]+10) j++; if(j-i>maxDecade[0]) maxDecade=[j-i,id+'@'+ys[i]]; } }
 const repeats={}; timeline.forEach(t=>(t.acts||'').split('; ').forEach(a=>{ if(a.startsWith('launch ')){ const id=a.slice(7).replace(' (window)',''); repeats[id]=(repeats[id]||0)+1; } }));
 const decisionStops=Object.entries(stats.modals).filter(([k])=>k.startsWith('launch:')).reduce((a,[,v])=>a+v,0);
-console.log(JSON.stringify({firstInsolvency:stats.firstInsolvency?+stats.firstInsolvency.toFixed(2):null,decisionsPerLaunch:+(decisionStops/Math.max(1,stats.launches)).toFixed(2),decisionKinds:Object.fromEntries(Object.entries(stats.modals).filter(([k])=>k.startsWith('launch:'))),maxPerDecade:maxDecade,thinWindows:thin.length,thinRuns,procFlown:stats.procFlown||0,topRepeats:Object.entries(repeats).sort((a,b)=>b[1]-a[1]).slice(0,4),eraAt:ERAS[eraIndex(currentEra())].id,programsDone:PROGRAMS.filter(p=>p.missions.every(id=>state.completed[id])).map(p=>p.id)}));
+if(process.env.BOT_LEDGER){ require('fs').writeFileSync(process.env.BOT_LEDGER, JSON.stringify(LEDGER)); }
+console.log(JSON.stringify({serviceFlown:stats.serviceFlown||0,firstInsolvency:stats.firstInsolvency?+stats.firstInsolvency.toFixed(2):null,decisionsPerLaunch:+(decisionStops/Math.max(1,stats.launches)).toFixed(2),decisionKinds:Object.fromEntries(Object.entries(stats.modals).filter(([k])=>k.startsWith('launch:'))),maxPerDecade:maxDecade,thinWindows:thin.length,thinRuns,procFlown:stats.procFlown||0,topRepeats:Object.entries(repeats).sort((a,b)=>b[1]-a[1]).slice(0,4),eraAt:ERAS[eraIndex(currentEra())].id,programsDone:PROGRAMS.filter(p=>p.missions.every(id=>state.completed[id])).map(p=>p.id)}));
 console.log(JSON.stringify({diff:DIFF,seed:SEED,endYear:state.year,over:!!state.over,money:Math.round(state.money),rep:Math.round(state.rep),flights:state.flights,
   turns:stats.turns,idleTurns:stats.idleTurns,daysPerTurnMedian:med(stats.daysPerTurn),daysPerTurnMean:Math.round(sum(stats.daysPerTurn)/stats.turns),
   turnsPerYear:Math.round(stats.turns/Math.max(1,state.year-1942)),research:stats.research,researchedNodes:Object.keys(state.research).length,contracts:stats.contractsSigned,

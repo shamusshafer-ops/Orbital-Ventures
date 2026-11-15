@@ -1,6 +1,6 @@
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=70; // v70: state.launchPolicy — standing answer to routine launch calls (spine step 3).
+const SAVE_VERSION=71; // v71: service contracts — passiveContracts[].service/seq/dueIn/flown/missed + contractOffers[].service (spine step 5a).
 // Pre-v62 saves with in-progress flight ownership are rejected rather than assigned a fabricated
 // outcome; ordinary v61 lifecycle records are remapped through the schema-2 factories on load.
 //

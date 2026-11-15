@@ -1335,7 +1335,7 @@ function passiveStatus(id){
   if(!passiveReqMet(d)) return 'locked';
   if(passiveCooldownLeft(id)>0) return 'cooldown';
   if(passiveActiveCount()>=passiveMaxActive()) return 'capped';
-  if(state.money < d.setup) return 'unaffordable';
+  if(state.money < passiveSetupCost(d)) return 'unaffordable';
   return 'available';
 }
 function signPassiveContract(id){
@@ -1343,9 +1343,12 @@ function signPassiveContract(id){
   const d=passiveDef(id); if(!d || passiveStatus(id)!=='available') return false;
   const mult=passiveDiminish(id);
   const income=round2(d.income*mult);
-  state.money=round2(state.money-d.setup);
+  state.money=round2(state.money-passiveSetupCost(d));
   state.passiveContracts=state.passiveContracts||[];
-  state.passiveContracts.push({id, monthsLeft:d.term, income});
+  const rec={id, monthsLeft:d.term, income};
+  if(isServiceContract(d)){ rec.service=true; rec.seq=0; rec.missed=0; rec.flown=0; }
+  state.passiveContracts.push(rec);
+  if(rec.service) postServiceFlight(rec,d); // the first delivery is due straight away
   state.contractSignings=state.contractSignings||{};
   const n=(state.contractSignings[id]=passiveSignings(id)+1);
   if(d.support) addSupport(d.support,'contractSigned');
@@ -1355,16 +1358,56 @@ function signPassiveContract(id){
   // entirely by the contract's own term. Tying income to satellite health is option (C) in the
   // #116 scoping and is a separate, balance-affecting slice.
   if(d.cat==='sat') deploySatelliteForContract(d, income);
-  log('ok',`Signed ${passiveContractDisplay(d).name} — +${fM(income)}/mo for ${d.term} months${n>1?` (renewal #${n-1}, ${Math.round(mult*100)}% of base)`:''}.`);
+  log('ok', isServiceContract(d)
+    ? `Signed ${passiveContractDisplay(d).name} — ${fM(serviceFee(rec,d))} per ${d.service.label}, one every ${d.service.every} months for ${d.term} months${n>1?` (renewal #${n-1}, ${Math.round(mult*100)}% of base)`:''}. The first is on the board now.`
+    : `Signed ${passiveContractDisplay(d).name} — +${fM(income)}/mo for ${d.term} months${n>1?` (renewal #${n-1}, ${Math.round(mult*100)}% of base)`:''}.`);
   render();
   return true;
 }
-function passiveMonthlyIncome(){ return round2((state.passiveContracts||[]).reduce((a,c)=>a+(c.income||0),0)); }
+function passiveMonthlyIncome(){ return round2((state.passiveContracts||[]).filter(c=>!c.service).reduce((a,c)=>a+(c.income||0),0)); } // service contracts pay per flight, not monthly
+// ---- step 5a: service flights ----
+function serviceFee(c,d){ return round2((c.income||0)*d.service.every+(d.service.allow||0)); } // cost-plus: margin + launch allowance
+function serviceMission(c,d){
+  const sv=d.service, like=sv.like&&MISSIONS.find(m=>m.id===sv.like);
+  const base=like?{reqDv:like.reqDv,payload:like.payload||0,crew:like.crew||0,days:like.days||0,modules:like.modules,profile:like.profile,reqResearch:like.reqResearch}
+                 :{reqDv:sv.reqDv||9400,payload:sv.payload||0,crew:sv.crew||0,days:sv.days||0};
+  return Object.assign(base,{inclination:sv.inclination});
+}
+function postServiceFlight(c,d){
+  c.seq=(c.seq||0)+1; state.procSeq=(state.procSeq||0)+1;
+  const disp=passiveContractDisplay(d), every=d.service.every;
+  const offer=Object.assign({id:'pc_'+state.procSeq, proc:true, service:{contractId:c.id, seq:c.seq},
+    name:`${disp.name} — ${d.service.label}`, minRep:0, payout:serviceFee(c,d), rep:2, expiresAbs:absMonth()+every,
+    blurb:`Service flight ${c.seq} under the ${disp.name} contract. Fly it before the next one is due (${every} months) or it pays nothing.`}, serviceMission(c,d));
+  (state.contractOffers=state.contractOffers||[]).push(offer);
+  c.dueIn=every;
+  log('note',`${disp.name}: service flight ${c.seq} is on the board — ${fM(offer.payout)} on delivery, due within ${every} months.`);
+}
+function serviceOfferFor(c){ return (state.contractOffers||[]).find(o=>o.service&&o.service.contractId===c.id); }
+// A service flight flew successfully: credit the contract (called from finalizeLaunch on a proc success).
+function serviceFlightDelivered(m){
+  if(!m||!m.service) return; const c=(state.passiveContracts||[]).find(x=>x.id===m.service.contractId&&x.service); if(!c) return;
+  c.flown=(c.flown||0)+1; c.missed=0;
+}
+function serviceFlightMissed(o){
+  const c=(state.passiveContracts||[]).find(x=>x.id===o.service.contractId&&x.service); const d=c&&passiveDef(c.id);
+  state.rep=Math.max(0,state.rep-SERVICE_MISS_REP);
+  if(!c||!d){ log('bad',`${o.name}: the service flight went unflown.`); return; }
+  c.missed=(c.missed||0)+1;
+  if(c.missed>=SERVICE_MISS_LIMIT){
+    state.passiveContracts=(state.passiveContracts||[]).filter(x=>x!==c);
+    state.contractCooldown=state.contractCooldown||{}; state.contractCooldown[c.id]=(d.cooldown||PASSIVE_COOLDOWN);
+    log('bad',`${passiveContractDisplay(d).name}: ${SERVICE_MISS_LIMIT} service flights missed in a row — the client has cancelled the contract (−${SERVICE_MISS_REP} rep).`);
+  } else log('bad',`${passiveContractDisplay(d).name}: service flight ${o.service.seq} was never flown — no payment, −${SERVICE_MISS_REP} rep. Miss ${SERVICE_MISS_LIMIT-c.missed} more in a row and the client walks.`);
+}
 // monthly tick: pay each active contract, expire it onto cooldown, count cooldowns down
 function tickPassiveContracts(){
   const still=[];
   (state.passiveContracts||[]).forEach(c=>{
-    state.money=round2(state.money+(c.income||0));
+    if(c.service){ // step 5a: pays on delivery; post the next service flight when due (the open one then expires as missed)
+      c.dueIn=(c.dueIn||0)-1;
+      if(c.dueIn<=0 && c.monthsLeft>1){ const d=passiveDef(c.id); if(d) postServiceFlight(c,d); }
+    } else state.money=round2(state.money+(c.income||0));
     c.monthsLeft--;
     if(c.monthsLeft<=0){
       const d=passiveDef(c.id);
@@ -1458,10 +1501,11 @@ function tickContractOffers(){
   state.contractOffers=(state.contractOffers||[]).filter(o=>{
     if(o.deliverModule||o.stationVisit||o.orbitDeployment||o.vehicleDocking) return true; // player-committed infrastructure/docking missions keep their exact target reservation until flown or cancelled
     if(absMonth()<=o.expiresAbs || contractOfferReferenced(o.id)) return true; // still open, or committed to (build queue/hangar/selected) — don't yank it out from under a build
+    if(o.service){ serviceFlightMissed(o); return false; }
     log('note',`${o.name}: contract window closed — the client went elsewhere.`);
     return false;
   });
-  if(state.contractOffers.length>=contractOfferCap()) return;
+  if(state.contractOffers.filter(o=>!o.service).length>=contractOfferCap()) return; // step 5a: service flights don't take board slots
   if(Math.random()>0.4) return; // arrives every few months, not like clockwork
   const eraIdx=eraIndex(currentEra());
   const pool=CONTRACT_ARCHETYPES.filter(a=>eraIdx>=a.minEra && a.req(state));
@@ -1497,7 +1541,7 @@ function tickRivalSnatch(){
     }
   }
   if(Math.random()>0.5) return; // loose cadence, matching the other monthly rolls in this block
-  const candidates=(state.contractOffers||[]).filter(o=>!o.rivalBid && !contractOfferReferenced(o.id));
+  const candidates=(state.contractOffers||[]).filter(o=>!o.rivalBid && !o.service && !contractOfferReferenced(o.id)); // step 5a: your own service flights can't be snatched
   if(!candidates.length) return;
   const surging=RIVALS.filter(r=>rivalMomentumOf(r)>=RIVAL_SNATCH_MOM_THRESHOLD);
   if(!surging.length) return;
@@ -3385,6 +3429,7 @@ function withOrderSpec(rec,work){
 }
 function readyHullActionView(rec){
   if(!rec||!rec.id||!rec.hullId) return null;
+  if(!missionById(rec.missionId)) return null; // its contract offer has been flown or has lapsed: nothing to launch it on (the Command Center used to crash here)
   return withOrderSpec(rec,()=>{
     const m=curMission(), v=computeVehicle(), sim=m&&m.profile?simulateMission(m):null;
     const check=canLaunch(v,m,sim,true,rec.spec&&rec.spec.docking), quote=check.quote||launchCommitmentQuote(m,v,sim,true);
@@ -3402,6 +3447,8 @@ function primaryLaunchActionView(){
 // canLaunch, minus window/test/weather, which are resolved at launch), plus pay the build now.
 function canQueue(m,v,sim){
   if(!m) return {ok:false,why:'no mission'};
+  // a contract offer is one flight: a second vehicle for it would be orphaned the moment the first flies
+  if(m.proc && [...buildQueueList(),...hangarList()].some(r=>r&&r.missionId===m.id)) return {ok:false,why:'A vehicle for this contract is already being built or waiting in the hangar.'};
   if(m.tanker){
     if(v.totalDv < m.reqDv) return {ok:false,why:'Δv shortfall'};
     if(v.twr<=1.0) return {ok:false,why:'TWR ≤ 1'};
@@ -3500,7 +3547,7 @@ function scrapHangar(id){
 }
 function hangarToBench(id){
   if(typeof guardOrdinaryAction==='function'&&!guardOrdinaryAction('Opening an ordinary hangar article')) return false;
-  const h=hangarList().find(x=>x.id===id); if(h){ state.activeMission=h.missionId; setTab('bench'); return true; }
+  const h=hangarList().find(x=>x.id===id); if(h){ if(!missionById(h.missionId)){ announceAction(`${h.name}: its contract is closed — scrap the vehicle to clear the hangar.`); return false; } state.activeMission=h.missionId; setTab('bench'); return true; }
   return false;
 }
 function hangarFor(m){ return m?hangarList().filter(h=>h.missionId===m.id):[]; }
@@ -3638,7 +3685,11 @@ function buildQueuePanelHTML(){
       <button class="btn ghost" style="padding:2px 8px;font-size:12px" onclick="cancelOrder('${o.id}')">${o.started?'Scrap':'Cancel · refund'}</button></div>
     </div>`;
   }).join('') : `<div class="dim" style="font-size:12px;padding:6px 0">No builds in progress. Queue a vehicle from the Design Bench to build it ahead of launch.</div>`;
-  const hangarRows = hangar.length ? hangar.map(h=>{ const view=readyHullActionView(h), q=view.quote, a=view.action;
+  const hangarRows = hangar.length ? hangar.map(h=>{ const view=readyHullActionView(h);
+    if(!view) return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 0;border-top:1px solid #2a2a2a">
+      <div><b>${esc(h.name)}</b> <span class="dim" style="font-size:12px">· hull ${esc(h.hullId)}</span><div class="flag warn" style="margin-top:3px">Its contract has been flown or has lapsed — nothing to launch it on. Scrap it to clear the hangar.</div></div>
+      <div style="display:flex;gap:4px"><button class="btn ghost" style="padding:2px 8px;font-size:12px" onclick="scrapHangar('${h.id}')">Scrap</button></div></div>`;
+    const q=view.quote, a=view.action;
     return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 0;border-top:1px solid #2a2a2a">
       <div><b>${h.name}</b> <span class="dim" style="font-size:12px">· ${h.missionName} · hull ${esc(h.hullId)} · ${fM(q.flightBurn)} flight + ${fM(q.launchCarry)} reserve</span>${view.check.ok?'':`<div class="flag warn" style="margin-top:3px">${esc(view.check.why)}</div>`}</div>
       <div style="display:flex;gap:4px"><button class="btn ghost" style="padding:2px 8px;font-size:12px" onclick="hangarToBench('${h.id}')">Bench</button>
@@ -7695,6 +7746,7 @@ function finalizeLaunch(ctx, ops){
       if(ambCeleb && !pendingCelebration) pendingCelebration=ambCeleb;
     }
     if(m.proc) state.contractOffers=(state.contractOffers||[]).filter(o=>o.id!==m.id); // E1.3: one-shot — consumed on success, not reflown
+    if(m.proc&&m.service) serviceFlightDelivered(m); // step 5a
     if(m.deliverModule&&!m.stationVisit){ // surface delivery keeps the established settlement path; orbital station transfer is handled atomically by settleStationVisit above
       // The cost is charged unconditionally and deliberately: you built and flew the module, so it is
       // sunk whether or not the destination survived the cruise. dockModuleNow returns false (and logs

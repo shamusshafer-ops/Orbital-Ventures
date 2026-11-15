@@ -21,6 +21,12 @@ Two things still apply:
   should warn rather than silently misread — that protects against the two-agent workflow, not an
   install base.
 
+## v71 — Service contracts (spine step 5a)
+
+Service-type standing contracts (`PASSIVE_CONTRACT_DEFS[].service`) record `service:true, seq, dueIn, flown, missed`
+on their `state.passiveContracts` entry, and post procedural offers carrying `service:{contractId, seq}` into
+`state.contractOffers`. Licensing/doctrine contracts are unchanged.
+
 ## v70 — Launch commit policy (spine step 3)
 
 Adds `state.launchPolicy` — `'manual' | 'cautious' | 'nominal' | 'bold'` (new games: `'nominal'`). The standing

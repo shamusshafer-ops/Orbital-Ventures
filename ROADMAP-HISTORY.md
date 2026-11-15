@@ -8030,3 +8030,33 @@ campaigns that lose First Flight three or more times at 65%; a bridge loan cover
 Tests: new `tests/test-opening-fix.js` (14 checks). `test-onboarding.js` passes unchanged (its "step 2" labels
 are now historical). Full sweep 178/179, 1 intentional skip, 0 unexpected.
 
+## 2026-11-16 — Spine step 5a: service contracts (Claude)
+
+From `EVALUATION-2026-11-GAMEPLAY.md` step 5, re-scoped by measurement. A money ledger in the bot (wraps the
+money-moving functions, nesting-aware) showed standing contracts were the largest income source of the
+1940s–50s glut — e.g. seed 2: +$203M contracts vs +$177M mission payouts in the 1940s, ~+$2.7B over the
+campaign — a 3.6x return with no flights. Owner chose "service flights" over cutting returns or leaving them.
+
+- Contracts with a `service` spec (satellite, tourism, defense, servicing: 10 of 17) pay per delivery. Each
+  posts a procedural "service flight" every `every` months (4–9) that pays the old margin (income x every)
+  plus `allow`, a launch allowance (cost-plus; without it the first measured run had weather-satellite flights
+  paying $5.4M against $5–7M rockets). It stays open until the next is due plus a month; a missed one pays
+  nothing and costs 2 rep; two misses in a row cancel the contract. Setup is halved. Licensing and doctrine
+  retainers keep paying monthly. Service flights don't take contract-board slots, rivals can't bid on them,
+  and they appear in Up Next as deadlines. SAVE_VERSION 71.
+- **Pre-existing bug fixed:** a second vehicle built for the same procedural offer was orphaned once the first
+  flew, and the Command Center then crashed rendering its launch button (TypeError on every advance).
+  `canQueue` now refuses a second build for one offer; `readyHullActionView` returns null for a hull whose
+  mission is gone; both hangar lists show such a hull as "contract closed" with Scrap; `hangarToBench` refuses it.
+- **Pre-existing bug fixed:** the Flight Contracts list escaped authored mission blurbs, printing raw
+  `<span class="hist">…` markup. Authored constants now render as on the other screens.
+
+Bot (now chooses jobs by expected profit, signs service contracts only within its capacity, runs a second
+build line when service flights are waiting, caches designs by mission shape), 4 seeds to 2000:
+- before → after: all seeds solvent and through Ares either way; flights 101–114 → 139–174 (87–106 of them
+  service flights); standing-contract net +$2.6–2.8B → ~$0 (income now arrives through flying).
+- cash ÷ annual spend: 1950 3.3–4.0y → 1.6–2.8y; 1970 8–11y → 1.9–7.1y; 1990 7–24y → 9–19y. The late glut
+  (first-time payouts after ~1975) is step 5b's job.
+
+Tests: new `tests/test-service-contracts.js` (28 checks). Full sweep 179/180, 1 intentional skip, 0 unexpected.
+
