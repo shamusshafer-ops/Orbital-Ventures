@@ -8008,3 +8008,25 @@ earlier runs saw no decisions) and closes each presentation like a player. Four 
 Tests: new `tests/test-launch-policy.js` (27 checks; cannot load against pre-change source). Full sweep
 177/178, 1 intentional skip, 0 unexpected.
 
+## 2026-11-16 — Spine step 4: the opening (Claude)
+
+From `EVALUATION-2026-11-GAMEPLAY.md` §5.7 / §7 step 4. Measured first, with the bot playing the First Flight
+checklist literally (40 seeds, Engineer, animation on, Nominal policy):
+- research-first as the checklist said (Static Fire, $1.5M of the $3.5M start): **9/40 insolvent in 1942**;
+- flying first: 0/40 in 1942, 4/40 by the end of 1943.
+The economy was fine (the July balance pass assumed fly-first); the advice was not.
+
+- The checklist's research step moved to the end ("Put the payout to work", after the debrief). Owner decision
+  #4 had it second; data overrules the order, not the step.
+- `onboardingResearchPick()` now keeps a reserve: `onboardingReserve()` = 2 attempts at the next flight until
+  First Flight succeeds, 1 after (`onboardingAttemptCost()` = build + launch + carry through the build). It
+  also checks era and science gates now. With nothing affordable the step says how much to keep back.
+- At game start Static Fire still fits with the reserve ($3.5M − $1.5M ≥ ~$1.84M), so the suggestion is
+  unchanged for a player who reaches the step having flown; it only stops after a failure, when it bites.
+
+Result with the new checklist: **0/40 insolvent in the first year** (target <10%), 4/40 by end of 1943 — the
+campaigns that lose First Flight three or more times at 65%; a bridge loan covers them.
+
+Tests: new `tests/test-opening-fix.js` (14 checks). `test-onboarding.js` passes unchanged (its "step 2" labels
+are now historical). Full sweep 178/179, 1 intentional skip, 0 unexpected.
+

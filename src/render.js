@@ -1070,11 +1070,24 @@ function onboardingMark(key){
 }
 // The research the checklist suggests: the reliability fix the advisor already recommends for First
 // Flight (Static Fire Test Program), else the first affordable project that can start now.
+// Spine step 4 (2026-11-16): the checklist used to suggest a $1.5M project before the first launch. On Engineer
+// ($3.5M start) that left about one retry, and 9 of 40 bot campaigns that followed it went insolvent in 1942
+// (0 of 40 that flew first). The research step now comes after the first flight, and the pick must leave
+// enough for OB_RESERVE_ATTEMPTS more attempts at the next flight (two until First Flight succeeds, one after).
+const OB_RESERVE_ATTEMPTS_BEFORE=2, OB_RESERVE_ATTEMPTS_AFTER=1;
+function onboardingAttemptCost(){
+  try{ const m=missionById(OB_MISSION), v=computeVehicle(); const carry=(liveRecurringEconomy().expenses||0)*(buildMonths(m)+1);
+    return round2((v.buildCost||0)+(v.launchCost||0)+carry); }catch(e){ return 0; }
+}
+function onboardingReserve(){ return round2(onboardingAttemptCost()*(state.completed&&state.completed[OB_MISSION]?OB_RESERVE_ATTEMPTS_AFTER:OB_RESERVE_ATTEMPTS_BEFORE)); }
+// The research the checklist suggests: Static Fire Test Program if it is affordable with the reserve kept back,
+// else the cheapest affordable project that can start now; null when nothing fits.
 function onboardingResearchPick(){
-  const ok=r=>r&&!state.research[r.id]&&reqsMet(r)&&researchEraMet(r)&&sciGateMet(r)&&state.money>=rdCostOf(r);
+  const reserve=onboardingReserve();
+  const ok=r=>r&&!state.research[r.id]&&reqsMet(r)&&researchEraMet(r)&&sciGateMet(r)&&state.money-rdCostOf(r)>=reserve;
   const tp=RESEARCH.find(r=>r.id==='test_program');
   if(ok(tp)) return tp;
-  return RESEARCH.find(ok)||null;
+  return RESEARCH.filter(ok).sort((a,b)=>rdCostOf(a)-rdCostOf(b))[0]||null;
 }
 function onboardingSteps(){
   const o=onboarding(), m=missionById(OB_MISSION);
@@ -1089,11 +1102,6 @@ function onboardingSteps(){
     {key:'bench', title:'Look over your rocket',
       detail:'The Design Bench shows the rocket you\'ll fly, its Δv against what First Flight needs, and the estimated profit.',
       done:legacy||flown||!!o.seen.bench, show:'bench'},
-    {key:'research', title:'Start a research project',
-      detail: rp&&rp.id==='test_program'
-        ? `Static Fire Test Program lifts reliability for every flight (First Flight is ${Math.round((computeVehicleSafe()||{}).reliability*100||0)}% today). R&D runs while you build.`
-        : 'R&D runs in the background while you build — start one project now so the months aren\'t wasted.',
-      done:legacy||researched, show:'research'},
     {key:'commit', title:'Commit the build',
       detail:'On the Design Bench, "Commit build" pays for the rocket now. Flight costs are paid later, at launch.',
       done:legacy||flown||queued||ready||inFlight, show:'commit'},
@@ -1106,6 +1114,14 @@ function onboardingSteps(){
     {key:'debrief', title:'Read the debrief',
       detail:'After the flight, the debrief explains what worked and what failed. Close it to bank the result.',
       done:legacy||(flown&&!!o.seen.debrief&&!inFlight), show:null}, // !inFlight: never while a launch is still resolving
+    // Step 4: research comes AFTER the first flight, paid for by the payout, never at the cost of the next attempt.
+    {key:'research', title:'Put the payout to work',
+      detail: rp
+        ? (rp.id==='test_program'
+          ? `Start Static Fire Test Program (${fM(rdCostOf(rp))}) — it lifts reliability for every flight (your rocket is ${Math.round((computeVehicleSafe()||{}).reliability*100||0)}% today). R&D runs in the background while you build the next one.`
+          : `Start ${rp.name} (${fM(rdCostOf(rp))}). R&D runs in the background while you build the next rocket.`)
+        : `Research when you can afford it: keep ${fM(onboardingReserve())} back for ${state.completed&&state.completed[OB_MISSION]?'your next flight':'two more tries at First Flight'}. A green company that can't fly again is finished.`,
+      done:legacy||researched, show:rp?'research':null},
   ];
   const cur=steps.findIndex(s=>!s.done);
   steps.forEach((s,i)=>{ s.current=i===cur; });

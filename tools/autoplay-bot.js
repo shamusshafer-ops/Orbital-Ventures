@@ -156,7 +156,13 @@ while(state.year<YEAR_END && stats.turns<4000){
   answerPending().forEach(k=>acts.push('resolve '+k));
   answerLaunch();
   // research
-  if(!state.activeResearch){
+  // Until the first success the bot plays the First Flight checklist literally: research only what it
+  // suggests (once), then build — the path a new player is coached along.
+  const coaching=!state.completed.first_flight && !['0','fly'].includes(process.env.BOT_CHECKLIST);
+  const curStep=coaching&&typeof onboardingSteps==='function'?(onboardingSteps().find(x=>x.current)||{}).key:null;
+  if(coaching && !state.activeResearch && curStep==='research'){ const pk=onboardingResearchPick(); if(pk){ try{ buyResearch(pk.id); if(state.activeResearch){ acts.push('research '+pk.id+' (checklist)'); stats.research++; } }catch(e){} } }
+  const flyFirst=process.env.BOT_CHECKLIST==='fly' && !state.completed.first_flight; // comparison mode: no research before the first success
+  if(!coaching && !flyFirst && !state.activeResearch){
     const rec=recommendedAction(); let r=null;
     if(rec.kind==='research') r=RESEARCH.find(x=>x.id===rec.researchId);
     if(!r) r=RESEARCH.filter(x=>!state.research[x.id]&&reqsMet(x)&&researchEraMet(x)&&sciGateMet(x)&&state.money>=rdCostOf(x)*2).sort((a,b)=>rdCostOf(a)-rdCostOf(b))[0];
@@ -213,6 +219,7 @@ while(state.year<YEAR_END && stats.turns<4000){
       if(state.committedWindow){ const before=state.flights||0; try{ launchFromHangar(h.id,h.hullId,R()); }catch(e){} answerLaunch(); if((state.flights||0)>before){ stats.launches++; acts.push('launch '+cw.missionId+' (window)'); } }
       if(state.committedWindow&&absDay()>state.committedWindow.abs){ try{ cancelWindow(); }catch(e){} bump(stats.stuck,'missed-window:'+h.missionId); } } }
   // advance one "turn" exactly as the button does
+  if(!stats.firstInsolvency && (state.insolvency||loans>0||state.over)) stats.firstInsolvency=state.year+(state.month/12);
   const d0=absDay(), y0=state.year, logBefore=(state.log||[]).length;
   try{ runToNextEvent(); }catch(e){ bump(stats.stuck,'run-throw:'+String(e).slice(0,60)); advance(1); }
   const dd=absDay()-d0; stats.turns++; stats.daysPerTurn.push(dd); stats.actionsPerTurn.push(acts.length);
@@ -233,7 +240,7 @@ const perDecade={}; timeline.forEach(t=>{ const y=+t.d.slice(0,4); (t.acts||'').
 let maxDecade=[0,'']; for(const id in perDecade){ const ys=perDecade[id].sort((a,b)=>a-b); for(let i=0;i<ys.length;i++){ let j=i; while(j<ys.length&&ys[j]<ys[i]+10) j++; if(j-i>maxDecade[0]) maxDecade=[j-i,id+'@'+ys[i]]; } }
 const repeats={}; timeline.forEach(t=>(t.acts||'').split('; ').forEach(a=>{ if(a.startsWith('launch ')){ const id=a.slice(7).replace(' (window)',''); repeats[id]=(repeats[id]||0)+1; } }));
 const decisionStops=Object.entries(stats.modals).filter(([k])=>k.startsWith('launch:')).reduce((a,[,v])=>a+v,0);
-console.log(JSON.stringify({decisionsPerLaunch:+(decisionStops/Math.max(1,stats.launches)).toFixed(2),decisionKinds:Object.fromEntries(Object.entries(stats.modals).filter(([k])=>k.startsWith('launch:'))),maxPerDecade:maxDecade,thinWindows:thin.length,thinRuns,procFlown:stats.procFlown||0,topRepeats:Object.entries(repeats).sort((a,b)=>b[1]-a[1]).slice(0,4),eraAt:ERAS[eraIndex(currentEra())].id,programsDone:PROGRAMS.filter(p=>p.missions.every(id=>state.completed[id])).map(p=>p.id)}));
+console.log(JSON.stringify({firstInsolvency:stats.firstInsolvency?+stats.firstInsolvency.toFixed(2):null,decisionsPerLaunch:+(decisionStops/Math.max(1,stats.launches)).toFixed(2),decisionKinds:Object.fromEntries(Object.entries(stats.modals).filter(([k])=>k.startsWith('launch:'))),maxPerDecade:maxDecade,thinWindows:thin.length,thinRuns,procFlown:stats.procFlown||0,topRepeats:Object.entries(repeats).sort((a,b)=>b[1]-a[1]).slice(0,4),eraAt:ERAS[eraIndex(currentEra())].id,programsDone:PROGRAMS.filter(p=>p.missions.every(id=>state.completed[id])).map(p=>p.id)}));
 console.log(JSON.stringify({diff:DIFF,seed:SEED,endYear:state.year,over:!!state.over,money:Math.round(state.money),rep:Math.round(state.rep),flights:state.flights,
   turns:stats.turns,idleTurns:stats.idleTurns,daysPerTurnMedian:med(stats.daysPerTurn),daysPerTurnMean:Math.round(sum(stats.daysPerTurn)/stats.turns),
   turnsPerYear:Math.round(stats.turns/Math.max(1,state.year-1942)),research:stats.research,researchedNodes:Object.keys(state.research).length,contracts:stats.contractsSigned,
