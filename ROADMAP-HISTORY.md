@@ -8060,3 +8060,29 @@ build line when service flights are waiting, caches designs by mission shape), 4
 
 Tests: new `tests/test-service-contracts.js` (28 checks). Full sweep 179/180, 1 intentional skip, 0 unexpected.
 
+## 2026-11-16 — Spine step 5b: era costs and crash programs (Claude)
+
+From `EVALUATION-2026-11-GAMEPLAY.md` §5.2 / §5.5.
+
+- `eraCostMult()` = 1 + 0.2 × era index (x1.0 Pioneer … x2.4 Speculative), read through `currentEra()` so it
+  follows the frontier: racing ahead means paying the later era's prices sooner (a brake on step 1's
+  compression). Applied to vehicle build cost (and its breakdown row), launch cost, prebuilt engine/tank/hab
+  stock, fixed overhead, and the service-flight launch allowance (service stays cost-plus). Not applied to
+  research (already priced by tier) or salaries (step 8).
+- Crash programs: a node from the next era (one beyond the world era) can be started with `crashResearch` at
+  2.5× the price and 1.5× the time; prerequisites, science gates and one-project-at-a-time still hold. Offered
+  as "⚡ Crash program · $X · N mo" in both research inspectors.
+- Pre-existing bug fixed: an era-locked node's inspector title read "… undefined" (the status-badge map had
+  no 'era' entry).
+
+Bot (also fixed two irrational habits that era costs made expensive: building a second vehicle for a mission
+already built or building, and taking jobs with negative expected profit; now crashes the cheapest affordable
+next-era node when nothing is open), 4 seeds to 2000, same bot on both builds:
+- solvent with no loans either way; Mars landing 2/4 → 4/4 seeds (1972–82, no earlier than before);
+  research 62–89 → 93–96 nodes with 12–21 crash programs.
+- cash ÷ annual spend: 1960 3.6–5.8y → 3.0–5.3y; 1970 6–26y → 0.3–4.0y. After ~1980 the ratio is
+  meaningless in both builds: the bot cannot design Belt/Jupiter missions, stops flying, and spend collapses.
+  Target "under ~3 years after 1950" is met in the 1950s–70s and untestable later with this bot.
+
+Tests: new `tests/test-era-costs-crash.js` (26 checks). Full sweep 180/181, 1 intentional skip, 0 unexpected.
+

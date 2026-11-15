@@ -11166,6 +11166,13 @@ function researchTier(id){
 // (era: nothing you can do but advance time), because those imply completely different actions.
 // Checked BEFORE reqsMet so an era-gated node reads as era-gated even when its prereqs are done.
 function researchEraMet(r){ return eraIndex(currentEra()) >= (r.eraMin||0); }
+// step 5b: the crash-program offer on a next-era node
+function crashButtonHTML(r,busy,style){
+  if(!crashEligible(r)) return '';
+  const cost=crashCost(r), ok=!busy&&!state.activeResearch&&state.money>=cost&&sciGateMet(r);
+  const why=state.activeResearch?'another project is running':(state.money<cost?'not enough capital':(!sciGateMet(r)?`needs ${sciGateCost(r)} ⚛`:''));
+  return `<button class="btn" style="${style}" onclick="crashResearch('${r.id}')" ${ok?'':'disabled'} title="Pull ${eraName(r.eraMin)}-era technology forward: ${CRASH_COST_MULT}× the price, ${CRASH_TIME_MULT}× the time.">⚡ Crash program · ${fM(cost)} · ${crashMonths(r)} mo${ok?'':` — ${why}`}</button>`;
+}
 function researchNodeState(r){
   if(state.research[r.id]) return 'done';
   if(state.activeResearch && state.activeResearch.id===r.id) return 'active';
@@ -11487,9 +11494,9 @@ function renderResearchDetail(){
     const afford=state.money>=rdCostOf(r), sciNeed=sciGateCost(r), sciOk=sciGateMet(r), ok=st==='available'&&afford&&sciOk&&!busy;
     const why = busy?'Another project is in progress':(st==='era'?`Not yet — ${eraName(r.eraMin)} era technology`:(st!=='available'?'Prerequisites not met':(!afford?'Not enough capital':(!sciOk?`Needs ${sciNeed} ⚛ (have ${Math.round(state.science||0)})`:''))));
     const sciTag = sciNeed?` · ${sciNeed} ⚛`:'';
-    action=`<button class="launch" style="width:100%" onclick="buyResearch('${r.id}')" ${ok?'':'disabled'}>${ok?`Research · ${fM(rdCostOf(r))}${sciTag} · ${r.months} mo`:why}</button>${(st==='available'&&!busy&&!afford)?affordWidgetHTML(rdCostOf(r)):''}`;
+    action=`<button class="launch" style="width:100%" onclick="buyResearch('${r.id}')" ${ok?'':'disabled'}>${ok?`Research · ${fM(rdCostOf(r))}${sciTag} · ${r.months} mo`:why}</button>${(st==='available'&&!busy&&!afford)?affordWidgetHTML(rdCostOf(r)):''}${crashButtonHTML(r,busy,'width:100%;margin-top:6px')}`;
   }
-  const stateTag={done:'<span class="pill ok">researched</span>',active:'<span class="pill active">in progress</span>',available:'<span class="pill">available</span>',locked:'<span class="pill lock">locked</span>'}[st];
+  const stateTag={done:'<span class="pill ok">researched</span>',active:'<span class="pill active">in progress</span>',available:'<span class="pill">available</span>',locked:'<span class="pill lock">locked</span>',era:'<span class="pill lock">not yet invented</span>'}[st]||''; // 'era' was missing: the title read "… undefined"
   const debtBanner = relDebt()>0 ? `<div class="flag bad" style="margin-bottom:8px">⚠ Cut-corner penalty: −${Math.round(relDebt()*100)}% reliability on every vehicle, from pushing a flawed project through a past setback. It's permanent — weigh the schedule against the risk next time.</div>` : '';
   // #14: pin/unpin this node as the standing planning goal — works on locked nodes too (that's the
   // point: plan toward something several prereqs away and see the whole path highlighted).
@@ -11535,7 +11542,7 @@ function renderTechAction(){
     const afford=state.money>=rdCostOf(r), sciNeed=sciGateCost(r), sciOk=sciGateMet(r), ok=st==='available'&&afford&&sciOk;
     const why=st==='era'?`Not yet — ${eraName(r.eraMin)} era technology`:(st!=='available'?'Prerequisites not met':(!afford?'Not enough capital':(!sciOk?`Needs ${sciNeed} ⚛ (have ${Math.round(state.science||0)})`:'')));
     const sciTag=sciNeed?` · ${sciNeed} ⚛`:'';
-    btn=`<button class="launch" onclick="buyResearch('${r.id}')" ${ok?'':'disabled'}>${ok?`Research · ${fM(rdCostOf(r))}${sciTag} · ${r.months} mo`:why}</button>${(st==='available'&&!afford)?affordWidgetHTML(rdCostOf(r)):''}`;
+    btn=`<button class="launch" onclick="buyResearch('${r.id}')" ${ok?'':'disabled'}>${ok?`Research · ${fM(rdCostOf(r))}${sciTag} · ${r.months} mo`:why}</button>${(st==='available'&&!afford)?affordWidgetHTML(rdCostOf(r)):''}${crashButtonHTML(r,false,'')}`;
   }
   const tag={done:'researched',active:'in progress',available:'available',locked:'locked',era:'not yet invented'}[st];
   el.innerHTML=`<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 11px;border:1px solid var(--line);border-radius:6px;background:var(--panel2)">

@@ -954,7 +954,7 @@ function advanceDays(days){
 }
 // the smooth daily flows — inputs are stable within a month, so 30 days sum to the monthly total.
 function tickContinuousDay(){
-  state.money-=perDay(Math.max(0,diff().overhead+econOverheadAdd()+productionUpkeep()+empireOpex()+loanInterest()+partnershipUpkeep()+trackingUpkeep())); // overhead (difficulty + market events + #7 production upkeep + CE4(a) empire carrying cost + CE4(c) bridge-loan interest + #6 research-partnership upkeep + #89 tracking-station upkeep)
+  state.money-=perDay(Math.max(0,diff().overhead*eraCostMult()+econOverheadAdd()+productionUpkeep()+empireOpex()+loanInterest()+partnershipUpkeep()+trackingUpkeep())); // step 5b: fixed overhead grows with the era // overhead (difficulty + market events + #7 production upkeep + CE4(a) empire carrying cost + CE4(c) bridge-loan interest + #6 research-partnership upkeep + #89 tracking-station upkeep)
   if(state.pgmRoyalty>0) state.money+=perDay(state.pgmRoyalty); // M7: platinum-group royalties from an established Belt claim
   state.staff.forEach(s=>{ const p=personById(s.id); if(p) state.money-=perDay(p.salary); }); // M6: personnel salary
   { const rate=publicSupport()>SUPPORT_BASE ? SUPPORT_REVERT_DAY*0.5 : SUPPORT_REVERT_DAY; // earned goodwill fades half as fast as bad blood heals
@@ -1299,7 +1299,7 @@ function govMonthlyFunding(){
 // state.lastMonth remains the historical completed-month ledger.
 function liveRecurringEconomy(){
   const revenue=round2(totalFacilityIncome()+(state.pgmRoyalty||0)+govMonthlyFunding()+passiveMonthlyIncome());
-  const expenses=round2(Math.max(0,diff().overhead+econOverheadAdd()+productionUpkeep()+empireOpex()+loanInterest()+partnershipUpkeep()+trackingUpkeep())+monthlyPayroll());
+  const expenses=round2(Math.max(0,diff().overhead*eraCostMult()+econOverheadAdd()+productionUpkeep()+empireOpex()+loanInterest()+partnershipUpkeep()+trackingUpkeep())+monthlyPayroll());
   return {revenue,expenses,net:round2(revenue-expenses)};
 }
 // Months of cash left at the live recurring monthly burn (Infinity when cash-positive).
@@ -1366,7 +1366,7 @@ function signPassiveContract(id){
 }
 function passiveMonthlyIncome(){ return round2((state.passiveContracts||[]).filter(c=>!c.service).reduce((a,c)=>a+(c.income||0),0)); } // service contracts pay per flight, not monthly
 // ---- step 5a: service flights ----
-function serviceFee(c,d){ return round2((c.income||0)*d.service.every+(d.service.allow||0)); } // cost-plus: margin + launch allowance
+function serviceFee(c,d){ return round2((c.income||0)*d.service.every+(d.service.allow||0)*eraCostMult()); } // cost-plus: margin + launch allowance (allowance follows era costs, 5b)
 function serviceMission(c,d){
   const sv=d.service, like=sv.like&&MISSIONS.find(m=>m.id===sv.like);
   const base=like?{reqDv:like.reqDv,payload:like.payload||0,crew:like.crew||0,days:like.days||0,modules:like.modules,profile:like.profile,reqResearch:like.reqResearch}
@@ -3784,7 +3784,7 @@ const BENCH_TEST_COST_MULT=0.6;       // bench-testing adds this fraction of the
 const BENCH_TEST_DAYS_MULT=0.5;       // …and this fraction of its build time (the test campaign)
 const BENCH_REL_PER=0.015;            // each fitted bench-tested component adds +1.5% flight reliability
 const BENCH_REL_CAP=0.06;             // …capped at +6% from proven hardware on hand
-function engineUnitCost(engId){ const e=ENGINES[engId]; return e? round2(e.cost*diff().buildCostMult) : 0; } // stock charge == vehicle-build credit → cost-neutral
+function engineUnitCost(engId){ const e=ENGINES[engId]; return e? round2(e.cost*diff().buildCostMult*eraCostMult()) : 0; } // stock charge == vehicle-build credit → cost-neutral
 // #7 sub-assemblies: a propulsion-type icon for each engine so the yard reads at a glance
 function engineIcon(engId){ const e=ENGINES[engId]||{};
   if(e.solid) return '🧨';                              // solid motor
@@ -3877,8 +3877,8 @@ function partCompIcon(key){ const [kind,sub]=key.split(':');
   return '🛠️'; }
 // per-unit fabrication cost — charged at stock, credited at assembly (cost-neutral, like engines)
 function partCompCost(key){ const [kind,sub]=key.split(':');
-  if(kind==='tank'){ const t=TANK_MATERIALS[sub]||TANK_MATERIALS.standard; return round2(TANK_UNIT_BASE*t.costMult*diff().buildCostMult); }
-  if(kind==='hab'){  const t=ECLSS[sub]||ECLSS.open; return round2((HAB_UNIT_BASE+0.4*t.sysBase)*diff().buildCostMult); }
+  if(kind==='tank'){ const t=TANK_MATERIALS[sub]||TANK_MATERIALS.standard; return round2(TANK_UNIT_BASE*t.costMult*diff().buildCostMult*eraCostMult()); }
+  if(kind==='hab'){  const t=ECLSS[sub]||ECLSS.open; return round2((HAB_UNIT_BASE+0.4*t.sysBase)*diff().buildCostMult*eraCostMult()); }
   return 0; }
 function partCompBuildable(key){ const [kind,sub]=key.split(':');
   if(kind==='tank') return !!TANK_MATERIALS[sub]; // tank materials carry no research gate
@@ -5746,6 +5746,7 @@ function buildCostBreakdown(m){
   }
 
   const d=diff().buildCostMult; if(d!==1) mult(`Difficulty (×${d.toFixed(2)})`, d);
+  { const ec=eraCostMult(); if(ec!==1) mult(`${currentEra().name}-era costs (×${ec.toFixed(2)})`, ec); } // step 5b
   const facDisc=facilityBonus(missionBody(m&&m.id)).buildDiscount;
   if(facDisc>0) mult(`Home-field facility (−${(facDisc*100).toFixed(0)}%)`, 1-facDisc);
   const fam=activeFamily(), famMult=familyBuildMult(fam);
@@ -5846,6 +5847,7 @@ function computeVehicle(){
   const testBonus=TEST_LEVELS[state.testLevel].rel;
   buildCost*=tankMaterial().costMult; // BC2: tank material cost factor
   buildCost*=diff().buildCostMult; // difficulty: hardware-cost scaling
+  buildCost*=eraCostMult(); // step 5b: hardware costs grow with the era
   buildCost*=(1-facilityBonus(missionBody(m&&m.id)).buildDiscount); // M17: home-field build discount from a base at the destination
   buildCost*=familyBuildMult(activeFamily()); // #3: a proven lineage gets cheaper to build (manufacturing knowledge)
   buildCost*=foundryCostMult(); // #7: engine-foundry economies of scale cut marginal build cost
@@ -5859,7 +5861,7 @@ function computeVehicle(){
     buildCost+=RECOVERY_HARDWARE; // legs, grid fins, reserved propellant — fitted on every recovery flight
   }
   const reliability=Math.min(diff().relCap,Math.max(diff().relFloor,(curRel()+testBonus+partsRelBonus(crewed)+geoRelBonus()+benchRelBonus(m)+doctrineRelMod()+fleetHeritageRelBonus())*enginePenalty*boosterRelPenalty()*(crewed?(state.research.orbital_eva?0.95:0.92):1)*(1-solidInsertionTax(m))+productionRelMod(m)+((state.engineOut&&state.stages[0].count>=3)?0.025:0))); // Phase 3 engine-out: a stage-1 engine failure becomes survivable; #7: QA bonus − bay-overstretch penalty + bench-tested sub-assembly heritage; #16: booster failure-point penalty; BC2 parts + BC3 geometry reliability; CE3(a) doctrine early-reliability delta
-  const launchCost=((0.12+0.01*totalProp)*padLaunchMult()*groundLaunchMult()*doctrineMult('launch')) + assemblyFlights(m)*ASSEMBLY_LAUNCH_COST; // #7: pads + #6b: Ground/Reuse research amortize launch ops; #6: dedicated assembly flights; CE3(a) doctrine launch-cost factor
+  const launchCost=(((0.12+0.01*totalProp)*padLaunchMult()*groundLaunchMult()*doctrineMult('launch')) + assemblyFlights(m)*ASSEMBLY_LAUNCH_COST)*eraCostMult(); // step 5b: range costs grow with the era // #7: pads + #6b: Ground/Reuse research amortize launch ops; #6: dedicated assembly flights; CE3(a) doctrine launch-cost factor
   return {payload, dragLoss:perf.dragLoss||0, sm:perf.sm, stageDv:perf.stageDv, stageTwr:perf.stageTwr, stageGravLoss:perf.stageGravLoss, gravLoss:perf.gravLoss, totalDv:perf.totalDv, liftoff:perf.liftoff, twr:perf.twr,
           boostDv:perf.boostDv||0, boosters:perf.boosters||null,
           totalEng, totalProp, reliability, buildCost, launchCost, crewed,
@@ -8195,12 +8197,31 @@ function reqsMet(r){
   return r.req.every(q=>state.research[q]) && (!r.reqMissionDone || state.completed[r.reqMissionDone]);
 }
 // I5: shared "actually start it" mutation for both the manual buy and the queued auto-start.
-function startResearchProject(r, viaQueue){
-  const sciNeed=sciGateCost(r);
-  state.money=round2(state.money-rdCostOf(r));
+function startResearchProject(r, viaQueue, crash){
+  const sciNeed=sciGateCost(r), cost=crash?crashCost(r):rdCostOf(r), months=crash?crashMonths(r):r.months;
+  state.money=round2(state.money-cost);
   if(sciNeed) state.science=round2((state.science||0)-sciNeed);
-  state.activeResearch={id:r.id, monthsLeft:r.months, rushed:0};
-  log('note',`R&D started: ${r.name} (${r.months} mo)${sciNeed?` · ${sciNeed} ⚛ science invested`:''}.${viaQueue?' Auto-started from the queue.':' It advances while you build and fly.'}`);
+  state.activeResearch={id:r.id, monthsLeft:months, rushed:0, crash:!!crash||undefined};
+  if(crash) log('note',`Crash program started: ${r.name} — ${eraName(r.eraMin)}-era technology pulled forward (${fM(cost)}, ${months} mo)${sciNeed?` · ${sciNeed} ⚛ science invested`:''}.`);
+  else log('note',`R&D started: ${r.name} (${r.months} mo)${sciNeed?` · ${sciNeed} ⚛ science invested`:''}.${viaQueue?' Auto-started from the queue.':' It advances while you build and fly.'}`);
+}
+/* ---------- Spine step 5b: crash programs ----------
+   A node from the NEXT era (one beyond the world's current era) can be pulled forward at a steep premium:
+   CRASH_COST_MULT the price and CRASH_TIME_MULT the time. The design doc's own pillar ("an aggressive player
+   can pull future tech forward at high R&D cost and risk"), and a permanent use for surplus cash. Only one era
+   ahead; prerequisites and science gates still apply. */
+const CRASH_COST_MULT=2.5, CRASH_TIME_MULT=1.5;
+function crashCost(r){ return round2(rdCostOf(r)*CRASH_COST_MULT); }
+function crashMonths(r){ return Math.ceil((r.months||1)*CRASH_TIME_MULT); }
+function crashEligible(r){ return !!(r && !state.research[r.id] && !researchEraMet(r) && (r.eraMin||0)===eraIndex(currentEra())+1 && reqsMet(r)); }
+function crashResearch(id){
+  if(!guardOrdinaryAction('Starting research')) return false;
+  const r=RESEARCH.find(x=>x.id===id);
+  if(!crashEligible(r) || state.activeResearch) return false;
+  if(state.money<crashCost(r) || !sciGateMet(r)) return false;
+  startResearchProject(r, false, true);
+  if(state.money<0) gameOver(); else render();
+  return true;
 }
 function buyResearch(id){
   if(!guardOrdinaryAction('Starting research')) return false;

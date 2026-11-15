@@ -1304,6 +1304,12 @@ const PASSIVE_MAX_ACTIVE_BASE=3, PASSIVE_MAX_ACTIVE_PER_ERA=1;
 // (first measured run without it: weather-satellite flights paid $5.4M against ~$5-7M rockets). Licensing and
 // doctrine retainers have no `service` and stay passive (royalties, not launches).
 const SERVICE_SETUP_MULT=0.5, SERVICE_MISS_REP=2, SERVICE_MISS_LIMIT=2;
+// Spine step 5b: costs grow with the era. Hardware, launches, prebuilt stock, fixed overhead and the service
+// launch allowance scale by ERA_COST_GROWTH per era index (x1.0 Pioneer .. x2.4 Speculative). Research is
+// already priced by tier and salaries belong to step 8, so neither scales here. Because the era follows the
+// frontier (step 1), a company that races ahead pays the later era's prices sooner.
+const ERA_COST_GROWTH=0.2;
+function eraCostMult(){ return 1+ERA_COST_GROWTH*eraIndex(currentEra()); }
 function isServiceContract(d){ return !!(d&&d.service); }
 function passiveSetupCost(d){ return d?round2(d.setup*(isServiceContract(d)?SERVICE_SETUP_MULT:1)):0; }
 function passiveMaxActive(){ return PASSIVE_MAX_ACTIVE_BASE + PASSIVE_MAX_ACTIVE_PER_ERA*eraIndex(currentEra()); }

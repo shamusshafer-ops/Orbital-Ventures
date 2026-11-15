@@ -187,7 +187,7 @@ Each step is small, keeps saves working, and has a pass/fail target `tools/autop
 | 2 ✅ | Repeat-flight payout decay (5.5) | No single mission flown more than ~15 times in a decade by the bot. **Met: 8–10** (was 13–14 with the same bot; the original eval bot flew Endurance ~170 times). |
 | 3 ✅ | Launch commit policy (5.6) | Decision stops per launch drop from ~0.7 to under 0.2. **1.34–1.52 → 0.21–0.23** (measured with animation on; the remainder is anomalies only, by design). |
 | 4 ✅ | Opening fix (5.7) | Engineer insolvency in year one under ~10% when following the checklist. **9/40 → 0/40** (research step moved after the first flight, with a cash reserve). |
-| 5 | Crash programs + era cost growth (5.2, 5.5) | Cash on hand stays under ~3 years of operating cost after 1950. |
+| 5 ✅ | Service contracts (5a, added by measurement) + crash programs + era cost growth (5b) | Cash on hand stays under ~3 years of operating cost after 1950. **1970: 8–11y → 0.3–4.0y**; met through the 1970s, untestable later (the bot can't design Belt/Jupiter missions). |
 | 6 | Rivals keyed to the frontier (5.3) | A sprinting bot faces rival firsts within ~5 years of its own. |
 | 7 | Annual Review (5.4), folding mandates/hearings/funding | One political stop per year instead of scattered modals. |
 | 8 | Science as research cost; astronauts and team ceilings (5.5) | A bot with no staff or stations stalls by the crewed era — modules become necessary. |

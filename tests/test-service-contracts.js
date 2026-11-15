@@ -25,7 +25,7 @@ check('signing charges the reduced setup', Math.abs((m0-state.money)-passiveSetu
 check('the contract is a service record', c && c.service && c.seq===1 && c.flown===0 && c.missed===0);
 const o1=svc()[0];
 check('the first service flight is on the board', svc().length===1 && o1.service.contractId==='sat_weather' && o1.proc);
-check('it pays the margin plus the launch allowance', o1.payout===round2(c.income*d.service.every+d.service.allow));
+check('it pays the margin plus the launch allowance (at era prices)', o1.payout===round2(c.income*d.service.every+d.service.allow*eraCostMult()));
 check('it is a real flight for the job', o1.reqDv===9400 && o1.payload===d.service.payload && !o1.profile);
 check('it is open until the next is due', o1.expiresAbs===absMonth()+d.service.every);
 check('no monthly income from a service contract', passiveMonthlyIncome()===0);
