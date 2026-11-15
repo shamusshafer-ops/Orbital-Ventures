@@ -40,8 +40,9 @@ branch. Browser validation and the proposed follow-on features remain open.
   `stackPerformance`). Human playtest checklist in ROADMAP.md (Tier 2 A1) still unrun.
 - Gate 6 browser items: re-capture `docs/ui-baseline/` (every existing file is smaller than its
   filename claims — `command-1920x1080.png` is actually 1003×1072, so no before/after comparison
-  against them is valid); confirm F8; and simply LOOK at the six new palettes, which no human has
-  seen yet.
+  against them is valid); confirm F8. The palettes are now LIVE (2026-11-14 layout/theme pass: Mission Dark,
+  Control Room Green, Apollo Beige, and opt-in Era-evolving) and were reviewed in headless-Firefox
+  screenshots — a human eye on them is still worthwhile.
 - Gate 3's engineering/design/aesthetic final re-audits never ran (agent hit its usage limit), so
   Gate 3 is not fully signed off.
 

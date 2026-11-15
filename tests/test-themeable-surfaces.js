@@ -26,7 +26,7 @@ console.log('Gate 6 — themeable surface migration');
 /* 1. --label exists in every palette (new token for the recurring section-caption
       role; it was #7fb6dd hardcoded at 4 sites and could not respond to theme). */
 const paletteAnchors = [':root', 'body.theme-green', 'body.theme-beige',
-                        'body.era-apollo', 'body.era-90s2000s', 'body.era-spacex'];
+                        'body.theme-era.era-apollo', 'body.theme-era.era-90s2000s', 'body.theme-era.era-spacex'];
 for (const sel of paletteAnchors) {
   const i = SHELL.indexOf(sel);
   const body = i < 0 ? '' : SHELL.slice(SHELL.indexOf('{', i) + 1, SHELL.indexOf('}', SHELL.indexOf('{', i)));

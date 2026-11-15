@@ -3162,7 +3162,30 @@ function mountCape3D(hostId, hotspotHostId){
   if(host.parentElement&&host.parentElement.classList) host.parentElement.classList.add('cape3d-zoom');
   if(cape3d.renderer.domElement.parentNode!==host) host.appendChild(cape3d.renderer.domElement);
   cape3d.mountId=hostId||'ccSceneHost'; cape3dSetHotspotHost(hotspotHostId); cape3dProjectHotspots();
+  observeCape3DHost(host);
   return true;
+}
+// Layout pass (2026-11-14): the Cape renders at its host's real size wherever it's mounted (Command Center
+// full-bleed, pop-out, full-screen flight), and follows that host when rails collapse or the window resizes.
+// Same pattern as the Solar Map (map3dResizeObserver / scheduleMap3DResize).
+let cape3dResizeObserver=null, cape3dResizeRAF=0;
+function resizeCape3DToHost(){
+  if(!cape3d) return false;
+  const host=$(cape3d.mountId); if(!host) return false;
+  const w=Math.round(host.clientWidth||0), h=Math.round(host.clientHeight||0);
+  if(w<2||h<2) return false;
+  resizeCape3D(w,h); cape3dProjectHotspots();
+  try{ if(cape3d.paused) renderCape3DFrame(); }catch(e){}
+  return true;
+}
+function scheduleCape3DResize(){
+  if(cape3dResizeRAF) cancelAnimationFrame(cape3dResizeRAF);
+  cape3dResizeRAF=requestAnimationFrame(()=>{ cape3dResizeRAF=0; resizeCape3DToHost(); });
+}
+function observeCape3DHost(host){
+  if(typeof ResizeObserver!=='function' || !host) return;
+  if(!cape3dResizeObserver) cape3dResizeObserver=new ResizeObserver(()=>scheduleCape3DResize());
+  try{ cape3dResizeObserver.disconnect(); cape3dResizeObserver.observe(host); }catch(e){}
 }
 function resizeCape3D(width,height){
   if(!cape3d) return false;
@@ -3297,7 +3320,11 @@ function startCapeGame(){
 // native scale so the command center reads as a whole place rather than a close-up.
 const CAPE_DEFAULT_ZOOM=0.86, CAPE_MIN_ZOOM=0.72, CAPE_MAX_ZOOM=3;
 let capeZoom=CAPE_DEFAULT_ZOOM, capePanX=0, capePanY=0;
-function applyCapeZoom(){ const z=$('ccZoom'); if(z) z.style.transform=`translate(${capePanX}px,${capePanY}px) scale(${capeZoom})`; }
+function applyCapeZoom(){ const z=$('ccZoom'); if(!z) return;
+  // The 3D Cape has its own orbit camera. If the 2D scene was built first (Three loads async from the CDN) and the
+  // 3D renderer later mounted into the same host, this CSS zoom must not shrink/offset the WebGL canvas.
+  if(z.classList&&z.classList.contains('cape3d-zoom')){ z.style.transform=''; return; }
+  z.style.transform=`translate(${capePanX}px,${capePanY}px) scale(${capeZoom})`; }
 function capeClampPan(w,h){
   // At zoom-out scales the spare space is on the right/bottom rather than the left/top.
   // Keeping both cases bounded makes dragging useful at the overview default as well as
@@ -3316,13 +3343,15 @@ function initCapeZoom(){
   const rect=()=>wrap.getBoundingClientRect();
   const compactTouch=()=>typeof window!=='undefined'&&typeof window.matchMedia==='function'&&window.matchMedia('(max-width: 1100px)').matches;
   let down=false, drag=false, pointerId=null, pointerIsCompactTouch=false, lx=0, ly=0, sx=0, sy=0, moved=0;
-  wrap.addEventListener('wheel',e=>{ e.preventDefault(); const r=wrap.getBoundingClientRect(); const cx=e.clientX-r.left, cy=e.clientY-r.top, z0=capeZoom;
+  const is3d=()=>{ const z=$('ccZoom'); return !!(z&&z.classList&&z.classList.contains('cape3d-zoom')); }; // 3D Cape owns input once mounted
+  wrap.addEventListener('wheel',e=>{ if(is3d()) return; e.preventDefault(); const r=wrap.getBoundingClientRect(); const cx=e.clientX-r.left, cy=e.clientY-r.top, z0=capeZoom;
     capeZoom=Math.min(CAPE_MAX_ZOOM,Math.max(CAPE_MIN_ZOOM, capeZoom*(e.deltaY<0?1.12:0.89)));
     capePanX=cx-(cx-capePanX)*(capeZoom/z0); capePanY=cy-(cy-capePanY)*(capeZoom/z0);
     capeClampPan(r.width,r.height); applyCapeZoom(); },{passive:false});
   // Begin tracking every primary pointer, including at the overview zoom. Pointer capture only
   // begins after the motion threshold, preserving normal clicks on launch/building hotspots.
   wrap.addEventListener('pointerdown',e=>{ if(e.button!==undefined&&e.button!==0) return;
+    if(is3d()) return;
     down=true; drag=false; pointerId=e.pointerId; pointerIsCompactTouch=e.pointerType==='touch'&&compactTouch(); moved=0; lx=sx=e.clientX; ly=sy=e.clientY; });
   wrap.addEventListener('pointermove',e=>{ if(!down||e.pointerId!==pointerId) return;
     const dx=e.clientX-lx, dy=e.clientY-ly; lx=e.clientX; ly=e.clientY;
@@ -3338,7 +3367,7 @@ function initCapeZoom(){
   const end=e=>{ if(!down||(e&&e.pointerId!==pointerId)) return; try{wrap.releasePointerCapture(pointerId);}catch(_){} down=false; drag=false; pointerId=null; pointerIsCompactTouch=false; wrap.style.cursor='grab'; };
   wrap.addEventListener('pointerup',end); wrap.addEventListener('pointercancel',end);
   wrap.addEventListener('click',e=>{ if(moved>=5){ e.stopPropagation(); e.preventDefault(); moved=0; } }, true); // swallow click-through after a drag
-  wrap.addEventListener('dblclick',()=>{ const r=rect(); resetCapeZoom(r.width,r.height); });
+  wrap.addEventListener('dblclick',()=>{ if(is3d()) return; const r=rect(); resetCapeZoom(r.width,r.height); });
   const r=rect(); resetCapeZoom(r.width,r.height);
 }
 // Transient liftoff lead-in on the iso Cape view: the pad rocket rises with a plume while the
@@ -3724,7 +3753,7 @@ function renderCCCenter(){
           <div class="cc-panel-h" style="margin:0">Cape Canaveral — click a building to drill in</div>
           <button class="btn ghost" onclick="openCCPopout()" title="Pop out — large 3D view + venture summary (Esc/Enter to close)" style="font-size:12px;padding:3px 9px">⤢ Pop out</button>
         </div>
-        <div class="ccscene-wrap" id="ccSceneWrap" style="aspect-ratio:1200/860">
+        <div class="ccscene-wrap" id="ccSceneWrap">
           <div id="ccZoom">
             <div id="ccSceneHost" class="ccscene" style="position:absolute;inset:0;padding:0"></div>
             <div id="ccSpots">${spots}</div>
@@ -3732,7 +3761,13 @@ function renderCCCenter(){
           <div class="cc-zoomhint">drag to orbit · scroll to zoom · double-click reset</div>
         </div>
       </div>`;
-    } else $('ccSpots').innerHTML=spots;
+    } else {
+      $('ccSpots').innerHTML=spots;
+      // Host built earlier by the 2D path (Three wasn't loaded yet): drop its CSS zoom and 2D control hint.
+      const z=$('ccZoom'); if(z&&z.style&&z.style.transform) z.style.transform='';
+      const hint=document.querySelector&&document.querySelector('#ccSceneWrap .cc-zoomhint');
+      if(hint&&hint.textContent!=='drag to orbit · scroll to zoom · double-click reset') hint.textContent='drag to orbit · scroll to zoom · double-click reset';
+    }
     const host=$('ccSceneHost'), wrap=$('ccSceneWrap');
     const w=(host&&host.clientWidth)||(wrap&&wrap.clientWidth)||CAPE_W, h=(host&&host.clientHeight)||(wrap&&wrap.clientHeight)||CAPE_H;
     if(startCape3D('ccSceneHost',w,h)){ if(cape3d&&cape3d.root&&!cape3d.root.userData.launchActive) cape3dInstallFlightVehicle(cape3dCurrentVehicleSpec()); cape3dSetHotspotHost('ccSpots'); resumeCape3D(); return; }
@@ -3745,7 +3780,7 @@ function renderCCCenter(){
           <div class="cc-panel-h" style="margin:0">Cape Canaveral — click a building to drill in</div>
           <button class="btn ghost" onclick="openCCPopout()" title="Pop out — large pan/zoom view + venture summary (Esc/Enter to close)" style="font-size:12px;padding:3px 9px">⤢ Pop out</button>
         </div>
-        <div class="ccscene-wrap" id="ccSceneWrap" style="aspect-ratio:1200/860">
+        <div class="ccscene-wrap" id="ccSceneWrap">
           <div id="ccZoom">
             <div id="ccSceneHost" class="ccscene" style="position:absolute;inset:0;padding:0"></div>
             <div id="ccSpots">${spots}</div>
@@ -11026,7 +11061,17 @@ function timelineGo(nav){ if(nav) setTab(nav); }
 function renderTlControls(){
   const box=$('tlControls'); if(!box) return;
   const filters=TL_CATEGORIES.map(c=>`<span class="tl-filter${_tlFilter===c.id?' active':''}" onclick="setTlFilter('${c.id}')" title="Show only ${c.label.toLowerCase()} entries">${c.icon?c.icon+' ':''}${c.label}</span>`).join('');
-  box.innerHTML=`${filters}<span class="tl-collapse" onclick="toggleTlCollapse()" title="${_tlCollapsed?'Expand':'Collapse'} the timeline strip">${_tlCollapsed?'▸ Show log':'▾ Hide log'}</span>`;
+  const toggle=`<span class="tl-collapse" onclick="toggleTlCollapse()" title="${_tlCollapsed?'Expand':'Collapse'} the timeline strip">${_tlCollapsed?'▸ Show log':'▾ Hide log'}</span>`;
+  box.classList.toggle('tl-one-line', !!_tlCollapsed);
+  if(_tlCollapsed){ box.innerHTML=tlLatestLineHTML()+toggle; return; } // layout pass: one line — the newest entry, then expand
+  box.innerHTML=filters+toggle;
+}
+// The collapsed log's single line: today's date and the newest entry, clickable to its home screen.
+function tlLatestLineHTML(){
+  const l=(state&&state.log||[])[0];
+  if(!l) return `<span class="tl-latest dim">${dateStr()} · No flights or events yet — advance time or fly a mission.</span>`;
+  const nav=logNav(l), icon=TL_CAT_ICON[logCategory(l)]||TL_CAT_ICON.other;
+  return `<span class="tl-latest${nav?' clk':''}" ${nav?`onclick="timelineGo('${nav}')"`:''} title="${tlAttr(l.msg)}"><b>${dateStr()}</b> · ${l.when&&l.when!==dateStr()?esc(String(l.when))+' · ':''}${icon} ${tlStrip(l.msg)}</span>`;
 }
 // Always-visible flight & ops timeline: leading date, then UPCOMING items, then the recent log
 // (newest first). Each chip jumps to a relevant screen when it has a navigation target.

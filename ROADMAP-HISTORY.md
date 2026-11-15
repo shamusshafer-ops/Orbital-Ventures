@@ -7747,3 +7747,35 @@ Tests: new `tests/test-parts-wiring.js` (40 checks; cannot even load against pre
 parts-attach/migration/physics/polish/ui to the decided behaviour. Full sweep 170/171, 1 intentional skip,
 0 unexpected. Headless Firefox: a two-stage rocket built by real palette/node clicks became the flown design,
 a slider edit flowed back into the graph, and the flight card matched the bench (4,541 m/s, 24.7 t).
+
+## 2026-11-14 — Layout pass + theme revival (Claude)
+
+Measured in Firefox before (1920×1080 | 1366×768): header+tabs 150 px; log strip 78 px on every tab but Command;
+fixed 380 px rails left the Bench/Map centre 518 px wide at 1366; the Cape letterboxed (1,001×717 in 1,860×838);
+flight a fixed 900×520 box. Owner decisions: compact header rows, rails that scale + collapse, themes included,
+era palettes as a 4th opt-in theme ("Era-evolving"), Mission Dark stays the blue baseline.
+
+- **Header ~150 → 97 px** (one compact block at the end of the stylesheet; same content). **Log strip 78 → 22 px:**
+  collapsed by default (saved choice wins) to one line showing today's date + the newest entry, click to expand.
+- **Rails:** `--cc-rail-width: clamp(260px,20vw,380px)` (1366 centre 518 → 732 px). Per-side collapse tabs, persisted
+  (`ov_rail_l/r`), `[` / `]` hotkeys; on the Command Center they hide the floating deck / right rail. Collapse is
+  scoped to >880px so a saved state can't hide panels on the stacked layout.
+- **Cape full-bleed:** scene spans the hero under the translucent deck/rail (was boxed between them); the fixed
+  1200/860 aspect moved to CSS and is `auto` in the hero. `mountCape3D()` now observes its host (ResizeObserver,
+  Solar Map pattern), so Command Center, pop-out and flight all render at their real size. **Pre-existing bug fixed:**
+  Three loads async from the CDN, so the first Command render often built the 2D Phaser scene; 3D then mounted into
+  that host and inherited its 0.86 CSS zoom (half the original letterbox) and 2D input handlers that grab pointer
+  capture. The 3D scene now clears the 2D zoom and those handlers stand down.
+- **Full-screen flight:** the overlay fills the window; `sizeFlightCanvas()` sizes the 2D canvases to the wrap (all 2D
+  art reads `cv.width/height`) and the 3D scene starts at that size (1920×1080 → 1,894×904). Headless keeps 900×520.
+- **Themes are real:** `applyTheme()` honours the pick (dark/green/beige/era); the blue-baseline block applies only
+  with no theme chosen; era palettes only under `body.theme-era`; HUD tokens (`--hud-*`, `--cc-hero-*`) are declared
+  on body (a var() resolves where declared — on :root they froze) and derived with `color-mix()` from the theme's core
+  tokens; ~40 navy/cyan literals in the main chrome tokenized (scrims, dev panel, newspaper era styling, vehicle
+  blueprint left as content). Canvas chrome `themeColor()` follows the theme incl. era palettes, with a parity test.
+- **Themed scrollbars** (were the browser's white default, flagged in the evaluation).
+
+Tests: new `tests/test-layout-pass.js` (25 checks); updated theme-sync (177 incl. canvas/CSS parity), theme-palettes,
+themeable-surfaces, dead-tokens, command-hero-layout, eval-bugfixes, icon-set, ops-friction to the decided behaviour.
+Full sweep 171/172, 1 intentional skip, 0 unexpected. Screenshots reviewed in all four themes, eras 1942/1985/2010/2031,
+both window sizes, rails collapsed/expanded, flight ascent + decision hold.

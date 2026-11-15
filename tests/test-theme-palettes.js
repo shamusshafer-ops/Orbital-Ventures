@@ -61,9 +61,10 @@ const WANT = {
   ':root': 'default',
   'body.theme-green': 'phosphor',
   'body.theme-beige': 'beige',
-  'body.era-apollo': 'apollo',
-  'body.era-90s2000s': 'y2k',
-  'body.era-spacex': 'spacex'
+  // 2026-11-14: era palettes apply only under the opt-in "Era-evolving" theme (body.theme-era)
+  'body.theme-era.era-apollo': 'apollo',
+  'body.theme-era.era-90s2000s': 'y2k',
+  'body.theme-era.era-spacex': 'spacex'
 };
 
 function readBlock(anchor) {
@@ -158,17 +159,21 @@ const GEOM = [
   ['era-90s2000s radius', /body\.era-90s2000s \.card[^{]*\{[^}]*border-radius:10px/],
   ['era-90s2000s glossy button', /body\.era-90s2000s \.btn[^{]*\{[^}]*linear-gradient/],
   ['era-spacex thin border', /body\.era-spacex \.card[^{]*\{[^}]*border-width:0\.5px/],
-  ['era-apollo grid tint', /body\.era-apollo[^{]*\{[^}]*rgba\(90,72,46/],
-  ['era-80s grid tint', /body\.era-80s[^{]*\{[^}]*rgba\(40,90,55/]
+  ['era-apollo grid tint', /body\.theme-era\.era-apollo\{[^}]*rgba\(90,72,46/],
+  ['era-80s grid tint', /body\.theme-era\.era-80s\{[^}]*rgba\(40,90,55/]
 ];
 for (const [label, re] of GEOM) check('geometry preserved: ' + label, re.test(SRC));
 
-/* manual theme pick must still beat era palette */
-check('era palettes keep manual-theme override gate',
-      (SRC.match(/body\.era-[a-z0-9]+:not\(\.theme-green\):not\(\.theme-beige\)/g) || []).length >= 4);
+/* era palettes are opt-in: only under body.theme-era, never on Mission Dark or a manual pick (2026-11-14) */
+check('era palettes apply only under the Era-evolving theme',
+      (SRC.match(/body\.theme-era\.era-[a-z0-9]+\s*\{/g) || []).length >= 4 &&
+      !/body\.era-[a-z0-9]+:not\(\.theme-green\)/.test(SRC));
+check('Mission Dark baseline applies only when no other theme is chosen',
+      /body:not\(\.theme-green\):not\(\.theme-beige\):not\(\.theme-era\)\{/.test(SRC) &&
+      !/body,body\.theme-green,body\.theme-beige,/.test(SRC));
 /* documented reuse is declared once, not duplicated */
 check('era-80s shares the Control Room Green declaration',
-      /body\.theme-green,\s*body\.era-80s:not\(\.theme-green\):not\(\.theme-beige\)\s*\{/.test(SRC));
+      /body\.theme-green,\s*body\.theme-era\.era-80s\s*\{/.test(SRC));
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 if (fail) process.exit(1);

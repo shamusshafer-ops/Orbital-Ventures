@@ -87,6 +87,7 @@ newGame('engineer');
   log('note','plain entry, no detail');
   log('bad','MISSION FAILURE — engine gave out', null, 'Ascent 88% — Propulsion 90% ✕FAILED, Structures 97%');
   let threw=false;
+  _tlCollapsed=false; // full strip (collapsed to one line by default since the 2026-11-14 layout pass)
   try{ renderLog(); }catch(e){ threw=true; console.log('renderLog threw:', e && e.message); }
   check('renderLog: does not throw on a mix of detailed/undetailed entries', !threw);
   const html=childHtml('opsTimeline');

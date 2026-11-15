@@ -24,7 +24,7 @@
   }
   :root{
     --topbar-h:120px; /* height of the pinned header+opsbar; updated live in JS so sticky panels clear it */
-    --cc-rail-width:380px; /* persistent left/right shell columns share one stable width */
+    --cc-rail-width:clamp(260px,20vw,380px); /* side rails scale with the window (layout pass 2026-11-14; was a fixed 380px) */
     /* Shared scene-shell geometry. Variants inherit these rather than creating their own shell contract. */
     --scene-gap:14px;
     --ui-scale:1; /* whole-UI zoom (E0.4 slice D); set live from JS (uiScale/100), persisted in localStorage 'ov_uiscale', NOT the save */
@@ -38,9 +38,7 @@
     --dom-military:#e2605a; --dom-exploration:#f38e42; --dom-crew:#4fd1d9; --dom-warn:#dbc21b;
     --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
     --sans:"Roboto Condensed","Arial Narrow","Segoe UI",system-ui,sans-serif;
-    --hud-surface:rgba(7,20,32,.90); --hud-raised:rgba(12,34,50,.92);
-    --hud-line:rgba(88,204,255,.36); --hud-line-soft:rgba(88,204,255,.18);
-    --hud-glow:rgba(45,190,255,.16); --hud-shadow:0 12px 28px rgba(0,4,10,.28);
+    --hud-shadow:0 12px 28px rgba(0,4,10,.28);
     /* Typography scale */
     --fs-h1:28px; --fw-h1:700;
     --fs-h2:18px; --fw-h2:600;
@@ -53,7 +51,7 @@
   /* Control Room Green — phosphor-CRT console. Shared with era-80s below, which is a
      DOCUMENTED reuse (that era's own comment already names this palette), declared once
      rather than repeated as a duplicate literal block. */
-  body.theme-green,body.era-80s:not(.theme-green):not(.theme-beige){
+  body.theme-green,body.theme-era.era-80s{
     --bg:#04120a; --panel:#082010; --panel2:#0d2c16; --line:#314737;
     --ink:#e2ece4; --muted:#92b69b; --dim:#6d9979;
     --ignite:#65b10e; --readout:#23c791; --ok:#2fbd63; --bad:#e66e66; --warn:#d2ac17; --label:#7cbf92;
@@ -82,7 +80,7 @@
      Control Room Green's palette) → 90s2000s (bubbly rounded, glossy gradient buttons, a fresh
      Y2K-web palette) → SpaceX-modern (thin/near-borderless, fully pill-shaped, condensed headers —
      the destination the whole progression ages TOWARD, meaningfully past today's default). ---- */
-  body.era-apollo:not(.theme-green):not(.theme-beige){
+  body.theme-era.era-apollo{
     --bg:#120d07; --panel:#1d150c; --panel2:#2a1f11; --line:#494032;
     --ink:#e4ddd0; --muted:#b3a489; --dim:#9a886e;
     --ignite:#e36f09; --readout:#36b99e; --ok:#3dac66; --bad:#e7645a; --warn:#caa510; --label:#c2a872;
@@ -99,7 +97,7 @@
      a little letter-spacing (monospace-terminal read) short of Apollo's full uppercase. */
   /* Palette lives in the shared Control Room Green rule above (documented reuse); only the
      CRT grid tint is era-80s-specific. */
-  body.era-80s:not(.theme-green):not(.theme-beige){
+  body.theme-era.era-80s{
     background-image:linear-gradient(rgba(40,90,55,.16) 1px,transparent 1px),linear-gradient(90deg,rgba(40,90,55,.16) 1px,transparent 1px); }
   body.era-80s .card,body.era-80s header{ border-radius:4px; border-width:1.5px; }
   body.era-80s .btn{ border-radius:3px; border-width:1.5px; letter-spacing:.02em; }
@@ -108,7 +106,7 @@
      bubbly rounded corners, a cooler brighter blue-gray palette than either retro era. No existing
      theme to reuse (neither Green nor Beige fits this), so this is a fresh palette — now actually
      fresh (#0a1220 surfaces, cyan-blue ignite), not a copy of the default as it was before Gate 6. */
-  body.era-90s2000s:not(.theme-green):not(.theme-beige){
+  body.theme-era.era-90s2000s{
     --bg:#0a1220; --panel:#121d30; --panel2:#1a2942; --line:#364551;
     --ink:#e3e9f0; --muted:#9cb1c3; --dim:#7d96a8;
     --ignite:#2eb4ee; --readout:#18c9dc; --ok:#37bc68; --bad:#e5756c; --warn:#d6b018; --label:#8cbad4;
@@ -120,7 +118,7 @@
      the destination the whole progression is aging TOWARD. Meaningfully more minimal than today's
      default (thinner borders, fully pill-shaped buttons, tighter/condensed headers), not just a
      restatement of the current look. */
-  body.era-spacex:not(.theme-green):not(.theme-beige){
+  body.theme-era.era-spacex{
     --bg:#08090b; --panel:#131518; --panel2:#1e2126; --line:#3c4043;
     --ink:#f6f7f7; --muted:#b2b7bd; --dim:#888e95;
     --ignite:#62b3ec; --readout:#6dc0d5; --ok:#3eb96b; --bad:#e56960; --warn:#d0ac1a; --label:#8fafc3;
@@ -129,36 +127,38 @@
   body.era-spacex .card,body.era-spacex header{ border-radius:14px; border-width:0.5px; }
   body.era-spacex .btn{ border-radius:20px; border-width:0.5px; }
   body.era-spacex h1,body.era-spacex h2,body.era-spacex h3{ letter-spacing:-0.01em; }
-  /* Command Center blue baseline: the current chrome is intentionally fixed while
-     alternate theme selection is paused. Era classes may still change shape, never hue. */
-  body,body.theme-green,body.theme-beige,
-  body.era-apollo:not(.theme-green):not(.theme-beige),
-  body.era-80s:not(.theme-green):not(.theme-beige),
-  body.era-90s2000s:not(.theme-green):not(.theme-beige),
-  body.era-spacex:not(.theme-green):not(.theme-beige){
+  /* Mission Dark — the Command Center blue baseline, and the default theme. 2026-11-14: this block used to
+     pin EVERY theme and era palette to blue (theme selection was paused); it now applies only when no other
+     theme is chosen. Eras change shape on every theme, and change colour only under "Era-evolving". */
+  body:not(.theme-green):not(.theme-beige):not(.theme-era){
     --bg:#071523; --panel:#0b2033; --panel2:#102c43; --line:#2d5c7a;
     --ink:#d9efff; --muted:#7fa8bf; --dim:#55758b;
     --ignite:#58c7ff; --readout:#8de5ff; --ok:#65d39a; --bad:#ef6a73; --warn:#f3c56b;
     --dom-economy:#65d39a; --dom-engineering:#6fbfff; --dom-research:#9bb9ff;
     --dom-military:#ef6a73; --dom-exploration:#58c7ff; --dom-crew:#8de5ff; --dom-warn:#f3c56b;
-    background-image:linear-gradient(rgba(88,199,255,.14) 1px,transparent 1px),linear-gradient(90deg,rgba(88,199,255,.14) 1px,transparent 1px);
+    background-image:linear-gradient(color-mix(in srgb,var(--ignite) 14%,transparent) 1px,transparent 1px),linear-gradient(90deg,color-mix(in srgb,var(--ignite) 14%,transparent) 1px,transparent 1px);
   }
-  body .launch,body.theme-green .launch,body.theme-beige .launch,body.era-apollo .launch,body.era-80s .launch,body.era-90s2000s .launch,body.era-spacex .launch{
-    background:linear-gradient(180deg,rgba(34,119,168,.34),rgba(7,21,35,.96));border-color:var(--readout);color:var(--readout);
-  }
-  body .diffcard.sel,body.theme-green .diffcard.sel,body.theme-beige .diffcard.sel,body.era-apollo .diffcard.sel,body.era-80s .diffcard.sel,body.era-90s2000s .diffcard.sel,body.era-spacex .diffcard.sel{border-color:var(--ignite);background:rgba(25,76,112,.55)}
+  /* Component accents, derived from the active theme's tokens (were blue literals pinned for every theme). */
+  body .launch{background:linear-gradient(180deg,color-mix(in srgb,color-mix(in srgb,var(--ignite) 62%,#000) 34%,transparent),color-mix(in srgb,var(--bg) 96%,transparent));border-color:var(--readout);color:var(--readout)}
+  body .launch:hover{background:linear-gradient(180deg,color-mix(in srgb,color-mix(in srgb,var(--ignite) 62%,#000) 52%,transparent),color-mix(in srgb,var(--bg) 96%,transparent))}
+  body .diffcard.sel{border-color:var(--ignite);background:color-mix(in srgb,color-mix(in srgb,var(--ignite) 42%,#000) 55%,transparent)}
   body .stage-card.rocket-sel{border-color:var(--ignite)!important}
-  body .diffcard.sel{background:rgba(25,76,112,.55)}
-  body .launch:hover{background:linear-gradient(180deg,rgba(34,119,168,.52),rgba(7,21,35,.96))}
-  body .rec-card{background:linear-gradient(135deg,rgba(88,199,255,.13),rgba(11,32,51,.82));border-color:var(--hud-line)}
-  body .adv-reqs{border-color:var(--hud-line);background:rgba(88,199,255,.08)}
-  body .ccspot:hover{background:rgba(88,199,255,.14);box-shadow:0 0 0 2px rgba(88,199,255,.18),0 0 18px rgba(88,199,255,.12)}
+  body .rec-card{background:linear-gradient(135deg,color-mix(in srgb,var(--ignite) 13%,transparent),color-mix(in srgb,var(--panel) 82%,transparent));border-color:var(--hud-line)}
+  body .adv-reqs{border-color:var(--hud-line);background:color-mix(in srgb,var(--ignite) 8%,transparent)}
+  body .ccspot:hover{background:color-mix(in srgb,var(--ignite) 14%,transparent);box-shadow:0 0 0 2px color-mix(in srgb,var(--ignite) 18%,transparent),0 0 18px color-mix(in srgb,var(--ignite) 12%,transparent)}
   body .pill.active{border-color:var(--hud-line);background:var(--hud-raised)}
   body .tl-date{border-color:var(--hud-line);background:var(--hud-raised)}
   body .stage-thrust,body .eq,body .bar,body .mapsvg,body .animwrap #flightCanvasWrap{background:var(--panel);border-color:var(--hud-line)}
-  body select,body input,body textarea{background:rgba(3,12,20,.76);border-color:var(--hud-line-soft);color:var(--ink)}
-  body .stage-thrust-fill{background:linear-gradient(90deg,var(--ignite),#9be6ff)}
-  body .timectl .tarrow.running{background:var(--ignite);color:#06111c;border-color:var(--ignite)}
+  body select,body input,body textarea{background:color-mix(in srgb,var(--bg) 76%,transparent);border-color:var(--hud-line-soft);color:var(--ink)}
+  body .stage-thrust-fill{background:linear-gradient(90deg,var(--ignite),color-mix(in srgb,var(--readout) 75%,#fff))}
+  body .timectl .tarrow.running{background:var(--ignite);color:var(--bg);border-color:var(--ignite)}
+  /* HUD tokens follow the active theme. Declared on body, not :root — a var() resolves where it is
+     declared, and the theme classes live on body, so :root-level derivations would stay frozen. */
+  body{
+    --hud-surface:color-mix(in srgb,var(--bg) 90%,transparent); --hud-raised:color-mix(in srgb,var(--panel2) 92%,transparent);
+    --hud-line:color-mix(in srgb,var(--ignite) 36%,transparent); --hud-line-soft:color-mix(in srgb,var(--ignite) 18%,transparent);
+    --hud-glow:color-mix(in srgb,var(--ignite) 16%,transparent);
+  }
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
     zoom:var(--ui-scale); /* scales all px-based layout, sticky offsets and hit-testing together (Firefox ≥126) */
@@ -166,7 +166,7 @@
     background-image:linear-gradient(rgba(42,58,68,.18) 1px,transparent 1px),linear-gradient(90deg,rgba(42,58,68,.18) 1px,transparent 1px);
     background-size:28px 28px;}
   body.theme-green{ background-image:linear-gradient(rgba(40,90,55,.16) 1px,transparent 1px),linear-gradient(90deg,rgba(40,90,55,.16) 1px,transparent 1px); }
-  body.theme-beige{ background-image:linear-gradient(rgba(88,199,255,.14) 1px,transparent 1px),linear-gradient(90deg,rgba(88,199,255,.14) 1px,transparent 1px); }
+  body.theme-beige{ background-image:linear-gradient(rgba(110,86,52,.18) 1px,transparent 1px),linear-gradient(90deg,rgba(110,86,52,.18) 1px,transparent 1px); }
   .wrap{max-width:1320px;margin:0 auto;padding:16px 16px 64px}
   body.fullwide .wrap{max-width:none;padding:12px 24px 48px}
   h1{margin:0;font-size:var(--fs-h1);font-weight:var(--fw-h1);letter-spacing:.02em}
@@ -216,6 +216,28 @@
   /* The right-rail column is ALWAYS reserved (even on scenes with no rail panel) so the center
      viewport keeps a constant width — tabbing between scenes only swaps content, never shifts layout. */
   .scene-shell{display:grid;grid-template-columns:var(--cc-rail-width) minmax(0,1fr) var(--cc-rail-width);gap:var(--scene-gap);align-items:start}
+  /* Collapsible side rails (layout pass): a collapsed side keeps only a thin column for its tab. */
+  .scene-shell{position:relative;--rail-l:var(--cc-rail-width);--rail-r:var(--cc-rail-width);grid-template-columns:var(--rail-l) minmax(0,1fr) var(--rail-r)}
+  @media(min-width:881px){
+    body.rail-l-collapsed .scene-shell{--rail-l:10px}
+    body.rail-r-collapsed .scene-shell{--rail-r:10px}
+    body.rail-l-collapsed .scene-shell>.rail-left>*,body.rail-r-collapsed .scene-shell>.rail-right>*{display:none!important}
+    body.rail-l-collapsed .command-hero #ccStrip{display:none!important}
+    body.rail-r-collapsed .command-hero .rail-right{display:none!important}
+  }
+  .rail-toggle{position:absolute;top:6px;z-index:12;width:18px;height:46px;padding:0;display:flex;align-items:center;justify-content:center;
+    border:1px solid var(--hud-line);border-radius:5px;background:var(--hud-raised);color:var(--readout);font:700 15px/1 var(--mono);cursor:pointer;opacity:.85}
+  .rail-toggle:hover,.rail-toggle:focus-visible{opacity:1;border-color:var(--readout)}
+  .rail-toggle-l{left:calc(var(--rail-l) + (var(--scene-gap) - 18px) / 2)}
+  .rail-toggle-r{right:calc(var(--rail-r) + (var(--scene-gap) - 18px) / 2)}
+  body.rail-l-collapsed .rail-toggle-l{left:-4px}
+  body.rail-r-collapsed .rail-toggle-r{right:-4px}
+  /* Command Center hero: the left deck (#ccStrip) and the right rail float over the Cape scene. */
+  .command-hero .rail-toggle-l{left:calc(16px + var(--cc-rail-width) + 4px)}
+  .command-hero .rail-toggle-r{right:calc(16px + var(--cc-rail-width) + 4px)}
+  body.rail-l-collapsed .command-hero .rail-toggle-l{left:6px}
+  body.rail-r-collapsed .command-hero .rail-toggle-r{right:6px}
+  @media(max-width:880px){ .rail-toggle{display:none} }
   .scene-slot,.scene-monitor,.hud-deck,.scene-inspector,.scene-roster{min-width:0}
   .rail-left,.rail-right{min-width:0;width:100%}                       /* equal persistent shell columns; contents cannot widen either track */
   .rail-left{align-self:start}                                         /* nav + persistent advisor/objectives (slice 4) */
@@ -265,9 +287,7 @@
      single-column collapse, so a ~1100-1280px browser window (a common laptop viewport) gets the full
      380+content+380px layout squeezed into whatever's left instead of narrowing gracefully first.
      Narrow both rails here; the 880px collapse below is unchanged and still the true breakpoint. */
-  @media(max-width:1200px){
-    :root{ --cc-rail-width:300px; }
-  }
+  /* (2026-11-14: the 1200px step to 300px rails is superseded by the clamp() on --cc-rail-width.) */
   @media(max-width:880px){
     .scene-shell{grid-template-columns:1fr}
     header{gap:10px}
@@ -303,7 +323,7 @@
   /* #27: visual draggable stage cards */
   .stage-card{transition:border-color .12s,box-shadow .12s}
   /* Phase 1: rocket-as-bench — card flash when selected from the rocket, and selected ring */
-  @keyframes stageFlash { 0%{box-shadow:0 0 0 2px rgba(88,199,255,.72), 0 0 18px rgba(88,199,255,.28)} 100%{box-shadow:0 0 0 2px transparent} }
+  @keyframes stageFlash { 0%{box-shadow:0 0 0 2px color-mix(in srgb,var(--ignite) 72%,transparent), 0 0 18px color-mix(in srgb,var(--ignite) 28%,transparent)} 100%{box-shadow:0 0 0 2px transparent} }
   .stage-flash{ animation: stageFlash 1.1s ease-out 1 }
   .stage-card.rocket-sel{ border-color:var(--ignite) !important }
   .stage-card .stage-head{gap:8px;margin-bottom:6px}
@@ -363,7 +383,7 @@
   .diffgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0}
   .diffcard{border:1px solid var(--line);border-radius:8px;padding:14px;background:var(--panel2);cursor:pointer;transition:border-color .15s,background .15s}
   .diffcard:hover{border-color:var(--muted)}
-  .diffcard.sel{border-color:var(--ignite);background:rgba(25,76,112,.55)}
+  .diffcard.sel{border-color:var(--ignite);background:color-mix(in srgb,color-mix(in srgb,var(--ignite) 42%,#000) 55%,transparent)}
   .diffcard h3{margin:0 0 4px;font-size:14px}
   .diffcard .tag{font-size:var(--fs-min);text-transform:uppercase;letter-spacing:.5px;color:var(--dim)}
   .diffcard.sel .tag{color:var(--ignite)}
@@ -446,9 +466,9 @@
   #techTree{cursor:grab}
   #techTree.grabbing{cursor:grabbing}
   #techTree.expanded{position:fixed;inset:0;z-index:60;background:var(--bg);max-height:none !important;padding:8px 14px}
-  .launch{width:100%;padding:13px;border:1px solid var(--ignite);background:linear-gradient(180deg,rgba(34,119,168,.34),rgba(7,21,35,.96));
+  .launch{width:100%;padding:13px;border:1px solid var(--ignite);background:linear-gradient(180deg,color-mix(in srgb,color-mix(in srgb,var(--ignite) 62%,#000) 34%,transparent),color-mix(in srgb,var(--bg) 96%,transparent));
     color:var(--ignite);font-size:14px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;border-radius:6px;cursor:pointer}
-  .launch:hover{background:linear-gradient(180deg,rgba(34,119,168,.52),rgba(7,21,35,.96))}
+  .launch:hover{background:linear-gradient(180deg,color-mix(in srgb,color-mix(in srgb,var(--ignite) 62%,#000) 52%,transparent),color-mix(in srgb,var(--bg) 96%,transparent))}
   .launch:disabled{border-color:var(--line);color:var(--dim);background:#121a20;cursor:not-allowed}
   .flag{font-size:12px;margin-top:8px;display:flex;gap:6px;align-items:flex-start}
   .flag.bad{color:var(--bad)} .flag.warn{color:var(--warn)} .flag.ok{color:var(--ok)}
@@ -471,7 +491,7 @@
      remain compact and legible over the live Cape scene in every era/theme. */
   .cc-strip,.cc-summary-right{display:flex;flex-direction:column;gap:10px}
   .cc-deck-card{padding:11px 12px;border:1px solid var(--hud-line);border-radius:7px;
-    background:linear-gradient(150deg,rgba(7,24,37,.91),rgba(5,14,24,.81));
+    background:linear-gradient(150deg,color-mix(in srgb,var(--panel) 91%,transparent),color-mix(in srgb,var(--bg) 81%,transparent));
     box-shadow:inset 0 1px 0 var(--hud-line-soft),var(--hud-shadow)}
   .cc-deck-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:7px}
   .cc-deck-head .cc-panel-h{margin:0}
@@ -481,7 +501,7 @@
   .cc-deck-metric .v{display:block;font-family:var(--mono);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .cc-deck-title{font-size:13px;font-weight:600;line-height:1.2}
   .cc-deck-sub{font-size:11px;color:var(--muted);margin-top:2px}
-  .cc-deck-progress{height:5px;margin:7px 0 4px;border-radius:4px;overflow:hidden;background:rgba(4,12,20,.72)}
+  .cc-deck-progress{height:5px;margin:7px 0 4px;border-radius:4px;overflow:hidden;background:color-mix(in srgb,var(--bg) 72%,transparent)}
   .cc-deck-progress > span{display:block;height:100%;background:var(--readout)}
   .cc-deck-row{display:flex;align-items:center;gap:7px;width:100%;padding:4px 0;font-size:12px;border:0;border-top:1px solid var(--hud-line-soft);background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer}
   .cc-deck-row:first-of-type{border-top:0}
@@ -649,7 +669,7 @@
   /* The Three canvas needs the whole host; only actual facility buttons should intercept it. */
   #ccSceneHost.cape3d-host canvas{width:100%!important;height:100%!important;max-width:none!important}
   #ccSpots,#ccPopSpots{pointer-events:none}
-  .ccscene-wrap{position:relative;margin-top:4px;line-height:0;overflow:hidden;border-radius:8px;background:#050a11;touch-action:none}
+  .ccscene-wrap{position:relative;margin-top:4px;line-height:0;overflow:hidden;border-radius:8px;background:#050a11;touch-action:none;aspect-ratio:1200/860} /* the hero below overrides to fill its area */
   #ccZoom{position:absolute;inset:0;transform-origin:0 0}
   .cc-zoomhint{position:absolute;left:8px;bottom:6px;font-family:var(--mono);font-size:var(--fs-min);color:rgba(200,210,220,0.5);line-height:1;pointer-events:none;z-index:6}
   .ccscene{display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:8px;background:#05070d}
@@ -657,8 +677,8 @@
     transition:border-color .12s,background .12s,box-shadow .12s;display:flex;flex-direction:column;justify-content:flex-end;
     padding:4px 6px;overflow:visible;text-align:left;color:inherit;font:inherit;line-height:0}
   button.ccspot{appearance:none;background:transparent}
-  .ccspot:hover,.ccspot:focus-visible{border-color:var(--ignite);background:linear-gradient(90deg,rgba(4,14,22,.64),rgba(245,166,35,0.10));box-shadow:inset 2px 0 0 rgba(79,209,217,.58),0 0 0 2px rgba(79,209,217,.8)}
-  .ccspot .nm,.ccspot .st{align-self:flex-start;max-width:100%;padding:1px 4px;border-radius:2px;background:linear-gradient(90deg,rgba(2,9,15,.83),rgba(2,9,15,.42));text-shadow:0 1px 3px #000,0 0 6px #000}
+  .ccspot:hover,.ccspot:focus-visible{border-color:var(--ignite);background:linear-gradient(90deg,color-mix(in srgb,var(--bg) 64%,transparent),rgba(245,166,35,0.10));box-shadow:inset 2px 0 0 rgba(79,209,217,.58),0 0 0 2px rgba(79,209,217,.8)}
+  .ccspot .nm,.ccspot .st{align-self:flex-start;max-width:100%;padding:1px 4px;border-radius:2px;background:linear-gradient(90deg,color-mix(in srgb,var(--bg) 83%,transparent),color-mix(in srgb,var(--bg) 42%,transparent));text-shadow:0 1px 3px #000,0 0 6px #000}
   .ccspot .nm{font-size:12px;font-weight:600;color:var(--ink);line-height:1.15;letter-spacing:.025em}
   .ccspot .st{font-family:var(--mono);font-size:var(--fs-min);color:var(--readout);line-height:1.2;letter-spacing:.02em}
   .ccspot .pill{align-self:flex-start;margin-bottom:2px}
@@ -730,6 +750,10 @@
   .tl-sep{flex:0 0 auto;align-self:center;color:var(--dim);font-size:var(--fs-min);letter-spacing:1px;padding:0 1px}
   /* #29: category filters + collapse toggle for the ops timeline */
   .tl-controls{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:4px}
+  .tl-controls.tl-one-line{flex-wrap:nowrap;min-width:0}
+  .tl-latest{flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px;color:var(--muted)}
+  .tl-latest b{color:var(--readout);font-family:var(--mono);font-weight:600}
+  .tl-latest.clk{cursor:pointer}.tl-latest.clk:hover{color:var(--ink)}
   .tl-filter{flex:0 0 auto;font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-radius:12px;padding:2px 9px;background:var(--panel);color:var(--dim);cursor:pointer;white-space:nowrap}
   .tl-filter:hover{border-color:var(--readout)}
   .tl-filter.active{border-color:var(--readout);color:var(--ink);background:var(--panel2)}
@@ -840,11 +864,11 @@
   nav.rail-nav button.active,.rail-acc-btn.open{background:linear-gradient(90deg,var(--hud-glow),var(--hud-raised));border-color:var(--hud-line);box-shadow:inset 2px 0 0 var(--readout),inset 0 1px 0 var(--hud-line-soft);}
   nav.rail-nav button:hover,.rail-acc-btn:hover,.bench-tab:hover,.tl-chip.clk:hover,.tl-filter:hover,.tl-collapse:hover{border-color:var(--readout);box-shadow:inset 0 0 0 1px var(--hud-glow);}
   .btn,.launch,.stepper button,.vehpop-btn,.vehpop-x{font-family:var(--sans);letter-spacing:.07em;border-color:var(--hud-line);transition:color .14s ease,border-color .14s ease,background .14s ease,box-shadow .14s ease;}
-  .btn{background:var(--hud-raised);border-radius:5px;}.btn.ghost{background:rgba(5,13,21,.38)}
+  .btn{background:var(--hud-raised);border-radius:5px;}.btn.ghost{background:color-mix(in srgb,var(--bg) 38%,transparent)}
   .btn:hover:not(:disabled),.vehpop-btn:hover,.vehpop-x:hover{border-color:var(--readout);color:var(--ink);box-shadow:0 0 0 1px var(--hud-glow),0 0 14px var(--hud-glow);}
-  .launch{background:linear-gradient(180deg,rgba(34,119,148,.30),rgba(8,24,35,.95));border-color:var(--readout);box-shadow:inset 0 1px 0 var(--hud-line-soft),0 0 14px var(--hud-glow);}
-  .launch:hover{background:linear-gradient(180deg,rgba(49,151,186,.38),rgba(8,24,35,.96));}
-  select,input[type=number],input[type=text],.stepper button{background:rgba(3,12,20,.76);border-color:var(--hud-line-soft);}
+  .launch{background:linear-gradient(180deg,color-mix(in srgb,color-mix(in srgb,var(--ignite) 58%,#000) 30%,transparent),color-mix(in srgb,var(--bg) 95%,transparent));border-color:var(--readout);box-shadow:inset 0 1px 0 var(--hud-line-soft),0 0 14px var(--hud-glow);}
+  .launch:hover{background:linear-gradient(180deg,color-mix(in srgb,color-mix(in srgb,var(--ignite) 72%,#000) 38%,transparent),color-mix(in srgb,var(--bg) 96%,transparent));}
+  select,input[type=number],input[type=text],.stepper button{background:color-mix(in srgb,var(--bg) 76%,transparent);border-color:var(--hud-line-soft);}
   select:hover,input[type=number]:hover,input[type=text]:hover{border-color:var(--hud-line);}
   :where(button,a,select,input,textarea,[tabindex]):focus-visible{outline:2px solid var(--readout);outline-offset:2px;box-shadow:0 0 0 4px var(--hud-glow);}
   .stage,.item,.metrics,.bar,.eq{border-color:var(--hud-line-soft);}.metrics{background:var(--hud-line-soft)}
@@ -863,9 +887,9 @@
   .cc-brand-mark,.cc-icon{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;
     font-family:var(--mono);font-weight:600;line-height:1;color:var(--readout);text-shadow:0 0 9px var(--hud-glow);}
   .cc-brand-mark{width:26px;height:26px;border:1px solid var(--hud-line);border-radius:50%;font-size:17px;
-    background:radial-gradient(circle,rgba(88,204,255,.13) 0 28%,transparent 30%);box-shadow:inset 0 0 0 3px rgba(88,204,255,.05);}
+    background:radial-gradient(circle,color-mix(in srgb,var(--ignite) 13%,transparent) 0 28%,transparent 30%);box-shadow:inset 0 0 0 3px color-mix(in srgb,var(--ignite) 5%,transparent);}
   .cc-icon{width:19px;height:19px;margin-right:8px;border:1px solid var(--hud-line-soft);border-radius:3px;font-size:12px;
-    background:linear-gradient(135deg,rgba(88,204,255,.11),transparent 65%);}
+    background:linear-gradient(135deg,color-mix(in srgb,var(--ignite) 11%,transparent),transparent 65%);}
   .cc-nav-label{min-width:0;overflow:hidden;text-overflow:ellipsis}
   nav.rail-nav button,.rail-acc-btn{display:flex;align-items:center}
   nav.rail-nav button .tabbadge{margin-left:auto}
@@ -885,8 +909,8 @@
 
   /* Command Center is an instrument surface from header through scene. This is deliberately
      body-scoped: eras and user themes return untouched as soon as another tab is selected. */
-  body.command-mode{--cc-hero-navy:#06121e;--cc-hero-cyan:#67d5ff;
-    --cc-hero-surface:rgba(6,18,30,.91);--cc-hero-raised:rgba(10,29,45,.93);--cc-hero-line:rgba(103,213,255,.36);--cc-hero-line-soft:rgba(103,213,255,.18);--cc-hero-glow:rgba(76,198,255,.16)}
+  body.command-mode{--cc-hero-navy:color-mix(in srgb,var(--bg) 82%,#000);--cc-hero-cyan:color-mix(in srgb,var(--ignite) 88%,#fff);
+    --cc-hero-surface:color-mix(in srgb,var(--bg) 91%,transparent);--cc-hero-raised:color-mix(in srgb,var(--panel) 93%,transparent);--cc-hero-line:color-mix(in srgb,var(--cc-hero-cyan) 36%,transparent);--cc-hero-line-soft:color-mix(in srgb,var(--cc-hero-cyan) 18%,transparent);--cc-hero-glow:color-mix(in srgb,var(--ignite) 16%,transparent)}
   body.command-mode .topbar{background:linear-gradient(180deg,var(--cc-hero-navy) 72%,transparent)}
   body.command-mode header,body.command-mode .opsbar{border-color:var(--cc-hero-line);background:linear-gradient(180deg,var(--cc-hero-raised),var(--cc-hero-surface));box-shadow:inset 0 1px 0 var(--cc-hero-line-soft),var(--hud-shadow)}
   body.command-mode header::before,body.command-mode .opsbar::before{background:var(--cc-hero-cyan);box-shadow:38px 0 0 -1px var(--cc-hero-line)}
@@ -896,19 +920,25 @@
   .animwrap{position:fixed;inset:0;background:rgba(4,7,10,.94);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;z-index:70}
   .animwrap #flightCanvasWrap{border:1px solid var(--line);border-radius:8px;max-width:94vw;overflow:hidden;background:#04060a}
   .animwrap #flightCanvasWrap canvas{display:block;width:100%;height:auto}
-  .flight3d-readout{position:absolute;z-index:8;top:14px;left:15px;max-width:250px;padding:8px 10px;border:1px solid rgba(110,208,255,.42);border-radius:5px;background:rgba(2,12,22,.72);box-shadow:0 4px 18px rgba(0,0,0,.25);color:#d9f4ff;font:11px/1.48 var(--mono);letter-spacing:.045em;white-space:pre-line;pointer-events:none}
+  /* Layout pass (2026-11-14): the flight fills the screen (was a fixed 900x520 box). sizeFlightCanvas() then sets
+     the canvases' drawing size to match, and the 3D host follows via the Cape resize observer. */
+  .animwrap{gap:8px;padding:8px 12px}
+  .animwrap #flightCanvasWrap{width:calc(100vw - 24px);height:calc(100vh - 88px);max-width:none}
+  .animwrap #flightZoom{width:100%;height:100%}
+  .animwrap #flightCanvasWrap canvas{height:100%}
+  .flight3d-readout{position:absolute;z-index:8;top:14px;left:15px;max-width:250px;padding:8px 10px;border:1px solid color-mix(in srgb,var(--readout) 42%,transparent);border-radius:5px;background:color-mix(in srgb,var(--bg) 72%,transparent);box-shadow:0 4px 18px rgba(0,0,0,.25);color:#d9f4ff;font:11px/1.48 var(--mono);letter-spacing:.045em;white-space:pre-line;pointer-events:none}
   .flight3d-readout.hidden{display:none!important}
-  .flight-orbit-hud{position:absolute;z-index:12;left:15px;bottom:14px;width:286px;padding:9px 11px;border:1px solid rgba(110,208,255,.55);border-radius:5px;background:rgba(2,12,22,.88);box-shadow:0 7px 24px rgba(0,0,0,.4);color:#d9f4ff;font:10px/1.42 var(--mono);pointer-events:none}
+  .flight-orbit-hud{position:absolute;z-index:12;left:15px;bottom:14px;width:286px;padding:9px 11px;border:1px solid color-mix(in srgb,var(--readout) 55%,transparent);border-radius:5px;background:color-mix(in srgb,var(--bg) 88%,transparent);box-shadow:0 7px 24px rgba(0,0,0,.4);color:#d9f4ff;font:10px/1.42 var(--mono);pointer-events:none}
   .flight-orbit-hud.hidden{display:none!important}.orbit-hud-title{margin-bottom:6px;color:#7bcff0;letter-spacing:.12em;font-size:9px}.orbit-hud-grid{display:grid;grid-template-columns:1fr auto;gap:3px 12px}.orbit-hud-grid span{color:#83a7b8;letter-spacing:.06em}.orbit-hud-grid b{color:#fff;text-align:right;font-weight:600;font-variant-numeric:tabular-nums}
-  .flight-report-card{position:absolute;z-index:13;right:14px;top:14px;width:220px;padding:9px 10px;border:1px solid rgba(110,208,255,.52);border-radius:6px;background:rgba(2,12,22,.90);box-shadow:0 7px 24px rgba(0,0,0,.42);color:#e9faff;font:10px/1.45 var(--mono);pointer-events:none}
+  .flight-report-card{position:absolute;z-index:13;right:14px;top:14px;width:220px;padding:9px 10px;border:1px solid color-mix(in srgb,var(--readout) 52%,transparent);border-radius:6px;background:color-mix(in srgb,var(--bg) 90%,transparent);box-shadow:0 7px 24px rgba(0,0,0,.42);color:#e9faff;font:10px/1.45 var(--mono);pointer-events:none}
   .flight-report-card.hidden{display:none!important}.flight-report-card .fr-title{color:#7bcff0;font-size:9px;letter-spacing:.14em;margin-bottom:5px}.flight-report-card .fr-row{display:flex;justify-content:space-between;gap:8px}.flight-report-card .fr-row span:last-child{color:#fff;text-align:right}.flight-report-card.failure{border-color:rgba(232,86,79,.75)}.flight-report-card.failure .fr-title{color:#ff9a8f}
-  .flight-altitude{position:absolute;z-index:12;top:13px;left:50%;min-width:174px;transform:translateX(-50%);padding:7px 15px 8px;border:1px solid rgba(118,220,255,.68);border-radius:6px;background:rgba(2,12,22,.90);box-shadow:0 7px 24px rgba(0,0,0,.42),inset 0 1px 0 rgba(220,248,255,.08);color:#e9faff;text-align:center;font-family:var(--mono);font-variant-numeric:tabular-nums;pointer-events:none}
+  .flight-altitude{position:absolute;z-index:12;top:13px;left:50%;min-width:174px;transform:translateX(-50%);padding:7px 15px 8px;border:1px solid color-mix(in srgb,var(--readout) 68%,transparent);border-radius:6px;background:color-mix(in srgb,var(--bg) 90%,transparent);box-shadow:0 7px 24px rgba(0,0,0,.42),inset 0 1px 0 rgba(220,248,255,.08);color:#e9faff;text-align:center;font-family:var(--mono);font-variant-numeric:tabular-nums;pointer-events:none}
   .flight-altitude.hidden{display:none!important}
   .flight-altitude span{display:block;color:#7bcff0;font-size:9px;line-height:1.1;letter-spacing:.18em}
   .flight-altitude strong{display:block;margin-top:3px;font-size:20px;line-height:1.05;letter-spacing:.035em;font-weight:650}
   .flight3d-decision{position:absolute;inset:0;z-index:9;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(2,8,14,.56);pointer-events:auto}
   .flight3d-decision.hidden{display:none!important}
-  .flight3d-decision-panel{width:min(470px,90%);padding:20px;border:1px solid var(--warn);border-radius:9px;background:rgba(8,23,35,.97);box-shadow:0 18px 55px rgba(0,0,0,.58),inset 0 1px 0 rgba(255,255,255,.08);font-family:var(--mono);line-height:1.42}
+  .flight3d-decision-panel{width:min(470px,90%);padding:20px;border:1px solid var(--warn);border-radius:9px;background:color-mix(in srgb,var(--panel) 97%,transparent);box-shadow:0 18px 55px rgba(0,0,0,.58),inset 0 1px 0 rgba(255,255,255,.08);font-family:var(--mono);line-height:1.42}
   .flight3d-decision-title{margin:0 0 12px;color:var(--warn);font-size:14px;letter-spacing:.045em;text-align:center}
   .flight3d-decision-line{margin:5px 0;color:var(--ink);font-size:12px;text-align:center}
   .flight3d-decision-actions{display:grid;gap:8px;margin-top:17px}
@@ -947,12 +977,16 @@
     /* The hero is viewport-bound: a fixed floor here made the absolute overlays extend below
        short desktop windows before the player could see the ticker or scene dock. */
     .command-hero #commandView{position:relative;height:calc(100vh - var(--topbar-h) - 18px);min-height:0}
-    .command-hero #ccCenter{height:100%;margin-left:calc(var(--cc-rail-width) + 14px);margin-right:calc(var(--cc-rail-width) + 14px)}
+    /* Layout pass (2026-11-14): full-bleed — the Cape spans the whole hero under the floating, translucent
+       left deck and right rail (was boxed between them, then letterboxed by a fixed 1200/860 aspect ratio). */
+    .command-hero #ccCenter{height:100%;margin-left:0;margin-right:0}
     .command-hero #ccCenter > .cc-hero-card{height:100%}
     .command-hero .cc-hero-card{position:relative;padding:0;overflow:hidden;background:#05070d;border-color:var(--hud-line);box-shadow:inset 0 1px 0 var(--hud-line-soft),inset 0 0 80px rgba(44,140,177,.07),var(--hud-shadow)}
-    .command-hero .cc-hero-head{position:absolute;z-index:3;right:14px;top:12px;display:flex;align-items:center;gap:8px;padding:5px 7px;border:1px solid var(--hud-line-soft);border-radius:5px;background:rgba(4,12,20,.74)}
+    .command-hero .cc-hero-head{position:absolute;z-index:3;right:14px;top:12px;display:flex;align-items:center;gap:8px;padding:5px 7px;border:1px solid var(--hud-line-soft);border-radius:5px;background:color-mix(in srgb,var(--bg) 74%,transparent)}
     .command-hero .cc-hero-head .cc-panel-h{display:none}
-    .command-hero .ccscene-wrap{height:100%;margin:0;border-radius:0}
+    .command-hero .ccscene-wrap{height:100%;margin:0;border-radius:0;aspect-ratio:auto}
+    .command-hero .cc-hero-head{right:calc(var(--cc-rail-width) + 34px)}
+    body.rail-r-collapsed .command-hero .cc-hero-head{right:34px}
     .command-hero .ccscene{border:0;border-radius:0}
     /* Keep the live Cape readable as a scene, not a flat backdrop. The grading lives inside
        the zoom layer, above the canvas but below the existing interactive hotspot layer. */
@@ -961,8 +995,8 @@
     .command-hero #ccZoom::after{background-image:linear-gradient(90deg,transparent 0 49%,var(--hud-line-soft) 50%,transparent 51%),linear-gradient(0deg,transparent 0 49%,var(--hud-line-soft) 50%,transparent 51%),radial-gradient(circle,var(--hud-glow) 0 1px,transparent 1.5px);background-size:44px 44px,44px 44px,22px 22px;background-position:center;mix-blend-mode:screen;opacity:.22}
     /* The 2D Cape's dark grade/grid is useful over painted pixels but obscures the lit Three scene. */
     .command-hero #ccZoom.cape3d-zoom::before,.command-hero #ccZoom.cape3d-zoom::after{display:none}
-    .command-hero #ccZoom.cape3d-zoom .ccspot .nm{font-weight:700;color:#f4fbff;background:rgba(2,13,22,.72);text-shadow:0 1px 3px #000,0 0 8px rgba(0,0,0,.9)}
-    .command-hero #ccZoom.cape3d-zoom .ccspot .st{color:#bdeeff;background:rgba(2,13,22,.58);text-shadow:0 1px 3px #000}
+    .command-hero #ccZoom.cape3d-zoom .ccspot .nm{font-weight:700;color:#f4fbff;background:color-mix(in srgb,var(--bg) 72%,transparent);text-shadow:0 1px 3px #000,0 0 8px rgba(0,0,0,.9)}
+    .command-hero #ccZoom.cape3d-zoom .ccspot .st{color:#bdeeff;background:color-mix(in srgb,var(--bg) 58%,transparent);text-shadow:0 1px 3px #000}
     .command-hero #ccSceneHost{z-index:0}
     .command-hero #ccSpots{position:absolute;inset:0;z-index:2}
     /* Cape names remain scan-friendly; their secondary status is available on intent or when
@@ -970,11 +1004,11 @@
     .command-hero .ccspot .st{max-height:0;margin:0;overflow:hidden;opacity:0;transform:translateY(-2px);transition:max-height .14s ease,margin .14s ease,opacity .14s ease,transform .14s ease}
     .command-hero .ccspot:hover .st,.command-hero .ccspot:focus-visible .st,.command-hero .ccspot.cc-attention .st{max-height:2.6em;margin-top:1px;opacity:1;transform:none}
     .command-hero .ccspot:focus-visible{outline:2px solid var(--readout);outline-offset:2px}
-    .command-hero .cc-zoomhint{left:auto;right:14px;bottom:14px;padding:4px 6px;border:1px solid var(--hud-line-soft);border-radius:4px;background:rgba(4,12,20,.66)}
+    .command-hero .cc-zoomhint{left:auto;right:14px;bottom:14px;padding:4px 6px;border:1px solid var(--hud-line-soft);border-radius:4px;background:color-mix(in srgb,var(--bg) 66%,transparent)}
     .command-hero .cc-strip,.command-hero .cc-summary-right{position:absolute;z-index:7;top:16px;width:min(340px,calc(100% - 372px));overflow:visible}
     .command-hero .cc-strip{left:16px;top:0;bottom:16px;width:var(--cc-rail-width);display:flex;flex-direction:column;gap:8px;overflow-y:auto}
     .command-hero .cc-strip > .cc-deck-card{width:100%;box-sizing:border-box}
-    .command-hero .cc-strip{padding:0;background:linear-gradient(135deg,rgba(3,13,22,.91),rgba(5,18,27,.70));border:1px solid var(--hud-line-soft);box-shadow:inset 0 1px 0 rgba(190,235,255,.08),var(--hud-shadow)}
+    .command-hero .cc-strip{padding:0;background:linear-gradient(135deg,color-mix(in srgb,var(--bg) 91%,transparent),color-mix(in srgb,var(--panel) 70%,transparent));border:1px solid var(--hud-line-soft);box-shadow:inset 0 1px 0 rgba(190,235,255,.08),var(--hud-shadow)}
     .command-hero .cc-summary-right{display:none}
     .command-hero #ccTimeline{display:none}
     .command-hero #ccTimeline .cc-panel-h{font-size:10px;margin-bottom:5px}
@@ -1053,18 +1087,18 @@
   .obj-just-done{animation:objSparkle .75s ease-out;border-radius:4px}
   /* Final Command Center lock: late feature CSS may style archival/news surfaces, but it must
      not reintroduce the paused brown/green era chrome into the active product UI. */
-  body .frontpage{background:#0b2033!important;color:var(--ink)!important;border-color:var(--hud-line)!important;box-shadow:inset 0 1px 0 var(--hud-line-soft),var(--hud-shadow)!important}
+  body .frontpage{background:var(--panel)!important;color:var(--ink)!important;border-color:var(--hud-line)!important;box-shadow:inset 0 1px 0 var(--hud-line-soft),var(--hud-shadow)!important}
   body .frontpage .fp-masthead,body .frontpage .fp-headline,body .frontpage .fp-dek,
   body .frontpage .fp-dateline{color:var(--ink)!important;border-color:var(--hud-line)!important}
-  body .frontpage .fp-kind{background:rgba(88,199,255,.14)!important;color:var(--readout)!important;border-color:var(--hud-line)!important}
-  body .frontpage .fp-chrome{background:#071523!important;border-color:var(--hud-line)!important}
+  body .frontpage .fp-kind{background:color-mix(in srgb,var(--ignite) 14%,transparent)!important;color:var(--readout)!important;border-color:var(--hud-line)!important}
+  body .frontpage .fp-chrome{background:var(--bg)!important;border-color:var(--hud-line)!important}
 
   /* SM5 — Solar Map operating modes. One live scene, four intent-driven layer profiles. */
   .map-mode-toolbar{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:8px 0 10px}
   .map-mode-toolbar .map-mode-label{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);margin-right:2px}
   .map-mode-btn{font-size:11px!important;padding:4px 8px!important}
   .map-mode-btn.active{border-color:var(--ignite)!important;color:var(--ignite)!important;background:rgba(245,166,35,.10)!important}
-  .map-mode-status{display:flex;align-items:flex-start;gap:9px;border:1px solid var(--hud-line-soft);border-radius:7px;padding:7px 9px;margin:0 0 9px;background:rgba(5,18,29,.72)}
+  .map-mode-status{display:flex;align-items:flex-start;gap:9px;border:1px solid var(--hud-line-soft);border-radius:7px;padding:7px 9px;margin:0 0 9px;background:color-mix(in srgb,var(--panel) 72%,transparent)}
   .map-mode-status .mode-icon{font-size:18px;line-height:1}
   .map-mode-status .mode-name{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--readout)}
   .map-mode-status .mode-desc{font-size:11px;color:var(--muted);margin-top:2px;line-height:1.35}
@@ -1073,6 +1107,25 @@
   #mapPopout .map-mode-btn{white-space:nowrap}
   @media(max-width:1180px){#mapPopout .map-pop-camera{display:none}}
 
+  /* ---- Layout pass (2026-11-14): compact header. Same content; ~150px → ~95px of chrome. Placed last so it
+     wins over the presentation-layer header rules above by source order, at the same specificity. ---- */
+  body.fullwide .wrap{padding-top:6px}
+  header{padding:6px 14px;row-gap:5px;margin-bottom:6px}
+  .stats{gap:16px}
+  .stat .k{font-size:10.5px;line-height:1.15}
+  .stat .v{font-size:16px;line-height:1.2}
+  .brand .co{font-size:15px}
+  .brand .tag{font-size:11px}
+  .header-actions .btn{padding:3px 10px;font-size:12px}
+  .scene-dock{padding-top:5px}
+  .scene-dock nav.rail-nav button{min-height:28px;padding:3px 8px}
+  #opsTickerHome .tl-controls{margin-top:0}
+  /* Themed scrollbars (2026-11-14): panels used the browser's default light scrollbar, a white stripe in the
+     dark UI. scrollbar-color inherits, so setting it on body covers every scroll container. */
+  body{scrollbar-color:color-mix(in srgb,var(--ignite) 34%,var(--panel)) transparent}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--ignite) 34%,var(--panel));border-radius:5px;border:2px solid transparent;background-clip:padding-box}
 </style>
 </head>
 <body>
@@ -1121,6 +1174,8 @@
   <button class="btn ghost hidden" id="topbarShow" onclick="toggleTopbar()" title="Show the top bar (h)">▾ Show bar</button>
 
   <div class="shell scene-shell" id="appShell">
+    <button class="rail-toggle rail-toggle-l" id="railToggleL" type="button" onclick="toggleRail('l')" aria-controls="appShell" aria-expanded="true" title="Collapse the left panel ([)">‹</button>
+    <button class="rail-toggle rail-toggle-r" id="railToggleR" type="button" onclick="toggleRail('r')" aria-controls="appShell" aria-expanded="true" title="Collapse the right panel (])">›</button>
     <aside class="rail-left scene-slot">
       <!-- Contextual scene content mounts here without duplicating its live DOM host. -->
       <div id="mapRosterSlot" class="scene-roster hidden" aria-label="Solar System bodies"></div>

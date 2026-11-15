@@ -19,16 +19,18 @@ console.log('Gate 6 — dead token cleanup');
 check('--cc-hero-navy-raised removed (was 0 uses repo-wide)',
       !/--cc-hero-navy-raised/.test(SRC));
 
-check('--cc-hero-navy still declared (1 live use: topbar gradient)',
-      /--cc-hero-navy:#06121e/.test(SRC));
+check('--cc-hero-navy still declared (1 live use: topbar gradient), now derived from the theme',
+      /--cc-hero-navy:color-mix\(in srgb,var\(--bg\)/.test(SRC));
 
 const dupBlock = /body\.theme-green,body\.theme-beige,\s*\n\s*body\.era-apollo[^{]*\{\s*\n\s*--hud-surface:rgba\(7,20,32,\.92\)/;
 check('redundant hud-* redeclaration on theme/era selectors removed', !dupBlock.test(SRC));
 
-const rootHud = SRC.slice(0, SRC.indexOf('</style>')).match(
-  /--hud-surface:rgba\(7,20,32,\.9\d\); --hud-raised:rgba\(12,34,50,\.9\d\);\s*\n\s*--hud-line:rgba\(88,204,255,\.36\); --hud-line-soft:rgba\(88,204,255,\.18\);\s*\n\s*--hud-glow:rgba\(45,190,255,\.16\)/
-);
-check(':root still declares the single surviving hud-* block', !!rootHud);
+// 2026-11-14 layout/theme pass: the single hud-* block moved from :root to body and is derived from the theme's
+// core tokens (a var() resolves where it is declared; the theme classes live on body).
+const css = SRC.slice(0, SRC.indexOf('</style>'));
+check('exactly one hud-* block, declared on body and derived from theme tokens',
+      (css.match(/--hud-surface:(?!var\(--cc-hero-surface\))/g) || []).length === 1 && // the command-hero bridge re-points, it doesn't redefine
+      /body\{\s*\n\s*--hud-surface:color-mix\(in srgb,var\(--bg\)/.test(css));
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 

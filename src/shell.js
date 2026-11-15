@@ -37,19 +37,17 @@ let wideOn = true;
 try{ const v=localStorage.getItem('ov_wide'); if(v!==null) wideOn=(v==='1'); }catch(e){}
 // Display-only theme variants — persisted like wideOn (localStorage, NOT in the save), so they
 // survive new games and need no SAVE_VERSION bump. Each name maps to a body.theme-* palette class.
-const THEMES={ dark:'Mission Dark', green:'Control Room Green', beige:'Apollo Beige' };
-// 2026-11-14: theme selection is paused (applyTheme pins dark, and shell.html's "Command Center blue
-// baseline" block pins every palette's tokens), so the Menu hides its theme chips instead of offering
-// buttons that do nothing. Flip to true only together with lifting both pins.
-const THEMES_SELECTABLE=false;
+const THEMES={ dark:'Mission Dark', green:'Control Room Green', beige:'Apollo Beige', era:'Era-evolving' };
+// 2026-11-14: theme selection is live again. "Era-evolving" opts into the four era palettes (body.theme-era +
+// the body.era-* class applyEraVisual() maintains); Mission Dark is the blue baseline and stays the default.
+const THEMES_SELECTABLE=true;
 let currentTheme='dark';
 try{ const v=localStorage.getItem('ov_theme'); if(v && THEMES[v]) currentTheme=v; }catch(e){}
 function applyTheme(name){
-  // The Command Center blue HUD is the current product baseline. Keep the picker API
-  // intact for the later theme pass, but do not let persisted theme choices recolor the UI.
-  name='dark'; currentTheme=name;
-  try{ localStorage.setItem('ov_theme', 'dark'); }catch(e){}
-  const b=document.body; if(b){ b.classList.remove('theme-green','theme-beige'); if(name!=='dark') b.classList.add('theme-'+name); }
+  if(!THEMES[name]) name='dark';
+  currentTheme=name;
+  try{ localStorage.setItem('ov_theme', name); }catch(e){}
+  const b=document.body; if(b){ b.classList.remove('theme-green','theme-beige','theme-era'); if(name!=='dark') b.classList.add('theme-'+name); }
 }
 function pickTheme(name){ applyTheme(name); if(typeof activeModal==='function') activeModal(); } // re-render the menu so the active chip updates
 // UI scale (E0.4 slice D) — a display-only whole-page zoom, persisted like theme/wide (localStorage,
@@ -203,6 +201,33 @@ document.addEventListener('keydown',function(e){
   if(!animState) return;
   if(e.key==='Enter'&&!mutatingShortcutBlocked(e)){ e.preventDefault(); if(animState.held&&animState.pendingDecision){ presentPendingDecisionNow(animState); } else if(animState.held){ dismissAnim(); } else { cycleAnimSpeed(); } }
 });
+// Layout pass (2026-11-14): each side rail collapses to a thin tab so the scene gets the width. Display-only
+// preference, persisted in localStorage like ov_wide (not the save). '[' / ']' toggle left / right.
+const railCollapsed={l:false,r:false};
+try{ railCollapsed.l=localStorage.getItem('ov_rail_l')==='1'; railCollapsed.r=localStorage.getItem('ov_rail_r')==='1'; }catch(e){}
+function applyRails(){
+  const b=document.body; if(!b) return;
+  b.classList.toggle('rail-l-collapsed', railCollapsed.l);
+  b.classList.toggle('rail-r-collapsed', railCollapsed.r);
+  for(const side of ['l','r']){
+    const btn=$(side==='l'?'railToggleL':'railToggleR'); if(!btn) continue;
+    const open=!railCollapsed[side], left=side==='l';
+    btn.textContent=(left?open:!open)?'‹':'›';
+    btn.title=`${open?'Collapse':'Expand'} the ${left?'left':'right'} panel (${left?'[':']'})`;
+    btn.setAttribute('aria-expanded', open?'true':'false');
+  }
+}
+function toggleRail(side){
+  if(side!=='l'&&side!=='r') return;
+  railCollapsed[side]=!railCollapsed[side];
+  try{ localStorage.setItem(side==='l'?'ov_rail_l':'ov_rail_r', railCollapsed[side]?'1':'0'); }catch(e){}
+  applyRails();
+}
+document.addEventListener('keydown',function(e){
+  if((e.key!=='['&&e.key!==']') || e.metaKey || e.ctrlKey || e.altKey || animState) return;
+  if(e.repeat||isNativeInteractive(e)||modalOpen()) return;
+  toggleRail(e.key==='['?'l':'r'); e.preventDefault();
+});
 // 'h' toggles the top bar (collapse to free the top of the screen / restore it)
 document.addEventListener('keydown',function(e){
   if((e.key!=='h'&&e.key!=='H') || e.metaKey || e.ctrlKey || e.altKey || animState) return;
@@ -320,6 +345,7 @@ function showHotkeyHelp(){
       ${row('+ / −','Time-warp up / down (day → week → month), except on R&amp;D')}
       ${row('F1 / F2 / F3','Advance a day / week / month (press again to auto-run)')}
       ${row('h','Show / hide the top bar')}
+      ${row('[ / ]','Collapse / expand the left / right side panel')}
       ${row('Arrows, + / −, 0','Pan / zoom the tech tree (R&amp;D scene only)')}
       ${row('?','Show this help')}
     </tbody></table>

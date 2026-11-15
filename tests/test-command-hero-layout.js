@@ -26,12 +26,12 @@ try{
   check('global header owns one readable six-button scene row while Cape reclaims the lower bezel',
     /class="scene-dock header-scene-nav" id="ccDock"/.test(shell) &&
     /\.scene-dock nav\.rail-nav\{display:grid;grid-template-columns:repeat\(6,minmax\(0,1fr\)\)/.test(shell) &&
-    /#ccCenter\{height:100%;margin-left:calc\(var\(--cc-rail-width\) \+ 14px\)/.test(desktop) &&
+    /#ccCenter\{height:100%;margin-left:0;margin-right:0\}/.test(desktop) && // 2026-11-14 layout pass: Cape is full-bleed under the floating deck/rail
     !/\.command-hero \.cc-dock/.test(shell));
   check('desktop Cape grading is a non-interactive zoom-layer overlay', /#ccZoom::before,.command-hero #ccZoom::after\{content:"";position:absolute;inset:0;z-index:1;pointer-events:none\}/.test(desktop));
   check('Cape grading reuses HUD surface, line, and glow variables', /#ccZoom::before\{[^}]*var\(--hud-surface\)/.test(desktop) && /#ccZoom::after\{[^}]*var\(--hud-line-soft\)[^}]*var\(--hud-glow\)/.test(desktop));
   check('Cape hotspots stay above grading and keep their own interactive layer', /#ccSpots\{position:absolute;inset:0;z-index:2\}/.test(desktop));
-  check('command hero maps only its own surfaces to navy and cyan tokens without changing semantic status colors', /body\.command-mode\{--cc-hero-navy:#06121e;[^}]*--cc-hero-cyan:#67d5ff/.test(shell) && /\.shell\.command-hero\{--hud-surface:var\(--cc-hero-surface\)/.test(desktop) && !/--bad:/.test(desktop));
+  check('command hero maps only its own surfaces to navy and cyan tokens without changing semantic status colors', /body\.command-mode\{--cc-hero-navy:color-mix\(in srgb,var\(--bg\)[^}]*--cc-hero-cyan:color-mix\(in srgb,var\(--ignite\)/.test(shell) /* 2026-11-14: derived from the active theme */ && /\.shell\.command-hero\{--hud-surface:var\(--cc-hero-surface\)/.test(desktop) && !/--bad:/.test(desktop));
   check('Command Center toggles a body command-mode class for chrome outside the shell', /document\.body\.classList\.toggle\('command-mode', state\.tab==='command'\)/.test(render));
   check('command-mode scopes navy/cyan header and topbar surfaces without affecting other tabs', /body\.command-mode \.topbar\{background:linear-gradient\(180deg,var\(--cc-hero-navy\)/.test(shell) && /body\.command-mode header,body\.command-mode \.opsbar\{border-color:var\(--cc-hero-line\)/.test(shell));
   check('desktop Cape status text is revealed by hover, keyboard focus, or attention', /\.ccspot \.st\{max-height:0;[^}]*opacity:0/.test(desktop) && /\.ccspot:hover \.st,.command-hero \.ccspot:focus-visible \.st,.command-hero \.ccspot\.cc-attention \.st\{max-height:2\.6em;[^}]*opacity:1/.test(desktop));

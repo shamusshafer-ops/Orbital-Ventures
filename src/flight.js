@@ -20,9 +20,13 @@ function resetFlightTransients(){
    flame, plasma, stars, ocean splashdown stay their real colors regardless of console theme, the
    same way a mission-control room's console color doesn't repaint the sky outside the window). */
 const THEME_COLORS = {
-  dark:  {bg:'#071523', panel:'#0b2033', panel2:'#102c43', line:'#2d5c7a', ink:'#d9efff', muted:'#7fa8bf', dim:'#55758b', ignite:'#58c7ff', readout:'#8de5ff', ok:'#65d39a', bad:'#ef6a73', warn:'#f3c56b'},
-  green: {bg:'#0a1410', panel:'#0e1c14', panel2:'#163024', line:'#26442f', ink:'#9affb4', muted:'#5a9a6e', dim:'#3d6e4d', ignite:'#d7b32a', readout:'#5fe0a0', ok:'#4fe26e', bad:'#e0564f', warn:'#e8c341'},
-  beige: {bg:'#1b1610', panel:'#2a2218', panel2:'#342a1c', line:'#4a3c28', ink:'#ecdfc4', muted:'#b09a72', dim:'#7d6a4c', ignite:'#e08a3c', readout:'#5bb9c4', ok:'#6db86a', bad:'#d2542b', warn:'#e8b341'},
+  dark:         {bg:'#071523', panel:'#0b2033', panel2:'#102c43', line:'#2d5c7a', ink:'#d9efff', muted:'#7fa8bf', dim:'#55758b', ignite:'#58c7ff', readout:'#8de5ff', ok:'#65d39a', bad:'#ef6a73', warn:'#f3c56b'},
+  green:        {bg:'#04120a', panel:'#082010', panel2:'#0d2c16', line:'#314737', ink:'#e2ece4', muted:'#92b69b', dim:'#6d9979', ignite:'#65b10e', readout:'#23c791', ok:'#2fbd63', bad:'#e66e66', warn:'#d2ac17'},
+  beige:        {bg:'#1a1610', panel:'#242018', panel2:'#302a20', line:'#4c453a', ink:'#e1ddd3', muted:'#b1a794', dim:'#9e9381', ignite:'#e28036', readout:'#6baec7', ok:'#49b370', bad:'#e17b73', warn:'#caa924'},
+  era_apollo:   {bg:'#120d07', panel:'#1d150c', panel2:'#2a1f11', line:'#494032', ink:'#e4ddd0', muted:'#b3a489', dim:'#9a886e', ignite:'#e36f09', readout:'#36b99e', ok:'#3dac66', bad:'#e7645a', warn:'#caa510'},
+  era_80s:      {bg:'#04120a', panel:'#082010', panel2:'#0d2c16', line:'#314737', ink:'#e2ece4', muted:'#92b69b', dim:'#6d9979', ignite:'#65b10e', readout:'#23c791', ok:'#2fbd63', bad:'#e66e66', warn:'#d2ac17'},
+  era_90s2000s: {bg:'#0a1220', panel:'#121d30', panel2:'#1a2942', line:'#364551', ink:'#e3e9f0', muted:'#9cb1c3', dim:'#7d96a8', ignite:'#2eb4ee', readout:'#18c9dc', ok:'#37bc68', bad:'#e5756c', warn:'#d6b018'},
+  era_spacex:   {bg:'#08090b', panel:'#131518', panel2:'#1e2126', line:'#3c4043', ink:'#f6f7f7', muted:'#b2b7bd', dim:'#888e95', ignite:'#62b3ec', readout:'#6dc0d5', ok:'#3eb96b', bad:'#e56960', warn:'#d0ac1a'},
 };
 
 /* ---------- Shared exhaust-plume visual language ----------
@@ -50,7 +54,13 @@ function enginePlumeFamily(engineId,solid){
 }
 function enginePlumeStyle(engineId,solid){ const family=enginePlumeFamily(engineId,solid); return Object.assign({family},ENGINE_PLUME_STYLES[family]); }
 function plumeRgb(hex){ return [(hex>>16)&255,(hex>>8)&255,hex&255]; }
-function themeColor(key){ const t=THEME_COLORS.dark; return t[key]||THEME_COLORS.dark[key]; }
+// Canvas chrome follows the active theme; "Era-evolving" reads the current era's palette. The table mirrors
+// shell.html's palette blocks (kept equal by tests/test-layout-pass.js).
+function themePaletteKey(){
+  if(currentTheme==='era'){ try{ return 'era_'+eraVisualKey(); }catch(e){ return 'dark'; } }
+  return THEME_COLORS[currentTheme]?currentTheme:'dark';
+}
+function themeColor(key){ const t=THEME_COLORS[themePaletteKey()]||THEME_COLORS.dark; return t[key]||THEME_COLORS.dark[key]; }
 function themeRgba(key, alpha){
   const hex=themeColor(key).replace('#','');
   const r=parseInt(hex.substring(0,2),16), g=parseInt(hex.substring(2,4),16), b=parseInt(hex.substring(4,6),16);
@@ -557,14 +567,29 @@ function flight3dRestoreCape(s){
   if(s&&s.returnMount&&$(s.returnMount)){ const host=$(s.returnMount); mountCape3D(s.returnMount,s.returnHotspots); resizeCape3D(host.clientWidth||CAPE_W,host.clientHeight||CAPE_H); if(state&&state.tab==='command') resumeCape3D(); else pauseCape3D(); return true; }
   disposeCape3D(); return true;
 }
+// Layout pass (2026-11-14): the overlay fills the screen; the 2D canvases draw at the wrap's real size (all 2D
+// flight art reads cv.width/height) and the 3D scene is started at that size. Headless (no layout) keeps 900x520.
+const FLIGHT_MIN_W=480, FLIGHT_MIN_H=280;
+function flightViewSize(){
+  const wrap=$('flightCanvasWrap');
+  const w=Math.round((wrap&&wrap.clientWidth)||0), h=Math.round((wrap&&wrap.clientHeight)||0);
+  if(w<FLIGHT_MIN_W||h<FLIGHT_MIN_H) return {w:900,h:520};
+  return {w,h};
+}
+function sizeFlightCanvas(){
+  const sz=flightViewSize();
+  for(const id of ['flightCanvas','flightTextCanvas']){ const c=$(id); if(c && (c.width!==sz.w||c.height!==sz.h)){ c.width=sz.w; c.height=sz.h; } }
+  return sz;
+}
 function beginFlight3DSession(spec){
   if(!flight3dAvailable()) return false;
   const host=$('flight3dHost'); if(!host) return false;
   const hadCape=!!cape3d, returnMount=hadCape?cape3d.mountId:null, returnHotspots=hadCape?cape3d.hotspotHostId:null;
-  if(!startCape3D('flight3dHost',900,520)) return false;
+  const fsz=flightViewSize();
+  if(!startCape3D('flight3dHost',fsz.w,fsz.h)) return false;
   clearFlight3DDecision(); clearFlight3DReadout(); if(typeof cape3d!=='undefined'&&cape3d) cape3d.flightPan={x:0,y:0}; flight3dSession={active:true,spec,returnMount,returnHotspots,snapshot:null,handedOff:false};
   host.style.display='block'; const fallback=$('flightZoom'); if(fallback) fallback.style.visibility='hidden';
-  mountCape3D('flight3dHost',null); resizeCape3D(900,520); resumeCape3D(); return cape3dEnterLaunchPresentation(spec);
+  mountCape3D('flight3dHost',null); resizeCape3D(fsz.w,fsz.h); resumeCape3D(); return cape3dEnterLaunchPresentation(spec);
 }
 function flight3dHandoffToFallback(s,reason){
   if(!s||s.handedOff) return false;
@@ -736,6 +761,7 @@ function setupFlightState(spec, done, ctx, cv, viewCanvas, seedP){
 function playMission(spec, done, seedP){
   $('animTitle').textContent=spec.title+(spec.crewed?'  ·  crewed':'');
   $('animOverlay').classList.remove('hidden');
+  try{ sizeFlightCanvas(); }catch(e){}
   try{ syncAnimSpeedBtn(); }catch(e){}
   flightReportCard(spec,false);
   clearFlightAltitude();
@@ -3509,4 +3535,5 @@ let _prevLogLength=0;
 let _tlFilter='all';
 let _tlCollapsed=false;
 try{ const f=localStorage.getItem('ov_tlFilter'); if(f==='all' || TL_CAT_ICON[f]!==undefined) _tlFilter=f; }catch(e){}
-try{ _tlCollapsed=localStorage.getItem('ov_tlCollapsed')==='1'; }catch(e){}
+// Layout pass (2026-11-14): collapsed to a one-line "latest entry" by default; an explicit saved choice still wins.
+try{ const v=localStorage.getItem('ov_tlCollapsed'); _tlCollapsed = v===null ? true : v==='1'; }catch(e){ _tlCollapsed=true; }

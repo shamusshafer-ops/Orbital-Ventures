@@ -1,7 +1,7 @@
 // 2026-11-14 evaluation bug-fix pass. Each block was verified to fail against the pre-fix source.
 //  1. Station module card printed float noise ("+1.7999999999999998 kW").
 //  2. Flight playback defaulted to 0.1x slow-mo (covered in test-anim-speed.js).
-//  3. Menu theme chips silently did nothing: themes are pinned to the blue baseline, so the chips are hidden.
+//  3. Menu theme chips silently did nothing (hidden that day; made real by the same-day layout/theme pass).
 //  4. Narrow-rail contract cards crushed their text to one word per line (.item could not wrap).
 //  5. The outliner was titled "In flight" while listing research/builds/warnings, and showed one
 //     "dept unstaffed" row per department (three identical "now" rows at game start).
@@ -26,14 +26,15 @@ newGame('engineer');
   check('habitat card shows +1.8 kW in the docking-context line', /\+1\.8 kW → station/.test(one));
 }
 
-// ---------- 3. inert theme chips are not offered while themes are pinned ----------
+// ---------- 3. theme chips (hidden 2026-11-14 while pinned; live again after the layout/theme pass) ----------
 {
   let html='';
   const origShow=showModal; showModal=(h)=>{ html=h; };
   try{ showSettingsMenu(); } catch(e){} finally { showModal=origShow; activeModal=null; }
   check('settings menu rendered (precondition)', html.length>0);
-  check('theme selection is flagged off while the blue baseline pins every palette', THEMES_SELECTABLE===false);
-  check('Theme chip row is hidden in the Menu', /<div style="margin:10px 0 2px" hidden>\s*<div class="cc-panel-h"[^>]*>Theme</.test(html));
+  check('theme selection is live now that the blue pins are lifted', THEMES_SELECTABLE===true);
+  check('Theme chip row is shown, one chip per theme', /<div style="margin:10px 0 2px" >\s*<div class="cc-panel-h"[^>]*>Theme</.test(html)
+    && Object.keys(THEMES).every(k=>html.includes(`pickTheme('${k}')`)));
 }
 
 // ---------- 4. .item cards can wrap in narrow containers ----------

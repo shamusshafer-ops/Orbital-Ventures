@@ -44,6 +44,7 @@ function htmlOf(id){ const el=_elCache[id]; return el?el.innerHTML:''; }
 function childrenHtml(id){ const el=_elCache[id]; return el?(el.children||[]).map(c=>c.innerHTML||'').join(''):''; }
 newGame('engineer');
 state.log.unshift({when:dateStr(), kind:'info', msg:'R&D complete: test breakthrough.'}); // categorizes as 'research'
+_tlCollapsed=false; // the strip is collapsed to one line by default since the 2026-11-14 layout pass; this test reads the full strip
 renderLog();
 const html=childrenHtml('opsTimeline');
 check('rendered timeline: contains a real <svg> icon', html.includes('<svg'));
