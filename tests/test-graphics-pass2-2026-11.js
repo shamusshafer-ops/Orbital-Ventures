@@ -57,5 +57,18 @@ newGame('engineer');
   check('causeway meets the site avenue', cape3dRegion.toString().includes('capeWorldPoint(0,ISO_AV).z'));
 }
 
+{ // follow-up (owner feedback): fixed district, lighter haze, no waterline flicker
+  const tex=cape3dRegionTexture.toString(), reg=cape3dRegion.toString(), shore=cape3dShoreline.toString(), build=buildCape3DScene.toString();
+  check('district is the same every launch: one fixed seed, no clock or Math.random', tex.includes('mulberry(R.seed)')&&!/Math\.random|Date\.now|state\./.test(tex)&&Number.isFinite(CAPE3D_REGION.seed));
+  check('features are generated over the whole district whatever rectangle is drawn', tex.includes('gx0+rnd()*R.width')&&tex.includes('gz0+rnd()*R.depth'));
+  check('district is drawn at two resolutions', reg.includes('fine:false')&&reg.includes('fine:true')&&CAPE3D_REGION.nearWidth<CAPE3D_REGION.width&&CAPE3D_REGION.nearDepth<CAPE3D_REGION.depth);
+  check('near layer still contains the masked site', CAPE3D_REGION.nearWidth>CAPE3D_REGION.holeX*2&&CAPE3D_REGION.nearDepth>CAPE3D_REGION.holeZ*2);
+  check('haze is lighter than the old .00038 but still present', CAPE3D_HAZE>0&&CAPE3D_HAZE<=.00015);
+  check('idle and ascent haze share the constant', cape3dPhysicalAscentBlend(0).fogDensity===CAPE3D_HAZE&&cape3dTick.toString().includes('CAPE3D_HAZE'));
+  check('ocean and shore sheets do not write depth', build.includes('materials.water.depthWrite=false')&&shore.includes('mat.depthWrite=false'));
+  check('shore sheets have a fixed draw order', shore.includes('m.renderOrder=order')&&build.includes('ocean.renderOrder=2'));
+  check('no slope-scaled depth bias on land decals (it lifted sand over the pad)', shore.includes('polygonOffsetFactor=0')&&reg.includes('polygonOffsetFactor:0')&&build.includes('terrain.material.polygonOffsetFactor=0'));
+}
+
 console.log(pass+'/'+(pass+fail)+' checks passed');
 process.exit(fail?1:0);

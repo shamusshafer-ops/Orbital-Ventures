@@ -7892,3 +7892,20 @@ each), so that is a capture artefact, but ascent/orbit frames remain unverified 
 
 Tests: new `tests/test-graphics-pass2-2026-11.js` (33 checks). Full sweep 174/175, 1 intentional skip, 0 unexpected.
 
+### 2026-11-16 follow-up — owner feedback on pass 2 (Claude)
+
+- **Waterline flicker:** the ocean and the sand/shallows/foam sheets sat a fraction of a metre apart on a scene
+  with a 100 km far plane, and most were transparent, so they depth-fought and re-sorted against each other each
+  frame. Now none of them (nor the ocean, which has nothing beneath it) writes depth, each has a fixed
+  `renderOrder`, and land decals use a constant depth bias (`polygonOffsetUnits` only — a slope-scaled factor
+  lifted the sand over the launch pad). Shallows are one sheet with a seaward gradient instead of hard bands.
+  Not verifiable from stills: needs the owner's eye in Firefox.
+- **Haze:** `CAPE3D_HAZE=.00011` (was .00038, which hid everything past ~3 km); shared by the idle Cape and the
+  ascent blend.
+- **Fixed district, more detail:** the map was already seeded, and is now explicitly a fixed place (one seed, world
+  metres, no clock/state). The painter renders any rectangle of it, so it is drawn twice: 16 × 24 km at ~8–12 m per
+  texel and the 6 × 9 km round the site at ~3–4 m per texel with tree crowns, orchard rows, lane markings and pad
+  detail.
+
+Tests: `tests/test-graphics-pass2-2026-11.js` now 42 checks.
+

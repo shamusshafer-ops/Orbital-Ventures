@@ -2501,53 +2501,72 @@ function cape3dConcreteTexture(repeatX,repeatY){ const tx=cape3dCanvasTexture((c
   ctx.fillStyle='rgba(30,28,24,.30)'; for(const q of [0,w/2]){ ctx.fillRect(q,0,2,h); ctx.fillRect(0,q,w,2); }
   ctx.fillStyle='rgba(255,255,255,.14)'; for(const q of [0,w/2]){ ctx.fillRect(q+2,0,1,h); ctx.fillRect(0,q+2,w,1); }
 },repeatX,repeatY); if('colorSpace' in tx) tx.colorSpace=THREE.SRGBColorSpace; tx.anisotropy=4; return tx; }
-// Graphics pass 2 (2026-11-16): the country beyond the fence. One non-repeating procedural map of the
+// Graphics pass 2 (2026-11-16): the country beyond the fence. A fixed, authored-by-seed map of the
 // surrounding district -- pine flatwoods and scrub, a barrier-island lagoon with marsh, citrus/farm
 // blocks, a small town, a highway and causeway, a skid-strip runway, and a "missile row" of older pads
-// along the coast (the real Cape's layout). The centre is masked out so the authored site is untouched,
-// and the outer edge fades into the plain base terrain.
-const CAPE3D_REGION={width:16000,depth:24000,size:2048,siteX:480,siteZ:287,holeX:1450,holeZ:1150};
-function cape3dRegionTexture(coastX,roadZ){
+// along the coast (the real Cape's layout). It is the SAME place every launch and every campaign: every
+// feature is placed in world metres from one fixed seed, never from game state or the clock.
+// The painter can render any rectangle of that one world, so the district is drawn twice: the whole
+// 16 x 24 km at ~8-12 m per texel, and the 6 x 9 km around the site again at ~3-4 m per texel with
+// extra close-range detail (tree canopies, crop rows, lane markings, roofs). The centre is masked out
+// so the authored site is untouched, and each layer's outer edge fades into what lies beneath it.
+// Ground haze (FogExp2 density). Was .00038, which hid everything past ~3 km; this keeps aerial
+// perspective but lets the district read out to ~10 km.
+const CAPE3D_HAZE=.00011;
+const CAPE3D_REGION={width:16000,depth:24000,size:2048,siteX:480,siteZ:287,holeX:1450,holeZ:1150,nearWidth:6000,nearDepth:9000,seed:5521};
+function cape3dRegionTexture(coastX,roadZ,rect){
   const R=CAPE3D_REGION, S=R.size, cv=document.createElement('canvas'); cv.width=cv.height=S; const ctx=cv.getContext('2d'); if(!ctx) return null;
-  const x0=coastX-R.width, z0=R.siteZ-R.depth*.5, mx=S/R.width, mz=S/R.depth, X=x=>(x-x0)*mx, Z=z=>(z-z0)*mz, rnd=mulberry(5521);
+  const W=(rect&&rect.width)||R.width, D=(rect&&rect.depth)||R.depth, fine=!!(rect&&rect.fine);
+  const x0=coastX-W, z0=R.siteZ-D*.5, mx=S/W, mz=S/D, mm=(mx+mz)*.5, X=x=>(x-x0)*mx, Z=z=>(z-z0)*mz, rnd=mulberry(R.seed);
+  // World extent of the WHOLE district: features are always generated over this, whatever rect is drawn.
+  const gx0=coastX-R.width, gz0=R.siteZ-R.depth*.5;
+  const seen=(x,z,pad)=>x>x0-pad&&x<coastX+pad&&z>z0-pad&&z<z0+D+pad;
+  const ell=(x,z,rx,rz,rot)=>{ ctx.beginPath(); ctx.ellipse(X(x),Z(z),rx*mx,rz*mz,rot||0,0,7); };
+  const box=(x,z,w,d)=>ctx.fillRect(X(x),Z(z),w*mx,d*mz);
   const lagoonX=z=>coastX-5200+900*Math.sin(z/5200)+480*Math.sin(z/1700+1), lagoonW=z=>760+360*Math.sin(z/3100+.6);
   // 1. vegetation mosaic
-  const veg=['38,74,44','54,92,52','104,112,62','136,160,84','88,118,60','176,164,112'];
-  for(let i=0;i<340;i++){ const x=rnd()*S,y=rnd()*S,r=(260+rnd()*1500)*mx,g=ctx.createRadialGradient(x,y,0,x,y,r), c=veg[Math.floor(rnd()*veg.length)], a=.3+rnd()*.32; g.addColorStop(0,'rgba('+c+','+a+')'); g.addColorStop(.7,'rgba('+c+','+a*.6+')'); g.addColorStop(1,'rgba('+c+',0)'); ctx.fillStyle=g; ctx.fillRect(x-r,y-r,r*2,r*2); }
+  const veg=['38,74,44','54,92,52','104,112,62','136,160,84','88,118,60','176,164,112'], woods=[];
+  for(let i=0;i<340;i++){ const x=gx0+rnd()*R.width, z=gz0+rnd()*R.depth, r=260+rnd()*1500, ci=Math.floor(rnd()*veg.length), c=veg[ci], a=(.3+rnd()*.32)*(ci>=3?.55:1); if(ci<2) woods.push([x,z,r]);
+    if(!seen(x,z,r)) continue; const px=X(x), py=Z(z), pr=r*mm, g=ctx.createRadialGradient(px,py,0,px,py,pr); g.addColorStop(0,'rgba('+c+','+a+')'); g.addColorStop(.7,'rgba('+c+','+a*.6+')'); g.addColorStop(1,'rgba('+c+',0)'); ctx.fillStyle=g; ctx.fillRect(px-pr,py-pr,pr*2,pr*2); }
   // 2. farm and citrus blocks west of the lagoon
   const crops=['#7f9a4e','#93a95a','#6b8a46','#b3a56a','#a08d5a','#5f7f44','#8aa364','#c2b77e'];
-  for(let fz=z0+300;fz<z0+R.depth-300;fz+=430){ for(let fx=x0+500;fx<coastX-7000;fx+=560){
-    if(rnd()<.3||fx>lagoonX(fz)-1300) continue; const w=520*mx, h=392*mz, px=X(fx), py=Z(fz);
-    ctx.fillStyle=crops[Math.floor(rnd()*crops.length)]; ctx.globalAlpha=.78; ctx.fillRect(px,py,w,h); ctx.globalAlpha=1;
-    ctx.fillStyle='rgba(30,50,26,.22)'; const rows=rnd()>.5; for(let k=3;k<(rows?h:w);k+=4){ if(rows) ctx.fillRect(px,py+k,w,1); else ctx.fillRect(px+k,py,1,h); }
-    ctx.strokeStyle='rgba(34,58,34,.7)'; ctx.lineWidth=1.5; ctx.strokeRect(px,py,w,h); } }
+  for(let fz=gz0+300;fz<gz0+R.depth-300;fz+=430){ for(let fx=gx0+500;fx<coastX-7000;fx+=560){
+    const skip=rnd()<.3, crop=crops[Math.floor(rnd()*crops.length)], rows=rnd()>.5, orchard=rnd()>.6;
+    if(skip||fx>lagoonX(fz)-1300||!seen(fx+260,fz+196,400)) continue; const w=520*mx, h=392*mz, px=X(fx), py=Z(fz);
+    ctx.fillStyle=crop; ctx.globalAlpha=.78; ctx.fillRect(px,py,w,h); ctx.globalAlpha=1;
+    if(fine&&orchard){ ctx.fillStyle='rgba(30,62,30,.6)'; for(let ox=14;ox<520;ox+=22) for(let oz=14;oz<392;oz+=22){ ctx.beginPath(); ctx.arc(px+ox*mx,py+oz*mz,7*mm,0,7); ctx.fill(); } }
+    else { ctx.fillStyle='rgba(30,50,26,.22)'; const step=Math.max(4,(fine?13:0)*mm); for(let k=3;k<(rows?h:w);k+=step){ if(rows) ctx.fillRect(px,py+k,w,Math.max(1,step*.3)); else ctx.fillRect(px+k,py,Math.max(1,step*.3),h); } }
+    ctx.strokeStyle='rgba(34,58,34,.7)'; ctx.lineWidth=Math.max(1.5,9*mm); ctx.strokeRect(px,py,w,h); } }
   // 3. lagoon with shallows and marsh
-  const bank=side=>{ const pts=[]; for(let z=z0-200;z<=z0+R.depth+200;z+=240) pts.push([X(lagoonX(z)+side*lagoonW(z)*.5),Z(z)]); return pts; };
-  const west=bank(-1), east=bank(1).reverse();
-  ctx.beginPath(); west.concat(east).forEach((q,i)=>i?ctx.lineTo(q[0],q[1]):ctx.moveTo(q[0],q[1])); ctx.closePath();
-  ctx.lineJoin='round'; ctx.strokeStyle='rgba(74,104,72,.75)'; ctx.lineWidth=30; ctx.stroke(); ctx.strokeStyle='rgba(126,186,180,.75)'; ctx.lineWidth=11; ctx.stroke(); ctx.fillStyle='#2f6c84'; ctx.fill();
-  for(let i=0;i<520;i++){ const z=z0+rnd()*R.depth, side=rnd()>.5?1:-1, x=lagoonX(z)+side*(lagoonW(z)*.5+60+rnd()*520); ctx.fillStyle=rnd()>.8?'rgba(52,112,128,.85)':'rgba(40,70,52,.55)'; ctx.beginPath(); ctx.ellipse(X(x),Z(z),(20+rnd()*70)*mx,(20+rnd()*90)*mz,0,0,7); ctx.fill(); }
-  for(let i=0;i<14;i++){ const x=x0+800+rnd()*(R.width-7600), z=z0+600+rnd()*(R.depth-1200), r=90+rnd()*230; ctx.fillStyle='#356f86'; ctx.beginPath(); ctx.ellipse(X(x),Z(z),r*mx,r*.7*mz,rnd()*3,0,7); ctx.fill(); ctx.strokeStyle='rgba(120,180,170,.6)'; ctx.lineWidth=2; ctx.stroke(); }
+  const bank=side=>{ const pts=[]; for(let z=gz0-200;z<=gz0+R.depth+200;z+=120) pts.push([X(lagoonX(z)+side*lagoonW(z)*.5),Z(z)]); return pts; };
+  ctx.beginPath(); bank(-1).concat(bank(1).reverse()).forEach((q,i)=>i?ctx.lineTo(q[0],q[1]):ctx.moveTo(q[0],q[1])); ctx.closePath();
+  ctx.lineJoin='round'; ctx.strokeStyle='rgba(74,104,72,.75)'; ctx.lineWidth=230*mm; ctx.stroke(); ctx.strokeStyle='rgba(126,186,180,.75)'; ctx.lineWidth=85*mm; ctx.stroke(); ctx.fillStyle='#2f6c84'; ctx.fill();
+  for(let i=0;i<520;i++){ const z=gz0+rnd()*R.depth, side=rnd()>.5?1:-1, x=lagoonX(z)+side*(lagoonW(z)*.5+60+rnd()*520), pond=rnd()>.8, rx=20+rnd()*70, rz=20+rnd()*90; if(!seen(x,z,120)) continue; ctx.fillStyle=pond?'rgba(52,112,128,.85)':'rgba(40,70,52,.55)'; ell(x,z,rx,rz); ctx.fill(); }
+  for(let i=0;i<14;i++){ const x=gx0+800+rnd()*(R.width-7600), z=gz0+600+rnd()*(R.depth-1200), r=90+rnd()*230, rot=rnd()*3; if(!seen(x,z,400)) continue; ctx.fillStyle='#356f86'; ell(x,z,r,r*.7,rot); ctx.fill(); ctx.strokeStyle='rgba(120,180,170,.6)'; ctx.lineWidth=Math.max(2,14*mm); ctx.stroke(); }
   // 4. town on the far shore
-  const tx0=coastX-9700, tz0=R.siteZ-2700, tw=2300, td=4300; ctx.fillStyle='rgba(150,150,138,.5)'; ctx.fillRect(X(tx0),Z(tz0),tw*mx,td*mz);
-  for(let bx=tx0;bx<tx0+tw;bx+=115) for(let bz=tz0;bz<tz0+td;bz+=150){ if(rnd()<.16) continue; const q=rnd(); ctx.fillStyle=q>.7?'#c9c5b8':(q>.4?'#a9a59a':(q>.15?'#8f6f5c':'#5d7b4f')); ctx.fillRect(X(bx)+2,Z(bz)+2,115*mx-4,150*mz-4); }
+  const tx0=coastX-9700, tz0=R.siteZ-2700, tw=2300, td=4300; ctx.fillStyle='rgba(150,150,138,.5)'; box(tx0,tz0,tw,td);
+  for(let bx=tx0;bx<tx0+tw;bx+=115) for(let bz=tz0;bz<tz0+td;bz+=150){ const empty=rnd()<.16, q=rnd(); if(empty) continue; ctx.fillStyle=q>.7?'#c9c5b8':(q>.4?'#a9a59a':(q>.15?'#8f6f5c':'#5d7b4f')); box(bx+12,bz+12,91,126); }
+  // Close-range canopy texture: individual crowns in the wooded patches, drawn only on the fine layer.
+  if(fine){ const tr=mulberry(R.seed+77); for(let i=0;i<26000;i++){ const w=woods[Math.floor(tr()*woods.length)], a=tr()*6.283, d=Math.sqrt(tr())*w[2]*.8, x=w[0]+Math.cos(a)*d, z=w[1]+Math.sin(a)*d, r=5+tr()*8, shade=tr(); if(!seen(x,z,20)||Math.abs(x-lagoonX(z))<lagoonW(z)*.5+40) continue; ctx.fillStyle='rgba(12,30,16,.35)'; ell(x+5,z+5,r,r); ctx.fill(); ctx.fillStyle=shade>.6?'rgba(58,104,56,.9)':(shade>.25?'rgba(40,82,46,.9)':'rgba(74,112,58,.9)'); ell(x,z,r,r); ctx.fill(); } }
   // 5. roads: highway, causeway to the west gate, coastal service road
-  const road=(pts,w,col)=>{ ctx.beginPath(); pts.forEach((q,i)=>i?ctx.lineTo(X(q[0]),Z(q[1])):ctx.moveTo(X(q[0]),Z(q[1]))); ctx.lineCap='round'; ctx.strokeStyle='rgba(206,198,170,.55)'; ctx.lineWidth=w+2.5; ctx.stroke(); ctx.strokeStyle=col||'#4d5357'; ctx.lineWidth=w; ctx.stroke(); };
-  const hw=[]; for(let z=z0;z<=z0+R.depth;z+=600) hw.push([coastX-7050+260*Math.sin(z/4100),z]); road(hw,3.4);
-  road([[-170,roadZ],[coastX-3600,roadZ],[coastX-4300,roadZ+120],[coastX-6100,roadZ+120],[coastX-7050,roadZ+60],[tx0+tw,roadZ+60]],3);
-  road([[coastX-430,z0+400],[coastX-430,R.siteZ-1500]],2.2); road([[coastX-430,R.siteZ+1500],[coastX-430,z0+R.depth-400]],2.2);
-  road([[coastX-3600,roadZ],[coastX-3600,R.siteZ-5600]],2.2);
+  const road=(pts,w,col)=>{ ctx.beginPath(); pts.forEach((q,i)=>i?ctx.lineTo(X(q[0]),Z(q[1])):ctx.moveTo(X(q[0]),Z(q[1]))); ctx.lineCap='round'; ctx.setLineDash([]); ctx.strokeStyle='rgba(206,198,170,.55)'; ctx.lineWidth=(w+10)*mm; ctx.stroke(); ctx.strokeStyle=col||'#4d5357'; ctx.lineWidth=Math.max(1.6,w*mm); ctx.stroke();
+    if(fine&&w>=20){ ctx.strokeStyle='rgba(236,226,170,.45)'; ctx.lineWidth=Math.max(1,1.2*mm); ctx.setLineDash([9*mm,12*mm]); ctx.stroke(); ctx.setLineDash([]); } };
+  const hw=[]; for(let z=gz0;z<=gz0+R.depth;z+=300) hw.push([coastX-7050+260*Math.sin(z/4100),z]); road(hw,26);
+  road([[-170,roadZ],[coastX-3600,roadZ],[coastX-4300,roadZ+120],[coastX-6100,roadZ+120],[coastX-7050,roadZ+60],[tx0+tw,roadZ+60]],22);
+  road([[coastX-430,gz0+400],[coastX-430,R.siteZ-1250]],16); road([[coastX-430,R.siteZ+1250],[coastX-430,gz0+R.depth-400]],16);
+  road([[coastX-3600,roadZ],[coastX-3600,R.siteZ-5600]],16);
   // 6. missile row: older pads strung along the coast north and south of the centre
   for(let k=0;k<13;k++){ const z=(k<7?R.siteZ-2300-k*1380:R.siteZ+2300+(k-7)*1500)+(rnd()-.5)*300, px=coastX-190-rnd()*60, r=95+rnd()*55;
-    road([[coastX-430,z],[px,z]],1.8); ctx.fillStyle='#bdb8a9'; ctx.beginPath(); ctx.ellipse(X(px),Z(z),r*mx,r*mz,0,0,7); ctx.fill();
-    ctx.fillStyle='rgba(50,46,42,.6)'; ctx.beginPath(); ctx.ellipse(X(px+r*.2),Z(z),r*.35*mx,r*.35*mz,0,0,7); ctx.fill();
-    ctx.fillStyle='#d8d4c8'; ctx.fillRect(X(px-r*1.9),Z(z-40),70*mx,80*mz); ctx.fillStyle='#8d9296'; ctx.fillRect(X(coastX-640),Z(z-90),120*mx,160*mz); }
+    road([[coastX-430,z],[px,z]],13); ctx.fillStyle='#bdb8a9'; ell(px,z,r,r); ctx.fill();
+    ctx.fillStyle='rgba(50,46,42,.6)'; ell(px+r*.2,z,r*.35,r*.35); ctx.fill();
+    if(fine){ ctx.strokeStyle='rgba(90,86,78,.7)'; ctx.lineWidth=Math.max(1,2*mm); ell(px,z,r*.72,r*.72); ctx.stroke(); ctx.fillStyle='#3d4347'; box(px+r*.1,z-9,r*.5,18); ctx.fillStyle='#8d9296'; box(px-r*.55,z-r*.5,26,26); ctx.fillStyle='#e4e7e9'; ell(px-r*.2,z+r*.55,13,13); ctx.fill(); ell(px+r*.1,z+r*.62,13,13); ctx.fill(); }
+    ctx.fillStyle='#d8d4c8'; box(px-r*1.9,z-40,70,80); ctx.fillStyle='#8d9296'; box(coastX-640,z-90,120,160); }
   // 7. skid strip
   ctx.save(); ctx.translate(X(coastX-3300),Z(R.siteZ-4300)); ctx.rotate(-.5); const rl=3100*mz, rw=70*mx*1.6;
   ctx.fillStyle='rgba(186,180,150,.7)'; ctx.fillRect(-rw*2.2,-rl*.55,rw*4.4,rl*1.1); ctx.fillStyle='#43484c'; ctx.fillRect(-rw*.5,-rl*.5,rw,rl);
-  ctx.fillStyle='#e9e9e2'; for(let q=-rl*.46;q<rl*.46;q+=14) ctx.fillRect(-.6,q,1.2,7); ctx.fillRect(-rw*.4,-rl*.49,rw*.8,3); ctx.fillRect(-rw*.4,rl*.49-3,rw*.8,3);
+  ctx.fillStyle='#e9e9e2'; for(let q=-rl*.46;q<rl*.46;q+=110*mz) ctx.fillRect(-Math.max(.6,2.5*mx),q,Math.max(1.2,5*mx),55*mz); ctx.fillRect(-rw*.4,-rl*.49,rw*.8,Math.max(3,20*mz)); ctx.fillRect(-rw*.4,rl*.49-Math.max(3,20*mz),rw*.8,Math.max(3,20*mz));
   ctx.fillStyle='#55595c'; ctx.fillRect(rw*.5,-rl*.1,rw*2.4,rl*.16); ctx.fillStyle='#c9c5b8'; ctx.fillRect(rw*2.2,-rl*.07,rw*.9,rl*.1); ctx.restore();
-  // 8. masks: keep the authored site clear, and fade the far edges into the base terrain
+  // 8. masks: keep the authored site clear, and fade the far edges into whatever lies beneath
   ctx.globalCompositeOperation='destination-out';
   ctx.save(); ctx.translate(X(R.siteX),Z(R.siteZ)); ctx.scale(R.holeX*mx,R.holeZ*mz); const hole=ctx.createRadialGradient(0,0,0,0,0,1); hole.addColorStop(0,'rgba(0,0,0,1)'); hole.addColorStop(.74,'rgba(0,0,0,1)'); hole.addColorStop(1,'rgba(0,0,0,0)'); ctx.fillStyle=hole; ctx.beginPath(); ctx.arc(0,0,1,0,7); ctx.fill(); ctx.restore();
   const edge=S*.1; let eg=ctx.createLinearGradient(0,0,edge,0); eg.addColorStop(0,'rgba(0,0,0,1)'); eg.addColorStop(1,'rgba(0,0,0,0)'); ctx.fillStyle=eg; ctx.fillRect(0,0,edge,S);
@@ -2557,9 +2576,12 @@ function cape3dRegionTexture(coastX,roadZ){
   const tx=new THREE.CanvasTexture(cv); if('colorSpace' in tx) tx.colorSpace=THREE.SRGBColorSpace; tx.anisotropy=8; return tx;
 }
 function cape3dRegion(root, landscape){
-  const R=CAPE3D_REGION, tx=cape3dRegionTexture(landscape.coastX,capeWorldPoint(0,ISO_AV).z); if(!tx) return null;
-  const m=cape3dMesh(new THREE.PlaneGeometry(R.width,R.depth),new THREE.MeshStandardMaterial({map:tx,transparent:true,opacity:.9,roughness:1,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-6,polygonOffsetUnits:-6}),landscape.coastX-R.width*.5,-.7,R.siteZ,false);
-  m.rotation.x=-Math.PI/2; m.name='cape3d_region'; m.renderOrder=-1; root.add(m); return m;
+  const R=CAPE3D_REGION, roadZ=capeWorldPoint(0,ISO_AV).z, g=new THREE.Group(); g.name='cape3d_region';
+  const layer=(rect,order,offset)=>{ const tx=cape3dRegionTexture(landscape.coastX,roadZ,rect); if(!tx) return;
+    const m=cape3dMesh(new THREE.PlaneGeometry(rect.width,rect.depth),new THREE.MeshStandardMaterial({map:tx,transparent:true,opacity:rect.fine?1:.9,roughness:1,depthWrite:false,polygonOffset:true,polygonOffsetFactor:0,polygonOffsetUnits:offset}),landscape.coastX-rect.width*.5,-.7,R.siteZ,false);
+    m.rotation.x=-Math.PI/2; m.renderOrder=order; g.add(m); };
+  layer({width:R.width,depth:R.depth,fine:false},-1.5,-2); layer({width:R.nearWidth,depth:R.nearDepth,fine:true},-1,-3);
+  if(!g.children.length) return null; root.add(g); return g;
 }
 function cape3dSkyDome(scene){
   const uniforms={top:{value:new THREE.Color(0x0a1428)},mid:{value:new THREE.Color(0x1d3450)},bot:{value:new THREE.Color(0x3a5570)},sunDir:{value:new THREE.Vector3(0,1,0)},sunCol:{value:new THREE.Color(0xffd9a0)},sunA:{value:1},fade:{value:1},space:{value:new THREE.Color(0x020914)}};
@@ -2569,13 +2591,21 @@ function cape3dSkyDome(scene){
   const dome=new THREE.Mesh(new THREE.SphereGeometry(1,32,20),mat); dome.name='cape3d_sky'; dome.renderOrder=-10; dome.frustumCulled=false; scene.add(dome); return dome;
 }
 function cape3dShoreline(root, landscape){
-  const g=new THREE.Group(); g.name='cape3d_shore'; const depth=Math.min(landscape.land.depth,60000), x=landscape.coastX;
-  const plane=(w,mat,cx,y)=>{ const m=cape3dMesh(new THREE.PlaneGeometry(w,depth),mat,cx,y,180,false); m.rotation.x=-Math.PI/2; g.add(m); return m; };
-  plane(120,new THREE.MeshStandardMaterial({color:0xcdbb92,roughness:1}),x-60,-.66);
-  plane(46,new THREE.MeshStandardMaterial({color:0xbfae84,roughness:1,transparent:true,opacity:.75}),x-143,-.67);
-  plane(260,new THREE.MeshStandardMaterial({color:0x6fd6d6,roughness:.25,transparent:true,opacity:.30,depthWrite:false}),x+130,-.52);
-  plane(620,new THREE.MeshStandardMaterial({color:0x3fb2c4,roughness:.25,transparent:true,opacity:.16,depthWrite:false}),x+570,-.54);
-  plane(7,new THREE.MeshStandardMaterial({color:0xf2fbff,roughness:.6,transparent:true,opacity:.62,depthWrite:false}),x+4,-.5);
+  // The ocean and these sheets are a fraction of a metre apart on a scene whose far plane is 100 km, and
+  // most are transparent, so left alone they depth-fight and re-sort against each other from frame to
+  // frame (a flicker along the waterline). So: none of them write depth (nor does the ocean -- nothing
+  // lies beneath it), each has a fixed draw order, and the sand that lies on the land gets a constant
+  // depth bias (units only; a slope-scaled factor pulled it up over the launch pad).
+  const g=new THREE.Group(); g.name='cape3d_shore'; const depth=landscape.land.depth, x=landscape.coastX;
+  const plane=(w,mat,cx,y,order,bias)=>{ mat.depthWrite=false; mat.transparent=true; if(bias){ mat.polygonOffset=true; mat.polygonOffsetFactor=0; mat.polygonOffsetUnits=-bias; } const m=cape3dMesh(new THREE.PlaneGeometry(w,depth),mat,cx,y,180,false); m.rotation.x=-Math.PI/2; m.renderOrder=order; g.add(m); return m; };
+  plane(46,new THREE.MeshStandardMaterial({color:0xbfae84,roughness:1,opacity:.75}),x-143,-.62,3,4);
+  plane(120,new THREE.MeshStandardMaterial({color:0xcdbb92,roughness:1}),x-60,-.6,4,5);
+  // Shallows: one sheet whose turquoise fades out to sea, rather than hard-edged bands.
+  const cv=document.createElement('canvas'); cv.width=128; cv.height=4; const ctx=cv.getContext('2d');
+  if(ctx){ const gr=ctx.createLinearGradient(0,0,128,0); gr.addColorStop(0,'rgba(140,226,220,.50)'); gr.addColorStop(.18,'rgba(104,206,210,.32)'); gr.addColorStop(.55,'rgba(70,180,196,.13)'); gr.addColorStop(1,'rgba(60,170,190,0)'); ctx.fillStyle=gr; ctx.fillRect(0,0,128,4); }
+  const shallowTx=new THREE.CanvasTexture(cv); if('colorSpace' in shallowTx) shallowTx.colorSpace=THREE.SRGBColorSpace;
+  plane(1100,new THREE.MeshStandardMaterial({color:0xffffff,map:shallowTx,roughness:.25}),x+550,-.3,5,0);
+  plane(7,new THREE.MeshStandardMaterial({color:0xf2fbff,roughness:.6,opacity:.62}),x+4,-.1,7,0);
   root.add(g); return g;
 }
 function cape3dFacilityGroup(d, materials){
@@ -3142,7 +3172,7 @@ function cape3dPhysicalAscentBlend(altitudeMeters){
   // now falls exponentially with real altitude; the sky darkens before the solid Earth/horizon
   // completes its complementary handoff.
   const earthOpacity=smooth(km,38,96), skySpace=smooth(km,8,62), capeOpacity=1-earthOpacity;
-  return {space:earthOpacity,earthOpacity,skySpace,capeOpacity,atmosphere:smooth(km,18,100),cloudOpacity:1-smooth(km,2,18),fogDensity:.00038*Math.exp(-km/1.8),capeVisible:capeOpacity>.001};
+  return {space:earthOpacity,earthOpacity,skySpace,capeOpacity,atmosphere:smooth(km,18,100),cloudOpacity:1-smooth(km,2,18),fogDensity:CAPE3D_HAZE*Math.exp(-km/1.8),capeVisible:capeOpacity>.001};
 }
 function cape3dAscentSiteFraming(altitudeMeters){
   const h=Math.max(0,Number(altitudeMeters)||0), smooth=(x,a,b)=>{ const u=Math.max(0,Math.min(1,(x-a)/(b-a))); return u*u*(3-2*u); };
@@ -3630,7 +3660,7 @@ function buildCape3DScene(scene){
   const ground=cape3dMesh(new THREE.PlaneGeometry(landscape.land.width,landscape.land.depth),materials.ground,landscape.land.centerX,-1,180,false); ground.rotation.x=-Math.PI/2; root.add(ground);
   const terrain=cape3dMesh(new THREE.PlaneGeometry(landscape.land.width,landscape.land.depth),new THREE.MeshBasicMaterial({map:terrainTx,transparent:true,opacity:CAPE3D_TERRAIN_STYLE.overlayOpacity,depthWrite:false}),landscape.land.centerX,-.72,180,false); terrain.rotation.x=-Math.PI/2; root.add(terrain);
   const ocean=cape3dMesh(new THREE.PlaneGeometry(landscape.ocean.width,landscape.ocean.depth),materials.water,landscape.ocean.centerX,-.6,370,false); ocean.rotation.x=-Math.PI/2; root.add(ocean);
-  terrain.renderOrder=-2; terrain.material.polygonOffset=true; terrain.material.polygonOffsetFactor=-3; terrain.material.polygonOffsetUnits=-3; const region=cape3dRegion(root,landscape);
+  terrain.renderOrder=-2; terrain.material.polygonOffset=true; terrain.material.polygonOffsetFactor=0; terrain.material.polygonOffsetUnits=-1; ocean.renderOrder=2; materials.water.depthWrite=false; const region=cape3dRegion(root,landscape);
   const shore=cape3dShoreline(root,landscape);
   const roads=cape3dRoads(materials); root.add(roads);
   const facilities=new THREE.Group(); facilities.name='cape3d_facilities'; root.add(facilities);
@@ -3707,7 +3737,7 @@ function cape3dTick(){
   }
   const t=cape3d._motionT;
   const atmo=skyAtmosphere(t), c=atmo.mid.split(',').map(Number), root=cape3d.root, launchActive=!!(root&&root.userData.launchActive), reentryP=root&&root.userData.reentryActive?(root.userData.reentryProgress||0):null, spaceMix=Math.max(0,Math.min(1,((root&&root.userData.orbitActive)?1:(root&&root.userData.launchSpace)||0)));
-  const cb=atmo.bot.split(',').map(Number), ct=atmo.top.split(',').map(Number), sky=new THREE.Color((c[0]+cb[0])/510,(c[1]+cb[1])/510,(c[2]+cb[2])/510), space=new THREE.Color(0x020914); cape3d.scene.background.copy(sky).lerp(space,spaceMix); if(cape3d.scene.fog){ cape3d.scene.fog.color.copy(cape3d.scene.background); cape3d.scene.fog.density=(root&&root.userData.orbitActive)||reentryP!=null?0:(launchActive&&root.userData.launchVisual?root.userData.launchVisual.fogDensity:.00038); }
+  const cb=atmo.bot.split(',').map(Number), ct=atmo.top.split(',').map(Number), sky=new THREE.Color((c[0]+cb[0])/510,(c[1]+cb[1])/510,(c[2]+cb[2])/510), space=new THREE.Color(0x020914); cape3d.scene.background.copy(sky).lerp(space,spaceMix); if(cape3d.scene.fog){ cape3d.scene.fog.color.copy(cape3d.scene.background); cape3d.scene.fog.density=(root&&root.userData.orbitActive)||reentryP!=null?0:(launchActive&&root.userData.launchVisual?root.userData.launchVisual.fogDensity:CAPE3D_HAZE); }
   if(reentryP!=null){ cape3d.scene.background.copy(space).lerp(new THREE.Color(0x315d77),Math.min(.72,reentryP*.78)); if(cape3d.scene.fog){ cape3d.scene.fog.color.copy(cape3d.scene.background); cape3d.scene.fog.density=.000025+reentryP*.00007; } }
   const sunA=Math.max(.03,atmo.sunA), az=(atmo.sunX-.5)*Math.PI*1.6, alt=(.15+(1-atmo.sunY)*.75)*Math.PI*.5;
   cape3d.sun.position.set(800*Math.cos(alt)*Math.cos(az),800*Math.sin(alt),800*Math.cos(alt)*Math.sin(az));
@@ -3739,7 +3769,7 @@ function startCape3D(hostId,width,height){
     const quality=cape3dFlightQualityProfile(), renderer=new THREE.WebGLRenderer({antialias:true});
     if('outputColorSpace' in renderer) renderer.outputColorSpace=THREE.SRGBColorSpace;
     renderer.setPixelRatio(Math.min((typeof window!=='undefined'&&window.devicePixelRatio)||1,quality.pixelRatio));
-    const scene=new THREE.Scene(); scene.background=new THREE.Color(0x07101a); scene.fog=new THREE.FogExp2(0x07101a,.00038);
+    const scene=new THREE.Scene(); scene.background=new THREE.Color(0x07101a); scene.fog=new THREE.FogExp2(0x07101a,CAPE3D_HAZE);
     const camera=new THREE.PerspectiveCamera(40,1,1,100000);
     camera.position.set(-850,650,1150); camera.lookAt(420,0,250);
     renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFShadowMap;
