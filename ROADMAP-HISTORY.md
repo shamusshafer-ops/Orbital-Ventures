@@ -7956,3 +7956,26 @@ fully, caches failed designs), four seeds to 2000, same bot on both builds:
 Tests: new `tests/test-frontier-era.js` (33 checks; cannot load against pre-change source). Full sweep
 175/176, 1 intentional skip, 0 unexpected.
 
+## 2026-11-16 — Spine step 2: re-flights saturate (Claude)
+
+From `EVALUATION-2026-11-GAMEPLAY.md` §5.5 / §7 step 2. Re-flying a completed milestone paid 40% of its payout
+forever, so re-flying your best mission was the dominant strategy for decades.
+
+- `reflightPayoutFrac(m)`: 40% for the first re-flight, 10 points less for each further paid re-flight within
+  `REFLIGHT_MEMORY_MONTHS` (36), floor 10%; recovers as flights age out. Used by `estMissionPayout` (bench
+  estimate), and the success and partial payout paths in `finalizeLaunch`, which also `recordReflight(m)`.
+  Procedural contracts never count as re-flights (they are never "completed"), so they always pay in full.
+- New persisted `state.reflights` → **SAVE_VERSION 69** (docs/SAVE-VERSIONS.md).
+- UI: the mission readouts' ROUTINE badge shows the live rate ("routine · 20%"), the net-economics line reads
+  "Payout (re-flight ×0.20)", and both carry a tooltip with the count and the date the rate improves.
+
+Measured with `tools/autoplay-bot.js` (now values options by the game's own `estMissionPayout`, waits for
+missions already en route instead of launching copies, and keeps building while a hull waits for a launch
+window), four seeds to 2000, same bot on both builds:
+- most launches of one mission in any decade 13–14 → 8–10; most-flown mission 42–45 → 28–36 total, with the
+  second most-flown rising from 5–7 to 16–20; total flights 78–90 → 101–111; contracts flown 1–4 → 4–7.
+- Cash is not lower — money pressure is step 5's job.
+
+Tests: new `tests/test-reflight-saturation.js` (20 checks; cannot load against pre-change source). Full sweep
+176/177, 1 intentional skip, 0 unexpected.
+

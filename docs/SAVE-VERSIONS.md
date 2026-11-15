@@ -21,6 +21,16 @@ Two things still apply:
   should warn rather than silently misread — that protects against the two-agent workflow, not an
   install base.
 
+## v69 — Re-flight saturation (spine step 2)
+
+Adds `state.reflights` — `{missionId: [absMonth, ...]}`, the months of recent paid re-flights of completed
+milestones, pruned to the last `REFLIGHT_MEMORY_MONTHS`. Drives `reflightPayoutFrac()`: 40% for the first
+re-flight, 10 points less for each further one in memory, floor 10%.
+
+## v68 — Orbit-asset schema v2
+
+Satellite kind + health field (#116-A).
+
 ## v67 — Docking presentation history
 
 Adds `state.dockingPresentation.successful`, used only to distinguish the first-docking ceremony from proven routine playback. Docking reliability, resource costs and settlement authority are unchanged.

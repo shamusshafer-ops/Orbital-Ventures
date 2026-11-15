@@ -26,7 +26,7 @@ function createFreshState(difficulty){
     log:[], annals:[], rivalFired:{}, scooped:{}, rivalThreat:{}, rivalState:{}, bailouts:0,
     staff:[], assignedAstronaut:null, persEventCooldown:5, proceduralStaffDefs:[],
     departments:defaultDepartments(), // #19: org layer over hired staff (per-dept lead + training)
-    econEvents:[], eventCooldown:6, pgmRoyalty:0,
+    econEvents:[], eventCooldown:6, pgmRoyalty:0, reflights:{}, // spine step 2: absMonth of each recent paid re-flight, per mission
     passiveContracts:[], contractCooldown:{}, contractSignings:{}, engineHeritage:{}, // passive-income contracts (repeatable + cooldown + diminishing)
     publicSupport:SUPPORT_BASE, // #8: program politics — public mood dial
     production:{bays:1,foundry:1,pads:1,qa:1}, // #7: manufacturing capacity — leveled production lines
@@ -5553,10 +5553,27 @@ function simulateMission(m){
    the direct build/launch/test spend lands up front. This estimates the net so the
    player can see whether a prestige mission actually pays or quietly bleeds the treasury.
    Uses the SAME payout formula as proceedLaunch so the estimate matches the payday. */
+/* ---------- Spine step 2: re-flights saturate ----------
+   Re-flying a completed milestone used to pay 40% of its payout forever, so re-flying your best mission
+   was the dominant strategy for decades (the bot flew Endurance ~170 times). The first re-flight still
+   pays 40%; each further paid re-flight within REFLIGHT_MEMORY_MONTHS takes REFLIGHT_STEP off, down to
+   REFLIGHT_FLOOR, and the rate recovers as flights age out. Procedural contracts are new work every
+   time and are unaffected. One function feeds the estimate, the payday and the bench label. */
+const REFLIGHT_BASE=0.4, REFLIGHT_STEP=0.1, REFLIGHT_FLOOR=0.1, REFLIGHT_MEMORY_MONTHS=36;
+function recentReflights(id){ const now=absMonth(); return ((state.reflights&&state.reflights[id])||[]).filter(t=>now-t<REFLIGHT_MEMORY_MONTHS); }
+function reflightPayoutFrac(m){ return Math.max(REFLIGHT_FLOOR, REFLIGHT_BASE-REFLIGHT_STEP*recentReflights(m.id).length); }
+// when the rate next improves: the month the oldest recent re-flight drops out of memory (null = already at base)
+function reflightRecoveryAbs(m){ const r=recentReflights(m.id); return r.length?Math.min(...r)+REFLIGHT_MEMORY_MONTHS:null; }
+function reflightTitle(m){
+  const n=recentReflights(m.id).length, rec=reflightRecoveryAbs(m), f=Math.round(reflightPayoutFrac(m)*100);
+  if(!n) return `Re-flying a completed milestone pays ${f}% of its payout. Each further re-flight within ${REFLIGHT_MEMORY_MONTHS/12} years pays ${Math.round(REFLIGHT_STEP*100)} points less, down to ${Math.round(REFLIGHT_FLOOR*100)}%. Contracts are new work and pay in full.`;
+  return `${n} paid re-flight${n===1?'':'s'} in the last ${REFLIGHT_MEMORY_MONTHS/12} years — the market for this one is saturating: ${f}% of the payout. The rate improves from ${MONTHS[rec%12]} ${1942+Math.floor(rec/12)} as old flights age out. Contracts are new work and pay in full.`;
+}
+function recordReflight(m){ state.reflights=state.reflights||{}; const keep=recentReflights(m.id); keep.push(absMonth()); state.reflights[m.id]=keep; }
 function estMissionPayout(m){
   const routine=!!state.completed[m.id];
   const wq=(m.window && state.committedWindow)?state.committedWindow.quality:1;
-  let p=(routine?m.payout*0.4:m.payout)*wq*diff().payoutMult*econPayoutMult()*doctrineMult('payout');
+  let p=(routine?m.payout*reflightPayoutFrac(m):m.payout)*wq*diff().payoutMult*econPayoutMult()*doctrineMult('payout');
   if(m.crew>0){ const ab=astroBonus?astroBonus():{payoutMult:1}; p*=ab.payoutMult||1; }
   if(!routine && state.scooped && state.scooped[m.id]) p*=SCOOP_PAYOUT_MULT;
   return round2(p);
@@ -5584,7 +5601,7 @@ function missionNetHTML(m, v, sim){
     : `<div class="row" style="justify-content:space-between"><span class="dim">Recurring cashflow over ${e.campaignMo} mo</span><span style="font-family:var(--mono);color:var(--ok)">covered</span></div>`;
   return `<div class="mission-tag" style="margin-top:8px">Net economics — the real margin</div>
     <div style="font-size:12px;padding:2px 0">
-      <div class="row" style="justify-content:space-between"><span class="dim">Payout${e.routine?' (routine ×0.4)':''}</span><span style="font-family:var(--mono);color:var(--ok)">+${fM(e.payout)}</span></div>
+      <div class="row" style="justify-content:space-between"><span class="dim" title="${e.routine?esc(reflightTitle(m)):''}">Payout${e.routine?` (re-flight ×${reflightPayoutFrac(m).toFixed(2)})`:''}</span><span style="font-family:var(--mono);color:var(--ok)">+${fM(e.payout)}</span></div>
       ${e.mandateBonus>0?`<div class="row" style="justify-content:space-between"><span class="dim">+ Mandate bonus</span><span style="font-family:var(--mono);color:var(--ok)">+${fM(e.mandateBonus)}</span></div>`:''}
       <div class="row" style="justify-content:space-between"><span class="dim">− Build + launch + test</span><span style="font-family:var(--mono)">−${fM(e.directCost)}</span></div>
       ${carryLine}
@@ -7581,7 +7598,8 @@ function finalizeLaunch(ctx, ops){
       state.scienceProgram={monthsLeft:TELESCOPE_TERM, sciPerMonth:TELESCOPE_SCI_BASE, health:100};
       log('ok','🔭 The Orbital Observatory is operational — a standing science program, returning data every month.');
     }
-    let payout=(routine?m.payout*0.4:m.payout)*windowQuality*diff().payoutMult*econPayoutMult()*opsPayoutMult*doctrineMult('payout'); // CE3(a): Commercial +, Statecraft/Science −
+    let payout=(routine?m.payout*reflightPayoutFrac(m):m.payout)*windowQuality*diff().payoutMult*econPayoutMult()*opsPayoutMult*doctrineMult('payout'); // CE3(a): Commercial +, Statecraft/Science −; step 2: re-flights saturate
+    if(routine) recordReflight(m);
     if(crewed) payout*=ab.payoutMult; // M6: astronaut payout bonus
     if(!routine && state.scooped[m.id]) payout*=SCOOP_PAYOUT_MULT;
     // P10: first-flight-of-design prestige — fam.flights is still pre-increment here (bumped later
@@ -7645,7 +7663,8 @@ function finalizeLaunch(ctx, ops){
     autoAdvanceMission();
   }else if(outcome.kind==='partial'){
     // reached space but off-target — salvage some value, but the objective is not complete
-    let payout=(routine?m.payout*0.4:m.payout)*windowQuality*diff().payoutMult*econPayoutMult()*PARTIAL_PAYOUT_MULT*opsPayoutMult*doctrineMult('payout'); // CE3(a): doctrine payout factor
+    let payout=(routine?m.payout*reflightPayoutFrac(m):m.payout)*windowQuality*diff().payoutMult*econPayoutMult()*PARTIAL_PAYOUT_MULT*opsPayoutMult*doctrineMult('payout'); // CE3(a): doctrine payout factor; step 2
+    if(routine) recordReflight(m);
     state.money+=payout; flightRevenue=payout;
     const rep=Math.max(0,Math.round((routine?2:m.rep)*0.25)+opsRep);
     state.rep+=rep;

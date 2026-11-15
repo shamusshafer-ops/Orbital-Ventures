@@ -32,6 +32,7 @@ const launchEngines=()=>unlockedEngines().filter(id=>!ENGINES[id].transferOnly);
 const _designMiss={};
 function techKey(){ return Object.keys(state.research||{}).length+'|'+unlockedEngines().length+'|'+trackingStationCount()+'|'+(state.lunarArch||''); }
 function design(m){
+  if((state.activeFlights||[]).some(f=>f&&(f.mission===m.id||f.missionId===m.id))) return null; // already en route: wait for it rather than launch copies
   const key=m.id+'@'+techKey(); if(_designMiss[key]) return null;
   const d=_design(m); if(!d) _designMiss[key]=true; return d;
 }
@@ -165,7 +166,7 @@ while(state.year<YEAR_END && stats.turns<4000){
     if((state.flights||0)>before){ stats.launches++; acts.push('launch '+m.id); }
   }
   // build toward the advisor's target, else repeat a profitable flyable mission
-  if(!buildQueueList().length&&!hangarList().length&&!state.launchTxn){
+  if(!buildQueueList().length&&!hangarList().some(h=>!(missionById(h.missionId)||{}).window)&&!state.launchTxn){ // hulls parked for a launch window don't stop other work
     let rec=recommendedAction();
     if(rec.kind==='tracking'&&rec.action){ try{ eval(rec.action); acts.push('advisor: '+rec.title); }catch(e){} rec=recommendedAction(); }
     let m=rec.missionId?missionById(rec.missionId):null;
@@ -173,7 +174,7 @@ while(state.year<YEAR_END && stats.turns<4000){
     if(m&&m.window&&!(state.committedWindow&&state.committedWindow.missionId===m.id)){
       try{ const ws=windowsFor(m.id); const lead=(buildMonths(m)+2)*30; const i=ws.findIndex(w=>w.abs>absDay()+lead); if(i>=0){ commitWindow(m.id,i); acts.push('commit window '+m.id+' '+dayToDate(ws[i].abs)); } }catch(e){ bump(stats.stuck,'window-err'); } }
     if(!m||!missionFlyable(m)){
-      const val=x=>(state.completed[x.id]&&!x.proc?0.4:1)*x.payout;
+      const val=x=>x.proc?x.payout:estMissionPayout(x);
       const pool=MISSIONS.filter(x=>missionFlyable(x)&&(!x.window||(state.committedWindow&&state.committedWindow.missionId===x.id))&&!x.stationVisit&&!x.tanker)
         .concat((state.contractOffers||[]).filter(o=>!o.deliverModule&&!o.stationVisit&&!o.orbitDeployment&&!o.vehicleDocking&&(o.minRep||0)<=state.rep&&(!o.reqResearch||state.research[o.reqResearch])));
       m=pool.sort((a,b)=>val(b)-val(a))[0];
@@ -182,7 +183,7 @@ while(state.year<YEAR_END && stats.turns<4000){
     if(m&&needsTrackingNetwork(m)&&trackingStationCount()<1){ const st=TRACKING_STATIONS.find(x=>canBuildStation(x.id).ok); if(st){ buildTrackingStation(st.id); acts.push('build tracking '+st.id); } }
     let d=m?design(m):null;
     if(m&&!d){ bump(stats.stuck,'no-design:'+m.id);
-      const val=x=>(state.completed[x.id]&&!x.proc?0.4:1)*x.payout;
+      const val=x=>x.proc?x.payout:estMissionPayout(x);
       const alt=MISSIONS.filter(x=>x!==m&&missionFlyable(x)&&!x.window).concat((state.contractOffers||[]).filter(o=>!o.deliverModule&&!o.stationVisit&&!o.orbitDeployment&&!o.vehicleDocking&&(o.minRep||0)<=state.rep&&(!o.reqResearch||state.research[o.reqResearch]))).sort((a,b)=>val(b)-val(a));
       for(const x of alt){ const dx=design(x); if(dx){ m=x; d=dx; if(x.proc) stats.procFlown=(stats.procFlown||0)+1; break; } } }
     if(m){
@@ -222,8 +223,10 @@ const sum=a=>a.reduce((x,y)=>x+y,0), med=a=>{ const s=a.slice().sort((x,y)=>x-y)
 const newByYear={}; Object.values(firstAvail).forEach(t=>{ const y=Math.floor(t); newByYear[y]=(newByYear[y]||0)+1; });
 const thin=[]; for(let y=1945;y+5<=Math.min(state.year,YEAR_END);y++){ let n=0; for(let k=y;k<y+5;k++) n+=newByYear[k]||0; if(n<2) thin.push(y+'-'+(y+4)+':'+n); }
 const thinRuns=[]; { let run=null; for(let y=1945;y+5<=Math.min(state.year,YEAR_END);y++){ let n=0; for(let k=y;k<y+5;k++) n+=newByYear[k]||0; if(n<2){ if(!run) run=[y,y]; else run[1]=y; } else if(run){ thinRuns.push(run[0]+'..'+(run[1]+4)); run=null; } } if(run) thinRuns.push(run[0]+'..'+(run[1]+4)); }
-const repeats={}; timeline.forEach(t=>(t.acts||'').split('; ').forEach(a=>{ if(a.startsWith('launch ')) repeats[a.slice(7)]=(repeats[a.slice(7)]||0)+1; }));
-console.log(JSON.stringify({thinWindows:thin.length,thinRuns,procFlown:stats.procFlown||0,topRepeats:Object.entries(repeats).sort((a,b)=>b[1]-a[1]).slice(0,4),eraAt:ERAS[eraIndex(currentEra())].id,programsDone:PROGRAMS.filter(p=>p.missions.every(id=>state.completed[id])).map(p=>p.id)}));
+const perDecade={}; timeline.forEach(t=>{ const y=+t.d.slice(0,4); (t.acts||'').split('; ').forEach(a=>{ if(a.startsWith('launch ')){ const id=a.slice(7).replace(' (window)',''); (perDecade[id]=perDecade[id]||[]).push(y); } }); });
+let maxDecade=[0,'']; for(const id in perDecade){ const ys=perDecade[id].sort((a,b)=>a-b); for(let i=0;i<ys.length;i++){ let j=i; while(j<ys.length&&ys[j]<ys[i]+10) j++; if(j-i>maxDecade[0]) maxDecade=[j-i,id+'@'+ys[i]]; } }
+const repeats={}; timeline.forEach(t=>(t.acts||'').split('; ').forEach(a=>{ if(a.startsWith('launch ')){ const id=a.slice(7).replace(' (window)',''); repeats[id]=(repeats[id]||0)+1; } }));
+console.log(JSON.stringify({maxPerDecade:maxDecade,thinWindows:thin.length,thinRuns,procFlown:stats.procFlown||0,topRepeats:Object.entries(repeats).sort((a,b)=>b[1]-a[1]).slice(0,4),eraAt:ERAS[eraIndex(currentEra())].id,programsDone:PROGRAMS.filter(p=>p.missions.every(id=>state.completed[id])).map(p=>p.id)}));
 console.log(JSON.stringify({diff:DIFF,seed:SEED,endYear:state.year,over:!!state.over,money:Math.round(state.money),rep:Math.round(state.rep),flights:state.flights,
   turns:stats.turns,idleTurns:stats.idleTurns,daysPerTurnMedian:med(stats.daysPerTurn),daysPerTurnMean:Math.round(sum(stats.daysPerTurn)/stats.turns),
   turnsPerYear:Math.round(stats.turns/Math.max(1,state.year-1942)),research:stats.research,researchedNodes:Object.keys(state.research).length,contracts:stats.contractsSigned,

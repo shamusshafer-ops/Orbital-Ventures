@@ -6321,7 +6321,7 @@ function renderReadout(){
 
   setHTML($('readoutCard'), `
     <div class="mission-tag">Flying against</div>
-    <div class="mission-name">${m.name} ${m.crew?`<span class="pill" style="color:var(--ignite);border-color:var(--hud-line)">${m.crew} crew · ${m.days<1?(m.days*24).toFixed(0)+'h':m.days+'d'}</span>`:''} ${state.completed[m.id]?'<span class="pill ok">routine</span>':''}</div>
+    <div class="mission-name">${m.name} ${m.crew?`<span class="pill" style="color:var(--ignite);border-color:var(--hud-line)">${m.crew} crew · ${m.days<1?(m.days*24).toFixed(0)+'h':m.days+'d'}</span>`:''} ${state.completed[m.id]?`<span class="pill ok" title="${esc(reflightTitle(m))}">routine · ${Math.round(reflightPayoutFrac(m)*100)}%</span>`:''}</div>
 
     <div class="gauge" title="Δv (delta-v): total velocity change your vehicle can produce — the fuel budget for the whole mission. Must clear the mission's required Δv (the marker) to be flyable.">
       <div class="nums"><span class="achieved" style="color:${meets?'var(--ok)':'var(--ink)'}">${fI(v.totalDv)}<span style="font-size:12px;color:var(--muted)"> m/s Δv</span></span>
@@ -6409,7 +6409,7 @@ function renderProfileReadout(m){
 
   setHTML($('readoutCard'), `
     <div class="mission-tag">Mission profile — every leg must pass</div>
-    <div class="mission-name">${m.name} <span class="pill" style="color:var(--ignite);border-color:var(--hud-line)">${m.crew} crew · ${m.days}d</span> ${state.completed[m.id]?'<span class="pill ok">routine</span>':''}</div>
+    <div class="mission-name">${m.name} <span class="pill" style="color:var(--ignite);border-color:var(--hud-line)">${m.crew} crew · ${m.days}d</span> ${state.completed[m.id]?`<span class="pill ok" title="${esc(reflightTitle(m))}">routine · ${Math.round(reflightPayoutFrac(m)*100)}%</span>`:''}</div>
 
     <div class="legs">${legRows}</div>
 
