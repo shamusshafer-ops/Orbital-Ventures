@@ -1,5 +1,9 @@
 // Promotions for Gate 0 blockers B06/B07: exact-hull ownership refresh and
 // staged commitment disclosure are now positive Gate 1 regressions.
+// Spine step 3: this suite exercises the player-facing decision flow, so it plays with the launch policy on
+// Manual (new games default to Nominal, which answers routine calls automatically).
+{ const _newGameStep3=newGame; newGame=function(...a){ const r=_newGameStep3(...a); state.launchPolicy='manual'; return r; }; }
+
 let g1RegressionPass=0, g1RegressionFail=0;
 function g1RegressionCheck(name,cond){ if(cond) g1RegressionPass++; else { g1RegressionFail++; console.log('FAIL:',name); } }
 

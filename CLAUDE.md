@@ -27,7 +27,9 @@ RULE: the vehicle mesh may add detail but must not change stage heights/radii, `
 topology — staging, smoke and the plume read them. Needs a human look at an ascent in a real browser.
 
 **Gameplay spine (2026-11-16, branch `gameplay-spine`):** working through EVALUATION-2026-11-GAMEPLAY.md §7 in
-order; steps 1 (frontier era) and 2 (re-flight saturation, SAVE_VERSION 69) done. Measure every step with `tools/autoplay-bot.js` before and after.
+order; steps 1 (frontier era), 2 (re-flight saturation, SAVE_VERSION 69) and 3 (launch commit policy,
+SAVE_VERSION 70) done. RULE: a test of the manual decision panels must set `state.launchPolicy='manual'` —
+new games default to Nominal, which answers weather/live/reserve/orbit calls itself. Measure every step with `tools/autoplay-bot.js` before and after.
 RULE: `currentEra()` is the WORLD era (calendar or Program-opened frontier) — use `calendarEraIndex()` only
 when you specifically mean the calendar.
 

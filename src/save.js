@@ -1,6 +1,6 @@
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=69; // v69: state.reflights — per-mission dates of recent paid re-flights (spine step 2).
+const SAVE_VERSION=70; // v70: state.launchPolicy — standing answer to routine launch calls (spine step 3).
 // Pre-v62 saves with in-progress flight ownership are rejected rather than assigned a fabricated
 // outcome; ordinary v61 lifecycle records are remapped through the schema-2 factories on load.
 //

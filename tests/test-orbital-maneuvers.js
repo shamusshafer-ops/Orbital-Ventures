@@ -1,5 +1,9 @@
 // Phase 1 orbital operations: pure maneuver budget/options, snapshot threading,
 // paused orbit-start decision behavior, and maneuver-aware orbit telemetry.
+// Spine step 3: this suite exercises the player-facing decision flow, so it plays with the launch policy on
+// Manual (new games default to Nominal, which answers routine calls automatically).
+{ const _newGameStep3=newGame; newGame=function(...a){ const r=_newGameStep3(...a); state.launchPolicy='manual'; return r; }; }
+
 let pass=0, fail=0;
 function check(name,cond){ if(cond) pass++; else{ fail++; console.log('FAIL:',name); } }
 function near(a,b,tol,name){ check(name,Math.abs(a-b)<=tol); }

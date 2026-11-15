@@ -21,6 +21,11 @@ Two things still apply:
   should warn rather than silently misread — that protects against the two-agent workflow, not an
   install base.
 
+## v70 — Launch commit policy (spine step 3)
+
+Adds `state.launchPolicy` — `'manual' | 'cautious' | 'nominal' | 'bold'` (new games: `'nominal'`). The standing
+answer to weather holds, live calls, deep-space reserve calls and the orbit plan; anomalies always ask.
+
 ## v69 — Re-flight saturation (spine step 2)
 
 Adds `state.reflights` — `{missionId: [absMonth, ...]}`, the months of recent paid re-flights of completed

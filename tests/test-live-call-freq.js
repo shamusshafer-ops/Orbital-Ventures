@@ -1,6 +1,10 @@
 // E1.2 slice A — widened live-call/reserve-call decision frequency on routine reflights.
 // liveCallFlag/deepCallFlag now take a `routine` flag and use a wider amber band (0.97 vs 0.94)
 // on a reflight, and beginResolve/postResolve no longer exclude uncrewed routine flights outright.
+// Spine step 3: this suite exercises the player-facing decision flow, so it plays with the launch policy on
+// Manual (new games default to Nominal, which answers routine calls automatically).
+{ const _newGameStep3=newGame; newGame=function(...a){ const r=_newGameStep3(...a); state.launchPolicy='manual'; return r; }; }
+
 let pass=0, fail=0;
 function check(name, cond){ if(cond){ pass++; } else { fail++; console.log('FAIL:', name); } }
 

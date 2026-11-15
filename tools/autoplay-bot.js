@@ -20,8 +20,12 @@ const YEAR_END=+(process.env.BOT_YEAR||1990), DIFF=process.env.BOT_DIFF||'engine
 // deterministic Math.random for reproducibility
 { let a=SEED*2654435761>>>0; Math.random=()=>{ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
 newGame(DIFF); _gameStarted=true;
-try{ animEnabled=false; }catch(e){}
+// Animation stays ON so launch decisions stop the clock exactly as they do for a player (with it off the
+// game auto-scrubs weather and never raises live calls). closeAnim() plays the role of the player
+// closing each flight presentation, which is what releases deferred-flight settlement.
+function closeAnim(){ for(let k=0;k<6&&typeof animState!=='undefined'&&animState;k++){ try{ dismissAnim(); }catch(e){ break; } } }
 try{ state.onboarding.dismissed=true; }catch(e){}
+if(process.env.BOT_POLICY){ try{ state.launchPolicy=process.env.BOT_POLICY; }catch(e){} } // default: whatever a new game ships with
 let rid=0; const R=()=>'bot'+(++rid);
 const stats={turns:0, idleTurns:0, stops:{}, modals:{}, launches:0, success:0, fail:0, research:0, contractsSigned:0, hires:0, actionsPerTurn:[], daysPerTurn:[], firstYear:{}, stuck:{}};
 const bump=(o,k,n=1)=>o[k]=(o[k]||0)+n;
@@ -100,7 +104,9 @@ function _design(m){
   return best;
 }
 function answerLaunch(){
-  for(let g=0; g<8 && state.launchTxn; g++){
+  closeAnim();
+  for(let g=0; g<8 && (state.launchTxn||(typeof animState!=='undefined'&&animState)); g++){
+    if(!state.launchTxn){ closeAnim(); break; }
     const tx=state.launchTxn, d=tx.decision;
     if(d && d.selected==null){
       bump(stats.modals,'launch:'+d.kind);
@@ -112,7 +118,7 @@ function answerLaunch(){
         else if(d.kind==='orbital'||d.kind==='orbit') resolveOrbitalManeuver((d.options&&d.options[0]),tx.id,d.revision);
         else { bump(stats.stuck,'decision:'+d.kind); break; }
       }catch(e){ bump(stats.stuck,'err:'+d.kind); break; }
-    } else if(tx.phase==='presentation'){ try{ dismissAnim(); }catch(e){} if(state.launchTxn===tx) break; }
+    } else if(tx.phase==='presentation'||(typeof animState!=='undefined'&&animState)){ closeAnim(); if(state.launchTxn===tx) break; }
     else break;
   }
 }
@@ -226,7 +232,8 @@ const thinRuns=[]; { let run=null; for(let y=1945;y+5<=Math.min(state.year,YEAR_
 const perDecade={}; timeline.forEach(t=>{ const y=+t.d.slice(0,4); (t.acts||'').split('; ').forEach(a=>{ if(a.startsWith('launch ')){ const id=a.slice(7).replace(' (window)',''); (perDecade[id]=perDecade[id]||[]).push(y); } }); });
 let maxDecade=[0,'']; for(const id in perDecade){ const ys=perDecade[id].sort((a,b)=>a-b); for(let i=0;i<ys.length;i++){ let j=i; while(j<ys.length&&ys[j]<ys[i]+10) j++; if(j-i>maxDecade[0]) maxDecade=[j-i,id+'@'+ys[i]]; } }
 const repeats={}; timeline.forEach(t=>(t.acts||'').split('; ').forEach(a=>{ if(a.startsWith('launch ')){ const id=a.slice(7).replace(' (window)',''); repeats[id]=(repeats[id]||0)+1; } }));
-console.log(JSON.stringify({maxPerDecade:maxDecade,thinWindows:thin.length,thinRuns,procFlown:stats.procFlown||0,topRepeats:Object.entries(repeats).sort((a,b)=>b[1]-a[1]).slice(0,4),eraAt:ERAS[eraIndex(currentEra())].id,programsDone:PROGRAMS.filter(p=>p.missions.every(id=>state.completed[id])).map(p=>p.id)}));
+const decisionStops=Object.entries(stats.modals).filter(([k])=>k.startsWith('launch:')).reduce((a,[,v])=>a+v,0);
+console.log(JSON.stringify({decisionsPerLaunch:+(decisionStops/Math.max(1,stats.launches)).toFixed(2),decisionKinds:Object.fromEntries(Object.entries(stats.modals).filter(([k])=>k.startsWith('launch:'))),maxPerDecade:maxDecade,thinWindows:thin.length,thinRuns,procFlown:stats.procFlown||0,topRepeats:Object.entries(repeats).sort((a,b)=>b[1]-a[1]).slice(0,4),eraAt:ERAS[eraIndex(currentEra())].id,programsDone:PROGRAMS.filter(p=>p.missions.every(id=>state.completed[id])).map(p=>p.id)}));
 console.log(JSON.stringify({diff:DIFF,seed:SEED,endYear:state.year,over:!!state.over,money:Math.round(state.money),rep:Math.round(state.rep),flights:state.flights,
   turns:stats.turns,idleTurns:stats.idleTurns,daysPerTurnMedian:med(stats.daysPerTurn),daysPerTurnMean:Math.round(sum(stats.daysPerTurn)/stats.turns),
   turnsPerYear:Math.round(stats.turns/Math.max(1,state.year-1942)),research:stats.research,researchedNodes:Object.keys(state.research).length,contracts:stats.contractsSigned,

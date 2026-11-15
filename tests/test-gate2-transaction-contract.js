@@ -1,3 +1,7 @@
+// Spine step 3: this suite exercises the player-facing decision flow, so it plays with the launch policy on
+// Manual (new games default to Nominal, which answers routine calls automatically).
+{ const _newGameStep3=newGame; newGame=function(...a){ const r=_newGameStep3(...a); state.launchPolicy='manual'; return r; }; }
+
 let pass=0,fail=0;
 function check(name,condition){ if(condition) pass++; else { fail++; console.log('FAIL:',name); } }
 

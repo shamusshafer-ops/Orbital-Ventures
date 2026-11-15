@@ -7979,3 +7979,32 @@ window), four seeds to 2000, same bot on both builds:
 Tests: new `tests/test-reflight-saturation.js` (20 checks; cannot load against pre-change source). Full sweep
 176/177, 1 intentional skip, 0 unexpected.
 
+## 2026-11-16 — Spine step 3: launch commit policy (Claude)
+
+From `EVALUATION-2026-11-GAMEPLAY.md` §5.6 / §7 step 3.
+
+- `state.launchPolicy` ∈ manual / cautious / nominal / bold (**new games: nominal**, SAVE_VERSION 70).
+  `policyChoice(kind, info)` answers weather holds, live calls, deep-space reserve calls and the orbit plan
+  through the same resolvers a click uses (`scrubLaunch`/`launchAnyway`, `resolveLiveCall`,
+  `resolveReserveCall`, `resolveOrbitalManeuver`), right after the transaction decision is created, so
+  receipts, replay and resume behave exactly as for a click. Each auto-answer logs "launch policy (X) — …".
+  Anomalies and rescues always ask; Manual is the old behaviour.
+- Table: Cautious stands down / aborts if survivable / burns / flies the plan; Nominal stands down at ≥6%
+  weather penalty, aborts only with crew, burns with crew, raises the orbit when margin allows; Bold launches,
+  presses on, banks, raises. The orbit call was effectively dominated (raise = +5% payout, no downside).
+- UI: Menu → "Launch calls" chips with the current rule spelled out; the bench launch block shows
+  "Launch calls: Nominal · change".
+- Six suites that exercise the manual decision panels now set Manual explicitly (a small newGame wrapper at
+  the top of each); none of their assertions changed.
+
+Bot: now plays with animation ON (with it off the game auto-scrubs weather and never raises live calls, so
+earlier runs saw no decisions) and closes each presentation like a player. Four seeds to 2000:
+- decision stops per launch 1.34–1.52 → 0.21–0.23, and every remaining stop is an in-flight anomaly.
+  The eval's "<0.2" target is missed only by anomalies, which are deliberately left as real choices; the
+  anomaly rate (~22% of launches) is the lever if that is still too many.
+- Policy is a real trade-off: 24 seeds to 1952, Bold vs Nominal — insolvencies 1 vs 2, bridge loans 10 vs 11,
+  median cash $626M vs $409M (stand-downs and crew aborts cost time and missions).
+
+Tests: new `tests/test-launch-policy.js` (27 checks; cannot load against pre-change source). Full sweep
+177/178, 1 intentional skip, 0 unexpected.
+

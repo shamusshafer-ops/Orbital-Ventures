@@ -26,7 +26,7 @@ function createFreshState(difficulty){
     log:[], annals:[], rivalFired:{}, scooped:{}, rivalThreat:{}, rivalState:{}, bailouts:0,
     staff:[], assignedAstronaut:null, persEventCooldown:5, proceduralStaffDefs:[],
     departments:defaultDepartments(), // #19: org layer over hired staff (per-dept lead + training)
-    econEvents:[], eventCooldown:6, pgmRoyalty:0, reflights:{}, // spine step 2: absMonth of each recent paid re-flight, per mission
+    econEvents:[], eventCooldown:6, pgmRoyalty:0, launchPolicy:'nominal', reflights:{}, // spine step 2: absMonth of each recent paid re-flight, per mission
     passiveContracts:[], contractCooldown:{}, contractSignings:{}, engineHeritage:{}, // passive-income contracts (repeatable + cooldown + diminishing)
     publicSupport:SUPPORT_BASE, // #8: program politics — public mood dial
     production:{bays:1,foundry:1,pads:1,qa:1}, // #7: manufacturing capacity — leveled production lines
@@ -6387,6 +6387,40 @@ function subsystemBreakdownHTML(m,v){
     <div class="dim" style="font-size:12px;margin-top:6px">Overall ${(rep.R*100)|0}% = the product of all subsystems. Test campaigns, tank/guidance research, and matching engineer specialists each harden a specific link.${famNote}</div>`;
 }
 
+/* ---------- Spine step 3: launch commit policy ----------
+   About 1.5 decision stops per launch, most of them answered the same way every time, taught players to
+   click through — which blunted the stops that matter. A standing policy, set once on the bench or in the
+   Menu, answers the routine calls (weather hold, live call, deep-space reserve, orbit plan) and logs what
+   it did. In-flight anomalies are one-off situations a blanket rule can't judge, so they always ask.
+   'manual' is the old behaviour. Each answer is the same selection a player's click makes, through the
+   same resolver, so outcomes, receipts and replays are unchanged. */
+const LAUNCH_POLICIES={
+  manual:  {label:'Manual',   tip:'Ask me on every call — weather holds, live calls, reserves and orbit plans.'},
+  cautious:{label:'Cautious', tip:'Stand down for any adverse weather, abort on an amber flag whenever the abort is survivable, burn reserves to save the mission, fly the planned orbit.'},
+  nominal: {label:'Nominal',  tip:'Stand down for weather costing 6% reliability or more, otherwise fly. Abort amber flags only with crew aboard. Burn reserves with crew aboard. Raise the orbit when margin allows.'},
+  bold:    {label:'Bold',     tip:'Launch through weather, press on through amber flags, bank reserves, raise the orbit when margin allows.'},
+};
+const POLICY_WEATHER_SCRUB_AT=0.06;
+function launchPolicy(){ return LAUNCH_POLICIES[state&&state.launchPolicy]?state.launchPolicy:'nominal'; }
+function setLaunchPolicy(id){ if(!LAUNCH_POLICIES[id]) return; state.launchPolicy=id; render(); if(typeof activeModal==='function'&&$('modal')&&!$('modal').classList.contains('hidden')) activeModal(); }
+// The option id the standing policy picks for this call, or null when the player should be asked.
+function policyChoice(kind, info){
+  const p=launchPolicy(); if(p==='manual'||kind==='anomaly'||kind==='rescue') return null;
+  info=info||{};
+  if(kind==='weather'){ if(p==='cautious') return 'scrub'; if(p==='bold') return 'launch'; return (info.penalty||0)>=POLICY_WEATHER_SCRUB_AT?'scrub':'launch'; }
+  if(kind==='live'){ if(!info.survivableAbort) return 'press'; if(p==='cautious') return 'abort'; if(p==='bold') return 'press'; return info.crewed?'abort':'press'; }
+  if(kind==='reserve'){ if(p==='cautious') return 'burn'; if(p==='bold') return 'bank'; return info.crewed?'burn':'bank'; }
+  if(kind==='orbit'){ const ok=id=>(info.enabled||[]).includes(id); if(p!=='cautious'&&ok('raise')) return 'raise'; return ok('circularize')?'circularize':null; }
+  return null;
+}
+function cycleLaunchPolicy(){ const ks=Object.keys(LAUNCH_POLICIES); setLaunchPolicy(ks[(ks.indexOf(launchPolicy())+1)%ks.length]); }
+function launchPolicyChipsHTML(){
+  const cur=launchPolicy();
+  return `<div style="display:flex;gap:6px;flex-wrap:wrap" role="radiogroup" aria-label="Launch call policy">${Object.keys(LAUNCH_POLICIES).map(k=>`<button class="btn ghost" type="button" role="radio" aria-checked="${cur===k}" onclick="setLaunchPolicy('${k}')" title="${esc(LAUNCH_POLICIES[k].tip)}" style="flex:1;font-size:12px;${cur===k?'border-color:var(--ignite);color:var(--ignite)':''}">${LAUNCH_POLICIES[k].label}</button>`).join('')}</div>
+    <div class="dim" style="font-size:11px;margin-top:4px">${esc(LAUNCH_POLICIES[cur].tip)} In-flight anomalies always ask.</div>`;
+}
+function policyNote(m, what){ log('note',`${m.name}: launch policy (${LAUNCH_POLICIES[launchPolicy()].label}) — ${what}.`); }
+
 /* ---------- #20 launch weather (go / no-go) ---------- */
 // Slice 1 of Interactive Mission Control. On launch day the range is clear (GO) or
 // hits an adverse condition; adverse weather is a player decision — scrub & wait
@@ -6421,6 +6455,8 @@ function showWeatherModal(m,wx){
   const p=_pendingLaunch||{m,wx};
   const decision=ensureLaunchTransactionDecision('weather',p,{weather:wx},['scrub','launch']);
   const args=launchDecisionArgs(decision);
+  const auto=policyChoice('weather',{penalty:wx.penalty});
+  if(auto){ policyNote(m, auto==='scrub'?`stood down for ${wx.label.toLowerCase()}`:`flew through ${wx.label.toLowerCase()}`); return auto==='scrub'?scrubLaunch(args.txnId,args.revision):launchAnyway(args.txnId,args.revision); }
   openFlightForDecision({m, crewed:(m.crew||0)>0}, { holdAt:'pad-start', buildPanel:()=>{
     const pen=Math.round(wx.penalty*100);
     // Slice B reskin: frame the existing pad-start weather hold as the built-in T-31s hold (the last
@@ -6695,6 +6731,8 @@ function showOrbitalManeuverDecision(ctx){
   _pendingOrbitOps={ctx,opts};
   const decision=ensureLaunchTransactionDecision('orbit',ctx,{budget,options:opts},opts.filter(o=>o.enabled).map(o=>o.id));
   const args=launchDecisionArgs(decision);
+  const auto=policyChoice('orbit',{enabled:opts.filter(o=>o.enabled).map(o=>o.id)});
+  if(auto){ policyNote(ctx.m, auto==='raise'?'used the spare margin to raise the orbit':'flew the planned orbit'); return resolveOrbitalManeuver(auto,args.txnId,args.revision); }
   openFlightForDecision(ctx,{holdAt:'orbit-start',buildPanel:()=>({
     title:'ORBITAL INSERTION · MANEUVER GO/NO-GO',
     lines:[`Tracking confirms insertion. ${budget.toLocaleString()} m/s of maneuver margin remains.`,
@@ -6734,6 +6772,8 @@ function showLiveCallModal(ctx, flag){
   const survivableAbort=!ctx.crewed||launchEscape;
   const decision=ensureLaunchTransactionDecision('live',ctx,{flag,launchEscapeFitted:launchEscape},survivableAbort?['press','abort']:['press']);
   const args=launchDecisionArgs(decision);
+  const auto=policyChoice('live',{survivableAbort,crewed:!!ctx.crewed});
+  if(auto){ policyNote(ctx.m, auto==='abort'?`aborted when ${(SUBSYS_LABEL[flag.sub.key]||flag.sub.label||'a subsystem').toLowerCase()} flagged amber`:`pressed on through an amber ${(SUBSYS_LABEL[flag.sub.key]||flag.sub.label||'subsystem').toLowerCase()} flag`); return resolveLiveCall(auto==='press',args.txnId,args.revision); }
   openFlightForDecision(ctx, { buildPanel:()=>{
     const m=ctx.m, sub=flag.sub, ph=flag.phase, pc=Math.round(sub.rel*100);
     const subName=SUBSYS_LABEL[sub.key]||sub.label;
@@ -6779,6 +6819,8 @@ let _pendingReserve=null; // a flight paused at the deep-leg reserve call
 function showReserveModal(ctx, flag){
   const decision=ensureLaunchTransactionDecision('reserve',ctx,{flag},['burn','bank']);
   const args=launchDecisionArgs(decision);
+  const auto=policyChoice('reserve',{crewed:!!ctx.crewed});
+  if(auto){ policyNote(ctx.m, auto==='burn'?'burned the reserve to nurse a drifting system home':'banked the reserve and flew as built'); return resolveReserveCall(auto==='burn',args.txnId,args.revision); }
   openFlightForDecision(ctx, { holdAt:'cislunar-start', buildPanel:()=>{
     const m=ctx.m, sub=flag.sub, ph=flag.phase, pc=Math.round(sub.rel*100);
     const subName=SUBSYS_LABEL[sub.key]||sub.label;
@@ -7970,6 +8012,10 @@ function showSettingsMenu(){
       <button class="btn ghost" onclick="showHotkeyHelp()" style="width:100%;margin:4px 0 2px" title="Keyboard shortcuts — press ? anywhere outside a dialog">⌨ Keyboard shortcuts <span class="dim">[?]</span></button>
       <button class="btn ghost" onclick="hideModal();restartCoach()" style="width:100%;margin:4px 0 2px" title="Show the First Flight checklist again (or, in Basic view after your first flight, the Next step card)">▶ Show the getting-started checklist</button>
       <button class="btn ghost" onclick="hideModal();showInfrastructureModal()" style="width:100%;margin:4px 0 2px">🏭 Manufacturing capacity</button>
+      <div style="margin:10px 0 2px">
+        <div class="cc-panel-h" style="margin-bottom:6px">Launch calls</div>
+        ${launchPolicyChipsHTML()}
+      </div>
       <div style="margin:10px 0 2px" ${THEMES_SELECTABLE?'':'hidden'}>
         <div class="cc-panel-h" style="margin-bottom:6px">Theme</div>
         <div style="display:flex;gap:6px">

@@ -6223,6 +6223,7 @@ function renderBenchLaunch(){
   host.innerHTML=`<button class="launch" style="width:100%" onclick="launch(false,null,'${launchAction.id}')" ${actionButtonAttrs(launchAction)}>${chk.ok?launchLabel:'Commit unavailable'}</button>
     ${quoteStages}
     ${chk.ok?'<div class="dim" style="font-size:12px;text-align:center;margin-top:4px">or press <b>Space</b></div>':`<div class="flag dim" style="color:var(--dim);margin-top:4px">${chk.why}</div>`}
+    <div class="dim" style="font-size:11px;text-align:center;margin-top:3px" title="${esc(LAUNCH_POLICIES[launchPolicy()].tip)} In-flight anomalies always ask. Change it in Menu.">Launch calls: <b style="color:var(--ink)">${LAUNCH_POLICIES[launchPolicy()].label}</b> · <a href="#" onclick="cycleLaunchPolicy();return false" style="color:var(--readout)">change</a></div>
     ${launchPadCap()>1?`<div class="dim" style="font-size:11px;text-align:center;margin-top:2px">Pads: ${padSlotsLeft()}/${launchPadCap()} free this month</div>`:''}
     ${damagedPadCount()>0?`<div class="dim" style="font-size:11px;text-align:center;margin-top:2px;color:var(--warn)" title="A catastrophic ascent loss damages the pad it flew from">⚠ ${damagedPadCount()} pad${damagedPadCount()===1?'':'s'} under repair</div>`:''}
     <div style="display:flex;gap:6px;margin-top:8px;align-items:center">

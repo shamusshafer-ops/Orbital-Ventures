@@ -2,6 +2,10 @@
 // openFlightForDecision, holds at the pad→ascent handoff, resumes the SAME animState via
 // resumeFlightForDecision once resolved) instead of a page-level showModal. Drives the REAL
 // animLoop/drawScene machinery on a controlled virtual clock, same pattern as test-pad-a.js.
+// Spine step 3: this suite exercises the player-facing decision flow, so it plays with the launch policy on
+// Manual (new games default to Nominal, which answers routine calls automatically).
+{ const _newGameStep3=newGame; newGame=function(...a){ const r=_newGameStep3(...a); state.launchPolicy='manual'; return r; }; }
+
 animEnabled=true;
 let pass=0, fail=0;
 function check(name, cond){ if(cond){ pass++; } else { fail++; console.log('FAIL:', name); } }
