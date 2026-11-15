@@ -23,7 +23,7 @@ function createFreshState(difficulty){
     windows:{}, committedWindow:null, selectedBody:'moon', mapZoom:null,
     depot:0, depotUse:0,
     tab:'command', won:false, wonM2:false, wonM3a:false, wonM3aii:false, wonM3b:false, wonM3bii:false, over:false,
-    log:[], annals:[], rivalFired:{}, scooped:{}, rivalThreat:{}, rivalState:{}, bailouts:0,
+    log:[], annals:[], rivalFired:{}, scooped:{}, rivalThreat:{}, rivalState:{}, rivalLead:0, bailouts:0,
     staff:[], assignedAstronaut:null, persEventCooldown:5, proceduralStaffDefs:[],
     departments:defaultDepartments(), // #19: org layer over hired staff (per-dept lead + training)
     econEvents:[], eventCooldown:6, pgmRoyalty:0, launchPolicy:'nominal', reflights:{}, // spine step 2: absMonth of each recent paid re-flight, per mission
@@ -4169,7 +4169,7 @@ function fireRivalFirst(r, f){
     const mm=MISSIONS.find(x=>x.id===f.missionId);
     log('bad', `Scooped: ${r.name} beat you to "${mm.name}" — its first-time payout is cut to ${Math.round(SCOOP_PAYOUT_MULT*100)}% (rep reward unaffected).`);
     pushFrontPage('scoop', '📰', `Scooped: ${r.name} claims ${mm.name}`, `Their first-time payout on it is cut to ${Math.round(SCOOP_PAYOUT_MULT*100)}%.`);
-  } else pushFrontPage('rival', r.flag, `${r.name} claims: ${f.name}`, `${state.year} — ${r.name} reaches a milestone your own program hasn't.`);
+  } else pushFrontPage('rival', r.flag, `${r.name} claims: ${f.name}`, (f.missionId&&state.completed[f.missionId]) ? `${state.year} — ${r.name} matches a milestone your program reached first.` : `${state.year} — ${r.name} reaches a milestone your own program hasn't.`);
   if(f.marketImpact){ // M5: a rival's cost/reuse breakthrough triggers an industry price war
     state.rivalThreat[r.id]+=1;
     state.econEvents.push({id:'pricewar_'+r.id, label:`${r.name} price pressure`, kind:'bad', payoutMult:f.marketImpact.payoutMult, monthsLeft:f.marketImpact.months});
@@ -4181,10 +4181,26 @@ function playerFirstsScore(){ return Object.keys(state.completed||{}).length; }
 // CE1: seed (or migrate) a rival's agent state. Back-compat: a save with goals already
 // fired by the OLD calendar code (state.rivalFired) advances `idx` past them so they're
 // never re-fired, and prevYear picks up where the timeline left off.
+function syncRivalLead(){
+  const lead=frontierLeadYears(), prev=state.rivalLead||0;
+  if(lead<=prev) return 0;
+  const jump=lead-prev; state.rivalLead=lead;
+  for(const r of RIVALS){ // credit the savings each rival would have made over the skipped years
+    const rs=rivalStateFor(r); if(rs.idx>=r.firsts.length) continue;
+    const f=r.firsts[rs.idx], prof=RIVAL_PROFILES[r.id]||{income:1};
+    const open=(rs.prevYear==null)?f.year-RIVAL_FIRST_RUNWAY:rs.prevYear;
+    const yrs=Math.max(0, Math.min(jump, rivalYear()-open));
+    const window=Math.max(RIVAL_MIN_WINDOW, f.year-open), cost=prof.income*12*window;
+    if(rs.prevYear==null) rs.prevYear=open;
+    rs.capital=Math.max(rs.capital||0, Math.min(cost*RIVAL_CATCHUP_CAP, (rs.capital||0)+prof.income*12*yrs*(rs.momentum||1)));
+  }
+  log('rival',`The world has caught up with your program — rival agencies are ${lead} years ahead of history now too.`);
+  return jump;
+}
 function seedRivalState(r){
   const rs={ capital:0, momentum:1.0, idx:0, prevYear:null };
   for(let i=0;i<r.firsts.length;i++){ if(state.rivalFired[r.id+'|'+r.firsts[i].name]) rs.idx=i+1; else break; }
-  if(rs.idx>0){ const last=r.firsts[rs.idx-1]; rs.prevYear=Math.max(last.year, state.year); }
+  if(rs.idx>0){ const last=r.firsts[rs.idx-1]; rs.prevYear=Math.max(last.year, rivalYear()); } // step 6: the world clock
   return rs;
 }
 function rivalStateFor(r){
@@ -4199,6 +4215,7 @@ function tickRivals(options){
   options=options||{};
   const playerScore=playerFirstsScore();
   const crowd=rivalCrowdFactor(); // CE1(b): contract crowding slows every rival's saving
+  syncRivalLead(); // step 6: rivals keep pace with the frontier
   for(const r of RIVALS){
     const prof=RIVAL_PROFILES[r.id]||{income:1.0};
     const rs=rivalStateFor(r);
@@ -4210,15 +4227,15 @@ function tickRivals(options){
     if(rs.idx>=r.firsts.length) continue; // rival has claimed all its goals
     const f=r.firsts[rs.idx];
     if(rs.prevYear==null) rs.prevYear=f.year-RIVAL_FIRST_RUNWAY; // debut saving window opens here
-    if(state.year<rs.prevYear) continue; // saving window not open yet (keeps early game quiet)
+    if(rivalYear()<rs.prevYear) continue; // saving window not open yet (keeps early game quiet) — step 6: world clock
     if(!options.administration) maybeRivalDisaster(r, rs); // transient rescue decisions cannot safely interrupt the persisted administrative clock
     const window=Math.max(RIVAL_MIN_WINDOW, f.year-rs.prevYear);
     const cost=prof.income*12*window;
     rs.capital+=prof.income*rs.momentum*crowd; // monthly accrual, sped/slowed by momentum & market crowding
     const earliest=f.year-RIVAL_MAX_PULL_IN; // historical floor — no absurdly early firsts
-    if(rs.capital>=cost && state.year>=earliest){
+    if(rs.capital>=cost && rivalYear()>=earliest){
       fireRivalFirst(r,f);
-      rs.capital-=cost; rs.prevYear=state.year; rs.idx++;
+      rs.capital-=cost; rs.prevYear=rivalYear(); rs.idx++;
     }
   }
 }
@@ -4438,11 +4455,11 @@ function rivalFullProjection(r){
     if(first) prevYear=(rs.prevYear==null)?f.year-RIVAL_FIRST_RUNWAY:rs.prevYear;
     const window=Math.max(RIVAL_MIN_WINDOW, f.year-prevYear);
     const cost=prof.income*12*window;
-    const capNow=first?((state.year>=prevYear)?(rs.capital||0):0):0; // only the pending goal has capital already saved; future goals start fresh
+    const capNow=first?((rivalYear()>=prevYear)?(rs.capital||0):0):0; // only the pending goal has capital already saved; future goals start fresh
     const monthsLeft=Math.max(0,(cost-capNow)/rate);
-    const proj=Math.max(state.year, prevYear)+monthsLeft/12;
+    const proj=Math.max(rivalYear(), prevYear)+monthsLeft/12; // step 6: world clock
     const year=Math.round(Math.max(proj, f.year-RIVAL_MAX_PULL_IN));
-    out.push({goal:f, year:year, nominal:f.year});
+    out.push({goal:f, year:year-(state.rivalLead||0), nominal:f.year}); // shown in calendar years
     prevYear=year; // next goal's saving window opens where this one is projected to land
   }
   return out;

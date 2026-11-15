@@ -21,6 +21,10 @@ Two things still apply:
   should warn rather than silently misread — that protects against the two-agent workflow, not an
   install base.
 
+## v72 — Rivals on the world clock (spine step 6)
+
+Adds `state.rivalLead` — the most years the frontier era has led the calendar; rivals run on `state.year + rivalLead`.
+
 ## v71 — Service contracts (spine step 5a)
 
 Service-type standing contracts (`PASSIVE_CONTRACT_DEFS[].service`) record `service:true, seq, dueIn, flown, missed`

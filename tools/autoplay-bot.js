@@ -28,7 +28,9 @@ const YEAR_END=+(process.env.BOT_YEAR||1990), DIFF=process.env.BOT_DIFF||'engine
 // shims so the same bot runs on builds from before step 5a
 if(typeof isServiceContract!=='function') globalThis.isServiceContract=()=>false;
 if(typeof passiveSetupCost!=='function') globalThis.passiveSetupCost=d=>d.setup;
+const RIVAL_CLAIMS=[];
 newGame(DIFF); _gameStarted=true;
+{ const _frf=fireRivalFirst; fireRivalFirst=function(r,f){ if(!state.rivalFired[r.id+'|'+f.name]) RIVAL_CLAIMS.push({rival:r.id,name:f.name,missionId:f.missionId||null,year:+(state.year+state.month/12).toFixed(2),nominal:f.year,playerHad:!!(f.missionId&&state.completed[f.missionId])}); return _frf(r,f); }; }
 [['buyResearch','research'],['rushResearch','research'],['queueBuild','build'],['buildEngineStock','build'],['launchFromHangar','launch'],['finalizeLaunch','payouts'],['tickPassiveContracts','contracts'],['tickContinuousDay','daily (overhead, payroll, gov, facilities)'],['signPassiveContract','contracts'],['buildTrackingStation','infrastructure'],['bailout','loans'],['chooseBridgeLoan','loans'],['tickMonthlyBoundary','monthly events'],['resolveInquiry','events'],['acceptMandate','events'],['resolveSetback','events']].forEach(([n,c])=>{ try{ ledgerWrap(n,c); }catch(e){} });
 // Animation stays ON so launch decisions stop the clock exactly as they do for a player (with it off the
 // game auto-scrubs weather and never raises live calls). closeAnim() plays the role of the player
@@ -221,7 +223,8 @@ while(state.year<YEAR_END && stats.turns<4000){
     if(m&&!d){ bump(stats.stuck,'no-design:'+m.id);
       const val=x=>x.proc?x.payout:estMissionPayout(x);
       const alt=MISSIONS.filter(x=>x!==m&&missionFlyable(x)&&!x.window).concat((state.contractOffers||[]).filter(o=>!o.deliverModule&&!o.stationVisit&&!o.orbitDeployment&&!o.vehicleDocking&&(o.minRep||0)<=state.rep&&(!o.reqResearch||state.research[o.reqResearch]))).sort((a,b)=>val(b)-val(a));
-      for(const x of alt){ const dx=design(x); if(dx){ m=x; d=dx; if(x.proc) stats.procFlown=(stats.procFlown||0)+1; break; } } }
+      for(const x of alt){ const dx=design(x); if(dx&&(!state.completed[x.id]||x.proc)&&netValue(x)>0||dx&&state.completed[x.id]&&netValue(x)>0){ m=x; d=dx; if(x.proc) stats.procFlown=(stats.procFlown||0)+1; break; } }
+      if(m&&!d) m=null; }
     if(m){
       if(d&&state.money>d.v.buildCost+d.v.launchCost+0.15){
         state.stages=d.stages; state.transfer=d.transfer; state.descent=d.descent; state.ascent=d.ascent; state.activeMission=m.id;
@@ -265,7 +268,7 @@ let maxDecade=[0,'']; for(const id in perDecade){ const ys=perDecade[id].sort((a
 const repeats={}; timeline.forEach(t=>(t.acts||'').split('; ').forEach(a=>{ if(a.startsWith('launch ')){ const id=a.slice(7).replace(' (window)',''); repeats[id]=(repeats[id]||0)+1; } }));
 const decisionStops=Object.entries(stats.modals).filter(([k])=>k.startsWith('launch:')).reduce((a,[,v])=>a+v,0);
 if(process.env.BOT_LEDGER){ require('fs').writeFileSync(process.env.BOT_LEDGER, JSON.stringify(LEDGER)); }
-console.log(JSON.stringify({crash:stats.crash||0,serviceFlown:stats.serviceFlown||0,firstInsolvency:stats.firstInsolvency?+stats.firstInsolvency.toFixed(2):null,decisionsPerLaunch:+(decisionStops/Math.max(1,stats.launches)).toFixed(2),decisionKinds:Object.fromEntries(Object.entries(stats.modals).filter(([k])=>k.startsWith('launch:'))),maxPerDecade:maxDecade,thinWindows:thin.length,thinRuns,procFlown:stats.procFlown||0,topRepeats:Object.entries(repeats).sort((a,b)=>b[1]-a[1]).slice(0,4),eraAt:ERAS[eraIndex(currentEra())].id,programsDone:PROGRAMS.filter(p=>p.missions.every(id=>state.completed[id])).map(p=>p.id)}));
+console.log(JSON.stringify({rivalClaims:RIVAL_CLAIMS,crash:stats.crash||0,serviceFlown:stats.serviceFlown||0,firstInsolvency:stats.firstInsolvency?+stats.firstInsolvency.toFixed(2):null,decisionsPerLaunch:+(decisionStops/Math.max(1,stats.launches)).toFixed(2),decisionKinds:Object.fromEntries(Object.entries(stats.modals).filter(([k])=>k.startsWith('launch:'))),maxPerDecade:maxDecade,thinWindows:thin.length,thinRuns,procFlown:stats.procFlown||0,topRepeats:Object.entries(repeats).sort((a,b)=>b[1]-a[1]).slice(0,4),eraAt:ERAS[eraIndex(currentEra())].id,programsDone:PROGRAMS.filter(p=>p.missions.every(id=>state.completed[id])).map(p=>p.id)}));
 console.log(JSON.stringify({diff:DIFF,seed:SEED,endYear:state.year,over:!!state.over,money:Math.round(state.money),rep:Math.round(state.rep),flights:state.flights,
   turns:stats.turns,idleTurns:stats.idleTurns,daysPerTurnMedian:med(stats.daysPerTurn),daysPerTurnMean:Math.round(sum(stats.daysPerTurn)/stats.turns),
   turnsPerYear:Math.round(stats.turns/Math.max(1,state.year-1942)),research:stats.research,researchedNodes:Object.keys(state.research).length,contracts:stats.contractsSigned,

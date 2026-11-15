@@ -8086,3 +8086,28 @@ next-era node when nothing is open), 4 seeds to 2000, same bot on both builds:
 
 Tests: new `tests/test-era-costs-crash.js` (26 checks). Full sweep 180/181, 1 intentional skip, 0 unexpected.
 
+## 2026-11-16 — Spine step 6: rivals on the world clock (Claude)
+
+From `EVALUATION-2026-11-GAMEPLAY.md` §5.3 / §7 step 6. Rivals could not claim a first more than
+`RIVAL_MAX_PULL_IN` years before its nominal year, so a player who opened the orbital age early raced no one
+(bot: player firsts led rival claims by a median 12.6–13.8 years; zero scoops).
+
+- `rivalYear()` = calendar + `state.rivalLead` (the most years the frontier has ever led the calendar; never
+  decreases; SAVE_VERSION 72). Used by `tickRivals`, `seedRivalState` and `rivalFullProjection` (which converts
+  back to calendar years for the Standings). `syncRivalLead()` runs each rival tick; when the lead grows, each
+  rival is credited the savings for the skipped years, capped at `RIVAL_CATCHUP_CAP` (half) of its pending
+  goal's cost, and the log says the world has caught up. Uncapped, the credit cascaded: an instant claim
+  completed a Program for the world (step 1), which jumped the clock again, and a rival took two firsts in
+  two months.
+- Four late rival firsts now name the player mission they contest (`jupiter_flyby`, `belt_survey`,
+  `jupiter_orbit`, `belt_mining`): seven contested missions instead of three, and rivals can complete Outer
+  Worlds for the world.
+- Fix (flagged in the evaluation): the front page no longer says a rival reached "a milestone your own program
+  hasn't" when you got there first.
+
+Bot (fixed one more irrational habit: a second fallback path took jobs with negative expected profit), four
+seeds to 2000, same bot on both builds: median gap player-first → rival claim 12.6–13.8y → 2.9–4.4y (target
+≤ ~5y); rivals win about one race per campaign (the Moon); rival firsts 7 → 11–20; all seeds solvent.
+
+Tests: new `tests/test-rival-world-clock.js` (16 checks). Full sweep 181/182, 1 intentional skip, 0 unexpected.
+

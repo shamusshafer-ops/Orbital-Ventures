@@ -1102,7 +1102,7 @@ const RIVALS = [
       {year:1971, name:'First space station launched', body:'earth'},
       {year:1986, name:'First modular space station core', body:'earth'},
       {year:2009, name:'First robotic sample return from a near-Earth asteroid', body:'belt'},
-      {year:2049, name:'First flyby of the Jovian system', body:'jupiter'},
+      {year:2049, name:'First flyby of the Jovian system', missionId:'jupiter_flyby', body:'jupiter'},
     ],
   },
   {
@@ -1114,8 +1114,8 @@ const RIVALS = [
       {year:1998, name:'First multinational station module integrated', body:'earth'},
       {year:2012, name:'First robotic Mars rover with surface mobility', body:'mars'},
       {year:2025, name:'First crewed lunar return (post-Apollo)', body:'moon'},
-      {year:2035, name:'First robotic mining survey of the Asteroid Belt', body:'belt'},
-      {year:2060, name:'First orbiter inserted around a Jovian moon', body:'jupiter'},
+      {year:2035, name:'First robotic mining survey of the Asteroid Belt', missionId:'belt_survey', body:'belt'},
+      {year:2060, name:'First orbiter inserted around a Jovian moon', missionId:'jupiter_orbit', body:'jupiter'},
     ],
   },
   {
@@ -1127,7 +1127,7 @@ const RIVALS = [
       {year:2020, name:'First commercial crew flight to orbit', body:'earth'},
       {year:2031, name:'First commercial lunar surface delivery', body:'moon'},
       {year:2045, name:'First commercial propellant depot in LEO', body:'earth'},
-      {year:2053, name:'First commercial platinum-group claim in the Belt', body:'belt'},
+      {year:2053, name:'First commercial platinum-group claim in the Belt', missionId:'belt_mining', body:'belt'},
     ],
   },
 ];
@@ -1224,6 +1224,18 @@ function rivalVoiceLine(r, kind){
   const v=RIVAL_VOICE[r.id]; if(!v||!v[kind]||!v[kind].length) return null;
   return v[kind][Math.floor(Math.random()*v[kind].length)];
 }
+// Spine step 6 (2026-11-16): rivals run on the WORLD clock — the calendar plus the furthest the frontier has
+// ever led history (state.rivalLead, never decreases). Before this a rival could not claim a first before
+// RIVAL_MAX_PULL_IN years ahead of its nominal year, so a player who opened the orbital age in 1944 raced no
+// one. When the lead jumps, each rival is credited the savings it would have made over the skipped years
+// (capped at RIVAL_CATCHUP_CAP of its pending goal's cost) so it arrives keeping pace rather than starting from
+// zero — but still has to finish saving, so a jump never hands it a first on the spot (an uncapped credit
+// cascaded: an instant claim completed a Program, which jumped the clock again, and so on). Four late
+// rival firsts now name the player mission they contest (Jovian flyby, Belt survey, Jovian-moon orbiter,
+// Belt mining claim), so the race runs past 1969.
+function frontierLeadYears(){ const f=frontierEraIndex(), c=calendarEraIndex(); return f>c?Math.max(0,ERAS[f].from-state.year):0; }
+function rivalYear(){ return state.year+(state.rivalLead||0); }
+const RIVAL_CATCHUP_CAP=0.5;
 const RIVAL_FIRST_RUNWAY=6;  // years a rival "saves" before its debut goal's nominal year
 const RIVAL_MAX_PULL_IN=4;   // a goal can fire at most this many years before its nominal year
 const RIVAL_MIN_WINDOW=2;    // floor on a goal's saving window (years) so cost stays sane
