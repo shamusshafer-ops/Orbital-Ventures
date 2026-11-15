@@ -2513,6 +2513,9 @@ function cape3dConcreteTexture(repeatX,repeatY){ const tx=cape3dCanvasTexture((c
 // Ground haze (FogExp2 density). Was .00038, which hid everything past ~3 km; this keeps aerial
 // perspective but lets the district read out to ~10 km.
 const CAPE3D_HAZE=.00011;
+// Shore strips: long enough to run into the haze, short enough to stay numerically exact; the sand laps
+// this far over the water to cover the ocean quad's unstable edge.
+const CAPE3D_SHORE_LENGTH_M=60000, CAPE3D_SHORE_OVERLAP_M=14;
 const CAPE3D_REGION={width:16000,depth:24000,size:2048,siteX:480,siteZ:287,holeX:1450,holeZ:1150,nearWidth:6000,nearDepth:9000,seed:5521};
 function cape3dRegionTexture(coastX,roadZ,rect){
   const R=CAPE3D_REGION, S=R.size, cv=document.createElement('canvas'); cv.width=cv.height=S; const ctx=cv.getContext('2d'); if(!ctx) return null;
@@ -2591,21 +2594,25 @@ function cape3dSkyDome(scene){
   const dome=new THREE.Mesh(new THREE.SphereGeometry(1,32,20),mat); dome.name='cape3d_sky'; dome.renderOrder=-10; dome.frustumCulled=false; scene.add(dome); return dome;
 }
 function cape3dShoreline(root, landscape){
-  // The ocean and these sheets are a fraction of a metre apart on a scene whose far plane is 100 km, and
-  // most are transparent, so left alone they depth-fight and re-sort against each other from frame to
-  // frame (a flicker along the waterline). So: none of them write depth (nor does the ocean -- nothing
-  // lies beneath it), each has a fixed draw order, and the sand that lies on the land gets a constant
-  // depth bias (units only; a slope-scaled factor pulled it up over the launch pad).
-  const g=new THREE.Group(); g.name='cape3d_shore'; const depth=landscape.land.depth, x=landscape.coastX;
-  const plane=(w,mat,cx,y,order,bias)=>{ mat.depthWrite=false; mat.transparent=true; if(bias){ mat.polygonOffset=true; mat.polygonOffsetFactor=0; mat.polygonOffsetUnits=-bias; } const m=cape3dMesh(new THREE.PlaneGeometry(w,depth),mat,cx,y,180,false); m.rotation.x=-Math.PI/2; m.renderOrder=order; g.add(m); return m; };
-  plane(46,new THREE.MeshStandardMaterial({color:0xbfae84,roughness:1,opacity:.75}),x-143,-.62,3,4);
-  plane(120,new THREE.MeshStandardMaterial({color:0xcdbb92,roughness:1}),x-60,-.6,4,5);
-  // Shallows: one sheet whose turquoise fades out to sea, rather than hard-edged bands.
-  const cv=document.createElement('canvas'); cv.width=128; cv.height=4; const ctx=cv.getContext('2d');
-  if(ctx){ const gr=ctx.createLinearGradient(0,0,128,0); gr.addColorStop(0,'rgba(140,226,220,.50)'); gr.addColorStop(.18,'rgba(104,206,210,.32)'); gr.addColorStop(.55,'rgba(70,180,196,.13)'); gr.addColorStop(1,'rgba(60,170,190,0)'); ctx.fillStyle=gr; ctx.fillRect(0,0,128,4); }
-  const shallowTx=new THREE.CanvasTexture(cv); if('colorSpace' in shallowTx) shallowTx.colorSpace=THREE.SRGBColorSpace;
-  plane(1100,new THREE.MeshStandardMaterial({color:0xffffff,map:shallowTx,roughness:.25}),x+550,-.3,5,0);
-  plane(7,new THREE.MeshStandardMaterial({color:0xf2fbff,roughness:.6,opacity:.62}),x+4,-.1,7,0);
+  // Two separate causes of waterline flicker are handled here.
+  // 1. Precision. The ocean is one quad thousands of kilometres across and its landward edge is computed
+  //    by cancelling two ~6,000 km numbers, so that edge wanders by a good fraction of a metre as the
+  //    camera moves; sheets hundreds of kilometres long shimmer the same way. The shore is therefore
+  //    built from modest, segmented strips, and the sand OVERLAPS both the land and the first few metres
+  //    of water so the unstable edges of the giant quads are hidden underneath it.
+  // 2. Ordering. These sheets and the ocean are a fraction of a metre apart and transparent, so none of
+  //    them write depth (nothing lies beneath the ocean), each has a fixed draw order, and the sand gets a
+  //    constant depth bias (units only; a slope-scaled factor pulled it up over the launch pad).
+  // There is no thin foam sheet: a few-metre-wide bright line is sub-pixel at range and twinkles. The surf
+  // line is the bright first band of the shallows gradient instead.
+  const g=new THREE.Group(); g.name='cape3d_shore'; const depth=Math.min(landscape.land.depth,CAPE3D_SHORE_LENGTH_M), x=landscape.coastX, overlap=CAPE3D_SHORE_OVERLAP_M;
+  const plane=(w,mat,cx,y,order,bias)=>{ mat.depthWrite=false; mat.transparent=true; if(bias){ mat.polygonOffset=true; mat.polygonOffsetFactor=0; mat.polygonOffsetUnits=-bias; } const m=cape3dMesh(new THREE.PlaneGeometry(w,depth,1,64),mat,cx,y,180,false); m.rotation.x=-Math.PI/2; m.renderOrder=order; g.add(m); return m; };
+  const strip=(stops)=>{ const cv=document.createElement('canvas'); cv.width=256; cv.height=4; const ctx=cv.getContext('2d'); if(ctx){ const gr=ctx.createLinearGradient(0,0,256,0); stops.forEach(q=>gr.addColorStop(q[0],q[1])); ctx.fillStyle=gr; ctx.fillRect(0,0,256,4); } const tx=new THREE.CanvasTexture(cv); if('colorSpace' in tx) tx.colorSpace=THREE.SRGBColorSpace; return tx; };
+  // Shallows first (under the sand's seaward lip): surf, turquoise, then nothing.
+  plane(1100,new THREE.MeshStandardMaterial({color:0xffffff,map:strip([[0,'rgba(236,250,252,.70)'],[.022,'rgba(220,246,248,.62)'],[.05,'rgba(140,226,220,.46)'],[.2,'rgba(104,206,210,.30)'],[.55,'rgba(70,180,196,.12)'],[1,'rgba(60,170,190,0)']]),roughness:.3}),x+550,-.3,5,0);
+  // Sand: soft inland edge (dune grass to beach), solid across the coast, ending cleanly over the water.
+  const sandW=190+overlap;
+  plane(sandW,new THREE.MeshStandardMaterial({color:0xffffff,map:strip([[0,'rgba(176,162,116,0)'],[.16,'rgba(186,170,124,.7)'],[.3,'rgba(205,187,146,1)'],[.86,'rgba(205,187,146,1)'],[1,'rgba(214,200,164,1)']]),roughness:1}),x+overlap-sandW*.5,-.6,6,5);
   root.add(g); return g;
 }
 function cape3dFacilityGroup(d, materials){

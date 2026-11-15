@@ -7909,3 +7909,14 @@ Tests: new `tests/test-graphics-pass2-2026-11.js` (33 checks). Full sweep 174/17
 
 Tests: `tests/test-graphics-pass2-2026-11.js` now 42 checks.
 
+### 2026-11-16 follow-up 2 — flicker at the land/beach/water boundaries (Claude)
+
+The owner still saw flicker along all three boundaries. The first fix treated only ordering; the larger cause
+is precision. The ocean is a single quad 12,000 km wide whose landward edge comes from cancelling two ~6,000 km
+numbers, so that edge wanders by a fraction of a metre as the camera moves, and pass 2b had lengthened the shore
+sheets to 260 km. `cape3dShoreline` now builds modest segmented strips (`CAPE3D_SHORE_LENGTH_M`), the sand laps
+`CAPE3D_SHORE_OVERLAP_M` over the water so the unstable ocean edge is hidden beneath it, sand and shallows have
+soft gradient edges, and the thin foam sheet is gone (a few-metre bright line is sub-pixel at range and twinkles;
+the surf is now the first band of the shallows gradient). RULE: do not let a visible edge be defined by one of the
+giant ground/ocean quads — cover it with a small strip. Still needs the owner's eye in motion.
+

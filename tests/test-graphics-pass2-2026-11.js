@@ -67,6 +67,8 @@ newGame('engineer');
   check('idle and ascent haze share the constant', cape3dPhysicalAscentBlend(0).fogDensity===CAPE3D_HAZE&&cape3dTick.toString().includes('CAPE3D_HAZE'));
   check('ocean and shore sheets do not write depth', build.includes('materials.water.depthWrite=false')&&shore.includes('mat.depthWrite=false'));
   check('shore sheets have a fixed draw order', shore.includes('m.renderOrder=order')&&build.includes('ocean.renderOrder=2'));
+  check('shore strips are short, segmented and lap over the water edge', CAPE3D_SHORE_LENGTH_M<=80000&&CAPE3D_SHORE_OVERLAP_M>=8&&shore.includes('PlaneGeometry(w,depth,1,64)')&&shore.includes('x+overlap-sandW*.5'));
+  check('no thin foam sheet (sub-pixel lines twinkle)', !/plane\(7,/.test(shore));
   check('no slope-scaled depth bias on land decals (it lifted sand over the pad)', shore.includes('polygonOffsetFactor=0')&&reg.includes('polygonOffsetFactor:0')&&build.includes('terrain.material.polygonOffsetFactor=0'));
 }
 
