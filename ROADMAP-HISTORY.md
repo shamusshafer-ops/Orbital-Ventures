@@ -7816,3 +7816,39 @@ weather/live calls and closes the debrief like a player); updated `test-ui-layer
 (merged staffing row asserted in Advanced). Headless Firefox at 1920×1080 and 1366×768: new game played through
 all six steps via Show me / Advance to rollout, flight decisions answered, debrief closed → Next step card; tab
 unlock dot; four themes. No console errors.
+
+## 2026-11-15 — Graphics pass 1: Cape, base terrain, part diagram (Claude)
+
+Owner request: a graphics pass to tie the UI and the game's graphics together. Presentation only — no game state,
+no save changes, no balance. Reviewed in headless-Edge screenshots (1920×1080, 1600×900) of every tab, the main
+modals, the pad close-up and the countdown; a human look in Firefox is still wanted.
+
+- **Cape 3D (Command Center + flight pad):**
+  - Sky: `cape3dSkyDome()` — a camera-centred gradient dome (zenith/mid/horizon from `skyAtmosphere`) with a sun
+    glow replaces the flat clear colour; fog now uses the horizon colour. It draws first in the opaque pass with no
+    depth test and blends to space through a uniform (as a transparent mesh it drew over the whole site).
+  - The scene opens at `CAPE3D_SKY_START_SEC=44` (bright morning) instead of the dimmest dawn keyframe.
+  - Facilities: `cape3dFacadeMaterial()` gives walls floors/bays by day and lit windows after dark (emissive map,
+    driven by `night` in `cape3dTick`); per-type wall colours (`CAPE3D_FACILITY_WALL`), concrete aprons, rooftop
+    plant, and a HUD-cyan roofline accent that glows at night.
+  - Lamps: intensities rescaled for three r185's physical light units (`boost`); they contributed nothing before.
+    Night ambient raised slightly so the site reads by moonlight.
+  - Shoreline: sand, shallows and a foam line (`cape3dShoreline`, part of `siteObjects` so it fades on ascent).
+  - Pads/aprons: procedural slab concrete (`cape3dConcreteTexture`); the photographic pavement albedo tiled its
+    asphalt blotches into a polka-dot pattern. Roads keep the pavement albedo.
+  - Ground smoke: soft camera-facing sprites sized from the rocket's `totalHeight` (were lit 12-segment spheres
+    that read as translucent faceted boulders and dwarfed a sounding rocket).
+  - Ground tint slightly greener (`CAPE3D_TERRAIN_STYLE.ground`).
+- **Cape facility labels:** HUD chips (uppercase, bordered, on a short leader line); status no longer clipped.
+- **Base Bench:** cratered regolith / Mars soil texture (`assembly3dRegolithTexture`), terrain 360×360 rising into
+  hills past the build zone (the old 84×58 slab showed its edge), Earth in the lunar sky, Mars sky = haze colour.
+  The build-zone height formula is unchanged.
+- **Part bench diagram:** painted-metal hulls with the category colour as a thin band (were flat category-coloured
+  blocks), ogive nose, curved bell, blueprint-navy grid background, outlined stage labels.
+
+Not done / noted: emoji→SVG icon inventory; Solar Map label overlap at System zoom; the First Flight panel
+overlapping the foot of the left rail; ascent/orbit frames were not captured headlessly (playback advances too
+slowly under virtual time), so the sky dome above the pad during ascent is unverified by eye.
+
+Tests: new `tests/test-graphics-pass-2026-11.js` (34 checks; cannot load against pre-change source).
+Full sweep 173/174, 1 intentional skip, 0 unexpected.

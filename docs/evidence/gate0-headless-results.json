@@ -1,34 +1,34 @@
 {
   "schemaVersion": 1,
-  "capturedAt": "2026-08-10T02:07:54.495Z",
+  "capturedAt": "2026-11-15T12:48:38.501Z",
   "baseCommit": {
     "exitCode": 0,
-    "stdout": "bbdb9523c820f2323b26370192db991872f3062f",
+    "stdout": "82cf844fb436465c386d2ddf1ea7b5cf07a81b01",
     "stderr": ""
   },
   "worktree": {
     "exitCode": 0,
-    "stdout": "## main...origin/main\n M docs/evidence/gate0-headless-results.json\n M src/render.js\n M tests/evidence-fingerprint.js\n M tests/run-gate0-evidence.js\n?? docs/GATE-5-CONTRACTS.md\n?? docs/evidence/GATE-5-EVIDENCE.md\n?? docs/evidence/gate5-browser-chromium.json\n?? docs/evidence/gate5-browser-results.json\n?? docs/evidence/gate5-headless-results.json",
+    "stdout": "## graphics-pass\n M CLAUDE.md\n M ROADMAP-HISTORY.md\n M docs/evidence/gate0-headless-results.json\n M src/render.js\n?? tests/test-graphics-pass-2026-11.js",
     "stderr": ""
   },
   "environment": {
     "platform": "linux",
     "arch": "x64",
-    "node": "v18.19.1",
+    "node": "v22.22.1",
     "release": "6.6.87.2-microsoft-standard-WSL2",
-    "hostname": "Hal9100"
+    "hostname": "BrunoMars"
   },
   "contentFingerprint": {
     "algorithm": "sha256",
     "scope": "authoritative source/tests/assets and Gate 1-3/5 contracts; generated evidence excluded",
-    "digest": "2d7932884f82cf0edeefd7ccc7e79c8b0af995acb42a5037f483cf792c94e1bd",
-    "fileCount": 196,
-    "totalBytes": 15768615,
+    "digest": "5f8f45c896aa3a1c993d13695e98e60ab94cc3441332959bd20d2e0226b9c4f8",
+    "fileCount": 228,
+    "totalBytes": 16406736,
     "entries": [
       {
         "path": "assets/CREDITS.md",
-        "bytes": 1192,
-        "sha256": "ddf9a9321face8f97dde1d697cc1aa2a4355365410f13bdd513d6b3f99da3130"
+        "bytes": 2808,
+        "sha256": "ddbba71e960fd3a4049fd94d4df5ced8c372a3595af25e93111b6d4462442e6c"
       },
       {
         "path": "assets/cape-ground-albedo.png",
@@ -39,6 +39,11 @@
         "path": "assets/cape-pavement-albedo.png",
         "bytes": 3328485,
         "sha256": "e04313c3825c799a4713d2454c80556cfbdd09c0b7c2e1bd64c9894dd27c5590"
+      },
+      {
+        "path": "assets/roboto-condensed-subset.woff2",
+        "bytes": 78396,
+        "sha256": "3095f7e2c8264e1971f601a2662b24d10d6693173832e5523ac019999fefcc5b"
       },
       {
         "path": "assets/texture-earth-daymap.jpg",
@@ -117,63 +122,63 @@
       },
       {
         "path": "docs/SAVE-VERSIONS.md",
-        "bytes": 19497,
-        "sha256": "e761761bd81db5626d28aaf4cb0520cb26326fcc86d3906cbc805f108f7937b1"
+        "bytes": 23159,
+        "sha256": "4b1fb2f95f18deb7d17d33d8901e762526b910add52a09ffd966c75c3ec00adc"
       },
       {
         "path": "src/data.js",
-        "bytes": 246833,
-        "sha256": "ecf4416bfc327b9788b85147b147f5e0f2383e212666f64d9bd16445480aae72"
+        "bytes": 281574,
+        "sha256": "b2c7ed80e8fff08ccacd66ce302ca1b0ec9f3643815c4ad807be672a7afeec3c"
       },
       {
         "path": "src/flight.js",
-        "bytes": 223294,
-        "sha256": "c44b93e587ae5de664908ae33df45caebdd7a15157a422e2d7a10dcb0902f615"
+        "bytes": 231133,
+        "sha256": "d8cb0231f3fe6f49234bbb5e454b98676ffce90ed7eff16c31866ea570c94b3f"
       },
       {
         "path": "src/main.js",
-        "bytes": 756,
-        "sha256": "41f391e7b77d36fb6e09ddb8d025ee28f3aa5a82da4ede436443b1224d73f4f1"
+        "bytes": 873,
+        "sha256": "a0843b2bc17ad0aae9aa9baa683fc361febbebb88f65dee3b303db718a59cf38"
       },
       {
         "path": "src/parts.js",
-        "bytes": 72638,
-        "sha256": "96c1a7119fb668ae4946ef486dbef7b871fa012d10610de1c4d26b61483c78d9"
+        "bytes": 84676,
+        "sha256": "cc753ca24ae6cde08ced9e7cd34f97a51b1709fbc9c43b397aef519dee9a9d4d"
       },
       {
         "path": "src/render.js",
-        "bytes": 848328,
-        "sha256": "6ae5825488fc4d24af80ecb629034f1efc4731e22232bc54217b5512dfae6cdb"
+        "bytes": 905226,
+        "sha256": "ac9a655085891822b4bba3f84fc2d0af064abf45d9b79f066c4a5bcd396aa6cf"
       },
       {
         "path": "src/reorganization.js",
-        "bytes": 45864,
-        "sha256": "a75389737ebe7090237eae9d8592842016eb228bc95f7e36a2b89132c21bcf40"
+        "bytes": 45787,
+        "sha256": "ce04ef57e4f0195fafbbd2a4ed773e65d65d782a58e44a8e119c4d53dcf1e635"
       },
       {
         "path": "src/save.js",
-        "bytes": 50785,
-        "sha256": "660ea7c7427b7937d0a97d164eab8f2f4ceed8bd280bd2e0d90c75106cb9acf5"
+        "bytes": 52376,
+        "sha256": "3e0312b8018e6574b3ed6fbf6016b2615ea76b5aa2799f95f420b87a55d894fa"
       },
       {
         "path": "src/shell.html",
-        "bytes": 119569,
-        "sha256": "e1d9282211262f8edee2390667dc67f89f41b9c961855ecaf477cbbc750c495c"
+        "bytes": 238499,
+        "sha256": "f36e0507a9c1df638c01eded29f1738e060bf8085887cd8ebc7071960954e35a"
       },
       {
         "path": "src/shell.js",
-        "bytes": 56781,
-        "sha256": "35208b874d03bf5fde8c8acc35adf48ca693fb009a4dd895fd52466e1eb656fe"
+        "bytes": 60631,
+        "sha256": "23ce43774e871fbf53783f75a957733a40ef21036e4f1e9b7c3d39807373de7b"
       },
       {
         "path": "src/sim.js",
-        "bytes": 568962,
-        "sha256": "a2b2fcb598fd5bf272746cd867b549c9cde14af02a71dca28850132d3d2bf85c"
+        "bytes": 684566,
+        "sha256": "70eda44b81bc01518eaabfd82305394ae8445037cc26d0e3920c75acd8784c20"
       },
       {
         "path": "tests/README.md",
-        "bytes": 12798,
-        "sha256": "d7d88f403c84ba06e1842384d15d35e5fe97cc61705d72147f0b7227f2a852cc"
+        "bytes": 17177,
+        "sha256": "3dcf36ef63f193615c916ed9d666da42383ae8144693b2cf7a63454d10123583"
       },
       {
         "path": "tests/browser/README.md",
@@ -257,8 +262,8 @@
       },
       {
         "path": "tests/harness.js",
-        "bytes": 11854,
-        "sha256": "e187286b8af891c818d4fd888c187f28f613606a7c95145141b71b6d4e2a0943"
+        "bytes": 12494,
+        "sha256": "fe03db0fcd7042284c9ee062fde955230d98d93a808019ab4caf8f239789532c"
       },
       {
         "path": "tests/run-browser-gate0.js",
@@ -272,8 +277,8 @@
       },
       {
         "path": "tests/run-gate0-evidence.js",
-        "bytes": 8767,
-        "sha256": "8c60a107f969a1b256de73be140ee398244e21856e556aede5070aa5d1b807c7"
+        "bytes": 10547,
+        "sha256": "215ef3e4c79af657fe8f6384b4efafbcb9208d8c39b10fa406ae87da04e75c06"
       },
       {
         "path": "tests/run-gate1-contracts.js",
@@ -297,8 +302,8 @@
       },
       {
         "path": "tests/test-anim-speed.js",
-        "bytes": 1402,
-        "sha256": "0813138207970e60dc9c11731446c1af5bf68fdc437092091c48c4a06711c59c"
+        "bytes": 2480,
+        "sha256": "2b8c486ac54defcdd8e464ccbbdaa42e1fd8e845c3b600c1c764f2815af00300"
       },
       {
         "path": "tests/test-annals-archive.js",
@@ -307,8 +312,8 @@
       },
       {
         "path": "tests/test-anomaly-pool.js",
-        "bytes": 10975,
-        "sha256": "d7e1ec9140aef6aa11f83e4203e2550afec1b6ebfa8689bc17c911178877e209"
+        "bytes": 11705,
+        "sha256": "4be9f43a73dd330a8c33d9397ef4291d4c7d2d800589c1138509de8998efe876"
       },
       {
         "path": "tests/test-assembly-shell.js",
@@ -337,8 +342,23 @@
       },
       {
         "path": "tests/test-build-parity.js",
-        "bytes": 3006,
-        "sha256": "20de8f797868cd6ba5978996aa00b7c628ce7bdb6cad03508fd89468b7a37f6e"
+        "bytes": 3144,
+        "sha256": "daf6effa50cd896939838868b1aea8918d1d627852d7b455db404711ae9a2cbe"
+      },
+      {
+        "path": "tests/test-calendar-windows.js",
+        "bytes": 6466,
+        "sha256": "308b3d02bd9ff613f73d3f557a12a9a38187d2e065adf01b4e822256b87c542b"
+      },
+      {
+        "path": "tests/test-cape-ascent-continuity.js",
+        "bytes": 3323,
+        "sha256": "43c257b4d06145ecab83d1ca5e61dc1df84c791e47d089e274a98a638eca200e"
+      },
+      {
+        "path": "tests/test-cape-terrain-cleanup.js",
+        "bytes": 1835,
+        "sha256": "94ef3ebdc70c84acb8d270e6ea4c5d6986a40faa3918c483906e830179b150eb"
       },
       {
         "path": "tests/test-cape-zoom.js",
@@ -362,8 +382,8 @@
       },
       {
         "path": "tests/test-command-hero-layout.js",
-        "bytes": 5893,
-        "sha256": "8c11b4eddb959086915696dd81974f7b68e2603327205f5256af4935e6d1a511"
+        "bytes": 6045,
+        "sha256": "7d693b55f29c140b00d507549cc78c6deedef483818d3cc506bf263c09b795f9"
       },
       {
         "path": "tests/test-command-mode.js",
@@ -396,6 +416,11 @@
         "sha256": "d8b9604a7fcc0806a217a0ed86b2ec393c160e0e6f511897ff343a9ccb5b4e1c"
       },
       {
+        "path": "tests/test-dead-tokens.js",
+        "bytes": 2659,
+        "sha256": "b53b10392c3a8233b3962c3d05a940e1f94739bad1a978f2504e94db276d9fa5"
+      },
+      {
         "path": "tests/test-decision-panel.js",
         "bytes": 15098,
         "sha256": "44dbbde125025b9cad1679e2bfa18f4dca605762cf8a37378b0bd812b550c255"
@@ -422,13 +447,53 @@
       },
       {
         "path": "tests/test-dept-c.js",
-        "bytes": 8522,
-        "sha256": "b8c01d5045f8c97597cdfb4c55f9b60340d45ad6efc728e4d30e5b00b009ebe7"
+        "bytes": 9279,
+        "sha256": "f81f22249cbea6327146ea9d8b162c515ead0569549056de9b1104217ee19bbf"
       },
       {
         "path": "tests/test-dev-menu.js",
         "bytes": 6216,
         "sha256": "42fb43591371cfe0ba0a65f1d57dbc988888138b380a71797246f1de492f0e75"
+      },
+      {
+        "path": "tests/test-docking-compatibility.js",
+        "bytes": 6356,
+        "sha256": "74327e5d7c0ae8402cb85e5605fb7051cc50fc67bf4df0e42d5c412f52ca477f"
+      },
+      {
+        "path": "tests/test-docking-mission-phase.js",
+        "bytes": 7992,
+        "sha256": "ba965f83f3ea49220091433848f623be2560bd885452bcc4ae166333fbb19615"
+      },
+      {
+        "path": "tests/test-docking-operations.js",
+        "bytes": 6462,
+        "sha256": "c4c67792d07b37cd53256a7578b70270dcdf2d6db1190b0656832bd9fcac9155"
+      },
+      {
+        "path": "tests/test-docking-presentation.js",
+        "bytes": 6091,
+        "sha256": "e013fc4ae471c7b214c216093ef5a0e769e0f02130655134d0fb25e9859f11be"
+      },
+      {
+        "path": "tests/test-docking-reservations.js",
+        "bytes": 4641,
+        "sha256": "f12c130c8ccd8dbe8f42b0373e230c1d8250662039dcf3f5b51341d0f8358304"
+      },
+      {
+        "path": "tests/test-docking-services.js",
+        "bytes": 5590,
+        "sha256": "694dd542b9a13135f2bd489e71b17f1d1029656c7720471c4c58b812047908eb"
+      },
+      {
+        "path": "tests/test-docking-transfer.js",
+        "bytes": 5571,
+        "sha256": "eb851984c02d4119775f1b0316f98d113b29c5d22103aecb6a283d5d13313eb9"
+      },
+      {
+        "path": "tests/test-duration-floors.js",
+        "bytes": 6146,
+        "sha256": "14ee12c45b743214043d0e76c6b95cf9d3ece96c33fcc7dac004ee38439d6d2a"
       },
       {
         "path": "tests/test-e05-retention.js",
@@ -442,8 +507,8 @@
       },
       {
         "path": "tests/test-ephemeris.js",
-        "bytes": 7670,
-        "sha256": "d04de6b5e59f0579ea7f5a192a3a3d8e06f275e5d5e607aed183346eb64b4809"
+        "bytes": 8543,
+        "sha256": "61d079ab156503a4f08b92ee12119dd7f96977e12f3aa122b76d2fc5e34e3baa"
       },
       {
         "path": "tests/test-era-visual.js",
@@ -454,6 +519,11 @@
         "path": "tests/test-esc.js",
         "bytes": 6447,
         "sha256": "ba5a0a3c28b08a1985af2f024b2473bc72acbdf31ba1a6455e65be97898ff548"
+      },
+      {
+        "path": "tests/test-eval-bugfixes-2026-11.js",
+        "bytes": 5618,
+        "sha256": "2c3919418b2f22d7abc855715a755b04a9245322a422cabd79542ec2d6de8464"
       },
       {
         "path": "tests/test-facility-decay-flavor.js",
@@ -527,8 +597,8 @@
       },
       {
         "path": "tests/test-gate1-quote-contract.js",
-        "bytes": 5753,
-        "sha256": "66d042caf89749682132a4b749d5c1ae0383aab55f1e96f991646c9fc85ae4b9"
+        "bytes": 6176,
+        "sha256": "0b087232c427ee62985001e26da3c182e987d292db0735bc8437cc527fa3cdf8"
       },
       {
         "path": "tests/test-gate1-state-contract.js",
@@ -537,8 +607,8 @@
       },
       {
         "path": "tests/test-gate1-truth-contract.js",
-        "bytes": 8286,
-        "sha256": "3f2172ee7463e49d49d9eba7f0b2295de9bcc9470bcae058b51fd0a43ecbf867"
+        "bytes": 8800,
+        "sha256": "e12ea6bef86b603fa7037131502cea1b3175ca9550129bd5055ed53f10463c5c"
       },
       {
         "path": "tests/test-gate2-resume-contract.js",
@@ -562,13 +632,23 @@
       },
       {
         "path": "tests/test-gate3-reorganization-contract.js",
-        "bytes": 20278,
-        "sha256": "9e74ce67b4f5428598d840c5becaa98680c8662f3bf71758e13dfbf017e74a79"
+        "bytes": 21904,
+        "sha256": "b3ec17471f6413cc91bf803f2c62bf6444adfdef8722b3043463f36f4d504051"
       },
       {
         "path": "tests/test-gate3-state-contract.js",
-        "bytes": 17687,
-        "sha256": "10ccb0c5170ed3c3234f844dab9c96251825bb6186c632ea8fd023382e9e9004"
+        "bytes": 18112,
+        "sha256": "1a89193590dfa53673202d3b08df9e2337602393b0c92ecde90e5b9451ea2bd0"
+      },
+      {
+        "path": "tests/test-graphics-pass-2026-11.js",
+        "bytes": 5680,
+        "sha256": "611187098aafea04a8d487b72079bdd110bd21846bb49d8d97bb15cebd5040be"
+      },
+      {
+        "path": "tests/test-gregorian-calendar.js",
+        "bytes": 7539,
+        "sha256": "3afec49698dd4830ef6ebae374916945ac777c1642e1ca79c4f4e4c9795984b7"
       },
       {
         "path": "tests/test-ground-track.js",
@@ -597,8 +677,8 @@
       },
       {
         "path": "tests/test-icon-set.js",
-        "bytes": 4053,
-        "sha256": "568eff093b621c33cd2fd4ddd1de231b3be1baeddfb63cad9dd713519577f846"
+        "bytes": 4187,
+        "sha256": "045d9d420172b419bbec4d2de86e90d43f5a6f386c74416bcd395e64daa58db2"
       },
       {
         "path": "tests/test-inclination-missions.js",
@@ -617,8 +697,13 @@
       },
       {
         "path": "tests/test-launch-camera.js",
-        "bytes": 10758,
-        "sha256": "9885e18f49cce9dac2b50ec3c838994f6d8240aca1ff146901d994ace5c0fbd1"
+        "bytes": 10772,
+        "sha256": "37d455646c8970cb0a82e3775dee8e150309b4f59b411f953b10b0fbf3023020"
+      },
+      {
+        "path": "tests/test-layout-pass.js",
+        "bytes": 6660,
+        "sha256": "9b5f1ac67373e7852068fb0aa0754f2884c0d3319c24c4405fa2ea5f4f38c4ab"
       },
       {
         "path": "tests/test-light-lag.js",
@@ -657,8 +742,8 @@
       },
       {
         "path": "tests/test-map-sm1-sm5-source.js",
-        "bytes": 2473,
-        "sha256": "77e8409fa05d352f732a6eb052f1985d52bcfdc1e376694dbba39e8c4e21e78a"
+        "bytes": 2611,
+        "sha256": "e2a7d3f6d6cab98356a425ac331cc525d996184e5d6499152293fc9b8b03d755"
       },
       {
         "path": "tests/test-map3d-orient.js",
@@ -706,6 +791,11 @@
         "sha256": "aea37c3a4a7aee08d80801cd2e731fa5dcc9a232136f64025820ba1520a5eff9"
       },
       {
+        "path": "tests/test-mission-mass-accounting.js",
+        "bytes": 7045,
+        "sha256": "dd739e578529179d1cde1b969490eedbad2791a1f4a1118b72c77b2de8e0398f"
+      },
+      {
         "path": "tests/test-near-miss.js",
         "bytes": 8035,
         "sha256": "bde3d6f0cc9ee9f53622fb12225c60f7f589af5c5c1d24461cae593a2dea5f34"
@@ -716,9 +806,19 @@
         "sha256": "a5e06a0c1842e3afac8f31f6ee4dced985a0ea512078038585bbcb2c5c715bda"
       },
       {
+        "path": "tests/test-onboarding.js",
+        "bytes": 10880,
+        "sha256": "4b65d7b31668834ba2ae094e090a7a64ff682535579ed106814644ed7d68f585"
+      },
+      {
         "path": "tests/test-ops-friction.js",
-        "bytes": 8160,
-        "sha256": "78be16aefe5d199789f0f29087a09a8b46d774aead640b678ce4421d3ebcabab"
+        "bytes": 8264,
+        "sha256": "73dd1d736e7ace407a175551ca1d530831b62f7ed6811016c5a956a8b0fd6431"
+      },
+      {
+        "path": "tests/test-orbit-assets.js",
+        "bytes": 3819,
+        "sha256": "e0921552c86fd8e5643784919ed69a70c8c29415b7b45b6167fd1a98b7e77078"
       },
       {
         "path": "tests/test-orbital-maneuvers.js",
@@ -742,13 +842,13 @@
       },
       {
         "path": "tests/test-parts-attach.js",
-        "bytes": 5872,
-        "sha256": "94d0ae2c728e8f3b168f759df3a15b2d1959b0566df9f09b4729ea6a31138777"
+        "bytes": 5981,
+        "sha256": "d30094e8332d9bf389aeaac30c097851d43ae51e3d7afda75cf407f8960f2777"
       },
       {
         "path": "tests/test-parts-bridge.js",
-        "bytes": 5381,
-        "sha256": "9b7d44264cdec042a47c26901d6aa6d900aa70fec88f11ac329b66c355e801fa"
+        "bytes": 5393,
+        "sha256": "bf095581fe8b06017a33d1ebea9f1853e7e47bb5a6af6aee8b24b6403fe87a93"
       },
       {
         "path": "tests/test-parts-gate.js",
@@ -757,18 +857,18 @@
       },
       {
         "path": "tests/test-parts-migration.js",
-        "bytes": 7339,
-        "sha256": "d0568bfad9b0c26a8b70ac6c7e70b151888afb1ad8d92d159ed2b5ae6481d91f"
+        "bytes": 7776,
+        "sha256": "a1f7a3bbcfef0e7dea776c5bb8b108318d5ed29c9402313fac26df7d209e5658"
       },
       {
         "path": "tests/test-parts-physics.js",
-        "bytes": 5881,
-        "sha256": "963cdba7bc82ce9d78be58874cb8bf692bdf59c111363336f4621dcaa8de6dda"
+        "bytes": 5426,
+        "sha256": "4e3b9e6cc4eb6516a58cab1b506063d26fee6917bc9aba58b07af00cec8d40bd"
       },
       {
         "path": "tests/test-parts-polish.js",
-        "bytes": 4131,
-        "sha256": "a5451c1c73aab5f8f459a8584b324babb3f57306886c1f10e5bd9609860a08ae"
+        "bytes": 4347,
+        "sha256": "f19147a815b8cae732a4c2730e8a15d54dd3413de08f5b2fc6cbba983bef15f3"
       },
       {
         "path": "tests/test-parts-pp1-propulsion.js",
@@ -792,13 +892,28 @@
       },
       {
         "path": "tests/test-parts-ui.js",
-        "bytes": 5147,
-        "sha256": "f76ca6bd0edf3a1fc130d1291ac92c31ad3238835469cb81b86413e0c3e5c595"
+        "bytes": 5320,
+        "sha256": "fc4efa913411c1828c0781a25c1b2326b5d0bfeae0c70e45234e586f4892d5d3"
+      },
+      {
+        "path": "tests/test-parts-wiring.js",
+        "bytes": 10283,
+        "sha256": "e328dc0eed31492239e25c510478b32daf560a103ec6a8473d3efcbcb362748c"
+      },
+      {
+        "path": "tests/test-persistent-satellites.js",
+        "bytes": 7918,
+        "sha256": "9f1c7241cb714f86a101466794dc44be6bb3428f5f1cb6b32523bb8e26f9d3b4"
       },
       {
         "path": "tests/test-personnel-retirement.js",
         "bytes": 8260,
         "sha256": "796fcc83e6a3ee17eac073f8117278fecb9727e6b59f8d4c72816ce603033b08"
+      },
+      {
+        "path": "tests/test-plume-visual-language.js",
+        "bytes": 4173,
+        "sha256": "0f14141e984c6a365106e92fa9b2aa60a8d22494e3727c6af387b53267b37701"
       },
       {
         "path": "tests/test-popout-sizing.js",
@@ -809,6 +924,11 @@
         "path": "tests/test-progress-unify.js",
         "bytes": 8046,
         "sha256": "695a6d7c667b0e7f15a12ac43c3c5086ccc0412c8f06141ce26dc3df7ea048f0"
+      },
+      {
+        "path": "tests/test-reduced-motion.js",
+        "bytes": 8459,
+        "sha256": "9a304ad7a65f81a6d258d49272c9103223b1c7909e8130702ba6964c003c43cf"
       },
       {
         "path": "tests/test-regression.js",
@@ -877,8 +997,8 @@
       },
       {
         "path": "tests/test-save.js",
-        "bytes": 10378,
-        "sha256": "8b4be14fc964c60d97b33dc0858b417fe43ebfb87f3288ffeeca2528ebbbf2ae"
+        "bytes": 11151,
+        "sha256": "7f789a4a0b8a3e39d8ef3d9c1c186b331f7f636a30a76df8274991256881be32"
       },
       {
         "path": "tests/test-scene-math.js",
@@ -916,6 +1036,16 @@
         "sha256": "f2afed0b9336ba2087d584a3e7fd40424e6e8778abffeb442508ec352b61adf1"
       },
       {
+        "path": "tests/test-station-docking.js",
+        "bytes": 4465,
+        "sha256": "de2c3098979dbd7f7b21cc457439c3126b65467705ec1c559030ac0c6026bf6d"
+      },
+      {
+        "path": "tests/test-station-module-queue.js",
+        "bytes": 7143,
+        "sha256": "1b1386cd927c4f5429d55a861d41681cd52ba5be7c3f42bfc3de3a6dcec22b1c"
+      },
+      {
         "path": "tests/test-station-operations.js",
         "bytes": 3480,
         "sha256": "67134e26ee9139903aafb5a33ca9878943a35b3281267676b2ad669d2668542e"
@@ -927,8 +1057,8 @@
       },
       {
         "path": "tests/test-station-slice1.js",
-        "bytes": 7857,
-        "sha256": "a43003b283fd3cfc4452485a6c147a3732fd75aa83210be82a80717fc248a10e"
+        "bytes": 8571,
+        "sha256": "e2dead8a866a6066ddae9407be1b21e78afcc3b4a1fdb2278e3c34d77c781182"
       },
       {
         "path": "tests/test-station-slice2.js",
@@ -937,8 +1067,13 @@
       },
       {
         "path": "tests/test-station-slice3.js",
-        "bytes": 9206,
-        "sha256": "adb6736c7dc85cc72e640999b5c6405214b0d3098ba72bf14abac48ba3698811"
+        "bytes": 9919,
+        "sha256": "14de5fe0f43ea1791fde0845cb7f4e9f522f1177d188777947e7b758e5c1a7c3"
+      },
+      {
+        "path": "tests/test-support-breakdown.js",
+        "bytes": 6719,
+        "sha256": "398707cc6bb75286578f34c3b327b4a1a61d8e338be06a5743681333db3e3a12"
       },
       {
         "path": "tests/test-surface-modules.js",
@@ -971,9 +1106,19 @@
         "sha256": "6c4eca2471434e200318575591bd8b1be036f9761dc0a3e0ce86189532d2624f"
       },
       {
+        "path": "tests/test-theme-palettes.js",
+        "bytes": 7716,
+        "sha256": "e0202d0bba072f999907b72e9e544d6450403970b1228670e7eb8bb2eeed316f"
+      },
+      {
         "path": "tests/test-theme-sync.js",
-        "bytes": 2630,
-        "sha256": "00e602cd1f42dd19b2c5e1f940b41844f91e9450a4d5793443bae7e253517776"
+        "bytes": 4985,
+        "sha256": "217b78343724402e0c80516ec2612e63cfe5628ebf8871797a63a77efb495208"
+      },
+      {
+        "path": "tests/test-themeable-surfaces.js",
+        "bytes": 3787,
+        "sha256": "a11643fcf0b3724d52a136aa28b710935a8051a684dc3bf0faf7ca0b71914cab"
       },
       {
         "path": "tests/test-three-guard.js",
@@ -986,9 +1131,14 @@
         "sha256": "144496912ef63ab3900cf81d68c5e6938f0b29dd44e632110d809fbf34db9520"
       },
       {
+        "path": "tests/test-typography.js",
+        "bytes": 4895,
+        "sha256": "8b1eb983a3f55aea653d5f225239ca61ca01ebf045c9b00277946c16c28c3bae"
+      },
+      {
         "path": "tests/test-ui-layer-button.js",
-        "bytes": 4013,
-        "sha256": "8465bd936db125a7e433d4cd9d4d3da6841b7111fc07ed15e93932b060ba737a"
+        "bytes": 4242,
+        "sha256": "fc2bc5a31bea9e0786d3b6c32b113324fcab9d77a3baeaa543f2715ad1c1e6a4"
       },
       {
         "path": "tests/test-ui-scale.js",
@@ -1001,6 +1151,16 @@
         "sha256": "bebefbce821946644f1507ed5eae8cb06a6e773ce8538494170273209a41e9b3"
       },
       {
+        "path": "tests/test-vehicle-docking.js",
+        "bytes": 5891,
+        "sha256": "9b4d0fc54a1cb9e83b36f3db756244c0d0123afaec8e56516b02f85b891f30f4"
+      },
+      {
+        "path": "tests/test-vehicle-fin-scaling.js",
+        "bytes": 1913,
+        "sha256": "d28cd2ed67728901e6316c46cb2719ee92b5e987bca15af38746bc8566610060"
+      },
+      {
         "path": "tests/test-workspace-shell.js",
         "bytes": 2947,
         "sha256": "8c5a76686c795f78a103bc3ac967580b43235f0bcc20fab9ec613e51582cf0a9"
@@ -1010,26 +1170,26 @@
   "commands": {
     "build": {
       "command": [
-        "/usr/bin/node",
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
         "build.js"
       ],
       "exitCode": 0,
       "signal": null,
-      "elapsedMs": 527,
-      "stdout": "build ok:\n  orbital-ventures.html 18823756 bytes\n  build/game.js         2114241 bytes\n  index.html            119888 bytes\n",
+      "elapsedMs": 234,
+      "stdout": "build ok:\n  orbital-ventures.html 19175287 bytes\n  build/game.js         2346842 bytes\n  index.html            238818 bytes\n",
       "stderr": "",
       "spawnError": null,
       "timedOut": false
     },
     "buildCheck": {
       "command": [
-        "/usr/bin/node",
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
         "build.js",
         "--check"
       ],
       "exitCode": 0,
       "signal": null,
-      "elapsedMs": 1063,
+      "elapsedMs": 217,
       "stdout": "build parity ok\n",
       "stderr": "",
       "spawnError": null,
@@ -1037,12 +1197,12 @@
     },
     "buildParity": {
       "command": [
-        "/usr/bin/node",
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
         "tests/test-build-parity.js"
       ],
       "exitCode": 0,
       "signal": null,
-      "elapsedMs": 142,
+      "elapsedMs": 33,
       "stdout": "3/3 build parity checks passed\n2/2 texture-embed split checks passed\n",
       "stderr": "",
       "spawnError": null,
@@ -1050,12 +1210,12 @@
     },
     "expectedFailures": {
       "command": [
-        "/usr/bin/node",
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
         "tests/run-expected-failures.js"
       ],
       "exitCode": 0,
       "signal": null,
-      "elapsedMs": 411,
+      "elapsedMs": 195,
       "stdout": "Gate 0 quarantine: 0 reproduced, 0 unexpected\n",
       "stderr": "",
       "spawnError": null,
@@ -1065,14 +1225,16 @@
   "suites": [
     {
       "name": "test-afford-estimate.js",
+      "mode": "harness",
       "classification": "pass",
+      "partialPass": [],
       "exitCode": 0,
       "signal": null,
       "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-afford-estimate.js"
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-afford-estimate.js"
       ],
-      "elapsedMs": 250,
+      "elapsedMs": 116,
       "summary": [
         "39/39 checks passed"
       ],
@@ -1083,32 +1245,36 @@
     },
     {
       "name": "test-anim-speed.js",
+      "mode": "harness",
       "classification": "pass",
+      "partialPass": [],
       "exitCode": 0,
       "signal": null,
       "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-anim-speed.js"
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-anim-speed.js"
       ],
-      "elapsedMs": 174,
+      "elapsedMs": 94,
       "summary": [
-        "9/9 checks passed"
+        "12/12 checks passed"
       ],
-      "stdout": "9/9 checks passed\n",
+      "stdout": "12/12 checks passed\n",
       "stderr": "",
       "spawnError": null,
       "timedOut": false
     },
     {
       "name": "test-annals-archive.js",
+      "mode": "harness",
       "classification": "pass",
+      "partialPass": [],
       "exitCode": 0,
       "signal": null,
       "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-annals-archive.js"
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-annals-archive.js"
       ],
-      "elapsedMs": 186,
+      "elapsedMs": 96,
       "summary": [
         "28/28 checks passed"
       ],
@@ -1119,32 +1285,36 @@
     },
     {
       "name": "test-anomaly-pool.js",
+      "mode": "harness",
       "classification": "pass",
+      "partialPass": [],
       "exitCode": 0,
       "signal": null,
       "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-anomaly-pool.js"
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-anomaly-pool.js"
       ],
-      "elapsedMs": 198,
+      "elapsedMs": 98,
       "summary": [
-        "24/24 checks passed"
+        "25/25 checks passed"
       ],
-      "stdout": "24/24 checks passed\n",
+      "stdout": "25/25 checks passed\n",
       "stderr": "",
       "spawnError": null,
       "timedOut": false
     },
     {
       "name": "test-assembly-shell.js",
+      "mode": "harness",
       "classification": "pass",
+      "partialPass": [],
       "exitCode": 0,
       "signal": null,
       "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-assembly-shell.js"
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-assembly-shell.js"
       ],
-      "elapsedMs": 204,
+      "elapsedMs": 98,
       "summary": [
         "10/10 checks passed"
       ],
@@ -1155,14 +1325,16 @@
     },
     {
       "name": "test-assembly3d.js",
+      "mode": "harness",
       "classification": "pass",
+      "partialPass": [],
       "exitCode": 0,
       "signal": null,
       "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-assembly3d.js"
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-assembly3d.js"
       ],
-      "elapsedMs": 187,
+      "elapsedMs": 97,
       "summary": [
         "36/36 checks passed"
       ],
@@ -1173,14 +1345,16 @@
     },
     {
       "name": "test-astronaut-log.js",
+      "mode": "harness",
       "classification": "pass",
+      "partialPass": [],
       "exitCode": 0,
       "signal": null,
       "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-astronaut-log.js"
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-astronaut-log.js"
       ],
-      "elapsedMs": 222,
+      "elapsedMs": 117,
       "summary": [
         "9/9 checks passed"
       ],
@@ -1191,14 +1365,16 @@
     },
     {
       "name": "test-base-bench.js",
+      "mode": "harness",
       "classification": "pass",
+      "partialPass": [],
       "exitCode": 0,
       "signal": null,
       "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-base-bench.js"
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-base-bench.js"
       ],
-      "elapsedMs": 198,
+      "elapsedMs": 99,
       "summary": [
         "22/22 checks passed"
       ],
@@ -1209,14 +1385,16 @@
     },
     {
       "name": "test-base-draft.js",
+      "mode": "harness",
       "classification": "pass",
+      "partialPass": [],
       "exitCode": 0,
       "signal": null,
       "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-base-draft.js"
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-base-draft.js"
       ],
-      "elapsedMs": 242,
+      "elapsedMs": 122,
       "summary": [
         "23/23 checks passed"
       ],
@@ -1227,14 +1405,16 @@
     },
     {
       "name": "test-build-parity.js",
+      "mode": "standalone",
       "classification": "pass",
+      "partialPass": [],
       "exitCode": 0,
       "signal": null,
       "command": [
-        "/usr/bin/node",
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
         "tests/test-build-parity.js"
       ],
-      "elapsedMs": 132,
+      "elapsedMs": 32,
       "summary": [
         "3/3 build parity checks passed",
         "2/2 texture-embed split checks passed"
@@ -1245,15 +1425,78 @@
       "timedOut": false
     },
     {
-      "name": "test-cape-zoom.js",
+      "name": "test-calendar-windows.js",
+      "mode": "harness",
       "classification": "pass",
+      "partialPass": [],
       "exitCode": 0,
       "signal": null,
       "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-cape-zoom.js"
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-calendar-windows.js"
       ],
-      "elapsedMs": 195,
+      "elapsedMs": 121,
+      "summary": [
+        "Calendar Stage 2 — mission windows",
+        "24 passed, 0 failed"
+      ],
+      "stdout": "Calendar Stage 2 — mission windows\n\n24 passed, 0 failed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-cape-ascent-continuity.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-cape-ascent-continuity.js"
+      ],
+      "elapsedMs": 93,
+      "summary": [
+        "17/17 checks passed"
+      ],
+      "stdout": "17/17 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-cape-terrain-cleanup.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-cape-terrain-cleanup.js"
+      ],
+      "elapsedMs": 93,
+      "summary": [
+        "10/10 checks passed"
+      ],
+      "stdout": "10/10 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-cape-zoom.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-cape-zoom.js"
+      ],
+      "elapsedMs": 94,
       "summary": [
         "11/11 checks passed"
       ],
@@ -1264,14 +1507,16 @@
     },
     {
       "name": "test-cape3d-foundation.js",
+      "mode": "harness",
       "classification": "pass",
+      "partialPass": [],
       "exitCode": 0,
       "signal": null,
       "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-cape3d-foundation.js"
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-cape3d-foundation.js"
       ],
-      "elapsedMs": 215,
+      "elapsedMs": 92,
       "summary": [
         "17/17 checks passed"
       ],
@@ -1282,14 +1527,16 @@
     },
     {
       "name": "test-cc-atmosphere.js",
+      "mode": "harness",
       "classification": "pass",
+      "partialPass": [],
       "exitCode": 0,
       "signal": null,
       "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-cc-atmosphere.js"
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-cc-atmosphere.js"
       ],
-      "elapsedMs": 263,
+      "elapsedMs": 107,
       "summary": [
         "14/14 checks passed"
       ],
@@ -1300,14 +1547,16 @@
     },
     {
       "name": "test-chronicle-bookends.js",
+      "mode": "harness",
       "classification": "pass",
+      "partialPass": [],
       "exitCode": 0,
       "signal": null,
       "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-chronicle-bookends.js"
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-chronicle-bookends.js"
       ],
-      "elapsedMs": 232,
+      "elapsedMs": 100,
       "summary": [
         "22/22 checks passed"
       ],
@@ -1318,14 +1567,16 @@
     },
     {
       "name": "test-command-hero-layout.js",
+      "mode": "harness",
       "classification": "pass",
+      "partialPass": [],
       "exitCode": 0,
       "signal": null,
       "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-command-hero-layout.js"
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-command-hero-layout.js"
       ],
-      "elapsedMs": 229,
+      "elapsedMs": 100,
       "summary": [
         "23/23 checks passed"
       ],
@@ -1336,14 +1587,16 @@
     },
     {
       "name": "test-command-mode.js",
+      "mode": "harness",
       "classification": "pass",
+      "partialPass": [],
       "exitCode": 0,
       "signal": null,
       "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-command-mode.js"
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-command-mode.js"
       ],
-      "elapsedMs": 216,
+      "elapsedMs": 92,
       "summary": [
         "3/3 checks passed"
       ],
@@ -1354,14 +1607,16 @@
     },
     {
       "name": "test-contract-popout.js",
+      "mode": "harness",
       "classification": "pass",
+      "partialPass": [],
       "exitCode": 0,
       "signal": null,
       "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-contract-popout.js"
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-contract-popout.js"
       ],
-      "elapsedMs": 198,
+      "elapsedMs": 95,
       "summary": [
         "8/8 checks passed"
       ],
@@ -1372,14 +1627,16 @@
     },
     {
       "name": "test-contracts.js",
+      "mode": "harness",
       "classification": "pass",
+      "partialPass": [],
       "exitCode": 0,
       "signal": null,
       "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-contracts.js"
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-contracts.js"
       ],
-      "elapsedMs": 243,
+      "elapsedMs": 112,
       "summary": [
         "33/33 checks passed"
       ],
@@ -1390,14 +1647,16 @@
     },
     {
       "name": "test-crew-escape.js",
+      "mode": "harness",
       "classification": "pass",
+      "partialPass": [],
       "exitCode": 0,
       "signal": null,
       "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-crew-escape.js"
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-crew-escape.js"
       ],
-      "elapsedMs": 190,
+      "elapsedMs": 92,
       "summary": [
         "12/12 checks passed"
       ],
@@ -1408,14 +1667,16 @@
     },
     {
       "name": "test-crisis-pool.js",
+      "mode": "harness",
       "classification": "pass",
+      "partialPass": [],
       "exitCode": 0,
       "signal": null,
       "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-crisis-pool.js"
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-crisis-pool.js"
       ],
-      "elapsedMs": 186,
+      "elapsedMs": 95,
       "summary": [
         "43/43 checks passed"
       ],
@@ -1426,14 +1687,16 @@
     },
     {
       "name": "test-crisis-proximity.js",
+      "mode": "harness",
       "classification": "pass",
+      "partialPass": [],
       "exitCode": 0,
       "signal": null,
       "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-crisis-proximity.js"
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-crisis-proximity.js"
       ],
-      "elapsedMs": 188,
+      "elapsedMs": 93,
       "summary": [
         "30/30 checks passed"
       ],
@@ -1443,15 +1706,38 @@
       "timedOut": false
     },
     {
-      "name": "test-decision-panel.js",
+      "name": "test-dead-tokens.js",
+      "mode": "standalone",
       "classification": "pass",
+      "partialPass": [],
       "exitCode": 0,
       "signal": null,
       "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-decision-panel.js"
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "tests/test-dead-tokens.js"
       ],
-      "elapsedMs": 2822,
+      "elapsedMs": 25,
+      "summary": [
+        "Gate 6 — dead token cleanup",
+        "4 passed, 0 failed"
+      ],
+      "stdout": "Gate 6 — dead token cleanup\n\n4 passed, 0 failed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-decision-panel.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-decision-panel.js"
+      ],
+      "elapsedMs": 418,
       "summary": [
         "49/49 checks passed"
       ],
@@ -1462,14 +1748,16 @@
     },
     {
       "name": "test-depart-b.js",
+      "mode": "harness",
       "classification": "pass",
+      "partialPass": [],
       "exitCode": 0,
       "signal": null,
       "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-depart-b.js"
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-depart-b.js"
       ],
-      "elapsedMs": 1504,
+      "elapsedMs": 267,
       "summary": [
         "39/39 checks passed"
       ],
@@ -1480,14 +1768,16 @@
     },
     {
       "name": "test-depot-phasing.js",
+      "mode": "harness",
       "classification": "pass",
+      "partialPass": [],
       "exitCode": 0,
       "signal": null,
       "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-depot-phasing.js"
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-depot-phasing.js"
       ],
-      "elapsedMs": 180,
+      "elapsedMs": 97,
       "summary": [
         "17/17 checks passed"
       ],
@@ -1498,14 +1788,16 @@
     },
     {
       "name": "test-dept-a.js",
+      "mode": "harness",
       "classification": "pass",
+      "partialPass": [],
       "exitCode": 0,
       "signal": null,
       "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-dept-a.js"
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-dept-a.js"
       ],
-      "elapsedMs": 568,
+      "elapsedMs": 398,
       "summary": [
         "42/42 checks passed"
       ],
@@ -1516,14 +1808,16 @@
     },
     {
       "name": "test-dept-b.js",
+      "mode": "harness",
       "classification": "pass",
+      "partialPass": [],
       "exitCode": 0,
       "signal": null,
       "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-dept-b.js"
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-dept-b.js"
       ],
-      "elapsedMs": 633,
+      "elapsedMs": 431,
       "summary": [
         "27/27 checks passed"
       ],
@@ -1534,14 +1828,16 @@
     },
     {
       "name": "test-dept-c.js",
+      "mode": "harness",
       "classification": "pass",
+      "partialPass": [],
       "exitCode": 0,
       "signal": null,
       "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-dept-c.js"
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-dept-c.js"
       ],
-      "elapsedMs": 521,
+      "elapsedMs": 356,
       "summary": [
         "30/30 checks passed"
       ],
@@ -1552,14 +1848,16 @@
     },
     {
       "name": "test-dev-menu.js",
+      "mode": "harness",
       "classification": "pass",
+      "partialPass": [],
       "exitCode": 0,
       "signal": null,
       "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-dev-menu.js"
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-dev-menu.js"
       ],
-      "elapsedMs": 300,
+      "elapsedMs": 194,
       "summary": [
         "30/30"
       ],
@@ -1569,268 +1867,17 @@
       "timedOut": false
     },
     {
-      "name": "test-e05-retention.js",
+      "name": "test-docking-compatibility.js",
+      "mode": "harness",
       "classification": "pass",
+      "partialPass": [],
       "exitCode": 0,
       "signal": null,
       "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-e05-retention.js"
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-docking-compatibility.js"
       ],
-      "elapsedMs": 177,
-      "summary": [
-        "27/27 checks passed"
-      ],
-      "stdout": "\n27/27 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-econ-balance-2026-07.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-econ-balance-2026-07.js"
-      ],
-      "elapsedMs": 202,
-      "summary": [
-        "40 passed, 0 failed"
-      ],
-      "stdout": "\n40 passed, 0 failed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-ephemeris.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-ephemeris.js"
-      ],
-      "elapsedMs": 202,
-      "summary": [
-        "54/54 checks passed"
-      ],
-      "stdout": "54/54 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-era-visual.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-era-visual.js"
-      ],
-      "elapsedMs": 179,
-      "summary": [
-        "(skipped built-HTML check — orbital-ventures.html not found relative to tests/: ENOENT: no such file or directory, open '/tmp/orbital-ventures.html' )",
-        "39/39 checks passed"
-      ],
-      "stdout": "(skipped built-HTML check — orbital-ventures.html not found relative to tests/: ENOENT: no such file or directory, open '/tmp/orbital-ventures.html' )\n39/39 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-esc.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-esc.js"
-      ],
-      "elapsedMs": 185,
-      "summary": [
-        "36/36 checks passed"
-      ],
-      "stdout": "36/36 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-facility-decay-flavor.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-facility-decay-flavor.js"
-      ],
-      "elapsedMs": 177,
-      "summary": [
-        "5/5 checks passed"
-      ],
-      "stdout": "5/5 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-facility-module-integrity.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-facility-module-integrity.js"
-      ],
-      "elapsedMs": 173,
-      "summary": [
-        "15/15 checks passed"
-      ],
-      "stdout": "15/15 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-fleet-registry.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-fleet-registry.js"
-      ],
-      "elapsedMs": 181,
-      "summary": [
-        "41/41 checks passed"
-      ],
-      "stdout": "41/41 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-flight-markers.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-flight-markers.js"
-      ],
-      "elapsedMs": 180,
-      "summary": [
-        "38/38 checks passed"
-      ],
-      "stdout": "38/38 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-flight3d-cislunar-reentry.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-flight3d-cislunar-reentry.js"
-      ],
-      "elapsedMs": 176,
-      "summary": [
-        "8/8 checks passed"
-      ],
-      "stdout": "8/8 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-flight3d-deepfail.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-flight3d-deepfail.js"
-      ],
-      "elapsedMs": 172,
-      "summary": [
-        "26/26 checks passed"
-      ],
-      "stdout": "26/26 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-flight3d-foundation.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-flight3d-foundation.js"
-      ],
-      "elapsedMs": 191,
-      "summary": [
-        "58/58 checks passed"
-      ],
-      "stdout": "58/58 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-flight3d-sepbeat.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-flight3d-sepbeat.js"
-      ],
-      "elapsedMs": 187,
-      "summary": [
-        "10/10 checks passed"
-      ],
-      "stdout": "10/10 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-flight3d-staging.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-flight3d-staging.js"
-      ],
-      "elapsedMs": 236,
-      "summary": [
-        "35/35 checks passed"
-      ],
-      "stdout": "35/35 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-flight3d-trajectory.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-flight3d-trajectory.js"
-      ],
-      "elapsedMs": 178,
+      "elapsedMs": 94,
       "summary": [
         "31/31 checks passed"
       ],
@@ -1840,879 +1887,17 @@
       "timedOut": false
     },
     {
-      "name": "test-flight3d-vehicle-sync.js",
+      "name": "test-docking-mission-phase.js",
+      "mode": "harness",
       "classification": "pass",
+      "partialPass": [],
       "exitCode": 0,
       "signal": null,
       "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-flight3d-vehicle-sync.js"
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-docking-mission-phase.js"
       ],
-      "elapsedMs": 176,
-      "summary": [
-        "20/20 checks passed"
-      ],
-      "stdout": "20/20 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-focus-trap.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-focus-trap.js"
-      ],
-      "elapsedMs": 167,
-      "summary": [
-        "31/31 checks passed"
-      ],
-      "stdout": "\n31/31 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-gate1-interaction-contract.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-gate1-interaction-contract.js"
-      ],
-      "elapsedMs": 212,
-      "summary": [
-        "18/18 checks passed"
-      ],
-      "stdout": "18/18 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-gate1-lifecycle-regressions.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-gate1-lifecycle-regressions.js"
-      ],
-      "elapsedMs": 236,
-      "summary": [
-        "15/15 checks passed"
-      ],
-      "stdout": "15/15 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-gate1-quote-contract.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-gate1-quote-contract.js"
-      ],
-      "elapsedMs": 199,
-      "summary": [
-        "22/22 checks passed"
-      ],
-      "stdout": "22/22 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-gate1-state-contract.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-gate1-state-contract.js"
-      ],
-      "elapsedMs": 180,
-      "summary": [
-        "22/22 checks passed"
-      ],
-      "stdout": "22/22 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-gate1-truth-contract.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-gate1-truth-contract.js"
-      ],
-      "elapsedMs": 199,
-      "summary": [
-        "25/25 checks passed"
-      ],
-      "stdout": "25/25 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-gate2-resume-contract.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-gate2-resume-contract.js"
-      ],
-      "elapsedMs": 246,
-      "summary": [
-        "24/24 checks passed"
-      ],
-      "stdout": "24/24 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-gate2-settlement-contract.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-gate2-settlement-contract.js"
-      ],
-      "elapsedMs": 226,
-      "summary": [
-        "13/13 checks passed"
-      ],
-      "stdout": "13/13 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-gate2-transaction-contract.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-gate2-transaction-contract.js"
-      ],
-      "elapsedMs": 230,
-      "summary": [
-        "12/12 checks passed"
-      ],
-      "stdout": "12/12 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-gate3-opening-economy.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-gate3-opening-economy.js"
-      ],
-      "elapsedMs": 205,
-      "summary": [
-        "22/22 checks passed"
-      ],
-      "stdout": "22/22 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-gate3-reorganization-contract.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-gate3-reorganization-contract.js"
-      ],
-      "elapsedMs": 447,
-      "summary": [
-        "44/44 checks passed"
-      ],
-      "stdout": "44/44 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-gate3-state-contract.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-gate3-state-contract.js"
-      ],
-      "elapsedMs": 202,
-      "summary": [
-        "30/30 checks passed"
-      ],
-      "stdout": "30/30 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-ground-track.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-ground-track.js"
-      ],
-      "elapsedMs": 178,
-      "summary": [
-        "12/12 checks passed"
-      ],
-      "stdout": "12/12 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-header-tooltips.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-header-tooltips.js"
-      ],
-      "elapsedMs": 187,
-      "summary": [
-        "13/13 checks passed"
-      ],
-      "stdout": "13/13 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-hidden-tab.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-hidden-tab.js"
-      ],
-      "elapsedMs": 171,
-      "summary": [
-        "34/34 checks passed"
-      ],
-      "stdout": "\n34/34 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-hotkeys.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-hotkeys.js"
-      ],
-      "elapsedMs": 173,
-      "summary": [
-        "31/31 checks passed"
-      ],
-      "stdout": "\n31/31 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-hull-registry.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-hull-registry.js"
-      ],
-      "elapsedMs": 182,
-      "summary": [
-        "9/9 checks passed"
-      ],
-      "stdout": "9/9 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-icon-set.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-icon-set.js"
-      ],
-      "elapsedMs": 192,
-      "summary": [
-        "27/27 checks passed"
-      ],
-      "stdout": "27/27 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-inclination-missions.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-inclination-missions.js"
-      ],
-      "elapsedMs": 181,
-      "summary": [
-        "10/10 checks passed"
-      ],
-      "stdout": "10/10 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-inclination.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-inclination.js"
-      ],
-      "elapsedMs": 175,
-      "summary": [
-        "21/21 checks passed"
-      ],
-      "stdout": "21/21 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-investor-confidence.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-investor-confidence.js"
-      ],
-      "elapsedMs": 251,
-      "summary": [
-        "27 passed, 0 failed"
-      ],
-      "stdout": "\n27 passed, 0 failed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-launch-camera.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-launch-camera.js"
-      ],
-      "elapsedMs": 176,
-      "summary": [
-        "46/46 checks passed"
-      ],
-      "stdout": "46/46 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-light-lag.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-light-lag.js"
-      ],
-      "elapsedMs": 186,
-      "summary": [
-        "22/22 checks passed"
-      ],
-      "stdout": "22/22 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-live-call-freq.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-live-call-freq.js"
-      ],
-      "elapsedMs": 200,
-      "summary": [
-        "10/10 checks passed"
-      ],
-      "stdout": "10/10 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-livery-esc.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-livery-esc.js"
-      ],
-      "elapsedMs": 181,
-      "summary": [
-        "10/10 checks passed"
-      ],
-      "stdout": "10/10 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-map-shell-slots.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-map-shell-slots.js"
-      ],
-      "elapsedMs": 186,
-      "summary": [
-        "8/8 checks passed"
-      ],
-      "stdout": "8/8 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-map-slice-a.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-map-slice-a.js"
-      ],
-      "elapsedMs": 181,
-      "summary": [
-        "21 passed, 0 failed"
-      ],
-      "stdout": "\n21 passed, 0 failed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-map-slice-b.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-map-slice-b.js"
-      ],
-      "elapsedMs": 213,
-      "summary": [
-        "25 passed, 0 failed"
-      ],
-      "stdout": "\n25 passed, 0 failed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-map-slice-c.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-map-slice-c.js"
-      ],
-      "elapsedMs": 196,
-      "summary": [
-        "16 passed, 0 failed"
-      ],
-      "stdout": "\n16 passed, 0 failed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-map-sm1-sm5-source.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "tests/test-map-sm1-sm5-source.js"
-      ],
-      "elapsedMs": 123,
-      "summary": [
-        "26/26 checks passed"
-      ],
-      "stdout": "26/26 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-map3d-orient.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-map3d-orient.js"
-      ],
-      "elapsedMs": 171,
-      "summary": [
-        "map3d-orient: 35 passed, 0 failed"
-      ],
-      "stdout": "map3d-orient: 35 passed, 0 failed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-map3d-overlay.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-map3d-overlay.js"
-      ],
-      "elapsedMs": 191,
-      "summary": [
-        "map3d-overlay: 34 passed, 0 failed"
-      ],
-      "stdout": "map3d-overlay: 34 passed, 0 failed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-map3d-roster.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-map3d-roster.js"
-      ],
-      "elapsedMs": 213,
-      "summary": [
-        "map3d-roster: 29 passed, 0 failed"
-      ],
-      "stdout": "map3d-roster: 29 passed, 0 failed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-map3d-scale.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-map3d-scale.js"
-      ],
-      "elapsedMs": 178,
-      "summary": [
-        "map3d-scale: 48 passed, 0 failed"
-      ],
-      "stdout": "map3d-scale: 48 passed, 0 failed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-map3d-shell.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-map3d-shell.js"
-      ],
-      "elapsedMs": 192,
-      "summary": [
-        "32/32 checks passed"
-      ],
-      "stdout": "32/32 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-map3d-window.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-map3d-window.js"
-      ],
-      "elapsedMs": 200,
-      "summary": [
-        "map3d-window: 36 passed, 0 failed"
-      ],
-      "stdout": "map3d-window: 36 passed, 0 failed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-materials.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-materials.js"
-      ],
-      "elapsedMs": 245,
-      "summary": [
-        "46/46 checks passed"
-      ],
-      "stdout": "\n46/46 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-maxq-fairing.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-maxq-fairing.js"
-      ],
-      "elapsedMs": 224,
-      "summary": [
-        "18/18 checks passed"
-      ],
-      "stdout": "18/18 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-memorial.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-memorial.js"
-      ],
-      "elapsedMs": 222,
-      "summary": [
-        "13/13 checks passed"
-      ],
-      "stdout": "13/13 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-near-miss.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-near-miss.js"
-      ],
-      "elapsedMs": 217,
-      "summary": [
-        "33/33 checks passed"
-      ],
-      "stdout": "33/33 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-night-launch.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-night-launch.js"
-      ],
-      "elapsedMs": 181,
-      "summary": [
-        "9/9 checks passed"
-      ],
-      "stdout": "9/9 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-ops-friction.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-ops-friction.js"
-      ],
-      "elapsedMs": 210,
-      "summary": [
-        "36/36"
-      ],
-      "stdout": "36/36\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-orbital-maneuvers.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-orbital-maneuvers.js"
-      ],
-      "elapsedMs": 195,
-      "summary": [
-        "orbital maneuvers: 14/14"
-      ],
-      "stdout": "orbital maneuvers: 14/14\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-outer-bases.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-outer-bases.js"
-      ],
-      "elapsedMs": 186,
-      "summary": [
-        "72/72 checks passed"
-      ],
-      "stdout": "72/72 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-pad-a.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-pad-a.js"
-      ],
-      "elapsedMs": 1803,
-      "summary": [
-        "36/36 checks passed"
-      ],
-      "stdout": "\n36/36 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-pad-abort.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-pad-abort.js"
-      ],
-      "elapsedMs": 201,
-      "summary": [
-        "32 passed, 0 failed"
-      ],
-      "stdout": "\n32 passed, 0 failed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-parts-attach.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-parts-attach.js"
-      ],
-      "elapsedMs": 171,
-      "summary": [
-        "29/29 checks passed"
-      ],
-      "stdout": "29/29 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-parts-bridge.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-parts-bridge.js"
-      ],
-      "elapsedMs": 171,
+      "elapsedMs": 106,
       "summary": [
         "31/31 checks passed"
       ],
@@ -2722,770 +1907,15 @@
       "timedOut": false
     },
     {
-      "name": "test-parts-gate.js",
+      "name": "test-docking-operations.js",
+      "mode": "harness",
       "classification": "pass",
+      "partialPass": [],
       "exitCode": 0,
       "signal": null,
       "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-parts-gate.js"
-      ],
-      "elapsedMs": 174,
-      "summary": [
-        "27/27 checks passed"
-      ],
-      "stdout": "27/27 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-parts-migration.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-parts-migration.js"
-      ],
-      "elapsedMs": 179,
-      "summary": [
-        "28/28 checks passed"
-      ],
-      "stdout": "28/28 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-parts-physics.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-parts-physics.js"
-      ],
-      "elapsedMs": 176,
-      "summary": [
-        "21/21 checks passed"
-      ],
-      "stdout": "21/21 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-parts-polish.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-parts-polish.js"
-      ],
-      "elapsedMs": 185,
-      "summary": [
-        "18/18 checks passed"
-      ],
-      "stdout": "18/18 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-parts-pp1-propulsion.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-parts-pp1-propulsion.js"
-      ],
-      "elapsedMs": 183,
-      "summary": [
-        "120/120 checks passed"
-      ],
-      "stdout": "120/120 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-parts-pp3-structural.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-parts-pp3-structural.js"
-      ],
-      "elapsedMs": -2297,
-      "summary": [
-        "53/53 checks passed"
-      ],
-      "stdout": "53/53 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-parts-render.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-parts-render.js"
-      ],
-      "elapsedMs": 183,
-      "summary": [
-        "45/45 checks passed"
-      ],
-      "stdout": "45/45 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-parts-staging.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-parts-staging.js"
-      ],
-      "elapsedMs": 177,
-      "summary": [
-        "31/31 checks passed"
-      ],
-      "stdout": "31/31 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-parts-ui.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-parts-ui.js"
-      ],
-      "elapsedMs": 182,
-      "summary": [
-        "23/23 checks passed"
-      ],
-      "stdout": "23/23 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-personnel-retirement.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-personnel-retirement.js"
-      ],
-      "elapsedMs": 210,
-      "summary": [
-        "39 passed, 0 failed"
-      ],
-      "stdout": "\n39 passed, 0 failed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-popout-sizing.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-popout-sizing.js"
-      ],
-      "elapsedMs": 200,
-      "summary": [
-        "19/19 checks passed"
-      ],
-      "stdout": "19/19 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-progress-unify.js",
-      "classification": "known-skip",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-progress-unify.js"
-      ],
-      "elapsedMs": 170,
-      "summary": [
-        "SKIP: F4 forward test (unfinished feature — set RUN_F4=1 to run)",
-        "0/0 checks passed"
-      ],
-      "stdout": "SKIP: F4 forward test (unfinished feature — set RUN_F4=1 to run)\n0/0 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-regression.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-regression.js"
-      ],
-      "elapsedMs": 233,
-      "summary": [
-        "18/18 checks passed"
-      ],
-      "stdout": "\n18/18 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-render-regions.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-render-regions.js"
-      ],
-      "elapsedMs": 286,
-      "summary": [
-        "24/24 checks passed"
-      ],
-      "stdout": "24/24 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-research-effect-gates.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-research-effect-gates.js"
-      ],
-      "elapsedMs": 194,
-      "summary": [
-        "12/12 checks passed"
-      ],
-      "stdout": "12/12 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-research-era-gate.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-research-era-gate.js"
-      ],
-      "elapsedMs": 186,
-      "summary": [
-        "25/25 checks passed"
-      ],
-      "stdout": "25/25 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-research-goal.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-research-goal.js"
-      ],
-      "elapsedMs": 194,
-      "summary": [
-        "27/27 checks passed"
-      ],
-      "stdout": "27/27 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-research-notice.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-research-notice.js"
-      ],
-      "elapsedMs": 176,
-      "summary": [
-        "14/14 checks passed"
-      ],
-      "stdout": "14/14 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-rival-intel.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-rival-intel.js"
-      ],
-      "elapsedMs": 186,
-      "summary": [
-        "29/29 checks passed"
-      ],
-      "stdout": "29/29 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-rival-strip.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-rival-strip.js"
-      ],
-      "elapsedMs": 175,
-      "summary": [
-        "22/22 checks passed"
-      ],
-      "stdout": "22/22 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-rivals-e11.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-rivals-e11.js"
-      ],
-      "elapsedMs": 220,
-      "summary": [
-        "24/24 checks passed"
-      ],
-      "stdout": "24/24 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-roster.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-roster.js"
-      ],
-      "elapsedMs": 230,
-      "summary": [
-        "12/12 checks passed"
-      ],
-      "stdout": "12/12 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-sample-decision.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-sample-decision.js"
-      ],
-      "elapsedMs": 184,
-      "summary": [
-        "29/29 checks passed"
-      ],
-      "stdout": "29/29 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-save-ring.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-save-ring.js"
-      ],
-      "elapsedMs": 185,
-      "summary": [
-        "42/42 checks passed"
-      ],
-      "stdout": "\n42/42 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-save-slots.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-save-slots.js"
-      ],
-      "elapsedMs": 185,
-      "summary": [
-        "69/69 checks passed"
-      ],
-      "stdout": "\n69/69 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-save.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-save.js"
-      ],
-      "elapsedMs": 211,
-      "summary": [
-        "34/34 checks passed"
-      ],
-      "stdout": "\n34/34 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-scene-math.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-scene-math.js"
-      ],
-      "elapsedMs": 176,
-      "summary": [
-        "35/35 checks passed"
-      ],
-      "stdout": "35/35 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-scene-shell-contract.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-scene-shell-contract.js"
-      ],
-      "elapsedMs": 189,
-      "summary": [
-        "10/10 checks passed"
-      ],
-      "stdout": "10/10 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-science-program.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-science-program.js"
-      ],
-      "elapsedMs": 178,
-      "summary": [
-        "22/22 checks passed"
-      ],
-      "stdout": "22/22 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-sethtml.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-sethtml.js"
-      ],
-      "elapsedMs": 169,
-      "summary": [
-        "9/9 checks passed"
-      ],
-      "stdout": "9/9 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-shell-consolidation.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-shell-consolidation.js"
-      ],
-      "elapsedMs": 187,
-      "summary": [
-        "10/10 checks passed"
-      ],
-      "stdout": "10/10 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-solar-conjunction.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-solar-conjunction.js"
-      ],
-      "elapsedMs": 187,
-      "summary": [
-        "19/19 checks passed"
-      ],
-      "stdout": "19/19 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-sound.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-sound.js"
-      ],
-      "elapsedMs": 197,
-      "summary": [
-        "12/12 checks passed"
-      ],
-      "stdout": "12/12 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-station-operations.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-station-operations.js"
-      ],
-      "elapsedMs": 200,
-      "summary": [
-        "18/18 checks passed"
-      ],
-      "stdout": "18/18 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-station-popout.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-station-popout.js"
-      ],
-      "elapsedMs": 179,
-      "summary": [
-        "20/20 checks passed"
-      ],
-      "stdout": "20/20 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-station-slice1.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-station-slice1.js"
-      ],
-      "elapsedMs": 248,
-      "summary": [
-        "31/31 checks passed"
-      ],
-      "stdout": "31/31 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-station-slice2.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-station-slice2.js"
-      ],
-      "elapsedMs": 248,
-      "summary": [
-        "28/28 checks passed"
-      ],
-      "stdout": "28/28 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-station-slice3.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-station-slice3.js"
-      ],
-      "elapsedMs": 2515,
-      "summary": [
-        "27/27 checks passed"
-      ],
-      "stdout": "27/27 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-surface-modules.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-surface-modules.js"
-      ],
-      "elapsedMs": 202,
-      "summary": [
-        "34/34 checks passed"
-      ],
-      "stdout": "34/34 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-tech-capstones.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-tech-capstones.js"
-      ],
-      "elapsedMs": 178,
-      "summary": [
-        "13/13 checks passed"
-      ],
-      "stdout": "13/13 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-tech-combustion-merge.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-tech-combustion-merge.js"
-      ],
-      "elapsedMs": 172,
-      "summary": [
-        "21/21 checks passed"
-      ],
-      "stdout": "21/21 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-tech-guidance-merge.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-tech-guidance-merge.js"
-      ],
-      "elapsedMs": 175,
-      "summary": [
-        "18/18 checks passed"
-      ],
-      "stdout": "18/18 checks passed\n",
-      "stderr": "",
-      "spawnError": null,
-      "timedOut": false
-    },
-    {
-      "name": "test-tech-structures-merge.js",
-      "classification": "pass",
-      "exitCode": 0,
-      "signal": null,
-      "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-tech-structures-merge.js"
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-docking-operations.js"
       ],
       "elapsedMs": 168,
       "summary": [
@@ -3497,15 +1927,1560 @@
       "timedOut": false
     },
     {
-      "name": "test-tech-testing-merge.js",
+      "name": "test-docking-presentation.js",
+      "mode": "harness",
       "classification": "pass",
+      "partialPass": [],
       "exitCode": 0,
       "signal": null,
       "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-tech-testing-merge.js"
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-docking-presentation.js"
       ],
-      "elapsedMs": 173,
+      "elapsedMs": 132,
+      "summary": [
+        "17/17 checks passed"
+      ],
+      "stdout": "17/17 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-docking-reservations.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-docking-reservations.js"
+      ],
+      "elapsedMs": 97,
+      "summary": [
+        "21/21 checks passed"
+      ],
+      "stdout": "21/21 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-docking-services.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-docking-services.js"
+      ],
+      "elapsedMs": 164,
+      "summary": [
+        "13/13 checks passed"
+      ],
+      "stdout": "13/13 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-docking-transfer.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-docking-transfer.js"
+      ],
+      "elapsedMs": 144,
+      "summary": [
+        "20/20 checks passed"
+      ],
+      "stdout": "20/20 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-duration-floors.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-duration-floors.js"
+      ],
+      "elapsedMs": 95,
+      "summary": [
+        "Calendar Stage 3 — day-scale duration floors (4c)",
+        "21 passed, 0 failed"
+      ],
+      "stdout": "Calendar Stage 3 — day-scale duration floors (4c)\n\n21 passed, 0 failed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-e05-retention.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-e05-retention.js"
+      ],
+      "elapsedMs": 95,
+      "summary": [
+        "27/27 checks passed"
+      ],
+      "stdout": "\n27/27 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-econ-balance-2026-07.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-econ-balance-2026-07.js"
+      ],
+      "elapsedMs": 117,
+      "summary": [
+        "40 passed, 0 failed"
+      ],
+      "stdout": "\n40 passed, 0 failed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-ephemeris.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-ephemeris.js"
+      ],
+      "elapsedMs": 114,
+      "summary": [
+        "54/54 checks passed"
+      ],
+      "stdout": "54/54 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-era-visual.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-era-visual.js"
+      ],
+      "elapsedMs": 94,
+      "summary": [
+        "(skipped built-HTML check — orbital-ventures.html not found relative to tests/: ENOENT: no such file or directory, open '/tmp/orbital-ventures.html' )",
+        "39/39 checks passed"
+      ],
+      "stdout": "(skipped built-HTML check — orbital-ventures.html not found relative to tests/: ENOENT: no such file or directory, open '/tmp/orbital-ventures.html' )\n39/39 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-esc.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-esc.js"
+      ],
+      "elapsedMs": 98,
+      "summary": [
+        "36/36 checks passed"
+      ],
+      "stdout": "36/36 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-eval-bugfixes-2026-11.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-eval-bugfixes-2026-11.js"
+      ],
+      "elapsedMs": 124,
+      "summary": [
+        "22/22 checks passed"
+      ],
+      "stdout": "22/22 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-facility-decay-flavor.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-facility-decay-flavor.js"
+      ],
+      "elapsedMs": 93,
+      "summary": [
+        "5/5 checks passed"
+      ],
+      "stdout": "5/5 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-facility-module-integrity.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-facility-module-integrity.js"
+      ],
+      "elapsedMs": 93,
+      "summary": [
+        "15/15 checks passed"
+      ],
+      "stdout": "15/15 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-fleet-registry.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-fleet-registry.js"
+      ],
+      "elapsedMs": 96,
+      "summary": [
+        "41/41 checks passed"
+      ],
+      "stdout": "41/41 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-flight-markers.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-flight-markers.js"
+      ],
+      "elapsedMs": 98,
+      "summary": [
+        "38/38 checks passed"
+      ],
+      "stdout": "38/38 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-flight3d-cislunar-reentry.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-flight3d-cislunar-reentry.js"
+      ],
+      "elapsedMs": 92,
+      "summary": [
+        "8/8 checks passed"
+      ],
+      "stdout": "8/8 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-flight3d-deepfail.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-flight3d-deepfail.js"
+      ],
+      "elapsedMs": 93,
+      "summary": [
+        "26/26 checks passed"
+      ],
+      "stdout": "26/26 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-flight3d-foundation.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-flight3d-foundation.js"
+      ],
+      "elapsedMs": 104,
+      "summary": [
+        "58/58 checks passed"
+      ],
+      "stdout": "58/58 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-flight3d-sepbeat.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-flight3d-sepbeat.js"
+      ],
+      "elapsedMs": 98,
+      "summary": [
+        "10/10 checks passed"
+      ],
+      "stdout": "10/10 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-flight3d-staging.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-flight3d-staging.js"
+      ],
+      "elapsedMs": 147,
+      "summary": [
+        "35/35 checks passed"
+      ],
+      "stdout": "35/35 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-flight3d-trajectory.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-flight3d-trajectory.js"
+      ],
+      "elapsedMs": 97,
+      "summary": [
+        "31/31 checks passed"
+      ],
+      "stdout": "31/31 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-flight3d-vehicle-sync.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-flight3d-vehicle-sync.js"
+      ],
+      "elapsedMs": 93,
+      "summary": [
+        "20/20 checks passed"
+      ],
+      "stdout": "20/20 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-focus-trap.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-focus-trap.js"
+      ],
+      "elapsedMs": 92,
+      "summary": [
+        "31/31 checks passed"
+      ],
+      "stdout": "\n31/31 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-gate1-interaction-contract.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-gate1-interaction-contract.js"
+      ],
+      "elapsedMs": 112,
+      "summary": [
+        "18/18 checks passed"
+      ],
+      "stdout": "18/18 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-gate1-lifecycle-regressions.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-gate1-lifecycle-regressions.js"
+      ],
+      "elapsedMs": 129,
+      "summary": [
+        "15/15 checks passed"
+      ],
+      "stdout": "15/15 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-gate1-quote-contract.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-gate1-quote-contract.js"
+      ],
+      "elapsedMs": 106,
+      "summary": [
+        "22/22 checks passed"
+      ],
+      "stdout": "22/22 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-gate1-state-contract.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-gate1-state-contract.js"
+      ],
+      "elapsedMs": 97,
+      "summary": [
+        "22/22 checks passed"
+      ],
+      "stdout": "22/22 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-gate1-truth-contract.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-gate1-truth-contract.js"
+      ],
+      "elapsedMs": 101,
+      "summary": [
+        "25/25 checks passed"
+      ],
+      "stdout": "25/25 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-gate2-resume-contract.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-gate2-resume-contract.js"
+      ],
+      "elapsedMs": 148,
+      "summary": [
+        "24/24 checks passed"
+      ],
+      "stdout": "24/24 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-gate2-settlement-contract.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-gate2-settlement-contract.js"
+      ],
+      "elapsedMs": 132,
+      "summary": [
+        "13/13 checks passed"
+      ],
+      "stdout": "13/13 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-gate2-transaction-contract.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-gate2-transaction-contract.js"
+      ],
+      "elapsedMs": 125,
+      "summary": [
+        "12/12 checks passed"
+      ],
+      "stdout": "12/12 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-gate3-opening-economy.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-gate3-opening-economy.js"
+      ],
+      "elapsedMs": 113,
+      "summary": [
+        "22/22 checks passed"
+      ],
+      "stdout": "22/22 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-gate3-reorganization-contract.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-gate3-reorganization-contract.js"
+      ],
+      "elapsedMs": 366,
+      "summary": [
+        "44/44 checks passed"
+      ],
+      "stdout": "44/44 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-gate3-state-contract.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-gate3-state-contract.js"
+      ],
+      "elapsedMs": 107,
+      "summary": [
+        "30/30 checks passed"
+      ],
+      "stdout": "30/30 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-graphics-pass-2026-11.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-graphics-pass-2026-11.js"
+      ],
+      "elapsedMs": 93,
+      "summary": [
+        "34/34 checks passed"
+      ],
+      "stdout": "34/34 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-gregorian-calendar.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-gregorian-calendar.js"
+      ],
+      "elapsedMs": 110,
+      "summary": [
+        "Gregorian calendar foundation",
+        "46 passed, 0 failed"
+      ],
+      "stdout": "Gregorian calendar foundation\n\n46 passed, 0 failed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-ground-track.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-ground-track.js"
+      ],
+      "elapsedMs": 99,
+      "summary": [
+        "12/12 checks passed"
+      ],
+      "stdout": "12/12 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-header-tooltips.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-header-tooltips.js"
+      ],
+      "elapsedMs": 100,
+      "summary": [
+        "13/13 checks passed"
+      ],
+      "stdout": "13/13 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-hidden-tab.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-hidden-tab.js"
+      ],
+      "elapsedMs": 93,
+      "summary": [
+        "34/34 checks passed"
+      ],
+      "stdout": "\n34/34 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-hotkeys.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-hotkeys.js"
+      ],
+      "elapsedMs": 95,
+      "summary": [
+        "31/31 checks passed"
+      ],
+      "stdout": "\n31/31 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-hull-registry.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-hull-registry.js"
+      ],
+      "elapsedMs": 96,
+      "summary": [
+        "9/9 checks passed"
+      ],
+      "stdout": "9/9 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-icon-set.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-icon-set.js"
+      ],
+      "elapsedMs": 97,
+      "summary": [
+        "27/27 checks passed"
+      ],
+      "stdout": "27/27 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-inclination-missions.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-inclination-missions.js"
+      ],
+      "elapsedMs": 96,
+      "summary": [
+        "10/10 checks passed"
+      ],
+      "stdout": "10/10 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-inclination.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-inclination.js"
+      ],
+      "elapsedMs": 96,
+      "summary": [
+        "21/21 checks passed"
+      ],
+      "stdout": "21/21 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-investor-confidence.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-investor-confidence.js"
+      ],
+      "elapsedMs": 144,
+      "summary": [
+        "27 passed, 0 failed"
+      ],
+      "stdout": "\n27 passed, 0 failed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-launch-camera.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-launch-camera.js"
+      ],
+      "elapsedMs": 93,
+      "summary": [
+        "46/46 checks passed"
+      ],
+      "stdout": "46/46 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-layout-pass.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-layout-pass.js"
+      ],
+      "elapsedMs": 103,
+      "summary": [
+        "25/25 checks passed"
+      ],
+      "stdout": "25/25 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-light-lag.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-light-lag.js"
+      ],
+      "elapsedMs": 102,
+      "summary": [
+        "22/22 checks passed"
+      ],
+      "stdout": "22/22 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-live-call-freq.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-live-call-freq.js"
+      ],
+      "elapsedMs": 106,
+      "summary": [
+        "10/10 checks passed"
+      ],
+      "stdout": "10/10 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-livery-esc.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-livery-esc.js"
+      ],
+      "elapsedMs": 99,
+      "summary": [
+        "10/10 checks passed"
+      ],
+      "stdout": "10/10 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-map-shell-slots.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-map-shell-slots.js"
+      ],
+      "elapsedMs": 97,
+      "summary": [
+        "8/8 checks passed"
+      ],
+      "stdout": "8/8 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-map-slice-a.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-map-slice-a.js"
+      ],
+      "elapsedMs": 98,
+      "summary": [
+        "21 passed, 0 failed"
+      ],
+      "stdout": "\n21 passed, 0 failed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-map-slice-b.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-map-slice-b.js"
+      ],
+      "elapsedMs": 114,
+      "summary": [
+        "25 passed, 0 failed"
+      ],
+      "stdout": "\n25 passed, 0 failed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-map-slice-c.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-map-slice-c.js"
+      ],
+      "elapsedMs": 100,
+      "summary": [
+        "16 passed, 0 failed"
+      ],
+      "stdout": "\n16 passed, 0 failed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-map-sm1-sm5-source.js",
+      "mode": "standalone",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "tests/test-map-sm1-sm5-source.js"
+      ],
+      "elapsedMs": 33,
+      "summary": [
+        "26/26 checks passed"
+      ],
+      "stdout": "26/26 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-map3d-orient.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-map3d-orient.js"
+      ],
+      "elapsedMs": 99,
+      "summary": [
+        "map3d-orient: 35 passed, 0 failed"
+      ],
+      "stdout": "map3d-orient: 35 passed, 0 failed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-map3d-overlay.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-map3d-overlay.js"
+      ],
+      "elapsedMs": 111,
+      "summary": [
+        "map3d-overlay: 34 passed, 0 failed"
+      ],
+      "stdout": "map3d-overlay: 34 passed, 0 failed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-map3d-roster.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-map3d-roster.js"
+      ],
+      "elapsedMs": 122,
+      "summary": [
+        "map3d-roster: 29 passed, 0 failed"
+      ],
+      "stdout": "map3d-roster: 29 passed, 0 failed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-map3d-scale.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-map3d-scale.js"
+      ],
+      "elapsedMs": 97,
+      "summary": [
+        "map3d-scale: 48 passed, 0 failed"
+      ],
+      "stdout": "map3d-scale: 48 passed, 0 failed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-map3d-shell.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-map3d-shell.js"
+      ],
+      "elapsedMs": 105,
+      "summary": [
+        "32/32 checks passed"
+      ],
+      "stdout": "32/32 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-map3d-window.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-map3d-window.js"
+      ],
+      "elapsedMs": 109,
+      "summary": [
+        "map3d-window: 36 passed, 0 failed"
+      ],
+      "stdout": "map3d-window: 36 passed, 0 failed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-materials.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-materials.js"
+      ],
+      "elapsedMs": 142,
+      "summary": [
+        "46/46 checks passed"
+      ],
+      "stdout": "\n46/46 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-maxq-fairing.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-maxq-fairing.js"
+      ],
+      "elapsedMs": 131,
+      "summary": [
+        "18/18 checks passed"
+      ],
+      "stdout": "18/18 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-memorial.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-memorial.js"
+      ],
+      "elapsedMs": 139,
+      "summary": [
+        "13/13 checks passed"
+      ],
+      "stdout": "13/13 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-mission-mass-accounting.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-mission-mass-accounting.js"
+      ],
+      "elapsedMs": 105,
+      "summary": [
+        "21/21 checks passed"
+      ],
+      "stdout": "21/21 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-near-miss.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-near-miss.js"
+      ],
+      "elapsedMs": 132,
+      "summary": [
+        "33/33 checks passed"
+      ],
+      "stdout": "33/33 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-night-launch.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-night-launch.js"
+      ],
+      "elapsedMs": 100,
+      "summary": [
+        "9/9 checks passed"
+      ],
+      "stdout": "9/9 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-onboarding.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-onboarding.js"
+      ],
+      "elapsedMs": 180,
+      "summary": [
+        "57/57 checks passed"
+      ],
+      "stdout": "57/57 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-ops-friction.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-ops-friction.js"
+      ],
+      "elapsedMs": 118,
+      "summary": [
+        "36/36"
+      ],
+      "stdout": "36/36\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-orbit-assets.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-orbit-assets.js"
+      ],
+      "elapsedMs": 132,
+      "summary": [
+        "14/14 checks passed"
+      ],
+      "stdout": "14/14 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-orbital-maneuvers.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-orbital-maneuvers.js"
+      ],
+      "elapsedMs": 107,
+      "summary": [
+        "orbital maneuvers: 14/14"
+      ],
+      "stdout": "orbital maneuvers: 14/14\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-outer-bases.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-outer-bases.js"
+      ],
+      "elapsedMs": 105,
+      "summary": [
+        "72/72 checks passed"
+      ],
+      "stdout": "72/72 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-pad-a.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-pad-a.js"
+      ],
+      "elapsedMs": 331,
+      "summary": [
+        "36/36 checks passed"
+      ],
+      "stdout": "\n36/36 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-pad-abort.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-pad-abort.js"
+      ],
+      "elapsedMs": 114,
+      "summary": [
+        "32 passed, 0 failed"
+      ],
+      "stdout": "\n32 passed, 0 failed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-parts-attach.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-parts-attach.js"
+      ],
+      "elapsedMs": 94,
+      "summary": [
+        "29/29 checks passed"
+      ],
+      "stdout": "29/29 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-parts-bridge.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-parts-bridge.js"
+      ],
+      "elapsedMs": 95,
+      "summary": [
+        "31/31 checks passed"
+      ],
+      "stdout": "31/31 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-parts-gate.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-parts-gate.js"
+      ],
+      "elapsedMs": 94,
+      "summary": [
+        "27/27 checks passed"
+      ],
+      "stdout": "27/27 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-parts-migration.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-parts-migration.js"
+      ],
+      "elapsedMs": 99,
       "summary": [
         "28/28 checks passed"
       ],
@@ -3515,15 +3490,157 @@
       "timedOut": false
     },
     {
-      "name": "test-theme-sync.js",
+      "name": "test-parts-physics.js",
+      "mode": "harness",
       "classification": "pass",
+      "partialPass": [],
       "exitCode": 0,
       "signal": null,
       "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-theme-sync.js"
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-parts-physics.js"
       ],
-      "elapsedMs": 175,
+      "elapsedMs": 98,
+      "summary": [
+        "17/17 checks passed"
+      ],
+      "stdout": "17/17 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-parts-polish.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-parts-polish.js"
+      ],
+      "elapsedMs": 113,
+      "summary": [
+        "18/18 checks passed"
+      ],
+      "stdout": "18/18 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-parts-pp1-propulsion.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-parts-pp1-propulsion.js"
+      ],
+      "elapsedMs": 97,
+      "summary": [
+        "120/120 checks passed"
+      ],
+      "stdout": "120/120 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-parts-pp3-structural.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-parts-pp3-structural.js"
+      ],
+      "elapsedMs": 95,
+      "summary": [
+        "53/53 checks passed"
+      ],
+      "stdout": "53/53 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-parts-render.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-parts-render.js"
+      ],
+      "elapsedMs": 100,
+      "summary": [
+        "45/45 checks passed"
+      ],
+      "stdout": "45/45 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-parts-staging.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-parts-staging.js"
+      ],
+      "elapsedMs": 95,
+      "summary": [
+        "31/31 checks passed"
+      ],
+      "stdout": "31/31 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-parts-ui.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-parts-ui.js"
+      ],
+      "elapsedMs": 115,
+      "summary": [
+        "23/23 checks passed"
+      ],
+      "stdout": "23/23 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-parts-wiring.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-parts-wiring.js"
+      ],
+      "elapsedMs": 132,
       "summary": [
         "40/40 checks passed"
       ],
@@ -3533,15 +3650,904 @@
       "timedOut": false
     },
     {
-      "name": "test-three-guard.js",
+      "name": "test-persistent-satellites.js",
+      "mode": "harness",
       "classification": "pass",
+      "partialPass": [],
       "exitCode": 0,
       "signal": null,
       "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-three-guard.js"
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-persistent-satellites.js"
       ],
-      "elapsedMs": 176,
+      "elapsedMs": 124,
+      "summary": [
+        "#116-A — persistent satellites",
+        "40 passed, 0 failed"
+      ],
+      "stdout": "#116-A — persistent satellites\n\n40 passed, 0 failed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-personnel-retirement.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-personnel-retirement.js"
+      ],
+      "elapsedMs": 116,
+      "summary": [
+        "39 passed, 0 failed"
+      ],
+      "stdout": "\n39 passed, 0 failed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-plume-visual-language.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-plume-visual-language.js"
+      ],
+      "elapsedMs": 95,
+      "summary": [
+        "16/16 checks passed"
+      ],
+      "stdout": "16/16 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-popout-sizing.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-popout-sizing.js"
+      ],
+      "elapsedMs": 117,
+      "summary": [
+        "19/19 checks passed"
+      ],
+      "stdout": "19/19 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-progress-unify.js",
+      "mode": "harness",
+      "classification": "known-skip",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-progress-unify.js"
+      ],
+      "elapsedMs": 92,
+      "summary": [
+        "SKIP: F4 forward test (unfinished feature — set RUN_F4=1 to run)",
+        "0/0 checks passed"
+      ],
+      "stdout": "SKIP: F4 forward test (unfinished feature — set RUN_F4=1 to run)\n0/0 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-reduced-motion.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-reduced-motion.js"
+      ],
+      "elapsedMs": 173,
+      "summary": [
+        "Gate 6 — reduced motion",
+        "24 passed, 0 failed"
+      ],
+      "stdout": "Gate 6 — reduced motion\n\n24 passed, 0 failed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-regression.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-regression.js"
+      ],
+      "elapsedMs": 130,
+      "summary": [
+        "18/18 checks passed"
+      ],
+      "stdout": "\n18/18 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-render-regions.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-render-regions.js"
+      ],
+      "elapsedMs": 181,
+      "summary": [
+        "24/24 checks passed"
+      ],
+      "stdout": "24/24 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-research-effect-gates.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-research-effect-gates.js"
+      ],
+      "elapsedMs": 103,
+      "summary": [
+        "12/12 checks passed"
+      ],
+      "stdout": "12/12 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-research-era-gate.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-research-era-gate.js"
+      ],
+      "elapsedMs": 94,
+      "summary": [
+        "25/25 checks passed"
+      ],
+      "stdout": "25/25 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-research-goal.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-research-goal.js"
+      ],
+      "elapsedMs": 107,
+      "summary": [
+        "27/27 checks passed"
+      ],
+      "stdout": "27/27 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-research-notice.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-research-notice.js"
+      ],
+      "elapsedMs": 95,
+      "summary": [
+        "14/14 checks passed"
+      ],
+      "stdout": "14/14 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-rival-intel.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-rival-intel.js"
+      ],
+      "elapsedMs": 105,
+      "summary": [
+        "29/29 checks passed"
+      ],
+      "stdout": "29/29 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-rival-strip.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-rival-strip.js"
+      ],
+      "elapsedMs": 95,
+      "summary": [
+        "22/22 checks passed"
+      ],
+      "stdout": "22/22 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-rivals-e11.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-rivals-e11.js"
+      ],
+      "elapsedMs": 129,
+      "summary": [
+        "24/24 checks passed"
+      ],
+      "stdout": "24/24 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-roster.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-roster.js"
+      ],
+      "elapsedMs": 127,
+      "summary": [
+        "12/12 checks passed"
+      ],
+      "stdout": "12/12 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-sample-decision.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-sample-decision.js"
+      ],
+      "elapsedMs": 100,
+      "summary": [
+        "29/29 checks passed"
+      ],
+      "stdout": "29/29 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-save-ring.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-save-ring.js"
+      ],
+      "elapsedMs": 100,
+      "summary": [
+        "42/42 checks passed"
+      ],
+      "stdout": "\n42/42 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-save-slots.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-save-slots.js"
+      ],
+      "elapsedMs": 100,
+      "summary": [
+        "69/69 checks passed"
+      ],
+      "stdout": "\n69/69 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-save.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-save.js"
+      ],
+      "elapsedMs": 122,
+      "summary": [
+        "34/34 checks passed"
+      ],
+      "stdout": "\n34/34 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-scene-math.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-scene-math.js"
+      ],
+      "elapsedMs": 94,
+      "summary": [
+        "35/35 checks passed"
+      ],
+      "stdout": "35/35 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-scene-shell-contract.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-scene-shell-contract.js"
+      ],
+      "elapsedMs": 100,
+      "summary": [
+        "10/10 checks passed"
+      ],
+      "stdout": "10/10 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-science-program.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-science-program.js"
+      ],
+      "elapsedMs": 101,
+      "summary": [
+        "22/22 checks passed"
+      ],
+      "stdout": "22/22 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-sethtml.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-sethtml.js"
+      ],
+      "elapsedMs": 94,
+      "summary": [
+        "9/9 checks passed"
+      ],
+      "stdout": "9/9 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-shell-consolidation.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-shell-consolidation.js"
+      ],
+      "elapsedMs": 103,
+      "summary": [
+        "10/10 checks passed"
+      ],
+      "stdout": "10/10 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-solar-conjunction.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-solar-conjunction.js"
+      ],
+      "elapsedMs": 104,
+      "summary": [
+        "19/19 checks passed"
+      ],
+      "stdout": "19/19 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-sound.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-sound.js"
+      ],
+      "elapsedMs": 116,
+      "summary": [
+        "12/12 checks passed"
+      ],
+      "stdout": "12/12 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-station-docking.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-station-docking.js"
+      ],
+      "elapsedMs": 126,
+      "summary": [
+        "18/18 checks passed"
+      ],
+      "stdout": "18/18 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-station-module-queue.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-station-module-queue.js"
+      ],
+      "elapsedMs": 124,
+      "summary": [
+        "#119 — station module build queue",
+        "32 passed, 0 failed"
+      ],
+      "stdout": "#119 — station module build queue\n\n32 passed, 0 failed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-station-operations.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-station-operations.js"
+      ],
+      "elapsedMs": 117,
+      "summary": [
+        "18/18 checks passed"
+      ],
+      "stdout": "18/18 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-station-popout.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-station-popout.js"
+      ],
+      "elapsedMs": 99,
+      "summary": [
+        "20/20 checks passed"
+      ],
+      "stdout": "20/20 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-station-slice1.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-station-slice1.js"
+      ],
+      "elapsedMs": 153,
+      "summary": [
+        "32/32 checks passed"
+      ],
+      "stdout": "32/32 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-station-slice2.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-station-slice2.js"
+      ],
+      "elapsedMs": 130,
+      "summary": [
+        "28/28 checks passed"
+      ],
+      "stdout": "28/28 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-station-slice3.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-station-slice3.js"
+      ],
+      "elapsedMs": 359,
+      "summary": [
+        "30/30 checks passed"
+      ],
+      "stdout": "30/30 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-support-breakdown.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-support-breakdown.js"
+      ],
+      "elapsedMs": 100,
+      "summary": [
+        "#53 — public support decomposition",
+        "25 passed, 0 failed"
+      ],
+      "stdout": "#53 — public support decomposition\n\n25 passed, 0 failed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-surface-modules.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-surface-modules.js"
+      ],
+      "elapsedMs": 138,
+      "summary": [
+        "34/34 checks passed"
+      ],
+      "stdout": "34/34 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-tech-capstones.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-tech-capstones.js"
+      ],
+      "elapsedMs": 104,
+      "summary": [
+        "13/13 checks passed"
+      ],
+      "stdout": "13/13 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-tech-combustion-merge.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-tech-combustion-merge.js"
+      ],
+      "elapsedMs": 101,
+      "summary": [
+        "21/21 checks passed"
+      ],
+      "stdout": "21/21 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-tech-guidance-merge.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-tech-guidance-merge.js"
+      ],
+      "elapsedMs": 94,
+      "summary": [
+        "18/18 checks passed"
+      ],
+      "stdout": "18/18 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-tech-structures-merge.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-tech-structures-merge.js"
+      ],
+      "elapsedMs": 95,
+      "summary": [
+        "21/21 checks passed"
+      ],
+      "stdout": "21/21 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-tech-testing-merge.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-tech-testing-merge.js"
+      ],
+      "elapsedMs": 95,
+      "summary": [
+        "28/28 checks passed"
+      ],
+      "stdout": "28/28 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-theme-palettes.js",
+      "mode": "standalone",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "tests/test-theme-palettes.js"
+      ],
+      "elapsedMs": 28,
+      "summary": [
+        "Gate 6 — theme/era palette contracts",
+        "275 passed, 0 failed"
+      ],
+      "stdout": "Gate 6 — theme/era palette contracts\n\n275 passed, 0 failed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-theme-sync.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-theme-sync.js"
+      ],
+      "elapsedMs": 96,
+      "summary": [
+        "177/177 checks passed"
+      ],
+      "stdout": "177/177 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-themeable-surfaces.js",
+      "mode": "standalone",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "tests/test-themeable-surfaces.js"
+      ],
+      "elapsedMs": 32,
+      "summary": [
+        "Gate 6 — themeable surface migration",
+        "20 passed, 0 failed"
+      ],
+      "stdout": "Gate 6 — themeable surface migration\n\n20 passed, 0 failed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-three-guard.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-three-guard.js"
+      ],
+      "elapsedMs": 98,
       "summary": [
         "9/9 checks passed"
       ],
@@ -3552,14 +4558,16 @@
     },
     {
       "name": "test-tracking-stations.js",
+      "mode": "harness",
       "classification": "pass",
+      "partialPass": [],
       "exitCode": 0,
       "signal": null,
       "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-tracking-stations.js"
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-tracking-stations.js"
       ],
-      "elapsedMs": 187,
+      "elapsedMs": 103,
       "summary": [
         "49/49 checks passed"
       ],
@@ -3569,15 +4577,38 @@
       "timedOut": false
     },
     {
-      "name": "test-ui-layer-button.js",
+      "name": "test-typography.js",
+      "mode": "standalone",
       "classification": "pass",
+      "partialPass": [],
       "exitCode": 0,
       "signal": null,
       "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-ui-layer-button.js"
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "tests/test-typography.js"
       ],
-      "elapsedMs": 205,
+      "elapsedMs": 27,
+      "summary": [
+        "Gate 6 -- typography (bundled webfont)",
+        "23 passed, 0 failed"
+      ],
+      "stdout": "Gate 6 -- typography (bundled webfont)\n\n23 passed, 0 failed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-ui-layer-button.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-ui-layer-button.js"
+      ],
+      "elapsedMs": 112,
       "summary": [
         "19/19 checks passed"
       ],
@@ -3588,14 +4619,16 @@
     },
     {
       "name": "test-ui-scale.js",
+      "mode": "harness",
       "classification": "pass",
+      "partialPass": [],
       "exitCode": 0,
       "signal": null,
       "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-ui-scale.js"
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-ui-scale.js"
       ],
-      "elapsedMs": 172,
+      "elapsedMs": 92,
       "summary": [
         "48/48 checks passed"
       ],
@@ -3606,14 +4639,56 @@
     },
     {
       "name": "test-vehicle-dimensions.js",
+      "mode": "harness",
       "classification": "pass",
+      "partialPass": [],
       "exitCode": 0,
       "signal": null,
       "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-vehicle-dimensions.js"
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-vehicle-dimensions.js"
       ],
-      "elapsedMs": 167,
+      "elapsedMs": 95,
+      "summary": [
+        "12/12 checks passed"
+      ],
+      "stdout": "12/12 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-vehicle-docking.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-vehicle-docking.js"
+      ],
+      "elapsedMs": 153,
+      "summary": [
+        "21/21 checks passed"
+      ],
+      "stdout": "21/21 checks passed\n",
+      "stderr": "",
+      "spawnError": null,
+      "timedOut": false
+    },
+    {
+      "name": "test-vehicle-fin-scaling.js",
+      "mode": "harness",
+      "classification": "pass",
+      "partialPass": [],
+      "exitCode": 0,
+      "signal": null,
+      "command": [
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-vehicle-fin-scaling.js"
+      ],
+      "elapsedMs": 94,
       "summary": [
         "12/12 checks passed"
       ],
@@ -3624,14 +4699,16 @@
     },
     {
       "name": "test-workspace-shell.js",
+      "mode": "harness",
       "classification": "pass",
+      "partialPass": [],
       "exitCode": 0,
       "signal": null,
       "command": [
-        "/usr/bin/node",
-        "/tmp/ov-gate0-sweep-VVFDmJ/test-workspace-shell.js"
+        "/home/sshaf/.nvm/versions/node/v22.22.1/bin/node",
+        "/tmp/ov-gate0-sweep-G255o9/test-workspace-shell.js"
       ],
-      "elapsedMs": 185,
+      "elapsedMs": 95,
       "summary": [
         "10/10 checks passed"
       ],
@@ -3642,25 +4719,25 @@
     }
   ],
   "artifacts": {
-    "orbital-ventures.html": 18823756,
-    "index.html": 119888,
-    "build/game.js": 2114241,
+    "orbital-ventures.html": 19175287,
+    "index.html": 238818,
+    "build/game.js": 2346842,
     "trackedBytes": {
-      "src": 2233810,
-      "tests": 1021750,
-      "assets": 12443285
+      "src": 2585341,
+      "tests": 1218986,
+      "assets": 12523297
     },
     "worktreeBytes": {
-      "src": 2233810,
-      "tests": 1021750,
-      "assets": 12443285
+      "src": 2585341,
+      "tests": 1224666,
+      "assets": 12523297
     },
     "godotPathsPresent": []
   },
   "overall": {
     "ok": true,
-    "totalSuites": 143,
-    "passedSuites": 142,
+    "totalSuites": 174,
+    "passedSuites": 173,
     "knownRedSuites": [],
     "knownSkippedSuites": [
       "test-progress-unify.js"

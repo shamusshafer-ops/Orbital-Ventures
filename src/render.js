@@ -2190,7 +2190,7 @@ const CAPE3D_METERS_PER_KM = 1000;
 const CAPE3D_OCEAN_WIDTH_M = 12000000;
 const CAPE3D_OCEAN_DEPTH_M = 2000000;
 const CAPE3D_TEXTURE_ASSET={ground:'assets/cape-ground-albedo.png',pavement:'assets/cape-pavement-albedo.png'};
-const CAPE3D_TERRAIN_STYLE={ground:0xb6c78b,overlayOpacity:.68,sandPatchEvery:4};
+const CAPE3D_TERRAIN_STYLE={ground:0xa3c890,overlayOpacity:.68,sandPatchEvery:4};
 let cape3d = null;
 function capeWorldPoint(gx, gy, elevation){
   return {x:gx*CAPE_WORLD_TILE_M*CAPE3D_SITE_SPREAD, y:elevation||0, z:gy*CAPE_WORLD_TILE_M*CAPE3D_SITE_SPREAD};
@@ -3028,23 +3028,29 @@ function cape3dGroundSmokeProfile(phase, progress, ignition){
   return {strength,spread,lift:1+strength*1.65};
 }
 function cape3dGroundSmoke(root, origin){
+  // Graphics pass (2026-11-15): soft camera-facing billows instead of lit 12-segment spheres, which
+  // read as translucent faceted boulders; the cloud is also sized to the vehicle on the pad.
   const group=new THREE.Group(); group.name='cape3d_ground_smoke'; group.visible=false;
-  const puffs=[], originPoint=origin.clone(), material=new THREE.MeshStandardMaterial({color:0xd9e3e5,transparent:true,opacity:0,roughness:1,depthWrite:false});
-  for(let i=0;i<26;i++){
-    const angle=i*2.399, radius=12+(i%7)*8, size=12+(i%5)*7;
-    const puff=new THREE.Mesh(new THREE.SphereGeometry(size,12,9),material.clone());
+  const puffs=[], originPoint=origin.clone(), tx=cape3dPlumeTexture();
+  for(let i=0;i<34;i++){
+    const angle=i*2.399, radius=10+(i%7)*8, size=12+(i%5)*7;
+    const puff=new THREE.Sprite(new THREE.SpriteMaterial({map:tx,color:i%3?0xe4eaec:0xcfd6d9,transparent:true,opacity:0,depthWrite:false}));
     puff.userData={angle,radius,size,lift:2+(i%4)*4}; puff.visible=false; group.add(puff); puffs.push(puff);
   }
-  root.add(group); return {group,puffs,origin:originPoint};
+  root.add(group); return {group,puffs,origin:originPoint,vehicleScale:1,vehicleRef:null};
 }
 function cape3dUpdateGroundSmoke(smoke, phase, progress, ignition){
   if(!smoke) return;
   const q=cape3dGroundSmokeProfile(phase,progress,ignition); smoke.group.visible=q.strength>.01;
+  if(!smoke.group.visible) return;
+  const rocket=cape3d&&cape3d.root&&cape3d.root.userData.launchRocket;
+  if(rocket&&smoke.vehicleRef!==rocket){ smoke.vehicleRef=rocket; const h=Number(rocket.userData&&rocket.userData.totalHeight)||70; smoke.vehicleScale=Math.max(.28,Math.min(1.5,h/75)); }
+  const k=smoke.vehicleScale||1, lum=Math.max(.3,Math.min(1,.3+((cape3d&&cape3d.sun&&cape3d.sun.intensity)||1)/2.6));
   smoke.puffs.forEach((puff,i)=>{
-    const d=puff.userData, radial=d.radius*q.spread, drift=(progress||0)*(18+i*2.4);
-    puff.visible=q.strength>.01;
-    puff.position.set(smoke.origin.x+Math.cos(d.angle)*radial+Math.cos(d.angle+.8)*drift,smoke.origin.y+d.lift*q.lift,smoke.origin.z+Math.sin(d.angle)*radial+Math.sin(d.angle+.8)*drift*.5);
-    puff.scale.setScalar(.35+q.strength*(1.15+(i%5)*.13)); puff.material.opacity=q.strength*(.20+(i%4)*.045);
+    const d=puff.userData, radial=d.radius*q.spread*k, drift=(progress||0)*(18+i*2.4)*k, s=d.size*k*(.9+q.strength*(2.3+(i%5)*.28));
+    puff.visible=true;
+    puff.position.set(smoke.origin.x+Math.cos(d.angle)*radial+Math.cos(d.angle+.8)*drift,smoke.origin.y+s*.3+d.lift*q.lift*k,smoke.origin.z+Math.sin(d.angle)*radial+Math.sin(d.angle+.8)*drift*.5);
+    puff.scale.set(s*1.25,s,1); puff.material.opacity=q.strength*(.30+(i%4)*.06); puff.material.color.setScalar(lum*(i%3?.92:.82));
   });
 }
 function cape3dSplashEffects(root){
@@ -9135,7 +9141,7 @@ function assembly3dBuildBase(scene,spec){
   for(let i=0;i<pa.count;i++){ const x=pa.getX(i),z=pa.getZ(i), edge=Math.min(1,Math.max(0,(Math.abs(x)-12)/24)+(Math.max(0,Math.abs(z)-9)/18)), r=Math.hypot(x,z), far=Math.max(0,(r-46)/70);
     pa.setY(i,(rnd()-.5)*(mars?.42:.24)*(0.25+edge)+far*far*(mars?9:7)*(1+.55*Math.sin(x*.061+1.3)+.45*Math.cos(z*.073-.4)+.3*Math.sin((x+z)*.11))); }
   geo.computeVertexNormals();
-  const soilTx=assembly3dRegolithTexture(mars), soil=assembly3dMat(mars?'#a4573a':'#7c8084',.05,.96); if(soilTx){ soil.map=soilTx; soil.bumpMap=soilTx; soil.bumpScale=.6; }
+  const soilTx=assembly3dRegolithTexture(mars), soil=assembly3dMat(mars?'#9a5a40':'#7c8084',.05,.96); if(soilTx){ soil.map=soilTx; soil.bumpMap=soilTx; soil.bumpScale=.6; }
   const ground=new THREE.Mesh(geo,soil); ground.receiveShadow=true; scene.add(ground);
   if(!mars){ try{ const earthDef=BODIES.find(b=>b.id==='earth'), etx=earthDef&&map3dSurfaceTexture(earthDef), em=new THREE.MeshStandardMaterial({color:0xffffff,roughness:.8,emissive:0x16324a,emissiveIntensity:.35}); if(etx) em.map=etx; else em.color.set(0x327bb5);
     const home=new THREE.Mesh(new THREE.SphereGeometry(7.5,36,24),em); home.position.set(-52,46,-150); home.rotation.set(.3,2.2,-.35); scene.add(home);

@@ -19,6 +19,11 @@ build/game.js` immediately after any edit near a `/* */` comment block, and pref
 a comment's opening `/*` line (or below its closing `*/`) so a narrow str_replace match can't sever
 the marker from its body.
 
+**Latest (2026-11-15, branch `graphics-pass`, not merged/pushed at time of writing):** graphics pass 1 —
+Cape sky dome / lit facades / night lamps / shoreline / soft smoke, base terrain, part-diagram hulls. Presentation
+only. Full sweep 173/174, 1 intentional skip. See ROADMAP-HISTORY.md "Graphics pass 1". Needs a human look in a
+real browser, especially an ascent (the sky dome during flight was not captured headlessly).
+
 **In progress:** (none claimed right now).
 > When you start a task, replace this line with: `<task> — <Claude|Codex> — started <date>`.
 > When done, clear it back to "(none claimed right now)" and add your entry to the history below.
