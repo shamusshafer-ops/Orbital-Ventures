@@ -1158,6 +1158,18 @@
   /* #4: a tab Basic just revealed carries a dot until it's visited */
   .scene-dock nav.rail-nav button.tab-new .cc-nav-label::after,#sceneNav button.tab-new .cc-nav-label::after{content:'';display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--ignite);margin-left:6px;vertical-align:middle}
   @media(max-width:880px){ #coachPanel{left:16px;bottom:12px} }
+  /* ===== Graphics pass (2026-11-15) — presentation only ===== */
+  /* Cape 3D facility labels: HUD chips on a short leader line instead of loose black text boxes. */
+  .command-hero #ccZoom.cape3d-zoom .ccspot,#ccPopZoom.cape3d-zoom .ccspot{align-items:center;padding:0}
+  #ccZoom.cape3d-zoom .ccspot::after,#ccPopZoom.cape3d-zoom .ccspot::after{content:"";flex:0 0 auto;width:1px;height:12px;background:linear-gradient(var(--hud-line),transparent)}
+  #ccZoom.cape3d-zoom .ccspot .ccglyph,#ccPopZoom.cape3d-zoom .ccspot .ccglyph{align-self:center;margin:0 0 4px}
+  .command-hero #ccZoom.cape3d-zoom .ccspot .nm,#ccPopZoom.cape3d-zoom .ccspot .nm{align-self:center;max-width:none;white-space:nowrap;padding:3px 8px 2px;font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--ink);background:color-mix(in srgb,var(--bg) 82%,transparent);border:1px solid var(--hud-line);border-radius:2px;box-shadow:0 2px 10px rgba(0,0,0,.45);text-shadow:none}
+  .command-hero #ccZoom.cape3d-zoom .ccspot .st,#ccPopZoom.cape3d-zoom .ccspot .st{align-self:center;max-width:none;white-space:nowrap;background:color-mix(in srgb,var(--bg) 82%,transparent);text-shadow:none}
+  .command-hero #ccZoom.cape3d-zoom .ccspot:hover .nm,.command-hero #ccZoom.cape3d-zoom .ccspot:focus-visible .nm{border-color:var(--ignite);color:#fff}
+  .command-hero #ccZoom.cape3d-zoom .ccspot:hover,.command-hero #ccZoom.cape3d-zoom .ccspot:focus-visible{background:transparent;border-color:transparent;box-shadow:none}
+  .command-hero #ccZoom.cape3d-zoom .ccspot.cc-attention{border-color:transparent}
+  .command-hero #ccZoom.cape3d-zoom .ccspot.cc-attention .nm{border-color:color-mix(in srgb,var(--bad) 70%,transparent)}
+  /* ===== end graphics pass ===== */
 </style>
 </head>
 <body>

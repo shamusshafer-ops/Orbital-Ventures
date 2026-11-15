@@ -2363,7 +2363,7 @@ function cape3dPracticalLights(root,descriptors){
   const g=new THREE.Group(); g.name='cape3d_practical_lights'; const lamps=[];
   descriptors.filter(d=>['pad','rivalpad','vab','control','prod'].includes(d.type)).forEach((d,i)=>{
     const color=i<2?0xffb15e:0xb8dcff, light=new THREE.PointLight(color,.8,230,2); light.position.set(d.position.x,d.height*.72+7,d.position.z); g.add(light);
-    const fixture=new THREE.Mesh(new THREE.SphereGeometry(i<2?3.8:2.5,10,8),new THREE.MeshStandardMaterial({color,emissive:color,emissiveIntensity:.15,roughness:.35})); fixture.position.copy(light.position); g.add(fixture); lamps.push({light,fixture});
+    const fixture=new THREE.Mesh(new THREE.SphereGeometry(i<2?3.8:2.5,10,8),new THREE.MeshStandardMaterial({color,emissive:color,emissiveIntensity:.15,roughness:.35})); fixture.position.copy(light.position); g.add(fixture); lamps.push({light,fixture,boost:i<2?9000:2600});
   });
   root.add(g); return lamps;
 }
@@ -2373,7 +2373,7 @@ function cape3dStreetLights(root,materials){
     const x=capeWorldPoint(-1.1+i*.52,0).x, side=i%2?1:-1, z=roadZ+side*18, poleH=19;
     cape3dCylinder(g,.65,poleH,materials.dark,x,poleH*.5,z); cape3dBox(g,7,.55,.55,materials.dark,x+side*3.2,poleH,z,false);
     const color=0xffd69a, light=new THREE.PointLight(color,.35,105,2); light.position.set(x+side*6.2,poleH-.3,z); g.add(light);
-    const fixture=new THREE.Mesh(new THREE.SphereGeometry(1.65,10,8),new THREE.MeshStandardMaterial({color,emissive:color,emissiveIntensity:.08,roughness:.3})); fixture.position.copy(light.position); g.add(fixture); lamps.push({light,fixture});
+    const fixture=new THREE.Mesh(new THREE.SphereGeometry(1.65,10,8),new THREE.MeshStandardMaterial({color,emissive:color,emissiveIntensity:.08,roughness:.3})); fixture.position.copy(light.position); g.add(fixture); lamps.push({light,fixture,boost:420});
   }
   root.add(g); return lamps;
 }
@@ -2460,6 +2460,64 @@ function cape3dCurrentVehicleDetailProfile(){
   try{ methane=!!(state&&state.stages&&state.stages.some(s=>String(s.eng||'').includes('methalox'))); }catch(e){}
   return cape3dVehicleDetailProfile(cape3dCurrentVehicleShape(),{methane});
 }
+// Graphics pass (2026-11-15) -- presentation only, no game state. Facade textures give every
+// facility readable floors/bays by day and lit windows by night; the sky dome replaces the flat
+// clear colour with a horizon-to-zenith gradient and a sun glow; the shoreline gets sand, shallows
+// and a foam line so the coast stops reading as a ruled edge.
+function cape3dFacadeTextures(){
+  if(cape3dFacadeTextures._cache) return cape3dFacadeTextures._cache;
+  const bays=4, cell=64, size=bays*cell, wall=document.createElement('canvas'), glow=document.createElement('canvas');
+  wall.width=wall.height=glow.width=glow.height=size;
+  const w=wall.getContext('2d'), g=glow.getContext('2d'); if(!w||!g) return null;
+  w.fillStyle='#ffffff'; w.fillRect(0,0,size,size); g.fillStyle='#000000'; g.fillRect(0,0,size,size);
+  const lit=[1,0,2,1, 0,1,1,0, 2,1,0,1, 1,0,1,2];
+  for(let r=0;r<bays;r++) for(let c=0;c<bays;c++){
+    const x=c*cell, y=r*cell, k=lit[r*bays+c];
+    w.fillStyle='rgba(0,0,0,.18)'; w.fillRect(x,y,2,cell); w.fillRect(x,y+cell-3,cell,3);
+    w.fillStyle='rgba(255,255,255,.12)'; w.fillRect(x+2,y,2,cell-3);
+    w.fillStyle='#46627a'; w.fillRect(x+10,y+15,cell-18,28);
+    w.fillStyle='rgba(190,228,246,.45)'; w.fillRect(x+10,y+15,cell-18,7);
+    w.fillStyle='rgba(0,0,0,.22)'; w.fillRect(x+10+(cell-18)/2-1,y+15,2,28);
+    if(k){ g.fillStyle=k===2?'#9ddcff':'#ffd9a0'; g.fillRect(x+10,y+15,cell-18,28); g.fillStyle='rgba(0,0,0,.35)'; g.fillRect(x+10+(cell-18)/2-1,y+15,2,28); }
+  }
+  const mk=cv=>{ const tx=new THREE.CanvasTexture(cv); tx.wrapS=tx.wrapT=THREE.RepeatWrapping; if('colorSpace' in tx) tx.colorSpace=THREE.SRGBColorSpace; tx.anisotropy=4; return tx; };
+  return (cape3dFacadeTextures._cache={wall:mk(wall),glow:mk(glow),bays});
+}
+function cape3dFacadeMaterial(color, faceWidth, height, materials){
+  const tx=cape3dFacadeTextures(); if(!tx) return cape3dMaterial(color,.74,.3);
+  const rx=Math.max(1,Math.round(faceWidth/24))/tx.bays, ry=Math.max(1,Math.round(height/17))/tx.bays;
+  const map=tx.wall.clone(), glow=tx.glow.clone(); map.repeat.set(rx,ry); glow.repeat.set(rx,ry); map.needsUpdate=true; glow.needsUpdate=true;
+  const m=new THREE.MeshStandardMaterial({color,map,emissive:0xffffff,emissiveMap:glow,emissiveIntensity:.04,roughness:.72,metalness:.18});
+  if(materials){ (materials.facades=materials.facades||[]).push(m); }
+  return m;
+}
+const CAPE3D_FACILITY_WALL={vab:0xc3ccd3,lab:0x7e9cb3,prod:0x8795a0,admin:0xa9b7c1,control:0x5c7f9b};
+function cape3dConcreteTexture(repeatX,repeatY){ const tx=cape3dCanvasTexture((ctx,w,h)=>{
+  // Even, lightly weathered slab concrete with expansion joints. The photographic pavement albedo
+  // carries large asphalt blotches that tile into a visible polka-dot pattern on pads and aprons.
+  ctx.fillStyle='#d9d6cf'; ctx.fillRect(0,0,w,h); let seed=7; const rnd=()=>{ seed=(seed*1103515245+12345)&0x7fffffff; return seed/0x7fffffff; };
+  for(let i=0;i<2600;i++){ const v=rnd(); ctx.fillStyle=v>.5?'rgba(255,255,255,.05)':'rgba(40,36,30,.06)'; ctx.fillRect(rnd()*w,rnd()*h,1+rnd()*2,1+rnd()*2); }
+  for(let i=0;i<9;i++){ const x=rnd()*w,y=rnd()*h,r=20+rnd()*46,g=ctx.createRadialGradient(x,y,0,x,y,r); g.addColorStop(0,'rgba(70,64,54,.10)'); g.addColorStop(1,'rgba(70,64,54,0)'); ctx.fillStyle=g; ctx.fillRect(x-r,y-r,r*2,r*2); }
+  ctx.fillStyle='rgba(30,28,24,.30)'; for(const q of [0,w/2]){ ctx.fillRect(q,0,2,h); ctx.fillRect(0,q,w,2); }
+  ctx.fillStyle='rgba(255,255,255,.14)'; for(const q of [0,w/2]){ ctx.fillRect(q+2,0,1,h); ctx.fillRect(0,q+2,w,1); }
+},repeatX,repeatY); if('colorSpace' in tx) tx.colorSpace=THREE.SRGBColorSpace; tx.anisotropy=4; return tx; }
+function cape3dSkyDome(scene){
+  const uniforms={top:{value:new THREE.Color(0x0a1428)},mid:{value:new THREE.Color(0x1d3450)},bot:{value:new THREE.Color(0x3a5570)},sunDir:{value:new THREE.Vector3(0,1,0)},sunCol:{value:new THREE.Color(0xffd9a0)},sunA:{value:1},fade:{value:1},space:{value:new THREE.Color(0x020914)}};
+  const mat=new THREE.ShaderMaterial({uniforms,side:THREE.BackSide,depthWrite:false,depthTest:false,fog:false,
+    vertexShader:'varying vec3 vDir; void main(){ vDir=normalize(position); gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
+    fragmentShader:'uniform vec3 top; uniform vec3 mid; uniform vec3 bot; uniform vec3 sunDir; uniform vec3 sunCol; uniform float sunA; uniform float fade; uniform vec3 space; varying vec3 vDir;\nvoid main(){ vec3 d=normalize(vDir); float h=d.y; vec3 c=mix(bot,mid,smoothstep(0.0,0.22,h)); c=mix(c,top,smoothstep(0.16,0.85,h)); float s=max(dot(d,normalize(sunDir)),0.0); c+=sunCol*(pow(s,420.0)*1.6+pow(s,28.0)*0.22+pow(s,5.0)*0.06)*sunA; gl_FragColor=vec4(mix(space,c,fade),1.0);\n#include <colorspace_fragment>\n}'});
+  const dome=new THREE.Mesh(new THREE.SphereGeometry(1,32,20),mat); dome.name='cape3d_sky'; dome.renderOrder=-10; dome.frustumCulled=false; scene.add(dome); return dome;
+}
+function cape3dShoreline(root, landscape){
+  const g=new THREE.Group(); g.name='cape3d_shore'; const depth=Math.min(landscape.land.depth,60000), x=landscape.coastX;
+  const plane=(w,mat,cx,y)=>{ const m=cape3dMesh(new THREE.PlaneGeometry(w,depth),mat,cx,y,180,false); m.rotation.x=-Math.PI/2; g.add(m); return m; };
+  plane(120,new THREE.MeshStandardMaterial({color:0xcdbb92,roughness:1}),x-60,-.66);
+  plane(46,new THREE.MeshStandardMaterial({color:0xbfae84,roughness:1,transparent:true,opacity:.75}),x-143,-.67);
+  plane(260,new THREE.MeshStandardMaterial({color:0x6fd6d6,roughness:.25,transparent:true,opacity:.30,depthWrite:false}),x+130,-.52);
+  plane(620,new THREE.MeshStandardMaterial({color:0x3fb2c4,roughness:.25,transparent:true,opacity:.16,depthWrite:false}),x+570,-.54);
+  plane(7,new THREE.MeshStandardMaterial({color:0xf2fbff,roughness:.6,transparent:true,opacity:.62,depthWrite:false}),x+4,-.5);
+  root.add(g); return g;
+}
 function cape3dFacilityGroup(d, materials){
   const g=new THREE.Group(); g.name='cape3d_'+d.key; g.userData.facilityKey=d.key;
   g.position.set(d.position.x,0,d.position.z);
@@ -2513,18 +2571,20 @@ function cape3dFacilityGroup(d, materials){
       const feed=cape3dMesh(new THREE.SphereGeometry(3.2,12,8),materials.dark,0,h*.38+7,-10,false); dish.add(feed);
     }
   } else if(d.type==='dome'){
+    cape3dBox(g,w*1.2,1.4,z*1.2,materials.apron||concrete,0,.1,0,false);
     cape3dBox(g,w,h*.18,z,dark,0,h*.09,0);
+    if(materials.accent) cape3dBox(g,w*1.01,1.2,z*1.01,materials.accent,0,h*.18-2.2,0,false);
     const dome=cape3dMesh(new THREE.SphereGeometry(Math.min(w,z)*.38,24,14,0,Math.PI*2,0,Math.PI*.5),materials.dome,0,h*.18,0); g.add(dome);
   } else {
-    const base=d.type==='vab'?materials.vab:(d.type==='control'?materials.control:materials.building);
-    cape3dBox(g,w,h,z,base,0,h*.5,0);
-    // Roof cap and a repeated window band give every mass a readable industrial scale before PBR art lands.
+    const wall=CAPE3D_FACILITY_WALL[d.type]||0x7e9cb3, roof=materials.roof||metal;
+    const sideZ=cape3dFacadeMaterial(wall,w,h,materials), sideX=cape3dFacadeMaterial(wall,z,h,materials);
+    cape3dBox(g,w*1.26,1.4,z*1.26,materials.apron||concrete,0,.1,0,false);
+    g.add(cape3dMesh(new THREE.BoxGeometry(w,h,z),[sideX,sideX,roof,roof,sideZ,sideZ],0,h*.5,0));
+    // Parapet cap, a HUD-cyan accent line that glows after dark, and rooftop plant for scale.
     cape3dBox(g,w*1.02,3,z*1.02,metal,0,h+1.5,0);
-    const rows=Math.max(2,Math.min(8,Math.round(h/24)));
-    for(let r=0;r<rows;r++){
-      const y=h*.22+r*(h*.56/Math.max(1,rows-1));
-      cape3dBox(g,w*.72,2,0.7,glass,0,y,z*.505,false);
-    }
+    if(materials.accent) cape3dBox(g,w*1.03,1.5,z*1.03,materials.accent,0,h-3.5,0,false);
+    const units=Math.max(1,Math.min(4,Math.round(w/70)));
+    for(let i=0;i<units;i++){ const ux=((i+.5)/units-.5)*w*.7, uz=(i%2?-1:1)*z*.2; cape3dBox(g,Math.min(26,w*.14),6,Math.min(18,z*.14),roof,ux,h+6,uz); }
     if(d.type==='vab') for(let i=-1;i<=1;i++) cape3dBox(g,w*.16,h*.62,1.2,dark,i*w*.25,h*.31,z*.512,false);
     if(d.type==='prod') for(let i=-1;i<=1;i++) cape3dBox(g,w*.2,10,1.2,metal,i*w*.25,h+7,z*.505,false);
     if(d.type==='control') cape3dCylinder(g,2.2,26,metal,0,h+13,0);
@@ -3336,19 +3396,21 @@ function cape3dExitFlightPresentation(){
 function buildCape3DScene(scene){
   const root=new THREE.Group(); root.name='cape3d_root'; scene.add(root);
   const landscape=cape3dLandscapeLayout(), groundRepeat=cape3dLandscapeTextureRepeat(landscape,400), terrainRepeat=cape3dLandscapeTextureRepeat(landscape,1500);
-  const groundTx=cape3dTexture('ground',groundRepeat.x,groundRepeat.y), pavementTx=cape3dTexture('pavement',8,8), waterTx=cape3dWaterTexture(), terrainTx=cape3dTerrainVariationTexture(terrainRepeat.x,terrainRepeat.y);
+  const groundTx=cape3dTexture('ground',groundRepeat.x,groundRepeat.y), pavementTx=cape3dTexture('pavement',8,8), concreteTx=cape3dConcreteTexture(5,5), waterTx=cape3dWaterTexture(), terrainTx=cape3dTerrainVariationTexture(terrainRepeat.x,terrainRepeat.y);
   const materials={
-    ground:new THREE.MeshStandardMaterial({color:CAPE3D_TERRAIN_STYLE.ground,map:groundTx,roughness:1}), water:new THREE.MeshPhysicalMaterial({color:0x167599,map:waterTx,roughness:.22,metalness:.08,clearcoat:.45,transparent:true,opacity:.88}), road:new THREE.MeshStandardMaterial({color:0x344047,map:pavementTx,roughness:.93}), crawlerway:new THREE.MeshStandardMaterial({color:0x596163,map:pavementTx,roughness:.86}), concrete:new THREE.MeshStandardMaterial({color:0xc8c0af,map:pavementTx,roughness:.91}), metal:cape3dMaterial(0x6d8792,.55,.6), tank:cape3dMaterial(0xe6eff4,.32,.35), dark:cape3dMaterial(0x18242c,.8,.25), building:cape3dMaterial(0x3d6680,.74,.35), vab:cape3dMaterial(0x315b7c,.7,.4), control:cape3dMaterial(0x0f304d,.63,.45), glass:new THREE.MeshStandardMaterial({color:0x84c8ed,emissive:0x0d2534,roughness:.22,metalness:.15}), dish:cape3dMaterial(0x8fb4c6,.38,.55), dome:cape3dMaterial(0x2b536c,.4,.5),
+    ground:new THREE.MeshStandardMaterial({color:CAPE3D_TERRAIN_STYLE.ground,map:groundTx,roughness:1}), water:new THREE.MeshPhysicalMaterial({color:0x167599,map:waterTx,roughness:.22,metalness:.08,clearcoat:.45,transparent:true,opacity:.88}), road:new THREE.MeshStandardMaterial({color:0x344047,map:pavementTx,roughness:.93}), crawlerway:new THREE.MeshStandardMaterial({color:0x596163,map:pavementTx,roughness:.86}), concrete:new THREE.MeshStandardMaterial({color:0xc8c0af,map:concreteTx,roughness:.91}), metal:cape3dMaterial(0x6d8792,.55,.6), tank:cape3dMaterial(0xe6eff4,.32,.35), dark:cape3dMaterial(0x18242c,.8,.25), building:cape3dMaterial(0x3d6680,.74,.35), vab:cape3dMaterial(0x315b7c,.7,.4), control:cape3dMaterial(0x0f304d,.63,.45), glass:new THREE.MeshStandardMaterial({color:0x84c8ed,emissive:0x0d2534,roughness:.22,metalness:.15}), dish:cape3dMaterial(0x8fb4c6,.38,.55), dome:cape3dMaterial(0x2b536c,.4,.5),
+    roof:cape3dMaterial(0x56646f,.86,.2), apron:new THREE.MeshStandardMaterial({color:0x9a9f9f,map:concreteTx,roughness:.92}), accent:new THREE.MeshStandardMaterial({color:0x0c2c3c,emissive:0x4cc9f0,emissiveIntensity:.3,roughness:.5}), facades:[],
   };
   if(waterTx&&waterTx.repeat) waterTx.repeat.set(12000,2000);
   const ground=cape3dMesh(new THREE.PlaneGeometry(landscape.land.width,landscape.land.depth),materials.ground,landscape.land.centerX,-1,180,false); ground.rotation.x=-Math.PI/2; root.add(ground);
   const terrain=cape3dMesh(new THREE.PlaneGeometry(landscape.land.width,landscape.land.depth),new THREE.MeshBasicMaterial({map:terrainTx,transparent:true,opacity:CAPE3D_TERRAIN_STYLE.overlayOpacity,depthWrite:false}),landscape.land.centerX,-.72,180,false); terrain.rotation.x=-Math.PI/2; root.add(terrain);
   const ocean=cape3dMesh(new THREE.PlaneGeometry(landscape.ocean.width,landscape.ocean.depth),materials.water,landscape.ocean.centerX,-.6,370,false); ocean.rotation.x=-Math.PI/2; root.add(ocean);
+  const shore=cape3dShoreline(root,landscape);
   const roads=cape3dRoads(materials); root.add(roads);
   const facilities=new THREE.Group(); facilities.name='cape3d_facilities'; root.add(facilities);
-  const descriptors=syncCape3DFromState(); descriptors.forEach(d=>facilities.add(cape3dFacilityGroup(d,materials))); const vegetation=cape3dVegetation(root,materials); root.userData.clouds=cape3dClouds(root); root.userData.practicalLights=[...cape3dPracticalLights(root,descriptors),...cape3dStreetLights(root,materials)]; root.userData.windowMaterial=materials.glass; root.userData.water=waterTx;
+  const descriptors=syncCape3DFromState(); descriptors.forEach(d=>facilities.add(cape3dFacilityGroup(d,materials))); const vegetation=cape3dVegetation(root,materials); root.userData.clouds=cape3dClouds(root); root.userData.practicalLights=[...cape3dPracticalLights(root,descriptors),...cape3dStreetLights(root,materials)]; root.userData.windowMaterial=materials.glass; root.userData.facadeMaterials=materials.facades; root.userData.accentMaterial=materials.accent; root.userData.water=waterTx;
   const pad=descriptors.find(d=>d.key==='pad'); if(pad){ const rocket=cape3dVehicleMesh(); rocket.position.set(pad.position.x-pad.footprint.x*.18,cape3dLaunchBaseY(rocket),pad.position.z); root.add(rocket); root.userData.launchPad=pad; root.userData.launchRocket=rocket; root.userData.launchBase=rocket.position.clone(); root.userData.launchEffects=cape3dLaunchEffects(rocket); root.userData.groundSmoke=cape3dGroundSmoke(root,rocket.position); root.userData.launchSplash=cape3dSplashEffects(root); root.userData.launchFailure=cape3dFailureEffects(root,rocket,root.userData.launchEffects); root.userData.ascentWorld=cape3dAscentWorld(root,pad,root.userData.launchBase); root.userData.orbitWorld=cape3dOrbitWorld(root); root.userData.transferWorld=cape3dTransferWorld(root); root.userData.reentryWorld=cape3dReentryWorld(root); root.userData.sepPuffs=cape3dSepPuffPool(root); }
-  root.userData.siteObjects=[ground,terrain,ocean,roads,facilities,vegetation];
+  root.userData.siteObjects=[ground,terrain,ocean,shore,roads,facilities,vegetation];
   // State-driven growth receives simple massing in this slice; detailed variants arrive with the art pass.
   try{
     const sc=siteScale(), padDef=ISO_BUILDINGS.find(b=>b.key==='pad');
@@ -3400,6 +3462,8 @@ function resizeCape3D(width,height){
   cape3d.camera.aspect=w/h; cape3d.camera.updateProjectionMatrix(); cape3d.renderer.setSize(w,h,false);
   return true;
 }
+// Open on a bright morning rather than the dimmest dawn frame (also the frame reduced-motion holds).
+const CAPE3D_SKY_START_SEC=44;
 function cape3dTick(){
   if(!cape3d||cape3d.paused) return;
   // Gate 6 F6: t drives only ambient decoration below (sky/sun sweep, water ripple, cloud
@@ -3408,26 +3472,30 @@ function cape3dTick(){
   // accumulator under reduced motion therefore cannot suppress any outcome or telemetry.
   const realNow=Date.now();
   if(reducedMotion()){
-    if(cape3d._motionT==null) cape3d._motionT=(realNow-cape3d.startedAt)/1000;
+    if(cape3d._motionT==null) cape3d._motionT=CAPE3D_SKY_START_SEC+(realNow-cape3d.startedAt)/1000;
     cape3d._motionLast=realNow;
   } else {
-    if(cape3d._motionT==null) cape3d._motionT=(realNow-cape3d.startedAt)/1000;
+    if(cape3d._motionT==null) cape3d._motionT=CAPE3D_SKY_START_SEC+(realNow-cape3d.startedAt)/1000;
     cape3d._motionT+=(realNow-(cape3d._motionLast||realNow))/1000;
     cape3d._motionLast=realNow;
   }
   const t=cape3d._motionT;
   const atmo=skyAtmosphere(t), c=atmo.mid.split(',').map(Number), root=cape3d.root, launchActive=!!(root&&root.userData.launchActive), reentryP=root&&root.userData.reentryActive?(root.userData.reentryProgress||0):null, spaceMix=Math.max(0,Math.min(1,((root&&root.userData.orbitActive)?1:(root&&root.userData.launchSpace)||0)));
-  const sky=new THREE.Color(c[0]/255,c[1]/255,c[2]/255), space=new THREE.Color(0x020914); cape3d.scene.background.copy(sky).lerp(space,spaceMix); if(cape3d.scene.fog){ cape3d.scene.fog.color.copy(cape3d.scene.background); cape3d.scene.fog.density=(root&&root.userData.orbitActive)||reentryP!=null?0:(launchActive&&root.userData.launchVisual?root.userData.launchVisual.fogDensity:.00038); }
+  const cb=atmo.bot.split(',').map(Number), ct=atmo.top.split(',').map(Number), sky=new THREE.Color((c[0]+cb[0])/510,(c[1]+cb[1])/510,(c[2]+cb[2])/510), space=new THREE.Color(0x020914); cape3d.scene.background.copy(sky).lerp(space,spaceMix); if(cape3d.scene.fog){ cape3d.scene.fog.color.copy(cape3d.scene.background); cape3d.scene.fog.density=(root&&root.userData.orbitActive)||reentryP!=null?0:(launchActive&&root.userData.launchVisual?root.userData.launchVisual.fogDensity:.00038); }
   if(reentryP!=null){ cape3d.scene.background.copy(space).lerp(new THREE.Color(0x315d77),Math.min(.72,reentryP*.78)); if(cape3d.scene.fog){ cape3d.scene.fog.color.copy(cape3d.scene.background); cape3d.scene.fog.density=.000025+reentryP*.00007; } }
   const sunA=Math.max(.03,atmo.sunA), az=(atmo.sunX-.5)*Math.PI*1.6, alt=(.15+(1-atmo.sunY)*.75)*Math.PI*.5;
   cape3d.sun.position.set(800*Math.cos(alt)*Math.cos(az),800*Math.sin(alt),800*Math.cos(alt)*Math.sin(az));
+  if(cape3d.sky){ const dome=cape3d.sky, u=dome.material.uniforms, fade=reentryP!=null?0:1-spaceMix; dome.visible=fade>.01;
+    if(dome.visible){ dome.position.copy(cape3d.camera.position); dome.scale.setScalar(Math.max(1000,cape3d.camera.far*.5)); u.fade.value=fade; u.space.value.copy(space); u.top.value.setRGB(ct[0]/255,ct[1]/255,ct[2]/255); u.mid.value.setRGB(c[0]/255,c[1]/255,c[2]/255); u.bot.value.copy(sky); u.sunDir.value.copy(cape3d.sun.position).normalize(); const sc=atmo.sunC.split(',').map(Number); u.sunCol.value.setRGB(sc[0]/255,sc[1]/255,sc[2]/255); u.sunA.value=atmo.sunA; } }
   // The daylight Cape needs a powerful key light; the textured Earth does not. Fade that
   // exposure as we leave the site so bright terrain lighting cannot clip the globe to white.
-  cape3d.sun.intensity=(.08+sunA*3.0)*(1-spaceMix*.72); cape3d.hemi.intensity=(.035+sunA*.5)*(1-spaceMix*.36);
+  cape3d.sun.intensity=(.08+sunA*3.0)*(1-spaceMix*.72); cape3d.hemi.intensity=(.16+sunA*.42)*(1-spaceMix*.36);
   if(launchActive){ cape3d.sun.intensity=Math.max(root.userData.flightNight ? 0.32 : 0.48,cape3d.sun.intensity); cape3d.hemi.intensity=Math.max(root.userData.flightNight ? 0.18 : 0.24,cape3d.hemi.intensity); }
   else if(cape3d.flightFill) cape3d.flightFill.intensity=0;
   const night=Math.max(0,1-sunA);
-  if(cape3d.root&&cape3d.root.userData.practicalLights) cape3d.root.userData.practicalLights.forEach(l=>{ l.light.intensity=.04+night*3.1; l.fixture.material.emissiveIntensity=.08+night*2.6; });
+  if(cape3d.root&&cape3d.root.userData.practicalLights) cape3d.root.userData.practicalLights.forEach(l=>{ l.light.intensity=(.04+night*3.1)*(l.boost||1); l.fixture.material.emissiveIntensity=.08+night*2.6; });
+  if(cape3d.root&&cape3d.root.userData.facadeMaterials){ const glowI=.01+Math.pow(night,2.4)*1.5; cape3d.root.userData.facadeMaterials.forEach(m=>{ m.emissiveIntensity=glowI; }); }
+  if(cape3d.root&&cape3d.root.userData.accentMaterial) cape3d.root.userData.accentMaterial.emissiveIntensity=.22+night*1.5;
   if(cape3d.root&&cape3d.root.userData.windowMaterial) cape3d.root.userData.windowMaterial.emissiveIntensity=.08+night*2.25;
   const water=cape3d.root&&cape3d.root.userData.water; if(water){ water.offset.x=t*.0025; water.offset.y=t*.0014; }
   const clouds=cape3d.root&&cape3d.root.userData.clouds, cloudFade=launchActive&&root.userData.launchVisual?root.userData.launchVisual.cloudOpacity:1; if(clouds) clouds.forEach((cloud,i)=>{ cloud.position.x=-1000+((cloud.userData.baseX+1000+t*(.32+(i%3)*.11))%3500); cloud.material.opacity=(.14+(i%3)*.06)*(.38+sunA*.62)*cloudFade; });
@@ -3455,8 +3523,8 @@ function startCape3D(hostId,width,height){
     // Earth-scale altitude. The earlier low-power PointLight fell off as distance² and contributed
     // almost nothing by staging, leaving a present upper stack indistinguishable from black space.
     const flightFill=new THREE.DirectionalLight(0xcbe8ff,0); scene.add(flightFill); scene.add(flightFill.target);
-    const root=buildCape3DScene(scene);
-    cape3d={renderer,scene,camera,sun,hemi,flightFill,root,quality,descriptors:syncCape3DFromState(),mountId:hostId||'ccSceneHost',paused:false,startedAt:Date.now(),raf:0,cam:{az:2.25,el:.48,dist:1450,target:{x:420*CAPE3D_SITE_SPREAD,y:0,z:250*CAPE3D_SITE_SPREAD}},raycaster:new THREE.Raycaster(),inputAttached:false};
+    const root=buildCape3DScene(scene), sky=cape3dSkyDome(scene);
+    cape3d={renderer,scene,camera,sun,hemi,flightFill,root,sky,quality,descriptors:syncCape3DFromState(),mountId:hostId||'ccSceneHost',paused:false,startedAt:Date.now(),raf:0,cam:{az:2.25,el:.48,dist:1450,target:{x:420*CAPE3D_SITE_SPREAD,y:0,z:250*CAPE3D_SITE_SPREAD}},raycaster:new THREE.Raycaster(),inputAttached:false};
     renderer.domElement.style.position='absolute'; renderer.domElement.style.inset='0'; renderer.domElement.style.width='100%'; renderer.domElement.style.height='100%'; renderer.domElement.style.display='block';
     cape3dApplyCamera(); mountCape3D(hostId); resizeCape3D(width,height); attachCape3DInput(); renderCape3DFrame(); cape3d.raf=requestAnimationFrame(cape3dLoop);
     return true;
@@ -9040,16 +9108,38 @@ function assembly3dBuildStation(scene,spec){
   scene.userData.assemblyLayout={mode:'station',nodes:spec.nodes,groups,material:connector,links:null};
   assembly3dRefreshLinks();
 }
+// Graphics pass (2026-11-15): cratered regolith / dusty Mars soil instead of a flat-colour slab.
+function assembly3dRegolithTexture(mars){
+  const cv=document.createElement('canvas'); cv.width=cv.height=512; const ctx=cv.getContext('2d'); if(!ctx) return null;
+  const rnd=mulberry(mars?4412:9137), W=512;
+  ctx.fillStyle=mars?'#c9a58f':'#c4c6c8'; ctx.fillRect(0,0,W,W);
+  for(let i=0;i<70;i++){ const x=rnd()*W,y=rnd()*W,r=30+rnd()*90,g=ctx.createRadialGradient(x,y,0,x,y,r), dark=rnd()>.5; g.addColorStop(0,dark?'rgba(40,38,36,.16)':'rgba(255,250,244,.13)'); g.addColorStop(1,'rgba(0,0,0,0)'); ctx.fillStyle=g; ctx.fillRect(x-r,y-r,r*2,r*2); }
+  for(let i=0;i<5200;i++){ ctx.fillStyle=rnd()>.5?'rgba(255,255,255,.07)':'rgba(20,18,16,.10)'; const q=1+rnd()*2.2; ctx.fillRect(rnd()*W,rnd()*W,q,q); }
+  const craters=mars?10:26;
+  for(let i=0;i<craters;i++){ const x=rnd()*W,y=rnd()*W,r=4+Math.pow(rnd(),2.4)*22;
+    for(const ox of [-W,0,W]) for(const oy of [-W,0,W]){ const cx=x+ox, cy=y+oy; if(cx<-r*2||cx>W+r*2||cy<-r*2||cy>W+r*2) continue;
+      let g=ctx.createRadialGradient(cx,cy,r*.2,cx,cy,r); g.addColorStop(0,'rgba(18,17,16,.34)'); g.addColorStop(.8,'rgba(18,17,16,.20)'); g.addColorStop(1,'rgba(18,17,16,0)'); ctx.fillStyle=g; ctx.beginPath(); ctx.arc(cx,cy,r,0,7); ctx.fill();
+      ctx.strokeStyle='rgba(255,252,246,.20)'; ctx.lineWidth=Math.max(1,r*.16); ctx.beginPath(); ctx.arc(cx,cy,r*1.02,Math.PI*.9,Math.PI*1.9); ctx.stroke();
+      ctx.strokeStyle='rgba(10,10,10,.22)'; ctx.beginPath(); ctx.arc(cx,cy,r*1.02,-Math.PI*.1,Math.PI*.9); ctx.stroke(); } }
+  const tx=new THREE.CanvasTexture(cv); tx.wrapS=tx.wrapT=THREE.RepeatWrapping; tx.repeat.set(7,7); if('colorSpace' in tx) tx.colorSpace=THREE.SRGBColorSpace; tx.anisotropy=4; return tx;
+}
 function assembly3dBuildBase(scene,spec){
-  const mars=spec.body==='mars', sky=mars?0x7d4b2f:0x02050a;
-  scene.background=new THREE.Color(sky); if(mars) scene.fog=new THREE.Fog(0x9a603b,35,92); else assembly3dStars(scene,320,100,7711);
+  const mars=spec.body==='mars', sky=mars?0xa8683f:0x02050a;
+  scene.background=new THREE.Color(sky); if(mars) scene.fog=new THREE.Fog(0xa8683f,38,150); else assembly3dStars(scene,520,190,7711);
   scene.add(new THREE.HemisphereLight(mars?0xf4bd86:0x91b7d8,mars?0x3a160c:0x080a0d,mars?1.45:.72));
   const sun=new THREE.DirectionalLight(mars?0xffd0a1:0xf4f7ff,mars?3.1:4.1); sun.position.set(-18,28,12); sun.castShadow=true; sun.shadow.mapSize.set(1024,1024); scene.add(sun);
-  const geo=new THREE.PlaneGeometry(84,58,40,28); geo.rotateX(-Math.PI/2);
+  // A wide apron of terrain that rises into low hills hides the old hard plane edge; the build
+  // zone in the middle stays flat so module placement and snapping are untouched.
+  const geo=new THREE.PlaneGeometry(360,360,120,120); geo.rotateX(-Math.PI/2);
   const pa=geo.attributes.position, rnd=mulberry(mars?2881:1999);
-  for(let i=0;i<pa.count;i++){ const x=pa.getX(i),z=pa.getZ(i), edge=Math.min(1,Math.max(0,(Math.abs(x)-12)/24)+(Math.max(0,Math.abs(z)-9)/18)); pa.setY(i,(rnd()-.5)*(mars?.42:.24)*(0.25+edge)); }
+  for(let i=0;i<pa.count;i++){ const x=pa.getX(i),z=pa.getZ(i), edge=Math.min(1,Math.max(0,(Math.abs(x)-12)/24)+(Math.max(0,Math.abs(z)-9)/18)), r=Math.hypot(x,z), far=Math.max(0,(r-46)/70);
+    pa.setY(i,(rnd()-.5)*(mars?.42:.24)*(0.25+edge)+far*far*(mars?9:7)*(1+.55*Math.sin(x*.061+1.3)+.45*Math.cos(z*.073-.4)+.3*Math.sin((x+z)*.11))); }
   geo.computeVertexNormals();
-  const ground=new THREE.Mesh(geo,assembly3dMat(mars?'#7d4127':'#4a4d50',.05,.96)); ground.receiveShadow=true; scene.add(ground);
+  const soilTx=assembly3dRegolithTexture(mars), soil=assembly3dMat(mars?'#a4573a':'#7c8084',.05,.96); if(soilTx){ soil.map=soilTx; soil.bumpMap=soilTx; soil.bumpScale=.6; }
+  const ground=new THREE.Mesh(geo,soil); ground.receiveShadow=true; scene.add(ground);
+  if(!mars){ try{ const earthDef=BODIES.find(b=>b.id==='earth'), etx=earthDef&&map3dSurfaceTexture(earthDef), em=new THREE.MeshStandardMaterial({color:0xffffff,roughness:.8,emissive:0x16324a,emissiveIntensity:.35}); if(etx) em.map=etx; else em.color.set(0x327bb5);
+    const home=new THREE.Mesh(new THREE.SphereGeometry(7.5,36,24),em); home.position.set(-52,46,-150); home.rotation.set(.3,2.2,-.35); scene.add(home);
+    const halo=new THREE.Mesh(new THREE.SphereGeometry(7.9,36,24),new THREE.MeshBasicMaterial({color:0x78bfff,transparent:true,opacity:.14,side:THREE.BackSide})); halo.position.copy(home.position); scene.add(halo); }catch(e){} }
   const padMat=assembly3dMat(mars?'#6b3925':'#5b6064',.08,.9), corridorMat=assembly3dMat('#6e808b',.5,.5), groups=[];
   for(const n of spec.nodes){
     const site=new THREE.Group(), pad=new THREE.Mesh(new THREE.CylinderGeometry(2.25,2.5,.18,24),padMat);
@@ -9060,7 +9150,7 @@ function assembly3dBuildBase(scene,spec){
   scene.userData.assemblyLayout={mode:'base',nodes:spec.nodes,groups,material:corridorMat,links:null};
   assembly3dRefreshLinks();
   const rockMat=assembly3dMat(mars?'#62301e':'#34383b',.05,1), rockRnd=mulberry(mars?901:603);
-  for(let i=0;i<38;i++){ const x=(rockRnd()-.5)*70,z=(rockRnd()-.5)*48; if(Math.abs(x)<18&&Math.abs(z)<12) continue;
+  for(let i=0;i<90;i++){ const x=(rockRnd()-.5)*150,z=(rockRnd()-.5)*120; if(Math.abs(x)<18&&Math.abs(z)<12) continue;
     const r=.18+rockRnd()*.8, rock=new THREE.Mesh(new THREE.DodecahedronGeometry(r,0),rockMat); rock.scale.y=.45+rockRnd()*.45; rock.position.set(x,r*.35,z); rock.rotation.set(rockRnd(),rockRnd(),rockRnd()); rock.castShadow=true; scene.add(rock); }
 }
 function assembly3dDisposeScene(scene){

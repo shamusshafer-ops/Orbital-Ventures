@@ -786,26 +786,33 @@ const PART_CAT_COLOR={ structural:'#8a97a3', propulsion:'#d0563a', avionics:'#5a
 
 function renderPartSVG(def, x, yTop, scale){
   // x,yTop = top-left of this part's bounding box in SVG units; scale applies uniformly.
+  // Graphics pass (2026-11-15): parts are drawn as painted-metal hulls (the same white/grey vehicle the
+  // 3D bench and the pad show) with the category colour kept as a thin identifying band, instead of
+  // flat category-coloured blocks.
   const w=(def.px.dia)*scale, len=(def.px.len)*scale, cx=x+w/2;
-  const color=PART_CAT_COLOR[def.cat]||'#8a97a3';
+  const color=PART_CAT_COLOR[def.cat]||'#8a97a3', edge='#27333d', band=Math.max(2,Math.min(5,len*0.09));
   let s='';
   if(def.phys.isDecoupler){
     s+=`<rect x="${x}" y="${yTop}" width="${w}" height="${len}" fill="#c9a83a" stroke="#8a7420" stroke-width="1"/>`;
     s+=`<line x1="${x}" x2="${x+w}" y1="${yTop+len/2}" y2="${yTop+len/2}" stroke="#4a3f14" stroke-width="1" stroke-dasharray="3 2"/>`;
   } else if(def.id==='nosecone'){
-    s+=`<path d="M ${cx} ${yTop} L ${x+w} ${yTop+len} L ${x} ${yTop+len} Z" fill="${color}" stroke="#293743" stroke-width="1"/>`;
+    s+=`<path d="M ${cx} ${yTop} Q ${x+w*0.93} ${yTop+len*0.42} ${x+w} ${yTop+len} L ${x} ${yTop+len} Q ${x+w*0.07} ${yTop+len*0.42} ${cx} ${yTop} Z" fill="url(#partHull)" stroke="${edge}" stroke-width="1"/>`;
   } else if(def.engId){
-    // engine: a bell trapezoid (narrow at top where it meets the tank, wide at the base) + dark mount
-    s+=`<rect x="${x+w*0.15}" y="${yTop}" width="${w*0.7}" height="${len*0.25}" fill="#22292e" stroke="#3a444b" stroke-width="1"/>`;
-    s+=`<path d="M ${x+w*0.2} ${yTop+len*0.25} L ${x+w} ${yTop+len} L ${x} ${yTop+len} L ${x+w*0.8} ${yTop+len*0.25} Z" fill="url(#partBell)" stroke="#3a444b" stroke-width="1"/>`;
+    // engine: a bell (narrow at the throat where it meets the tank, wide at the exit) + dark thrust structure
+    s+=`<rect x="${x+w*0.15}" y="${yTop}" width="${w*0.7}" height="${len*0.25}" fill="#1b2228" stroke="#3a444b" stroke-width="1"/>`;
+    s+=`<path d="M ${x+w*0.3} ${yTop+len*0.25} Q ${x+w*0.3} ${yTop+len*0.7} ${x} ${yTop+len} L ${x+w} ${yTop+len} Q ${x+w*0.7} ${yTop+len*0.7} ${x+w*0.7} ${yTop+len*0.25} Z" fill="url(#partBell)" stroke="#3a444b" stroke-width="1"/>`;
+    s+=`<line x1="${x+1}" x2="${x+w-1}" y1="${yTop+len-1}" y2="${yTop+len-1}" stroke="${color}" stroke-width="1.6" opacity=".9"/>`;
   } else if(def.phys.crew){
-    s+=`<rect x="${x}" y="${yTop}" width="${w}" height="${len}" rx="${w*0.28}" fill="${color}" stroke="#293743" stroke-width="1"/>`;
-    s+=`<circle cx="${cx}" cy="${yTop+len*0.4}" r="${w*0.18}" fill="#1a2530" stroke="#5aa9e0" stroke-width="1"/>`; // window
+    s+=`<path d="M ${x+w*0.3} ${yTop} L ${x+w*0.7} ${yTop} Q ${x+w} ${yTop+len*0.45} ${x+w} ${yTop+len} L ${x} ${yTop+len} Q ${x} ${yTop+len*0.45} ${x+w*0.3} ${yTop} Z" fill="url(#partHull)" stroke="${edge}" stroke-width="1"/>`;
+    s+=`<rect x="${x}" y="${yTop+len-band}" width="${w}" height="${band}" fill="${color}" opacity=".9"/>`;
+    s+=`<circle cx="${cx}" cy="${yTop+len*0.45}" r="${w*0.15}" fill="#12202c" stroke="#5aa9e0" stroke-width="1"/>`; // window
   } else if(def.phys.hasAvionics && !def.phys.crew){
-    s+=`<rect x="${x}" y="${yTop}" width="${w}" height="${len}" rx="4" fill="${color}" stroke="#293743" stroke-width="1"/>`;
-    s+=`<circle cx="${cx}" cy="${yTop+len/2}" r="${w*0.12}" fill="#0a1420" stroke="#8fd0ff" stroke-width="0.8"/>`; // sensor eye
+    s+=`<rect x="${x}" y="${yTop}" width="${w}" height="${len}" rx="3" fill="url(#partHull)" stroke="${edge}" stroke-width="1"/>`;
+    s+=`<rect x="${x}" y="${yTop+len-band}" width="${w}" height="${band}" fill="${color}" opacity=".9"/>`;
+    s+=`<circle cx="${cx}" cy="${yTop+(len-band)/2}" r="${Math.max(2.5,w*0.1)}" fill="#0a1420" stroke="#8fd0ff" stroke-width="0.8"/>`; // sensor eye
   } else { // tank / generic structural cylinder
-    s+=`<rect x="${x}" y="${yTop}" width="${w}" height="${len}" fill="url(#g-${def.id})" stroke="#293743" stroke-width="1"/>`;
+    s+=`<rect x="${x}" y="${yTop}" width="${w}" height="${len}" fill="url(#g-${def.id})" stroke="${edge}" stroke-width="1"/>`;
+    if(len>26){ s+=`<line x1="${x}" x2="${x+w}" y1="${yTop+len*0.5}" y2="${yTop+len*0.5}" stroke="rgba(20,30,40,.28)" stroke-width="1"/>`; }
   }
   return s;
 }
@@ -858,7 +865,9 @@ function renderBuildSVG(build, W, H, interactive){
     const gap=6*scale;
     for(const side of [-1,1]){
       const bx=cx+side*(spineHalf+gap)-bw/2;
-      boosterArt+=`<rect x="${bx}" y="${byTop}" width="${bw}" height="${blen}" rx="${bw*0.15}" fill="${PART_CAT_COLOR.propulsion}" stroke="#293743" stroke-width="1" opacity="0.92"/>`;
+      boosterArt+=`<rect x="${bx}" y="${byTop}" width="${bw}" height="${blen}" rx="${bw*0.15}" fill="url(#partHull)" stroke="#27333d" stroke-width="1"/>`;
+      boosterArt+=`<rect x="${bx}" y="${byTop+blen*0.12}" width="${bw}" height="${Math.max(2,blen*0.05)}" fill="${PART_CAT_COLOR.propulsion}" opacity=".9"/>`;
+      boosterArt+=`<path d="M ${bx} ${byTop+bw*0.5} Q ${bx+bw/2} ${byTop-bw*0.9} ${bx+bw} ${byTop+bw*0.5} Z" fill="url(#partHull)" stroke="#27333d" stroke-width="1"/>`;
       // small fin
       boosterArt+=`<path d="M ${bx+(side<0?bw:0)} ${byTop+blen*0.7} L ${bx+(side<0?bw:0)+side*bw*0.6} ${byTop+blen} L ${bx+(side<0?bw:0)} ${byTop+blen} Z" fill="#8a3020"/>`;
     }
@@ -900,16 +909,18 @@ function renderBuildSVG(build, W, H, interactive){
       const dv=ir.stages[stageFireIdx] ? Math.round(perf.stageDv[stageFireIdx]) : null;
       const twr=ir.stages[stageFireIdx] ? perf.stageTwr[stageFireIdx].toFixed(2) : null;
       if(dv!=null){
-        overlay+=`<text x="${W-8}" y="${midY+3}" fill="#9bb6c8" font-size="9" font-family="ui-monospace,monospace" text-anchor="end">S${stageFireIdx+1} · ${dv} m/s · TWR ${twr}</text>`;
+        overlay+=`<text x="${W-8}" y="${midY+3}" fill="#d7ecf8" stroke="#0b2545" stroke-width="3" paint-order="stroke" stroke-linejoin="round" font-size="9" font-family="ui-monospace,monospace" text-anchor="end">S${stageFireIdx+1} · ${dv} m/s · TWR ${twr}</text>`;
       }
       stageFireIdx++;
     }
   }
 
-  const svg=`<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="max-width:100%;height:auto;background:#060d16;border-radius:8px">`
-    +`<defs><linearGradient id="partBell" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="#3a444b"/><stop offset="0.5" stop-color="#5a666e"/><stop offset="1" stop-color="#3a444b"/></linearGradient>`
-    +Object.values(PART_DEFS).map(d=>`<linearGradient id="g-${d.id}" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="${(PART_CAT_COLOR[d.cat]||'#8a97a3')}" stop-opacity=".95"/><stop offset=".5" stop-color="${(PART_CAT_COLOR[d.cat]||'#8a97a3')}"/><stop offset="1" stop-color="#293743"/></linearGradient>`).join('')
-    +`</defs>${boosterArt}${body}${nodeMarkers}${overlay}</svg>`;
+  const svg=`<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="max-width:100%;height:auto;background:#0b2545;border-radius:8px">`
+    +`<defs><linearGradient id="partBell" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="#2c353c"/><stop offset="0.38" stop-color="#77848d"/><stop offset="1" stop-color="#262e34"/></linearGradient>`
+    +`<linearGradient id="partHull" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="#8d9aa5"/><stop offset=".3" stop-color="#f1f5f7"/><stop offset=".62" stop-color="#c5ced5"/><stop offset="1" stop-color="#5f6c77"/></linearGradient>`
+    +`<pattern id="partGrid" width="20" height="20" patternUnits="userSpaceOnUse"><path d="M20 0H0V20" fill="none" stroke="rgba(120,180,220,.09)" stroke-width="1"/></pattern>`
+    +Object.values(PART_DEFS).map(d=>`<linearGradient id="g-${d.id}" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="#8d9aa5"/><stop offset=".3" stop-color="#f1f5f7"/><stop offset=".62" stop-color="#c5ced5"/><stop offset="1" stop-color="#5f6c77"/></linearGradient>`).join('')
+    +`</defs><rect width="${W}" height="${H}" fill="url(#partGrid)"/>${boosterArt}${body}${nodeMarkers}${overlay}</svg>`;
   return {svg, totalLen, maxDia, nodePos, error:null};
 }
 
