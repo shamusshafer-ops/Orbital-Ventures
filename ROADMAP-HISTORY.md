@@ -7920,3 +7920,39 @@ soft gradient edges, and the thin foam sheet is gone (a few-metre bright line is
 the surf is now the first band of the shallows gradient). RULE: do not let a visible edge be defined by one of the
 giant ground/ocean quads — cover it with a small strip. Still needs the owner's eye in motion.
 
+## 2026-11-16 — Spine step 1: the frontier era, Pioneer-era contracts, two advisor fixes (Claude)
+
+From `EVALUATION-2026-11-GAMEPLAY.md` §5.1 / §7 step 1. Owner approved working through the 8 steps in order.
+
+- **Frontier era.** `currentEra()` now returns the later of the calendar era and the era opened by the most
+  recent Program completed by anyone (`PROGRAMS[].opensEra`; rival-claimed missions count via
+  `rivalClaimedMission`). Pioneer→Early Orbital, Vanguard→Crewed & Lunar, Apollo→Station & Shuttle,
+  Ares→Expansion, Outer Worlds→Interplanetary, Cronian Frontier→Speculative. Derived every call, nothing
+  persisted, no SAVE_VERSION bump; every era reader follows (research gates, contract archetypes, funding and
+  cap scalars, visuals, the era interstitial). Economy events switched from `eraIndexForYear(state.year)` to
+  the same world era. `eraSource()` says why; the era screen reads "N years ahead of history" and credits the
+  Program; the Programs list says which era each opens. A test proves no Program needs research beyond the era
+  its predecessors open (the design doc §2 intent: eras move with the calendar *and* achievement).
+- **Pioneer-era contracts.** `upper_air` and `range_test` archetypes at `minEra:0` (all others were ≥1, so
+  1942–57 had nothing to fly but repeats), priced by `proc0Payout()` at 55% of the authored suborbital ladder:
+  above re-flying a comparable milestone, below flying it first.
+- **Advisor fix 1:** the generic research pick ignored era and science gates, so the Next step card could
+  recommend a node the player couldn't buy (the bot sat idle on it for years). Now gated.
+- **Advisor fix 2:** deep-space missions need a tracking station (#89) but the advisor never said so; it fell
+  through to the generic research pick. New `kind:'tracking'` recommendation whose button builds the station;
+  the objectives list says "needs a tracking station".
+
+Measured with `tools/autoplay-bot.js` (now flies profile missions, commits launch windows, follows the advisor
+fully, caches failed designs), four seeds to 2000, same bot on both builds:
+- before: the 1945–56 wall in every seed; never reaches the Moon (advisor fix 2 is part of why); 30–35 "thin"
+  five-year windows; Endurance re-flown ~100 times.
+- after: no thin window before 1981 in any seed; Moon landing 1955–57, Mars orbit 1964–66, Mars landing 1973 in
+  3/4 seeds (the 4th is the bot failing to design a Mars lander); 9–10 thin windows, all after 1981 where the
+  bot cannot design Belt/Jupiter missions and the remaining research genuinely needs the Outer Worlds program.
+- **Design consequence to watch:** a strong player now compresses history a lot (a Mars landing in 1973).
+  If that is too fast, cap how far the frontier may lead the calendar; steps 5 (crash-program cost) and 6
+  (rivals keyed to the frontier) are the intended brakes.
+
+Tests: new `tests/test-frontier-era.js` (33 checks; cannot load against pre-change source). Full sweep
+175/176, 1 intentional skip, 0 unexpected.
+

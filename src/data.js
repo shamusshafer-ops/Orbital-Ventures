@@ -832,13 +832,28 @@ const ERAS = [
   {id:'interplanetary',name:'Interplanetary',   from:2060, to:2100, blurb:'Nuclear thermal/electric, asteroid mining, cyclers. Belt, outer-planet moons.'},
   {id:'speculative',  name:'Speculative',       from:2100, to:9999, blurb:'Fusion drives, large-scale settlement, mass drivers. Whole system economy, precursor interstellar.'},
 ];
-// Eras are soft and overlapping by design (calendar-driven, not a hard gate): the
-// "current" era is the LAST one whose start year has been reached.
-function currentEra(){
-  let cur=ERAS[0];
-  for(const e of ERAS){ if(state.year>=e.from) cur=e; else break; }
-  return cur;
+// Spine step 1 (2026-11-16): the FRONTIER. The world's era is the later of the calendar era and the era
+// opened by the most recent Program completed by anyone — you, or rivals claiming its missions. Finishing
+// the Pioneer Program is a Sputnik moment: Early Orbital opens then, not in 1957. A typical-pace player sees
+// the calendar unchanged; a fast one is no longer locked out of research for a decade (measured: 13 years
+// of re-flying First Satellite, EVALUATION-2026-11-GAMEPLAY.md). Derived from state every call — nothing
+// persisted, monotonic because completions never revert. Every era reader (research gates, contract
+// archetypes, funding and cap scalars, visuals, the era interstitial) follows it through currentEra().
+function calendarEraIndex(){ return eraIndexForYear(state&&state.year); }
+function rivalClaimedMission(mid){
+  const fired=state&&state.rivalFired; if(!fired||typeof RIVALS==='undefined') return false;
+  return RIVALS.some(r=>(r.firsts||[]).some(f=>f.missionId===mid && fired[r.id+'|'+f.name]));
 }
+// A Program is done "by the world" when each of its missions was flown by you or claimed by a rival.
+function programDoneByWorld(p){ return !!(p&&p.missions.length&&p.missions.every(mid=>(state.completed&&state.completed[mid])||rivalClaimedMission(mid))); }
+function frontierProgram(){ let best=null; for(const p of (typeof PROGRAMS!=='undefined'?PROGRAMS:[])){ if(p.opensEra!=null&&programDoneByWorld(p)&&(!best||p.opensEra>best.opensEra)) best=p; } return best; }
+function frontierEraIndex(){ const p=frontierProgram(); return p?Math.min(ERAS.length-1,p.opensEra):0; }
+function currentEra(){
+  if(!state) return ERAS[0];
+  return ERAS[Math.max(calendarEraIndex(), frontierEraIndex())];
+}
+// Why the current era is what it is: 'calendar' or the Program that opened it early.
+function eraSource(){ const f=frontierEraIndex(), c=calendarEraIndex(); return f>c?{kind:'program',program:frontierProgram()}:{kind:'calendar'}; }
 function eraIndex(e){ return ERAS.indexOf(e); }
 function eraName(i){ const e=ERAS[i]; return e?e.name:'a later'; } // C6(b): names an eraMin for UI copy
 // #38 backlog: night launches, era-dependent. Early Pioneer-era ranges rarely worked night ops
@@ -1546,7 +1561,26 @@ function missionById(id){ return MISSIONS.find(x=>x.id===id) || (state.contractO
    first-of-design prestige — see the proc gate at finalizeLaunch's success branch. Priced below the
    comparable authored mission (see each archetype's payout) so routine reflying of an authored
    mission stays the better long-run play; these are the "no station in range" filler, not the goal. */
+// Pioneer-era contract pricing follows the authored suborbital ladder (≈1.6·(Δv/1000)^0.93 $M for a first-time
+// milestone) at 55%: above re-flying a comparable milestone (40%), below flying it the first time.
+function proc0Payout(reqDv,payload,eraIdx){ return round2((0.88*Math.pow(reqDv/1000,0.93)+payload*2)*(1+0.15*eraIdx)); }
 const CONTRACT_ARCHETYPES=[
+  // Spine step 1: Pioneer-era work. Before these, every archetype was minEra>=1, so 1942-57 had nothing to
+  // fly but repeats. Suborbital, no profile; weight fades as the frontier moves on so they stay early texture.
+  { kind:'upper_air', label:'Upper-Atmosphere Research', minEra:0,
+    req:st=>(st.flights||0)>=1,
+    weight:st=>Math.max(0.15, 1.6-0.5*eraIndex(currentEra())),
+    build:eraIdx=>{ const reqDv=1900+100*Math.floor(Math.random()*13), payload=round2(0.08+0.04*Math.floor(Math.random()*5));
+      return { name:'Upper-Atmosphere Research', reqDv, payload, crew:0, days:0, minRep:0,
+        payout:proc0Payout(reqDv,payload,eraIdx), rep:3,
+        blurb:'A university consortium wants instruments lofted through the ionosphere — winds, cosmic rays, the sky\'s chemistry. Small money, steady work, and the data gets cited.' }; } },
+  { kind:'range_test', label:'Range Test Flight', minEra:0,
+    req:st=>!!(st.completed&&st.completed.reach_space),
+    weight:st=>Math.max(0.15, 1.3-0.4*eraIndex(currentEra())),
+    build:eraIdx=>{ const reqDv=4000+250*Math.floor(Math.random()*11), payload=round2(0.2+0.1*Math.floor(Math.random()*4));
+      return { name:'Range Test Flight', reqDv, payload, crew:0, days:0, minRep:0,
+        payout:proc0Payout(reqDv,payload,eraIdx), rep:4,
+        blurb:'The military range wants a long downrange shot to calibrate its tracking radars — a dummy payload, a precise impact box, and no questions about what comes next.' }; } },
   { kind:'comsat', label:'Comsat Block Buy', minEra:1,
     req:st=>(st.leoFlights||0)>=3,
     weight:st=>1+Math.min(3,(st.leoFlights||0)/10),
@@ -1630,14 +1664,14 @@ const NEWS_FILLER=[
    game tracks progress toward a capstone mission. Neither changes the rocket
    equation — they frame the missions you already fly so each one means something. */
 const PROGRAMS = [
-  {id:'pioneer',  name:'Pioneer Program',     blurb:'Get off the pad and to the edge of space.',                  missions:['first_flight','sounding','reach_space','high_alt','reentry_test'], reward:{money:4, rep:15}},
-  {id:'vanguard', name:'Vanguard Program',    blurb:'Reach orbital velocity — the Space Age begins.',             missions:['first_sat'],                                       reward:{money:6, rep:25}},
+  {id:'pioneer',  opensEra:1, name:'Pioneer Program',     blurb:'Get off the pad and to the edge of space.',                  missions:['first_flight','sounding','reach_space','high_alt','reentry_test'], reward:{money:4, rep:15}},
+  {id:'vanguard', opensEra:2, name:'Vanguard Program',    blurb:'Reach orbital velocity — the Space Age begins.',             missions:['first_sat'],                                       reward:{money:6, rep:25}},
   {id:'mercury',  name:'Mercury Program',     blurb:'Put a human in space and bring them home.',                  missions:['first_astro','crew_orbit'],                        reward:{money:10, rep:35}},
   {id:'gemini',   name:'Gemini Program',      blurb:'Endurance and operations — the skills the Moon demands.',    missions:['multi_day','endurance'],                           reward:{money:16, rep:45}},
-  {id:'apollo',   name:'Apollo Program',      blurb:'Fly to the Moon, orbit it, and land.',                       missions:['luna_flyby','luna_orbit','luna_landing'],          reward:{money:35, rep:90}},
-  {id:'ares',     name:'Ares Program',        blurb:'Carry a crew to Mars, land, and bring them home.',           missions:['mars_flyby','mars_orbit','mars_landing'],          reward:{money:100, rep:190}}, // I1: capstone extended to the landing; reward bumped for the 3rd, much harder objective
-  {id:'outer',    name:'Outer Worlds Program',blurb:'The Belt and the Jovian system — the deep frontier.',        missions:['belt_survey','belt_mining','jupiter_flyby','jupiter_orbit'], reward:{money:110, rep:220}},
-  {id:'cronus',   name:'Cronian Frontier',    blurb:'Saturn\'s rings, then Titan itself — the furthest a crew has ever gone.', missions:['saturn_orbit','titan_landing'],                    reward:{money:180, rep:340}}, // I1: the program beyond Outer Worlds — Saturn/Titan
+  {id:'apollo',   opensEra:3, name:'Apollo Program',      blurb:'Fly to the Moon, orbit it, and land.',                       missions:['luna_flyby','luna_orbit','luna_landing'],          reward:{money:35, rep:90}},
+  {id:'ares',     opensEra:5, name:'Ares Program',        blurb:'Carry a crew to Mars, land, and bring them home.',           missions:['mars_flyby','mars_orbit','mars_landing'],          reward:{money:100, rep:190}}, // I1: capstone extended to the landing; reward bumped for the 3rd, much harder objective
+  {id:'outer',    opensEra:6, name:'Outer Worlds Program',blurb:'The Belt and the Jovian system — the deep frontier.',        missions:['belt_survey','belt_mining','jupiter_flyby','jupiter_orbit'], reward:{money:110, rep:220}},
+  {id:'cronus',   opensEra:7, name:'Cronian Frontier',    blurb:'Saturn\'s rings, then Titan itself — the furthest a crew has ever gone.', missions:['saturn_orbit','titan_landing'],                    reward:{money:180, rep:340}}, // I1: the program beyond Outer Worlds — Saturn/Titan
   {id:'daedalus', name:'Daedalus Program',    blurb:'Demonstrate conceptual fusion propulsion with a probe that crosses the heliopause into interstellar space.', missions:['oort_precursor'],                                  reward:{money:250, rep:450}}, // I1: the last program on the list — the interstellar-precursor capstone
 ];
 const AMBITIONS = [

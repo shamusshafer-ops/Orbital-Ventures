@@ -26,6 +26,11 @@ a procedural district map (`cape3dRegionTexture`). Full sweep 174/175, 1 intenti
 RULE: the vehicle mesh may add detail but must not change stage heights/radii, `nozzleY`, or the stage sub-group
 topology — staging, smoke and the plume read them. Needs a human look at an ascent in a real browser.
 
+**Gameplay spine (2026-11-16, branch `gameplay-spine`):** working through EVALUATION-2026-11-GAMEPLAY.md §7 in
+order; step 1 (frontier era) done. Measure every step with `tools/autoplay-bot.js` before and after.
+RULE: `currentEra()` is the WORLD era (calendar or Program-opened frontier) — use `calendarEraIndex()` only
+when you specifically mean the calendar.
+
 **In progress:** (none claimed right now).
 > When you start a task, replace this line with: `<task> — <Claude|Codex> — started <date>`.
 > When done, clear it back to "(none claimed right now)" and add your entry to the history below.

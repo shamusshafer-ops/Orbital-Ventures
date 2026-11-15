@@ -1512,7 +1512,7 @@ function rollEconEvent(){
   const activeProgram = (absMonth()-(state.lastFlightAbs??-999))<=36 || !!state.activeResearch || publicSupport()>SUPPORT_BASE+3;
   // P6 6.2: per-era gating — optional minEra/maxEra are ERA INDEX bounds (inclusive). Absent ⇒ no era
   // restriction (backward compatible: every pre-6.2 entry has neither, so its eligibility is unchanged).
-  const eraIdx=eraIndexForYear(state.year);
+  const eraIdx=eraIndex(currentEra()); // step 1: the world era (frontier), like every other era reader
   const elig=ECONOMY_EVENTS.filter(e=> state.year>=(e.minYear||0) && state.rep>=(e.minRep||0) && state.flights>=(e.reqFlights||0) && (!e.reqDepot || state.research.orbital_depot) && (!e.reqLogi || logiFlightsInTransit().length>0) && eraIdx>=(e.minEra||0) && eraIdx<=(e.maxEra??(ERAS.length-1)) && !(e.kind==='good' && e.money && !activeProgram));
   if(!elig.length) return null;
   const tot=elig.reduce((a,e)=>a+e.weight,0);
@@ -4330,10 +4330,11 @@ function showEraInterstitial(toIdx){
       <div><span style="color:var(--muted)">Reputation</span> · <b>${eraDelta(dRep,'rep')}</b></div>
     </div>`;
   showModal(`<div style="text-align:center">
-    <div class="dim" style="font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.15em;margin-bottom:4px">A new era · ${to.from}</div>
+    <div class="dim" style="font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.15em;margin-bottom:4px">A new era · ${state.year}${state.year<to.from?` · ${to.from-state.year} years ahead of history`:''}</div>
     <h2 style="margin:0 0 2px;font-size:26px">${to.name}</h2>
     <p class="muted" style="font-size:12px;margin:0 0 14px">${yr(to)}</p>
     <p style="font-size:14px;line-height:1.5;margin:0 0 16px">${to.blurb}</p>
+    ${(()=>{ const src=eraSource(); if(src.kind!=='program'||!src.program||src.program.opensEra<toIdx||calendarEraIndex()>=toIdx) return ''; const own=src.program.missions.every(mid=>state.completed[mid]); return `<p style="font-size:13px;line-height:1.5;margin:-6px 0 16px;color:var(--readout)">${own?`Your ${src.program.name} proved the way — the world follows.`:`The ${src.program.name}'s goals have been met — the world has moved on.`} New research, contracts and rival targets open now.</p>`; })()}
     <div style="text-align:left;background:var(--panel2);border-radius:8px;padding:12px 14px;margin-bottom:16px">
       <div class="cc-panel-h" style="margin:0 0 8px">◈ The ${from.name} era, in review</div>
       ${retro}

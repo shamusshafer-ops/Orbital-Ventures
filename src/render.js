@@ -1031,6 +1031,12 @@ function recommendedAction(){
       const r=firstResearchableToward(mm.reqResearch);
       if(r) return {kind:'research', title:`Research: ${r.name}`, detail:`Unlocks the path to ${mm.name}.`, tab:'rnd', researchId:r.id};
     }
+    // Spine step 1: deep-space missions also need a tracking station (#89). Without this branch the advisor
+    // fell through to the generic research pick and never named the real blocker.
+    if(state.rep>=mm.minRep && (!mm.reqResearch||state.research[mm.reqResearch]) && needsTrackingNetwork(mm) && trackingStationCount()<1){
+      const st=TRACKING_STATIONS.find(s=>canBuildStation(s.id).ok) || TRACKING_STATIONS.find(s=>!s.reqResearch||state.research[s.reqResearch]);
+      if(st) return {kind:'tracking', title:`Build: ${st.name}`, detail:`${mm.name} flies beyond Earth orbit — it needs a tracking station first (${fM(st.setup)} setup, ${fM(st.upkeep)}/mo).`, tab:null, action:canBuildStation(st.id).ok?`buildTrackingStation('${st.id}')`:null};
+    }
     if(missionFlyable(mm)) return {kind:'launch', title:`Launch: ${mm.name}`, detail:`Your next objective — ${no.program.name}.`, tab:'bench', missionId:mm.id, reward:{money:mm.payout, rep:mm.rep}};
     if(state.rep<mm.minRep){
       const avail=MISSIONS.find(x=>!state.completed[x.id] && missionFlyable(x) && x.id!==mm.id);
@@ -1039,7 +1045,7 @@ function recommendedAction(){
     }
   }
   if(!state.activeResearch){
-    const next=RESEARCH.find(r=>!state.research[r.id] && reqsMet(r) && state.money>=rdCostOf(r));
+    const next=RESEARCH.find(r=>!state.research[r.id] && reqsMet(r) && researchEraMet(r) && sciGateMet(r) && state.money>=rdCostOf(r)); // step 1: never recommend a node that can't be bought yet
     if(next) return {kind:'research', title:`Research: ${next.name}`, detail:'Expand your capabilities.', tab:'rnd', researchId:next.id};
   }
   return {kind:'advance', title:'Advance the calendar', detail:'Let R&D and the program move forward a month.', tab:null};
@@ -1291,7 +1297,7 @@ function missionAdvisor(){
   return {goal:mm.name, program:no.program.name, reward:{money:mm.payout||0, rep:mm.rep||0}, reqs, actions:actions.slice(0,4), ready};
 }
 // onclick string for an advisor/action object
-function advisorClick(a){ return a.missionId?`selectMission('${a.missionId}')`:(a.researchId?`setTab('rnd')`:(a.tab?tabIntent(a.tab):`advanceMonth()`)); } // slice 5/6: tab intents route to drills/modals via tabIntent
+function advisorClick(a){ if(a.action) return a.action; return a.missionId?`selectMission('${a.missionId}')`:(a.researchId?`setTab('rnd')`:(a.tab?tabIntent(a.tab):`advanceMonth()`)); } // slice 5/6: tab intents route to drills/modals via tabIntent
 // #18 slice 5: grouped objectives checklist (main / recommended / long-term / completed)
 function objectivesList(){
   const groups=[];
@@ -1299,6 +1305,7 @@ function objectivesList(){
   if(no){ const mm=no.mission; let sub;
     if(state.rep<mm.minRep) sub=`reputation ${Math.round(state.rep)}/${mm.minRep}`;
     else if(mm.reqResearch && !state.research[mm.reqResearch]) sub=`needs ${(RESEARCH.find(r=>r.id===mm.reqResearch)||{}).name||'research'}`;
+    else if(needsTrackingNetwork(mm) && trackingStationCount()<1) sub='needs a tracking station';
     else sub='ready to fly';
     groups.push({title:'Main objective', items:[{label:mm.name, done:false, sub, tab:'bench', missionId:mm.id}]});
   } else groups.push({title:'Main objective', items:[{label:'All objectives complete', done:true}]});
@@ -10954,12 +10961,13 @@ function renderPrograms(){
         <div class="mission-name" style="font-size:15px">${p.name} ${status}</div>
         <div class="dim" style="font-size:12px;white-space:nowrap">Bonus: +${fM(p.reward.money)}, +${p.reward.rep} rep</div>
       </div>
+      ${p.opensEra!=null&&ERAS[p.opensEra]?`<div class="dim" style="font-size:12px;margin-top:2px">${done?'Opened':'Completing it opens'} the <b>${ERAS[p.opensEra].name}</b> era${done?'':` (otherwise ${ERAS[p.opensEra].from})`} — new research, contracts and rivals' targets.</div>`:''}
       <div class="sub" style="margin:2px 0 8px">${p.blurb}</div>
       <div class="legs">${objs}</div>
     </div>`;
   }).join('');
   $('programsCard').innerHTML=`<h2>Programs — campaigns, not one-off contracts</h2>
-    <p class="muted" style="font-size:12px;margin:-4px 0 12px">Each program groups missions into a goal with a completion bonus. Fly them in any order you can unlock; finishing a program pays out and points you at the next.</p>
+    <p class="muted" style="font-size:12px;margin:-4px 0 12px">Each program groups missions into a goal with a completion bonus. Fly them in any order you can unlock; finishing a program pays out, points you at the next, and can open the next era early — the world moves when someone proves the way.</p>
     ${rows}`;
 }
 

@@ -183,7 +183,7 @@ Each step is small, keeps saves working, and has a pass/fail target `tools/autop
 
 | Step | Change | Bot target |
 |---|---|---|
-| 1 | Frontier era from completed Programs (5.1) + era-0 procedural contracts | No 5-year span with fewer than 2 new research nodes or missions available. |
+| 1 ✅ | Frontier era from completed Programs (5.1) + era-0 procedural contracts | No 5-year span with fewer than 2 new research nodes or missions available. **Met before 1981 in all 4 seeds** (was 30–35 thin windows; the remaining 9–10 are after 1981 and bot-limited). |
 | 2 | Repeat-flight payout decay (5.5) | No single mission flown more than ~15 times in a decade by the bot. |
 | 3 | Launch commit policy (5.6) | Decision stops per launch drop from ~0.7 to under 0.2. |
 | 4 | Opening fix (5.7) | Engineer insolvency in year one under ~10% when following the checklist. |
