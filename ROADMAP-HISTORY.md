@@ -7852,3 +7852,43 @@ slowly under virtual time), so the sky dome above the pad during ascent is unver
 
 Tests: new `tests/test-graphics-pass-2026-11.js` (34 checks; cannot load against pre-change source).
 Full sweep 173/174, 1 intentional skip, 0 unexpected.
+
+## 2026-11-16 — Graphics pass 2: vehicle realism + the country beyond the fence (Claude)
+
+Owner request: concentrate on realism and the rocket itself, using flown US and Soviet vehicles for surface
+detail, and give the land outside the space centre a procedural texture for variety. Presentation only — no game
+state, no save changes. Reviewed in headless-Edge close-ups of five reference stacks (A-4 sounding rocket; crewed
+two-stage kerolox; Saturn-class three-stage; R-7-pattern core with four liquid strap-ons; Titan-pattern core with
+two segmented solids) plus district overviews.
+
+- **3D vehicle (`cape3dVehicleMesh`, pad + flight).** Stage count, heights, radii, the nozzle plane and the
+  stage/booster sub-groups are unchanged, so staging and trajectory code is untouched; interstages are carved out
+  of the top of a stage (`bodyH=h-adapterH`), never added to it.
+  - Hull paint by engine (`CAPE3D_ENGINE_HULL` → `cape3dHullTexture`): A-4/Redstone black-and-white roll quadrants;
+    Saturn roll stripes and band (H-1, F-1); frosted white cryo stages (J-2, RL10); stainless with weld rings (MA-3,
+    methalox); bare/olive storable stages (AJ10); segmented solid casings. All carry ring welds, seams, rivet lines
+    and weathering; white/Saturn/cryo/storable stages carry the company name, pre-squashed by barrel aspect.
+  - Structure: corrugated aft skirts and intertanks, a systems tunnel, an external feedline on brackets, access
+    panels; tapered interstage adapters, or an open hot-staging truss under kerosene/storable upper engines (R-7
+    Blok-I, Proton, Titan II); ullage motors and whip antennas on upper stages.
+  - Engines: real nozzle contours (`cape3dBellGeometry`) with an exhaust manifold and duct; five-engine clusters
+    put one in the centre (Saturn V); Thor/Atlas verniers; Saturn engine fairings and stub fins; grid fins and leg
+    fairings on methalox boosters; the A-4 gets jet vanes and a boat-tail that shrouds the bell.
+  - Top: ogive fairing with base ring and split line; conical crew capsule with a launch-escape tower.
+  - Strap-ons: liquid boosters are tapered blocks leaning into the core with four chambers and verniers (R-7);
+    solids have field joints, a flared aft skirt, ogive nose and attach struts (Titan III / Shuttle SRB).
+  - Fix: hull metalness lowered. The scene has no environment map, so the old metallic super-heavy hull rendered
+    near-black. Starship-style flaps now appear only on methane super-heavies (a Saturn-class stack had them).
+- **Regional land map (`cape3dRegionTexture`, 16 × 24 km, one non-repeating 2048² canvas):** vegetation mosaic,
+  a lagoon with marsh and ponds, farm/citrus blocks, a town, a highway and a causeway that meets the site avenue,
+  a skid-strip runway, and a "missile row" of older pads along the coast. The authored site is masked out, the
+  outer edges fade into the base terrain, and the layer fades with the site on ascent.
+
+Not done / noted: `buildVehicleShape` makes very large stages extremely slender (width clamps at 20 units while
+height keeps growing) — a proportions change there touches the 2D scenes and pad classing, so it was left; the
+2D bench/flight rocket art is unchanged; the far base terrain still shows tiling from high altitude. Headless
+captures of the flight overlay come back blank about half the time on the PRE-pass build too (checked 4 runs
+each), so that is a capture artefact, but ascent/orbit frames remain unverified by eye.
+
+Tests: new `tests/test-graphics-pass2-2026-11.js` (33 checks). Full sweep 174/175, 1 intentional skip, 0 unexpected.
+

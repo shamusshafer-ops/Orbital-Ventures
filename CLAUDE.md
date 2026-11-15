@@ -19,10 +19,12 @@ build/game.js` immediately after any edit near a `/* */` comment block, and pref
 a comment's opening `/*` line (or below its closing `*/`) so a narrow str_replace match can't sever
 the marker from its body.
 
-**Latest (2026-11-15, branch `graphics-pass`, not merged/pushed at time of writing):** graphics pass 1 —
-Cape sky dome / lit facades / night lamps / shoreline / soft smoke, base terrain, part-diagram hulls. Presentation
-only. Full sweep 173/174, 1 intentional skip. See ROADMAP-HISTORY.md "Graphics pass 1". Needs a human look in a
-real browser, especially an ascent (the sky dome during flight was not captured headlessly).
+**Latest (2026-11-16):** graphics passes 1 and 2, presentation only. Pass 1 (merged 2026-11-15): Cape sky dome /
+lit facades / night lamps / shoreline / soft smoke, base terrain, part-diagram hulls. Pass 2: the 3D vehicle is
+detailed from flown US/Soviet hardware (`CAPE3D_ENGINE_HULL`, `cape3dHullTexture`) and the land beyond the site has
+a procedural district map (`cape3dRegionTexture`). Full sweep 174/175, 1 intentional skip. See ROADMAP-HISTORY.md.
+RULE: the vehicle mesh may add detail but must not change stage heights/radii, `nozzleY`, or the stage sub-group
+topology — staging, smoke and the plume read them. Needs a human look at an ascent in a real browser.
 
 **In progress:** (none claimed right now).
 > When you start a task, replace this line with: `<task> — <Claude|Codex> — started <date>`.

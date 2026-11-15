@@ -2501,6 +2501,66 @@ function cape3dConcreteTexture(repeatX,repeatY){ const tx=cape3dCanvasTexture((c
   ctx.fillStyle='rgba(30,28,24,.30)'; for(const q of [0,w/2]){ ctx.fillRect(q,0,2,h); ctx.fillRect(0,q,w,2); }
   ctx.fillStyle='rgba(255,255,255,.14)'; for(const q of [0,w/2]){ ctx.fillRect(q+2,0,1,h); ctx.fillRect(0,q+2,w,1); }
 },repeatX,repeatY); if('colorSpace' in tx) tx.colorSpace=THREE.SRGBColorSpace; tx.anisotropy=4; return tx; }
+// Graphics pass 2 (2026-11-16): the country beyond the fence. One non-repeating procedural map of the
+// surrounding district -- pine flatwoods and scrub, a barrier-island lagoon with marsh, citrus/farm
+// blocks, a small town, a highway and causeway, a skid-strip runway, and a "missile row" of older pads
+// along the coast (the real Cape's layout). The centre is masked out so the authored site is untouched,
+// and the outer edge fades into the plain base terrain.
+const CAPE3D_REGION={width:16000,depth:24000,size:2048,siteX:480,siteZ:287,holeX:1450,holeZ:1150};
+function cape3dRegionTexture(coastX,roadZ){
+  const R=CAPE3D_REGION, S=R.size, cv=document.createElement('canvas'); cv.width=cv.height=S; const ctx=cv.getContext('2d'); if(!ctx) return null;
+  const x0=coastX-R.width, z0=R.siteZ-R.depth*.5, mx=S/R.width, mz=S/R.depth, X=x=>(x-x0)*mx, Z=z=>(z-z0)*mz, rnd=mulberry(5521);
+  const lagoonX=z=>coastX-5200+900*Math.sin(z/5200)+480*Math.sin(z/1700+1), lagoonW=z=>760+360*Math.sin(z/3100+.6);
+  // 1. vegetation mosaic
+  const veg=['38,74,44','54,92,52','104,112,62','136,160,84','88,118,60','176,164,112'];
+  for(let i=0;i<340;i++){ const x=rnd()*S,y=rnd()*S,r=(260+rnd()*1500)*mx,g=ctx.createRadialGradient(x,y,0,x,y,r), c=veg[Math.floor(rnd()*veg.length)], a=.3+rnd()*.32; g.addColorStop(0,'rgba('+c+','+a+')'); g.addColorStop(.7,'rgba('+c+','+a*.6+')'); g.addColorStop(1,'rgba('+c+',0)'); ctx.fillStyle=g; ctx.fillRect(x-r,y-r,r*2,r*2); }
+  // 2. farm and citrus blocks west of the lagoon
+  const crops=['#7f9a4e','#93a95a','#6b8a46','#b3a56a','#a08d5a','#5f7f44','#8aa364','#c2b77e'];
+  for(let fz=z0+300;fz<z0+R.depth-300;fz+=430){ for(let fx=x0+500;fx<coastX-7000;fx+=560){
+    if(rnd()<.3||fx>lagoonX(fz)-1300) continue; const w=520*mx, h=392*mz, px=X(fx), py=Z(fz);
+    ctx.fillStyle=crops[Math.floor(rnd()*crops.length)]; ctx.globalAlpha=.78; ctx.fillRect(px,py,w,h); ctx.globalAlpha=1;
+    ctx.fillStyle='rgba(30,50,26,.22)'; const rows=rnd()>.5; for(let k=3;k<(rows?h:w);k+=4){ if(rows) ctx.fillRect(px,py+k,w,1); else ctx.fillRect(px+k,py,1,h); }
+    ctx.strokeStyle='rgba(34,58,34,.7)'; ctx.lineWidth=1.5; ctx.strokeRect(px,py,w,h); } }
+  // 3. lagoon with shallows and marsh
+  const bank=side=>{ const pts=[]; for(let z=z0-200;z<=z0+R.depth+200;z+=240) pts.push([X(lagoonX(z)+side*lagoonW(z)*.5),Z(z)]); return pts; };
+  const west=bank(-1), east=bank(1).reverse();
+  ctx.beginPath(); west.concat(east).forEach((q,i)=>i?ctx.lineTo(q[0],q[1]):ctx.moveTo(q[0],q[1])); ctx.closePath();
+  ctx.lineJoin='round'; ctx.strokeStyle='rgba(74,104,72,.75)'; ctx.lineWidth=30; ctx.stroke(); ctx.strokeStyle='rgba(126,186,180,.75)'; ctx.lineWidth=11; ctx.stroke(); ctx.fillStyle='#2f6c84'; ctx.fill();
+  for(let i=0;i<520;i++){ const z=z0+rnd()*R.depth, side=rnd()>.5?1:-1, x=lagoonX(z)+side*(lagoonW(z)*.5+60+rnd()*520); ctx.fillStyle=rnd()>.8?'rgba(52,112,128,.85)':'rgba(40,70,52,.55)'; ctx.beginPath(); ctx.ellipse(X(x),Z(z),(20+rnd()*70)*mx,(20+rnd()*90)*mz,0,0,7); ctx.fill(); }
+  for(let i=0;i<14;i++){ const x=x0+800+rnd()*(R.width-7600), z=z0+600+rnd()*(R.depth-1200), r=90+rnd()*230; ctx.fillStyle='#356f86'; ctx.beginPath(); ctx.ellipse(X(x),Z(z),r*mx,r*.7*mz,rnd()*3,0,7); ctx.fill(); ctx.strokeStyle='rgba(120,180,170,.6)'; ctx.lineWidth=2; ctx.stroke(); }
+  // 4. town on the far shore
+  const tx0=coastX-9700, tz0=R.siteZ-2700, tw=2300, td=4300; ctx.fillStyle='rgba(150,150,138,.5)'; ctx.fillRect(X(tx0),Z(tz0),tw*mx,td*mz);
+  for(let bx=tx0;bx<tx0+tw;bx+=115) for(let bz=tz0;bz<tz0+td;bz+=150){ if(rnd()<.16) continue; const q=rnd(); ctx.fillStyle=q>.7?'#c9c5b8':(q>.4?'#a9a59a':(q>.15?'#8f6f5c':'#5d7b4f')); ctx.fillRect(X(bx)+2,Z(bz)+2,115*mx-4,150*mz-4); }
+  // 5. roads: highway, causeway to the west gate, coastal service road
+  const road=(pts,w,col)=>{ ctx.beginPath(); pts.forEach((q,i)=>i?ctx.lineTo(X(q[0]),Z(q[1])):ctx.moveTo(X(q[0]),Z(q[1]))); ctx.lineCap='round'; ctx.strokeStyle='rgba(206,198,170,.55)'; ctx.lineWidth=w+2.5; ctx.stroke(); ctx.strokeStyle=col||'#4d5357'; ctx.lineWidth=w; ctx.stroke(); };
+  const hw=[]; for(let z=z0;z<=z0+R.depth;z+=600) hw.push([coastX-7050+260*Math.sin(z/4100),z]); road(hw,3.4);
+  road([[-170,roadZ],[coastX-3600,roadZ],[coastX-4300,roadZ+120],[coastX-6100,roadZ+120],[coastX-7050,roadZ+60],[tx0+tw,roadZ+60]],3);
+  road([[coastX-430,z0+400],[coastX-430,R.siteZ-1500]],2.2); road([[coastX-430,R.siteZ+1500],[coastX-430,z0+R.depth-400]],2.2);
+  road([[coastX-3600,roadZ],[coastX-3600,R.siteZ-5600]],2.2);
+  // 6. missile row: older pads strung along the coast north and south of the centre
+  for(let k=0;k<13;k++){ const z=(k<7?R.siteZ-2300-k*1380:R.siteZ+2300+(k-7)*1500)+(rnd()-.5)*300, px=coastX-190-rnd()*60, r=95+rnd()*55;
+    road([[coastX-430,z],[px,z]],1.8); ctx.fillStyle='#bdb8a9'; ctx.beginPath(); ctx.ellipse(X(px),Z(z),r*mx,r*mz,0,0,7); ctx.fill();
+    ctx.fillStyle='rgba(50,46,42,.6)'; ctx.beginPath(); ctx.ellipse(X(px+r*.2),Z(z),r*.35*mx,r*.35*mz,0,0,7); ctx.fill();
+    ctx.fillStyle='#d8d4c8'; ctx.fillRect(X(px-r*1.9),Z(z-40),70*mx,80*mz); ctx.fillStyle='#8d9296'; ctx.fillRect(X(coastX-640),Z(z-90),120*mx,160*mz); }
+  // 7. skid strip
+  ctx.save(); ctx.translate(X(coastX-3300),Z(R.siteZ-4300)); ctx.rotate(-.5); const rl=3100*mz, rw=70*mx*1.6;
+  ctx.fillStyle='rgba(186,180,150,.7)'; ctx.fillRect(-rw*2.2,-rl*.55,rw*4.4,rl*1.1); ctx.fillStyle='#43484c'; ctx.fillRect(-rw*.5,-rl*.5,rw,rl);
+  ctx.fillStyle='#e9e9e2'; for(let q=-rl*.46;q<rl*.46;q+=14) ctx.fillRect(-.6,q,1.2,7); ctx.fillRect(-rw*.4,-rl*.49,rw*.8,3); ctx.fillRect(-rw*.4,rl*.49-3,rw*.8,3);
+  ctx.fillStyle='#55595c'; ctx.fillRect(rw*.5,-rl*.1,rw*2.4,rl*.16); ctx.fillStyle='#c9c5b8'; ctx.fillRect(rw*2.2,-rl*.07,rw*.9,rl*.1); ctx.restore();
+  // 8. masks: keep the authored site clear, and fade the far edges into the base terrain
+  ctx.globalCompositeOperation='destination-out';
+  ctx.save(); ctx.translate(X(R.siteX),Z(R.siteZ)); ctx.scale(R.holeX*mx,R.holeZ*mz); const hole=ctx.createRadialGradient(0,0,0,0,0,1); hole.addColorStop(0,'rgba(0,0,0,1)'); hole.addColorStop(.74,'rgba(0,0,0,1)'); hole.addColorStop(1,'rgba(0,0,0,0)'); ctx.fillStyle=hole; ctx.beginPath(); ctx.arc(0,0,1,0,7); ctx.fill(); ctx.restore();
+  const edge=S*.1; let eg=ctx.createLinearGradient(0,0,edge,0); eg.addColorStop(0,'rgba(0,0,0,1)'); eg.addColorStop(1,'rgba(0,0,0,0)'); ctx.fillStyle=eg; ctx.fillRect(0,0,edge,S);
+  eg=ctx.createLinearGradient(0,0,0,edge); eg.addColorStop(0,'rgba(0,0,0,1)'); eg.addColorStop(1,'rgba(0,0,0,0)'); ctx.fillStyle=eg; ctx.fillRect(0,0,S,edge);
+  eg=ctx.createLinearGradient(0,S,0,S-edge); eg.addColorStop(0,'rgba(0,0,0,1)'); eg.addColorStop(1,'rgba(0,0,0,0)'); ctx.fillStyle=eg; ctx.fillRect(0,S-edge,S,edge);
+  ctx.globalCompositeOperation='source-over';
+  const tx=new THREE.CanvasTexture(cv); if('colorSpace' in tx) tx.colorSpace=THREE.SRGBColorSpace; tx.anisotropy=8; return tx;
+}
+function cape3dRegion(root, landscape){
+  const R=CAPE3D_REGION, tx=cape3dRegionTexture(landscape.coastX,capeWorldPoint(0,ISO_AV).z); if(!tx) return null;
+  const m=cape3dMesh(new THREE.PlaneGeometry(R.width,R.depth),new THREE.MeshStandardMaterial({map:tx,transparent:true,opacity:.9,roughness:1,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-6,polygonOffsetUnits:-6}),landscape.coastX-R.width*.5,-.7,R.siteZ,false);
+  m.rotation.x=-Math.PI/2; m.name='cape3d_region'; m.renderOrder=-1; root.add(m); return m;
+}
 function cape3dSkyDome(scene){
   const uniforms={top:{value:new THREE.Color(0x0a1428)},mid:{value:new THREE.Color(0x1d3450)},bot:{value:new THREE.Color(0x3a5570)},sunDir:{value:new THREE.Vector3(0,1,0)},sunCol:{value:new THREE.Color(0xffd9a0)},sunA:{value:1},fade:{value:1},space:{value:new THREE.Color(0x020914)}};
   const mat=new THREE.ShaderMaterial({uniforms,side:THREE.BackSide,depthWrite:false,depthTest:false,fog:false,
@@ -2591,6 +2651,71 @@ function cape3dFacilityGroup(d, materials){
   }
   return g;
 }
+// Graphics pass 2 (2026-11-16): vehicle realism. Presentation only -- stage count, heights, radii,
+// nozzle plane and sub-group topology are exactly what they were, so staging/trajectory code is
+// untouched. The detail vocabulary is taken from flown hardware:
+//   v2      A-4 / Redstone black-and-white roll-pattern quadrants
+//   saturn  Saturn I / V black roll stripes and band on white
+//   cryo    LH2/LOX stages: white insulation with a frost band (S-II, S-IVB, Centaur)
+//   steel   stainless tankage with weld rings (Atlas balloon tanks, Starship)
+//   titan   bare aluminium/olive-drab storable stages (Titan II, Proton, R-7 lineage)
+//   solid   segmented motor casings with field joints (UA1205, Shuttle SRB)
+const CAPE3D_ENGINE_HULL={a4:'v2',kerolox_mk1:'white',kerolox_le:'white',kerolox_mk2:'steel',vernier_v:'white',kerolox_mk3:'saturn',f1_class:'saturn',hydrolox_up:'cryo',hydrolox_rl10:'cryo',hyper_storable:'titan',methalox:'steel',methalox_vac:'steel',solid_castor:'solid',solid_scout:'solid',solid_srb:'solid'};
+function cape3dHullStyle(engineId){ return CAPE3D_ENGINE_HULL[String(engineId||'')]||'white'; }
+const _cape3dHullTextures={};
+function cape3dHullTexture(style,label,aspect){
+  // aspect = stage height / circumference, bucketed, so lettering is drawn pre-squashed and reads
+  // undistorted once the square canvas is wrapped round a tall barrel.
+  const asp=Math.max(.5,Math.min(6,Math.round((Number(aspect)||1)*2)/2)), key=style+'|'+(label||'')+'|'+asp; if(_cape3dHullTextures[key]) return _cape3dHullTextures[key];
+  const cv=document.createElement('canvas'), W=512, H=512; cv.width=W; cv.height=H; const ctx=cv.getContext('2d'); if(!ctx) return null;
+  const rnd=mulberry(style.length*977+31), ink='#14181c';
+  ctx.fillStyle=style==='steel'?'#dfe5e8':(style==='titan'?'#c9cfc4':(style==='solid'?'#f1eee6':'#ffffff')); ctx.fillRect(0,0,W,H);
+  if(style==='v2'){ for(let row=0;row<3;row++) for(let col=0;col<4;col++) if((row+col)%2){ ctx.fillStyle=ink; ctx.fillRect(col*W/4,row*H/3,W/4,H/3); } }
+  if(style==='saturn'){
+    ctx.fillStyle=ink; for(let col=0;col<4;col++){ ctx.fillRect(col*W/4+W/16,H*.60,W/8,H*.40); ctx.fillRect(col*W/4+W/16+W/8,H*.07,W/8,H*.21); }
+    ctx.fillRect(0,H*.28,W,H*.035);
+  }
+  if(style==='cryo'){
+    const g=ctx.createLinearGradient(0,H*.18,0,H*.62); g.addColorStop(0,'rgba(196,224,242,0)'); g.addColorStop(.35,'rgba(196,224,242,.42)'); g.addColorStop(1,'rgba(196,224,242,0)'); ctx.fillStyle=g; ctx.fillRect(0,H*.18,W,H*.44);
+    for(let i=0;i<900;i++){ ctx.fillStyle='rgba(255,255,255,'+(.25+rnd()*.5)+')'; ctx.fillRect(rnd()*W,H*(.26+rnd()*.26),1+rnd()*3,1+rnd()*2); }
+    ctx.fillStyle=ink; ctx.fillRect(0,H*.9,W,H*.03);
+  }
+  if(style==='steel'){
+    for(let i=0;i<260;i++){ ctx.fillStyle=rnd()>.5?'rgba(255,255,255,.10)':'rgba(40,50,60,.07)'; ctx.fillRect(rnd()*W,0,1+rnd()*2,H); }
+    const g=ctx.createLinearGradient(0,H*.8,0,H); g.addColorStop(0,'rgba(90,70,60,0)'); g.addColorStop(1,'rgba(90,70,60,.30)'); ctx.fillStyle=g; ctx.fillRect(0,H*.8,W,H*.2);
+  }
+  if(style==='titan'){ ctx.fillStyle='rgba(60,70,58,.55)'; ctx.fillRect(0,H*.44,W,H*.12); ctx.fillStyle=ink; ctx.fillRect(0,H*.02,W,H*.03); }
+  if(style==='solid'){ ctx.fillStyle=ink; ctx.fillRect(0,H*.04,W,H*.035); for(let k=1;k<4;k++){ ctx.fillStyle='rgba(20,24,28,.75)'; ctx.fillRect(0,k*H/4-3,W,3); ctx.fillRect(0,k*H/4+5,W,2); } }
+  // Shared construction detail: ring welds, longitudinal seams, rivet lines and light weathering.
+  const rings=style==='steel'?9:6;
+  for(let k=1;k<rings;k++){ const y=Math.round(k*H/rings); ctx.fillStyle='rgba(15,20,26,.24)'; ctx.fillRect(0,y,W,2); ctx.fillStyle='rgba(255,255,255,.20)'; ctx.fillRect(0,y+2,W,1);
+    for(let x=4;x<W;x+=9){ ctx.fillStyle='rgba(15,20,26,.20)'; ctx.fillRect(x,y-4,2,2); } }
+  for(let k=0;k<8;k++){ const x=Math.round(k*W/8); ctx.fillStyle='rgba(15,20,26,.13)'; ctx.fillRect(x,0,1,H); }
+  for(let i=0;i<70;i++){ const x=rnd()*W, y=rnd()*H, len=20+rnd()*90; const g=ctx.createLinearGradient(0,y,0,y+len); g.addColorStop(0,'rgba(70,60,48,.10)'); g.addColorStop(1,'rgba(70,60,48,0)'); ctx.fillStyle=g; ctx.fillRect(x,y,1+rnd()*3,len); }
+  if(label&&(style==='white'||style==='saturn'||style==='cryo'||style==='titan')){
+    ctx.font='700 30px "Roboto Condensed","Arial Narrow",sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    for(const u of [.3125,.8125]){ ctx.save(); ctx.translate(W*u,H*(style==='saturn'?.45:.5)); ctx.rotate(-Math.PI/2); ctx.scale(1/asp,1); ctx.fillStyle=style==='saturn'?'#b3261e':'#1b2026'; ctx.fillText(String(label).toUpperCase().slice(0,18),0,0); ctx.restore(); }
+  }
+  const tx=new THREE.CanvasTexture(cv); tx.wrapS=THREE.RepeatWrapping; if('colorSpace' in tx) tx.colorSpace=THREE.SRGBColorSpace; tx.anisotropy=8;
+  return (_cape3dHullTextures[key]=tx);
+}
+function cape3dCorrugationTexture(){
+  if(cape3dCorrugationTexture._tx) return cape3dCorrugationTexture._tx;
+  const cv=document.createElement('canvas'); cv.width=32; cv.height=8; const ctx=cv.getContext('2d'); if(!ctx) return null;
+  const g=ctx.createLinearGradient(0,0,32,0); g.addColorStop(0,'#5d6870'); g.addColorStop(.3,'#f4f7f9'); g.addColorStop(.6,'#aab4bb'); g.addColorStop(1,'#4d575e'); ctx.fillStyle=g; ctx.fillRect(0,0,32,8);
+  const tx=new THREE.CanvasTexture(cv); tx.wrapS=tx.wrapT=THREE.RepeatWrapping; if('colorSpace' in tx) tx.colorSpace=THREE.SRGBColorSpace;
+  return (cape3dCorrugationTexture._tx=tx);
+}
+// A real nozzle contour (chamber, throat, bell) rather than a plain cone. Local y runs -5 (exit) .. +5.
+function cape3dBellGeometry(exitR){
+  const pts=[], n=12; for(let k=0;k<=n;k++){ const t=k/n; pts.push(new THREE.Vector2(exitR*(.26+.74*Math.pow(1-t,.55)),-5+t*8.2)); }
+  pts.push(new THREE.Vector2(exitR*.40,3.9)); pts.push(new THREE.Vector2(exitR*.44,4.6)); pts.push(new THREE.Vector2(exitR*.30,5));
+  return new THREE.LatheGeometry(pts,18);
+}
+function cape3dOgiveGeometry(baseR,height,blunt){
+  const pts=[], n=14; for(let k=0;k<=n;k++){ const t=k/n; pts.push(new THREE.Vector2(Math.max(.02,baseR*Math.pow(Math.cos(t*Math.PI*.5),blunt?.55:.82)),t*height)); }
+  return new THREE.LatheGeometry(pts,24);
+}
 function cape3dVehicleMesh(source){
   const g=new THREE.Group(); g.name='cape3d_active_vehicle';
   const requested=cape3dFlightVehicleSpec(source), vehicleSpec=requested.stages.length?requested:cape3dCurrentVehicleSpec();
@@ -2598,7 +2723,13 @@ function cape3dVehicleMesh(source){
   const segs=(shape&&shape.segs&&shape.segs.length)?shape.segs:[{w:10,h:56,engines:1},{w:7,h:32,engines:1}];
   const liv=(typeof curLivery==='function'?curLivery():{body:'#d4dee4',accent:'#e0564f',nose:'auto'}), scale=.72;
   const methane=vehicleSpec.stages.some(s=>String(s.eng||'').includes('methalox'));
-  const profile=cape3dVehicleDetailProfile(shape,{methane}), bodyMat=new THREE.MeshStandardMaterial({color:profile.kind==='superheavy'?0xb9c4c8:liv.body,roughness:profile.kind==='superheavy'?.28:.48,metalness:profile.kind==='superheavy'?.72:.25}), bandMat=new THREE.MeshStandardMaterial({color:liv.accent,roughness:.42,metalness:.34}), darkMat=new THREE.MeshStandardMaterial({color:0x263039,roughness:.35,metalness:.72}), detailMat=new THREE.MeshStandardMaterial({color:0x8fa4af,roughness:.38,metalness:.66});
+  // Metalness stays low throughout: the scene has no environment map, so a highly metallic surface has
+  // nothing to reflect and renders near-black (the old super-heavy hull did).
+  const profile=cape3dVehicleDetailProfile(shape,{methane}), bodyMat=new THREE.MeshStandardMaterial({color:liv.body,roughness:.5,metalness:.12}), bandMat=new THREE.MeshStandardMaterial({color:liv.accent,roughness:.42,metalness:.2}), darkMat=new THREE.MeshStandardMaterial({color:0x2a333b,roughness:.42,metalness:.35}), detailMat=new THREE.MeshStandardMaterial({color:0x9fb0b9,roughness:.42,metalness:.3});
+  const bellMat=new THREE.MeshStandardMaterial({color:0x4a5158,roughness:.38,metalness:.4,side:THREE.DoubleSide}), corrTx=cape3dCorrugationTexture(), label=(typeof state!=='undefined'&&state&&typeof state.company==='string'&&state.company)||'';
+  const hullMat=(style,radius,height)=>{ const tx=cape3dHullTexture(style,label,radius&&height?height/(Math.PI*2*radius):1), steel=style==='steel'; return new THREE.MeshStandardMaterial({color:steel?0xd9e0e4:(style==='titan'?0xe6e9e2:liv.body),map:tx,roughness:steel?.3:.5,metalness:steel?.3:.12}); };
+  const corrMat=(radius)=>{ const m=new THREE.MeshStandardMaterial({color:0xdfe5e8,roughness:.5,metalness:.2}); if(corrTx){ m.map=corrTx.clone(); m.map.repeat.set(Math.max(12,Math.round(radius*5.2)),1); m.map.needsUpdate=true; } return m; };
+  const at=(group,mesh,rx,ry,rz)=>{ if(rx||ry||rz) mesh.rotation.set(rx||0,ry||0,rz||0); group.add(mesh); return mesh; };
   g.userData.vehicleClass=profile.kind;
   g.userData.vehicleVisualKey=cape3dVehicleVisualKey(vehicleSpec);
   g.userData.coreStageCount=vehicleSpec.stages.length;
@@ -2611,41 +2742,129 @@ function cape3dVehicleMesh(source){
   const stageGroups=[]; let y=0;
   for(let i=0;i<segs.length;i++){
     const s=segs[i], h=s.h*scale, r=Math.max(2.4,s.w*scale*.5), sg=new THREE.Group(); sg.name='cape3d_stage_'+i;
-    cape3dCylinder(sg,r,h,bodyMat,0,y+h*.5,0);
+    const engineId=(vehicleSpec.stages[i]&&vehicleSpec.stages[i].eng)||s.engine||'', style=cape3dHullStyle(engineId), sounding=profile.kind==='sounding';
+    const nextR=i<segs.length-1?Math.max(2.4,segs[i+1].w*scale*.5):r, upperEng=i<segs.length-1?String((vehicleSpec.stages[i+1]&&vehicleSpec.stages[i+1].eng)||segs[i+1].engine||''):'';
+    // The top of a stage becomes its interstage: a tapered adapter when the next stage is narrower, and an
+    // open hot-staging truss (R-7 Blok-I, Proton, N1, Titan II) under kerosene/storable upper engines.
+    const lattice=!sounding&&i<segs.length-1&&/^(kerolox|vernier|hyper)/.test(upperEng), adapterH=i<segs.length-1?Math.min(h*.14,Math.max(2.2,(r-nextR)*1.6+(lattice?3.2:0))):0, bodyH=h-adapterH;
+    const body=cape3dMesh(new THREE.CylinderGeometry(r,r,bodyH,32),hullMat(style,r,bodyH),0,y+bodyH*.5,0); sg.add(body);
+    if(adapterH>0){
+      if(lattice){
+        cape3dCylinder(sg,Math.min(r,nextR)*.55,adapterH,darkMat,0,y+bodyH+adapterH*.5,0);
+        const n=Math.max(8,Math.round(r*2.2)); for(let k=0;k<n;k++){ const a0=k*Math.PI*2/n, a1=(k+(k%2?-1:1))*Math.PI*2/n, p0=new THREE.Vector3(Math.cos(a0)*r*.98,y+bodyH,Math.sin(a0)*r*.98), p1=new THREE.Vector3(Math.cos(a1)*nextR*.98,y+h,Math.sin(a1)*nextR*.98), mid=p0.clone().add(p1).multiplyScalar(.5), strut=cape3dMesh(new THREE.CylinderGeometry(.16,.16,p0.distanceTo(p1),5),detailMat,mid.x,mid.y,mid.z,false); strut.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),p1.clone().sub(p0).normalize()); sg.add(strut); }
+        for(const yy of [y+bodyH,y+h]){ const rr=yy===y+h?nextR:r, ring=cape3dMesh(new THREE.TorusGeometry(rr*.99,.3,6,28),detailMat,0,yy,0,false); ring.rotation.x=Math.PI*.5; sg.add(ring); }
+      } else sg.add(cape3dMesh(new THREE.CylinderGeometry(nextR*1.01,r*1.01,adapterH,32),corrMat(r),0,y+bodyH+adapterH*.5,0));
+    }
     // The preview's livery bands/interstages are real 3D pieces here, not a separate generic rocket.
-    cape3dCylinder(sg,r*1.012,Math.max(1.2,h*.035),bandMat,0,y+h*.84,0);
-    if(i<segs.length-1) cape3dCylinder(sg,Math.max(r,segs[i+1].w*scale*.5)*1.035,2.2,darkMat,0,y+h,0);
-    for(let ringI=0;ringI<profile.ringCount;ringI++){ const bandY=(ringI+1)/(profile.ringCount+1), ring=cape3dMesh(new THREE.TorusGeometry(r*1.012,.28,8,24),detailMat,0,y+h*bandY,0,false); ring.rotation.x=Math.PI*.5; sg.add(ring); }
-    for(let k=0;k<profile.stringers;k++){ const a=k*Math.PI*2/profile.stringers, stringer=cape3dMesh(new THREE.BoxGeometry(.5,h*.66,.5),detailMat,Math.cos(a)*r*1.015,y+h*.48,Math.sin(a)*r*1.015,false); sg.add(stringer); }
-    // Small raised access/commodity panels break up otherwise featureless tank barrels.
-    if(profile.kind!=='sounding') for(const a of [0,Math.PI]) cape3dBox(sg,1.1,Math.max(2.5,h*.055),1.4,darkMat,Math.cos(a)*(r+.3),y+h*.67,Math.sin(a)*(r+.3),false);
-    g.add(sg); stageGroups.push({index:i, group:sg, baseY:y, topY:y+h, kind:segs[i].kind||'stage', engine:(vehicleSpec.stages[i]&&vehicleSpec.stages[i].eng)||segs[i].engine||''});
+    cape3dCylinder(sg,r*1.012,Math.max(1.2,h*.035),bandMat,0,y+bodyH*.86,0);
+    for(let ringI=0;ringI<profile.ringCount;ringI++){ const bandY=(ringI+1)/(profile.ringCount+1), ring=cape3dMesh(new THREE.TorusGeometry(r*1.012,.28,8,24),detailMat,0,y+bodyH*bandY,0,false); ring.rotation.x=Math.PI*.5; sg.add(ring); }
+    for(let k=0;k<profile.stringers;k++){ const a=k*Math.PI*2/profile.stringers, stringer=cape3dMesh(new THREE.BoxGeometry(.5,bodyH*.66,.5),detailMat,Math.cos(a)*r*1.015,y+bodyH*.48,Math.sin(a)*r*1.015,false); sg.add(stringer); }
+    if(!sounding){
+      // Corrugated aft skirt / intertank (Saturn, Atlas, Proton), a systems tunnel, an external LOX
+      // feedline with brackets, and raised access panels.
+      if(style!=='solid'&&style!=='steel'){ sg.add(cape3dMesh(new THREE.CylinderGeometry(r*1.022,r*1.022,Math.max(1.6,bodyH*.07),32),corrMat(r),0,y+Math.max(1.6,bodyH*.07)*.5,0,false)); sg.add(cape3dMesh(new THREE.CylinderGeometry(r*1.02,r*1.02,Math.max(1.4,bodyH*.055),32),corrMat(r),0,y+bodyH*.52,0,false)); }
+      const ta=.6+i*1.1, tunnel=cape3dBox(sg,.75,bodyH*.74,1.25,detailMat,Math.cos(ta)*(r+.3),y+bodyH*.46,Math.sin(ta)*(r+.3),false); tunnel.rotation.y=-ta;
+      const fa=ta+2.3, feed=cape3dMesh(new THREE.CylinderGeometry(.42,.42,bodyH*.5,8),detailMat,Math.cos(fa)*(r+.5),y+bodyH*.3,Math.sin(fa)*(r+.5),false); sg.add(feed);
+      for(const q of [.08,.3,.52]) cape3dBox(sg,.5,.35,.9,darkMat,Math.cos(fa)*(r+.2),y+bodyH*q,Math.sin(fa)*(r+.2),false).rotation.y=-fa;
+      for(const a of [0,Math.PI]) cape3dBox(sg,1.1,Math.max(2.5,bodyH*.055),1.4,darkMat,Math.cos(a)*(r+.3),y+bodyH*.67,Math.sin(a)*(r+.3),false);
+      if(i>0){
+        // Upper stages: solid ullage/retro motors on the aft skirt (S-II, S-IVB) and whip antennas forward.
+        for(let k=0;k<4;k++){ const a=k*Math.PI*.5+.78, m=cape3dMesh(new THREE.CylinderGeometry(.42,.5,2.4,8),detailMat,Math.cos(a)*(r+.55),y+2.6,Math.sin(a)*(r+.55),false); sg.add(m); const cap=cape3dMesh(new THREE.ConeGeometry(.42,.9,8),bandMat,Math.cos(a)*(r+.55),y+4.25,Math.sin(a)*(r+.55),false); sg.add(cap); }
+        for(const a of [1.2,4.3]){ const ant=cape3dMesh(new THREE.CylinderGeometry(.07,.07,3.2,4),darkMat,Math.cos(a)*(r+1.1),y+bodyH*.93,Math.sin(a)*(r+1.1),false); ant.rotation.set(Math.sin(a)*.9,0,-Math.cos(a)*.9); sg.add(ant); }
+      }
+      if(i===0&&(engineId==='f1_class'||engineId==='kerolox_mk3')){
+        // Saturn-style engine fairings and stub fins at the base of the first stage.
+        for(let k=0;k<4;k++){ const a=k*Math.PI*.5+Math.PI*.25, fair=cape3dMesh(new THREE.ConeGeometry(r*.36,Math.min(bodyH*.2,r*2.6),12),hullMat('white'),Math.cos(a)*r*.86,y+Math.min(bodyH*.2,r*2.6)*.5,Math.sin(a)*r*.86,false); fair.scale.z=.8; fair.rotation.y=-a; sg.add(fair); cape3dTaperedFin(sg,darkMat,r*1.16,.2,Math.min(bodyH*.1,r*1.5),r*.55,a,.5); }
+      }
+      if(i===0&&style==='steel'&&methane){
+        // Reusable methalox boosters: grid fins forward, landing-leg fairings aft (Falcon 9 / Super Heavy).
+        for(let k=0;k<4;k++){ const a=k*Math.PI*.5+Math.PI*.25, gf=cape3dBox(sg,r*.55,.35,r*.5,darkMat,Math.cos(a)*(r+r*.3),y+bodyH*.93,Math.sin(a)*(r+r*.3),false); gf.rotation.y=-a; const leg=cape3dBox(sg,.6,Math.min(bodyH*.22,r*3),r*.5,darkMat,Math.cos(a)*(r+.25),y+Math.min(bodyH*.22,r*3)*.5+1,Math.sin(a)*(r+.25),false); leg.rotation.y=-a; }
+      }
+      if(i===0&&/^kerolox_(mk1|mk2|le)$/.test(engineId)){
+        // Thor/Atlas-class vernier chambers either side of the main engine.
+        for(const a of [Math.PI*.5,Math.PI*1.5]){ const v=cape3dMesh(cape3dBellGeometry(.55),bellMat,Math.cos(a)*r*.92,y-1.4,Math.sin(a)*r*.92,false); v.scale.y=.3; sg.add(v); }
+      }
+    } else if(style==='v2'){
+      // A-4: graphite jet vanes in the exhaust and a pitot/antenna probe pair near the tail.
+      for(let k=0;k<4;k++){ const a=k*Math.PI*.5+Math.PI*.25; cape3dBox(sg,.25,1.6,.9,darkMat,Math.cos(a)*r*.42,y-1.2,Math.sin(a)*r*.42,false).rotation.y=-a; }
+    }
+    g.add(sg); stageGroups.push({index:i, group:sg, baseY:y, topY:y+h, kind:segs[i].kind||'stage', engine:engineId});
     y+=h;
   }
   const top=segs[segs.length-1], topR=Math.max(2.4,top.w*scale*.5), noseH=Math.max(7,top.w*scale*(liv.nose==='blunt'?1.05:1.7));
   // Nose (and boosters, below) attach to the TOP stage's own sub-group: the nose never separates on
   // its own in this model, so it correctly rides along with whatever the top segment is at any time.
   const topGroup=stageGroups.length?stageGroups[stageGroups.length-1].group:g;
-  let nose;
+  const noseMat=new THREE.MeshStandardMaterial({color:liv.body,roughness:.42,metalness:.12});
   if(shape&&shape.nose==='capsule'){
-    nose=cape3dMesh(new THREE.SphereGeometry(topR,20,14),new THREE.MeshStandardMaterial({color:liv.body,roughness:.42,metalness:.2}),0,y+noseH*.42,0); nose.scale.y=Math.max(.62,noseH/(topR*2));
+    // Conical crew capsule on its adapter, with a launch-escape tower (Mercury, Apollo, Soyuz).
+    const capH=Math.max(4.5,topR*1.35), capR=topR*.92;
+    topGroup.add(cape3dMesh(new THREE.CylinderGeometry(capR*.34,capR,capH,24),noseMat,0,y+capH*.5,0));
+    cape3dCylinder(topGroup,capR*1.02,.5,darkMat,0,y+.25,0);
+    cape3dCylinder(topGroup,capR*.34,capH*.16,detailMat,0,y+capH*1.08,0);
+    for(const a of [-.55,.55,2.6,3.7]){ const win=cape3dBox(topGroup,capR*.26,capH*.14,.3,new THREE.MeshStandardMaterial({color:0x101d26,metalness:.3,roughness:.2}),Math.sin(a)*capR*.68,y+capH*.5,Math.cos(a)*capR*.68,false); win.rotation.set(-.45*Math.cos(a),a,0); }
+    const towerBase=y+capH*1.16, towerH=Math.max(5,capH*.95), motorH=Math.max(4,capH*.8), motorR=Math.max(.45,capR*.13);
+    for(let k=0;k<4;k++){ const a=k*Math.PI*.5+Math.PI*.25, p0=new THREE.Vector3(Math.cos(a)*capR*.3,towerBase,Math.sin(a)*capR*.3), p1=new THREE.Vector3(Math.cos(a)*motorR,towerBase+towerH,Math.sin(a)*motorR), mid=p0.clone().add(p1).multiplyScalar(.5), leg=cape3dMesh(new THREE.CylinderGeometry(.11,.11,p0.distanceTo(p1),5),darkMat,mid.x,mid.y,mid.z,false); leg.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),p1.clone().sub(p0).normalize()); topGroup.add(leg); }
+    for(const q of [.33,.66]){ const ring=cape3dMesh(new THREE.TorusGeometry(capR*.3*(1-q)+motorR*q,.09,5,14),darkMat,0,towerBase+towerH*q,0,false); ring.rotation.x=Math.PI*.5; topGroup.add(ring); }
+    topGroup.add(cape3dMesh(new THREE.CylinderGeometry(motorR*1.5,motorR*2.1,motorH*.16,12),darkMat,0,towerBase+towerH+motorH*.08,0,false));
+    cape3dCylinder(topGroup,motorR,motorH,noseMat,0,towerBase+towerH+motorH*.5+motorH*.1,0);
+    topGroup.add(cape3dMesh(new THREE.ConeGeometry(motorR,motorH*.3,12),bandMat,0,towerBase+towerH+motorH*1.25,0,false));
   } else {
-    nose=cape3dMesh(new THREE.ConeGeometry(topR,noseH,20),new THREE.MeshStandardMaterial({color:liv.body,roughness:.42,metalness:.18}),0,y+noseH*.5,0);
+    // Ogive payload fairing with its base ring and split line.
+    topGroup.add(cape3dMesh(cape3dOgiveGeometry(topR,noseH,liv.nose==='blunt'),noseMat,0,y,0));
+    if(profile.kind!=='sounding'){ cape3dCylinder(topGroup,topR*1.015,.7,detailMat,0,y+.35,0); for(const a of [0,Math.PI]) cape3dBox(topGroup,.18,noseH*.72,.3,darkMat,Math.cos(a)*topR*.78,y+noseH*.36,Math.sin(a)*topR*.78,false); }
+    else cape3dCylinder(topGroup,.09,noseH*.22,darkMat,0,y+noseH*1.08,0);
   }
-  topGroup.add(nose);
-  if(shape&&shape.nose==='capsule') for(const a of [-.55,.55]){ const window=cape3dMesh(new THREE.SphereGeometry(topR*.22,12,8),new THREE.MeshStandardMaterial({color:0x101d26,metalness:.7,roughness:.2}),Math.sin(a)*topR*.52,y+noseH*.56,Math.cos(a)*topR*.72,false); window.scale.y=.62; topGroup.add(window); }
   // Boosters get their own sub-group too (kind:'booster') — they separate as a unit, distinctly
   // from any core stage, exactly matching cape3dTrajectoryPlan's separate boosterAttached tracking.
   let boosterGroup=null;
-  if(shape&&shape.boosters){ boosterGroup=new THREE.Group(); boosterGroup.name='cape3d_boosters'; const b=shape.boosters, h=b.h*scale, r=Math.max(1.8,b.w*scale*.5), orbit=Math.max(r+2.5,segs[0].w*scale*.58+r), boosterMat=new THREE.MeshStandardMaterial({color:b.solid?0xc9b9a5:liv.body,roughness:.55,metalness:.18}); for(let i=0;i<b.count;i++){ const a=i*Math.PI*2/b.count, x=Math.cos(a)*orbit, z=Math.sin(a)*orbit; cape3dCylinder(boosterGroup,r,h,boosterMat,x,h*.5,z); cape3dCylinder(boosterGroup,r*1.02,1.4,bandMat,x,h*.7,z); const cap=cape3dMesh(new THREE.ConeGeometry(r,h*.13,14),boosterMat,x,h+h*.065,z), bell=cape3dMesh(new THREE.ConeGeometry(r*.46,7,12),darkMat,x,-3.5,z); boosterGroup.add(cap); boosterGroup.add(bell); } g.add(boosterGroup); }
+  if(shape&&shape.boosters){
+    boosterGroup=new THREE.Group(); boosterGroup.name='cape3d_boosters';
+    const b=shape.boosters, h=b.h*scale, r=Math.max(1.8,b.w*scale*.5), orbit=Math.max(r+2.5,segs[0].w*scale*.58+r), coreR=Math.max(2.4,segs[0].w*scale*.5);
+    for(let i=0;i<b.count;i++){
+      const a=i*Math.PI*2/b.count, x=Math.cos(a)*orbit, z=Math.sin(a)*orbit, one=new THREE.Group(); one.position.set(x,0,z); one.rotation.y=-a; boosterGroup.add(one);
+      if(b.solid){
+        // Segmented solid: casing with field joints, flared aft skirt, ogive nose, nozzle and thrust-vector tank.
+        one.add(cape3dMesh(new THREE.CylinderGeometry(r,r,h,24),hullMat('solid'),0,h*.5,0));
+        for(let k=1;k<4;k++){ const ring=cape3dMesh(new THREE.TorusGeometry(r*1.02,.22,6,22),darkMat,0,h*k/4,0,false); ring.rotation.x=Math.PI*.5; one.add(ring); }
+        one.add(cape3dMesh(new THREE.CylinderGeometry(r*1.01,r*1.28,h*.07,24),detailMat,0,h*.035,0));
+        one.add(cape3dMesh(cape3dOgiveGeometry(r,h*.15,false),noseMat,0,h,0));
+        const bell=cape3dMesh(cape3dBellGeometry(r*.6),bellMat,0,-3,0); bell.scale.y=.7; one.add(bell);
+        cape3dBox(one,r*.5,h*.12,r*.7,detailMat,r*.9,h*.12,0,false);
+      } else {
+        // Liquid strap-on in the R-7 "Semyorka" pattern: a tapered block leaning into the core, four
+        // chambers and two verniers at the base.
+        const taper=cape3dMesh(new THREE.CylinderGeometry(r*.42,r*1.08,h,24),hullMat(cape3dHullStyle(b.engine)==='saturn'?'white':cape3dHullStyle(b.engine)),0,h*.5,0); one.add(taper);
+        one.add(cape3dMesh(new THREE.ConeGeometry(r*.42,h*.14,16),noseMat,0,h+h*.07,0));
+        one.add(cape3dMesh(new THREE.CylinderGeometry(r*1.1,r*1.1,Math.max(1.4,h*.05),24),corrMat(r),0,Math.max(1.4,h*.05)*.5,0,false));
+        cape3dCylinder(one,r*.78,1.2,bandMat,0,h*.62,0);
+        for(let k=0;k<4;k++){ const q=k*Math.PI*.5+Math.PI*.25, bell=cape3dMesh(cape3dBellGeometry(r*.3),bellMat,Math.cos(q)*r*.5,-2.4,Math.sin(q)*r*.5,false); bell.scale.y=.55; one.add(bell); }
+        for(const zz of [-1,1]){ const v=cape3dMesh(cape3dBellGeometry(r*.13),bellMat,r*.95,-1.2,zz*r*.4,false); v.scale.y=.3; one.add(v); }
+        const lean=Math.atan2(Math.max(0,orbit-coreR-r*.42),h); one.rotation.z=lean*.85;
+      }
+      // Forward and aft attach struts back to the core.
+      for(const q of [.14,.78]){ const strut=cape3dBox(one,Math.max(.6,orbit-coreR-r*.6),.35,.35,darkMat,-(orbit-coreR)*.5-r*.2,h*q,0,false); strut.userData.attachStrut=true; }
+    }
+    g.add(boosterGroup);
+  }
   // Explicit engine bells define the only thrust origin. The launch plume is parented below this
   // plane. They stay on the bottom stage's sub-group (segs[0]) — the same simplification the
   // pre-staging mesh already made (one fixed nozzle plane, not per-stage engine art); once segs[0]
   // separates, cape3dUpdateLaunchPresentation repositions the flame FX to the new bottom stage's
   // own base so the remaining stack visibly "ignites" from the right place.
-  const engineCount=Math.max(1,segs[0].engines||1), baseR=Math.max(2.4,segs[0].w*scale*.5), bellR=Math.max(1.15,Math.min(3.4,baseR/(engineCount>1?engineCount*.72:2.25))), bellOrbit=engineCount===1?0:Math.max(1.2,baseR-bellR*1.25), nozzleY=-10;
+  const engineCount=Math.max(1,segs[0].engines||1), baseR=Math.max(2.4,segs[0].w*scale*.5), centre=engineCount>=5&&engineCount%2===1, ringCount=centre?engineCount-1:engineCount, bellR=Math.max(1.15,Math.min(3.4,baseR/(engineCount>1?Math.max(2.6,ringCount*.62):2.25))), bellOrbit=engineCount===1?0:Math.max(1.2,baseR-bellR*1.25), nozzleY=-10;
   const bottomGroup=stageGroups.length?stageGroups[0].group:g;
-  for(let i=0;i<engineCount;i++){ const a=engineCount===1?0:i*Math.PI*2/engineCount, bell=cape3dMesh(new THREE.ConeGeometry(bellR,10,12),darkMat,Math.cos(a)*bellOrbit,nozzleY+5,Math.sin(a)*bellOrbit); bottomGroup.add(bell); }
+  const addEngine=(x,z)=>{
+    bottomGroup.add(cape3dMesh(cape3dBellGeometry(bellR),bellMat,x,nozzleY+5,z));
+    // Turbopump exhaust manifold wrapped round the bell and a propellant duct up to the thrust structure.
+    if(profile.kind!=='sounding'){ const wrap=cape3dMesh(new THREE.TorusGeometry(bellR*.62,Math.max(.12,bellR*.07),6,16),detailMat,x,nozzleY+6.2,z,false); wrap.rotation.x=Math.PI*.5; bottomGroup.add(wrap); bottomGroup.add(cape3dMesh(new THREE.CylinderGeometry(Math.max(.14,bellR*.09),Math.max(.14,bellR*.09),3.6,6),detailMat,x+bellR*.5,nozzleY+8.4,z,false)); }
+  };
+  if(centre) addEngine(0,0);
+  for(let i=0;i<ringCount;i++){ const a=engineCount===1?0:i*Math.PI*2/ringCount+(centre?Math.PI*.25:0); addEngine(Math.cos(a)*bellOrbit,Math.sin(a)*bellOrbit); }
+  if(profile.kind!=='sounding') bottomGroup.add(cape3dMesh(new THREE.CylinderGeometry(baseR*.9,baseR*.98,.9,24),darkMat,0,-.45,0,false));
+  // Sounding rockets carry the engine inside a tapering tail (A-4, Viking, Aerobee): a boat-tail shrouds
+  // most of the bell so only the nozzle exit shows, instead of a full-length bell hanging in the open.
+  else bottomGroup.add(cape3dMesh(new THREE.CylinderGeometry(baseR,Math.max(bellR*1.02,baseR*.62),6.4,24),darkMat,0,-3.2,0));
   if(profile.kind==='sounding'){
     // Thin swept trapezoids match the cruciform tail fins used by Terrier/Orion and Black
     // Brant-class sounding vehicles. Orbital boosters omit them and steer by thrust vectoring.
@@ -2654,7 +2873,7 @@ function cape3dVehicleMesh(source){
     g.userData.finStyle='tapered-cruciform';
     g.userData.finProfile=fin;
   }
-  if(profile.flaps){
+  if(profile.flaps&&methane){
     // Starship-scale stainless vehicles read through paired forward/aft control flaps, not tail fins.
     for(const yPos of [y*.18,y*.82]) for(const angle of [0,Math.PI]) cape3dTaperedFin(g,darkMat,baseR*.98,yPos-(yPos>y*.5?6:9),yPos>y*.5?13:19,13,angle,1.1);
     cape3dBox(g,1.1,y*.72,baseR*.9,darkMat,-baseR-.2,y*.48,0,false);
@@ -3411,12 +3630,13 @@ function buildCape3DScene(scene){
   const ground=cape3dMesh(new THREE.PlaneGeometry(landscape.land.width,landscape.land.depth),materials.ground,landscape.land.centerX,-1,180,false); ground.rotation.x=-Math.PI/2; root.add(ground);
   const terrain=cape3dMesh(new THREE.PlaneGeometry(landscape.land.width,landscape.land.depth),new THREE.MeshBasicMaterial({map:terrainTx,transparent:true,opacity:CAPE3D_TERRAIN_STYLE.overlayOpacity,depthWrite:false}),landscape.land.centerX,-.72,180,false); terrain.rotation.x=-Math.PI/2; root.add(terrain);
   const ocean=cape3dMesh(new THREE.PlaneGeometry(landscape.ocean.width,landscape.ocean.depth),materials.water,landscape.ocean.centerX,-.6,370,false); ocean.rotation.x=-Math.PI/2; root.add(ocean);
+  terrain.renderOrder=-2; terrain.material.polygonOffset=true; terrain.material.polygonOffsetFactor=-3; terrain.material.polygonOffsetUnits=-3; const region=cape3dRegion(root,landscape);
   const shore=cape3dShoreline(root,landscape);
   const roads=cape3dRoads(materials); root.add(roads);
   const facilities=new THREE.Group(); facilities.name='cape3d_facilities'; root.add(facilities);
   const descriptors=syncCape3DFromState(); descriptors.forEach(d=>facilities.add(cape3dFacilityGroup(d,materials))); const vegetation=cape3dVegetation(root,materials); root.userData.clouds=cape3dClouds(root); root.userData.practicalLights=[...cape3dPracticalLights(root,descriptors),...cape3dStreetLights(root,materials)]; root.userData.windowMaterial=materials.glass; root.userData.facadeMaterials=materials.facades; root.userData.accentMaterial=materials.accent; root.userData.water=waterTx;
   const pad=descriptors.find(d=>d.key==='pad'); if(pad){ const rocket=cape3dVehicleMesh(); rocket.position.set(pad.position.x-pad.footprint.x*.18,cape3dLaunchBaseY(rocket),pad.position.z); root.add(rocket); root.userData.launchPad=pad; root.userData.launchRocket=rocket; root.userData.launchBase=rocket.position.clone(); root.userData.launchEffects=cape3dLaunchEffects(rocket); root.userData.groundSmoke=cape3dGroundSmoke(root,rocket.position); root.userData.launchSplash=cape3dSplashEffects(root); root.userData.launchFailure=cape3dFailureEffects(root,rocket,root.userData.launchEffects); root.userData.ascentWorld=cape3dAscentWorld(root,pad,root.userData.launchBase); root.userData.orbitWorld=cape3dOrbitWorld(root); root.userData.transferWorld=cape3dTransferWorld(root); root.userData.reentryWorld=cape3dReentryWorld(root); root.userData.sepPuffs=cape3dSepPuffPool(root); }
-  root.userData.siteObjects=[ground,terrain,ocean,shore,roads,facilities,vegetation];
+  root.userData.siteObjects=[ground,terrain,ocean,shore,roads,facilities,vegetation]; if(region) root.userData.siteObjects.push(region);
   // State-driven growth receives simple massing in this slice; detailed variants arrive with the art pass.
   try{
     const sc=siteScale(), padDef=ISO_BUILDINGS.find(b=>b.key==='pad');
