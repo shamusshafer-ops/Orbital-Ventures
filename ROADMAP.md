@@ -1995,10 +1995,24 @@ Recommended order: 0 → 1 → 2 → 3 → 4a → 4b → 4c → 5. Phase 3 gets 
   (was 0/3) — the remaining failure is the bot timing pods badly, now visible on the manifest.)*
 
 ### Phase 5 — Personnel assignment
-- [ ] Flight director + small discipline team per major mission; familiarity and fatigue on staff records;
-  traits change available crisis responses, not just percentages.
+- [x] Flight director + small discipline team per major mission; familiarity and fatigue on staff records;
+  traits change available crisis responses, not just percentages. *(2026-11-18, owner choices: director + three
+  console seats; hand-picked on major flights (auto-pick shown for review), auto on routine; familiarity and
+  fatigue; traits add options — By-the-Book 7-day procedural recycle, Cool Head "nurse it", Improviser
+  jury-rigged return.)*
   **Target:** no double-counted bonus or incompatible simultaneous assignment; tradeoff shown before commit.
+  *(Met: one seat per person, deployed crew excluded, the director replaces (not adds to) the pooled bonus; the
+  go/no-go team row and picker show readiness, fatigue and familiarity before launch. Effect on a 1962 orbital
+  flight: 29.1% failure with no team, 23.8% rested, 26.1% tired.)*
 
 ### Cleanup alongside
 - [ ] Manufacturing micro (`buyMaterialDip`, engine/part stock): make it bind or auto-procure in the build.
 - [ ] Slider bench vs part bench: decide after the owner's `BENCH_V2` playtest.
+
+## Done — UI cohesion pass (2026-11-18)
+
+Owner choices: screen first in the right rail; a "Needs you" strip in Up Next on every screen; the checklist docked
+in the left rail; full restructure (content moved where it fits). See ROADMAP-HISTORY.md. Open follow-ups:
+- [ ] The Outposts switcher's selected button still borrows the primary-button class; a dedicated selector style.
+- [ ] Docked checklist sits at the bottom of the left rail (below the fold on the Bench at 1280×800).
+- [ ] Command Center keeps its hero geometry (no date/log strip) — deliberate, revisit with a human look.

@@ -26,7 +26,7 @@ function createFreshState(difficulty){
     log:[], annals:[], rivalFired:{}, scooped:{}, rivalThreat:{}, rivalState:{}, rivalLead:0, bailouts:0,
     staff:[], assignedAstronaut:null, persEventCooldown:5, proceduralStaffDefs:[],
     departments:defaultDepartments(), // #19: org layer over hired staff (per-dept lead + training)
-    econEvents:[], eventCooldown:6, pgmRoyalty:0, launchPolicy:'nominal', reflights:{}, review:null, lastDebrief:null, flaws:{}, flawBelief:{}, subsysTrim:{}, subsysTest:{}, investigations:[], invSeq:0, serviceDelivered:0, procDelivered:0, // spine step 2: absMonth of each recent paid re-flight, per mission
+    econEvents:[], eventCooldown:6, pgmRoyalty:0, launchPolicy:'nominal', reflights:{}, review:null, lastDebrief:null, flightTeam:null, flaws:{}, flawBelief:{}, subsysTrim:{}, subsysTest:{}, investigations:[], invSeq:0, serviceDelivered:0, procDelivered:0, // spine step 2: absMonth of each recent paid re-flight, per mission
     passiveContracts:[], contractCooldown:{}, contractSignings:{}, engineHeritage:{}, // passive-income contracts (repeatable + cooldown + diminishing)
     publicSupport:SUPPORT_BASE, // #8: program politics — public mood dial
     production:{bays:1,foundry:1,pads:1,qa:1}, // #7: manufacturing capacity — leveled production lines
@@ -926,6 +926,7 @@ function tickContinuousDay(){
     state.publicSupport=clampA(publicSupport()+(SUPPORT_BASE-publicSupport())*rate, SUPPORT_MIN, SUPPORT_MAX); } // #8: mood reverts toward neutral
   state.money+=perDay(govMonthlyFunding()); // #8: public support buys government funding (slice 3a: accrues daily)
   tickInvestigations(); /* Phase 2: investigation programs finish on their day */
+  restStaff(); /* Phase 5: fatigue recovers with rest */
   if(state.activeResearch && !_pendingSetback){ // #26: R&D progresses daily; a pending setback freezes it
     const _rdNode=RESEARCH.find(r=>r.id===state.activeResearch.id);
     const rdBonus=engRdSpeedBonus()+stationRdSpeedBonus()+divisionSpeedBonus(_rdNode)+partnerSpeedBonus(_rdNode)+sciStaffRdBonus(); // #6: research partnerships accelerate their track; orbital labs add station R&D speed; science staff add R&D speed
@@ -3632,6 +3633,8 @@ function launchGoNoGo(){
     if(ceil<1&&odds>=ceil-0.005) risks.push(`your engineering team caps this flight at ${Math.round(ceil*100)}% — staff the core departments to lift it`);
     { const present=new Set(subsystemFragilities(m,view.vehicle||computeVehicle(),view.simulation||null,!!m.crew).map(f=>f.key));
       const open=(state.investigations||[]).filter(x=>x.status==='open'&&present.has(x.sub)&&x.finding!=='oneoff');
+      { const tm=plannedTeam(m), cls=missionFamClass(m); /* Phase 5: a tired team is a risk worth naming */
+        [tm.director,...CONSOLE_SEATS.map(sx=>tm.console[sx.key])].filter(Boolean).forEach(id=>{ if(staffFatigue(id)>=60) risks.push(`${(personById(id)||{}).name||id} is worn out (${Math.round(staffFatigue(id))}% fatigue) — rest them or swap them out`); }); }
       open.forEach(x=>risks.push(x.finding==='flaw'?`a confirmed ${(SUBSYS_LABEL[x.sub]||x.sub).toLowerCase()} design flaw is still unfixed`:`the ${(SUBSYS_LABEL[x.sub]||x.sub).toLowerCase()} investigation is open — ${Math.round(x.est*100)}% it's a design flaw`)); } /* Phase 2 */
   }
   return {verdict:!chk.ok?'blocked':risks.length?'risky':'go', why:!chk.ok?(chk.why||'Not ready to fly.'):(risks[0]||''), risks,
@@ -3639,6 +3642,7 @@ function launchGoNoGo(){
     money:{now, atFlight, runway, after, cash:round2(state.money)},
     odds:{success:odds, target, ceiling:ceil<1?ceil:null, anomaly, anomalyBase:rd?rd.anomaly:0, anomalyRehearsed:rd?rd.anomalyRehearsed:0, weatherGo:rd?rd.goPct:null, rehearsed},
     test:{level:testLevel, fixed:hull, options:hull?[]:goTestOptions(m)},
+    team:{plan:plannedTeam(m), major:isMajorFlight(m), cls:missionFamClass(m)},
     rehearsal:{on:rehearsed, fixed:hull, cost:rehearsalCost(m), useful:!!(rd&&rd.anomaly>0)},
     policy:launchPolicy()};
 }
@@ -6743,7 +6747,8 @@ function rollWeather(m){
 // before the overlay opens at all — the range-weather call is the very first thing about a launch.
 function showWeatherModal(m,wx){
   const p=_pendingLaunch||{m,wx};
-  const decision=ensureLaunchTransactionDecision('weather',p,{weather:wx},['scrub','launch']);
+  const btb=directorTraitKey(m)==='bythebook'; /* Phase 5: a By-the-Book director can run a short procedural recycle */
+  const decision=ensureLaunchTransactionDecision('weather',p,{weather:wx},btb?['scrub','launch','recycle']:['scrub','launch']);
   const args=launchDecisionArgs(decision);
   const auto=policyChoice('weather',{penalty:wx.penalty});
   if(auto){ policyNote(m, auto==='scrub'?`stood down for ${wx.label.toLowerCase()}`:`flew through ${wx.label.toLowerCase()}`); return auto==='scrub'?scrubLaunch(args.txnId,args.revision):launchAnyway(args.txnId,args.revision); }
@@ -6758,6 +6763,7 @@ function showWeatherModal(m,wx){
       buttons:[
         {label:`Stand down & recycle (${wx.clear} mo) — retain this hull`, ghost:true, action:()=>scrubLaunch(args.txnId,args.revision)},
         {label:`Launch anyway (−${pen}% reliability)`, action:()=>launchAnyway(args.txnId,args.revision)},
+        ...(btb?[{label:`${directorName(m)} (By-the-Book): procedural recycle — ${WX_RECYCLE_DAYS} days, −${Math.round(pen*WX_RECYCLE_PENALTY_MULT)}%`, ghost:true, action:()=>procRecycleLaunch(args.txnId,args.revision)}]:[]),
       ] };
   }});
 }
@@ -6767,6 +6773,18 @@ function launchAnyway(txnId,revision){
   _pendingLaunch=null; hideModal();
   log('note',`${p.m.name}: launch director polled GO despite ${p.wx.label.toLowerCase()} — flying with a ${Math.round(p.wx.penalty*100)}% reliability penalty.`);
   proceedLaunch(p.m,p.v,p.sim,p.windowQuality,p.wx.penalty,p.prebuilt,p.hullId);
+}
+const WX_RECYCLE_DAYS=7, WX_RECYCLE_PENALTY_MULT=0.5;
+function procRecycleLaunch(txnId,revision){
+  if(!_pendingLaunch) return; const p=_pendingLaunch;
+  return runLaunchMutationGroup(()=>{
+    if(state.launchTxn){ const selected=selectLaunchDecision('weather','recycle',txnId,revision); if(!selected.ok||selected.replay) return false; }
+    _pendingLaunch=null; hideModal(); dismissAnim();
+    advanceTransactionDays(WX_RECYCLE_DAYS);
+    log('note',`${p.m.name}: ${directorName(p.m)} ran a procedural recycle — ${WX_RECYCLE_DAYS} days, and the worst of the ${p.wx.label.toLowerCase()} passed.`);
+    proceedLaunch(p.m,p.v,p.sim,p.windowQuality,round2(p.wx.penalty*WX_RECYCLE_PENALTY_MULT),p.prebuilt,p.hullId);
+    return true;
+  });
 }
 function scrubLaunch(txnId,revision){
   if(!_pendingLaunch) return; const p=_pendingLaunch;
@@ -7070,7 +7088,8 @@ function showLiveCallModal(ctx, flag){
   const tx=state.launchTxn, launchEscape=tx&&tx.resolution&&typeof tx.resolution.launchEscapeFitted==='boolean'
     ? tx.resolution.launchEscapeFitted : !!(state.research&&state.research.launch_escape);
   const survivableAbort=!ctx.crewed||launchEscape;
-  const decision=ensureLaunchTransactionDecision('live',ctx,{flag,launchEscapeFitted:launchEscape},survivableAbort?['press','abort']:['press']);
+  const cool=directorTraitKey(ctx.m)==='coolhead'; /* Phase 5: a Cool Head director can nurse the subsystem through */
+  const decision=ensureLaunchTransactionDecision('live',ctx,{flag,launchEscapeFitted:launchEscape},(survivableAbort?['press','abort']:['press']).concat(cool?['nurse']:[]));
   const args=launchDecisionArgs(decision);
   const auto=policyChoice('live',{survivableAbort,crewed:!!ctx.crewed});
   if(auto){ policyNote(ctx.m, auto==='abort'?`aborted when ${(SUBSYS_LABEL[flag.sub.key]||flag.sub.label||'a subsystem').toLowerCase()} flagged amber`:`pressed on through an amber ${(SUBSYS_LABEL[flag.sub.key]||flag.sub.label||'subsystem').toLowerCase()} flag`); return resolveLiveCall(auto==='press',args.txnId,args.revision); }
@@ -7081,6 +7100,7 @@ function showLiveCallModal(ctx, flag){
     const routineLine=ctx.routine?' A proven design isn\'t immune to a bad day.':'';
     const noEscapeLine=ctx.crewed&&!launchEscape?' No launch-escape system is fitted; Mission Control has no survivable ascent-abort option.':'';
     const buttons=[{label:'Press on — fly it', action:()=>resolveLiveCall(true,args.txnId,args.revision)}];
+    if(cool) buttons.push({label:`${directorName(ctx.m)} (Cool Head): nurse it — throttle back; a failure becomes a partial, a success pays 10% less`, ghost:true, action:()=>resolveLiveCallNurse(args.txnId,args.revision)});
     if(survivableAbort) buttons.push({label:`Abort now — ${hullRecoveryFitted(ctx.hullId)?(ctx.crewed?'save crew; recover fitted vehicle':'recover fitted vehicle'):(ctx.crewed?'save crew; expend vehicle':'terminate flight')}`, ghost:true, action:()=>resolveLiveCall(false,args.txnId,args.revision)});
     return { title:'⚠ MARGINAL SUBSYSTEM — LIVE CALL', color:themeColor('warn'),
       lines:[ `${subName} flagging amber on ${ph.label.toLowerCase()}, holding at just ${pc}%.`,
@@ -7106,6 +7126,20 @@ function resolveLiveCall(pressOn,txnId,revision){
   finalizeLaunch(ctx, null);
 }
 
+function resolveLiveCallNurse(txnId,revision){
+  const ctx=_pendingLive; if(!ctx) return;
+  if(state.launchTxn){ const selected=selectLaunchDecision('live','nurse',txnId,revision); if(!selected.ok||selected.replay) return; }
+  _pendingLive=null; hideModal();
+  const o=ctx.outcome||{}, subName=(SUBSYS_LABEL[ctx.liveFlag&&ctx.liveFlag.sub.key]||'systems').toLowerCase();
+  if(o.kind==='loss'||o.kind==='abort'||o.kind==='strand'){
+    ctx.outcome=Object.assign({},o,{kind:'partial', nursed:true, story:`the ${subName} was nursed through at reduced thrust — it held long enough for a degraded result instead of a loss.`});
+    if(state.launchTxn){ state.launchTxn.outcome=plainRecord(ctx.outcome); setLaunchTransactionContext(ctx); }
+    log('note',`${ctx.m.name}: ${directorName(ctx.m)} nursed the ${subName} through — a partial instead of a loss.`);
+    finalizeLaunch(ctx, null); return;
+  }
+  log('note',`${ctx.m.name}: ${directorName(ctx.m)} throttled back to nurse the ${subName}; it held, at a cost to the result.`);
+  finalizeLaunch(ctx, {payoutMult:0.9, log:`throttled back to protect the ${subName}.`});
+}
 /* ---------- CE5(c): the deep-leg reserve-margin call ---------- */
 // Far from home a deep-phase subsystem is drifting. With reserve margin aboard the player can
 // BURN it to nurse the system through — guaranteeing a salvaged `partial` instead of gambling on
@@ -7172,13 +7206,15 @@ function showRescueModal(ctx, outcome){
   const current=state.launchTxn&&state.launchTxn.decision&&state.launchTxn.decision.kind==='rescue'?state.launchTxn.decision:null;
   const cost=rescueCost(ctx.m), months=rescueMonths(ctx.m), chance=rescueChance(ctx.m);
   const afford=current&&current.data?!!current.data.afford:state.money>=cost;
-  const decision=ensureLaunchTransactionDecision('rescue',ctx,{cost,months,chance,roll:state.launchTxn?(current&&current.data?current.data.roll:Math.random()):null,afford,outcome,ops:_pendingRescue&&_pendingRescue.ops||null},afford?['mount','abandon']:['abandon']);
+  const impro=directorTraitKey(ctx.m)==='improviser'; /* Phase 5: an Improviser director can try a jury-rigged return */
+  const decision=ensureLaunchTransactionDecision('rescue',ctx,{cost,months,chance,roll:state.launchTxn?(current&&current.data?current.data.roll:Math.random()):null,afford,outcome,ops:_pendingRescue&&_pendingRescue.ops||null},(afford?['mount','abandon']:['abandon']).concat(impro?['improvise']:[]));
   const args=launchDecisionArgs(decision);
   openFlightForDecision(ctx, { holdAt:'cislunar-start', buildPanel:()=>{
     const m=ctx.m, chancePct=Math.round(chance*100);
     const sub=outcome.subsystem?(SUBSYS_LABEL[outcome.subsystem]||'systems').toLowerCase():'systems';
     const buttons=[];
     if(afford) buttons.push({label:`Mount a rescue (${fM(cost)}, ~${months} mo, ${chancePct}%)`, action:()=>mountRescue(args.txnId,args.revision)});
+    if(impro) buttons.push({label:`${directorName(m)} (Improviser): jury-rig a return — free, ~${IMPROVISE_MONTHS} mo, ${Math.round(chance*IMPROVISE_CHANCE_MULT*100)}%`, action:()=>improviseRescue(args.txnId,args.revision)});
     buttons.push({label:'Abandon the mission (crew lost)', ghost:true, action:()=>abandonRescue(args.txnId,args.revision)});
     return { title:'CREW STRANDED IN DEEP SPACE', color:themeColor('bad'),
       lines:[ `A ${sub} failure left the crew stranded but alive — they can't get home alone.`,
@@ -7202,6 +7238,25 @@ function mountRescue(txnId,revision){
     state.money-=cost;
     log('note',`${m.name}: emergency rescue launched — ${fM(cost)} committed; crews work around the clock.`);
     advance(months);
+    finalizeLaunch(ctx, result);
+    return true;
+  });
+}
+const IMPROVISE_CHANCE_MULT=0.75, IMPROVISE_MONTHS=2;
+function improviseRescue(txnId,revision){
+  if(!_pendingRescue) return;
+  const {ctx}=_pendingRescue;
+  const d=state.launchTxn&&state.launchTxn.decision&&state.launchTxn.decision.kind==='rescue'?state.launchTxn.decision:null;
+  const chance=(d&&d.data?d.data.chance:rescueChance(ctx.m))*IMPROVISE_CHANCE_MULT;
+  const roll=d&&d.data&&Number.isFinite(d.data.roll)?d.data.roll:Math.random();
+  const result=roll<chance
+    ? {rescueResolved:true,outcomeOverride:'rescued',story:`Mission Control talked the crew through a jury-rigged return with what was aboard — they made it home.`}
+    : {rescueResolved:true,outcomeOverride:'strand',story:`a jury-rigged return was tried with what was aboard, and it wasn't enough — the crew was lost.`};
+  return runLaunchMutationGroup(()=>{
+    if(state.launchTxn){ const selected=selectLaunchDecision('rescue','improvise',txnId,revision,result); if(!selected.ok||selected.replay) return false; }
+    _pendingRescue=null; hideModal();
+    log('note',`${ctx.m.name}: ${directorName(ctx.m)} is improvising a return with what the crew has aboard.`);
+    advance(IMPROVISE_MONTHS);
     finalizeLaunch(ctx, result);
     return true;
   });
@@ -7734,6 +7789,7 @@ function proceedLaunch(m,v,sim,windowQuality,weatherPenalty,prebuilt,hullId){
   const crewed=m.crew>0;
   const docking=dockingMissionCapability(m,tx&&tx.spec&&tx.spec.docking);
   // M16: subsystem-based reliability — which subsystem (if any) fails decides the story
+  const team=freezeFlightTeam(m,tx); _flightTeamLive=team; /* Phase 5 */
   const outcome=tx&&tx.outcome?plainRecord(tx.outcome):resolveFlight(m,v,sim,crewed,weatherPenalty,docking); // outcome locks at launch-time tech and frozen docking fitment
   consumeSubsysTestCredits(m,v,sim,crewed); /* Phase 2: an integrated-test credit is spent by each real flight that flies its subsystem */
   // Time Granularity slice 4: the flight now occupies its REAL calendar duration — the cruise/ops days.
@@ -7741,7 +7797,7 @@ function proceedLaunch(m,v,sim,windowQuality,weatherPenalty,prebuilt,hullId){
   // time commitments (overhead, R&D, rivals, facilities all advance during the mission). Intentional
   // payoff of daily time. If the long cruise bankrupts the company, the gameOver modal is already up.
   const missionDays=Math.round(m.days||0);
-  const ctx={m,v,sim,windowQuality,flightExpense,routine,crewed,outcome,rehearsed:!!state.rehearsal,docking:plainRecord(docking),
+  const ctx={m,v,sim,windowQuality,flightExpense,routine,crewed,outcome,team,rehearsed:!!state.rehearsal,docking:plainRecord(docking),
              depotUse:state.depotUse||0,assembleOrbit:!!state.assembleOrbit,
              transactionId:tx&&tx.id||null, famId:(activeFamily()||{}).id||null, hullId:hullId||null,
              crewId:crewed?state.assignedAstronaut:null, ab:crewed?astroBonus():{rel:0,payoutMult:1}}; // 1.2b/S1: snapshot crew + bonus at launch; store famId (not the object) so a mid-cruise save round-trips cleanly
@@ -8123,6 +8179,7 @@ function finalizeLaunch(ctx, ops){
   /* Phase 2: any flight that fell short with a named subsystem opens an investigation (no modal — it lives on the
      Last Flight card): known fact = what failed and when; unknown = a design flaw that will recur, or a one-off */
   const _inv=(outcome.kind!=='success'&&outcome.subsystem)?openInvestigation(ctx,outcome):null;
+  applyTeamHistory(ctx.team||(state.launchTxn&&state.launchTxn.team), m); _flightTeamLive=null; /* Phase 5 */
   recordFlightLedger(flightRevenue, flightExpense); // #18: attribute this flight to the current month's ops summary
   if(tx) tx.applied.ledger=true;
   recordFlightDebrief(ctx, outcome, _debriefBefore, flightRevenue, tx&&tx.spec&&tx.spec.testLevel!=null?tx.spec.testLevel:state.testLevel, ops, _inv);
@@ -8404,13 +8461,14 @@ const INV_PROGRAMS={
   redesign:{icon:'🛠', label:'Redesign',             months:3, costFrac:0.70, floor:0.8},
 };
 let _hazardTruth=false; /* true only while resolveFlight rolls an outcome */
-function hazardModsActive(){ const st=state; return !!(st.flaws&&Object.keys(st.flaws).length||st.flawBelief&&Object.keys(st.flawBelief).length||st.subsysTrim&&Object.keys(st.subsysTrim).length||st.subsysTest&&Object.keys(st.subsysTest).length); }
+function hazardModsActive(){ const st=state; if(teamConsoleActive()) return true; return !!(st.flaws&&Object.keys(st.flaws).length||st.flawBelief&&Object.keys(st.flawBelief).length||st.subsysTrim&&Object.keys(st.subsysTrim).length||st.subsysTest&&Object.keys(st.subsysTest).length); }
 function subsysHazardMult(sub, truth){
   let k=1; const st=state;
   if(truth){ if(st.flaws&&st.flaws[sub]) k*=FLAW_MULT; }
   else { const b=st.flawBelief&&st.flawBelief[sub]||0; if(b>0) k*=1+b*(FLAW_MULT-1); }
   if(st.subsysTrim&&st.subsysTrim[sub]) k*=st.subsysTrim[sub];
   const t=st.subsysTest&&st.subsysTest[sub]; if(t&&t.flights>0) k*=t.mult;
+  k*=consoleHazardMult(sub); /* Phase 5: the console engineer for this subsystem */
   return k;
 }
 /* Σ w·k / Σ w over the subsystems this flight carries (w = the un-modified weights) */
@@ -9072,7 +9130,90 @@ function engRdSpeedBonus(){
    engineer scoring: a lead-weighted average of effSkill×morale, optionally multiplied by a
    role-specific trait channel (e.g. 'yield'). Returns 0 when nobody of that role is hired, so
    every effect built on it is balance-neutral until the role is staffed. */
+/* ---------- Decision-loop Phase 5: flight teams (2026-11-18) ----------
+   A flight is worked by one flight director and up to three console engineers (propulsion, guidance,
+   structures). Readiness = skill × morale × (1 + familiarity with this kind of mission) × (1 − 0.6 × fatigue/100).
+   The director replaces the pooled Mission Control bonus on that flight (live calls, anomaly prevention,
+   rescues); each console engineer cuts their subsystems' failure hazard by up to CONSOLE_HAZARD_CUT through the
+   Phase 2 hazard multiplier. Flying adds fatigue and familiarity; rest recovers fatigue. Major flights (firsts,
+   crewed, deep space) put the team up for review in the go/no-go block; routine flights use the auto-pick.
+   The director's trait adds one option to in-flight decisions (see TRAIT_OPTIONS). */
+const FAM_PER_FLIGHT=0.06, FAM_CAP=0.30, FATIGUE_PER_FLIGHT=35, FATIGUE_REST_PER_MONTH=12, FATIGUE_MAX=100, CONSOLE_HAZARD_CUT=0.40, FATIGUE_READINESS_COST=0.6; /* tuned so a rested vs a tired engineer is a real difference */
+const CONSOLE_SEATS=[
+  {key:'propulsion', label:'Propulsion', subs:['propulsion','boosters'], spec:['propulsion']},
+  {key:'guidance',   label:'Guidance',   subs:['avionics','docking'],    spec:['avionics','software']},
+  {key:'structures', label:'Structures', subs:['structures','separation'], spec:['structures','materials']},
+];
+let _flightTeamLive=null; /* the frozen team of the flight being resolved (decisions included) */
+function missionFamClass(m){ if(!m) return 'suborbital'; if(m.profile) return /mars|jupiter|saturn|titan|belt|oort/i.test(m.id)?'planetary':'lunar'; if(m.stationVisit) return 'station'; if(m.crew>0) return 'crewed'; return (m.reqDv||0)>=9000?'orbital':'suborbital'; }
+const FAM_CLASS_LABEL={suborbital:'suborbital',orbital:'orbital',crewed:'crewed',lunar:'lunar',planetary:'planetary',station:'station'};
+function isMajorFlight(m){ return !!m && (!state.completed[m.id] || (m.crew||0)>0 || !!m.profile); }
+function staffFatigue(id){ const r=staffRecord(id); return r?Math.max(0,Math.min(FATIGUE_MAX,r.fatigue||0)):0; }
+function staffFamiliarity(id, cls){ const r=staffRecord(id); return Math.min(FAM_CAP, FAM_PER_FLIGHT*((r&&r.fam&&r.fam[cls])||0)); }
+function staffReadiness(id, cls){
+  const r=staffRecord(id); if(!r) return 0;
+  return Math.max(0, effSkill(id)*Math.max(0.2,(r.morale||50)/100)*(1+staffFamiliarity(id,cls))*(1-FATIGUE_READINESS_COST*staffFatigue(id)/FATIGUE_MAX));
+}
+function teamCandidates(role, seat){
+  return (state.staff||[]).filter(sr=>roleOf(sr.id)===role && !isCrewDeployed(sr.id) && (!seat || seat.spec.includes((personById(sr.id)||{}).specialty))).map(sr=>sr.id);
+}
+function autoPickTeam(m){
+  const cls=missionFamClass(m), used=new Set(), best=(ids)=>ids.filter(id=>!used.has(id)).sort((a,b)=>staffReadiness(b,cls)-staffReadiness(a,cls))[0]||null;
+  const director=best(teamCandidates('controller')); if(director) used.add(director);
+  const console={}; for(const seat of CONSOLE_SEATS){ const id=best(teamCandidates('eng',seat)); console[seat.key]=id; if(id) used.add(id); }
+  return {missionId:m?m.id:null, director, console, auto:true};
+}
+/* the team the next flight of m will fly with: the player's pick when it is still valid, else the auto-pick */
+function plannedTeam(m){
+  if(!m) return null;
+  const t=state.flightTeam;
+  if(t&&t.missionId===m.id){ const ok=id=>!id||(isHired(id)&&!isCrewDeployed(id));
+    if(ok(t.director)&&CONSOLE_SEATS.every(s=>ok((t.console||{})[s.key]))) return t; }
+  return autoPickTeam(m);
+}
+function setTeamSeat(missionId, seat, id){
+  if(!guardOrdinaryAction('Flight team assignment')) return false;
+  const m=missionById(missionId); if(!m) return false;
+  const t=JSON.parse(JSON.stringify(plannedTeam(m))); t.auto=false; t.missionId=m.id;
+  const clear=x=>{ if(t.director===x) t.director=null; for(const k in t.console) if(t.console[k]===x) t.console[k]=null; };
+  if(id) clear(id); /* one seat per person */
+  if(seat==='director') t.director=id||null; else t.console[seat]=id||null;
+  state.flightTeam=t; render(); return true;
+}
+function activeFlightTeam(){ return _flightTeamLive||(state.launchTxn&&state.launchTxn.team)||null; }
+/* the team whose numbers apply right now: the flight in progress, else the bench mission's planned team */
+function teamInScope(){ const a=activeFlightTeam(); if(a) return a; try{ const m=curMission(); return m?plannedTeam(m):null; }catch(e){ return null; } }
+function teamClass(t){ const m=t&&missionById(t.missionId); return missionFamClass(m||(typeof curMission==='function'?curMission():null)); }
+function consoleHazardMult(sub){
+  const t=teamInScope(); if(!t||!t.console) return 1;
+  const seat=CONSOLE_SEATS.find(x=>x.subs.includes(sub)); if(!seat) return 1;
+  const id=t.console[seat.key]; if(!id||!isHired(id)) return 1;
+  return 1-CONSOLE_HAZARD_CUT*Math.min(1,staffReadiness(id,teamClass(t)));
+}
+function teamConsoleActive(){ const t=teamInScope(); return !!(t&&t.console&&CONSOLE_SEATS.some(s=>t.console[s.key])); }
+function directorScore(chan){
+  const t=teamInScope(); if(!t||!t.director||!isHired(t.director)) return null;
+  const tr=traitOf(t.director)||{};
+  return Math.min(1, staffReadiness(t.director,teamClass(t))*(chan&&tr[chan]?tr[chan]:1));
+}
+function directorTraitKey(m){ const t=activeFlightTeam()||(m?plannedTeam(m):null); return t&&t.director&&isHired(t.director)?traitKeyOf(t.director):null; }
+function directorName(m){ const t=activeFlightTeam()||(m?plannedTeam(m):null); const p=t&&t.director&&personById(t.director); return p?p.name:'The flight director'; }
+/* frozen at launch: the planned team becomes this flight's team (and the manual pick is spent) */
+function freezeFlightTeam(m, tx){
+  const t=tx&&tx.team?tx.team:JSON.parse(JSON.stringify(plannedTeam(m)||{missionId:m.id,director:null,console:{}}));
+  if(tx) tx.team=t;
+  if(state.flightTeam&&state.flightTeam.missionId===m.id) state.flightTeam=null;
+  return t;
+}
+/* after the flight: the people who worked it are tired and know this kind of mission a little better */
+function applyTeamHistory(team, m){
+  if(!team) return; const cls=missionFamClass(m);
+  [team.director, ...CONSOLE_SEATS.map(s=>(team.console||{})[s.key])].filter(Boolean).forEach(id=>{ const r=staffRecord(id); if(!r) return;
+    r.fatigue=Math.min(FATIGUE_MAX,(r.fatigue||0)+FATIGUE_PER_FLIGHT); r.fam=r.fam||{}; r.fam[cls]=(r.fam[cls]||0)+1; r.lastFlightAbs=absDay(); });
+}
+function restStaff(){ for(const r of (state.staff||[])) if(r.fatigue>0) r.fatigue=Math.max(0, r.fatigue-perDay(FATIGUE_REST_PER_MONTH)); }
 function roleTeamScore(role, chan){
+  if(role==='controller'){ const d=directorScore(chan); if(d!=null) return d; } /* Phase 5: the flight's director, not the pool */
   const members=(state.staff||[]).filter(s=>roleOf(s.id)===role);
   if(!members.length) return 0;
   let sum=0, w=0;

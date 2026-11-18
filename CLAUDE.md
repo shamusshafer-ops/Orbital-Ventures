@@ -74,8 +74,19 @@ delivered (offer.payout stays 0; `estPayout` is display); `supplyManifest(facId,
 Suite: `test-station-economics.js`. Phase 4c done: the 'base' scene has `navAlias:'station'` — the nav shows one
 "Outposts" stop (`openOutposts()` reopens `state.outpostTab`), `SCENE_DOCK_TABS` omits 'base', and
 `outpostSwitcherHTML`/`goOutpost` replace the per-board facility tabs. RULE: a new scene that shares a nav stop sets
-`navAlias`; use `sceneNavOwner(tab)` for "which nav button is this". Suite: `test-outposts-tab.js`. Next: Phase 5
-(personnel assignment) — bring the owner options first.
+`navAlias`; use `sceneNavOwner(tab)` for "which nav button is this". Suite: `test-outposts-tab.js`. Phase 5 done: flight
+teams — `plannedTeam(m)` (manual `state.flightTeam` or `autoPickTeam`), frozen into `tx.team`/`ctx.team` at launch
+(`_flightTeamLive` during resolution); the director replaces the pooled controller score (`directorScore` inside
+`roleTeamScore`); console engineers enter the Phase 2 hazard multiplier (`consoleHazardMult`); `applyTeamHistory`
+adds fatigue/familiarity; `restStaff` recovers. Trait options: `procRecycleLaunch`, `resolveLiveCallNurse`,
+`improviseRescue`. Suite: `test-flight-teams.js`.
+**UI cohesion pass (2026-11-18):** the right rail is screen-first — each scene's `.rail-panel` leads, the shared accordion
+(`#railPersistent`) is a compact one-row bar beneath it, then Up Next with a "Needs you" strip (`needsYouItems()`:
+ready hull, open investigation, outpost shortfall, worn-out team, idle R&D). On the Command Center Up Next leads.
+The getting-started checklist docks into `.rail-left` (`#coachPanel.docked`), floating only on the Command Center.
+Centre titles use `h2.scene-title` with the scene's colour dot; left-rail sections use `.cc-panel-h`. Test campaign and
+rehearsal live only in the go/no-go block. Suite: `test-ui-cohesion.js`. RULE: don't add a second
+`@media(min-width:1101px){` block before the main one — `test-command-hero-layout` extracts the first by that spelling.
 
 **In progress:** (none claimed right now).
 > When you start a task, replace this line with: `<task> — <Claude|Codex> — started <date>`.

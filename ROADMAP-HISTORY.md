@@ -8563,3 +8563,60 @@ Firefox at 1280×800: five nav stops; Outposts → Plan a base opens the surface
 the switcher's LEO Station returns to the station board; Command Center → Outposts reopens it. Tests: new
 `test-outposts-tab.js` 15/15; `test-base-bench`, `test-onboarding`, `test-scene-shell-contract`,
 `test-shell-consolidation` updated from the two-tab layout. Full sweep 191/192 + 1 intentional skip. No save change.
+
+## 2026-11-18 — Decision-loop roadmap Phase 5: flight teams (Claude)
+
+Owner choices: a director plus a console team per flight; hand-picked on major flights only; familiarity and
+fatigue; traits add crisis options.
+
+- **The team.** One flight director and three console seats (propulsion, guidance, structures — by engineer
+  specialty). Readiness = skill × morale × (1 + familiarity with the mission class) × (1 − 0.6 × fatigue/100).
+  `autoPickTeam` seats the most ready people, one seat each, never deployed crew; `setTeamSeat` makes a manual pick
+  for one mission (spent when it flies; falls back to the auto-pick if someone leaves).
+- **Effects.** The director replaces the pooled Mission Control score on that flight (`roleTeamScore('controller')`
+  → `directorScore`) — live calls, anomaly prevention, rescues. Each console engineer cuts their subsystems'
+  hazard by up to 40% through the Phase 2 multiplier (`consoleHazardMult`), so it moves both the odds and the
+  attribution. Bench previews use the planned team; the roll uses the team frozen at launch (`tx.team`).
+- **History.** Each flight adds 35% fatigue and one familiarity step (+6%, cap +30%) to everyone who worked it;
+  rest recovers 12% a month. First cut used (1 − fatigue/200) and a 25% console cut: the staffing bot was
+  byte-identical (outcomes never flipped) and a tired engineer was barely worse than a rested one, so both were
+  strengthened. Now, a 1962 orbital flight: 29.1% failure with no team, 23.8% with a rested team, 26.1% tired.
+- **Major flights** (firsts, crewed, deep space) show the auto-picked team for review in the go/no-go block;
+  routine flights use it silently. A worn-out (≥60%) member is a named risk. `showTeamPicker` lists each seat's
+  candidates with readiness, fatigue, familiarity and trait; personnel cards show fatigue and flight history.
+- **Traits add options.** By-the-Book: a 7-day procedural recycle on a weather hold at half the penalty
+  (`procRecycleLaunch`). Cool Head: "nurse it" on a live call — a loss becomes a partial, a success pays 10% less
+  (`resolveLiveCallNurse`). Improviser: a free jury-rigged return on a crew rescue at 75% of the rescue odds
+  (`improviseRescue`). Each is a real launch-transaction decision option.
+
+Default bot byte-identical (no staff). Tests: new `test-flight-teams.js` 26/26 (mutation-checked: console,
+director, history). Full sweep 192/193 + 1 intentional skip. Firefox: the team row ("FD Braddock · Prop Haas…
+review team"), the worn-out risk, and the picker.
+
+## 2026-11-18 — UI cohesion pass: tie the screens, tabs and columns together (Claude)
+
+Audit at 1280×800 on all five screens found a consistent shell with inconsistent parts: the same four accordions
+and Up Next sat on top of every right rail, pushing each screen's own panel to the fold; left rails and centre
+panels used three header patterns; the First Flight checklist floated over the left rail everywhere; and the new
+Phase 1–5 systems each lived on one screen with nothing that said "this needs you". Owner choices: screen first;
+Needs you in Up Next; dock the checklist; full restructure.
+
+- **Right rail, screen first.** Each scene's panel (Flying against, Technology, Δv profile, outpost stats, Rivals)
+  leads; the shared accordion is one compact row (Mission · Plan · Goals · Contracts n) whose sections open full
+  width beneath it; Up Next follows. On the Command Center Up Next leads, since it is that screen's panel.
+- **Needs you.** `needsYouItems()` gathers the decisions the decision-loop systems raise — a hull ready to fly, an
+  open investigation, an outpost running out within 90 days, a worn-out team on a major flight, no research
+  running — up to four, each one click to where it is handled, at the top of Up Next on every screen.
+- **Checklist docked** as the bottom card of the left rail; on the Command Center (no left rail) it floats over the
+  scene beside the deck instead of over it.
+- **One header pattern.** Centre panels: `h2.scene-title` with the screen's colour dot (Vehicle assembly, Technology
+  Tree, Solar System, Outposts boards). Left rails: `.cc-panel-h` sections (Your vehicle, Bodies, Modules, Tracks).
+- **Content moved.** The Bench readout no longer repeats the test-campaign and rehearsal buttons (the go/no-go
+  block owns them; the readout states the current choice and where to change it) and drops the stale "Build &
+  Launch is under the rocket". The Outposts switcher's selected outpost uses a lighter selected style. Sub-month
+  investigation programs show days ("10 d") instead of "0.3333 mo".
+
+Firefox at 1280×800: every screen re-shot; the compact bar's labels measured unclipped; an opened section drops
+down full width; Needs you lists the investigation and the station shortfall on the Command Center. Tests: new
+`test-ui-cohesion.js` 19/19; `test-command-hero-layout` caught a second `@media(min-width:1101px){` block (respelled).
+Full sweep 193/194 + 1 intentional skip. No save change.

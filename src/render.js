@@ -338,10 +338,32 @@ function outlinerEtaText(d){
   const mo=d/30; if(mo<12) return (Math.round(mo*10)/10)+'mo';
   return (Math.round(mo/12*10)/10)+'y';
 }
+/* UI cohesion pass: "Needs you" — the decisions the Phase 1–5 systems raise, gathered at the top of Up Next on
+   every screen, each one click to where it is handled. Nothing here has a countdown of its own; Up Next does. */
+function needsYouItems(){
+  const out=[], add=(icon,label,go,color)=>out.push({icon,label,go,color});
+  try{
+    for(const h of hangarList()){ const m=missionById(h.missionId); if(m&&!m.window){ add('🚀',`${h.hullId} is ready to fly — ${m.name}`,()=>{ state.activeMission=m.id; setTab('bench'); },'var(--ok)'); break; } }
+    for(const inv of (state.investigations||[]).filter(x=>x.status==='open'&&!x.program).slice(-2))
+      add('🔍',`Investigation open — ${(SUBSYS_LABEL[inv.sub]||inv.sub).toLowerCase()} (${inv.mName})`,()=>setTab('bench'),'var(--warn)');
+    for(const id of Object.keys(state.facilities||{})){ if(!facilityBuilt(id)) continue; const mf=supplyManifest(id,12);
+      if(mf&&mf.shortfall!=null&&mf.shortfall-absDay()<=90) add('📦',`${facilityById(id).name} runs out of provisions ${dayToDate(mf.shortfall)}`,()=>goOutpost(id),'var(--bad)'); }
+    const m=curMission();
+    if(m&&isMajorFlight(m)){ const tm=plannedTeam(m), tired=[tm.director,...CONSOLE_SEATS.map(x=>tm.console[x.key])].filter(id=>id&&staffFatigue(id)>=60);
+      if(tired.length) add('👥',`${(personById(tired[0])||{}).name||tired[0]}${tired.length>1?` +${tired.length-1}`:''} worn out — review the ${m.name} team`,()=>{ setTab('bench'); showTeamPicker(m.id); },'var(--warn)'); }
+    if(!state.activeResearch&&RESEARCH.some(r=>!state.research[r.id]&&reqsMet(r)&&researchEraMet(r)&&sciGateMet(r)&&state.money>=rdCostOf(r)*2))
+      add('⚛','No research running',()=>setTab('rnd'),'var(--readout)');
+  }catch(e){}
+  return out.slice(0,4);
+}
 function renderOutliner(){
   const el=$('outlinerCard'); if(!el) return;
   const items=outlinerItems();
-  if(!items.length){ setHTML(el, `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><div class="cc-panel-h" style="margin:0" title="Everything with a countdown — research, builds, missions en route, deadlines, warnings — soonest first">◈ Up next</div><button class="btn ghost" style="font-size:11px;padding:1px 8px" onclick="showFleetRegistry()">▤ registry</button></div><div class="dim" style="font-size:12px">Nothing on the clock — start research, queue a build, or take a contract.</div>`); return; }
+  const needs=needsYouItems();
+  const needsHTML=needs.length?`<div class="needs-you" style="margin:2px 0 6px;padding:4px 6px;border-left:3px solid var(--ignite);background:var(--panel2);border-radius:3px">
+      <div style="font:10px var(--mono);letter-spacing:.1em;color:var(--ignite);margin-bottom:2px">NEEDS YOU</div>
+      ${needs.map((it,i)=>`<div onclick="(needsYouItems()[${i}]||{go:()=>{}}).go()" style="display:flex;gap:7px;padding:2px 0;cursor:pointer;font-size:12px"><span style="width:16px;text-align:center;flex:none">${it.icon}</span><span style="flex:1;color:${it.color||'var(--ink)'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(it.label)}">${esc(it.label)}</span></div>`).join('')}</div>`:'';
+  if(!items.length){ setHTML(el, `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><div class="cc-panel-h" style="margin:0" title="Everything with a countdown — research, builds, missions en route, deadlines, warnings — soonest first">◈ Up next</div><button class="btn ghost" style="font-size:11px;padding:1px 8px" onclick="showFleetRegistry()">▤ registry</button></div>${needsHTML}<div class="dim" style="font-size:12px">Nothing on the clock — start research, queue a build, or take a contract.</div>`); return; }
   const rows=items.slice(0,8).map((it,i)=>`<div onclick="(outlinerItems()[${i}]||{go:()=>{}}).go()" style="display:flex;align-items:center;gap:7px;padding:3px 4px;margin:0 -4px;border-radius:5px;cursor:pointer;font-size:12px" onmouseover="this.style.background='var(--panel2)'" onmouseout="this.style.background=''">
       <span style="width:16px;text-align:center;flex:0 0 auto">${it.icon}</span>
       <span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:${it.color||'var(--muted)'}">${it.label}</span>
@@ -353,7 +375,7 @@ function renderOutliner(){
         <button class="btn ghost" style="font-size:11px;padding:1px 8px" onclick="showFleetRegistry()" title="Full status board for every asset — ships, bases, depot, programs">▤ registry</button>
         <button class="btn ghost" style="font-size:11px;padding:1px 8px" onclick="runToNextEvent()" title="Fast-forward until the next item completes or a decision arrives">⏭ next event</button>
       </div>
-    </div>${rows}`);
+    </div>${needsHTML}${rows}`);
 }
 // #115 Fleet Registry — the full expandable status board. Accordion: one section per asset class, each
 // row expandable in-place (multiple can be open; it stays one scannable surface). Reads the normalized
@@ -770,7 +792,7 @@ function assemblyShellHTML(sceneId){
   if(!a) return '';
   return `<div class="card assembly-shell" data-assembly-scene="${scene.id}">
     <div class="scene-toolbar assembly-toolbar">
-      <h2 class="assembly-title">${esc(a.title)}</h2>
+      <h2 class="assembly-title scene-title"><span class="dom-dot" style="background:var(--dom-economy)"></span>${esc(a.title)}</h2>
       <div class="assembly-actions" aria-label="${esc(scene.label)} controls">
         <button class="btn ghost" type="button" id="${scene.id}ArrangeBtn" onclick="toggleAssembly3DArrange('${scene.id}')" title="Arrange modules — drag a module onto a cyan connection node to dock it">↔ Arrange</button>
         <button class="btn ghost" type="button" id="${scene.id}RotateLeftBtn" onclick="assembly3dRotateSelected('${scene.id}',-1)" title="Rotate selected module 90° left" disabled>↺ Module</button>
@@ -1237,6 +1259,11 @@ function coachHTML(){
 }
 function renderCoach(){
   const el=$('coachPanel'); if(!el) return;
+  { /* UI cohesion pass: dock into the left rail; float only where there is no left rail (the Command Center hero) */
+    const shell=$('appShell'), hero=!!(shell&&shell.classList&&shell.classList.contains('command-hero'))||state.tab==='command';
+    const rail=typeof document.querySelector==='function'?document.querySelector('.rail-left'):null, target=hero||!rail?document.body:rail;
+    if(target&&el.parentNode!==target&&target.appendChild) target.appendChild(el);
+    if(el.classList) el.classList.toggle('docked', !hero&&!!rail); }
   const html=coachHTML(), mode=html?coachMode():null;
   el.classList.toggle('hidden', !html);
   el.classList.toggle('coach-collapsed', !!(html&&onboarding().collapsed));
@@ -7038,7 +7065,7 @@ function investigationHTML(inv, extra){
   const tip=k=>k==='inspect'?'Find out whether it is a design flaw or a one-off.':k==='test'?`Halves ${subL} failures on the next ${INV_TEST_FLIGHTS} flights that fly it. A flaw stays.`
     :`${inv.finding==='flaw'?'Removes the flaw':'Removes a flaw if there is one'}; ${subL} failures ×${INV_TRIM} for good.`;
   const chips=acts.map(q=>{ const afford=state.money>=q.cost;
-    return `<button class="btn inv-act" style="flex:1;padding:3px 4px;font-size:11px;line-height:1.25" onclick="startInvestigationProgram('${inv.id}','${q.kind}')" ${afford?'':'disabled'} title="${esc(tip(q.kind)+(q.note?' ('+q.note+')':'')+(afford?'':' Not enough cash.'))}">${q.icon} ${INV_SHORT[q.kind]}<br><span class="dim" style="font-size:10px">${fM(q.cost)} · ${q.months} mo</span></button>`; }).join('');
+    return `<button class="btn inv-act" style="flex:1;padding:3px 4px;font-size:11px;line-height:1.25" onclick="startInvestigationProgram('${inv.id}','${q.kind}')" ${afford?'':'disabled'} title="${esc(tip(q.kind)+(q.note?' ('+q.note+')':'')+(afford?'':' Not enough cash.'))}">${q.icon} ${INV_SHORT[q.kind]}<br><span class="dim" style="font-size:10px">${fM(q.cost)} · ${q.months<1?Math.round(q.months*30)+' d':q.months+' mo'}</span></button>`; }).join('');
   const legend=acts.length?`<div class="dim" style="font-size:10px;margin-top:3px">${acts.map(q=>q.kind==='inspect'?'inspect: flaw or one-off?':q.kind==='test'?`test: ½ failures × ${INV_TEST_FLIGHTS} flights`:`redesign: fixes it${q.note?', +1 mo w/o specialist':''}`).join(' · ')} · <a href="#" class="inv-accept" onclick="acceptInvestigationRisk('${inv.id}');return false" style="color:var(--dim)">accept the risk</a></div>`:'';
   const also=(extra||[]).length?`<div style="font-size:11px;margin-top:4px">Also: ${extra.map(x=>`<a href="#" onclick="${esc(x.action)};return false" title="${esc(x.detail)}" style="color:var(--readout)">${esc(x.label)}</a>`).join(' · ')}</div>`:'';
   return `<div class="investigation" data-inv="${inv.id}" style="border:1px solid var(--warn);border-radius:4px;padding:5px 8px;margin-bottom:8px;text-align:left;font-size:12px">
@@ -7091,6 +7118,36 @@ function lastFlightCardHTML(){
     ${moves.length&&!busy?`<div style="font:11px var(--mono);letter-spacing:.08em;color:var(--dim);margin-top:7px">NEXT MOVE</div>${moveBtns}`:''}
   </div>`;
 }
+/* Decision-loop Phase 5: the flight team in the go/no-go block, and its picker */
+function teamPersonChip(id, cls, seatLabel){
+  if(!id) return `<span class="dim">${seatLabel} —</span>`;
+  const p=personById(id), f=staffFatigue(id), fam=staffFamiliarity(id,cls);
+  const col=f>=60?'var(--bad)':f>=30?'var(--warn)':'var(--ink)';
+  return `<span title="${esc(`${p?p.name:id} — readiness ${Math.round(staffReadiness(id,cls)*100)}% · fatigue ${Math.round(f)}% · ${FAM_CLASS_LABEL[cls]} familiarity +${Math.round(fam*100)}%`)}"><span class="dim">${seatLabel}</span> <span style="color:${col}">${esc(((p&&p.name)||id).split(' ').slice(-1)[0])}</span></span>`;
+}
+function goTeamRowHTML(g){
+  const tm=g.team&&g.team.plan; if(!tm) return '';
+  const any=tm.director||CONSOLE_SEATS.some(s=>tm.console[s.key]);
+  const hasStaff=(state.staff||[]).some(sr=>['controller','eng'].includes(roleOf(sr.id)));
+  if(!any&&!hasStaff) return '';
+  const cls=g.team.cls, tr=tm.director?(traitOf(tm.director)||{}).name:null;
+  const chips=[teamPersonChip(tm.director,cls,'FD'), ...CONSOLE_SEATS.map(s=>teamPersonChip(tm.console[s.key],cls,s.label.slice(0,4)))].join(' · ');
+  const review=g.team.major&&tm.auto&&!g.hull;
+  return `<div class="gng-row gng-team" style="display:flex;gap:6px;align-items:baseline;margin-top:4px${review?';background:var(--panel2);border-radius:3px;padding:2px 3px':''}"><span style="width:16px;flex:none">👥</span><span style="flex:1;font-size:11px">${chips}${tr?` <span class="dim">· ${esc(tr)}</span>`:''} · <a href="#" onclick="showTeamPicker('${g.mission.id}');return false" style="color:var(--readout)">${review?'review team':'change'}</a>${review?`<div class="dim" style="font-size:10px">major flight — auto-picked; check who's rested</div>`:''}</span></div>`;
+}
+function showTeamPicker(missionId){
+  const m=missionById(missionId); if(!m) return;
+  const tm=plannedTeam(m), cls=missionFamClass(m);
+  const opt=(id,cur)=>{ const p=personById(id), tr=traitOf(id)||{}; return `<option value="${id}" ${id===cur?'selected':''}>${esc(p?p.name:id)} — ready ${Math.round(staffReadiness(id,cls)*100)}% · tired ${Math.round(staffFatigue(id))}% · fam +${Math.round(staffFamiliarity(id,cls)*100)}%${tr.name?` · ${esc(tr.name)}`:''}</option>`; };
+  const seatRow=(key,label,ids,cur,note)=>`<div style="margin:8px 0"><div class="mission-tag" style="margin:0">${label}</div><select class="btn ghost team-seat" data-seat="${key}" style="width:100%;font-size:12px;margin-top:3px" onchange="setTeamSeat('${m.id}','${key}',this.value);showTeamPicker('${m.id}')"><option value="">— nobody —</option>${ids.map(id=>opt(id,cur)).join('')}</select>${note?`<div class="dim" style="font-size:11px;margin-top:2px">${note}</div>`:''}</div>`;
+  const dTr=tm.director?traitKeyOf(tm.director):null;
+  const traitNote={coolhead:'Cool Head adds "nurse it" to live calls.', bythebook:'By-the-Book adds a 7-day procedural recycle to weather holds.', improviser:'Improviser adds a free jury-rigged return to crew rescues.'}[dTr]||'The director runs live calls, heads off anomalies and leads rescues.';
+  showModal(`<h2>Flight team — ${esc(m.name)}</h2>
+    <p class="dim" style="font-size:12px">${FAM_CLASS_LABEL[cls]} flight · readiness = skill × morale × familiarity × rest. Each flight adds ${FATIGUE_PER_FLIGHT}% fatigue; rest recovers ${FATIGUE_REST_PER_MONTH}% a month.</p>
+    ${seatRow('director','Flight director',teamCandidates('controller'),tm.director,traitNote)}
+    ${CONSOLE_SEATS.map(s=>seatRow(s.key,`${s.label} console`,teamCandidates('eng',s),tm.console[s.key],`cuts ${s.subs.map(x=>(SUBSYS_LABEL[x]||x).toLowerCase()).join(' & ')} failures by up to ${Math.round(CONSOLE_HAZARD_CUT*100)}%`)).join('')}
+    <div style="display:flex;gap:6px;margin-top:10px"><button class="btn" onclick="hideModal();render()">Done</button><button class="btn ghost" onclick="state.flightTeam=null;showTeamPicker('${m.id}')">Auto-pick</button></div>`);
+}
 /* Decision-loop Phase 1: the go/no-go block under the bench's launch button — everything the commit decision
    turns on, from launchGoNoGo() (sim.js), which also decides the button. Full commitment text folds away. */
 const GO_TEST_SHORT=['No test','Static fire','Test flight'];
@@ -7113,10 +7170,11 @@ function goNoGoHTML(g, detailsHTML){
     const reh=g.rehearsal.useful?`<button class="btn gng-reh" style="width:100%;margin-top:4px;padding:3px 4px;font-size:11px;${g.rehearsal.on?'border-color:var(--readout);color:var(--readout)':''}" onclick="toggleRehearsal()">📋 ${g.rehearsal.on?'Rehearsing':'Rehearse'} — anomaly ${pct(od.anomalyBase)} → ${pct(od.anomalyRehearsed)} · ${fM(g.rehearsal.cost)}, +${REHEARSAL_MONTHS} mo</button>`:'';
     tests=`<div class="gng-row" style="margin-top:5px"><div style="display:flex;gap:4px">${chips}</div>${reh}</div>`;
   }
+  const team=goTeamRowHTML(g);
   const calls=row('📞',`Launch calls: <b>${LAUNCH_POLICIES[g.policy].label}</b> · <a href="#" onclick="cycleLaunchPolicy();return false" style="color:var(--readout)">change</a>`, LAUNCH_POLICIES[g.policy].tip+' In-flight anomalies always ask.');
   return `<div id="goNoGo" class="gonogo gng-${g.verdict}" data-verdict="${g.verdict}" style="border:1px solid ${col};border-radius:4px;padding:6px 8px;margin-top:6px;text-align:left;font-size:12px">
     <div class="gng-verdict" style="font-weight:700;color:${col}">${head}${g.verdict==='go'?' <span class="dim" style="font-weight:400">· Space</span>':''}</div>${more}
-    ${money}${odds}${tests}${calls}
+    ${money}${odds}${tests}${team}${calls}
     ${detailsHTML?`<details class="gng-details" style="margin-top:4px"><summary class="dim" style="font-size:11px;cursor:pointer">Commitment details</summary>${detailsHTML}</details>`:''}
   </div>`;
 }
@@ -7278,13 +7336,10 @@ function renderReadout(){
       stage 1: ${ispEff} · 9.81 · ln(${v.liftoff.toFixed(1)}/${(v.liftoff-state.stages[0].prop).toFixed(1)}) = ${fI(v.stageDv[0]+(v.stageGravLoss?v.stageGravLoss[0]:0))} m/s${(v.stageGravLoss&&v.stageGravLoss[0]>1)?` − ${fI(v.stageGravLoss[0])} grav = ${fI(v.stageDv[0])}`:''}<br>
       σ ${curSigma()} · ${v.totalEng} engine${v.totalEng>1?'s':''} · ${state.stages.length} stage${state.stages.length>1?'s':''}</div>
 
-    <div class="mission-tag" style="margin-top:6px">Test campaign — buy down risk before you fly</div>
-    <div class="row" style="gap:6px;align-items:stretch;margin:6px 0 4px">${testBtns}</div>
-    ${rehearsalHTML(m)}
+    <div class="dim readout-launch-link" style="font-size:12px;margin:6px 0">🔥 Test campaign: <b style="color:var(--ink)">${esc(TEST_LEVELS[state.testLevel].name)}</b>${state.rehearsal?' · 📋 rehearsed':''} — choose tests, rehearsal and launch calls in the go/no-go block under <b>Your vehicle</b>.</div>
 
     ${flags}
-    ${benchQueueHTML(m)}
-    <div class="dim" style="font-size:12px;text-align:center;margin-top:6px">▸ Build &amp; Launch is under the rocket</div>`);
+    ${benchQueueHTML(m)}`);
 }
 
 function renderProfileReadout(m){
@@ -7359,13 +7414,10 @@ function renderProfileReadout(m){
 
     <div class="eq">The launch vehicle lofts the whole stack (${v.payload.toFixed(1)} t) to LEO; the transfer stage then spends one tank across ${sim.inSpaceLegs} deep-space burn${sim.inSpaceLegs>1?'s':''}, lighter after each — yet every burn still hauls everything still attached.${m.modules.includes('lander')?' The descent stage is dropped on the surface after landing; the ascent stage returns alone to meet the transfer stage.':''}${state.depotUse>0?` This run draws <b style="color:var(--readout)">${state.depotUse.toFixed(1)} t</b> from the LEO depot — propellant that never had to be launched from Earth.`:''}${ISRU_FREE_LEG[m.id]&&state.research[ISRU_FREE_LEG[m.id].research]?` <b style="color:var(--ok)">${ISRU_FREE_LEG[m.id].label}</b> is online — the ${ISRU_FREE_LEG[m.id].leg} burn is produced on-site.`:''}${missionAerocaptureLeg(m)&&state.research.aerocapture?` <b style="color:var(--ok)">Aerocapture</b> is online — the ${missionAerocaptureLeg(m)} burn costs 70% less, the atmosphere doing the rest.`:''}</div>
 
-    <div class="mission-tag" style="margin-top:6px">Test campaign — buy down risk before you fly</div>
-    <div class="row" style="gap:6px;align-items:stretch;margin:6px 0 4px">${testBtns}</div>
-    ${rehearsalHTML(m)}
+    <div class="dim readout-launch-link" style="font-size:12px;margin:6px 0">🔥 Test campaign: <b style="color:var(--ink)">${esc(TEST_LEVELS[state.testLevel].name)}</b>${state.rehearsal?' · 📋 rehearsed':''} — choose tests, rehearsal and launch calls in the go/no-go block under <b>Your vehicle</b>.</div>
 
     ${flags}
-    ${benchQueueHTML(m)}
-    <div class="dim" style="font-size:12px;text-align:center;margin-top:6px">▸ Build &amp; Launch is under the rocket</div>`);
+    ${benchQueueHTML(m)}`);
 }
 
 /* ---------- E4.3.0: 3D solar-system scene math (headless-testable core) ----------
@@ -9440,6 +9492,9 @@ function renderPersonnelCard(p, sr){
         ${isDeptLead(p.id)?'<span class="pill" style="margin-left:4px;color:var(--readout);border-color:var(--hud-line)" title="Department lead — steers this department\'s output">★ lead</span>':''}
         ${isAstro&&assigned?'<span class="pill active" style="margin-left:4px">assigned</span>':''}
         ${isAstro&&isCrewDeployed(p.id)?'<span class="pill" style="margin-left:4px;color:var(--readout);border-color:var(--hud-line)">🚀 in flight</span>':''}
+        ${(()=>{ /* Phase 5: flight-team history */ const f=Math.round(sr.fatigue||0), fam=Object.entries(sr.fam||{}).filter(([,n])=>n>0);
+          if(!f&&!fam.length) return '';
+          return `<div class="dim" style="font-size:11px;margin-top:3px">${f?`<span style="color:${f>=60?'var(--bad)':f>=30?'var(--warn)':'inherit'}">fatigue ${f}%</span>`:'rested'}${fam.length?` · flown: ${fam.map(([k,n])=>`${FAM_CLASS_LABEL[k]||k} ×${n}`).join(', ')}`:''}</div>`; })()}
       </div>
       <span style="font-family:var(--mono);font-size:12px;color:var(--muted)">${p.salary.toFixed(2)}M/mo</span>
     </div>
@@ -9945,7 +10000,7 @@ function mapRosterRowHTML(b){
 }
 function mapRosterHTML(){
   const earth=BODIES.find(x=>x.id==='earth'), g=mapRosterModel();
-  let s=`<div class="map-roster-heading">Home</div>${mapRosterRowHTML(earth)}`;
+  let s=`<div class="cc-panel-h" style="margin-bottom:4px"><span class="dom-dot" style="background:var(--dom-exploration)"></span>Bodies</div><div class="map-roster-heading">Home</div>${mapRosterRowHTML(earth)}`; /* UI cohesion pass: same left-rail header as every screen */
   MAP_ROSTER_TIERS.forEach(t=>{
     const list=g[t.key]; if(!list.length) return;
     s+=`<div class="map-roster-group"><div class="map-roster-heading">${t.label} (${list.length})</div>${list.map(mapRosterRowHTML).join('')}</div>`;
@@ -10732,7 +10787,7 @@ function manifestHTML(facId){
    offers the two drafting boards instead. */
 function outpostSwitcherHTML(currentId){
   const built=Object.keys(state.facilities||{}).map(id=>facilityById(id)).filter(d=>d&&facilityBuilt(d.id));
-  const btn=(on,label,act,title)=>`<button class="btn ${on?'launch':'ghost'} outpost-pick" style="font-size:12px" onclick="${act}"${title?` title="${esc(title)}"`:''}>${label}</button>`;
+  const btn=(on,label,act,title)=>`<button class="btn ${on?'launch':'ghost'} outpost-pick" style="font-size:12px;padding:5px 9px;${on?'background:var(--panel2);border-color:var(--ignite);color:var(--ink);box-shadow:inset 0 -2px 0 var(--ignite);font-weight:600':''}" onclick="${act}"${title?` title="${esc(title)}"`:''}>${label}</button>`;
   const rows=built.map(d=>btn(d.id===currentId, `${d.icon} ${esc(d.name)}`, `goOutpost('${d.id}')`, d.body==='earth'?'Orbital station':'Surface base'));
   const hasOrbital=built.some(d=>d.body==='earth'), hasSurface=built.some(d=>d.body!=='earth');
   if(!hasOrbital) rows.push(btn(state.tab==='station'&&!currentId, '▣ Plan a station', "setTab('station')", 'Draw an orbital station blueprint — dreaming is free'));
@@ -10848,7 +10903,7 @@ function renderStationPalette(cur){
   // shared ones (Habitat, Lab, Power Truss, Depot, Greenhouse) minus the orbital-only structure.
   const cards=STATION_MODULES.filter(md=> surface ? !ORBITAL_ONLY.includes(md.id) : !md.surface)
     .map(md=>stationModuleCard(md, cur, true)).join('');
-  return `<div class="station-palette" style="margin-top:10px"><div class="mission-tag" style="margin-bottom:6px">Modules — dock to grow ${cur.def.name}</div>
+  return `<div class="station-palette" style="margin-top:10px"><div class="cc-panel-h" style="margin-bottom:6px">⬡ Modules — dock to grow ${cur.def.name}</div>
     <div style="display:flex;gap:10px;flex-wrap:wrap">${cards}</div></div>`;
 }
 function assemblyPaletteHTML(sceneId, view){
@@ -10856,14 +10911,14 @@ function assemblyPaletteHTML(sceneId, view){
   if(sceneId==='station'){
     const fs=stationDraftFs(), cur={def:facilityById('leo_station')||FACILITY_DEFS[0],fs};
     const cards=STATION_MODULES.map(md=>stationModuleCard(md,cur,false)).join('');
-    return `<div class="station-palette"><div class="mission-tag">Blueprint modules — orbital assembly</div>
+    return `<div class="station-palette"><div class="cc-panel-h">⬡ Blueprint modules — orbital station</div>
       <div style="display:flex;gap:6px;margin:8px 0 4px"><button class="btn ghost" style="font-size:12px" onclick="draftRemove()">↶ Remove last</button><button class="btn ghost" style="font-size:12px" onclick="draftClear()">✕ Clear blueprint</button></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">${cards}</div></div>`;
   }
   const body=baseDraftBody(), def=facilityById(BASE_DRAFT_FACID[body]), fs=baseDraftFs(body), cur={def,fs};
   const tabs=`<button class="btn ${body==='moon'?'launch':'ghost'}" style="font-size:12px" onclick="setBaseDraftBody('moon')">◆ Luna</button><button class="btn ${body==='mars'?'launch':'ghost'}" style="font-size:12px" onclick="setBaseDraftBody('mars')">★ Mars</button>`;
   const cards=STATION_MODULES.filter(md=>md.id!=='node_hub').map(md=>stationModuleCard(md,cur,false)).join('');
-  return `<div class="station-palette"><div class="mission-tag">Blueprint modules — ${esc(def.name)}</div>
+  return `<div class="station-palette"><div class="cc-panel-h">⛰ Blueprint modules — ${esc(def.name)}</div>
     <div style="display:flex;gap:6px;margin:8px 0">${tabs}</div>
     <div style="display:flex;gap:6px;margin:0 0 4px"><button class="btn ghost" style="font-size:12px" onclick="draftRemove()">↶ Remove last</button><button class="btn ghost" style="font-size:12px" onclick="draftClear()">✕ Clear blueprint</button></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">${cards}</div></div>`;

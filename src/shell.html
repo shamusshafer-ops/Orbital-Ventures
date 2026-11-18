@@ -258,6 +258,25 @@
   .rail-acc-btn.open .rail-acc-sign::after{content:'−'}
   .rail-acc-body{max-height:0;overflow:hidden;transition:max-height .22s ease}
   .rail-acc-body.open{max-height:1600px;padding:2px 2px 4px}
+
+  /* UI cohesion pass: the shared accordion as one compact row of four under the scene's own panel */
+  .rail-accordion{flex-direction:row;flex-wrap:wrap;gap:4px;margin:10px 0 10px}
+  .rail-acc-btn{flex:1 1 auto;width:auto;order:0;justify-content:center;gap:3px;padding:6px 5px;font-size:10px;letter-spacing:.02em;min-width:0}
+  .rail-acc-btn .cc-icon{display:none}
+  .rail-acc-btn .cc-nav-label{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .rail-acc-btn .rail-acc-sign{display:none}
+  .rail-acc-btn .tabbadge{margin-left:3px}
+  .rail-acc-body{order:1;flex-basis:100%}
+  .command-hero .rail-accordion .rail-acc-btn{width:auto}
+  /* the getting-started checklist docks into the left rail (it floats only on the Command Center, which has no left rail) */
+  #coachPanel.docked{position:relative;left:auto;bottom:auto;z-index:auto;width:auto;max-width:none;margin-top:10px;box-shadow:none}
+  /* on the Command Center (no left rail) it floats over the scene beside the deck, not over the deck */
+  @media (min-width: 1101px){ #coachPanel:not(.docked){left:calc(var(--cc-rail-width) + 44px)} }
+  /* on the Command Center, Up Next (with Needs you) is the screen's own panel — it leads the right rail */
+  .command-hero #railRight{display:flex;flex-direction:column}
+  .command-hero #railRight > #outlinerCard{order:-1}
+  /* UI cohesion pass: one centre-panel title pattern on every screen — the screen's colour dot, uppercase title */
+  h2.scene-title{font-family:var(--sans);font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--ink);opacity:.92;margin:0 0 6px;line-height:1.35}
   .rail-acc-hint{font-size:11px;margin-top:8px;border-top:1px dashed var(--line);padding-top:6px;opacity:.8}
   /* attention badges on scene tabs (Stellaris-style "something needs you") */
   .tabbadge{display:inline-flex;align-items:center;justify-content:center;min-width:15px;height:15px;padding:0 4px;
@@ -1248,7 +1267,7 @@
       <div id="benchWorkspaceContext">
         <div class="card bench-rocket dombar-engineering" id="vehicleCard" style="text-align:center">
           <button class="vehpop-btn" onclick="openVehPopout()" title="Pop out — full editor + large pan/zoom view (Esc/Enter to close)">⤢</button>
-          <div class="mission-tag" style="text-align:left"><span class="dom-dot" style="background:var(--dom-engineering)"></span>Your vehicle</div>
+          <div class="cc-panel-h" style="text-align:left;margin-bottom:4px"><span class="dom-dot" style="background:var(--dom-engineering)"></span>Your vehicle</div>
           <div id="benchLaunch" style="margin:6px 0 10px"></div>
           <div id="vehHost" style="display:none;width:100%;max-width:260px;margin:0 auto;aspect-ratio:240/360"></div>
           <canvas id="vehiclePreview" width="240" height="360" style="max-width:100%;height:auto;display:block;margin:0 auto"></canvas>
@@ -1260,7 +1279,7 @@
          slider bench below stays the shipped default. Populated by renderPartsBench(). -->
     <div id="benchV2" class="hidden" style="display:flex;gap:12px;flex-wrap:wrap">
       <div class="card" style="flex:0 0 280px">
-        <div class="mission-tag">Vehicle assembly</div>
+        <h2 class="scene-title"><span class="dom-dot" style="background:var(--dom-engineering)"></span>Vehicle assembly</h2>
         <div id="benchCanvas" style="margin-top:8px"></div>
         <div id="benchPartStats" style="margin-top:10px"></div>
       </div>
@@ -1329,7 +1348,7 @@
       </div>
     </div>
     <div class="card dombar-research">
-      <h2><span class="dom-dot" style="background:var(--dom-research)"></span>Technology Tree — capital + time into capability</h2>
+      <h2 class="scene-title"><span class="dom-dot" style="background:var(--dom-research)"></span>Technology Tree — capital + time into capability</h2>
       <p class="muted" style="font-size:12px;margin:-4px 0 10px">Each node unlocks an engine, material, or capability. Lines show prerequisites; dashed lines need a mission flown. Click a node to inspect it.</p>
       <div id="techAction" style="margin-bottom:10px"></div>
       <div id="techTree" style="overflow:auto;max-height:70vh" tabindex="0"></div>
@@ -1342,7 +1361,7 @@
   <div id="mapView" class="hidden">
     <div class="card dombar-exploration" id="mapCard">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
-        <h2 style="margin:0"><span class="dom-dot" style="background:var(--dom-exploration)"></span>Solar System — click a body for its Δv profile</h2>
+        <h2 class="scene-title" style="margin:0"><span class="dom-dot" style="background:var(--dom-exploration)"></span>Solar System — click a body for its Δv profile</h2>
         <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
           <button class="btn ghost" onclick="map3dPreset('system')" title="Fit the complete Solar System">System</button>
           <button class="btn ghost" onclick="map3dPreset('earthmoon')" title="Frame the Earth–Moon system">Earth–Moon</button>
@@ -1396,21 +1415,6 @@
 
     </main>
     <aside class="rail-right scene-slot" id="railRight">
-      <!-- Persistent accordion (shown on every scene): one click drops a section down to preview it,
-           a second click on an open section jumps to its page. renderRailPersistent() fills the bodies. -->
-      <div id="railPersistent" class="rail-accordion">
-        <button class="rail-acc-btn" id="raccMission" onclick="railAccordClick('mission')" ondblclick="railAccordDbl('mission')" title="Click +/− to expand or collapse · double-click to open Mission Control"><span class="cc-icon" aria-hidden="true">⌘</span><span class="cc-nav-label">Mission Control</span><span class="rail-acc-sign"></span></button>
-        <div class="rail-acc-body" id="raccMissionBody"></div>
-        <button class="rail-acc-btn" id="raccFlight" onclick="railAccordClick('flight')" ondblclick="railAccordDbl('flight')" title="Click +/− to expand or collapse · double-click to open the Design Bench"><span class="cc-icon" aria-hidden="true">⌁</span><span class="cc-nav-label">Flight Plan</span><span class="rail-acc-sign"></span></button>
-        <div class="rail-acc-body" id="raccFlightBody"></div>
-        <button class="rail-acc-btn" id="raccObj" onclick="railAccordClick('objectives')" ondblclick="railAccordDbl('objectives')" title="Click +/− to expand or collapse · double-click to open Programs"><span class="cc-icon" aria-hidden="true">✓</span><span class="cc-nav-label">Current Objectives</span><span class="rail-acc-sign"></span></button>
-        <div class="rail-acc-body" id="raccObjBody"></div>
-        <button class="rail-acc-btn" id="raccContracts" onclick="railAccordClick('contracts')" ondblclick="railAccordDbl('contracts')" title="Click +/− to preview signable contracts · double-click to open the full Contracts drill"><span class="cc-icon" aria-hidden="true">⌁</span><span class="cc-nav-label">Contracts <span class="tabbadge hidden" id="badgeContracts"></span></span><span class="rail-acc-sign"></span></button>
-        <div class="rail-acc-body" id="raccContractsBody"></div>
-      </div>
-      <!-- The Outliner: everything in flight with its ETA, soonest first — visible on every
-           scene. This is the one-more-turn machine: the player always sees the next payoff. -->
-      <div class="card" id="outlinerCard" style="margin-bottom:14px"></div>
       <!-- slice 3: the contextual right rail. Each scene's former sidebar lives here as a
            .rail-panel; render() shows the one matching the active scene. Element ids are
            unchanged so the render fns are untouched. -->
@@ -1449,6 +1453,23 @@
         <div class="card" id="missionsPane"><h2 style="font-size:15px">Flight Contracts</h2><div id="missionList"></div></div>
         <div class="card" id="passiveCard" style="display:none"></div>
       </div>
+          <!-- UI cohesion pass (2026-11-18): screen first. The scene's own panel leads the rail; the shared
+           accordion is a compact four-button bar beneath it, then Up Next (with Needs you). -->
+      <!-- Persistent accordion (shown on every scene): one click drops a section down to preview it,
+           a second click on an open section jumps to its page. renderRailPersistent() fills the bodies. -->
+      <div id="railPersistent" class="rail-accordion">
+        <button class="rail-acc-btn" data-short="Mission" id="raccMission" onclick="railAccordClick('mission')" ondblclick="railAccordDbl('mission')" title="Click +/− to expand or collapse · double-click to open Mission Control"><span class="cc-icon" aria-hidden="true">⌘</span><span class="cc-nav-label">Mission</span><span class="rail-acc-sign"></span></button>
+        <div class="rail-acc-body" id="raccMissionBody"></div>
+        <button class="rail-acc-btn" data-short="Plan" id="raccFlight" onclick="railAccordClick('flight')" ondblclick="railAccordDbl('flight')" title="Click +/− to expand or collapse · double-click to open the Design Bench"><span class="cc-icon" aria-hidden="true">⌁</span><span class="cc-nav-label">Plan</span><span class="rail-acc-sign"></span></button>
+        <div class="rail-acc-body" id="raccFlightBody"></div>
+        <button class="rail-acc-btn" data-short="Goals" id="raccObj" onclick="railAccordClick('objectives')" ondblclick="railAccordDbl('objectives')" title="Click +/− to expand or collapse · double-click to open Programs"><span class="cc-icon" aria-hidden="true">✓</span><span class="cc-nav-label">Goals</span><span class="rail-acc-sign"></span></button>
+        <div class="rail-acc-body" id="raccObjBody"></div>
+        <button class="rail-acc-btn" data-short="Contracts" id="raccContracts" onclick="railAccordClick('contracts')" ondblclick="railAccordDbl('contracts')" title="Click +/− to preview signable contracts · double-click to open the full Contracts drill"><span class="cc-icon" aria-hidden="true">⌁</span><span class="cc-nav-label">Contracts <span class="tabbadge hidden" id="badgeContracts"></span></span><span class="rail-acc-sign"></span></button>
+        <div class="rail-acc-body" id="raccContractsBody"></div>
+      </div>
+      <!-- The Outliner: everything in flight with its ETA, soonest first — visible on every
+           scene. This is the one-more-turn machine: the player always sees the next payoff. -->
+      <div class="card" id="outlinerCard" style="margin-bottom:14px"></div>
     </aside>
   </div>
 
