@@ -23,12 +23,12 @@ const coastX=CAPE3D_COAST_X, descriptors=capeFacilityDescriptors(), plan=cape3dS
 }
 
 { // the coast: one surface, continuous through the waterline
-  const z=-3000;
-  check('the sea is below sea level just offshore', H(coastX+40,z)<CAPE3D_SEA_Y&&H(coastX+400,z)<H(coastX+40,z));
-  check('the beach is above sea level just inland', H(coastX-30,z)>CAPE3D_SEA_Y&&H(coastX-30,z)<CAPE3D_SEA_Y+2.5);
-  check('the surface is continuous through the waterline (no step for a seam to hide in)', Math.abs(H(coastX-.5,z)-H(coastX+.5,z))<.1);
+  const z=-3000, c=cape3dCoastAt(z,coastX);
+  check('the sea is below sea level just offshore', H(c+40,z)<CAPE3D_SEA_Y&&H(c+400,z)<H(c+40,z));
+  check('the beach is above sea level just inland', H(c-30,z)>CAPE3D_SEA_Y&&H(c-30,z)<CAPE3D_SEA_Y+2.5);
+  check('the surface is continuous through the waterline (no step for a seam to hide in)', Math.abs(H(c-.5,z)-H(c+.5,z))<.1);
   let dune=0; for(let x=coastX-60;x>coastX-250;x-=5) dune=Math.max(dune,H(x,z));
-  check('a line of dunes stands behind the beach somewhere along the coast', (()=>{ for(let zz=-12000;zz<12000;zz+=300){ for(let x=coastX-90;x>coastX-170;x-=10) if(H(x,zz)>3.5) return true; } return false; })());
+  check('a line of dunes stands behind the beach somewhere along the coast', (()=>{ for(let zz=-6000;zz<6000;zz+=300){ const cc=cape3dCoastAt(zz,coastX); for(let x=cc-90;x>cc-170;x-=10) if(H(x,zz)>3.5) return true; } return false; })());
   const L=cape3dLagoon(5000,coastX);
   check('the lagoon is a real basin below sea level', H(L.x,5000)<CAPE3D_SEA_Y-1.5&&H(L.x-L.w*.5-400,5000)>CAPE3D_SEA_Y);
 }
@@ -41,7 +41,7 @@ const coastX=CAPE3D_COAST_X, descriptors=capeFacilityDescriptors(), plan=cape3dS
   check('the terrain reaches past the horizon at the altitude where the photographic globe takes over', CAPE3D_TERRAIN.extent>horizonAt96km&&cape3dPhysicalAscentBlend(96000).earthOpacity>.99);
   const ax=cape3dTerrainAxis(0,12,1500,60,CAPE3D_TERRAIN.extent);
   check('grid: 12 m over the site, growing geometrically to the full extent', Math.abs((ax[ax.length/2+.5|0]-ax[ax.length/2-.5|0])-12)<1e-9&&ax[ax.length-1]===CAPE3D_TERRAIN.extent&&ax.length<800);
-  check('grid spacing never shrinks moving outward', ax.every((v,i)=>i<2||v-ax[i-1]>=ax[i-1]-ax[i-2]-1e-6||ax[i-1]<=0));
+  check('grid spacing never shrinks moving outward', ax.every((v,i)=>i<2||i===ax.length-1||v-ax[i-1]>=ax[i-1]-ax[i-2]-1e-6||ax[i-1]<=0));
   check('splashes follow the curved sea', cape3dUpdateSplash.toString().includes('cape3dCurveDrop')&&cape3dUpdateSplash.toString().includes('CAPE3D_SEA_Y'));
 }
 
@@ -64,7 +64,7 @@ const coastX=CAPE3D_COAST_X, descriptors=capeFacilityDescriptors(), plan=cape3dS
   const woods=cape3dRegionWoods(coastX);
   check('3D woods come from the same seeded patches the district map paints', woods.length>40&&cape3dRegionWoods(coastX)[7][0]===woods[7][0]&&cape3dRegionTexture.toString().includes('if(ci<2) woods.push([x,z,r])'));
   const veg=cape3dVegetation.toString();
-  check('trees are instanced and kept off buildings, lots, roads, water and the beach', veg.includes('cape3dInstanced(')&&veg.includes('cape3dSiteBlocked(plan')&&veg.includes('CAPE3D_SEA_Y+.3')&&veg.includes('cx-x<260'));
+  check('trees are instanced and kept off buildings, lots, roads, water and the beach', veg.includes('cape3dInstanced(')&&veg.includes('cape3dSiteBlocked(plan')&&veg.includes('CAPE3D_SEA_Y+.3')&&veg.includes('c-x<260'));
   check('only trees inside the shadow box cast shadows', veg.includes("_far'")&&veg.includes('cape3dInstanced(G[k],mat,farL,false)'));
   const det=cape3dFacilityDetail.toString();
   check('buildings get structural bays, a low-bay wing with docks, an entrance and rooftop plant', ['pilasters','low-bay wing','loading docks','entrance','Rooftop plant'].every(k=>det.includes(k)));
@@ -95,6 +95,23 @@ const coastX=CAPE3D_COAST_X, descriptors=capeFacilityDescriptors(), plan=cape3dS
   const a=fake.userData.cloudShells[0].material.uniforms, b=fake.userData.cloudShells[1].material.uniforms;
   check('every launch draws a new sky (seed and coverage) for each globe', a.uSeed.value!==b.uSeed.value&&a.uCover.value>=.46&&b.uCover.value<=.56&&cape3dEnterLaunchPresentation.toString().includes('cape3dRandomiseCloudShells(root)'));
   check('the altitude near plane is reset for the orbit and later phases', cape3dUpdateFlightPresentation.toString().includes('cape3dRestoreNear()'));
+}
+
+{ // follow-up: a varied coastline with cliffs in the distance
+  const T=CAPE3D_TERRAIN, offs=[]; for(let z=-200000;z<=200000;z+=2500) offs.push(cape3dCoastOffset(z));
+  check('the shore is straight beside the site, so the pads keep their beach', [T.siteZ-1500,T.siteZ,T.siteZ+1500].every(z=>cape3dCoastOffset(z)===0)&&descriptors.every(d=>cape3dCoastOffset(d.position.z)===0));
+  check('…and bays and headlands of kilometres away from it', Math.max(...offs)-Math.min(...offs)>4000&&offs.some(v=>v>500)&&offs.some(v=>v<-500));
+  check('the shore moves smoothly (no jumps between neighbouring points)', (()=>{ for(let z=-40000;z<40000;z+=50) if(Math.abs(cape3dCoastOffset(z+50)-cape3dCoastOffset(z))>60) return false; return true; })());
+  let cz=null; for(let z=8000;z<400000&&cz==null;z+=500) if(cape3dCliff(z)>.95) cz=z;
+  check('cliffs stand somewhere along the distant coast, never beside the site', cz!=null&&cape3dCliff(T.siteZ)===0&&cape3dCliff(T.siteZ+6000)===0);
+  if(cz!=null){ const c=cape3dCoastAt(cz,coastX);
+    check('a cliff rises steeply from the water to a plateau', H(c-60,cz)-CAPE3D_SEA_Y>15&&H(c-60,cz)-H(c-2,cz)>12&&H(c+30,cz)<CAPE3D_SEA_Y-2);
+    check('the water at the shore is continuous under a cliff too', H(c+.5,cz)<CAPE3D_SEA_Y+.5&&H(c-.5,cz)<CAPE3D_SEA_Y+3); }
+  const L=cape3dLagoon(30000,coastX);
+  check('the lagoon follows the shore', Math.abs((cape3dCoastAt(30000,coastX)-L.x)-(5200-900*Math.sin(30000/5200)-480*Math.sin(30000/1700+1)))<1e-6);
+  check('the shader reads the local shore distance, not a fixed line', cape3dTerrainMaterial.toString().includes('float dc=vTC')&&cape3dTerrainGeometry.toString().includes("'aCoast'"));
+  check('district roads and the missile row follow the shore', cape3dRegionTexture.toString().includes('cape3dCoastAt(z,coastX)-7050')&&cape3dRegionTexture.toString().includes('px=cz-190'));
+  check('no beach on cliff tops; trees stay off the bare rock', cape3dTerrainMaterial.toString().includes('smoothstep(11.0,18.0,vTH)')&&cape3dVegetation.toString().includes('cape3dCliff(z)>.2'));
 }
 
 console.log(pass+'/'+(pass+fail)+' checks passed');

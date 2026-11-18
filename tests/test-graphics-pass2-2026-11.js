@@ -50,7 +50,7 @@ newGame('engineer');
   check('region is larger than the site but far smaller than the terrain', R.width>6000&&R.width<CAPE3D_TERRAIN.extent&&R.depth<CAPE3D_TERRAIN.extent);
   const site=ISO_BUILDINGS.map(b=>capeWorldPoint(b.gx,b.gy)), inside=p=>Math.pow((p.x-R.siteX)/(R.holeX*.74),2)+Math.pow((p.z-R.siteZ)/(R.holeZ*.74),2)<1;
   check('every authored facility sits inside the fully masked centre', site.every(inside));
-  check('region is masked at the site and faded at its outer edges', tex.includes("destination-out")&&tex.includes('createRadialGradient(0,0,0,0,0,1)')&&(tex.match(/createLinearGradient/g)||[]).length===3);
+  check('region is masked at the site and faded at its outer edges', tex.includes("destination-out")&&tex.includes('createRadialGradient(0,0,0,0,0,1)')&&(tex.match(/createLinearGradient/g)||[]).length===4); /* four edges since the coast meanders (graphics pass 3) */
   check('district features are drawn', ['lagoon','missile row','skid strip','town','highway'].every(k=>tex.includes(k)));
   check('both district resolutions are sampled by the terrain shader', build.includes('fine:false')&&build.includes('fine:true')&&mat.includes('uRegionA')&&mat.includes('uRegionB'));
   check('causeway meets the site avenue', build.includes('capeWorldPoint(0,ISO_AV).z'));

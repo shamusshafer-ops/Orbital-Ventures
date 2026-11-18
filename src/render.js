@@ -2591,9 +2591,9 @@ function cape3dRegionTexture(coastX,roadZ,rect){
     if(!seen(x,z,r)) continue; const px=X(x), py=Z(z), pr=r*mm, g=ctx.createRadialGradient(px,py,0,px,py,pr); g.addColorStop(0,'rgba('+c+','+a+')'); g.addColorStop(.7,'rgba('+c+','+a*.6+')'); g.addColorStop(1,'rgba('+c+',0)'); ctx.fillStyle=g; ctx.fillRect(px-pr,py-pr,pr*2,pr*2); }
   // 2. farm and citrus blocks west of the lagoon
   const crops=['#7f9a4e','#93a95a','#6b8a46','#b3a56a','#a08d5a','#5f7f44','#8aa364','#c2b77e'];
-  for(let fz=gz0+300;fz<gz0+R.depth-300;fz+=430){ for(let fx=gx0+500;fx<coastX-7000;fx+=560){
+  for(let fz=gz0+300;fz<gz0+R.depth-300;fz+=430){ for(let fx=gx0+500;fx<coastX-3000;fx+=560){
     const skip=rnd()<.3, crop=crops[Math.floor(rnd()*crops.length)], rows=rnd()>.5, orchard=rnd()>.6;
-    if(skip||fx>lagoonX(fz)-1300||!seen(fx+260,fz+196,400)) continue; const w=520*mx, h=392*mz, px=X(fx), py=Z(fz);
+    if(skip||fx>lagoonX(fz)-1300||fx>cape3dCoastAt(fz,coastX)-7000||!seen(fx+260,fz+196,400)) continue; const w=520*mx, h=392*mz, px=X(fx), py=Z(fz);
     ctx.fillStyle=crop; ctx.globalAlpha=.78; ctx.fillRect(px,py,w,h); ctx.globalAlpha=1;
     if(fine&&orchard){ ctx.fillStyle='rgba(30,62,30,.6)'; for(let ox=14;ox<520;ox+=22) for(let oz=14;oz<392;oz+=22){ ctx.beginPath(); ctx.arc(px+ox*mx,py+oz*mz,7*mm,0,7); ctx.fill(); } }
     else { ctx.fillStyle='rgba(30,50,26,.22)'; const step=Math.max(4,(fine?13:0)*mm); for(let k=3;k<(rows?h:w);k+=step){ if(rows) ctx.fillRect(px,py+k,w,Math.max(1,step*.3)); else ctx.fillRect(px+k,py,Math.max(1,step*.3),h); } }
@@ -2612,18 +2612,19 @@ function cape3dRegionTexture(coastX,roadZ,rect){
   // 5. roads: highway, causeway to the west gate, coastal service road
   const road=(pts,w,col)=>{ ctx.beginPath(); pts.forEach((q,i)=>i?ctx.lineTo(X(q[0]),Z(q[1])):ctx.moveTo(X(q[0]),Z(q[1]))); ctx.lineCap='round'; ctx.setLineDash([]); ctx.strokeStyle='rgba(206,198,170,.55)'; ctx.lineWidth=(w+10)*mm; ctx.stroke(); ctx.strokeStyle=col||'#4d5357'; ctx.lineWidth=Math.max(1.6,w*mm); ctx.stroke();
     if(fine&&w>=20){ ctx.strokeStyle='rgba(236,226,170,.45)'; ctx.lineWidth=Math.max(1,1.2*mm); ctx.setLineDash([9*mm,12*mm]); ctx.stroke(); ctx.setLineDash([]); } };
-  const hw=[]; for(let z=gz0;z<=gz0+R.depth;z+=300) hw.push([coastX-7050+260*Math.sin(z/4100),z]); road(hw,26);
+  const hw=[]; for(let z=gz0;z<=gz0+R.depth;z+=300) hw.push([cape3dCoastAt(z,coastX)-7050+260*Math.sin(z/4100),z]); road(hw,26);
   road([[-170,roadZ],[coastX-3600,roadZ],[coastX-4300,roadZ+120],[coastX-6100,roadZ+120],[coastX-7050,roadZ+60],[tx0+tw,roadZ+60]],22);
-  road([[coastX-430,gz0+400],[coastX-430,R.siteZ-1250]],16); road([[coastX-430,R.siteZ+1250],[coastX-430,gz0+R.depth-400]],16);
-  road([[coastX-3600,roadZ],[coastX-3600,R.siteZ-5600]],16);
+  const along=(dx,za,zb)=>{ const pts=[]; for(let z=za;(zb>za?z<=zb:z>=zb);z+=(zb>za?250:-250)) pts.push([cape3dCoastAt(z,coastX)-dx,z]); return pts; };
+  road(along(430,gz0+400,R.siteZ-1250),16); road(along(430,R.siteZ+1250,gz0+R.depth-400),16);
+  road(along(3600,roadZ,R.siteZ-5600),16);
   // 6. missile row: older pads strung along the coast north and south of the centre
-  for(let k=0;k<13;k++){ const z=(k<7?R.siteZ-2300-k*1380:R.siteZ+2300+(k-7)*1500)+(rnd()-.5)*300, px=coastX-190-rnd()*60, r=95+rnd()*55;
-    road([[coastX-430,z],[px,z]],13); ctx.fillStyle='#bdb8a9'; ell(px,z,r,r); ctx.fill();
+  for(let k=0;k<13;k++){ const z=(k<7?R.siteZ-2300-k*1380:R.siteZ+2300+(k-7)*1500)+(rnd()-.5)*300, cz=cape3dCoastAt(z,coastX), px=cz-190-rnd()*60, r=95+rnd()*55;
+    road([[cz-430,z],[px,z]],13); ctx.fillStyle='#bdb8a9'; ell(px,z,r,r); ctx.fill();
     ctx.fillStyle='rgba(50,46,42,.6)'; ell(px+r*.2,z,r*.35,r*.35); ctx.fill();
     if(fine){ ctx.strokeStyle='rgba(90,86,78,.7)'; ctx.lineWidth=Math.max(1,2*mm); ell(px,z,r*.72,r*.72); ctx.stroke(); ctx.fillStyle='#3d4347'; box(px+r*.1,z-9,r*.5,18); ctx.fillStyle='#8d9296'; box(px-r*.55,z-r*.5,26,26); ctx.fillStyle='#e4e7e9'; ell(px-r*.2,z+r*.55,13,13); ctx.fill(); ell(px+r*.1,z+r*.62,13,13); ctx.fill(); }
-    ctx.fillStyle='#d8d4c8'; box(px-r*1.9,z-40,70,80); ctx.fillStyle='#8d9296'; box(coastX-640,z-90,120,160); }
+    ctx.fillStyle='#d8d4c8'; box(px-r*1.9,z-40,70,80); ctx.fillStyle='#8d9296'; box(cz-640,z-90,120,160); }
   // 7. skid strip
-  ctx.save(); ctx.translate(X(coastX-3300),Z(R.siteZ-4300)); ctx.rotate(-.5); const rl=3100*mz, rw=70*mx*1.6;
+  ctx.save(); ctx.translate(X(cape3dCoastAt(R.siteZ-4300,coastX)-3300),Z(R.siteZ-4300)); ctx.rotate(-.5); const rl=3100*mz, rw=70*mx*1.6;
   ctx.fillStyle='rgba(186,180,150,.7)'; ctx.fillRect(-rw*2.2,-rl*.55,rw*4.4,rl*1.1); ctx.fillStyle='#43484c'; ctx.fillRect(-rw*.5,-rl*.5,rw,rl);
   ctx.fillStyle='#e9e9e2'; for(let q=-rl*.46;q<rl*.46;q+=110*mz) ctx.fillRect(-Math.max(.6,2.5*mx),q,Math.max(1.2,5*mx),55*mz); ctx.fillRect(-rw*.4,-rl*.49,rw*.8,Math.max(3,20*mz)); ctx.fillRect(-rw*.4,rl*.49-Math.max(3,20*mz),rw*.8,Math.max(3,20*mz));
   ctx.fillStyle='#55595c'; ctx.fillRect(rw*.5,-rl*.1,rw*2.4,rl*.16); ctx.fillStyle='#c9c5b8'; ctx.fillRect(rw*2.2,-rl*.07,rw*.9,rl*.1); ctx.restore();
@@ -2633,6 +2634,8 @@ function cape3dRegionTexture(coastX,roadZ,rect){
   const edge=S*.1; let eg=ctx.createLinearGradient(0,0,edge,0); eg.addColorStop(0,'rgba(0,0,0,1)'); eg.addColorStop(1,'rgba(0,0,0,0)'); ctx.fillStyle=eg; ctx.fillRect(0,0,edge,S);
   eg=ctx.createLinearGradient(0,0,0,edge); eg.addColorStop(0,'rgba(0,0,0,1)'); eg.addColorStop(1,'rgba(0,0,0,0)'); ctx.fillStyle=eg; ctx.fillRect(0,0,S,edge);
   eg=ctx.createLinearGradient(0,S,0,S-edge); eg.addColorStop(0,'rgba(0,0,0,1)'); eg.addColorStop(1,'rgba(0,0,0,0)'); ctx.fillStyle=eg; ctx.fillRect(0,S-edge,S,edge);
+  /* the seaward edge too: where a headland reaches past the map, the paint fades instead of ending in a line */
+  eg=ctx.createLinearGradient(S,0,S-edge*.6,0); eg.addColorStop(0,'rgba(0,0,0,1)'); eg.addColorStop(1,'rgba(0,0,0,0)'); ctx.fillStyle=eg; ctx.fillRect(S-edge*.6,0,edge*.6,S);
   ctx.globalCompositeOperation='source-over';
   const tx=new THREE.CanvasTexture(cv); if('colorSpace' in tx) tx.colorSpace=THREE.SRGBColorSpace; tx.anisotropy=8; return tx;
 }
@@ -2806,7 +2809,7 @@ function cape3dSkyDome(scene){
 // 1,600 km, and beyond 30 km the surface bends down with the Earth's curvature, so whatever the camera's
 // altitude the land reaches its real horizon and meets the photographic globe there.
 const CAPE3D_SEA_Y=-.4;
-const CAPE3D_TERRAIN={seed:9137,step:12,core:1500,midStep:60,extent:1600000,curveFrom:30000,curveFull:150000,siteX:480,siteZ:287};
+const CAPE3D_TERRAIN={seed:9137,step:12,core:1500,midStep:40,extent:1600000,curveFrom:30000,curveFull:150000,siteX:480,siteZ:287};
 let cape3dTerrainCtx=null;
 function cape3dSmooth(a,b,x){ const u=Math.max(0,Math.min(1,(x-a)/(b-a))); return u*u*(3-2*u); }
 function cape3dHash2(ix,iz,seed){ let h=Math.imul(ix|0,0x27d4eb2d)^Math.imul(iz|0,0x165667b1)^Math.imul(seed|0,0x1b873593); h=Math.imul(h^(h>>>15),0x85ebca6b); h=Math.imul(h^(h>>>13),0xc2b2ae35); h^=h>>>16; return (h>>>0)/4294967296; }
@@ -2818,7 +2821,26 @@ function cape3dNoise2(x,z,seed){
 function cape3dFbm2(x,z,oct,seed){ let s=0,a=.5,f=1,n=0; for(let i=0;i<oct;i++){ s+=a*cape3dNoise2(x*f+i*17.3,z*f-i*9.1,seed+i); n+=a; a*=.5; f*=2.03; } return s/n; }
 function cape3dRidge2(x,z,oct,seed){ let s=0,a=.5,f=1,n=0,w=1; for(let i=0;i<oct;i++){ let v=1-Math.abs(cape3dNoise2(x*f,z*f,seed+31+i)*2-1); v*=v; s+=v*a*w; w=Math.min(1,v*1.6); n+=a; a*=.5; f*=2.1; } return s/n; }
 // The barrier-island lagoon: shared by the district painter (its banks and marsh) and the heightmap (its basin).
-function cape3dLagoon(z,coastX){ return {x:coastX-5200+900*Math.sin(z/5200)+480*Math.sin(z/1700+1), w:760+360*Math.sin(z/3100+.6)}; }
+// The coastline: dead straight beside the site (the pads keep their beach), then bays and headlands that grow
+// with distance along the shore, out to broad continental bends far away; and stretches of rocky cliff a
+// long way up and down the coast. A function of the along-shore coordinate only, so the shore never folds.
+function cape3dCoastOffset(z){
+  if(cape3dCoastOffset._z===z) return cape3dCoastOffset._v;
+  const T=CAPE3D_TERRAIN, S=T.seed, dz=Math.abs(z-T.siteZ), keep=cape3dSmooth(1800,6500,dz); let v=0;
+  if(keep>0){ const bay=(cape3dFbm2(z/7000,3.1,3,S+71)-.5)*2, big=(cape3dFbm2(z/52000,7.3,3,S+73)-.5)*2, vast=(cape3dFbm2(z/300000,1.9,2,S+79)-.5)*2;
+    v=keep*(bay*(1100+2600*cape3dSmooth(6000,40000,dz))+big*18000*cape3dSmooth(25000,150000,dz)+vast*90000*cape3dSmooth(150000,600000,dz)); }
+  cape3dCoastOffset._z=z; cape3dCoastOffset._v=v; return v;
+}
+function cape3dCoastAt(z,coastX){ return (Number.isFinite(coastX)?coastX:CAPE3D_COAST_X)+cape3dCoastOffset(z); }
+/* A headland of cliffs ~11 km up the coast and ~9.5 km down it (in view from the site, where the grid still
+   resolves a rock face), and more stretches at random further out. */
+function cape3dCliff(z){
+  const T=CAPE3D_TERRAIN, d=z-T.siteZ, dz=Math.abs(d); if(dz<7000) return 0;
+  const band=d>0?Math.exp(-Math.pow((d-11000)/2200,2)):Math.exp(-Math.pow((d+9500)/1700,2)), far=cape3dSmooth(14000,20000,dz)*cape3dSmooth(.5,.62,cape3dFbm2(z/16000,5.5,3,T.seed+83));
+  return Math.min(1,cape3dSmooth(7000,8500,dz)*Math.max(band*1.5,far));
+}
+/* the lagoon pinches out ~20 km up and down the coast instead of breaking into segments on the coarse far grid */
+function cape3dLagoon(z,coastX){ return {x:cape3dCoastAt(z,coastX)-5200+900*Math.sin(z/5200)+480*Math.sin(z/1700+1), w:(760+360*Math.sin(z/3100+.6))*(1-cape3dSmooth(13000,21000,Math.abs(z-CAPE3D_TERRAIN.siteZ)))}; }
 // Earth curvature: zero near the site (splashdowns and the near range stay on the flat datum), the exact
 // sphere drop from 150 km out.
 function cape3dCurveDrop(d){ const R=6371000, r=Math.min(Math.abs(Number(d)||0),R*.999); return (R-Math.sqrt(R*R-r*r))*cape3dSmooth(CAPE3D_TERRAIN.curveFrom,CAPE3D_TERRAIN.curveFull,r); }
@@ -2861,7 +2883,7 @@ function cape3dSitePlan(descriptors,coastX){
   return plan;
 }
 function cape3dTerrainHeight(x,z,plan,coastX,out){
-  const T=CAPE3D_TERRAIN, S=T.seed, dc=coastX-x, ds=Math.hypot((x-T.siteX)/1.15,z-T.siteZ);
+  const T=CAPE3D_TERRAIN, S=T.seed, dc=cape3dCoastAt(z,coastX)-x, ds=Math.hypot((x-T.siteX)/1.15,z-T.siteZ), cm=cape3dCliff(z), top=cm>0?28+70*cape3dFbm2(z/5000,9.1,3,S+87):0;
   // Inland relief: barely a metre or two on the site, rolling country a few kilometres out, ranges far inland.
   // Fine relief fades out where the grid is too coarse to carry it (it would alias into slivers); broad
   // relief takes over there. Small lakes are allowed in the near country only.
@@ -2874,12 +2896,17 @@ function cape3dTerrainHeight(x,z,plan,coastX,out){
   if(dc<=0){
     // Seaward: a shelving surf zone with a sandbar ~70 m out, then the continental shelf.
     const off=-dc; h=CAPE3D_SEA_Y-.15-Math.min(off,150)*.032-Math.max(0,off-150)*.011-Math.min(260,off*off*2e-6)+.55*Math.exp(-Math.pow((off-70)/26,2));
+    if(cm>0) h+=(CAPE3D_SEA_Y-2.5-off*.05-h)*cm; /* deep water right up to the cliff foot, no sandbar */
     h=Math.max(h,-320);
   } else {
     // Landward: beach rising off the waterline, a broken line of dunes, then the inland surface.
     const beach=CAPE3D_SEA_Y-.15+Math.min(1.9,dc*.032);
     const dune=dc<330?(3.2+4.5*cape3dFbm2(x/90,z/260,3,S+55))*Math.exp(-Math.pow((dc-120)/55,2))*cape3dSmooth(.38,.58,cape3dFbm2(3.7,z/900,2,S+57)):0;
-    h=beach+dune; h+=(land-h)*cape3dSmooth(140,650,dc);
+    h=beach+dune;
+    // Cliffs: a ragged rock face rising from a narrow ledge to a plateau that runs back into the land.
+    if(cm>0){ const jag=(cape3dFbm2(x/60,z/90,3,S+89)-.5)*16, face=cape3dSmooth(1,30,dc+jag), rough=(cape3dFbm2(x/40,z/40,2,S+91)-.5)*4*face;
+      h+=(CAPE3D_SEA_Y+.6+top*face+rough-h)*cm; land+=cm*top*(1-cape3dSmooth(500,2500,dc)); }
+    h+=(land-h)*cape3dSmooth(140,650,dc);
     // No accidental ponds on the site itself; lakes are allowed further out.
     const dry=1-cape3dSmooth(2600,5200,ds); if(dc>60&&h<CAPE3D_SEA_Y+.35) h+=(CAPE3D_SEA_Y+.35-h)*dry;
   }
@@ -2900,14 +2927,15 @@ function cape3dTerrainHeight(x,z,plan,coastX,out){
 function cape3dGroundY(x,z){ const c=cape3dTerrainCtx; if(!c) return 0; return Math.max(CAPE3D_SEA_Y,cape3dTerrainHeight(x,z,c.plan,c.coastX,null)); }
 function cape3dTerrainAxis(center,step,core,midStep,extent){
   const pos=[]; let s=step, p=0;
-  while(p<extent){ if(p>=core) s=s<midStep?s*1.025:s*1.07; p=Math.min(extent,p+s); pos.push(p); }
+  /* fine to midStep, then a slower ramp to 400 m so the meandering shore keeps its shape for ~12 km, then fast */
+  while(p<extent){ if(p>=core) s=s<midStep?s*1.02:(s<600?s*1.035:s*1.07); p=Math.min(extent,p+s); pos.push(p); }
   return pos.slice().reverse().map(v=>center-v).concat([center],pos.map(v=>center+v));
 }
 function cape3dTerrainGeometry(plan,coastX,origin,tierName){
   const T=CAPE3D_TERRAIN, step=tierName==='low'?20:T.step, xs=cape3dTerrainAxis(T.siteX,step,T.core,T.midStep,T.extent), zs=cape3dTerrainAxis(T.siteZ,step,T.core,T.midStep,T.extent);
-  const nx=xs.length, nz=zs.length, N=nx*nz, H=new Float32Array(N), F=new Float32Array(N), S=new Float32Array(N), pos=new Float32Array(N*3), out={h:0,f:0};
+  const nx=xs.length, nz=zs.length, N=nx*nz, H=new Float32Array(N), F=new Float32Array(N), S=new Float32Array(N), C=new Float32Array(N), K=new Float32Array(N), pos=new Float32Array(N*3), out={h:0,f:0};
   const ox=origin?origin.x:T.siteX, oz=origin?origin.z:T.siteZ;
-  for(let j=0;j<nz;j++) for(let i=0;i<nx;i++){ const k=j*nx+i; cape3dTerrainHeight(xs[i],zs[j],plan,coastX,out); H[k]=out.h; F[k]=out.f; }
+  for(let j=0;j<nz;j++){ const cz=cape3dCoastAt(zs[j],coastX), ck=cape3dCliff(zs[j]); for(let i=0;i<nx;i++){ const k=j*nx+i; cape3dTerrainHeight(xs[i],zs[j],plan,coastX,out); H[k]=out.h; F[k]=out.f; C[k]=cz-xs[i]; K[k]=ck; } }
   for(let j=0;j<nz;j++) for(let i=0;i<nx;i++){
     const k=j*nx+i, il=Math.max(0,i-1), ir=Math.min(nx-1,i+1), jd=Math.max(0,j-1), ju=Math.min(nz-1,j+1);
     // Hollows darken, crests lighten: the heightmap printed into the ground colour as well as the relief.
@@ -2918,7 +2946,7 @@ function cape3dTerrainGeometry(plan,coastX,origin,tierName){
   const idx=new Uint32Array((nx-1)*(nz-1)*6); let q=0;
   for(let j=0;j<nz-1;j++) for(let i=0;i<nx-1;i++){ const a=j*nx+i, b=a+1, c=a+nx, d=c+1; idx[q++]=a; idx[q++]=c; idx[q++]=b; idx[q++]=b; idx[q++]=c; idx[q++]=d; }
   const geo=new THREE.BufferGeometry();
-  geo.setAttribute('position',new THREE.BufferAttribute(pos,3)); geo.setAttribute('aH',new THREE.BufferAttribute(H,1)); geo.setAttribute('aFlat',new THREE.BufferAttribute(F,1)); geo.setAttribute('aShade',new THREE.BufferAttribute(S,1));
+  geo.setAttribute('position',new THREE.BufferAttribute(pos,3)); geo.setAttribute('aH',new THREE.BufferAttribute(H,1)); geo.setAttribute('aFlat',new THREE.BufferAttribute(F,1)); geo.setAttribute('aShade',new THREE.BufferAttribute(S,1)); geo.setAttribute('aCoast',new THREE.BufferAttribute(C,1)); geo.setAttribute('aCliff',new THREE.BufferAttribute(K,1));
   geo.setIndex(new THREE.BufferAttribute(idx,1)); geo.computeVertexNormals(); geo.computeBoundingSphere();
   geo.userData.grid={nx,nz};
   return geo;
@@ -2940,12 +2968,12 @@ function cape3dTerrainMaterial(opts){
   mat.onBeforeCompile=shader=>{
     Object.assign(shader.uniforms,u);
     shader.vertexShader=shader.vertexShader
-      .replace('#include <common>','#include <common>\nattribute float aH; attribute float aFlat; attribute float aShade; varying vec3 vTW; varying vec3 vTN; varying float vTH; varying float vTF; varying float vTS;')
-      .replace('#include <begin_vertex>','#include <begin_vertex>\nvTW=(modelMatrix*vec4(transformed,1.0)).xyz; vTN=normalize(mat3(modelMatrix)*objectNormal); vTH=aH; vTF=aFlat; vTS=aShade;');
+      .replace('#include <common>','#include <common>\nattribute float aH; attribute float aFlat; attribute float aShade; attribute float aCoast; attribute float aCliff; varying vec3 vTW; varying vec3 vTN; varying float vTH; varying float vTF; varying float vTS; varying float vTC; varying float vTK;')
+      .replace('#include <begin_vertex>','#include <begin_vertex>\nvTW=(modelMatrix*vec4(transformed,1.0)).xyz; vTN=normalize(mat3(modelMatrix)*objectNormal); vTH=aH; vTF=aFlat; vTS=aShade; vTC=aCoast; vTK=aCliff;');
     shader.fragmentShader=shader.fragmentShader
-      .replace('#include <common>','#include <common>\nvarying vec3 vTW; varying vec3 vTN; varying float vTH; varying float vTF; varying float vTS;\nuniform float uTime,uSea,uCoast,uGroundReady,uRegionOn; uniform sampler2D uGround,uRegionA,uRegionB; uniform vec4 uRA,uRB;\nuniform vec3 uHazeCol,uGrassA,uGrassB,uGrassDry,uForest,uLawn,uDirt,uRock,uSandDry,uSandDune,uSandWet,uMud,uShallow,uDeep,uLagoonShallow,uLagoonDeep,uFoam;'+CAPE3D_TERRAIN_GLSL)
+      .replace('#include <common>','#include <common>\nvarying vec3 vTW; varying vec3 vTN; varying float vTH; varying float vTF; varying float vTS; varying float vTC; varying float vTK;\nuniform float uTime,uSea,uCoast,uGroundReady,uRegionOn; uniform sampler2D uGround,uRegionA,uRegionB; uniform vec4 uRA,uRB;\nuniform vec3 uHazeCol,uGrassA,uGrassB,uGrassDry,uForest,uLawn,uDirt,uRock,uSandDry,uSandDune,uSandWet,uMud,uShallow,uDeep,uLagoonShallow,uLagoonDeep,uFoam;'+CAPE3D_TERRAIN_GLSL)
       .replace('#include <map_fragment>',`#include <map_fragment>
-        vec2 P=vTW.xz; float dc=uCoast-P.x; float camD=length(vTW-cameraPosition);
+        vec2 P=vTW.xz; float dc=vTC; /* distance to the local, meandering shore */ float camD=length(vTW-cameraPosition);
         float n1=tFbm(P/900.0), n2=tFbm(P/140.0+3.1), n3=tN(P/23.0), n4=tFbm(P/4200.0+11.0);
         float detail=1.0;
         if(uGroundReady>.5){ vec3 g=texture2D(uGround,P/400.0).rgb*.6+texture2D(uGround,P/131.0+.37).rgb*.4, gm=texture2D(uGround,P/400.0,12.0).rgb;
@@ -2968,9 +2996,13 @@ function cape3dTerrainMaterial(opts){
         base=mix(base,uLawn,vTF*.45);
         base*=detail;
         float edge=dc+(n2-.5)*140.0+(n3-.5)*30.0;
-        float sand=1.0-smoothstep(30.0,210.0,edge);
+        float sand=(1.0-smoothstep(30.0,210.0,edge))*(1.0-smoothstep(11.0,18.0,vTH)); /* no beach on a cliff top */
         sand=clamp(sand+(mix(tN(P/7.0),.5,smoothstep(800.0,4000.0,camD))-.5)*4.8*sand*(1.0-sand),0.0,1.0);
+        sand*=1.0-vTK; /* cliffs drop straight into the sea */
         base=mix(base,mix(uSandDry,uSandDune,smoothstep(.4,.8,n2))*(.92+.16*n3),sand);
+        /* bare rock on the face and the ledge, banded by strata, fading back into grass on the cliff top */
+        float rockK=vTK*(1.0-smoothstep(25.0,70.0,dc+(n2-.5)*40.0));
+        base=mix(base,uRock*(.72+.3*n3)*(.86+.22*sin(vTH*.55+n2*4.0)),rockK);
         float wet=1.0-smoothstep(uSea+.02,uSea+.8,vTH);
         base=mix(base,mix(uSandWet,uMud,smoothstep(300.0,700.0,dc)),wet*.85);
         float depth=uSea-vTH, ovWater=smoothstep(0.0,.10,depth), lag=smoothstep(300.0,700.0,dc);
@@ -3065,12 +3097,14 @@ function cape3dVegetation(root,materials,plan,coastX){
   const woods=cape3dRegionWoods(cx), roadZ=capeWorldPoint(0,ISO_AV).z, mx=R.size/R.width, mz=R.size/R.depth;
   const inHole=(x,z)=>Math.pow((x-R.siteX)/(R.holeX*.8),2)+Math.pow((z-R.siteZ)/(R.holeZ*.8),2)<1;
   const open=(x,z)=>{
-    if(cx-x<260||x<cx-6900) return false;                                       /* dunes, and the farm belt */
-    if(Math.abs(x-(cx-7050+260*Math.sin(z/4100)))<45) return false;              /* highway */
+    const c=cape3dCoastAt(z,cx);
+    if(c-x<260||x<c-6900) return false;                                         /* dunes, and the farm belt */
+    if(cape3dCliff(z)>.2&&c-x<500) return false;                                /* bare rock along the cliffs */
+    if(Math.abs(x-(c-7050+260*Math.sin(z/4100)))<45) return false;               /* highway */
     if(Math.abs(z-roadZ)<170&&x<cx-300) return false;                            /* causeway */
-    if(Math.abs(x-(cx-430))<30||(Math.abs(x-(cx-3600))<30&&z<roadZ)) return false; /* service roads */
+    if(Math.abs(x-(c-430))<30||(Math.abs(x-(c-3600))<30&&z<roadZ)) return false;   /* service roads */
     const tx0=cx-9700, tz0=R.siteZ-2700; if(x>tx0-60&&x<tx0+2360&&z>tz0-60&&z<tz0+4360) return false; /* town */
-    const dx=(x-(cx-3300))*mx, dz=(z-(R.siteZ-4300))*mz, u=dx*Math.cos(-.5)+dz*Math.sin(-.5), v=-dx*Math.sin(-.5)+dz*Math.cos(-.5);
+    const dx=(x-(cape3dCoastAt(R.siteZ-4300,cx)-3300))*mx, dz=(z-(R.siteZ-4300))*mz, u=dx*Math.cos(-.5)+dz*Math.sin(-.5), v=-dx*Math.sin(-.5)+dz*Math.cos(-.5);
     if(Math.abs(u)<70*mx*1.6*2.4&&Math.abs(v)<3100*mz*.6) return false;          /* skid strip */
     const L=cape3dLagoon(z,cx); if(Math.abs(x-L.x)<L.w*.5+70) return false;
     return !inHole(x,z);
@@ -3084,7 +3118,7 @@ function cape3dVegetation(root,materials,plan,coastX){
   }
   // Palmetto and sea-grape scrub on the back dunes and in the open fields around the site.
   for(let i=0;i<4200&&lists.scrub.length<4000;i++){
-    const dune=i%3!==0, x=dune?cx-80-rnd()*200:R.siteX-3000+rnd()*3800, z=dune?R.siteZ-6000+rnd()*12000:R.siteZ-3000+rnd()*6000;
+    const dune=i%3!==0, z=dune?R.siteZ-6000+rnd()*12000:R.siteZ-3000+rnd()*6000, x=dune?cape3dCoastAt(z,cx)-80-rnd()*200:R.siteX-3000+rnd()*3800;
     if(!dune&&(!open(x,z)&&!(inHole(x,z)&&!(plan&&cape3dSiteBlocked(plan,x,z,10))))) continue;
     if(dune&&plan&&cape3dSiteBlocked(plan,x,z,25)) continue;
     put('scrub',x,z,.7+rnd()*.9);
