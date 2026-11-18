@@ -9,6 +9,11 @@
 // BOT_HIRE=1 (spine step 8) adds a staffing player: it takes the advisor's hire suggestions (scientists,
 // astronauts) and staffs the three core engineering departments once the team reliability ceiling bites.
 // Without it the bot never builds a crewed rocket it has no astronaut for.
+// BOT_STATION=1 (decision-loop Phase 4a, measurement only): founds the LEO station once Crewed Orbit is flown and
+// cash allows, flies cargo-pod resupply missions (station visits) when supply runs low — instant purchase only as
+// an emergency — and grows the station (power first, then labs; a Docking Node when the ports fill). Pair with
+// BOT_HIRE=1: the station needs Crewed Orbit, which needs an astronaut. The summary gains a `station` line.
+// BOT_STATION=lean buys provisions on auto-reorder instead of flying them and never adds a module the crew can't run.
 // BOT_DEBRIEF=1 (decision-loop Phase 0) takes the Last Flight card's first next move after every failure.
 // The summary's failureLearning line counts failures that repeat the previous failure's subsystem. With Phase 2 it
 // also inspects/redesigns/tests open failure investigations.
@@ -40,7 +45,7 @@ const FLIGHT_LOG=[];
 if(typeof recordFlightDebrief==='function'){ const _rfd=recordFlightDebrief; recordFlightDebrief=function(...a){ const d=_rfd.apply(this,a); if(d) FLIGHT_LOG.push({y:state.year, ok:!!d.success, kind:d.kind, sub:d.subsystem||null, mid:d.missionId}); if(process.env.BOT_FLOG) console.error("FLOG "+JSON.stringify(d)); return d; }; }
 newGame(DIFF); _gameStarted=true;
 { const _frf=fireRivalFirst; fireRivalFirst=function(r,f){ if(!state.rivalFired[r.id+'|'+f.name]) RIVAL_CLAIMS.push({rival:r.id,name:f.name,missionId:f.missionId||null,year:+(state.year+state.month/12).toFixed(2),nominal:f.year,playerHad:!!(f.missionId&&state.completed[f.missionId])}); return _frf(r,f); }; }
-[['buyResearch','research'],['rushResearch','research'],['queueBuild','build'],['buildEngineStock','build'],['launchFromHangar','launch'],['finalizeLaunch','payouts'],['tickPassiveContracts','contracts'],['tickContinuousDay','daily (overhead, payroll, gov, facilities)'],['signPassiveContract','contracts'],['buildTrackingStation','infrastructure'],['bailout','loans'],['chooseBridgeLoan','loans'],['tickMonthlyBoundary','monthly events'],['acceptMandate','events'],['resolveSetback','events']].forEach(([n,c])=>{ try{ ledgerWrap(n,c); }catch(e){} });
+[['buyResearch','research'],['rushResearch','research'],['queueBuild','build'],['buildEngineStock','build'],['launchFromHangar','launch'],['finalizeLaunch','payouts'],['tickPassiveContracts','contracts'],['tickContinuousDay','daily (overhead, payroll, gov, facilities)'],['signPassiveContract','contracts'],['buildTrackingStation','infrastructure'],['bailout','loans'],['chooseBridgeLoan','loans'],['tickMonthlyBoundary','monthly events'],['acceptMandate','events'],['resolveSetback','events'],['foundFacility','station'],['addStationModule','station'],['resupplyFacility','station'],['tickStationOperations','station']].forEach(([n,c])=>{ try{ ledgerWrap(n,c); }catch(e){} });
 // Animation stays ON so launch decisions stop the clock exactly as they do for a player (with it off the
 // game auto-scrubs weather and never raises live calls). closeAnim() plays the role of the player
 // closing each flight presentation, which is what releases deferred-flight settlement.
@@ -48,7 +53,7 @@ function closeAnim(){ for(let k=0;k<6&&typeof animState!=='undefined'&&animState
 try{ state.onboarding.dismissed=true; }catch(e){}
 if(process.env.BOT_POLICY){ try{ state.launchPolicy=process.env.BOT_POLICY; }catch(e){} } // default: whatever a new game ships with
 let rid=0; const R=()=>'bot'+(++rid);
-const stats={turns:0, idleTurns:0, stops:{}, modals:{}, launches:0, success:0, fail:0, research:0, contractsSigned:0, hires:0, actionsPerTurn:[], daysPerTurn:[], firstYear:{}, stuck:{}, debriefMoves:{}};
+const stats={turns:0, idleTurns:0, stops:{}, modals:{}, launches:0, success:0, fail:0, research:0, contractsSigned:0, hires:0, actionsPerTurn:[], daysPerTurn:[], firstYear:{}, stuck:{}, debriefMoves:{}, station:{founded:null,modulesAdded:0,visitsPlanned:0,visitsBuilt:0,bought:0,starvedTurns:0}};
 const bump=(o,k,n=1)=>o[k]=(o[k]||0)+n;
 // spine step 8: a sensible player doesn't build a crewed rocket with no astronaut on the payroll to fly it
 const crewable=x=>!(typeof missionNeedsAstronaut==='function'&&missionNeedsAstronaut(x)) || (state.staff||[]).some(s=>roleOf(s.id)==='astro');
@@ -102,7 +107,7 @@ function repairProfile(m){
 function _design(m){
   // Random search for the cheapest design the game itself accepts (canQueue). Single core, no boosters;
   // profile missions also size the transfer/descent/ascent stages. Window-gated missions are skipped.
-  if(m.tanker||m.stationVisit||(m.window&&!(state.committedWindow&&state.committedWindow.missionId===m.id))||m.deliverModule||m.orbitDeployment||m.vehicleDocking) return null;
+  if(m.tanker||(m.stationVisit&&process.env.BOT_STATION!=='1')||(m.window&&!(state.committedWindow&&state.committedWindow.missionId===m.id))||m.deliverModule||m.orbitDeployment||m.vehicleDocking) return null;
   const engs=launchEngines(); if(!engs.length) return null;
   const inSpace=unlockedEngines().filter(id=>!ENGINES[id].lowThrust||ENGINES[id].selfPowered);
   const save=JSON.stringify({stages:state.stages,boosters:state.boosters,am:state.activeMission,transfer:state.transfer,descent:state.descent,ascent:state.ascent});
@@ -146,6 +151,7 @@ function answerLaunch(){
         else if(d.kind==='reserve') resolveReserveCall(true,tx.id,d.revision);
         else if(d.kind==='anomaly') resolveAnomaly((d.options&&d.options[0])||0,tx.id,d.revision);
         else if(d.kind==='orbital'||d.kind==='orbit') resolveOrbitalManeuver((d.options&&d.options[0]),tx.id,d.revision);
+        else if(d.kind==='rescue'){ if(mountRescue(tx.id,d.revision)===false) abandonRescue(tx.id,d.revision); } /* crewed strand: mount the rescue if it can, else abandon (was left stuck) */
         else { bump(stats.stuck,'decision:'+d.kind); break; }
       }catch(e){ bump(stats.stuck,'err:'+d.kind); break; }
     } else if(tx.phase==='presentation'||(typeof animState!=='undefined'&&animState)){ closeAnim(); if(state.launchTxn===tx) break; }
@@ -223,6 +229,33 @@ while(state.year<YEAR_END && stats.turns<4000){
       if(a&&startInvestigationProgram(inv.id,a.kind)){ bump(stats.debriefMoves,'inv:'+a.kind); acts.length; }
     }
   }
+  // BOT_STATION=1 (Phase 4a): found, supply and grow one LEO station
+  let stationVisitPick=null;
+  const STATION_MODE=process.env.BOT_STATION==='1'?'fly':process.env.BOT_STATION==='lean'?'lean':null;
+  if(STATION_MODE && !state.launchTxn && typeof facilityBuilt==='function'){
+    const F='leo_station', def=facilityById(F), st=stats.station, lean=STATION_MODE==='lean';
+    const reserve=()=>Math.max(5,flightAttemptCost()*2);
+    if(!facilityBuilt(F)){
+      if(canFound(F).ok && state.money>def.foundCost+reserve()*2){ foundFacility(F); if(facilityBuilt(F)){ st.founded=+(state.year+state.month/12).toFixed(2); acts.push('found '+F); } }
+    } else {
+      const fs=facilityState(F), sup=facilitySupply(F);
+      if(sup<=0.01) st.starvedTurns++;
+      const pend=pendingStationVisit(F,'resupply'), inHull=pend&&([...hangarList(),...buildQueueList()].some(h=>h.missionId===pend.id));
+      if(lean&&!fs.autoResupply){ toggleAutoResupply(F); acts.push('auto-resupply on'); } /* lean: buy provisions on auto-reorder */
+      if(!lean && sup<=5 && !pend && canFlyStationVisit(F,'resupply').ok){ const keep=state.activeMission; const o=flyStationVisit(F,'resupply',false); state.activeMission=keep; if(o&&o.id){ st.visitsPlanned++; acts.push('plan resupply visit'); } }
+      const p2=pendingStationVisit(F,'resupply');
+      if(!lean&&p2&&!([...hangarList(),...buildQueueList()].some(h=>h.missionId===p2.id))) stationVisitPick=p2;
+      if(sup<=3 && canResupply(F).ok && !inHull){ resupplyFacility(F); st.bought++; acts.push('emergency resupply'); }
+      /* grow it: power when the next module would run a deficit, else labs; a node when the ports are full */
+      const list=facilityModuleList(fs), pw=facilityPower(fs), ports=facilityPortCap(fs,def), pending=buildQueueList().filter(o=>o.kind==='station-module').length;
+      if(!pending && st.modulesAdded<8){
+        let want=list.length>=ports?'node_hub':(pw.net<6?'power_truss':(list.filter(x=>x==='lab_mod').length<3?'lab_mod':(state.research.orbital_depot&&!list.includes('depot_mod')?'depot_mod':'lab_mod')));
+        const md=stationModuleDef(want), ok=canAddStationModule(F,want);
+        const crewOk=!lean||(()=>{ const c=facilityCrew(fs), d=md&&md.stats||{}; return (c.req+(d.crewReq||0))<=(c.cap+(d.crew||0)); })(); /* lean: never outgrow the crew */
+        if(ok.ok && crewOk && state.money>ok.cost+reserve()*2){ addStationModule(F,want); st.modulesAdded++; acts.push('station module '+want); }
+      }
+    }
+  }
   const flyFirst=process.env.BOT_CHECKLIST==='fly' && !state.completed.first_flight; // comparison mode: no research before the first success
   if(!coaching && !flyFirst && !state.activeResearch){
     const rec=recommendedAction(); let r=null;
@@ -263,6 +296,7 @@ while(state.year<YEAR_END && stats.turns<4000){
     if(m&&needsTrackingNetwork(m)&&trackingStationCount()<1){ const st=TRACKING_STATIONS.find(x=>canBuildStation(x.id).ok); if(st){ buildTrackingStation(st.id); acts.push('build tracking '+st.id); } }
     { const sv=(state.contractOffers||[]).filter(o=>o.service&&!contractOfferReferenced(o.id)).map(o=>[o,netValue(o)]).filter(([,n])=>n>0).sort((a,b)=>b[1]-a[1])[0];
       if(sv&&(!m||state.completed[m.id]||buildQueueList().length)) { m=sv[0]; stats.serviceFlown=(stats.serviceFlown||0)+1; } }
+    if(stationVisitPick){ const dv=design(stationVisitPick); if(dv){ m=stationVisitPick; stats.station.visitsBuilt++; } else bump(stats.stuck,'no-design:station-visit'); }
     let d=m?design(m):null;
     if(m&&!d){ bump(stats.stuck,'no-design:'+m.id);
       const val=x=>x.proc?x.payout:estMissionPayout(x);
@@ -319,6 +353,10 @@ const decisionStops=Object.entries(stats.modals).filter(([k])=>k.startsWith('lau
 if(process.env.BOT_LEDGER){ require('fs').writeFileSync(process.env.BOT_LEDGER, JSON.stringify(LEDGER)); }
 const polit=['mandate','review','hearing'].reduce((a,k)=>a+(stats.modals[k]||0),0);
 console.log(JSON.stringify({failureLearning:failRuns}));
+if(process.env.BOT_STATION){ const fs=typeof facilityState==='function'?facilityState('leo_station'):null;
+  const flown=(FLIGHT_LOG||[]).filter(f=>/^sv_/.test(f.mid||'')); 
+  console.log(JSON.stringify({station:Object.assign({}, stats.station, {built:!!(fs&&fs.built), modules:fs?facilityModuleList(fs):[], supplyNow:fs?+facilitySupply('leo_station').toFixed(1):null,
+    visitsFlown:flown.length, visitsSucceeded:flown.filter(f=>f.ok).length, science:Math.round(state.science||0)})})); }
 console.log(JSON.stringify({politicalPerYear:+(polit/Math.max(1,state.year-1942)).toFixed(2),politicalKinds:{mandate:stats.modals.mandate||0,review:stats.modals.review||0,hearing:stats.modals.hearing||0},objectives:(stats.objMet||0)+'/'+(stats.objTotal||0),objKinds:stats.objKinds||{},rivalClaims:RIVAL_CLAIMS,crash:stats.crash||0,serviceFlown:stats.serviceFlown||0,firstInsolvency:stats.firstInsolvency?+stats.firstInsolvency.toFixed(2):null,decisionsPerLaunch:+(decisionStops/Math.max(1,stats.launches)).toFixed(2),decisionKinds:Object.fromEntries(Object.entries(stats.modals).filter(([k])=>k.startsWith('launch:'))),maxPerDecade:maxDecade,thinWindows:thin.length,thinRuns,procFlown:stats.procFlown||0,topRepeats:Object.entries(repeats).sort((a,b)=>b[1]-a[1]).slice(0,4),eraAt:ERAS[eraIndex(currentEra())].id,programsDone:PROGRAMS.filter(p=>p.missions.every(id=>state.completed[id])).map(p=>p.id)}));
 console.log(JSON.stringify({diff:DIFF,seed:SEED,endYear:state.year,over:!!state.over,money:Math.round(state.money),rep:Math.round(state.rep),flights:state.flights,
   turns:stats.turns,idleTurns:stats.idleTurns,daysPerTurnMedian:med(stats.daysPerTurn),daysPerTurnMean:Math.round(sum(stats.daysPerTurn)/stats.turns),

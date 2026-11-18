@@ -8482,3 +8482,31 @@ Tests: new `test-tech-options.js` 37/37 (mutation-checked on abort to orbit). Up
 `test-station-slice1` (Docking Node locked first), `test-one-more-launch` (no step-up to a locked test flight),
 the dev station preset grants Station Keeping, the tree star uses `style="fill:…"` (themeable-surfaces ceiling).
 Full sweep 189/190 + 1 intentional skip. No save change.
+
+## 2026-11-18 — Decision-loop roadmap Phase 4a: the bot builds a station (Claude)
+
+Measurement only — no game code changed (default bot timeline byte-identical, seed 2 to 1966).
+
+- `BOT_STATION=1`: found the LEO station once Crewed Orbit is flown and cash allows; when supply ≤ 5 months fly a
+  cargo-pod resupply visit (the designer now accepts station visits in this mode; visits get build priority);
+  buy provisions only below 3 months; grow it — power when the next module would run a deficit, labs, a depot,
+  a Docking Node when the ports fill. `BOT_STATION=lean`: auto-reorder provisions, never add a module the crew
+  can't run. Summary gains a `station` line; `BOT_LEDGER` gains a `station` category.
+- Bot fix found on the way: rescue decisions were never answered (`decision:rescue` 173 per crewed run, leaving
+  the launch transaction stuck). The bot now mounts the rescue, else abandons.
+
+Results, staffing bot (`BOT_HIRE=1`) to 1990, seeds 2/5/6 (seed 3 dies in 1945 regardless):
+
+| | research nodes | science-blocked (1970) | firsts | bankrupt |
+|---|---|---|---|---|
+| no station | 55–61 | 3–11 | 13–14 | 0/3 |
+| lean station (core, power, 1 lab; bought provisions) | 75–76 | 0 | 14 | 0/3 |
+| full station (flown resupply, 8 modules) | — | — | — | 3/3 (1966–69) |
+
+Why the full station fails (ledger, seed 6): daily running costs swing from +$66M to −$23M in the 1950s and to
+−$226M in six years of the 1960s, plus ~$96M/decade founding, modules and provisions. A 7-module station earns
+$1.05M/mo against $3.3M opex and $0.8M provisions; each module past the core adds $0.45M/mo opex for $0.05–0.35M
+income; modules beyond crew capacity halve output (crew factor 0.5); a flown resupply is a ~$9M build for
+provisions that cost ~$1–7M to buy, and it takes a build slot from revenue flights. So the Station-era target is
+met by a small station (science), and Phase 4b should make growth and flying it yourself pay before adding a
+logistics manifest.

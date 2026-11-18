@@ -1969,9 +1969,20 @@ Recommended order: 0 → 1 → 2 → 3 → 4a → 4b → 4c → 5. Phase 3 gets 
   nodes 18.7→18.7 by 1950, 29.9→29.7 by 1960, 34.6→35.3 by 1970, 37.0→38.4 by 1975 (+3.8%); firsts 6.0→6.1.)*
 
 ### Phase 4 — Stations and logistics that matter
-- [ ] 4a. Bot builds one LEO station and flies resupply (measurement prerequisite, no gameplay change).
+- [x] 4a. Bot builds one LEO station and flies resupply (measurement prerequisite, no gameplay change).
+  *(2026-11-18: `BOT_STATION=1` founds, flies cargo-pod resupply visits, grows to 8 modules; `BOT_STATION=lean` buys
+  provisions on auto-reorder and never outgrows its crew. Findings for 4b, staffing bot to 1990, seeds 2/5/6: no
+  station 55–61 nodes, 3–11 science-blocked in 1970; lean station (core+power+1 lab) 75–76 nodes, never
+  science-blocked, solvent; full station BANKRUPT 3/3 in 1966–69. Why: each module past the core earns
+  $0.05–0.35M/mo against $0.45M/mo opex; a 7-module station runs $1.05M income vs $3.3M opex + $0.8M provisions;
+  modules past crew capacity halve output; a flown resupply is a ~$9M build vs ~$1–7M to buy the same provisions,
+  and it displaces revenue flights.)*
 - [ ] 4b. Logistics manifest for one station + one base (12–36 months: stocks, deadlines, launches split
   across supply/crew/construction/revenue); a shortfall has ≥2 understandable recoveries.
+  **4a says first:** make growth and flying-it-yourself pay before adding a manifest — today the right play is
+  "one lab, buy everything", and a manifest would only schedule losses. Candidates: module income vs opex,
+  crew capacity shown before a module is bought, and a flown resupply that costs less than buying (or earns
+  something buying can't).
 - [ ] 4c. Merge Station Bench + Base Bench into one Outposts tab (eval §6; still separate in render.js).
   **Target:** in the Station era a staffed bot with a station keeps pace and one without stalls.
 

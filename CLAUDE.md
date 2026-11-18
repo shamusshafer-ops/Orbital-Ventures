@@ -66,7 +66,9 @@ Never read `state.flaws` in UI code. Suite: `test-failure-learning.js`. Phase 3 
 `option` (a new action; R&D shows ★) or `gate` text; `researchKind(r)` labels every node. The 12 option mechanics
 read `state.research.<id>` at their point of use (search "Phase 3"). RULE: the uncrewed test flight needs
 `testLevelUnlocked(2)`; engine-out needs Redundant Avionics; the Docking Node needs Station Keeping. Suite:
-`test-tech-options.js`. Next: Phase 4a (bot builds a LEO station + resupply).
+`test-tech-options.js`. Phase 4a done (bot only): `BOT_STATION=1|lean` (pair with `BOT_HIRE=1`), the bot now answers
+rescue calls (it used to leave them stuck — 173 stalls/run), station costs show in `BOT_LEDGER`. FINDING: a station
+past ~3 modules bankrupts the bot; flown resupply costs ~5× buying it. Next: Phase 4b — fix station economics first.
 
 **In progress:** (none claimed right now).
 > When you start a task, replace this line with: `<task> — <Claude|Codex> — started <date>`.
