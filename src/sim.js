@@ -2516,12 +2516,20 @@ function moduleFacilityCompatible(def, md){
   if(!md.surface && onSurface && md.id==='node_hub') return {ok:false, why:'Orbital structure — no place on a surface base'};
   return {ok:true};
 }
+/* Phase 4b: a module the crew can't run is not for sale — add a habitat (or crew) first */
+function moduleCrewCheck(fs, md){
+  if(!fs||!md) return {ok:true};
+  const c=facilityCrew(fs), d=md.stats||{}, need=c.req+(d.crewReq||0), cap=c.cap+(d.crew||0);
+  if(need>cap) return {ok:false, why:`Needs crew for ${need} (capacity ${cap}) — add a habitat first`, need, cap};
+  return {ok:true, need, cap};
+}
 function canAddStationModule(facId, modId){
   const def=facilityById(facId), fs=facilityState(facId), md=stationModuleDef(modId);
   if(!def||!fs||!md) return {ok:false, why:'—'};
   { const compat=moduleFacilityCompatible(def, md); if(!compat.ok) return compat; } // E1.8 C
   if(md.reqResearch && !state.research[md.reqResearch]) return {ok:false, why:'Needs '+((RESEARCH.find(r=>r.id===md.reqResearch)||{}).name||md.reqResearch)};
   if(facilityModuleList(fs).length>=facilityPortCap(fs,def) && modId!=='node_hub') return {ok:false, why:'All ports occupied — dock a Node for growth room'};
+  { const cr=moduleCrewCheck(fs,md); if(!cr.ok) return cr; } /* Phase 4b */
   const cost=stationModuleCost(def, fs, md);
   if(state.money<cost) return {ok:false, why:'Needs '+fM(cost)};
   return {ok:true, cost};
@@ -2610,6 +2618,7 @@ function canFlyModuleDelivery(facId, modId){
   if(md.reqResearch && !state.research[md.reqResearch]) return {ok:false, why:'Needs '+((RESEARCH.find(r=>r.id===md.reqResearch)||{}).name||md.reqResearch)};
   if(facilityModuleList(fs).length>=facilityPortCap(fs,def) && modId!=='node_hub') return {ok:false, why:'All ports occupied — dock a Node for growth room'};
   if(def.body==='earth'&&!facilityOpenVisitingBerth(facId,'availability-check')) return {ok:false,why:`${def.name} has no open visiting berth`};
+  { const cr=moduleCrewCheck(fs,md); if(!cr.ok) return cr; } /* Phase 4b */
   return {ok:true, cost:flyModuleCost(def, fs, md)};
 }
 function pendingModuleDelivery(facId, modId){
@@ -2646,10 +2655,16 @@ function canFlyStationVisit(facId,kind){
   }
   if(kind==='resupply'){
     if(facilitySupply(facId)>=FAC_SUPPLY_MONTHS) return {ok:false,why:'The station is fully provisioned.'};
-    const cost=resupplyCost(facId); if(state.money<cost) return {ok:false,why:'Not enough capital for the provisions package.'};
+    /* Phase 4b: a flown delivery needs no provisions purchase — the station's tenants pay for it (the offer's payout) */
   }
   return {ok:true};
 }
+/* Phase 4b: flying your own provisions pays. The flight carries what you would otherwise buy (no package charge)
+   and the station's tenants pay the package's value as the mission payout — so a full load on a cheap cargo
+   rocket beats buying, and a half-empty one on an expensive rocket doesn't. */
+function stationResupplyPayout(packageCost){ return round2(Math.max(0,packageCost||0)); }
+/* what the tenants pay for a delivery of `months` of provisions, at today's package price */
+function stationDeliveryValue(facId, months){ return round2(resupplyCostFull(facId)*Math.max(0,months||0)/FAC_SUPPLY_MONTHS); }
 function flyStationVisit(facId,kind,remainDocked){
   if(!guardOrdinaryAction('Station visit planning')) return false;
   const chk=canFlyStationVisit(facId,kind);
@@ -2668,11 +2683,13 @@ function flyStationVisit(facId,kind,remainDocked){
   const id=`sv_${state.stationVisitSeq}`, rotation=kind==='crew_rotation';
   const missing=Math.max(0,FAC_SUPPLY_MONTHS-facilitySupply(facId));
   const transfer=rotation?{kind,crewSlots:1}:{kind,monthsShipped:missing,cost:resupplyCost(facId)};
-  const offer={id,proc:true,crew:rotation?1:0,days:rotation?3:1,reqDv:9400,payload:rotation?0:round2(Math.max(0.25,missing*0.08)),minRep:0,payout:0,rep:0,
+  /* Phase 4b: a cargo pod carries a full load and tops the station up when it docks; the tenants pay for what it
+     delivers at docking (settled in the transfer, so the offer's own payout stays 0 — estPayout is for display) */
+  const offer={id,proc:true,crew:rotation?1:0,days:rotation?3:1,reqDv:9400,payload:rotation?0:round2(FAC_SUPPLY_MONTHS*0.08),minRep:0,payout:0,estPayout:rotation?0:stationResupplyPayout(transfer.cost),rep:0,
     reqResearch:rotation?'crew_capsule':undefined,name:`${stationVisitPurpose(kind)} — ${def.name}`,
     blurb:rotation
       ? `Fly a crew capsule to ${def.name}, hard-dock at a reserved visiting berth, exchange one named astronaut, then ${remainDocked?'remain attached':'undock and return with the relieved crewmember'}.`
-      : `Fly a cargo pod to ${def.name}, hard-dock and unload ${missing.toFixed(1)} months of provisions, then ${remainDocked?'remain attached':'undock and return'}. The ${fM(transfer.cost)} provisions package is charged on successful transfer.`};
+      : `Fly a cargo pod to ${def.name}, hard-dock and unload provisions, then ${remainDocked?'remain attached':'undock and return'}. No provisions to buy: the pod carries a full load, tops the station up on docking, and the tenants pay for what it delivers (about ${fM(stationResupplyPayout(transfer.cost))} at today's stock).`};
   const attached=attachStationVisitPlan(offer,facId,kind,transfer,remainDocked);
   if(!attached.ok){ announceAction(attached.why); return false; }
   (state.contractOffers=state.contractOffers||[]).push(offer);
@@ -2965,6 +2982,56 @@ function tickStationOperations(){
 // can for Mars (a single in-flight shipment carries only the shortfall, so Mars stays marginal by design).
 const AUTO_RESUPPLY_THRESHOLD=6;
 function toggleAutoResupply(id){ if(!guardOrdinaryAction('Facility resupply controls')) return false; const fs=facilityState(id); if(!fs) return; fs.autoResupply=!fs.autoResupply; const def=facilityById(id); log('info',`${def.icon} ${def.name}: auto-resupply ${fs.autoResupply?'enabled':'disabled'}.`); render(); }
+/* ---------- Decision-loop Phase 4b: the supply manifest (2026-11-18) ----------
+   A 12–36 month plan for one facility, built from what is already scheduled: provisions on hand and the
+   monthly drain, shipments in transit, cargo-pod visits being built or waiting in the hangar, auto-reorder or
+   a resupply contract, crew rotations due, and station modules under construction. It projects the stock
+   month by month, finds the first shortfall, counts the launches the window needs (supply / crew /
+   construction) next to the revenue flights already queued, and offers the recoveries that would cover it.
+   Read-only: it plans, the existing actions do. */
+const MANIFEST_MONTHS_DEFAULT=24;
+function facilityOpex(id){ const fs=facilityState(id); if(!facilityBuilt(id)||!fs) return 0; return round2(EMPIRE_FAC_OPEX_BASE+EMPIRE_FAC_OPEX_MODULE*(Math.max(1,fs.modules||1)-1)); }
+function supplyManifest(facId, months){
+  months=Math.max(12,Math.min(36,months||MANIFEST_MONTHS_DEFAULT));
+  const def=facilityById(facId), fs=facilityState(facId); if(!def||!fs||!facilityBuilt(facId)) return null;
+  const now=absDay(), DPM=DAYS_PER_MONTH, drain=facilitySupplyDrain(facId), ops=stationOps(fs);
+  const events=[]; /* {abs, kind:'supply'|'crew'|'construction'|'revenue', label, months?} */
+  for(const f of (state.activeFlights||[])) if(f&&f.kind==='logistics'&&f.facId===facId&&f.arriveAbs>now) events.push({abs:f.arriveAbs, kind:'supply', label:`Shipment arrives (${(f.monthsShipped||0).toFixed(1)} mo)`, months:f.monthsShipped||0});
+  const visit=pendingStationVisit(facId,'resupply');
+  if(visit){ const q=buildQueueList().find(o=>o.missionId===visit.id), h=hangarList().find(o=>o.missionId===visit.id);
+    const eta=h?now+DPM:q?now+Math.round(((q.monthsLeft||0)+1)*DPM):null; const mo=(visit.stationVisit.transfer||{}).monthsShipped||0;
+    events.push({abs:eta, kind:'supply', pod:!!eta, label:eta?`Cargo pod tops up — ${h?'in the hangar':'building'}`:`Cargo pod planned — not yet built`, months:eta?mo:0, unbuilt:!eta}); }
+  for(const o of buildQueueList()) if(o.kind==='station-module'&&o.facilityId===facId){ const md=stationModuleDef(o.moduleId);
+    events.push({abs:now+Math.round((o.monthsLeft||0)*DPM), kind:'construction', label:`${md?md.name:o.moduleId} docks`}); }
+  if(ops.crewManaged){ let t=now+Math.max(0,((ops.rotationDueAbs!=null?ops.rotationDueAbs:absMonth())-absMonth()))*DPM;
+    while(t<now+months*DPM){ events.push({abs:t, kind:'crew', label:'Crew rotation due'}); t+=STATION_ROTATION_MONTHS*DPM; } }
+  const revenue=[...buildQueueList(),...hangarList()].filter(o=>o.missionId&&!(missionById(o.missionId)||{}).stationVisit&&o.kind!=='station-module').length;
+  /* month-by-month stock; auto-reorder or an active contract tops up at the threshold (instant near Earth) */
+  const auto=!!fs.autoResupply||stationContractActive(fs), instant=logiTransitDays(def.body)<DEFER_CRUISE_DAYS;
+  let stock=facilitySupply(facId), shortfall=null, low=null, reorders=0; const curve=[];
+  for(let m=1;m<=months;m++){
+    const t0=now+(m-1)*DPM, t1=now+m*DPM;
+    for(const e of events) if(e.kind==='supply'&&e.abs!=null&&e.abs>t0&&e.abs<=t1) stock=e.pod?FAC_SUPPLY_MONTHS:Math.min(FAC_SUPPLY_MONTHS,stock+(e.months||0));
+    stock=Math.max(0,stock-drain);
+    if(auto&&instant&&stock<=AUTO_RESUPPLY_THRESHOLD){ stock=FAC_SUPPLY_MONTHS; reorders++; }
+    curve.push(round2(stock));
+    if(low==null&&stock<=2) low=t1;
+    if(shortfall==null&&stock<=0) shortfall=t1;
+  }
+  /* launches the window needs: a cargo pod carries a full load (FAC_SUPPLY_MONTHS) at best */
+  const supplyNeed=auto?0:Math.max(0,Math.ceil((months*drain-facilitySupply(facId))/FAC_SUPPLY_MONTHS)-events.filter(e=>e.kind==='supply'&&!e.unbuilt).length);
+  const launches={supply:supplyNeed, crew:events.filter(e=>e.kind==='crew').length, construction:events.filter(e=>e.kind==='construction').length, revenue};
+  const recoveries=[];
+  if(shortfall!=null||low!=null){
+    const buy=canResupply(facId);
+    recoveries.push({id:'buy', label:`Buy provisions now — ${fM(resupplyCost(facId))}`, detail:instant?'arrives at once':`ships now, arrives in ~${Math.round(logiTransitDays(def.body)/30)} mo`, action:`resupplyFacility('${facId}')`, ok:buy.ok, why:buy.ok?'':buy.why});
+    if(def.body==='earth'&&!visit){ const fv=canFlyStationVisit(facId,'resupply'); recoveries.push({id:'fly', label:'Fly a cargo pod', detail:`tops the station up on docking; the tenants pay for what it delivers — build it before the shortfall`, action:`flyStationVisit('${facId}','resupply',false)`, ok:fv.ok, why:fv.ok?'':fv.why}); }
+    if(!fs.autoResupply) recoveries.push({id:'auto', label:'Turn on auto-reorder', detail:`buys provisions whenever stock falls to ${AUTO_RESUPPLY_THRESHOLD} mo`, action:`toggleAutoResupply('${facId}')`, ok:true, why:''});
+  }
+  events.sort((a,b)=>(a.abs==null?1e12:a.abs)-(b.abs==null?1e12:b.abs));
+  return {facId, months, stockNow:round2(facilitySupply(facId)), drain, curve, shortfall, low, auto, reorders, events, launches, recoveries,
+    income:facilityProduction(def,fs).income, opex:facilityOpex(facId)};
+}
 function canFound(id){
   const def=facilityById(id); if(!def) return {ok:false,why:'Unknown facility.'};
   if(facilityBuilt(id)) return {ok:false,why:'Already established.'};
@@ -5526,9 +5593,11 @@ function applyStationVisitTransfer(m,ctx,snapshot){
   if(visit.kind==='resupply'){
     const transfer=visit.transfer||{}, cost=round2(Math.max(0,finiteRecordNumber(transfer.cost))), months=Math.max(0,finiteRecordNumber(transfer.monthsShipped));
     if(!services.includes('cargo')) return makeDockTransferReceipt({kind:visit.kind,status:'none',services});
-    state.money-=cost; fs.supply=Math.min(FAC_SUPPLY_MONTHS,facilitySupply(visit.facilityId)+months); fs.starvedMonths=0;
-    log('ok',`${def.icon} ${def.name}: cargo pod hard-docked and transferred ${months.toFixed(1)} months of provisions (−${fM(cost)}).`);
-    return makeDockTransferReceipt({kind:visit.kind,status:'applied',services,cargo:{monthsShipped:months,cost},appliedAbs:absDay()});
+    /* Phase 4b: a full pod tops the station up to full; the provisions aren't bought, and the tenants pay for what was delivered */
+    const delivered=Math.max(0,FAC_SUPPLY_MONTHS-facilitySupply(visit.facilityId)), paid=stationDeliveryValue(visit.facilityId,delivered);
+    fs.supply=FAC_SUPPLY_MONTHS; fs.starvedMonths=0; state.money=round2(state.money+paid);
+    log('ok',`${def.icon} ${def.name}: cargo pod hard-docked and transferred ${delivered.toFixed(1)} months of provisions — the station's tenants paid ${fM(paid)}.`);
+    return makeDockTransferReceipt({kind:visit.kind,status:'applied',services,cargo:{monthsShipped:delivered,cost:0,paid},appliedAbs:absDay()});
   }
   if(visit.kind==='module_delivery'){
     const modId=visit.transfer&&visit.transfer.modId||m.deliverModule&&m.deliverModule.modId, cost=m.moduleCost;

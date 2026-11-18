@@ -30,11 +30,12 @@ newGame('engineer');
 // These are the exact figures produced by the pre-C8 build for a 3-module can_std/lab_mod/power_truss
 // facility at condition 80 (captured by running the same fixture against the stashed build before the
 // mechanic landed). If the hazard mechanic ever stops being inert for these bodies, this fails.
+// Income re-pinned 2026-11-18 for decision-loop Phase 4b (Lab 0.2→0.3, Power Truss 0.25→0.45 income); fuel/rep/sci unchanged.
 {
   const EXPECTED={
-    leo_station:  {income:1.26, fuel:0,   rep:1.3,  sci:5.33,  resupply:2.85},
-    lunar_base:   {income:2.53, fuel:0.4, rep:2.6,  sci:10.01, resupply:6.27},
-    mars_base:    {income:4.64, fuel:0.6, rep:4.08, sci:17.37, resupply:11.97},
+    leo_station:  {income:1.6, fuel:0,   rep:1.3,  sci:5.33,  resupply:2.85},
+    lunar_base:   {income:3.19, fuel:0.4, rep:2.6,  sci:10.01, resupply:6.27},
+    mars_base:    {income:5.83, fuel:0.6, rep:4.08, sci:17.37, resupply:11.97},
   };
   for(const [fid, exp] of Object.entries(EXPECTED)){
     mkFac(fid);

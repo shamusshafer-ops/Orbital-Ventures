@@ -8510,3 +8510,36 @@ income; modules beyond crew capacity halve output (crew factor 0.5); a flown res
 provisions that cost ~$1–7M to buy, and it takes a build slot from revenue flights. So the Station-era target is
 met by a small station (science), and Phase 4b should make growth and flying it yourself pay before adding a
 logistics manifest.
+
+## 2026-11-18 — Decision-loop roadmap Phase 4b: station economics and the supply manifest (Claude)
+
+Owner choices (AskUserQuestion): each module pays its way; flying resupply pays; crew limits shown and enforced;
+build the manifest in this phase too.
+
+- **Modules pay their way.** Module income raised so a powered, crewed module covers `EMPIRE_FAC_OPEX_MODULE`
+  ($0.45M/mo): Power Truss and Docking Node 0.45, Depot and ISRU 0.6, Greenhouse, Reactor and Rover 0.45; the Lab
+  0.2→0.3 (still −$0.15M/mo net, for 2.6 ⚛). The palette shows "earns $X/mo vs $0.45M/mo to run"; the facility
+  panel gains a Running cost cell, and its Resupply cell now shows the monthly figure (it showed a full 8-month
+  load labelled "/mo").
+- **Crew enforced.** `moduleCrewCheck` blocks a module the crew can't run, on both the instant and flown paths
+  ("Needs crew for 4 (capacity 3) — add a habitat first"); the habitat is always allowed.
+- **Flying pays.** A cargo pod carries a full load and tops the station up when it docks; the provisions are not
+  bought and the station's tenants pay `stationDeliveryValue` for what it delivered, settled in the dock
+  transfer (the offer's payout stays 0; `estPayout` is for display). Planning early is no longer punished; a
+  large station on a cheap rocket profits, a small one doesn't. (First cut paid the package value at planning
+  time; the bot showed part-empty pods losing money, so the load moved to docking.)
+- **Supply manifest.** `supplyManifest(facId, 12–36)` projects provisions month by month from stock, drain,
+  shipments in transit, cargo pods building or in the hangar, and auto-reorder/contract; lists crew rotations
+  and module completions; counts the launches the window needs (supply / crew / construction) beside revenue
+  flights queued; and when stock runs short offers buy now / fly a cargo pod / turn on auto-reorder.
+  `manifestHTML` shows it on the Station and Base benches.
+
+Bot (`BOT_HIRE=1`, to 1990, seeds 2/5/6): no station 55–61 research nodes (science-blocked); `BOT_STATION=lean`
+(buys, crew-aware, grows to 9 modules) 76–77 nodes, never blocked, 3/3 solvent; `BOT_STATION=1` (flies pods,
+buys from the manifest) 2/3 solvent, was 0/3 — it still starves 10–14 turns from poor pod timing, the case the
+manifest now shows. Default bot byte-identical (seed 2 to 1966). Firefox: the manifest on the Station Bench
+("Runs out 2 Nov 1962", three recoveries); auto-reorder switches it to "Covered for 24 months".
+
+Tests: new `test-station-economics.js` 28/28 (mutation-checked: payout, crew check). `test-outer-bases` income
+pins re-captured (Lab/Power Truss); `test-docking-transfer` now expects a paid, uncharged delivery. Full sweep
+190/191 + 1 intentional skip. No save bump (new optional `estPayout`, `state.manifestMonths`).

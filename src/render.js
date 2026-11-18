@@ -10706,6 +10706,28 @@ function renderStation(){
   if(st) st.innerHTML=renderStationFacilityStats(v.built, cur);
   renderAssemblyPalette('station',v);
 }
+/* Decision-loop Phase 4b: the supply manifest card — stock curve, what is scheduled, the launches the window
+   needs, and the recoveries when the stock runs short. Shared by the Station and Base benches. */
+function manifestHTML(facId){
+  const mf=supplyManifest(facId, state.manifestMonths||MANIFEST_MONTHS_DEFAULT); if(!mf) return '';
+  const cells=mf.curve.map((v,i)=>{ const c=v<=0?'var(--bad)':v<=2?'var(--warn)':'var(--ok)'; return `<div title="${dayToDate(absDay()+(i+1)*DAYS_PER_MONTH)}: ${v.toFixed(1)} mo" style="flex:1;height:${Math.max(3,Math.round(v/FAC_SUPPLY_MONTHS*22))}px;background:${c};align-self:flex-end;border-radius:1px"></div>`; }).join('');
+  const head=mf.shortfall!=null?`<span style="color:var(--bad)">Runs out ${dayToDate(mf.shortfall)}</span>`
+    :mf.low!=null?`<span style="color:var(--warn)">Low (≤2 mo) by ${dayToDate(mf.low)}</span>`
+    :`<span style="color:var(--ok)">Covered for ${mf.months} months</span>${mf.auto?` <span class="dim">· auto-reorder${mf.reorders?` ×${mf.reorders}`:''}</span>`:''}`;
+  const ev=mf.events.slice(0,6).map(e=>`<div style="display:flex;gap:6px"><span class="dim" style="width:84px;flex:none">${e.abs!=null?dayToDate(e.abs):'unscheduled'}</span><span>${{supply:'📦',crew:'👤',construction:'🏗',revenue:'💰'}[e.kind]||'•'} ${esc(e.label)}</span></div>`).join('');
+  const L=mf.launches;
+  const split=`Launches in the window: <b>${L.supply}</b> supply · <b>${L.crew}</b> crew · <b>${L.construction}</b> construction <span class="dim">· ${L.revenue} revenue flight${L.revenue===1?'':'s'} queued</span>`;
+  const rec=mf.recoveries.length?`<div style="margin-top:6px">${mf.recoveries.map(r=>`<button class="btn ghost mf-rec" data-rec="${r.id}" style="display:block;width:100%;text-align:left;margin-top:3px;font-size:11px;padding:4px 7px" onclick="${r.action}" ${r.ok?'':`disabled title="${esc(r.why)}"`}><b>${esc(r.label)}</b> <span class="dim">— ${esc(r.detail)}</span></button>`).join('')}</div>`:'';
+  const span=[12,24,36].map(n=>`<a href="#" onclick="state.manifestMonths=${n};render();return false" style="color:${mf.months===n?'var(--ink)':'var(--readout)'};${mf.months===n?'font-weight:700':''}">${n}</a>`).join(' · ');
+  return `<div class="manifest" data-fac="${facId}" style="margin-top:10px;border:1px solid var(--line);border-radius:5px;padding:7px 9px;font-size:12px">
+    <div style="display:flex;justify-content:space-between;align-items:baseline"><div class="mission-tag" style="margin:0">Supply manifest</div><span class="dim" style="font-size:11px">months: ${span}</span></div>
+    <div style="margin-top:3px">Provisions <b>${mf.stockNow.toFixed(1)} mo</b> on hand, −${mf.drain}/mo · ${head}</div>
+    <div style="display:flex;gap:1px;height:24px;margin-top:5px" aria-label="Projected provisions by month">${cells}</div>
+    <div style="font-size:11px;margin-top:5px;line-height:1.5">${ev||'<span class="dim">Nothing scheduled.</span>'}</div>
+    <div style="font-size:11px;margin-top:5px">${split}</div>
+    <div class="dim" style="font-size:11px;margin-top:2px">Runs on ${fM(mf.income)}/mo income against ${fM(mf.opex)}/mo running cost (${mf.income>=mf.opex?'pays its way':`${fM(mf.opex-mf.income)}/mo short`}).</div>
+    ${rec}</div>`;
+}
 // Facility tabs + aggregate stats for the focused facility
 function renderStationFacilityStats(built, cur, focusId, focusFn){ // E1.8: base bench reuses this panel with its own focus state
   focusId=focusId||state.stationFocus; focusFn=focusFn||'setStationFocus';
@@ -10755,10 +10777,11 @@ function renderStationFacilityStats(built, cur, focusId, focusFn){ // E1.8: base
       ${cell('Power', (pw.net>=0?'+':'')+pw.net+' kW', pw.gen+' gen − '+pw.draw+' draw')}
       ${cell('Income', '+'+fM(pr.income)+'/mo')}
       ${cell('Science', '+'+pr.sci.toFixed(1)+'/mo')}
-      ${cell('Resupply', fM(resupplyCostFull(def.id))+'/mo', facilityGreenhouses(fs)?facilityGreenhouses(fs)+' greenhouse':'')}
+      ${cell('Resupply', fM(resupplyCostFull(def.id)/FAC_SUPPLY_MONTHS)+'/mo', `${fM(resupplyCostFull(def.id))} a full ${FAC_SUPPLY_MONTHS}-mo load${facilityGreenhouses(fs)?' · '+facilityGreenhouses(fs)+' greenhouse':''}`)}
+      ${cell('Running cost', fM(facilityOpex(def.id))+'/mo', pr.income>=facilityOpex(def.id)?'income covers it':`${fM(facilityOpex(def.id)-pr.income)}/mo short`)}
       ${cell('Condition', `<span style="color:${maintColor}">${condition}%</span>`, `${Math.round(stationMaintenanceFactor(fs)*100)}% output · ${def.decayReason||'wear over time'}`)}
     </div>
-    ${pw.net<0?`<div class="flag warn">△ Power-starved — production running at 60%. Dock a Solar Power Truss.</div>`:''}
+    ${manifestHTML(def.id)}    ${pw.net<0?`<div class="flag warn">△ Power-starved — production running at 60%. Dock a Solar Power Truss.</div>`:''}
     ${crew.req>crew.cap?`<div class="flag warn">△ Under-crewed (${crew.cap}/${crew.req}) — output at ${Math.round(crew.factor*100)}%. Dock a Habitat (each adds 3 crew).</div>`:''}
     ${list.length>=facilityPortCap(fs,def)?`<div class="flag warn">△ All ${facilityPortCap(fs,def)} ports occupied — a Docking Node adds 3 more.</div>`:''}
     ${synHTML}${crewHTML}${contractHTML}${dockHTML}`;
@@ -11051,6 +11074,8 @@ function stationModuleCard(md, cur, addable){
       bits.push(haveSpare>=st.crewReq
         ? `<span class="dim">👤 ${st.crewReq} crew available</span>`
         : `<span style="color:var(--warn)">👤 needs ${st.crewReq} crew — ${haveSpare<=0?'none':haveSpare} spare aboard, add a Habitat</span>`); }
+    { const inc=round2((md.prod&&md.prod.income||0)*facilityBodyMult(cur.def)), net=round2(inc-EMPIRE_FAC_OPEX_MODULE); /* Phase 4b: does it pay its way? */
+      bits.push(`<span style="color:${net>=0?'var(--ok)':'var(--dim)'}">💰 earns ${fM(inc)}/mo vs ${fM(EMPIRE_FAC_OPEX_MODULE)}/mo to run${net<0&&md.prod&&md.prod.sci?` — the rest is paid in ${md.prod.sci} ⚛/mo`:''}</span>`); }
     if(bits.length) context=`<div style="margin:6px 0;padding:5px 7px;background:var(--panel2);border-radius:5px;font-size:11px;line-height:1.5">${bits.join('<br>')}</div>`;
   }
   const cost = (cur&&cur.fs) ? stationModuleCost(cur.def, cur.fs, md) : md.cost;

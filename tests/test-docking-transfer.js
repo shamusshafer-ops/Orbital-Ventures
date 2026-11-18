@@ -44,7 +44,7 @@ const expectedCost=podMission.stationVisit.transfer.cost;
 finalizeLaunch(podCtx,null);
 const visitors=stationOps(fs).dockedVisitors, visitor=visitors[0];
 check('resupply transfer fills station provisions',facilitySupply('leo_station')>supplyBefore&&facilitySupply('leo_station')===FAC_SUPPLY_MONTHS);
-check('resupply transfer charges frozen provisions cost',Math.abs((moneyBefore-state.money)-expectedCost)<.01);
+check('resupply transfer is paid, not charged for provisions (Phase 4b: the payout is the package value)',expectedCost>0&&podMission.payout===0&&podMission.estPayout>0&&state.money>moneyBefore);
 check('remain creates one canonical visitor',visitors.length===1&&stationDockVisitorErrors(visitor).length===0);
 check('visitor stores applied cargo transfer receipt',visitor.transfer.kind==='resupply'&&visitor.transfer.status==='applied'&&visitor.transfer.cargo.monthsShipped>0);
 check('visitor owns exact berth and hull',facilityVisitingBerths('leo_station')[0].interface.occupiedBy===visitor.operationId&&visitor.hullId===podHull.id&&hullById(podHull.id).status==='docked');

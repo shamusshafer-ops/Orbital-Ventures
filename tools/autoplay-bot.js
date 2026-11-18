@@ -245,11 +245,14 @@ while(state.year<YEAR_END && stats.turns<4000){
       if(!lean && sup<=5 && !pend && canFlyStationVisit(F,'resupply').ok){ const keep=state.activeMission; const o=flyStationVisit(F,'resupply',false); state.activeMission=keep; if(o&&o.id){ st.visitsPlanned++; acts.push('plan resupply visit'); } }
       const p2=pendingStationVisit(F,'resupply');
       if(!lean&&p2&&!([...hangarList(),...buildQueueList()].some(h=>h.missionId===p2.id))) stationVisitPick=p2;
-      if(sup<=3 && canResupply(F).ok && !inHull){ resupplyFacility(F); st.bought++; acts.push('emergency resupply'); }
+      { const mf=typeof supplyManifest==='function'?supplyManifest(F,12):null; /* Phase 4b: read the manifest — buy only when no pod lands before the stock runs low */
+        const shortSoon=mf?(mf.low!=null&&mf.low-absDay()<=45):sup<=3;
+        if(shortSoon && canResupply(F).ok){ resupplyFacility(F); st.bought++; acts.push('resupply (manifest: short before a pod lands)'); } }
       /* grow it: power when the next module would run a deficit, else labs; a node when the ports are full */
       const list=facilityModuleList(fs), pw=facilityPower(fs), ports=facilityPortCap(fs,def), pending=buildQueueList().filter(o=>o.kind==='station-module').length;
       if(!pending && st.modulesAdded<8){
         let want=list.length>=ports?'node_hub':(pw.net<6?'power_truss':(list.filter(x=>x==='lab_mod').length<3?'lab_mod':(state.research.orbital_depot&&!list.includes('depot_mod')?'depot_mod':'lab_mod')));
+        if(!canAddStationModule(F,want).ok&&/add a habitat/.test(canAddStationModule(F,want).why||'')) want='can_std'; /* Phase 4b: crew first */
         const md=stationModuleDef(want), ok=canAddStationModule(F,want);
         const crewOk=!lean||(()=>{ const c=facilityCrew(fs), d=md&&md.stats||{}; return (c.req+(d.crewReq||0))<=(c.cap+(d.crew||0)); })(); /* lean: never outgrow the crew */
         if(ok.ok && crewOk && state.money>ok.cost+reserve()*2){ addStationModule(F,want); st.modulesAdded++; acts.push('station module '+want); }

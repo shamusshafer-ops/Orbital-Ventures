@@ -1977,14 +1977,19 @@ Recommended order: 0 → 1 → 2 → 3 → 4a → 4b → 4c → 5. Phase 3 gets 
   $0.05–0.35M/mo against $0.45M/mo opex; a 7-module station runs $1.05M income vs $3.3M opex + $0.8M provisions;
   modules past crew capacity halve output; a flown resupply is a ~$9M build vs ~$1–7M to buy the same provisions,
   and it displaces revenue flights.)*
-- [ ] 4b. Logistics manifest for one station + one base (12–36 months: stocks, deadlines, launches split
-  across supply/crew/construction/revenue); a shortfall has ≥2 understandable recoveries.
+- [x] 4b. Logistics manifest for one station + one base (12–36 months: stocks, deadlines, launches split
+  across supply/crew/construction/revenue); a shortfall has ≥2 understandable recoveries. *(2026-11-18, owner
+  choices: modules pay their way, flying pays, crew shown+enforced, manifest now. `supplyManifest()` +
+  `manifestHTML()` on the Station and Base benches; recoveries: buy now / fly a cargo pod / auto-reorder.)*
   **4a says first:** make growth and flying-it-yourself pay before adding a manifest — today the right play is
   "one lab, buy everything", and a manifest would only schedule losses. Candidates: module income vs opex,
   crew capacity shown before a module is bought, and a flown resupply that costs less than buying (or earns
   something buying can't).
 - [ ] 4c. Merge Station Bench + Base Bench into one Outposts tab (eval §6; still separate in render.js).
   **Target:** in the Station era a staffed bot with a station keeps pace and one without stalls.
+  *(Met, staffing bot to 1990, seeds 2/5/6: no station 55–61 research nodes and science-blocked; buy-provisions
+  station (crew-aware, 9 modules) 76–77 nodes, never blocked, 3/3 solvent; fly-your-own station 2/3 solvent
+  (was 0/3) — the remaining failure is the bot timing pods badly, now visible on the manifest.)*
 
 ### Phase 5 — Personnel assignment
 - [ ] Flight director + small discipline team per major mission; familiarity and fatigue on staff records;

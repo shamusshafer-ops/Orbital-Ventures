@@ -67,8 +67,11 @@ Never read `state.flaws` in UI code. Suite: `test-failure-learning.js`. Phase 3 
 read `state.research.<id>` at their point of use (search "Phase 3"). RULE: the uncrewed test flight needs
 `testLevelUnlocked(2)`; engine-out needs Redundant Avionics; the Docking Node needs Station Keeping. Suite:
 `test-tech-options.js`. Phase 4a done (bot only): `BOT_STATION=1|lean` (pair with `BOT_HIRE=1`), the bot now answers
-rescue calls (it used to leave them stuck — 173 stalls/run), station costs show in `BOT_LEDGER`. FINDING: a station
-past ~3 modules bankrupts the bot; flown resupply costs ~5× buying it. Next: Phase 4b — fix station economics first.
+rescue calls (it used to leave them stuck — 173 stalls/run), station costs show in `BOT_LEDGER`. Phase 4b done: module
+incomes cover the $0.45M/mo module opex (labs trade money for science); `moduleCrewCheck` blocks modules the crew
+can't run; a cargo pod tops the station up on docking and the tenants pay `stationDeliveryValue` for what it
+delivered (offer.payout stays 0; `estPayout` is display); `supplyManifest(facId,months)` is the read-only plan.
+Suite: `test-station-economics.js`. Next: Phase 4c (merge Station + Base benches into Outposts).
 
 **In progress:** (none claimed right now).
 > When you start a task, replace this line with: `<task> — <Claude|Codex> — started <date>`.
