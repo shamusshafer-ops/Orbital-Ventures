@@ -256,7 +256,7 @@ document.addEventListener('keydown',function(e){
 // TAB = next scene, number keys 1–6 = jump to a scene. Never hijacks typing.
 function modalOpen(){ const m=$('modal'); return !!m && m.classList && !m.classList.contains('hidden'); }
 function sceneAtOffset(tab,dir){
-  const i=SCENE_DOCK_TABS.indexOf(tab);
+  const i=SCENE_DOCK_TABS.indexOf(typeof sceneNavOwner==='function'?sceneNavOwner(tab):tab); /* Phase 4c: the base board sits at the Outposts stop */
   const base=i<0?0:i;
   const ni=((base+(dir||1))%SCENE_DOCK_TABS.length+SCENE_DOCK_TABS.length)%SCENE_DOCK_TABS.length;
   return SCENE_DOCK_TABS[ni];

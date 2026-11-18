@@ -7,10 +7,10 @@ newGame('engineer');
 check('Tab order follows the visible scene dock',
   sceneAtOffset('command',1)==='bench' &&
   sceneAtOffset('bench',1)==='rnd' &&
-  sceneAtOffset('command',-1)==='base');
-check('scene stepping wraps in both directions',
-  sceneAtOffset('base',1)==='command' &&
-  sceneAtOffset('command',-1)==='base');
+  sceneAtOffset('command',-1)==='station');
+check('scene stepping wraps in both directions (the base board steps from the Outposts stop)',
+  sceneAtOffset('station',1)==='command' && sceneAtOffset('base',1)==='command' &&
+  sceneAtOffset('command',-1)==='station');
 
 const fs=require('fs'), path=require('path');
 const repo=fs.existsSync(path.join(__dirname,'..','src','shell.html')) ? path.join(__dirname,'..') : process.cwd();

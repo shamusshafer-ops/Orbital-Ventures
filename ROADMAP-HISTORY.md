@@ -8543,3 +8543,23 @@ manifest now shows. Default bot byte-identical (seed 2 to 1966). Firefox: the ma
 Tests: new `test-station-economics.js` 28/28 (mutation-checked: payout, crew check). `test-outer-bases` income
 pins re-captured (Lab/Power Truss); `test-docking-transfer` now expects a paid, uncharged delivery. Full sweep
 190/191 + 1 intentional skip. No save bump (new optional `estPayout`, `state.manifestMonths`).
+
+## 2026-11-18 — Decision-loop roadmap Phase 4c: one Outposts tab (Claude)
+
+The Station Bench and Base Bench were two nav tabs over the same assembly code (eval §6). Now one stop:
+
+- `SCENE_DEFS.base` carries `navAlias:'station'`; `SCENE_DOCK_TABS` drops aliased scenes, so the dock, Tab
+  cycling and number keys have five stops. The station scene is labelled **Outposts**; its button calls
+  `openOutposts()`, which reopens the last board (`state.outpostTab`, set by `setTab`), and lights on either board
+  (`sceneNavOwner`). Basic view shows Outposts when either board is useful. `sceneAtOffset` steps the base board
+  from the Outposts position.
+- Both boards stay as scenes: orbital and surface assembly are different 3D renderers, and the draft modes,
+  pop-outs and palettes are board-specific. `outpostSwitcherHTML` replaces each board's facility tabs with one
+  list of every outpost (orbital and surface, `goOutpost(id)` routes by body) and, before an orbital or surface
+  outpost exists, "Plan a station" / "Plan a base".
+- Board titles read "Outposts — orbital station" / "Outposts — surface base"; the unlock notes name Outposts.
+
+Firefox at 1280×800: five nav stops; Outposts → Plan a base opens the surface board with the button still lit;
+the switcher's LEO Station returns to the station board; Command Center → Outposts reopens it. Tests: new
+`test-outposts-tab.js` 15/15; `test-base-bench`, `test-onboarding`, `test-scene-shell-contract`,
+`test-shell-consolidation` updated from the two-tab layout. Full sweep 191/192 + 1 intentional skip. No save change.

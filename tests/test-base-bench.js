@@ -62,14 +62,14 @@ newGame('engineer');
 {
   const v=baseCurrentView();
   const html=renderStationFacilityStats(v.built, v.cur, state.baseFocus, 'setBaseFocus');
-  check('stats: tab clicks call setBaseFocus', html.includes("setBaseFocus('lunar_base')") && html.includes("setBaseFocus('mars_base')"));
+  check('stats: the outpost switcher lists every base (Phase 4c: goOutpost)', html.includes("goOutpost('lunar_base')") && html.includes("goOutpost('mars_base')"));
   check('stats: active tab tracks baseFocus not stationFocus', html.includes("btn launch") && html.split("setBaseFocus('mars_base')")[0].includes('launch')===false || true);
   // sharper: mars is focused; its button should carry 'launch' class
-  const marsBtn=html.split("onclick=\"setBaseFocus('mars_base')\"")[0].split('<button').pop();
+  const marsBtn=html.split("onclick=\"goOutpost('mars_base')\"")[0].split('<button').pop();
   check('stats: focused (mars) tab highlighted', marsBtn.includes('launch'));
   // station panel unaffected (defaults)
   const sHtml=renderStationFacilityStats(stationCurrentView().built, stationCurrentView().cur);
-  check('stats: station panel still uses setStationFocus', sHtml.includes('setStationFocus'));
+  check('stats: the station panel uses the same switcher', sHtml.includes('goOutpost(') && sHtml.includes('outpost-switcher'));
 }
 
 // ---------- 6. Zoom clamp + reset independence ----------

@@ -1985,7 +1985,10 @@ Recommended order: 0 → 1 → 2 → 3 → 4a → 4b → 4c → 5. Phase 3 gets 
   "one lab, buy everything", and a manifest would only schedule losses. Candidates: module income vs opex,
   crew capacity shown before a module is bought, and a flown resupply that costs less than buying (or earns
   something buying can't).
-- [ ] 4c. Merge Station Bench + Base Bench into one Outposts tab (eval §6; still separate in render.js).
+- [x] 4c. Merge Station Bench + Base Bench into one Outposts tab (eval §6; still separate in render.js).
+  *(2026-11-18: one "Outposts" nav stop (`navAlias`), remembers the last board; one switcher lists every outpost,
+  orbital and surface, and offers "Plan a station / Plan a base" before one exists. Both 3D boards stay — orbital
+  and surface assembly are different renderers.)*
   **Target:** in the Station era a staffed bot with a station keeps pace and one without stalls.
   *(Met, staffing bot to 1990, seeds 2/5/6: no station 55–61 research nodes and science-blocked; buy-provisions
   station (crew-aware, 9 modules) 76–77 nodes, never blocked, 3/3 solvent; fly-your-own station 2/3 solvent

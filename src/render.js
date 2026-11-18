@@ -806,11 +806,11 @@ function renderChromeTabsViews(){
   renderAssemblyShells();
   setHTML($('sceneNav'), SCENE_DOCK_TABS.map(id=>{
     const def=sceneDef(id);
-    return `<button id="${def.navId}" class="scene" type="button" onclick="setTab('${def.id}')"><span class="cc-icon" aria-hidden="true">${def.icon}</span><span class="cc-nav-label">${esc(def.label)}</span><span class="tabbadge hidden" id="${def.badgeId}"></span></button>`;
+    return `<button id="${def.navId}" class="scene" type="button" onclick="${def.id==='station'?'openOutposts()':`setTab('${def.id}')`}"><span class="cc-icon" aria-hidden="true">${def.icon}</span><span class="cc-nav-label">${esc(def.label)}</span><span class="tabbadge hidden" id="${def.badgeId}"></span></button>`;
   }).join(''));
   for(const id of SCENE_TABS){
     const def=sceneDef(id), tab=$(def.navId), view=$(def.viewId);
-    if(tab) tab.classList.toggle('active',state.tab===id);
+    if(tab) tab.classList.toggle('active',sceneNavOwner(state.tab)===id);
     if(view) view.classList.toggle('hidden',state.tab!==id);
   }
   renderTabBadges(); // the dock is rebuilt above, so apply current badge state to its fresh nodes
@@ -1261,17 +1261,17 @@ function tabUsefulNow(id){
 function basicTabVisible(id){ return uiLayer()!=='basic'||tabUsefulNow(id); }
 const TAB_UNLOCK_NOTE={
   map:'Solar System now available — tracking stations and the wider map live there.',
-  station:'Station Bench now available — design and grow your orbital station there.',
-  base:'Base Bench now available — lay out surface bases there.',
+  station:'Outposts now available — design and grow your orbital station there.',
+  base:'Surface bases can now be planned on the Outposts tab.',
 };
 function syncBasicTabs(){
   const o=onboarding(), basic=uiLayer()==='basic';
   for(const id of SCENE_TABS){
     const def=sceneDef(id), tab=def&&$(def.navId);
-    const vis=basicTabVisible(id);
+    const vis=id==='station'?(basicTabVisible('station')||basicTabVisible('base')):basicTabVisible(id); /* Phase 4c: Outposts shows if either board is useful */
     if(basic&&!vis) o.tabHidden[id]=true;
     else if(basic&&vis&&o.tabHidden[id]){ delete o.tabHidden[id]; o.newTabs[id]=true; if(TAB_UNLOCK_NOTE[id]) log('info',TAB_UNLOCK_NOTE[id]); }
-    if(state.tab===id&&o.newTabs[id]) delete o.newTabs[id];
+    if(sceneNavOwner(state.tab)===sceneNavOwner(id)&&o.newTabs[id]) delete o.newTabs[id];
     if(tab){ tab.classList.toggle('hidden', !vis); tab.classList.toggle('tab-new', !!o.newTabs[id]); }
   }
 }
@@ -10652,7 +10652,7 @@ function renderStationDraft(){
   }
   if(!use3d) wireStationPan(c);
   const zl=$('stationZoomLabel'); if(zl) zl.textContent=Math.round(stationZoom*100)+'%';
-  if(st) st.innerHTML=stationDraftStatsHTML(fs);
+  if(st) st.innerHTML=outpostSwitcherHTML(null)+stationDraftStatsHTML(fs); /* Phase 4c */
   renderAssemblyPalette('station',{isDraft:true,cur:{fs}});
 }
 
@@ -10728,10 +10728,21 @@ function manifestHTML(facId){
     <div class="dim" style="font-size:11px;margin-top:2px">Runs on ${fM(mf.income)}/mo income against ${fM(mf.opex)}/mo running cost (${mf.income>=mf.opex?'pays its way':`${fM(mf.opex-mf.income)}/mo short`}).</div>
     ${rec}</div>`;
 }
+/* Phase 4c: one switcher for every outpost, orbital and surface, at the top of both boards. Before any exists it
+   offers the two drafting boards instead. */
+function outpostSwitcherHTML(currentId){
+  const built=Object.keys(state.facilities||{}).map(id=>facilityById(id)).filter(d=>d&&facilityBuilt(d.id));
+  const btn=(on,label,act,title)=>`<button class="btn ${on?'launch':'ghost'} outpost-pick" style="font-size:12px" onclick="${act}"${title?` title="${esc(title)}"`:''}>${label}</button>`;
+  const rows=built.map(d=>btn(d.id===currentId, `${d.icon} ${esc(d.name)}`, `goOutpost('${d.id}')`, d.body==='earth'?'Orbital station':'Surface base'));
+  const hasOrbital=built.some(d=>d.body==='earth'), hasSurface=built.some(d=>d.body!=='earth');
+  if(!hasOrbital) rows.push(btn(state.tab==='station'&&!currentId, '▣ Plan a station', "setTab('station')", 'Draw an orbital station blueprint — dreaming is free'));
+  if(!hasSurface) rows.push(btn(state.tab==='base'&&!currentId, '⛰ Plan a base', "setTab('base')", 'Draw a Moon or Mars base blueprint — dreaming is free'));
+  return `<div class="outpost-switcher" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${rows.join('')}</div>`;
+}
 // Facility tabs + aggregate stats for the focused facility
 function renderStationFacilityStats(built, cur, focusId, focusFn){ // E1.8: base bench reuses this panel with its own focus state
   focusId=focusId||state.stationFocus; focusFn=focusFn||'setStationFocus';
-  const tabs=built.map(b=>`<button class="btn ${b.def.id===focusId?'launch':'ghost'}" style="font-size:12px" onclick="${focusFn}('${b.def.id}')">${b.def.icon} ${b.def.name}</button>`).join(' ');
+  const tabs=outpostSwitcherHTML(focusId); /* Phase 4c: every outpost, orbital and surface */
   const fs=cur.fs, def=cur.def, list=facilityModuleList(fs), pw=facilityPower(fs), pr=facilityProduction(def,fs), ops=stationOps(fs);
   const mass=list.reduce((a,id)=>a+((stationModuleDef(id)||{}).stats||{}).mass||0,0);
   const crew=facilityCrew(fs), crewSlots=list.reduce((n,id)=>n+((stationModuleDef(id)?.stats?.crew)||0),0), syn=facilitySynergies(fs);
@@ -10769,7 +10780,7 @@ function renderStationFacilityStats(built, cur, focusId, focusFn){ // E1.8: base
         ${!supplyPending?`<button class="btn ghost" style="font-size:11px" onclick="flyStationVisit('${def.id}','resupply',false)" ${supplyCheck.ok?'':`disabled title="${esc(supplyCheck.why)}"`}>Fly resupply</button><button class="btn ghost" style="font-size:11px" onclick="flyStationVisit('${def.id}','resupply',true)" ${supplyCheck.ok?'':`disabled title="${esc(supplyCheck.why)}"`}>Resupply · remain</button>`:''}
       </div></div>`;
   })():'';
-  return `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${tabs}</div>
+  return `${tabs}
     <div class="mission-tag">${def.name} — ${list.length} module${list.length>1?'s':''} / ${facilityPortCap(fs,def)} ports</div>
     <div class="metrics">
       ${cell('Mass', mass.toFixed(1)+' t')}
@@ -10964,7 +10975,7 @@ function renderBaseDraft(){
   }
   if(!use3d) wireBasePan(c);
   const zl=$('baseZoomLabel'); if(zl) zl.textContent=Math.round(baseZoom*100)+'%';
-  if(st) st.innerHTML=baseDraftStatsHTML();
+  if(st) st.innerHTML=outpostSwitcherHTML(null)+baseDraftStatsHTML(); /* Phase 4c */
   renderAssemblyPalette('base',{isDraft:true,cur});
 }
 // Body palettes: sky gradient stops + regolith tones. Luna: airless black over gray dust;

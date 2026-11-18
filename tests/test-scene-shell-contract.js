@@ -27,8 +27,8 @@ check('Base applies the assembly scene class without retired scene/panel state c
 
 renderChromeTabsViews();
 const dockHTML=_els.sceneNav.innerHTML;
-check('the permanently mounted dock renders all six registry entries', SCENE_TABS.every(id=>dockHTML.includes(`id="${sceneDef(id).navId}"`) && dockHTML.includes(`setTab('${id}')`)));
-check('the dock preserves Mission Control navigation order', SCENE_DOCK_TABS.join(',')==='command,bench,rnd,map,station,base');
+check('the permanently mounted dock renders one button per nav stop (Phase 4c: base shares Outposts)', SCENE_DOCK_TABS.every(id=>dockHTML.includes(`id="${sceneDef(id).navId}"`) && dockHTML.includes(id==='station'?'openOutposts()':`setTab('${id}')`)) && !dockHTML.includes('id="tabBase"'));
+check('the dock preserves Mission Control navigation order', SCENE_DOCK_TABS.join(',')==='command,bench,rnd,map,station');
 
 const fs=require('fs'), path=require('path');
 const repo=fs.existsSync(path.join(__dirname,'..','src','shell.html')) ? path.join(__dirname,'..') : process.cwd();

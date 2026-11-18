@@ -71,7 +71,11 @@ rescue calls (it used to leave them stuck — 173 stalls/run), station costs sho
 incomes cover the $0.45M/mo module opex (labs trade money for science); `moduleCrewCheck` blocks modules the crew
 can't run; a cargo pod tops the station up on docking and the tenants pay `stationDeliveryValue` for what it
 delivered (offer.payout stays 0; `estPayout` is display); `supplyManifest(facId,months)` is the read-only plan.
-Suite: `test-station-economics.js`. Next: Phase 4c (merge Station + Base benches into Outposts).
+Suite: `test-station-economics.js`. Phase 4c done: the 'base' scene has `navAlias:'station'` — the nav shows one
+"Outposts" stop (`openOutposts()` reopens `state.outpostTab`), `SCENE_DOCK_TABS` omits 'base', and
+`outpostSwitcherHTML`/`goOutpost` replace the per-board facility tabs. RULE: a new scene that shares a nav stop sets
+`navAlias`; use `sceneNavOwner(tab)` for "which nav button is this". Suite: `test-outposts-tab.js`. Next: Phase 5
+(personnel assignment) — bring the owner options first.
 
 **In progress:** (none claimed right now).
 > When you start a task, replace this line with: `<task> — <Claude|Codex> — started <date>`.

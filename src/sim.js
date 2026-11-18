@@ -8223,17 +8223,25 @@ function autoAdvanceMission(){
 const SCENE_DEFS = Object.freeze({
   bench:   Object.freeze({ id:'bench',   label:'Design Bench',   icon:'✎', layout:'workspace',  viewId:'benchView',   navId:'tabBench',   badgeId:'badgeBench',   railId:'railBench',   leftSlot:'workspaceContext', dockOrder:2,
     workspace:Object.freeze({ contextId:'benchWorkspaceContext', contextHomeId:'benchWorkspaceHome' }) }),
-  station: Object.freeze({ id:'station', label:'Station Bench',  icon:'⬡', layout:'assembly',   viewId:'stationView', navId:'tabStation', badgeId:'badgeStation', railId:'railStation', leftSlot:'assemblyPalette', dockOrder:5,
-    assembly:Object.freeze({ title:'Station Bench — orbital assembly board', summary:'Orbit the camera around the live station model. Every hull, docking node, truss, array and module is generated from the current assembly.', hostId:'station3dHost', canvasId:'stationCanvas', inspectorId:'stationStats', paletteHomeId:'stationPaletteHome', zoomLabelId:'stationZoomLabel', expandId:'stationExpandBtn', popout:'openStationPopout', expand:'toggleStationExpand', zoom:'zoomStation', reset:'resetStationView' }) }),
-  base:    Object.freeze({ id:'base',    label:'Base Bench',     icon:'⛰', layout:'assembly',   viewId:'baseView',    navId:'tabBase',    badgeId:'badgeBase',    railId:'railBase',    leftSlot:'assemblyPalette', dockOrder:6,
-    assembly:Object.freeze({ title:'Base Bench — surface assembly board', summary:'Orbit across the Moon or Mars site. Habitats, reactors, ISRU hardware, garages, arrays and corridors sit directly on the local terrain.', hostId:'base3dHost', canvasId:'baseCanvas', inspectorId:'baseStats', paletteHomeId:'basePaletteHome', zoomLabelId:'baseZoomLabel', expandId:'baseExpandBtn', popout:'openBasePopout', expand:'toggleBaseExpand', zoom:'zoomBase', reset:'resetBaseView' }) }),
+  station: Object.freeze({ id:'station', label:'Outposts',       icon:'⬡', layout:'assembly',   viewId:'stationView', navId:'tabStation', badgeId:'badgeStation', railId:'railStation', leftSlot:'assemblyPalette', dockOrder:5,
+    assembly:Object.freeze({ title:'Outposts — orbital station', summary:'Orbit the camera around the live station model. Every hull, docking node, truss, array and module is generated from the current assembly.', hostId:'station3dHost', canvasId:'stationCanvas', inspectorId:'stationStats', paletteHomeId:'stationPaletteHome', zoomLabelId:'stationZoomLabel', expandId:'stationExpandBtn', popout:'openStationPopout', expand:'toggleStationExpand', zoom:'zoomStation', reset:'resetStationView' }) }),
+  base:    Object.freeze({ id:'base',    label:'Outposts',       icon:'⛰', navAlias:'station', layout:'assembly',   viewId:'baseView',    navId:'tabBase',    badgeId:'badgeBase',    railId:'railBase',    leftSlot:'assemblyPalette', dockOrder:6,
+    assembly:Object.freeze({ title:'Outposts — surface base', summary:'Orbit across the Moon or Mars site. Habitats, reactors, ISRU hardware, garages, arrays and corridors sit directly on the local terrain.', hostId:'base3dHost', canvasId:'baseCanvas', inspectorId:'baseStats', paletteHomeId:'basePaletteHome', zoomLabelId:'baseZoomLabel', expandId:'baseExpandBtn', popout:'openBasePopout', expand:'toggleBaseExpand', zoom:'zoomBase', reset:'resetBaseView' }) }),
   map:     Object.freeze({ id:'map',     label:'Solar System',   icon:'☉', layout:'immersive', viewId:'mapView',     navId:'tabMap',     badgeId:'badgeMap',     railId:'railMap',     leftSlot:'mapRoster', dockOrder:4 }),
   command: Object.freeze({ id:'command', label:'Command Center',icon:'⌂', layout:'immersive', viewId:'commandView', navId:'tabCommand', badgeId:'badgeCommand', railId:'railCommand', dockOrder:1 }),
   rnd:     Object.freeze({ id:'rnd',     label:'R&D',            icon:'⚛', layout:'workspace',  viewId:'rndView',     navId:'tabRnd',     badgeId:'badgeRnd',     railId:'railRnd',     leftSlot:'workspaceContext', dockOrder:3,
     workspace:Object.freeze({ contextId:'rndWorkspaceContext', contextHomeId:'rndWorkspaceHome' }) }),
 });
 const SCENE_TABS = Object.keys(SCENE_DEFS);
-const SCENE_DOCK_TABS = SCENE_TABS.slice().sort((a,b)=>sceneDef(a).dockOrder-sceneDef(b).dockOrder);
+/* Phase 4c: the Station and Base boards share one "Outposts" nav stop (base carries navAlias:'station'); both
+   scenes stay, because orbital and surface assembly are different 3D renderers. */
+const SCENE_DOCK_TABS = SCENE_TABS.filter(t=>!sceneDef(t).navAlias).sort((a,b)=>sceneDef(a).dockOrder-sceneDef(b).dockOrder);
+function sceneNavOwner(t){ const d=sceneDef(t); return d&&d.navAlias?d.navAlias:t; }
+function isOutpostTab(t){ return t==='station'||t==='base'; }
+/* the Outposts nav button reopens whichever board was last used */
+function openOutposts(){ return setTab(isOutpostTab(state.outpostTab)?state.outpostTab:'station'); }
+/* jump to one outpost from the shared switcher: orbital facilities open the station board, surface ones the base board */
+function goOutpost(id){ const def=facilityById(id); if(!def) return; if(def.body==='earth'){ state.stationFocus=id; setTab('station'); } else { state.baseFocus=id; setTab('base'); } }
 function sceneDef(t){ return SCENE_DEFS[t]||null; }
 // Retired tab ids → where they now live, so legacy saves / stray setTab calls resolve.
 // slice 4: Planner folded into the left-rail advisor. slice 5: Missions → the Command
@@ -8336,6 +8344,7 @@ function setTab(t){
   }
   closeLiveModal();
   if(t==='bench'&&typeof onboardingMark==='function') onboardingMark('bench'); // #4 checklist step 1
+  if(isOutpostTab(t)) state.outpostTab=t; /* Phase 4c: remember the board for the Outposts button */
   if(state.tab===t){hubPanel='alerts';render();return;}
   const vp=document.querySelector('.viewport');
   hubPanel='alerts';
