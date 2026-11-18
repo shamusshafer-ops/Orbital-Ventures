@@ -45,31 +45,26 @@ newGame('engineer');
   check('sounding fins still use the shared profile', src.includes('rocketTailFinProfile')&&src.includes("finStyle='tapered-cruciform'"));
 }
 
-{ // regional land map
-  const R=CAPE3D_REGION, tex=cape3dRegionTexture.toString(), build=buildCape3DScene.toString();
-  check('region is larger than the site but inside the land shelf', R.width>6000&&R.width<CAPE3D_EXTENDED_LAND_INLAND_M&&R.depth<CAPE3D_EXTENDED_LAND_DEPTH_M);
+{ // regional land map (graphics pass 3: painted into the terrain shader instead of two decal sheets)
+  const R=CAPE3D_REGION, tex=cape3dRegionTexture.toString(), build=buildCape3DScene.toString(), mat=cape3dTerrainMaterial.toString();
+  check('region is larger than the site but far smaller than the terrain', R.width>6000&&R.width<CAPE3D_TERRAIN.extent&&R.depth<CAPE3D_TERRAIN.extent);
   const site=ISO_BUILDINGS.map(b=>capeWorldPoint(b.gx,b.gy)), inside=p=>Math.pow((p.x-R.siteX)/(R.holeX*.74),2)+Math.pow((p.z-R.siteZ)/(R.holeZ*.74),2)<1;
   check('every authored facility sits inside the fully masked centre', site.every(inside));
   check('region is masked at the site and faded at its outer edges', tex.includes("destination-out")&&tex.includes('createRadialGradient(0,0,0,0,0,1)')&&(tex.match(/createLinearGradient/g)||[]).length===3);
   check('district features are drawn', ['lagoon','missile row','skid strip','town','highway'].every(k=>tex.includes(k)));
-  check('region fades with the site during ascent', build.includes('root.userData.siteObjects.push(region)'));
-  check('region is offset against the base terrain', cape3dRegion.toString().includes('polygonOffset:true'));
-  check('causeway meets the site avenue', cape3dRegion.toString().includes('capeWorldPoint(0,ISO_AV).z'));
+  check('both district resolutions are sampled by the terrain shader', build.includes('fine:false')&&build.includes('fine:true')&&mat.includes('uRegionA')&&mat.includes('uRegionB'));
+  check('causeway meets the site avenue', build.includes('capeWorldPoint(0,ISO_AV).z'));
+  check('the lagoon basin and the painted lagoon share one shape', tex.includes('cape3dLagoon(z,coastX)')&&cape3dTerrainHeight.toString().includes('cape3dLagoon(z,coastX)'));
 }
 
 { // follow-up (owner feedback): fixed district, lighter haze, no waterline flicker
-  const tex=cape3dRegionTexture.toString(), reg=cape3dRegion.toString(), shore=cape3dShoreline.toString(), build=buildCape3DScene.toString();
+  const tex=cape3dRegionTexture.toString(), build=buildCape3DScene.toString();
   check('district is the same every launch: one fixed seed, no clock or Math.random', tex.includes('mulberry(R.seed)')&&!/Math\.random|Date\.now|state\./.test(tex)&&Number.isFinite(CAPE3D_REGION.seed));
   check('features are generated over the whole district whatever rectangle is drawn', tex.includes('gx0+rnd()*R.width')&&tex.includes('gz0+rnd()*R.depth'));
-  check('district is drawn at two resolutions', reg.includes('fine:false')&&reg.includes('fine:true')&&CAPE3D_REGION.nearWidth<CAPE3D_REGION.width&&CAPE3D_REGION.nearDepth<CAPE3D_REGION.depth);
   check('near layer still contains the masked site', CAPE3D_REGION.nearWidth>CAPE3D_REGION.holeX*2&&CAPE3D_REGION.nearDepth>CAPE3D_REGION.holeZ*2);
   check('haze is lighter than the old .00038 but still present', CAPE3D_HAZE>0&&CAPE3D_HAZE<=.00015);
   check('idle and ascent haze share the constant', cape3dPhysicalAscentBlend(0).fogDensity===CAPE3D_HAZE&&cape3dTick.toString().includes('CAPE3D_HAZE'));
-  check('ocean and shore sheets do not write depth', build.includes('materials.water.depthWrite=false')&&shore.includes('mat.depthWrite=false'));
-  check('shore sheets have a fixed draw order', shore.includes('m.renderOrder=order')&&build.includes('ocean.renderOrder=2'));
-  check('shore strips are short, segmented and lap over the water edge', CAPE3D_SHORE_LENGTH_M<=80000&&CAPE3D_SHORE_OVERLAP_M>=8&&shore.includes('PlaneGeometry(w,depth,1,64)')&&shore.includes('x+overlap-sandW*.5'));
-  check('no thin foam sheet (sub-pixel lines twinkle)', !/plane\(7,/.test(shore));
-  check('no slope-scaled depth bias on land decals (it lifted sand over the pad)', shore.includes('polygonOffsetFactor=0')&&reg.includes('polygonOffsetFactor:0')&&build.includes('terrain.material.polygonOffsetFactor=0'));
+  check('no stacked ocean/shore/decal sheets left to z-fight', !/PlaneGeometry\(landscape\./.test(build)&&typeof cape3dRegion==='undefined'&&typeof cape3dShoreline==='undefined'&&!build.includes('polygonOffset'));
 }
 
 console.log(pass+'/'+(pass+fail)+' checks passed');

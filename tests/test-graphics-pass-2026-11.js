@@ -39,8 +39,9 @@ newGame('engineer');
 
 { // shoreline is part of the site so it fades with it during ascent
   const build=buildCape3DScene.toString();
-  check('shoreline is built', build.includes('cape3dShoreline(root,landscape)'));
-  check('shoreline fades with the rest of the site', /siteObjects=\[ground,terrain,ocean,shore,/.test(build));
+  /* graphics pass 3: the shoreline is drawn by the single terrain surface (see test-graphics-pass3-2026-11.js) */
+  check('the coast (land, beach and sea) is one terrain surface', build.includes('cape3dTerrain(root,plan,coastX,origin')&&typeof cape3dShoreline==='undefined');
+  check('the terrain fades with the rest of the site', /siteObjects=\[terrain,roads,facilities,vegetation,extras\]/.test(build));
   check('pads and aprons use slab concrete, roads keep the pavement albedo', /concrete:new THREE\.MeshStandardMaterial\(\{color:0xc8c0af,map:concreteTx/.test(build)&&/road:new THREE\.MeshStandardMaterial\(\{color:0x344047,map:pavementTx/.test(build));
 }
 

@@ -1,0 +1,79 @@
+// Graphics pass 3 (2026-11-18): one continuous heightmapped surface for the Cape (land, beach, lagoon and sea),
+// a fixed-seed heightmap that is graded flat under the site, Earth curvature out to the horizon, and the site
+// furniture / building detail that sits on it. The pure terrain functions are tested numerically; the WebGL
+// parts are checked through their source. Appended after harness.js + build/game.js.
+let pass=0, fail=0;
+function check(name,cond){ if(cond) pass++; else{ fail++; console.log('FAIL:',name); } }
+newGame('engineer');
+
+const coastX=CAPE3D_COAST_X, descriptors=capeFacilityDescriptors(), plan=cape3dSitePlan(descriptors,coastX), H=(x,z)=>cape3dTerrainHeight(x,z,plan,coastX,null);
+
+{ // the heightmap: fixed, flat where things are built, varied elsewhere
+  check('the heightmap is deterministic (fixed seed, no clock or Math.random)', H(-3000,1200)===H(-3000,1200)&&!/Math\.random|Date\.now|state\./.test(cape3dTerrainHeight.toString()+cape3dNoise2.toString()+cape3dHash2.toString()));
+  check('every building and pad sits on exactly the site datum', descriptors.every(d=>Math.abs(H(d.position.x,d.position.z))<1e-6));
+  check('…across the whole footprint, not just its centre', descriptors.every(d=>[[-.45,-.45],[.45,-.45],[-.45,.45],[.45,.45]].every(q=>Math.abs(H(d.position.x+q[0]*d.footprint.x,d.position.z+q[1]*d.footprint.z))<1e-6)));
+  check('roads are graded flat along their length', cape3dRoadPlan().every(r=>[.1,.5,.9].every(t=>Math.abs(H(r[0].x+(r[1].x-r[0].x)*t,r[0].z+(r[1].z-r[0].z)*t))<1e-6)));
+  const samples=[]; for(let i=0;i<40;i++) samples.push(H(-1600-i*37,-900+i*61));
+  const min=Math.min(...samples), max=Math.max(...samples);
+  check('the ground between and around buildings has real relief (the tile carries the heightmap)', max-min>1.5);
+  const far=[]; for(let i=0;i<30;i++) far.push(H(-60000-i*9000,i*7000-100000));
+  check('relief grows with distance from the site', Math.max(...far)-Math.min(...far)>max-min);
+  check('no lakes or ponds on the site itself', (()=>{ for(let x=-200;x<900;x+=45) for(let z=-150;z<700;z+=45){ if(H(x,z)<CAPE3D_SEA_Y) return false; } return true; })());
+  check('no inland lakes beyond 50 km (they would alias into slivers on the coarse far grid)', (()=>{ for(let i=0;i<200;i++){ const x=-60000-i*4000, z=(i%17-8)*30000; if(Math.abs(x-cape3dLagoon(z,coastX).x)<3000) continue; if(H(x,z)<CAPE3D_SEA_Y) return false; } return true; })());
+}
+
+{ // the coast: one surface, continuous through the waterline
+  const z=-3000;
+  check('the sea is below sea level just offshore', H(coastX+40,z)<CAPE3D_SEA_Y&&H(coastX+400,z)<H(coastX+40,z));
+  check('the beach is above sea level just inland', H(coastX-30,z)>CAPE3D_SEA_Y&&H(coastX-30,z)<CAPE3D_SEA_Y+2.5);
+  check('the surface is continuous through the waterline (no step for a seam to hide in)', Math.abs(H(coastX-.5,z)-H(coastX+.5,z))<.1);
+  let dune=0; for(let x=coastX-60;x>coastX-250;x-=5) dune=Math.max(dune,H(x,z));
+  check('a line of dunes stands behind the beach somewhere along the coast', (()=>{ for(let zz=-12000;zz<12000;zz+=300){ for(let x=coastX-90;x>coastX-170;x-=10) if(H(x,zz)>3.5) return true; } return false; })());
+  const L=cape3dLagoon(5000,coastX);
+  check('the lagoon is a real basin below sea level', H(L.x,5000)<CAPE3D_SEA_Y-1.5&&H(L.x-L.w*.5-400,5000)>CAPE3D_SEA_Y);
+}
+
+{ // curvature: the surface reaches the horizon and meets the globe
+  check('no curvature near the site (splashdowns and the near range stay on the datum)', cape3dCurveDrop(0)===0&&cape3dCurveDrop(20000)===0);
+  const R=6371000, sphere=d=>R-Math.sqrt(R*R-d*d);
+  check('beyond 150 km the drop is the exact sphere', Math.abs(cape3dCurveDrop(400000)-sphere(400000))<1e-6&&Math.abs(cape3dCurveDrop(1500000)-sphere(1500000))<1e-6);
+  const horizonAt96km=Math.sqrt(2*R*96000);
+  check('the terrain reaches past the horizon at the altitude where the photographic globe takes over', CAPE3D_TERRAIN.extent>horizonAt96km&&cape3dPhysicalAscentBlend(96000).earthOpacity>.99);
+  const ax=cape3dTerrainAxis(0,12,1500,60,CAPE3D_TERRAIN.extent);
+  check('grid: 12 m over the site, growing geometrically to the full extent', Math.abs((ax[ax.length/2+.5|0]-ax[ax.length/2-.5|0])-12)<1e-9&&ax[ax.length-1]===CAPE3D_TERRAIN.extent&&ax.length<800);
+  check('grid spacing never shrinks moving outward', ax.every((v,i)=>i<2||v-ax[i-1]>=ax[i-1]-ax[i-2]-1e-6||ax[i-1]<=0));
+  check('splashes follow the curved sea', cape3dUpdateSplash.toString().includes('cape3dCurveDrop')&&cape3dUpdateSplash.toString().includes('CAPE3D_SEA_Y'));
+}
+
+{ // the surface replaces the stacked sheets: no transparency, no draw-order or depth-bias tricks
+  const build=buildCape3DScene.toString(), mat=cape3dTerrainMaterial.toString(), geo=cape3dTerrainGeometry.toString();
+  check('one opaque terrain mesh, no ocean quad, shore strips or decals', build.includes('cape3dTerrain(')&&!/PlaneGeometry\(landscape\./.test(build)&&!build.includes('cape3dShoreline')&&!build.includes('cape3dRegion(root'));
+  check('the material is opaque and writes depth', !/transparent:true|depthWrite:false|polygonOffset/.test(mat));
+  check('water is wherever the height is below sea level, on a flat sea surface', geo.includes('Math.max(H[k],CAPE3D_SEA_Y)')&&mat.includes('depth=uSea-vTH'));
+  check('grass, dune, dry sand, wet sand, surf, shallows and deep water blend per pixel', ['uSandDune','uSandDry','uSandWet','uFoam','uShallow','uDeep'].every(k=>mat.includes(k))&&mat.includes('smoothstep(30.0,210.0,edge)'));
+  check('the heightmap shades the ground colour too (hollows dark, crests light)', geo.includes("'aShade'")&&mat.includes('vTS'));
+  check('the terrain keeps depth while it fades so its hills still occlude each other', mat.includes('capeKeepDepth=true')&&cape3dApplySiteOpacity.toString().includes('capeKeepDepth'));
+  check('the terrain fades with the site during ascent', /siteObjects=\[terrain,roads,facilities,vegetation,extras\]/.test(build));
+  check('fine detail fades with distance so the far field does not shimmer', mat.includes('farV')&&mat.includes('smoothstep(20000.0,70000.0,camD)'));
+}
+
+{ // site plan, furniture and vegetation
+  check('parking lots are placed in open ground, never on a building or road', plan.lots.length>=3&&plan.lots.every(l=>!cape3dSiteBlocked({rects:plan.rects.filter(r=>r!==l),roads:plan.roads},l.x,l.z,0)));
+  check('…and are graded flat', plan.lots.every(l=>Math.abs(H(l.x,l.z))<1e-6));
+  check('lots stay off the beach', plan.lots.every(l=>coastX-l.x>=160));
+  const woods=cape3dRegionWoods(coastX);
+  check('3D woods come from the same seeded patches the district map paints', woods.length>40&&cape3dRegionWoods(coastX)[7][0]===woods[7][0]&&cape3dRegionTexture.toString().includes('if(ci<2) woods.push([x,z,r])'));
+  const veg=cape3dVegetation.toString();
+  check('trees are instanced and kept off buildings, lots, roads, water and the beach', veg.includes('cape3dInstanced(')&&veg.includes('cape3dSiteBlocked(plan')&&veg.includes('CAPE3D_SEA_Y+.3')&&veg.includes('cx-x<260'));
+  check('only trees inside the shadow box cast shadows', veg.includes("_far'")&&veg.includes('cape3dInstanced(G[k],mat,farL,false)'));
+  const det=cape3dFacilityDetail.toString();
+  check('buildings get structural bays, a low-bay wing with docks, an entrance and rooftop plant', ['pilasters','low-bay wing','loading docks','entrance','Rooftop plant'].every(k=>det.includes(k)));
+  check('pads get a fence, propellant spheres, a flame-trench outlet and a blockhouse', ['fence','LOX and LH2','Flame-trench','blockhouse'].every(k=>det.includes(k)));
+  check('static detail is merged into one draw call per material', det.includes('cape3dBatch()')&&det.includes('b.flush(g,true)'));
+  check('the facility group calls the detail pass', cape3dFacilityGroup.toString().includes('cape3dFacilityDetail(g,d,materials)'));
+  check('the site has a fence, gatehouse, water tower and parked cars', ['Perimeter fence','Gatehouse','Water tower','cape3d_cars'].every(k=>cape3dSiteExtras.toString().includes(k)));
+  check('fence posts follow the ground', cape3dSiteExtras.toString().includes('cape3dGroundY(x,z)'));
+}
+
+console.log(pass+'/'+(pass+fail)+' checks passed');
+process.exit(fail?1:0);

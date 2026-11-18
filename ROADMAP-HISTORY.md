@@ -8620,3 +8620,39 @@ Firefox at 1280×800: every screen re-shot; the compact bar's labels measured un
 down full width; Needs you lists the investigation and the station shortfall on the Command Center. Tests: new
 `test-ui-cohesion.js` 19/19; `test-command-hero-layout` caught a second `@media(min-width:1101px){` block (respelled).
 Full sweep 193/194 + 1 intentional skip. No save change.
+
+## 2026-11-18 — Graphics pass 3: one heightmapped Cape surface, building detail, site furniture (Claude)
+
+Owner ask: a big realism pass on the Command Center graphics (layout, buildings, terrain); stop the
+beach/land/grass flicker and make the transition gradual; a random height map applied to the site tile itself,
+continuous with the land around it and reaching as far as the player can see at any rocket altitude.
+
+- **One surface.** The flat ground plane, the green variation overlay, the two district decals, the 12,000 km
+  ocean quad and the shallows/sand strips (six transparent sheets held apart by draw order and depth bias) are
+  gone. `cape3dTerrain` builds one opaque mesh: a fixed-seed value-noise heightmap (`cape3dTerrainHeight`) on a
+  grid that is 12 m over the site and grows geometrically to 1,600 km (`cape3dTerrainAxis`). Water is wherever
+  the height is below `CAPE3D_SEA_Y`, drawn on a flat sea surface; the shader (`cape3dTerrainMaterial`) blends
+  grass → dune scrub → dry sand → wet sand → surf → shallows → deep water per pixel from height and coast
+  distance, so the waterline cannot z-fight and every boundary is a gradient. Lagoon is a real basin
+  (`cape3dLagoon`, shared with the district painter, which is now sampled by the shader).
+- **The tile carries the heightmap.** Gentle relief on the site, rolling country a few km out, broad relief and
+  ranges far inland; graded exactly flat under every building, pad, lot and road (`cape3dSitePlan`), with a soft
+  shoulder. Hollows/crests shade the ground colour (`aShade`).
+- **Horizon at any altitude.** Beyond 30 km the surface bends with the Earth (`cape3dCurveDrop`, exact sphere from
+  150 km), reaching past the horizon at 96 km where the photographic globe has fully taken over. Far detail fades
+  to continental tones; aerial haze and a water fresnel use the live fog colour. The terrain keeps depth while it
+  fades (`capeKeepDepth`) so its hills still occlude each other. Splashes sit on the curved sea.
+- **Buildings and site.** `cape3dFacilityDetail` (merged per material by `cape3dBatch`): pilasters, plinth, a low-bay
+  wing with loading docks, glazed entrance and canopy, rooftop plant, lab stacks and cryo tank, sawtooth skylights
+  and a tank farm at production, VAB girts and a logo panel, a roof dish at control, flags at admin; pads get a
+  fence, LOX/LH2 spheres with piping, a flame-trench outlet and spillway, camera posts and a blockhouse; dishes and
+  the dome are detailed (dishes were single-sided and showed only as arcs). `cape3dSiteExtras`: parking lots placed
+  in open ground with instanced cars, a perimeter fence that follows the ground, a gatehouse and a water tower.
+- **Vegetation.** Instanced slash pine, live oak, cabbage palm and palmetto (`cape3dVegetation`): the site scatter
+  kept off buildings/lots/roads, hammock clumps around the campus, ~6,000 trees where the district map paints forest
+  (`cape3dRegionWoods` replays its seed), scrub on the back dunes; only trees in the shadow box cast shadows.
+
+Presentation only, no sim change. Suite `test-graphics-pass3-2026-11.js` (39 checks, mutation-checked); the old
+terrain assertions in `test-cape-terrain-cleanup`, `test-graphics-pass-2026-11` and `test-graphics-pass2-2026-11`
+now describe the single surface. Full sweep 194/195 + 1 intentional skip. Checked in headless Firefox at the
+Command Center, a low beach pass, and 3/10/30/60/80 km. Terrain build ≈0.5 s once at startup (headless).

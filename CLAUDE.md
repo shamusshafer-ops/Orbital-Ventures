@@ -88,6 +88,12 @@ Centre titles use `h2.scene-title` with the scene's colour dot; left-rail sectio
 rehearsal live only in the go/no-go block. Suite: `test-ui-cohesion.js`. RULE: don't add a second
 `@media(min-width:1101px){` block before the main one — `test-command-hero-layout` extracts the first by that spelling.
 
+**Graphics pass 3 (2026-11-18):** the Cape is ONE opaque heightmapped surface (`cape3dTerrain`): land, beach, lagoon and
+sea, water wherever height < `CAPE3D_SEA_Y`, Earth curvature beyond 30 km out to 1,600 km. The ocean quad, shore strips,
+decals and variation overlay are gone. RULE: anything new placed on the ground near the site uses `cape3dGroundY(x,z)`;
+anything that must sit on the flat datum goes into `cape3dSitePlan` (rects/roads) BEFORE the terrain is built. Building
+detail lives in `cape3dFacilityDetail` (batched). Suite: `test-graphics-pass3-2026-11.js`.
+
 **In progress:** (none claimed right now).
 > When you start a task, replace this line with: `<task> — <Claude|Codex> — started <date>`.
 > When done, clear it back to "(none claimed right now)" and add your entry to the history below.

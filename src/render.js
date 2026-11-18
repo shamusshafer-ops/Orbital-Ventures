@@ -2255,7 +2255,7 @@ const CAPE3D_METERS_PER_KM = 1000;
 const CAPE3D_OCEAN_WIDTH_M = 12000000;
 const CAPE3D_OCEAN_DEPTH_M = 2000000;
 const CAPE3D_TEXTURE_ASSET={ground:'assets/cape-ground-albedo.png',pavement:'assets/cape-pavement-albedo.png'};
-const CAPE3D_TERRAIN_STYLE={ground:0xa3c890,overlayOpacity:.68,sandPatchEvery:4};
+const CAPE3D_TERRAIN_STYLE={ground:0xa3c890}; /* the site lawn tint in the terrain shader */
 let cape3d = null;
 function capeWorldPoint(gx, gy, elevation){
   return {x:gx*CAPE_WORLD_TILE_M*CAPE3D_SITE_SPREAD, y:elevation||0, z:gy*CAPE_WORLD_TILE_M*CAPE3D_SITE_SPREAD};
@@ -2396,28 +2396,10 @@ function cape3dCanvasTexture(draw,repeatX,repeatY){
   const tx=new THREE.CanvasTexture(cv); tx.wrapS=tx.wrapT=THREE.RepeatWrapping; tx.repeat.set(repeatX||1,repeatY||repeatX||1); return tx;
 }
 function cape3dWaterTexture(){ return cape3dCanvasTexture((ctx,w,h)=>{ ctx.fillStyle='#174d68'; ctx.fillRect(0,0,w,h); ctx.globalAlpha=.22; ctx.strokeStyle='#b3e5ed'; ctx.lineWidth=1; for(let y=8;y<h;y+=17){ ctx.beginPath(); for(let x=0;x<=w;x+=13) ctx.lineTo(x,y+Math.sin((x+y)*.12)*2); ctx.stroke(); } },18,16); }
-function cape3dTerrainVariationTexture(repeatX,repeatY){ return cape3dCanvasTexture((ctx,w,h)=>{
-  ctx.clearRect(0,0,w,h); const greens=['rgba(44,91,42,.34)','rgba(79,119,55,.30)','rgba(103,132,66,.26)'];
-  for(let i=0;i<36;i++){
-    const x=(i*83)%w,y=(i*137)%h,r=18+(i%6)*9,g=ctx.createRadialGradient(x,y,0,x,y,r), sandy=i%CAPE3D_TERRAIN_STYLE.sandPatchEvery===0;
-    g.addColorStop(0,sandy?'rgba(214,191,125,.20)':greens[i%greens.length]); g.addColorStop(1,'rgba(0,0,0,0)'); ctx.fillStyle=g; ctx.fillRect(x-r,y-r,r*2,r*2);
-  }
-},repeatX||7,repeatY||6); }
 function cape3dCloudTexture(){
   const cv=document.createElement('canvas'); cv.width=384; cv.height=192; const ctx=cv.getContext('2d');
   for(let i=0;i<15;i++){ const x=45+(i*61)%300,y=72+(i*37)%58,r=24+(i%4)*12,g=ctx.createRadialGradient(x,y,0,x,y,r); g.addColorStop(0,'rgba(255,255,255,.62)'); g.addColorStop(.55,'rgba(237,247,255,.30)'); g.addColorStop(1,'rgba(255,255,255,0)'); ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill(); }
   return new THREE.CanvasTexture(cv);
-}
-function cape3dVegetation(root,materials){
-  const g=new THREE.Group(); g.name='cape3d_vegetation'; const trunk=new THREE.MeshStandardMaterial({color:0x4c3925,roughness:1}), palms=[0x2e542e,0x466c37,0x6d7136].map(color=>new THREE.MeshStandardMaterial({color,roughness:.96})), scrub=[0x55673b,0x3c5a35,0x7a7140].map(color=>new THREE.MeshStandardMaterial({color,roughness:1}));
-  for(let i=0;i<116;i++){
-    const a=i*2.399, r=360+(i%14)*88, x=270+Math.cos(a)*r, z=230+Math.sin(a)*r*.72; if((x>770&&z>-250)||(Math.abs(x-420)<250&&Math.abs(z-290)<190)) continue;
-    const kind=i%5, h=kind===0?20+(i%4)*4:kind<3?9+(i%4)*3:3+(i%3)*2;
-    if(kind===0){ cape3dCylinder(g,1.4,h,trunk,x,h*.5,z); for(let j=0;j<7;j++){ const leaf=cape3dMesh(new THREE.ConeGeometry(7,24,5),palms[i%palms.length],x,h+4,z,false); leaf.rotation.z=(j/7)*Math.PI*2; leaf.rotation.x=.9; g.add(leaf); } }
-    else if(kind<3){ cape3dCylinder(g,.8,h*.42,trunk,x,h*.21,z); const crown=cape3dMesh(new THREE.ConeGeometry(5+(i%3)*2,h*.9,7),palms[(i+1)%palms.length],x,h*.72,z,false); g.add(crown); }
-    else { const bush=cape3dMesh(new THREE.DodecahedronGeometry(h,0),scrub[i%scrub.length],x,h*.55,z,false); bush.scale.set(1.5,.7,1.15); g.add(bush); }
-  }
-  root.add(g); return g;
 }
 function cape3dClouds(root){
   const g=new THREE.Group(); g.name='cape3d_clouds'; const tx=cape3dCloudTexture(), clouds=[];
@@ -2580,9 +2562,6 @@ function cape3dConcreteTexture(repeatX,repeatY){ const tx=cape3dCanvasTexture((c
 // Ground haze (FogExp2 density). Was .00038, which hid everything past ~3 km; this keeps aerial
 // perspective but lets the district read out to ~10 km.
 const CAPE3D_HAZE=.00011;
-// Shore strips: long enough to run into the haze, short enough to stay numerically exact; the sand laps
-// this far over the water to cover the ocean quad's unstable edge.
-const CAPE3D_SHORE_LENGTH_M=60000, CAPE3D_SHORE_OVERLAP_M=14;
 const CAPE3D_REGION={width:16000,depth:24000,size:2048,siteX:480,siteZ:287,holeX:1450,holeZ:1150,nearWidth:6000,nearDepth:9000,seed:5521};
 function cape3dRegionTexture(coastX,roadZ,rect){
   const R=CAPE3D_REGION, S=R.size, cv=document.createElement('canvas'); cv.width=cv.height=S; const ctx=cv.getContext('2d'); if(!ctx) return null;
@@ -2593,7 +2572,7 @@ function cape3dRegionTexture(coastX,roadZ,rect){
   const seen=(x,z,pad)=>x>x0-pad&&x<coastX+pad&&z>z0-pad&&z<z0+D+pad;
   const ell=(x,z,rx,rz,rot)=>{ ctx.beginPath(); ctx.ellipse(X(x),Z(z),rx*mx,rz*mz,rot||0,0,7); };
   const box=(x,z,w,d)=>ctx.fillRect(X(x),Z(z),w*mx,d*mz);
-  const lagoonX=z=>coastX-5200+900*Math.sin(z/5200)+480*Math.sin(z/1700+1), lagoonW=z=>760+360*Math.sin(z/3100+.6);
+  const lagoonX=z=>cape3dLagoon(z,coastX).x, lagoonW=z=>cape3dLagoon(z,coastX).w;
   // 1. vegetation mosaic
   const veg=['38,74,44','54,92,52','104,112,62','136,160,84','88,118,60','176,164,112'], woods=[];
   for(let i=0;i<340;i++){ const x=gx0+rnd()*R.width, z=gz0+rnd()*R.depth, r=260+rnd()*1500, ci=Math.floor(rnd()*veg.length), c=veg[ci], a=(.3+rnd()*.32)*(ci>=3?.55:1); if(ci<2) woods.push([x,z,r]);
@@ -2644,14 +2623,6 @@ function cape3dRegionTexture(coastX,roadZ,rect){
   eg=ctx.createLinearGradient(0,S,0,S-edge); eg.addColorStop(0,'rgba(0,0,0,1)'); eg.addColorStop(1,'rgba(0,0,0,0)'); ctx.fillStyle=eg; ctx.fillRect(0,S-edge,S,edge);
   ctx.globalCompositeOperation='source-over';
   const tx=new THREE.CanvasTexture(cv); if('colorSpace' in tx) tx.colorSpace=THREE.SRGBColorSpace; tx.anisotropy=8; return tx;
-}
-function cape3dRegion(root, landscape){
-  const R=CAPE3D_REGION, roadZ=capeWorldPoint(0,ISO_AV).z, g=new THREE.Group(); g.name='cape3d_region';
-  const layer=(rect,order,offset)=>{ const tx=cape3dRegionTexture(landscape.coastX,roadZ,rect); if(!tx) return;
-    const m=cape3dMesh(new THREE.PlaneGeometry(rect.width,rect.depth),new THREE.MeshStandardMaterial({map:tx,transparent:true,opacity:rect.fine?1:.9,roughness:1,depthWrite:false,polygonOffset:true,polygonOffsetFactor:0,polygonOffsetUnits:offset}),landscape.coastX-rect.width*.5,-.7,R.siteZ,false);
-    m.rotation.x=-Math.PI/2; m.renderOrder=order; g.add(m); };
-  layer({width:R.width,depth:R.depth,fine:false},-1.5,-2); layer({width:R.nearWidth,depth:R.nearDepth,fine:true},-1,-3);
-  if(!g.children.length) return null; root.add(g); return g;
 }
 // Earth surface detail for a 2K photo map seen from 100 km (≈20 km per texel): km-scale albedo variation
 // over land and a drifting procedural cloud deck, injected into the existing material (Basic or Standard)
@@ -2764,26 +2735,441 @@ function cape3dSkyDome(scene){
     fragmentShader:'uniform vec3 top; uniform vec3 mid; uniform vec3 bot; uniform vec3 sunDir; uniform vec3 sunCol; uniform float sunA; uniform float fade; uniform vec3 space; varying vec3 vDir;\nvoid main(){ vec3 d=normalize(vDir); float h=d.y; vec3 c=mix(bot,mid,smoothstep(0.0,0.22,h)); c=mix(c,top,smoothstep(0.16,0.85,h)); float s=max(dot(d,normalize(sunDir)),0.0); c+=sunCol*(pow(s,420.0)*1.6+pow(s,28.0)*0.22+pow(s,5.0)*0.06)*sunA; gl_FragColor=vec4(mix(space,c,fade),1.0);\n#include <colorspace_fragment>\n}'});
   const dome=new THREE.Mesh(new THREE.SphereGeometry(1,32,20),mat); dome.name='cape3d_sky'; dome.renderOrder=-10; dome.frustumCulled=false; scene.add(dome); return dome;
 }
-function cape3dShoreline(root, landscape){
-  // Two separate causes of waterline flicker are handled here.
-  // 1. Precision. The ocean is one quad thousands of kilometres across and its landward edge is computed
-  //    by cancelling two ~6,000 km numbers, so that edge wanders by a good fraction of a metre as the
-  //    camera moves; sheets hundreds of kilometres long shimmer the same way. The shore is therefore
-  //    built from modest, segmented strips, and the sand OVERLAPS both the land and the first few metres
-  //    of water so the unstable edges of the giant quads are hidden underneath it.
-  // 2. Ordering. These sheets and the ocean are a fraction of a metre apart and transparent, so none of
-  //    them write depth (nothing lies beneath the ocean), each has a fixed draw order, and the sand gets a
-  //    constant depth bias (units only; a slope-scaled factor pulled it up over the launch pad).
-  // There is no thin foam sheet: a few-metre-wide bright line is sub-pixel at range and twinkles. The surf
-  // line is the bright first band of the shallows gradient instead.
-  const g=new THREE.Group(); g.name='cape3d_shore'; const depth=Math.min(landscape.land.depth,CAPE3D_SHORE_LENGTH_M), x=landscape.coastX, overlap=CAPE3D_SHORE_OVERLAP_M;
-  const plane=(w,mat,cx,y,order,bias)=>{ mat.depthWrite=false; mat.transparent=true; if(bias){ mat.polygonOffset=true; mat.polygonOffsetFactor=0; mat.polygonOffsetUnits=-bias; } const m=cape3dMesh(new THREE.PlaneGeometry(w,depth,1,64),mat,cx,y,180,false); m.rotation.x=-Math.PI/2; m.renderOrder=order; g.add(m); return m; };
-  const strip=(stops)=>{ const cv=document.createElement('canvas'); cv.width=256; cv.height=4; const ctx=cv.getContext('2d'); if(ctx){ const gr=ctx.createLinearGradient(0,0,256,0); stops.forEach(q=>gr.addColorStop(q[0],q[1])); ctx.fillStyle=gr; ctx.fillRect(0,0,256,4); } const tx=new THREE.CanvasTexture(cv); if('colorSpace' in tx) tx.colorSpace=THREE.SRGBColorSpace; return tx; };
-  // Shallows first (under the sand's seaward lip): surf, turquoise, then nothing.
-  plane(1100,new THREE.MeshStandardMaterial({color:0xffffff,map:strip([[0,'rgba(236,250,252,.70)'],[.022,'rgba(220,246,248,.62)'],[.05,'rgba(140,226,220,.46)'],[.2,'rgba(104,206,210,.30)'],[.55,'rgba(70,180,196,.12)'],[1,'rgba(60,170,190,0)']]),roughness:.3}),x+550,-.3,5,0);
-  // Sand: soft inland edge (dune grass to beach), solid across the coast, ending cleanly over the water.
-  const sandW=190+overlap;
-  plane(sandW,new THREE.MeshStandardMaterial({color:0xffffff,map:strip([[0,'rgba(176,162,116,0)'],[.16,'rgba(186,170,124,.7)'],[.3,'rgba(205,187,146,1)'],[.86,'rgba(205,187,146,1)'],[1,'rgba(214,200,164,1)']]),roughness:1}),x+overlap-sandW*.5,-.6,6,5);
+// Graphics pass 3 (2026-11-18): one continuous, heightmapped surface for the Cape and everything around it.
+// It replaces the flat ground plane, the green variation overlay, the two district decals, the giant ocean
+// quad and the stacked shore strips. Those were six transparent sheets a fraction of a metre apart, held
+// in order with draw-order and depth-bias tricks, and the beach/grass/water edges flickered wherever two
+// of them met. Now land, beach, surf, lagoon and sea are ONE opaque mesh: the heightmap decides where the
+// waterline is (water is drawn wherever the height is below sea level, on a flat sea surface) and the
+// shader blends grass -> dune -> dry sand -> wet sand -> surf -> shallows -> deep water from the height
+// and the distance to the coast, so every boundary is a smooth gradient computed per pixel. Nothing to
+// z-fight, nothing to sort.
+// The heightmap is fixed-seed value noise (the same land every launch and every campaign, like the
+// district map). Relief is gentle on the site, grows to rolling country a few kilometres out and to
+// ranges far inland, and is flattened under every building, pad, lot and road so the authored site sits
+// exactly on its datum. The grid is fine (12 m) over the site and its spacing grows geometrically to
+// 1,600 km, and beyond 30 km the surface bends down with the Earth's curvature, so whatever the camera's
+// altitude the land reaches its real horizon and meets the photographic globe there.
+const CAPE3D_SEA_Y=-.4;
+const CAPE3D_TERRAIN={seed:9137,step:12,core:1500,midStep:60,extent:1600000,curveFrom:30000,curveFull:150000,siteX:480,siteZ:287};
+let cape3dTerrainCtx=null;
+function cape3dSmooth(a,b,x){ const u=Math.max(0,Math.min(1,(x-a)/(b-a))); return u*u*(3-2*u); }
+function cape3dHash2(ix,iz,seed){ let h=Math.imul(ix|0,0x27d4eb2d)^Math.imul(iz|0,0x165667b1)^Math.imul(seed|0,0x1b873593); h=Math.imul(h^(h>>>15),0x85ebca6b); h=Math.imul(h^(h>>>13),0xc2b2ae35); h^=h>>>16; return (h>>>0)/4294967296; }
+function cape3dNoise2(x,z,seed){
+  const ix=Math.floor(x), iz=Math.floor(z), fx=x-ix, fz=z-iz, ux=fx*fx*(3-2*fx), uz=fz*fz*(3-2*fz);
+  const a=cape3dHash2(ix,iz,seed), b=cape3dHash2(ix+1,iz,seed), c=cape3dHash2(ix,iz+1,seed), d=cape3dHash2(ix+1,iz+1,seed);
+  return a+(b-a)*ux+(c-a)*uz+(a-b-c+d)*ux*uz;
+}
+function cape3dFbm2(x,z,oct,seed){ let s=0,a=.5,f=1,n=0; for(let i=0;i<oct;i++){ s+=a*cape3dNoise2(x*f+i*17.3,z*f-i*9.1,seed+i); n+=a; a*=.5; f*=2.03; } return s/n; }
+function cape3dRidge2(x,z,oct,seed){ let s=0,a=.5,f=1,n=0,w=1; for(let i=0;i<oct;i++){ let v=1-Math.abs(cape3dNoise2(x*f,z*f,seed+31+i)*2-1); v*=v; s+=v*a*w; w=Math.min(1,v*1.6); n+=a; a*=.5; f*=2.1; } return s/n; }
+// The barrier-island lagoon: shared by the district painter (its banks and marsh) and the heightmap (its basin).
+function cape3dLagoon(z,coastX){ return {x:coastX-5200+900*Math.sin(z/5200)+480*Math.sin(z/1700+1), w:760+360*Math.sin(z/3100+.6)}; }
+// Earth curvature: zero near the site (splashdowns and the near range stay on the flat datum), the exact
+// sphere drop from 150 km out.
+function cape3dCurveDrop(d){ const R=6371000, r=Math.min(Math.abs(Number(d)||0),R*.999); return (R-Math.sqrt(R*R-r*r))*cape3dSmooth(CAPE3D_TERRAIN.curveFrom,CAPE3D_TERRAIN.curveFull,r); }
+// Every road on the site, as [from, to, width, kind]. Shared by the road meshes, the terrain flattening and
+// the placement checks that keep trees, lots and cars off the tarmac.
+function cape3dRoadPlan(){
+  const out=[[capeWorldPoint(-1.2,ISO_AV),capeWorldPoint(6.8,ISO_AV),14,'road']];
+  for(const b of ISO_BUILDINGS){ if(['pad','rivalpad','dishes'].includes(b.type)) continue; out.push([capeWorldPoint(b.gx,b.gy),capeWorldPoint(b.gx,ISO_AV),7,'road']); }
+  const route=crawlerRouteGrid(); for(let i=1;i<route.length;i++) out.push([capeWorldPoint(route[i-1][0],route[i-1][1]),capeWorldPoint(route[i][0],route[i][1]),25,'crawler']);
+  return out;
+}
+function cape3dSegDist(x,z,a,b){ const dx=b.x-a.x, dz=b.z-a.z, l2=dx*dx+dz*dz||1, t=Math.max(0,Math.min(1,((x-a.x)*dx+(z-a.z)*dz)/l2)); return Math.hypot(x-a.x-dx*t,z-a.z-dz*t); }
+// The site's hard footprint: buildings, pads, lots and roads. `margin` widens every item.
+function cape3dSiteBlocked(plan,x,z,margin){
+  const m=margin||0;
+  for(const r of plan.rects) if(Math.abs(x-r.x)<r.hx+m&&Math.abs(z-r.z)<r.hz+m) return true;
+  for(const s of plan.roads) if(cape3dSegDist(x,z,s[0],s[1])<s[2]*.5+m) return true;
+  return false;
+}
+// Site plan: what must sit on flat ground, plus the parking lots, which are placed in whatever open space
+// the authored buildings leave (so they follow the layout instead of hard-coding coordinates into it).
+function cape3dSitePlan(descriptors,coastX){
+  const rects=[], roads=cape3dRoadPlan(), lots=[];
+  (descriptors||[]).forEach(d=>{ if(!d||!d.position) return; const pad=d.type==='pad'||d.type==='rivalpad';
+    rects.push({x:d.position.x,z:d.position.z,hx:d.footprint.x*(pad?.74:.64),hz:d.footprint.z*(pad?.74:.64),kind:d.type,key:d.key}); });
+  const plan={rects,roads,lots,coastX};
+  const anchors=(descriptors||[]).filter(d=>d&&['admin','control','lab','vab','prod'].includes(d.type));
+  for(const d of anchors){
+    const W=70, D=40, ox=d.footprint.x*.64+W*.5+14, oz=d.footprint.z*.64+D*.5+14;
+    const tries=[[0,oz],[0,-oz],[ox,0],[-ox,0],[ox,oz],[-ox,oz],[ox,-oz],[-ox,-oz],[0,oz+D+10],[-ox-W-10,0]];
+    for(const t of tries){ const x=d.position.x+t[0], z=d.position.z+t[1];
+      if(coastX-x<160) continue;
+      let ok=true; for(let cx=-1;cx<=1&&ok;cx++) for(let cz=-1;cz<=1&&ok;cz++){ if(cape3dSiteBlocked(plan,x+cx*W*.5,z+cz*D*.5,6)) ok=false; }
+      if(!ok) continue; const lot={x,z,hx:W*.5,hz:D*.5,kind:'lot',w:W,d:D}; lots.push(lot); rects.push(lot); break; }
+  }
+  // Bounding box of everything graded (plus the widest shoulder), so the heightmap only searches near the site.
+  let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9; const grow=(x,z,m)=>{ x0=Math.min(x0,x-m); x1=Math.max(x1,x+m); z0=Math.min(z0,z-m); z1=Math.max(z1,z+m); };
+  rects.forEach(r=>{ grow(r.x-r.hx,r.z-r.hz,90); grow(r.x+r.hx,r.z+r.hz,90); }); roads.forEach(r=>{ grow(r[0].x,r[0].z,r[2]+70); grow(r[1].x,r[1].z,r[2]+70); });
+  plan.bbox={x0,x1,z0,z1};
+  return plan;
+}
+function cape3dTerrainHeight(x,z,plan,coastX,out){
+  const T=CAPE3D_TERRAIN, S=T.seed, dc=coastX-x, ds=Math.hypot((x-T.siteX)/1.15,z-T.siteZ);
+  // Inland relief: barely a metre or two on the site, rolling country a few kilometres out, ranges far inland.
+  // Fine relief fades out where the grid is too coarse to carry it (it would alias into slivers); broad
+  // relief takes over there. Small lakes are allowed in the near country only.
+  const near=1-cape3dSmooth(14000,40000,ds), rolling=cape3dFbm2(x/2600,z/2600,5,S)*2-.72, micro=near>0?cape3dFbm2(x/170,z/170,3,S+101)-.5:0, broad=ds>9000?cape3dFbm2(x/26000,z/26000,4,S+3)*2-.75:0;
+  const ampR=(2.2+22*cape3dSmooth(1200,8000,ds))*(.3+.7*near);
+  let land=.6+3*cape3dSmooth(1500,6000,ds)+ampR*rolling+150*cape3dSmooth(9000,90000,ds)*broad+micro*(2.6+3.4*cape3dSmooth(900,5000,ds))*near;
+  if(ds>60000){ const m=cape3dSmooth(60000,420000,ds)*cape3dSmooth(.38,.62,cape3dFbm2(x/180000,z/180000,3,S+19)); if(m>0) land+=m*(cape3dRidge2(x/52000,z/52000,5,S+7)*1700-180); }
+  if(land<CAPE3D_SEA_Y+1.2) land+=(CAPE3D_SEA_Y+1.2-land)*cape3dSmooth(30000,50000,ds);
+  let h;
+  if(dc<=0){
+    // Seaward: a shelving surf zone with a sandbar ~70 m out, then the continental shelf.
+    const off=-dc; h=CAPE3D_SEA_Y-.15-Math.min(off,150)*.032-Math.max(0,off-150)*.011-Math.min(260,off*off*2e-6)+.55*Math.exp(-Math.pow((off-70)/26,2));
+    h=Math.max(h,-320);
+  } else {
+    // Landward: beach rising off the waterline, a broken line of dunes, then the inland surface.
+    const beach=CAPE3D_SEA_Y-.15+Math.min(1.9,dc*.032);
+    const dune=dc<330?(3.2+4.5*cape3dFbm2(x/90,z/260,3,S+55))*Math.exp(-Math.pow((dc-120)/55,2))*cape3dSmooth(.38,.58,cape3dFbm2(3.7,z/900,2,S+57)):0;
+    h=beach+dune; h+=(land-h)*cape3dSmooth(140,650,dc);
+    // No accidental ponds on the site itself; lakes are allowed further out.
+    const dry=1-cape3dSmooth(2600,5200,ds); if(dc>60&&h<CAPE3D_SEA_Y+.35) h+=(CAPE3D_SEA_Y+.35-h)*dry;
+  }
+  const L=cape3dLagoon(z,coastX), dl=Math.abs(x-L.x)-L.w*.5;
+  if(dl<160) h+=(CAPE3D_SEA_Y-2.4-h)*(1-cape3dSmooth(-60,160,dl));
+  // Graded ground under everything built, with a soft shoulder back into the natural relief.
+  let f=0;
+  const bb=plan&&plan.bbox;
+  if(plan&&(!bb||(x>bb.x0&&x<bb.x1&&z>bb.z0&&z<bb.z1))){
+    for(const r of plan.rects){ const o=Math.hypot(Math.max(0,Math.abs(x-r.x)-r.hx),Math.max(0,Math.abs(z-r.z)-r.hz)), fall=r.kind==='lot'?40:80; if(o<fall) f=Math.max(f,1-cape3dSmooth(0,fall,o)); }
+    for(const s of plan.roads){ const o=Math.max(0,cape3dSegDist(x,z,s[0],s[1])-s[2]*.5-8); if(o<55) f=Math.max(f,1-cape3dSmooth(0,55,o)); }
+    f*=cape3dSmooth(0,20,dc);
+  }
+  h+=(0-h)*f;
+  if(out){ out.h=h; out.f=f; } return h;
+}
+// Ground height for placing things on the land (no curvature: everything placed is near the site).
+function cape3dGroundY(x,z){ const c=cape3dTerrainCtx; if(!c) return 0; return Math.max(CAPE3D_SEA_Y,cape3dTerrainHeight(x,z,c.plan,c.coastX,null)); }
+function cape3dTerrainAxis(center,step,core,midStep,extent){
+  const pos=[]; let s=step, p=0;
+  while(p<extent){ if(p>=core) s=s<midStep?s*1.025:s*1.07; p=Math.min(extent,p+s); pos.push(p); }
+  return pos.slice().reverse().map(v=>center-v).concat([center],pos.map(v=>center+v));
+}
+function cape3dTerrainGeometry(plan,coastX,origin,tierName){
+  const T=CAPE3D_TERRAIN, step=tierName==='low'?20:T.step, xs=cape3dTerrainAxis(T.siteX,step,T.core,T.midStep,T.extent), zs=cape3dTerrainAxis(T.siteZ,step,T.core,T.midStep,T.extent);
+  const nx=xs.length, nz=zs.length, N=nx*nz, H=new Float32Array(N), F=new Float32Array(N), S=new Float32Array(N), pos=new Float32Array(N*3), out={h:0,f:0};
+  const ox=origin?origin.x:T.siteX, oz=origin?origin.z:T.siteZ;
+  for(let j=0;j<nz;j++) for(let i=0;i<nx;i++){ const k=j*nx+i; cape3dTerrainHeight(xs[i],zs[j],plan,coastX,out); H[k]=out.h; F[k]=out.f; }
+  for(let j=0;j<nz;j++) for(let i=0;i<nx;i++){
+    const k=j*nx+i, il=Math.max(0,i-1), ir=Math.min(nx-1,i+1), jd=Math.max(0,j-1), ju=Math.min(nz-1,j+1);
+    // Hollows darken, crests lighten: the heightmap printed into the ground colour as well as the relief.
+    const avg=(H[j*nx+il]+H[j*nx+ir]+H[jd*nx+i]+H[ju*nx+i])*.25, sp=((xs[ir]-xs[il])+(zs[ju]-zs[jd]))*.25;
+    S[k]=1+Math.max(-1,Math.min(1,(H[k]-avg)/(.04*sp+.25)))*.14;
+    const x=xs[i], z=zs[j]; pos[k*3]=x; pos[k*3+1]=Math.max(H[k],CAPE3D_SEA_Y)-cape3dCurveDrop(Math.hypot(x-ox,z-oz)); pos[k*3+2]=z;
+  }
+  const idx=new Uint32Array((nx-1)*(nz-1)*6); let q=0;
+  for(let j=0;j<nz-1;j++) for(let i=0;i<nx-1;i++){ const a=j*nx+i, b=a+1, c=a+nx, d=c+1; idx[q++]=a; idx[q++]=c; idx[q++]=b; idx[q++]=b; idx[q++]=c; idx[q++]=d; }
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',new THREE.BufferAttribute(pos,3)); geo.setAttribute('aH',new THREE.BufferAttribute(H,1)); geo.setAttribute('aFlat',new THREE.BufferAttribute(F,1)); geo.setAttribute('aShade',new THREE.BufferAttribute(S,1));
+  geo.setIndex(new THREE.BufferAttribute(idx,1)); geo.computeVertexNormals(); geo.computeBoundingSphere();
+  geo.userData.grid={nx,nz};
+  return geo;
+}
+const CAPE3D_TERRAIN_GLSL=`
+float tHash(vec2 p){ vec3 p3=fract(vec3(p.xyx)*.1031); p3+=dot(p3,p3.yzx+33.33); return fract((p3.x+p3.y)*p3.z); }
+float tN(vec2 x){ vec2 i=floor(x), f=fract(x); f=f*f*(3.0-2.0*f); return mix(mix(tHash(i),tHash(i+vec2(1,0)),f.x),mix(tHash(i+vec2(0,1)),tHash(i+vec2(1,1)),f.x),f.y); }
+float tFbm(vec2 p){ return .5*tN(p)+.27*tN(p*2.03+5.1)+.15*tN(p*4.07+1.7)+.08*tN(p*8.13+9.3); }`;
+function cape3dTerrainMaterial(opts){
+  const o=opts||{}, col=hex=>new THREE.Color(hex), R=CAPE3D_REGION, coastX=o.coastX;
+  const u={uTime:{value:0},uSea:{value:CAPE3D_SEA_Y},uCoast:{value:coastX},uGround:{value:o.groundTx||null},uGroundReady:{value:0},
+    uRegionA:{value:o.regionA||null},uRegionB:{value:o.regionB||null},uRegionOn:{value:(o.regionA&&o.regionB)?1:0},
+    uRA:{value:new THREE.Vector4(coastX-R.width,R.siteZ-R.depth*.5,R.width,R.depth)},uRB:{value:new THREE.Vector4(coastX-R.nearWidth,R.siteZ-R.nearDepth*.5,R.nearWidth,R.nearDepth)},
+    uGrassA:{value:col(0x5d7f3e)},uGrassB:{value:col(0x7a9450)},uGrassDry:{value:col(0xa59c62)},uForest:{value:col(0x2f4f2a)},uLawn:{value:col(CAPE3D_TERRAIN_STYLE.ground)},
+    uDirt:{value:col(0x7d6a4c)},uRock:{value:col(0x8a8378)},uSandDry:{value:col(0xe3d3a6)},uSandDune:{value:col(0xcdbb8a)},uSandWet:{value:col(0x9d8b66)},uMud:{value:col(0x4f5238)},
+    uShallow:{value:col(0x58b3b0)},uDeep:{value:col(0x0f4a6e)},uLagoonShallow:{value:col(0x5d8f7c)},uLagoonDeep:{value:col(0x2c5f6e)},uFoam:{value:col(0xf3fbfc)},uHazeCol:{value:new THREE.Color(0x9fc0d8)}};
+  const mat=new THREE.MeshStandardMaterial({color:0xffffff,roughness:.96,metalness:0});
+  mat.userData.terrainUniforms=u; mat.userData.capeKeepDepth=true; mat.customProgramCacheKey=()=>'ov-cape-terrain-3';
+  mat.onBeforeCompile=shader=>{
+    Object.assign(shader.uniforms,u);
+    shader.vertexShader=shader.vertexShader
+      .replace('#include <common>','#include <common>\nattribute float aH; attribute float aFlat; attribute float aShade; varying vec3 vTW; varying vec3 vTN; varying float vTH; varying float vTF; varying float vTS;')
+      .replace('#include <begin_vertex>','#include <begin_vertex>\nvTW=(modelMatrix*vec4(transformed,1.0)).xyz; vTN=normalize(mat3(modelMatrix)*objectNormal); vTH=aH; vTF=aFlat; vTS=aShade;');
+    shader.fragmentShader=shader.fragmentShader
+      .replace('#include <common>','#include <common>\nvarying vec3 vTW; varying vec3 vTN; varying float vTH; varying float vTF; varying float vTS;\nuniform float uTime,uSea,uCoast,uGroundReady,uRegionOn; uniform sampler2D uGround,uRegionA,uRegionB; uniform vec4 uRA,uRB;\nuniform vec3 uHazeCol,uGrassA,uGrassB,uGrassDry,uForest,uLawn,uDirt,uRock,uSandDry,uSandDune,uSandWet,uMud,uShallow,uDeep,uLagoonShallow,uLagoonDeep,uFoam;'+CAPE3D_TERRAIN_GLSL)
+      .replace('#include <map_fragment>',`#include <map_fragment>
+        vec2 P=vTW.xz; float dc=uCoast-P.x; float camD=length(vTW-cameraPosition);
+        float n1=tFbm(P/900.0), n2=tFbm(P/140.0+3.1), n3=tN(P/23.0), n4=tFbm(P/4200.0+11.0);
+        float detail=1.0;
+        if(uGroundReady>.5){ vec3 g=texture2D(uGround,P/400.0).rgb*.6+texture2D(uGround,P/131.0+.37).rgb*.4, gm=texture2D(uGround,P/400.0,12.0).rgb;
+          detail=clamp(dot(g,vec3(.3,.59,.11))/max(.04,dot(gm,vec3(.3,.59,.11))),.55,1.5); detail=mix(detail,1.0,smoothstep(2500.0,9000.0,camD)); }
+        detail*=.86+.28*mix(n3,.5,smoothstep(600.0,3000.0,camD));
+        // Fine variation fades with distance (it would shimmer); continental-scale tones take over.
+        float farV=smoothstep(6000.0,45000.0,camD), m1=tFbm(P/26000.0+2.3), m2=tFbm(P/110000.0+7.7);
+        n1=mix(n1,.5,smoothstep(20000.0,70000.0,camD)); n2=mix(n2,.5,smoothstep(2500.0,12000.0,camD));
+        vec3 base=mix(uGrassA,uGrassB,smoothstep(.3,.72,n1));
+        base=mix(base,uGrassDry,smoothstep(.5,.78,n2)*.55);
+        base=mix(base,uForest,smoothstep(.45,.75,mix(n4,.5,smoothstep(15000.0,60000.0,camD)))*.7);
+        base=mix(base,uForest*1.1,smoothstep(.45,.7,m1)*.6*farV);
+        base=mix(base,uGrassDry*.92,smoothstep(.5,.75,m2)*.5*farV);
+        if(uRegionOn>.5){
+          vec2 ua=vec2((P.x-uRA.x)/uRA.z,1.0-(P.y-uRA.y)/uRA.w); if(ua.x>0.0&&ua.x<1.0&&ua.y>0.0&&ua.y<1.0){ vec4 r=texture2D(uRegionA,ua); base=mix(base,r.rgb,r.a*.9); }
+          vec2 ub=vec2((P.x-uRB.x)/uRB.z,1.0-(P.y-uRB.y)/uRB.w); if(ub.x>0.0&&ub.x<1.0&&ub.y>0.0&&ub.y<1.0){ vec4 r=texture2D(uRegionB,ub); base=mix(base,r.rgb,r.a); } }
+        float slope=1.0-clamp(vTN.y,0.0,1.0);
+        base=mix(base,uDirt,smoothstep(.10,.28,slope)*.8);
+        base=mix(base,uRock,clamp(smoothstep(.25,.5,slope)+smoothstep(500.0,1300.0,vTH)*.7,0.0,1.0));
+        base=mix(base,uLawn,vTF*.45);
+        base*=detail;
+        float edge=dc+(n2-.5)*140.0+(n3-.5)*30.0;
+        float sand=1.0-smoothstep(30.0,210.0,edge);
+        sand=clamp(sand+(tN(P/7.0)-.5)*4.8*sand*(1.0-sand),0.0,1.0);
+        base=mix(base,mix(uSandDry,uSandDune,smoothstep(.4,.8,n2))*(.92+.16*n3),sand);
+        float wet=1.0-smoothstep(uSea+.02,uSea+.8,vTH);
+        base=mix(base,mix(uSandWet,uMud,smoothstep(300.0,700.0,dc)),wet*.85);
+        float depth=uSea-vTH, ovWater=smoothstep(0.0,.10,depth), lag=smoothstep(300.0,700.0,dc);
+        vec3 wc=mix(mix(uShallow,uLagoonShallow,lag),mix(uDeep,uLagoonDeep,lag)*(.85+.3*tFbm(P/18000.0+4.0)),smoothstep(.3,mix(8.0,3.0,lag),depth));
+        float near=1.0-smoothstep(1500.0,7000.0,camD);
+        float foam=(1.0-smoothstep(0.0,.5,depth))*(.5+.5*sin(uTime*1.3+dc*.08+n2*6.0));
+        foam+=exp(-pow((-dc-70.0+4.0*sin(uTime*.6+P.y*.01))/9.0,2.0))*(.45+.55*sin(uTime*1.1+P.y*.004+n1*5.0))*(1.0-lag);
+        /* breaking water is streaked along the shore, never blotchy: stretch the breakup noise along the coast */
+        foam*=smoothstep(.42,.75,tN(vec2(P.x/2.5+uTime*.4,P.y/30.0)))*(.6+.4*tN(vec2(P.x/9.0,P.y/90.0)))*near;
+        wc=mix(wc,mix(uSandDry,uSandWet,.5),(1.0-smoothstep(.0,1.6,depth))*.45*(1.0-lag));
+        wc=mix(wc,uFoam,clamp(foam,0.0,1.0)*.75);
+        base=mix(base*mix(vTS,1.0,wet),wc,ovWater);
+        diffuseColor.rgb=base;`)
+      .replace('#include <roughnessmap_fragment>','#include <roughnessmap_fragment>\nroughnessFactor=mix(mix(roughnessFactor,.42,wet*(1.0-ovWater)),.07,ovWater);')
+      .replace('#include <normal_fragment_maps>',`#include <normal_fragment_maps>
+        if(ovWater>.001){ vec2 Q=vTW.xz; float t=uTime, fd=1.0-smoothstep(800.0,9000.0,camD);
+          vec2 w=vec2(sin(Q.x*.06+t*1.3)+.6*sin((Q.x+Q.y)*.078-t*1.7)+.5*(tN(Q*.05+t*.07)-.5), cos(Q.y*.05+t*1.1)+.6*sin((Q.y-.75*Q.x)*.072+t*1.4)+.5*(tN(Q*.05-t*.06+9.0)-.5));
+          vec3 pw=vec3(w.x,0.0,w.y)*.07*ovWater*(.3+.7*fd); normal=normalize(normal+(viewMatrix*vec4(pw,0.0)).xyz); }`).replace('#include <fog_fragment>',`{ vec3 V=normalize(cameraPosition-vTW); float fres=pow(1.0-clamp(V.y,0.0,1.0),4.0);
+          gl_FragColor.rgb=mix(gl_FragColor.rgb,uHazeCol*1.08,fres*ovWater*.55);
+          gl_FragColor.rgb=mix(gl_FragColor.rgb,uHazeCol,(1.0-exp(-camD/110000.0))*.6); }
+        #include <fog_fragment>`);
+  };
+  return mat;
+}
+function cape3dTerrain(root,plan,coastX,origin,opts){
+  const tier=cape3dGraphicsTier(gfxQualityPref()); cape3dTerrainCtx={plan,coastX};
+  const geo=cape3dTerrainGeometry(plan,coastX,origin,tier&&tier.tier), mat=cape3dTerrainMaterial(Object.assign({coastX},opts||{}));
+  const mesh=new THREE.Mesh(geo,mat); mesh.name='cape3d_terrain'; mesh.receiveShadow=true; mesh.castShadow=false; mesh.renderOrder=-2;
+  root.add(mesh); return mesh;
+}
+// --- merging helpers: hundreds of small static parts become one draw call per material -----------------
+function cape3dMergeGeometries(parts){
+  let n=0; const ng=parts.map(p=>{ const g=p.geo.index?p.geo.toNonIndexed():p.geo; n+=g.attributes.position.count; return g; });
+  const pos=new Float32Array(n*3), nor=new Float32Array(n*3), uv=new Float32Array(n*2), anyCol=parts.some(p=>p.color!=null), col=anyCol?new Float32Array(n*3):null, c3=new THREE.Color(); let o=0;
+  ng.forEach((g,i)=>{ const c=g.attributes.position.count; pos.set(g.attributes.position.array.subarray(0,c*3),o*3);
+    if(g.attributes.normal) nor.set(g.attributes.normal.array.subarray(0,c*3),o*3); if(g.attributes.uv) uv.set(g.attributes.uv.array.subarray(0,c*2),o*2);
+    if(col){ c3.set(parts[i].color==null?0xffffff:parts[i].color); for(let k=0;k<c;k++){ col[(o+k)*3]=c3.r; col[(o+k)*3+1]=c3.g; col[(o+k)*3+2]=c3.b; } }
+    o+=c; if(g!==parts[i].geo) g.dispose(); });
+  const out=new THREE.BufferGeometry(); out.setAttribute('position',new THREE.BufferAttribute(pos,3)); out.setAttribute('normal',new THREE.BufferAttribute(nor,3)); out.setAttribute('uv',new THREE.BufferAttribute(uv,2));
+  if(col) out.setAttribute('color',new THREE.BufferAttribute(col,3)); out.computeBoundingSphere(); return out;
+}
+function cape3dBatch(){
+  const byMat=new Map(), m4=new THREE.Matrix4(), q=new THREE.Quaternion(), e=new THREE.Euler(), v=new THREE.Vector3(), s=new THREE.Vector3(1,1,1);
+  const add=(geo,mat,x,y,z,ry,rx,rz)=>{ e.set(rx||0,ry||0,rz||0,'YXZ'); q.setFromEuler(e); m4.compose(v.set(x||0,y||0,z||0),q,s); geo.applyMatrix4(m4); if(!byMat.has(mat)) byMat.set(mat,[]); byMat.get(mat).push(geo); return geo; };
+  return { add,
+    box:(w,h,d,mat,x,y,z,ry)=>add(new THREE.BoxGeometry(w,h,d),mat,x,y,z,ry),
+    cyl:(r,h,mat,x,y,z,seg,rTop,rx,rz)=>add(new THREE.CylinderGeometry(rTop==null?r:rTop,r,h,seg||10),mat,x,y,z,0,rx,rz),
+    sphere:(r,mat,x,y,z,sy)=>{ const g=new THREE.SphereGeometry(r,14,10); if(sy) g.scale(1,sy,1); return add(g,mat,x,y,z); },
+    flush(group,shadow){ byMat.forEach((geos,mat)=>{ const mesh=new THREE.Mesh(cape3dMergeGeometries(geos.map(geo=>({geo}))),mat); mesh.castShadow=shadow!==false; mesh.receiveShadow=true; mesh.userData.batched=true; group.add(mesh); geos.forEach(g=>g.dispose()); }); byMat.clear(); } };
+}
+// --- vegetation: instanced slash pine, live oak, cabbage palm and palmetto scrub -------------------------
+function cape3dTreeGeometries(){
+  if(cape3dTreeGeometries._cache) return cape3dTreeGeometries._cache;
+  const part=(geo,color,x,y,z,rx,ry,rz,sx,sy,sz)=>{ const m=new THREE.Matrix4().compose(new THREE.Vector3(x||0,y||0,z||0),new THREE.Quaternion().setFromEuler(new THREE.Euler(rx||0,ry||0,rz||0)),new THREE.Vector3(sx||1,sy||1,sz||1)); geo.applyMatrix4(m); return {geo,color}; };
+  const bark=0x5a4630, palmBark=0x8a7a5e;
+  const pine=cape3dMergeGeometries([part(new THREE.CylinderGeometry(.22,.42,15,6),bark,0,7.5,0),part(new THREE.IcosahedronGeometry(3.4,0),0x2f4d2b,0,16.5,0,0,0,0,1,.72,1),part(new THREE.IcosahedronGeometry(2.6,0),0x3a5a31,1.1,14.2,.6,0,.6,0,1,.7,1),part(new THREE.IcosahedronGeometry(2.2,0),0x34552e,-.9,18.4,-.5,0,1.1,0,1,.7,1)]);
+  const oak=cape3dMergeGeometries([part(new THREE.CylinderGeometry(.45,.75,5,6),bark,0,2.5,0),part(new THREE.DodecahedronGeometry(4.4,0),0x41622f,0,7.4,0,0,0,0,1.1,.7,1.1),part(new THREE.DodecahedronGeometry(3.4,0),0x4b6c34,2.6,6.4,1.6,0,.5,0,1,.7,1),part(new THREE.DodecahedronGeometry(3.2,0),0x3a5a2b,-2.4,6.6,-1.7,0,1,0,1,.7,1)]);
+  const fronds=[]; for(let i=0;i<8;i++){ const a=i/8*Math.PI*2, c=new THREE.ConeGeometry(.9,6.2,4); c.translate(0,3.1,0); fronds.push(part(c,i%2?0x4f7a34:0x5f873b,Math.cos(a)*.4,9.6,Math.sin(a)*.4,0,-a,Math.PI*.5+.45,1,1,.35)); }
+  // The frond cones are laid outward and drooping: rotate about z, then spin about y to their bearing.
+  const palm=cape3dMergeGeometries([part(new THREE.CylinderGeometry(.28,.38,10,6),palmBark,0,5,0),part(new THREE.SphereGeometry(.7,6,5),0x6a6a3a,0,9.8,0),...fronds]);
+  const scrub=cape3dMergeGeometries([part(new THREE.DodecahedronGeometry(1.5,0),0x56683a,0,.7,0,0,0,0,1.4,.6,1.2),part(new THREE.DodecahedronGeometry(1.1,0),0x627542,1.1,.6,.5,0,.7,0,1.2,.6,1)]);
+  return (cape3dTreeGeometries._cache={pine,oak,palm,scrub});
+}
+function cape3dInstanced(geo,mat,list,shadow){
+  const im=new THREE.InstancedMesh(geo,mat,Math.max(1,list.length)), m=new THREE.Matrix4(), q=new THREE.Quaternion(), up=new THREE.Vector3(0,1,0), p=new THREE.Vector3(), s=new THREE.Vector3(), c=new THREE.Color();
+  list.forEach((t,i)=>{ q.setFromAxisAngle(up,t.rot||0); m.compose(p.set(t.x,t.y,t.z),q,s.set(t.s,t.sy||t.s,t.s)); im.setMatrixAt(i,m); c.setRGB(t.tint,t.tint*(t.g||1),t.tint); im.setColorAt(i,c); });
+  im.count=list.length; im.castShadow=shadow!==false; im.receiveShadow=true; im.instanceMatrix.needsUpdate=true; if(im.instanceColor) im.instanceColor.needsUpdate=true; im.computeBoundingSphere(); return im;
+}
+// The district painter's wooded patches, regenerated from the same seed and the same draw order, so the
+// 3D trees stand exactly where the map shows forest.
+function cape3dRegionWoods(coastX){
+  const R=CAPE3D_REGION, rnd=mulberry(R.seed), gx0=coastX-R.width, gz0=R.siteZ-R.depth*.5, woods=[];
+  for(let i=0;i<340;i++){ const x=gx0+rnd()*R.width, z=gz0+rnd()*R.depth, r=260+rnd()*1500, ci=Math.floor(rnd()*6); rnd(); if(ci<2) woods.push([x,z,r]); }
+  return woods;
+}
+function cape3dVegetation(root,materials,plan,coastX){
+  const g=new THREE.Group(); g.name='cape3d_vegetation'; const G=cape3dTreeGeometries(), mat=new THREE.MeshStandardMaterial({vertexColors:true,roughness:.95,metalness:0});
+  const lists={pine:[],oak:[],palm:[],scrub:[]}, rnd=mulberry(4421), R=CAPE3D_REGION, cx=Number.isFinite(coastX)?coastX:CAPE3D_COAST_X;
+  const put=(kind,x,z,s)=>{ const y=cape3dGroundY(x,z); if(y<=CAPE3D_SEA_Y+.3) return false; lists[kind].push({x,y:y-.25,z,s,rot:rnd()*6.283,tint:.78+rnd()*.38,g:.94+rnd()*.14}); return true; };
+  // On the site: the authored golden-angle scatter, now kept off buildings, lots and roads.
+  for(let i=0;i<170;i++){
+    const a=i*2.399, r=330+(i%14)*92, x=270+Math.cos(a)*r, z=230+Math.sin(a)*r*.72, k=i%5;
+    if(cx-x<230||(Math.abs(x-420)<250&&Math.abs(z-290)<190)||(plan&&cape3dSiteBlocked(plan,x,z,14))) continue;
+    put(k===0?'palm':k<3?'oak':'scrub',x,z,k===0?.9+(i%4)*.12:k<3?.7+(i%4)*.15:1+(i%3)*.4);
+  }
+  // Hammocks: clumps of oak and palm in the open ground around the campus, as on the real coast.
+  for(let c=0;c<70;c++){
+    const a=rnd()*6.283, rr=Math.sqrt(rnd()), hx=R.siteX+Math.cos(a)*rr*R.holeX*.85, hz=R.siteZ+Math.sin(a)*rr*R.holeZ*.85, n=6+Math.floor(rnd()*22), spread=25+rnd()*45;
+    for(let i=0;i<n;i++){ const x=hx+(rnd()-.5)*2*spread, z=hz+(rnd()-.5)*2*spread; if(cx-x<240||(plan&&cape3dSiteBlocked(plan,x,z,16))) continue; const p=rnd(); put(p<.55?'oak':p<.8?'palm':p<.92?'pine':'scrub',x,z,.7+rnd()*.5); }
+  }
+  // The district's woods: trees stand where the map paints forest, out to ~9 km.
+  const woods=cape3dRegionWoods(cx), roadZ=capeWorldPoint(0,ISO_AV).z, mx=R.size/R.width, mz=R.size/R.depth;
+  const inHole=(x,z)=>Math.pow((x-R.siteX)/(R.holeX*.8),2)+Math.pow((z-R.siteZ)/(R.holeZ*.8),2)<1;
+  const open=(x,z)=>{
+    if(cx-x<260||x<cx-6900) return false;                                       /* dunes, and the farm belt */
+    if(Math.abs(x-(cx-7050+260*Math.sin(z/4100)))<45) return false;              /* highway */
+    if(Math.abs(z-roadZ)<170&&x<cx-300) return false;                            /* causeway */
+    if(Math.abs(x-(cx-430))<30||(Math.abs(x-(cx-3600))<30&&z<roadZ)) return false; /* service roads */
+    const tx0=cx-9700, tz0=R.siteZ-2700; if(x>tx0-60&&x<tx0+2360&&z>tz0-60&&z<tz0+4360) return false; /* town */
+    const dx=(x-(cx-3300))*mx, dz=(z-(R.siteZ-4300))*mz, u=dx*Math.cos(-.5)+dz*Math.sin(-.5), v=-dx*Math.sin(-.5)+dz*Math.cos(-.5);
+    if(Math.abs(u)<70*mx*1.6*2.4&&Math.abs(v)<3100*mz*.6) return false;          /* skid strip */
+    const L=cape3dLagoon(z,cx); if(Math.abs(x-L.x)<L.w*.5+70) return false;
+    return !inHole(x,z);
+  };
+  const caps={pine:6500,oak:2600,palm:900};
+  for(let i=0;i<30000;i++){
+    const w=woods[Math.floor(rnd()*woods.length)]; if(!w) break; const a=rnd()*6.283, d=Math.sqrt(rnd())*w[2]*.8, x=w[0]+Math.cos(a)*d, z=w[1]+Math.sin(a)*d, pick=rnd();
+    if(Math.hypot(x-R.siteX,z-R.siteZ)>9000||!open(x,z)) continue;
+    const kind=pick<.64?'pine':pick<.9?'oak':'palm'; if(lists[kind].length>=caps[kind]) continue;
+    put(kind,x,z,.75+rnd()*.55);
+  }
+  // Palmetto and sea-grape scrub on the back dunes and in the open fields around the site.
+  for(let i=0;i<4200&&lists.scrub.length<4000;i++){
+    const dune=i%3!==0, x=dune?cx-80-rnd()*200:R.siteX-3000+rnd()*3800, z=dune?R.siteZ-6000+rnd()*12000:R.siteZ-3000+rnd()*6000;
+    if(!dune&&(!open(x,z)&&!(inHole(x,z)&&!(plan&&cape3dSiteBlocked(plan,x,z,10))))) continue;
+    if(dune&&plan&&cape3dSiteBlocked(plan,x,z,25)) continue;
+    put('scrub',x,z,.7+rnd()*.9);
+  }
+  // Only trees inside the sun's shadow box cast shadows; the district's forest would otherwise be drawn a
+  // second time into a shadow map it never reaches.
+  const casts=t=>Math.abs(t.x-R.siteX)<1100&&Math.abs(t.z-R.siteZ)<1100;
+  ['pine','oak','palm','scrub'].forEach(k=>{ const nearL=lists[k].filter(casts), farL=lists[k].filter(t=>!casts(t));
+    if(nearL.length){ const im=cape3dInstanced(G[k],mat,nearL,k!=='scrub'); im.name='cape3d_trees_'+k; g.add(im); }
+    if(farL.length){ const im=cape3dInstanced(G[k],mat,farL,false); im.name='cape3d_trees_'+k+'_far'; g.add(im); } });
+  g.userData.counts={pine:lists.pine.length,oak:lists.oak.length,palm:lists.palm.length,scrub:lists.scrub.length};
+  root.add(g); return g;
+}
+// Growth that the site plan must leave room for: extra pads and the operations buildings.
+function cape3dGrowthDescriptors(){
+  const out=[];
+  try{
+    const sc=siteScale(), padDef=ISO_BUILDINGS.find(b=>b.key==='pad');
+    for(let i=1;i<sc.pads;i++){ const off=[-2,-1,1,2][i-1]; if(off==null) break; out.push(capeFacilityDescriptor(Object.assign({},padDef,{key:'pad_extra_'+i,gy:padDef.gy+off,h:96}))); }
+    [['leoOps',0x5aa9e0],['lunarOps',0xb9c0c7],['marsOps',0xc1532b]].forEach((entry,i)=>{ if(!sc[entry[0]]) return; const p=capeWorldPoint(2.8+i*1.1,4.5+i*.5); out.push({key:entry[0],type:'ops',color:entry[1],position:p,footprint:{x:82,z:82},height:46}); });
+  }catch(e){}
+  return out;
+}
+// Detail that makes each facility read as a working building: structural bays, a low-bay wing with loading
+// docks, a glazed entrance, rooftop plant, and the hardware particular to each kind of building.
+function cape3dFacilityDetail(g,d,materials){
+  const M=materials&&materials.detail; if(!M) return;
+  const b=cape3dBatch(), w=d.footprint.x, z=d.footprint.z, h=d.height, avenueZ=capeWorldPoint(0,ISO_AV).z, front=avenueZ>=d.position.z?1:-1, r=mulberry(hashStr(String(d.key)));
+  if(d.type==='pad'||d.type==='rivalpad'){
+    const launchX=-w*.18, half=w*.7;
+    // Perimeter fence with a gate where the crawlerway comes in from the west.
+    for(let i=0;i<=Math.round(2*half/7);i++){ const s=-half+i*7; for(const e of [[s,-half],[s,half],[-half,s],[half,s]]){ if(e[0]===-half&&Math.abs(e[1])<20) continue; b.box(.3,3.2,.3,M.fence,e[0],1.6,e[1]); } }
+    for(const zz of [-half,half]) b.box(2*half,.12,.12,M.fence,0,3.1,zz);
+    for(const xx of [-half,half]) for(const seg of xx<0?[[-half,-20],[20,half]]:[[-half,half]]) b.box(.12,.12,seg[1]-seg[0],M.fence,xx,3.1,(seg[0]+seg[1])/2);
+    // LOX and LH2 spheres on legs, piped to the launch mount.
+    const sx=-w*.52;
+    for(const [sz,rad] of [[-z*.5,7.5],[z*.5,9]]){
+      b.sphere(rad,M.white,sx,rad+7,sz); for(let k=0;k<6;k++){ const a=k/6*6.283; b.cyl(.4,rad+7,M.steel,sx+Math.cos(a)*rad*.72,(rad+7)/2,sz+Math.sin(a)*rad*.72,6); }
+      b.box(Math.abs(launchX-w*.1-sx),.9,.9,M.steel,(sx+launchX-w*.1)/2,1.4,sz*.92);
+      b.box(.9,.9,Math.abs(sz*.92)-z*.16,M.steel,launchX-w*.1,1.4,Math.sign(sz)*(Math.abs(sz*.92)+z*.16)/2);
+      for(let x=sx+8;x<launchX-w*.1;x+=9) b.box(.5,1,2.2,M.door,x,.5,sz*.92);
+    }
+    // Flame-trench outlet and the scorched spillway beyond it.
+    b.box(18,5.5,1.2,M.door,launchX,2.8,z*.5+.4); b.box(22,.3,34,M.scorch,launchX,.32,z*.5+17); b.box(30,.25,6,M.scorch,launchX,.3,z*.5+36);
+    // Camera posts at the slab corners, and a blockhouse bunker beside the pad.
+    for(const p of [[-w*.45,-z*.45],[w*.45,-z*.45],[-w*.45,z*.45],[w*.45,z*.45]]){ b.cyl(.35,9,M.steel,p[0],4.5,p[1],6); b.box(1.6,1.2,2.2,M.door,p[0],9.3,p[1]); }
+    const bunker=new THREE.SphereGeometry(9,18,8,0,Math.PI*2,0,Math.PI*.5); bunker.scale(1.3,.8,1); b.add(bunker,M.plinth,-w*.64,0,z*.08); b.box(5,3.2,3,M.door,-w*.64+11.5,1.6,z*.08);
+  } else if(d.type==='dishes'){
+    const count=3;
+    for(let i=0;i<count;i++){ const x=((i-(count-1)/2)/(count||1))*w*.55; b.box(9,3,9,M.plinth,x,h*.22+1.5,0); b.cyl(4.5,2,M.steel,x,h*.22+4,0,16); }
+    b.box(26,6,12,M.white,0,3,z*.4); b.box(26.6,.6,12.6,M.trim,0,6.3,z*.4); for(let i=0;i<3;i++) b.box(8,4,6,M.hvac,-8+i*8,2,z*.4+9);
+    b.box(w*.6,.6,1.2,M.steel,0,h*.22+.8,z*.2);
+  } else if(d.type==='dome'){
+    const R=Math.min(w,z)*.38, y0=h*.18;
+    for(let k=0;k<8;k++){ const arc=new THREE.TorusGeometry(R+.15,.45,4,24,Math.PI); arc.rotateY(k*Math.PI/8); b.add(arc,M.trim,0,y0,0); }
+    for(const f of [.35,.7]){ const ring=new THREE.TorusGeometry(R*Math.cos(Math.asin(f))+.15,.4,4,40); ring.rotateX(Math.PI/2); b.add(ring,M.trim,0,y0+R*f,0); }
+    b.box(16,9,10,materials.glass,0,4.5,front*(z*.5+5)); b.box(22,1,14,M.trim,0,9.5,front*(z*.5+6));
+  } else if(d.type==='ops'){
+    b.box(70,3,70,M.trim,0,47.5,0); b.box(20,6,14,M.hvac,-14,52,10); b.cyl(.4,22,M.steel,18,60,-18,6);
+  } else {
+    const wall=CAPE3D_FACILITY_WALL[d.type]||0x7e9cb3, bays=len=>Math.max(3,Math.round(len/22));
+    // Structural bays: pilasters on every face, and a plinth.
+    for(const s of [-1,1]){
+      const n=bays(w); for(let i=0;i<=n;i++) b.box(1.8,h-3,1.4,M.trim,-w/2+i*w/n,(h-3)/2,s*(z/2+.7));
+      const m=bays(z); for(let i=0;i<=m;i++) b.box(1.4,h-3,1.8,M.trim,s*(w/2+.7),(h-3)/2,-z/2+i*z/m);
+    }
+    b.box(w+2.6,2.2,z+2.6,M.plinth,0,1.1,0);
+    // A low-bay wing on the back with its own glazing and three loading docks.
+    const aw=w*.56, ad=Math.min(z*.12,26), ah=Math.max(9,Math.min(h*.34,24)), ax=-w*.14, az=-front*(z/2+ad/2);
+    const fa=cape3dFacadeMaterial(wall,aw,ah,materials), fb=cape3dFacadeMaterial(wall,ad,ah,materials);
+    g.add(cape3dMesh(new THREE.BoxGeometry(aw,ah,ad),[fb,fb,materials.roof,materials.roof,fa,fa],ax,ah/2,az));
+    b.box(aw+1,1.6,ad+1,M.trim,ax,ah+.8,az);
+    for(let i=0;i<3;i++){ b.box(7,6.5,.8,M.door,ax+aw*(-.3+i*.3),3.3,az-front*(ad/2+.3)); b.box(8.5,.5,3,M.trim,ax+aw*(-.3+i*.3),7.2,az-front*(ad/2+1.5)); }
+    b.box(aw*.9,1.2,5,M.plinth,ax,.6,az-front*(ad/2+2.6));
+    // Glazed entrance with a canopy, facing the avenue.
+    const fz=front*(z/2), ew=Math.min(46,w*.3);
+    b.box(ew,9,7,materials.glass,0,4.5,fz+front*3.5); b.box(ew+12,1,16,M.trim,0,10,fz+front*8);
+    for(const sx of [-1,1]) b.box(.8,9.5,.8,M.steel,sx*(ew/2+5),4.75,fz+front*15);
+    b.box(ew+16,.5,10,M.plinth,0,.25,fz+front*20);
+    // Rooftop plant: packaged units with fans, a duct run, a stair penthouse and a mast.
+    const units=Math.max(2,Math.min(9,Math.round(w*z/3500)));
+    for(let i=0;i<units;i++){ const ux=(r()-.5)*w*.7, uz=(r()-.5)*z*.6; b.box(10,4,7,M.hvac,ux,h+2.2,uz); b.cyl(1.7,.6,M.fan,ux-2.4,h+4.5,uz,12); b.cyl(1.7,.6,M.fan,ux+2.4,h+4.5,uz,12); }
+    b.box(w*.5,1.6,1.6,M.hvac,0,h+1.2,z*.05); b.box(1.6,1.6,z*.4,M.hvac,w*.25,h+1.2,-z*.1);
+    b.box(8,6,8,M.plinth,w*.32,h+3,-z*.3); b.cyl(.35,18,M.steel,w*.32,h+15,-z*.3,6);
+    if(d.type==='lab'){ for(let i=0;i<4;i++) b.cyl(1,12,M.steel,-w*.3+i*6,h+6,z*.28,10); b.cyl(3.2,14,M.white,ax-aw*.5-6,7,az,16); b.sphere(3.2,M.white,ax-aw*.5-6,14,az,.5); }
+    if(d.type==='prod'){
+      for(let i=0;i<4;i++){ const zz=-z*.3+i*z*.2; b.add(new THREE.BoxGeometry(w*.7,.4,8),M.skylight,0,h+3.2,zz,0,-.45); b.box(w*.7,3.4,.6,M.trim,0,h+1.7,zz+3.6); }
+      for(const sx of [-1,1]) b.cyl(1.8,26,M.steel,w*.42*sx,h+13,-z*.38,12);
+      for(let i=0;i<3;i++){ b.cyl(5,12,M.white,w/2+11,6,-z*.3+i*13,16); b.sphere(5,M.white,w/2+11,12,-z*.3+i*13,.35); }
+    }
+    if(d.type==='vab'){
+      for(const s of [-1,1]){ b.box(w+1.6,1.4,1.2,M.trim,0,h*.74,s*(z/2+1)); b.box(1.2,1.4,z+1.6,M.trim,s*(w/2+1),h*.74,0); }
+      b.box(w*.22,h*.28,.6,M.blue,w*.28,h*.6,front*(z/2+1.5)); b.box(w*.22,h*.05,.7,M.white,w*.28,h*.6,front*(z/2+1.6));
+      for(let i=0;i<6;i++) b.box(.6,h*.28,.7,M.white,w*.28-w*.09+i*w*.036,h*.6,front*(z/2+1.55));
+    }
+    if(d.type==='control'){
+      const bowl=new THREE.SphereGeometry(7,20,10,0,Math.PI*2,0,Math.PI*.4); bowl.rotateX(-Math.PI*.6); b.add(bowl,M.white,-w*.25,h+12,z*.2); b.box(3,8,3,M.steel,-w*.25,h+4,z*.2);
+      for(let i=0;i<5;i++) b.cyl(.2,10+i*2,M.steel,w*.1+i*4,h+5+i,-z*.25,5);
+    }
+    if(d.type==='admin'){ for(let i=0;i<3;i++){ const x=-10+i*10, zz=fz+front*30; b.cyl(.25,16,M.steel,x,8,zz,6); b.box(4.8,3,.15,[M.blue,M.white,M.red][i],x+2.5,14.2,zz); } }
+  }
+  b.flush(g,true);
+}
+// Site furniture that ties the campus together: parking lots with cars, a perimeter fence and gatehouse,
+// a water tower and light poles.
+function cape3dSiteExtras(root,plan,materials,coastX){
+  const M=materials.detail, g=new THREE.Group(); g.name='cape3d_site_extras'; const b=cape3dBatch(), rnd=mulberry(7741), cars=[], roadZ=capeWorldPoint(0,ISO_AV).z;
+  for(const lot of plan.lots){
+    b.box(lot.w,.3,lot.d,M.asphalt,lot.x,.15,lot.z);
+    for(let row=-1;row<=1;row+=2) for(let x=-lot.w/2+1.5;x<=lot.w/2-1.5;x+=3){ b.box(.15,.05,5.2,M.stripe,lot.x+x,.33,lot.z+row*(lot.d/2-3.4)); if(x<lot.w/2-3&&rnd()<.72) cars.push({x:lot.x+x+1.5,z:lot.z+row*(lot.d/2-3.4),rot:row>0?0:Math.PI}); }
+    b.box(lot.w-6,.05,.2,M.stripe,lot.x,.33,lot.z);
+    for(const sx of [-1,1]){ b.cyl(.25,10,M.steel,lot.x+sx*lot.w*.3,5,lot.z,6); b.box(2.4,.4,.8,M.door,lot.x+sx*lot.w*.3,10,lot.z); }
+  }
+  // Perimeter fence (west, north and south; the beach is the eastern boundary), with a gate on the avenue.
+  const X0=-262, X1=coastX-210, Z0=-190, Z1=700, post=(x,z)=>{ const y=cape3dGroundY(x,z); b.box(.25,2.6,.25,M.fence,x,y+1.3,z); return y; };
+  const run=(ax,az,bx,bz,gapAt)=>{ const len=Math.hypot(bx-ax,bz-az), n=Math.max(1,Math.round(len/8)); let prev=null;
+    for(let i=0;i<=n;i++){ const x=ax+(bx-ax)*i/n, z=az+(bz-az)*i/n; if(gapAt&&Math.hypot(x-gapAt.x,z-gapAt.z)<18){ prev=null; continue; } const y=post(x,z);
+      if(prev){ const mx=(x+prev.x)/2, mz=(z+prev.z)/2, my=(y+prev.y)/2, l=Math.hypot(x-prev.x,z-prev.z); b.add(new THREE.BoxGeometry(.08,.08,l),M.fence,mx,my+2.5,mz,Math.atan2(x-prev.x,z-prev.z),-Math.atan2(y-prev.y,l)); b.add(new THREE.BoxGeometry(.06,.06,l),M.fence,mx,my+1.2,mz,Math.atan2(x-prev.x,z-prev.z),-Math.atan2(y-prev.y,l)); }
+      prev={x,z,y}; } };
+  run(X0,Z0,X0,Z1,{x:X0,z:roadZ}); run(X0,Z0,X1,Z0,null); run(X0,Z1,X1,Z1,null);
+  // Gatehouse with a canopy over the avenue and a barrier arm.
+  const gx=X0+40, gy=cape3dGroundY(gx,roadZ);
+  b.box(6,4,5,M.white,gx,gy+2,roadZ+13); b.box(6.4,.4,5.4,M.trim,gx,gy+4.2,roadZ+13); b.box(14,1,32,M.trim,gx,gy+7,roadZ+2);
+  for(const s of [-1,1]) b.box(.7,7,.7,M.steel,gx+s*6,gy+3.5,roadZ+17); b.box(.3,.3,11,M.red,gx-3,gy+1.1,roadZ+5);
+  // Water tower in the first open spot.
+  for(const c of [[-150,120],[-160,560],[60,640],[620,650],[300,-150]]){
+    if(cape3dSiteBlocked(plan,c[0],c[1],30)||coastX-c[0]<200) continue; const y=cape3dGroundY(c[0],c[1]), H=34;
+    for(let k=0;k<4;k++){ const a=k/4*6.283+.785; b.add(new THREE.CylinderGeometry(.5,.7,H,6),M.steel,c[0]+Math.cos(a)*4.5,y+H/2,c[1]+Math.sin(a)*4.5,0,-Math.sin(a)*.12,Math.cos(a)*.12); }
+    b.cyl(9,8,M.white,c[0],y+H+4,c[1],20); b.add(new THREE.ConeGeometry(9.2,4,20),M.white,c[0],y+H+10,c[1]); b.cyl(9.1,1.4,M.blue,c[0],y+H+3,c[1],20);
+    break;
+  }
+  b.flush(g,true);
+  if(cars.length){
+    const body=new THREE.BoxGeometry(1.9,1.1,4.5); body.translate(0,.75,0); const cab=new THREE.BoxGeometry(1.7,.75,2.4); cab.translate(0,1.65,-.2);
+    const geo=cape3dMergeGeometries([{geo:body,color:0xffffff},{geo:cab,color:0x3a4650}]);
+    const pal=[[.85,.86,.88],[.12,.13,.15],[.55,.58,.62],[.62,.12,.1],[.15,.25,.48],[.82,.8,.74],[.3,.34,.3]];
+    const im=new THREE.InstancedMesh(geo,new THREE.MeshStandardMaterial({vertexColors:true,roughness:.35,metalness:.45}),cars.length), m=new THREE.Matrix4(), q=new THREE.Quaternion(), up=new THREE.Vector3(0,1,0), p=new THREE.Vector3(), s=new THREE.Vector3(1,1,1), c=new THREE.Color();
+    cars.forEach((car,i)=>{ q.setFromAxisAngle(up,car.rot); m.compose(p.set(car.x,.3,car.z),q,s); im.setMatrixAt(i,m); const k=pal[Math.floor(rnd()*pal.length)]; c.setRGB(k[0],k[1],k[2]); im.setColorAt(i,c); });
+    im.castShadow=true; im.receiveShadow=true; im.name='cape3d_cars'; g.add(im);
+  }
   root.add(g); return g;
 }
 function cape3dFacilityGroup(d, materials){
@@ -2857,6 +3243,7 @@ function cape3dFacilityGroup(d, materials){
     if(d.type==='prod') for(let i=-1;i<=1;i++) cape3dBox(g,w*.2,10,1.2,metal,i*w*.25,h+7,z*.505,false);
     if(d.type==='control') cape3dCylinder(g,2.2,26,metal,0,h+13,0);
   }
+  try{ cape3dFacilityDetail(g,d,materials); }catch(e){}
   return g;
 }
 // Graphics pass 2 (2026-11-16): vehicle realism. Presentation only -- stage count, heights, radii,
@@ -3152,9 +3539,7 @@ function cape3dLandscapeTextureRepeat(layout,metresPerTile){
 }
 function cape3dRoads(materials){
   const g=new THREE.Group(); g.name='cape3d_roads';
-  cape3dRoadSegment(g,capeWorldPoint(-1.2,ISO_AV),capeWorldPoint(6.8,ISO_AV),14,materials.road);
-  for(const b of ISO_BUILDINGS){ if(['pad','rivalpad','dishes'].includes(b.type)) continue; cape3dRoadSegment(g,capeWorldPoint(b.gx,b.gy),capeWorldPoint(b.gx,ISO_AV),7,materials.road); }
-  const route=crawlerRouteGrid(); for(let i=1;i<route.length;i++) cape3dRoadSegment(g,capeWorldPoint(route[i-1][0],route[i-1][1]),capeWorldPoint(route[i][0],route[i][1]),25,materials.crawlerway);
+  for(const r of cape3dRoadPlan()) cape3dRoadSegment(g,r[0],r[1],r[2],r[3]==='crawler'?materials.crawlerway:materials.road);
   return g;
 }
 const cape3dTrajectoryCache=new Map(), cape3dTrajectoryObjectCache=typeof WeakMap!=='undefined'?new WeakMap():null;
@@ -3398,7 +3783,7 @@ function cape3dApplySiteOpacity(objects,opacity){
     const apply=node=>{ const mats=Array.isArray(node&&node.material)?node.material:[node&&node.material]; for(const material of mats){
       if(!material||seen.has(material)) continue; seen.add(material); material.userData=material.userData||{};
       if(material.userData.capeBaseOpacity==null){ material.userData.capeBaseOpacity=material.opacity==null?1:material.opacity; material.userData.capeBaseTransparent=!!material.transparent; material.userData.capeBaseDepthWrite=material.depthWrite!==false; }
-      const transparent=material.userData.capeBaseTransparent||op<.999, depthWrite=op>.995?material.userData.capeBaseDepthWrite:false;
+      const transparent=material.userData.capeBaseTransparent||op<.999, depthWrite=(op>.995||material.userData.capeKeepDepth)?material.userData.capeBaseDepthWrite:false; /* the terrain keeps depth while it fades so its hills still occlude each other */
       if(material.transparent!==transparent){ material.transparent=transparent; material.needsUpdate=true; }
       material.opacity=material.userData.capeBaseOpacity*op; material.depthWrite=depthWrite;
     } };
@@ -3882,7 +4267,7 @@ function cape3dUpdateSplash(splash, q, base){
   if(!splash||!q||!base) return;
   const s=Math.max(0,Math.min(1,q.splashProgress||0)); splash.group.visible=s>0;
   if(s<=0){ splash.spray.forEach(drop=>drop.visible=false); return; }
-  splash.group.position.set(base.x+(q.offsetX||0),-.35,base.z);
+  splash.group.position.set(base.x+(q.offsetX||0),CAPE3D_SEA_Y+.05-cape3dCurveDrop(q.offsetX||0),base.z);
   splash.rings.forEach((ring,i)=>{ const radius=16+i*13+s*(82+i*28); ring.scale.set(radius, radius, 1); ring.material.opacity=(.42-i*.08)*(1-s*.62); });
   splash.spray.forEach((drop,i)=>{
     const d=drop.userData, a=Math.max(0,Math.min(1,(s-d.delay)/(1-d.delay))); drop.visible=a>0;
@@ -4412,28 +4797,32 @@ function cape3dExitFlightPresentation(){
 }
 function buildCape3DScene(scene){
   const root=new THREE.Group(); root.name='cape3d_root'; scene.add(root);
-  const landscape=cape3dLandscapeLayout(), groundRepeat=cape3dLandscapeTextureRepeat(landscape,400), terrainRepeat=cape3dLandscapeTextureRepeat(landscape,1500);
-  const groundTx=cape3dTexture('ground',groundRepeat.x,groundRepeat.y), pavementTx=cape3dTexture('pavement',8,8), concreteTx=cape3dConcreteTexture(5,5), waterTx=cape3dWaterTexture(), terrainTx=cape3dTerrainVariationTexture(terrainRepeat.x,terrainRepeat.y);
+  const landscape=cape3dLandscapeLayout(), coastX=landscape.coastX;
+  const groundTx=cape3dTexture('ground',1,1), pavementTx=cape3dTexture('pavement',8,8), concreteTx=cape3dConcreteTexture(5,5);
   const materials={
-    ground:new THREE.MeshStandardMaterial({color:CAPE3D_TERRAIN_STYLE.ground,map:groundTx,roughness:1}), water:new THREE.MeshPhysicalMaterial({color:0x167599,map:waterTx,roughness:.22,metalness:.08,clearcoat:.45,transparent:true,opacity:.88}), road:new THREE.MeshStandardMaterial({color:0x344047,map:pavementTx,roughness:.93}), crawlerway:new THREE.MeshStandardMaterial({color:0x596163,map:pavementTx,roughness:.86}), concrete:new THREE.MeshStandardMaterial({color:0xc8c0af,map:concreteTx,roughness:.91}), metal:cape3dMaterial(0x6d8792,.55,.6), tank:cape3dMaterial(0xe6eff4,.32,.35), dark:cape3dMaterial(0x18242c,.8,.25), building:cape3dMaterial(0x3d6680,.74,.35), vab:cape3dMaterial(0x315b7c,.7,.4), control:cape3dMaterial(0x0f304d,.63,.45), glass:new THREE.MeshStandardMaterial({color:0x84c8ed,emissive:0x0d2534,roughness:.22,metalness:.15}), dish:cape3dMaterial(0x8fb4c6,.38,.55), dome:cape3dMaterial(0x2b536c,.4,.5),
+    road:new THREE.MeshStandardMaterial({color:0x344047,map:pavementTx,roughness:.93}), crawlerway:new THREE.MeshStandardMaterial({color:0x596163,map:pavementTx,roughness:.86}), concrete:new THREE.MeshStandardMaterial({color:0xc8c0af,map:concreteTx,roughness:.91}), metal:cape3dMaterial(0x6d8792,.55,.6), tank:cape3dMaterial(0xe6eff4,.32,.35), dark:cape3dMaterial(0x18242c,.8,.25), building:cape3dMaterial(0x3d6680,.74,.35), vab:cape3dMaterial(0x315b7c,.7,.4), control:cape3dMaterial(0x0f304d,.63,.45), glass:new THREE.MeshStandardMaterial({color:0x84c8ed,emissive:0x0d2534,roughness:.22,metalness:.15}), dish:new THREE.MeshStandardMaterial({color:0xd5dde2,roughness:.38,metalness:.35,side:THREE.DoubleSide}), dome:cape3dMaterial(0x2b536c,.4,.5),
     roof:cape3dMaterial(0x56646f,.86,.2), apron:new THREE.MeshStandardMaterial({color:0x9a9f9f,map:concreteTx,roughness:.92}), accent:new THREE.MeshStandardMaterial({color:0x0c2c3c,emissive:0x4cc9f0,emissiveIntensity:.3,roughness:.5}), facades:[],
+    detail:{trim:cape3dMaterial(0x8c979e,.7,.35), plinth:new THREE.MeshStandardMaterial({color:0xb9b4a8,map:concreteTx,roughness:.9}), hvac:cape3dMaterial(0xa7afb3,.6,.45), fan:cape3dMaterial(0x23292d,.5,.4), door:cape3dMaterial(0x2b3236,.8,.3), steel:cape3dMaterial(0x9aa4aa,.45,.7), white:cape3dMaterial(0xe9edef,.45,.2), red:cape3dMaterial(0xb3312b,.6,.1), blue:cape3dMaterial(0x1f4f8a,.6,.1), asphalt:new THREE.MeshStandardMaterial({color:0x2d3236,map:pavementTx,roughness:.95}), stripe:cape3dMaterial(0xe7e6df,.8,0), fence:cape3dMaterial(0x7d878c,.6,.6), skylight:new THREE.MeshStandardMaterial({color:0x9fc4d6,roughness:.15,metalness:.3}), scorch:cape3dMaterial(0x2a2724,1,0)},
   };
-  if(waterTx&&waterTx.repeat) waterTx.repeat.set(12000,2000);
-  const ground=cape3dMesh(new THREE.PlaneGeometry(landscape.land.width,landscape.land.depth),materials.ground,landscape.land.centerX,-1,180,false); ground.rotation.x=-Math.PI/2; root.add(ground);
-  const terrain=cape3dMesh(new THREE.PlaneGeometry(landscape.land.width,landscape.land.depth),new THREE.MeshBasicMaterial({map:terrainTx,transparent:true,opacity:CAPE3D_TERRAIN_STYLE.overlayOpacity,depthWrite:false}),landscape.land.centerX,-.72,180,false); terrain.rotation.x=-Math.PI/2; root.add(terrain);
-  const ocean=cape3dMesh(new THREE.PlaneGeometry(landscape.ocean.width,landscape.ocean.depth),materials.water,landscape.ocean.centerX,-.6,370,false); ocean.rotation.x=-Math.PI/2; root.add(ocean);
-  terrain.renderOrder=-2; terrain.material.polygonOffset=true; terrain.material.polygonOffsetFactor=0; terrain.material.polygonOffsetUnits=-1; ocean.renderOrder=2; materials.water.depthWrite=false; const region=cape3dRegion(root,landscape);
-  const shore=cape3dShoreline(root,landscape);
+  // Site plan first: the terrain is graded flat under everything it lists.
+  const descriptors=syncCape3DFromState(), growth=cape3dGrowthDescriptors(), plan=cape3dSitePlan(descriptors.concat(growth),coastX);
+  const padD=descriptors.find(d=>d.key==='pad'), origin=padD?{x:padD.position.x-padD.footprint.x*.18,z:padD.position.z}:null, roadZ=capeWorldPoint(0,ISO_AV).z;
+  const regionA=cape3dRegionTexture(coastX,roadZ,{width:CAPE3D_REGION.width,depth:CAPE3D_REGION.depth,fine:false}), regionB=cape3dRegionTexture(coastX,roadZ,{width:CAPE3D_REGION.nearWidth,depth:CAPE3D_REGION.nearDepth,fine:true});
+  const terrain=cape3dTerrain(root,plan,coastX,origin,{groundTx,regionA,regionB});
+  root.userData.terrainUniforms=terrain.material.userData.terrainUniforms; root.userData.groundTx=groundTx; root.userData.sitePlan=plan;
   const roads=cape3dRoads(materials); root.add(roads);
   const facilities=new THREE.Group(); facilities.name='cape3d_facilities'; root.add(facilities);
-  const descriptors=syncCape3DFromState(); descriptors.forEach(d=>facilities.add(cape3dFacilityGroup(d,materials))); const vegetation=cape3dVegetation(root,materials); root.userData.clouds=cape3dClouds(root); root.userData.practicalLights=[...cape3dPracticalLights(root,descriptors),...cape3dStreetLights(root,materials)]; root.userData.windowMaterial=materials.glass; root.userData.facadeMaterials=materials.facades; root.userData.accentMaterial=materials.accent; root.userData.water=waterTx;
-  const pad=descriptors.find(d=>d.key==='pad'); if(pad){ const rocket=cape3dVehicleMesh(); rocket.position.set(pad.position.x-pad.footprint.x*.18,cape3dLaunchBaseY(rocket),pad.position.z); root.add(rocket); root.userData.launchPad=pad; root.userData.launchRocket=rocket; root.userData.launchBase=rocket.position.clone(); root.userData.launchEffects=cape3dLaunchEffects(rocket); root.userData.groundSmoke=cape3dGroundSmoke(root,rocket.position); root.userData.launchSplash=cape3dSplashEffects(root); root.userData.launchFailure=cape3dFailureEffects(root,rocket,root.userData.launchEffects); root.userData.ascentWorld=cape3dAscentWorld(root,pad,root.userData.launchBase); root.userData.orbitWorld=cape3dOrbitWorld(root); root.userData.transferWorld=cape3dTransferWorld(root); root.userData.reentryWorld=cape3dReentryWorld(root); root.userData.sepPuffs=cape3dSepPuffPool(root); }
-  root.userData.siteObjects=[ground,terrain,ocean,shore,roads,facilities,vegetation]; if(region) root.userData.siteObjects.push(region);
-  // State-driven growth receives simple massing in this slice; detailed variants arrive with the art pass.
+  descriptors.forEach(d=>facilities.add(cape3dFacilityGroup(d,materials))); const vegetation=cape3dVegetation(root,materials,plan,coastX), extras=cape3dSiteExtras(root,plan,materials,coastX);
+  root.userData.clouds=cape3dClouds(root); root.userData.practicalLights=[...cape3dPracticalLights(root,descriptors),...cape3dStreetLights(root,materials)]; root.userData.windowMaterial=materials.glass; root.userData.facadeMaterials=materials.facades; root.userData.accentMaterial=materials.accent;
+  const pad=padD; if(pad){ const rocket=cape3dVehicleMesh(); rocket.position.set(pad.position.x-pad.footprint.x*.18,cape3dLaunchBaseY(rocket),pad.position.z); root.add(rocket); root.userData.launchPad=pad; root.userData.launchRocket=rocket; root.userData.launchBase=rocket.position.clone(); root.userData.launchEffects=cape3dLaunchEffects(rocket); root.userData.groundSmoke=cape3dGroundSmoke(root,rocket.position); root.userData.launchSplash=cape3dSplashEffects(root); root.userData.launchFailure=cape3dFailureEffects(root,rocket,root.userData.launchEffects); root.userData.ascentWorld=cape3dAscentWorld(root,pad,root.userData.launchBase); root.userData.orbitWorld=cape3dOrbitWorld(root); root.userData.transferWorld=cape3dTransferWorld(root); root.userData.reentryWorld=cape3dReentryWorld(root); root.userData.sepPuffs=cape3dSepPuffPool(root); }
+  // One continuous surface (land, beach, lagoon and sea) fades with the rest of the site during ascent.
+  root.userData.siteObjects=[terrain,roads,facilities,vegetation,extras];
+  // State-driven growth: extra pads use the full pad model; operations buildings get simple massing plus detail.
   try{
-    const sc=siteScale(), padDef=ISO_BUILDINGS.find(b=>b.key==='pad');
-    for(let i=1;i<sc.pads;i++){ const off=[-2,-1,1,2][i-1]; if(off==null) break; const extra=capeFacilityDescriptor(Object.assign({},padDef,{key:'pad_extra_'+i,gy:padDef.gy+off,h:96})); facilities.add(cape3dFacilityGroup(extra,materials)); }
-    [['leoOps',0x5aa9e0],['lunarOps',0xb9c0c7],['marsOps',0xc1532b]].forEach((entry,i)=>{ if(!sc[entry[0]]) return; const o=new THREE.Group(), p=capeWorldPoint(2.8+i*1.1,4.5+i*.5); o.position.set(p.x,0,p.z); cape3dBox(o,82,46,82,materials.dark,0,23,0); cape3dCylinder(o,4,5,new THREE.MeshStandardMaterial({color:entry[1],emissive:entry[1],emissiveIntensity:.35}),0,49,0); facilities.add(o); });
+    growth.forEach(d=>{
+      if(d.type==='pad'){ facilities.add(cape3dFacilityGroup(d,materials)); return; }
+      const o=new THREE.Group(); o.position.set(d.position.x,0,d.position.z); cape3dBox(o,82,46,82,materials.dark,0,23,0); cape3dCylinder(o,4,5,new THREE.MeshStandardMaterial({color:d.color,emissive:d.color,emissiveIntensity:.35}),0,49,0); cape3dFacilityDetail(o,d,materials); facilities.add(o);
+    });
   }catch(e){}
   return root;
 }
@@ -4535,7 +4924,7 @@ function cape3dTick(){
   if(cape3d.root&&cape3d.root.userData.facadeMaterials){ const glowI=.01+Math.pow(night,2.4)*1.5; cape3d.root.userData.facadeMaterials.forEach(m=>{ m.emissiveIntensity=glowI; }); }
   if(cape3d.root&&cape3d.root.userData.accentMaterial) cape3d.root.userData.accentMaterial.emissiveIntensity=.22+night*1.5;
   if(cape3d.root&&cape3d.root.userData.windowMaterial) cape3d.root.userData.windowMaterial.emissiveIntensity=.08+night*2.25;
-  const water=cape3d.root&&cape3d.root.userData.water; if(water){ water.offset.x=t*.0025; water.offset.y=t*.0014; }
+  const tu=cape3d.root&&cape3d.root.userData.terrainUniforms; if(tu){ tu.uTime.value=t; if(cape3d.scene.fog) tu.uHazeCol.value.copy(cape3d.scene.fog.color); if(!tu.uGroundReady.value&&cape3dTexReady(cape3d.root.userData.groundTx)) tu.uGroundReady.value=1; }
   const clouds=cape3d.root&&cape3d.root.userData.clouds, cloudFade=(root&&(root.userData.orbitActive||root.userData.reentryActive))?0:(launchActive&&root.userData.launchVisual?root.userData.launchVisual.cloudOpacity:1); /* the orbit/reentry worlds share the origin with the Cape's decor clouds */ if(clouds) clouds.forEach((cloud,i)=>{ cloud.position.x=-1000+((cloud.userData.baseX+1000+t*(.32+(i%3)*.11))%3500); cloud.material.opacity=(.14+(i%3)*.06)*(.38+sunA*.62)*cloudFade; });
   cape3dProjectHotspots();
 }

@@ -7,14 +7,14 @@ newGame('engineer');
 {
   const color=CAPE3D_TERRAIN_STYLE.ground, r=(color>>16)&255, g=(color>>8)&255, b=color&255;
   check('Cape ground tint now leans green rather than sand-only',g>r&&g>b);
-  check('green terrain overlay remains textured instead of becoming a flat lawn',CAPE3D_TERRAIN_STYLE.overlayOpacity>.5&&CAPE3D_TERRAIN_STYLE.overlayOpacity<.8);
-  check('three of every four terrain patches are vegetation-toned',CAPE3D_TERRAIN_STYLE.sandPatchEvery===4);
 }
 
 {
-  const source=cape3dTerrainVariationTexture.toString();
-  check('terrain variation supplies several distinct coastal greens',source.includes('44,91,42')&&source.includes('79,119,55')&&source.includes('103,132,66'));
-  check('terrain variation retains restrained sandy breaks',source.includes('214,191,125'));
+  // Graphics pass 3: the variation overlay became part of the one terrain shader.
+  const source=cape3dTerrainMaterial.toString();
+  check('terrain shader supplies several distinct coastal greens',['uGrassA','uGrassB','uForest','uLawn'].every(k=>source.includes(k)));
+  check('terrain shader retains restrained sandy breaks',source.includes('uSandDry')&&source.includes('uGrassDry'));
+  check('the old transparent variation overlay is gone',typeof cape3dTerrainVariationTexture==='undefined');
 }
 
 check('the live Cape scene no longer constructs an ascent trajectory guide',!buildCape3DScene.toString().includes('launchTrajectory')&&!buildCape3DScene.toString().includes('TrajectoryVisual'));
