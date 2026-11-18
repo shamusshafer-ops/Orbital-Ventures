@@ -1,6 +1,6 @@
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=74; // v74: astronaut trainedAbs — the crew training pipeline (spine step 8). See docs/SAVE-VERSIONS.md.
+const SAVE_VERSION=75; // v75: state.lastDebrief — the post-flight debrief behind the bench's Next-move card. See docs/SAVE-VERSIONS.md.
 // Pre-v62 saves with in-progress flight ownership are rejected rather than assigned a fabricated
 // outcome; ordinary v61 lifecycle records are remapped through the schema-2 factories on load.
 //

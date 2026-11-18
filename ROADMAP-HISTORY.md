@@ -8318,3 +8318,38 @@ The baseline banked 200–250 ⚛ it never spent; science now runs near zero in 
 stays solvent ($1.06–1.20B), so the stall comes from lost progress, not insolvency. Validation:
 `test-spine-step8.js` 35/35; fixtures in `test-era-costs-crash.js` and `test-research-era-gate.js` now bank
 science; full sweep green.
+
+## 2026-11-18 — One-more-launch pass: Last Flight → Next move (Claude)
+
+Found by playing a fresh Engineer campaign in headless Firefox through the first launch and into the second.
+The launch decision was well built (Δv margin, reliability, test campaign, net estimate), but its result was a
+dead end. A success said "+$1.60M, +5 rep, Onward" while the bench had already switched to Sounding Rocket and
+read **Commit unavailable** (13 m/s short; the fix was a 0.1 t change on a 0.1–800 t slider two screens
+down). A failure named its cause ("traced to the propulsion") but offered only a short-term inquiry credit;
+the real fixes (test campaign, reliability research, a specialist) were on other screens. A rolled-out hull
+sat behind a "Commit build" button.
+
+- **Last Flight card** on the Design Bench, above the launch button (`lastFlightCardHTML`, render.js). It is fed
+  by `state.lastDebrief`, which `finalizeLaunch` records via `recordFlightDebrief`: outcome, governing
+  subsystem and phase, reliability flown, story, close call, payout/rep/science, and missions newly flyable.
+  `debriefNextMoves` offers up to three one-click moves with real numbers:
+  - a test campaign, escalating to an uncrewed test flight after a static-fired loss; never one the agency
+    can't pay for and still fly;
+  - the best reliability research for the failed subsystem's tracks, started directly only if
+    build + launch + carry stays in hand (the checklist's reserve formula), else "Plan" (opens R&D on it);
+  - a specialist engineer when that subsystem has none;
+  - on success: a newly opened mission, or the advisor's next research/science/crew step.
+
+  Dismissible. SAVE_VERSION 75. Older saves load with no card.
+- **Resize** (`autoSizePlan`/`applyAutoSize`, sim.js): the smallest 0.1 t propellant change on one stage
+  that closes a Δv shortfall (1% margin, TWR > 1.05, pad limit), cheapest stage wins. It is shown under a
+  Δv-blocked commit, and the success card names it ("13 m/s short — the bench can resize it in one click").
+  Probes always restore state.
+- **Ready hull first:** the bench's primary button flies a finished hull for the bench mission (matching the
+  Space hotkey, which already did); "Or commit another build" stays as a secondary.
+- The failure inquiry now says its credit is short-term and that lasting fixes are under Last flight.
+
+Presentation and planning only; outcomes are untouched. Bot seed 2 to 1962 gives a byte-identical timeline
+and summary before and after. `test-one-more-launch.js` 39/39; full sweep 185/186 + 1 intentional skip.
+Browser-verified on a fresh game (success → resize + static fire → forced failure → remedies → R&D focus)
+and on an older v74 save.

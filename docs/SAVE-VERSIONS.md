@@ -21,6 +21,12 @@ Two things still apply:
   should warn rather than silently misread — that protects against the two-agent workflow, not an
   install base.
 
+## v75 — Post-flight debrief (one-more-launch pass)
+
+Adds `state.lastDebrief` (null until the first flight settles): the last flight's outcome, governing
+subsystem and phase, the reliability it flew at, any close call, its payout/rep/science, the missions it
+opened, and a `dismissed` flag. Older saves load without it and simply show no card until the next flight.
+
 ## v74 — Astronaut training pipeline (spine step 8)
 
 Adds `trainedAbs` (absolute day) to astronaut records in `state.staff`, set on hire to

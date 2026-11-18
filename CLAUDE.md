@@ -49,6 +49,10 @@ new games default to Nominal, which answers weather/live/reserve/orbit calls its
 RULE: `currentEra()` is the WORLD era (calendar or Program-opened frontier) — use `calendarEraIndex()` only
 when you specifically mean the calendar.
 
+**One-more-launch pass (2026-11-18, Claude):** Last Flight → Next move card on the Design Bench
+(`state.lastDebrief`, SAVE_VERSION 75), one-click Δv Resize (`autoSizePlan`), ready hull as the bench's primary
+action. Presentation/planning only — bot byte-identical. Suite: `test-one-more-launch.js`. See ROADMAP-HISTORY.md.
+
 **In progress:** (none claimed right now).
 > When you start a task, replace this line with: `<task> — <Claude|Codex> — started <date>`.
 > When done, clear it back to "(none claimed right now)" and add your entry to the history below.

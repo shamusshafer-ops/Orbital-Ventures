@@ -6946,6 +6946,88 @@ function launchButtonLabel(m,v,sim){
   if(!m) return '■ Build & Launch';
   return launchCommitmentActionView(m,v,sim).label;
 }
+/* ---------- One-more-launch: Last Flight → Next move (2026-11-18) ----------
+   The bench turns state.lastDebrief into what happened, what it earned or opened, and up to three moves
+   that act directly (resize, test campaign, research, hire, select a newly open mission). Every number is
+   read from the systems that will apply it — nothing here changes an outcome. */
+const DEBRIEF_TRACKS={propulsion:['testing','propulsion'], boosters:['testing','propulsion'], structures:['structures','testing','manufacturing'],
+  separation:['testing','manufacturing'], avionics:['guidance','testing'], deep_propulsion:['deepspace','propulsion','testing'],
+  life_support:['crew'], docking:['automation','guidance']};
+function debriefReliabilityResearch(sub){
+  const tracks=DEBRIEF_TRACKS[sub]||['testing'];
+  const c=RESEARCH.filter(r=>!state.research[r.id]&&r.effect&&r.effect.reliability>0&&reqsMet(r)&&researchEraMet(r)&&!(state.activeResearch&&state.activeResearch.id===r.id));
+  c.sort((a,b)=>((tracks.includes(b.track)?1:0)-(tracks.includes(a.track)?1:0)) || (b.effect.reliability/rdCostOf(b))-(a.effect.reliability/rdCostOf(a)));
+  return c[0]||null;
+}
+function debriefSpecialistHire(sub){
+  const specs=SUBSYS_SPECIALISTS[sub]; if(!specs||bestSpecialistSkill(sub)>0) return null;
+  return availablePool().filter(p=>roleOf(p.id)==='eng'&&specs.includes(p.specialty)).sort((a,b)=>a.salary-b.salary)[0]||null;
+}
+// cash to keep back so the agency can still build and fly the bench rocket — the checklist's reserve formula
+function debriefKeepToFly(m){
+  try{ if(!m) return 0; const v=computeVehicle(), carry=(liveRecurringEconomy().expenses||0)*(buildMonths(m)+1);
+    return round2((v.buildCost||0)+(v.launchCost||0)+carry); }catch(e){ return 0; }
+}
+function debriefNextMoves(d){
+  const moves=[]; if(!d) return moves;
+  const add=x=>{ if(x&&moves.length<3) moves.push(x); };
+  let m=null; try{ m=curMission(); }catch(e){}
+  const sub=d.subsystem, subName=(SUBSYS_LABEL[sub]||'vehicle').toLowerCase(), failed=!d.success&&d.kind!=='scrub';
+  /* a Δv shortfall is fixed by the bench's own Resize button directly below this card — not repeated here */
+  let relNow=null; try{ relNow=m?computeVehicle().reliability:null; }catch(e){}
+  const relTarget=m&&m.crew>0?0.80:0.70; /* the same "recommended" bar the Flight plan uses */
+  const wantsTest=failed||(d.nearMiss&&d.nearMiss.margin<0.05)||(relNow!=null&&relNow<relTarget);
+  const keep=debriefKeepToFly(m);
+  let tier=Math.min(TEST_LEVELS.length-1, failed&&(d.testLevel||0)>=1?(d.testLevel||0)+1:1); /* already static-fired and still lost it → the next tier */
+  while(tier>1&&state.money<TEST_LEVELS[tier].cost+keep) tier--; /* never suggest a campaign you can't pay for and still fly */
+  if(state.money<TEST_LEVELS[tier].cost+keep) tier=0;
+  if(wantsTest&&m&&tier>0&&(state.testLevel||0)<tier){ const t=TEST_LEVELS[tier]; add({icon:'🔥', label:`${tier>1?'Fly an uncrewed test of':'Static-fire'} the ${m.name} build`,
+    detail:`+${Math.round(t.rel*100)}% reliability on that flight${relNow!=null?` (${relNow*100|0}% → ${Math.min(diff().relCap,relNow+t.rel)*100|0}%)`:''} · ${fM(t.cost)}, +${t.months} mo`, action:`setTestLevel(${tier})`}); }
+  if(failed){
+    const r=debriefReliabilityResearch(sub);
+    if(r){ const afford=state.money-rdCostOf(r)>=keep, startable=!state.activeResearch&&afford&&sciGateMet(r); /* keep enough to fly again */
+      add({icon:'🔬', label:`${startable?'Research':'Plan'}: ${r.name}`, detail:`+${Math.round(r.effect.reliability*100)}% reliability on every flight · ${fM(rdCostOf(r))}${sciGateCost(r)?` + ${sciGateCost(r)} ⚛`:''} · ${r.months} mo${startable?'':state.activeResearch?' — after the current project':!afford?` — start it once you can still keep ${fM(keep)} to fly again`:''}`,
+        action:startable?`buyResearch('${r.id}')`:`selectResearch('${r.id}');setTab('rnd')`}); }
+    const e=debriefSpecialistHire(sub);
+    if(e) add({icon:'👷', label:`Hire ${e.name}`, detail:`${e.specialty} engineer — your ${subName} has no specialist · ${fM(e.salary)}/mo`, action:`hirePersonnel('${e.id}')`});
+  }else{
+    const open=(d.opened||[]).map(id=>missionById(id)).filter(x=>x&&(!m||x.id!==m.id))[0];
+    if(open) add({icon:'★', label:`Now open: ${open.name}`, detail:`${fM(open.payout)} · +${open.rep} rep — this flight's reputation unlocked it`, action:`selectMission('${open.id}')`});
+    try{ const rec=recommendedAction(); if(rec&&/^(research|science|crew|tracking)$/.test(rec.kind)) add({icon:'➜', label:rec.title, detail:rec.detail, action:advisorClick(rec)}); }catch(e){}
+  }
+  return moves;
+}
+// the success card's "what next": the mission now on the bench and whether the rocket you just flew fits it
+function resizeCostText(p){ return fM(p.cost)===fM(p.costBefore)?`build cost unchanged (${fM(p.cost)})`:`build ${fM(p.costBefore)} → ${fM(p.cost)}`; }
+function nextBenchLineHTML(){
+  let m=null, line='';
+  try{ m=curMission(); if(!m||state.completed[m.id]&&!m.proc) return '';
+    const v=computeVehicle(), sim=m.profile?simulateMission(m):null, chk=canLaunch(v,m,sim);
+    if(chk.ok) line='your rocket can fly it — commit the build on the bench';
+    else{ const p=!m.profile&&/Δv shortfall/.test(chk.why||'')?autoSizePlan(m):null;
+      line=p&&p.ok?`${fI(p.need-p.dvBefore)} m/s short — the bench can resize it in one click, ${resizeCostText(p)}`:esc(chk.why||''); }
+  }catch(e){ return ''; }
+  return `<p style="font-size:12px;margin:6px 0 10px;text-align:center"><span class="dim">Next on the bench:</span> <b>${esc(m.name)}</b> · ${fM(m.payout)} — ${line}</p>`;
+}
+function lastFlightCardHTML(){
+  const d=state.lastDebrief; if(!d||d.dismissed) return '';
+  const failed=!d.success&&d.kind!=='scrub', col=d.success?'var(--ok)':failed?'var(--bad)':'var(--warn)';
+  const sub=d.subsystem?(SUBSYS_LABEL[d.subsystem]||d.subsystem):null;
+  const verdict=d.success?(d.first?'first success':'success'):d.kind==='partial'?`partial — ${sub||'off-target'}`:d.kind==='scrub'?'aborted in flight':`${(sub||'vehicle').toLowerCase()} failure${d.phase?` · ${d.phase}`:''}`;
+  const gains=[d.revenue>0?`<span style="color:var(--ok)">+${fM(d.revenue)}</span>`:'', d.rep?`<span style="color:${d.rep>0?'var(--readout)':'var(--bad)'}">${d.rep>0?'+':''}${d.rep} rep</span>`:'', d.sci>0?`+${Math.round(d.sci)} ⚛`:''].filter(Boolean).join(' · ');
+  const why=failed&&d.story?`<div style="font-size:12px;margin-top:4px;color:var(--ink)">${esc(d.story)}</div>`
+    :(d.success&&d.nearMiss&&d.nearMiss.margin<0.05?`<div style="font-size:12px;margin-top:4px;color:var(--warn)">Close call — the ${esc(String(d.nearMiss.label||'').toLowerCase())} came within ${Math.max(1,Math.round(d.nearMiss.margin*100))}% of failing.</div>`:'');
+  const moves=debriefNextMoves(d);
+  const busy=(()=>{ try{ const m=curMission(); return !!(m&&[...buildQueueList(),...hangarList()].some(h=>h&&h.missionId===m.id)); }catch(e){ return false; } })();
+  const moveBtns=moves.map(x=>`<button class="btn" style="display:block;width:100%;text-align:left;margin-top:5px;font-size:12px;padding:6px 8px" onclick="${x.action}"><b>${x.icon} ${esc(x.label)}</b><br><span class="dim" style="font-size:11px">${esc(x.detail)}</span></button>`).join('');
+  return `<div id="lastFlightCard" class="last-flight" style="border:1px solid ${col};border-left-width:3px;background:var(--panel2);border-radius:4px;padding:8px 10px;margin-bottom:8px;text-align:left">
+    <div style="display:flex;justify-content:space-between;align-items:center;font:11px var(--mono);letter-spacing:.08em;color:var(--dim)">LAST FLIGHT · ${dayToDate(d.abs)}<button class="btn ghost" style="padding:0 6px;font-size:11px" onclick="dismissDebrief()" title="Dismiss">✕</button></div>
+    <div style="font-weight:700;color:${col};margin-top:2px">${d.success?'✓':failed?'✗':'△'} ${esc(d.name)} — ${verdict}</div>
+    <div class="dim" style="font:11px var(--mono);margin-top:2px">flew at ${Math.round((d.rel||0)*100)}% reliability${gains?' · '+gains:''}</div>
+    ${why}
+    ${moves.length&&!busy?`<div style="font:11px var(--mono);letter-spacing:.08em;color:var(--dim);margin-top:7px">NEXT MOVE</div>${moveBtns}`:''}
+  </div>`;
+}
 function renderBenchLaunch(){
   const host=$('benchLaunch'); if(!host) return;
   let m,v,sim,chk;
@@ -6965,9 +7047,18 @@ function renderBenchLaunch(){
       <div style="display:flex;justify-content:space-between;font-size:11px;font-family:var(--mono)"><span class="dim">PAD LOAD</span><span style="color:${padUse>1?'var(--bad)':padUse>0.85?'var(--warn)':'var(--muted)'}">${v.liftoff.toFixed(0)} / ${cap} t</span></div>
       <div style="height:4px;background:var(--panel2);border-radius:2px;overflow:hidden"><div style="height:100%;width:${Math.min(100,padUse*100)}%;background:${padUse>1?'var(--bad)':padUse>0.85?'var(--warn)':'var(--readout)'}"></div></div>
     </div>` : '';
-  host.innerHTML=`<button class="launch" style="width:100%" onclick="launch(false,null,'${launchAction.id}')" ${actionButtonAttrs(launchAction)}>${chk.ok?launchLabel:'Commit unavailable'}</button>
+  /* one-more-launch: a finished hull for this mission flies first; a Δv shortfall offers the exact resize */
+  const readyRec=hangarFor(m)[0], readyView=readyRec?readyHullActionView(readyRec):null;
+  const sizePlan=!chk.ok&&!readyView&&/Δv shortfall/.test(chk.why||'')?autoSizePlan(m):null;
+  const primaryHTML=readyView
+    ? `<button class="launch" style="width:100%" onclick="launchFromHangar('${readyRec.id}','${readyRec.hullId}','${readyView.action.id}')" ${actionButtonAttrs(readyView.action)}>${readyView.check.ok?readyView.label:'Hull grounded'}</button>
+       ${readyView.check.ok?`<div class="dim" style="font-size:12px;text-align:center;margin-top:4px">${esc(readyRec.hullId)} is built and waiting in the hangar</div>`:`<div class="flag dim" style="color:var(--dim);margin-top:4px">${readyView.check.why}</div>`}
+       <button class="btn ghost" style="width:100%;margin-top:6px;font-size:12px" onclick="launch(false,null,'${launchAction.id}')" ${actionButtonAttrs(launchAction)}>${chk.ok?'Or commit another build — '+fM(quote.cashNow)+' now':'Another build unavailable'}</button>`
+    : `<button class="launch" style="width:100%" onclick="launch(false,null,'${launchAction.id}')" ${actionButtonAttrs(launchAction)}>${chk.ok?launchLabel:'Commit unavailable'}</button>
     ${quoteStages}
     ${chk.ok?'<div class="dim" style="font-size:12px;text-align:center;margin-top:4px">or press <b>Space</b></div>':`<div class="flag dim" style="color:var(--dim);margin-top:4px">${chk.why}</div>`}
+    ${sizePlan&&sizePlan.ok?`<button id="benchResize" class="btn" style="width:100%;margin-top:6px;font-size:12px;border-color:var(--readout);color:var(--readout)" onclick="applyAutoSize()">⚙ Resize: stage ${sizePlan.stage+1} propellant ${sizePlan.from.toFixed(1)} → ${sizePlan.to.toFixed(1)} t<br><span class="dim" style="font-size:11px">${fI(sizePlan.dv)} of ${fI(sizePlan.need)} m/s · ${resizeCostText(sizePlan)}</span></button>`:''}`;
+  host.innerHTML=`${lastFlightCardHTML()}${primaryHTML}
     <div class="dim" style="font-size:11px;text-align:center;margin-top:3px" title="${esc(LAUNCH_POLICIES[launchPolicy()].tip)} In-flight anomalies always ask. Change it in Menu.">Launch calls: <b style="color:var(--ink)">${LAUNCH_POLICIES[launchPolicy()].label}</b> · <a href="#" onclick="cycleLaunchPolicy();return false" style="color:var(--readout)">change</a></div>
     ${launchPadCap()>1?`<div class="dim" style="font-size:11px;text-align:center;margin-top:2px">Pads: ${padSlotsLeft()}/${launchPadCap()} free this month</div>`:''}
     ${damagedPadCount()>0?`<div class="dim" style="font-size:11px;text-align:center;margin-top:2px;color:var(--warn)" title="A catastrophic ascent loss damages the pad it flew from">⚠ ${damagedPadCount()} pad${damagedPadCount()===1?'':'s'} under repair</div>`:''}

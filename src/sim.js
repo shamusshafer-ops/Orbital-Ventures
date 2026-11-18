@@ -26,7 +26,7 @@ function createFreshState(difficulty){
     log:[], annals:[], rivalFired:{}, scooped:{}, rivalThreat:{}, rivalState:{}, rivalLead:0, bailouts:0,
     staff:[], assignedAstronaut:null, persEventCooldown:5, proceduralStaffDefs:[],
     departments:defaultDepartments(), // #19: org layer over hired staff (per-dept lead + training)
-    econEvents:[], eventCooldown:6, pgmRoyalty:0, launchPolicy:'nominal', reflights:{}, review:null, serviceDelivered:0, procDelivered:0, // spine step 2: absMonth of each recent paid re-flight, per mission
+    econEvents:[], eventCooldown:6, pgmRoyalty:0, launchPolicy:'nominal', reflights:{}, review:null, lastDebrief:null, serviceDelivered:0, procDelivered:0, // spine step 2: absMonth of each recent paid re-flight, per mission
     passiveContracts:[], contractCooldown:{}, contractSignings:{}, engineHeritage:{}, // passive-income contracts (repeatable + cooldown + diminishing)
     publicSupport:SUPPORT_BASE, // #8: program politics — public mood dial
     production:{bays:1,foundry:1,pads:1,qa:1}, // #7: manufacturing capacity — leveled production lines
@@ -721,6 +721,7 @@ function showInquiryModal(){
   showModal(`<h2 style="color:var(--bad)">⚠ Failure inquiry</h2>
     <p><b>${s.mName}</b> — the loss traced to the ${s.subLabel.toLowerCase()}.</p>
     <p class="muted">A funded inquiry turns this failure into hard data.</p>
+    <p class="dim" style="font-size:12px">The inquiry's credit is short-term. Lasting fixes (a test campaign, reliability research, a specialist engineer) are under <b>Last flight</b> on the Design Bench.</p>
     <button class="btn" onclick="resolveInquiry('fund')" ${fundOk?'':'disabled'} title="${fundOk?'':'Not enough capital'}">Fund the inquiry — ${fM(s.cost)} <span class="dim">· ${rewardTxt}</span></button>
     <button class="btn ghost" style="margin-top:8px" onclick="resolveInquiry('decline')">Move on <span class="dim">· free, no findings</span></button>`);
 }
@@ -1168,7 +1169,7 @@ function showMilestoneModal(m, payout, rep){
     const e=frontPages()[0];
     showModal(`${frontPageHTML(e, true)}
     ${hist?`<p class="muted" style="font-family:Georgia,'Times New Roman',serif;font-size:13px;text-align:center;margin:8px 0">${hist[1]}</p>`:''}
-    ${strip}
+    ${strip}${nextBenchLineHTML()}
     <button class="btn launch" style="width:100%" onclick="hideModal()">Onward ▸</button>`, 'newspaper');
     return;
   }
@@ -1178,7 +1179,7 @@ function showMilestoneModal(m, payout, rep){
     <div class="dim" style="font-family:var(--mono);font-size:12px;margin-bottom:10px">${dateStr()} · Era ${eraIndex(currentEra())+1}: ${currentEra().name}</div>
     ${race?`<p style="font-size:13px;margin:8px 0">${race}</p>`:''}
     ${hist?`<p class="muted" style="font-size:12px;margin:8px 0">${hist[1]}</p>`:''}
-    ${strip}
+    ${strip}${nextBenchLineHTML()}
     <button class="btn launch" onclick="hideModal()">Onward ▸</button>
   </div>`);
 }
@@ -7810,6 +7811,7 @@ function finalizeLaunch(ctx, ops){
     _pendingRescue={ctx, ops, outcome}; showRescueModal(ctx, outcome); return;
   }
   _launchMutationDepth++;
+  const _debriefBefore=debriefSnapshot(); /* one-more-launch debrief: what this flight changed */
   if(tx){
     tx.outcome=plainRecord(outcome);
     // Preserve durable transaction-owner metadata (for example Gate 3's
@@ -8045,6 +8047,7 @@ function finalizeLaunch(ctx, ops){
   if(!crewed && (outcome.kind==='loss'||outcome.kind==='abort'||outcome.kind==='strand') && outcome.subsystem) triggerInquiry(ctx, outcome);
   recordFlightLedger(flightRevenue, flightExpense); // #18: attribute this flight to the current month's ops summary
   if(tx) tx.applied.ledger=true;
+  recordFlightDebrief(ctx, outcome, _debriefBefore, flightRevenue, tx&&tx.spec&&tx.spec.testLevel!=null?tx.spec.testLevel:state.testLevel);
   state.testLevel=0; // campaign applies to one flight
   state.rehearsal=false; // #20 slice 4: rehearsal applies to one flight
   state.depotUse=0;
@@ -8295,6 +8298,62 @@ function firstUnlocked(){return Object.keys(ENGINES).find(k=>state.unlocked[k])|
 function setEngine(i,v){if(!guardOrdinaryAction('Vehicle redesign')) return false;state.stages[i].eng=v;render();}
 function setCount(i,d){
   if(!guardOrdinaryAction('Vehicle redesign')) return false;try{ sfxThunk(); }catch(e){}state.stages[i].count=Math.max(1,Math.min(8,state.stages[i].count+d));render();}
+/* ---------- One-more-launch: the flight debrief (2026-11-18) ----------
+   Every settled flight leaves state.lastDebrief: what happened (outcome, the subsystem that governed it,
+   the reliability it flew at, a close call on a success), what it earned (payout, rep, science) and what it
+   opened (missions that became flyable). The Design Bench turns it into up to three concrete next moves
+   (debriefNextMoves in render.js). Presentation and planning only: it never changes an outcome. */
+function debriefSnapshot(){
+  let flyable=[]; try{ flyable=MISSIONS.filter(x=>!state.completed[x.id]&&missionFlyable(x)).map(x=>x.id); }catch(e){}
+  return {money:state.money, rep:state.rep, sci:state.science||0, flyable};
+}
+function recordFlightDebrief(ctx, outcome, before, revenue, testLevel){
+  if(!ctx||!ctx.m||!outcome) return null;
+  const m=ctx.m, after=debriefSnapshot(), kind=outcome.kind||'success';
+  const nm=outcome.nearMiss;
+  state.lastDebrief={v:1, abs:absDay(), missionId:m.id, name:m.name, kind, success:kind==='success',
+    subsystem:outcome.subsystem||null, phase:outcome.failPhase||(outcome.subsystem?livePhaseOf(outcome.subsystem):null),
+    rel:Math.round((outcome.rel||0)*1000)/1000, story:outcome.story?String(outcome.story).slice(0,240):null,
+    nearMiss:nm?{key:nm.key, label:nm.label, margin:Math.round((nm.margin||0)*1000)/1000}:null,
+    first:!ctx.routine&&kind==='success', crewed:!!ctx.crewed, testLevel:testLevel||0,
+    revenue:round2(revenue||0), rep:Math.round(after.rep-((before&&before.rep)||0)), sci:round2(after.sci-((before&&before.sci)||0)),
+    opened:after.flyable.filter(id=>id!==m.id&&!((before&&before.flyable)||[]).includes(id)), dismissed:false};
+  return state.lastDebrief;
+}
+function dismissDebrief(){ if(state.lastDebrief){ state.lastDebrief.dismissed=true; render(); } }
+/* Bench "Resize": the smallest propellant change on one stage that closes a Δv shortfall (1% margin) while
+   keeping TWR > 1.05 and the pad limit — the stage that does it for the lowest build cost wins. A planning
+   aid; the player still decides whether to commit. Probes candidate loads on state and always restores. */
+const AUTOSIZE_MARGIN=1.01, AUTOSIZE_MIN_TWR=1.05;
+function autoSizePlan(m){
+  m=m||curMission();
+  if(!m||m.profile) return {ok:false, why:'Multi-leg missions are sized leg by leg on the bench.'};
+  const need=effectiveReqDv(m), v0=computeVehicle();
+  if(v0.totalDv>=need) return {ok:false, fits:true, why:'This rocket already has the Δv.'};
+  const cap=padMassCap(), orig=state.stages.map(s=>s.prop); let best=null;
+  const probe=(i,p)=>{ state.stages[i].prop=p; const v=computeVehicle(); return {v, ok:v.totalDv>=need*AUTOSIZE_MARGIN&&v.twr>AUTOSIZE_MIN_TWR&&v.liftoff<=cap}; };
+  try{
+    for(let i=state.stages.length-1;i>=0;i--){
+      const p0=orig[i]; let hi=p0, r=null;
+      for(let k=0;k<20&&hi<1000;k++){ hi=Math.min(1000, hi*1.4+0.1); r=probe(i,hi); if(r.ok) break; }
+      if(!r||!r.ok){ state.stages[i].prop=p0; continue; }
+      let lo=p0; for(let k=0;k<32;k++){ const mid=(lo+hi)/2; if(probe(i,mid).ok) hi=mid; else lo=mid; }
+      const to=Math.ceil(hi*10-1e-9)/10, fin=probe(i,to);
+      state.stages[i].prop=p0;
+      if(fin.ok&&(!best||fin.v.buildCost<best.cost)) best={stage:i, from:p0, to, dv:fin.v.totalDv, cost:fin.v.buildCost, twr:fin.v.twr, rel:fin.v.reliability};
+    }
+  } finally { orig.forEach((p,i)=>{ if(state.stages[i]) state.stages[i].prop=p; }); }
+  if(!best) return {ok:false, why:'More propellant alone can’t close the gap — add an engine or a stage.'};
+  return Object.assign({ok:true, missionId:m.id, need, dvBefore:v0.totalDv, costBefore:v0.buildCost}, best);
+}
+function applyAutoSize(){
+  if(!guardOrdinaryAction('Vehicle redesign')) return false;
+  const p=autoSizePlan(); if(!p.ok) return false;
+  const m=missionById(p.missionId);
+  log('note',`Resized for ${m?m.name:'this mission'}: stage ${p.stage+1} propellant ${p.from.toFixed(1)} → ${p.to.toFixed(1)} t (Δv ${Math.round(p.dvBefore).toLocaleString()} → ${Math.round(p.dv).toLocaleString()} m/s, build ${fM(p.costBefore)} → ${fM(p.cost)}).`);
+  setProp(p.stage, p.to);
+  return true;
+}
 function setProp(i,v){if(!guardOrdinaryAction('Vehicle redesign')) return false;state.stages[i].prop=Math.max(0.1,Math.min(1000,parseFloat(v)||0.1));render();}
 function setStageDia(i,v){ if(!guardOrdinaryAction('Vehicle redesign')) return false;if(!state.stages[i])return; state.stages[i].dia=clampA(parseFloat(v)||1,GEO_DIA_MIN,GEO_DIA_MAX); render(); } // BC3: per-stage diameter
 // Bench customization slice 1: livery controls (cosmetic only)
