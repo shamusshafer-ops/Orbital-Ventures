@@ -8444,3 +8444,41 @@ failure the button and verdict stay above the fold (538 / 586 px); the block's l
 Tests: new `test-failure-learning.js` 37/37 (mutation-checked: truth/belief split, redesign). Inquiry references
 removed from `test-rivals-e11`, `test-sample-decision`, `test-station-slice2`, the reorganization foreground and
 the save validator. Full sweep 188/189 + 1 intentional skip. SAVE_VERSION 76.
+
+## 2026-11-18 — Decision-loop roadmap Phase 3: a tech tree that changes how you play (Claude)
+
+Owner review first (AskUserQuestion): convert + label, no merges; all four groups of options; gating allowed.
+Measured going in: of 98 nodes ~30 added engines/unlocks, ~50 only moved a number, 14 had no effect field.
+
+Twelve nodes now add an option. They **keep their old numbers** — two earlier tree passes merged +2% nodes
+into these "substantial steps" and pinned them in tests, and Flight Computers is a leveled tech; stripping
+numbers would have undone that and swung balance. Each option reads `state.research.<id>` where it acts:
+
+| Node | New option |
+|---|---|
+| Engine Test Stands (0) | failure telemetry: investigation inspections half price, ~10 days |
+| Flight Qualification (1) | unlocks the uncrewed test-flight campaign (`testLevelUnlocked`) |
+| Autonomous Test Program (4) | integrated testing half price, 5 flights |
+| Digital Computer (2) | abort to orbit: 40% of upper-stage/staging losses on orbital missions → partial |
+| Redundant Avionics (3) | engine-out capability (was free; now gated) |
+| Autonomous Navigation (4) | a third anomaly call: the autonomous navigator (85% clean) |
+| AI Mission Management (5) | takes anomaly calls itself (prefers the navigator) |
+| Station Keeping (3) | unlocks the Docking Node (stations past 4 modules) |
+| Large Space Stations (3) | Docking Nodes carry 5 ports |
+| Modular Design (2) | a second build line |
+| Fleet Autonomy (6) | +1 launch a month |
+| Megastructure Construction (7) | no station port limit |
+
+Concrete Pads, Flame Trenches and the Mobile Service Tower already gated the pad mass limit; they now say so
+(`gate`). `researchKind()` labels every node Engine / Unlock / New option / Improvement / Stepping stone; the
+tooltip and detail panel show the label and the option, and option nodes get a ★ in the tree. Totals: 12
+options, 27 unlocks, 15 engines, 41 improvements, 3 stepping stones; eras 0–6 each have ≥2 option/unlock nodes.
+
+Bot pace vs HEAD (8 seeds, to 1975): research nodes 18.7→18.7 (1950), 29.9→29.7 (1960), 34.6→35.3 (1970),
+37.0→38.4 (1975, +3.8%); firsts 6.0→6.1; bankrupt 1/8 both. Within the ±10% target. Firefox: R&D detail on
+Flight Computers shows "New option" and the abort-to-orbit line.
+
+Tests: new `test-tech-options.js` 37/37 (mutation-checked on abort to orbit). Updated for the new gates:
+`test-station-slice1` (Docking Node locked first), `test-one-more-launch` (no step-up to a locked test flight),
+the dev station preset grants Station Keeping, the tree star uses `style="fill:…"` (themeable-surfaces ceiling).
+Full sweep 189/190 + 1 intentional skip. No save change.

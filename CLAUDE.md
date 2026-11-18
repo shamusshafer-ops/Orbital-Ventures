@@ -62,7 +62,11 @@ RULE: don't re-add launch inputs elsewhere on the bench's left column — extend
 (SAVE_VERSION 76): the P3 inquiry modal/`inquiryCredit` are GONE; failures open `state.investigations` (hidden
 `state.flaws`, displayed `state.flawBelief`, `subsysTrim`, `subsysTest`), shown by `investigationsHTML()` on the bench.
 RULE: reliability shown anywhere uses BELIEF; only `resolveFlight` (wrapper → `resolveFlightCore`) sets `_hazardTruth`.
-Never read `state.flaws` in UI code. Suite: `test-failure-learning.js`. Next: Phase 3 — needs an owner design review first.
+Never read `state.flaws` in UI code. Suite: `test-failure-learning.js`. Phase 3 done: RESEARCH nodes may carry
+`option` (a new action; R&D shows ★) or `gate` text; `researchKind(r)` labels every node. The 12 option mechanics
+read `state.research.<id>` at their point of use (search "Phase 3"). RULE: the uncrewed test flight needs
+`testLevelUnlocked(2)`; engine-out needs Redundant Avionics; the Docking Node needs Station Keeping. Suite:
+`test-tech-options.js`. Next: Phase 4a (bot builds a LEO station + resupply).
 
 **In progress:** (none claimed right now).
 > When you start a task, replace this line with: `<task> — <Claude|Codex> — started <date>`.

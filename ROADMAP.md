@@ -1952,12 +1952,21 @@ Recommended order: 0 → 1 → 2 → 3 → 4a → 4b → 4c → 5. Phase 3 gets 
   rate 17.3% vs 20.4% at HEAD (ignoring: 20.6%), +3.5 research nodes, +47 rep; repeat-subsystem 2.7 vs 3.6 ignoring.)*
 
 ### Phase 3 — A tech tree that changes how you play
-- [ ] Two or three nodes per era that open a new action (e.g. integrated vehicle test, abort modes that
+- [x] Two or three nodes per era that open a new action (e.g. integrated vehicle test, abort modes that
   turn a crewed loss into a partial, booster recovery, parallel build bays, a new mission profile,
-  telemetry that makes failure causes certain).
-- [ ] Fold flat stat bumps into fewer, larger nodes named for what they let you do; make the 14
+  telemetry that makes failure causes certain). *(2026-11-18, owner review: convert + label, all four groups,
+  gating OK. 12 nodes add an option and keep their old number: failure telemetry, test-flight unlock,
+  autonomous testing, abort to orbit, engine-out gate, autonomous-navigator anomaly call, AI anomaly calls,
+  Docking Node gate, 5-port nodes, a second build line, +1 launch/month, no port limit.)*
+- [x] Fold flat stat bumps into fewer, larger nodes named for what they let you do; make the 14
   effect-less nodes visibly gates or remove them; tag nodes "new option" vs "improvement" in R&D.
+  *(Owner chose no merges. Every node carries a label — Engine / Unlock / New option / Improvement /
+  Stepping stone (`researchKind`); Station Keeping and Large Space Stations became real gates; the pad nodes
+  show the limits they always gated. 98 nodes: 12 options, 27 unlocks, 15 engines, 41 improvements, 3 stepping
+  stones.)*
   **Target:** ≥2 action-adding nodes per era; bot progression pace per era within ±10% of today.
+  *(Met: eras 0–6 have ≥2 option/unlock nodes; era 7 has two nodes, one an option. Bot pace, 8 seeds: research
+  nodes 18.7→18.7 by 1950, 29.9→29.7 by 1960, 34.6→35.3 by 1970, 37.0→38.4 by 1975 (+3.8%); firsts 6.0→6.1.)*
 
 ### Phase 4 — Stations and logistics that matter
 - [ ] 4a. Bot builds one LEO station and flies resupply (measurement prerequisite, no gameplay change).

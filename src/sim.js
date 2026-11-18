@@ -2459,8 +2459,9 @@ function facilityPortCap(fs, def){
   // Ports are an orbital-assembly metaphor (finite berths on a stack); a ground base just spreads
   // out, so surface facilities get no cap instead of inventing a parallel "surface port" module.
   if(def && def.body!=='earth') return Infinity;
+  if(state.research.megastructure_construction) return Infinity; /* Phase 3: Megastructure Construction */
   const nodes=facilityModuleList(fs).filter(id=>id==='node_hub').length;
-  return STATION_PORT_BASE + nodes*((stationModuleDef('node_hub').ports)||3);
+  return STATION_PORT_BASE + nodes*(((stationModuleDef('node_hub').ports)||3)+(state.research.large_space_stations?2:0)); /* Phase 3: Large Space Stations */
 }
 function facilityPower(fs){
   let gen=0, draw=0;
@@ -3047,7 +3048,7 @@ function damageAPad(){
   map[target]=base+months;
   return {pad:target, until:map[target]};
 }
-function launchPadCap(){ return Math.max(1, prodLevel('pads')-damagedPadCount()); }  // flights you can fly in one calendar month
+function launchPadCap(){ return Math.max(1, prodLevel('pads')-damagedPadCount())+(state.research.fleet_autonomy?1:0); } /* Phase 3: Fleet Autonomy */  // flights you can fly in one calendar month
 function curMonthPadUsed(){ return state.padMonthAbs===absMonth() ? (state.padMonthUsed||0) : 0; } // slots reset each new month
 function padSlotsLeft(){ return Math.max(0, launchPadCap()-curMonthPadUsed()); }
 // a prebuilt, rapid flight can share the month iff a pad already flew this month and a slot is free
@@ -3097,7 +3098,7 @@ function bottleneckLine(m){
    launch on demand, skipping the build wait — the timing lever for tight launch windows
    and sustained cadence. Total cost is identical to building on demand (no discount). */
 const QUEUE_MAX=8;
-function buildSlots(){ return prodLevel('bays'); }   // parallel build capacity = Assembly Bays level
+function buildSlots(){ return prodLevel('bays')+(state.research.modular_design?1:0); } /* Phase 3: Modular Design adds a build line */   // parallel build capacity = Assembly Bays level
 function buildQueueList(){ return Array.isArray(state.buildQueue)?state.buildQueue:(state.buildQueue=[]); }
 function hangarList(){ return Array.isArray(state.hangar)?state.hangar:(state.hangar=[]); }
 /* E4.4: families describe designs; hulls are the individual physical vehicles.  This
@@ -3542,7 +3543,7 @@ function flightAttemptCost(m){
 function goTestOptions(m){
   const keep=state.testLevel, out=[];
   try{ TEST_LEVELS.forEach((t,i)=>{ state.testLevel=i; const v=computeVehicle(), sim=m.profile?simulateMission(m):null;
-    out.push({level:i, name:t.name, cost:t.cost, months:t.months, rel:t.rel, odds:effectiveReliability(m,v,sim,!!m.crew)}); }); }
+    out.push({level:i, name:t.name, cost:t.cost, months:t.months, rel:t.rel, odds:effectiveReliability(m,v,sim,!!m.crew), locked:!testLevelUnlocked(i)}); }); }
   finally{ state.testLevel=keep; }
   return out;
 }
@@ -5314,7 +5315,7 @@ function stackPerformance(stages, payload){
   const bm=boosterMasses();
   const stackWet=sm.reduce((a,b)=>a+b.wet,0);
   const liftoff=payload+stackWet+(bm?bm.wet:0);
-  const engOut=!!state.engineOut && stages[0].count>=3; // Phase 3: reserve margin to survive an engine failure
+  const engOut=!!state.engineOut && stages[0].count>=3 && !!state.research.redundant_avionics; /* Phase 3: needs Redundant Avionics */ // Phase 3: reserve margin to survive an engine failure
   const coreThrust=sm[0].eng.thrustSL*stages[0].count*(engOut?(stages[0].count-1)/stages[0].count:1);
   const boostThrust=bm?bm.eng.thrustSL*bm.count:0;
   const twr=((coreThrust+boostThrust)*thrustMult())/(liftoff*G0); // #2b research scales liftoff thrust
@@ -6406,7 +6407,18 @@ function nearMissText(nm){
   return ` ⚠ Close call — ${nm.label} held at ${Math.round(nm.rel*100)}%, ${pretty} point${pretty==='1'?'':'s'} from failing.`;
 }
 function resolveFlight(m,v,sim,crewed,relPenalty=0,dockingCapability){ /* Phase 2: the roll uses the hidden truth; everything else shows belief */
-  _hazardTruth=true; try{ return resolveFlightCore(m,v,sim,crewed,relPenalty,dockingCapability); } finally{ _hazardTruth=false; }
+  let out; _hazardTruth=true; try{ out=resolveFlightCore(m,v,sim,crewed,relPenalty,dockingCapability); } finally{ _hazardTruth=false; }
+  return abortToOrbit(out,m);
+}
+/* Phase 3 — Digital Computer: a flight computer that can re-plan the ascent saves some upper-stage and staging
+   losses on orbital missions as a partial (wrong orbit, payload alive). Separate roll; never touches a success. */
+const ABORT_TO_ORBIT_CHANCE=0.4;
+function abortToOrbit(out,m){
+  if(!out||out.kind!=='loss'||!state.research.digital_computer) return out;
+  if(!(out.subsystem==='separation'||(out.subsystem==='propulsion'&&out.failPhase!=='pad'))) return out;
+  if(!(m&&(m.profile||(m.reqDv||0)>=9000))) return out;
+  if(Math.random()>=ABORT_TO_ORBIT_CHANCE) return out;
+  return Object.assign({},out,{kind:'partial', abortToOrbit:true, story:`${out.story?String(out.story).replace(/\.$/,''):'an ascent failure'} — the flight computer re-planned the ascent and salvaged a lower orbit.`});
 }
 function resolveFlightCore(m,v,sim,crewed,relPenalty=0,dockingCapability){  if(_devForceOutcome){ const k=_devForceOutcome; _devForceOutcome=null; return devSynthOutcome(k,m,v,sim,crewed,relPenalty,dockingCapability); } // dev menu: single-shot forced outcome
   const rep=subsystemReport(m,v,sim,crewed,1-(relPenalty||0),dockingCapability);
@@ -6878,12 +6890,22 @@ function rollMissionEvents(ctx, rng){
   if(rng()>=chance) return null;
   return eligible[Math.min(eligible.length-1, Math.floor(rng()*eligible.length))];
 }
+/* Phase 3 — Autonomous Navigation adds a third call to every anomaly; AI Mission Management takes the call */
+function anomalyOptions(ev,ctx){
+  const o=ev.options(ctx).slice();
+  if(state.research.autonomous_navigation) o.push({id:'autonav', label:'Hand it to the autonomous navigator', resolve:rng=> rng()<opsLuck(0.85)
+    ? {log:'the autonomous navigator worked the problem — mission nominal.'}
+    : {payoutMult:0.8, outcomeOverride:'partial', log:'the autonomous navigator contained it, but the mission ran degraded.'}});
+  return o;
+}
+function aiAnomalyChoice(opts){ if(!state.research.ai_mission_management) return null; const a=opts.find(x=>x.id==='autonav'); return (a||opts[0]||{}).id||null; }
 function showAnomalyModal(ev, ctx){
-  const opts=ev.options(ctx);
+  const opts=anomalyOptions(ev,ctx);
   if(_pendingOps){ _pendingOps.ev=ev; _pendingOps.opts=opts; } // resolveAnomaly reads _pendingOps.opts
   const active=state.launchTxn&&state.launchTxn.decision&&state.launchTxn.decision.kind==='anomaly'?state.launchTxn.decision:null;
   const decision=ensureLaunchTransactionDecision('anomaly',ctx,{eventId:ev.id,roll:state.launchTxn?(active&&active.data?active.data.roll:Math.random()):null},opts.map(o=>o.id));
   const args=launchDecisionArgs(decision);
+  { const auto=aiAnomalyChoice(opts); if(auto){ const o=opts.find(x=>x.id===auto); log('note',`${ctx.m.name}: ${ev.title.toLowerCase()} — AI mission management took the call (${o?o.label.toLowerCase():auto}).`); return resolveAnomaly(auto,args.txnId,args.revision); } }
   // E1.2 slice C: anomaly now plays in the flight overlay (like live-call/reserve/rescue) rather
   // than a page-level showModal. Hold at orbit-start for orbital missions, cislunar-start for
   // deep/profile missions — same hold point as reserve and rescue, since anomalies fire in that
@@ -8297,7 +8319,7 @@ function setCount(i,d){
    carry the same k, so attribution follows. Displayed odds use the player's BELIEF (expected k over an
    uninspected flaw); only the outcome roll (resolveFlight) uses the truth. */
 const FLAW_PRIOR=0.35, FLAW_REPEAT_EST=0.75, FLAW_MULT=1.6;
-const INV_TEST_MULT=0.5, INV_TEST_FLIGHTS=3, INV_TRIM=0.85, INV_TRIM_FLOOR=0.6, INV_KEEP=12;
+const INV_TEST_MULT=0.5, INV_TEST_FLIGHTS=3, INV_TEST_FLIGHTS_AUTO=5, INV_TRIM=0.85, INV_TRIM_FLOOR=0.6, INV_KEEP=12;
 const INV_PROGRAMS={
   inspect: {icon:'🔍', label:'Inspect the hardware', months:1, costFrac:0.15, floor:0.2},
   test:    {icon:'🧪', label:'Integrated testing',   months:1, costFrac:0.35, floor:0.4},
@@ -8347,6 +8369,8 @@ function invProgramQuote(inv,kind){
   const p=INV_PROGRAMS[kind]; if(!inv||!p) return null;
   let months=p.months, cost=round2(Math.max(p.floor, p.costFrac*inv.basis));
   let note='';
+  if(kind==='inspect'&&state.research.engine_test_stands){ months=1/3; cost=round2(cost*0.5); note='failure telemetry: half price, ~10 days'; } /* Phase 3 */
+  if(kind==='test'&&state.research.autonomous_test_program){ cost=round2(cost*0.5); note=`autonomous testing: half price, ${INV_TEST_FLIGHTS_AUTO} flights`; } /* Phase 3 */
   if(kind==='redesign'&&SUBSYS_SPECIALISTS[inv.sub]&&!(bestSpecialistSkill(inv.sub)>0)){ months+=1; cost=round2(cost*1.3); note=`no ${(SUBSYS_LABEL[inv.sub]||inv.sub).toLowerCase()} specialist: +1 mo, +30%`; }
   return {kind, icon:p.icon, label:p.label, months, cost, note};
 }
@@ -8382,9 +8406,10 @@ function completeInvestigationProgram(inv){
     else { delete state.flawBelief[sub]; inv.status='closed'; inv.closedWhy='oneoff'; log('ok',`🔍 Inspection result — ${inv.mName}: the ${name} failure was a one-off. Nothing to fix; fly with confidence.`); }
     inv.program=null; /* the investigation stays open on a flaw: redesign, test, or accept */
   } else if(kind==='test'){
-    state.subsysTest=state.subsysTest||{}; state.subsysTest[sub]={mult:INV_TEST_MULT, flights:INV_TEST_FLIGHTS};
+    const nFl=state.research.autonomous_test_program?INV_TEST_FLIGHTS_AUTO:INV_TEST_FLIGHTS;
+    state.subsysTest=state.subsysTest||{}; state.subsysTest[sub]={mult:INV_TEST_MULT, flights:nFl};
     inv.status='closed'; inv.closedWhy='tested';
-    log('ok',`🧪 Integrated testing done — ${name} failures halved on the next ${INV_TEST_FLIGHTS} flights that fly it.${inv.finding==='flaw'?' The flaw itself is still there.':''}`);
+    log('ok',`🧪 Integrated testing done — ${name} failures halved on the next ${nFl} flights that fly it.${inv.finding==='flaw'?' The flaw itself is still there.':''}`);
   } else if(kind==='redesign'){
     if(state.flaws) delete state.flaws[sub]; if(state.flawBelief) delete state.flawBelief[sub];
     state.subsysTrim=state.subsysTrim||{}; state.subsysTrim[sub]=Math.max(INV_TRIM_FLOOR, round2((state.subsysTrim[sub]||1)*INV_TRIM));
@@ -8590,7 +8615,8 @@ function setDescentProp(v){if(!guardOrdinaryAction('Vehicle redesign')) return f
 function setAscentEng(v){if(!guardOrdinaryAction('Vehicle redesign')) return false;state.ascent.eng=v;render();}
 function setAscentProp(v){if(!guardOrdinaryAction('Vehicle redesign')) return false;state.ascent.prop=Math.max(0.1,Math.min(40,parseFloat(v)||0.1));render();}
 function setEclss(id){ if(!guardOrdinaryAction('Vehicle redesign')) return false;const t=ECLSS[id]; if(t.research && !state.research[t.research]) return; state.eclss=id; render(); }
-function setTestLevel(n){ if(!guardOrdinaryAction('Test-campaign planning')) return false;state.testLevel=n; render(); }
+function testLevelUnlocked(i){ return !(i>=2&&!state.research.flight_qualification); } /* Phase 3: the uncrewed test flight needs Flight Qualification */
+function setTestLevel(n){ if(!guardOrdinaryAction('Test-campaign planning')) return false; if(!testLevelUnlocked(n)) return false; state.testLevel=n; render(); }
 function selectMission(id){if(!guardOrdinaryAction('Mission selection')) return false;const m=missionById(id); if(!m||state.rep<m.minRep)return; if(!missionTechMet(m))return; state.activeMission=id; closeLiveModal(); state.tab='bench'; render();}
 function reqsMet(r){
   return r.req.every(q=>state.research[q]) && (!r.reqMissionDone || state.completed[r.reqMissionDone]);

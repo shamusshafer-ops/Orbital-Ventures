@@ -442,7 +442,8 @@ function devPresetStation(){
   if(state.money<600) state.money=600; // ensure founding + modules are affordable (real functions charge real cost)
   if(!facilityBuilt('leo_station')) foundFacility('leo_station'); // real founding: charges cost, advances construction months
   if(!state.over){
-    for(const mid of ['lab_mod','power_truss','node_hub']){ // 3 distinct types (none gated by research); core is already a Habitat
+    state.research.station_keeping=true; /* Phase 3: the Docking Node needs Station Keeping — grant it like the founding gate above */
+    for(const mid of ['lab_mod','power_truss','node_hub']){ // 3 distinct types; core is already a Habitat
       const fs=facilityState('leo_station');
       if(fs && facilityModuleList(fs).includes(mid)) continue;
       if(state.money<200) state.money=200;

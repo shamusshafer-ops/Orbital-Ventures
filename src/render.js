@@ -5425,7 +5425,8 @@ function renderStages(){
           <span class="ss" title="Thrust-to-weight at this stage's ignition (lifting itself + everything above). Below the nominal TWR (${nomTwr.toFixed(2)}) the stage spends longer fighting gravity and loses Δv.${i===0?' Stage 1 must also exceed 1.0 to lift off.':''}">TWR@ign <b style="color:${twrCol}">${sTwr==null?'—':sTwr.toFixed(2)}</b></span>
           ${sLoss>1?`<span class="ss" title="Δv lost to gravity because this stage's TWR is below nominal (${nomTwr.toFixed(2)})">grav <b style="color:var(--warn)">−${fI(sLoss)} m/s</b></span>`:''}
         </div>
-        ${i===0&&st.count>=3?`<div class="row" style="margin-top:4px"><label style="cursor:pointer" title="Reserve thrust margin so the vehicle can lose one first-stage engine and press on — the Saturn V and Falcon 9 both flew engine-out missions to success. Costs TWR (thrust computed at ${st.count-1}/${st.count}); +2.5% reliability."><input type="checkbox" ${state.engineOut?'checked':''} onchange="state.engineOut=this.checked;try{sfxThunk()}catch(e){};render()"> Engine-out capability</label><span class="dim" style="font-size:11px">${state.engineOut?`armed · TWR at ${st.count-1}/${st.count} thrust · +2.5% rel`:'off — full thrust, no failure margin'}</span></div>`:''}
+        ${i===0&&st.count>=3&&!state.research.redundant_avionics?`<div class="dim" style="font-size:11px;margin-top:4px" title="Research Redundant Avionics to reserve thrust for an engine failure.">🔒 Engine-out capability — needs Redundant Avionics</div>`:''}
+        ${i===0&&st.count>=3&&state.research.redundant_avionics?`<div class="row" style="margin-top:4px"><label style="cursor:pointer" title="Reserve thrust margin so the vehicle can lose one first-stage engine and press on — the Saturn V and Falcon 9 both flew engine-out missions to success. Costs TWR (thrust computed at ${st.count-1}/${st.count}); +2.5% reliability."><input type="checkbox" ${state.engineOut?'checked':''} onchange="state.engineOut=this.checked;try{sfxThunk()}catch(e){};render()"> Engine-out capability</label><span class="dim" style="font-size:11px">${state.engineOut?`armed · TWR at ${st.count-1}/${st.count} thrust · +2.5% rel`:'off — full thrust, no failure margin'}</span></div>`:''}
         ${i===0?recoveryStageHTML(curM):''}
       </div>`;
     box.appendChild(div);
@@ -6976,7 +6977,7 @@ function debriefNextMoves(d){
   const wantsTest=failed||(d.nearMiss&&d.nearMiss.margin<0.05);
   const keep=debriefKeepToFly(m);
   let tier=Math.min(TEST_LEVELS.length-1, failed&&(d.testLevel||0)>=1?(d.testLevel||0)+1:1); /* already static-fired and still lost it → the next tier */
-  while(tier>1&&state.money<TEST_LEVELS[tier].cost+keep) tier--; /* never suggest a campaign you can't pay for and still fly */
+  while(tier>1&&(state.money<TEST_LEVELS[tier].cost+keep||!testLevelUnlocked(tier))) tier--; /* never suggest a campaign you can't pay for and still fly */
   if(state.money<TEST_LEVELS[tier].cost+keep) tier=0;
   /* an anomaly call that cost the objective: hardware testing doesn't touch those odds — rehearsal and a
      flight director do (flightReadiness / ctrlAnomScore, the same numbers the Flight plan shows) */
@@ -7108,7 +7109,7 @@ function goNoGoHTML(g, detailsHTML){
   let tests;
   if(g.test.fixed) tests=row('🔥',`<span class="dim">${esc(TEST_LEVELS[g.test.level].name)}${g.rehearsal.on?' · rehearsed':''} — set when this hull was committed</span>`);
   else{
-    const chips=g.test.options.map(o=>`<button class="btn gng-test" style="flex:1;padding:3px 4px;font-size:11px;line-height:1.25;${g.test.level===o.level?'border-color:var(--readout);color:var(--readout)':''}" onclick="setTestLevel(${o.level})" title="${esc(o.name)}${o.cost?` · ${fM(o.cost)}, +${o.months} mo`:''}">${GO_TEST_SHORT[o.level]||esc(o.name)} ${pct(o.odds)}${o.cost?`<br><span class="dim" style="font-size:10px">${fM(o.cost)} · ${o.months} mo</span>`:''}</button>`).join('');
+    const chips=g.test.options.map(o=>`<button class="btn gng-test" style="flex:1;padding:3px 4px;font-size:11px;line-height:1.25;${g.test.level===o.level?'border-color:var(--readout);color:var(--readout)':''}" onclick="setTestLevel(${o.level})" ${o.locked?'disabled':''} title="${esc(o.name)}${o.cost?` · ${fM(o.cost)}, +${o.months} mo`:''}${o.locked?' — needs Flight Qualification research':''}">${o.locked?'🔒 ':''}${GO_TEST_SHORT[o.level]||esc(o.name)} ${o.locked?'':pct(o.odds)}${o.cost?`<br><span class="dim" style="font-size:10px">${fM(o.cost)} · ${o.months} mo</span>`:''}</button>`).join('');
     const reh=g.rehearsal.useful?`<button class="btn gng-reh" style="width:100%;margin-top:4px;padding:3px 4px;font-size:11px;${g.rehearsal.on?'border-color:var(--readout);color:var(--readout)':''}" onclick="toggleRehearsal()">📋 ${g.rehearsal.on?'Rehearsing':'Rehearse'} — anomaly ${pct(od.anomalyBase)} → ${pct(od.anomalyRehearsed)} · ${fM(g.rehearsal.cost)}, +${REHEARSAL_MONTHS} mo</button>`:'';
     tests=`<div class="gng-row" style="margin-top:5px"><div style="display:flex;gap:4px">${chips}</div>${reh}</div>`;
   }
@@ -7243,7 +7244,7 @@ function renderReadout(){
   if(boostersFitted()){ const relCost=Math.round((1-boosterRelPenalty())*100); flags+=`<div class="flag ok">⫶ ${v.boosters.count} strap-on booster${v.boosters.count>1?'s':''} (${v.boosters.eng.name}${v.boosters.eng.solid?', solid':''}) — +${fI(v.boostDv||0)} m/s boost-phase Δv, combined-thrust liftoff${relCost>0?` · −${relCost}% reliability (extra failure points)`:''}.</div>`; }
   if(mfgBuildMult()<1||groundLaunchMult()<1||buildTimeCut()>=0.5) flags+=`<div class="flag ok">🏭 Industrial R&D: −${Math.round((1-mfgBuildMult())*100)}% build cost · −${Math.round((1-groundLaunchMult())*100)}% launch-ops cost${buildTimeCut()>=0.5?` · −${Math.round(buildTimeCut())} mo build time`:''}.</div>`;
   { const _rs=radSeverity(m), _pr=(m.crew>0?powerRad(m):0); if(_rs>=0.12||_pr>0) flags+=`<div class="flag ${_rs>=0.5||_pr>=0.3?'warn':''}">☢ Radiation ${_rs>=0.7?'extreme':_rs>=0.4?'high':_rs>=0.12?'moderate':'low'} (env ${radEnvironment(m)} · ${m.days||0}d)${_pr>0?` + onboard ${selfPoweredCraft(m)?'NEP reactor':powerSourceDef(state.powerSource).name}`:''} — ${state.research.rad_shielding?'shielding fitted':'<b>no shielding</b>'}: equipment ×${radEquipMult(m).toFixed(2)} fragility${m.crew>0?` · crew ×${radCrewMult(m).toFixed(2)}`:''}.</div>`; }
-  const testBtns=TEST_LEVELS.map((t,i)=>`<button class="btn" style="flex:1;font-size:12px;${state.testLevel===i?'border-color:var(--readout);color:var(--readout)':''}" onclick="setTestLevel(${i})">${t.name}${t.rel>0?` +${(t.rel*100)|0}%`:''}${t.cost>0?`<br><span class="dim" style="font-size:11px">${fM(t.cost)} · ${t.months} mo</span>`:''}</button>`).join('');
+  const testBtns=TEST_LEVELS.map((t,i)=>`<button class="btn" style="flex:1;font-size:12px;${state.testLevel===i?'border-color:var(--readout);color:var(--readout)':''}" onclick="setTestLevel(${i})" ${testLevelUnlocked(i)?'':'disabled title="Needs Flight Qualification research"'}>${testLevelUnlocked(i)?'':'🔒 '}${t.name}${t.rel>0?` +${(t.rel*100)|0}%`:''}${t.cost>0?`<br><span class="dim" style="font-size:11px">${fM(t.cost)} · ${t.months} mo</span>`:''}</button>`).join('');
   // E1.5: pre-flight phase-by-phase reliability decomposition for the hover tooltip (informational —
   // no governing subsystem yet, nothing has failed). Reuses the same machinery resolveFlight rolls on.
   const relTip=esc(phaseBreakdownLines(flightPhaseBreakdown(subsystemReport(m,v,null,v.crewed)),null).join('\n'));
@@ -7305,7 +7306,7 @@ function renderProfileReadout(m){
       <span class="legdv">${fI(l.dv)} m/s</span>
       <span class="legdetail">${detail}${depotNote}${phasingNote}</span></div>`;
   }).join('');
-  const testBtns=TEST_LEVELS.map((t,i)=>`<button class="btn" style="flex:1;font-size:12px;${state.testLevel===i?'border-color:var(--readout);color:var(--readout)':''}" onclick="setTestLevel(${i})">${t.name}${t.rel>0?` +${(t.rel*100)|0}%`:''}${t.cost>0?`<br><span class="dim" style="font-size:11px">${fM(t.cost)} · ${t.months} mo</span>`:''}</button>`).join('');
+  const testBtns=TEST_LEVELS.map((t,i)=>`<button class="btn" style="flex:1;font-size:12px;${state.testLevel===i?'border-color:var(--readout);color:var(--readout)':''}" onclick="setTestLevel(${i})" ${testLevelUnlocked(i)?'':'disabled title="Needs Flight Qualification research"'}>${testLevelUnlocked(i)?'':'🔒 '}${t.name}${t.rel>0?` +${(t.rel*100)|0}%`:''}${t.cost>0?`<br><span class="dim" style="font-size:11px">${fM(t.cost)} · ${t.months} mo</span>`:''}</button>`).join('');
 
   let flags='';
   { const dims=vehicleRealDimensions({stages:state.stages.map(s=>({prop:s.prop,count:s.count,dia:s.dia})),transferProp:(m.modules&&m.modules.includes('transfer'))?state.transfer.prop:0,crewed:!!(m&&m.crew>0)});
@@ -12257,6 +12258,7 @@ function renderTechTree(){
       ${st==='done'?`<text x="${p.x+NW-7}" y="${p.y+13}" fill="#58c47a" font-size="11" text-anchor="end">✓</text>`:''}
       ${avail&&!dim?`<text x="${p.x+NW-7}" y="${p.y+13}" fill="var(--ignite)" font-size="10" text-anchor="end">●</text>`:''}
       ${state.researchGoal===r.id?`<text x="${p.x+7}" y="${p.y+13}" font-size="11">📌</text>`:''}
+      ${r.option?`<text class="rk-star" x="${p.x+NW-7}" y="${p.y+NH-5}" style="fill:var(--ignite)" font-size="10" text-anchor="end">★</text>`:''}
       <text x="${p.x+11}" y="${p.y+17}" fill="${c.text}" font-size="10" font-family="ui-sans-serif,system-ui" font-weight="600">${name}</text>
       <text x="${p.x+11}" y="${p.y+32}" fill="${c.text}" font-size="9" font-family="ui-monospace,monospace" opacity="0.8">${sub}</text>
     </g>`;
@@ -12352,8 +12354,10 @@ function techTooltipHTML(r){
   const reqNames=r.req.map(q=>(RESEARCH.find(x=>x.id===q)||{}).name).filter(Boolean).join(', ');
   const gate=r.reqMissionDone?(MISSIONS.find(m=>m.id===r.reqMissionDone)||{}).name:null;
   const levelLine=(st==='done'&&isLeveledTech(r.id))?`<div class="tt-mod" style="color:var(--ignite)">Current level: <b>${techLevel(r.id)} / ${TECH_LEVELS[r.id].max} · ${techLevelName(r.id)}</b></div>`:'';
+  const kind=researchKind(r);
   return `<div class="tt-head"><span class="tt-name">${r.name}</span><span class="tt-chip" style="color:${tr.color};border-color:${tr.color}">${tr.label||''}</span></div>
-    <div class="tt-status">${stTag} · ${meta}</div>
+    <div class="tt-status">${stTag} · ${meta} · <span class="rk rk-${kind}" style="color:${kind==='option'?'var(--ignite)':'inherit'}">${RESEARCH_KIND_LABEL[kind]}</span></div>
+    ${r.option?`<div class="tt-mod" style="color:var(--ignite)">★ ${esc(r.option)}</div>`:''}${r.gate?`<div class="tt-mod">▸ Unlocks: ${esc(r.gate)}</div>`:''}
     <div class="tt-mods">${mods.map(m=>`<div class="tt-mod">▸ ${m}</div>`).join('')}${levelLine}</div>
     <div class="tt-desc">${r.desc}</div>
     ${(reqNames||gate)?`<div class="tt-req">Requires: ${[reqNames,gate?`fly <b>${gate}</b>`:null].filter(Boolean).join(' · ')}</div>`:''}`;
@@ -12411,7 +12415,9 @@ function renderResearchDetail(){
   const isGoal=state.researchGoal===r.id;
   const goalBtn = st==='done' ? '' : `<button class="btn ghost" style="width:100%;margin-top:8px;font-size:12px" onclick="pinResearchGoal('${r.id}')">${isGoal?'📌 Pinned as goal — unpin':'📌 Pin as goal'}</button>`;
   el.innerHTML=`${debtBanner}<div class="mission-tag">Technology</div>
-    <div class="mission-name" style="font-size:16px">${r.name} ${stateTag}</div>
+    <div class="mission-name" style="font-size:16px">${r.name} ${stateTag} <span class="pill rk rk-${researchKind(r)}" style="font-size:11px;${researchKind(r)==='option'?'color:var(--ignite);border-color:var(--ignite)':''}">${RESEARCH_KIND_LABEL[researchKind(r)]}</span></div>
+    ${r.option?`<div class="rk-option" style="margin:6px 0;padding:4px 8px;border-left:3px solid var(--ignite);font-size:12px"><b style="color:var(--ignite)">★ New option:</b> ${esc(r.option)}</div>`:''}
+    ${r.gate?`<div class="rk-gate" style="margin:6px 0;padding:4px 8px;border-left:3px solid var(--line);font-size:12px"><b>Unlocks:</b> ${esc(r.gate)}</div>`:''}
     <div class="tt-mods adv-only" style="margin:8px 0 10px">${techModifierText(r).map(m=>`<div class="tt-mod">▸ ${m}</div>`).join('')}</div>
     <div class="sub" style="margin:8px 0 10px">${r.desc}</div>
     <div class="metrics" style="margin-bottom:10px">

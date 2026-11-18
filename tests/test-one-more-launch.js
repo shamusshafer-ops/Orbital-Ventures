@@ -95,6 +95,8 @@ queueBuild(true,'rh'); { let g=0; while(!hangarList().length&&g++<600) advanceDa
 {
   const d=Object.assign({},state.lastDebrief,{testLevel:1});
   state.money=50; state.testLevel=0;
+  check('already static-fired, but the test flight is still locked → no step-up to it', !debriefNextMoves(d).some(x=>/setTestLevel\(2\)/.test(x.action)));
+  state.research.flight_qualification=true;
   check('already static-fired → offer the uncrewed test flight', debriefNextMoves(d).some(x=>/setTestLevel\(2\)/.test(x.action)));
   state.money=1.2;
   check('short of cash → fall back to what you can afford, or nothing', !debriefNextMoves(d).some(x=>/setTestLevel\(2\)/.test(x.action)));

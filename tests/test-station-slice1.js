@@ -31,6 +31,8 @@ for(let i=0; i<STATION_PORT_BASE-2; i++) state.facilities.leo_station.moduleList
 check('canFlyModuleDelivery: one port left is fine', canFlyModuleDelivery('leo_station','lab_mod').ok===true);
 state.facilities.leo_station.moduleList.push('lab_mod'); // now at cap
 check('canFlyModuleDelivery: port cap blocks it (non-node module)', canFlyModuleDelivery('leo_station','power_truss').ok===false);
+check('canFlyModuleDelivery: the Docking Node is gated by Station Keeping (Phase 3)', canFlyModuleDelivery('leo_station','node_hub').ok===false);
+state.research.station_keeping=true;
 check('canFlyModuleDelivery: a Docking Node itself is never port-blocked', canFlyModuleDelivery('leo_station','node_hub').ok===true);
 
 // ---------- flyModuleDelivery: generates a real, flyable, non-duplicating offer ----------
