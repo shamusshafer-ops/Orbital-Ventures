@@ -1926,11 +1926,16 @@ Recommended order: 0 → 1 → 2 → 3 → 4a → 4b → 4c → 5. Phase 3 gets 
   bot's failures are in-flight anomaly calls with no subsystem; the card now handles those.)*
 
 ### Phase 1 — One go/no-go block beside the launch button
-- [ ] Money (now / later / kept in the bank), odds (reliability, team ceiling, near-miss risk), one-click
-  test options (same numbers as the card) and launch policy in one compact block.
-- [ ] One authority computes go / risky / blocked + why; checklist, card and button all read it.
+- [x] Money (now / later / kept in the bank), odds (reliability, team ceiling, near-miss risk), one-click
+  test options (same numbers as the card) and launch policy in one compact block. *(2026-11-18: `#goNoGo` —
+  verdict, 💰 now · all-in to fly · left after, 🎯 success · team cap · anomaly · weather, test buttons showing the
+  odds each buys, rehearsal, launch calls; the full commitment text folds into "Commitment details".)*
+- [x] One authority computes go / risky / blocked + why; checklist, card and button all read it.
   **Target:** every launch input visible without scrolling at 1280×800; the button's enabled state
-  agrees with `canLaunch` for every block reason (tested).
+  agrees with `canLaunch` for every block reason (tested). *(2026-11-18: `launchGoNoGo()` over
+  `primaryLaunchActionView()`; `flightAttemptCost()` is the one reserve; `goRelTarget()` the one bar. Firefox at
+  1280×800 (714 px viewport): block ends at 472 px on a fresh bench, 646 px with the Last Flight card + Resize.
+  `test-go-no-go.js` covers Δv, TWR, cash, crew, window, hull; mutation-checked.)*
 
 ### Phase 2 — Failure learning (Codex handoff 2026-09-07, extends the card)
 - [ ] The inquiry names a suspect subsystem with stated uncertainty, and offers 2–3 corrective programs

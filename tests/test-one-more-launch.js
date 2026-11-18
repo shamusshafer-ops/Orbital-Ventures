@@ -61,13 +61,15 @@ queueBuild(true,'rh'); { let g=0; while(!hangarList().length&&g++<600) advanceDa
   state.activeMission='sounding';
 }
 
-// ---------- success below the reliability target suggests a real test campaign ----------
+// ---------- success below the reliability target: the go/no-go block offers the test (Phase 1 moved it there) ----------
 {
-  const moves=debriefNextMoves(state.lastDebrief), t=moves.find(x=>/setTestLevel\(1\)/.test(x.action));
-  check('below the recommended reliability, a static fire is offered with its real numbers', !!t && /\+5% reliability/.test(t.detail) && /\$0\.60M/.test(t.detail));
-  const rel0=computeVehicle().reliability; eval(t.action);
-  check('taking it is a real change on the bench', state.testLevel===1);
-  state.testLevel=0; check('(sanity) reliability preview read from the bench', rel0>0);
+  const g=launchGoNoGo(), o=g.test.options[1];
+  check('below the recommended reliability, the go/no-go block says RISKY and why', g.verdict==='risky' && /below the 70% recommended/.test(g.why));
+  check('…and its static-fire button shows the real odds and cost', o && o.odds>g.odds.success && Math.abs(o.cost-0.6)<1e-9 && /Static fire \d+%/.test(benchHTML().replace(/<[^>]+>/g,' ')));
+  check('the card does not repeat it after a success', !debriefNextMoves(state.lastDebrief).some(x=>/setTestLevel/.test(x.action)));
+  setTestLevel(1);
+  check('taking it is a real change on the bench', state.testLevel===1 && launchGoNoGo().odds.success>g.odds.success);
+  state.testLevel=0;
 }
 
 // ---------- failure debrief and remedies ----------

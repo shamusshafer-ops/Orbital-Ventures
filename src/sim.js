@@ -3577,6 +3577,53 @@ function primaryLaunchActionView(){
   const ready=hangarFor(m)[0];
   return ready?readyHullActionView(ready):launchCommitmentActionView(m);
 }
+/* ---------- Decision-loop Phase 1: the go/no-go authority (2026-11-18) ----------
+   One answer to "should I fly this?" for the bench's primary action — the waiting hull when there is one,
+   else a new build. Go / risky / blocked, plus the four things the decision turns on: money (now, at the
+   flight, what is left after), odds (modeled success, the team ceiling, anomaly and weather), the test
+   campaign and the launch-call policy. The button's enabled state is check.ok, so the block and the button
+   can't disagree; the Last Flight card's reserve and the first-flight checklist's attempt cost read
+   flightAttemptCost() so every "keep this much to fly" in the game is one number. Read-only. */
+const GO_REL_TARGET=0.70, GO_REL_TARGET_CREWED=0.80; /* the "recommended" bar the Flight plan and card use */
+function goRelTarget(m){ return m&&m.crew>0?GO_REL_TARGET_CREWED:GO_REL_TARGET; }
+/* everything it takes to build and fly the bench rocket once, carry included: the quote's end-to-end runway */
+function flightAttemptCost(m){
+  try{ m=m||curMission(); if(!m) return 0; const v=computeVehicle(), sim=m.profile?simulateMission(m):null;
+    return launchCommitmentQuote(m,v,sim,false).endToEndRunway||0; }catch(e){ return 0; }
+}
+/* the success odds a given test campaign would buy on the bench design (computeVehicle carries the test bonus) */
+function goTestOptions(m){
+  const keep=state.testLevel, out=[];
+  try{ TEST_LEVELS.forEach((t,i)=>{ state.testLevel=i; const v=computeVehicle(), sim=m.profile?simulateMission(m):null;
+    out.push({level:i, name:t.name, cost:t.cost, months:t.months, rel:t.rel, odds:effectiveReliability(m,v,sim,!!m.crew)}); }); }
+  finally{ state.testLevel=keep; }
+  return out;
+}
+function launchGoNoGo(){
+  const view=primaryLaunchActionView(); if(!view) return null;
+  const m=view.mission, q=view.quote, chk=view.check, hull=view.kind==='ready';
+  const spec=hull&&view.record&&view.record.spec||null;
+  const odds=q.successProbability||0, target=goRelTarget(m), ceil=teamRelCeiling();
+  let rd=null; try{ rd=flightReadiness(m); }catch(e){}
+  const rehearsed=hull?!!(spec&&spec.rehearsal):!!state.rehearsal, testLevel=hull?((spec&&spec.testLevel)||0):(state.testLevel||0);
+  const anomaly=rd?(rehearsed?rd.anomalyRehearsed:rd.anomaly):0;
+  const now=round2(q.cashNow||0), runway=round2(Math.max(q.endToEndRunway||0, now)), atFlight=round2(runway-now);
+  const after=round2(state.money-runway);
+  const risks=[];
+  if(chk.ok){
+    if(after<0) risks.push(hull?`you can't yet cover the flight — ${fM(-after)} short`:`you can commit the build but can't yet pay to fly it — ${fM(-after)} short`);
+    if(odds<target) risks.push(`${Math.round(odds*100)}% to succeed is below the ${Math.round(target*100)}% recommended${m.crew>0?' for a crewed flight':''}`);
+    if(m.crew>0&&!state.research.launch_escape) risks.push('no escape system — a failure loses the crew');
+    if(ceil<1&&odds>=ceil-0.005) risks.push(`your engineering team caps this flight at ${Math.round(ceil*100)}% — staff the core departments to lift it`);
+  }
+  return {verdict:!chk.ok?'blocked':risks.length?'risky':'go', why:!chk.ok?(chk.why||'Not ready to fly.'):(risks[0]||''), risks,
+    reason:chk.reason||null, hull, mission:m, view, check:chk, quote:q,
+    money:{now, atFlight, runway, after, cash:round2(state.money)},
+    odds:{success:odds, target, ceiling:ceil<1?ceil:null, anomaly, anomalyBase:rd?rd.anomaly:0, anomalyRehearsed:rd?rd.anomalyRehearsed:0, weatherGo:rd?rd.goPct:null, rehearsed},
+    test:{level:testLevel, fixed:hull, options:hull?[]:goTestOptions(m)},
+    rehearsal:{on:rehearsed, fixed:hull, cost:rehearsalCost(m), useful:!!(rd&&rd.anomaly>0)},
+    policy:launchPolicy()};
+}
 // feasibility to queue: the design must be able to do the mission (same core checks as
 // canLaunch, minus window/test/weather, which are resolved at launch), plus pay the build now.
 function canQueue(m,v,sim){

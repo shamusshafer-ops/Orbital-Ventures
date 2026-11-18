@@ -8382,3 +8382,32 @@ timeline and summary vs HEAD. Firefox: multi-leg Resize on a short Lunar Flyby; 
 forced live call (real decision panel); a crewed forced loss through a budget hearing. Not browser-tested: an
 anomaly-driven partial (no dev switch forces one; unit-tested through `recordFlightDebrief`). No save bump:
 `lastDebrief` gained optional fields only.
+
+## 2026-11-18 — Decision-loop roadmap Phase 1: one go/no-go block beside the launch button (Claude)
+
+The bench's launch inputs were spread over a two-column commitment wall, a policy line, and the right rail's
+test campaign and rehearsal. Now one authority and one block:
+
+- **`launchGoNoGo()` (sim.js)** answers for the bench's primary action — the waiting hull if there is one, else a
+  new build (`primaryLaunchActionView`, the same view the Space key uses). Verdict: blocked (`check.ok` false, the
+  button's own disabled state) / risky / go. Risks, in order: can commit but can't yet pay to fly; odds below the
+  recommended bar (`goRelTarget`: 70%, 80% crewed); crewed without an escape system; the team ceiling binding.
+  Money: now, all-in to fly (the quote's end-to-end runway), left after. Odds: modeled success, team cap, anomaly
+  (rehearsed or not), weather GO. Test options carry the odds each campaign buys on this design (`goTestOptions`);
+  a hull's test and rehearsal show as fixed at commit.
+- **`#goNoGo` block** directly under the button (Resize, when offered, sits between them — the fix first). Test
+  buttons and rehearsal are one click; the launch-calls policy moved in; the full commitment text folds into
+  "Commitment details".
+- **One reserve, one bar.** `flightAttemptCost()` (= the runway the block shows) feeds the Last Flight card's
+  "keep to fly again" and the first-flight checklist's attempt cost; `goRelTarget()` replaces three copies of the
+  70/80% literal. The card no longer suggests a test after a success — the block's RISKY verdict and its test
+  buttons do that; the card keeps the test move for failures and close calls.
+
+Measured: Firefox at 1280×800 (714 px viewport) — the block ends at 472 px on a fresh bench and at 646 px with the
+Last Flight card and Resize above it; sequence NO-GO (13 m/s short) → Resize → RISKY 68% → Static fire → GO 73%
+played in the browser, plus the hull state ("set when this hull was committed"). Bot seeds 2/3/5 to 1966
+byte-identical vs HEAD (the shared reserve did not move the checklist's research timing). `test-go-no-go.js`
+46/46 (agreement checks fail when the verdict is decoupled from the check); `test-one-more-launch.js` 40/40 (its
+success-test check now asserts the block); `test-launch-policy.js` now checks rendered output, not source text.
+Full sweep 187/188 + 1 intentional skip. Known: the first-flight checklist popup still overlaps the bottom of the
+left column at this size (pre-existing; collapsible).

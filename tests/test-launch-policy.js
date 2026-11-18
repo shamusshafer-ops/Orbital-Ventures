@@ -66,7 +66,7 @@ const menu=document.getElementById('modalBody').innerHTML||'';
 check('Menu offers the four policies', menu.includes('Launch calls') && ['Manual','Cautious','Nominal','Bold'].every(l=>menu.includes('>'+l+'<')));
 check('…marks the current one and says anomalies always ask', menu.includes('aria-checked="true"') && menu.includes('In-flight anomalies always ask'));
 hideModal();
-check('the bench launch block names the policy', renderBenchLaunch.toString().includes('Launch calls: <b')&&renderBenchLaunch.toString().includes('LAUNCH_POLICIES[launchPolicy()].label'));
+check('the bench launch block names the policy', (()=>{ renderBenchLaunch(); const h=(document.getElementById('benchLaunch')||{}).innerHTML||''; return h.includes('Launch calls: <b>'+LAUNCH_POLICIES[launchPolicy()].label+'</b>'); })()); /* rendered output, not source text (Phase 1 moved it into the go/no-go block) */
 
 console.log(pass+'/'+(pass+fail)+' checks passed');
 process.exit(fail?1:0);

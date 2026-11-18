@@ -55,7 +55,10 @@ action. Presentation/planning only — bot byte-identical. Suite: `test-one-more
 **Decision-loop roadmap (2026-11-18):** scoped in ROADMAP.md (Phases 0–5). Phase 0 done: multi-leg Resize
 (`autoSizeSlots`, chained in-space → launch-vehicle sizing), card verdicts for abort/strand/scrub/crew-lost, anomaly
 calls recorded on the debrief (`lastDebrief.anomaly`) with ops remedies, `BOT_DEBRIEF=1` + the bot's
-`failureLearning` summary line. Suite: `test-decision-loop-phase0.js`. Next: Phase 1 (go/no-go block).
+`failureLearning` summary line. Suite: `test-decision-loop-phase0.js`. Phase 1 done: `launchGoNoGo()` is the go/no-go
+authority (verdict + money/odds/tests/policy) rendered as `#goNoGo` under the bench button; `flightAttemptCost()` is the
+single "keep this to fly" number (card + checklist); `goRelTarget()` the single recommended bar. Suite: `test-go-no-go.js`.
+RULE: don't re-add launch inputs elsewhere on the bench's left column — extend `launchGoNoGo()`. Next: Phase 2.
 
 **In progress:** (none claimed right now).
 > When you start a task, replace this line with: `<task> — <Claude|Codex> — started <date>`.
