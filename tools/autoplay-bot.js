@@ -10,7 +10,8 @@
 // astronauts) and staffs the three core engineering departments once the team reliability ceiling bites.
 // Without it the bot never builds a crewed rocket it has no astronaut for.
 // BOT_DEBRIEF=1 (decision-loop Phase 0) takes the Last Flight card's first next move after every failure.
-// The summary's failureLearning line counts failures that repeat the previous failure's subsystem.
+// The summary's failureLearning line counts failures that repeat the previous failure's subsystem. With Phase 2 it
+// also inspects/redesigns/tests open failure investigations.
 //
 // Usage (from the repo root, after `node build.js`):
 //   cat tests/harness.js build/game.js tools/autoplay-bot.js > /tmp/ovbot.js
@@ -39,7 +40,7 @@ const FLIGHT_LOG=[];
 if(typeof recordFlightDebrief==='function'){ const _rfd=recordFlightDebrief; recordFlightDebrief=function(...a){ const d=_rfd.apply(this,a); if(d) FLIGHT_LOG.push({y:state.year, ok:!!d.success, kind:d.kind, sub:d.subsystem||null, mid:d.missionId}); if(process.env.BOT_FLOG) console.error("FLOG "+JSON.stringify(d)); return d; }; }
 newGame(DIFF); _gameStarted=true;
 { const _frf=fireRivalFirst; fireRivalFirst=function(r,f){ if(!state.rivalFired[r.id+'|'+f.name]) RIVAL_CLAIMS.push({rival:r.id,name:f.name,missionId:f.missionId||null,year:+(state.year+state.month/12).toFixed(2),nominal:f.year,playerHad:!!(f.missionId&&state.completed[f.missionId])}); return _frf(r,f); }; }
-[['buyResearch','research'],['rushResearch','research'],['queueBuild','build'],['buildEngineStock','build'],['launchFromHangar','launch'],['finalizeLaunch','payouts'],['tickPassiveContracts','contracts'],['tickContinuousDay','daily (overhead, payroll, gov, facilities)'],['signPassiveContract','contracts'],['buildTrackingStation','infrastructure'],['bailout','loans'],['chooseBridgeLoan','loans'],['tickMonthlyBoundary','monthly events'],['resolveInquiry','events'],['acceptMandate','events'],['resolveSetback','events']].forEach(([n,c])=>{ try{ ledgerWrap(n,c); }catch(e){} });
+[['buyResearch','research'],['rushResearch','research'],['queueBuild','build'],['buildEngineStock','build'],['launchFromHangar','launch'],['finalizeLaunch','payouts'],['tickPassiveContracts','contracts'],['tickContinuousDay','daily (overhead, payroll, gov, facilities)'],['signPassiveContract','contracts'],['buildTrackingStation','infrastructure'],['bailout','loans'],['chooseBridgeLoan','loans'],['tickMonthlyBoundary','monthly events'],['acceptMandate','events'],['resolveSetback','events']].forEach(([n,c])=>{ try{ ledgerWrap(n,c); }catch(e){} });
 // Animation stays ON so launch decisions stop the clock exactly as they do for a player (with it off the
 // game auto-scrubs weather and never raises live calls). closeAnim() plays the role of the player
 // closing each flight presentation, which is what releases deferred-flight settlement.
@@ -155,7 +156,6 @@ function answerPending(){
   const p=[];
   if(_pendingSetback){ p.push('setback'); resolveSetback(state.money>40?'fund':'delay'); }
   if(_pendingLogiMishap){ p.push('mishap'); resolveMishap('accept'); }
-  if(_pendingInquiry){ p.push('inquiry'); resolveInquiry('decline'); }
   if(_pendingSampleDecision){ p.push('sample'); resolveSampleDecision('sell'); }
   if(_pendingDiscovery){ p.push('discovery'); resolveDiscovery('decline'); }
   if(_pendingHearing){ p.push('hearing'); resolveHearing('defend'); }
@@ -213,6 +213,15 @@ while(state.year<YEAR_END && stats.turns<4000){
     if(d && !d.success && !d.dismissed && d.abs!==stats.debriefActed){ stats.debriefActed=d.abs;
       const mv=debriefNextMoves(d)[0];
       if(mv){ try{ const m0=state.money; eval(mv.action); bump(stats.debriefMoves, mv.action.replace(/\(.*$/,'')); acts.push('card: '+mv.label+(state.money!==m0?' ($'+(m0-state.money).toFixed(2)+'M)':'')); }catch(e){ bump(stats.stuck,'debrief:'+mv.action.slice(0,20)); } } }
+  }
+  // BOT_DEBRIEF=1 also works the failure investigations (Phase 2): inspect first; a confirmed flaw is redesigned
+  // when affordable, else tested; a cleared one-off needs nothing.
+  if(process.env.BOT_DEBRIEF==='1' && !state.launchTxn && typeof investigationActions==='function'){
+    for(const inv of (state.investigations||[]).filter(x=>x.status==='open'&&!x.program)){
+      const acts=investigationActions(inv), pick=k=>acts.find(a=>a.kind===k&&state.money-a.cost>=Math.max(1,flightAttemptCost()));
+      const a=inv.finding==null?pick('inspect'):(pick('redesign')||pick('test'));
+      if(a&&startInvestigationProgram(inv.id,a.kind)){ bump(stats.debriefMoves,'inv:'+a.kind); acts.length; }
+    }
   }
   const flyFirst=process.env.BOT_CHECKLIST==='fly' && !state.completed.first_flight; // comparison mode: no research before the first success
   if(!coaching && !flyFirst && !state.activeResearch){

@@ -26,7 +26,7 @@ function createFreshState(difficulty){
     log:[], annals:[], rivalFired:{}, scooped:{}, rivalThreat:{}, rivalState:{}, rivalLead:0, bailouts:0,
     staff:[], assignedAstronaut:null, persEventCooldown:5, proceduralStaffDefs:[],
     departments:defaultDepartments(), // #19: org layer over hired staff (per-dept lead + training)
-    econEvents:[], eventCooldown:6, pgmRoyalty:0, launchPolicy:'nominal', reflights:{}, review:null, lastDebrief:null, serviceDelivered:0, procDelivered:0, // spine step 2: absMonth of each recent paid re-flight, per mission
+    econEvents:[], eventCooldown:6, pgmRoyalty:0, launchPolicy:'nominal', reflights:{}, review:null, lastDebrief:null, flaws:{}, flawBelief:{}, subsysTrim:{}, subsysTest:{}, investigations:[], invSeq:0, serviceDelivered:0, procDelivered:0, // spine step 2: absMonth of each recent paid re-flight, per mission
     passiveContracts:[], contractCooldown:{}, contractSignings:{}, engineHeritage:{}, // passive-income contracts (repeatable + cooldown + diminishing)
     publicSupport:SUPPORT_BASE, // #8: program politics — public mood dial
     production:{bays:1,foundry:1,pads:1,qa:1}, // #7: manufacturing capacity — leveled production lines
@@ -80,7 +80,6 @@ function createFreshState(difficulty){
     uiLayer:'advanced', // #23: progressive UI complexity (basic/advanced/expert), independent of difficulty — newGame() starts Basic (#4)
     onboarding:{seen:{}, tabHidden:{}, newTabs:{}}, // #4: First Flight checklist — only what campaign state can't express
     loanInterest:0, // CE4(c): permanent monthly bridge-loan debt service
-    inquiryCredit:null, // P3: unused funded-inquiry reliability credit {subsystem,rel,flights} or null
     eraSeen:0, eraStartSnapshot:{flights:0,playerFirsts:0,rivalFirsts:0,money:startMoney,rep:0}, // P6 6.1: canonical Pioneer-era baseline
   };
 }
@@ -628,7 +627,6 @@ function resolveSetback(choice){
   _pendingSetback=null; hideModal();
   if(state.money<0) gameOver(); else render();
   maybeShowMishap(); // if a logistics mishap also came due this tick, surface it now that the setback is cleared
-  maybeShowInquiry(); // then a pending failure inquiry (lowest precedence of the three)
   maybeShowHearing(); // then a pending budget hearing (E1.1, mutually exclusive with inquiry in practice)
 }
 /* ---------- 2.3: logistics route interruptions ----------
@@ -677,20 +675,11 @@ function resolveMishap(choice){
   }
   _pendingLogiMishap=null; hideModal();
   if(state.money<0) gameOver(); else render();
-  maybeShowInquiry(); // if a failure inquiry is also pending, surface it now that the mishap is cleared
   maybeShowHearing(); // then a pending budget hearing (E1.1)
 }
-/* ---------- P3: failure investigation loop ----------
-   After an UNCREWED loss/abort/strand finalizes, offer a funded inquiry that converts the failure
-   into a reward keyed on WHAT failed. Reuses the _pendingSetback / _pendingLogiMishap transient
-   pending-state + fund/decline modal shape. Precedence: setback > mishap > inquiry (this is the
-   third pending-decision type; maybeShowInquiry defers to the other two, and both resolve* paths
-   chain into it). state.inquiryCredit is the ONE persisted addition (SAVE_VERSION 42→43). */
-const INQUIRY_COST_FRAC=0.3, INQUIRY_COST_FLOOR=0.6; // fund cost = max(FLOOR, FRAC × the lost flight's outlay) — mirrors the setback's max(0.6, 0.4×rdCostOf)
-const INQUIRY_REL=0.02, INQUIRY_FLIGHTS=3;           // ascent/staging reward: +2% additive R (like familyRelBonus), gated to the failed subsystem, over 3 flights
-const INQUIRY_SCI_BONUS=10;                           // deep-phase reward: flat science windfall (~1.5× a base deep mission's ~5-7⚛ yield, above SCI_RUSH_BASE=6)
+/* P3's fund/decline failure inquiry was replaced by the Phase 2 investigation (see "failure learning"). */
 // E1.7: space telescope standing program — term length, base monthly yield, and instrument-aging
-// parameters. Base yield is deliberately modest (a fraction of INQUIRY_SCI_BONUS per month) since
+// parameters. Base yield is deliberately modest (a fraction of a deep mission's science per month) since
 // it compounds over the whole term rather than paying out once.
 const TELESCOPE_TERM=60;          // months (5 years) before the program needs re-flying
 const TELESCOPE_SCI_BASE=2;       // ⚛/month baseline drip
@@ -700,50 +689,7 @@ const TELESCOPE_FAULT_SHARE=0.35; // of discovery rolls, the fraction that are a
 const TELESCOPE_WINDFALL_SCI=8;   // flat bonus on a windfall roll
 const TELESCOPE_FAULT_HEALTH=25;  // health lost if a fault is declined
 const TELESCOPE_REPAIR_COST_FRAC=0.02; // fraction of current capital, floor below
-const TELESCOPE_REPAIR_COST_FLOOR=0.4; // $M — mirrors INQUIRY_COST_FLOOR's max(floor, frac×basis) shape
-let _pendingInquiry=null;                             // an uncrewed loss awaiting a fund/decline inquiry decision (transient, like _pendingSetback)
-// ascent/staging subsystems → reliability credit; deep-phase (deep_propulsion / life_support) → science grant
-function inquiryRewardKind(subKey){ return SUBSYS_PHASE[subKey]==='deep' ? 'science' : 'reliability'; }
-function triggerInquiry(ctx, outcome){
-  if(_pendingInquiry) return;                         // one inquiry decision at a time
-  const sub=outcome&&outcome.subsystem; if(!sub) return; // no subsystem attribution → nothing to investigate
-  const cost=round2(Math.max(INQUIRY_COST_FLOOR, INQUIRY_COST_FRAC*(ctx.flightExpense||0)));
-  _pendingInquiry={ mName:ctx.m.name, subsystem:sub, subLabel:SUBSYS_LABEL[sub]||'systems', reward:inquiryRewardKind(sub), cost };
-  log('bad',`⚠ FAILURE INQUIRY — ${ctx.m.name}: the ${(SUBSYS_LABEL[sub]||'systems').toLowerCase()} loss can be formally investigated. A decision is needed.`);
-}
-function maybeShowInquiry(){ if(_pendingInquiry && !_pendingSetback && !_pendingLogiMishap) showInquiryModal(); } // setback + mishap take priority if any coexist
-function showInquiryModal(){
-  const s=_pendingInquiry; if(!s) return;
-  const fundOk=state.money>=s.cost;
-  const rewardTxt = s.reward==='science'
-    ? `+${INQUIRY_SCI_BONUS}⚛ science`
-    : `+${Math.round(INQUIRY_REL*100)}% ${s.subLabel.toLowerCase()} reliability · next ${INQUIRY_FLIGHTS} flights`;
-  showModal(`<h2 style="color:var(--bad)">⚠ Failure inquiry</h2>
-    <p><b>${s.mName}</b> — the loss traced to the ${s.subLabel.toLowerCase()}.</p>
-    <p class="muted">A funded inquiry turns this failure into hard data.</p>
-    <p class="dim" style="font-size:12px">The inquiry's credit is short-term. Lasting fixes (a test campaign, reliability research, a specialist engineer) are under <b>Last flight</b> on the Design Bench.</p>
-    <button class="btn" onclick="resolveInquiry('fund')" ${fundOk?'':'disabled'} title="${fundOk?'':'Not enough capital'}">Fund the inquiry — ${fM(s.cost)} <span class="dim">· ${rewardTxt}</span></button>
-    <button class="btn ghost" style="margin-top:8px" onclick="resolveInquiry('decline')">Move on <span class="dim">· free, no findings</span></button>`);
-}
-function resolveInquiry(choice){
-  const s=_pendingInquiry; if(!s) return;
-  if(choice==='fund'){
-    if(state.money<s.cost) return; // guarded; the button is disabled when unaffordable
-    state.money-=s.cost;
-    if(s.reward==='science'){
-      state.science=round2((state.science||0)+INQUIRY_SCI_BONUS);
-      log('ok',`Inquiry into the ${s.subLabel.toLowerCase()} failure banked +${INQUIRY_SCI_BONUS}⚛ of deep-space engineering data.`);
-    } else {
-      state.inquiryCredit={ subsystem:s.subsystem, rel:INQUIRY_REL, flights:INQUIRY_FLIGHTS }; // REPLACES any prior unused credit — no stacking
-      log('ok',`Inquiry into the ${s.subLabel.toLowerCase()} failure yields a fix — +${Math.round(INQUIRY_REL*100)}% ${s.subLabel.toLowerCase()} reliability on the next ${INQUIRY_FLIGHTS} flights that fly it.`);
-    }
-  } else {
-    log('note',`No inquiry funded — the ${s.mName} loss goes on the books without a formal review.`);
-  }
-  _pendingInquiry=null; hideModal();
-  if(typeof completeAdministrativeArrivalForeground==='function'&&completeAdministrativeArrivalForeground()) return;
-  if(state.money<0) gameOver(); else render();
-}
+const TELESCOPE_REPAIR_COST_FLOOR=0.4; // $M — max(floor, frac×basis) shape
 /* ---------- #81: Sample-return disposition — bank vs sell ----------
    Every sciMission (space_telescope, sample_return, astrobiology, oort_precursor) used to bank a fixed
    sciYield windfall automatically on its first flight. This turns that windfall into a real choice,
@@ -758,7 +704,7 @@ const SCI_SELL_RATE=0.5; // $M per ⚛ if sold instead of banked — a first-pas
                           // 42⚛→$21M vs its $14M payout) and fades to irrelevant late (oort_precursor:
                           // 120⚛→$60M vs its own $1800M payout), so selling is tempting early, banking
                           // wins naturally once money stops being the bottleneck.
-let _pendingSampleDecision=null; // a prestige science-mission windfall awaiting a bank/sell decision (transient, like _pendingInquiry)
+let _pendingSampleDecision=null; // a prestige science-mission windfall awaiting a bank/sell decision (transient, like _pendingHearing)
 function triggerSampleDecision(m, sciAmount){
   if(_pendingSampleDecision){ // one at a time — extremely rare (two prestige flights resolving the same
     // tick via deferred arrivals); auto-bank rather than silently losing the second windfall or clobbering
@@ -770,7 +716,7 @@ function triggerSampleDecision(m, sciAmount){
   _pendingSampleDecision={ mName:m.name, sciAmount, moneyAmount:round2(sciAmount*SCI_SELL_RATE) };
   log('note',`🧪 SAMPLE RETURNED — ${m.name}: bank it for research or license it commercially. A decision is needed.`);
 }
-function maybeShowSampleDecision(){ if(_pendingSampleDecision && !_pendingSetback && !_pendingLogiMishap && !_pendingInquiry && !_pendingHearing && !_pendingRivalDisaster) showSampleDecisionModal(); } // lowest precedence — good news, not a crisis
+function maybeShowSampleDecision(){ if(_pendingSampleDecision && !_pendingSetback && !_pendingLogiMishap && !_pendingHearing && !_pendingRivalDisaster) showSampleDecisionModal(); } // lowest precedence — good news, not a crisis
 function showSampleDecisionModal(){
   const s=_pendingSampleDecision; if(!s) return;
   showModal(`<h2 style="color:var(--readout)">🧪 Sample returned</h2>
@@ -796,7 +742,7 @@ function resolveSampleDecision(choice){
    (steady monthly drip, ages out) for the routine case, and the inquiry fund/decline decision for
    the occasional-event case (an instrument fault, needing a call). One program slot — seeded on a
    successful Orbital Observatory flight (see finish() above). */
-let _pendingDiscovery=null; // an instrument fault awaiting a fund/decline repair decision (transient, like _pendingInquiry)
+let _pendingDiscovery=null; // an instrument fault awaiting a fund/decline repair decision (transient, like _pendingHearing)
 function tickScienceProgram(){
   const sp=state.scienceProgram; if(!sp) return;
   state.science=round2((state.science||0)+sp.sciPerMonth);
@@ -823,7 +769,7 @@ function triggerDiscovery(){
     log('ok',`🔭 Orbital Observatory discovery — an unplanned windfall banks +${TELESCOPE_WINDFALL_SCI}⚛ science.`);
   }
 }
-function maybeShowDiscovery(){ if(_pendingDiscovery && !_pendingSetback && !_pendingLogiMishap && !_pendingInquiry && !_pendingHearing && !_pendingRivalDisaster) showDiscoveryModal(); } // lowest precedence — the others are time-critical crises, this is routine upkeep
+function maybeShowDiscovery(){ if(_pendingDiscovery && !_pendingSetback && !_pendingLogiMishap && !_pendingHearing && !_pendingRivalDisaster) showDiscoveryModal(); } // lowest precedence — the others are time-critical crises, this is routine upkeep
 function showDiscoveryModal(){
   const s=_pendingDiscovery; if(!s) return;
   const fundOk=state.money>=s.cost;
@@ -856,7 +802,7 @@ function resolveDiscovery(choice){
    for consistency. No persisted state beyond the transient. */
 const HEARING_FUND_COST=2.0, HEARING_SUPPORT_FUND=6, HEARING_SUPPORT_DEFEND=3, HEARING_SUPPORT_BLAME=4;
 const HEARING_REP_COST_DEFEND=3, HEARING_MORALE_HIT_BLAME=8, HEARING_POACH_HEAT_BLAME=9;
-let _pendingHearing=null; // a fatal crewed loss awaiting a fund/defend/blame decision (transient, like _pendingInquiry)
+let _pendingHearing=null; // a fatal crewed loss awaiting a fund/defend/blame decision (transient, like _pendingHearing)
 function hearingFundCost(){ return round2(HEARING_FUND_COST*(1+eraStakesFrac())); } // later eras draw bigger scrutiny, same spirit as applyEraStakes
 function triggerHearing(ctx){
   if(_pendingHearing) return; // one at a time
@@ -869,7 +815,7 @@ function triggerHearing(ctx){
   _pendingHearing={ mName:ctx.m.name, frontPage:disasterFP };
   log('bad',`⚠ BUDGET HEARING — ${ctx.m.name}: the fatal loss draws government scrutiny. A decision is needed.`);
 }
-function maybeShowHearing(){ if(_pendingHearing && !_pendingSetback && !_pendingLogiMishap && !_pendingInquiry) showHearingModal(); } // setback/mishap/inquiry take priority
+function maybeShowHearing(){ if(_pendingHearing && !_pendingSetback && !_pendingLogiMishap) showHearingModal(); } // setback/mishap/inquiry take priority
 function showHearingModal(){
   const s=_pendingHearing; if(!s) return;
   const cost=hearingFundCost(), fundOk=state.money>=cost;
@@ -979,6 +925,7 @@ function tickContinuousDay(){
   { const rate=publicSupport()>SUPPORT_BASE ? SUPPORT_REVERT_DAY*0.5 : SUPPORT_REVERT_DAY; // earned goodwill fades half as fast as bad blood heals
     state.publicSupport=clampA(publicSupport()+(SUPPORT_BASE-publicSupport())*rate, SUPPORT_MIN, SUPPORT_MAX); } // #8: mood reverts toward neutral
   state.money+=perDay(govMonthlyFunding()); // #8: public support buys government funding (slice 3a: accrues daily)
+  tickInvestigations(); /* Phase 2: investigation programs finish on their day */
   if(state.activeResearch && !_pendingSetback){ // #26: R&D progresses daily; a pending setback freezes it
     const _rdNode=RESEARCH.find(r=>r.id===state.activeResearch.id);
     const rdBonus=engRdSpeedBonus()+stationRdSpeedBonus()+divisionSpeedBonus(_rdNode)+partnerSpeedBonus(_rdNode)+sciStaffRdBonus(); // #6: research partnerships accelerate their track; orbital labs add station R&D speed; science staff add R&D speed
@@ -3615,6 +3562,9 @@ function launchGoNoGo(){
     if(odds<target) risks.push(`${Math.round(odds*100)}% to succeed is below the ${Math.round(target*100)}% recommended${m.crew>0?' for a crewed flight':''}`);
     if(m.crew>0&&!state.research.launch_escape) risks.push('no escape system — a failure loses the crew');
     if(ceil<1&&odds>=ceil-0.005) risks.push(`your engineering team caps this flight at ${Math.round(ceil*100)}% — staff the core departments to lift it`);
+    { const present=new Set(subsystemFragilities(m,view.vehicle||computeVehicle(),view.simulation||null,!!m.crew).map(f=>f.key));
+      const open=(state.investigations||[]).filter(x=>x.status==='open'&&present.has(x.sub)&&x.finding!=='oneoff');
+      open.forEach(x=>risks.push(x.finding==='flaw'?`a confirmed ${(SUBSYS_LABEL[x.sub]||x.sub).toLowerCase()} design flaw is still unfixed`:`the ${(SUBSYS_LABEL[x.sub]||x.sub).toLowerCase()} investigation is open — ${Math.round(x.est*100)}% it's a design flaw`)); } /* Phase 2 */
   }
   return {verdict:!chk.ok?'blocked':risks.length?'risky':'go', why:!chk.ok?(chk.why||'Not ready to fly.'):(risks[0]||''), risks,
     reason:chk.reason||null, hull, mission:m, view, check:chk, quote:q,
@@ -4495,7 +4445,7 @@ function rivalRescueChance(){
 }
 // Monthly disaster roll for one rival (called from tickRivals while it is actively saving).
 function maybeRivalDisaster(r, rs){
-  if(_pendingSetback||_pendingLogiMishap||_pendingInquiry||_pendingRivalDisaster) return; // modal-priority: defer if a decision is already pending (roll again later)
+  if(_pendingSetback||_pendingLogiMishap||_pendingRivalDisaster) return; // modal-priority: defer if a decision is already pending (roll again later)
   const mult=RIVAL_DISASTER_MULT[r.id]||1.0;
   if(Math.random() >= RIVAL_DISASTER_BASE_P*mult) return;                  // no disaster this month
   const crewed=rivalHasCrewedFirst(r, rs) && Math.random()<RIVAL_DISASTER_CREWED_FRAC;
@@ -4511,7 +4461,7 @@ function maybeRivalDisaster(r, rs){
   pushFrontPage('disaster', r.flag, `${r.name} crew stranded in deep space`, 'The world is watching to see if anyone will help.');
   _pendingRivalDisaster={ rivalId:r.id }; // surfaced by maybeShowRivalDisaster() after the advance settles
 }
-function maybeShowRivalDisaster(){ if(_pendingRivalDisaster && !_pendingSetback && !_pendingLogiMishap && !_pendingInquiry) showRivalDisasterModal(); } // setback/mishap/inquiry take priority
+function maybeShowRivalDisaster(){ if(_pendingRivalDisaster && !_pendingSetback && !_pendingLogiMishap) showRivalDisasterModal(); } // setback/mishap/inquiry take priority
 function showRivalDisasterModal(){
   const s=_pendingRivalDisaster; if(!s) return;
   const r=RIVALS.find(x=>x.id===s.rivalId); if(!r){ _pendingRivalDisaster=null; return; }
@@ -4557,7 +4507,7 @@ function declineRivalRescue(){
    is pending, maybeShowEraInterstitial() defers and a later settle-point surfaces it. Balance-neutral:
    purely a notification; state.eraSeen only advances when the player clicks Continue. */
 function maybeShowEraInterstitial(){
-  if(_pendingSetback||_pendingLogiMishap||_pendingInquiry||_pendingRivalDisaster) return; // lowest priority — any pending decision wins this tick
+  if(_pendingSetback||_pendingLogiMishap||_pendingRivalDisaster) return; // lowest priority — any pending decision wins this tick
   if(state.over) return;
   const cur=eraIndex(currentEra());
   const seen=(state.eraSeen==null?0:state.eraSeen);
@@ -4755,7 +4705,7 @@ let _pendingResearchDone=[];
 function queueResearchNotice(id){ if(id) _pendingResearchDone.push(id); }
 function maybeShowResearchNotice(){
   if(!_pendingResearchDone.length) return;
-  if(_pendingSetback||_pendingLogiMishap||_pendingInquiry||_pendingHearing) return; // real decisions come first
+  if(_pendingSetback||_pendingLogiMishap||_pendingHearing) return; // real decisions come first
   const me=$('modal'); if(me&&me.classList&&!me.classList.contains('hidden')) return; // never clobber an open modal
   const ids=_pendingResearchDone.slice(); _pendingResearchDone.length=0;
   showResearchNoticeModal(ids);
@@ -4800,7 +4750,7 @@ function runToNextEvent(){
   const target=timed.length?Math.max(1,Math.ceil(timed[0].etaDays)):30;
   const cap=Math.min(target, 365*3);
   let d=0;
-  while(d<cap && !_timeInterrupted && !state.over && !_pendingSetback && !_pendingLogiMishap && !_pendingInquiry && !_pendingRivalDisaster){
+  while(d<cap && !_timeInterrupted && !state.over && !_pendingSetback && !_pendingLogiMishap && !_pendingRivalDisaster){
     advance(1); d++;
     if($('modal') && !$('modal').classList.contains('hidden')) break; // a decision opened
   }
@@ -4854,7 +4804,7 @@ function handleVisibilityChange(){
 try{ document.addEventListener('visibilitychange', handleVisibilityChange); }catch(e){}
 function skipResearch(){ if(!state.activeResearch) return;
   let n=state.activeResearch.monthsLeft+1; // each month removes ≥1; +1 guarantees completion absent a setback
-  while(n-->0 && state.activeResearch && !_pendingSetback && !_pendingLogiMishap && !_pendingInquiry && !_pendingRivalDisaster && !state.over) advance(1); // #26: stop the skip at a setback (or 2.3 mishap) decision
+  while(n-->0 && state.activeResearch && !_pendingSetback && !_pendingLogiMishap && !_pendingRivalDisaster && !state.over) advance(1); // #26: stop the skip at a setback (or 2.3 mishap) decision
   if(!state.over){ render(); maybeShowSetback(); maybeShowMishap(); maybeShowRivalDisaster(); maybeShowEraInterstitial(); maybeShowDiscovery(); }
 }
 
@@ -6297,13 +6247,13 @@ function effectiveReliability(m,v,sim,crewed,dockingCapability){
   rel=Math.min(0.995, rel + facilityBonus(missionBody(m&&m.id)).relBump); // M17: home-field operational bonus
   rel=Math.min(0.995, rel + familyRelBonus(activeFamily())); // #3: reliability heritage of a proven lineage
   rel=Math.min(0.995, rel + synergyRelBonus()); // P8: cross-track research synergies (0 unless both/all requires are researched)
-  rel=Math.min(0.995, rel + inquiryRelBonus(m,v,sim,crewed)); // P3: a funded failure inquiry's reliability credit, only while its subsystem is in play
   if(state.staticFixBonus) rel=Math.min(0.995, rel + state.staticFixBonus); // Phase 2: fault found & fixed on the test stand
   if(recoveryRefly(m)) rel=Math.max(diff().relFloor, rel - refurbRelPenalty()); // #7 slice 4: refurbishment wear — each refly chips a little reliability (bounded; mitigated by retiring the airframe)
   const dockingRel=dockingReliabilityAdjustment(m,dockingCapability);
   rel*=dockingRel.factor; // D1: the established orbital-assembly penalty now comes from exact reserved operations
   if(dockingRel.additive) rel=clampA(rel+dockingRel.additive,0.1,0.995); // EOR's established −2% is owned by the docking phase
   if(m && m._arch && m._arch.relMod && m._arch.id!=='eor') rel=clampA(rel + m._arch.relMod, 0.1, 0.995); // other M12 architecture modifiers remain unchanged
+  { const hr=subsysHazardRatio(m,v,sim,crewed,dockingCapability); if(hr!==1) rel=Math.pow(rel,hr); } /* Phase 2: subsystem hazard (flaw / redesign / test credit) */
   rel=Math.min(rel, teamRelCeiling()); /* spine step 8: an unstaffed engineering team caps what any flight can achieve */
   return rel;
 }
@@ -6360,16 +6310,9 @@ function subsystemFragilities(m,v,sim,crewed,dockingCapability){
   }
   const qm=qaFragMult(); // #7→#16: a QA-heavy line catches manufacturing defects, so mfg-subsystem failures lose share of the residual risk (avionics/life-support/deep-prop unchanged — QA can't fix software or radiation)
   if(qm<1) for(const e of list) if(QA_MFG_SUBSYS.has(e.key)) e.weight*=qm;
+  if(hazardModsActive()) for(const e of list) e.weight*=subsysHazardMult(e.key,_hazardTruth); /* Phase 2: flaws, redesigns, test credits */
   return list;
 }
-// P3: is a funded failure-inquiry reliability credit in play on THIS flight? (its subsystem is present)
-// Short-circuits before touching subsystemFragilities when no credit is active — zero overhead / drift when unfunded.
-function inquiryCreditRelevant(m,v,sim,crewed){
-  const c=state.inquiryCredit;
-  if(!c || !(c.flights>0) || !c.rel) return false;
-  return subsystemFragilities(m,v,sim,crewed).some(s=>s.key===c.subsystem);
-}
-function inquiryRelBonus(m,v,sim,crewed){ return inquiryCreditRelevant(m,v,sim,crewed) ? state.inquiryCredit.rel : 0; }
 // distribute the mission failure probability across subsystems so the product of
 // their reliabilities equals the overall R (rel_i = R^(weight_i / sum_weights))
 function subsystemReport(m,v,sim,crewed,relMult=1,dockingCapability){
@@ -6462,7 +6405,10 @@ function nearMissText(nm){
   const pretty = pts<1 ? pts.toFixed(1) : Math.round(pts).toString();
   return ` ⚠ Close call — ${nm.label} held at ${Math.round(nm.rel*100)}%, ${pretty} point${pretty==='1'?'':'s'} from failing.`;
 }
-function resolveFlight(m,v,sim,crewed,relPenalty=0,dockingCapability){  if(_devForceOutcome){ const k=_devForceOutcome; _devForceOutcome=null; return devSynthOutcome(k,m,v,sim,crewed,relPenalty,dockingCapability); } // dev menu: single-shot forced outcome
+function resolveFlight(m,v,sim,crewed,relPenalty=0,dockingCapability){ /* Phase 2: the roll uses the hidden truth; everything else shows belief */
+  _hazardTruth=true; try{ return resolveFlightCore(m,v,sim,crewed,relPenalty,dockingCapability); } finally{ _hazardTruth=false; }
+}
+function resolveFlightCore(m,v,sim,crewed,relPenalty=0,dockingCapability){  if(_devForceOutcome){ const k=_devForceOutcome; _devForceOutcome=null; return devSynthOutcome(k,m,v,sim,crewed,relPenalty,dockingCapability); } // dev menu: single-shot forced outcome
   const rep=subsystemReport(m,v,sim,crewed,1-(relPenalty||0),dockingCapability);
   const phases=flightPhaseBreakdown(rep); // CE5(a): per-phase decomposition (outcome unchanged)
   const failed={};
@@ -7399,7 +7345,7 @@ function beginResolve(ctx){
 // a time. Guards prevent reentrancy (a strand/loss calls advance() → advanceDays → here) and modal stacking.
 function pumpFlightArrivals(){
   if(_flightResolving) return;
-  if(_pendingLive||_pendingReserve||_pendingOrbitOps||_pendingOps||_pendingRescue||_pendingSetback||_pendingLogiMishap||_pendingInquiry||_pendingLaunch||_pendingRivalDisaster) return;
+  if(_pendingLive||_pendingReserve||_pendingOrbitOps||_pendingOps||_pendingRescue||_pendingSetback||_pendingLogiMishap||_pendingLaunch||_pendingRivalDisaster) return;
   try{ if($('modal') && !$('modal').classList.contains('hidden')) return; }catch(e){} // a modal is on screen — wait
   const rec=(state.activeFlights||[]).filter(f=>f&&f.deferred&&absDay()>=finiteRecordNumber(f.arriveAbs))
     .sort((a,b)=>finiteRecordNumber(a.arriveAbs)-finiteRecordNumber(b.arriveAbs))[0];
@@ -7698,13 +7644,7 @@ function proceedLaunch(m,v,sim,windowQuality,weatherPenalty,prebuilt,hullId){
   const docking=dockingMissionCapability(m,tx&&tx.spec&&tx.spec.docking);
   // M16: subsystem-based reliability — which subsystem (if any) fails decides the story
   const outcome=tx&&tx.outcome?plainRecord(tx.outcome):resolveFlight(m,v,sim,crewed,weatherPenalty,docking); // outcome locks at launch-time tech and frozen docking fitment
-  // P3: this real flight commits the funded-inquiry reliability credit if its subsystem is in play — consume one flight here
-  // (the single point where the +R bonus is baked into a genuine outcome; preview/sim calls never reach this line).
-  if(state.inquiryCredit && state.inquiryCredit.flights>0 && inquiryCreditRelevant(m,v,sim,crewed)){
-    const c=state.inquiryCredit; c.flights--;
-    if(c.flights<=0){ state.inquiryCredit=null; log('note',`${SUBSYS_LABEL[c.subsystem]||'Subsystem'} inquiry reliability credit applied — now fully spent.`); }
-    else log('note',`${SUBSYS_LABEL[c.subsystem]||'Subsystem'} inquiry reliability credit applied — ${c.flights} flight${c.flights===1?'':'s'} remaining.`);
-  }
+  consumeSubsysTestCredits(m,v,sim,crewed); /* Phase 2: an integrated-test credit is spent by each real flight that flies its subsystem */
   // Time Granularity slice 4: the flight now occupies its REAL calendar duration — the cruise/ops days.
   // Early/suborbital missions are days:0 (early game provably unchanged); deep missions become major
   // time commitments (overhead, R&D, rivals, facilities all advance during the mission). Intentional
@@ -7826,12 +7766,12 @@ function finishLaunchTransaction(tx,success,outcome,pendingCelebration){
     render();
     const reorganizationResult=!!(sponsored&&success&&typeof showReorganizationSuccessModal==='function'&&showReorganizationSuccessModal(pendingCelebration));
     if(pendingCelebration&&!reorganizationResult) pendingCelebration();
-    maybeShowInquiry(); maybeShowHearing(); maybeShowSampleDecision();
+    maybeShowHearing(); maybeShowSampleDecision();
     pumpFlightArrivals();
   }else if(administrative&&!sponsored){
     // Physical settlement remains ordinary. If it opened a durable consequence
     // decision, show that before returning foreground ownership to administration.
-    maybeShowInquiry(); maybeShowHearing(); maybeShowSampleDecision();
+    maybeShowHearing(); maybeShowSampleDecision();
     if(typeof completeAdministrativeArrivalForeground==='function') completeAdministrativeArrivalForeground();
   }
   return !terminal;
@@ -8089,12 +8029,12 @@ function finalizeLaunch(ctx, ops){
       }
     }
   }
-  // P3: after an UNCREWED loss/abort/strand, offer a funded failure inquiry (crewed catastrophes keep their
-  // existing grounding narration untouched; abort/strand are crewed-only in practice, guarded here for safety).
-  if(!crewed && (outcome.kind==='loss'||outcome.kind==='abort'||outcome.kind==='strand') && outcome.subsystem) triggerInquiry(ctx, outcome);
+  /* Phase 2: any flight that fell short with a named subsystem opens an investigation (no modal — it lives on the
+     Last Flight card): known fact = what failed and when; unknown = a design flaw that will recur, or a one-off */
+  const _inv=(outcome.kind!=='success'&&outcome.subsystem)?openInvestigation(ctx,outcome):null;
   recordFlightLedger(flightRevenue, flightExpense); // #18: attribute this flight to the current month's ops summary
   if(tx) tx.applied.ledger=true;
-  recordFlightDebrief(ctx, outcome, _debriefBefore, flightRevenue, tx&&tx.spec&&tx.spec.testLevel!=null?tx.spec.testLevel:state.testLevel, ops);
+  recordFlightDebrief(ctx, outcome, _debriefBefore, flightRevenue, tx&&tx.spec&&tx.spec.testLevel!=null?tx.spec.testLevel:state.testLevel, ops, _inv);
   state.testLevel=0; // campaign applies to one flight
   state.rehearsal=false; // #20 slice 4: rehearsal applies to one flight
   state.depotUse=0;
@@ -8345,6 +8285,132 @@ function firstUnlocked(){return Object.keys(ENGINES).find(k=>state.unlocked[k])|
 function setEngine(i,v){if(!guardOrdinaryAction('Vehicle redesign')) return false;state.stages[i].eng=v;render();}
 function setCount(i,d){
   if(!guardOrdinaryAction('Vehicle redesign')) return false;try{ sfxThunk(); }catch(e){}state.stages[i].count=Math.max(1,Math.min(8,state.stages[i].count+d));render();}
+/* ---------- Decision-loop Phase 2: failure learning (2026-11-18) ----------
+   Every flight that falls short with a named subsystem opens an investigation. What failed, and in which phase,
+   is a known fact. Whether it was a DESIGN FLAW (it will recur: that subsystem's share of the failure hazard is
+   ×FLAW_MULT until it is redesigned) or a ONE-OFF is decided, hidden, when the failure happens. The player sees an
+   estimate (FLAW_PRIOR, or FLAW_REPEAT_EST when the same subsystem has failed before with nothing fixed) and
+   chooses: inspect (cheap, quick — finds out which), integrated testing (halves that subsystem's hazard for the
+   next few flights), redesign (removes a flaw; a small permanent gain either way), or accept the risk.
+   Hazard model: a multiplier k on one subsystem's weight w scales the flight's failure hazard, so
+   R' = R^(Σ w·k / Σ w) — subsystem-specific by construction, and the subsystem weights the outcome roll uses
+   carry the same k, so attribution follows. Displayed odds use the player's BELIEF (expected k over an
+   uninspected flaw); only the outcome roll (resolveFlight) uses the truth. */
+const FLAW_PRIOR=0.35, FLAW_REPEAT_EST=0.75, FLAW_MULT=1.6;
+const INV_TEST_MULT=0.5, INV_TEST_FLIGHTS=3, INV_TRIM=0.85, INV_TRIM_FLOOR=0.6, INV_KEEP=12;
+const INV_PROGRAMS={
+  inspect: {icon:'🔍', label:'Inspect the hardware', months:1, costFrac:0.15, floor:0.2},
+  test:    {icon:'🧪', label:'Integrated testing',   months:1, costFrac:0.35, floor:0.4},
+  redesign:{icon:'🛠', label:'Redesign',             months:3, costFrac:0.70, floor:0.8},
+};
+let _hazardTruth=false; /* true only while resolveFlight rolls an outcome */
+function hazardModsActive(){ const st=state; return !!(st.flaws&&Object.keys(st.flaws).length||st.flawBelief&&Object.keys(st.flawBelief).length||st.subsysTrim&&Object.keys(st.subsysTrim).length||st.subsysTest&&Object.keys(st.subsysTest).length); }
+function subsysHazardMult(sub, truth){
+  let k=1; const st=state;
+  if(truth){ if(st.flaws&&st.flaws[sub]) k*=FLAW_MULT; }
+  else { const b=st.flawBelief&&st.flawBelief[sub]||0; if(b>0) k*=1+b*(FLAW_MULT-1); }
+  if(st.subsysTrim&&st.subsysTrim[sub]) k*=st.subsysTrim[sub];
+  const t=st.subsysTest&&st.subsysTest[sub]; if(t&&t.flights>0) k*=t.mult;
+  return k;
+}
+/* Σ w·k / Σ w over the subsystems this flight carries (w = the un-modified weights) */
+function subsysHazardRatio(m,v,sim,crewed,dockingCapability){
+  if(!hazardModsActive()) return 1;
+  const list=subsystemFragilities(m,v,sim,crewed,dockingCapability); let wk=0, w=0;
+  for(const f of list){ const k=subsysHazardMult(f.key,_hazardTruth)||1; wk+=f.weight; w+=f.weight/k; }
+  return w>0?wk/w:1;
+}
+function flawEstimate(sub){
+  const prev=(state.investigations||[]).some(x=>x.sub===sub&&!(x.finding==='oneoff')&&!(x.status==='closed'&&x.closedWhy==='redesigned'));
+  return prev?FLAW_REPEAT_EST:FLAW_PRIOR;
+}
+function openInvestigation(ctx,outcome){
+  const sub=outcome&&outcome.subsystem; if(!sub||!ctx||!ctx.m) return null;
+  state.flaws=state.flaws||{}; state.flawBelief=state.flawBelief||{}; state.investigations=state.investigations||[];
+  const est=flawEstimate(sub);
+  const flaw=state.flaws[sub]?true:Math.random()<FLAW_PRIOR;
+  if(flaw) state.flaws[sub]=true;
+  /* an earlier open investigation of the same subsystem folds into this one */
+  state.investigations.forEach(x=>{ if(x.sub===sub&&x.status==='open'&&!x.program){ x.status='closed'; x.closedWhy='superseded'; } });
+  const known=state.flawBelief[sub]===1; /* already confirmed by an inspection */
+  state.flawBelief[sub]=known?1:est;
+  state.invSeq=(state.invSeq||0)+1;
+  const inv={id:'inv'+state.invSeq, missionId:ctx.m.id, mName:ctx.m.name, sub, abs:absDay(), kind:outcome.kind,
+    basis:round2(Math.max(0.5,ctx.flightExpense||0)), est:known?1:est, finding:known?'flaw':null, status:'open', program:null, closedWhy:null};
+  state.investigations.push(inv);
+  if(state.investigations.length>INV_KEEP) state.investigations=state.investigations.slice(-INV_KEEP);
+  log('bad',`Investigation opened — ${ctx.m.name}: ${(SUBSYS_LABEL[sub]||sub).toLowerCase()}. ${known?'A known design flaw struck again.':`Design flaw or one-off? Estimate ${Math.round(est*100)}% flaw.`}`);
+  return inv;
+}
+function investigationById(id){ return (state.investigations||[]).find(x=>x.id===id)||null; }
+function invProgramQuote(inv,kind){
+  const p=INV_PROGRAMS[kind]; if(!inv||!p) return null;
+  let months=p.months, cost=round2(Math.max(p.floor, p.costFrac*inv.basis));
+  let note='';
+  if(kind==='redesign'&&SUBSYS_SPECIALISTS[inv.sub]&&!(bestSpecialistSkill(inv.sub)>0)){ months+=1; cost=round2(cost*1.3); note=`no ${(SUBSYS_LABEL[inv.sub]||inv.sub).toLowerCase()} specialist: +1 mo, +30%`; }
+  return {kind, icon:p.icon, label:p.label, months, cost, note};
+}
+function investigationActions(inv){
+  if(!inv||inv.status!=='open'||inv.program) return [];
+  const out=[];
+  if(inv.finding==null) out.push(invProgramQuote(inv,'inspect'));
+  out.push(invProgramQuote(inv,'test'));
+  out.push(invProgramQuote(inv,'redesign'));
+  return out;
+}
+function startInvestigationProgram(id,kind){
+  if(!guardOrdinaryAction('Failure investigation')) return false;
+  const inv=investigationById(id), q=inv&&investigationActions(inv).find(x=>x.kind===kind);
+  if(!q||state.money<q.cost) return false;
+  state.money=round2(state.money-q.cost);
+  inv.program={kind, cost:q.cost, startAbs:absDay(), doneAbs:absDay()+Math.round(q.months*DAYS_PER_MONTH)};
+  log('note',`${q.icon} ${q.label} — ${(SUBSYS_LABEL[inv.sub]||inv.sub).toLowerCase()} (${inv.mName}): ${fM(q.cost)}, results ${dayToDate(inv.program.doneAbs)}.`);
+  render(); return true;
+}
+function acceptInvestigationRisk(id){
+  const inv=investigationById(id); if(!inv||inv.status!=='open'||inv.program) return false;
+  inv.status='closed'; inv.closedWhy='accepted';
+  log('note',`Risk accepted on the ${(SUBSYS_LABEL[inv.sub]||inv.sub).toLowerCase()} (${inv.mName}) — flying it as it is.`);
+  render(); return true;
+}
+function completeInvestigationProgram(inv){
+  const kind=inv.program.kind, sub=inv.sub, name=(SUBSYS_LABEL[sub]||sub).toLowerCase(), flaw=!!(state.flaws&&state.flaws[sub]);
+  inv.program.done=true;
+  if(kind==='inspect'){
+    inv.finding=flaw?'flaw':'oneoff'; inv.est=flaw?1:0;
+    if(flaw){ state.flawBelief[sub]=1; log('bad',`🔍 Inspection result — ${inv.mName}: a design flaw in the ${name}. Until it is redesigned, ${name} failures are ${FLAW_MULT}× as likely.`); }
+    else { delete state.flawBelief[sub]; inv.status='closed'; inv.closedWhy='oneoff'; log('ok',`🔍 Inspection result — ${inv.mName}: the ${name} failure was a one-off. Nothing to fix; fly with confidence.`); }
+    inv.program=null; /* the investigation stays open on a flaw: redesign, test, or accept */
+  } else if(kind==='test'){
+    state.subsysTest=state.subsysTest||{}; state.subsysTest[sub]={mult:INV_TEST_MULT, flights:INV_TEST_FLIGHTS};
+    inv.status='closed'; inv.closedWhy='tested';
+    log('ok',`🧪 Integrated testing done — ${name} failures halved on the next ${INV_TEST_FLIGHTS} flights that fly it.${inv.finding==='flaw'?' The flaw itself is still there.':''}`);
+  } else if(kind==='redesign'){
+    if(state.flaws) delete state.flaws[sub]; if(state.flawBelief) delete state.flawBelief[sub];
+    state.subsysTrim=state.subsysTrim||{}; state.subsysTrim[sub]=Math.max(INV_TRIM_FLOOR, round2((state.subsysTrim[sub]||1)*INV_TRIM));
+    inv.finding=flaw?'flaw':(inv.finding||'oneoff'); inv.status='closed'; inv.closedWhy='redesigned';
+    log('ok',`🛠 Redesign complete — ${inv.mName}: ${flaw?`the ${name} design flaw is gone`:`no flaw found, but the ${name} is sturdier`}; ${name} failures permanently ×${state.subsysTrim[sub]}.`);
+  }
+  try{ timeInterrupt(); }catch(e){} /* results are worth stopping the clock for */
+}
+function tickInvestigations(){
+  const list=state.investigations; if(!list||!list.length) return;
+  const now=absDay();
+  for(const inv of list) if(inv.program&&!inv.program.done&&inv.program.doneAbs<=now) completeInvestigationProgram(inv);
+}
+function consumeSubsysTestCredits(m,v,sim,crewed){
+  const t=state.subsysTest; if(!t||!Object.keys(t).length) return;
+  const present=new Set(subsystemFragilities(m,v,sim,crewed).map(f=>f.key));
+  for(const sub of Object.keys(t)){ if(!present.has(sub)) continue; t[sub].flights--; if(t[sub].flights<=0) delete t[sub]; }
+}
+/* the believed odds with and without the open flaw estimate — what "accept the risk" costs on the bench rocket */
+function investigationRiskOdds(inv){
+  try{ const m=curMission(), v=computeVehicle(), sim=m.profile?simulateMission(m):null;
+    const now=effectiveReliability(m,v,sim,!!m.crew); const b=state.flawBelief[inv.sub]; delete state.flawBelief[inv.sub];
+    const clean=effectiveReliability(m,v,sim,!!m.crew); if(b!=null) state.flawBelief[inv.sub]=b;
+    const present=subsystemFragilities(m,v,sim,!!m.crew).some(f=>f.key===inv.sub);
+    return {now, clean, present}; }catch(e){ return null; }
+}
 /* ---------- One-more-launch: the flight debrief (2026-11-18) ----------
    Every settled flight leaves state.lastDebrief: what happened (outcome, the subsystem that governed it,
    the reliability it flew at, a close call on a success), what it earned (payout, rep, science) and what it
@@ -8354,7 +8420,7 @@ function debriefSnapshot(){
   let flyable=[]; try{ flyable=MISSIONS.filter(x=>!state.completed[x.id]&&missionFlyable(x)).map(x=>x.id); }catch(e){}
   return {money:state.money, rep:state.rep, sci:state.science||0, flyable};
 }
-function recordFlightDebrief(ctx, outcome, before, revenue, testLevel, ops){
+function recordFlightDebrief(ctx, outcome, before, revenue, testLevel, ops, inv){
   if(!ctx||!ctx.m||!outcome) return null;
   const m=ctx.m, after=debriefSnapshot(), kind=outcome.kind||'success';
   const nm=outcome.nearMiss;
@@ -8364,6 +8430,7 @@ function recordFlightDebrief(ctx, outcome, before, revenue, testLevel, ops){
     nearMiss:nm?{key:nm.key, label:nm.label, margin:Math.round((nm.margin||0)*1000)/1000}:null,
     first:!ctx.routine&&kind==='success', crewed:!!ctx.crewed, testLevel:testLevel||0, rehearsed:!!ctx.rehearsed,
     /* an in-flight anomaly call: an operations story, not a hardware one — the card offers ops remedies */
+    invId:inv?inv.id:null,
     anomaly:ops&&ctx.ev?{id:ctx.ev.id, title:String(ctx.ev.title||'in-flight anomaly'), decided:!!ops.outcomeOverride}:null,
     revenue:round2(revenue||0), rep:Math.round(after.rep-((before&&before.rep)||0)), sci:round2(after.sci-((before&&before.sci)||0)),
     opened:after.flyable.filter(id=>id!==m.id&&!((before&&before.flyable)||[]).includes(id)), dismissed:false};
@@ -9517,7 +9584,7 @@ function resetSimTransients(){
   try{ stopTimeAuto(); }catch(e){}
   if(_holdTimer){ try{ clearTimeout(_holdTimer); }catch(e){} _holdTimer=null; }
   _pendingSetback=null; _setbackCooldown=SETBACK_GAP;
-  _pendingLogiMishap=null; _pendingInquiry=null; _pendingSampleDecision=null;
+  _pendingLogiMishap=null; _pendingSampleDecision=null;
   _pendingDiscovery=null; _pendingHearing=null; _pendingRivalDisaster=null;
   _pendingResearchDone=[]; _timeInterrupted=false; _timeAutoHiddenUnit=null;
   _devForceOutcome=null; _devForceLiveCall=false; _devForceReserve=false; _devForceWeather=false;

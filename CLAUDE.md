@@ -58,7 +58,11 @@ calls recorded on the debrief (`lastDebrief.anomaly`) with ops remedies, `BOT_DE
 `failureLearning` summary line. Suite: `test-decision-loop-phase0.js`. Phase 1 done: `launchGoNoGo()` is the go/no-go
 authority (verdict + money/odds/tests/policy) rendered as `#goNoGo` under the bench button; `flightAttemptCost()` is the
 single "keep this to fly" number (card + checklist); `goRelTarget()` the single recommended bar. Suite: `test-go-no-go.js`.
-RULE: don't re-add launch inputs elsewhere on the bench's left column — extend `launchGoNoGo()`. Next: Phase 2.
+RULE: don't re-add launch inputs elsewhere on the bench's left column — extend `launchGoNoGo()`. Phase 2 done
+(SAVE_VERSION 76): the P3 inquiry modal/`inquiryCredit` are GONE; failures open `state.investigations` (hidden
+`state.flaws`, displayed `state.flawBelief`, `subsysTrim`, `subsysTest`), shown by `investigationsHTML()` on the bench.
+RULE: reliability shown anywhere uses BELIEF; only `resolveFlight` (wrapper → `resolveFlightCore`) sets `_hazardTruth`.
+Never read `state.flaws` in UI code. Suite: `test-failure-learning.js`. Next: Phase 3 — needs an owner design review first.
 
 **In progress:** (none claimed right now).
 > When you start a task, replace this line with: `<task> — <Claude|Codex> — started <date>`.

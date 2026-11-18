@@ -683,7 +683,7 @@ function reorganizationRecordErrors(record){
   const foreground=record.administrativeForeground;
   if(foreground!=null){
     if(!plainObjectField(foreground)||typeof foreground.transactionId!=='string'||!foreground.transactionId||
-      !['inquiry','hearing','sample'].includes(foreground.kind)||!finiteNumberField(foreground.cashBaseline)||
+      !['hearing','sample'].includes(foreground.kind)||!finiteNumberField(foreground.cashBaseline)||
       !nonnegativeIntegerField(foreground.startedAbs)||!plainObjectField(foreground.data)) errors.push('administrative foreground');
     const arrivals=record.receipts&&record.receipts.administrativeArrivals;
     if(!plainObjectField(arrivals)||!plainObjectField(arrivals[foreground.transactionId])) errors.push('administrative foreground receipt');

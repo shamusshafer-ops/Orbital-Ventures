@@ -8411,3 +8411,36 @@ byte-identical vs HEAD (the shared reserve did not move the checklist's research
 success-test check now asserts the block); `test-launch-policy.js` now checks rendered output, not source text.
 Full sweep 187/188 + 1 intentional skip. Known: the first-flight checklist popup still overlaps the bottom of the
 left column at this size (pre-existing; collapsible).
+
+## 2026-11-18 — Decision-loop roadmap Phase 2: failure learning (Claude)
+
+Replaced the P3 fund/decline inquiry modal (and `state.inquiryCredit`) with investigations that live on the bench.
+
+- **Known vs unknown.** Any flight that falls short with a named subsystem (loss, abort, strand, partial, in-flight
+  abort; crewed or not) opens an investigation. What failed and when is fact. Whether it was a **design flaw**
+  (recurs — that subsystem's hazard ×`FLAW_MULT`=1.6 until redesigned) or a **one-off** is decided, hidden, at the
+  failure (`FLAW_PRIOR`=35%; an unfixed flaw that strikes again is the same flaw). The player sees an estimate —
+  35%, or 75% when the subsystem has failed before with nothing fixed.
+- **Hazard model.** A multiplier k on one subsystem's weight w gives R' = R^(Σw·k/Σw); the outcome roll's weights
+  carry the same k, so attribution follows. Displayed odds use **belief** (expected k over an uninspected flaw);
+  only `resolveFlight` (now a wrapper over `resolveFlightCore`) rolls against the truth (`_hazardTruth`).
+- **Choices.** 🔍 Inspect (15% of the flight's outlay, floor $0.2M, 1 mo) — finds out; a one-off closes it and the
+  odds recover. 🧪 Integrated testing ($0.4M+, 1 mo) — halves that subsystem's hazard for its next 3 flights; a flaw
+  stays. 🛠 Redesign ($0.8M+, 3 mo; +1 mo and +30% without a specialist) — removes a flaw; ×0.85 for good either
+  way. Or accept the risk (the estimate stays priced in). Programs finish on their day, stop the clock, and show
+  in Up Next; the go/no-go block flags an open investigation or an unfixed flaw on the flight's subsystems.
+- **One flow.** The investigation block sits between the Last Flight card and the button; while it is open the
+  card is a two-line summary and its research/hire moves ride along as links (the bench test campaign is in the
+  go/no-go block). When it closes, the card says what was found.
+
+Measured (bot, Engineer): 40-seed opening — 0/40 insolvent in 1942 (unchanged), 12/40 by end of 1943 vs 10/40
+at HEAD, 1 game over in each. 8 seeds to 1975: HEAD 0/8 bankrupt, fail rate 20.4%; ignoring investigations 1/8
+bankrupt (seed 3, early), 20.6%, rep −30; `BOT_DEBRIEF=1` (inspects, redesigns confirmed flaws, else tests) 1/8
+(seed 3), 17.3%, +3.5 research nodes, +47 rep. Ignoring failures now costs a little; working them pays.
+Firefox at 1280×800: loss → investigation (no modal) → inspect → one-off closed and the card says so; forced
+flaw → "Design flaw confirmed", 57% flying as is vs 65% cleared, redesign $1.04M of $2.24M cash. After a
+failure the button and verdict stay above the fold (538 / 586 px); the block's lower rows need a scroll.
+
+Tests: new `test-failure-learning.js` 37/37 (mutation-checked: truth/belief split, redesign). Inquiry references
+removed from `test-rivals-e11`, `test-sample-decision`, `test-station-slice2`, the reorganization foreground and
+the save validator. Full sweep 188/189 + 1 intentional skip. SAVE_VERSION 76.

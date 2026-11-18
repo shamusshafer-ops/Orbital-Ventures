@@ -79,21 +79,20 @@ newGame('engineer');
 
 // ---------- 7. maybeShowSampleDecision: gated behind the same higher-priority decisions as discovery ----------
 {
-  const savedSetback=_pendingSetback, savedMishap=_pendingLogiMishap, savedInquiry=_pendingInquiry,
+  const savedSetback=_pendingSetback, savedMishap=_pendingLogiMishap,
         savedHearing=_pendingHearing, savedRival=_pendingRivalDisaster;
   _pendingSampleDecision={ mName:'Orbital Observatory', sciAmount:22, moneyAmount:11 };
   let threw=false;
   try{
     _pendingSetback={}; check('gate: blocked while a setback is pending', (()=>{ const before=_pendingSampleDecision; maybeShowSampleDecision(); return _pendingSampleDecision===before; })());
     _pendingSetback=null; _pendingLogiMishap={}; check('gate: blocked while a mishap is pending', !!_pendingSampleDecision);
-    _pendingLogiMishap=null; _pendingInquiry={}; check('gate: blocked while an inquiry is pending', !!_pendingSampleDecision);
-    _pendingInquiry=null; _pendingHearing={}; check('gate: blocked while a hearing is pending', !!_pendingSampleDecision);
+    _pendingLogiMishap=null; _pendingHearing={}; check('gate: blocked while a hearing is pending', !!_pendingSampleDecision);
     _pendingHearing=null; _pendingRivalDisaster={rivalId:'x'}; check('gate: blocked while a rival disaster is pending', !!_pendingSampleDecision);
     _pendingRivalDisaster=null;
     maybeShowSampleDecision(); // nothing else pending now — should reach showSampleDecisionModal without throwing
   }catch(e){ threw=true; console.log('  threw:', e.message); }
   check('gate: clear path does not throw', !threw);
-  _pendingSetback=savedSetback; _pendingLogiMishap=savedMishap; _pendingInquiry=savedInquiry;
+  _pendingSetback=savedSetback; _pendingLogiMishap=savedMishap;
   _pendingHearing=savedHearing; _pendingRivalDisaster=savedRival; _pendingSampleDecision=null;
 }
 

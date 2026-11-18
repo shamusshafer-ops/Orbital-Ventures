@@ -21,6 +21,17 @@ Two things still apply:
   should warn rather than silently misread — that protects against the two-agent workflow, not an
   install base.
 
+## v76 — Failure investigations (decision-loop Phase 2)
+
+Adds `state.investigations[]` (id, mission, subsystem, outcome kind, cost basis, displayed flaw estimate,
+finding, status/closedWhy, running program with its `doneAbs`) and `state.invSeq`; the hidden
+`state.flaws` (subsystem → true: a design flaw, hazard ×FLAW_MULT until redesigned), the player's
+`state.flawBelief` (subsystem → estimated P(flaw), what displayed odds price in), `state.subsysTrim`
+(permanent redesign multipliers) and `state.subsysTest` (integrated-test credits: mult + flights left).
+`lastDebrief.invId` links a debrief to its investigation. Removes the P3 inquiry: `state.inquiryCredit` and
+the `inquiry` administrative-foreground kind are gone. Save compatibility was not preserved by design
+(owner directive); load defaults supply the new fields.
+
 ## v75 — Post-flight debrief (one-more-launch pass)
 
 Adds `state.lastDebrief` (null until the first flight settles): the last flight's outcome, governing

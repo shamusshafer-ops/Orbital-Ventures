@@ -8,7 +8,6 @@ function flyBench(kind){ // build the bench rocket, roll it out, fly it with a f
   queueBuild(true,'q'+(++rq)); let g=0; while(!hangarList().length&&g++<600) advanceDays(1);
   const h=hangarList()[0]; if(!h) return false;
   _devForceOutcome=kind; const r=launchFromHangar(h.id,h.hullId,'f'+(++rq));
-  if(_pendingInquiry) resolveInquiry('decline');
   return r!==false;
 }
 const benchHTML=()=>{ renderBenchLaunch(); return document.getElementById('benchLaunch').innerHTML||''; };

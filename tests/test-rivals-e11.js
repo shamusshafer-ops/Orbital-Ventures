@@ -27,16 +27,16 @@ const m1=MISSIONS.find(x=>x.id==='first_astro');
 finalizeLaunch(crewedCtx(m1, {kind:'loss', rel:0.2, story:'x', subsystem:'propulsion', failPhase:'ascent'}), null);
 check('fatal crewed loss: poachHeat set', state.poachHeat===POACH_HEAT_ON_FATAL);
 check('fatal crewed loss: budget hearing queued', _pendingHearing!==null && _pendingHearing.mName===m1.name);
-check('fatal crewed loss: NOT the engineering inquiry (crewed, not uncrewed)', _pendingInquiry===null);
+check('fatal crewed loss: the engineering side is an investigation on the bench, not a modal (Phase 2)', (state.investigations||[]).some(x=>x.status==='open'));
 
 // ---------- 3. an uncrewed loss still takes the inquiry path, not the hearing ----------
 newGame('engineer');
-_pendingHearing=null; _pendingInquiry=null; // clear leftovers from test 2 (module-level, not reset by newGame)
+_pendingHearing=null; // clear leftovers from test 2 (module-level, not reset by newGame)
 const mUncrewed=MISSIONS.find(x=>x.id==='reach_space');
 const v2=computeVehicle();
 finalizeLaunch({m:mUncrewed, v:v2, sim:null, windowQuality:1, flightExpense:1, routine:false, crewed:false,
   outcome:{kind:'loss', rel:0.2, story:'x', subsystem:'propulsion', failPhase:'ascent'}, rehearsed:false, famId:null, crewId:null, ab:{rel:0,payoutMult:1}}, null);
-check('uncrewed loss: engineering inquiry queued', _pendingInquiry!==null);
+check('uncrewed loss: engineering investigation opened (Phase 2 replaced the inquiry modal)', (state.investigations||[]).some(x=>x.sub==='propulsion'&&x.status==='open'));
 check('uncrewed loss: no budget hearing, no poach heat', _pendingHearing===null && (state.poachHeat||0)===0);
 
 // ---------- 4. resolveHearing: fund / defend / blame all clear the pending and apply distinct effects ----------

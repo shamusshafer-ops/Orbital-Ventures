@@ -1938,11 +1938,18 @@ Recommended order: 0 → 1 → 2 → 3 → 4a → 4b → 4c → 5. Phase 3 gets 
   `test-go-no-go.js` covers Δv, TWR, cash, crew, window, hull; mutation-checked.)*
 
 ### Phase 2 — Failure learning (Codex handoff 2026-09-07, extends the card)
-- [ ] The inquiry names a suspect subsystem with stated uncertainty, and offers 2–3 corrective programs
-  (inspect the lot / redesign / integrated testing) costing time, staff, bays and money.
-- [ ] Merge the inquiry modal and the card's remedies into one flow.
+- [x] The inquiry names a suspect subsystem with stated uncertainty, and offers 2–3 corrective programs
+  (inspect the lot / redesign / integrated testing) costing time, staff, bays and money. *(2026-11-18: the known
+  fact is what failed; the stated uncertainty is design flaw (recurs, ×1.6 hazard) vs one-off — 35% prior, 75% on a
+  repeat. Inspect / integrated testing / redesign cost money and months (redesign +1 mo and +30% without a
+  specialist); accept the risk is the fourth answer. Not done: bays are not consumed.)*
+- [x] Merge the inquiry modal and the card's remedies into one flow. *(2026-11-18: the modal is gone; the
+  investigation block on the bench is the one remedy flow, carrying the card's research/hire moves as links.)*
   **Target:** a corrective program changes only its subsystem, applies exactly once across save/load and
   repeated clicks; the Phase 0 bot shows fewer repeat failures after a redesign.
+  *(Met: hazard is per-subsystem by construction (R^(Σw·k/Σw)), tested incl. a subsystem the flight doesn't carry;
+  save/load mid-program completes once; double-click charges once. Bot, 8 seeds to 1975: investigating bot fail
+  rate 17.3% vs 20.4% at HEAD (ignoring: 20.6%), +3.5 research nodes, +47 rep; repeat-subsystem 2.7 vs 3.6 ignoring.)*
 
 ### Phase 3 — A tech tree that changes how you play
 - [ ] Two or three nodes per era that open a new action (e.g. integrated vehicle test, abort modes that

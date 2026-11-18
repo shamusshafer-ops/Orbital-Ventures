@@ -262,6 +262,7 @@ function outlinerItems(){
   // production queue
   buildQueueList().forEach(o=>{ if(o.started) push('🏭', o.name||'Vehicle build', o.monthsLeft*30, ()=>{ setTab('command'); try{ showInfrastructureModal(); }catch(e){} }); });
   /* spine step 8: an astronaut finishing training is a real "now you can fly" moment */
+  (state.investigations||[]).forEach(x=>{ if(x.program&&!x.program.done){ const q=INV_PROGRAMS[x.program.kind]; push(q?q.icon:'🔍', `${q?q.label:'Investigation'} — ${(SUBSYS_LABEL[x.sub]||x.sub).toLowerCase()}`, x.program.doneAbs-absDay(), ()=>setTab('bench')); } }); /* Phase 2 */
   (state.staff||[]).forEach(s=>{ if(roleOf(s.id)==='astro' && astroInTraining(s)){ const p=personById(s.id); push('🎓', `${p?p.name:'Astronaut'} flight-ready`, astroTrainedAbs(s)-absDay(), ()=>{ try{ showPersonnelModal(); }catch(e){} }); } });
   // material dip — the one live decision left in the collapsed market; surfaced at the top (eta 0)
   MATERIAL_DEFS.forEach(d=>{ if(isMaterialDip(d.key) && canBuyMaterialDip(d.key).ok) push('📦', d.name+' on sale', 0, ()=>{ setTab('command'); try{ showInfrastructureModal(); }catch(e){} }, 'var(--ok)'); });
@@ -7017,6 +7018,40 @@ function nextBenchLineHTML(){
   }catch(e){ return ''; }
   return `<p style="font-size:12px;margin:6px 0 10px;text-align:center"><span class="dim">Next on the bench:</span> <b>${esc(m.name)}</b> · ${fM(m.payout)} — ${line}</p>`;
 }
+/* Decision-loop Phase 2: open failure investigations, on the bench between the Last Flight card and the button.
+   Known fact (what failed) vs the unknown (flaw or one-off, with the estimate), what flying as-is costs in odds,
+   and the programs — inspect / integrated testing / redesign — or accept the risk. */
+const INV_SHORT={inspect:'Inspect', test:'Test', redesign:'Redesign'};
+function investigationHTML(inv, extra){
+  const sub=(SUBSYS_LABEL[inv.sub]||inv.sub), subL=sub.toLowerCase();
+  const pct=x=>Math.round((x||0)*100)+'%';
+  const running=inv.program&&!inv.program.done;
+  let state_;
+  if(running){ const q=INV_PROGRAMS[inv.program.kind]; state_=`${q.icon} ${q.label} under way — results ${dayToDate(inv.program.doneAbs)}`; }
+  else if(inv.finding==='flaw') state_=`<span style="color:var(--bad)">Design flaw confirmed</span> — ${subL} failures ${FLAW_MULT}× as likely until redesigned`;
+  else state_=`Design flaw or one-off? <b>${pct(inv.est)}</b> flaw${inv.est>=FLAW_REPEAT_EST?' (it has failed before)':''}`;
+  let risk='';
+  if(!running){ const r=investigationRiskOdds(inv);
+    if(r&&r.present&&r.clean-r.now>=0.005) risk=` · flying as is ${pct(r.now)} vs ${pct(r.clean)} cleared`; }
+  const acts=investigationActions(inv);
+  const tip=k=>k==='inspect'?'Find out whether it is a design flaw or a one-off.':k==='test'?`Halves ${subL} failures on the next ${INV_TEST_FLIGHTS} flights that fly it. A flaw stays.`
+    :`${inv.finding==='flaw'?'Removes the flaw':'Removes a flaw if there is one'}; ${subL} failures ×${INV_TRIM} for good.`;
+  const chips=acts.map(q=>{ const afford=state.money>=q.cost;
+    return `<button class="btn inv-act" style="flex:1;padding:3px 4px;font-size:11px;line-height:1.25" onclick="startInvestigationProgram('${inv.id}','${q.kind}')" ${afford?'':'disabled'} title="${esc(tip(q.kind)+(q.note?' ('+q.note+')':'')+(afford?'':' Not enough cash.'))}">${q.icon} ${INV_SHORT[q.kind]}<br><span class="dim" style="font-size:10px">${fM(q.cost)} · ${q.months} mo</span></button>`; }).join('');
+  const legend=acts.length?`<div class="dim" style="font-size:10px;margin-top:3px">${acts.map(q=>q.kind==='inspect'?'inspect: flaw or one-off?':q.kind==='test'?`test: ½ failures × ${INV_TEST_FLIGHTS} flights`:`redesign: fixes it${q.note?', +1 mo w/o specialist':''}`).join(' · ')} · <a href="#" class="inv-accept" onclick="acceptInvestigationRisk('${inv.id}');return false" style="color:var(--dim)">accept the risk</a></div>`:'';
+  const also=(extra||[]).length?`<div style="font-size:11px;margin-top:4px">Also: ${extra.map(x=>`<a href="#" onclick="${esc(x.action)};return false" title="${esc(x.detail)}" style="color:var(--readout)">${esc(x.label)}</a>`).join(' · ')}</div>`:'';
+  return `<div class="investigation" data-inv="${inv.id}" style="border:1px solid var(--warn);border-radius:4px;padding:5px 8px;margin-bottom:8px;text-align:left;font-size:12px">
+    <div style="font:11px var(--mono);letter-spacing:.06em;color:var(--warn)">INVESTIGATION · ${esc(sub.toUpperCase())}</div>
+    <div style="margin-top:2px">${state_}<span class="dim" style="font-size:11px">${risk}</span></div>
+    ${chips?`<div style="display:flex;gap:4px;margin-top:4px">${chips}</div>`:''}${legend}${also}</div>`;
+}
+function investigationsHTML(){
+  const open=(state.investigations||[]).filter(x=>x.status==='open'); if(!open.length) return '';
+  /* the last flight's other remedies (research, a specialist) ride along as links on its investigation; the
+     go/no-go block's test buttons cover the bench test campaign */
+  const d=state.lastDebrief, extra=d&&d.invId?debriefNextMoves(d).filter(x=>!/setTestLevel/.test(x.action)).slice(0,2):[];
+  return open.slice(-2).reverse().map(x=>investigationHTML(x, d&&x.id===d.invId?extra:null)).join('');
+}
 function lastFlightCardHTML(){
   const d=state.lastDebrief; if(!d||d.dismissed) return '';
   const soft=d.kind==='partial'||d.kind==='scrub'||d.kind==='abort'; /* the vehicle or the crew came home */
@@ -7032,14 +7067,26 @@ function lastFlightCardHTML(){
   const gains=[d.revenue>0?`<span style="color:var(--ok)">+${fM(d.revenue)}</span>`:'', d.rep?`<span style="color:${d.rep>0?'var(--readout)':'var(--bad)'}">${d.rep>0?'+':''}${d.rep} rep</span>`:'', d.sci>0?`+${Math.round(d.sci)} ⚛`:''].filter(Boolean).join(' · ');
   const why=failed&&d.story?`<div style="font-size:12px;margin-top:4px;color:var(--ink)">${esc(d.story)}</div>`
     :(d.success&&d.nearMiss&&d.nearMiss.margin<0.05?`<div style="font-size:12px;margin-top:4px;color:var(--warn)">Close call — the ${esc(String(d.nearMiss.label||'').toLowerCase())} came within ${Math.max(1,Math.round(d.nearMiss.margin*100))}% of failing.</div>`:'');
-  const moves=debriefNextMoves(d);
+  const inv=d.invId?investigationById(d.invId):null;
+  const moves=inv&&inv.status==='open'?[]:debriefNextMoves(d); /* Phase 2: with an investigation open, its block is the one remedy flow */
+  const invLine=inv&&inv.status==='closed'?(()=>{ const sl=(SUBSYS_LABEL[inv.sub]||inv.sub).toLowerCase();
+    const t=inv.closedWhy==='oneoff'?`🔍 Inspection: the ${sl} failure was a one-off — nothing to fix.`
+      :inv.closedWhy==='redesigned'?`🛠 Redesigned: ${inv.finding==='flaw'?'the flaw is gone':'no flaw found'}; ${sl} failures ×${(state.subsysTrim&&state.subsysTrim[inv.sub])||INV_TRIM} for good.`
+      :inv.closedWhy==='tested'?`🧪 Tested: ${sl} failures halved for the next flights that fly it.${inv.finding==='flaw'?' The flaw remains.':''}`
+      :inv.closedWhy==='accepted'?`Risk accepted — ${Math.round(((state.flawBelief&&state.flawBelief[inv.sub])||0)*100)}% flaw estimate still priced into the odds.`:'';
+    return t?`<div style="font-size:12px;margin-top:4px">${t}</div>`:''; })():'';
   const busy=(()=>{ try{ const m=curMission(); return !!(m&&[...buildQueueList(),...hangarList()].some(h=>h&&h.missionId===m.id)); }catch(e){ return false; } })();
   const moveBtns=moves.map(x=>`<button class="btn" style="display:block;width:100%;text-align:left;margin-top:5px;font-size:12px;padding:6px 8px" onclick="${x.action}"><b>${x.icon} ${esc(x.label)}</b><br><span class="dim" style="font-size:11px">${esc(x.detail)}</span></button>`).join('');
+  if(inv&&inv.status==='open'){ /* Phase 2: compact while its investigation is open — the investigation carries the detail */
+    return `<div id="lastFlightCard" class="last-flight compact" style="border:1px solid ${col};border-left-width:3px;background:var(--panel2);border-radius:4px;padding:5px 8px;margin-bottom:6px;text-align:left;font-size:12px" title="${esc((d.story||'')+' · flew at '+Math.round((d.rel||0)*100)+'% reliability')}">
+      <div style="display:flex;justify-content:space-between;gap:6px"><b style="color:${col}">${d.success?'✓':soft?'△':'✗'} ${esc(d.name)} — ${verdict}</b><button class="btn ghost" style="padding:0 5px;font-size:11px;align-self:flex-start" onclick="dismissDebrief()" title="Dismiss">✕</button></div>
+      ${d.story?`<div class="dim" style="font-size:11px;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.story)}</div>`:''}</div>`;
+  }
   return `<div id="lastFlightCard" class="last-flight" style="border:1px solid ${col};border-left-width:3px;background:var(--panel2);border-radius:4px;padding:8px 10px;margin-bottom:8px;text-align:left">
     <div style="display:flex;justify-content:space-between;align-items:center;font:11px var(--mono);letter-spacing:.08em;color:var(--dim)">LAST FLIGHT · ${dayToDate(d.abs)}<button class="btn ghost" style="padding:0 6px;font-size:11px" onclick="dismissDebrief()" title="Dismiss">✕</button></div>
     <div style="font-weight:700;color:${col};margin-top:2px">${d.success?'✓':soft?'△':'✗'} ${esc(d.name)} — ${verdict}</div>
     <div class="dim" style="font:11px var(--mono);margin-top:2px">flew at ${Math.round((d.rel||0)*100)}% reliability${gains?' · '+gains:''}</div>
-    ${why}
+    ${why}${invLine}
     ${moves.length&&!busy?`<div style="font:11px var(--mono);letter-spacing:.08em;color:var(--dim);margin-top:7px">NEXT MOVE</div>${moveBtns}`:''}
   </div>`;
 }
@@ -7104,7 +7151,7 @@ function renderBenchLaunch(){
     ${sizePlan&&sizePlan.ok?`<button id="benchResize" class="btn" style="width:100%;margin-top:6px;font-size:12px;border-color:var(--readout);color:var(--readout)" onclick="applyAutoSize()">⚙ Resize: ${autoSizeChangeText(sizePlan)}<br><span class="dim" style="font-size:11px">${sizePlan.multi?(sizePlan.legs===2?'both legs close':`all ${sizePlan.legs} legs close`):`${fI(sizePlan.dv)} of ${fI(sizePlan.need)} m/s`} · ${resizeCostText(sizePlan)}</span></button>`
       :sizePlan&&!sizePlan.fits?`<div id="benchResizeNo" class="dim" style="font-size:11px;margin-top:6px;text-align:left">⚙ No one-click resize: ${esc(sizePlan.why)}</div>`:''}
     ${goNoGoHTML(gng,quoteStages)}`;
-  host.innerHTML=`${lastFlightCardHTML()}${primaryHTML}
+  host.innerHTML=`${lastFlightCardHTML()}${investigationsHTML()}${primaryHTML}
     ${launchPadCap()>1?`<div class="dim" style="font-size:11px;text-align:center;margin-top:2px">Pads: ${padSlotsLeft()}/${launchPadCap()} free this month</div>`:''}
     ${damagedPadCount()>0?`<div class="dim" style="font-size:11px;text-align:center;margin-top:2px;color:var(--warn)" title="A catastrophic ascent loss damages the pad it flew from">⚠ ${damagedPadCount()} pad${damagedPadCount()===1?'':'s'} under repair</div>`:''}
     <div style="display:flex;gap:6px;margin-top:8px;align-items:center">

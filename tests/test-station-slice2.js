@@ -129,7 +129,7 @@ flyModuleDelivery('mars_base','power_truss');
   // what this e2e validates (deferred arrival → module docks), so clear the flags to isolate that path
   // deterministically under ANY seed. (Diagnosed 2026-07-18: failing runs showed the flight unresolved
   // at absDay 240 > arriveAbs 210 with a pending flag set, NOT a facility/starvation problem.)
-  _pendingLive=_pendingReserve=_pendingOps=_pendingRescue=_pendingSetback=_pendingLogiMishap=_pendingInquiry=_pendingLaunch=_pendingRivalDisaster=null;
+  _pendingLive=_pendingReserve=_pendingOps=_pendingRescue=_pendingSetback=_pendingLogiMishap=_pendingLaunch=_pendingRivalDisaster=null;
   pumpFlightArrivals(); // idempotent if advance() already resolved it
   restoreRNG(); // block was seeded from the top (before newGame)
   check('Mars e2e: the deferred flight record is gone (resolved)', !(state.activeFlights||[]).some(f=>f&&f.id==='flt_e2e_mars'));

@@ -389,7 +389,6 @@ function markArrivalUnderAdministration(tx){
   return tx;
 }
 function pendingAdministrativeDecisionSnapshot(){
-  if(_pendingInquiry) return {kind:'inquiry',data:plainRecord(_pendingInquiry)};
   if(_pendingHearing) return {kind:'hearing',data:plainRecord(_pendingHearing)};
   if(_pendingSampleDecision) return {kind:'sample',data:plainRecord(_pendingSampleDecision)};
   return null;
@@ -410,7 +409,7 @@ function settleAdministrativeArrival(tx){
   return true;
 }
 function administrativePostFlightDecisionPending(){
-  return !!(_pendingInquiry||_pendingHearing||_pendingSampleDecision);
+  return !!(_pendingHearing||_pendingSampleDecision);
 }
 function completeAdministrativeArrivalForeground(){
   const hold=_administrativeArrivalHold,r=activeReorganization();
@@ -431,8 +430,7 @@ function restoreAdministrativeArrivalForeground(r){
   const foreground=r&&r.administrativeForeground;
   if(!foreground) return false;
   _administrativeArrivalHold={reorganizationId:r.id,transactionId:foreground.transactionId,cashBaseline:foreground.cashBaseline};
-  if(foreground.kind==='inquiry'){ _pendingInquiry=plainRecord(foreground.data); showInquiryModal(); }
-  else if(foreground.kind==='hearing'){ _pendingHearing=plainRecord(foreground.data); showHearingModal(); }
+  if(foreground.kind==='hearing'){ _pendingHearing=plainRecord(foreground.data); showHearingModal(); }
   else if(foreground.kind==='sample'){ _pendingSampleDecision=plainRecord(foreground.data); showSampleDecisionModal(); }
   return true;
 }

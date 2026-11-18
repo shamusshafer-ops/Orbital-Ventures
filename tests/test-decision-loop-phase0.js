@@ -101,7 +101,7 @@ check('a partial names what came up short', /partial — guidance came up short/
   check('precondition: a crewed rocket the bench will commit', ok);
   queueBuild(true,'cr1'); { let g=0; while(!hangarList().length&&g++<900) advanceDays(1); }
   const h=hangarList()[0];
-  _devForceOutcome='loss'; if(h) launchFromHangar(h.id,h.hullId,'cr-fly'); if(_pendingInquiry) resolveInquiry('decline');
+  _devForceOutcome='loss'; if(h) launchFromHangar(h.id,h.hullId,'cr-fly');
   const d=state.lastDebrief;
   check('a crewed loss records crewed', d && d.missionId==='first_astro' && d.crewed===true && !d.success);
   check('…and the card says so', /crew lost/.test(strip(lastFlightCardHTML())));
