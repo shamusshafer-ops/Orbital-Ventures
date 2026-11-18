@@ -2401,9 +2401,21 @@ function cape3dCloudTexture(){
   for(let i=0;i<15;i++){ const x=45+(i*61)%300,y=72+(i*37)%58,r=24+(i%4)*12,g=ctx.createRadialGradient(x,y,0,x,y,r); g.addColorStop(0,'rgba(255,255,255,.62)'); g.addColorStop(.55,'rgba(237,247,255,.30)'); g.addColorStop(1,'rgba(255,255,255,0)'); ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill(); }
   return new THREE.CanvasTexture(cv);
 }
+// Fair-weather cumulus over the whole district, not just the site: clusters of soft puffs spread ~22 km around
+// the Cape at 450-1500 m, drifting together on one wind and wrapping round the field. Fixed seed (same sky
+// layout every visit); fog fades the distant ones into the haze.
+const CAPE3D_CLOUD_FIELD={x0:-21000,z0:-22000,w:44000,d:44000};
 function cape3dClouds(root){
-  const g=new THREE.Group(); g.name='cape3d_clouds'; const tx=cape3dCloudTexture(), clouds=[];
-  for(let i=0;i<9;i++){ const m=new THREE.SpriteMaterial({map:tx,transparent:true,opacity:.22+(i%3)*.07,depthWrite:false,color:i%2?0xddefff:0xfff3dd}); const s=new THREE.Sprite(m); s.position.set(-900+i*390,430+(i%3)*55,-620+(i*179)%1350); s.userData.baseX=s.position.x; s.scale.set(380+(i%4)*110,150+(i%3)*40,1); g.add(s); clouds.push(s); }
+  const g=new THREE.Group(); g.name='cape3d_clouds'; const tx=cape3dCloudTexture(), clouds=[], F=CAPE3D_CLOUD_FIELD, rnd=mulberry(3307);
+  for(let c=0;c<90;c++){
+    const near=c<10, cx=near?-900+c*390:F.x0+rnd()*F.w, cz=near?-620+(c*179)%1350:F.z0+rnd()*F.d, alt=near?430+(c%3)*55:450+rnd()*1050, size=near?1:(1.1+rnd()*2.2), puffs=near?1:3+Math.floor(rnd()*4), speed=.32+(c%3)*.11;
+    for(let k=0;k<puffs;k++){
+      const m=new THREE.SpriteMaterial({map:tx,transparent:true,opacity:.25,depthWrite:false,color:(c+k)%2?0xddefff:0xfff3dd}), s=new THREE.Sprite(m);
+      const ox=k?(rnd()-.5)*520*size:0, oz=k?(rnd()-.5)*360*size:0, oy=k?(rnd()-.3)*70*size:0;
+      s.position.set(cx+ox,alt+oy,cz+oz); s.scale.set((380+(c%4)*110)*size*(k?.75+rnd()*.5:1),(150+(c%3)*40)*size*(k?.7+rnd()*.5:1),1);
+      s.userData.baseX=s.position.x; s.userData.speed=speed; s.userData.baseOpacity=near?.14+((c+k)%3)*.06:.24+((c+k)%3)*.07; g.add(s); clouds.push(s);
+    }
+  }
   root.add(g); return clouds;
 }
 function cape3dPracticalLights(root,descriptors){
@@ -2914,7 +2926,7 @@ function cape3dTerrainMaterial(opts){
         base*=detail;
         float edge=dc+(n2-.5)*140.0+(n3-.5)*30.0;
         float sand=1.0-smoothstep(30.0,210.0,edge);
-        sand=clamp(sand+(tN(P/7.0)-.5)*4.8*sand*(1.0-sand),0.0,1.0);
+        sand=clamp(sand+(mix(tN(P/7.0),.5,smoothstep(800.0,4000.0,camD))-.5)*4.8*sand*(1.0-sand),0.0,1.0);
         base=mix(base,mix(uSandDry,uSandDune,smoothstep(.4,.8,n2))*(.92+.16*n3),sand);
         float wet=1.0-smoothstep(uSea+.02,uSea+.8,vTH);
         base=mix(base,mix(uSandWet,uMud,smoothstep(300.0,700.0,dc)),wet*.85);
@@ -3821,6 +3833,19 @@ function cape3dFlightCameraFar(altitudeMeters){
   const h=Math.max(0,Number(altitudeMeters)||0), earthR=6371000, horizon=Math.sqrt(Math.max(0,2*earthR*h+h*h));
   return Math.max(180000,Math.min(4200000,horizon+260000));
 }
+// Depth precision. The camera's near plane was a fixed 1 m for the whole flight while its far plane grows to
+// thousands of kilometres, so at altitude the depth buffer could not tell a cloud deck from the ground below
+// it (or one hill from the next): the decks flickered through the terrain as a pixelated layer. The near plane
+// now grows with altitude, never past the closest part of the vehicle the camera is framing.
+function cape3dFlightNear(distToVehicle,vehicleHeight,altitudeMeters){
+  const alt=Math.max(0,Number(altitudeMeters)||0)/1000, d=Math.max(0,Number(distToVehicle)||0), hgt=Math.max(0,Number(vehicleHeight)||0);
+  return Math.max(1,Math.min(250,1+alt*6,(d-hgt*.6)*.5));
+}
+function cape3dApplyFlightNear(rocket,altitudeMeters){
+  if(!cape3d||!rocket) return; const cam=cape3d.camera, near=cape3dFlightNear(cam.position.distanceTo(rocket.position),rocket.userData&&rocket.userData.totalHeight,altitudeMeters);
+  if(Math.abs(cam.near-near)>Math.max(.5,cam.near*.05)){ cam.near=near; cam.updateProjectionMatrix(); }
+}
+function cape3dRestoreNear(){ if(cape3d&&cape3d.camera&&cape3d.camera.near!==1){ cape3d.camera.near=1; cape3d.camera.updateProjectionMatrix(); } }
 function cape3dFlightCamera(position,target){ const pan=(cape3d&&cape3d.flightPan)||{x:0,y:0}; cape3d.camera.position.copy(position).add(new THREE.Vector3(pan.x,pan.y,0)); cape3d.camera.lookAt(target.clone().add(new THREE.Vector3(pan.x*.28,pan.y*.28,0))); }
 let _cape3dPlumeTexture=null;
 function cape3dPlumeTexture(){
@@ -4778,13 +4803,13 @@ function cape3dUpdateLaunchPresentation(snapshot){
   if(camMode==='ground'){
     const station=new THREE.Vector3(base.x-2400,base.y+28,base.z+2600), dist=station.distanceTo(target), fov=cape3dGroundTrackerFov(dist,rocket.userData.totalHeight||80);
     if(Math.abs(cam.fov-fov)>.01){ cam.fov=fov; cam.updateProjectionMatrix(); }
-    cape3dFlightCamera(station,target); return true;
+    cape3dFlightCamera(station,target); cape3dApplyFlightNear(rocket,q.altitude); return true;
   }
   if(Math.abs(cam.fov-cape3d.baseFov)>.01){ cam.fov=cape3d.baseFov; cam.updateProjectionMatrix(); }
-  cape3dFlightCamera(eye,cameraTarget); return true;
+  cape3dFlightCamera(eye,cameraTarget); cape3dApplyFlightNear(rocket,q.altitude); return true;
 }
 function cape3dExitLaunchPresentation(){
-  if(!cape3d||!cape3d.root) return false; const root=cape3d.root, rocket=root.userData.launchRocket, fx=root.userData.launchEffects;
+  if(!cape3d||!cape3d.root) return false; cape3dRestoreNear(); const root=cape3d.root, rocket=root.userData.launchRocket, fx=root.userData.launchEffects;
   if(rocket&&root.userData.launchBase){ cape3dResetStaging(rocket); rocket.position.copy(root.userData.launchBase); rocket.rotation.z=0; rocket.visible=true; } if(fx){ fx.group.visible=false; fx.glow.intensity=0; fx.group.position.y=rocket?(rocket.userData.nozzleY||-10):-10; } if(root.userData.groundSmoke) root.userData.groundSmoke.group.visible=false; if(root.userData.launchSplash) root.userData.launchSplash.group.visible=false; cape3dResetFailure(root.userData.launchFailure); root.userData.launchSpace=0;
   for(const d of (root.userData.stageDebris||[])) root.remove(d.obj); root.userData.stageDebris=[]; cape3dHideCinematic(root);
   const world=root.userData.ascentWorld; if(world){ world.group.visible=false; world.puffs.forEach(p=>p.visible=false); } cape3dApplySiteOpacity(root.userData.siteObjects,1); root.userData.launchActive=false; root.userData.launchVisual=null; if(cape3d.flightFill) cape3d.flightFill.intensity=0;
@@ -4925,7 +4950,7 @@ function cape3dTick(){
   if(cape3d.root&&cape3d.root.userData.accentMaterial) cape3d.root.userData.accentMaterial.emissiveIntensity=.22+night*1.5;
   if(cape3d.root&&cape3d.root.userData.windowMaterial) cape3d.root.userData.windowMaterial.emissiveIntensity=.08+night*2.25;
   const tu=cape3d.root&&cape3d.root.userData.terrainUniforms; if(tu){ tu.uTime.value=t; if(cape3d.scene.fog) tu.uHazeCol.value.copy(cape3d.scene.fog.color); if(!tu.uGroundReady.value&&cape3dTexReady(cape3d.root.userData.groundTx)) tu.uGroundReady.value=1; }
-  const clouds=cape3d.root&&cape3d.root.userData.clouds, cloudFade=(root&&(root.userData.orbitActive||root.userData.reentryActive))?0:(launchActive&&root.userData.launchVisual?root.userData.launchVisual.cloudOpacity:1); /* the orbit/reentry worlds share the origin with the Cape's decor clouds */ if(clouds) clouds.forEach((cloud,i)=>{ cloud.position.x=-1000+((cloud.userData.baseX+1000+t*(.32+(i%3)*.11))%3500); cloud.material.opacity=(.14+(i%3)*.06)*(.38+sunA*.62)*cloudFade; });
+  const clouds=cape3d.root&&cape3d.root.userData.clouds, cloudFade=(root&&(root.userData.orbitActive||root.userData.reentryActive))?0:(launchActive&&root.userData.launchVisual?root.userData.launchVisual.cloudOpacity:1); /* the orbit/reentry worlds share the origin with the Cape's decor clouds */ if(clouds){ const F=CAPE3D_CLOUD_FIELD; clouds.forEach((cloud,i)=>{ const u=cloud.userData; cloud.position.x=F.x0+((((u.baseX-F.x0+t*(u.speed||.32))%F.w)+F.w)%F.w); cloud.material.opacity=(u.baseOpacity!=null?u.baseOpacity:.14+(i%3)*.06)*(.38+sunA*.62)*cloudFade; }); }
   cape3dProjectHotspots();
 }
 function renderCape3DFrame(){ if(cape3d){ cape3dTick(); cape3d.renderer.render(cape3d.scene,cape3d.camera); } }

@@ -75,5 +75,14 @@ const coastX=CAPE3D_COAST_X, descriptors=capeFacilityDescriptors(), plan=cape3dS
   check('fence posts follow the ground', cape3dSiteExtras.toString().includes('cape3dGroundY(x,z)'));
 }
 
+{ // follow-up: depth precision at altitude, and clouds over the whole district
+  check('the near plane is 1 m on the pad', cape3dFlightNear(160,80,0)===1);
+  check('…grows with altitude so a cloud deck and the ground below stay depth-separated', cape3dFlightNear(400,80,40000)>100&&cape3dFlightNear(400,80,40000)>cape3dFlightNear(400,80,10000));
+  check('…never clips the vehicle the camera is framing', cape3dFlightNear(120,100,200000)<=(120-60)*.5&&cape3dFlightNear(60,100,200000)===1);
+  check('…is applied by every launch camera and reset afterwards', (cape3dUpdateLaunchPresentation.toString().match(/cape3dApplyFlightNear\(/g)||[]).length>=2&&cape3dExitLaunchPresentation.toString().includes('cape3dRestoreNear()'));
+  check('cumulus covers the whole district, not just the site', CAPE3D_CLOUD_FIELD.w>=40000&&CAPE3D_CLOUD_FIELD.d>=40000&&cape3dClouds.toString().includes('c<90'));
+  check('clouds drift and wrap round the whole field', cape3dTick.toString().includes('CAPE3D_CLOUD_FIELD')&&cape3dTick.toString().includes('%F.w'));
+}
+
 console.log(pass+'/'+(pass+fail)+' checks passed');
 process.exit(fail?1:0);
