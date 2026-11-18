@@ -13,7 +13,8 @@ const spec={mode:'launch',isOrbital:true,crewed:false,success:true,reqDv:9400,
   boosters:{count:2,prop:state.boosters.prop,dia:state.stages[0].dia},
   physics:flightPhysicsSpec(curMission(),computeVehicle())};
 const plan=cape3dTrajectoryPlan(spec.physics,{isOrbital:true,reqDv:9400});
-function snapAt(trajT){ const t=timing.padDur+timing.ascentDur*(trajT/plan.burnoutTime); return flight3dPresentationSnapshot(spec,timing,t); }
+// Display progress is event-warped (cape3dAscentWarpTable); invert it to show a given trajectory time.
+function snapAt(trajT){ const t=timing.padDur+timing.ascentDur*cape3dUnwarpAscentTime(plan,trajT); return flight3dPresentationSnapshot(spec,timing,t); }
 
 const boostEv=plan.stageEvents.find(e=>e.kind==='booster');
 const stageEv=plan.stageEvents.find(e=>e.kind==='stage');

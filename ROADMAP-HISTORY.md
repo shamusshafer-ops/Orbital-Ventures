@@ -8140,4 +8140,32 @@ From `EVALUATION-2026-11-GAMEPLAY.md` §5.4 / §7 step 7.
 Bot, four seeds to 2000: political stops per year 0.31–0.34 (scattered mandates) → 1.0 (one review); all
 solvent at ~200 flights. Tests: new `tests/test-annual-review.js` (22 checks); soft-lock checks added to
 `tests/test-service-contracts.js` (31). Full sweep 182/183, 1 intentional skip, 0 unexpected.
+### 2026-11-17 — Cinematic launch overhaul, slice 1 (Claude)
 
+Presentation-only pass over the Three.js flight (`src/render.js` cinematic layer; nothing touches the sim,
+outcomes, telemetry values or phase durations). **Pacing:** the ascent played ~minutes of burn in ~7 s, so
+tower-clear lasted ~150 ms; an event-aware time warp (`cape3dAscentWarpTable`) now gives liftoff ~20% and each
+real stage/booster event ~7.5% of the screen time, monotone with fixed endpoints (`cape3dUnwarpAscentTime`
+inverts it). **Exhaust:** shader plume (fbm turbulence, pressure-shaped radius, white-hot throat, Mach diamonds
+in thick air, hydrolox fading toward invisible in vacuum) under the existing sprite halo; ragged ignition
+flicker; MECO dark coast + upper-stage relight keyed to real `stageEvents`; transonic vapour collar from real
+Mach/altitude. **Atmosphere:** altitude-driven scattering sky dome (zenith darkens by column density, limb band
+narrows, true horizon dip, procedural stars once dark), terrain fog matched to the dome horizon, cumulus deck
+~2 km (one cell on the flight path) + cirrus ~9 km, world-space exhaust trail sampled from the flown path by arc
+length (ages/spreads on its own, freezes at a failure), trench-directed sprite pad smoke lit by the plume,
+fresnel aerial-perspective haze, Earth sphere 48×28 → 320×180 (facets were visible on the horizon).
+**Camera:** physics-driven shake (acoustic near ground, own-q vs own-max-q, transonic buffet, relight jolt; off
+under reduced motion), camera tilts toward the limb at altitude so Earth stays in frame, orbit entry continues
+the close chase through insertion burn/cutoff then pulls back to the orbit view; new Cinematic/Stable toggle
+(button + C) and Graphics Auto/Low/Medium/High/Ultra (button; Low drops shader plume/decks/vapour).
+**Audio:** in 3D the 2D fallback's cosmetic separation thresholds no longer drive sounds — separations, the
+coast dip and upper-stage ignition sound at the real event times. **Readout:** POWERED ASCENT / MECO · STAGE
+COAST / UPPER STAGE IGNITION; INSERTION BURN / ENGINE CUTOFF · ORBIT / COAST · EARTH ORBIT.
+**Fixes found in rendered frames:** spent stages spawned hundreds of metres to kilometres AHEAD of the stack
+(captured one compressed frame late, then `v·dt` added twice) — rebased to the separation instant; Cape decor
+clouds floated through the orbit diagram; failure fireball spheres → soft sprites + an air-only smoke pall; sep
+puff → soft burst at the interstage.
+Validation: new `test-cinematic-launch.js` 68/68; `test-flight3d-sepbeat.js` helper now inverts the warp
+(display progress is no longer linear in trajectory time — intended); full sweep 173/174 + 1 intentional skip,
+0 unexpected. Headless Firefox frames reviewed: pad ignition, liftoff, 4 km, max-Q, staging −/+, 94–1100 km,
+orbit entry, failure, night, Low/Stable. Not measured: real-GPU frame rate (headless is software GL).

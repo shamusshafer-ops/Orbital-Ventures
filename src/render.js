@@ -2855,7 +2855,7 @@ function cape3dVehicleMesh(source){
       // A-4: graphite jet vanes in the exhaust and a pitot/antenna probe pair near the tail.
       for(let k=0;k<4;k++){ const a=k*Math.PI*.5+Math.PI*.25; cape3dBox(sg,.25,1.6,.9,darkMat,Math.cos(a)*r*.42,y-1.2,Math.sin(a)*r*.42,false).rotation.y=-a; }
     }
-    g.add(sg); stageGroups.push({index:i, group:sg, baseY:y, topY:y+h, kind:segs[i].kind||'stage', engine:engineId});
+    g.add(sg); stageGroups.push({index:i, group:sg, baseY:y, topY:y+h, radius:r, engines:Math.max(1,s.engines||1), kind:segs[i].kind||'stage', engine:engineId});
     y+=h;
   }
   const top=segs[segs.length-1], topR=Math.max(2.4,top.w*scale*.5), noseH=Math.max(7,top.w*scale*(liv.nose==='blunt'?1.05:1.7));
@@ -3057,7 +3057,7 @@ function cape3dTrajectorySample(plan, phase, progress){
   const p=Math.max(0,Math.min(1,progress||0)), end=phase==='ascent'?plan.burnoutTime:plan.impactTime, start=phase==='suborbital'?plan.burnoutTime:0, time=start+(end-start)*p, pts=plan.points;
   let lo=0,hi=pts.length-1; while(lo<hi){ const mid=(lo+hi)>>1; if(pts[mid].t<time) lo=mid+1; else hi=mid; }
   const b=pts[lo], a=pts[Math.max(0,lo-1)], f=b.t===a.t?0:(time-a.t)/(b.t-a.t), lerp=(u,v)=>u+(v-u)*f;
-  return {t:time,xKm:lerp(a.xKm,b.xKm),altitudeKm:Math.max(0,lerp(a.altitudeKm,b.altitudeKm)),vx:lerp(a.vx,b.vx),vy:lerp(a.vy,b.vy),speedMps:lerp(a.speedMps,b.speedMps)};
+  return {t:time,xKm:lerp(a.xKm,b.xKm),altitudeKm:Math.max(0,lerp(a.altitudeKm,b.altitudeKm)),vx:lerp(a.vx,b.vx),vy:lerp(a.vy,b.vy),speedMps:lerp(a.speedMps,b.speedMps),qKpa:lerp(Number(a.qKpa)||0,Number(b.qKpa)||0)};
 }
 function cape3dTrajectoryGuideSamples(plan,maxSamples){
   if(!plan||!Array.isArray(plan.points)||!plan.points.length) return {points:[],events:[]};
@@ -3106,7 +3106,7 @@ function flightSeparationBeat(snapshot){
 // cosmetic, no sim coupling.
 const SEP_PUFF_LIFE=900; // ms
 function cape3dSepPuffPool(root){
-  const pool=[]; for(let i=0;i<4;i++){ const m=new THREE.Mesh(new THREE.SphereGeometry(1,10,8),new THREE.MeshBasicMaterial({color:0xfff2d6,transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false})); m.visible=false; root.add(m); pool.push({mesh:m,t0:0,active:false}); }
+  const pool=[]; for(let i=0;i<4;i++){ const m=new THREE.Sprite(new THREE.SpriteMaterial({map:cape3dPlumeTexture(),color:0xfff2d6,transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false})); m.visible=false; root.add(m); pool.push({mesh:m,t0:0,active:false}); } // soft billboard, not a hard white sphere
   return pool;
 }
 function cape3dSpawnSepPuff(root,worldPos){
@@ -3118,7 +3118,7 @@ function cape3dSpawnSepPuff(root,worldPos){
 function cape3dTickSepPuffs(root){
   const pool=root.userData.sepPuffs; if(!pool) return; const now=(typeof performance!=='undefined'?performance.now():Date.now());
   for(const p of pool){ if(!p.active) continue; const age=(now-p.t0)/SEP_PUFF_LIFE; if(age>=1){ p.active=false; p.mesh.visible=false; p.mesh.material.opacity=0; continue; }
-    p.mesh.scale.setScalar(2+age*46); p.mesh.material.opacity=.9*(1-age); }
+    p.mesh.scale.setScalar(10+Math.sqrt(age)*120); p.mesh.material.opacity=.85*(1-age)*(1-age); }
 }
 // Physics-less presentation trajectory (replay/old specs that predate the per-vehicle physics
 // record). One INTEGRATED gravity turn instead of three independent parametric curves: a pitch
@@ -3163,12 +3163,13 @@ function cape3dParametricSample(plan, phase, progress){
 function cape3dLaunchProfile(snapshot){
   const phase=snapshot&&snapshot.phase||'pad', p=Math.max(0,Math.min(1,(snapshot&&snapshot.phaseProgress)||0)), ignition=Math.max(0,Math.min(1,(snapshot&&snapshot.effects&&snapshot.effects.ignition)||0));
   const ascent=phase==='ascent', suborbital=phase==='suborbital', orbital=!!(snapshot&&(snapshot.isOrbital||snapshot.isCislunar)), reqDv=(snapshot&&snapshot.reqDv)||0;
-  const physics=snapshot&&snapshot.vehicle&&snapshot.vehicle.physics, trajectory=cape3dTrajectoryPlan(physics,{isOrbital:orbital,reqDv}), sample=trajectory&&(phase==='pad'?trajectory.points[0]:cape3dTrajectorySample(trajectory,phase,p));
+  const physics=snapshot&&snapshot.vehicle&&snapshot.vehicle.physics, trajectory=cape3dTrajectoryPlan(physics,{isOrbital:orbital,reqDv}), sample=trajectory&&(phase==='pad'?trajectory.points[0]:cape3dTrajectorySample(trajectory,phase,ascent&&trajectory.burnoutTime>0?cape3dWarpAscentTime(trajectory,p)/trajectory.burnoutTime:p));
   if(sample&&(phase==='pad'||ascent||suborbital)){
     const failed=!!(snapshot&&snapshot.effects&&snapshot.effects.ascentFailure), vacuum=Math.max(0,Math.min(1,sample.altitudeKm/85)), lowAtmos=Math.max(0,1-sample.altitudeKm/18), pitch=sample.speedMps>1?-Math.atan2(Math.max(0,sample.vx),sample.vy):0;
     // Cape geometry is authored in metres. Keeping the flight in that same unit makes a
     // 100 m tower clear at ~0.1 km on the MSL instrument—not several kilometres later.
-    return {phase,progress:p,t:sample.t,targetAltitudeKm:trajectory.maxAltitudeKm,apogeeKm:trajectory.maxAltitudeKm,altitudeKm:sample.altitudeKm,altitude:sample.altitudeKm*CAPE3D_METERS_PER_KM,downrangeKm:sample.xKm,offsetX:sample.xKm*CAPE3D_METERS_PER_KM,speedMps:sample.speedMps,maxSpeedMps:trajectory.maxSpeedMps,pitch,plume:failed?0:(phase==='pad'?ignition:(ascent?1:0)),light:failed?0:(phase==='pad'?ignition*2.2:(ascent?2.8:0)),smoke:failed?0:(phase==='pad'?ignition:(ascent?lowAtmos*.9:0)),vacuum,failed,splash:suborbital&&sample.altitudeKm<.5,splashProgress:suborbital?Math.max(0,Math.min(1,(p-.992)/.008)):0,failureProgress:Math.max(0,Math.min(1,(snapshot&&snapshot.effects&&snapshot.effects.failureProgress)||0)),trajectory};
+    const stg=ascent?cape3dStagingThrottle(trajectory,sample.t):{throttle:1,relight:0};
+    return {phase,progress:p,t:sample.t,targetAltitudeKm:trajectory.maxAltitudeKm,apogeeKm:trajectory.maxAltitudeKm,altitudeKm:sample.altitudeKm,altitude:sample.altitudeKm*CAPE3D_METERS_PER_KM,downrangeKm:sample.xKm,offsetX:sample.xKm*CAPE3D_METERS_PER_KM,speedMps:sample.speedMps,maxSpeedMps:trajectory.maxSpeedMps,qKpa:Number(sample.qKpa)||0,maxQKpa:Number(trajectory.maxQKpa)||0,mach:cape3dMach(sample.speedMps,sample.altitudeKm),relight:failed?0:stg.relight,pitch,plume:failed?0:(phase==='pad'?ignition:(ascent?stg.throttle:0)),light:failed?0:(phase==='pad'?ignition*2.2:(ascent?2.8*Math.max(stg.throttle,stg.relight):0)),smoke:failed?0:(phase==='pad'?ignition:(ascent?lowAtmos*.9:0)),vacuum,failed,splash:suborbital&&sample.altitudeKm<.5,splashProgress:suborbital?Math.max(0,Math.min(1,(p-.992)/.008)):0,failureProgress:Math.max(0,Math.min(1,(snapshot&&snapshot.effects&&snapshot.effects.failureProgress)||0)),trajectory};
   }
   // Compatibility path for old/replay specs that predate the per-vehicle physics record: an
   // integrated gravity turn (cape3dParametricPlan) rather than three independent parametric curves.
@@ -3235,7 +3236,7 @@ function cape3dApplySiteOpacity(objects,opacity){
 }
 function cape3dLaunchHorizonElevation(altitudeMeters, authoredElevation){
   const h=Math.max(0,Number(altitudeMeters)||0), km=h/1000, u=Math.max(0,Math.min(1,(km-2)/26)), blend=u*u*(3-2*u), earthR=6371000;
-  const dip=Math.acos(earthR/(earthR+h)), horizon=Math.min(6*Math.PI/180,dip*.45);
+  const dip=Math.acos(earthR/(earthR+h)), horizon=Math.min(dip,Math.max(Math.min(6*Math.PI/180,dip*.45),dip-.21)); // high up, tilt toward the limb so Earth stays in frame
   return (Number(authoredElevation)||0)*(1-blend)+horizon*blend;
 }
 function cape3dEarthTextureVector(latitudeDeg,longitudeDeg){
@@ -3288,7 +3289,10 @@ function cape3dLaunchEffects(rocket){
   const smoke=new THREE.Group(), smokeTx=cape3dPlumeTexture();
   for(let i=0;i<9;i++){ const size=14+(i%3)*8, mat=new THREE.SpriteMaterial({map:smokeTx,color:0xdfe7e7,transparent:true,opacity:0,depthWrite:false}), puff=new THREE.Sprite(mat); puff.userData.size=size; puff.position.set((i%3-1)*12,-50-i*13,((i*7)%3-1)*10); smoke.add(puff); } g.add(smoke);
   const glow=new THREE.PointLight(0xff8b35,0,360,2); glow.position.y=-8; g.add(glow);
-  return {group:g,envelope,flare,shock,smoke,glow};
+  // Cinematic layer: the shader plume carries the body/turbulence/diamonds; the sprite envelope above
+  // stays as its soft luminous halo (and is the whole plume if a shader ever fails to compile).
+  let shaderPlume=null; try{ shaderPlume=cape3dShaderPlume(); g.add(shaderPlume.group); }catch(e){ shaderPlume=null; }
+  return {group:g,envelope,flare,shock,smoke,glow,shaderPlume};
 }
 function cape3dPlumeProfile(plume, vacuum, engineId, solid){
   const thrust=Math.max(0,Math.min(1,plume||0)), vac=Math.max(0,Math.min(1,vacuum||0));
@@ -3339,6 +3343,274 @@ function cape3dUpdateGroundSmoke(smoke, phase, progress, ignition){
     puff.scale.set(s*1.25,s,1); puff.material.opacity=q.strength*(.30+(i%4)*.06); puff.material.color.setScalar(lum*(i%3?.92:.82));
   });
 }
+/* ---------- Cinematic launch layer (2026-11-17) ----------
+   Presentation-only. Everything below READS the authoritative trajectory (cape3dTrajectoryPlan's
+   integrated burn: real thrust/Isp/mass/drag/gravity-turn, real stage events, real q) and decides
+   how to SHOW it. Nothing here feeds back into the sim, outcomes, telemetry values or timing totals.
+   Pure helpers (no THREE) come first so the headless harness can lock their behaviour. */
+
+// Event-aware time warp. The ascent plays in a fixed ~7 s of wall time while a real burn lasts
+// minutes, so linear playback spent ~150 ms on the whole tower-clear and made every staging event a
+// one-frame blink. This remaps DISPLAY progress u (0..1) to trajectory time T (0..burnout): liftoff
+// and each separation window get a fixed share of the screen time, the quiet cruise between them
+// plays faster. Monotone, continuous, endpoints fixed — the same sim sample is shown, just paced.
+const CINE_LIFTOFF_SHARE=.20, CINE_EVENT_SHARE=.075, CINE_MAX_WARP_SHARE=.62, CINE_EVENT_PRE=1.5, CINE_EVENT_POST=3.0;
+function cape3dAscentWarpTable(plan){
+  if(!plan) return null; if(plan._cineWarp) return plan._cineWarp;
+  const B=Math.max(1e-6,Number(plan.burnoutTime)||0), Tl=Math.min(B*.45,Math.max(6,Math.min(30,B*.08)));
+  const raw=[{a:0,b:Tl,share:CINE_LIFTOFF_SHARE}];
+  for(const ev of (plan.stageEvents||[])) if(ev.t>0&&ev.t<B) raw.push({a:Math.max(0,ev.t-CINE_EVENT_PRE),b:Math.min(B,ev.t+CINE_EVENT_POST),share:CINE_EVENT_SHARE});
+  raw.sort((x,y)=>x.a-y.a); const wins=[];
+  for(const w of raw){ const last=wins[wins.length-1]; if(last&&w.a<=last.b){ last.b=Math.max(last.b,w.b); last.share+=w.share; } else wins.push(Object.assign({},w)); }
+  // A window never gets LESS than its linear share (the warp only ever slows a window down).
+  wins.forEach(w=>{ w.share=Math.max(w.share,(w.b-w.a)/B); });
+  let S=wins.reduce((n,w)=>n+w.share,0), inside=wins.reduce((n,w)=>n+(w.b-w.a),0);
+  if(S>CINE_MAX_WARP_SHARE){ const lin=inside/B, k=(CINE_MAX_WARP_SHARE-lin)/Math.max(1e-9,S-lin); wins.forEach(w=>{ const l=(w.b-w.a)/B; w.share=l+(w.share-l)*Math.max(0,k); }); S=wins.reduce((n,w)=>n+w.share,0); }
+  const free=B-inside, freeShare=1-S, pts=[{u:0,T:0}];
+  if(free<=1e-9||freeShare<=1e-9){ plan._cineWarp=[{u:0,T:0},{u:1,T:B}]; return plan._cineWarp; }
+  let T=0,u=0;
+  for(const w of wins){ if(w.a>T){ u+=(w.a-T)/free*freeShare; T=w.a; pts.push({u,T}); } u+=w.share; T=w.b; pts.push({u,T}); }
+  if(T<B){ u+=(B-T)/free*freeShare; T=B; pts.push({u,T}); }
+  pts[pts.length-1].u=1; plan._cineWarp=pts; return pts;
+}
+function cape3dWarpAscentTime(plan,progress){
+  const pts=cape3dAscentWarpTable(plan); if(!pts) return 0; const u=Math.max(0,Math.min(1,Number(progress)||0));
+  for(let i=1;i<pts.length;i++){ const a=pts[i-1],b=pts[i]; if(u<=b.u){ const f=b.u>a.u?(u-a.u)/(b.u-a.u):1; return a.T+(b.T-a.T)*f; } }
+  return pts[pts.length-1].T;
+}
+// Inverse of the warp: the display progress at which trajectory time T is shown.
+function cape3dUnwarpAscentTime(plan,T){
+  const pts=cape3dAscentWarpTable(plan); if(!pts) return 0; const t=Math.max(0,Math.min(pts[pts.length-1].T,Number(T)||0));
+  for(let i=1;i<pts.length;i++){ const a=pts[i-1],b=pts[i]; if(t<=b.T){ const f=b.T>a.T?(t-a.T)/(b.T-a.T):1; return a.u+(b.u-a.u)*f; } }
+  return 1;
+}
+// International Standard Atmosphere speed of sound (troposphere lapse, isothermal tropopause,
+// gentle stratospheric warming) — enough to place the transonic regime at the right altitude.
+function cape3dSpeedOfSound(altKm){
+  const h=Math.max(0,Number(altKm)||0), T=h<11?288.15-6.5*h:(h<20?216.65:Math.min(270.65,216.65+(h-20)));
+  return Math.sqrt(1.4*287.05*T);
+}
+function cape3dMach(speedMps,altKm){ return Math.max(0,Number(speedMps)||0)/cape3dSpeedOfSound(altKm); }
+// Prandtl–Glauert condensation collar: only in humid lower air, only around Mach 1.
+function cape3dVaporStrength(mach,altKm){
+  const h=Math.max(0,Number(altKm)||0), m=Math.max(0,Number(mach)||0); if(h>15||m<.82||m>1.3) return 0;
+  return Math.exp(-Math.pow((m-1.0)/.11,2))*Math.max(0,1-h/15);
+}
+// Core-stage handoff as seen from outside: the spent stage's engines are out at its separation
+// instant, a short dark coast while the stack clears, then the upper engine relights with a flash.
+// Keyed to the REAL event time; boosters do not interrupt the core's thrust, so they never dip it.
+const CINE_SEP_DARK=.9, CINE_SEP_RELIGHT=.8;
+function cape3dStagingThrottle(plan,t){
+  let throttle=1, relight=0; const now=Number(t)||0;
+  for(const ev of ((plan&&plan.stageEvents)||[])){
+    if(ev.kind!=='stage') continue; const dt=now-ev.t; if(dt<0||dt>CINE_SEP_DARK+CINE_SEP_RELIGHT) continue;
+    if(dt<CINE_SEP_DARK){ throttle=0; continue; }
+    const r=(dt-CINE_SEP_DARK)/CINE_SEP_RELIGHT, e=r*r*(3-2*r); throttle=Math.min(throttle,e); relight=Math.max(relight,Math.sin(Math.PI*Math.min(1,r*1.6))*(1-r*.4));
+  }
+  return {throttle,relight};
+}
+// Start-up transient: chamber pressure does not build smoothly — a ragged, flickering light-off
+// that steadies as the engines reach mainstage. Deterministic in `seconds` so frames are stable.
+function cape3dIgnitionFlicker(ignition,seconds){
+  const ign=Math.max(0,Math.min(1,Number(ignition)||0)); if(ign<=0) return 0; if(ign>=1) return 1;
+  const s=Number(seconds)||0, rag=.5+.25*Math.sin(s*41.3)+.15*Math.sin(s*73.7+1.3)+.1*Math.sin(s*19.1+.4), settle=Math.min(1,ign/.7);
+  return ign*((1-settle)*(.45+.55*rag)+settle);
+}
+// Camera excitation (0..1): acoustic load near the ground at ignition/liftoff, aerodynamic
+// load scaled by the vehicle's OWN dynamic pressure against its own peak, transonic buffet,
+// and a jolt at upper-stage light. Reduced-motion players get none.
+function cape3dLaunchShake(q,ignition,reduced){
+  if(reduced||!q||q.failed) return 0;
+  const alt=Math.max(0,Number(q.altitude)||0), ign=Math.max(0,Math.min(1,Number(ignition)||0));
+  const acoustic=q.phase==='pad'?Math.pow(ign,1.4)*.55:(q.phase==='ascent'?.55*Math.exp(-alt/420):0);
+  const qn=(Number(q.maxQKpa)||0)>0?Math.max(0,Math.min(1,(Number(q.qKpa)||0)/q.maxQKpa)):0, aero=q.phase==='ascent'?.42*qn*qn:0;
+  const buffet=.35*cape3dVaporStrength(q.mach,q.altitudeKm), jolt=.45*(Number(q.relight)||0);
+  return Math.max(0,Math.min(1,acoustic+aero+buffet+jolt));
+}
+// Rayleigh-inspired sky by real altitude: the zenith loses its blue with air column density
+// (~7.5 km scale height) while the limb stays bright and narrows into a thin band; the geometric
+// horizon dips below level as the vehicle climbs. Colours are linear 0..1 triples.
+function cape3dSkyProfile(altKm,night){
+  const h=Math.max(0,Number(altKm)||0), d=Math.exp(-h/7.5), mixc=(a,b,f)=>a.map((v,i)=>v+(b[i]-v)*Math.max(0,Math.min(1,f)));
+  const space=[.004,.009,.022], dayZenith=[.16,.40,.74], dayHorizon=[.72,.83,.93], limb=[.25,.55,.95];
+  let zenith=mixc(space,dayZenith,Math.pow(d,.55)), horizon=mixc(limb,dayHorizon,Math.pow(d,.32)), glow=Math.pow(d,.5);
+  if(night){ zenith=mixc(space,[.012,.03,.07],Math.pow(d,.5)); horizon=mixc([.03,.08,.18],[.06,.11,.2],Math.pow(d,.3)); glow*=.15; }
+  const R=6371, dip=-Math.acos(R/(R+h)), band=.02+.36*Math.pow(d,.38);
+  const stars=night?Math.min(1,.55+.45*(1-d)):Math.max(0,Math.min(1,(h-18)/40));
+  return {zenith,horizon,glow,band,dip,stars,ground:night?[.01,.02,.035]:mixc([.03,.09,.17],[.32,.42,.48],d)};
+}
+// The exhaust column the vehicle leaves behind, sampled from the ALREADY-FLOWN trajectory (by
+// arc length so spacing stays even as speed climbs). Each sample knows its age, so the plume
+// spreads and drifts on its own after the vehicle has gone — it is not glued to the rocket.
+function cape3dTrajectoryArc(plan){
+  if(!plan||!plan.points) return null; if(plan._cineArc) return plan._cineArc;
+  const pts=plan.points, arc=new Float64Array(pts.length);
+  for(let i=1;i<pts.length;i++){ const a=pts[i-1],b=pts[i]; arc[i]=arc[i-1]+Math.hypot((b.xKm-a.xKm)*1000,(b.altitudeKm-a.altitudeKm)*1000); }
+  plan._cineArc=arc; return arc;
+}
+function cape3dTrailSamples(plan,headT,nowT,count,maxSpanM){
+  const arc=cape3dTrajectoryArc(plan); if(!arc) return []; const pts=plan.points, n=Math.max(1,count|0), head=Math.max(0,Number(headT)||0), now=Math.max(head,Number(nowT)||0);
+  const idxAt=t=>{ let lo=0,hi=pts.length-1; while(lo<hi){ const m=(lo+hi)>>1; if(pts[m].t<t) lo=m+1; else hi=m; } return lo; };
+  const hi=idxAt(head), lo=Math.max(0,hi-1), f=pts[hi].t>pts[lo].t?(head-pts[lo].t)/(pts[hi].t-pts[lo].t):0, sHead=arc[lo]+(arc[hi]-arc[lo])*f;
+  const span=Math.min(sHead,Math.max(50,Number(maxSpanM)||30000)), ds=Math.max(6,span/n), out=[];
+  for(let k=0;k<n;k++){
+    const s=sHead-(k+.35)*ds; if(s<0) break;
+    let a=0,b=arc.length-1; while(a<b){ const m=(a+b)>>1; if(arc[m]<s) a=m+1; else b=m; }
+    const j=Math.max(1,a), p0=pts[j-1], p1=pts[j], g=arc[j]>arc[j-1]?(s-arc[j-1])/(arc[j]-arc[j-1]):0, t=p0.t+(p1.t-p0.t)*g;
+    out.push({t,age:now-t,xKm:p0.xKm+(p1.xKm-p0.xKm)*g,altitudeKm:p0.altitudeKm+(p1.altitudeKm-p0.altitudeKm)*g,ds});
+  }
+  return out;
+}
+
+/* ---- THREE-side builders/updaters (browser only) ---- */
+const CINE_NOISE_GLSL=`
+float h3(vec3 p){ p=fract(p*.3183099+.1); p*=17.0; return fract(p.x*p.y*p.z*(p.x+p.y+p.z)); }
+float vnoise(vec3 x){ vec3 i=floor(x), f=fract(x); f=f*f*(3.0-2.0*f);
+  return mix(mix(mix(h3(i),h3(i+vec3(1,0,0)),f.x),mix(h3(i+vec3(0,1,0)),h3(i+vec3(1,1,0)),f.x),f.y),
+             mix(mix(h3(i+vec3(0,0,1)),h3(i+vec3(1,0,1)),f.x),mix(h3(i+vec3(0,1,1)),h3(i+vec3(1,1,1)),f.x),f.y),f.z); }
+float fbm(vec3 p){ return .55*vnoise(p)+.3*vnoise(p*2.03+7.1)+.15*vnoise(p*4.11+3.7); }`;
+// Volumetric-looking exhaust: an open tube whose radius profile is evaluated in the vertex shader
+// from ambient pressure (columnar at sea level → blooming in vacuum), with fbm turbulence flowing
+// down-stream, a white-hot throat, family colours, and shock diamonds only while the plume is
+// over-expanded in thick air. Soft silhouette from a view-angle falloff — no hard shell.
+function cape3dShaderPlumeLayer(kind){
+  const geo=new THREE.CylinderGeometry(1,1,1,28,36,true); geo.translate(0,-.5,0);
+  const mat=new THREE.ShaderMaterial({transparent:true,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending,fog:false,
+    uniforms:{uTime:{value:0},uVacuum:{value:0},uLength:{value:80},uWidth:{value:5},uOpacity:{value:0},uShock:{value:0},uHot:{value:new THREE.Color(0xffffff)},uCore:{value:new THREE.Color(0xffd27a)},uOuter:{value:new THREE.Color(0xff7a32)},uSheath:{value:kind==='sheath'?1:0}},
+    vertexShader:`uniform float uTime,uVacuum,uLength,uWidth,uSheath; varying float vAxial; varying vec3 vN; varying vec3 vV; varying float vAng;
+      void main(){ float v=clamp(-position.y,0.0,1.0); float ang=atan(position.z,position.x);
+        float sea=.42+.30*v+.06*sin(v*9.0); float vac=.42+2.7*pow(v,.62);
+        float r=mix(sea,vac,uVacuum)*mix(1.0,1.55,uSheath); r*=1.0+.07*sin(v*17.0-uTime*26.0+ang*3.0)*v;
+        vec3 p=vec3(position.x*r*uWidth,-v*uLength,position.z*r*uWidth); vAxial=v; vAng=ang;
+        vec4 mv=modelViewMatrix*vec4(p,1.0); vV=-mv.xyz; vN=normalize(normalMatrix*vec3(position.x,0.0,position.z)); gl_Position=projectionMatrix*mv; }`,
+    fragmentShader:CINE_NOISE_GLSL+`uniform float uTime,uVacuum,uOpacity,uShock,uSheath; uniform vec3 uHot,uCore,uOuter; varying float vAxial; varying vec3 vN; varying vec3 vV; varying float vAng;
+      void main(){ float facing=abs(dot(normalize(vN),normalize(vV))); float body=pow(facing,mix(1.3,2.2,uSheath));
+        float n=fbm(vec3(cos(vAng)*1.6,sin(vAng)*1.6,vAxial*7.0-uTime*5.5));
+        float head=smoothstep(0.0,.035,vAxial), tail=1.0-smoothstep(mix(.35,.55,uVacuum),1.0,vAxial);
+        vec3 col=mix(uHot,uCore,smoothstep(0.0,.20,vAxial)); col=mix(col,uOuter,smoothstep(.15,.65,vAxial)+uSheath*.6);
+        float diamonds=uShock*pow(.5+.5*cos(vAxial*38.0),6.0)*(1.0-smoothstep(.12,.55,vAxial))*(1.0-uSheath);
+        float a=uOpacity*body*head*tail*(.55+.65*n)+diamonds*body*.9; col+=uHot*diamonds*.8;
+        gl_FragColor=vec4(col,clamp(a,0.0,1.0)); }`});
+  const mesh=new THREE.Mesh(geo,mat); mesh.frustumCulled=false; mesh.renderOrder=3; mesh.name='cape3d_shader_plume_'+kind; return mesh;
+}
+function cape3dShaderPlume(){
+  const g=new THREE.Group(); g.name='cape3d_shader_plume'; const sheath=cape3dShaderPlumeLayer('sheath'), core=cape3dShaderPlumeLayer('core'); g.add(sheath); g.add(core);
+  return {group:g,core,sheath};
+}
+function cape3dApplyShaderPlume(sp,profile,clock,dims){
+  if(!sp) return; const d=dims||{}, baseR=Math.max(1.2,Number(d.radius)||5), L=Math.max(30,Number(d.length)||80), on=profile.coreOpacity>.004;
+  sp.group.visible=on; if(!on) return;
+  const set=(m,len,width,op,shock)=>{ const u=m.material.uniforms; u.uTime.value=clock||0; u.uVacuum.value=profile.vacuum; u.uLength.value=len; u.uWidth.value=width; u.uOpacity.value=op; u.uShock.value=shock; u.uHot.value.setHex(profile.hotColor); u.uCore.value.setHex(profile.coreColor); u.uOuter.value.setHex(profile.outerColor); };
+  const len=L*profile.length, width=baseR*profile.width*(d.cluster?1.18:1), vacFade=(1-.45*profile.vacuum)*(profile.family==='hydrolox'?1-.45*profile.vacuum:1);
+  set(sp.core,len*.62,width*.62,Math.min(1,profile.coreOpacity*1.05*vacFade),Math.min(1,profile.shockOpacity*3.2));
+  set(sp.sheath,len,width,profile.outerOpacity*.62*vacFade*vacFade,0);
+}
+function cape3dVaporCone(){
+  const geo=new THREE.CylinderGeometry(.18,1,1,32,6,true); geo.translate(0,-.5,0);
+  const mat=new THREE.ShaderMaterial({transparent:true,depthWrite:false,side:THREE.DoubleSide,fog:false,uniforms:{uOpacity:{value:0},uTime:{value:0}},
+    vertexShader:`varying float vA; varying vec3 vN; varying vec3 vV; varying float vAng; void main(){ vA=-position.y; vAng=atan(position.z,position.x); vec4 mv=modelViewMatrix*vec4(position,1.0); vV=-mv.xyz; vN=normalize(normalMatrix*normal); gl_Position=projectionMatrix*mv; }`,
+    fragmentShader:CINE_NOISE_GLSL+`uniform float uOpacity,uTime; varying float vA; varying vec3 vN; varying vec3 vV; varying float vAng;
+      void main(){ float edge=1.0-abs(dot(normalize(vN),normalize(vV))); float n=fbm(vec3(cos(vAng)*3.0,sin(vAng)*3.0,vA*4.0+uTime));
+        float a=uOpacity*(.35+.65*edge)*smoothstep(1.0,.55,vA)*smoothstep(0.0,.25,vA)*(.45+.75*n); gl_FragColor=vec4(vec3(.96,.97,1.0),a); }`});
+  const mesh=new THREE.Mesh(geo,mat); mesh.visible=false; mesh.renderOrder=4; mesh.name='cape3d_vapor_cone'; return mesh;
+}
+let _cape3dFireballTexture=null;
+function cape3dFireballTexture(){
+  if(_cape3dFireballTexture) return _cape3dFireballTexture;
+  const cv=document.createElement('canvas'); cv.width=cv.height=128; const c=cv.getContext('2d');
+  for(let i=0;i<22;i++){ const a=i*2.399, r=(i%5)*7+6, x=64+Math.cos(a)*r, y=64+Math.sin(a)*r, rr=22+(i%4)*7, g=c.createRadialGradient(x,y,0,x,y,rr); g.addColorStop(0,'rgba(255,255,255,.55)'); g.addColorStop(.5,'rgba(255,255,255,.22)'); g.addColorStop(1,'rgba(255,255,255,0)'); c.fillStyle=g; c.fillRect(0,0,128,128); }
+  _cape3dFireballTexture=new THREE.CanvasTexture(cv); return _cape3dFireballTexture;
+}
+function cape3dLaunchSkyDome(scene){
+  const mat=new THREE.ShaderMaterial({side:THREE.BackSide,depthWrite:false,depthTest:false,fog:false,
+    uniforms:{uZenith:{value:new THREE.Color()},uHorizon:{value:new THREE.Color()},uGround:{value:new THREE.Color()},uSun:{value:new THREE.Vector3(0,1,0)},uBand:{value:.3},uDip:{value:0},uGlow:{value:1},uStars:{value:0}},
+    vertexShader:`varying vec3 vDir; void main(){ vDir=normalize(position); gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+    fragmentShader:`uniform vec3 uZenith,uHorizon,uGround,uSun; uniform float uBand,uDip,uGlow,uStars; varying vec3 vDir;
+      float sh(vec3 c){ return fract(sin(dot(c,vec3(12.9898,78.233,37.719)))*43758.5453); }
+      void main(){ vec3 d=normalize(vDir); float e=asin(clamp(d.y,-1.0,1.0))-uDip; vec3 col;
+        if(e>=0.0){ float t=exp(-e/uBand); col=mix(uZenith,uHorizon,t); col+=uHorizon*.35*exp(-e/(uBand*.18))*uGlow; }
+        else { col=mix(uHorizon,uGround,smoothstep(0.0,.06+uBand*.3,-e)); }
+        float s=max(dot(d,normalize(uSun)),0.0); col+=vec3(1.0,.93,.78)*(pow(s,900.0)*3.0+pow(s,14.0)*.22*uGlow+pow(s,3.0)*.05*uGlow);
+        if(uStars>0.0&&e>0.0){ vec3 g=d*180.0, c=floor(g), f=fract(g)-.5; float r=sh(c); if(r>.985){ float m=smoothstep(.32,.0,length(f))*(r-.985)/.015; float dark=1.0-clamp(dot(col,vec3(.3,.6,.1))*6.0,0.0,1.0); col+=vec3(.85,.9,1.0)*m*uStars*dark*(1.0-pow(s,4.0)); } }
+        gl_FragColor=vec4(col,1.0); }`});
+  const dome=new THREE.Mesh(new THREE.SphereGeometry(1,48,24),mat); dome.name='cape3d_launch_sky'; dome.renderOrder=-1000; dome.frustumCulled=false; dome.visible=false; scene.add(dome); return dome;
+}
+function cape3dUpdateSkyDome(dome,camera,profile,sunPos){
+  if(!dome||!camera||!profile) return; const u=dome.material.uniforms;
+  u.uZenith.value.setRGB(profile.zenith[0],profile.zenith[1],profile.zenith[2]); u.uHorizon.value.setRGB(profile.horizon[0],profile.horizon[1],profile.horizon[2]); u.uGround.value.setRGB(profile.ground[0],profile.ground[1],profile.ground[2]);
+  u.uBand.value=profile.band; u.uDip.value=profile.dip; u.uGlow.value=profile.glow; u.uStars.value=profile.stars||0; if(sunPos) u.uSun.value.copy(sunPos).normalize();
+  dome.position.copy(camera.position); dome.scale.setScalar(camera.far*.85); dome.visible=true;
+}
+// Altitude-true cloud layers the vehicle climbs through: a broken cumulus deck near 2 km (one cell
+// sits on the flight path so the stack punches through it) and a thin cirrus sheet near 9 km.
+// They live in the launch world, so their parallax against the climbing camera IS the speed cue.
+function cape3dCloudDecks(root,base){
+  const g=new THREE.Group(); g.name='cape3d_cloud_decks'; g.visible=false; const tx=cape3dCloudTexture(), sprites=[];
+  const add=(x,y,z,w,h,op,tint)=>{ const m=new THREE.SpriteMaterial({map:tx,transparent:true,opacity:0,depthWrite:false,color:tint}), s=new THREE.Sprite(m); s.position.set(base.x+x,base.y+y,base.z+z); s.scale.set(w,h,1); s.userData.baseOpacity=op; g.add(s); sprites.push(s); };
+  add(160,2150,40,1500,560,.55,0xffffff);
+  for(let i=0;i<22;i++){ const a=i*2.399, r=1800+(i%7)*1500; add(Math.cos(a)*r+r*.35,1750+(i%5)*160,Math.sin(a)*r*.8,1500+(i%4)*700,520+(i%3)*180,.42+(i%3)*.08,i%2?0xf4f8ff:0xffffff); }
+  for(let i=0;i<10;i++){ const a=i*1.7+.4, r=4000+(i%4)*5000; add(Math.cos(a)*r+6000,8800+(i%3)*500,Math.sin(a)*r*.7,6000+(i%3)*2600,700+(i%2)*260,.22+(i%2)*.06,0xeaf2ff); }
+  root.add(g); return {group:g,sprites};
+}
+function cape3dSmokeTrail(root){
+  const g=new THREE.Group(); g.name='cape3d_smoke_trail'; g.visible=false; const tx=cape3dPlumeTexture(), sprites=[];
+  for(let i=0;i<64;i++){ const m=new THREE.SpriteMaterial({map:tx,transparent:true,opacity:0,depthWrite:false,color:0xe7eaec}), s=new THREE.Sprite(m); s.visible=false; s.material.rotation=i*1.37; g.add(s); sprites.push(s); }
+  root.add(g); return {group:g,sprites,failT:null};
+}
+let _cineTrailWarm=null;
+function cape3dUpdateSmokeTrail(trail,plan,q,base,opts){
+  if(!trail) return; const o=opts||{}, show=!!plan&&(q.phase==='ascent'||q.phase==='suborbital')&&o.visibility>.01;
+  trail.group.visible=show; if(!show){ trail.sprites.forEach(s=>s.visible=false); return; }
+  if(q.failed&&trail.failT==null) trail.failT=q.t; if(!q.failed) trail.failT=null;
+  const n=Math.max(1,Math.min(trail.sprites.length,o.count||trail.sprites.length)), head=Math.min(q.t||0,plan.burnoutTime,trail.failT==null?Infinity:trail.failT), samples=cape3dTrailSamples(plan,head,q.t||0,n,o.maxSpan||32000);
+  const night=!!o.night, strength=(.35+.65*Math.min(1,o.smokeMult||0))*o.visibility, baseCol=night?0x5c6168:0xe4e8eb;
+  trail.sprites.forEach((s,i)=>{
+    const smp=samples[i]; if(!smp||smp.altitudeKm>48){ s.visible=false; return; }
+    const age=Math.max(0,smp.age), dens=Math.exp(-smp.altitudeKm/7.5), r=Math.max(smp.ds*1.25,(o.radius||6)*1.6+age*1.15);
+    s.visible=true; s.position.set(base.x+smp.xKm*1000-age*1.2,base.y+smp.altitudeKm*1000,base.z-age*.5); s.scale.setScalar(r*2);
+    s.material.opacity=Math.min(.85,strength*Math.pow(dens,.45)*Math.exp(-age/110)*(smp.altitudeKm*1000<25?.4:1)*.75);
+    s.material.color.setHex(baseCol); const warm=Math.max(0,1-age/2.5)*(q.failed?0:1); if(warm>0) s.material.color.lerp(_cineTrailWarm||(_cineTrailWarm=new THREE.Color(0xffb070)),warm*(night?.85:.45));
+  });
+}
+// Stable tracking: one steady three-quarter chase for the whole climb — no event cuts, no wide beat.
+function cape3dStableCameraProfile(q){
+  const phase=q&&q.phase||'pad';
+  if(phase==='pad') return {shot:'PAD TRACKER',az:-.62,el:.24,distMul:1.42,targetLift:.40};
+  return {shot:'STABLE TRACK',az:-.72,el:.30,distMul:1.15,targetLift:.32};
+}
+// Close-chase weight at orbit entry: 1 while the insertion burn and cutoff play, easing out to the
+// wide orbit view. Stable camera mode skips the move (always the wide view).
+function cape3dOrbitEntryClose(progress,cinematic){
+  if(cinematic===false) return 0; const p=Math.max(0,Math.min(1,Number(progress)||0)), u=Math.max(0,Math.min(1,(p-.17)/.20));
+  return 1-u*u*(3-2*u);
+}
+// Player camera preference: 'cinematic' (director framing, shake, event moves) or 'stable' (steady
+// tracking). Stored per browser like the playback speed; defaults to cinematic.
+let _cineCamMode=null;
+function cape3dCameraMode(){ if(_cineCamMode) return _cineCamMode; let v=null; try{ v=localStorage.getItem('ov_flight_cam'); }catch(e){} _cineCamMode=v==='stable'?'stable':'cinematic'; return _cineCamMode; }
+function cape3dCinematicCamera(){ return cape3dCameraMode()!=='stable'; }
+function setCape3dCameraMode(mode){ _cineCamMode=mode==='stable'?'stable':'cinematic'; try{ localStorage.setItem('ov_flight_cam',_cineCamMode); }catch(e){} return _cineCamMode; }
+// Graphics presets for the launch presentation. 'auto' maps the existing hardware heuristic
+// (cape3dFlightQualityProfile) onto a tier. Low drops the shader plume (the sprite halo carries the
+// exhaust alone), cloud decks and vapour, and thins the trail; Ultra raises render resolution.
+const GFX_QUALITY_TIERS=['auto','low','medium','high','ultra'];
+function cape3dGraphicsTier(pref,caps){
+  let tier=GFX_QUALITY_TIERS.includes(pref)?pref:'auto';
+  if(tier==='auto'){ const hw=cape3dFlightQualityProfile(caps).name; tier=hw==='efficient'?'low':(hw==='cinematic'?'ultra':'high'); }
+  const T={low:{pixelRatio:1,trail:20,shaderPlume:false,cloudDecks:false,vapor:false},medium:{pixelRatio:1,trail:36,shaderPlume:true,cloudDecks:true,vapor:true},high:{pixelRatio:1.25,trail:64,shaderPlume:true,cloudDecks:true,vapor:true},ultra:{pixelRatio:1.75,trail:64,shaderPlume:true,cloudDecks:true,vapor:true}}[tier];
+  return Object.assign({tier,pref:GFX_QUALITY_TIERS.includes(pref)?pref:'auto'},T);
+}
+let _gfxPref=null;
+function gfxQualityPref(){ if(_gfxPref) return _gfxPref; let v=null; try{ v=localStorage.getItem('ov_gfx_quality'); }catch(e){} _gfxPref=GFX_QUALITY_TIERS.includes(v)?v:'auto'; return _gfxPref; }
+function setGfxQualityPref(v){
+  _gfxPref=GFX_QUALITY_TIERS.includes(v)?v:'auto'; try{ localStorage.setItem('ov_gfx_quality',_gfxPref); }catch(e){}
+  try{ if(typeof cape3d!=='undefined'&&cape3d&&cape3d.renderer){ const dpr=(typeof window!=='undefined'&&window.devicePixelRatio)||1; cape3d.renderer.setPixelRatio(Math.min(dpr,cape3dGraphicsTier(_gfxPref).pixelRatio)); const el=cape3d.renderer.domElement, host=el&&el.parentElement; if(host&&host.clientWidth) resizeCape3D(host.clientWidth,host.clientHeight); } }catch(e){}
+  return _gfxPref;
+}
+function cape3dHideCinematic(root){
+  if(!root||!root.userData) return; const c=root.userData.cinematic; if(!c) return;
+  if(c.trail){ c.trail.group.visible=false; c.trail.failT=null; } if(c.decks) c.decks.group.visible=false; if(c.vapor) c.vapor.visible=false;
+}
 function cape3dSplashEffects(root){
   const group=new THREE.Group(); group.name='cape3d_suborbital_splash'; group.visible=false;
   const rings=[], spray=[], ringMat=new THREE.MeshBasicMaterial({color:0xc8f1ff,transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending});
@@ -3376,14 +3648,19 @@ function cape3dAscentWorld(root,pad,base){
   // launch scene's oblique key light a second time, turning the near-horizon ocean into a flat
   // grey field. Basic keeps the photographic color/contrast legible throughout the handoff.
   const earthMat=new THREE.MeshBasicMaterial({color:0x396b86,map:null,transparent:true,opacity:0,depthWrite:false,fog:false});
-  const earth=new THREE.Mesh(new THREE.SphereGeometry(radius,48,28),earthMat), capeSurface=cape3dEarthTextureVector(typeof LAUNCH_SITE_LAT==='number'?LAUNCH_SITE_LAT:28.4,-80.6), earthUp=new THREE.Vector3(0,1,0);
+  const earth=new THREE.Mesh(new THREE.SphereGeometry(radius,320,180),earthMat), capeSurface=cape3dEarthTextureVector(typeof LAUNCH_SITE_LAT==='number'?LAUNCH_SITE_LAT:28.4,-80.6), earthUp=new THREE.Vector3(0,1,0);
   earth.position.copy(center); earth.quaternion.setFromUnitVectors(new THREE.Vector3(capeSurface.x,capeSurface.y,capeSurface.z),earthUp);
   // Mapping a point to the tangent leaves one free roll around its normal. Quarter-turn the map so
   // the Florida/Bahamas coastline crosses the ascent camera's foreground instead of showing an
   // undifferentiated Atlantic patch; the tangent itself remains exactly 28.4°N, 80.6°W.
   earth.rotateOnWorldAxis(earthUp,Math.PI*.5); earth.receiveShadow=false; g.add(earth);
-  const atmoMat=new THREE.MeshBasicMaterial({color:0x63b8ff,transparent:true,opacity:0,side:THREE.FrontSide,depthWrite:false,blending:THREE.AdditiveBlending,fog:false});
-  const atmosphere=new THREE.Mesh(new THREE.SphereGeometry(radius+80000,48,28),atmoMat); atmosphere.position.copy(center); g.add(atmosphere);
+  // Aerial perspective: brightness rises toward the limb (long path through air), not a flat tint.
+  let atmoMat; try{ atmoMat=new THREE.ShaderMaterial({transparent:true,depthWrite:false,side:THREE.FrontSide,blending:THREE.AdditiveBlending,fog:false,uniforms:{opacity:{value:0},uColor:{value:new THREE.Color(0x63b8ff)}},
+    vertexShader:`varying vec3 vN; varying vec3 vV; void main(){ vec4 mv=modelViewMatrix*vec4(position,1.0); vV=-mv.xyz; vN=normalize(normalMatrix*normal); gl_Position=projectionMatrix*mv; }`,
+    fragmentShader:`uniform vec3 uColor; uniform float opacity; varying vec3 vN; varying vec3 vV; void main(){ float f=1.0-abs(dot(normalize(vN),normalize(vV))); gl_FragColor=vec4(uColor,clamp(opacity*(.25+pow(f,2.4)*2.2)*(1.0-smoothstep(.80,1.0,f)),0.0,1.0)); }`});
+    Object.defineProperty(atmoMat,'opacity',{get(){ return this.uniforms.opacity.value; },set(v){ if(this.uniforms) this.uniforms.opacity.value=v; },configurable:true}); }
+  catch(e){ atmoMat=new THREE.MeshBasicMaterial({color:0x63b8ff,transparent:true,opacity:0,side:THREE.FrontSide,depthWrite:false,blending:THREE.AdditiveBlending,fog:false}); }
+  const atmosphere=new THREE.Mesh(new THREE.SphereGeometry(radius+80000,160,96),atmoMat); atmosphere.position.copy(center); g.add(atmosphere);
   const stars=new THREE.Points(new THREE.BufferGeometry(),new THREE.PointsMaterial({color:0xeaf5ff,size:13,transparent:true,opacity:0,depthWrite:false,fog:false}));
   const pts=[]; for(let i=0;i<190;i++){ const a=i*2.399,b=(i%23)*.27; pts.push(Math.cos(a)*25000,9000+Math.sin(b)*16000,Math.sin(a)*25000); } stars.geometry.setAttribute('position',new THREE.Float32BufferAttribute(pts,3)); g.add(stars);
   const trail=new THREE.Group(), puffs=[]; for(let i=0;i<18;i++){ const puff=new THREE.Mesh(new THREE.SphereGeometry(18+(i%4)*10,10,8),new THREE.MeshBasicMaterial({color:i%3?0xb9d3df:0xffb15b,transparent:true,opacity:0,depthWrite:false})); puff.visible=false; trail.add(puff); puffs.push(puff); } g.add(trail);
@@ -3414,7 +3691,13 @@ function cape3dOrbitWorld(root){
   const earthMap=(typeof map3dPhotoTexture==='function')?map3dPhotoTexture('earth'):null;
   const earthMat=new THREE.MeshStandardMaterial({color:0x477b94,map:earthMap,emissive:0x06121c,emissiveIntensity:.18,roughness:.94,metalness:0});
   const earth=new THREE.Mesh(new THREE.SphereGeometry(355,64,40),earthMat); g.add(earth);
-  const atmo=new THREE.Mesh(new THREE.SphereGeometry(366,48,30),new THREE.MeshBasicMaterial({color:0x64b9ff,transparent:true,opacity:.18,side:THREE.FrontSide,depthWrite:false,blending:THREE.AdditiveBlending})); g.add(atmo);
+  // Limb glow: a view-angle (fresnel) falloff so the atmosphere reads as a thin scattering rim at the
+  // edge of the disc rather than a uniformly tinted shell over the whole planet.
+  let atmoMat; try{ atmoMat=new THREE.ShaderMaterial({transparent:true,depthWrite:false,side:THREE.FrontSide,blending:THREE.AdditiveBlending,uniforms:{uColor:{value:new THREE.Color(0x5fb4ff)}},
+    vertexShader:`varying vec3 vN; varying vec3 vV; void main(){ vec4 mv=modelViewMatrix*vec4(position,1.0); vV=-mv.xyz; vN=normalize(normalMatrix*normal); gl_Position=projectionMatrix*mv; }`,
+    fragmentShader:`uniform vec3 uColor; varying vec3 vN; varying vec3 vV; void main(){ float f=1.0-abs(dot(normalize(vN),normalize(vV))); float a=pow(f,3.2)*1.15+pow(f,9.0)*.8; gl_FragColor=vec4(uColor*(1.0+pow(f,8.0)*.6),clamp(a,0.0,1.0)); }`}); }
+  catch(e){ atmoMat=new THREE.MeshBasicMaterial({color:0x64b9ff,transparent:true,opacity:.18,side:THREE.FrontSide,depthWrite:false,blending:THREE.AdditiveBlending}); }
+  const atmo=new THREE.Mesh(new THREE.SphereGeometry(368,96,64),atmoMat); g.add(atmo);
   const orbitPts=[]; for(let i=0;i<=128;i++){ const a=-1.05+i/128*Math.PI*2.15; orbitPts.push(new THREE.Vector3(Math.cos(a)*690,Math.sin(a)*105,Math.sin(a)*505)); }
   const ribbon=new THREE.Line(new THREE.BufferGeometry().setFromPoints(orbitPts),new THREE.LineBasicMaterial({color:0x67d7ff,transparent:true,opacity:.64})); g.add(ribbon);
   const markerMat=new THREE.MeshBasicMaterial({color:0xffcf63,transparent:true,opacity:.95});
@@ -3447,12 +3730,16 @@ function cape3dReentryWorld(root){
 }
 function cape3dFailureEffects(root,rocket,launchEffects){
   const g=new THREE.Group(); g.name='cape3d_failure_effects'; g.visible=false;
-  const fire=new THREE.Mesh(new THREE.SphereGeometry(1,18,14),new THREE.MeshBasicMaterial({color:0xff7a28,transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending})); g.add(fire);
-  const core=new THREE.Mesh(new THREE.SphereGeometry(1,14,10),new THREE.MeshBasicMaterial({color:0xfff3c4,transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending})); g.add(core);
+  // Soft billboards (a turbulent fireball texture) instead of flat-shaded spheres, which read as hard
+  // orange discs; plus a dark smoke pall that only persists where there is air to hold it.
+  const fireTx=cape3dFireballTexture();
+  const fire=new THREE.Sprite(new THREE.SpriteMaterial({map:fireTx,color:0xff7a28,transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending})); g.add(fire);
+  const core=new THREE.Sprite(new THREE.SpriteMaterial({map:cape3dPlumeTexture(),color:0xfff3c4,transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending})); g.add(core);
+  const pall=new THREE.Sprite(new THREE.SpriteMaterial({map:fireTx,color:0x3a3533,transparent:true,opacity:0,depthWrite:false})); pall.renderOrder=-1; g.add(pall);
   const flash=new THREE.PointLight(0xff8a36,0,720,2); g.add(flash);
   const pieces=[];
   const topGroup=(rocket.userData.stageGroups&&rocket.userData.stageGroups.length)?rocket.userData.stageGroups[rocket.userData.stageGroups.length-1].group:null;
-  rocket.children.filter(child=>child!==launchEffects.group).forEach((child,i)=>{
+  rocket.children.filter(child=>child!==launchEffects.group&&child!==rocket.userData.vapor).forEach((child,i)=>{
     const mesh=child.clone(true); mesh.traverse(node=>{ if(node.material&&node.material.clone) node.material=node.material.clone(); }); mesh.visible=false; g.add(mesh);
     const a=i*2.399, speed=52+(i%5)*18, isEscapePod=(child===topGroup);
     pieces.push({mesh,local:child.position.clone(),velocity:new THREE.Vector3(Math.cos(a)*speed,45+(i%4)*24,Math.sin(a)*speed),spin:new THREE.Vector3(.8+(i%3)*.55,.5+(i%4)*.32,.65+(i%5)*.24),isEscapePod});
@@ -3465,10 +3752,10 @@ function cape3dFailureEffects(root,rocket,launchEffects){
   const escapeFlash=new THREE.PointLight(0xdff3ff,0,260,2); escapeFlash.visible=false; g.add(escapeFlash);
   const sparks=[]; const sparkMat=new THREE.MeshBasicMaterial({color:0xffd27b,transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending});
   for(let i=0;i<26;i++){ const spark=new THREE.Mesh(new THREE.SphereGeometry(2+(i%3),7,6),sparkMat.clone()); spark.visible=false; g.add(spark); const a=i*2.399; sparks.push({mesh:spark,velocity:new THREE.Vector3(Math.cos(a)*(75+(i%6)*15),30+(i%5)*20,Math.sin(a)*(75+(i%6)*15))}); }
-  root.add(g); return {group:g,fire,core,flash,escapeFlash,pieces,sparks,active:false,escaped:false,origin:new THREE.Vector3()};
+  root.add(g); return {group:g,fire,core,pall,flash,escapeFlash,pieces,sparks,active:false,escaped:false,air:1,origin:new THREE.Vector3()};
 }
 function cape3dStartFailure(failure,rocket,escaped){
-  failure.active=true; failure.escaped=!!escaped; failure.origin.copy(rocket.position); failure.group.visible=true;
+  failure.active=true; failure.escaped=!!escaped; failure.origin.copy(rocket.position); failure.group.visible=true; failure.air=Math.exp(-Math.max(0,rocket.position.y)/7500);
   failure.pieces.forEach(piece=>{
     piece.mesh.visible=true; piece.mesh.position.copy(failure.origin).add(piece.local); piece.mesh.rotation.set(0,0,0);
     // BACKLOG #40 mini-arc: on an escape-system save, the pod piece gets a fast, mostly-upward
@@ -3481,7 +3768,8 @@ function cape3dStartFailure(failure,rocket,escaped){
 }
 function cape3dUpdateFailure(failure,p){
   const t=Math.max(0,Math.min(1,p))*2.8, fade=Math.max(0,1-p*.72);
-  failure.fire.position.copy(failure.origin); failure.core.position.copy(failure.origin); failure.fire.scale.setScalar(24+125*Math.min(1,p*3)); failure.core.scale.setScalar(10+58*Math.min(1,p*4)); failure.fire.material.opacity=.86*fade; failure.core.material.opacity=.95*Math.max(0,1-p*1.8); failure.flash.position.copy(failure.origin); failure.flash.intensity=10*Math.max(0,1-p*2.4);
+  failure.fire.position.copy(failure.origin); failure.core.position.copy(failure.origin); const spr=failure.fire.isSprite?2.6:1; failure.fire.scale.setScalar((24+125*Math.min(1,p*3))*spr); failure.core.scale.setScalar((10+58*Math.min(1,p*4))*spr);
+  if(failure.pall){ const air=failure.air==null?1:failure.air; failure.pall.position.copy(failure.origin); failure.pall.position.y+=p*40; failure.pall.scale.setScalar((60+260*Math.min(1,p*1.6))*2.4); failure.pall.material.opacity=air*.62*Math.min(1,p*3)*Math.max(0,1-p*.55); failure.pall.visible=air>.02; } failure.fire.material.opacity=.86*fade; failure.core.material.opacity=.95*Math.max(0,1-p*1.8); failure.flash.position.copy(failure.origin); failure.flash.intensity=10*Math.max(0,1-p*2.4);
   failure.pieces.forEach(piece=>{
     const escaping=failure.escaped&&piece.isEscapePod, v=escaping?piece.escapeVelocity:piece.velocity;
     // The pod decelerates like a real short abort burn (drag/gravity catching it) instead of
@@ -3495,7 +3783,7 @@ function cape3dUpdateFailure(failure,p){
   if(failure.escaped){ failure.escapeFlash.position.copy(failure.origin).addScaledVector(new THREE.Vector3(0,210,0),Math.min(1,t*.62)*.28); failure.escapeFlash.intensity=6*Math.max(0,1-p*2.6); }
 }
 function cape3dResetFailure(failure){
-  if(!failure) return; failure.active=false; failure.escaped=false; failure.group.visible=false; failure.fire.material.opacity=0; failure.core.material.opacity=0; failure.flash.intensity=0; if(failure.escapeFlash){ failure.escapeFlash.intensity=0; failure.escapeFlash.visible=false; } failure.pieces.forEach(piece=>piece.mesh.visible=false); failure.sparks.forEach(spark=>spark.mesh.visible=false);
+  if(!failure) return; failure.active=false; failure.escaped=false; failure.group.visible=false; failure.fire.material.opacity=0; failure.core.material.opacity=0; if(failure.pall) failure.pall.material.opacity=0; failure.flash.intensity=0; if(failure.escapeFlash){ failure.escapeFlash.intensity=0; failure.escapeFlash.visible=false; } failure.pieces.forEach(piece=>piece.mesh.visible=false); failure.sparks.forEach(spark=>spark.mesh.visible=false);
 }
 function cape3dDisposeObject3D(obj){
   if(!obj) return;
@@ -3540,7 +3828,7 @@ function cape3dUpdateOrbitPresentation(snapshot){
   if(!cape3d||!cape3d.root) return false;
   const root=cape3d.root, orbit=root.userData.orbitWorld; if(!orbit) return false;
   const launch=root.userData.launchEffects, rocket=root.userData.launchRocket, ascent=root.userData.ascentWorld, groundSmoke=root.userData.groundSmoke, splash=root.userData.launchSplash;
-  if(launch){ launch.group.visible=false; launch.glow.intensity=0; } if(rocket) rocket.visible=false; if(ascent) ascent.group.visible=false;
+  if(launch){ launch.group.visible=false; launch.glow.intensity=0; } if(rocket) rocket.visible=false; if(ascent) ascent.group.visible=false; cape3dHideCinematic(root);
   if(groundSmoke) groundSmoke.group.visible=false; if(splash) splash.group.visible=false;
   cape3dApplySiteOpacity(root.userData.siteObjects,0); root.userData.launchActive=false; root.userData.launchSpace=1; root.userData.orbitActive=true; attachCape3DInput(); orbit.group.visible=true;
   const q=cape3dOrbitProfile(snapshot), inc=q.inclination*Math.PI/180, minR=600+(q.periapsis-185)*.62, maxR=600+(q.apoapsis-185)*.62, semi=(minR+maxR)*.5, off=(maxR-minR)*.5;
@@ -3554,11 +3842,18 @@ function cape3dUpdateOrbitPresentation(snapshot){
   const tumble=q.deadStick?q.failProgress:0;
   orbit.craft.position.set(x,y,z); orbit.craft.rotation.set(tumble*2.4,-q.angle-.25+tumble*1.7,Math.sin(q.angle)*.16+tumble*1.9); orbit.earth.rotation.y=q.progress*.72; cape3dSetCompactPlume(orbit.plume,q.burn,q.progress*12); orbit.glow.color.setHex(enginePlumeStyle(orbit.plume.userData.engine,false).glow); orbit.glow.intensity=2.4*q.burn;
   const target=new THREE.Vector3(0,0,0), oc=cape3d.orbitCam||(cape3d.orbitCam={azOff:0,elOff:0,distMul:1}), camA=-.85+q.progress*.34+oc.azOff, dist=1160*oc.distMul;
-  cape3dFlightCamera(new THREE.Vector3(Math.cos(camA)*dist,(650+Math.sin(q.progress*Math.PI)*115)+oc.elOff*760,Math.sin(camA)*dist),target); return true;
+  const wideEye=new THREE.Vector3(Math.cos(camA)*dist,(650+Math.sin(q.progress*Math.PI)*115)+oc.elOff*760,Math.sin(camA)*dist);
+  // Orbit entry continues the ascent's close chase (craft over the limb, insertion burn, cutoff), then
+  // pulls back to reveal the orbit — instead of hard-cutting from a chase shot to the diagram.
+  const close=cape3dOrbitEntryClose(q.progress,cape3dCinematicCamera());
+  if(close>.001){ const r=craftPos.clone().normalize(), ahead=orbitPoint(q.angle+.01).sub(craftPos).normalize(), side=new THREE.Vector3().crossVectors(r,ahead).normalize();
+    const closeEye=craftPos.clone().addScaledVector(r,46).addScaledVector(ahead,-118).addScaledVector(side,34);
+    cape3dFlightCamera(wideEye.lerp(closeEye,close),target.lerp(craftPos,close)); return true; }
+  cape3dFlightCamera(wideEye,target); return true;
 }
 function cape3dUpdateReentryPresentation(snapshot){
   if(!cape3d||!cape3d.root) return false; const root=cape3d.root, world=root.userData.reentryWorld; if(!world) return false;
-  const orbit=root.userData.orbitWorld, ascent=root.userData.ascentWorld, fx=root.userData.launchEffects, rocket=root.userData.launchRocket, groundSmoke=root.userData.groundSmoke, splash=root.userData.launchSplash; if(orbit) orbit.group.visible=false; if(ascent) ascent.group.visible=false; if(fx) fx.group.visible=false; if(rocket) rocket.visible=false; if(groundSmoke) groundSmoke.group.visible=false; if(splash) splash.group.visible=false; cape3dApplySiteOpacity(root.userData.siteObjects,0);
+  const orbit=root.userData.orbitWorld, ascent=root.userData.ascentWorld, fx=root.userData.launchEffects, rocket=root.userData.launchRocket, groundSmoke=root.userData.groundSmoke, splash=root.userData.launchSplash; if(orbit) orbit.group.visible=false; if(ascent) ascent.group.visible=false; if(fx) fx.group.visible=false; if(rocket) rocket.visible=false; if(groundSmoke) groundSmoke.group.visible=false; if(splash) splash.group.visible=false; cape3dApplySiteOpacity(root.userData.siteObjects,0); cape3dHideCinematic(root);
   const q=cape3dReentryProfile(snapshot), x=Math.sin(q.progress*5.2)*95*(1-q.mains*.75), y=570-690*(q.progress<.96?q.progress:.96); world.group.visible=true; root.userData.launchActive=false; root.userData.orbitActive=false; root.userData.reentryActive=true; root.userData.reentryProgress=q.progress; root.userData.launchSpace=1; detachCape3DInput();
   world.capsule.position.set(x,y,40); world.capsule.rotation.z=.42*(1-q.mains)+Math.sin(q.progress*9)*.05; world.plasma.position.copy(world.capsule.position); world.plasma.scale.setScalar(26+q.plasma*62); world.plasma.material.opacity=q.plasma*.72; world.drogue.position.set(x,y+72,40); world.drogue.visible=q.drogue>.01&&q.mains<.1; world.drogue.material.opacity=q.drogue*(1-q.mains); world.mains.position.set(x,y+118,40); world.mains.visible=q.mains>.01; world.mains.children.forEach(c=>c.material.opacity=q.mains*.9); if(q.splash){ world.capsule.position.y=-126+Math.sin(q.progress*40)*2; world.mains.visible=false; }
   cape3dFlightCamera(new THREE.Vector3(0,330,1580),new THREE.Vector3(0,-110,-230)); return true;
@@ -3596,8 +3891,13 @@ function cape3dUpdateLaunchPresentation(snapshot){
       if(!part || part.parent!==rocket) continue;
       already[key]=true;
       root.attach(part); // preserves world transform (incl. the rocket's current pitch) across the reparent — no visual jump
-      cape3dSpawnSepPuff(root, part.position.clone()); // E4.7 polish: pyro/ullage burst at the separation point
-      part.userData.sep={kind:st.kind,x:part.position.x,y:part.position.y,z:part.position.z,rotZ:part.rotation.z,vx:st.vx||0,vy:st.vy||0,lateral:(st.index%2?1:-1),spinZ:(st.kind==='booster'?1:-1)*(.32+.11*((st.index+1)%3)),spinX:.18+.07*((st.index+2)%3)};
+      { const sg=st.kind==='booster'?null:rocket.userData.stageGroups&&rocket.userData.stageGroups[st.index], sepAt=sg?(rocket.updateMatrixWorld(true),rocket.localToWorld(new THREE.Vector3(0,sg.topY,0))):part.position.clone(); cape3dSpawnSepPuff(root, sepAt); } // E4.7 polish: pyro/ullage burst at the interstage (not the stage's base)
+      // The piece is detected on the first frame AFTER its real separation time (playback compresses ~1 s of
+      // flight into one frame), so its attached position already includes that elapsed motion. Rebase the
+      // ballistic start to the separation instant; otherwise the drift adds it twice and throws the stage
+      // hundreds of metres AHEAD of the vehicle that just dropped it.
+      const late=Math.max(0,st.fallTime||0);
+      part.userData.sep={kind:st.kind,x:part.position.x-(st.vx||0)*late,y:part.position.y-(st.vy||0)*late,z:part.position.z,rotZ:part.rotation.z,vx:st.vx||0,vy:st.vy||0,lateral:(st.index%2?1:-1),spinZ:(st.kind==='booster'?1:-1)*(.32+.11*((st.index+1)%3)),spinX:.18+.07*((st.index+2)%3)};
       debris.push({obj:part,key});
       // A core-stage separation (not a booster — the strap-ons don't change the CORE's own base)
       // moves the flame FX's fixed nozzle offset up to the new bottom stage's base, so the exhaust
@@ -3629,14 +3929,32 @@ function cape3dUpdateLaunchPresentation(snapshot){
   cape3dTickSepPuffs(root);
   cape3dUpdateGroundSmoke(root.userData.groundSmoke,q.phase,q.progress,(snapshot&&snapshot.effects&&snapshot.effects.ignition)||0);
   cape3dUpdateSplash(root.userData.launchSplash,q,base);
-  const liveEngine=cape3dLiveEngine(rocket.userData.stageGroups,rocket), solidBoost=!!(rocket.userData.boosterSolid&&rocket.userData.boosterGroup&&rocket.userData.boosterGroup.parent===rocket), plume=cape3dPlumeProfile(q.plume,q.vacuum,liveEngine,solidBoost);
-  cape3dApplyLaunchPlume(fx,plume,q.t==null?q.progress*12:q.t); fx.glow.intensity=q.light*(1-q.vacuum*.36);
+  const wallS=(typeof performance!=='undefined'?performance.now():Date.now())/1000, ignitionLevel=(snapshot&&snapshot.effects&&snapshot.effects.ignition)||0;
+  // Start-up is ragged until mainstage; on the pad the visible thrust follows the flicker, not a clean ramp.
+  const plumeLevel=q.phase==='pad'?cape3dIgnitionFlicker(q.plume,wallS):q.plume;
+  const liveEngine=cape3dLiveEngine(rocket.userData.stageGroups,rocket), solidBoost=!!(rocket.userData.boosterSolid&&rocket.userData.boosterGroup&&rocket.userData.boosterGroup.parent===rocket), plume=cape3dPlumeProfile(plumeLevel,q.vacuum,liveEngine,solidBoost);
+  const plumeClock=reducedMotion()?0:wallS, gfx=cape3dGraphicsTier(gfxQualityPref()), cineCam=cape3dCinematicCamera();
+  cape3dApplyLaunchPlume(fx,plume,q.t==null?q.progress*12:q.t);
+  if(fx.shaderPlume) fx.shaderPlume.group.visible=gfx.shaderPlume;
+  if(fx.shaderPlume&&gfx.shaderPlume){
+    // Halo dims to let the shader body read; the relight adds a brief over-bright bloom at upper-stage light.
+    fx.envelope.children.forEach(sp=>{ sp.material.opacity*=.5; }); fx.flare.material.opacity=Math.min(1,fx.flare.material.opacity*(1+(q.relight||0)*1.5));
+    const liveStages=(rocket.userData.stageGroups||[]).filter(sg=>sg.kind==='stage'&&sg.group.parent===rocket).sort((a,b)=>a.baseY-b.baseY), lowest=liveStages[0];
+    cape3dApplyShaderPlume(fx.shaderPlume,plume,plumeClock,{radius:lowest?lowest.radius:6,cluster:lowest&&lowest.engines>1,length:Math.max(70,(rocket.userData.totalHeight||80)*.95)});
+  }
+  fx.glow.intensity=(q.phase==='pad'?plumeLevel*2.2:q.light)*(1-q.vacuum*.36)*(1+(q.relight||0)*.8);
+  const cine=root.userData.cinematic||(root.userData.cinematic={trail:cape3dSmokeTrail(root),decks:cape3dCloudDecks(root,base)});
+  // Transonic condensation collar, riding the upper body where the shoulder shock sits.
+  if(!rocket.userData.vapor){ try{ rocket.userData.vapor=cape3dVaporCone(); rocket.add(rocket.userData.vapor); }catch(e){ rocket.userData.vapor=null; } }
+  const vapor=rocket.userData.vapor, vaporA=(q.failed||!gfx.vapor)?0:cape3dVaporStrength(q.mach,q.altitudeKm);
+  if(vapor){ vapor.visible=vaporA>.01&&rocket.visible; if(vapor.visible){ const spanV=cape3dLiveStageSpan(rocket.userData.stageGroups,rocket), topStage=(rocket.userData.stageGroups||[]).filter(sg=>sg.group.parent===rocket).slice(-1)[0], rv=(topStage&&topStage.radius)||5; vapor.position.y=spanV.baseY+(spanV.topY-spanV.baseY)*.86; vapor.scale.set(rv*3.4,rv*4.5,rv*3.4); vapor.material.uniforms.uOpacity.value=vaporA*.55; vapor.material.uniforms.uTime.value=plumeClock*3; } }
+  cine.vapor=vapor;
   fx.smoke.children.forEach((p,i)=>{ const smokeStrength=q.smoke*plume.smokeMult, size=p.userData.size||16; p.visible=smokeStrength>.012; p.material.opacity=smokeStrength*(.07+.12*(1-i/fx.smoke.children.length)); p.scale.setScalar(size*(.35+smokeStrength*(.55+i*.045)+q.vacuum*i*.025)); p.position.x=(i%3-1)*(12+q.progress*42); p.position.z=((i*7)%3-1)*(10+q.progress*30); });
   // After a separation the remaining stack's lowest point is no longer the group origin (stage 0's
   // baseY=0) — that stage has left. Find the lowest still-attached stage group so the camera frames
   // the ACTUAL remaining vehicle and the flame sits at its real base, instead of aiming at the empty
   // space the dropped stage vacated (which read as "no rocket, just a plume floating at the pad-side").
-  const live=cape3dLiveStageSpan(rocket.userData.stageGroups, rocket), director=cape3dLaunchCameraProfile(q);
+  const live=cape3dLiveStageSpan(rocket.userData.stageGroups, rocket), director=cape3dCinematicCamera()?cape3dLaunchCameraProfile(q):cape3dStableCameraProfile(q);
   let target;
   if(q.failed&&failure) target=failure.origin.clone().add(new THREE.Vector3(0,55,0));
   else{
@@ -3651,11 +3969,13 @@ function cape3dUpdateLaunchPresentation(snapshot){
     // shell on screen, which read as an opaque pale haze.
     if(world.earthBaseQuaternion){ world.earth.quaternion.copy(world.earthBaseQuaternion); world.earth.rotateOnWorldAxis(world.earthUp,(q.t||0)*.000012); }
     const texReady=!!(world.earthMap&&world.earthMap.image);
-    if(texReady&&!world.textureApplied){ world.earth.material.map=world.earthMap; world.earth.material.color.setHex(0xffffff); world.earth.material.needsUpdate=true; world.textureApplied=true; }
+    if(texReady&&!world.textureApplied){ world.earth.material.map=world.earthMap; world.earth.material.color.setHex(0xd2dde6); world.earth.material.needsUpdate=true; world.textureApplied=true; }
     const space=blend.earthOpacity;
-    world.group.visible=space>0.001; world.earth.material.opacity=space; world.earth.material.depthWrite=space>.995; world.atmosphere.material.opacity=blend.atmosphere*.026; world.stars.material.opacity=blend.skySpace; world.puffs.forEach(p=>p.visible=false);
+    world.group.visible=space>0.001; world.earth.material.opacity=space; world.earth.material.depthWrite=space>.995; world.atmosphere.material.opacity=blend.atmosphere*(world.atmosphere.material.isShaderMaterial?.075:.026); world.stars.material.opacity=0; // stars now live in the sky dome, always at infinity world.puffs.forEach(p=>p.visible=false);
     cape3dApplySiteOpacity(root.userData.siteObjects,blend.capeOpacity);
   }
+  cape3dUpdateSmokeTrail(cine.trail,q.trajectory,q,base,{visibility:blend.capeOpacity*(1-blend.earthOpacity*.6),night:!!root.userData.flightNight,smokeMult:plume.smokeMult,radius:6,count:gfx.trail});
+  if(cine.decks){ const deckA=root.userData.flightNight?.18:1, fade=gfx.cloudDecks?blend.capeOpacity:0; cine.decks.group.visible=fade>.01; cine.decks.sprites.forEach(sp=>{ sp.material.opacity=sp.userData.baseOpacity*deckA*fade; }); }
   const desiredFar=cape3dFlightCameraFar(q.altitude); if(Math.abs(cape3d.camera.far-desiredFar)>1){ cape3d.camera.far=desiredFar; cape3d.camera.updateProjectionMatrix(); }
   // User-steerable chase: a base follow distance orbited by the player's drag/zoom offsets
   // (cape3d.launchCam). FIXED 2026-07-20: the previous formula scaled linearly with q.altitude in
@@ -3664,19 +3984,22 @@ function cape3dUpdateLaunchPresentation(snapshot){
   // far the player zoomed in. Now grows with sqrt(altitude in KM), which stays close through the
   // low-altitude climb (where most of the visual interest — staging, the pad falling away — is)
   // and only grows gently at orbital altitudes, capped so it can never run away.
-  const lc=cape3d.launchCam||(cape3d.launchCam=cape3dDefaultLaunchCam()), siteFrame=cape3dAscentSiteFraming(q.altitude), siteTarget=new THREE.Vector3(base.x,base.y+24,base.z), cameraTarget=target.clone().lerp(siteTarget,siteFrame.targetSiteWeight);
+  const lc=cape3d.launchCam||(cape3d.launchCam=cape3dDefaultLaunchCam()), siteFrame=cape3dCinematicCamera()?cape3dAscentSiteFraming(q.altitude):{mix:0,targetSiteWeight:0,distanceFloor:0}, siteTarget=new THREE.Vector3(base.x,base.y+24,base.z), cameraTarget=target.clone().lerp(siteTarget,siteFrame.targetSiteWeight);
   const chaseDist=cape3dLaunchChaseDist(q.altitude)*director.distMul, baseDist=Math.max(chaseDist,siteFrame.distanceFloor)*lc.distMul, az=director.az+lc.azOff, el=cape3dLaunchHorizonElevation(q.altitude,director.el)+lc.elOff, ce=Math.cos(el), lowRise=70*Math.max(0,1-Math.min(1,q.altitude/12000));
   const eye=new THREE.Vector3(cameraTarget.x+baseDist*ce*Math.sin(az), cameraTarget.y+lowRise+baseDist*Math.sin(el), cameraTarget.z+baseDist*ce*Math.cos(az));
   if(cape3d.flightFill){
     cape3d.flightFill.position.copy(eye); cape3d.flightFill.target.position.copy(target); cape3d.flightFill.target.updateMatrixWorld();
     cape3d.flightFill.intensity=root.userData.flightNight?1.18:.82;
   }
+  // Shake scales with the chase distance so it reads the same at every zoom; smooth multi-sine, not random jitter.
+  const shake=cineCam?cape3dLaunchShake(q,ignitionLevel,reducedMotion()):0;
+  if(shake>0){ const k=shake*baseDist*.0042, w=wallS; eye.x+=k*(Math.sin(w*37.1)+.6*Math.sin(w*71.3+1.1)); eye.y+=k*(Math.sin(w*43.7+2.0)+.5*Math.sin(w*89.9)); eye.z+=k*.6*Math.sin(w*29.3+.7); cameraTarget.y+=k*.5*Math.sin(w*53.9+.3); }
   cape3dFlightCamera(eye,cameraTarget); return true;
 }
 function cape3dExitLaunchPresentation(){
   if(!cape3d||!cape3d.root) return false; const root=cape3d.root, rocket=root.userData.launchRocket, fx=root.userData.launchEffects;
   if(rocket&&root.userData.launchBase){ cape3dResetStaging(rocket); rocket.position.copy(root.userData.launchBase); rocket.rotation.z=0; rocket.visible=true; } if(fx){ fx.group.visible=false; fx.glow.intensity=0; fx.group.position.y=rocket?(rocket.userData.nozzleY||-10):-10; } if(root.userData.groundSmoke) root.userData.groundSmoke.group.visible=false; if(root.userData.launchSplash) root.userData.launchSplash.group.visible=false; cape3dResetFailure(root.userData.launchFailure); root.userData.launchSpace=0;
-  for(const d of (root.userData.stageDebris||[])) root.remove(d.obj); root.userData.stageDebris=[];
+  for(const d of (root.userData.stageDebris||[])) root.remove(d.obj); root.userData.stageDebris=[]; cape3dHideCinematic(root);
   const world=root.userData.ascentWorld; if(world){ world.group.visible=false; world.puffs.forEach(p=>p.visible=false); } cape3dApplySiteOpacity(root.userData.siteObjects,1); root.userData.launchActive=false; root.userData.launchVisual=null; if(cape3d.flightFill) cape3d.flightFill.intensity=0;
   cape3d.camera.far=100000; cape3d.camera.updateProjectionMatrix(); cape3d.cam={az:2.25,el:.48,dist:1450,target:{x:420*CAPE3D_SITE_SPREAD,y:0,z:250*CAPE3D_SITE_SPREAD}}; cape3dApplyCamera(); attachCape3DInput(); return true;
 }
@@ -3785,13 +4108,25 @@ function cape3dTick(){
   cape3d.sun.intensity=(.08+sunA*3.0)*(1-spaceMix*.72); cape3d.hemi.intensity=(.16+sunA*.42)*(1-spaceMix*.36);
   if(launchActive){ cape3d.sun.intensity=Math.max(root.userData.flightNight ? 0.32 : 0.48,cape3d.sun.intensity); cape3d.hemi.intensity=Math.max(root.userData.flightNight ? 0.18 : 0.24,cape3d.hemi.intensity); }
   else if(cape3d.flightFill) cape3d.flightFill.intensity=0;
+  // Cinematic sky: altitude-driven scattering dome during the launch presentation only; terrain fog
+  // takes the dome's horizon colour so the ground melts into the same air instead of a flat colour.
+  if(launchActive&&root.userData.launchVisual){
+    try{ if(!cape3d.skyDome) cape3d.skyDome=cape3dLaunchSkyDome(cape3d.scene); }catch(e){ cape3d.skyDome=null; }
+    const rk=root.userData.launchRocket, base=root.userData.launchBase, altKm=rk&&base?Math.max(0,rk.position.y-base.y)/1000:0, sp=cape3dSkyProfile(altKm,!!root.userData.flightNight);
+    // Hand-off from the Cape's time-of-day dome (cape3d.sky): on the pad the launch sky wears the Cape's
+    // current colours, then becomes the altitude-driven scattering profile by ~5 km — no pop at liftoff.
+    { const w=Math.max(0,Math.min(1,(altKm-.3)/4.7)), e=w*w*(3-2*w), capeTop=[ct[0]/255,ct[1]/255,ct[2]/255], capeBot=[sky.r,sky.g,sky.b];
+      sp.zenith=capeTop.map((v,k)=>v+(sp.zenith[k]-v)*e); sp.horizon=capeBot.map((v,k)=>v+(sp.horizon[k]-v)*e); sp.glow*=e; }
+    if(cape3d.skyDome&&cape3d.sky) cape3d.sky.visible=false;
+    if(cape3d.skyDome){ cape3dUpdateSkyDome(cape3d.skyDome,cape3d.camera,sp,cape3d.sun.position); if(cape3d.scene.fog) cape3d.scene.fog.color.setRGB(sp.horizon[0],sp.horizon[1],sp.horizon[2]); }
+  } else if(cape3d.skyDome) cape3d.skyDome.visible=false;
   const night=Math.max(0,1-sunA);
   if(cape3d.root&&cape3d.root.userData.practicalLights) cape3d.root.userData.practicalLights.forEach(l=>{ l.light.intensity=(.04+night*3.1)*(l.boost||1); l.fixture.material.emissiveIntensity=.08+night*2.6; });
   if(cape3d.root&&cape3d.root.userData.facadeMaterials){ const glowI=.01+Math.pow(night,2.4)*1.5; cape3d.root.userData.facadeMaterials.forEach(m=>{ m.emissiveIntensity=glowI; }); }
   if(cape3d.root&&cape3d.root.userData.accentMaterial) cape3d.root.userData.accentMaterial.emissiveIntensity=.22+night*1.5;
   if(cape3d.root&&cape3d.root.userData.windowMaterial) cape3d.root.userData.windowMaterial.emissiveIntensity=.08+night*2.25;
   const water=cape3d.root&&cape3d.root.userData.water; if(water){ water.offset.x=t*.0025; water.offset.y=t*.0014; }
-  const clouds=cape3d.root&&cape3d.root.userData.clouds, cloudFade=launchActive&&root.userData.launchVisual?root.userData.launchVisual.cloudOpacity:1; if(clouds) clouds.forEach((cloud,i)=>{ cloud.position.x=-1000+((cloud.userData.baseX+1000+t*(.32+(i%3)*.11))%3500); cloud.material.opacity=(.14+(i%3)*.06)*(.38+sunA*.62)*cloudFade; });
+  const clouds=cape3d.root&&cape3d.root.userData.clouds, cloudFade=(root&&(root.userData.orbitActive||root.userData.reentryActive))?0:(launchActive&&root.userData.launchVisual?root.userData.launchVisual.cloudOpacity:1); // the orbit/reentry worlds share the origin with the Cape's decor clouds if(clouds) clouds.forEach((cloud,i)=>{ cloud.position.x=-1000+((cloud.userData.baseX+1000+t*(.32+(i%3)*.11))%3500); cloud.material.opacity=(.14+(i%3)*.06)*(.38+sunA*.62)*cloudFade; });
   cape3dProjectHotspots();
 }
 function renderCape3DFrame(){ if(cape3d){ cape3dTick(); cape3d.renderer.render(cape3d.scene,cape3d.camera); } }
@@ -3805,7 +4140,7 @@ function startCape3D(hostId,width,height){
     if(capeGame){ try{ capeGame.destroy(true); }catch(e){} capeGame=null; }
     const quality=cape3dFlightQualityProfile(), renderer=new THREE.WebGLRenderer({antialias:true});
     if('outputColorSpace' in renderer) renderer.outputColorSpace=THREE.SRGBColorSpace;
-    renderer.setPixelRatio(Math.min((typeof window!=='undefined'&&window.devicePixelRatio)||1,quality.pixelRatio));
+    renderer.setPixelRatio(Math.min((typeof window!=='undefined'&&window.devicePixelRatio)||1,cape3dGraphicsTier(gfxQualityPref()).pixelRatio));
     const scene=new THREE.Scene(); scene.background=new THREE.Color(0x07101a); scene.fog=new THREE.FogExp2(0x07101a,CAPE3D_HAZE);
     const camera=new THREE.PerspectiveCamera(40,1,1,100000);
     camera.position.set(-850,650,1150); camera.lookAt(420,0,250);

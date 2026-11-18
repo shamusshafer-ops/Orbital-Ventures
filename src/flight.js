@@ -656,8 +656,14 @@ function updateFlight3DReadout(snapshot){
   const deepFail=snapshot.effects&&snapshot.effects.deepFailure;
   let text='FLIGHT 3D';
   if(phase==='pad') text+='\nCOUNTDOWN · '+p+'%';
-  else if(phase==='ascent') text+='\n'+(snapshot.effects&&snapshot.effects.crewEscaped?'LAUNCH ESCAPE — CREW CLEAR':(snapshot.effects&&snapshot.effects.ascentFailure?'VEHICLE LOSS':'ASCENT'))+' · '+p+'%';
-  else if(phase==='orbit') text+='\n'+(deepFail?'SPACECRAFT LOST':(p<13?'ORBITAL INSERTION':'EARTH ORBIT'))+' · '+p+'%';
+  else if(phase==='ascent'){
+    // Powered vs coasting is stated, not implied: the dark coast between stages and the relight read here too.
+    let st='ASCENT';
+    if(snapshot.effects&&snapshot.effects.crewEscaped) st='LAUNCH ESCAPE — CREW CLEAR'; else if(snapshot.effects&&snapshot.effects.ascentFailure) st='VEHICLE LOSS';
+    else { try{ const q=cape3dLaunchProfile(snapshot); if(q&&q.trajectory){ st=q.plume<=.02?'MECO · STAGE COAST':(q.relight>.05?'UPPER STAGE IGNITION':'POWERED ASCENT'); } }catch(e){} }
+    text+='\n'+st+' · '+p+'%';
+  }
+  else if(phase==='orbit') text+='\n'+(deepFail?'SPACECRAFT LOST':(p<13?'INSERTION BURN':(p<19?'ENGINE CUTOFF · ORBIT':'COAST · EARTH ORBIT')))+' · '+p+'%';
   else if(phase==='transfer') text+='\n'+(deepFail?'SPACECRAFT LOST':'CISLUNAR TRANSFER')+' · '+p+'%';
   else if(phase==='reentry') text+='\n'+(p<52?'ATMOSPHERIC ENTRY':(p<66?'DROGUE DEPLOY':'RECOVERY DESCENT'))+' · '+p+'%';
   else if(phase==='suborbital') text+='\nSUBORBITAL ARC · '+p+'%';
@@ -758,11 +764,23 @@ function setupFlightState(spec, done, ctx, cv, viewCanvas, seedP){
   if(padDur<=0){ sfxStartEngine(engCount, totalProp); animState._engineStarted=true; }
   animState.sfxEnginePhase='ascent';
 }
+// Flight-view controls (cinematic launch pass). Presentation-only preferences, stored per browser.
+function syncFlightViewBtns(){
+  const c=$('flightCamBtn'); if(c&&typeof cape3dCameraMode==='function') c.textContent='Camera: '+(cape3dCameraMode()==='stable'?'Stable':'Cinematic');
+  const g=$('gfxQualityBtn'); if(g&&typeof gfxQualityPref==='function'){ const p=gfxQualityPref(), tier=cape3dGraphicsTier(p).tier; g.textContent='Graphics: '+(p==='auto'?'Auto ('+tier[0].toUpperCase()+tier.slice(1)+')':p[0].toUpperCase()+p.slice(1)); }
+}
+function cycleFlightCamera(){ if(typeof setCape3dCameraMode!=='function') return; setCape3dCameraMode(cape3dCameraMode()==='stable'?'cinematic':'stable'); syncFlightViewBtns(); }
+function cycleGfxQuality(){ if(typeof setGfxQualityPref!=='function') return; const i=GFX_QUALITY_TIERS.indexOf(gfxQualityPref()); setGfxQualityPref(GFX_QUALITY_TIERS[(i+1)%GFX_QUALITY_TIERS.length]); syncFlightViewBtns(); }
+document.addEventListener('keydown',function(e){
+  if((e.key!=='c'&&e.key!=='C')||e.metaKey||e.ctrlKey||e.altKey||!animState) return;
+  if(e.repeat||isNativeInteractive(e)) return;
+  cycleFlightCamera(); e.preventDefault();
+});
 function playMission(spec, done, seedP){
   $('animTitle').textContent=spec.title+(spec.crewed?'  ·  crewed':'');
   $('animOverlay').classList.remove('hidden');
   try{ sizeFlightCanvas(); }catch(e){}
-  try{ syncAnimSpeedBtn(); }catch(e){}
+  try{ syncAnimSpeedBtn(); syncFlightViewBtns(); }catch(e){}
   flightReportCard(spec,false);
   clearFlightAltitude();
   beginFlight3DSession(spec);
@@ -2667,12 +2685,26 @@ function drawAscent(t,canFail){
   A.exploding=exploding; A.ascentP=p; // expose for the Phaser FX layer (camera shake)
   // Slice 2: publish ascent atmospherics for the native FX layer (clouds / vapor cone / scattering / star fade)
   A.ascentPhase=true; A.qNorm=qNorm; A.altN=altN; A.horizonY=horizonY;
+  // Cinematic pass: when the real trajectory is available (the Three.js flight reads it), the audio
+  // follows IT — separations, the dark coast between stages and the upper-stage light all sound at
+  // the sim's own event times — instead of this fallback's cosmetic separation thresholds.
+  let q3=null; try{ if(s.physics&&A.presentation3d&&A.presentation3d.phase==='ascent'&&typeof cape3dLaunchProfile==='function'){ q3=cape3dLaunchProfile(A.presentation3d); if(!q3||!q3.trajectory) q3=null; } }catch(e){ q3=null; }
   const fairingSep = orb && p>0.45 && !A.fairingSep;
-  if(fairingSep){ A.fairingSep=t; sfxSep(); }
+  if(fairingSep){ A.fairingSep=t; if(!q3) sfxSep(); }
   const fairingGone = A.fairingSep && (t-A.fairingSep)>0;
-  sfxUpdateEngine(throttle, altFrac, qNorm); // qNorm (same Max-Q signal that drives camera shake) crossfades the audio mix
-  for(let d=0;d<dropped;d++){
-    if(!A.sfxSepFired[d]){ A.sfxSepFired[d]=true; sfxSep(); }
+  if(q3){
+    sfxUpdateEngine(clampA(q3.plume,0,1), clampA(q3.vacuum,0,1), q3.maxQKpa>0?clampA(q3.qKpa/q3.maxQKpa,0,1):0);
+    const fired=A.sfxRealSep||(A.sfxRealSep={});
+    for(const ev of (q3.trajectory.stageEvents||[])){
+      const key=ev.kind+':'+ev.index; if(q3.t>=ev.t&&!fired[key]){ fired[key]=true; sfxSep(); }
+      // Upper-stage light: once per core-stage event, when the cinematic relight begins.
+      if(ev.kind==='stage'&&q3.relight>.05&&q3.t>=ev.t&&!fired['light:'+key]){ fired['light:'+key]=true; if(typeof sfxIgnitionBurst==='function') sfxIgnitionBurst(.5); }
+    }
+  } else {
+    sfxUpdateEngine(throttle, altFrac, qNorm); // qNorm (same Max-Q signal that drives camera shake) crossfades the audio mix
+    for(let d=0;d<dropped;d++){
+      if(!A.sfxSepFired[d]){ A.sfxSepFired[d]=true; sfxSep(); }
+    }
   }
   if(exploding&&!A.sfxBoomFired){ A.sfxBoomFired=true; sfxEngineOff(); sfxBoom(); }
   ctx.save();
@@ -2759,7 +2791,7 @@ function drawAscent(t,canFail){
       if(bdt<1500){
         const bp2=bdt/1500, bw=base0.w*scale, boostW=shape.boosters.w*scale, boostH=shape.boosters.h*scale;
         const outX=bw/2+boostW/2+Math.max(1,boostW*0.14);
-        if(!A.sfxBoostSep){ A.sfxBoostSep=true; sfxSep(); }
+        if(!A.sfxBoostSep){ A.sfxBoostSep=true; if(!q3) sfxSep(); }
         [-1,1].forEach(side=>{
           ctx.save();
           ctx.translate(x+side*outX+side*bdt*0.05, baseY+bdt*0.045+bp2*bp2*36);
