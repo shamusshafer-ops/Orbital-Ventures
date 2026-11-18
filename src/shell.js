@@ -781,6 +781,22 @@ function sfxSep(){
   const g=sfxCtx.createGain(); g.gain.value=0.5;
   src.connect(lp); lp.connect(g); g.connect(sfxBus||sfxCtx.destination); src.start();
 }
+// Engine cutoff (MECO/SECO/burnout): the roar doesn't just fade — a low pressure "thud" as the chamber
+// shuts, a short descending rumble tail and a soft valve/purge hiss. Routed to sfxBus (not sfxMaster,
+// whose engine envelope is being taken to zero at the same instant). Cached buffer; self-stopping.
+function sfxCutoff(){
+  if(!sfxCtx) return;
+  const buf=sfxGetBuf('cutoff', 0.9, (d,sr)=>{ let lo=0;
+    for(let i=0;i<d.length;i++){ const t=i/sr;
+      const thud=Math.sin(2*Math.PI*(62-30*t)*t)*(t<0.008?t/0.008:Math.exp(-(t-0.008)*9))*0.7;
+      lo=(lo+0.04*(Math.random()*2-1))/1.04; const tail=lo*5*Math.exp(-t*3.2);
+      const hiss=(Math.random()*2-1)*(t<0.12?0:Math.exp(-(t-0.12)*6))*0.12;
+      d[i]=thud+tail+hiss; } });
+  const src=sfxCtx.createBufferSource(); src.buffer=buf;
+  const lp=sfxCtx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=2400; lp.Q.value=0.6;
+  const g=sfxCtx.createGain(); g.gain.value=0.55;
+  src.connect(lp); lp.connect(g); g.connect(sfxBus||sfxCtx.destination); src.start(); src.stop(sfxCtx.currentTime+0.95);
+}
 function sfxBoom(){
   if(!sfxCtx) return;
   const buf=sfxGetBuf('boom', 2.2, (d,sr)=>{

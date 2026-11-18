@@ -136,10 +136,38 @@ check('fixture has a booster and a core-stage event',!!stageEv&&!!boostEv);
   updateFlight3DReadout(orbSnap(.6)); check('then the vehicle is coasting',el.textContent.includes('COAST'));
 }
 
-// ---------- 9. hygiene ----------
+// ---------- 9. fairing, SECO, camera modes ----------
 {
-  const pure=[cape3dAscentWarpTable,cape3dWarpAscentTime,cape3dStagingThrottle,cape3dIgnitionFlicker,cape3dLaunchShake,cape3dSkyProfile,cape3dTrailSamples,cape3dUpdateSmokeTrail,cape3dApplyShaderPlume];
+  check('the frozen flight record says which fairing flew',spec.physics.fairing==='standard'&&plan.fairing==='standard');
+  const crewedPhys=flightPhysicsSpec(Object.assign({},curMission(),{crew:2}),computeVehicle());
+  check('crewed flights carry no payload fairing',crewedPhys.fairing===null);
+  check('vehicle spec normalises the fairing and drops it for crewed flights',cape3dFlightVehicleSpec({stages:[{prop:1}],physics:{fairing:'heavy'}}).fairing==='heavy'&&cape3dFlightVehicleSpec({stages:[{prop:1}],crewed:true,physics:{fairing:'heavy'}}).fairing===null);
+  check('a different fairing is a different vehicle visual',cape3dVehicleVisualKey({stages:[{prop:1}],fairing:'none'})!==cape3dVehicleVisualKey({stages:[{prop:1}],fairing:'heavy'}));
+  check('the orbit craft has already dropped its shroud',cape3dPostAscentVehicleSpec(cape3dFlightVehicleSpec({stages:[{prop:1},{prop:1}],fairing:'standard'})).fairing==='none');
+  // A synthetic orbital climb: heating ½ρv³ falls through the limit somewhere above 60 km, after max-Q.
+  const pts=[]; for(let t=0;t<=400;t+=1){ const alt=Math.min(200,t*t/600), v=20*t, rho=1.225*Math.exp(-alt*1000/8500); pts.push({t,altitudeKm:alt,speedMps:v,qKpa:.5*rho*v*v/1000,xKm:0}); }
+  const syn={points:pts,burnoutTime:400,stageEvents:[],fairing:'standard'}, tj=cape3dFairingJettisonTime(syn), pj=pts.find(p=>p.t===tj);
+  check('fairing drops once real heating falls below the limit',tj!=null&&pj.altitudeKm>=60&&.5*1.225*Math.exp(-pj.altitudeKm*1000/8500)*Math.pow(pj.speedMps,3)<FAIRING_HEAT_LIMIT);
+  const prev=pts[pts.indexOf(pj)-1]; check('…and not a sample earlier',prev.altitudeKm<60||.5*1.225*Math.exp(-prev.altitudeKm*1000/8500)*Math.pow(prev.speedMps,3)>=FAIRING_HEAT_LIMIT);
+  check('no shroud, no jettison',cape3dFairingJettisonTime(Object.assign({},syn,{fairing:'none'}))===null&&cape3dFairingJettisonTime(Object.assign({},syn,{fairing:null}))===null);
+  const low={points:pts.filter(p=>p.altitudeKm<40),burnoutTime:150,stageEvents:[],fairing:'standard'};
+  check('a flight that never leaves the thick air keeps its shroud',cape3dFairingJettisonTime(low)===null);
+  check('the jettison window is paced for the camera',cape3dUnwarpAscentTime(syn,tj+3)-cape3dUnwarpAscentTime(syn,tj-1)>4/400*2);
+  check('insertion burn is full, then a crisp cutoff at SECO',cape3dInsertionBurn(.05)===1&&cape3dInsertionBurn(ORBIT_SECO_FRAC-ORBIT_SECO_TAIL)===1&&cape3dInsertionBurn(ORBIT_SECO_FRAC)===0&&cape3dInsertionBurn(ORBIT_SECO_FRAC-ORBIT_SECO_TAIL/2)>0);
+  const prevMode=cape3dCameraMode();
+  check('all four camera modes round-trip',FLIGHT_CAMERA_MODES.every(m=>setCape3dCameraMode(m)===m&&cape3dCameraMode()===m)); setCape3dCameraMode(prevMode);
+  check('ground tracker hands back to the director once the site has faded',cape3dEffectiveCameraMode('ground',.9)==='ground'&&cape3dEffectiveCameraMode('ground',.1)==='cinematic'&&cape3dEffectiveCameraMode('close',.1)==='close');
+  check('long lens narrows as the vehicle recedes, within a telephoto range',cape3dGroundTrackerFov(3500,90)>cape3dGroundTrackerFov(30000,90)&&cape3dGroundTrackerFov(1e9,90)>=1.2&&cape3dGroundTrackerFov(10,90)<=40);
+  check('close chase frames tighter than tracking',cape3dCloseCameraProfile({phase:'ascent'}).distMul<cape3dStableCameraProfile({phase:'ascent'}).distMul);
+}
+
+// ---------- 10. hygiene ----------
+{
+  const pure=[cape3dFairingJettisonTime,cape3dInsertionBurn,cape3dGroundTrackerFov,cape3dAscentWarpTable,cape3dWarpAscentTime,cape3dStagingThrottle,cape3dIgnitionFlicker,cape3dLaunchShake,cape3dSkyProfile,cape3dTrailSamples,cape3dUpdateSmokeTrail,cape3dApplyShaderPlume];
   check('cinematic helpers are deterministic (no Math.random)',pure.every(f=>!f.toString().includes('Math.random')));
+  // A '//' comment pasted mid-line once silently disabled the Cape cloud update (and a puff hide) in a one-line statement.
+  const tickSrc=cape3dTick.toString().split('\n').find(l=>l.includes('clouds.forEach'))||'';
+  check('Cape cloud update is live code, not swallowed by a trailing // comment',!!tickSrc&&!/\/\/[^\n]*clouds\.forEach/.test(tickSrc));
   check('launch plume still avoids hard cone geometry',!cape3dLaunchEffects.toString().includes('ConeGeometry'));
 }
 

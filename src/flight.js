@@ -663,7 +663,7 @@ function updateFlight3DReadout(snapshot){
     else { try{ const q=cape3dLaunchProfile(snapshot); if(q&&q.trajectory){ st=q.plume<=.02?'MECO · STAGE COAST':(q.relight>.05?'UPPER STAGE IGNITION':'POWERED ASCENT'); } }catch(e){} }
     text+='\n'+st+' · '+p+'%';
   }
-  else if(phase==='orbit') text+='\n'+(deepFail?'SPACECRAFT LOST':(p<13?'INSERTION BURN':(p<19?'ENGINE CUTOFF · ORBIT':'COAST · EARTH ORBIT')))+' · '+p+'%';
+  else if(phase==='orbit') text+='\n'+(deepFail?'SPACECRAFT LOST':(p<Math.round(ORBIT_SECO_FRAC*100)?'INSERTION BURN':(p<Math.round(ORBIT_SECO_FRAC*100)+6?'ENGINE CUTOFF · ORBIT':'COAST · EARTH ORBIT')))+' · '+p+'%';
   else if(phase==='transfer') text+='\n'+(deepFail?'SPACECRAFT LOST':'CISLUNAR TRANSFER')+' · '+p+'%';
   else if(phase==='reentry') text+='\n'+(p<52?'ATMOSPHERIC ENTRY':(p<66?'DROGUE DEPLOY':'RECOVERY DESCENT'))+' · '+p+'%';
   else if(phase==='suborbital') text+='\nSUBORBITAL ARC · '+p+'%';
@@ -766,10 +766,10 @@ function setupFlightState(spec, done, ctx, cv, viewCanvas, seedP){
 }
 // Flight-view controls (cinematic launch pass). Presentation-only preferences, stored per browser.
 function syncFlightViewBtns(){
-  const c=$('flightCamBtn'); if(c&&typeof cape3dCameraMode==='function') c.textContent='Camera: '+(cape3dCameraMode()==='stable'?'Stable':'Cinematic');
+  const c=$('flightCamBtn'); if(c&&typeof cape3dCameraMode==='function') c.textContent='Camera: '+(FLIGHT_CAMERA_LABELS[cape3dCameraMode()]||'Cinematic');
   const g=$('gfxQualityBtn'); if(g&&typeof gfxQualityPref==='function'){ const p=gfxQualityPref(), tier=cape3dGraphicsTier(p).tier; g.textContent='Graphics: '+(p==='auto'?'Auto ('+tier[0].toUpperCase()+tier.slice(1)+')':p[0].toUpperCase()+p.slice(1)); }
 }
-function cycleFlightCamera(){ if(typeof setCape3dCameraMode!=='function') return; setCape3dCameraMode(cape3dCameraMode()==='stable'?'cinematic':'stable'); syncFlightViewBtns(); }
+function cycleFlightCamera(){ if(typeof setCape3dCameraMode!=='function') return; const i=FLIGHT_CAMERA_MODES.indexOf(cape3dCameraMode()); setCape3dCameraMode(FLIGHT_CAMERA_MODES[(i+1)%FLIGHT_CAMERA_MODES.length]); syncFlightViewBtns(); }
 function cycleGfxQuality(){ if(typeof setGfxQualityPref!=='function') return; const i=GFX_QUALITY_TIERS.indexOf(gfxQualityPref()); setGfxQualityPref(GFX_QUALITY_TIERS[(i+1)%GFX_QUALITY_TIERS.length]); syncFlightViewBtns(); }
 document.addEventListener('keydown',function(e){
   if((e.key!=='c'&&e.key!=='C')||e.metaKey||e.ctrlKey||e.altKey||!animState) return;
@@ -2695,8 +2695,9 @@ function drawAscent(t,canFail){
   if(q3){
     sfxUpdateEngine(clampA(q3.plume,0,1), clampA(q3.vacuum,0,1), q3.maxQKpa>0?clampA(q3.qKpa/q3.maxQKpa,0,1):0);
     const fired=A.sfxRealSep||(A.sfxRealSep={});
+    { const tf=typeof cape3dFairingJettisonTime==='function'?cape3dFairingJettisonTime(q3.trajectory):null; if(tf!=null&&q3.t>=tf&&!fired.fairing){ fired.fairing=true; sfxSep(); } }
     for(const ev of (q3.trajectory.stageEvents||[])){
-      const key=ev.kind+':'+ev.index; if(q3.t>=ev.t&&!fired[key]){ fired[key]=true; sfxSep(); }
+      const key=ev.kind+':'+ev.index; if(q3.t>=ev.t&&!fired[key]){ fired[key]=true; if(ev.kind==='stage'&&typeof sfxCutoff==='function') sfxCutoff(); sfxSep(); } // MECO thud, then the pyro
       // Upper-stage light: once per core-stage event, when the cinematic relight begins.
       if(ev.kind==='stage'&&q3.relight>.05&&q3.t>=ev.t&&!fired['light:'+key]){ fired['light:'+key]=true; if(typeof sfxIgnitionBurst==='function') sfxIgnitionBurst(.5); }
     }
@@ -3060,9 +3061,9 @@ function drawOrbit(ct){
   const deepFail=!s.success&&s.failPhase==='deep';
   const failP=deepFail?0.42:null;
   if(A.sfxEnginePhase==='ascent'){ sfxStop(); A.sfxEnginePhase='orbit'; }
-  const burning=op<0.15;
+  const burning=op<ORBIT_SECO_FRAC&&!(failP!=null&&op>=failP); // SECO shared with the 3D insertion burn + readout
   if(burning&&A.sfxEnginePhase!=='burn'){ A.sfxEnginePhase='burn'; sfxBurn(0.6); }
-  else if(!burning&&A.sfxEnginePhase==='burn'){ sfxStop(); A.sfxEnginePhase='coast'; }
+  else if(!burning&&A.sfxEnginePhase==='burn'){ sfxStop(); A.sfxEnginePhase='coast'; if(!deepFail||op<failP) sfxCutoff(); }
   if(failP!=null&&op>=failP&&!A.sfxBoomFired){ A.sfxBoomFired=true; sfxStop(); sfxBoom(); }
   ctx.strokeStyle=themeRgba('readout',0.15); ctx.setLineDash([3,6]); ctx.lineWidth=1;
   ctx.beginPath(); ctx.arc(E.cx,E.cy,orbitR,a0-0.3,a1+0.5); ctx.stroke(); ctx.setLineDash([]);
@@ -3374,7 +3375,7 @@ function drawSuborbital(ct){
   spaceBg(ctx,W,H,time);
   earthLimb(ctx,W,H,true,-0.6+time*0.0003);
   const op=clampA(ct/A.cruiseDur,0,1), x0=W*0.18,x1=W*0.84, base=H-94;
-  if(A.sfxEnginePhase==='ascent'){ sfxStop(); A.sfxEnginePhase='suborbital'; }
+  if(A.sfxEnginePhase==='ascent'){ sfxStop(); A.sfxEnginePhase='suborbital'; if(s.success!==false) sfxCutoff(); } // burnout
   const exitPitch=clampA(0.55+R.pitchJitter,0.2,1.0);
   const apexY=clampA(H*0.40 - s.reqDv*0.03, H*0.12, H*0.40)/(R.apogee||1);
   const apexX=x0+(x1-x0)*clampA(0.30+exitPitch*0.30,0.2,0.7);

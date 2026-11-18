@@ -8169,3 +8169,24 @@ Validation: new `test-cinematic-launch.js` 68/68; `test-flight3d-sepbeat.js` hel
 (display progress is no longer linear in trajectory time — intended); full sweep 173/174 + 1 intentional skip,
 0 unexpected. Headless Firefox frames reviewed: pad ignition, liftoff, 4 km, max-Q, staging −/+, 94–1100 km,
 orbit entry, failure, night, Low/Stable. Not measured: real-GPU frame rate (headless is software GL).
+
+### 2026-11-17 — Cinematic launch overhaul, slice 2: fairing, orbit burn, camera modes (Claude)
+
+Presentation-only, on top of slice 1 and upstream graphics pass 2. **Fairing:** `flightPhysicsSpec` now
+carries a descriptor-only `fairing` (null when crewed); the 3D vehicle builds the ogive as two real halves
+around a visible payload ('heavy' = extended shroud, 'none' = payload flies exposed). Jettison time comes off
+the real trajectory — first sample past max-Q above 60 km where ½ρv³ < 1135 W/m² (`cape3dFairingJettisonTime`);
+a flight that never leaves thick air keeps its shroud. The halves peel open from the base hinge and fall
+ballistically from the jettison state (same late-capture rebase as spent stages); pacing window, `FAIRING SEP`
+beat and a separation sound ride the same time. The post-ascent orbit craft shows the exposed payload.
+**Orbit burn:** the insertion burn is full then a crisp SECO (`ORBIT_SECO_FRAC`, shared by the 3D burn, the
+readout and the 2D-path audio, which used to stop at 15%); the compact plume gets the shader body; orbit and
+transfer craft now fly nose-first along their path (they sat upright with the exhaust out the flank); orbit
+entry chase moved to a side three-quarter. **Camera:** Cinematic / Tracking / Close chase / Ground tracker (a
+long-lens range camera ~3.5 km out that hands back to the director when the site fades; lens restored outside
+the launch); button + C cycle. **Audio:** new `sfxCutoff` thud/tail at MECO, SECO and suborbital burnout.
+**Bug fixed from slice 1:** a mid-line `//` comment had commented out the Cape cloud update (and a puff hide)
+in one-line statements — clouds stopped drifting/fading and floated through the orbit view; a hygiene check
+now guards it. Validation: `test-cinematic-launch.js` 84/84; full sweep 183/184 + 1 intentional skip, 0
+unexpected; headless Firefox frames of the shroud before/during/after jettison, insertion burn and coast,
+ground tracker (catches the transonic vapour cone), close chase through staging.

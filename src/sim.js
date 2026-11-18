@@ -6017,7 +6017,10 @@ function flightPhysicsSpec(m, vehicle){
     return {engine:e.id,prop:st.prop,dry:masses.dry,wet:masses.wet,count:st.count,diameterM:clampA((.42+.20*Math.cbrt(Math.max(.1,st.prop)))*dia,.35,9),thrustSL:e.thrustSL*st.count*thrustK,thrustVac:e.thrustVac*st.count*thrustK,ispSL:e.ispSL*ispK,ispVac:e.ispVac*ispK,solid:!!e.solid};
   });
   const bm=boosterMasses(), boosters=bm?{count:bm.count,prop:bm.propTotal,dry:bm.dry,wet:bm.wet,diameterM:clampA(.38+.18*Math.cbrt(Math.max(.1,bm.propEach)),.32,6),thrustSL:bm.eng.thrustSL*bm.count*thrustK,thrustVac:bm.eng.thrustVac*bm.count*thrustK,ispSL:bm.eng.ispSL*ispK,ispVac:bm.eng.ispVac*ispK,solid:!!bm.eng.solid}:null;
-  return {payload:v.payload,liftoff:v.liftoff,stages,boosters};
+  // Presentation descriptor only (read by the 3D flight to draw/jettison the right shroud); no physics uses it.
+  // Crewed flights fly a capsule, so they carry no payload fairing.
+  const fairing=(m&&m.crew>0)?null:((typeof curParts==='function'&&curParts().fairing)||'standard');
+  return {payload:v.payload,liftoff:v.liftoff,stages,boosters,fairing};
 }
 // #37 Max-Q structural check: the real peak dynamic pressure (kPa) THIS vehicle experiences flying
 // THIS mission's ascent, from the same integrated trajectory the 3D flight uses (drag/thrust/gravity-
