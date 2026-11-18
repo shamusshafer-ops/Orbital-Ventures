@@ -2692,11 +2692,53 @@ function cape3dTexReady(t){ return !!(t&&t.image&&(t.image.width||t.image.natura
 // Sun direction for the flight globe: the flight's own day/night flag decides which side of the terminator
 // the launch site is on (a night launch climbs over a dark, city-lit Earth); azimuth follows the Cape key light.
 function cape3dFlightSunDir(night,az){ const e=night?-.62:.72, a=Number(az)||-.9; return {x:Math.cos(e)*Math.cos(a),y:Math.sin(e),z:Math.cos(e)*Math.sin(a)}; }
+// Weather seen from space: a randomised cloud shell a few kilometres above the flight globes (ascent and
+// orbit), over the photographic map's own clouds (which are thinned while it is on). Domain-warped noise
+// gives swirling frontal systems, latitude bands give the equatorial convergence belt, the clear
+// subtropics and the stormy mid-latitudes, and the same coverage shades the ground beneath. A new seed and
+// coverage are drawn for every launch, so no two flights see the same sky. Presentation only.
+const CAPE3D_CLOUD_SHELL_GLSL=`
+float ovCloudCover(vec3 dir,float seed,float cover){
+  vec3 P=dir*6.371, S=vec3(seed,seed*1.7,seed*.61);
+  vec3 w=vec3(fbm(P*1.15+S),fbm(P*1.15+S+5.2),fbm(P*1.15+S+9.7))-.5;
+  vec3 Q=P+w*1.25;
+  float f=fbm(Q*.8+S)*.52+fbm(Q*2.6+S*1.3)*.28+fbm(Q*9.0+S*.7)*.14+fbm(Q*34.0)*.06;
+  float lat=abs(dir.y);
+  f+=.07*exp(-pow(lat/.12,2.0))-.09*exp(-pow((lat-.42)/.13,2.0))+.07*exp(-pow((lat-.8)/.14,2.0));
+  return smoothstep(cover,cover+.17,f);
+}`;
+const CAPE3D_CLOUD_SHELL_LIFT_KM=9;
+function cape3dCloudShell(earth,radius,kmPerUnit,segW,segH){
+  const em=earth&&earth.material, u=em&&em.userData&&em.userData.earthDetail; if(!u||!u.uShellSeed) return null;
+  const su={uSun:u.uSun,uOpacity:u.uOpacity,uSeed:u.uShellSeed,uCover:u.uShellCover};
+  const m=new THREE.ShaderMaterial({uniforms:su,transparent:true,depthWrite:false,fog:false,
+    vertexShader:`varying vec3 vDir; varying vec3 vWN; varying vec3 vWP; void main(){ vDir=normalize(position); vWN=normalize(mat3(modelMatrix)*normal); vec4 wp=modelMatrix*vec4(position,1.0); vWP=wp.xyz; gl_Position=projectionMatrix*viewMatrix*wp; }`,
+    fragmentShader:CINE_NOISE_GLSL+CAPE3D_CLOUD_SHELL_GLSL+`uniform vec3 uSun; uniform float uOpacity,uSeed,uCover; varying vec3 vDir; varying vec3 vWN; varying vec3 vWP;
+      void main(){
+        float c=ovCloudCover(vDir,uSeed,uCover); if(c<.003) discard;
+        vec3 N=normalize(vWN), V=normalize(cameraPosition-vWP), L=normalize(uSun); float ndl=dot(N,L), nv=max(dot(N,V),0.0);
+        float lit=smoothstep(-.08,.26,ndl), band=exp(-pow((ndl-.03)/.13,2.0));
+        vec3 sunCol=mix(vec3(1.0),vec3(1.0,.55,.33),band*.85);
+        float thick=smoothstep(.2,1.0,c);
+        vec3 col=mix(vec3(.80,.84,.90),vec3(.98,.985,1.0),thick)*sunCol*(lit*1.1+.018);
+        float a=c*.9*uOpacity*smoothstep(0.0,.12,nv+.02);
+        gl_FragColor=vec4(col,clamp(a,0.0,1.0));
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+      }`});
+  const shell=new THREE.Mesh(new THREE.SphereGeometry(radius+CAPE3D_CLOUD_SHELL_LIFT_KM/kmPerUnit,segW||192,segH||112),m);
+  shell.name='cape3d_cloud_shell'; shell.renderOrder=(earth.renderOrder||0)+1; shell.frustumCulled=false; earth.add(shell);
+  u.uShellOn.value=1; u.uClouds2.value=.45; return shell;
+}
+// A new sky for every launch.
+function cape3dRandomiseCloudShells(root,rng){
+  const r=rng||Math.random; (root&&root.userData.cloudShells||[]).forEach(sh=>{ const u=sh.material.uniforms; u.uSeed.value=r()*997; u.uCover.value=.46+r()*.1; });
+}
 function cape3dEarthMaterial(kmPerUnit,opaque){
-  const u={uDay:{value:null},uNight:{value:null},uClouds:{value:null},uOcean:{value:null},uSun:{value:new THREE.Vector3(.4,.6,.5).normalize()},uOpacity:{value:opaque?1:0},uReady:{value:0},uNightOn:{value:0},uCloudMapOn:{value:0},uOceanOn:{value:0},uDetail:{value:1},uClouds2:{value:1},uTime:{value:0},uKm:{value:kmPerUnit},uCloudShift:{value:0},uRim:{value:opaque?.42:.15},uFallback:{value:new THREE.Color(0x1d4f7a)}};
+  const u={uDay:{value:null},uNight:{value:null},uClouds:{value:null},uOcean:{value:null},uSun:{value:new THREE.Vector3(.4,.6,.5).normalize()},uOpacity:{value:opaque?1:0},uReady:{value:0},uNightOn:{value:0},uCloudMapOn:{value:0},uOceanOn:{value:0},uDetail:{value:1},uClouds2:{value:1},uTime:{value:0},uKm:{value:kmPerUnit},uCloudShift:{value:0},uRim:{value:opaque?.42:.15},uFallback:{value:new THREE.Color(0x1d4f7a)},uShellOn:{value:0},uShellSeed:{value:17.3},uShellCover:{value:.52}};
   const m=new THREE.ShaderMaterial({uniforms:u,transparent:!opaque,depthWrite:!!opaque,fog:false,
     vertexShader:`varying vec2 vUv; varying vec3 vObjPos; varying vec3 vWN; varying vec3 vWP; void main(){ vUv=uv; vObjPos=position; vWN=normalize(mat3(modelMatrix)*normal); vec4 wp=modelMatrix*vec4(position,1.0); vWP=wp.xyz; gl_Position=projectionMatrix*viewMatrix*wp; }`,
-    fragmentShader:CINE_NOISE_GLSL+`uniform sampler2D uDay,uNight,uClouds,uOcean; uniform vec3 uSun,uFallback; uniform float uOpacity,uReady,uNightOn,uCloudMapOn,uOceanOn,uDetail,uClouds2,uTime,uKm,uCloudShift,uRim;
+    fragmentShader:CINE_NOISE_GLSL+CAPE3D_CLOUD_SHELL_GLSL+`uniform float uShellOn,uShellSeed,uShellCover; uniform sampler2D uDay,uNight,uClouds,uOcean; uniform vec3 uSun,uFallback; uniform float uOpacity,uReady,uNightOn,uCloudMapOn,uOceanOn,uDetail,uClouds2,uTime,uKm,uCloudShift,uRim;
       varying vec2 vUv; varying vec3 vObjPos; varying vec3 vWN; varying vec3 vWP;
       void main(){
         vec3 N=normalize(vWN), V=normalize(cameraPosition-vWP), L=normalize(uSun); float ndl=dot(N,L); vec3 P=vObjPos*uKm;
@@ -2711,6 +2753,7 @@ function cape3dEarthMaterial(kmPerUnit,opaque){
         float lit=smoothstep(-.06,.24,ndl), band=exp(-pow((ndl-.03)/.13,2.0));
         vec3 sunCol=mix(vec3(1.0),vec3(1.0,.52,.30),band*.85);
         vec3 ground=day*sunCol*(lit*1.08+.012)*(1.0-c*.38);
+        if(uShellOn>.5) ground*=1.0-ovCloudCover(normalize(vObjPos),uShellSeed,uShellCover)*.32; /* the weather layer's shade on the ground */
         vec3 H=normalize(L+V); float nh=max(dot(N,H),0.0);
         ground+=vec3(1.0,.93,.80)*(pow(nh,220.0)*2.6+pow(nh,14.0)*.10)*ocean*(1.0-c)*lit;
         vec3 col=mix(ground,vec3(.97,.98,1.0)*sunCol*(lit*1.12+.015),c*.93);
@@ -4320,7 +4363,7 @@ function cape3dAscentWorld(root,pad,base){
   // Mapping a point to the tangent leaves one free roll around its normal. Quarter-turn the map so
   // the Florida/Bahamas coastline crosses the ascent camera's foreground instead of showing an
   // undifferentiated Atlantic patch; the tangent itself remains exactly 28.4°N, 80.6°W.
-  earth.rotateOnWorldAxis(earthUp,Math.PI*.5); earth.receiveShadow=false; g.add(earth); if(!earthMat.userData.isFlightEarth){ try{ cape3dEarthDetail(earthMat,1/1000); }catch(e){} }
+  earth.rotateOnWorldAxis(earthUp,Math.PI*.5); earth.receiveShadow=false; g.add(earth); let cloudShell=null; try{ cloudShell=cape3dCloudShell(earth,radius,1/1000,256,144); }catch(e){} if(!earthMat.userData.isFlightEarth){ try{ cape3dEarthDetail(earthMat,1/1000); }catch(e){} }
   // Aerial perspective: brightness rises toward the limb (long path through air), not a flat tint.
   let atmoMat; try{ atmoMat=new THREE.ShaderMaterial({transparent:true,depthWrite:false,side:THREE.FrontSide,blending:THREE.AdditiveBlending,fog:false,uniforms:{opacity:{value:0},uColor:{value:new THREE.Color(0x63b8ff)}},
     vertexShader:`varying vec3 vN; varying vec3 vV; void main(){ vec4 mv=modelViewMatrix*vec4(position,1.0); vV=-mv.xyz; vN=normalize(normalMatrix*normal); gl_Position=projectionMatrix*mv; }`,
@@ -4331,7 +4374,7 @@ function cape3dAscentWorld(root,pad,base){
   const stars=new THREE.Points(new THREE.BufferGeometry(),new THREE.PointsMaterial({color:0xeaf5ff,size:13,transparent:true,opacity:0,depthWrite:false,fog:false}));
   const pts=[]; for(let i=0;i<190;i++){ const a=i*2.399,b=(i%23)*.27; pts.push(Math.cos(a)*25000,9000+Math.sin(b)*16000,Math.sin(a)*25000); } stars.geometry.setAttribute('position',new THREE.Float32BufferAttribute(pts,3)); g.add(stars);
   const trail=new THREE.Group(), puffs=[]; for(let i=0;i<18;i++){ const puff=new THREE.Mesh(new THREE.SphereGeometry(18+(i%4)*10,10,8),new THREE.MeshBasicMaterial({color:i%3?0xb9d3df:0xffb15b,transparent:true,opacity:0,depthWrite:false})); puff.visible=false; trail.add(puff); puffs.push(puff); } g.add(trail);
-  root.add(g); return {group:g,earth,earthMap,atmosphere,stars,trail,puffs,center,radius,earthBaseQuaternion:earth.quaternion.clone(),earthUp,textureApplied:false};
+  root.add(g); return {group:g,earth,earthMap,atmosphere,stars,trail,puffs,center,radius,cloudShell,earthBaseQuaternion:earth.quaternion.clone(),earthUp,textureApplied:false};
 }
 function cape3dFlightCraftModel(source,scale,plumeRadius,plumeLength,withGlow){
   const craft=cape3dVehicleMesh(source); craft.scale.setScalar(scale), v=cape3dFlightVehicleSpec(source), engine=(v.transferProp>0?v.transferEng:(v.stages.length&&v.stages[v.stages.length-1].eng))||'';
@@ -4360,7 +4403,7 @@ function cape3dOrbitWorld(root){
   const g=new THREE.Group(); g.name='cape3d_orbit_world'; g.visible=false;
   const earthMap=(typeof map3dPhotoTexture==='function')?map3dPhotoTexture('earth'):null;
   let earthMat; try{ earthMat=cape3dEarthMaterial(6371/355,true); }catch(e){ earthMat=new THREE.MeshStandardMaterial({color:0x477b94,map:earthMap,emissive:0x06121c,emissiveIntensity:.18,roughness:.94,metalness:0}); }
-  const earth=new THREE.Mesh(new THREE.SphereGeometry(355,128,80),earthMat); g.add(earth);
+  const earth=new THREE.Mesh(new THREE.SphereGeometry(355,128,80),earthMat); g.add(earth); let cloudShell=null; try{ cloudShell=cape3dCloudShell(earth,355,6371/355,160,96); }catch(e){}
   // Limb glow: a view-angle (fresnel) falloff so the atmosphere reads as a thin scattering rim at the
   // edge of the disc rather than a uniformly tinted shell over the whole planet.
   let atmoMat; try{ atmoMat=new THREE.ShaderMaterial({transparent:true,depthWrite:false,side:THREE.FrontSide,blending:THREE.AdditiveBlending,uniforms:{uColor:{value:new THREE.Color(0x5fb4ff)}},
@@ -4374,7 +4417,7 @@ function cape3dOrbitWorld(root){
   const apoMarker=new THREE.Mesh(new THREE.SphereGeometry(8,12,8),markerMat); const periMarker=new THREE.Mesh(new THREE.SphereGeometry(8,12,8),markerMat.clone()); g.add(apoMarker); g.add(periMarker);
   const model=cape3dFlightCraftModel(null,.72,12,72,true), craft=model.craft, plume=model.plume, glow=model.glow; g.add(craft);
   const stars=new THREE.BufferGeometry(), points=[]; for(let i=0;i<240;i++){ const a=i*2.399,b=(i%31)*.31,r=1800+(i%17)*90; points.push(Math.cos(a)*r,Math.sin(b)*r*.65,Math.sin(a)*r); } stars.setAttribute('position',new THREE.Float32BufferAttribute(points,3)); const starField=new THREE.Points(stars,new THREE.PointsMaterial({color:0xdcefff,size:4,transparent:true,opacity:.92,depthWrite:false})); g.add(starField);
-  root.add(g); return {group:g,earth,atmo,ribbon,apoMarker,periMarker,craft,plume,glow,starField,orbitSignature:null};
+  root.add(g); return {group:g,earth,cloudShell,atmo,ribbon,apoMarker,periMarker,craft,plume,glow,starField,orbitSignature:null};
 }
 // E4.7 cislunar transfer world. Kept separate from the Earth-orbit scene so successful lunar
 // flights never fall back to the legacy canvas between injection and arrival.
@@ -4611,7 +4654,7 @@ function cape3dEnterLaunchPresentation(source){
   try{ const aw=cape3d.root.userData.ascentWorld; if(aw&&aw.earth) cape3dSyncEarthMaterial(aw.earth.material,cape3dGraphicsTier(gfxQualityPref())); }catch(e){} // start decoding the Earth maps during the countdown, not when Earth first appears
   if(source&&!cape3dInstallFlightVehicle(source)) return false;
   const root=cape3d.root, rocket=root.userData.launchRocket, fx=root.userData.launchEffects;
-  if(!rocket||!fx) return false; cape3dApplySiteOpacity(root.userData.siteObjects,1); cape3dResetStaging(rocket); fx.group.position.y=rocket.userData.nozzleY||-10; root.userData.stageDebris=[]; root.userData.launchActive=true; root.userData.orbitActive=false; root.userData.reentryActive=false; rocket.position.copy(root.userData.launchBase); fx.group.visible=true; cape3d.launchCam=cape3dDefaultLaunchCam(); cape3d.orbitCam={azOff:0,elOff:0,distMul:1}; attachCape3DInput(); cape3dUpdateLaunchPresentation(source&&source.vehicle?source:null); return true;
+  if(!rocket||!fx) return false; cape3dRandomiseCloudShells(root); cape3dApplySiteOpacity(root.userData.siteObjects,1); cape3dResetStaging(rocket); fx.group.position.y=rocket.userData.nozzleY||-10; root.userData.stageDebris=[]; root.userData.launchActive=true; root.userData.orbitActive=false; root.userData.reentryActive=false; rocket.position.copy(root.userData.launchBase); fx.group.visible=true; cape3d.launchCam=cape3dDefaultLaunchCam(); cape3d.orbitCam={azOff:0,elOff:0,distMul:1}; attachCape3DInput(); cape3dUpdateLaunchPresentation(source&&source.vehicle?source:null); return true;
 }
 function cape3dUpdateOrbitPresentation(snapshot){
   if(!cape3d||!cape3d.root) return false;
@@ -4643,6 +4686,7 @@ function cape3dUpdateOrbitPresentation(snapshot){
 }
 function cape3dRestoreLens(){ if(cape3d&&cape3d.baseFov!=null&&Math.abs(cape3d.camera.fov-cape3d.baseFov)>.01){ cape3d.camera.fov=cape3d.baseFov; cape3d.camera.updateProjectionMatrix(); } }
 function cape3dUpdateFlightPresentation(snapshot){
+  if(snapshot&&!['pad','ascent','suborbital'].includes(snapshot.phase)) cape3dRestoreNear(); /* the altitude near plane belongs to the launch camera only */
   if(snapshot&&!['pad','ascent','suborbital'].includes(snapshot.phase)) cape3dRestoreLens(); // the ground tracker's long lens belongs to the launch only
   if(snapshot&&snapshot.phase==='orbit') return cape3dUpdateOrbitPresentation(snapshot);
   if(snapshot&&snapshot.phase==='transfer'){ const root=cape3d&&cape3d.root, world=root&&root.userData.transferWorld; if(!world) return false; const q=cape3dTransferProfile(snapshot); world.group.visible=true; world.craft.position.set(q.x,q.y,q.z); const tumble=q.deadStick?q.failProgress:0; if(world.craft.quaternion){ const nx=cape3dTransferProfile(Object.assign({},snapshot,{phaseProgress:Math.min(1,(snapshot.phaseProgress||0)+.004)})), back=nx.x===q.x&&nx.y===q.y&&nx.z===q.z?cape3dTransferProfile(Object.assign({},snapshot,{phaseProgress:Math.max(0,(snapshot.phaseProgress||0)-.004)})):null; if(back) cape3dOrientCraft(world.craft,new THREE.Vector3(back.x,back.y,back.z),new THREE.Vector3(q.x,q.y,q.z),tumble); else cape3dOrientCraft(world.craft,new THREE.Vector3(q.x,q.y,q.z),new THREE.Vector3(nx.x,nx.y,nx.z),tumble); } cape3dSetCompactPlume(world.plume,q.burn,q.progress*12); cape3dFlightCamera(new THREE.Vector3(q.x-310,q.y+210,720),new THREE.Vector3(q.x,q.y,0)); return true; }
@@ -4839,7 +4883,7 @@ function buildCape3DScene(scene){
   const facilities=new THREE.Group(); facilities.name='cape3d_facilities'; root.add(facilities);
   descriptors.forEach(d=>facilities.add(cape3dFacilityGroup(d,materials))); const vegetation=cape3dVegetation(root,materials,plan,coastX), extras=cape3dSiteExtras(root,plan,materials,coastX);
   root.userData.clouds=cape3dClouds(root); root.userData.practicalLights=[...cape3dPracticalLights(root,descriptors),...cape3dStreetLights(root,materials)]; root.userData.windowMaterial=materials.glass; root.userData.facadeMaterials=materials.facades; root.userData.accentMaterial=materials.accent;
-  const pad=padD; if(pad){ const rocket=cape3dVehicleMesh(); rocket.position.set(pad.position.x-pad.footprint.x*.18,cape3dLaunchBaseY(rocket),pad.position.z); root.add(rocket); root.userData.launchPad=pad; root.userData.launchRocket=rocket; root.userData.launchBase=rocket.position.clone(); root.userData.launchEffects=cape3dLaunchEffects(rocket); root.userData.groundSmoke=cape3dGroundSmoke(root,rocket.position); root.userData.launchSplash=cape3dSplashEffects(root); root.userData.launchFailure=cape3dFailureEffects(root,rocket,root.userData.launchEffects); root.userData.ascentWorld=cape3dAscentWorld(root,pad,root.userData.launchBase); root.userData.orbitWorld=cape3dOrbitWorld(root); root.userData.transferWorld=cape3dTransferWorld(root); root.userData.reentryWorld=cape3dReentryWorld(root); root.userData.sepPuffs=cape3dSepPuffPool(root); }
+  const pad=padD; if(pad){ const rocket=cape3dVehicleMesh(); rocket.position.set(pad.position.x-pad.footprint.x*.18,cape3dLaunchBaseY(rocket),pad.position.z); root.add(rocket); root.userData.launchPad=pad; root.userData.launchRocket=rocket; root.userData.launchBase=rocket.position.clone(); root.userData.launchEffects=cape3dLaunchEffects(rocket); root.userData.groundSmoke=cape3dGroundSmoke(root,rocket.position); root.userData.launchSplash=cape3dSplashEffects(root); root.userData.launchFailure=cape3dFailureEffects(root,rocket,root.userData.launchEffects); root.userData.ascentWorld=cape3dAscentWorld(root,pad,root.userData.launchBase); root.userData.orbitWorld=cape3dOrbitWorld(root); root.userData.transferWorld=cape3dTransferWorld(root); root.userData.reentryWorld=cape3dReentryWorld(root); root.userData.sepPuffs=cape3dSepPuffPool(root); root.userData.cloudShells=[root.userData.ascentWorld,root.userData.orbitWorld].map(w=>w&&w.cloudShell).filter(Boolean); }
   // One continuous surface (land, beach, lagoon and sea) fades with the rest of the site during ascent.
   root.userData.siteObjects=[terrain,roads,facilities,vegetation,extras];
   // State-driven growth: extra pads use the full pad model; operations buildings get simple massing plus detail.

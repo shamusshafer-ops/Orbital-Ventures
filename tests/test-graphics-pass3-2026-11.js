@@ -84,5 +84,18 @@ const coastX=CAPE3D_COAST_X, descriptors=capeFacilityDescriptors(), plan=cape3dS
   check('clouds drift and wrap round the whole field', cape3dTick.toString().includes('CAPE3D_CLOUD_FIELD')&&cape3dTick.toString().includes('%F.w'));
 }
 
+{ // follow-up: weather seen from space
+  const shell=cape3dCloudShell.toString(), em=cape3dEarthMaterial.toString();
+  check('the ascent and orbit globes each carry a cloud shell above the surface', cape3dAscentWorld.toString().includes('cape3dCloudShell(earth,radius')&&cape3dOrbitWorld.toString().includes('cape3dCloudShell(earth,355')&&CAPE3D_CLOUD_SHELL_LIFT_KM>0);
+  check('the shell rides with its globe and shares its sun and fade', shell.includes('earth.add(shell)')&&shell.includes('uSun:u.uSun')&&shell.includes('uOpacity:u.uOpacity'));
+  check('weather systems: warped noise with equatorial, subtropical and mid-latitude bands', CAPE3D_CLOUD_SHELL_GLSL.includes('w*1.25')&&(CAPE3D_CLOUD_SHELL_GLSL.match(/exp\(-pow/g)||[]).length===3);
+  check('the ground beneath is shaded by the same coverage, and the map clouds thin while the shell is on', em.includes('ovCloudCover(normalize(vObjPos)')&&shell.includes('u.uClouds2.value=.45'));
+  const fake={userData:{cloudShells:[{material:{uniforms:{uSeed:{value:0},uCover:{value:0}}}},{material:{uniforms:{uSeed:{value:0},uCover:{value:0}}}}]}};
+  let k=0; const seq=[.1,.2,.7,.9]; cape3dRandomiseCloudShells(fake,()=>seq[k++]);
+  const a=fake.userData.cloudShells[0].material.uniforms, b=fake.userData.cloudShells[1].material.uniforms;
+  check('every launch draws a new sky (seed and coverage) for each globe', a.uSeed.value!==b.uSeed.value&&a.uCover.value>=.46&&b.uCover.value<=.56&&cape3dEnterLaunchPresentation.toString().includes('cape3dRandomiseCloudShells(root)'));
+  check('the altitude near plane is reset for the orbit and later phases', cape3dUpdateFlightPresentation.toString().includes('cape3dRestoreNear()'));
+}
+
 console.log(pass+'/'+(pass+fail)+' checks passed');
 process.exit(fail?1:0);
