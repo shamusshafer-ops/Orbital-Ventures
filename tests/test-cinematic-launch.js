@@ -169,7 +169,14 @@ check('fixture has a booster and a core-stage event',!!stageEv&&!!boostEv);
   check('outside a launch the ambient Cape clock is untouched',cape3dFlightSkyClock(123.4,false,true)===123.4);
   check('at night the plume lights much further than by day',cape3dPlumeLightReach(true).distance>3*cape3dPlumeLightReach(false).distance&&cape3dPlumeLightReach(true).intensity>cape3dPlumeLightReach(false).intensity);
   check('heat shimmer lives in dense air behind a burning engine',cape3dShimmerStrength(0,1,0)>.9&&cape3dShimmerStrength(20000,1,.2)<.01&&cape3dShimmerStrength(0,0,0)===0&&cape3dShimmerStrength(100,1,1)===0);
-  check('Earth detail patches both globes onto one shared cloud field (km mapping)',cape3dAscentWorld.toString().includes('cape3dEarthDetail(earthMat,1/1000)')&&cape3dOrbitWorld.toString().includes('cape3dEarthDetail(earthMat,6371/355)'));
+  check('both flight globes use the realistic Earth shader (km mapping for each scale)',cape3dAscentWorld.toString().includes('cape3dEarthMaterial(1/1000,false)')&&cape3dOrbitWorld.toString().includes('cape3dEarthMaterial(6371/355,true)'));
+  const sd=cape3dFlightSunDir(false,-.9), sn=cape3dFlightSunDir(true,-.9);
+  check('flight sun is above the launch site by day and below it at night',sd.y>.5&&sn.y<-.4&&Math.abs(Math.hypot(sd.x,sd.y,sd.z)-1)<1e-9);
+  const fs=require('fs'), path=require('path'), root=(()=>{ let d=process.cwd(); for(let i=0;i<4&&!fs.existsSync(path.join(d,'build.js'));i++) d=path.dirname(d); return d; })(), b=fs.readFileSync(path.join(root,'build.js'),'utf8');
+  const ids={earth_day4k:'texture-earth-day-4k.jpg',earth_night:'texture-earth-night-4k.jpg',earth_clouds:'texture-earth-clouds-4k.jpg',earth_ocean:'texture-earth-ocean-2k.png'};
+  check('4K Earth set is packaged, embedded by the release build and resolvable in dev',Object.entries(ids).every(([id,f])=>fs.existsSync(path.join(root,'assets',f))&&b.includes(id+":'"+f+"'")&&MAP3D_TEXTURE_ASSET[id]==='assets/'+f));
+  check('the new maps are credited (CC BY 4.0 attribution)',fs.readFileSync(path.join(root,'assets','CREDITS.md'),'utf8').includes('texture-earth-day-4k.jpg'));
+  check('Low preset keeps the 2K day map and skips the heavy maps',cape3dSyncEarthMaterial.toString().includes("low?'earth':'earth_day4k'"));
 }
 
 // ---------- 11. hidden 2D fallback stops painting while 3D owns the frame ----------
@@ -222,9 +229,39 @@ check('fixture has a booster and a core-stage event',!!stageEv&&!!boostEv);
   check('camera director frames the fairing jettison',(()=>{ const tf=cape3dFairingJettisonTime(plan); if(tf==null) return true; const q=cape3dLaunchProfile(flight3dPresentationSnapshot(spec,timing,timing.padDur+timing.ascentDur*cape3dUnwarpAscentTime(plan,tf+.2))); return cape3dLaunchCameraProfile(q).shot==='FAIRING SEPARATION'; })());
 }
 
-// ---------- 14. hygiene ----------
+// ---------- 14. reentry ----------
 {
-  const pure=[cape3dRecoveryProfile,cape3dNozzleHeatStep,cape3dFlightSkyClock,cape3dShimmerStrength,cape3dFairingJettisonTime,cape3dInsertionBurn,cape3dGroundTrackerFov,cape3dAscentWarpTable,cape3dWarpAscentTime,cape3dStagingThrottle,cape3dIgnitionFlicker,cape3dLaunchShake,cape3dSkyProfile,cape3dTrailSamples,cape3dUpdateSmokeTrail,cape3dApplyShaderPlume];
+  const R=p=>cape3dReentryProfile({phaseProgress:p});
+  near(R(0).altitudeKm,120,1e-9,'reentry starts at the 120 km entry interface');
+  near(R(REENTRY_DROGUE_P).altitudeKm,7,1e-9,'drogues open at ~7 km (not mid-atmosphere)');
+  near(R(REENTRY_MAINS_P).altitudeKm,3,1e-9,'mains open at ~3 km');
+  check('splashdown at sea level',R(REENTRY_SPLASH_P).altitudeKm===0&&R(.99).splash===true);
+  let mono=true, prevA=1e9, prevV=1e9, peak={p:0,v:0};
+  for(let p=0;p<=1;p+=.005){ const r=R(p); if(r.altitudeKm>prevA+1e-9||r.speedMps>prevV+1e-6) mono=false; prevA=r.altitudeKm; prevV=r.speedMps; if(r.plasma>peak.v) peak={p,v:r.plasma,alt:r.altitudeKm}; }
+  check('altitude and speed only ever decrease through the return',mono);
+  check('peak heating sits in the 55–75 km band',peak.alt>55&&peak.alt<75&&peak.v>.9);
+  check('comms blackout only during heavy heating, never under canopies',R(.25).blackout===true&&R(.02).blackout===false&&R(.7).blackout===false);
+  check('capsule arrives at orbital speed and splashes at a standstill',R(0).speedMps>7600&&R(.8).speedMps<15&&R(.99).speedMps===0);
+  check('altitude readout uses the reentry profile',flightAltitudeTelemetry(Object.assign(flight3dPresentationSnapshot(spec,timing,0),{phase:'reentry',phaseProgress:REENTRY_DROGUE_P})).altitudeKm===7);
+  const el=$('flight3dReadout'), at=p=>{ updateFlight3DReadout(Object.assign(flight3dPresentationSnapshot(spec,timing,0),{phase:'reentry',phaseProgress:p})); return el.textContent; };
+  check('readout walks the return: entry interface → blackout → drogues → mains → splashdown',at(.02).includes('ENTRY INTERFACE')&&at(.25).includes('COMMS BLACKOUT')&&at(.55).includes('DROGUE')&&at(.8).includes('MAIN CHUTES')&&at(.98).includes('SPLASHDOWN'));
+  // Reentry sounds fire once each, identically at 1x and 50x, on a crewed orbital return.
+  const counts={sep:0,splash:0,burn:0}, o1=sfxSep,o2=sfxSplash,o3=sfxBurn; sfxSep=()=>{counts.sep++;}; sfxSplash=()=>{counts.splash++;}; sfxBurn=()=>{counts.burn++;};
+  const fly=mult=>{ counts.sep=counts.splash=counts.burn=0; const prev=animSpeedIdx; animSpeedIdx=ANIM_SPEEDS.findIndex(x=>x.mult===mult);
+    playMission(Object.assign({},spec,{title:'C',crewed:true,success:true,failPhase:null,rng:{wind:0,windFreq:1,windPhase:0,pitchJitter:0,sep:[],apogee:1,bow:0}}),()=>{});
+    let now=performance.now(); const real=performance.now; performance.now=()=>now; animState.prevWall=now;
+    try{ for(let f=0;f<9000&&animState&&!animState.held;f++){ now+=16; animLoop(); } } finally{ performance.now=real; }
+    const out=Object.assign({},counts); try{ dismissAnim(); }catch(e){} animSpeedIdx=prev; return out; };
+  const c1=fly(1), c50=fly(50);
+  check('a crewed return plays one splash and one plasma roar',c1.splash===1&&c1.burn>=1);
+  check('reentry sounds are identical at 1x and 50x',JSON.stringify(c1)===JSON.stringify(c50));
+  sfxSep=o1; sfxSplash=o2; sfxBurn=o3;
+  console.log('  reentry sound counts 1x',JSON.stringify(c1),'50x',JSON.stringify(c50));
+}
+
+// ---------- 15. hygiene ----------
+{
+  const pure=[cape3dReentryProfile,cape3dReentryAltitudeKm,cape3dReentrySpeedMps,cape3dFlightSunDir,cape3dRecoveryProfile,cape3dNozzleHeatStep,cape3dFlightSkyClock,cape3dShimmerStrength,cape3dFairingJettisonTime,cape3dInsertionBurn,cape3dGroundTrackerFov,cape3dAscentWarpTable,cape3dWarpAscentTime,cape3dStagingThrottle,cape3dIgnitionFlicker,cape3dLaunchShake,cape3dSkyProfile,cape3dTrailSamples,cape3dUpdateSmokeTrail,cape3dApplyShaderPlume];
   check('cinematic helpers are deterministic (no Math.random)',pure.every(f=>!f.toString().includes('Math.random')));
   // A '//' comment pasted mid-line once silently disabled the Cape cloud update (and a puff hide) in a one-line statement.
   const tickSrc=cape3dTick.toString().split('\n').find(l=>l.includes('clouds.forEach'))||'';

@@ -38,3 +38,16 @@ planet/Cape textures above, and for the same reason: the release build is opened
 where Firefox can block a separately-fetched sub-resource, and a `data:` URI has no fetch to
 block. This also means the font ships identically in both `orbital-ventures.html` (release) and
 `index.html` (dev) with no separate build-step wiring, since both share `src/shell.html`.
+
+## Flight Earth maps (2026-11-17)
+
+`texture-earth-day-4k.jpg`, `texture-earth-night-4k.jpg` and `texture-earth-clouds-4k.jpg` are 4096×2048
+downscales (two-step high-quality resample; clouds converted to grayscale) of Solar System Scope's 8K Earth
+day map, night map and clouds map. `texture-earth-ocean-2k.png` is the Solar System Scope 2K Earth specular
+map converted losslessly to an 8-bit grayscale PNG (white = water), used as the ocean/sun-glint mask.
+
+- Author: Solar System Scope (https://www.solarsystemscope.com/textures/)
+- Obtained from Wikimedia Commons: `File:Solarsystemscope texture 8k earth daymap.jpg`,
+  `…8k earth nightmap.jpg`, `…8k earth clouds.jpg`, `…2k earth specular map.tif`
+- License: Creative Commons Attribution 4.0 International (CC BY 4.0) — https://creativecommons.org/licenses/by/4.0/
+- Changes: resized, re-encoded (JPEG/PNG), clouds desaturated, specular map converted to grayscale.

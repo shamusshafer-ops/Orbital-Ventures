@@ -8228,3 +8228,51 @@ ignition sound fired only inside its visual window (now on crossing the relight 
 identical at 1x and 50x. Validation: `test-cinematic-launch.js` 104/104; full sweep 183/184 + 1 intentional
 skip, 0 unexpected; headless Firefox frames of a recovered-stage separation in close chase with glowing
 first-stage bells and the cold upper-stage engine.
+
+### 2026-11-17 — Cinematic launch overhaul: simulation-equivalence proof (Claude)
+
+The brief required the flight model and mission outcomes to stay authoritative. Proof: `tools/autoplay-bot.js`
+(seeded Math.random, animation ON so launches run the presentation code and share its RNG stream) run on
+`4e10ff1` (the last commit before the overhaul) and on `1189fe2` (slices 1–4), seeds 1–3 to 1975. Summary JSON
+and the per-turn timeline TSV are byte-identical for all three seeds: seed 1 (insolvent 1944, 8 flights), seeds 2
+and 3 (248 turns each, 110 and 112 flights, 7 losses each, 28 and 39 anomaly decisions, Apollo-era programs
+completed). No sim, outcome, cash, reputation, research or rival-timing difference anywhere.
+
+### 2026-11-17 — Flight Earth realism pass (Claude)
+
+Owner chose the 4K budget. **Assets (CC BY 4.0, Solar System Scope via Wikimedia Commons, credited in
+assets/CREDITS.md):** 4096×2048 day map, night-lights map and cloud map (downscaled from the 8K originals with a
+two-step high-quality resample in headless Firefox; clouds desaturated) plus the 2K specular map converted to a
+grayscale ocean mask (decoded from deflate-TIFF in Node). Embedded by build.js like the other maps; release
+19.3 → 23.5 MB. The 2K `earth` skin stays for the Solar Map and the Low preset. **Shader
+(`cape3dEarthMaterial`, both flight globes):** sun-lit day map with a warm twilight terminator, city lights on the
+night side, the real cloud map (fine fbm breakup up close) dimming the ground beneath, ocean sun-glint and sheen
+from the mask, km-scale land detail near the ground, and an atmospheric limb term. The flight's own day/night
+flag places the launch site on the right side of the terminator (`cape3dFlightSunDir`) — a night launch climbs
+over a dark, city-lit Earth with an orbital sunrise on the limb; the launch sky dome uses the same sun (no sun disc
+in a night sky). The orbit view lights the globe ~75° off-camera so the disc shows day, terminator and city-lit
+night edge; its limb shell thinned from ~230 km to ~100 km equivalent. Maps start decoding when the launch
+presentation opens and are uploaded to the GPU (`renderer.initTexture`) during the pad/low-ascent phase, while the
+globe is hidden — without that the first frames with Earth in view hitched 55–74 ms. Measured after:
+3.6 ms mean / 8 ms p95 script time per frame. Validation: `test-cinematic-launch.js` 108/108 (assets packaged,
+embedded, credited; Low keeps 2K); full sweep 183/184 + 1 intentional skip; headless Firefox frames at 94, 246
+and 1,036 km by day and night and in the orbit view.
+
+### 2026-11-17 — Reentry realism pass (Claude)
+
+Presentation-only; the sim still only decides whether the return succeeds. **Profile (`cape3dReentryProfile`):**
+paced on real milestones with the phase boundaries unchanged — entry interface 120 km, peak heating ~64 km with
+comms blackout through the heavy-heating band, drogues ~7 km (the readout used to say 53 km), mains ~3 km,
+splashdown; speed falls from orbital to ~9 m/s under canopies; altitude telemetry, VEL and the readout
+(ENTRY INTERFACE → PEAK HEATING · COMMS BLACKOUT → DROGUE DEPLOY → MAIN CHUTES → SPLASHDOWN) all read it.
+**World (`cape3dReentryWorld`):** the capsule descends over the realistic 4K Earth at a consistent 1 unit = 100 m
+(true horizon dip), the surface streams beneath it, the altitude-driven sky dome takes the sky from black to blue,
+and the flight's own day/night flag sets both (the ambient-clock fix now covers reentry too). Below ~6 km a
+wave-textured sea fades in; one cumulus cell sits on the descent path. Plasma: bow-shock shell ahead of the heat
+shield, hot wake streaming behind (plume shader), glowing shield, ionised trail, buffeting at peak deceleration
+(cinematic cameras, off under reduced motion). Two drogues then three orange/white mains with gores and rigging,
+reefed then fully open; on splashdown rings and spray at the water line, the capsule bobs, the released canopies
+settle and sink. Heat shield faces the direction of travel at a trim angle, upright and swinging under canopies.
+**Audio (new):** plasma roar, mortar pops at drogue and mains, splash — once each, identical at 1x and 50x.
+Validation: `test-cinematic-launch.js` 120/120; full sweep 183/184 + 1 intentional skip; headless Firefox frames
+at 106, 54, 5.3, 1.6 km and splashdown.

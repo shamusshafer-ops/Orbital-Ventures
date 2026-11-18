@@ -634,7 +634,7 @@ function flightAltitudeTelemetry(snapshot){
   let altitudeKm=0;
   try{
     if(phase==='orbit') altitudeKm=cape3dOrbitProfile(snapshot).altitude;
-    else if(phase==='reentry') altitudeKm=Math.max(0,120*(1-(snapshot.phaseProgress||0)));
+    else if(phase==='reentry') altitudeKm=cape3dReentryProfile(snapshot).altitudeKm; // entry 120 km, drogues ~7 km, mains ~3 km
     else altitudeKm=cape3dLaunchProfile(snapshot).altitudeKm||0;
   }catch(e){ altitudeKm=0; }
   altitudeKm=Math.max(0,Number(altitudeKm)||0);
@@ -665,12 +665,13 @@ function updateFlight3DReadout(snapshot){
   }
   else if(phase==='orbit') text+='\n'+(deepFail?'SPACECRAFT LOST':(p<Math.round(ORBIT_SECO_FRAC*100)?'INSERTION BURN':(p<Math.round(ORBIT_SECO_FRAC*100)+6?'ENGINE CUTOFF · ORBIT':'COAST · EARTH ORBIT')))+' · '+p+'%';
   else if(phase==='transfer') text+='\n'+(deepFail?'SPACECRAFT LOST':'CISLUNAR TRANSFER')+' · '+p+'%';
-  else if(phase==='reentry') text+='\n'+(p<52?'ATMOSPHERIC ENTRY':(p<66?'DROGUE DEPLOY':'RECOVERY DESCENT'))+' · '+p+'%';
+  else if(phase==='reentry'){ let st='ATMOSPHERIC ENTRY'; try{ const r=cape3dReentryProfile(snapshot); st=r.splash?'SPLASHDOWN':(r.mains>0?'MAIN CHUTES':(r.drogue>0?'DROGUE DEPLOY':(r.blackout?'PEAK HEATING · COMMS BLACKOUT':(r.altitudeKm>95?'ENTRY INTERFACE':'ATMOSPHERIC ENTRY')))); }catch(e){} text+='\n'+st+' · '+p+'%'; }
   else if(phase==='suborbital') text+='\nSUBORBITAL ARC · '+p+'%';
   else return clearFlight3DReadout();
   let speedMps=0, downrangeKm=0;
   try{
     if(phase==='orbit') speedMps=7800;
+    else if(phase==='reentry') speedMps=cape3dReentryProfile(snapshot).speedMps||0;
     else if(phase==='ascent'||phase==='suborbital'){ const q=cape3dLaunchProfile(snapshot); speedMps=q.speedMps||0; downrangeKm=q.downrangeKm||0; }
   }catch(e){}
   if(speedMps>0) text+='\nVEL · '+(speedMps>=1000?(speedMps/1000).toFixed(2)+' km/s':Math.round(speedMps).toLocaleString()+' m/s');
@@ -3208,6 +3209,11 @@ function drawOrbit(ct){
 function drawReentry(rt){
   const A=animState,s=A.spec,ctx=A.ctx,W=A.cv.width,H=A.cv.height;
   const dur=A.reentryDur||6400, p=clampA(rt/dur,0,1);
+  try{ if(typeof cape3dReentryProfile==='function'){ const r=cape3dReentryProfile({phaseProgress:p}), S=A.sfxReentry||(A.sfxReentry={});
+    if(A.sfxEnginePhase!=='reentry'&&A.sfxEnginePhase!=='reentry-quiet'){ sfxStop(); A.sfxEnginePhase='reentry'; }
+    if(r.plasma>.15&&!S.roar){ S.roar=true; sfxBurn(.35); } else if(S.roar&&!S.roarOff&&r.plasma<.08&&p>.2){ S.roarOff=true; sfxStop(); A.sfxEnginePhase='reentry-quiet'; }
+    if(r.drogue>0&&!S.drogue){ S.drogue=true; sfxSep(); } if(r.mains>0&&!S.mains){ S.mains=true; sfxSep(); }
+    if(r.splash&&!S.splash){ S.splash=true; if(typeof sfxSplash==='function') sfxSplash(); } } }catch(e){}
   const DROGUE=0.52, MAIN=0.66, SPLASH=0.96, PLASMA_END=0.46;
   const horizon=Math.round(H*0.80);
   // segment lerp over keyframes [[p,val],...]

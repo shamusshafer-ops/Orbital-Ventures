@@ -30,6 +30,9 @@ const MAP3D_TEXTURE_FILES = {
   sun:'texture-sun.jpg', mercury:'texture-mercury.jpg', venus:'texture-venus.jpg', earth:'texture-earth-daymap.jpg',
   moon:'texture-moon.jpg', mars:'texture-mars.jpg', jupiter:'texture-jupiter.jpg', saturn:'texture-saturn.jpg',
   uranus:'texture-uranus.jpg', neptune:'texture-neptune.jpg',
+  // Flight Earth set (cinematic launch): 4K day / night lights / clouds downscaled from the 8K Solar System Scope
+  // maps, plus the 2K ocean mask (its specular map). The 2K `earth` skin above stays for the Solar Map and Low preset.
+  earth_day4k:'texture-earth-day-4k.jpg', earth_night:'texture-earth-night-4k.jpg', earth_clouds:'texture-earth-clouds-4k.jpg', earth_ocean:'texture-earth-ocean-2k.png',
 };
 // Cape's locally packaged material maps follow the same file://-safe route as the solar maps.
 // The generated PNGs are project assets, with their provenance recorded in assets/CREDITS.md.

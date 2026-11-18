@@ -26,6 +26,14 @@ a procedural district map (`cape3dRegionTexture`). Full sweep 174/175, 1 intenti
 RULE: the vehicle mesh may add detail but must not change stage heights/radii, `nozzleY`, or the stage sub-group
 topology — staging, smoke and the plume read them. Needs a human look at an ascent in a real browser.
 
+**Cinematic launch overhaul (2026-11-17, Claude, on main: c91b6d4, 8032f93, 1189fe2):** presentation-only layer
+over the Three.js flight — event-aware ascent pacing, shader plume, altitude sky dome, trail/clouds, fairing
+jettison, recovery flyback, camera modes (Cinematic/Tracking/Close/Ground, C key), Graphics tiers, heat shimmer,
+night lighting from the flight's own flag. Sim untouched: autoplay bot byte-identical before/after (seeds 1–3 to
+1975). Suite: `test-cinematic-launch.js`. RULES: airborne transparent effects draw at `CINE_AIR_ORDER` (the
+ocean/shore sheets are transparent at 2/5/6 and paint over anything lower); while 3D owns the frame the 2D
+fallback paints into a no-op ctx (`flight3dOwnsFrame`); never append `//` to a one-line statement — use `/* */`.
+
 **Gameplay spine (2026-11-16, branch `gameplay-spine`):** working through EVALUATION-2026-11-GAMEPLAY.md §7 in
 order; steps 1 (frontier era), 2 (re-flight saturation, SAVE_VERSION 69) and 3 (launch commit policy,
 SAVE_VERSION 70), 4 (opening: checklist research step after the first flight, with a cash reserve), 5a (service contracts,
