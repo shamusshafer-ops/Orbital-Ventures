@@ -261,6 +261,8 @@ function outlinerItems(){
     push('⚗', (r?r.name:ar.id), ar.monthsLeft*30, ()=>setTab('rnd'), 'var(--readout)'); }
   // production queue
   buildQueueList().forEach(o=>{ if(o.started) push('🏭', o.name||'Vehicle build', o.monthsLeft*30, ()=>{ setTab('command'); try{ showInfrastructureModal(); }catch(e){} }); });
+  /* spine step 8: an astronaut finishing training is a real "now you can fly" moment */
+  (state.staff||[]).forEach(s=>{ if(roleOf(s.id)==='astro' && astroInTraining(s)){ const p=personById(s.id); push('🎓', `${p?p.name:'Astronaut'} flight-ready`, astroTrainedAbs(s)-absDay(), ()=>{ try{ showPersonnelModal(); }catch(e){} }); } });
   // material dip — the one live decision left in the collapsed market; surfaced at the top (eta 0)
   MATERIAL_DEFS.forEach(d=>{ if(isMaterialDip(d.key) && canBuyMaterialDip(d.key).ok) push('📦', d.name+' on sale', 0, ()=>{ setTab('command'); try{ showInfrastructureModal(); }catch(e){} }, 'var(--ok)'); });
   // #19 slice C: an unstaffed critical department is a standing reliability risk — surface it in the flow
@@ -1036,6 +1038,7 @@ function recommendedAction(){
     if(mm.reqResearch && !state.research[mm.reqResearch]){
       if(state.activeResearch) return {kind:'wait', title:'R&D in progress', detail:`${(RESEARCH.find(x=>x.id===state.activeResearch.id)||{}).name||''} — ${fmtTimeLeft(state.activeResearch.monthsLeft)} left, on the path to ${mm.name}.`, tab:'rnd'};
       const r=firstResearchableToward(mm.reqResearch);
+      if(r && researchEraMet(r) && !sciGateMet(r)){ const src=scienceSourceAdvice(); return {kind:'science', title:src.title, detail:`${r.name} (on the path to ${mm.name}) needs ${sciGateCost(r)} ⚛ — you have ${Math.floor(state.science||0)}. ${src.detail}`, tab:src.tab, action:src.action||null, missionId:src.missionId}; } /* spine step 8 */
       if(r) return {kind:'research', title:`Research: ${r.name}`, detail:`Unlocks the path to ${mm.name}.`, tab:'rnd', researchId:r.id};
     }
     // Spine step 1: deep-space missions also need a tracking station (#89). Without this branch the advisor
@@ -1043,6 +1046,11 @@ function recommendedAction(){
     if(state.rep>=mm.minRep && (!mm.reqResearch||state.research[mm.reqResearch]) && needsTrackingNetwork(mm) && trackingStationCount()<1){
       const st=TRACKING_STATIONS.find(s=>canBuildStation(s.id).ok) || TRACKING_STATIONS.find(s=>!s.reqResearch||state.research[s.reqResearch]);
       if(st) return {kind:'tracking', title:`Build: ${st.name}`, detail:`${mm.name} flies beyond Earth orbit — it needs a tracking station first (${fM(st.setup)} setup, ${fM(st.upkeep)}/mo).`, tab:null, action:canBuildStation(st.id).ok?`buildTrackingStation('${st.id}')`:null};
+    }
+    if(missionFlyable(mm) && !crewReadiness(mm).ok){ /* spine step 8: crewed objective, no flight-ready astronaut */
+      const hasAstro=(state.staff||[]).some(s=>roleOf(s.id)==='astro');
+      const pick=!hasAstro && availablePool().filter(p=>roleOf(p.id)==='astro').sort((a,b)=>b.skill-a.skill)[0];
+      if(pick) return {kind:'crew', title:`Hire: ${pick.name}`, detail:`${mm.name} is crewed — astronauts train ${ASTRO_TRAIN_MONTHS} months before they fly. Build the vehicle while they train.`, tab:'personnel', action:`hirePersonnel('${pick.id}')`};
     }
     if(missionFlyable(mm)) return {kind:'launch', title:`Launch: ${mm.name}`, detail:`Your next objective — ${no.program.name}.`, tab:'bench', missionId:mm.id, reward:{money:mm.payout, rep:mm.rep}};
     if(state.rep<mm.minRep){
@@ -1054,6 +1062,8 @@ function recommendedAction(){
   if(!state.activeResearch){
     const next=RESEARCH.find(r=>!state.research[r.id] && reqsMet(r) && researchEraMet(r) && sciGateMet(r) && state.money>=rdCostOf(r)); // step 1: never recommend a node that can't be bought yet
     if(next) return {kind:'research', title:`Research: ${next.name}`, detail:'Expand your capabilities.', tab:'rnd', researchId:next.id};
+    const sciShort=scienceShortNode(); /* spine step 8: research is waiting on science, not money — name a source */
+    if(sciShort){ const src=scienceSourceAdvice(); return {kind:'science', title:src.title, detail:`${sciShort.name} needs ${sciGateCost(sciShort)} ⚛ (you have ${Math.floor(state.science||0)}). ${src.detail}`, tab:src.tab, action:src.action||null, missionId:src.missionId}; }
   }
   return {kind:'advance', title:'Advance the calendar', detail:'Let R&D and the program move forward a month.', tab:null};
 }
@@ -9242,7 +9252,7 @@ function renderPersonnelCard(p, sr){
       <div>
         <span style="font-size:14px;font-weight:600;color:var(--ink)">${p.name}</span>
         <span class="pill" style="margin-left:6px">${roleLabel(p)}</span>
-        <span class="pill" style="margin-left:4px;color:var(--ignite);border-color:var(--hud-line)" title="${traitOf(p.id).desc}">${traitOf(p.id).name}</span>
+        <span class="pill" style="margin-left:4px;color:var(--ignite);border-color:var(--hud-line)" title="${traitOf(p.id).desc}">${traitOf(p.id).name}</span>${isAstro&&astroInTraining(sr)?`<span class="pill" style="margin-left:4px;color:var(--warn)" title="Not flight-ready until training ends">🎓 Training until ${dayToDate(astroTrainedAbs(sr))}</span>`:''}
         ${isDeptLead(p.id)?'<span class="pill" style="margin-left:4px;color:var(--readout);border-color:var(--hud-line)" title="Department lead — steers this department\'s output">★ lead</span>':''}
         ${isAstro&&assigned?'<span class="pill active" style="margin-left:4px">assigned</span>':''}
         ${isAstro&&isCrewDeployed(p.id)?'<span class="pill" style="margin-left:4px;color:var(--readout);border-color:var(--hud-line)">🚀 in flight</span>':''}
@@ -9324,7 +9334,7 @@ function renderPersonnel(){
     const rows=gaps.map(g=>{
       const def=departmentDef(g.id);
       return g.kind==='understaffed'
-        ? `<div style="color:var(--bad);font-size:12px">⚠ <b>${def.icon} ${def.name}</b> is unstaffed — a core department with no engineers${eraStakesFrac()>0?` (reliability −${Math.round(DEPT_UNDERSTAFF_REL_PEN*eraStakesFrac()*100)}% while empty)`:''}. Hire below.</div>`
+        ? `<div style="color:var(--bad);font-size:12px">⚠ <b>${def.icon} ${def.name}</b> is unstaffed — a core department with no engineers${deptStaffingRelPenalty()>0?` (flights capped at ${Math.round(teamRelCeiling()*100)}% reliability while any core department is empty)`:''}. Hire below.</div>`
         : `<div style="color:var(--warn);font-size:12px">○ <b>${def.icon} ${def.name}</b> has no lead — promote one to steer it.</div>`;
     }).join('');
     html+=`<div class="card" style="margin-bottom:10px;border-color:var(--hud-line);background:var(--panel2)">

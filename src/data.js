@@ -1087,8 +1087,13 @@ const DEPT_LEAD_WEIGHT = 1.6;
 const CORPS_LEAD_REL_BONUS_MAX = 0.03;
 // #19 slice C: workforce planning — a fully-unstaffed CORE engineering specialty is a real risk.
 // Era-scaled (0 in Pioneer, like CE4 stakes) so early game is provably unchanged.
-const DEPT_UNDERSTAFF_REL_PEN = 0.03; // reliability hit per unstaffed core department at full era scaling
-const DEPT_UNDERSTAFF_REL_CAP = 0.09; // total cap on the understaffing penalty
+// Spine step 8: the core engineering departments set a reliability CEILING per world era, instead of a
+// small subtractive penalty. Unstaffed, a company can't fly better than this in era i (1 = no ceiling, so
+// Pioneer and Early Orbital are unchanged); each staffed core department (propulsion, structures,
+// avionics) closes a third of the gap up to TEAM_REL_CEIL_FULL.
+const TEAM_REL_CEIL_UNSTAFFED = [1, 1, 0.90, 0.86, 0.82, 0.78, 0.74, 0.70];
+const TEAM_REL_CEIL_FULL = 0.995;
+const DEPT_UNDERSTAFF_REL_CAP = TEAM_REL_CEIL_FULL - Math.min(...TEAM_REL_CEIL_UNSTAFFED); // deepest possible cut (all three empty, last era)
 function defaultDepartments(){ const o={}; for(const d of DEPARTMENTS) o[d.id]={lead:null, training:0}; return o; }
 
 const RIVALS = [

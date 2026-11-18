@@ -8276,3 +8276,45 @@ settle and sink. Heat shield faces the direction of travel at a trim angle, upri
 **Audio (new):** plasma roar, mortar pops at drogue and mains, splash — once each, identical at 1x and 50x.
 Validation: `test-cinematic-launch.js` 120/120; full sweep 183/184 + 1 intentional skip; headless Firefox frames
 at 106, 54, 5.3, 1.6 km and splashdown.
+
+## 2026-11-18 — Spine step 8: science as research cost, trained astronauts, team reliability ceiling (Claude)
+
+From `EVALUATION-2026-11-GAMEPLAY.md` §5.5 / §7 step 8.
+
+**BEHAVIOR CHANGE (all three parts).**
+
+- **Science is a research currency.** `sciGateCost(r)` now prices every node past Pioneer at
+  `round(cost × SCI_COST_PER_M[eraMin])` ⚛ (0, 0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6 per $M). A node's authored
+  `sciCost` is a floor. Pioneer stays free, so the opening is unchanged. The existing gate plumbing (buy,
+  queue, crash programs, UI cost labels) already read `sciGateCost`. Scientists now produce science directly:
+  `sciStaffMonthly()` = skill × morale × trait yield × `SCI_STAFF_PER_MONTH` 1.6, accrued daily. When research
+  is waiting only on science, the advisor returns `kind:'science'` and names a source via
+  `scienceSourceAdvice()`: hire a scientist, fly the Orbital Observatory, build a station lab, or fly new
+  missions. The same check covers the research path toward the next objective, which used to recommend a
+  node you couldn't start.
+- **A crewed flight needs a trained astronaut.** New hires get `trainedAbs` (`ASTRO_TRAIN_MONTHS` 6 ahead,
+  SAVE_VERSION 74). `canLaunch` refuses a crewed hangar hull or window launch without a flight-ready
+  astronaut (`reason:'NO_ASTRONAUT'`). A tracked build can still be committed while the crew trains.
+  `launch()` auto-assigns the best ready astronaut when none is picked. The advisor offers to hire one
+  (`kind:'crew'`). The personnel card shows a training badge, and Up Next shows "flight-ready".
+- **Team reliability ceiling.** It replaces #19 slice C's subtractive understaffing penalty in `curRel`.
+  `teamRelCeiling()` caps `effectiveReliability` at `TEAM_REL_CEIL_UNSTAFFED[world era]`: no cap through
+  Early Orbital, then 0.90, 0.86, 0.82, 0.78, 0.74 and 0.70 with all three core departments empty. Each staffed
+  core department closes a third of the gap to 0.995. `deptStaffingRelPenalty()` keeps its name and now
+  reports how far the ceiling sits below full, so the workforce warnings keep working.
+- Departments were **not** collapsed into ~4 teams (the eval's "consider"); deferred.
+- Bot: `BOT_HIRE=1` adds a staffing player. Without it, the bot no longer builds crewed rockets it has no
+  astronaut for (before that change, a parked crewed hull blocked all later builds).
+
+Bot, seeds 2/3/5 to 1975 (seeds 1 and 4 go bankrupt in 1943 on the unchanged baseline too):
+
+| | nodes 1975 | firsts | rep 1975 | era reached |
+|---|---|---|---|---|
+| baseline | 67–69 | 13–14 | 1350–1685 | Station & Shuttle |
+| no staff (floor) | 36–38 | 6 | 612–668 | stuck in Crewed & Lunar (never flies First Astronaut) |
+| `BOT_HIRE=1` | 51–68 | 13–15 | 1418–1954 | Station & Shuttle; 8–13 nodes waiting on science by 1960–70 |
+
+The baseline banked 200–250 ⚛ it never spent; science now runs near zero in every configuration. The floor
+stays solvent ($1.06–1.20B), so the stall comes from lost progress, not insolvency. Validation:
+`test-spine-step8.js` 35/35; fixtures in `test-era-costs-crash.js` and `test-research-era-gate.js` now bank
+science; full sweep green.

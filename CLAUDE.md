@@ -6,7 +6,7 @@ reorder existing entries there, only add new ones at the end, same as `ROADMAP.m
 
 ---
 
-## STATUS (as of 2026-11-14 — PR #2 mass accounting merged, runner fixed, BENCH_V2 on)
+## STATUS (as of 2026-11-18 — gameplay spine steps 1–8 done)
 
 **Repo health:** `node tests/run-gate0-evidence.js` → 168/169 suites pass, one intentional skip
 (`test-progress-unify.js`), zero unexpected. Build parity, generated-script syntax clean. The runner
@@ -38,7 +38,12 @@ fallback paints into a no-op ctx (`flight3dOwnsFrame`); never append `//` to a o
 order; steps 1 (frontier era), 2 (re-flight saturation, SAVE_VERSION 69) and 3 (launch commit policy,
 SAVE_VERSION 70), 4 (opening: checklist research step after the first flight, with a cash reserve), 5a (service contracts,
 SAVE_VERSION 71) 5b (era cost growth `eraCostMult()`, crash programs) 6 (rivals on the world clock `rivalYear()`,
-SAVE_VERSION 72) and 7 (Annual Review, SAVE_VERSION 73) done. RULE: when the bot stalls, look for a stuck
+SAVE_VERSION 72), 7 (Annual Review, SAVE_VERSION 73) and 8 (2026-11-18: science as research cost, trained
+astronauts, team reliability ceiling, SAVE_VERSION 74; `test-spine-step8.js`) done. All 8 steps of §7 are complete;
+the eval's next move is extending the bot to build stations and fly profile missions (`BOT_HIRE=1` covers hiring).
+RULE: every post-Pioneer node now costs science (`sciGateCost`) — a test that starts research past Pioneer must bank
+`state.science`. RULE: crewed hangar/window launches need a flight-ready astronaut (`crewReadiness`); tracked
+builds don't. Bot seeds 1 and 4 go bankrupt in 1943 on the unchanged baseline — measure with 2/3/5. RULE: when the bot stalls, look for a stuck
 `state.launchTxn` first — two real soft-locks were found that way. RULE: a test of the manual decision panels must set `state.launchPolicy='manual'` —
 new games default to Nominal, which answers weather/live/reserve/orbit calls itself. Measure every step with `tools/autoplay-bot.js` before and after.
 RULE: `currentEra()` is the WORLD era (calendar or Program-opened frontier) — use `calendarEraIndex()` only

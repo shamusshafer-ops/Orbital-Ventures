@@ -103,6 +103,7 @@ newGame('engineer');
   for(const req of (late.req||[])) state.research[req]=true;
   if(late.reqMissionDone) state.completed[late.reqMissionDone]=true;
   check('fixture sanity: prereqs are genuinely satisfied before asserting the start', reqsMet(late)===true);
+  state.science=1e4; // spine step 8: every post-Pioneer node also costs science
   tryStartQueuedResearch();
   check('the same queued node starts once its era arrives',
     state.activeResearch && state.activeResearch.id===late.id);

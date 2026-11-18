@@ -1,6 +1,6 @@
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=73; // v73: state.review + serviceDelivered/procDelivered counters — the Annual Review (spine step 7).
+const SAVE_VERSION=74; // v74: astronaut trainedAbs — the crew training pipeline (spine step 8). See docs/SAVE-VERSIONS.md.
 // Pre-v62 saves with in-progress flight ownership are rejected rather than assigned a fabricated
 // outcome; ordinary v61 lifecycle records are remapped through the schema-2 factories on load.
 //

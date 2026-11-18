@@ -6,6 +6,9 @@
 // with the aggressive option, signs affordable passive contracts, takes bridge loans on insolvency,
 // and advances each turn with runToNextEvent() exactly as the header button does. It never hires staff,
 // builds stations/bases or touches manufacturing — so it is a FLOOR, not a model of a human player.
+// BOT_HIRE=1 (spine step 8) adds a staffing player: it takes the advisor's hire suggestions (scientists,
+// astronauts) and staffs the three core engineering departments once the team reliability ceiling bites.
+// Without it the bot never builds a crewed rocket it has no astronaut for.
 //
 // Usage (from the repo root, after `node build.js`):
 //   cat tests/harness.js build/game.js tools/autoplay-bot.js > /tmp/ovbot.js
@@ -41,6 +44,9 @@ if(process.env.BOT_POLICY){ try{ state.launchPolicy=process.env.BOT_POLICY; }cat
 let rid=0; const R=()=>'bot'+(++rid);
 const stats={turns:0, idleTurns:0, stops:{}, modals:{}, launches:0, success:0, fail:0, research:0, contractsSigned:0, hires:0, actionsPerTurn:[], daysPerTurn:[], firstYear:{}, stuck:{}};
 const bump=(o,k,n=1)=>o[k]=(o[k]||0)+n;
+// spine step 8: a sensible player doesn't build a crewed rocket with no astronaut on the payroll to fly it
+const crewable=x=>!(typeof missionNeedsAstronaut==='function'&&missionNeedsAstronaut(x)) || (state.staff||[]).some(s=>roleOf(s.id)==='astro');
+const flyableB=x=>missionFlyable(x)&&crewable(x);
 const launchEngines=()=>unlockedEngines().filter(id=>!ENGINES[id].transferOnly);
 
 // Failed searches are cached until the tech base changes (a new research node or engine) — the profile
@@ -151,7 +157,7 @@ function answerPending(){
   if(_pendingRivalDisaster){ p.push('rivaldisaster'); try{ declineRivalRescue(); }catch(e){} _pendingRivalDisaster=null; }
   if(state.mandate&&!state.mandate.accepted&&!state.mandate.declined){ p.push('mandate'); try{ acceptMandate(); }catch(e){} }
   if(state.review&&state.review.pending){ p.push('review'); const g=state.review.graded||[]; stats.objMet=(stats.objMet||0)+g.filter(x=>x.met).length; stats.objKinds=stats.objKinds||{}; g.forEach(x=>{ const k=stats.objKinds[x.kind]=stats.objKinds[x.kind]||[0,0]; k[1]++; if(x.met) k[0]++; }); stats.objTotal=(stats.objTotal||0)+g.length; try{ // pick the two it can most plausibly meet, as a player would
-      const feas=o=>{ switch(o.kind){ case 'mission': { const m=missionById(o.missionId); return m&&missionFlyable(m)&&design(m)?3:0; }
+      const feas=o=>{ switch(o.kind){ case 'mission': { const m=missionById(o.missionId); return m&&flyableB(m)&&design(m)?3:0; }
         case 'flights': return o.target<=Math.max(2,(stats.lastYearSucc||2))?2.5:1; case 'service': return 2.6; case 'contracts': return 2.2;
         case 'research': return 1.8; case 'support': return 1.2; } return 0; };
       const pick=state.review.offered.slice().sort((a,b)=>feas(b)-feas(a)||(b.reward.money-a.reward.money)).slice(0,2);
@@ -185,6 +191,16 @@ while(state.year<YEAR_END && stats.turns<4000){
   const coaching=!state.completed.first_flight && !['0','fly'].includes(process.env.BOT_CHECKLIST);
   const curStep=coaching&&typeof onboardingSteps==='function'?(onboardingSteps().find(x=>x.current)||{}).key:null;
   if(coaching && !state.activeResearch && curStep==='research'){ const pk=onboardingResearchPick(); if(pk){ try{ buyResearch(pk.id); if(state.activeResearch){ acts.push('research '+pk.id+' (checklist)'); stats.research++; } }catch(e){} } }
+  // BOT_HIRE=1 (spine step 8): a staffing player — takes the advisor's hire suggestions (scientists when
+  // research waits on science, an astronaut when the next objective is crewed) and staffs each core
+  // engineering department once the team reliability ceiling starts to bite. Default off = the no-staff floor.
+  if(process.env.BOT_HIRE==='1' && !state.launchTxn){
+    const rec=recommendedAction();
+    if((rec.kind==='science'||rec.kind==='crew') && /^hirePersonnel\(/.test(rec.action||'') && state.money>20){ try{ eval(rec.action); stats.hires++; acts.push('hire: '+rec.title); }catch(e){} }
+    if(typeof deptStaffingRelPenalty==='function' && deptStaffingRelPenalty()>0 && state.money>30){
+      for(const d of ['propulsion','structures','avionics']){ if(deptStaffed(d)) continue; const p=availablePool().filter(x=>roleOf(x.id)==='eng'&&x.specialty===d).sort((a,b)=>a.salary-b.salary)[0]; if(p){ hirePersonnel(p.id); stats.hires++; acts.push('hire eng '+d); break; } }
+    }
+  }
   const flyFirst=process.env.BOT_CHECKLIST==='fly' && !state.completed.first_flight; // comparison mode: no research before the first success
   if(!coaching && !flyFirst && !state.activeResearch){
     const rec=recommendedAction(); let r=null;
@@ -211,12 +227,12 @@ while(state.year<YEAR_END && stats.turns<4000){
     let rec=recommendedAction();
     if(rec.kind==='tracking'&&rec.action){ try{ eval(rec.action); acts.push('advisor: '+rec.title); }catch(e){} rec=recommendedAction(); }
     let m=rec.missionId?missionById(rec.missionId):null;
-    if(!m){ const no=nextObjective(); if(no&&missionFlyable(no.mission)) m=no.mission; }
+    if(!m){ const no=nextObjective(); if(no&&flyableB(no.mission)) m=no.mission; }
     if(m&&m.window&&!(state.committedWindow&&state.committedWindow.missionId===m.id)){
       try{ const ws=windowsFor(m.id); const lead=(buildMonths(m)+2)*30; const i=ws.findIndex(w=>w.abs>absDay()+lead); if(i>=0){ commitWindow(m.id,i); acts.push('commit window '+m.id+' '+dayToDate(ws[i].abs)); } }catch(e){ bump(stats.stuck,'window-err'); } }
-    if(!m||!missionFlyable(m)){
+    if(!m||!flyableB(m)){
       const val=x=>x.proc?x.payout:estMissionPayout(x);
-      const pool=MISSIONS.filter(x=>missionFlyable(x)&&(!x.window||(state.committedWindow&&state.committedWindow.missionId===x.id))&&!x.stationVisit&&!x.tanker)
+      const pool=MISSIONS.filter(x=>flyableB(x)&&(!x.window||(state.committedWindow&&state.committedWindow.missionId===x.id))&&!x.stationVisit&&!x.tanker)
         .concat((state.contractOffers||[]).filter(o=>!o.deliverModule&&!o.stationVisit&&!o.orbitDeployment&&!o.vehicleDocking&&(o.minRep||0)<=state.rep&&(!o.reqResearch||state.research[o.reqResearch])));
       const ranked=pool.sort((a,b)=>val(b)-val(a)).slice(0,6).map(x=>[x,netValue(x)]).filter(([,n])=>n>0).sort((a,b)=>b[1]-a[1]); // only jobs expected to make money
       m=ranked.length?ranked[0][0]:null;
@@ -228,7 +244,7 @@ while(state.year<YEAR_END && stats.turns<4000){
     let d=m?design(m):null;
     if(m&&!d){ bump(stats.stuck,'no-design:'+m.id);
       const val=x=>x.proc?x.payout:estMissionPayout(x);
-      const alt=MISSIONS.filter(x=>x!==m&&missionFlyable(x)&&!x.window).concat((state.contractOffers||[]).filter(o=>!o.deliverModule&&!o.stationVisit&&!o.orbitDeployment&&!o.vehicleDocking&&(o.minRep||0)<=state.rep&&(!o.reqResearch||state.research[o.reqResearch]))).sort((a,b)=>val(b)-val(a));
+      const alt=MISSIONS.filter(x=>x!==m&&flyableB(x)&&!x.window).concat((state.contractOffers||[]).filter(o=>!o.deliverModule&&!o.stationVisit&&!o.orbitDeployment&&!o.vehicleDocking&&(o.minRep||0)<=state.rep&&(!o.reqResearch||state.research[o.reqResearch]))).sort((a,b)=>val(b)-val(a));
       for(const x of alt){ const dx=design(x); if(dx&&(!state.completed[x.id]||x.proc)&&netValue(x)>0||dx&&state.completed[x.id]&&netValue(x)>0){ m=x; d=dx; if(x.proc) stats.procFlown=(stats.procFlown||0)+1; break; } }
       if(m&&!d) m=null; }
     if(m){

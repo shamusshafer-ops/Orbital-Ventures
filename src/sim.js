@@ -173,7 +173,6 @@ function curRel(){
   base+=engRelBonus(); // M6: engineer team reliability bonus
   base+=diff().relBonus; // difficulty: forgiveness bump
   base-=relDebt(); // #26: lasting penalty from research setbacks shipped with the flaw unresolved
-  base-=deptStaffingRelPenalty(); // #19 slice C: era-scaled hit for leaving a core department unstaffed (0 in Pioneer)
   return base; // note: effectiveReliability still clamps to diff().relCap, so the cap preserves balance
 }
 // #26: bounded reliability debt accumulated from "ship it degraded" research-setback calls
@@ -268,10 +267,29 @@ function branchAffinityMult(track){
   return clampA(1 - discount + surcharge, BRANCH_MULT_FLOOR, BRANCH_MULT_CEIL);
 }
 function rdCostOf(r){ return round2((r?r.cost:0)*doctrineMult('rd')*branchAffinityMult(r&&r.track)); } // doctrine + branch-affinity R&D price
-// #1 science gate: a handful of flagship deep-tech nodes also cost banked science to *start* —
-// knowledge you can only have by flying (prestige science missions feed this). 0 = ungated.
-function sciGateCost(r){ return (r&&r.sciCost)||0; }
+// #1 science gate → spine step 8: science is a research CURRENCY. Every node past Pioneer costs banked
+// science to start, scaled by its capital price and its era (SCI_COST_PER_M ⚛ per $M). Flights alone
+// trickle enough for the early-orbital years; from the crewed era on, the tree needs the modules that
+// make science — Science Division staff, the Orbital Observatory, station and base labs. Pioneer stays
+// free so the opening is unchanged. A node's authored sciCost is a floor (the old flagship gates).
+const SCI_COST_PER_M=[0, 0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.0];
+function sciGateCost(r){ if(!r) return 0; const k=SCI_COST_PER_M[Math.min(SCI_COST_PER_M.length-1, r.eraMin||0)]||0; return Math.max(r.sciCost||0, Math.round((r.cost||0)*k)); }
 function sciGateMet(r){ return (state.science||0) >= sciGateCost(r); }
+// the cheapest node you could start right now but for science (era, prerequisites and capital all met)
+function scienceShortNode(){
+  let best=null;
+  for(const r of RESEARCH){ if(state.research[r.id]||!reqsMet(r)||!researchEraMet(r)||sciGateMet(r)||state.money<rdCostOf(r)) continue; if(!best||sciGateCost(r)<sciGateCost(best)) best=r; }
+  return best;
+}
+// where more science comes from, best available first — scientists, the Observatory, a lab, then flying
+function scienceSourceAdvice(){
+  const sci=availablePool().filter(p=>roleOf(p.id)==='sci').sort((a,b)=>b.skill-a.skill)[0];
+  if(sci) return {title:`Hire: ${sci.name}`, detail:`A scientist produces about ${(sci.skill*SCI_STAFF_PER_MONTH).toFixed(1)} ⚛/month (${fM(sci.salary)}/mo salary).`, tab:'personnel', action:`hirePersonnel('${sci.id}')`};
+  const obs=MISSIONS.find(m=>m.id==='space_telescope');
+  if(obs && !state.scienceProgram && missionFlyable(obs)) return {title:`Launch: ${obs.name}`, detail:`The Observatory runs a ${TELESCOPE_SCI_BASE} ⚛/month science program for ${TELESCOPE_TERM/12|0} years.`, tab:'bench', missionId:obs.id};
+  if(!Object.keys(state.facilities||{}).some(fid=>facilityBuilt(fid))) return {title:'Build a research station', detail:'Station and base labs produce science every month.', tab:'station'};
+  return {title:'Fly new missions', detail:'First flights yield the most science; routine re-flights a little.', tab:'missions'};
+}
 // switching ("doctrine drift") is a real commitment: capital that grows with company size, rep, and time
 const DOCTRINE_SWITCH_REP=20, DOCTRINE_SWITCH_MONTHS=6;
 function doctrineSwitchCost(){ return round2(Math.max(8, (state.flights||0)*0.8 + 6)); }
@@ -976,6 +994,7 @@ function tickContinuousDay(){
     if(pr.fuel>0) state.depot+=perDay(pr.fuel*factor);
     if(pr.sci>0) state.science=(state.science||0)+perDay(pr.sci*factor);
   }
+  { const ss=sciStaffMonthly(); if(ss>0) state.science=(state.science||0)+perDay(ss); } /* spine step 8: the Science Division produces science directly */
   // Gate 3 support is an expense-side daily offset, never an upfront cash
   // grant. Applying it here—before the daily insolvency check—makes its 90-day
   // promise independent of the calendar day on which reorganization succeeds.
@@ -6237,6 +6256,7 @@ function effectiveReliability(m,v,sim,crewed,dockingCapability){
   rel*=dockingRel.factor; // D1: the established orbital-assembly penalty now comes from exact reserved operations
   if(dockingRel.additive) rel=clampA(rel+dockingRel.additive,0.1,0.995); // EOR's established −2% is owned by the docking phase
   if(m && m._arch && m._arch.relMod && m._arch.id!=='eor') rel=clampA(rel + m._arch.relMod, 0.1, 0.995); // other M12 architecture modifiers remain unchanged
+  rel=Math.min(rel, teamRelCeiling()); /* spine step 8: an unstaffed engineering team caps what any flight can achieve */
   return rel;
 }
 // does this mission actually reach orbital velocity (or fly a deep-space profile)? Suborbital/ballistic
@@ -7165,6 +7185,7 @@ function canLaunch(v,m,sim,prebuilt,frozenDockingBuild){
   }
   const docking=dockingMissionCapability(m,frozenDockingBuild);
   if(docking.rejections.length) return {ok:false,why:dockingRejectionText(docking),reason:'DOCKING_INCOMPATIBLE',docking};
+  if(prebuilt||m.window){ const cr=crewReadiness(m); if(!cr.ok) return {ok:false,why:cr.why,reason:'NO_ASTRONAUT'}; } /* spine step 8: the flight itself needs a trained astronaut */
   const quote=launchCommitmentQuote(m,v,sim,!!prebuilt,frozenDockingBuild);
   if(m.window){
     const cw=state.committedWindow;
@@ -7192,6 +7213,7 @@ function launch(prebuilt,hullId,requestId,validatedQuote){
   const suppliedQuote=!!(prebuilt&&validatedQuote&&validatedQuote.prebuilt&&recordIsJsonSafe(validatedQuote));
   const chk=suppliedQuote?{ok:true,quote:validatedQuote}:canLaunch(v,m,sim,prebuilt);
   if(!chk.ok){ announceAction(chk.why||'Launch unavailable.'); return false; }
+  if(prebuilt||m.window) autoAssignCrew(m); /* spine step 8: no astronaut picked → the best flight-ready one commands */
   const quote=chk.quote||launchCommitmentQuote(m,v,sim,!!prebuilt);
   // User request: a fresh (non-prebuilt) commit now builds as a tracked, real-time campaign instead
   // of resolving the whole build+test+launch span in one instant jump — reuses the exact same
@@ -8672,14 +8694,17 @@ function workforceGaps(){
   });
   return gaps;
 }
-// Era-scaled reliability penalty for leaving a core engineering specialty completely unstaffed.
-// 0 in Pioneer (eraStakesFrac=0) → early game provably unchanged.
-function deptStaffingRelPenalty(){
-  const frac=eraStakesFrac(); if(frac<=0) return 0;
-  let pen=0;
-  ['propulsion','structures','avionics'].forEach(id=>{ if(!deptStaffed(id)) pen+=DEPT_UNDERSTAFF_REL_PEN; });
-  return Math.min(DEPT_UNDERSTAFF_REL_CAP, pen*frac);
+// Spine step 8: the team reliability ceiling (replaces #19 slice C's subtractive penalty). No flight can
+// beat it; it is 1-capped (no effect) through Early Orbital, so the opening is unchanged.
+const CORE_DEPTS=['propulsion','structures','avionics'];
+function teamRelCeiling(){
+  const u=TEAM_REL_CEIL_UNSTAFFED[Math.min(TEAM_REL_CEIL_UNSTAFFED.length-1, eraIndex(currentEra()))];
+  if(u>=TEAM_REL_CEIL_FULL) return 1;
+  const missing=CORE_DEPTS.filter(id=>!deptStaffed(id)).length;
+  return missing? Math.round((TEAM_REL_CEIL_FULL-(TEAM_REL_CEIL_FULL-u)*missing/CORE_DEPTS.length)*1000)/1000 : 1;
 }
+// how far the ceiling sits below full — the "unstaffed costs you" number the UI shows (0 = no effect yet)
+function deptStaffingRelPenalty(){ const c=teamRelCeiling(); return c>=1?0:Math.round((TEAM_REL_CEIL_FULL-c)*1000)/1000; }
 
 // M9: two trait-weighted team scores — one for reliability, one for R&D speed.
 function engScores(){
@@ -8720,6 +8745,14 @@ function roleTeamScore(role, chan){
 const SCI_STAFF_YIELD_MAX=0.25, SCI_STAFF_RD_MAX=0.10;
 function sciStaffYieldBonus(){ return roleTeamScore('sci','yield')*SCI_STAFF_YIELD_MAX; }
 function sciStaffRdBonus(){ return roleTeamScore('sci','rd')*SCI_STAFF_RD_MAX; }
+// Spine step 8: each scientist also produces science every month (skill × morale × trait yield), so the
+// Science Division is a real input to the tech race, not a multiplier on a trickle. 0 when none hired.
+const SCI_STAFF_PER_MONTH=1.6;
+function sciStaffMonthly(){
+  let t=0;
+  for(const s of (state.staff||[])){ if(roleOf(s.id)!=='sci') continue; const tr=traitOf(s.id); t+=effSkill(s.id)*Math.max(0.2,(s.morale||50)/100)*(tr.yield||1)*SCI_STAFF_PER_MONTH; }
+  return t*(1+Math.min(SCI_YIELD_CAP, researchEffectSum('sciYield')))*doctrineMult('sci');
+}
 // Executives: lift the earned government grant, cut monthly opex, sweeten mandate bonuses. All 0 when none hired.
 const EXEC_GOV_FUNDING_MAX=0.20, EXEC_OPEX_CUT_MAX=0.15, EXEC_MANDATE_BONUS_MAX=0.15;
 function execGovBonus(){ return roleTeamScore('exec','gov')*EXEC_GOV_FUNDING_MAX; }
@@ -8755,6 +8788,37 @@ function stationRdSpeedBonus(){
   return Math.min(STATION_RD_SPEED_MAX, sci/6*STATION_RD_SPEED_MAX);
 }
 
+/* ---------- Spine step 8: a crewed flight needs a trained astronaut ----------
+   Every crewed mission (m.crew>0) flies with a named astronaut. A new hire spends ASTRO_TRAIN_MONTHS in
+   training before they're flight-ready, so a crewed programme is a pipeline to plan, not a click. The
+   check bites at the moment of flight (a hangar hull, or a window mission's single jump) — a tracked
+   build may be committed while the crew is still training. If none is assigned, the best flight-ready
+   astronaut is assigned automatically at launch. */
+const ASTRO_TRAIN_MONTHS=6;
+function astroTrainedAbs(sr){ return (sr&&sr.trainedAbs)||0; }
+function astroInTraining(sr){ return absDay()<astroTrainedAbs(sr); }
+function astroFlightReady(id){
+  const sr=staffRecord(id);
+  return !!(sr && roleOf(id)==='astro' && !astroInTraining(sr) && !isCrewDeployed(id) && !stationCrewAssigned(id) && !stationVisitorCrewAssigned(id));
+}
+function readyAstronauts(){ return (state.staff||[]).filter(s=>astroFlightReady(s.id)).sort((a,b)=>effSkill(b.id)-effSkill(a.id)); }
+function missionNeedsAstronaut(m){ return !!(m && (m.crew||0)>0); }
+function crewReadiness(m){
+  if(!missionNeedsAstronaut(m)) return {ok:true};
+  const a=state.assignedAstronaut;
+  if(a && astroFlightReady(a)) return {ok:true, id:a};
+  if(a && staffRecord(a) && astroInTraining(staffRecord(a))) return {ok:false, why:`${personById(a).name} is still in astronaut training until ${dayToDate(astroTrainedAbs(staffRecord(a)))}.`};
+  const r=readyAstronauts()[0]; if(r) return {ok:true, id:r.id, auto:true};
+  const tr=(state.staff||[]).filter(s=>roleOf(s.id)==='astro' && astroInTraining(s)).sort((x,y)=>astroTrainedAbs(x)-astroTrainedAbs(y))[0];
+  if(tr) return {ok:false, why:`No flight-ready astronaut — ${personById(tr.id).name} finishes training ${dayToDate(astroTrainedAbs(tr))}.`};
+  if((state.staff||[]).some(s=>roleOf(s.id)==='astro')) return {ok:false, why:'Every astronaut is already flying or posted to a station — hire another, or wait for a crew to come home.'};
+  return {ok:false, why:`A crewed flight needs an astronaut — hire one (Personnel); training takes ${ASTRO_TRAIN_MONTHS} months.`};
+}
+function autoAssignCrew(m){
+  const c=crewReadiness(m);
+  if(c.ok && c.auto && c.id){ state.assignedAstronaut=c.id; const p=personById(c.id); log('note',`${p?p.name:'An astronaut'} assigned to command ${m.name}.`); }
+}
+
 function assignedAstroRecord(){
   if(!state.assignedAstronaut) return null;
   return staffRecord(state.assignedAstronaut);
@@ -8774,9 +8838,11 @@ function astroBonus(){
 function hirePersonnel(id){
   if(!guardOrdinaryAction('Hiring personnel')) return false;
   if(isHired(id)) return;
-  state.staff.push({id, morale:70, lowMoraleMonths:0, commendCooldown:0, xp:0, birthYear:state.year-startingHireAge(id)});
+  const rec={id, morale:70, lowMoraleMonths:0, commendCooldown:0, xp:0, birthYear:state.year-startingHireAge(id)};
+  if(roleOf(id)==='astro') rec.trainedAbs=Math.round(absDay()+ASTRO_TRAIN_MONTHS*DAYS_PER_MONTH); // spine step 8: astronaut training pipeline
+  state.staff.push(rec);
   const p=personById(id);
-  log('note',`Hired ${p.name} (${p.salary.toFixed(2)}M/mo salary).`);
+  log('note',`Hired ${p.name} (${p.salary.toFixed(2)}M/mo salary).${rec.trainedAbs?` In astronaut training until ${dayToDate(rec.trainedAbs)}.`:''}`);
   render();
 }
 

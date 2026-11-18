@@ -190,7 +190,7 @@ Each step is small, keeps saves working, and has a pass/fail target `tools/autop
 | 5 ✅ | Service contracts (5a, added by measurement) + crash programs + era cost growth (5b) | Cash on hand stays under ~3 years of operating cost after 1950. **1970: 8–11y → 0.3–4.0y**; met through the 1970s, untestable later (the bot can't design Belt/Jupiter missions). |
 | 6 ✅ | Rivals keyed to the frontier (5.3) | A sprinting bot faces rival firsts within ~5 years of its own. **Median gap 12.6–13.8y → 2.9–4.4y**; rivals win ~1 race per campaign. |
 | 7 ✅ | Annual Review (5.4), folding mandates/hearings/funding | One political stop per year instead of scattered modals. **Met: 1.0/yr**; objectives met 52–58% after calibration. Hearings kept as consequences. |
-| 8 | Science as research cost; astronauts and team ceilings (5.5) | A bot with no staff or stations stalls by the crewed era — modules become necessary. |
+| 8 ✅ | Science as research cost; astronauts and team ceilings (5.5) | A bot with no staff or stations stalls by the crewed era — modules become necessary. **Met: the no-staff bot never leaves the Crewed & Lunar era (36–38 nodes and 6 firsts by 1975, vs 67–69 and 13–14 before); a staffing bot (4 hires) keeps pace (51–68 nodes, 13–15 firsts), then waits on science in the Station era without an Observatory or station.** |
 
 Steps 1–4 are mostly re-wiring existing code and give most of the feel improvement; 5–8 are the deeper
 re-balance. After step 8 the bot should be extended to hire, build stations and fly profile missions, since

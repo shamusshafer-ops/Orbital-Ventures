@@ -47,6 +47,7 @@ check('a node two eras ahead is not', !far || !crashEligible(far));
 check('an available node is not (just research it)', !crashEligible(RESEARCH.find(r=>researchEraMet(r)&&reqsMet(r)&&!state.research[r.id])));
 check('crash price and time', crashCost(next)===round2(rdCostOf(next)*CRASH_COST_MULT) && crashMonths(next)===Math.ceil(next.months*CRASH_TIME_MULT));
 check('ordinary research still refuses an era-locked node', buyResearch(next.id)!==true && !state.activeResearch);
+state.science=1e4; /* spine step 8: every post-Pioneer node also costs science */
 const m0=state.money;
 check('crashResearch starts it', crashResearch(next.id)===true && state.activeResearch && state.activeResearch.id===next.id && state.activeResearch.crash===true);
 check('…charging the premium and the longer schedule', near(m0-state.money, crashCost(next), 0.011) && state.activeResearch.monthsLeft===crashMonths(next));

@@ -21,6 +21,12 @@ Two things still apply:
   should warn rather than silently misread — that protects against the two-agent workflow, not an
   install base.
 
+## v74 — Astronaut training pipeline (spine step 8)
+
+Adds `trainedAbs` (absolute day) to astronaut records in `state.staff`, set on hire to
+`ASTRO_TRAIN_MONTHS` ahead. A crewed flight needs an astronaut past that day. Records without it
+(earlier hires) are flight-ready.
+
 ## v73 — Annual Review (spine step 7)
 
 Adds `state.review` (`{year, snap, last, graded, offered, chosen, pending}`) and two counters,
