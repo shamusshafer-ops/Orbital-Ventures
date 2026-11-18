@@ -8190,3 +8190,41 @@ in one-line statements — clouds stopped drifting/fading and floated through th
 now guards it. Validation: `test-cinematic-launch.js` 84/84; full sweep 183/184 + 1 intentional skip, 0
 unexpected; headless Firefox frames of the shroud before/during/after jettison, insertion burn and coast,
 ground tracker (catches the transonic vapour cone), close chase through staging.
+
+### 2026-11-17 — Cinematic launch overhaul, slice 3: night, Earth detail, shimmer, performance (Claude)
+
+Presentation-only. **Lighting:** during a launch the Cape's 240 s ambient day/night loop no longer decides
+the light — the flight's own `night` flag does (`cape3dFlightSkyClock`: day flights in clear mid-morning,
+night flights in full night); a "day" launch could previously render at dusk or night depending on when it
+was clicked. At night the plume light reaches 1.6 km at 3.2× so the exhaust lights the pad, smoke and stack.
+**Earth:** the 2K photo map is ~20 km/texel, so below ~100 km it read as a blur; `cape3dEarthDetail` injects
+km-scale land albedo variation (fading out above ~250 km) and a drifting procedural cloud deck into both the
+ascent globe and the orbit diagram (shared km-space field, so cover matches across the hand-off). No new asset.
+**Heat shimmer:** real screen-space refraction — the frame-so-far is copied into a FramebufferTexture in the
+strip's onBeforeRender and re-sampled with scrolling noise; dense air only, High/Ultra, self-disabling if the
+copy fails (verified working in Firefox). **Draw order:** upstream's transparent ocean (2) and shore sheets
+(5, 6) were painting over every airborne effect at order 0 — the exhaust trail and cloud decks had vanished
+against the sea since the rebase; airborne effects now draw at `CINE_AIR_ORDER`. **Performance:** the hidden
+2D fallback kept painting every frame under the 3D view (~7 ms/frame); while 3D owns the frame its drawing
+now goes to a no-op context (state, audio and flightData still run; real context returns on hand-off).
+Measured in headless Firefox: per-frame script time 9.1 → 3.4 ms mean (drawAscent 7.1 → 0.6 ms); scene
+85 draw calls / 32k triangles. GPU frame time not measurable headless (software GL).
+Validation: `test-cinematic-launch.js` 94/94; full sweep 183/184 + 1 intentional skip, 0 unexpected.
+
+### 2026-11-17 — Cinematic launch overhaul, slice 4: recovery, nozzle heat, high-speed playback (Claude)
+
+Presentation-only. **Recovered first stage:** the snapshot now carries the sim's recovery disposition
+(`effects.recovering`, true only when the stage is actually recovered); such a stage no longer tumbles like
+debris — it holds attitude while clearing the stack, flips engines-first, then lights a boostback burn (its own
+plume) that kills and slightly reverses its downrange speed, vertical motion staying ballistic
+(`cape3dRecoveryProfile`). **Engines:** upper stages get real engine bells, tucked inside the interstage until
+separation (the stack used to fly on with a bare tank base); each stage's bells share one material whose glow
+follows that stage's own burn with thermal lag (`cape3dNozzleHeatStep`: ~0.6 s to heat, ~3 s to cool), the
+vacuum bells glowing more than the regeneratively cooled boosters. **Camera:** the director frames the fairing
+jettison (`FAIRING SEPARATION`). **High-speed playback (bugs found by a new 1x-vs-50x test through the real
+animLoop):** at 50x the main engine sound never started (a frame jumped from countdown straight into ascent,
+skipping the pad frame that lights the engines — now caught up on entering ascent), and the upper-stage
+ignition sound fired only inside its visual window (now on crossing the relight point). Event sounds are now
+identical at 1x and 50x. Validation: `test-cinematic-launch.js` 104/104; full sweep 183/184 + 1 intentional
+skip, 0 unexpected; headless Firefox frames of a recovered-stage separation in close chase with glowing
+first-stage bells and the cold upper-stage engine.

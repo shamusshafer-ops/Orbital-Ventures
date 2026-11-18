@@ -559,7 +559,7 @@ function flight3dPresentationSnapshot(spec,timing,t){
   // — the outcome was already resolved by the sim long before this animation opened.
   const DEEP_FAIL_FRAC=.42;
   const deepFailure=(phase==='orbit'||phase==='transfer')&&!!(spec&&spec.success===false&&spec.failPhase==='deep')&&phaseP>=DEEP_FAIL_FRAC;
-  return {phase,phaseProgress:clampA(phaseP,0,1),overallProgress:clampA(local/total,0,1),mode:(spec&&spec.mode)||'launch',crewed:!!(spec&&spec.crewed),isOrbital:!!(spec&&spec.isOrbital),isCislunar:!!(spec&&spec.isCislunar),reqDv:(spec&&spec.reqDv)||0,success:spec?spec.success!==false:true,failPhase:(spec&&spec.failPhase)||null,report:(spec&&spec.report)||null,orbitOps:(spec&&spec.orbitOps)||null,vehicle:{stages,boosters,transferProp:(spec&&spec.transferProp)||0,transferEng:String((spec&&spec.transferEng)||''),physics:(spec&&spec.physics)||null},effects:{ignition:clampA(d.ignite==null?(phase==='pad'?0:1):d.ignite,0,1),night:!!(spec&&spec.night),ascentFailure,crewEscaped,failureProgress:ascentFailure?clampA((phaseP-.5)/.28,0,1):0,deepFailure,deepFailureFrac:DEEP_FAIL_FRAC,deepFailureProgress:deepFailure?clampA((phaseP-DEEP_FAIL_FRAC)/.24,0,1):0}};
+  return {phase,phaseProgress:clampA(phaseP,0,1),overallProgress:clampA(local/total,0,1),mode:(spec&&spec.mode)||'launch',crewed:!!(spec&&spec.crewed),isOrbital:!!(spec&&spec.isOrbital),isCislunar:!!(spec&&spec.isCislunar),reqDv:(spec&&spec.reqDv)||0,success:spec?spec.success!==false:true,failPhase:(spec&&spec.failPhase)||null,report:(spec&&spec.report)||null,orbitOps:(spec&&spec.orbitOps)||null,vehicle:{stages,boosters,transferProp:(spec&&spec.transferProp)||0,transferEng:String((spec&&spec.transferEng)||''),physics:(spec&&spec.physics)||null},effects:{ignition:clampA(d.ignite==null?(phase==='pad'?0:1):d.ignite,0,1),night:!!(spec&&spec.night),recovering:!!(spec&&spec.recovering),ascentFailure,crewEscaped,failureProgress:ascentFailure?clampA((phaseP-.5)/.28,0,1):0,deepFailure,deepFailureFrac:DEEP_FAIL_FRAC,deepFailureProgress:deepFailure?clampA((phaseP-DEEP_FAIL_FRAC)/.24,0,1):0}};
 }
 function flight3dAvailable(){ return FLIGHT3D&&typeof cape3dAvailable==='function'&&cape3dAvailable()&&typeof startCape3D==='function'; }
 function flight3dRestoreCape(s){
@@ -1691,9 +1691,25 @@ function drawPad(t){
   ctx.fillStyle=color; ctx.fillText(label, W/2, H*0.13);
   ctx.restore();
 }
+// Performance (cinematic pass): while the Three.js flight owns the frame, the 2D fallback still has to run
+// every frame — it drives the audio, telemetry/flightData and the phase state machine — but its PAINTING
+// goes into a hidden canvas (~7 ms/frame measured). Route that drawing to a no-op context instead; the
+// real context comes straight back the moment the 3D view hands off (renderer failure/unsupported phase).
+let _nullCtx2D=null;
+function nullCtx2D(){
+  if(_nullCtx2D) return _nullCtx2D; const noop=function(){ return grad; }, grad={addColorStop(){}}, store={};
+  _nullCtx2D=new Proxy(store,{ get(t,k){ if(k in t) return t[k]; if(k==='measureText') return ()=>({width:0}); if(k==='canvas') return null; if(k==='getImageData') return ()=>({data:new Uint8ClampedArray(4)}); if(k==='clearFrame') return undefined; return noop; }, set(t,k,v){ t[k]=v; return true; } });
+  return _nullCtx2D;
+}
+function flight3dOwnsFrame(){ return !!(flight3dSession&&flight3dSession.active&&!flight3dSession.handedOff); }
 function drawScene(t){
+  const A=animState; if(!A) return;
+  const realCtx=A.ctx; A.presentation3d=flight3dPresentationSnapshot(A.spec,A,t); updateFlightAltitude(A.presentation3d); updateFlight3DSession(A.presentation3d);
+  if(flight3dOwnsFrame()) A.ctx=nullCtx2D();
+  try{ drawSceneInner(t); } finally{ if(animState===A) A.ctx=realCtx; }
+}
+function drawSceneInner(t){
   const A=animState,s=A.spec;
-  A.presentation3d=flight3dPresentationSnapshot(s,A,t); updateFlightAltitude(A.presentation3d); updateFlight3DSession(A.presentation3d);
   if(A.ctx&&A.ctx.clearFrame) A.ctx.clearFrame(); // GL-2D fallback clears its framebuffer each frame
   A.earthPhase=false; // set true by drawOrbit so the Phaser scene knows to show the native Earth FX layer
   A.ascentPhase=false; // set true by drawAscent so the native ascent FX layer (clouds/vapor) shows only during ascent
@@ -1730,6 +1746,9 @@ function drawScene(t){
     A.lastT=t; return;
   }
   A.ignite=1; // Slice A: full flame for the rest of the flight — don't inherit the pad's near-1 ramp tail
+  // Catch-up: at high playback speed a frame can jump from the countdown straight into ascent, skipping the
+  // pad frame that lights the engines — the engine sound then never started at all.
+  if(!A._engineStarted&&A.padDur>0){ const es=A._engSpec||{engCount:1,totalProp:0}; sfxStartEngine(es.engCount,es.totalProp); A._engineStarted=true; }
   A.presentation3d=flight3dPresentationSnapshot(s,A,t); updateFlight3DSession(A.presentation3d);
   if(at < A.ascentDur || ascentFail){ A.phase='ascent'; drawAscent(at, ascentFail); }
   else {
@@ -2699,7 +2718,8 @@ function drawAscent(t,canFail){
     for(const ev of (q3.trajectory.stageEvents||[])){
       const key=ev.kind+':'+ev.index; if(q3.t>=ev.t&&!fired[key]){ fired[key]=true; if(ev.kind==='stage'&&typeof sfxCutoff==='function') sfxCutoff(); sfxSep(); } // MECO thud, then the pyro
       // Upper-stage light: once per core-stage event, when the cinematic relight begins.
-      if(ev.kind==='stage'&&q3.relight>.05&&q3.t>=ev.t&&!fired['light:'+key]){ fired['light:'+key]=true; if(typeof sfxIgnitionBurst==='function') sfxIgnitionBurst(.5); }
+      // Fires on CROSSING the relight point, not inside a window: at 50x a single frame can skip the whole relight.
+      if(ev.kind==='stage'&&q3.t>=ev.t+CINE_SEP_DARK&&!fired['light:'+key]){ fired['light:'+key]=true; if(typeof sfxIgnitionBurst==='function') sfxIgnitionBurst(.5); }
     }
   } else {
     sfxUpdateEngine(throttle, altFrac, qNorm); // qNorm (same Max-Q signal that drives camera shake) crossfades the audio mix

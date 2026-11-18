@@ -161,9 +161,70 @@ check('fixture has a booster and a core-stage event',!!stageEv&&!!boostEv);
   check('close chase frames tighter than tracking',cape3dCloseCameraProfile({phase:'ascent'}).distMul<cape3dStableCameraProfile({phase:'ascent'}).distMul);
 }
 
-// ---------- 10. hygiene ----------
+// ---------- 10. lighting, Earth detail, shimmer ----------
 {
-  const pure=[cape3dFairingJettisonTime,cape3dInsertionBurn,cape3dGroundTrackerFov,cape3dAscentWarpTable,cape3dWarpAscentTime,cape3dStagingThrottle,cape3dIgnitionFlicker,cape3dLaunchShake,cape3dSkyProfile,cape3dTrailSamples,cape3dUpdateSmokeTrail,cape3dApplyShaderPlume];
+  const day=skyAtmosphere(cape3dFlightSkyClock(999,true,false)), night=skyAtmosphere(cape3dFlightSkyClock(999,true,true));
+  check('a day flight flies in daylight whatever the ambient clock says',day.sunA>.6);
+  check('a night flight flies in real night',night.sunA<.05&&night.starMul>.9);
+  check('outside a launch the ambient Cape clock is untouched',cape3dFlightSkyClock(123.4,false,true)===123.4);
+  check('at night the plume lights much further than by day',cape3dPlumeLightReach(true).distance>3*cape3dPlumeLightReach(false).distance&&cape3dPlumeLightReach(true).intensity>cape3dPlumeLightReach(false).intensity);
+  check('heat shimmer lives in dense air behind a burning engine',cape3dShimmerStrength(0,1,0)>.9&&cape3dShimmerStrength(20000,1,.2)<.01&&cape3dShimmerStrength(0,0,0)===0&&cape3dShimmerStrength(100,1,1)===0);
+  check('Earth detail patches both globes onto one shared cloud field (km mapping)',cape3dAscentWorld.toString().includes('cape3dEarthDetail(earthMat,1/1000)')&&cape3dOrbitWorld.toString().includes('cape3dEarthDetail(earthMat,6371/355)'));
+}
+
+// ---------- 11. hidden 2D fallback stops painting while 3D owns the frame ----------
+{
+  const origUpd=cape3dUpdateFlightPresentation; let painted=0;
+  cape3dUpdateFlightPresentation=()=>true; // headless: pretend the Three.js view accepted the frame
+  playMission(Object.assign({},spec,{title:'T',mode:'launch'}),()=>{}); animState.held=true;
+  const real=animState.ctx, spy=new Proxy(real||{},{get(t,k){ if(['fillRect','fill','stroke','fillText','arc','drawImage'].includes(k)) return function(){ painted++; }; const v=t[k]; return typeof v==='function'?v.bind(t):v; },set(t,k,v){ t[k]=v; return true; }});
+  animState.ctx=spy; flight3dSession={active:true,handedOff:false,spec};
+  animState.held=false; drawScene(animState.padDur+animState.ascentDur*.3); animState.held=true;
+  check('no 2D painting while the 3D view owns the frame',painted===0);
+  check('the real 2D context is restored after the frame',animState.ctx===spy);
+  check('the fallback still runs its state machine (flightData) while silent',!!(animState.flightData&&animState.flightData.curAlt>=0));
+  flight3dSession.handedOff=true; animState.held=false; drawScene(animState.padDur+animState.ascentDur*.35); animState.held=true;
+  check('after a hand-off the fallback paints again',painted>0);
+  flight3dSession=null; cape3dUpdateFlightPresentation=origUpd; try{ dismissAnim(); }catch(e){}
+}
+
+// ---------- 12. event sounds fire exactly once, at 1x and at 50x playback ----------
+{
+  const counts={}, orig={};
+  ['sfxSep','sfxCutoff','sfxIgnitionBurst','sfxBoom'].forEach(n=>{ counts[n]=0; });
+  const o1=sfxSep,o2=sfxCutoff,o3=sfxIgnitionBurst,o4=sfxBoom;
+  sfxSep=function(){ counts.sfxSep++; }; sfxCutoff=function(){ counts.sfxCutoff++; }; sfxIgnitionBurst=function(){ counts.sfxIgnitionBurst++; }; sfxBoom=function(){ counts.sfxBoom++; };
+  const flyAt=mult=>{
+    Object.keys(counts).forEach(k=>counts[k]=0);
+    const prevIdx=animSpeedIdx; animSpeedIdx=ANIM_SPEEDS.findIndex(x=>x.mult===mult);
+    playMission(Object.assign({},spec,{title:'R',mode:'launch',success:true,failPhase:null,rng:{wind:0,windFreq:1,windPhase:0,pitchJitter:0,sep:[],apogee:1,bow:0}}),()=>{});
+    let now=performance.now(); const real=performance.now; performance.now=()=>now; animState.prevWall=now;
+    try{ for(let f=0;f<6000&&animState&&!animState.held;f++){ now+=16; animLoop(); } } finally{ performance.now=real; }
+    const out=Object.assign({},counts); try{ dismissAnim(); }catch(e){} animSpeedIdx=prevIdx; return out;
+  };
+  const n1=flyAt(1), n50=flyAt(50), coreEvents=plan.stageEvents.filter(e=>e.kind==='stage').length, fairing=cape3dFairingJettisonTime(plan)!=null?1:0;
+  check('separation sounds = real separations + fairing, once each (1x)',n1.sfxSep===plan.stageEvents.length+fairing);
+  check('cutoff thuds = core-stage MECOs + orbital SECO, once each (1x)',n1.sfxCutoff===coreEvents+1);
+  check('50x playback skips frames but no event sound is lost or doubled',JSON.stringify(n50)===JSON.stringify(n1));
+  check('a successful flight never plays the loss sound',n1.sfxBoom===0);
+  sfxSep=o1; sfxCutoff=o2; sfxIgnitionBurst=o3; sfxBoom=o4;
+  console.log('  sound counts 1x',JSON.stringify(n1),'50x',JSON.stringify(n50));
+}
+// ---------- 13. recovery + nozzle heat ----------
+{
+  const r0=cape3dRecoveryProfile(0,1500,900), r5=cape3dRecoveryProfile(5,1500,900), r20=cape3dRecoveryProfile(20,1500,900), rEnd=cape3dRecoveryProfile(200,1500,900);
+  check('recovered stage holds attitude, then flips engines-first',r0.flip===0&&r5.flip>0&&r5.flip<Math.PI&&r20.flip===Math.PI);
+  check('boostback burn runs after the flip and kills downrange speed (slight reversal)',r20.burn>0&&rEnd.burn===0&&rEnd.vxNow<0&&rEnd.vxNow>-0.2*1500);
+  check('vertical motion stays ballistic',Math.abs(r20.dy-(900*20-.5*9.80665*400))<1e-6);
+  let h=0; for(let i=0;i<30;i++) h=cape3dNozzleHeatStep(h,1,.05); const hot=h; for(let i=0;i<30;i++) h=cape3dNozzleHeatStep(h,0,.05);
+  check('nozzles heat within about a second of burn and cool more slowly',hot>.8&&h>.4&&h<hot);
+  check('snapshot carries the sim recovery disposition',flight3dPresentationSnapshot(Object.assign({},spec,{recovering:true}),timing,5000).effects.recovering===true&&flight3dPresentationSnapshot(spec,timing,5000).effects.recovering===false);
+  check('camera director frames the fairing jettison',(()=>{ const tf=cape3dFairingJettisonTime(plan); if(tf==null) return true; const q=cape3dLaunchProfile(flight3dPresentationSnapshot(spec,timing,timing.padDur+timing.ascentDur*cape3dUnwarpAscentTime(plan,tf+.2))); return cape3dLaunchCameraProfile(q).shot==='FAIRING SEPARATION'; })());
+}
+
+// ---------- 14. hygiene ----------
+{
+  const pure=[cape3dRecoveryProfile,cape3dNozzleHeatStep,cape3dFlightSkyClock,cape3dShimmerStrength,cape3dFairingJettisonTime,cape3dInsertionBurn,cape3dGroundTrackerFov,cape3dAscentWarpTable,cape3dWarpAscentTime,cape3dStagingThrottle,cape3dIgnitionFlicker,cape3dLaunchShake,cape3dSkyProfile,cape3dTrailSamples,cape3dUpdateSmokeTrail,cape3dApplyShaderPlume];
   check('cinematic helpers are deterministic (no Math.random)',pure.every(f=>!f.toString().includes('Math.random')));
   // A '//' comment pasted mid-line once silently disabled the Cape cloud update (and a puff hide) in a one-line statement.
   const tickSrc=cape3dTick.toString().split('\n').find(l=>l.includes('clouds.forEach'))||'';
