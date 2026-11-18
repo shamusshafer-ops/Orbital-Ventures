@@ -1901,3 +1901,64 @@ Model tier: mechanical — lighter tier appropriate.
 **Sequencing for the whole tier:** 3.1 first and alone — it is small, it fixes a live dangling
 reference, and it makes an entire existing system reachable. Then 3.2, which 3.5 depends on. 3.3 is
 independent and can slot anywhere. 3.4 only after 3.1.
+
+## Planned — Decision-loop roadmap: every launch leads somewhere, every choice changes play (scoped 2026-11-18)
+
+Follows the one-more-launch pass (`83729ec`, see ROADMAP-HISTORY.md), which joined a flight's result to the
+next build. Three places still have the old gap: the pre-launch go/no-go is scattered across the bench; a
+failure's remedy is a handful of buttons rather than a story; and research mostly moves numbers
+(measured 2026-11-18: of 98 nodes, 21 are reliability-only, ~25 are cost/time/yield/σ-only, 14 have no
+effect field, ~30 add an engine or an unlock). Each phase carries a measurable target like the spine steps.
+Recommended order: 0 → 1 → 2 → 3 → 4a → 4b → 4c → 5. Phase 3 gets a short design review with the owner first.
+
+### Phase 0 — Finish the one-more-launch pass
+- [x] Browser-check the Last Flight card on a crewed flight, a multi-leg flight, and a partial / in-flight
+  abort result; fix wording where a partial needs its own "what went wrong". *(2026-11-18: crewed Lunar Flyby
+  aborted on a live call and lost to a forced loss in Firefox; partial/abort/strand/crew-lost verdicts; in-flight
+  anomaly calls now get operations remedies — rehearsal, a flight director — instead of a hardware test.)*
+- [x] Multi-leg Resize: size the short leg, or say which leg is short and by how much — the button must
+  never silently disappear on a Δv-blocked multi-leg mission. *(2026-11-18: one tank, or the in-space stages
+  for their own burns then the launch vehicle; otherwise "Ascent to LEO is N m/s short".)*
+- [x] `BOT_DEBRIEF=1` bot mode that takes the card's first failure remedy. **Target:** back-to-back
+  repeat failures of the same subsystem drop measurably vs the baseline bot (seeds 2/3/5).
+  *(2026-11-18, to 1975: failures repeating the last failure's subsystem 11 → 5; hardware failures 55 → 45;
+  fail rate 23.6% → 20.6% avg. Small samples — directionally right, not conclusive. Found that ~40% of the
+  bot's failures are in-flight anomaly calls with no subsystem; the card now handles those.)*
+
+### Phase 1 — One go/no-go block beside the launch button
+- [ ] Money (now / later / kept in the bank), odds (reliability, team ceiling, near-miss risk), one-click
+  test options (same numbers as the card) and launch policy in one compact block.
+- [ ] One authority computes go / risky / blocked + why; checklist, card and button all read it.
+  **Target:** every launch input visible without scrolling at 1280×800; the button's enabled state
+  agrees with `canLaunch` for every block reason (tested).
+
+### Phase 2 — Failure learning (Codex handoff 2026-09-07, extends the card)
+- [ ] The inquiry names a suspect subsystem with stated uncertainty, and offers 2–3 corrective programs
+  (inspect the lot / redesign / integrated testing) costing time, staff, bays and money.
+- [ ] Merge the inquiry modal and the card's remedies into one flow.
+  **Target:** a corrective program changes only its subsystem, applies exactly once across save/load and
+  repeated clicks; the Phase 0 bot shows fewer repeat failures after a redesign.
+
+### Phase 3 — A tech tree that changes how you play
+- [ ] Two or three nodes per era that open a new action (e.g. integrated vehicle test, abort modes that
+  turn a crewed loss into a partial, booster recovery, parallel build bays, a new mission profile,
+  telemetry that makes failure causes certain).
+- [ ] Fold flat stat bumps into fewer, larger nodes named for what they let you do; make the 14
+  effect-less nodes visibly gates or remove them; tag nodes "new option" vs "improvement" in R&D.
+  **Target:** ≥2 action-adding nodes per era; bot progression pace per era within ±10% of today.
+
+### Phase 4 — Stations and logistics that matter
+- [ ] 4a. Bot builds one LEO station and flies resupply (measurement prerequisite, no gameplay change).
+- [ ] 4b. Logistics manifest for one station + one base (12–36 months: stocks, deadlines, launches split
+  across supply/crew/construction/revenue); a shortfall has ≥2 understandable recoveries.
+- [ ] 4c. Merge Station Bench + Base Bench into one Outposts tab (eval §6; still separate in render.js).
+  **Target:** in the Station era a staffed bot with a station keeps pace and one without stalls.
+
+### Phase 5 — Personnel assignment
+- [ ] Flight director + small discipline team per major mission; familiarity and fatigue on staff records;
+  traits change available crisis responses, not just percentages.
+  **Target:** no double-counted bonus or incompatible simultaneous assignment; tradeoff shown before commit.
+
+### Cleanup alongside
+- [ ] Manufacturing micro (`buyMaterialDip`, engine/part stock): make it bind or auto-procure in the build.
+- [ ] Slider bench vs part bench: decide after the owner's `BENCH_V2` playtest.

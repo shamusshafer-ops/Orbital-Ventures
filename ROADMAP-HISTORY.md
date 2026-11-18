@@ -8353,3 +8353,32 @@ Presentation and planning only; outcomes are untouched. Bot seed 2 to 1962 gives
 and summary before and after. `test-one-more-launch.js` 39/39; full sweep 185/186 + 1 intentional skip.
 Browser-verified on a fresh game (success → resize + static fire → forced failure → remedies → R&D focus)
 and on an older v74 save.
+
+## 2026-11-18 — Decision-loop roadmap Phase 0: finish the one-more-launch pass (Claude)
+
+Scoped the decision-loop roadmap (ROADMAP.md, Phases 0–5) and shipped Phase 0.
+
+- **Multi-leg Resize.** `autoSizePlan` now covers profile missions. It tries one tank (any launch-vehicle stage,
+  the transfer stage, descent or ascent stage); failing that, it sizes each short in-space stage for its own burns
+  (repeating, since they ride on each other) and then the launch-vehicle stage that lifts the result. Cheapest build
+  wins; every probe restores state. Load search walks up past tank-structure steps that make Δv non-monotonic.
+  When propellant can't do it, the bench says which leg is short and by how much (`#benchResizeNo`) instead of
+  dropping the button. Lunar Flyby with both legs short resolves in one click; the lunar landings tried need
+  engines, and say so.
+- **Card verdicts.** Partial, in-flight abort (scrub — now treated as needing remedies, with its story), crew
+  escaped, crew stranded, crew lost. A test campaign is no longer suggested when reliability is already at the cap
+  (browser showed "95% → 95%").
+- **Anomaly calls.** `recordFlightDebrief` takes the ops result; `lastDebrief.anomaly={id,title,decided}`. An
+  anomaly that cost the objective gets operations remedies — rehearse the next flight (real odds from
+  `flightReadiness`) and a flight director when Mission Control is empty — not a hardware test campaign.
+- **Bot.** `BOT_DEBRIEF=1` takes the card's first move after each failure; every run now prints a
+  `failureLearning` line. Seeds 2/3/5 to 1975: repeat-subsystem failures 11 → 5, hardware failures 55 → 45,
+  fail rate 23.6% → 20.6%; money and progress unchanged within noise. ~40% of bot failures were anomaly partials
+  with no subsystem — the gap the anomaly work closes.
+
+Verified: `test-decision-loop-phase0.js` 36/36 (the cap check confirmed failing without the fix);
+`test-one-more-launch.js` 39/39; full sweep 186/187 + 1 intentional skip; bot seed 2 to 1966 byte-identical
+timeline and summary vs HEAD. Firefox: multi-leg Resize on a short Lunar Flyby; a crewed flyby aborted on a
+forced live call (real decision panel); a crewed forced loss through a budget hearing. Not browser-tested: an
+anomaly-driven partial (no dev switch forces one; unit-tested through `recordFlightDebrief`). No save bump:
+`lastDebrief` gained optional fields only.

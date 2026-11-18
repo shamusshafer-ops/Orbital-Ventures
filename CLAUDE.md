@@ -52,6 +52,10 @@ when you specifically mean the calendar.
 **One-more-launch pass (2026-11-18, Claude):** Last Flight → Next move card on the Design Bench
 (`state.lastDebrief`, SAVE_VERSION 75), one-click Δv Resize (`autoSizePlan`), ready hull as the bench's primary
 action. Presentation/planning only — bot byte-identical. Suite: `test-one-more-launch.js`. See ROADMAP-HISTORY.md.
+**Decision-loop roadmap (2026-11-18):** scoped in ROADMAP.md (Phases 0–5). Phase 0 done: multi-leg Resize
+(`autoSizeSlots`, chained in-space → launch-vehicle sizing), card verdicts for abort/strand/scrub/crew-lost, anomaly
+calls recorded on the debrief (`lastDebrief.anomaly`) with ops remedies, `BOT_DEBRIEF=1` + the bot's
+`failureLearning` summary line. Suite: `test-decision-loop-phase0.js`. Next: Phase 1 (go/no-go block).
 
 **In progress:** (none claimed right now).
 > When you start a task, replace this line with: `<task> — <Claude|Codex> — started <date>`.

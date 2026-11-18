@@ -8047,7 +8047,7 @@ function finalizeLaunch(ctx, ops){
   if(!crewed && (outcome.kind==='loss'||outcome.kind==='abort'||outcome.kind==='strand') && outcome.subsystem) triggerInquiry(ctx, outcome);
   recordFlightLedger(flightRevenue, flightExpense); // #18: attribute this flight to the current month's ops summary
   if(tx) tx.applied.ledger=true;
-  recordFlightDebrief(ctx, outcome, _debriefBefore, flightRevenue, tx&&tx.spec&&tx.spec.testLevel!=null?tx.spec.testLevel:state.testLevel);
+  recordFlightDebrief(ctx, outcome, _debriefBefore, flightRevenue, tx&&tx.spec&&tx.spec.testLevel!=null?tx.spec.testLevel:state.testLevel, ops);
   state.testLevel=0; // campaign applies to one flight
   state.rehearsal=false; // #20 slice 4: rehearsal applies to one flight
   state.depotUse=0;
@@ -8307,7 +8307,7 @@ function debriefSnapshot(){
   let flyable=[]; try{ flyable=MISSIONS.filter(x=>!state.completed[x.id]&&missionFlyable(x)).map(x=>x.id); }catch(e){}
   return {money:state.money, rep:state.rep, sci:state.science||0, flyable};
 }
-function recordFlightDebrief(ctx, outcome, before, revenue, testLevel){
+function recordFlightDebrief(ctx, outcome, before, revenue, testLevel, ops){
   if(!ctx||!ctx.m||!outcome) return null;
   const m=ctx.m, after=debriefSnapshot(), kind=outcome.kind||'success';
   const nm=outcome.nearMiss;
@@ -8315,43 +8315,104 @@ function recordFlightDebrief(ctx, outcome, before, revenue, testLevel){
     subsystem:outcome.subsystem||null, phase:outcome.failPhase||(outcome.subsystem?livePhaseOf(outcome.subsystem):null),
     rel:Math.round((outcome.rel||0)*1000)/1000, story:outcome.story?String(outcome.story).slice(0,240):null,
     nearMiss:nm?{key:nm.key, label:nm.label, margin:Math.round((nm.margin||0)*1000)/1000}:null,
-    first:!ctx.routine&&kind==='success', crewed:!!ctx.crewed, testLevel:testLevel||0,
+    first:!ctx.routine&&kind==='success', crewed:!!ctx.crewed, testLevel:testLevel||0, rehearsed:!!ctx.rehearsed,
+    /* an in-flight anomaly call: an operations story, not a hardware one — the card offers ops remedies */
+    anomaly:ops&&ctx.ev?{id:ctx.ev.id, title:String(ctx.ev.title||'in-flight anomaly'), decided:!!ops.outcomeOverride}:null,
     revenue:round2(revenue||0), rep:Math.round(after.rep-((before&&before.rep)||0)), sci:round2(after.sci-((before&&before.sci)||0)),
     opened:after.flyable.filter(id=>id!==m.id&&!((before&&before.flyable)||[]).includes(id)), dismissed:false};
   return state.lastDebrief;
 }
 function dismissDebrief(){ if(state.lastDebrief){ state.lastDebrief.dismissed=true; render(); } }
-/* Bench "Resize": the smallest propellant change on one stage that closes a Δv shortfall (1% margin) while
-   keeping TWR > 1.05 and the pad limit — the stage that does it for the lowest build cost wins. A planning
-   aid; the player still decides whether to commit. Probes candidate loads on state and always restores. */
-const AUTOSIZE_MARGIN=1.01, AUTOSIZE_MIN_TWR=1.05;
+/* Bench "Resize": the smallest propellant change that closes a Δv shortfall (1% margin) while keeping
+   TWR > 1.05 and the pad limit. Single-leg missions size one launch-vehicle stage. Multi-leg missions
+   (decision-loop Phase 0, 2026-11-18) can also size the transfer stage or lander, and when one tank can't
+   do it alone, size the short in-space stage for its own burns and then the launch vehicle that lifts it.
+   The cheapest build wins. A planning aid; the player still decides whether to commit. Probes candidate
+   loads on state and always restores. When nothing fits it says which leg is short and by how much. */
+const AUTOSIZE_MARGIN=1.01, AUTOSIZE_MIN_TWR=1.05, AUTOSIZE_CHAIN_MARGIN=1.02; /* a little headroom per coupled stage so the chain settles */
+const AUTOSIZE_MODULE_SLOTS={transfer:{key:'transfer', label:'transfer stage', max:400},
+  descent:{key:'descent', label:'descent stage', max:60}, ascent:{key:'ascent', label:'ascent stage', max:40}};
+function autoSizeSlots(m){
+  const slots=state.stages.map((s,i)=>({id:'lv'+i, stage:i, label:`stage ${i+1}`, max:1000,
+    get:()=>state.stages[i].prop, set:p=>{ state.stages[i].prop=p; }}));
+  if(m.profile){ const mods=m.modules||[], want=[];
+    if(mods.includes('transfer')) want.push('transfer');
+    if(mods.includes('lander')) want.push('descent','ascent');
+    want.forEach(k=>{ const d=AUTOSIZE_MODULE_SLOTS[k]; if(state[d.key]) slots.push({id:k, module:k, label:d.label, max:d.max,
+      get:()=>state[d.key].prop, set:p=>{ state[d.key].prop=p; }}); }); }
+  return slots;
+}
+function autoSizeLegShort(sim){
+  const l=(sim&&sim.legs||[]).find(x=>!x.pass); if(!l) return null;
+  return {name:l.name, by:l.by, cap:l.cap||0, dv:l.dv, short:Math.max(0,Math.round(l.dv-(l.cap||0)))};
+}
 function autoSizePlan(m){
   m=m||curMission();
-  if(!m||m.profile) return {ok:false, why:'Multi-leg missions are sized leg by leg on the bench.'};
-  const need=effectiveReqDv(m), v0=computeVehicle();
-  if(v0.totalDv>=need) return {ok:false, fits:true, why:'This rocket already has the Δv.'};
-  const cap=padMassCap(), orig=state.stages.map(s=>s.prop); let best=null;
-  const probe=(i,p)=>{ state.stages[i].prop=p; const v=computeVehicle(); return {v, ok:v.totalDv>=need*AUTOSIZE_MARGIN&&v.twr>AUTOSIZE_MIN_TWR&&v.liftoff<=cap}; };
+  if(!m) return {ok:false, why:'No mission on the bench.'};
+  const multi=!!m.profile, need=multi?null:effectiveReqDv(m), cap=padMassCap();
+  const legsOK=sim=>!!sim&&sim.ok&&sim.legs.every(l=>l.isru||l.cap>=l.dv*AUTOSIZE_MARGIN);
+  const measure=()=>{ const v=computeVehicle(), sim=multi?simulateMission(m):null;
+    const fly=v.twr>AUTOSIZE_MIN_TWR&&v.liftoff<=cap;
+    return {v, sim, ok:fly&&(multi?legsOK(sim):v.totalDv>=need*AUTOSIZE_MARGIN)}; };
+  const v0=computeVehicle(), sim0=multi?simulateMission(m):null;
+  if(multi?(sim0&&sim0.ok):v0.totalDv>=need) return {ok:false, fits:true, why:multi?'Every leg already closes.':'This rocket already has the Δv.'};
+  const slots=autoSizeSlots(m), orig=slots.map(s=>s.get()), restore=()=>slots.forEach((s,i)=>s.set(orig[i]));
+  /* the smallest load on one slot (others as they stand) that makes test() pass, rounded up to 0.1 t */
+  const minLoad=(slot,test)=>{ const p0=slot.get(); let hi=p0, ok=false;
+    for(let k=0;k<24&&hi<slot.max;k++){ hi=Math.min(slot.max, hi*1.4+0.1); slot.set(hi); if(test()){ ok=true; break; } }
+    if(!ok){ slot.set(p0); return null; }
+    const found=hi; let lo=p0; for(let k=0;k<32;k++){ const mid=(lo+hi)/2; slot.set(mid); if(test()) hi=mid; else lo=mid; }
+    let to=Math.min(slot.max, Math.ceil(hi*10-1e-9)/10); slot.set(to);
+    /* tank structure steps can make Δv non-monotonic in load: walk up to the load that is known to pass */
+    while(!test()&&to<found){ to=Math.min(found, Math.round(to*10+1)/10); slot.set(to); }
+    if(!test()){ slot.set(p0); return null; } return to; };
+  const full=()=>measure().ok;
+  let best=null, chainShort=null;
+  const consider=changes=>{ const r=measure(); if(r.ok&&(!best||r.v.buildCost<best.cost)) best={changes, v:r.v, sim:r.sim, cost:r.v.buildCost}; };
   try{
-    for(let i=state.stages.length-1;i>=0;i--){
-      const p0=orig[i]; let hi=p0, r=null;
-      for(let k=0;k<20&&hi<1000;k++){ hi=Math.min(1000, hi*1.4+0.1); r=probe(i,hi); if(r.ok) break; }
-      if(!r||!r.ok){ state.stages[i].prop=p0; continue; }
-      let lo=p0; for(let k=0;k<32;k++){ const mid=(lo+hi)/2; if(probe(i,mid).ok) hi=mid; else lo=mid; }
-      const to=Math.ceil(hi*10-1e-9)/10, fin=probe(i,to);
-      state.stages[i].prop=p0;
-      if(fin.ok&&(!best||fin.v.buildCost<best.cost)) best={stage:i, from:p0, to, dv:fin.v.totalDv, cost:fin.v.buildCost, twr:fin.v.twr, rel:fin.v.reliability};
-    }
-  } finally { orig.forEach((p,i)=>{ if(state.stages[i]) state.stages[i].prop=p; }); }
-  if(!best) return {ok:false, why:'More propellant alone can’t close the gap — add an engine or a stage.'};
-  return Object.assign({ok:true, missionId:m.id, need, dvBefore:v0.totalDv, costBefore:v0.buildCost}, best);
+    /* one tank */
+    slots.forEach((s,i)=>{ restore(); const to=minLoad(s,full); if(to!=null) consider([{slot:s.id, stage:s.stage, module:s.module, label:s.label, from:orig[i], to}]); });
+    /* multi-leg: size each short in-space stage for its own burns (uppermost first — its mass is what the
+       stages below must push), then the launch-vehicle stage that lifts the result */
+    if(multi&&!best){ restore(); const chain=[];
+      const own=mod=>()=>simulateMission(m).legs.filter(l=>l.by===mod).every(l=>l.isru||l.cap>=l.dv*AUTOSIZE_CHAIN_MARGIN);
+      /* the in-space stages ride on each other (a fuller transfer stage is more mass for the lander to
+         carry, and the reverse), so repeat the pass until every stage closes its own burns */
+      const mods=slots.filter(x=>x.module).reverse(); let stuck=false;
+      for(let round=0;round<12&&!stuck;round++){ let changed=false;
+        mods.forEach(sl=>{ if(stuck||own(sl.module)()) return; if(minLoad(sl,own(sl.module))==null) stuck=true; else changed=true; });
+        if(!changed) break; }
+      if(!stuck&&mods.every(sl=>own(sl.module)())) mods.forEach(sl=>{ const i=slots.indexOf(sl); if(sl.get()!==orig[i]) chain.unshift({slot:sl.id, module:sl.module, label:sl.label, from:orig[i], to:sl.get()}); });
+      else stuck=true;
+      if(!stuck&&chain.length) chainShort=autoSizeLegShort(simulateMission(m));
+      if(!stuck&&chain.length){
+        if(full()) consider(chain.slice());
+        else slots.forEach((lv,j)=>{ if(lv.module) return; const keep=lv.get(), lvTo=minLoad(lv,full);
+          if(lvTo!=null) consider(chain.concat([{slot:lv.id, stage:lv.stage, label:lv.label, from:orig[j], to:lvTo}]));
+          lv.set(keep); });
+      } }
+  } finally { restore(); }
+  if(!best){
+    const leg=multi?autoSizeLegShort(sim0):null;
+    if(chainShort) return {ok:false, leg:chainShort, why:`Sizing the in-space stages for their own burns leaves ${chainShort.name} ${fI(chainShort.short)} m/s short (${fI(chainShort.cap)} of ${fI(chainShort.dv)}), and launch-vehicle propellant alone can’t make it up — it needs a stronger engine or another stage.`};
+    return {ok:false, leg, why:leg
+      ?`${leg.name} is ${fI(leg.short)} m/s short (${fI(leg.cap)} of ${fI(leg.dv)}) and more propellant alone can’t close it — a stronger engine or another stage is needed.`
+      :'More propellant alone can’t close the gap — add an engine or a stage.'};
+  }
+  const c0=best.changes[0];
+  return {ok:true, missionId:m.id, multi, need, dvBefore:v0.totalDv, costBefore:v0.buildCost, changes:best.changes,
+    stage:c0.stage, module:c0.module, from:c0.from, to:c0.to, dv:best.v.totalDv, cost:best.cost, twr:best.v.twr, rel:best.v.reliability,
+    legs:multi&&best.sim?best.sim.legs.length:0};
 }
+function autoSizeChangeText(p){ return (p.changes||[]).map(c=>`${c.label} propellant ${c.from.toFixed(1)} → ${c.to.toFixed(1)} t`).join(' + '); }
 function applyAutoSize(){
   if(!guardOrdinaryAction('Vehicle redesign')) return false;
   const p=autoSizePlan(); if(!p.ok) return false;
   const m=missionById(p.missionId);
-  log('note',`Resized for ${m?m.name:'this mission'}: stage ${p.stage+1} propellant ${p.from.toFixed(1)} → ${p.to.toFixed(1)} t (Δv ${Math.round(p.dvBefore).toLocaleString()} → ${Math.round(p.dv).toLocaleString()} m/s, build ${fM(p.costBefore)} → ${fM(p.cost)}).`);
-  setProp(p.stage, p.to);
+  log('note',`Resized for ${m?m.name:'this mission'}: ${autoSizeChangeText(p)} (${p.multi?(p.legs===2?'both legs close':`all ${p.legs} legs close`):`Δv ${Math.round(p.dvBefore).toLocaleString()} → ${Math.round(p.dv).toLocaleString()} m/s`}, build ${fM(p.costBefore)} → ${fM(p.cost)}).`);
+  const slots=autoSizeSlots(m||curMission());
+  p.changes.forEach(c=>{ const s=slots.find(x=>x.id===c.slot); if(s) s.set(c.to); });
+  render();
   return true;
 }
 function setProp(i,v){if(!guardOrdinaryAction('Vehicle redesign')) return false;state.stages[i].prop=Math.max(0.1,Math.min(1000,parseFloat(v)||0.1));render();}

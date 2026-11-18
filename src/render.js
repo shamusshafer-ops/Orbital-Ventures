@@ -6972,7 +6972,8 @@ function debriefNextMoves(d){
   const moves=[]; if(!d) return moves;
   const add=x=>{ if(x&&moves.length<3) moves.push(x); };
   let m=null; try{ m=curMission(); }catch(e){}
-  const sub=d.subsystem, subName=(SUBSYS_LABEL[sub]||'vehicle').toLowerCase(), failed=!d.success&&d.kind!=='scrub';
+  /* anything short of success wants a remedy — an in-flight abort was the named subsystem flagging marginal */
+  const sub=d.subsystem, subName=(SUBSYS_LABEL[sub]||'vehicle').toLowerCase(), failed=!d.success;
   /* a Δv shortfall is fixed by the bench's own Resize button directly below this card — not repeated here */
   let relNow=null; try{ relNow=m?computeVehicle().reliability:null; }catch(e){}
   const relTarget=m&&m.crew>0?0.80:0.70; /* the same "recommended" bar the Flight plan uses */
@@ -6981,7 +6982,18 @@ function debriefNextMoves(d){
   let tier=Math.min(TEST_LEVELS.length-1, failed&&(d.testLevel||0)>=1?(d.testLevel||0)+1:1); /* already static-fired and still lost it → the next tier */
   while(tier>1&&state.money<TEST_LEVELS[tier].cost+keep) tier--; /* never suggest a campaign you can't pay for and still fly */
   if(state.money<TEST_LEVELS[tier].cost+keep) tier=0;
-  if(wantsTest&&m&&tier>0&&(state.testLevel||0)<tier){ const t=TEST_LEVELS[tier]; add({icon:'🔥', label:`${tier>1?'Fly an uncrewed test of':'Static-fire'} the ${m.name} build`,
+  /* an anomaly call that cost the objective: hardware testing doesn't touch those odds — rehearsal and a
+     flight director do (flightReadiness / ctrlAnomScore, the same numbers the Flight plan shows) */
+  if(failed&&d.anomaly&&d.anomaly.decided&&!sub){
+    let rd=null; try{ rd=m?flightReadiness(m):null; }catch(e){}
+    if(m&&rd&&rd.anomaly>0&&!state.rehearsal&&!d.rehearsed&&state.money>=rehearsalCost(m)+keep)
+      add({icon:'📋', label:`Rehearse the next ${m.name}`, detail:`in-flight anomaly odds ${Math.round(rd.anomaly*100)}% → ${Math.round(rd.anomalyRehearsed*100)}% · ${fM(rehearsalCost(m))}, +${REHEARSAL_MONTHS} mo`, action:'toggleRehearsal()'});
+    let fd=null; try{ fd=ctrlAnomScore()>0?null:availablePool().filter(p=>roleOf(p.id)==='controller').sort((a,b)=>a.salary-b.salary)[0]||null; }catch(e){}
+    if(fd) add({icon:'🎧', label:`Hire ${fd.name}`, detail:`flight director — nobody in Mission Control to head off anomalies or steady the calls · ${fM(fd.salary)}/mo`, action:`hirePersonnel('${fd.id}')`});
+    return moves;
+  }
+  const capped=relNow!=null&&Math.min(diff().relCap,relNow+TEST_LEVELS[Math.max(1,tier)].rel)-relNow<0.01; /* already at the cap: a test buys nothing */
+  if(wantsTest&&m&&tier>0&&!capped&&(state.testLevel||0)<tier){ const t=TEST_LEVELS[tier]; add({icon:'🔥', label:`${tier>1?'Fly an uncrewed test of':'Static-fire'} the ${m.name} build`,
     detail:`+${Math.round(t.rel*100)}% reliability on that flight${relNow!=null?` (${relNow*100|0}% → ${Math.min(diff().relCap,relNow+t.rel)*100|0}%)`:''} · ${fM(t.cost)}, +${t.months} mo`, action:`setTestLevel(${tier})`}); }
   if(failed){
     const r=debriefReliabilityResearch(sub);
@@ -6998,22 +7010,30 @@ function debriefNextMoves(d){
   return moves;
 }
 // the success card's "what next": the mission now on the bench and whether the rocket you just flew fits it
+const AUTOSIZE_BLOCK_RE=/Δv shortfall|leg falls short/; /* the canLaunch reasons Resize can address */
 function resizeCostText(p){ return fM(p.cost)===fM(p.costBefore)?`build cost unchanged (${fM(p.cost)})`:`build ${fM(p.costBefore)} → ${fM(p.cost)}`; }
 function nextBenchLineHTML(){
   let m=null, line='';
   try{ m=curMission(); if(!m||state.completed[m.id]&&!m.proc) return '';
     const v=computeVehicle(), sim=m.profile?simulateMission(m):null, chk=canLaunch(v,m,sim);
     if(chk.ok) line='your rocket can fly it — commit the build on the bench';
-    else{ const p=!m.profile&&/Δv shortfall/.test(chk.why||'')?autoSizePlan(m):null;
-      line=p&&p.ok?`${fI(p.need-p.dvBefore)} m/s short — the bench can resize it in one click, ${resizeCostText(p)}`:esc(chk.why||''); }
+    else{ const p=AUTOSIZE_BLOCK_RE.test(chk.why||'')?autoSizePlan(m):null;
+      line=p&&p.ok?`${p.multi?'a leg falls short':`${fI(p.need-p.dvBefore)} m/s short`} — the bench can resize it in one click, ${resizeCostText(p)}`:esc(p&&p.why?p.why:chk.why||''); }
   }catch(e){ return ''; }
   return `<p style="font-size:12px;margin:6px 0 10px;text-align:center"><span class="dim">Next on the bench:</span> <b>${esc(m.name)}</b> · ${fM(m.payout)} — ${line}</p>`;
 }
 function lastFlightCardHTML(){
   const d=state.lastDebrief; if(!d||d.dismissed) return '';
-  const failed=!d.success&&d.kind!=='scrub', col=d.success?'var(--ok)':failed?'var(--bad)':'var(--warn)';
-  const sub=d.subsystem?(SUBSYS_LABEL[d.subsystem]||d.subsystem):null;
-  const verdict=d.success?(d.first?'first success':'success'):d.kind==='partial'?`partial — ${sub||'off-target'}`:d.kind==='scrub'?'aborted in flight':`${(sub||'vehicle').toLowerCase()} failure${d.phase?` · ${d.phase}`:''}`;
+  const soft=d.kind==='partial'||d.kind==='scrub'||d.kind==='abort'; /* the vehicle or the crew came home */
+  const failed=!d.success, col=d.success?'var(--ok)':soft?'var(--warn)':'var(--bad)';
+  const sub=d.subsystem?(SUBSYS_LABEL[d.subsystem]||d.subsystem):null, subL=(sub||'vehicle').toLowerCase(), ph=d.phase?` · ${d.phase}`:'';
+  const verdict=d.success?(d.first?'first success':'success')
+    :d.anomaly&&d.anomaly.decided&&!sub?`${d.kind==='partial'?'partial':d.kind==='strand'?'crew stranded':d.kind} — in-flight anomaly: ${esc(d.anomaly.title).toLowerCase()}`
+    :d.kind==='partial'?`partial — ${subL} came up short${ph}`
+    :d.kind==='scrub'?`aborted in flight — ${subL} flagged marginal${ph}`
+    :d.kind==='abort'?`${subL} failure${ph} — crew escaped`
+    :d.kind==='strand'?`${subL} failure${ph} — crew stranded`
+    :`${subL} failure${ph}${d.crewed?' — crew lost':''}`;
   const gains=[d.revenue>0?`<span style="color:var(--ok)">+${fM(d.revenue)}</span>`:'', d.rep?`<span style="color:${d.rep>0?'var(--readout)':'var(--bad)'}">${d.rep>0?'+':''}${d.rep} rep</span>`:'', d.sci>0?`+${Math.round(d.sci)} ⚛`:''].filter(Boolean).join(' · ');
   const why=failed&&d.story?`<div style="font-size:12px;margin-top:4px;color:var(--ink)">${esc(d.story)}</div>`
     :(d.success&&d.nearMiss&&d.nearMiss.margin<0.05?`<div style="font-size:12px;margin-top:4px;color:var(--warn)">Close call — the ${esc(String(d.nearMiss.label||'').toLowerCase())} came within ${Math.max(1,Math.round(d.nearMiss.margin*100))}% of failing.</div>`:'');
@@ -7022,7 +7042,7 @@ function lastFlightCardHTML(){
   const moveBtns=moves.map(x=>`<button class="btn" style="display:block;width:100%;text-align:left;margin-top:5px;font-size:12px;padding:6px 8px" onclick="${x.action}"><b>${x.icon} ${esc(x.label)}</b><br><span class="dim" style="font-size:11px">${esc(x.detail)}</span></button>`).join('');
   return `<div id="lastFlightCard" class="last-flight" style="border:1px solid ${col};border-left-width:3px;background:var(--panel2);border-radius:4px;padding:8px 10px;margin-bottom:8px;text-align:left">
     <div style="display:flex;justify-content:space-between;align-items:center;font:11px var(--mono);letter-spacing:.08em;color:var(--dim)">LAST FLIGHT · ${dayToDate(d.abs)}<button class="btn ghost" style="padding:0 6px;font-size:11px" onclick="dismissDebrief()" title="Dismiss">✕</button></div>
-    <div style="font-weight:700;color:${col};margin-top:2px">${d.success?'✓':failed?'✗':'△'} ${esc(d.name)} — ${verdict}</div>
+    <div style="font-weight:700;color:${col};margin-top:2px">${d.success?'✓':soft?'△':'✗'} ${esc(d.name)} — ${verdict}</div>
     <div class="dim" style="font:11px var(--mono);margin-top:2px">flew at ${Math.round((d.rel||0)*100)}% reliability${gains?' · '+gains:''}</div>
     ${why}
     ${moves.length&&!busy?`<div style="font:11px var(--mono);letter-spacing:.08em;color:var(--dim);margin-top:7px">NEXT MOVE</div>${moveBtns}`:''}
@@ -7049,7 +7069,7 @@ function renderBenchLaunch(){
     </div>` : '';
   /* one-more-launch: a finished hull for this mission flies first; a Δv shortfall offers the exact resize */
   const readyRec=hangarFor(m)[0], readyView=readyRec?readyHullActionView(readyRec):null;
-  const sizePlan=!chk.ok&&!readyView&&/Δv shortfall/.test(chk.why||'')?autoSizePlan(m):null;
+  const sizePlan=!chk.ok&&!readyView&&AUTOSIZE_BLOCK_RE.test(chk.why||'')?autoSizePlan(m):null;
   const primaryHTML=readyView
     ? `<button class="launch" style="width:100%" onclick="launchFromHangar('${readyRec.id}','${readyRec.hullId}','${readyView.action.id}')" ${actionButtonAttrs(readyView.action)}>${readyView.check.ok?readyView.label:'Hull grounded'}</button>
        ${readyView.check.ok?`<div class="dim" style="font-size:12px;text-align:center;margin-top:4px">${esc(readyRec.hullId)} is built and waiting in the hangar</div>`:`<div class="flag dim" style="color:var(--dim);margin-top:4px">${readyView.check.why}</div>`}
@@ -7057,7 +7077,8 @@ function renderBenchLaunch(){
     : `<button class="launch" style="width:100%" onclick="launch(false,null,'${launchAction.id}')" ${actionButtonAttrs(launchAction)}>${chk.ok?launchLabel:'Commit unavailable'}</button>
     ${quoteStages}
     ${chk.ok?'<div class="dim" style="font-size:12px;text-align:center;margin-top:4px">or press <b>Space</b></div>':`<div class="flag dim" style="color:var(--dim);margin-top:4px">${chk.why}</div>`}
-    ${sizePlan&&sizePlan.ok?`<button id="benchResize" class="btn" style="width:100%;margin-top:6px;font-size:12px;border-color:var(--readout);color:var(--readout)" onclick="applyAutoSize()">⚙ Resize: stage ${sizePlan.stage+1} propellant ${sizePlan.from.toFixed(1)} → ${sizePlan.to.toFixed(1)} t<br><span class="dim" style="font-size:11px">${fI(sizePlan.dv)} of ${fI(sizePlan.need)} m/s · ${resizeCostText(sizePlan)}</span></button>`:''}`;
+    ${sizePlan&&sizePlan.ok?`<button id="benchResize" class="btn" style="width:100%;margin-top:6px;font-size:12px;border-color:var(--readout);color:var(--readout)" onclick="applyAutoSize()">⚙ Resize: ${autoSizeChangeText(sizePlan)}<br><span class="dim" style="font-size:11px">${sizePlan.multi?(sizePlan.legs===2?'both legs close':`all ${sizePlan.legs} legs close`):`${fI(sizePlan.dv)} of ${fI(sizePlan.need)} m/s`} · ${resizeCostText(sizePlan)}</span></button>`
+      :sizePlan&&!sizePlan.fits?`<div id="benchResizeNo" class="dim" style="font-size:11px;margin-top:6px;text-align:left">⚙ No one-click resize: ${esc(sizePlan.why)}</div>`:''}`;
   host.innerHTML=`${lastFlightCardHTML()}${primaryHTML}
     <div class="dim" style="font-size:11px;text-align:center;margin-top:3px" title="${esc(LAUNCH_POLICIES[launchPolicy()].tip)} In-flight anomalies always ask. Change it in Menu.">Launch calls: <b style="color:var(--ink)">${LAUNCH_POLICIES[launchPolicy()].label}</b> · <a href="#" onclick="cycleLaunchPolicy();return false" style="color:var(--readout)">change</a></div>
     ${launchPadCap()>1?`<div class="dim" style="font-size:11px;text-align:center;margin-top:2px">Pads: ${padSlotsLeft()}/${launchPadCap()} free this month</div>`:''}

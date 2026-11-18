@@ -9,6 +9,8 @@
 // BOT_HIRE=1 (spine step 8) adds a staffing player: it takes the advisor's hire suggestions (scientists,
 // astronauts) and staffs the three core engineering departments once the team reliability ceiling bites.
 // Without it the bot never builds a crewed rocket it has no astronaut for.
+// BOT_DEBRIEF=1 (decision-loop Phase 0) takes the Last Flight card's first next move after every failure.
+// The summary's failureLearning line counts failures that repeat the previous failure's subsystem.
 //
 // Usage (from the repo root, after `node build.js`):
 //   cat tests/harness.js build/game.js tools/autoplay-bot.js > /tmp/ovbot.js
@@ -32,6 +34,9 @@ const YEAR_END=+(process.env.BOT_YEAR||1990), DIFF=process.env.BOT_DIFF||'engine
 if(typeof isServiceContract!=='function') globalThis.isServiceContract=()=>false;
 if(typeof passiveSetupCost!=='function') globalThis.passiveSetupCost=d=>d.setup;
 const RIVAL_CLAIMS=[];
+// every settled flight's debrief, in order (read-only: it never changes play) — the repeat-failure measure
+const FLIGHT_LOG=[];
+if(typeof recordFlightDebrief==='function'){ const _rfd=recordFlightDebrief; recordFlightDebrief=function(...a){ const d=_rfd.apply(this,a); if(d) FLIGHT_LOG.push({y:state.year, ok:!!d.success, kind:d.kind, sub:d.subsystem||null, mid:d.missionId}); if(process.env.BOT_FLOG) console.error("FLOG "+JSON.stringify(d)); return d; }; }
 newGame(DIFF); _gameStarted=true;
 { const _frf=fireRivalFirst; fireRivalFirst=function(r,f){ if(!state.rivalFired[r.id+'|'+f.name]) RIVAL_CLAIMS.push({rival:r.id,name:f.name,missionId:f.missionId||null,year:+(state.year+state.month/12).toFixed(2),nominal:f.year,playerHad:!!(f.missionId&&state.completed[f.missionId])}); return _frf(r,f); }; }
 [['buyResearch','research'],['rushResearch','research'],['queueBuild','build'],['buildEngineStock','build'],['launchFromHangar','launch'],['finalizeLaunch','payouts'],['tickPassiveContracts','contracts'],['tickContinuousDay','daily (overhead, payroll, gov, facilities)'],['signPassiveContract','contracts'],['buildTrackingStation','infrastructure'],['bailout','loans'],['chooseBridgeLoan','loans'],['tickMonthlyBoundary','monthly events'],['resolveInquiry','events'],['acceptMandate','events'],['resolveSetback','events']].forEach(([n,c])=>{ try{ ledgerWrap(n,c); }catch(e){} });
@@ -42,7 +47,7 @@ function closeAnim(){ for(let k=0;k<6&&typeof animState!=='undefined'&&animState
 try{ state.onboarding.dismissed=true; }catch(e){}
 if(process.env.BOT_POLICY){ try{ state.launchPolicy=process.env.BOT_POLICY; }catch(e){} } // default: whatever a new game ships with
 let rid=0; const R=()=>'bot'+(++rid);
-const stats={turns:0, idleTurns:0, stops:{}, modals:{}, launches:0, success:0, fail:0, research:0, contractsSigned:0, hires:0, actionsPerTurn:[], daysPerTurn:[], firstYear:{}, stuck:{}};
+const stats={turns:0, idleTurns:0, stops:{}, modals:{}, launches:0, success:0, fail:0, research:0, contractsSigned:0, hires:0, actionsPerTurn:[], daysPerTurn:[], firstYear:{}, stuck:{}, debriefMoves:{}};
 const bump=(o,k,n=1)=>o[k]=(o[k]||0)+n;
 // spine step 8: a sensible player doesn't build a crewed rocket with no astronaut on the payroll to fly it
 const crewable=x=>!(typeof missionNeedsAstronaut==='function'&&missionNeedsAstronaut(x)) || (state.staff||[]).some(s=>roleOf(s.id)==='astro');
@@ -201,6 +206,14 @@ while(state.year<YEAR_END && stats.turns<4000){
       for(const d of ['propulsion','structures','avionics']){ if(deptStaffed(d)) continue; const p=availablePool().filter(x=>roleOf(x.id)==='eng'&&x.specialty===d).sort((a,b)=>a.salary-b.salary)[0]; if(p){ hirePersonnel(p.id); stats.hires++; acts.push('hire eng '+d); break; } }
     }
   }
+  // BOT_DEBRIEF=1 (decision-loop Phase 0): after a failed flight, take the Last Flight card's first next move —
+  // the player who reads the card and does what it says. Default off = the baseline bot.
+  if(process.env.BOT_DEBRIEF==='1' && !state.launchTxn && typeof debriefNextMoves==='function'){
+    const d=state.lastDebrief;
+    if(d && !d.success && !d.dismissed && d.abs!==stats.debriefActed){ stats.debriefActed=d.abs;
+      const mv=debriefNextMoves(d)[0];
+      if(mv){ try{ const m0=state.money; eval(mv.action); bump(stats.debriefMoves, mv.action.replace(/\(.*$/,'')); acts.push('card: '+mv.label+(state.money!==m0?' ($'+(m0-state.money).toFixed(2)+'M)':'')); }catch(e){ bump(stats.stuck,'debrief:'+mv.action.slice(0,20)); } } }
+  }
   const flyFirst=process.env.BOT_CHECKLIST==='fly' && !state.completed.first_flight; // comparison mode: no research before the first success
   if(!coaching && !flyFirst && !state.activeResearch){
     const rec=recommendedAction(); let r=null;
@@ -287,10 +300,16 @@ const thin=[]; for(let y=1945;y+5<=Math.min(state.year,YEAR_END);y++){ let n=0; 
 const thinRuns=[]; { let run=null; for(let y=1945;y+5<=Math.min(state.year,YEAR_END);y++){ let n=0; for(let k=y;k<y+5;k++) n+=newByYear[k]||0; if(n<2){ if(!run) run=[y,y]; else run[1]=y; } else if(run){ thinRuns.push(run[0]+'..'+(run[1]+4)); run=null; } } if(run) thinRuns.push(run[0]+'..'+(run[1]+4)); }
 const perDecade={}; timeline.forEach(t=>{ const y=+t.d.slice(0,4); (t.acts||'').split('; ').forEach(a=>{ if(a.startsWith('launch ')){ const id=a.slice(7).replace(' (window)',''); (perDecade[id]=perDecade[id]||[]).push(y); } }); });
 let maxDecade=[0,'']; for(const id in perDecade){ const ys=perDecade[id].sort((a,b)=>a-b); for(let i=0;i<ys.length;i++){ let j=i; while(j<ys.length&&ys[j]<ys[i]+10) j++; if(j-i>maxDecade[0]) maxDecade=[j-i,id+'@'+ys[i]]; } }
+const failRuns=(()=>{ let fails=0, repeat=0, sameNext=0; for(let i=0;i<FLIGHT_LOG.length;i++){ const f=FLIGHT_LOG[i]; if(f.ok) continue; fails++;
+  const prev=FLIGHT_LOG.slice(0,i).reverse().find(x=>!x.ok); if(prev&&prev.sub&&prev.sub===f.sub) repeat++;
+  const nxt=FLIGHT_LOG[i+1]; if(nxt&&!nxt.ok&&nxt.sub===f.sub) sameNext++; }
+  return {flights:FLIGHT_LOG.length, failures:fails, failRate:+(fails/Math.max(1,FLIGHT_LOG.length)).toFixed(3), sameSubsystemAsLastFailure:repeat, backToBackSameSubsystem:sameNext,
+    bySubsystem:FLIGHT_LOG.filter(f=>!f.ok).reduce((o,f)=>(o[f.sub||'?']=(o[f.sub||'?']||0)+1,o),{}), cardMoves:stats.debriefMoves||{}}; })();
 const repeats={}; timeline.forEach(t=>(t.acts||'').split('; ').forEach(a=>{ if(a.startsWith('launch ')){ const id=a.slice(7).replace(' (window)',''); repeats[id]=(repeats[id]||0)+1; } }));
 const decisionStops=Object.entries(stats.modals).filter(([k])=>k.startsWith('launch:')).reduce((a,[,v])=>a+v,0);
 if(process.env.BOT_LEDGER){ require('fs').writeFileSync(process.env.BOT_LEDGER, JSON.stringify(LEDGER)); }
 const polit=['mandate','review','hearing'].reduce((a,k)=>a+(stats.modals[k]||0),0);
+console.log(JSON.stringify({failureLearning:failRuns}));
 console.log(JSON.stringify({politicalPerYear:+(polit/Math.max(1,state.year-1942)).toFixed(2),politicalKinds:{mandate:stats.modals.mandate||0,review:stats.modals.review||0,hearing:stats.modals.hearing||0},objectives:(stats.objMet||0)+'/'+(stats.objTotal||0),objKinds:stats.objKinds||{},rivalClaims:RIVAL_CLAIMS,crash:stats.crash||0,serviceFlown:stats.serviceFlown||0,firstInsolvency:stats.firstInsolvency?+stats.firstInsolvency.toFixed(2):null,decisionsPerLaunch:+(decisionStops/Math.max(1,stats.launches)).toFixed(2),decisionKinds:Object.fromEntries(Object.entries(stats.modals).filter(([k])=>k.startsWith('launch:'))),maxPerDecade:maxDecade,thinWindows:thin.length,thinRuns,procFlown:stats.procFlown||0,topRepeats:Object.entries(repeats).sort((a,b)=>b[1]-a[1]).slice(0,4),eraAt:ERAS[eraIndex(currentEra())].id,programsDone:PROGRAMS.filter(p=>p.missions.every(id=>state.completed[id])).map(p=>p.id)}));
 console.log(JSON.stringify({diff:DIFF,seed:SEED,endYear:state.year,over:!!state.over,money:Math.round(state.money),rep:Math.round(state.rep),flights:state.flights,
   turns:stats.turns,idleTurns:stats.idleTurns,daysPerTurnMedian:med(stats.daysPerTurn),daysPerTurnMean:Math.round(sum(stats.daysPerTurn)/stats.turns),
