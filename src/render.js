@@ -2243,7 +2243,14 @@ const CAPE_W=1200, CAPE_H=860; // Cape scene render resolution (taller for the i
 const CAPE3D = true;
 const CAPE_WORLD_TILE_M = 120;
 const CAPE_WORLD_HEIGHT_M_PER_PX = 1.1;
-const CAPE3D_SITE_SPREAD = 1.15;
+const CAPE3D_SITE_SPREAD = 1.5;
+/* Site spacing pass (2026-11-19): the campus was crowded and the pad sat ~400-550 m from occupied buildings.
+   The 3D site now spaces buildings wider (spread 1.15 -> 1.5) and pulls the whole campus inland by a blast-safety
+   standoff, while the launch complex (grid x >= ~6, pad + rival pad + their roads) stays on the beach where it
+   was. The ramp in between only stretches the avenue and crawlerway. 3D only: the 2D iso Cape keeps ISO_BUILDINGS as-is. */
+const CAPE3D_PAD_STANDOFF_M = 700;
+const CAPE3D_PAD_ZONE_GX = [5.75, 6.0];
+const CAPE3D_PAD_ANCHOR = {gx:6.2, x:6.2*120*1.15};
 // The launch-pad slab tops out at y=2. Keep the nozzle exit visibly above it so
 // the parked vehicle reads as supported by the mount instead of clipping into concrete.
 const CAPE3D_PAD_DECK_Y = 2;
@@ -2258,8 +2265,20 @@ const CAPE3D_TEXTURE_ASSET={ground:'assets/cape-ground-albedo.png',pavement:'ass
 const CAPE3D_TERRAIN_STYLE={ground:0xa3c890}; /* the site lawn tint in the terrain shader */
 let cape3d = null;
 function capeWorldPoint(gx, gy, elevation){
-  return {x:gx*CAPE_WORLD_TILE_M*CAPE3D_SITE_SPREAD, y:elevation||0, z:gy*CAPE_WORLD_TILE_M*CAPE3D_SITE_SPREAD};
+  const s=CAPE_WORLD_TILE_M*CAPE3D_SITE_SPREAD, k=cape3dSmooth(CAPE3D_PAD_ZONE_GX[0],CAPE3D_PAD_ZONE_GX[1],gx);
+  const sx=s*(1-k)+CAPE_WORLD_TILE_M*1.15*k; /* the launch complex keeps its original east-west spacing so the pads stay clear of the beach */
+  return {x:CAPE3D_PAD_ANCHOR.x+(gx-CAPE3D_PAD_ANCHOR.gx)*sx-CAPE3D_PAD_STANDOFF_M*(1-k), y:elevation||0, z:gy*s};
 }
+/* Centre of the authored 3D site (buildings + the avenue), used by the terrain grading core, the district-map mask
+   and the default camera so they follow the layout instead of hard-coded coordinates. */
+function cape3dSiteCenter(){
+  let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9; const add=(p,hx,hz)=>{ x0=Math.min(x0,p.x-hx); x1=Math.max(x1,p.x+hx); z0=Math.min(z0,p.z-hz); z1=Math.max(z1,p.z+hz); };
+  ISO_BUILDINGS.forEach(b=>add(capeWorldPoint(b.gx,b.gy),b.fw*CAPE_WORLD_TILE_M*.5,b.fd*CAPE_WORLD_TILE_M*.5));
+  add(capeWorldPoint(-1.2,ISO_AV),0,0); add(capeWorldPoint(6.8,ISO_AV),0,0);
+  return {x:Math.round((x0+x1)*.5),z:Math.round((z0+z1)*.5),halfX:(x1-x0)*.5,halfZ:(z1-z0)*.5};
+}
+const CAPE3D_SITE_CENTER=cape3dSiteCenter();
+function cape3dDefaultCam(){ return {az:2.25,el:.48,dist:2050,target:{x:CAPE3D_SITE_CENTER.x,y:0,z:CAPE3D_SITE_CENTER.z}}; }
 function capeFacilityDescriptor(b){
   if(!b) return null;
   const heightPx=b.key==='mfg' ? isoVAB_h() : b.h;
@@ -2289,13 +2308,20 @@ function cape3dSetHotspotHost(id){ if(cape3d) cape3d.hotspotHostId=id||null; }
 function cape3dProjectHotspots(){
   if(!cape3d||!cape3d.hotspotHostId) return;
   const host=$(cape3d.hotspotHostId); if(!host||!host.querySelector) return;
-  const ds=cape3d.descriptors||[];
+  const ds=cape3d.descriptors||[], cam=cape3d.camera, W=host.clientWidth||0, H=host.clientHeight||0, v=cape3d._projV||(cape3d._projV=new THREE.Vector3());
+  /* Label flicker fix (2026-11-19): project with THIS frame's camera. Vector3.project reads camera.matrixWorldInverse,
+     which three.js only refreshes inside renderer.render() -- after this runs -- so labels used to trail the scene by a
+     frame and jitter while orbiting. Positions snap to whole pixels (no sub-pixel text shimmer) and nearer buildings'
+     labels stack on top so crossing labels don't swap order. */
+  cam.updateMatrixWorld();
   for(const d of ds){
     const el=host.querySelector(`[data-cape3d-key="${d.key}"]`); if(!el) continue;
-    const v=new THREE.Vector3(d.anchor.x,d.anchor.y,d.anchor.z).project(cape3d.camera), visible=v.z>=-1&&v.z<=1;
-    el.style.display=visible?'flex':'none'; if(!visible) continue;
-    el.style.left=`${(v.x*.5+.5)*100}%`; el.style.top=`${(-v.y*.5+.5)*100}%`;
-    el.style.width='84px'; el.style.height='48px'; el.style.transform='translate(-50%,-100%)';
+    v.set(d.anchor.x,d.anchor.y,d.anchor.z).project(cam); const visible=v.z>=-1&&v.z<=1;
+    const disp=visible?'flex':'none'; if(el.style.display!==disp) el.style.display=disp; if(!visible) continue;
+    if(W&&H){ el.style.left=`${Math.round((v.x*.5+.5)*W)}px`; el.style.top=`${Math.round((-v.y*.5+.5)*H)}px`; }
+    else { el.style.left=`${(v.x*.5+.5)*100}%`; el.style.top=`${(-v.y*.5+.5)*100}%`; }
+    if(el.style.width!=='84px'){ el.style.width='84px'; el.style.height='48px'; el.style.transform='translate(-50%,-100%)'; }
+    el.style.zIndex=String(1000-Math.round(v.z*500));
   }
 }
 function cape3dPick(event){
@@ -2319,7 +2345,7 @@ function cape3dUp(e){ if(!cape3d) return; const d=cape3d.drag; try{cape3d.render
 function cape3dWheel(e){ if(!cape3d) return; e.preventDefault();
   if(cape3d.root&&cape3d.root.userData.launchActive){ const lc=cape3d.launchCam||(cape3d.launchCam=cape3dDefaultLaunchCam()); lc.distMul=Math.max(.35,Math.min(3.2,lc.distMul*(e.deltaY>0?1.12:.89))); return; }
   if(cape3d.root&&cape3d.root.userData.orbitActive){ const oc=cape3d.orbitCam||(cape3d.orbitCam={azOff:0,elOff:0,distMul:1}); oc.distMul=Math.max(.58,Math.min(2.1,oc.distMul*(e.deltaY>0?1.12:.89))); return; }
-  cape3d.cam.dist=Math.max(280,Math.min(2600,cape3d.cam.dist*(e.deltaY>0?1.12:.89))); cape3dApplyCamera(); }
+  cape3d.cam.dist=Math.max(280,Math.min(3800,cape3d.cam.dist*(e.deltaY>0?1.12:.89))); cape3dApplyCamera(); }
 function cape3dDefaultLaunchCam(){ return {azOff:0, elOff:0, distMul:1}; }
 // Pure so the "doesn't run away with altitude" property is directly testable. FIXED 2026-07-20:
 // previously (150+altitudeMetres*.05) — linear in raw metres, exploding to 5000+ units by 100 km
@@ -2370,7 +2396,7 @@ function cape3dLiveStageTargetY(live,targetLift){
 function attachCape3DInput(){
   if(!cape3d||cape3d.inputAttached) return; const d=cape3d.renderer.domElement;
   d.addEventListener('pointerdown',cape3dDown); d.addEventListener('pointermove',cape3dMove); d.addEventListener('pointerup',cape3dUp); d.addEventListener('wheel',cape3dWheel,{passive:false});
-  d.addEventListener('dblclick',()=>{ if(cape3d){ cape3d.cam={az:2.25,el:.48,dist:1450,target:{x:420*CAPE3D_SITE_SPREAD,y:0,z:250*CAPE3D_SITE_SPREAD}}; cape3dApplyCamera(); } }); d.style.cursor='grab'; d.style.touchAction='none'; cape3d.inputAttached=true;
+  d.addEventListener('dblclick',()=>{ if(cape3d){ cape3d.cam=cape3dDefaultCam(); cape3dApplyCamera(); } }); d.style.cursor='grab'; d.style.touchAction='none'; cape3d.inputAttached=true;
 }
 function detachCape3DInput(){
   if(!cape3d||!cape3d.inputAttached) return; const d=cape3d.renderer.domElement;
@@ -2574,7 +2600,7 @@ function cape3dConcreteTexture(repeatX,repeatY){ const tx=cape3dCanvasTexture((c
 // Ground haze (FogExp2 density). Was .00038, which hid everything past ~3 km; this keeps aerial
 // perspective but lets the district read out to ~10 km.
 const CAPE3D_HAZE=.00011;
-const CAPE3D_REGION={width:16000,depth:24000,size:2048,siteX:480,siteZ:287,holeX:1450,holeZ:1150,nearWidth:6000,nearDepth:9000,seed:5521};
+const CAPE3D_REGION={width:16000,depth:24000,size:2048,siteX:CAPE3D_SITE_CENTER.x,siteZ:CAPE3D_SITE_CENTER.z,holeX:Math.max(1450,Math.round(CAPE3D_SITE_CENTER.halfX/.6)),holeZ:Math.max(1150,Math.round(CAPE3D_SITE_CENTER.halfZ/.6)),nearWidth:6000,nearDepth:9000,seed:5521};
 function cape3dRegionTexture(coastX,roadZ,rect){
   const R=CAPE3D_REGION, S=R.size, cv=document.createElement('canvas'); cv.width=cv.height=S; const ctx=cv.getContext('2d'); if(!ctx) return null;
   const W=(rect&&rect.width)||R.width, D=(rect&&rect.depth)||R.depth, fine=!!(rect&&rect.fine);
@@ -2613,7 +2639,7 @@ function cape3dRegionTexture(coastX,roadZ,rect){
   const road=(pts,w,col)=>{ ctx.beginPath(); pts.forEach((q,i)=>i?ctx.lineTo(X(q[0]),Z(q[1])):ctx.moveTo(X(q[0]),Z(q[1]))); ctx.lineCap='round'; ctx.setLineDash([]); ctx.strokeStyle='rgba(206,198,170,.55)'; ctx.lineWidth=(w+10)*mm; ctx.stroke(); ctx.strokeStyle=col||'#4d5357'; ctx.lineWidth=Math.max(1.6,w*mm); ctx.stroke();
     if(fine&&w>=20){ ctx.strokeStyle='rgba(236,226,170,.45)'; ctx.lineWidth=Math.max(1,1.2*mm); ctx.setLineDash([9*mm,12*mm]); ctx.stroke(); ctx.setLineDash([]); } };
   const hw=[]; for(let z=gz0;z<=gz0+R.depth;z+=300) hw.push([cape3dCoastAt(z,coastX)-7050+260*Math.sin(z/4100),z]); road(hw,26);
-  road([[-170,roadZ],[coastX-3600,roadZ],[coastX-4300,roadZ+120],[coastX-6100,roadZ+120],[coastX-7050,roadZ+60],[tx0+tw,roadZ+60]],22);
+  road([[capeWorldPoint(-1.2,ISO_AV).x,roadZ],[coastX-3600,roadZ],[coastX-4300,roadZ+120],[coastX-6100,roadZ+120],[coastX-7050,roadZ+60],[tx0+tw,roadZ+60]],22);
   const along=(dx,za,zb)=>{ const pts=[]; for(let z=za;(zb>za?z<=zb:z>=zb);z+=(zb>za?250:-250)) pts.push([cape3dCoastAt(z,coastX)-dx,z]); return pts; };
   road(along(430,gz0+400,R.siteZ-1250),16); road(along(430,R.siteZ+1250,gz0+R.depth-400),16);
   road(along(3600,roadZ,R.siteZ-5600),16);
@@ -2809,7 +2835,7 @@ function cape3dSkyDome(scene){
 // 1,600 km, and beyond 30 km the surface bends down with the Earth's curvature, so whatever the camera's
 // altitude the land reaches its real horizon and meets the photographic globe there.
 const CAPE3D_SEA_Y=-.4;
-const CAPE3D_TERRAIN={seed:9137,step:12,core:1500,midStep:40,extent:1600000,curveFrom:30000,curveFull:150000,siteX:480,siteZ:287};
+const CAPE3D_TERRAIN={seed:9137,step:12,core:1500,midStep:40,extent:1600000,curveFrom:30000,curveFull:150000,siteX:CAPE3D_SITE_CENTER.x,siteZ:CAPE3D_SITE_CENTER.z};
 let cape3dTerrainCtx=null;
 function cape3dSmooth(a,b,x){ const u=Math.max(0,Math.min(1,(x-a)/(b-a))); return u*u*(3-2*u); }
 function cape3dHash2(ix,iz,seed){ let h=Math.imul(ix|0,0x27d4eb2d)^Math.imul(iz|0,0x165667b1)^Math.imul(seed|0,0x1b873593); h=Math.imul(h^(h>>>15),0x85ebca6b); h=Math.imul(h^(h>>>13),0xc2b2ae35); h^=h>>>16; return (h>>>0)/4294967296; }
@@ -2860,6 +2886,58 @@ function cape3dSiteBlocked(plan,x,z,margin){
   for(const s of plan.roads) if(cape3dSegDist(x,z,s[0],s[1])<s[2]*.5+m) return true;
   return false;
 }
+/* Parking sized to the building (2026-11-19). Stalls scale with the building's footprint at a rate set by what
+   it is for: offices and control rooms are dense, the VAB-class hall and the dish farm are sparse. Lots are real
+   double-loaded bays (2 stall rows + a drive aisle), split either side of the entrance drive on the avenue side
+   first, then overflowing to the sides and back. Industrial buildings also get a truck apron with dock trailers. */
+const CAPE3D_PARKING_RATE={admin:95,control:85,lab:70,prod:45,vab:30,dome:40,dishes:6,ops:90}; /* stalls per hectare of footprint */
+const CAPE3D_STALL={w:2.7,d:5.4,aisle:7.2,edge:3};
+function cape3dParkingStalls(d){ const r=CAPE3D_PARKING_RATE[d&&d.type]; if(!r) return 0; return Math.max(8,Math.min(280,Math.round(r*d.footprint.x*d.footprint.z/10000))); }
+function cape3dRectFree(plan,x,z,hx,hz,m,coastX){
+  if(coastX-(x+hx)<160) return false;
+  const nx=Math.max(2,Math.ceil(2*hx/12)), nz=Math.max(2,Math.ceil(2*hz/12));
+  for(let i=0;i<=nx;i++) for(let j=0;j<=nz;j++){ if(cape3dSiteBlocked(plan,x-hx+2*hx*i/nx,z-hz+2*hz*j/nz,m)) return false; }
+  return true;
+}
+function cape3dParkingPlan(plan,descriptors,coastX){
+  const S=CAPE3D_STALL, BAY=2*S.d+S.aisle, avenueZ=capeWorldPoint(0,ISO_AV).z;
+  const anchors=(descriptors||[]).filter(d=>d&&d.position&&CAPE3D_PARKING_RATE[d.type]);
+  for(const d of anchors){
+    let left=cape3dParkingStalls(d); const fx=d.footprint.x*.64, fz=d.footprint.z*.64, front=avenueZ>=d.position.z?1:-1, set=12, drive=9;
+    /* slots: [axis the stall rows run along, length available along it, centre offset along it, face normal x, face normal z] */
+    const slots=[['x',fx-drive,-(fx+drive)/2,0,front],['x',fx-drive,(fx+drive)/2,0,front],['z',fz*2,0,-1,0],['z',fz*2,0,1,0],['x',fx-drive,-(fx+drive)/2,0,-front],['x',fx-drive,(fx+drive)/2,0,-front]];
+    for(const sl of slots){
+      if(left<=0) break;
+      const [axis,Lmax,off,nx,nz]=sl, perRowMax=Math.floor((Lmax-2*S.edge)/S.w); if(perRowMax<4) continue;
+      const need=Math.ceil(left/(2*perRowMax));
+      for(let nb=need;nb>=1;nb--){
+        const perRow=nb===1?Math.min(perRowMax,Math.max(6,Math.ceil(left/2))):perRowMax, L=perRow*S.w+2*S.edge, D=nb*BAY+2*S.edge;
+        /* hug the entrance drive: a shortened front lot keeps its inner edge at the drive */
+        const along=axis==='x'?(off<0?off+(Lmax-L)/2:off-(Lmax-L)/2):off;
+        const out=(axis==='x'?fz:fx)+set+D/2, x=d.position.x+(axis==='x'?along:nx*out), z=d.position.z+(axis==='x'?nz*out:along);
+        const w=axis==='x'?L:D, dd=axis==='x'?D:L;
+        if(!cape3dRectFree(plan,x,z,w/2,dd/2,4,coastX)) continue;
+        const stalls=Math.min(left,nb*2*perRow), lot={x,z,hx:w/2,hz:dd/2,kind:'lot',w,d:dd,axis,bays:nb,perRow,stalls,key:d.key,face:axis==='x'?nz:nx};
+        plan.lots.push(lot); plan.rects.push(lot); left-=stalls; break;
+      }
+    }
+    if(d.type==='vab'||d.type==='prod'){ /* truck apron with dock trailers on a side or the back */
+      const W=Math.min(d.footprint.x*.7,120), D=38;
+      for(const t of [[0,-front],[-1,0],[1,0]]){ const x=d.position.x+t[0]*(fx+set+D/2), z=d.position.z+t[1]*(fz+set+D/2), w=t[0]?D:W, dd=t[0]?W:D;
+        if(!cape3dRectFree(plan,x,z,w/2,dd/2,4,coastX)) continue;
+        const apron={x,z,hx:w/2,hz:dd/2,kind:'lot',w,d:dd,truck:true,axis:t[0]?'z':'x',face:t[0]||t[1],key:d.key}; plan.lots.push(apron); plan.rects.push(apron); break; }
+    }
+  }
+}
+/* Propellant production + storage farm (2026-11-19): fills the hazard standoff between the campus and the pad, north
+   of the avenue and south of the crawlerway, so fuel and oxidiser live near the pad, not beside occupied buildings. */
+function cape3dTankFarmRect(descriptors,roads,coastX){
+  const prod=(descriptors||[]).find(d=>d&&d.key==='prod'), pad=(descriptors||[]).find(d=>d&&d.key==='pad'); if(!prod||!pad) return null;
+  const x0=prod.position.x+prod.footprint.x*.64+70, x1=pad.position.x-pad.footprint.x*.74-70, avenueZ=capeWorldPoint(0,ISO_AV).z;
+  let z0=-1e9; for(const r of roads||[]){ if(r[3]!=='crawler') continue; for(let k=0;k<=20;k++){ const x=r[0].x+(r[1].x-r[0].x)*k/20, z=r[0].z+(r[1].z-r[0].z)*k/20; if(x>=x0-20&&x<=x1+20&&z<avenueZ) z0=Math.max(z0,z+r[2]*.5+30); } }
+  const z1=avenueZ-7-30; if(z0<-1e8||x1-x0<220||z1-z0<140) return null;
+  return {x:(x0+x1)/2,z:(z0+z1)/2,hx:(x1-x0)/2,hz:(z1-z0)/2,kind:'farm',key:'tankfarm'};
+}
 // Site plan: what must sit on flat ground, plus the parking lots, which are placed in whatever open space
 // the authored buildings leave (so they follow the layout instead of hard-coding coordinates into it).
 function cape3dSitePlan(descriptors,coastX){
@@ -2867,15 +2945,9 @@ function cape3dSitePlan(descriptors,coastX){
   (descriptors||[]).forEach(d=>{ if(!d||!d.position) return; const pad=d.type==='pad'||d.type==='rivalpad';
     rects.push({x:d.position.x,z:d.position.z,hx:d.footprint.x*(pad?.74:.64),hz:d.footprint.z*(pad?.74:.64),kind:d.type,key:d.key}); });
   const plan={rects,roads,lots,coastX};
-  const anchors=(descriptors||[]).filter(d=>d&&['admin','control','lab','vab','prod'].includes(d.type));
-  for(const d of anchors){
-    const W=70, D=40, ox=d.footprint.x*.64+W*.5+14, oz=d.footprint.z*.64+D*.5+14;
-    const tries=[[0,oz],[0,-oz],[ox,0],[-ox,0],[ox,oz],[-ox,oz],[ox,-oz],[-ox,-oz],[0,oz+D+10],[-ox-W-10,0]];
-    for(const t of tries){ const x=d.position.x+t[0], z=d.position.z+t[1];
-      if(coastX-x<160) continue;
-      let ok=true; for(let cx=-1;cx<=1&&ok;cx++) for(let cz=-1;cz<=1&&ok;cz++){ if(cape3dSiteBlocked(plan,x+cx*W*.5,z+cz*D*.5,6)) ok=false; }
-      if(!ok) continue; const lot={x,z,hx:W*.5,hz:D*.5,kind:'lot',w:W,d:D}; lots.push(lot); rects.push(lot); break; }
-  }
+  // Propellant farm between the campus and the pad (placed before parking so the lots route around it).
+  const farm=cape3dTankFarmRect(descriptors,roads,coastX); if(farm){ rects.push(farm); plan.farm=farm; }
+  cape3dParkingPlan(plan,descriptors,coastX);
   // Bounding box of everything graded (plus the widest shoulder), so the heightmap only searches near the site.
   let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9; const grow=(x,z,m)=>{ x0=Math.min(x0,x-m); x1=Math.max(x1,x+m); z0=Math.min(z0,z-m); z1=Math.max(z1,z+m); };
   rects.forEach(r=>{ grow(r.x-r.hx,r.z-r.hz,90); grow(r.x+r.hx,r.z+r.hz,90); }); roads.forEach(r=>{ grow(r[0].x,r[0].z,r[2]+70); grow(r[1].x,r[1].z,r[2]+70); });
@@ -3226,14 +3298,31 @@ function cape3dFacilityDetail(g,d,materials){
 // a water tower and light poles.
 function cape3dSiteExtras(root,plan,materials,coastX){
   const M=materials.detail, g=new THREE.Group(); g.name='cape3d_site_extras'; const b=cape3dBatch(), rnd=mulberry(7741), cars=[], roadZ=capeWorldPoint(0,ISO_AV).z;
+  const S=CAPE3D_STALL, BAY=2*S.d+S.aisle, trucks=[];
   for(const lot of plan.lots){
+    const ax=lot.axis==='z', P=(u,v)=>ax?[lot.x+v,lot.z+u]:[lot.x+u,lot.z+v], L=ax?lot.d:lot.w, D=ax?lot.w:lot.d;
+    if(lot.truck){ /* concrete truck apron: dock trailers backed against the building face */
+      b.box(lot.w,.3,lot.d,M.plinth,lot.x,.15,lot.z); const n=Math.max(2,Math.floor((L-10)/9)), face=-(lot.face||1);
+      for(let k=0;k<n;k++){ const u=-L/2+9+k*(L-18)/Math.max(1,n-1), v=face*(D/2-9.5), p=P(u,v); if(rnd()<.8) trucks.push({x:p[0],z:p[1],rot:ax?-(lot.face||1)*Math.PI/2:((lot.face||1)>0?Math.PI:0)}); /* cab faces away from the dock */ const q=P(u,face*(D/2-.6)); b.box(ax?.4:3.4,3.2,ax?3.4:.4,M.door,q[0],1.6,q[1]); }
+      continue;
+    }
     b.box(lot.w,.3,lot.d,M.asphalt,lot.x,.15,lot.z);
-    for(let row=-1;row<=1;row+=2) for(let x=-lot.w/2+1.5;x<=lot.w/2-1.5;x+=3){ b.box(.15,.05,5.2,M.stripe,lot.x+x,.33,lot.z+row*(lot.d/2-3.4)); if(x<lot.w/2-3&&rnd()<.72) cars.push({x:lot.x+x+1.5,z:lot.z+row*(lot.d/2-3.4),rot:row>0?0:Math.PI}); }
-    b.box(lot.w-6,.05,.2,M.stripe,lot.x,.33,lot.z);
-    for(const sx of [-1,1]){ b.cyl(.25,10,M.steel,lot.x+sx*lot.w*.3,5,lot.z,6); b.box(2.4,.4,.8,M.door,lot.x+sx*lot.w*.3,10,lot.z); }
+    let placed=0; const occ=.55+rnd()*.3;
+    for(let i=0;i<lot.bays;i++){
+      const v0=-D/2+S.edge+i*BAY;
+      for(const [vc,face] of [[v0+S.d/2,1],[v0+S.d+S.aisle+S.d/2,-1]]){
+        for(let k=0;k<=lot.perRow;k++){ const u=-L/2+S.edge+k*S.w, p=P(u,vc); b.box(ax?S.d*.95:.15,.05,ax?.15:S.d*.95,M.stripe,p[0],.33,p[1]); }
+        for(let k=0;k<lot.perRow&&placed<lot.stalls;k++,placed++){ if(rnd()>occ) continue; const p=P(-L/2+S.edge+(k+.5)*S.w,vc); cars.push({x:p[0],z:p[1],rot:(ax?Math.PI/2:0)+(face>0?0:Math.PI)}); }
+      }
+      /* light standards down the aisle */
+      for(let u=-L/2+14;u<L/2-8;u+=32){ const p=P(u,v0+S.d+S.aisle/2); b.cyl(.25,10,M.steel,p[0],5,p[1],6); b.box(2.4,.4,.8,M.door,p[0],10,p[1]); }
+    }
+    /* curb and planted end islands */
+    for(const e of [-1,1]){ const p=P(e*(L/2-1),0); b.box(ax?D-2:1.2,.45,ax?1.2:D-2,M.plinth,p[0],.3,p[1]); }
   }
   // Perimeter fence (west, north and south; the beach is the eastern boundary), with a gate on the avenue.
-  const X0=-262, X1=coastX-210, Z0=-190, Z1=700, post=(x,z)=>{ const y=cape3dGroundY(x,z); b.box(.25,2.6,.25,M.fence,x,y+1.3,z); return y; };
+  let fx0=1e9,fz0=1e9,fz1=-1e9; plan.rects.forEach(r=>{ fx0=Math.min(fx0,r.x-r.hx); fz0=Math.min(fz0,r.z-r.hz); fz1=Math.max(fz1,r.z+r.hz); });
+  const X0=Math.round(fx0-50), X1=coastX-210, Z0=Math.round(fz0-50), Z1=Math.round(fz1+50), post=(x,z)=>{ const y=cape3dGroundY(x,z); b.box(.25,2.6,.25,M.fence,x,y+1.3,z); return y; };
   const run=(ax,az,bx,bz,gapAt)=>{ const len=Math.hypot(bx-ax,bz-az), n=Math.max(1,Math.round(len/8)); let prev=null;
     for(let i=0;i<=n;i++){ const x=ax+(bx-ax)*i/n, z=az+(bz-az)*i/n; if(gapAt&&Math.hypot(x-gapAt.x,z-gapAt.z)<18){ prev=null; continue; } const y=post(x,z);
       if(prev){ const mx=(x+prev.x)/2, mz=(z+prev.z)/2, my=(y+prev.y)/2, l=Math.hypot(x-prev.x,z-prev.z); b.add(new THREE.BoxGeometry(.08,.08,l),M.fence,mx,my+2.5,mz,Math.atan2(x-prev.x,z-prev.z),-Math.atan2(y-prev.y,l)); b.add(new THREE.BoxGeometry(.06,.06,l),M.fence,mx,my+1.2,mz,Math.atan2(x-prev.x,z-prev.z),-Math.atan2(y-prev.y,l)); }
@@ -3258,6 +3347,74 @@ function cape3dSiteExtras(root,plan,materials,coastX){
     const im=new THREE.InstancedMesh(geo,new THREE.MeshStandardMaterial({vertexColors:true,roughness:.35,metalness:.45}),cars.length), m=new THREE.Matrix4(), q=new THREE.Quaternion(), up=new THREE.Vector3(0,1,0), p=new THREE.Vector3(), s=new THREE.Vector3(1,1,1), c=new THREE.Color();
     cars.forEach((car,i)=>{ q.setFromAxisAngle(up,car.rot); m.compose(p.set(car.x,.3,car.z),q,s); im.setMatrixAt(i,m); const k=pal[Math.floor(rnd()*pal.length)]; c.setRGB(k[0],k[1],k[2]); im.setColorAt(i,c); });
     im.castShadow=true; im.receiveShadow=true; im.name='cape3d_cars'; g.add(im);
+  }
+  if(trucks.length){
+    const trailer=new THREE.BoxGeometry(2.6,3.6,15); trailer.translate(0,2.6,0); const cabG=new THREE.BoxGeometry(2.5,3.2,3.4); cabG.translate(0,2,-9.6);
+    const geo=cape3dMergeGeometries([{geo:trailer,color:0xe8eaec},{geo:cabG,color:0x9a2f22}]);
+    const im=new THREE.InstancedMesh(geo,new THREE.MeshStandardMaterial({vertexColors:true,roughness:.5,metalness:.3}),trucks.length), m=new THREE.Matrix4(), q=new THREE.Quaternion(), up=new THREE.Vector3(0,1,0), p=new THREE.Vector3(), s=new THREE.Vector3(1,1,1);
+    trucks.forEach((t,i)=>{ q.setFromAxisAngle(up,t.rot); m.compose(p.set(t.x,.3,t.z),q,s); im.setMatrixAt(i,m); });
+    im.castShadow=true; im.receiveShadow=true; im.name='cape3d_trucks'; g.add(im);
+  }
+  root.add(g); return g;
+}
+/* The propellant farm: tanker loading rack, an RP-1 tank field inside a containment dike, an air-separation plant
+   (cold box, distillation columns, compressor hall, cooling tower, substation) making LOX/LN2, LOX spheres and
+   vacuum-jacketed tanks, LN2 bullets, LH2 spheres with a boil-off flare stack, and a pipe rack that runs across the
+   avenue on a bridge and into the pad. Laid out west (campus side, the least hazardous) to east (the pad). */
+function cape3dTankFarm(root,plan,materials,descriptors){
+  const F=plan&&plan.farm; if(!F) return null;
+  const M=materials.detail, g=new THREE.Group(); g.name='cape3d_tank_farm'; const b=cape3dBatch(), rnd=mulberry(9127);
+  const X0=F.x-F.hx, X1=F.x+F.hx, Z0=F.z-F.hz, Z1=F.z+F.hz, W=X1-X0, tank=materials.tank, white=M.white, steel=M.steel, conc=M.plinth, trucks=[];
+  const sx=f=>X0+W*f; /* zones by fraction of the farm's width */
+  const legs=(x,z,r,yC)=>{ for(let k=0;k<8;k++){ const a=k/8*6.283; b.cyl(.55,yC,steel,x+Math.cos(a)*r*.78,yC/2,z+Math.sin(a)*r*.78,6); } b.cyl(r*.9,.6,steel,x,yC*.55,z,16); };
+  const sphere=(x,z,r,mat)=>{ const yC=r+6; b.box(r*2.4,.5,r*2.4,conc,x,.25,z); b.sphere(r,mat||white,x,yC,z); legs(x,z,r,yC); b.cyl(.35,yC+r+2,steel,x+r*1.05,(yC+r+2)/2,z,6); /* stair/riser */ };
+  const vtank=(x,z,r,h,mat)=>{ b.cyl(r,h,mat||tank,x,h/2,z,20); b.cyl(r*1.02,.6,M.trim,x,h+.3,z,20); b.cyl(r*.15,1.2,steel,x,h+.9,z,8); };
+  const dike=(x0,z0,x1,z1,h)=>{ b.box(x1-x0,.3,z1-z0,conc,(x0+x1)/2,.15,(z0+z1)/2); for(const z of [z0,z1]) b.box(x1-x0,h,1,conc,(x0+x1)/2,h/2,z); for(const x of [x0,x1]) b.box(1,h,z1-z0,conc,x,h/2,(z0+z1)/2); };
+  const pad=(x0,z0,x1,z1)=>b.box(x1-x0,.22,z1-z0,conc,(x0+x1)/2,.11,(z0+z1)/2);
+  const zc=(Z0+Z1-30)/2, top=Z0+12, bot=Z1-36; /* usable band: the avenue side holds the service road and the pipe rack */
+  /* perimeter fence for the whole farm */
+  for(let x=X0;x<=X1;x+=8) for(const z of [Z0,Z1]) b.box(.25,2.8,.25,M.fence,x,1.4,z);
+  for(let z=Z0;z<=Z1;z+=8) for(const x of [X0,X1]) b.box(.25,2.8,.25,M.fence,x,1.4,z);
+  for(const z of [Z0,Z1]) b.box(W,.1,.1,M.fence,F.x,2.6,z); for(const x of [X0,X1]) b.box(.1,.1,F.hz*2,M.fence,x,2.6,F.z);
+  /* internal service roads: one along the avenue side, spurs up between the zones */
+  b.box(W-8,.25,10,M.asphalt,F.x,.3,Z1-12); for(const f of [.125,.335,.535,.735]) b.box(8,.25,Z1-12-top,M.asphalt,sx(f),.3,(top+Z1-12)/2);
+  /* 1. tanker loading racks + control house (west) */
+  { const x0=sx(.01), x1=sx(.115); pad(x0,top,x1,bot); const x=(x0+x1)/2;
+    for(const z of [zc-40,zc+20]){ b.box(26,.6,40,M.trim,x,9,z); for(const dx of [-12,12]) for(const dz of [-18,0,18]) b.cyl(.5,9,steel,x+dx,4.5,z+dz,6);
+      for(const dz of [-12,0,12]){ b.box(1.2,6,1.2,steel,x,3,z+dz); if(rnd()<.8) trucks.push({x:x+(dz>0?5:-5),z:z+dz,rot:Math.PI/2}); } }
+    b.box(22,7,14,M.white,x,3.5,top+12); b.box(22.6,.5,14.6,M.trim,x,7.2,top+12); b.box(22,.25,20,M.asphalt,x,.3,bot-12); }
+  /* 2. RP-1 tank field: 3 x 5 tanks in a containment dike */
+  { const x0=sx(.135), x1=sx(.32), nx=3, nz=5, spx=(x1-x0-16)/nx, spz=(bot-top-12)/nz, r=Math.min(13,spx*.4,spz*.4);
+    dike(x0,top,x1,bot,2); for(let i=0;i<nx;i++) for(let j=0;j<nz;j++) vtank(x0+8+spx*(i+.5),top+6+spz*(j+.5),r,13+((i+j)%3)*2.5,tank);
+    for(let j=0;j<nz;j++) b.box(x1-x0-12,.5,.5,steel,(x0+x1)/2,1.2,top+6+spz*(j+.5)+r+2); }
+  /* 3. air-separation plant (two trains): cold boxes, columns, compressor hall, cooling towers, substation */
+  { const x0=sx(.345), x1=sx(.525), cx=(x0+x1)/2; pad(x0,top,x1,bot);
+    for(const [dx,h] of [[-22,46],[8,40]]){ const x=cx+dx, z=zc-25; b.box(10,h,10,M.white,x,h/2,z); b.box(10.6,.6,10.6,M.trim,x,h+.3,z); for(let y=8;y<h;y+=9) b.box(11.2,.25,11.2,steel,x,y,z); b.cyl(2.6,h+8,steel,x+9,(h+8)/2,z-3,12); b.cyl(2,h-6,steel,x+9,(h-6)/2,z+5,12); }
+    b.box(x1-x0-16,14,24,materials.building,cx,7,zc+18); b.box(x1-x0-15,.8,25,M.trim,cx,14.4,zc+18); for(let k=0;k<6;k++) b.cyl(1.6,6,M.hvac,x0+16+k*(x1-x0-32)/5,17,zc+18,10);
+    const ct=top+14; for(const ox of [-26,26]){ b.box(40,10,14,M.trim,cx+ox,5,ct); for(let k=0;k<3;k++){ b.cyl(4.6,3.6,M.hvac,cx+ox-13+k*13,11.8,ct,16,4.2); b.cyl(4,.4,M.fan,cx+ox-13+k*13,13.7,ct,12); } }
+    const ss=bot-12; for(let k=0;k<5;k++){ b.box(5,6,4,M.door,x0+14+k*9,3,ss); b.cyl(.35,9,steel,x0+14+k*9,4.5,ss+5,6); } b.box(44,.4,.4,steel,x0+32,9,ss+5);
+    for(let x=x0+6;x<=x0+60;x+=3) for(const z of [ss-7,ss+9]) b.box(.2,2.4,.2,M.fence,x,1.2,z); }
+  /* 4. LOX storage: 2 x 3 spheres + vacuum-jacketed verticals */
+  { const x0=sx(.545), x1=sx(.725), r=Math.min(15,(x1-x0)/6.5); pad(x0,top,x1,bot);
+    for(let i=0;i<2;i++) for(let j=0;j<3;j++) sphere(x0+r*1.5+i*(r*2.7),top+r*1.4+j*((bot-top-r*2.8)/2),r,white);
+    for(let k=0;k<4;k++) vtank(x1-10,top+16+k*((bot-top-32)/3),4.4,28,white); }
+  /* 5. LH2 spheres (2 x 2), a row of LN2/GN2 bullets between them, and the boil-off flare stack (east, nearest the pad) */
+  { const x0=sx(.745), x1=sx(.95), r=Math.min(17,(x1-x0)/5.4); pad(x0,top,x1,bot);
+    for(let i=0;i<2;i++) for(let j=0;j<2;j++) sphere(x0+r*1.4+i*(r*2.8),top+r*1.5+j*((bot-top-r*3)),r,white);
+    for(let k=0;k<6;k++){ const x=x0+12+k*((x1-x0-24)/5), z=zc; b.cyl(3,22,white,x,5.2,z,14,null,Math.PI/2); for(const dz of [-7,7]) b.box(5,2.6,1.2,conc,x,1.3,z+dz); }
+    const fx=sx(.98), fz=top+8; b.cyl(.9,38,steel,fx,19,fz,8); b.cyl(1.2,3,M.red,fx,39.5,fz,10); for(let k=0;k<3;k++){ const a=k/3*6.283; b.cyl(.12,38,M.fence,fx+Math.cos(a)*8,19,fz+Math.sin(a)*8,4,.12,Math.sin(a)*.22,-Math.cos(a)*.22); } }
+  /* 7. pipe rack: along the farm's avenue side, then on a bridge across the avenue into the pad */
+  { const pad=(descriptors||[]).find(d=>d&&d.key==='pad'), rz=Z1-24, H=7;
+    const bent=(x,z,alongX)=>{ for(const o of [-2.5,2.5]) b.box(.5,H,.5,steel,x+(alongX?0:o),H/2,z+(alongX?o:0)); b.box(alongX?.5:6,.5,alongX?6:.5,steel,x,H,z); };
+    const run=(ax,az,bx,bz)=>{ const alongX=Math.abs(bx-ax)>Math.abs(bz-az), len=Math.hypot(bx-ax,bz-az); for(let t=0;t<=len;t+=12) bent(ax+(bx-ax)*t/len,az+(bz-az)*t/len,alongX);
+      for(const o of [-1.8,-.6,.6,1.8]){ const mx=(ax+bx)/2, mz=(az+bz)/2; b.cyl(.35,len,o===-1.8?M.blue:white,mx+(alongX?0:o),H+.9,mz+(alongX?o:0),8,null,alongX?0:Math.PI/2,alongX?Math.PI/2:0); } };
+    const xA=sx(.2), xB=X1+20; run(xA,rz,xB,rz);
+    if(pad){ const pz=pad.position.z, px=pad.position.x-pad.footprint.x*.7-6; run(xB,rz,xB,pz); run(xB,pz,px,pz); } }
+  b.flush(g,true);
+  if(trucks.length){
+    const trailer=new THREE.CylinderGeometry(1.4,1.4,12,12); trailer.rotateX(Math.PI/2); trailer.translate(0,2.6,0); const cabG=new THREE.BoxGeometry(2.5,3.2,3.4); cabG.translate(0,2,-8.2);
+    const im=new THREE.InstancedMesh(cape3dMergeGeometries([{geo:trailer,color:0xdfe5e8},{geo:cabG,color:0x1f4f8a}]),new THREE.MeshStandardMaterial({vertexColors:true,roughness:.35,metalness:.5}),trucks.length), m=new THREE.Matrix4(), q=new THREE.Quaternion(), up=new THREE.Vector3(0,1,0), p=new THREE.Vector3(), s=new THREE.Vector3(1,1,1);
+    trucks.forEach((t,i)=>{ q.setFromAxisAngle(up,t.rot); m.compose(p.set(t.x,.4,t.z),q,s); im.setMatrixAt(i,m); }); im.castShadow=true; im.receiveShadow=true; im.name='cape3d_tankers'; g.add(im);
   }
   root.add(g); return g;
 }
@@ -4891,7 +5048,7 @@ function cape3dExitLaunchPresentation(){
   if(rocket&&root.userData.launchBase){ cape3dResetStaging(rocket); rocket.position.copy(root.userData.launchBase); rocket.rotation.z=0; rocket.visible=true; } if(fx){ fx.group.visible=false; fx.glow.intensity=0; fx.group.position.y=rocket?(rocket.userData.nozzleY||-10):-10; } if(root.userData.groundSmoke) root.userData.groundSmoke.group.visible=false; if(root.userData.launchSplash) root.userData.launchSplash.group.visible=false; cape3dResetFailure(root.userData.launchFailure); root.userData.launchSpace=0;
   for(const d of (root.userData.stageDebris||[])) root.remove(d.obj); root.userData.stageDebris=[]; cape3dHideCinematic(root);
   const world=root.userData.ascentWorld; if(world){ world.group.visible=false; world.puffs.forEach(p=>p.visible=false); } cape3dApplySiteOpacity(root.userData.siteObjects,1); root.userData.launchActive=false; root.userData.launchVisual=null; if(cape3d.flightFill) cape3d.flightFill.intensity=0;
-  cape3d.camera.far=100000; if(cape3d.baseFov!=null) cape3d.camera.fov=cape3d.baseFov; cape3d.camera.updateProjectionMatrix(); cape3d.cam={az:2.25,el:.48,dist:1450,target:{x:420*CAPE3D_SITE_SPREAD,y:0,z:250*CAPE3D_SITE_SPREAD}}; cape3dApplyCamera(); attachCape3DInput(); return true;
+  cape3d.camera.far=100000; if(cape3d.baseFov!=null) cape3d.camera.fov=cape3d.baseFov; cape3d.camera.updateProjectionMatrix(); cape3d.cam=cape3dDefaultCam(); cape3dApplyCamera(); attachCape3DInput(); return true;
 }
 function cape3dExitFlightPresentation(){
   if(!cape3d||!cape3d.root) return false;
@@ -4919,7 +5076,8 @@ function buildCape3DScene(scene){
   root.userData.clouds=cape3dClouds(root); root.userData.practicalLights=[...cape3dPracticalLights(root,descriptors),...cape3dStreetLights(root,materials)]; root.userData.windowMaterial=materials.glass; root.userData.facadeMaterials=materials.facades; root.userData.accentMaterial=materials.accent;
   const pad=padD; if(pad){ const rocket=cape3dVehicleMesh(); rocket.position.set(pad.position.x-pad.footprint.x*.18,cape3dLaunchBaseY(rocket),pad.position.z); root.add(rocket); root.userData.launchPad=pad; root.userData.launchRocket=rocket; root.userData.launchBase=rocket.position.clone(); root.userData.launchEffects=cape3dLaunchEffects(rocket); root.userData.groundSmoke=cape3dGroundSmoke(root,rocket.position); root.userData.launchSplash=cape3dSplashEffects(root); root.userData.launchFailure=cape3dFailureEffects(root,rocket,root.userData.launchEffects); root.userData.ascentWorld=cape3dAscentWorld(root,pad,root.userData.launchBase); root.userData.orbitWorld=cape3dOrbitWorld(root); root.userData.transferWorld=cape3dTransferWorld(root); root.userData.reentryWorld=cape3dReentryWorld(root); root.userData.sepPuffs=cape3dSepPuffPool(root); root.userData.cloudShells=[root.userData.ascentWorld,root.userData.orbitWorld].map(w=>w&&w.cloudShell).filter(Boolean); }
   // One continuous surface (land, beach, lagoon and sea) fades with the rest of the site during ascent.
-  root.userData.siteObjects=[terrain,roads,facilities,vegetation,extras];
+  const tankFarm=cape3dTankFarm(root,plan,materials,descriptors);
+  root.userData.siteObjects=[terrain,roads,facilities,vegetation,extras]; if(tankFarm) root.userData.siteObjects.push(tankFarm);
   // State-driven growth: extra pads use the full pad model; operations buildings get simple massing plus detail.
   try{
     growth.forEach(d=>{
@@ -5054,7 +5212,7 @@ function startCape3D(hostId,width,height){
     // almost nothing by staging, leaving a present upper stack indistinguishable from black space.
     const flightFill=new THREE.DirectionalLight(0xcbe8ff,0); scene.add(flightFill); scene.add(flightFill.target);
     const root=buildCape3DScene(scene), sky=cape3dSkyDome(scene);
-    cape3d={renderer,scene,camera,sun,hemi,flightFill,root,sky,quality,descriptors:syncCape3DFromState(),mountId:hostId||'ccSceneHost',paused:false,startedAt:Date.now(),raf:0,cam:{az:2.25,el:.48,dist:1450,target:{x:420*CAPE3D_SITE_SPREAD,y:0,z:250*CAPE3D_SITE_SPREAD}},raycaster:new THREE.Raycaster(),inputAttached:false};
+    cape3d={renderer,scene,camera,sun,hemi,flightFill,root,sky,quality,descriptors:syncCape3DFromState(),mountId:hostId||'ccSceneHost',paused:false,startedAt:Date.now(),raf:0,cam:cape3dDefaultCam(),raycaster:new THREE.Raycaster(),inputAttached:false};
     renderer.domElement.style.position='absolute'; renderer.domElement.style.inset='0'; renderer.domElement.style.width='100%'; renderer.domElement.style.height='100%'; renderer.domElement.style.display='block';
     cape3dApplyCamera(); mountCape3D(hostId); resizeCape3D(width,height); attachCape3DInput(); renderCape3DFrame(); cape3d.raf=requestAnimationFrame(cape3dLoop);
     return true;
@@ -5569,7 +5727,7 @@ function renderCCCenter(){
         </div>
       </div>`;
     } else {
-      $('ccSpots').innerHTML=spots;
+      const cs=$('ccSpots'); if(cs._ovSpots!==spots){ cs.innerHTML=spots; cs._ovSpots=spots; } /* skip identical rebuilds: each one reset the 3D labels to their 2D spots */
       // Host built earlier by the 2D path (Three wasn't loaded yet): drop its CSS zoom and 2D control hint.
       const z=$('ccZoom'); if(z&&z.style&&z.style.transform) z.style.transform='';
       const hint=document.querySelector&&document.querySelector('#ccSceneWrap .cc-zoomhint');
@@ -5577,7 +5735,7 @@ function renderCCCenter(){
     }
     const host=$('ccSceneHost'), wrap=$('ccSceneWrap');
     const w=(host&&host.clientWidth)||(wrap&&wrap.clientWidth)||CAPE_W, h=(host&&host.clientHeight)||(wrap&&wrap.clientHeight)||CAPE_H;
-    if(startCape3D('ccSceneHost',w,h)){ if(cape3d&&cape3d.root&&!cape3d.root.userData.launchActive) cape3dInstallFlightVehicle(cape3dCurrentVehicleSpec()); cape3dSetHotspotHost('ccSpots'); resumeCape3D(); return; }
+    if(startCape3D('ccSceneHost',w,h)){ if(cape3d&&cape3d.root&&!cape3d.root.userData.launchActive) cape3dInstallFlightVehicle(cape3dCurrentVehicleSpec()); cape3dSetHotspotHost('ccSpots'); cape3dProjectHotspots(); /* rebuilt spots carry 2D iso positions -- place them before the next paint */ resumeCape3D(); return; }
   }
   if(phaserOK()){
     // persistent Phaser host: build the scaffold once, then only refresh the overlay
@@ -7372,7 +7530,7 @@ function ccPopLoop(){
   // Refresh the hotspot glyphs ~2x/sec (every 30 frames): the canvas redraws every frame, but the status
   // glyphs only change on game-turn boundaries, so per-frame innerHTML churn would be wasteful. The delegated
   // click listener lives on the persistent #ccPopSpots container, so rebuilding its children here is safe.
-  if((++ccPopFrame%30)===0){ const sp=$('ccPopSpots'); if(sp) sp.innerHTML=ccSpotsHTML(); }
+  if((++ccPopFrame%30)===0){ const sp=$('ccPopSpots'), html=ccSpotsHTML(); if(sp&&sp._ovSpots!==html){ sp.innerHTML=html; sp._ovSpots=html; if(cape3d&&cape3d.hotspotHostId==='ccPopSpots') cape3dProjectHotspots(); } } /* only rebuild when a glyph actually changed: each rebuild reset 3D labels to 2D spots for a frame (twice-a-second flicker) */
   ccPopAnim=requestAnimationFrame(ccPopLoop);
 }
 function openCCPopout(){
