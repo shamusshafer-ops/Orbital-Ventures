@@ -1054,6 +1054,21 @@ function firstResearchableToward(targetId){
 }
 function missionFlyable(mm){ return !!(mm && state.rep>=mm.minRep && missionTechMet(mm)); }
 // the single best next move — answers "what should I do next?"
+/* Phase 8 (comprehensive evaluation 2026-11-19): measured — after a failed First Satellite ($5–6M, five times any Pioneer
+   rocket) the advisor kept saying "Launch: First Satellite" to a company that could not afford it, and the bot (like a
+   player who follows the advisor) sat idle for two years until overhead finished it. When the next objective's known
+   attempt cost exceeds the cash on hand, recommend the best-paying job on a clearly smaller rocket instead. */
+function missionAttemptEstimate(m){ const k=state.lastAttemptCost&&state.lastAttemptCost[m.id]; if(k) return k; return state.activeMission===m.id?flightAttemptCost(m):0; }
+function earnFirstFor(mm){
+  const need=missionAttemptEstimate(mm); if(!(need>0) || state.money>=need) return null;
+  const dv=x=>x.reqDv||0, pay=x=>x.proc?x.payout:estMissionPayout(x), known=x=>state.lastAttemptCost&&state.lastAttemptCost[x.id];
+  const smaller=x=>!x.profile && !x.window && !x.stationVisit && !x.tanker && !x.deliverModule && !x.orbitDeployment && !x.vehicleDocking && dv(x)>0 && dv(x)<=0.8*dv(mm) && (!x.crew||crewReadiness(x).ok);
+  const pool=(state.contractOffers||[]).filter(o=>o.proc&&!o.service&&(o.minRep||0)<=state.rep&&(!o.reqResearch||state.research[o.reqResearch])&&smaller(o))
+    .concat(MISSIONS.filter(x=>x.id!==mm.id&&state.completed[x.id]&&missionFlyable(x)&&smaller(x)))
+    .filter(x=>!known(x)||known(x)<=state.money).sort((a,b)=>pay(b)-pay(a));
+  const job=pool[0]; if(!job) return null;
+  return {kind:'earn', title:`Earn first: ${job.name}`, detail:`${mm.name} costs about ${fM(need)} to build and fly — you have ${fM(state.money)}. ${job.name} pays ${fM(pay(job))} on a smaller rocket.`, tab:'bench', missionId:job.id, reward:{money:pay(job), rep:job.rep||0}};
+}
 function recommendedAction(){
   const no=nextObjective();
   if(no){
@@ -1075,6 +1090,8 @@ function recommendedAction(){
       const pick=!hasAstro && availablePool().filter(p=>roleOf(p.id)==='astro').sort((a,b)=>b.skill-a.skill)[0];
       if(pick) return {kind:'crew', title:`Hire: ${pick.name}`, detail:`${mm.name} is crewed — astronauts train ${ASTRO_TRAIN_MONTHS} months before they fly. Build the vehicle while they train.`, tab:'personnel', action:`hirePersonnel('${pick.id}')`};
     }
+    if(missionFlyable(mm)){ /* Phase 8 (comprehensive eval): a target you can't afford gets an earning step, not a dead end */
+      const e=earnFirstFor(mm); if(e) return e; }
     if(missionFlyable(mm)) return {kind:'launch', title:`Launch: ${mm.name}`, detail:`Your next objective — ${no.program.name}.`, tab:'bench', missionId:mm.id, reward:{money:mm.payout, rep:mm.rep}};
     if(state.rep<mm.minRep){
       const avail=MISSIONS.find(x=>!state.completed[x.id] && missionFlyable(x) && x.id!==mm.id);
@@ -1113,8 +1130,8 @@ function onboardingMark(key){
 // Spine step 4 (2026-11-16): the checklist used to suggest a $1.5M project before the first launch. On Engineer
 // ($3.5M start) that left about one retry, and 9 of 40 bot campaigns that followed it went insolvent in 1942
 // (0 of 40 that flew first). The research step now comes after the first flight, and the pick must leave
-// enough for OB_RESERVE_ATTEMPTS more attempts at the next flight (two until First Flight succeeds, one after).
-const OB_RESERVE_ATTEMPTS_BEFORE=2, OB_RESERVE_ATTEMPTS_AFTER=1;
+// enough for OB_RESERVE_ATTEMPTS more attempts at the next flight (two, before and after First Flight succeeds).
+const OB_RESERVE_ATTEMPTS_BEFORE=2, OB_RESERVE_ATTEMPTS_AFTER=2; /* comprehensive eval P1: one attempt in reserve after First Flight left a single retry for the dearer Sounding/contract flights — 2026-11-19 */
 function onboardingAttemptCost(){ return round2(flightAttemptCost(missionById(OB_MISSION))); } /* Phase 1: one "keep this to fly" number */
 function onboardingReserve(){ return round2(onboardingAttemptCost()*(state.completed&&state.completed[OB_MISSION]?OB_RESERVE_ATTEMPTS_AFTER:OB_RESERVE_ATTEMPTS_BEFORE)); }
 // The research the checklist suggests: Static Fire Test Program if it is affordable with the reserve kept back,
@@ -1157,7 +1174,7 @@ function onboardingSteps(){
         ? (rp.id==='test_program'
           ? `Start Static Fire Test Program (${fM(rdCostOf(rp))}) — it lifts reliability for every flight (your rocket is ${Math.round((computeVehicleSafe()||{}).reliability*100||0)}% today). R&D runs in the background while you build the next one.`
           : `Start ${rp.name} (${fM(rdCostOf(rp))}). R&D runs in the background while you build the next rocket.`)
-        : `Research when you can afford it: keep ${fM(onboardingReserve())} back for ${state.completed&&state.completed[OB_MISSION]?'your next flight':'two more tries at First Flight'}. A green company that can't fly again is finished.`,
+        : `Research when you can afford it: keep ${fM(onboardingReserve())} back for ${state.completed&&state.completed[OB_MISSION]?'two more flights':'two more tries at First Flight'}. A green company that can't fly again is finished.`,
       done:legacy||researched, show:rp?'research':null},
   ];
   const cur=steps.findIndex(s=>!s.done);
@@ -7947,6 +7964,8 @@ function renderReadout(){
   if(v.crewed && v.twr>1.2 && meets && !state.research.launch_escape) flags+=`<div class="flag warn">△ No escape system — a failure at ${(100-(v.reliability*100|0))}% odds loses the crew.</div>`;
   if(recoveryActive(m)) flags+=`<div class="flag ok">♻ Reusable booster fitted — ${recoveryRefly(m)?`reflown on this routine mission: build ×${refurbCostMult().toFixed(2)}, turnaround −1 mo${refurbWear()>0?`, wear ${refurbWear()}/${REFLY_WEAR_MAX} (−${(refurbRelPenalty()*100).toFixed(1)}% rel)`:''}`:`first flight proves it (+${fM(RECOVERY_HARDWARE)} hardware; refly discount once routine)`}.</div>`;
   if(ispMult()>1||thrustMult()>1) flags+=`<div class="flag ok">⚙ Propulsion R&D on the launch vehicle: +${Math.round((ispMult()-1)*100)}% Isp · +${Math.round((thrustMult()-1)*100)}% thrust.</div>`;
+  { const _hw=hardwareMaturity(curMission()); _hw.rows.forEach(r=>{ if(r.qual<0.9999) flags+=`<div class="flag warn">△ New engine — ${r.name}: ${r.qualFlights}/${QUAL_FLIGHTS} qualification flights, −${((1-r.qual)*100).toFixed(1)}% reliability. Each success qualifies it further; a static fire counts ${TEST_QUAL_CREDIT[1]}, an uncrewed test flight ${TEST_QUAL_CREDIT[2]}${researchQualCredit()<5?', Testing research up to '+(5-researchQualCredit())+' more':''}.</div>`; else if(r.rating<0.99) flags+=`<div class="flag warn">△ ${r.name} is rated ${(ENGINES[r.id].rel*100).toFixed(1)}% — −${((1-r.rating)*100).toFixed(1)}% reliability vs the fleet norm. Raw power at a price in dependability.</div>`; else if(r.rating>1.005) flags+=`<div class="flag ok">✓ ${r.name} is rated ${(ENGINES[r.id].rel*100).toFixed(1)}% — +${((r.rating-1)*100).toFixed(1)}% reliability over the fleet norm.</div>`; }); }
+  { const _el=earlyLessonRel(); if(_el>0) flags+=`<div class="flag ok">📓 Lessons from ${state.earlyLessons} failed flight${state.earlyLessons>1?'s':''}: +${Math.round(_el*100)}% reliability on the next attempt (a young program learns fast; spent on the next success).</div>`; }
   { const _fh=fleetHeritageRelBonus(); if(_fh>0){ const _best=(state.stages||[]).map(s=>s.eng).concat(boostersFitted&&boostersFitted()?[state.boosters.eng]:[]).reduce((b,id)=>engineHeritageFrac(id)>engineHeritageFrac(b)?id:b); flags+=`<div class="flag ok">🏅 Flight heritage: ${ENGINES[_best].name} has ${engineHeritageFlights(_best)} proven flights — +${(_fh*100).toFixed(1)}% reliability and a cheaper build. Old workhorses stay valuable.</div>`; } }
   { const _st=solidInsertionTax(m); if(_st>0) flags+=`<div class="flag warn">△ Solid final stage on an orbital insertion — no throttle or shutdown to trim the burn: −${(_st*100).toFixed(0)}% reliability. A restartable liquid upper stage inserts more precisely.</div>`; }
   if(boostersFitted()){ const relCost=Math.round((1-boosterRelPenalty())*100); flags+=`<div class="flag ok">⫶ ${v.boosters.count} strap-on booster${v.boosters.count>1?'s':''} (${v.boosters.eng.name}${v.boosters.eng.solid?', solid':''}) — +${fI(v.boostDv||0)} m/s boost-phase Δv, combined-thrust liftoff${relCost>0?` · −${relCost}% reliability (extra failure points)`:''}.</div>`; }
@@ -8032,6 +8051,8 @@ function renderProfileReadout(m){
   if(!state.research.launch_escape) flags+=`<div class="flag warn">△ No escape system — a failure at ${(100-(rel*100|0))}% odds loses the crew.</div>`;
   if(recoveryActive(m)) flags+=`<div class="flag ok">♻ Reusable booster fitted — ${recoveryRefly(m)?`reflown on this routine mission: build ×${refurbCostMult().toFixed(2)}, turnaround −1 mo${refurbWear()>0?`, wear ${refurbWear()}/${REFLY_WEAR_MAX} (−${(refurbRelPenalty()*100).toFixed(1)}% rel)`:''}`:`first flight proves it (+${fM(RECOVERY_HARDWARE)} hardware; refly discount once routine)`}.</div>`;
   if(ispMult()>1||thrustMult()>1) flags+=`<div class="flag ok">⚙ Propulsion R&D on the launch vehicle: +${Math.round((ispMult()-1)*100)}% Isp · +${Math.round((thrustMult()-1)*100)}% thrust.</div>`;
+  { const _hw=hardwareMaturity(curMission()); _hw.rows.forEach(r=>{ if(r.qual<0.9999) flags+=`<div class="flag warn">△ New engine — ${r.name}: ${r.qualFlights}/${QUAL_FLIGHTS} qualification flights, −${((1-r.qual)*100).toFixed(1)}% reliability. Each success qualifies it further; a static fire counts ${TEST_QUAL_CREDIT[1]}, an uncrewed test flight ${TEST_QUAL_CREDIT[2]}${researchQualCredit()<5?', Testing research up to '+(5-researchQualCredit())+' more':''}.</div>`; else if(r.rating<0.99) flags+=`<div class="flag warn">△ ${r.name} is rated ${(ENGINES[r.id].rel*100).toFixed(1)}% — −${((1-r.rating)*100).toFixed(1)}% reliability vs the fleet norm. Raw power at a price in dependability.</div>`; else if(r.rating>1.005) flags+=`<div class="flag ok">✓ ${r.name} is rated ${(ENGINES[r.id].rel*100).toFixed(1)}% — +${((r.rating-1)*100).toFixed(1)}% reliability over the fleet norm.</div>`; }); }
+  { const _el=earlyLessonRel(); if(_el>0) flags+=`<div class="flag ok">📓 Lessons from ${state.earlyLessons} failed flight${state.earlyLessons>1?'s':''}: +${Math.round(_el*100)}% reliability on the next attempt (a young program learns fast; spent on the next success).</div>`; }
   { const _fh=fleetHeritageRelBonus(); if(_fh>0){ const _best=(state.stages||[]).map(s=>s.eng).concat(boostersFitted&&boostersFitted()?[state.boosters.eng]:[]).reduce((b,id)=>engineHeritageFrac(id)>engineHeritageFrac(b)?id:b); flags+=`<div class="flag ok">🏅 Flight heritage: ${ENGINES[_best].name} has ${engineHeritageFlights(_best)} proven flights — +${(_fh*100).toFixed(1)}% reliability and a cheaper build. Old workhorses stay valuable.</div>`; } }
   { const _st=solidInsertionTax(m); if(_st>0) flags+=`<div class="flag warn">△ Solid final stage on an orbital insertion — no throttle or shutdown to trim the burn: −${(_st*100).toFixed(0)}% reliability. A restartable liquid upper stage inserts more precisely.</div>`; }
   if(boostersFitted()){ const relCost=Math.round((1-boosterRelPenalty())*100); flags+=`<div class="flag ok">⫶ ${v.boosters.count} strap-on booster${v.boosters.count>1?'s':''} (${v.boosters.eng.name}${v.boosters.eng.solid?', solid':''}) — +${fI(v.boostDv||0)} m/s boost-phase Δv, combined-thrust liftoff${relCost>0?` · −${relCost}% reliability (extra failure points)`:''}.</div>`; }
@@ -11445,6 +11466,20 @@ function outpostSwitcherHTML(currentId){
   return `<div class="outpost-switcher" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${rows.join('')}</div>`;
 }
 // Facility tabs + aggregate stats for the focused facility
+/* Phase 7: mothball / reactivate — cut a facility's carrying cost to zero when cash is short */
+function mothballHTML(def){
+  if(!facilityBuilt(def.id)) return '';
+  if(facilityMothballed(def.id)) return `<div class="flag warn" style="margin-top:8px">⏸ Mothballed — no output, no carrying cost. <button class="btn" style="margin-left:6px" onclick="reactivateFacility('${def.id}')" ${state.money>=reactivateCost(def.id)?'':'disabled'}>Reactivate · ${fM(reactivateCost(def.id))}</button></div>`;
+  return `<div class="dim" style="font-size:12px;margin-top:8px">Short of cash? <button class="btn ghost" style="font-size:12px;padding:2px 8px" onclick="mothballFacility('${def.id}')" title="Safe the systems and stand the crew down: no output, no opex, no provisions consumed. Reactivating costs ${fM(reactivateCost(def.id))}.">⏸ Mothball ${esc(def.name)}</button></div>`;
+}
+/* Phase 4: the base's progression ladder — where it is, what the next tier needs, what it would give */
+function baseTierLadderHTML(def,fs){
+  if(!isSurfaceBase(def)) return '';
+  const t=baseTierFor(def,fs);
+  return `<div style="margin-top:8px"><div class="mission-tag">Base progression — ${BASE_TIERS[t-1].name}</div>${BASE_TIERS.map(T=>{
+    const done=T.n<=t, next=T.n===t+1;
+    return `<div class="flag ${done?'ok':next?'warn':''}" style="margin:3px 0${done||next?'':';opacity:.55'}">${done?'✓':next?'→':'·'} <b>${T.name}</b>${T.gain?` — ${T.gain}`:''}${next?`<br><span class="dim">Needs: ${T.need}</span>`:''}</div>`; }).join('')}</div>`;
+}
 function renderStationFacilityStats(built, cur, focusId, focusFn){ // E1.8: base bench reuses this panel with its own focus state
   focusId=focusId||state.stationFocus; focusFn=focusFn||'setStationFocus';
   const tabs=outpostSwitcherHTML(focusId); /* Phase 4c: every outpost, orbital and surface */
@@ -11500,7 +11535,7 @@ function renderStationFacilityStats(built, cur, focusId, focusFn){ // E1.8: base
     ${manifestHTML(def.id)}    ${pw.net<0?`<div class="flag warn">△ Power-starved — production running at 60%. Dock a Solar Power Truss.</div>`:''}
     ${crew.req>crew.cap?`<div class="flag warn">△ Under-crewed (${crew.cap}/${crew.req}) — output at ${Math.round(crew.factor*100)}%. Dock a Habitat (each adds 3 crew).</div>`:''}
     ${list.length>=facilityPortCap(fs,def)?`<div class="flag warn">△ All ${facilityPortCap(fs,def)} ports occupied — a Docking Node adds 3 more.</div>`:''}
-    ${synHTML}${crewHTML}${contractHTML}${dockHTML}`;
+    ${mothballHTML(def)}${baseTierLadderHTML(def,fs)}${synHTML}${crewHTML}${contractHTML}${dockHTML}`;
 }
 // Radial station renderer: the save model remains an ordered module list, but the bench now
 // lays modules out across a docking grid instead of flattening them into a left/right chain.
@@ -12542,9 +12577,9 @@ function renderInfrastructure(){
     return `<div class="card" style="margin-bottom:12px;opacity:${reqDone?1:0.7}">
       <div class="mission-name" style="font-size:15px"><span style="color:${def.color}">${def.icon} ${def.name}</span> ${reqDone?'<span class="pill">foundable</span>':`<span class="pill lock">needs ${reqName}</span>`}</div>
       <div class="sub" style="margin:2px 0 8px">${def.blurb}</div>
-      <div class="dim" style="font-size:12px;margin-bottom:8px">Found at ${bodyName}: ${fM(def.foundCost)} · ${def.foundMonths} mo. Then expand it module by module — it produces income and propellant, and makes missions to ${bodyName} cheaper and more reliable, forever.</div>
-      <button class="btn launch" onclick="foundFacility('${def.id}')" ${chk.ok?'':'disabled'}>${chk.ok?`Establish ${def.name} · ${fM(def.foundCost)}`:chk.why}</button>
-      ${(reqDone&&!chk.ok&&state.money<def.foundCost)?affordWidgetHTML(def.foundCost):''}
+      <div class="dim" style="font-size:12px;margin-bottom:8px">Found at ${bodyName}: ${fM(facilityFoundCost(def.id))}${hubDiscountFor(def.id)?' (staged from your Logistics Hub, −30%)':''} · ${def.foundMonths} mo. Then expand it module by module — it produces income and propellant, and makes missions to ${bodyName} cheaper and more reliable, forever.</div>
+      <button class="btn launch" onclick="foundFacility('${def.id}')" ${chk.ok?'':'disabled'}>${chk.ok?`Establish ${def.name} · ${fM(facilityFoundCost(def.id))}`:chk.why}</button>
+      ${(reqDone&&!chk.ok&&state.money<facilityFoundCost(def.id))?affordWidgetHTML(facilityFoundCost(def.id)):''}
     </div>`;
   }).join('');
   const fp=state.fuelPrice;
@@ -12556,7 +12591,7 @@ function renderInfrastructure(){
         <div class="sub" style="margin:2px 0 8px">Trade propellant through your depot. Sell what your ISRU bases and tanker runs produce, or stockpile cheap fuel to top off a big mission. Prices drift with supply and demand — and a rival short on fuel may pay a premium.</div>
         <div class="metrics">
           <div class="metric"><div class="k">Spot price</div><div class="v">${fM(fp)}/t ${trend}</div></div>
-          <div class="metric"><div class="k">In depot</div><div class="v">${state.depot.toFixed(1)} t</div></div>
+          <div class="metric"><div class="k">In depot</div><div class="v">${state.depot.toFixed(1)} / ${depotCapacity()} t</div></div>
           <div class="metric"><div class="k">Buy / Sell</div><div class="v">${fM(fuelBuyPrice())} / ${fM(fuelSellPrice())}</div></div>
           <div class="metric"><div class="k">Holdings value</div><div class="v" style="color:var(--ok)">${fM(round2(state.depot*fuelSellPrice()))}</div></div>
         </div>

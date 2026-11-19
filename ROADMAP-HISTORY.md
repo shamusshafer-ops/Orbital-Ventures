@@ -8656,3 +8656,20 @@ Presentation only, no sim change. Suite `test-graphics-pass3-2026-11.js` (39 che
 terrain assertions in `test-cape-terrain-cleanup`, `test-graphics-pass-2026-11` and `test-graphics-pass2-2026-11`
 now describe the single surface. Full sweep 194/195 + 1 intentional skip. Checked in headless Firefox at the
 Command Center, a low beach pass, and 3/10/30/60/80 km. Terrain build ≈0.5 s once at startup (headless).
+
+### 2026-11-19 — Comprehensive gameplay/systems evaluation (Claude)
+
+Ran the owner's 12-phase brief in full: census, dependency map, 8 bot strategies × 3 seeds to 2010, 30-seed opening
+sweeps, a 7-commit bisect of the opening regression (2/30 → 11/30 insolvent-before-1944 across spine 5a, 5b–7 and
+decision-loop Phase 2). Write-up: `EVALUATION-2026-11-COMPREHENSIVE.md`. Implemented (SAVE_VERSION 77): hardware
+maturity (`hardwareMaturity`: engine rating × era-scaled qualification after the process cap; test campaigns and the
+Testing track credit qualification flights), early-program learning (`noteEarlyLesson`), the Cautious live-call fix,
+the "Earn first" advisor (`earnFirstFor`, `state.lastAttemptCost`), a two-attempt checklist reserve after First Flight,
+amortizing bridge loans (`state.loanBalance`), base tiers (`baseTierFor`, `checkBaseTiers`, `fs.tierSeen`, the ladder in
+the Outposts panel), Lunar Base Crew Exchange / Science Cargo contracts (procedural missions carry `body`), depot
+capacity + export (`exportDepotOverflow`), and mothballing (`mothballFacility`/`reactivateFacility`). Bot: five strategy
+knobs, reliability/base summary lines, a second build line behind long builds, mothball-when-broke. Suites
+`test-comprehensive-p1.js` (36) and `test-comprehensive-bases.js` (35); `test-launch-policy`, `test-opening-fix` and
+`test-failure-learning` updated for the intended changes. Full sweep 196/197 + 1 intentional skip. Matrix: non-floor
+bankruptcies 18/21 → 8/21, flights at the reliability cap 81–94% → 26–53%, opening out-of-loans 7/30 → 4/30.
+

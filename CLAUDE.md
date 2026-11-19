@@ -6,7 +6,7 @@ reorder existing entries there, only add new ones at the end, same as `ROADMAP.m
 
 ---
 
-## STATUS (as of 2026-11-18 — gameplay spine steps 1–8 done)
+## STATUS (as of 2026-11-19 — comprehensive evaluation pass done)
 
 **Repo health:** `node tests/run-gate0-evidence.js` → 168/169 suites pass, one intentional skip
 (`test-progress-unify.js`), zero unexpected. Build parity, generated-script syntax clean. The runner
@@ -93,6 +93,16 @@ sea, water wherever height < `CAPE3D_SEA_Y`, Earth curvature beyond 30 km out to
 decals and variation overlay are gone. RULE: anything new placed on the ground near the site uses `cape3dGroundY(x,z)`;
 anything that must sit on the flat datum goes into `cape3dSitePlan` (rects/roads) BEFORE the terrain is built. Building
 detail lives in `cape3dFacilityDetail` (batched). Suite: `test-graphics-pass3-2026-11.js`.
+
+**Comprehensive evaluation (2026-11-19, Claude):** `EVALUATION-2026-11-COMPREHENSIVE.md` + ROADMAP "Comprehensive evaluation
+follow-ups". SAVE_VERSION 77. RULE: vehicle reliability = `processRel` (capped) × `hardwareMaturity(m).factor` — engine
+rating × qualification, applied AFTER the difficulty cap; never fold new reliability terms into the capped sum if they
+must matter late. RULE: a surface base's tier is DERIVED (`baseTierFor`) — don't store it; `fs.tierSeen` only records
+announcements. RULE: the LEO depot has a capacity (`depotCapacity`); production beyond it is exported monthly. RULE:
+mothballed facilities are skipped by every per-tick facility loop — a new loop over `state.facilities` must check
+`facilityMothballed`. RULE: bridge-loan service amortizes against `state.loanBalance`; service with no balance stays
+perpetual (Gate 3 tests rely on that). Bot: `BOT_TEST/RELCUT/SHOCK=Y:f/SCIENCE/BASE` strategy knobs. Suites
+`test-comprehensive-p1.js`, `test-comprehensive-bases.js`. Full sweep 196/197 + 1 intentional skip.
 
 **In progress:** (none claimed right now).
 > When you start a task, replace this line with: `<task> — <Claude|Codex> — started <date>`.

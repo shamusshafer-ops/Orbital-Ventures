@@ -42,7 +42,7 @@ if(typeof passiveSetupCost!=='function') globalThis.passiveSetupCost=d=>d.setup;
 const RIVAL_CLAIMS=[];
 // every settled flight's debrief, in order (read-only: it never changes play) — the repeat-failure measure
 const FLIGHT_LOG=[];
-if(typeof recordFlightDebrief==='function'){ const _rfd=recordFlightDebrief; recordFlightDebrief=function(...a){ const d=_rfd.apply(this,a); if(d) FLIGHT_LOG.push({y:state.year, ok:!!d.success, kind:d.kind, sub:d.subsystem||null, mid:d.missionId}); if(process.env.BOT_FLOG) console.error("FLOG "+JSON.stringify(d)); return d; }; }
+if(typeof recordFlightDebrief==='function'){ const _rfd=recordFlightDebrief; recordFlightDebrief=function(...a){ const d=_rfd.apply(this,a); if(d) FLIGHT_LOG.push({y:state.year, ok:!!d.success, kind:d.kind, sub:d.subsystem||null, mid:d.missionId, rel:(()=>{ try{ return +computeVehicle().reliability.toFixed(3); }catch(e){ return null; } })(), cap:diff().relCap}); if(process.env.BOT_FLOG) console.error("FLOG "+JSON.stringify(d)); return d; }; }
 newGame(DIFF); _gameStarted=true;
 { const _frf=fireRivalFirst; fireRivalFirst=function(r,f){ if(!state.rivalFired[r.id+'|'+f.name]) RIVAL_CLAIMS.push({rival:r.id,name:f.name,missionId:f.missionId||null,year:+(state.year+state.month/12).toFixed(2),nominal:f.year,playerHad:!!(f.missionId&&state.completed[f.missionId])}); return _frf(r,f); }; }
 [['buyResearch','research'],['rushResearch','research'],['queueBuild','build'],['buildEngineStock','build'],['launchFromHangar','launch'],['finalizeLaunch','payouts'],['tickPassiveContracts','contracts'],['tickContinuousDay','daily (overhead, payroll, gov, facilities)'],['signPassiveContract','contracts'],['buildTrackingStation','infrastructure'],['bailout','loans'],['chooseBridgeLoan','loans'],['tickMonthlyBoundary','monthly events'],['acceptMandate','events'],['resolveSetback','events'],['foundFacility','station'],['addStationModule','station'],['resupplyFacility','station'],['tickStationOperations','station']].forEach(([n,c])=>{ try{ ledgerWrap(n,c); }catch(e){} });
@@ -52,6 +52,14 @@ newGame(DIFF); _gameStarted=true;
 function closeAnim(){ for(let k=0;k<6&&typeof animState!=='undefined'&&animState;k++){ try{ dismissAnim(); }catch(e){ break; } } }
 try{ state.onboarding.dismissed=true; }catch(e){}
 if(process.env.BOT_POLICY){ try{ state.launchPolicy=process.env.BOT_POLICY; }catch(e){} } // default: whatever a new game ships with
+/* Strategy scenarios (comprehensive evaluation, 2026-11-19):
+   BOT_TEST=n      fly every vehicle with test campaign level n (1 static fire, 2 uncrewed test flight once unlocked) — the cautious player
+   BOT_RELCUT=x    lower the difficulty's reliability cap and floor by x — an accident-prone program
+   BOT_SHOCK=Y:f   multiply cash by f the first turn of year Y — the player entering the midgame broke
+   BOT_SCIENCE=1   research science/deep-space nodes first — the science-focused player
+   BOT_BASE=1      found and grow the lunar base once the landing is flown — the infrastructure player */
+if(process.env.BOT_RELCUT){ const x=+process.env.BOT_RELCUT; try{ const d=diff(); d.relCap=Math.max(.5,d.relCap-x); d.relFloor=Math.max(.2,d.relFloor-x); }catch(e){} }
+const SHOCK=(process.env.BOT_SHOCK||'').split(':').map(Number); let shockDone=false;
 let rid=0; const R=()=>'bot'+(++rid);
 const stats={turns:0, idleTurns:0, stops:{}, modals:{}, launches:0, success:0, fail:0, research:0, contractsSigned:0, hires:0, actionsPerTurn:[], daysPerTurn:[], firstYear:{}, stuck:{}, debriefMoves:{}, station:{founded:null,modulesAdded:0,visitsPlanned:0,visitsBuilt:0,bought:0,starvedTurns:0}};
 const bump=(o,k,n=1)=>o[k]=(o[k]||0)+n;
@@ -195,6 +203,8 @@ while(state.year<YEAR_END && stats.turns<4000){
   trackAvail();
   for(const y of SNAPS) if(state.year>=y&&!snapDone[y]){ snapDone[y]=1; snapshot(); }
   answerPending().forEach(k=>acts.push('resolve '+k));
+  if(SHOCK.length===2&&!shockDone&&state.year>=SHOCK[0]){ shockDone=true; const m0=state.money; state.money=Math.round(state.money*SHOCK[1]*100)/100; acts.push('cash shock $'+m0.toFixed(1)+'M -> $'+state.money.toFixed(1)+'M'); stats.shock={year:state.year,from:m0,to:state.money}; }
+  if(process.env.BOT_TEST){ const n=+process.env.BOT_TEST; state.testLevel=(typeof testLevelUnlocked==='function'&&!testLevelUnlocked(n))?Math.min(n,1):n; }
   answerLaunch();
   // research
   // Until the first success the bot plays the First Flight checklist literally: research only what it
@@ -259,11 +269,28 @@ while(state.year<YEAR_END && stats.turns<4000){
       }
     }
   }
+  // BOT_BASE=1: the infrastructure player — found the lunar base after the landing, keep it on auto-reorder, grow it
+  if(process.env.BOT_BASE==='1' && !state.launchTxn && typeof facilityBuilt==='function'){
+    const F='lunar_base', def=facilityById(F), st=stats.base=stats.base||{founded:null,modulesAdded:0,starvedTurns:0};
+    const reserve=()=>Math.max(8,flightAttemptCost()*2);
+    if(!facilityBuilt(F)){ if(canFound(F).ok && state.money>def.foundCost+reserve()*2){ foundFacility(F); if(facilityBuilt(F)){ st.founded=+(state.year+state.month/12).toFixed(2); acts.push('found '+F); } } }
+    else { const fs=facilityState(F); if(facilitySupply(F)<=0.01) st.starvedTurns++; if(!fs.autoResupply) toggleAutoResupply(F);
+      const pending=buildQueueList().filter(o=>o.kind==='station-module').length;
+      if(!pending && st.modulesAdded<8){ const list=facilityModuleList(fs), pw=facilityPower(fs);
+        const order=['hab_dome','reactor_pad','isru_plant','rover_garage','lab_mod','greenhouse','hab_dome','power_truss'];
+        let want=pw.net<6?(state.research.surface_fission_power?'reactor_pad':'power_truss'):order.find(id=>!list.includes(id)&&canAddStationModule(F,id).ok)||'hab_dome';
+        const ok=canAddStationModule(F,want); if(ok.ok&&state.money>ok.cost+reserve()*2){ addStationModule(F,want); st.modulesAdded++; acts.push('base module '+want); } } }
+  }
+  // a sensible player mothballs outposts when cash runs short and brings them back when it recovers (Phase 7)
+  if(typeof mothballFacility==='function' && !state.launchTxn){ for(const F of Object.keys(state.facilities||{})){ if(!facilityBuilt(F)) continue;
+    if(!facilityMothballed(F) && state.money<10){ if(mothballFacility(F)) { acts.push('mothball '+F); bump(stats,'mothballs'); } }
+    else if(facilityMothballed(F) && state.money>reactivateCost(F)+60){ if(reactivateFacility(F)) acts.push('reactivate '+F); } } }
   const flyFirst=process.env.BOT_CHECKLIST==='fly' && !state.completed.first_flight; // comparison mode: no research before the first success
   if(!coaching && !flyFirst && !state.activeResearch){
     const rec=recommendedAction(); let r=null;
     if(rec.kind==='research') r=RESEARCH.find(x=>x.id===rec.researchId);
     if(!r) r=RESEARCH.filter(x=>!state.research[x.id]&&reqsMet(x)&&researchEraMet(x)&&sciGateMet(x)&&state.money>=rdCostOf(x)*2).sort((a,b)=>rdCostOf(a)-rdCostOf(b))[0];
+    if(process.env.BOT_SCIENCE==='1'){ const sf=RESEARCH.filter(x=>['science','deepspace'].includes(x.track)&&!state.research[x.id]&&reqsMet(x)&&researchEraMet(x)&&sciGateMet(x)&&state.money>=rdCostOf(x)*2).sort((a,b)=>rdCostOf(a)-rdCostOf(b))[0]; if(sf) r=sf; }
     if(!r && typeof crashEligible==='function' && process.env.BOT_CRASH!=='0'){ // nothing open: pull next-era tech forward if the cash is idle
       const c=RESEARCH.filter(x=>crashEligible(x)&&sciGateMet(x)&&state.money>=crashCost(x)*3).sort((a,b)=>crashCost(a)-crashCost(b))[0];
       if(c){ try{ if(crashResearch(c.id)){ acts.push('crash '+c.id); stats.research++; stats.crash=(stats.crash||0)+1; } }catch(e){} }
@@ -281,7 +308,8 @@ while(state.year<YEAR_END && stats.turns<4000){
   }
   // build toward the advisor's target, else repeat a profitable flyable mission
   const openService=(state.contractOffers||[]).filter(o=>o.service&&!contractOfferReferenced(o.id)).length;
-  if(buildQueueList().length<(openService?2:1)&&hangarList().filter(h=>!(missionById(h.missionId)||{}).window).length<1&&!state.launchTxn){ // hulls parked for a launch window don't stop other work; a second line when service flights are waiting
+  const longBuild=buildQueueList().some(o=>o.kind!=='station-module'&&(o.monthsLeft||0)>6)||hangarList().some(h=>{ const hm=missionById(h.missionId); return hm&&hm.window; }); /* a human keeps flying while a multi-year deep-space build is on the line or a hull waits for its window */
+  if(buildQueueList().filter(o=>o.kind!=='station-module').length<(openService||longBuild?2:1)&&hangarList().filter(h=>!(missionById(h.missionId)||{}).window).length<1&&!state.launchTxn){ // hulls parked for a launch window don't stop other work; a second line when service flights are waiting
     let rec=recommendedAction();
     if(rec.kind==='tracking'&&rec.action){ try{ eval(rec.action); acts.push('advisor: '+rec.title); }catch(e){} rec=recommendedAction(); }
     let m=rec.missionId?missionById(rec.missionId):null;
@@ -356,6 +384,9 @@ const decisionStops=Object.entries(stats.modals).filter(([k])=>k.startsWith('lau
 if(process.env.BOT_LEDGER){ require('fs').writeFileSync(process.env.BOT_LEDGER, JSON.stringify(LEDGER)); }
 const polit=['mandate','review','hearing'].reduce((a,k)=>a+(stats.modals[k]||0),0);
 console.log(JSON.stringify({failureLearning:failRuns}));
+{ const r=(FLIGHT_LOG||[]).filter(f=>f.rel!=null), atCap=r.filter(f=>f.rel>=f.cap-1e-6), byDec={}; r.forEach(f=>{ const d=Math.floor(f.y/10)*10; const b=byDec[d]=byDec[d]||[0,0]; b[0]++; if(f.rel>=f.cap-1e-6) b[1]++; });
+  console.log(JSON.stringify({reliability:{flights:r.length, atCap:atCap.length, atCapShare:+(atCap.length/Math.max(1,r.length)).toFixed(2), byDecade:byDec}})); }
+if(process.env.BOT_BASE==='1'){ const fs=facilityState('lunar_base'); console.log(JSON.stringify({base:Object.assign({},stats.base||{},{built:!!(fs&&fs.built),modules:fs?facilityModuleList(fs):[]})})); }
 if(process.env.BOT_STATION){ const fs=typeof facilityState==='function'?facilityState('leo_station'):null;
   const flown=(FLIGHT_LOG||[]).filter(f=>/^sv_/.test(f.mid||'')); 
   console.log(JSON.stringify({station:Object.assign({}, stats.station, {built:!!(fs&&fs.built), modules:fs?facilityModuleList(fs):[], supplyNow:fs?+facilitySupply('leo_station').toFixed(1):null,

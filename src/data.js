@@ -1644,6 +1644,26 @@ const CONTRACT_ARCHETYPES=[
         profile:[{name:'Ascent to LEO', dv:9400, by:'lv'},{name:'Trans-Lunar Injection', dv:3120, by:'transfer'},{name:'Lunar Orbit Insertion', dv:900, by:'transfer'},{name:'Trans-Earth Injection', dv:900, by:'transfer'}],
         payout:round2((14+1.5*eraIdx)*0.55), rep:12,
         blurb:'A commercial lab wants another regolith sample — a proven profile, a standing customer, no new ground broken.' }; } },
+  // Phase 8 (comprehensive evaluation 2026-11-19): demand that only an outpost creates. A Research Base on the Moon draws
+  // agencies and labs who rent seats and rack space at it — standing work for the fleet that grows with the base.
+  { kind:'base_crew', label:'Lunar Base Crew Exchange', minEra:2, reqResearch:'deep_space',
+    req:st=>typeof baseTier==='function' && baseTier('lunar_base')>=2,
+    weight:st=>1+0.5*baseTier('lunar_base'),
+    build:eraIdx=>{ const days=8+Math.floor(Math.random()*7), crew=2;
+      return { name:'Lunar Base Crew Exchange', reqDv:9400, payload:0, crew, days, minRep:0, reqResearch:'deep_space', body:'moon',
+        modules:['lv','transfer','crew'],
+        profile:[{name:'Ascent to LEO', dv:9400, by:'lv'},{name:'Trans-Lunar Injection', dv:3120, by:'transfer'},{name:'Lunar Orbit Insertion', dv:900, by:'transfer'},{name:'Trans-Earth Injection', dv:900, by:'transfer'}],
+        payout:round2((32+4*eraIdx)*0.6*(1+0.1*(baseTier('lunar_base')-2))), rep:10,
+        blurb:'A partner agency has bought a rotation at your lunar base — fly their crew out to the base shuttle in lunar orbit and bring the outgoing team home. The bigger the base, the more partners want in.' }; } },
+  { kind:'base_cargo', label:'Lunar Base Science Cargo', minEra:2, reqResearch:'deep_space',
+    req:st=>typeof baseTier==='function' && baseTier('lunar_base')>=2,
+    weight:st=>1+0.5*baseTier('lunar_base'),
+    build:eraIdx=>{ const payload=round2(2+Math.floor(Math.random()*4));
+      return { name:'Lunar Base Science Cargo', reqDv:9400, payload, crew:0, days:5, minRep:0, reqResearch:'deep_space', body:'moon',
+        modules:['lv','transfer'],
+        profile:[{name:'Ascent to LEO', dv:9400, by:'lv'},{name:'Trans-Lunar Injection', dv:3120, by:'transfer'},{name:'Lunar Orbit Insertion', dv:900, by:'transfer'}],
+        payout:round2((16+2.5*eraIdx)*0.6*(1+0.1*(baseTier('lunar_base')-2))+payload*1.5), rep:6,
+        blurb:'Instrument racks and experiment hardware for the labs at your lunar base — one-way to the base shuttle in lunar orbit. Your base\'s own industry makes these flights cheaper to build.' }; } },
 ];
 
 /* ---------- Newspaper "below the fold" filler briefs (Slice C, 2026-07-12) ----------

@@ -920,6 +920,7 @@ function advanceDays(days){
 // the smooth daily flows — inputs are stable within a month, so 30 days sum to the monthly total.
 function tickContinuousDay(){
   state.money-=perDay(Math.max(0,diff().overhead*eraCostMult()+econOverheadAdd()+productionUpkeep()+empireOpex()+loanInterest()+partnershipUpkeep()+trackingUpkeep())); // step 5b: fixed overhead grows with the era // overhead (difficulty + market events + #7 production upkeep + CE4(a) empire carrying cost + CE4(c) bridge-loan interest + #6 research-partnership upkeep + #89 tracking-station upkeep)
+  loanRepayDay(); /* P1: bridge-loan service pays the balance down */
   if(state.pgmRoyalty>0) state.money+=perDay(state.pgmRoyalty); // M7: platinum-group royalties from an established Belt claim
   state.staff.forEach(s=>{ const p=personById(s.id); if(p) state.money-=perDay(p.salary); }); // M6: personnel salary
   { const rate=publicSupport()>SUPPORT_BASE ? SUPPORT_REVERT_DAY*0.5 : SUPPORT_REVERT_DAY; // earned goodwill fades half as fast as bad blood heals
@@ -937,7 +938,7 @@ function tickContinuousDay(){
   // supply drain + starvation/abandon bookkeeping stay on the monthly boundary. Accumulate raw (no
   // per-day round2 — rounding tiny daily fuel/sci increments would inflate the monthly total).
   for(const fid in (state.facilities||{})){
-    if(!facilityBuilt(fid)) continue;
+    if(!facilityBuilt(fid)||facilityMothballed(fid)) continue; /* Phase 7: a mothballed facility produces nothing */
     const factor=facilitySupplyFactor(fid)*crisisFacilityMult(), pr=facilityProduction(facilityById(fid), facilityState(fid)); // B4: an ISRU Supply Shock crisis cuts every stream this facility produces
     state.money+=perDay(pr.income*factor); state.rep+=perDay(pr.rep*factor);
     if(pr.fuel>0) state.depot+=perDay(pr.fuel*factor);
@@ -957,7 +958,7 @@ function tickMonthlyBoundary(){
     tickPassiveContracts(); // passive-income contracts pay monthly, then age toward expiry/cooldown
     tickScienceProgram(); // E1.7: space telescope standing program — monthly drip + discovery-event roll
     for(const fid in (state.facilities||{})){ // M17: facility bookkeeping — supply drain + starvation/abandon (production payout is now the daily flow in tickContinuousDay)
-      if(!facilityBuilt(fid)) continue;
+      if(!facilityBuilt(fid)||facilityMothballed(fid)) continue; /* Phase 7: mothballed — no provisions consumed, no starvation */
       const fdef=facilityById(fid), fst=facilityState(fid);
       fst.supply=Math.max(0,(fst.supply!=null?fst.supply:FAC_SUPPLY_MONTHS)-facilitySupplyDrain(fid)); // CE4(b): consume a month of provisions
       if(fst.autoResupply && facilitySupply(fid)<=AUTO_RESUPPLY_THRESHOLD && canResupply(fid).ok){ // 2.4: auto-reorder — same gate/cost/lifecycle as a manual click; canResupply blocks a second order in transit + the money-gate
@@ -977,13 +978,16 @@ function tickMonthlyBoundary(){
           // frame and the mid-tier starvation penalty never actually landed. Evacuate from the list
           // itself and let the count follow, which is the invariant facilityModuleList already asserts.
           const mods=facilityModuleList(fst); // canonical list; also lazily seeds it on legacy saves
-          if(mods.length>1){ mods.pop(); fst.modules=mods.length; log('bad',`${fdef.icon} ${fdef.name}: a module was evacuated and mothballed — capacity cut to ${fst.modules}. Resupply to halt the decline.`); }
+          if(baseTierFor(fdef,fst)>=4){ log('bad',`${fdef.icon} ${fdef.name} is running lean on its own greenhouse and ISRU — no module lost, but output stays cut until it is resupplied.`); }
+          else if(mods.length>1){ mods.pop(); fst.modules=mods.length; log('bad',`${fdef.icon} ${fdef.name}: a module was evacuated and mothballed — capacity cut to ${fst.modules}. Resupply to halt the decline.`); }
           else { fst.built=false; log('bad',`${fdef.icon} ${fdef.name} was abandoned — the outpost is lost. Re-establish it to return.`); }
         }
       } else if(fst.starvedMonths){ fst.starvedMonths=0; }
     }
     tickStationOperations();
+    checkBaseTiers(); /* Phase 4: announce base promotions */
     state.depot=round2(state.depot); state.science=round2(state.science||0); state.rep=round2(state.rep); // tidy the daily facility accruals (depot/science/rep) once a month
+    exportDepotOverflow(); /* Phase 4/7: surplus propellant is exported, not stored at a loss */
     // M2: LEO propellant price — mean-reverting random walk, plus buyer-order countdown
     state.fuelPrevPrice=state.fuelPrice;
     state.fuelPrice=clampA(round2(state.fuelPrice+(FUEL_BASE-state.fuelPrice)*0.12+(Math.random()-0.5)*0.05), FUEL_MIN, FUEL_MAX);
@@ -2831,6 +2835,50 @@ function flyModuleDelivery(facId, modId){
   return offer;
 }
 
+/* ---------- Phase 4 (comprehensive evaluation 2026-11-19): surface-base progression ----------
+   Measured problem: a base was a generic income/science/fuel producer with nothing only a base can do — the bot that built
+   one went bankrupt first (1967/1974/1981), and adding modules never changed what the base WAS. Tiers are derived from
+   what is built (no new stored state beyond the announced tier), each one a capability the program can feel:
+     1 Outpost         — founded.
+     2 Research Base   — a habitat, a science module (lab or rover garage) and room for 4 crew: science ×1.25.
+     3 Industrial Base — + an ISRU plant and a surface reactor, power in surplus: makes its own propellant and spares,
+                         resupply ×0.75, and missions to this world build 10% cheaper on top of the per-module discount.
+     4 Self-Sufficient — + a greenhouse and room for 8 crew: food grown locally, resupply ×0.5, and it can no longer be
+                         abandoned for want of supplies (it only runs lean).
+     5 Logistics Hub   — 8+ modules: the next world's base is founded 30% cheaper staged from here.
+   Orbital stations keep their own role (labs, depot, crew rotation) and are not tiered. */
+const BASE_TIERS=[
+  {n:1, name:'Outpost',          need:'Founded.'},
+  {n:2, name:'Research Base',    need:'A habitat, a lab or rover garage, and room for 4 crew.', gain:'Science ×1.25.'},
+  {n:3, name:'Industrial Base',  need:'An ISRU plant and a surface reactor, with power in surplus.', gain:'Resupply ×0.75 · missions here build 10% cheaper.'},
+  {n:4, name:'Self-Sufficient',  need:'A greenhouse and room for 8 crew.', gain:'Resupply ×0.5 · can no longer be abandoned for want of supplies.'},
+  {n:5, name:'Logistics Hub',    need:'Eight or more modules.', gain:'The next world\'s base is founded 30% cheaper.'},
+];
+function isSurfaceBase(def){ return !!(def&&def.body&&def.body!=='earth'); }
+function baseTierFor(def, fs){
+  if(!isSurfaceBase(def)||!fs) return 0;
+  const list=facilityModuleList(fs), has=id=>list.includes(id), crew=facilityCrew(fs), pw=facilityPower(fs);
+  let t=1;
+  if((has('hab_dome')||has('can_std')) && (has('lab_mod')||has('rover_garage')) && crew.cap>=4) t=2; else return t;
+  if(has('isru_plant') && has('reactor_pad') && pw.net>=0) t=3; else return t;
+  if(has('greenhouse') && crew.cap>=8) t=4; else return t;
+  if(list.length>=8) t=5;
+  return t;
+}
+function baseTier(id){ const def=facilityById(id), fs=facilityState(id); return facilityBuilt(id)?baseTierFor(def,fs):0; }
+function baseTierResupplyMult(t){ return t>=4?0.5:t>=3?0.75:1; }
+function hubDiscountFor(id){ const def=facilityById(id); if(!isSurfaceBase(def)) return 0; return FACILITY_DEFS.some(f=>f.id!==id&&isSurfaceBase(f)&&baseTier(f.id)>=5)?0.3:0; }
+function facilityFoundCost(id){ const def=facilityById(id); return def?round2(def.foundCost*(1-hubDiscountFor(id))):0; }
+function checkBaseTiers(){
+  for(const fid in (state.facilities||{})){
+    if(!facilityBuilt(fid)) continue; const def=facilityById(fid), fs=facilityState(fid); if(!isSurfaceBase(def)) continue;
+    const t=baseTierFor(def,fs), seen=fs.tierSeen||1;
+    if(t>seen){ fs.tierSeen=t; const T=BASE_TIERS[t-1]; state.rep+=5*t;
+      log('ok',`${def.icon} ${def.name} is now a ${T.name} — ${T.gain} +${5*t} rep.`);
+      if(typeof pushFrontPage==='function') pushFrontPage('milestone',def.icon,`${def.name} becomes a ${T.name}`,T.gain); }
+    else if(t<seen) fs.tierSeen=t; /* a lost module can drop it back; the next promotion is announced again */
+  }
+}
 function facilityProduction(def, fs){
   const list=facilityModuleList(fs), mult=facilityBodyMult(def);
   const pw=facilityPower(fs), starve=pw.net<0?0.6:1; // power-starved stations run at 60%
@@ -2838,7 +2886,8 @@ function facilityProduction(def, fs){
   const sum={income:0,fuel:0,rep:0,sci:0};
   list.forEach((id,i)=>{ if(i===0) return; const d=stationModuleDef(id); if(d&&d.prod) for(const k in sum) sum[k]+=(d.prod[k]||0); });
   const maint=stationMaintenanceFactor(fs);
-  const add=(k)=> ((def.base[k]||0) + sum[k]*mult)*starve*crew.factor*maint*(syn[k]||1);
+  const tierSci=baseTierFor(def,fs)>=2?1.25:1; /* Phase 4: a Research Base */
+  const add=(k)=> ((def.base[k]||0) + sum[k]*mult)*starve*crew.factor*maint*(syn[k]||1)*(k==='sci'?tierSci:1);
   return {income:round2(add('income')), fuel:round2(add('fuel')), rep:round2(add('rep')), sci:round2(add('sci')),
     modules:list.length, powerNet:pw.net, crew, synergies:facilitySynergies(fs)};
 }
@@ -2847,11 +2896,11 @@ function facilityBonus(body){
   const def=FACILITY_DEFS.find(f=>f.body===body);
   if(!def || !facilityBuilt(def.id)) return {buildDiscount:0, relBump:0};
   const mod=Math.max(1, facilityState(def.id).modules||1);
-  return {buildDiscount:Math.min(0.25, 0.05*mod), relBump:Math.min(0.03, 0.008*mod)};
+  return {buildDiscount:Math.min(0.25, 0.05*mod)+(baseTier(def.id)>=3?0.10:0), relBump:Math.min(0.03, 0.008*mod)}; /* Phase 4: an Industrial Base builds the hardware it needs on-site */
 }
 function expandCost(id){ const def=facilityById(id), fs=facilityState(id); const mod=(fs&&fs.modules)||1; return round2(def.foundCost*0.45*mod); }
 function expandMonths(def){ return Math.max(2, Math.round(def.foundMonths*0.4)); }
-function totalFacilityIncome(){ let s=0; for(const id in (state.facilities||{})){ if(facilityBuilt(id)) s+=facilityProduction(facilityById(id), facilityState(id)).income*facilitySupplyFactor(id)*crisisFacilityMult(); } return s; }
+function totalFacilityIncome(){ let s=0; for(const id in (state.facilities||{})){ if(facilityBuilt(id)&&!facilityMothballed(id)) s+=facilityProduction(facilityById(id), facilityState(id)).income*facilitySupplyFactor(id)*crisisFacilityMult(); } return s; }
 /* ---------- CE4(b): standing resupply obligations — a base is a commitment, not a trophy ----------
    A crewed outpost is not a one-time win: it consumes consumables every month and must be
    resupplied or it decays. Each built facility carries a supply meter (months of provisions);
@@ -2911,8 +2960,8 @@ function boiloffMargin(months, controlled){ // extra-propellant factor needed to
   return 1/(1-frac);
 }
 const FUEL_BUY_BASE=round2(FUEL_BASE*(1+FUEL_SPREAD)); // baseline buy price the flat resupply cost implicitly assumed
-function resupplyCostFull(id){ const def=facilityById(id), fs=facilityState(id); if(!def||!fs) return 0; const mod=Math.max(1,fs.modules||1); const fission=state.research.surface_fission_power?0.75:1; /* a base that makes its own power ships fewer consumables */ const grn=Math.max(0.5, 1-0.15*facilityGreenhouses(fs)); /* greenhouses grow food on-site */ const feedMod=Math.max(1, mod-facilityGreenhouses(fs)); /* a greenhouse feeds itself */
-  const base=FAC_RESUPPLY_PER_MODULE*feedMod*bodyResupplyMult(def.body)*hazardResupplyMult(def.body)*fission*grn; // pre-2.2 flat cost; C8: hostile environments cost more to sustain (inert at hazard 0, i.e. every pre-C8 body)
+function resupplyCostFull(id){ const def=facilityById(id), fs=facilityState(id); if(!def||!fs) return 0; const mod=Math.max(1,fs.modules||1); const fission=state.research.surface_fission_power?0.75:1; /* a base that makes its own power ships fewer consumables */ const tierMult=baseTierResupplyMult(baseTierFor(def,fs)); /* Phase 4: industrial / self-sufficient bases ship less */ const grn=Math.max(0.5, 1-0.15*facilityGreenhouses(fs)); /* greenhouses grow food on-site */ const feedMod=Math.max(1, mod-facilityGreenhouses(fs)); /* a greenhouse feeds itself */
+  const base=FAC_RESUPPLY_PER_MODULE*feedMod*bodyResupplyMult(def.body)*hazardResupplyMult(def.body)*fission*grn*tierMult; // pre-2.2 flat cost; C8: hostile environments cost more to sustain (inert at hazard 0, i.e. every pre-C8 body)
   // 2.2: fold in the live fuel market (marketRatio) and cryo boil-off margin (boiloffRatio) on the propellant fraction only.
   const marketRatio=fuelBuyPrice()/FUEL_BUY_BASE;                         // 1.0 at baseline fuel price → neutral
   const months=logiTransitDays(def.body)/30;                             // cruise duration; ~0 for LEO/Moon → neutral
@@ -2927,6 +2976,7 @@ function resupplyInTransit(id){ return (state.activeFlights||[]).find(f=>f&&f.ki
 function logiFlightsInTransit(){ return (state.activeFlights||[]).filter(f=>f&&f.kind==='logistics'&&f.deferred&&absDay()<(f.arriveAbs||0)); }
 function canResupply(id){
   if(!facilityBuilt(id)) return {ok:false,why:'No facility.'};
+  if(facilityMothballed(id)) return {ok:false,why:'Mothballed — reactivate it first.'};
   if(resupplyInTransit(id)) return {ok:false,why:'Resupply en route.'}; // 2.1: one shipment in flight at a time
   if(facilitySupply(id)>=FAC_SUPPLY_MONTHS) return {ok:false,why:'Fully provisioned.'};
   if(state.money<resupplyCost(id)) return {ok:false,why:'Not enough capital.'};
@@ -2959,7 +3009,7 @@ function resupplyFacility(id, source){
 }
 function tickStationOperations(){
   for(const fid in (state.facilities||{})){
-    if(!facilityBuilt(fid)) continue;
+    if(!facilityBuilt(fid)||facilityMothballed(fid)) continue; /* Phase 7: safed systems don't wear or rotate crew */
     const fs=facilityState(fid), def=facilityById(fid), ops=stationOps(fs), modules=facilityModuleList(fs).length;
     if(ops.maintenanceEnabled) ops.condition=Math.max(0,stationCondition(fs)-(STATION_MAINT_DECAY_BASE+modules*STATION_MAINT_DECAY_PER_MODULE)*hazardDecayMult(def.body)); // C8: hazard accelerates wear (×1 at hazard 0)
     if(ops.crewManaged && stationRotationDue(fs) && ops.rotationNotifiedAbs!==absMonth()){
@@ -2991,7 +3041,7 @@ function toggleAutoResupply(id){ if(!guardOrdinaryAction('Facility resupply cont
    construction) next to the revenue flights already queued, and offers the recoveries that would cover it.
    Read-only: it plans, the existing actions do. */
 const MANIFEST_MONTHS_DEFAULT=24;
-function facilityOpex(id){ const fs=facilityState(id); if(!facilityBuilt(id)||!fs) return 0; return round2(EMPIRE_FAC_OPEX_BASE+EMPIRE_FAC_OPEX_MODULE*(Math.max(1,fs.modules||1)-1)); }
+function facilityOpex(id){ const fs=facilityState(id); if(!facilityBuilt(id)||!fs||fs.mothballed) return 0; return round2(EMPIRE_FAC_OPEX_BASE+EMPIRE_FAC_OPEX_MODULE*(Math.max(1,fs.modules||1)-1)); }
 function supplyManifest(facId, months){
   months=Math.max(12,Math.min(36,months||MANIFEST_MONTHS_DEFAULT));
   const def=facilityById(facId), fs=facilityState(facId); if(!def||!fs||!facilityBuilt(facId)) return null;
@@ -3033,18 +3083,40 @@ function supplyManifest(facId, months){
   return {facId, months, stockNow:round2(facilitySupply(facId)), drain, curve, shortfall, low, auto, reorders, events, launches, recoveries,
     income:facilityProduction(def,fs).income, opex:facilityOpex(facId)};
 }
+/* Phase 7 (comprehensive evaluation 2026-11-19): mothballing — the recovery tool a cash-strapped program lacked.
+   Measured: a company that lost its cash with a station and base built had no way to cut their carrying cost short of
+   letting them starve module by module (3/3 "broke in 1960" seeds went bankrupt). A mothballed facility produces nothing
+   and costs nothing — no opex, no provisions consumed, no wear — and reactivating it costs 10% of its founding price. */
+const MOTHBALL_REACTIVATE_FRAC=0.10;
+function facilityMothballed(id){ const fs=facilityState(id); return !!(fs&&fs.mothballed); }
+function reactivateCost(id){ return round2(facilityFoundCost(id)*MOTHBALL_REACTIVATE_FRAC); }
+function mothballFacility(id){
+  if(!guardOrdinaryAction('Mothballing a facility')) return false;
+  const fs=facilityState(id), def=facilityById(id); if(!fs||!facilityBuilt(id)||fs.mothballed) return false;
+  fs.mothballed=true; fs.autoResupply=false; fs.starvedMonths=0;
+  log('note',`${def.icon} ${def.name} mothballed — systems safed, crew stood down. No output and no carrying cost until you reactivate it (${fM(reactivateCost(id))}).`);
+  render(); return true;
+}
+function reactivateFacility(id){
+  if(!guardOrdinaryAction('Reactivating a facility')) return false;
+  const fs=facilityState(id), def=facilityById(id), cost=reactivateCost(id); if(!fs||!fs.mothballed) return false;
+  if(state.money<cost){ log('note',`Reactivating ${def.name} needs ${fM(cost)}.`); render(); return false; }
+  state.money-=cost; fs.mothballed=false;
+  log('ok',`${def.icon} ${def.name} reactivated (−${fM(cost)}). Check its provisions — it resumes consuming them now.`);
+  render(); return true;
+}
 function canFound(id){
   const def=facilityById(id); if(!def) return {ok:false,why:'Unknown facility.'};
   if(facilityBuilt(id)) return {ok:false,why:'Already established.'};
   if(def.reqMission && !state.completed[def.reqMission]) return {ok:false,why:`Requires a completed ${MISSIONS.find(m=>m.id===def.reqMission).name}.`};
-  if(state.money<def.foundCost) return {ok:false,why:'Not enough capital.'};
+  if(state.money<facilityFoundCost(id)) return {ok:false,why:'Not enough capital.'};
   return {ok:true};
 }
 function foundFacility(id){
   if(!guardOrdinaryAction('Founding a facility')) return false;
   const chk=canFound(id); if(!chk.ok) return;
   const def=facilityById(id);
-  state.money-=def.foundCost;
+  state.money-=facilityFoundCost(id); /* Phase 4: a Logistics Hub elsewhere stages the founding cheaper */
   advance(def.foundMonths); // construction — facility is not yet producing
   if(state.over){ render(); return; }
   state.facilities[id]={built:true, modules:1, since:state.year, supply:FAC_SUPPLY_MONTHS, starvedMonths:0, autoResupply:false, maintenanceEnabled:true, condition:STATION_MAINT_MAX, crewIds:[], crewManaged:false, rotationDueAbs:absMonth()+STATION_ROTATION_MONTHS}; // CE4(b): founded fully provisioned; 2.4: auto-resupply opt-in, off by default
@@ -3684,6 +3756,7 @@ function queueBuild(committed,requestId){
     return existing||Object.assign({replay:true},plainRecord(replay.receipt));
   }
   const chk=canQueue(m,v,sim); if(!chk.ok){ announceAction(chk.why||'Build unavailable.'); return null; }
+  { const _ac=flightAttemptCost(m); if(_ac>0){ state.lastAttemptCost=state.lastAttemptCost||{}; state.lastAttemptCost[m.id]=round2(_ac); } } /* Phase 8: the advisor knows what a retry costs */
   state.money-=v.buildCost;                       // build cost committed up front
   consumeMaterialsForBuild();                     // #7 s7: draw materials now (the build is starting)
   buildQueueList();                               // ensure array
@@ -4292,6 +4365,20 @@ function productionUpkeep(){ let u=0; for(const d of PRODUCTION_DEFS) u+=d.upkee
 const EMPIRE_FAC_OPEX_BASE=0.6;    // $M/mo to operate a built off-world facility (life support, comms, staff rotation)
 const EMPIRE_FAC_OPEX_MODULE=0.45; // + per additional module — expansion buys income AND carrying cost
 const EMPIRE_DEPOT_OPEX=0.02;      // $M/mo per tonne held in the LEO depot (boil-off management, station-keeping)
+/* Phase 4/7 (comprehensive evaluation 2026-11-19): the depot has a capacity, and production beyond it is exported.
+   Measured: a lunar ISRU plant pours ~3.2 t/mo into the LEO depot; with no cap and holding opex per tonne, ten years
+   of an Industrial base cost ~$7.7M/mo in storage unless the player kept selling by hand — the bot never did, and its
+   infrastructure strategy went bankrupt every seed. Now the overflow is sold at the market rate each month (vented if
+   the program has no Orbital Depot research to trade with), so ISRU is an export business, not a storage bill. */
+const DEPOT_CAP_BASE=40, DEPOT_CAP_PER_MODULE=60;
+function depotCapacity(){ const fs=facilityState('leo_station'); const n=fs&&facilityBuilt('leo_station')?facilityModuleList(fs).filter(id=>id==='depot_mod').length:0; return DEPOT_CAP_BASE+DEPOT_CAP_PER_MODULE*n; }
+function exportDepotOverflow(){
+  const over=round2((state.depot||0)-depotCapacity()); if(!(over>0)) return 0;
+  state.depot=round2(state.depot-over);
+  if(state.research&&state.research.orbital_depot){ const rev=round2(over*fuelSellPrice()); state.money+=rev; if(over>=0.5) log('ok',`Depot full (${depotCapacity()} t) — exported ${over.toFixed(1)} t of propellant for +${fM(rev)}.`); return rev; }
+  if(over>=0.5) log('note',`Depot full (${depotCapacity()} t) — ${over.toFixed(1)} t of propellant vented. Orbital Depot research lets you sell the surplus.`);
+  return 0;
+}
 const EMPIRE_BELT_OPEX=1.5;        // $M/mo to keep the platinum-group Belt claim operating (against its +$4.5M royalty)
 const EMPIRE_HANGAR_OPEX=0.15;     // $M/mo to keep each parked vehicle flight-ready
 const EMPIRE_DIV_OPEX=0.25;        // $M/mo standing overhead per research division you've actually invested in
@@ -4300,7 +4387,7 @@ function expandedDivisionOpex(){ return round2(capitalizedDivisionCount()*EMPIRE
 function empireOpex(){
   let o=0;
   for(const id in (state.facilities||{})){ // off-world facilities: every module costs to run
-    if(!facilityBuilt(id)) continue;
+    if(!facilityBuilt(id)||facilityMothballed(id)) continue; /* Phase 7: mothballed — no carrying cost */
     const mod=Math.max(1, facilityState(id).modules||1);
     o += EMPIRE_FAC_OPEX_BASE + EMPIRE_FAC_OPEX_MODULE*(mod-1);
   }
@@ -5907,6 +5994,58 @@ const ENG_HERITAGE_REL_MAX=0.03;     // up to +3% reliability contribution
 const SOLID_SIMPLICITY_DISCOUNT=0.15;// −15% build cost — no turbopumps or plumbing
 const SOLID_INSERTION_REL_TAX=0.04;  // −4% reliability if a solid is the final insertion stage
 
+/* Early-program learning (comprehensive evaluation 2026-11-19, P1): a green company's failures teach. While it has
+   fewer than EARLY_LESSON_WINDOW successes, each failed flight adds EARLY_LESSON_REL to the next attempt (stacking
+   to EARLY_LESSON_MAX stacks); the next success consumes them. Measured reason: on Engineer ~half of all openings went
+   insolvent and a quarter died outright from a 0.65-reliability failure streak, then the survivors were rich by 1950
+   (lethal-then-forgiven). After the window, failures feed the Phase 2 investigation loop instead. */
+const EARLY_LESSON_WINDOW=5, EARLY_LESSON_REL=0.04, EARLY_LESSON_MAX=3;
+function earlyLessonRel(){ return EARLY_LESSON_REL*Math.min(EARLY_LESSON_MAX, state.earlyLessons||0); }
+function noteEarlyLesson(success, kind){
+  if(success){ state.earlyLessons=0; return; }
+  if(kind==='partial') return;
+  if((state.successes||0)<EARLY_LESSON_WINDOW) state.earlyLessons=Math.min(EARLY_LESSON_MAX,(state.earlyLessons||0)+1);
+}
+/* ---------- Phase 3 (comprehensive evaluation 2026-11-19): hardware maturity ----------
+   Measured problem: company-process reliability (heritage + every reliability node) blows through the difficulty cap
+   by the end of Early Orbital, so 81–94% of all flights flew AT the cap, and an engine's own rated reliability never
+   touched the odds (an A/B of five engines on one rocket gave 0.650 each). Engine choice was cost-vs-Δv only and a
+   brand-new engine was as safe as a veteran one — methalox simply replaced every kerosene engine the day it arrived.
+   Now the vehicle's hardware multiplies the capped process number:
+     • rating: each engine type scales by its rated reliability vs the fleet norm (0.96, the V-2), within ×0.96–×1.02;
+     • qualification: an engine type you have not flown carries up to NEW_ENGINE_RISK on its first flight (scaled by how
+       new the technology is — engineNewRisk), falling to 0 over QUAL_FLIGHTS flights. The base V-2 is already qualified. Test campaigns and Engine Test Stands
+       research credit qualification flights, so the Testing track and the static fire stay useful all game.
+   Every distinct engine type on the vehicle (launch stages, strap-ons, transfer, lander) contributes — the least
+   proven engine is what bites, not the most proven one. */
+const QUAL_FLIGHTS=8, NEW_ENGINE_RISK=0.10, ENGINE_REL_NORM=0.96;
+const TEST_QUAL_CREDIT=[0,3,6]; // per TEST_LEVELS index: a static fire / uncrewed test flight counts as qualification flights for this flight
+const RESEARCH_QUAL_CREDIT={engine_test_stands:2, flight_qualification:1, autonomous_test_program:2}; /* Phase 6: the Testing track keeps paying after the process cap — new engines arrive better qualified */
+function researchQualCredit(){ let c=0; for(const k in RESEARCH_QUAL_CREDIT) if(state.research&&state.research[k]) c+=RESEARCH_QUAL_CREDIT[k]; return c; }
+function engineQualCredit(){ return (TEST_QUAL_CREDIT[state.testLevel]||0) + researchQualCredit(); }
+function engineQualFlights(id){ const e=ENGINES[id]; if(!e) return QUAL_FLIGHTS; if(e.base) return QUAL_FLIGHTS; return Math.min(QUAL_FLIGHTS, engineHeritageFlights(id)+engineQualCredit()); }
+/* How new the technology is to the WORLD, not just to you: 1940s–50s industrial engines (era 0–1) carry 40% of the
+   risk, era-2 hardware 80%, and anything two eras behind the frontier is off-the-shelf (no qualification risk).
+   Measured: a flat 10% on every unflown engine sent 6/30 Engineer openings bankrupt by 1951 as they moved off the V-2. */
+function engineUnlockEra(id){ const r=RESEARCH.find(x=>x.effect&&(x.effect.engine===id||(x.effect.engines||[]).includes(id))); return r?(r.eraMin||0):0; }
+function engineNewRisk(id){ const e=ENGINES[id]; if(!e||e.base) return 0; const ue=engineUnlockEra(id), we=eraIndex(currentEra());
+  if(we-ue>=2) return 0; return NEW_ENGINE_RISK*(ue<=1?0.4:ue===2?0.8:1); }
+function engineQualFactor(id){ return 1-engineNewRisk(id)*Math.max(0,1-engineQualFlights(id)/QUAL_FLIGHTS); }
+function engineRatingFactor(id){ const e=ENGINES[id]; if(!e) return 1; return Math.max(0.96,Math.min(1.02,(e.rel||ENGINE_REL_NORM)/ENGINE_REL_NORM)); }
+function vehicleEngineIds(m){
+  const ids=(state.stages||[]).map(s=>s.eng);
+  if(typeof boostersFitted==='function'&&boostersFitted()) ids.push(state.boosters.eng);
+  const mods=(m&&m.profile&&m.modules)||[];
+  if(mods.includes('transfer')&&state.transfer&&state.transfer.eng) ids.push(state.transfer.eng);
+  if((mods.includes('lander')||mods.includes('descent'))&&state.descent&&state.descent.eng) ids.push(state.descent.eng);
+  if((mods.includes('lander')||mods.includes('ascent'))&&state.ascent&&state.ascent.eng) ids.push(state.ascent.eng);
+  return [...new Set(ids.filter(id=>ENGINES[id]))];
+}
+function hardwareMaturity(m){
+  const rows=vehicleEngineIds(m).map(id=>({id, name:ENGINES[id].name, rating:engineRatingFactor(id), qual:engineQualFactor(id), flights:engineHeritageFlights(id), qualFlights:engineQualFlights(id)}));
+  const factor=rows.reduce((f,r)=>f*r.rating*r.qual,1);
+  return {factor, rows};
+}
 function engineHeritageFlights(id){ return (state.engineHeritage&&state.engineHeritage[id])||0; }
 function engineHeritageFrac(id){ return Math.min(1, engineHeritageFlights(id)/ENG_HERITAGE_MAX_FLIGHTS); }
 function engineCostMult(id){
@@ -5977,7 +6116,7 @@ function buildCostBreakdown(m){
 
   const d=diff().buildCostMult; if(d!==1) mult(`Difficulty (×${d.toFixed(2)})`, d);
   { const ec=eraCostMult(); if(ec!==1) mult(`${currentEra().name}-era costs (×${ec.toFixed(2)})`, ec); } // step 5b
-  const facDisc=facilityBonus(missionBody(m&&m.id)).buildDiscount;
+  const facDisc=facilityBonus((m&&m.body)||missionBody(m&&m.id)).buildDiscount;
   if(facDisc>0) mult(`Home-field facility (−${(facDisc*100).toFixed(0)}%)`, 1-facDisc);
   const fam=activeFamily(), famMult=familyBuildMult(fam);
   if(famMult<1) mult(`Family heritage${fam?` "${esc(fam.name)}"`:''} (×${famMult.toFixed(2)})`, famMult);
@@ -6078,7 +6217,7 @@ function computeVehicle(){
   buildCost*=tankMaterial().costMult; // BC2: tank material cost factor
   buildCost*=diff().buildCostMult; // difficulty: hardware-cost scaling
   buildCost*=eraCostMult(); // step 5b: hardware costs grow with the era
-  buildCost*=(1-facilityBonus(missionBody(m&&m.id)).buildDiscount); // M17: home-field build discount from a base at the destination
+  buildCost*=(1-facilityBonus((m&&m.body)||missionBody(m&&m.id)).buildDiscount); // M17: home-field build discount from a base at the destination
   buildCost*=familyBuildMult(activeFamily()); // #3: a proven lineage gets cheaper to build (manufacturing knowledge)
   buildCost*=foundryCostMult(); // #7: engine-foundry economies of scale cut marginal build cost
   const cadence=cadenceSurcharge(); if(cadence>0) buildCost*=1+cadence; // #7 slice 5: rush surcharge if recent build volume exceeds sustainable cadence
@@ -6090,11 +6229,12 @@ function computeVehicle(){
     if(recoveryRefly(m)) buildCost*=refurbCostMult(); // refurbish a recovered booster: 45% of new, rising with wear (each refly chips +8%)
     buildCost+=RECOVERY_HARDWARE; // legs, grid fins, reserved propellant — fitted on every recovery flight
   }
-  const reliability=Math.min(diff().relCap,Math.max(diff().relFloor,(curRel()+testBonus+partsRelBonus(crewed)+geoRelBonus()+benchRelBonus(m)+doctrineRelMod()+fleetHeritageRelBonus())*enginePenalty*boosterRelPenalty()*(crewed?(state.research.orbital_eva?0.95:0.92):1)*(1-solidInsertionTax(m))+productionRelMod(m)+((state.engineOut&&state.stages[0].count>=3)?0.025:0))); // Phase 3 engine-out: a stage-1 engine failure becomes survivable; #7: QA bonus − bay-overstretch penalty + bench-tested sub-assembly heritage; #16: booster failure-point penalty; BC2 parts + BC3 geometry reliability; CE3(a) doctrine early-reliability delta
+  const processRel=Math.min(diff().relCap,Math.max(diff().relFloor,(curRel()+testBonus+partsRelBonus(crewed)+geoRelBonus()+benchRelBonus(m)+doctrineRelMod()+fleetHeritageRelBonus()+earlyLessonRel())*enginePenalty*boosterRelPenalty()*(crewed?(state.research.orbital_eva?0.95:0.92):1)*(1-solidInsertionTax(m))+productionRelMod(m)+((state.engineOut&&state.stages[0].count>=3)?0.025:0))); // Phase 3 engine-out: a stage-1 engine failure becomes survivable; #7: QA bonus − bay-overstretch penalty + bench-tested sub-assembly heritage; #16: booster failure-point penalty; BC2 parts + BC3 geometry reliability; CE3(a) doctrine early-reliability delta
+  const hardware=hardwareMaturity(m); const reliability=Math.max(diff().relFloor*0.85, Math.min(diff().relCap, processRel*hardware.factor)); /* Phase 3: hardware maturity applies AFTER the company-process cap, so engine choice and engine experience matter all game */
   const launchCost=(((0.12+0.01*totalProp)*padLaunchMult()*groundLaunchMult()*doctrineMult('launch')) + assemblyFlights(m)*ASSEMBLY_LAUNCH_COST)*eraCostMult(); // step 5b: range costs grow with the era // #7: pads + #6b: Ground/Reuse research amortize launch ops; #6: dedicated assembly flights; CE3(a) doctrine launch-cost factor
   return {payload, dragLoss:perf.dragLoss||0, sm:perf.sm, stageDv:perf.stageDv, stageTwr:perf.stageTwr, stageGravLoss:perf.stageGravLoss, gravLoss:perf.gravLoss, totalDv:perf.totalDv, liftoff:perf.liftoff, twr:perf.twr,
           boostDv:perf.boostDv||0, boosters:perf.boosters||null,
-          totalEng, totalProp, reliability, buildCost, launchCost, crewed,
+          totalEng, totalProp, reliability, processRel, hardware, buildCost, launchCost, crewed,
           dryTotal:perf.sm.reduce((a,b)=>a+b.dry,0)};
 }
 
@@ -6318,7 +6458,7 @@ function effectiveReliability(m,v,sim,crewed,dockingCapability){
   rel*=radRelPenalty(m,crewed); // radiation degrades reliability on long deep missions (bought down by shielding)
   rel*=(1-crisisRelPenalty(m)); // P11/I3: whichever crisis is active taxes reliability (0 unless it's active AND this mission matches its effect — LEO-class or deep-space)
   if(crewed){ const ab=astroBonus(); rel=Math.min(0.99, rel+ab.rel); }
-  rel=Math.min(0.995, rel + facilityBonus(missionBody(m&&m.id)).relBump); // M17: home-field operational bonus
+  rel=Math.min(0.995, rel + facilityBonus((m&&m.body)||missionBody(m&&m.id)).relBump); // M17: home-field operational bonus
   rel=Math.min(0.995, rel + familyRelBonus(activeFamily())); // #3: reliability heritage of a proven lineage
   rel=Math.min(0.995, rel + synergyRelBonus()); // P8: cross-track research synergies (0 unless both/all requires are researched)
   if(state.staticFixBonus) rel=Math.min(0.995, rel + state.staticFixBonus); // Phase 2: fault found & fixed on the test stand
@@ -6690,7 +6830,7 @@ function subsystemBreakdownHTML(m,v){
    same resolver, so outcomes, receipts and replays are unchanged. */
 const LAUNCH_POLICIES={
   manual:  {label:'Manual',   tip:'Ask me on every call — weather holds, live calls, reserves and orbit plans.'},
-  cautious:{label:'Cautious', tip:'Stand down for any adverse weather, abort on an amber flag whenever the abort is survivable, burn reserves to save the mission, fly the planned orbit.'},
+  cautious:{label:'Cautious', tip:'Stand down for any adverse weather, abort on an amber flag when the abort saves the crew or recovers the vehicle, burn reserves to save the mission, fly the planned orbit.'},
   nominal: {label:'Nominal',  tip:'Stand down for weather costing 6% reliability or more, otherwise fly. Abort amber flags only with crew aboard. Burn reserves with crew aboard. Raise the orbit when margin allows.'},
   bold:    {label:'Bold',     tip:'Launch through weather, press on through amber flags, bank reserves, raise the orbit when margin allows.'},
 };
@@ -6702,7 +6842,7 @@ function policyChoice(kind, info){
   const p=launchPolicy(); if(p==='manual'||kind==='anomaly'||kind==='rescue') return null;
   info=info||{};
   if(kind==='weather'){ if(p==='cautious') return 'scrub'; if(p==='bold') return 'launch'; return (info.penalty||0)>=POLICY_WEATHER_SCRUB_AT?'scrub':'launch'; }
-  if(kind==='live'){ if(!info.survivableAbort) return 'press'; if(p==='cautious') return 'abort'; if(p==='bold') return 'press'; return info.crewed?'abort':'press'; }
+  if(kind==='live'){ if(!info.survivableAbort) return 'press'; if(p==='cautious') return (info.crewed||info.recoverable)?'abort':'press'; if(p==='bold') return 'press'; return info.crewed?'abort':'press'; } /* P1 fix: an abort of an uncrewed, unrecoverable vehicle saves nothing — press on rolls the flight as-is, the abort guarantees the loss */
   if(kind==='reserve'){ if(p==='cautious') return 'burn'; if(p==='bold') return 'bank'; return info.crewed?'burn':'bank'; }
   if(kind==='orbit'){ const ok=id=>(info.enabled||[]).includes(id); if(p!=='cautious'&&ok('raise')) return 'raise'; return ok('circularize')?'circularize':null; }
   return null;
@@ -7091,7 +7231,7 @@ function showLiveCallModal(ctx, flag){
   const cool=directorTraitKey(ctx.m)==='coolhead'; /* Phase 5: a Cool Head director can nurse the subsystem through */
   const decision=ensureLaunchTransactionDecision('live',ctx,{flag,launchEscapeFitted:launchEscape},(survivableAbort?['press','abort']:['press']).concat(cool?['nurse']:[]));
   const args=launchDecisionArgs(decision);
-  const auto=policyChoice('live',{survivableAbort,crewed:!!ctx.crewed});
+  const auto=policyChoice('live',{survivableAbort,crewed:!!ctx.crewed,recoverable:!!(ctx.hullId&&hullRecoveryFitted(ctx.hullId))});
   if(auto){ policyNote(ctx.m, auto==='abort'?`aborted when ${(SUBSYS_LABEL[flag.sub.key]||flag.sub.label||'a subsystem').toLowerCase()} flagged amber`:`pressed on through an amber ${(SUBSYS_LABEL[flag.sub.key]||flag.sub.label||'subsystem').toLowerCase()} flag`); return resolveLiveCall(auto==='press',args.txnId,args.revision); }
   openFlightForDecision(ctx, { buildPanel:()=>{
     const m=ctx.m, sub=flag.sub, ph=flag.phase, pc=Math.round(sub.rel*100);
@@ -7960,6 +8100,7 @@ function finalizeLaunch(ctx, ops){
   const ab=ctx.ab||(crewed?astroBonus():{rel:0,payoutMult:1}); // 1.2b: astronaut bonus snapshotted at launch (deferred crewed flights free the live slot)
   let flightRevenue=0;
   const success=outcome.kind==='success';
+  noteEarlyLesson(success, outcome.kind); /* P1: a green company's failure makes the next attempt likelier */
   const rel=outcome.rel;
   let pendingCelebration=null, failPhase=outcome.failPhase, stationSettlement=null, orbitSettlement=null;
   // E1.5: the per-phase / per-subsystem causal chain for a failed flight, threaded into the failure
@@ -9483,6 +9624,17 @@ const BAILOUT_REP_BASE=12;      // base rep cost (rises with era and each succes
 const BAILOUT_INTEREST=0.06;    // permanent monthly debt service added per loan (fraction of principal)
 function eraStakesFrac(){ return clampA(eraIndex(currentEra())/Math.max(1,ERAS.length-1), 0, 1); } // 0 = Pioneer, 1 = final era
 function loanInterest(){ return Math.max(0, state.loanInterest||0); } // CE4(c): recurring bridge-loan debt service (legacy saves → 0)
+/* P1 (comprehensive evaluation 2026-11-19): bridge loans amortize. The service used to be permanent — a $3M loan cost
+   $0.18M/mo forever (~72%/yr, never repaid), so two loans quadrupled a young company's burn and the bot measured the
+   loans themselves as the death spiral. Each loan now books LOAN_REPAY_MULT × principal to state.loanBalance; the
+   monthly service pays it down and stops when it is cleared (≈22 months at 6%/mo). Service with no recorded balance
+   (set directly, e.g. by a reorganization workout on an older save) keeps the old perpetual behaviour. */
+const LOAN_REPAY_MULT=1.35;
+function loanRepayDay(){
+  if(!(state.loanBalance>0) || !(loanInterest()>0)) return;
+  state.loanBalance=round2(Math.max(0,state.loanBalance-perDay(loanInterest())));
+  if(state.loanBalance<=0){ state.loanInterest=0; state.loanBalance=0; log('ok','Bridge loans repaid in full — the monthly debt service ends.'); }
+}
 // A severe late-game loss reverberates: a proportional rep bite, a support collapse, and a rival
 // momentum spike — all × era frac, so a beginner's loss is unchanged but a late catastrophe is a
 // genuine, compounding setback rather than forfeit-and-regrind. Returns the extra rep lost.

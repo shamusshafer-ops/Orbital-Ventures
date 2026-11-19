@@ -531,9 +531,9 @@ function chooseBridgeLoan(insolvencyId,requestId){
   const replay=inspectRequestReceipt(requestId,'bridge-loan',fingerprint); if(!replay.ok) return false;
   if(replay.replay) return true;
   state.bailouts=(state.bailouts||0)+1; state.money=round2(state.money+terms.amount); state.rep=Math.max(0,state.rep-terms.repCost);
-  state.loanInterest=round2(loanInterest()+terms.interest); state.over=false;
+  state.loanInterest=round2(loanInterest()+terms.interest); state.loanBalance=round2((state.loanBalance||0)+terms.amount*LOAN_REPAY_MULT); state.over=false; /* P1: amortizing, not perpetual */
   recordRequestReceipt(requestId,'bridge-loan',fingerprint,ins.id,null,ins.id); archiveResolvedInsolvency(ins,'loan');
-  log('note',`Emergency bridge loan: +${fM(terms.amount)}, −${terms.repCost} rep, +${fM(terms.interest)}/mo permanent interest. (${2-state.bailouts} remaining)`);
+  log('note',`Emergency bridge loan: +${fM(terms.amount)}, −${terms.repCost} rep, +${fM(terms.interest)}/mo debt service until ${fM(terms.amount*LOAN_REPAY_MULT)} is repaid (~${Math.round(LOAN_REPAY_MULT/BAILOUT_INTEREST)} months). (${2-state.bailouts} remaining)`);
   checkpointReorganizationSave(); _reorganizationModalLocked=false; hideModal(); render(); return true;
 }
 
@@ -549,7 +549,7 @@ function confirmReorganization(insolvencyId){
       <div class="metric"><div class="k">Public support</div><div class="v">−${penalties.supportLoss}</div></div>
       <div class="metric"><div class="k">Legacy score</div><div class="v">−${penalties.legacyLoss}</div></div>
     </div>
-    <p class="muted" style="font-size:12px">${debt.renegotiatedNow?`Creditors reduce permanent bridge-loan service once, from ${fM(debt.interestBefore)}/mo to ${fM(debt.interestAfter)}/mo.`:'The one-time creditor workout has already been used; existing loan service remains.'} Rivals continue while ordinary operations are suspended.</p>
+    <p class="muted" style="font-size:12px">${debt.renegotiatedNow?`Creditors reduce bridge-loan service once, from ${fM(debt.interestBefore)}/mo to ${fM(debt.interestAfter)}/mo.`:'The one-time creditor workout has already been used; existing loan service remains.'} Rivals continue while ordinary operations are suspended.</p>
     <p class="muted" style="font-size:12px">The sponsor funds one new uncrewed A-4 First Flight article through restricted escrow. Deferred missions keep their dates and physical outcomes; any cash they settle during administration belongs to the restructuring estate, not player Capital.</p>
     <p class="muted" style="font-size:12px"><b>Failure is costly:</b> any resolved non-success closes this cycle. Continuing then requires a fresh reorganization, another 360-day stand-down, and another full set of penalties.</p>
     <button class="btn launch" style="width:100%" onclick="acceptReorganization('${ins.id}','reorg:${ins.id}')">Accept these terms</button>
@@ -559,7 +559,7 @@ function confirmReorganization(insolvencyId){
 
 function reorganizationOfferHTML(ins){
   const rules=state.campaignRules||makeCampaignRules({ironman:false}), usesLeft=2-(state.bailouts||0), terms=bailoutTerms();
-  const loan=usesLeft>0?`<button class="btn" onclick="chooseBridgeLoan('${ins.id}','loan:${ins.id}:${state.bailouts||0}')">Emergency bridge loan (+${fM(terms.amount)}, −${terms.repCost} rep, +${fM(terms.interest)}/mo)</button>`
+  const loan=usesLeft>0?`<button class="btn" onclick="chooseBridgeLoan('${ins.id}','loan:${ins.id}:${state.bailouts||0}')">Emergency bridge loan (+${fM(terms.amount)}, −${terms.repCost} rep, +${fM(terms.interest)}/mo for ~${Math.round(LOAN_REPAY_MULT/BAILOUT_INTEREST)} months)</button>`
     :'<div class="dim" style="font-size:12px;margin-top:6px">No further bridge loans are available.</div>';
   const penalties=calculateReorganizationPenaltyTerms(state.rep,Math.max(0,round2(-finiteRecordNumber(state.money))),(state.reorganizationSeq||0)+1), debt=calculateReorganizationDebtTerms(loanInterest(),!!state.debtRenegotiated);
   const failed=state.lastReorganization&&state.lastReorganization.phase==='failed'?state.lastReorganization:null;

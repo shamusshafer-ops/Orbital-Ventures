@@ -2016,3 +2016,23 @@ in the left rail; full restructure (content moved where it fits). See ROADMAP-HI
 - [ ] The Outposts switcher's selected button still borrows the primary-button class; a dedicated selector style.
 - [ ] Docked checklist sits at the bottom of the left rail (below the fold on the Bench at 1280×800).
 - [ ] Command Center keeps its hero geometry (no date/log strip) — deliberate, revisit with a human look.
+
+## Planned — Comprehensive evaluation follow-ups (2026-11-19)
+
+Source: `EVALUATION-2026-11-COMPREHENSIVE.md` (owner's 12-phase brief, run in full). Done this pass (see the eval §3–5):
+✅ hardware maturity (engine rating × qualification after the process cap) · ✅ early-program learning · ✅ Cautious
+policy fix · ✅ "Earn first" advisor · ✅ two-flight checklist reserve · ✅ amortizing bridge loans · ✅ base tiers
+(Outpost → Logistics Hub) · ✅ lunar base contracts · ✅ depot capacity + export · ✅ mothballing · ✅ bot strategy knobs
+(`BOT_TEST/RELCUT/SHOCK/SCIENCE/BASE`) and a second build line behind long builds. Matrix: non-floor bankruptcies
+18/21 → 8/21; flights at the reliability cap 81–94% → 26–53%.
+
+Open, in descending impact (eval §6):
+- [ ] Infrastructure pays in cash, not only reputation — the floor strategy (no staff/stations/crew) still ends richest
+      ($2.6–3.4B vs $0.6–1.5B). Target: infrastructure strategy within ~25% of the floor's cash.
+- [ ] Mars / Callisto / Titan base demand (base contracts exist only for the Moon).
+- [ ] Bot sizes interplanetary missions (`autoSizePlan`) so Mars/Jupiter pacing can be measured.
+- [ ] Retire or repurpose the ~15 reliability-only nodes outside the Testing track.
+- [ ] Part-level "proven vs advanced" trade-offs (tank materials are the template).
+- [ ] Station tiers (lab → depot → shipyard) so each assembly flight unlocks a capability.
+- [ ] Opening: 4/30 Engineer openings still need reorganization; smooth the First Satellite cost cliff if wanted.
+

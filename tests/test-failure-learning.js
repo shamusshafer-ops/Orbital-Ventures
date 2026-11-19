@@ -18,7 +18,7 @@ function flyBench(kind, flaw){ /* build + fly the bench rocket through the playe
   return state.lastDebrief;
 }
 const realOpen=openInvestigation;
-const reset=()=>{ openInvestigation=realOpen; Math.random=realRandom; };
+const reset=()=>{ openInvestigation=realOpen; Math.random=realRandom; state.earlyLessons=0; }; /* these checks isolate investigation math; early-program learning (P1) is covered by test-comprehensive-p1.js */
 const rel=()=>{ const m=curMission(), v=computeVehicle(); return effectiveReliability(m,v,m.profile?simulateMission(m):null,!!m.crew); };
 const truthRel=()=>{ _hazardTruth=true; try{ return rel(); } finally{ _hazardTruth=false; } };
 const strip=h=>String(h||'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ');

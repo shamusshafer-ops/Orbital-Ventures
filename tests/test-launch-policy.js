@@ -24,7 +24,8 @@ cycleLaunchPolicy(); check('cycle wraps through the list', state.launchPolicy===
   check('weather: Cautious stands down, Bold flies', P('cautious','weather',{penalty:.035})==='scrub' && P('bold','weather',{penalty:.12})==='launch');
   check('weather: Nominal flies light weather, stands down at 6% or more', P('nominal','weather',{penalty:.05})==='launch' && P('nominal','weather',{penalty:.06})==='scrub' && P('nominal','weather',{penalty:.08})==='scrub');
   check('live: with no survivable abort, everyone presses on', ['cautious','nominal','bold'].every(p=>P(p,'live',{survivableAbort:false,crewed:true})==='press'));
-  check('live: Cautious aborts, Bold presses', P('cautious','live',{survivableAbort:true,crewed:false})==='abort' && P('bold','live',{survivableAbort:true,crewed:true})==='press');
+  check('live: Cautious aborts when it saves something, Bold presses', P('cautious','live',{survivableAbort:true,crewed:true})==='abort' && P('cautious','live',{survivableAbort:true,crewed:false,recoverable:true})==='abort' && P('bold','live',{survivableAbort:true,crewed:true})==='press');
+check('live: Cautious presses on an uncrewed vehicle the abort cannot recover (the abort only guarantees the loss)', P('cautious','live',{survivableAbort:true,crewed:false,recoverable:false})==='press');
   check('live: Nominal aborts only with crew aboard', P('nominal','live',{survivableAbort:true,crewed:true})==='abort' && P('nominal','live',{survivableAbort:true,crewed:false})==='press');
   check('reserve: Cautious burns, Bold banks, Nominal burns with crew', P('cautious','reserve',{crewed:false})==='burn' && P('bold','reserve',{crewed:true})==='bank' && P('nominal','reserve',{crewed:true})==='burn' && P('nominal','reserve',{crewed:false})==='bank');
   check('orbit: raise when margin allows, else the planned orbit', P('nominal','orbit',{enabled:['circularize','raise','deorbit']})==='raise' && P('bold','orbit',{enabled:['circularize','deorbit']})==='circularize');
@@ -58,7 +59,7 @@ check('Manual: the live call waits for the player', !!_pendingLive);
 liveCall('nominal');
 check('Nominal (uncrewed): pressed on and logged it', !_pendingLive && logHas(/launch policy \(Nominal\) — pressed on through an amber/));
 liveCall('cautious');
-check('Cautious (uncrewed, abort survivable): aborted', !_pendingLive && logHas(/launch policy \(Cautious\) — aborted when/));
+check('Cautious (uncrewed, no recovery fitted): pressed on — aborting would only expend the vehicle', !_pendingLive && logHas(/launch policy \(Cautious\) — pressed on through an amber/));
 
 // ---- UI ----
 newGame('engineer'); showSettingsMenu();

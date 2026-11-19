@@ -1,6 +1,6 @@
 /* ---------- save / load ---------- */
 const SAVE_KEY='orbital_ventures_save';
-const SAVE_VERSION=76; // v76: failure investigations (flaws, flawBelief, subsysTrim, subsysTest, investigations); the P3 inquiry and inquiryCredit are gone. See docs/SAVE-VERSIONS.md.
+const SAVE_VERSION=77; // v77: early-program learning (state.earlyLessons), lastAttemptCost, base tierSeen. See docs/SAVE-VERSIONS.md.
 // Pre-v62 saves with in-progress flight ownership are rejected rather than assigned a fabricated
 // outcome; ordinary v61 lifecycle records are remapped through the schema-2 factories on load.
 //

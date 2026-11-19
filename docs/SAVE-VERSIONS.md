@@ -21,6 +21,15 @@ Two things still apply:
   should warn rather than silently misread — that protects against the two-agent workflow, not an
   install base.
 
+## v77 — Early-program learning (comprehensive evaluation, P1)
+
+Adds `state.earlyLessons` (0–3): failed flights a company with fewer than five successes has learned from; each stack adds
++4% to the next flight's reliability and the next success clears them. Missing reads as 0.
+Also adds `state.lastAttemptCost` (missionId → $M build+fly estimate recorded when a build is queued; the advisor's
+"Earn first" step reads it) and `fs.tierSeen` on surface-base facility records (the highest base tier announced, so a
+promotion is logged once), and `state.loanBalance` (bridge-loan principal ×1.35 still owed; the monthly service pays it
+down and stops at zero). All read as absent/empty when missing; service with no balance stays perpetual.
+
 ## v76 — Failure investigations (decision-loop Phase 2)
 
 Adds `state.investigations[]` (id, mission, subsystem, outcome kind, cost basis, displayed flaw estimate,

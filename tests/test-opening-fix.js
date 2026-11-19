@@ -1,6 +1,6 @@
 // Spine step 4 (2026-11-16): the opening. Appended after harness.js + build/game.js.
 // The checklist's research step now follows the first flight, and its pick never spends the money needed
-// for the next attempts (two until First Flight succeeds, one after).
+// for the next attempts (two attempts, before and after First Flight — raised from one after, 2026-11-19).
 let pass=0, fail=0;
 function check(name,cond){ if(cond) pass++; else{ fail++; console.log('FAIL:',name); } }
 const keys=()=>onboardingSteps().map(s=>s.key);
@@ -26,7 +26,7 @@ check('…and the step says to keep money back instead', /keep \$[0-9.]+M back f
 state.money=50;
 check('with plenty of money it suggests Static Fire again', (onboardingResearchPick()||{}).id==='test_program');
 state.completed.first_flight=true;
-check('after First Flight succeeds the reserve is one attempt', Math.abs(onboardingReserve()-attempt)<0.011);
+check('after First Flight succeeds the reserve stays two attempts (comprehensive eval P1: one left a single retry for the dearer next flights)', Math.abs(onboardingReserve()-2*attempt)<0.011);
 state.research.test_program=true;
 const alt=onboardingResearchPick();
 check('with Static Fire done it suggests the cheapest affordable project', !!alt && alt.id!=='test_program' && RESEARCH.filter(r=>!state.research[r.id]&&reqsMet(r)&&researchEraMet(r)&&sciGateMet(r)).every(r=>rdCostOf(r)>=rdCostOf(alt)));
