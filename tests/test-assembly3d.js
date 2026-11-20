@@ -63,7 +63,24 @@ assembly3dClearLayout('station',stationCur,2);
 const assemblyChrome=assemblyShellHTML('station');
 check('assembly chrome exposes reversible clear-canvas and module-tray controls', assemblyChrome.includes('stationClearCanvasBtn')&&assemblyChrome.includes('stationModuleTray'));
 check('assembly chrome exposes selected-module rotation in both directions', assemblyChrome.includes('stationRotateLeftBtn')&&assemblyChrome.includes('stationRotateRightBtn'));
-check('assembly chrome explains full-scene orbiting and vertical docking while arranging', assemblyChrome.includes('right-drag to orbit')&&assemblyChrome.includes('Shift: top port')&&assemblyChrome.includes('Alt/Option: bottom port'));
+check('assembly chrome includes placement selectors and a dedicated input hint', assemblyChrome.includes('stationModuleSelect')&&assemblyChrome.includes('stationTargetSelect')&&assemblyChrome.includes('stationInputHint'));
+const connectionNodes=[
+  {id:'can_std',index:0,x:0,y:0,z:0,parent:-1},
+  {id:'lab_mod',index:1,x:3.48,y:0,z:0,parent:0,dockTargetPort:'east',dockOwnPort:'west'},
+  {id:'greenhouse',index:2,x:0,y:0,z:9,parent:-1}
+];
+const connectionData={mode:'station',nodes:connectionNodes};
+const availablePorts=assembly3dConnectionChoices(connectionData,2);
+check('occupied ports are excluded at both ends of an existing joint', !availablePorts.some(c=>
+  (c.target.index===0&&c.port==='east')||(c.target.index===1&&c.port==='west')));
+check('reattaching a module may use its current port', assembly3dConnectionChoices(connectionData,1)
+  .some(c=>c.target.index===0&&c.port==='east'));
+check('an ancestor cannot attach to its own descendant', !assembly3dConnectionChoices(connectionData,0)
+  .some(c=>c.target.index===1));
+const surfaceChoices=assembly3dConnectionChoices({mode:'base',nodes:connectionNodes},2);
+check('surface connections stay on the ground and omit vertical ports', surfaceChoices.length>0&&surfaceChoices
+  .every(c=>c.center.y===0&&c.port!=='top'&&c.port!=='bottom'));
+
 // With THREE absent, both live renderers must take the established SVG route without creating
 // a WebGL state object. This is the release fallback, not a test-only alternate renderer.
 check('Three.js is absent in the headless harness', threeOK()===false);

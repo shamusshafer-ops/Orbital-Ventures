@@ -794,27 +794,33 @@ function assemblyShellHTML(sceneId){
     <div class="scene-toolbar assembly-toolbar">
       <h2 class="assembly-title scene-title"><span class="dom-dot" style="background:var(--dom-economy)"></span>${esc(a.title)}</h2>
       <div class="assembly-actions" aria-label="${esc(scene.label)} controls">
-        <button class="btn ghost" type="button" id="${scene.id}ArrangeBtn" onclick="toggleAssembly3DArrange('${scene.id}')" title="Arrange modules — drag a module onto a cyan connection node to dock it">↔ Arrange</button>
-        <button class="btn ghost" type="button" id="${scene.id}RotateLeftBtn" onclick="assembly3dRotateSelected('${scene.id}',-1)" title="Rotate selected module 90° left" disabled>↺ Module</button>
-        <button class="btn ghost" type="button" id="${scene.id}RotateRightBtn" onclick="assembly3dRotateSelected('${scene.id}',1)" title="Rotate selected module 90° right" disabled>↻ Module</button>
+        <button class="btn ghost" type="button" id="${scene.id}ArrangeBtn" onclick="toggleAssembly3DArrange('${scene.id}')" title="Arrange modules — select and reposition modules">↔ Arrange</button>
+        <button class="btn ghost" type="button" id="${scene.id}RotateLeftBtn" onclick="assembly3dRotateSelected('${scene.id}',-1)" title="Rotate selected module 90° left" disabled>↺ Rotate left</button>
+        <button class="btn ghost" type="button" id="${scene.id}RotateRightBtn" onclick="assembly3dRotateSelected('${scene.id}',1)" title="Rotate selected module 90° right" disabled>↻ Rotate right</button>
         <button class="btn ghost" type="button" id="${scene.id}ClearPlacementBtn" onclick="assembly3dClearPlacement('${scene.id}')" title="Clear the selected module's custom position" disabled>⌫ Clear position</button>
-        <button class="btn ghost" type="button" id="${scene.id}ClearCanvasBtn" onclick="assembly3dClearCanvas('${scene.id}')" title="Move every module into the tray and start with an empty canvas">∅ Clear canvas</button>
+        <button class="btn ghost" type="button" id="${scene.id}ClearCanvasBtn" onclick="assembly3dClearCanvas('${scene.id}')" title="Move every module into the tray and start with an empty canvas">Move all to tray</button>
         <button class="btn ghost" type="button" id="${scene.id}ResetLayoutBtn" onclick="assembly3dResetLayout('${scene.id}')" title="Return all modules to the generated layout" disabled>↶ Reset layout</button>
         ${a.popout?`<button class="btn ghost" type="button" onclick="${a.popout}()" title="Pop out — large pan/zoom view and focused facility stats">⤢ Pop out</button>`:''}
         <button class="btn ghost" type="button" id="${a.expandId}" onclick="${a.expand}()">⛶ Expand</button>
         <button class="btn ghost" type="button" onclick="${a.zoom}(1/1.25)" title="Zoom out">−</button>
         <span id="${a.zoomLabelId}" class="dim assembly-zoom-readout">100%</span>
         <button class="btn ghost" type="button" onclick="${a.zoom}(1.25)" title="Zoom in">+</button>
-        <button class="btn ghost" type="button" onclick="${a.reset}()" title="Reset pan and zoom">Reset</button>
+        <button class="btn ghost" type="button" onclick="${a.reset}()" title="Reset pan and zoom">Reset view</button>
       </div>
     </div>
     <p class="muted assembly-summary">${esc(a.summary)}</p>
     <div class="assembly-module-tray hidden" id="${scene.id}ModuleTray" aria-live="polite"></div>
+    <div id="${scene.id}PlacementControls" class="assembly-placement hidden">
+      <label>Module <select id="${scene.id}ModuleSelect" onchange="assembly3dSelectNode('${scene.id}',this.value===''?null:Number(this.value))"></select></label>
+      <label>Connect to <select id="${scene.id}TargetSelect"></select></label>
+      <button class="btn ghost" type="button" onclick="assembly3dConnectSelected('${scene.id}')">Connect</button>
+      <span id="${scene.id}PlacementStatus" role="status"></span>
+    </div>
     <div class="assembly-monitor" id="${scene.id}Monitor">
       <div id="${a.hostId}" class="assembly-3d-host" aria-label="${esc(scene.label)} 3D viewport"></div>
       <div id="${a.canvasId}" class="assembly-svg-fallback"></div>
     </div>
-    <div class="assembly-input-hint">drag a module to dock · Shift: top port · Alt/Option: bottom port · drag empty space or right-drag to orbit · scroll to zoom</div>
+    <div class="assembly-input-hint" id="${scene.id}InputHint">Choose Arrange to edit the layout. Drag to orbit · scroll to zoom.</div>
     <div class="assembly-palette-home hidden" id="${a.paletteHomeId}"></div>
   </div>`;
 }
@@ -11171,38 +11177,102 @@ function assembly3dPortPose(node,portId,mode){
   const nx=basis[0]*Math.cos(yaw)+basis[2]*Math.sin(yaw), nz=-basis[0]*Math.sin(yaw)+basis[2]*Math.cos(yaw), ny=basis[1], r=assembly3dPortRadius(node,mode), y=mode==='base'?.72:node.y;
   return {x:node.x+nx*r,y:y+ny*r,z:node.z+nz*r,nx,ny,nz};
 }
-function assembly3dDockCandidate(data,index,preferredPort){
-  const n=data.nodes[index], ownR=assembly3dPortRadius(n,data.mode), here=new THREE.Vector3(n.x,n.y,n.z), ports=preferredPort?[preferredPort]:['east','west','north','south']; let best=null;
-  for(const target of data.nodes){
-    if(target.index===index||target.hidden) continue;
-    for(const port of ports){
-      if(data.mode==='base'&&(port==='top'||port==='bottom')) continue;
-      const pose=assembly3dPortPose(target,port,data.mode), center=new THREE.Vector3(pose.x+pose.nx*(ownR+.38),pose.y+pose.ny*(ownR+.38),pose.z+pose.nz*(ownR+.38));
-      const d=preferredPort?Math.hypot(here.x-center.x,here.z-center.z):here.distanceTo(center);
-      if(!best||d<best.distance) best={target,port,pose,center,distance:d};
+function assembly3dPorts(mode){
+  return mode==='station'?['east','west','north','south','top','bottom']:['east','west','north','south'];
+}
+function assembly3dPortOccupied(nodes,index,port,movingIndex){
+  const node=nodes[index];
+  return (index!==movingIndex&&node.parent>=0&&node.dockOwnPort===port)
+    ||nodes.some(child=>!child.hidden&&child.index!==movingIndex&&child.parent===index&&child.dockTargetPort===port);
+}
+function assembly3dConnectionChoices(data,index){
+  const {nodes,mode}=data, n=nodes[index];
+  if(!n||n.hidden) return [];
+  const choices=[];
+  for(const target of nodes){
+    if(target.hidden) continue;
+    const seen=new Set([index]);
+    let ancestor=target;
+    while(ancestor&&!seen.has(ancestor.index)){
+      seen.add(ancestor.index);
+      ancestor=nodes[ancestor.parent];
+    }
+    if(ancestor) continue;
+    for(const port of assembly3dPorts(mode)){
+      if(assembly3dPortOccupied(nodes,target.index,port,index)) continue;
+      const pose=assembly3dPortPose(target,port,mode);
+      const ownPort=pose.ny>0?'bottom':pose.ny<0?'top':'west';
+      if(assembly3dPortOccupied(nodes,index,ownPort,index)) continue;
+      const reach=assembly3dPortRadius(n,mode)+.38;
+      const center={x:pose.x+pose.nx*reach,y:mode==='base'?0:pose.y+pose.ny*reach,z:pose.z+pose.nz*reach};
+      if(nodes.some(other=>!other.hidden&&other.index!==index&&other.index!==target.index
+        &&Math.hypot(other.x-center.x,other.y-center.y,other.z-center.z)<2.25)) continue;
+      choices.push({target,port,pose,center,ownPort,yaw:pose.ny?n.yaw:-Math.atan2(pose.nz,pose.nx)});
     }
   }
-  return best&&best.distance<(preferredPort?2.6:3.8)?best:null;
+  return choices;
 }
-function assembly3dSnapNode(index,preferredPort){
-  const data=assembly3d&&assembly3d.scene&&assembly3d.scene.userData.assemblyLayout, n=data&&data.nodes[index]; if(!n) return false;
-  const dock=assembly3dDockCandidate(data,index,preferredPort); if(!dock) return false;
-  n.parent=dock.target.index; n.dockTargetPort=dock.port;
-  if(Math.abs(dock.pose.ny)>.5) n.dockOwnPort=dock.pose.ny>0?'bottom':'top';
-  else { n.dockOwnPort='west'; n.yaw=-Math.atan2(dock.pose.nz,dock.pose.nx); }
-  n.x=dock.center.x; n.y=dock.center.y; n.z=dock.center.z; return true;
+function assembly3dDockCandidate(data,index,preferredPort,here){
+  const n=data.nodes[index];
+  here=here||new THREE.Vector3(n.x,n.y,n.z);
+  let best=null, bestDistance=preferredPort?2.6:3.8;
+  for(const choice of assembly3dConnectionChoices(data,index)){
+    if(preferredPort?choice.port!==preferredPort:choice.pose.ny) continue;
+    const {center}=choice;
+    const distance=preferredPort?Math.hypot(here.x-center.x,here.z-center.z):here.distanceTo(center);
+    if(distance<bestDistance){ best=choice; bestDistance=distance; }
+  }
+  return best;
+}
+function assembly3dCommitConnection(index,dock){
+  const data=assembly3d.scene.userData.assemblyLayout, n=data.nodes[index];
+  Object.assign(n,{x:dock.center.x,y:dock.center.y,z:dock.center.z,yaw:dock.yaw,
+    parent:dock.target.index,dockTargetPort:dock.port,dockOwnPort:dock.ownPort});
+  assembly3dAnchorChildren(data,index);
+  assembly3dPlaceNode(index,n,true,false);
+  assembly3dPlacementStatus('Connected to '+assembly3dModuleName(dock.target)+' · '+dock.port+' port.');
+}
+function assembly3dModuleName(node){
+  return (stationModuleDef(node.id)?.name||node.id)+' #'+(node.index+1);
+}
+function assembly3dPlacementStatus(message){
+  const status=$(assembly3d.sceneId+'PlacementStatus');
+  if(status&&status.textContent!==message) status.textContent=message;
+}
+function assembly3dConnectSelected(sceneId){
+  if(assembly3dEditScene!==sceneId||assembly3d?.sceneId!==sceneId||assembly3dSelection?.sceneId!==sceneId) return;
+  const {index}=assembly3dSelection, value=$(sceneId+'TargetSelect')?.value;
+  const dock=assembly3dConnectionChoices(assembly3d.scene.userData.assemblyLayout,index)
+    .find(choice=>value===choice.target.index+':'+choice.port);
+  if(dock) assembly3dCommitConnection(index,dock);
+  else assembly3dPlacementStatus('Choose an available port.');
 }
 function assembly3dRefreshPortGuides(){
   if(!assembly3d||!assembly3d.scene) return;
   const data=assembly3d.scene.userData.assemblyLayout; if(!data) return;
-  if(data.guides){ assembly3d.scene.remove(data.guides); assembly3dDisposeLinks(data.guides); data.guides=null; }
-  if(assembly3dEditScene!==assembly3d.sceneId) return;
+  if(data.guides){
+    assembly3d.scene.remove(data.guides);
+    data.guides.userData.material.dispose();
+    assembly3dDisposeLinks(data.guides); data.guides=null;
+  }
+  if(assembly3dEditScene!==assembly3d.sceneId||assembly3dSelection?.sceneId!==assembly3d.sceneId) return;
   const guides=new THREE.Group(), mat=new THREE.MeshBasicMaterial({color:0x65dfff,transparent:true,opacity:.82});
-  for(const n of data.nodes) if(!n.hidden) for(const port of data.mode==='station'?['east','west','north','south','top','bottom']:['east','west','north','south']){
-    const p=assembly3dPortPose(n,port,data.mode), marker=new THREE.Mesh(new THREE.TorusGeometry(.22,.045,6,14),mat);
-    marker.position.set(p.x,p.y,p.z); marker.rotation.x=Math.PI/2; guides.add(marker);
+  guides.userData.material=mat;
+  for(const {target,port,pose} of assembly3dConnectionChoices(data,assembly3dSelection.index)){
+    const p=pose, marker=new THREE.Mesh(new THREE.TorusGeometry(.22,.045,6,14),mat);
+    marker.position.set(p.x,p.y,p.z);
+    marker.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,1),new THREE.Vector3(p.nx,p.ny,p.nz));
+    marker.userData.portKey=target.index+':'+port;
+    guides.add(marker);
   }
   data.guides=guides; assembly3d.scene.add(guides);
+}
+function assembly3dMakeConnection(parent,node,data){
+  const axis=new THREE.Vector3(node.x-parent.x,data.mode==='base'?0:node.y-parent.y,node.z-parent.z);
+  if(axis.lengthSq()<.0001) return null;
+  axis.normalize();
+  const from=assembly3dConnectionFace(parent,data.mode,axis), to=assembly3dConnectionFace(node,data.mode,axis.clone().negate());
+  return {model:assembly3dLink(from,to,axis,data.mode,data.materials),gap:to.clone().sub(from).dot(axis)};
 }
 function assembly3dRefreshLinks(){
   if(!assembly3d||!assembly3d.scene) return;
@@ -11214,12 +11284,8 @@ function assembly3dRefreshLinks(){
     if(n.hidden||n.parent<0) continue;
     const p=data.nodes[n.parent];
     if(!p||p.hidden) continue;
-    const axis=new THREE.Vector3(n.x-p.x,data.mode==='base'?0:n.y-p.y,n.z-p.z);
-    if(axis.lengthSq()<.0001) continue;
-    axis.normalize();
-    const from=assembly3dConnectionFace(p,data.mode,axis);
-    const to=assembly3dConnectionFace(n,data.mode,axis.clone().negate());
-    links.add(assembly3dLink(from,to,axis,data.mode,data.materials));
+    const connection=assembly3dMakeConnection(p,n,data);
+    if(connection){ connection.model.userData.moduleIndex=n.index; links.add(connection.model); }
   }
   data.links=links; scene.add(links);
   assembly3dRefreshPortGuides();
@@ -11369,7 +11435,24 @@ function assembly3dUpdateEditUI(){
     const active=assembly3d&&assembly3d.sceneId===sceneId, available=!!(active&&threeOK()), selected=available&&assembly3dSelection&&assembly3dSelection.sceneId===sceneId;
     const data=active&&assembly3d.scene&&assembly3d.scene.userData.assemblyLayout, selectedNode=selected&&data&&data.nodes[assembly3dSelection.index];
     const visible=data?data.nodes.filter(n=>!n.hidden):[], hidden=data?data.nodes.filter(n=>n.hidden):[];
-    if(edit) edit.disabled=!available;
+    if(edit){ edit.disabled=!available; edit.setAttribute('aria-pressed',String(editing)); }
+    const placement=$(sceneId+'PlacementControls'), moduleSelect=$(sceneId+'ModuleSelect'), targetSelect=$(sceneId+'TargetSelect'), hint=$(sceneId+'InputHint');
+    if(hint){
+      hint.textContent=!available?'3D assembly is unavailable. The blueprint is shown as a diagram.':!editing?'Choose Arrange to edit the layout. Drag to orbit · scroll to zoom.'
+        :sceneId==='station'?'Click to select · drag to preview docking · Shift: top port · Alt/Option: bottom port · right-drag to orbit'
+          :'Click to select · drag to place or connect · right-drag to orbit';
+    }
+    if(placement) placement.classList.toggle('hidden',!available||!editing);
+    if(available&&editing&&moduleSelect&&targetSelect){
+      setHTML(moduleSelect,'<option value="">Select a module</option>'+visible.map(n=>'<option value="'+n.index+'">'+esc(assembly3dModuleName(n))+'</option>').join(''));
+      moduleSelect.value=selectedNode?String(selectedNode.index):'';
+      const choices=selectedNode?assembly3dConnectionChoices(data,selectedNode.index):[];
+      const previous=targetSelect.value;
+      setHTML(targetSelect,'<option value="">'+(choices.length?'Choose a port':'No available ports')+'</option>'+choices.map(({target,port})=>'<option value="'+target.index+':'+port+'">'+esc(assembly3dModuleName(target)+' · '+port)+'</option>').join(''));
+      if([...targetSelect.options].some(option=>option.value===previous)) targetSelect.value=previous;
+      targetSelect.disabled=!choices.length;
+      placement.querySelector('button').disabled=!choices.length;
+    }
     if(clear) clear.disabled=!(selectedNode&&!selectedNode.hidden&&assembly3dLayoutMap(sceneId,assembly3d.cur)[assembly3dSelection.index]);
     if(rotateLeft) rotateLeft.disabled=!(selectedNode&&!selectedNode.hidden);
     if(rotateRight) rotateRight.disabled=!(selectedNode&&!selectedNode.hidden);
@@ -11405,10 +11488,13 @@ function assembly3dSelectNode(sceneId,index){
   if(!assembly3d||assembly3d.sceneId!==sceneId) return;
   const data=assembly3d.scene&&assembly3d.scene.userData.assemblyLayout, previous=assembly3dSelection;
   if(data&&previous&&previous.sceneId===sceneId&&data.groups[previous.index]) data.groups[previous.index].scale.setScalar(1);
+  if(!data?.nodes[index]||data.nodes[index].hidden) index=null;
   assembly3dSelection=index==null?null:{sceneId,index};
   assembly3dUpdateLabels();
   if(data&&index!=null&&data.groups[index]) data.groups[index].scale.setScalar(1.075);
   assembly3dUpdateEditUI();
+  assembly3dRefreshPortGuides();
+  assembly3dPlacementStatus(index==null?'':assembly3dModuleName(data.nodes[index])+' selected.');
 }
 function assembly3dPlaceNode(index,pos,persist,snap){
   if(!assembly3d||!assembly3d.scene) return;
@@ -11501,7 +11587,7 @@ function assembly3dWireInput(dom){
         const root=hit.root, node=root.userData.assemblyNode, plane=new THREE.Plane(new THREE.Vector3(0,1,0),-root.position.y), point=new THREE.Vector3();
         if(hit.ray.intersectPlane(plane,point)){
           assembly3dSelectNode(assembly3d.sceneId,node.index);
-          drag={index:node.index,plane,offset:root.position.clone().sub(point),start:{x:node.x,y:node.y,z:node.z,yaw:node.yaw,parent:node.parent,dockTargetPort:node.dockTargetPort,dockOwnPort:node.dockOwnPort}};
+          drag={index:node.index,scene:assembly3d.scene,plane,offset:root.position.clone().sub(point),x:e.clientX,y:e.clientY};
           dom.parentNode?.classList.add('grabbing'); try{dom.setPointerCapture(e.pointerId);}catch(_){} e.preventDefault(); return;
         }
       }
@@ -11513,9 +11599,33 @@ function assembly3dWireInput(dom){
   dom.addEventListener('pointermove',e=>{
     if(!assembly3d) return;
     if(drag){
+      if(drag.scene!==assembly3d.scene||(!drag.point&&Math.hypot(e.clientX-drag.x,e.clientY-drag.y)<5)) return;
       const rect=dom.getBoundingClientRect(), p=new THREE.Vector2((e.clientX-rect.left)/rect.width*2-1,-((e.clientY-rect.top)/rect.height)*2+1), point=new THREE.Vector3();
       assembly3d.raycaster.setFromCamera(p,assembly3d.camera);
-      if(assembly3d.raycaster.ray.intersectPlane(drag.plane,point)) assembly3dPlaceNode(drag.index,point.add(drag.offset),false);
+      if(!assembly3d.raycaster.ray.intersectPlane(drag.plane,point)) return;
+      const data=drag.scene.userData.assemblyLayout, node=data.nodes[drag.index], group=data.groups[drag.index];
+      drag.point=point.add(drag.offset);
+      const preferred=data.mode==='station'?(e.shiftKey?'top':e.altKey?'bottom':null):null;
+      drag.dock=assembly3dDockCandidate(data,drag.index,preferred,drag.point);
+      drag.surface=data.mode==='base'&&!data.nodes.some(other=>!other.hidden&&other.index!==node.index&&Math.hypot(other.x-drag.point.x,other.z-drag.point.z)<2.75);
+      const preview=drag.dock?.center||drag.point;
+      group.position.copy(preview);
+      group.rotation.y=drag.dock?.yaw??node.yaw;
+      if(drag.connection){
+        drag.scene.remove(drag.connection);
+        assembly3dDisposeLinks(drag.connection); drag.connection=null;
+      }
+      const previous=data.links?.children.find(link=>link.userData.moduleIndex===node.index);
+      if(previous) previous.visible=false;
+      const parent=drag.dock?.target||(drag.surface?data.nodes[node.parent]:null);
+      const connection=parent&&!parent.hidden?assembly3dMakeConnection(parent,{...node,x:preview.x,y:preview.y,z:preview.z,yaw:group.rotation.y},data):null;
+      if(connection){ drag.connection=connection.model; drag.scene.add(drag.connection); }
+      const surfaceJoint=connection?(connection.gap>.48?'corridor':'direct joint'):null;
+      const key=drag.dock?drag.dock.target.index+':'+drag.dock.port:null;
+      for(const guide of data.guides?.children||[]) guide.scale.setScalar(guide.userData.portKey===key?2:1);
+      assembly3dPlacementStatus(data.mode==='base'&&surfaceJoint?'Release to place · '+surfaceJoint+' to '+assembly3dModuleName(parent)+'.'
+        :drag.dock?'Connect to '+assembly3dModuleName(drag.dock.target)+' · '+drag.dock.port+' port.'
+        :drag.surface?'Release to place on the surface.':data.mode==='base'?'Leave more space between modules.':'Move toward an available docking port.');
       return;
     }
     if(!down){
@@ -11525,10 +11635,20 @@ function assembly3dWireInput(dom){
     const dx=e.clientX-lx,dy=e.clientY-ly; lx=e.clientX;ly=e.clientY; assembly3d.yaw-=dx*.007; assembly3d.pitch=clampA(assembly3d.pitch+dy*.006,-1.48,1.48); assembly3dApplyCamera();
   });
   const end=e=>{
-    if(drag&&assembly3d){
-      const snapped=assembly3dSnapNode(drag.index,e.shiftKey?'top':(e.altKey?'bottom':null));
-      const data=assembly3d.scene.userData.assemblyLayout, n=data&&data.nodes[drag.index];
-      if(n){ if(!snapped) Object.assign(n,drag.start); assembly3dPlaceNode(drag.index,n,snapped,false); }
+    if(drag?.point&&drag.scene===assembly3d?.scene){
+      const data=drag.scene.userData.assemblyLayout, n=data.nodes[drag.index], commit=e.type==='pointerup';
+      if(drag.connection){ drag.scene.remove(drag.connection); assembly3dDisposeLinks(drag.connection); }
+      if(commit&&drag.dock) assembly3dCommitConnection(drag.index,drag.dock);
+      else if(commit&&drag.surface){
+        n.dockTargetPort=n.dockOwnPort=null;
+        n.x=drag.point.x; n.z=drag.point.z; n.y=0;
+        assembly3dAnchorChildren(data,n.index);
+        assembly3dPlaceNode(n.index,n,true,false);
+        assembly3dPlacementStatus('Module placed.');
+      } else {
+        assembly3dPlaceNode(n.index,n,false,false);
+        assembly3dPlacementStatus(commit?'Placement unchanged.':'Placement cancelled.');
+      }
     }
     down=false; drag=null; dom.parentNode?.classList.remove('grabbing'); try{dom.releasePointerCapture(e.pointerId);}catch(_){}
   };
