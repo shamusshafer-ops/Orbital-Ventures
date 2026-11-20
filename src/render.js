@@ -10867,68 +10867,201 @@ function assembly3dLabel(text,color){
   const cv=document.createElement('canvas'); cv.width=256; cv.height=64; const c=cv.getContext('2d');
   c.clearRect(0,0,256,64); c.fillStyle='rgba(3,9,14,.78)'; c.fillRect(1,8,254,48);
   c.strokeStyle=color||'#8bdcff'; c.lineWidth=2; c.strokeRect(1,8,254,48);
-  c.font='600 23px ui-monospace,monospace'; c.textAlign='center'; c.textBaseline='middle'; c.fillStyle='#e8f4fb'; c.fillText(text,128,32);
+  c.font='600 23px ui-monospace,monospace'; c.textAlign='center'; c.textBaseline='middle'; c.fillStyle='#e8f4fb'; c.fillText(text,128,32,234);
   const tx=new THREE.CanvasTexture(cv); tx.colorSpace=THREE.SRGBColorSpace;
   const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tx,transparent:true,depthTest:false,depthWrite:false}));
-  sp.scale.set(4.1,1.03,1); sp.userData.assemblyTexture=tx; return sp;
+  sp.name='assemblyLabel'; sp.scale.set(5.8,1.45,1); sp.visible=false; sp.raycast=()=>{}; sp.userData.assemblyTexture=tx; return sp;
 }
-function assembly3dPanel(w,h,color){
-  const g=new THREE.Group(), frame=assembly3dMat('#8495a0',.75,.32), cell=assembly3dMat(color||'#153b63',.25,.35,{emissive:new THREE.Color(color||'#153b63').multiplyScalar(.16)});
+// One set per live bench scene keeps module copies from allocating their own maps.
+function assembly3dModuleTextures(scene){
+  const textures={};
+  for(const [index,finish] of ['panels','foil','ribs','cells','foliage'].entries()){
+    const canvas=document.createElement('canvas'); canvas.width=canvas.height=256;
+    const ctx=canvas.getContext('2d'), random=mulberry(731+index);
+    ctx.fillStyle='#dedede'; ctx.fillRect(0,0,256,256);
+    if(finish==='cells'){
+      ctx.fillStyle='#292929'; ctx.fillRect(0,0,256,256);
+      for(let y=0;y<256;y+=32) for(let x=0;x<256;x+=32){
+        const shade=166+Math.floor(random()*67);
+        const gradient=ctx.createLinearGradient(x,y,x+29,y+29);
+        gradient.addColorStop(0,'#eeeeee'); gradient.addColorStop(1,'rgb('+[shade,shade,shade].join(',')+')');
+        ctx.fillStyle=gradient; ctx.fillRect(x+1,y+1,29,29);
+        ctx.fillStyle='#aaaaaa'; ctx.fillRect(x+14,y+1,1,29);
+      }
+    } else if(finish==='panels'){
+      for(let row=0;row<4;row++) for(let col=0;col<4;col++){
+        const x=col*64, y=row*64, shade=203+Math.floor(random()*40);
+        ctx.fillStyle='rgb('+[shade,shade,shade].join(',')+')'; ctx.fillRect(x,y,64,64);
+        ctx.fillStyle='#9a9a9a'; ctx.fillRect(x,y,64,1); ctx.fillRect(x,y,1,64);
+        ctx.fillRect(x+5,y+5,2,2); ctx.fillRect(x+57,y+5,2,2);
+        ctx.fillRect(x+5,y+57,2,2); ctx.fillRect(x+57,y+57,2,2);
+      }
+    } else if(finish==='ribs'){
+      for(let y=0;y<256;y+=16){
+        ctx.fillStyle='#929292'; ctx.fillRect(0,y,256,3);
+        ctx.fillStyle='#eeeeee'; ctx.fillRect(0,y+3,256,2);
+      }
+    }
+    if(finish==='foil'||finish==='foliage'){
+      for(let i=0;i<420;i++){
+        const x=random()*256,y=random()*256;
+        ctx.fillStyle=random()>.47?'rgba(255,255,255,.24)':'rgba(20,20,20,.22)';
+        if(finish==='foil'){
+          ctx.fillRect(x,y,4+random()*23,1+random()*5);
+        } else {
+          ctx.beginPath(); ctx.ellipse(x,y,2+random()*7,2+random()*4,random()*Math.PI,0,Math.PI*2); ctx.fill();
+        }
+      }
+    }
+    const texture=new THREE.CanvasTexture(canvas);
+    texture.colorSpace=THREE.SRGBColorSpace;
+    texture.anisotropy=4;
+    textures[finish]=texture;
+  }
+  scene.userData.moduleTextures=textures;
+  return textures;
+}
+function assembly3dPanel(w,h,texture){
+  const g=new THREE.Group(), frame=assembly3dMat('#8495a0',.75,.32);
+  const cell=assembly3dMat('#3269ac',.22,.32,{map:texture,emissive:0x081426});
   g.add(assembly3dBox(w+.14,.12,h+.14,frame));
   g.add(assembly3dBox(w,.16,h,cell,0,.08,0));
-  for(let i=-2;i<=2;i++) g.add(assembly3dBox(.035,.19,h,frame,i*w/5,.1,0));
   g.add(assembly3dBox(w,.19,.035,frame,0,.1,0));
   return g;
 }
-function assembly3dModule(d,mode){
+function assembly3dModule(d,mode,textures){
   const id=d.id, g=new THREE.Group(), L=Math.max(2.2,(d.len||150)/48), R=Math.max(.62,(d.dia||80)/78);
-  const hull=assembly3dMat(d.color||'#b8c0c7',.42,.48), dark=assembly3dMat('#25343e',.62,.42), trim=assembly3dMat('#aebbc3',.72,.3);
-  const gold=assembly3dMat('#d5a83f',.65,.34,{emissive:0x241400}), glass=assembly3dMat('#55b8e8',.18,.22,{emissive:0x12364b});
-  const addDock=(x)=>{ const t=new THREE.Mesh(new THREE.TorusGeometry(R*.48,.10,8,20),trim); t.rotation.y=Math.PI/2; t.position.x=x; g.add(t); };
+  const hull=assembly3dMat(d.color||'#b8c0c7',.34,.5,{map:textures.panels,bumpMap:textures.panels,bumpScale:.025});
+  const dark=assembly3dMat('#25343e',.48,.48), trim=assembly3dMat('#aebbc3',.56,.38);
+  const radiator=assembly3dMat('#afb9be',.28,.63,{map:textures.ribs,bumpMap:textures.ribs,bumpScale:.035});
+  const gold=assembly3dMat('#d5a83f',.65,.34,{map:textures.foil,bumpMap:textures.foil,bumpScale:.025,emissive:0x241400}), glass=assembly3dMat('#55b8e8',.18,.22,{emissive:0x12364b});
+  // NASA's ISS/Gateway models informed the separate end cones, handrails and array booms.
+  const addDock=(x)=>{
+    const end=Math.sign(x), socket=assembly3dCylinderX(R*.57,.26,dark);
+    socket.position.x=x+end*.1; g.add(socket);
+    const shoulder=new THREE.Mesh(new THREE.CylinderGeometry(R*.58,R*.86,.25,24),hull);
+    shoulder.rotation.z=-end*Math.PI/2; shoulder.position.x=x-end*.09; g.add(shoulder);
+    for(const offset of [.05,.24]){
+      const flange=new THREE.Mesh(new THREE.TorusGeometry(R*.51,.075,8,24),trim);
+      flange.rotation.y=Math.PI/2; flange.position.x=x+end*offset; g.add(flange);
+    }
+  };
   if(mode==='base'&&id==='hab_dome'){
     const dome=new THREE.Mesh(new THREE.SphereGeometry(1.55,28,18,0,Math.PI*2,0,Math.PI/2),hull); dome.scale.y=.72; dome.position.y=.05; g.add(dome);
     const ring=new THREE.Mesh(new THREE.TorusGeometry(1.5,.12,8,28),trim); ring.rotation.x=Math.PI/2; g.add(ring);
+    const skirt=new THREE.Mesh(new THREE.CylinderGeometry(1.54,1.54,.18,28),radiator);
+    skirt.position.y=.12; g.add(skirt);
+    // Recessed hatch framing and segmented shell follow the Habitat Demonstration Unit.
+    g.add(assembly3dBox(.85,.65,.33,trim,0,.40,1.46),assembly3dBox(.64,.49,.31,dark,0,.40,1.52));
+    g.add(assembly3dBox(.46,.37,.10,hull,0,.40,1.71),assembly3dBox(.09,.033,.04,gold,.10,.41,1.77));
+    for(const y of [.16,.26]) g.add(assembly3dBox(.74,.055,.16,trim,0,y,1.71));
     for(let a=0;a<Math.PI*2;a+=Math.PI/3){ const w=assembly3dBox(.34,.28,.08,glass,Math.cos(a)*1.18,.55,Math.sin(a)*1.18); w.rotation.y=-a; g.add(w); }
   } else if(mode==='base'&&id==='isru_plant'){
     g.add(assembly3dBox(3.4,1.25,2.1,hull,0,.65,0),assembly3dBox(3.0,.15,1.75,trim,0,1.32,0));
     for(const x of [-1.05,1.05]){ const tank=new THREE.Mesh(new THREE.CylinderGeometry(.42,.42,1.4,18),gold); tank.position.set(x,1.45,.45); g.add(tank); }
     g.add(assembly3dTube({x:-1.05,y:1.55,z:.45},{x:1.05,y:1.55,z:.45},.08,trim));
+    g.add(assembly3dBox(1.36,.55,.12,radiator,0,.8,1.07));
+    for(const x of [-1.05,1.05]){
+      g.add(assembly3dTube({x,y:1.31,z:-.58},{x,y:2.18,z:-.58},.095,trim));
+      g.add(assembly3dBox(.31,.14,.3,dark,x,2.18,-.58));
+    }
   } else if(mode==='base'&&id==='reactor_pad'){
     const pad=new THREE.Mesh(new THREE.CylinderGeometry(1.8,2.15,.32,24),dark); pad.position.y=.16; g.add(pad);
     const core=new THREE.Mesh(new THREE.CylinderGeometry(.55,.72,2.2,20),hull); core.position.y=1.35; g.add(core);
-    for(let i=0;i<8;i++){ const fin=assembly3dBox(.12,1.25,1.15,gold,0,1.05,0); fin.rotation.y=i*Math.PI/4; fin.position.x=Math.cos(i*Math.PI/4)*.95; fin.position.z=Math.sin(i*Math.PI/4)*.95; g.add(fin); }
+    for(let i=0;i<8;i++){ const fin=assembly3dBox(.12,1.25,1.15,radiator,0,1.05,0); fin.rotation.y=i*Math.PI/4; fin.position.x=Math.cos(i*Math.PI/4)*.95; fin.position.z=Math.sin(i*Math.PI/4)*.95; g.add(fin); }
+    const cap=new THREE.Mesh(new THREE.CylinderGeometry(.69,.69,.17,20),gold);
+    cap.position.y=2.45; g.add(cap);
+    g.add(assembly3dBox(.67,.39,.49,dark,1.18,.46,.9));
   } else if(mode==='base'&&id==='rover_garage'){
     g.add(assembly3dBox(3.8,1.55,2.6,hull,0,.78,0));
-    const door=assembly3dBox(2.15,1.12,.08,dark,0,.62,1.34); g.add(door);
+    const door=assembly3dBox(2.15,1.12,.08,radiator,0,.62,1.34); g.add(door);
+    g.add(assembly3dBox(3.86,.14,2.7,trim,0,1.55,0),assembly3dBox(1.12,.22,.86,radiator,-.78,1.71,-.42));
+    for(const x of [-1.28,1.28]) g.add(assembly3dBox(.29,.17,.14,gold,x,1.37,1.38));
     for(let x=-.75;x<=.75;x+=.5) g.add(assembly3dBox(.035,1.05,.10,trim,x,.62,1.40));
     const beacon=new THREE.Mesh(new THREE.SphereGeometry(.12,10,8),new THREE.MeshBasicMaterial({color:0xff6b45})); beacon.position.set(1.45,1.75,1.0); g.add(beacon);
+  } else if(id==='greenhouse'){
+    const glazing=assembly3dMat('#9ee4d0',.08,.23,{transparent:true,opacity:.27,depthWrite:false});
+    g.add(assembly3dCylinderX(R*.92,L,glazing,28),assembly3dBox(L,.2,R*1.52,dark,0,-R*.48,0));
+    const foliage=assembly3dMat('#71b65b',.05,.73,{map:textures.foliage,bumpMap:textures.foliage,bumpScale:.04});
+    for(const z of [-R*.39,R*.39]){
+      g.add(assembly3dBox(L*.86,.14,.57,trim,0,-R*.26,z));
+      for(let i=-3;i<=3;i++) g.add(assembly3dBox(.35,.22,.49,foliage,i*L/8,-R*.11,z));
+    }
+    for(let i=-2;i<=2;i++){
+      const rib=new THREE.Mesh(new THREE.TorusGeometry(R*.92,.055,8,28),trim);
+      rib.rotation.y=Math.PI/2; rib.position.x=i*L/4; g.add(rib);
+    }
+    g.add(assembly3dBox(L*.8,.06,.08,glass,0,R*.67,0));
+    addDock(-L/2); addDock(L/2);
+  } else if(id==='depot_mod'){
+    const tank=assembly3dMat('#d7dbdf',.31,.48,{map:textures.foil,bumpMap:textures.foil,bumpScale:.028}), radius=R*.43;
+    g.add(assembly3dBox(L,.2,R*1.85,dark,0,-R*.45,0));
+    for(const z of [-R*.5,R*.5]){
+      const vessel=assembly3dCylinderX(radius,L*.66,tank,24);
+      vessel.position.z=z; g.add(vessel);
+      for(const sign of [-1,1]){
+        const cap=new THREE.Mesh(new THREE.SphereGeometry(radius,20,12),tank);
+        cap.scale.x=.72; cap.position.set(sign*L*.33,0,z); g.add(cap);
+        const strap=new THREE.Mesh(new THREE.TorusGeometry(radius,.065,8,24),gold);
+        strap.rotation.y=Math.PI/2; strap.position.set(sign*L*.21,0,z); g.add(strap);
+      }
+      g.add(assembly3dTube({x:L*.34,y:radius*.65,z},{x:L*.34,y:R*.72,z},.065,trim));
+    }
+    g.add(assembly3dTube({x:L*.34,y:R*.72,z:-R*.5},{x:L*.34,y:R*.72,z:R*.5},.075,trim));
+    g.add(assembly3dBox(.32,.22,.36,gold,L*.34,R*.84,0));
+    addDock(-L/2); addDock(L/2);
   } else if(id==='node_hub'){
     g.add(new THREE.Mesh(new THREE.SphereGeometry(R*1.18,24,16),hull));
     for(const v of [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]]){
       const p={x:v[0]*R*1.2,y:v[1]*R*1.2,z:v[2]*R*1.2}, q={x:v[0]*R*1.75,y:v[1]*R*1.75,z:v[2]*R*1.75};
-      g.add(assembly3dTube(p,q,R*.32,trim));
+      const rim={x:q.x+v[0]*.09,y:q.y+v[1]*.09,z:q.z+v[2]*.09};
+      g.add(assembly3dTube(p,q,R*.32,dark),assembly3dTube(q,rim,R*.41,trim));
     }
   } else if(id==='power_truss'){
-    g.add(assembly3dBox(L,.18,.18,trim));
-    for(const z of [-1.9,1.9]){ const p=assembly3dPanel(L*1.15,1.55,'#123d70'); p.position.z=z; p.position.y=.05; g.add(p); g.add(assembly3dBox(.16,.12,3.6,trim,0,0,z/2)); }
+    for(const edge of [-.23,.23]) g.add(assembly3dBox(L,.12,.12,trim,0,.1,edge));
+    for(let i=-2;i<=2;i++){
+      const brace=assembly3dBox(L/4,.08,.10,trim,i*L/5,.1,0);
+      brace.rotation.y=i%2?.64:-.64; g.add(brace);
+    }
+    g.add(assembly3dBox(.55,.28,.54,gold,0,.1,0));
+    for(const side of [-1,1]){
+      const hinge=new THREE.Mesh(new THREE.CylinderGeometry(.23,.23,.34,16),gold);
+      hinge.rotation.x=Math.PI/2; hinge.position.set(0,.09,side*.84); g.add(hinge);
+      g.add(assembly3dBox(.13,.13,2.54,trim,0,.06,side*1.27));
+      for(const x of [-L*.28,L*.28]){
+        const wing=assembly3dPanel(L*.49,1.86,textures.cells);
+        wing.position.set(x,.08,side*1.8); g.add(wing);
+      }
+    }
   } else {
     g.add(assembly3dCylinderX(R,L,hull,24)); addDock(-L/2-.02); addDock(L/2+.02);
     for(let x=-L*.32;x<=L*.32;x+=Math.max(.62,L/4)){ const ring=new THREE.Mesh(new THREE.TorusGeometry(R*.99,.035,6,24),trim); ring.rotation.y=Math.PI/2; ring.position.x=x; g.add(ring); }
     for(let x=-L*.28;x<=L*.28;x+=Math.max(.72,L/3)){ const w=new THREE.Mesh(new THREE.SphereGeometry(.12,10,8),glass); w.position.set(x,R*.15,R*.96); g.add(w); }
-    if(id==='greenhouse'){
-      const glow=assembly3dCylinderX(R*.82,L*.88,assembly3dMat('#6ebc62',.08,.28,{transparent:true,opacity:.5,emissive:0x16361d}),20); g.add(glow);
-      for(let x=-L*.3;x<=L*.3;x+=.45) g.add(assembly3dBox(.18,.05,R*1.25,assembly3dMat('#86c968',.05,.8),x,-R*.25,0));
+    if(id==='lab_mod'){
+      const band=assembly3dCylinderX(R*1.015,L*.42,glass,24); g.add(band);
+      g.add(assembly3dBox(L*.59,.16,.60,radiator,0,R*.96,0));
+      g.add(assembly3dBox(.32,.25,.38,dark,L*.36,R*.94,0));
     }
-    if(id==='depot_mod') for(const z of [-.45,.45]){ const tank=assembly3dCylinderX(R*.38,L*.72,gold,18); tank.position.z=z; g.add(tank); }
-    if(id==='lab_mod'){ const band=assembly3dCylinderX(R*1.015,L*.42,glass,24); g.add(band); }
+    if(id==='can_std'){
+      for(const side of [-1,1]){
+        const z=side*R*.58;
+        g.add(assembly3dBox(L*.55,.06,.065,gold,0,R*.93,z));
+        for(const x of [-L*.24,0,L*.24]) g.add(assembly3dBox(.06,.17,.07,trim,x,R*.85,z));
+      }
+      g.add(assembly3dBox(.46,.27,.43,radiator,-L*.31,R*.98,0));
+    }
     if(id==='can_std'&&mode==='station'){
-      for(const z of [-2.25,2.25]){ const p=assembly3dPanel(L*.92,1.55,'#123d70'); p.position.z=z; g.add(p); g.add(assembly3dBox(.12,.12,3.4,trim,0,0,z/2)); }
+      for(const z of [-2.25,2.25]){ const p=assembly3dPanel(L*.92,1.55,textures.cells); p.position.z=z; g.add(p); g.add(assembly3dBox(.12,.12,3.4,trim,0,0,z/2)); }
     }
   }
   if(mode==='base'&&(id==='power_truss'||id==='can_std')){
-    const p=assembly3dPanel(Math.max(3.4,L),1.5,'#123d70'); p.rotation.x=-.18; p.position.set(0,1.25,-1.8); g.add(p);
+    const p=assembly3dPanel(Math.max(3.4,L),1.5,textures.cells); p.rotation.x=-.18; p.position.set(0,1.25,-1.8); g.add(p);
   }
-  const label=assembly3dLabel(d.short||id,d.color); label.position.set(0,mode==='base'?3.25:R+1.25,0); g.add(label);
+  const label=assembly3dLabel(d.name||id,d.color);
+  label.position.y=mode==='base'?3.25:R+1.25;
+  const marker=new THREE.Mesh(new THREE.SphereGeometry(.13,10,8),new THREE.MeshBasicMaterial({color:d.color||0x8bdcff}));
+  marker.name='assemblyMarker'; marker.position.copy(label.position); marker.raycast=()=>{};
+  g.add(label,marker);
   g.traverse(o=>{ if(o.isMesh){ o.castShadow=true; o.receiveShadow=true; } });
   return g;
 }
@@ -10938,11 +11071,93 @@ function assembly3dStars(scene,count,radius,seed){
   const geo=new THREE.BufferGeometry(); geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
   scene.add(new THREE.Points(geo,new THREE.PointsMaterial({color:0xdcecff,size:.12,sizeAttenuation:true,transparent:true,opacity:.85})));
 }
-function assembly3dLink(a,b,r,material){
-  const av=new THREE.Vector3(a.x,a.y,a.z), bv=new THREE.Vector3(b.x,b.y,b.z), dir=bv.clone().sub(av), len=dir.length();
-  const g=new THREE.Group(), rail=new THREE.Mesh(new THREE.BoxGeometry(r*1.6,r*1.15,Math.max(.001,len)),material);
-  rail.position.copy(av.clone().add(bv).multiplyScalar(.5)); rail.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,1),dir.normalize()); g.add(rail);
-  for(const p of [av,bv]){ const collar=new THREE.Mesh(new THREE.BoxGeometry(r*2.25,r*2.0,r*.42),material); collar.position.copy(p); collar.quaternion.copy(rail.quaternion); g.add(collar); }
+// Find the hull face in the direction of the other module. Arrays, labels and pads
+// are intentionally outside the connection footprint.
+function assembly3dConnectionFace(node,mode,direction){
+  const d=stationModuleDef(node.id)||stationModuleDef('can_std');
+  const L=Math.max(2.2,(d.len||150)/48), R=Math.max(.62,(d.dia||80)/78);
+  const yaw=node.yaw||0, x=direction.x*Math.cos(yaw)-direction.z*Math.sin(yaw), z=direction.x*Math.sin(yaw)+direction.z*Math.cos(yaw);
+  const radial=Math.hypot(direction.y,z);
+  let reach;
+  if(mode==='base'&&node.id==='hab_dome') reach=1.37;
+  else if(mode==='base'&&node.id==='reactor_pad') reach=1.26;
+  else if(mode==='base'&&['isru_plant','rover_garage'].includes(node.id)){
+    const garage=node.id==='rover_garage';
+    reach=Math.min((garage?1.9:1.7)/Math.abs(x),(garage?1.3:1.05)/Math.abs(z));
+  } else if(node.id==='node_hub') reach=1.32*R;
+  else if(node.id==='power_truss') reach=Math.min(L/2/Math.abs(x),.28/radial);
+  else reach=Math.min(L/2/Math.abs(x),R/radial);
+  return new THREE.Vector3(node.x,mode==='base'?.80:node.y,node.z).addScaledVector(direction,reach-.08);
+}
+function assembly3dConnectionMaterials(mode){
+  return {
+    shell:assembly3dMat(mode==='station'?'#53626c':'#8d9da6',.35,.53),
+    rim:assembly3dMat('#bdc9cd',.48,.39),
+    seam:assembly3dMat('#27333a',.18,.60)
+  };
+}
+function assembly3dLink(from,to,axis,mode,materials){
+  const g=new THREE.Group();
+  const gap=to.clone().sub(from).dot(axis);
+  if(gap<-.20) return g;
+  const midpoint=from.clone().lerp(to,.5);
+  g.position.copy(midpoint);
+  g.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),axis);
+  const cylinder=(radius,length,y,material)=>{
+    const mesh=new THREE.Mesh(new THREE.CylinderGeometry(radius,radius,length,20),material);
+    mesh.position.y=y; g.add(mesh);
+    mesh.castShadow=true; mesh.receiveShadow=true;
+  };
+  const radius=mode==='station'?.48:.58, collar=mode==='station'?.13:.18;
+  const rim=(y,material)=>{
+    const ring=new THREE.Mesh(new THREE.TorusGeometry(radius+.025,.052,8,24),material);
+    ring.rotation.x=Math.PI/2; ring.position.y=y; g.add(ring);
+  };
+  if(mode==='base'){
+    // Rigid pressure tunnel with gasketed bulkheads and short flexible boots.
+    // Close neighbours share the bulkhead directly.
+    const span=Math.max(.12,gap);
+    if(span>.48){
+      cylinder(radius,span,0,materials.shell);
+      for(const side of [-1,1]){
+        const boot=Math.min(.36,span/4), edge=side*span/2;
+        cylinder(radius*1.04,boot,edge-side*boot/2,materials.seam);
+        for(const fraction of [.25,.62]) rim(edge-side*boot*fraction,materials.rim);
+      }
+      const sections=Math.ceil(span/1.65);
+      for(let i=1;i<sections;i++) rim((i/sections-.5)*span,materials.rim);
+      const bays=Math.ceil(span/2.5), upright=g.quaternion.clone().invert();
+      for(let i=1;i<bays;i++){
+        const pier=assembly3dBox(.28,.38,radius*1.32,materials.rim);
+        pier.position.copy(axis).multiplyScalar((i/bays-.5)*span);
+        pier.position.y=.19-midpoint.y; pier.position.applyQuaternion(upright);
+        pier.quaternion.copy(upright); pier.castShadow=true; pier.receiveShadow=true; g.add(pier);
+      }
+    }
+    for(const side of [-1,1]){
+      const edge=side*span/2;
+      g.add(assembly3dBox(radius*2.23,.16,radius*2.14,materials.rim,0,edge,0));
+      cylinder(radius*.92,.12,edge-side*.11,materials.seam);
+    }
+  } else {
+    // A long orbital gap shows the two exposed ports. Nearby ports meet at a
+    // narrow gasket, including when the two hulls are already touching.
+    const span=Math.max(.12,gap), reach=Math.min(span/2,.96), face=span/2-reach;
+    for(const side of [-1,1]){
+      cylinder(radius*.87,reach+.12,side*(span-reach)/2,materials.shell);
+      cylinder(radius,collar,side*(face+collar/2),materials.rim);
+    }
+    rim(-face,materials.seam);
+    if(face>0) rim(face,materials.seam);
+    for(let i=0;i<6;i++){
+      const angle=i*Math.PI/3, x=Math.cos(angle)*radius, z=Math.sin(angle)*radius;
+      const positions=face>0?[-face-.10,face+.10]:[0];
+      for(const y of positions){
+        const lug=assembly3dBox(.12,.16,.065,materials.rim,x,y,z);
+        lug.rotation.y=-angle; g.add(lug);
+      }
+    }
+  }
   return g;
 }
 function assembly3dDisposeLinks(group){
@@ -10999,12 +11214,12 @@ function assembly3dRefreshLinks(){
     if(n.hidden||n.parent<0) continue;
     const p=data.nodes[n.parent];
     if(!p||p.hidden) continue;
-    const docked=n.dockTargetPort&&n.dockOwnPort, from=docked?assembly3dPortPose(p,n.dockTargetPort,data.mode):{x:p.x,y:data.mode==='base'?.72:p.y,z:p.z};
-    const to=docked?assembly3dPortPose(n,n.dockOwnPort,data.mode):{x:n.x,y:data.mode==='base'?.72:n.y,z:n.z};
-    links.add(assembly3dLink(
-      from,to,
-      data.mode==='base'?.28:.18,data.material
-    ));
+    const axis=new THREE.Vector3(n.x-p.x,data.mode==='base'?0:n.y-p.y,n.z-p.z);
+    if(axis.lengthSq()<.0001) continue;
+    axis.normalize();
+    const from=assembly3dConnectionFace(p,data.mode,axis);
+    const to=assembly3dConnectionFace(n,data.mode,axis.clone().negate());
+    links.add(assembly3dLink(from,to,axis,data.mode,data.materials));
   }
   data.links=links; scene.add(links);
   assembly3dRefreshPortGuides();
@@ -11023,16 +11238,16 @@ function assembly3dBuildStation(scene,spec){
   try{ const earth=BODIES.find(b=>b.id==='earth'), tx=earth&&map3dSurfaceTexture(earth); if(tx) earthMat.map=tx; }catch(e){}
   const earth=new THREE.Mesh(new THREE.SphereGeometry(9,42,28),earthMat); earth.position.set(4,-22,-18); earth.rotation.z=-.35; scene.add(earth);
   const glow=new THREE.Mesh(new THREE.SphereGeometry(9.28,42,28),new THREE.MeshBasicMaterial({color:0x78bfff,transparent:true,opacity:.10,side:THREE.BackSide})); glow.position.copy(earth.position); scene.add(glow);
-  const connector=assembly3dMat('#718995',.72,.35), groups=[];
+  const textures=assembly3dModuleTextures(scene), groups=[];
   for(const n of spec.nodes){
-    const d=stationModuleDef(n.id)||stationModuleDef('can_std'), g=assembly3dModule(d,'station');
+    const d=stationModuleDef(n.id)||stationModuleDef('can_std'), g=assembly3dModule(d,'station',textures);
     g.position.set(n.x,n.y,n.z);
     if(!n.yaw&&n.parent>=0){ const p=spec.nodes[n.parent]; n.yaw=-Math.atan2(n.z-p.z,n.x-p.x); }
     g.rotation.y=n.yaw||0;
     g.visible=!n.hidden;
     scene.add(assembly3dNodeRoot(g,n,'station')); groups[n.index]=g;
   }
-  scene.userData.assemblyLayout={mode:'station',nodes:spec.nodes,groups,material:connector,links:null};
+  scene.userData.assemblyLayout={mode:'station',nodes:spec.nodes,groups,materials:assembly3dConnectionMaterials('station'),links:null};
   assembly3dRefreshLinks();
 }
 // Graphics pass (2026-11-15): cratered regolith / dusty Mars soil instead of a flat-colour slab.
@@ -11067,14 +11282,28 @@ function assembly3dBuildBase(scene,spec){
   if(!mars){ try{ const earthDef=BODIES.find(b=>b.id==='earth'), etx=earthDef&&map3dSurfaceTexture(earthDef), em=new THREE.MeshStandardMaterial({color:0xffffff,roughness:.8,emissive:0x16324a,emissiveIntensity:.35}); if(etx) em.map=etx; else em.color.set(0x327bb5);
     const home=new THREE.Mesh(new THREE.SphereGeometry(7.5,36,24),em); home.position.set(-52,46,-150); home.rotation.set(.3,2.2,-.35); scene.add(home);
     const halo=new THREE.Mesh(new THREE.SphereGeometry(7.9,36,24),new THREE.MeshBasicMaterial({color:0x78bfff,transparent:true,opacity:.14,side:THREE.BackSide})); halo.position.copy(home.position); scene.add(halo); }catch(e){} }
-  const padMat=assembly3dMat(mars?'#6b3925':'#5b6064',.08,.9), corridorMat=assembly3dMat('#6e808b',.5,.5), groups=[];
+  const feet=assembly3dMat(mars?'#806b61':'#6b7277',.12,.86), textures=assembly3dModuleTextures(scene), groups=[];
   for(const n of spec.nodes){
-    const site=new THREE.Group(), pad=new THREE.Mesh(new THREE.CylinderGeometry(2.25,2.5,.18,24),padMat);
-    pad.position.y=.05; pad.receiveShadow=true; site.add(pad);
-    const d=stationModuleDef(n.id)||stationModuleDef('can_std'), g=assembly3dModule(d,'base'); g.position.y=.15; site.add(g);
+    const site=new THREE.Group(), d=stationModuleDef(n.id)||stationModuleDef('can_std');
+    const foundationWidth=Math.min(2.8,(d.dia||80)/38), foundationLength=Math.max(2.25,(d.len||150)/53);
+    for(const z of [-foundationWidth*.32,foundationWidth*.32]){
+      const skid=assembly3dBox(foundationLength,.18,.32,feet,0,.09,z);
+      skid.receiveShadow=true; site.add(skid);
+    }
+    const groundMounted=['hab_dome','isru_plant','reactor_pad','rover_garage'].includes(n.id);
+    const g=assembly3dModule(d,'base',textures);
+    const radius=Math.max(.62,(d.dia||80)/78);
+    const underside=n.id==='power_truss'?.04:n.id==='depot_mod'?radius*.45+.10:radius;
+    g.position.y=groundMounted?.15:underside+.18; site.add(g);
+    if(!groundMounted){
+      for(const x of [-foundationLength*.29,foundationLength*.29]){
+        const saddle=assembly3dBox(.26,g.position.y,foundationWidth*.8,feet,x,g.position.y/2,0);
+        saddle.castShadow=true; saddle.receiveShadow=true; site.add(saddle);
+      }
+    }
     site.rotation.y=n.yaw||0; site.position.set(n.x,0,n.z); site.visible=!n.hidden; scene.add(assembly3dNodeRoot(site,n,'base')); groups[n.index]=site;
   }
-  scene.userData.assemblyLayout={mode:'base',nodes:spec.nodes,groups,material:corridorMat,links:null};
+  scene.userData.assemblyLayout={mode:'base',nodes:spec.nodes,groups,materials:assembly3dConnectionMaterials('base'),links:null};
   assembly3dRefreshLinks();
   const rockMat=assembly3dMat(mars?'#62301e':'#34383b',.05,1), rockRnd=mulberry(mars?901:603);
   for(let i=0;i<90;i++){ const x=(rockRnd()-.5)*150,z=(rockRnd()-.5)*120; if(Math.abs(x)<18&&Math.abs(z)<12) continue;
@@ -11088,6 +11317,8 @@ function assembly3dDisposeScene(scene){
     mats.forEach(m=>{ if(m.map&&m.map.userData&&m.map.userData.assemblyOwned) try{m.map.dispose();}catch(e){} try{m.dispose();}catch(e){} });
     if(o.userData&&o.userData.assemblyTexture) try{o.userData.assemblyTexture.dispose();}catch(e){}
   });
+  for(const material of Object.values(scene.userData.assemblyLayout?.materials||{})) material.dispose();
+  for(const texture of Object.values(scene.userData.moduleTextures||{})) texture.dispose();
   scene.clear();
 }
 function assembly3dApplyCamera(){
@@ -11122,7 +11353,8 @@ function assembly3dPick(event){
   const p=new THREE.Vector2((event.clientX-rect.left)/rect.width*2-1,-((event.clientY-rect.top)/rect.height)*2+1);
   assembly3d.raycaster=assembly3d.raycaster||new THREE.Raycaster();
   assembly3d.raycaster.setFromCamera(p,assembly3d.camera);
-  for(const hit of assembly3d.raycaster.intersectObjects(assembly3d.scene.children,true)){
+  const groups=assembly3d.scene.userData.assemblyLayout?.groups||[];
+  for(const hit of assembly3d.raycaster.intersectObjects(groups.filter(group=>group.visible),true)){
     const root=assembly3dRootFor(hit.object); if(root) return {root,ray:assembly3d.raycaster.ray};
   }
   return null;
@@ -11152,11 +11384,29 @@ function assembly3dUpdateEditUI(){
     const host=a&&$(a.hostId); if(host) host.classList.toggle('layout-edit',editing&&active);
   }
 }
+function assembly3dUpdateLabels(){
+  const data=assembly3d?.scene?.userData.assemblyLayout;
+  if(!data) return;
+  const index=assembly3dSelection?.sceneId===assembly3d.sceneId?assembly3dSelection.index:null;
+  for(const group of data.groups){
+    const nodeIndex=group.userData.assemblyNodeIndex;
+    const label=group.getObjectByName('assemblyLabel'), marker=group.getObjectByName('assemblyMarker');
+    if(!label||!marker) continue;
+    label.visible=nodeIndex===index||nodeIndex===assembly3d.hoverIndex;
+    marker.visible=!label.visible;
+  }
+}
+function assembly3dHover(index){
+  if(!assembly3d||assembly3d.hoverIndex===index) return;
+  assembly3d.hoverIndex=index;
+  assembly3dUpdateLabels();
+}
 function assembly3dSelectNode(sceneId,index){
   if(!assembly3d||assembly3d.sceneId!==sceneId) return;
   const data=assembly3d.scene&&assembly3d.scene.userData.assemblyLayout, previous=assembly3dSelection;
   if(data&&previous&&previous.sceneId===sceneId&&data.groups[previous.index]) data.groups[previous.index].scale.setScalar(1);
   assembly3dSelection=index==null?null:{sceneId,index};
+  assembly3dUpdateLabels();
   if(data&&index!=null&&data.groups[index]) data.groups[index].scale.setScalar(1.075);
   assembly3dUpdateEditUI();
 }
@@ -11268,7 +11518,11 @@ function assembly3dWireInput(dom){
       if(assembly3d.raycaster.ray.intersectPlane(drag.plane,point)) assembly3dPlaceNode(drag.index,point.add(drag.offset),false);
       return;
     }
-    if(!down) return; const dx=e.clientX-lx,dy=e.clientY-ly; lx=e.clientX;ly=e.clientY; assembly3d.yaw-=dx*.007; assembly3d.pitch=clampA(assembly3d.pitch+dy*.006,-1.48,1.48); assembly3dApplyCamera();
+    if(!down){
+      assembly3dHover(assembly3dPick(e)?.root.userData.assemblyNodeIndex);
+      return;
+    }
+    const dx=e.clientX-lx,dy=e.clientY-ly; lx=e.clientX;ly=e.clientY; assembly3d.yaw-=dx*.007; assembly3d.pitch=clampA(assembly3d.pitch+dy*.006,-1.48,1.48); assembly3dApplyCamera();
   });
   const end=e=>{
     if(drag&&assembly3d){
@@ -11278,6 +11532,7 @@ function assembly3dWireInput(dom){
     }
     down=false; drag=null; dom.parentNode?.classList.remove('grabbing'); try{dom.releasePointerCapture(e.pointerId);}catch(_){}
   };
+  dom.addEventListener('pointerleave',()=>assembly3dHover(undefined));
   dom.addEventListener('pointerup',end); dom.addEventListener('pointercancel',end);
   dom.addEventListener('contextmenu',e=>e.preventDefault());
   dom.addEventListener('wheel',e=>{ if(!assembly3d)return;e.preventDefault();assembly3d.dist=clampA(assembly3d.dist*(e.deltaY>0?1.1:.9),7,120);assembly3dApplyCamera();},{passive:false});
@@ -11302,6 +11557,7 @@ function startAssembly3D(sceneId,cur){
     assembly3d.cur=cur; assembly3d.spec=spec;
     if(assembly3d.sceneId!==sceneId||assembly3d.signature!==signature){
       assembly3dDisposeScene(assembly3d.scene);
+      assembly3d.hoverIndex=undefined;
       assembly3d.scene=new THREE.Scene(); assembly3d.sceneId=sceneId; assembly3d.signature=signature;
       if(sceneId==='station') assembly3dBuildStation(assembly3d.scene,spec); else assembly3dBuildBase(assembly3d.scene,spec);
       const d=assembly3dCameraDefault(sceneId,spec.ids.length); assembly3d.yaw=d.yaw;assembly3d.pitch=d.pitch;assembly3d.dist=assembly3d.defaultDist=d.dist;assembly3d.target.set(0,d.targetY,0);
