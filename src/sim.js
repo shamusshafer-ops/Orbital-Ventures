@@ -1791,6 +1791,10 @@ function facilityAssemblySceneSpec(sceneId,cur,saved){
         y:p&&Number.isFinite(p.y)?p.y:(i%3-1)*0.28,z:p&&Number.isFinite(p.z)?p.z:slot[1]*5.2,
         yaw:p&&Number.isFinite(p.yaw)?p.yaw:0,dockTargetPort:p&&p.dockTargetPort,dockOwnPort:p&&p.dockOwnPort,hidden:!!(p&&p.hidden)};
     });
+    for(const n of nodes){
+      const parent=nodes[n.parent];
+      if(parent&&!Number.isFinite(layout[n.index]?.yaw)) n.yaw=-Math.atan2(n.z-parent.z,n.x-parent.x);
+    }
     return {sceneId,body:'earth',ids,nodes};
   }
   const cols=Math.min(5,Math.max(1,Math.ceil(Math.sqrt(ids.length*1.5))));

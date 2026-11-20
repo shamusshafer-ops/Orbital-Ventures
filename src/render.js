@@ -795,8 +795,8 @@ function assemblyShellHTML(sceneId){
       <h2 class="assembly-title scene-title"><span class="dom-dot" style="background:var(--dom-economy)"></span>${esc(a.title)}</h2>
       <div class="assembly-actions" aria-label="${esc(scene.label)} controls">
         <button class="btn ghost" type="button" id="${scene.id}ArrangeBtn" onclick="toggleAssembly3DArrange('${scene.id}')" title="Arrange modules — drag a module onto a cyan connection node to dock it">↔ Arrange</button>
-        <button class="btn ghost" type="button" id="${scene.id}RotateLeftBtn" onclick="assembly3dRotateSelected('${scene.id}',-1)" title="Rotate selected module 90° left" disabled>↺ Module</button>
-        <button class="btn ghost" type="button" id="${scene.id}RotateRightBtn" onclick="assembly3dRotateSelected('${scene.id}',1)" title="Rotate selected module 90° right" disabled>↻ Module</button>
+        <button class="btn ghost" type="button" id="${scene.id}RotateLeftBtn" onclick="assembly3dRotateSelected('${scene.id}',-1)" title="Rotate the selected module 90° left ([ or Shift+R)" disabled>↺ Rotate 90°</button>
+        <button class="btn ghost" type="button" id="${scene.id}RotateRightBtn" onclick="assembly3dRotateSelected('${scene.id}',1)" title="Rotate the selected module 90° right (] or R)" disabled>↻ Rotate 90°</button>
         <button class="btn ghost" type="button" id="${scene.id}ClearPlacementBtn" onclick="assembly3dClearPlacement('${scene.id}')" title="Clear the selected module's custom position" disabled>⌫ Clear position</button>
         <button class="btn ghost" type="button" id="${scene.id}ClearCanvasBtn" onclick="assembly3dClearCanvas('${scene.id}')" title="Move every module into the tray and start with an empty canvas">∅ Clear canvas</button>
         <button class="btn ghost" type="button" id="${scene.id}ResetLayoutBtn" onclick="assembly3dResetLayout('${scene.id}')" title="Return all modules to the generated layout" disabled>↶ Reset layout</button>
@@ -810,11 +810,12 @@ function assemblyShellHTML(sceneId){
     </div>
     <p class="muted assembly-summary">${esc(a.summary)}</p>
     <div class="assembly-module-tray hidden" id="${scene.id}ModuleTray" aria-live="polite"></div>
+    <p class="assembly-selection-status muted" id="${scene.id}AssemblyStatus" role="status" aria-live="polite">Select a module to rotate it.</p>
     <div class="assembly-monitor" id="${scene.id}Monitor">
       <div id="${a.hostId}" class="assembly-3d-host" aria-label="${esc(scene.label)} 3D viewport"></div>
       <div id="${a.canvasId}" class="assembly-svg-fallback"></div>
     </div>
-    <div class="assembly-input-hint">drag a module to dock · Shift: top port · Alt/Option: bottom port · drag empty space or right-drag to orbit · scroll to zoom</div>
+    <div class="assembly-input-hint">click a module to select it · use ↺ / ↻ to rotate 90° ([ / ] or Shift+R / R) · drag a module onto a cyan docking collar while arranging · release when it turns green · ${sceneId==='station'?'Shift: top port · Alt/Option: bottom port · ':''} drag empty space or right-drag to orbit · scroll to zoom</div>
     <div class="assembly-palette-home hidden" id="${a.paletteHomeId}"></div>
   </div>`;
 }
@@ -10924,10 +10925,32 @@ function assembly3dModuleTextures(scene){
 function assembly3dPanel(w,h,texture){
   const g=new THREE.Group(), frame=assembly3dMat('#8495a0',.75,.32);
   const cell=assembly3dMat('#3269ac',.22,.32,{map:texture,emissive:0x081426});
-  g.add(assembly3dBox(w+.14,.12,h+.14,frame));
-  g.add(assembly3dBox(w,.16,h,cell,0,.08,0));
-  g.add(assembly3dBox(w,.19,.035,frame,0,.1,0));
+  g.add(assembly3dBox(w+.08,.024,h+.08,frame));
+  g.add(assembly3dBox(w,.027,h,cell,0,.014,0));
+  g.add(assembly3dBox(w,.033,.025,frame,0,.020,0));
   return g;
+}
+// Each leaf deploys on local +X from a fixed hinge beside the docking lane.
+function assembly3dSolarWings(g,{L,R,mode,textures,trim,kind}){
+  const truss=kind==='truss', span=1.6*(truss?Math.max(5,L*1.65):Math.max(5.4,L*1.42));
+  const hingeX=truss?.89:1.04, leafWidth=span/2-hingeX, depth=truss?1.12:1.02;
+  const rootY=truss?.1:R*.46, rootZ=truss?.23:R*.80;
+  const hingeY=truss?.70:R*.72, hingeZ=truss?.84:R*.98;
+  const panelY=truss?1.05:R+(mode==='base'?.46:.92), panelZ=truss?1.72:R+1.02;
+  for(const side of [-1,1]) for(const end of [-1,1]){
+    const hinge={x:end*hingeX,y:hingeY,z:side*hingeZ};
+    g.add(assembly3dTube({x:hinge.x,y:rootY,z:side*rootZ},hinge,.052,trim));
+    const pin=new THREE.Mesh(new THREE.SphereGeometry(.075,12,8),trim);
+    pin.position.set(hinge.x,hinge.y,hinge.z); g.add(pin);
+    const wing=new THREE.Group();
+    wing.name='assemblySolarWing'; wing.position.copy(pin.position);
+    if(end<0) wing.rotation.y=Math.PI;
+    const rise=panelY-hingeY, offset=end*side*(panelZ-hingeZ);
+    wing.add(assembly3dTube({x:0,y:0,z:0},{x:leafWidth*.5,y:rise,z:offset},.032,trim));
+    const panel=assembly3dPanel(leafWidth,depth,textures.cells);
+    panel.position.set(leafWidth*.5,rise,offset); wing.add(panel);
+    g.add(wing);
+  }
 }
 function assembly3dModule(d,mode,textures){
   const id=d.id, g=new THREE.Group(), L=Math.max(2.2,(d.len||150)/48), R=Math.max(.62,(d.dia||80)/78);
@@ -10952,9 +10975,11 @@ function assembly3dModule(d,mode,textures){
     const skirt=new THREE.Mesh(new THREE.CylinderGeometry(1.54,1.54,.18,28),radiator);
     skirt.position.y=.12; g.add(skirt);
     // Recessed hatch framing and segmented shell follow the Habitat Demonstration Unit.
-    g.add(assembly3dBox(.85,.65,.33,trim,0,.40,1.46),assembly3dBox(.64,.49,.31,dark,0,.40,1.52));
-    g.add(assembly3dBox(.46,.37,.10,hull,0,.40,1.71),assembly3dBox(.09,.033,.04,gold,.10,.41,1.77));
-    for(const y of [.16,.26]) g.add(assembly3dBox(.74,.055,.16,trim,0,y,1.71));
+    // The hatch sits between (not on) the four radial collar axes, so its
+    // frame cannot consume the south docking approach.
+    g.add(assembly3dBox(.85,.65,.33,trim,1.0,.40,1.05),assembly3dBox(.64,.49,.31,dark,1.0,.40,1.11));
+    g.add(assembly3dBox(.46,.37,.10,hull,1.0,.40,1.30),assembly3dBox(.09,.033,.04,gold,1.10,.41,1.36));
+    for(const y of [.16,.26]) g.add(assembly3dBox(.74,.055,.16,trim,1.0,y,1.30));
     for(let a=0;a<Math.PI*2;a+=Math.PI/3){ const w=assembly3dBox(.34,.28,.08,glass,Math.cos(a)*1.18,.55,Math.sin(a)*1.18); w.rotation.y=-a; g.add(w); }
   } else if(mode==='base'&&id==='isru_plant'){
     g.add(assembly3dBox(3.4,1.25,2.1,hull,0,.65,0),assembly3dBox(3.0,.15,1.75,trim,0,1.32,0));
@@ -11024,23 +11049,17 @@ function assembly3dModule(d,mode,textures){
       brace.rotation.y=i%2?.64:-.64; g.add(brace);
     }
     g.add(assembly3dBox(.55,.28,.54,gold,0,.1,0));
-    for(const side of [-1,1]){
-      const hinge=new THREE.Mesh(new THREE.CylinderGeometry(.23,.23,.34,16),gold);
-      hinge.rotation.x=Math.PI/2; hinge.position.set(0,.09,side*.84); g.add(hinge);
-      g.add(assembly3dBox(.13,.13,2.54,trim,0,.06,side*1.27));
-      for(const x of [-L*.28,L*.28]){
-        const wing=assembly3dPanel(L*.49,1.86,textures.cells);
-        wing.position.set(x,.08,side*1.8); g.add(wing);
-      }
-    }
+    assembly3dSolarWings(g,{L,R,mode,textures,trim,kind:'truss'});
   } else {
     g.add(assembly3dCylinderX(R,L,hull,24)); addDock(-L/2-.02); addDock(L/2+.02);
     for(let x=-L*.32;x<=L*.32;x+=Math.max(.62,L/4)){ const ring=new THREE.Mesh(new THREE.TorusGeometry(R*.99,.035,6,24),trim); ring.rotation.y=Math.PI/2; ring.position.x=x; g.add(ring); }
     for(let x=-L*.28;x<=L*.28;x+=Math.max(.72,L/3)){ const w=new THREE.Mesh(new THREE.SphereGeometry(.12,10,8),glass); w.position.set(x,R*.15,R*.96); g.add(w); }
     if(id==='lab_mod'){
       const band=assembly3dCylinderX(R*1.015,L*.42,glass,24); g.add(band);
-      g.add(assembly3dBox(L*.59,.16,.60,radiator,0,R*.96,0));
-      g.add(assembly3dBox(.32,.25,.38,dark,L*.36,R*.94,0));
+      // Roof instruments live in a diagonal bay, out of the top and radial
+      // docking axes instead of spanning directly over the top collar.
+      g.add(assembly3dBox(L*.59,.16,.60,radiator,0,R*.78,-R*1.36));
+      g.add(assembly3dBox(.32,.25,.38,dark,L*.36,R*.78,-R*1.36));
     }
     if(id==='can_std'){
       for(const side of [-1,1]){
@@ -11048,15 +11067,14 @@ function assembly3dModule(d,mode,textures){
         g.add(assembly3dBox(L*.55,.06,.065,gold,0,R*.93,z));
         for(const x of [-L*.24,0,L*.24]) g.add(assembly3dBox(.06,.17,.07,trim,x,R*.85,z));
       }
-      g.add(assembly3dBox(.46,.27,.43,radiator,-L*.31,R*.98,0));
+      // Keep the thermal box off the top/bottom collar approach cylinder.  Rails and
+      // stanchions remain on the shoulders too, leaving the radial faces unobstructed.
+      g.add(assembly3dBox(.46,.27,.43,radiator,-L*.31,R*.98,-R*.63));
     }
-    if(id==='can_std'&&mode==='station'){
-      for(const z of [-2.25,2.25]){ const p=assembly3dPanel(L*.92,1.55,textures.cells); p.position.z=z; g.add(p); g.add(assembly3dBox(.12,.12,3.4,trim,0,0,z/2)); }
-    }
+    if(id==='can_std'&&mode==='station') assembly3dSolarWings(g,{L,R,mode,textures,trim,kind:'hab'});
   }
-  if(mode==='base'&&(id==='power_truss'||id==='can_std')){
-    const p=assembly3dPanel(Math.max(3.4,L),1.5,textures.cells); p.rotation.x=-.18; p.position.set(0,1.25,-1.8); g.add(p);
-  }
+  if(mode==='base'&&id==='can_std') assembly3dSolarWings(g,{L,R,mode,textures,trim,kind:'hab'});
+  assembly3dAddCollars(g,d,mode,dark,trim);
   const label=assembly3dLabel(d.name||id,d.color);
   label.position.y=mode==='base'?3.25:R+1.25;
   const marker=new THREE.Mesh(new THREE.SphereGeometry(.13,10,8),new THREE.MeshBasicMaterial({color:d.color||0x8bdcff}));
@@ -11070,24 +11088,6 @@ function assembly3dStars(scene,count,radius,seed){
   for(let i=0;i<count;i++){ const th=rnd()*Math.PI*2, u=rnd()*2-1, rr=radius*(.7+rnd()*.3), s=Math.sqrt(1-u*u); pos.push(rr*s*Math.cos(th),rr*u,rr*s*Math.sin(th)); }
   const geo=new THREE.BufferGeometry(); geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
   scene.add(new THREE.Points(geo,new THREE.PointsMaterial({color:0xdcecff,size:.12,sizeAttenuation:true,transparent:true,opacity:.85})));
-}
-// Find the hull face in the direction of the other module. Arrays, labels and pads
-// are intentionally outside the connection footprint.
-function assembly3dConnectionFace(node,mode,direction){
-  const d=stationModuleDef(node.id)||stationModuleDef('can_std');
-  const L=Math.max(2.2,(d.len||150)/48), R=Math.max(.62,(d.dia||80)/78);
-  const yaw=node.yaw||0, x=direction.x*Math.cos(yaw)-direction.z*Math.sin(yaw), z=direction.x*Math.sin(yaw)+direction.z*Math.cos(yaw);
-  const radial=Math.hypot(direction.y,z);
-  let reach;
-  if(mode==='base'&&node.id==='hab_dome') reach=1.37;
-  else if(mode==='base'&&node.id==='reactor_pad') reach=1.26;
-  else if(mode==='base'&&['isru_plant','rover_garage'].includes(node.id)){
-    const garage=node.id==='rover_garage';
-    reach=Math.min((garage?1.9:1.7)/Math.abs(x),(garage?1.3:1.05)/Math.abs(z));
-  } else if(node.id==='node_hub') reach=1.32*R;
-  else if(node.id==='power_truss') reach=Math.min(L/2/Math.abs(x),.28/radial);
-  else reach=Math.min(L/2/Math.abs(x),R/radial);
-  return new THREE.Vector3(node.x,mode==='base'?.80:node.y,node.z).addScaledVector(direction,reach-.08);
 }
 function assembly3dConnectionMaterials(mode){
   return {
@@ -11165,44 +11165,368 @@ function assembly3dDisposeLinks(group){
   group.traverse(o=>{ if(o.geometry) try{o.geometry.dispose();}catch(e){} });
   group.clear();
 }
-function assembly3dPortRadius(node,mode){ return mode==='base'?(node.id==='hab_dome'?1.7:2.05):(node.id==='node_hub'?1.35:1.55); }
-function assembly3dPortPose(node,portId,mode){
-  const basis={east:[1,0,0],west:[-1,0,0],north:[0,0,-1],south:[0,0,1],top:[0,1,0],bottom:[0,-1,0]}[portId]||[-1,0,0], yaw=node.yaw||0;
-  const nx=basis[0]*Math.cos(yaw)+basis[2]*Math.sin(yaw), nz=-basis[0]*Math.sin(yaw)+basis[2]*Math.cos(yaw), ny=basis[1], r=assembly3dPortRadius(node,mode), y=mode==='base'?.72:node.y;
-  return {x:node.x+nx*r,y:y+ny*r,z:node.z+nz*r,nx,ny,nz};
+const ASSEMBLY_PORT_AXES={east:[1,0,0],west:[-1,0,0],north:[0,0,-1],south:[0,0,1],top:[0,1,0],bottom:[0,-1,0]};
+function assembly3dSiteLift(id,R){
+  if(['hab_dome','isru_plant','reactor_pad','rover_garage'].includes(id)) return .15;
+  if(id==='power_truss') return .64;
+  return (id==='depot_mod'?R*.45+.10:R)+.18;
 }
-function assembly3dDockCandidate(data,index,preferredPort){
-  const n=data.nodes[index], ownR=assembly3dPortRadius(n,data.mode), here=new THREE.Vector3(n.x,n.y,n.z), ports=preferredPort?[preferredPort]:['east','west','north','south']; let best=null;
-  for(const target of data.nodes){
-    if(target.index===index||target.hidden) continue;
-    for(const port of ports){
-      if(data.mode==='base'&&(port==='top'||port==='bottom')) continue;
-      const pose=assembly3dPortPose(target,port,data.mode), center=new THREE.Vector3(pose.x+pose.nx*(ownR+.38),pose.y+pose.ny*(ownR+.38),pose.z+pose.nz*(ownR+.38));
-      const d=preferredPort?Math.hypot(here.x-center.x,here.z-center.z):here.distanceTo(center);
-      if(!best||d<best.distance) best={target,port,pose,center,distance:d};
+// Socket face in module coordinates, shared by the model, target guides and docking math.
+function assembly3dPortRadius(node,mode,portId){
+  const d=stationModuleDef(node.id)||stationModuleDef('can_std'), L=Math.max(2.2,(d.len||150)/48), R=Math.max(.62,(d.dia||80)/78);
+  const axial=portId==='east'||portId==='west';
+  if(mode==='base'){
+    if(d.id==='hab_dome') return 1.55+.17;
+    if(d.id==='rover_garage') return (axial?1.9:1.36)+.19;
+    if(d.id==='isru_plant') return (axial?1.7:1.06)+.19;
+    // Reactor fins sweep to roughly 1.5 units radially. Put the flange beyond
+    // their tips, then let assembly3dAddCollars carry a service sleeve inward.
+    if(d.id==='reactor_pad') return 1.72;
+  }
+  if(d.id==='node_hub') return R*1.75+.09;
+  if(d.id==='power_truss') return (axial?L/2:.28)+.20;
+  if(axial) return L/2+.24+(d.id==='greenhouse'||d.id==='depot_mod'?0:.02);
+  return (d.id==='greenhouse'?R*.92:R)+.17;
+}
+function assembly3dPortPose(node,portId,mode){
+  const [x,ny,z]=ASSEMBLY_PORT_AXES[portId], yaw=node.yaw||0;
+  const nx=x*Math.cos(yaw)+z*Math.sin(yaw), nz=-x*Math.sin(yaw)+z*Math.cos(yaw);
+  const d=stationModuleDef(node.id)||stationModuleDef('can_std'), R=Math.max(.62,(d.dia||80)/78);
+  const mountY={hab_dome:.4,isru_plant:.65,reactor_pad:.65,rover_garage:.78,power_truss:.1};
+  const height=mode==='base'?assembly3dSiteLift(d.id,R)+(mountY[d.id]||0):(node.y||0)+(d.id==='power_truss'?.1:0);
+  const reach=assembly3dPortRadius(node,mode,portId);
+  return {x:node.x+nx*reach,y:height+ny*reach,z:node.z+nz*reach,nx,ny,nz};
+}
+function assembly3dAddCollars(group,d,mode,dark,trim){
+  if(d.id==='node_hub') return; // The hub already has six flanged sockets.
+  const R=Math.max(.62,(d.dia||80)/78), lift=mode==='base'?assembly3dSiteLift(d.id,R):0;
+  const groundModule=mode==='base'&&['hab_dome','isru_plant','reactor_pad','rover_garage'].includes(d.id);
+  for(const port of assembly3dDockPorts(mode)){
+    // Cylindrical hulls already have both axial flanges.
+    if(!groundModule&&d.id!=='power_truss'&&(port==='east'||port==='west')) continue;
+    const p=assembly3dPortPose({id:d.id,x:0,y:0,z:0},port,mode);
+    const axis=new THREE.Vector3(p.nx,p.ny,p.nz), face=new THREE.Vector3(p.x,p.y-lift,p.z);
+    const collarRadius=d.id==='power_truss'?.25:.38;
+    // Reactor ports are flanged outside the radiator-fin envelope; their longer
+    // sleeve returns to the core rather than leaving a collar floating at a fin tip.
+    const sleeve=d.id==='reactor_pad'?1.05:.55;
+    const socket=assembly3dTube(face.clone().addScaledVector(axis,-sleeve),face,collarRadius,dark);
+    const ring=new THREE.Mesh(new THREE.TorusGeometry(collarRadius,.055,8,20),trim);
+    ring.position.copy(face); ring.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,1),axis);
+    group.add(socket,ring);
+  }
+}
+function assembly3dDockPorts(mode){ return mode==='station'?['east','west','north','south','top','bottom']:['east','west','north','south']; }
+const ASSEMBLY_DOCK_COLLAR_GAP=.82;
+function assembly3dDockPlacement(targetPose,ownPose,mode){
+  const ownVertical=Math.abs(ownPose.ny)>.5, targetVertical=Math.abs(targetPose.ny)>.5, gap=ASSEMBLY_DOCK_COLLAR_GAP;
+  if(ownVertical!==targetVertical) return null;
+  if(targetVertical){
+    if(ownPose.ny!==-targetPose.ny) return null;
+    return {x:targetPose.x-ownPose.x,y:targetPose.y+targetPose.ny*gap-ownPose.y,z:targetPose.z-ownPose.z,yaw:0};
+  }
+  const localAngle=Math.atan2(ownPose.z,ownPose.x), ownReach=Math.hypot(ownPose.x,ownPose.z);
+  const targetAngle=Math.atan2(targetPose.nz,targetPose.nx), yaw=localAngle-(targetAngle+Math.PI);
+  return {x:targetPose.x+targetPose.nx*(ownReach+gap),y:mode==='base'?0:targetPose.y-(ownPose.y||0),z:targetPose.z+targetPose.nz*(ownReach+gap),yaw};
+}
+// Clearance uses the same port-pose dimensions that position a dock. This
+// keeps it independent of display meshes while retaining collar clearance.
+function assembly3dHullBox(node,mode){
+  const e=assembly3dPortPose(node,'east',mode), w=assembly3dPortPose(node,'west',mode);
+  const n=assembly3dPortPose(node,'north',mode), s=assembly3dPortPose(node,'south',mode);
+  const d=stationModuleDef(node.id)||stationModuleDef('can_std');
+  const y=mode==='station'?(node.y||0):Math.max(.28,assembly3dSiteLift(d.id,Math.max(.62,(d.dia||80)/78))*.55);
+  const hy=mode==='station'?Math.max(.32,Math.hypot(n.x-s.x,n.y-s.y,n.z-s.z)/2):Math.max(.42,y+.32);
+  return {x:node.x,y,z:node.z,yaw:node.yaw||0,hx:Math.max(.25,Math.hypot(e.x-w.x,e.y-w.y,e.z-w.z)/2),hy,hz:Math.max(.25,Math.hypot(n.x-s.x,n.y-s.y,n.z-s.z)/2)};
+}
+function assembly3dHullBoxesOverlap(a,b){
+  if(Math.abs(a.y-b.y)>=a.hy+b.hy-.015) return false;
+  const ax={x:Math.cos(a.yaw),z:-Math.sin(a.yaw)}, az={x:Math.sin(a.yaw),z:Math.cos(a.yaw)};
+  const bx={x:Math.cos(b.yaw),z:-Math.sin(b.yaw)}, bz={x:Math.sin(b.yaw),z:Math.cos(b.yaw)}, dx=b.x-a.x,dz=b.z-a.z;
+  for(const axis of [ax,az,bx,bz]){
+    const distance=Math.abs(dx*axis.x+dz*axis.z);
+    const ar=a.hx*Math.abs(ax.x*axis.x+ax.z*axis.z)+a.hz*Math.abs(az.x*axis.x+az.z*axis.z);
+    const br=b.hx*Math.abs(bx.x*axis.x+bx.z*axis.z)+b.hz*Math.abs(bz.x*axis.x+bz.z*axis.z);
+    if(distance>=ar+br-.015) return false;
+  }
+  return true;
+}
+function assembly3dAlignNode(child,parent,mode){
+  const target=assembly3dPortPose(parent,child.dockTargetPort,mode), own=assembly3dPortPose(child,child.dockOwnPort,mode);
+  child.x+=target.x+target.nx*ASSEMBLY_DOCK_COLLAR_GAP-own.x;
+  child.z+=target.z+target.nz*ASSEMBLY_DOCK_COLLAR_GAP-own.z;
+  if(mode==='station') child.y+=target.y+target.ny*ASSEMBLY_DOCK_COLLAR_GAP-own.y;
+}
+// Predict the whole attached branch, not only its selected root.
+function assembly3dMovedBranch(data,index,next,detachedIndex){
+  const old=data.nodes, out=old.map(n=>Object.assign({},n)), moved=new Set();
+  // Reattaching a root to one of its descendants first cuts the one branch
+  // which would otherwise form a cycle. It is fixed while the selected root
+  // moves, matching assembly3dSnapNode's eventual commit.
+  if(detachedIndex!=null&&out[detachedIndex]) out[detachedIndex].parent=-1;
+  Object.assign(out[index],next); moved.add(index);
+  const visit=parentIndex=>{
+    const parent=out[parentIndex], oldParent=old[parentIndex], turn=(parent.yaw||0)-(oldParent.yaw||0);
+    for(const child of out){
+      if(child.hidden||child.parent!==parentIndex||moved.has(child.index)) continue;
+      const was=old[child.index], dx=was.x-oldParent.x,dz=was.z-oldParent.z;
+      child.x=parent.x+dx*Math.cos(turn)+dz*Math.sin(turn); child.z=parent.z-dx*Math.sin(turn)+dz*Math.cos(turn);
+      child.y=(was.y||0)+(parent.y||0)-(oldParent.y||0); child.yaw=(was.yaw||0)+turn;
+      if(child.dockTargetPort&&child.dockOwnPort) assembly3dAlignNode(child,parent,data.mode);
+      moved.add(child.index); visit(child.index);
+    }
+  };
+  visit(index); return {nodes:out,moved};
+}
+function assembly3dPortMated(data,node,other,port){
+  if(node.parent===other.index){ const link=assembly3dConnectionPorts(data,node); return !!link&&link.ownPort===port; }
+  if(other.parent===node.index) return (other.dockTargetPort||assembly3dFacingPort(data,node,other))===port;
+  return false;
+}
+// The box extends one collar-length beyond each unoccupied port. A hull may
+// be clear of another hull while still sitting squarely in this approach lane.
+function assembly3dPortEnvelope(node,port,mode){
+  const p=assembly3dPortPose(node,port,mode), depth=1.1, vertical=Math.abs(p.ny)>.5;
+  if(vertical) return {x:p.x,y:p.y+p.ny*depth/2,z:p.z,yaw:0,hx:.48,hy:depth/2,hz:.48};
+  return {x:p.x+p.nx*depth/2,y:p.y,z:p.z+p.nz*depth/2,yaw:Math.atan2(-p.nz,p.nx),hx:depth/2,hy:.48,hz:.48};
+}
+function assembly3dPortClearanceConflict(data,node,other){
+  const otherHull=assembly3dHullBox(other,data.mode);
+  for(const port of assembly3dDockPorts(data.mode)){
+    if(!assembly3dPortMated(data,node,other,port)&&assembly3dHullBoxesOverlap(assembly3dPortEnvelope(node,port,data.mode),otherHull)) return true;
+  }
+  return false;
+}
+// Old saves can already overlap: allow a branch to move out, but do not let an
+// edit introduce a new moving-vs-fixed hull/collar intrusion. The direct dock
+// pair is the intended gasket and is excluded.
+function assembly3dPlacementClear(data,index,next,beforeNodes,detachedIndex){
+  const baseline=beforeNodes||data.nodes, baselineData=beforeNodes?Object.assign({},data,{nodes:baseline}):data;
+  const proposal=assembly3dMovedBranch(baselineData,index,next,detachedIndex), proposalData=Object.assign({},data,{nodes:proposal.nodes});
+  for(const movingIndex of proposal.moved){
+    const moved=proposal.nodes[movingIndex]; if(moved.hidden) continue;
+    for(const fixed of proposal.nodes){
+      if(fixed.hidden||proposal.moved.has(fixed.index)) continue;
+      const hullConflict=assembly3dHullBoxesOverlap(assembly3dHullBox(moved,data.mode),assembly3dHullBox(fixed,data.mode));
+      const collarConflict=assembly3dPortClearanceConflict(proposalData,moved,fixed)||assembly3dPortClearanceConflict(proposalData,fixed,moved);
+      if(hullConflict||collarConflict){
+        const before=baseline[movingIndex], oldFixed=baseline[fixed.index];
+        const oldConflict=assembly3dHullBoxesOverlap(assembly3dHullBox(before,data.mode),assembly3dHullBox(oldFixed,data.mode))||
+          assembly3dPortClearanceConflict(baselineData,before,oldFixed)||assembly3dPortClearanceConflict(baselineData,oldFixed,before);
+        if(!oldConflict) return false;
+      }
     }
   }
-  return best&&best.distance<(preferredPort?2.6:3.8)?best:null;
+  return true;
 }
-function assembly3dSnapNode(index,preferredPort){
+function assembly3dDockReattachmentChild(data,index,targetIndex){
+  // A visited set makes corrupt legacy cycles inert.  For a descendant target,
+  // return the one branch that must be detached before the new dock is saved.
+  const seen=new Set(); let child=targetIndex;
+  while(child>=0){
+    if(seen.has(child)) return undefined;
+    seen.add(child);
+    const node=data.nodes[child], parent=node&&Number.isInteger(node.parent)?node.parent:-1;
+    if(parent===index) return child;
+    child=parent;
+  }
+  return null;
+}
+function assembly3dFacingPort(data,from,to){
+  if(!to) return null;
+  let best=null, score=-Infinity;
+  for(const port of assembly3dDockPorts(data.mode)){
+    const pose=assembly3dPortPose(from,port,data.mode);
+    const dot=pose.nx*(to.x-from.x)+pose.ny*(to.y-from.y)+pose.nz*(to.z-from.z);
+    if(dot>score){best=port; score=dot;}
+  }
+  return best;
+}
+function assembly3dPortOccupied(data,parentIndex,port,exceptIndex){
+  const parent=data.nodes[parentIndex];
+  return data.nodes.some(n=>!n.hidden&&n.index!==exceptIndex&&n.parent===parentIndex&&(n.dockTargetPort||assembly3dFacingPort(data,parent,n))===port);
+}
+function assembly3dConnectionPorts(data,child){
+  const parent=child&&data.nodes[child.parent];
+  if(!parent||parent.hidden) return null;
+  // Older/generated layouts have only a parent link.  Infer both collars from their
+  // current geometry so editing one naturally upgrades it to an explicit connection.
+  return {parent,targetPort:child.dockTargetPort||assembly3dFacingPort(data,parent,child),ownPort:child.dockOwnPort||assembly3dFacingPort(data,child,parent)};
+}
+function assembly3dOwnPortOccupied(data,index,port,detachedIndex){
+  const n=data.nodes[index], parent=data.nodes[n.parent];
+  return !!(parent&&!parent.hidden&&index!==detachedIndex&&(n.dockOwnPort||assembly3dFacingPort(data,n,parent))===port);
+}
+function assembly3dSelectedNodeName(sceneId){
+  const data=assembly3d?.scene?.userData.assemblyLayout, index=assembly3dSelection?.sceneId===sceneId&&assembly3dSelection.index;
+  const n=data&&index!=null&&data.nodes[index], d=n&&stationModuleDef(n.id);
+  return n&&(d?.name||d?.short||n.id);
+}
+function assembly3dAnnounce(sceneId,message){
+  const status=$(sceneId+'AssemblyStatus');
+  if(status) status.textContent=message;
+}
+function assembly3dDragShouldCommit(drag,event){ return !!(drag&&drag.moved&&event&&event.type!=='pointercancel'); }
+function assembly3dGuideDistance(event,pose){
+  if(!event||!assembly3d||!assembly3d.dom) return null;
+  const rect=assembly3d.dom.getBoundingClientRect(); if(!rect.width||!rect.height) return null;
+  const point=new THREE.Vector3(pose.x,pose.y,pose.z).project(assembly3d.camera);
+  const x=rect.left+(point.x+1)*rect.width/2, y=rect.top+(1-point.y)*rect.height/2;
+  return Math.hypot(event.clientX-x,event.clientY-y);
+}
+function assembly3dDockCandidate(data,index,preferredPort,event){
+  const n=data.nodes[index], ownPorts=assembly3dDockPorts(data.mode);
+  const targetPorts=preferredPort&&ownPorts.includes(preferredPort)?[preferredPort]:ownPorts;
+  let best=null;
+  for(const target of data.nodes){
+    const detachChild=assembly3dDockReattachmentChild(data,index,target.index);
+    if(target.index===index||target.hidden||detachChild===undefined) continue;
+    for(const port of targetPorts){
+      if(assembly3dPortOccupied(data,target.index,port,index)||assembly3dOwnPortOccupied(data,target.index,port,detachChild)) continue;
+      const pose=assembly3dPortPose(target,port,data.mode);
+      const guideDistance=assembly3dGuideDistance(event,pose);
+      if(guideDistance==null||guideDistance>16) continue;
+      for(const ownPort of ownPorts){
+        // Do not turn a collar already supporting one of this module's
+        // children into a second, overlapping connection.
+        if(assembly3dPortOccupied(data,index,ownPort,detachChild)) continue;
+        const ownPose=assembly3dPortPose({id:n.id,x:0,y:0,z:0,yaw:0},ownPort,data.mode);
+        const placement=assembly3dDockPlacement(pose,ownPose,data.mode); if(!placement) continue;
+        const proposed=Object.assign({},n,{parent:target.index,dockTargetPort:port,dockOwnPort:ownPort,
+          x:placement.x,y:placement.y,z:placement.z,yaw:(port==='top'||port==='bottom')?(n.yaw||0):Math.atan2(Math.sin(placement.yaw),Math.cos(placement.yaw))});
+        // Descendant reattachment splits one branch before commit; the
+        // predicate models that split and still screens the selected root.
+        if(!assembly3dPlacementClear(data,index,proposed,null,detachChild)) continue;
+        const yawDelta=Math.abs(Math.atan2(Math.sin(placement.yaw-n.yaw),Math.cos(placement.yaw-n.yaw)));
+        if(!best||guideDistance<best.distance-.01||(Math.abs(guideDistance-best.distance)<=.01&&yawDelta<best.yawDelta)){
+          best={target,port,ownPort,placement,distance:guideDistance,yawDelta,detachChild};
+        }
+      }
+    }
+  }
+  return best;
+}
+function assembly3dSnapNode(index,preferredPort,event){
   const data=assembly3d&&assembly3d.scene&&assembly3d.scene.userData.assemblyLayout, n=data&&data.nodes[index]; if(!n) return false;
-  const dock=assembly3dDockCandidate(data,index,preferredPort); if(!dock) return false;
+  const dock=assembly3dDockCandidate(data,index,preferredPort,event); if(!dock) return false;
+  if(dock.detachChild!=null){
+    const child=data.nodes[dock.detachChild];
+    if(child){ child.parent=-1; child.dockTargetPort=null; child.dockOwnPort=null; assembly3dWriteLayout(assembly3d.sceneId,assembly3d.cur,child.index,child); }
+  }
   n.parent=dock.target.index; n.dockTargetPort=dock.port;
-  if(Math.abs(dock.pose.ny)>.5) n.dockOwnPort=dock.pose.ny>0?'bottom':'top';
-  else { n.dockOwnPort='west'; n.yaw=-Math.atan2(dock.pose.nz,dock.pose.nx); }
-  n.x=dock.center.x; n.y=dock.center.y; n.z=dock.center.z; return true;
+  n.dockOwnPort=dock.ownPort;
+  n.x=dock.placement.x; n.y=dock.placement.y; n.z=dock.placement.z;
+  if(dock.port!=='top'&&dock.port!=='bottom') n.yaw=Math.atan2(Math.sin(dock.placement.yaw),Math.cos(dock.placement.yaw));
+  return true;
 }
 function assembly3dRefreshPortGuides(){
   if(!assembly3d||!assembly3d.scene) return;
   const data=assembly3d.scene.userData.assemblyLayout; if(!data) return;
-  if(data.guides){ assembly3d.scene.remove(data.guides); assembly3dDisposeLinks(data.guides); data.guides=null; }
-  if(assembly3dEditScene!==assembly3d.sceneId) return;
-  const guides=new THREE.Group(), mat=new THREE.MeshBasicMaterial({color:0x65dfff,transparent:true,opacity:.82});
-  for(const n of data.nodes) if(!n.hidden) for(const port of data.mode==='station'?['east','west','north','south','top','bottom']:['east','west','north','south']){
-    const p=assembly3dPortPose(n,port,data.mode), marker=new THREE.Mesh(new THREE.TorusGeometry(.22,.045,6,14),mat);
-    marker.position.set(p.x,p.y,p.z); marker.rotation.x=Math.PI/2; guides.add(marker);
+  const editing=assembly3dEditScene===assembly3d.sceneId;
+  if(data.guides) data.guides.visible=editing;
+  if(!editing) return;
+  if(!data.guides){
+    data.guides=new THREE.Group();
+    const ring=new THREE.TorusGeometry(.33,.045,8,24);
+    for(const n of data.nodes) for(const port of assembly3dDockPorts(data.mode)){
+      const marker=new THREE.Mesh(ring,new THREE.MeshBasicMaterial({color:0x65dfff,transparent:true,opacity:.86,depthTest:false,depthWrite:false}));
+      marker.userData.nodeIndex=n.index; marker.userData.port=port;
+      marker.renderOrder=9; data.guides.add(marker);
+    }
+    assembly3d.scene.add(data.guides);
   }
-  data.guides=guides; assembly3d.scene.add(guides);
+  const forward=new THREE.Vector3(0,0,1);
+  for(const marker of data.guides.children){
+    const n=data.nodes[marker.userData.nodeIndex], p=assembly3dPortPose(n,marker.userData.port,data.mode);
+    marker.visible=!n.hidden;
+    marker.material.opacity=.86;
+    marker.position.set(p.x,p.y,p.z);
+    marker.quaternion.setFromUnitVectors(forward,new THREE.Vector3(p.nx,p.ny,p.nz));
+  }
+}
+function assembly3dHighlightGuide(candidate){
+  const guides=assembly3d?.scene?.userData.assemblyLayout?.guides;
+  if(!guides) return;
+  for(const marker of guides.children){
+    const hit=candidate&&candidate.target.index===marker.userData.nodeIndex&&candidate.port===marker.userData.port;
+    marker.material.color.setHex(hit?0x9dffad:0x65dfff);
+    marker.scale.setScalar(hit?1.55:1);
+  }
+}
+// Bounds are local to the rigid part or wing, so a drag or a quarter turn only
+// changes the transform. Labels, selection markers and deployable wings aren't hull.
+function assembly3dHardwareBounds(root){
+  const box=new THREE.Box3();
+  function collect(object,transform){
+    if(object.name==='assemblySolarWing'||object.name==='assemblyMarker'||object.isSprite) return;
+    object.updateMatrix();
+    const local=transform.clone().multiply(object.matrix);
+    if(object.geometry){
+      if(!object.geometry.boundingBox) object.geometry.computeBoundingBox();
+      box.union(object.geometry.boundingBox.clone().applyMatrix4(local));
+    }
+    for(const child of object.children) collect(child,local);
+  }
+  for(const child of root.children) collect(child,new THREE.Matrix4());
+  return box;
+}
+function assembly3dSolarHardware(group,node,mode){
+  const wings=[];
+  group.traverse(part=>{
+    if(part.name==='assemblySolarWing') wings.push({part,box:assembly3dHardwareBounds(part)});
+  });
+  const def=stationModuleDef(node.id)||stationModuleDef('can_std');
+  const blockers=[{box:assembly3dHardwareBounds(group),hull:true}];
+  for(const port of assembly3dDockPorts(mode)){
+    const p=assembly3dPortPose({id:node.id,x:0,y:0,z:0,yaw:0},port,mode);
+    const face=new THREE.Vector3(p.x,p.y,p.z), normal=new THREE.Vector3(p.nx,p.ny,p.nz);
+    const radius=Math.max(.47,(def.dia||80)/78*.51+.08);
+    // Keep the opening clear from just behind its flange to beyond the mating gap.
+    const box=new THREE.Box3().setFromPoints([face.clone().addScaledVector(normal,-.12),face.clone().addScaledVector(normal,1.35)]);
+    const rim=new THREE.Vector3(1-Math.abs(p.nx),1-Math.abs(p.ny),1-Math.abs(p.nz)).multiplyScalar(radius);
+    box.expandByVector(rim);
+    blockers.push({box});
+  }
+  return {group,wings,blockers};
+}
+function assembly3dDeploySolar(data){
+  if(!data.solarHardware) data.solarHardware=data.groups.map((group,i)=>assembly3dSolarHardware(group,data.nodes[i],data.mode));
+  const obstacles=[], wings=[];
+  for(const site of data.solarHardware){
+    if(!site.group.visible) continue;
+    site.group.updateWorldMatrix(true,false);
+    for(const b of site.blockers) obstacles.push({box:b.box,matrix:site.group.matrixWorld,owner:b.hull?site:null});
+    for(const wing of site.wings) wings.push({wing,site});
+  }
+  for(const link of data.links.children){
+    if(!link.visible) continue;
+    link.updateWorldMatrix(true,false);
+    link.userData.clearanceBounds??=assembly3dHardwareBounds(link);
+    if(!link.userData.clearanceBounds.isEmpty()) obstacles.push({box:link.userData.clearanceBounds,matrix:link.matrixWorld});
+  }
+  const transform=new THREE.Matrix4(), local=new THREE.Box3(), margin=.07;
+  for(const {wing,site} of wings){
+    const {part,box}=wing;
+    part.scale.x=1;
+    part.updateWorldMatrix(true,false);
+    const inverse=part.matrixWorld.clone().invert();
+    let reach=box.max.x;
+    for(const obstacle of obstacles){
+      if(obstacle.owner===site) continue;
+      // Test in the hinge frame. Retraction scales only local X, so this
+      // cross-section also encloses every intermediate deployment length.
+      local.copy(obstacle.box).applyMatrix4(transform.multiplyMatrices(inverse,obstacle.matrix)).expandByScalar(margin);
+      if(local.max.x<box.min.x||local.min.y>box.max.y||local.max.y<box.min.y||
+         local.min.z>box.max.z||local.max.z<box.min.z) continue;
+      reach=Math.min(reach,local.min.x);
+    }
+    part.scale.x=Math.max(0,reach/box.max.x);
+    part.visible=part.scale.x>.08;
+    if(part.visible){
+      part.updateWorldMatrix(false,false);
+      obstacles.push({box,matrix:part.matrixWorld,owner:site});
+    }
+  }
 }
 function assembly3dRefreshLinks(){
   if(!assembly3d||!assembly3d.scene) return;
@@ -11214,14 +11538,18 @@ function assembly3dRefreshLinks(){
     if(n.hidden||n.parent<0) continue;
     const p=data.nodes[n.parent];
     if(!p||p.hidden) continue;
-    const axis=new THREE.Vector3(n.x-p.x,data.mode==='base'?0:n.y-p.y,n.z-p.z);
+    const targetPort=n.dockTargetPort||assembly3dFacingPort(data,p,n);
+    const ownPort=n.dockOwnPort||assembly3dFacingPort(data,n,p);
+    const start=assembly3dPortPose(p,targetPort,data.mode), end=assembly3dPortPose(n,ownPort,data.mode);
+    const from=new THREE.Vector3(start.x,start.y,start.z), to=new THREE.Vector3(end.x,end.y,end.z);
+    const axis=to.clone().sub(from);
     if(axis.lengthSq()<.0001) continue;
     axis.normalize();
-    const from=assembly3dConnectionFace(p,data.mode,axis);
-    const to=assembly3dConnectionFace(n,data.mode,axis.clone().negate());
-    links.add(assembly3dLink(from,to,axis,data.mode,data.materials));
+    const link=assembly3dLink(from,to,axis,data.mode,data.materials);
+    link.userData.parentIndex=n.parent; link.userData.childIndex=n.index; links.add(link);
   }
   data.links=links; scene.add(links);
+  assembly3dDeploySolar(data);
   assembly3dRefreshPortGuides();
 }
 function assembly3dNodeRoot(group,node,mode){
@@ -11242,7 +11570,6 @@ function assembly3dBuildStation(scene,spec){
   for(const n of spec.nodes){
     const d=stationModuleDef(n.id)||stationModuleDef('can_std'), g=assembly3dModule(d,'station',textures);
     g.position.set(n.x,n.y,n.z);
-    if(!n.yaw&&n.parent>=0){ const p=spec.nodes[n.parent]; n.yaw=-Math.atan2(n.z-p.z,n.x-p.x); }
     g.rotation.y=n.yaw||0;
     g.visible=!n.hidden;
     scene.add(assembly3dNodeRoot(g,n,'station')); groups[n.index]=g;
@@ -11293,8 +11620,7 @@ function assembly3dBuildBase(scene,spec){
     const groundMounted=['hab_dome','isru_plant','reactor_pad','rover_garage'].includes(n.id);
     const g=assembly3dModule(d,'base',textures);
     const radius=Math.max(.62,(d.dia||80)/78);
-    const underside=n.id==='power_truss'?.04:n.id==='depot_mod'?radius*.45+.10:radius;
-    g.position.y=groundMounted?.15:underside+.18; site.add(g);
+    g.position.y=assembly3dSiteLift(n.id,radius); site.add(g);
     if(!groundMounted){
       for(const x of [-foundationLength*.29,foundationLength*.29]){
         const saddle=assembly3dBox(.26,g.position.y,foundationWidth*.8,feet,x,g.position.y/2,0);
@@ -11343,7 +11669,10 @@ function assembly3dLoop(){
   assembly3d.raf=requestAnimationFrame(assembly3dLoop);
 }
 function assembly3dRootFor(object){
-  for(let o=object;o;o=o.parent) if(o.userData&&o.userData.assemblyNodeIndex!=null) return o;
+  for(let o=object;o;o=o.parent){
+    if(!o.visible) return null;
+    if(o.userData.assemblyNodeIndex!=null) return o;
+  }
   return null;
 }
 function assembly3dPick(event){
@@ -11353,6 +11682,7 @@ function assembly3dPick(event){
   const p=new THREE.Vector2((event.clientX-rect.left)/rect.width*2-1,-((event.clientY-rect.top)/rect.height)*2+1);
   assembly3d.raycaster=assembly3d.raycaster||new THREE.Raycaster();
   assembly3d.raycaster.setFromCamera(p,assembly3d.camera);
+  assembly3d.scene.updateMatrixWorld(true);
   const groups=assembly3d.scene.userData.assemblyLayout?.groups||[];
   for(const hit of assembly3d.raycaster.intersectObjects(groups.filter(group=>group.visible),true)){
     const root=assembly3dRootFor(hit.object); if(root) return {root,ray:assembly3d.raycaster.ray};
@@ -11382,6 +11712,7 @@ function assembly3dUpdateEditUI(){
         : '';
     }
     const host=a&&$(a.hostId); if(host) host.classList.toggle('layout-edit',editing&&active);
+    if(active&&selectedNode&&!selectedNode.hidden) assembly3dAnnounce(sceneId,`${stationModuleDef(selectedNode.id)?.name||selectedNode.id} selected. Rotate it 90° with the buttons, [ / ], or Shift+R / R.`);
   }
 }
 function assembly3dUpdateLabels(){
@@ -11403,12 +11734,25 @@ function assembly3dHover(index){
 }
 function assembly3dSelectNode(sceneId,index){
   if(!assembly3d||assembly3d.sceneId!==sceneId) return;
-  const data=assembly3d.scene&&assembly3d.scene.userData.assemblyLayout, previous=assembly3dSelection;
-  if(data&&previous&&previous.sceneId===sceneId&&data.groups[previous.index]) data.groups[previous.index].scale.setScalar(1);
   assembly3dSelection=index==null?null:{sceneId,index};
   assembly3dUpdateLabels();
-  if(data&&index!=null&&data.groups[index]) data.groups[index].scale.setScalar(1.075);
   assembly3dUpdateEditUI();
+  if(index==null) assembly3dAnnounce(sceneId,'No module selected. Click a module to select it.');
+}
+function assembly3dPreviewNode(index,pos){
+  const data=assembly3d.scene.userData.assemblyLayout, group=data.groups[index];
+  group.position.set(pos.x,data.mode==='base'?0:pos.y,pos.z);
+  for(const link of data.links.children) link.visible=link.userData.parentIndex!==index&&link.userData.childIndex!==index;
+  assembly3dDeploySolar(data);
+  if(data.guides) for(const marker of data.guides.children){
+    const target=marker.userData.nodeIndex, port=marker.userData.port;
+    marker.visible=target!==index&&!data.nodes[target].hidden;
+    if(marker.visible){
+      const detached=assembly3dDockReattachmentChild(data,index,target);
+      const occupied=assembly3dPortOccupied(data,target,port,index)||assembly3dOwnPortOccupied(data,target,port,detached);
+      marker.material.opacity=occupied?.18:.86;
+    }
+  }
 }
 function assembly3dPlaceNode(index,pos,persist,snap){
   if(!assembly3d||!assembly3d.scene) return;
@@ -11451,30 +11795,63 @@ function assembly3dRestoreModule(sceneId,index){
   n.x=anchor?anchor.x+5.4:0; n.y=assembly3d.sceneId==='station'?0:0; n.z=anchor?anchor.z+4.2:0;
   assembly3dEditScene=sceneId; assembly3dPlaceNode(index,n,true,false); assembly3dSelectNode(sceneId,index);
 }
-function assembly3dAnchorChildren(data,parentIndex,seen){
-  seen=seen||new Set(); if(seen.has(parentIndex)) return; seen.add(parentIndex);
+function assembly3dAnchorChildren(data,parentIndex,before,seen=new Set()){
+  if(seen.has(parentIndex)) return;
+  seen.add(parentIndex);
+  const parent=data.nodes[parentIndex], turn=(parent.yaw||0)-(before?.yaw||0);
   for(const child of data.nodes){
-    if(child.hidden||child.parent!==parentIndex||!child.dockTargetPort||!child.dockOwnPort) continue;
-    const target=assembly3dPortPose(data.nodes[parentIndex],child.dockTargetPort,data.mode), own=assembly3dPortPose(child,child.dockOwnPort,data.mode);
-    child.x+=target.x+target.nx*.38-own.x; child.y+=target.y+target.ny*.38-own.y; child.z+=target.z+target.nz*.38-own.z;
-    const g=data.groups[child.index]; if(g){ if(data.mode==='station') g.position.set(child.x,child.y,child.z); else g.position.set(child.x,0,child.z); }
+    if(child.hidden||child.parent!==parentIndex||seen.has(child.index)) continue;
+    const old={x:child.x,y:child.y,z:child.z,yaw:child.yaw};
+    if(before){
+      const dx=child.x-before.x, dz=child.z-before.z;
+      child.x=parent.x+dx*Math.cos(turn)+dz*Math.sin(turn);
+      child.z=parent.z-dx*Math.sin(turn)+dz*Math.cos(turn);
+      child.y+=parent.y-before.y; child.yaw=(child.yaw||0)+turn;
+    }
+    if(child.dockTargetPort&&child.dockOwnPort) assembly3dAlignNode(child,parent,data.mode);
+    const g=data.groups[child.index]; g.position.set(child.x,child.y,child.z); g.rotation.y=child.yaw;
     assembly3dWriteLayout(assembly3d.sceneId,assembly3d.cur,child.index,child);
-    assembly3dAnchorChildren(data,child.index,seen);
+    assembly3dAnchorChildren(data,child.index,old,seen);
   }
 }
 function assembly3dRotateSelected(sceneId,direction){
-  if(!assembly3d||assembly3d.sceneId!==sceneId||!assembly3dSelection||assembly3dSelection.sceneId!==sceneId) return;
-  const data=assembly3d.scene.userData.assemblyLayout, n=data&&data.nodes[assembly3dSelection.index], g=n&&data.groups[n.index]; if(!n||n.hidden||!g) return;
-  n.yaw=(n.yaw||0)+(direction<0?-Math.PI/2:Math.PI/2);
-  if(n.parent>=0&&n.dockTargetPort){
-    const target=assembly3dPortPose(data.nodes[n.parent],n.dockTargetPort,data.mode);
-    let best='west', bestDot=Infinity;
-    for(const port of data.mode==='station'?['east','west','north','south','top','bottom']:['east','west','north','south']){ const p=assembly3dPortPose(n,port,data.mode), dot=p.nx*target.nx+p.ny*target.ny+p.nz*target.nz; if(dot<bestDot){ bestDot=dot; best=port; } }
-    n.dockOwnPort=best;
+  if(!assembly3d||assembly3d.sceneId!==sceneId||assembly3dSelection?.sceneId!==sceneId) return;
+  const data=assembly3d.scene.userData.assemblyLayout, n=data.nodes[assembly3dSelection.index];
+  if(!n||n.hidden) return;
+  // Do every inference from the unturned geometry.  In particular, generated
+  // layouts have no explicit child collar, so asking after a yaw change would
+  // falsely move their occupied port to the prospective face.
+  const baseline=data.nodes;
+  const before=Object.assign({},n), proposed=Object.assign({},n,{yaw:(n.yaw||0)+(direction<0?-Math.PI/2:Math.PI/2)});
+  const connection=assembly3dConnectionPorts(data,n);
+  if(connection){
+    const parent=connection.parent, target=assembly3dPortPose(parent,connection.targetPort,data.mode);
+    let bestDot=Infinity;
+    for(const port of assembly3dDockPorts(data.mode)){
+      const p=assembly3dPortPose(proposed,port,data.mode), dot=p.nx*target.nx+p.ny*target.ny+p.nz*target.nz;
+      if(dot<bestDot){bestDot=dot; proposed.dockOwnPort=port;}
+    }
+    const attemptedOwnPort=proposed.dockOwnPort;
+    const occupied=baseline.some(child=>!child.hidden&&child.parent===n.index&&
+      (child.dockTargetPort||assembly3dFacingPort(data,n,child))===attemptedOwnPort);
+    if(occupied){
+      assembly3dAnnounce(sceneId,`Rotation blocked: the ${attemptedOwnPort} port is occupied by a connected module.`);
+      return false;
+    }
+    proposed.dockTargetPort=connection.targetPort;
+    assembly3dAlignNode(proposed,parent,data.mode);
   }
-  g.rotation.y=n.yaw; assembly3dWriteLayout(sceneId,assembly3d.cur,n.index,n);
-  assembly3dAnchorChildren(data,n.index); assembly3dRefreshLinks(); assembly3dUpdateEditUI();
-  assembly3d.signature=assembly3dSpecKey({sceneId,body:assembly3d.spec.body,ids:assembly3d.spec.ids,nodes:data.nodes});
+  // Screen the rotated root and its attached branch before moving children or
+  // writing layout state.  This keeps a failed quarter-turn entirely inert.
+  if(!assembly3dPlacementClear(data,n.index,proposed)){
+    assembly3dAnnounce(sceneId,'Rotation blocked: this quarter-turn would overlap another module or docking collar.');
+    return false;
+  }
+  Object.assign(n,proposed);
+  assembly3dAnchorChildren(data,n.index,before);
+  assembly3dPlaceNode(n.index,n,true,false);
+  assembly3dAnnounce(sceneId,`${stationModuleDef(n.id)?.name||n.id} rotated ${direction<0?'left':'right'} 90°${connection?' and remains docked.':'.'}`);
+  return true;
 }
 function assembly3dResetLayout(sceneId){
   if(!assembly3d||assembly3d.sceneId!==sceneId||!assembly3d.cur) return;
@@ -11487,26 +11864,31 @@ function assembly3dResetLayout(sceneId){
 function toggleAssembly3DArrange(sceneId){
   if(!assembly3dIsScene(sceneId)) return;
   assembly3dEditScene=assembly3dEditScene===sceneId?null:sceneId;
-  if(!assembly3dEditScene) assembly3dSelectNode(sceneId,null); else assembly3dUpdateEditUI();
+  assembly3dUpdateEditUI();
+  assembly3dAnnounce(sceneId,assembly3dEditScene?'Arrange mode on: drag modules to cyan docking collars.':'Arrange mode off: click a module to select and rotate it.');
   assembly3dRefreshPortGuides();
 }
 function assembly3dWireInput(dom){
   if(dom._assemblyInput) return; dom._assemblyInput=true;
-  let down=false,lx=0,ly=0,drag=null;
+  let down=false,lx=0,ly=0,drag=null,clickPick=null,clickX=0,clickY=0;
   dom.addEventListener('pointerdown',e=>{
     if(!assembly3d||(e.button!==0&&e.button!==2)) return;
+    try{ dom.focus({preventScroll:true}); }catch(_){ dom.focus(); }
     if(e.button===0&&assembly3dEditScene===assembly3d.sceneId){
       const hit=assembly3dPick(e);
       if(hit){
-        const root=hit.root, node=root.userData.assemblyNode, plane=new THREE.Plane(new THREE.Vector3(0,1,0),-root.position.y), point=new THREE.Vector3();
+        const root=hit.root, node=root.userData.assemblyNode, normal=new THREE.Vector3(0,1,0), point=new THREE.Vector3();
+        if(assembly3d.sceneId==='station'||Math.abs(hit.ray.direction.y)<.1) assembly3d.camera.getWorldDirection(normal);
+        const plane=new THREE.Plane().setFromNormalAndCoplanarPoint(normal,root.position);
         if(hit.ray.intersectPlane(plane,point)){
           assembly3dSelectNode(assembly3d.sceneId,node.index);
-          drag={index:node.index,plane,offset:root.position.clone().sub(point),start:{x:node.x,y:node.y,z:node.z,yaw:node.yaw,parent:node.parent,dockTargetPort:node.dockTargetPort,dockOwnPort:node.dockOwnPort}};
+          drag={index:node.index,plane,offset:root.position.clone().sub(point),startX:e.clientX,startY:e.clientY,moved:false,start:{x:node.x,y:node.y,z:node.z,yaw:node.yaw,parent:node.parent,dockTargetPort:node.dockTargetPort,dockOwnPort:node.dockOwnPort}};
           dom.parentNode?.classList.add('grabbing'); try{dom.setPointerCapture(e.pointerId);}catch(_){} e.preventDefault(); return;
         }
       }
       assembly3dSelectNode(assembly3d.sceneId,null);
     }
+    if(e.button===0&&!drag){ clickPick=assembly3dPick(e); clickX=e.clientX; clickY=e.clientY; }
     down=true; lx=e.clientX; ly=e.clientY; dom.parentNode?.classList.add('grabbing'); try{dom.setPointerCapture(e.pointerId);}catch(_){}
     e.preventDefault();
   });
@@ -11515,27 +11897,45 @@ function assembly3dWireInput(dom){
     if(drag){
       const rect=dom.getBoundingClientRect(), p=new THREE.Vector2((e.clientX-rect.left)/rect.width*2-1,-((e.clientY-rect.top)/rect.height)*2+1), point=new THREE.Vector3();
       assembly3d.raycaster.setFromCamera(p,assembly3d.camera);
-      if(assembly3d.raycaster.ray.intersectPlane(drag.plane,point)) assembly3dPlaceNode(drag.index,point.add(drag.offset),false);
+      if(assembly3d.raycaster.ray.intersectPlane(drag.plane,point)){
+        drag.moved=drag.moved||Math.hypot(e.clientX-drag.startX,e.clientY-drag.startY)>3;
+        assembly3dPreviewNode(drag.index,point.add(drag.offset));
+        const data=assembly3d.scene.userData.assemblyLayout;
+        assembly3dHighlightGuide(assembly3dDockCandidate(data,drag.index,e.shiftKey?'top':(e.altKey?'bottom':null),e));
+      }
       return;
     }
     if(!down){
       assembly3dHover(assembly3dPick(e)?.root.userData.assemblyNodeIndex);
       return;
     }
+    if(clickPick&&Math.hypot(e.clientX-clickX,e.clientY-clickY)>3) clickPick=null;
     const dx=e.clientX-lx,dy=e.clientY-ly; lx=e.clientX;ly=e.clientY; assembly3d.yaw-=dx*.007; assembly3d.pitch=clampA(assembly3d.pitch+dy*.006,-1.48,1.48); assembly3dApplyCamera();
   });
   const end=e=>{
     if(drag&&assembly3d){
-      const snapped=assembly3dSnapNode(drag.index,e.shiftKey?'top':(e.altKey?'bottom':null));
+      const snapped=assembly3dDragShouldCommit(drag,e)&&assembly3dSnapNode(drag.index,e.shiftKey?'top':(e.altKey?'bottom':null),e);
       const data=assembly3d.scene.userData.assemblyLayout, n=data&&data.nodes[drag.index];
-      if(n){ if(!snapped) Object.assign(n,drag.start); assembly3dPlaceNode(drag.index,n,snapped,false); }
+      if(n){
+        if(!snapped) Object.assign(n,drag.start);
+        else assembly3dAnchorChildren(data,n.index,drag.start);
+        assembly3dPlaceNode(drag.index,n,snapped,false);
+      }
     }
-    down=false; drag=null; dom.parentNode?.classList.remove('grabbing'); try{dom.releasePointerCapture(e.pointerId);}catch(_){}
+    if(clickPick&&e.type==='pointerup'&&assembly3d) assembly3dSelectNode(assembly3d.sceneId,clickPick.root.userData.assemblyNodeIndex);
+    assembly3dHighlightGuide(null);
+    down=false; drag=null; clickPick=null; dom.parentNode?.classList.remove('grabbing'); try{dom.releasePointerCapture(e.pointerId);}catch(_){}
   };
   dom.addEventListener('pointerleave',()=>assembly3dHover(undefined));
   dom.addEventListener('pointerup',end); dom.addEventListener('pointercancel',end);
   dom.addEventListener('contextmenu',e=>e.preventDefault());
   dom.addEventListener('wheel',e=>{ if(!assembly3d)return;e.preventDefault();assembly3d.dist=clampA(assembly3d.dist*(e.deltaY>0?1.1:.9),7,120);assembly3dApplyCamera();},{passive:false});
+  dom.addEventListener('keydown',e=>{
+    if(!assembly3d||!assembly3dSelection||e.altKey||e.ctrlKey||e.metaKey) return;
+    const left=e.key==='['||(e.key.toLowerCase()==='r'&&e.shiftKey), right=e.key===']'||(e.key.toLowerCase()==='r'&&!e.shiftKey);
+    if(!left&&!right) return;
+    e.preventDefault(); assembly3dRotateSelected(assembly3d.sceneId,left?-1:1);
+  });
   dom.addEventListener('dblclick',()=>{ if(assembly3d) resetAssembly3DView(assembly3d.sceneId); });
 }
 function startAssembly3D(sceneId,cur){
@@ -11548,7 +11948,7 @@ function startAssembly3D(sceneId,cur){
       renderer.outputColorSpace=THREE.SRGBColorSpace;
       renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
       const camera=new THREE.PerspectiveCamera(42,1,.1,220), dom=renderer.domElement;
-      dom.className='assembly-3d-canvas'; assembly3d={renderer,camera,dom,scene:null,sceneId:null,hostId:null,signature:null,raf:0,width:0,height:0,yaw:0,pitch:0,dist:30,defaultDist:30,target:new THREE.Vector3(),cur:null,spec:null,raycaster:null};
+      dom.className='assembly-3d-canvas'; dom.tabIndex=0; dom.setAttribute('role','application'); dom.setAttribute('aria-label','Outpost layout. Click a module to select it; use bracket keys or R to rotate the selected module.'); assembly3d={renderer,camera,dom,scene:null,sceneId:null,hostId:null,signature:null,raf:0,width:0,height:0,yaw:0,pitch:0,dist:30,defaultDist:30,target:new THREE.Vector3(),cur:null,spec:null,raycaster:null};
       assembly3dWireInput(dom);
     }
     if(assembly3d.dom.parentNode!==host) host.appendChild(assembly3d.dom);
@@ -11795,6 +12195,22 @@ function renderStationFacilityStats(built, cur, focusId, focusFn){ // E1.8: base
 }
 // Radial station renderer: the save model remains an ordered module list, but the bench now
 // lays modules out across a docking grid instead of flattening them into a left/right chain.
+// SVG counterpart to the habitat's retractable 3D wings.  Split leaves preserve a visible
+// centre passage through the top/bottom docking axis rather than painting a solid panel over it.
+function stationHabSolarWingsSVG(x,y,L,hd,scale){
+  const panelH=Math.max(5,8*scale), arraySpan=L*1.6, wingW=arraySpan*.30;
+  let s='<g class="station-habitat-solar-wings">';
+  for(const sy of [-1,1]){
+    const hingeY=y+sy*hd*.62, panelY=y+sy*(hd+20*scale), top=panelY-panelH/2;
+    for(const leafSide of [-1,1]){
+      const hingeX=x+leafSide*arraySpan*.20, cx=x+leafSide*(arraySpan*.20+wingW/2), left=cx-wingW/2;
+      s+=`<g class="assembly-solar-wing" data-retraction-axis="x"><circle cx="${hingeX}" cy="${hingeY}" r="${Math.max(1,1.25*scale)}" fill="#c5d1d8"/><path d="M ${hingeX} ${hingeY} L ${cx} ${panelY}" fill="none" stroke="#aebdc6" stroke-width="${Math.max(.55,.75*scale)}"/><rect x="${left}" y="${top}" width="${wingW}" height="${panelH}" rx="${Math.max(1,1.2*scale)}" fill="#173b61" stroke="#80aed0" stroke-width="${Math.max(.5,.7*scale)}"/>`;
+      for(let c=1;c<4;c++) s+=`<path d="M ${left+wingW*c/4} ${top+.5*scale} V ${top+panelH-.5*scale}" stroke="#4d82aa" stroke-width="${Math.max(.3,.45*scale)}"/>`;
+      s+='</g>';
+    }
+  }
+  return s+'</g>';
+}
 function stationModuleSVG(id,d,x,y,scale){
   const L=Math.max(92,(d.len||150)*0.48)*scale, hd=Math.max(18,(d.dia||80)*0.30)*scale, c=d.color||'#b8c0c7';
   const stroke='#81909b', dark='#0a1520', glow=`filter="url(#stnGlow)"`;
@@ -11802,7 +12218,18 @@ function stationModuleSVG(id,d,x,y,scale){
   let g=`<g transform="translate(${x} ${y})">`;
   if(id==='power_truss'){
     g+=`<g ${glow}><path d="M ${-L/2} 0 H ${L/2}" stroke="#bac6d0" stroke-width="6"/><path d="M ${-L/2} -9 L ${L/2} 9 M ${-L/2} 9 L ${L/2} -9" stroke="#e8b64c" stroke-width="1.5"/>`;
-    for(const sy of [-1,1]){ const py=sy*(hd+32*scale), ph=34*scale; g+=`<rect x="${-L*.42}" y="${py-(sy<0?ph:0)}" width="${L*.84}" height="${ph}" rx="2" fill="#132d4a" stroke="#4f87b7"/><path d="M ${-L*.42} ${py-(sy<0?ph:0)+ph/2} H ${L*.42}" stroke="#78b9e8" stroke-width=".8"/>`; for(let i=-3;i<=3;i++) g+=`<path d="M ${i*L*.12} ${py-(sy<0?ph:0)} V ${py-(sy<0?ph:0)+ph}" stroke="#3b6790" stroke-width=".7"/>`; } g+=`</g>`;
+    for(const sy of [-1,1]){
+      const py=sy*(hd+34*scale), ph=18*scale, arraySpan=L*1.6, wingW=arraySpan*.30, top=py-(sy<0?ph:0);
+      for(const leafSide of [-1,1]){
+        const hinge=leafSide*arraySpan*.20, cx=leafSide*(arraySpan*.20+wingW/2), left=cx-wingW/2;
+        // The centre aisle is intentionally open: it is the top/bottom docking approach,
+        // not a decorative gap.  Match the independently retractable Three.js leaves.
+        g+=`<g class="assembly-solar-wing" data-retraction-axis="x"><circle cx="${hinge}" cy="${sy*4}" r="${Math.max(1.2,1.6*scale)}" fill="#c5d1d8"/><path d="M ${hinge} ${sy*4} L ${cx} ${py}" fill="none" stroke="#b6c5cf" stroke-width="${Math.max(.7,scale)}"/><rect x="${left}" y="${top}" width="${wingW}" height="${ph}" rx="1.5" fill="#132d4a" stroke="#78b9e8" stroke-width="${Math.max(.55,.8*scale)}"/>`;
+        for(let i=1;i<4;i++) g+=`<path d="M ${left+wingW*i/4} ${top+.5} V ${top+ph-.5}" stroke="#3b6790" stroke-width=".55"/>`;
+        g+=`</g>`;
+      }
+    }
+    g+=`</g>`;
   } else if(id==='node_hub'){
     const r=Math.max(28,hd*1.25); g+=`<g ${glow}><circle r="${r}" fill="url(#g-node_hub)" stroke="${stroke}" stroke-width="2"/><circle r="${r*.55}" fill="none" stroke="#d3dbe2" stroke-opacity=".45"/>`;
     for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]) g+=`<g transform="translate(${dx*r} ${dy*r}) rotate(${dx?90:0})"><rect x="-8" y="-14" width="16" height="28" rx="3" fill="#778793" stroke="#c4d0d8"/><circle cy="-7" r="3" fill="#263743"/><circle cy="7" r="3" fill="#263743"/></g>`; g+=`</g>`;
@@ -11824,7 +12251,7 @@ function stationModuleSVG(id,d,x,y,scale){
   return g;
 }
 function renderStationStackSVG(W,H,cur,interactive){
-  const list=facilityModuleList(cur.fs), cell=112, slots=list.map((id,i)=>STATION_LAYOUT_SLOTS[i]||[i%5-2,Math.floor(i/5)+1]);
+  const list=facilityModuleList(cur.fs), cell=164, slots=list.map((id,i)=>STATION_LAYOUT_SLOTS[i]||[i%5-2,Math.floor(i/5)+1]);
   const minX=Math.min(...slots.map(p=>p[0]))-1,maxX=Math.max(...slots.map(p=>p[0]))+1,minY=Math.min(...slots.map(p=>p[1]))-1,maxY=Math.max(...slots.map(p=>p[1]))+1;
   const scale=Math.min(1.25,(W-28)/((maxX-minX)*cell),(H-28)/((maxY-minY)*cell));
   const ox=W/2-(minX+maxX)*cell*scale/2, oy=H/2-(minY+maxY)*cell*scale/2;
@@ -11832,7 +12259,10 @@ function renderStationStackSVG(W,H,cur,interactive){
   let s=`<svg id="${interactive?'stationSvg':''}" data-bw="${W}" data-bh="${H}" data-zoom="${interactive?stationZoom:1}" viewBox="${viewBox}" width="${W}" height="${H}" style="max-width:100%;height:auto;background:var(--bg);border-radius:8px 8px 0 0;cursor:${interactive?'grab':'default'};touch-action:none"><defs><filter id="stnGlow"><feGaussianBlur stdDeviation="1.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter><pattern id="stnGrid" width="24" height="24" patternUnits="userSpaceOnUse"><path d="M24 0H0V24" fill="none" stroke="#6a9ab8" stroke-opacity=".08"/></pattern>${STATION_MODULES.map(d=>`<linearGradient id="g-${d.id}" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="${d.color}" stop-opacity=".95"/><stop offset=".48" stop-color="${d.color}"/><stop offset="1" stop-color="#293743"/></linearGradient>`).join('')}</defs><rect x="${-W*2}" y="${-H*2}" width="${W*5}" height="${H*5}" fill="#060d16"/><rect width="100%" height="100%" fill="url(#stnGrid)"/><text x="14" y="20" fill="#9bb6c8" font-size="10" font-family="ui-monospace,monospace" letter-spacing="1.5">ORBITAL ASSEMBLY PLAN · RADIAL DOCKING GRID</text>`;
   const pts=slots.map(([gx,gy])=>[ox+gx*cell*scale,oy+gy*cell*scale]);
   for(let i=1;i<pts.length;i++){ const parent=i<=4?0:Math.max(0,Math.floor((i-1)/4)); const [x1,y1]=pts[parent],[x2,y2]=pts[i]; s+=`<path d="M ${x1} ${y1} L ${x2} ${y2}" stroke="#6e8999" stroke-opacity=".5" stroke-width="3" stroke-dasharray="5 4"/><circle cx="${x2}" cy="${y2}" r="4" fill="#d4b35e"/>`; }
-  list.forEach((id,i)=>{ const d=stationModuleDef(id)||stationModuleDef('can_std'),[x,y]=pts[i]; s+=stationModuleSVG(id,d,x,y,scale); });
+  list.forEach((id,i)=>{ const d=stationModuleDef(id)||stationModuleDef('can_std'),[x,y]=pts[i];
+    if(id==='can_std') s+=stationHabSolarWingsSVG(x,y,Math.max(92,(d.len||150)*.48)*scale,Math.max(18,(d.dia||80)*.30)*scale,scale);
+    s+=stationModuleSVG(id,d,x,y,scale);
+  });
   s+=`<text x="${W-14}" y="${H-12}" fill="#718898" font-size="9" font-family="ui-monospace,monospace" text-anchor="end">${list.length} MODULE${list.length===1?'':'S'} · ${facilityPortCap(cur.fs,cur.def)} BERTHS</text></svg>`;
   return s;
 }
@@ -11980,10 +12410,26 @@ const BASE_BODY_LOOK={
   moon:{skyTop:'#03060b', skyBot:'#0a0f16', ground:'#3c4045', groundDark:'#26292d', label:'LUNA', stars:true},
   mars:{skyTop:'#8a5a35', skyBot:'#c98a52', ground:'#7a3f24', groundDark:'#5a2e19', label:'MARS', stars:false},
 };
+// SVG fallback counterpart to assembly3dSurfaceSolarWings().  These wings sit behind the
+// habitat, with a roof-rooted boom and visible diagonal stays, so the initial one-module base
+// reads as a viable outpost rather than a can beside some decorative panels.
+function baseSolarWingsSVG(x,y,L,hd,scale){
+  const panelH=Math.max(5,8*scale), panelY=y-hd*1.78, arraySpan=L*1.6, wingW=arraySpan*.30;
+  let s=`<g class="surface-solar-wings">`;
+  for(const side of [-1,1]){
+    const hinge=x+side*arraySpan*.20, cx=x+side*(arraySpan*.20+wingW/2), left=cx-wingW/2, top=panelY-panelH/2;
+    // Two stays land on the hull shoulder; they remain visible below the very thin array.
+    s+=`<g class="assembly-solar-wing" data-retraction-axis="x"><circle cx="${hinge}" cy="${y-hd*.92}" r="${Math.max(1,1.3*scale)}" fill="#c5d1d8"/><path d="M ${hinge} ${y-hd*.92} L ${cx} ${panelY+panelH/2} M ${x+side*L*.40} ${y-hd*.70} L ${cx+side*wingW*.32} ${panelY+panelH/2}" fill="none" stroke="#aebdc6" stroke-width="${Math.max(.65,.85*scale)}"/>`;
+    s+=`<rect x="${left}" y="${top}" width="${wingW}" height="${panelH}" rx="${Math.max(1,1.5*scale)}" fill="#173b61" stroke="#80aed0" stroke-width="${Math.max(.65,.9*scale)}"/>`;
+    for(let c=1;c<4;c++) s+=`<path d="M ${left+wingW*c/4} ${top+.7*scale} V ${top+panelH-.7*scale}" stroke="#4d82aa" stroke-width="${Math.max(.4,.55*scale)}"/>`;
+    s+=`<path d="M ${left+1*scale} ${panelY} H ${left+wingW-1*scale}" stroke="#a6d4ee" stroke-opacity=".75" stroke-width="${Math.max(.35,.5*scale)}"/></g>`;
+  }
+  return s+'</g>';
+}
 function renderBaseSurfaceSVG(W,H,cur,interactive){
   const list=facilityModuleList(cur.fs);
   const look=BASE_BODY_LOOK[cur.def.body]||BASE_BODY_LOOK.moon;
-  const cell=128, groundY=H*0.72;
+  const cell=164, groundY=H*0.72;
   const totalW=list.length*cell;
   const scale=Math.min(1.1,(W-40)/Math.max(totalW,cell));
   const ox=W/2-totalW*scale/2+cell*scale/2;
@@ -12012,6 +12458,7 @@ function renderBaseSurfaceSVG(W,H,cur,interactive){
   list.forEach((id,i)=>{
     const d=stationModuleDef(id)||stationModuleDef('can_std');
     const hd=Math.max(18,(d.dia||80)*0.30)*scale; // stationModuleSVG draws hull centered at (x,y) with half-height hd
+    if(id==='can_std') s+=baseSolarWingsSVG(xs[i],modY-hd,Math.max(92,(d.len||150)*0.48)*scale,hd,scale);
     s+=`<g>${stationModuleSVG(id,d,xs[i],modY-hd,scale).split('url(#stnGlow)').join('url(#stnGlowB)')}</g>`;
     // landing pad shadow under each module grounds it visually
     s+=`<ellipse cx="${xs[i]}" cy="${modY+3*scale}" rx="${52*scale}" ry="${6*scale}" fill="#000" opacity="0.28"/>`;
